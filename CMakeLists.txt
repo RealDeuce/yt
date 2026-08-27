@@ -1,0 +1,182 @@
+cmake_minimum_required(VERSION 3.20)
+
+project(YankeeTrader LANGUAGES C)
+
+include(CTest)
+include(GNUInstallDirs)
+
+set(CMAKE_C_STANDARD 17)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS OFF)
+
+option(YT_USE_SYSTEM_OPENDOORS
+    "Use an installed OpenDoors package instead of the pinned source tree" OFF)
+set(YT_OPENDOORS_SOURCE_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/opendoors" CACHE PATH
+    "Path to an OpenDoors source checkout")
+
+if(YT_USE_SYSTEM_OPENDOORS)
+    find_package(OpenDoors 6.3 CONFIG REQUIRED COMPONENTS Static)
+else()
+    if(NOT EXISTS "${YT_OPENDOORS_SOURCE_DIR}/CMakeLists.txt")
+        message(FATAL_ERROR
+            "OpenDoors was not found at ${YT_OPENDOORS_SOURCE_DIR}. "
+            "Initialize third_party/opendoors or set YT_OPENDOORS_SOURCE_DIR.")
+    endif()
+
+    # OpenDoors is a complete project and intentionally uses CTest's global
+    # BUILD_TESTING option.  Keep its test and example trees out of a normal
+    # Yankee Trader build while preserving this project's test selection.
+    set(_yt_build_testing "${BUILD_TESTING}")
+    set(BUILD_TESTING OFF CACHE BOOL "Build tests" FORCE)
+    set(OPENDOORS_BUILD_SHARED OFF CACHE BOOL
+        "Build the OpenDoors shared library" FORCE)
+    set(OPENDOORS_BUILD_STATIC ON CACHE BOOL
+        "Build the OpenDoors static library" FORCE)
+    set(OPENDOORS_BUILD_EXAMPLES OFF CACHE BOOL
+        "Build the OpenDoors example programs" FORCE)
+    add_subdirectory("${YT_OPENDOORS_SOURCE_DIR}"
+        "${CMAKE_CURRENT_BINARY_DIR}/opendoors" EXCLUDE_FROM_ALL)
+    set(BUILD_TESTING "${_yt_build_testing}" CACHE BOOL "Build tests" FORCE)
+    unset(_yt_build_testing)
+endif()
+
+function(yt_configure_target target)
+    target_include_directories(${target} PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>)
+    if(WIN32)
+        target_compile_definitions(${target} PRIVATE _CRT_SECURE_NO_WARNINGS)
+    else()
+        target_compile_definitions(${target} PRIVATE _POSIX_C_SOURCE=200809L)
+    endif()
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /W4)
+    else()
+        target_compile_options(${target} PRIVATE
+            -Wall -Wextra -Wconversion -Wshadow -Wstrict-prototypes
+            -pedantic -ffp-contract=off)
+    endif()
+endfunction()
+
+set(YT_CORE_SOURCES
+    src/qb.c
+    src/qb_format.c
+    src/yt_cli.c
+    src/yt_data.c
+    src/yt_file.c
+    src/yt_input_model.c
+    src/yt_pager.c
+    src/yt_platform.c
+    src/yt_presentation.c
+    src/yt_random.c
+    src/yt_sound.c
+    src/yt_text.c)
+
+set(YT_GAME_SOURCES
+    src/yt_config.c
+    src/yt_game.c
+    src/yt_init.c
+    src/yt_maint.c
+    src/yt_names.c
+    src/yt_score.c
+    src/yt_score_format.c)
+
+add_library(yt_core STATIC ${YT_CORE_SOURCES})
+yt_configure_target(yt_core)
+if(NOT WIN32)
+    target_link_libraries(yt_core PUBLIC m)
+endif()
+
+add_library(yt_game STATIC ${YT_GAME_SOURCES})
+yt_configure_target(yt_game)
+target_link_libraries(yt_game PUBLIC yt_core)
+
+add_executable(yt
+    src/main_yt.c
+    src/yt_door.c
+    src/yt_input.c
+    src/yt_output.c
+    src/yt_session.c)
+yt_configure_target(yt)
+target_link_libraries(yt PRIVATE yt_game OpenDoors::Static)
+
+function(yt_add_utility target source)
+    add_executable(${target} "${source}")
+    yt_configure_target(${target})
+    target_link_libraries(${target} PRIVATE yt_game)
+endfunction()
+
+yt_add_utility(ytmaint src/main_ytmaint.c)
+yt_add_utility(ytconfig src/main_ytconfig.c)
+yt_add_utility(yt-init src/main_yt_init.c)
+yt_add_utility(rmt-init src/main_rmt_init.c)
+yt_add_utility(portname src/main_portname.c)
+yt_add_utility(local src/main_local.c)
+
+add_executable(yt-assetgen EXCLUDE_FROM_ALL src/main_assetgen.c)
+yt_configure_target(yt-assetgen)
+
+set(YT_DATA_NAMES
+    ytopen.ans
+    ytopen.asc
+    ytinstr.doc
+    ytsysop.doc
+    xannorhq.txt
+    ytecho.txt
+    lockout.dat
+    yt.reg)
+set(YT_GENERATED_DATA_DIR "${CMAKE_CURRENT_BINARY_DIR}/data")
+set(YT_DATA_FILES)
+foreach(name IN LISTS YT_DATA_NAMES)
+    list(APPEND YT_DATA_FILES "${YT_GENERATED_DATA_DIR}/${name}")
+endforeach()
+add_custom_command(
+    OUTPUT ${YT_DATA_FILES}
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${YT_GENERATED_DATA_DIR}"
+    COMMAND $<TARGET_FILE:yt-assetgen> "${YT_GENERATED_DATA_DIR}/"
+    DEPENDS yt-assetgen src/yt_assets.inc
+    COMMENT "Generating Yankee Trader package data"
+    VERBATIM)
+add_custom_target(yt-data ALL DEPENDS ${YT_DATA_FILES})
+
+if(BUILD_TESTING)
+    function(yt_add_test target source library)
+        add_executable(${target} "${source}")
+        yt_configure_target(${target})
+        target_compile_definitions(${target} PRIVATE YT_TESTING)
+        target_link_libraries(${target} PRIVATE ${library})
+        add_test(NAME ${target} COMMAND ${target})
+    endfunction()
+
+    yt_add_test(test_qb tests/test_qb.c yt_core)
+    yt_add_test(test_data tests/test_data.c yt_core)
+    yt_add_test(test_sound tests/test_sound.c yt_core)
+    yt_add_test(test_input_model tests/test_input_model.c yt_core)
+    yt_add_test(test_presentation tests/test_presentation.c yt_core)
+    yt_add_test(test_score tests/test_score.c yt_game)
+
+    add_executable(test_assets tests/test_assets.c)
+    yt_configure_target(test_assets)
+    target_compile_definitions(test_assets PRIVATE
+        YT_DATA_DIR="${YT_GENERATED_DATA_DIR}/")
+    add_dependencies(test_assets yt-data)
+    add_test(NAME test_assets COMMAND test_assets)
+
+    yt_add_test(test_clean_install tests/test_clean_install.c yt_game)
+    target_compile_definitions(test_clean_install PRIVATE
+        YT_INIT_EXE="$<TARGET_FILE:yt-init>")
+    add_dependencies(test_clean_install yt-init ytmaint)
+
+    yt_add_test(test_utilities tests/test_utilities.c yt_game)
+    target_compile_definitions(test_utilities PRIVATE
+        YT_CONFIG_EXE="$<TARGET_FILE:ytconfig>"
+        YT_PORTNAME_EXE="$<TARGET_FILE:portname>"
+        YT_RMT_INIT_EXE="$<TARGET_FILE:rmt-init>"
+        YT_LOCAL_EXE="$<TARGET_FILE:local>")
+    add_dependencies(test_utilities ytconfig portname rmt-init local)
+endif()
+
+install(TARGETS yt ytmaint ytconfig yt-init rmt-init portname local
+    RUNTIME DESTINATION "${CMAKE_INSTALL_DATADIR}/yankee-trader")
+install(FILES ${YT_DATA_FILES}
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/yankee-trader")

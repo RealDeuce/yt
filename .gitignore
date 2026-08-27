@@ -1,0 +1,10 @@
+/bin/
+/build/
+/obj/
+/CMakeUserPresets.json
+/CMakeCache.txt
+/CMakeFiles/
+/CTestTestfile.cmake
+/Makefile
+/Testing/
+/cmake_install.cmake

@@ -1,0 +1,17 @@
+SRC ?= ../
+override SRC := $(abspath $(SRC))/
+SRCDIR := $(SRC)src/
+BINDIR ?= $(SRC)bin/
+override BINDIR := $(abspath $(BINDIR))/
+OBJPREFIX := $(SRC)obj/
+OBJDIR := $(OBJPREFIX)$(os).$(mach).$(FLAVOUR)/
+TESTOBJDIR := $(OBJDIR)tests/
+TESTDIR := $(BINDIR)tests/
+EXEFILE := .$(os).$(mach).$(FLAVOUR)$(EXE_EXT)
+
+ifdef WIN
+WRAPEXT := .cmd
+else
+WRAPEXT :=
+endif
+

@@ -1,0 +1,39 @@
+{
+  "denominators": {
+    "literal_references": 2060,
+    "presentation_families": 150,
+    "presentation_sites": 3815,
+    "roots": 168,
+    "transfers": 7368
+  },
+  "policy": {
+    "edge_credit_requires_exact_native_mapping_and_test": true,
+    "no_combined_percentage": true,
+    "statuses": [
+      "missing",
+      "candidate",
+      "verified",
+      "explicitly deferred"
+    ]
+  },
+  "schema_version": 1,
+  "source_artifacts": {
+    "completion": {
+      "path": "/bbsdev/doors/yt/3.6G/analysis/disassembly/completion-ledger.json",
+      "sha256": "bd25d2cf5ec9d127921515eeaa14b1af06e8b83597435b744b22f6162480a273"
+    },
+    "presentation": {
+      "path": "/bbsdev/doors/yt/3.6G/analysis/disassembly/player-output-coverage.json",
+      "sha256": "ed0c596666df27d221492b09a6090226f8e90d6fb8ea50deeb47e903d1d8acba"
+    },
+    "roots": {
+      "path": "/bbsdev/doors/yt/3.6G/analysis/disassembly/root-coverage.json",
+      "sha256": "c7c04edb997f7d988e45eea1800d50a60710494d79ed02426fe70950618df225"
+    },
+    "transfers": {
+      "path": "/bbsdev/doors/yt/3.6G/analysis/disassembly/qualified-cfg.json",
+      "sha256": "844515f4724893264ffaf6af5622b29dec40f28cb1326bf4d502166221702a99"
+    }
+  },
+  "source_authority": "/bbsdev/doors/yt/3.6G"
+}

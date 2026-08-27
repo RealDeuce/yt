@@ -1,0 +1,450 @@
+#include "yt_score.h"
+#include "qb.h"
+#include "yt_score_format.h"
+
+#include <errno.h>
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
+
+struct score_player {
+	int record;
+	struct yt_player player;
+	double score;
+	bool occupied;
+};
+
+struct score_team {
+	int id;
+	double score;
+};
+
+static bool
+write_bytes(FILE *file, const char *text, const char *path,
+    struct yt_error *error)
+{
+	size_t length = strlen(text);
+
+	if (fwrite(text, 1, length, file) == length)
+		return true;
+	if (error != NULL) {
+		error->status = YT_IO_ERROR;
+		error->system_error = errno;
+		snprintf(error->operation, sizeof(error->operation),
+		    "write scoreboard");
+		snprintf(error->path, sizeof(error->path), "%s", path);
+	}
+	return false;
+}
+
+static FILE *
+open_scoreboard(const struct yt_game *game, char path[512],
+    struct yt_error *error)
+{
+	const char *requested = strcmp(game->config.scoreboard, "NUL") == 0
+	    ? "yttemp" : game->config.scoreboard;
+	FILE *file;
+
+	if (!yt_resolve_case_path(requested, true, path, 512, error))
+		return NULL;
+	file = fopen(path, "wb");
+	if (file == NULL && error != NULL) {
+		error->status = YT_IO_ERROR;
+		error->system_error = errno;
+		snprintf(error->operation, sizeof(error->operation),
+		    "open scoreboard");
+		snprintf(error->path, sizeof(error->path), "%s", path);
+	}
+	return file;
+}
+
+static bool
+scoreboard_division_error(FILE *file, const char *path,
+    struct yt_error *error)
+{
+	(void)fclose(file);
+	if (error != NULL) {
+		error->status = YT_RANGE;
+		error->system_error = 0;
+		snprintf(error->operation, sizeof(error->operation),
+		    "scoreboard division by zero");
+		snprintf(error->path, sizeof(error->path), "%s", path);
+	}
+	return false;
+}
+
+static bool
+fixed_string(char dest[7], const char *source)
+{
+	size_t length = strlen(source);
+
+	if (length > 6U)
+		length = 6U;
+	memcpy(dest, source, length);
+	memset(dest + length, ' ', 6U - length);
+	dest[6] = '\0';
+	return true;
+}
+
+static bool
+format_player_row(char *dest, size_t size, int rank, double percentage,
+    double score, const char *team, float ports, const char *name)
+{
+	char rank_text[32];
+	char percentage_text[64];
+	char score_text[160];
+	char team_text[7];
+	char ports_text[32];
+	int written;
+
+	if (!yt_score_format_single(rank_text, sizeof(rank_text), (float)rank,
+	    YT_SCORE_FIELD_RANK)
+	    || !yt_score_format_double(percentage_text,
+	    sizeof(percentage_text), percentage, YT_SCORE_FIELD_PERCENT)
+	    || !yt_score_format_double(score_text, sizeof(score_text), score,
+	    YT_SCORE_FIELD_SCORE)
+	    || !fixed_string(team_text, team)
+	    || !yt_score_format_single(ports_text, sizeof(ports_text), ports,
+	    YT_SCORE_FIELD_PORTS))
+		return false;
+	written = snprintf(dest, size, "%s  %s%%  %s   %s %s    %.30s\r\n",
+	    rank_text, percentage_text, score_text, team_text, ports_text,
+	    name);
+	return written >= 0 && (size_t)written < size;
+}
+
+static bool
+format_team_row(char *dest, size_t size, int rank, double percentage,
+    double score, int team, const char *name)
+{
+	char rank_text[32];
+	char percentage_text[64];
+	char score_text[160];
+	char team_text[32];
+	int written;
+
+	if (!yt_score_format_single(rank_text, sizeof(rank_text), (float)rank,
+	    YT_SCORE_FIELD_RANK)
+	    || !yt_score_format_double(percentage_text,
+	    sizeof(percentage_text), percentage, YT_SCORE_FIELD_PERCENT)
+	    || !yt_score_format_double(score_text, sizeof(score_text), score,
+	    YT_SCORE_FIELD_SCORE)
+	    || !yt_score_format_single(team_text, sizeof(team_text),
+	    (float)team, YT_SCORE_FIELD_RANK))
+		return false;
+	written = snprintf(dest, size, "%s  %s%%  %s   %s    %.36s\r\n",
+	    rank_text, percentage_text, score_text, team_text, name);
+	return written >= 0 && (size_t)written < size;
+}
+
+static bool
+format_nonhuman_row(char *dest, size_t size, double xannor,
+    double xannor_percentage, double mercenaries,
+    double mercenary_percentage)
+{
+	char xannor_text[160];
+	char xannor_percentage_text[64];
+	char mercenary_text[160];
+	char mercenary_percentage_text[64];
+	int written;
+
+	if (!yt_score_format_single(xannor_text, sizeof(xannor_text),
+	    (float)xannor, YT_SCORE_FIELD_SCORE)
+	    || !yt_score_format_double(xannor_percentage_text,
+	    sizeof(xannor_percentage_text), xannor_percentage,
+	    YT_SCORE_FIELD_XANNOR_PERCENT)
+	    || !yt_score_format_single(mercenary_text,
+	    sizeof(mercenary_text), (float)mercenaries,
+	    YT_SCORE_FIELD_SCORE)
+	    || !yt_score_format_double(mercenary_percentage_text,
+	    sizeof(mercenary_percentage_text), mercenary_percentage,
+	    YT_SCORE_FIELD_PERCENT))
+		return false;
+	written = snprintf(dest, size, "  %s  %s%%    %s  %s%%\r\n\r\n",
+	    xannor_text, xannor_percentage_text, mercenary_text,
+	    mercenary_percentage_text);
+	return written >= 0 && (size_t)written < size;
+}
+
+static float
+single_add(float left, float right)
+{
+	volatile float result = left + right;
+	return result;
+}
+
+static float
+single_mul(float left, float right)
+{
+	volatile float result = left * right;
+	return result;
+}
+
+static double
+base_score(const struct yt_player *player)
+{
+	float score = 0;
+
+	if (player->killed_by != 0)
+		return 0;
+	score = single_add(score, single_mul(player->shields, 50.0f));
+	score = single_add(score, single_mul(player->fighters, 100.0f));
+	score = single_add(score, single_mul(player->holds, 2500.0f));
+	score = single_add(score, single_mul(player->ore, 20.0f));
+	score = single_add(score, single_mul(player->organics, 30.0f));
+	score = single_add(score, single_mul(player->equipment, 40.0f));
+	score = single_add(score, single_mul(player->ports_owned, 50000.0f));
+	score = single_add(score, single_mul(player->missiles, 1000.0f));
+	score = single_add(score, single_mul(player->ground_forces, 750.0f));
+	score = single_add(score, single_mul(player->mines, 2500.0f));
+	score = single_add(score, player->credits);
+	return (double)score
+	    + (double)single_mul(player->plasma, 16000000.0f)
+	    + (player->danger_scanner != 0 ? 250000.0 : 0.0);
+}
+
+static void
+sort_players(struct score_player *players, size_t count)
+{
+	bool changed;
+	size_t index;
+
+	do {
+		changed = false;
+		for (index = 1; index < count; ++index) {
+			if (players[index].score > players[index - 1].score) {
+				struct score_player swap = players[index];
+				players[index] = players[index - 1];
+				players[index - 1] = swap;
+				changed = true;
+			}
+		}
+	} while (changed);
+}
+
+static void
+sort_teams(struct score_team *teams, size_t count)
+{
+	bool changed;
+	size_t index;
+
+	do {
+		changed = false;
+		for (index = 1; index < count; ++index) {
+			if (teams[index].score > teams[index - 1].score) {
+				struct score_team swap = teams[index];
+				teams[index] = teams[index - 1];
+				teams[index - 1] = swap;
+				changed = true;
+			}
+		}
+	} while (changed);
+}
+
+bool
+yt_score_generate(struct yt_game *game, struct yt_error *error)
+{
+	struct score_player players[YT_DEFAULT_PLAYER_COUNT];
+	struct score_team teams[YT_DEFAULT_PLAYER_COUNT];
+	double xannor = 0;
+	double mercenaries = 0;
+	double denominator;
+	double team_denominator;
+	struct yt_clock_value date_now;
+	struct yt_clock_value time_now;
+	char date[11];
+	char time_text[9];
+	char line[256];
+	char path[512];
+	FILE *file;
+	int player_count = (int)game->config.sector_offset - 1;
+	int sector_count = (int)(game->config.port_offset
+	    - game->config.sector_offset);
+	int index;
+
+	if (player_count < 0 || player_count > YT_DEFAULT_PLAYER_COUNT) {
+		if (error != NULL)
+			error->status = YT_RANGE;
+		return false;
+	}
+	memset(players, 0, sizeof(players));
+	memset(teams, 0, sizeof(teams));
+	for (index = 0; index < YT_DEFAULT_PLAYER_COUNT; ++index) {
+		players[index].record = index + 2;
+		teams[index].id = index + 1;
+	}
+	for (index = 0; index < player_count; ++index) {
+		if (!yt_game_read_player(game, index + 2, &players[index].player,
+		    error))
+			return false;
+		players[index].occupied = players[index].player.name_length != 0;
+		if (players[index].occupied)
+			players[index].score = base_score(&players[index].player);
+	}
+	for (index = 1; index <= sector_count; ++index) {
+		struct yt_sector sector;
+		double contribution;
+		int owner;
+
+		if (!yt_game_read_sector(game, index, &sector, error))
+			return false;
+		contribution = (double)single_mul(sector.fighters, 100.0f);
+		owner = (int)sector.fighter_owner;
+		if (owner == -1)
+			xannor += contribution;
+		else if (owner == -2)
+			mercenaries += contribution;
+		else if (owner >= 2 && owner <= player_count + 1)
+			players[owner - 2].score += contribution;
+	}
+	for (index = 0; index < player_count; ++index) {
+		if (!players[index].occupied) {
+			players[index].player.score = -1.0f;
+			if (!yt_game_write_player(game, players[index].record,
+			    &players[index].player, error))
+				return false;
+			continue;
+		}
+		players[index].player.score = (float)players[index].score;
+		if (!yt_game_write_player(game, players[index].record,
+		    &players[index].player, error))
+			return false;
+		if (players[index].player.team >= 1.0f
+		    && players[index].player.team <= 50.0f)
+			teams[(int)players[index].player.team - 1].score
+			    += players[index].score;
+	}
+
+	sort_players(players, (size_t)player_count);
+	sort_teams(teams, YT_ARRAY_LEN(teams));
+	denominator = player_count > 0 ? players[0].score : 0;
+	if (denominator == 0)
+		denominator = xannor > mercenaries ? xannor : mercenaries;
+	team_denominator = teams[0].score;
+	file = open_scoreboard(game, path, error);
+	if (file == NULL)
+		return false;
+	if (!write_bytes(file, "\r\n"
+	    "Y a n k e e   T r a d e r   S c o r e b o a r d\r\n\r\n",
+	    path, error))
+		goto failure;
+	if (!yt_platform_clock(&date_now, error)
+	    || !yt_platform_clock(&time_now, error))
+		goto failure;
+	yt_format_date(&date_now, date);
+	yt_format_time(&time_now, time_text);
+	snprintf(line, sizeof(line), "Last updated at: %s %s\r\n\r\n", date,
+	    time_text);
+	if (!write_bytes(file, line, path, error)
+	    || !write_bytes(file,
+	    "Rank  Rank%        Score        Team   Ports   Player\r\n"
+	    "==== ======= ================= ====== ======= "
+	    "================================\r\n", path, error))
+		goto failure;
+	{
+		int rank = 0;
+		for (index = 0; index < player_count; ++index) {
+			char team_text[32];
+
+			if (!players[index].occupied)
+				continue;
+			++rank;
+			if (denominator == 0)
+				return scoreboard_division_error(file, path, error);
+			if (players[index].player.team == 0.0f)
+				strcpy(team_text, "None");
+			else {
+				size_t length;
+
+				qb_str_single(team_text, sizeof(team_text),
+				    players[index].player.team);
+				length = strlen(team_text);
+				if (length + 1U < sizeof(team_text)) {
+					team_text[length] = ' ';
+					team_text[length + 1U] = '\0';
+				}
+			}
+			if (!format_player_row(line, sizeof(line), rank,
+			    players[index].score / denominator * 100.0,
+			    players[index].score, team_text,
+			    players[index].player.ports_owned,
+			    players[index].player.name)) {
+				if (error != NULL)
+					error->status = YT_RANGE;
+				goto failure;
+			}
+			if (!write_bytes(file, line, path, error))
+				goto failure;
+		}
+	}
+	if (!write_bytes(file, "\r\nT e a m   R a n k i n g s\r\n\r\n"
+	    "Rank  Rank%        Score        Team   Team Name\r\n"
+	    "==== ======= ================= ====== "
+	    "========================================\r\n", path, error))
+		goto failure;
+	if (team_denominator > 0) {
+		int rank = 0;
+		for (index = 0; index < YT_DEFAULT_PLAYER_COUNT; ++index) {
+			struct yt_sector overlay;
+			char team_name[42];
+
+			if (teams[index].score <= 0)
+				continue;
+			++rank;
+			if (!yt_game_read_sector(game, teams[index].id, &overlay, error)) {
+				goto failure;
+			}
+			yt_record_get_text(&overlay.record, team_name, sizeof(team_name));
+			if (!format_team_row(line, sizeof(line), rank,
+			    teams[index].score / team_denominator * 100.0,
+			    teams[index].score, teams[index].id, team_name)) {
+				if (error != NULL)
+					error->status = YT_RANGE;
+				goto failure;
+			}
+			if (!write_bytes(file, line, path, error))
+				goto failure;
+		}
+	}
+	if (!write_bytes(file,
+	    "\r\nN o n  -  H u m a n   P l a y e r s\r\n\r\n"
+	    "    The Xannor       Rank%     The Mercenaries   Rank%\r\n"
+	    "================== =========  ================= =======\r\n",
+	    path, error))
+		goto failure;
+	if (denominator == 0)
+		return scoreboard_division_error(file, path, error);
+	if (!format_nonhuman_row(line, sizeof(line), xannor,
+	    xannor / denominator * 100.0, mercenaries,
+	    mercenaries / denominator * 100.0)) {
+		if (error != NULL)
+			error->status = YT_RANGE;
+		goto failure;
+	}
+	if (!write_bytes(file, line, path, error)
+	    || fputc(0x1a, file) == EOF) {
+		if (error != NULL && error->status == YT_OK) {
+			error->status = YT_IO_ERROR;
+			error->system_error = errno;
+			snprintf(error->operation, sizeof(error->operation),
+			    "write scoreboard EOF");
+			snprintf(error->path, sizeof(error->path), "%s", path);
+		}
+		goto failure;
+	}
+	if (fclose(file) != 0) {
+		if (error != NULL) {
+			error->status = YT_IO_ERROR;
+			error->system_error = errno;
+			snprintf(error->operation, sizeof(error->operation),
+			    "close scoreboard");
+			snprintf(error->path, sizeof(error->path), "%s", path);
+		}
+		return false;
+	}
+	return true;
+
+failure:
+	(void)fclose(file);
+	return false;
+}

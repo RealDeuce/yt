@@ -1,0 +1,41 @@
+gcc_machine := $(findstring mingw32,$(shell $(CC) -dumpmachine))
+gcc_w64 := $(findstring w64,$(shell $(CC) -dumpmachine))
+gcc_x86_64 := $(findstring x86_64,$(shell $(CC) -dumpmachine))
+
+ifeq ($(gcc_machine),mingw32)
+ ifeq ($(gcc_x86_64),x86_64)
+  OS ?= Win64
+  WIN ?= 64
+  MACH ?= amd64
+  CFLAGS += -m64
+  LDFLAGS += -m64
+ else
+  OS ?= Win32
+  WIN ?= 32
+  MACH ?= x86
+  CFLAGS += -m32
+  LDFLAGS += -m32
+ endif
+ EXE_EXT ?= .exe
+else
+ OS := $(shell uname)
+ MACH := $(shell uname -m)
+ UNIXY ?= 1
+ CFLAGS += -D__unix__
+endif
+
+os := $(shell echo $(OS) | tr "[A-Z ]" "[a-z_]")
+mach := $(shell echo $(MACH) | tr "[A-Z ]" "[a-z_]")
+
+ifdef DEBUG
+FLAVOUR ?= debug
+CFLAGS += -g -O0 -Wall -Wextra -Wconversion -Wshadow -Wstrict-prototypes -pedantic
+LDFLAGS += -g
+else
+FLAVOUR ?= opt
+CFLAGS += -O2 -DNDEBUG -Wall -Wextra -Wconversion -Wshadow -Wstrict-prototypes -pedantic
+LDFLAGS += -O2
+endif
+
+CFLAGS += -std=c17 -MMD -MP -ffp-contract=off
+

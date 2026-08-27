@@ -1,0 +1,60 @@
+legacy_site	selector	qualification	native_owner	role
+YT:0703	3	live	src/yt_session.c::{attack_deployed_committed,mine_encounter}	common fatal ship-destruction cue
+YT:0BFF	2	live	src/yt_session.c::attack_deployed_committed	deployed-fighter combat entry
+YT:0CE4	4	live	src/yt_session.c::attack_deployed_committed	surrender radio offer
+YT:0D5E	5	live	src/yt_session.c::attack_deployed_committed	Xannor surrender refusal
+YT:0DA0	5	live	src/yt_session.c::attack_deployed_committed	Mercenary surrender refusal
+YT:0DF3	1	live	src/yt_session.c::attack_deployed_committed	accepted surrender
+YT:1505	1	live	src/yt_session.c::bribe_deployed	accepted Mercenary bribe
+YT:1EB8	4	live	src/yt_session.c::command_fighters	deployed-fighter placement success
+YT:204E	4	live	src/yt_session.c::command_mines	sector-mine placement success
+YT:2BDD	2	live	src/yt_session.c::attack_player	direct player attack entry
+YT:2E9E	3	live	src/yt_session.c::attack_player	direct player kill before salvage
+YT:34D7	4	live	src/yt_session.c::planet_garrison	positive planet-garrison transfer
+YT:3998	4	live	src/yt_session.c::create_planet	planet creation success
+YT:4F2D	1	qualified-dead	(none)	private transfer flag is initialized zero and never changed; requires asynchronous corruption
+YT:4F48	4	live	src/yt_session.c::planet_transfer	ordinary planet-transfer common tail
+YT:50C0	4	live	src/yt_session.c::planet_bank	planet-bank accepted tail
+YT:846B	4	live	src/yt_session.c::computer_menu	computer activation
+YT-SUB:4A68	1	live	src/yt_session.c::clearance	clearance announcement tail
+YT-SUB:5265	1	live	src/yt_session.c::lottery	one award cue per matched digit
+YT-SUB:5A6D	4	live	src/yt_session.c::display_sector	adjacent-sector sensor activation
+YT-SUB:5C50	4	live	src/yt_session.c::display_sector_one	sector-mine follow-up cue 1
+YT-SUB:5C62	4	live	src/yt_session.c::display_sector_one	sector-mine follow-up cue 2
+YT-SUB:5C74	4	live	src/yt_session.c::display_sector_one	sector-mine follow-up cue 3
+YT-SUB:5EFA	4	live	src/yt_session.c::display_sector_one	cloak reveal
+YT-SUB:641E	5	live	src/yt_session.c::mine_encounter	sector-mine encounter warning
+YT-SUB:6BF7	2	live	src/yt_session.c::mine_encounter	each successful damaged-player PUT
+YT-SUB:6CA5	4	live	src/yt_session.c::launch_projectile	cruise launch entry
+YT-SUB:7168	2	live	src/yt_session.c::missile_sector	cruise fighter-defense encounter
+YT-SUB:73C2	5	live	src/yt_session.c::missile_sector	cruise sector-mine encounter
+YT-SUB:75FB	2	live	src/yt_session.c::missile_sector	cruise player attack
+YT-SUB:7946	3	live	src/yt_session.c::missile_sector	cruise player death before salvage
+YT-SUB:7C0D	2	live	src/yt_session.c::missile_planet_impact	cruise planet attack
+YT-SUB:807A	3	live	src/yt_session.c::missile_planet_impact	cruise planet destruction
+YT-SUB:82E8	3	live	src/yt_session.c::planet_move_hop	planet-move explosion
+YT-SUB:848A	4	live	src/yt_session.c::planet_move_hop	planet-move successful final hop
+YT-SUB:8DD6	1	live	src/yt_session.c::command_land	vacancy governor message
+YT-SUB:9063	2	live	src/yt_session.c::planet_assault	ground-assault entry
+YT-SUB:915B	2	live	src/yt_session.c::planet_assault	each defender-damage round
+YT-SUB:91C1	1	live	src/yt_session.c::planet_assault	planet defenses destroyed
+YT-SUB:923B	1	live	src/yt_session.c::planet_assault	planet captured
+YT-SUB:938F	2	live	src/yt_session.c::earth_anti_cloak	Anti-Cloak activation
+YT-SUB:943D	1	live	src/yt_session.c::earth_anti_cloak	each reported live uncloaked player
+YT-SUB:94D1	5	live	src/yt_session.c::earth_anti_cloak	Anti-Cloak fade
+YT-SUB:95CB	1	live	src/yt_session.c::command_shell	sound-toggle enabled confirmation
+YT-SUB:A305	5	live	src/yt_session.c::emergency_warp	meltdown cue repeated five times
+YT-SUB:A369	1	live	src/yt_session.c::emergency_warp	normal emergency-warp completion
+YT-SUB:A45E	6	live	src/yt_session.c::session_attention	shared attention-line cue
+YT-SUB:A8AF	2	live	src/yt_session.c::xannor_victory	victory cue repeated three times
+YT-SUB:AA47	4	live	src/yt_session.c::launch_projectile	plasma launch entry
+YT-SUB:AAE8	7	live	src/yt_session.c::launch_projectile	one cue per plasma bolt fired
+YT-SUB:AEE8	2	live	src/yt_session.c::plasma_sector	plasma fighter-defense encounter
+YT-SUB:B0E3	5	live	src/yt_session.c::plasma_sector	plasma sector-mine encounter
+YT-SUB:B2F9	2	live	src/yt_session.c::plasma_sector	plasma player attack
+YT-SUB:B633	3	live	src/yt_session.c::plasma_sector	non-self plasma death before salvage
+YT-SUB:B846	2	live	src/yt_session.c::plasma_planet_impact	plasma planet attack
+YT-SUB:BBFC	3	live	src/yt_session.c::plasma_planet_impact	plasma planet destruction
+YT-SUB2:1CAC	8	live	src/yt_session.c::dangerous_destination	first destination-danger warning
+YT-SUB2:1FDE	4	live	src/yt_session.c::spy_sweep	spy cloak detection
+YT-SUB2:24FF	9	live	src/yt_session.c::spy_sweep	first finding in each spy report

@@ -1,0 +1,3 @@
+* text=auto
+/data/** -text -diff
+/src/wrapper.cmd text eol=crlf

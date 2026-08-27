@@ -1,0 +1,20 @@
+#!/bin/sh
+
+name=$(basename "$0")
+dir=$(dirname "$0")
+os=$(uname | tr '[A-Z ]' '[a-z_]')
+machine=$(uname -m | tr '[A-Z ]' '[a-z_]')
+
+if [ -z "${YT_DEBUG}" ]; then
+	platform="${os}.${machine}.opt"
+else
+	platform="${os}.${machine}.debug"
+fi
+
+if [ -x "${dir}/${name}.${platform}" ]; then
+	exec "${dir}/${name}.${platform}" "$@"
+fi
+
+echo "Unable to find Yankee Trader binary for ${platform}" >&2
+exit 1
+
