@@ -2,12 +2,11 @@
 
 ## Read this first
 
-This document is for the fresh session that resumes work on this door. It was
-written while the separate reverse-engineering effort was still advancing.
-The user has said that reverse engineering will be complete when work resumes.
-Do **not** continue from any frontier remembered from the conversation or from
-the analysis state at the time this handoff was written. Read the completed
-analysis at its current state and derive the remaining C work from that.
+This document is for the fresh session that resumes work on this door. The
+separate reverse-engineering effort is complete. Do **not** continue from any
+frontier remembered from an earlier conversation. Read the completed analysis
+at its current state and derive remaining C work from that evidence and the
+continuation snapshot below.
 
 Door root:
 
@@ -37,6 +36,72 @@ This implementation has its own Git repository. OpenDoors is pinned as the
 `third_party/opendoors` submodule; do not substitute the stale Synchronet
 source copy. The completed reverse-engineering tree is external evidence, not
 part of this repository and not a writable implementation workspace.
+
+## Authoritative continuation goal
+
+Create or resume the implementation goal from this corrected text when work
+starts in this repository:
+
+> Complete the C17/OpenDoors reimplementation of Yankee Trader 3.6G in
+> `/bbsdev/doors/yt/ng` to exact compatibility as defined by this handoff and
+> the completed byte-pinned analysis. Map and verify every reachable
+> component, qualified edge, external effect, executable, player-visible
+> remote output and local result, input/runtime path, persistence mutation,
+> random draw, failure prefix, and supported-platform boundary. Preserve the
+> three authorized departures: platform CSPRNG source; IEEE internal floats
+> with MBF serialization boundaries; and local BASIC `PLAY` as an ordered
+> logical event with no physical host-audio operation. Keep compatibility,
+> enhancements, hardening, and automation separate. Continue implementing and
+> testing dependency-first until genuinely complete.
+
+Treat a concrete requirement as a blocking condition when its required
+behavior lacks completed reverse-engineering evidence, final analysis
+artifacts conflict, or exact compatibility conflicts with another goal and no
+authoritative resolution is evident. Request user direction in that case.
+Formally mark the goal blocked only when the goal system's repeated-blocker
+threshold has been satisfied. Do not search for more reverse-engineering
+evidence speculatively; identify the exact missing or conflicting fact first.
+
+There is no requirement for a monolithic full-session transcript test, and
+one is not expected to be created. Completion proof is compositional: exact
+component fixtures plus separately verified presentation, persistence, input,
+randomness, runtime, and physical OpenDoors/platform boundaries.
+
+The old thread goal object was paused during relocation and contains the old
+Synchronet path and the obsolete phrase “two authorized departures.” It is
+not authoritative. Use the corrected goal above in the new workspace.
+
+## Continuation snapshot (2026-08-26)
+
+- Standalone repository baseline:
+  `840fcbfe0e39c1cb89bd6f7ad3008ad6fe278d0d` on `main`, published to
+  `git@github.com:RealDeuce/yt.git`.
+- OpenDoors is the `third_party/opendoors` submodule pinned to upstream commit
+  `c70189d79e1743200eb01b7c7edfde3084e1a0a9`. The authoritative CMake build
+  links `OpenDoors::Static`; it no longer consumes Synchronet's sibling copy.
+- A fresh Release build from the standalone checkout passes all nine CTest
+  suites.
+- Origin-aware local/remote input arbitration is implemented in
+  `src/yt_input_model.c`; `src/yt_input.c` supplies legacy and merged polling,
+  and the session routes B05D, AB36, prompts, timed waits, and the radio editor
+  through those adapters.
+- Pager state and deterministic transitions are extracted into
+  `src/yt_pager.c`. Successful plain/ANSI/mode-2 pager transactions, response
+  forms, gates, nested counts, colors, terminal notices, and editor echo have
+  bounded fixtures in `tests/test_presentation.c`.
+- Relevant internal `YT:B1F3..B2D9` transfer-ledger rows have candidate owners
+  and pager fixtures. The TSV schema and byte-pinned opcode evidence were
+  checked after those edits.
+- The immediate documentation task is to finish reconciling coverage prose
+  with `yt_pager.c`, the complete successful transaction fixtures, terminal
+  vectors, and merged FIFO behavior. Keep the remaining physical
+  overflow/failure, SysOp, startup/shutdown, and cross-platform OpenDoors gaps
+  explicit.
+- Because OpenDoors changed from the stale Synchronet copy to current upstream
+  at relocation, audit the physical adapter against the pinned public API and
+  behavior before closing those remaining boundaries. This is an
+  implementation/API audit, not a reason to seek new Yankee Trader session
+  transcripts.
 
 ## The task
 
