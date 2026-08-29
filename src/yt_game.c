@@ -756,6 +756,43 @@ yt_sector_force_same_team(float current_team, float owner_team)
 	return current_team != 0.0f && owner_team == current_team;
 }
 
+bool
+yt_friendship_resolve(float candidate_record,
+    float current_player_record, float last_player_record,
+    yt_friendship_reader_fn reader, void *reader_context, bool *friendly,
+    struct yt_error *error)
+{
+	struct yt_player current;
+	struct yt_player candidate;
+
+	if (friendly == NULL)
+		return false;
+	*friendly = false;
+	if (!isfinite(candidate_record) || !isfinite(current_player_record)
+	    || !isfinite(last_player_record)
+	    || candidate_record < 2.0f
+	    || candidate_record > last_player_record
+	    || current_player_record < 2.0f
+	    || current_player_record > last_player_record)
+		return true;
+	if (candidate_record == current_player_record) {
+		*friendly = true;
+		return true;
+	}
+	if (reader == NULL)
+		return false;
+	if (!reader(reader_context, (int)floorf(current_player_record),
+	    &current, error))
+		return false;
+	if (current.team == 0.0f)
+		return true;
+	if (!reader(reader_context, (int)floorf(candidate_record),
+	    &candidate, error))
+		return false;
+	*friendly = candidate.team == current.team;
+	return true;
+}
+
 enum yt_port_owner_kind
 yt_port_owner_classify(float owner, int current_player_record,
     int *owner_record)

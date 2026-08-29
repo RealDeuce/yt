@@ -2525,17 +2525,24 @@ planet_update(struct yt_session *session, int logical_planet,
 }
 
 static bool
+friendship_read_player(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	return yt_game_read_player(context, player_record, player, error);
+}
+
+static bool
 same_team(struct yt_session *session, int other_record,
     struct yt_error *error)
 {
-	struct yt_player other;
+	bool friendly;
 
-	if (other_record == session->player_record)
-		return true;
-	if (!yt_game_read_player(&session->door->game, other_record, &other,
-	    error))
+	if (!yt_friendship_resolve((float)other_record,
+	    (float)session->player_record,
+	    session->door->game.config.sector_offset,
+	    friendship_read_player, &session->door->game, &friendly, error))
 		return false;
-	return yt_sector_force_same_team(session->player.team, other.team);
+	return friendly;
 }
 
 static bool
