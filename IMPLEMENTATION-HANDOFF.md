@@ -191,42 +191,25 @@ not authoritative. Use the corrected goal above in the new workspace.
   destination-selector and destination-combat transactions,
   ledger dispositions are roots
   `167 candidate / 1 missing`, transfers
-  `5429 candidate / 1938 missing / 1 explicitly
+  `5439 candidate / 1928 missing / 1 explicitly
   deferred`, and presentation `136 candidate / 8 missing / 6 verified`.
   Current SHA-256
   values are roots
-  `64b17a8ae6550d4ef994a6e872d1f06c9ff8a6bc33ab9ab64d390da38a87e8be`,
-  transfers `33fa409687f5034a307aec34696f2182cd2da716d06afb0cc3c6d50721a88831`,
-  presentation `b899734f3487d364fbad0b2d5be7936334cc753b4c676d3407d6703d522b5afe`,
+  `86ab8a344764e6f3f0c5685b76950bab421b3c32907ef9c7bb9b7511b196d2ac`,
+  transfers `348cbf6770817bcbc03373e832b597995a516d80404276047e950f360405018e`,
+  presentation `ced8c53de18d42d7efa3492cf35288d1f1e1db1bd5fa5f27de0ba94823e1f23f`,
   and manifest
   `3552bd61c9cb9b7197aeb6fbad1f37cba69cd09f125d878d0c9072a691e8950a`.
   All immutable identity columns and TSV widths match the regenerated trusted
   snapshot.
-- Three final-analysis blockers/gaps are currently known. First, the generated
-  `YTCONFIG:0030..053B` startup/menu print catalog is internally inconsistent
-  with its pinned reachable disassembly: it labels `02A3` as a record-1
-  local-screen row although `02A3..02BB` constructs and prints
-  `<A> Maximum Number of Holds:`, omits the actual `<B>` output start at
-  `02BE` and `<C>` start at `02D6`, and misassigns later rows such as the
-  `03C8` scoreboard-path construction. Do not implement or map the
-  `ytconfig-startup-menu-output` family from that catalog until the upstream
-  analysis project corrects and regenerates it. Other independent families
-  remain actionable, so this does not globally block the active goal.
-- Second, canonical Mercenary prose says that a moving fleet traverses one
-  FIFO-route hop, while the pinned executable has empty-hop, friendly-merge,
-  and winning-attack joins at `4EE7`, `4F5F`, and `51E0` that reach
-  `5315 -> 4932` and advance the route-workspace cursor again. The adjacent
-  and disconnected zero-successor arm is independently pinned and native;
-  do not implement or map the wider multi-hop continuation until the analysis
-  project reconciles the traversal contract.
-- Third, the bounded maintenance-entry output model deliberately exposes
-  `date-or-epoch`, `time-or-date`, `dynamic-status`, and
-  `dynamic-player-status` as address-owned injected operands, but the current
-  final artifacts do not assign their concrete production meanings at
-  `0389`, `03D3`, `03EC`, `03FD`, and `050D`. The byte composer is exact for
-  supplied operands; do not connect it to `yt_maintenance_run()` or promote
-  root `YTMAINT:0073` until the upstream project identifies the values and
-  their acquisition/order.
+- The three prior final-analysis blockers were resolved upstream in analysis
+  commit `0fe41956`. YTCONFIG now distinguishes display-statement starts,
+  construction code and actual PRINT value calls, including exact menu
+  dispatch bytes. YTMAINT startup now pins its immutable blank descriptor,
+  revision copy, exact screen bytes and TIME$/DATE$ news operands. Mercenary
+  movement now owns every route back-edge, workspace mutation, arrival branch
+  and terminal exit. Those families are actionable again from the corrected
+  static artifacts; no known upstream analysis blocker remains.
 - The exact LOCAL BIOS framebuffer launcher and cross-platform OpenDoors
   startup/exit/local-console adapter boundary remain explicitly deferred by
   the user. The present stdout/ANSI `src/main_local.c` path is not exact and
@@ -960,6 +943,17 @@ not authoritative. Use the corrected goal above in the new workspace.
   Raw discount/reset/report-seen cells, injected provider failures, owner and
   sale variants, complete redraw/S/I joins, endpoint/local/carrier and every
   physical failure prefix remain open.
+- The shared cached port-owner/treasury row at `YT:[A949,A9E1)` now has an
+  isolated native classifier/composer and all ten body/return transfers are
+  candidate. It preserves silent `owner <= 1` precedence, the current-owner
+  `YOU, Credits:` row with DOUBLE treasury formatting, and the other-owner
+  GET-before-output path. Other-owner record selection now uses the recovered
+  BRUN positive-fraction truncation and 24-bit random-record conversion rather
+  than a C integer cast. Focused fixtures pin zero/one/negative/fractional
+  silence, self, ordinary/fractional/wrapped other-owner selection, embedded
+  NUL name bytes and capacity failures. Raw CINT-mode name lengths, FIELD and
+  caller joins, physical GET/output failures and final framebuffer remain
+  open.
 - The nine Earth purchase bodies at `YT:[7401,7CCF)` and their visible
   Lottery/Anti-Cloak helpers now have exact native owners. The six ordinary
   fixed-price actions use their shipped blanks, `031F` prompts, validation

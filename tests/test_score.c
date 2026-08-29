@@ -57,6 +57,61 @@ check_current_player_cache_model(void)
 }
 
 static bool
+check_port_owner_row_model(void)
+{
+	static const uint8_t self_expected[] =
+	    "This port is owned by: YOU, Credits: 1234.5";
+	static const uint8_t other_name[] = {'O', 't', 0, 'h', 'e', 'r'};
+	static const uint8_t other_expected[] =
+	    {'T', 'h', 'i', 's', ' ', 'p', 'o', 'r', 't', ' ', 'i', 's', ' ',
+	     'o', 'w', 'n', 'e', 'd', ' ', 'b', 'y', ':', ' ',
+	     'O', 't', 0, 'h', 'e', 'r'};
+	uint8_t row[96];
+	size_t length = 99U;
+	int owner_record = -1;
+
+	if (yt_port_owner_classify(0.0f, 7, &owner_record)
+	    != YT_PORT_OWNER_SILENT || owner_record != 0
+	    || yt_port_owner_classify(1.0f, 1, &owner_record)
+	    != YT_PORT_OWNER_SILENT
+	    || yt_port_owner_classify(-4.0f, 7, &owner_record)
+	    != YT_PORT_OWNER_SILENT
+	    || yt_port_owner_classify(0.5f, 7, &owner_record)
+	    != YT_PORT_OWNER_SILENT
+	    || yt_port_owner_classify(7.0f, 7, &owner_record)
+	    != YT_PORT_OWNER_SELF
+	    || yt_port_owner_classify(8.0f, 7, &owner_record)
+	    != YT_PORT_OWNER_OTHER || owner_record != 8
+	    || yt_port_owner_classify(1.75f, 7, &owner_record)
+	    != YT_PORT_OWNER_OTHER || owner_record != 1
+	    || yt_port_owner_classify(16777216.0f, 7, &owner_record)
+	    != YT_PORT_OWNER_OTHER || owner_record != 0
+	    || yt_port_owner_classify(INFINITY, 7, &owner_record)
+	    != YT_PORT_OWNER_INVALID
+	    || yt_port_owner_classify(NAN, 7, &owner_record)
+	    != YT_PORT_OWNER_INVALID)
+		return false;
+	if (!yt_port_owner_compose(YT_PORT_OWNER_SILENT, 0.0f,
+	    NULL, 0U, NULL, 0U, &length) || length != 0U
+	    || !yt_port_owner_compose(YT_PORT_OWNER_SELF, 1234.5f,
+	    NULL, 0U, row, sizeof(row), &length)
+	    || length != sizeof(self_expected) - 1U
+	    || memcmp(row, self_expected, length) != 0
+	    || !yt_port_owner_compose(YT_PORT_OWNER_OTHER, 0.0f,
+	    other_name, sizeof(other_name), row, sizeof(row), &length)
+	    || length != sizeof(other_expected)
+	    || memcmp(row, other_expected, length) != 0
+	    || yt_port_owner_compose(YT_PORT_OWNER_OTHER, 0.0f,
+	    other_name, sizeof(other_name), row, 8U, &length)
+	    || yt_port_owner_compose(YT_PORT_OWNER_OTHER, 0.0f,
+	    NULL, 1U, row, sizeof(row), &length)
+	    || yt_port_owner_compose(YT_PORT_OWNER_INVALID, 0.0f,
+	    NULL, 0U, row, sizeof(row), &length))
+		return false;
+	return true;
+}
+
+static bool
 check_projectile_parent_model(void)
 {
 	static const uint8_t missile[] =
@@ -7248,6 +7303,8 @@ main(void)
 		return fail("clearance-sale predicate arithmetic differs");
 	if (!check_earth_report_model())
 		return fail("Earth report arithmetic or selector differs");
+	if (!check_port_owner_row_model())
+		return fail("port owner row model differs");
 	if (yt_chdir(directory) != 0)
 		return fail("cannot enter temporary directory");
 	if (!check_maintenance_headquarters_write())

@@ -86,6 +86,13 @@ enum yt_sector_force_route {
 	YT_SECTOR_FORCE_OWNER_GET,
 };
 
+enum yt_port_owner_kind {
+	YT_PORT_OWNER_SILENT,
+	YT_PORT_OWNER_SELF,
+	YT_PORT_OWNER_OTHER,
+	YT_PORT_OWNER_INVALID,
+};
+
 enum yt_hostile_menu_route {
 	YT_HOSTILE_MENU_HELP,
 	YT_HOSTILE_MENU_SECTOR,
@@ -239,6 +246,11 @@ bool yt_sector_is_black_hole(float current_sector, float first,
     float second);
 bool yt_sector_mines_admitted(float mines, float suppression);
 bool yt_sector_force_same_team(float current_team, float owner_team);
+enum yt_port_owner_kind yt_port_owner_classify(float owner,
+    int current_player_record, int *owner_record);
+bool yt_port_owner_compose(enum yt_port_owner_kind kind, float treasury,
+    const uint8_t *owner_name, size_t owner_name_length,
+    uint8_t *row, size_t capacity, size_t *length);
 bool yt_hostile_menu_row(double ship_fighters, double deployed_fighters,
     uint8_t *row, size_t capacity, size_t *length);
 enum yt_hostile_menu_route yt_hostile_menu_dispatch(const char *response);

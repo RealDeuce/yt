@@ -657,6 +657,77 @@ yt_sector_force_same_team(float current_team, float owner_team)
 	return current_team != 0.0f && owner_team == current_team;
 }
 
+enum yt_port_owner_kind
+yt_port_owner_classify(float owner, int current_player_record,
+    int *owner_record)
+{
+	uint32_t record;
+
+	if (owner_record != NULL)
+		*owner_record = 0;
+	if (owner <= 1.0f)
+		return YT_PORT_OWNER_SILENT;
+	if (owner == (float)current_player_record)
+		return YT_PORT_OWNER_SELF;
+	if (!isfinite(owner))
+		return YT_PORT_OWNER_INVALID;
+	record = qb_brun_random_record_number(owner);
+	if (record > (uint32_t)INT_MAX)
+		return YT_PORT_OWNER_INVALID;
+	if (owner_record != NULL)
+		*owner_record = (int)record;
+	return YT_PORT_OWNER_OTHER;
+}
+
+bool
+yt_port_owner_compose(enum yt_port_owner_kind kind, float treasury,
+    const uint8_t *owner_name, size_t owner_name_length,
+    uint8_t *row, size_t capacity, size_t *length)
+{
+	static const uint8_t prefix[] = "This port is owned by: ";
+	static const uint8_t self[] = "YOU, Credits:";
+	char treasury_text[80];
+	const uint8_t *suffix;
+	size_t suffix_length;
+	size_t needed;
+	int formatted_length;
+
+	if (length == NULL)
+		return false;
+	*length = 0U;
+	if (kind == YT_PORT_OWNER_SILENT)
+		return true;
+	if (kind == YT_PORT_OWNER_SELF) {
+		formatted_length = qb_str_double(treasury_text,
+		    sizeof(treasury_text), (double)treasury);
+		if (formatted_length < 0)
+			return false;
+		needed = sizeof(prefix) - 1U + sizeof(self) - 1U
+		    + (size_t)formatted_length;
+		if (needed > capacity || (needed != 0U && row == NULL))
+			return false;
+		memcpy(row, prefix, sizeof(prefix) - 1U);
+		memcpy(row + sizeof(prefix) - 1U, self, sizeof(self) - 1U);
+		memcpy(row + sizeof(prefix) - 1U + sizeof(self) - 1U,
+		    treasury_text, (size_t)formatted_length);
+		*length = needed;
+		return true;
+	}
+	if (kind != YT_PORT_OWNER_OTHER
+	    || (owner_name == NULL && owner_name_length != 0U))
+		return false;
+	suffix = owner_name;
+	suffix_length = owner_name_length;
+	needed = sizeof(prefix) - 1U + suffix_length;
+	if (needed > capacity || (needed != 0U && row == NULL))
+		return false;
+	memcpy(row, prefix, sizeof(prefix) - 1U);
+	if (suffix_length != 0U)
+		memcpy(row + sizeof(prefix) - 1U, suffix, suffix_length);
+	*length = needed;
+	return true;
+}
+
 bool
 yt_hostile_menu_row(double ship_fighters, double deployed_fighters,
     uint8_t *row, size_t capacity, size_t *length)

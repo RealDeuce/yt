@@ -5841,56 +5841,46 @@ port_owner_row_capture(struct yt_session *session, const struct yt_port *port,
     uint8_t *captured_name, size_t captured_capacity,
     size_t *captured_length, struct yt_error *error)
 {
-	static const uint8_t prefix[] = "This port is owned by: ";
+	enum yt_port_owner_kind kind;
+	const uint8_t *owner_name = NULL;
+	size_t owner_name_length = 0U;
 	uint8_t row[256];
-	size_t length = 0;
+	size_t length;
+	int owner_record;
 
 	if (captured_length != NULL)
 		*captured_length = 0U;
-	if (port->owner <= 1.0f)
+	kind = yt_port_owner_classify(port->owner, session->player_record,
+	    &owner_record);
+	if (kind == YT_PORT_OWNER_INVALID)
+		return port_report_failure(error,
+		    "port owner record conversion");
+	if (kind == YT_PORT_OWNER_SILENT)
 		return true;
-	memcpy(row + length, prefix, sizeof(prefix) - 1U);
-	length += sizeof(prefix) - 1U;
-	if (port->owner == (float)session->player_record) {
-		char treasury[80];
-		static const uint8_t self[] = "YOU, Credits:";
-
-		memcpy(row + length, self, sizeof(self) - 1U);
-		length += sizeof(self) - 1U;
-		qb_str_double(treasury, sizeof(treasury),
-		    (double)port->treasury);
-		memcpy(row + length, treasury, strlen(treasury));
-		length += strlen(treasury);
-	}
-	else {
+	if (kind == YT_PORT_OWNER_OTHER) {
 		struct yt_player owner;
-		size_t name_length;
-		int owner_record;
 
-		if (!isfinite(port->owner) || port->owner < (float)INT_MIN
-		    || port->owner > (float)INT_MAX)
-			return port_report_failure(error,
-			    "port owner record conversion");
-		owner_record = (int)port->owner;
 		if (!yt_game_read_player(&session->door->game, owner_record,
 		    &owner, error))
 			return false;
 		if (!port_report_length(session, owner.name_length,
-		    YT_TEXT_FIELD_SIZE, &name_length,
+		    YT_TEXT_FIELD_SIZE, &owner_name_length,
 		    "port owner name length", error))
 			return false;
-		memcpy(row + length, owner.record.bytes, name_length);
-		length += name_length;
+		owner_name = owner.record.bytes;
 		if (captured_length != NULL) {
-			if (name_length > captured_capacity
-			    || (name_length != 0U && captured_name == NULL))
+			if (owner_name_length > captured_capacity
+			    || (owner_name_length != 0U && captured_name == NULL))
 				return port_report_failure(error,
 				    "port owner captured name");
-			if (name_length != 0U)
-				memcpy(captured_name, owner.record.bytes, name_length);
-			*captured_length = name_length;
+			if (owner_name_length != 0U)
+				memcpy(captured_name, owner_name, owner_name_length);
+			*captured_length = owner_name_length;
 		}
 	}
+	if (!yt_port_owner_compose(kind, port->treasury, owner_name,
+	    owner_name_length, row, sizeof(row), &length))
+		return port_report_failure(error, "port owner row composition");
 	return session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "port owner leading blank", error)
 	    && session_present_text(session, row, length, SESSION_PRESENT_LINE,
