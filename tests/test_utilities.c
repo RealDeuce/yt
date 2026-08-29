@@ -1284,7 +1284,11 @@ test_maintenance_random_helpers(void)
 	    || error.status != YT_RANGE || random.draws != 5U)
 		return false;
 	yt_error_clear(&error);
-	return !yt_maintenance_nested_integer(&random, 0, 100, &value, &error)
+	if (yt_maintenance_nested_integer(&random, 0, 100, &value, &error)
+	    || error.status != YT_RANGE || random.draws != 5U)
+		return false;
+	yt_error_clear(&error);
+	return !yt_maintenance_nested_integer(&random, 2, 0, &value, &error)
 	    && error.status == YT_RANGE && random.draws == 5U;
 }
 

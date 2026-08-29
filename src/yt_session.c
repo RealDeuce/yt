@@ -13015,37 +13015,16 @@ static bool
 session_random_integer(struct yt_session *session, int range, int *value,
     struct yt_error *error)
 {
-	float draw;
-
-	if (range < 1) {
-		if (error != NULL)
-			error->status = YT_RANGE;
-		return false;
-	}
-	if (!random_value(session, &draw, error))
-		return false;
-	*value = (int)floorf(single_mul(draw, (float)range)) + 1;
-	return true;
+	return yt_random_integer(&session->door->game.random,
+	    range, value, error);
 }
 
 static bool
 session_nested_integer(struct yt_session *session, int count, int range,
     int *value, struct yt_error *error)
 {
-	int index;
-	int current = range;
-
-	if (count < 1 || range < 1) {
-		if (error != NULL)
-			error->status = YT_RANGE;
-		return false;
-	}
-	for (index = 0; index < count; ++index) {
-		if (!session_random_integer(session, current, &current, error))
-			return false;
-	}
-	*value = current;
-	return true;
+	return yt_random_nested_integer(&session->door->game.random,
+	    count, range, value, error);
 }
 
 static bool

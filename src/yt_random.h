@@ -19,6 +19,10 @@ void yt_random_set_provider(struct yt_random *random, yt_random_fill_fn fill,
     void *context);
 bool yt_random_next(struct yt_random *random, float *value,
     struct yt_error *error);
+bool yt_random_integer(struct yt_random *random, int range, int *value,
+    struct yt_error *error);
+bool yt_random_nested_integer(struct yt_random *random, int count, int range,
+    int *value, struct yt_error *error);
 bool yt_random_market_bases(struct yt_random *random, float bases[3],
     struct yt_error *error);
 float yt_random_last(const struct yt_random *random);

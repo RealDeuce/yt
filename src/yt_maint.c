@@ -933,38 +933,14 @@ bool
 yt_maintenance_random_integer(struct yt_random *random, int range, int *value,
     struct yt_error *error)
 {
-	float selection;
-
-	if (range <= 0) {
-		set_error(error, YT_RANGE, "maintenance random range", "");
-		return false;
-	}
-	if (!yt_random_next(random, &selection, error))
-		return false;
-	*value = (int)floorf(smul(selection, (float)range)) + 1;
-	return true;
+	return yt_random_integer(random, range, value, error);
 }
 
 bool
 yt_maintenance_nested_integer(struct yt_random *random, int count, int range,
     int *value, struct yt_error *error)
 {
-	int index;
-	int current = range;
-
-	if (count < 1 || range < 1) {
-		set_error(error, YT_RANGE, "maintenance nested random", "");
-		return false;
-	}
-	for (index = 0; index < count; ++index) {
-		float selection;
-
-		if (!yt_random_next(random, &selection, error))
-			return false;
-		current = (int)floorf(smul(selection, (float)current)) + 1;
-	}
-	*value = current;
-	return true;
+	return yt_random_nested_integer(random, count, range, value, error);
 }
 
 bool

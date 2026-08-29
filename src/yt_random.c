@@ -1,6 +1,7 @@
 #include "yt_random.h"
 #include "yt_platform.h"
 
+#include <math.h>
 #include <string.h>
 
 static bool
@@ -63,6 +64,53 @@ random_single_add(float left, float right)
 {
 	volatile float result = left + right;
 	return result;
+}
+
+bool
+yt_random_integer(struct yt_random *random, int range, int *value,
+    struct yt_error *error)
+{
+	float selection;
+
+	if (range < 1) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation, sizeof(error->operation),
+			    "%s", "random integer range");
+		}
+		return false;
+	}
+	if (!yt_random_next(random, &selection, error))
+		return false;
+	*value = (int)floorf(random_single_mul(selection, (float)range)) + 1;
+	return true;
+}
+
+bool
+yt_random_nested_integer(struct yt_random *random, int count, int range,
+    int *value, struct yt_error *error)
+{
+	int index;
+	int current = range;
+
+	if (count < 1 || range < 1) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation, sizeof(error->operation),
+			    "%s", "nested random range");
+		}
+		return false;
+	}
+	for (index = 0; index < count; ++index) {
+		float selection;
+
+		if (!yt_random_next(random, &selection, error))
+			return false;
+		current = (int)floorf(random_single_mul(selection,
+		    (float)current)) + 1;
+	}
+	*value = current;
+	return true;
 }
 
 bool
