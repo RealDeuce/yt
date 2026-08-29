@@ -24,7 +24,8 @@ enum yt_present_operation {
 	YT_PRESENT_LOCAL_SEMI,
 	YT_PRESENT_LOCAL_PLAY,
 	YT_PRESENT_LOCAL_LOCATE,
-	YT_PRESENT_LOCAL_BEEP
+	YT_PRESENT_LOCAL_BEEP,
+	YT_PRESENT_LOCAL_CLEAR
 };
 
 struct yt_present_event {
@@ -50,6 +51,7 @@ struct yt_present_sink {
 	void (*local_locate)(void *context, int row, int column,
 	    int cursor_visible, int cursor_start, int cursor_stop);
 	void (*local_beep)(void *context);
+	void (*local_clear)(void *context);
 };
 
 struct yt_present_time_state {
@@ -83,6 +85,8 @@ struct yt_present_result {
 	size_t event_count;
 };
 
+typedef enum yt_present_status (*yt_present_sysop_replay_fn)(void *context);
+
 enum yt_present_status yt_present_color(struct yt_present_state *state,
     struct yt_present_result *result);
 enum yt_present_status yt_present_line(const uint8_t *text, size_t length,
@@ -107,6 +111,10 @@ enum yt_present_status yt_present_editor_echo(const uint8_t *local,
 enum yt_present_status yt_present_local_line(const uint8_t *text,
     size_t length, struct yt_present_state *state,
     struct yt_present_result *result);
+enum yt_present_status yt_present_forced_local_line(const uint8_t *text,
+    size_t length, struct yt_present_result *result);
+enum yt_present_status yt_present_local_beep(
+    struct yt_present_result *result);
 enum yt_present_status yt_present_right_aligned(const uint8_t *text,
     size_t length, float width, struct yt_present_state *state,
     struct yt_present_result *result);
@@ -121,12 +129,39 @@ enum yt_present_status yt_present_attention(const uint8_t *text,
     struct yt_present_result *result);
 enum yt_present_status yt_present_sound_toggle(struct yt_present_state *state,
     struct yt_present_result *result);
+enum yt_present_status yt_present_sysop_sound_toggle(
+    struct yt_present_state *state, struct yt_present_result *result);
+enum yt_present_status yt_present_sysop_snoop_toggle(
+    const uint8_t *real_name, size_t real_name_length,
+    const uint8_t *alias, size_t alias_length,
+    struct yt_present_state *state, struct yt_present_result *result);
+enum yt_present_status yt_present_sysop_time_prompt(float deadline,
+    float timer, struct yt_present_result *result);
+enum yt_present_status yt_present_sysop_time_replace(
+    const uint8_t *entered, size_t entered_length, float commit_timer,
+    float *deadline, float *minutes, bool *changed);
+enum yt_present_status yt_present_sysop_time_handler(float prompt_timer,
+    const uint8_t *entered, size_t entered_length, float commit_timer,
+    float *deadline, float *minutes, bool *changed,
+    struct yt_present_result *prompt,
+    yt_present_sysop_replay_fn replay, void *replay_context);
+enum yt_present_status yt_present_sysop_chat_header(
+    const uint8_t *sysop, size_t sysop_length, int local_background,
+    struct yt_present_result *result);
+enum yt_present_status yt_present_serial_startup_missing_command(
+    struct yt_present_result *result);
+enum yt_present_status yt_present_serial_startup_status(int port,
+    float detected_baud, struct yt_present_result *result);
+enum yt_present_status yt_present_carrier_drop(
+    struct yt_present_state *state, struct yt_present_result *result);
 enum yt_present_status yt_present_sound(float selector,
     struct yt_present_state *state, struct yt_present_result *result);
 enum yt_present_status yt_present_press_prompt(
     struct yt_present_state *state, struct yt_present_result *result,
     float *saved_foreground);
 enum yt_present_status yt_present_press_cleanup(float saved_foreground,
+    struct yt_present_state *state, struct yt_present_result *result);
+enum yt_present_status yt_present_lottery_rewind(int row, int column,
     struct yt_present_state *state, struct yt_present_result *result);
 enum yt_present_status yt_present_refresh_time(
     struct yt_present_time_state *time, const float *timer_reads,
@@ -136,6 +171,9 @@ enum yt_present_status yt_present_refresh_time(
 enum yt_present_status yt_present_low_time(const uint8_t *text, size_t length,
     float *remembered, struct yt_present_state *state,
     struct yt_present_result *result, bool *warned);
+enum yt_present_status yt_present_status_row(const uint8_t *real_name,
+    size_t real_name_length, const uint8_t *alias, size_t alias_length,
+    struct yt_present_state *state, struct yt_present_result *result);
 void yt_present_replay(const struct yt_present_result *result,
     const struct yt_present_sink *sink);
 uint8_t yt_present_pc_attribute(int foreground, int background);

@@ -1,5 +1,7 @@
 #include "yt_presentation.h"
 #include "yt_pager.h"
+#include "yt_main_error.h"
+#include "yt_game.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -68,7 +70,7 @@ state(bool ansi)
 static void
 test_color(void)
 {
-	struct yt_present_state current = state(true);
+	struct yt_present_state current = state(false);
 	struct yt_present_result result;
 	static const uint8_t green[] = "\x1b[0;32;40m";
 
@@ -119,6 +121,15 @@ test_direct_output(void)
 	CHECK(yt_present_line((const uint8_t *)"hidden", 6,
 	    &current, &result) == YT_PRESENT_OK);
 	CHECK(result.remote_length == 0 && result.event_count == 0);
+	CHECK(yt_present_forced_local_line((const uint8_t *)"forced", 6,
+	    &result) == YT_PRESENT_OK);
+	CHECK(result.remote_length == 0 && result.event_count == 1
+	    && result.events[0].operation == YT_PRESENT_LOCAL_LINE
+	    && result.events[0].length == 6
+	    && memcmp(result.events[0].data, "forced", 6) == 0);
+	CHECK(yt_present_local_beep(&result) == YT_PRESENT_OK);
+	CHECK(result.remote_length == 0 && result.event_count == 1
+	    && result.events[0].operation == YT_PRESENT_LOCAL_BEEP);
 }
 
 static void
@@ -196,7 +207,7 @@ test_editor_echo(void)
 }
 
 struct pager_capture {
-	uint8_t remote[256];
+	uint8_t remote[4096];
 	size_t remote_length;
 	int last_local_foreground;
 	int last_local_background;
@@ -243,6 +254,384 @@ pager_fixture_b05d(struct yt_pager_state *pager,
 	pager_capture_result(capture, &result);
 	CHECK(!yt_pager_advance(pager, present, &unused));
 	pager->newline_flag = 0.0f;
+}
+
+static void
+pager_capture_line(struct pager_capture *capture,
+    struct yt_present_state *present, const uint8_t *text, size_t length)
+{
+	struct yt_present_result result;
+
+	CHECK(yt_present_line(text, length, present, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+}
+
+static void
+test_projectile_parent_presentation(void)
+{
+	static const uint8_t expected[] =
+	    "\r\nYou have 5. Send your cruise missile to what sector? "
+	    "[ 1 to 2004 ] ?0\r\n\r\nInvalid Sector number!\n\r"
+	    "\r\nYou have 5. Send your cruise missile to what sector? "
+	    "[ 1 to 2004 ] ?";
+	static const uint8_t invalid[] = "Invalid Sector number!";
+	struct yt_present_state current = state(false);
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	struct yt_present_result result;
+	uint8_t prompt[192];
+	size_t prompt_length;
+	char accumulator[80];
+	uint8_t response = '0';
+
+	memset(&pager, 0, sizeof(pager));
+	memset(&capture, 0, sizeof(capture));
+	pager.foreground = 2;
+	CHECK(yt_projectile_target_prompt(false, 5.0f, 2004.0f,
+	    prompt, sizeof(prompt), &prompt_length));
+	CHECK(yt_present_line(NULL, 0U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, prompt_length, &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(&response, 1U, &response, 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	pager_fixture_b05d(&pager, &current, invalid, sizeof(invalid) - 1U,
+	    &capture);
+	CHECK(yt_present_line(NULL, 0U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, prompt_length, &capture);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+}
+
+static struct pager_capture
+projectile_ordinary_cycle_fixture(bool ansi, struct yt_present_state *current,
+    struct yt_pager_state *pager)
+{
+	static const uint8_t main_prompt[] =
+	    "Time:10:00  Main Command (?=Help)? ";
+	static const uint8_t quantity_prompt[] = "Send how many? [0] ?";
+	static const uint8_t turn_row[] = "One Turn Deducted, 59 left.";
+	static const uint8_t loading[] =
+	    "Loading course into misile targeting computer.";
+	static const uint8_t tracking[] = "*** Tracking Report ***";
+	static const uint8_t ending[] = "*** End of Report ***";
+	static const uint8_t sector[] = "Sector: 7";
+	static const uint8_t warps[] = "Warps lead to: 9";
+	struct pager_capture capture;
+	struct yt_present_result result;
+	uint8_t target_prompt[192];
+	size_t target_prompt_length;
+	char accumulator[80] = "";
+	uint8_t response;
+
+	*current = state(ansi);
+	current->foreground = 2.0f;
+	memset(pager, 0, sizeof(*pager));
+	pager->foreground = 2;
+	memset(&capture, 0, sizeof(capture));
+	if (ansi) {
+		CHECK(yt_present_color(current, &result) == YT_PRESENT_OK);
+		memset(&capture, 0, sizeof(capture));
+	}
+	CHECK(yt_projectile_target_prompt(false, 9.0f, 20.0f,
+	    target_prompt, sizeof(target_prompt), &target_prompt_length));
+
+	pager_capture_line(&capture, current, NULL, 0U);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, main_prompt,
+	    sizeof(main_prompt) - 1U, &capture);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	response = ')';
+	CHECK(yt_present_editor_echo(&response, 1U, &response, 1U,
+	    current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_capture_line(&capture, current, NULL, 0U);
+
+	pager_capture_line(&capture, current, NULL, 0U);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, target_prompt,
+	    target_prompt_length, &capture);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	response = '9';
+	CHECK(yt_present_editor_echo(&response, 1U, &response, 1U,
+	    current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_capture_line(&capture, current, NULL, 0U);
+
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, quantity_prompt,
+	    sizeof(quantity_prompt) - 1U, &capture);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	response = '1';
+	CHECK(yt_present_editor_echo(&response, 1U, &response, 1U,
+	    current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_capture_line(&capture, current, NULL, 0U);
+
+	pager_capture_line(&capture, current, NULL, 0U);
+	pager->newline_flag = 0.0f;
+	pager_fixture_b05d(pager, current, turn_row, sizeof(turn_row) - 1U,
+	    &capture);
+	pager_capture_line(&capture, current, NULL, 0U);
+	pager_capture_line(&capture, current, loading, sizeof(loading) - 1U);
+	pager_capture_line(&capture, current, tracking, sizeof(tracking) - 1U);
+	pager_capture_line(&capture, current, ending, sizeof(ending) - 1U);
+
+	current->foreground = 1.0f;
+	pager->foreground = 1;
+	pager_capture_line(&capture, current, NULL, 0U);
+	pager_capture_line(&capture, current, sector, sizeof(sector) - 1U);
+	pager_capture_line(&capture, current, warps, sizeof(warps) - 1U);
+
+	pager->line_count = 0.0f;
+	current->foreground = 2.0f;
+	pager->foreground = 2;
+	pager_capture_line(&capture, current, NULL, 0U);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, main_prompt,
+	    sizeof(main_prompt) - 1U, &capture);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	return capture;
+}
+
+static void
+test_projectile_ordinary_cycle_presentation(void)
+{
+	static const uint8_t plain[] =
+	    "\r\nTime:10:00  Main Command (?=Help)? )\r\n"
+	    "\r\nYou have 9. Send your cruise missile to what sector? "
+	    "[ 1 to 20 ] ?9\r\nSend how many? [0] ?1\r\n"
+	    "\r\nOne Turn Deducted, 59 left.\n\r"
+	    "\r\nLoading course into misile targeting computer.\r\n"
+	    "*** Tracking Report ***\r\n*** End of Report ***\r\n"
+	    "\r\nSector: 7\r\nWarps lead to: 9\r\n"
+	    "\r\nTime:10:00  Main Command (?=Help)? ";
+	static const uint8_t ansi[] =
+	    "\r\nTime:10:00  Main Command (?=Help)? )\r\n"
+	    "\r\nYou have 9. Send your cruise missile to what sector? "
+	    "[ 1 to 20 ] ?9\r\nSend how many? [0] ?1\r\n"
+	    "\r\nOne Turn Deducted, 59 left.\n\r"
+	    "\r\nLoading course into misile targeting computer.\r\n"
+	    "*** Tracking Report ***\r\n*** End of Report ***\r\n"
+	    "\x1b[0;31;40m\r\nSector: 7\r\nWarps lead to: 9\r\n"
+	    "\x1b[0;32;40m\r\nTime:10:00  Main Command (?=Help)? ";
+	struct yt_present_state current;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+
+	capture = projectile_ordinary_cycle_fixture(false, &current, &pager);
+	CHECK(sizeof(plain) - 1U == 331U);
+	CHECK(capture.remote_length == sizeof(plain) - 1U
+	    && memcmp(capture.remote, plain, sizeof(plain) - 1U) == 0);
+	CHECK(pager.line_count == 0.0f);
+	capture = projectile_ordinary_cycle_fixture(true, &current, &pager);
+	CHECK(sizeof(ansi) - 1U == 351U);
+	CHECK(capture.remote_length == sizeof(ansi) - 1U
+	    && memcmp(capture.remote, ansi, sizeof(ansi) - 1U) == 0);
+	CHECK(pager.line_count == 0.0f);
+}
+
+static void
+test_counterlaunch_presentation(void)
+{
+	static const uint8_t row[] = "BOB shot back with 3 missiles at you!";
+	static const uint8_t plain[] =
+	    "\r\nBOB shot back with 3 missiles at you!\r\n";
+	static const uint8_t ansi[] =
+	    "\x1b[0;33;40m\r\n"
+	    "\x1b[0;33;40;1mBOB shot back with 3 missiles at you!\r\n";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct pager_capture capture;
+
+	memset(&capture, 0, sizeof(capture));
+	current.foreground = 3.0f;
+	pager_capture_line(&capture, &current, NULL, 0U);
+	CHECK(yt_present_bold_line(row, sizeof(row) - 1U, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(plain) - 1U
+	    && memcmp(capture.remote, plain, sizeof(plain) - 1U) == 0);
+
+	current = state(true);
+	current.foreground = 5.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&capture, 0, sizeof(capture));
+	current.foreground = 3.0f;
+	pager_capture_line(&capture, &current, NULL, 0U);
+	CHECK(yt_present_bold_line(row, sizeof(row) - 1U, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(ansi) - 1U
+	    && memcmp(capture.remote, ansi, sizeof(ansi) - 1U) == 0);
+}
+
+static void
+test_xannor_retaliation_presentation(void)
+{
+	static const uint8_t row[] =
+	    "The Xannor have launched 19 missiles at sector 733!";
+	static const uint8_t plain[] =
+	    "\r\nThe Xannor have launched 19 missiles at sector 733!\r\n";
+	static const uint8_t ansi[] =
+	    "\r\n\x1b[0;36;40;1m"
+	    "The Xannor have launched 19 missiles at sector 733!\r\n";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct pager_capture capture;
+
+	current.foreground = 6.0f;
+	memset(&capture, 0, sizeof(capture));
+	pager_capture_line(&capture, &current, NULL, 0U);
+	CHECK(yt_present_bold_line(row, sizeof(row) - 1U, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(sizeof(plain) - 1U == 55U);
+	CHECK(capture.remote_length == sizeof(plain) - 1U
+	    && memcmp(capture.remote, plain, sizeof(plain) - 1U) == 0);
+
+	current = state(true);
+	current.foreground = 6.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&capture, 0, sizeof(capture));
+	pager_capture_line(&capture, &current, NULL, 0U);
+	CHECK(yt_present_bold_line(row, sizeof(row) - 1U, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(sizeof(ansi) - 1U == 67U);
+	CHECK(capture.remote_length == sizeof(ansi) - 1U
+	    && memcmp(capture.remote, ansi, sizeof(ansi) - 1U) == 0);
+}
+
+static void
+test_projectile_refusal_presentation(void)
+{
+	static const uint8_t no_ammo[] = "You dont have any!";
+	static const uint8_t excessive[] = "You dont have that many!";
+	static const uint8_t quantity_prompt[] = "Send how many? [0] ?";
+	static const uint8_t no_ammo_expected[] =
+	    "\r\n\r\nYou dont have any!\n\r";
+	static const uint8_t excessive_expected[] =
+	    "\r\nYou have 3. Send your cruise missile to what sector? "
+	    "[ 1 to 2004 ] ?42\r\nSend how many? [0] ?4\r\n"
+	    "You dont have that many!\n\r";
+	struct yt_present_state current = state(false);
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	struct yt_present_result result;
+	uint8_t prompt[192];
+	size_t prompt_length;
+	char accumulator[80] = "";
+	static const uint8_t target_response[] = "42";
+	uint8_t quantity_response = '4';
+
+	memset(&pager, 0, sizeof(pager));
+	memset(&capture, 0, sizeof(capture));
+	pager_capture_line(&capture, &current, NULL, 0U);
+	pager_capture_line(&capture, &current, NULL, 0U);
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	pager.newline_flag = 0.0f;
+	pager_fixture_b05d(&pager, &current, no_ammo,
+	    sizeof(no_ammo) - 1U, &capture);
+	CHECK(capture.remote_length == sizeof(no_ammo_expected) - 1U
+	    && memcmp(capture.remote, no_ammo_expected,
+	    sizeof(no_ammo_expected) - 1U) == 0);
+
+	current = state(false);
+	memset(&pager, 0, sizeof(pager));
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_projectile_target_prompt(false, 3.0f, 2004.0f,
+	    prompt, sizeof(prompt), &prompt_length));
+	pager_capture_line(&capture, &current, NULL, 0U);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, prompt_length, &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(target_response,
+	    sizeof(target_response) - 1U, target_response,
+	    sizeof(target_response) - 1U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_capture_line(&capture, &current, NULL, 0U);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, quantity_prompt,
+	    sizeof(quantity_prompt) - 1U, &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(&quantity_response, 1U,
+	    &quantity_response, 1U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_capture_line(&capture, &current, NULL, 0U);
+	pager.newline_flag = 0.0f;
+	pager_fixture_b05d(&pager, &current, excessive,
+	    sizeof(excessive) - 1U, &capture);
+	CHECK(capture.remote_length == sizeof(excessive_expected) - 1U
+	    && memcmp(capture.remote, excessive_expected,
+	    sizeof(excessive_expected) - 1U) == 0);
+}
+
+static void
+test_projectile_early_terminal_presentation(void)
+{
+	static const uint8_t route[] =
+	    "*** You can't get there without going someplace you dont want to!";
+	static const uint8_t self_destruct[] = "Missles self destructed!";
+	static const uint8_t police[] =
+	    "The Union Police have destroyed the Missiles!";
+	static const uint8_t plasma[] = "Plasma bolts dissipated.";
+	static const uint8_t route_expected[] =
+	    "\r\n\r\n"
+	    "*** You can't get there without going someplace you dont want to!"
+	    "\r\n\r\nMissles self destructed!\r\n";
+	static const uint8_t self_expected[] =
+	    "\r\nMissles self destructed!\r\n";
+	static const uint8_t police_expected[] =
+	    "The Union Police have destroyed the Missiles!\r\n";
+	static const uint8_t plasma_expected[] =
+	    "\r\nPlasma bolts dissipated.\r\n\r\n";
+	struct yt_present_state current = state(false);
+	struct pager_capture capture;
+
+	memset(&capture, 0, sizeof(capture));
+	pager_capture_line(&capture, &current, NULL, 0U);
+	pager_capture_line(&capture, &current, NULL, 0U);
+	pager_capture_line(&capture, &current, route, sizeof(route) - 1U);
+	pager_capture_line(&capture, &current, NULL, 0U);
+	pager_capture_line(&capture, &current, self_destruct,
+	    sizeof(self_destruct) - 1U);
+	CHECK(capture.remote_length == sizeof(route_expected) - 1U
+	    && memcmp(capture.remote, route_expected,
+	    sizeof(route_expected) - 1U) == 0);
+
+	memset(&capture, 0, sizeof(capture));
+	pager_capture_line(&capture, &current, NULL, 0U);
+	pager_capture_line(&capture, &current, self_destruct,
+	    sizeof(self_destruct) - 1U);
+	CHECK(capture.remote_length == sizeof(self_expected) - 1U
+	    && memcmp(capture.remote, self_expected,
+	    sizeof(self_expected) - 1U) == 0);
+
+	memset(&capture, 0, sizeof(capture));
+	pager_capture_line(&capture, &current, police, sizeof(police) - 1U);
+	CHECK(capture.remote_length == sizeof(police_expected) - 1U
+	    && memcmp(capture.remote, police_expected,
+	    sizeof(police_expected) - 1U) == 0);
+
+	memset(&capture, 0, sizeof(capture));
+	pager_capture_line(&capture, &current, NULL, 0U);
+	pager_capture_line(&capture, &current, plasma, sizeof(plasma) - 1U);
+	pager_capture_line(&capture, &current, NULL, 0U);
+	CHECK(capture.remote_length == sizeof(plasma_expected) - 1U
+	    && memcmp(capture.remote, plasma_expected,
+	    sizeof(plasma_expected) - 1U) == 0);
 }
 
 static struct pager_capture
@@ -403,6 +792,186 @@ test_pager_gates(void)
 	    && present.foreground == 5.0f);
 }
 
+static void
+test_sector_private_pager(void)
+{
+	struct yt_sector_pager_state pager;
+
+	yt_sector_pager_begin(&pager);
+	CHECK(pager.line_count == 3.0f);
+	yt_sector_pager_add(&pager, 12.0f);
+	CHECK(!yt_sector_pager_finish_sector(&pager)
+	    && pager.line_count == 15.0f);
+	yt_sector_pager_add(&pager, 1.0f);
+	CHECK(yt_sector_pager_finish_sector(&pager)
+	    && pager.line_count == 0.0f);
+	yt_sector_pager_add(&pager, 10.0f);
+	CHECK(!yt_sector_pager_finish_sector(&pager)
+	    && pager.line_count == 10.0f);
+	yt_sector_pager_add(&pager, 6.0f);
+	CHECK(yt_sector_pager_finish_sector(&pager)
+	    && pager.line_count == 0.0f);
+}
+
+static void
+test_radio_private_pager(void)
+{
+	struct yt_radio_pager_state pager;
+	int body;
+
+	yt_radio_pager_begin(&pager);
+	yt_radio_pager_add_pair(&pager);
+	for (body = 1; body <= 20; ++body)
+		CHECK(!yt_radio_pager_add_body(&pager));
+	CHECK(pager.line_count == 22.0f);
+	CHECK(yt_radio_pager_add_body(&pager) && pager.line_count == 0.0f);
+	CHECK(!yt_radio_pager_add_body(&pager) && pager.line_count == 1.0f);
+
+	yt_radio_pager_begin(&pager);
+	for (body = 1; body <= 7; ++body) {
+		yt_radio_pager_add_pair(&pager);
+		CHECK(!yt_radio_pager_add_body(&pager));
+	}
+	yt_radio_pager_add_pair(&pager);
+	CHECK(yt_radio_pager_add_body(&pager) && pager.line_count == 0.0f);
+}
+
+static void
+test_radio_reader_presentation(void)
+{
+	static const uint8_t automatic_heading[] =
+	    "Checking for Radio Messages.";
+	static const uint8_t empty_expected[] =
+	    "\r\nChecking for Radio Messages.\r\nNone Found.\r\n";
+	static const uint8_t header[] = "Message to: Ada * From: Bob";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct pager_capture capture;
+	uint8_t body[74];
+	uint8_t expected[139];
+	size_t length = 0;
+
+	memset(&capture, 0, sizeof(capture));
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(automatic_heading,
+	    sizeof(automatic_heading) - 1U, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line((const uint8_t *)"None Found.",
+	    strlen("None Found."), &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(empty_expected) - 1U
+	    && memcmp(capture.remote, empty_expected,
+	    sizeof(empty_expected) - 1U) == 0);
+	CHECK(current.foreground == 2.0f && current.background == 0.0f
+	    && current.bold == 1.0f && current.blink == 1.0f);
+
+	memset(&capture, 0, sizeof(capture));
+	current = state(false);
+	memset(body, ' ', sizeof(body));
+	memcpy(body, "HELLO", strlen("HELLO"));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(automatic_heading,
+	    sizeof(automatic_heading) - 1U, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(header, sizeof(header) - 1U, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(body, sizeof(body), &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	memcpy(expected + length, "\r\n", 2);
+	length += 2U;
+	memcpy(expected + length, automatic_heading,
+	    sizeof(automatic_heading) - 1U);
+	length += sizeof(automatic_heading) - 1U;
+	memcpy(expected + length, "\r\n\r\n", 4);
+	length += 4U;
+	memcpy(expected + length, header, sizeof(header) - 1U);
+	length += sizeof(header) - 1U;
+	memcpy(expected + length, "\r\n", 2);
+	length += 2U;
+	memcpy(expected + length, body, sizeof(body));
+	length += sizeof(body);
+	memcpy(expected + length, "\r\n", 2);
+	length += 2U;
+	CHECK(length == sizeof(expected));
+	CHECK(capture.remote_length == sizeof(expected)
+	    && memcmp(capture.remote, expected, sizeof(expected)) == 0);
+}
+
+static void
+test_editor_aux_notices(void)
+{
+	static const uint8_t save[] =
+	    "Command Saved -+- Ctrl-R to Re-use -+- Ctrl-X to cancel.";
+	static const uint8_t repeat[] =
+	    "Command Repeated 3 times -+- Ctrl-R to Re-use -+- "
+	    "Ctrl-X to cancel.";
+	static const uint8_t ansi_bold[] = "\x1b[0;33;40;1m";
+	static const uint8_t ansi_normal[] = "\x1b[0;33;40m";
+	struct yt_present_state present;
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	uint8_t expected[256];
+	size_t length;
+
+	present = state(true);
+	present.foreground = 3.0f;
+	CHECK(yt_present_color(&present, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 3;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &present, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &present, save, sizeof(save) - 1U,
+	    &capture);
+	length = 0;
+	memcpy(expected + length, "\r\n", 2);
+	length += 2U;
+	memcpy(expected + length, save, sizeof(save) - 1U);
+	length += sizeof(save) - 1U;
+	memcpy(expected + length, "\n\r", 2);
+	length += 2U;
+	CHECK(capture.remote_length == length
+	    && memcmp(capture.remote, expected, length) == 0);
+	CHECK(pager.line_count == 1.0f);
+
+	present = state(true);
+	present.foreground = 3.0f;
+	CHECK(yt_present_color(&present, &result) == YT_PRESENT_OK);
+	present.bold = 1.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 3;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &present, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &present, repeat, sizeof(repeat) - 1U,
+	    &capture);
+	length = 0;
+	memcpy(expected + length, ansi_bold, sizeof(ansi_bold) - 1U);
+	length += sizeof(ansi_bold) - 1U;
+	memcpy(expected + length, "\r\n", 2);
+	length += 2U;
+	memcpy(expected + length, ansi_normal, sizeof(ansi_normal) - 1U);
+	length += sizeof(ansi_normal) - 1U;
+	memcpy(expected + length, repeat, sizeof(repeat) - 1U);
+	length += sizeof(repeat) - 1U;
+	memcpy(expected + length, "\n\r", 2);
+	length += 2U;
+	CHECK(capture.remote_length == length
+	    && memcmp(capture.remote, expected, length) == 0);
+	CHECK(pager.line_count == 1.0f && present.bold == 0.0f);
+}
+
 static struct pager_capture
 fatal_fixture(const uint8_t *notice, size_t notice_length, bool ansi)
 {
@@ -479,6 +1048,98 @@ test_editor_terminal_notices(void)
 	length += 2U;
 	CHECK(capture.remote_length == length
 	    && memcmp(capture.remote, expected, length) == 0);
+}
+
+static void
+test_common_fatal_notice(void)
+{
+	static const uint8_t notice[] = "Your ship has been destroyed!";
+	static const uint8_t ansi_plain[] = "\x1b[0;33;40m";
+	static const uint8_t ansi_emphasis[] = "\x1b[0;33;40;5;1m";
+	static const uint8_t mine_fatal_splice[] =
+	    "\r\nYour ship has been destroyed!\n\r\x07";
+	struct yt_pager_state pager;
+	struct yt_present_state present;
+	struct yt_present_result result;
+	struct pager_capture capture;
+	uint8_t expected[96];
+	size_t length;
+
+	present = state(false);
+	present.foreground = 3.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 3;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &present, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	present.bold = 1.0f;
+	present.blink = 1.0f;
+	pager.newline_flag = 0.0f;
+	pager_fixture_b05d(&pager, &present, notice, sizeof(notice) - 1U,
+	    &capture);
+	length = 0;
+	memcpy(expected + length, "\r\n", 2);
+	length += 2U;
+	memcpy(expected + length, notice, sizeof(notice) - 1U);
+	length += sizeof(notice) - 1U;
+	memcpy(expected + length, "\n\r", 2);
+	length += 2U;
+	CHECK(capture.remote_length == length
+	    && memcmp(capture.remote, expected, length) == 0);
+	CHECK(present.bold == 1.0f && present.blink == 1.0f);
+	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f);
+	CHECK(capture.last_local_foreground == 7
+	    && capture.last_local_background == 0);
+
+	present = state(true);
+	present.foreground = 3.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 3;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &present, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	present.bold = 1.0f;
+	present.blink = 1.0f;
+	pager.newline_flag = 0.0f;
+	pager_fixture_b05d(&pager, &present, notice, sizeof(notice) - 1U,
+	    &capture);
+	length = 0;
+	memcpy(expected + length, ansi_plain, sizeof(ansi_plain) - 1U);
+	length += sizeof(ansi_plain) - 1U;
+	memcpy(expected + length, "\r\n", 2);
+	length += 2U;
+	memcpy(expected + length, ansi_emphasis,
+	    sizeof(ansi_emphasis) - 1U);
+	length += sizeof(ansi_emphasis) - 1U;
+	memcpy(expected + length, notice, sizeof(notice) - 1U);
+	length += sizeof(notice) - 1U;
+	memcpy(expected + length, "\n\r", 2);
+	length += 2U;
+	CHECK(capture.remote_length == length
+	    && memcmp(capture.remote, expected, length) == 0);
+	CHECK(present.bold == 0.0f && present.blink == 0.0f);
+	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f);
+	CHECK(capture.last_local_foreground == 7
+	    && capture.last_local_background == 0);
+
+	/* A destroyed mine return carries background one into this bridge. */
+	present = state(false);
+	present.foreground = 3.0f;
+	present.background = 1.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 3;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &present, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	present.bold = 1.0f;
+	present.blink = 1.0f;
+	pager_fixture_b05d(&pager, &present, notice, sizeof(notice) - 1U,
+	    &capture);
+	CHECK(yt_present_sound(3.0f, &present, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(mine_fatal_splice) - 1U
+	    && memcmp(capture.remote, mine_fatal_splice,
+	    sizeof(mine_fatal_splice) - 1U) == 0);
 }
 
 static void
@@ -640,6 +1301,466 @@ test_sound_toggle(void)
 	CHECK(result.event_count == 2);
 	CHECK(result.events[0].operation == YT_PRESENT_REMOTE_SEMI);
 	CHECK(result.events[1].operation == YT_PRESENT_LOCAL_PLAY);
+
+	current = state(true);
+	current.sound.mode = 0.0f;
+	current.sound.local_sound = 0.0f;
+	current.sound.user_sound = -1.0f;
+	CHECK(yt_present_sysop_sound_toggle(&current, &result)
+	    == YT_PRESENT_OK);
+	CHECK(current.sound.local_sound == -1.0f
+	    && current.sound.user_sound == -1.0f);
+	CHECK(result.remote_length == 0 && result.event_count == 3);
+	CHECK(result.events[0].operation == YT_PRESENT_LOCAL_LINE
+	    && result.events[0].length == 0);
+	CHECK(result.events[1].operation == YT_PRESENT_LOCAL_SEMI
+	    && result.events[1].length == 6
+	    && memcmp(result.events[1].data, "Sound ", 6) == 0);
+	CHECK(result.events[2].operation == YT_PRESENT_LOCAL_LINE
+	    && result.events[2].length == 2
+	    && memcmp(result.events[2].data, "ON", 2) == 0);
+	current.sound.mode = 1.0f;
+	CHECK(yt_present_sysop_sound_toggle(&current, &result)
+	    == YT_PRESENT_OK);
+	CHECK(current.sound.local_sound == 0.0f
+	    && current.sound.user_sound == 0.0f);
+	CHECK(result.remote_length == 0 && result.event_count == 3
+	    && result.events[2].length == 3
+	    && memcmp(result.events[2].data, "OFF", 3) == 0);
+	current.sound.local_sound = 40000.0f;
+	current.sound.user_sound = 77.0f;
+	CHECK(yt_present_sysop_sound_toggle(&current, &result)
+	    == YT_PRESENT_SOUND_ERROR);
+	CHECK(current.sound.local_sound == 40000.0f
+	    && current.sound.user_sound == 77.0f
+	    && result.remote_length == 0 && result.event_count == 0);
+
+	current = state(false);
+	current.sound.mode = 0.0f;
+	current.sound.snoop = 0.0f;
+	CHECK(yt_present_sysop_snoop_toggle((const uint8_t *)"Grace Hopper",
+	    12, (const uint8_t *)"COBOL", 5, &current, &result)
+	    == YT_PRESENT_OK);
+	CHECK(current.sound.snoop == -1.0f && result.remote_length == 0
+	    && result.event_count == 12);
+	CHECK(result.events[0].operation == YT_PRESENT_LOCAL_LOCATE
+	    && result.events[0].row == 25 && result.events[0].column == 1);
+	CHECK(result.events[9].operation == YT_PRESENT_LOCAL_COLOR
+	    && result.events[9].foreground == 7
+	    && result.events[9].background == 0);
+	CHECK(result.events[10].operation == YT_PRESENT_LOCAL_LOCATE
+	    && result.events[10].row == 24 && result.events[10].column == 1);
+	CHECK(result.events[11].operation == YT_PRESENT_LOCAL_LINE
+	    && result.events[11].length == 8
+	    && memcmp(result.events[11].data, "SNOOP ON", 8) == 0);
+	CHECK(yt_present_sysop_snoop_toggle((const uint8_t *)"R", 1,
+	    (const uint8_t *)"A", 1, &current, &result) == YT_PRESENT_OK);
+	CHECK(current.sound.snoop == 0.0f && result.remote_length == 0
+	    && result.event_count == 2);
+	CHECK(result.events[0].operation == YT_PRESENT_LOCAL_LOCATE
+	    && result.events[0].row == -1 && result.events[0].column == -1
+	    && result.events[0].cursor_visible == 0);
+	CHECK(result.events[1].operation == YT_PRESENT_LOCAL_CLEAR);
+	current.sound.mode = 1.0f;
+	current.sound.snoop = 40000.0f;
+	CHECK(yt_present_sysop_snoop_toggle((const uint8_t *)"R", 1,
+	    (const uint8_t *)"A", 1, &current, &result) == YT_PRESENT_OK);
+	CHECK(current.sound.snoop == 40000.0f && result.remote_length == 0
+	    && result.event_count == 0);
+}
+
+struct sysop_replay_tape {
+	float *deadline;
+	float expected_deadline;
+	size_t calls;
+	bool fail;
+};
+
+static enum yt_present_status
+capture_sysop_replay(void *context)
+{
+	struct sysop_replay_tape *tape = context;
+
+	++tape->calls;
+	CHECK(*tape->deadline == tape->expected_deadline);
+	return tape->fail ? YT_PRESENT_RANGE : YT_PRESENT_OK;
+}
+
+static void
+test_sysop_time(void)
+{
+	static const uint8_t positive_prompt[] =
+	    "SysOp, how many minutes till user is forced off [ 5 ] ? ";
+	static const uint8_t negative_prompt[] =
+	    "SysOp, how many minutes till user is forced off [-5 ] ? ";
+	static const struct {
+		const char *entered;
+		float expected_deadline;
+		float expected_minutes;
+	} vectors[] = {
+		{"0", 1000.0f, 0.0f},
+		{"-5", 700.0f, -5.0f},
+		{"30", 2800.0f, 30.0f},
+		{"90", 6400.0f, 90.0f},
+		{"91", 6400.0f, 90.0f},
+		{"180", 6400.0f, 90.0f},
+		{"abc", 1000.0f, 0.0f},
+		{"&H1E", 2800.0f, 30.0f},
+		{"-&O10", 1000.0f, 0.0f},
+		{"&H5B", 6400.0f, 90.0f},
+		{"-100", -5000.0f, -100.0f},
+	};
+	struct yt_present_result result;
+	struct sysop_replay_tape tape;
+	float deadline;
+	float minutes;
+	bool changed;
+	size_t index;
+
+	CHECK(yt_present_sysop_time_prompt(1300.0f, 1000.99f, &result)
+	    == YT_PRESENT_OK);
+	CHECK(result.remote_length == 0 && result.event_count == 2
+	    && result.events[0].operation == YT_PRESENT_LOCAL_LINE
+	    && result.events[0].length == 0
+	    && result.events[1].operation == YT_PRESENT_LOCAL_SEMI
+	    && result.events[1].length == sizeof(positive_prompt) - 1U
+	    && memcmp(result.events[1].data, positive_prompt,
+	    sizeof(positive_prompt) - 1U) == 0);
+	CHECK(yt_present_sysop_time_prompt(700.0f, 1000.99f, &result)
+	    == YT_PRESENT_OK);
+	CHECK(result.event_count == 2
+	    && result.events[1].length == sizeof(negative_prompt) - 1U
+	    && memcmp(result.events[1].data, negative_prompt,
+	    sizeof(negative_prompt) - 1U) == 0);
+
+	deadline = 9999.0f;
+	CHECK(yt_present_sysop_time_replace(NULL, 0, 1000.75f, &deadline,
+	    &minutes, &changed) == YT_PRESENT_OK);
+	CHECK(!changed && deadline == 9999.0f && minutes == 0.0f);
+	for (index = 0; index < YT_ARRAY_LEN(vectors); ++index) {
+		deadline = 9999.0f;
+		CHECK(yt_present_sysop_time_replace(
+		    (const uint8_t *)vectors[index].entered,
+		    strlen(vectors[index].entered), 1000.75f, &deadline,
+		    &minutes, &changed) == YT_PRESENT_OK);
+		CHECK(changed && deadline == vectors[index].expected_deadline
+		    && minutes == vectors[index].expected_minutes);
+	}
+	deadline = 9999.0f;
+	CHECK(yt_present_sysop_time_replace((const uint8_t *)"30", 2,
+	    2000.25f, &deadline, &minutes, &changed) == YT_PRESENT_OK);
+	CHECK(changed && deadline == 3800.0f && minutes == 30.0f);
+	deadline = 9999.0f;
+	CHECK(yt_present_sysop_time_replace((const uint8_t *)"1E9999", 6,
+	    1000.75f, &deadline, &minutes, &changed)
+	    == YT_PRESENT_OVERFLOW);
+	CHECK(!changed && deadline == 9999.0f);
+
+	tape = (struct sysop_replay_tape){&deadline, 3800.0f, 0, false};
+	deadline = 9999.0f;
+	CHECK(yt_present_sysop_time_handler(1000.75f,
+	    (const uint8_t *)"30", 2, 2000.25f, &deadline, &minutes,
+	    &changed, &result, capture_sysop_replay, &tape) == YT_PRESENT_OK);
+	CHECK(tape.calls == 1U && changed && deadline == 3800.0f
+	    && result.event_count == 2);
+	tape = (struct sysop_replay_tape){&deadline, 9999.0f, 0, true};
+	deadline = 9999.0f;
+	CHECK(yt_present_sysop_time_handler(1000.75f, NULL, 0, 0.0f,
+	    &deadline, &minutes, &changed, &result, capture_sysop_replay,
+	    &tape) == YT_PRESENT_RANGE);
+	CHECK(tape.calls == 1U && !changed && deadline == 9999.0f);
+}
+
+static void
+test_sysop_chat_header(void)
+{
+	static const uint8_t expected[] =
+	    "Ada - Hit ESC to exit chat mode";
+	uint8_t too_long[YT_PRESENT_EVENT_DATA];
+	struct yt_present_result result;
+
+	CHECK(yt_present_sysop_chat_header((const uint8_t *)"Ada", 3U, 5,
+	    &result) == YT_PRESENT_OK);
+	CHECK(result.remote_length == 0U && result.event_count == 4U);
+	CHECK(result.events[0].operation == YT_PRESENT_LOCAL_COLOR
+	    && result.events[0].foreground == 30
+	    && result.events[0].background == 5);
+	CHECK(result.events[1].operation == YT_PRESENT_LOCAL_LINE
+	    && result.events[1].length == 0U);
+	CHECK(result.events[2].operation == YT_PRESENT_LOCAL_LINE
+	    && result.events[2].length == 0U);
+	CHECK(result.events[3].operation == YT_PRESENT_LOCAL_LINE
+	    && result.events[3].length == sizeof(expected) - 1U
+	    && memcmp(result.events[3].data, expected,
+	    sizeof(expected) - 1U) == 0);
+	CHECK(yt_present_sysop_chat_header(NULL, 0U, 0, &result)
+	    == YT_PRESENT_OK);
+	CHECK(result.events[3].length
+	    == strlen(" - Hit ESC to exit chat mode"));
+	memset(too_long, 'X', sizeof(too_long));
+	CHECK(yt_present_sysop_chat_header(too_long, sizeof(too_long), 0,
+	    &result) == YT_PRESENT_CAPACITY);
+	CHECK(yt_present_sysop_chat_header(NULL, 1U, 0, &result)
+	    == YT_PRESENT_CAPACITY);
+}
+
+static void
+test_main_error_model(void)
+{
+	static const uint8_t debug[] =
+	    "YT DEBUG Error Trap Entry ERL=  40000   ERR=  53 ";
+	static const uint8_t missing[] =
+	    "*** GAME FILE [YTOPEN.Asc] NOT FOUND! ***";
+	static const uint8_t fatal[] =
+	    "YTMerg2 1.15 Untrapped Error ERL= 12345 ERR= 11 "
+	    "Date >07-23-2026 14:05:09";
+	static const int16_t gameplay_errors[] = {5, 6, 13, 15};
+	uint8_t long_path[YT_MAIN_ERROR_TEXT];
+	struct yt_main_error_result error;
+	struct yt_present_result presentation;
+	size_t index;
+
+	CHECK(yt_main_error_compose(24, 40000, NULL, 1U, NULL, 1U,
+	    NULL, 1U, &error));
+	CHECK(error.route == YT_MAIN_ERROR_RETRY_CURRENT
+	    && error.debug_length == 0U && error.action_length == 0U);
+	CHECK(yt_main_error_compose(57, 12345, NULL, 1U, NULL, 1U,
+	    NULL, 1U, &error));
+	CHECK(error.route == YT_MAIN_ERROR_RETRY_CURRENT
+	    && error.debug_length == 0U && error.action_length == 0U);
+
+	CHECK(yt_main_error_compose(53, 40000,
+	    (const uint8_t *)"YTOPEN.Asc", strlen("YTOPEN.Asc"),
+	    NULL, 1U, NULL, 1U, &error));
+	CHECK(error.route == YT_MAIN_ERROR_MISSING_FILE
+	    && error.debug_length == sizeof(debug) - 1U
+	    && memcmp(error.debug, debug, sizeof(debug) - 1U) == 0
+	    && error.action_length == sizeof(missing) - 1U
+	    && memcmp(error.action, missing, sizeof(missing) - 1U) == 0);
+	for (index = 0; index < YT_ARRAY_LEN(gameplay_errors); ++index) {
+		CHECK(yt_main_error_compose(gameplay_errors[index], 40000,
+		    (const uint8_t *)"ytinstr.doc", strlen("ytinstr.doc"),
+		    NULL, 1U, NULL, 1U, &error));
+		CHECK(error.route == YT_MAIN_ERROR_MISSING_FILE);
+		CHECK(yt_main_error_compose(gameplay_errors[index], 12345,
+		    NULL, 1U, NULL, 1U, NULL, 1U, &error));
+		CHECK(error.route == YT_MAIN_ERROR_GAMEPLAY
+		    && error.debug_length != 0U && error.action_length == 0U);
+	}
+
+	CHECK(yt_main_error_compose(11, 12345, NULL, 0U,
+	    (const uint8_t *)"07-23-2026", strlen("07-23-2026"),
+	    (const uint8_t *)"14:05:09", strlen("14:05:09"), &error));
+	CHECK(error.route == YT_MAIN_ERROR_FATAL
+	    && error.action_length == sizeof(fatal) - 1U
+	    && memcmp(error.action, fatal, sizeof(fatal) - 1U) == 0);
+	CHECK(yt_present_forced_local_line(error.debug, error.debug_length,
+	    &presentation) == YT_PRESENT_OK);
+	CHECK(presentation.remote_length == 0U
+	    && presentation.event_count == 1U
+	    && presentation.events[0].operation == YT_PRESENT_LOCAL_LINE
+	    && presentation.events[0].length == error.debug_length
+	    && memcmp(presentation.events[0].data, error.debug,
+	    error.debug_length) == 0);
+	CHECK(yt_main_error_compose(-1, -2, NULL, 0U,
+	    (const uint8_t *)"D", 1U, (const uint8_t *)"T", 1U, &error));
+	CHECK(error.route == YT_MAIN_ERROR_FATAL
+	    && error.action_length
+	    == strlen("YTMerg2 1.15 Untrapped Error ERL=-2 ERR=-1 Date >D T")
+	    && memcmp(error.action,
+	    "YTMerg2 1.15 Untrapped Error ERL=-2 ERR=-1 Date >D T",
+	    error.action_length) == 0);
+	CHECK(!yt_main_error_compose(11, 12345, NULL, 0U, NULL, 1U,
+	    (const uint8_t *)"T", 1U, &error));
+	memset(long_path, 'X', sizeof(long_path));
+	CHECK(!yt_main_error_compose(53, 40000, long_path,
+	    sizeof(long_path), NULL, 0U, NULL, 0U, &error));
+	CHECK(!yt_main_error_compose(11, 12345, NULL, 0U, NULL, 0U,
+	    NULL, 0U, NULL));
+}
+
+static void
+test_shared_error_model(void)
+{
+	static const int32_t special_lines[] = {
+		38100, 630, 2710, 64001, 64004, 64005, 64006
+	};
+	static const struct {
+		int32_t source_line;
+		enum yt_shared_error_route route;
+		const char *message;
+	} diagnostics[] = {
+		{630, YT_SHARED_ERROR_DATA_OPEN,
+		    "Error opening ytDATA.DAT"},
+		{2710, YT_SHARED_ERROR_ANSI_OPEN,
+		    "Please Create YTOPEN.ANS for ANSI graphics users!"},
+		{64001, YT_SHARED_ERROR_RANKINGS_FILESPEC,
+		    "Error with Player Rankings filespec"},
+		{64004, YT_SHARED_ERROR_ALIAS_FILE,
+		    "Error with YTNAME.DAT file!"},
+		{64005, YT_SHARED_ERROR_ALIAS_FILE,
+		    "Error with YTNAME.DAT file!"},
+	};
+	static const uint8_t debug[] =
+	    "YT-SUB DEBUG Error Trap Entry ERL=  2710 ERR= 53 ";
+	static const uint8_t negative_debug[] =
+	    "YT-SUB DEBUG Error Trap Entry ERL= -1 ERR=-2 ";
+	static const uint8_t autopilot[] =
+	    " *** Not Enough System Memory for Autopilot Function! ***";
+	static const uint8_t generic[] =
+	    "Untrapped YT-SUB Error>  5 Line>  1234";
+	struct yt_shared_error_result error;
+	struct yt_present_result presentation;
+	struct yt_present_state current = state(false);
+	size_t index;
+
+	for (index = 0; index < YT_ARRAY_LEN(special_lines); ++index) {
+		CHECK(yt_shared_error_compose(24, special_lines[index], &error));
+		CHECK(error.route == YT_SHARED_ERROR_RETRY_CURRENT
+		    && error.debug_length == 0U && error.event_count == 0U
+		    && !error.ends);
+	}
+	CHECK(yt_shared_error_compose(53, 2710, &error));
+	CHECK(error.debug_length == sizeof(debug) - 1U
+	    && memcmp(error.debug, debug, sizeof(debug) - 1U) == 0);
+	CHECK(yt_shared_error_compose(-2, -1, &error));
+	CHECK(error.debug_length == sizeof(negative_debug) - 1U
+	    && memcmp(error.debug, negative_debug,
+	    sizeof(negative_debug) - 1U) == 0);
+
+	for (index = 0; index < YT_ARRAY_LEN(diagnostics); ++index) {
+		CHECK(yt_shared_error_compose(7, diagnostics[index].source_line,
+		    &error));
+		CHECK(error.route == diagnostics[index].route && error.ends
+		    && error.event_count == 1U
+		    && error.events[0].destination
+		    == YT_SHARED_ERROR_LOCAL_DIAGNOSTIC
+		    && error.events[0].length == strlen(diagnostics[index].message)
+		    && memcmp(error.events[0].data, diagnostics[index].message,
+		    error.events[0].length) == 0);
+	}
+
+	CHECK(yt_shared_error_compose(7, 38100, &error));
+	CHECK(error.route == YT_SHARED_ERROR_AUTOPILOT_MEMORY && error.ends
+	    && error.event_count == 1U
+	    && error.events[0].destination
+	    == YT_SHARED_ERROR_SESSION_AND_NEWS
+	    && error.events[0].length == sizeof(autopilot) - 1U
+	    && memcmp(error.events[0].data, autopilot,
+	    sizeof(autopilot) - 1U) == 0);
+	CHECK(yt_present_line(error.events[0].data, error.events[0].length,
+	    &current, &presentation) == YT_PRESENT_OK);
+	CHECK(presentation.remote_length == sizeof(autopilot) + 1U
+	    && presentation.event_count == 3U
+	    && presentation.events[0].operation == YT_PRESENT_LOCAL_LINE);
+
+	CHECK(yt_shared_error_compose(53, 64006, &error));
+	CHECK(error.route == YT_SHARED_ERROR_DORINFO_COM
+	    && error.event_count == 2U
+	    && error.events[1].length == strlen("DORINFO not found!")
+	    && memcmp(error.events[1].data, "DORINFO not found!",
+	    error.events[1].length) == 0);
+	CHECK(yt_shared_error_compose(64, 64006, &error));
+	CHECK(error.event_count == 2U
+	    && error.events[1].length == strlen("Error opening the COM Port!")
+	    && memcmp(error.events[1].data, "Error opening the COM Port!",
+	    error.events[1].length) == 0);
+	CHECK(yt_shared_error_compose(5, 64006, &error));
+	CHECK(error.event_count == 1U);
+
+	CHECK(yt_shared_error_compose(5, 1234, &error));
+	CHECK(error.route == YT_SHARED_ERROR_GENERIC && error.ends
+	    && error.event_count == 3U
+	    && error.events[0].destination == YT_SHARED_ERROR_NEWS
+	    && error.events[0].length == sizeof(generic) - 1U
+	    && memcmp(error.events[0].data, generic,
+	    sizeof(generic) - 1U) == 0
+	    && error.events[1].length
+	    == strlen("Please record error and circumstances. Also, if the error")
+	    && error.events[2].length
+	    == strlen("is Severe, Please inform Alan Davenport!"));
+	for (index = 0; index < error.event_count; ++index)
+		CHECK(error.events[index].destination == YT_SHARED_ERROR_NEWS);
+	CHECK(yt_shared_error_compose(5, 64003, &error)
+	    && error.route == YT_SHARED_ERROR_GENERIC);
+	CHECK(yt_shared_error_compose(5, 64006, &error)
+	    && error.route == YT_SHARED_ERROR_DORINFO_COM);
+
+	CHECK(yt_shared_error_compose(53, 2710, &error));
+	current.sound.snoop = 0.0f;
+	CHECK(yt_present_local_line(error.debug, error.debug_length, &current,
+	    &presentation) == YT_PRESENT_OK);
+	CHECK(presentation.remote_length == 0U
+	    && presentation.event_count == 0U);
+	current.sound.snoop = -1.0f;
+	CHECK(yt_present_local_line(error.events[0].data,
+	    error.events[0].length, &current, &presentation) == YT_PRESENT_OK);
+	CHECK(presentation.remote_length == 0U
+	    && presentation.event_count == 1U
+	    && presentation.events[0].operation == YT_PRESENT_LOCAL_LINE);
+	CHECK(!yt_shared_error_compose(5, 1234, NULL));
+}
+
+static void
+test_serial_startup_output(void)
+{
+	static const char carrier[] =
+	    "(**CARRIER DROPPED**) Returning to bbs!";
+	static const char *missing_rows[] = {
+		"",
+		"Command line missing! Aborting!",
+		"",
+		"BBS usage: YT.EXE C:\\BBS\\DORINFO1.DEF",
+	};
+	static const struct {
+		int port;
+		float baud;
+		const char *expected;
+	} status[] = {
+		{1, 38400.0f, "Opening COM port 1 at 38400 baud"},
+		{3, 57600.0f, "Opening COM port 3 at 57600 baud"},
+		{4, 115200.0f, "Opening COM port 4 at 115200 baud"},
+		{0, 0.0f, "Local Console Mode"},
+		{5, 0.0f, "Local Console Mode"},
+		{-1, 0.0f, "Local Console Mode"},
+	};
+	struct yt_present_result result;
+	struct yt_present_state current = state(false);
+	size_t index;
+
+	CHECK(yt_present_serial_startup_missing_command(&result)
+	    == YT_PRESENT_OK);
+	CHECK(result.remote_length == 0U && result.event_count == 4U);
+	for (index = 0; index < YT_ARRAY_LEN(missing_rows); ++index) {
+		CHECK(result.events[index].operation == YT_PRESENT_LOCAL_LINE
+		    && result.events[index].length == strlen(missing_rows[index])
+		    && memcmp(result.events[index].data, missing_rows[index],
+		    result.events[index].length) == 0);
+	}
+	for (index = 0; index < YT_ARRAY_LEN(status); ++index) {
+		CHECK(yt_present_serial_startup_status(status[index].port,
+		    status[index].baud, &result) == YT_PRESENT_OK);
+		CHECK(result.remote_length == 0U && result.event_count == 1U
+		    && result.events[0].operation == YT_PRESENT_LOCAL_LINE
+		    && result.events[0].length == strlen(status[index].expected)
+		    && memcmp(result.events[0].data, status[index].expected,
+		    result.events[0].length) == 0);
+	}
+	CHECK(yt_present_carrier_drop(&current, &result) == YT_PRESENT_OK);
+	CHECK(result.remote_length == 0U && result.event_count == 1U
+	    && result.events[0].operation == YT_PRESENT_LOCAL_LINE
+	    && result.events[0].length == sizeof(carrier) - 1U
+	    && memcmp(result.events[0].data, carrier,
+	    sizeof(carrier) - 1U) == 0);
+	current.sound.snoop = 0.0f;
+	CHECK(yt_present_carrier_drop(&current, &result) == YT_PRESENT_OK
+	    && result.remote_length == 0U && result.event_count == 0U);
+	CHECK(yt_present_serial_startup_missing_command(NULL)
+	    == YT_PRESENT_CAPACITY);
+	CHECK(yt_present_serial_startup_status(1, 38400.0f, NULL)
+	    == YT_PRESENT_CAPACITY);
+	CHECK(yt_present_carrier_drop(NULL, &result) == YT_PRESENT_CAPACITY);
+	CHECK(yt_present_carrier_drop(&current, NULL) == YT_PRESENT_CAPACITY);
 }
 
 static void
@@ -777,6 +1898,7611 @@ test_press_any_key_presentation(void)
 	    && memcmp(result.remote, "                   ", 19) == 0);
 }
 
+static void
+test_post_login_press_presentation(void)
+{
+	static const uint8_t prompt[] = "[ Press any Key ]";
+	static const uint8_t main_prompt[] =
+	    "Time: 14:59  Main Command (?=Help)? ";
+	static const uint8_t press_expected[] =
+	    "\r\n[ Press any Key ]\r\n";
+	static const uint8_t main_expected[] =
+	    "\r\nTime: 14:59  Main Command (?=Help)? ";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "inherited";
+
+	memset(&pager, 0, sizeof(pager));
+	memset(&capture, 0, sizeof(capture));
+	current.foreground = 6.0f;
+	pager.foreground = 6;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(press_expected) - 1U
+	    && memcmp(capture.remote, press_expected,
+	    sizeof(press_expected) - 1U) == 0);
+	CHECK(capture.last_local_foreground == 7
+	    && capture.last_local_background == 0);
+
+	memset(&capture, 0, sizeof(capture));
+	pager.line_count = 0.0f;
+	current.foreground = 2.0f;
+	pager.foreground = 2;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, main_prompt,
+	    sizeof(main_prompt) - 1U, &capture);
+	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f);
+	CHECK(capture.remote_length == sizeof(main_expected) - 1U
+	    && memcmp(capture.remote, main_expected,
+	    sizeof(main_expected) - 1U) == 0);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(pager.line_count == 0.0f && pager.nonstop == 0.0f
+	    && pager.key[0] == '\0' && accumulator[0] == '\0');
+}
+
+static void
+test_gameplay_reentry_hostile_warning(void)
+{
+	static const uint8_t warning[] =
+	    "You have to defeat the fighters before you can enter this sector.";
+	static const uint8_t expected[] =
+	    "\r\nYou have to defeat the fighters before you can enter this sector.\n\r";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+
+	memset(&pager, 0, sizeof(pager));
+	memset(&capture, 0, sizeof(capture));
+	current.foreground = 3.0f;
+	pager.foreground = 3;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	pager.newline_flag = 0.0f;
+	pager_fixture_b05d(&pager, &current, warning, sizeof(warning) - 1U,
+	    &capture);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f
+	    && current.bold == 1.0f && current.blink == 1.0f);
+}
+
+static void
+test_hostile_menu_presentation(void)
+{
+	static const uint8_t fighter_row[] = "Fighters: 1000 / 1250";
+	static const uint8_t prompt[] =
+	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? ";
+	static const uint8_t attack_expected[] =
+	    "\x1b[0;33;40m\r\n"
+	    "Fighters: 1000 / 1250\n\r"
+	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? A\r\n";
+	static const uint8_t invalid_expected[] =
+	    "\x1b[0;33;40m\r\n"
+	    "Fighters: 1000 / 1250\n\r"
+	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? Z\r\n"
+	    "\r\n\x1b[0;33;40;5;1mInvalid command.\n\r"
+	    "\x1b[0;33;40m\r\n";
+	static const uint8_t help_expected[] =
+	    "\x1b[0;33;40m\r\n"
+	    "Fighters: 1000 / 1250\n\r"
+	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? ?\r\n"
+	    "\r\n<Help>\n\r\r\nA - <A>ttack\n\r"
+	    "B - <B>ribe Fighters\n\r"
+	    "D - <D>rop a Mine\n\r"
+	    "I - <I>nformation about your ship\n\r"
+	    "Q - <Q>uit the game\n\r"
+	    "S - Display <S>ector\n\r"
+	    "T - <T>eam Menu\n\r"
+	    "W - Emergency <W>arp\n\r";
+	static const char *const help_rows[] = {
+		"B - <B>ribe Fighters",
+		"D - <D>rop a Mine",
+		"I - <I>nformation about your ship",
+		"Q - <Q>uit the game",
+		"S - Display <S>ector",
+		"T - <T>eam Menu",
+		"W - Emergency <W>arp",
+	};
+	struct yt_present_state current = state(true);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "inherited";
+	uint8_t key = 'A';
+	size_t index;
+
+	memset(&pager, 0, sizeof(pager));
+	memset(&capture, 0, sizeof(capture));
+	current.foreground = 3.0f;
+	pager.foreground = 3;
+	pager.line_count = 1.0f;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, fighter_row,
+	    sizeof(fighter_row) - 1U, &capture);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	CHECK(pager.line_count == 3.0f);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(pager.line_count == 0.0f && accumulator[0] == '\0');
+	CHECK(yt_present_editor_echo(&key, 1, &key, 1, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(attack_expected) - 1U
+	    && memcmp(capture.remote, attack_expected,
+	    sizeof(attack_expected) - 1U) == 0);
+	CHECK(capture.remote_length == 73U);
+	CHECK(current.foreground == 3.0f && current.background == 0.0f
+	    && current.bold == 0.0f && current.blink == 0.0f);
+	CHECK(capture.last_local_foreground == 6
+	    && capture.last_local_background == 0);
+
+	current = state(true);
+	current.foreground = 3.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 3;
+	pager.line_count = 1.0f;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, fighter_row,
+	    sizeof(fighter_row) - 1U, &capture);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	key = 'Z';
+	CHECK(yt_present_editor_echo(&key, 1, &key, 1, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	pager_fixture_b05d(&pager, &current,
+	    (const uint8_t *)"Invalid command.", strlen("Invalid command."),
+	    &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(invalid_expected) - 1U
+	    && memcmp(capture.remote, invalid_expected,
+	    sizeof(invalid_expected) - 1U) == 0);
+	CHECK(capture.remote_length == 119U && pager.line_count == 1.0f
+	    && current.bold == 0.0f && current.blink == 0.0f);
+
+	current = state(true);
+	current.foreground = 3.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 3;
+	pager.line_count = 1.0f;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, fighter_row,
+	    sizeof(fighter_row) - 1U, &capture);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	key = '?';
+	CHECK(yt_present_editor_echo(&key, 1, &key, 1, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, (const uint8_t *)"<Help>",
+	    strlen("<Help>"), &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current,
+	    (const uint8_t *)"A - <A>ttack", strlen("A - <A>ttack"),
+	    &capture);
+	for (index = 0; index < YT_ARRAY_LEN(help_rows); ++index)
+		pager_fixture_b05d(&pager, &current,
+		    (const uint8_t *)help_rows[index], strlen(help_rows[index]),
+		    &capture);
+	CHECK(capture.remote_length == sizeof(help_expected) - 1U
+	    && memcmp(capture.remote, help_expected,
+	    sizeof(help_expected) - 1U) == 0);
+	CHECK(capture.remote_length == 257U && pager.line_count == 9.0f);
+}
+
+static void
+test_hostile_quit_presentation(void)
+{
+	static const uint8_t heading[] = "<Quit>";
+	static const uint8_t prompt[] = "Are you sure (Y/N)? ";
+	static const uint8_t expected[] =
+	    "\x1b[0;37;40m<Quit>\n\rAre you sure (Y/N)? N\r\n";
+	struct yt_present_state current = state(true);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "Q";
+	uint8_t key = 'N';
+
+	current.foreground = 3.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	memset(&capture, 0, sizeof(capture));
+	current.foreground = 7.0f;
+	pager.foreground = 7;
+	pager_fixture_b05d(&pager, &current, heading, sizeof(heading) - 1U,
+	    &capture);
+	CHECK(yt_present_character(prompt, sizeof(prompt) - 1U, &current,
+	    &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(accumulator[0] == '\0' && pager.line_count == 0.0f);
+	CHECK(yt_present_editor_echo(&key, 1, &key, 1, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(current.foreground == 7.0f && pager.line_count == 0.0f
+	    && capture.last_local_foreground == 7
+	    && capture.last_local_background == 0);
+}
+
+static void
+test_direct_emergency_warp_presentation(void)
+{
+	static const uint8_t warning_one[] =
+	    "This is a desperate move! Your engines will be drained and will take time";
+	static const uint8_t warning_two[] =
+	    "to recharge! You also risk a melt down! Are you sure you wish to do this?";
+	static const uint8_t prompt[] = "[y/N] -=> ";
+	static const uint8_t plain[] =
+	    "\r\n"
+	    "This is a desperate move! Your engines will be drained and will take time\n\r"
+	    "to recharge! You also risk a melt down! Are you sure you wish to do this?\n\r"
+	    "\r\n[y/N] -=> N\r\n";
+	static const uint8_t ansi[] =
+	    "\r\n"
+	    "\x1b[0;37;40;1m"
+	    "This is a desperate move! Your engines will be drained and will take time\n\r"
+	    "\x1b[0;37;40;1m"
+	    "to recharge! You also risk a melt down! Are you sure you wish to do this?\n\r"
+	    "\x1b[0;37;40m\r\n"
+	    "\x1b[0;37;40;1m[y/N] -=> N"
+	    "\x1b[0;37;40m\r\n";
+	static const uint8_t answer[] = "N";
+	static const uint8_t no_turns[] = "Sorry but you have no turns left.";
+	static const uint8_t no_turns_plain[] =
+	    "\r\nSorry but you have no turns left.\n\r";
+	static const uint8_t no_turns_ansi[] =
+	    "\r\n\x1b[0;32;40;5;1mSorry but you have no turns left.\n\r";
+	struct yt_present_state current;
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "W";
+	int pass;
+
+	for (pass = 0; pass < 2; ++pass) {
+		current = state(pass != 0);
+		CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+		memset(&pager, 0, sizeof(pager));
+		pager.foreground = 2;
+		memset(&capture, 0, sizeof(capture));
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		current.bold = 1.0f;
+		current.foreground = 7.0f;
+		pager.foreground = 7;
+		pager_fixture_b05d(&pager, &current, warning_one,
+		    sizeof(warning_one) - 1U, &capture);
+		current.bold = 1.0f;
+		pager_fixture_b05d(&pager, &current, warning_two,
+		    sizeof(warning_two) - 1U, &capture);
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		current.bold = 1.0f;
+		CHECK(yt_present_character(prompt, sizeof(prompt) - 1U,
+		    &current, &result) == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+		CHECK(yt_present_editor_echo(answer, sizeof(answer) - 1U,
+		    answer, sizeof(answer) - 1U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		if (pass == 0) {
+			CHECK(capture.remote_length == sizeof(plain) - 1U
+			    && memcmp(capture.remote, plain,
+			    sizeof(plain) - 1U) == 0);
+			CHECK(capture.remote_length == 167U);
+		}
+		else {
+			CHECK(capture.remote_length == sizeof(ansi) - 1U
+			    && memcmp(capture.remote, ansi,
+			    sizeof(ansi) - 1U) == 0);
+			CHECK(capture.remote_length == 223U);
+		}
+		CHECK(pager.line_count == 0.0f
+		    && current.foreground == 7.0f
+		    && current.bold == (pass == 0 ? 1.0f : 0.0f)
+		    && capture.last_local_foreground == 7
+		    && capture.last_local_background == 0);
+	}
+	for (pass = 0; pass < 2; ++pass) {
+		current = state(pass != 0);
+		CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+		memset(&pager, 0, sizeof(pager));
+		pager.foreground = 2;
+		memset(&capture, 0, sizeof(capture));
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		current.bold = 1.0f;
+		current.blink = 1.0f;
+		pager_fixture_b05d(&pager, &current, no_turns,
+		    sizeof(no_turns) - 1U, &capture);
+		if (pass == 0)
+			CHECK(capture.remote_length == sizeof(no_turns_plain) - 1U
+			    && memcmp(capture.remote, no_turns_plain,
+			    sizeof(no_turns_plain) - 1U) == 0);
+		else
+			CHECK(capture.remote_length == sizeof(no_turns_ansi) - 1U
+			    && memcmp(capture.remote, no_turns_ansi,
+			    sizeof(no_turns_ansi) - 1U) == 0);
+		CHECK(pager.line_count == 1.0f);
+	}
+}
+
+static void
+test_team_front_presentation(void)
+{
+	static const uint8_t exit_row[] = "1) Exit Team menu";
+	static const uint8_t create_row[] = "2) Create a Team";
+	static const uint8_t join_row[] = "3) Join a Team";
+	static const uint8_t prompt[] = "Time: 14:59  Team Command? ";
+	static const uint8_t one[] = "1";
+	static const uint8_t expected[] =
+	    "\r\nTeam  : None\r\n\r\n\r\n"
+	    "1) Exit Team menu\n\r"
+	    "2) Create a Team\n\r"
+	    "3) Join a Team\n\r"
+	    "\r\nTime: 14:59  Team Command? 1\r\n";
+	struct yt_present_state current;
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "T";
+	int pass;
+
+	for (pass = 0; pass < 2; ++pass) {
+		current = state(pass != 0);
+		current.foreground = 6.0f;
+		CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+		memset(&pager, 0, sizeof(pager));
+		pager.foreground = 6;
+		memset(&capture, 0, sizeof(capture));
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_line((const uint8_t *)"Team  : None", 12,
+		    &current, &result) == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager.line_count = 0.0f;
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager_fixture_b05d(&pager, &current, exit_row,
+		    sizeof(exit_row) - 1U, &capture);
+		pager_fixture_b05d(&pager, &current, create_row,
+		    sizeof(create_row) - 1U, &capture);
+		pager_fixture_b05d(&pager, &current, join_row,
+		    sizeof(join_row) - 1U, &capture);
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager.newline_flag = 1.0f;
+		pager_fixture_b05d(&pager, &current, prompt,
+		    sizeof(prompt) - 1U, &capture);
+		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+		CHECK(yt_present_editor_echo(one, sizeof(one) - 1U,
+		    one, sizeof(one) - 1U, &current, &result) == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(capture.remote_length == sizeof(expected) - 1U
+		    && memcmp(capture.remote, expected, sizeof(expected) - 1U)
+		    == 0);
+		CHECK(capture.remote_length == 105U
+		    && pager.line_count == 0.0f
+		    && current.foreground == 6.0f
+		    && capture.last_local_foreground == (pass == 0 ? 7 : 3)
+		    && capture.last_local_background == 0);
+	}
+}
+
+static void
+test_team_create_presentation(void)
+{
+	static const uint8_t entering[] = "Entering a New Team...";
+	static const uint8_t name_prompt[] =
+	    "Pick a name for your Team (41 chars. max)? ";
+	static const uint8_t name[] = "Raiders";
+	static const uint8_t password_prompt[] =
+	    "Please Pick a Password for your Team. (4 Chars.) :";
+	static const uint8_t password_echo[] = "pass";
+	static const uint8_t reminder[] =
+	    "REMEMBER YOUR TEAM PASSWORD SO OTHERS CAN JOIN! -+> PASS";
+	static const uint8_t success[] =
+	    "Team number [ 1 ] [Raiders] CREATED!";
+	static const uint8_t expected[] =
+	    "\r\nEntering a New Team...\n\r"
+	    "\r\nPick a name for your Team (41 chars. max)? Raiders\r\n"
+	    "\r\nPlease Pick a Password for your Team. (4 Chars.) :pass\r\n"
+	    "\r\nREMEMBER YOUR TEAM PASSWORD SO OTHERS CAN JOIN! -+> PASS\n\r"
+	    "\r\nTeam number [ 1 ] [Raiders] CREATED!\n\r";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "2";
+
+	current.foreground = 6.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 6;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	pager_fixture_b05d(&pager, &current, entering,
+	    sizeof(entering) - 1U, &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, name_prompt,
+	    sizeof(name_prompt) - 1U, &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(name, sizeof(name) - 1U,
+	    name, sizeof(name) - 1U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, password_prompt,
+	    sizeof(password_prompt) - 1U, &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(password_echo,
+	    sizeof(password_echo) - 1U, password_echo,
+	    sizeof(password_echo) - 1U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	pager_fixture_b05d(&pager, &current, reminder,
+	    sizeof(reminder) - 1U, &capture);
+	current.foreground = 3.0f;
+	pager.foreground = 3;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	pager_fixture_b05d(&pager, &current, success,
+	    sizeof(success) - 1U, &capture);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(pager.line_count == 2.0f && current.foreground == 3.0f);
+}
+
+static void
+test_team_join_presentation(void)
+{
+	static const uint8_t list_row[] = " 1] Raiders";
+	static const uint8_t selection_prompt[] =
+	    "Which team do you wish to join (0=quit)? ";
+	static const uint8_t one[] = "1";
+	static const uint8_t team_row[] = "Team # 1: Raiders";
+	static const uint8_t password_prompt[] =
+	    "Please enter Password to Join Team? ";
+	static const uint8_t password[] = "pass";
+	static const uint8_t success[] =
+	    "Your Team info has been recorded!  Have fun!";
+	static const uint8_t expected[] =
+	    "\r\n 1] Raiders\n\r"
+	    "\r\nWhich team do you wish to join (0=quit)? 1\r\n"
+	    "Team # 1: Raiders\n\r"
+	    "Please enter Password to Join Team? pass\r\n"
+	    "\r\nYour Team info has been recorded!  Have fun!\n\r";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "3";
+
+	current.foreground = 6.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 6;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, list_row,
+	    sizeof(list_row) - 1U, &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, selection_prompt,
+	    sizeof(selection_prompt) - 1U, &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(one, sizeof(one) - 1U,
+	    one, sizeof(one) - 1U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, team_row,
+	    sizeof(team_row) - 1U, &capture);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, password_prompt,
+	    sizeof(password_prompt) - 1U, &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(password, sizeof(password) - 1U,
+	    password, sizeof(password) - 1U, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.foreground = 3.0f;
+	pager.foreground = 3;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	pager_fixture_b05d(&pager, &current, success,
+	    sizeof(success) - 1U, &capture);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(pager.line_count == 1.0f && current.foreground == 3.0f);
+}
+
+static void
+test_team_quit_presentation(void)
+{
+	static const uint8_t prompt[] =
+	    "Are you sure you wish to quit your team? [N] ";
+	static const uint8_t yes[] = "Y";
+	static const uint8_t success[] =
+	    "You have been removed from Team play";
+	static const uint8_t expected[] =
+	    "Are you sure you wish to quit your team? [N] Y\r\n"
+	    "\r\nYou have been removed from Team play\n\r";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "4";
+
+	current.foreground = 6.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 6;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_character(prompt, sizeof(prompt) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(yes, sizeof(yes) - 1U,
+	    yes, sizeof(yes) - 1U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, success,
+	    sizeof(success) - 1U, &capture);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(pager.line_count == 1.0f && current.foreground == 6.0f);
+}
+
+static void
+test_team_resource_presentation(void)
+{
+	static const uint8_t locating[] =
+	    "Locating Team Members, Planets & Defenses.";
+	static const uint8_t heading[] =
+	    "Name                                     Sector";
+	static const uint8_t rule[] =
+	    "====================                     ======";
+	static const uint8_t player_row[] =
+	    "Bob"
+	    "          " "          " "          " "        "
+	    " 5";
+	static const uint8_t defending[] = "Defending;";
+	static const uint8_t two[] = " 2";
+	static const uint8_t three[] = " 3";
+	static const uint8_t planets[] = "Planets;";
+	static const uint8_t none[] = "None Found";
+	static const uint8_t search_expected[] =
+	    "\r\nLocating Team Members, Planets & Defenses.\n\r"
+	    "\r\nName                                     Sector\n\r"
+	    "====================                     ======\n\r"
+	    "Bob"
+	    "          " "          " "          " "        "
+	    " 5\n\r"
+	    "Defending; 2 3\r\n"
+	    "Planets; 3\r\n";
+	static const uint8_t none_expected[] =
+	    "\r\nLocating Team Members, Planets & Defenses.\n\r"
+	    "None Found\n\r";
+	static const uint8_t carried[] = "You have 30 fighters.";
+	static const uint8_t deployed[] = "There are 10 fighters here.";
+	static const uint8_t prompt[] =
+	    "How many fighters do you wish to transfer? ";
+	static const uint8_t amount[] = "5";
+	static const uint8_t success[] = "Fighters transferred!";
+	static const uint8_t transfer_expected[] =
+	    "\r\nYou have 30 fighters.\n\r"
+	    "\r\nThere are 10 fighters here.\n\r"
+	    "How many fighters do you wish to transfer? 5\r\n"
+	    "\r\n\x1b[0;36;40;5;1mFighters transferred!\n\r";
+	static const uint8_t no_defense[] =
+	    "There IS no defense force here!";
+	static const uint8_t no_defense_expected[] =
+	    "\r\n\x1b[0;36;40;5;1m"
+	    "There IS no defense force here!\n\r";
+	struct yt_present_state current;
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "6";
+
+	current = state(true);
+	current.foreground = 6.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 6;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, locating,
+	    sizeof(locating) - 1U, &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, heading,
+	    sizeof(heading) - 1U, &capture);
+	pager_fixture_b05d(&pager, &current, rule, sizeof(rule) - 1U,
+	    &capture);
+	pager_fixture_b05d(&pager, &current, player_row,
+	    sizeof(player_row) - 1U, &capture);
+	CHECK(yt_present_character(defending, sizeof(defending) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_character(two, sizeof(two) - 1U, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_character(three, sizeof(three) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_character(planets, sizeof(planets) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_character(three, sizeof(three) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(search_expected) - 1U
+	    && memcmp(capture.remote, search_expected,
+	    sizeof(search_expected) - 1U) == 0);
+	CHECK(capture.remote_length == 219U && pager.line_count == 4.0f);
+
+	current = state(false);
+	current.foreground = 6.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 6;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, locating,
+	    sizeof(locating) - 1U, &capture);
+	pager_fixture_b05d(&pager, &current, none, sizeof(none) - 1U,
+	    &capture);
+	CHECK(capture.remote_length == sizeof(none_expected) - 1U
+	    && memcmp(capture.remote, none_expected,
+	    sizeof(none_expected) - 1U) == 0);
+	CHECK(capture.remote_length == 58U && pager.line_count == 2.0f);
+
+	current = state(true);
+	current.foreground = 6.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 6;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, carried,
+	    sizeof(carried) - 1U, &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, deployed,
+	    sizeof(deployed) - 1U, &capture);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(amount, sizeof(amount) - 1U,
+	    amount, sizeof(amount) - 1U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	pager_fixture_b05d(&pager, &current, success,
+	    sizeof(success) - 1U, &capture);
+	CHECK(capture.remote_length == sizeof(transfer_expected) - 1U
+	    && memcmp(capture.remote, transfer_expected,
+	    sizeof(transfer_expected) - 1U) == 0);
+	CHECK(capture.remote_length == 141U && pager.line_count == 1.0f);
+
+	current = state(true);
+	current.foreground = 6.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 6;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	pager_fixture_b05d(&pager, &current, no_defense,
+	    sizeof(no_defense) - 1U, &capture);
+	CHECK(capture.remote_length == sizeof(no_defense_expected) - 1U
+	    && memcmp(capture.remote, no_defense_expected,
+	    sizeof(no_defense_expected) - 1U) == 0);
+	CHECK(capture.remote_length == 49U && pager.line_count == 1.0f);
+}
+
+static void
+test_team_banish_presentation(void)
+{
+	static const uint8_t prompt[] = "Banish Morgan (Y/[N])? ";
+	static const uint8_t no[] = "N";
+	static const uint8_t yes[] = "Y";
+	static const uint8_t end[] = "End of List";
+	static const uint8_t success[] =
+	    "Done. Now change your Team Password!";
+	static const uint8_t reject_expected[] =
+	    "Banish Morgan (Y/[N])? N\r\nEnd of List\n\r";
+	static const uint8_t accept_expected[] =
+	    "Banish Morgan (Y/[N])? Y\r\n"
+	    "\r\n\x1b[0;36;40;5;1m"
+	    "Done. Now change your Team Password!\n\r";
+	struct yt_present_state current;
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "7";
+
+	current = state(false);
+	current.foreground = 6.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 6;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_character(prompt, sizeof(prompt) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(no, sizeof(no) - 1U, no,
+	    sizeof(no) - 1U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, end, sizeof(end) - 1U,
+	    &capture);
+	CHECK(capture.remote_length == sizeof(reject_expected) - 1U
+	    && memcmp(capture.remote, reject_expected,
+	    sizeof(reject_expected) - 1U) == 0);
+	CHECK(capture.remote_length == 39U && pager.line_count == 1.0f);
+
+	current = state(true);
+	current.foreground = 6.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 6;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_character(prompt, sizeof(prompt) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(yes, sizeof(yes) - 1U, yes,
+	    sizeof(yes) - 1U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	pager_fixture_b05d(&pager, &current, success,
+	    sizeof(success) - 1U, &capture);
+	CHECK(capture.remote_length == sizeof(accept_expected) - 1U
+	    && memcmp(capture.remote, accept_expected,
+	    sizeof(accept_expected) - 1U) == 0);
+	CHECK(capture.remote_length == 80U && pager.line_count == 1.0f);
+}
+
+static void
+test_port_docking_controller_presentation(void)
+{
+	static const uint8_t heading[] = "<Port>";
+	static const uint8_t no_port[] = "No port here!";
+	static const uint8_t docking[] = "Docking, ";
+	static const uint8_t turn[] = "One Turn Deducted, 59 left.";
+	static const uint8_t plain_no_port[] =
+	    "<Port>\n\r\r\nNo port here!\n\r";
+	static const uint8_t ansi_no_port[] =
+	    "\x1b[0;36;40m<Port>\n\r"
+	    "\x1b[0;33;40m\r\n"
+	    "\x1b[0;33;40;5;1mNo port here!\n\r";
+	static const uint8_t ordinary_prelude[] =
+	    "<Port>\n\r\r\nDocking, One Turn Deducted, 59 left.\n\r";
+	static const uint8_t refusal[] =
+	    "We don't want your goods and you can't buy ours Pat!";
+	static const uint8_t status[] =
+	    "You have 777 credits and 15 empty cargo holds.";
+	static const uint8_t refusal_status[] =
+	    "\r\nWe don't want your goods and you can't buy ours Pat!\n\r"
+	    "\r\nYou have 777 credits and 15 empty cargo holds.\n\r";
+	struct yt_present_state current;
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	int ansi;
+
+	for (ansi = 0; ansi < 2; ++ansi) {
+		current = state(ansi != 0);
+		current.foreground = 6.0f;
+		memset(&pager, 0, sizeof(pager));
+		pager.foreground = 6;
+		memset(&capture, 0, sizeof(capture));
+		pager_fixture_b05d(&pager, &current, heading,
+		    sizeof(heading) - 1U, &capture);
+		current.foreground = 3.0f;
+		pager.foreground = 3;
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		current.bold = 1.0f;
+		current.blink = 1.0f;
+		pager_fixture_b05d(&pager, &current, no_port,
+		    sizeof(no_port) - 1U, &capture);
+		if (ansi == 0)
+			CHECK(capture.remote_length == sizeof(plain_no_port) - 1U
+			    && memcmp(capture.remote, plain_no_port,
+			    sizeof(plain_no_port) - 1U) == 0);
+		else
+			CHECK(capture.remote_length == sizeof(ansi_no_port) - 1U
+			    && memcmp(capture.remote, ansi_no_port,
+			    sizeof(ansi_no_port) - 1U) == 0);
+	}
+
+	current = state(false);
+	current.foreground = 6.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 6;
+	memset(&capture, 0, sizeof(capture));
+	pager_fixture_b05d(&pager, &current, heading,
+	    sizeof(heading) - 1U, &capture);
+	current.foreground = 3.0f;
+	pager.foreground = 3;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, docking,
+	    sizeof(docking) - 1U, &capture);
+	pager_fixture_b05d(&pager, &current, turn, sizeof(turn) - 1U,
+	    &capture);
+	CHECK(capture.remote_length == sizeof(ordinary_prelude) - 1U
+	    && memcmp(capture.remote, ordinary_prelude,
+	    sizeof(ordinary_prelude) - 1U) == 0);
+
+	current = state(false);
+	current.foreground = 6.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 6;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	pager_fixture_b05d(&pager, &current, refusal,
+	    sizeof(refusal) - 1U, &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, status, sizeof(status) - 1U,
+	    &capture);
+	CHECK(capture.remote_length == sizeof(refusal_status) - 1U
+	    && memcmp(capture.remote, refusal_status,
+	    sizeof(refusal_status) - 1U) == 0);
+}
+
+static void
+test_action_finalizer_presentation(void)
+{
+	static const uint8_t cloak[] = "Cloak at 24%";
+	static const uint8_t turn[] = "One Turn Deducted, 50 left.";
+	static const uint8_t expected[] =
+	    "Cloak at 24%\r\n\r\nOne Turn Deducted, 50 left.\n\r";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+
+	current.foreground = 3.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 3;
+	memset(&capture, 0, sizeof(capture));
+	current.foreground = 7.0f;
+	pager.foreground = 7;
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, cloak, sizeof(cloak) - 1U,
+	    &capture);
+	current.foreground = 3.0f;
+	pager.foreground = 3;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	pager_fixture_b05d(&pager, &current, turn, sizeof(turn) - 1U,
+	    &capture);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(pager.line_count == 2.0f && current.foreground == 3.0f);
+}
+
+static void
+test_commodity_trade_presentation(void)
+{
+	static const uint8_t player_status[] =
+	    "You have 12345 credits and 65 empty cargo holds.";
+	static const uint8_t market_status[] =
+	    "We are selling up to 100.  You have 10 in your holds.";
+	static const uint8_t prompt[] =
+	    "How many holds of Ore do you want to buy [ 65 ]? ";
+	static const uint8_t three[] = "3";
+	static const uint8_t agreed[] = "Agreed, 3 units.";
+	static const uint8_t offer[] = "We'll sell them for 60 credits.";
+	static const uint8_t confirmation[] = "Do you agree? [Y/n] ";
+	static const uint8_t success[] = "It's Yours!";
+	static const uint8_t expected[] =
+	    "\r\nYou have 12345 credits and 65 empty cargo holds.\n\r"
+	    "\r\nWe are selling up to 100.  You have 10 in your holds.\n\r"
+	    "How many holds of Ore do you want to buy [ 65 ]? 3\r\n"
+	    "Agreed, 3 units.\n\r"
+	    "\r\nWe'll sell them for 60 credits.\n\r"
+	    "Do you agree? [Y/n] \r\n"
+	    "It's Yours!\n\r";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "";
+
+	current.foreground = 6.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 6;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, player_status,
+	    sizeof(player_status) - 1U, &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, market_status,
+	    sizeof(market_status) - 1U, &capture);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(three, sizeof(three) - 1U, three,
+	    sizeof(three) - 1U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, agreed, sizeof(agreed) - 1U,
+	    &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, offer, sizeof(offer) - 1U,
+	    &capture);
+	CHECK(yt_present_character(confirmation, sizeof(confirmation) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, success,
+	    sizeof(success) - 1U, &capture);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(capture.remote_length == 249U && pager.line_count == 1.0f);
+}
+
+static void
+computer_return_prompt_fixture(bool ansi, float mode,
+    struct pager_capture *capture, struct yt_present_state *current,
+    struct yt_pager_state *pager)
+{
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Computer command (?=help)? ";
+	struct yt_present_result result;
+
+	*current = state(ansi);
+	current->sound.mode = mode;
+	current->foreground = 6.0f;
+	if (ansi)
+		CHECK(yt_present_color(current, &result) == YT_PRESENT_OK);
+	memset(pager, 0, sizeof(*pager));
+	pager->foreground = 6;
+	memset(capture, 0, sizeof(*capture));
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current->foreground = 1.0f;
+	pager->foreground = 1;
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, prompt, sizeof(prompt) - 1U,
+	    capture);
+}
+
+static void
+test_computer_return_prompt_presentation(void)
+{
+	static const uint8_t ansi[] =
+	    "\r\n\x1b[0;31;40mTime: 14:59  Computer command (?=help)? ";
+	static const uint8_t plain[] =
+	    "\r\nTime: 14:59  Computer command (?=help)? ";
+	struct yt_present_state current;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+
+	computer_return_prompt_fixture(true, 0.0f, &capture, &current,
+	    &pager);
+	CHECK(sizeof(ansi) - 1U == 52U);
+	CHECK(capture.remote_length == sizeof(ansi) - 1U
+	    && memcmp(capture.remote, ansi, sizeof(ansi) - 1U) == 0);
+	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f);
+
+	computer_return_prompt_fixture(false, 0.0f, &capture, &current,
+	    &pager);
+	CHECK(sizeof(plain) - 1U == 42U);
+	CHECK(capture.remote_length == sizeof(plain) - 1U
+	    && memcmp(capture.remote, plain, sizeof(plain) - 1U) == 0);
+
+	computer_return_prompt_fixture(true, 1.0f, &capture, &current,
+	    &pager);
+	CHECK(capture.remote_length == 0U && pager.line_count == 1.0f);
+
+	computer_return_prompt_fixture(true, 2.0f, &capture, &current,
+	    &pager);
+	CHECK(capture.remote_length == 2U
+	    && memcmp(capture.remote, "\r\n", 2U) == 0
+	    && pager.line_count == 1.0f);
+}
+
+static void
+computer_quit_cancel_cycle_fixture(bool ansi,
+    struct pager_capture *capture, struct yt_present_state *current,
+    struct yt_pager_state *pager)
+{
+	static const uint8_t heading[] = "<Quit>";
+	static const uint8_t confirmation[] = "Are you sure (Y/N)? ";
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Computer command (?=help)? ";
+	static const uint8_t q[] = "Q";
+	static const uint8_t n[] = "N";
+	struct yt_present_result result;
+	char accumulator[80] = "";
+
+	computer_return_prompt_fixture(ansi, 0.0f, capture, current, pager);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(q, sizeof(q) - 1U, q,
+	    sizeof(q) - 1U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+
+	current->foreground = 7.0f;
+	pager->foreground = 7;
+	pager_fixture_b05d(pager, current, heading, sizeof(heading) - 1U,
+	    capture);
+	CHECK(yt_present_character(confirmation, sizeof(confirmation) - 1U,
+	    current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(n, sizeof(n) - 1U, n,
+	    sizeof(n) - 1U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current->foreground = 1.0f;
+	pager->foreground = 1;
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, prompt, sizeof(prompt) - 1U,
+	    capture);
+}
+
+static void
+test_computer_quit_cancel_presentation(void)
+{
+	static const uint8_t ansi[] =
+	    "\r\n\x1b[0;31;40m"
+	    "Time: 14:59  Computer command (?=help)? Q\r\n"
+	    "\x1b[0;37;40m<Quit>\n\r"
+	    "Are you sure (Y/N)? N\r\n"
+	    "\r\n\x1b[0;31;40m"
+	    "Time: 14:59  Computer command (?=help)? ";
+	static const uint8_t plain[] =
+	    "\r\nTime: 14:59  Computer command (?=help)? Q\r\n"
+	    "<Quit>\n\rAre you sure (Y/N)? N\r\n"
+	    "\r\nTime: 14:59  Computer command (?=help)? ";
+	struct yt_present_state current;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+
+	computer_quit_cancel_cycle_fixture(true, &capture, &current, &pager);
+	CHECK(sizeof(ansi) - 1U == 148U);
+	CHECK(capture.remote_length == sizeof(ansi) - 1U
+	    && memcmp(capture.remote, ansi, sizeof(ansi) - 1U) == 0);
+	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f
+	    && current.foreground == 1.0f);
+
+	computer_quit_cancel_cycle_fixture(false, &capture, &current, &pager);
+	CHECK(sizeof(plain) - 1U == 118U);
+	CHECK(capture.remote_length == sizeof(plain) - 1U
+	    && memcmp(capture.remote, plain, sizeof(plain) - 1U) == 0);
+	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f);
+}
+
+static void
+test_main_quit_cancel_presentation(void)
+{
+	static const uint8_t heading[] = "<Quit>";
+	static const uint8_t confirmation[] = "Are you sure (Y/N)? ";
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Main Command (?=Help)? ";
+	static const uint8_t command[] = "Qjunk";
+	static const uint8_t answer[] = "N";
+	static const uint8_t ansi[] =
+	    "Qjunk\r\n\x1b[0;37;40m<Quit>\n\r"
+	    "Are you sure (Y/N)? N\r\n"
+	    "\x1b[0;32;40m\r\nTime: 14:59  Main Command (?=Help)? ";
+	static const uint8_t plain[] =
+	    "Qjunk\r\n<Quit>\n\rAre you sure (Y/N)? N\r\n"
+	    "\r\nTime: 14:59  Main Command (?=Help)? ";
+	struct yt_present_state current;
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "";
+	int ansi_enabled;
+
+	for (ansi_enabled = 0; ansi_enabled <= 1; ++ansi_enabled) {
+		const uint8_t *expected = ansi_enabled ? ansi : plain;
+		size_t expected_length = ansi_enabled
+		    ? sizeof(ansi) - 1U : sizeof(plain) - 1U;
+
+		current = state(ansi_enabled != 0);
+		if (ansi_enabled != 0)
+			CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+		memset(&pager, 0, sizeof(pager));
+		pager.foreground = 2;
+		memset(&capture, 0, sizeof(capture));
+		yt_pager_editor_enter(&pager, accumulator,
+		    sizeof(accumulator));
+		CHECK(yt_present_editor_echo(command, sizeof(command) - 1U,
+		    command, sizeof(command) - 1U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		current.foreground = 7.0f;
+		pager.foreground = 7;
+		pager_fixture_b05d(&pager, &current, heading,
+		    sizeof(heading) - 1U, &capture);
+		CHECK(yt_present_character(confirmation,
+		    sizeof(confirmation) - 1U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		yt_pager_editor_enter(&pager, accumulator,
+		    sizeof(accumulator));
+		CHECK(yt_present_editor_echo(answer, sizeof(answer) - 1U,
+		    answer, sizeof(answer) - 1U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		current.foreground = 2.0f;
+		pager.foreground = 2;
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager.newline_flag = 1.0f;
+		pager_fixture_b05d(&pager, &current, prompt,
+		    sizeof(prompt) - 1U, &capture);
+		CHECK(capture.remote_length == expected_length);
+		CHECK(capture.remote_length != expected_length
+		    || memcmp(capture.remote, expected, expected_length) == 0);
+	}
+}
+
+static void
+main_shell_help_cycle_fixture(bool ansi, struct pager_capture *capture,
+    struct yt_present_state *current, struct yt_pager_state *pager)
+{
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Main Command (?=Help)? ";
+	static const uint8_t question[] = "?";
+	static const uint8_t heading[] = "<Help>";
+	static const char *const pairs[][2] = {
+		{"[ENTER] - Re-display sector",
+		    "$ - Take Credits from your ports"},
+		{"! - Launch a Cruise Missile",
+		    "A - <A>ttack a player's ship"},
+		{"B - <B>uy a Port", "C - Ship's <C>omputer"},
+		{"D - <D>rop a Sector mine",
+		    "F - Take or leave <F>ighters"},
+		{"G - Initiate <G>enesis", "I - <I>nfo on your ship"},
+		{"L - <L>and on or create a planet",
+		    "M - <M>ove to another sector"},
+		{"N - Re<N>ame Port",
+		    "P - Dock at a <P>ort (and trade)"},
+		{"Q - <Q>uit game", "S - <S>ensors"},
+		{"T - <T>eam menu", "V - <V>ersion Info"},
+		{"W - Emergency <W>arp", "X - Sound Effects On/Off"},
+		{"Z - Instructions", "+ - Fire Plasma Bolt"},
+	};
+	static const char *const narrative[] = {
+		"String commands by seperating them with a semicolons (;).",
+		"To place an EXTRA 'hit enter' in a string, use an extra ';'.",
+		"Save a command string by placing a '/' at the end.",
+		"Then hit Control-R to [R]eplay the saved command.",
+		"You may repeat any command up to 20 times by putting",
+		"a /R# at the end of your command. Replace the '#' with",
+		"any number between 2 and 20. Example: your command/R20",
+	};
+	struct yt_present_result result;
+	char accumulator[80] = "inherited";
+	char row[128];
+	size_t index;
+
+	*current = state(ansi);
+	memset(pager, 0, sizeof(*pager));
+	pager->foreground = 2;
+	memset(capture, 0, sizeof(*capture));
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, prompt, sizeof(prompt) - 1U,
+	    capture);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(question, sizeof(question) - 1U,
+	    question, sizeof(question) - 1U, current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+
+	current->foreground = 6.0f;
+	pager->foreground = 6;
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager_fixture_b05d(pager, current, heading, sizeof(heading) - 1U,
+	    capture);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	for (index = 0; index < YT_ARRAY_LEN(pairs); ++index) {
+		int length = snprintf(row, sizeof(row), "%-40s%s",
+		    pairs[index][0], pairs[index][1]);
+
+		CHECK(length > 0 && (size_t)length < sizeof(row));
+		if (length > 0 && (size_t)length < sizeof(row))
+			pager_capture_line(capture, current,
+			    (const uint8_t *)row, (size_t)length);
+	}
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager_fixture_b05d(pager, current,
+	    (const uint8_t *)narrative[0], strlen(narrative[0]), capture);
+	for (index = 1; index < YT_ARRAY_LEN(narrative); ++index)
+		pager_fixture_b05d(pager, current,
+		    (const uint8_t *)narrative[index], strlen(narrative[index]),
+		    capture);
+
+	pager->line_count = 0.0f;
+	current->foreground = 2.0f;
+	pager->foreground = 2;
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, prompt, sizeof(prompt) - 1U,
+	    capture);
+}
+
+static void
+test_main_shell_front_presentation(void)
+{
+	static const uint8_t plain[] =
+	    "\r\nTime: 14:59  Main Command (?=Help)? ?\r\n"
+	    "\r\n<Help>\n\r\r\n"
+	    "[ENTER] - Re-display sector             $ - Take Credits from your ports\r\n"
+	    "! - Launch a Cruise Missile             A - <A>ttack a player's ship\r\n"
+	    "B - <B>uy a Port                        C - Ship's <C>omputer\r\n"
+	    "D - <D>rop a Sector mine                F - Take or leave <F>ighters\r\n"
+	    "G - Initiate <G>enesis                  I - <I>nfo on your ship\r\n"
+	    "L - <L>and on or create a planet        M - <M>ove to another sector\r\n"
+	    "N - Re<N>ame Port                       P - Dock at a <P>ort (and trade)\r\n"
+	    "Q - <Q>uit game                         S - <S>ensors\r\n"
+	    "T - <T>eam menu                         V - <V>ersion Info\r\n"
+	    "W - Emergency <W>arp                    X - Sound Effects On/Off\r\n"
+	    "Z - Instructions                        + - Fire Plasma Bolt\r\n"
+	    "\r\nString commands by seperating them with a semicolons (;).\n\r"
+	    "To place an EXTRA 'hit enter' in a string, use an extra ';'.\n\r"
+	    "Save a command string by placing a '/' at the end.\n\r"
+	    "Then hit Control-R to [R]eplay the saved command.\n\r"
+	    "You may repeat any command up to 20 times by putting\n\r"
+	    "a /R# at the end of your command. Replace the '#' with\n\r"
+	    "any number between 2 and 20. Example: your command/R20\n\r"
+	    "\r\nTime: 14:59  Main Command (?=Help)? ";
+	static const uint8_t ansi[] =
+	    "\x1b[0;32;40m\r\nTime: 14:59  Main Command (?=Help)? ?\r\n"
+	    "\x1b[0;36;40m\r\n<Help>\n\r\r\n"
+	    "[ENTER] - Re-display sector             $ - Take Credits from your ports\r\n"
+	    "! - Launch a Cruise Missile             A - <A>ttack a player's ship\r\n"
+	    "B - <B>uy a Port                        C - Ship's <C>omputer\r\n"
+	    "D - <D>rop a Sector mine                F - Take or leave <F>ighters\r\n"
+	    "G - Initiate <G>enesis                  I - <I>nfo on your ship\r\n"
+	    "L - <L>and on or create a planet        M - <M>ove to another sector\r\n"
+	    "N - Re<N>ame Port                       P - Dock at a <P>ort (and trade)\r\n"
+	    "Q - <Q>uit game                         S - <S>ensors\r\n"
+	    "T - <T>eam menu                         V - <V>ersion Info\r\n"
+	    "W - Emergency <W>arp                    X - Sound Effects On/Off\r\n"
+	    "Z - Instructions                        + - Fire Plasma Bolt\r\n"
+	    "\r\nString commands by seperating them with a semicolons (;).\n\r"
+	    "To place an EXTRA 'hit enter' in a string, use an extra ';'.\n\r"
+	    "Save a command string by placing a '/' at the end.\n\r"
+	    "Then hit Control-R to [R]eplay the saved command.\n\r"
+	    "You may repeat any command up to 20 times by putting\n\r"
+	    "a /R# at the end of your command. Replace the '#' with\n\r"
+	    "any number between 2 and 20. Example: your command/R20\n\r"
+	    "\x1b[0;32;40m\r\nTime: 14:59  Main Command (?=Help)? ";
+	struct yt_present_state current;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+
+	main_shell_help_cycle_fixture(false, &capture, &current, &pager);
+	CHECK(sizeof(plain) - 1U == 1212U);
+	CHECK(capture.remote_length == sizeof(plain) - 1U
+	    && memcmp(capture.remote, plain, sizeof(plain) - 1U) == 0);
+	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f
+	    && current.foreground == 2.0f);
+
+	main_shell_help_cycle_fixture(true, &capture, &current, &pager);
+	CHECK(sizeof(ansi) - 1U == 1242U);
+	CHECK(capture.remote_length == sizeof(ansi) - 1U
+	    && memcmp(capture.remote, ansi, sizeof(ansi) - 1U) == 0);
+	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f
+	    && current.foreground == 2.0f);
+}
+
+static void
+test_main_shell_branch_presentation(void)
+{
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Main Command (?=Help)? ";
+	static const uint8_t invalid[] = "Invalid command.";
+	static const uint8_t plain_invalid[] =
+	    "@\r\n\r\nInvalid command.\n\r"
+	    "\r\nTime: 14:59  Main Command (?=Help)? ";
+	static const uint8_t ansi_invalid[] =
+	    "@\r\n\r\n\x1b[0;32;40;5;1mInvalid command.\n\r"
+	    "\x1b[0;32;40m\r\nTime: 14:59  Main Command (?=Help)? ";
+	static const uint8_t empty_display[] = "\r\n\r\n<Display>\n\r";
+	static const uint8_t instruction_default[] =
+	    "Zjunk\r\n<Instructions>\n\r"
+	    "Do you want instructions (Y/N) [N]? \r\n";
+	struct yt_present_state current;
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "inherited";
+	int ansi_enabled;
+
+	for (ansi_enabled = 0; ansi_enabled <= 1; ++ansi_enabled) {
+		const uint8_t command = '@';
+		const uint8_t *expected = ansi_enabled
+		    ? ansi_invalid : plain_invalid;
+		size_t expected_length = ansi_enabled
+		    ? sizeof(ansi_invalid) - 1U : sizeof(plain_invalid) - 1U;
+
+		current = state(ansi_enabled != 0);
+		if (ansi_enabled != 0)
+			CHECK(yt_present_color(&current, &result)
+			    == YT_PRESENT_OK);
+		memset(&pager, 0, sizeof(pager));
+		pager.foreground = 2;
+		memset(&capture, 0, sizeof(capture));
+		yt_pager_editor_enter(&pager, accumulator,
+		    sizeof(accumulator));
+		CHECK(yt_present_editor_echo(&command, 1U, &command, 1U,
+		    &current, &result) == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		current.bold = 1.0f;
+		current.blink = 1.0f;
+		pager_fixture_b05d(&pager, &current, invalid,
+		    sizeof(invalid) - 1U, &capture);
+		pager.line_count = 0.0f;
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager.newline_flag = 1.0f;
+		pager_fixture_b05d(&pager, &current, prompt,
+		    sizeof(prompt) - 1U, &capture);
+		CHECK(capture.remote_length == expected_length
+		    && memcmp(capture.remote, expected, expected_length) == 0);
+	}
+
+	current = state(false);
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 2;
+	memset(&capture, 0, sizeof(capture));
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, (const uint8_t *)"<Display>",
+	    strlen("<Display>"), &capture);
+	CHECK(capture.remote_length == sizeof(empty_display) - 1U
+	    && memcmp(capture.remote, empty_display,
+	    sizeof(empty_display) - 1U) == 0);
+
+	current = state(false);
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 2;
+	memset(&capture, 0, sizeof(capture));
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"Zjunk", 5U,
+	    (const uint8_t *)"Zjunk", 5U, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current,
+	    (const uint8_t *)"<Instructions>", strlen("<Instructions>"),
+	    &capture);
+	CHECK(yt_present_character(
+	    (const uint8_t *)"Do you want instructions (Y/N) [N]? ",
+	    strlen("Do you want instructions (Y/N) [N]? "), &current,
+	    &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(instruction_default) - 1U
+	    && memcmp(capture.remote, instruction_default,
+	    sizeof(instruction_default) - 1U) == 0);
+}
+
+static void
+planet_quit_cancel_cycle_fixture(bool ansi,
+    struct pager_capture *capture, struct yt_present_state *current,
+    struct yt_pager_state *pager)
+{
+	static const uint8_t free_holds[] =
+	    "You have 5 free cargo holds.";
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Planet command (?=help) [A]? ";
+	static const uint8_t heading[] = "<Quit>";
+	static const uint8_t confirmation[] = "Are you sure (Y/N)? ";
+	static const uint8_t command[] = "Q";
+	static const uint8_t answer[] = "N";
+	struct yt_present_result result;
+	char accumulator[80] = "";
+
+	*current = state(ansi);
+	current->foreground = 6.0f;
+	if (ansi)
+		CHECK(yt_present_color(current, &result) == YT_PRESENT_OK);
+	memset(pager, 0, sizeof(*pager));
+	pager->foreground = 6;
+	memset(capture, 0, sizeof(*capture));
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager_fixture_b05d(pager, current, free_holds,
+	    sizeof(free_holds) - 1U, capture);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, prompt, sizeof(prompt) - 1U,
+	    capture);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(command, sizeof(command) - 1U,
+	    command, sizeof(command) - 1U, current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+
+	current->foreground = 7.0f;
+	pager->foreground = 7;
+	pager_fixture_b05d(pager, current, heading, sizeof(heading) - 1U,
+	    capture);
+	CHECK(yt_present_character(confirmation, sizeof(confirmation) - 1U,
+	    current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(answer, sizeof(answer) - 1U,
+	    answer, sizeof(answer) - 1U, current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager_fixture_b05d(pager, current, free_holds,
+	    sizeof(free_holds) - 1U, capture);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current->foreground = 6.0f;
+	pager->foreground = 6;
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, prompt, sizeof(prompt) - 1U,
+	    capture);
+}
+
+static void
+test_planet_quit_cancel_presentation(void)
+{
+	static const uint8_t ansi[] =
+	    "\r\nYou have 5 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? Q\r\n"
+	    "\x1b[0;37;40m<Quit>\n\r"
+	    "Are you sure (Y/N)? N\r\n"
+	    "\r\nYou have 5 free cargo holds.\n\r"
+	    "\r\n\x1b[0;36;40m"
+	    "Time: 14:59  Planet command (?=help) [A]? ";
+	static const uint8_t plain[] =
+	    "\r\nYou have 5 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? Q\r\n"
+	    "<Quit>\n\rAre you sure (Y/N)? N\r\n"
+	    "\r\nYou have 5 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? ";
+	struct yt_present_state current;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+
+	planet_quit_cancel_cycle_fixture(true, &capture, &current, &pager);
+	CHECK(sizeof(ansi) - 1U == 206U);
+	CHECK(capture.remote_length == sizeof(ansi) - 1U
+	    && memcmp(capture.remote, ansi, sizeof(ansi) - 1U) == 0);
+	CHECK(pager.line_count == 2.0f && pager.newline_flag == 0.0f);
+	planet_quit_cancel_cycle_fixture(false, &capture, &current, &pager);
+	CHECK(sizeof(plain) - 1U == 186U);
+	CHECK(capture.remote_length == sizeof(plain) - 1U
+	    && memcmp(capture.remote, plain, sizeof(plain) - 1U) == 0);
+	CHECK(pager.line_count == 2.0f && pager.newline_flag == 0.0f);
+}
+
+static void
+planet_menu_front_cycle_fixture(bool help,
+    struct pager_capture *capture, struct yt_present_state *current,
+    struct yt_pager_state *pager)
+{
+	static const uint8_t free_holds[] =
+	    "You have 65 free cargo holds.";
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Planet command (?=help) [A]? ";
+	static const uint8_t heading[] = "<Help>";
+	static const uint8_t invalid[] = "Invalid command.";
+	static const char *const rows[] = {
+		"1 - Take Ore", "2 - Take Organics", "3 - Take Equipment",
+		"4 - Take Fighters", "5 - Take Missiles", "6 - Take Mines",
+		"9 - Take Plasma Bolts", "A - Take <A>ll (Default)",
+		"B - Planet's <B>ank", "D - <D>isplay Planet",
+		"F - Take/Leave Ground <F>orces", "L - <L>eave Planet",
+		"N - Re-<N>ame Planet", "T - <T>ransfer Cargo to Planet",
+		"! - Use Planet Thrusters", "$ - Raise Productivity"
+	};
+	const uint8_t response = help ? '?' : 'X';
+	struct yt_present_result result;
+	char accumulator[80] = "";
+	size_t row;
+
+	*current = state(true);
+	current->foreground = 6.0f;
+	CHECK(yt_present_color(current, &result) == YT_PRESENT_OK);
+	memset(pager, 0, sizeof(*pager));
+	pager->foreground = 6;
+	memset(capture, 0, sizeof(*capture));
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager_fixture_b05d(pager, current, free_holds,
+	    sizeof(free_holds) - 1U, capture);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, prompt, sizeof(prompt) - 1U,
+	    capture);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(&response, 1, &response, 1,
+	    current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+
+	if (help) {
+		CHECK(yt_present_line(NULL, 0, current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+		pager_fixture_b05d(pager, current, heading,
+		    sizeof(heading) - 1U, capture);
+		CHECK(yt_present_line(NULL, 0, current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+		pager_fixture_b05d(pager, current,
+		    (const uint8_t *)rows[0], strlen(rows[0]), capture);
+		for (row = 1; row < YT_ARRAY_LEN(rows); ++row)
+			pager_fixture_b05d(pager, current,
+			    (const uint8_t *)rows[row], strlen(rows[row]), capture);
+	}
+	else {
+		CHECK(yt_present_line(NULL, 0, current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+		current->bold = 1.0f;
+		current->blink = 1.0f;
+		pager_fixture_b05d(pager, current, invalid,
+		    sizeof(invalid) - 1U, capture);
+	}
+
+	pager->line_count = 0.0f;
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager_fixture_b05d(pager, current, free_holds,
+	    sizeof(free_holds) - 1U, capture);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current->foreground = 6.0f;
+	pager->foreground = 6;
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, prompt, sizeof(prompt) - 1U,
+	    capture);
+}
+
+static void
+test_planet_menu_front_presentation(void)
+{
+	static const uint8_t help[] =
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? ?\r\n"
+	    "\r\n<Help>\n\r\r\n1 - Take Ore\n\r"
+	    "2 - Take Organics\n\r3 - Take Equipment\n\r"
+	    "4 - Take Fighters\n\r5 - Take Missiles\n\r6 - Take Mines\n\r"
+	    "9 - Take Plasma Bolts\n\rA - Take <A>ll (Default)\n\r"
+	    "B - Planet's <B>ank\n\rD - <D>isplay Planet\n\r"
+	    "F - Take/Leave Ground <F>orces\n\rL - <L>eave Planet\n\r"
+	    "N - Re-<N>ame Planet\n\rT - <T>ransfer Cargo to Planet\n\r"
+	    "! - Use Planet Thrusters\n\r$ - Raise Productivity\n\r"
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? ";
+	static const uint8_t invalid[] =
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? X\r\n"
+	    "\r\n\x1b[0;36;40;5;1mInvalid command.\n\r"
+	    "\x1b[0;36;40m\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? ";
+	struct yt_present_state current;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+
+	planet_menu_front_cycle_fixture(true, &capture, &current, &pager);
+	CHECK(sizeof(help) - 1U == 524U);
+	CHECK(capture.remote_length == sizeof(help) - 1U
+	    && memcmp(capture.remote, help, sizeof(help) - 1U) == 0);
+	CHECK(pager.line_count == 2.0f);
+	planet_menu_front_cycle_fixture(false, &capture, &current, &pager);
+	CHECK(sizeof(invalid) - 1U == 201U);
+	CHECK(capture.remote_length == sizeof(invalid) - 1U
+	    && memcmp(capture.remote, invalid, sizeof(invalid) - 1U) == 0);
+	CHECK(pager.line_count == 2.0f);
+}
+
+static void
+test_planet_take_all_default_cycle_presentation(void)
+{
+	static const uint8_t free_holds[] =
+	    "You have 65 free cargo holds.";
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Planet command (?=help) [A]? ";
+	static const uint8_t title[] = "<Take all>";
+	static const uint8_t taking[] = "Taking:";
+	static const char *const rows[] = {
+		"Fighters..... 404", "Missiles..... 5", "Mines........ 6",
+		"Plasma bolts. 9", "Equipment.... 65", "Organics..... 0",
+		"Ore.......... 0"
+	};
+	static const uint8_t expected[] =
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? \r\n"
+	    "\r\n<Take all>\n\r\r\nTaking:\n\r"
+	    "\r\nFighters..... 404\n\r"
+	    "Missiles..... 5\n\rMines........ 6\n\r"
+	    "Plasma bolts. 9\n\rEquipment.... 65\n\r"
+	    "Organics..... 0\n\rOre.......... 0\n\r"
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? ";
+	struct yt_present_state current = state(true);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "";
+	size_t row;
+
+	current.foreground = 6.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 6;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, free_holds,
+	    sizeof(free_holds) - 1U, &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(NULL, 0, NULL, 0, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, title, sizeof(title) - 1U,
+	    &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, taking, sizeof(taking) - 1U,
+	    &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, (const uint8_t *)rows[0],
+	    strlen(rows[0]), &capture);
+	for (row = 1; row < YT_ARRAY_LEN(rows); ++row)
+		pager_fixture_b05d(&pager, &current,
+		    (const uint8_t *)rows[row], strlen(rows[row]), &capture);
+
+	pager.line_count = 0.0f;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, free_holds,
+	    sizeof(free_holds) - 1U, &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	CHECK(sizeof(expected) - 1U == 305U);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(pager.line_count == 2.0f && pager.newline_flag == 0.0f);
+}
+
+static void
+test_planet_take_one_presentation(void)
+{
+	static const uint8_t title[] = "<Take Ore>";
+	static const uint8_t prompt[] = "How much [ 65 ]? ";
+	static const uint8_t amount[] = "3";
+	static const uint8_t stock_amount[] = "102";
+	static const uint8_t stock[] = "They don't have that many.";
+	static const uint8_t accepted[] =
+	    "\r\n<Take Ore>\n\r\r\nHow much [ 65 ]? 3\r\n";
+	static const uint8_t rejected[] =
+	    "\r\n<Take Ore>\n\r\r\nHow much [ 65 ]? 102\r\n"
+	    "\r\n\x1b[0;36;40;5;1mThey don't have that many.\n\r";
+	struct yt_present_state current;
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "1";
+
+	current = state(true);
+	current.foreground = 6.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 6;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, title, sizeof(title) - 1U,
+	    &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(amount, sizeof(amount) - 1U, amount,
+	    sizeof(amount) - 1U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(sizeof(accepted) - 1U == 36U);
+	CHECK(capture.remote_length == sizeof(accepted) - 1U
+	    && memcmp(capture.remote, accepted, sizeof(accepted) - 1U) == 0);
+	CHECK(pager.line_count == 0.0f);
+
+	current = state(true);
+	current.foreground = 6.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 6;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, title, sizeof(title) - 1U,
+	    &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(stock_amount,
+	    sizeof(stock_amount) - 1U, stock_amount,
+	    sizeof(stock_amount) - 1U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	pager_fixture_b05d(&pager, &current, stock, sizeof(stock) - 1U,
+	    &capture);
+	CHECK(sizeof(rejected) - 1U == 82U);
+	CHECK(capture.remote_length == sizeof(rejected) - 1U
+	    && memcmp(capture.remote, rejected, sizeof(rejected) - 1U) == 0);
+	CHECK(pager.line_count == 1.0f);
+}
+
+enum planet_transfer_fixture_outcome {
+	PLANET_TRANSFER_SELECTOR_ONLY,
+	PLANET_TRANSFER_NO_CARGO,
+	PLANET_TRANSFER_CARGO,
+	PLANET_TRANSFER_PLASMA,
+	PLANET_TRANSFER_MISSILES,
+	PLANET_TRANSFER_MINES,
+	PLANET_TRANSFER_FIGHTER_CANCEL,
+	PLANET_TRANSFER_FIGHTER_SUCCESS
+};
+
+static void
+planet_transfer_0317(struct yt_pager_state *pager,
+    struct yt_present_state *current, const uint8_t *text, size_t length,
+    struct pager_capture *capture)
+{
+	struct yt_present_result result;
+
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager_fixture_b05d(pager, current, text, length, capture);
+}
+
+static struct pager_capture
+planet_transfer_fixture(const uint8_t *selector, size_t selector_length,
+    const uint8_t *fighter, size_t fighter_length,
+    enum planet_transfer_fixture_outcome outcome,
+    struct yt_pager_state *pager_out)
+{
+	static const uint8_t title[] = "<Transfer items to planet>";
+	static const uint8_t question[] = "Transfer which item?";
+	static const uint8_t plasma_row[] = "[B] Plasma Bolts";
+	static const uint8_t cargo_row[] = "[C] Cargo";
+	static const uint8_t fighter_row[] = "[F] Fighters";
+	static const uint8_t missile_row[] = "[S] Missiles";
+	static const uint8_t mine_row[] = "[M] Mines";
+	static const uint8_t selector_prompt[] = "-=>";
+	static const uint8_t no_cargo[] = "You don't have any cargo!";
+	static const uint8_t cargo_success[] = "Cargo transferred!!";
+	static const uint8_t plasma_success[] = "Plasma Bolts Transferred!";
+	static const uint8_t missile_success[] = "Missiles Transferred!";
+	static const uint8_t mine_success[] = "Mines Transferred!";
+	static const uint8_t fighter_prompt[] =
+	    "You have 7 fighters. Transfer how many -=>";
+	static const uint8_t fighter_success[] = "Fighters Transferred!";
+	struct yt_present_state current = state(true);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "T";
+
+	current.foreground = 6.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 6;
+	memset(&capture, 0, sizeof(capture));
+	planet_transfer_0317(&pager, &current, title, sizeof(title) - 1U,
+	    &capture);
+	planet_transfer_0317(&pager, &current, question,
+	    sizeof(question) - 1U, &capture);
+	planet_transfer_0317(&pager, &current, plasma_row,
+	    sizeof(plasma_row) - 1U, &capture);
+	pager_fixture_b05d(&pager, &current, cargo_row,
+	    sizeof(cargo_row) - 1U, &capture);
+	pager_fixture_b05d(&pager, &current, fighter_row,
+	    sizeof(fighter_row) - 1U, &capture);
+	pager_fixture_b05d(&pager, &current, missile_row,
+	    sizeof(missile_row) - 1U, &capture);
+	pager_fixture_b05d(&pager, &current, mine_row,
+	    sizeof(mine_row) - 1U, &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, selector_prompt,
+	    sizeof(selector_prompt) - 1U, &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(selector, selector_length, selector,
+	    selector_length, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+
+	if (outcome == PLANET_TRANSFER_SELECTOR_ONLY)
+		goto done;
+	if (outcome == PLANET_TRANSFER_NO_CARGO) {
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		current.bold = 1.0f;
+		current.blink = 1.0f;
+		pager_fixture_b05d(&pager, &current, no_cargo,
+		    sizeof(no_cargo) - 1U, &capture);
+		goto done;
+	}
+	if (outcome == PLANET_TRANSFER_CARGO) {
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager_fixture_b05d(&pager, &current, cargo_success,
+		    sizeof(cargo_success) - 1U, &capture);
+		goto done;
+	}
+	if (outcome == PLANET_TRANSFER_FIGHTER_CANCEL
+	    || outcome == PLANET_TRANSFER_FIGHTER_SUCCESS) {
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager.newline_flag = 1.0f;
+		pager_fixture_b05d(&pager, &current, fighter_prompt,
+		    sizeof(fighter_prompt) - 1U, &capture);
+		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+		CHECK(yt_present_editor_echo(fighter, fighter_length, fighter,
+		    fighter_length, &current, &result) == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		if (outcome == PLANET_TRANSFER_FIGHTER_CANCEL)
+			goto done;
+	}
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.blink = 1.0f;
+	if (outcome == PLANET_TRANSFER_PLASMA)
+		pager_fixture_b05d(&pager, &current, plasma_success,
+		    sizeof(plasma_success) - 1U, &capture);
+	else if (outcome == PLANET_TRANSFER_MISSILES)
+		pager_fixture_b05d(&pager, &current, missile_success,
+		    sizeof(missile_success) - 1U, &capture);
+	else if (outcome == PLANET_TRANSFER_MINES)
+		pager_fixture_b05d(&pager, &current, mine_success,
+		    sizeof(mine_success) - 1U, &capture);
+	else
+		pager_fixture_b05d(&pager, &current, fighter_success,
+		    sizeof(fighter_success) - 1U, &capture);
+
+done:
+	*pager_out = pager;
+	return capture;
+}
+
+static void
+test_planet_transfer_presentation(void)
+{
+	static const uint8_t prefix[] =
+	    "\r\n<Transfer items to planet>\n\r"
+	    "\r\nTransfer which item?\n\r"
+	    "\r\n[B] Plasma Bolts\n\r"
+	    "[C] Cargo\n\r[F] Fighters\n\r[S] Missiles\n\r[M] Mines\n\r"
+	    "\r\n-=>";
+	static const uint8_t no_cargo_suffix[] =
+	    "C\r\n\r\n\x1b[0;36;40;5;1mYou don't have any cargo!\n\r";
+	static const uint8_t cargo_suffix[] =
+	    "C\r\n\r\nCargo transferred!!\n\r";
+	static const uint8_t plasma_suffix[] =
+	    "B\r\n\r\n\x1b[0;36;40;5mPlasma Bolts Transferred!\n\r";
+	static const uint8_t missile_suffix[] =
+	    "S\r\n\r\n\x1b[0;36;40;5mMissiles Transferred!\n\r";
+	static const uint8_t mine_suffix[] =
+	    "M\r\n\r\n\x1b[0;36;40;5mMines Transferred!\n\r";
+	static const uint8_t fighter_cancel_suffix[] =
+	    "F\r\n\r\nYou have 7 fighters. Transfer how many -=>\r\n";
+	static const uint8_t fighter_success_suffix[] =
+	    "F\r\n\r\nYou have 7 fighters. Transfer how many -=>3\r\n"
+	    "\r\n\x1b[0;36;40;5mFighters Transferred!\n\r";
+	struct {
+		const char *selector;
+		const char *fighter;
+		enum planet_transfer_fixture_outcome outcome;
+		const uint8_t *suffix;
+		size_t suffix_length;
+		size_t expected_length;
+	} cases[] = {
+		{"", "", PLANET_TRANSFER_SELECTOR_ONLY,
+		    (const uint8_t *)"\r\n", 2U, 131U},
+		{"X", "", PLANET_TRANSFER_SELECTOR_ONLY,
+		    (const uint8_t *)"X\r\n", 3U, 132U},
+		{"SF", "", PLANET_TRANSFER_SELECTOR_ONLY,
+		    (const uint8_t *)"SF\r\n", 4U, 133U},
+		{"C", "", PLANET_TRANSFER_NO_CARGO, no_cargo_suffix,
+		    sizeof(no_cargo_suffix) - 1U, 175U},
+		{"C", "", PLANET_TRANSFER_CARGO, cargo_suffix,
+		    sizeof(cargo_suffix) - 1U, 155U},
+		{"B", "", PLANET_TRANSFER_PLASMA, plasma_suffix,
+		    sizeof(plasma_suffix) - 1U, 173U},
+		{"S", "", PLANET_TRANSFER_MISSILES, missile_suffix,
+		    sizeof(missile_suffix) - 1U, 169U},
+		{"M", "", PLANET_TRANSFER_MINES, mine_suffix,
+		    sizeof(mine_suffix) - 1U, 166U},
+		{"F", "", PLANET_TRANSFER_FIGHTER_CANCEL,
+		    fighter_cancel_suffix, sizeof(fighter_cancel_suffix) - 1U, 178U},
+		{"F", "3", PLANET_TRANSFER_FIGHTER_SUCCESS,
+		    fighter_success_suffix, sizeof(fighter_success_suffix) - 1U, 216U}
+	};
+	size_t index;
+
+	for (index = 0; index < YT_ARRAY_LEN(cases); ++index) {
+		struct yt_pager_state pager;
+		struct pager_capture capture = planet_transfer_fixture(
+		    (const uint8_t *)cases[index].selector,
+		    strlen(cases[index].selector),
+		    (const uint8_t *)cases[index].fighter,
+		    strlen(cases[index].fighter), cases[index].outcome, &pager);
+
+		CHECK(capture.remote_length == cases[index].expected_length);
+		CHECK(capture.remote_length == sizeof(prefix) - 1U
+		    + cases[index].suffix_length);
+		CHECK(memcmp(capture.remote, prefix, sizeof(prefix) - 1U) == 0);
+		CHECK(memcmp(capture.remote + sizeof(prefix) - 1U,
+		    cases[index].suffix, cases[index].suffix_length) == 0);
+		if (cases[index].outcome == PLANET_TRANSFER_FIGHTER_CANCEL)
+			CHECK(pager.line_count == 0.0f);
+	}
+}
+
+enum planet_bank_fixture_outcome {
+	PLANET_BANK_CANCEL,
+	PLANET_BANK_SAVINGS_ERROR,
+	PLANET_BANK_CREDIT_ERROR,
+	PLANET_BANK_ACCEPTED,
+	PLANET_BANK_ZERO
+};
+
+static struct pager_capture
+planet_bank_fixture(const uint8_t *response, size_t response_length,
+    enum planet_bank_fixture_outcome outcome, struct yt_pager_state *pager_out)
+{
+	static const uint8_t title[] =
+	    "Welcome to the intergalactic bank of New Terra!";
+	static const uint8_t prompt[] =
+	    "How many credits do you want in the account? 13345 Available ->";
+	static const uint8_t savings[] =
+	    "We are a SAVINGS not a LOAN institution!";
+	static const uint8_t insufficient[] =
+	    "You don't have that many Credits!";
+	static const uint8_t accepted[] =
+	    "You have 1500 credits on deposit at 1% interest. Have a nice day!";
+	static const uint8_t zero[] = "Have a nice day!";
+	struct yt_present_state current = state(true);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "B";
+
+	current.foreground = 6.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 6;
+	memset(&capture, 0, sizeof(capture));
+	planet_transfer_0317(&pager, &current, title, sizeof(title) - 1U,
+	    &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(response, response_length, response,
+	    response_length, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	if (outcome == PLANET_BANK_CANCEL)
+		goto done;
+	if (outcome == PLANET_BANK_SAVINGS_ERROR
+	    || outcome == PLANET_BANK_CREDIT_ERROR) {
+		const uint8_t *error_text = outcome == PLANET_BANK_SAVINGS_ERROR
+		    ? savings : insufficient;
+		size_t error_length = outcome == PLANET_BANK_SAVINGS_ERROR
+		    ? sizeof(savings) - 1U : sizeof(insufficient) - 1U;
+
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		current.bold = 1.0f;
+		current.blink = 1.0f;
+		pager_fixture_b05d(&pager, &current, error_text, error_length,
+		    &capture);
+		goto done;
+	}
+	planet_transfer_0317(&pager, &current,
+	    outcome == PLANET_BANK_ZERO ? zero : accepted,
+	    outcome == PLANET_BANK_ZERO ? sizeof(zero) - 1U
+	    : sizeof(accepted) - 1U, &capture);
+	CHECK(yt_present_sound(4.0f, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+
+done:
+	*pager_out = pager;
+	return capture;
+}
+
+static void
+test_planet_bank_presentation(void)
+{
+	static const uint8_t accepted[] =
+	    "\r\nWelcome to the intergalactic bank of New Terra!\n\r"
+	    "\r\nHow many credits do you want in the account? 13345 Available ->"
+	    "1500\r\n"
+	    "\r\nYou have 1500 credits on deposit at 1% interest. "
+	    "Have a nice day!\n\r"
+	    "\x1b[MBT128O5L48P64CP64C\x0e";
+	static const uint8_t zero[] =
+	    "\r\nWelcome to the intergalactic bank of New Terra!\n\r"
+	    "\r\nHow many credits do you want in the account? 13345 Available ->"
+	    "0\r\n\r\nHave a nice day!\n\r"
+	    "\x1b[MBT128O5L48P64CP64C\x0e";
+	static const uint8_t cancel[] =
+	    "\r\nWelcome to the intergalactic bank of New Terra!\n\r"
+	    "\r\nHow many credits do you want in the account? 13345 Available ->"
+	    "\r\n";
+	static const uint8_t savings[] =
+	    "\r\nWelcome to the intergalactic bank of New Terra!\n\r"
+	    "\r\nHow many credits do you want in the account? 13345 Available ->"
+	    "-1\r\n\r\n\x1b[0;36;40;5;1m"
+	    "We are a SAVINGS not a LOAN institution!\n\r";
+	static const uint8_t insufficient[] =
+	    "\r\nWelcome to the intergalactic bank of New Terra!\n\r"
+	    "\r\nHow many credits do you want in the account? 13345 Available ->"
+	    "13346\r\n\r\n\x1b[0;36;40;5;1m"
+	    "You don't have that many Credits!\n\r";
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+
+	capture = planet_bank_fixture((const uint8_t *)"1500", 4U,
+	    PLANET_BANK_ACCEPTED, &pager);
+	CHECK(sizeof(accepted) - 1U == 213U);
+	CHECK(capture.remote_length == sizeof(accepted) - 1U
+	    && memcmp(capture.remote, accepted, sizeof(accepted) - 1U) == 0);
+	CHECK(pager.line_count == 1.0f);
+	capture = planet_bank_fixture((const uint8_t *)"0", 1U,
+	    PLANET_BANK_ZERO, &pager);
+	CHECK(sizeof(zero) - 1U == 161U);
+	CHECK(capture.remote_length == sizeof(zero) - 1U
+	    && memcmp(capture.remote, zero, sizeof(zero) - 1U) == 0);
+	capture = planet_bank_fixture(NULL, 0, PLANET_BANK_CANCEL, &pager);
+	CHECK(capture.remote_length == sizeof(cancel) - 1U
+	    && memcmp(capture.remote, cancel, sizeof(cancel) - 1U) == 0);
+	CHECK(pager.line_count == 0.0f);
+	capture = planet_bank_fixture((const uint8_t *)"-1", 2U,
+	    PLANET_BANK_SAVINGS_ERROR, &pager);
+	CHECK(capture.remote_length == sizeof(savings) - 1U
+	    && memcmp(capture.remote, savings, sizeof(savings) - 1U) == 0);
+	capture = planet_bank_fixture((const uint8_t *)"13346", 5U,
+	    PLANET_BANK_CREDIT_ERROR, &pager);
+	CHECK(capture.remote_length == sizeof(insufficient) - 1U
+	    && memcmp(capture.remote, insufficient,
+	    sizeof(insufficient) - 1U) == 0);
+}
+
+static struct pager_capture
+planet_productivity_fixture(const uint8_t *response, size_t response_length,
+    const uint8_t *units, size_t units_length, const float delta[4],
+    struct yt_pager_state *pager_out)
+{
+	static const uint8_t explanation[] =
+	    "Productivity is increased by 1 Unit of EQU, ORG  & ORE "
+	    "for each 250 credits.";
+	static const uint8_t credits[] = "You have 12345 Credits.";
+	static const uint8_t prompt[] =
+	    "Spend how much to raise productivity? -+> ";
+	static const char *const descriptors[4] = {
+		"Also increased: Fighters:", ", Missiles:",
+		", Mines:", ", Plasma Bolts:"
+	};
+	struct yt_present_state current = state(true);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "$";
+	uint8_t success[160];
+	size_t success_length = 0;
+	size_t index;
+
+	current.foreground = 6.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 6;
+	memset(&capture, 0, sizeof(capture));
+	planet_transfer_0317(&pager, &current, explanation,
+	    sizeof(explanation) - 1U, &capture);
+	planet_transfer_0317(&pager, &current, credits,
+	    sizeof(credits) - 1U, &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(response, response_length, response,
+	    response_length, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	memcpy(success + success_length, "Productivity increased by",
+	    strlen("Productivity increased by"));
+	success_length += strlen("Productivity increased by");
+	memcpy(success + success_length, units, units_length);
+	success_length += units_length;
+	memcpy(success + success_length, " units of ORE, ORG & EQU!",
+	    strlen(" units of ORE, ORG & EQU!"));
+	success_length += strlen(" units of ORE, ORG & EQU!");
+	planet_transfer_0317(&pager, &current, success, success_length, &capture);
+	for (index = 0; index < 4U; ++index) {
+		uint8_t fragment[96];
+		size_t fragment_length;
+
+		if (delta[index] == 0.0f)
+			continue;
+		fragment_length = strlen(descriptors[index]);
+		memcpy(fragment, descriptors[index], fragment_length);
+		memcpy(fragment + fragment_length, " 1", 2U);
+		if (index == 0)
+			fragment[fragment_length + 1U] = '3';
+		fragment_length += 2U;
+		pager.newline_flag = 1.0f;
+		pager_fixture_b05d(&pager, &current, fragment, fragment_length,
+		    &capture);
+	}
+	if (delta[0] != 0.0f) {
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+	}
+	*pager_out = pager;
+	return capture;
+}
+
+static void
+test_planet_productivity_presentation(void)
+{
+	static const uint8_t canonical[] =
+	    "\r\nProductivity is increased by 1 Unit of EQU, ORG  & ORE "
+	    "for each 250 credits.\n\r"
+	    "\r\nYou have 12345 Credits.\n\r"
+	    "\r\nSpend how much to raise productivity? -+> 250\r\n"
+	    "\r\nProductivity increased by 1 units of ORE, ORG & EQU!\n\r"
+	    "Also increased: Fighters: 3\r\n";
+	static const uint8_t all_fragments[] =
+	    "\r\nProductivity is increased by 1 Unit of EQU, ORG  & ORE "
+	    "for each 250 credits.\n\r"
+	    "\r\nYou have 12345 Credits.\n\r"
+	    "\r\nSpend how much to raise productivity? -+> 250\r\n"
+	    "\r\nProductivity increased by 1 units of ORE, ORG & EQU!\n\r"
+	    "Also increased: Fighters: 3, Missiles: 1, Mines: 1, "
+	    "Plasma Bolts: 1\r\n";
+	static const uint8_t one_credit[] =
+	    "\r\nProductivity is increased by 1 Unit of EQU, ORG  & ORE "
+	    "for each 250 credits.\n\r"
+	    "\r\nYou have 12345 Credits.\n\r"
+	    "\r\nSpend how much to raise productivity? -+> 1\r\n"
+	    "\r\nProductivity increased by .004 units of ORE, ORG & EQU!\n\r";
+	static const uint8_t later_suffix[] =
+	    ", Missiles: 1, Mines: 1, Plasma Bolts: 1";
+	const float fighter_only[4] = {3.0f, 0.0f, 0.0f, 0.0f};
+	const float all[4] = {3.0f, 1.0f, 1.0f, 1.0f};
+	const float none[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+	const float later[4] = {0.0f, 1.0f, 1.0f, 1.0f};
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+
+	capture = planet_productivity_fixture((const uint8_t *)"250", 3U,
+	    (const uint8_t *)" 1", 2U, fighter_only, &pager);
+	CHECK(sizeof(canonical) - 1U == 241U);
+	CHECK(capture.remote_length == sizeof(canonical) - 1U
+	    && memcmp(capture.remote, canonical, sizeof(canonical) - 1U) == 0);
+	CHECK(pager.line_count == 2.0f);
+	capture = planet_productivity_fixture((const uint8_t *)"250", 3U,
+	    (const uint8_t *)" 1", 2U, all, &pager);
+	CHECK(sizeof(all_fragments) - 1U == 281U);
+	CHECK(capture.remote_length == sizeof(all_fragments) - 1U
+	    && memcmp(capture.remote, all_fragments,
+	    sizeof(all_fragments) - 1U) == 0);
+	capture = planet_productivity_fixture((const uint8_t *)"1", 1U,
+	    (const uint8_t *)" .004", 5U, none, &pager);
+	CHECK(sizeof(one_credit) - 1U == 213U);
+	CHECK(capture.remote_length == sizeof(one_credit) - 1U
+	    && memcmp(capture.remote, one_credit,
+	    sizeof(one_credit) - 1U) == 0);
+	capture = planet_productivity_fixture((const uint8_t *)"250", 3U,
+	    (const uint8_t *)" 1", 2U, later, &pager);
+	CHECK(capture.remote_length >= sizeof(later_suffix) - 1U);
+	CHECK(memcmp(capture.remote + capture.remote_length
+	    - (sizeof(later_suffix) - 1U), later_suffix,
+	    sizeof(later_suffix) - 1U) == 0);
+	CHECK(capture.remote[capture.remote_length - 1U] == '1'
+	    && pager.line_count == 4.0f);
+}
+
+static void
+test_clearance_presentation(void)
+{
+	static const uint8_t holds[] =
+	    "Special clearance sale! The Trader's Guild is selling Holds "
+	    "for 10% off!";
+	static const uint8_t fighters[] =
+	    "Special clearance sale! The Trader's Guild is selling Fighters "
+	    "for 50% off!";
+	static const uint8_t plain[] =
+	    "\r\nSpecial clearance sale! The Trader's Guild is selling Holds "
+	    "for 10% off!\r\n"
+	    "Special clearance sale! The Trader's Guild is selling Fighters "
+	    "for 50% off!\r\n\a\r\n";
+	static const uint8_t ansi[] =
+	    "\r\nSpecial clearance sale! The Trader's Guild is selling Holds "
+	    "for 10% off!\r\n"
+	    "Special clearance sale! The Trader's Guild is selling Fighters "
+	    "for 50% off!\r\n"
+	    "\x1b[MBO4L32P32CP64CP64CP64L16EP64L32CP64L12E\x0e\r\n";
+	struct yt_present_state current;
+	struct yt_present_result result;
+	struct pager_capture capture;
+	bool use_ansi;
+	int pass;
+
+	for (pass = 0; pass < 2; ++pass) {
+		use_ansi = pass != 0;
+		current = state(use_ansi);
+		current.foreground = 3.0f;
+		if (use_ansi)
+			CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+		memset(&capture, 0, sizeof(capture));
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_line(holds, sizeof(holds) - 1U, &current,
+		    &result) == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_line(fighters, sizeof(fighters) - 1U, &current,
+		    &result) == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_sound(1.0f, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		if (use_ansi)
+			CHECK(capture.remote_length == sizeof(ansi) - 1U
+			    && memcmp(capture.remote, ansi, sizeof(ansi) - 1U) == 0);
+		else
+			CHECK(capture.remote_length == sizeof(plain) - 1U
+			    && memcmp(capture.remote, plain,
+			    sizeof(plain) - 1U) == 0);
+	}
+}
+
+static void
+earth_report_fixed(struct pager_capture *capture,
+    struct yt_present_state *current, const char *text, float width)
+{
+	struct yt_present_result result;
+	uint8_t field[80];
+	size_t length = strlen(text);
+
+	CHECK(length <= sizeof(field));
+	if (length > sizeof(field))
+		return;
+	memcpy(field, text, length);
+	CHECK(yt_present_fixed_width(field, &length, sizeof(field), width,
+	    current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+}
+
+static void
+earth_report_row_fixture(struct pager_capture *capture,
+    struct yt_pager_state *pager, struct yt_present_state *current,
+    const char *label, const char *cost, const char *affordable)
+{
+	earth_report_fixed(capture, current, label, 22.0f);
+	earth_report_fixed(capture, current, cost, 9.0f);
+	pager_fixture_b05d(pager, current, (const uint8_t *)affordable,
+	    strlen(affordable), capture);
+}
+
+static void
+test_earth_report_presentation(void)
+{
+	static const uint8_t canonical[] =
+	    "\r\nCommerce report for Earth: 07-25-2026 12:34:56\n\r"
+	    "\r\n"
+	    "----------------------*--------*------------\n\r"
+	    "         ITEM         *  COST  * CAN AFFORD\n\r"
+	    "----------------------*--------*------------\n\r"
+	    "[1] Cloak Energy      * 1000   * 12\n\r"
+	    "[2] Cargo Holds       * 250    * 49\n\r"
+	    "[3] Fighters          * 50     * 246\n\r"
+	    "[4] Play Lottery      * 5      * 2469\n\r"
+	    "[5] Danger Scanner    * 500000 * 0\n\r"
+	    "[6] Anti-Cloak Device * 1E+09  * 0\n\r"
+	    "[7] Ground Forces     * 200    * 61\n\r"
+	    "[8] Shield Power      * 50     * 246\n\r"
+	    "[9] Hire Spies (Each) * 1E+09  * 0\n\r"
+	    "----------------------*--------*------------\n\r"
+	    "\r\n[I] Ship Info -=*=- [0] Leave Port\n\r"
+	    "\r\nCredits: 12345 -=*=- Buy Which Item? -=>0\r\n";
+	static const char *const label[9] = {
+		"[1] Cloak Energy", "[2] Cargo Holds", "[3] Fighters",
+		"[4] Play Lottery", "[5] Danger Scanner",
+		"[6] Anti-Cloak Device", "[7] Ground Forces",
+		"[8] Shield Power", "[9] Hire Spies (Each)"
+	};
+	static const char *const cost[9] = {
+		"* 1000 ", "* 250 ", "* 50 ", "* 5", "* 500000 ",
+		"* 1E+09 ", "* 200 ", "* 50 ", "* 1E+09 "
+	};
+	static const char *const affordable[9] = {
+		"* 12", "* 49", "* 246", "* 2469", "* 0", "* 0",
+		"* 61", "* 246", "* 0"
+	};
+	static const uint8_t title[] =
+	    "Commerce report for Earth: 07-25-2026 12:34:56";
+	static const uint8_t separator[] =
+	    "----------------------*--------*------------";
+	static const uint8_t header[] =
+	    "         ITEM         *  COST  * CAN AFFORD";
+	static const uint8_t menu[] =
+	    "[I] Ship Info -=*=- [0] Leave Port";
+	static const uint8_t prompt[] =
+	    "Credits: 12345 -=*=- Buy Which Item? -=>";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	size_t index;
+
+	memset(&pager, 0, sizeof(pager));
+	memset(&capture, 0, sizeof(capture));
+	pager.foreground = 3;
+	current.foreground = 3.0f;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, title, sizeof(title) - 1U,
+	    &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, separator,
+	    sizeof(separator) - 1U, &capture);
+	pager_fixture_b05d(&pager, &current, header, sizeof(header) - 1U,
+	    &capture);
+	pager_fixture_b05d(&pager, &current, separator,
+	    sizeof(separator) - 1U, &capture);
+	for (index = 0; index < 9U; ++index)
+		earth_report_row_fixture(&capture, &pager, &current, label[index],
+		    cost[index], affordable[index]);
+	pager_fixture_b05d(&pager, &current, separator,
+	    sizeof(separator) - 1U, &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, menu, sizeof(menu) - 1U,
+	    &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	CHECK(yt_present_line((const uint8_t *)"0", 1U, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(canonical) - 1U
+	    && memcmp(capture.remote, canonical, sizeof(canonical) - 1U) == 0);
+	CHECK(pager.line_count == 16.0f);
+}
+
+static void
+earth_purchase_prompt(struct pager_capture *capture,
+    struct yt_pager_state *pager, struct yt_present_state *current,
+    const char *prompt, const char *response)
+{
+	struct yt_present_result result;
+
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, (const uint8_t *)prompt,
+	    strlen(prompt), capture);
+	CHECK(yt_present_line((const uint8_t *)response, strlen(response),
+	    current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+}
+
+static void
+test_earth_purchase_presentation(void)
+{
+	static const uint8_t holds[] =
+	    "\r\n\r\nYou need 80 holds.\n\r"
+	    "Buy how many holds? [0]? 1\r\n";
+	static const uint8_t fighters[] =
+	    "\r\nBuy how many fighters? [0]? 1\r\n";
+	static const uint8_t cloak[] =
+	    "\r\nCloak energy is down by 25%.\n\r"
+	    "Buy how many points of Cloak Energy? "
+	    "(0 - 25) [ 25 ] ?1\r\n";
+	static const uint8_t scanner[] =
+	    "\r\nDanger Scanner installed in your ship!\n\r";
+	static const uint8_t ground[] =
+	    "\r\nBuy how many ground force units? [0]? 1\r\n";
+	static const uint8_t shields[] =
+	    "\r\nBuy how much shield power? [0]? 1\r\n";
+	struct yt_present_state current;
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+
+	current = state(false);
+	memset(&pager, 0, sizeof(pager));
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current,
+	    (const uint8_t *)"You need 80 holds.",
+	    strlen("You need 80 holds."), &capture);
+	earth_purchase_prompt(&capture, &pager, &current,
+	    "Buy how many holds? [0]? ", "1");
+	CHECK(capture.remote_length == sizeof(holds) - 1U
+	    && memcmp(capture.remote, holds, sizeof(holds) - 1U) == 0);
+	CHECK(pager.line_count == 2.0f);
+
+	current = state(false);
+	memset(&pager, 0, sizeof(pager));
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	earth_purchase_prompt(&capture, &pager, &current,
+	    "Buy how many fighters? [0]? ", "1");
+	CHECK(capture.remote_length == sizeof(fighters) - 1U
+	    && memcmp(capture.remote, fighters, sizeof(fighters) - 1U) == 0);
+
+	current = state(false);
+	memset(&pager, 0, sizeof(pager));
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current,
+	    (const uint8_t *)"Cloak energy is down by 25%.",
+	    strlen("Cloak energy is down by 25%."), &capture);
+	earth_purchase_prompt(&capture, &pager, &current,
+	    "Buy how many points of Cloak Energy? (0 - 25) [ 25 ] ?", "1");
+	CHECK(capture.remote_length == sizeof(cloak) - 1U
+	    && memcmp(capture.remote, cloak, sizeof(cloak) - 1U) == 0);
+
+	current = state(false);
+	memset(&pager, 0, sizeof(pager));
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	pager_fixture_b05d(&pager, &current,
+	    (const uint8_t *)"Danger Scanner installed in your ship!",
+	    strlen("Danger Scanner installed in your ship!"), &capture);
+	CHECK(capture.remote_length == sizeof(scanner) - 1U
+	    && memcmp(capture.remote, scanner, sizeof(scanner) - 1U) == 0);
+
+	current = state(false);
+	memset(&pager, 0, sizeof(pager));
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	earth_purchase_prompt(&capture, &pager, &current,
+	    "Buy how many ground force units? [0]? ", "1");
+	CHECK(capture.remote_length == sizeof(ground) - 1U
+	    && memcmp(capture.remote, ground, sizeof(ground) - 1U) == 0);
+
+	current = state(false);
+	memset(&pager, 0, sizeof(pager));
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	earth_purchase_prompt(&capture, &pager, &current,
+	    "Buy how much shield power? [0]? ", "1");
+	CHECK(capture.remote_length == sizeof(shields) - 1U
+	    && memcmp(capture.remote, shields, sizeof(shields) - 1U) == 0);
+}
+
+static void
+test_earth_anti_cloak_presentation(void)
+{
+	static const uint8_t activation[] =
+	    "ti-Cloaking device activated!\xd4" "D";
+	static const uint8_t waves[] =
+	    "Waves of electromagnetic disruption flood the galaxy..."
+	    "\xd4\x0e\x00\x86\xc1" " is uncl";
+	static const uint8_t expected[] =
+	    "\r\nAnti-Cloaking Device works for this logon only. "
+	    "Buy one? [y/N]y\r\n"
+	    "\r\nti-Cloaking device activated!\xd4" "D\r\n\r\n"
+	    "Waves of electromagnetic disruption flood the galaxy..."
+	    "\xd4\x0e\x00\x86\xc1" " is uncl\r\n\r\n"
+	    "ALPHA is uncloaked!\r\n"
+	    "\r\n...the effect fades.\r\n"
+	    "\r\nHit [Enter]\r\n";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+
+	current.sound.user_sound = 0.0f;
+	memset(&pager, 0, sizeof(pager));
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_character(
+	    (const uint8_t *)"Anti-Cloaking Device works for this logon only. "
+	    "Buy one? [y/N]", strlen("Anti-Cloaking Device works for this "
+	    "logon only. Buy one? [y/N]"), &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line((const uint8_t *)"y", 1U, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(activation, sizeof(activation) - 1U, &current,
+	    &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.foreground = 2.0f;
+	CHECK(yt_present_bold_line(waves, sizeof(waves) - 1U, &current,
+	    &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_sound(2.0f, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.foreground = 6.0f;
+	CHECK(yt_present_bold_line((const uint8_t *)"ALPHA is uncloaked!",
+	    strlen("ALPHA is uncloaked!"), &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_sound(1.0f, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.foreground = 2.0f;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_bold_line((const uint8_t *)"...the effect fades.",
+	    strlen("...the effect fades."), &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_sound(5.0f, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.foreground = 3.0f;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	earth_purchase_prompt(&capture, &pager, &current, "Hit [Enter]", "");
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+}
+
+static void
+test_earth_spy_purchase_presentation(void)
+{
+	static const uint8_t expected[] =
+	    "\r\nHire how many spies? [0]? 1\r\n"
+	    "\r\nStart spy # 1 in what sector?-1\r\n"
+	    "\r\nSpy # 1 will hunt in sector-1.\n\r"
+	    "\r\n*[ Press any Key ]*\r                   \r";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	float saved;
+
+	memset(&pager, 0, sizeof(pager));
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	earth_purchase_prompt(&capture, &pager, &current,
+	    "Hire how many spies? [0]? ", "1");
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	earth_purchase_prompt(&capture, &pager, &current,
+	    "Start spy # 1 in what sector?", "-1");
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	pager_fixture_b05d(&pager, &current,
+	    (const uint8_t *)"Spy # 1 will hunt in sector-1.",
+	    strlen("Spy # 1 will hunt in sector-1."), &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_press_prompt(&current, &result, &saved)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_press_cleanup(saved, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+}
+
+static void
+test_earth_lottery_loss_presentation(void)
+{
+	static const uint8_t opening[] =
+	    "\r\nYou may play 3 times daily.\r\n"
+	    "You've played 1 times already.\r\n"
+	    "\r\nWelcome to the Intergalactic Pick-6 Lottery!\n\r"
+	    "\r\nEnter a 6 digit number for the lottery computer -+>999999\r\n"
+	    "\r\nThe Galactic Lottery Computer picked: ";
+	static const uint8_t ending[] =
+	    "\r\n\r\nSorry, you didn't win this time.\r\n";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	uint8_t expected[512];
+	size_t expected_length = 0;
+	int actual;
+	int dummy;
+
+	current.sound.user_sound = 0.0f;
+	memset(&pager, 0, sizeof(pager));
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line((const uint8_t *)"You may play 3 times daily.",
+	    strlen("You may play 3 times daily."), &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line((const uint8_t *)
+	    "You've played 1 times already.",
+	    strlen("You've played 1 times already."), &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.foreground = 1.0f;
+	current.bold = 1.0f;
+	pager_fixture_b05d(&pager, &current,
+	    (const uint8_t *)"Welcome to the Intergalactic Pick-6 Lottery!",
+	    strlen("Welcome to the Intergalactic Pick-6 Lottery!"), &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.foreground = 2.0f;
+	current.bold = 1.0f;
+	earth_purchase_prompt(&capture, &pager, &current,
+	    "Enter a 6 digit number for the lottery computer -+>", "999999");
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_character((const uint8_t *)
+	    "The Galactic Lottery Computer picked: ",
+	    strlen("The Galactic Lottery Computer picked: "),
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	for (actual = 0; actual < 6; ++actual) {
+		uint8_t actual_digit = (uint8_t)('0' + actual);
+
+		current.foreground = 6.0f;
+		for (dummy = 0; dummy < 18; ++dummy) {
+			CHECK(yt_present_character((const uint8_t *)"9", 1U,
+			    &current, &result) == YT_PRESENT_OK);
+			pager_capture_result(&capture, &result);
+			CHECK(yt_present_lottery_rewind(1, 39 + actual,
+			    &current, &result) == YT_PRESENT_OK);
+			CHECK(result.event_count == 2
+			    && result.events[1].operation
+			    == YT_PRESENT_LOCAL_LOCATE
+			    && result.events[1].column == 39 + actual);
+			pager_capture_result(&capture, &result);
+		}
+		current.foreground = 7.0f;
+		CHECK(yt_present_character(&actual_digit, 1U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+	}
+	current.foreground = 2.0f;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(
+	    (const uint8_t *)"Sorry, you didn't win this time.",
+	    strlen("Sorry, you didn't win this time."), &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	memcpy(expected + expected_length, opening, sizeof(opening) - 1U);
+	expected_length += sizeof(opening) - 1U;
+	for (actual = 0; actual < 6; ++actual) {
+		for (dummy = 0; dummy < 18; ++dummy) {
+			expected[expected_length++] = '9';
+			expected[expected_length++] = '\b';
+		}
+		expected[expected_length++] = (uint8_t)('0' + actual);
+	}
+	memcpy(expected + expected_length, ending, sizeof(ending) - 1U);
+	expected_length += sizeof(ending) - 1U;
+	CHECK(expected_length == 472U && capture.remote_length == expected_length
+	    && memcmp(capture.remote, expected, expected_length) == 0);
+	current = state(false);
+	current.sound.mode = 2.0f;
+	CHECK(yt_present_lottery_rewind(4, 17, &current, &result)
+	    == YT_PRESENT_OK);
+	CHECK(result.remote_length == 0 && result.event_count == 1
+	    && result.events[0].operation == YT_PRESENT_LOCAL_LOCATE
+	    && result.events[0].row == 4 && result.events[0].column == 17);
+}
+
+static void
+planet_computer_entry_cycle_fixture(bool ansi,
+    struct pager_capture *capture, struct yt_present_state *current,
+    struct yt_pager_state *pager)
+{
+	static const uint8_t free_holds[] =
+	    "You have 65 free cargo holds.";
+	static const uint8_t planet_prompt[] =
+	    "Time: 14:59  Planet command (?=help) [A]? ";
+	static const uint8_t activated[] = "<Computer activated>";
+	static const uint8_t computer_prompt[] =
+	    "Time: 14:59  Computer command (?=help)? ";
+	static const uint8_t command[] = "C";
+	struct yt_present_result result;
+	char accumulator[80] = "";
+
+	*current = state(ansi);
+	current->foreground = 6.0f;
+	if (ansi)
+		CHECK(yt_present_color(current, &result) == YT_PRESENT_OK);
+	memset(pager, 0, sizeof(*pager));
+	pager->foreground = 6;
+	memset(capture, 0, sizeof(*capture));
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager_fixture_b05d(pager, current, free_holds,
+	    sizeof(free_holds) - 1U, capture);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, planet_prompt,
+	    sizeof(planet_prompt) - 1U, capture);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(command, sizeof(command) - 1U,
+	    command, sizeof(command) - 1U, current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+
+	current->foreground = 1.0f;
+	pager->foreground = 1;
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager_fixture_b05d(pager, current, activated,
+	    sizeof(activated) - 1U, capture);
+	CHECK(yt_present_sound(4.0f, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, computer_prompt,
+	    sizeof(computer_prompt) - 1U, capture);
+}
+
+static void
+test_planet_computer_entry_cycle_presentation(void)
+{
+	static const uint8_t ansi[] =
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? C\r\n"
+	    "\x1b[0;31;40m\r\n<Computer activated>\n\r"
+	    "\x1b[MBT128O5L48P64CP64C\x0e"
+	    "\r\nTime: 14:59  Computer command (?=help)? ";
+	static const uint8_t plain[] =
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? C\r\n"
+	    "\r\n<Computer activated>\n\r"
+	    "\r\nTime: 14:59  Computer command (?=help)? ";
+	struct yt_present_state current;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+
+	planet_computer_entry_cycle_fixture(true, &capture, &current, &pager);
+	CHECK(sizeof(ansi) - 1U == 178U);
+	CHECK(capture.remote_length == sizeof(ansi) - 1U
+	    && memcmp(capture.remote, ansi, sizeof(ansi) - 1U) == 0);
+	CHECK(pager.line_count == 2.0f && pager.newline_flag == 0.0f);
+	planet_computer_entry_cycle_fixture(false, &capture, &current, &pager);
+	CHECK(sizeof(plain) - 1U == 146U);
+	CHECK(capture.remote_length == sizeof(plain) - 1U
+	    && memcmp(capture.remote, plain, sizeof(plain) - 1U) == 0);
+	CHECK(pager.line_count == 2.0f && pager.newline_flag == 0.0f);
+}
+
+static void
+planet_display_cycle_fixture(bool ansi,
+    struct pager_capture *capture, struct yt_present_state *current,
+    struct yt_pager_state *pager)
+{
+	static const uint8_t free_holds[] =
+	    "You have 65 free cargo holds.";
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Planet command (?=help) [A]? ";
+	static const uint8_t title[] = "Planet: New Terra";
+	static const uint8_t header[] =
+	    " Item           Production     Amount    In Holds";
+	static const uint8_t rule[] =
+	    "=============  ============   ========  ==========";
+	static const char *const labels[9] = {
+		"Ore..........", "Organics.....", "Equipment....",
+		"Fighters.....", "Missiles.....", "Mines........",
+		"Credits......", "Forces.......", "Plasma bolts."
+	};
+	static const char *const production[9] = {
+		" 11", " 22", " 33", " 66", " 2", " 1", " 9", " 2", " 3"
+	};
+	static const char *const amount[9] = {
+		" 101", " 202", " 303", " 404", " 5", " 6", " 1000", " 250", " 9"
+	};
+	static const char *const held[9] = {
+		" 10", " 20", " 5", " 7", " 2", " 3", " 12345", " 8", " 4"
+	};
+	static const uint8_t command[] = "D";
+	struct yt_present_result result;
+	char accumulator[80] = "";
+	int index;
+
+	*current = state(ansi);
+	current->foreground = 6.0f;
+	if (ansi)
+		CHECK(yt_present_color(current, &result) == YT_PRESENT_OK);
+	memset(pager, 0, sizeof(*pager));
+	pager->foreground = 6;
+	memset(capture, 0, sizeof(*capture));
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager_fixture_b05d(pager, current, free_holds,
+	    sizeof(free_holds) - 1U, capture);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, prompt, sizeof(prompt) - 1U,
+	    capture);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(command, sizeof(command) - 1U,
+	    command, sizeof(command) - 1U, current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager_fixture_b05d(pager, current, title, sizeof(title) - 1U,
+	    capture);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager_fixture_b05d(pager, current, header, sizeof(header) - 1U,
+	    capture);
+	pager_fixture_b05d(pager, current, rule, sizeof(rule) - 1U,
+	    capture);
+	for (index = 0; index < 9; ++index) {
+		CHECK(yt_present_character((const uint8_t *)labels[index],
+		    strlen(labels[index]), current, &result) == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+		CHECK(yt_present_right_aligned(
+		    (const uint8_t *)production[index],
+		    strlen(production[index]), 13.0f, current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+		CHECK(yt_present_right_aligned((const uint8_t *)amount[index],
+		    strlen(amount[index]), 11.0f, current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+		CHECK(yt_present_right_aligned((const uint8_t *)held[index],
+		    strlen(held[index]), 12.0f, current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+		CHECK(yt_present_line(NULL, 0, current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+	}
+
+	pager->line_count = 0.0f;
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager_fixture_b05d(pager, current, free_holds,
+	    sizeof(free_holds) - 1U, capture);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current->foreground = 6.0f;
+	pager->foreground = 6;
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, prompt, sizeof(prompt) - 1U,
+	    capture);
+}
+
+static void
+test_planet_display_cycle_presentation(void)
+{
+	static const uint8_t expected[] =
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? D\r\n"
+	    "\r\nPlanet: New Terra\n\r"
+	    "\r\n Item           Production     Amount    In Holds\n\r"
+	    "=============  ============   ========  ==========\n\r"
+	    "Ore..........           11        101          10\r\n"
+	    "Organics.....           22        202          20\r\n"
+	    "Equipment....           33        303           5\r\n"
+	    "Fighters.....           66        404           7\r\n"
+	    "Missiles.....            2          5           2\r\n"
+	    "Mines........            1          6           3\r\n"
+	    "Credits......            9       1000       12345\r\n"
+	    "Forces.......            2        250           8\r\n"
+	    "Plasma bolts.            3          9           4\r\n"
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? ";
+	struct yt_present_state current;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+
+	planet_display_cycle_fixture(true, &capture, &current, &pager);
+	CHECK(sizeof(expected) - 1U == 742U);
+	CHECK(sizeof(expected) - 1U - 80U == 662U);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(capture.remote_length >= 80U
+	    && memcmp(capture.remote + 80U, expected + 80U, 662U) == 0);
+	CHECK(pager.line_count == 2.0f && pager.newline_flag == 0.0f);
+	planet_display_cycle_fixture(false, &capture, &current, &pager);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(pager.line_count == 2.0f && pager.newline_flag == 0.0f);
+}
+
+static void
+planet_sensor_all_zero_cycle_fixture(bool ansi,
+    struct pager_capture *capture, struct yt_present_state *current,
+    struct yt_pager_state *pager)
+{
+	static const uint8_t free_holds[] =
+	    "You have 65 free cargo holds.";
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Planet command (?=help) [A]? ";
+	static const uint8_t heading[] = "[ Sensors Activated ]";
+	static const uint8_t ending[] = "[ End Sensor Scan ]";
+	static const uint8_t command[] = "S";
+	struct yt_present_result result;
+	char accumulator[80] = "";
+
+	*current = state(ansi);
+	current->foreground = 6.0f;
+	if (ansi)
+		CHECK(yt_present_color(current, &result) == YT_PRESENT_OK);
+	memset(pager, 0, sizeof(*pager));
+	pager->foreground = 6;
+	memset(capture, 0, sizeof(*capture));
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager_fixture_b05d(pager, current, free_holds,
+	    sizeof(free_holds) - 1U, capture);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, prompt, sizeof(prompt) - 1U,
+	    capture);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(command, sizeof(command) - 1U,
+	    command, sizeof(command) - 1U, current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current->foreground = 7.0f;
+	pager->foreground = 7;
+	CHECK(yt_present_bold_line(heading, sizeof(heading) - 1U,
+	    current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_sound(4.0f, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current->foreground = 1.0f;
+	pager->foreground = 1;
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current->foreground = 7.0f;
+	pager->foreground = 7;
+	CHECK(yt_present_bold_line(ending, sizeof(ending) - 1U,
+	    current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+
+	pager->line_count = 0.0f;
+	current->foreground = 6.0f;
+	pager->foreground = 6;
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager_fixture_b05d(pager, current, free_holds,
+	    sizeof(free_holds) - 1U, capture);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, prompt, sizeof(prompt) - 1U,
+	    capture);
+}
+
+static void
+test_planet_sensor_all_zero_cycle_presentation(void)
+{
+	static const uint8_t ansi[] =
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? S\r\n"
+	    "\r\n\x1b[0;37;40;1m[ Sensors Activated ]\r\n"
+	    "\x1b[MBT128O5L48P64CP64C\x0e"
+	    "\x1b[0;31;40m\r\n"
+	    "\x1b[0;37;40;1m[ End Sensor Scan ]\r\n"
+	    "\x1b[0;36;40m\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? ";
+	static const uint8_t plain[] =
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? S\r\n"
+	    "\r\n[ Sensors Activated ]\r\n"
+	    "\r\n[ End Sensor Scan ]\r\n"
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? ";
+	struct yt_present_state current;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+
+	planet_sensor_all_zero_cycle_fixture(true, &capture, &current, &pager);
+	CHECK(sizeof(ansi) - 1U == 271U);
+	CHECK(capture.remote_length == sizeof(ansi) - 1U
+	    && memcmp(capture.remote, ansi, sizeof(ansi) - 1U) == 0);
+	CHECK(pager.line_count == 2.0f && pager.newline_flag == 0.0f);
+	planet_sensor_all_zero_cycle_fixture(false, &capture, &current, &pager);
+	CHECK(sizeof(plain) - 1U == 205U);
+	CHECK(capture.remote_length == sizeof(plain) - 1U
+	    && memcmp(capture.remote, plain, sizeof(plain) - 1U) == 0);
+	CHECK(pager.line_count == 2.0f && pager.newline_flag == 0.0f);
+}
+
+static void
+test_planet_rename_presentation(void)
+{
+	static const uint8_t name_prompt[] =
+	    "What do you want to name this planet? -=>";
+	static const uint8_t confirmation[] =
+	    "\"Nova\" Is this OK? (Y/n) [Y] ?";
+	static const uint8_t confirmation_suffix[] =
+	    " Is this OK? (Y/n) [Y] ?";
+	static const uint8_t protected[] =
+	    "You can't re-name this planet!";
+	static const uint8_t reserved[] = "I Don't think so!";
+	static const uint8_t accepted_expected[] =
+	    "\r\nWhat do you want to name this planet? -=>Nova\r\n"
+	    "\r\n\"Nova\" Is this OK? (Y/n) [Y] ?Y\r\n";
+	static const uint8_t protected_expected[] =
+	    "\r\n\x1b[0;36;40;5;1mYou can't re-name this planet!\n\r";
+	static const uint8_t reserved_expected[] =
+	    "\r\nWhat do you want to name this planet? -=>the WANDERER\r\n"
+	    "\r\n\x1b[0;36;40;5;1mI Don't think so!\n\r";
+	struct yt_present_state current;
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[300] = "";
+	uint8_t long_name[256];
+	uint8_t long_confirmation[2U + 41U
+	    + sizeof(confirmation_suffix) - 1U];
+	uint8_t long_name_expected[373];
+	uint8_t long_answer[256];
+	uint8_t long_answer_expected[339];
+	size_t expected_length;
+
+	current = state(true);
+	current.foreground = 6.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 6;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, name_prompt,
+	    sizeof(name_prompt) - 1U, &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"Nova", 4,
+	    (const uint8_t *)"Nova", 4, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_character(confirmation, sizeof(confirmation) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"Y", 1,
+	    (const uint8_t *)"Y", 1, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(sizeof(accepted_expected) - 1U == 84U);
+	CHECK(capture.remote_length == sizeof(accepted_expected) - 1U
+	    && memcmp(capture.remote, accepted_expected,
+	    sizeof(accepted_expected) - 1U) == 0);
+
+	memset(long_name, 'A', sizeof(long_name));
+	long_confirmation[0] = '"';
+	long_confirmation[1] = 'A';
+	memset(long_confirmation + 2U, 'a', 40U);
+	long_confirmation[42U] = '"';
+	memcpy(long_confirmation + 43U,
+	    confirmation_suffix, sizeof(confirmation_suffix) - 1U);
+	expected_length = 0U;
+	memcpy(long_name_expected + expected_length, "\r\n", 2U);
+	expected_length += 2U;
+	memcpy(long_name_expected + expected_length, name_prompt,
+	    sizeof(name_prompt) - 1U);
+	expected_length += sizeof(name_prompt) - 1U;
+	memcpy(long_name_expected + expected_length, long_name,
+	    sizeof(long_name));
+	expected_length += sizeof(long_name);
+	memcpy(long_name_expected + expected_length, "\r\n\r\n", 4U);
+	expected_length += 4U;
+	memcpy(long_name_expected + expected_length, long_confirmation,
+	    sizeof(long_confirmation));
+	expected_length += sizeof(long_confirmation);
+	memcpy(long_name_expected + expected_length, "Y\r\n", 3U);
+	expected_length += 3U;
+	CHECK(expected_length == sizeof(long_name_expected));
+
+	current = state(true);
+	current.foreground = 6.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 6;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, name_prompt,
+	    sizeof(name_prompt) - 1U, &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(long_name, sizeof(long_name), long_name,
+	    sizeof(long_name), &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_character(long_confirmation,
+	    sizeof(long_confirmation), &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"Y", 1U,
+	    (const uint8_t *)"Y", 1U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(long_name_expected)
+	    && memcmp(capture.remote, long_name_expected,
+	    sizeof(long_name_expected)) == 0);
+
+	long_answer[0] = 'Y';
+	memset(long_answer + 1U, 'a', sizeof(long_answer) - 1U);
+	expected_length = 0U;
+	memcpy(long_answer_expected + expected_length, "\r\n", 2U);
+	expected_length += 2U;
+	memcpy(long_answer_expected + expected_length, name_prompt,
+	    sizeof(name_prompt) - 1U);
+	expected_length += sizeof(name_prompt) - 1U;
+	memcpy(long_answer_expected + expected_length, "Nova\r\n\r\n", 8U);
+	expected_length += 8U;
+	memcpy(long_answer_expected + expected_length, confirmation,
+	    sizeof(confirmation) - 1U);
+	expected_length += sizeof(confirmation) - 1U;
+	memcpy(long_answer_expected + expected_length, long_answer,
+	    sizeof(long_answer));
+	expected_length += sizeof(long_answer);
+	memcpy(long_answer_expected + expected_length, "\r\n", 2U);
+	expected_length += 2U;
+	CHECK(expected_length == sizeof(long_answer_expected));
+
+	current = state(true);
+	current.foreground = 6.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 6;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, name_prompt,
+	    sizeof(name_prompt) - 1U, &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"Nova", 4U,
+	    (const uint8_t *)"Nova", 4U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_character(confirmation, sizeof(confirmation) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(long_answer, sizeof(long_answer),
+	    long_answer, sizeof(long_answer), &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(long_answer_expected)
+	    && memcmp(capture.remote, long_answer_expected,
+	    sizeof(long_answer_expected)) == 0);
+
+	current = state(true);
+	current.foreground = 6.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 6;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	pager_fixture_b05d(&pager, &current, protected,
+	    sizeof(protected) - 1U, &capture);
+	CHECK(sizeof(protected_expected) - 1U == 48U);
+	CHECK(capture.remote_length == sizeof(protected_expected) - 1U
+	    && memcmp(capture.remote, protected_expected,
+	    sizeof(protected_expected) - 1U) == 0);
+
+	current = state(true);
+	current.foreground = 6.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 6;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, name_prompt,
+	    sizeof(name_prompt) - 1U, &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"the WANDERER", 12,
+	    (const uint8_t *)"the WANDERER", 12, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	pager_fixture_b05d(&pager, &current, reserved,
+	    sizeof(reserved) - 1U, &capture);
+	CHECK(sizeof(reserved_expected) - 1U == 92U);
+	CHECK(capture.remote_length == sizeof(reserved_expected) - 1U
+	    && memcmp(capture.remote, reserved_expected,
+	    sizeof(reserved_expected) - 1U) == 0);
+}
+
+static void
+normal_exit_tail_fixture(bool ansi, bool evaluation,
+    struct pager_capture *capture, struct yt_present_state *current,
+    struct yt_pager_state *pager)
+{
+	static const uint8_t generating[] = "Generating ScoreBoard";
+	static const uint8_t notice[] = "Cntl-X to Stop";
+	static const uint8_t reminder[] =
+	    "PLEASE HELP YOUR SYSOP REGISTER THIS GAME.";
+	static const uint8_t returning[] = "Returning to Example BBS...";
+	struct yt_present_result result;
+	int index;
+
+	*current = state(ansi);
+	current->sound.user_sound = 0.0f;
+	if (ansi)
+		CHECK(yt_present_color(current, &result) == YT_PRESENT_OK);
+	memset(pager, 0, sizeof(*pager));
+	pager->foreground = 2;
+	memset(capture, 0, sizeof(*capture));
+	current->foreground = 1.0f;
+	pager->foreground = 1;
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, generating,
+	    sizeof(generating) - 1U, capture);
+	for (index = 0; index < 4; ++index) {
+		CHECK(yt_present_character((const uint8_t *)".", 1,
+		    current, &result) == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+	}
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+
+	pager->nonstop = 1.0f;
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager_fixture_b05d(pager, current, notice, sizeof(notice) - 1U,
+	    capture);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager->line_count = 0.0f;
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+
+	if (evaluation) {
+		CHECK(yt_present_attention(reminder, sizeof(reminder) - 1U,
+		    current, &result) == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+		CHECK(yt_present_line(NULL, 0, current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+	}
+	pager_fixture_b05d(pager, current, returning,
+	    sizeof(returning) - 1U, capture);
+}
+
+static void
+test_normal_exit_tail_presentation(void)
+{
+	static const uint8_t registered_ansi[] =
+	    "\x1b[0;31;40m\r\nGenerating ScoreBoard....\r\n"
+	    "\r\nCntl-X to Stop\n\r\r\n\r\n"
+	    "Returning to Example BBS...\n\r";
+	static const uint8_t registered_plain[] =
+	    "\r\nGenerating ScoreBoard....\r\n"
+	    "\r\nCntl-X to Stop\n\r\r\n\r\n"
+	    "Returning to Example BBS...\n\r";
+	static const uint8_t evaluation_ansi[] =
+	    "\x1b[0;31;40m\r\nGenerating ScoreBoard....\r\n"
+	    "\r\nCntl-X to Stop\n\r\r\n\r\n"
+	    "\x1b[0;33;41;5;1m"
+	    "PLEASE HELP YOUR SYSOP REGISTER THIS GAME."
+	    "\x1b[0;33;40m\r\n\r\n"
+	    "Returning to Example BBS...\n\r";
+	static const uint8_t evaluation_plain[] =
+	    "\r\nGenerating ScoreBoard....\r\n"
+	    "\r\nCntl-X to Stop\n\r\r\n\r\n"
+	    "PLEASE HELP YOUR SYSOP REGISTER THIS GAME.\r\n\r\n"
+	    "Returning to Example BBS...\n\r";
+	struct yt_present_state current;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+
+	normal_exit_tail_fixture(true, false, &capture, &current, &pager);
+	CHECK(capture.remote_length == sizeof(registered_ansi) - 1U
+	    && memcmp(capture.remote, registered_ansi,
+	    sizeof(registered_ansi) - 1U) == 0);
+	normal_exit_tail_fixture(false, false, &capture, &current, &pager);
+	CHECK(capture.remote_length == sizeof(registered_plain) - 1U
+	    && memcmp(capture.remote, registered_plain,
+	    sizeof(registered_plain) - 1U) == 0);
+	normal_exit_tail_fixture(true, true, &capture, &current, &pager);
+	CHECK(capture.remote_length == sizeof(evaluation_ansi) - 1U
+	    && memcmp(capture.remote, evaluation_ansi,
+	    sizeof(evaluation_ansi) - 1U) == 0);
+	normal_exit_tail_fixture(false, true, &capture, &current, &pager);
+	CHECK(capture.remote_length == sizeof(evaluation_plain) - 1U
+	    && memcmp(capture.remote, evaluation_plain,
+	    sizeof(evaluation_plain) - 1U) == 0);
+	CHECK(pager.nonstop == 1.0f && pager.line_count == 1.0f);
+}
+
+static void
+computer_deactivation_cycle_fixture(bool ansi,
+    struct pager_capture *capture, struct yt_present_state *current,
+    struct yt_pager_state *pager)
+{
+	static const uint8_t off[] = "<Computer deactivated>";
+	static const uint8_t sector[] = "Sector: 733";
+	static const uint8_t warps[] = "Warps lead to: 2, 9";
+	static const uint8_t main_prompt[] =
+	    "Time: 14:59  Main Command (?=Help)? ";
+	struct yt_present_result result;
+	char accumulator[80] = "";
+
+	computer_return_prompt_fixture(ansi, 0.0f, capture, current, pager);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"1", 1,
+	    (const uint8_t *)"1", 1, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager->newline_flag = 0.0f;
+	pager_fixture_b05d(pager, current, off, sizeof(off) - 1U, capture);
+
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(sector, sizeof(sector) - 1U, current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(warps, sizeof(warps) - 1U, current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+
+	pager->line_count = 0.0f;
+	current->foreground = 2.0f;
+	pager->foreground = 2;
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, main_prompt,
+	    sizeof(main_prompt) - 1U, capture);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+}
+
+static void
+test_computer_deactivation_presentation(void)
+{
+	static const uint8_t ansi[] =
+	    "\r\n\x1b[0;31;40mTime: 14:59  Computer command (?=help)? 1\r\n"
+	    "\r\n<Computer deactivated>\n\r"
+	    "\r\nSector: 733\r\nWarps lead to: 2, 9\r\n"
+	    "\x1b[0;32;40m\r\nTime: 14:59  Main Command (?=Help)? ";
+	static const uint8_t plain[] =
+	    "\r\nTime: 14:59  Computer command (?=help)? 1\r\n"
+	    "\r\n<Computer deactivated>\n\r"
+	    "\r\nSector: 733\r\nWarps lead to: 2, 9\r\n"
+	    "\r\nTime: 14:59  Main Command (?=Help)? ";
+	struct yt_present_state current;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+
+	computer_deactivation_cycle_fixture(true, &capture, &current, &pager);
+	CHECK(sizeof(ansi) - 1U == 165U);
+	CHECK(capture.remote_length == sizeof(ansi) - 1U
+	    && memcmp(capture.remote, ansi, sizeof(ansi) - 1U) == 0);
+	CHECK(pager.line_count == 0.0f);
+
+	computer_deactivation_cycle_fixture(false, &capture, &current, &pager);
+	CHECK(sizeof(plain) - 1U == 145U);
+	CHECK(capture.remote_length == sizeof(plain) - 1U
+	    && memcmp(capture.remote, plain, sizeof(plain) - 1U) == 0);
+	CHECK(pager.line_count == 0.0f);
+}
+
+static void
+computer_sensor_all_zero_cycle_fixture(bool ansi,
+    struct pager_capture *capture, struct yt_present_state *current,
+    struct yt_pager_state *pager)
+{
+	static const uint8_t heading[] = "[ Sensors Activated ]";
+	static const uint8_t ending[] = "[ End Sensor Scan ]";
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Computer command (?=help)? ";
+	struct yt_present_result result;
+	char accumulator[80] = "";
+
+	computer_return_prompt_fixture(ansi, 0.0f, capture, current, pager);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"S", 1,
+	    (const uint8_t *)"S", 1, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current->foreground = 7.0f;
+	pager->foreground = 7;
+	CHECK(yt_present_bold_line(heading, sizeof(heading) - 1U,
+	    current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_sound(4.0f, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current->foreground = 1.0f;
+	pager->foreground = 1;
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current->foreground = 7.0f;
+	pager->foreground = 7;
+	CHECK(yt_present_bold_line(ending, sizeof(ending) - 1U,
+	    current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+
+	current->foreground = 1.0f;
+	pager->foreground = 1;
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, prompt, sizeof(prompt) - 1U,
+	    capture);
+}
+
+static void
+test_computer_sensor_all_zero_cycle_presentation(void)
+{
+	static const uint8_t ansi[] =
+	    "\r\n\x1b[0;31;40mTime: 14:59  Computer command (?=help)? S\r\n"
+	    "\r\n\x1b[0;37;40;1m[ Sensors Activated ]\r\n"
+	    "\x1b[MBT128O5L48P64CP64C\x0e"
+	    "\x1b[0;31;40m\r\n"
+	    "\x1b[0;37;40;1m[ End Sensor Scan ]\r\n"
+	    "\x1b[0;31;40m\r\n"
+	    "Time: 14:59  Computer command (?=help)? ";
+	static const uint8_t plain[] =
+	    "\r\nTime: 14:59  Computer command (?=help)? S\r\n"
+	    "\r\n[ Sensors Activated ]\r\n"
+	    "\r\n[ End Sensor Scan ]\r\n"
+	    "\r\nTime: 14:59  Computer command (?=help)? ";
+	struct yt_present_state current;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+
+	computer_sensor_all_zero_cycle_fixture(true, &capture, &current,
+	    &pager);
+	CHECK(sizeof(ansi) - 1U == 211U);
+	CHECK(capture.remote_length == sizeof(ansi) - 1U
+	    && memcmp(capture.remote, ansi, sizeof(ansi) - 1U) == 0);
+	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f);
+
+	computer_sensor_all_zero_cycle_fixture(false, &capture, &current,
+	    &pager);
+	CHECK(sizeof(plain) - 1U == 135U);
+	CHECK(capture.remote_length == sizeof(plain) - 1U
+	    && memcmp(capture.remote, plain, sizeof(plain) - 1U) == 0);
+	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f);
+}
+
+static void
+computer_profit_cycle_fixture(bool ansi, bool all,
+    struct pager_capture *capture, struct yt_present_state *current,
+    struct yt_pager_state *pager)
+{
+	static const uint8_t title[] =
+	    "Profits of a two way trade to ports in adjacent sectors.";
+	static const uint8_t row_one[] =
+	    "   2,   4 Equ -> Ore @ Profit of 46 ";
+	static const uint8_t row_two[] =
+	    "   2,   3 Equ -> Org @ Profit of 54 ";
+	static const uint8_t row_three[] =
+	    "   3,   4 Org -> Ore @ Profit of 39 ";
+	static const uint8_t separator[] = {' ', 0xba, ' '};
+	static const uint8_t ending[] = " *-[ End of List ]-*";
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Computer command (?=help)? ";
+	static const uint8_t command_all[] = "16";
+	static const uint8_t command_adjacent[] = "17";
+	const uint8_t *command = all ? command_all : command_adjacent;
+	struct yt_present_result result;
+	char accumulator[80] = "";
+
+	CHECK(sizeof(row_one) - 1U == 36U);
+	CHECK(sizeof(row_two) - 1U == 36U);
+	CHECK(sizeof(row_three) - 1U == 36U);
+	computer_return_prompt_fixture(ansi, 0.0f, capture, current, pager);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(command, 2, command, 2, current,
+	    &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+
+	if (!all) {
+		current->foreground = 7.0f;
+		pager->foreground = 7;
+		CHECK(yt_present_line(NULL, 0, current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+		CHECK(yt_present_bold_line(title, sizeof(title) - 1U,
+		    current, &result) == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+		CHECK(yt_present_line(NULL, 0, current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+
+		current->foreground = 2.0f;
+		pager->foreground = 2;
+		CHECK(yt_present_bold_line(row_one, sizeof(row_one) - 1U,
+		    current, &result) == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+		current->foreground = 3.0f;
+		pager->foreground = 3;
+		CHECK(yt_present_bold_line(row_two, sizeof(row_two) - 1U,
+		    current, &result) == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+	}
+	else {
+		CHECK(yt_present_line(NULL, 0, current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+
+		current->foreground = 2.0f;
+		pager->foreground = 2;
+		CHECK(yt_present_bold_character(row_one,
+		    sizeof(row_one) - 1U, current, &result) == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+		current->foreground = 6.0f;
+		pager->foreground = 6;
+		CHECK(yt_present_bold_character(separator, sizeof(separator),
+		    current, &result) == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+
+		current->foreground = 3.0f;
+		pager->foreground = 3;
+		CHECK(yt_present_bold_character(row_two,
+		    sizeof(row_two) - 1U, current, &result) == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+		current->foreground = 6.0f;
+		pager->foreground = 6;
+		CHECK(yt_present_line(NULL, 0, current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+
+		current->foreground = 1.0f;
+		pager->foreground = 1;
+		CHECK(yt_present_bold_character(row_three,
+		    sizeof(row_three) - 1U, current, &result) == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+		current->foreground = 6.0f;
+		pager->foreground = 6;
+		CHECK(yt_present_bold_character(separator, sizeof(separator),
+		    current, &result) == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+		current->foreground = 7.0f;
+		pager->foreground = 7;
+		CHECK(yt_present_bold_line(ending, sizeof(ending) - 1U,
+		    current, &result) == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+	}
+
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current->foreground = 1.0f;
+	pager->foreground = 1;
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, prompt, sizeof(prompt) - 1U,
+	    capture);
+}
+
+static void
+test_computer_profit_cycle_presentation(void)
+{
+	static const uint8_t adjacent_plain[] =
+	    "\r\nTime: 14:59  Computer command (?=help)? 17\r\n"
+	    "\r\nProfits of a two way trade to ports in adjacent sectors.\r\n"
+	    "\r\n   2,   4 Equ -> Ore @ Profit of 46 \r\n"
+	    "   2,   3 Equ -> Org @ Profit of 54 \r\n"
+	    "\r\nTime: 14:59  Computer command (?=help)? ";
+	static const uint8_t adjacent_ansi[] =
+	    "\r\n\x1b[0;31;40mTime: 14:59  Computer command (?=help)? 17\r\n"
+	    "\x1b[0;37;40m\r\n"
+	    "\x1b[0;37;40;1mProfits of a two way trade to ports in adjacent sectors.\r\n"
+	    "\x1b[0;37;40m\r\n"
+	    "\x1b[0;32;40;1m   2,   4 Equ -> Ore @ Profit of 46 \r\n"
+	    "\x1b[0;33;40;1m   2,   3 Equ -> Org @ Profit of 54 \r\n"
+	    "\x1b[0;33;40m\r\n"
+	    "\x1b[0;31;40mTime: 14:59  Computer command (?=help)? ";
+	static const uint8_t all_plain[] =
+	    "\r\nTime: 14:59  Computer command (?=help)? 16\r\n"
+	    "\r\n   2,   4 Equ -> Ore @ Profit of 46  \xba "
+	    "   2,   3 Equ -> Org @ Profit of 54 \r\n"
+	    "   3,   4 Org -> Ore @ Profit of 39  \xba "
+	    " *-[ End of List ]-*\r\n"
+	    "\r\nTime: 14:59  Computer command (?=help)? ";
+	static const uint8_t all_ansi[] =
+	    "\r\n\x1b[0;31;40mTime: 14:59  Computer command (?=help)? 16\r\n"
+	    "\r\n\x1b[0;32;40;1m   2,   4 Equ -> Ore @ Profit of 46 "
+	    "\x1b[0;36;40;1m \xba "
+	    "\x1b[0;33;40;1m   2,   3 Equ -> Org @ Profit of 54 "
+	    "\x1b[0;36;40m\r\n"
+	    "\x1b[0;31;40;1m   3,   4 Org -> Ore @ Profit of 39 "
+	    "\x1b[0;36;40;1m \xba "
+	    "\x1b[0;37;40;1m *-[ End of List ]-*\r\n"
+	    "\x1b[0;37;40m\r\n"
+	    "\x1b[0;31;40mTime: 14:59  Computer command (?=help)? ";
+	struct yt_present_state current;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+
+	computer_profit_cycle_fixture(false, false, &capture, &current,
+	    &pager);
+	CHECK(sizeof(adjacent_plain) - 1U == 226U);
+	CHECK(capture.remote_length == sizeof(adjacent_plain) - 1U
+	    && memcmp(capture.remote, adjacent_plain,
+	    sizeof(adjacent_plain) - 1U) == 0);
+	CHECK(pager.line_count == 1.0f);
+
+	computer_profit_cycle_fixture(true, false, &capture, &current,
+	    &pager);
+	CHECK(sizeof(adjacent_ansi) - 1U == 312U);
+	CHECK(capture.remote_length == sizeof(adjacent_ansi) - 1U
+	    && memcmp(capture.remote, adjacent_ansi,
+	    sizeof(adjacent_ansi) - 1U) == 0);
+
+	computer_profit_cycle_fixture(false, true, &capture, &current,
+	    &pager);
+	CHECK(sizeof(all_plain) - 1U == 228U);
+	CHECK(capture.remote_length == sizeof(all_plain) - 1U
+	    && memcmp(capture.remote, all_plain,
+	    sizeof(all_plain) - 1U) == 0);
+
+	computer_profit_cycle_fixture(true, true, &capture, &current,
+	    &pager);
+	CHECK(sizeof(all_ansi) - 1U == 340U);
+	CHECK(capture.remote_length == sizeof(all_ansi) - 1U
+	    && memcmp(capture.remote, all_ansi,
+	    sizeof(all_ansi) - 1U) == 0);
+	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f);
+}
+
+static void
+test_computer_front_presentation(void)
+{
+	static const uint8_t activated[] = "<Computer activated>";
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Computer command (?=help)? ";
+	static const uint8_t heading[] = " Computer commands:";
+	static const char *const left[8] = {
+		" 1) Exit Computer", " 3) Autopilot",
+		" 5) Send Radio Message",
+		" 7) Set autopilot Sectors to Avoid",
+		" 9) Planet Report", "11) Fighter Finder (Yours)",
+		"13) Planet Finder (Yours)", "15) Show Active Spies"
+	};
+	static const char *const right[8] = {
+		" 2) Port Report", " 4) Rank Teams & Players",
+		" 6) Radio Message Log", " 8) Galactic Newspaper",
+		"10) Path Finder", "12) Port(s) Treasury Report",
+		"14) Find Nearest Ports", "16) Find Port Pairs"
+	};
+	static const uint8_t final[] =
+	    "17) Check Profits of Adjacent Ports";
+	static const uint8_t expected[] =
+	    "\r\n<Computer activated>\n\r"
+	    "\r\nTime: 14:59  Computer command (?=help)? ?\r\n"
+	    "\r\n Computer commands:\n\r\r\n"
+	    " 1) Exit Computer                        2) Port Report\n\r"
+	    " 3) Autopilot                            4) Rank Teams & Players\n\r"
+	    " 5) Send Radio Message                   6) Radio Message Log\n\r"
+	    " 7) Set autopilot Sectors to Avoid       8) Galactic Newspaper\n\r"
+	    " 9) Planet Report                       10) Path Finder\n\r"
+	    "11) Fighter Finder (Yours)              12) Port(s) Treasury Report\n\r"
+	    "13) Planet Finder (Yours)               14) Find Nearest Ports\n\r"
+	    "15) Show Active Spies                   16) Find Port Pairs\n\r"
+	    "17) Check Profits of Adjacent Ports\n\r"
+	    "\r\nTime: 14:59  Computer command (?=help)? ";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "";
+	size_t index;
+
+	current.foreground = 1.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 1;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, activated,
+	    sizeof(activated) - 1U, &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"?", 1,
+	    (const uint8_t *)"?", 1, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.line_count = 0.0f;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, heading, sizeof(heading) - 1U,
+	    &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	for (index = 0; index < 8U; ++index) {
+		uint8_t mutable[256];
+		size_t length = strlen(left[index]);
+
+		memcpy(mutable, left[index], length);
+		CHECK(yt_present_fixed_width(mutable, &length, sizeof(mutable),
+		    40.0f, &current, &result) == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager_fixture_b05d(&pager, &current,
+		    (const uint8_t *)right[index], strlen(right[index]), &capture);
+	}
+	pager_fixture_b05d(&pager, &current, final, sizeof(final) - 1U,
+	    &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	CHECK(sizeof(expected) - 1U == 674U);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(pager.line_count == 11.0f && pager.newline_flag == 0.0f);
+}
+
+static void
+test_computer_avoid_presentation(void)
+{
+	static const uint8_t heading_one[] =
+	    "You may set the autopilot to avoid up to 30 sectors";
+	static const uint8_t heading_two[] = "Current sectors to avoid are:";
+	static const uint8_t slot_prompt[] =
+	    "Enter the number of the slot to change [1 - 30]: ";
+	static const uint8_t computer_prompt[] =
+	    "Time:10:00  Computer command (?=help)? ";
+	static const uint8_t expected[] =
+	    "\r\nYou may set the autopilot to avoid up to 30 sectors\n\r"
+	    "\r\nCurrent sectors to avoid are:\n\r\r\n"
+	    "[  1 ]  -=>  0      [ 11 ]  -=>  0      [ 21 ]  -=>  0\n\r"
+	    "[  2 ]  -=>  0      [ 12 ]  -=>  0      [ 22 ]  -=>  0\n\r"
+	    "[  3 ]  -=>  0      [ 13 ]  -=>  0      [ 23 ]  -=>  0\n\r"
+	    "[  4 ]  -=>  0      [ 14 ]  -=>  0      [ 24 ]  -=>  0\n\r"
+	    "[  5 ]  -=>  0      [ 15 ]  -=>  0      [ 25 ]  -=>  0\n\r"
+	    "[  6 ]  -=>  0      [ 16 ]  -=>  0      [ 26 ]  -=>  0\n\r"
+	    "[  7 ]  -=>  0      [ 17 ]  -=>  0      [ 27 ]  -=>  0\n\r"
+	    "[  8 ]  -=>  0      [ 18 ]  -=>  0      [ 28 ]  -=>  0\n\r"
+	    "[  9 ]  -=>  0      [ 19 ]  -=>  0      [ 29 ]  -=>  0\n\r"
+	    "[ 10 ]  -=>  0      [ 20 ]  -=>  0      [ 30 ]  -=>  0\n\r"
+	    "\r\nEnter the number of the slot to change [1 - 30]: \r\n"
+	    "\r\nTime:10:00  Computer command (?=help)? ";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "";
+	int row;
+
+	current.foreground = 1.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 1;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, heading_one,
+	    sizeof(heading_one) - 1U, &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, heading_two,
+	    sizeof(heading_two) - 1U, &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	for (row = 1; row <= 10; ++row) {
+		char first[96];
+		char middle[96];
+		char last[96];
+		uint8_t mutable[256];
+		size_t length;
+
+		(void)snprintf(first, sizeof(first), "[ %2d ]  -=>  0", row);
+		(void)snprintf(middle, sizeof(middle), "[%3d ]  -=>  0",
+		    row + 10);
+		(void)snprintf(last, sizeof(last), "[%3d ]  -=>  0",
+		    row + 20);
+		length = strlen(first);
+		memcpy(mutable, first, length);
+		CHECK(yt_present_fixed_width(mutable, &length, sizeof(mutable),
+		    20.0f, &current, &result) == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		length = strlen(middle);
+		memcpy(mutable, middle, length);
+		CHECK(yt_present_fixed_width(mutable, &length, sizeof(mutable),
+		    20.0f, &current, &result) == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager_fixture_b05d(&pager, &current, (const uint8_t *)last,
+		    strlen(last), &capture);
+	}
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, slot_prompt,
+	    sizeof(slot_prompt) - 1U, &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, computer_prompt,
+	    sizeof(computer_prompt) - 1U, &capture);
+	CHECK(sizeof(expected) - 1U == 744U);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f);
+}
+
+static void
+test_computer_port_report_presentation(void)
+{
+	static const uint8_t prompt[] = "Enter sector number port is in -=> ";
+	static const uint8_t unavailable[] = "No information available.";
+	static const uint8_t expected[] =
+	    "\r\nEnter sector number port is in -=> 3\r\n"
+	    "\r\nNo information available.\n\r";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "";
+
+	current.foreground = 1.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 1;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"3", 1,
+	    (const uint8_t *)"3", 1, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, unavailable,
+	    sizeof(unavailable) - 1U, &capture);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(pager.line_count == 1.0f);
+}
+
+static void
+test_computer_planet_report_front_presentation(void)
+{
+	static const uint8_t prompt[] =
+	    "What sector number is the planet in? ";
+	static const uint8_t range[] =
+	    "Valid sector numbers are from 1 to 2004.";
+	static const uint8_t limited[] =
+	    "Planet: New Terra -*- Ground Forces: 40";
+	static const uint8_t no_turns[] =
+	    "Sorry but you have no turns left.";
+	static const uint8_t no_turns_expected[] =
+	    "\r\n\x1b[0;31;40;5;1mSorry but you have no turns left.\n\r";
+	static const uint8_t expected[] =
+	    "What sector number is the planet in? 2005\r\n"
+	    "\r\n"
+	    "\x1b[0;31;40;5;1m"
+	    "Valid sector numbers are from 1 to 2004.\n\r"
+	    "\x1b[0;31;40m"
+	    "What sector number is the planet in? 7\r\n"
+	    "\r\nPlanet: New Terra -*- Ground Forces: 40\n\r";
+	struct yt_present_state current = state(true);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "";
+
+	current.foreground = 1.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 1;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	pager_fixture_b05d(&pager, &current, no_turns,
+	    sizeof(no_turns) - 1U, &capture);
+	CHECK(capture.remote_length == sizeof(no_turns_expected) - 1U
+	    && memcmp(capture.remote, no_turns_expected,
+	    sizeof(no_turns_expected) - 1U) == 0);
+
+	current = state(true);
+	current.foreground = 1.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 1;
+	memset(&capture, 0, sizeof(capture));
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"2005", 4,
+	    (const uint8_t *)"2005", 4, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	pager_fixture_b05d(&pager, &current, range, sizeof(range) - 1U,
+	    &capture);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"7", 1,
+	    (const uint8_t *)"7", 1, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, limited, sizeof(limited) - 1U,
+	    &capture);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f);
+}
+
+static void
+test_computer_planet_inventory_presentation(void)
+{
+	static const uint8_t prompt[] =
+	    "What sector number is the planet in? ";
+	static const uint8_t title[] = "Planet: New Terra";
+	static const uint8_t header[] =
+	    " Item           Production     Amount    In Holds";
+	static const uint8_t rule[] =
+	    "=============  ============   ========  ==========";
+	static const char *labels[9] = {
+		"Ore..........", "Organics.....", "Equipment....",
+		"Fighters.....", "Missiles.....", "Mines........",
+		"Credits......", "Forces.......", "Plasma bolts."
+	};
+	static const char *production[9] = {
+		" 11", " 22", " 33", " 68", " 0", " 0", " 9", " 2", " 0"
+	};
+	static const char *amount[9] = {
+		" 101", " 202", " 303", " 404", " 5", " 6", " 1000", " 250", " 9"
+	};
+	static const char *held[9] = {
+		" 10", " 20", " 5", " 7", " 2", " 3", " 12345", " 8", " 4"
+	};
+	static const uint8_t expected[] =
+	    "What sector number is the planet in? 7\r\n"
+	    "\r\nPlanet: New Terra\n\r"
+	    "\r\n Item           Production     Amount    In Holds\n\r"
+	    "=============  ============   ========  ==========\n\r"
+	    "Ore..........           11        101          10\r\n"
+	    "Organics.....           22        202          20\r\n"
+	    "Equipment....           33        303           5\r\n"
+	    "Fighters.....           68        404           7\r\n"
+	    "Missiles.....            0          5           2\r\n"
+	    "Mines........            0          6           3\r\n"
+	    "Credits......            9       1000       12345\r\n"
+	    "Forces.......            2        250           8\r\n"
+	    "Plasma bolts.            0          9           4\r\n";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "";
+	int index;
+
+	current.foreground = 1.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 1;
+	memset(&capture, 0, sizeof(capture));
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"7", 1,
+	    (const uint8_t *)"7", 1, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, title, sizeof(title) - 1U,
+	    &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, header, sizeof(header) - 1U,
+	    &capture);
+	pager_fixture_b05d(&pager, &current, rule, sizeof(rule) - 1U,
+	    &capture);
+	for (index = 0; index < 9; ++index) {
+		CHECK(yt_present_character((const uint8_t *)labels[index],
+		    strlen(labels[index]), &current, &result) == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_right_aligned((const uint8_t *)production[index],
+		    strlen(production[index]), 13.0f, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_right_aligned((const uint8_t *)amount[index],
+		    strlen(amount[index]), 11.0f, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_right_aligned((const uint8_t *)held[index],
+		    strlen(held[index]), 12.0f, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+	}
+	CHECK(sizeof(expected) - 1U == 625U);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(pager.line_count == 3.0f && pager.newline_flag == 0.0f);
+}
+
+static void
+test_computer_finders_presentation(void)
+{
+	static const uint8_t computer_prompt[] =
+	    "Time: 14:59  Computer command (?=help)? ";
+	static const uint8_t searching[] = "Searching;";
+	static const uint8_t amount[] = "Amount";
+	static const uint8_t rule[] = "--------*--------";
+	static const uint8_t fighter_expected[] =
+	    "\r\nTime: 14:59  Computer command (?=help)? 11\r\n"
+	    "\r\nSearching;\r\n\r\n"
+	    " Sector   Amount\n\r"
+	    "--------*--------\n\r"
+	    " 3        20\n\r"
+	    " 9        4\n\r"
+	    "\r\n"
+	    "\r\nTime: 14:59  Computer command (?=help)? ";
+	struct yt_present_state current;
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "";
+	uint8_t mutable[64];
+	size_t length;
+	int index;
+
+	current = state(false);
+	current.foreground = 1.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 1;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, computer_prompt,
+	    sizeof(computer_prompt) - 1U, &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"11", 2,
+	    (const uint8_t *)"11", 2, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, searching,
+	    sizeof(searching) - 1U, &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	memcpy(mutable, " Sector", strlen(" Sector"));
+	length = strlen(" Sector");
+	CHECK(yt_present_fixed_width(mutable, &length, sizeof(mutable), 10.0f,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, amount, sizeof(amount) - 1U,
+	    &capture);
+	pager_fixture_b05d(&pager, &current, rule, sizeof(rule) - 1U,
+	    &capture);
+	for (index = 0; index < 2; ++index) {
+		static const char *sectors[2] = {" 3", " 9"};
+		static const char *fighters[2] = {" 20", " 4"};
+
+		length = strlen(sectors[index]);
+		memcpy(mutable, sectors[index], length);
+		CHECK(yt_present_fixed_width(mutable, &length, sizeof(mutable),
+		    9.0f, &current, &result) == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager_fixture_b05d(&pager, &current,
+		    (const uint8_t *)fighters[index], strlen(fighters[index]),
+		    &capture);
+	}
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, computer_prompt,
+	    sizeof(computer_prompt) - 1U, &capture);
+	CHECK(sizeof(fighter_expected) - 1U == 170U);
+	CHECK(capture.remote_length == sizeof(fighter_expected) - 1U
+	    && memcmp(capture.remote, fighter_expected,
+	    sizeof(fighter_expected) - 1U) == 0);
+
+	{
+		static const uint8_t scanning[] = "Scanning...";
+		static const uint8_t prefix[] = "Planet: ";
+		static const uint8_t infix[] = " Sector:";
+		uint8_t name[41];
+		uint8_t row[80];
+		uint8_t expected[227];
+		size_t expected_length = 0;
+
+		current = state(false);
+		current.foreground = 1.0f;
+		memset(&pager, 0, sizeof(pager));
+		pager.foreground = 1;
+		memset(&capture, 0, sizeof(capture));
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager.newline_flag = 1.0f;
+		pager_fixture_b05d(&pager, &current, computer_prompt,
+		    sizeof(computer_prompt) - 1U, &capture);
+		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+		CHECK(yt_present_editor_echo((const uint8_t *)"13", 2,
+		    (const uint8_t *)"13", 2, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		current.foreground = 2.0f;
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_line(scanning, sizeof(scanning) - 1U,
+		    &current, &result) == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		current.foreground = 3.0f;
+		memset(name, ' ', sizeof(name));
+		memcpy(name, "Home", 4);
+		for (index = 0; index < 2; ++index) {
+			length = 0;
+			memcpy(row + length, prefix, sizeof(prefix) - 1U);
+			length += sizeof(prefix) - 1U;
+			memcpy(row + length, name, sizeof(name));
+			length += sizeof(name);
+			memcpy(row + length, infix, sizeof(infix) - 1U);
+			length += sizeof(infix) - 1U;
+			row[length++] = ' ';
+			row[length++] = (uint8_t)(index == 0 ? '2' : '5');
+			CHECK(yt_present_bold_line(row, length, &current, &result)
+			    == YT_PRESENT_OK);
+			pager_capture_result(&capture, &result);
+		}
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager.newline_flag = 1.0f;
+		pager_fixture_b05d(&pager, &current, computer_prompt,
+		    sizeof(computer_prompt) - 1U, &capture);
+		memcpy(expected + expected_length,
+		    "\r\nTime: 14:59  Computer command (?=help)? 13\r\n"
+		    "\r\nScanning...\r\n\r\n", 63);
+		expected_length += 63U;
+		for (index = 0; index < 2; ++index) {
+			length = 0;
+			memcpy(row + length, prefix, sizeof(prefix) - 1U);
+			length += sizeof(prefix) - 1U;
+			memcpy(row + length, name, sizeof(name));
+			length += sizeof(name);
+			memcpy(row + length, infix, sizeof(infix) - 1U);
+			length += sizeof(infix) - 1U;
+			row[length++] = ' ';
+			row[length++] = (uint8_t)(index == 0 ? '2' : '5');
+			memcpy(expected + expected_length, row, length);
+			expected_length += length;
+			memcpy(expected + expected_length, "\r\n", 2);
+			expected_length += 2U;
+		}
+		memcpy(expected + expected_length,
+		    "\r\nTime: 14:59  Computer command (?=help)? ", 42);
+		expected_length += 42U;
+		CHECK(expected_length == sizeof(expected));
+		CHECK(capture.remote_length == sizeof(expected)
+		    && memcmp(capture.remote, expected, sizeof(expected)) == 0);
+		CHECK(pager.line_count == 1.0f);
+	}
+}
+
+static void
+treasury_cycle_fixture(bool collecting, const uint8_t *command,
+    size_t command_length, const uint8_t *prompt, size_t prompt_length,
+    bool scan_sector, float foreground, struct pager_capture *capture,
+    struct yt_present_state *current, struct yt_pager_state *pager)
+{
+	static const uint8_t collect_prefix[] =
+	    "Sending out armored cargo ships to";
+	static const uint8_t report_prefix[] =
+	    "Checking galactic bank statement for";
+	static const uint8_t suffix[] = " ports with credits...";
+	static const uint8_t total[] = " Total: 10";
+	static const uint8_t summaries[][24] = {
+	    "Total ports...: 2", "With credits..: 1",
+	    "Barren ports..: 1", "Total credits.: 10"
+	};
+	static const uint8_t collected[] =
+	    "You collected a total of 10 credits.";
+	static const uint8_t reported[] =
+	    "You have 10 credits in your port accounts.";
+	struct yt_present_result result;
+	uint8_t mutable[64];
+	size_t length;
+	size_t index;
+	char accumulator[80] = "";
+
+	*current = state(false);
+	current->foreground = foreground;
+	memset(pager, 0, sizeof(*pager));
+	pager->foreground = (int)foreground;
+	memset(capture, 0, sizeof(*capture));
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, prompt, prompt_length, capture);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(command, command_length, command,
+	    command_length, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_character(collecting ? collect_prefix : report_prefix,
+	    collecting ? sizeof(collect_prefix) - 1U
+	    : sizeof(report_prefix) - 1U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(suffix, sizeof(suffix) - 1U, current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+
+	memcpy(mutable, "Sector: 5", strlen("Sector: 5"));
+	length = strlen("Sector: 5");
+	CHECK(yt_present_fixed_width(mutable, &length, sizeof(mutable), 14.0f,
+	    current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	memcpy(mutable, "Alpha", strlen("Alpha"));
+	length = strlen("Alpha");
+	CHECK(yt_present_fixed_width(mutable, &length, sizeof(mutable), 25.0f,
+	    current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	memcpy(mutable, " Credits: 10", strlen(" Credits: 10"));
+	length = strlen(" Credits: 10");
+	CHECK(yt_present_fixed_width(mutable, &length, sizeof(mutable), 20.0f,
+	    current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(total, sizeof(total) - 1U, current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	for (index = 0; index < sizeof(summaries) / sizeof(summaries[0]);
+	    ++index) {
+		CHECK(yt_present_line(summaries[index],
+		    strlen((const char *)summaries[index]), current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+	}
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(collecting ? collected : reported,
+	    collecting ? sizeof(collected) - 1U : sizeof(reported) - 1U,
+	    current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+
+	if (scan_sector) {
+		CHECK(yt_present_line(NULL, 0, current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+		CHECK(yt_present_line((const uint8_t *)"Sector: 7", 9U,
+		    current, &result) == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+		CHECK(yt_present_line((const uint8_t *)"Warps lead to: 9", 16U,
+		    current, &result) == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+	}
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, prompt, prompt_length, capture);
+}
+
+static void
+test_computer_treasury_presentation(void)
+{
+	static const uint8_t computer_prompt[] =
+	    "Time: 14:59  Computer command (?=help)? ";
+	static const uint8_t main_prompt[] =
+	    "Time: 14:59  Main Command (?=Help)? ";
+	static const uint8_t report_expected[] =
+	    "\r\nTime: 14:59  Computer command (?=help)? 12\r\n"
+	    "\r\nChecking galactic bank statement for ports with credits...\r\n"
+	    "\r\nSector: 5     Alpha                     Credits: 10"
+	    "         Total: 10\r\n"
+	    "\r\nTotal ports...: 2\r\nWith credits..: 1\r\n"
+	    "Barren ports..: 1\r\nTotal credits.: 10\r\n"
+	    "\r\nYou have 10 credits in your port accounts.\r\n"
+	    "\r\nTime: 14:59  Computer command (?=help)? ";
+	static const uint8_t collect_expected[] =
+	    "\r\nTime: 14:59  Computer command (?=help)? !\r\n"
+	    "\r\nSending out armored cargo ships to ports with credits...\r\n"
+	    "\r\nSector: 5     Alpha                     Credits: 10"
+	    "         Total: 10\r\n"
+	    "\r\nTotal ports...: 2\r\nWith credits..: 1\r\n"
+	    "Barren ports..: 1\r\nTotal credits.: 10\r\n"
+	    "\r\nYou collected a total of 10 credits.\r\n"
+	    "\r\nTime: 14:59  Computer command (?=help)? ";
+	static const uint8_t main_expected[] =
+	    "\r\nTime: 14:59  Main Command (?=Help)? $\r\n"
+	    "\r\nSending out armored cargo ships to ports with credits...\r\n"
+	    "\r\nSector: 5     Alpha                     Credits: 10"
+	    "         Total: 10\r\n"
+	    "\r\nTotal ports...: 2\r\nWith credits..: 1\r\n"
+	    "Barren ports..: 1\r\nTotal credits.: 10\r\n"
+	    "\r\nYou collected a total of 10 credits.\r\n"
+	    "\r\nSector: 7\r\nWarps lead to: 9\r\n"
+	    "\r\nTime: 14:59  Main Command (?=Help)? ";
+	static const uint8_t no_ports[] = "You don't OWN any ports!!!";
+	static const uint8_t no_ports_expected[] =
+	    "\r\n\x1b[0;31;40;5;1mYou don't OWN any ports!!!\r\n";
+	struct yt_present_state current;
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+
+	treasury_cycle_fixture(false, (const uint8_t *)"12", 2U,
+	    computer_prompt, sizeof(computer_prompt) - 1U, false, 1.0f,
+	    &capture, &current, &pager);
+	CHECK(sizeof(report_expected) - 1U == 348U);
+	CHECK(capture.remote_length == sizeof(report_expected) - 1U
+	    && memcmp(capture.remote, report_expected,
+	    sizeof(report_expected) - 1U) == 0);
+	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f);
+
+	treasury_cycle_fixture(true, (const uint8_t *)"!", 1U,
+	    computer_prompt, sizeof(computer_prompt) - 1U, false, 1.0f,
+	    &capture, &current, &pager);
+	CHECK(sizeof(collect_expected) - 1U == 339U);
+	CHECK(capture.remote_length == sizeof(collect_expected) - 1U
+	    && memcmp(capture.remote, collect_expected,
+	    sizeof(collect_expected) - 1U) == 0);
+	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f);
+
+	treasury_cycle_fixture(true, (const uint8_t *)"$", 1U,
+	    main_prompt, sizeof(main_prompt) - 1U, true, 2.0f,
+	    &capture, &current, &pager);
+	CHECK(sizeof(main_expected) - 1U == 362U);
+	CHECK(capture.remote_length == sizeof(main_expected) - 1U
+	    && memcmp(capture.remote, main_expected,
+	    sizeof(main_expected) - 1U) == 0);
+	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f);
+
+	current = state(true);
+	current.foreground = 1.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	memset(&capture, 0, sizeof(capture));
+	pager_capture_result(&capture, &result);
+	current.blink = 1.0f;
+	CHECK(yt_present_bold_line(no_ports, sizeof(no_ports) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(no_ports_expected) - 1U
+	    && memcmp(capture.remote, no_ports_expected,
+	    sizeof(no_ports_expected) - 1U) == 0);
+}
+
+static void
+fighters_cycle_fixture(bool ansi, struct pager_capture *capture,
+    struct yt_present_state *current, struct yt_pager_state *pager)
+{
+	static const uint8_t main_prompt[] =
+	    "Time: 14:59  Main Command (?=Help)? ";
+	static const uint8_t title[] = "<Drop/Take Fighters>";
+	static const uint8_t available[] =
+	    "You have 18 fighters available.";
+	static const uint8_t desired[] =
+	    "Defend this sector with how many? ";
+	static const uint8_t success[] =
+	    "Done.  You have 6 fighters left.";
+	struct yt_present_result result;
+	char accumulator[80] = "";
+
+	*current = state(ansi);
+	current->foreground = 2.0f;
+	memset(pager, 0, sizeof(*pager));
+	pager->foreground = 2;
+	memset(capture, 0, sizeof(*capture));
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, main_prompt,
+	    sizeof(main_prompt) - 1U, capture);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"fTrailing", 9,
+	    (const uint8_t *)"fTrailing", 9, current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+
+	pager->newline_flag = 0.0f;
+	pager_fixture_b05d(pager, current, title, sizeof(title) - 1U, capture);
+	pager->newline_flag = 0.0f;
+	pager_fixture_b05d(pager, current, available,
+	    sizeof(available) - 1U, capture);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, desired, sizeof(desired) - 1U,
+	    capture);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"12", 2,
+	    (const uint8_t *)"12", 2, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager->newline_flag = 0.0f;
+	pager_fixture_b05d(pager, current, success, sizeof(success) - 1U,
+	    capture);
+	CHECK(yt_present_sound(4.0f, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, main_prompt,
+	    sizeof(main_prompt) - 1U, capture);
+}
+
+static void
+test_main_fighters_presentation(void)
+{
+	static const uint8_t plain[] =
+	    "\r\nTime: 14:59  Main Command (?=Help)? fTrailing\r\n"
+	    "<Drop/Take Fighters>\n\r"
+	    "You have 18 fighters available.\n\r"
+	    "Defend this sector with how many? 12\r\n"
+	    "Done.  You have 6 fighters left.\n\r"
+	    "\r\nTime: 14:59  Main Command (?=Help)? ";
+	static const uint8_t ansi[] =
+	    "\x1b[0;32;40m\r\nTime: 14:59  Main Command (?=Help)? "
+	    "fTrailing\r\n"
+	    "<Drop/Take Fighters>\n\r"
+	    "You have 18 fighters available.\n\r"
+	    "Defend this sector with how many? 12\r\n"
+	    "Done.  You have 6 fighters left.\n\r"
+	    "\x1b[MBT128O5L48P64CP64C\x0e"
+	    "\r\nTime: 14:59  Main Command (?=Help)? ";
+	struct yt_present_state current;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+
+	fighters_cycle_fixture(false, &capture, &current, &pager);
+	CHECK(sizeof(plain) - 1U == 214U);
+	CHECK(capture.remote_length == sizeof(plain) - 1U
+	    && memcmp(capture.remote, plain, sizeof(plain) - 1U) == 0);
+
+	fighters_cycle_fixture(true, &capture, &current, &pager);
+	CHECK(sizeof(ansi) - 1U == 246U);
+	CHECK(capture.remote_length == sizeof(ansi) - 1U
+	    && memcmp(capture.remote, ansi, sizeof(ansi) - 1U) == 0);
+}
+
+static void
+genesis_body_fixture(bool ansi, struct pager_capture *capture)
+{
+	static const uint8_t prophecy_one[] =
+	    "It has been written that one day a Trader Baron will rise up";
+	static const uint8_t prophecy_two[] =
+	    "and wipe the universe clean of the evil that infests it.";
+	static const uint8_t prompt[] =
+	    "Are you that Trader Captain Byte [y/N]";
+	static const uint8_t success_one[] =
+	    "...and so it was written, that one day a trader baron would emerge who";
+	static const uint8_t success_two[] =
+	    "would wipe away the all of the evil in the universe.....";
+	struct yt_present_state current = state(ansi);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	char accumulator[80] = "";
+
+	memset(&pager, 0, sizeof(pager));
+	if (ansi)
+		current.cached_foreground = 2.0f;
+	pager.foreground = 2;
+	memset(capture, 0, sizeof(*capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager.newline_flag = 0.0f;
+	pager_fixture_b05d(&pager, &current, prophecy_one,
+	    sizeof(prophecy_one) - 1U, capture);
+	pager.newline_flag = 0.0f;
+	pager_fixture_b05d(&pager, &current, prophecy_two,
+	    sizeof(prophecy_two) - 1U, capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_character(prompt, sizeof(prompt) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"Y", 1U,
+	    (const uint8_t *)"Y", 1U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current.bold = 1.0f;
+	pager.newline_flag = 0.0f;
+	pager_fixture_b05d(&pager, &current, success_one,
+	    sizeof(success_one) - 1U, capture);
+	current.bold = 1.0f;
+	pager.newline_flag = 0.0f;
+	pager_fixture_b05d(&pager, &current, success_two,
+	    sizeof(success_two) - 1U, capture);
+}
+
+static void
+test_main_genesis_presentation(void)
+{
+	static const uint8_t plain[] =
+	    "\r\nIt has been written that one day a Trader Baron will rise up\n\r"
+	    "and wipe the universe clean of the evil that infests it.\n\r"
+	    "\r\nAre you that Trader Captain Byte [y/N]Y\r\n\r\n"
+	    "...and so it was written, that one day a trader baron would emerge who\n\r"
+	    "would wipe away the all of the evil in the universe.....\n\r";
+	static const uint8_t ansi[] =
+	    "\r\nIt has been written that one day a Trader Baron will rise up\n\r"
+	    "and wipe the universe clean of the evil that infests it.\n\r"
+	    "\r\nAre you that Trader Captain Byte [y/N]Y\r\n\r\n"
+	    "\x1b[0;32;40;1m"
+	    "...and so it was written, that one day a trader baron would emerge who\n\r"
+	    "\x1b[0;32;40;1m"
+	    "would wipe away the all of the evil in the universe.....\n\r";
+	struct pager_capture capture;
+
+	genesis_body_fixture(false, &capture);
+	CHECK(sizeof(plain) - 1U == 297U);
+	CHECK(capture.remote_length == sizeof(plain) - 1U
+	    && memcmp(capture.remote, plain, sizeof(plain) - 1U) == 0);
+	genesis_body_fixture(true, &capture);
+	CHECK(sizeof(ansi) - 1U == 321U);
+	CHECK(capture.remote_length == sizeof(ansi) - 1U
+	    && memcmp(capture.remote, ansi, sizeof(ansi) - 1U) == 0);
+}
+
+static void
+test_planet_garrison_presentation(void)
+{
+	static const uint8_t expected[] =
+	    "\r\nDrop how many ground force units on the planet? 18 Available ->"
+	    "12\r\n\r\nGround force strength now at 12 units!\n\r";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	uint8_t prompt[128];
+	uint8_t success[128];
+	size_t prompt_length;
+	size_t success_length;
+	char accumulator[80] = "";
+
+	current.foreground = 6.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 6;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_planet_garrison_prompt(8.0f, 10.0f, prompt,
+	    sizeof(prompt), &prompt_length));
+	CHECK(yt_planet_garrison_success_row(12.0f, success,
+	    sizeof(success), &success_length));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, prompt_length, &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"12", 2U,
+	    (const uint8_t *)"12", 2U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	pager.newline_flag = 0.0f;
+	pager_fixture_b05d(&pager, &current, success, success_length, &capture);
+	CHECK(sizeof(expected) - 1U == 111U);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+}
+
+static void
+test_planet_landing_presentation(void)
+{
+	static const uint8_t title[] = "<Land/Create planet>";
+	static const uint8_t landing[] = "Landing...";
+	static const uint8_t permission[] = "Permission to land is ";
+	static const uint8_t denied[] = "DENIED!";
+	static const uint8_t confirmation[] =
+	    "Do you wish to try to force a landing? [y/N] ";
+	static const uint8_t expected[] =
+	    "\r\n<Land/Create planet>\n\r"
+	    "\r\nLanding...\n\r"
+	    "\r\n"
+	    "This is space traffic control at planet LOCKED\r\n"
+	    "Permission to land is DENIED!\r\n"
+	    "\r\n"
+	    "Sensors report ground forces of 10 units. You have 5.\n\r"
+	    "Do you wish to try to force a landing? [y/N] N\r\n";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	uint8_t traffic[128];
+	uint8_t sensor[128];
+	size_t traffic_length;
+	size_t sensor_length;
+	char accumulator[80] = "";
+
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 2;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_planet_landing_traffic_row((const uint8_t *)"LOCKED", 6U,
+	    traffic, sizeof(traffic), &traffic_length));
+	CHECK(yt_planet_landing_sensor_row(10.0f, 5.0f, sensor,
+	    sizeof(sensor), &sensor_length));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 0.0f;
+	pager_fixture_b05d(&pager, &current, title, sizeof(title) - 1U,
+	    &capture);
+	current.foreground = 6.0f;
+	pager.foreground = 6;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 0.0f;
+	pager_fixture_b05d(&pager, &current, landing, sizeof(landing) - 1U,
+	    &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(traffic, traffic_length, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_character(permission, sizeof(permission) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.blink = 1.0f;
+	current.foreground = 3.0f;
+	pager.foreground = 3;
+	CHECK(yt_present_bold_line(denied, sizeof(denied) - 1U, &current,
+	    &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.foreground = 6.0f;
+	pager.foreground = 6;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 0.0f;
+	pager_fixture_b05d(&pager, &current, sensor, sensor_length, &capture);
+	CHECK(yt_present_character(confirmation, sizeof(confirmation) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"N", 1U,
+	    (const uint8_t *)"N", 1U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(pager.line_count == 0.0f);
+	CHECK(current.foreground == 6.0f
+	    && current.bold == 1.0f && current.blink == 1.0f);
+}
+
+static void
+test_planet_assault_presentation(void)
+{
+	static const uint8_t engaging[] = "Forces engaging!";
+	static const uint8_t defenses[] = "Planetary defenses destroyed!";
+	static const uint8_t captured[] = "You've captured the planet!";
+	static const uint8_t victory[] =
+	    "\r\n"
+	    "Forces engaging!\r\n"
+	    "\r\n"
+	    "Ground forces remaining: 0!\r\n"
+	    "\r\n"
+	    "Planetary defenses destroyed!\r\n"
+	    "\x07"
+	    "\r\n"
+	    "You've captured the planet!\r\n"
+	    "\x07";
+	static const uint8_t failure[] =
+	    "\r\n"
+	    "Forces engaging!\r\n"
+	    "\r\n"
+	    "Your forces remaining  : 0!\r\n"
+	    "\r\n"
+	    "Attack Failed! Ground Forces remaining: 5!\r\n";
+	struct yt_present_state current;
+	struct yt_present_result result;
+	struct pager_capture capture;
+	uint8_t row[128];
+	size_t row_length;
+
+	current = state(false);
+	current.foreground = 6.0f;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.blink = 1.0f;
+	CHECK(yt_present_bold_line(engaging, sizeof(engaging) - 1U, &current,
+	    &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_sound(2.0f, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.foreground = 4.0f;
+	CHECK(yt_planet_assault_status_row(false, 0.0f, row, sizeof(row),
+	    &row_length));
+	CHECK(yt_present_line(row, row_length, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_sound(2.0f, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.foreground = 6.0f;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_bold_line(defenses, sizeof(defenses) - 1U, &current,
+	    &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_sound(1.0f, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.blink = 1.0f;
+	CHECK(yt_present_bold_line(captured, sizeof(captured) - 1U, &current,
+	    &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_sound(1.0f, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(victory) - 1U
+	    && memcmp(capture.remote, victory, sizeof(victory) - 1U) == 0);
+	CHECK(sizeof(victory) - 1U == 117U);
+
+	current = state(false);
+	current.foreground = 6.0f;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.blink = 1.0f;
+	CHECK(yt_present_bold_line(engaging, sizeof(engaging) - 1U, &current,
+	    &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_sound(2.0f, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.foreground = 3.0f;
+	CHECK(yt_planet_assault_status_row(true, 0.0f, row, sizeof(row),
+	    &row_length));
+	CHECK(yt_present_line(row, row_length, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.foreground = 6.0f;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.blink = 1.0f;
+	CHECK(yt_planet_assault_failure_row(5.0f, false, row, sizeof(row),
+	    &row_length));
+	CHECK(yt_present_bold_line(row, row_length, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(failure) - 1U
+	    && memcmp(capture.remote, failure, sizeof(failure) - 1U) == 0);
+	CHECK(sizeof(failure) - 1U == 97U);
+}
+
+static void
+test_planet_creation_presentation(void)
+{
+	static const uint8_t no_planet[] =
+	    "There is no planet in this sector.";
+	static const uint8_t price[] = "Planets cost 25000 credits.";
+	static const uint8_t buy[] =
+	    "Do you wish to buy a planet(Y/N) [N]? ";
+	static const uint8_t name_prompt[] =
+	    "What do you want to name this planet? -=>";
+	static const uint8_t confirmation[] =
+	    "\"Nova\" Is this OK? (Y/n) [Y] ?";
+	static const uint8_t advice[] =
+	    "To increase productivity on your new planet, spend credits [$] on it.";
+	static const uint8_t expected[] =
+	    "\r\nThere is no planet in this sector.\n\r"
+	    "Planets cost 25000 credits.\n\r"
+	    "You have 30000 credits.\n\r"
+	    "Do you wish to buy a planet(Y/N) [N]? Y\r\n"
+	    "\r\nWhat do you want to name this planet? -=>Nova\r\n"
+	    "\r\n\"Nova\" Is this OK? (Y/n) [Y] ?Y\r\n"
+	    "\r\nPlanet \"Nova\" created with Genesis Device!\n\r"
+	    "\r\nTo increase productivity on your new planet, spend "
+	    "credits [$] on it.\n\r";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	uint8_t credit[128];
+	uint8_t created[128];
+	size_t credit_length;
+	size_t created_length;
+	char accumulator[80] = "";
+
+	current.foreground = 6.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 6;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_planet_creation_credit_row(30000.0, credit, sizeof(credit),
+	    &credit_length));
+	CHECK(yt_planet_creation_success_row((const uint8_t *)"Nova", 4U,
+	    created, sizeof(created), &created_length));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 0.0f;
+	pager_fixture_b05d(&pager, &current, no_planet,
+	    sizeof(no_planet) - 1U, &capture);
+	pager.newline_flag = 0.0f;
+	pager_fixture_b05d(&pager, &current, price, sizeof(price) - 1U,
+	    &capture);
+	pager.newline_flag = 0.0f;
+	pager_fixture_b05d(&pager, &current, credit, credit_length, &capture);
+	CHECK(yt_present_character(buy, sizeof(buy) - 1U, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"Y", 1U,
+	    (const uint8_t *)"Y", 1U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, name_prompt,
+	    sizeof(name_prompt) - 1U, &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"Nova", 4U,
+	    (const uint8_t *)"Nova", 4U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_character(confirmation, sizeof(confirmation) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"Y", 1U,
+	    (const uint8_t *)"Y", 1U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 0.0f;
+	pager_fixture_b05d(&pager, &current, created, created_length, &capture);
+	CHECK(yt_present_sound(4.0f, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 0.0f;
+	pager_fixture_b05d(&pager, &current, advice, sizeof(advice) - 1U,
+	    &capture);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(sizeof(expected) - 1U == 336U);
+	CHECK(pager.line_count == 2.0f);
+}
+
+static void
+test_planet_move_presentation(void)
+{
+	static const uint8_t cost[] =
+	    "Moving planets costs 10 turns per sector.";
+	static const uint8_t destination[] = "Move planet to what sector? ";
+	static const uint8_t working[] = "Working. ";
+	static const uint8_t confirmation[] = "Move the planet? (Y/[N])";
+	static const uint8_t engaged[] = "Planet thrusters engaged.";
+	static const uint8_t moving[] = "Moving to sector:";
+	static const uint8_t expected[] =
+	    "\r\nMoving planets costs 10 turns per sector.\n\r"
+	    "Move planet to what sector? 2\r\n"
+	    "\r\nWorking. The shortest path from sector 1 to sector 2 is:\n\r"
+	    "\r\n 1 2\r\n"
+	    "\r\nDistance is 1 and will take 10 turns.\n\r"
+	    "You have 100 turns left.\n\r"
+	    "Move the planet? (Y/[N])Y\r\n"
+	    "\r\nPlanet thrusters engaged.\n\r"
+	    "Moving to sector: 2\r\n"
+	    "\r\nGaia moved! (Xannoron Movers, we move anyTHING, anyWHERE!)\r\n";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	uint8_t row[256];
+	size_t row_length;
+	char accumulator[80] = "";
+	char number[64];
+
+	current.foreground = 6.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 6;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, cost, sizeof(cost) - 1U, &capture);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, destination,
+	    sizeof(destination) - 1U, &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"2", 1U,
+	    (const uint8_t *)"2", 1U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, working,
+	    sizeof(working) - 1U, &capture);
+	CHECK(yt_planet_move_path_heading(1.0f, 2.0f, row,
+	    sizeof(row), &row_length));
+	pager.newline_flag = 0.0f;
+	pager_fixture_b05d(&pager, &current, row, row_length, &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(qb_str_single(number, sizeof(number), 1.0f) > 0);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, (const uint8_t *)number,
+	    strlen(number), &capture);
+	CHECK(qb_str_single(number, sizeof(number), 2.0f) > 0);
+	pager.line_count = 0.0f;
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, (const uint8_t *)number,
+	    strlen(number), &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_planet_move_summary(10.0f, row, sizeof(row), &row_length));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 0.0f;
+	pager_fixture_b05d(&pager, &current, row, row_length, &capture);
+	CHECK(yt_planet_move_turns_row(100.0f, row, sizeof(row), &row_length));
+	pager_fixture_b05d(&pager, &current, row, row_length, &capture);
+	CHECK(yt_present_character(confirmation, sizeof(confirmation) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"Y", 1U,
+	    (const uint8_t *)"Y", 1U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, engaged,
+	    sizeof(engaged) - 1U, &capture);
+	pager.line_count = 0.0f;
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, moving,
+	    sizeof(moving) - 1U, &capture);
+	CHECK(qb_str_single(number, sizeof(number), 2.0f) > 0);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, (const uint8_t *)number,
+	    strlen(number), &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_planet_move_success_row((const uint8_t *)"Gaia", 4U,
+	    row, sizeof(row), &row_length));
+	CHECK(yt_present_line(row, row_length, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(sizeof(expected) - 1U == 350U);
+}
+
+static void
+test_sector_mine_presentation(void)
+{
+	static const uint8_t warning[] = "** Sector is Mined!! **";
+	static const uint8_t shields_destroyed[] = "Shields disintegrated!";
+	static const uint8_t scanner_destroyed[] =
+	    "Danger scanner destroyed!";
+	static const uint8_t expected[] =
+	    "\r\n"
+	    "** Sector is Mined!! **\r\n"
+	    "\x07"
+	    "There are 3 mines here! 1 EXPLODE!\r\n"
+	    "Shields down to 1 units!\r\n"
+	    "Danger scanner destroyed!\r\n"
+	    "There are 2 mines here! 1 EXPLODE!\r\n"
+	    "Shields disintegrated!\r\n"
+	    "There are 1 mines here! 1 EXPLODE!\r\n"
+	    "Lost 1 fighters!\r\n"
+	    "Lost 50% cloak!\r\n"
+	    "Lost 1 Missiles!\r\n"
+	    "Lost 1 mines!\r\n"
+	    "Lost 1 holds of ore!\r\n"
+	    "Lost 1 holds of organics!\r\n"
+	    "Lost 1 holds of equipment!\r\n"
+	    "Lost 1 empty holds!\r\n";
+	static const struct {
+		enum yt_sector_mine_loss_kind kind;
+		float loss;
+	} losses[] = {
+		{YT_SECTOR_MINE_LOSS_FIGHTERS, 1.0f},
+		{YT_SECTOR_MINE_LOSS_CLOAK, 50.0f},
+		{YT_SECTOR_MINE_LOSS_MISSILES, 1.0f},
+		{YT_SECTOR_MINE_LOSS_MINES, 1.0f},
+		{YT_SECTOR_MINE_LOSS_ORE, 1.0f},
+		{YT_SECTOR_MINE_LOSS_ORGANICS, 1.0f},
+		{YT_SECTOR_MINE_LOSS_EQUIPMENT, 1.0f},
+		{YT_SECTOR_MINE_LOSS_EMPTY_HOLDS, 1.0f},
+	};
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct pager_capture capture;
+	uint8_t row[256];
+	size_t row_length;
+	size_t index;
+
+	current.foreground = 6.0f;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.blink = 1.0f;
+	CHECK(yt_present_line(warning, sizeof(warning) - 1U, &current,
+	    &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_sound(5.0f, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+
+	current.foreground = 3.0f;
+	current.background = 0.0f;
+	current.blink = 0.0f;
+	CHECK(yt_sector_mine_explosion_row(3.0f, 1.0f, row,
+	    sizeof(row), &row_length));
+	CHECK(yt_present_bold_character(row, row_length, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.background = 1.0f;
+	CHECK(yt_present_line(NULL, 0U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_sector_mine_shields_row(1.0f, row, sizeof(row), &row_length));
+	CHECK(yt_present_bold_line(row, row_length, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.foreground = 7.0f;
+	current.blink = 1.0f;
+	CHECK(yt_present_bold_line(scanner_destroyed,
+	    sizeof(scanner_destroyed) - 1U, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.foreground = 6.0f;
+	CHECK(yt_present_sound(2.0f, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+
+	current.foreground = 3.0f;
+	current.background = 0.0f;
+	current.blink = 0.0f;
+	CHECK(yt_sector_mine_explosion_row(2.0f, 1.0f, row,
+	    sizeof(row), &row_length));
+	CHECK(yt_present_bold_character(row, row_length, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.background = 1.0f;
+	CHECK(yt_present_line(NULL, 0U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.foreground = 7.0f;
+	current.blink = 1.0f;
+	CHECK(yt_present_bold_line(shields_destroyed,
+	    sizeof(shields_destroyed) - 1U, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.foreground = 6.0f;
+	CHECK(yt_present_sound(2.0f, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+
+	current.foreground = 3.0f;
+	current.background = 0.0f;
+	current.blink = 0.0f;
+	CHECK(yt_sector_mine_explosion_row(1.0f, 1.0f, row,
+	    sizeof(row), &row_length));
+	CHECK(yt_present_bold_character(row, row_length, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.background = 1.0f;
+	CHECK(yt_present_line(NULL, 0U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	for (index = 0U; index < YT_ARRAY_LEN(losses); ++index) {
+		CHECK(yt_sector_mine_loss_row(losses[index].kind,
+		    losses[index].loss, row, sizeof(row), &row_length));
+		CHECK(yt_present_line(row, row_length, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+	}
+	CHECK(yt_present_sound(2.0f, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(sizeof(expected) - 1U == 379U);
+	CHECK(current.foreground == 3.0f && current.background == 1.0f);
+}
+
+static void
+test_direct_fighter_kill_warning_presentation(void)
+{
+	static const uint8_t expected[] =
+	    "\r\n  -  VICTIM had sector mines! They EXPLODED!\n\r";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	uint8_t row[128];
+	size_t row_length;
+
+	current.foreground = 6.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 6;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_direct_fighter_mine_warning((const uint8_t *)"VICTIM", 6U,
+	    row, sizeof(row), &row_length));
+	CHECK(yt_present_line(NULL, 0U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	pager.newline_flag = 0.0f;
+	pager_fixture_b05d(&pager, &current, row, row_length, &capture);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(sizeof(expected) - 1U == 48U);
+	CHECK(pager.line_count == 1.0f);
+}
+
+static struct pager_capture
+black_hole_fixture(bool ansi, bool meltdown)
+{
+	static const uint8_t black_hole[] = "A *-BLACK HOLE-* grabs you!";
+	static const uint8_t title[] = " * EMERGENCY WARP ENGAGED! * ";
+	static const uint8_t wormhole[] =
+	    "You enter a wormhole as your engines build up to emergency power!";
+	static const uint8_t temperature[] = "     * Engine Temperature *";
+	static const uint8_t scale[] = "[ Normal ][ Danger ][ Overheat ]";
+	static const uint8_t ruler[] = "================================";
+	static const uint8_t relief[] =
+	    "You sigh in relief as you look at your scanner and find yourself in";
+	static const uint8_t meltdown_row[] = "MELT DOWN!";
+	static const uint8_t engines_disabled[] = "Your engines are disabled!";
+	static const uint8_t repair[] =
+	    "It will take a solar day to repair them.";
+	struct yt_present_state current = state(ansi);
+	struct yt_present_result result;
+	struct pager_capture capture;
+	uint8_t row[128];
+	size_t row_length;
+
+	current.foreground = 1.0f;
+	current.color_initialized = ansi ? 1.0f : 0.0f;
+	current.cached_foreground = ansi ? 1.0f : 0.0f;
+	current.cached_background = 0.0f;
+	current.sound.user_sound = 0.0f;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_attention(black_hole, sizeof(black_hole) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_attention(title, sizeof(title) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_bold_line(wormhole, sizeof(wormhole) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.foreground = 6.0f;
+	CHECK(yt_present_bold_line(temperature, sizeof(temperature) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_bold_line(scale, sizeof(scale) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.foreground = 2.0f;
+	CHECK(yt_present_bold_line(ruler, sizeof(ruler) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.foreground = 6.0f;
+	CHECK(yt_present_bold_character((const uint8_t *)"[", 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	for (size_t tick = 1U; tick <= (meltdown ? 31U : 1U); ++tick) {
+		current.foreground = tick < 10U ? 2.0f
+		    : tick < 20U ? 3.0f : 1.0f;
+		if (tick >= 20U)
+			current.blink = 1.0f;
+		CHECK(yt_present_bold_character((const uint8_t *)"*", 1U,
+		    &current, &result) == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+	}
+	current.foreground = 2.0f;
+	CHECK(yt_present_line(NULL, 0U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	if (meltdown) {
+		CHECK(yt_present_attention(meltdown_row,
+		    sizeof(meltdown_row) - 1U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		current.foreground = 1.0f;
+		CHECK(yt_present_line(NULL, 0U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_bold_line(engines_disabled,
+		    sizeof(engines_disabled) - 1U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_line(NULL, 0U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_bold_line(repair, sizeof(repair) - 1U,
+		    &current, &result) == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		for (size_t cue = 0U; cue < 5U; ++cue) {
+			CHECK(yt_present_sound(5.0f, &current, &result)
+			    == YT_PRESENT_OK);
+			pager_capture_result(&capture, &result);
+		}
+		CHECK(yt_present_line(NULL, 0U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_emergency_warp_stranded_row(1003.0f, row,
+		    sizeof(row), &row_length));
+	}
+	else {
+		CHECK(yt_present_sound(1.0f, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_line(relief, sizeof(relief) - 1U, &current,
+		    &result) == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_emergency_warp_result_row(1003.0f, 3.0f, row,
+		    sizeof(row), &row_length));
+	}
+	CHECK(yt_present_line(row, row_length, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	return capture;
+}
+
+static uint64_t
+presentation_fnv1a64(const uint8_t *data, size_t length)
+{
+	uint64_t value = UINT64_C(14695981039346656037);
+
+	for (size_t index = 0U; index < length; ++index) {
+		value ^= data[index];
+		value *= UINT64_C(1099511628211);
+	}
+	return value;
+}
+
+static void
+test_black_hole_presentation(void)
+{
+	static const uint8_t plain[] =
+	    "\r\nA *-BLACK HOLE-* grabs you!\r\n"
+	    "\r\n * EMERGENCY WARP ENGAGED! * \r\n"
+	    "\r\nYou enter a wormhole as your engines build up to emergency power!\r\n"
+	    "\r\n     * Engine Temperature *\r\n"
+	    "[ Normal ][ Danger ][ Overheat ]\r\n"
+	    "================================\r\n"
+	    "[*\r\n\r\n"
+	    "You sigh in relief as you look at your scanner and find yourself in\r\n"
+	    "sector 1003. However, it takes you 3 turns to recharge your engines!\r\n";
+	static const uint8_t ansi[] =
+	    "\r\n"
+	    "\x1b[0;33;41;5;1mA *-BLACK HOLE-* grabs you!"
+	    "\x1b[0;33;40m\r\n"
+	    "\r\n"
+	    "\x1b[0;33;41;5;1m * EMERGENCY WARP ENGAGED! * "
+	    "\x1b[0;33;40m\r\n"
+	    "\r\n"
+	    "\x1b[0;33;40;1mYou enter a wormhole as your engines build up to emergency power!\r\n"
+	    "\x1b[0;33;40m\r\n"
+	    "\x1b[0;36;40;1m     * Engine Temperature *\r\n"
+	    "\x1b[0;36;40;1m[ Normal ][ Danger ][ Overheat ]\r\n"
+	    "\x1b[0;32;40;1m================================\r\n"
+	    "\x1b[0;36;40;1m[\x1b[0;32;40;1m*"
+	    "\x1b[0;32;40m\r\n"
+	    "\r\n"
+	    "You sigh in relief as you look at your scanner and find yourself in\r\n"
+	    "sector 1003. However, it takes you 3 turns to recharge your engines!\r\n";
+	struct pager_capture capture;
+
+	capture = black_hole_fixture(false, false);
+	CHECK(capture.remote_length == sizeof(plain) - 1U
+	    && memcmp(capture.remote, plain, sizeof(plain) - 1U) == 0);
+	CHECK(capture.remote_length == 377U);
+	capture = black_hole_fixture(true, false);
+	CHECK(capture.remote_length == sizeof(ansi) - 1U
+	    && memcmp(capture.remote, ansi, sizeof(ansi) - 1U) == 0);
+	CHECK(capture.remote_length == 517U);
+	capture = black_hole_fixture(false, true);
+	CHECK(capture.remote_length == 390U
+	    && presentation_fnv1a64(capture.remote, capture.remote_length)
+	    == UINT64_C(0x8094673d4189baa8));
+	capture = black_hole_fixture(true, true);
+	CHECK(capture.remote_length == 992U
+	    && presentation_fnv1a64(capture.remote, capture.remote_length)
+	    == UINT64_C(0xe5d4a68593eb10a8));
+}
+
+static void
+test_movement_presentation(void)
+{
+	static const uint8_t destination_prompt[] = "Move to which sector? ";
+	static const uint8_t finalizer_row[] = "One Turn Deducted, 59 left.";
+	static const uint8_t expected[] =
+	    "\r\n"
+	    "Warps lead to, 7, 42, 12.5\n\r"
+	    "\r\n"
+	    "Move to which sector? 42\r\n"
+	    "\r\n"
+	    "One Turn Deducted, 59 left.\n\r";
+	const float warps[6] = {7.0f, 42.0f, 0.0f, 0.0f, 12.5f, 0.0f};
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "M";
+	uint8_t row[128];
+	size_t row_length;
+
+	current.foreground = 2.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 2;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_movement_warp_row(warps, row, sizeof(row), &row_length));
+	CHECK(yt_present_line(NULL, 0U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, row, row_length, &capture);
+	CHECK(yt_present_line(NULL, 0U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, destination_prompt,
+	    sizeof(destination_prompt) - 1U, &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"42", 2U,
+	    (const uint8_t *)"42", 2U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, finalizer_row,
+	    sizeof(finalizer_row) - 1U, &capture);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(capture.remote_length == 89U && pager.line_count == 1.0f);
+}
+
+static void
+test_direct_attack_presentation(void)
+{
+	static const uint8_t title[] = "<Attack>";
+	static const uint8_t eliminated[] =
+	    "Fighters eliminated! Attacking the ship!";
+	static const uint8_t expected[] =
+	    "<Attack>\n\r"
+	    "Attack VICTIM (Y/N)[Y]? Y\r\n"
+	    "You have 5. Use how many fighters? [0] 3\r\n"
+	    "\r\nYou lost 0 fighter(s), 2 remain.\n\r"
+	    "You destroyed 2 enemy fighters, 0 remain.\n\r"
+	    "\r\nFighters eliminated! Attacking the ship!\n\r";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "";
+	uint8_t prompt[160];
+	uint8_t attacker_row[160];
+	uint8_t defender_row[160];
+	size_t prompt_length;
+	size_t attacker_length;
+	size_t defender_length;
+
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 2;
+	memset(&capture, 0, sizeof(capture));
+	pager_fixture_b05d(&pager, &current, title, sizeof(title) - 1U,
+	    &capture);
+	CHECK(yt_direct_attack_candidate_prompt((const uint8_t *)"VICTIM",
+	    6U, prompt, sizeof(prompt), &prompt_length));
+	CHECK(yt_present_character(prompt, prompt_length, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"Y", 1U,
+	    (const uint8_t *)"Y", 1U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_capture_line(&capture, &current, NULL, 0U);
+	CHECK(yt_direct_attack_commitment_prompt(5.0, prompt,
+	    sizeof(prompt), &prompt_length));
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, prompt_length, &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"3", 1U,
+	    (const uint8_t *)"3", 1U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_capture_line(&capture, &current, NULL, 0U);
+	CHECK(yt_direct_attack_result_rows(0.0, 2.0, 2.0, 0.0,
+	    attacker_row, sizeof(attacker_row), &attacker_length,
+	    defender_row, sizeof(defender_row), &defender_length));
+	pager_capture_line(&capture, &current, NULL, 0U);
+	pager_fixture_b05d(&pager, &current, attacker_row, attacker_length,
+	    &capture);
+	pager_fixture_b05d(&pager, &current, defender_row, defender_length,
+	    &capture);
+	pager_capture_line(&capture, &current, NULL, 0U);
+	pager_fixture_b05d(&pager, &current, eliminated,
+	    sizeof(eliminated) - 1U, &capture);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+}
+
+static void
+spy_cycle_fixture(bool ansi, int active_count, struct pager_capture *capture,
+    struct yt_present_state *current, struct yt_pager_state *pager)
+{
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Computer command (?=help)? ";
+	static const uint8_t rows[2][39] = {
+	    "Spy # 1 will hunt in sector 42.",
+	    "Spy # 2 will hunt in sector-7."
+	};
+	static const uint8_t none[] = "You do not have any spies!";
+	struct yt_present_result result;
+	char accumulator[80] = "";
+	int index;
+
+	*current = state(ansi);
+	current->foreground = 6.0f;
+	if (ansi)
+		CHECK(yt_present_color(current, &result) == YT_PRESENT_OK);
+	memset(pager, 0, sizeof(*pager));
+	pager->foreground = 6;
+	memset(capture, 0, sizeof(*capture));
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current->foreground = 1.0f;
+	pager->foreground = 1;
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, prompt, sizeof(prompt) - 1U,
+	    capture);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"15", 2,
+	    (const uint8_t *)"15", 2, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	if (active_count == 0) {
+		current->bold = 1.0f;
+		current->blink = 1.0f;
+		pager->newline_flag = 0.0f;
+		pager_fixture_b05d(pager, current, none, sizeof(none) - 1U,
+		    capture);
+	}
+	else {
+		for (index = 0; index < active_count; ++index) {
+			current->bold = 1.0f;
+			pager->newline_flag = 0.0f;
+			pager_fixture_b05d(pager, current, rows[index],
+			    strlen((const char *)rows[index]), capture);
+		}
+	}
+
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current->foreground = 1.0f;
+	pager->foreground = 1;
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, prompt, sizeof(prompt) - 1U,
+	    capture);
+}
+
+static void
+test_computer_spy_presentation(void)
+{
+	static const uint8_t active_ansi[] =
+	    "\r\n\x1b[0;31;40mTime: 14:59  Computer command (?=help)? 15\r\n"
+	    "\r\n\x1b[0;31;40;1mSpy # 1 will hunt in sector 42.\n\r"
+	    "\x1b[0;31;40;1mSpy # 2 will hunt in sector-7.\n\r"
+	    "\x1b[0;31;40m\r\nTime: 14:59  Computer command (?=help)? ";
+	static const uint8_t active_plain[] =
+	    "\r\nTime: 14:59  Computer command (?=help)? 15\r\n"
+	    "\r\nSpy # 1 will hunt in sector 42.\n\r"
+	    "Spy # 2 will hunt in sector-7.\n\r"
+	    "\r\nTime: 14:59  Computer command (?=help)? ";
+	static const uint8_t zero_ansi[] =
+	    "\r\n\x1b[0;31;40mTime: 14:59  Computer command (?=help)? 15\r\n"
+	    "\r\n\x1b[0;31;40;5;1mYou do not have any spies!\n\r"
+	    "\x1b[0;31;40m\r\nTime: 14:59  Computer command (?=help)? ";
+	struct yt_present_state current;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+
+	spy_cycle_fixture(true, 2, &capture, &current, &pager);
+	CHECK(sizeof(active_ansi) - 1U == 199U);
+	CHECK(capture.remote_length == sizeof(active_ansi) - 1U
+	    && memcmp(capture.remote, active_ansi,
+	    sizeof(active_ansi) - 1U) == 0);
+	CHECK(pager.line_count == 3.0f && pager.newline_flag == 0.0f);
+
+	spy_cycle_fixture(false, 2, &capture, &current, &pager);
+	CHECK(sizeof(active_plain) - 1U == 155U);
+	CHECK(capture.remote_length == sizeof(active_plain) - 1U
+	    && memcmp(capture.remote, active_plain,
+	    sizeof(active_plain) - 1U) == 0);
+	CHECK(pager.line_count == 3.0f && current.bold == 1.0f);
+
+	spy_cycle_fixture(true, 0, &capture, &current, &pager);
+	CHECK(sizeof(zero_ansi) - 1U == 152U);
+	CHECK(capture.remote_length == sizeof(zero_ansi) - 1U
+	    && memcmp(capture.remote, zero_ansi,
+	    sizeof(zero_ansi) - 1U) == 0);
+	CHECK(pager.line_count == 2.0f && current.bold == 0.0f
+	    && current.blink == 0.0f);
+}
+
+static void
+test_computer_path_presentation(void)
+{
+	static const uint8_t start_prompt[] =
+	    "Enter start for path search? ";
+	static const uint8_t destination_prompt[] =
+	    "What sector do you want to go to? ";
+	static const uint8_t working[] = "Working. ";
+	static const uint8_t heading[] =
+	    "The shortest path from sector 1 to sector 2 is:";
+	static const uint8_t one[] = " 1";
+	static const uint8_t two[] = " 2";
+	static const uint8_t course[] = "Course will take 1 turns.";
+	static const uint8_t expected[] =
+	    "\r\nEnter start for path search? 1\r\n"
+	    "\r\nWhat sector do you want to go to? 2\r\n"
+	    "\r\nWorking. The shortest path from sector 1 to sector 2 is:\n\r"
+	    "\r\n 1 2\r\n"
+	    "\r\nCourse will take 1 turns.\n\r";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "";
+
+	current.foreground = 1.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 1;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, start_prompt,
+	    sizeof(start_prompt) - 1U, &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"1", 1,
+	    (const uint8_t *)"1", 1, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, destination_prompt,
+	    sizeof(destination_prompt) - 1U, &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"2", 1,
+	    (const uint8_t *)"2", 1, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, working, sizeof(working) - 1U,
+	    &capture);
+	pager_fixture_b05d(&pager, &current, heading, sizeof(heading) - 1U,
+	    &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, one, sizeof(one) - 1U,
+	    &capture);
+	pager.line_count = 0.0f;
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, two, sizeof(two) - 1U,
+	    &capture);
+	pager.line_count = 0.0f;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, course, sizeof(course) - 1U,
+	    &capture);
+	CHECK(sizeof(expected) - 1U == 170U);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f);
+}
+
+static void
+test_computer_autopilot_presentation(void)
+{
+	static const uint8_t destination_prompt[] =
+	    "What sector do you want to go to? ";
+	static const uint8_t working[] = "Working. ";
+	static const uint8_t heading[] =
+	    "The shortest path from sector 1 to sector 2 is:";
+	static const uint8_t one[] = " 1";
+	static const uint8_t two[] = " 2";
+	static const uint8_t course[] = "Course will take 1 turns.";
+	static const uint8_t turns[] = "You have 1 turns left.";
+	static const uint8_t confirmation[] =
+	    "Enter course into autopilot? (Y/[N])";
+	static const uint8_t engaged[] = "Autopilot Engaged.";
+	static const uint8_t stop[] = "Ctrl-X to Stop";
+	static const uint8_t expected[] =
+	    "\r\nWhat sector do you want to go to? 2\r\n"
+	    "\r\nWorking. The shortest path from sector 1 to sector 2 is:\n\r"
+	    "\r\n 1 2\r\n"
+	    "\r\nCourse will take 1 turns.\n\r"
+	    "You have 1 turns left.\n\r"
+	    "Enter course into autopilot? (Y/[N])Y\r\n"
+	    "\r\nAutopilot Engaged.\n\r"
+	    "\r\nCtrl-X to Stop\n\r";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "";
+
+	current.foreground = 1.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 1;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, destination_prompt,
+	    sizeof(destination_prompt) - 1U, &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"2", 1,
+	    (const uint8_t *)"2", 1, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, working, sizeof(working) - 1U,
+	    &capture);
+	pager_fixture_b05d(&pager, &current, heading, sizeof(heading) - 1U,
+	    &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, one, sizeof(one) - 1U,
+	    &capture);
+	pager.line_count = 0.0f;
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, two, sizeof(two) - 1U,
+	    &capture);
+	pager.line_count = 0.0f;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, course, sizeof(course) - 1U,
+	    &capture);
+	pager_fixture_b05d(&pager, &current, turns, sizeof(turns) - 1U,
+	    &capture);
+	CHECK(yt_present_character(confirmation, sizeof(confirmation) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"Y", 1,
+	    (const uint8_t *)"Y", 1, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, engaged, sizeof(engaged) - 1U,
+	    &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, stop, sizeof(stop) - 1U,
+	    &capture);
+	CHECK(sizeof(expected) - 1U == 239U);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(pager.line_count == 2.0f && pager.newline_flag == 0.0f);
+}
+
+static void
+test_computer_scoreboard_presentation(void)
+{
+	static const uint8_t prompt[] =
+	    "Enter 'O' to see OLD scoreboard or press [ENTER] for UPDATED one. -=>";
+	static const uint8_t heading[] = "P l a y e r  R a n k i n g s";
+	static const uint8_t notice[] = "Cntl-X to Stop";
+	static const uint8_t expected[] =
+	    "\r\n"
+	    "Enter 'O' to see OLD scoreboard or press [ENTER] for UPDATED one. -=>"
+	    "\r\n\r\n"
+	    "P l a y e r  R a n k i n g s....\r\n"
+	    "\r\nCntl-X to Stop\n\r"
+	    "\r\n\r\n";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "";
+	int index;
+
+	current.foreground = 1.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 1;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.line_count = 0.0f;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, heading, sizeof(heading) - 1U,
+	    &capture);
+	for (index = 0; index < 4; ++index) {
+		CHECK(yt_present_character((const uint8_t *)".", 1,
+		    &current, &result) == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+	}
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, notice, sizeof(notice) - 1U,
+	    &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.line_count = 0.0f;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(sizeof(expected) - 1U == 131U);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(pager.line_count == 0.0f && pager.newline_flag == 0.0f);
+}
+
+static void
+test_radio_target_blank_presentation(void)
+{
+	static const uint8_t warming[] = "Warming up sub-space radio.";
+	static const uint8_t prompt[] =
+	    "Send a message to who? (search string) or 'ALL' or 'TEAM'? ";
+	static const uint8_t expected[] =
+	    "\r\nWarming up sub-space radio.\n\r"
+	    "\r\n"
+	    "Send a message to who? (search string) or 'ALL' or 'TEAM'? \r\n";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "";
+
+	current.foreground = 1.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 1;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, warming, sizeof(warming) - 1U,
+	    &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(sizeof(expected) - 1U == 94U);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(pager.line_count == 0.0f && pager.newline_flag == 0.0f);
+}
+
+static void
+test_computer_radio_composer_cycle_presentation(void)
+{
+	static const uint8_t computer_prompt[] =
+	    "Time: 14:59  Computer command (?=help)? ";
+	static const uint8_t warming[] = "Warming up sub-space radio.";
+	static const uint8_t target_prompt[] =
+	    "Send a message to who? (search string) or 'ALL' or 'TEAM'? ";
+	static const uint8_t expected[] =
+	    "\r\n"
+	    "Time: 14:59  Computer command (?=help)? 5\r\n"
+	    "\r\nWarming up sub-space radio.\n\r"
+	    "\r\n"
+	    "Send a message to who? (search string) or 'ALL' or 'TEAM'? \r\n"
+	    "\r\n"
+	    "Time: 14:59  Computer command (?=help)? ";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "";
+
+	current.foreground = 1.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 1;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, computer_prompt,
+	    sizeof(computer_prompt) - 1U, &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"5", 1,
+	    (const uint8_t *)"5", 1, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, warming, sizeof(warming) - 1U,
+	    &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, target_prompt,
+	    sizeof(target_prompt) - 1U, &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, computer_prompt,
+	    sizeof(computer_prompt) - 1U, &capture);
+	CHECK(sizeof(expected) - 1U == 181U);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f);
+}
+
+static void
+test_radio_body_presentation(void)
+{
+	static const uint8_t first_prompt[] = " 1:";
+	static const uint8_t second_prompt[] = " 2:";
+	static const uint8_t menu[] =
+	    "[L] List [S] Send [A] Abort [C] Continue [E] Edit -=> ";
+	static const uint8_t success[] = "Transmission successful!";
+	static const uint8_t empty_expected[] = " 1:\r\n\r\n";
+	static const uint8_t send_expected[] =
+	    " 1:Hi\r\n"
+	    " 2:\r\n"
+	    "\r\n"
+	    "[L] List [S] Send [A] Abort [C] Continue [E] Edit -=> S\r\n"
+	    "\r\n"
+	    "Transmission successful!\n\r";
+	struct yt_present_state current;
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "";
+
+	current = state(false);
+	current.foreground = 1.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 1;
+	memset(&capture, 0, sizeof(capture));
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, first_prompt,
+	    sizeof(first_prompt) - 1U, &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(sizeof(empty_expected) - 1U == 7U);
+	CHECK(capture.remote_length == sizeof(empty_expected) - 1U
+	    && memcmp(capture.remote, empty_expected,
+	    sizeof(empty_expected) - 1U) == 0);
+
+	current = state(false);
+	current.foreground = 1.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 1;
+	memset(&capture, 0, sizeof(capture));
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, first_prompt,
+	    sizeof(first_prompt) - 1U, &capture);
+	CHECK(yt_present_character((const uint8_t *)"H", 1,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_character((const uint8_t *)"i", 1,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.line_count = 0.0f;
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, second_prompt,
+	    sizeof(second_prompt) - 1U, &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, menu, sizeof(menu) - 1U,
+	    &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"S", 1,
+	    (const uint8_t *)"S", 1, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	pager_fixture_b05d(&pager, &current, success, sizeof(success) - 1U,
+	    &capture);
+	CHECK(sizeof(send_expected) - 1U == 99U);
+	CHECK(capture.remote_length == sizeof(send_expected) - 1U
+	    && memcmp(capture.remote, send_expected,
+	    sizeof(send_expected) - 1U) == 0);
+	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f);
+}
+
+static void
+test_computer_radio_log_presentation(void)
+{
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Computer command (?=help)? ";
+	static const uint8_t heading[] =
+	    "Log of messages sent/recieved.";
+	static const uint8_t none[] = "None Found.";
+	static const uint8_t expected[] =
+	    "\r\n"
+	    "Time: 14:59  Computer command (?=help)? 6\r\n"
+	    "\r\n"
+	    "Log of messages sent/recieved.\r\n"
+	    "None Found.\r\n"
+	    "\r\n"
+	    "Time: 14:59  Computer command (?=help)? ";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "";
+
+	current.foreground = 1.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 1;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"6", 1,
+	    (const uint8_t *)"6", 1, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(heading, sizeof(heading) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(none, sizeof(none) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	CHECK(sizeof(expected) - 1U == 134U);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f);
+}
+
+static void
+test_computer_newspaper_presentation(void)
+{
+	static const uint8_t prompt[] =
+	    "Do you want to read [T]oday's or [Y]esterday's news? [T/Y] -=> ";
+	static const uint8_t notice[] = "Cntl-X to Stop";
+	static const uint8_t expected[] =
+	    "\r\n"
+	    "Do you want to read [T]oday's or [Y]esterday's news? [T/Y] -=> T\r\n"
+	    "\r\nCntl-X to Stop\n\r"
+	    "\r\n\r\n";
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "";
+
+	current.foreground = 1.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 1;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"T", 1,
+	    (const uint8_t *)"T", 1, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, notice, sizeof(notice) - 1U,
+	    &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.line_count = 0.0f;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(sizeof(expected) - 1U == 90U);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(pager.line_count == 0.0f && pager.newline_flag == 0.0f);
+}
+
+static void
+test_hostile_attack_admission_presentation(void)
+{
+	static const uint8_t heading[] = "<Attack>";
+	static const uint8_t prompt[] = "Attack with how many fighters? ";
+	static const uint8_t none[] = "You don't have any fighters!";
+	static const uint8_t too_many[] = "You only have 12!";
+	static const uint8_t no_fighters_expected[] =
+	    "<Attack>\n\r\r\n"
+	    "\x1b[0;33;40;5;1mYou don't have any fighters!\n\r";
+	static const uint8_t too_many_expected[] =
+	    "<Attack>\n\rAttack with how many fighters? 13\r\n\r\n"
+	    "\x1b[0;33;40;5;1mYou only have 12!\n\r";
+	static const uint8_t less_than_one_expected[] =
+	    "<Attack>\n\rAttack with how many fighters? 0\r\n";
+	static const uint8_t defenders_remain_expected[] =
+	    "<Attack>\n\rAttack with how many fighters? 1\r\n"
+	    "\x1b[MBO1L64P32CEDFEGFAGBAO5BAGFEDC\x0e"
+	    "\r\n You lost 1 fighter(s)\n\r"
+	    " You destroyed 0 enemy fighters.\n\r\r\n";
+	static const uint8_t loss_row[] = " You lost 1 fighter(s)";
+	static const uint8_t destroyed_row[] =
+	    " You destroyed 0 enemy fighters.";
+	struct yt_present_state current;
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "A";
+	static const uint8_t thirteen[] = "13";
+	static const uint8_t zero[] = "0";
+	static const uint8_t one[] = "1";
+
+	current = state(true);
+	current.foreground = 3.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	memset(&capture, 0, sizeof(capture));
+	pager.foreground = 3;
+	pager_fixture_b05d(&pager, &current, heading, sizeof(heading) - 1U,
+	    &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	pager_fixture_b05d(&pager, &current, none, sizeof(none) - 1U,
+	    &capture);
+	CHECK(capture.remote_length == sizeof(no_fighters_expected) - 1U
+	    && memcmp(capture.remote, no_fighters_expected,
+	    sizeof(no_fighters_expected) - 1U) == 0);
+	CHECK(capture.remote_length == 56U && pager.line_count == 2.0f);
+
+	current = state(true);
+	current.foreground = 3.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	memset(&capture, 0, sizeof(capture));
+	pager.foreground = 3;
+	pager_fixture_b05d(&pager, &current, heading, sizeof(heading) - 1U,
+	    &capture);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(thirteen, sizeof(thirteen) - 1U,
+	    thirteen, sizeof(thirteen) - 1U, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	pager_fixture_b05d(&pager, &current, too_many,
+	    sizeof(too_many) - 1U, &capture);
+	CHECK(capture.remote_length == sizeof(too_many_expected) - 1U
+	    && memcmp(capture.remote, too_many_expected,
+	    sizeof(too_many_expected) - 1U) == 0);
+	CHECK(capture.remote_length == 80U && pager.line_count == 1.0f);
+
+	current = state(true);
+	current.foreground = 3.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	memset(&capture, 0, sizeof(capture));
+	pager.foreground = 3;
+	pager_fixture_b05d(&pager, &current, heading, sizeof(heading) - 1U,
+	    &capture);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(zero, sizeof(zero) - 1U,
+	    zero, sizeof(zero) - 1U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(less_than_one_expected) - 1U
+	    && memcmp(capture.remote, less_than_one_expected,
+	    sizeof(less_than_one_expected) - 1U) == 0);
+	CHECK(capture.remote_length == 44U && pager.line_count == 0.0f);
+
+	current = state(true);
+	current.foreground = 3.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	memset(&capture, 0, sizeof(capture));
+	pager.foreground = 3;
+	pager_fixture_b05d(&pager, &current, heading, sizeof(heading) - 1U,
+	    &capture);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(one, sizeof(one) - 1U,
+	    one, sizeof(one) - 1U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_sound(2.0f, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current, loss_row,
+	    sizeof(loss_row) - 1U, &capture);
+	pager_fixture_b05d(&pager, &current, destroyed_row,
+	    sizeof(destroyed_row) - 1U, &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(defenders_remain_expected) - 1U
+	    && memcmp(capture.remote, defenders_remain_expected,
+	    sizeof(defenders_remain_expected) - 1U) == 0);
+	CHECK(capture.remote_length == 139U && pager.line_count == 2.0f);
+}
+
+static void
+test_deployed_fighter_surrender_presentation(void)
+{
+	static const uint8_t heading[] = "<Attack>";
+	static const uint8_t amount_prompt[] =
+	    "Attack with how many fighters? ";
+	static const uint8_t radio[] = "RADIO MESSAGE COMING IN!";
+	static const uint8_t captain[] =
+	    "This is the captain of the fighter group in sector 7";
+	static const uint8_t wish[] = "WE WISH TO SURRENDER!!!";
+	static const uint8_t answer_prompt[] =
+	    "Will you accept our surrender? [Y]/N -=>";
+	static const uint8_t joined[] = " We join your forces!";
+	static const uint8_t surrendered[] = " 1 fighters surrendered!";
+	static const uint8_t lost[] = " You lost 0 fighter(s)";
+	static const uint8_t destroyed[] =
+	    " You destroyed 0 enemy fighters.";
+	static const uint8_t defeated[] =
+	    "You defeated all the fighters and have 21 left.";
+	static const uint8_t plain[] =
+	    "<Attack>\n\rAttack with how many fighters? 20\r\n"
+	    "\r\nRADIO MESSAGE COMING IN!\n\r"
+	    "\r\nThis is the captain of the fighter group in sector 7\n\r"
+	    "\r\nWE WISH TO SURRENDER!!!\n\r"
+	    "\r\nWill you accept our surrender? [Y]/N -=>Y\r\n"
+	    "\r\n We join your forces!\n\r\x07"
+	    " 1 fighters surrendered!\n\r"
+	    "\r\n You lost 0 fighter(s)\n\r"
+	    " You destroyed 0 enemy fighters.\n\r"
+	    "\r\nYou defeated all the fighters and have 21 left.\n\r";
+	static const uint8_t ansi[] =
+	    "<Attack>\n\rAttack with how many fighters? 20\r\n"
+	    "\x1b[MBO1L64P32CEDFEGFAGBAO5BAGFEDC\x0e"
+	    "\r\nRADIO MESSAGE COMING IN!\n\r"
+	    "\x1b[MBT128O5L48P64CP64C\x0e"
+	    "\r\nThis is the captain of the fighter group in sector 7\n\r"
+	    "\r\n\x1b[0;36;40;5;1mWE WISH TO SURRENDER!!!\n\r"
+	    "\x1b[0;36;40m\r\n"
+	    "Will you accept our surrender? [Y]/N -=>Y\r\n"
+	    "\r\n We join your forces!\n\r"
+	    "\x1b[MBO4L32P32CP64CP64CP64L16EP64L32CP64L12E\x0e"
+	    " 1 fighters surrendered!\n\r"
+	    "\r\n You lost 0 fighter(s)\n\r"
+	    " You destroyed 0 enemy fighters.\n\r"
+	    "\r\nYou defeated all the fighters and have 21 left.\n\r";
+	static const uint8_t twenty[] = "20";
+	static const uint8_t yes[] = "Y";
+	struct yt_present_state current;
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80];
+	const uint8_t *expected;
+	size_t expected_length;
+	bool use_ansi;
+	int pass;
+
+	for (pass = 0; pass < 2; ++pass) {
+		use_ansi = pass != 0;
+		current = state(use_ansi);
+		current.foreground = 6.0f;
+		current.color_initialized = 1.0f;
+		current.cached_foreground = 6.0f;
+		current.cached_background = 0.0f;
+		memset(&pager, 0, sizeof(pager));
+		pager.foreground = 6;
+		memset(&capture, 0, sizeof(capture));
+		memset(accumulator, 0, sizeof(accumulator));
+
+		pager_fixture_b05d(&pager, &current, heading,
+		    sizeof(heading) - 1U, &capture);
+		pager.newline_flag = 1.0f;
+		pager_fixture_b05d(&pager, &current, amount_prompt,
+		    sizeof(amount_prompt) - 1U, &capture);
+		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+		CHECK(yt_present_editor_echo(twenty, sizeof(twenty) - 1U,
+		    twenty, sizeof(twenty) - 1U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager_capture_line(&capture, &current, NULL, 0U);
+		CHECK(yt_present_sound(2.0f, &current, &result) == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+
+		pager_capture_line(&capture, &current, NULL, 0U);
+		pager_fixture_b05d(&pager, &current, radio,
+		    sizeof(radio) - 1U, &capture);
+		CHECK(yt_present_sound(4.0f, &current, &result) == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager_capture_line(&capture, &current, NULL, 0U);
+		pager_fixture_b05d(&pager, &current, captain,
+		    sizeof(captain) - 1U, &capture);
+
+		pager_capture_line(&capture, &current, NULL, 0U);
+		current.bold = 1.0f;
+		current.blink = 1.0f;
+		pager_fixture_b05d(&pager, &current, wish,
+		    sizeof(wish) - 1U, &capture);
+		pager_capture_line(&capture, &current, NULL, 0U);
+		CHECK(yt_present_character(answer_prompt,
+		    sizeof(answer_prompt) - 1U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+		CHECK(yt_present_editor_echo(yes, sizeof(yes) - 1U,
+		    yes, sizeof(yes) - 1U, &current, &result) == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager_capture_line(&capture, &current, NULL, 0U);
+
+		pager_capture_line(&capture, &current, NULL, 0U);
+		pager_fixture_b05d(&pager, &current, joined,
+		    sizeof(joined) - 1U, &capture);
+		CHECK(yt_present_sound(1.0f, &current, &result) == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager_fixture_b05d(&pager, &current, surrendered,
+		    sizeof(surrendered) - 1U, &capture);
+		pager_capture_line(&capture, &current, NULL, 0U);
+		pager_fixture_b05d(&pager, &current, lost,
+		    sizeof(lost) - 1U, &capture);
+		pager_fixture_b05d(&pager, &current, destroyed,
+		    sizeof(destroyed) - 1U, &capture);
+		pager_capture_line(&capture, &current, NULL, 0U);
+		pager_fixture_b05d(&pager, &current, defeated,
+		    sizeof(defeated) - 1U, &capture);
+
+		expected = use_ansi ? ansi : plain;
+		expected_length = use_ansi ? sizeof(ansi) - 1U
+		    : sizeof(plain) - 1U;
+		CHECK(capture.remote_length == expected_length
+		    && memcmp(capture.remote, expected, expected_length) == 0);
+		CHECK(pager.line_count == 5.0f
+		    && current.foreground == 6.0f
+		    && capture.last_local_foreground == 7
+		    && capture.last_local_background == 0);
+	}
+}
+
+static void
+test_deployed_fighter_faction_presentation(void)
+{
+	static const uint8_t xannor[] =
+	    "Whee fyte to the deeth hoo-man slyme!";
+	static const uint8_t mercenary[] =
+	    "We'll DIE before joining with a slyme like you Sysop!";
+	static const uint8_t xannor_plain[] =
+	    "Whee fyte to the deeth hoo-man slyme!\n\r\x07";
+	static const uint8_t mercenary_plain[] =
+	    "We'll DIE before joining with a slyme like you Sysop!\n\r\x07";
+	static const uint8_t xannor_ansi[] =
+	    "Whee fyte to the deeth hoo-man slyme!\n\r"
+	    "\x1b[MBO1L64P8CdGCdGCdGCDGCGD\x0e";
+	static const uint8_t mercenary_ansi[] =
+	    "We'll DIE before joining with a slyme like you Sysop!\n\r"
+	    "\x1b[MBO1L64P8CdGCdGCdGCDGCGD\x0e";
+	static const uint8_t reward_plain[] =
+	    "Collect 2 turns bonus for destroying 512000 Xannor!!\n\r";
+	static const uint8_t reward_ansi[] =
+	    "\x1b[0;36;40;1m"
+	    "Collect 2 turns bonus for destroying 512000 Xannor!!\n\r";
+	static const uint8_t name[] = "Ada";
+	uint8_t reward[128];
+	uint8_t news[128];
+	size_t reward_length;
+	size_t news_length;
+	const uint8_t *rows[2] = {xannor, mercenary};
+	const size_t row_lengths[2] = {
+		sizeof(xannor) - 1U, sizeof(mercenary) - 1U
+	};
+	struct yt_present_state current;
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	const uint8_t *expected;
+	size_t expected_length;
+	int faction;
+	int pass;
+
+	CHECK(yt_xannor_attack_reward_rows(name, sizeof(name) - 1U,
+	    2.0f, 512000.0, reward, sizeof(reward), &reward_length,
+	    news, sizeof(news), &news_length));
+	for (pass = 0; pass < 2; ++pass) {
+		for (faction = 0; faction < 2; ++faction) {
+			current = state(pass != 0);
+			current.foreground = 6.0f;
+			current.color_initialized = 1.0f;
+			current.cached_foreground = 6.0f;
+			current.cached_background = 0.0f;
+			memset(&pager, 0, sizeof(pager));
+			pager.foreground = 6;
+			memset(&capture, 0, sizeof(capture));
+			pager_fixture_b05d(&pager, &current, rows[faction],
+			    row_lengths[faction], &capture);
+			CHECK(yt_present_sound(5.0f, &current, &result)
+			    == YT_PRESENT_OK);
+			pager_capture_result(&capture, &result);
+			if (pass == 0) {
+				expected = faction == 0 ? xannor_plain
+				    : mercenary_plain;
+				expected_length = faction == 0
+				    ? sizeof(xannor_plain) - 1U
+				    : sizeof(mercenary_plain) - 1U;
+			}
+			else {
+				expected = faction == 0 ? xannor_ansi
+				    : mercenary_ansi;
+				expected_length = faction == 0
+				    ? sizeof(xannor_ansi) - 1U
+				    : sizeof(mercenary_ansi) - 1U;
+			}
+			CHECK(capture.remote_length == expected_length
+			    && memcmp(capture.remote, expected,
+			    expected_length) == 0);
+		}
+
+		current = state(pass != 0);
+		current.foreground = 6.0f;
+		current.color_initialized = 1.0f;
+		current.cached_foreground = 6.0f;
+		current.cached_background = 0.0f;
+		current.bold = 1.0f;
+		memset(&pager, 0, sizeof(pager));
+		pager.foreground = 6;
+		memset(&capture, 0, sizeof(capture));
+		pager_fixture_b05d(&pager, &current, reward, reward_length,
+		    &capture);
+		expected = pass == 0 ? reward_plain : reward_ansi;
+		expected_length = pass == 0 ? sizeof(reward_plain) - 1U
+		    : sizeof(reward_ansi) - 1U;
+		CHECK(capture.remote_length == expected_length
+		    && memcmp(capture.remote, expected, expected_length) == 0);
+	}
+}
+
+static void
+test_shield_spill_presentation(void)
+{
+	static const uint8_t fighters[] = "Fighters remaining: 0";
+	static const uint8_t shields[] = "Shields reduced to: 1";
+	static const uint8_t expected[] =
+	    "\x1b[0;36;40;1mFighters remaining: 0\r\n"
+	    "\x1b[0;36;40mShields reduced to: 1\r\n";
+	struct yt_present_state current = state(true);
+	struct yt_present_result result;
+	struct pager_capture capture;
+	float line_count = 21.0f;
+
+	memset(&capture, 0, sizeof(capture));
+	current.foreground = 6.0f;
+	current.bold = 1.0f;
+	CHECK(yt_present_line(fighters, sizeof(fighters) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(shields, sizeof(shields) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(line_count == 21.0f && current.bold == 0.0f
+	    && capture.last_local_foreground == 3
+	    && capture.last_local_background == 0);
+}
+
+static struct pager_capture
+hostile_bribe_offer_fixture(bool ansi, const uint8_t *response,
+    size_t response_length, bool accepted, struct yt_present_state *current,
+    struct yt_pager_state *pager)
+{
+	static const uint8_t introduction[] =
+	    "We MAY join up if you pay us enough Ada!";
+	static const uint8_t prompt[] =
+	    "You have 100 credits. How much do you offer? -+>";
+	static const uint8_t agreement[] =
+	    "Good Deal! We join up with you!";
+	struct yt_present_result result;
+	struct pager_capture capture;
+	char accumulator[80] = "B";
+
+	*current = state(ansi);
+	current->foreground = 3.0f;
+	if (ansi)
+		CHECK(yt_present_color(current, &result) == YT_PRESENT_OK);
+	memset(pager, 0, sizeof(*pager));
+	pager->foreground = 3;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(pager, current, introduction,
+	    sizeof(introduction) - 1U, &capture);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	CHECK(accumulator[0] == '\0');
+	CHECK(yt_present_editor_echo(response, response_length,
+	    response, response_length, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	if (accepted) {
+		CHECK(yt_present_line(NULL, 0, current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		current->bold = 1.0f;
+		current->blink = 1.0f;
+		pager_fixture_b05d(pager, current, agreement,
+		    sizeof(agreement) - 1U, &capture);
+		CHECK(yt_present_sound(1.0f, current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+	}
+	return capture;
+}
+
+static struct pager_capture
+hostile_bribe_refusal_fixture(bool ansi, const uint8_t *row,
+    size_t row_length, struct yt_present_state *current,
+    struct yt_pager_state *pager)
+{
+	struct yt_present_result result;
+	struct pager_capture capture;
+
+	*current = state(ansi);
+	current->foreground = 3.0f;
+	if (ansi)
+		CHECK(yt_present_color(current, &result) == YT_PRESENT_OK);
+	memset(pager, 0, sizeof(*pager));
+	pager->foreground = 3;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current->bold = 1.0f;
+	current->blink = 1.0f;
+	pager_fixture_b05d(pager, current, row, row_length, &capture);
+	return capture;
+}
+
+static void
+test_hostile_bribe_presentation(void)
+{
+	static const uint8_t accepted_plain[] =
+	    "\r\nWe MAY join up if you pay us enough Ada!\n\r"
+	    "You have 100 credits. How much do you offer? -+>30\r\n"
+	    "\r\nGood Deal! We join up with you!\n\r\x07";
+	static const uint8_t accepted_ansi[] =
+	    "\r\nWe MAY join up if you pay us enough Ada!\n\r"
+	    "You have 100 credits. How much do you offer? -+>30\r\n"
+	    "\r\n\x1b[0;33;40;5;1mGood Deal! We join up with you!\n\r"
+	    "\x1b[MBO4L32P32CP64CP64CP64L16EP64L32CP64L12E\x0e";
+	static const uint8_t empty_offer[] =
+	    "\r\nWe MAY join up if you pay us enough Ada!\n\r"
+	    "You have 100 credits. How much do you offer? -+>\r\n";
+	static const uint8_t planet[] =
+	    "Scram Ada, This planet is OURS!";
+	static const uint8_t planet_plain[] =
+	    "\r\nScram Ada, This planet is OURS!\n\r";
+	static const uint8_t planet_ansi[] =
+	    "\r\n\x1b[0;33;40;5;1mScram Ada, This planet is OURS!\n\r";
+	static const uint8_t ordinary[] =
+	    "We don't accept no Bribes Ada!";
+	static const uint8_t ordinary_plain[] =
+	    "\r\nWe don't accept no Bribes Ada!\n\r";
+	static const uint8_t ordinary_ansi[] =
+	    "\r\n\x1b[0;33;40;5;1mWe don't accept no Bribes Ada!\n\r";
+	static const uint8_t life[] =
+	    "We just want your miserable life Ada!";
+	static const uint8_t life_plain[] =
+	    "\r\nWe just want your miserable life Ada!\n\r";
+	static const uint8_t life_ansi[] =
+	    "\r\n\x1b[0;33;40;5;1mWe just want your miserable life Ada!\n\r";
+	static const uint8_t insult[] =
+	    "You insult us Ada! Prepare to DIE!";
+	static const uint8_t rejected_plain[] =
+	    "\r\nWe MAY join up if you pay us enough Ada!\n\r"
+	    "You have 100 credits. How much do you offer? -+>10\r\n"
+	    "\r\nYou insult us Ada! Prepare to DIE!\n\r";
+	static const uint8_t rejected_ansi[] =
+	    "\r\nWe MAY join up if you pay us enough Ada!\n\r"
+	    "You have 100 credits. How much do you offer? -+>10\r\n"
+	    "\r\n\x1b[0;33;40;5;1mYou insult us Ada! Prepare to DIE!\n\r";
+	static const uint8_t offer[] = "30";
+	static const uint8_t rejected_offer[] = "10";
+	struct yt_present_state current;
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+
+	capture = hostile_bribe_offer_fixture(false, offer,
+	    sizeof(offer) - 1U, true, &current, &pager);
+	CHECK(capture.remote_length == sizeof(accepted_plain) - 1U
+	    && memcmp(capture.remote, accepted_plain,
+	    sizeof(accepted_plain) - 1U) == 0);
+	CHECK(capture.remote_length == 132U && pager.line_count == 1.0f
+	    && current.foreground == 3.0f && current.bold == 1.0f
+	    && current.blink == 1.0f);
+
+	capture = hostile_bribe_offer_fixture(true, offer,
+	    sizeof(offer) - 1U, true, &current, &pager);
+	CHECK(capture.remote_length == sizeof(accepted_ansi) - 1U
+	    && memcmp(capture.remote, accepted_ansi,
+	    sizeof(accepted_ansi) - 1U) == 0);
+	CHECK(capture.remote_length == 188U);
+	CHECK(pager.line_count == 1.0f);
+	CHECK(current.foreground == 3.0f && current.background == 0.0f);
+	CHECK(current.bold == 0.0f && current.blink == 0.0f);
+	CHECK(capture.last_local_foreground == 7
+	    && capture.last_local_background == 0);
+
+	capture = hostile_bribe_offer_fixture(false, NULL, 0, false,
+	    &current, &pager);
+	CHECK(capture.remote_length == sizeof(empty_offer) - 1U
+	    && memcmp(capture.remote, empty_offer,
+	    sizeof(empty_offer) - 1U) == 0);
+	CHECK(capture.remote_length == 94U && pager.line_count == 0.0f);
+	capture = hostile_bribe_offer_fixture(true, NULL, 0, false,
+	    &current, &pager);
+	CHECK(capture.remote_length == sizeof(empty_offer) - 1U
+	    && memcmp(capture.remote, empty_offer,
+	    sizeof(empty_offer) - 1U) == 0);
+
+	capture = hostile_bribe_refusal_fixture(false, planet,
+	    sizeof(planet) - 1U, &current, &pager);
+	CHECK(capture.remote_length == sizeof(planet_plain) - 1U
+	    && memcmp(capture.remote, planet_plain,
+	    sizeof(planet_plain) - 1U) == 0);
+	CHECK(capture.remote_length == 35U && pager.line_count == 1.0f);
+	capture = hostile_bribe_refusal_fixture(true, planet,
+	    sizeof(planet) - 1U, &current, &pager);
+	CHECK(capture.remote_length == sizeof(planet_ansi) - 1U
+	    && memcmp(capture.remote, planet_ansi,
+	    sizeof(planet_ansi) - 1U) == 0);
+	CHECK(capture.remote_length == 49U && pager.line_count == 1.0f);
+
+	capture = hostile_bribe_refusal_fixture(false, ordinary,
+	    sizeof(ordinary) - 1U, &current, &pager);
+	CHECK(capture.remote_length == sizeof(ordinary_plain) - 1U
+	    && memcmp(capture.remote, ordinary_plain,
+	    sizeof(ordinary_plain) - 1U) == 0);
+	CHECK(capture.remote_length == 34U && pager.line_count == 1.0f);
+	capture = hostile_bribe_refusal_fixture(true, ordinary,
+	    sizeof(ordinary) - 1U, &current, &pager);
+	CHECK(capture.remote_length == sizeof(ordinary_ansi) - 1U
+	    && memcmp(capture.remote, ordinary_ansi,
+	    sizeof(ordinary_ansi) - 1U) == 0);
+	CHECK(capture.remote_length == 48U && pager.line_count == 1.0f);
+
+	capture = hostile_bribe_refusal_fixture(false, life,
+	    sizeof(life) - 1U, &current, &pager);
+	CHECK(capture.remote_length == sizeof(life_plain) - 1U
+	    && memcmp(capture.remote, life_plain,
+	    sizeof(life_plain) - 1U) == 0);
+	CHECK(capture.remote_length == 41U && pager.line_count == 1.0f);
+	capture = hostile_bribe_refusal_fixture(true, life,
+	    sizeof(life) - 1U, &current, &pager);
+	CHECK(capture.remote_length == sizeof(life_ansi) - 1U
+	    && memcmp(capture.remote, life_ansi,
+	    sizeof(life_ansi) - 1U) == 0);
+	CHECK(capture.remote_length == 55U && pager.line_count == 1.0f);
+
+	capture = hostile_bribe_offer_fixture(false, rejected_offer,
+	    sizeof(rejected_offer) - 1U, false, &current, &pager);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	pager_fixture_b05d(&pager, &current, insult, sizeof(insult) - 1U,
+	    &capture);
+	CHECK(capture.remote_length == sizeof(rejected_plain) - 1U
+	    && memcmp(capture.remote, rejected_plain,
+	    sizeof(rejected_plain) - 1U) == 0);
+	CHECK(capture.remote_length == 134U && pager.line_count == 1.0f);
+
+	capture = hostile_bribe_offer_fixture(true, rejected_offer,
+	    sizeof(rejected_offer) - 1U, false, &current, &pager);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	pager_fixture_b05d(&pager, &current, insult, sizeof(insult) - 1U,
+	    &capture);
+	CHECK(capture.remote_length == sizeof(rejected_ansi) - 1U
+	    && memcmp(capture.remote, rejected_ansi,
+	    sizeof(rejected_ansi) - 1U) == 0);
+	CHECK(capture.remote_length == 148U && pager.line_count == 1.0f);
+}
+
+static void
+test_hostile_sector_mine_presentation(void)
+{
+	static const uint8_t prompt[] =
+	    "You have 5 mines. Drop how many? [0] -=>";
+	static const uint8_t success[] = "Sector 733 is now mined!";
+	static const uint8_t accepted_plain[] =
+	    "\r\nYou have 5 mines. Drop how many? [0] -=>2\r\n"
+	    "\r\nSector 733 is now mined!\n\r";
+	static const uint8_t accepted_ansi[] =
+	    "\r\nYou have 5 mines. Drop how many? [0] -=>2\r\n"
+	    "\x1b[0;36;40m\r\n"
+	    "\x1b[0;36;40;5;1mSector 733 is now mined!\n\r"
+	    "\x1b[MBT128O5L48P64CP64C\x0e";
+	static const uint8_t cancelled[] =
+	    "\r\nYou have 5 mines. Drop how many? [0] -=>\r\n";
+	static const uint8_t none[] = "You don't HAVE any!";
+	static const uint8_t none_plain[] = "\r\nYou don't HAVE any!\n\r";
+	static const uint8_t none_ansi[] =
+	    "\r\n\x1b[0;33;40;5;1mYou don't HAVE any!\n\r";
+	static const uint8_t union_row[] =
+	    "The Union doesnt like the home 7 sectors mined!";
+	static const uint8_t union_plain[] =
+	    "\r\nThe Union doesnt like the home 7 sectors mined!\n\r";
+	static const uint8_t union_ansi[] =
+	    "\r\n\x1b[0;33;40;5;1m"
+	    "The Union doesnt like the home 7 sectors mined!\n\r";
+	static const uint8_t two[] = "2";
+	struct yt_present_state current;
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80] = "D";
+	bool ansi;
+	int pass;
+
+	for (pass = 0; pass < 2; ++pass) {
+		ansi = pass != 0;
+		current = state(ansi);
+		current.foreground = 3.0f;
+		if (ansi)
+			CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+		memset(&pager, 0, sizeof(pager));
+		pager.foreground = 3;
+		memset(&capture, 0, sizeof(capture));
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager.newline_flag = 1.0f;
+		pager_fixture_b05d(&pager, &current, prompt,
+		    sizeof(prompt) - 1U, &capture);
+		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+		CHECK(yt_present_editor_echo(two, sizeof(two) - 1U,
+		    two, sizeof(two) - 1U, &current, &result) == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		current.foreground = 6.0f;
+		pager.foreground = 6;
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		current.bold = 1.0f;
+		current.blink = 1.0f;
+		pager_fixture_b05d(&pager, &current, success,
+		    sizeof(success) - 1U, &capture);
+		CHECK(yt_present_sound(4.0f, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		if (ansi) {
+			CHECK(capture.remote_length == sizeof(accepted_ansi) - 1U
+			    && memcmp(capture.remote, accepted_ansi,
+			    sizeof(accepted_ansi) - 1U) == 0);
+			CHECK(capture.remote_length == 119U);
+		}
+		else {
+			CHECK(capture.remote_length == sizeof(accepted_plain) - 1U
+			    && memcmp(capture.remote, accepted_plain,
+			    sizeof(accepted_plain) - 1U) == 0);
+			CHECK(capture.remote_length == 73U);
+		}
+		CHECK(pager.line_count == 1.0f
+		    && current.foreground == 6.0f);
+		if (ansi)
+			CHECK(current.bold == 0.0f && current.blink == 0.0f);
+		else
+			CHECK(current.bold == 1.0f && current.blink == 1.0f);
+	}
+
+	current = state(true);
+	current.foreground = 3.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 3;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo(NULL, 0, NULL, 0, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(cancelled) - 1U
+	    && memcmp(capture.remote, cancelled, sizeof(cancelled) - 1U) == 0);
+	CHECK(capture.remote_length == 44U && pager.line_count == 0.0f);
+
+	capture = hostile_bribe_refusal_fixture(false, none,
+	    sizeof(none) - 1U, &current, &pager);
+	CHECK(capture.remote_length == sizeof(none_plain) - 1U
+	    && memcmp(capture.remote, none_plain,
+	    sizeof(none_plain) - 1U) == 0);
+	capture = hostile_bribe_refusal_fixture(true, none,
+	    sizeof(none) - 1U, &current, &pager);
+	CHECK(capture.remote_length == sizeof(none_ansi) - 1U
+	    && memcmp(capture.remote, none_ansi,
+	    sizeof(none_ansi) - 1U) == 0);
+
+	capture = hostile_bribe_refusal_fixture(false, union_row,
+	    sizeof(union_row) - 1U, &current, &pager);
+	CHECK(capture.remote_length == sizeof(union_plain) - 1U
+	    && memcmp(capture.remote, union_plain,
+	    sizeof(union_plain) - 1U) == 0);
+	capture = hostile_bribe_refusal_fixture(true, union_row,
+	    sizeof(union_row) - 1U, &current, &pager);
+	CHECK(capture.remote_length == sizeof(union_ansi) - 1U
+	    && memcmp(capture.remote, union_ansi,
+	    sizeof(union_ansi) - 1U) == 0);
+}
+
+static void
+test_startup_pre_admission_presentation(void)
+{
+	static const uint8_t expected[] =
+	    "\x1b[0;35;40m\r\nInitializing...\n\r\r\nWelcome John!\n\r"
+	    "Searching my records for your name.\n\r";
+	struct yt_present_state current = state(true);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+
+	current.foreground = 6.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	current.foreground = 5.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 5;
+	pager.nonstop = 1.0f;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current,
+	    (const uint8_t *)"Initializing...", strlen("Initializing..."),
+	    &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current,
+	    (const uint8_t *)"Welcome John!", strlen("Welcome John!"),
+	    &capture);
+	pager_fixture_b05d(&pager, &current,
+	    (const uint8_t *)"Searching my records for your name.",
+	    strlen("Searching my records for your name."), &capture);
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(pager.line_count == 3.0f && pager.nonstop == 1.0f
+	    && pager.newline_flag == 0.0f && pager.foreground == 5);
+	CHECK(current.foreground == 5.0f);
+}
+
+static void
+test_startup_status_row(void)
+{
+	static const uint8_t real_name[] = "John Doe";
+	static const uint8_t expression[] = " | John Doe | ";
+	static const uint8_t login_expression[] = " | John Doe | Pilot";
+	uint8_t long_name[80];
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+	size_t index;
+
+	current.sound.snoop = 0.0f;
+	CHECK(yt_present_status_row(real_name, sizeof(real_name) - 1U,
+	    (const uint8_t *)"", 0, &current, &result) == YT_PRESENT_OK);
+	CHECK(result.remote_length == 0 && result.event_count == 0);
+
+	current.sound.snoop = -1.0f;
+	CHECK(yt_present_status_row(real_name, sizeof(real_name) - 1U,
+	    (const uint8_t *)"", 0, &current, &result) == YT_PRESENT_OK);
+	CHECK(result.remote_length == 0 && result.event_count == 10);
+	CHECK(result.events[0].operation == YT_PRESENT_LOCAL_LOCATE
+	    && result.events[0].row == 25 && result.events[0].column == 1);
+	CHECK(result.events[1].operation == YT_PRESENT_LOCAL_COLOR
+	    && result.events[1].foreground == 11
+	    && result.events[1].background == 1);
+	CHECK(result.events[2].operation == YT_PRESENT_LOCAL_SEMI
+	    && result.events[2].length == 79);
+	for (index = 0; index < result.events[2].length; ++index)
+		CHECK(result.events[2].data[index] == ' ');
+	CHECK(result.events[3].operation == YT_PRESENT_LOCAL_LOCATE
+	    && result.events[3].row == 25 && result.events[3].column == 1);
+	CHECK(result.events[4].operation == YT_PRESENT_LOCAL_COLOR
+	    && result.events[4].foreground == 14
+	    && result.events[4].background == 3);
+	CHECK(result.events[5].operation == YT_PRESENT_LOCAL_SEMI
+	    && result.events[5].length == 15
+	    && memcmp(result.events[5].data, " Yankee Trader ", 15) == 0);
+	CHECK(result.events[6].operation == YT_PRESENT_LOCAL_COLOR
+	    && result.events[6].foreground == 11
+	    && result.events[6].background == 1);
+	CHECK(result.events[7].operation == YT_PRESENT_LOCAL_SEMI
+	    && result.events[7].length == 1
+	    && result.events[7].data[0] == ' ');
+	CHECK(result.events[8].operation == YT_PRESENT_LOCAL_SEMI
+	    && result.events[8].length == sizeof(expression) - 1U
+	    && memcmp(result.events[8].data, expression,
+	    sizeof(expression) - 1U) == 0);
+	CHECK(result.events[9].operation == YT_PRESENT_LOCAL_COLOR
+	    && result.events[9].foreground == 7
+	    && result.events[9].background == 0);
+	CHECK(yt_present_status_row(real_name, sizeof(real_name) - 1U,
+	    (const uint8_t *)"Pilot", 5, &current, &result)
+	    == YT_PRESENT_OK);
+	CHECK(result.remote_length == 0 && result.event_count == 10
+	    && result.events[8].length == sizeof(login_expression) - 1U
+	    && memcmp(result.events[8].data, login_expression,
+	    sizeof(login_expression) - 1U) == 0);
+
+	memset(long_name, 'R', sizeof(long_name));
+	CHECK(yt_present_status_row(long_name, sizeof(long_name),
+	    (const uint8_t *)"ignored", 7, &current, &result)
+	    == YT_PRESENT_OK);
+	CHECK(result.events[8].length == 63
+	    && memcmp(result.events[8].data, " | ", 3) == 0);
+	for (index = 3; index < result.events[8].length; ++index)
+		CHECK(result.events[8].data[index] == 'R');
+}
+
+static void
+test_new_alias_success_presentation(void)
+{
+	static const uint8_t expected[] =
+	    "\x1b[0;32;40m\r\nYou are a new player.\n\r\r\n"
+	    "Enter the FULL alias you wish to use in the game.\n\r\r\n"
+	    "Press [ENTER] to use your real name.\n\r-+> Star Lord\r\n"
+	    "\x1b[0;33;40m\r\n\x1b[0;33;40;1m"
+	    "John Doe a.k.a. Star Lord\n\r\x1b[0;33;40m\r\n"
+	    "\x1b[0;36;40mIs this OK (Y/[N])? Y\r\n\r\n"
+	    "\x1b[0;36;40;5;1mYour Alias has been recorded. Have fun!"
+	    "\n\r\x1b[0;36;40m\r\n";
+	static const char alias[] = "Star Lord";
+	struct yt_present_state current = state(true);
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	size_t index;
+
+	current.foreground = 5.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 5;
+	pager.line_count = 3.0f;
+	pager.nonstop = 1.0f;
+	memset(&capture, 0, sizeof(capture));
+	current.foreground = 2.0f;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current,
+	    (const uint8_t *)"You are a new player.",
+	    strlen("You are a new player."), &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current,
+	    (const uint8_t *)
+	    "Enter the FULL alias you wish to use in the game.",
+	    strlen("Enter the FULL alias you wish to use in the game."),
+	    &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current,
+	    (const uint8_t *)"Press [ENTER] to use your real name.",
+	    strlen("Press [ENTER] to use your real name."), &capture);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, (const uint8_t *)"-+> ", 4,
+	    &capture);
+	pager.line_count = 0.0f;
+	pager.nonstop = 0.0f;
+	for (index = 0; index < sizeof(alias) - 1U; ++index) {
+		uint8_t byte = (uint8_t)alias[index];
+
+		CHECK(yt_present_editor_echo(&byte, 1, &byte, 1, &current,
+		    &result) == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+	}
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+
+	current.foreground = 3.0f;
+	pager.foreground = 3;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	pager_fixture_b05d(&pager, &current,
+	    (const uint8_t *)"John Doe a.k.a. Star Lord",
+	    strlen("John Doe a.k.a. Star Lord"), &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.foreground = 6.0f;
+	pager.foreground = 6;
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current,
+	    (const uint8_t *)"Is this OK (Y/[N])? ",
+	    strlen("Is this OK (Y/[N])? "), &capture);
+	pager.line_count = 0.0f;
+	pager.nonstop = 0.0f;
+	{
+		uint8_t byte = 'Y';
+
+		CHECK(yt_present_editor_echo(&byte, 1, &byte, 1, &current,
+		    &result) == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+	}
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	pager_fixture_b05d(&pager, &current,
+	    (const uint8_t *)"Your Alias has been recorded. Have fun!",
+	    strlen("Your Alias has been recorded. Have fun!"), &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+
+	CHECK(capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(pager.line_count == 1.0f && pager.nonstop == 0.0f
+	    && pager.newline_flag == 0.0f && pager.foreground == 6);
+	CHECK(current.foreground == 6.0f && current.bold == 0.0f
+	    && current.blink == 0.0f);
+}
+
+static void
+test_new_player_admission_presentation(void)
+{
+	static const uint8_t vacant_expected[] =
+	    "\r\nEntering a new player...\n\r\r\n"
+	    "Notice: If your ship is dead and you have not played for 14\n\r"
+	    "days, it will be deleted to make room for someone else.\n\r"
+	    "\r\n\r\nYour ship has been built.\r\n"
+	    "Do you want instructions (Y/N) [N]? \r\n";
+	static const uint8_t full_expected[] =
+	    "\r\nEntering a new player...\n\r\r\n"
+	    "\x1b[0;35;40;5;1m"
+	    "I'm sorry but the game is full. Try again tomorrow.\n\r";
+	static const uint8_t invalid_then_no_expected[] =
+	    "\r\nEntering a new player...\n\r\r\n"
+	    "Notice: If your ship is dead and you have not played for 14\n\r"
+	    "days, it will be deleted to make room for someone else.\n\r"
+	    "\r\n\r\nYour ship has been built.\r\n"
+	    "Do you want instructions (Y/N) [N]? X\r\n"
+	    "\x1b[0;35;40;1m"
+	    "Do you want instructions (Y/N) [N]? N"
+	    "\x1b[0;35;40m\r\n";
+	struct yt_present_state current;
+	struct yt_present_state prompt_current;
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct yt_pager_state prompt_pager;
+	struct pager_capture capture;
+	struct pager_capture prompt_capture;
+
+	current = state(true);
+	current.foreground = 5.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 5;
+	pager.line_count = 3.0f;
+	pager.nonstop = 1.0f;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current,
+	    (const uint8_t *)"Entering a new player...",
+	    strlen("Entering a new player..."), &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current,
+	    (const uint8_t *)
+	    "Notice: If your ship is dead and you have not played for 14",
+	    strlen("Notice: If your ship is dead and you have not played for 14"),
+	    &capture);
+	pager_fixture_b05d(&pager, &current,
+	    (const uint8_t *)
+	    "days, it will be deleted to make room for someone else.",
+	    strlen("days, it will be deleted to make room for someone else."),
+	    &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line((const uint8_t *)"Your ship has been built.",
+	    strlen("Your ship has been built."), &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_character(
+	    (const uint8_t *)"Do you want instructions (Y/N) [N]? ",
+	    strlen("Do you want instructions (Y/N) [N]? "), &current,
+	    &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	prompt_current = current;
+	prompt_pager = pager;
+	prompt_capture = capture;
+	pager.line_count = 0.0f;
+	pager.nonstop = 0.0f;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(vacant_expected) - 1U
+	    && memcmp(capture.remote, vacant_expected,
+	    sizeof(vacant_expected) - 1U) == 0);
+	CHECK(pager.line_count == 0.0f && pager.nonstop == 0.0f
+	    && pager.foreground == 5);
+
+	current = prompt_current;
+	pager = prompt_pager;
+	capture = prompt_capture;
+	pager.line_count = 0.0f;
+	pager.nonstop = 0.0f;
+	{
+		uint8_t key = 'X';
+
+		CHECK(yt_present_editor_echo(&key, 1, &key, 1, &current,
+		    &result) == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+	}
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	CHECK(yt_present_character(
+	    (const uint8_t *)"Do you want instructions (Y/N) [N]? ",
+	    strlen("Do you want instructions (Y/N) [N]? "), &current,
+	    &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	{
+		uint8_t key = 'N';
+
+		CHECK(yt_present_editor_echo(&key, 1, &key, 1, &current,
+		    &result) == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+	}
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(sizeof(invalid_then_no_expected) - 1U == 279U);
+	CHECK(capture.remote_length == sizeof(invalid_then_no_expected) - 1U
+	    && memcmp(capture.remote, invalid_then_no_expected,
+	    sizeof(invalid_then_no_expected) - 1U) == 0);
+
+	current = state(true);
+	current.foreground = 5.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 5;
+	pager.line_count = 3.0f;
+	pager.nonstop = 1.0f;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current,
+	    (const uint8_t *)"Entering a new player...",
+	    strlen("Entering a new player..."), &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	pager_fixture_b05d(&pager, &current,
+	    (const uint8_t *)
+	    "I'm sorry but the game is full. Try again tomorrow.",
+	    strlen("I'm sorry but the game is full. Try again tomorrow."),
+	    &capture);
+	CHECK(capture.remote_length == sizeof(full_expected) - 1U
+	    && memcmp(capture.remote, full_expected,
+	    sizeof(full_expected) - 1U) == 0);
+}
+
+static void
+test_returning_player_presentation(void)
+{
+	static const uint8_t same_day_alive[] =
+	    "\x1b[0;32;40m\r\nYou have been on today.\r\n";
+	static const uint8_t xannor_rebuild[] =
+	    "\x1b[0;32;40m\r\n\r\n"
+	    "\x1b[0;32;40;5;1mYou have been killed by The Xannor!\r\n"
+	    "\x1b[0;32;40m\r\nYour ship has been built.\r\n";
+	static const uint8_t self_denial[] =
+	    "\x1b[0;32;40m\r\nYou have been on today.\r\n\r\n"
+	    "You managed to kill yourself on your last time on.\r\n\r\n"
+	    "\x1b[0;37;40;5;1m"
+	    "You will be allowed to play again tomorrow!\r\n";
+	static const uint8_t empty_killer[] =
+	    "\x1b[0;32;40;5;1m destroyed your ship!\r\n";
+	struct yt_present_state current;
+	struct yt_present_result result;
+	struct pager_capture capture;
+
+	current = state(true);
+	current.foreground = 5.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&capture, 0, sizeof(capture));
+	current.foreground = 2.0f;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line((const uint8_t *)"You have been on today.",
+	    strlen("You have been on today."), &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(same_day_alive) - 1U
+	    && memcmp(capture.remote, same_day_alive,
+	    sizeof(same_day_alive) - 1U) == 0);
+
+	current = state(true);
+	current.foreground = 5.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&capture, 0, sizeof(capture));
+	current.foreground = 2.0f;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.blink = 1.0f;
+	CHECK(yt_present_bold_line(
+	    (const uint8_t *)"You have been killed by The Xannor!",
+	    strlen("You have been killed by The Xannor!"), &current,
+	    &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line((const uint8_t *)"Your ship has been built.",
+	    strlen("Your ship has been built."), &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(xannor_rebuild) - 1U
+	    && memcmp(capture.remote, xannor_rebuild,
+	    sizeof(xannor_rebuild) - 1U) == 0);
+
+	current = state(true);
+	current.foreground = 2.0f;
+	current.blink = 1.0f;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_bold_line(
+	    (const uint8_t *)" destroyed your ship!",
+	    strlen(" destroyed your ship!"), &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(empty_killer) - 1U
+	    && memcmp(capture.remote, empty_killer,
+	    sizeof(empty_killer) - 1U) == 0);
+
+	current = state(true);
+	current.foreground = 5.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	memset(&capture, 0, sizeof(capture));
+	current.foreground = 2.0f;
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line((const uint8_t *)"You have been on today.",
+	    strlen("You have been on today."), &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(
+	    (const uint8_t *)
+	    "You managed to kill yourself on your last time on.",
+	    strlen("You managed to kill yourself on your last time on."),
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.foreground = 7.0f;
+	current.blink = 1.0f;
+	CHECK(yt_present_bold_line(
+	    (const uint8_t *)"You will be allowed to play again tomorrow!",
+	    strlen("You will be allowed to play again tomorrow!"),
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(self_denial) - 1U
+	    && memcmp(capture.remote, self_denial,
+	    sizeof(self_denial) - 1U) == 0);
+}
+
 int
 main(void)
 {
@@ -784,14 +9510,109 @@ main(void)
 	test_direct_output();
 	test_paged_output();
 	test_editor_echo();
+	test_projectile_parent_presentation();
+	test_projectile_ordinary_cycle_presentation();
+	test_counterlaunch_presentation();
+	test_xannor_retaliation_presentation();
+	test_projectile_refusal_presentation();
+	test_projectile_early_terminal_presentation();
 	test_pager_transactions();
 	test_pager_gates();
+	test_sector_private_pager();
+	test_radio_private_pager();
+	test_radio_reader_presentation();
+	test_editor_aux_notices();
 	test_editor_terminal_notices();
+	test_common_fatal_notice();
 	test_formatting_wrappers();
 	test_attention();
 	test_sound_toggle();
+	test_sysop_time();
+	test_sysop_chat_header();
+	test_main_error_model();
+	test_shared_error_model();
+	test_serial_startup_output();
 	test_time_helpers();
 	test_press_any_key_presentation();
+	test_post_login_press_presentation();
+	test_gameplay_reentry_hostile_warning();
+	test_hostile_menu_presentation();
+	test_hostile_quit_presentation();
+	test_direct_emergency_warp_presentation();
+	test_team_front_presentation();
+	test_team_create_presentation();
+	test_team_join_presentation();
+	test_team_quit_presentation();
+	test_team_resource_presentation();
+	test_team_banish_presentation();
+	test_port_docking_controller_presentation();
+	test_action_finalizer_presentation();
+	test_commodity_trade_presentation();
+	test_computer_return_prompt_presentation();
+	test_computer_quit_cancel_presentation();
+	test_main_quit_cancel_presentation();
+	test_main_shell_front_presentation();
+	test_main_shell_branch_presentation();
+	test_planet_quit_cancel_presentation();
+	test_planet_menu_front_presentation();
+	test_planet_take_all_default_cycle_presentation();
+	test_planet_take_one_presentation();
+	test_planet_transfer_presentation();
+	test_planet_bank_presentation();
+	test_planet_productivity_presentation();
+	test_clearance_presentation();
+	test_earth_report_presentation();
+	test_earth_purchase_presentation();
+	test_earth_anti_cloak_presentation();
+	test_earth_spy_purchase_presentation();
+	test_earth_lottery_loss_presentation();
+	test_planet_computer_entry_cycle_presentation();
+	test_planet_display_cycle_presentation();
+	test_planet_sensor_all_zero_cycle_presentation();
+	test_planet_rename_presentation();
+	test_normal_exit_tail_presentation();
+	test_computer_deactivation_presentation();
+	test_computer_sensor_all_zero_cycle_presentation();
+	test_computer_profit_cycle_presentation();
+	test_computer_front_presentation();
+	test_computer_avoid_presentation();
+	test_computer_port_report_presentation();
+	test_computer_planet_report_front_presentation();
+	test_computer_planet_inventory_presentation();
+	test_computer_finders_presentation();
+	test_computer_treasury_presentation();
+	test_main_fighters_presentation();
+	test_main_genesis_presentation();
+	test_planet_garrison_presentation();
+	test_planet_landing_presentation();
+	test_planet_assault_presentation();
+	test_planet_creation_presentation();
+	test_planet_move_presentation();
+	test_sector_mine_presentation();
+	test_direct_fighter_kill_warning_presentation();
+	test_black_hole_presentation();
+	test_movement_presentation();
+	test_direct_attack_presentation();
+	test_computer_spy_presentation();
+	test_computer_path_presentation();
+	test_computer_autopilot_presentation();
+	test_computer_scoreboard_presentation();
+	test_radio_target_blank_presentation();
+	test_computer_radio_composer_cycle_presentation();
+	test_radio_body_presentation();
+	test_computer_radio_log_presentation();
+	test_computer_newspaper_presentation();
+	test_hostile_attack_admission_presentation();
+	test_deployed_fighter_surrender_presentation();
+	test_deployed_fighter_faction_presentation();
+	test_shield_spill_presentation();
+	test_hostile_bribe_presentation();
+	test_hostile_sector_mine_presentation();
+	test_startup_pre_admission_presentation();
+	test_startup_status_row();
+	test_new_alias_success_presentation();
+	test_new_player_admission_presentation();
+	test_returning_player_presentation();
 	if (failures != 0) {
 		fprintf(stderr, "%u test(s) failed\n", failures);
 		return 1;

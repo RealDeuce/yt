@@ -56,9 +56,25 @@ test_record(void)
 {
 	struct yt_record record;
 	struct yt_record preserved;
+	struct yt_radio_record radio;
+	struct yt_radio_record mutated;
+	struct yt_radio_record before_mutation;
+	struct yt_radio_reader_decision decision;
+	struct yt_error error;
+	uint8_t header[64];
+	uint8_t long_radio_text[75];
+	size_t header_length;
+	size_t index;
 	char name[64];
 	uint8_t tail[4] = {1, 2, 3, 4};
 	static const uint8_t dirty_zero[4] = {0x12, 0x34, 0x80, 0x00};
+	static const uint8_t radio_dirty_zero[4] = {0x00, 0x00, 0x80, 0x00};
+	static const uint8_t personal_prefix[14] = {
+		0x00, 0x00, 0x00, 0x81,
+		0x00, 0x00, 0x00, 0x82,
+		0x00, 0x00, 0x40, 0x82,
+		'H', 'i'
+	};
 
 	yt_record_blank(&record);
 	memcpy(record.bytes + YT_RECORD_TAIL_OFFSET, tail, sizeof(tail));
@@ -76,6 +92,91 @@ test_record(void)
 	preserved = record;
 	CHECK(!yt_record_set_number(&record, YT_F49, ldexpf(1.0f, 127)));
 	CHECK(memcmp(&record, &preserved, sizeof(record)) == 0);
+
+	memset(&radio, 0xff, sizeof(radio));
+	CHECK(yt_radio_set_raw_number(&radio, 0, radio_dirty_zero));
+	CHECK(yt_radio_get_number(&radio, 0) == 0.0f);
+	CHECK(memcmp(radio.bytes, radio_dirty_zero,
+	    sizeof(radio_dirty_zero)) == 0);
+	CHECK(!yt_radio_set_raw_number(&radio, 2, radio_dirty_zero));
+	CHECK(!yt_radio_set_raw_number(&radio, 12, radio_dirty_zero));
+	CHECK(yt_radio_message_record(&radio, (const uint8_t *)"Hi", 2,
+	    3.0f, 2.0f));
+	CHECK(memcmp(radio.bytes, personal_prefix, sizeof(personal_prefix)) == 0);
+	CHECK(memcmp(radio.bytes + sizeof(personal_prefix),
+	    "                                                                        ",
+	    sizeof(radio.bytes) - sizeof(personal_prefix)) == 0);
+	CHECK(yt_radio_message_record(&radio, (const uint8_t *)"A", 1,
+	    3.0f, -2.0f));
+	CHECK(yt_radio_get_number(&radio, 0) == 30.0f
+	    && yt_radio_get_number(&radio, 4) == -2.0f
+	    && yt_radio_get_number(&radio, 8) == 3.0f
+	    && radio.bytes[12] == 'A' && radio.bytes[85] == ' ');
+	for (index = 0; index < sizeof(long_radio_text); ++index)
+		long_radio_text[index] = (uint8_t)index;
+	CHECK(yt_radio_message_record(&radio, long_radio_text,
+	    sizeof(long_radio_text), -2.0f, -2.0f));
+	CHECK(yt_radio_get_number(&radio, 0) == 30.0f
+	    && yt_radio_get_number(&radio, 4) == -2.0f
+	    && yt_radio_get_number(&radio, 8) == -2.0f
+	    && memcmp(radio.bytes + 12U, long_radio_text, 74U) == 0
+	    && radio.bytes[85] == long_radio_text[73]);
+	CHECK(!yt_radio_message_record(NULL, NULL, 0, 0.0f, 0.0f));
+	memset(&mutated, 0xaa, sizeof(mutated));
+	before_mutation = mutated;
+	CHECK(yt_radio_reader_mutate(&mutated, 30.0f));
+	CHECK(yt_radio_get_number(&mutated, 0) == 28.0f);
+	CHECK(memcmp(mutated.bytes + 4, before_mutation.bytes + 4,
+	    sizeof(mutated.bytes) - 4U) == 0);
+	CHECK(yt_radio_reader_mutate(&mutated, 1.0f));
+	CHECK(memcmp(mutated.bytes, radio_dirty_zero,
+	    sizeof(radio_dirty_zero)) == 0);
+	CHECK(yt_radio_reader_header((const uint8_t *)"A\0da", 4,
+	    (const uint8_t *)"Bob", 3, header, sizeof(header),
+	    &header_length));
+	CHECK(header_length == 28U);
+	CHECK(memcmp(header, "Message to: A\0da * From: Bob", 28) == 0);
+	CHECK(!yt_radio_reader_header((const uint8_t *)"Ada", 3,
+	    (const uint8_t *)"Bob", 3, header, 26, &header_length));
+	CHECK(header_length == 0);
+
+	yt_error_clear(&error);
+	CHECK(yt_radio_reader_decide(2.0f, 9.0f, 8.0f, 7.0f, 0.0f,
+	    &decision, &error));
+	CHECK(!decision.log_heading);
+	CHECK(decision.visible);
+	CHECK(decision.automatic_write);
+	CHECK(yt_radio_reader_decide(1.0f, 7.0f, 8.0f, 7.0f, 0.0f,
+	    &decision, &error));
+	CHECK(decision.visible);
+	CHECK(decision.automatic_write);
+	CHECK(yt_radio_reader_decide(1.0f, 8.0f, 7.0f, 7.0f, 0.0f,
+	    &decision, &error));
+	CHECK(!decision.visible);
+	CHECK(!decision.automatic_write);
+	CHECK(yt_radio_reader_decide(1.0f, 8.0f, 7.0f, 7.0f, 1.0f,
+	    &decision, &error));
+	CHECK(decision.log_heading);
+	CHECK(decision.visible);
+	CHECK(!decision.automatic_write);
+	CHECK(yt_radio_reader_decide(0.0f, 8.0f, 9.0f, 7.0f, 1.0f,
+	    &decision, &error));
+	CHECK(!decision.visible);
+	CHECK(yt_radio_reader_decide(1.0f, 7.0f, 8.0f, 7.0f, 0.49f,
+	    &decision, &error));
+	CHECK(decision.log_heading);
+	CHECK(decision.visible);
+	CHECK(!decision.automatic_write);
+	CHECK(yt_radio_reader_decide(1.0f, 8.0f, 7.0f, 7.0f, 0.49f,
+	    &decision, &error));
+	CHECK(decision.log_heading);
+	CHECK(!decision.visible);
+	CHECK(!decision.automatic_write);
+	yt_error_clear(&error);
+	CHECK(!yt_radio_reader_decide(1.0f, 7.0f, 8.0f, 7.0f,
+	    40000.0f, &decision, &error));
+	CHECK(error.status == YT_RANGE);
+	CHECK(strcmp(error.operation, "radio reader mode CINT") == 0);
 }
 
 struct scripted_clock {
@@ -305,6 +406,52 @@ test_append_window(void)
 #endif
 }
 
+static void
+test_line_input_grammar(void)
+{
+	static const uint8_t source[] = {
+		'\r', '\n', 'A', 0, 'B', '\r', '\n',
+		'C', '\n', 'D', '\r', 'E', 0x1a, 'Z'
+	};
+	static const uint8_t expected_one[] = {'A', 'B'};
+	static const uint8_t expected_two[] = {'C', '\n', 'D'};
+	uint8_t line[16];
+	size_t cursor = 0U;
+	size_t length;
+	bool available;
+
+	CHECK(yt_text_line_input_next(source, sizeof(source), &cursor,
+	    line, sizeof(line), &length, &available));
+	CHECK(available && length == 0U && cursor == 2U);
+	CHECK(yt_text_line_input_next(source, sizeof(source), &cursor,
+	    line, sizeof(line), &length, &available));
+	CHECK(available && length == sizeof(expected_one)
+	    && memcmp(line, expected_one, length) == 0 && cursor == 7U);
+	CHECK(yt_text_line_input_next(source, sizeof(source), &cursor,
+	    line, sizeof(line), &length, &available));
+	CHECK(available && length == sizeof(expected_two)
+	    && memcmp(line, expected_two, length) == 0 && cursor == 11U);
+	CHECK(yt_text_line_input_next(source, sizeof(source), &cursor,
+	    line, sizeof(line), &length, &available));
+	CHECK(available && length == 1U && line[0] == 'E' && cursor == 12U);
+	CHECK(yt_text_line_input_next(source, sizeof(source), &cursor,
+	    line, sizeof(line), &length, &available));
+	CHECK(!available && length == 0U && cursor == 12U);
+
+	cursor = 2U;
+	CHECK(!yt_text_line_input_next(source, sizeof(source), &cursor,
+	    line, 1U, &length, &available));
+	CHECK(cursor == 2U);
+	{
+		static const uint8_t nul_tail[] = {0, 0x1a};
+
+		cursor = 0U;
+		CHECK(yt_text_line_input_next(nul_tail, sizeof(nul_tail), &cursor,
+		    line, sizeof(line), &length, &available));
+		CHECK(available && length == 0U && cursor == 1U);
+	}
+}
+
 int
 main(void)
 {
@@ -313,6 +460,7 @@ main(void)
 	test_random();
 	test_files();
 	test_append_window();
+	test_line_input_grammar();
 	if (failures != 0) {
 		fprintf(stderr, "%u test(s) failed\n", failures);
 		return EXIT_FAILURE;

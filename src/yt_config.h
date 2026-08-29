@@ -51,4 +51,3 @@ int yt_port_basic_record(const struct yt_config *config, int logical_port);
 int yt_planet_basic_record(const struct yt_config *config, int logical_planet);
 
 #endif
-

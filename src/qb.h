@@ -21,6 +21,7 @@ enum qb_mbf_status {
 
 float qb_mbf32_decode(const uint8_t raw[4]);
 enum qb_mbf_status qb_mbf32_encode(float value, uint8_t raw[4]);
+bool qb_mbf32_truth(const uint8_t raw[4]);
 double qb_mbf64_decode(const uint8_t raw[8]);
 enum qb_mbf_status qb_mbf64_encode(double value, uint8_t raw[8]);
 
@@ -28,7 +29,9 @@ double qb_int(double value);
 double qb_fix(double value);
 int32_t qb_cint(double value, bool *overflow);
 int32_t qb_cint_mode(double value, uint8_t mode, bool *overflow);
+uint32_t qb_brun_random_record_number(float expression);
 struct qb_val_result qb_val(const char *text);
+struct qb_val_result qb_val_n(const uint8_t *text, size_t length);
 
 size_t qb_ltrim(char *text);
 size_t qb_rtrim(char *text);

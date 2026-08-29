@@ -91,18 +91,6 @@ yt_input_yes_no(const char *prompt)
 	return key == 'Y';
 }
 
-void
-yt_input_timed_wait(double seconds)
-{
-	double deadline = yt_platform_timer() + seconds;
-
-	while (yt_platform_timer() < deadline) {
-		if (od_get_key(FALSE) != 0)
-			return;
-		od_sleep(10);
-	}
-}
-
 static bool
 poll_splitter(struct yt_input_splitter *splitter)
 {
@@ -111,7 +99,7 @@ poll_splitter(struct yt_input_splitter *splitter)
 	while (yt_input_splitter_can_push(splitter, false)
 	    && yt_input_splitter_can_push(splitter, true)
 	    && od_get_input(&event, 0, GETIN_RAW)) {
-		struct yt_input_value value;
+		struct yt_input_value value = {{0, 0}, 0, 0, false};
 
 		if (event.EventType == EVENT_EXTENDED_KEY) {
 			value.bytes[0] = 0;
@@ -122,11 +110,12 @@ poll_splitter(struct yt_input_splitter *splitter)
 		else {
 			value.bytes[0] = (uint8_t)event.chKeyPress;
 			value.bytes[1] = 0;
-			value.length = 1;
+		value.length = 1;
 			value.sequence = 0;
 		}
+		value.remote = event.bFromRemote != FALSE;
 		if (!yt_input_splitter_push(splitter,
-		    event.bFromRemote != FALSE, &value))
+		    value.remote, &value))
 			return false;
 	}
 	return true;
@@ -149,5 +138,15 @@ yt_input_poll_merged(struct yt_input_splitter *splitter,
 	if (!poll_splitter(splitter))
 		return false;
 	*selected = yt_input_splitter_select_merged(splitter);
+	return true;
+}
+
+bool
+yt_input_poll_source(struct yt_input_splitter *splitter, bool remote,
+    struct yt_input_value *selected)
+{
+	if (!poll_splitter(splitter))
+		return false;
+	*selected = yt_input_splitter_select_source(splitter, remote);
 	return true;
 }

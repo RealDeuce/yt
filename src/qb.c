@@ -55,6 +55,12 @@ qb_mbf32_decode(const uint8_t raw[4])
 	return value;
 }
 
+bool
+qb_mbf32_truth(const uint8_t raw[4])
+{
+	return raw != NULL && raw[3] != 0U;
+}
+
 enum qb_mbf_status
 qb_mbf32_encode(float value, uint8_t raw[4])
 {
@@ -198,6 +204,16 @@ qb_cint_mode(double value, uint8_t mode, bool *overflow)
 		return 0;
 	}
 	return (int32_t)rounded;
+}
+
+uint32_t
+qb_brun_random_record_number(float expression)
+{
+	if (expression >= 16777216.0f)
+		return 0U;
+	if (expression <= -16777216.0f)
+		return UINT32_C(0x00ffffff);
+	return (uint32_t)((int64_t)floorf(expression) & INT64_C(0x00ffffff));
 }
 
 int32_t

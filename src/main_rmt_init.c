@@ -4,20 +4,38 @@
 #include "yt_file.h"
 #include "yt_init.h"
 #include "yt_names.h"
+#include "yt_rmt_door.h"
 #include "yt_text.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+struct rmt_remote_info {
+	uint8_t identifier[2048];
+	size_t identifier_length;
+	uint8_t description[2048];
+	size_t description_length;
+	char first[128];
+	char last[128];
+	float com_port;
+	bool local_mode;
+};
+
+struct rmt_output_context {
+	bool local_mode;
+	struct yt_rmt_door *door;
+	struct yt_rmt_output_state state;
+};
+
 static bool
 read_handoff(char path[512], bool *standalone, struct yt_error *error)
 {
+	struct yt_rmt_handoff_result parsed;
 	struct yt_text_file text;
 	FILE *file;
 	char resolved[512];
 	size_t size;
-	size_t length;
 
 	path[0] = '\0';
 	if (!yt_resolve_case_path("rmtinit.tmp", true, resolved,
@@ -29,120 +47,110 @@ read_handoff(char path[512], bool *standalone, struct yt_error *error)
 	fclose(file);
 	if (!yt_file_size("rmtinit.tmp", &size, error))
 		return false;
-	*standalone = size == 0;
-	if (*standalone)
+	if (size == 0U) {
+		if (!yt_rmt_handoff_parse(NULL, 0U, &parsed))
+			return false;
+		*standalone = parsed.standalone;
 		return true;
+	}
 	if (!yt_text_read("rmtinit.tmp", &text, error))
 		return false;
-	length = 0;
-	while (length < text.length && text.data[length] != '\r'
-	    && text.data[length] != '\n' && text.data[length] != 0x1a)
-		++length;
-	if (length >= 512U) {
+	if (!yt_rmt_handoff_parse(text.data, text.length, &parsed)) {
 		yt_text_free(&text);
 		if (error != NULL)
 			error->status = YT_RANGE;
 		return false;
 	}
-	memcpy(path, text.data, length);
-	path[length] = '\0';
+	memcpy(path, parsed.path, parsed.path_length + 1U);
+	*standalone = parsed.standalone;
 	yt_text_free(&text);
 	return true;
 }
 
 static bool
-read_dorinfo_name(const char *path, char first[128], char last[128],
-    bool *local_mode, struct yt_error *error)
+read_dorinfo_name(const char *path, struct rmt_remote_info *info,
+    struct yt_error *error)
 {
-	char resolved[512];
-	FILE *file;
-	char lines[8][256];
-	int index;
+	struct yt_rmt_dorinfo_result parsed;
+	struct yt_text_file text;
+	struct qb_val_result port_value;
+	uint8_t storage[2048];
+	const uint8_t *identifier;
+	const uint8_t *description;
+	const uint8_t *first_value;
+	const uint8_t *last_value;
+	size_t identifier_length;
+	size_t description_length;
+	size_t first_length;
+	size_t last_length;
+	bool valid = false;
 
-	if (!yt_resolve_case_path(path, false, resolved, sizeof(resolved), error))
+	if (info == NULL)
 		return false;
-	file = fopen(resolved, "rb");
-	if (file == NULL)
+	memset(info, 0, sizeof(*info));
+	if (!yt_text_read(path, &text, error))
 		return false;
-	for (index = 0; index < 8; ++index) {
-		size_t length;
-
-		if (fgets(lines[index], sizeof(lines[index]), file) == NULL) {
-			fclose(file);
-			if (error != NULL)
-				error->status = YT_EOF;
-			return false;
+	if (!yt_rmt_dorinfo_parse(text.data, text.length, storage,
+	    sizeof(storage), &parsed)) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			snprintf(error->operation, sizeof(error->operation),
+			    "parse RMT DORINFO");
 		}
-		length = strlen(lines[index]);
-		while (length > 0 && (lines[index][length - 1] == '\r'
-		    || lines[index][length - 1] == '\n'
-		    || lines[index][length - 1] == 0x1a))
-			lines[index][--length] = '\0';
+		goto done;
 	}
-	fclose(file);
-	{
-		char full[256];
-		size_t length = strlen(lines[3]);
-		int port = length > 0 ? lines[3][length - 1] - '0' : 0;
-
-		if (length > 0 && lines[3][length - 1U] == ':') {
-			lines[3][--length] = '\0';
-			port = length > 0 ? lines[3][length - 1U] - '0' : 0;
+	if (parsed.outcome != YT_RMT_DORINFO_SUCCESS) {
+		if (error != NULL) {
+			error->status = YT_EOF;
+			snprintf(error->operation, sizeof(error->operation),
+			    "read RMT DORINFO field %zu", parsed.failed_field);
 		}
-		snprintf(full, sizeof(full), "%s %s", lines[6], lines[7]);
-		qb_title_case(full);
-		yt_names_split(full, first, 128, last, 128);
-		*local_mode = port < 1 || port > 4;
+		goto done;
 	}
-	return true;
-}
-
-static bool
-preprocess_old_database(struct yt_database *database,
-    struct yt_config *config, struct yt_error *error)
-{
-	int basic;
-
-	if (config->headquarters == 0.0f) {
-		config->headquarters = 85.0f;
-		yt_record_set_number(&config->record, YT_F117, 85.0f);
-		if (!yt_database_write(database, 1, &config->record, error))
-			return false;
-	}
-	for (basic = 2; basic <= (int)config->sector_offset; ++basic) {
-		struct yt_record record;
-		float cloak;
-
-		if (!yt_database_read(database, (size_t)basic, &record, error))
-			return false;
-		cloak = yt_record_get_number(&record, YT_F125);
-		if (cloak > 0.0f) {
-			record.bytes[YT_F125 + 2U] ^= 0x80U;
-			if (!yt_database_write(database, (size_t)basic, &record,
-			    error))
-				return false;
+	identifier = yt_rmt_dorinfo_field(&parsed, storage, 3U,
+	    &identifier_length);
+	description = yt_rmt_dorinfo_field(&parsed, storage, 4U,
+	    &description_length);
+	first_value = yt_rmt_dorinfo_field(&parsed, storage, 6U,
+	    &first_length);
+	last_value = yt_rmt_dorinfo_field(&parsed, storage, 7U, &last_length);
+	if (identifier == NULL || description == NULL || first_value == NULL
+	    || last_value == NULL || first_length >= 128U
+	    || last_length >= 128U
+	    || identifier_length > sizeof(info->identifier)
+	    || description_length > sizeof(info->description)) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			snprintf(error->operation, sizeof(error->operation),
+			    "copy RMT DORINFO fields");
 		}
+		goto done;
 	}
-	return yt_database_flush(database, error);
-}
+	if (identifier_length != 0U
+	    && identifier[identifier_length - 1U] == ':')
+		--identifier_length;
+	port_value = qb_val_n(identifier_length != 0U
+	    ? identifier + identifier_length - 1U : NULL,
+	    identifier_length != 0U ? 1U : 0U);
+	if (identifier_length != 0U)
+		memcpy(info->identifier, identifier, identifier_length);
+	info->identifier_length = identifier_length;
+	if (description_length != 0U)
+		memcpy(info->description, description, description_length);
+	info->description_length = description_length;
+	info->com_port = (float)port_value.value;
+	if (first_length != 0U)
+		memcpy(info->first, first_value, first_length);
+	info->first[first_length] = '\0';
+	if (last_length != 0U)
+		memcpy(info->last, last_value, last_length);
+	info->last[last_length] = '\0';
+	info->local_mode = info->com_port < 1.0f || info->com_port > 4.0f;
+	valid = true;
 
-static void
-transform_config(struct yt_config *config, bool local_mode)
-{
-	if (config->scoreboard[0] == '\0')
-		strcpy(config->scoreboard, "NUL");
-	if (config->local_screen < -1.0f || config->local_screen > 0.0f
-	    || local_mode)
-		config->local_screen = -1.0f;
-	if (config->lottery_plays < 1.0f)
-		config->lottery_plays = 1.0f;
-	if (config->genesis_ports < 20.0f || config->genesis_ports > 300.0f)
-		config->genesis_ports = 200.0f;
-	if (config->maximum_holds < 5.0f
-	    || config->maximum_holds > 1000.0f)
-		config->maximum_holds = 50.0f;
-	config->marker = 6324.0f;
-	config->maximum_planets = 0.0f;
+done:
+	yt_text_free(&text);
+	return valid;
 }
 
 static bool
@@ -150,22 +158,192 @@ credited_remote_name(const char *first, const char *last, char credited[90],
     struct yt_error *error)
 {
 	struct yt_name_file names;
-	const struct yt_name_row *match;
+	bool result;
 
-	credited[0] = '\0';
 	if (!yt_names_load("YTNAME.DAT", &names, error))
 		return false;
-	match = NULL;
-	for (size_t index = 0; index < names.count; ++index) {
-		if (strcmp(names.rows[index].real_first, first) == 0
-		    && strcmp(names.rows[index].real_last, last) == 0)
-			match = &names.rows[index];
-	}
-	if (match != NULL)
-		snprintf(credited, 90, "%s %s", match->alias_first,
-		    match->alias_last);
+	result = yt_rmt_credited_name(first, last, &names, credited, 90U);
 	yt_names_free(&names);
+	return result;
+}
+
+static bool
+write_local_bytes(struct yt_rmt_door *door, const uint8_t *bytes,
+    size_t length, struct yt_error *error)
+{
+	if (door != NULL && door->initialized) {
+		if (yt_rmt_door_local_write(door, bytes, length))
+			return true;
+		if (error != NULL) {
+			error->status = YT_IO_ERROR;
+			error->system_error = 0;
+			snprintf(error->operation, sizeof(error->operation),
+			    "write RMT-INIT local screen");
+		}
+		return false;
+	}
+	if (length != 0U && fwrite(bytes, 1U, length, stdout) != length) {
+		if (error != NULL) {
+			error->status = YT_IO_ERROR;
+			error->system_error = 0;
+			snprintf(error->operation, sizeof(error->operation),
+			    "write RMT-INIT console");
+		}
+		return false;
+	}
 	return true;
+}
+
+static bool
+write_rmt_output(struct rmt_output_context *context,
+    enum yt_rmt_output_entry entry, const uint8_t *payload,
+    size_t payload_length, struct yt_error *error)
+{
+	struct yt_rmt_output_apply_result applied;
+	struct yt_rmt_output_result output;
+	struct yt_rmt_output_state final_state;
+	struct yt_rmt_output_sink sink;
+	uint8_t local[256];
+	uint8_t serial[256];
+
+	if (context == NULL
+	    || !yt_rmt_output_compose_state(entry, payload, payload_length,
+	    context->local_mode, &context->state, local, sizeof(local), serial,
+	    sizeof(serial), &output, &final_state)) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			error->system_error = 0;
+			snprintf(error->operation, sizeof(error->operation),
+			    "compose RMT-INIT output row");
+		}
+		return false;
+	}
+	if (context->local_mode) {
+		if (!write_local_bytes(context->door, local, output.local_length,
+		    error))
+			return false;
+		context->state = final_state;
+		return true;
+	}
+	yt_rmt_door_sink(context->door, &sink);
+	if (!yt_rmt_output_apply(local, serial, &output, &sink, &applied)) {
+		if (error != NULL) {
+			error->status = YT_INVALID;
+			snprintf(error->operation, sizeof(error->operation),
+			    "apply RMT-INIT output row");
+		}
+		return false;
+	}
+	if (applied.outcome == YT_RMT_OUTPUT_APPLY_SUCCESS) {
+		context->state = final_state;
+		return true;
+	}
+	if (error != NULL) {
+		error->status = YT_IO_ERROR;
+		error->system_error = 0;
+		snprintf(error->operation, sizeof(error->operation),
+		    "write RMT-INIT %s endpoint",
+		    applied.outcome == YT_RMT_OUTPUT_APPLY_SERIAL_FAILURE
+		    ? "serial" : "local");
+	}
+	return false;
+}
+
+static bool
+write_rmt_line(struct rmt_output_context *context,
+    const uint8_t *payload, size_t payload_length, struct yt_error *error)
+{
+	return write_rmt_output(context, YT_RMT_OUTPUT_LINE, payload,
+	    payload_length, error);
+}
+
+static bool
+write_rmt_blank(struct rmt_output_context *context, struct yt_error *error)
+{
+	return write_rmt_output(context, YT_RMT_OUTPUT_BLANK, NULL, 0U, error);
+}
+
+static bool
+write_missing_old_data(struct rmt_output_context *context,
+    struct yt_error *error)
+{
+	static const uint8_t payload[] =
+	    "\aERROR! OLD DATA FILES NOT FOUND!!!!!!!!!!!!!!!!!!!!!!!!\a";
+
+	/* The two preceding PRINTs are local-only blank rows. */
+	if (!write_local_bytes(context->door, (const uint8_t *)"\r\r", 2U,
+	    error)
+	    || !write_rmt_line(context, payload, sizeof(payload) - 1U,
+	    error))
+		return false;
+	return true;
+}
+
+static bool
+write_rmt_completion(struct rmt_output_context *context,
+    const char *credited, struct yt_error *error)
+{
+	struct yt_rmt_completion_result completion;
+	struct yt_rmt_delay_result delay;
+
+	if (!yt_rmt_completion_compose(context->local_mode, credited,
+	    &completion)) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			error->system_error = 0;
+			snprintf(error->operation, sizeof(error->operation),
+			    "compose RMT-INIT completion");
+		}
+		return false;
+	}
+	for (size_t line = 0U; line < completion.line_count; ++line) {
+		bool written;
+
+		if (completion.returns_to_bbs
+		    && line + 1U == completion.line_count
+		    && !write_rmt_blank(context, error))
+			return false;
+		written = completion.lines[line].length == 0U
+		    ? write_rmt_blank(context, error)
+		    : write_rmt_line(context, completion.lines[line].bytes,
+		    completion.lines[line].length, error);
+
+		if (!written)
+			return false;
+	}
+	if (completion.returns_to_bbs && !yt_rmt_completion_delay(&delay)) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			error->system_error = 0;
+			snprintf(error->operation, sizeof(error->operation),
+			    "execute RMT-INIT completion delay");
+		}
+		return false;
+	}
+	return true;
+}
+
+static bool
+write_rmt_presentation(void *opaque, uint16_t site,
+    enum yt_rmt_output_entry entry, const uint8_t *payload,
+    size_t payload_length, struct yt_error *error)
+{
+	struct rmt_output_context *context = opaque;
+
+	if (!write_rmt_output(context, entry, payload, payload_length, error))
+		return false;
+	if (site == 0x10f1U && !context->local_mode
+	    && context->state.serial_column > 50U)
+		return write_rmt_output(context, YT_RMT_OUTPUT_SERIAL_LINE, NULL,
+		    0U, error);
+	return true;
+}
+
+static int
+finish_rmt(struct yt_rmt_door *door, int status)
+{
+	yt_rmt_door_finish(door, status);
+	return status;
 }
 
 int
@@ -175,32 +353,51 @@ main(void)
 	struct yt_database old;
 	struct yt_config config;
 	struct yt_random random;
+	struct yt_rmt_door door;
+	struct rmt_output_context output_context = {0};
+	struct yt_rmt_presenter presenter = {
+		.context = &output_context,
+		.write = write_rmt_presentation,
+	};
+	struct rmt_remote_info remote;
+	struct yt_rmt_serial_state serial_state;
+	struct yt_startup_framing framing;
 	char handoff[512];
 	char answer[80];
-	char first[128] = "";
-	char last[128] = "";
 	char credited[90];
 	bool standalone;
 	bool local_mode;
+	float com_port = 0.0f;
 	size_t old_size;
+	uint8_t dll;
+	uint8_t dlm;
 
 	yt_error_clear(&error);
 	memset(&old, 0, sizeof(old));
+	memset(&door, 0, sizeof(door));
+	memset(&remote, 0, sizeof(remote));
 	if (!read_handoff(handoff, &standalone, &error)) {
 		yt_cli_error("RMT-INIT", &error);
-		return EXIT_FAILURE;
+		return finish_rmt(&door, EXIT_FAILURE);
 	}
 	if (standalone) {
-		puts("");
-		puts("");
-		puts("Running stand alone... re-initializing using old sysop defined defaults.");
-		puts("");
-		fputs("Do you wish to re-init Y.T. using your old default values?",
-		    stdout);
-		if (!yt_cli_line(answer, sizeof(answer))
-		    || !((answer[0] == 'Y' || answer[0] == 'y')
-		    && answer[1] == '\0'))
-			return EXIT_SUCCESS;
+		struct yt_rmt_standalone_output output;
+
+		if (!yt_rmt_standalone_prompt_compose(&output)
+		    || !write_local_bytes(&door, output.bytes, output.length, &error)) {
+			yt_cli_error("RMT-INIT", &error);
+			return finish_rmt(&door, EXIT_FAILURE);
+		}
+		if (!yt_cli_line(answer, sizeof(answer)))
+			return finish_rmt(&door, EXIT_SUCCESS);
+		if (!yt_rmt_standalone_response_compose(
+		    (const uint8_t *)answer, strlen(answer), &output)
+		    || !write_local_bytes(&door, output.bytes, output.length, &error)) {
+			yt_cli_error("RMT-INIT", &error);
+			return finish_rmt(&door, EXIT_FAILURE);
+		}
+		if (!output.proceed)
+			return finish_rmt(&door, EXIT_SUCCESS);
 		local_mode = true;
 		strcpy(credited, "The Sysop");
 	}
@@ -210,47 +407,100 @@ main(void)
 	}
 	if (!yt_file_delete("rmtinit.tmp", false, &error)) {
 		yt_cli_error("RMT-INIT", &error);
-		return EXIT_FAILURE;
+		return finish_rmt(&door, EXIT_FAILURE);
 	}
-	if (!standalone
-	    && (!read_dorinfo_name(handoff, first, last, &local_mode, &error)
-	    || !credited_remote_name(first, last, credited, &error))) {
-		yt_cli_error("RMT-INIT", &error);
-		return EXIT_FAILURE;
-	}
-	if (!yt_file_size("YTDATA.DAT", &old_size, &error) || old_size == 0) {
-		if (error.status == YT_NOT_FOUND) {
-			FILE *empty = fopen("YTDATA.DAT", "wb");
+	if (!standalone) {
+		struct yt_rmt_standalone_output output;
 
-			if (empty != NULL)
-				fclose(empty);
+		if (!read_dorinfo_name(handoff, &remote, &error)) {
+			yt_cli_error("RMT-INIT", &error);
+			return finish_rmt(&door, EXIT_FAILURE);
 		}
-		(void)yt_file_delete("YTDATA.DAT", true, NULL);
-		fputs("\aERROR! OLD DATA FILES NOT FOUND!!!!!!!!!!!!!!!!!!!!!!!!\a\n",
-		    stdout);
-		return EXIT_FAILURE;
+		local_mode = remote.local_mode;
+		com_port = remote.com_port;
+		if (!local_mode) {
+			if (!yt_startup_framing_compose(remote.description,
+			    remote.description_length, &framing)
+			    || !yt_rmt_door_prepare(&door, (int)com_port, &framing,
+			    &error)
+			    || !yt_startup_divisor_from_observed_baud(
+			    door.serial.observed_baud, &dll, &dlm)
+			    || !yt_rmt_serial_state_compose(remote.identifier,
+			    remote.identifier_length, remote.description,
+			    remote.description_length, dll, dlm, &serial_state)
+			    || !yt_rmt_door_start(&door, &serial_state, &error)) {
+				if (error.status == YT_OK) {
+					error.status = YT_RANGE;
+					snprintf(error.operation, sizeof(error.operation),
+					    "adapt observed RMT serial speed");
+				}
+				yt_cli_error("RMT-INIT", &error);
+				return finish_rmt(&door, EXIT_FAILURE);
+			}
+		}
+		if (!yt_rmt_remote_status_compose(!local_mode, com_port,
+		    local_mode ? 0.0f : serial_state.detected_baud, &output)
+		    || !write_local_bytes(&door, output.bytes, output.length, &error)
+		    || !credited_remote_name(remote.first, remote.last, credited,
+		    &error)) {
+			yt_cli_error("RMT-INIT", &error);
+			return finish_rmt(&door, EXIT_FAILURE);
+		}
+	}
+	output_context.local_mode = local_mode;
+	output_context.door = &door;
+	if (!yt_file_size("YTDATA.DAT", &old_size, &error)) {
+		FILE *empty;
+
+		if (error.status != YT_NOT_FOUND) {
+			yt_cli_error("RMT-INIT", &error);
+			return finish_rmt(&door, EXIT_FAILURE);
+		}
+		empty = fopen("YTDATA.DAT", "wb");
+		if (empty == NULL) {
+			error.status = YT_IO_ERROR;
+			snprintf(error.operation, sizeof(error.operation),
+			    "create old YTDATA.DAT");
+			yt_cli_error("RMT-INIT", &error);
+			return finish_rmt(&door, EXIT_FAILURE);
+		}
+		if (fclose(empty) != 0) {
+			error.status = YT_IO_ERROR;
+			snprintf(error.operation, sizeof(error.operation),
+			    "close old YTDATA.DAT");
+			yt_cli_error("RMT-INIT", &error);
+			return finish_rmt(&door, EXIT_FAILURE);
+		}
+		old_size = 0U;
+		yt_error_clear(&error);
+	}
+	if (old_size == 0U) {
+		if (!write_missing_old_data(&output_context, &error)
+		    || !yt_file_delete("YTDATA.DAT", false, &error)) {
+			yt_cli_error("RMT-INIT", &error);
+			return finish_rmt(&door, EXIT_FAILURE);
+		}
+		/* Shipped CLOSE-all/KILL/END is a normal process terminal. */
+		return finish_rmt(&door, EXIT_SUCCESS);
 	}
 	if (!yt_database_open(&old, "YTDATA.DAT", YT_OPEN_UPDATE, &error)
 	    || !yt_config_load(&old, &config, &error)
-	    || !preprocess_old_database(&old, &config, &error)) {
+	    || !yt_rmt_preprocess_old_database(&old, &config, &error)) {
 		yt_database_close(&old);
 		yt_cli_error("RMT-INIT", &error);
-		return EXIT_FAILURE;
+		return finish_rmt(&door, EXIT_FAILURE);
 	}
 	yt_database_close(&old);
-	transform_config(&config, local_mode || standalone);
+	yt_rmt_normalize_config(&config, local_mode || standalone);
 	yt_random_init(&random);
-	if (!yt_initialize_rmt(&config, credited, &random, &error)) {
+	if (!yt_initialize_rmt_presented(&config, credited, &random, &presenter,
+	    &error)) {
 		yt_cli_error("RMT-INIT", &error);
-		return EXIT_FAILURE;
+		return finish_rmt(&door, EXIT_FAILURE);
 	}
-	fputs("\aInitialization completed sucessfully!\a\n", stdout);
-	if (strcmp(credited, "The Sysop") != 0) {
-		for (int repeat = 0; repeat < 3; ++repeat)
-			printf("Congratulations %s! You have fulfilled the prophesy!!\n",
-			    credited);
+	if (!write_rmt_completion(&output_context, credited, &error)) {
+		yt_cli_error("RMT-INIT", &error);
+		return finish_rmt(&door, EXIT_FAILURE);
 	}
-	if (!local_mode)
-		puts("Returning you to the BBS...");
-	return EXIT_SUCCESS;
+	return finish_rmt(&door, EXIT_SUCCESS);
 }

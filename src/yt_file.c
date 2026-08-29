@@ -139,7 +139,8 @@ yt_database_open(struct yt_database *database, const char *path,
 	off_t length;
 
 	memset(database, 0, sizeof(*database));
-	if (!yt_resolve_case_path(path, mode == YT_OPEN_CREATE, resolved,
+	if (!yt_resolve_case_path(path, mode == YT_OPEN_CREATE
+	    || mode == YT_OPEN_UPDATE_CREATE, resolved,
 	    sizeof(resolved), error))
 		return false;
 	switch (mode) {
@@ -152,11 +153,17 @@ yt_database_open(struct yt_database *database, const char *path,
 	case YT_OPEN_CREATE:
 		file_mode = "w+b";
 		break;
+	case YT_OPEN_UPDATE_CREATE:
+		file_mode = "r+b";
+		break;
 	default:
 		set_error(error, YT_INVALID, "database mode", path);
 		return false;
 	}
 	database->file = fopen(resolved, file_mode);
+	if (database->file == NULL && mode == YT_OPEN_UPDATE_CREATE
+	    && errno == ENOENT)
+		database->file = fopen(resolved, "w+b");
 	if (database->file == NULL) {
 		set_error(error, errno == ENOENT ? YT_NOT_FOUND : YT_IO_ERROR,
 		    "open database", resolved);

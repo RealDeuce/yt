@@ -1,4 +1,5 @@
 #include "yt_names.h"
+#include "qb.h"
 #include "yt_text.h"
 
 #include <stdlib.h>
@@ -276,6 +277,52 @@ yt_names_split(const char *name, char *first, size_t first_size, char *last,
 	memcpy(first, name, length);
 	first[length] = '\0';
 	snprintf(last, last_size, "%s", space == NULL ? "" : space + 1);
+}
+
+enum yt_alias_key_status
+yt_names_prepare_alias(char *alias, size_t alias_size,
+    const char *real_first, const char *real_last, char *alias_first,
+    size_t first_size, char *alias_last, size_t last_size, char *display,
+    size_t display_size)
+{
+	size_t index;
+	size_t length;
+	int written;
+
+	if (alias_size < 42U || first_size == 0 || last_size == 0
+	    || display_size < 41U)
+		return YT_ALIAS_KEY_RANGE;
+	if (alias[0] == '\0') {
+		written = snprintf(alias, alias_size, "%s %s", real_first,
+		    real_last);
+		if (written < 0 || (size_t)written >= alias_size)
+			return YT_ALIAS_KEY_RANGE;
+	}
+	for (index = 0; alias[index] != '\0'; ++index) {
+		if (alias[index] == ',' || alias[index] == '"')
+			alias[index] = ' ';
+	}
+	qb_title_case(alias);
+	if (alias[0] == '\0')
+		return YT_ALIAS_KEY_EMPTY;
+	if (strstr(alias, "Sysop") != NULL
+	    || strstr(alias, "Xannor") != NULL
+	    || strstr(alias, "Mercenaries") != NULL)
+		return YT_ALIAS_KEY_RESERVED;
+	length = strlen(alias);
+	if (length > 40U)
+		length = 40U;
+	alias[length++] = ' ';
+	alias[length] = '\0';
+	yt_names_split(alias, alias_first, first_size, alias_last, last_size);
+	qb_title_case(alias_last);
+	written = snprintf(display, display_size, "%s %s", alias_first,
+	    alias_last);
+	if (written < 0 || (size_t)written >= display_size)
+		return YT_ALIAS_KEY_RANGE;
+	if ((size_t)written > 40U)
+		display[40] = '\0';
+	return YT_ALIAS_KEY_READY;
 }
 
 bool

@@ -1,5 +1,6 @@
 #include "yt_data.h"
 
+#include <stdio.h>
 #include <string.h>
 
 static bool
@@ -121,6 +122,16 @@ yt_radio_set_number(struct yt_radio_record *record, size_t offset,
 	    != QB_MBF_OVERFLOW;
 }
 
+bool
+yt_radio_set_raw_number(struct yt_radio_record *record, size_t offset,
+    const uint8_t raw[4])
+{
+	if (offset > 8 || offset % 4U != 0)
+		return false;
+	memcpy(record->bytes + offset, raw, 4);
+	return true;
+}
+
 void
 yt_radio_set_text(struct yt_radio_record *record, const uint8_t *text,
     size_t length, size_t field_width)
@@ -135,4 +146,111 @@ yt_radio_set_text(struct yt_radio_record *record, const uint8_t *text,
 		memcpy(record->bytes + 12, text, copied);
 	if (field_width == 72)
 		memset(record->bytes + 84, 0, 2);
+}
+
+bool
+yt_radio_message_record(struct yt_radio_record *record,
+    const uint8_t *text, size_t length, float sender, float recipient)
+{
+	if (record == NULL || (text == NULL && length != 0))
+		return false;
+	memset(record, 0, sizeof(*record));
+	if (!yt_radio_set_number(record, 0,
+	    recipient == -2.0f ? 30.0f : 1.0f)
+	    || !yt_radio_set_number(record, 4, recipient)
+	    || !yt_radio_set_number(record, 8, sender))
+		return false;
+	yt_radio_set_text(record, text, length, 74U);
+	return true;
+}
+
+bool
+yt_radio_reader_decide(float counter, float recipient, float sender,
+    float current_player, float reader_mode,
+    struct yt_radio_reader_decision *decision, struct yt_error *error)
+{
+	bool overflow;
+	int32_t mode;
+	int32_t greater;
+	int32_t equal_one;
+	int32_t recipient_equal;
+	int32_t sender_equal;
+
+	if (decision == NULL)
+		return false;
+	memset(decision, 0, sizeof(*decision));
+	mode = qb_cint((double)reader_mode, &overflow);
+	if (overflow) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation,
+			    sizeof(error->operation), "%s",
+			    "radio reader mode CINT");
+		}
+		return false;
+	}
+	greater = counter > 1.0f ? -1 : 0;
+	equal_one = counter == 1.0f ? -1 : 0;
+	recipient_equal = recipient == current_player ? -1 : 0;
+	sender_equal = sender == current_player ? -1 : 0;
+	decision->log_heading = reader_mode != 0.0f;
+	decision->visible = (greater | ((equal_one | mode)
+	    & (recipient_equal | (mode & sender_equal)))) != 0;
+	decision->automatic_write = reader_mode == 0.0f
+	    && decision->visible;
+	return true;
+}
+
+bool
+yt_radio_reader_mutate(struct yt_radio_record *record, float counter)
+{
+	static const uint8_t dirty_zero[4] = {0x00, 0x00, 0x80, 0x00};
+	volatile float updated;
+
+	if (record == NULL)
+		return false;
+	if (!(counter > 1.0f))
+		return yt_radio_set_raw_number(record, 0, dirty_zero);
+	updated = counter - 2.0f;
+	return yt_radio_set_number(record, 0, updated);
+}
+
+bool
+yt_radio_reader_header(const uint8_t *recipient, size_t recipient_length,
+    const uint8_t *sender, size_t sender_length, uint8_t *header,
+    size_t capacity, size_t *length)
+{
+	static const uint8_t prefix[] = "Message to: ";
+	static const uint8_t infix[] = " * From: ";
+	size_t needed;
+	size_t position = 0;
+
+	if (length == NULL)
+		return false;
+	*length = 0;
+	if (recipient_length > SIZE_MAX - (sizeof(prefix) - 1U)
+	    || sender_length > SIZE_MAX - (sizeof(infix) - 1U)
+	    || recipient_length + sizeof(prefix) - 1U
+	    > SIZE_MAX - sender_length - (sizeof(infix) - 1U))
+		return false;
+	needed = sizeof(prefix) - 1U + recipient_length
+	    + sizeof(infix) - 1U + sender_length;
+	if (needed > capacity || (needed != 0 && header == NULL)
+	    || (recipient_length != 0 && recipient == NULL)
+	    || (sender_length != 0 && sender == NULL))
+		return false;
+	memcpy(header + position, prefix, sizeof(prefix) - 1U);
+	position += sizeof(prefix) - 1U;
+	if (recipient_length != 0) {
+		memcpy(header + position, recipient, recipient_length);
+		position += recipient_length;
+	}
+	memcpy(header + position, infix, sizeof(infix) - 1U);
+	position += sizeof(infix) - 1U;
+	if (sender_length != 0) {
+		memcpy(header + position, sender, sender_length);
+		position += sender_length;
+	}
+	*length = position;
+	return true;
 }

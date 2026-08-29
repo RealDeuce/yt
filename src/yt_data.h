@@ -25,6 +25,12 @@ struct yt_radio_record {
 	uint8_t bytes[YT_RADIO_RECORD_SIZE];
 };
 
+struct yt_radio_reader_decision {
+	bool log_heading;
+	bool visible;
+	bool automatic_write;
+};
+
 enum yt_record_field {
 	YT_F41 = 41,
 	YT_F45 = 45,
@@ -69,7 +75,18 @@ void yt_record_set_text_if_changed(struct yt_record *record,
 float yt_radio_get_number(const struct yt_radio_record *record, size_t offset);
 bool yt_radio_set_number(struct yt_radio_record *record, size_t offset,
     float value);
+bool yt_radio_set_raw_number(struct yt_radio_record *record, size_t offset,
+    const uint8_t raw[4]);
 void yt_radio_set_text(struct yt_radio_record *record, const uint8_t *text,
     size_t length, size_t field_width);
+bool yt_radio_message_record(struct yt_radio_record *record,
+    const uint8_t *text, size_t length, float sender, float recipient);
+bool yt_radio_reader_decide(float counter, float recipient, float sender,
+    float current_player, float reader_mode,
+    struct yt_radio_reader_decision *decision, struct yt_error *error);
+bool yt_radio_reader_mutate(struct yt_radio_record *record, float counter);
+bool yt_radio_reader_header(const uint8_t *recipient,
+    size_t recipient_length, const uint8_t *sender, size_t sender_length,
+    uint8_t *header, size_t capacity, size_t *length);
 
 #endif

@@ -107,8 +107,8 @@ Use:
 - `od_get_key()` when that merged behavior is desired;
 - `od_get_input()` when the caller must know the origin or recognize
   extended keys; and
-- DOS custom SysOp hotkeys when an action must be local-only and must not
-  enter the player's input stream.
+- DOS or Win32-console custom SysOp hotkeys when an action must be local-only
+  and must not enter the player's input stream.
 
 `od_control.od_last_input` is updated by `od_get_key()` to `0` for remote or
 `1` for local input. It is not a substitute for the per-event
@@ -119,37 +119,41 @@ does not disable SysOp function keys. `DIS_SYSOP_KEYS` disables both.
 `od_user_keyboard_on`, normally toggled by Alt-K, controls whether remote
 input is accepted.
 
-In the DOS backend, the `od_local_input` callback does **not** consume a key.
-For a local non-SysOp-function key, OpenDoors calls the callback and then
-places the same key in the common input queue. It is suitable for observing
-local input, not for implementing an exclusive local command. The Win32
-window path calls `ODKrnlHandleLocalKey()` directly and never invokes
-`od_local_input`, so the callback is not a Win32 local-input hook.
+In the DOS and Win32-console backends, the `od_local_input` callback does
+**not** consume a key. For a local non-SysOp-function key, OpenDoors calls the
+callback and then places the same key in the common input queue. It is
+suitable for observing local input, not for implementing an exclusive local
+command. The Win32 GUI-window path calls `ODKrnlHandleLocalKey()` directly
+and never invokes `od_local_input`, so the callback is not a GUI local-input
+hook.
 
 ### SysOp function-key handling is platform-specific
 
-Under DOS, the kernel intercepts built-in status, chat, shell, hangup,
-drop-to-BBS, keyboard-off, lockout, time-adjustment, SysOp-next, and
-registered custom SysOp hotkeys before ordinary input. These do not reach
-`od_get_key()` as player input.
+Under DOS and the Win32 console subsystem, the kernel intercepts built-in
+status, chat, shell, hangup, drop-to-BBS, keyboard-off, lockout,
+time-adjustment, SysOp-next, and registered custom SysOp hotkeys before
+ordinary input. These do not reach `od_get_key()` as player input.
 
 The default status assignments include F1, F2, F3, F4, F5, F6, F9, and F10.
 That table and its `od_hot_key[]`/`od_hot_function[]` dispatcher are inside
-the DOS-only keyboard branch.
+the DOS/Win32-console keyboard branch.
 
-Win32 does not run that dispatcher. Its GUI accelerator table consumes
-OpenDoors' own menu commands—Alt-C/H/K/L/N/X, Alt/Shift-Up/Down, and F1 for
-Help. Other recognized navigation and F2-through-F10 keys are converted to
-OpenDoors extended-key codes and placed directly in the common input queue.
-Neither `key_status[]` nor `od_hot_key[]` is consulted on that path.
+The Win32 GUI subsystem does not run that dispatcher. Its accelerator table
+consumes OpenDoors' own menu commands—Alt-C/H/K/L/N/X,
+Alt/Shift-Up/Down, and F1 for Help. Other recognized navigation and
+F2-through-F10 keys are converted to OpenDoors extended-key codes and placed
+directly in the common input queue.
+Neither `key_status[]` nor `od_hot_key[]` is consulted on that GUI path.
 
-Consequently, the legacy Yankee Trader F4-through-F10 bindings cannot be
-implemented portably as an OpenDoors personality/custom hotkey. This does
-not require recreating them when the Win32 SysOp interface itself need not
-match the DOS interface: OpenDoors' GUI already supplies chat, time
-adjustment, Exit to BBS, hangup, lockout, keyboard-off, SysOp-next, and
-inactivity controls. Yankee Trader only has to integrate the applicable
-state changes and preserve their required player-facing consequences.
+The pinned revision therefore permits an `ON KEY`-style local implementation
+of the legacy Yankee Trader F4-through-F10 bindings through a one-row/custom
+personality on DOS and Win32 console builds. The Win32 GUI can instead use
+OpenDoors' native chat, time adjustment, Exit to BBS, hangup, lockout,
+keyboard-off, SysOp-next, and inactivity controls. Unix-like builds are
+headless and do not provide this local personality surface. Yankee Trader
+must integrate the applicable state changes and preserve their required
+player-facing consequences; the exact local interface itself is not a
+compatibility requirement.
 
 ### Bytes, strings, formatting, and emulation are different
 
@@ -256,9 +260,9 @@ it. Always test the function's return value before interpreting
 | Simple echoed line input | `od_input_str()` | ASCII-safe end editing; always owns echo and final newline |
 | Formatted full-screen field | `od_edit_str()` | Rich editing and validation, but requires graphics |
 | Multi-line editor | `od_multiline_edit()` | Word wrap, navigation, callbacks, optional reallocation |
-| DOS local-only SysOp action | custom SysOp hotkey | DOS consumes built-in/custom hotkeys before player input |
-| Win32 local extended key | `od_get_input()` with origin checking | Personalities and custom SysOp hotkeys are unsupported on Win32 |
-| Observe DOS local typing without consuming it | `od_local_input` callback | DOS callback is notified, then the key is still queued; it is not called by Win32 |
+| DOS/Win32-console local-only SysOp action | one-row/custom personality plus custom SysOp hotkey | The console dispatcher consumes built-in/custom hotkeys before player input |
+| Win32 GUI local extended key | `od_get_input()` with origin checking | The GUI path uses its native command surface and does not run the personality hotkey dispatcher |
+| Observe DOS/Win32-console local typing without consuming it | `od_local_input` callback | The callback is notified, then the key is still queued; it is not called by the Win32 GUI path |
 | Pump DOS-era asynchronous door work | `od_kernel()` | Carrier, timeout, status, SysOp keys, and received input |
 
 ## Text and byte display
@@ -1042,9 +1046,10 @@ void od_set_statusline(INT setting);
 
 - Selects or hides the current **local SysOp** status line. It does not send a
   player menu.
-- This API is DOS/text-mode only in the installed source. On Win32 and
-  Unix-like builds it sets `od_error = ERR_UNSUPPORTED` and makes no display
-  change; Win32 uses its separate GUI status bar.
+- This API is available in DOS/text mode and in the Win32 console subsystem.
+  The Win32 GUI uses its separate status bar, and Unix-like builds are
+  headless; those paths report `ERR_UNSUPPORTED` for personality status-line
+  changes.
 - `STATUS_NORMAL`, `STATUS_USER1` through `STATUS_USER4`,
   `STATUS_SYSTEM`, `STATUS_HELP`, and `STATUS_NONE` correspond to the
   personality's status views.
@@ -1068,14 +1073,15 @@ BOOL od_set_personality(const char *name);
   are part of local I/O selection even though they do not print player text.
 - `od_add_personality()` must be called before initialization. It registers
   the local output-window bounds and callback.
-- It only affects the DOS/text-mode personality system. The manual explicitly
-  says `od_add_personality()` only has an effect under DOS, and the installed
-  source defines `OD_TEXTMODE` only for `ODPLAT_DOS`.
-- On Win32 and Unix-like builds, `od_add_personality()` and
-  `od_set_personality()` return `FALSE` and set `od_error` to
+- In this pinned revision, personality support is compiled for DOS/DOS32 and
+  Win32. Win32 accepts it only for a console-subsystem application; GUI
+  applications return `FALSE` with `ERR_UNSUPPORTED`.
+- Unix-like builds remain headless and return `FALSE` with
   `ERR_UNSUPPORTED`.
-- On those builds, `od_mps` and `od_default_personality` are not used during
-  initialization, and no `PEROP_*` callback is installed.
+- `OD_ONEROW`/`PER_OD_ONEROW` reserves row 25 for a one-row local status
+  surface and leaves rows 1 through 24 as the output region. A custom
+  callback receives `PEROP_CUSTOMKEY` after a registered hotkey is consumed,
+  which supplies an `ON KEY`-style integration point.
 - `od_set_personality()` requires the MPS component to be enabled before
   initialization and selects a registered or built-in case-insensitive name.
 - Personality callbacks receive initialization/deinitialization,
@@ -1266,6 +1272,10 @@ The current implementation uses only a deliberately small subset:
 | `od_set_color()` | Correct only for recovered color state; it intentionally becomes a no-op in plain ASCII mode |
 | `od_carrier()` guarded by known local-mode state | Necessary because `od_carrier()` itself returns false in local mode |
 | `od_exit(errorlevel, FALSE)` | Correct return-to-BBS shutdown rather than a player hangup |
+| RMT-INIT `od_open_handle` on Win32 | Correct published existing-handle path. Yankee Trader opens and configures the client-owned COM handle at the recovered 1200/framing boundary, OpenDoors attaches without reconfiguring or closing it, and Yankee Trader restores/closes it after OpenDoors shutdown |
+| RMT-INIT `od_disp(..., FALSE)` plus `ODScrnDisplayBuffer()` | Correct separation for the recovered device-first/local-second helper: counted remote bytes are not locally echoed, and the local copy uses the public local screen path. The same published calls now carry the complete stateful reset/progress/completion tape; OpenDoors source, API, and ABI remain untouched |
+| RMT-INIT `pdef_od_onerow` default personality | Uses the published one-row local interface without changing OpenDoors. It provides the applicable console SysOp surface while remaining nonessential to compatibility |
+| RMT-INIT POSIX standard-I/O transport | OpenDoors' published Unix transport is used with `od_open_handle == 0`. The Yankee Trader platform adapter observes and prepares the terminal before initialization, disables tty output post-processing so COM bytes remain byte-transparent, then reapplies recovered speed/framing and raw-output state after initialization and again after shutdown because OpenDoors temporarily owns terminal state. FreeBSD PTY process fixtures pin both missing-old and ordinary-completion streams |
 
 Additional limitations matter for pending work:
 
@@ -1282,10 +1292,12 @@ Additional limitations matter for pending work:
    sufficient for identifying local-only SysOp commands because it exposes
    origin only through shared `od_last_input` state and returns extended keys
    as multiple bytes.
-3. The personality/custom-hotkey approach is DOS-only and therefore cannot
-   reproduce Yankee Trader's F4-through-F10 bindings on Win32. Under the
-   selected requirement that the SysOp interface need not match the legacy
-   DOS interface, the relevant mapping is:
+3. The personality/custom-hotkey approach is available on DOS and the Win32
+   console subsystem in the pinned revision. A one-row/custom personality can
+   provide the local `ON KEY`-style F4-through-F10 surface. The Win32 GUI uses
+   its native command surface instead, and the Unix-like backend is headless.
+   Under the selected requirement that the SysOp interface need not match the
+   legacy DOS interface, the relevant mapping is:
 
    | Legacy control | Win32/OpenDoors replacement | Yankee Trader integration |
    |---|---|---|
@@ -1295,9 +1307,10 @@ Additional limitations matter for pending work:
    | F9 local snoop | Visible Win32 local display | In normal remote mode it changes only local presentation |
    | F10 SysOp chat | Chat Mode menu, toolbar button, or Alt-C | OpenDoors supplies the chat transport and player interaction; before/after hooks are available for Yankee Trader state synchronization |
 
-   Win32 also sends unaccelerated F2-through-F10 through the common input
-   queue, but Yankee Trader does not need to consume those keys merely to
-   recreate obsolete DOS bindings.
+   The Win32 GUI also sends unaccelerated F2-through-F10 through the common
+   input queue, but Yankee Trader does not need to consume those keys merely
+   to recreate the DOS bindings. The console personality path should consume
+   registered local-only controls before they can enter player input.
 4. `read_keyboard_line()` currently admits only bytes `0x20` through `0x7e`,
    and the radio composer applies the same range, so text entered through
    those paths cannot contain ESC or the C0 bytes used for AVATAR and

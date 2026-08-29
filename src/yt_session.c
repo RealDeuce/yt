@@ -35,12 +35,14 @@ struct yt_session {
 	size_t queue_length;
 	size_t queue_position;
 	char command_accumulator[YT_COMMAND_SIZE];
+	char output_source[YT_COMMAND_SIZE];
 	struct yt_input_splitter input;
 	char saved_command[YT_COMMAND_SIZE];
 	bool registered;
 	bool running;
 	bool terminated;
 	bool destroyed;
+	bool fatal_wait_complete;
 	struct yt_present_state presentation;
 	bool suppress_self_mines;
 	bool mercenaries_hurt;
@@ -49,17 +51,29 @@ struct yt_session {
 	float clearance_ground;
 	float clearance_shields;
 	float counterlaunch_count;
+	float earth_report_seen;
 	float relationship_scratch;
+	float attack_commitment;
+	uint8_t attack_commitment_raw[4];
 	bool anti_cloak;
 	int spies[3];
 	int spy_marker[3];
 	int spy_count;
 	float avoid[30];
+	float computer_path_marker;
+	float computer_path_start;
+	float current_planet;
+	char planet_name[42];
+	float current_warps[6];
+	double planet_quantity[10];
 	float session_deadline;
 	struct yt_present_time_state time;
+	float low_time_remembered;
 	struct yt_pager_state pager;
-	int input_residue;
+	struct yt_timed_wait_state wait;
+	struct yt_input_value input_residue;
 	char team_audit_message[YT_COMMAND_SIZE];
+	char hostile_owner_label[80];
 	float team_roster_cache[4];
 };
 
@@ -76,7 +90,8 @@ struct yt_team {
 
 static bool random_value(struct yt_session *session, float *value,
     struct yt_error *error);
-static bool computer_spies(struct yt_session *session);
+static bool computer_spies(struct yt_session *session,
+    struct yt_error *error);
 static bool mine_encounter(struct yt_session *session,
     struct yt_error *error);
 static bool clearance(struct yt_session *session, bool create,
@@ -85,11 +100,36 @@ static bool launch_xannor_retaliation(struct yt_session *session,
     int provoking_player, struct yt_error *error);
 static void clear_queue(struct yt_session *session);
 static bool show_ship(struct yt_session *session, struct yt_error *error);
+static bool command_mines(struct yt_session *session,
+    struct yt_error *error);
+static bool command_team(struct yt_session *session,
+    struct yt_error *error);
+static bool earth_store(struct yt_session *session, struct yt_error *error);
+static bool command_move(struct yt_session *session, bool *moved,
+    struct yt_error *error);
+static bool command_land(struct yt_session *session, bool *enter_sector,
+    struct yt_error *error);
+static bool quit_session(struct yt_session *session,
+    struct yt_error *error);
 static bool info_refresh_time(struct yt_session *session,
+    struct yt_error *error);
+static bool build_route(struct yt_session *session, int start,
+    int destination, int *next_hop, bool use_avoid, bool *found,
     struct yt_error *error);
 static bool session_carrier(struct yt_session *session);
 static bool session_b05d(struct yt_session *session, const uint8_t *text,
     size_t length);
+static bool session_0317(struct yt_session *session, const uint8_t *text,
+    size_t length, const char *operation, struct yt_error *error);
+static bool computer_port_friendship(struct yt_session *session, float owner,
+    bool *friendly, struct yt_error *error);
+static bool computer_menu(struct yt_session *session, bool *enter_sector,
+    struct yt_error *error);
+static bool port_report_length(struct yt_session *session, float raw,
+    size_t maximum, size_t *length, const char *operation,
+    struct yt_error *error);
+static bool fighter_shield_spill(struct yt_session *session,
+    double *fighters, float *shields, struct yt_error *error);
 
 static bool
 session_poll_merged(struct yt_session *session,
@@ -115,34 +155,52 @@ session_input_key(struct yt_session *session)
 	}
 }
 
-static void
+static bool
 session_timed_wait(struct yt_session *session, double seconds)
 {
-	double deadline = yt_platform_timer() + seconds;
+	enum yt_timed_wait_reason reason;
 
-	while (yt_platform_timer() < deadline) {
-		struct yt_input_value selected;
+	if (!yt_timed_wait_begin(&session->wait, (float)seconds,
+	    (float)yt_platform_timer()))
+		return false;
+	for (;;) {
+		struct yt_input_value selected = {{0, 0}, 0, 0, false};
 
+		reason = yt_timed_wait_timer(&session->wait,
+		    (float)yt_platform_timer());
+		if (reason != YT_TIMED_WAIT_CONTINUE)
+			return reason != YT_TIMED_WAIT_ERROR;
 		if (!yt_input_poll_legacy(&session->input,
 		    session->presentation.sound.mode, YT_INPUT_PHASE_WAIT,
-		    &selected) || selected.length != 0)
-			return;
-		od_sleep(10);
+		    &selected))
+			return false;
+		reason = yt_timed_wait_input(&session->wait,
+		    session->presentation.sound.mode, &selected);
+		if (reason != YT_TIMED_WAIT_CONTINUE)
+			return reason != YT_TIMED_WAIT_ERROR;
 	}
+}
+
+static bool
+session_wait(struct yt_session *session, double seconds,
+    const char *operation, struct yt_error *error)
+{
+	if (session_timed_wait(session, seconds))
+		return true;
+	if (error != NULL) {
+		error->status = YT_IO_ERROR;
+		snprintf(error->operation, sizeof(error->operation), "%s",
+		    operation);
+	}
+	return false;
 }
 
 static bool
 session_editor_end(struct yt_session *session, const uint8_t *notice,
     size_t notice_length)
 {
-	struct yt_present_result presentation;
-	enum yt_present_status status = yt_present_line(NULL, 0,
-	    &session->presentation, &presentation);
-
-	if (status != YT_PRESENT_OK)
-		return false;
-	yt_out_present_result(&presentation);
-	if (!session_b05d(session, notice, notice_length))
+	if (!session_0317(session, notice, notice_length,
+	    "editor terminal notice", NULL))
 		return false;
 	session->running = false;
 	session->terminated = true;
@@ -225,13 +283,6 @@ port_count(const struct yt_session *session)
 	    - session->door->game.config.port_offset);
 }
 
-static int
-planet_count(const struct yt_session *session)
-{
-	return (int)(session->door->game.config.total_records
-	    - session->door->game.config.planet_offset);
-}
-
 static bool
 write_player(struct yt_session *session, struct yt_error *error)
 {
@@ -247,11 +298,14 @@ reload_player(struct yt_session *session, struct yt_error *error)
 	    session->player_record, &session->player, error);
 }
 
-static void
-format_number(char *dest, size_t size, double value)
+static bool
+computer_prompt_hydrate(struct yt_session *session, struct yt_error *error)
 {
-	if (qb_print_number(dest, size, value) < 0 && size > 0)
-		dest[0] = '\0';
+	if (!reload_player(session, error))
+		return false;
+	if (!session->anti_cloak)
+		session->cloak_cache[session->player_record] = session->player.cloak;
+	return true;
 }
 
 static bool
@@ -263,7 +317,16 @@ append_news(struct yt_session *session, const char *text,
 }
 
 static bool
-radio_append(const char *text, float sender, float recipient,
+append_news_bytes(struct yt_session *session, const uint8_t *text,
+    size_t length, struct yt_error *error)
+{
+	(void)session;
+	return yt_news_append_bytes(text, length, error);
+}
+
+static bool
+radio_append_bytes(const uint8_t *text, size_t length, float sender,
+    float recipient,
     struct yt_error *error)
 {
 	char path[512];
@@ -283,11 +346,15 @@ radio_append(const char *text, float sender, float recipient,
 		}
 		return false;
 	}
-	memset(&record, 0, sizeof(record));
-	yt_radio_set_number(&record, 0, recipient == -2.0f ? 30.0f : 1.0f);
-	yt_radio_set_number(&record, 4, recipient);
-	yt_radio_set_number(&record, 8, sender);
-	yt_radio_set_text(&record, (const uint8_t *)text, strlen(text), 74);
+	if (!yt_radio_message_record(&record, text, length, sender, recipient)) {
+		(void)fclose(file);
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			snprintf(error->operation, sizeof(error->operation),
+			    "construct radio record");
+		}
+		return false;
+	}
 	if (fwrite(record.bytes, 1, sizeof(record.bytes), file)
 	    != sizeof(record.bytes) || fclose(file) != 0) {
 		if (error != NULL) {
@@ -299,6 +366,14 @@ radio_append(const char *text, float sender, float recipient,
 		return false;
 	}
 	return true;
+}
+
+static bool
+radio_append(const char *text, float sender, float recipient,
+    struct yt_error *error)
+{
+	return radio_append_bytes((const uint8_t *)text, strlen(text), sender,
+	    recipient, error);
 }
 
 static bool
@@ -325,16 +400,17 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 	static const uint8_t session_notice[] =
 	    "\a\a\aTIME LIMIT EXCEEDED!\a\a\a";
 	size_t used;
-	float inactivity_deadline =
-	    single_add(floorf((float)yt_platform_timer()), 180.0f);
+	float inactivity_deadline;
 
 	if (size == 0)
 		return false;
 	yt_pager_editor_enter(&session->pager, session->command_accumulator,
 	    sizeof(session->command_accumulator));
+	inactivity_deadline = single_add(
+	    floorf((float)yt_platform_timer()), 180.0f);
 	dest[0] = '\0';
 	for (;;) {
-		struct yt_input_value selected = {{0, 0}, 0, 0};
+		struct yt_input_value selected = {{0, 0}, 0, 0, false};
 		struct yt_present_result presentation;
 		enum yt_present_status status;
 		bool queued = session->queue_position < session->queue_length;
@@ -352,11 +428,18 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 			return session_editor_end(session, session_notice,
 			    sizeof(session_notice) - 1U);
 		if (queued) {
+			struct yt_input_value remote = {{0, 0}, 0, 0, false};
+
 			selected.bytes[0] = (uint8_t)
 			    session->queue[session->queue_position++];
 			selected.length = 1;
 			if (session->queue_position >= session->queue_length)
 				clear_queue(session);
+			if (session->presentation.sound.mode != 1.0f
+			    && (!yt_input_poll_source(&session->input, true, &remote)
+			    || !yt_input_ab36_remote_replace(
+			    session->presentation.sound.mode, &remote, &selected)))
+				return false;
 		}
 		else {
 			if (!yt_input_poll_legacy(&session->input,
@@ -432,7 +515,7 @@ clear_queue(struct yt_session *session)
 }
 
 static bool
-queue_remainder(struct yt_session *session, const char *text)
+queue_commands(struct yt_session *session, const char *text)
 {
 	size_t length = strlen(text);
 	size_t pending = session->queue_length - session->queue_position;
@@ -455,68 +538,43 @@ queue_remainder(struct yt_session *session, const char *text)
 }
 
 static bool
+session_command_notice(struct yt_session *session, const char *text,
+    bool bold)
+{
+	if (bold)
+		session->presentation.bold = 1.0f;
+	if (!session_0317(session, (const uint8_t *)text, strlen(text),
+	    "command notice", NULL))
+		return false;
+	return session_timed_wait(session, 1.0);
+}
+
+static bool
 expand_repeat(struct yt_session *session, char *text, size_t size)
 {
-	char upper[YT_COMMAND_SIZE];
-	char built[YT_COMMAND_SIZE];
-	char base[YT_COMMAND_SIZE];
-	char *repeat;
-	struct qb_val_result parsed;
-	float count;
-	int copies;
-	size_t prefix;
-	size_t used = 0;
-	int index;
+	struct yt_repeat_transform result;
+	char notice[128];
+	char rendered[64];
+	int notice_length;
 
-	snprintf(upper, sizeof(upper), "%s", text);
-	qb_compat_upper(upper);
-	repeat = strstr(upper, "/R");
-	if (repeat == NULL)
+	if (!yt_input_expand_repeat(text, size, session->saved_command,
+	    sizeof(session->saved_command), &result))
+		return false;
+	if (!result.emit_notice)
 		return true;
-	prefix = (size_t)(repeat - upper);
-	if (prefix + 2U > sizeof(base))
+	if (qb_str_double(rendered, sizeof(rendered), (double)result.count) < 0)
 		return false;
-	memcpy(base, text, prefix);
-	base[prefix] = ';';
-	base[prefix + 1U] = '\0';
-	parsed = qb_val(text + prefix + 2U);
-	count = (float)qb_int(parsed.valid ? parsed.value : 0.0);
-	if (count > 10.0f)
-		count = 20.0f;
-	copies = count >= 2.0f ? (int)count : 1;
-	for (index = 0; index < copies; ++index) {
-		size_t amount = strlen(base);
-
-		if (used > 500U)
-			break;
-		if (used + amount + 1U >= sizeof(built))
-			return false;
-		memcpy(built + used, base, amount);
-		used += amount;
-	}
-	if (used > 0)
-		--used;
-	built[used] = '\0';
-	if (used >= size)
+	notice_length = snprintf(notice, sizeof(notice),
+	    "Command Repeated%s times -+- Ctrl-R to Re-use -+- "
+	    "Ctrl-X to cancel.", rendered);
+	if (notice_length < 0 || (size_t)notice_length >= sizeof(notice))
 		return false;
-	snprintf(text, size, "%s", built);
-	snprintf(session->saved_command, sizeof(session->saved_command), "%s",
-	    built);
-	{
-		char rendered[64];
-
-		qb_str_double(rendered, sizeof(rendered), (double)count);
-		yt_outf("Command Repeated%s times -+- Ctrl-R to Re-use -+- "
-		    "Ctrl-X to cancel.\r\n", rendered);
-	}
-	yt_platform_delay(1000);
-	return true;
+	return session_command_notice(session, notice, true);
 }
 
 static bool
 session_line(struct yt_session *session, char *text, size_t size)
 {
-	char *semicolon;
 	size_t length;
 
 	if (!read_keyboard_line(session, text, size))
@@ -527,18 +585,39 @@ session_line(struct yt_session *session, char *text, size_t size)
 		clear_queue(session);
 		snprintf(session->saved_command, sizeof(session->saved_command),
 		    "%s", text);
-		yt_out_line(
-		    "Command Saved -+- Ctrl-R to Re-use -+- Ctrl-X to cancel.");
-		yt_platform_delay(1000);
+		if (!session_command_notice(session,
+		    "Command Saved -+- Ctrl-R to Re-use -+- Ctrl-X to cancel.",
+		    false))
+			return false;
 	}
 	if (!expand_repeat(session, text, size))
 		return false;
-	semicolon = strchr(text, ';');
-	if (semicolon != NULL) {
-		*semicolon++ = '\0';
-		if (!queue_remainder(session, semicolon))
-			return false;
-	}
+	return yt_input_split_semicolon(text, session->queue,
+	    sizeof(session->queue), &session->queue_position,
+	    &session->queue_length);
+}
+
+static bool
+session_0345(struct yt_session *session, char *text, size_t size)
+{
+	return session_line(session, text, size);
+}
+
+static bool
+session_0357(struct yt_session *session, char *text, size_t size)
+{
+	if (!session_0345(session, text, size))
+		return false;
+	qb_compat_upper(text);
+	return true;
+}
+
+static bool
+session_036f(struct yt_session *session, char *text, size_t size)
+{
+	if (!session_0345(session, text, size))
+		return false;
+	yt_input_numeric_response(text);
 	return true;
 }
 
@@ -565,15 +644,12 @@ append_sampled_key(struct yt_session *session,
 static bool
 session_carrier(struct yt_session *session)
 {
-	static const uint8_t notice[] =
-	    "(**CARRIER DROPPED**) Returning to bbs!";
 	struct yt_present_result presentation;
 	enum yt_present_status status;
 
 	if (session->presentation.sound.mode != 0.0f || od_carrier())
 		return true;
-	status = yt_present_local_line(notice, sizeof(notice) - 1U,
-	    &session->presentation, &presentation);
+	status = yt_present_carrier_drop(&session->presentation, &presentation);
 	if (status == YT_PRESENT_OK)
 		yt_out_present_result(&presentation);
 	session->running = false;
@@ -713,28 +789,123 @@ session_present_text(struct yt_session *session, const uint8_t *text,
 }
 
 static bool
+session_02fc(struct yt_session *session, const uint8_t *text, size_t length)
+{
+	session->pager.newline_flag = 0.0f;
+	return session_b05d(session, text, length);
+}
+
+static bool
+session_0317(struct yt_session *session, const uint8_t *text, size_t length,
+    const char *operation, struct yt_error *error)
+{
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    operation, error))
+		return false;
+	return session_02fc(session, text, length);
+}
+
+static bool
+session_02db(struct yt_session *session, const uint8_t *text, size_t length,
+    const char *operation, struct yt_error *error)
+{
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    operation, error))
+		return false;
+	session->presentation.bold = 1.0f;
+	session->presentation.blink = 1.0f;
+	clear_queue(session);
+	return session_02fc(session, text, length);
+}
+
+static bool
+session_low_time(struct yt_session *session, const char *operation,
+    struct yt_error *error)
+{
+	struct yt_present_result presentation;
+	enum yt_present_status status;
+	bool warned;
+
+	status = yt_present_low_time(session->time.text,
+	    session->time.text_length, &session->low_time_remembered,
+	    &session->presentation, &presentation, &warned);
+	if (status == YT_PRESENT_OK) {
+		yt_out_present_result(&presentation);
+		return true;
+	}
+	if (error != NULL) {
+		error->status = YT_RANGE;
+		snprintf(error->operation, sizeof(error->operation), "%s",
+		    operation);
+	}
+	return false;
+}
+
+static bool
+session_031f(struct yt_session *session, const uint8_t *text, size_t length,
+    const char *operation, struct yt_error *error)
+{
+	if (!session_low_time(session, operation, error))
+		return false;
+	session->pager.newline_flag = 1.0f;
+	return session_b05d(session, text, length);
+}
+
+static bool
+session_drain_pending_input(struct yt_session *session)
+{
+	struct yt_input_drain_state drain;
+	enum yt_input_drain_reason reason;
+
+	if (!yt_input_drain_begin(&drain, &session->input_residue))
+		return false;
+	for (;;) {
+		struct yt_input_value selected = {{0, 0}, 0, 0, false};
+
+		if (!yt_input_poll_source(&session->input, false, &selected))
+			return false;
+		reason = yt_input_drain_local(&drain, &selected);
+		if (reason == YT_INPUT_DRAIN_ERROR)
+			return false;
+		if (reason == YT_INPUT_DRAIN_LOCAL_COMPLETE)
+			break;
+	}
+	for (;;) {
+		struct yt_input_value selected = {{0, 0}, 0, 0, false};
+
+		if (session->presentation.sound.mode == 0.0f
+		    && !yt_input_poll_source(&session->input, true, &selected))
+			return false;
+		reason = yt_input_drain_serial(&drain,
+		    session->presentation.sound.mode, &selected);
+		if (reason == YT_INPUT_DRAIN_ERROR)
+			return false;
+		if (reason == YT_INPUT_DRAIN_COMPLETE)
+			break;
+	}
+	memset(&session->input_residue, 0, sizeof(session->input_residue));
+	if (drain.residue_length != 0)
+		memcpy(session->input_residue.bytes, drain.residue,
+		    drain.residue_length);
+	session->input_residue.length = drain.residue_length;
+	return true;
+}
+
+static bool
 session_press_any_key(struct yt_session *session, bool drain,
     struct yt_error *error)
 {
 	struct yt_present_result presentation;
 	enum yt_present_status status;
+	enum yt_status failure_status = YT_RANGE;
+	const char *failure_operation = "press any key presentation";
 	float saved_foreground;
 	int saved_session_foreground = session->pager.foreground;
-	float deadline;
 
-	if (drain) {
-		for (;;) {
-			struct yt_input_value selected;
-
-			if (!session_poll_merged(session, &selected))
-				goto failed;
-			if (selected.length == 0)
-				break;
-			if (!session_poll_merged(session, &selected))
-				goto failed;
-			session->input_residue = selected.length == 1
-			    ? selected.bytes[0] : 0;
-		}
+	if (drain && !session_drain_pending_input(session)) {
+		failure_status = YT_IO_ERROR;
+		failure_operation = "press any key input drain";
+		goto failed;
 	}
 	status = yt_present_press_prompt(&session->presentation,
 	    &presentation, &saved_foreground);
@@ -742,18 +913,10 @@ session_press_any_key(struct yt_session *session, bool drain,
 		goto failed;
 	session->pager.foreground = 3;
 	yt_out_present_result(&presentation);
-	deadline = single_add((float)yt_platform_timer(), 33.0f);
-	for (;;) {
-		float current = (float)yt_platform_timer();
-		struct yt_input_value selected;
-
-		if (current >= deadline)
-			break;
-		if (!session_poll_merged(session, &selected))
-			goto failed;
-		if (selected.length != 0)
-			break;
-		od_sleep(10);
+	if (!session_timed_wait(session, 33.0)) {
+		failure_status = YT_IO_ERROR;
+		failure_operation = "press any key wait";
+		goto failed;
 	}
 	status = yt_present_press_cleanup(saved_foreground,
 	    &session->presentation, &presentation);
@@ -765,42 +928,30 @@ session_press_any_key(struct yt_session *session, bool drain,
 
 failed:
 	if (error != NULL) {
-		error->status = YT_RANGE;
+		error->status = failure_status;
 		snprintf(error->operation, sizeof(error->operation),
-		    "press any key presentation");
+		    "%s", failure_operation);
 	}
 	return false;
 }
 
 static bool
-session_framed_row(struct yt_session *session, const char *text,
-    bool alert, const char *operation, struct yt_error *error)
-{
-	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    operation, error))
-		return false;
-	if (alert) {
-		session->presentation.bold = 1.0f;
-		session->presentation.blink = 1.0f;
-		clear_queue(session);
-	}
-	return session_b05d(session, (const uint8_t *)text, strlen(text));
-}
-
-static bool
-session_fixed_width(struct yt_session *session, const char *text,
-    float width, const char *operation, struct yt_error *error)
+session_fixed_width_bytes(struct yt_session *session, const uint8_t *text,
+    size_t text_length, float width, const char *operation,
+    struct yt_error *error)
 {
 	uint8_t mutable[256];
-	size_t length = strlen(text);
+	size_t length = text_length;
 	struct yt_present_result presentation;
 	enum yt_present_status status;
 
-	if (length > sizeof(mutable)) {
+	if (length > sizeof(mutable)
+	    || (length != 0 && text == NULL)) {
 		status = YT_PRESENT_CAPACITY;
 	}
 	else {
-		memcpy(mutable, text, length);
+		if (length != 0)
+			memcpy(mutable, text, length);
 		status = yt_present_fixed_width(mutable, &length,
 		    sizeof(mutable), width, &session->presentation,
 		    &presentation);
@@ -809,6 +960,56 @@ session_fixed_width(struct yt_session *session, const char *text,
 	}
 	if (status == YT_PRESENT_OK)
 		return true;
+	if (error != NULL) {
+		error->status = YT_RANGE;
+		snprintf(error->operation, sizeof(error->operation), "%s",
+		    operation);
+	}
+	return false;
+}
+
+static bool
+session_fixed_width(struct yt_session *session, const char *text,
+    float width, const char *operation, struct yt_error *error)
+{
+	return session_fixed_width_bytes(session, (const uint8_t *)text,
+	    strlen(text), width, operation, error);
+}
+
+static bool
+session_right_aligned(struct yt_session *session, const char *text,
+    float width, const char *operation, struct yt_error *error)
+{
+	struct yt_present_result presentation;
+	enum yt_present_status status;
+
+	status = yt_present_right_aligned((const uint8_t *)text, strlen(text),
+	    width, &session->presentation, &presentation);
+	if (status == YT_PRESENT_OK)
+		yt_out_present_result(&presentation);
+	if (status == YT_PRESENT_OK)
+		return true;
+	if (error != NULL) {
+		error->status = YT_RANGE;
+		snprintf(error->operation, sizeof(error->operation), "%s",
+		    operation);
+	}
+	return false;
+}
+
+static bool
+session_centered_line(struct yt_session *session, const char *text,
+    const char *operation, struct yt_error *error)
+{
+	struct yt_present_result presentation;
+	enum yt_present_status status;
+
+	status = yt_present_centered_line((const uint8_t *)text, strlen(text),
+	    &session->presentation, &presentation);
+	if (status == YT_PRESENT_OK) {
+		yt_out_present_result(&presentation);
+		return true;
+	}
 	if (error != NULL) {
 		error->status = YT_RANGE;
 		snprintf(error->operation, sizeof(error->operation), "%s",
@@ -852,19 +1053,24 @@ display_game_file(struct yt_session *session, const char *path,
 {
 	struct yt_text_file file;
 	size_t cursor = 0;
+	float saved_foreground = session->presentation.foreground;
+	int saved_pager_foreground = session->pager.foreground;
 
-	if (!session_b05d(session, (const uint8_t *)"Cntl-X to Stop",
-	    strlen("Cntl-X to Stop")))
+	session->pager.key[0] = '\0';
+	if (!session_0317(session, (const uint8_t *)"Cntl-X to Stop",
+	    strlen("Cntl-X to Stop"), "file viewer notice", error)
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "file viewer pre-open blank", error))
 		return false;
+	session->pager.line_count = 0.0f;
 	if (!yt_text_read(path, &file, error)) {
 		char message[640];
 
 		yt_error_clear(error);
 		snprintf(message, sizeof(message),
 		    "*** GAME FILE [%s] NOT FOUND! ***", path);
-		if (!session_b05d(session, (const uint8_t *)"", 0)
-		    || !session_b05d(session, (const uint8_t *)message,
-		    strlen(message))
+		if (!session_0317(session, (const uint8_t *)message,
+		    strlen(message), "file viewer missing row", error)
 		    || !append_news(session, message, error))
 			return false;
 		return true;
@@ -892,7 +1098,10 @@ display_game_file(struct yt_session *session, const char *path,
 		else if (length >= 3U
 		    && memcmp(file.data + start, "-=*", 3) == 0)
 			color = 7;
-		session_set_color(session, color);
+		session->pager.foreground = color;
+		session->presentation.foreground = (float)color;
+		if (color != 2)
+			session->presentation.bold = 1.0f;
 		if (!session_b05d(session, file.data + start, length)) {
 			yt_text_free(&file);
 			return false;
@@ -903,71 +1112,74 @@ display_game_file(struct yt_session *session, const char *path,
 			++cursor;
 	}
 	yt_text_free(&file);
-	return true;
+	session->pager.line_count = 0.0f;
+	session->pager.foreground = saved_pager_foreground;
+	session->presentation.foreground = saved_foreground;
+	return session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "file viewer final blank", error);
 }
 
 static bool
-display_line_file(const char *path, struct yt_error *error)
+xannor_victory_file(struct yt_session *session, const char *path,
+    struct yt_error *error)
 {
 	struct yt_text_file file;
-	size_t cursor = 0;
+	uint8_t *line;
+	size_t cursor = 0U;
+	bool ok = true;
 
 	if (!yt_text_read(path, &file, error))
 		return false;
-	while (cursor < file.length && file.data[cursor] != 0x1a) {
-		size_t start = cursor;
-
-		while (cursor < file.length && file.data[cursor] != '\r'
-		    && file.data[cursor] != '\n'
-		    && file.data[cursor] != 0x1a)
-			++cursor;
-		yt_out_bytes(file.data + start, cursor - start);
-		yt_out("\r\n");
-		if (cursor < file.length && file.data[cursor] == '\r')
-			++cursor;
-		if (cursor < file.length && file.data[cursor] == '\n')
-			++cursor;
-	}
-	yt_text_free(&file);
-	return true;
-}
-
-static bool
-session_yes_no(struct yt_session *session, const char *prompt,
-    bool blank_yes, bool *answer)
-{
-	char line[80];
-
-	for (;;) {
-		yt_out(prompt);
-		if (!session_line(session, line, sizeof(line)))
-			return false;
-		qb_compat_upper(line);
-		if (line[0] == '\0') {
-			*answer = blank_yes;
-			return true;
-		}
-		if (line[0] == 'Y' || line[0] == 'N') {
-			*answer = line[0] == 'Y';
-			return true;
-		}
-	}
-}
-
-static bool
-session_value(struct yt_session *session, const char *prompt,
-    double *value, bool *blank)
-{
-	char line[160];
-	struct qb_val_result parsed;
-
-	yt_out(prompt);
-	if (!session_line(session, line, sizeof(line)))
+	line = malloc(file.length == 0U ? 1U : file.length);
+	if (line == NULL) {
+		yt_text_free(&file);
+		if (error != NULL)
+			error->status = YT_NO_MEMORY;
 		return false;
-	*blank = line[0] == '\0';
-	parsed = qb_val(line);
-	*value = parsed.valid ? parsed.value : 0.0;
-	return true;
+	}
+	for (;;) {
+		size_t length;
+		bool available;
+
+		if (!yt_text_line_input_next(file.data, file.length, &cursor,
+		    line, file.length, &length, &available)) {
+			ok = false;
+			break;
+		}
+		if (!available)
+			break;
+		if (!session_present_text(session, line, length,
+		    SESSION_PRESENT_LINE, "Xannor victory file row", error)) {
+			ok = false;
+			break;
+		}
+	}
+	free(line);
+	yt_text_free(&file);
+	return ok;
+}
+
+static bool
+session_a8d2(struct yt_session *session, const uint8_t *prompt,
+    size_t prompt_length, enum yt_yes_no_answer *answer,
+    struct yt_error *error)
+{
+	if (answer == NULL)
+		return false;
+	for (;;) {
+		char response[YT_COMMAND_SIZE];
+
+		if (!session_present_text(session, prompt, prompt_length,
+		    SESSION_PRESENT_RAW, "yes/no prompt", error)
+		    || !session_0357(session, response, sizeof(response))
+		    || !yt_input_yes_no_candidate(response, session->output_source,
+		    sizeof(session->output_source), answer))
+			return false;
+		if (*answer != YT_YES_NO_INVALID)
+			return true;
+		session->presentation.bold = 1.0f;
+		clear_queue(session);
+	}
 }
 
 static bool
@@ -1030,6 +1242,13 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 static bool
 registration(struct yt_session *session, struct yt_error *error)
 {
+	static const char *const centered[] = {
+		"Yankee Trader",
+		"(c)Alan Davenport",
+		"Prices & Xannor fix, Anticloak, Spies, Missiles disabled  ",
+		"Strategy Guide: www.starflt.com/yt.html      ",
+		"Version 3.6g * YT * Mod 02/09/2024  ",
+	};
 	char path[512];
 	FILE *file;
 	long size;
@@ -1041,11 +1260,28 @@ registration(struct yt_session *session, struct yt_error *error)
 	double expected;
 	size_t index;
 
-	yt_out_line("Yankee Trader");
-	yt_out_line("(c)Alan Davenport");
-	yt_out_line(
-	    "Prices & Xannor fix, Anticloak, Spies, Missiles disabled  ");
-	yt_out_line("Strategy Guide: www.starflt.com/yt.html      ");
+	for (index = 0; index < 3; ++index) {
+		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+		    "registration title blank", error))
+			return false;
+	}
+	if (!session_centered_line(session, centered[0],
+	    "registration title", error)
+	    || !session_centered_line(session, centered[1],
+	    "registration copyright", error)
+	    || !session_centered_line(session, centered[2],
+	    "registration features", error)
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "registration title blank", error)
+	    || !session_centered_line(session, centered[3],
+	    "registration strategy", error)
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "registration title blank", error)
+	    || !session_centered_line(session, centered[4],
+	    "registration version", error)
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "registration title blank", error))
+		return false;
 	if (!yt_resolve_case_path("YT.REG", true, path, sizeof(path), error))
 		return false;
 	file = fopen(path, "ab");
@@ -1065,10 +1301,19 @@ registration(struct yt_session *session, struct yt_error *error)
 		if (!yt_file_delete(path, false, error))
 			return false;
 		session->registered = false;
-		yt_out_line("UNREGISTERED EVALUATION COPY!");
-		yt_out_line(
-		    "PLEASE ENCOURAGE YOUR SYSOP TO REGISTER THIS GAME.");
-		return true;
+		if (!session_centered_line(session,
+		    "UNREGISTERED EVALUATION COPY!",
+		    "registration evaluation row", error)
+		    || !session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "registration evaluation blank", error)
+		    || !session_centered_line(session,
+		    "PLEASE ENCOURAGE YOUR SYSOP TO REGISTER THIS GAME.",
+		    "registration evaluation row", error)
+		    || !session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "registration evaluation blank", error))
+			return false;
+		return session_wait(session, 10.0,
+		    "registration evaluation wait", error);
 	}
 	file = fopen(path, "rb");
 	if (file == NULL)
@@ -1090,29 +1335,115 @@ registration(struct yt_session *session, struct yt_error *error)
 	expected = floor(sqrt(7.0 * 111355062389.0 * value));
 	parsed = qb_val(key);
 	if (!parsed.valid || parsed.value != expected) {
-		yt_out("\a\a\a\a");
-		yt_out_line(" * INVALID REGISTRATION KEY! *");
+		struct yt_present_result presentation;
+		enum yt_present_status status;
+		static const uint8_t notice[] =
+		    " * INVALID REGISTRATION KEY! *";
+
+		status = yt_present_local_beep(&presentation);
+		if (status == YT_PRESENT_OK)
+			yt_out_present_result(&presentation);
+		if (status == YT_PRESENT_OK)
+			status = yt_present_local_beep(&presentation);
+		if (status == YT_PRESENT_OK)
+			yt_out_present_result(&presentation);
+		if (status == YT_PRESENT_OK)
+			status = yt_present_forced_local_line(notice,
+			    sizeof(notice) - 1U, &presentation);
+		if (status == YT_PRESENT_OK)
+			yt_out_present_result(&presentation);
+		if (status == YT_PRESENT_OK)
+			status = yt_present_local_beep(&presentation);
+		if (status == YT_PRESENT_OK)
+			yt_out_present_result(&presentation);
+		if (status == YT_PRESENT_OK)
+			status = yt_present_local_beep(&presentation);
+		if (status == YT_PRESENT_OK)
+			yt_out_present_result(&presentation);
+		if (status != YT_PRESENT_OK) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				snprintf(error->operation,
+				    sizeof(error->operation), "%s",
+				    "invalid registration presentation");
+			}
+			return false;
+		}
 		session->running = false;
-		return true;
+		session->terminated = true;
+		return false;
 	}
 	session->registered = true;
-	yt_outf("Registered to %s\r\n", registered_to);
-	yt_outf("Registered by %s\r\n", registered_by);
-	return true;
+	{
+		char row[sizeof(registered_to) + 32U];
+
+		snprintf(row, sizeof(row), "Registered to %s", registered_to);
+		if (!session_centered_line(session, row,
+		    "registration registered-to row", error)
+		    || !session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "registration registered blank", error))
+			return false;
+		snprintf(row, sizeof(row), "Registered by %s", registered_by);
+		if (!session_centered_line(session, row,
+		    "registration registered-by row", error)
+		    || !session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "registration registered blank", error))
+			return false;
+	}
+	return session_wait(session, 2.0, "registration registered wait",
+	    error);
 }
 
 static bool
 opening_and_date(struct yt_session *session, struct yt_error *error)
 {
-	if (session->door->identity.ansi) {
-		if (!yt_out_file("YTOPEN.ANS", error))
+	int route[3001];
+	bool found;
+	char real_name[258];
+	struct yt_present_result presentation;
+	enum yt_present_status status;
+
+	if (!build_route(session, 1, 2, route, false, &found, error))
+		return false;
+	if (!found) {
+		static const uint8_t diagnostic[] =
+		    "*** You can't get there without going someplace you dont want to!";
+
+		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+		    "startup route failure blank", error)
+		    || !session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "startup route failure blank", error))
+			return false;
+		session->presentation.bold = 1.0f;
+		session->presentation.blink = 1.0f;
+		if (!session_present_text(session, diagnostic,
+		    sizeof(diagnostic) - 1U, SESSION_PRESENT_LINE,
+		    "startup route failure diagnostic", error))
 			return false;
 	}
-	else if (!display_game_file(session, "YTOPEN.ASC", error))
+	if (session->door->identity.ansi) {
+		if (!yt_out_file("YTOPEN.ANS", error)
+		    || !session_wait(session, 3.0,
+		    "ANSI opening EOF wait", error))
+			return false;
+	}
+	snprintf(real_name, sizeof(real_name), "%s %s",
+	    session->door->identity.real_first,
+	    session->door->identity.real_last);
+	status = yt_present_status_row((const uint8_t *)real_name,
+	    strlen(real_name), (const uint8_t *)"", 0,
+	    &session->presentation, &presentation);
+	if (status != YT_PRESENT_OK) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			snprintf(error->operation, sizeof(error->operation), "%s",
+			    "startup status row");
+		}
 		return false;
-	return yt_current_date_serial(session->door->game.config.epoch_year,
-	    &session->door->game.today, &session->door->game.adjusted_year,
-	    error);
+	}
+	yt_out_present_result(&presentation);
+	session->pager.nonstop = 1.0f;
+	return display_game_file(session, "YTOPEN.ASC", error);
 }
 
 static bool
@@ -1154,15 +1485,63 @@ lockout(struct yt_session *session, struct yt_error *error)
 			break;
 		qb_title_case(line);
 		if (strcmp(line, live) == 0) {
+			char contact[320];
+			static const uint8_t revoked[] =
+			    "\aYOUR ACCESS TO THIS GAME HAS BEEN REVOKED!\a";
+
 			fclose(file);
-			yt_out("\a");
-			yt_out_line("You have been locked out of Yankee Trader.");
-			yt_out_line("Please contact the SysOp.");
+			if (!session_present_text(session, NULL, 0,
+			    SESSION_PRESENT_LINE, "lockout blank", error))
+				return false;
+			session->presentation.bold = 1.0f;
+			if (!session_present_text(session, revoked,
+			    sizeof(revoked) - 1U, SESSION_PRESENT_LINE,
+			    "lockout revoked row", error))
+				return false;
+			snprintf(contact, sizeof(contact),
+			    "Please contact your sysop %s %s.",
+			    session->door->identity.sysop_first,
+			    session->door->identity.sysop_last);
+			session->presentation.bold = 1.0f;
+			if (!session_present_text(session,
+			    (const uint8_t *)contact, strlen(contact),
+			    SESSION_PRESENT_LINE, "lockout contact row", error))
+				return false;
+			if (!session_wait(session, 10.0,
+			    "lockout denial wait", error))
+				return false;
 			session->running = false;
-			return true;
+			session->terminated = true;
+			return false;
 		}
 	}
 	fclose(file);
+	return true;
+}
+
+static bool
+startup_pre_admission(struct yt_session *session, struct yt_error *error)
+{
+	char welcome[320];
+
+	session->presentation.foreground = 5.0f;
+	session->pager.foreground = 5;
+	if (!session_0317(session, (const uint8_t *)"Initializing...",
+	    strlen("Initializing..."), "startup initializing row", error)
+	    || !yt_current_date_serial(
+	    session->door->game.config.epoch_year,
+	    &session->door->game.today, &session->door->game.adjusted_year,
+	    error)
+	    || !lockout(session, error))
+		return false;
+	snprintf(welcome, sizeof(welcome), "Welcome %s!",
+	    session->door->identity.real_first);
+	if (!session_0317(session, (const uint8_t *)welcome, strlen(welcome),
+	    "startup welcome row", error)
+	    || !session_02fc(session,
+	    (const uint8_t *)"Searching my records for your name.",
+	    strlen("Searching my records for your name.")))
+		return false;
 	return true;
 }
 
@@ -1191,48 +1570,99 @@ resolve_alias(struct yt_session *session, char first[128], char last[128],
 		char alias_first[128];
 		char alias_last[128];
 		char display[258];
-		bool accepted;
-		size_t index;
+		char confirmation[80];
+		enum yt_alias_key_status alias_status;
 		struct yt_name_row row;
 
-		yt_out("Enter the name you wish to use: ");
-		if (!session_line(session, alias, sizeof(alias))) {
+		session->presentation.foreground = 2.0f;
+		session->pager.foreground = 2;
+		if (!session_0317(session,
+		    (const uint8_t *)"You are a new player.",
+		    strlen("You are a new player."), "new alias notice", error)
+		    || !session_0317(session,
+		    (const uint8_t *)
+		    "Enter the FULL alias you wish to use in the game.",
+		    strlen("Enter the FULL alias you wish to use in the game."),
+		    "new alias instruction", error)
+		    || !session_0317(session,
+		    (const uint8_t *)"Press [ENTER] to use your real name.",
+		    strlen("Press [ENTER] to use your real name."),
+		    "new alias real-name instruction", error)
+		    || !session_031f(session, (const uint8_t *)"-+> ", 4,
+		    "new alias prompt", error)
+		    || !session_0345(session, alias, sizeof(alias))) {
 			yt_names_free(&names);
 			return false;
 		}
-		if (alias[0] == '\0')
-			snprintf(alias, sizeof(alias), "%s %s", first, last);
-		for (index = 0; alias[index] != '\0'; ++index) {
-			if (alias[index] == ',' || alias[index] == '"')
-				alias[index] = ' ';
-		}
-		qb_title_case(alias);
-		if (alias[0] == '\0')
+		alias_status = yt_names_prepare_alias(alias, sizeof(alias), first,
+		    last, alias_first, sizeof(alias_first), alias_last,
+		    sizeof(alias_last), display, sizeof(display));
+		if (alias_status == YT_ALIAS_KEY_EMPTY)
 			continue;
-		if (strstr(alias, "Sysop") != NULL
-		    || strstr(alias, "Xannor") != NULL
-		    || strstr(alias, "Mercenaries") != NULL) {
-			yt_out_line("That name may not be used.");
+		if (alias_status == YT_ALIAS_KEY_RANGE) {
+			yt_names_free(&names);
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				snprintf(error->operation,
+				    sizeof(error->operation), "%s",
+				    "new alias key preparation");
+			}
+			return false;
+		}
+		if (alias_status == YT_ALIAS_KEY_RESERVED) {
+			if (!session_02fc(session,
+			    (const uint8_t *)
+			    "That ALIAS is NOT allowed. Please choose another.",
+			    strlen("That ALIAS is NOT allowed. Please choose another."))) {
+				yt_names_free(&names);
+				return false;
+			}
 			continue;
 		}
-		alias[40] = '\0';
-		yt_names_split(alias, alias_first, sizeof(alias_first), alias_last,
-		    sizeof(alias_last));
-		qb_title_case(alias_last);
-		snprintf(display, sizeof(display), "%s %s", alias_first,
-		    alias_last);
-		display[40] = '\0';
 		if (yt_names_alias_exists(&names, alias_first, alias_last)) {
-			yt_out_line("That name is already in use.");
+			char collision[320];
+
+			snprintf(collision, sizeof(collision),
+			    "I'm sorry %s, but that Alias is already in use.", first);
+			if (!session_02fc(session, (const uint8_t *)collision,
+			    strlen(collision))) {
+				yt_names_free(&names);
+				return false;
+			}
 			continue;
 		}
-		yt_outf("%s %s a.k.a. %s\r\n", first, last, display);
-		if (!session_yes_no(session, "Is this correct? [y/N] ", false,
-		    &accepted)) {
+		session->presentation.foreground = 3.0f;
+		session->pager.foreground = 3;
+		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+		    "new alias identity blank", error)) {
 			yt_names_free(&names);
 			return false;
 		}
-		if (!accepted)
+		session->presentation.bold = 1.0f;
+		{
+			char identity[560];
+
+			snprintf(identity, sizeof(identity), "%s %s a.k.a. %s",
+			    first, last, display);
+			if (!session_02fc(session, (const uint8_t *)identity,
+			    strlen(identity))
+			    || !session_present_text(session, NULL, 0,
+			    SESSION_PRESENT_LINE, "new alias confirmation blank", error)) {
+				yt_names_free(&names);
+				return false;
+			}
+		}
+		session->presentation.foreground = 6.0f;
+		session->pager.foreground = 6;
+		if (!session_031f(session,
+		    (const uint8_t *)"Is this OK (Y/[N])? ",
+		    strlen("Is this OK (Y/[N])? "),
+		    "new alias confirmation prompt", error)
+		    || !session_0357(session, confirmation, sizeof(confirmation))) {
+			yt_names_free(&names);
+			return false;
+		}
+		if (strcmp(confirmation, "Y") != 0)
 			continue;
 		memset(&row, 0, sizeof(row));
 		snprintf(row.real_first, sizeof(row.real_first), "%s", first);
@@ -1245,6 +1675,15 @@ resolve_alias(struct yt_session *session, char first[128], char last[128],
 			yt_names_free(&names);
 			return false;
 		}
+		if (!session_02db(session,
+		    (const uint8_t *)"Your Alias has been recorded. Have fun!",
+		    strlen("Your Alias has been recorded. Have fun!"),
+		    "new alias accepted row", error)
+		    || !session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "new alias final blank", error)) {
+			yt_names_free(&names);
+			return false;
+		}
 		snprintf(first, 128, "%s", alias_first);
 		snprintf(last, 128, "%s", alias_last);
 		yt_names_free(&names);
@@ -1253,81 +1692,145 @@ resolve_alias(struct yt_session *session, char first[128], char last[128],
 }
 
 static bool
+construct_player_visible(struct yt_session *session, struct yt_error *error)
+{
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "player constructor blank", error)
+	    || !session_present_text(session,
+	    (const uint8_t *)"Your ship has been built.",
+	    strlen("Your ship has been built."), SESSION_PRESENT_LINE,
+	    "player constructor row", error))
+		return false;
+	return yt_game_construct_player(&session->door->game,
+	    session->player_record, (float)session->door->game.today,
+	    &session->player, error);
+}
+
+static bool
+instruction_offer(struct yt_session *session, struct yt_error *error)
+{
+	static const uint8_t prompt[] =
+	    "Do you want instructions (Y/N) [N]? ";
+	char response[80];
+
+	for (;;) {
+		enum yt_yes_no_answer answer;
+
+		memcpy(session->output_source, prompt, sizeof(prompt));
+		if (!session_present_text(session,
+		    (const uint8_t *)session->output_source,
+		    sizeof(prompt) - 1U,
+		    SESSION_PRESENT_RAW, "instruction question", error)
+		    || !session_0345(session, response, sizeof(response))
+		    || !yt_input_yes_no_candidate(session->command_accumulator,
+		    session->output_source, sizeof(session->output_source),
+		    &answer))
+			return false;
+		if (answer == YT_YES_NO_EMPTY || answer == YT_YES_NO_NO)
+			return true;
+		if (answer == YT_YES_NO_YES)
+			return display_game_file(session, "YTINSTR.DOC", error);
+		session->presentation.bold = 1.0f;
+		clear_queue(session);
+	}
+}
+
+static bool
 admit_player(struct yt_session *session, const char *first, const char *last,
     struct yt_error *error)
 {
 	char full[256];
-	char line[512];
 	struct yt_clock_value now;
 	int basic;
-	int vacant = 0;
 	bool returning = false;
 
 	snprintf(full, sizeof(full), "%s %s", first, last);
 	for (basic = YT_PLAYER_FIRST;
 	    basic <= (int)session->door->game.config.sector_offset; ++basic) {
 		struct yt_player candidate;
-		bool overflow;
-		int stored;
+		bool matches;
 
 		if (!yt_game_read_player(&session->door->game, basic, &candidate,
-		    error))
+		    error)
+		    || !yt_player_name_matches(&candidate, (const uint8_t *)full,
+		    strlen(full), &matches, error))
 			return false;
-		stored = (int)qb_cint(candidate.name_length, &overflow);
-		if (!overflow && stored >= 0 && stored <= 41
-		    && strncmp(candidate.name, full, (size_t)stored) == 0
-		    && strlen(full) == (size_t)stored) {
+		if (matches) {
 			session->player_record = basic;
 			session->player = candidate;
 			returning = true;
 			break;
 		}
-		if (vacant == 0 && candidate.name_length < 1.0f)
-			vacant = basic;
 	}
 	if (!returning) {
-		char instructions[80];
+		int vacant = 0;
+
+		session->presentation.foreground = 5.0f;
+		session->pager.foreground = 5;
+		if (!session_0317(session,
+		    (const uint8_t *)"Entering a new player...",
+		    strlen("Entering a new player..."),
+		    "new player entering row", error))
+			return false;
+		for (basic = YT_PLAYER_FIRST;
+		    basic <= (int)session->door->game.config.sector_offset;
+		    ++basic) {
+			struct yt_player candidate;
+
+			if (!yt_game_read_player(&session->door->game, basic,
+			    &candidate, error))
+				return false;
+			if (candidate.name_length < 1.0f) {
+				vacant = basic;
+				break;
+			}
+		}
 
 		if (vacant == 0) {
 			char date[11];
 
+			if (!session_02db(session,
+			    (const uint8_t *)
+			    "I'm sorry but the game is full. Try again tomorrow.",
+			    strlen("I'm sorry but the game is full. Try again tomorrow."),
+			    "new player full row", error))
+				return false;
 			if (!yt_platform_clock(&now, error))
 				return false;
 			yt_format_date(&now, date);
-			snprintf(line, sizeof(line),
-			    "***%s %s: New player not allowed - game full.",
-			    date, full);
-			if (!append_news(session, line, error))
+			if (!yt_news_append_game_full(date, full, error))
 				return false;
-			yt_out_line(
-			    "I'm sorry but the game is full. Try again tomorrow.");
 			session->running = false;
-			return true;
+			session->terminated = true;
+			return false;
 		}
 		{
 			char days[64];
+			char retention[512];
 
-			qb_str_double(days, sizeof(days),
-			    session->door->game.config.retention_days);
-			yt_outf("Notice: If your ship is dead and you have not "
-			    "played for%s\r\n", days);
-			yt_out_line(
-			    "days, it will be deleted to make room for someone else.");
+			if (qb_str_single(days, sizeof(days),
+			    session->door->game.config.retention_days) < 0)
+				return false;
+			snprintf(retention, sizeof(retention),
+			    "Notice: If your ship is dead and you have not played for%s",
+			    days);
+			if (!session_present_text(session, NULL, 0,
+			    SESSION_PRESENT_LINE, "new player retention blank", error)
+			    || !session_02fc(session, (const uint8_t *)retention,
+			    strlen(retention))
+			    || !session_02fc(session,
+			    (const uint8_t *)
+			    "days, it will be deleted to make room for someone else.",
+			    strlen("days, it will be deleted to make room for someone else."))
+			    || !session_present_text(session, NULL, 0,
+			    SESSION_PRESENT_LINE, "new player retention blank", error))
+				return false;
 		}
 		session->player_record = vacant;
-		if (!yt_game_read_player(&session->door->game, vacant,
-		    &session->player, error))
-			return false;
-		yt_player_construct(&session->player,
-		    &session->door->game.config,
-		    (float)session->door->game.today);
-		if (!write_player(session, error))
-			return false;
-		snprintf(session->player.name, sizeof(session->player.name), "%s",
-		    full);
-		session->player.name_length = (float)strlen(full);
-		session->player.team = 0.0f;
-		if (!write_player(session, error))
+		if (!construct_player_visible(session, error)
+		    || !yt_game_set_player_identity(&session->door->game, vacant,
+		    (const uint8_t *)full, strlen(full), &session->player, error)
+		    || !yt_database_flush(&session->door->game.database, error))
 			return false;
 		if (!yt_platform_clock(&now, error))
 			return false;
@@ -1335,24 +1838,27 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 			char date[11];
 
 			yt_format_date(&now, date);
-			snprintf(line, sizeof(line),
-			    "-=*=- %s %s New Player Entered -=*=-", date, full);
+			if (!yt_news_append_new_player(date, full, error))
+				return false;
 		}
-		if (!append_news(session, line, error))
-			return false;
-		yt_out("Do you want instructions (Y/N) [N]? ");
-		if (!session_line(session, instructions, sizeof(instructions)))
-			return false;
-		qb_compat_upper(instructions);
-		if (instructions[0] == 'Y'
-		    && !display_game_file(session, "YTINSTR.DOC", error))
-			return false;
-		return true;
+		return instruction_offer(session, error);
 	}
+	session->presentation.foreground = 2.0f;
+	session->pager.foreground = 2;
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "returning player blank", error))
+		return false;
 	{
 		float previous_day = session->player.last_active;
 		float killer = session->player.killed_by;
+		bool self_kill = killer == (float)session->player_record;
 
+		if (previous_day == (float)session->door->game.today
+		    && !session_present_text(session,
+		    (const uint8_t *)"You have been on today.",
+		    strlen("You have been on today."), SESSION_PRESENT_LINE,
+		    "returning same-day row", error))
+			return false;
 		session->player.last_active = (float)session->door->game.today;
 		if (previous_day != (float)session->door->game.today) {
 			if (session->player.turns
@@ -1369,42 +1875,95 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 			char time_text[9];
 
 			yt_format_time(&now, time_text);
-			snprintf(line, sizeof(line),
-			    "-=*=- %s %s Logged on -=*=-", time_text,
-			    session->player.name);
+			if (!yt_news_append_login(time_text,
+			    session->player.name, error))
+				return false;
 		}
-		if (!append_news(session, line, error))
-			return false;
 		if (killer != 0.0f) {
-			if (killer == (float)session->player_record
-			    && previous_day == (float)session->door->game.today) {
-				yt_out_line("Your ship was destroyed today.");
-				yt_out_line("You may rebuild tomorrow.");
-				session->running = false;
-				return true;
+			if (!session_present_text(session, NULL, 0,
+			    SESSION_PRESENT_LINE, "returning death blank", error))
+				return false;
+			if (!self_kill)
+				session->presentation.blink = 1.0f;
+			if (killer == -1.0f) {
+				if (!session_present_text(session,
+				    (const uint8_t *)
+				    "You have been killed by The Xannor!",
+				    strlen("You have been killed by The Xannor!"),
+				    SESSION_PRESENT_BOLD_LINE,
+				    "returning Xannor death row", error))
+					return false;
 			}
-			if (killer == -1.0f)
-				yt_out_line("Your ship was destroyed by the Xannor.");
-			else if (killer == -2.0f)
-				yt_out_line(
-				    "Your ship was destroyed by the Mercenaries.");
-			else if (killer == -98.0f)
-				yt_out_line(
-				    "Your ship was destroyed by a deleted player.");
-			else if (killer >= YT_PLAYER_FIRST
-			    && killer <= YT_PLAYER_LAST) {
+			else if (killer == -2.0f) {
+				if (!session_present_text(session,
+				    (const uint8_t *)
+				    "You have been killed by mercenaries!",
+				    strlen("You have been killed by mercenaries!"),
+				    SESSION_PRESENT_BOLD_LINE,
+				    "returning mercenary death row", error))
+					return false;
+			}
+			else if (killer == -98.0f) {
+				if (!session_present_text(session,
+				    (const uint8_t *)
+				    "You have been killed by a deleted player.",
+				    strlen("You have been killed by a deleted player."),
+				    SESSION_PRESENT_BOLD_LINE,
+				    "returning deleted-player death row", error))
+					return false;
+			}
+			else if (self_kill) {
+				if (!session_present_text(session,
+				    (const uint8_t *)
+				    "You managed to kill yourself on your last time on.",
+				    strlen("You managed to kill yourself on your last time on."),
+				    SESSION_PRESENT_LINE,
+				    "returning self-death row", error))
+					return false;
+			}
+			else if (killer > 1.0f
+			    && killer <= session->door->game.config.sector_offset) {
 				struct yt_player attacker;
+				uint8_t attacker_row[YT_TEXT_FIELD_SIZE
+				    + sizeof(" destroyed your ship!") - 1U];
+				size_t attacker_length;
+				bool emit;
 
 				if (!yt_game_read_player(&session->door->game,
 				    (int)killer, &attacker, error))
 					return false;
-				yt_outf("Your ship was destroyed by %s.\r\n",
-				    attacker.name);
+				if (!yt_player_killer_row(&attacker, attacker_row,
+				    sizeof(attacker_row), &attacker_length, &emit, error))
+					return false;
+				if (emit && !session_present_text(session, attacker_row,
+				    attacker_length, SESSION_PRESENT_BOLD_LINE,
+				    "returning player death row", error))
+					return false;
 			}
-			yt_player_construct(&session->player,
-			    &session->door->game.config,
-			    (float)session->door->game.today);
-			if (!write_player(session, error))
+			if (self_kill
+			    && previous_day == (float)session->door->game.today) {
+				if (!session_present_text(session, NULL, 0,
+				    SESSION_PRESENT_LINE,
+				    "returning self-denial blank", error))
+					return false;
+				session->presentation.foreground = 7.0f;
+				session->pager.foreground = 7;
+				session->presentation.blink = 1.0f;
+				if (!session_present_text(session,
+				    (const uint8_t *)
+				    "You will be allowed to play again tomorrow!",
+				    strlen("You will be allowed to play again tomorrow!"),
+				    SESSION_PRESENT_BOLD_LINE,
+				    "returning self-denial row", error))
+					return false;
+				session->running = false;
+				session->terminated = true;
+				return false;
+			}
+			if (!construct_player_visible(session, error))
+				return false;
+			if (!session_wait(session, 5.0,
+			    "returning-player rebuild wait", error))
 				return false;
 		}
 	}
@@ -1412,34 +1971,114 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 }
 
 static bool
-radio_name(struct yt_session *session, float record, char *dest,
-    size_t size, bool sender, struct yt_error *error)
+radio_name_bytes(struct yt_session *session, float record, uint8_t *dest,
+    size_t capacity, size_t *length, bool sender, struct yt_error *error)
 {
+	const uint8_t *literal;
+	size_t literal_length;
+
+	if (length == NULL)
+		return false;
+	*length = 0;
 	if (record > 0.0f) {
 		struct yt_player player;
+		uint8_t stored[YT_TEXT_FIELD_SIZE];
+		size_t stored_length;
 
 		if (!yt_game_read_player(&session->door->game, (int)record,
-		    &player, error))
+		    &player, error)
+		    || !yt_player_stored_name(&player, stored, &stored_length,
+		    error))
 			return false;
-		snprintf(dest, size, "%s", player.name);
+		if (stored_length > capacity)
+			goto capacity_error;
+		if (stored_length != 0)
+			memcpy(dest, stored, stored_length);
+		*length = stored_length;
+		return true;
 	}
-	else if (!sender)
-		snprintf(dest, size, "All");
-	else if (record == -1.0f)
-		snprintf(dest, size, "The Xannor");
-	else
-		snprintf(dest, size, "The Mercenaries");
+	if (!sender) {
+		literal = (const uint8_t *)"All";
+		literal_length = strlen("All");
+	}
+	else if (record == -1.0f) {
+		literal = (const uint8_t *)"The Xannor";
+		literal_length = strlen("The Xannor");
+	}
+	else {
+		literal = (const uint8_t *)"The Mercenaries";
+		literal_length = strlen("The Mercenaries");
+	}
+	if (literal_length > capacity)
+		goto capacity_error;
+	memcpy(dest, literal, literal_length);
+	*length = literal_length;
 	return true;
+
+capacity_error:
+	if (error != NULL) {
+		error->status = YT_RANGE;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    "radio display name capacity");
+	}
+	return false;
 }
 
 static bool
-radio_read(struct yt_session *session, bool log_mode,
+radio_name(struct yt_session *session, float record, char *dest,
+    size_t size, bool sender, struct yt_error *error)
+{
+	size_t length;
+
+	if (size == 0
+	    || !radio_name_bytes(session, record, (uint8_t *)dest, size - 1U,
+	    &length, sender, error))
+		return false;
+	dest[length] = '\0';
+	return true;
+}
+
+static void
+radio_io_error(struct yt_error *error, const char *operation,
+    const char *path)
+{
+	if (error == NULL)
+		return;
+	error->status = YT_IO_ERROR;
+	(void)snprintf(error->operation, sizeof(error->operation), "%s",
+	    operation);
+	(void)snprintf(error->path, sizeof(error->path), "%s", path);
+}
+
+static bool
+radio_read(struct yt_session *session, float reader_mode,
     struct yt_error *error)
 {
+	static const uint8_t automatic_heading[] =
+	    "Checking for Radio Messages.";
+	static const uint8_t log_heading[] =
+	    "Log of messages sent/recieved.";
 	char path[512];
 	FILE *file;
 	struct yt_radio_record record;
+	struct yt_radio_pager_state private_pager;
 	long offset = 0;
+	bool visible = false;
+	bool read_failed = false;
+	bool close_failed;
+	bool synthetic = false;
+	float previous_recipient = 0.0f;
+	float previous_sender = 0.0f;
+
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "radio opening blank", error)
+	    || !session_present_text(session,
+	    reader_mode != 0.0f ? log_heading : automatic_heading,
+	    reader_mode != 0.0f ? sizeof(log_heading) - 1U
+	    : sizeof(automatic_heading) - 1U, SESSION_PRESENT_LINE,
+	    "radio heading", error))
+		return false;
+	yt_radio_pager_begin(&private_pager);
 
 	if (!yt_resolve_case_path("YTRMSG.DAT", true, path, sizeof(path),
 	    error))
@@ -1447,84 +2086,190 @@ radio_read(struct yt_session *session, bool log_mode,
 	file = fopen(path, "r+b");
 	if (file == NULL) {
 		file = fopen(path, "w+b");
-		if (file == NULL)
+		if (file == NULL) {
+			radio_io_error(error, "open radio reader", path);
 			return false;
+		}
 	}
-	while (fread(record.bytes, 1, sizeof(record.bytes), file)
-	    == sizeof(record.bytes)) {
-		float counter = yt_radio_get_number(&record, 0);
-		float recipient = yt_radio_get_number(&record, 4);
-		float sender = yt_radio_get_number(&record, 8);
-		bool show = counter > 1.0f
-		    || ((counter == 1.0f || log_mode)
-		    && (recipient == (float)session->player_record
-		    || (log_mode && sender == (float)session->player_record)));
+	for (;;) {
+		size_t read_length = fread(record.bytes, 1,
+		    sizeof(record.bytes), file);
+		float counter;
+		float recipient;
+		float sender;
+		struct yt_radio_reader_decision decision;
 
-		if (show) {
-			char from[80];
-			char to[80];
-			char text[75];
-			size_t length = 74;
+		if (read_length != sizeof(record.bytes)) {
+			if (read_length == 0 && feof(file) && !synthetic) {
+				memset(&record, 0, sizeof(record));
+				synthetic = true;
+			}
+			else {
+				read_failed = true;
+				break;
+			}
+		}
+		counter = yt_radio_get_number(&record, 0);
+		recipient = yt_radio_get_number(&record, 4);
+		sender = yt_radio_get_number(&record, 8);
+		if (!yt_radio_reader_decide(counter, recipient, sender,
+		    (float)session->player_record, reader_mode, &decision, error)) {
+			(void)fclose(file);
+			return false;
+		}
 
-			if (!radio_name(session, sender, from, sizeof(from), true,
-			    error) || !radio_name(session, recipient, to,
-			    sizeof(to), false, error)) {
-				fclose(file);
+		if (decision.visible) {
+			uint8_t from[YT_TEXT_FIELD_SIZE];
+			uint8_t to[YT_TEXT_FIELD_SIZE];
+			uint8_t header[2U * YT_TEXT_FIELD_SIZE + 32U];
+			size_t from_length;
+			size_t to_length;
+			size_t header_length = 0;
+
+			visible = true;
+			if (!radio_name_bytes(session, sender, from, sizeof(from),
+			    &from_length, true, error)
+			    || !radio_name_bytes(session, recipient, to, sizeof(to),
+			    &to_length, false, error)) {
+				(void)fclose(file);
 				return false;
 			}
-			memcpy(text, record.bytes + 12, 74);
-			while (length > 0 && text[length - 1U] == ' ')
-				--length;
-			text[length] = '\0';
-			yt_outf("From: %s  To: %s\r\n%s\r\n", from, to, text);
-			if (!log_mode) {
-				counter = counter > 1.0f ? single_sub(counter, 2.0f)
-				    : 0.0f;
-				yt_radio_set_number(&record, 0, counter);
-				if (fseek(file, offset, SEEK_SET) != 0
+			if (sender != previous_sender
+			    || recipient != previous_recipient) {
+				if (!yt_radio_reader_header(to, to_length, from,
+				    from_length, header, sizeof(header), &header_length)) {
+					if (error != NULL) {
+						error->status = YT_RANGE;
+						(void)snprintf(error->operation,
+						    sizeof(error->operation), "%s",
+						    "radio pair header capacity");
+					}
+					(void)fclose(file);
+					return false;
+				}
+				if (!session_present_text(session, NULL, 0,
+				    SESSION_PRESENT_LINE, "radio pair blank", error)
+				    || !session_present_text(session, header,
+				    header_length, SESSION_PRESENT_LINE,
+				    "radio pair header", error)) {
+					(void)fclose(file);
+					return false;
+				}
+				yt_radio_pager_add_pair(&private_pager);
+			}
+			if (!session_present_text(session, record.bytes + 12, 74,
+			    SESSION_PRESENT_LINE, "radio body", error)) {
+				(void)fclose(file);
+				return false;
+			}
+			previous_sender = sender;
+			previous_recipient = recipient;
+			if (yt_radio_pager_add_body(&private_pager)) {
+				if (!session_present_text(session,
+				    (const uint8_t *)"[Pause]", strlen("[Pause]"),
+				    SESSION_PRESENT_RAW, "radio pause", error)) {
+					(void)fclose(file);
+					return false;
+				}
+				if (!session_wait(session, 99.0,
+				    "radio private-pager wait", error)) {
+					(void)fclose(file);
+					return false;
+				}
+				if (!session_present_text(session, NULL, 0,
+				    SESSION_PRESENT_LINE, "radio pause blank", error)) {
+					(void)fclose(file);
+					return false;
+				}
+			}
+			if (decision.automatic_write) {
+				if (!yt_radio_reader_mutate(&record, counter)
+				    || fseek(file, offset, SEEK_SET) != 0
 				    || fwrite(record.bytes, 1,
 				    sizeof(record.bytes), file)
 				    != sizeof(record.bytes)
 				    || fseek(file, offset
 				    + (long)sizeof(record.bytes), SEEK_SET) != 0) {
-					fclose(file);
+					radio_io_error(error, "write radio reader", path);
+					(void)fclose(file);
 					return false;
 				}
 			}
 		}
+		if (synthetic)
+			break;
 		offset += (long)sizeof(record.bytes);
 	}
-	if (ferror(file) || fclose(file) != 0)
+	if (!visible && !session_present_text(session,
+	    (const uint8_t *)"None Found.", strlen("None Found."),
+	    SESSION_PRESENT_LINE, "radio none found", error)) {
+		(void)fclose(file);
 		return false;
+	}
+	close_failed = fclose(file) != 0;
+	if (read_failed || close_failed) {
+		radio_io_error(error, read_failed ? "read radio reader"
+		    : "close radio reader", path);
+		return false;
+	}
 	return true;
 }
 
 static bool
 post_login(struct yt_session *session, struct yt_error *error)
 {
-	bool changed = false;
+	static const uint8_t prompt[] = "[ Press any Key ]";
+	char real_name[258];
+	struct yt_present_result presentation;
+	enum yt_present_status status;
 
-	if (session->player.turns < 1.0f) {
-		session->player.turns = 1.0f;
-		changed = true;
-	}
-	if (session->player.holds
-	    > session->door->game.config.maximum_holds) {
-		session->player.ore = 0.0f;
-		session->player.organics = 0.0f;
-		session->player.equipment =
-		    session->door->game.config.maximum_holds;
-		session->player.holds =
-		    session->door->game.config.maximum_holds;
-		changed = true;
-	}
-	if (changed && !write_player(session, error))
+	if (!yt_game_post_login_repairs(&session->door->game,
+	    session->player_record, session->door->game.config.maximum_holds,
+	    &session->player, NULL, error))
 		return false;
+	(void)snprintf(real_name, sizeof(real_name), "%s %s",
+	    session->door->identity.real_first,
+	    session->door->identity.real_last);
+	status = yt_present_status_row((const uint8_t *)real_name,
+	    strlen(real_name), (const uint8_t *)session->player.name,
+	    strlen(session->player.name), &session->presentation,
+	    &presentation);
+	if (status != YT_PRESENT_OK) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation,
+			    sizeof(error->operation), "%s",
+			    "post-login status row");
+		}
+		return false;
+	}
+	yt_out_present_result(&presentation);
 	if (!show_ship(session, error))
 		return false;
-	if (!session_press_any_key(session, false, error))
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "post-login Info trailing blank", error))
 		return false;
-	return radio_read(session, false, error);
+	if (!session_031f(session, prompt, sizeof(prompt) - 1U,
+	    "post-login low-time warning", error)) {
+		if (error != NULL && error->status == YT_OK) {
+			error->status = YT_IO_ERROR;
+			snprintf(error->operation, sizeof(error->operation),
+			    "post-login press prompt");
+		}
+		return false;
+	}
+	if (!session_timed_wait(session, 99.0)) {
+		if (error != NULL) {
+			error->status = YT_IO_ERROR;
+			snprintf(error->operation, sizeof(error->operation),
+			    "post-login press wait");
+		}
+		return false;
+	}
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "post-login press trailing blank", error))
+		return false;
+	return radio_read(session, 0.0f, error);
 }
 
 static float
@@ -1601,9 +2346,40 @@ port_update(struct yt_session *session, int logical_port,
 	    error) && yt_database_flush(&session->door->game.database, error);
 }
 
+struct planet_update_cache {
+	float rate[10];
+	double quantity[10];
+	float contribution[10];
+};
+
 static bool
-planet_update(struct yt_session *session, int logical_planet,
+read_planet_physical(struct yt_session *session, uint32_t physical_record,
     struct yt_planet *planet, struct yt_error *error)
+{
+	struct yt_record record;
+
+	if (!yt_database_read(&session->door->game.database,
+	    (size_t)physical_record, &record, error))
+		return false;
+	yt_planet_decode(planet, &record);
+	return true;
+}
+
+static bool
+write_planet_physical(struct yt_session *session, uint32_t physical_record,
+    struct yt_planet *planet, bool encode, struct yt_error *error)
+{
+	if (encode)
+		yt_planet_encode(planet);
+	return yt_database_write(&session->door->game.database,
+	    (size_t)physical_record, &planet->record, error);
+}
+
+static bool
+planet_update_cached_physical(struct yt_session *session,
+    uint32_t physical_record,
+    struct yt_planet *planet, struct planet_update_cache *cache,
+    struct yt_error *error)
 {
 	float rate[10] = {0};
 	float contribution[10] = {0};
@@ -1621,8 +2397,7 @@ planet_update(struct yt_session *session, int logical_planet,
 		return false;
 	session->door->game.today = today;
 	session->door->game.adjusted_year = adjusted_year;
-	if (!yt_game_read_planet(&session->door->game, logical_planet, planet,
-	    error))
+	if (!read_planet_physical(session, physical_record, planet, error))
 		return false;
 	for (index = 1; index <= 3; ++index) {
 		rate[index] = planet->production[index - 1U];
@@ -1693,9 +2468,44 @@ planet_update(struct yt_session *session, int logical_planet,
 	planet->plasma = (float)quantity[9];
 	planet->last_day = (float)today;
 	planet->last_minute = minute;
-	return yt_game_write_planet(&session->door->game, logical_planet,
-	    planet, error)
+	memcpy(session->planet_quantity, quantity,
+	    sizeof(session->planet_quantity));
+	if (cache != NULL) {
+		memcpy(cache->rate, rate, sizeof(cache->rate));
+		memcpy(cache->quantity, quantity, sizeof(cache->quantity));
+		memcpy(cache->contribution, contribution,
+		    sizeof(cache->contribution));
+	}
+	return write_planet_physical(session, physical_record, planet, true,
+	    error)
 	    && yt_database_flush(&session->door->game.database, error);
+}
+
+static bool
+planet_update_cached(struct yt_session *session, int logical_planet,
+    struct yt_planet *planet, struct planet_update_cache *cache,
+    struct yt_error *error)
+{
+	int physical = yt_planet_basic_record(&session->door->game.config,
+	    logical_planet);
+
+	if (physical < 0) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			snprintf(error->operation, sizeof(error->operation), "%s",
+			    "planet update physical record");
+		}
+		return false;
+	}
+	return planet_update_cached_physical(session, (uint32_t)physical,
+	    planet, cache, error);
+}
+
+static bool
+planet_update(struct yt_session *session, int logical_planet,
+    struct yt_planet *planet, struct yt_error *error)
+{
+	return planet_update_cached(session, logical_planet, planet, NULL, error);
 }
 
 static bool
@@ -1709,43 +2519,63 @@ same_team(struct yt_session *session, int other_record,
 	if (!yt_game_read_player(&session->door->game, other_record, &other,
 	    error))
 		return false;
-	return session->player.team > 0.0f
-	    && other.team == session->player.team;
+	return yt_sector_force_same_team(session->player.team, other.team);
 }
 
 static bool
 sector_force_friendly(struct yt_session *session,
     const struct yt_sector *sector, struct yt_error *error)
 {
-	int owner = (int)sector->fighter_owner;
+	enum yt_sector_force_route route;
+	int owner;
 
-	if (sector->fighters == 0.0f || owner == session->player_record)
+	if (!yt_sector_force_route(sector->fighters, sector->fighter_owner,
+	    session->player_record, &route, &owner, error))
+		return false;
+	if (route == YT_SECTOR_FORCE_FRIENDLY)
 		return true;
-	if (owner > 0)
+	if (route == YT_SECTOR_FORCE_OWNER_GET)
 		return same_team(session, owner, error);
 	return false;
 }
 
 static bool
 display_sector_one(struct yt_session *session, int logical_sector,
-    struct yt_error *error)
+    struct yt_sector_pager_state *private_pager, struct yt_error *error)
 {
 	struct yt_sector sector;
+	char sector_number[64];
+	char row[128];
+	char warp_row[512];
+	size_t warp_length;
 	char warning[128];
 	size_t slot;
 	int basic;
+	bool first_warp = true;
 
 	if (!yt_game_read_sector(&session->door->game, logical_sector,
 	    &sector, error))
 		return false;
-	yt_out_line("");
-	yt_outf("Sector %.9g\r\n", (double)logical_sector);
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "sector leading blank", error))
+		return false;
+	if (qb_str_single(sector_number, sizeof(sector_number),
+	    (float)logical_sector) < 0)
+		return false;
+	if (snprintf(row, sizeof(row), "Sector:%s", sector_number) < 0
+	    || !session_present_text(session, (const uint8_t *)row, strlen(row),
+	    SESSION_PRESENT_LINE, "sector number row", error))
+		return false;
+	yt_sector_pager_add(private_pager, 1.0f);
 	if (((float)logical_sector == session->black_hole[0]
 	    || (float)logical_sector == session->black_hole[1])
 	    && !session_attention(session,
 	    "** Space-time disruption detected! **",
 	    "sector disruption attention", error))
 		return false;
+	if ((float)logical_sector == session->black_hole[0]
+	    || (float)logical_sector == session->black_hole[1])
+		yt_sector_pager_add(private_pager, 1.0f);
 	if (sector.mines != 0.0f) {
 		snprintf(warning, sizeof(warning),
 		    "** WARNING! SECTOR HAS %.9g MINES! **",
@@ -1758,6 +2588,7 @@ display_sector_one(struct yt_session *session, int logical_sector,
 			    "sector mine follow-up sound", error))
 				return false;
 		}
+		yt_sector_pager_add(private_pager, 1.0f);
 	}
 	if (sector.port > 0.0f) {
 		struct yt_port port;
@@ -1779,6 +2610,7 @@ display_sector_one(struct yt_session *session, int logical_sector,
 		if (commodity >= 0 && commodity < 3)
 			yt_outf(" (sells %s)", commodities[commodity]);
 		yt_out("\r\n");
+		yt_sector_pager_add(private_pager, 1.0f);
 	}
 	if (sector.planet > 0.0f) {
 		struct yt_planet planet;
@@ -1786,6 +2618,7 @@ display_sector_one(struct yt_session *session, int logical_sector,
 		if (!planet_update(session, (int)sector.planet, &planet, error))
 			return false;
 		yt_outf("Planet: %s\r\n", planet.name);
+		yt_sector_pager_add(private_pager, 1.0f);
 	}
 	for (basic = YT_PLAYER_FIRST;
 	    basic <= (int)session->door->game.config.sector_offset; ++basic) {
@@ -1802,6 +2635,7 @@ display_sector_one(struct yt_session *session, int logical_sector,
 				continue;
 			yt_out_line(
 			    "You detect the shimmering of a cloaking device!");
+			yt_sector_pager_add(private_pager, 1.0f);
 			session->cloak_cache[basic] = 0.0f;
 			if (!session_sound(session, 4.0f,
 			    "sector cloak-reveal sound", error))
@@ -1817,35 +2651,101 @@ display_sector_one(struct yt_session *session, int logical_sector,
 			    "  Shields %.9g\r\n", other.name,
 			    (double)other.team, (double)other.fighters,
 			    (double)other.shields);
+			yt_sector_pager_add(private_pager, 1.0f);
 		}
 	}
 	if (sector.fighters != 0.0f) {
-		if (sector.fighter_owner == -1.0f)
+		bool owner_team_nonzero = false;
+
+		if (sector.fighter_owner == -1.0f) {
+			(void)snprintf(session->hostile_owner_label,
+			    sizeof(session->hostile_owner_label), "%s", "The Xannor");
 			yt_outf("Deployed Fighters: %.9g (The Xannor)\r\n",
 			    (double)sector.fighters);
-		else if (sector.fighter_owner == -2.0f)
+		}
+		else if (sector.fighter_owner == -2.0f) {
+			(void)snprintf(session->hostile_owner_label,
+			    sizeof(session->hostile_owner_label), "%s",
+			    "The Mercenaries");
 			yt_outf("Deployed Fighters: %.9g (The Mercenaries)\r\n",
 			    (double)sector.fighters);
+		}
 		else if (sector.fighter_owner
-		    == (float)session->player_record)
+		    == (float)session->player_record) {
+			(void)snprintf(session->hostile_owner_label,
+			    sizeof(session->hostile_owner_label), "%s", "Yours");
 			yt_outf("Deployed Fighters: %.9g (Yours)\r\n",
 			    (double)sector.fighters);
+		}
 		else {
 			struct yt_player owner;
 
 			if (!yt_game_read_player(&session->door->game,
 			    (int)sector.fighter_owner, &owner, error))
 				return false;
+			(void)snprintf(session->hostile_owner_label,
+			    sizeof(session->hostile_owner_label), "%s", owner.name);
 			yt_outf("Deployed Fighters: %.9g (%s)\r\n",
 			    (double)sector.fighters, owner.name);
+			owner_team_nonzero = owner.team != 0.0f;
+		}
+		yt_sector_pager_add(private_pager,
+		    owner_team_nonzero ? 3.0f : 2.0f);
+	}
+	warp_length = strlen("Warps lead to:");
+	memcpy(warp_row, "Warps lead to:", warp_length);
+	for (slot = 0; slot < YT_ARRAY_LEN(sector.warps); ++slot) {
+		if (sector.warps[slot] != 0.0f) {
+			char warp[64];
+			size_t warp_size;
+
+			if (qb_str_single(warp, sizeof(warp),
+			    sector.warps[slot]) < 0)
+				return false;
+			warp_size = strlen(warp);
+			if (warp_length + (first_warp ? 0U : 1U) + warp_size
+			    > sizeof(warp_row)) {
+				if (error != NULL) {
+					error->status = YT_RANGE;
+					(void)snprintf(error->operation,
+					    sizeof(error->operation), "%s",
+					    "sector warp row capacity");
+				}
+				return false;
+			}
+			if (!first_warp)
+				warp_row[warp_length++] = ',';
+			memcpy(warp_row + warp_length, warp, warp_size);
+			warp_length += warp_size;
+			first_warp = false;
 		}
 	}
-	yt_out("Warps to Sector(s):");
-	for (slot = 0; slot < YT_ARRAY_LEN(sector.warps); ++slot) {
-		if (sector.warps[slot] != 0.0f)
-			yt_outf(" %.9g", (double)sector.warps[slot]);
+	if (!session_present_text(session, (const uint8_t *)warp_row,
+	    warp_length, SESSION_PRESENT_LINE, "sector warp row", error))
+		return false;
+	yt_sector_pager_add(private_pager, 1.0f);
+	if (yt_sector_pager_finish_sector(private_pager)) {
+		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+		    "sector private-pause blank", error))
+			return false;
+		session->pager.foreground = 7;
+		session->presentation.foreground = 7.0f;
+		if (!session_present_text(session,
+		    (const uint8_t *)"[ Pause ]", strlen("[ Pause ]"),
+		    SESSION_PRESENT_BOLD_LINE, "sector private-pause prompt",
+		    error))
+			return false;
+		if (!session_timed_wait(session, 15.0)) {
+			if (error != NULL) {
+				error->status = YT_IO_ERROR;
+				snprintf(error->operation, sizeof(error->operation),
+				    "sector private-pause wait");
+			}
+			return false;
+		}
+		session->pager.foreground = 1;
+		session->presentation.foreground = 1.0f;
 	}
-	yt_out("\r\n");
 	return true;
 }
 
@@ -1853,27 +2753,84 @@ static bool
 display_sector(struct yt_session *session, bool adjacent,
     struct yt_error *error)
 {
-	int current = (int)session->player.sector;
-	struct yt_sector sector;
+	int current;
+	struct yt_sector_pager_state private_pager;
+	float caller_warps[YT_ARRAY_LEN(session->current_warps)];
+	float saved_foreground = session->presentation.foreground;
+	int saved_pager_foreground = session->pager.foreground;
 	size_t slot;
 
-	if (!adjacent)
-		return display_sector_one(session, current, error);
-	if (!yt_game_read_sector(&session->door->game, current, &sector,
-	    error))
+	yt_sector_pager_begin(&private_pager);
+	if (!adjacent) {
+		session->hostile_owner_label[0] = '\0';
+		session->presentation.foreground = 1.0f;
+		session->pager.foreground = 1;
+		if (!reload_player(session, error))
+			return false;
+		current = (int)session->player.sector;
+		if (!display_sector_one(session, current, &private_pager, error)
+		    || !reload_player(session, error))
+			return false;
+		session->presentation.foreground = saved_foreground;
+		session->pager.foreground = saved_pager_foreground;
+		return true;
+	}
+	memcpy(caller_warps, session->current_warps, sizeof(caller_warps));
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "adjacent-sector sensor leading blank", error))
 		return false;
-	yt_out_line("[ Sensors Activated ]");
+	session->presentation.foreground = 7.0f;
+	session->pager.foreground = 7;
+	if (!session_present_text(session,
+	    (const uint8_t *)"[ Sensors Activated ]",
+	    strlen("[ Sensors Activated ]"), SESSION_PRESENT_BOLD_LINE,
+	    "adjacent-sector sensor heading", error))
+		return false;
 	if (!session_sound(session, 4.0f,
 	    "adjacent-sector sensor sound", error))
 		return false;
-	for (slot = 0; slot < YT_ARRAY_LEN(sector.warps); ++slot) {
-		if (sector.warps[slot] != 0.0f
-		    && !display_sector_one(session, (int)sector.warps[slot],
-		    error))
+	session->presentation.foreground = 1.0f;
+	session->pager.foreground = 1;
+	for (slot = 0; slot < YT_ARRAY_LEN(caller_warps); ++slot) {
+		if (caller_warps[slot] != 0.0f
+		    && !display_sector_one(session, (int)caller_warps[slot],
+		    &private_pager, error))
 			return false;
 	}
-	yt_out_line("[ End Sensor Scan ]");
-	return display_sector_one(session, current, error);
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "adjacent-sector sensor ending blank", error))
+		return false;
+	session->presentation.foreground = 7.0f;
+	session->pager.foreground = 7;
+	if (!session_present_text(session,
+	    (const uint8_t *)"[ End Sensor Scan ]",
+	    strlen("[ End Sensor Scan ]"), SESSION_PRESENT_BOLD_LINE,
+	    "adjacent-sector sensor ending", error)
+	    || !reload_player(session, error))
+		return false;
+	session->presentation.foreground = saved_foreground;
+	session->pager.foreground = saved_pager_foreground;
+	return true;
+}
+
+static bool
+display_current_sector_cached(struct yt_session *session,
+    struct yt_error *error)
+{
+	struct yt_sector_pager_state private_pager;
+	float saved_foreground = session->presentation.foreground;
+	int saved_pager_foreground = session->pager.foreground;
+	int current = (int)session->player.sector;
+	bool ok;
+
+	yt_sector_pager_begin(&private_pager);
+	session->hostile_owner_label[0] = '\0';
+	session->presentation.foreground = 1.0f;
+	session->pager.foreground = 1;
+	ok = display_sector_one(session, current, &private_pager, error);
+	session->presentation.foreground = saved_foreground;
+	session->pager.foreground = saved_pager_foreground;
+	return ok;
 }
 
 static bool
@@ -2277,17 +3234,17 @@ static bool
 fresh_no_turn_gate(struct yt_session *session, bool *denied,
     struct yt_error *error)
 {
+	static const uint8_t notice[] = "Sorry but you have no turns left.";
+
 	if (!reload_player(session, error))
 		return false;
 	session->sector_cache[session->player_record] = session->player.sector;
 	if (!session->anti_cloak)
-		session->cloak_cache[session->player_record] = session->player.cloak;
-	*denied = session->player.turns <= 0.0f;
-	if (*denied) {
-		yt_out_line("");
-		clear_queue(session);
-		yt_out_line("Sorry but you have no turns left.");
-	}
+		 session->cloak_cache[session->player_record] = session->player.cloak;
+	*denied = yt_no_turn_gate_denied(session->player.turns);
+	if (*denied)
+		return session_02db(session, notice, sizeof(notice) - 1U,
+		    "no-turn gate notice", error);
 	return true;
 }
 
@@ -2304,37 +3261,72 @@ finalize_action(struct yt_session *session, float amount,
 	if (!spy_sweep(session, error) || !reload_player(session, error))
 		return false;
 	session->player.turns = single_sub(session->player.turns, 1.0f);
+	if (!yt_record_set_number(&session->player.record, YT_F49,
+	    session->player.turns))
+		return false;
 	quotient = single_div(session->player.turns, 25.0f);
 	if (!session->anti_cloak && quotient == floorf(quotient)) {
+		static const uint8_t dirty_zero[4] = {0x00, 0x00, 0xa3, 0x00};
 		float display;
+		float saved_foreground = session->presentation.foreground;
+		int saved_pager_foreground = session->pager.foreground;
 
 		session->player.cloak = single_add(session->player.cloak,
 		    -0.009999999776482582f);
-		if (session->player.cloak < 0.0f)
+		if (session->player.cloak < 0.0f) {
 			session->player.cloak = 0.0f;
+			if (!yt_record_set_raw_number(&session->player.record,
+			    YT_F125, dirty_zero))
+				return false;
+		}
+		else if (!yt_record_set_number(&session->player.record, YT_F125,
+		    session->player.cloak))
+			return false;
 		session->cloak_cache[session->player_record] =
 		    session->player.cloak;
 		display = floorf(single_mul(session->player.cloak, 50.0f));
 		qb_str_single(number, sizeof(number), display);
 		snprintf(row, sizeof(row), "Cloak at%s%%", number);
-		yt_out_line(row);
+		session->presentation.foreground = 7.0f;
+		session->pager.foreground = 7;
+		if (!session_031f(session, (const uint8_t *)row, strlen(row),
+		    "action-finalizer cloak row", error))
+			return false;
+		session->presentation.foreground = saved_foreground;
+		session->pager.foreground = saved_pager_foreground;
 		if (session->player.cloak == 0.0f) {
 			if (!session_attention(session,
 			    " WARNING! CLOAK EXPIRED!",
 			    "action-finalizer cloak attention", error))
 				return false;
-			yt_out_line("");
+			if (!session_present_text(session, NULL, 0,
+			    SESSION_PRESENT_LINE,
+			    "action-finalizer expired trailing blank", error))
+				return false;
 		}
 		else {
-			yt_out_line("");
-			yt_out_line("");
+			if (!session_present_text(session, NULL, 0,
+			    SESSION_PRESENT_LINE,
+			    "action-finalizer cloak first blank", error)
+			    || !session_present_text(session, NULL, 0,
+			    SESSION_PRESENT_LINE,
+			    "action-finalizer cloak second blank", error))
+				return false;
 		}
 	}
-	if (!write_player(session, error))
+	if (!yt_database_write(&session->door->game.database,
+	    (size_t)session->player_record, &session->player.record, error))
 		return false;
 	qb_str_single(number, sizeof(number), session->player.turns);
 	snprintf(row, sizeof(row), "One Turn Deducted,%s left.", number);
-	yt_out_line(row);
+	if (session->player.turns < 51.0f) {
+		session->presentation.foreground = 3.0f;
+		session->pager.foreground = 3;
+		session->presentation.bold = 1.0f;
+		session->presentation.blink = 1.0f;
+	}
+	if (!session_02fc(session, (const uint8_t *)row, strlen(row)))
+		return false;
 	if (!random_value(session, &draw, error))
 		return false;
 	if (draw > 0.99000000953674316f) {
@@ -2358,25 +3350,63 @@ random_value(struct yt_session *session, float *value,
 static bool
 emergency_warp(struct yt_session *session, struct yt_error *error)
 {
+	static const uint8_t wormhole[] =
+	    "You enter a wormhole as your engines build up to emergency power!";
+	static const uint8_t temperature[] = "     * Engine Temperature *";
+	static const uint8_t scale[] = "[ Normal ][ Danger ][ Overheat ]";
+	static const uint8_t ruler[] = "================================";
+	static const uint8_t gauge_open[] = "[";
+	static const uint8_t gauge_tick[] = "*";
+	static const uint8_t relief[] =
+	    "You sigh in relief as you look at your scanner and find yourself in";
+	static const uint8_t engines_disabled[] = "Your engines are disabled!";
+	static const uint8_t repair[] =
+	    "It will take a solar day to repair them.";
 	float first;
 	float second;
 	float duration;
 	float heat = 0.0f;
-	int ticks = 0;
+	float counter = 1.0f;
 	float destination;
 	float override;
 	float turn_draw;
 	float cost;
+	uint8_t row[256];
+	size_t row_length;
 
-	if (!random_value(session, &first, error)
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "emergency warp leading blank", error)
+	    || !session_attention(session, " * EMERGENCY WARP ENGAGED! * ",
+	    "emergency warp attention", error)
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "emergency warp post-title blank", error)
+	    || !session_present_text(session, wormhole, sizeof(wormhole) - 1U,
+	    SESSION_PRESENT_BOLD_LINE, "emergency warp wormhole row", error)
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "emergency warp pre-temperature blank", error))
+		return false;
+	session->presentation.foreground = 6.0f;
+	session->pager.foreground = 6;
+	if (!session_present_text(session, temperature,
+	    sizeof(temperature) - 1U, SESSION_PRESENT_BOLD_LINE,
+	    "emergency warp temperature title", error)
+	    || !session_present_text(session, scale, sizeof(scale) - 1U,
+	    SESSION_PRESENT_BOLD_LINE, "emergency warp temperature scale", error))
+		return false;
+	session->presentation.foreground = 2.0f;
+	session->pager.foreground = 2;
+	if (!session_present_text(session, ruler, sizeof(ruler) - 1U,
+	    SESSION_PRESENT_BOLD_LINE, "emergency warp temperature ruler", error))
+		return false;
+	session->presentation.foreground = 6.0f;
+	session->pager.foreground = 6;
+	if (!session_present_text(session, gauge_open,
+	    sizeof(gauge_open) - 1U, SESSION_PRESENT_BOLD_RAW,
+	    "emergency warp gauge open", error)
+	    || !random_value(session, &first, error)
 	    || !random_value(session, &second, error))
 		return false;
-	duration = single_add(single_mul(first, 70.0f),
-	    single_mul(second, 70.0f));
-	yt_out_line("");
-	if (!session_attention(session, " * EMERGENCY WARP ENGAGED! * ",
-	    "emergency warp attention", error))
-		return false;
+	duration = yt_emergency_warp_duration(first, second);
 	for (;;) {
 		float draw;
 
@@ -2384,141 +3414,243 @@ emergency_warp(struct yt_session *session, struct yt_error *error)
 			return false;
 		if (draw > 0.75f)
 			heat = single_add(heat, 1.0f);
-		yt_out(".");
-		yt_platform_delay(330);
+		if (heat < 10.0f) {
+			session->presentation.foreground = 2.0f;
+			session->pager.foreground = 2;
+		}
+		else if (heat < 20.0f) {
+			session->presentation.foreground = 3.0f;
+			session->pager.foreground = 3;
+		}
+		else {
+			session->presentation.foreground = 1.0f;
+			session->presentation.blink = 1.0f;
+			session->pager.foreground = 1;
+		}
+		if (!session_present_text(session, gauge_tick,
+		    sizeof(gauge_tick) - 1U, SESSION_PRESENT_BOLD_RAW,
+		    "emergency warp gauge tick", error))
+			return false;
+		if (!session_timed_wait(session, 0.33000001311302185)) {
+			if (error != NULL) {
+				error->status = YT_IO_ERROR;
+				snprintf(error->operation, sizeof(error->operation),
+				    "emergency-warp heat wait");
+			}
+			return false;
+		}
 		if (heat >= 31.0f)
 			break;
-		++ticks;
-		if ((float)ticks > duration)
+		counter = single_add(counter, 1.0f);
+		if (counter > duration)
 			break;
 	}
-	yt_out("\r\n");
+	session->presentation.foreground = 2.0f;
+	session->pager.foreground = 2;
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "emergency warp post-gauge blank one", error)
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "emergency warp post-gauge blank two", error)
+	    || !reload_player(session, error))
+		return false;
 	if (!random_value(session, &first, error)
 	    || !random_value(session, &override, error)
 	    || !random_value(session, &turn_draw, error))
 		return false;
-	destination = floorf(single_mul(first,
-	    (float)sector_count(session))) + 1.0f;
+	destination = yt_emergency_warp_destination(first,
+	    (float)sector_count(session));
 	if (override > 0.949999988079071f)
 		destination = session->door->game.config.headquarters;
-	cost = single_add(single_mul(heat, 4.0f),
-	    floorf(single_mul(turn_draw, 4.0f)));
-	if (cost > session->player.turns)
-		cost = session->player.turns;
+	cost = yt_emergency_warp_cost(heat, turn_draw, session->player.turns,
+	    heat >= 31.0f);
 	if (heat >= 31.0f) {
-		cost = session->player.turns;
 		if (!session_attention(session, "MELT DOWN!",
 		    "meltdown attention", error))
 			return false;
-		yt_out_line("Your engines are disabled!");
-		yt_out_line("");
-		yt_out_line("It will take a solar day to repair them.");
+		session->presentation.foreground = 1.0f;
+		session->pager.foreground = 1;
+		if (!session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "meltdown leading blank", error)
+		    || !session_present_text(session, engines_disabled,
+		    sizeof(engines_disabled) - 1U, SESSION_PRESENT_BOLD_LINE,
+		    "meltdown engines-disabled row", error)
+		    || !session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "meltdown middle blank", error)
+		    || !session_present_text(session, repair, sizeof(repair) - 1U,
+		    SESSION_PRESENT_BOLD_LINE, "meltdown repair row", error))
+			return false;
 		for (int ordinal = 0; ordinal < 5; ++ordinal) {
 			if (!session_sound(session, 5.0f,
 			    "meltdown sound", error))
 				return false;
 		}
-		yt_outf("You are stranded in sector%.9g.\r\n",
-		    (double)destination);
+		if (!session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "meltdown trailing blank", error)
+		    || !yt_emergency_warp_stranded_row(destination, row,
+		    sizeof(row), &row_length)
+		    || !session_present_text(session, row, row_length,
+		    SESSION_PRESENT_LINE, "meltdown stranded row", error))
+			return false;
 	}
 	else {
 		if (!session_sound(session, 1.0f,
 		    "emergency warp completion sound", error))
 			return false;
-		yt_out_line("You sigh in relief as you look at your scanner and find"
-		    " yourself in");
-		yt_outf("sector%.9g. However, it takes you%.9g turns to recharge"
-		    " your engines!\r\n", (double)destination, (double)cost);
+		if (!session_present_text(session, relief, sizeof(relief) - 1U,
+		    SESSION_PRESENT_LINE, "emergency warp relief row", error)
+		    || !yt_emergency_warp_result_row(destination, cost, row,
+		    sizeof(row), &row_length)
+		    || !session_present_text(session, row, row_length,
+		    SESSION_PRESENT_LINE, "emergency warp result row", error))
+			return false;
 	}
-	session->player.turns = single_sub(session->player.turns, cost);
-	session->player.sector = destination;
+	yt_emergency_warp_player_overlay(&session->player, destination, cost);
+	if (!yt_database_write(&session->door->game.database,
+	    (size_t)session->player_record, &session->player.record, error)
+	    || !yt_database_flush(&session->door->game.database, error))
+		return false;
 	session->sector_cache[session->player_record] = destination;
-	clear_queue(session);
-	return write_player(session, error);
+	return true;
 }
 
 static bool
-command_move(struct yt_session *session, struct yt_error *error)
+direct_emergency_warp(struct yt_session *session, struct yt_error *error)
 {
-	struct yt_sector sector;
-	char line[160];
-	float target;
-	struct qb_val_result parsed;
-	size_t slot;
-	bool adjacent = false;
-	bool danger;
-	bool accepted;
+	static const uint8_t warning_one[] =
+	    "This is a desperate move! Your engines will be drained and will take time";
+	static const uint8_t warning_two[] =
+	    "to recharge! You also risk a melt down! Are you sure you wish to do this?";
+	static const uint8_t prompt[] = "[y/N] -=> ";
+	enum yt_yes_no_answer answer;
 	bool denied;
 
 	if (!fresh_no_turn_gate(session, &denied, error))
 		return false;
 	if (denied)
 		return true;
-	if (!yt_game_read_sector(&session->door->game,
-	    (int)session->player.sector, &sector, error))
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "emergency warp leading blank", error))
 		return false;
-	yt_out("Warps:");
-	for (slot = 0; slot < YT_ARRAY_LEN(sector.warps); ++slot) {
-		if (sector.warps[slot] != 0.0f)
-			yt_outf(" %.9g", (double)sector.warps[slot]);
-	}
-	yt_out("\r\n");
-	for (;;) {
-		char upper[160];
+	session->presentation.bold = 1.0f;
+	session->presentation.foreground = 7.0f;
+	session->pager.foreground = 7;
+	if (!session_02fc(session, warning_one, sizeof(warning_one) - 1U))
+		return false;
+	session->presentation.bold = 1.0f;
+	if (!session_02fc(session, warning_two, sizeof(warning_two) - 1U)
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "emergency warp confirmation blank", error))
+		return false;
+	session->presentation.bold = 1.0f;
+	if (!session_a8d2(session, prompt, sizeof(prompt) - 1U, &answer, error))
+		return false;
+	if (answer == YT_YES_NO_YES)
+		return emergency_warp(session, error);
+	return true;
+}
 
-		yt_out("Move to which sector? ");
-		if (!session_line(session, line, sizeof(line)))
+static bool
+command_move(struct yt_session *session, bool *moved,
+    struct yt_error *error)
+{
+	static const uint8_t prompt[] = "Move to which sector? ";
+	static const uint8_t same_sector[] =
+	    "That was quick! Felt like we didn't even move!";
+	static const uint8_t not_adjacent[] =
+	    "You can't get there from here.";
+	char line[YT_COMMAND_SIZE];
+	float target;
+	float maximum;
+	struct qb_val_result parsed;
+	uint8_t row[256];
+	size_t row_length;
+	size_t slot;
+	bool adjacent = false;
+	bool danger;
+	bool denied;
+
+	if (moved == NULL)
+		return false;
+	*moved = false;
+	if (!fresh_no_turn_gate(session, &denied, error))
+		return false;
+	if (denied)
+		return true;
+	if (!yt_movement_warp_row(session->current_warps, row,
+	    sizeof(row), &row_length)) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation, sizeof(error->operation), "%s",
+			    "movement warp row");
+		}
+		return false;
+	}
+	if (!session_0317(session, row, row_length, "movement warp row", error)
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "movement post-warp blank", error))
+		return false;
+	for (;;) {
+		if (!session_031f(session, prompt, sizeof(prompt) - 1U,
+		    "movement destination prompt", error)
+		    || !session_036f(session, line, sizeof(line)))
 			return false;
-		snprintf(upper, sizeof(upper), "%s", line);
-		qb_compat_upper(upper);
-		if (strchr(upper, 'E') != NULL)
-			return true;
-		if (strcmp(upper, "M") == 0)
+		if (strcmp(line, "M") == 0)
 			continue;
 		parsed = qb_val(line);
 		target = (float)(parsed.valid ? parsed.value : 0.0);
 		break;
 	}
-	if (target < 1.0f || target > (float)sector_count(session))
+	maximum = single_sub(session->door->game.config.port_offset,
+	    session->door->game.config.sector_offset);
+	if (target < 1.0f || target > maximum)
 		return true;
 	if (target == session->player.sector) {
-		yt_out_line("You're already there!");
-		return true;
+		return session_02db(session, same_sector,
+		    sizeof(same_sector) - 1U, "movement same-sector row", error);
 	}
-	for (slot = 0; slot < YT_ARRAY_LEN(sector.warps); ++slot) {
-		if (sector.warps[slot] == target)
+	for (slot = 0; slot < YT_ARRAY_LEN(session->current_warps); ++slot) {
+		if (session->current_warps[slot] == target) {
 			adjacent = true;
+			break;
+		}
 	}
-	if (!adjacent) {
-		yt_out_line("You can't get there from here.");
-		return true;
-	}
+	if (!adjacent)
+		return session_02db(session, not_adjacent,
+		    sizeof(not_adjacent) - 1U, "movement not-adjacent row", error);
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "movement accepted blank", error))
+		return false;
 	if (session->player.danger_scanner != 0.0f) {
 		if (!dangerous_destination(session, target, &danger, error))
 			return false;
 		if (danger) {
-			char prompt[100];
-			char target_text[40];
+			enum yt_yes_no_answer answer;
 
 			if (!session_present_text(session, NULL, 0,
 			    SESSION_PRESENT_LINE, "danger confirmation blank", error))
 				return false;
 			clear_queue(session);
-			qb_str_single(target_text, sizeof(target_text), target);
-			snprintf(prompt, sizeof(prompt),
-			    "Move into sector%s? [y/N] ", target_text);
-			if (!session_yes_no(session, prompt, false, &accepted))
+			if (!yt_movement_confirmation_prompt(target, row,
+			    sizeof(row), &row_length)
+			    || !session_a8d2(session, row, row_length, &answer, error))
 				return false;
-			if (!accepted)
+			if (answer != YT_YES_NO_YES)
 				return true;
 		}
 	}
 	if (!finalize_action(session, 1.0f, error))
 		return error == NULL || error->status == YT_OK;
 	session->suppress_self_mines = false;
-	session->player.sector = target;
+	if (!reload_player(session, error))
+		return false;
+	yt_movement_player_overlay(&session->player, target);
+	if (!yt_database_write(&session->door->game.database,
+	    (size_t)session->player_record, &session->player.record, error)
+	    || !yt_database_flush(&session->door->game.database, error))
+		return false;
 	session->sector_cache[session->player_record] = target;
-	return write_player(session, error);
+	*moved = true;
+	return true;
 }
 
 static bool
@@ -2666,7 +3798,30 @@ kill_player(struct yt_session *session, int victim_record,
 		session->player = victim;
 		session->destroyed = true;
 	}
-	return yt_database_flush(&session->door->game.database, error);
+	if (!yt_database_flush(&session->door->game.database, error))
+		return false;
+	if (victim_record == session->player_record) {
+		if (!session_wait(session, 5.0, "common fatal wait", error))
+			return false;
+		session->fatal_wait_complete = true;
+	}
+	return true;
+}
+
+static bool
+common_fatal_self(struct yt_session *session, struct yt_error *error)
+{
+	static const uint8_t notice[] = "Your ship has been destroyed!";
+
+	session->pager.foreground = 3;
+	session->presentation.foreground = 3.0f;
+	if (!session_02db(session, notice, sizeof(notice) - 1U,
+	    "common fatal notice", error)
+	    || !reload_player(session, error)
+	    || !session_sound(session, 3.0f, "fatal destruction sound", error))
+		return false;
+	return kill_player(session, session->player_record,
+	    (float)session->player_record, error);
 }
 
 static bool
@@ -2708,7 +3863,8 @@ salvage_player(struct yt_session *session, int victim_record,
 	awards[3] = floorf(single_mul(draw[3], victim->plasma));
 	awards[4] = floorf(single_mul(draw[4], victim->ground_forces));
 	awards[5] = floorf(single_mul(draw[5], victim->mines));
-	session_timed_wait(session, 1.0);
+	if (!session_wait(session, 1.0, "salvage initial wait", error))
+		return false;
 	if (!reload_player(session, error))
 		return false;
 	{
@@ -2725,7 +3881,9 @@ salvage_player(struct yt_session *session, int victim_record,
 		for (index = 1; index < 6; ++index) {
 			if (awards[index] == 0.0f)
 				continue;
-			session_timed_wait(session, 0.5);
+			if (!session_wait(session, 0.5,
+			    "salvage simple-award wait", error))
+				return false;
 			emitted = true;
 			qb_str_single(number, sizeof(number), awards[index]);
 			snprintf(news, sizeof(news), "  -  %s%s",
@@ -2791,7 +3949,9 @@ salvage_player(struct yt_session *session, int victim_record,
 		    cargo_awards[2]);
 		if (!write_player(session, error))
 			return false;
-		session_timed_wait(session, 0.5);
+		if (!session_wait(session, 0.5,
+		    "salvage post-cargo wait", error))
+			return false;
 		{
 			static const int order[4] = {3, 0, 1, 2};
 			static const char *const suffix[4] = {
@@ -2804,7 +3964,9 @@ salvage_player(struct yt_session *session, int victim_record,
 
 				if (cargo_awards[kind] <= 0.0f)
 					continue;
-				session_timed_wait(session, 0.5);
+				if (!session_wait(session, 0.5,
+				    "salvage cargo-row wait", error))
+					return false;
 				qb_str_single(number, sizeof(number),
 				    cargo_awards[kind]);
 				snprintf(news, sizeof(news), "  - %s%s",
@@ -2816,30 +3978,29 @@ salvage_player(struct yt_session *session, int victim_record,
 		}
 	}
 	if (!emitted) {
-		session_timed_wait(session, 0.5);
+		if (!session_wait(session, 0.5, "salvage nothing wait", error))
+			return false;
 		if (!append_news(session, "  -  NOTHING!", error))
 			return false;
 		yt_out_line("  -  NOTHING!");
 	}
-	session_timed_wait(session, 4.0);
-	return true;
+	return session_wait(session, 4.0, "salvage final wait", error);
 }
 
 static bool
 combat_attrition(struct yt_session *session, double committed,
-    float defenders, float cloak, double *attacker_loss,
-    float *defender_loss, struct yt_error *error)
+    double defenders, float cloak, double *attacker_loss,
+    double *defender_loss, struct yt_error *error)
 {
 	double lost_attacker = 0.0;
-	float lost_defender = 0.0f;
+	double lost_defender = 0.0;
 
 	while (lost_attacker < committed && lost_defender < defenders) {
 		double remaining_attacker = committed - lost_attacker;
-		float remaining_defender =
-		    single_sub(defenders, lost_defender);
-		float minimum = remaining_attacker < (double)remaining_defender
-		    ? (float)remaining_attacker : remaining_defender;
-		float quantum = floorf(single_div(minimum, 20.0f));
+		double remaining_defender = defenders - lost_defender;
+		double minimum = remaining_attacker < remaining_defender
+		    ? remaining_attacker : remaining_defender;
+		float quantum = (float)floor(minimum / 20.0);
 		float draw;
 
 		if (quantum < 1.0f)
@@ -2850,7 +4011,7 @@ combat_attrition(struct yt_session *session, double committed,
 		    < 0.44999998807907104f)
 			lost_attacker += (double)quantum;
 		else
-			lost_defender = single_add(lost_defender, quantum);
+			lost_defender += (double)quantum;
 	}
 	*attacker_loss = lost_attacker > committed ? committed : lost_attacker;
 	*defender_loss = lost_defender > defenders ? defenders : lost_defender;
@@ -2860,18 +4021,35 @@ combat_attrition(struct yt_session *session, double committed,
 static bool
 xannor_victory(struct yt_session *session, struct yt_error *error)
 {
-	char winner[300];
-	char banner[80];
+	static const uint8_t pause[] = "[PAUSE]";
+	static const uint8_t bonus[] =
+	    "Collect 16,000,000 credit bonus!";
+	uint8_t player_name[YT_TEXT_FIELD_SIZE];
+	uint8_t winner[128];
+	uint8_t banner[79];
+	size_t player_name_length;
+	size_t winner_length;
 	struct yt_sector overlay;
 
-	if (!display_line_file("XannorHQ.TXT", error))
+	session->presentation.foreground = 7.0f;
+	session->pager.foreground = 7;
+	if (!xannor_victory_file(session, "XannorHQ.TXT", error))
 		return false;
-	yt_out("[PAUSE]");
-	session_timed_wait(session, 99.0);
-	yt_out("\r\n");
-	yt_out_line("Collect 16,000,000 credit bonus!");
-	session->player.credits = floorf(single_add(
-	    session->player.credits, 16000000.0f));
+	if (!session_present_text(session, pause, sizeof(pause) - 1U,
+	    SESSION_PRESENT_RAW, "Xannor victory pause", error)
+	    || !session_wait(session, 99.0, "Xannor victory wait", error)
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "Xannor victory post-wait blank", error))
+		return false;
+	session->presentation.blink = 1.0f;
+	if (!session_present_text(session, bonus, sizeof(bonus) - 1U,
+	    SESSION_PRESENT_BOLD_LINE, "Xannor victory bonus", error))
+		return false;
+	clear_queue(session);
+	if (!reload_player(session, error))
+		return false;
+	session->player.credits = floorf(single_add(session->player.credits,
+	    16000000.0f));
 	if (!write_player(session, error))
 		return false;
 	for (int ordinal = 0; ordinal < 3; ++ordinal) {
@@ -2880,16 +4058,19 @@ xannor_victory(struct yt_session *session, struct yt_error *error)
 			return false;
 	}
 	memset(banner, '*', 79);
-	banner[79] = '\0';
-	snprintf(winner, sizeof(winner),
-	    "Congratulations go to %s who defeated the Xannor HQ!!!",
-	    session->player.name);
-	if (!append_news(session, banner, error)
-	    || !append_news(session, winner, error)
-	    || !append_news(session, banner, error)
-	    || !radio_append(banner, -2.0f, -2.0f, error)
-	    || !radio_append(winner, -2.0f, -2.0f, error)
-	    || !radio_append(banner, -2.0f, -2.0f, error))
+	if (!yt_player_stored_name(&session->player, player_name,
+	    &player_name_length, error)
+	    || !yt_xannor_victory_winner(player_name, player_name_length,
+	    winner, sizeof(winner), &winner_length)
+	    || !append_news_bytes(session, banner, sizeof(banner), error)
+	    || !append_news_bytes(session, winner, winner_length, error)
+	    || !append_news_bytes(session, banner, sizeof(banner), error)
+	    || !radio_append_bytes(banner, sizeof(banner), -2.0f, -2.0f,
+	    error)
+	    || !radio_append_bytes(winner, winner_length, -2.0f, -2.0f,
+	    error)
+	    || !radio_append_bytes(banner, sizeof(banner), -2.0f, -2.0f,
+	    error))
 		return false;
 	if (!yt_game_read_sector(&session->door->game, 21, &overlay, error))
 		return false;
@@ -2904,162 +4085,299 @@ attack_player(struct yt_session *session, int target_record,
 {
 	struct yt_player target;
 	double attacker_loss;
-	float defender_loss;
+	double defender_loss;
 	double attacking;
+	double defenders;
+	double cached_reserve;
 	float victim_mines;
-	char line[300];
+	float current_sector;
+	uint8_t victim_name[YT_TEXT_FIELD_SIZE];
+	uint8_t line[300];
+	uint8_t second_line[300];
+	size_t victim_name_length;
+	size_t line_length;
+	size_t second_line_length;
 
-	if (!reload_player(session, error)
-	    || !yt_game_read_player(&session->door->game, target_record,
+	if (!yt_game_read_player(&session->door->game, target_record,
 	    &target, error))
 		return false;
+	defenders = (double)target.fighters;
+	if (!reload_player(session, error))
+		return false;
 	if (committed > (double)session->player.fighters) {
-		yt_out_line("You don't have that many fighters!");
-		return true;
+		if (!yt_direct_attack_too_many_row(
+		    (double)session->player.fighters, line, sizeof(line),
+		    &line_length)) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				(void)snprintf(error->operation,
+				    sizeof(error->operation), "%s",
+				    "direct Attack too-many row");
+			}
+			return false;
+		}
+		return session_02db(session, line, line_length,
+		    "direct Attack too-many row", error);
 	}
+	cached_reserve = (double)session->player.fighters - committed;
+	yt_direct_attack_fighter_overlay(&session->player,
+	    (float)cached_reserve);
+	if (!yt_database_write(&session->door->game.database,
+	    (size_t)session->player_record, &session->player.record, error))
+		return false;
 	if (!session_sound(session, 2.0f,
 	    "player attack opening sound", error))
 		return false;
-	if (!combat_attrition(session, committed, target.fighters,
+	if (!combat_attrition(session, committed, defenders,
 	    session->player.cloak, &attacker_loss, &defender_loss, error))
 		return false;
-	attacking = committed - attacker_loss;
-	session->player.fighters =
-	    (float)((double)session->player.fighters - attacker_loss);
-	target.fighters = single_sub(target.fighters, defender_loss);
-	if (target.fighters < 0.0f)
-		target.fighters = 0.0f;
-	if (defender_loss > 0.0f) {
-		snprintf(line, sizeof(line), "%s destroyed %.9g of your fighters!",
-		    session->player.name, (double)defender_loss);
-		if (!radio_append(line, -2.0f, (float)target_record, error))
+	if (defender_loss > 0.0) {
+		uint8_t stored_name[YT_TEXT_FIELD_SIZE];
+		uint8_t radio_text[160];
+		size_t name_length;
+		size_t radio_length;
+
+		if (!yt_player_stored_name(&session->player, stored_name,
+		    &name_length, error)
+		    || !yt_direct_attack_radio_text(stored_name, name_length,
+		    (double)defender_loss, radio_text, sizeof(radio_text),
+		    &radio_length)
+		    || !radio_append_bytes(radio_text, radio_length, -2.0f,
+		    (float)target_record, error))
 			return false;
 	}
-	if (target.fighters <= 0.0f && attacking > 0.0
-	    && target.shields > 0.0f) {
-		while (attacking > 0.0 && target.shields > 0.0f) {
-			float quantum = attacking > 100.0
-			    && target.shields > 100.0f ? 100.0f : 1.0f;
-			float draw;
-
-			if (!random_value(session, &draw, error))
-				return false;
-			if (draw <= 0.5f)
-				attacking -= (double)quantum;
-			else
-				target.shields =
-				    single_sub(target.shields, quantum);
+	if (!reload_player(session, error))
+		return false;
+	cached_reserve = (double)session->player.fighters;
+	attacking = committed - attacker_loss;
+	defenders -= defender_loss;
+	yt_direct_attack_fighter_overlay(&session->player,
+	    (float)(cached_reserve + attacking));
+	if (!yt_database_write(&session->door->game.database,
+	    (size_t)session->player_record, &session->player.record, error)
+	    || !yt_game_read_player(&session->door->game, target_record,
+	    &target, error))
+		return false;
+	current_sector = session->player.sector;
+	yt_direct_attack_fighter_overlay(&target, (float)defenders);
+	if (!yt_database_write(&session->door->game.database,
+	    (size_t)target_record, &target.record, error))
+		return false;
+	if (!yt_direct_attack_result_rows(attacker_loss, cached_reserve,
+	    defender_loss, defenders, line, sizeof(line), &line_length,
+	    second_line, sizeof(second_line), &second_line_length)) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation, sizeof(error->operation),
+			    "%s", "direct Attack result rows");
 		}
+		return false;
 	}
-	if (!yt_game_write_player(&session->door->game, target_record, &target,
-	    error) || !write_player(session, error))
+	if (!session_0317(session, line, line_length,
+	    "direct Attack attacker result", error)
+	    || !session_02fc(session, second_line, second_line_length))
+		return false;
+	if (defenders > 0.0 || attacking < 1.0)
+		return true;
+	{
+		static const uint8_t eliminated[] =
+		    "Fighters eliminated! Attacking the ship!";
+
+		if (!session_0317(session, eliminated,
+		    sizeof(eliminated) - 1U,
+		    "direct Attack eliminated row", error))
+			return false;
+	}
+	if (target.shields > 0.0f
+	    && !fighter_shield_spill(session, &attacking, &target.shields,
+	    error))
+		return false;
+	{
+		float remaining_shields = target.shields;
+
+		if (!yt_game_read_player(&session->door->game, target_record,
+		    &target, error))
+			return false;
+		yt_direct_attack_shield_overlay(&target, remaining_shields);
+		if (!yt_database_write(&session->door->game.database,
+		    (size_t)target_record, &target.record, error)
+		    || !reload_player(session, error))
+			return false;
+	}
+	yt_direct_attack_fighter_overlay(&session->player,
+	    (float)(cached_reserve + attacking));
+	if (!yt_database_write(&session->door->game.database,
+	    (size_t)session->player_record, &session->player.record, error))
 		return false;
 	if (target.shields > 0.0f)
 		return true;
-	victim_mines = target.mines;
-	if (!session_sound(session, 3.0f,
-	    "player kill sound", error)
-	    || !kill_player(session, target_record,
-	    (float)session->player_record, error)
-	    || !salvage_player(session, target_record, error))
+	if (!session_sound(session, 3.0f, "player kill sound", error)
+	    || !yt_game_read_player(&session->door->game, target_record,
+	    &target, error))
 		return false;
+	victim_mines = target.mines;
+	if (!port_report_length(session, target.name_length,
+	    YT_TEXT_FIELD_SIZE, &victim_name_length,
+	    "direct fighter victim name length", error))
+		return false;
+	if (victim_name_length != 0U)
+		memcpy(victim_name, target.record.bytes, victim_name_length);
+	if (!kill_player(session, target_record,
+	    (float)session->player_record, error))
+		return false;
+	if (!salvage_player(session, target_record, error))
+		return false;
+	if (!(victim_mines > 0.0f))
+		return true;
 	{
 		struct yt_sector sector;
-		int current = (int)session->player.sector;
+		bool overflow;
+		int current = (int)qb_cint_mode((double)current_sector,
+		    session->presentation.sound.conversion_mode, &overflow);
 
+		if (overflow) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				(void)snprintf(error->operation,
+				    sizeof(error->operation), "%s",
+				    "direct fighter sector record CINT");
+			}
+			return false;
+		}
 		if (!yt_game_read_sector(&session->door->game, current, &sector,
 		    error))
 			return false;
-		sector.mines = single_add(sector.mines, victim_mines);
-		if (!yt_game_write_sector(&session->door->game, current, &sector,
-		    error))
+		yt_sector_mine_sector_overlay(&sector,
+		    single_add(sector.mines, victim_mines));
+		if (!yt_database_write(&session->door->game.database,
+		    (size_t)yt_sector_basic_record(&session->door->game.config,
+		    current), &sector.record, error))
 			return false;
 	}
-	if (victim_mines > 0.0f) {
-		snprintf(line, sizeof(line),
-		    "  -  %s had sector mines! They EXPLODED!", target.name);
-		if (!append_news(session, line, error))
-			return false;
-	}
-	return mine_encounter(session, error);
+	if (!yt_direct_fighter_mine_warning(victim_name, victim_name_length,
+	    line, sizeof(line), &line_length)
+	    || !session_02db(session, line, line_length,
+	    "direct fighter mine warning", error)
+	    || !append_news_bytes(session, line, line_length, error)
+	    || !mine_encounter(session, error))
+		return false;
+	if (session->destroyed)
+		return common_fatal_self(session, error);
+	return true;
 }
 
 static bool
-command_attack_player(struct yt_session *session, struct yt_error *error)
+command_attack_player(struct yt_session *session, bool *enter_sector,
+    struct yt_error *error)
 {
+	static const uint8_t title[] = "<Attack>";
+	static const uint8_t no_fighters[] =
+	    "You don't have any fighters.";
+	static const uint8_t none_visible[] = "There's no one here!";
+	static const uint8_t none_selected[] =
+	    "There are no other ships in this sector.";
 	int basic;
 	bool encountered = false;
+	uint8_t row[300];
+	size_t row_length;
 
+	if (enter_sector == NULL)
+		return false;
+	*enter_sector = false;
+	if (!session_02fc(session, title, sizeof(title) - 1U)
+	    || !reload_player(session, error))
+		return false;
 	if (session->player.fighters < 1.0f) {
-		yt_out_line("You have no fighters!");
-		return true;
+		return session_02db(session, no_fighters,
+		    sizeof(no_fighters) - 1U, "direct Attack no-fighters row",
+		    error);
 	}
 	for (basic = YT_PLAYER_FIRST;
 	    basic <= (int)session->door->game.config.sector_offset; ++basic) {
 		struct yt_player target;
-		bool accepted;
+		enum yt_yes_no_answer answer;
 		double committed;
-		bool blank;
+		char response[YT_COMMAND_SIZE];
+		struct qb_val_result parsed;
+		uint8_t target_name[YT_TEXT_FIELD_SIZE];
+		size_t target_name_length;
 
 		if (basic == session->player_record
 		    || session->sector_cache[basic] != session->player.sector
 		    || session->cloak_cache[basic] > 0.0f)
 			continue;
-		encountered = true;
 		if (!yt_game_read_player(&session->door->game, basic, &target,
-		    error))
+		    error)
+		    || !yt_player_stored_name(&target, target_name,
+		    &target_name_length, error))
 			return false;
 		if (target.team > 0.0f && target.team == session->player.team) {
-			yt_outf("%s is on your team.\r\n", target.name);
-			continue;
-		}
-		{
-			char prompt[160];
-
-			snprintf(prompt, sizeof(prompt), "Attack %s? [Y/n] ",
-			    target.name);
-			if (!session_yes_no(session, prompt, true, &accepted))
+			if (!yt_direct_attack_team_row(target_name,
+			    target_name_length, row, sizeof(row), &row_length)
+			    || !session_02fc(session, row, row_length))
 				return false;
-		}
-		if (!accepted)
+			encountered = true;
 			continue;
-		if (!session_value(session,
-		    "How many fighters do you wish to commit? ",
-		    &committed, &blank))
+		}
+		encountered = true;
+		if (!yt_direct_attack_candidate_prompt(target_name,
+		    target_name_length, row, sizeof(row), &row_length)
+		    || !session_a8d2(session, row, row_length, &answer, error))
 			return false;
-		if (blank || committed < 1.0)
+		if (answer == YT_YES_NO_NO)
+			continue;
+		if (!yt_direct_attack_commitment_prompt(
+		    (double)session->player.fighters, row, sizeof(row),
+		    &row_length)
+		    || !session_031f(session, row, row_length,
+		    "direct Attack commitment prompt", error)
+		    || !session_036f(session, response, sizeof(response)))
+			return false;
+		parsed = qb_val(response);
+		committed = parsed.valid ? parsed.value : 0.0;
+		if (committed < 1.0)
 			return true;
 		return attack_player(session, basic, committed, error);
 	}
-	yt_out_line(encountered
-	    ? "There are no other ships in this sector."
-	    : "There's no one here!");
-	return true;
+	*enter_sector = true;
+	if (encountered)
+		return session_02fc(session, none_selected,
+		    sizeof(none_selected) - 1U);
+	return session_02db(session, none_visible, sizeof(none_visible) - 1U,
+	    "direct Attack no-visible-target row", error);
 }
 
 static bool
-deployed_owner_name(struct yt_session *session, float owner, char *name,
-    size_t size, struct yt_error *error)
+fighter_shield_spill(struct yt_session *session, double *fighters,
+    float *shields, struct yt_error *error)
 {
-	if (owner == -1.0f) {
-		snprintf(name, size, "%s", "The Xannor");
-		return true;
-	}
-	if (owner == -2.0f) {
-		snprintf(name, size, "%s", "The Mercenaries");
-		return true;
-	}
-	if (owner > 0.0f) {
-		struct yt_player player;
+	uint8_t fighter_row[128];
+	uint8_t shield_row[128];
+	size_t fighter_length;
+	size_t shield_length;
 
-		if (!yt_game_read_player(&session->door->game, (int)owner,
-		    &player, error))
+	while (*fighters > 0.0 && *shields > 0.0f) {
+		float draw;
+
+		if (!random_value(session, &draw, error))
 			return false;
-		snprintf(name, size, "%s", player.name);
-		return true;
+		if (!yt_fighter_shield_spill_step(fighters, shields, draw))
+			return false;
 	}
-	name[0] = '\0';
-	return true;
+	if (!yt_fighter_shield_spill_rows(*fighters, *shields,
+	    fighter_row, sizeof(fighter_row), &fighter_length,
+	    shield_row, sizeof(shield_row), &shield_length)) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation, sizeof(error->operation),
+			    "%s", "fighter/shield spill rows");
+		}
+		return false;
+	}
+	return session_present_text(session, fighter_row, fighter_length,
+	    SESSION_PRESENT_LINE, "fighter spill result", error)
+	    && session_present_text(session, shield_row, shield_length,
+	    SESSION_PRESENT_LINE, "shield spill result", error);
 }
 
 static bool
@@ -3068,155 +4386,351 @@ attack_deployed_committed(struct yt_session *session,
     struct yt_error *error)
 {
 	double attacker_loss = 0.0;
-	float defender_loss = 0.0f;
-	float old_count = sector->fighters;
-	float old_owner = sector->fighter_owner;
-	float old_ship = session->player.fighters;
+	double defender_loss = 0.0;
+	double old_count = (double)sector->fighters;
+	double old_ship;
+	double ship_fighters;
+	double deployed_remaining;
+	float old_owner;
 	bool surrender_checked = false;
 	bool surrendered = false;
+	struct yt_sector opened_sector;
+	struct yt_sector persisted_sector;
 	char owner_name[80];
 	char number_one[64];
 	char number_two[64];
-	char news[320];
+	char loss_row[128];
+	char destroyed_row[128];
+	uint8_t cached_player_name[YT_TEXT_FIELD_SIZE];
+	size_t cached_player_name_length;
+	char cached_player_name_text[sizeof(session->player.name)];
 
-	if (commitment > (double)session->player.fighters) {
-		yt_out_line("You don't have that many fighters!");
-		return true;
-	}
-	if (!deployed_owner_name(session, old_owner, owner_name,
-	    sizeof(owner_name), error))
+	if (!yt_player_stored_name(&session->player, cached_player_name,
+	    &cached_player_name_length, error))
 		return false;
+	(void)snprintf(cached_player_name_text,
+	    sizeof(cached_player_name_text), "%s", session->player.name);
+
+	if (!yt_game_read_sector(&session->door->game,
+	    (int)session->player.sector, &opened_sector, error))
+		return false;
+	old_owner = opened_sector.fighter_owner;
+	if (!reload_player(session, error))
+		return false;
+	(void)snprintf(session->player.name, sizeof(session->player.name),
+	    "%s", cached_player_name_text);
+	old_ship = (double)session->player.fighters;
 	if (!session_sound(session, 2.0f,
 	    "deployed attack opening sound", error))
 		return false;
-	while (attacker_loss < commitment && defender_loss < old_count) {
+	do {
 		double remaining_attacker = commitment - attacker_loss;
-		float remaining_defender =
-		    single_sub(old_count, defender_loss);
-		float minimum = remaining_attacker < (double)remaining_defender
-		    ? (float)remaining_attacker : remaining_defender;
-		float quantum = floorf(single_div(minimum, 20.0f));
+		double remaining_defender = old_count - defender_loss;
+		float quantum = yt_hostile_attack_quantum(remaining_attacker,
+		    remaining_defender);
 		float sample;
 
-		if (quantum < 1.0f)
-			quantum = 1.0f;
-		if (!random_value(session, &sample, error))
+		if (remaining_defender == 0.0) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				(void)snprintf(error->operation,
+				    sizeof(error->operation), "%s",
+				    "attack:surrender-ratio-divide");
+			}
 			return false;
-		if (single_add(single_div(session->player.cloak, 10.0f),
-		    sample) < 0.44999998807907104f)
-			attacker_loss += (double)quantum;
-		else
-			defender_loss = single_add(defender_loss, quantum);
-		remaining_attacker = commitment - attacker_loss;
-		remaining_defender = single_sub(old_count, defender_loss);
+		}
 		if (!surrender_checked && allow_surrender
-		    && remaining_defender > 0.0f
-		    && remaining_attacker / (double)remaining_defender > 10.0) {
-			surrender_checked = true;
-			if (old_owner > 0.0f) {
-				bool accepted;
+		    && remaining_attacker / remaining_defender > 10.0) {
+			static const uint8_t radio[] = "RADIO MESSAGE COMING IN!";
+			static const uint8_t wish[] = "WE WISH TO SURRENDER!!!";
+			static const uint8_t surrender_prompt[] =
+			    "Will you accept our surrender? [Y]/N -=>";
+			char sector_number[64];
+			char captain[160];
 
-				if (!session_sound(session, 4.0f,
-				    "surrender radio sound", error))
+			if (!reload_player(session, error))
+				return false;
+			(void)snprintf(session->player.name,
+			    sizeof(session->player.name), "%s",
+			    cached_player_name_text);
+			old_ship = (double)session->player.fighters;
+			if (qb_str_single(sector_number, sizeof(sector_number),
+			    session->player.sector) < 0
+			    || snprintf(captain, sizeof(captain),
+			    "This is the captain of the fighter group in sector%s",
+			    sector_number) < 0
+			    || !session_0317(session, radio, sizeof(radio) - 1U,
+			    "surrender radio row", error)
+			    || !session_sound(session, 4.0f,
+			    "surrender radio sound", error)
+			    || !session_0317(session, (const uint8_t *)captain,
+			    strlen(captain), "surrender captain row", error))
+				return false;
+			switch (yt_hostile_surrender_route(old_owner)) {
+			case YT_HOSTILE_SURRENDER_PLAYER:
+			{
+				enum yt_yes_no_answer answer;
+
+				if (!session_02db(session, wish, sizeof(wish) - 1U,
+				    "surrender wish row", error)
+				    || !session_present_text(session, NULL, 0,
+				    SESSION_PRESENT_LINE, "surrender prompt blank", error)
+				    || !session_a8d2(session, surrender_prompt,
+				    sizeof(surrender_prompt) - 1U, &answer, error))
 					return false;
-				if (!session_yes_no(session,
-				    "The defending fighters offer to surrender."
-				    " Accept? [Y/n] ", true, &accepted))
-					return false;
-				surrendered = accepted;
+				surrendered = answer == YT_YES_NO_YES
+				    || answer == YT_YES_NO_EMPTY;
+				break;
 			}
-			else {
-				yt_out_line(old_owner == -1.0f
-				    ? "The Xannor refuse to surrender!"
-				    : "The Mercenaries refuse to surrender!");
-				if (!session_sound(session, 5.0f,
-				    "surrender refusal sound", error))
+			case YT_HOSTILE_SURRENDER_XANNOR:
+			{
+				static const uint8_t refusal[] =
+				    "Whee fyte to the deeth hoo-man slyme!";
+
+				if (!session_02fc(session, refusal,
+				    sizeof(refusal) - 1U)
+				    || !session_sound(session, 5.0f,
+				    "Xannor surrender refusal sound", error))
 					return false;
+				break;
 			}
+			case YT_HOSTILE_SURRENDER_MERCENARY:
+			{
+				char refusal[256];
+				int written = snprintf(refusal, sizeof(refusal),
+				    "We'll DIE before joining with a slyme like you %s!",
+				    session->door->identity.real_first);
+
+				if (written < 0 || (size_t)written >= sizeof(refusal)
+				    || !session_02fc(session,
+				    (const uint8_t *)refusal, (size_t)written)
+				    || !session_sound(session, 5.0f,
+				    "Mercenary surrender refusal sound", error))
+					return false;
+				break;
+			}
+			case YT_HOSTILE_SURRENDER_QUIET:
+				break;
+			}
+			surrender_checked = true;
 			if (surrendered)
 				break;
 		}
-	}
+		if (!random_value(session, &sample, error))
+			return false;
+		if (yt_hostile_attack_loses_attacker(session->player.cloak,
+		    sample))
+			attacker_loss = double_add(attacker_loss, (double)quantum);
+		else
+			defender_loss = double_add(defender_loss, (double)quantum);
+	} while (attacker_loss < commitment && defender_loss < old_count);
 	if (attacker_loss > commitment)
 		attacker_loss = commitment;
 	if (defender_loss > old_count)
 		defender_loss = old_count;
 	if (surrendered) {
-		float survivors = single_sub(old_count, defender_loss);
+		static const uint8_t joined[] = " We join your forces!";
+		double survivors = double_sub(old_count, defender_loss);
+		uint8_t surrender_news[320];
+		uint8_t surrendered_row[128];
+		size_t surrender_news_length;
+		size_t surrendered_row_length;
+		int surrendered_number_length;
+		int sector_number_length;
 
-		if (!session_sound(session, 1.0f,
+		if (!session_0317(session, joined, sizeof(joined) - 1U,
+		    "surrender joined row", error)
+		    || !session_sound(session, 1.0f,
 		    "surrender acceptance sound", error))
 			return false;
-		session->player.fighters = single_add(
-		    (float)((double)old_ship - attacker_loss), survivors);
-		sector->fighters = 0.0f;
+		surrendered_number_length = qb_str_double(number_one,
+		    sizeof(number_one), survivors);
+		sector_number_length = qb_str_single(number_two,
+		    sizeof(number_two), session->player.sector);
+		if (surrendered_number_length < 0 || sector_number_length < 0)
+			return false;
+		surrender_news_length = (size_t)surrendered_number_length
+		    + sizeof(" fighters in sector") - 1U
+		    + (size_t)sector_number_length
+		    + sizeof(" surrendered to ") - 1U
+		    + cached_player_name_length;
+		surrendered_row_length = (size_t)surrendered_number_length
+		    + sizeof(" fighters surrendered!") - 1U;
+		if (surrender_news_length > sizeof(surrender_news)
+		    || surrendered_row_length > sizeof(surrendered_row))
+			return false;
+		memcpy(surrender_news, number_one,
+		    (size_t)surrendered_number_length);
+		memcpy(surrender_news + (size_t)surrendered_number_length,
+		    " fighters in sector", sizeof(" fighters in sector") - 1U);
+		memcpy(surrender_news + (size_t)surrendered_number_length
+		    + sizeof(" fighters in sector") - 1U, number_two,
+		    (size_t)sector_number_length);
+		memcpy(surrender_news + (size_t)surrendered_number_length
+		    + sizeof(" fighters in sector") - 1U
+		    + (size_t)sector_number_length, " surrendered to ",
+		    sizeof(" surrendered to ") - 1U);
+		if (cached_player_name_length != 0U)
+			memcpy(surrender_news + surrender_news_length
+			    - cached_player_name_length, cached_player_name,
+			    cached_player_name_length);
+		memcpy(surrendered_row, number_one,
+		    (size_t)surrendered_number_length);
+		memcpy(surrendered_row + (size_t)surrendered_number_length,
+		    " fighters surrendered!",
+		    sizeof(" fighters surrendered!") - 1U);
+		if (!append_news_bytes(session, surrender_news,
+		    surrender_news_length, error))
+			return false;
+		ship_fighters = double_add(
+		    double_sub(old_ship, attacker_loss), survivors);
+		session->player.fighters = (float)ship_fighters;
+		deployed_remaining = 0.0;
 		sector->fighter_owner = 0.0f;
-		qb_str_double(number_one, sizeof(number_one), survivors);
-		qb_str_double(number_two, sizeof(number_two),
-		    session->player.sector);
-		snprintf(news, sizeof(news),
-		    "%s fighters in sector%s surrendered to %s",
-		    number_one, number_two, session->player.name);
-		if (!append_news(session, news, error))
+		if (!session_02fc(session, surrendered_row,
+		    surrendered_row_length))
 			return false;
 	}
 	else {
-		session->player.fighters =
-		    (float)((double)old_ship - attacker_loss);
-		sector->fighters = single_sub(old_count, defender_loss);
-		if (sector->fighters < 1.0f) {
-			sector->fighters = 0.0f;
-			sector->fighter_owner = 0.0f;
-		}
+		ship_fighters = double_sub(old_ship, attacker_loss);
+		session->player.fighters = (float)ship_fighters;
+		deployed_remaining = double_sub(old_count, defender_loss);
 	}
-	if (!yt_game_write_sector(&session->door->game,
-	    (int)session->player.sector, sector, error)
-	    || !write_player(session, error))
+	if (qb_str_double(number_one, sizeof(number_one), attacker_loss) < 0
+	    || qb_str_double(number_two, sizeof(number_two), defender_loss) < 0
+	    || snprintf(loss_row, sizeof(loss_row), " You lost%s fighter(s)",
+	    number_one) < 0
+	    || snprintf(destroyed_row, sizeof(destroyed_row),
+	    " You destroyed%s enemy fighters.", number_two) < 0)
 		return false;
-	yt_outf("You lost %.9g fighters; they lost %.9g.\r\n",
-	    attacker_loss, (double)defender_loss);
-	if (defender_loss > 0.0f && !surrendered) {
-		qb_str_double(number_one, sizeof(number_one), defender_loss);
-		snprintf(news, sizeof(news),
-		    "%s destroyed%s fighters belonging to %s",
-		    session->player.name, number_one, owner_name);
-		if (!append_news(session, news, error))
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "deployed attack result blank", error)
+	    || !session_02fc(session, (const uint8_t *)loss_row,
+	    strlen(loss_row))
+	    || !session_02fc(session, (const uint8_t *)destroyed_row,
+	    strlen(destroyed_row)))
+		return false;
+	if (ship_fighters < 1.0 && deployed_remaining > 0.0) {
+		static const uint8_t exposed[] =
+		    "Fighters gone! Enemy attacking your ship!";
+
+		if (!session_02db(session, exposed, sizeof(exposed) - 1U,
+		    "deployed attack ship exposed", error)
+		    || !session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "shield spill leading blank", error)
+		    || !fighter_shield_spill(session, &deployed_remaining,
+		    &session->player.shields, error))
+			return false;
+	}
+	sector->fighters = (float)deployed_remaining;
+	{
+		float final_shields = session->player.shields;
+		float final_fighters = (float)ship_fighters;
+
+		if (!reload_player(session, error))
+			return false;
+		(void)snprintf(session->player.name, sizeof(session->player.name),
+		    "%s", cached_player_name_text);
+		yt_deployed_attack_player_overlay(&session->player,
+		    final_shields, final_fighters);
+	}
+	if (!yt_database_write(&session->door->game.database,
+	    (size_t)session->player_record, &session->player.record, error)
+	    || !yt_game_read_sector(&session->door->game,
+	    (int)session->player.sector, &persisted_sector, error))
+		return false;
+	yt_deployed_attack_sector_overlay(&persisted_sector, sector->fighters);
+	if (!yt_database_write(&session->door->game.database,
+	    (size_t)yt_sector_basic_record(&session->door->game.config,
+	    (int)session->player.sector), &persisted_sector.record, error))
+		return false;
+	*sector = persisted_sector;
+	if (ship_fighters < 1.0
+	    && session->player.shields < 1.0f)
+		return common_fatal_self(session, error);
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "deployed attack post-persist blank", error))
+		return false;
+	if (defender_loss > 0.0f) {
+		uint8_t loss_news[320];
+		size_t owner_length;
+		size_t loss_news_length;
+		int loss_number_length;
+
+		if (!reload_player(session, error))
+			return false;
+		ship_fighters = (double)session->player.fighters;
+		(void)snprintf(session->player.name, sizeof(session->player.name),
+		    "%s", cached_player_name_text);
+		(void)snprintf(owner_name, sizeof(owner_name), "%s",
+		    session->hostile_owner_label);
+		loss_number_length = qb_str_double(number_one,
+		    sizeof(number_one), defender_loss);
+		if (loss_number_length < 0)
+			return false;
+		owner_length = strlen(owner_name);
+		loss_news_length = cached_player_name_length
+		    + sizeof(" destroyed") - 1U + (size_t)loss_number_length
+		    + sizeof(" fighters belonging to ") - 1U + owner_length;
+		if (loss_news_length > sizeof(loss_news))
+			return false;
+		if (cached_player_name_length != 0U)
+			memcpy(loss_news, cached_player_name,
+			    cached_player_name_length);
+		memcpy(loss_news + cached_player_name_length, " destroyed",
+		    sizeof(" destroyed") - 1U);
+		memcpy(loss_news + cached_player_name_length
+		    + sizeof(" destroyed") - 1U, number_one,
+		    (size_t)loss_number_length);
+		memcpy(loss_news + cached_player_name_length
+		    + sizeof(" destroyed") - 1U + (size_t)loss_number_length,
+		    " fighters belonging to ",
+		    sizeof(" fighters belonging to ") - 1U);
+		memcpy(loss_news + loss_news_length - owner_length, owner_name,
+		    owner_length);
+		if (!append_news_bytes(session, loss_news, loss_news_length, error))
 			return false;
 	}
 	if (old_owner == -2.0f && defender_loss > 0.0f)
 		session->mercenaries_hurt = true;
 	if (old_owner == -1.0f && defender_loss > 0.0f) {
-		float bonus = floorf(single_div(defender_loss, 256000.0f));
+		float bonus;
+		uint8_t display[240];
+		uint8_t news_row[300];
+		size_t display_length;
+		size_t news_length;
 
-		if (session->player.turns + bonus
-		    > session->door->game.config.turns_per_day)
-			bonus = session->door->game.config.turns_per_day
-			    - session->player.turns;
+		if (!reload_player(session, error))
+			return false;
+		ship_fighters = (double)session->player.fighters;
+		(void)snprintf(session->player.name, sizeof(session->player.name),
+		    "%s", cached_player_name_text);
+		bonus = yt_xannor_attack_bonus(defender_loss,
+		    session->player.turns,
+		    session->door->game.config.turns_per_day);
 		if (bonus >= 1.0f) {
 			session->player.turns =
 			    single_add(session->player.turns, bonus);
-			if (!write_player(session, error))
+			(void)yt_record_set_number(&session->player.record,
+			    YT_F49, session->player.turns);
+			if (!yt_database_write(&session->door->game.database,
+			    (size_t)session->player_record,
+			    &session->player.record, error))
 				return false;
-			qb_str_double(number_one, sizeof(number_one), bonus);
-			qb_str_double(number_two, sizeof(number_two),
-			    defender_loss);
-			snprintf(news, sizeof(news),
-			    "%s collected%s turns bonus for destroying%s Xannor!!",
-			    session->player.name, number_one, number_two);
-			if (!append_news(session, news, error))
+			if (!yt_xannor_attack_reward_rows(cached_player_name,
+			    cached_player_name_length, bonus, defender_loss,
+			    display, sizeof(display), &display_length,
+			    news_row, sizeof(news_row), &news_length))
 				return false;
-			if (sector->fighters < 1.0f
+			session->presentation.bold = 1.0f;
+			if (!session_02fc(session, display, display_length)
+			    || !append_news_bytes(session, news_row, news_length,
+			    error))
+				return false;
+			if (deployed_remaining < 1.0
 			    && !clearance(session, true, error))
 				return false;
 		}
-	}
-	if (session->player.fighters < 1.0f
-	    && session->player.shields < 1.0f) {
-		if (!session_sound(session, 3.0f,
-		    "fatal destruction sound", error))
-			return false;
-		return kill_player(session, session->player_record,
-		    old_owner, error);
 	}
 	{
 		float dominated_draw;
@@ -3224,11 +4738,19 @@ attack_deployed_committed(struct yt_session *session,
 		if (!random_value(session, &dominated_draw, error))
 			return false;
 	}
-	if (sector->fighters == 0.0f && old_owner == -1.0f
-	    && session->player.sector
-	    == session->door->game.config.headquarters
-	    && !xannor_victory(session, error))
-		return false;
+	if (deployed_remaining <= 0.0) {
+		uint8_t defeated[160];
+		size_t defeated_length;
+
+		if (!yt_hostile_defeated_row(ship_fighters,
+		    defeated, sizeof(defeated), &defeated_length)
+		    || !session_02fc(session, defeated, defeated_length))
+			return false;
+		if (old_owner == -1.0f && session->player.sector
+		    == session->door->game.config.headquarters
+		    && !xannor_victory(session, error))
+			return false;
+	}
 	return true;
 }
 
@@ -3236,86 +4758,262 @@ static bool
 attack_deployed(struct yt_session *session, struct yt_sector *sector,
     struct yt_error *error)
 {
-	double commitment;
-	bool blank;
+	static const uint8_t heading[] = "<Attack>";
+	static const uint8_t prompt[] = "Attack with how many fighters? ";
+	static const uint8_t none[] = "You don't have any fighters!";
+	char response[160];
+	char available[64];
+	char row[128];
+	struct qb_val_result parsed;
+	enum qb_mbf_status status;
+	enum yt_hostile_attack_admission admission;
 
-	if (!session_value(session, "How many fighters do you wish to commit? ",
-	    &commitment, &blank))
+	if (!session_02fc(session, heading, sizeof(heading) - 1U))
 		return false;
-	if (blank || commitment < 1.0)
+	admission = yt_hostile_attack_admit(session->player.fighters, 0.0f);
+	if (admission == YT_HOSTILE_ATTACK_NO_FIGHTERS)
+		return session_02db(session, none, sizeof(none) - 1U,
+		    "hostile Attack no fighters", error);
+	if (!session_031f(session, prompt, sizeof(prompt) - 1U,
+	    "hostile Attack amount prompt", error)
+	    || !session_036f(session, response, sizeof(response)))
+		return false;
+	if (response[0] == '\0') {
+		memset(&parsed, 0, sizeof(parsed));
+		parsed.valid = true;
+	}
+	else
+		parsed = qb_val(response);
+	if (!parsed.valid || parsed.overflow) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation, sizeof(error->operation),
+			    "%s", "attack:VAL");
+		}
+		return false;
+	}
+	session->attack_commitment = (float)parsed.value;
+	status = qb_mbf32_encode(session->attack_commitment,
+	    session->attack_commitment_raw);
+	if (status == QB_MBF_OVERFLOW) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation, sizeof(error->operation),
+			    "%s", "attack:amount-csng");
+		}
+		return false;
+	}
+	session->attack_commitment = qb_mbf32_decode(
+	    session->attack_commitment_raw);
+	admission = yt_hostile_attack_admit(session->player.fighters,
+	    session->attack_commitment);
+	if (admission == YT_HOSTILE_ATTACK_TOO_MANY) {
+		if (qb_str_double(available, sizeof(available),
+		    (double)session->player.fighters) < 0
+		    || snprintf(row, sizeof(row), "You only have%s!", available) < 0)
+			return false;
+		return session_02db(session, (const uint8_t *)row, strlen(row),
+		    "hostile Attack too many", error);
+	}
+	if (admission == YT_HOSTILE_ATTACK_LESS_THAN_ONE)
 		return true;
-	return attack_deployed_committed(session, sector, commitment, true,
-	    error);
+	return attack_deployed_committed(session, sector,
+	    (double)session->attack_commitment, true, error);
+}
+
+static bool
+bribe_forced_attack(struct yt_session *session, struct yt_sector *sector,
+    bool mercenary_fatal_gate, bool *direct_hostile_menu,
+    struct yt_error *error)
+{
+	enum qb_mbf_status conversion;
+	enum yt_bribe_forced_admission admission;
+	double cached_ship_fighters = (double)session->player.fighters;
+
+	*direct_hostile_menu = false;
+	session->attack_commitment = (float)cached_ship_fighters;
+	conversion = qb_mbf32_encode(session->attack_commitment,
+	    session->attack_commitment_raw);
+	if (conversion == QB_MBF_OVERFLOW) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation, sizeof(error->operation),
+			    "%s", "bribe:commitment-csng");
+		}
+		return false;
+	}
+	session->attack_commitment = qb_mbf32_decode(
+	    session->attack_commitment_raw);
+	admission = yt_bribe_forced_admit(cached_ship_fighters,
+	    session->player.shields, mercenary_fatal_gate,
+	    session->attack_commitment);
+	if (admission == YT_BRIBE_FORCED_FATAL)
+		return common_fatal_self(session, error);
+	if (admission == YT_BRIBE_FORCED_LESS_THAN_ONE) {
+		*direct_hostile_menu = true;
+		return true;
+	}
+	return attack_deployed_committed(session, sector,
+	    (double)session->attack_commitment, true, error);
 }
 
 static bool
 bribe_deployed(struct yt_session *session, struct yt_sector *sector,
+    bool *direct_hostile_menu, bool *forced_attack,
     struct yt_error *error)
 {
 	float owner = sector->fighter_owner;
 	float first;
 	float second;
 	bool force_attack;
+	char row[256];
+
+	if (direct_hostile_menu == NULL || forced_attack == NULL)
+		return false;
+	*direct_hostile_menu = false;
+	*forced_attack = false;
 
 	if (owner != -2.0f) {
+		(void)snprintf(row, sizeof(row),
+		    "We don't accept no Bribes %s!",
+		    session->door->identity.real_first);
+		if (!session_02db(session, (const uint8_t *)row, strlen(row),
+		    "ordinary Bribe refusal", error))
+			return false;
 		if (!random_value(session, &first, error))
 			return false;
-		force_attack = owner == -1.0f
-		    || (sector->fighters > session->player.fighters
-		    && first < 0.33000001311302185f);
-		if (!force_attack) {
-			yt_out_line("They refuse your offer.");
+		force_attack = yt_bribe_ordinary_forces(owner, sector->fighters,
+		    session->player.fighters, first);
+		if (!force_attack)
 			return true;
-		}
-		yt_out_line("They refuse your offer and attack!");
-		return attack_deployed_committed(session, sector,
-		    session->player.fighters, false, error);
+		*forced_attack = true;
+		return bribe_forced_attack(session, sector, false,
+		    direct_hostile_menu, error);
 	}
-	if (sector->planet != 0.0f) {
-		yt_out_line("The Mercenaries refuse your offer.");
-		return true;
+	if (qb_mbf32_truth(sector->record.bytes + YT_F93)) {
+		(void)snprintf(row, sizeof(row),
+		    "Scram %s, This planet is OURS!",
+		    session->door->identity.real_first);
+		return session_02db(session, (const uint8_t *)row, strlen(row),
+		    "Mercenary planet refusal", error);
 	}
 	if (!random_value(session, &first, error)
 	    || !random_value(session, &second, error))
 		return false;
-	force_attack = first < 0.05000000074505806f
-	    || (session->player.fighters < sector->fighters
-	    && second > 0.8999999761581421f)
-	    || session->mercenaries_hurt;
-	if (!force_attack) {
-		double offer;
-		bool blank;
-		float threshold;
-
-		if (!session_value(session, "How many credits do you offer? ",
-		    &offer, &blank))
+	force_attack = yt_bribe_mercenary_forces(sector->fighters,
+	    session->player.fighters, first, second, session->mercenaries_hurt);
+	if (force_attack) {
+		(void)snprintf(row, sizeof(row),
+		    "We just want your miserable life %s!",
+		    session->door->identity.real_first);
+		if (!session_02db(session, (const uint8_t *)row, strlen(row),
+		    "Mercenary life demand", error))
 			return false;
+		*forced_attack = true;
+		return bribe_forced_attack(session, sector, true,
+		    direct_hostile_menu, error);
+	}
+	{
+		static const uint8_t introduction_prefix[] =
+		    "We MAY join up if you pay us enough ";
+		char introduction[256];
+		char prompt[256];
+		char credits[64];
+		char response[160];
+		struct qb_val_result parsed;
+		enum qb_mbf_status conversion;
+		float offer;
+		double threshold;
+		bool above_credits;
+
+		(void)snprintf(introduction, sizeof(introduction), "%s%s!",
+		    introduction_prefix, session->door->identity.real_first);
+		if (qb_str_double(credits, sizeof(credits),
+		    (double)session->player.credits) < 0
+		    || snprintf(prompt, sizeof(prompt),
+		    "You have%s credits. How much do you offer? -+>", credits) < 0
+		    || !session_0317(session, (const uint8_t *)introduction,
+		    strlen(introduction), "Mercenary Bribe introduction", error)
+		    || !session_031f(session, (const uint8_t *)prompt, strlen(prompt),
+		    "Mercenary Bribe offer prompt", error)
+		    || !session_036f(session, response, sizeof(response)))
+			return false;
+		if (response[0] == '\0')
+			return true;
+		parsed = qb_val(response);
+		if (!parsed.valid || parsed.overflow) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				(void)snprintf(error->operation,
+				    sizeof(error->operation), "%s", "bribe:VAL");
+			}
+			return false;
+		}
+		offer = (float)parsed.value;
+		{
+			uint8_t raw_offer[4];
+
+			conversion = qb_mbf32_encode(offer, raw_offer);
+			if (conversion == QB_MBF_OVERFLOW) {
+				if (error != NULL) {
+					error->status = YT_RANGE;
+					(void)snprintf(error->operation,
+					    sizeof(error->operation), "%s",
+					    "bribe:offer-csng");
+				}
+				return false;
+			}
+			offer = qb_mbf32_decode(raw_offer);
+		}
+		above_credits = (double)offer > (double)session->player.credits;
 		if (!random_value(session, &first, error))
 			return false;
-		threshold = single_mul(sector->fighters,
-		    single_add(1.0f, single_mul(2.0f, first)));
-		if (!blank && offer <= (double)session->player.credits
-		    && offer >= (double)threshold) {
-			yt_out_line("Good Deal! We join up with you!");
+		threshold = yt_bribe_offer_threshold(sector->fighters, first);
+		if (!above_credits
+		    && yt_bribe_offer_accepted(offer, session->player.credits,
+		    threshold)) {
+			struct yt_sector persisted;
+			struct yt_player player_overlay;
+			float cached_defenders = sector->fighters;
+
+			if (!session_02db(session,
+			    (const uint8_t *)"Good Deal! We join up with you!",
+			    strlen("Good Deal! We join up with you!"),
+			    "accepted Mercenary Bribe", error))
+				return false;
 			if (!session_sound(session, 1.0f,
 			    "accepted bribe sound", error))
 				return false;
-			session->player.fighters = single_add(
-			    session->player.fighters, sector->fighters);
-			session->player.credits = single_sub(
-			    session->player.credits, (float)offer);
-			sector->fighters = 0.0f;
-			sector->fighter_owner = 0.0f;
-			if (!yt_game_write_sector(&session->door->game,
-			    (int)session->player.sector, sector, error)
-			    || !write_player(session, error))
+			if (!yt_game_read_sector(&session->door->game,
+			    (int)session->player.sector, &persisted, error))
+				return false;
+			yt_bribe_sector_overlay(&persisted);
+			if (!yt_database_write(&session->door->game.database,
+			    (size_t)yt_sector_basic_record(
+			    &session->door->game.config,
+			    (int)session->player.sector), &persisted.record, error)
+			    || !reload_player(session, error))
+				return false;
+			player_overlay = session->player;
+			yt_bribe_player_overlay(&player_overlay, (float)double_add(
+			    (double)session->player.fighters,
+			    (double)cached_defenders), (float)double_sub(
+			    (double)session->player.credits, (double)offer));
+			if (!yt_database_write(&session->door->game.database,
+			    (size_t)session->player_record,
+			    &player_overlay.record, error))
 				return false;
 			return true;
 		}
 	}
-	yt_out_line("The Mercenaries reject your offer and attack!");
-	return attack_deployed_committed(session, sector,
-	    session->player.fighters, false, error);
+	(void)snprintf(row, sizeof(row), "You insult us %s! Prepare to DIE!",
+	    session->door->identity.real_first);
+	if (!session_02db(session, (const uint8_t *)row, strlen(row),
+	    "Mercenary rejected offer", error))
+		return false;
+	*forced_attack = true;
+	return bribe_forced_attack(session, sector, true,
+	    direct_hostile_menu, error);
 }
 
 static bool
@@ -3338,160 +5036,366 @@ shrink_three(struct yt_session *session, float initial, float *result,
 
 static bool
 mine_stock_loss(struct yt_session *session, float batch, float *stock,
-    struct yt_error *error)
+    float *lost, struct yt_error *error)
 {
 	float loss;
 
-	if (*stock <= 0.0f)
+	if (*stock == 0.0f) {
+		*lost = 0.0f;
 		return true;
+	}
 	if (!shrink_three(session, single_mul(batch, *stock), &loss, error))
 		return false;
 	if (loss > *stock)
 		loss = *stock;
 	*stock = single_sub(*stock, loss);
+	*lost = loss;
 	return true;
 }
 
 static bool
 mine_encounter(struct yt_session *session, struct yt_error *error)
 {
-	int current = (int)session->player.sector;
+	float current_sector = session->player.sector;
+	bool overflow;
+	int current = (int)qb_cint_mode((double)current_sector,
+	    session->presentation.sound.conversion_mode, &overflow);
 	struct yt_sector sector;
-	char number[64];
-	char news[300];
+	uint8_t row[300];
+	size_t row_length;
+	size_t player_name_length;
+	static const uint8_t warning[] = "** Sector is Mined!! **";
+	static const uint8_t shields_destroyed[] = "Shields disintegrated!";
+	static const uint8_t scanner_destroyed[] =
+	    "Danger scanner destroyed!";
 
-	if (!yt_game_read_sector(&session->door->game, current, &sector,
-	    error))
+	if (overflow) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation, sizeof(error->operation),
+			    "%s", "sector mine sector record CINT");
+		}
 		return false;
-	if (sector.mines <= 0.0f)
-		return true;
-	yt_out_line("");
-	yt_out_line("** Sector is Mined!! **");
+	}
+
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "sector mine entry blank", error))
+		return false;
+	session->presentation.blink = 1.0f;
+	if (!session_present_text(session, warning, sizeof(warning) - 1U,
+	    SESSION_PRESENT_LINE, "sector mine warning", error))
+		return false;
 	if (!session_sound(session, 5.0f,
 	    "sector mine warning sound", error))
 		return false;
-	qb_str_double(number, sizeof(number), session->player.sector);
-	snprintf(news, sizeof(news), "%s hit sector mines in sector%s!",
-	    session->player.name, number);
-	if (!append_news(session, news, error))
+	if (!reload_player(session, error)
+	    || !port_report_length(session, session->player.name_length,
+	    YT_TEXT_FIELD_SIZE, &player_name_length,
+	    "sector mine player name length", error)
+	    || !yt_sector_mine_entry_news(session->player.record.bytes,
+	    player_name_length, current_sector, row, sizeof(row),
+	    &row_length)
+	    || !append_news_bytes(session, row, row_length, error))
 		return false;
-	while (sector.mines > 0.0f) {
-		float before = sector.mines;
-		float batch = before > 19.0f
-		    ? floorf(single_div(before, 10.0f)) : 1.0f;
+	for (;;) {
+		struct yt_player working;
+		struct yt_player persisted;
+		unsigned touched = 0U;
+		float saved_foreground;
+		float before;
+		float batch;
 		float draw;
 		float loss;
 		float empty;
 
-		sector.mines = single_sub(sector.mines, batch);
-		if (!yt_game_write_sector(&session->door->game, current, &sector,
+		if (!yt_game_read_sector(&session->door->game, current, &sector,
 		    error))
 			return false;
-		yt_outf("%.9g mines detected; struck %.9g.\r\n",
-		    (double)before, (double)batch);
-		if (session->player.shields > 0.0f) {
-			if (!random_value(session, &draw, error))
-				return false;
-			loss = single_mul(floorf(single_mul(draw, 1001.0f)),
-			    batch);
-			if (loss > session->player.shields)
-				loss = session->player.shields;
-			session->player.shields =
-			    single_sub(session->player.shields, loss);
-			if (session->player.shields == 0.0f)
-				yt_out_line("Shields disintegrated!");
-		}
-		if (session->player.danger_scanner != 0.0f) {
-			if (!random_value(session, &draw, error))
-				return false;
-			if (draw > 0.949999988079071f)
-				session->player.danger_scanner = 0.0f;
-		}
-		if (session->player.fighters > 0.0f) {
-			if (!shrink_three(session, 40000.0f * batch, &loss,
-			    error))
-				return false;
-			if (loss > session->player.fighters)
-				loss = session->player.fighters;
-			session->player.fighters =
-			    single_sub(session->player.fighters, loss);
-		}
-		if (session->player.cloak > 0.0f) {
-			if (!random_value(session, &draw, error))
-				return false;
-			loss = floorf(single_mul(single_mul(draw, batch),
-			    100.0f)) / 100.0f;
-			if (loss > session->player.cloak)
-				loss = session->player.cloak;
-			session->player.cloak =
-			    single_sub(session->player.cloak, loss);
-		}
-		if (session->player.missiles > 0.0f) {
-			if (!random_value(session, &draw, error))
-				return false;
-			loss = floorf(single_mul(draw,
-			    single_mul(batch, session->player.missiles))) + 1.0f;
-			if (loss > session->player.missiles)
-				loss = session->player.missiles;
-			session->player.missiles =
-			    single_sub(session->player.missiles, loss);
-		}
-		if (!mine_stock_loss(session, batch, &session->player.mines,
-		    error)
-		    || !mine_stock_loss(session, batch, &session->player.ore,
-		    error)
-		    || !mine_stock_loss(session, batch,
-		    &session->player.organics, error)
-		    || !mine_stock_loss(session, batch,
-		    &session->player.equipment, error))
+		before = sector.mines;
+		batch = yt_sector_mine_batch(before);
+		yt_sector_mine_sector_overlay(&sector,
+		    single_sub(before, batch));
+		if (!yt_database_write(&session->door->game.database,
+		    (size_t)yt_sector_basic_record(&session->door->game.config,
+		    current), &sector.record, error))
 			return false;
-		empty = session->player.holds - session->player.ore
-		    - session->player.organics - session->player.equipment;
-		if (empty > 0.0f) {
-			if (!shrink_three(session, empty, &loss, error))
-				return false;
-			loss = single_mul(batch, loss);
-			if (loss > empty)
-				loss = empty;
-			session->player.holds =
-			    single_sub(session->player.holds, loss);
-		}
-		if (session->player.holds < 1.0f) {
-			session->player.holds = 0.0f;
-			session->destroyed = true;
-		}
-		if (!write_player(session, error))
+		saved_foreground = session->presentation.foreground;
+		session->presentation.foreground = 3.0f;
+		session->presentation.background = 0.0f;
+		session->presentation.blink = 0.0f;
+		session->pager.foreground = 3;
+		if (!yt_sector_mine_explosion_row(before, batch, row,
+		    sizeof(row), &row_length)
+		    || !session_present_text(session, row, row_length,
+		    SESSION_PRESENT_BOLD_RAW, "sector mine explosion", error))
 			return false;
+		session->presentation.background = 1.0f;
+		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+		    "sector mine explosion terminator", error)
+		    || !reload_player(session, error))
+			return false;
+		working = session->player;
+		if (working.shields > 0.0f) {
+			if (!random_value(session, &draw, error))
+				return false;
+			working.shields = yt_sector_mine_shield_result(
+			    working.shields, batch, draw);
+			touched |= YT_SECTOR_MINE_DAMAGE_SHIELDS;
+			if (working.shields == 0.0f) {
+				session->presentation.foreground = 7.0f;
+				session->presentation.blink = 1.0f;
+				session->pager.foreground = 7;
+				if (!session_present_text(session, shields_destroyed,
+				    sizeof(shields_destroyed) - 1U,
+				    SESSION_PRESENT_BOLD_LINE,
+				    "sector mine shields destroyed", error))
+					return false;
+				session->presentation.foreground = saved_foreground;
+				session->pager.foreground = (int)saved_foreground;
+			}
+			else {
+				if (!yt_sector_mine_shields_row(working.shields, row,
+				    sizeof(row), &row_length)
+				    || !session_present_text(session, row, row_length,
+				    SESSION_PRESENT_BOLD_LINE,
+				    "sector mine shields remaining", error)
+				    || !random_value(session, &draw, error))
+					return false;
+				if (working.danger_scanner != 0.0f
+				    && draw > 0.949999988079071f) {
+					working.danger_scanner = 0.0f;
+					touched |= YT_SECTOR_MINE_DAMAGE_SCANNER;
+					session->presentation.foreground = 7.0f;
+					session->presentation.blink = 1.0f;
+					session->pager.foreground = 7;
+					if (!session_present_text(session,
+					    scanner_destroyed,
+					    sizeof(scanner_destroyed) - 1U,
+					    SESSION_PRESENT_BOLD_LINE,
+					    "sector mine scanner destroyed", error))
+						return false;
+					session->presentation.foreground =
+					    saved_foreground;
+					session->pager.foreground =
+					    (int)saved_foreground;
+				}
+			}
+		}
+		else {
+			if (working.fighters != 0.0f) {
+				if (!shrink_three(session, single_mul(40000.0f,
+				    batch), &loss, error))
+					return false;
+				if (loss > working.fighters)
+					loss = working.fighters;
+				working.fighters = single_sub(working.fighters,
+				    loss);
+				touched |= YT_SECTOR_MINE_DAMAGE_FIGHTERS;
+				if (!yt_sector_mine_loss_row(
+				    YT_SECTOR_MINE_LOSS_FIGHTERS, loss, row,
+				    sizeof(row), &row_length)
+				    || !session_present_text(session, row, row_length,
+				    SESSION_PRESENT_LINE, "sector mine fighter loss",
+				    error))
+					return false;
+			}
+			if (working.cloak != 0.0f) {
+				if (!random_value(session, &draw, error))
+					return false;
+				loss = yt_sector_mine_cloak_loss(working.cloak,
+				    batch, draw);
+				working.cloak = single_sub(working.cloak, loss);
+				touched |= YT_SECTOR_MINE_DAMAGE_CLOAK;
+				if (!yt_sector_mine_loss_row(
+				    YT_SECTOR_MINE_LOSS_CLOAK,
+				    single_mul(loss, 100.0f), row, sizeof(row),
+				    &row_length)
+				    || !session_present_text(session, row, row_length,
+				    SESSION_PRESENT_LINE, "sector mine cloak loss",
+				    error))
+					return false;
+			}
+			if (working.missiles != 0.0f) {
+				if (!random_value(session, &draw, error))
+					return false;
+				loss = yt_sector_mine_missile_loss(working.missiles,
+				    batch, draw);
+				working.missiles = single_sub(working.missiles,
+				    loss);
+				touched |= YT_SECTOR_MINE_DAMAGE_MISSILES;
+				if (!yt_sector_mine_loss_row(
+				    YT_SECTOR_MINE_LOSS_MISSILES, loss, row,
+				    sizeof(row), &row_length)
+				    || !session_present_text(session, row, row_length,
+				    SESSION_PRESENT_LINE, "sector mine missile loss",
+				    error))
+					return false;
+			}
+			if (working.danger_scanner != 0.0f) {
+				working.danger_scanner = 0.0f;
+				touched |= YT_SECTOR_MINE_DAMAGE_SCANNER;
+				session->presentation.foreground = 7.0f;
+				session->presentation.blink = 1.0f;
+				session->pager.foreground = 7;
+				if (!session_present_text(session, scanner_destroyed,
+				    sizeof(scanner_destroyed) - 1U,
+				    SESSION_PRESENT_BOLD_LINE,
+				    "sector mine scanner destroyed", error))
+					return false;
+				session->presentation.foreground = saved_foreground;
+				session->pager.foreground = (int)saved_foreground;
+			}
+#define MINE_STOCK(field, flag, kind, operation) do { \
+	if (working.field != 0.0f) { \
+		if (!mine_stock_loss(session, batch, &working.field, &loss, \
+		    error)) \
+			return false; \
+		touched |= (flag); \
+		if (!yt_sector_mine_loss_row((kind), loss, row, sizeof(row), \
+		    &row_length) || !session_present_text(session, row, \
+		    row_length, SESSION_PRESENT_LINE, (operation), error)) \
+			return false; \
+	} \
+} while (0)
+			MINE_STOCK(mines, YT_SECTOR_MINE_DAMAGE_CARRIED_MINES,
+			    YT_SECTOR_MINE_LOSS_MINES,
+			    "sector mine carried-mine loss");
+			MINE_STOCK(ore, YT_SECTOR_MINE_DAMAGE_ORE,
+			    YT_SECTOR_MINE_LOSS_ORE, "sector mine ore loss");
+			MINE_STOCK(organics, YT_SECTOR_MINE_DAMAGE_ORGANICS,
+			    YT_SECTOR_MINE_LOSS_ORGANICS,
+			    "sector mine organics loss");
+			MINE_STOCK(equipment, YT_SECTOR_MINE_DAMAGE_EQUIPMENT,
+			    YT_SECTOR_MINE_LOSS_EQUIPMENT,
+			    "sector mine equipment loss");
+#undef MINE_STOCK
+			empty = yt_sector_mine_empty_holds(&working);
+			if (empty > 0.0f) {
+				if (!shrink_three(session, empty, &loss, error))
+					return false;
+				loss = single_mul(loss, batch);
+				if (loss > empty)
+					loss = empty;
+				working.holds = single_sub(working.holds, loss);
+				if (working.holds < 1.0f) {
+					working.holds = 0.0f;
+					session->destroyed = true;
+				}
+				touched |= YT_SECTOR_MINE_DAMAGE_HOLDS;
+				if (!yt_sector_mine_loss_row(
+				    YT_SECTOR_MINE_LOSS_EMPTY_HOLDS, loss, row,
+				    sizeof(row), &row_length)
+				    || !session_present_text(session, row, row_length,
+				    SESSION_PRESENT_LINE,
+				    "sector mine empty-hold loss", error))
+					return false;
+			}
+		}
+		if (!yt_game_read_player(&session->door->game,
+		    session->player_record, &persisted, error))
+			return false;
+		yt_sector_mine_player_overlay(&persisted, &working, touched);
+		if (!yt_database_write(&session->door->game.database,
+		    (size_t)session->player_record, &persisted.record, error)
+		    || !yt_database_flush(&session->door->game.database, error))
+			return false;
+		working.record = persisted.record;
+		session->player = working;
 		if (!session_sound(session, 2.0f,
 		    "sector mine damage sound", error)
 		    || !random_value(session, &draw, error))
 			return false;
-		if (draw > 0.800000011920929f
-		    && session->player.holds < 10.0f) {
+		if (draw > 0.800000011920929f && working.holds < 10.0f) {
 			if (!emergency_warp(session, error))
 				return false;
-			break;
+			return true;
 		}
-		if (session->destroyed)
-			break;
+		if (sector.mines > 0.0f && !session->destroyed)
+			continue;
+		break;
 	}
-	qb_str_double(number, sizeof(number), session->player.shields);
-	snprintf(news, sizeof(news), "Shields reduced to%s units!", number);
-	if (!append_news(session, news, error))
+	if (!yt_sector_mine_final_news(session->player.shields, row,
+	    sizeof(row), &row_length)
+	    || !append_news_bytes(session, row, row_length, error)
+	    || !yt_game_read_sector(&session->door->game, current, &sector,
+	    error))
 		return false;
-	if (session->destroyed) {
-		if (!session_sound(session, 3.0f,
-		    "fatal destruction sound", error))
+	return true;
+}
+
+static bool
+hostile_menu_help(struct yt_session *session, struct yt_error *error)
+{
+	static const uint8_t heading[] = "<Help>";
+	static const uint8_t attack[] = "A - <A>ttack";
+	static const char *const rows[] = {
+		"B - <B>ribe Fighters",
+		"D - <D>rop a Mine",
+		"I - <I>nformation about your ship",
+		"Q - <Q>uit the game",
+		"S - Display <S>ector",
+		"T - <T>eam Menu",
+		"W - Emergency <W>arp",
+	};
+	size_t index;
+
+	if (!session_0317(session, heading, sizeof(heading) - 1U,
+	    "hostile help heading", error)
+	    || !session_0317(session, attack, sizeof(attack) - 1U,
+	    "hostile help attack row", error))
+		return false;
+	for (index = 0; index < YT_ARRAY_LEN(rows); ++index) {
+		if (!session_02fc(session, (const uint8_t *)rows[index],
+		    strlen(rows[index])))
 			return false;
-		return kill_player(session, session->player_record,
-		    (float)session->player_record, error);
 	}
 	return true;
 }
 
 static bool
+session_quit_confirm(struct yt_session *session, bool *confirmed,
+    struct yt_error *error)
+{
+	static const uint8_t heading[] = "<Quit>";
+	static const uint8_t prompt[] = "Are you sure (Y/N)? ";
+
+	if (confirmed == NULL)
+		return false;
+	*confirmed = false;
+	session->presentation.foreground = 7.0f;
+	session->pager.foreground = 7;
+	if (!session_02fc(session, heading, sizeof(heading) - 1U))
+		return false;
+	for (;;) {
+		char response[80];
+		enum yt_yes_no_answer answer;
+
+		if (!session_present_text(session, prompt, sizeof(prompt) - 1U,
+		    SESSION_PRESENT_RAW, "hostile quit prompt", error)
+		    || !session_0357(session, response, sizeof(response)))
+			return false;
+		if (!yt_input_yes_no_candidate(response, session->output_source,
+		    sizeof(session->output_source), &answer))
+			return false;
+		if (answer == YT_YES_NO_YES) {
+			*confirmed = true;
+			return true;
+		}
+		if (answer == YT_YES_NO_NO || answer == YT_YES_NO_EMPTY)
+			return true;
+		session->presentation.bold = 1.0f;
+		clear_queue(session);
+	}
+}
+
+static bool
 sector_entry(struct yt_session *session, struct yt_error *error)
 {
+	static const uint8_t hostile_warning[] =
+	    "You have to defeat the fighters before you can enter this sector.";
+	static const uint8_t hostile_prompt[] =
+	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? ";
+
 	session->mercenaries_hurt = false;
 	for (;;) {
 		struct yt_sector sector;
@@ -3500,10 +5404,11 @@ sector_entry(struct yt_session *session, struct yt_error *error)
 		if (!display_sector(session, false, error)
 		    || !reload_player(session, error))
 			return false;
-		if (session->player.sector == session->black_hole[0]
-		    || session->player.sector == session->black_hole[1]) {
-			yt_out_line("");
-			if (!session_attention(session,
+		if (yt_sector_is_black_hole(session->player.sector,
+		    session->black_hole[0], session->black_hole[1])) {
+			if (!session_present_text(session, NULL, 0,
+			    SESSION_PRESENT_LINE, "black hole leading blank", error)
+			    || !session_attention(session,
 			    "A *-BLACK HOLE-* grabs you!",
 			    "black hole attention", error))
 				return false;
@@ -3515,127 +5420,265 @@ sector_entry(struct yt_session *session, struct yt_error *error)
 		if (!yt_game_read_sector(&session->door->game,
 		    (int)session->player.sector, &sector, error))
 			return false;
-		if (sector.mines > 0.0f && !session->suppress_self_mines) {
+		if (yt_sector_mines_admitted(sector.mines,
+		    session->suppress_self_mines ? -1.0f : 0.0f)) {
 			if (!mine_encounter(session, error))
 				return false;
 			if (session->destroyed)
-				return true;
+				return common_fatal_self(session, error);
 			continue;
 		}
 		friendly = sector_force_friendly(session, &sector, error);
 		if (!friendly && error != NULL && error->status != YT_OK)
 			return false;
-		if (sector.fighters <= 0.0f || friendly)
+		if (sector.fighters == 0.0f || friendly)
 			return true;
+		if (!session_02db(session, hostile_warning,
+		    sizeof(hostile_warning) - 1U,
+		    "hostile entry warning", error))
+			return false;
 		for (;;) {
-			char command[80];
-			char upper[80];
-			const char *position;
-			const char *hostile_commands = "AQBDWT";
+			uint8_t row[160];
+			size_t row_length;
+			bool fresh_menu = true;
 
-			yt_out("Hostile forces: [A]ttack [Q]uit [B]ribe"
-			    " [D]rop mine [W]arp [T]eam [?] ");
-			if (!session_line(session, command, sizeof(command)))
+			if (!reload_player(session, error))
 				return false;
-			snprintf(upper, sizeof(upper), "%s", command);
-			qb_compat_upper(upper);
-			if (upper[0] == '\0')
-				strcpy(upper, "?");
-			if (strcmp(upper, "S") == 0) {
-				if (!display_sector(session, true, error))
-					return false;
-				continue;
+			session->presentation.foreground = 3.0f;
+			session->pager.foreground = 3;
+			if (!yt_hostile_menu_row((double)session->player.fighters,
+			    (double)sector.fighters, row, sizeof(row), &row_length)) {
+				if (error != NULL) {
+					error->status = YT_RANGE;
+					(void)snprintf(error->operation,
+					    sizeof(error->operation), "%s",
+					    "hostile fighter row");
+				}
+				return false;
 			}
-			if (strcmp(upper, "I") == 0) {
-				if (!show_ship(session, error))
+			if (!session_0317(session, row, row_length,
+			    "hostile fighter row", error))
+				return false;
+			while (fresh_menu) {
+				char response[80];
+				enum yt_hostile_menu_route route;
+
+				if (!session_031f(session, hostile_prompt,
+				    sizeof(hostile_prompt) - 1U,
+				    "hostile option prompt", error)
+				    || !session_0357(session, response,
+				    sizeof(response)))
 					return false;
-				continue;
-			}
-			if (strcmp(upper, "?") == 0) {
-				yt_out_line("A Q B D W T S I ?");
-				continue;
-			}
-			position = strstr(hostile_commands, upper);
-			if (position == NULL) {
-				yt_out_line("Invalid command.");
-				continue;
-			}
-			switch ((int)(position - hostile_commands)) {
-			case 0:
-				if (!attack_deployed(session, &sector, error))
+				if (response[0] == '\0')
+					(void)snprintf(response, sizeof(response), "%s", "?");
+				route = yt_hostile_menu_dispatch(response);
+				switch (route) {
+				case YT_HOSTILE_MENU_HELP:
+					if (!hostile_menu_help(session, error))
+						return false;
+					fresh_menu = false;
+					break;
+				case YT_HOSTILE_MENU_SECTOR:
+					goto reenter_sector;
+				case YT_HOSTILE_MENU_INFO:
+					if (!show_ship(session, error))
+						return false;
+					fresh_menu = false;
+					break;
+				case YT_HOSTILE_MENU_INVALID:
+					if (!session_02db(session,
+					    (const uint8_t *)"Invalid command.",
+					    strlen("Invalid command."),
+					    "hostile invalid command", error)
+					    || !session_present_text(session, NULL, 0,
+					    SESSION_PRESENT_LINE,
+					    "hostile invalid trailing blank", error))
+						return false;
+					break;
+				case YT_HOSTILE_MENU_ATTACK:
+					if (!attack_deployed(session, &sector, error))
+						return false;
+					if (session->destroyed)
+						return true;
+					if (sector.fighters <= 0.0f) {
+						session->presentation.foreground = 1.0f;
+						session->pager.foreground = 1;
+						if (!display_sector(session, false, error))
+							return false;
+						return true;
+					}
+					fresh_menu = false;
+					break;
+				case YT_HOSTILE_MENU_QUIT:
+				{
+					bool confirmed;
+
+					if (!session_quit_confirm(session, &confirmed,
+					    error))
+						return false;
+					if (!confirmed) {
+						fresh_menu = false;
+						break;
+					}
+					if (!quit_session(session, error))
+						return false;
+					session->running = false;
+					session->terminated = true;
 					return false;
-				if (sector.fighters <= 0.0f)
-					return true;
-				break;
-			case 1:
-				session->running = false;
-				return true;
-			case 2:
-				if (!bribe_deployed(session, &sector, error))
-					return false;
-				break;
-			case 3:
-				session->suppress_self_mines = true;
-				return true;
-			case 4:
-				if (!emergency_warp(session, error))
-					return false;
-				break;
-			case 5:
-				return true;
-			default:
-				break;
+				}
+				case YT_HOSTILE_MENU_BRIBE:
+				{
+					bool direct_hostile_menu;
+					bool forced_attack;
+
+					if (!bribe_deployed(session, &sector,
+					    &direct_hostile_menu, &forced_attack, error))
+						return false;
+					if (session->destroyed)
+						return true;
+					if (direct_hostile_menu) {
+						fresh_menu = false;
+						break;
+					}
+					if (forced_attack) {
+						if (sector.fighters <= 0.0f) {
+							session->presentation.foreground = 1.0f;
+							session->pager.foreground = 1;
+							if (!display_sector(session, false, error))
+								return false;
+							return true;
+						}
+						fresh_menu = false;
+						break;
+					}
+					goto reenter_sector;
+				}
+				case YT_HOSTILE_MENU_MINE:
+					if (!command_mines(session, error))
+						return false;
+					goto reenter_sector;
+				case YT_HOSTILE_MENU_WARP:
+					if (!direct_emergency_warp(session, error))
+						return false;
+					goto reenter_sector;
+				case YT_HOSTILE_MENU_TEAM:
+					if (!command_team(session, error))
+						return false;
+					goto reenter_sector;
+				}
 			}
-			break;
 		}
+
+reenter_sector:
+		continue;
 	}
 }
 
 static bool
 command_fighters(struct yt_session *session, struct yt_error *error)
 {
+	static const uint8_t title[] = "<Drop/Take Fighters>";
+	static const uint8_t union_refusal[] =
+	    "You can't leave fighters in the Union (sectors 1-7)";
+	static const uint8_t foreign_refusal[] =
+	    "There are already fighters in this sector!";
+	static const uint8_t prompt[] =
+	    "Defend this sector with how many? ";
+	static const uint8_t insufficient[] = "You don't have that many!";
 	struct yt_sector sector;
-	double value;
-	bool blank;
+	struct qb_val_result parsed;
+	enum qb_mbf_status conversion;
+	uint8_t desired_raw[4];
+	char response[160];
+	char number[64];
+	char row[160];
+	double available;
 	float desired;
 	float delta;
 	float remaining;
 
+	if (!session_02fc(session, title, sizeof(title) - 1U)
+	    || !reload_player(session, error))
+		return false;
 	if (session->player.sector < 8.0f) {
-		yt_out_line("Fighters may not be deployed in Union sectors.");
-		return true;
+		return session_02db(session, union_refusal,
+		    sizeof(union_refusal) - 1U, "fighter Union refusal", error);
 	}
 	if (!yt_game_read_sector(&session->door->game,
 	    (int)session->player.sector, &sector, error))
 		return false;
 	if (sector.fighters > 0.0f
 	    && sector.fighter_owner != (float)session->player_record) {
-		yt_out_line("Those fighters are not yours.");
-		return true;
+		return session_02db(session, foreign_refusal,
+		    sizeof(foreign_refusal) - 1U,
+		    "fighter foreign-force refusal", error);
 	}
-	yt_outf("You have %.15g fighters available.\r\n",
-	    (double)sector.fighters + (double)session->player.fighters);
-	if (!session_value(session,
-	    "How many fighters do you want in this sector? ", &value, &blank))
+	available = double_add((double)sector.fighters,
+	    (double)session->player.fighters);
+	if (qb_str_double(number, sizeof(number), available) < 0
+	    || snprintf(row, sizeof(row), "You have%s fighters available.",
+	    number) < 0
+	    || !session_02fc(session, (const uint8_t *)row, strlen(row))
+	    || !session_031f(session, prompt, sizeof(prompt) - 1U,
+	    "fighter desired-count prompt", error)
+	    || !session_036f(session, response, sizeof(response)))
 		return false;
-	if (blank)
+	if (response[0] == '\0')
 		return true;
-	desired = (float)floor(value);
+	parsed = qb_val(response);
+	if (parsed.overflow) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation, sizeof(error->operation),
+			    "%s", "fighter desired-count VAL");
+		}
+		return false;
+	}
+	desired = (float)floor(parsed.valid ? parsed.value : 0.0);
+	conversion = qb_mbf32_encode(desired, desired_raw);
+	if (conversion == QB_MBF_OVERFLOW) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation, sizeof(error->operation),
+			    "%s", "fighter desired-count CSNG");
+		}
+		return false;
+	}
+	desired = qb_mbf32_decode(desired_raw);
 	if (desired < 0.0f)
 		return true;
 	delta = single_sub(sector.fighters, desired);
-	remaining = (float)((double)session->player.fighters + (double)delta);
+	remaining = (float)double_add((double)session->player.fighters,
+	    (double)delta);
 	if (remaining < 0.0f) {
-		yt_out_line("You don't have that many fighters.");
-		return true;
+		return session_02db(session, insufficient,
+		    sizeof(insufficient) - 1U, "fighter insufficient notice",
+		    error);
 	}
-	sector.fighters = desired;
-	sector.fighter_owner = (float)session->player_record;
-	if (!yt_game_write_sector(&session->door->game,
-	    (int)session->player.sector, &sector, error))
-		return false;
-	session->player.fighters = remaining;
-	if (!write_player(session, error))
+	{
+		struct yt_sector fresh_sector;
+		struct yt_player fresh_player;
+		int logical_sector = (int)session->player.sector;
+
+		if (!yt_game_read_sector(&session->door->game, logical_sector,
+		    &fresh_sector, error))
+			return false;
+		fresh_sector.fighters = desired;
+		fresh_sector.fighter_owner = (float)session->player_record;
+		if (!yt_game_write_sector(&session->door->game, logical_sector,
+		    &fresh_sector, error)
+		    || !yt_game_read_player(&session->door->game,
+		    session->player_record, &fresh_player, error))
+			return false;
+		fresh_player.fighters = remaining;
+		if (!yt_game_write_player(&session->door->game,
+		    session->player_record, &fresh_player, error))
+			return false;
+	}
+	if (qb_str_single(number, sizeof(number), remaining) < 0
+	    || snprintf(row, sizeof(row),
+	    "Done.  You have%s fighters left.", number) < 0
+	    || !session_02fc(session, (const uint8_t *)row, strlen(row)))
 		return false;
 	return session_sound(session, 4.0f,
 	    "sector fighter sound", error);
@@ -3645,39 +5688,102 @@ static bool
 command_mines(struct yt_session *session, struct yt_error *error)
 {
 	struct yt_sector sector;
-	double value;
-	bool blank;
+	struct yt_player persisted_player;
+	struct qb_val_result parsed;
+	enum qb_mbf_status conversion;
+	enum yt_sector_mine_admission admission;
+	char carried_text[64];
+	char prompt[160];
+	char response[160];
+	char sector_text[64];
+	char row[160];
+	float carried;
 	float amount;
+	uint8_t amount_raw[4];
 
-	if (session->player.mines < 0.0f) {
-		session->player.mines = 0.0f;
-		if (!write_player(session, error))
+	if (!reload_player(session, error))
+		return false;
+	carried = session->player.mines;
+	if (carried < 0.0f) {
+		persisted_player = session->player;
+		persisted_player.mines = 0.0f;
+		if (!yt_game_write_player(&session->door->game,
+		    session->player_record, &persisted_player, error)
+		    || !yt_database_flush(&session->door->game.database, error))
 			return false;
 	}
-	if (session->player.mines < 1.0f) {
-		yt_out_line("You have no sector mines.");
-		return true;
-	}
-	if (session->player.sector < 8.0f) {
-		yt_out_line("Union sectors may not be mined.");
-		return true;
-	}
-	if (!session_value(session, "How many mines do you wish to deploy? ",
-	    &value, &blank))
+	if (carried < 1.0f)
+		return session_02db(session,
+		    (const uint8_t *)"You don't HAVE any!",
+		    strlen("You don't HAVE any!"), "no sector mines", error);
+	if (session->player.sector < 8.0f)
+		return session_02db(session,
+		    (const uint8_t *)
+		    "The Union doesnt like the home 7 sectors mined!",
+		    strlen("The Union doesnt like the home 7 sectors mined!"),
+		    "Union sector mine refusal", error);
+	if (qb_str_single(carried_text, sizeof(carried_text), carried) < 0
+	    || snprintf(prompt, sizeof(prompt),
+	    "You have%s mines. Drop how many? [0] -=>", carried_text) < 0
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "sector mine prompt blank", error)
+	    || !session_031f(session, (const uint8_t *)prompt, strlen(prompt),
+	    "sector mine prompt", error)
+	    || !session_036f(session, response, sizeof(response)))
 		return false;
-	amount = (float)value;
-	if (blank || amount < 1.0f || amount > session->player.mines)
+	if (response[0] == '\0')
+		amount = 0.0f;
+	else {
+		parsed = qb_val(response);
+		if (!parsed.valid || parsed.overflow) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				(void)snprintf(error->operation,
+				    sizeof(error->operation), "%s", "mines:VAL");
+			}
+			return false;
+		}
+		amount = (float)parsed.value;
+	}
+	conversion = qb_mbf32_encode(amount, amount_raw);
+	if (conversion == QB_MBF_OVERFLOW) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation, sizeof(error->operation),
+			    "%s", "mines:amount-csng");
+		}
+		return false;
+	}
+	amount = qb_mbf32_decode(amount_raw);
+	admission = yt_sector_mine_admit(carried, amount);
+	if (admission != YT_SECTOR_MINE_ACCEPTED)
 		return true;
-	if (!yt_game_read_sector(&session->door->game,
+	session->suppress_self_mines = true;
+	persisted_player = session->player;
+	persisted_player.mines = single_sub(carried, amount);
+	if (!yt_game_write_player(&session->door->game,
+	    session->player_record, &persisted_player, error)
+	    || !yt_database_flush(&session->door->game.database, error)
+	    || !yt_game_read_sector(&session->door->game,
 	    (int)session->player.sector, &sector, error))
-		return false;
-	session->player.mines =
-	    single_sub(session->player.mines, amount);
-	if (!write_player(session, error))
 		return false;
 	sector.mines = single_add(sector.mines, amount);
 	if (!yt_game_write_sector(&session->door->game,
-	    (int)session->player.sector, &sector, error))
+	    (int)session->player.sector, &sector, error)
+	    || !yt_database_flush(&session->door->game.database, error))
+		return false;
+	session->presentation.foreground = 6.0f;
+	session->pager.foreground = 6;
+	if (qb_str_single(sector_text, sizeof(sector_text),
+	    session->player.sector) < 0
+	    || snprintf(row, sizeof(row), "Sector%s is now mined!",
+	    sector_text) < 0
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "sector mine success blank", error))
+		return false;
+	session->presentation.bold = 1.0f;
+	session->presentation.blink = 1.0f;
+	if (!session_02fc(session, (const uint8_t *)row, strlen(row)))
 		return false;
 	return session_sound(session, 4.0f,
 	    "sector mine sound", error);
@@ -3730,13 +5836,16 @@ port_report_right(char *dest, size_t size, const char *source, size_t width)
 }
 
 static bool
-port_owner_row(struct yt_session *session, const struct yt_port *port,
-    struct yt_error *error)
+port_owner_row_capture(struct yt_session *session, const struct yt_port *port,
+    uint8_t *captured_name, size_t captured_capacity,
+    size_t *captured_length, struct yt_error *error)
 {
 	static const uint8_t prefix[] = "This port is owned by: ";
 	uint8_t row[256];
 	size_t length = 0;
 
+	if (captured_length != NULL)
+		*captured_length = 0U;
 	if (port->owner <= 1.0f)
 		return true;
 	memcpy(row + length, prefix, sizeof(prefix) - 1U);
@@ -3771,6 +5880,15 @@ port_owner_row(struct yt_session *session, const struct yt_port *port,
 			return false;
 		memcpy(row + length, owner.record.bytes, name_length);
 		length += name_length;
+		if (captured_length != NULL) {
+			if (name_length > captured_capacity
+			    || (name_length != 0U && captured_name == NULL))
+				return port_report_failure(error,
+				    "port owner captured name");
+			if (name_length != 0U)
+				memcpy(captured_name, owner.record.bytes, name_length);
+			*captured_length = name_length;
+		}
 	}
 	return session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "port owner leading blank", error)
@@ -3779,9 +5897,17 @@ port_owner_row(struct yt_session *session, const struct yt_port *port,
 }
 
 static bool
-port_report(struct yt_session *session, int logical_port,
+port_owner_row(struct yt_session *session, const struct yt_port *port,
+    struct yt_error *error)
+{
+	return port_owner_row_capture(session, port, NULL, 0U, NULL, error);
+}
+
+static bool
+port_report_capture(struct yt_session *session, int logical_port,
     const struct yt_port *port, const float prices[3],
-    const double quantities[3], struct yt_error *error)
+    const double quantities[3], struct yt_port *terminal_port,
+    struct yt_error *error)
 {
 	static const char *commodity[3] = {
 		"Ore..........", "Organics.....", "Equipment...."
@@ -3878,176 +6004,694 @@ port_report(struct yt_session *session, int logical_port,
 	}
 	session->pager.foreground = 3;
 	session->presentation.foreground = 3.0f;
+	if (terminal_port != NULL)
+		*terminal_port = final_port;
 	return true;
 }
 
 static bool
-trade_commodity(struct yt_session *session, struct yt_port *port,
-    int logical_port, size_t commodity, float price,
-    struct yt_error *error)
+port_report(struct yt_session *session, int logical_port,
+    const struct yt_port *port, const float prices[3],
+    const double quantities[3], struct yt_error *error)
 {
-	static const char *names[3] = {"Ore", "Organics", "Equipment"};
-	float *hold[3] = {
-		&session->player.ore,
-		&session->player.organics,
-		&session->player.equipment
-	};
-	bool sells = floorf(port->factor[commodity]) > 0.0f;
-	float free_holds = session->player.holds - session->player.ore
-	    - session->player.organics - session->player.equipment;
-	float maximum;
-	char line[80];
-	float quantity;
-	float total;
-	bool agreed;
-
-	if (sells) {
-		maximum = free_holds;
-		if (floorf(port->stock[commodity]) < maximum)
-			maximum = floorf(port->stock[commodity]);
-		if (floorf(single_mul(price, maximum))
-		    > session->player.credits) {
-			float affordable =
-			    (float)floor((double)session->player.credits
-			    / (double)price);
-			if (affordable < maximum)
-				maximum = affordable;
-		}
-	}
-	else {
-		maximum = floorf(port->stock[commodity]);
-		if (floorf(*hold[commodity]) < maximum)
-			maximum = floorf(*hold[commodity]);
-	}
-	if (maximum == 0.0f)
-		return true;
-	for (;;) {
-		yt_outf("Credits: %.9g  Free Holds: %.9g\r\n",
-		    (double)session->player.credits, (double)free_holds);
-		yt_outf("How many holds of %s do you want to %s [%.9g ]? ",
-		    names[commodity], sells ? "buy" : "sell",
-		    (double)maximum);
-		if (!session_line(session, line, sizeof(line)))
-			return false;
-		qb_compat_upper(line);
-		if (strlen(line) > 4U)
-			continue;
-		quantity = line[0] == '\0' ? maximum
-		    : (float)floor(qb_val(line).value);
-		if (quantity < 1.0f)
-			return true;
-		if ((double)quantity > (double)port->stock[commodity]) {
-			yt_out_line(sells ? "We don't have that much!"
-			    : "We don't need that much!");
-			return true;
-		}
-		if (sells && quantity > free_holds) {
-			yt_out_line("You don't have enough cargo holds.");
-			continue;
-		}
-		if (quantity > maximum) {
-			yt_out_line(sells ? "You can't afford that much!"
-			    : "You don't have that much!");
-			return true;
-		}
-		break;
-	}
-	total = floorf(single_add(single_mul(price, quantity), 0.5f));
-	yt_outf("Agreed, %.9g units.  The port will %s them for %.9g.\r\n",
-	    (double)quantity, sells ? "sell" : "buy", (double)total);
-	if (!session_yes_no(session, "Do you agree? [Y/n] ", true, &agreed))
-		return false;
-	if (!agreed) {
-		yt_out_line("Never mind!");
-		return true;
-	}
-	{
-		float direction = port->factor[commodity] > 0.0f ? 1.0f
-		    : port->factor[commodity] < 0.0f ? -1.0f : 0.0f;
-		float credit_delta = -single_mul(total, direction);
-
-		session->player.credits = floorf(single_add(
-		    session->player.credits, credit_delta));
-		*hold[commodity] = single_add(*hold[commodity],
-		    single_mul(quantity, direction));
-		port->stock[commodity] =
-		    single_sub(port->stock[commodity], quantity);
-		if (sells && port->owner != 0.0f) {
-			float receipt = total;
-
-			if (port->owner == (float)session->player_record)
-				receipt = floorf(single_mul(
-				    0.009999999776482582f, total));
-			port->treasury =
-			    single_add(port->treasury, receipt);
-		}
-	}
-	if (!write_player(session, error))
-		return false;
-	return yt_game_write_port(&session->door->game, logical_port, port,
-	    error);
+	return port_report_capture(session, logical_port, port, prices,
+	    quantities, NULL, error);
 }
 
 static bool
+trade_commodity(struct yt_session *session, const struct yt_port *cached_port,
+    int logical_port, size_t commodity, float price, double cached_quantity,
+    bool *prompt_reached, struct yt_error *error)
+{
+	static const char *const names[3] = {"Ore", "Organics", "Equipment"};
+	static const uint8_t confirmation[] = "Do you agree? [Y/n] ";
+	static const uint8_t never_mind[] = "Never mind!";
+	static const uint8_t yours[] = "It's Yours!";
+	static const uint8_t take[] = "We'll take them!";
+	struct qb_val_result parsed;
+	enum yt_yes_no_answer answer;
+	double displayed_hold;
+	double credits;
+	double free_double;
+	float free_holds;
+	float maximum;
+	float quantity;
+	float total;
+	bool port_sells;
+	char number_one[64];
+	char number_two[64];
+	char row[256];
+	char response[80];
+
+	if (!reload_player(session, error))
+		return false;
+	switch (commodity) {
+	case 0:
+		displayed_hold = (double)session->player.ore;
+		break;
+	case 1:
+		displayed_hold = (double)session->player.organics;
+		break;
+	case 2:
+		displayed_hold = (double)session->player.equipment;
+		break;
+	default:
+		return false;
+	}
+	credits = (double)session->player.credits;
+	free_double = double_sub(
+	    double_sub(double_sub((double)session->player.holds,
+	    (double)session->player.ore), (double)session->player.organics),
+	    (double)session->player.equipment);
+	free_holds = (float)free_double;
+	port_sells = floorf(cached_port->factor[commodity]) > 0.0f;
+	if (port_sells) {
+		float required;
+
+		maximum = free_holds;
+		if ((double)maximum > floor(cached_quantity))
+			maximum = (float)floor(cached_quantity);
+		required = floorf(single_mul(price, maximum));
+		if ((double)required > credits)
+			maximum = (float)floor(credits / (double)price);
+	}
+	else {
+		maximum = (float)floor(cached_quantity);
+		if ((double)maximum > floor(displayed_hold))
+			maximum = (float)floor(displayed_hold);
+	}
+	if (maximum == 0.0f)
+		return true;
+
+	if (qb_str_double(number_one, sizeof(number_one), credits) < 0
+	    || qb_str_single(number_two, sizeof(number_two), free_holds) < 0
+	    || snprintf(row, sizeof(row),
+	    "You have%s credits and%s empty cargo holds.",
+	    number_one, number_two) < 0
+	    || !session_0317(session, (const uint8_t *)row, strlen(row),
+	    "commodity trade player status", error)
+	    || qb_str_double(number_one, sizeof(number_one),
+	    floor(cached_quantity)) < 0
+	    || qb_str_double(number_two, sizeof(number_two), displayed_hold) < 0
+	    || snprintf(row, sizeof(row),
+	    "We are %sing up to%s.  You have%s in your holds.",
+	    port_sells ? "sell" : "buy", number_one, number_two) < 0
+	    || !session_0317(session, (const uint8_t *)row, strlen(row),
+	    "commodity trade market status", error))
+		return false;
+
+	for (;;) {
+		if (qb_str_single(number_one, sizeof(number_one), maximum) < 0
+		    || snprintf(row, sizeof(row),
+		    "How many holds of %s do you want to %s [%s ]? ",
+		    names[commodity], port_sells ? "buy" : "sell",
+		    number_one) < 0)
+			return false;
+		if (prompt_reached != NULL)
+			*prompt_reached = true;
+		if (!session_031f(session, (const uint8_t *)row, strlen(row),
+		    "commodity trade quantity prompt", error)
+		    || !session_0357(session, response, sizeof(response)))
+			return false;
+		if (strlen(response) > 4U)
+			continue;
+		if (response[0] == '\0')
+			quantity = maximum;
+		else {
+			parsed = qb_val(response);
+			if (parsed.overflow) {
+				if (error != NULL) {
+					error->status = YT_RANGE;
+					(void)snprintf(error->operation,
+					    sizeof(error->operation), "%s",
+					    "commodity trade:VAL");
+				}
+				return false;
+			}
+			quantity = parsed.valid
+			    ? (float)floor(parsed.value) : 0.0f;
+		}
+		if (quantity < 1.0f)
+			return true;
+		if ((double)quantity > cached_quantity)
+			return session_02db(session,
+			    (const uint8_t *)(port_sells
+			    ? "We don't have that much!"
+			    : "We don't need that much!"),
+			    strlen(port_sells
+			    ? "We don't have that much!"
+			    : "We don't need that much!"),
+			    "commodity trade capacity rejection", error);
+		if (port_sells && quantity > free_holds) {
+			static const uint8_t no_holds[] =
+			    "You don't have enough cargo holds.";
+
+			if (!session_02db(session, no_holds,
+			    sizeof(no_holds) - 1U,
+			    "commodity trade free-holds rejection", error)
+			    || !session_present_text(session, NULL, 0,
+			    SESSION_PRESENT_LINE,
+			    "commodity trade free-holds retry blank", error))
+				return false;
+			continue;
+		}
+		if (quantity > maximum)
+			return session_02db(session,
+			    (const uint8_t *)(port_sells
+			    ? "You can't afford that much!"
+			    : "You don't have that much!"),
+			    strlen(port_sells
+			    ? "You can't afford that much!"
+			    : "You don't have that much!"),
+			    "commodity trade maximum rejection", error);
+		if (port_sells && (double)quantity > floor(cached_quantity)) {
+			static const uint8_t many[] =
+			    "We're not selling that many.";
+
+			if (!session_02fc(session, many, sizeof(many) - 1U))
+				return false;
+			continue;
+		}
+		if (!port_sells && (double)quantity > floor(cached_quantity)) {
+			static const uint8_t many[] =
+			    "We don't want that many.";
+
+			if (!session_02db(session, many, sizeof(many) - 1U,
+			    "commodity trade buying retry", error))
+				return false;
+			continue;
+		}
+		if (!port_sells && (double)quantity > displayed_hold) {
+			static const uint8_t many[] =
+			    "You don't have that much!";
+
+			if (!session_02db(session, many, sizeof(many) - 1U,
+			    "commodity trade hold retry", error))
+				return false;
+			continue;
+		}
+		break;
+	}
+
+	total = floorf(single_add(single_mul(price, quantity), 0.5f));
+	if (qb_str_single(number_one, sizeof(number_one), quantity) < 0
+	    || snprintf(row, sizeof(row), "Agreed,%s units.", number_one) < 0
+	    || !session_02fc(session, (const uint8_t *)row, strlen(row))
+	    || qb_str_single(number_one, sizeof(number_one), total) < 0
+	    || snprintf(row, sizeof(row), "We'll %s them for%s credits.",
+	    port_sells ? "sell" : "buy", number_one) < 0
+	    || !session_0317(session, (const uint8_t *)row, strlen(row),
+	    "commodity trade offer row", error)
+	    || !session_a8d2(session, confirmation,
+	    sizeof(confirmation) - 1U, &answer, error))
+		return false;
+	if (answer == YT_YES_NO_NO)
+		return session_02fc(session, never_mind,
+		    sizeof(never_mind) - 1U);
+	if (!session_02fc(session, port_sells ? yours : take,
+	    port_sells ? sizeof(yours) - 1U : sizeof(take) - 1U))
+		return false;
+
+	{
+		float factor = cached_port->factor[commodity];
+		float direction = factor > 0.0f ? 1.0f
+		    : factor < 0.0f ? -1.0f : 0.0f;
+		float credit_delta = -single_mul(total, direction);
+
+		if (port_sells && cached_port->owner != 0.0f) {
+			struct yt_port fresh_port;
+			float receipt = total;
+
+			if (cached_port->owner == (float)session->player_record)
+				receipt = floorf(single_mul(
+				    0.009999999776482582f, total));
+			if (!yt_game_read_port(&session->door->game,
+			    logical_port, &fresh_port, error))
+				return false;
+			yt_trade_treasury_overlay(&fresh_port, receipt);
+			if (!yt_database_write(&session->door->game.database,
+			    (size_t)yt_port_basic_record(
+			    &session->door->game.config, logical_port),
+			    &fresh_port.record, error))
+				return false;
+		}
+		if (!reload_player(session, error))
+			return false;
+		yt_trade_credit_overlay(&session->player, credit_delta);
+		if (!yt_database_write(&session->door->game.database,
+		    (size_t)session->player_record, &session->player.record,
+		    error)
+		    || !reload_player(session, error))
+			return false;
+		yt_trade_holds_overlay(&session->player, commodity, quantity,
+		    direction);
+		if (!yt_database_write(&session->door->game.database,
+		    (size_t)session->player_record, &session->player.record,
+		    error))
+			return false;
+		{
+			struct yt_port fresh_port;
+
+			if (!yt_game_read_port(&session->door->game,
+			    logical_port, &fresh_port, error))
+				return false;
+			yt_trade_stock_overlay(&fresh_port, commodity,
+			    cached_quantity, quantity);
+			if (!yt_database_write(&session->door->game.database,
+			    (size_t)yt_port_basic_record(
+			    &session->door->game.config, logical_port),
+			    &fresh_port.record, error))
+				return false;
+		}
+	}
+	return true;
+}
+static bool
 command_trade(struct yt_session *session, struct yt_error *error)
 {
-	struct yt_sector sector;
+	static const uint8_t heading[] = "<Port>";
+	static const uint8_t no_port[] = "No port here!";
+	static const uint8_t docking[] = "Docking, ";
+	struct yt_sector gate_sector;
 	struct yt_port port;
+	struct yt_port selected_port;
 	float prices[3];
 	double quantities[3];
+	volatile float selected_expression;
 	int logical_port;
 	size_t commodity;
+	size_t schedule[3];
+	size_t scheduled_count;
+	size_t scheduled_index;
 	bool denied;
+	bool prompt_reached = false;
 
-	if (!yt_game_read_sector(&session->door->game,
-	    (int)session->player.sector, &sector, error))
+	if (!session_02fc(session, heading, sizeof(heading) - 1U))
 		return false;
-	if (sector.port <= 0.0f) {
-		yt_out_line("No port here!");
-		return true;
-	}
+	session->presentation.foreground = 3.0f;
+	session->pager.foreground = 3;
 	if (!fresh_no_turn_gate(session, &denied, error))
 		return false;
 	if (denied)
 		return true;
+	if (!yt_game_read_sector(&session->door->game,
+	    (int)session->player.sector, &gate_sector, error))
+		return false;
+	selected_expression = single_add(
+	    session->door->game.config.port_offset, gate_sector.port);
+	(void)selected_expression;
+	if (yt_port_link_missing(gate_sector.port))
+		return session_02db(session, no_port, sizeof(no_port) - 1U,
+		    "port docking no port", error);
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "port docking leading blank", error)
+	    || !session_031f(session, docking, sizeof(docking) - 1U,
+	    "port docking prelude", error))
+		return false;
 	if (!finalize_action(session, 1.0f, error))
 		return error == NULL || error->status == YT_OK;
-	logical_port = (int)sector.port;
+	logical_port = (int)gate_sector.port;
+	if (!yt_game_read_port(&session->door->game, logical_port,
+	    &selected_port, error))
+		return false;
+	(void)selected_port;
+	if (session->player.sector == 1.0f)
+		return earth_store(session, error);
+	{
+		struct yt_sector updater_sector;
+
+		if (!yt_game_read_sector(&session->door->game,
+		    (int)session->player.sector, &updater_sector, error))
+			return false;
+		logical_port = (int)updater_sector.port;
+	}
 	if (!port_update(session, logical_port, &port, prices, quantities,
 	    error))
 		return false;
 	if (!port_report(session, logical_port, &port, prices, quantities,
 	    error))
 		return false;
-	for (commodity = 0; commodity < 3; ++commodity) {
+	scheduled_count = yt_port_trade_schedule(port.factor, schedule);
+	for (scheduled_index = 0; scheduled_index < scheduled_count;
+	    ++scheduled_index) {
+		commodity = schedule[scheduled_index];
 		if (!trade_commodity(session, &port, logical_port, commodity,
-		    prices[commodity], error))
+		    prices[commodity], quantities[commodity], &prompt_reached,
+		    error))
+			return false;
+	}
+	if (!prompt_reached) {
+		char refusal[256];
+
+		session->presentation.foreground = 6.0f;
+		session->pager.foreground = 6;
+		if (snprintf(refusal, sizeof(refusal),
+		    "We don't want your goods and you can't buy ours %s!",
+		    session->door->identity.real_first) < 0
+		    || !session_02db(session, (const uint8_t *)refusal,
+		    strlen(refusal), "port docking refusal", error))
+			return false;
+	}
+	if (!reload_player(session, error))
+		return false;
+	{
+		char credits[64];
+		char empty[64];
+		char row[192];
+		double free_holds = double_sub(
+		    double_sub(double_sub((double)session->player.holds,
+		    (double)session->player.ore),
+		    (double)session->player.organics),
+		    (double)session->player.equipment);
+
+		if (qb_str_double(credits, sizeof(credits),
+		    (double)session->player.credits) < 0
+		    || qb_str_double(empty, sizeof(empty), free_holds) < 0
+		    || snprintf(row, sizeof(row),
+		    "You have%s credits and%s empty cargo holds.",
+		    credits, empty) < 0
+		    || !session_0317(session, (const uint8_t *)row, strlen(row),
+		    "port docking cargo status", error))
 			return false;
 	}
 	return true;
 }
 
 static bool
-earth_receipt(struct yt_session *session, float cost,
+earth_receipt(struct yt_session *session, const struct yt_port *cached_earth,
+    float cost,
     struct yt_error *error)
 {
 	struct yt_port earth;
 
+	if (!reload_player(session, error))
+		return false;
 	session->player.credits =
 	    floorf(single_sub(session->player.credits, cost));
 	if (!write_player(session, error))
 		return false;
-	if (!yt_game_read_port(&session->door->game, 1, &earth, error))
-		return false;
-	if (earth.owner != 0.0f) {
-		float receipt = earth.owner == (float)session->player_record
-		    ? floorf(single_mul(0.009999999776482582f, cost)) : cost;
+	if (cached_earth->owner != 0.0f) {
+		float receipt = yt_earth_receipt_amount(cached_earth->owner,
+		    session->player_record, cost);
 
+		if (!yt_game_read_port(&session->door->game, 1, &earth, error))
+			return false;
 		earth.treasury = single_add(earth.treasury, receipt);
 		if (!yt_game_write_port(&session->door->game, 1, &earth, error))
 			return false;
 	}
 	return true;
+}
+
+static bool
+earth_quantity_input(struct yt_session *session, const char *prompt,
+    double *value, bool *blank, struct yt_error *error)
+{
+	char line[160];
+	struct qb_val_result parsed;
+
+	if (!session_031f(session, (const uint8_t *)prompt, strlen(prompt),
+	    "Earth purchase quantity prompt", error)
+	    || !session_036f(session, line, sizeof(line)))
+		return false;
+	*blank = line[0] == '\0';
+	parsed = qb_val(line);
+	if (parsed.overflow)
+		return port_report_failure(error, "Earth purchase quantity VAL");
+	*value = parsed.valid ? parsed.value : 0.0;
+	return true;
+}
+
+static bool
+earth_credit_error(struct yt_session *session, const char *text,
+    struct yt_error *error)
+{
+	return session_02db(session, (const uint8_t *)text, strlen(text),
+	    "Earth purchase attention", error);
+}
+
+static bool
+earth_purchase_holds(struct yt_session *session,
+    const struct yt_port *cached_earth, float price, struct yt_error *error)
+{
+	static const char prompt[] = "Buy how many holds? [0]? ";
+	char amount[64];
+	char row[128];
+	double requested;
+	double affordable;
+	float quantity;
+	float cost;
+	bool blank;
+
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "Earth Holds leading blank", error))
+		return false;
+	if (session->player.holds
+	    >= session->door->game.config.maximum_holds)
+		return earth_credit_error(session, "You dont need any holds.", error);
+	if (qb_str_single(amount, sizeof(amount), single_sub(
+	    session->door->game.config.maximum_holds,
+	    session->player.holds)) < 0
+	    || snprintf(row, sizeof(row), "You need%s holds.", amount) < 0)
+		return port_report_failure(error, "Earth Holds needed row");
+	if (!session_0317(session, (const uint8_t *)row, strlen(row),
+	    "Earth Holds needed row", error))
+		return false;
+	affordable = yt_earth_affordable(session->player.credits, price);
+	if (!earth_quantity_input(session, prompt, &requested, &blank, error))
+		return false;
+	quantity = yt_earth_purchase_quantity(requested);
+	if (quantity < 1.0f)
+		return true;
+	if ((double)quantity > affordable)
+		return earth_credit_error(session,
+		    "You do not have enough credits!", error);
+	if (single_add(session->player.holds, quantity)
+	    > session->door->game.config.maximum_holds)
+		return earth_credit_error(session,
+		    "You don't need that many!", error);
+	session->player.holds = single_add(session->player.holds, quantity);
+	cost = single_mul(quantity, price);
+	return write_player(session, error)
+	    && earth_receipt(session, cached_earth, cost, error);
+}
+
+static bool
+earth_purchase_supply(struct yt_session *session,
+    const struct yt_port *cached_earth, int choice, float price,
+    struct yt_error *error)
+{
+	const char *prompt;
+	double requested;
+	double affordable;
+	float quantity;
+	float cost;
+	bool blank;
+
+	if (choice == 3)
+		prompt = "Buy how many fighters? [0]? ";
+	else if (choice == 7)
+		prompt = "Buy how many ground force units? [0]? ";
+	else
+		prompt = "Buy how much shield power? [0]? ";
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "Earth supply leading blank", error))
+		return false;
+	affordable = yt_earth_affordable(session->player.credits, price);
+	if (!earth_quantity_input(session, prompt, &requested, &blank, error))
+		return false;
+	quantity = yt_earth_purchase_quantity(requested);
+	if (quantity < 1.0f)
+		return true;
+	if ((double)quantity > affordable)
+		return earth_credit_error(session,
+		    "You do not have enough credits!", error);
+	cost = single_mul(quantity, price);
+	yt_earth_supply_overlay(&session->player, choice, quantity);
+	return write_player(session, error)
+	    && earth_receipt(session, cached_earth, cost, error);
+}
+
+static bool
+earth_purchase_cloak(struct yt_session *session,
+    const struct yt_port *cached_earth, struct yt_error *error)
+{
+	for (;;) {
+		char deficit_text[64];
+		char default_text[64];
+		char row[128];
+		char prompt[192];
+		double requested;
+		float points;
+		float deficit;
+		float default_quantity;
+		float quantity;
+		float cost;
+		bool blank;
+
+		if (!session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "Earth Cloak leading blank", error))
+			return false;
+		points = yt_earth_cloak_points(session->player.cloak);
+		deficit = single_sub(50.0f, points);
+		default_quantity = yt_earth_cloak_default(deficit,
+		    session->player.credits);
+		if (qb_str_single(deficit_text, sizeof(deficit_text), deficit) < 0
+		    || qb_str_single(default_text, sizeof(default_text),
+		    default_quantity) < 0
+		    || snprintf(row, sizeof(row),
+		    "Cloak energy is down by%s%%.", deficit_text) < 0
+		    || snprintf(prompt, sizeof(prompt),
+		    "Buy how many points of Cloak Energy? (0 -%s) [%s ] ?",
+		    deficit_text, default_text) < 0)
+			return port_report_failure(error,
+			    "Earth Cloak row formatting");
+		if (!session_b05d(session, (const uint8_t *)row, strlen(row))
+		    || !earth_quantity_input(session, prompt, &requested, &blank,
+		    error))
+			return false;
+		quantity = blank ? default_quantity
+		    : yt_earth_purchase_quantity(requested);
+		if (quantity < 1.0f)
+			return true;
+		if (single_add(points, quantity) > 50.0f) {
+			if (!earth_credit_error(session,
+			    "You can't have over 100% cloak!", error))
+				return false;
+			continue;
+		}
+		cost = single_mul(quantity, 1000.0f);
+		if (cost > session->player.credits)
+			return earth_credit_error(session,
+			    "You do not have enough credits!", error);
+		session->player.cloak = yt_earth_cloak_overlay(points, quantity);
+		return write_player(session, error)
+		    && earth_receipt(session, cached_earth, cost, error);
+	}
+}
+
+static bool
+earth_purchase_scanner(struct yt_session *session,
+    const struct yt_port *cached_earth, float price, struct yt_error *error)
+{
+	double affordable = yt_earth_affordable(session->player.credits, price);
+
+	if (session->player.danger_scanner != 0.0f)
+		return earth_credit_error(session,
+		    "You already HAVE a Danger Scanner!", error);
+	if (floor(affordable) < 1.0)
+		return earth_credit_error(session,
+		    "You cannot afford a Danger Scanner!", error);
+	session->player.danger_scanner = -1.0f;
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "Earth Scanner leading blank", error))
+		return false;
+	session->presentation.bold = 1.0f;
+	if (!session_b05d(session,
+	    (const uint8_t *)"Danger Scanner installed in your ship!",
+	    strlen("Danger Scanner installed in your ship!"))
+	    || !write_player(session, error))
+		return false;
+	return earth_receipt(session, cached_earth, price, error);
+}
+
+static bool
+earth_purchase_spies(struct yt_session *session,
+    const struct yt_port *cached_earth, float price, struct yt_error *error)
+{
+	for (;;) {
+		char active_text[64];
+		char active_row[128];
+		char quantity_prompt[96];
+		double requested;
+		double affordable;
+		float quantity_value;
+		float cost;
+		int quantity;
+		int spy_index;
+		bool blank;
+
+		if (!session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "Earth Spies leading blank", error))
+			return false;
+		affordable = yt_earth_affordable(session->player.credits, price);
+		if (session->spy_count != 0) {
+			if (qb_str_single(active_text, sizeof(active_text),
+			    (float)session->spy_count) < 0
+			    || snprintf(active_row, sizeof(active_row),
+			    "You have%s spies active already.", active_text) < 0)
+				return port_report_failure(error,
+				    "Earth Spies active row");
+			session->presentation.bold = 1.0f;
+			if (!session_02fc(session, (const uint8_t *)active_row,
+			    strlen(active_row)))
+				return false;
+		}
+		if (snprintf(quantity_prompt, sizeof(quantity_prompt),
+		    "Hire how many%s spies? [0]? ",
+		    session->spy_count != 0 ? " more" : "") < 0)
+			return port_report_failure(error,
+			    "Earth Spies quantity prompt");
+		if (!earth_quantity_input(session, quantity_prompt, &requested,
+		    &blank, error))
+			return false;
+		quantity_value = yt_earth_purchase_quantity(requested);
+		if (quantity_value < 1.0f)
+			return true;
+		if ((double)quantity_value > affordable)
+			return earth_credit_error(session,
+			    "You do not have enough credits!", error);
+		if ((float)session->spy_count + quantity_value > 3.0f) {
+			if (!earth_credit_error(session,
+			    "Max spies allowed is 3!", error))
+				return false;
+			continue;
+		}
+		quantity = (int)quantity_value;
+		cost = single_mul(quantity_value, price);
+		for (spy_index = 0; spy_index < quantity; ++spy_index) {
+			if (!session_present_text(session, NULL, 0,
+			    SESSION_PRESENT_LINE,
+			    "Earth Spy assignment blank", error))
+				return false;
+			for (;;) {
+				char number[64];
+				char prompt[128];
+				double sector_value;
+				float sector;
+				bool overflow;
+				int32_t selected;
+
+				if (qb_str_single(number, sizeof(number),
+				    (float)(session->spy_count + spy_index + 1)) < 0
+				    || snprintf(prompt, sizeof(prompt),
+				    "Start spy #%s in what sector?", number) < 0)
+					return false;
+				if (!earth_quantity_input(session, prompt,
+				    &sector_value, &blank, error))
+					return false;
+				sector = yt_earth_purchase_quantity(sector_value);
+				if (sector == 0.0f
+				    || sector > (float)sector_count(session))
+					continue;
+				selected = qb_cint(sector, &overflow);
+				if (overflow)
+					return port_report_failure(error,
+					    "Earth Spy sector CINT");
+				session->spies[session->spy_count + spy_index] =
+				    selected;
+				break;
+			}
+		}
+		session->spy_count += quantity;
+		if (!computer_spies(session, error)
+		    || !session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "spy purchase pause blank", error)
+		    || !session_press_any_key(session, false, error)
+		    || !write_player(session, error))
+			return false;
+		return earth_receipt(session, cached_earth, cost, error);
+	}
 }
 
 static bool
@@ -4062,22 +6706,26 @@ earth_anti_cloak(struct yt_session *session, float price,
 	bool reported = false;
 	int basic;
 
-	yt_out_bytes(activation, sizeof(activation) - 1U);
-	yt_out("\r\n");
-	yt_out_line("");
+	if (!session_present_text(session, activation, sizeof(activation) - 1U,
+	    SESSION_PRESENT_LINE, "anti-cloak activation row", error)
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "anti-cloak post-activation blank", error))
+		return false;
 	session_set_color(session, 2);
-	yt_out_bytes(waves, sizeof(waves) - 1U);
-	yt_out("\r\n");
-	yt_out_line("");
-	if (!session_sound(session, 2.0f,
+	if (!session_present_text(session, waves, sizeof(waves) - 1U,
+	    SESSION_PRESENT_BOLD_LINE, "anti-cloak waves row", error)
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "anti-cloak post-waves blank", error)
+	    || !session_sound(session, 2.0f,
 	    "anti-cloak activation sound", error))
 		return false;
 	session_set_color(session, 6);
 	for (basic = YT_PLAYER_FIRST; basic <= YT_PLAYER_LAST; ++basic) {
 		struct yt_player target;
-		bool overflow;
-		int name_length;
-		char row[96];
+		uint8_t stored[YT_TEXT_FIELD_SIZE];
+		uint8_t row[YT_TEXT_FIELD_SIZE + 16U];
+		size_t stored_length;
+		static const uint8_t suffix[] = " is uncloaked!";
 
 		if (session->cloak_cache[basic] <= 0.0f)
 			continue;
@@ -4087,34 +6735,35 @@ earth_anti_cloak(struct yt_session *session, float price,
 			return false;
 		if (target.killed_by != 0.0f)
 			continue;
-		name_length = (int)qb_cint(target.name_length, &overflow);
-		if (overflow || name_length < 0) {
-			if (error != NULL) {
-				error->status = YT_RANGE;
-				snprintf(error->operation,
-				    sizeof(error->operation), "%s",
-				    "anti-cloak player name length");
-			}
+		if (!yt_player_stored_name(&target, stored, &stored_length, error))
 			return false;
-		}
-		if ((size_t)name_length > strlen(target.name))
-			name_length = (int)strlen(target.name);
-		snprintf(row, sizeof(row), "%.*s is uncloaked!", name_length,
-		    target.name);
-		yt_out_line(row);
-		if (!session_sound(session, 1.0f,
+		memcpy(row, stored, stored_length);
+		memcpy(row + stored_length, suffix, sizeof(suffix) - 1U);
+		if (!session_present_text(session, row,
+		    stored_length + sizeof(suffix) - 1U,
+		    SESSION_PRESENT_BOLD_LINE, "anti-cloak target row", error)
+		    || !session_sound(session, 1.0f,
 		    "anti-cloak target sound", error))
 			return false;
 		reported = true;
 	}
 	session_set_color(session, 2);
 	if (!reported) {
-		yt_out_line("");
-		yt_out_line("Too bad noone was cloaked anyhow!");
+		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+		    "anti-cloak no-target blank", error)
+		    || !session_present_text(session,
+		    (const uint8_t *)"Too bad noone was cloaked anyhow!",
+		    strlen("Too bad noone was cloaked anyhow!"),
+		    SESSION_PRESENT_LINE, "anti-cloak no-target row", error))
+			return false;
 	}
-	yt_out_line("");
-	yt_out_line("...the effect fades.");
-	if (!session_sound(session, 5.0f,
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "anti-cloak fade blank", error)
+	    || !session_present_text(session,
+	    (const uint8_t *)"...the effect fades.",
+	    strlen("...the effect fades."), SESSION_PRESENT_BOLD_LINE,
+	    "anti-cloak fade row", error)
+	    || !session_sound(session, 5.0f,
 	    "anti-cloak fade sound", error))
 		return false;
 	if (!reload_player(session, error))
@@ -4137,40 +6786,39 @@ clearance(struct yt_session *session, bool create,
 		&session->clearance_shields,
 		&session->clearance_ground
 	};
-	static const float trigger[4] = {
-		0.7900000214576721f, 0.7900000214576721f,
-		0.8399999737739563f, 0.8899999856948853f
-	};
-	static const float maximum[4] = {
-		0.9509999752044678f, 0.9800000190734863f,
-		0.800000011920929f, 0.8999999761581421f
-	};
 	static const char *name[4] = {
-		"Cargo Holds", "Fighters", "Shields", "Ground Forces"
+		"Holds", "Fighters", "Shields", "Ground Forces"
 	};
 	bool announced = false;
 	size_t index;
 
-	yt_out_line("");
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "clearance leading blank", error))
+		return false;
 	for (index = 0; index < 4; ++index) {
 		float draw;
 
 		if (!random_value(session, &draw, error))
 			return false;
-		if (draw > trigger[index] && *discount[index] == 0.0f
-		    && create) {
+		if (yt_clearance_candidate_needed(index, draw, *discount[index],
+		    create)) {
 			if (!random_value(session, &draw, error))
 				return false;
 			*discount[index] = draw;
 		}
-		if (*discount[index] < 0.10000000149011612f
-		    || *discount[index] > maximum[index])
-			*discount[index] = 0.0f;
-		else {
-			yt_outf("Special clearance sale! The Trader's Guild is"
-			    " selling %s\r\nfor %.9g%% off!\r\n", name[index],
-			    (double)floorf(single_mul(100.0f,
-			    *discount[index])));
+		if (yt_clearance_normalize(index, discount[index])) {
+			char percent[64];
+			char row[192];
+
+			if (qb_str_single(percent, sizeof(percent),
+			    yt_clearance_percentage(*discount[index])) < 0
+			    || snprintf(row, sizeof(row),
+			    "Special clearance sale! The Trader's Guild is selling "
+			    "%s for%s%% off!", name[index], percent) < 0
+			    || !session_present_text(session, (const uint8_t *)row,
+			    strlen(row), SESSION_PRESENT_LINE,
+			    "clearance announcement", error))
+				return false;
 			announced = true;
 		}
 	}
@@ -4178,56 +6826,163 @@ clearance(struct yt_session *session, bool create,
 		if (!session_sound(session, 1.0f,
 		    "clearance sale sound", error))
 			return false;
-		yt_out_line("");
+		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+		    "clearance trailing blank", error))
+			return false;
 	}
 	return true;
 }
 
-static float
-earth_price(float base, float discount, bool subtract_shape)
+static bool
+earth_report_row(struct yt_session *session, const char *label, float price,
+    bool lottery_price, struct yt_error *error)
 {
-	if (subtract_shape)
-		return floorf(single_sub(base, single_mul(base, discount)));
-	return floorf(single_mul(base, single_sub(1.0f, discount)));
+	char price_text[64];
+	char cost[96];
+	char affordable_text[80];
+	char tail[96];
+	double affordable;
+
+	if (!session_fixed_width(session, label, 22.0f,
+	    "Earth report item field", error))
+		return false;
+	if (lottery_price)
+		snprintf(cost, sizeof(cost), "%s", "* 5");
+	else {
+		if (qb_str_single(price_text, sizeof(price_text), price) < 0
+		    || snprintf(cost, sizeof(cost), "*%s ", price_text) < 0)
+			return port_report_failure(error,
+			    "Earth report price format");
+	}
+	if (!session_fixed_width(session, cost, 9.0f,
+	    "Earth report cost field", error))
+		return false;
+	affordable = yt_earth_affordable(session->player.credits, price);
+	if (qb_str_double(affordable_text, sizeof(affordable_text),
+	    affordable) < 0
+	    || snprintf(tail, sizeof(tail), "*%s", affordable_text) < 0)
+		return port_report_failure(error,
+		    "Earth report affordability format");
+	return session_b05d(session, (const uint8_t *)tail, strlen(tail));
 }
 
 static bool
-lottery(struct yt_session *session, struct yt_error *error)
+lottery_settle(struct yt_session *session,
+    const struct yt_port *cached_earth, float cost,
+    struct yt_error *error)
+{
+	if (!session_wait(session, 3.0, "lottery caller wait", error)
+	    || !write_player(session, error))
+		return false;
+	return earth_receipt(session, cached_earth, cost, error);
+}
+
+static bool
+lottery(struct yt_session *session, const struct yt_port *cached_earth,
+    struct yt_error *error)
 {
 	char ticket[80];
+	char cached_name[sizeof(session->player.name)];
 	int winning[6];
-	bool used_winning[6] = {0};
-	bool used_ticket[6] = {0};
+	bool matched_winning[6] = {0};
 	int matches = 0;
 	int index;
 	float award = 0.0f;
 
+	memcpy(cached_name, session->player.name, sizeof(cached_name));
+	if (!reload_player(session, error))
+		return false;
 	if (session->player.credits < 5.0f) {
-		yt_out_line("You need five credits to play.");
-		return true;
+		if (!earth_credit_error(session,
+		    "You can't afford a lottery ticket!", error))
+			return false;
+		return lottery_settle(session, cached_earth, 0.0f, error);
 	}
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "lottery limiter leading blank", error))
+		return false;
 	if (session->door->game.config.lottery_plays == 0.0f) {
-		yt_out_line("The lottery is closed.");
-		return true;
+		if (!session_present_text(session,
+		    (const uint8_t *)
+		    "Sorry, The supreme ruler has banned all gambling!",
+		    strlen("Sorry, The supreme ruler has banned all gambling!"),
+		    SESSION_PRESENT_BOLD_LINE, "lottery disabled row", error))
+			return false;
+		return lottery_settle(session, cached_earth, 0.0f, error);
 	}
-	if (session->player.lottery_plays + 1.0f
-	    > session->door->game.config.lottery_plays) {
-		yt_out_line("You have played the lottery enough today.");
-		return true;
+	{
+		char limit[64];
+		char row[128];
+
+		if (qb_str_single(limit, sizeof(limit),
+		    session->door->game.config.lottery_plays) < 0
+		    || snprintf(row, sizeof(row), "You may play%s times daily.",
+		    limit) < 0
+		    || !session_present_text(session, (const uint8_t *)row,
+		    strlen(row), SESSION_PRESENT_LINE, "lottery daily limit row",
+		    error))
+			return false;
 	}
+	if (!reload_player(session, error))
+		return false;
 	session->player.lottery_plays =
 	    single_add(session->player.lottery_plays, 1.0f);
-	if (!write_player(session, error)
-	    || !clearance(session, true, error))
+	if (session->player.lottery_plays
+	    > session->door->game.config.lottery_plays) {
+		if (!session_present_text(session,
+		    (const uint8_t *)
+		    "You will be allowed to play again tomorrow.",
+		    strlen("You will be allowed to play again tomorrow."),
+		    SESSION_PRESENT_BOLD_LINE, "lottery daily reached row", error))
+			return false;
+		session->player.lottery_plays = single_sub(
+		    session->player.lottery_plays, 1.0f);
+		return lottery_settle(session, cached_earth, 0.0f, error);
+	}
+	if (!write_player(session, error))
+		return false;
+	{
+		char plays[64];
+		char row[128];
+
+		if (qb_str_single(plays, sizeof(plays),
+		    session->player.lottery_plays) < 0
+		    || snprintf(row, sizeof(row),
+		    "You've played%s times already.", plays) < 0
+		    || !session_present_text(session, (const uint8_t *)row,
+		    strlen(row), SESSION_PRESENT_LINE,
+		    "lottery already-played row", error))
+			return false;
+	}
+	if (!clearance(session, true, error))
+		return false;
+	session_set_color(session, 1);
+	session->presentation.bold = 1.0f;
+	if (!session_b05d(session,
+	    (const uint8_t *)"Welcome to the Intergalactic Pick-6 Lottery!",
+	    strlen("Welcome to the Intergalactic Pick-6 Lottery!")))
 		return false;
 	for (;;) {
 		bool valid = true;
 
-		yt_out("Enter six digits: ");
-		if (!session_line(session, ticket, sizeof(ticket)))
+		if (!session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "lottery ticket leading blank", error))
+			return false;
+		session_set_color(session, 2);
+		session->presentation.bold = 1.0f;
+		if (!session_031f(session,
+		    (const uint8_t *)
+		    "Enter a 6 digit number for the lottery computer -+>",
+		    strlen("Enter a 6 digit number for the lottery computer -+>"),
+		    "lottery ticket prompt", error)
+		    || !session_0345(session, ticket, sizeof(ticket)))
 			return false;
 		if (strlen(ticket) != 6U) {
-			yt_out_line("That's not 6 digits!");
+			if (!session_present_text(session,
+			    (const uint8_t *)"That's not 6 digits!",
+			    strlen("That's not 6 digits!"), SESSION_PRESENT_LINE,
+			    "lottery ticket length row", error))
+				return false;
 			continue;
 		}
 		for (index = 0; index < 6; ++index) {
@@ -4235,7 +6990,11 @@ lottery(struct yt_session *session, struct yt_error *error)
 				valid = false;
 		}
 		if (!valid) {
-			yt_out_line("Please enter NUMBERS only!");
+			if (!session_present_text(session,
+			    (const uint8_t *)"Please enter NUMBERS only!",
+			    strlen("Please enter NUMBERS only!"),
+			    SESSION_PRESENT_LINE, "lottery ticket digit row", error))
+				return false;
 			continue;
 		}
 		break;
@@ -4247,279 +7006,391 @@ lottery(struct yt_session *session, struct yt_error *error)
 			return false;
 		winning[index] = (int)floorf(single_mul(draw, 10.0f));
 	}
-	for (index = 0; index < 6; ++index) {
-		float time = 0.01f;
+	matches = yt_lottery_match_count(winning, ticket, matched_winning);
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "lottery winning display blank", error)
+	    || !session_present_text(session,
+	    (const uint8_t *)"The Galactic Lottery Computer picked: ",
+	    strlen("The Galactic Lottery Computer picked: "),
+	    SESSION_PRESENT_RAW, "lottery winning prefix", error))
+		return false;
+	{
+		int saved_foreground = session->pager.foreground;
 
-		while (time <= 0.10000000149011612f) {
+	for (index = 0; index < 6; ++index) {
+		int row;
+		int column;
+		int dummy;
+		uint8_t digit;
+
+		if (!session_wait(session, 0.4000000059604645,
+		    "lottery digit pre-roll wait", error))
+			return false;
+		yt_out_cursor_position(&row, &column);
+		session_set_color(session, 6);
+		for (dummy = 0; dummy < 18; ++dummy) {
 			float draw;
+			struct yt_present_result rewind;
+			enum yt_present_status status;
 
 			if (!random_value(session, &draw, error))
 				return false;
-			time = single_add(time, 0.005f);
-		}
-		yt_outf("%d", winning[index]);
-	}
-	yt_out("\r\n");
-	for (index = 0; index < 6; ++index) {
-		int candidate;
-
-		for (candidate = 0; candidate < 6; ++candidate) {
-			if (!used_winning[index] && !used_ticket[candidate]
-			    && winning[index] == ticket[candidate] - '0') {
-				used_winning[index] = true;
-				used_ticket[candidate] = true;
-				++matches;
-				break;
-			}
-		}
-	}
-	if (matches > 0) {
-		award = single_mul(powf(10.0f, (float)matches), 10.0f);
-		if (matches == 6)
-			award = single_mul(10.0f, award);
-		session->player.credits =
-		    floorf(single_add(session->player.credits, award));
-		if (!write_player(session, error))
-			return false;
-		for (index = 0; index < matches; ++index) {
-			if (!session_sound(session, 1.0f,
-			    "lottery award sound", error))
+			digit = (uint8_t)('0' + (int)floorf(
+			    single_mul(draw, 10.0f)));
+			if (!session_present_text(session, &digit, 1U,
+			    SESSION_PRESENT_RAW, "lottery dummy digit", error))
 				return false;
+			if (!session_wait(session, 0.004999999888241291,
+			    "lottery animation wait", error))
+				return false;
+			status = yt_present_lottery_rewind(row, column,
+			    &session->presentation, &rewind);
+			if (status != YT_PRESENT_OK)
+				return port_report_failure(error,
+				    "lottery digit rewind");
+			yt_out_present_result(&rewind);
 		}
+		session_set_color(session, matched_winning[index] ? 3 : 7);
+		digit = (uint8_t)('0' + winning[index]);
+		if (!session_present_text(session, &digit, 1U,
+		    SESSION_PRESENT_RAW, "lottery actual digit", error))
+			return false;
+	}
+	if (!session_wait(session, 0.4000000059604645,
+	    "lottery post-digits wait", error))
+		return false;
+	session_set_color(session, saved_foreground);
+	}
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "lottery post-digits first blank", error)
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "lottery post-digits second blank", error))
+		return false;
+	if (matches == 0) {
+		if (!session_present_text(session,
+		    (const uint8_t *)"Sorry, you didn't win this time.",
+		    strlen("Sorry, you didn't win this time."),
+		    SESSION_PRESENT_LINE, "lottery loss row", error))
+			return false;
+		return lottery_settle(session, cached_earth, 5.0f, error);
+	}
+	{
+		char match_text[64];
+		char award_text[80];
+		int saved_foreground = session->pager.foreground;
+
+		award = yt_lottery_award(matches);
+		if (qb_str_single(match_text, sizeof(match_text),
+		    (float)matches) < 0
+		    || qb_str_double(award_text, sizeof(award_text),
+		    (double)award) < 0
+		    || !session_present_text(session,
+		    (const uint8_t *)"You matched", strlen("You matched"),
+		    SESSION_PRESENT_RAW, "lottery award prefix", error))
+			return false;
+		session_set_color(session, 3);
+		if (!session_present_text(session, (const uint8_t *)match_text,
+		    strlen(match_text), SESSION_PRESENT_BOLD_RAW,
+		    "lottery award matches", error))
+			return false;
+		session_set_color(session, saved_foreground);
+		if (!session_present_text(session,
+		    (const uint8_t *)" digits and won", strlen(" digits and won"),
+		    SESSION_PRESENT_RAW, "lottery award middle", error))
+			return false;
+		session_set_color(session, 3);
+		if (!session_present_text(session, (const uint8_t *)award_text,
+		    strlen(award_text), SESSION_PRESENT_BOLD_RAW,
+		    "lottery award value", error))
+			return false;
+		session_set_color(session, saved_foreground);
+		if (!session_present_text(session,
+		    (const uint8_t *)" credits!", strlen(" credits!"),
+		    SESSION_PRESENT_LINE, "lottery award suffix", error))
+			return false;
+	}
+	if (!reload_player(session, error))
+		return false;
+	for (index = 0; index < matches; ++index) {
+		if (!session_sound(session, 1.0f,
+		    "lottery award sound", error))
+			return false;
 	}
 	if (matches > 3) {
 		char news[300];
 		char amount[80];
 
-		format_number(amount, sizeof(amount), award);
-		snprintf(news, sizeof(news), "%s won%s credits in the lottery!",
-		    session->player.name, amount);
+		if (qb_str_double(amount, sizeof(amount), (double)award) < 0
+		    || snprintf(news, sizeof(news),
+		    "%s won%s credits in the lottery!", cached_name, amount) < 0)
+			return port_report_failure(error, "lottery news row");
 		if (!append_news(session, news, error))
 			return false;
 	}
-	yt_outf("You matched %d and won %.9g credits.\r\n", matches,
-	    (double)award);
-	return earth_receipt(session, 5.0f, error);
+	if (!reload_player(session, error))
+		return false;
+	session->player.credits = floorf(single_add(session->player.credits,
+	    award));
+	if (!write_player(session, error)
+	    || !session_wait(session, 3.0, "lottery award wait", error))
+		return false;
+	return lottery_settle(session, cached_earth, 5.0f, error);
+}
+
+static bool
+earth_report(struct yt_session *session, struct yt_port *earth,
+    float price[4], struct yt_error *error)
+{
+	static const uint8_t separator[] =
+	    "----------------------*--------*------------";
+	static const uint8_t header[] =
+	    "         ITEM         *  COST  * CAN AFFORD";
+	static const char *const item_label[9] = {
+		"[1] Cloak Energy", "[2] Cargo Holds", "[3] Fighters",
+		"[4] Play Lottery", "[5] Danger Scanner",
+		"[6] Anti-Cloak Device", "[7] Ground Forces",
+		"[8] Shield Power", "[9] Hire Spies (Each)"
+	};
+	struct yt_clock_value date_now;
+	struct yt_clock_value time_now;
+	char date[11];
+	char time_text[9];
+	char title[128];
+	float discount[4];
+	size_t index;
+
+	if (earth == NULL || price == NULL)
+		return false;
+	session->pager.line_count = 0.0f;
+	if (!yt_game_read_port(&session->door->game, 1, earth, error))
+		return false;
+	session->presentation.foreground = 3.0f;
+	session->pager.foreground = 3;
+	if (!yt_platform_clock(&date_now, error)
+	    || !yt_platform_clock(&time_now, error))
+		return false;
+	yt_format_date(&date_now, date);
+	yt_format_time(&time_now, time_text);
+	if (snprintf(title, sizeof(title),
+	    "Commerce report for Earth: %s %s", date, time_text) < 0
+	    || !session_0317(session, (const uint8_t *)title,
+	    strlen(title), "Earth report title", error)
+	    || !port_owner_row(session, earth, error))
+		return false;
+	discount[0] = session->clearance_holds;
+	discount[1] = session->clearance_fighters;
+	discount[2] = session->clearance_shields;
+	discount[3] = session->clearance_ground;
+	yt_earth_prices(discount, price);
+	if (session->earth_report_seen == 0.0f) {
+		if (!clearance(session, false, error))
+			return false;
+	}
+	else if (!session_present_text(session, NULL, 0,
+	    SESSION_PRESENT_LINE, "Earth report ordinary blank", error))
+		return false;
+	session->earth_report_seen = 1.0f;
+	if (!reload_player(session, error)
+	    || !session_b05d(session, separator, sizeof(separator) - 1U)
+	    || !session_b05d(session, header, sizeof(header) - 1U)
+	    || !session_b05d(session, separator, sizeof(separator) - 1U))
+		return false;
+	for (index = 0; index < 9U; ++index) {
+		float item_price;
+		bool lottery_price = index == 3U;
+
+		if (index == 0U)
+			item_price = 1000.0f;
+		else if (index == 1U)
+			item_price = price[0];
+		else if (index == 2U)
+			item_price = price[1];
+		else if (index == 3U)
+			item_price = 5.0f;
+		else if (index == 4U)
+			item_price = 500000.0f;
+		else if (index == 5U || index == 8U)
+			item_price = 1000000000.0f;
+		else if (index == 6U)
+			item_price = price[3];
+		else
+			item_price = price[2];
+		if (!earth_report_row(session, item_label[index], item_price,
+		    lottery_price, error))
+			return false;
+	}
+	return session_b05d(session, separator, sizeof(separator) - 1U);
 }
 
 static bool
 earth_store(struct yt_session *session, struct yt_error *error)
 {
+	static const uint8_t menu[] =
+	    "[I] Ship Info -=*=- [0] Leave Port";
+	static const uint8_t prompt_suffix[] =
+	    " -=*=- Buy Which Item? -=>";
+	static const uint8_t invalid[] = "INAVLID CHOICE!";
 	for (;;) {
+		struct yt_port earth;
+		struct qb_val_result parsed;
 		char line[80];
+		char credits_text[64];
+		char prompt[160];
+		float price[4];
 		int choice;
-		float holds_price = earth_price(250.0f,
-		    session->clearance_holds, true);
-		float fighters_price = earth_price(50.0f,
-		    session->clearance_fighters, true);
-		float ground_price = earth_price(200.5f,
-		    session->clearance_ground, false);
-		float shields_price = earth_price(50.0f,
-		    session->clearance_shields, false);
+		float holds_price;
+		float fighters_price;
+		float shields_price;
+		float ground_price;
 
-		if (!clearance(session, false, error))
+		if (!earth_report(session, &earth, price, error))
 			return false;
-		yt_out_line("Earth Special Store");
-		yt_outf("1) Cloak Energy 1000    2) Cargo Holds %.9g\r\n",
-		    (double)holds_price);
-		yt_outf("3) Fighters %.9g        4) Pick-6 Ticket 5\r\n",
-		    (double)fighters_price);
-		yt_out_line("5) Danger Scanner 500000");
-		yt_out_line("6) Anti-Cloak Device 1000000000");
-		yt_outf("7) Ground Forces %.9g   8) Shield Power %.9g\r\n",
-		    (double)ground_price, (double)shields_price);
-		yt_out_line("9) Spies 1000000000    X) Exit");
-		yt_out("Selection: ");
-		if (!session_line(session, line, sizeof(line)))
+		holds_price = price[0];
+		fighters_price = price[1];
+		shields_price = price[2];
+		ground_price = price[3];
+		if (!session_0317(session, menu, sizeof(menu) - 1U,
+		    "Earth report menu", error)
+		    || !session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "Earth prompt blank", error)
+		    || qb_str_double(credits_text, sizeof(credits_text),
+		    (double)session->player.credits) < 0
+		    || snprintf(prompt, sizeof(prompt), "Credits:%s%s",
+		    credits_text, prompt_suffix) < 0
+		    || !session_031f(session, (const uint8_t *)prompt,
+		    strlen(prompt), "Earth item prompt", error)
+		    || !session_0357(session, line, sizeof(line)))
 			return false;
-		qb_compat_upper(line);
-		if (line[0] == 'X' || line[0] == '\0')
-			return true;
-		choice = line[0] - '0';
+		if (line[0] == '\0')
+			continue;
+		parsed = qb_val(line);
+		if (parsed.overflow)
+			return port_report_failure(error, "Earth menu VAL");
+		{
+			bool overflow;
+			float selected = (float)(parsed.valid ? parsed.value : 0.0);
+
+			choice = (int)qb_cint(selected, &overflow);
+			if (overflow)
+				return port_report_failure(error,
+				    "Earth menu CINT");
+		}
+		if (strcmp(line, "S") == 0) {
+			if (!display_sector(session, true, error)
+			    || !session_wait(session, 9.0,
+			    "Earth Sensors wait", error))
+				return false;
+			continue;
+		}
+		if (strcmp(line, "I") == 0) {
+			if (!show_ship(session, error)
+			    || !session_wait(session, 9.0,
+			    "Earth Info wait", error))
+				return false;
+			continue;
+		}
+		if (choice < 1 || choice > 9) {
+			int position;
+
+			session->earth_report_seen = 0.0f;
+			position = yt_earth_selector_position(line);
+			if (position == 0) {
+				if (!session_02db(session, invalid,
+				    sizeof(invalid) - 1U,
+				    "Earth invalid choice", error))
+					return false;
+				continue;
+			}
+			switch (position) {
+			case 1: {
+				bool enter_sector = false;
+
+				return command_land(session, &enter_sector, error);
+			}
+			case 2: {
+				bool moved;
+
+				return command_move(session, &moved, error);
+			}
+			case 3:
+				return true;
+			case 4: {
+				bool enter_sector = false;
+
+				return computer_menu(session, &enter_sector, error);
+			}
+			default:
+				return false;
+			}
+		}
 		if (choice == 4) {
-			if (!lottery(session, error))
+			if (!lottery(session, &earth, error))
 				return false;
 			continue;
 		}
 		if (choice == 5) {
-			if (session->player.danger_scanner != 0.0f) {
-				yt_out_line("You already have a danger scanner.");
-				continue;
-			}
-			if (session->player.credits < 500000.0f) {
-				yt_out_line("You can't afford that.");
-				continue;
-			}
-			session->player.danger_scanner = -1.0f;
-			if (!write_player(session, error)
-			    || !earth_receipt(session, 500000.0f, error))
+			if (!earth_purchase_scanner(session, &earth, 500000.0f,
+			    error))
 				return false;
 			continue;
 		}
 		if (choice == 6) {
-			bool buy;
+			static const uint8_t confirmation[] =
+			    "Anti-Cloaking Device works for this logon only. "
+			    "Buy one? [y/N]";
+			static const uint8_t pause[] = "Hit [Enter]";
+			enum yt_yes_no_answer answer;
 			char response[80];
 
-			yt_out_line("");
+			if (!session_present_text(session, NULL, 0,
+			    SESSION_PRESENT_LINE, "Earth Anti-Cloak leading blank",
+			    error))
+				return false;
 			if (session->player.credits < 1000000000.0f) {
-				yt_out_line("You can't afford that.");
+				if (!earth_credit_error(session,
+				    "You do not have enough credits!", error))
+					return false;
 				continue;
 			}
-			if (!session_yes_no(session,
-			    "Anti-Cloaking Device works for this logon only. "
-			    "Buy one? [y/N]", false, &buy))
+			if (!session_a8d2(session, confirmation,
+			    sizeof(confirmation) - 1U, &answer, error))
 				return false;
-			if (!buy)
+			if (answer != YT_YES_NO_YES)
 				continue;
-			yt_out_line("");
-			if (!earth_anti_cloak(session, 1000000000.0f, error))
+			if (!session_present_text(session, NULL, 0,
+			    SESSION_PRESENT_LINE, "Earth Anti-Cloak accepted blank",
+			    error)
+			    || !earth_anti_cloak(session, 1000000000.0f, error))
 				return false;
 			session->anti_cloak = true;
-			yt_out_line("");
-			yt_out("Hit [Enter]");
-			if (!session_line(session, response, sizeof(response)))
+			if (!session_present_text(session, NULL, 0,
+			    SESSION_PRESENT_LINE, "Earth Anti-Cloak pause blank", error)
+			    || !session_031f(session, pause, sizeof(pause) - 1U,
+			    "Earth Anti-Cloak pause prompt", error)
+			    || !session_0345(session, response, sizeof(response)))
 				return false;
 			continue;
 		}
 		if (choice == 9) {
-			double requested;
-			bool blank;
-			int quantity;
-			int index;
-			float cost;
-
-			if (session->spy_count >= 3) {
-				yt_out_line("You may employ only three spies.");
-				continue;
-			}
-			if (session->spy_count != 0)
-				yt_outf("%.9g spies active already. more\r\n",
-				    (double)session->spy_count);
-			if (!session_value(session, "Hire how many spies? [0]? ",
-			    &requested, &blank))
-				return false;
-			quantity = blank ? 0 : (int)floor(requested);
-			if (quantity < 1)
-				continue;
-			cost = single_mul((float)quantity, 1000000000.0f);
-			if (cost > session->player.credits) {
-				yt_out_line("You do not have enough credits!");
-				continue;
-			}
-			if (session->spy_count + quantity > 3) {
-				yt_out_line("Max spies allowed is 3!");
-				continue;
-			}
-			for (index = 0; index < quantity; ++index) {
-				double sector;
-
-				do {
-					yt_outf("Start spy # %d in what sector?",
-					    session->spy_count + index + 1);
-					if (!session_value(session, " ", &sector,
-					    &blank))
-						return false;
-					sector = floor(sector);
-				} while (blank || sector == 0.0
-				    || sector > (double)sector_count(session));
-				session->spies[session->spy_count + index] =
-				    (int)sector;
-			}
-			session->spy_count += quantity;
-			(void)computer_spies(session);
-			if (!session_present_text(session, NULL, 0,
-			    SESSION_PRESENT_LINE, "spy purchase pause blank", error)
-			    || !session_press_any_key(session, false, error))
-				return false;
-			if (!earth_receipt(session, cost, error))
+			if (!earth_purchase_spies(session, &earth, 1000000000.0f,
+			    error))
 				return false;
 			continue;
 		}
-		if (choice >= 1 && choice <= 8) {
-			double requested;
-			bool blank;
-			float price;
-			float current;
-			float maximum = INFINITY;
-			float quantity;
-			float cost;
+		if (choice == 1) {
+			if (!earth_purchase_cloak(session, &earth, error))
+				return false;
+		}
+		else if (choice == 2) {
+			if (!earth_purchase_holds(session, &earth, holds_price, error))
+				return false;
+		}
+		else if (choice == 3 || choice == 7 || choice == 8) {
+			float selected_price = choice == 3 ? fighters_price
+			    : choice == 7 ? ground_price : shields_price;
 
-			if (choice == 1) {
-				float points = floorf(single_mul(
-				    session->player.cloak, 50.0f));
-				float deficit = single_sub(50.0f, points);
-				float default_quantity = deficit;
-
-				if (single_mul(deficit, 1000.0f)
-				    > session->player.credits)
-					default_quantity = floorf(
-					    session->player.credits / 1000.0f);
-				if (!session_value(session,
-				    "How many points of cloak energy? ",
-				    &requested, &blank))
-					return false;
-				quantity = blank ? default_quantity
-				    : (float)floor(requested);
-				price = 1000.0f;
-				if (quantity < 1.0f
-				    || points + quantity > 50.0f)
-					continue;
-				cost = single_mul(quantity, price);
-				if (cost > session->player.credits)
-					continue;
-				session->player.cloak = single_div(
-				    floorf(single_add(points, quantity)), 50.0f);
-			}
-			else {
-				if (choice == 2) {
-					price = holds_price;
-					current = session->player.holds;
-					maximum = session->door->game.config.maximum_holds;
-				}
-				else if (choice == 3) {
-					price = fighters_price;
-					current = session->player.fighters;
-				}
-				else if (choice == 7) {
-					price = ground_price;
-					current = session->player.ground_forces;
-				}
-				else if (choice == 8) {
-					price = shields_price;
-					current = session->player.shields;
-				}
-				else
-					continue;
-				if (!session_value(session, "How many? ",
-				    &requested, &blank))
-					return false;
-				quantity = (float)floor(requested);
-				if (blank || quantity < 1.0f)
-					continue;
-				cost = single_mul(quantity, price);
-				if (cost > session->player.credits) {
-					yt_out_line("You can't afford that.");
-					continue;
-				}
-				if (current + quantity > maximum) {
-					yt_out_line("That is too many.");
-					continue;
-				}
-				if (choice == 2)
-					session->player.holds =
-					    single_add(current, quantity);
-				else if (choice == 3)
-					session->player.fighters =
-					    single_add(current, quantity);
-				else if (choice == 7)
-					session->player.ground_forces =
-					    floorf(single_add(current, quantity));
-				else
-					session->player.shields =
-					    floorf(single_add(current, quantity));
-			}
-			if (!write_player(session, error)
-			    || !earth_receipt(session, cost, error))
+			if (!earth_purchase_supply(session, &earth, choice,
+			    selected_price, error))
 				return false;
 		}
 	}
@@ -4540,76 +7411,122 @@ player_item(struct yt_player *player, int item)
 	}
 }
 
-static float *
-planet_item(struct yt_planet *planet, int item)
-{
-	switch (item) {
-	case 1: return &planet->stock[0];
-	case 2: return &planet->stock[1];
-	case 3: return &planet->stock[2];
-	case 4: return &planet->fighters;
-	case 5: return &planet->missiles;
-	case 6: return &planet->mines;
-	case 9: return &planet->plasma;
-	default: return NULL;
-	}
-}
-
 static bool
 planet_inventory(struct yt_session *session, int logical_planet,
     struct yt_error *error)
 {
 	struct yt_planet planet;
-	static const char *names[9] = {
-		"Ore", "Organics", "Equipment", "Fighters", "Missiles",
-		"Mines", "Credits", "Forces", "Plasma bolts"
+	struct planet_update_cache cache;
+	static const char *labels[9] = {
+		"Ore..........", "Organics.....", "Equipment....",
+		"Fighters.....", "Missiles.....", "Mines........",
+		"Credits......", "Forces.......", "Plasma bolts."
 	};
-	float production[9];
-	float amount[9];
-	float holds[9];
-	float sum;
+	static const uint8_t header[] =
+	    " Item           Production     Amount    In Holds";
+	static const uint8_t rule[] =
+	    "=============  ============   ========  ==========";
+	double held[9];
+	uint8_t title[64];
+	size_t title_length = 0;
+	size_t name_length;
 	int index;
 
-	if (!planet_update(session, logical_planet, &planet, error))
+	session->current_planet = (float)logical_planet;
+	if (!reload_player(session, error)
+	    || !planet_update_cached(session, logical_planet, &planet, &cache,
+	    error)
+	    || !yt_game_read_planet(&session->door->game, logical_planet,
+	    &planet, error)
+	    || !port_report_length(session, planet.name_length,
+	    YT_TEXT_FIELD_SIZE, &name_length, "planet inventory name length",
+	    error))
 		return false;
-	sum = single_add(single_add(planet.production[0],
-	    planet.production[1]), planet.production[2]);
-	production[0] = floorf(planet.production[0]);
-	production[1] = floorf(planet.production[1]);
-	production[2] = floorf(planet.production[2]);
-	production[3] = floorf(sum);
-	production[4] = floorf(single_div(sum, 2500.0f));
-	production[5] = floorf(single_div(sum, 25000.0f));
-	production[6] = (float)floor((double)planet.bank
-	    * 0.009999999776482582);
-	production[7] = (float)floor((double)planet.ground_forces
-	    * 0.009999999776482582 + (double)planet.bank / 10000.0);
-	production[8] = floorf(single_mul(sum, 0.00001f));
-	amount[0] = floorf(planet.stock[0]);
-	amount[1] = floorf(planet.stock[1]);
-	amount[2] = floorf(planet.stock[2]);
-	amount[3] = floorf(planet.fighters);
-	amount[4] = floorf(planet.missiles);
-	amount[5] = floorf(planet.mines);
-	amount[6] = floorf(planet.bank);
-	amount[7] = floorf(planet.ground_forces);
-	amount[8] = floorf(planet.plasma);
-	holds[0] = session->player.ore;
-	holds[1] = session->player.organics;
-	holds[2] = session->player.equipment;
-	holds[3] = session->player.fighters;
-	holds[4] = session->player.missiles;
-	holds[5] = session->player.mines;
-	holds[6] = session->player.credits;
-	holds[7] = session->player.ground_forces;
-	holds[8] = session->player.plasma;
-	yt_outf("\r\nPlanet %s\r\n", planet.name);
-	yt_out_line(" Item           Production     Amount    In Holds");
-	yt_out_line("=============  ============   ========  ==========");
-	for (index = 0; index < 9; ++index)
-		yt_outf("%-13s %11.9g %10.9g %11.9g\r\n", names[index],
-		    (double)production[index], (double)amount[index],
-		    (double)holds[index]);
+	snprintf(session->planet_name, sizeof(session->planet_name), "%s",
+	    planet.name);
+	held[0] = (double)session->player.ore;
+	held[1] = (double)session->player.organics;
+	held[2] = (double)session->player.equipment;
+	held[3] = (double)session->player.fighters;
+	held[4] = (double)session->player.missiles;
+	held[5] = (double)session->player.mines;
+	held[6] = (double)session->player.credits;
+	held[7] = (double)session->player.ground_forces;
+	held[8] = (double)session->player.plasma;
+	memcpy(title, "Planet: ", strlen("Planet: "));
+	title_length = strlen("Planet: ");
+	memcpy(title + title_length, planet.record.bytes, name_length);
+	title_length += name_length;
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "planet inventory title blank", error)
+	    || !session_02fc(session, title, title_length)
+	    || !session_0317(session, header, sizeof(header) - 1U,
+	    "planet inventory header", error)
+	    || !session_02fc(session, rule, sizeof(rule) - 1U))
+		return false;
+	for (index = 0; index < 9; ++index) {
+		char production[64];
+		char amount[64];
+		char in_holds[64];
+		double produced;
+		double available;
+
+		if (index < 6) {
+			produced = (double)floorf(cache.rate[index + 1]);
+			available = floor(cache.quantity[index + 1]);
+			if (qb_str_single(production, sizeof(production),
+			    (float)produced) < 0
+			    || qb_str_double(amount, sizeof(amount), available) < 0
+			    || qb_str_double(in_holds, sizeof(in_holds),
+			    held[index]) < 0)
+				return port_report_failure(error,
+				    "planet inventory numeric format");
+		}
+		else if (index == 6) {
+			produced = floor(double_mul(cache.quantity[7],
+			    0x1.47ae14p-7));
+			available = floor(cache.quantity[7]);
+			if (qb_str_double(production, sizeof(production), produced) < 0
+			    || qb_str_double(amount, sizeof(amount), available) < 0
+			    || qb_str_double(in_holds, sizeof(in_holds), held[index]) < 0)
+				return port_report_failure(error,
+				    "planet inventory credit format");
+		}
+		else if (index == 7) {
+			produced = floor(double_add(double_mul(cache.quantity[8],
+			    0x1.47ae14p-7), (double)cache.contribution[8]));
+			available = floor(cache.quantity[8]);
+			if (qb_str_double(production, sizeof(production), produced) < 0
+			    || qb_str_double(amount, sizeof(amount), available) < 0
+			    || qb_str_single(in_holds, sizeof(in_holds),
+			    (float)held[index]) < 0)
+				return port_report_failure(error,
+				    "planet inventory force format");
+		}
+		else {
+			produced = (double)floorf(cache.rate[9]);
+			available = floor(cache.quantity[9]);
+			if (qb_str_single(production, sizeof(production),
+			    (float)produced) < 0
+			    || qb_str_double(amount, sizeof(amount), available) < 0
+			    || qb_str_single(in_holds, sizeof(in_holds),
+			    (float)held[index]) < 0)
+				return port_report_failure(error,
+				    "planet inventory plasma format");
+		}
+		if (!session_present_text(session, (const uint8_t *)labels[index],
+		    strlen(labels[index]), SESSION_PRESENT_RAW,
+		    "planet inventory label", error)
+		    || !session_right_aligned(session, production, 13.0f,
+		    "planet inventory production", error)
+		    || !session_right_aligned(session, amount, 11.0f,
+		    "planet inventory amount", error)
+		    || !session_right_aligned(session, in_holds, 12.0f,
+		    "planet inventory holds", error)
+		    || !session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "planet inventory row ending", error))
+			return false;
+	}
 	return true;
 }
 
@@ -4618,52 +7535,73 @@ planet_take_one(struct yt_session *session, int logical_planet, int item,
     struct yt_error *error)
 {
 	struct yt_planet planet;
-	float *source;
-	float *destination;
+	const char *title = yt_planet_take_one_title(item);
 	float free_holds;
 	float available;
 	float maximum;
-	double input;
-	bool blank;
 	float quantity;
+	char maximum_text[64];
 	char prompt[100];
+	char response[160];
+	struct qb_val_result parsed;
 
-	if (!yt_game_read_planet(&session->door->game, logical_planet,
-	    &planet, error))
+	if (title == NULL)
+		return port_report_failure(error, "planet Take One item");
+	if (!session_0317(session, (const uint8_t *)title,
+	    strlen(title), "planet Take One title", error))
 		return false;
-	source = planet_item(&planet, item);
-	destination = player_item(&session->player, item);
-	if (source == NULL || destination == NULL)
-		return true;
-	free_holds = single_sub(single_sub(single_sub(session->player.holds,
-	    session->player.ore), session->player.organics),
-	    session->player.equipment);
-	available = (float)floor((double)*source);
+	free_holds = (float)double_sub(double_sub(double_sub(
+	    (double)session->player.holds, (double)session->player.ore),
+	    (double)session->player.organics),
+	    (double)session->player.equipment);
+	available = (float)floor(session->planet_quantity[item]);
 	maximum = item <= 3 && free_holds < available
 	    ? free_holds : available;
-	snprintf(prompt, sizeof(prompt), "How much [%.9g ]? ",
-	    (double)maximum);
-	if (!session_value(session, prompt, &input, &blank))
+	if (qb_str_single(maximum_text, sizeof(maximum_text), maximum) < 0
+	    || snprintf(prompt, sizeof(prompt), "How much [%s ]? ",
+	    maximum_text) < 0)
+		return port_report_failure(error, "planet Take One prompt format");
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "planet Take One prompt blank", error)
+	    || !session_031f(session, (const uint8_t *)prompt, strlen(prompt),
+	    "planet Take One amount prompt", error)
+	    || !session_036f(session, response, sizeof(response)))
 		return false;
-	quantity = blank ? maximum : (float)floor(input);
-	if (quantity > floorf(*source) || quantity < 0.0f) {
-		yt_out_line("They don't have that many.");
-		return true;
+	if (response[0] == '\0')
+		quantity = maximum;
+	else {
+		parsed = qb_val(response);
+		quantity = (float)floor(parsed.valid ? parsed.value : 0.0);
+	}
+	if ((double)quantity > floor(session->planet_quantity[item])
+	    || quantity < 0.0f) {
+		static const uint8_t stock[] = "They don't have that many.";
+
+		return session_02db(session, stock, sizeof(stock) - 1U,
+		    "planet Take One stock error", error);
 	}
 	if (quantity > maximum) {
-		yt_out_line("You can't take that much!");
-		return true;
+		static const uint8_t capacity[] = "You can't take that much!";
+
+		return session_02db(session, capacity, sizeof(capacity) - 1U,
+		    "planet Take One capacity error", error);
 	}
-	*destination = single_add(*destination, quantity);
+	if (!reload_player(session, error))
+		return false;
+	yt_planet_take_one_player_overlay(&session->player, item, quantity);
 	if (!write_player(session, error))
 		return false;
 	if (!yt_game_read_planet(&session->door->game, logical_planet,
 	    &planet, error))
 		return false;
-	source = planet_item(&planet, item);
-	*source = single_sub(*source, quantity);
-	return yt_game_write_planet(&session->door->game, logical_planet,
-	    &planet, error);
+	yt_planet_take_one_planet_overlay(&planet, item,
+	    session->planet_quantity[item], quantity);
+	if (!yt_game_write_planet(&session->door->game, logical_planet,
+	    &planet, error))
+		return false;
+	session->planet_quantity[item] = double_sub(
+	    session->planet_quantity[item], (double)quantity);
+	return reload_player(session, error);
 }
 
 static bool
@@ -4671,54 +7609,84 @@ planet_take_all(struct yt_session *session, int logical_planet,
     struct yt_error *error)
 {
 	struct yt_planet planet;
-	static const int weapons[4] = {4, 5, 6, 9};
+	static const uint8_t title[] = "<Take all>";
+	static const uint8_t taking[] = "Taking:";
+	static const char *const weapon_labels[4] = {
+		"Fighters.....", "Missiles.....", "Mines........",
+		"Plasma bolts."
+	};
+	static const int weapon_items[4] = {4, 5, 6, 9};
+	static const char *const commodity_labels[3] = {
+		"Ore..........", "Organics.....", "Equipment...."
+	};
+	double amount[10];
 	int index;
 
+	if (!session_0317(session, title, sizeof(title) - 1U,
+	    "planet take-all title", error)
+	    || !reload_player(session, error))
+		return false;
+	yt_planet_take_all_weapon_player_overlay(&session->player,
+	    session->planet_quantity, amount);
+	if (!write_player(session, error)
+	    || !session_0317(session, taking, sizeof(taking) - 1U,
+	    "planet take-all taking", error))
+		return false;
+	for (index = 0; index < 4; ++index) {
+		char number[64];
+		char row[96];
+		int item = weapon_items[index];
+
+		if ((index == 0
+		    ? qb_str_double(number, sizeof(number), amount[item])
+		    : qb_str_single(number, sizeof(number), (float)amount[item])) < 0
+		    || snprintf(row, sizeof(row), "%s%s", weapon_labels[index],
+		    number) < 0)
+			return port_report_failure(error,
+			    "planet take-all weapon format");
+		if (index == 0) {
+			if (!session_0317(session, (const uint8_t *)row,
+			    strlen(row), "planet take-all fighters", error))
+				return false;
+		}
+		else if (!session_02fc(session, (const uint8_t *)row,
+		    strlen(row)))
+			return false;
+	}
 	if (!yt_game_read_planet(&session->door->game, logical_planet,
 	    &planet, error))
 		return false;
-	for (index = 0; index < 4; ++index) {
-		float amount = floorf(*planet_item(&planet, weapons[index]));
-		float *held = player_item(&session->player, weapons[index]);
-
-		*held = single_add(*held, amount);
-		*planet_item(&planet, weapons[index]) =
-		    single_sub(*planet_item(&planet, weapons[index]), amount);
-		yt_outf("Took %.9g.\r\n", (double)amount);
-	}
-	if (!write_player(session, error)
-	    || !yt_game_write_planet(&session->door->game, logical_planet,
+	yt_planet_take_all_weapon_planet_overlay(&planet,
+	    session->planet_quantity, amount);
+	if (!yt_game_write_planet(&session->door->game, logical_planet,
 	    &planet, error))
 		return false;
 	for (index = 3; index >= 1; --index) {
-		float free_holds;
-		float amount;
-		float *held;
-		float *stored;
+		char number[64];
+		char row[96];
+		float commodity_amount;
 
-		if (!reload_player(session, error)
-		    || !yt_game_read_planet(&session->door->game,
-		    logical_planet, &planet, error))
+		if (!reload_player(session, error))
 			return false;
-		free_holds = session->player.holds - session->player.ore
-		    - session->player.organics - session->player.equipment;
-		stored = planet_item(&planet, index);
-		amount = (float)floor((double)*stored);
-		if (free_holds < amount)
-			amount = free_holds;
-		held = player_item(&session->player, index);
-		*held = single_add(*held, amount);
+		commodity_amount = yt_planet_take_all_commodity_player_overlay(
+		    &session->player, index, session->planet_quantity[index]);
 		if (!write_player(session, error))
 			return false;
 		if (!yt_game_read_planet(&session->door->game,
 		    logical_planet, &planet, error))
 			return false;
-		stored = planet_item(&planet, index);
-		*stored = single_sub(*stored, amount);
+		yt_planet_take_all_commodity_planet_overlay(&planet, index,
+		    session->planet_quantity[index], commodity_amount);
 		if (!yt_game_write_planet(&session->door->game,
 		    logical_planet, &planet, error))
 			return false;
-		yt_outf("Took %.9g.\r\n", (double)amount);
+		if (qb_str_single(number, sizeof(number), commodity_amount) < 0
+		    || snprintf(row, sizeof(row), "%s%s",
+		    commodity_labels[index - 1], number) < 0)
+			return port_report_failure(error,
+			    "planet take-all commodity format");
+		if (!session_02fc(session, (const uint8_t *)row, strlen(row)))
+			return false;
 	}
 	return true;
 }
@@ -4727,222 +7695,421 @@ static bool
 planet_garrison(struct yt_session *session, int logical_planet,
     struct yt_error *error)
 {
+	static const uint8_t insufficient[] = "Insuficient forces!";
 	struct yt_planet planet;
-	double desired_value;
-	bool blank;
+	struct qb_val_result parsed;
+	char response[160];
+	uint8_t prompt[160];
+	uint8_t success[128];
+	size_t prompt_length;
+	size_t success_length;
+	float old_garrison;
 	float desired;
 	float after;
 
 	if (!yt_game_read_planet(&session->door->game, logical_planet,
-	    &planet, error)
-	    || !session_value(session,
-	    "How many ground forces do you want on the planet? ",
-	    &desired_value, &blank))
-		return false;
-	if (blank)
-		return true;
-	desired = (float)floor(desired_value);
-	after = session->player.ground_forces - desired
-	    + planet.ground_forces;
-	if (desired < 0.0f || after < 0.0f)
-		return true;
-	planet.ground_forces = desired;
-	planet.owner = desired >= 1.0f
-	    ? (float)session->player_record : 0.0f;
-	if (desired >= 1.0f
-	    && !session_sound(session, 4.0f,
-	    "planet garrison sound", error))
-		return false;
-	if (!yt_game_write_planet(&session->door->game, logical_planet,
 	    &planet, error))
 		return false;
-	session->player.ground_forces = floorf(after);
-	return write_player(session, error);
+	old_garrison = planet.ground_forces;
+	if (!reload_player(session, error))
+		return false;
+	session->presentation.foreground = 6.0f;
+	session->pager.foreground = 6;
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "planet garrison opening blank", error)
+	    || !yt_planet_garrison_prompt(session->player.ground_forces,
+	    old_garrison, prompt, sizeof(prompt), &prompt_length)
+	    || !session_031f(session, prompt, prompt_length,
+	    "planet garrison prompt", error)
+	    || !session_036f(session, response, sizeof(response)))
+		return false;
+	if (response[0] == '\0')
+		return true;
+	parsed = qb_val(response);
+	desired = (float)floor(parsed.valid ? parsed.value : 0.0);
+	after = yt_planet_garrison_after(session->player.ground_forces,
+	    desired, old_garrison);
+	if (desired < 0.0f || after < 0.0f)
+		return session_02db(session, insufficient,
+		    sizeof(insufficient) - 1U, "planet garrison refusal", error);
+	if (!yt_game_read_planet(&session->door->game, logical_planet,
+	    &planet, error))
+		return false;
+	yt_planet_garrison_overlay(&planet, desired, 0);
+	if (desired >= 1.0f) {
+		if (!session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "planet garrison success blank", error)
+		    || !yt_planet_garrison_success_row(desired, success,
+		    sizeof(success), &success_length))
+			return false;
+		session->presentation.bold = 1.0f;
+		session->presentation.blink = 1.0f;
+		if (!session_02fc(session, success, success_length))
+			return false;
+		planet.owner = (float)session->player_record;
+		if (!yt_record_set_number(&planet.record, YT_F73, planet.owner)
+		    || !session_sound(session, 4.0f,
+		    "planet garrison sound", error))
+			return false;
+	}
+	if (!yt_database_write(&session->door->game.database,
+	    (size_t)yt_planet_basic_record(&session->door->game.config,
+	    logical_planet), &planet.record, error)
+	    || !reload_player(session, error))
+		return false;
+	yt_planet_garrison_player_overlay(&session->player, after);
+	return yt_database_write(&session->door->game.database,
+	    (size_t)session->player_record, &session->player.record, error);
 }
 
 static bool
 planet_bank(struct yt_session *session, int logical_planet,
     struct yt_error *error)
 {
+	static const uint8_t savings[] =
+	    "We are a SAVINGS not a LOAN institution!";
+	static const uint8_t insufficient[] =
+	    "You don't have that many Credits!";
+	static const uint8_t farewell[] = "Have a nice day!";
 	struct yt_planet planet;
+	struct qb_val_result parsed;
+	char title[160];
+	char available_text[64];
+	char prompt[192];
+	char response[160];
+	char amount_text[64];
+	char success[192];
 	double target;
-	bool blank;
 	double available;
+	double remaining;
 	float old_bank;
+	float credit_argument;
 
+	session->presentation.foreground = 6.0f;
+	session->pager.foreground = 6;
 	if (!yt_game_read_planet(&session->door->game, logical_planet,
 	    &planet, error))
 		return false;
 	old_bank = planet.bank;
-	available = (double)session->player.credits + (double)old_bank;
-	yt_outf("%.15g credits are available.\r\n", available);
-	if (!session_value(session,
-	    "How many credits do you want in the account? ", &target,
-	    &blank))
+	available = yt_planet_bank_available(session->player.credits, old_bank);
+	if (snprintf(title, sizeof(title),
+	    "Welcome to the intergalactic bank of %s!",
+	    session->planet_name) < 0
+	    || qb_str_double(available_text, sizeof(available_text), available) < 0
+	    || snprintf(prompt, sizeof(prompt),
+	    "How many credits do you want in the account?%s Available ->",
+	    available_text) < 0
+	    || !session_0317(session, (const uint8_t *)title, strlen(title),
+	    "planet Bank title", error)
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "planet Bank pre-prompt blank", error)
+	    || !session_031f(session, (const uint8_t *)prompt, strlen(prompt),
+	    "planet Bank amount prompt", error)
+	    || !session_036f(session, response, sizeof(response)))
 		return false;
-	if (blank)
+	if (response[0] == '\0')
 		return true;
-	target = floor(target);
-	if (target < 0.0) {
-		yt_out_line("This is a savings account, not a loan.");
-		return true;
-	}
-	if (target > available) {
-		yt_out_line("You don't have that many credits.");
-		return true;
-	}
-	planet.bank = (float)target;
+	parsed = qb_val(response);
+	if (parsed.overflow)
+		return port_report_failure(error, "planet Bank amount VAL");
+	target = qb_int(parsed.valid ? parsed.value : 0.0);
+	if (target < 0.0)
+		return session_02db(session, savings, sizeof(savings) - 1U,
+		    "planet Bank savings error", error);
+	remaining = yt_planet_bank_remaining(session->player.credits, old_bank,
+	    target);
+	if (remaining < 0.0)
+		return session_02db(session, insufficient,
+		    sizeof(insufficient) - 1U,
+		    "planet Bank credit error", error);
+	if (!yt_game_read_planet(&session->door->game, logical_planet,
+	    &planet, error))
+		return false;
+	yt_planet_bank_planet_overlay(&planet, target);
 	if (!yt_game_write_planet(&session->door->game, logical_planet,
 	    &planet, error))
 		return false;
-	if (target > 0.0)
-		yt_outf("%.15g credits on deposit at 1%% interest.\r\n",
-		    target);
-	if (!session_sound(session, 4.0f, "planet bank sound", error))
+	session->player.credits = (float)remaining;
+	if (target != 0.0) {
+		if (qb_str_double(amount_text, sizeof(amount_text), target) < 0
+		    || snprintf(success, sizeof(success),
+		    "You have%s credits on deposit at 1%% interest. %s",
+		    amount_text, farewell) < 0)
+			return port_report_failure(error,
+			    "planet Bank success format");
+	}
+	else {
+		memcpy(success, farewell, sizeof(farewell));
+	}
+	if (!session_0317(session, (const uint8_t *)success, strlen(success),
+	    "planet Bank accepted", error)
+	    || !session_sound(session, 4.0f, "planet bank sound", error))
 		return false;
-	session->player.credits = floorf(single_add(session->player.credits,
-	    single_sub(old_bank, (float)target)));
+	credit_argument = yt_planet_bank_credit_argument(old_bank, target);
+	if (!reload_player(session, error))
+		return false;
+	yt_planet_bank_credit_overlay(&session->player, credit_argument);
 	return write_player(session, error);
 }
 
 static bool
-planet_rename(struct yt_session *session, int logical_planet,
+planet_rename(struct yt_session *session, int logical_planet, bool *renamed,
     struct yt_error *error)
 {
+	static const uint8_t protected[] =
+	    "You can't re-name this planet!";
+	static const uint8_t prompt[] =
+	    "What do you want to name this planet? -=>";
+	static const uint8_t reserved[] = "I Don't think so!";
+	static const uint8_t confirmation_suffix[] =
+	    " Is this OK? (Y/n) [Y] ?";
 	struct yt_planet planet;
-	char name[160];
-	bool accepted;
+	char name[YT_COMMAND_SIZE];
+	uint8_t confirmation[2U + 41U + sizeof(confirmation_suffix) - 1U];
+	float current_record;
+	bool written;
 
-	if (logical_planet == 1
-	    || logical_planet == planet_count(session) - 1
-	    || logical_planet == planet_count(session)) {
-		yt_out_line("You can't re-name this planet!");
-		return true;
-	}
+	if (renamed != NULL)
+		*renamed = false;
+
 	for (;;) {
-		yt_out("New planet name: ");
-		if (!session_line(session, name, sizeof(name)))
+		enum yt_yes_no_answer answer;
+		enum yt_planet_rename_name_result name_result;
+		size_t name_length;
+		size_t confirmation_length = 0;
+
+		current_record = single_add(
+		    session->door->game.config.planet_offset,
+		    (float)logical_planet);
+		if (yt_planet_rename_protected(current_record,
+		    session->door->game.config.planet_offset,
+		    session->door->game.config.total_records))
+			return session_02db(session, protected,
+			    sizeof(protected) - 1U,
+			    "planet Rename protected", error);
+		if (!session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "planet Rename leading blank", error)
+		    || !session_031f(session, prompt, sizeof(prompt) - 1U,
+		    "planet Rename name prompt", error)
+		    || !session_0345(session, name, sizeof(name)))
 			return false;
-		qb_title_case(name);
-		if (name[0] == '\0')
+		name_result = yt_planet_rename_prepare_name(name, &name_length);
+		if (name_result == YT_PLANET_RENAME_EMPTY)
 			return true;
-		if (strcmp(name, "The Wanderer") == 0
-		    || strcmp(name, "Xannoron") == 0
-		    || strcmp(name, "Mercenary Base") == 0) {
-			yt_out_line("That name is reserved.");
-			return true;
-		}
-		name[41] = '\0';
-		yt_outf("\"%s\"\r\n", name);
-		if (!session_yes_no(session, "Is this OK? (Y/n) [Y] ? ",
-		    true, &accepted))
+		if (name_result == YT_PLANET_RENAME_RESERVED)
+			return session_02db(session, reserved,
+			    sizeof(reserved) - 1U, "planet Rename reserved", error);
+		confirmation[confirmation_length++] = '"';
+		memcpy(confirmation + confirmation_length, name, name_length);
+		confirmation_length += name_length;
+		confirmation[confirmation_length++] = '"';
+		memcpy(confirmation + confirmation_length, confirmation_suffix,
+		    sizeof(confirmation_suffix) - 1U);
+		confirmation_length += sizeof(confirmation_suffix) - 1U;
+		if (!session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "planet Rename confirmation blank", error)
+		    || !session_a8d2(session, confirmation, confirmation_length,
+		    &answer, error))
 			return false;
-		if (accepted)
+		if (answer != YT_YES_NO_NO)
 			break;
 	}
 	if (!yt_game_read_planet(&session->door->game, logical_planet,
 	    &planet, error))
 		return false;
-	snprintf(planet.name, sizeof(planet.name), "%s", name);
-	planet.name_length = (float)strlen(name);
-	return yt_game_write_planet(&session->door->game, logical_planet,
+	yt_planet_rename_overlay(&planet, name, strlen(name));
+	snprintf(session->planet_name, sizeof(session->planet_name), "%s", name);
+	written = yt_game_write_planet(&session->door->game, logical_planet,
 	    &planet, error);
+	if (written && renamed != NULL)
+		*renamed = true;
+	return written;
 }
 
 static bool
 planet_transfer(struct yt_session *session, int logical_planet,
     struct yt_error *error)
 {
+	static const uint8_t title[] = "<Transfer items to planet>";
+	static const uint8_t question[] = "Transfer which item?";
+	static const uint8_t plasma_row[] = "[B] Plasma Bolts";
+	static const uint8_t cargo_row[] = "[C] Cargo";
+	static const uint8_t fighter_row[] = "[F] Fighters";
+	static const uint8_t missile_row[] = "[S] Missiles";
+	static const uint8_t mine_row[] = "[M] Mines";
+	static const uint8_t selector_prompt[] = "-=>";
 	struct yt_planet planet;
-	char line[80];
-	char command;
+	char command[80];
 
-	yt_out_line("[B] Plasma Bolts  [C] Cargo  [F] Fighters");
-	yt_out_line("[S] Missiles      [M] Mines");
-	yt_out("Selection: ");
-	if (!session_line(session, line, sizeof(line)))
+	if (!session_0317(session, title, sizeof(title) - 1U,
+	    "planet Transfer title", error)
+	    || !session_0317(session, question, sizeof(question) - 1U,
+	    "planet Transfer question", error)
+	    || !session_0317(session, plasma_row, sizeof(plasma_row) - 1U,
+	    "planet Transfer plasma row", error)
+	    || !session_02fc(session, cargo_row, sizeof(cargo_row) - 1U)
+	    || !session_02fc(session, fighter_row, sizeof(fighter_row) - 1U)
+	    || !session_02fc(session, missile_row, sizeof(missile_row) - 1U)
+	    || !session_02fc(session, mine_row, sizeof(mine_row) - 1U)
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "planet Transfer selector blank", error)
+	    || !session_031f(session, selector_prompt,
+	    sizeof(selector_prompt) - 1U, "planet Transfer selector", error)
+	    || !session_0357(session, command, sizeof(command)))
 		return false;
-	qb_compat_upper(line);
-	command = line[0];
-	if (strchr("CSFMB", command) == NULL)
+	if (command[0] == '\0')
 		return true;
-	if (command == 'C') {
+	if (yt_planet_transfer_selector_position(command) == 0)
+		return true;
+	if (strcmp(command, "C") == 0) {
+		struct planet_update_cache cache;
+		double held[3];
 		size_t index;
 
-		if (!planet_update(session, logical_planet, &planet, error))
+		if (!reload_player(session, error))
 			return false;
-		if (session->player.ore == 0.0f
-		    && session->player.organics == 0.0f
-		    && session->player.equipment == 0.0f) {
-			yt_out_line("You don't have any cargo!");
-			return true;
-		}
-		for (index = 0; index < 3; ++index) {
-			float *held = index == 0 ? &session->player.ore
-			    : index == 1 ? &session->player.organics
-			    : &session->player.equipment;
-			double total = (double)planet.stock[index]
-			    + (double)*held;
-			if (total > (double)single_mul(
-			    planet.production[index], 10.0f))
-				planet.production[index] = single_add(
-				    (float)floor(total) / 10.0f, 1.0f);
-			planet.stock[index] = (float)total;
-			*held = 0.0f;
-		}
-		if (!write_player(session, error)
-		    || !yt_game_write_planet(&session->door->game,
-		    logical_planet, &planet, error))
+		held[0] = (double)session->player.ore;
+		held[1] = (double)session->player.organics;
+		held[2] = (double)session->player.equipment;
+		if (!planet_update_cached(session, logical_planet, &planet,
+		    &cache, error))
 			return false;
-		yt_out_line("Cargo transferred!!");
-		if (!planet_update(session, logical_planet, &planet, error))
-			return false;
-		return session_sound(session, 4.0f,
-		    "planet transfer sound", error);
-	}
-	if (command == 'F') {
-		double input;
-		bool blank;
-		float amount;
+		if (yt_planet_transfer_cargo_empty(held)) {
+			static const uint8_t empty[] =
+			    "You don't have any cargo!";
 
-		yt_outf("You have %.9g fighters.\r\n",
-		    (double)session->player.fighters);
-		if (!session_value(session, "Transfer how many -=> ", &input,
-		    &blank))
+			return session_02db(session, empty, sizeof(empty) - 1U,
+			    "planet Transfer no cargo", error);
+		}
+		if (!session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "planet Transfer cargo blank", error))
 			return false;
-		if (blank)
-			return true;
-		amount = (float)input;
-		if (amount < 0.0f || amount > session->player.fighters)
-			return true;
-		session->player.fighters =
-		    single_sub(session->player.fighters, amount);
+		yt_planet_transfer_cargo_cache(cache.rate, cache.quantity, held);
+		for (index = 0; index < 3; ++index) {
+			int item = (int)index + 1;
+
+			session->planet_quantity[item] = cache.quantity[item];
+		}
+		if (!reload_player(session, error))
+			return false;
+		yt_planet_transfer_cargo_player_overlay(&session->player);
 		if (!write_player(session, error)
 		    || !yt_game_read_planet(&session->door->game,
 		    logical_planet, &planet, error))
 			return false;
-		planet.fighters = single_add(planet.fighters, amount);
+		yt_planet_transfer_cargo_planet_overlay(&planet, cache.rate,
+		    cache.quantity, cache.contribution);
+		if (!yt_game_write_planet(&session->door->game,
+		    logical_planet, &planet, error))
+			return false;
+		{
+			static const uint8_t success[] = "Cargo transferred!!";
+
+			if (!session_02fc(session, success, sizeof(success) - 1U))
+				return false;
+		}
 	}
-	else {
+	else if (strcmp(command, "F") == 0) {
+		char number[64];
+		char prompt[160];
+		char response[160];
+		struct qb_val_result parsed;
+		float cached_fighters = session->player.fighters;
+		float amount;
+
+		if (qb_str_double(number, sizeof(number),
+		    (double)cached_fighters) < 0
+		    || snprintf(prompt, sizeof(prompt),
+		    "You have%s fighters. Transfer how many -=>", number) < 0)
+			return port_report_failure(error,
+			    "planet Transfer fighter prompt format");
+		if (!session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "planet Transfer fighter blank", error)
+		    || !session_031f(session, (const uint8_t *)prompt,
+		    strlen(prompt), "planet Transfer fighter prompt", error)
+		    || !session_036f(session, response, sizeof(response)))
+			return false;
+		if (response[0] == '\0')
+			return true;
+		parsed = qb_val(response);
+		amount = (float)(parsed.valid ? parsed.value : 0.0);
+		if (yt_planet_transfer_fighter_rejected(amount, cached_fighters))
+			return true;
+		if (!reload_player(session, error))
+			return false;
+		yt_planet_transfer_fighter_player_overlay(&session->player,
+		    cached_fighters, amount);
+		if (!write_player(session, error)
+		    || !yt_game_read_planet(&session->door->game,
+		    logical_planet, &planet, error))
+			return false;
+		yt_planet_transfer_fighter_planet_overlay(&planet,
+		    session->planet_quantity[4], amount);
+		if (!yt_game_write_planet(&session->door->game, logical_planet,
+		    &planet, error))
+			return false;
+		if (!session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "planet Transfer fighter success blank",
+		    error))
+			return false;
+		session->presentation.blink = 1.0f;
+		{
+			static const uint8_t success[] = "Fighters Transferred!";
+
+			if (!session_02fc(session, success, sizeof(success) - 1U))
+				return false;
+		}
+	}
+	else if (strcmp(command, "B") == 0
+	    || strcmp(command, "S") == 0
+	    || strcmp(command, "M") == 0) {
 		float *held;
 		float amount;
-		int item = command == 'B' ? 9 : command == 'S' ? 5 : 6;
+		int item = command[0] == 'B' ? 9 : command[0] == 'S' ? 5 : 6;
+		const uint8_t *success;
+		size_t success_length;
 
 		held = player_item(&session->player, item);
 		amount = *held;
-		*held = 0.0f;
+		if (!reload_player(session, error))
+			return false;
+		yt_planet_transfer_direct_player_overlay(&session->player, item);
 		if (!write_player(session, error)
 		    || !yt_game_read_planet(&session->door->game,
 		    logical_planet, &planet, error))
 			return false;
-		*planet_item(&planet, item) =
-		    single_add(*planet_item(&planet, item), amount);
+		yt_planet_transfer_direct_planet_overlay(&planet, item,
+		    session->planet_quantity[item], amount);
+		if (!yt_game_write_planet(&session->door->game, logical_planet,
+		    &planet, error)
+		    || !session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "planet Transfer weapon success blank",
+		    error))
+			return false;
+		session->presentation.blink = 1.0f;
+		if (item == 9) {
+			static const uint8_t text[] = "Plasma Bolts Transferred!";
+
+			success = text;
+			success_length = sizeof(text) - 1U;
+		}
+		else if (item == 5) {
+			static const uint8_t text[] = "Missiles Transferred!";
+
+			success = text;
+			success_length = sizeof(text) - 1U;
+		}
+		else {
+			static const uint8_t text[] = "Mines Transferred!";
+
+			success = text;
+			success_length = sizeof(text) - 1U;
+		}
+		if (!session_02fc(session, success, success_length))
+			return false;
 	}
-	if (!yt_game_write_planet(&session->door->game, logical_planet,
-	    &planet, error))
-		return false;
-	yt_out_line("Transfer complete.");
-	if (!planet_update(session, logical_planet, &planet, error))
+	if (!reload_player(session, error)
+	    || !planet_update(session, logical_planet, &planet, error))
 		return false;
 	return session_sound(session, 4.0f,
 	    "planet transfer sound", error);
@@ -4952,123 +8119,242 @@ static bool
 planet_productivity(struct yt_session *session, int logical_planet,
     struct yt_error *error)
 {
+	static const uint8_t explanation[] =
+	    "Productivity is increased by 1 Unit of EQU, ORG  & ORE "
+	    "for each 250 credits.";
+	static const uint8_t prompt[] =
+	    "Spend how much to raise productivity? -+> ";
+	static const uint8_t insufficient[] =
+	    "You dont have that many credits!";
+	static const char *const fragments[4] = {
+		"Also increased: Fighters:", ", Missiles:",
+		", Mines:", ", Plasma Bolts:"
+	};
+	struct planet_update_cache cache;
 	struct yt_planet planet;
-	double credits;
-	bool blank;
+	struct qb_val_result parsed;
+	char response[160];
+	char credits_text[64];
+	char credits_row[128];
+	char units_text[64];
+	char success[160];
+	double spend;
 	double units;
+	float delta[4];
+	float credit_argument;
 	size_t index;
 
-	if (!planet_update(session, logical_planet, &planet, error))
+	if (!reload_player(session, error)
+	    || !planet_update_cached(session, logical_planet, &planet, &cache,
+	    error))
 		return false;
-	yt_out_line("Productivity is increased by 1 Unit of EQU, ORG & ORE"
-	    " for each 250 credits.");
-	if (!session_value(session, "How many credits do you want to spend? ",
-	    &credits, &blank))
+	if (qb_str_double(credits_text, sizeof(credits_text),
+	    (double)session->player.credits) < 0
+	    || snprintf(credits_row, sizeof(credits_row),
+	    "You have%s Credits.", credits_text) < 0
+	    || !session_0317(session, explanation, sizeof(explanation) - 1U,
+	    "planet Productivity explanation", error)
+	    || !session_0317(session, (const uint8_t *)credits_row,
+	    strlen(credits_row), "planet Productivity credits", error)
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "planet Productivity pre-prompt blank", error)
+	    || !session_031f(session, prompt, sizeof(prompt) - 1U,
+	    "planet Productivity spend prompt", error)
+	    || !session_036f(session, response, sizeof(response)))
 		return false;
-	credits = floor(credits);
-	if (blank || credits < 1.0
-	    || credits > (double)session->player.credits)
+	parsed = qb_val(response);
+	if (parsed.overflow)
+		return port_report_failure(error,
+		    "planet Productivity amount VAL");
+	spend = qb_int(parsed.valid ? parsed.value : 0.0);
+	if (spend < 1.0)
 		return true;
-	units = credits / 250.0;
-	for (index = 0; index < 3; ++index)
-		planet.production[index] = single_add(
-		    planet.production[index], (float)units);
+	if (spend > (double)session->player.credits)
+		return session_02db(session, insufficient,
+		    sizeof(insufficient) - 1U,
+		    "planet Productivity credit error", error);
+	units = yt_planet_productivity_units(spend);
+	if (qb_str_double(units_text, sizeof(units_text), units) < 0
+	    || snprintf(success, sizeof(success),
+	    "Productivity increased by%s units of ORE, ORG & EQU!",
+	    units_text) < 0
+	    || !session_0317(session, (const uint8_t *)success,
+	    strlen(success), "planet Productivity accepted", error))
+		return false;
+	yt_planet_productivity_cache(cache.rate, units, delta);
+	for (index = 0; index < 4U; ++index) {
+		char delta_text[64];
+		char fragment[128];
+
+		if (delta[index] == 0.0f)
+			continue;
+		if (qb_str_single(delta_text, sizeof(delta_text), delta[index]) < 0
+		    || snprintf(fragment, sizeof(fragment), "%s%s",
+		    fragments[index], delta_text) < 0
+		    || !session_031f(session, (const uint8_t *)fragment,
+		    strlen(fragment), "planet Productivity derived fragment",
+		    error))
+			return false;
+	}
+	if (delta[0] != 0.0f
+	    && !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "planet Productivity derived ending", error))
+		return false;
+	credit_argument = yt_planet_productivity_credit_argument(units);
+	if (!reload_player(session, error))
+		return false;
+	yt_planet_bank_credit_overlay(&session->player, credit_argument);
+	if (!write_player(session, error)
+	    || !yt_game_read_planet(&session->door->game, logical_planet,
+	    &planet, error))
+		return false;
+	yt_planet_productivity_planet_overlay(&planet, cache.rate,
+	    cache.quantity, cache.contribution);
 	if (!yt_game_write_planet(&session->door->game, logical_planet,
 	    &planet, error))
 		return false;
-	session->player.credits = floorf(single_sub(session->player.credits,
-	    (float)(units * 250.0)));
-	if (!write_player(session, error))
-		return false;
-	yt_outf("Productivity increased by %.15g units.\r\n", units);
-	return true;
+	return reload_player(session, error);
 }
 
 static bool
-planet_assault(struct yt_session *session, int logical_planet,
-    struct yt_error *error)
+planet_assault(struct yt_session *session, uint32_t physical_planet,
+    float commitment, bool *defeated, struct yt_error *error)
 {
+	static const uint8_t engaging[] = "Forces engaging!";
+	static const uint8_t defenses[] = "Planetary defenses destroyed!";
+	static const uint8_t defenses_news[] =
+	    " +++ Planetary defenses destroyed!";
+	static const uint8_t captured[] = "You've captured the planet!";
 	struct yt_planet planet;
-	double commitment_value;
-	bool blank;
-	int attackers;
-	int defenders;
-	char news[300];
+	uint8_t player_name[YT_TEXT_FIELD_SIZE];
+	uint8_t planet_name[YT_TEXT_FIELD_SIZE];
+	uint8_t row[320];
+	size_t player_name_length;
+	size_t planet_name_length;
+	size_t row_length;
+	float attackers = commitment;
+	float defenders;
+	float saved_foreground;
 
-	if (!planet_update(session, logical_planet, &planet, error)
-	    || !session_value(session,
-	    "How many ground forces do you wish to commit? ",
-	    &commitment_value, &blank))
+	if (defeated == NULL)
 		return false;
-	attackers = (int)floor(commitment_value);
-	if (blank || attackers < 1
-	    || (float)attackers > session->player.ground_forces)
-		return true;
-	session->player.ground_forces =
-	    single_sub(session->player.ground_forces, (float)attackers);
-	if (!write_player(session, error))
+	*defeated = false;
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "planet assault entry blank", error))
 		return false;
-	snprintf(news, sizeof(news), "  -  %s attacked planet \"%s\".",
-	    session->player.name, planet.name);
-	if (!append_news(session, news, error))
+	saved_foreground = session->presentation.foreground;
+	if (!planet_update_cached_physical(session, physical_planet, &planet,
+	    NULL, error)
+	    || !read_planet_physical(session, physical_planet, &planet, error)
+	    || !yt_planet_stored_name(&planet, planet_name,
+	    &planet_name_length, error)
+	    || !reload_player(session, error))
 		return false;
-	if (!session_sound(session, 2.0f,
+	defenders = floorf(planet.ground_forces);
+	if (!yt_player_stored_name(&session->player, player_name,
+	    &player_name_length, error))
+		return false;
+	yt_planet_assault_player_overlay(&session->player, commitment);
+	if (!yt_database_write(&session->door->game.database,
+	    (size_t)session->player_record, &session->player.record, error)
+	    || !yt_database_flush(&session->door->game.database, error)
+	    || !yt_planet_assault_attack_news(player_name, player_name_length,
+	    planet_name, planet_name_length, commitment, row, sizeof(row),
+	    &row_length)
+	    || !append_news_bytes(session, row, row_length, error))
+		return false;
+	session->presentation.blink = 1.0f;
+	if (!session_present_text(session, engaging, sizeof(engaging) - 1U,
+	    SESSION_PRESENT_BOLD_LINE, "planet assault engagement row", error)
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "planet assault engagement blank", error)
+	    || !session_sound(session, 2.0f,
 	    "planet assault engagement sound", error))
 		return false;
-	defenders = (int)floorf(planet.ground_forces);
-	while (attackers > 0 && defenders > 0) {
+	while (attackers > 0.0f && defenders > 0.0f) {
 		float side;
 		float amount;
+		bool attacker_damage;
 
-		if (!random_value(session, &side, error)
-		    || !random_value(session, &amount, error))
+		if (!random_value(session, &side, error))
 			return false;
-		if (side > 0.4000000059604645f) {
-			attackers -= (int)floorf(amount * (float)defenders);
-			if (attackers < 0)
-				attackers = 0;
-		}
-		else {
-			defenders -= (int)floorf(amount * (float)attackers);
-			if (defenders < 0)
-				defenders = 0;
-			if (!session_sound(session, 2.0f,
+		attacker_damage = side > 0.4000000059604645f;
+		if (!random_value(session, &amount, error))
+			return false;
+		yt_planet_assault_round(attacker_damage, amount, &attackers,
+		    &defenders);
+		session->presentation.foreground = attacker_damage ? 3.0f : 4.0f;
+		session->pager.foreground = attacker_damage ? 3 : 4;
+		if (!yt_planet_assault_status_row(attacker_damage,
+		    attacker_damage ? attackers : defenders, row, sizeof(row),
+		    &row_length)
+		    || !session_present_text(session, row, row_length,
+		    SESSION_PRESENT_LINE, "planet assault force-status row", error))
+			return false;
+		if (!attacker_damage
+		    && !session_sound(session, 2.0f,
 			    "planet assault defender sound", error))
-				return false;
-		}
+			return false;
 	}
-	if (defenders <= 0) {
-		if (!append_news(session,
-		    " +++ Planetary defenses destroyed!", error)
+	session->presentation.foreground = saved_foreground;
+	session->pager.foreground = (int)saved_foreground;
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "planet assault terminal blank", error))
+		return false;
+	if (defenders <= 0.0f) {
+		float owner = 0.0f;
+
+		if (!session_present_text(session, defenses,
+		    sizeof(defenses) - 1U, SESSION_PRESENT_BOLD_LINE,
+		    "planet assault defenses-destroyed row", error)
+		    || !append_news_bytes(session, defenses_news,
+		    sizeof(defenses_news) - 1U, error)
 		    || !session_sound(session, 1.0f,
 		    "planet defenses destroyed sound", error))
 			return false;
-		if (attackers > 0) {
-			planet.owner = (float)session->player_record;
-			planet.ground_forces = (float)attackers;
-			snprintf(news, sizeof(news),
-			    " +++ %s captured planet %s!",
-			    session->player.name, planet.name);
-			if (!append_news(session, news, error)
+		if (attackers > 0.0f) {
+			owner = (float)session->player_record;
+			if (!session_present_text(session, NULL, 0,
+			    SESSION_PRESENT_LINE, "planet assault capture blank", error))
+				return false;
+			session->presentation.blink = 1.0f;
+			if (!session_present_text(session, captured,
+			    sizeof(captured) - 1U, SESSION_PRESENT_BOLD_LINE,
+			    "planet assault capture row", error)
+			    || !yt_planet_assault_capture_news(player_name,
+			    player_name_length, planet_name, planet_name_length,
+			    row, sizeof(row), &row_length)
+			    || !append_news_bytes(session, row, row_length, error)
 			    || !session_sound(session, 1.0f,
 			    "planet capture sound", error))
 				return false;
 		}
-		else {
-			planet.owner = 0.0f;
-			planet.ground_forces = 0.0f;
-		}
-	}
-	else {
-		planet.ground_forces = (float)defenders;
-		snprintf(news, sizeof(news),
-		    "  -  %s's assault on \"%s\" failed.",
-		    session->player.name, planet.name);
-		if (!append_news(session, news, error))
+		else
+			attackers = 0.0f;
+		if (!read_planet_physical(session, physical_planet, &planet,
+		    error))
 			return false;
+		yt_planet_assault_victory_overlay(&planet, owner, attackers);
+		return write_planet_physical(session, physical_planet, &planet,
+		    false, error);
 	}
-	return yt_game_write_planet(&session->door->game, logical_planet,
-	    &planet, error);
+	if (!read_planet_physical(session, physical_planet, &planet, error))
+		return false;
+	yt_planet_assault_failure_overlay(&planet, defenders);
+	if (!write_planet_physical(session, physical_planet, &planet, false,
+	    error))
+		return false;
+	session->presentation.blink = 1.0f;
+	if (!yt_planet_assault_failure_row(defenders, true, row, sizeof(row),
+	    &row_length)
+	    || !append_news_bytes(session, row, row_length, error)
+	    || !yt_planet_assault_failure_row(defenders, false, row,
+	    sizeof(row), &row_length)
+	    || !session_present_text(session, row, row_length,
+	    SESSION_PRESENT_BOLD_LINE, "planet assault failure row", error))
+		return false;
+	*defeated = true;
+	return true;
 }
 
 static bool
@@ -5166,238 +8452,553 @@ build_route(struct yt_session *session, int start, int destination,
 }
 
 static bool
-planet_move_hop(struct yt_session *session, int logical_planet,
+planet_move_friendship(struct yt_session *session, float owner,
+    bool *friendly, struct yt_error *error)
+{
+	struct yt_player current;
+	struct yt_player other;
+	uint32_t owner_record;
+	int last_player = (int)session->door->game.config.sector_offset;
+
+	if (friendly == NULL)
+		return false;
+	*friendly = false;
+	session->relationship_scratch = 0.0f;
+	if (owner < 2.0f || owner > (float)last_player
+	    || session->player_record < 2 || session->player_record > last_player)
+		return true;
+	if (owner == (float)session->player_record) {
+		*friendly = true;
+		session->relationship_scratch = -1.0f;
+		return true;
+	}
+	if (!yt_game_read_player(&session->door->game, session->player_record,
+	    &current, error))
+		return false;
+	if (current.team == 0.0f)
+		return true;
+	owner_record = qb_brun_random_record_number(owner);
+	if (owner_record > (uint32_t)INT_MAX
+	    || !yt_game_read_player(&session->door->game, (int)owner_record,
+	    &other, error))
+		return false;
+	*friendly = other.team == current.team;
+	if (*friendly)
+		session->relationship_scratch = -1.0f;
+	return true;
+}
+
+static bool
+planet_move_hop(struct yt_session *session, int source_number,
     int destination, bool final_hop, bool *stop, struct yt_error *error)
 {
-	struct yt_planet planet;
+	static const uint8_t xannor_prefix[] =
+	    "No way! We don't want no trouble from no Xannor ";
+	static const uint8_t xannor_slogan[] =
+	    "(Xannoron Movers, We're MOVEers not FIGHTers.)";
+	static const uint8_t occupied[] =
+	    "There is already a planet in that sector!";
+	static const uint8_t wanderer[] =
+	    "The Wanderer vanishes from your sensors!";
 	struct yt_sector source;
 	struct yt_sector target;
+	struct yt_planet planet;
+	uint8_t planet_name[YT_TEXT_FIELD_SIZE];
+	uint8_t player_name[YT_TEXT_FIELD_SIZE];
+	uint8_t row[512];
+	size_t planet_name_length;
+	size_t player_name_length;
+	size_t row_length;
+	float source_link;
+	float moving_planet;
+	float actual_destination = (float)destination;
 	float draw;
-	int source_number = (int)session->player.sector;
-	int actual_destination = destination;
+	float xannor_planet = single_sub(
+	    session->door->game.config.total_records,
+	    session->door->game.config.planet_offset);
+	uint32_t moving_record;
+	int source_record;
+	int destination_record;
 
-	*stop = false;
-	if (!planet_update(session, logical_planet, &planet, error))
+	if (stop == NULL)
 		return false;
-	if (logical_planet == planet_count(session)) {
-		yt_out_line("Xannoron cannot be moved!");
+	*stop = false;
+	if (!yt_game_read_sector(&session->door->game, source_number, &source,
+	    error))
+		return false;
+	if (source.planet == xannor_planet) {
+		size_t first_name_length = strlen(session->door->identity.real_first);
+
+		if (sizeof(xannor_prefix) - 1U + first_name_length + 1U
+		    > sizeof(row))
+			return false;
+		memcpy(row, xannor_prefix, sizeof(xannor_prefix) - 1U);
+		memcpy(row + sizeof(xannor_prefix) - 1U,
+		    session->door->identity.real_first, first_name_length);
+		row[sizeof(xannor_prefix) - 1U + first_name_length] = '!';
+		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+		    "planet move Xannor blank", error)
+		    || !session_present_text(session, row,
+		    sizeof(xannor_prefix) + first_name_length,
+		    SESSION_PRESENT_LINE, "planet move Xannor refusal", error)
+		    || !session_present_text(session, xannor_slogan,
+		    sizeof(xannor_slogan) - 1U, SESSION_PRESENT_LINE,
+		    "planet move Xannor slogan", error))
+			return false;
 		*stop = true;
 		return true;
 	}
-	if (!yt_game_read_sector(&session->door->game, source_number, &source,
-	    error)
-	    || !yt_game_read_sector(&session->door->game, destination,
-	    &target, error))
+	if (!yt_game_read_sector(&session->door->game, destination, &target,
+	    error))
 		return false;
-	if (target.planet > 0.0f)
+	if (target.planet > 0.0f) {
+		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+		    "planet move occupied blank", error)
+		    || !session_present_text(session, occupied,
+		    sizeof(occupied) - 1U, SESSION_PRESENT_LINE,
+		    "planet move occupied row", error))
+			return false;
 		*stop = true;
-	source.planet = 0.0f;
-	if (!yt_game_write_sector(&session->door->game, source_number, &source,
-	    error)
+	}
+	if (!yt_game_read_sector(&session->door->game, source_number, &source,
+	    error))
+		return false;
+	source_link = source.planet;
+	moving_record = qb_brun_random_record_number(single_add(
+	    session->door->game.config.planet_offset, source_link));
+	moving_planet = single_sub(single_add(
+	    session->door->game.config.planet_offset, source_link),
+	    session->door->game.config.planet_offset);
+	yt_planet_move_sector_overlay(&source, 0.0f);
+	source_record = yt_sector_basic_record(&session->door->game.config,
+	    source_number);
+	if (source_record < 0 || !yt_database_write(
+	    &session->door->game.database, (size_t)source_record,
+	    &source.record, error)
+	    || !read_planet_physical(session, moving_record, &planet, error)
+	    || !yt_planet_stored_name(&planet, planet_name,
+	    &planet_name_length, error)
 	    || !random_value(session, &draw, error))
 		return false;
 	if (draw > 0.9950000047683716f || *stop) {
-		char line[300];
-		char old_name[sizeof(planet.name)];
 		float loss = 0.0f;
 
-		snprintf(old_name, sizeof(old_name), "%s", planet.name);
-		planet.name[0] = '\0';
-		planet.name_length = 0.0f;
-		if (!yt_game_write_planet(&session->door->game, logical_planet,
-		    &planet, error))
+		yt_planet_move_explosion_overlay(&planet);
+		if (!write_planet_physical(session, moving_record, &planet, false,
+		    error)
+		    || !session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "planet move explosion first blank", error)
+		    || !session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "planet move explosion second blank", error)
+		    || !yt_planet_move_explosion_row(planet_name,
+		    planet_name_length, row, sizeof(row), &row_length))
 			return false;
-		snprintf(line, sizeof(line),
-		    " *** Planet %s EXPLODED while being moved by %s!!!",
-		    old_name, session->player.name);
-		if (!append_news(session, line, error))
+		session->presentation.bold = 1.0f;
+		if (!session_present_text(session, row, row_length,
+		    SESSION_PRESENT_BOLD_LINE, "planet move explosion row", error)
+		    || !yt_player_stored_name(&session->player, player_name,
+		    &player_name_length, error)
+		    || !yt_planet_move_explosion_news(planet_name,
+		    planet_name_length, player_name, player_name_length,
+		    row, sizeof(row), &row_length)
+		    || !append_news_bytes(session, row, row_length, error)
+		    || !session_sound(session, 3.0f,
+		    "planet move explosion sound", error)
+		    || !reload_player(session, error))
 			return false;
-		if (!session_sound(session, 3.0f,
-		    "planet move explosion sound", error))
-			return false;
-		if (session->player.fighters > 0.0f) {
+		if (session->player.fighters != 0.0f) {
 			float first;
 			float second;
 
 			if (!random_value(session, &first, error)
 			    || !random_value(session, &second, error))
 				return false;
-			first = floorf(single_mul(first,
-			    session->player.fighters)) + 1.0f;
-			loss = floorf(single_mul(second, first)) + 1.0f;
-			if (loss > session->player.fighters)
-				loss = session->player.fighters;
-			session->player.fighters =
-			    single_sub(session->player.fighters, loss);
-			if (!write_player(session, error))
-				return false;
-			snprintf(line, sizeof(line),
-			    "%s lost %.9g fighters in the explosion!",
-			    session->player.name, (double)loss);
-			if (!append_news(session, line, error))
-				return false;
+			loss = yt_planet_move_fighter_loss(
+			    session->player.fighters, first, second);
 		}
-		*stop = true;
+		yt_planet_move_fighter_overlay(&session->player, loss);
+		if (!yt_database_write(&session->door->game.database,
+		    (size_t)session->player_record, &session->player.record, error))
+			return false;
+		if (loss > 0.0f) {
+			static const uint8_t you[] = "You";
+
+			if (!yt_planet_move_loss_row(you, sizeof(you) - 1U,
+			    loss, row, sizeof(row), &row_length)
+			    || !session_present_text(session, row, row_length,
+			    SESSION_PRESENT_LINE, "planet move fighter loss row", error)
+			    || !yt_planet_move_loss_row(player_name,
+			    player_name_length, loss, row, sizeof(row), &row_length)
+			    || !append_news_bytes(session, row, row_length, error))
+				return false;
+			*stop = true;
+		}
 		return true;
 	}
-	if (logical_planet == 1) {
+	if (moving_planet == 1.0f) {
+		float maximum = single_sub(
+		    session->door->game.config.port_offset,
+		    session->door->game.config.sector_offset);
+
+		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+		    "planet move Wanderer blank", error)
+		    || !session_present_text(session, wanderer,
+		    sizeof(wanderer) - 1U, SESSION_PRESENT_LINE,
+		    "planet move Wanderer row", error))
+			return false;
+		*stop = true;
 		for (;;) {
 			if (!random_value(session, &draw, error))
 				return false;
-			actual_destination =
-			    1 + (int)floorf(single_mul(draw,
-			    (float)sector_count(session)));
+			actual_destination = floorf(single_mul(draw, maximum)) + 1.0f;
 			if (!yt_game_read_sector(&session->door->game,
-			    actual_destination, &target, error))
+			    (int)actual_destination, &target, error))
 				return false;
 			if (target.planet <= 0.0f)
 				break;
 		}
-		*stop = true;
 	}
-	target.planet = (float)logical_planet;
-	if (!yt_game_write_sector(&session->door->game, actual_destination,
-	    &target, error))
-		return false;
-	session->player.turns =
-	    single_sub(session->player.turns, 10.0f);
-	session->player.sector = (float)destination;
-	session->sector_cache[session->player_record] =
-	    session->player.sector;
-	if (!write_player(session, error))
-		return false;
-	if (logical_planet != 1 && final_hop
-	    && !session_sound(session, 4.0f,
-	    "planet move completion sound", error))
-		return false;
-	{
-		bool friendly = sector_force_friendly(session, &target, error);
-
-		if (!friendly && error != NULL && error->status != YT_OK)
+	else if (final_hop) {
+		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+		    "planet move final first blank", error)
+		    || !session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "planet move final second blank", error)
+		    || !yt_planet_move_success_row(planet_name,
+		    planet_name_length, row, sizeof(row), &row_length)
+		    || !session_present_text(session, row, row_length,
+		    SESSION_PRESENT_LINE, "planet move final row", error)
+		    || !session_sound(session, 4.0f,
+		    "planet move completion sound", error))
 			return false;
-		if (target.mines != 0.0f
-		    || (target.fighters != 0.0f && !friendly))
-			*stop = true;
 	}
-	return true;
+	if (!yt_game_read_sector(&session->door->game,
+	    (int)actual_destination, &target, error))
+		return false;
+	if (target.mines != 0.0f)
+		*stop = true;
+	if (target.fighters != 0.0f) {
+		bool friendly;
+
+		if (!planet_move_friendship(session, target.fighter_owner,
+		    &friendly, error))
+			return false;
+		if (!friendly)
+			*stop = true;
+		if (!yt_game_read_sector(&session->door->game,
+		    (int)actual_destination, &target, error))
+			return false;
+	}
+	yt_planet_move_sector_overlay(&target, moving_planet);
+	destination_record = yt_sector_basic_record(&session->door->game.config,
+	    (int)actual_destination);
+	if (destination_record < 0 || !yt_database_write(
+	    &session->door->game.database, (size_t)destination_record,
+	    &target.record, error)
+	    || !reload_player(session, error))
+		return false;
+	yt_planet_move_success_overlay(&session->player, (float)destination);
+	session->sector_cache[session->player_record] = (float)destination;
+	return yt_database_write(&session->door->game.database,
+	    (size_t)session->player_record, &session->player.record, error);
 }
 
 static bool
-planet_move(struct yt_session *session, int logical_planet,
-    bool one_hop, struct yt_error *error)
+planet_move(struct yt_session *session, bool *enter_sector,
+    struct yt_error *error)
 {
-	double input;
-	bool blank;
-	int destination;
-	int current = (int)session->player.sector;
+	static const uint8_t cost_notice[] =
+	    "Moving planets costs 10 turns per sector.";
+	static const uint8_t destination_prompt[] =
+	    "Move planet to what sector? ";
+	static const uint8_t same_sector[] =
+	    "Hey, look out the window dummy!";
+	static const uint8_t range_prefix[] =
+	    "Valid sector numbers are from 1 to";
+	static const uint8_t working[] = "Working. ";
+	static const uint8_t route_failure[] =
+	    "*** You can't get there without going someplace you dont want to!";
+	static const uint8_t insufficient[] =
+	    "Not enough turns left to move the planet that far!";
+	static const uint8_t confirmation[] = "Move the planet? (Y/[N])";
+	static const uint8_t engaged[] = "Planet thrusters engaged.";
+	static const uint8_t moving[] = "Moving to sector:";
+	char response[160];
+	char number[64];
+	uint8_t row[512];
+	size_t row_length;
+	float start = session->player.sector;
+	float destination;
+	float maximum = yt_planet_move_maximum(
+	    session->door->game.config.port_offset,
+	    session->door->game.config.sector_offset);
+	float cost = 0.0f;
+	int start_node;
+	int destination_node;
 	int count = sector_count(session);
 	int *route;
-	bool found;
-	int hops = 0;
 	int cursor;
-	bool accepted;
+	bool conversion_overflow;
+	bool found;
 	bool stop = false;
+	bool final = false;
+	enum yt_yes_no_answer answer;
 
-	if (!session_value(session, "Move planet to which sector? ", &input,
-	    &blank))
+	if (enter_sector != NULL)
+		*enter_sector = false;
+	if (!session_0317(session, cost_notice, sizeof(cost_notice) - 1U,
+	    "planet Thrusters cost notice", error)
+	    || !display_sector(session, false, error)
+	    || !session_031f(session, destination_prompt,
+	    sizeof(destination_prompt) - 1U,
+	    "planet Thrusters destination prompt", error)
+	    || !session_036f(session, response, sizeof(response)))
 		return false;
-	destination = (int)floor(input);
-	if (blank || destination < 1 || destination > count
-	    || destination == current)
-		return true;
+	destination = yt_planet_move_destination(response);
+	if (destination == start)
+		return session_02db(session, same_sector,
+		    sizeof(same_sector) - 1U, "planet Thrusters same-sector", error);
+	if (destination < 1.0f || destination > maximum) {
+		int number_length = qb_str_single(number, sizeof(number), maximum);
+
+		if (number_length < 0
+		    || sizeof(range_prefix) - 1U + (size_t)number_length + 1U
+		    > sizeof(row))
+			return false;
+		memcpy(row, range_prefix, sizeof(range_prefix) - 1U);
+		memcpy(row + sizeof(range_prefix) - 1U, number,
+		    (size_t)number_length);
+		row[sizeof(range_prefix) - 1U + (size_t)number_length] = '!';
+		return session_02db(session, row,
+		    sizeof(range_prefix) + (size_t)number_length,
+		    "planet Thrusters range", error);
+	}
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "planet Thrusters working blank", error)
+	    || !session_031f(session, working, sizeof(working) - 1U,
+	    "planet Thrusters working", error))
+		return false;
+	start_node = (int)qb_cint(start, &conversion_overflow);
+	if (conversion_overflow) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			snprintf(error->operation, sizeof(error->operation), "%s",
+			    "planet Thrusters start CINT");
+		}
+		return false;
+	}
+	destination_node = (int)qb_cint(destination, &conversion_overflow);
+	if (conversion_overflow) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			snprintf(error->operation, sizeof(error->operation), "%s",
+			    "planet Thrusters destination CINT");
+		}
+		return false;
+	}
 	route = calloc((size_t)count + 1U, sizeof(*route));
 	if (route == NULL) {
 		if (error != NULL)
 			error->status = YT_NO_MEMORY;
 		return false;
 	}
-	if (one_hop) {
-		struct yt_sector sector;
-		size_t slot;
-
-		found = false;
-		if (!yt_game_read_sector(&session->door->game, current, &sector,
-		    error)) {
-			free(route);
-			return false;
-		}
-		for (slot = 0; slot < YT_ARRAY_LEN(sector.warps); ++slot) {
-			if (sector.warps[slot] == (float)destination)
-				found = true;
-		}
-		if (found)
-			route[current] = destination;
-	}
-	else if (!build_route(session, current, destination, route, true, &found,
-	    error)) {
+	if (!build_route(session, start_node, destination_node, route, true,
+	    &found, error)) {
 		free(route);
 		return false;
 	}
 	if (!found) {
+		bool ok = session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "planet Thrusters route first blank", error)
+		    && session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "planet Thrusters route second blank", error);
+
+		session->presentation.blink = 1.0f;
+		if (ok)
+			ok = session_present_text(session, route_failure,
+			    sizeof(route_failure) - 1U, SESSION_PRESENT_BOLD_LINE,
+			    "planet Thrusters route failure", error);
 		free(route);
-		yt_out_line("*** You can't get there without going someplace"
-		    " you dont want to!");
-		return true;
+		return ok;
 	}
-	cursor = current;
-	while (route[cursor] != 0) {
-		++hops;
-		cursor = route[cursor];
-	}
-	if ((float)(hops * 10) > session->player.turns) {
-		free(route);
-		yt_out_line("You don't have enough turns.");
-		return true;
-	}
-	yt_outf("This move will cost %d turns.\r\n", hops * 10);
-	if (!session_yes_no(session, "Move the planet? [y/N] ", false,
-	    &accepted)) {
+	if (!yt_planet_move_path_heading(start, destination, row, sizeof(row),
+	    &row_length)
+	    || !session_02fc(session, row, row_length)
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "planet Thrusters route leading blank", error)
+	    || qb_str_single(number, sizeof(number), start) < 0
+	    || !session_031f(session, (const uint8_t *)number, strlen(number),
+	    "planet Thrusters route start", error)) {
 		free(route);
 		return false;
 	}
-	if (!accepted) {
+	cursor = start_node;
+	while (route[cursor] != 0) {
+		int next = route[cursor];
+		int column;
+		int ignored_row;
+		int number_length;
+
+		session->pager.line_count = 0.0f;
+		number_length = qb_str_single(number, sizeof(number), (float)next);
+		if (number_length < 0) {
+			free(route);
+			return false;
+		}
+		if (next != destination_node)
+			number[number_length++] = ',';
+		number[number_length] = '\0';
+		if (!session_031f(session, (const uint8_t *)number,
+		    (size_t)number_length, "planet Thrusters route token", error)) {
+			free(route);
+			return false;
+		}
+		yt_out_cursor_position(&ignored_row, &column);
+		if (column > 74 && !session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "planet Thrusters route wrap", error)) {
+			free(route);
+			return false;
+		}
+		cost = yt_planet_move_add_cost(cost);
+		cursor = next;
+	}
+	session->pager.line_count = 0.0f;
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "planet Thrusters route ending", error)
+	    || !yt_planet_move_summary(cost, row, sizeof(row), &row_length)
+	    || !session_0317(session, row, row_length,
+	    "planet Thrusters distance summary", error)
+	    || !computer_prompt_hydrate(session, error)) {
+		free(route);
+		return false;
+	}
+	if (cost > session->player.turns) {
+		bool ok = session_02db(session, insufficient,
+		    sizeof(insufficient) - 1U,
+		    "planet Thrusters insufficient turns", error);
+
+		free(route);
+		return ok;
+	}
+	if (!yt_planet_move_turns_row(session->player.turns, row, sizeof(row),
+	    &row_length)
+	    || !session_02fc(session, row, row_length)
+	    || !session_a8d2(session, confirmation, sizeof(confirmation) - 1U,
+	    &answer, error)) {
+		free(route);
+		return false;
+	}
+	if (answer != YT_YES_NO_YES) {
 		free(route);
 		return true;
 	}
-	cursor = current;
-	while (route[cursor] != 0 && !stop) {
+	session->presentation.bold = 1.0f;
+	session->presentation.blink = 1.0f;
+	if (!session_0317(session, engaged, sizeof(engaged) - 1U,
+	    "planet Thrusters engaged", error)) {
+		free(route);
+		return false;
+	}
+	session->pager.line_count = 0.0f;
+	if (!session_031f(session, moving, sizeof(moving) - 1U,
+	    "planet Thrusters moving prefix", error)) {
+		free(route);
+		return false;
+	}
+	cursor = start_node;
+	while (route[cursor] != 0) {
 		int next = route[cursor];
+		int number_length = qb_str_single(number, sizeof(number),
+		    (float)next);
 
-		if (!planet_move_hop(session, logical_planet, next,
-		    next == destination, &stop,
-		    error)) {
+		if (number_length < 0 || !session_031f(session,
+		    (const uint8_t *)number, (size_t)number_length,
+		    "planet Thrusters movement token", error)) {
+			free(route);
+			return false;
+		}
+		if (next == destination_node)
+			final = true;
+		if (!planet_move_hop(session, cursor, next, final, &stop, error)) {
 			free(route);
 			return false;
 		}
 		cursor = next;
+		if (stop)
+			break;
+	}
+	if (!stop && !computer_prompt_hydrate(session, error)) {
+		free(route);
+		return false;
 	}
 	free(route);
+	if (enter_sector != NULL)
+		*enter_sector = true;
 	return true;
 }
 
 static bool
 planet_menu(struct yt_session *session, int logical_planet,
-    struct yt_error *error)
+    bool *enter_sector, struct yt_error *error)
 {
+	static const uint8_t prompt_prefix[] = "Time:";
+	static const uint8_t prompt_body[] =
+	    "Planet command (?=help) [A]? ";
+
+	session->current_planet = (float)logical_planet;
 	for (;;) {
-		char command[80];
 		char upper[80];
+		char free_text[64];
+		char free_row[160];
+		uint8_t prompt[sizeof(prompt_prefix) - 1U
+		    + sizeof(session->time.text) + sizeof(prompt_body) - 1U];
+		size_t prompt_length = 0;
+		double free_holds;
 		const char *position;
 		const char *alphabet = "F!MPC1234569LTAB$";
 
+		session->pager.line_count = 0.0f;
 		if (!reload_player(session, error))
 			return false;
-		yt_outf("Free Holds: %.9g\r\n",
-		    (double)(session->player.holds - session->player.ore
-		    - session->player.organics - session->player.equipment));
-		if (!planet_update(session, logical_planet,
-		    &(struct yt_planet){0}, error))
+		free_holds = double_sub(double_sub(double_sub(
+		    (double)session->player.holds,
+		    (double)session->player.ore),
+		    (double)session->player.organics),
+		    (double)session->player.equipment);
+		if (qb_str_double(free_text, sizeof(free_text), free_holds) < 0
+		    || snprintf(free_row, sizeof(free_row),
+		    "You have%s free cargo holds.", free_text) < 0
+		    || !session_0317(session, (const uint8_t *)free_row,
+		    strlen(free_row), "planet free-holds row", error)
+		    || !session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "planet prompt framing blank", error))
 			return false;
-		yt_out("Planet command (?=help) [A]? ");
-		if (!session_line(session, command, sizeof(command)))
+		session->presentation.foreground = 6.0f;
+		session->pager.foreground = 6;
+		memcpy(prompt + prompt_length, prompt_prefix,
+		    sizeof(prompt_prefix) - 1U);
+		prompt_length += sizeof(prompt_prefix) - 1U;
+		if (session->time.text_length > sizeof(session->time.text)) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				(void)snprintf(error->operation,
+				    sizeof(error->operation), "%s",
+				    "planet prompt time capacity");
+			}
 			return false;
-		snprintf(upper, sizeof(upper), "%s", command);
-		qb_compat_upper(upper);
+		}
+		memcpy(prompt + prompt_length, session->time.text,
+		    session->time.text_length);
+		prompt_length += session->time.text_length;
+		memcpy(prompt + prompt_length, prompt_body,
+		    sizeof(prompt_body) - 1U);
+		prompt_length += sizeof(prompt_body) - 1U;
+		if (!reload_player(session, error)
+		    || !planet_update(session, logical_planet,
+		    &(struct yt_planet){0}, error)
+		    || !session_031f(session, prompt, prompt_length,
+		    "planet command prompt", error)
+		    || !session_0357(session, upper, sizeof(upper)))
+			return false;
 		if (upper[0] == '\0')
 			strcpy(upper, "A");
 		if (strcmp(upper, "I") == 0) {
@@ -5406,26 +9007,27 @@ planet_menu(struct yt_session *session, int logical_planet,
 			continue;
 		}
 		if (strcmp(upper, "N") == 0) {
-			if (!planet_rename(session, logical_planet, error))
+			if (!planet_rename(session, logical_planet, NULL, error))
 				return false;
 			continue;
 		}
 		if (strcmp(upper, "S") == 0) {
-			if (!display_sector(session, false, error))
+			if (!display_sector(session, true, error))
 				return false;
 			continue;
 		}
 		if (strcmp(upper, "Q") == 0) {
-			bool quit;
+			bool confirmed;
 
-			if (!session_yes_no(session, "Quit Yankee Trader? [y/N] ",
-			    false, &quit))
+			if (!session_quit_confirm(session, &confirmed, error))
 				return false;
-			if (quit) {
-				session->running = false;
-				return true;
-			}
-			continue;
+			if (!confirmed)
+				continue;
+			if (!quit_session(session, error))
+				return false;
+			session->running = false;
+			session->terminated = true;
+			return false;
 		}
 		if (strcmp(upper, "D") == 0) {
 			if (!planet_inventory(session, logical_planet, error))
@@ -5433,14 +9035,47 @@ planet_menu(struct yt_session *session, int logical_planet,
 			continue;
 		}
 		if (strcmp(upper, "?") == 0) {
-			yt_out_line("1-6,9 Take  A Take All  B Bank  D Display");
-			yt_out_line("F Forces  L Leave  N Rename  T Transfer");
-			yt_out_line("! Thrusters  M Move  $ Productivity");
+			static const uint8_t heading[] = "<Help>";
+			static const char *const rows[] = {
+				"1 - Take Ore",
+				"2 - Take Organics",
+				"3 - Take Equipment",
+				"4 - Take Fighters",
+				"5 - Take Missiles",
+				"6 - Take Mines",
+				"9 - Take Plasma Bolts",
+				"A - Take <A>ll (Default)",
+				"B - Planet's <B>ank",
+				"D - <D>isplay Planet",
+				"F - Take/Leave Ground <F>orces",
+				"L - <L>eave Planet",
+				"N - Re-<N>ame Planet",
+				"T - <T>ransfer Cargo to Planet",
+				"! - Use Planet Thrusters",
+				"$ - Raise Productivity"
+			};
+			size_t row;
+
+			if (!session_0317(session, heading,
+			    sizeof(heading) - 1U, "planet help heading", error)
+			    || !session_0317(session,
+			    (const uint8_t *)rows[0], strlen(rows[0]),
+			    "planet help first row", error))
+				return false;
+			for (row = 1; row < YT_ARRAY_LEN(rows); ++row) {
+				if (!session_02fc(session,
+				    (const uint8_t *)rows[row], strlen(rows[row])))
+					return false;
+			}
 			continue;
 		}
 		position = strstr(alphabet, upper);
 		if (position == NULL) {
-			yt_out_line("Invalid command.");
+			static const uint8_t invalid[] = "Invalid command.";
+
+			if (!session_02db(session, invalid,
+			    sizeof(invalid) - 1U, "planet invalid command", error))
+				return false;
 			continue;
 		}
 		switch ((int)(position - alphabet)) {
@@ -5449,20 +9084,27 @@ planet_menu(struct yt_session *session, int logical_planet,
 				return false;
 			break;
 		case 1:
-			if (!planet_move(session, logical_planet, true, error))
+			if (!planet_move(session, enter_sector, error))
 				return false;
+			if (enter_sector != NULL && *enter_sector)
+				return true;
 			break;
 		case 2:
-			if (!planet_move(session, logical_planet, false, error))
+		{
+			bool moved;
+
+			if (!command_move(session, &moved, error))
 				return false;
-			break;
+			if (enter_sector != NULL)
+				*enter_sector = moved;
+			return true;
+		}
 		case 3:
 			if (!command_trade(session, error))
 				return false;
 			break;
 		case 4:
-			yt_out_line("Computer functions are available from orbit.");
-			break;
+			return computer_menu(session, enter_sector, error);
 		case 5: case 6: case 7: case 8: case 9: case 10:
 			if (!planet_take_one(session, logical_planet,
 			    (int)(position - alphabet) - 4, error))
@@ -5473,6 +9115,8 @@ planet_menu(struct yt_session *session, int logical_planet,
 				return false;
 			break;
 		case 12:
+			if (enter_sector != NULL)
+				*enter_sector = true;
 			return true;
 		case 13:
 			if (!planet_transfer(session, logical_planet, error))
@@ -5499,162 +9143,372 @@ planet_menu(struct yt_session *session, int logical_planet,
 }
 
 static bool
-create_planet(struct yt_session *session, struct yt_sector *sector,
-    struct yt_error *error)
+create_planet(struct yt_session *session, struct yt_error *error)
 {
-	bool accepted;
-	char name[160];
+	static const uint8_t no_planet[] =
+	    "There is no planet in this sector.";
+	static const uint8_t price[] = "Planets cost 25000 credits.";
+	static const uint8_t too_poor[] = "You're too poor to buy one.";
+	static const uint8_t buy_prompt[] =
+	    "Do you wish to buy a planet(Y/N) [N]? ";
+	static const uint8_t all_taken[] =
+	    "I'm sorry, but all planets are taken.";
+	static const uint8_t destroy_first[] =
+	    "One has to be destroyed before you can buy a planet.";
+	static const uint8_t advice[] =
+	    "To increase productivity on your new planet, spend credits [$] on it.";
+	struct yt_sector sector;
 	int logical;
 	struct yt_planet planet;
-	char news[300];
+	struct yt_record raw;
+	uint8_t cached_trader[YT_TEXT_FIELD_SIZE];
+	uint8_t row[320];
+	size_t cached_trader_length;
+	size_t row_length;
+	uint32_t selected_physical;
+	uint32_t sector_physical;
+	float selected_expression;
+	float selected_logical;
+	float scan;
+	float minute;
+	int today;
+	int adjusted_year;
+	bool renamed;
+	enum yt_yes_no_answer answer;
 
-	if (session->player.credits < 25000.0f) {
-		yt_out_line("A Genesis Device costs 25,000 credits.");
-		return true;
-	}
-	if (!session_yes_no(session,
-	    "Create a planet here for 25,000 credits? [y/N] ",
-	    false, &accepted) || !accepted)
-		return accepted || error == NULL || error->status == YT_OK;
-	yt_out("Planet name: ");
-	if (!session_line(session, name, sizeof(name)))
+	if (!session_0317(session, no_planet, sizeof(no_planet) - 1U,
+	    "planet creation opening", error)
+	    || !session_02fc(session, price, sizeof(price) - 1U)
+	    || !yt_player_stored_name(&session->player, cached_trader,
+	    &cached_trader_length, error)
+	    || !reload_player(session, error)
+	    || !yt_planet_creation_credit_row((double)session->player.credits,
+	    row, sizeof(row), &row_length)
+	    || !session_02fc(session, row, row_length))
 		return false;
-	qb_title_case(name);
-	name[41] = '\0';
-	if (name[0] == '\0')
+	if (25000.0f > session->player.credits)
+		return session_02db(session, too_poor, sizeof(too_poor) - 1U,
+		    "planet creation insufficient credits", error);
+	if (!session_a8d2(session, buy_prompt, sizeof(buy_prompt) - 1U,
+	    &answer, error))
+		return false;
+	if (answer != YT_YES_NO_YES)
 		return true;
-	for (logical = 2; logical <= planet_count(session); ++logical) {
-		if (!yt_game_read_planet(&session->door->game, logical, &planet,
-		    error))
+	scan = single_add(session->door->game.config.planet_offset, 2.0f);
+	for (;;) {
+		uint32_t physical = qb_brun_random_record_number(scan);
+
+		if (!yt_database_read(&session->door->game.database,
+		    (size_t)physical, &raw, error))
 			return false;
-		if (planet.name_length == 0.0f)
+		yt_planet_decode(&planet, &raw);
+		if (planet.name_length == 0.0f) {
+			selected_expression = scan;
+			selected_physical = physical;
 			break;
+		}
+		if (scan >= session->door->game.config.total_records) {
+			if (!session_02db(session, all_taken,
+			    sizeof(all_taken) - 1U,
+			    "planet creation allocation full", error)
+			    || !session_02fc(session, destroy_first,
+			    sizeof(destroy_first) - 1U))
+				return false;
+			return true;
+		}
+		scan = single_add(scan, 1.0f);
+		if (scan > session->door->game.config.total_records) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				snprintf(error->operation, sizeof(error->operation), "%s",
+				    "planet creation stale current-planet boundary");
+			}
+			return false;
+		}
 	}
-	if (logical > planet_count(session)) {
-		yt_out_line("There is no room for another planet.");
+	selected_logical = single_sub(selected_expression,
+	    session->door->game.config.planet_offset);
+	if (selected_physical
+	    != qb_brun_random_record_number(selected_expression)
+	    || selected_logical < (float)INT_MIN
+	    || selected_logical > (float)INT_MAX
+	    || selected_logical != floorf(selected_logical))
+		return false;
+	logical = (int)selected_logical;
+	if (!planet_rename(session, logical, &renamed, error))
+		return false;
+	if (!renamed)
 		return true;
-	}
-	snprintf(planet.name, sizeof(planet.name), "%s", name);
-	planet.name_length = (float)strlen(name);
-	planet.last_day = (float)session->door->game.today;
-	planet.last_minute = floorf(current_minute());
-	planet.production[0] = 1.0f;
-	planet.production[1] = 1.0f;
-	planet.production[2] = 1.0f;
-	planet.stock[0] = 10.0f;
-	planet.stock[1] = 10.0f;
-	planet.stock[2] = 10.0f;
-	planet.owner = (float)session->player_record;
-	planet.ground_forces = 1.0f;
-	planet.fighters = 30.0f;
-	planet.missiles = 0.0f;
-	planet.mines = 0.0f;
-	planet.plasma = 0.0f;
-	planet.bank = 0.0f;
-	if (!yt_game_write_planet(&session->door->game, logical, &planet,
+	if (!read_planet_physical(session, selected_physical, &planet, error))
+		return false;
+	yt_planet_creation_overlay(&planet, session->player_record);
+	if (!write_planet_physical(session, selected_physical, &planet, false,
 	    error))
 		return false;
-	sector->planet = (float)logical;
-	if (!yt_game_write_sector(&session->door->game,
-	    (int)session->player.sector, sector, error))
+	sector_physical = qb_brun_random_record_number(single_add(
+	    session->door->game.config.sector_offset, session->player.sector));
+	if (!yt_database_read(&session->door->game.database,
+	    (size_t)sector_physical, &raw, error))
 		return false;
-	session->player.credits =
-	    floorf(single_sub(session->player.credits, 25000.0f));
-	if (!write_player(session, error))
+	yt_sector_decode(&sector, &raw);
+	sector.planet = selected_logical;
+	(void)yt_record_set_number(&sector.record, YT_F93, selected_logical);
+	if (!yt_database_write(&session->door->game.database,
+	    (size_t)sector_physical, &sector.record, error)
+	    || !yt_current_date_serial(session->door->game.config.epoch_year,
+	    &today, &adjusted_year, error))
 		return false;
-	snprintf(news, sizeof(news), "  -  %s purchased planet \"%s\".",
-	    session->player.name, name);
-	if (!append_news(session, news, error))
+	session->door->game.today = today;
+	session->door->game.adjusted_year = adjusted_year;
+	minute = floorf(current_minute());
+	if (!read_planet_physical(session, selected_physical, &planet, error))
 		return false;
-	yt_outf("Planet \"%s\" created with Genesis Device!\r\n", name);
-	if (!session_sound(session, 4.0f,
-	    "planet creation sound", error))
+	yt_planet_creation_timestamp_overlay(&planet, (float)today, minute);
+	if (!write_planet_physical(session, selected_physical, &planet, false,
+	    error)
+	    || !reload_player(session, error))
 		return false;
-	yt_out_line("To increase productivity on your new planet, spend credits"
-	    " [$] on it.");
+	yt_planet_creation_credit_overlay(&session->player, -25000.0f);
+	if (!yt_database_write(&session->door->game.database,
+	    (size_t)session->player_record, &session->player.record, error)
+	    || !yt_database_flush(&session->door->game.database, error)
+	    || !yt_planet_creation_news(cached_trader, cached_trader_length,
+	    (const uint8_t *)session->planet_name, strlen(session->planet_name),
+	    row, sizeof(row), &row_length)
+	    || !append_news_bytes(session, row, row_length, error)
+	    || !yt_planet_creation_success_row(
+	    (const uint8_t *)session->planet_name, strlen(session->planet_name),
+	    row, sizeof(row), &row_length)
+	    || !session_0317(session, row, row_length,
+	    "planet creation success row", error)
+	    || !session_sound(session, 4.0f, "planet creation sound", error)
+	    || !session_0317(session, advice, sizeof(advice) - 1U,
+	    "planet creation advice row", error))
+		return false;
 	return true;
 }
 
 static bool
-command_land(struct yt_session *session, struct yt_error *error)
+planet_landing_same_team(struct yt_session *session, float owner,
+    bool *friendly, struct yt_error *error)
 {
+	struct yt_player current;
+	struct yt_player other;
+	int owner_record;
+
+	if (friendly == NULL)
+		return false;
+	*friendly = false;
+	if (session->player_record < YT_PLAYER_FIRST
+	    || session->player_record > YT_PLAYER_LAST
+	    || !yt_planet_landing_valid_owner(owner, YT_PLAYER_LAST,
+	    &owner_record))
+		return true;
+	if (!yt_game_read_player(&session->door->game, session->player_record,
+	    &current, error))
+		return false;
+	if (current.team == 0.0f)
+		return true;
+	if (!yt_game_read_player(&session->door->game, owner_record, &other,
+	    error))
+		return false;
+	*friendly = yt_sector_force_same_team(current.team, other.team);
+	return true;
+}
+
+static bool
+command_land(struct yt_session *session, bool *enter_sector,
+    struct yt_error *error)
+{
+	static const uint8_t title[] = "<Land/Create planet>";
+	static const uint8_t landing[] = "Landing...";
+	static const uint8_t governor[] =
+	    "This planet has no governor! Hail to the new planetary governor!!";
+	static const uint8_t unrest[] =
+	    "Due to the unrest caused by the lack of planetary govornment, ";
+	static const uint8_t permission[] = "Permission to land is ";
+	static const uint8_t denied[] = "DENIED!";
+	static const uint8_t confirmation[] =
+	    "Do you wish to try to force a landing? [y/N] ";
 	struct yt_sector sector;
 	struct yt_planet planet;
+	uint8_t name[YT_TEXT_FIELD_SIZE];
+	uint8_t row[256];
+	uint8_t prompt[160];
+	size_t name_length;
+	size_t row_length;
+	size_t prompt_length;
+	uint32_t physical;
+	float updater_logical;
+	float cached_carried;
+	float cached_ground;
 	int logical;
 	bool allowed = false;
 
+	if (!session_0317(session, title, sizeof(title) - 1U,
+	    "planet landing title", error)
+	    || !reload_player(session, error))
+		return false;
+	cached_carried = session->player.ground_forces;
 	if (!yt_game_read_sector(&session->door->game,
 	    (int)session->player.sector, &sector, error))
 		return false;
-	if (sector.planet <= 0.0f)
-		return create_planet(session, &sector, error);
-	logical = (int)sector.planet;
-	if (!planet_update(session, logical, &planet, error))
-		return false;
-	if (floorf(planet.ground_forces) <= 0.0f
-	    || planet.owner == (float)session->player_record)
-		allowed = true;
-	else if (planet.owner >= YT_PLAYER_FIRST
-	    && planet.owner <= YT_PLAYER_LAST) {
-		allowed = same_team(session, (int)planet.owner, error);
-		if (!allowed && error != NULL && error->status != YT_OK)
-			return false;
+	if (sector.planet == 0.0f) {
+		bool created = create_planet(session, error);
+
+		if (created && enter_sector != NULL)
+			*enter_sector = true;
+		return created;
 	}
-	if (!allowed && (planet.owner == 0.0f
-	    || (planet.owner >= YT_PLAYER_FIRST
-	    && planet.owner <= YT_PLAYER_LAST))) {
+	session->pager.foreground = 6;
+	session->presentation.foreground = 6.0f;
+	if (!session_0317(session, landing, sizeof(landing) - 1U,
+	    "planet landing progress", error)
+	    || !yt_planet_landing_record(
+	    session->door->game.config.planet_offset, sector.planet,
+	    &physical, &updater_logical))
+		return false;
+	(void)updater_logical;
+	if (!planet_update_cached_physical(session, physical, &planet, NULL,
+	    error)
+	    || !read_planet_physical(session, physical, &planet, error)
+	    || !yt_planet_stored_name(&planet, name, &name_length, error))
+		return false;
+	cached_ground = planet.ground_forces;
+	if (yt_planet_landing_immediate_allow(cached_ground, planet.owner,
+	    session->player_record))
+		allowed = true;
+	else if (!planet_landing_same_team(session, planet.owner, &allowed,
+	    error))
+		return false;
+	if (!allowed && !session_present_text(session, NULL, 0,
+	    SESSION_PRESENT_LINE, "planet permission late blank", error))
+		return false;
+	if (!allowed) {
 		struct yt_player owner;
 		bool vacant = planet.owner == 0.0f;
+		int owner_record = 0;
 
-		if (!vacant) {
+		if (!vacant && yt_planet_landing_valid_owner(planet.owner,
+		    YT_PLAYER_LAST, &owner_record)) {
 			if (!yt_game_read_player(&session->door->game,
-			    (int)planet.owner, &owner, error))
+			    owner_record, &owner, error))
 				return false;
-			vacant = owner.killed_by != 0.0f;
+			vacant = yt_planet_landing_vacant(planet.owner,
+			    owner.killed_by, YT_PLAYER_LAST);
 		}
 		if (vacant) {
+			struct yt_planet fresh;
 			float first;
 			float second;
+			float new_ground;
 
-			yt_out_line("This planet has no governor! Hail to the new"
-			    " planetary governor!!");
-			if (!session_sound(session, 1.0f,
-			    "vacant planet sound", error))
+			if (!session_present_text(session, governor,
+			    sizeof(governor) - 1U, SESSION_PRESENT_LINE,
+			    "vacant planet governor row", error)
+			    || !session_sound(session, 1.0f,
+			    "vacant planet sound", error)
+			    || !session_wait(session, 2.0,
+			    "vacant-planet governor wait", error))
 				return false;
-			session_timed_wait(session, 2.0);
-			if (!random_value(session, &first, error)
+			if (!read_planet_physical(session, physical, &fresh, error)
+			    || !random_value(session, &first, error)
 			    || !random_value(session, &second, error))
 				return false;
-			planet.ground_forces = floorf(single_mul(
-			    single_mul(first, second),
-			    planet.ground_forces));
-			planet.owner = planet.ground_forces > 0.0f
-			    ? (float)session->player_record : 0.0f;
-			if (!yt_game_write_planet(&session->door->game,
-			    logical, &planet, error))
+			new_ground = yt_planet_landing_attrition(first, second,
+			    cached_ground);
+			if (!session_present_text(session, unrest,
+			    sizeof(unrest) - 1U, SESSION_PRESENT_LINE,
+			    "vacant planet unrest row", error)
+			    || !yt_planet_landing_unrest_row(new_ground,
+			    cached_ground, row, sizeof(row), &row_length)
+			    || !session_present_text(session, row, row_length,
+			    SESSION_PRESENT_LINE, "vacant planet reduction row", error))
 				return false;
+			yt_planet_landing_vacancy_overlay(&fresh, new_ground,
+			    session->player_record);
+			if (!write_planet_physical(session, physical, &fresh, false,
+			    error)
+			    || !session_wait(session, 5.0,
+			    "vacant-planet unrest wait", error))
+				return false;
+			planet = fresh;
 			allowed = true;
 		}
 	}
 	if (!allowed) {
-		bool assault = false;
+		enum yt_yes_no_answer answer;
+		char response[YT_COMMAND_SIZE];
+		float commitment;
+		bool defeated;
 
-		yt_out_line("Planetary traffic control denies landing.");
-		if (session->player.ground_forces >= 1.0f
-		    && !session_yes_no(session,
-		    "Launch a ground assault? [y/N] ", false, &assault))
+		if (!yt_planet_landing_traffic_row(name, name_length, row,
+		    sizeof(row), &row_length)
+		    || !session_present_text(session, row, row_length,
+		    SESSION_PRESENT_LINE, "planet permission traffic row", error)
+		    || !session_present_text(session, permission,
+		    sizeof(permission) - 1U, SESSION_PRESENT_RAW,
+		    "planet permission prefix", error))
 			return false;
-		if (!assault)
+		session->presentation.blink = 1.0f;
+		session->pager.foreground = 3;
+		session->presentation.foreground = 3.0f;
+		if (!session_present_text(session, denied, sizeof(denied) - 1U,
+		    SESSION_PRESENT_BOLD_LINE, "planet permission denial", error))
+			return false;
+		session->pager.foreground = 6;
+		session->presentation.foreground = 6.0f;
+		if (!read_planet_physical(session, physical, &planet, error)
+		    || !yt_planet_landing_sensor_row(planet.ground_forces,
+		    cached_carried, row, sizeof(row), &row_length)
+		    || !session_0317(session, row, row_length,
+		    "planet landing sensor row", error))
+			return false;
+		if (cached_carried < 1.0f) {
+			if (enter_sector != NULL)
+				*enter_sector = true;
 			return true;
-		if (!planet_assault(session, logical, error))
+		}
+		if (!session_a8d2(session, confirmation,
+		    sizeof(confirmation) - 1U, &answer, error))
 			return false;
-		if (!yt_game_read_planet(&session->door->game, logical,
-		    &planet, error))
-			return false;
-		if (planet.owner != (float)session->player_record)
+		if (answer != YT_YES_NO_YES) {
+			if (enter_sector != NULL)
+				*enter_sector = true;
 			return true;
+		}
+		if (!yt_planet_landing_amount_prompt(cached_carried, prompt,
+		    sizeof(prompt), &prompt_length)
+		    || !session_031f(session, prompt, prompt_length,
+		    "planet landing commitment prompt", error)
+		    || !session_036f(session, response, sizeof(response)))
+			return false;
+		commitment = yt_planet_landing_commitment(response);
+		if (!yt_planet_landing_commitment_valid(commitment,
+		    cached_carried)) {
+			if (enter_sector != NULL)
+				*enter_sector = true;
+			return true;
+		}
+		if (!planet_assault(session, physical, commitment, &defeated,
+		    error))
+			return false;
+		if (defeated) {
+			if (enter_sector != NULL)
+				*enter_sector = true;
+			return true;
+		}
 	}
-	return planet_menu(session, logical, error);
+	if ((int64_t)physical - (int)session->door->game.config.planet_offset
+	    < INT_MIN
+	    || (int64_t)physical
+	    - (int)session->door->game.config.planet_offset > INT_MAX)
+		return false;
+	logical = (int)((int64_t)physical
+	    - (int)session->door->game.config.planet_offset);
+	if (!planet_inventory(session, logical, error))
+		return false;
+	return planet_menu(session, logical, enter_sector, error);
 }
 
 static bool
@@ -5667,6 +9521,8 @@ team_load(struct yt_session *session, int id, struct yt_team *team,
 	size_t index;
 
 	memset(team, 0, sizeof(*team));
+	memset(session->team_roster_cache, 0,
+	    sizeof(session->team_roster_cache));
 	team->id = id;
 	if (id < 1 || id > YT_DEFAULT_PLAYER_COUNT)
 		return true;
@@ -5717,38 +9573,25 @@ team_store(struct yt_session *session, struct yt_team *team,
 }
 
 static bool
-team_store_roster(struct yt_session *session, struct yt_team *team,
+team_read_overlay(struct yt_session *session, int id, struct yt_team *team,
     struct yt_error *error)
 {
-	static const size_t offsets[4] = {
-		YT_F109, YT_F117, YT_F121, YT_F125
-	};
-	size_t index;
-
-	for (index = 0; index < 4; ++index)
-		yt_record_set_number_if_changed(&team->overlay.record,
-		    offsets[index], team->roster[index]);
-	return yt_database_write(&session->door->game.database,
-	    (size_t)yt_sector_basic_record(&session->door->game.config,
-	    team->id), &team->overlay.record, error);
+	memset(team, 0, sizeof(*team));
+	team->id = id;
+	if (id < 1 || id > YT_DEFAULT_PLAYER_COUNT)
+		return true;
+	return yt_game_read_sector(&session->door->game, id, &team->overlay,
+	    error);
 }
 
 static bool
-team_password(struct yt_session *session, char password[5])
+team_store_roster(struct yt_session *session, struct yt_team *team,
+    struct yt_error *error)
 {
-	char line[80];
-
-	for (;;) {
-		yt_out("Four-character password: ");
-		if (!session_line(session, line, sizeof(line)))
-			return false;
-		qb_compat_upper(line);
-		if (strlen(line) == 4U) {
-			memcpy(password, line, 4);
-			password[4] = '\0';
-			return true;
-		}
-	}
+	yt_team_roster_overlay(&team->overlay.record, team->roster);
+	return yt_database_write(&session->door->game.database,
+	    (size_t)yt_sector_basic_record(&session->door->game.config,
+	    team->id), &team->overlay.record, error);
 }
 
 static bool
@@ -5808,30 +9651,6 @@ team_audit(struct yt_session *session, float team_id, float event,
 		    team.roster[index], error))
 			return false;
 	}
-	return true;
-}
-
-static bool
-team_resolve_captain(struct yt_session *session, struct yt_team *team,
-    bool *captain, struct yt_error *error)
-{
-	struct yt_player incumbent;
-	bool valid = team->captain >= YT_PLAYER_FIRST
-	    && team->captain <= session->door->game.config.sector_offset;
-
-	if (valid) {
-		if (!yt_game_read_player(&session->door->game,
-		    (int)team->captain, &incumbent, error))
-			return false;
-		valid = incumbent.name_length > 0.0f
-		    && incumbent.team == (float)team->id;
-	}
-	if (!valid) {
-		team->captain = (float)session->player_record;
-		if (!team_store(session, team, error))
-			return false;
-	}
-	*captain = team->captain == (float)session->player_record;
 	return true;
 }
 
@@ -5955,7 +9774,8 @@ info_commodity_row(struct yt_session *session, const char *left_label,
 }
 
 static bool
-info_team_lines(struct yt_session *session, struct yt_error *error)
+info_team_lines(struct yt_session *session, struct yt_team *resolved_team,
+    bool *current_is_captain, struct yt_error *error)
 {
 	struct yt_team team;
 	struct yt_player captain;
@@ -5965,6 +9785,11 @@ info_team_lines(struct yt_session *session, struct yt_error *error)
 	int captain_record;
 	int last_player = (int)session->door->game.config.sector_offset - 1;
 	bool captain_valid;
+
+	if (current_is_captain != NULL)
+		*current_is_captain = false;
+	if (resolved_team != NULL)
+		memset(resolved_team, 0, sizeof(*resolved_team));
 
 	if (!reload_player(session, error))
 		return false;
@@ -5982,6 +9807,10 @@ info_team_lines(struct yt_session *session, struct yt_error *error)
 	    || !info_line(session, NULL, 0, error))
 		return false;
 	if (team.captain == (float)session->player_record) {
+		if (resolved_team != NULL)
+			*resolved_team = team;
+		if (current_is_captain != NULL)
+			*current_is_captain = true;
 		(void)snprintf(row, sizeof(row),
 		    "You are the Captain of team%s!", number);
 		return info_line(session, row, strlen(row), error)
@@ -6010,18 +9839,24 @@ info_team_lines(struct yt_session *session, struct yt_error *error)
 			return info_failure(error, "Info captain name length");
 		(void)snprintf(row, sizeof(row), "Your Team Captain is: %.*s!",
 		    (int)length, captain.name);
+		if (resolved_team != NULL)
+			*resolved_team = team;
 		return info_line(session, row, strlen(row), error)
 		    && info_line(session, NULL, 0, error);
 	}
 	if (!team_load(session, (int)team_id, &team, error))
 		return false;
 	team.captain = (float)session->player_record;
+	if (current_is_captain != NULL)
+		*current_is_captain = true;
 	yt_record_set_number_if_changed(&team.overlay.record, YT_F77,
 	    team.captain);
 	if (!yt_database_write(&session->door->game.database,
 	    (size_t)yt_sector_basic_record(&session->door->game.config,
 	    team.id), &team.overlay.record, error))
 		return false;
+	if (resolved_team != NULL)
+		*resolved_team = team;
 	return info_line(session,
 	    "Your team has no captain! You've been promoted to Captain!", 58,
 	    error)
@@ -6075,7 +9910,7 @@ show_ship(struct yt_session *session, struct yt_error *error)
 	memcpy(row, "Time  :", 7);
 	memcpy(row + 7, session->time.text, session->time.text_length);
 	if (!info_line(session, row, 7U + session->time.text_length, error)
-	    || !info_team_lines(session, error)
+	    || !info_team_lines(session, NULL, NULL, error)
 	    || !reload_player(session, error)
 	    || !info_line(session, top, sizeof(top), error))
 		return false;
@@ -6130,103 +9965,248 @@ show_ship(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
+team_pick_name(struct yt_session *session, float team_id, char name[42],
+    bool *accepted, struct yt_error *error)
+{
+	static const uint8_t prompt[] =
+	    "Pick a name for your Team (41 chars. max)? ";
+	static const uint8_t invalid[] =
+	    "Team names MUST more than 2 letters!";
+	struct yt_team team;
+	char response[YT_COMMAND_SIZE];
+	size_t name_length;
+
+	if (accepted == NULL)
+		return false;
+	*accepted = false;
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "team name leading blank", error)
+	    || !session_031f(session, prompt, sizeof(prompt) - 1U,
+	    "team name prompt", error)
+	    || !session_0345(session, response, sizeof(response)))
+		return false;
+	if (!yt_team_prepare_name(response, &name_length))
+		return session_02db(session, invalid, sizeof(invalid) - 1U,
+		    "team name invalid length", error);
+	if (team_id != floorf(team_id) || team_id < 0.0f
+	    || team_id > (float)YT_DEFAULT_PLAYER_COUNT) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation, sizeof(error->operation),
+			    "%s", "team name record number");
+		}
+		return false;
+	}
+	(void)snprintf(name, 42, "%s", response);
+	if (!team_read_overlay(session, (int)team_id, &team, error))
+		return false;
+	(void)snprintf(team.name, sizeof(team.name), "%s", response);
+	yt_team_name_overlay(&team.overlay.record,
+	    (const uint8_t *)response, name_length);
+	if (!yt_database_write(&session->door->game.database,
+	    (size_t)yt_sector_basic_record(&session->door->game.config,
+	    team.id), &team.overlay.record, error))
+		return false;
+	*accepted = true;
+	return true;
+}
+
+static bool
+team_create_password(struct yt_session *session, int team_id,
+    char password[5], struct yt_error *error)
+{
+	static const uint8_t prompt[] =
+	    "Please Pick a Password for your Team. (4 Chars.) :";
+	static const uint8_t invalid[] = "Password MUST be 4 characters!";
+	struct yt_team team;
+	char response[80];
+	char reminder[160];
+
+	for (;;) {
+		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+		    "team password leading blank", error)
+		    || !session_031f(session, prompt, sizeof(prompt) - 1U,
+		    "team password prompt", error)
+		    || !session_0357(session, response, sizeof(response)))
+			return false;
+		if (strlen(response) != 4U) {
+			if (!session_02db(session, invalid, sizeof(invalid) - 1U,
+			    "team password invalid length", error))
+				return false;
+			continue;
+		}
+		memcpy(password, response, 4);
+		password[4] = '\0';
+		if (snprintf(reminder, sizeof(reminder),
+		    "REMEMBER YOUR TEAM PASSWORD SO OTHERS CAN JOIN! -+> %s",
+		    password) < 0
+		    || !session_02db(session, (const uint8_t *)reminder,
+		    strlen(reminder), "team password reminder", error)
+		    || !team_read_overlay(session, team_id, &team, error))
+			return false;
+		memcpy(team.password, password, 5);
+		yt_team_password_overlay(&team.overlay.record,
+		    (const uint8_t *)password);
+		return yt_database_write(&session->door->game.database,
+		    (size_t)yt_sector_basic_record(&session->door->game.config,
+		    team.id), &team.overlay.record, error);
+	}
+}
+
+static bool
 team_create(struct yt_session *session, struct yt_error *error)
 {
+	static const uint8_t entering[] = "Entering a New Team...";
 	struct yt_team team;
-	char name[160];
+	char name[42];
+	char actor_name[42];
+	char password[5];
+	char number[64];
 	char news[300];
-	size_t raw_length;
+	char success[300];
 	int id;
+	float selected;
+	bool name_accepted;
 
-	yt_out("Team name: ");
-	if (!session_line(session, name, sizeof(name)))
+	(void)snprintf(actor_name, sizeof(actor_name), "%s",
+	    session->player.name);
+	if (!session_02db(session, entering, sizeof(entering) - 1U,
+	    "team create heading", error))
 		return false;
-	raw_length = strlen(name);
-	if (raw_length < 3U)
-		return true;
-	qb_title_case(name);
-	name[41] = '\0';
+	selected = session->player.team;
 	for (id = 1; id <= YT_DEFAULT_PLAYER_COUNT; ++id) {
 		if (!team_load(session, id, &team, error))
 			return false;
-		if (!team.live)
+		if (!team.live) {
+			selected = (float)id;
 			break;
+		}
 	}
-	/* The original falls through to overlay zero when all fifty are live. */
-	if (id > YT_DEFAULT_PLAYER_COUNT) {
-		id = 0;
-		if (!team_load(session, id, &team, error))
-			return false;
-		team.id = 0;
-	}
-	snprintf(team.name, sizeof(team.name), "%s", name);
-	yt_record_set_text_if_changed(&team.overlay.record,
-	    (const uint8_t *)team.name, strlen(team.name));
-	yt_record_set_number_if_changed(&team.overlay.record, YT_F73,
-	    (float)strlen(team.name));
-	if (!yt_database_write(&session->door->game.database,
-	    (size_t)yt_sector_basic_record(&session->door->game.config, id),
-	    &team.overlay.record, error))
+	if (!team_pick_name(session, selected, name, &name_accepted, error))
 		return false;
-	session->player.team = (float)id;
-	if (!write_player(session, error))
+	if (!name_accepted)
+		return true;
+	id = (int)selected;
+	if (!reload_player(session, error))
 		return false;
+	session->player.team = selected;
+	if (!write_player(session, error)
+	    || !team_load(session, id, &team, error))
+		return false;
+	team.id = id;
 	team.captain = (float)session->player_record;
 	team.roster[0] = (float)session->player_record;
 	team.roster[1] = 0.0f;
 	team.roster[2] = 0.0f;
 	team.roster[3] = 0.0f;
-	if (!team_password(session, team.password)
-	    || !team_store(session, &team, error))
+	if (!team_store(session, &team, error)
+	    || !team_create_password(session, id, password, error))
 		return false;
-	snprintf(news, sizeof(news), "%s Created Team %.9g -=- %s",
-	    session->player.name, (double)id, name);
-	return append_news(session, news, error);
+	session->presentation.foreground = 3.0f;
+	session->pager.foreground = 3;
+	if (qb_str_single(number, sizeof(number), selected) < 0
+	    || snprintf(news, sizeof(news), "%s Created Team%s -=- %s",
+	    actor_name, number, name) < 0
+	    || !append_news(session, news, error)
+	    || snprintf(success, sizeof(success),
+	    "Team number [%s ] [%s] CREATED!", number, name) < 0)
+		return false;
+	return session_02db(session, (const uint8_t *)success,
+	    strlen(success), "team create success", error);
 }
 
 static bool
 team_join(struct yt_session *session, struct yt_error *error)
 {
+	static const uint8_t selection_prompt[] =
+	    "Which team do you wish to join (0=quit)? ";
+	static const uint8_t dead[] = "That team is dead!";
+	static const uint8_t full[] = "The Team you picked is full!!";
+	static const uint8_t password_prompt[] =
+	    "Please enter Password to Join Team? ";
+	static const uint8_t invalid[] = "Invalid Password entered!";
+	static const uint8_t success[] =
+	    "Your Team info has been recorded!  Have fun!";
 	struct yt_team team;
+	struct qb_val_result parsed;
 	char line[80];
-	char password[5];
+	char actor_name[42];
+	char number[64];
+	char row[160];
 	int id;
 	int selected;
 	size_t index;
 	char news[300];
+	bool listed;
+
+	(void)snprintf(actor_name, sizeof(actor_name), "%s",
+	    session->player.name);
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "team join leading blank", error))
+		return false;
 
 	for (id = 1; id <= YT_DEFAULT_PLAYER_COUNT; ++id) {
 		if (!team_load(session, id, &team, error))
 			return false;
-		if (team.live)
-			yt_outf("%d) %s\r\n", id, team.name);
+		listed = team.live;
+		if (listed) {
+			if (qb_str_single(number, sizeof(number), (float)id) < 0
+			    || snprintf(row, sizeof(row), "%s] %s", number,
+			    team.name) < 0
+			    || !session_02fc(session, (const uint8_t *)row,
+			    strlen(row)))
+				return false;
+		}
 	}
-	yt_out("Join which team? ");
-	if (!session_line(session, line, sizeof(line)))
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "team join selection blank", error)
+	    || !session_031f(session, selection_prompt,
+	    sizeof(selection_prompt) - 1U, "team join selection prompt", error)
+	    || !session_036f(session, line, sizeof(line)))
 		return false;
-	selected = (int)floor(qb_val(line).value);
+	parsed = qb_val(line);
+	if (!parsed.valid || parsed.overflow) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation, sizeof(error->operation),
+			    "%s", "team join:VAL");
+		}
+		return false;
+	}
+	selected = (int)floor(parsed.value);
 	if (selected < 1)
 		return true;
 	if (!team_load(session, selected, &team, error))
 		return false;
-	if (!team.live) {
-		yt_out_line("That team does not exist.");
-		return true;
+	if (!team.live)
+		return session_02db(session, dead, sizeof(dead) - 1U,
+		    "team join dead", error);
+	if (team.full)
+		return session_02db(session, full, sizeof(full) - 1U,
+		    "team join full", error);
+	{
+		struct yt_team ignored;
+
+		if (!team_load(session, selected, &ignored, error))
+			return false;
 	}
-	if (team.full) {
-		yt_out_line("That team is full.");
-		return true;
-	}
-	if (!team_password(session, password))
+	if (qb_str_single(number, sizeof(number), (float)selected) < 0
+	    || snprintf(row, sizeof(row), "Team #%s: %s", number,
+	    team.name) < 0
+	    || !session_02fc(session, (const uint8_t *)row, strlen(row))
+	    || !session_031f(session, password_prompt,
+	    sizeof(password_prompt) - 1U, "team join password prompt", error)
+	    || !session_0357(session, line, sizeof(line)))
 		return false;
-	if (memcmp(password, team.password, 4) != 0) {
-		if (!team_audit(session, (float)selected, 0.0f, password,
+	if (strlen(line) != 4U || memcmp(line, team.password, 4) != 0) {
+		if (!team_audit(session, (float)selected, 0.0f, line,
 		    error))
 			return false;
-		return session_framed_row(session,
-		    "Invalid Password entered!", true,
+		return session_02db(session, invalid, sizeof(invalid) - 1U,
 		    "invalid team password row", error);
 	}
+	if (!reload_player(session, error))
+		return false;
 	session->player.team = (float)selected;
 	if (!write_player(session, error))
 		return false;
@@ -6245,20 +10225,15 @@ team_join(struct yt_session *session, struct yt_error *error)
 		if (!team_store_roster(session, &fresh, error))
 			return false;
 	}
-	{
-		char team_number[40];
-
-		qb_str_single(team_number, sizeof(team_number),
-		    (float)selected);
-		snprintf(news, sizeof(news), "%s Joined Team%s",
-		    session->player.name, team_number);
-	}
+	if (qb_str_single(number, sizeof(number), (float)selected) < 0
+	    || snprintf(news, sizeof(news), "%s Joined Team%s",
+	    actor_name, number) < 0)
+		return false;
 	if (!append_news(session, news, error))
 		return false;
 	session->presentation.foreground = 3.0f;
 	session->pager.foreground = 3;
-	if (!session_framed_row(session,
-	    "Your Team info has been recorded!  Have fun!", true,
+	if (!session_02db(session, success, sizeof(success) - 1U,
 	    "team join success row", error))
 		return false;
 	return team_audit(session, (float)selected, 1.0f, "", error);
@@ -6268,20 +10243,43 @@ static bool
 team_quit(struct yt_session *session, struct yt_team *team,
     struct yt_error *error)
 {
-	bool accepted;
+	static const uint8_t prompt[] =
+	    "Are you sure you wish to quit your team? [N] ";
+	static const uint8_t success[] =
+	    "You have been removed from Team play";
+	enum yt_yes_no_answer answer;
+	struct yt_player persisted;
+	struct yt_sector explicit_overlay;
 	float old_team;
 	size_t index;
 	bool live = false;
 
-	if (!session_yes_no(session, "Quit your team? [y/N] ", false,
-	    &accepted) || !accepted)
-		return accepted || error == NULL || error->status == YT_OK;
+	if (!session_a8d2(session, prompt, sizeof(prompt) - 1U,
+	    &answer, error))
+		return false;
+	if (answer != YT_YES_NO_YES)
+		return true;
 	if (!reload_player(session, error))
 		return false;
 	old_team = session->player.team;
-	session->player.team = 0.0f;
-	if (!write_player(session, error))
+	persisted = session->player;
+	persisted.team = 0.0f;
+	if (!yt_game_write_player(&session->door->game, session->player_record,
+	    &persisted, error))
 		return false;
+	if (old_team != floorf(old_team) || old_team < 1.0f
+	    || old_team > (float)YT_DEFAULT_PLAYER_COUNT) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation, sizeof(error->operation),
+			    "%s", "team quit record number");
+		}
+		return false;
+	}
+	if (!yt_game_read_sector(&session->door->game, (int)old_team,
+	    &explicit_overlay, error))
+		return false;
+	(void)explicit_overlay;
 	if (!team_load(session, (int)old_team, team, error))
 		return false;
 	for (index = 0; index < 4; ++index) {
@@ -6304,168 +10302,448 @@ team_quit(struct yt_session *session, struct yt_team *team,
 	}
 	session->presentation.foreground = 6.0f;
 	session->pager.foreground = 6;
-	if (!session_framed_row(session,
-	    "You have been removed from Team play", false,
-	    "team quit success row", error))
+	if (!session_0317(session, success, sizeof(success) - 1U,
+	    "team quit success row", error)
+	    || !team_audit(session, old_team, 2.0f, "", error))
 		return false;
-	return team_audit(session, old_team, 2.0f, "", error);
+	session->player.team = 0.0f;
+	return true;
 }
 
 static bool
 team_search(struct yt_session *session, struct yt_error *error)
 {
-	int basic;
+	static const uint8_t locating[] =
+	    "Locating Team Members, Planets & Defenses.";
+	static const uint8_t heading[] =
+	    "Name                                     Sector";
+	static const uint8_t rule[] =
+	    "====================                     ======";
+	static const uint8_t defending[] = "Defending;";
+	static const uint8_t planets[] = "Planets;";
+	static const uint8_t none[] = "None Found";
+	const float cached_team = session->player.team;
+	int player_record;
 	bool found = false;
 
-	yt_out_line("Team resources:");
-	for (basic = YT_PLAYER_FIRST;
-	    basic <= (int)session->door->game.config.sector_offset; ++basic) {
+	if (!session_0317(session, locating, sizeof(locating) - 1U,
+	    "team resource locating row", error))
+		return false;
+	for (player_record = YT_PLAYER_FIRST;
+	    player_record <= (int)session->door->game.config.sector_offset;
+	    ++player_record) {
 		struct yt_player player;
+		uint8_t row[YT_TEXT_FIELD_SIZE + 64U];
+		char number[64];
+		size_t number_length;
+		int logical_sector;
+		bool first;
 
-		if (!yt_game_read_player(&session->door->game, basic, &player,
-		    error))
+		if (!yt_game_read_player(&session->door->game, player_record,
+		    &player, error))
 			return false;
-		if (basic != session->player_record
-		    && player.team == session->player.team) {
-			yt_outf("%s in sector %.9g\r\n", player.name,
-			    (double)player.sector);
-			found = true;
+		if (player.team != cached_team
+		    || player_record == session->player_record)
+			continue;
+		if (qb_str_single(number, sizeof(number), player.sector) < 0)
+			return false;
+		number_length = strlen(number);
+		memcpy(row, player.record.bytes, YT_TEXT_FIELD_SIZE);
+		memcpy(row + YT_TEXT_FIELD_SIZE, number, number_length);
+		if (!session_0317(session, heading, sizeof(heading) - 1U,
+		    "team resource player heading", error)
+		    || !session_02fc(session, rule, sizeof(rule) - 1U)
+		    || !session_02fc(session, row,
+		    YT_TEXT_FIELD_SIZE + number_length))
+			return false;
+		found = true;
+
+		first = true;
+		for (logical_sector = 1; logical_sector <= sector_count(session);
+		    ++logical_sector) {
+			struct yt_sector sector;
+
+			if (!yt_game_read_sector(&session->door->game,
+			    logical_sector, &sector, error))
+				return false;
+			if (!(sector.fighters > 0.0f
+			    && sector.fighter_owner == (float)player_record))
+				continue;
+			if (first && !session_present_text(session, defending,
+			    sizeof(defending) - 1U, SESSION_PRESENT_RAW,
+			    "team resource defense label", error))
+				return false;
+			first = false;
+			if (qb_str_single(number, sizeof(number),
+			    (float)logical_sector) < 0
+			    || !session_present_text(session,
+			    (const uint8_t *)number, strlen(number),
+			    SESSION_PRESENT_RAW, "team resource defense sector",
+			    error))
+				return false;
 		}
-	}
-	/* Preserve the retained-loop owner value used by both resource scans. */
-	for (basic = 1; basic <= sector_count(session); ++basic) {
-		struct yt_sector sector;
-
-		if (!yt_game_read_sector(&session->door->game, basic, &sector,
+		if (!first && !session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "team resource defense terminator",
 		    error))
 			return false;
-		if (sector.fighters > 0.0f
-		    && sector.fighter_owner
-		    == session->door->game.config.sector_offset + 1.0f)
-			yt_outf("Fighters in sector %d\r\n", basic);
-		if (sector.planet > 0.0f) {
+
+		first = true;
+		for (logical_sector = 1; logical_sector <= sector_count(session);
+		    ++logical_sector) {
+			struct yt_sector sector;
 			struct yt_planet planet;
 
+			if (!yt_game_read_sector(&session->door->game,
+			    logical_sector, &sector, error))
+				return false;
+			if (sector.planet <= 0.0f)
+				continue;
 			if (!yt_game_read_planet(&session->door->game,
 			    (int)sector.planet, &planet, error))
 				return false;
-			if (planet.owner
-			    == session->door->game.config.sector_offset + 1.0f)
-				yt_outf("Planet %s in sector %d\r\n",
-				    planet.name, basic);
+			if (planet.owner != (float)player_record)
+				continue;
+			if (first && !session_present_text(session, planets,
+			    sizeof(planets) - 1U, SESSION_PRESENT_RAW,
+			    "team resource planet label", error))
+				return false;
+			first = false;
+			if (qb_str_single(number, sizeof(number),
+			    (float)logical_sector) < 0
+			    || !session_present_text(session,
+			    (const uint8_t *)number, strlen(number),
+			    SESSION_PRESENT_RAW, "team resource planet sector",
+			    error))
+				return false;
 		}
+		if (!first && !session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "team resource planet terminator",
+		    error))
+			return false;
 	}
 	if (!found)
-		yt_out_line("None Found");
+		return session_02fc(session, none, sizeof(none) - 1U);
 	return true;
 }
 
 static bool
-team_transfer_bug(struct yt_session *session, struct yt_error *error)
+team_transfer(struct yt_session *session, struct yt_error *error)
 {
-	struct yt_sector sector;
-	double amount_value;
-	bool blank;
-	float amount;
+	static const uint8_t no_defense[] =
+	    "There IS no defense force here!";
+	static const uint8_t prompt[] =
+	    "How many fighters do you wish to transfer? ";
+	static const uint8_t success[] = "Fighters transferred!";
+	struct yt_sector initial_sector;
+	double initial_fighters;
+	double initial_defense;
+	int logical_sector;
 
-	if (!yt_game_read_sector(&session->door->game,
-	    (int)session->player.sector, &sector, error))
+	if (!reload_player(session, error))
 		return false;
-	if (sector.fighters == 0.0f)
-		return true;
-	if (!session_value(session, "Transfer how many fighters? ",
-	    &amount_value, &blank))
+	logical_sector = (int)session->player.sector;
+	initial_fighters = (double)session->player.fighters;
+	if (!yt_game_read_sector(&session->door->game, logical_sector,
+	    &initial_sector, error))
 		return false;
-	amount = (float)floor(amount_value);
-	if (blank || amount < 1.0f || amount > session->player.fighters)
-		return true;
-	sector.fighters = single_add(sector.fighters, amount);
-	if (!yt_game_write_sector(&session->door->game,
-	    (int)session->player.sector, &sector, error)
-	    || !reload_player(session, error))
-		return false;
-	session->player.sector =
-	    single_sub(session->player.fighters, amount);
-	return write_player(session, error);
+	initial_defense = (double)initial_sector.fighters;
+	if (initial_defense == 0.0)
+		return session_02db(session, no_defense,
+		    sizeof(no_defense) - 1U, "team transfer no defense", error);
+	for (;;) {
+		char fighter_text[64];
+		char defense_text[64];
+		char row[160];
+		char response[160];
+		struct qb_val_result parsed;
+		enum qb_mbf_status conversion;
+		uint8_t amount_raw[4];
+		float amount;
+
+		if (qb_str_double(fighter_text, sizeof(fighter_text),
+		    initial_fighters) < 0
+		    || qb_str_double(defense_text, sizeof(defense_text),
+		    initial_defense) < 0
+		    || snprintf(row, sizeof(row), "You have%s fighters.",
+		    fighter_text) < 0
+		    || !session_0317(session, (const uint8_t *)row, strlen(row),
+		    "team transfer carried row", error)
+		    || snprintf(row, sizeof(row), "There are%s fighters here.",
+		    defense_text) < 0
+		    || !session_0317(session, (const uint8_t *)row, strlen(row),
+		    "team transfer deployed row", error)
+		    || !session_031f(session, prompt, sizeof(prompt) - 1U,
+		    "team transfer prompt", error)
+		    || !session_036f(session, response, sizeof(response)))
+			return false;
+		parsed = qb_val(response);
+		if (parsed.overflow) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				(void)snprintf(error->operation,
+				    sizeof(error->operation), "%s", "team transfer:VAL");
+			}
+			return false;
+		}
+		amount = parsed.valid ? (float)parsed.value : 0.0f;
+		conversion = qb_mbf32_encode(amount, amount_raw);
+		if (conversion == QB_MBF_OVERFLOW) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				(void)snprintf(error->operation,
+				    sizeof(error->operation), "%s",
+				    "team transfer:amount-csng");
+			}
+			return false;
+		}
+		amount = qb_mbf32_decode(amount_raw);
+		if (amount < 1.0f)
+			return true;
+		if ((double)amount > initial_fighters) {
+			if (snprintf(row, sizeof(row), "You only have%s!",
+			    fighter_text) < 0
+			    || !session_02db(session, (const uint8_t *)row,
+			    strlen(row), "team transfer too many", error))
+				return false;
+			continue;
+		}
+		{
+			struct yt_sector fresh_sector;
+
+			if (!yt_game_read_sector(&session->door->game,
+			    logical_sector, &fresh_sector, error))
+				return false;
+			yt_team_transfer_apply_sector(&fresh_sector,
+			    initial_defense, amount);
+			if (!yt_database_write(&session->door->game.database,
+			    (size_t)yt_sector_basic_record(
+			    &session->door->game.config, logical_sector),
+			    &fresh_sector.record, error))
+				return false;
+		}
+		if (!reload_player(session, error))
+			return false;
+		yt_team_transfer_apply_player(&session->player, amount);
+		if (!yt_database_write(&session->door->game.database,
+		    (size_t)session->player_record, &session->player.record, error))
+			return false;
+		return session_02db(session, success, sizeof(success) - 1U,
+		    "team transfer success", error);
+	}
 }
 
 static bool
 team_banish(struct yt_session *session, struct yt_team *team,
     struct yt_error *error)
 {
+	static const uint8_t prompt_prefix[] = "Banish ";
+	static const uint8_t prompt_suffix[] = " (Y/[N])? ";
+	static const uint8_t end[] = "End of List";
+	static const uint8_t success[] =
+	    "Done. Now change your Team Password!";
+	int team_id;
 	size_t index;
 
+	if (!reload_player(session, error))
+		return false;
+	team_id = (int)session->player.team;
+	if (!team_load(session, team_id, team, error))
+		return false;
 	for (index = 0; index < 4; ++index) {
 		struct yt_player member;
-		bool accepted;
-		char prompt[160];
+		enum yt_yes_no_answer answer;
+		uint8_t prompt[sizeof(prompt_prefix) - 1U + YT_TEXT_FIELD_SIZE
+		    + sizeof(prompt_suffix) - 1U];
+		size_t name_length;
+		size_t prompt_length = 0;
+		int member_record;
 
 		if (team->roster[index] <= 0.0f
-		    || team->roster[index] == team->captain)
+		    || team->roster[index] == (float)session->player_record)
+			continue;
+		member_record = (int)team->roster[index];
+		if (!yt_game_read_player(&session->door->game,
+		    member_record, &member, error))
+			return false;
+		memcpy(prompt + prompt_length, prompt_prefix,
+		    sizeof(prompt_prefix) - 1U);
+		prompt_length += sizeof(prompt_prefix) - 1U;
+		if (!yt_player_stored_name(&member, prompt + prompt_length,
+		    &name_length, error))
+			return false;
+		prompt_length += name_length;
+		memcpy(prompt + prompt_length, prompt_suffix,
+		    sizeof(prompt_suffix) - 1U);
+		prompt_length += sizeof(prompt_suffix) - 1U;
+		if (!session_a8d2(session, prompt, prompt_length, &answer, error))
+			return false;
+		if (answer != YT_YES_NO_YES)
 			continue;
 		if (!yt_game_read_player(&session->door->game,
-		    (int)team->roster[index], &member, error))
+		    member_record, &member, error))
 			return false;
-		snprintf(prompt, sizeof(prompt), "Banish %s? [y/N] ",
-		    member.name);
-		if (!session_yes_no(session, prompt, false, &accepted))
-			return false;
-		if (!accepted)
-			continue;
-		member.team = 0.0f;
-		if (!yt_game_write_player(&session->door->game,
-		    (int)team->roster[index], &member, error))
+		yt_team_banish_apply_player(&member);
+		if (!yt_database_write(&session->door->game.database,
+		    (size_t)member_record, &member.record, error))
 			return false;
 		team->roster[index] = 0.0f;
-		yt_out_line("Change your password now.");
-		return team_store(session, team, error);
+		session->team_roster_cache[index] = 0.0f;
+		if (!yt_game_read_sector(&session->door->game, team_id,
+		    &team->overlay, error)
+		    || !team_store_roster(session, team, error))
+			return false;
+		return session_02db(session, success, sizeof(success) - 1U,
+		    "team banish success", error);
 	}
-	return true;
+	return session_02fc(session, end, sizeof(end) - 1U);
 }
 
 static bool
 command_team(struct yt_session *session, struct yt_error *error)
 {
+	static const uint8_t exit_row[] = "1) Exit Team menu";
+	static const char *const teamless_rows[] = {
+		"2) Create a Team",
+		"3) Join a Team",
+	};
+	static const char *const member_rows[] = {
+		"4) Quit a Team",
+		"5) Search for Team Members & Resources",
+		"6) Transfer Fighters to Defense Force",
+	};
+	static const char *const captain_rows[] = {
+		"7) Banish a Team Member",
+		"8) Change Team Password",
+		"9) Change Team Name",
+	};
+	static const uint8_t prompt_prefix[] = "Time:";
+	static const uint8_t prompt_body[] = "Team Command? ";
+	static const uint8_t invalid_row[] = "Invalid Choice!";
+
 	for (;;) {
 		char line[80];
 		struct yt_team team;
 		bool captain = false;
-		double numeric;
+		struct qb_val_result parsed;
+		enum qb_mbf_status conversion;
+		uint8_t numeric_raw[4];
+		uint8_t prompt[sizeof(prompt_prefix) - 1U
+		    + sizeof(session->time.text) + sizeof(prompt_body) - 1U];
+		size_t prompt_length = 0;
+		size_t index;
+		float numeric;
+		int32_t captain_cint;
+		int32_t team_cint;
+		bool overflow;
+		bool invalid;
 
-		if (!reload_player(session, error))
+		session->presentation.foreground = 6.0f;
+		session->pager.foreground = 6;
+		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+		    "team front leading blank", error)
+		    || !info_team_lines(session, &team, &captain, error))
 			return false;
-		if (session->player.team != 0.0f) {
-			if (!team_load(session, (int)session->player.team, &team,
-			    error)
-			    || !team_resolve_captain(session, &team, &captain,
-			    error))
-				return false;
-		}
-		yt_out_line("1) Exit");
+		session->pager.line_count = 0.0f;
+		if (!reload_player(session, error)
+		    || !session_0317(session, exit_row, sizeof(exit_row) - 1U,
+		    "team exit row", error)
+		    || !reload_player(session, error))
+			return false;
 		if (session->player.team == 0.0f) {
-			yt_out_line("2) Create Team");
-			yt_out_line("3) Join Team");
+			for (index = 0; index < YT_ARRAY_LEN(teamless_rows); ++index)
+				if (!session_02fc(session,
+				    (const uint8_t *)teamless_rows[index],
+				    strlen(teamless_rows[index])))
+					return false;
 		}
 		else {
-			yt_out_line("4) Quit Team");
-			yt_out_line("5) Search Team Resources");
-			yt_out_line("6) Transfer Fighters");
-			if (captain) {
-				yt_out_line("7) Banish Member");
-				yt_out_line("8) Change Password");
-				yt_out_line("9) Change Team Name");
-			}
+			for (index = 0; index < YT_ARRAY_LEN(member_rows); ++index)
+				if (!session_02fc(session,
+				    (const uint8_t *)member_rows[index],
+				    strlen(member_rows[index])))
+					return false;
+			if (captain)
+				for (index = 0; index < YT_ARRAY_LEN(captain_rows);
+				    ++index)
+					if (!session_02fc(session,
+					    (const uint8_t *)captain_rows[index],
+					    strlen(captain_rows[index])))
+						return false;
 		}
-		yt_out("Choice: ");
-		if (!session_line(session, line, sizeof(line)))
+		session->presentation.foreground = 6.0f;
+		session->pager.foreground = 6;
+		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+		    "team prompt blank", error))
 			return false;
-		numeric = qb_val(line).value;
-		if ((numeric > 3.0 && session->player.team == 0.0f)
-		    || (numeric > 6.0 && !captain)
-		    || (numeric > 1.0 && numeric < 4.0
-		    && session->player.team != 0.0f)
-		    || numeric < 1.0 || numeric > 10.0)
+		memcpy(prompt + prompt_length, prompt_prefix,
+		    sizeof(prompt_prefix) - 1U);
+		prompt_length += sizeof(prompt_prefix) - 1U;
+		if (session->time.text_length > sizeof(session->time.text)) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				(void)snprintf(error->operation,
+				    sizeof(error->operation), "%s",
+				    "team prompt time capacity");
+			}
+			return false;
+		}
+		memcpy(prompt + prompt_length, session->time.text,
+		    session->time.text_length);
+		prompt_length += session->time.text_length;
+		memcpy(prompt + prompt_length, prompt_body,
+		    sizeof(prompt_body) - 1U);
+		prompt_length += sizeof(prompt_body) - 1U;
+		if (!session_031f(session, prompt, prompt_length,
+		    "team command prompt", error)
+		    || !session_0345(session, line, sizeof(line)))
+			return false;
+		parsed = qb_val(line);
+		if (!parsed.valid || parsed.overflow) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				(void)snprintf(error->operation,
+				    sizeof(error->operation), "%s", "team:VAL");
+			}
+			return false;
+		}
+		numeric = (float)parsed.value;
+		conversion = qb_mbf32_encode(numeric, numeric_raw);
+		if (conversion == QB_MBF_OVERFLOW) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				(void)snprintf(error->operation,
+				    sizeof(error->operation), "%s", "team:choice-csng");
+			}
+			return false;
+		}
+		numeric = qb_mbf32_decode(numeric_raw);
+		captain_cint = qb_cint(captain ? -1.0 : 0.0, &overflow);
+		if (overflow) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				(void)snprintf(error->operation,
+				    sizeof(error->operation), "%s",
+				    "team:captain-cint");
+			}
+			return false;
+		}
+		team_cint = qb_cint((double)session->player.team, &overflow);
+		if (overflow) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				(void)snprintf(error->operation,
+				    sizeof(error->operation), "%s", "team:team-cint");
+			}
+			return false;
+		}
+		invalid = yt_team_choice_rejected(numeric, session->player.team,
+		    captain_cint, team_cint);
+		if (invalid) {
+			if (!session_02db(session, invalid_row,
+			    sizeof(invalid_row) - 1U, "team invalid choice", error))
+				return false;
 			continue;
+		}
 		if (strcmp(line, "1") == 0)
 			return true;
 		if (strcmp(line, "2") == 0) {
@@ -6485,7 +10763,7 @@ command_team(struct yt_session *session, struct yt_error *error)
 				return false;
 		}
 		else if (strcmp(line, "6") == 0) {
-			if (!team_transfer_bug(session, error))
+			if (!team_transfer(session, error))
 				return false;
 		}
 		else if (strcmp(line, "7") == 0) {
@@ -6493,23 +10771,18 @@ command_team(struct yt_session *session, struct yt_error *error)
 				return false;
 		}
 		else if (strcmp(line, "8") == 0) {
-			if (!team_password(session, team.password)
-			    || !team_store(session, &team, error))
+			if (!team_create_password(session, team.id,
+			    team.password, error))
 				return false;
 		}
 		else if (strcmp(line, "9") == 0) {
-			char name[160];
+			char name[42];
+			bool accepted;
 
-			yt_out("New team name: ");
-			if (!session_line(session, name, sizeof(name)))
+			if (!team_pick_name(session, (float)team.id, name,
+			    &accepted, error))
 				return false;
-			if (strlen(name) < 3U)
-				continue;
-			qb_title_case(name);
-			name[41] = '\0';
-			snprintf(team.name, sizeof(team.name), "%s", name);
-			if (!team_store(session, &team, error))
-				return false;
+			(void)accepted;
 		}
 	}
 }
@@ -6518,157 +10791,343 @@ static bool
 port_rename(struct yt_session *session, int logical_port,
     struct yt_port *port, struct yt_error *error)
 {
-	char name[160];
-	bool accepted;
+	static const uint8_t keep[] = "Press [ENTER] to keep same name.";
+	static const uint8_t instruction[] =
+	    "Please enter a NAME for your port.";
+	static const uint8_t name_prompt[] = "-=> ";
+	uint8_t cached[YT_TEXT_FIELD_SIZE];
+	uint8_t candidate[YT_COMMAND_SIZE];
+	uint8_t row[256];
+	char entered[YT_COMMAND_SIZE];
+	size_t cached_length;
+	size_t candidate_length;
+	size_t row_length;
 
-	if (logical_port == 1)
-		return true;
+	if (!port_report_length(session, port->name_length,
+	    YT_TEXT_FIELD_SIZE, &cached_length, "port name length", error))
+		return false;
+	memcpy(cached, port->record.bytes, cached_length);
 	for (;;) {
-		yt_out("Enter a new port name: ");
-		if (!session_line(session, name, sizeof(name)))
+		enum yt_yes_no_answer answer;
+
+		if (!yt_port_name_display_row(cached, cached_length, row,
+		    sizeof(row), &row_length)
+		    || !session_0317(session, row, row_length,
+		    "port name current row", error)
+		    || !session_0317(session, keep, sizeof(keep) - 1U,
+		    "port name keep row", error)
+		    || !session_0317(session, instruction,
+		    sizeof(instruction) - 1U, "port name instruction row", error)
+		    || !session_031f(session, name_prompt,
+		    sizeof(name_prompt) - 1U, "port name prompt", error)
+		    || !session_0345(session, entered, sizeof(entered))
+		    || !yt_port_name_prepare_candidate((const uint8_t *)entered,
+		    strlen(entered), cached, cached_length, candidate,
+		    sizeof(candidate), &candidate_length))
 			return false;
-		qb_title_case(name);
-		name[41] = '\0';
-		if (name[0] == '\0')
-			snprintf(name, sizeof(name), "%s", port->name);
-		yt_outf("\"%s\"\r\n", name);
-		if (!session_yes_no(session, "Is this OK? [y/N] ", false,
-		    &accepted))
-			return false;
-		if (!accepted)
+		if (candidate_length == 0U)
 			continue;
-		snprintf(port->name, sizeof(port->name), "%s", name);
-		port->name_length = (float)strlen(name);
-		return yt_game_write_port(&session->door->game, logical_port,
-		    port, error);
+		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+		    "port name confirmation leading blank", error)
+		    || !yt_port_name_confirmation_prompt(candidate,
+		    candidate_length, row, sizeof(row), &row_length)
+		    || !session_a8d2(session, row, row_length, &answer, error))
+			return false;
+		if (answer != YT_YES_NO_YES)
+			continue;
+		if (!yt_port_name_overlay(port, candidate, candidate_length))
+			return port_report_failure(error, "port name FIELD overlay");
+		return yt_database_write(&session->door->game.database,
+		    (size_t)yt_port_basic_record(&session->door->game.config,
+		    logical_port), &port->record, error);
 	}
 }
 
 static bool
 command_rename_port(struct yt_session *session, struct yt_error *error)
 {
+	static const uint8_t no_port[] = "No port here!";
+	static const uint8_t not_owner[] = "This isn't your port!";
+	static const uint8_t earth[] = "Can't rename Earth!";
 	struct yt_sector sector;
 	struct yt_port port;
 	int logical_port;
+	float relative_port;
 
-	if (!yt_game_read_sector(&session->door->game,
+	if (!reload_player(session, error)
+	    || !yt_game_read_sector(&session->door->game,
 	    (int)session->player.sector, &sector, error))
 		return false;
-	if (sector.port <= 0.0f) {
-		yt_out_line("No port here!");
-		return true;
-	}
-	logical_port = (int)sector.port;
+	if (!qb_mbf32_truth(sector.record.bytes + YT_F65))
+		return session_02db(session, no_port, sizeof(no_port) - 1U,
+		    "rename no-port row", error);
+	if (!yt_port_rename_record(session->door->game.config.port_offset,
+	    sector.port, &logical_port, &relative_port))
+		return port_report_failure(error, "rename port record conversion");
 	if (!yt_game_read_port(&session->door->game, logical_port, &port,
 	    error))
 		return false;
-	if (port.owner != (float)session->player_record) {
-		yt_out_line("You don't own this port.");
-		return true;
-	}
-	if (logical_port == 1) {
-		yt_out_line("Earth cannot be renamed.");
-		return true;
-	}
+	if (port.owner != (float)session->player_record)
+		return session_02db(session, not_owner,
+		    sizeof(not_owner) - 1U, "rename ownership row", error);
+	if (relative_port == 1.0f)
+		return session_02db(session, earth, sizeof(earth) - 1U,
+		    "rename Earth row", error);
 	return port_rename(session, logical_port, &port, error);
 }
 
 static bool
 command_buy_port(struct yt_session *session, struct yt_error *error)
 {
+	static const uint8_t no_port[] = "No port here!";
+	static const uint8_t unaffordable[] =
+	    "Come back when you can afford it!";
+	static const uint8_t prompt[] = "Do you wish to buy it? [y/N]";
+	static const uint8_t declined[] = "What a shame.. it's a nice port!";
+	static const uint8_t sold[] = "Sold!";
+	static const uint8_t success_tail[] =
+	    "will go into the port treasury for you to take out later!";
 	struct yt_sector sector;
 	struct yt_port port;
 	float prices[3];
 	double quantities[3];
 	double price;
 	int logical_port;
-	bool accepted;
+	float relative_port;
+	float old_owner;
+	float purchase_production[3] = {0.0f, 0.0f, 0.0f};
+	float cached_buyer_credits;
+	float cached_buyer_sector;
+	uint8_t cached_trader[YT_TEXT_FIELD_SIZE];
+	uint8_t old_name[YT_TEXT_FIELD_SIZE];
+	uint8_t owner_name[YT_TEXT_FIELD_SIZE];
+	size_t cached_trader_length;
+	size_t old_name_length;
+	size_t owner_name_length = 0U;
+	enum yt_yes_no_answer answer;
+	char number_one[64];
+	char number_two[64];
+	uint8_t row[512];
+	size_t row_length;
 
-	if (!yt_game_read_sector(&session->door->game,
+	if (!reload_player(session, error))
+		return false;
+	cached_buyer_credits = session->player.credits;
+	cached_buyer_sector = session->player.sector;
+	if (!yt_player_stored_name(&session->player, cached_trader,
+	    &cached_trader_length, error)
+	    || !yt_game_read_sector(&session->door->game,
 	    (int)session->player.sector, &sector, error))
 		return false;
-	if (sector.port <= 0.0f) {
-		yt_out_line("No port here!");
-		return true;
-	}
-	logical_port = (int)sector.port;
-	if (logical_port == 1) {
-		if (!earth_store(session, error))
-			return false;
-		if (!reload_player(session, error))
-			return false;
-		if (!yt_game_read_port(&session->door->game, 1, &port, error))
-			return false;
+	if (!qb_mbf32_truth(sector.record.bytes + YT_F65))
+		return session_02db(session, no_port, sizeof(no_port) - 1U,
+		    "buy no-port row", error);
+	if (!yt_port_rename_record(session->door->game.config.port_offset,
+	    sector.port, &logical_port, &relative_port))
+		return port_report_failure(error, "buy port record conversion");
+	if (sector.port == 1.0f) {
+		float earth_prices[4];
+
 		price = 1000000000.0;
+		if (!earth_report(session, &port, earth_prices, error))
+			return false;
+		old_owner = port.owner;
+		memcpy(old_name, "Earth", sizeof("Earth") - 1U);
+		old_name_length = sizeof("Earth") - 1U;
 	}
 	else {
-		float sum;
+		struct yt_port terminal_port;
 
 		if (!port_update(session, logical_port, &port, prices, quantities,
 		    error))
 			return false;
-		if (!port_report(session, logical_port, &port, prices,
-		    quantities, error))
+		old_owner = port.owner;
+		memcpy(purchase_production, port.production,
+		    sizeof(purchase_production));
+		if (!port_report_capture(session, logical_port, &port, prices,
+		    quantities, &terminal_port, error))
 			return false;
-		sum = single_add(single_add(port.production[0],
-		    port.production[1]), port.production[2]);
-		price = (double)single_add(floorf(single_div(sum, 10.0f)),
-		    1.0f);
+		port = terminal_port;
+		if (!port_report_length(session, port.name_length,
+		    YT_TEXT_FIELD_SIZE, &old_name_length,
+		    "buy old port name length", error))
+			return false;
+		memcpy(old_name, port.record.bytes, old_name_length);
+		price = yt_port_purchase_price(purchase_production);
 	}
-	if (port.owner == (float)session->player_record) {
-		yt_out_line("You already own this port.");
-		return true;
-	}
-	if ((double)session->player.credits < price) {
-		yt_out_line("You can't afford this port.");
-		return true;
-	}
-	yt_outf("This port costs %.15g credits.\r\n", price);
-	if (!session_yes_no(session, "Buy this port? [y/N] ", false,
-	    &accepted))
-		return false;
-	if (!accepted)
-		return true;
-	if (port.owner != 0.0f) {
-		struct yt_player seller;
-		char message[300];
+	if (old_owner == (float)session->player_record) {
+		static const uint8_t prefix[] = "You already OWN this port ";
+		const char *first = session->door->identity.real_first;
+		size_t first_length = strlen(first);
 
-		if (!yt_game_read_player(&session->door->game, (int)port.owner,
+		row_length = sizeof(prefix) - 1U + first_length + 1U;
+		memcpy(row, prefix, sizeof(prefix) - 1U);
+		memcpy(row + sizeof(prefix) - 1U, first, first_length);
+		row[row_length - 1U] = '!';
+		return session_02db(session, row, row_length,
+		    "buy already-owner row", error);
+	}
+	if (qb_str_double(number_one, sizeof(number_one), price) < 0
+	    || qb_str_double(number_two, sizeof(number_two),
+	    (double)cached_buyer_credits) < 0)
+		return port_report_failure(error, "buy price formatting");
+	row_length = (size_t)snprintf((char *)row, sizeof(row),
+	    "This port is for sale for%s credits. You have%s credits.",
+	    number_one, number_two);
+	if (row_length >= sizeof(row)
+	    || !session_0317(session, row, row_length, "buy price row", error))
+		return false;
+	if ((double)cached_buyer_credits < price)
+		return session_02db(session, unaffordable,
+		    sizeof(unaffordable) - 1U, "buy unaffordable row", error);
+	if (old_owner != 0.0f) {
+		struct yt_port display_port = port;
+
+		display_port.owner = old_owner;
+		if (!port_owner_row_capture(session, &display_port, owner_name,
+		    sizeof(owner_name), &owner_name_length, error)
+		    || !session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "buy owner offer leading blank", error))
+			return false;
+		memcpy(row, "You may buy it from ",
+		    sizeof("You may buy it from ") - 1U);
+		row_length = sizeof("You may buy it from ") - 1U;
+		memcpy(row + row_length, owner_name, owner_name_length);
+		row_length += owner_name_length;
+		memcpy(row + row_length, " if you wish.",
+		    sizeof(" if you wish.") - 1U);
+		row_length += sizeof(" if you wish.") - 1U;
+		if (!session_02fc(session, row, row_length)
+		    || !session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "buy owner offer trailing blank", error))
+			return false;
+	}
+	if (!session_a8d2(session, prompt, sizeof(prompt) - 1U, &answer, error))
+		return false;
+	if (answer != YT_YES_NO_YES)
+		return session_02db(session, declined, sizeof(declined) - 1U,
+		    "buy declined row", error);
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "buy sold leading blank", error))
+		return false;
+	session->presentation.bold = 1.0f;
+	session->presentation.blink = 1.0f;
+	if (!session_02fc(session, sold, sizeof(sold) - 1U)
+	    || !yt_game_read_port(&session->door->game, logical_port, &port,
+	    error))
+		return false;
+	if (old_owner != 0.0f) {
+		struct yt_player seller;
+		int seller_record = (int)old_owner;
+		char sector_text[64];
+		char price_text[64];
+		uint8_t message[256];
+		size_t message_length = 0U;
+
+		memcpy(row, "Credits transferred to ",
+		    sizeof("Credits transferred to ") - 1U);
+		row_length = sizeof("Credits transferred to ") - 1U;
+		memcpy(row + row_length, owner_name, owner_name_length);
+		row_length += owner_name_length;
+		memcpy(row + row_length, "'s account!",
+		    sizeof("'s account!") - 1U);
+		row_length += sizeof("'s account!") - 1U;
+		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+		    "buy seller transfer leading blank", error)
+		    || !session_02fc(session, row, row_length)
+		    || !yt_game_read_player(&session->door->game, seller_record,
 		    &seller, error))
 			return false;
-		seller.credits = floorf(single_add(seller.credits,
-		    single_add(port.treasury, (float)price)));
-		seller.ports_owned =
-		    single_sub(seller.ports_owned, 1.0f);
-		if (!yt_game_write_player(&session->door->game,
-		    (int)port.owner, &seller, error))
+		seller.credits = yt_port_purchase_seller_credit(port.treasury,
+		    seller.credits, price);
+		seller.ports_owned = single_sub(seller.ports_owned, 1.0f);
+		if (!yt_record_set_number_if_changed(&seller.record, YT_F81,
+		    seller.credits)
+		    || !yt_record_set_number_if_changed(&seller.record, YT_F117,
+		    seller.ports_owned)
+		    || !yt_database_write(&session->door->game.database,
+		    (size_t)seller_record, &seller.record, error))
 			return false;
-		snprintf(message, sizeof(message),
-		    "%s purchased your port %s.", session->player.name,
-		    port.name);
-		if (!radio_append(message, (float)session->player_record,
-		    port.owner, error))
+		if (qb_str_single(sector_text, sizeof(sector_text),
+		    cached_buyer_sector) < 0
+		    || qb_str_double(price_text, sizeof(price_text), price) < 0)
+			return port_report_failure(error, "buy radio formatting");
+		memcpy(message + message_length, cached_trader,
+		    cached_trader_length);
+		message_length += cached_trader_length;
+		memcpy(message + message_length, " bought your port \"",
+		    sizeof(" bought your port \"") - 1U);
+		message_length += sizeof(" bought your port \"") - 1U;
+		memcpy(message + message_length, old_name, old_name_length);
+		message_length += old_name_length;
+		memcpy(message + message_length, "\" in",
+		    sizeof("\" in") - 1U);
+		message_length += sizeof("\" in") - 1U;
+		memcpy(message + message_length, sector_text, strlen(sector_text));
+		message_length += strlen(sector_text);
+		memcpy(message + message_length, " for", sizeof(" for") - 1U);
+		message_length += sizeof(" for") - 1U;
+		memcpy(message + message_length, price_text, strlen(price_text));
+		message_length += strlen(price_text);
+		memcpy(message + message_length, " credits",
+		    sizeof(" credits") - 1U);
+		message_length += sizeof(" credits") - 1U;
+		if (!radio_append_bytes(message, message_length, -2.0f,
+		    old_owner, error)
+		    || !yt_game_read_port(&session->door->game, logical_port,
+		    &port, error))
 			return false;
 	}
-	if (logical_port != 1
+	if (relative_port > 1.0f
 	    && !port_rename(session, logical_port, &port, error))
+		return false;
+	if (!yt_game_read_port(&session->door->game, logical_port, &port,
+	    error))
 		return false;
 	port.owner = (float)session->player_record;
 	port.treasury = 0.0f;
-	if (!yt_game_write_port(&session->door->game, logical_port, &port,
-	    error))
+	if (!yt_record_set_number_if_changed(&port.record, YT_F97,
+	    port.owner)
+	    || !yt_record_set_number_if_changed(&port.record, YT_F89,
+	    port.treasury))
+		return port_report_failure(error, "port purchase FIELD overlay");
+	if (!yt_database_write(&session->door->game.database,
+	    (size_t)yt_port_basic_record(&session->door->game.config,
+	    logical_port), &port.record, error))
 		return false;
-	session->player.credits =
-	    floorf(single_sub(session->player.credits, (float)price));
-	session->player.ports_owned =
-	    single_add(session->player.ports_owned, 1.0f);
-	return write_player(session, error);
+	if (!reload_player(session, error))
+		return false;
+	session->player.credits = yt_port_purchase_buyer_credit(
+	    session->player.credits, price);
+	session->player.ports_owned = single_add(session->player.ports_owned,
+	    1.0f);
+	if (!yt_record_set_number_if_changed(&session->player.record, YT_F81,
+	    session->player.credits)
+	    || !yt_record_set_number_if_changed(&session->player.record,
+	    YT_F117, session->player.ports_owned)
+	    || !yt_database_write(&session->door->game.database,
+	    (size_t)session->player_record, &session->player.record, error))
+		return false;
+	row_length = (size_t)snprintf((char *)row, sizeof(row),
+	    "Congratulations %s! When others trade at your port their CREDITS",
+	    session->door->identity.real_first);
+	return row_length < sizeof(row)
+	    && session_0317(session, row, row_length,
+	    "buy congratulations row", error)
+	    && session_02fc(session, success_tail, sizeof(success_tail) - 1U);
 }
 
 static bool
 command_collect(struct yt_session *session, bool collecting,
     struct yt_error *error)
 {
+	static const uint8_t dirty_zero[4] = {0x00, 0x00, 0x20, 0x00};
+	static const uint8_t no_ports[] = "You don't OWN any ports!!!";
+	static const uint8_t collect_prefix[] =
+	    "Sending out armored cargo ships to";
+	static const uint8_t report_prefix[] =
+	    "Checking galactic bank statement for";
+	static const uint8_t heading_suffix[] = " ports with credits...";
 	struct yt_player current;
 	int logical;
 	double collected = 0.0;
@@ -6678,18 +11137,29 @@ command_collect(struct yt_session *session, bool collecting,
 	char number_two[64];
 	char text[160];
 
-	yt_out_line("");
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "treasury opening blank", error))
+		return false;
 	if (!yt_game_read_player(&session->door->game, session->player_record,
 	    &current, error))
 		return false;
 	if (current.ports_owned < 1.0f) {
-		yt_out_line("You don't OWN any ports!!!");
-		return true;
+		session->presentation.blink = 1.0f;
+		return session_present_text(session, no_ports,
+		    sizeof(no_ports) - 1U, SESSION_PRESENT_BOLD_LINE,
+		    "treasury no-owned notice", error);
 	}
-	yt_out(collecting ? "Sending out armored cargo ships to"
-	    : "Checking galactic bank statement for");
-	yt_out_line(" ports with credits...");
-	yt_out_line("");
+	if (!session_present_text(session,
+	    collecting ? collect_prefix : report_prefix,
+	    collecting ? sizeof(collect_prefix) - 1U
+	    : sizeof(report_prefix) - 1U,
+	    SESSION_PRESENT_RAW, "treasury heading prefix", error)
+	    || !session_present_text(session, heading_suffix,
+	    sizeof(heading_suffix) - 1U, SESSION_PRESENT_LINE,
+	    "treasury heading suffix", error)
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "treasury scan blank", error))
+		return false;
 
 	for (logical = 1; logical <= port_count(session); ++logical) {
 		struct yt_port port;
@@ -6700,7 +11170,7 @@ command_collect(struct yt_session *session, bool collecting,
 		if (port.owner != (float)session->player_record)
 			continue;
 		owned = single_add(owned, 1.0f);
-		if (port.treasury == 0.0f)
+		if (port.record.bytes[YT_F89 + 3U] == 0)
 			continue;
 		credited = single_add(credited, 1.0f);
 		collected += (double)port.treasury;
@@ -6710,16 +11180,13 @@ command_collect(struct yt_session *session, bool collecting,
 		    "treasury sector field", error))
 			return false;
 		{
-			bool overflow;
-			int length = (int)qb_cint(port.name_length, &overflow);
-			char name[42];
+			size_t name_length;
 
-			if (overflow || length < 0)
-				length = 0;
-			if ((size_t)length > strlen(port.name))
-				length = (int)strlen(port.name);
-			snprintf(name, sizeof(name), "%.*s", length, port.name);
-			if (!session_fixed_width(session, name, 25.0f,
+			if (!port_report_length(session, port.name_length,
+			    YT_TEXT_FIELD_SIZE, &name_length,
+			    "treasury port-name length", error)
+			    || !session_fixed_width_bytes(session, port.record.bytes,
+			    name_length, 25.0f,
 			    "treasury port-name field", error))
 				return false;
 		}
@@ -6730,39 +11197,58 @@ command_collect(struct yt_session *session, bool collecting,
 			return false;
 		qb_str_double(number_two, sizeof(number_two), collected);
 		snprintf(text, sizeof(text), " Total:%s", number_two);
-		yt_out_line(text);
+		if (!session_present_text(session, (const uint8_t *)text,
+		    strlen(text), SESSION_PRESENT_LINE, "treasury row total",
+		    error))
+			return false;
 		if (collecting) {
 			port.treasury = 0.0f;
-			if (!yt_game_write_port(&session->door->game, logical,
+			if (!yt_record_set_raw_number(&port.record, YT_F89,
+			    dirty_zero)
+			    || !yt_game_write_port(&session->door->game, logical,
 			    &port, error))
 				return false;
 		}
 	}
-	if (collected != 0.0)
-		yt_out_line("");
+	if (collected != 0.0
+	    && !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "treasury nonzero-total blank", error))
+		return false;
 	qb_str_single(number_one, sizeof(number_one), owned);
 	snprintf(text, sizeof(text), "Total ports...:%s", number_one);
-	yt_out_line(text);
+	if (!session_present_text(session, (const uint8_t *)text, strlen(text),
+	    SESSION_PRESENT_LINE, "treasury total ports", error))
+		return false;
 	qb_str_single(number_one, sizeof(number_one), credited);
 	snprintf(text, sizeof(text), "With credits..:%s", number_one);
-	yt_out_line(text);
+	if (!session_present_text(session, (const uint8_t *)text, strlen(text),
+	    SESSION_PRESENT_LINE, "treasury credited ports", error))
+		return false;
 	qb_str_single(number_one, sizeof(number_one),
 	    single_sub(owned, credited));
 	snprintf(text, sizeof(text), "Barren ports..:%s", number_one);
-	yt_out_line(text);
+	if (!session_present_text(session, (const uint8_t *)text, strlen(text),
+	    SESSION_PRESENT_LINE, "treasury barren ports", error))
+		return false;
 	qb_str_double(number_two, sizeof(number_two), collected);
 	snprintf(text, sizeof(text), "Total credits.:%s", number_two);
-	yt_out_line(text);
-	yt_out_line("");
+	if (!session_present_text(session, (const uint8_t *)text, strlen(text),
+	    SESSION_PRESENT_LINE, "treasury total credits", error)
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "treasury summary blank", error))
+		return false;
 	if (!collecting) {
 		snprintf(text, sizeof(text), "You have%s credits in your port "
 		    "accounts.", number_two);
-		yt_out_line(text);
-		return true;
+		return session_present_text(session, (const uint8_t *)text,
+		    strlen(text), SESSION_PRESENT_LINE, "treasury report result",
+		    error);
 	}
 	snprintf(text, sizeof(text), "You collected a total of%s credits.",
 	    number_two);
-	yt_out_line(text);
+	if (!session_present_text(session, (const uint8_t *)text, strlen(text),
+	    SESSION_PRESENT_LINE, "treasury collection result", error))
+		return false;
 	if (!yt_game_read_player(&session->door->game, session->player_record,
 	    &current, error))
 		return false;
@@ -6779,24 +11265,73 @@ command_collect(struct yt_session *session, bool collecting,
 static bool
 command_genesis(struct yt_session *session, struct yt_error *error)
 {
-	bool accepted;
+	static const uint8_t prophecy_one[] =
+	    "It has been written that one day a Trader Baron will rise up";
+	static const uint8_t prophecy_two[] =
+	    "and wipe the universe clean of the evil that infests it.";
+	static const uint8_t disabled[] = "*FUNCTION DISABLED*";
+	static const uint8_t declined[] =
+	    "Alas, today is not the day that the prophesy will be fullfilled.";
+	static const uint8_t success_one[] =
+	    "...and so it was written, that one day a trader baron would emerge who";
+	static const uint8_t success_two[] =
+	    "would wipe away the all of the evil in the universe.....";
+	uint8_t cached_trader[sizeof(session->player.name) - 1U];
+	uint8_t prompt[128];
+	uint8_t first[160];
+	uint8_t second[160];
+	size_t cached_trader_length = strlen(session->player.name);
+	size_t prompt_length;
+	size_t first_length;
+	size_t second_length;
+	enum yt_yes_no_answer answer;
 	char sibling[1024];
 	char *arguments[2];
 
-	if (!session_yes_no(session,
-	    "Initiate whole-universe Genesis? [y/N] ", false, &accepted))
+	if (cached_trader_length > sizeof(cached_trader))
+		return port_report_failure(error, "Genesis cached trader length");
+	memcpy(cached_trader, session->player.name, cached_trader_length);
+	if (!reload_player(session, error))
+		return false;
+	if (!session_0317(session, prophecy_one, sizeof(prophecy_one) - 1U,
+	    "Genesis prophecy first row", error)
+	    || !session_02fc(session, prophecy_two, sizeof(prophecy_two) - 1U)
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "Genesis prompt leading blank", error)
+	    || !yt_genesis_confirmation_prompt(cached_trader,
+	    cached_trader_length, prompt, sizeof(prompt), &prompt_length)
+	    || !session_a8d2(session, prompt, prompt_length, &answer, error))
 		return false;
 	if (session->door->game.config.genesis_ports > 300.0f) {
-		yt_out_line("*FUNCTION DISABLED*");
-		accepted = false;
+		if (!session_02db(session, disabled, sizeof(disabled) - 1U,
+		    "Genesis disabled row", error))
+			return false;
+		answer = YT_YES_NO_NO;
 	}
-	if (!accepted)
-		return true;
+	if (answer != YT_YES_NO_YES)
+		return session_0317(session, declined, sizeof(declined) - 1U,
+		    "Genesis declined row", error);
 	if (session->player.ports_owned
 	    < session->door->game.config.genesis_ports) {
-		yt_out_line("You do not own enough ports.");
-		return true;
+		if (!yt_genesis_insufficient_rows(
+		    session->door->game.config.genesis_ports,
+		    session->player.ports_owned, first, sizeof(first), &first_length,
+		    second, sizeof(second), &second_length))
+			return port_report_failure(error,
+			    "Genesis insufficient row composition");
+		return session_0317(session, first, first_length,
+		    "Genesis insufficient first row", error)
+		    && session_02fc(session, second, second_length);
 	}
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "Genesis success leading blank", error))
+		return false;
+	session->presentation.bold = 1.0f;
+	if (!session_02fc(session, success_one, sizeof(success_one) - 1U))
+		return false;
+	session->presentation.bold = 1.0f;
+	if (!session_02fc(session, success_two, sizeof(success_two) - 1U))
+		return false;
 	/*
 	 * QuickBASIC PRINT # inserts CR/LF before the DOS EOF written on close.
 	 * Build that exact shape before handing off.
@@ -6845,69 +11380,157 @@ missile_planet_impact(struct yt_session *session, int sector_number,
     struct yt_sector *sector, float *remaining, struct yt_error *error)
 {
 	struct yt_planet planet;
-	int logical_planet = (int)sector->planet;
+	struct yt_planet updater_planet;
+	bool overflow;
+	int logical_planet;
 	float original_ore;
 	float old_total;
 	bool friendly = false;
-	char sector_text[64];
+	uint8_t planet_name[YT_TEXT_FIELD_SIZE];
+	uint8_t attacker_name[YT_TEXT_FIELD_SIZE];
+	uint8_t direct_row[256];
+	uint8_t news_row[256];
+	size_t planet_name_length;
+	size_t attacker_name_length;
+	size_t direct_length;
+	size_t news_length;
 	char number_one[64];
 	char number_two[64];
 	char row[256];
 
-	if (*remaining <= 0.0f || sector->planet == 0.0f)
+	if (*remaining <= 0.0f)
 		return true;
-	if (!planet_update(session, logical_planet, &planet, error))
+	logical_planet = (int)qb_cint((double)sector->planet, &overflow);
+	if (overflow) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			snprintf(error->operation, sizeof(error->operation), "%s",
+			    "cruise missile planet-link CINT");
+		}
+		return false;
+	}
+	if (logical_planet == 0)
+		return true;
+	if (!planet_update(session, logical_planet, &updater_planet, error))
+		return false;
+	/* DS:1A48 remains the updater's ore value across the independent GET. */
+	original_ore = updater_planet.production[0];
+	if (!yt_game_read_planet(&session->door->game, logical_planet, &planet,
+	    error))
+		return false;
+	if (!yt_planet_stored_name(&planet, planet_name, &planet_name_length,
+	    error))
 		return false;
 	if (planet.owner == (float)session->player_record)
 		friendly = true;
-	else if (planet.owner > 0.0f)
-		friendly = same_team(session, (int)planet.owner, error);
-	if (!friendly && error != NULL && error->status != YT_OK)
-		return false;
-	if (friendly) {
-		snprintf(row, sizeof(row),
-		    "NOT attacking friendly planet \"%s\"!", planet.name);
-		yt_out_line(row);
-		return true;
+	else if (planet.owner > 1.0f
+	    && planet.owner <= session->door->game.config.sector_offset) {
+		/*
+		 * YT-SUB:974F clears its result before validating both records,
+		 * then physically GETs the current player and (for a nonzero team)
+		 * the candidate.  Its Boolean result is consumed here, after which
+		 * the caller restores the planet FIELD with another independent GET.
+		 */
+		if (session->player_record >= YT_PLAYER_FIRST
+		    && (float)session->player_record
+		    <= session->door->game.config.sector_offset) {
+			struct yt_player current;
+
+			if (!yt_game_read_player(&session->door->game,
+			    session->player_record, &current, error))
+				return false;
+			if (current.team != 0.0f) {
+				struct yt_player candidate;
+				int owner_record = (int)qb_cint(
+				    (double)planet.owner, &overflow);
+
+				if (overflow) {
+					if (error != NULL) {
+						error->status = YT_RANGE;
+						snprintf(error->operation,
+						    sizeof(error->operation), "%s",
+						    "cruise missile planet-owner CINT");
+					}
+					return false;
+				}
+				if (!yt_game_read_player(&session->door->game,
+				    owner_record, &candidate, error))
+					return false;
+				friendly = candidate.team == current.team;
+			}
+		}
+		if (!yt_game_read_planet(&session->door->game,
+		    logical_planet, &planet, error))
+			return false;
 	}
-	qb_str_single(sector_text, sizeof(sector_text), (float)sector_number);
-	snprintf(row, sizeof(row), "The Missiles attacked planet %s in sector%s!",
-	    planet.name, sector_text);
-	yt_out_line(row);
-	snprintf(row, sizeof(row), "%s's Missiles attacked planet %s in sector%s!",
-	    session->player.name, planet.name, sector_text);
-	if (!append_news(session, row, error))
+	if (friendly) {
+		if (!yt_projectile_friendly_planet_row(planet_name,
+		    planet_name_length, direct_row, sizeof(direct_row),
+		    &direct_length))
+			return false;
+		return session_present_text(session, direct_row, direct_length,
+		    SESSION_PRESENT_LINE,
+		    "cruise missile friendly-planet row", error);
+	}
+	if (!yt_player_stored_name(&session->player, attacker_name,
+	    &attacker_name_length, error)
+	    || !yt_projectile_planet_attack_rows(false, attacker_name,
+	    attacker_name_length, planet_name, planet_name_length,
+	    (float)sector_number, direct_row, sizeof(direct_row),
+	    &direct_length, news_row, sizeof(news_row), &news_length)
+	    || !session_present_text(session, direct_row, direct_length,
+	    SESSION_PRESENT_LINE, "cruise missile planet-attack row", error)
+	    || !append_news_bytes(session, news_row, news_length, error))
 		return false;
 	if (!session_sound(session, 2.0f,
 	    "cruise missile planet attack sound", error))
 		return false;
-	while (planet.ground_forces > 0.0f && *remaining > 0.0f) {
-		float draw;
+	if (planet.ground_forces != 0.0f) {
+		float ground = planet.ground_forces;
+		float owner = planet.owner;
+		struct yt_planet persistence;
 
-		if (!random_value(session, &draw, error))
+		while (ground > 0.0f && *remaining > 0.0f) {
+			float draw;
+
+			if (!random_value(session, &draw, error))
+				return false;
+			ground = single_sub(ground, single_mul(draw, 25.0f));
+			*remaining = single_sub(*remaining, 1.0f);
+		}
+		ground = floorf(ground);
+		if (ground < 1.0f) {
+			ground = 0.0f;
+			owner = 0.0f;
+		}
+		if (!yt_game_read_planet(&session->door->game, logical_planet,
+		    &persistence, error))
 			return false;
-		planet.ground_forces =
-		    single_sub(planet.ground_forces,
-		    single_mul(draw, 25.0f));
-		*remaining = single_sub(*remaining, 1.0f);
+		persistence.ground_forces = ground;
+		persistence.owner = owner;
+		if (!yt_record_set_number(&persistence.record, YT_F77, ground)
+		    || !yt_record_set_number(&persistence.record, YT_F73, owner)) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				snprintf(error->operation, sizeof(error->operation), "%s",
+				    "cruise missile ground-force overlay");
+			}
+			return false;
+		}
+		if (!yt_game_write_planet(&session->door->game, logical_planet,
+		    &persistence, error))
+			return false;
+		qb_str_single(number_one, sizeof(number_one), ground);
+		snprintf(row, sizeof(row), "Ground forces reduced to%s!",
+		    number_one);
+		if (!session_present_text(session, (const uint8_t *)row,
+		    strlen(row), SESSION_PRESENT_LINE,
+		    "cruise missile ground-force row", error)
+		    || !append_news(session, row, error))
+			return false;
+		if (*remaining < 1.0f)
+			return true;
 	}
-	planet.ground_forces = floorf(planet.ground_forces);
-	if (planet.ground_forces < 1.0f) {
-		planet.ground_forces = 0.0f;
-		planet.owner = 0.0f;
-	}
-	if (!yt_game_write_planet(&session->door->game, logical_planet,
-	    &planet, error))
-		return false;
-	qb_str_single(number_one, sizeof(number_one), planet.ground_forces);
-	snprintf(row, sizeof(row), "Ground forces reduced to%s!", number_one);
-	yt_out_line(row);
-	if (!append_news(session, row, error))
-		return false;
-	if (*remaining <= 0.0f)
-		return *remaining <= 0.0f
-		    && (error == NULL || error->status == YT_OK);
-	original_ore = planet.production[0];
 	old_total = single_add(single_add(planet.production[0],
 	    planet.production[1]), planet.production[2]);
 	while ((original_ore > 0.0f || planet.production[1] > 0.0f
@@ -6946,26 +11569,85 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 		qb_str_single(number_two, sizeof(number_two), new_total);
 		snprintf(row, sizeof(row), "Productivity reduced by%s units to%s "
 		    "units!", number_one, number_two);
-		yt_out_line(row);
-		if (!append_news(session, row, error))
+		if (!session_present_text(session, (const uint8_t *)row,
+		    strlen(row), SESSION_PRESENT_LINE,
+		    "cruise missile productivity row", error)
+		    || !append_news(session, row, error))
 			return false;
 	}
-	if (!yt_game_write_planet(&session->door->game, logical_planet,
-	    &planet, error))
-		return false;
+	{
+		struct yt_planet persistence;
+		size_t index;
+
+		if (!yt_game_read_planet(&session->door->game, logical_planet,
+		    &persistence, error))
+			return false;
+		for (index = 0; index < 3; ++index) {
+			persistence.production[index] = planet.production[index];
+			persistence.stock[index] = planet.stock[index];
+			if (!yt_record_set_number(&persistence.record,
+			    YT_F45 + index * 4U, planet.production[index])
+			    || !yt_record_set_number(&persistence.record,
+			    YT_F57 + index * 4U, planet.stock[index])) {
+				if (error != NULL) {
+					error->status = YT_RANGE;
+					snprintf(error->operation,
+					    sizeof(error->operation), "%s",
+					    "cruise missile productivity overlay");
+				}
+				return false;
+			}
+		}
+		if (!yt_game_write_planet(&session->door->game, logical_planet,
+		    &persistence, error))
+			return false;
+	}
 	if (planet.production[0] == 0.0f
 	    && planet.production[1] == 0.0f
 	    && planet.production[2] == 0.0f) {
-		planet.name_length = 0.0f;
+		static const uint8_t link_zero[4] = {
+			0x00, 0x00, 0x20, 0x00
+		};
+		struct yt_planet destruction;
+		struct yt_sector unlink;
+
+		if (!yt_game_read_planet(&session->door->game, logical_planet,
+		    &destruction, error))
+			return false;
+		destruction.name_length = 0.0f;
+		if (!yt_record_set_raw_number(&destruction.record, YT_F85,
+		    link_zero)) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				snprintf(error->operation, sizeof(error->operation), "%s",
+				    "cruise missile planet-active zero overlay");
+			}
+			return false;
+		}
 		if (!yt_game_write_planet(&session->door->game, logical_planet,
-		    &planet, error))
+		    &destruction, error))
 			return false;
-		sector->planet = 0.0f;
+		if (!yt_game_read_sector(&session->door->game, sector_number,
+		    &unlink, error))
+			return false;
+		unlink.planet = 0.0f;
+		if (!yt_record_set_raw_number(&unlink.record, YT_F93,
+		    link_zero)) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				snprintf(error->operation, sizeof(error->operation), "%s",
+				    "cruise missile sector-link zero overlay");
+			}
+			return false;
+		}
 		if (!yt_game_write_sector(&session->door->game, sector_number,
-		    sector, error))
+		    &unlink, error))
 			return false;
-		yt_out_line("The planet was destroyed!!");
-		if (!session_sound(session, 3.0f,
+		if (!session_present_text(session,
+		    (const uint8_t *)"The planet was destroyed!!",
+		    strlen("The planet was destroyed!!"), SESSION_PRESENT_LINE,
+		    "cruise missile planet-destroyed row", error)
+		    || !session_sound(session, 3.0f,
 		    "cruise missile planet destruction sound", error)
 		    || !append_news(session, "The planet was destroyed!!", error))
 			return false;
@@ -6989,35 +11671,61 @@ deploy_victim_mines(struct yt_session *session, int sector_number,
 
 static bool
 projectile_fighter_owner(struct yt_session *session, float owner,
-    bool missile, char *label, size_t size, bool *friendly,
+    bool missile, uint8_t *label, size_t size, size_t *label_length,
+    bool *friendly,
     struct yt_error *error)
 {
+	static const uint8_t xannor[] = "The Xannor";
+	static const uint8_t mercenaries[] = "Mercenaries";
+	static const uint8_t you[] = "YOU";
+	static const uint8_t them[] = "THEM";
+	const uint8_t *initial = xannor;
+	size_t initial_length = sizeof(xannor) - 1U;
+
+	if (label == NULL || label_length == NULL || friendly == NULL
+	    || size < YT_TEXT_FIELD_SIZE)
+		return false;
 	*friendly = false;
-	snprintf(label, size, "%s", "The Xannor");
-	if (owner == -2.0f)
-		snprintf(label, size, "%s", "Mercenaries");
-	else if (owner > 1.0f
-	    && owner <= session->door->game.config.sector_offset) {
+	if (owner == -2.0f) {
+		initial = mercenaries;
+		initial_length = sizeof(mercenaries) - 1U;
+	}
+	memcpy(label, initial, initial_length);
+	*label_length = initial_length;
+	if (owner != -2.0f && owner > 1.0f
+	    && (missile
+	    || owner <= session->door->game.config.sector_offset)) {
 		struct yt_player defender;
 		bool overflow;
-		int length;
+		int owner_record;
 
-		if (!yt_game_read_player(&session->door->game, (int)owner,
+		owner_record = (int)qb_cint((double)owner, &overflow);
+		if (overflow) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				snprintf(error->operation, sizeof(error->operation), "%s",
+				    "projectile defense-owner CINT");
+			}
+			return false;
+		}
+		if (!yt_game_read_player(&session->door->game, owner_record,
 		    &defender, error))
 			return false;
-		length = (int)qb_cint(defender.name_length, &overflow);
-		if (overflow || length < 0)
-			length = 0;
-		if ((size_t)length > strlen(defender.name))
-			length = (int)strlen(defender.name);
-		snprintf(label, size, "%.*s", length, defender.name);
+		if (!yt_player_stored_name(&defender, label, label_length, error))
+			return false;
 		if (missile)
 			*friendly = session->player.team > 0.0f
 			    && defender.team == session->player.team;
 	}
 	if (owner == (float)session->player_record) {
-		snprintf(label, size, "%s",
-		    missile && session->player_record == -1 ? "THEM" : "YOU");
+		const uint8_t *replacement = missile
+		    && session->player_record == -1 ? them : you;
+		size_t replacement_length = missile
+		    && session->player_record == -1
+		    ? sizeof(them) - 1U : sizeof(you) - 1U;
+
+		memcpy(label, replacement, replacement_length);
+		*label_length = replacement_length;
 		*friendly = true;
 	}
 	return true;
@@ -7037,26 +11745,34 @@ missile_sector(struct yt_session *session, int sector_number,
 		return false;
 	old_fighter_owner = sector.fighter_owner;
 	if (sector.fighters > 0.0f) {
+		float original_fighters = sector.fighters;
 		float destroyed = 0.0f;
 		bool friendly;
-		char owner[64];
+		uint8_t owner[YT_TEXT_FIELD_SIZE];
+		size_t owner_length;
+		size_t row_length;
 		char sector_text[64];
 		char fighter_text[64];
-		char row[256];
+		uint8_t row[256];
 
 		if (!projectile_fighter_owner(session, sector.fighter_owner,
-		    true, owner, sizeof(owner), &friendly, error))
+		    true, owner, sizeof(owner), &owner_length, &friendly, error))
+			return false;
+		qb_str_double(fighter_text, sizeof(fighter_text),
+		    (double)sector.fighters);
+		if (!yt_projectile_defense_row((float)sector_number, owner,
+		    owner_length, (double)sector.fighters, row, sizeof(row),
+		    &row_length)
+		    || !session_present_text(session, row, row_length,
+		    SESSION_PRESENT_BOLD_LINE,
+		    "cruise missile defense report", error))
 			return false;
 		qb_str_single(sector_text, sizeof(sector_text),
 		    (float)sector_number);
-		qb_str_double(fighter_text, sizeof(fighter_text),
-		    (double)sector.fighters);
-		snprintf(row, sizeof(row), "Sector:%s defended by %s with%s fighters.",
-		    sector_text, owner, fighter_text);
-		yt_out_line(row);
 		if (friendly)
 			goto missile_mines;
 
+		session->presentation.bold = 1.0f;
 		if (!session_sound(session, 2.0f,
 		    "cruise missile fighter-defense sound", error))
 			return false;
@@ -7071,22 +11787,43 @@ missile_sector(struct yt_session *session, int sector_number,
 		}
 		if (destroyed > sector.fighters)
 			destroyed = sector.fighters;
-		qb_str_double(fighter_text, sizeof(fighter_text),
-		    (double)destroyed);
-		snprintf(row, sizeof(row), "The Missiles destroyed%s fighters!",
+		qb_str_single(fighter_text, sizeof(fighter_text), destroyed);
+		snprintf((char *)row, sizeof(row), "The Missiles destroyed%s fighters!",
 		    fighter_text);
-		yt_out_line(row);
+		if (!session_present_text(session, row,
+		    strlen((const char *)row), SESSION_PRESENT_LINE,
+		    "cruise missile destroyed-defense row", error))
+			return false;
 		if (destroyed > 9.0f) {
-			snprintf(row, sizeof(row), "%s's Missiles destroyed%s fighters "
+			snprintf((char *)row, sizeof(row), "%s's Missiles destroyed%s fighters "
 			    "in sector%s!", session->player.name, fighter_text,
 			    sector_text);
-			if (!append_news(session, row, error))
+			if (!append_news(session, (const char *)row, error))
 				return false;
 		}
-		sector.fighters =
-		    single_sub(sector.fighters, destroyed);
-		if (sector.fighters == 0.0f)
+		if (!yt_game_read_sector(&session->door->game, sector_number,
+		    &sector, error))
+			return false;
+		sector.fighters = single_sub(original_fighters, destroyed);
+		if (sector.fighters == 0.0f) {
+			static const uint8_t defense_zero[4] = {
+				0x00, 0x00, 0x10, 0x00
+			};
+
 			sector.fighter_owner = 0.0f;
+			if (!yt_record_set_raw_number(&sector.record, YT_F81,
+			    defense_zero)
+			    || !yt_record_set_raw_number(&sector.record, YT_F85,
+			    defense_zero)) {
+				if (error != NULL) {
+					error->status = YT_RANGE;
+					snprintf(error->operation,
+					    sizeof(error->operation), "%s",
+					    "cruise missile defense zero overlay");
+				}
+				return false;
+			}
+		}
 		if (old_fighter_owner == -1.0f && sector.fighters > 0.0f
 		    && session->player_record != -1)
 			*xannor_provoker = session->player_record;
@@ -7098,24 +11835,37 @@ missile_sector(struct yt_session *session, int sector_number,
 		    == session->door->game.config.headquarters
 		    && !xannor_victory(session, error))
 			return false;
+		if (*remaining < 1.0f)
+			return true;
 	}
 
 missile_mines:
-	if (sector.mines > 0.0f) {
-		float destroyed = *remaining < sector.mines
-		    ? *remaining : sector.mines;
+	for (;;) {
+		struct yt_sector persistence;
+		float destroyed;
+		float observed_mines;
 		char mine_text[64];
 		char sector_text[64];
 		char row[256];
-		const char *suffix = destroyed > 1.0f ? "s" : "";
+		const char *suffix;
+
+		if (!yt_game_read_sector(&session->door->game, sector_number,
+		    &sector, error))
+			return false;
+		observed_mines = sector.mines;
+		if (observed_mines <= 0.0f)
+			break;
 
 		qb_str_double(mine_text, sizeof(mine_text),
-		    (double)sector.mines);
+		    (double)observed_mines);
 		qb_str_single(sector_text, sizeof(sector_text),
 		    (float)sector_number);
 		snprintf(row, sizeof(row), "The missiles hit%s SECTOR MINES in "
 		    "sector%s!", mine_text, sector_text);
-		yt_out_line(row);
+		if (!session_present_text(session, (const uint8_t *)row,
+		    strlen(row), SESSION_PRESENT_BOLD_LINE,
+		    "cruise missile mine-hit row", error))
+			return false;
 
 		if (!session_sound(session, 5.0f,
 		    "cruise missile sector-mine sound", error))
@@ -7127,109 +11877,181 @@ missile_mines:
 				return false;
 			*last_mine_news_sector = sector_number;
 		}
+		destroyed = *remaining < observed_mines
+		    ? *remaining : observed_mines;
+		suffix = destroyed > 1.0f ? "s" : "";
 		qb_str_single(mine_text, sizeof(mine_text), destroyed);
 		snprintf(row, sizeof(row), "The missile%s destroyed%s mine%s!",
 		    suffix, mine_text, suffix);
-		yt_out_line(row);
-		sector.mines = single_sub(sector.mines, destroyed);
-		*remaining = single_sub(*remaining, destroyed);
-		if (!yt_game_write_sector(&session->door->game, sector_number,
-		    &sector, error))
+		if (!session_present_text(session, (const uint8_t *)row,
+		    strlen(row), SESSION_PRESENT_BOLD_LINE,
+		    "cruise missile mines-destroyed row", error))
 			return false;
+		if (!yt_game_read_sector(&session->door->game, sector_number,
+		    &persistence, error))
+			return false;
+		persistence.mines = single_sub(observed_mines, destroyed);
+		if (!yt_game_write_sector(&session->door->game, sector_number,
+		    &persistence, error))
+			return false;
+		*remaining = single_sub(*remaining, destroyed);
+		if (*remaining < 1.0f)
+			return true;
 	}
 	for (basic = YT_PLAYER_FIRST;
-	    basic <= (int)session->door->game.config.sector_offset
-	    && *remaining > 0.0f; ++basic) {
+	    basic <= (int)session->door->game.config.sector_offset; ++basic) {
+		struct yt_player friendship;
 		struct yt_player target;
-		float fighter_damage = 0.0f;
+		double original_fighters;
+		double fighter_damage = 0.0;
 		float shield_damage = 0.0f;
-		char sector_text[64];
+		bool scanner_disabled = false;
+		uint8_t attacker_name[YT_TEXT_FIELD_SIZE];
+		uint8_t victim_name[YT_TEXT_FIELD_SIZE];
+		uint8_t first_news[256];
+		uint8_t first_direct[256];
+		size_t attacker_length;
+		size_t victim_length;
+		size_t first_news_length;
+		size_t first_direct_length;
 		char shield_text[64];
 		char fighter_text[64];
 		char row[256];
 
-		if (basic == session->player_record)
-			continue;
 		if (session->sector_cache[basic] != (float)sector_number)
 			continue;
+		if (*remaining <= 0.0f)
+			break;
+		if (basic == session->player_record)
+			continue;
+		/* YT-SUB:974F is called for its side effects; its Boolean is ignored. */
+		if (!yt_game_read_player(&session->door->game, basic, &friendship,
+		    error))
+			return false;
+		if (!yt_game_read_player(&session->door->game, basic, &target,
+		    error))
+			return false;
 		if (session->cloak_cache[basic] != 0.0f
 		    && basic != *xannor_provoker)
 			continue;
 		if (*xannor_provoker != 0 && basic != *xannor_provoker)
 			continue;
-		if (!yt_game_read_player(&session->door->game, basic, &target,
-		    error))
-			return false;
-		if (target.killed_by != 0.0f || target.sector != (float)sector_number)
-			continue;
+		original_fighters = (double)target.fighters;
 		if (!session_sound(session, 2.0f,
 		    "cruise missile player-attack sound", error))
 			return false;
 		while (*remaining > 0.0f) {
+			bool overflow;
 			float draw;
+			float scanner_product;
+			int32_t scanner_value;
 
 			*remaining = single_sub(*remaining, 1.0f);
 			if (!random_value(session, &draw, error))
 				return false;
-			if (single_mul(draw, *remaining) > 100.0f
-			    && target.danger_scanner != 0.0f)
+			scanner_product = single_mul(draw, *remaining);
+			scanner_value = qb_cint(target.danger_scanner, &overflow);
+			if (overflow) {
+				if (error != NULL) {
+					error->status = YT_RANGE;
+					snprintf(error->operation,
+					    sizeof(error->operation), "%s",
+					    "cruise missile scanner CINT");
+				}
+				return false;
+			}
+			if (scanner_product > 100.0f && scanner_value != 0) {
 				target.danger_scanner = 0.0f;
+				scanner_disabled = true;
+			}
 			if (!random_value(session, &draw, error))
 				return false;
-			fighter_damage = floorf(single_add(
-			    single_mul(draw, 4001.0f), fighter_damage));
+			fighter_damage = floor((double)single_mul(draw, 4001.0f)
+			    + fighter_damage);
 			if (!random_value(session, &draw, error))
 				return false;
-			if (single_mul(draw, target.fighters)
+			if ((double)single_mul(draw, target.fighters)
 			    < fighter_damage) {
 				if (!random_value(session, &draw, error))
 					return false;
 				shield_damage = single_add(shield_damage,
 				    floorf(single_mul(draw, 1001.0f)));
 			}
-			if (fighter_damage >= target.fighters
+			if (fighter_damage >= original_fighters
 			    && shield_damage >= target.shields)
 				break;
 		}
-		if (fighter_damage > target.fighters)
-			fighter_damage = target.fighters;
+		if (fighter_damage > original_fighters)
+			fighter_damage = original_fighters;
 		if (shield_damage > target.shields)
 			shield_damage = target.shields;
-		target.fighters =
-		    single_sub(target.fighters, fighter_damage);
+		target.fighters = (float)(original_fighters - fighter_damage);
 		target.shields =
 		    single_sub(target.shields, shield_damage);
-		qb_str_single(sector_text, sizeof(sector_text),
-		    (float)sector_number);
 		qb_str_single(shield_text, sizeof(shield_text), target.shields);
 		qb_str_double(fighter_text, sizeof(fighter_text),
-		    (double)fighter_damage);
-		snprintf(row, sizeof(row), "%s's missiles attacked %s in%s reducing",
-		    session->player.name, target.name, sector_text);
-		if (!append_news(session, row, error))
+		    fighter_damage);
+		if (!yt_player_stored_name(&session->player, attacker_name,
+		    &attacker_length, error)
+		    || !yt_player_stored_name(&target, victim_name,
+		    &victim_length, error)
+		    || !yt_projectile_attack_first_rows(false,
+		    attacker_name, attacker_length, victim_name, victim_length,
+		    (float)sector_number, first_news, sizeof(first_news),
+		    &first_news_length, first_direct, sizeof(first_direct),
+		    &first_direct_length)
+		    || !append_news_bytes(session, first_news, first_news_length,
+		    error)
+		    || !session_present_text(session, first_direct,
+		    first_direct_length, SESSION_PRESENT_BOLD_LINE,
+		    "cruise missile player attack first row", error))
 			return false;
-		snprintf(row, sizeof(row), "The missiles attacked %s in%s reducing",
-		    target.name, sector_text);
-		yt_out_line(row);
 		snprintf(row, sizeof(row), "shields to%s units and destroying%s "
 		    "fighters!", shield_text, fighter_text);
 		if (!append_news(session, row, error))
 			return false;
-		yt_out_line(row);
+		if (!session_present_text(session, (const uint8_t *)row,
+		    strlen(row), SESSION_PRESENT_BOLD_LINE,
+		    "cruise missile player attack second row", error))
+			return false;
+		session->presentation.foreground = 0.0f;
 		if (target.shields < 1.0f) {
-			float mines = target.mines;
+			float mines;
+			uint8_t killed_name[YT_TEXT_FIELD_SIZE];
+			uint8_t destroyed_row[128];
+			uint8_t warning_row[160];
+			size_t killed_name_length;
+			size_t destroyed_length;
+			size_t warning_length;
 
-			snprintf(row, sizeof(row), "%s was destroyed!", target.name);
-			yt_out_line(row);
-			if (mines != 0.0f) {
-				snprintf(row, sizeof(row),
-				    "*** WARNING, %s had sector mines!", target.name);
-				yt_out_line(row);
-			}
+			if (!yt_game_read_player(&session->door->game, basic,
+			    &target, error))
+				return false;
+			mines = target.mines;
+			if (!yt_player_stored_name(&target, killed_name,
+			    &killed_name_length, error)
+			    || !yt_projectile_destroyed_rows(killed_name,
+			    killed_name_length, destroyed_row, sizeof(destroyed_row),
+			    &destroyed_length, warning_row, sizeof(warning_row),
+			    &warning_length))
+				return false;
 			target.mines = 0.0f;
 			if (!yt_game_write_player(&session->door->game, basic,
 			    &target, error))
 				return false;
+			session->presentation.blink = 1.0f;
+			if (!session_present_text(session, destroyed_row,
+			    destroyed_length, SESSION_PRESENT_BOLD_LINE,
+			    "cruise missile destroyed-player row", error))
+				return false;
+			if (mines != 0.0f) {
+				session->presentation.blink = 1.0f;
+				if (!session_present_text(session, warning_row,
+				    warning_length,
+				    SESSION_PRESENT_BOLD_LINE,
+				    "cruise missile carried-mine warning", error))
+					return false;
+			}
 			if (mines != 0.0f
 			    && !deploy_victim_mines(session, sector_number,
 			    mines, error))
@@ -7243,10 +12065,36 @@ missile_mines:
 				    || !salvage_player(session, basic, error))
 					return false;
 			}
+			if (*remaining > 0.0f && mines > 0.0f)
+				goto missile_mines;
 		}
 		else {
+			struct yt_player persistence;
+
+			if (!yt_game_read_player(&session->door->game, basic,
+			    &persistence, error))
+				return false;
+			persistence.shields = target.shields;
+			persistence.fighters = target.fighters;
+			persistence.danger_scanner = target.danger_scanner;
+			if (scanner_disabled) {
+				static const uint8_t scanner_zero[4] = {
+					0x00, 0x00, 0x48, 0x00
+				};
+
+				if (!yt_record_set_raw_number(&persistence.record,
+				    YT_F93, scanner_zero)) {
+					if (error != NULL) {
+						error->status = YT_RANGE;
+						snprintf(error->operation,
+						    sizeof(error->operation), "%s",
+						    "cruise missile scanner zero overlay");
+					}
+					return false;
+				}
+			}
 			if (!yt_game_write_player(&session->door->game, basic,
-			    &target, error))
+			    &persistence, error))
 				return false;
 			if (session->player_record != -1)
 				*counterattack = basic;
@@ -7264,31 +12112,58 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
     struct yt_sector *sector, double *energy, struct yt_error *error)
 {
 	struct yt_planet planet;
-	int logical_planet = (int)sector->planet;
+	struct yt_planet updater_planet;
+	bool overflow;
+	int logical_planet;
 	float original_ore;
 	float old_total;
 	float old_ground;
-	char sector_text[64];
+	uint8_t planet_name[YT_TEXT_FIELD_SIZE];
+	uint8_t attacker_name[YT_TEXT_FIELD_SIZE];
+	uint8_t direct_row[256];
+	uint8_t news_row[256];
+	size_t planet_name_length;
+	size_t attacker_name_length;
+	size_t direct_length;
+	size_t news_length;
 	char number_one[64];
 	char number_two[64];
 	char row[256];
 
-	if (*energy <= 0.0 || sector->planet == 0.0f)
+	if (*energy <= 0.0)
 		return true;
-	if (!planet_update(session, logical_planet, &planet, error))
+	logical_planet = (int)qb_cint((double)sector->planet, &overflow);
+	if (overflow) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			snprintf(error->operation, sizeof(error->operation), "%s",
+			    "plasma planet-link CINT");
+		}
 		return false;
-	qb_str_single(sector_text, sizeof(sector_text), (float)sector_number);
-	snprintf(row, sizeof(row), "The plasma bolts hit planet %s in sector%s!",
-	    planet.name, sector_text);
-	yt_out_line(row);
-	snprintf(row, sizeof(row), "%s's plasma bolts hit planet %s in sector%s!",
-	    session->player.name, planet.name, sector_text);
-	if (!append_news(session, row, error))
+	}
+	if (logical_planet == 0)
+		return true;
+	if (!planet_update(session, logical_planet, &updater_planet, error))
+		return false;
+	original_ore = updater_planet.production[0];
+	if (!yt_game_read_planet(&session->door->game, logical_planet, &planet,
+	    error))
+		return false;
+	if (!yt_planet_stored_name(&planet, planet_name, &planet_name_length,
+	    error)
+	    || !yt_player_stored_name(&session->player, attacker_name,
+	    &attacker_name_length, error)
+	    || !yt_projectile_planet_attack_rows(true, attacker_name,
+	    attacker_name_length, planet_name, planet_name_length,
+	    (float)sector_number, direct_row, sizeof(direct_row),
+	    &direct_length, news_row, sizeof(news_row), &news_length)
+	    || !session_present_text(session, direct_row, direct_length,
+	    SESSION_PRESENT_LINE, "plasma planet-hit row", error)
+	    || !append_news_bytes(session, news_row, news_length, error))
 		return false;
 	if (!session_sound(session, 2.0f,
 	    "plasma planet attack sound", error))
 		return false;
-	original_ore = planet.production[0];
 	old_total = single_add(single_add(planet.production[0],
 	    planet.production[1]), planet.production[2]);
 	old_ground = planet.ground_forces;
@@ -7306,10 +12181,6 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 		if (!random_value(session, &draw, error))
 			return false;
 		*energy -= (double)single_mul(draw, 25000.0f);
-	}
-	if (planet.ground_forces < 1.0f) {
-		planet.ground_forces = 0.0f;
-		planet.owner = 0.0f;
 	}
 	{
 		size_t index;
@@ -7332,26 +12203,91 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 		qb_str_single(number_two, sizeof(number_two), new_total);
 		snprintf(row, sizeof(row), "Productivity reduced by%s units to%s "
 		    "units!", number_one, number_two);
-		yt_out_line(row);
-		if (!append_news(session, row, error))
+		if (!session_present_text(session, (const uint8_t *)row,
+		    strlen(row), SESSION_PRESENT_LINE,
+		    "plasma productivity row", error)
+		    || !append_news(session, row, error))
 			return false;
 	}
-	if (!yt_game_write_planet(&session->door->game, logical_planet,
-	    &planet, error))
-		return false;
+	{
+		struct yt_planet persistence;
+		size_t index;
+
+		if (!yt_game_read_planet(&session->door->game, logical_planet,
+		    &persistence, error))
+			return false;
+		for (index = 0; index < 3; ++index) {
+			persistence.production[index] = planet.production[index];
+			persistence.stock[index] = planet.stock[index];
+			if (!yt_record_set_number(&persistence.record,
+			    YT_F45 + index * 4U, planet.production[index])
+			    || !yt_record_set_number(&persistence.record,
+			    YT_F57 + index * 4U, planet.stock[index])) {
+				if (error != NULL) {
+					error->status = YT_RANGE;
+					snprintf(error->operation,
+					    sizeof(error->operation), "%s",
+					    "plasma productivity overlay");
+				}
+				return false;
+			}
+		}
+		planet.ground_forces = floorf(planet.ground_forces);
+		if (planet.ground_forces < 1.0f) {
+			planet.ground_forces = 0.0f;
+			persistence.owner = 0.0f;
+			if (!yt_record_set_number(&persistence.record, YT_F73,
+			    0.0f)) {
+				if (error != NULL) {
+					error->status = YT_RANGE;
+					snprintf(error->operation,
+					    sizeof(error->operation), "%s",
+					    "plasma planet-owner overlay");
+				}
+				return false;
+			}
+		}
+		persistence.ground_forces = planet.ground_forces;
+		if (!yt_record_set_number(&persistence.record, YT_F77,
+		    planet.ground_forces)) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				snprintf(error->operation, sizeof(error->operation), "%s",
+				    "plasma ground-force overlay");
+			}
+			return false;
+		}
+		if (!yt_game_write_planet(&session->door->game, logical_planet,
+		    &persistence, error))
+			return false;
+	}
 	if (planet.production[0] == 0.0f
 	    && planet.production[1] == 0.0f
 	    && planet.production[2] == 0.0f) {
-		planet.name_length = 0.0f;
-		if (!yt_game_write_planet(&session->door->game, logical_planet,
-		    &planet, error))
+		struct yt_planet destruction;
+		struct yt_sector unlink;
+
+		if (!yt_game_read_planet(&session->door->game, logical_planet,
+		    &destruction, error))
 			return false;
-		sector->planet = 0.0f;
-		if (!yt_game_write_sector(&session->door->game, sector_number,
-		    sector, error))
+		destruction.name_length = 0.0f;
+		if (!yt_record_set_number(&destruction.record, YT_F85, 0.0f)
+		    || !yt_game_write_planet(&session->door->game,
+		    logical_planet, &destruction, error))
 			return false;
-		yt_out_line("The planet was destroyed!!");
-		if (!session_sound(session, 3.0f,
+		if (!yt_game_read_sector(&session->door->game, sector_number,
+		    &unlink, error))
+			return false;
+		unlink.planet = 0.0f;
+		if (!yt_record_set_number(&unlink.record, YT_F93, 0.0f)
+		    || !yt_game_write_sector(&session->door->game, sector_number,
+		    &unlink, error))
+			return false;
+		if (!session_present_text(session,
+		    (const uint8_t *)"The planet was destroyed!!",
+		    strlen("The planet was destroyed!!"), SESSION_PRESENT_LINE,
+		    "plasma planet-destroyed row", error)
+		    || !session_sound(session, 3.0f,
 		    "plasma planet destruction sound", error)
 		    || !append_news(session, "The planet was destroyed!!", error))
 			return false;
@@ -7363,8 +12299,10 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 		    planet.ground_forces);
 		snprintf(row, sizeof(row), "Ground forces reduced by%s units to%s!",
 		    number_one, number_two);
-		yt_out_line(row);
-		if (!append_news(session, row, error))
+		if (!session_present_text(session, (const uint8_t *)row,
+		    strlen(row), SESSION_PRESENT_LINE,
+		    "plasma ground-force row", error)
+		    || !append_news(session, row, error))
 			return false;
 	}
 	return true;
@@ -7375,68 +12313,114 @@ plasma_sector(struct yt_session *session, int sector_number,
     double *energy, struct yt_error *error)
 {
 	struct yt_sector sector;
-	bool headquarters_wiped = false;
+	float planet_link;
 	int basic;
 
 	if (!yt_game_read_sector(&session->door->game, sector_number, &sector,
 	    error))
 		return false;
 	if (sector.fighters > 0.0f) {
-		float destroyed = 0.0f;
+		double original_fighters = (double)sector.fighters;
+		double destroyed = 0.0;
 		bool ignored_friendly;
-		char owner[64];
+		uint8_t owner[YT_TEXT_FIELD_SIZE];
+		size_t owner_length;
+		size_t row_length;
 		char sector_text[64];
 		char fighter_text[64];
-		char row[256];
+		uint8_t row[256];
 
 		if (!projectile_fighter_owner(session, sector.fighter_owner,
-		    false, owner, sizeof(owner), &ignored_friendly, error))
+		    false, owner, sizeof(owner), &owner_length,
+		    &ignored_friendly, error))
 			return false;
 		qb_str_single(sector_text, sizeof(sector_text),
 		    (float)sector_number);
-		qb_str_double(fighter_text, sizeof(fighter_text),
-		    (double)sector.fighters);
-		snprintf(row, sizeof(row), "Sector:%s defended by %s with%s fighters.",
-		    sector_text, owner, fighter_text);
-		yt_out_line(row);
+		if (!yt_projectile_defense_row((float)sector_number, owner,
+		    owner_length, (double)sector.fighters, row, sizeof(row),
+		    &row_length)
+		    || !session_present_text(session, row, row_length,
+		    SESSION_PRESENT_BOLD_LINE,
+		    "plasma defense report", error))
+			return false;
 
+		session->presentation.bold = 1.0f;
 		if (!session_sound(session, 2.0f,
 		    "plasma fighter-defense sound", error))
 			return false;
-		while (*energy > 0.0 && destroyed < sector.fighters) {
+		while (*energy > 0.0 && destroyed < original_fighters) {
 			float draw;
 
-			destroyed = single_add(destroyed,
-			    (float)floor(*energy / 5000.0) + 1.0f);
+			destroyed += floor(*energy / 5000.0) + 1.0;
 			if (!random_value(session, &draw, error))
 				return false;
 			*energy -= (double)single_mul(draw, 25000.0f);
 		}
 		if (*energy < 0.0)
 			*energy = 0.0;
-		if (destroyed > sector.fighters)
-			destroyed = sector.fighters;
-		qb_str_double(fighter_text, sizeof(fighter_text),
-		    (double)destroyed);
-		snprintf(row, sizeof(row), "The plasma bolts destroyed%s fighters!",
+		if (destroyed > original_fighters)
+			destroyed = original_fighters;
+		qb_str_double(fighter_text, sizeof(fighter_text), destroyed);
+		snprintf((char *)row, sizeof(row),
+		    "The plasma bolts destroyed%s fighters!",
 		    fighter_text);
-		yt_out_line(row);
-		if (destroyed > 9.0f) {
-			snprintf(row, sizeof(row), "%s's plasma bolts destroyed%s "
+		if (!session_present_text(session, row,
+		    strlen((const char *)row), SESSION_PRESENT_LINE,
+		    "plasma destroyed-defense row", error))
+			return false;
+		if (destroyed > 9.0) {
+			snprintf((char *)row, sizeof(row), "%s's plasma bolts destroyed%s "
 			    "fighters in sector%s!", session->player.name,
 			    fighter_text, sector_text);
-			if (!append_news(session, row, error))
+			if (!append_news(session, (const char *)row, error))
 				return false;
 		}
-		sector.fighters =
-		    single_sub(sector.fighters, destroyed);
-		if (sector.fighters == 0.0f)
-			sector.fighter_owner = 0.0f;
-		headquarters_wiped = sector.fighters == 0.0f
-		    && (float)sector_number
-		    == session->door->game.config.headquarters;
+		{
+			static const uint8_t defense_zero[4] = {
+				0x00, 0x00, 0x10, 0x00
+			};
+			struct yt_sector persistence;
+			float remaining = (float)(original_fighters - destroyed);
+
+			if (!yt_game_read_sector(&session->door->game,
+			    sector_number, &persistence, error))
+				return false;
+			persistence.fighters = remaining;
+			if (remaining == 0.0f) {
+				persistence.fighter_owner = 0.0f;
+				if (!yt_record_set_raw_number(&persistence.record,
+				    YT_F81, defense_zero)
+				    || !yt_record_set_raw_number(&persistence.record,
+				    YT_F85, defense_zero)) {
+					if (error != NULL) {
+						error->status = YT_RANGE;
+						snprintf(error->operation,
+						    sizeof(error->operation), "%s",
+						    "plasma defense zero overlay");
+					}
+					return false;
+				}
+			}
+			if (!yt_game_write_sector(&session->door->game,
+			    sector_number, &persistence, error))
+				return false;
+			if (remaining == 0.0f
+			    && (float)sector_number
+			    == session->door->game.config.headquarters
+			    && !xannor_victory(session, error))
+				return false;
+		}
+		if (*energy < 1.0)
+			return true;
 	}
+plasma_reload_sector:
+	/* B099 performs a new sector GET before caching mines and planet link. */
+	if (!yt_game_read_sector(&session->door->game, sector_number, &sector,
+	    error))
+		return false;
+	planet_link = sector.planet;
 	if (*energy > 0.0 && sector.mines > 0.0f) {
+		float original_mines = sector.mines;
 		float destroyed = 0.0f;
 		char destroyed_text[64];
 		char sector_text[64];
@@ -7454,8 +12438,8 @@ plasma_sector(struct yt_session *session, int sector_number,
 		while (*energy > 0.0 && destroyed < sector.mines) {
 			float draw;
 
-			destroyed = single_add(destroyed,
-			    (float)floor(*energy * 0.000001) + 1.0f);
+			destroyed = (float)((double)destroyed
+			    + floor(*energy * 0.000001) + 1.0);
 			if (!random_value(session, &draw, error))
 				return false;
 			*energy -= (double)single_mul(draw, 25000.0f);
@@ -7472,22 +12456,43 @@ plasma_sector(struct yt_session *session, int sector_number,
 			return false;
 		snprintf(row, sizeof(row), "The plasma bolts destroyed%s mines in "
 		    "sector%s!", destroyed_text, sector_text);
-		yt_out_line(row);
-		sector.mines = single_sub(sector.mines, destroyed);
+		if (!session_present_text(session, (const uint8_t *)row,
+		    strlen(row), SESSION_PRESENT_BOLD_LINE,
+		    "plasma destroyed-mines row", error))
+			return false;
+		{
+			struct yt_sector persistence;
+
+			if (!yt_game_read_sector(&session->door->game,
+			    sector_number, &persistence, error))
+				return false;
+			persistence.mines = single_sub(original_mines, destroyed);
+			if (!yt_record_set_number(&persistence.record, YT_F129,
+			    persistence.mines)
+			    || !yt_game_write_sector(&session->door->game,
+			    sector_number, &persistence, error))
+				return false;
+		}
+		if (*energy < 1.0)
+			return true;
 	}
-	if (!yt_game_write_sector(&session->door->game, sector_number, &sector,
-	    error))
-		return false;
-	if (headquarters_wiped && !xannor_victory(session, error))
-		return false;
 	for (basic = YT_PLAYER_FIRST;
 	    basic <= (int)session->door->game.config.sector_offset
 	    && *energy > 0.0; ++basic) {
 		struct yt_player target;
-		float fighter_damage = 0.0f;
+		double original_fighters;
+		float original_shields;
+		double fighter_damage = 0.0;
 		float shield_damage = 0.0f;
 		int saved_foreground;
-		char sector_text[64];
+		uint8_t attacker_name[YT_TEXT_FIELD_SIZE];
+		uint8_t victim_name[YT_TEXT_FIELD_SIZE];
+		uint8_t first_news[256];
+		uint8_t first_direct[256];
+		size_t attacker_length;
+		size_t victim_length;
+		size_t first_news_length;
+		size_t first_direct_length;
 		char shield_text[64];
 		char fighter_text[64];
 		char row[256];
@@ -7497,82 +12502,130 @@ plasma_sector(struct yt_session *session, int sector_number,
 		if (!yt_game_read_player(&session->door->game, basic, &target,
 		    error))
 			return false;
-		if (target.killed_by != 0.0f || target.sector != (float)sector_number)
-			continue;
+		original_fighters = (double)target.fighters;
+		original_shields = target.shields;
 		saved_foreground = session->pager.foreground;
 		session_set_color(session, 5);
 		if (!session_sound(session, 2.0f,
 		    "plasma player-attack sound", error))
 			return false;
-		while (*energy > 0.0 && fighter_damage < target.fighters) {
+		while (*energy > 0.0 && fighter_damage < original_fighters) {
 			float draw;
 
-			fighter_damage = single_add(fighter_damage,
-			    (float)floor(*energy / 5000.0) + 1.0f);
+			fighter_damage += floor(*energy / 5000.0) + 1.0;
 			if (!random_value(session, &draw, error))
 				return false;
 			*energy -= (double)single_mul(draw, 25000.0f);
 		}
-		if (fighter_damage > target.fighters)
-			fighter_damage = target.fighters;
-		while (*energy > 0.0 && shield_damage < target.shields) {
+		if (fighter_damage > original_fighters)
+			fighter_damage = original_fighters;
+		while (*energy > 0.0 && shield_damage < original_shields) {
 			float draw;
 
-			shield_damage = single_add(shield_damage,
-			    (float)floor(*energy / 10000.0) + 1.0f);
+			shield_damage = (float)((double)shield_damage
+			    + floor(*energy / 10000.0) + 1.0);
 			if (!random_value(session, &draw, error))
 				return false;
 			*energy -= (double)single_mul(draw, 25000.0f);
 		}
-		if (shield_damage > target.shields)
-			shield_damage = target.shields;
-		target.fighters =
-		    single_sub(target.fighters, fighter_damage);
-		target.shields =
-		    single_sub(target.shields, shield_damage);
-		qb_str_single(sector_text, sizeof(sector_text),
-		    (float)sector_number);
-		qb_str_single(shield_text, sizeof(shield_text), target.shields);
-		qb_str_double(fighter_text, sizeof(fighter_text),
-		    (double)fighter_damage);
-		snprintf(row, sizeof(row), "%s's plasma bolts hit %s in%s reducing",
-		    session->player.name, target.name, sector_text);
-		if (!append_news(session, row, error))
+		if (shield_damage > original_shields)
+			shield_damage = original_shields;
+		if (!yt_game_read_player(&session->door->game, basic, &target,
+		    error))
 			return false;
-		snprintf(row, sizeof(row), "The plasma bolts hit %s in%s reducing",
-		    target.name, sector_text);
-		yt_out_line(row);
+		qb_str_single(shield_text, sizeof(shield_text),
+		    single_sub(original_shields, shield_damage));
+		qb_str_double(fighter_text, sizeof(fighter_text), fighter_damage);
+		if (!yt_player_stored_name(&session->player, attacker_name,
+		    &attacker_length, error)
+		    || !yt_player_stored_name(&target, victim_name,
+		    &victim_length, error)
+		    || !yt_projectile_attack_first_rows(true,
+		    attacker_name, attacker_length, victim_name, victim_length,
+		    (float)sector_number, first_news, sizeof(first_news),
+		    &first_news_length, first_direct, sizeof(first_direct),
+		    &first_direct_length)
+		    || !append_news_bytes(session, first_news, first_news_length,
+		    error)
+		    || !session_present_text(session, first_direct,
+		    first_direct_length, SESSION_PRESENT_BOLD_LINE,
+		    "plasma player attack first row", error))
+			return false;
 		snprintf(row, sizeof(row), "shields to%s units and destroying%s "
 		    "fighters!", shield_text, fighter_text);
 		if (!append_news(session, row, error))
 			return false;
-		yt_out_line(row);
+		if (!session_present_text(session, (const uint8_t *)row,
+		    strlen(row), SESSION_PRESENT_BOLD_LINE,
+		    "plasma player attack second row", error))
+			return false;
 		session_set_color(session, saved_foreground);
-		if (target.shields < 1.0f) {
-			float mines = target.mines;
+		if (single_sub(original_shields, shield_damage) < 1.0f) {
+			struct yt_player victim;
+			float mines;
+			uint8_t killed_name[YT_TEXT_FIELD_SIZE];
+			uint8_t destroyed_row[128];
+			uint8_t warning_row[160];
+			size_t killed_name_length;
+			size_t destroyed_length;
+			size_t warning_length;
 
-			if (basic == session->player_record)
-				yt_out_line("YOU were destroyed!");
+			if (!yt_game_read_player(&session->door->game, basic,
+			    &victim, error))
+				return false;
+			mines = victim.mines;
+			if (basic != session->player_record
+			    && (!yt_player_stored_name(&victim, killed_name,
+			    &killed_name_length, error)
+			    || !yt_projectile_destroyed_rows(killed_name,
+			    killed_name_length, destroyed_row, sizeof(destroyed_row),
+			    &destroyed_length, warning_row, sizeof(warning_row),
+			    &warning_length)))
+				return false;
+			victim.mines = 0.0f;
+			victim.danger_scanner = 0.0f;
+			if (!yt_record_set_number(&victim.record, YT_F129, 0.0f)
+			    || !yt_record_set_number(&victim.record, YT_F93, 0.0f)
+			    || !yt_game_write_player(&session->door->game, basic,
+			    &victim, error))
+				return false;
+
+			session->presentation.blink = 1.0f;
+			if (basic == session->player_record) {
+				if (!session_present_text(session,
+				    (const uint8_t *)"YOU were destroyed!",
+				    strlen("YOU were destroyed!"),
+				    SESSION_PRESENT_BOLD_LINE,
+				    "plasma self-destruction row", error))
+					return false;
+			}
 			else {
-				snprintf(row, sizeof(row), "%s was destroyed!", target.name);
-				yt_out_line(row);
+				if (!session_present_text(session, destroyed_row,
+				    destroyed_length, SESSION_PRESENT_BOLD_LINE,
+				    "plasma victim-destruction row", error))
+					return false;
 			}
 			if (mines != 0.0f) {
-				snprintf(row, sizeof(row),
-				    "*** WARNING, %s had sector mines!", target.name);
-				yt_out_line(row);
+				if (!yt_player_stored_name(&victim, killed_name,
+				    &killed_name_length, error)
+				    || !yt_projectile_destroyed_rows(killed_name,
+				    killed_name_length, destroyed_row,
+				    sizeof(destroyed_row), &destroyed_length,
+				    warning_row, sizeof(warning_row),
+				    &warning_length))
+					return false;
+				session->presentation.blink = 1.0f;
+				if (!session_present_text(session, warning_row,
+				    warning_length, SESSION_PRESENT_BOLD_LINE,
+				    "plasma carried-mine warning", error))
+					return false;
 			}
-			target.mines = 0.0f;
-			target.danger_scanner = 0.0f;
-			if (!yt_game_write_player(&session->door->game, basic,
-			    &target, error))
-				return false;
 			if (mines != 0.0f
 			    && !deploy_victim_mines(session, sector_number, mines,
 			    error))
 				return false;
 			if (basic == session->player_record) {
-				session->player = target;
+				session->player = victim;
 				session->destroyed = true;
 				session->sector_cache[basic] = 0.0f;
 			}
@@ -7585,14 +12638,30 @@ plasma_sector(struct yt_session *session, int sector_number,
 				    || !salvage_player(session, basic, error))
 					return false;
 			}
+			if (*energy > 0.0 && mines > 0.0f)
+				goto plasma_reload_sector;
 		}
-		else if (!yt_game_write_player(&session->door->game, basic,
-		    &target, error))
-			return false;
+		else {
+			struct yt_player persistence;
+
+			if (!yt_game_read_player(&session->door->game, basic,
+			    &persistence, error))
+				return false;
+			persistence.shields =
+			    single_sub(original_shields, shield_damage);
+			persistence.fighters =
+			    (float)(original_fighters - fighter_damage);
+			if (!yt_record_set_number(&persistence.record, YT_F53,
+			    persistence.shields)
+			    || !yt_record_set_number(&persistence.record, YT_F61,
+			    persistence.fighters)
+			    || !yt_game_write_player(&session->door->game, basic,
+			    &persistence, error))
+				return false;
+		}
 	}
-	if (!yt_game_read_sector(&session->door->game, sector_number, &sector,
-	    error))
-		return false;
+	/* The B099 dispatch cached this link before mines and the player scan. */
+	sector.planet = planet_link;
 	return plasma_planet_impact(session, sector_number, &sector, energy,
 	    error);
 }
@@ -7608,24 +12677,39 @@ projectile_opening(struct yt_session *session, float amount, double energy,
 		if (!session_sound(session, 4.0f,
 		    "cruise missile launch sound", error))
 			return false;
-		yt_out_line("");
-		yt_out("Loading course into misile targeting computer.");
-		yt_out_line("");
-		yt_out_line("*** Tracking Report ***");
-		return true;
+		return session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "cruise missile opening blank", error)
+		    && session_present_text(session,
+		    (const uint8_t *)
+		    "Loading course into misile targeting computer.",
+		    strlen("Loading course into misile targeting computer."),
+		    SESSION_PRESENT_LINE, "cruise missile loading row", error)
+		    && session_present_text(session,
+		    (const uint8_t *)"*** Tracking Report ***",
+		    strlen("*** Tracking Report ***"), SESSION_PRESENT_LINE,
+		    "cruise missile tracking row", error);
 	}
-	yt_out_line("");
-	yt_out("Loading course into targeting computer.");
-	yt_out_line("");
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "plasma opening blank", error)
+	    || !session_present_text(session,
+	    (const uint8_t *)"Loading course into targeting computer.",
+	    strlen("Loading course into targeting computer."),
+	    SESSION_PRESENT_LINE, "plasma loading row", error))
+		return false;
 	if (!session_sound(session, 4.0f, "plasma launch sound", error))
 		return false;
-	session_timed_wait(session, 1.0);
+	if (!session_wait(session, 1.0, "plasma targeting wait", error))
+		return false;
 	qb_str_double(number, sizeof(number), energy);
 	snprintf(row, sizeof(row),
 	    "Plasma bolts targeted... firing%s megawatts!", number);
-	yt_out_line(row);
-	yt_out_line("");
-	session_timed_wait(session, 1.0);
+	if (!session_present_text(session, (const uint8_t *)row, strlen(row),
+	    SESSION_PRESENT_LINE, "plasma targeting row", error)
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "plasma targeting blank", error))
+		return false;
+	if (!session_wait(session, 1.0, "plasma pre-fire wait", error))
+		return false;
 	{
 		float counter;
 
@@ -7633,38 +12717,55 @@ projectile_opening(struct yt_session *session, float amount, double energy,
 		    counter = single_add(counter, 1.0f)) {
 			qb_str_single(number, sizeof(number), counter);
 			snprintf(row, sizeof(row), "Firing%s!", number);
-			yt_out_line(row);
+			if (!session_present_text(session, (const uint8_t *)row,
+			    strlen(row), SESSION_PRESENT_LINE,
+			    "plasma firing row", error))
+				return false;
 			if (!session_sound(session, 7.0f,
 			    "plasma bolt firing sound", error))
 				return false;
 		}
 	}
-	yt_out_line("");
-	yt_out_line("* Tracking Report *");
-	yt_out_line("");
-	return true;
+	return session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "plasma tracking leading blank", error)
+	    && session_present_text(session,
+	    (const uint8_t *)"* Tracking Report *",
+	    strlen("* Tracking Report *"), SESSION_PRESENT_LINE,
+	    "plasma tracking row", error)
+	    && session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "plasma tracking trailing blank", error);
 }
 
-static void
-route_failure_report(void)
+static bool
+route_failure_report(struct yt_session *session, struct yt_error *error)
 {
-	yt_out_line("");
-	yt_out_line("");
-	yt_out_line(
-	    "*** You can't get there without going someplace you dont want to!");
+	return session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "projectile route failure blank", error)
+	    && session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "projectile route failure blank", error)
+	    && session_present_text(session,
+	    (const uint8_t *)
+	    "*** You can't get there without going someplace you dont want to!",
+	    strlen("*** You can't get there without going someplace you dont want to!"),
+	    SESSION_PRESENT_LINE, "projectile route failure row", error);
 }
 
-static void
-plasma_footer(void)
+static bool
+plasma_footer(struct yt_session *session, struct yt_error *error)
 {
-	yt_out_line("");
-	yt_out_line("Plasma bolts dissipated.");
-	yt_out_line("");
+	return session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "plasma footer leading blank", error)
+	    && session_present_text(session,
+	    (const uint8_t *)"Plasma bolts dissipated.",
+	    strlen("Plasma bolts dissipated."), SESSION_PRESENT_LINE,
+	    "plasma footer row", error)
+	    && session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "plasma footer trailing blank", error);
 }
 
-static void
+static bool
 plasma_hop_report(struct yt_session *session, int sector_number,
-    double energy)
+    double energy, struct yt_error *error)
 {
 	char sector_text[64];
 	char energy_text[64];
@@ -7674,8 +12775,9 @@ plasma_hop_report(struct yt_session *session, int sector_number,
 	qb_str_double(energy_text, sizeof(energy_text), floor(energy));
 	snprintf(row, sizeof(row), "Bolt entering sector%s.%s Megawatts remaining.",
 	    sector_text, energy_text);
-	yt_out_line(row);
-	session_timed_wait(session, 0.5);
+	return session_present_text(session, (const uint8_t *)row, strlen(row),
+	    SESSION_PRESENT_LINE, "plasma hop row", error)
+	    && session_wait(session, 0.5, "plasma hop wait", error);
 }
 
 static bool
@@ -7695,10 +12797,12 @@ launch_projectile(struct yt_session *session, float target, float amount,
 	    ? returned_missiles : &local_missiles;
 	double energy = 2500000.0 * (double)amount;
 	double hop_loss = energy / 50.0;
-	int counterattack = pending_counterattack != NULL
-	    ? *pending_counterattack : 0;
-	int xannor_provoker = pending_xannor != NULL
-	    ? *pending_xannor : 0;
+	int local_counterattack = 0;
+	int local_xannor_provoker = 0;
+	int *counterattack = pending_counterattack != NULL
+	    ? pending_counterattack : &local_counterattack;
+	int *xannor_provoker = pending_xannor != NULL
+	    ? pending_xannor : &local_xannor_provoker;
 	int last_mine_news_sector = 0;
 	int start = (int)(origin_alias != NULL
 	    ? *origin_alias : session->player.sector);
@@ -7718,20 +12822,40 @@ launch_projectile(struct yt_session *session, float target, float amount,
 	}
 	if (start == destination) {
 		if (plasma) {
-			plasma_hop_report(session, start, energy);
+			if (origin_alias != NULL)
+				*origin_alias = 0.0f;
+			if (!plasma_hop_report(session, start, energy, error)) {
+				free(route);
+				return false;
+			}
 			found = plasma_sector(session, start, &energy, error);
 			if (found)
-				plasma_footer();
+				found = plasma_footer(session, error);
 			free(route);
 			return found;
 		}
-		if (counterattack == 0 && session->player_record != -1) {
-			yt_out_line("");
-			yt_out_line("Missles self destructed!");
+		if (*counterattack == 0 && session->player_record != -1) {
+			if (!session_present_text(session, NULL, 0,
+			    SESSION_PRESENT_LINE,
+			    "cruise missile self-destruct blank", error)
+			    || !session_present_text(session,
+			    (const uint8_t *)"Missles self destructed!",
+			    strlen("Missles self destructed!"),
+			    SESSION_PRESENT_LINE,
+			    "cruise missile self-destruct row", error)) {
+				free(route);
+				return false;
+			}
 			free(route);
 			return true;
 		}
-		yt_out_line("*** End of Report ***");
+		if (!session_present_text(session,
+		    (const uint8_t *)"*** End of Report ***",
+		    strlen("*** End of Report ***"), SESSION_PRESENT_LINE,
+		    "cruise missile end report", error)) {
+			free(route);
+			return false;
+		}
 		free(route);
 		return true;
 	}
@@ -7739,18 +12863,34 @@ launch_projectile(struct yt_session *session, float target, float amount,
 		bool rerouted = false;
 
 		if (!build_route(session, start, destination, route,
-		    !plasma && counterattack == 0
+		    !plasma && *counterattack == 0
 		    && session->player_record != -1, &found, error)) {
 			free(route);
 			return false;
 		}
 		if (!found) {
-			route_failure_report();
-			if (plasma)
-				plasma_footer();
+			if (!route_failure_report(session, error)) {
+				free(route);
+				return false;
+			}
+			if (plasma) {
+				if (!plasma_footer(session, error)) {
+					free(route);
+					return false;
+				}
+			}
 			else {
-				yt_out_line("");
-				yt_out_line("Missles self destructed!");
+				if (!session_present_text(session, NULL, 0,
+				    SESSION_PRESENT_LINE,
+				    "cruise missile self-destruct blank", error)
+				    || !session_present_text(session,
+				    (const uint8_t *)"Missles self destructed!",
+				    strlen("Missles self destructed!"),
+				    SESSION_PRESENT_LINE,
+				    "cruise missile self-destruct row", error)) {
+					free(route);
+					return false;
+				}
 			}
 			free(route);
 			return true;
@@ -7764,7 +12904,10 @@ launch_projectile(struct yt_session *session, float target, float amount,
 			energy -= hop_loss;
 			if (energy < 1.0)
 				break;
-			plasma_hop_report(session, next, energy);
+			if (!plasma_hop_report(session, next, energy, error)) {
+				free(route);
+				return false;
+			}
 		}
 		if ((float)next == session->black_hole[0]
 		    || (float)next == session->black_hole[1]) {
@@ -7785,7 +12928,11 @@ launch_projectile(struct yt_session *session, float target, float amount,
 			qb_str_single(old_text, sizeof(old_text), (float)next);
 			qb_str_single(new_text, sizeof(new_text),
 			    (float)destination);
-			yt_out_line("");
+			if (!session_present_text(session, NULL, 0,
+			    SESSION_PRESENT_LINE, "projectile black-hole blank", error)) {
+				free(route);
+				return false;
+			}
 			if (plasma)
 				snprintf(row, sizeof(row), "The plasma bolt is "
 				    "deflected by a black hole in sector%s to "
@@ -7804,8 +12951,15 @@ launch_projectile(struct yt_session *session, float target, float amount,
 			break;
 		}
 		if (!plasma && next < 8 && destination < 8
-		    && counterattack == 0 && xannor_provoker == 0) {
-			yt_out_line("The Union Police have destroyed the Missiles!");
+		    && *counterattack == 0 && *xannor_provoker == 0) {
+			if (!session_present_text(session,
+			    (const uint8_t *)
+			    "The Union Police have destroyed the Missiles!",
+			    strlen("The Union Police have destroyed the Missiles!"),
+			    SESSION_PRESENT_LINE, "Union Police missile row", error)) {
+				free(route);
+				return false;
+			}
 			free(route);
 			return true;
 		}
@@ -7816,7 +12970,7 @@ launch_projectile(struct yt_session *session, float target, float amount,
 			}
 		}
 		else if (!missile_sector(session, next, missiles,
-		    &counterattack, &xannor_provoker, &last_mine_news_sector,
+		    counterattack, xannor_provoker, &last_mine_news_sector,
 		    error)) {
 			free(route);
 			return false;
@@ -7827,14 +12981,16 @@ launch_projectile(struct yt_session *session, float target, float amount,
 			break;
 	}
 	free(route);
-	if (pending_counterattack != NULL)
-		*pending_counterattack = counterattack;
-	if (pending_xannor != NULL)
-		*pending_xannor = xannor_provoker;
-	if (plasma)
-		plasma_footer();
-	else if (*missiles > 0.0f)
-		yt_out_line("*** End of Report ***");
+	if (plasma) {
+		if (!plasma_footer(session, error))
+			return false;
+	}
+	else if (*missiles > 0.0f
+	    && !session_present_text(session,
+	    (const uint8_t *)"*** End of Report ***",
+	    strlen("*** End of Report ***"), SESSION_PRESENT_LINE,
+	    "cruise missile end report", error))
+		return false;
 	return true;
 }
 
@@ -7883,7 +13039,8 @@ launch_xannor_retaliation(struct yt_session *session, int provoking_player,
 	struct yt_sector headquarters;
 	int saved_record = session->player_record;
 	float saved_cloak = 0.0f;
-	int target;
+	int target_candidate;
+	float target;
 	int amount;
 	int ignored_counterattack = 0;
 	int ignored_xannor = provoking_player;
@@ -7901,42 +13058,50 @@ launch_xannor_retaliation(struct yt_session *session, int provoking_player,
 	if (headquarters.fighters == 0.0f
 	    || headquarters.fighter_owner != -1.0f)
 		return true;
-	if (!session_nested_integer(session, 3, 100, &amount, error)
-	    || !session_random_integer(session, sector_count(session), &target,
-	    error))
+	if (!session_nested_integer(session, 3, 100, &amount, error))
 		return false;
-	yt_out_line("");
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "Xannor retaliation blank", error))
+		return false;
 	if (saved_record >= 0 && saved_record <= YT_PLAYER_LAST) {
 		saved_cloak = session->cloak_cache[saved_record];
 		if (provoking_player != 0)
 			session->cloak_cache[saved_record] = 0.0f;
 	}
-	if (provoking_player != 0)
-		target = (int)saved_player.sector;
-
 	session->player_record = -1;
 	snprintf(session->player.name, sizeof(session->player.name),
 	    "%s", "The Xannor");
 	session->player.sector = session->door->game.config.headquarters;
+	if (!session_random_integer(session, sector_count(session),
+	    &target_candidate, error))
+		return false;
+	target = (float)target_candidate;
+	if (provoking_player != 0)
+		target = saved_player.sector;
 	qb_str_single(amount_text, sizeof(amount_text), (float)amount);
-	qb_str_single(target_text, sizeof(target_text), (float)target);
+	qb_str_single(target_text, sizeof(target_text), target);
 	snprintf(row, sizeof(row), "The Xannor have launched%s missiles at "
 	    "sector%s!", amount_text, target_text);
-	yt_out_line(row);
-	result = launch_projectile(session, (float)target, (float)amount,
+	if (!session_present_text(session, (const uint8_t *)row, strlen(row),
+	    SESSION_PRESENT_BOLD_LINE, "Xannor retaliation row", error))
+		return false;
+	result = launch_projectile(session, target, (float)amount,
 	    false, NULL, &session->door->game.config.headquarters,
 	    &ignored_counterattack, &ignored_xannor, error);
+	if (!result)
+		return false;
 	session->player_record = saved_record;
 	session->player = saved_player;
 	if (saved_record >= 0 && saved_record <= YT_PLAYER_LAST)
 		session->cloak_cache[saved_record] = saved_cloak;
-	if (!result || !reload_player(session, error))
+	if (!reload_player(session, error))
 		return false;
-	if (session->player.killed_by != 0.0f) {
+	if (qb_mbf32_truth(session->player.record.bytes + YT_F45)) {
 		session->destroyed = true;
 		session->sector_cache[session->player_record] = 0.0f;
 	}
-	session_timed_wait(session, 4.0);
+	if (!session_wait(session, 4.0, "Xannor retaliation wait", error))
+		return false;
 	return true;
 }
 
@@ -7946,18 +13111,24 @@ launch_player_counterattack(struct yt_session *session, int counterattacker,
 {
 	struct yt_player saved_player = session->player;
 	struct yt_player attacker;
+	struct yt_player debit_player;
 	int saved_record = session->player_record;
 	float saved_cloak = 0.0f;
 	float amount;
-	int target = (int)saved_player.sector;
+	float available;
+	float target = saved_player.sector;
 	int ignored_counterattack = 0;
 	int xannor_provoker = 0;
 	bool result;
-	bool overflow;
-	int name_length;
+	uint8_t stored_name[YT_TEXT_FIELD_SIZE];
+	uint8_t saved_name[YT_TEXT_FIELD_SIZE];
+	size_t stored_name_length;
+	size_t saved_name_length;
+	uint8_t terminal_row[256];
+	uint8_t news_row[256];
+	size_t terminal_length;
+	size_t news_length;
 	char attacker_name[42];
-	char amount_text[64];
-	char row[256];
 
 	if (counterattacker < YT_PLAYER_FIRST
 	    || counterattacker > YT_PLAYER_LAST
@@ -7968,62 +13139,78 @@ launch_player_counterattack(struct yt_session *session, int counterattacker,
 		return false;
 	if (attacker.killed_by != 0.0f || attacker.missiles <= 0.0f)
 		return true;
-	name_length = (int)qb_cint(attacker.name_length, &overflow);
-	if (overflow || name_length < 0)
-		name_length = 0;
-	if ((size_t)name_length > strlen(attacker.name))
-		name_length = (int)strlen(attacker.name);
-	snprintf(attacker_name, sizeof(attacker_name), "%.*s", name_length,
-	    attacker.name);
+	available = attacker.missiles;
+	saved_name_length = strlen(saved_player.name);
+	if (saved_name_length > sizeof(saved_name))
+		saved_name_length = sizeof(saved_name);
+	memcpy(saved_name, saved_player.name, saved_name_length);
 	if (saved_record >= 0 && saved_record <= YT_PLAYER_LAST) {
 		saved_cloak = session->cloak_cache[saved_record];
 		session->cloak_cache[saved_record] = 0.0f;
 	}
 	session->player_record = counterattacker;
 	session->player = attacker;
-	snprintf(session->player.name, sizeof(session->player.name), "%s",
-	    attacker_name);
-	if (saved_player.score > 0.0f)
-		session->counterlaunch_count = (float)(floor(
-		    (double)saved_player.score * 0.00001) + 1.0);
+	if (!yt_player_stored_name(&attacker, stored_name,
+	    &stored_name_length, error))
+		return false;
+	memset(attacker_name, 0, sizeof(attacker_name));
+	memcpy(attacker_name, stored_name, stored_name_length);
+	memcpy(session->player.name, attacker_name, sizeof(attacker_name));
+	session->counterlaunch_count = yt_counterlaunch_score_count(
+	    (double)saved_player.score, session->counterlaunch_count);
 	amount = session->counterlaunch_count;
-	if (amount > attacker.missiles || amount == 0.0f) {
+	if (amount > available || amount == 0.0f) {
 		float draw;
 
 		if (!random_value(session, &draw, error))
 			return false;
-		amount = single_add(floorf(single_mul(draw, attacker.missiles)),
+		amount = single_add(floorf(single_mul(draw, available)),
 		    1.0f);
 		session->counterlaunch_count = amount;
 	}
-	attacker.missiles = single_sub(attacker.missiles, amount);
+	if (!yt_game_read_player(&session->door->game, counterattacker,
+	    &debit_player, error))
+		return false;
+	yt_counterlaunch_debit_overlay(&debit_player, available, amount);
 	if (!yt_game_write_player(&session->door->game, counterattacker,
-	    &attacker, error))
+	    &debit_player, error))
 		return false;
 
-	qb_str_single(amount_text, sizeof(amount_text), amount);
-	yt_out_line("");
-	snprintf(row, sizeof(row), "%s shot back with%s missiles at you!",
-	    attacker_name, amount_text);
-	yt_out_line(row);
-	snprintf(row, sizeof(row), "%s shot back with%s missiles at %s!",
-	    attacker_name, amount_text, saved_player.name);
-	if (!append_news(session, row, error))
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "player counterlaunch blank", error))
 		return false;
-	result = launch_projectile(session, (float)target, amount,
+	if (!yt_counterlaunch_rows(stored_name, stored_name_length, amount,
+	    saved_name, saved_name_length, terminal_row, sizeof(terminal_row),
+	    &terminal_length, news_row, sizeof(news_row), &news_length)) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation, sizeof(error->operation), "%s",
+			    "counterlaunch row capacity");
+		}
+		return false;
+	}
+	if (!session_present_text(session, terminal_row, terminal_length,
+	    SESSION_PRESENT_BOLD_LINE, "player counterlaunch row", error))
+		return false;
+	if (!append_news_bytes(session, news_row, news_length, error))
+		return false;
+	result = launch_projectile(session, target, amount,
 	    false, &session->counterlaunch_count, NULL,
 	    &ignored_counterattack, &xannor_provoker, error);
+	if (!result)
+		return false;
 	session->player_record = saved_record;
 	session->player = saved_player;
 	if (saved_record >= 0 && saved_record <= YT_PLAYER_LAST)
 		session->cloak_cache[saved_record] = saved_cloak;
-	if (!result || !reload_player(session, error))
+	if (!reload_player(session, error))
 		return false;
-	if (session->player.killed_by != 0.0f) {
+	if (qb_mbf32_truth(session->player.record.bytes + YT_F45)) {
 		session->destroyed = true;
 		session->sector_cache[session->player_record] = 0.0f;
 	}
-	session_timed_wait(session, 4.0);
+	if (!session_wait(session, 4.0, "player counterattack wait", error))
+		return false;
 	if (xannor_provoker != 0
 	    && !launch_xannor_retaliation(session, xannor_provoker, error))
 		return false;
@@ -8034,42 +13221,74 @@ static bool
 command_projectile(struct yt_session *session, bool plasma,
     struct yt_error *error)
 {
-	float available;
-	double target_value;
-	double amount_value;
-	bool blank;
+	static const uint8_t no_ammunition[] = "You dont have any!";
+	static const uint8_t invalid_sector[] = "Invalid Sector number!";
+	static const uint8_t excessive[] = "You dont have that many!";
+	static const uint8_t quantity_prompt[] = "Send how many? [0] ?";
+	float displayed = plasma ? session->player.plasma
+	    : session->player.missiles;
+	float available = 0.0f;
 	float target;
 	float amount;
 	int counterattack = 0;
 	int xannor_provoker = 0;
-	bool denied;
 
-	if (!fresh_no_turn_gate(session, &denied, error))
-		return false;
-	if (denied)
-		return true;
-	available = plasma ? session->player.plasma : session->player.missiles;
-	if (available < 1.0f) {
-		yt_out_line(plasma ? "You have no plasma bolts."
-		    : "You have no cruise missiles.");
-		return true;
+	for (;;) {
+		uint8_t prompt[192];
+		char response[160];
+		bool denied;
+		size_t prompt_length;
+		enum yt_projectile_target_result target_result;
+
+		if (!session_present_text(session, NULL, 0U,
+		    SESSION_PRESENT_LINE, "projectile target opening blank", error)
+		    || !reload_player(session, error)
+		    || !fresh_no_turn_gate(session, &denied, error))
+			return false;
+		if (denied)
+			return true;
+		available = plasma ? session->player.plasma
+		    : session->player.missiles;
+		if (available < 1.0f)
+			return session_02db(session, no_ammunition,
+			    sizeof(no_ammunition) - 1U,
+			    "projectile ammunition refusal", error);
+		if (!yt_projectile_target_prompt(plasma, displayed,
+		    (float)sector_count(session), prompt, sizeof(prompt),
+		    &prompt_length)
+		    || !session_031f(session, prompt, prompt_length,
+		    "projectile target prompt", error)
+		    || !session_036f(session, response, sizeof(response)))
+			return false;
+		target_result = yt_projectile_target_response(response,
+		    (float)sector_count(session), &target);
+		if (target_result == YT_PROJECTILE_TARGET_CANCEL)
+			return true;
+		if (target_result == YT_PROJECTILE_TARGET_ACCEPT)
+			break;
+		if (!session_02db(session, invalid_sector,
+		    sizeof(invalid_sector) - 1U,
+		    "projectile invalid sector", error))
+			return false;
 	}
-	if (!session_value(session, "Target sector? ", &target_value, &blank))
-		return false;
-	target = (float)target_value;
-	if (blank || target < 1.0f
-	    || target > (float)sector_count(session))
-		return true;
-	if (!session_value(session, "How many? ", &amount_value, &blank))
-		return false;
-	amount = (float)floor(amount_value);
-	if (blank || amount < 1.0f)
+	{
+		char response[160];
+
+		if (!session_031f(session, quantity_prompt,
+		    sizeof(quantity_prompt) - 1U, "projectile quantity prompt",
+		    error)
+		    || !session_036f(session, response, sizeof(response)))
+			return false;
+		amount = yt_projectile_quantity_response(response);
+	}
+	if (amount < 1.0f)
 		return true;
 	if (amount > available) {
-		yt_out_line("You don't have that many.");
-		return true;
+		return session_02fc(session, excessive, sizeof(excessive) - 1U);
 	}
-	if (!finalize_action(session, 1.0f, error))
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "projectile accepted blank", error)
+	    || !finalize_action(session, 1.0f, error))
 		return error == NULL || error->status == YT_OK;
 	if (plasma)
 		session->player.plasma =
@@ -8084,6 +13303,8 @@ command_projectile(struct yt_session *session, bool plasma,
 	    || !launch_player_counterattack(session, counterattack, error)
 	    || !launch_xannor_retaliation(session, xannor_provoker, error))
 		return false;
+	if (session->destroyed)
+		return common_fatal_self(session, error);
 	return true;
 }
 
@@ -8099,60 +13320,71 @@ radio_player_search(struct yt_session *session, const char *query,
 	for (basic = YT_PLAYER_FIRST;
 	    basic <= (int)session->door->game.config.sector_offset; ++basic) {
 		struct yt_player player;
-		bool accepted;
-		char prompt[160];
+		enum yt_yes_no_answer answer;
+		uint8_t prompt[YT_TEXT_FIELD_SIZE + sizeof(" [Y]? ") - 1U];
+		size_t prompt_length;
 
 		if (!yt_game_read_player(&session->door->game, basic, &player,
 		    error))
 			return false;
-		if (player.name_length == 0.0f
-		    || strstr(player.name, query) == NULL)
+		if (player.record.bytes[YT_F85 + 3U] == 0
+		    || !yt_fixed_text_contains(player.record.bytes,
+		    (const uint8_t *)query, strlen(query)))
 			continue;
-		snprintf(prompt, sizeof(prompt), "%s [Y]? ", player.name);
-		if (!session_yes_no(session, prompt, true, &accepted))
+		if (!yt_radio_player_prompt(&player, prompt, sizeof(prompt),
+		    &prompt_length, error)
+		    || !session_a8d2(session, prompt, prompt_length, &answer,
+		    error))
 			return false;
-		if (accepted) {
+		if (answer != YT_YES_NO_NO) {
 			*selected = basic;
 			return true;
 		}
 	}
-	yt_out_line("Not found.");
-	return true;
+	return session_02fc(session, (const uint8_t *)"Not found.",
+	    strlen("Not found."));
 }
 
-static void
-radio_compatibility_upper(char *text)
+static bool
+radio_line_prompt(struct yt_session *session, int line_number,
+    const char *text, struct yt_error *error)
 {
-	uint8_t *cursor = (uint8_t *)text;
+	char prompt[96];
 
-	while (*cursor != 0) {
-		if (*cursor > (uint8_t)'@')
-			*cursor &= UINT8_C(0xdf);
-		++cursor;
-	}
-}
-
-static void
-radio_line_prompt(int line_number, const char *text)
-{
-	yt_outf(" %d:%s", line_number, text);
+	if (snprintf(prompt, sizeof(prompt), " %d:%s", line_number, text) < 0)
+		return false;
+	return session_031f(session, (const uint8_t *)prompt, strlen(prompt),
+	    "radio body line prompt", error);
 }
 
 static bool
 radio_edit_draft(struct yt_session *session, char lines[21][76],
-    int completed)
+    int completed, struct yt_error *error)
 {
 	char response[80];
 	struct qb_val_result parsed;
+	char count_text[64];
+	char prompt[128];
 	int selected;
 
-	yt_outf("Edit Which line? (1 - %d) -=> ", completed);
-	if (!session_line(session, response, sizeof(response)))
+	if (qb_str_single(count_text, sizeof(count_text), (float)completed) < 0
+	    || snprintf(prompt, sizeof(prompt),
+	    "Edit Which line? (1 -%s) -=> ", count_text) < 0
+	    || !session_031f(session, (const uint8_t *)prompt, strlen(prompt),
+	    "radio edit line prompt", error)
+	    || !session_036f(session, response, sizeof(response)))
 		return false;
-	radio_compatibility_upper(response);
-	if (strchr(response, 'E') != NULL || response[0] == '\0')
+	if (response[0] == '\0')
 		return true;
 	parsed = qb_val(response);
+	if (parsed.overflow) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			snprintf(error->operation, sizeof(error->operation),
+			    "radio edit VAL");
+		}
+		return false;
+	}
 	if (!parsed.valid || !isfinite(parsed.value)
 	    || floor(parsed.value) < (double)INT_MIN
 	    || floor(parsed.value) > (double)INT_MAX)
@@ -8160,31 +13392,61 @@ radio_edit_draft(struct yt_session *session, char lines[21][76],
 	else
 		selected = (int)floor(parsed.value);
 	if (selected < 1 || selected > completed) {
-		yt_out_line("INVALID LINE NUMBER!");
-		return true;
+		return session_02db(session,
+		    (const uint8_t *)"INVALID LINE NUMBER!",
+		    strlen("INVALID LINE NUMBER!"),
+		    "radio edit invalid line", error);
 	}
 
 	for (;;) {
 		char search[76];
 		char replacement[76];
 		char changed[152];
+		char selected_text[64];
+		char heading[128];
+		char quoted[160];
 		char *match;
 		size_t prefix;
 
-		yt_outf("Line %d reads:\r\n%s\r\n", selected,
-		    lines[selected - 1]);
-		yt_out("Replace what section? -=> ");
-		if (!session_line(session, search, sizeof(search)))
+		if (qb_str_single(selected_text, sizeof(selected_text),
+		    (float)selected) < 0
+		    || snprintf(heading, sizeof(heading), "Line%s reads:",
+		    selected_text) < 0
+		    || snprintf(quoted, sizeof(quoted), "\"%s\"",
+		    lines[selected - 1]) < 0
+		    || !session_0317(session, (const uint8_t *)heading,
+		    strlen(heading), "radio edit old heading", error)
+		    || !session_0317(session, (const uint8_t *)quoted,
+		    strlen(quoted), "radio edit old row", error)
+		    || !session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "radio edit search blank", error)
+		    || !session_031f(session,
+		    (const uint8_t *)"Replace what section? -=> ",
+		    strlen("Replace what section? -=> "),
+		    "radio edit search prompt", error)
+		    || !session_0345(session, search, sizeof(search)))
 			return false;
 		if (search[0] == '\0')
 			return true;
 		match = strstr(lines[selected - 1], search);
 		if (match == NULL) {
-			yt_outf("%s NOT FOUND in line %d\r\n", search, selected);
+			char missing[256];
+
+			if (snprintf(missing, sizeof(missing),
+			    "\"%s\" NOT FOUND in line%s!", search,
+			    selected_text) < 0
+			    || !session_02db(session, (const uint8_t *)missing,
+			    strlen(missing), "radio edit search miss", error))
+				return false;
 			continue;
 		}
-		yt_out("Replace it with what? -=> ");
-		if (!session_line(session, replacement, sizeof(replacement)))
+		if (!session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "radio edit replacement blank", error)
+		    || !session_031f(session,
+		    (const uint8_t *)"Replace it with what? -=> ",
+		    strlen("Replace it with what? -=> "),
+		    "radio edit replacement prompt", error)
+		    || !session_0345(session, replacement, sizeof(replacement)))
 			return false;
 		prefix = (size_t)(match - lines[selected - 1]);
 		snprintf(changed, sizeof(changed), "%.*s%s%s", (int)prefix,
@@ -8192,20 +13454,34 @@ radio_edit_draft(struct yt_session *session, char lines[21][76],
 		changed[74] = '\0';
 
 		for (;;) {
-			yt_outf("Line %d now reads:\r\n%s\r\n", selected, changed);
-			yt_out("Is this OK? [Y/N]? -=> ");
-			if (!session_line(session, response, sizeof(response)))
+			enum yt_yes_no_answer answer;
+			static const uint8_t confirmation[] =
+			    "Is this OK? [Y/N]? -=> ";
+
+			if (snprintf(heading, sizeof(heading), "Line%s now reads:",
+			    selected_text) < 0
+			    || snprintf(quoted, sizeof(quoted), "\"%s\"", changed) < 0
+			    || !session_0317(session, (const uint8_t *)heading,
+			    strlen(heading), "radio edit preview heading", error)
+			    || !session_0317(session, (const uint8_t *)quoted,
+			    strlen(quoted), "radio edit preview row", error)
+			    || !session_present_text(session, NULL, 0,
+			    SESSION_PRESENT_LINE, "radio edit confirm blank", error)
+			    || !session_a8d2(session, confirmation,
+			    sizeof(confirmation) - 1U, &answer, error))
 				return false;
-			radio_compatibility_upper(response);
-			if (response[0] == 'Y') {
+			if (answer == YT_YES_NO_YES) {
 				snprintf(lines[selected - 1], 76, "%s", changed);
-				yt_out_line("Change Saved!");
-				return true;
+				return session_0317(session,
+				    (const uint8_t *)"Change Saved!",
+				    strlen("Change Saved!"),
+				    "radio edit saved row", error);
 			}
-			if (response[0] == 'N') {
-				yt_out_line("CANCELED!");
-				return true;
-			}
+			if (answer == YT_YES_NO_NO)
+				return session_02db(session,
+				    (const uint8_t *)"CANCELED!",
+				    strlen("CANCELED!"),
+				    "radio edit canceled row", error);
 		}
 	}
 }
@@ -8213,6 +13489,13 @@ radio_edit_draft(struct yt_session *session, char lines[21][76],
 static bool
 radio_compose(struct yt_session *session, struct yt_error *error)
 {
+	static const uint8_t warming[] = "Warming up sub-space radio.";
+	static const uint8_t target_prompt[] =
+	    "Send a message to who? (search string) or 'ALL' or 'TEAM'? ";
+	static const uint8_t broadcast[] =
+	    "This will be a broadcast message to ALL players";
+	static const uint8_t limit[] =
+	    "   Due to the distances involved, messages are limited to 20 lines.";
 	char target[160];
 	float recipients[4] = {0};
 	int recipient_count = 0;
@@ -8223,25 +13506,37 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 	bool send = false;
 	int index;
 
-	yt_out_line("Warming up sub-space radio.");
-	yt_out("Send a message to who? (search string) or 'ALL' or 'TEAM'? ");
-	if (!session_line(session, target, sizeof(target)))
+	if (!session_0317(session, warming, sizeof(warming) - 1U,
+	    "radio warmup row", error)
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "radio target blank", error)
+	    || !session_031f(session, target_prompt,
+	    sizeof(target_prompt) - 1U, "radio target prompt", error)
+	    || !session_0345(session, target, sizeof(target)))
 		return false;
 	if (target[0] == '\0')
 		return true;
 	qb_title_case(target);
 	if (strcmp(target, "All") == 0) {
+		if (!session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "radio broadcast blank", error)
+		    || !session_02fc(session, broadcast,
+		    sizeof(broadcast) - 1U))
+			return false;
 		recipients[0] = -2.0f;
 		recipient_count = 1;
 		all = true;
-		yt_out_line("This will be a broadcast message to ALL players");
 	}
 	else if (strcmp(target, "Team") == 0) {
 		struct yt_team team;
+		static const uint8_t teamless[] =
+		    "You Don't belong to a team!";
 
+		if (!reload_player(session, error))
+			return false;
 		if (session->player.team == 0.0f) {
-			yt_out_line("You Don't belong to a team!");
-			return true;
+			return session_02db(session, teamless,
+			    sizeof(teamless) - 1U, "radio teamless row", error);
 		}
 		if (!team_load(session, (int)session->player.team, &team, error))
 			return false;
@@ -8259,28 +13554,44 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 		recipients[0] = (float)selected;
 		recipient_count = 1;
 	}
+	if (!all && !session_present_text(session, NULL, 0,
+	    SESSION_PRESENT_LINE, "radio tuning blank", error))
+		return false;
 	for (index = 0; index < recipient_count; ++index) {
 		char name[80];
+		char row[160];
 
 		if (all || recipients[index] == 0.0f)
 			continue;
 		if (!radio_name(session, recipients[index], name, sizeof(name),
 		    false, error))
 			return false;
-		yt_outf("Tuning in to %s's frequency.\r\n", name);
+		if (snprintf(row, sizeof(row), "Tuning in to %s's frequency.",
+		    name) < 0
+		    || !session_02fc(session, (const uint8_t *)row, strlen(row)))
+			return false;
 	}
-	yt_out_line(
-	    "   Due to the distances involved, messages are limited to 20 lines.");
+	if (!session_0317(session, limit, sizeof(limit) - 1U,
+	    "radio line-limit row", error)
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "radio body handoff blank", error))
+		return false;
 
 	while (!send) {
 		bool menu = false;
 
 		if (line_count >= 20) {
-			yt_out_line("Message full!");
+			if (!session_02db(session,
+			    (const uint8_t *)"Message full!",
+			    strlen("Message full!"), "radio message full", error))
+				return false;
 			menu = true;
 		}
 		else {
-			radio_line_prompt(line_count + 1, lines[line_count]);
+			session->pager.line_count = 0.0f;
+			if (!radio_line_prompt(session, line_count + 1,
+			    lines[line_count], error))
+				return false;
 			while (!menu) {
 				int key = session_input_key(session);
 				size_t length;
@@ -8289,10 +13600,17 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 					return false;
 				length = strlen(lines[line_count]);
 				if (key == '\r' || key == '\n') {
-					yt_out("\r\n");
+					if (!session_present_text(session, NULL, 0,
+					    SESSION_PRESENT_LINE, "radio body enter", error))
+						return false;
 					if (length == 0) {
-						if (line_count == 0)
+						if (line_count == 0) {
+							if (!session_present_text(session, NULL, 0,
+							    SESSION_PRESENT_LINE,
+							    "radio first-empty menu blank", error))
+								return false;
 							return true;
+						}
 						menu = true;
 					}
 					else {
@@ -8302,9 +13620,13 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 							yt_out_line("Message full!");
 							menu = true;
 						}
-						else
-							radio_line_prompt(line_count + 1,
-							    lines[line_count]);
+						else {
+							session->pager.line_count = 0.0f;
+							if (!radio_line_prompt(session,
+							    line_count + 1, lines[line_count],
+							    error))
+								return false;
+						}
 					}
 					continue;
 				}
@@ -8321,7 +13643,14 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 					wrap_marker = length + 1U;
 				lines[line_count][length] = (char)key;
 				lines[line_count][length + 1U] = '\0';
-				yt_outf("%c", key);
+				if (length + 1U <= 74U) {
+					uint8_t byte = (uint8_t)key;
+
+					if (!session_present_text(session, &byte, 1U,
+					    SESSION_PRESENT_RAW, "radio body character",
+					    error))
+						return false;
+				}
 				if (length + 1U > 74U) {
 					size_t split = wrap_marker != 0
 					    ? wrap_marker : 74U;
@@ -8333,14 +13662,25 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 					lines[line_count][split] = '\0';
 					++line_count;
 					wrap_marker = 0;
-					yt_out("\r\n");
+					if (!session_present_text(session, NULL, 0,
+					    SESSION_PRESENT_LINE, "radio body wrap blank",
+					    error))
+						return false;
 					if (line_count >= 20) {
-						yt_out_line("Message full!");
+						if (!session_02db(session,
+						    (const uint8_t *)"Message full!",
+						    strlen("Message full!"),
+						    "radio wrap message full", error))
+							return false;
 						menu = true;
 					}
-					else
-						radio_line_prompt(line_count + 1,
-						    lines[line_count]);
+					else {
+						session->pager.line_count = 0.0f;
+						if (!radio_line_prompt(session,
+						    line_count + 1, lines[line_count],
+						    error))
+							return false;
+					}
 				}
 			}
 		}
@@ -8348,22 +13688,39 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 		while (menu && !send) {
 			char choice[80];
 			bool abort;
+			static const uint8_t menu_prompt[] =
+			    "[L] List [S] Send [A] Abort [C] Continue [E] Edit -=> ";
 
-			yt_out(
-			    "[L] List [S] Send [A] Abort [C] Continue [E] Edit -=> ");
-			if (!session_line(session, choice, sizeof(choice)))
+			if (!session_present_text(session, NULL, 0,
+			    SESSION_PRESENT_LINE, "radio menu blank", error)
+			    || !session_031f(session, menu_prompt,
+			    sizeof(menu_prompt) - 1U, "radio menu prompt", error)
+			    || !session_0357(session, choice, sizeof(choice)))
 				return false;
-			radio_compatibility_upper(choice);
+			if (choice[0] != '\0'
+			    && !session_present_text(session, NULL, 0,
+			    SESSION_PRESENT_LINE, "radio menu dispatch blank", error))
+				return false;
 			if (strcmp(choice, "L") == 0) {
 				for (index = 0; index < line_count; ++index) {
-					radio_line_prompt(index + 1, lines[index]);
-					yt_out("\r\n");
+					char row[96];
+
+					if (snprintf(row, sizeof(row), " %d:%s", index + 1,
+					    lines[index]) < 0
+					    || !session_02fc(session,
+					    (const uint8_t *)row, strlen(row)))
+						return false;
 				}
 			}
 			else if (strcmp(choice, "A") == 0) {
-				if (!session_yes_no(session,
-				    "Are you sure? [y/N]", false, &abort))
+				enum yt_yes_no_answer answer;
+				static const uint8_t abort_prompt[] =
+				    "Are you sure? [y/N]";
+
+				if (!session_a8d2(session, abort_prompt,
+				    sizeof(abort_prompt) - 1U, &answer, error))
 					return false;
+				abort = answer == YT_YES_NO_YES;
 				if (abort)
 					return true;
 			}
@@ -8378,7 +13735,7 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 				menu = false;
 			}
 			else if (strcmp(choice, "E") == 0) {
-				if (!radio_edit_draft(session, lines, line_count))
+				if (!radio_edit_draft(session, lines, line_count, error))
 					return false;
 			}
 			else if (strcmp(choice, "S") == 0)
@@ -8413,17 +13770,38 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 				return false;
 		}
 	}
-	yt_out_line("Transmission successful!");
-	return true;
+	session->presentation.bold = 1.0f;
+	session->presentation.blink = 1.0f;
+	return session_02fc(session,
+	    (const uint8_t *)"Transmission successful!",
+	    strlen("Transmission successful!"));
 }
 
 static bool
 computer_route(struct yt_session *session, bool autopilot,
     struct yt_error *error)
 {
-	double start_value = session->player.sector;
-	double destination_value;
-	bool blank;
+	static const uint8_t start_prompt[] = "Enter start for path search? ";
+	static const uint8_t destination_prompt[] =
+	    "What sector do you want to go to? ";
+	static const uint8_t working[] = "Working. ";
+	static const uint8_t same[] = "Hey, look out the window dummy!";
+	static const uint8_t route_failure[] =
+	    "*** You can't get there without going someplace you dont want to!";
+	static const uint8_t insufficient[] =
+	    "Not enough turns left to autopilot this course!";
+	static const uint8_t confirmation[] =
+	    "Enter course into autopilot? (Y/[N])";
+	static const uint8_t engaged[] = "Autopilot Engaged.";
+	static const uint8_t stop_notice[] = "Ctrl-X to Stop";
+	struct qb_val_result parsed;
+	enum yt_yes_no_answer answer;
+	char response[160];
+	float maximum = single_sub(session->door->game.config.port_offset,
+	    session->door->game.config.sector_offset);
+	float start_value;
+	float destination_value;
+	bool stale_marker = autopilot && session->computer_path_marker == 9999.0f;
 	int start;
 	int destination;
 	int count = sector_count(session);
@@ -8432,22 +13810,79 @@ computer_route(struct yt_session *session, bool autopilot,
 	int cursor;
 	int hops = 0;
 
-	if (!autopilot
-	    && !session_value(session, "Start sector? ", &start_value,
-	    &blank))
+	if (!autopilot) {
+		session->computer_path_marker = 9999.0f;
+		if (!session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "path start blank", error)
+		    || !session_031f(session, start_prompt,
+		    sizeof(start_prompt) - 1U, "path start prompt", error)
+		    || !session_036f(session, response, sizeof(response)))
+			return false;
+		if (response[0] == '\0')
+			return true;
+		parsed = qb_val(response);
+		if (parsed.overflow) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				(void)snprintf(error->operation,
+				    sizeof(error->operation), "%s", "path start VAL");
+			}
+			return false;
+		}
+		session->computer_path_start =
+		    parsed.valid ? (float)qb_int(parsed.value) : 0.0f;
+	}
+	else if (!stale_marker)
+		session->computer_path_start = session->player.sector;
+	start_value = session->computer_path_start;
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "path destination blank", error)
+	    || !session_031f(session, destination_prompt,
+	    sizeof(destination_prompt) - 1U, "path destination prompt", error)
+	    || !session_036f(session, response, sizeof(response)))
 		return false;
-	if (!session_value(session, "Destination sector? ",
-	    &destination_value, &blank))
+	if (response[0] == '\0')
+		return true;
+	parsed = qb_val(response);
+	if (parsed.overflow) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation,
+			    sizeof(error->operation), "%s", "path destination VAL");
+		}
 		return false;
-	start = (int)floor(start_value);
-	destination = (int)floor(destination_value);
-	if (blank || start < 1 || start > count
-	    || destination < 1 || destination > count)
+	}
+	destination_value = parsed.valid ? (float)qb_int(parsed.value) : 0.0f;
+	if (destination_value < 1.0f || destination_value > maximum
+	    || start_value < 1.0f || start_value > maximum) {
+		char number[64];
+		char notice[128];
+
+		if (qb_str_single(number, sizeof(number), maximum) < 0
+		    || snprintf(notice, sizeof(notice),
+		    "Valid sector numbers are from 1 to%s!", number) < 0)
+			return false;
+		return session_02db(session, (const uint8_t *)notice,
+		    strlen(notice), "path invalid endpoint", error);
+	}
+	if (start_value == destination_value)
+		return session_02db(session, same, sizeof(same) - 1U,
+		    "path equal endpoint", error);
+	start = (int)start_value;
+	destination = (int)destination_value;
+	if (start < 0 || start > count || destination < 0 || destination > count)
 		return true;
 	route = calloc((size_t)count + 1U, sizeof(*route));
 	if (route == NULL) {
 		if (error != NULL)
 			error->status = YT_NO_MEMORY;
+		return false;
+	}
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "path working blank", error)
+	    || !session_031f(session, working, sizeof(working) - 1U,
+	    "path working prompt", error)) {
+		free(route);
 		return false;
 	}
 	if (!build_route(session, start, destination, route, true, &found,
@@ -8457,56 +13892,157 @@ computer_route(struct yt_session *session, bool autopilot,
 	}
 	if (!found) {
 		free(route);
-		yt_out_line("*** You can't get there without going someplace"
-		    " you dont want to!");
-		return true;
+		session->presentation.blink = 1.0f;
+		return session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+		    "path failure first blank", error)
+		    && session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "path failure second blank", error)
+		    && session_present_text(session, route_failure,
+		    sizeof(route_failure) - 1U, SESSION_PRESENT_BOLD_LINE,
+		    "path route failure", error);
 	}
-	cursor = start;
-	yt_outf("Course: %d", start);
-	while (route[cursor] != 0) {
-		cursor = route[cursor];
-		++hops;
-		yt_outf(" -> %d", cursor);
-	}
-	yt_out("\r\n");
-	if (autopilot) {
-		bool accepted;
-		char commands[YT_COMMAND_SIZE] = "";
-		size_t used = 0;
+	{
+		char start_text[64];
+		char destination_text[64];
+		char heading[192];
 
-		if ((float)hops > session->player.turns) {
-			free(route);
-			yt_out_line("You don't have enough turns.");
-			return true;
-		}
-		if (!session_yes_no(session, "Engage autopilot? [y/N] ", false,
-		    &accepted)) {
+		if (qb_str_single(start_text, sizeof(start_text), start_value) < 0
+		    || qb_str_single(destination_text, sizeof(destination_text),
+		    destination_value) < 0
+		    || snprintf(heading, sizeof(heading),
+		    "The shortest path from sector%s to sector%s is:",
+		    start_text, destination_text) < 0
+		    || !session_02fc(session, (const uint8_t *)heading,
+		    strlen(heading))
+		    || !session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "path route blank", error)) {
 			free(route);
 			return false;
 		}
-		if (!accepted) {
-			free(route);
-			return true;
-		}
-		cursor = start;
-		while (route[cursor] != 0) {
-			int written;
+	}
+	cursor = start;
+	{
+		char number[64];
 
-			cursor = route[cursor];
-			written = snprintf(commands + used,
-			    sizeof(commands) - used, "%sM;%d",
-			    used == 0 ? "" : ";", cursor);
-			if (written < 0 || (size_t)written
-			    >= sizeof(commands) - used) {
+		if (qb_str_single(number, sizeof(number), (float)start) < 0
+		    || !session_031f(session, (const uint8_t *)number,
+		    strlen(number), "path start token", error)) {
+			free(route);
+			return false;
+		}
+	}
+	while (route[cursor] != 0) {
+		char number[64];
+		char token[80];
+
+		cursor = route[cursor];
+		++hops;
+		if (qb_str_single(number, sizeof(number), (float)cursor) < 0
+		    || snprintf(token, sizeof(token), "%s%s", number,
+		    cursor == destination ? "" : ",") < 0
+		    || !session_031f(session, (const uint8_t *)token,
+		    strlen(token), "path route token", error)) {
+			free(route);
+			return false;
+		}
+	}
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "path token terminator", error)) {
+		free(route);
+		return false;
+	}
+	{
+		char hop_text[64];
+		char course[128];
+
+		if (qb_str_single(hop_text, sizeof(hop_text), (float)hops) < 0
+		    || snprintf(course, sizeof(course),
+		    "Course will take%s turns.", hop_text) < 0
+		    || !session_0317(session, (const uint8_t *)course,
+		    strlen(course), "path course row", error)) {
+			free(route);
+			return false;
+		}
+	}
+	session->computer_path_marker = 0.0f;
+	if (!autopilot || stale_marker) {
+		free(route);
+		return true;
+	}
+	if (!reload_player(session, error)) {
+		free(route);
+		return false;
+	}
+	if ((float)hops > session->player.turns) {
+		if (!session_02db(session, insufficient,
+		    sizeof(insufficient) - 1U,
+		    "autopilot insufficient turns", error)) {
+			free(route);
+			return false;
+		}
+	}
+	else {
+		char turns[64];
+		char row[128];
+
+		if (qb_str_single(turns, sizeof(turns), session->player.turns) < 0
+		    || snprintf(row, sizeof(row), "You have%s turns left.",
+		    turns) < 0
+		    || !session_02fc(session, (const uint8_t *)row, strlen(row))
+		    || !session_a8d2(session, confirmation,
+		    sizeof(confirmation) - 1U, &answer, error)) {
+			free(route);
+			return false;
+		}
+		if (answer == YT_YES_NO_YES) {
+			char commands[YT_COMMAND_SIZE] = "1";
+			size_t used = 1U;
+
+			if (!session_0317(session, engaged, sizeof(engaged) - 1U,
+			    "autopilot engaged row", error)
+			    || !session_0317(session, stop_notice,
+			    sizeof(stop_notice) - 1U,
+			    "autopilot stop row", error)) {
 				free(route);
 				return false;
 			}
-			used += (size_t)written;
+			cursor = start;
+			while (route[cursor] != 0) {
+				char number[64];
+				int written;
+
+				cursor = route[cursor];
+				if (qb_str_single(number, sizeof(number),
+				    (float)cursor) < 0) {
+					free(route);
+					return false;
+				}
+				written = snprintf(commands + used,
+				    sizeof(commands) - used, ";M;%s", number);
+				if (written < 0 || (size_t)written
+				    >= sizeof(commands) - used) {
+					free(route);
+					return false;
+				}
+				used += (size_t)written;
+			}
+			if (!queue_commands(session, commands)) {
+				free(route);
+				return false;
+			}
 		}
-		if (!queue_remainder(session, commands)) {
+	}
+	{
+		struct yt_sector current_sector;
+		size_t index;
+
+		if (!yt_game_read_sector(&session->door->game,
+		    (int)session->player.sector, &current_sector, error)) {
 			free(route);
 			return false;
 		}
+		for (index = 0; index < 6U; ++index)
+			session->current_warps[index] = current_sector.warps[index];
 	}
 	free(route);
 	return true;
@@ -8515,44 +14051,147 @@ computer_route(struct yt_session *session, bool autopilot,
 static bool
 computer_planet_report(struct yt_session *session, struct yt_error *error)
 {
-	double value;
-	bool blank;
-	int sector_number;
-	struct yt_sector sector;
+	static const uint8_t prompt[] =
+	    "What sector number is the planet in? ";
+	static const uint8_t unavailable[] = "No information available.";
+	float maximum = single_sub(session->door->game.config.port_offset,
+	    session->door->game.config.sector_offset);
 
-	if (session->player.turns < 1.0f) {
-		yt_out_line("Sorry but you have no turns left.");
-		return true;
+	for (;;) {
+		struct qb_val_result parsed;
+		struct yt_sector sector;
+		struct yt_planet planet;
+		char response[160];
+		float selected;
+		bool denied;
+		bool fighter_friendly;
+		bool last_friendly;
+		bool valid_link;
+
+		if (!fresh_no_turn_gate(session, &denied, error))
+			return false;
+		if (denied)
+			return true;
+		if (!session_031f(session, prompt, sizeof(prompt) - 1U,
+		    "computer planet sector prompt", error)
+		    || !session_036f(session, response, sizeof(response)))
+			return false;
+		parsed = qb_val(response);
+		if (parsed.overflow) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				snprintf(error->operation,
+				    sizeof(error->operation), "%s",
+				    "computer planet sector VAL");
+			}
+			return false;
+		}
+		selected = parsed.valid ? (float)qb_int(parsed.value) : 0.0f;
+		if (selected < 1.0f)
+			return true;
+		if (selected > maximum) {
+			char number[64];
+			char notice[128];
+
+			if (qb_str_single(number, sizeof(number), maximum) < 0
+			    || snprintf(notice, sizeof(notice),
+			    "Valid sector numbers are from 1 to%s.", number) < 0
+			    || !session_02db(session, (const uint8_t *)notice,
+			    strlen(notice), "computer planet invalid sector", error))
+				return false;
+			continue;
+		}
+		if (!yt_game_read_sector(&session->door->game, (int)selected,
+		    &sector, error)
+		    || !computer_port_friendship(session, sector.fighter_owner,
+		    &fighter_friendly, error))
+			return false;
+		last_friendly = fighter_friendly;
+		valid_link = sector.planet > 0.0f
+		    && sector.planet <= single_sub(
+		    session->door->game.config.total_records,
+		    session->door->game.config.planet_offset);
+		if (valid_link) {
+			size_t name_length;
+
+			session->current_planet = sector.planet;
+			if (!yt_game_read_planet(&session->door->game,
+			    (int)sector.planet, &planet, error)
+			    || !port_report_length(session, planet.name_length,
+			    YT_TEXT_FIELD_SIZE, &name_length,
+			    "computer planet name length", error))
+				return false;
+			if ((float)session->player_record != planet.owner
+			    && planet.owner != 0.0f
+			    && planet.ground_forces != 0.0f
+			    && (sector.fighters == 0.0f
+			    || (sector.fighters > 0.0f && fighter_friendly))) {
+				char forces[64];
+				uint8_t row[192];
+				size_t length = 0;
+
+				if (!computer_port_friendship(session, planet.owner,
+				    &last_friendly, error))
+					return false;
+				if (!last_friendly) {
+					static const uint8_t prefix[] = "Planet: ";
+					static const uint8_t infix[] =
+					    " -*- Ground Forces:";
+
+					if (qb_str_single(forces, sizeof(forces),
+					    planet.ground_forces) < 0)
+						return port_report_failure(error,
+						    "computer planet forces format");
+					memcpy(row + length, prefix,
+					    sizeof(prefix) - 1U);
+					length += sizeof(prefix) - 1U;
+					memcpy(row + length, planet.record.bytes,
+					    name_length);
+					length += name_length;
+					memcpy(row + length, infix,
+					    sizeof(infix) - 1U);
+					length += sizeof(infix) - 1U;
+					memcpy(row + length, forces,
+					    strlen(forces));
+					length += strlen(forces);
+					return session_0317(session, row, length,
+					    "computer planet limited row", error);
+				}
+			}
+		}
+		if ((!valid_link && sector.planet == 0.0f)
+		    || (sector.fighters > 0.0f && session->player.team > 0.0f
+		    && !last_friendly)
+		    || (sector.fighters > 0.0f && session->player.team == 0.0f
+		    && (float)session->player_record != sector.fighter_owner)) {
+			if (!finalize_action(session, 1.0f, error))
+				return false;
+			return session_0317(session, unavailable,
+			    sizeof(unavailable) - 1U,
+			    "computer planet unavailable", error);
+		}
+		if (!valid_link && session->current_planet < 1.0f)
+			return port_report_failure(error,
+			    "computer planet stale current-planet record");
+		return planet_inventory(session, (int)(valid_link
+		    ? sector.planet : session->current_planet), error);
 	}
-	if (!session_value(session, "Report on which sector? ", &value,
-	    &blank))
-		return false;
-	sector_number = (int)floor(value);
-	if (blank || sector_number == 0)
-		return true;
-	if (sector_number > sector_count(session)) {
-		yt_outf("Valid sector numbers are from 1 to %.9g.\r\n",
-		    (double)sector_count(session));
-		return true;
-	}
-	if (!yt_game_read_sector(&session->door->game, sector_number, &sector,
-	    error))
-		return false;
-	if (sector.planet == 0.0f) {
-		yt_out_line("No information available.");
-		return finalize_action(session, 1.0f, error)
-		    || error == NULL || error->status == YT_OK;
-	}
-	return planet_inventory(session, (int)sector.planet, error);
 }
 
 static bool
 computer_owned_fighters(struct yt_session *session, struct yt_error *error)
 {
+	static const uint8_t searching[] = "Searching;";
+	static const uint8_t amount[] = "Amount";
+	static const uint8_t rule[] = "--------*--------";
 	int sector_number;
 	bool found = false;
 
-	yt_out_line("Searching;");
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "owned-fighter opening blank", error)
+	    || !session_031f(session, searching, sizeof(searching) - 1U,
+	    "owned-fighter searching row", error))
+		return false;
 	for (sector_number = 1; sector_number <= sector_count(session);
 	    ++sector_number) {
 		struct yt_sector sector;
@@ -8562,16 +14201,42 @@ computer_owned_fighters(struct yt_session *session, struct yt_error *error)
 			return false;
 		if (sector.fighters > 0.0f
 		    && sector.fighter_owner == (float)session->player_record) {
-			if (!found)
-				yt_out_line(" Sector          Amount\r\n--------*--------");
-			yt_outf("%8d %15.9g\r\n", sector_number,
-			    (double)sector.fighters);
+			char number[64];
+
+			if (!found) {
+				if (!session_present_text(session, NULL, 0,
+				    SESSION_PRESENT_LINE,
+				    "owned-fighter searching ending", error)
+				    || !session_present_text(session, NULL, 0,
+				    SESSION_PRESENT_LINE,
+				    "owned-fighter heading blank", error)
+				    || !session_fixed_width(session, " Sector", 10.0f,
+				    "owned-fighter heading sector", error)
+				    || !session_02fc(session, amount,
+				    sizeof(amount) - 1U)
+				    || !session_02fc(session, rule, sizeof(rule) - 1U))
+					return false;
+			}
+			if (qb_str_single(number, sizeof(number),
+			    (float)sector_number) < 0
+			    || !session_fixed_width(session, number, 9.0f,
+			    "owned-fighter sector field", error)
+			    || qb_str_single(number, sizeof(number),
+			    sector.fighters) < 0
+			    || !session_02fc(session, (const uint8_t *)number,
+			    strlen(number)))
+				return false;
 			found = true;
+			if (strcmp(session->pager.key, "Q") == 0)
+				break;
 		}
 	}
 	if (!found)
-		yt_out_line(" NONE found!");
-	return true;
+		return session_present_text(session,
+		    (const uint8_t *)" NONE found!", strlen(" NONE found!"),
+		    SESSION_PRESENT_LINE, "owned-fighter none row", error);
+	return session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "owned-fighter trailing blank", error);
 }
 
 static bool
@@ -8580,6 +14245,16 @@ computer_owned_planets(struct yt_session *session, struct yt_error *error)
 	int sector_number;
 	bool found = false;
 
+	session_set_color(session, 2);
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "owned-planet opening blank", error)
+	    || !session_present_text(session, (const uint8_t *)"Scanning...",
+	    strlen("Scanning..."), SESSION_PRESENT_LINE,
+	    "owned-planet scanning row", error)
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "owned-planet scanning blank", error))
+		return false;
+	session_set_color(session, 3);
 	for (sector_number = 1; sector_number <= sector_count(session);
 	    ++sector_number) {
 		struct yt_sector sector;
@@ -8594,88 +14269,328 @@ computer_owned_planets(struct yt_session *session, struct yt_error *error)
 		    (int)sector.planet, &planet, error))
 			return false;
 		if (planet.owner == (float)session->player_record) {
-			yt_outf("Planet: %-41s Sector: %.9g\r\n", planet.name,
-			    (double)sector_number);
+			static const uint8_t prefix[] = "Planet: ";
+			static const uint8_t infix[] = " Sector:";
+			uint8_t row[128];
+			char number[64];
+			size_t length = 0;
+
+			if (qb_str_single(number, sizeof(number),
+			    (float)sector_number) < 0)
+				return port_report_failure(error,
+				    "owned-planet sector format");
+			memcpy(row + length, prefix, sizeof(prefix) - 1U);
+			length += sizeof(prefix) - 1U;
+			memcpy(row + length, planet.record.bytes,
+			    YT_TEXT_FIELD_SIZE);
+			length += YT_TEXT_FIELD_SIZE;
+			memcpy(row + length, infix, sizeof(infix) - 1U);
+			length += sizeof(infix) - 1U;
+			memcpy(row + length, number, strlen(number));
+			length += strlen(number);
+			if (!session_present_text(session, row, length,
+			    SESSION_PRESENT_BOLD_LINE,
+			    "owned-planet match row", error))
+				return false;
 			found = true;
 		}
 	}
-	if (!found)
-		yt_out_line("None found!");
+	if (!found) {
+		session->presentation.blink = 1.0f;
+		return session_present_text(session,
+		    (const uint8_t *)"None found!", strlen("None found!"),
+		    SESSION_PRESENT_BOLD_LINE, "owned-planet none row", error);
+	}
+	return true;
+}
+
+static bool
+computer_port_friendship(struct yt_session *session, float owner,
+    bool *friendly, struct yt_error *error)
+{
+	struct yt_player current;
+	struct yt_player other;
+
+	*friendly = false;
+	if (owner < 2.0f
+	    || owner > session->door->game.config.sector_offset
+	    || (float)session->player_record < 2.0f
+	    || (float)session->player_record
+	    > session->door->game.config.sector_offset)
+		return true;
+	if (owner == (float)session->player_record) {
+		*friendly = true;
+		return true;
+	}
+	if (!yt_game_read_player(&session->door->game,
+	    session->player_record, &current, error))
+		return false;
+	if (current.team == 0.0f)
+		return true;
+	if (!yt_game_read_player(&session->door->game, (int)owner,
+	    &other, error))
+		return false;
+	*friendly = other.team == current.team;
 	return true;
 }
 
 static bool
 computer_port_report(struct yt_session *session, struct yt_error *error)
 {
-	double input;
-	bool blank;
+	static const uint8_t prompt[] = "Enter sector number port is in -=> ";
+	static const uint8_t unavailable[] = "No information available.";
+	float maximum = single_sub(session->door->game.config.port_offset,
+	    session->door->game.config.sector_offset);
+	float cached_team = session->player.team;
+	char response[80];
+	float selected;
 	int sector_number;
 	struct yt_sector sector;
-	struct yt_port port;
-	float prices[3];
-	double quantities[3];
+	bool friendly;
+	bool denied;
 
-	if (!session_value(session, "Port report for which sector? ", &input,
-	    &blank))
-		return false;
-	sector_number = (int)floor(input);
-	if (blank || sector_number < 1
-	    || sector_number > sector_count(session))
-		return true;
+	for (;;) {
+		struct qb_val_result parsed;
+
+		if (!session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "computer port sector blank", error)
+		    || !session_031f(session, prompt, sizeof(prompt) - 1U,
+		    "computer port sector prompt", error)
+		    || !session_0345(session, response, sizeof(response)))
+			return false;
+		if (response[0] == '\0')
+			return true;
+		parsed = qb_val(response);
+		if (parsed.overflow) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				(void)snprintf(error->operation,
+				    sizeof(error->operation), "%s",
+				    "computer port sector VAL");
+			}
+			return false;
+		}
+		selected = parsed.valid ? (float)qb_int(parsed.value) : 0.0f;
+		if (selected <= maximum && selected >= 1.0f)
+			break;
+		{
+			char number[64];
+			char notice[128];
+
+			if (qb_str_single(number, sizeof(number), maximum) < 0
+			    || snprintf(notice, sizeof(notice),
+			    "Invalid sector number! Range is 1 -%s", number) < 0
+			    || !session_02db(session, (const uint8_t *)notice,
+			    strlen(notice), "computer port invalid sector", error))
+				return false;
+		}
+	}
+	sector_number = (int)selected;
 	if (!yt_game_read_sector(&session->door->game, sector_number, &sector,
 	    error))
 		return false;
-	if (sector.port <= 0.0f) {
-		yt_out_line("No port information available.");
-		return true;
-	}
-	if (!port_update(session, (int)sector.port, &port, prices, quantities,
-	    error))
+	if (!computer_port_friendship(session, sector.fighter_owner,
+	    &friendly, error))
 		return false;
-	return port_report(session, (int)sector.port, &port, prices,
-	    quantities, error);
-}
+	denied = sector.port == 0.0f
+	    || (sector.fighters > 0.0f && cached_team > 0.0f && !friendly)
+	    || (sector.fighters > 0.0f && cached_team == 0.0f
+	    && (float)session->player_record != sector.fighter_owner);
+	if (denied)
+		return session_0317(session, unavailable,
+		    sizeof(unavailable) - 1U,
+		    "computer port unavailable", error);
+	if (sector.port == 1.0f)
+		return earth_store(session, error);
+	{
+		struct yt_sector updater_sector;
+		struct yt_port port;
+		float prices[3];
+		double quantities[3];
+		int logical_port;
 
-static bool
-computer_avoid(struct yt_session *session)
-{
-	for (;;) {
-		double slot_value;
-		double sector_value;
-		bool blank;
-		int slot;
-
-		yt_out_line("Avoided sectors:");
-		for (slot = 0; slot < 30; ++slot) {
-			if (session->avoid[slot] != 0.0f)
-				yt_outf("%d) %.9g\r\n", slot + 1,
-				    (double)session->avoid[slot]);
-		}
-		if (!session_value(session, "Change which slot (0 exits)? ",
-		    &slot_value, &blank))
+		if (!yt_game_read_sector(&session->door->game, sector_number,
+		    &updater_sector, error))
 			return false;
-		slot = (int)floor(slot_value);
-		if (blank || slot < 1 || slot > 30)
-			return true;
-		if (!session_value(session, "Sector (0 clears)? ",
-		    &sector_value, &blank))
+		logical_port = (int)updater_sector.port;
+		if (!port_update(session, logical_port, &port, prices, quantities,
+		    error))
 			return false;
-		session->avoid[slot - 1] = (float)sector_value;
+		return port_report(session, logical_port, &port, prices,
+		    quantities, error);
 	}
 }
 
 static bool
-computer_spies(struct yt_session *session)
+computer_avoid_cell(char *cell, size_t capacity, int slot, float value)
 {
+	char slot_text[64];
+	char value_text[64];
+
+	return qb_str_single(slot_text, sizeof(slot_text), (float)slot) >= 0
+	    && qb_str_single(value_text, sizeof(value_text), value) >= 0
+	    && snprintf(cell, capacity, "%s%s ]  -=> %s",
+	    slot < 10 ? "[ " : "[", slot_text, value_text) >= 0;
+}
+
+static bool
+computer_avoid(struct yt_session *session, struct yt_error *error)
+{
+	static const uint8_t heading_one[] =
+	    "You may set the autopilot to avoid up to 30 sectors";
+	static const uint8_t heading_two[] = "Current sectors to avoid are:";
+	static const uint8_t slot_prompt[] =
+	    "Enter the number of the slot to change [1 - 30]: ";
+	struct qb_val_result parsed;
+	char response[80];
+	float slot_value;
+	float maximum;
+	float new_value;
+	float old_value;
+	bool overflow;
+	int slot;
+	int row;
+
+	if (!session_0317(session, heading_one, sizeof(heading_one) - 1U,
+	    "avoid first heading", error)
+	    || !session_0317(session, heading_two, sizeof(heading_two) - 1U,
+	    "avoid second heading", error)
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "avoid heading blank", error))
+		return false;
+	for (row = 0; row < 10; ++row) {
+		char first[96];
+		char middle[96];
+		char last[96];
+
+		if (!computer_avoid_cell(first, sizeof(first), row + 1,
+		    session->avoid[row])
+		    || !computer_avoid_cell(last, sizeof(last), row + 21,
+		    session->avoid[row + 20])
+		    || !session_fixed_width(session, first, 20.0f,
+		    "avoid first cell", error)
+		    || !computer_avoid_cell(middle, sizeof(middle), row + 11,
+		    session->avoid[row + 10])
+		    || !session_fixed_width(session, middle, 20.0f,
+		    "avoid middle cell", error)
+		    || !session_02fc(session, (const uint8_t *)last, strlen(last)))
+			return false;
+	}
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "avoid slot-prompt blank", error)
+	    || !session_031f(session, slot_prompt, sizeof(slot_prompt) - 1U,
+	    "avoid slot prompt", error)
+	    || !session_036f(session, response, sizeof(response)))
+		return false;
+	parsed = qb_val(response);
+	if (parsed.overflow) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation, sizeof(error->operation),
+			    "%s", "avoid slot VAL");
+		}
+		return false;
+	}
+	slot_value = parsed.valid ? (float)parsed.value : 0.0f;
+	if (slot_value < 1.0f || slot_value > 30.0f)
+		return true;
+	slot = (int)qb_cint_mode((double)slot_value,
+	    session->presentation.sound.conversion_mode, &overflow);
+	if (overflow || slot < 1 || slot > 30) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation, sizeof(error->operation),
+			    "%s", "avoid slot CINT");
+		}
+		return false;
+	}
+	maximum = single_sub(session->door->game.config.port_offset,
+	    session->door->game.config.sector_offset);
+	{
+		char maximum_text[64];
+		char prompt[160];
+
+		if (qb_str_single(maximum_text, sizeof(maximum_text), maximum) < 0
+		    || snprintf(prompt, sizeof(prompt),
+		    "Enter the sector you wish to avoid [1 -%s] (0 to clear): ",
+		    maximum_text) < 0
+		    || !session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "avoid sector-prompt blank", error)
+		    || !session_031f(session, (const uint8_t *)prompt,
+		    strlen(prompt), "avoid sector prompt", error)
+		    || !session_036f(session, response, sizeof(response)))
+			return false;
+	}
+	parsed = qb_val(response);
+	if (parsed.overflow) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation, sizeof(error->operation),
+			    "%s", "avoid sector VAL");
+		}
+		return false;
+	}
+	new_value = parsed.valid ? (float)parsed.value : 0.0f;
+	if (new_value < 0.0f || new_value > maximum)
+		return true;
+	old_value = session->avoid[slot - 1];
+	session->avoid[slot - 1] = new_value;
+	session->presentation.foreground = 2.0f;
+	session->pager.foreground = 2;
+	if (new_value != 0.0f) {
+		char number[64];
+		char status[128];
+
+		if (qb_str_single(number, sizeof(number), new_value) < 0
+		    || snprintf(status, sizeof(status),
+		    "Sector%s now locked out.", number) < 0
+		    || !session_0317(session, (const uint8_t *)status,
+		    strlen(status), "avoid locked status", error))
+			return false;
+	}
+	if (old_value != 0.0f && old_value != new_value) {
+		char number[64];
+		char status[128];
+
+		if (qb_str_single(number, sizeof(number), old_value) < 0
+		    || snprintf(status, sizeof(status),
+		    "Sector%s now available.", number) < 0
+		    || !session_0317(session, (const uint8_t *)status,
+		    strlen(status), "avoid available status", error))
+			return false;
+	}
+	session->presentation.foreground = 1.0f;
+	session->pager.foreground = 1;
+	return true;
+}
+
+static bool
+computer_spies(struct yt_session *session, struct yt_error *error)
+{
+	static const uint8_t none[] = "You do not have any spies!";
 	int index;
 
-	if (session->spy_count == 0) {
-		yt_out_line("You do not have any spies!");
-		return true;
+	if (session->spy_count == 0)
+		return session_02db(session, none, sizeof(none) - 1U,
+		    "active-spy none notice", error);
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "active-spy leading blank", error))
+		return false;
+	for (index = 0; index < session->spy_count; ++index) {
+		char counter[64];
+		char target[64];
+		char row[160];
+
+		if (qb_str_single(counter, sizeof(counter), (float)(index + 1)) < 0
+		    || qb_str_integer(target, sizeof(target),
+		    (int16_t)session->spies[index]) < 0
+		    || snprintf(row, sizeof(row), "Spy #%s will hunt in sector%s.",
+		    counter, target) < 0)
+			return false;
+		session->presentation.bold = 1.0f;
+		if (!session_02fc(session, (const uint8_t *)row, strlen(row)))
+			return false;
 	}
-	for (index = 0; index < session->spy_count; ++index)
-		yt_outf("Spy # %d will hunt in sector %d.\r\n", index + 1,
-		    session->spies[index]);
 	return true;
 }
 
@@ -8718,6 +14633,22 @@ project_port_market(const struct yt_session *session,
 		if (prices[index + 1U] < 1.0f)
 			prices[index + 1U] = 1.0f;
 	}
+}
+
+static bool
+profit_project_port_market(struct yt_session *session,
+    const struct yt_port *port, float prices[4], struct yt_error *error)
+{
+	int today;
+	int adjusted_year;
+
+	if (!yt_current_date_serial(session->door->game.config.epoch_year,
+	    &today, &adjusted_year, error))
+		return false;
+	session->door->game.today = today;
+	session->door->game.adjusted_year = adjusted_year;
+	project_port_market(session, port, prices, NULL);
+	return true;
 }
 
 static bool
@@ -8828,7 +14759,16 @@ nearest_more(struct yt_session *session, bool *stop, bool *continuous,
 static bool
 computer_nearest_ports(struct yt_session *session, struct yt_error *error)
 {
+	static const uint8_t first_line[] =
+	    "Show buying/selling [1] Equ, [2] Org, [3] Ore,";
+	static const uint8_t second_line[] =
+	    "[Y] Your Ports, [T] Team's Ports, [E] Enemy Ports";
+	static const uint8_t filter_prompt[] =
+	    "[U] Un-owned Ports OR [A] All Ports ? -=> [A] ";
 	const char *alphabet = "123ATYEU";
+	static const char *const commodities[3] = {
+		"Equipment", "Organics", "Ore"
+	};
 	char response[80];
 	const char *match;
 	int selector;
@@ -8842,32 +14782,43 @@ computer_nearest_ports(struct yt_session *session, struct yt_error *error)
 	float page_count = 4.0f;
 	bool continuous = false;
 
-	yt_out_line("Show buying/selling [1] Equ, [2] Org, [3] Ore,");
-	yt_out_line("[Y] Your Ports, [T] Team's Ports, [E] Enemy Ports");
-	yt_out("[U] Un-owned Ports OR [A] All Ports ? -=> [A] ");
-	if (!session_line(session, response, sizeof(response)))
+	if (!reload_player(session, error)
+	    || !session_0317(session, first_line, sizeof(first_line) - 1U,
+	    "nearest-port first filter row", error)
+	    || !session_02fc(session, second_line, sizeof(second_line) - 1U)
+	    || !session_031f(session, filter_prompt,
+	    sizeof(filter_prompt) - 1U, "nearest-port filter prompt", error)
+	    || !session_0357(session, response, sizeof(response)))
 		return false;
-	qb_compat_upper(response);
-	if (response[0] == '\0')
-		strcpy(response, "A");
-	match = strstr(alphabet, response);
+	match = response[0] == '\0' ? alphabet + 3 : strstr(alphabet, response);
 	if (match == NULL)
 		return true;
 	selector = (int)(match - alphabet) + 1;
 	filter = selector;
 	if (selector == 5 && session->player.team == 0.0f) {
-		yt_out_line("You dont belong to a team!");
-		return true;
+		static const uint8_t no_team[] = "You dont belong to a team!";
+
+		return session_02db(session, no_team, sizeof(no_team) - 1U,
+		    "nearest-port team rejection", error);
 	}
 	if (selector == 6 && session->player.ports_owned == 0.0f) {
-		yt_out_line("You dont own any!");
-		return true;
+		static const uint8_t none_owned[] = "You dont own any!";
+
+		return session_02db(session, none_owned, sizeof(none_owned) - 1U,
+		    "nearest-port ownership rejection", error);
 	}
 	if (selector >= 1 && selector <= 3) {
-		yt_out("Find ports [B] Buying or [S] Selling  -=> ");
-		if (!session_line(session, response, sizeof(response)))
+		char prompt[128];
+
+		if (!session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "nearest-port direction blank", error)
+		    || snprintf(prompt, sizeof(prompt),
+		    "Find ports [B] Buying or [S] Selling %s -=> ",
+		    commodities[selector - 1]) < 0
+		    || !session_031f(session, (const uint8_t *)prompt,
+		    strlen(prompt), "nearest-port direction prompt", error)
+		    || !session_0357(session, response, sizeof(response)))
 			return false;
-		qb_compat_upper(response);
 		if (strcmp(response, "B") != 0 && strcmp(response, "S") != 0)
 			return true;
 		direction = response[0];
@@ -9250,7 +15201,7 @@ profit_right_four(uint8_t dest[4], const char *number)
 }
 
 static bool
-profit_emit_row(struct yt_session *session, int source_number,
+profit_emit_row(struct yt_session *session, float source_number,
     int target_number, const struct yt_port *source_port,
     const struct yt_port *target_port, const float source_price[4],
     const float target_price[4], bool all, int *result_count,
@@ -9289,7 +15240,7 @@ profit_emit_row(struct yt_session *session, int source_number,
 	    target_price[target_index], source_price[target_index])));
 	profit_set_pair_color(session, source_port->commodity_class,
 	    target_port->commodity_class);
-	qb_str_single(number, sizeof(number), (float)source_number);
+	qb_str_single(number, sizeof(number), source_number);
 	length += profit_right_four(row + length, number);
 	row[length++] = ',';
 	qb_str_integer(number, sizeof(number), (int16_t)target_number);
@@ -9373,9 +15324,10 @@ static bool
 computer_profit(struct yt_session *session, bool all,
     struct yt_error *error)
 {
-	int source_start = all ? 2 : (int)session->player.sector;
+	float adjacent_source = session->player.sector;
+	int source_start = all ? 2 : (int)adjacent_source;
 	int source_end = all ? sector_count(session)
-	    : (int)session->player.sector;
+	    : (int)adjacent_source;
 	int source_number;
 	int result_count = 0;
 	bool found = false;
@@ -9424,7 +15376,9 @@ computer_profit(struct yt_session *session, bool all,
 		if (!yt_game_read_port(&session->door->game,
 		    (int)source_sector.port, &source_port, error))
 			return false;
-		project_port_market(session, &source_port, source_price, NULL);
+		if (!profit_project_port_market(session, &source_port,
+		    source_price, error))
+			return false;
 		for (slot = 0; slot < 6; ++slot) {
 			int target_number;
 			struct yt_sector target_sector;
@@ -9449,8 +15403,11 @@ computer_profit(struct yt_session *session, bool all,
 			if (target_port.commodity_class
 			    == source_port.commodity_class)
 				continue;
-			project_port_market(session, &target_port, target_price, NULL);
-			if (!profit_emit_row(session, source_number, target_number,
+			if (!profit_project_port_market(session, &target_port,
+			    target_price, error)
+			    || !profit_emit_row(session,
+			    all ? (float)source_number : adjacent_source,
+			    target_number,
 			    &source_port, &target_port, source_price, target_price,
 			    all, &result_count, error))
 				return false;
@@ -9481,189 +15438,376 @@ computer_profit(struct yt_session *session, bool all,
 }
 
 static bool
-computer_menu(struct yt_session *session, struct yt_error *error)
+computer_activate(struct yt_session *session, struct yt_error *error)
 {
+	static const uint8_t notice[] = "<Computer activated>";
+
+	session->presentation.foreground = 1.0f;
+	session->pager.foreground = 1;
+	return session_0317(session, notice, sizeof(notice) - 1U,
+	    "computer activation notice", error)
+	    && session_sound(session, 4.0f, "computer activation sound", error);
+}
+
+static bool
+computer_help(struct yt_session *session, struct yt_error *error)
+{
+	static const uint8_t heading[] = " Computer commands:";
+	static const char *const left[8] = {
+		" 1) Exit Computer", " 3) Autopilot",
+		" 5) Send Radio Message",
+		" 7) Set autopilot Sectors to Avoid",
+		" 9) Planet Report", "11) Fighter Finder (Yours)",
+		"13) Planet Finder (Yours)", "15) Show Active Spies"
+	};
+	static const uint8_t *const right[8] = {
+		(const uint8_t *)" 2) Port Report",
+		(const uint8_t *)" 4) Rank Teams & Players",
+		(const uint8_t *)" 6) Radio Message Log",
+		(const uint8_t *)" 8) Galactic Newspaper",
+		(const uint8_t *)"10) Path Finder",
+		(const uint8_t *)"12) Port(s) Treasury Report",
+		(const uint8_t *)"14) Find Nearest Ports",
+		(const uint8_t *)"16) Find Port Pairs"
+	};
+	static const uint8_t final[] =
+	    "17) Check Profits of Adjacent Ports";
+	size_t index;
+
+	session->pager.line_count = 0.0f;
+	if (!session_0317(session, heading, sizeof(heading) - 1U,
+	    "computer help heading", error)
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "computer help blank", error))
+		return false;
+	for (index = 0; index < 8U; ++index) {
+		if (!session_fixed_width(session, left[index], 40.0f,
+		    "computer help left cell", error)
+		    || !session_02fc(session, right[index], strlen(
+		    (const char *)right[index])))
+			return false;
+	}
+	return session_02fc(session, final, sizeof(final) - 1U);
+}
+
+static bool
+computer_scoreboard_progress(void *context, unsigned phase,
+    struct yt_error *error)
+{
+	static const uint8_t dot[] = ".";
+	struct yt_session *session = context;
+
+	(void)phase;
+	return session_present_text(session, dot, sizeof(dot) - 1U,
+	    SESSION_PRESENT_RAW, "scoreboard progress dot", error);
+}
+
+static bool
+computer_scoreboard(struct yt_session *session, struct yt_error *error)
+{
+	static const uint8_t prompt[] =
+	    "Enter 'O' to see OLD scoreboard or press [ENTER] for UPDATED one. -=>";
+	static const uint8_t heading[] = "P l a y e r  R a n k i n g s";
+	char response[80];
+
+	session->pager.key[0] = '\0';
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "scoreboard selector leading blank", error)
+	    || !session_031f(session, prompt, sizeof(prompt) - 1U,
+	    "scoreboard selector prompt", error)
+	    || !session_0357(session, response, sizeof(response)))
+		return false;
+	session->pager.line_count = 0.0f;
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "scoreboard selector trailing blank", error))
+		return false;
+	if (strcmp(response, "O") != 0) {
+		if (!session_031f(session, heading, sizeof(heading) - 1U,
+		    "scoreboard update heading", error)
+		    || !yt_score_generate_progress(&session->door->game,
+		    computer_scoreboard_progress, session, error)
+		    || !session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "scoreboard post-generator blank",
+		    error))
+			return false;
+	}
+	return display_game_file(session,
+	    session->door->game.config.scoreboard, error);
+}
+
+static bool
+computer_newspaper(struct yt_session *session, struct yt_error *error)
+{
+	static const uint8_t prompt[] =
+	    "Do you want to read [T]oday's or [Y]esterday's news? [T/Y] -=> ";
+	char response[80] = "";
+
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "newspaper selector leading blank", error))
+		return false;
+	while (strcmp(response, "T") != 0 && strcmp(response, "Y") != 0) {
+		if (!session_031f(session, prompt, sizeof(prompt) - 1U,
+		    "newspaper selector prompt", error)
+		    || !session_0357(session, response, sizeof(response)))
+			return false;
+	}
+	return display_game_file(session,
+	    strcmp(response, "T") == 0 ? "ytnews.dat" : "YTYNEWS.DAT",
+	    error);
+}
+
+static bool
+computer_menu(struct yt_session *session, bool *enter_sector,
+    struct yt_error *error)
+{
+	static const uint8_t prompt_prefix[] = "Time:";
+	static const uint8_t prompt_body[] = "Computer command (?=help)? ";
+
+	if (enter_sector != NULL)
+		*enter_sector = false;
+	if (!computer_activate(session, error))
+		return false;
 	for (;;) {
 		char command[80];
+		uint8_t prompt[sizeof(prompt_prefix) - 1U
+		    + sizeof(session->time.text) + sizeof(prompt_body) - 1U];
+		size_t prompt_length = 0;
+		int position;
 
-		yt_out("Computer (?=help): ");
-		if (!session_line(session, command, sizeof(command)))
+		if (!computer_prompt_hydrate(session, error))
 			return false;
-		qb_compat_upper(command);
-		command[2] = '\0';
+		session->relationship_scratch = 0.0f;
+		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+		    "computer prompt leading blank", error))
+			return false;
+		session->presentation.foreground = 1.0f;
+		session->pager.foreground = 1;
+		memcpy(prompt + prompt_length, prompt_prefix,
+		    sizeof(prompt_prefix) - 1U);
+		prompt_length += sizeof(prompt_prefix) - 1U;
+		if (session->time.text_length > sizeof(session->time.text)) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				(void)snprintf(error->operation,
+				    sizeof(error->operation), "%s",
+				    "computer prompt time capacity");
+			}
+			return false;
+		}
+		memcpy(prompt + prompt_length, session->time.text,
+		    session->time.text_length);
+		prompt_length += session->time.text_length;
+		memcpy(prompt + prompt_length, prompt_body,
+		    sizeof(prompt_body) - 1U);
+		prompt_length += sizeof(prompt_body) - 1U;
+		if (!session_031f(session, prompt, prompt_length,
+		    "computer prompt", error)
+		    || !session_0357(session, command, sizeof(command)))
+			return false;
 		if (command[0] == '\0')
 			strcpy(command, "?");
-		if (strcmp(command, "?") == 0) {
-			yt_out_line("1 Off 2 Port 3 Autopilot 4 Scoreboard 5 Radio");
-			yt_out_line("6 Radio Log 7 Avoid 8 News 9 Planet Report");
-			yt_out_line("10 Path 11 Fighters 12 Ports 13 Planets");
-			yt_out_line("14 Nearest 15 Spies 16/17 Profit");
-		}
-		else if (strcmp(command, "1") == 0) {
-			yt_out_line("<Computer deactivated>");
-			return true;
-		}
-		else if (strcmp(command, "2") == 0) {
-			if (!computer_port_report(session, error))
-				return false;
-		}
-		else if (strcmp(command, "3") == 0) {
-			if (!computer_route(session, true, error))
-				return false;
-			return true;
-		}
-		else if (strcmp(command, "4") == 0) {
-			char choice[80];
+		command[2] = '\0';
 
-			yt_out("[O]ld or [U]pdated scoreboard? ");
-			if (!session_line(session, choice, sizeof(choice)))
-				return false;
-			qb_compat_upper(choice);
-			if (choice[0] != 'O'
-			    && !yt_score_generate(&session->door->game, error))
-				return false;
-			if (!display_game_file(session,
-			    session->door->game.config.scoreboard,
-			    error))
-				return false;
-		}
-		else if (strcmp(command, "5") == 0) {
-			if (!radio_compose(session, error))
-				return false;
-		}
-		else if (strcmp(command, "6") == 0) {
-			if (!radio_read(session, true, error))
-				return false;
-		}
-		else if (strcmp(command, "7") == 0) {
-			if (!computer_avoid(session))
-				return false;
-		}
-		else if (strcmp(command, "8") == 0) {
-			char choice[80];
-
-			for (;;) {
-				yt_out("[T]oday or [Y]esterday? ");
-				if (!session_line(session, choice,
-				    sizeof(choice)))
-					return false;
-				qb_compat_upper(choice);
-				if (strcmp(choice, "T") == 0
-				    || strcmp(choice, "Y") == 0)
-					break;
-			}
-			if (!display_game_file(session, choice[0] == 'T'
-			    ? "YTNEWS.DAT" : "YTYNEWS.DAT", error))
-				return false;
-		}
-		else if (strcmp(command, "9") == 0) {
-			if (!computer_planet_report(session, error))
-				return false;
-		}
-		else if (strcmp(command, "10") == 0) {
-			if (!computer_route(session, false, error))
-				return false;
-		}
-		else if (strcmp(command, "11") == 0) {
-			if (!computer_owned_fighters(session, error))
-				return false;
-		}
-		else if (strcmp(command, "12") == 0) {
-			if (!command_collect(session, false, error))
-				return false;
-		}
-		else if (strcmp(command, "13") == 0) {
-			if (!computer_owned_planets(session, error))
-				return false;
-		}
-		else if (strcmp(command, "14") == 0) {
-			if (!computer_nearest_ports(session, error))
-				return false;
-		}
-		else if (strcmp(command, "15") == 0)
-			(void)computer_spies(session);
-		else if (strcmp(command, "16") == 0) {
-			if (!computer_profit(session, true, error))
-				return false;
-		}
-		else if (strcmp(command, "17") == 0) {
-			if (!computer_profit(session, false, error))
-				return false;
-		}
-		else if (strcmp(command, "I") == 0) {
+		if (strcmp(command, "I") == 0) {
 			if (!show_ship(session, error))
 				return false;
+			continue;
 		}
-		else if (strcmp(command, "S") == 0) {
-			if (!display_sector(session, true, error))
+		if (strcmp(command, "17") == 0) {
+			if (!computer_profit(session, false, error))
 				return false;
+			continue;
 		}
-		else if (strcmp(command, "Q") == 0) {
-			bool quit;
-
-			if (!session_yes_no(session, "Quit? [y/N] ", false,
-			    &quit))
-				return false;
-			if (quit) {
-				session->running = false;
-				return true;
-			}
-		}
-		else if (strcmp(command, "!") == 0) {
+		if (strcmp(command, "!") == 0) {
 			if (!command_collect(session, true, error))
 				return false;
+			continue;
 		}
-		else if (strcmp(command, "+") == 0) {
-			if (!command_projectile(session, true, error))
+		if (strcmp(command, "S") == 0) {
+			if (!display_sector(session, true, error))
+				return false;
+			continue;
+		}
+		if (strcmp(command, "Q") == 0) {
+			bool confirmed;
+
+			if (!session_quit_confirm(session, &confirmed, error))
+				return false;
+			if (!confirmed)
+				continue;
+			if (!quit_session(session, error))
+				return false;
+			session->running = false;
+			session->terminated = true;
+			return false;
+		}
+		if (strcmp(command, "10") == 0) {
+			if (!computer_route(session, false, error))
+				return false;
+			continue;
+		}
+		if (strcmp(command, "11") == 0) {
+			if (!computer_owned_fighters(session, error))
+				return false;
+			continue;
+		}
+		if (strcmp(command, "12") == 0) {
+			if (!command_collect(session, false, error))
+				return false;
+			continue;
+		}
+		if (strcmp(command, "13") == 0) {
+			if (!computer_owned_planets(session, error))
+				return false;
+			continue;
+		}
+		if (strcmp(command, "15") == 0) {
+			if (!computer_spies(session, error))
+				return false;
+			continue;
+		}
+		if (strcmp(command, "16") == 0) {
+			if (!computer_profit(session, true, error))
+				return false;
+			continue;
+		}
+		if (strcmp(command, "14") == 0) {
+			if (!computer_nearest_ports(session, error))
+				return false;
+			continue;
+		}
+		if (strcmp(command, "7") == 0) {
+			if (!computer_avoid(session, error))
+				return false;
+			continue;
+		}
+
+		position = yt_computer_selector_position(command);
+		if (position != 0) {
+			switch (position - 1) {
+			case 0:
+				if (!command_projectile(session, true, error))
+					return false;
+				if (enter_sector != NULL)
+					*enter_sector = true;
+				return true;
+			case 1:
+				if (!command_projectile(session, false, error))
+					return false;
+				if (enter_sector != NULL)
+					*enter_sector = true;
+				return true;
+			case 2:
+				return command_land(session, enter_sector, error);
+			case 3: {
+				bool moved;
+
+				if (!command_move(session, &moved, error))
+					return false;
+				if (enter_sector != NULL)
+					*enter_sector = moved;
+				return true;
+			}
+			case 4:
+				if (!command_trade(session, error))
+					return false;
+				if (enter_sector != NULL)
+					*enter_sector = true;
+				return true;
+			case 5:
+				if (!computer_help(session, error))
+					return false;
+				continue;
+			case 6:
+			{
+				static const uint8_t off[] =
+				    "<Computer deactivated>";
+
+				if (!session_0317(session, off, sizeof(off) - 1U,
+				    "computer deactivation notice", error))
+					return false;
+				if (enter_sector != NULL)
+					*enter_sector = true;
+				return true;
+			}
+			case 7:
+				if (!computer_port_report(session, error))
+					return false;
+				continue;
+			case 8:
+				if (!computer_route(session, true, error))
+					return false;
+				return true;
+			case 9:
+				if (!computer_scoreboard(session, error))
+					return false;
+				continue;
+			case 10:
+				if (!radio_compose(session, error))
+					return false;
+				continue;
+			case 11:
+				if (!computer_planet_report(session, error))
+					return false;
+				continue;
+			default:
+				break;
+			}
+		}
+		if (strcmp(command, "6") == 0) {
+			if (!radio_read(session, 1.0f, error))
+				return false;
+			continue;
+		}
+		if (strcmp(command, "8") == 0) {
+			if (!computer_newspaper(session, error))
+				return false;
+			continue;
+		}
+		if (strcmp(command, "C") == 0) {
+			static const uint8_t warning[] =
+			    "Don't BREAK the 'ON' button!";
+
+			if (!session_0317(session, warning,
+			    sizeof(warning) - 1U,
+			    "computer reactivation warning", error)
+			    || !computer_activate(session, error))
+				return false;
+			continue;
+		}
+		{
+			static const uint8_t invalid[] = "Does not compute";
+
+			if (!session_02db(session, invalid, sizeof(invalid) - 1U,
+			    "computer invalid command", error))
 				return false;
 		}
-		else if (strcmp(command, "L") == 0) {
-			if (!command_land(session, error))
-				return false;
-		}
-		else if (strcmp(command, "M") == 0) {
-			if (!command_move(session, error))
-				return false;
-		}
-		else if (strcmp(command, "P") == 0) {
-			if (!command_trade(session, error))
-				return false;
-		}
-		else if (strcmp(command, "C") == 0)
-			yt_out_line("Don't BREAK the 'ON' button!");
-		else
-			yt_out_line("Does not compute");
-		if (!session->running)
-			return true;
 	}
 }
 
-static void
-show_help(void)
+static bool
+show_help(struct yt_session *session, struct yt_error *error)
 {
-	static const char *const lines[] = {
-		"[ENTER] - Re-display sector",
-		"$ - Take Credits from your ports",
-		"! - Launch a Cruise Missile",
-		"A - <A>ttack a player's ship",
-		"B - <B>uy a Port",
-		"C - Ship's <C>omputer",
-		"D - <D>rop a Sector mine",
-		"F - Take or leave <F>ighters",
-		"G - Initiate <G>enesis",
-		"I - <I>nfo on your ship",
-		"L - <L>and on or create a planet",
-		"M - <M>ove to another sector",
-		"N - Re<N>ame Port",
-		"P - Dock at a <P>ort (and trade)",
-		"Q - <Q>uit game",
-		"S - <S>ensors",
-		"T - <T>eam menu",
-		"V - <V>ersion Info",
-		"W - Emergency <W>arp",
-		"X - Sound Effects On/Off",
-		"Z - Instructions",
-		"+ - Fire Plasma Bolt",
+	static const uint8_t heading[] = "<Help>";
+	static const char *const pairs[][2] = {
+		{"[ENTER] - Re-display sector",
+		    "$ - Take Credits from your ports"},
+		{"! - Launch a Cruise Missile",
+		    "A - <A>ttack a player's ship"},
+		{"B - <B>uy a Port", "C - Ship's <C>omputer"},
+		{"D - <D>rop a Sector mine",
+		    "F - Take or leave <F>ighters"},
+		{"G - Initiate <G>enesis", "I - <I>nfo on your ship"},
+		{"L - <L>and on or create a planet",
+		    "M - <M>ove to another sector"},
+		{"N - Re<N>ame Port",
+		    "P - Dock at a <P>ort (and trade)"},
+		{"Q - <Q>uit game", "S - <S>ensors"},
+		{"T - <T>eam menu", "V - <V>ersion Info"},
+		{"W - Emergency <W>arp", "X - Sound Effects On/Off"},
+		{"Z - Instructions", "+ - Fire Plasma Bolt"},
+	};
+	static const char *const narrative[] = {
 		"String commands by seperating them with a semicolons (;).",
 		"To place an EXTRA 'hit enter' in a string, use an extra ';'.",
 		"Save a command string by placing a '/' at the end.",
@@ -9672,74 +15816,158 @@ show_help(void)
 		"a /R# at the end of your command. Replace the '#' with",
 		"any number between 2 and 20. Example: your command/R20"
 	};
+	char row[128];
 	size_t index;
 
-	for (index = 0; index < sizeof(lines) / sizeof(lines[0]); ++index)
-		yt_out_line(lines[index]);
-}
+	session->presentation.foreground = 6.0f;
+	session->pager.foreground = 6;
+	if (!session_0317(session, heading, sizeof(heading) - 1U,
+	    "main help heading", error)
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "main help table blank", error))
+		return false;
+	for (index = 0; index < sizeof(pairs) / sizeof(pairs[0]); ++index) {
+		int length = snprintf(row, sizeof(row), "%-40s%s",
+		    pairs[index][0], pairs[index][1]);
 
-static void
-format_time_left(const struct yt_session *session, char *dest, size_t size)
-{
-	float minutes = single_sub(single_div(session->session_deadline, 60.0f),
-	    single_div((float)yt_platform_timer(), 60.0f));
-	float whole = floorf(minutes);
-	int seconds = (int)floorf(single_mul(
-	    single_sub(minutes, whole), 60.0f));
-	char rendered[64];
-
-	qb_str_double(rendered, sizeof(rendered), (double)whole);
-	snprintf(dest, size, "%s:%02d  ", rendered, seconds);
+		if (length < 0 || (size_t)length >= sizeof(row)) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				(void)snprintf(error->operation,
+				    sizeof(error->operation), "%s",
+				    "main help row capacity");
+			}
+			return false;
+		}
+		if (!session_present_text(session, (const uint8_t *)row,
+		    (size_t)length, SESSION_PRESENT_LINE,
+		    "main help table row", error))
+			return false;
+	}
+	if (!session_0317(session, (const uint8_t *)narrative[0],
+	    strlen(narrative[0]), "main help narrative first", error))
+		return false;
+	for (index = 1; index < sizeof(narrative) / sizeof(narrative[0]);
+	    ++index) {
+		if (!session_02fc(session, (const uint8_t *)narrative[index],
+		    strlen(narrative[index])))
+			return false;
+	}
+	return true;
 }
 
 static bool
 quit_session(struct yt_session *session, struct yt_error *error)
 {
+	static const uint8_t generating[] = "Generating ScoreBoard";
+	static const char reminder[] =
+	    "PLEASE HELP YOUR SYSOP REGISTER THIS GAME.";
+	char returning[sizeof(session->door->identity.system) + 20U];
+	int length;
+
 	if (!session->door->game_open)
 		return true;
-	if (!reload_player(session, error))
+	session->presentation.foreground = 1.0f;
+	session->pager.foreground = 1;
+	if (!show_ship(session, error)
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "normal-exit post-Info blank", error)
+	    || !session_031f(session, generating, sizeof(generating) - 1U,
+	    "normal-exit generating row", error)
+	    || !yt_score_generate_progress(&session->door->game,
+	    computer_scoreboard_progress, session, error)
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "normal-exit post-generator blank", error))
 		return false;
-	if (!show_ship(session, error))
-		return false;
-	yt_out_line("Generating ScoreBoard");
-	if (!yt_score_generate(&session->door->game, error))
-		return false;
+	session->pager.nonstop = 1.0f;
 	if (!display_game_file(session,
 	    session->door->game.config.scoreboard, error))
 		return false;
-	if (!session->registered)
-		yt_out_line("PLEASE HELP YOUR SYSOP REGISTER THIS GAME.");
-	yt_outf("Returning to %s...\r\n", session->door->identity.system);
-	return true;
+	if (!session->registered) {
+		if (!session_attention(session, reminder,
+		    "normal-exit registration reminder", error)
+		    || !session_wait(session, 10.0,
+		    "normal-exit registration wait", error)
+		    || !session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "normal-exit reminder blank", error))
+			return false;
+	}
+	length = snprintf(returning, sizeof(returning), "Returning to %s...",
+	    session->door->identity.system);
+	if (length < 0 || (size_t)length >= sizeof(returning)) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation, sizeof(error->operation),
+			    "%s", "normal-exit BBS row capacity");
+		}
+		return false;
+	}
+	return session_02fc(session, (const uint8_t *)returning,
+	    (size_t)length);
 }
 
 static bool
 command_shell(struct yt_session *session, struct yt_error *error)
 {
+	static const uint8_t prompt_prefix[] = "Time:";
+	static const uint8_t prompt_body[] = "Main Command (?=Help)? ";
+
 	while (session->running && !session->destroyed) {
 		char command[YT_COMMAND_SIZE];
-		char upper[YT_COMMAND_SIZE];
-		char time_left[64];
-		char key;
-		const char *dispatch = "W)+ABCFLMPQTD$GN";
-		const char *position;
+		uint8_t prompt[sizeof(prompt_prefix) - 1U
+		    + sizeof(session->time.text) + sizeof(prompt_body) - 1U];
+		size_t prompt_length = 0;
+		enum yt_main_shell_route route;
 		bool enter_sector = false;
 
 		session->pager.line_count = 0.0f;
-		format_time_left(session, time_left, sizeof(time_left));
-		yt_outf("Time:%sMain Command (?=Help)? ", time_left);
-		if (!session_line(session, command, sizeof(command)))
+		if (!reload_player(session, error))
+			return false;
+		session->presentation.foreground = 2.0f;
+		session->pager.foreground = 2;
+		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+		    "main prompt leading blank", error))
+			return false;
+		session->relationship_scratch = 0.0f;
+		memcpy(prompt + prompt_length, prompt_prefix,
+		    sizeof(prompt_prefix) - 1U);
+		prompt_length += sizeof(prompt_prefix) - 1U;
+		if (session->time.text_length > sizeof(session->time.text)) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				(void)snprintf(error->operation,
+				    sizeof(error->operation), "%s",
+				    "main prompt time capacity");
+			}
+			return false;
+		}
+		memcpy(prompt + prompt_length, session->time.text,
+		    session->time.text_length);
+		prompt_length += session->time.text_length;
+		memcpy(prompt + prompt_length, prompt_body,
+		    sizeof(prompt_body) - 1U);
+		prompt_length += sizeof(prompt_body) - 1U;
+		memcpy(session->output_source, prompt, prompt_length);
+		session->output_source[prompt_length] = '\0';
+		if (!session_031f(session,
+		    (const uint8_t *)session->output_source, prompt_length,
+		    "main prompt low-time warning", error))
+			return false;
+		if (!session_0357(session, command, sizeof(command)))
 			return true;
-		snprintf(upper, sizeof(upper), "%s", command);
-		qb_compat_upper(upper);
-		if (upper[0] == '\0') {
-			yt_out_line("");
-			yt_out_line("<Display>");
+		memcpy(session->output_source, command, strlen(command) + 1U);
+		route = yt_main_shell_dispatch(session->output_source);
+		switch (route) {
+		case YT_MAIN_SHELL_DISPLAY:
+			if (!session_0317(session,
+			    (const uint8_t *)"<Display>",
+			    strlen("<Display>"), "main display heading", error))
+				return false;
 			if (!display_sector(session, false, error))
 				return false;
 			continue;
-		}
-		if (strcmp(upper, "X") == 0) {
+		case YT_MAIN_SHELL_SOUND:
+		{
 			struct yt_present_result presentation;
 			enum yt_present_status status = yt_present_sound_toggle(
 			    &session->presentation, &presentation);
@@ -9758,132 +15986,135 @@ command_shell(struct yt_session *session, struct yt_error *error)
 				return false;
 			continue;
 		}
-		if (strcmp(upper, "S") == 0) {
+		case YT_MAIN_SHELL_SENSORS:
 			if (!display_sector(session, true, error))
 				return false;
 			continue;
-		}
-		if (strcmp(upper, "V") == 0) {
+		case YT_MAIN_SHELL_VERSION:
+			session->presentation.foreground = 6.0f;
+			session->pager.foreground = 6;
 			if (!registration(session, error))
 				return false;
 			if (!session->running)
 				return true;
 			continue;
-		}
-		if (strcmp(upper, "I") == 0) {
-			if (!reload_player(session, error))
-				return false;
+		case YT_MAIN_SHELL_INFO:
 			if (!show_ship(session, error))
 				return false;
 			continue;
-		}
-		if (strcmp(upper, "Z") == 0) {
-			yt_out_line("");
-			yt_out_line("<Instructions>");
-			if (!display_game_file(session, "YTINSTR.DOC", error))
+		case YT_MAIN_SHELL_INSTRUCTIONS:
+			if (!session_02fc(session,
+			    (const uint8_t *)"<Instructions>",
+			    strlen("<Instructions>"))
+			    || !instruction_offer(session, error))
 				return false;
 			continue;
-		}
-		if (strcmp(upper, "?") == 0) {
-			show_help();
+		case YT_MAIN_SHELL_HELP:
+			if (!show_help(session, error))
+				return false;
 			continue;
-		}
-		key = upper[0];
-		position = strchr(dispatch, key);
-		if (position == NULL) {
-			yt_out_line("Invalid command.");
+		case YT_MAIN_SHELL_INVALID:
+			if (!session_02db(session,
+			    (const uint8_t *)"Invalid command.",
+			    strlen("Invalid command."),
+			    "main invalid command", error))
+				return false;
 			continue;
-		}
-		switch ((int)(position - dispatch)) {
-		case 0:
-			if (!emergency_warp(session, error))
+		case YT_MAIN_SHELL_WARP:
+			if (!direct_emergency_warp(session, error))
 				return false;
 			enter_sector = true;
 			break;
-		case 1:
+		case YT_MAIN_SHELL_MISSILE:
 			if (!command_projectile(session, false, error))
 				return false;
-			enter_sector = true;
+			if (!session->destroyed
+			    && !display_sector(session, false, error))
+				return false;
 			break;
-		case 2:
+		case YT_MAIN_SHELL_PLASMA:
 			if (!command_projectile(session, true, error))
 				return false;
-			enter_sector = true;
-			break;
-		case 3:
-			if (!command_attack_player(session, error))
+			if (!session->destroyed
+			    && !display_sector(session, false, error))
 				return false;
-			enter_sector = true;
 			break;
-		case 4:
+		case YT_MAIN_SHELL_ATTACK:
+			if (!command_attack_player(session, &enter_sector, error))
+				return false;
+			break;
+		case YT_MAIN_SHELL_BUY_PORT:
 			if (!command_buy_port(session, error))
 				return false;
-			break;
-		case 5:
-			if (!session_sound(session, 4.0f,
-			    "computer activation sound", error))
-				return false;
-			if (!computer_menu(session, error))
+			if (!display_current_sector_cached(session, error))
 				return false;
 			break;
-		case 6:
+		case YT_MAIN_SHELL_COMPUTER:
+			if (!computer_menu(session, &enter_sector, error))
+				return false;
+			break;
+		case YT_MAIN_SHELL_FIGHTERS:
 			if (!command_fighters(session, error))
 				return false;
 			break;
-		case 7:
-			if (!command_land(session, error))
+		case YT_MAIN_SHELL_LAND:
+			if (!command_land(session, &enter_sector, error))
 				return false;
 			break;
-		case 8:
-			if (!command_move(session, error))
+		case YT_MAIN_SHELL_MOVE:
+			if (!command_move(session, &enter_sector, error))
+				return false;
+			break;
+		case YT_MAIN_SHELL_TRADE:
+			if (!command_trade(session, error))
 				return false;
 			enter_sector = true;
 			break;
-		case 9:
-			if (!command_trade(session, error))
-				return false;
-			break;
-		case 10:
+		case YT_MAIN_SHELL_QUIT:
 		{
-			bool quit;
+			bool confirmed;
 
-			yt_out_line("");
-			yt_out_line("<Quit>");
-			if (!session_yes_no(session,
-			    "Are you sure (Y/N)? ", false, &quit))
+			if (!session_quit_confirm(session, &confirmed, error))
 				return false;
-			if (quit)
-				session->running = false;
-			break;
+			if (!confirmed)
+				break;
+			if (!quit_session(session, error))
+				return false;
+			session->running = false;
+			session->terminated = true;
+			return false;
 		}
-		case 11:
+		case YT_MAIN_SHELL_TEAM:
 			if (!command_team(session, error))
 				return false;
+			enter_sector = true;
 			break;
-		case 12:
+		case YT_MAIN_SHELL_MINES:
 			if (!command_mines(session, error))
 				return false;
-			break;
-		case 13:
-			if (!command_collect(session, true, error))
+			session->presentation.foreground = 1.0f;
+			session->pager.foreground = 1;
+			if (!display_sector(session, false, error))
 				return false;
 			break;
-		case 14:
+		case YT_MAIN_SHELL_COLLECT:
+			if (!command_collect(session, true, error))
+				return false;
+			enter_sector = true;
+			break;
+		case YT_MAIN_SHELL_GENESIS:
 			if (!command_genesis(session, error))
 				return false;
 			break;
-		case 15:
+		case YT_MAIN_SHELL_RENAME_PORT:
 			if (!command_rename_port(session, error))
 				return false;
-			break;
-		default:
+			if (!display_current_sector_cached(session, error))
+				return false;
 			break;
 		}
 		if (enter_sector && session->running && !session->destroyed
 		    && !sector_entry(session, error))
-			return false;
-		if (session->door->game_open
-		    && !reload_player(session, error))
 			return false;
 	}
 	return true;
@@ -9927,7 +16158,12 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 		    ? requested : maximum;
 		session.time.deadline = session.session_deadline;
 	}
-	if (!load_configuration(&session, error)
+	if (!load_configuration(&session, error))
+		return session.terminated;
+	session.presentation.foreground = 6.0f;
+	session.pager.foreground = 6;
+	if (!session_present_text(&session, NULL, 0, SESSION_PRESENT_LINE,
+	    "startup pre-title blank", error)
 	    || !registration(&session, error))
 		return session.terminated;
 	if (!session.running)
@@ -9935,7 +16171,7 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	session.presentation.sound.snoop =
 	    session.door->game.config.local_screen;
 	if (!opening_and_date(&session, error)
-	    || !lockout(&session, error))
+	    || !startup_pre_admission(&session, error))
 		return session.terminated;
 	if (!session.running)
 		return true;
@@ -9949,8 +16185,15 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	if (!post_login(&session, error)
 	    || !sector_entry(&session, error))
 		return session.terminated;
+	if (session.terminated)
+		return true;
 	if (!session.destroyed && session.running
 	    && !command_shell(&session, error))
 		return session.terminated;
+	if (session.destroyed && !session.fatal_wait_complete) {
+		if (!session_wait(&session, 5.0, "common fatal wait", error))
+			return false;
+		session.fatal_wait_complete = true;
+	}
 	return quit_session(&session, error);
 }

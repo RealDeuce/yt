@@ -624,7 +624,7 @@ val_set_ratio(struct qb_val_result *result, const struct qb_big *numerator,
 }
 
 struct qb_val_result
-qb_val(const char *text)
+qb_val_n(const uint8_t *text, size_t length)
 {
 	struct qb_val_result result = {0};
 	struct val_reader reader;
@@ -638,10 +638,10 @@ qb_val(const char *text)
 	int exponent = 0;
 	int scale;
 
-	if (text == NULL)
+	if (text == NULL && length != 0U)
 		return result;
-	reader.data = (const uint8_t *)text;
-	reader.length = strlen(text);
+	reader.data = text;
+	reader.length = length;
 	reader.position = 0;
 	reader.last_consumed = false;
 	character = val_fetch(&reader, true);
@@ -777,4 +777,11 @@ qb_val(const char *text)
 		val_set_ratio(&result, &integer, &denominator, negative);
 	}
 	return result;
+}
+
+struct qb_val_result
+qb_val(const char *text)
+{
+	return qb_val_n((const uint8_t *)text,
+	    text == NULL ? 0U : strlen(text));
 }

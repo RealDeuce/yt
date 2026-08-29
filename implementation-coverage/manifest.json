@@ -20,7 +20,7 @@
   "source_artifacts": {
     "completion": {
       "path": "/bbsdev/doors/yt/3.6G/analysis/disassembly/completion-ledger.json",
-      "sha256": "bd25d2cf5ec9d127921515eeaa14b1af06e8b83597435b744b22f6162480a273"
+      "sha256": "1bfc8e05e25706fcbe684cd541661d49f72964396c7b194bc7c2278796d53625"
     },
     "presentation": {
       "path": "/bbsdev/doors/yt/3.6G/analysis/disassembly/player-output-coverage.json",
@@ -28,7 +28,7 @@
     },
     "roots": {
       "path": "/bbsdev/doors/yt/3.6G/analysis/disassembly/root-coverage.json",
-      "sha256": "c7c04edb997f7d988e45eea1800d50a60710494d79ed02426fe70950618df225"
+      "sha256": "70025992e5e67328fb8bd86f731828d13e7f9a3a7b232c010c9ab38c12f3a649"
     },
     "transfers": {
       "path": "/bbsdev/doors/yt/3.6G/analysis/disassembly/qualified-cfg.json",

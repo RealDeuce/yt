@@ -1,5 +1,5 @@
 legacy_site	selector	qualification	native_owner	role
-YT:0703	3	live	src/yt_session.c::{attack_deployed_committed,mine_encounter}	common fatal ship-destruction cue
+YT:0703	3	live	src/yt_session.c::common_fatal_self	common fatal ship-destruction cue
 YT:0BFF	2	live	src/yt_session.c::attack_deployed_committed	deployed-fighter combat entry
 YT:0CE4	4	live	src/yt_session.c::attack_deployed_committed	surrender radio offer
 YT:0D5E	5	live	src/yt_session.c::attack_deployed_committed	Xannor surrender refusal

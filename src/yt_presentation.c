@@ -82,6 +82,12 @@ append_beep(struct yt_present_result *result)
 }
 
 static enum yt_present_status
+append_clear(struct yt_present_result *result)
+{
+	return append_event(result, YT_PRESENT_LOCAL_CLEAR, NULL, 0, 0, 0);
+}
+
+static enum yt_present_status
 convert(const struct yt_present_state *state, double value, int *converted)
 {
 	bool overflow;
@@ -383,6 +389,101 @@ yt_present_local_line(const uint8_t *text, size_t length,
 }
 
 enum yt_present_status
+yt_present_forced_local_line(const uint8_t *text, size_t length,
+    struct yt_present_result *result)
+{
+	memset(result, 0, sizeof(*result));
+	return append_local(result, YT_PRESENT_LOCAL_LINE, text, length, 0, 0);
+}
+
+enum yt_present_status
+yt_present_serial_startup_missing_command(struct yt_present_result *result)
+{
+	static const char diagnostic[] = "Command line missing! Aborting!";
+	static const char usage[] =
+	    "BBS usage: YT.EXE C:\\BBS\\DORINFO1.DEF";
+	enum yt_present_status status;
+
+	if (result == NULL)
+		return YT_PRESENT_CAPACITY;
+	memset(result, 0, sizeof(*result));
+	status = append_local(result, YT_PRESENT_LOCAL_LINE, NULL, 0U, 0, 0);
+	if (status != YT_PRESENT_OK)
+		return status;
+	status = append_local(result, YT_PRESENT_LOCAL_LINE, diagnostic,
+	    sizeof(diagnostic) - 1U, 0, 0);
+	if (status != YT_PRESENT_OK)
+		return status;
+	status = append_local(result, YT_PRESENT_LOCAL_LINE, NULL, 0U, 0, 0);
+	if (status != YT_PRESENT_OK)
+		return status;
+	return append_local(result, YT_PRESENT_LOCAL_LINE, usage,
+	    sizeof(usage) - 1U, 0, 0);
+}
+
+enum yt_present_status
+yt_present_serial_startup_status(int port, float detected_baud,
+    struct yt_present_result *result)
+{
+	static const char local[] = "Local Console Mode";
+	uint8_t rendered[YT_PRESENT_EVENT_DATA];
+	size_t length = 0U;
+	char number[64];
+	int number_length;
+
+	if (result == NULL)
+		return YT_PRESENT_CAPACITY;
+	memset(result, 0, sizeof(*result));
+	if (port < 1 || port > 4)
+		return append_local(result, YT_PRESENT_LOCAL_LINE, local,
+		    sizeof(local) - 1U, 0, 0);
+	memcpy(rendered, "Opening COM port", strlen("Opening COM port"));
+	length = strlen("Opening COM port");
+	number_length = qb_print_single(number, sizeof(number), (float)port);
+	if (number_length < 0
+	    || (size_t)number_length > sizeof(rendered) - length)
+		return YT_PRESENT_OVERFLOW;
+	memcpy(rendered + length, number, (size_t)number_length);
+	length += (size_t)number_length;
+	if (sizeof("at") - 1U > sizeof(rendered) - length)
+		return YT_PRESENT_CAPACITY;
+	memcpy(rendered + length, "at", sizeof("at") - 1U);
+	length += sizeof("at") - 1U;
+	number_length = qb_print_single(number, sizeof(number), detected_baud);
+	if (number_length < 0
+	    || (size_t)number_length > sizeof(rendered) - length)
+		return YT_PRESENT_OVERFLOW;
+	memcpy(rendered + length, number, (size_t)number_length);
+	length += (size_t)number_length;
+	if (sizeof("baud") - 1U > sizeof(rendered) - length)
+		return YT_PRESENT_CAPACITY;
+	memcpy(rendered + length, "baud", sizeof("baud") - 1U);
+	length += sizeof("baud") - 1U;
+	return append_local(result, YT_PRESENT_LOCAL_LINE, rendered, length,
+	    0, 0);
+}
+
+enum yt_present_status
+yt_present_carrier_drop(struct yt_present_state *state,
+    struct yt_present_result *result)
+{
+	static const uint8_t notice[] =
+	    "(**CARRIER DROPPED**) Returning to bbs!";
+
+	if (state == NULL || result == NULL)
+		return YT_PRESENT_CAPACITY;
+	return yt_present_local_line(notice, sizeof(notice) - 1U, state,
+	    result);
+}
+
+enum yt_present_status
+yt_present_local_beep(struct yt_present_result *result)
+{
+	memset(result, 0, sizeof(*result));
+	return append_beep(result);
+}
+
+enum yt_present_status
 yt_present_right_aligned(const uint8_t *text, size_t length, float width,
     struct yt_present_state *state, struct yt_present_result *result)
 {
@@ -541,6 +642,207 @@ yt_present_sound_toggle(struct yt_present_state *state,
 }
 
 enum yt_present_status
+yt_present_sysop_sound_toggle(struct yt_present_state *state,
+    struct yt_present_result *result)
+{
+	static const uint8_t prefix[] = "Sound ";
+	static const uint8_t on[] = "ON";
+	static const uint8_t off[] = "OFF";
+	const uint8_t *suffix;
+	size_t suffix_length;
+	bool enabled;
+	enum yt_present_status status;
+
+	memset(result, 0, sizeof(*result));
+	if (yt_sound_sysop_toggle(&state->sound, &enabled) != YT_SOUND_OK)
+		return YT_PRESENT_SOUND_ERROR;
+	status = append_local(result, YT_PRESENT_LOCAL_LINE, NULL, 0, 0, 0);
+	if (status != YT_PRESENT_OK)
+		return status;
+	status = append_local(result, YT_PRESENT_LOCAL_SEMI, prefix,
+	    sizeof(prefix) - 1U, 0, 0);
+	if (status != YT_PRESENT_OK)
+		return status;
+	suffix = enabled ? on : off;
+	suffix_length = enabled ? sizeof(on) - 1U : sizeof(off) - 1U;
+	return append_local(result, YT_PRESENT_LOCAL_LINE, suffix,
+	    suffix_length, 0, 0);
+}
+
+static enum yt_present_status status_row_append(const uint8_t *real_name,
+    size_t real_name_length, const uint8_t *alias, size_t alias_length,
+    struct yt_present_state *state, struct yt_present_result *result);
+
+enum yt_present_status
+yt_present_sysop_snoop_toggle(const uint8_t *real_name,
+    size_t real_name_length, const uint8_t *alias, size_t alias_length,
+    struct yt_present_state *state, struct yt_present_result *result)
+{
+	static const uint8_t notice[] = "SNOOP ON";
+	bool returned_early = false;
+	bool enabled = false;
+	enum yt_present_status status;
+
+	memset(result, 0, sizeof(*result));
+	if (yt_sound_sysop_snoop_toggle(&state->sound, &returned_early,
+	    &enabled) != YT_SOUND_OK)
+		return YT_PRESENT_SOUND_ERROR;
+	if (returned_early)
+		return YT_PRESENT_OK;
+	if (!enabled) {
+		status = append_locate(result, -1, -1, 0, 0, 0);
+		return status == YT_PRESENT_OK ? append_clear(result) : status;
+	}
+	status = status_row_append(real_name, real_name_length, alias,
+	    alias_length, state, result);
+	if (status != YT_PRESENT_OK)
+		return status;
+	status = append_locate(result, 24, 1, -1, 0, 0);
+	return status == YT_PRESENT_OK
+	    ? append_local(result, YT_PRESENT_LOCAL_LINE, notice,
+	    sizeof(notice) - 1U, 0, 0) : status;
+}
+
+static enum yt_present_status
+sysop_single(double value, float *single)
+{
+	uint8_t raw[4];
+	enum qb_mbf_status status;
+
+	status = qb_mbf32_encode((float)value, raw);
+	if (status == QB_MBF_OVERFLOW)
+		return YT_PRESENT_OVERFLOW;
+	*single = qb_mbf32_decode(raw);
+	return YT_PRESENT_OK;
+}
+
+enum yt_present_status
+yt_present_sysop_time_prompt(float deadline, float timer,
+    struct yt_present_result *result)
+{
+	static const char prefix[] =
+	    "SysOp, how many minutes till user is forced off [";
+	char current[64];
+	uint8_t prompt[180];
+	float integral_timer;
+	float remaining;
+	float minutes;
+	size_t length = 0;
+	int number_length;
+	enum yt_present_status status;
+
+	memset(result, 0, sizeof(*result));
+	integral_timer = floorf(timer);
+	if (sysop_single((double)deadline - integral_timer, &remaining)
+	    != YT_PRESENT_OK
+	    || sysop_single((double)remaining / 60.0, &minutes)
+	    != YT_PRESENT_OK)
+		return YT_PRESENT_OVERFLOW;
+	minutes = floorf(minutes);
+	number_length = qb_print_single(current, sizeof(current), minutes);
+	if (number_length < 0)
+		return YT_PRESENT_OVERFLOW;
+	memcpy(prompt + length, prefix, sizeof(prefix) - 1U);
+	length += sizeof(prefix) - 1U;
+	memcpy(prompt + length, current, (size_t)number_length);
+	length += (size_t)number_length;
+	memcpy(prompt + length, "] ? ", 4U);
+	length += 4U;
+	status = append_local(result, YT_PRESENT_LOCAL_LINE, NULL, 0, 0, 0);
+	return status == YT_PRESENT_OK
+	    ? append_local(result, YT_PRESENT_LOCAL_SEMI, prompt, length, 0, 0)
+	    : status;
+}
+
+enum yt_present_status
+yt_present_sysop_time_replace(const uint8_t *entered, size_t entered_length,
+    float commit_timer, float *deadline, float *minutes, bool *changed)
+{
+	char buffer[YT_PRESENT_EVENT_DATA + 1U];
+	struct qb_val_result parsed;
+	float selected;
+	float scaled;
+	float replacement;
+	enum yt_present_status status;
+
+	if (deadline == NULL || minutes == NULL || changed == NULL
+	    || entered_length > YT_PRESENT_EVENT_DATA
+	    || (entered == NULL && entered_length != 0U))
+		return YT_PRESENT_CAPACITY;
+	*changed = false;
+	*minutes = 0.0f;
+	if (entered_length == 0U)
+		return YT_PRESENT_OK;
+	memcpy(buffer, entered, entered_length);
+	buffer[entered_length] = '\0';
+	parsed = qb_val(buffer);
+	if (parsed.overflow)
+		return YT_PRESENT_OVERFLOW;
+	status = sysop_single(parsed.valid ? parsed.value : 0.0, &selected);
+	if (status != YT_PRESENT_OK)
+		return status;
+	if (selected > 90.0f)
+		selected = 90.0f;
+	status = sysop_single((double)selected * 60.0, &scaled);
+	if (status != YT_PRESENT_OK)
+		return status;
+	status = sysop_single((double)floorf(commit_timer) + scaled,
+	    &replacement);
+	if (status != YT_PRESENT_OK)
+		return status;
+	*deadline = replacement;
+	*minutes = selected;
+	*changed = true;
+	return YT_PRESENT_OK;
+}
+
+enum yt_present_status
+yt_present_sysop_time_handler(float prompt_timer, const uint8_t *entered,
+    size_t entered_length, float commit_timer, float *deadline,
+    float *minutes, bool *changed, struct yt_present_result *prompt,
+    yt_present_sysop_replay_fn replay, void *replay_context)
+{
+	enum yt_present_status status;
+
+	if (deadline == NULL || prompt == NULL || replay == NULL)
+		return YT_PRESENT_CAPACITY;
+	status = yt_present_sysop_time_prompt(*deadline, prompt_timer, prompt);
+	if (status != YT_PRESENT_OK)
+		return status;
+	status = yt_present_sysop_time_replace(entered, entered_length,
+	    commit_timer, deadline, minutes, changed);
+	return status == YT_PRESENT_OK ? replay(replay_context) : status;
+}
+
+enum yt_present_status
+yt_present_sysop_chat_header(const uint8_t *sysop, size_t sysop_length,
+    int local_background, struct yt_present_result *result)
+{
+	static const uint8_t suffix[] = " - Hit ESC to exit chat mode";
+	uint8_t line[YT_PRESENT_EVENT_DATA];
+	enum yt_present_status status;
+
+	if (result == NULL || sysop_length > sizeof(line) - (sizeof(suffix) - 1U)
+	    || (sysop == NULL && sysop_length != 0U))
+		return YT_PRESENT_CAPACITY;
+	memset(result, 0, sizeof(*result));
+	if (sysop_length != 0U)
+		memcpy(line, sysop, sysop_length);
+	memcpy(line + sysop_length, suffix, sizeof(suffix) - 1U);
+	status = append_local(result, YT_PRESENT_LOCAL_COLOR, NULL, 0U,
+	    30, local_background);
+	if (status != YT_PRESENT_OK)
+		return status;
+	status = append_local(result, YT_PRESENT_LOCAL_LINE, NULL, 0U, 0, 0);
+	if (status != YT_PRESENT_OK)
+		return status;
+	status = append_local(result, YT_PRESENT_LOCAL_LINE, NULL, 0U, 0, 0);
+	return status == YT_PRESENT_OK
+	    ? append_local(result, YT_PRESENT_LOCAL_LINE, line,
+	    sysop_length + sizeof(suffix) - 1U, 0, 0) : status;
+}
+
+enum yt_present_status
 yt_present_sound(float selector, struct yt_present_state *state,
     struct yt_present_result *result)
 {
@@ -611,6 +913,23 @@ yt_present_press_cleanup(float saved_foreground,
 		return status;
 	state->foreground = saved_foreground;
 	return YT_PRESENT_OK;
+}
+
+enum yt_present_status
+yt_present_lottery_rewind(int row, int column,
+    struct yt_present_state *state, struct yt_present_result *result)
+{
+	static const uint8_t backspace = '\b';
+	enum yt_present_status status;
+
+	memset(result, 0, sizeof(*result));
+	if (state->sound.mode == 0.0f) {
+		status = append_remote(result, YT_PRESENT_REMOTE_SEMI,
+		    &backspace, 1U);
+		if (status != YT_PRESENT_OK)
+			return status;
+	}
+	return append_locate(result, row, column, -1, 0, 0);
 }
 
 static enum yt_present_status
@@ -805,6 +1124,81 @@ yt_present_low_time(const uint8_t *text, size_t length, float *remembered,
 	return status;
 }
 
+static enum yt_present_status
+status_row_append(const uint8_t *real_name, size_t real_name_length,
+    const uint8_t *alias, size_t alias_length,
+    struct yt_present_state *state, struct yt_present_result *result)
+{
+	static const uint8_t title[] = " Yankee Trader ";
+	uint8_t clear[79];
+	uint8_t expression[63];
+	size_t length = 0;
+	enum yt_present_status status;
+
+	if (state->sound.snoop == 0.0f)
+		return YT_PRESENT_OK;
+	memset(clear, ' ', sizeof(clear));
+	status = append_locate(result, 25, 1, -1, 0, 0);
+	if (status != YT_PRESENT_OK)
+		return status;
+	status = append_local(result, YT_PRESENT_LOCAL_COLOR, NULL, 0, 11, 1);
+	if (status != YT_PRESENT_OK)
+		return status;
+	status = append_local(result, YT_PRESENT_LOCAL_SEMI, clear,
+	    sizeof(clear), 0, 0);
+	if (status != YT_PRESENT_OK)
+		return status;
+	status = append_locate(result, 25, 1, -1, 0, 0);
+	if (status != YT_PRESENT_OK)
+		return status;
+	status = append_local(result, YT_PRESENT_LOCAL_COLOR, NULL, 0, 14, 3);
+	if (status != YT_PRESENT_OK)
+		return status;
+	status = append_local(result, YT_PRESENT_LOCAL_SEMI, title,
+	    sizeof(title) - 1U, 0, 0);
+	if (status != YT_PRESENT_OK)
+		return status;
+	status = append_local(result, YT_PRESENT_LOCAL_COLOR, NULL, 0, 11, 1);
+	if (status != YT_PRESENT_OK)
+		return status;
+	status = append_local(result, YT_PRESENT_LOCAL_SEMI,
+	    (const uint8_t *)" ", 1, 0, 0);
+	if (status != YT_PRESENT_OK)
+		return status;
+	expression[length++] = ' ';
+	expression[length++] = '|';
+	expression[length++] = ' ';
+	if (real_name_length > sizeof(expression) - length)
+		real_name_length = sizeof(expression) - length;
+	memcpy(expression + length, real_name, real_name_length);
+	length += real_name_length;
+	if (length < sizeof(expression))
+		expression[length++] = ' ';
+	if (length < sizeof(expression))
+		expression[length++] = '|';
+	if (length < sizeof(expression))
+		expression[length++] = ' ';
+	if (alias_length > sizeof(expression) - length)
+		alias_length = sizeof(expression) - length;
+	memcpy(expression + length, alias, alias_length);
+	length += alias_length;
+	status = append_local(result, YT_PRESENT_LOCAL_SEMI, expression,
+	    length, 0, 0);
+	if (status != YT_PRESENT_OK)
+		return status;
+	return append_local(result, YT_PRESENT_LOCAL_COLOR, NULL, 0, 7, 0);
+}
+
+enum yt_present_status
+yt_present_status_row(const uint8_t *real_name, size_t real_name_length,
+    const uint8_t *alias, size_t alias_length,
+    struct yt_present_state *state, struct yt_present_result *result)
+{
+	memset(result, 0, sizeof(*result));
+	return status_row_append(real_name, real_name_length, alias,
+	    alias_length, state, result);
+}
+
 void
 yt_present_replay(const struct yt_present_result *result,
     const struct yt_present_sink *sink)
@@ -846,6 +1240,10 @@ yt_present_replay(const struct yt_present_result *result,
 		case YT_PRESENT_LOCAL_BEEP:
 			if (sink->local_beep != NULL)
 				sink->local_beep(sink->context);
+			break;
+		case YT_PRESENT_LOCAL_CLEAR:
+			if (sink->local_clear != NULL)
+				sink->local_clear(sink->context);
 			break;
 		}
 	}

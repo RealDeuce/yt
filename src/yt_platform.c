@@ -11,10 +11,30 @@
 #else
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <termios.h>
 #include <unistd.h>
 #if defined(__linux__)
 #include <sys/random.h>
 #endif
+
+#ifdef _WIN32
+struct rmt_serial_private {
+	HANDLE handle;
+	DCB original;
+	DCB opening;
+};
+#else
+struct rmt_serial_private {
+	struct termios original;
+	struct termios opening;
+	speed_t observed_input;
+	speed_t observed_output;
+};
+#endif
+
+_Static_assert(sizeof(struct rmt_serial_private)
+    <= YT_PLATFORM_RMT_SERIAL_PRIVATE,
+    "RMT serial private state exceeds its public storage");
 #if defined(__FreeBSD__) || defined(__APPLE__)
 #include <stdlib.h>
 void arc4random_buf(void *, size_t);
@@ -348,4 +368,233 @@ yt_platform_delay(unsigned milliseconds)
 	while (nanosleep(&duration, &duration) != 0 && errno == EINTR)
 		;
 #endif
+}
+
+#ifndef _WIN32
+static uint32_t
+rmt_termios_baud(speed_t speed)
+{
+	switch (speed) {
+#ifdef B50
+	case B50: return 50U;
+#endif
+#ifdef B75
+	case B75: return 75U;
+#endif
+#ifdef B110
+	case B110: return 110U;
+#endif
+#ifdef B134
+	case B134: return 134U;
+#endif
+#ifdef B150
+	case B150: return 150U;
+#endif
+#ifdef B200
+	case B200: return 200U;
+#endif
+#ifdef B300
+	case B300: return 300U;
+#endif
+#ifdef B600
+	case B600: return 600U;
+#endif
+	case B1200: return 1200U;
+#ifdef B1800
+	case B1800: return 1800U;
+#endif
+	case B2400: return 2400U;
+	case B4800: return 4800U;
+	case B9600: return 9600U;
+	case B19200: return 19200U;
+	case B38400: return 38400U;
+#ifdef B57600
+	case B57600: return 57600U;
+#endif
+#ifdef B115200
+	case B115200: return 115200U;
+#endif
+	default: return 0U;
+	}
+}
+
+static bool
+rmt_termios_framing(struct termios *terminal,
+    const struct yt_startup_framing *framing)
+{
+	if (terminal == NULL || framing == NULL || framing->opening_baud != 1200U
+	    || (framing->data_bits != 7U && framing->data_bits != 8U)
+	    || framing->stop_bits != 1U
+	    || (framing->parity != YT_STARTUP_PARITY_NONE
+	    && framing->parity != YT_STARTUP_PARITY_EVEN))
+		return false;
+	terminal->c_cflag &= (tcflag_t)~(CSIZE | PARENB | PARODD | CSTOPB);
+	terminal->c_cflag |= framing->data_bits == 7U ? CS7 : CS8;
+	if (framing->parity == YT_STARTUP_PARITY_EVEN)
+		terminal->c_cflag |= PARENB;
+	/* BASIC's COM device writes bytes without tty LF/CR translation. */
+	terminal->c_oflag &= (tcflag_t)~OPOST;
+	return true;
+}
+#endif
+
+bool
+yt_platform_rmt_serial_prepare(int port,
+    const struct yt_startup_framing *framing,
+    struct yt_platform_rmt_serial *serial, struct yt_error *error)
+{
+	struct rmt_serial_private state;
+
+	if (serial == NULL || framing == NULL || port < 1 || port > 4
+	    || framing->opening_baud != 1200U
+	    || (framing->data_bits != 7U && framing->data_bits != 8U)
+	    || framing->stop_bits != 1U
+	    || (framing->parity != YT_STARTUP_PARITY_NONE
+	    && framing->parity != YT_STARTUP_PARITY_EVEN)) {
+		set_error(error, YT_INVALID, "prepare RMT serial", NULL);
+		return false;
+	}
+	memset(serial, 0, sizeof(*serial));
+	memset(&state, 0, sizeof(state));
+#ifdef _WIN32
+	{
+		char device[16];
+		int written = snprintf(device, sizeof(device), "\\\\.\\COM%d", port);
+
+		if (written < 0 || (size_t)written >= sizeof(device)) {
+			set_error(error, YT_RANGE, "name RMT serial", NULL);
+			return false;
+		}
+		state.handle = CreateFileA(device, GENERIC_READ | GENERIC_WRITE,
+		    0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (state.handle == INVALID_HANDLE_VALUE) {
+			if (error != NULL) {
+				error->status = YT_IO_ERROR;
+				error->system_error = (int)GetLastError();
+				snprintf(error->operation, sizeof(error->operation),
+				    "open RMT serial");
+				snprintf(error->path, sizeof(error->path), "%s", device);
+			}
+			return false;
+		}
+		state.original.DCBlength = sizeof(state.original);
+		if (!GetCommState(state.handle, &state.original)) {
+			DWORD system_error = GetLastError();
+
+			CloseHandle(state.handle);
+			if (error != NULL) {
+				error->status = YT_IO_ERROR;
+				error->system_error = (int)system_error;
+				snprintf(error->operation, sizeof(error->operation),
+				    "observe RMT serial");
+				snprintf(error->path, sizeof(error->path), "%s", device);
+			}
+			return false;
+		}
+		state.opening = state.original;
+		state.opening.BaudRate = framing->opening_baud;
+		state.opening.ByteSize = framing->data_bits;
+		state.opening.Parity = framing->parity == YT_STARTUP_PARITY_EVEN
+		    ? EVENPARITY : NOPARITY;
+		state.opening.fParity = framing->parity == YT_STARTUP_PARITY_EVEN;
+		state.opening.StopBits = ONESTOPBIT;
+		if (!SetCommState(state.handle, &state.opening)) {
+			DWORD system_error = GetLastError();
+
+			CloseHandle(state.handle);
+			if (error != NULL) {
+				error->status = YT_IO_ERROR;
+				error->system_error = (int)system_error;
+				snprintf(error->operation, sizeof(error->operation),
+				    "open RMT serial at 1200");
+				snprintf(error->path, sizeof(error->path), "%s", device);
+			}
+			return false;
+		}
+		serial->native_handle = (uintptr_t)state.handle;
+		serial->observed_baud = state.original.BaudRate;
+		serial->owns_handle = true;
+	}
+#else
+	(void)port;
+	if (!isatty(STDIN_FILENO) || tcgetattr(STDIN_FILENO, &state.original) != 0) {
+		set_error(error, YT_IO_ERROR, "observe RMT serial", "stdin");
+		return false;
+	}
+	state.observed_input = cfgetispeed(&state.original);
+	state.observed_output = cfgetospeed(&state.original);
+	if (state.observed_input != state.observed_output
+	    || rmt_termios_baud(state.observed_input) == 0U) {
+		set_error(error, YT_RANGE, "decode RMT serial speed", "stdin");
+		return false;
+	}
+	state.opening = state.original;
+	if (!rmt_termios_framing(&state.opening, framing)
+	    || cfsetispeed(&state.opening, B1200) != 0
+	    || cfsetospeed(&state.opening, B1200) != 0
+	    || tcsetattr(STDIN_FILENO, TCSANOW, &state.opening) != 0) {
+		set_error(error, YT_IO_ERROR, "open RMT serial at 1200", "stdin");
+		return false;
+	}
+	serial->observed_baud = rmt_termios_baud(state.observed_input);
+#endif
+	memcpy(serial->private_state, &state, sizeof(state));
+	serial->prepared = true;
+	return true;
+}
+
+bool
+yt_platform_rmt_serial_restore(struct yt_platform_rmt_serial *serial,
+    struct yt_error *error)
+{
+	struct rmt_serial_private state;
+
+	if (serial == NULL || !serial->prepared || serial->restored) {
+		set_error(error, YT_INVALID, "restore RMT serial", NULL);
+		return false;
+	}
+	memcpy(&state, serial->private_state, sizeof(state));
+#ifdef _WIN32
+	state.opening.BaudRate = state.original.BaudRate;
+	if (!SetCommState(state.handle, &state.opening)) {
+		if (error != NULL) {
+			error->status = YT_IO_ERROR;
+			error->system_error = (int)GetLastError();
+			snprintf(error->operation, sizeof(error->operation),
+			    "restore RMT serial speed");
+			error->path[0] = '\0';
+		}
+		return false;
+	}
+#else
+	if (cfsetispeed(&state.opening, state.observed_input) != 0
+	    || cfsetospeed(&state.opening, state.observed_output) != 0
+	    || tcsetattr(STDIN_FILENO, TCSANOW, &state.opening) != 0) {
+		set_error(error, YT_IO_ERROR, "restore RMT serial speed", "stdin");
+		return false;
+	}
+#endif
+	serial->restored = true;
+	memcpy(serial->private_state, &state, sizeof(state));
+	return true;
+}
+
+void
+yt_platform_rmt_serial_close(struct yt_platform_rmt_serial *serial)
+{
+	struct rmt_serial_private state;
+
+	if (serial == NULL || !serial->prepared)
+		return;
+	memcpy(&state, serial->private_state, sizeof(state));
+#ifdef _WIN32
+	(void)SetCommState(state.handle,
+	    serial->restored ? &state.opening : &state.original);
+	if (serial->owns_handle)
+		(void)CloseHandle(state.handle);
+#else
+	(void)tcsetattr(STDIN_FILENO, TCSANOW,
+	    serial->restored ? &state.opening : &state.original);
+#endif
+	memset(serial, 0, sizeof(*serial));
 }

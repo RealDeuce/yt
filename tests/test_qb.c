@@ -62,6 +62,7 @@ test_mbf32(void)
 	static const uint8_t tie_even_up[4] = {0x06, 0x00, 0x00, 0x01};
 	static const uint8_t maximum[4] = {0xff, 0xff, 0x7f, 0xff};
 	uint8_t encoded[4];
+	unsigned exponent;
 
 	CHECK(qb_mbf32_decode(minus_one) == -1.0f);
 	CHECK(qb_mbf32_decode(marker) == 6324.0f);
@@ -94,6 +95,12 @@ test_mbf32(void)
 	CHECK(memcmp(encoded, "\xa5\xa5\xa5\xa5", sizeof(encoded)) == 0);
 	CHECK(qb_mbf32_encode(INFINITY, encoded) == QB_MBF_OVERFLOW);
 	CHECK(qb_mbf32_encode(NAN, encoded) == QB_MBF_OVERFLOW);
+	CHECK(!qb_mbf32_truth(NULL));
+	for (exponent = 0; exponent <= UINT8_MAX; ++exponent) {
+		uint8_t raw[4] = {0xa5, 0x5a, 0x80, (uint8_t)exponent};
+
+		CHECK(qb_mbf32_truth(raw) == (exponent != 0U));
+	}
 }
 
 static void
@@ -171,6 +178,10 @@ test_numeric(void)
 	CHECK(qb_cint_mode(-2.25, 4, &overflow) == -3 && !overflow);
 	CHECK(qb_cint_mode(0.75, 4, &overflow) == 0 && !overflow);
 	CHECK(qb_cint_mode(2.5, 0xa5, &overflow) == 3 && !overflow);
+	CHECK(qb_brun_random_record_number(2057.5f) == 2057U);
+	CHECK(qb_brun_random_record_number(-1.25f) == 0x00fffffeU);
+	CHECK(qb_brun_random_record_number(16777216.0f) == 0U);
+	CHECK(qb_brun_random_record_number(-16777216.0f) == 0x00ffffffU);
 	CHECK(qb_cint(32767.49, &overflow) == 32767 && !overflow);
 	CHECK(qb_cint(-32767.5, &overflow) == -32768 && !overflow);
 	(void)qb_cint(32767.6, &overflow);
@@ -400,6 +411,9 @@ test_strings(void)
 	}
 	qb_ascii_upper_n(ascii_domain, sizeof(ascii_domain));
 	qb_compat_upper_n(compat_domain, sizeof(compat_domain));
+	one[0] = 0xa5U;
+	qb_compat_upper_n(one, 0U);
+	CHECK(one[0] == 0xa5U);
 	for (byte = 0; byte < 256; ++byte) {
 		uint8_t ascii_expected = (uint8_t)byte;
 		uint8_t compat_expected = (uint8_t)byte;

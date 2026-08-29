@@ -6,11 +6,88 @@
 #include <stdlib.h>
 #include <string.h>
 
+struct console_output {
+	FILE *stream;
+	size_t column;
+};
+
+static bool
+console_present(void *context, uint16_t site, enum yt_init_output_entry entry,
+    const uint8_t *payload, size_t payload_length, struct yt_error *error)
+{
+	struct console_output *output = context;
+	FILE *stream;
+	size_t spaces;
+
+	(void)site;
+	if (output == NULL)
+		return false;
+	stream = output->stream;
+	if (entry == YT_INIT_OUTPUT_PLAY)
+		return true;
+	if (entry == YT_INIT_OUTPUT_LOCATE_COLUMN_ONE) {
+		if (fputc('\r', stream) == EOF)
+			goto failure;
+		output->column = 0U;
+		return true;
+	}
+	if (entry == YT_INIT_OUTPUT_LOCATE_ROW_25) {
+		output->column = 0U;
+		return true;
+	}
+	if (output->column != 0U && payload_length + 1U > 80U - output->column) {
+		if (fputc('\n', stream) == EOF)
+			goto failure;
+		output->column = 0U;
+	}
+	if (payload_length != 0U
+	    && fwrite(payload, 1, payload_length, stream) != payload_length)
+		goto failure;
+	output->column = (output->column + payload_length) % 80U;
+	if (entry == YT_INIT_OUTPUT_LINE) {
+		if (fputc('\n', stream) == EOF)
+			goto failure;
+		output->column = 0U;
+	}
+	else if (entry == YT_INIT_OUTPUT_COMMA) {
+		spaces = 14U - output->column % 14U;
+		if (output->column != 0U && spaces + 14U > 80U - output->column) {
+			if (fputc('\n', stream) == EOF)
+				goto failure;
+			output->column = 0U;
+		}
+		else {
+			while (spaces-- != 0U) {
+				if (fputc(' ', stream) == EOF)
+					goto failure;
+				++output->column;
+			}
+		}
+	}
+	return true;
+
+failure:
+	if (error != NULL) {
+		error->status = YT_IO_ERROR;
+		error->system_error = 0;
+		snprintf(error->operation, sizeof(error->operation),
+		    "write YT-INIT console");
+		error->path[0] = '\0';
+	}
+	return false;
+}
+
 int
 main(int argc, char **argv)
 {
 	struct yt_error error;
 	struct yt_random random;
+	struct yt_initializer_preparation preparation;
+	struct console_output console = {stdout, 0U};
+	const struct yt_init_presenter presenter = {
+	    .context = &console,
+	    .write = console_present
+	};
 	char answer[80];
 	char scoreboard[80];
 	char executable[1024];
@@ -18,47 +95,35 @@ main(int argc, char **argv)
 	char *maintenance_argv[2];
 
 	(void)argc;
-	puts("            Yankee Trader Initialization Program");
-	puts("                     By Alan Davenport");
-	puts("This program will initialize Yankee Trader. You must run this program at");
-	puts("least once when you start up the game. If this program is run on an");
-	puts("existing game, the old game will be wiped out and be replaced by a new one.");
-	fputs("Continue (Y/N)? ", stdout);
-	if (!yt_cli_line(answer, sizeof(answer))
-	    || !((answer[0] == 'Y' || answer[0] == 'y')
-	    && answer[1] == '\0'))
-		return EXIT_SUCCESS;
-	puts("Creating main data file: YTDATA.DAT");
 	yt_error_clear(&error);
-	if (!yt_initialize_begin_yt(&error)) {
+	if (!yt_init_present_confirmation_prefix(&presenter, &error)) {
 		yt_cli_error("YT-INIT", &error);
 		return EXIT_FAILURE;
 	}
-	puts("Please input filename for the Scoreboard Bulletin.");
-	puts("Include FULL PATH and NAME of file! ([ENTER] for YTSCORE.ASC) : ");
-	fputs("-=> ", stdout);
+	if (!yt_cli_line(answer, sizeof(answer))
+	    || !yt_initializer_confirm_response(answer))
+		return EXIT_SUCCESS;
+	if (!yt_init_present_opening(&presenter, &error)
+	    || !yt_initialize_begin_yt(&error)) {
+		yt_cli_error("YT-INIT", &error);
+		return EXIT_FAILURE;
+	}
+	yt_random_init(&random);
+	if (!yt_initializer_prepare_yt(&random, &preparation, &error)
+	    || !yt_init_present_prepared_configuration(&preparation,
+	    &presenter, &error)) {
+		yt_cli_error("YT-INIT", &error);
+		return EXIT_FAILURE;
+	}
 	if (!yt_cli_line(scoreboard, sizeof(scoreboard)))
 		return EXIT_SUCCESS;
 	if (scoreboard[0] == '\0')
 		strcpy(scoreboard, "YTSCORE.ASC");
-	yt_random_init(&random);
-	{
-		struct yt_initializer_options options = {
-		    .family = YT_INITIALIZER_YT,
-		    .scoreboard = scoreboard,
-		    .database_already_truncated = true
-		};
-
-		if (!yt_initialize_world(&options, &random, &error)) {
-			yt_cli_error("YT-INIT", &error);
-			return EXIT_FAILURE;
-		}
+	if (!yt_initialize_yt_prepared(&preparation, scoreboard, &random,
+	    &presenter, &error)) {
+		yt_cli_error("YT-INIT", &error);
+		return EXIT_FAILURE;
 	}
-	puts("Initialization completed sucessfully!");
-	puts("<YT-INIT Normal Termination>");
-	puts("Be SURE to run YTMAINT.EXE at LEAST ONCE per day EVERY DAY!");
-	puts("Run YTCONFIG and change the default OPTIONS if you wish!");
-	puts("Running initial maintenance...");
 	if (!yt_platform_executable_path(executable, sizeof(executable),
 	    argv[0], &error)
 	    || !yt_platform_sibling_program(maintenance, sizeof(maintenance),

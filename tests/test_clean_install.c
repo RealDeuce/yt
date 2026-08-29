@@ -67,6 +67,25 @@ text_has_dos_eof(const char *path, size_t minimum_length)
 }
 
 static bool
+output_find(const struct yt_text_file *text, const char *needle,
+    size_t *position)
+{
+	size_t needle_length = strlen(needle);
+	size_t index;
+
+	if (needle_length > text->length)
+		return false;
+	for (index = 0U; index <= text->length - needle_length; ++index) {
+		if (memcmp(text->data + index, needle, needle_length) == 0) {
+			if (position != NULL)
+				*position = index;
+			return true;
+		}
+	}
+	return false;
+}
+
+static bool
 output_contains(const char *needle)
 {
 	struct yt_text_file text;
@@ -76,7 +95,25 @@ output_contains(const char *needle)
 	yt_error_clear(&error);
 	if (!yt_text_read("output.txt", &text, &error))
 		return false;
-	result = strstr((const char *)text.data, needle) != NULL;
+	result = output_find(&text, needle, NULL);
+	yt_text_free(&text);
+	return result;
+}
+
+static bool
+output_occurs_before(const char *first, const char *second)
+{
+	struct yt_text_file text;
+	struct yt_error error;
+	size_t first_at;
+	size_t second_at;
+	bool result;
+
+	yt_error_clear(&error);
+	if (!yt_text_read("output.txt", &text, &error))
+		return false;
+	result = output_find(&text, first, &first_at)
+	    && output_find(&text, second, &second_at) && first_at < second_at;
 	yt_text_free(&text);
 	return result;
 }
@@ -187,6 +224,22 @@ main(void)
 		failure = "cannot populate package-like install directory";
 		goto done;
 	}
+	if (snprintf(command, sizeof(command),
+	    "\"%s\" < input.txt > output.txt 2>&1", YT_INIT_EXE) < 0) {
+		failure = "cannot format yt-init command";
+		goto done;
+	}
+	input = fopen("input.txt", "wb");
+	if (input == NULL || fwrite("N\n", 1, 2, input) != 2
+	    || fclose(input) != 0) {
+		failure = "cannot prepare declined initializer input";
+		goto done;
+	}
+	status = system(command);
+	if (status != 0 || file_size_is("YTDATA.DAT", 0L)) {
+		failure = "declined initialization mutated YTDATA.DAT";
+		goto done;
+	}
 	input = fopen("input.txt", "wb");
 	if (input == NULL) {
 		failure = "cannot create redirected input";
@@ -199,11 +252,6 @@ main(void)
 	}
 	if (fclose(input) != 0) {
 		failure = "cannot close redirected input";
-		goto done;
-	}
-	if (snprintf(command, sizeof(command),
-	    "\"%s\" < input.txt > output.txt 2>&1", YT_INIT_EXE) < 0) {
-		failure = "cannot format yt-init command";
 		goto done;
 	}
 	status = system(command);
@@ -267,6 +315,26 @@ main(void)
 	}
 	if (!output_contains("Daily Maintenance Completed OK")) {
 		failure = "redirected output lacks YTMAINT completion";
+		goto done;
+	}
+	if (!output_occurs_before("# of turns per day:",
+	    "# of times per day a user may play the lottery:")
+	    || !output_occurs_before(
+	    "# of times per day a user may play the lottery:",
+	    "Xannor Headquarters placed in sector:")
+	    || !output_occurs_before(
+	    "Xannor Headquarters placed in sector:",
+	    "Please input filename for the Scoreboard Bulletin.")) {
+		failure = "redirected output reordered YT-INIT live defaults";
+		goto done;
+	}
+	if (!output_occurs_before("Initialization completed sucessfully!",
+	    "<YT-INIT Normal Termination>")
+	    || !output_occurs_before("<YT-INIT Normal Termination>",
+	    "Running initial maintenance...")
+	    || !output_occurs_before("Running initial maintenance...",
+	    "Daily Maintenance Completed OK")) {
+		failure = "redirected output reordered initialization handoff";
 		goto done;
 	}
 

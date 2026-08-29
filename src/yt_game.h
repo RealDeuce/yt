@@ -74,6 +74,120 @@ struct yt_planet {
 	float fighters;
 };
 
+struct yt_post_login_repairs {
+	bool turns;
+	bool holds;
+	unsigned writes;
+};
+
+enum yt_sector_force_route {
+	YT_SECTOR_FORCE_FRIENDLY,
+	YT_SECTOR_FORCE_HOSTILE,
+	YT_SECTOR_FORCE_OWNER_GET,
+};
+
+enum yt_hostile_menu_route {
+	YT_HOSTILE_MENU_HELP,
+	YT_HOSTILE_MENU_SECTOR,
+	YT_HOSTILE_MENU_INFO,
+	YT_HOSTILE_MENU_INVALID,
+	YT_HOSTILE_MENU_ATTACK,
+	YT_HOSTILE_MENU_QUIT,
+	YT_HOSTILE_MENU_BRIBE,
+	YT_HOSTILE_MENU_MINE,
+	YT_HOSTILE_MENU_WARP,
+	YT_HOSTILE_MENU_TEAM,
+};
+
+enum yt_main_shell_route {
+	YT_MAIN_SHELL_SOUND,
+	YT_MAIN_SHELL_SENSORS,
+	YT_MAIN_SHELL_DISPLAY,
+	YT_MAIN_SHELL_WARP,
+	YT_MAIN_SHELL_MISSILE,
+	YT_MAIN_SHELL_PLASMA,
+	YT_MAIN_SHELL_ATTACK,
+	YT_MAIN_SHELL_BUY_PORT,
+	YT_MAIN_SHELL_COMPUTER,
+	YT_MAIN_SHELL_FIGHTERS,
+	YT_MAIN_SHELL_LAND,
+	YT_MAIN_SHELL_MOVE,
+	YT_MAIN_SHELL_TRADE,
+	YT_MAIN_SHELL_QUIT,
+	YT_MAIN_SHELL_TEAM,
+	YT_MAIN_SHELL_MINES,
+	YT_MAIN_SHELL_COLLECT,
+	YT_MAIN_SHELL_GENESIS,
+	YT_MAIN_SHELL_RENAME_PORT,
+	YT_MAIN_SHELL_VERSION,
+	YT_MAIN_SHELL_INFO,
+	YT_MAIN_SHELL_INSTRUCTIONS,
+	YT_MAIN_SHELL_HELP,
+	YT_MAIN_SHELL_INVALID,
+};
+
+enum yt_hostile_attack_admission {
+	YT_HOSTILE_ATTACK_NO_FIGHTERS,
+	YT_HOSTILE_ATTACK_TOO_MANY,
+	YT_HOSTILE_ATTACK_LESS_THAN_ONE,
+	YT_HOSTILE_ATTACK_ADMITTED,
+};
+
+enum yt_hostile_surrender_route {
+	YT_HOSTILE_SURRENDER_PLAYER,
+	YT_HOSTILE_SURRENDER_XANNOR,
+	YT_HOSTILE_SURRENDER_MERCENARY,
+	YT_HOSTILE_SURRENDER_QUIET,
+};
+
+enum yt_bribe_forced_admission {
+	YT_BRIBE_FORCED_FATAL,
+	YT_BRIBE_FORCED_LESS_THAN_ONE,
+	YT_BRIBE_FORCED_ATTACK,
+};
+
+enum yt_sector_mine_admission {
+	YT_SECTOR_MINE_BELOW_ONE,
+	YT_SECTOR_MINE_ABOVE_CARRIED,
+	YT_SECTOR_MINE_ACCEPTED,
+};
+
+enum yt_sector_mine_damage_field {
+	YT_SECTOR_MINE_DAMAGE_SHIELDS = 1U << 0,
+	YT_SECTOR_MINE_DAMAGE_FIGHTERS = 1U << 1,
+	YT_SECTOR_MINE_DAMAGE_HOLDS = 1U << 2,
+	YT_SECTOR_MINE_DAMAGE_ORE = 1U << 3,
+	YT_SECTOR_MINE_DAMAGE_ORGANICS = 1U << 4,
+	YT_SECTOR_MINE_DAMAGE_EQUIPMENT = 1U << 5,
+	YT_SECTOR_MINE_DAMAGE_SCANNER = 1U << 6,
+	YT_SECTOR_MINE_DAMAGE_MISSILES = 1U << 7,
+	YT_SECTOR_MINE_DAMAGE_CLOAK = 1U << 8,
+	YT_SECTOR_MINE_DAMAGE_CARRIED_MINES = 1U << 9,
+};
+
+enum yt_sector_mine_loss_kind {
+	YT_SECTOR_MINE_LOSS_FIGHTERS,
+	YT_SECTOR_MINE_LOSS_CLOAK,
+	YT_SECTOR_MINE_LOSS_MISSILES,
+	YT_SECTOR_MINE_LOSS_MINES,
+	YT_SECTOR_MINE_LOSS_ORE,
+	YT_SECTOR_MINE_LOSS_ORGANICS,
+	YT_SECTOR_MINE_LOSS_EQUIPMENT,
+	YT_SECTOR_MINE_LOSS_EMPTY_HOLDS,
+};
+
+enum yt_planet_rename_name_result {
+	YT_PLANET_RENAME_EMPTY,
+	YT_PLANET_RENAME_RESERVED,
+	YT_PLANET_RENAME_ACCEPTED,
+};
+
+enum yt_projectile_target_result {
+	YT_PROJECTILE_TARGET_CANCEL,
+	YT_PROJECTILE_TARGET_RETRY,
+	YT_PROJECTILE_TARGET_ACCEPT,
+};
+
 struct yt_game {
 	struct yt_database database;
 	struct yt_config config;
@@ -110,9 +224,380 @@ bool yt_game_read_planet(struct yt_game *game, int logical_planet,
     struct yt_planet *planet, struct yt_error *error);
 bool yt_game_write_planet(struct yt_game *game, int logical_planet,
     struct yt_planet *planet, struct yt_error *error);
+bool yt_game_construct_player(struct yt_game *game, int basic_record,
+    float today, struct yt_player *player, struct yt_error *error);
+bool yt_game_set_player_identity(struct yt_game *game, int basic_record,
+    const uint8_t *name, size_t length, struct yt_player *player,
+    struct yt_error *error);
+bool yt_game_post_login_repairs(struct yt_game *game, int basic_record,
+    float maximum_holds, struct yt_player *player,
+    struct yt_post_login_repairs *repairs, struct yt_error *error);
+bool yt_sector_force_route(float fighters, float owner,
+    int current_player_record, enum yt_sector_force_route *route,
+    int *owner_record, struct yt_error *error);
+bool yt_sector_is_black_hole(float current_sector, float first,
+    float second);
+bool yt_sector_mines_admitted(float mines, float suppression);
+bool yt_sector_force_same_team(float current_team, float owner_team);
+bool yt_hostile_menu_row(double ship_fighters, double deployed_fighters,
+    uint8_t *row, size_t capacity, size_t *length);
+enum yt_hostile_menu_route yt_hostile_menu_dispatch(const char *response);
+enum yt_main_shell_route yt_main_shell_dispatch(const char *response);
+enum yt_hostile_attack_admission yt_hostile_attack_admit(
+    float ship_fighters, float commitment);
+float yt_hostile_attack_quantum(double remaining_attacker,
+    double remaining_defender);
+bool yt_hostile_attack_loses_attacker(float cloak, float draw);
+enum yt_hostile_surrender_route yt_hostile_surrender_route(float owner);
+bool yt_fighter_shield_spill_step(double *fighters, float *shields,
+    float draw);
+bool yt_fighter_shield_spill_rows(double fighters, float shields,
+    uint8_t *fighter_row, size_t fighter_capacity, size_t *fighter_length,
+    uint8_t *shield_row, size_t shield_capacity, size_t *shield_length);
+bool yt_hostile_defeated_row(double fighters, uint8_t *row,
+    size_t capacity, size_t *length);
+bool yt_xannor_attack_reward_rows(const uint8_t *name, size_t name_length,
+    float bonus, double defenders_destroyed,
+    uint8_t *display, size_t display_capacity, size_t *display_length,
+    uint8_t *news, size_t news_capacity, size_t *news_length);
+float yt_xannor_attack_bonus(double defenders_destroyed, float turns,
+    float turns_per_day);
+bool yt_bribe_ordinary_forces(float owner, float defenders,
+    float ship_fighters, float draw);
+bool yt_bribe_mercenary_forces(float defenders, float ship_fighters,
+    float first, float second, bool sticky);
+double yt_bribe_offer_threshold(float defenders, float draw);
+bool yt_bribe_offer_accepted(float offer, float credits, double threshold);
+enum yt_bribe_forced_admission yt_bribe_forced_admit(
+    double ship_fighters, float shields, bool mercenary_fatal_gate,
+    float commitment);
+enum yt_sector_mine_admission yt_sector_mine_admit(
+    float carried, float amount);
+bool yt_no_turn_gate_denied(float turns);
+bool yt_team_choice_rejected(float choice, float raw_team,
+    int32_t captain_cint, int32_t team_cint);
+void yt_team_transfer_apply_sector(struct yt_sector *sector,
+    double initial_fighters, float amount);
+void yt_team_transfer_apply_player(struct yt_player *player, float amount);
+void yt_team_banish_apply_player(struct yt_player *player);
+void yt_team_roster_overlay(struct yt_record *record, const float roster[4]);
+void yt_team_name_overlay(struct yt_record *record, const uint8_t *name,
+    size_t length);
+bool yt_team_prepare_name(char *name, size_t *length);
+void yt_team_password_overlay(struct yt_record *record,
+    const uint8_t password[4]);
+bool yt_port_link_missing(float link);
+bool yt_port_name_display_row(const uint8_t *cached, size_t cached_length,
+    uint8_t *row, size_t capacity, size_t *length);
+bool yt_port_name_prepare_candidate(const uint8_t *entered,
+    size_t entered_length, const uint8_t *cached, size_t cached_length,
+    uint8_t *candidate, size_t capacity, size_t *candidate_length);
+bool yt_port_name_confirmation_prompt(const uint8_t *candidate,
+    size_t candidate_length, uint8_t *prompt, size_t capacity,
+    size_t *length);
+bool yt_port_name_overlay(struct yt_port *port, const uint8_t *candidate,
+    size_t candidate_length);
+bool yt_port_rename_record(float port_offset, float sector_link,
+    int *logical_port, float *relative_port);
+double yt_port_purchase_price(const float production[3]);
+float yt_port_purchase_seller_credit(float treasury, float credits,
+    double price);
+float yt_port_purchase_buyer_credit(float credits, double price);
+bool yt_genesis_confirmation_prompt(const uint8_t *trader,
+    size_t trader_length, uint8_t *prompt, size_t capacity, size_t *length);
+bool yt_genesis_insufficient_rows(float required, float owned,
+    uint8_t *first, size_t first_capacity, size_t *first_length,
+    uint8_t *second, size_t second_capacity, size_t *second_length);
+bool yt_planet_garrison_prompt(float player_forces, float planet_forces,
+    uint8_t *prompt, size_t capacity, size_t *length);
+float yt_planet_garrison_after(float player_forces, float desired,
+    float planet_forces);
+void yt_planet_garrison_overlay(struct yt_planet *planet, float desired,
+    int player_record);
+void yt_planet_garrison_player_overlay(struct yt_player *player,
+    float remaining);
+bool yt_planet_garrison_success_row(float desired, uint8_t *row,
+    size_t capacity, size_t *length);
+bool yt_planet_landing_record(float planet_offset, float sector_link,
+    uint32_t *physical_record, float *updater_logical);
+bool yt_planet_landing_immediate_allow(float ground_forces, float owner,
+    int current_player_record);
+bool yt_planet_landing_valid_owner(float owner, int last_player_record,
+    int *physical_owner_record);
+bool yt_planet_landing_vacant(float owner, float owner_status,
+    int last_player_record);
+float yt_planet_landing_attrition(float first_draw, float second_draw,
+    float cached_ground_forces);
+void yt_planet_landing_vacancy_overlay(struct yt_planet *planet,
+    float ground_forces, int current_player_record);
+bool yt_planet_landing_traffic_row(const uint8_t *planet_name,
+    size_t planet_name_length, uint8_t *row, size_t capacity,
+    size_t *length);
+bool yt_planet_landing_sensor_row(float fresh_ground_forces,
+    float cached_carried_forces, uint8_t *row, size_t capacity,
+    size_t *length);
+bool yt_planet_landing_amount_prompt(float cached_carried_forces,
+    uint8_t *prompt, size_t capacity, size_t *length);
+float yt_planet_landing_commitment(const char *response);
+bool yt_planet_landing_commitment_valid(float commitment,
+    float cached_carried_forces);
+bool yt_planet_landing_unrest_row(float reduced, float original,
+    uint8_t *row, size_t capacity, size_t *length);
+void yt_planet_assault_player_overlay(struct yt_player *player,
+    float commitment);
+void yt_planet_assault_victory_overlay(struct yt_planet *planet,
+    float owner, float attackers);
+void yt_planet_assault_failure_overlay(struct yt_planet *planet,
+    float defenders);
+void yt_planet_assault_round(bool attacker_damage, float amount,
+    float *attackers, float *defenders);
+bool yt_planet_assault_attack_news(const uint8_t *player_name,
+    size_t player_name_length, const uint8_t *planet_name,
+    size_t planet_name_length, float commitment, uint8_t *row,
+    size_t capacity, size_t *length);
+bool yt_planet_assault_status_row(bool attacker_damage, float remaining,
+    uint8_t *row, size_t capacity, size_t *length);
+bool yt_planet_assault_capture_news(const uint8_t *player_name,
+    size_t player_name_length, const uint8_t *planet_name,
+    size_t planet_name_length, uint8_t *row, size_t capacity,
+    size_t *length);
+bool yt_planet_assault_failure_row(float defenders, bool news,
+    uint8_t *row, size_t capacity, size_t *length);
+bool yt_planet_creation_credit_row(double credits, uint8_t *row,
+    size_t capacity, size_t *length);
+void yt_planet_creation_overlay(struct yt_planet *planet,
+    int current_player_record);
+void yt_planet_creation_timestamp_overlay(struct yt_planet *planet,
+    float day, float minute);
+void yt_planet_creation_credit_overlay(struct yt_player *player,
+    float price_argument);
+bool yt_planet_creation_news(const uint8_t *trader_name,
+    size_t trader_name_length, const uint8_t *planet_name,
+    size_t planet_name_length, uint8_t *row, size_t capacity,
+    size_t *length);
+bool yt_planet_creation_success_row(const uint8_t *planet_name,
+    size_t planet_name_length, uint8_t *row, size_t capacity,
+    size_t *length);
+float yt_planet_move_destination(const char *response);
+float yt_planet_move_maximum(float port_record_offset,
+    float sector_record_offset);
+float yt_planet_move_add_cost(float cost);
+float yt_planet_move_fighter_loss(float fighters, float first_draw,
+    float second_draw);
+void yt_planet_move_sector_overlay(struct yt_sector *sector,
+    float planet_link);
+void yt_planet_move_explosion_overlay(struct yt_planet *planet);
+void yt_planet_move_fighter_overlay(struct yt_player *player, float loss);
+void yt_planet_move_success_overlay(struct yt_player *player,
+    float requested_destination);
+bool yt_planet_move_path_heading(float start, float destination,
+    uint8_t *row, size_t capacity, size_t *length);
+bool yt_planet_move_summary(float cost, uint8_t *row, size_t capacity,
+    size_t *length);
+bool yt_planet_move_turns_row(float turns, uint8_t *row, size_t capacity,
+    size_t *length);
+bool yt_planet_move_explosion_row(const uint8_t *planet_name,
+    size_t planet_name_length, uint8_t *row, size_t capacity,
+    size_t *length);
+bool yt_planet_move_explosion_news(const uint8_t *planet_name,
+    size_t planet_name_length, const uint8_t *player_name,
+    size_t player_name_length, uint8_t *row, size_t capacity,
+    size_t *length);
+bool yt_planet_move_loss_row(const uint8_t *actor, size_t actor_length,
+    float loss, uint8_t *row, size_t capacity, size_t *length);
+bool yt_planet_move_success_row(const uint8_t *planet_name,
+    size_t planet_name_length, uint8_t *row, size_t capacity,
+    size_t *length);
+float yt_sector_mine_batch(float mines_before);
+float yt_sector_mine_shield_result(float shields, float batch, float draw);
+float yt_sector_mine_cloak_loss(float cloak, float batch, float draw);
+float yt_sector_mine_missile_loss(float missiles, float batch, float draw);
+float yt_sector_mine_empty_holds(const struct yt_player *player);
+void yt_sector_mine_sector_overlay(struct yt_sector *sector,
+    float mines_after);
+void yt_sector_mine_player_overlay(struct yt_player *fresh,
+    const struct yt_player *working, unsigned fields);
+bool yt_sector_mine_explosion_row(float mines_before, float batch,
+    uint8_t *row, size_t capacity, size_t *length);
+bool yt_sector_mine_shields_row(float shields, uint8_t *row,
+    size_t capacity, size_t *length);
+bool yt_sector_mine_loss_row(enum yt_sector_mine_loss_kind kind, float loss,
+    uint8_t *row, size_t capacity, size_t *length);
+bool yt_sector_mine_entry_news(const uint8_t *player_name,
+    size_t player_name_length, float sector, uint8_t *row, size_t capacity,
+    size_t *length);
+bool yt_sector_mine_final_news(float shields, uint8_t *row,
+    size_t capacity, size_t *length);
+bool yt_direct_fighter_mine_warning(const uint8_t *victim_name,
+    size_t victim_name_length, uint8_t *row, size_t capacity,
+    size_t *length);
+float yt_emergency_warp_duration(float first, float second);
+float yt_emergency_warp_destination(float draw, float sector_count);
+float yt_emergency_warp_cost(float heat, float draw, float turns,
+    bool meltdown);
+void yt_emergency_warp_player_overlay(struct yt_player *player,
+    float destination, float cost);
+bool yt_emergency_warp_result_row(float destination, float cost,
+    uint8_t *row, size_t capacity, size_t *length);
+bool yt_emergency_warp_stranded_row(float destination, uint8_t *row,
+    size_t capacity, size_t *length);
+bool yt_movement_warp_row(const float warps[6], uint8_t *row,
+    size_t capacity, size_t *length);
+bool yt_movement_confirmation_prompt(float target, uint8_t *row,
+    size_t capacity, size_t *length);
+void yt_movement_player_overlay(struct yt_player *player, float target);
+size_t yt_port_trade_schedule(const float factors[3], size_t order[3]);
+int yt_computer_selector_position(const char *command);
+void yt_trade_treasury_overlay(struct yt_port *port, float receipt);
+void yt_trade_credit_overlay(struct yt_player *player, float delta);
+void yt_trade_holds_overlay(struct yt_player *player, size_t commodity,
+    float quantity, float direction);
+void yt_trade_stock_overlay(struct yt_port *port, size_t commodity,
+    double cached_quantity, float quantity);
+const char *yt_planet_take_one_title(int item);
+void yt_planet_take_one_player_overlay(struct yt_player *player, int item,
+    float amount);
+void yt_planet_take_one_planet_overlay(struct yt_planet *planet, int item,
+    double cached_quantity, float amount);
+void yt_planet_take_all_weapon_player_overlay(struct yt_player *player,
+    const double cached_quantity[10], double amount[10]);
+void yt_planet_take_all_weapon_planet_overlay(struct yt_planet *planet,
+    const double cached_quantity[10], const double amount[10]);
+float yt_planet_take_all_commodity_player_overlay(struct yt_player *player,
+    int item, double cached_quantity);
+void yt_planet_take_all_commodity_planet_overlay(struct yt_planet *planet,
+    int item, double cached_quantity, float amount);
+void yt_planet_transfer_cargo_cache(float rate[10], double quantity[10],
+    const double held[3]);
+void yt_planet_transfer_cargo_player_overlay(struct yt_player *player);
+void yt_planet_transfer_cargo_planet_overlay(struct yt_planet *planet,
+    const float rate[10], const double quantity[10],
+    const float contribution[10]);
+void yt_planet_transfer_direct_player_overlay(struct yt_player *player,
+    int item);
+void yt_planet_transfer_direct_planet_overlay(struct yt_planet *planet,
+    int item, double cached_quantity, float cached_amount);
+void yt_planet_transfer_fighter_player_overlay(struct yt_player *player,
+    float cached_fighters, float amount);
+void yt_planet_transfer_fighter_planet_overlay(struct yt_planet *planet,
+    double cached_quantity, float amount);
+int yt_planet_transfer_selector_position(const char *command);
+bool yt_planet_transfer_cargo_empty(const double held[3]);
+bool yt_planet_transfer_fighter_rejected(float amount,
+    float cached_fighters);
+double yt_planet_bank_available(float cached_credits, float cached_bank);
+double yt_planet_bank_remaining(float cached_credits, float cached_bank,
+    double target);
+void yt_planet_bank_planet_overlay(struct yt_planet *planet, double target);
+float yt_planet_bank_credit_argument(float cached_bank, double target);
+void yt_planet_bank_credit_overlay(struct yt_player *player, float argument);
+double yt_planet_productivity_units(double spend);
+void yt_planet_productivity_cache(float rate[10], double units,
+    float delta[4]);
+float yt_planet_productivity_credit_argument(double units);
+void yt_planet_productivity_planet_overlay(struct yt_planet *planet,
+    const float rate[10], const double quantity[10],
+    const float contribution[10]);
+bool yt_planet_rename_protected(float current_record, float planet_offset,
+    float total_record_marker);
+enum yt_planet_rename_name_result yt_planet_rename_prepare_name(char *name,
+    size_t *length);
+void yt_planet_rename_overlay(struct yt_planet *planet, const char *name,
+    size_t length);
+bool yt_clearance_candidate_needed(size_t item, float trigger_draw,
+    float discount, bool create);
+bool yt_clearance_normalize(size_t item, float *discount);
+float yt_clearance_percentage(float discount);
+void yt_earth_prices(const float discount[4], float price[4]);
+double yt_earth_affordable(float credits, float price);
+int yt_earth_selector_position(const char *command);
+float yt_earth_purchase_quantity(double value);
+float yt_earth_receipt_amount(float owner, int buyer_record, float cost);
+float yt_earth_cloak_points(float cloak);
+float yt_earth_cloak_default(float deficit, float credits);
+float yt_earth_cloak_overlay(float points, float quantity);
+void yt_earth_supply_overlay(struct yt_player *player, int choice,
+    float quantity);
+int yt_lottery_match_count(const int winning[6], const char ticket[6],
+    bool matched_winning[6]);
+float yt_lottery_award(int matches);
+bool yt_player_name_matches(const struct yt_player *player,
+    const uint8_t *name, size_t length, bool *matches,
+    struct yt_error *error);
+bool yt_player_stored_name(const struct yt_player *player,
+    uint8_t name[YT_TEXT_FIELD_SIZE], size_t *length,
+    struct yt_error *error);
+bool yt_planet_stored_name(const struct yt_planet *planet,
+    uint8_t name[YT_TEXT_FIELD_SIZE], size_t *length,
+    struct yt_error *error);
+bool yt_projectile_defense_row(float sector, const uint8_t *owner,
+    size_t owner_length, double fighters, uint8_t *row, size_t capacity,
+    size_t *length);
+bool yt_projectile_attack_first_rows(bool plasma,
+    const uint8_t *attacker, size_t attacker_length,
+    const uint8_t *victim, size_t victim_length, float sector,
+    uint8_t *news, size_t news_capacity, size_t *news_length,
+    uint8_t *direct, size_t direct_capacity, size_t *direct_length);
+bool yt_projectile_destroyed_rows(const uint8_t *victim,
+    size_t victim_length, uint8_t *destroyed, size_t destroyed_capacity,
+    size_t *destroyed_length, uint8_t *warning, size_t warning_capacity,
+    size_t *warning_length);
+bool yt_projectile_friendly_planet_row(const uint8_t *planet,
+    size_t planet_length, uint8_t *row, size_t capacity, size_t *length);
+bool yt_projectile_planet_attack_rows(bool plasma,
+    const uint8_t *attacker, size_t attacker_length,
+    const uint8_t *planet, size_t planet_length, float sector,
+    uint8_t *direct, size_t direct_capacity, size_t *direct_length,
+    uint8_t *news, size_t news_capacity, size_t *news_length);
+bool yt_xannor_victory_winner(const uint8_t *player, size_t player_length,
+    uint8_t *row, size_t capacity, size_t *length);
+bool yt_fixed_text_contains(const uint8_t field[YT_TEXT_FIELD_SIZE],
+    const uint8_t *needle, size_t needle_length);
+bool yt_radio_player_prompt(const struct yt_player *player, uint8_t *prompt,
+    size_t capacity, size_t *length, struct yt_error *error);
+bool yt_direct_attack_radio_text(const uint8_t *name, size_t name_length,
+    double defender_loss, uint8_t *text, size_t capacity, size_t *length);
+bool yt_direct_attack_team_row(const uint8_t *name, size_t name_length,
+    uint8_t *row, size_t capacity, size_t *length);
+bool yt_direct_attack_candidate_prompt(const uint8_t *name,
+    size_t name_length, uint8_t *prompt, size_t capacity, size_t *length);
+bool yt_direct_attack_commitment_prompt(double fighters, uint8_t *prompt,
+    size_t capacity, size_t *length);
+bool yt_direct_attack_too_many_row(double fighters, uint8_t *row,
+    size_t capacity, size_t *length);
+bool yt_direct_attack_result_rows(double attacker_loss,
+    double cached_reserve, double defender_loss, double defenders,
+    uint8_t *attacker_row, size_t attacker_capacity,
+    size_t *attacker_length, uint8_t *defender_row,
+    size_t defender_capacity, size_t *defender_length);
+void yt_direct_attack_fighter_overlay(struct yt_player *player,
+    float fighters);
+void yt_direct_attack_shield_overlay(struct yt_player *player,
+    float shields);
+void yt_deployed_attack_player_overlay(struct yt_player *player,
+    float shields, float fighters);
+void yt_deployed_attack_sector_overlay(struct yt_sector *sector,
+    float fighters);
+void yt_bribe_sector_overlay(struct yt_sector *sector);
+void yt_bribe_player_overlay(struct yt_player *player, float fighters,
+    float credits);
+bool yt_player_killer_row(const struct yt_player *player, uint8_t *row,
+    size_t capacity, size_t *length, bool *emit, struct yt_error *error);
+bool yt_projectile_target_prompt(bool plasma, float displayed,
+    float maximum, uint8_t *prompt, size_t capacity, size_t *length);
+enum yt_projectile_target_result yt_projectile_target_response(
+    const char *response, float maximum, float *target);
+float yt_projectile_quantity_response(const char *response);
+float yt_counterlaunch_score_count(double cached_score, float retained);
+void yt_counterlaunch_debit_overlay(struct yt_player *fresh_target,
+    float first_available, float selected_count);
+bool yt_counterlaunch_rows(const uint8_t *target_name,
+    size_t target_name_length, float selected_count,
+    const uint8_t *saved_name, size_t saved_name_length,
+    uint8_t *terminal, size_t terminal_capacity, size_t *terminal_length,
+    uint8_t *news, size_t news_capacity, size_t *news_length);
 
 void yt_player_construct(struct yt_player *player,
     const struct yt_config *config, float today);
 
 #endif
-

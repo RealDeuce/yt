@@ -6,7 +6,8 @@
 enum yt_open_mode {
 	YT_OPEN_READ,
 	YT_OPEN_UPDATE,
-	YT_OPEN_CREATE
+	YT_OPEN_CREATE,
+	YT_OPEN_UPDATE_CREATE
 };
 
 struct yt_database {
@@ -31,4 +32,3 @@ bool yt_file_rename(const char *old_path, const char *new_path,
 bool yt_file_size(const char *path, size_t *size, struct yt_error *error);
 
 #endif
-

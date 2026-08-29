@@ -65,3 +65,46 @@ yt_pager_complete(struct yt_pager_state *pager,
 	pager->foreground = saved_foreground;
 	presentation->foreground = (float)saved_foreground;
 }
+
+void
+yt_sector_pager_begin(struct yt_sector_pager_state *pager)
+{
+	pager->line_count = 3.0f;
+}
+
+void
+yt_sector_pager_add(struct yt_sector_pager_state *pager, float lines)
+{
+	pager->line_count = single_add(pager->line_count, lines);
+}
+
+bool
+yt_sector_pager_finish_sector(struct yt_sector_pager_state *pager)
+{
+	if (pager->line_count <= 15.0f)
+		return false;
+	pager->line_count = 0.0f;
+	return true;
+}
+
+void
+yt_radio_pager_begin(struct yt_radio_pager_state *pager)
+{
+	pager->line_count = 0.0f;
+}
+
+void
+yt_radio_pager_add_pair(struct yt_radio_pager_state *pager)
+{
+	pager->line_count = single_add(pager->line_count, 2.0f);
+}
+
+bool
+yt_radio_pager_add_body(struct yt_radio_pager_state *pager)
+{
+	pager->line_count = single_add(pager->line_count, 1.0f);
+	if (pager->line_count <= 22.0f)
+		return false;
+	pager->line_count = 0.0f;
+	return true;
+}

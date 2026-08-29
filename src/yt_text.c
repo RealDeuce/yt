@@ -5,6 +5,56 @@
 #include <stdlib.h>
 #include <string.h>
 
+bool
+yt_text_line_input_next(const uint8_t *data, size_t data_length,
+    size_t *cursor, uint8_t *line, size_t capacity, size_t *line_length,
+    bool *available)
+{
+	size_t start;
+	size_t position;
+	size_t output_length = 0U;
+	size_t output_position = 0U;
+	bool consumed = false;
+
+	if (cursor == NULL || line_length == NULL || available == NULL
+	    || (data == NULL && data_length != 0U) || *cursor > data_length)
+		return false;
+	*line_length = 0U;
+	*available = false;
+	start = *cursor;
+	if (start == data_length || data[start] == 0x1aU)
+		return true;
+	position = start;
+	while (position < data_length && data[position] != 0x1aU
+	    && data[position] != '\r') {
+		if (data[position] != 0U)
+			++output_length;
+		++position;
+		consumed = true;
+	}
+	if (position < data_length && data[position] == '\r') {
+		++position;
+		consumed = true;
+		if (position < data_length && data[position] == '\n')
+			++position;
+	}
+	if (!consumed)
+		return true;
+	if (output_length > capacity
+	    || (output_length != 0U && line == NULL))
+		return false;
+	for (size_t input = start; input < position; ++input) {
+		if (data[input] == '\r')
+			break;
+		if (data[input] != 0U)
+			line[output_position++] = data[input];
+	}
+	*cursor = position;
+	*line_length = output_position;
+	*available = true;
+	return true;
+}
+
 #ifdef _WIN32
 #include <io.h>
 #else

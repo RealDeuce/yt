@@ -99,6 +99,8 @@ present_local_locate(void *context, int row, int column, int cursor_visible,
 	if (row < 1) {
 		ODScrnGetTextInfo(&info);
 		row = info.cury;
+		if (column < 1)
+			column = info.curx;
 	}
 	ODScrnSetCursorPos((BYTE)column, (BYTE)row);
 	if (cursor_visible >= 0)
@@ -114,6 +116,13 @@ present_local_beep(void *context)
 	present_local_bytes(&bell, 1);
 }
 
+static void
+present_local_clear(void *context)
+{
+	(void)context;
+	ODScrnClear();
+}
+
 void
 yt_out_present_result(const struct yt_present_result *result)
 {
@@ -124,6 +133,7 @@ yt_out_present_result(const struct yt_present_result *result)
 		.local_text = present_local_text,
 		.local_locate = present_local_locate,
 		.local_beep = present_local_beep,
+		.local_clear = present_local_clear,
 	};
 
 	yt_present_replay(result, &sink);

@@ -242,7 +242,8 @@ sort_teams(struct score_team *teams, size_t count)
 }
 
 bool
-yt_score_generate(struct yt_game *game, struct yt_error *error)
+yt_score_generate_progress(struct yt_game *game,
+    yt_score_progress_fn progress, void *context, struct yt_error *error)
 {
 	struct score_player players[YT_DEFAULT_PLAYER_COUNT];
 	struct score_team teams[YT_DEFAULT_PLAYER_COUNT];
@@ -273,6 +274,8 @@ yt_score_generate(struct yt_game *game, struct yt_error *error)
 		players[index].record = index + 2;
 		teams[index].id = index + 1;
 	}
+	if (progress != NULL && !progress(context, 1U, error))
+		return false;
 	for (index = 0; index < player_count; ++index) {
 		if (!yt_game_read_player(game, index + 2, &players[index].player,
 		    error))
@@ -281,6 +284,8 @@ yt_score_generate(struct yt_game *game, struct yt_error *error)
 		if (players[index].occupied)
 			players[index].score = base_score(&players[index].player);
 	}
+	if (progress != NULL && !progress(context, 2U, error))
+		return false;
 	for (index = 1; index <= sector_count; ++index) {
 		struct yt_sector sector;
 		double contribution;
@@ -314,8 +319,12 @@ yt_score_generate(struct yt_game *game, struct yt_error *error)
 			teams[(int)players[index].player.team - 1].score
 			    += players[index].score;
 	}
+	if (progress != NULL && !progress(context, 3U, error))
+		return false;
 
 	sort_players(players, (size_t)player_count);
+	if (progress != NULL && !progress(context, 4U, error))
+		return false;
 	sort_teams(teams, YT_ARRAY_LEN(teams));
 	denominator = player_count > 0 ? players[0].score : 0;
 	if (denominator == 0)
@@ -447,4 +456,10 @@ yt_score_generate(struct yt_game *game, struct yt_error *error)
 failure:
 	(void)fclose(file);
 	return false;
+}
+
+bool
+yt_score_generate(struct yt_game *game, struct yt_error *error)
+{
+	return yt_score_generate_progress(game, NULL, NULL, error);
 }

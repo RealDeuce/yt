@@ -65,11 +65,13 @@ set(YT_CORE_SOURCES
     src/yt_data.c
     src/yt_file.c
     src/yt_input_model.c
+	    src/yt_main_error.c
     src/yt_pager.c
     src/yt_platform.c
     src/yt_presentation.c
     src/yt_random.c
     src/yt_sound.c
+	    src/yt_startup_model.c
     src/yt_text.c)
 
 set(YT_GAME_SOURCES
@@ -78,6 +80,7 @@ set(YT_GAME_SOURCES
     src/yt_init.c
     src/yt_maint.c
     src/yt_names.c
+    src/yt_portname.c
     src/yt_score.c
     src/yt_score_format.c)
 
@@ -110,6 +113,8 @@ yt_add_utility(ytmaint src/main_ytmaint.c)
 yt_add_utility(ytconfig src/main_ytconfig.c)
 yt_add_utility(yt-init src/main_yt_init.c)
 yt_add_utility(rmt-init src/main_rmt_init.c)
+target_sources(rmt-init PRIVATE src/yt_rmt_door.c)
+target_link_libraries(rmt-init PRIVATE OpenDoors::Static)
 yt_add_utility(portname src/main_portname.c)
 yt_add_utility(local src/main_local.c)
 
@@ -152,7 +157,10 @@ if(BUILD_TESTING)
     yt_add_test(test_data tests/test_data.c yt_core)
     yt_add_test(test_sound tests/test_sound.c yt_core)
     yt_add_test(test_input_model tests/test_input_model.c yt_core)
-    yt_add_test(test_presentation tests/test_presentation.c yt_core)
+    if(NOT WIN32)
+        target_compile_definitions(test_input_model PRIVATE _XOPEN_SOURCE=700)
+    endif()
+    yt_add_test(test_presentation tests/test_presentation.c yt_game)
     yt_add_test(test_score tests/test_score.c yt_game)
 
     add_executable(test_assets tests/test_assets.c)
@@ -168,6 +176,9 @@ if(BUILD_TESTING)
     add_dependencies(test_clean_install yt-init ytmaint)
 
     yt_add_test(test_utilities tests/test_utilities.c yt_game)
+    if(NOT WIN32)
+        target_compile_definitions(test_utilities PRIVATE _XOPEN_SOURCE=700)
+    endif()
     target_compile_definitions(test_utilities PRIVATE
         YT_CONFIG_EXE="$<TARGET_FILE:ytconfig>"
         YT_PORTNAME_EXE="$<TARGET_FILE:portname>"

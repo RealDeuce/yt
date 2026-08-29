@@ -193,7 +193,6 @@ static bool
 edit_maintenance(struct yt_game *game, struct yt_error *error)
 {
 	char line[80];
-	struct yt_clock_value now;
 	int adjusted;
 	int serial;
 
@@ -205,9 +204,9 @@ edit_maintenance(struct yt_game *game, struct yt_error *error)
 		    || ((unsigned char)line[0] & 0xdfU) == 'N')
 			break;
 	}
-	if (!yt_platform_clock(&now, error))
+	if (!yt_current_date_serial(game->config.epoch_year, &serial,
+	    &adjusted, error))
 		return false;
-	serial = yt_date_serial(&now, (int)game->config.epoch_year, &adjusted);
 	game->config.epoch_year = (float)adjusted;
 	if (((unsigned char)line[0] & 0xdfU) == 'Y') {
 		static const uint8_t raw_allow[4] = {0x00, 0x00, 0x7d, 0x00};
