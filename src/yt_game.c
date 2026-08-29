@@ -269,19 +269,6 @@ yt_projectile_commit(struct yt_game *game, int player_record,
 	    counterattack, xannor_provoker, error);
 }
 
-void
-yt_current_player_cache_overlay(float *sector_cache, float *cloak_cache,
-    size_t cache_count, int player_record, bool anti_cloak,
-    const struct yt_player *player)
-{
-	if (sector_cache == NULL || cloak_cache == NULL || player == NULL
-	    || player_record < 0 || (size_t)player_record >= cache_count)
-		return;
-	sector_cache[player_record] = player->sector;
-	if (!anti_cloak)
-		cloak_cache[player_record] = player->cloak;
-}
-
 float
 yt_counterlaunch_score_count(double cached_score, float retained)
 {
@@ -558,6 +545,62 @@ yt_salvage_cargo_sample(struct yt_salvage_cargo_state *state,
 			    state->stock[selected], 1.0f);
 		state->remaining = salvage_single_sub(state->remaining, 1.0f);
 	}
+	return true;
+}
+
+bool
+yt_current_player_hydrate_run(
+    struct yt_current_player_hydration_state *state,
+    yt_current_player_read_fn read_player, void *context,
+    struct yt_error *error)
+{
+	struct yt_player fresh;
+	volatile float current_sector;
+	int record;
+
+	if (state == NULL || state->player == NULL || read_player == NULL
+	    || state->current_sector_record == NULL)
+		return false;
+	record = state->player_record;
+	if (record < 2 || record > state->last_player_record) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			error->system_error = 0;
+			(void)snprintf(error->operation, sizeof(error->operation), "%s",
+			    "current player hydration record");
+		}
+		return false;
+	}
+	if (!read_player(context, record, &fresh, error))
+		return false;
+
+	state->player->record = fresh.record;
+	state->player->sector = fresh.sector;
+	state->player->fighters = fresh.fighters;
+	current_sector = state->sector_record_offset + fresh.sector;
+	*state->current_sector_record = current_sector;
+	state->player->turns = fresh.turns;
+	state->player->credits = fresh.credits;
+	state->player->danger_scanner = fresh.danger_scanner;
+	state->player->missiles = fresh.missiles;
+	state->player->mines = fresh.mines;
+	state->player->team = fresh.team;
+	state->player->holds = fresh.holds;
+	state->player->ore = fresh.ore;
+	state->player->organics = fresh.organics;
+	state->player->equipment = fresh.equipment;
+	state->player->plasma = fresh.plasma;
+	state->player->score = fresh.score;
+	state->player->ports_owned = fresh.ports_owned;
+	state->player->ground_forces = fresh.ground_forces;
+	state->player->cloak = fresh.cloak;
+	if (record >= 0 && (size_t)record < state->cache_count) {
+		if (state->sector_cache != NULL)
+			state->sector_cache[record] = fresh.sector;
+		if (!state->anti_cloak && state->cloak_cache != NULL)
+			state->cloak_cache[record] = fresh.cloak;
+	}
+	state->player->shields = fresh.shields;
 	return true;
 }
 

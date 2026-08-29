@@ -27,33 +27,127 @@ fail(const char *message)
 	return EXIT_FAILURE;
 }
 
+struct hydration_tape {
+	struct yt_player fresh;
+	int requested_record;
+	unsigned calls;
+	bool succeeds;
+};
+
+static bool
+hydration_read(void *context, int player_record, struct yt_player *player,
+    struct yt_error *error)
+{
+	struct hydration_tape *tape = context;
+
+	(void)error;
+	++tape->calls;
+	tape->requested_record = player_record;
+	if (!tape->succeeds)
+		return false;
+	*player = tape->fresh;
+	return true;
+}
+
 static bool
 check_current_player_cache_model(void)
 {
+	struct yt_current_player_hydration_state state;
+	struct hydration_tape tape;
 	struct yt_player player;
+	struct yt_player before;
 	float sector_cache[5] = {-1.0f, -2.0f, -3.0f, -4.0f, -5.0f};
 	float cloak_cache[5] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+	float current_sector = -1.0f;
+	struct yt_error error;
 
 	memset(&player, 0, sizeof(player));
-	player.sector = 42.0f;
-	player.cloak = 0.75f;
-	yt_current_player_cache_overlay(sector_cache, cloak_cache,
-	    YT_ARRAY_LEN(sector_cache), 2, false, &player);
-	if (sector_cache[2] != 42.0f || cloak_cache[2] != 0.75f
-	    || sector_cache[1] != -2.0f || cloak_cache[1] != 2.0f)
+	memset(&tape, 0, sizeof(tape));
+	(void)snprintf(player.name, sizeof(player.name), "%s", "Cached Name");
+	player.name_length = 11.0f;
+	player.last_active = 71.0f;
+	player.killed_by = 72.0f;
+	player.lottery_plays = 73.0f;
+	memset(&tape.fresh, 0, sizeof(tape.fresh));
+	(void)snprintf(tape.fresh.name, sizeof(tape.fresh.name), "%s", "Field Name");
+	tape.fresh.name_length = 10.0f;
+	tape.fresh.last_active = 1.0f;
+	tape.fresh.killed_by = 2.0f;
+	tape.fresh.lottery_plays = 3.0f;
+	tape.fresh.turns = 4.0f;
+	tape.fresh.shields = 5.0f;
+	tape.fresh.sector = 6.0f;
+	tape.fresh.fighters = 7.0f;
+	tape.fresh.holds = 8.0f;
+	tape.fresh.ore = 9.0f;
+	tape.fresh.organics = 10.0f;
+	tape.fresh.equipment = 11.0f;
+	tape.fresh.credits = 12.0f;
+	tape.fresh.team = 13.0f;
+	tape.fresh.danger_scanner = 14.0f;
+	tape.fresh.missiles = 15.0f;
+	tape.fresh.score = 16.0f;
+	tape.fresh.plasma = 17.0f;
+	tape.fresh.ports_owned = 18.0f;
+	tape.fresh.ground_forces = 19.0f;
+	tape.fresh.cloak = 20.0f;
+	tape.fresh.mines = 21.0f;
+	yt_player_encode(&tape.fresh);
+	tape.fresh.record.bytes[YT_RECORD_TAIL_OFFSET] = 0x7f;
+	tape.succeeds = true;
+	state.player = &player;
+	state.player_record = 2;
+	state.last_player_record = 51;
+	state.sector_record_offset = 51.0f;
+	state.current_sector_record = &current_sector;
+	state.sector_cache = sector_cache;
+	state.cloak_cache = cloak_cache;
+	state.cache_count = YT_ARRAY_LEN(sector_cache);
+	state.anti_cloak = false;
+	if (!yt_current_player_hydrate_run(&state, hydration_read, &tape, NULL)
+	    || tape.calls != 1U || tape.requested_record != 2
+	    || strcmp(player.name, "Cached Name") != 0
+	    || player.name_length != 11.0f || player.last_active != 71.0f
+	    || player.killed_by != 72.0f || player.lottery_plays != 73.0f
+	    || player.turns != 4.0f || player.shields != 5.0f
+	    || player.sector != 6.0f || player.fighters != 7.0f
+	    || player.holds != 8.0f || player.ore != 9.0f
+	    || player.organics != 10.0f || player.equipment != 11.0f
+	    || player.credits != 12.0f || player.team != 13.0f
+	    || player.danger_scanner != 14.0f || player.missiles != 15.0f
+	    || player.score != 16.0f || player.plasma != 17.0f
+	    || player.ports_owned != 18.0f || player.ground_forces != 19.0f
+	    || player.cloak != 20.0f || player.mines != 21.0f
+	    || memcmp(&player.record, &tape.fresh.record,
+	    sizeof(player.record)) != 0
+	    || current_sector != 57.0f || sector_cache[2] != 6.0f
+	    || cloak_cache[2] != 20.0f || sector_cache[1] != -2.0f
+	    || cloak_cache[1] != 2.0f)
 		return false;
-	player.sector = 99.0f;
-	player.cloak = 0.25f;
-	yt_current_player_cache_overlay(sector_cache, cloak_cache,
-	    YT_ARRAY_LEN(sector_cache), 2, true, &player);
-	if (sector_cache[2] != 99.0f || cloak_cache[2] != 0.75f)
+
+	tape.fresh.sector = 22.0f;
+	tape.fresh.cloak = 23.0f;
+	yt_player_encode(&tape.fresh);
+	state.anti_cloak = true;
+	if (!yt_current_player_hydrate_run(&state, hydration_read, &tape, NULL)
+	    || sector_cache[2] != 22.0f || cloak_cache[2] != 20.0f
+	    || current_sector != 73.0f)
 		return false;
-	yt_current_player_cache_overlay(sector_cache, cloak_cache,
-	    YT_ARRAY_LEN(sector_cache), -1, false, &player);
-	yt_current_player_cache_overlay(sector_cache, cloak_cache,
-	    YT_ARRAY_LEN(sector_cache), 5, false, &player);
-	return sector_cache[0] == -1.0f && cloak_cache[0] == 1.0f
-	    && sector_cache[4] == -5.0f && cloak_cache[4] == 5.0f;
+
+	before = player;
+	tape.succeeds = false;
+	current_sector = 99.0f;
+	if (yt_current_player_hydrate_run(&state, hydration_read, &tape, NULL)
+	    || memcmp(&player, &before, sizeof(player)) != 0
+	    || current_sector != 99.0f)
+		return false;
+	before = player;
+	state.player_record = 52;
+	tape.calls = 0U;
+	yt_error_clear(&error);
+	return !yt_current_player_hydrate_run(&state, hydration_read, &tape,
+	    &error) && error.status == YT_RANGE && tape.calls == 0U
+	    && memcmp(&player, &before, sizeof(player)) == 0;
 }
 
 struct friendship_reader_tape {

@@ -51,6 +51,7 @@ struct yt_session {
 	float clearance_ground;
 	float clearance_shields;
 	float counterlaunch_count;
+	float current_sector_record;
 	float earth_report_seen;
 	float relationship_scratch;
 	float attack_commitment;
@@ -292,15 +293,32 @@ write_player(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
+session_hydration_read_player(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_read_player(&session->door->game, player_record, player,
+	    error);
+}
+
+static bool
 reload_player(struct yt_session *session, struct yt_error *error)
 {
-	if (!yt_game_read_player(&session->door->game,
-	    session->player_record, &session->player, error))
-		return false;
-	yt_current_player_cache_overlay(session->sector_cache,
-	    session->cloak_cache, YT_ARRAY_LEN(session->sector_cache),
-	    session->player_record, session->anti_cloak, &session->player);
-	return true;
+	struct yt_current_player_hydration_state state = {
+		&session->player,
+		session->player_record,
+		(int)session->door->game.config.sector_offset,
+		session->door->game.config.sector_offset,
+		&session->current_sector_record,
+		session->sector_cache,
+		session->cloak_cache,
+		YT_ARRAY_LEN(session->sector_cache),
+		session->anti_cloak,
+	};
+
+	return yt_current_player_hydrate_run(&state,
+	    session_hydration_read_player, session, error);
 }
 
 static bool

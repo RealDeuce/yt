@@ -296,6 +296,21 @@ struct yt_salvage_cargo_state {
 typedef bool (*yt_salvage_cargo_draw_fn)(void *context, float range,
     float *one_based, struct yt_error *error);
 
+struct yt_current_player_hydration_state {
+	struct yt_player *player;
+	int player_record;
+	int last_player_record;
+	float sector_record_offset;
+	float *current_sector_record;
+	float *sector_cache;
+	float *cloak_cache;
+	size_t cache_count;
+	bool anti_cloak;
+};
+
+typedef bool (*yt_current_player_read_fn)(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error);
+
 struct yt_game {
 	struct yt_database database;
 	struct yt_config config;
@@ -723,9 +738,6 @@ bool yt_projectile_commit(struct yt_game *game, int player_record,
     float amount, bool *destroyed, int *counterattack, int *xannor_provoker,
     yt_projectile_resolver_fn resolver, void *resolver_context,
     struct yt_error *error);
-void yt_current_player_cache_overlay(float *sector_cache, float *cloak_cache,
-    size_t cache_count, int player_record, bool anti_cloak,
-    const struct yt_player *player);
 float yt_counterlaunch_score_count(double cached_score, float retained);
 void yt_counterlaunch_debit_overlay(struct yt_player *fresh_target,
     float first_available, float selected_count);
@@ -742,6 +754,10 @@ bool yt_counterlaunch_run(struct yt_counterlaunch_state *state,
     struct yt_error *error);
 bool yt_salvage_cargo_sample(struct yt_salvage_cargo_state *state,
     yt_salvage_cargo_draw_fn draw, void *context, struct yt_error *error);
+bool yt_current_player_hydrate_run(
+    struct yt_current_player_hydration_state *state,
+    yt_current_player_read_fn read_player, void *context,
+    struct yt_error *error);
 
 void yt_player_construct(struct yt_player *player,
     const struct yt_config *config, float today);
