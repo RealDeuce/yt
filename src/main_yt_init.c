@@ -96,6 +96,8 @@ main(int argc, char **argv)
 
 	(void)argc;
 	yt_error_clear(&error);
+	yt_random_init(&random);
+	yt_initializer_layout_yt(&preparation);
 	if (!yt_init_present_confirmation_prefix(&presenter, &error)) {
 		yt_cli_error("YT-INIT", &error);
 		return EXIT_FAILURE;
@@ -108,7 +110,6 @@ main(int argc, char **argv)
 		yt_cli_error("YT-INIT", &error);
 		return EXIT_FAILURE;
 	}
-	yt_random_init(&random);
 	if (!yt_initializer_prepare_yt(&random, &preparation, &error)
 	    || !yt_init_present_prepared_configuration(&preparation,
 	    &presenter, &error)) {

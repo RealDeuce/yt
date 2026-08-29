@@ -1695,7 +1695,15 @@ test_yt_init_pre_input_presentation(void)
 	size_t index;
 
 	yt_error_clear(&error);
-	if (!yt_init_present_confirmation_prefix(&presenter, &error)
+	yt_initializer_layout_yt(&preparation);
+	if (preparation.config.sector_offset != 51.0f
+	    || preparation.config.port_offset != 2055.0f
+	    || preparation.config.planet_offset != 3055.0f
+	    || preparation.config.total_records != 3155.0f
+	    || preparation.config.turns_per_day != 0.0f
+	    || preparation.config.initial_fighters != 0.0f
+	    || preparation.config.maximum_holds != 0.0f
+	    || !yt_init_present_confirmation_prefix(&presenter, &error)
 	    || capture.calls != YT_ARRAY_LEN(prefix_sites))
 		return false;
 	for (index = 0U; index < YT_ARRAY_LEN(prefix_sites); ++index) {

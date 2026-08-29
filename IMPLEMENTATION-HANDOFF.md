@@ -187,12 +187,12 @@ not authoritative. Use the corrected goal above in the new workspace.
   destination-selector and destination-combat transactions,
   ledger dispositions are roots
   `167 candidate / 1 missing`, transfers
-  `5359 candidate / 2008 missing / 1 explicitly
+  `5362 candidate / 2005 missing / 1 explicitly
   deferred`, and presentation `136 candidate / 8 missing / 6 verified`.
   Current SHA-256
   values are roots
   `64b17a8ae6550d4ef994a6e872d1f06c9ff8a6bc33ab9ab64d390da38a87e8be`,
-  transfers `09c356543a4d4cae27a90a053a58b1a735d93c472fff2b982889a42d2c1f76c8`,
+  transfers `70eea5c5377d46abbf3cf32e62c59ba9fd87236c611ad369608d8871abb4ce8c`,
   presentation `b899734f3487d364fbad0b2d5be7936334cc753b4c676d3407d6703d522b5afe`,
   and manifest
   `3552bd61c9cb9b7197aeb6fbad1f37cba69cd09f125d878d0c9072a691e8950a`.
@@ -1859,6 +1859,14 @@ not authoritative. Use the corrected goal above in the new workspace.
   entry into the opening/persistence transaction and rejected success exit
   before any nonempty `YTDATA.DAT` mutation. The unrelated `0712` binding call
   remains separately uncredited.
+- The three YT-INIT entry/default transitions at `0030`, `004C`, and `0099`
+  are candidate. Native process entry now initializes the authorized
+  replacement CSPRNG provider and the shipped 50-player, 2,004-sector,
+  1,000-port and 100-planet layout before the exact confirmation prefix,
+  without consuming entropy. Pure fixtures pin the derived record bases and
+  all prefix sites; the executable decline fixture pins normal exit before
+  persistence. Physical CRT/platform-loader, startup-failure and framebuffer
+  state remain open.
 - Initializer date roots `YT-INIT:00B5` and `RMT-INIT:2339`, plus the remote
   identity title normalizer `RMT-INIT:2B42`, are candidate with all 128
   qualified helper-body transfers mapped to the already exact native date

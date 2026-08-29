@@ -974,6 +974,21 @@ yt_initializer_confirm_response(const char *response)
 	    && response[1] == '\0';
 }
 
+void
+yt_initializer_layout_yt(struct yt_initializer_preparation *preparation)
+{
+	if (preparation == NULL)
+		return;
+	memset(preparation, 0, sizeof(*preparation));
+	preparation->config.sector_offset = YT_INIT_PLAYERS + 1.0f;
+	preparation->config.port_offset = preparation->config.sector_offset
+	    + YT_INIT_SECTORS;
+	preparation->config.planet_offset = preparation->config.port_offset
+	    + YT_INIT_PORTS;
+	preparation->config.total_records = preparation->config.planet_offset
+	    + YT_INIT_PLANETS;
+}
+
 bool
 yt_initializer_prepare_yt(struct yt_random *random,
     struct yt_initializer_preparation *preparation, struct yt_error *error)
@@ -986,25 +1001,18 @@ yt_initializer_prepare_yt(struct yt_random *random,
 		set_error(error, YT_INVALID, "YT-INIT preparation", "");
 		return false;
 	}
-	memset(preparation, 0, sizeof(*preparation));
+	yt_initializer_layout_yt(preparation);
 	if (!yt_platform_clock(&epoch_date, error)
 	    || !yt_platform_clock(&maintenance_date, error)
 	    || !draw(random, &sample, error))
 		return false;
 	preparation->config.epoch_year = (float)(epoch_date.year % 100);
 	preparation->config.turns_per_day = 500.0f;
-	preparation->config.sector_offset = YT_INIT_PLAYERS + 1.0f;
-	preparation->config.port_offset = preparation->config.sector_offset
-	    + YT_INIT_SECTORS;
-	preparation->config.planet_offset = preparation->config.port_offset
-	    + YT_INIT_PORTS;
 	preparation->config.initial_fighters = 25.0f;
 	preparation->config.initial_credits = 1005.0f;
 	preparation->config.initial_holds = 10.0f;
 	preparation->config.retention_days = 14.0f;
 	preparation->config.local_screen = -1.0f;
-	preparation->config.total_records = preparation->config.planet_offset
-	    + YT_INIT_PLANETS;
 	preparation->config.lottery_plays = 5.0f;
 	preparation->config.genesis_ports = 300.0f;
 	preparation->config.maximum_holds = 1000.0f;

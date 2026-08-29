@@ -218,6 +218,8 @@ struct yt_initializer_options {
 bool yt_generate_port_name(struct yt_random *random, char name[42],
     struct yt_error *error);
 bool yt_initializer_confirm_response(const char *response);
+void yt_initializer_layout_yt(
+	struct yt_initializer_preparation *preparation);
 bool yt_init_present_confirmation_prefix(
 	const struct yt_init_presenter *presenter, struct yt_error *error);
 bool yt_init_present_opening(const struct yt_init_presenter *presenter,
