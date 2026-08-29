@@ -40,6 +40,9 @@ check_projectile_parent_model(void)
 	size_t length;
 	float target = -1.0f;
 	struct yt_player debit;
+	struct yt_player missile_debit;
+	struct yt_player plasma_debit;
+	struct yt_record expected_debit;
 	static const uint8_t target_binary[] = {'B', 0, 'B'};
 	static const uint8_t saved_binary[] = {'A', 0, 'A'};
 	static const uint8_t terminal_expected[] =
@@ -107,6 +110,24 @@ check_projectile_parent_model(void)
 	memset(debit.record.bytes, 0xa5, sizeof(debit.record.bytes));
 	debit.missiles = 99.0f;
 	yt_counterlaunch_debit_overlay(&debit, 10.0f, 3.0f);
+	memset(&missile_debit, 0, sizeof(missile_debit));
+	memset(missile_debit.record.bytes, 0xa5,
+	    sizeof(missile_debit.record.bytes));
+	missile_debit.missiles = 10.0f;
+	missile_debit.plasma = 19.0f;
+	(void)yt_record_set_number(&missile_debit.record, YT_F97, 10.0f);
+	(void)yt_record_set_number(&missile_debit.record, YT_F113, 19.0f);
+	expected_debit = missile_debit.record;
+	(void)yt_record_set_number(&expected_debit, YT_F97, 7.0f);
+	yt_projectile_debit_overlay(&missile_debit, false, 3.0f);
+	memset(&plasma_debit, 0, sizeof(plasma_debit));
+	memset(plasma_debit.record.bytes, 0x5a,
+	    sizeof(plasma_debit.record.bytes));
+	plasma_debit.missiles = 23.0f;
+	plasma_debit.plasma = 8.0f;
+	(void)yt_record_set_number(&plasma_debit.record, YT_F97, 23.0f);
+	(void)yt_record_set_number(&plasma_debit.record, YT_F113, 8.0f);
+	yt_projectile_debit_overlay(&plasma_debit, true, 2.0f);
 	if (!yt_counterlaunch_rows(target_binary, sizeof(target_binary), 3.0f,
 	    saved_binary, sizeof(saved_binary), terminal, sizeof(terminal),
 	    &terminal_length, news, sizeof(news), &news_length)
@@ -186,6 +207,15 @@ check_projectile_parent_model(void)
 	return debit.missiles == 7.0f
 	    && yt_record_get_number(&debit.record, YT_F97) == 7.0f
 	    && debit.record.bytes[YT_F93] == 0xa5U
+	    && missile_debit.missiles == 7.0f
+	    && missile_debit.plasma == 19.0f
+	    && memcmp(&missile_debit.record, &expected_debit,
+	    sizeof(expected_debit)) == 0
+	    && plasma_debit.missiles == 23.0f
+	    && plasma_debit.plasma == 6.0f
+	    && yt_record_get_number(&plasma_debit.record, YT_F97) == 23.0f
+	    && yt_record_get_number(&plasma_debit.record, YT_F113) == 6.0f
+	    && plasma_debit.record.bytes[YT_F93] == 0x5aU
 	    && yt_projectile_quantity_response("2.9") == 2.0f
 	    && yt_projectile_quantity_response("-.1") == -1.0f
 	    && yt_projectile_quantity_response("E") == 0.0f

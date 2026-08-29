@@ -58,6 +58,28 @@ yt_projectile_quantity_response(const char *response)
 	return (float)floor(parsed.valid ? parsed.value : 0.0);
 }
 
+void
+yt_projectile_debit_overlay(struct yt_player *player, bool plasma,
+    float amount)
+{
+	volatile float remaining;
+	size_t offset;
+
+	if (player == NULL)
+		return;
+	if (plasma) {
+		remaining = player->plasma - amount;
+		player->plasma = remaining;
+		offset = YT_F113;
+	}
+	else {
+		remaining = player->missiles - amount;
+		player->missiles = remaining;
+		offset = YT_F97;
+	}
+	(void)yt_record_set_number(&player->record, offset, remaining);
+}
+
 float
 yt_counterlaunch_score_count(double cached_score, float retained)
 {

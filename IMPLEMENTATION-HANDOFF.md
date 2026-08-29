@@ -191,12 +191,12 @@ not authoritative. Use the corrected goal above in the new workspace.
   destination-selector and destination-combat transactions,
   ledger dispositions are roots
   `167 candidate / 1 missing`, transfers
-  `5421 candidate / 1946 missing / 1 explicitly
+  `5425 candidate / 1942 missing / 1 explicitly
   deferred`, and presentation `136 candidate / 8 missing / 6 verified`.
   Current SHA-256
   values are roots
   `64b17a8ae6550d4ef994a6e872d1f06c9ff8a6bc33ab9ab64d390da38a87e8be`,
-  transfers `383bc9b2f81d0d1767001016a6dca1c346fd97c7c1fd630e9aae6b25f2889b30`,
+  transfers `b1704948db447ec26bd42e50468cdd63e260bd8a2292f7dc58bcf99c6757290b`,
   presentation `b899734f3487d364fbad0b2d5be7936334cc753b4c676d3407d6703d522b5afe`,
   and manifest
   `3552bd61c9cb9b7197aeb6fbad1f37cba69cd09f125d878d0c9072a691e8950a`.
@@ -1002,10 +1002,13 @@ not authoritative. Use the corrected goal above in the new workspace.
   `2306..233E` postlaunch suffix is also candidate: normal typed counterlaunch
   and Xannor gates call their existing wrappers in order, then destruction
   selects the common-fatal bridge or the ordinary scanner continuation. The
-  raw dual-hydration state/effect fixture, nine-edge selector/debit/PUT/
-  resolver bridge, remaining refusal partitions, active-shell joins, child
-  resolvers, ordinary/fatal missile cycles and all failure prefixes remain
-  candidate prerequisites.
+  selector/debit split now uses `yt_projectile_debit_overlay`; native fixtures
+  prove offsets 97/113, exact SINGLE subtraction, the untouched alternate
+  ammunition value and every unrelated raw byte, making those four transfers
+  candidate. The raw dual-hydration state/effect fixture, five-edge PUT/
+  resolver-call bridge, remaining refusal partitions, active-shell joins,
+  child resolvers, ordinary/fatal missile cycles and all failure prefixes
+  remain candidate prerequisites.
 - The ordinary main missile return now follows `YT:233E -> YT:161D` through
   the scanner-only current-sector display and fresh prompt; it no longer
   enters the gameplay hazard router. Missile opening, end-report, and the

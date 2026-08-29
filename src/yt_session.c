@@ -13290,12 +13290,7 @@ command_projectile(struct yt_session *session, bool plasma,
 	    "projectile accepted blank", error)
 	    || !finalize_action(session, 1.0f, error))
 		return error == NULL || error->status == YT_OK;
-	if (plasma)
-		session->player.plasma =
-		    single_sub(session->player.plasma, amount);
-	else
-		session->player.missiles =
-		    single_sub(session->player.missiles, amount);
+	yt_projectile_debit_overlay(&session->player, plasma, amount);
 	if (!write_player(session, error))
 		return false;
 	if (!launch_projectile(session, target, amount, plasma, NULL, NULL,
