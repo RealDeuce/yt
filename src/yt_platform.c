@@ -8,6 +8,12 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <bcrypt.h>
+
+struct rmt_serial_private {
+	HANDLE handle;
+	DCB original;
+	DCB opening;
+};
 #else
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -17,29 +23,21 @@
 #include <sys/random.h>
 #endif
 
-#ifdef _WIN32
-struct rmt_serial_private {
-	HANDLE handle;
-	DCB original;
-	DCB opening;
-};
-#else
 struct rmt_serial_private {
 	struct termios original;
 	struct termios opening;
 	speed_t observed_input;
 	speed_t observed_output;
 };
-#endif
-
-_Static_assert(sizeof(struct rmt_serial_private)
-    <= YT_PLATFORM_RMT_SERIAL_PRIVATE,
-    "RMT serial private state exceeds its public storage");
 #if defined(__FreeBSD__) || defined(__APPLE__)
 #include <stdlib.h>
 void arc4random_buf(void *, size_t);
 #endif
 #endif
+
+_Static_assert(sizeof(struct rmt_serial_private)
+    <= YT_PLATFORM_RMT_SERIAL_PRIVATE,
+    "RMT serial private state exceeds its public storage");
 
 static yt_clock_provider installed_clock_provider;
 static void *installed_clock_context;
@@ -170,6 +168,7 @@ yt_platform_executable_path(char *dest, size_t size, const char *argv0,
 #ifdef _WIN32
 	DWORD count;
 
+	(void)argv0;
 	if (size > (size_t)UINT_MAX)
 		size = UINT_MAX;
 	count = GetModuleFileNameA(NULL, dest, (DWORD)size);
@@ -310,12 +309,12 @@ yt_platform_spawn(const char *program, char *const argv[],
 		set_error(error, YT_CHILD_ERROR, "CreateProcess", program);
 		return false;
 	}
-	if (mode == YT_SPAWN_REPLACE)
-		ExitProcess(0);
 	WaitForSingleObject(process.hProcess, INFINITE);
 	GetExitCodeProcess(process.hProcess, &status);
 	CloseHandle(process.hThread);
 	CloseHandle(process.hProcess);
+	if (mode == YT_SPAWN_REPLACE)
+		ExitProcess(status);
 	if (exit_code != NULL)
 		*exit_code = (int)status;
 	return true;

@@ -187,12 +187,12 @@ not authoritative. Use the corrected goal above in the new workspace.
   destination-selector and destination-combat transactions,
   ledger dispositions are roots
   `167 candidate / 1 missing`, transfers
-  `5265 candidate / 2102 missing / 1 explicitly
+  `5266 candidate / 2101 missing / 1 explicitly
   deferred`, and presentation `136 candidate / 8 missing / 6 verified`.
   Current SHA-256
   values are roots
   `64b17a8ae6550d4ef994a6e872d1f06c9ff8a6bc33ab9ab64d390da38a87e8be`,
-  transfers `90edf97ae1372ec48c5e9de5d4fffbd3072f32d6aca87c6084f5370fd59f1cbd`,
+  transfers `d104e84da4c73b85eb527c6bb69fa6997933b5f9d59fb9aba836b42633e522f6`,
   presentation `b899734f3487d364fbad0b2d5be7936334cc753b4c676d3407d6703d522b5afe`,
   and manifest
   `3552bd61c9cb9b7197aeb6fbad1f37cba69cd09f125d878d0c9072a691e8950a`.
@@ -2207,7 +2207,19 @@ not authoritative. Use the corrected goal above in the new workspace.
   the 137-byte configuration record durable. Normal termination emits the
   shipped status rows and records
   `L64cgaL1p1p1p1` as the authorized no-audio logical PLAY event before the
-  existing process-replacement handoff.
+  existing process-replacement handoff. The qualified `YT-INIT:23DA` RUN edge
+  is now candidate through `main_yt_init.c`, `yt_platform_spawn()`, and the
+  composed clean-install fixture: output is flushed, sibling `ytmaint`
+  replaces the initializer, and maintenance output/effects must complete
+  before the launched process returns. POSIX already uses `execv`. The Win32
+  replacement branch previously launched YTMAINT and immediately exited zero;
+  it now waits, closes the process handles, and exits with YTMAINT's status.
+  The same audit fixed a pre-existing preprocessor nesting error that had left
+  Win32 without the private serial-state type; `yt_platform.c` now passes a
+  strict MinGW C17 `-Wall -Wextra -Werror` object compile as well as the native
+  build.
+  Direct Win32 execution plus raw BRUN PLAY-stop/path/preflight/cleanup/loader
+  state and partial failures remain open.
 - Upstream commit `1248add9` corrected the generated YT-INIT presentation
   model to include the two ordinary rows at `YT-INIT:08BF..090D`:
   descriptor `DS:A986` resolves to `  # of turns per day:` followed by live
