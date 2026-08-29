@@ -1401,6 +1401,10 @@ struct utility_lcg {
 	uint32_t state;
 };
 
+struct utility_graph_script {
+	size_t draws;
+};
+
 struct rmt_presentation_tape {
 	struct yt_rmt_output_state state;
 	uint8_t local[8192];
@@ -1522,6 +1526,54 @@ utility_lcg_fill(void *context, void *buffer, size_t length,
 	bytes[0] = (uint8_t)lcg->state;
 	bytes[1] = (uint8_t)(lcg->state >> 8);
 	bytes[2] = (uint8_t)(lcg->state >> 16);
+	return true;
+}
+
+static bool
+utility_graph_retry_fill(void *context, void *buffer, size_t length,
+    struct yt_error *error)
+{
+	struct utility_graph_script *script = context;
+	uint8_t *bytes = buffer;
+	uint32_t sample = UINT32_C(0x800000);
+
+	if (length != 3U) {
+		if (error != NULL)
+			error->status = YT_RANDOM_ERROR;
+		return false;
+	}
+	switch (script->draws) {
+	case 13U: /* Sector 2 long-warp probability: admit a target draw. */
+		sample = UINT32_C(0xfd70a4);
+		break;
+	case 14U: /* Bound seven maps this sample back to sector 2 itself. */
+		sample = UINT32_C(0x333333);
+		break;
+	case 15U: /* The required retry admits a second target draw. */
+	case 23U: /* Sector 3 admits an empty long-warp destination. */
+		sample = UINT32_C(0xfd70a4);
+		break;
+	case 16U: /* Sector 6 already owns its sixth reciprocal slot. */
+		sample = UINT32_C(0xcccccc);
+		break;
+	case 24U: /* Bound seven maps the empty target to sector 4. */
+		sample = UINT32_C(0x800000);
+		break;
+	case 37U:
+	case 50U: /* Sector 7 remains empty after its first pass. */
+	case 51U: /* Its retry takes a local warp to sector 6. */
+	case 52U:
+	case 58U:
+	case 59U: /* The first shortcut position is 8, beyond sector 7. */
+		sample = 0U;
+		break;
+	default:
+		break;
+	}
+	bytes[0] = (uint8_t)sample;
+	bytes[1] = (uint8_t)(sample >> 8);
+	bytes[2] = (uint8_t)(sample >> 16);
+	++script->draws;
 	return true;
 }
 
@@ -1977,6 +2029,87 @@ test_initializer_world_image(void)
 	if (!ok)
 		fprintf(stderr, "initializer image: length=%zu hash=%016llx\n",
 		    length, (unsigned long long)hash);
+	free(database);
+	return ok;
+}
+
+static bool
+test_initializer_graph_retries(void)
+{
+	struct utility_graph_script script = {0U};
+	struct yt_random random;
+	struct yt_initializer_options options;
+	struct yt_config decoded;
+	struct yt_error error;
+	struct yt_record config_record;
+	struct yt_record sector_two;
+	struct yt_record sector_three;
+	struct yt_record sector_four;
+	struct yt_record sector_six;
+	struct yt_record sector_seven;
+	uint8_t *database = NULL;
+	size_t length = 0U;
+	size_t offset;
+	uint64_t hash;
+	bool ok;
+
+	memset(&options, 0, sizeof(options));
+	options.family = YT_INITIALIZER_YT;
+	rmt_small_config(&options.config);
+	options.config.epoch_year = 26.0f;
+	options.config.port_offset = 10.0f;
+	options.config.planet_offset = 14.0f;
+	options.config.total_records = 15.0f;
+	options.use_existing_config = true;
+	yt_error_clear(&error);
+	yt_random_init(&random);
+	yt_random_set_provider(&random, utility_graph_retry_fill, &script);
+	yt_platform_set_clock_provider(utility_fixed_clock, NULL);
+	ok = yt_initialize_world(&options, &random, &error);
+	yt_platform_set_clock_provider(NULL, NULL);
+	if (!ok || random.draws != 100U || script.draws != 100U
+	    || !read_file("YTDATA.DAT", &database, &length)
+	    || length != 2055U) {
+		fprintf(stderr, "initializer graph retry: ok=%d status=%d draws=%zu/%zu length=%zu\n",
+		    ok, error.status, (size_t)random.draws, script.draws, length);
+		free(database);
+		return false;
+	}
+	memcpy(config_record.bytes, database, YT_RECORD_SIZE);
+	if (!yt_config_decode(&decoded, &config_record, &error)) {
+		free(database);
+		return false;
+	}
+	offset = ((size_t)yt_sector_basic_record(&decoded, 2) - 1U)
+	    * YT_RECORD_SIZE;
+	memcpy(sector_two.bytes, database + offset, YT_RECORD_SIZE);
+	offset = ((size_t)yt_sector_basic_record(&decoded, 3) - 1U)
+	    * YT_RECORD_SIZE;
+	memcpy(sector_three.bytes, database + offset, YT_RECORD_SIZE);
+	offset = ((size_t)yt_sector_basic_record(&decoded, 4) - 1U)
+	    * YT_RECORD_SIZE;
+	memcpy(sector_four.bytes, database + offset, YT_RECORD_SIZE);
+	offset = ((size_t)yt_sector_basic_record(&decoded, 6) - 1U)
+	    * YT_RECORD_SIZE;
+	memcpy(sector_six.bytes, database + offset, YT_RECORD_SIZE);
+	offset = ((size_t)yt_sector_basic_record(&decoded, 7) - 1U)
+	    * YT_RECORD_SIZE;
+	memcpy(sector_seven.bytes, database + offset, YT_RECORD_SIZE);
+	hash = utility_fnv1a64(database, length);
+	ok = yt_record_get_number(&sector_two, YT_F61) == 0.0f
+	    && yt_record_get_number(&sector_three, YT_F61) == 4.0f
+	    && yt_record_get_number(&sector_four, YT_F61) == 3.0f
+	    && yt_record_get_number(&sector_six, YT_F41) == 7.0f
+	    && yt_record_get_number(&sector_seven, YT_F41) == 6.0f
+	    && hash == UINT64_C(0x7f7d755646c7a098);
+	if (!ok)
+		fprintf(stderr, "initializer graph retry image: hash=%016llx s2.6=%g s3.6=%g s4.6=%g s6.0=%g s7.0=%g\n",
+		    (unsigned long long)hash,
+		    (double)yt_record_get_number(&sector_two, YT_F61),
+		    (double)yt_record_get_number(&sector_three, YT_F61),
+		    (double)yt_record_get_number(&sector_four, YT_F61),
+		    (double)yt_record_get_number(&sector_six, YT_F41),
+		    (double)yt_record_get_number(&sector_seven, YT_F41));
 	free(database);
 	return ok;
 }
@@ -3818,6 +3951,8 @@ main(void)
 		failure = "YT-INIT presentation failure prefix differs";
 	else if (!test_initializer_world_image())
 		failure = "deterministic initializer world image differs";
+	else if (!test_initializer_graph_retries())
+		failure = "initializer graph retry fixture differs";
 	else if (!test_rmt_initializer_world_image())
 		failure = "deterministic RMT initializer world image differs";
 	else if (!test_rmt_presentation_failure_prefixes())

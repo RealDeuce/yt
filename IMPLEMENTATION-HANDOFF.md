@@ -187,12 +187,12 @@ not authoritative. Use the corrected goal above in the new workspace.
   destination-selector and destination-combat transactions,
   ledger dispositions are roots
   `167 candidate / 1 missing`, transfers
-  `5318 candidate / 2049 missing / 1 explicitly
+  `5338 candidate / 2029 missing / 1 explicitly
   deferred`, and presentation `136 candidate / 8 missing / 6 verified`.
   Current SHA-256
   values are roots
   `64b17a8ae6550d4ef994a6e872d1f06c9ff8a6bc33ab9ab64d390da38a87e8be`,
-  transfers `fe3e2e4f128da40db02f55c13cfe49abbf596c88f18c7427564c18fe7c2caa32`,
+  transfers `7c36c2b4327d7a09f62aef4a478fe2c6f81c1e1e2ecd51a0be9e1d386e374105`,
   presentation `b899734f3487d364fbad0b2d5be7936334cc753b4c676d3407d6703d522b5afe`,
   and manifest
   `3552bd61c9cb9b7197aeb6fbad1f37cba69cd09f125d878d0c9072a691e8950a`.
@@ -1876,8 +1876,15 @@ not authoritative. Use the corrected goal above in the new workspace.
   connectivity arms, 21 observed repair calls, and the final graph-to-disk
   join. The native tape now asserts both 21 address-owned no-path rows and 21
   linked-result rows in addition to 35 long-warp triples and 2,003
-  verification triples. Inner self-target/provider-failure alternatives and
-  raw array/runtime state remain uncredited.
+  verification triples. Remaining local-warp/provider-failure alternatives
+  and raw array/runtime state remain uncredited.
+- Twenty long-warp and whole-pass retry transfers at `1079..11EC` are now
+  candidate. A scripted seven-sector YT fixture forces a long self-target and
+  fresh-draw retry, an occupied target with no mutation, an empty reciprocal
+  write, and an all-zero sector pass followed by a successful local-link
+  retry. It pins 100 total draws, the exact 2,055-byte image/hash and the
+  affected reciprocal lanes. Raw loop/SINGLE/array cells, provider failures
+  and the remaining local-warp inner alternatives stay open.
 - All five shortcut-controller transfers at `1391..13CD` are candidate. The
   recovered YT sequence pins eleven cumulative positions, the terminal
   overshoot, both empty-slot mutation and occupied-slot preservation, exact
