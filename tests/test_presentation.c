@@ -1770,7 +1770,9 @@ test_time_helpers(void)
 	struct yt_present_time_state time;
 	struct yt_present_result result;
 	static const float update_reads[] = {100, 100, 100, 100};
+	static const float gated_reads[] = {100, 100};
 	static const float rollover_reads[] = {1, 10, 10};
+	static const float warning_reads[] = {100, 100, 100, 100};
 	size_t used;
 	bool updated;
 	bool warned;
@@ -1804,6 +1806,15 @@ test_time_helpers(void)
 	    && result.events[4].foreground == 7);
 
 	memset(&time, 0, sizeof(time));
+	time.deadline = 460.0f;
+	time.next_refresh = 101.0f;
+	CHECK(yt_present_refresh_time(&time, gated_reads,
+	    sizeof(gated_reads) / sizeof(gated_reads[0]), &used, 2, 3,
+	    &current, &result, &updated) == YT_PRESENT_OK);
+	CHECK(!updated && used == 2 && result.event_count == 0);
+	CHECK(time.deadline == 460.0f && time.next_refresh == 101.0f);
+
+	memset(&time, 0, sizeof(time));
 	time.deadline = 80000.0f;
 	CHECK(yt_present_refresh_time(&time, rollover_reads,
 	    sizeof(rollover_reads) / sizeof(rollover_reads[0]), &used, 1, 1,
@@ -1811,6 +1822,36 @@ test_time_helpers(void)
 	CHECK(!updated && used == 3);
 	CHECK(time.deadline == -6400.0f && time.next_refresh == 11.0f);
 	CHECK(result.event_count == 0);
+
+	current.sound.snoop = 0.0f;
+	memset(&time, 0, sizeof(time));
+	time.deadline = 430.0f;
+	memcpy(time.text, " 4:59  ", 7);
+	time.text_length = 7;
+	CHECK(yt_present_refresh_time(&time, warning_reads,
+	    sizeof(warning_reads) / sizeof(warning_reads[0]), &used, 8, 12,
+	    &current, &result, &updated) == YT_PRESENT_OK);
+	CHECK(updated && used == 4 && time.next_refresh == 101.0f);
+	CHECK(time.text_length == 7
+	    && memcmp(time.text, " 5:30  ", 7) == 0);
+	CHECK(time.saved_row == 8 && time.saved_column == 12);
+	CHECK(result.remote_length == 0 && result.event_count == 5);
+	CHECK(result.events[0].operation == YT_PRESENT_LOCAL_LOCATE
+	    && result.events[0].row == 25 && result.events[0].column == 71);
+	CHECK(result.events[1].operation == YT_PRESENT_LOCAL_COLOR
+	    && result.events[1].foreground == 11
+	    && result.events[1].background == 1);
+	CHECK(result.events[2].operation == YT_PRESENT_LOCAL_COLOR
+	    && result.events[2].foreground == 12
+	    && result.events[2].background == 1);
+	CHECK(result.events[3].operation == YT_PRESENT_LOCAL_LOCATE
+	    && result.events[3].row == 8 && result.events[3].column == 12
+	    && result.events[3].cursor_visible == 1
+	    && result.events[3].cursor_start == 1
+	    && result.events[3].cursor_stop == 16);
+	CHECK(result.events[4].operation == YT_PRESENT_LOCAL_COLOR
+	    && result.events[4].foreground == 7
+	    && result.events[4].background == 0);
 
 	current = state(true);
 	CHECK(yt_present_low_time((const uint8_t *)" 5:59  ", 7,
