@@ -490,6 +490,98 @@ test_port_editor_output(void)
 	return true;
 }
 
+static bool
+test_alias_editor_output(void)
+{
+	static const uint8_t entry[] =
+	    "Loading names...\r\rThere are 2  players in your game.\r";
+	static const uint8_t empty[] =
+	    "Loading names...\r\rThere are 0  players in your game.\r\r"
+	    "YOUR GAME HAS NO PLAYERS!\r";
+	static const uint8_t menu[] =
+	    "Press enter to quit. Please Select:\r\r"
+	    "[L] List players/alias's\r[C] Choose player to edit\r\r-+> ";
+	static const uint8_t header[] =
+	    "  #   Real NameAlias\r"
+	    "============================================================================"
+	    "===\r";
+	static const uint8_t row[] = "  1 : Alice RealAce Pilot\r";
+	static const uint8_t edit[] =
+	    "Editing: Alice Real a.k.a. Ace Pilot\r\r"
+	    "Press enter to quit.\r\rPlease enter new Alias. -=> ";
+	static const uint8_t confirmation[] =
+	    "\rChange player Alias to \"New Captain\"? [Y/N] -=> ";
+	struct yt_config_output_result result;
+	uint8_t folded;
+
+	CHECK(yt_config_compose_alias_entry(2U, 0U, &result));
+	CHECK(result.output_length == sizeof(entry) - 1U);
+	CHECK(memcmp(result.output, entry, sizeof(entry) - 1U) == 0);
+	CHECK(result.local_beeps == 0U);
+	CHECK(yt_config_compose_alias_entry(0U, 0U, &result));
+	CHECK(result.output_length == sizeof(empty) - 1U);
+	CHECK(memcmp(result.output, empty, sizeof(empty) - 1U) == 0);
+	CHECK(result.local_beeps == 1U);
+	CHECK(yt_config_compose_alias_menu(0U, &result));
+	CHECK(result.output_length == sizeof(menu) - 1U);
+	CHECK(memcmp(result.output, menu, sizeof(menu) - 1U) == 0);
+	CHECK(yt_config_compose_alias_key_echo('l', result.final_column,
+	    &folded, &result));
+	CHECK(folded == 'L');
+	CHECK(result.output_length == 3U);
+	CHECK(memcmp(result.output, "L\r\r", 3U) == 0);
+	CHECK(yt_config_compose_alias_list_header(0U, &result));
+	CHECK(result.output_length == sizeof(header) - 1U);
+	CHECK(memcmp(result.output, header, sizeof(header) - 1U) == 0);
+	CHECK(yt_config_compose_alias_list_row(1,
+	    (const uint8_t *)"Alice", 5U, (const uint8_t *)"Real", 4U,
+	    (const uint8_t *)"Ace", 3U, (const uint8_t *)"Pilot", 5U,
+	    0U, &result));
+	CHECK(result.output_length == sizeof(row) - 1U);
+	CHECK(memcmp(result.output, row, sizeof(row) - 1U) == 0);
+	CHECK(yt_config_compose_alias_pause(result.final_column, &result));
+	CHECK(result.output_length == 9U);
+	CHECK(memcmp(result.output, "[ Pause ]", 9U) == 0);
+	CHECK(yt_config_compose_alias_number_prompt(0U, &result));
+	CHECK(result.output_length == 26U);
+	CHECK(memcmp(result.output, "Edit which player number? ", 26U) == 0);
+	CHECK(yt_config_compose_alias_invalid((const uint8_t *)"2.1", 3U,
+	    result.final_column, &result));
+	CHECK(result.output_length == 29U);
+	CHECK(memcmp(result.output,
+	    "\rINVALID PLAYER NUMBER!!\r2.1\r", 29U) == 0);
+	CHECK(result.local_beeps == 1U);
+	CHECK(yt_config_compose_alias_edit((const uint8_t *)"Alice", 5U,
+	    (const uint8_t *)"Real", 4U, (const uint8_t *)"Ace", 3U,
+	    (const uint8_t *)"Pilot", 5U, 0U, &result));
+	CHECK(result.output_length == sizeof(edit) - 1U);
+	CHECK(memcmp(result.output, edit, sizeof(edit) - 1U) == 0);
+	CHECK(yt_config_compose_alias_confirmation(
+	    (const uint8_t *)"New Captain", 11U, result.final_column, &result));
+	CHECK(result.output_length == sizeof(confirmation) - 1U);
+	CHECK(memcmp(result.output, confirmation,
+	    sizeof(confirmation) - 1U) == 0);
+	CHECK(yt_config_compose_alias_response_echo('n', result.final_column,
+	    &folded, &result));
+	CHECK(folded == 'N');
+	CHECK(result.output_length == 2U);
+	CHECK(memcmp(result.output, "N\r", 2U) == 0);
+	CHECK(yt_config_compose_alias_cancel(0U, &result));
+	CHECK(result.output_length == 11U);
+	CHECK(memcmp(result.output, "Canceled!\r\r", 11U) == 0);
+	CHECK(yt_config_compose_alias_saved(0U, &result));
+	CHECK(result.output_length == 32U);
+	CHECK(memcmp(result.output, "New alias saved! Press any key.\r", 32U) == 0);
+	CHECK(yt_config_alias_selection_in_range(1.0f, 2U));
+	CHECK(yt_config_alias_selection_in_range(1.5f, 2U));
+	CHECK(!yt_config_alias_selection_in_range(0.9f, 2U));
+	CHECK(!yt_config_alias_selection_in_range(2.1f, 2U));
+	CHECK(!yt_config_alias_pause_after(1, 2U));
+	CHECK(yt_config_alias_pause_after(2, 2U));
+	CHECK(yt_config_alias_pause_after(20, 21U));
+	return true;
+}
+
 int
 main(void)
 {
@@ -501,7 +593,8 @@ main(void)
 	    || !test_headquarters_editor()
 	    || !test_scalar_options()
 	    || !test_planet_editor_output()
-	    || !test_port_editor_output())
+	    || !test_port_editor_output()
+	    || !test_alias_editor_output())
 		return 1;
 	puts("ytconfig output tests passed");
 	return 0;

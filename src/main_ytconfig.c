@@ -9,43 +9,6 @@
 #include <string.h>
 
 static bool
-read_single(const char *prompt, float *value, bool *blank)
-{
-	char line[160];
-	struct qb_val_result parsed;
-
-	fputs(prompt, stdout);
-	if (!yt_cli_line(line, sizeof(line)))
-		return false;
-	*blank = line[0] == '\0';
-	parsed = qb_val(line);
-	*value = (float)(parsed.valid ? parsed.value : 0.0);
-	return true;
-}
-
-static bool
-confirm(const char *prompt)
-{
-	fputs(prompt, stdout);
-	fflush(stdout);
-	for (;;) {
-		int key;
-
-		key = yt_cli_key();
-		if (key == EOF)
-			return false;
-		switch ((unsigned char)key & 0xdfU) {
-		case 'Y':
-			return true;
-		case 'N':
-			return false;
-		default:
-			break;
-		}
-	}
-}
-
-static bool
 store_config(struct yt_game *game, struct yt_error *error)
 {
 	return yt_config_store(&game->database, &game->config, error)
@@ -657,38 +620,107 @@ static bool
 edit_aliases(struct yt_game *game, struct yt_error *error)
 {
 	struct yt_name_file names;
+	struct yt_config_output_result output;
+	unsigned player_count;
 
 	if (!yt_names_load("YTNAME.DAT", &names, error))
 		return false;
+	if (names.count == 0U || names.count > 51U) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			snprintf(error->operation, sizeof(error->operation),
+			    "load YTCONFIG alias table");
+			snprintf(error->path, sizeof(error->path), "YTNAME.DAT");
+		}
+		yt_names_free(&names);
+		return false;
+	}
+	player_count = (unsigned)(names.count - 1U);
+	if (!yt_config_compose_alias_entry(player_count, 0U, &output)
+	    || !write_output(&output, error)) {
+		yt_names_free(&names);
+		return false;
+	}
+	if (player_count == 0U) {
+		yt_names_free(&names);
+		return true;
+	}
 	for (;;) {
-		char choice[80];
-		size_t counter = names.count == 0 ? 0 : names.count - 1U;
+		int raw_key;
+		uint8_t folded;
 		size_t index;
 
-		puts("L) List players  C) Change alias");
-		fputs("Press enter to quit. Please Select: ", stdout);
-		if (!yt_cli_line(choice, sizeof(choice)) || choice[0] == '\0') {
+		if (!yt_config_compose_alias_menu(0U, &output)
+		    || !write_output(&output, error)) {
+			yt_names_free(&names);
+			return false;
+		}
+		raw_key = yt_cli_key();
+		if (raw_key == EOF) {
 			yt_names_free(&names);
 			return true;
 		}
-		if (((unsigned char)choice[0] & 0xdfU) == 'L') {
-			for (index = 1; index <= counter; ++index) {
-				printf("%zu] %s %s a.k.a. %s %s\n", index,
-				    names.rows[index].real_first,
-				    names.rows[index].real_last,
-				    names.rows[index].alias_first,
-				    names.rows[index].alias_last);
-				if (index % 20U == 0 || index == counter) {
-					fputs("[ Pause ]", stdout);
-					(void)getchar();
-					fputc('\n', stdout);
+		if (raw_key == '\n')
+			raw_key = '\r';
+		if (!yt_config_compose_alias_key_echo((uint8_t)raw_key,
+		    output.final_column, &folded, &output)
+		    || !write_output(&output, error)) {
+			yt_names_free(&names);
+			return false;
+		}
+		if (folded == '\r') {
+			yt_names_free(&names);
+			return true;
+		}
+		if (folded == 'L') {
+			if (!yt_config_compose_alias_list_header(0U, &output)
+			    || !write_output(&output, error)) {
+				yt_names_free(&names);
+				return false;
+			}
+			for (index = 1U; index <= player_count; ++index) {
+				const struct yt_name_row *row = &names.rows[index];
+
+				if (!yt_config_compose_alias_list_row((int)index,
+				    (const uint8_t *)row->real_first,
+				    strlen(row->real_first),
+				    (const uint8_t *)row->real_last,
+				    strlen(row->real_last),
+				    (const uint8_t *)row->alias_first,
+				    strlen(row->alias_first),
+				    (const uint8_t *)row->alias_last,
+				    strlen(row->alias_last), 0U, &output)
+				    || !write_output(&output, error)) {
+					yt_names_free(&names);
+					return false;
 				}
+				if (yt_config_alias_pause_after((int)index,
+				    player_count)) {
+					if (!yt_config_compose_alias_pause(
+					    output.final_column, &output)
+					    || !write_output(&output, error)) {
+						yt_names_free(&names);
+						return false;
+					}
+					(void)yt_cli_key();
+					if (!yt_config_compose_alias_blank(
+					    output.final_column, &output)
+					    || !write_output(&output, error)) {
+						yt_names_free(&names);
+						return false;
+					}
+				}
+			}
+			if (!yt_config_compose_alias_blank(0U, &output)
+			    || !write_output(&output, error)) {
+				yt_names_free(&names);
+				return false;
 			}
 			continue;
 		}
-		if (((unsigned char)choice[0] & 0xdfU) == 'C') {
+		if (folded == 'C') {
+			struct qb_val_result parsed;
 			float raw;
-			bool blank;
 			bool overflow;
 			int selected;
 			char entered[180];
@@ -697,43 +729,113 @@ edit_aliases(struct yt_game *game, struct yt_error *error)
 			char last[90];
 			int basic;
 
-			if (!read_single("Edit which player number? ", &raw, &blank)
-			    || blank || raw == 0.0f) {
+			if (!yt_config_compose_alias_number_prompt(0U, &output)
+			    || !write_output(&output, error)) {
+				yt_names_free(&names);
+				return false;
+			}
+			if (!yt_cli_line(entered, sizeof(entered))) {
 				yt_names_free(&names);
 				return true;
 			}
-			if (raw < 1.0f || raw > (float)counter)
+			parsed = qb_val(entered);
+			raw = (float)(parsed.valid ? parsed.value : 0.0);
+			if (raw == 0.0f)
 				continue;
+			if (!yt_config_alias_selection_in_range(raw, player_count)) {
+				if (!yt_config_compose_alias_invalid(
+				    (const uint8_t *)entered, strlen(entered),
+				    output.final_column, &output)
+				    || !write_output(&output, error)) {
+					yt_names_free(&names);
+					return false;
+				}
+				continue;
+			}
 			selected = (int)qb_cint(raw, &overflow);
 			if (overflow || selected < 1
-			    || (size_t)selected > counter)
+			    || (unsigned)selected > player_count)
 				continue;
+			if (!yt_config_compose_alias_blank(output.final_column,
+			    &output) || !write_output(&output, error)) {
+				yt_names_free(&names);
+				return false;
+			}
 			for (;;) {
-				char prompt[260];
+				const struct yt_name_row *row = &names.rows[selected];
 
-				printf("%s %s a.k.a. %s %s\n",
-				    names.rows[selected].real_first,
-				    names.rows[selected].real_last,
-				    names.rows[selected].alias_first,
-				    names.rows[selected].alias_last);
-				fputs("Please enter new Alias. -=> ", stdout);
-				if (!yt_cli_line(entered, sizeof(entered)))
+				if (!yt_config_compose_alias_edit(
+				    (const uint8_t *)row->real_first,
+				    strlen(row->real_first),
+				    (const uint8_t *)row->real_last,
+				    strlen(row->real_last),
+				    (const uint8_t *)row->alias_first,
+				    strlen(row->alias_first),
+				    (const uint8_t *)row->alias_last,
+				    strlen(row->alias_last), 0U, &output)
+				    || !write_output(&output, error)) {
+					yt_names_free(&names);
+					return false;
+				}
+				if (!yt_cli_line(entered, sizeof(entered))) {
+					yt_names_free(&names);
 					return true;
+				}
 				entered[41] = '\0';
 				for (index = 0; entered[index] != '\0'; ++index) {
 					if (entered[index] == ',')
 						entered[index] = ' ';
 				}
 				qb_title_case(entered);
-				if (entered[0] == '\0')
-					continue;
-				snprintf(prompt, sizeof(prompt),
-				    "Change player Alias to %s? [Y/N] -=> ",
-				    entered);
-				if (confirm(prompt))
-					goto save_alias;
-				puts("Canceled!");
+				if (entered[0] == '\0') {
+					if (!yt_config_compose_alias_blank(
+					    output.final_column, &output)
+					    || !write_output(&output, error)) {
+						yt_names_free(&names);
+						return false;
+					}
+					break;
+				}
+				for (;;) {
+					if (!yt_config_compose_alias_confirmation(
+					    (const uint8_t *)entered, strlen(entered),
+					    output.final_column, &output)
+					    || !write_output(&output, error)) {
+						yt_names_free(&names);
+						return false;
+					}
+					raw_key = yt_cli_key();
+					if (raw_key == EOF) {
+						yt_names_free(&names);
+						return true;
+					}
+					if (!yt_config_compose_alias_response_echo(
+					    (uint8_t)raw_key, output.final_column,
+					    &folded, &output)
+					    || !write_output(&output, error)) {
+						yt_names_free(&names);
+						return false;
+					}
+					if (folded != 'Y' && folded != 'N')
+						continue;
+					if (!yt_config_compose_alias_blank(
+					    output.final_column, &output)
+					    || !write_output(&output, error)) {
+						yt_names_free(&names);
+						return false;
+					}
+					if (folded == 'Y')
+						goto save_alias;
+					if (!yt_config_compose_alias_cancel(
+					    output.final_column, &output)
+					    || !write_output(&output, error)) {
+						yt_names_free(&names);
+						return false;
+					}
+					break;
+				}
 			}
+			continue;
 save_alias:
 			snprintf(old_alias, sizeof(old_alias), "%s %s",
 			    names.rows[selected].alias_first,
@@ -767,9 +869,12 @@ save_alias:
 					}
 				}
 			}
-			fputs("New alias saved! Press any key.", stdout);
+			if (!yt_config_compose_alias_saved(0U, &output)
+			    || !write_output(&output, error)) {
+				yt_names_free(&names);
+				return false;
+			}
 			(void)yt_cli_key();
-			fputc('\n', stdout);
 			yt_names_free(&names);
 			return true;
 		}

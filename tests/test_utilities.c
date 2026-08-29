@@ -4214,6 +4214,194 @@ done_closed:
 }
 
 static bool
+test_ytconfig_alias_editor(struct yt_error *error)
+{
+	static const uint8_t sentinel[] =
+	    "Dummy,Dummy,Dummy,Dummy\r\n\x1a";
+	static const uint8_t names[] =
+	    "Dummy,Dummy,Dummy,Dummy\r\n"
+	    "One,Real,Ace,Pilot\r\n"
+	    "Two,Real,Beta,Tester\r\n\x1a";
+	static const uint8_t changed_names[] =
+	    "Dummy,Dummy,Dummy,Dummy\r\n"
+	    "One,Real,New,Captain\r\n"
+	    "Two,Real,Beta,Tester\r\n\x1a";
+	static const char empty_input[] = "NX";
+	static const char input[] =
+	    "N"
+	    "Lz"
+	    "C2.1\n"
+	    "C0\n"
+	    "C1.5\nnew, CAPTAIN\nxn\n"
+	    "C1\n,\n"
+	    "C1\nnew, CAPTAIN\nxyq"
+	    "X";
+	static const uint8_t empty[] =
+	    "N\r\rLoading names...\r\r"
+	    "There are 0  players in your game.\r\r"
+	    "YOUR GAME HAS NO PLAYERS!\r\a";
+	static const uint8_t entry[] =
+	    "N\r\rLoading names...\r\r"
+	    "There are 2  players in your game.\r";
+	static const uint8_t list[] =
+	    "L\r\r"
+	    "  #   Real NameAlias\r"
+	    "============================================================================"
+	    "===\r"
+	    "  1 : One RealAce Pilot\r"
+	    "  2 : Two RealBeta Tester\r"
+	    "[ Pause ]\r\r";
+	static const uint8_t invalid[] =
+	    "C\r\rEdit which player number? "
+	    "\rINVALID PLAYER NUMBER!!\r2.1\r\a";
+	static const uint8_t fractional_cancel[] =
+	    "C\r\rEdit which player number? \r"
+	    "Editing: Two Real a.k.a. Beta Tester\r\r"
+	    "Press enter to quit.\r\rPlease enter new Alias. -=> "
+	    "\rChange player Alias to \"New Captain\"? [Y/N] -=> X\r"
+	    "\rChange player Alias to \"New Captain\"? [Y/N] -=> N\r\r"
+	    "Canceled!\r\r"
+	    "Editing: Two Real a.k.a. Beta Tester\r";
+	static const uint8_t saved[] =
+	    "\rChange player Alias to \"New Captain\"? [Y/N] -=> X\r"
+	    "\rChange player Alias to \"New Captain\"? [Y/N] -=> Y\r\r"
+	    "New alias saved! Press any key.\r";
+	struct yt_game game;
+	struct yt_game restore;
+	struct yt_record originals[50];
+	struct yt_record forced[50];
+	uint8_t *original_names = NULL;
+	uint8_t *actual_names = NULL;
+	uint8_t *screen = NULL;
+	size_t original_names_length = 0U;
+	size_t actual_names_length = 0U;
+	size_t screen_length = 0U;
+	bool snapshots = false;
+	bool valid = false;
+	int basic;
+
+	if (!read_file("YTNAME.DAT", &original_names, &original_names_length))
+		goto done_closed;
+	memset(&game, 0, sizeof(game));
+	if (!yt_game_open(&game, YT_OPEN_UPDATE, error))
+		goto done;
+	for (basic = 2; basic <= 51; ++basic) {
+		if (!yt_database_read(&game.database, (size_t)basic,
+		    &originals[basic - 2], error))
+			goto done;
+	}
+	snapshots = true;
+	for (basic = 2; basic <= 51; ++basic) {
+		char ordinary[24];
+		int length;
+
+		forced[basic - 2] = originals[basic - 2];
+		length = snprintf(ordinary, sizeof(ordinary), "Ordinary %d", basic);
+		if (length < 0 || (size_t)length >= sizeof(ordinary))
+			goto done;
+		yt_record_set_text(&forced[basic - 2],
+		    (const uint8_t *)ordinary, (size_t)length);
+		if (!yt_record_set_number(&forced[basic - 2], YT_F85,
+		    (float)length)
+		    || !yt_database_write(&game.database, (size_t)basic,
+			&forced[basic - 2], error))
+			goto done;
+	}
+	yt_record_set_text(&forced[0], (const uint8_t *)"Ace Pilot", 9U);
+	yt_record_set_text(&forced[1],
+	    (const uint8_t *)"The Ace Pilot II", 16U);
+	yt_record_set_text(&forced[2], (const uint8_t *)"ace Pilot", 9U);
+	yt_record_set_text(&forced[3], (const uint8_t *)"Ace Pilot", 9U);
+	if (!yt_record_set_number(&forced[0], YT_F85, 9.0f)
+	    || !yt_record_set_number(&forced[1], YT_F85, 16.0f)
+	    || !yt_record_set_number(&forced[2], YT_F85, 9.0f)
+	    || !yt_record_set_number(&forced[3], YT_F85, 0.0f))
+		goto done;
+	for (basic = 2; basic <= 5; ++basic) {
+		if (!yt_database_write(&game.database, (size_t)basic,
+		    &forced[basic - 2], error))
+			goto done;
+	}
+	if (!yt_database_flush(&game.database, error))
+		goto done;
+	yt_game_close(&game);
+	if (!write_file("YTNAME.DAT", sentinel, sizeof(sentinel) - 1U)
+	    || !write_file("config.in", empty_input, sizeof(empty_input) - 1U)
+	    || !run_redirected(YT_CONFIG_EXE, "config.in", "config.out")
+	    || !read_file("config.out", &screen, &screen_length)
+	    || !bytes_contain(screen, screen_length, empty, sizeof(empty) - 1U))
+		goto done_closed;
+	free(screen);
+	screen = NULL;
+	if (!write_file("YTNAME.DAT", names, sizeof(names) - 1U)
+	    || !write_file("config.in", input, sizeof(input) - 1U)
+	    || !run_redirected(YT_CONFIG_EXE, "config.in", "config.out")
+	    || !read_file("config.out", &screen, &screen_length)
+	    || !bytes_contain(screen, screen_length, entry, sizeof(entry) - 1U)
+	    || !bytes_contain(screen, screen_length, list, sizeof(list) - 1U)
+	    || !bytes_contain(screen, screen_length, invalid,
+		sizeof(invalid) - 1U)
+	    || !bytes_contain(screen, screen_length, fractional_cancel,
+		sizeof(fractional_cancel) - 1U)
+	    || !bytes_contain(screen, screen_length, saved, sizeof(saved) - 1U)
+	    || !read_file("YTNAME.DAT", &actual_names, &actual_names_length)
+	    || actual_names_length != sizeof(changed_names) - 1U
+	    || memcmp(actual_names, changed_names, sizeof(changed_names) - 1U)
+	    != 0)
+		goto done_closed;
+	memset(&game, 0, sizeof(game));
+	if (!yt_game_open(&game, YT_OPEN_READ, error))
+		goto done;
+	valid = true;
+	for (basic = 2; valid && basic <= 51; ++basic) {
+		struct yt_record actual;
+		struct yt_record expected = forced[basic - 2];
+
+		if (basic == 2 || basic == 3 || basic == 5) {
+			yt_record_set_text(&expected,
+			    (const uint8_t *)"New Captain", 11U);
+			if (!yt_record_set_number(&expected, YT_F85, 11.0f)) {
+				valid = false;
+				break;
+			}
+		}
+		if (!yt_database_read(&game.database, (size_t)basic, &actual,
+		    error)
+		    || memcmp(actual.bytes, expected.bytes, YT_RECORD_SIZE) != 0)
+			valid = false;
+	}
+
+done:
+	yt_game_close(&game);
+done_closed:
+	if (snapshots) {
+		memset(&restore, 0, sizeof(restore));
+		if (!yt_game_open(&restore, YT_OPEN_UPDATE, error))
+			valid = false;
+		else {
+			for (basic = 2; basic <= 51; ++basic) {
+				if (!yt_database_write(&restore.database,
+				    (size_t)basic, &originals[basic - 2], error)) {
+					valid = false;
+					break;
+				}
+			}
+			if (!yt_database_flush(&restore.database, error))
+				valid = false;
+		}
+		yt_game_close(&restore);
+	}
+	if (original_names != NULL
+	    && !write_file("YTNAME.DAT", original_names,
+		original_names_length))
+		valid = false;
+	free(original_names);
+	free(actual_names);
+	free(screen);
+	return valid;
+}
+
+static bool
 test_portname(struct yt_error *error)
 {
 	static const uint8_t intro[] =
@@ -4958,6 +5146,8 @@ main(void)
 		failure = "YTCONFIG planet editor differs";
 	else if (!test_ytconfig_port_editor(&error))
 		failure = "YTCONFIG port editor differs";
+	else if (!test_ytconfig_alias_editor(&error))
+		failure = "YTCONFIG alias editor differs";
 	else if (!test_portname(&error))
 		failure = "PORTNAME changed data outside its two owned fields";
 	else if (!test_rmt_standalone_decline(&error))

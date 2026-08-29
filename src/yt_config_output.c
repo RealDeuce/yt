@@ -819,3 +819,252 @@ yt_config_compose_port_saved(size_t initial_column,
 	result->final_column = initial_column;
 	return append_line(result, "Name change successful!!!");
 }
+
+bool
+yt_config_compose_alias_entry(unsigned player_count, size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	static const uint8_t newline = '\r';
+
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	if (!append_line(result, "Loading names...")
+	    || !append_line(result, "")
+	    || !append_literal(result, "There are")
+	    || !append_single(result, (float)player_count, true)
+	    || !append_line(result, " players in your game."))
+		return false;
+	if (player_count != 0U)
+		return true;
+	result->local_beeps = 1U;
+	return append_bytes(result, &newline, 1U)
+	    && append_line(result, "YOUR GAME HAS NO PLAYERS!");
+}
+
+bool
+yt_config_compose_alias_menu(size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_line(result, "Press enter to quit. Please Select:")
+	    && append_line(result, "")
+	    && append_line(result, "[L] List players/alias's")
+	    && append_line(result, "[C] Choose player to edit")
+	    && append_line(result, "")
+	    && append_literal(result, "-+> ");
+}
+
+bool
+yt_config_compose_alias_key_echo(uint8_t key, size_t initial_column,
+    uint8_t *folded, struct yt_config_output_result *result)
+{
+	uint8_t output[3];
+
+	if (folded == NULL || result == NULL
+	    || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	*folded = key & 0xdfU;
+	output[0] = *folded;
+	output[1] = '\r';
+	output[2] = '\r';
+	return append_bytes(result, output, sizeof(output));
+}
+
+bool
+yt_config_compose_alias_list_header(size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	static const char rule[] =
+	    "============================================================================"
+	    "===";
+
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_literal(result, "  #   Real Name")
+	    && append_line(result, "Alias")
+	    && append_line(result, rule);
+}
+
+bool
+yt_config_compose_alias_list_row(int logical,
+    const uint8_t *real_first, size_t real_first_length,
+    const uint8_t *real_last, size_t real_last_length,
+    const uint8_t *alias_first, size_t alias_first_length,
+    const uint8_t *alias_last, size_t alias_last_length,
+    size_t initial_column, struct yt_config_output_result *result)
+{
+	if (result == NULL || logical < 1
+	    || (real_first == NULL && real_first_length != 0U)
+	    || (real_last == NULL && real_last_length != 0U)
+	    || (alias_first == NULL && alias_first_length != 0U)
+	    || (alias_last == NULL && alias_last_length != 0U)
+	    || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return (logical >= 10 || append_literal(result, " "))
+	    && append_single(result, (float)logical, true)
+	    && append_literal(result, ": ")
+	    && append_bytes(result, real_first, real_first_length)
+	    && append_literal(result, " ")
+	    && append_bytes(result, real_last, real_last_length)
+	    && append_bytes(result, alias_first, alias_first_length)
+	    && append_literal(result, " ")
+	    && append_binary_line(result, alias_last, alias_last_length);
+}
+
+bool
+yt_config_compose_alias_pause(size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_literal(result, "[ Pause ]");
+}
+
+bool
+yt_config_compose_alias_blank(size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_line(result, "");
+}
+
+bool
+yt_config_compose_alias_number_prompt(size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_literal(result, "Edit which player number? ");
+}
+
+bool
+yt_config_compose_alias_invalid(const uint8_t *entered,
+    size_t entered_length, size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || (entered == NULL && entered_length != 0U)
+	    || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	result->local_beeps = 1U;
+	return append_line(result, "")
+	    && append_line(result, "INVALID PLAYER NUMBER!!")
+	    && append_binary_line(result, entered, entered_length);
+}
+
+bool
+yt_config_compose_alias_edit(const uint8_t *real_first,
+    size_t real_first_length, const uint8_t *real_last,
+    size_t real_last_length, const uint8_t *alias_first,
+    size_t alias_first_length, const uint8_t *alias_last,
+    size_t alias_last_length, size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL
+	    || (real_first == NULL && real_first_length != 0U)
+	    || (real_last == NULL && real_last_length != 0U)
+	    || (alias_first == NULL && alias_first_length != 0U)
+	    || (alias_last == NULL && alias_last_length != 0U)
+	    || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_literal(result, "Editing: ")
+	    && append_bytes(result, real_first, real_first_length)
+	    && append_literal(result, " ")
+	    && append_bytes(result, real_last, real_last_length)
+	    && append_literal(result, " a.k.a. ")
+	    && append_bytes(result, alias_first, alias_first_length)
+	    && append_literal(result, " ")
+	    && append_binary_line(result, alias_last, alias_last_length)
+	    && append_line(result, "")
+	    && append_line(result, "Press enter to quit.")
+	    && append_line(result, "")
+	    && append_literal(result, "Please enter new Alias. -=> ");
+}
+
+bool
+yt_config_compose_alias_confirmation(const uint8_t *alias,
+    size_t alias_length, size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || (alias == NULL && alias_length != 0U)
+	    || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_line(result, "")
+	    && append_literal(result, "Change player Alias to \"")
+	    && append_bytes(result, alias, alias_length)
+	    && append_literal(result, "\"? [Y/N] -=> ");
+}
+
+bool
+yt_config_compose_alias_response_echo(uint8_t key, size_t initial_column,
+    uint8_t *folded, struct yt_config_output_result *result)
+{
+	uint8_t output[2];
+
+	if (folded == NULL || result == NULL
+	    || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	*folded = key & 0xdfU;
+	output[0] = *folded;
+	output[1] = '\r';
+	return append_bytes(result, output, sizeof(output));
+}
+
+bool
+yt_config_compose_alias_cancel(size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_line(result, "Canceled!") && append_line(result, "");
+}
+
+bool
+yt_config_compose_alias_saved(size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_line(result, "New alias saved! Press any key.");
+}
+
+bool
+yt_config_alias_selection_in_range(float selection, unsigned player_count)
+{
+	return selection >= 1.0f && selection <= (float)player_count;
+}
+
+bool
+yt_config_alias_pause_after(int logical, unsigned player_count)
+{
+	return logical % 20 == 0 || (unsigned)logical == player_count;
+}

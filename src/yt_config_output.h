@@ -133,5 +133,47 @@ bool yt_config_compose_port_cancel(size_t initial_column,
     struct yt_config_output_result *result);
 bool yt_config_compose_port_saved(size_t initial_column,
     struct yt_config_output_result *result);
+bool yt_config_compose_alias_entry(unsigned player_count,
+    size_t initial_column, struct yt_config_output_result *result);
+bool yt_config_compose_alias_menu(size_t initial_column,
+    struct yt_config_output_result *result);
+bool yt_config_compose_alias_key_echo(uint8_t key, size_t initial_column,
+    uint8_t *folded, struct yt_config_output_result *result);
+bool yt_config_compose_alias_list_header(size_t initial_column,
+    struct yt_config_output_result *result);
+bool yt_config_compose_alias_list_row(int logical,
+    const uint8_t *real_first, size_t real_first_length,
+    const uint8_t *real_last, size_t real_last_length,
+    const uint8_t *alias_first, size_t alias_first_length,
+    const uint8_t *alias_last, size_t alias_last_length,
+    size_t initial_column, struct yt_config_output_result *result);
+bool yt_config_compose_alias_pause(size_t initial_column,
+    struct yt_config_output_result *result);
+bool yt_config_compose_alias_blank(size_t initial_column,
+    struct yt_config_output_result *result);
+bool yt_config_compose_alias_number_prompt(size_t initial_column,
+    struct yt_config_output_result *result);
+bool yt_config_compose_alias_invalid(const uint8_t *entered,
+    size_t entered_length, size_t initial_column,
+    struct yt_config_output_result *result);
+bool yt_config_compose_alias_edit(const uint8_t *real_first,
+    size_t real_first_length, const uint8_t *real_last,
+    size_t real_last_length, const uint8_t *alias_first,
+    size_t alias_first_length, const uint8_t *alias_last,
+    size_t alias_last_length, size_t initial_column,
+    struct yt_config_output_result *result);
+bool yt_config_compose_alias_confirmation(const uint8_t *alias,
+    size_t alias_length, size_t initial_column,
+    struct yt_config_output_result *result);
+bool yt_config_compose_alias_response_echo(uint8_t key,
+    size_t initial_column, uint8_t *folded,
+    struct yt_config_output_result *result);
+bool yt_config_compose_alias_cancel(size_t initial_column,
+    struct yt_config_output_result *result);
+bool yt_config_compose_alias_saved(size_t initial_column,
+    struct yt_config_output_result *result);
+bool yt_config_alias_selection_in_range(float selection,
+    unsigned player_count);
+bool yt_config_alias_pause_after(int logical, unsigned player_count);
 
 #endif
