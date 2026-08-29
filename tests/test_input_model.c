@@ -686,6 +686,20 @@ test_repeat_transform(void)
 	CHECK(strcmp(text, "A;A;A") == 0 && strcmp(saved, "A;A;A") == 0);
 
 	snprintf(saved, sizeof(saved), "old");
+	snprintf(text, sizeof(text), "A/r2/B/R3");
+	CHECK(yt_input_expand_repeat(text, sizeof(text), saved, sizeof(saved),
+	    &result));
+	CHECK(result.emit_notice && result.count == 2.0f);
+	CHECK(strcmp(text, "A;A") == 0 && strcmp(saved, "A;A") == 0);
+
+	snprintf(saved, sizeof(saved), "old");
+	snprintf(text, sizeof(text), "ABC");
+	CHECK(yt_input_expand_repeat(text, sizeof(text), saved, sizeof(saved),
+	    &result));
+	CHECK(!result.emit_notice && result.count == 0.0f
+	    && strcmp(text, "ABC") == 0 && strcmp(saved, "old") == 0);
+
+	snprintf(saved, sizeof(saved), "old");
 	snprintf(text, sizeof(text), "A/R0");
 	CHECK(yt_input_expand_repeat(text, sizeof(text), saved, sizeof(saved),
 	    &result));
