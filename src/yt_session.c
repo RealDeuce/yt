@@ -1466,14 +1466,21 @@ static bool
 lockout(struct yt_session *session, struct yt_error *error)
 {
 	char path[512];
-	char live[300];
+	uint8_t live[300];
+	size_t live_length;
+	uint8_t *data;
+	size_t lines_read;
+	bool matched;
 	FILE *file;
 	long size;
 
-	snprintf(live, sizeof(live), "%s %s",
-	    session->door->identity.real_first,
-	    session->door->identity.real_last);
-	qb_title_case(live);
+	if (!yt_startup_canonical_name(
+	    (const uint8_t *)session->door->identity.real_first,
+	    strlen(session->door->identity.real_first),
+	    (const uint8_t *)session->door->identity.real_last,
+	    strlen(session->door->identity.real_last), live, sizeof(live),
+	    &live_length))
+		return false;
 	if (!yt_resolve_case_path("lockout.dat", true, path, sizeof(path),
 	    error))
 		return false;
@@ -1494,42 +1501,48 @@ lockout(struct yt_session *session, struct yt_error *error)
 		return true;
 	}
 	rewind(file);
-	for (;;) {
-		char line[300];
+	data = malloc((size_t)size);
+	if (data == NULL) {
+		if (error != NULL)
+			error->status = YT_NO_MEMORY;
+		return false;
+	}
+	if (fread(data, 1, (size_t)size, file) != (size_t)size
+	    || !yt_startup_lockout_scan(data, (size_t)size, live, live_length,
+	    &matched, &lines_read)) {
+		free(data);
+		return false;
+	}
+	free(data);
+	(void)lines_read;
+	if (matched) {
+		char contact[320];
+		static const uint8_t revoked[] =
+		    "\aYOUR ACCESS TO THIS GAME HAS BEEN REVOKED!\a";
 
-		if (!read_physical_line(file, line, sizeof(line)))
-			break;
-		qb_title_case(line);
-		if (strcmp(line, live) == 0) {
-			char contact[320];
-			static const uint8_t revoked[] =
-			    "\aYOUR ACCESS TO THIS GAME HAS BEEN REVOKED!\a";
-
-			fclose(file);
-			if (!session_present_text(session, NULL, 0,
-			    SESSION_PRESENT_LINE, "lockout blank", error))
-				return false;
-			session->presentation.bold = 1.0f;
-			if (!session_present_text(session, revoked,
-			    sizeof(revoked) - 1U, SESSION_PRESENT_LINE,
-			    "lockout revoked row", error))
-				return false;
-			snprintf(contact, sizeof(contact),
-			    "Please contact your sysop %s %s.",
-			    session->door->identity.sysop_first,
-			    session->door->identity.sysop_last);
-			session->presentation.bold = 1.0f;
-			if (!session_present_text(session,
-			    (const uint8_t *)contact, strlen(contact),
-			    SESSION_PRESENT_LINE, "lockout contact row", error))
-				return false;
-			if (!session_wait(session, 10.0,
-			    "lockout denial wait", error))
-				return false;
-			session->running = false;
-			session->terminated = true;
+		if (!session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "lockout blank", error))
 			return false;
-		}
+		if (!session_present_text(session, revoked,
+		    sizeof(revoked) - 1U, SESSION_PRESENT_BOLD_LINE,
+		    "lockout revoked row", error))
+			return false;
+		snprintf(contact, sizeof(contact),
+		    "Please contact your sysop %s %s.",
+		    session->door->identity.sysop_first,
+		    session->door->identity.sysop_last);
+		if (!session_present_text(session,
+		    (const uint8_t *)contact, strlen(contact),
+		    SESSION_PRESENT_BOLD_LINE, "lockout contact row", error))
+			return false;
+		if (!session_wait(session, 10.0,
+		    "lockout denial wait", error))
+			return false;
+		if (fclose(file) != 0)
+			return false;
+		session->running = false;
+		session->terminated = true;
+		return false;
 	}
 	fclose(file);
 	return true;

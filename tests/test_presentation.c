@@ -9224,6 +9224,19 @@ test_startup_pre_admission_presentation(void)
 	static const uint8_t expected[] =
 	    "\x1b[0;35;40m\r\nInitializing...\n\r\r\nWelcome John!\n\r"
 	    "Searching my records for your name.\n\r";
+	static const uint8_t lockout_ansi[] =
+	    "\x1b[0;35;40m\r\nInitializing...\n\r\r\n"
+	    "\x1b[0;35;40;1m\aYOUR ACCESS TO THIS GAME HAS BEEN REVOKED!\a"
+	    "\r\n\x1b[0;35;40;1m"
+	    "Please contact your sysop Jane Sysop.\r\n";
+	static const uint8_t lockout_plain[] =
+	    "\r\nInitializing...\n\r\r\n"
+	    "\aYOUR ACCESS TO THIS GAME HAS BEEN REVOKED!\a\r\n"
+	    "Please contact your sysop Jane Sysop.\r\n";
+	static const uint8_t revoked[] =
+	    "\aYOUR ACCESS TO THIS GAME HAS BEEN REVOKED!\a";
+	static const uint8_t contact[] =
+	    "Please contact your sysop Jane Sysop.";
 	struct yt_present_state current = state(true);
 	struct yt_present_result result;
 	struct yt_pager_state pager;
@@ -9254,6 +9267,57 @@ test_startup_pre_admission_presentation(void)
 	CHECK(pager.line_count == 3.0f && pager.nonstop == 1.0f
 	    && pager.newline_flag == 0.0f && pager.foreground == 5);
 	CHECK(current.foreground == 5.0f);
+
+	current = state(true);
+	current.foreground = 6.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	current.foreground = 5.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 5;
+	pager.nonstop = 1.0f;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current,
+	    (const uint8_t *)"Initializing...", strlen("Initializing..."),
+	    &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_bold_line(revoked, sizeof(revoked) - 1U, &current,
+	    &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_bold_line(contact, sizeof(contact) - 1U, &current,
+	    &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(sizeof(lockout_ansi) - 1U == 140U
+	    && capture.remote_length == sizeof(lockout_ansi) - 1U
+	    && memcmp(capture.remote, lockout_ansi,
+	    sizeof(lockout_ansi) - 1U) == 0);
+	CHECK(pager.line_count == 1.0f && pager.nonstop == 1.0f);
+
+	current = state(false);
+	current.foreground = 5.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 5;
+	pager.nonstop = 1.0f;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_fixture_b05d(&pager, &current,
+	    (const uint8_t *)"Initializing...", strlen("Initializing..."),
+	    &capture);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_bold_line(revoked, sizeof(revoked) - 1U, &current,
+	    &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_bold_line(contact, sizeof(contact) - 1U, &current,
+	    &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(sizeof(lockout_plain) - 1U == 106U
+	    && capture.remote_length == sizeof(lockout_plain) - 1U
+	    && memcmp(capture.remote, lockout_plain,
+	    sizeof(lockout_plain) - 1U) == 0);
 }
 
 static void

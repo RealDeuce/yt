@@ -1,8 +1,10 @@
 #include "yt_startup_model.h"
 
 #include "qb.h"
+#include "yt_text.h"
 
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 static float
@@ -272,6 +274,46 @@ yt_startup_canonical_name(const uint8_t *first, size_t first_length,
 	length = qb_collapse_spaces_n(name, length);
 	length = qb_title_case_n(name, length);
 	*name_length = length;
+	return true;
+}
+
+bool
+yt_startup_lockout_scan(const uint8_t *data, size_t data_length,
+    const uint8_t *identity, size_t identity_length, bool *matched,
+    size_t *lines_read)
+{
+	uint8_t *line;
+	size_t cursor = 0U;
+	size_t line_length;
+	bool available;
+
+	if ((data == NULL && data_length != 0U)
+	    || (identity == NULL && identity_length != 0U)
+	    || matched == NULL || lines_read == NULL)
+		return false;
+	*matched = false;
+	*lines_read = 0U;
+	line = malloc(data_length != 0U ? data_length : 1U);
+	if (line == NULL)
+		return false;
+	for (;;) {
+		if (!yt_text_line_input_next(data, data_length, &cursor, line,
+		    data_length, &line_length, &available)) {
+			free(line);
+			return false;
+		}
+		if (!available)
+			break;
+		++*lines_read;
+		line_length = qb_title_case_n(line, line_length);
+		if (line_length == identity_length
+		    && (line_length == 0U
+		    || memcmp(line, identity, line_length) == 0)) {
+			*matched = true;
+			break;
+		}
+	}
+	free(line);
 	return true;
 }
 

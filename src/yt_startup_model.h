@@ -165,6 +165,9 @@ float yt_startup_session_deadline(float timer, double minutes,
 bool yt_startup_canonical_name(const uint8_t *first, size_t first_length,
     const uint8_t *last, size_t last_length, uint8_t *name,
     size_t capacity, size_t *name_length);
+bool yt_startup_lockout_scan(const uint8_t *data, size_t data_length,
+    const uint8_t *identity, size_t identity_length, bool *matched,
+    size_t *lines_read);
 bool yt_startup_parse_dorinfo(const uint8_t *raw, size_t raw_length,
     uint8_t *storage, size_t storage_capacity,
     struct yt_startup_dorinfo_result *result);

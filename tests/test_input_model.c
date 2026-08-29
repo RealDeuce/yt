@@ -1343,6 +1343,45 @@ test_startup_dorinfo_state(void)
 	    YT_STARTUP_WAIT_TIMER, 0U, 0U, 0U, &event_result));
 }
 
+static void
+test_startup_lockout_scan(void)
+{
+	static const uint8_t identity[] = "John Doe";
+	static const uint8_t matching[] = {
+		'\r', '\n',
+		'P', 'R', 'O', 'B', 'L', 'E', 'M', ' ', 'U', 'S', 'E', 'R',
+		'\r', '\n',
+		' ', 'j', 'o', 'h', 'n', 0, ' ', ' ', ' ', 'D', 'O', 'E', ' ',
+		'\r', '\n',
+		'X', 0x1a, 'J', 'o', 'h', 'n', ' ', 'D', 'o', 'e',
+	};
+	static const uint8_t bare_lf[] = {
+		'J', 'o', 'h', 'n', '\n', 'D', 'o', 'e', '\r',
+	};
+	static const uint8_t eof_before_match[] = {
+		'P', 'r', 'o', 'b', 'l', 'e', 'm', '\r', '\n', 0x1a,
+		'J', 'o', 'h', 'n', ' ', 'D', 'o', 'e', '\r',
+	};
+	size_t lines;
+	bool matched;
+
+	CHECK(yt_startup_lockout_scan(matching, sizeof(matching), identity,
+	    sizeof(identity) - 1U, &matched, &lines));
+	CHECK(matched && lines == 3U);
+	CHECK(yt_startup_lockout_scan(bare_lf, sizeof(bare_lf), identity,
+	    sizeof(identity) - 1U, &matched, &lines));
+	CHECK(!matched && lines == 1U);
+	CHECK(yt_startup_lockout_scan(eof_before_match,
+	    sizeof(eof_before_match), identity, sizeof(identity) - 1U,
+	    &matched, &lines));
+	CHECK(!matched && lines == 1U);
+	CHECK(yt_startup_lockout_scan(NULL, 0U, identity,
+	    sizeof(identity) - 1U, &matched, &lines));
+	CHECK(!matched && lines == 0U);
+	CHECK(!yt_startup_lockout_scan(NULL, 1U, identity,
+	    sizeof(identity) - 1U, &matched, &lines));
+}
+
 int
 main(void)
 {
@@ -1362,6 +1401,7 @@ main(void)
 	test_sysop_f5();
 	test_startup_dorinfo_parser();
 	test_startup_dorinfo_state();
+	test_startup_lockout_scan();
 	if (failures != 0) {
 		fprintf(stderr, "%u input-model test(s) failed\n", failures);
 		return 1;
