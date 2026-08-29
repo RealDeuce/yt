@@ -191,12 +191,12 @@ not authoritative. Use the corrected goal above in the new workspace.
   destination-selector and destination-combat transactions,
   ledger dispositions are roots
   `167 candidate / 1 missing`, transfers
-  `5370 candidate / 1997 missing / 1 explicitly
+  `5411 candidate / 1956 missing / 1 explicitly
   deferred`, and presentation `136 candidate / 8 missing / 6 verified`.
   Current SHA-256
   values are roots
   `64b17a8ae6550d4ef994a6e872d1f06c9ff8a6bc33ab9ab64d390da38a87e8be`,
-  transfers `b5511a077e9f9d83b994223ba3b28194715fba26b8be9aa97e0a7d67a5be1ac9`,
+  transfers `fec194b6a6f02ce7860e7aef7612b0aa2b86e16cca95471dcdfc173651302cc5`,
   presentation `b899734f3487d364fbad0b2d5be7936334cc753b4c676d3407d6703d522b5afe`,
   and manifest
   `3552bd61c9cb9b7197aeb6fbad1f37cba69cd09f125d878d0c9072a691e8950a`.
@@ -995,11 +995,13 @@ not authoritative. Use the corrected goal above in the new workspace.
   the exact no-ammunition, invalid-sector and excessive-quantity rows plus the
   accepted blank/finalizer/debit/write/typed-child order. Native model tests
   pin both prompt spellings and target/quantity boundaries; presentation pins
-  the canonical no-ammunition, invalid-target retry and excessive-quantity
-  byte partitions. The full raw dual-hydration
-  state/effect fixture, remaining refusal partitions, active-shell joins,
-  child resolvers, ordinary/fatal missile cycles and all failure prefixes
-  remain candidate prerequisites.
+  the canonical no-ammunition, invalid-target retry, excessive-quantity,
+  accepted-blank and shared-finalizer byte partitions. The 41 qualified
+  transfers from the missile-entry `2075 -> 2094` convergence through the
+  ordered `2253 -> A6E3` call are now candidate. The raw dual-hydration
+  state/effect fixture, selector/debit/PUT suffix, remaining refusal
+  partitions, active-shell joins, child resolvers, ordinary/fatal missile
+  cycles and all failure prefixes remain candidate prerequisites.
 - The ordinary main missile return now follows `YT:233E -> YT:161D` through
   the scanner-only current-sector display and fresh prompt; it no longer
   enters the gameplay hazard router. Missile opening, end-report, and the
