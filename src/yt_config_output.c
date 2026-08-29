@@ -1,0 +1,229 @@
+#include "yt_config_output.h"
+
+#include "qb.h"
+
+#include <string.h>
+
+#define YT_CONFIG_SCREEN_WIDTH 80U
+
+static bool
+append_bytes(struct yt_config_output_result *result, const uint8_t *data,
+    size_t length)
+{
+	size_t index;
+
+	if (length > YT_CONFIG_OUTPUT_SIZE - result->output_length)
+		return false;
+	if (length != 0U)
+		memcpy(result->output + result->output_length, data, length);
+	result->output_length += length;
+	for (index = 0; index < length; ++index) {
+		if (data[index] == '\r')
+			result->final_column = 0U;
+		else
+			result->final_column =
+			    (result->final_column + 1U) % YT_CONFIG_SCREEN_WIDTH;
+	}
+	return true;
+}
+
+static bool
+append_literal(struct yt_config_output_result *result, const char *text)
+{
+	return append_bytes(result, (const uint8_t *)text, strlen(text));
+}
+
+static bool
+append_line(struct yt_config_output_result *result, const char *text)
+{
+	static const uint8_t newline = '\r';
+
+	return append_literal(result, text)
+	    && append_bytes(result, &newline, 1U);
+}
+
+static bool
+append_binary_line(struct yt_config_output_result *result,
+    const uint8_t *text, size_t length)
+{
+	static const uint8_t newline = '\r';
+
+	return append_bytes(result, text, length)
+	    && append_bytes(result, &newline, 1U);
+}
+
+static bool
+append_single(struct yt_config_output_result *result, float value,
+    bool print_space)
+{
+	char number[64];
+	int length = print_space
+	    ? qb_print_single(number, sizeof(number), value)
+	    : qb_str_single(number, sizeof(number), value);
+
+	return length >= 0 && append_bytes(result, (const uint8_t *)number,
+	    (size_t)length);
+}
+
+static bool
+append_numeric_line(struct yt_config_output_result *result,
+    const char *prefix, float value)
+{
+	static const uint8_t newline = '\r';
+
+	return append_literal(result, prefix)
+	    && append_single(result, value, true)
+	    && append_bytes(result, &newline, 1U);
+}
+
+static bool
+append_genesis_line(struct yt_config_output_result *result, float value)
+{
+	static const uint8_t newline = '\r';
+
+	if (!append_literal(result,
+	    "<L> Ports needed to initiate Genesis:"))
+		return false;
+	if (value > 300.0f) {
+		if (!append_literal(result, " DISABLED"))
+			return false;
+	}
+	else if (!append_single(result, value, false))
+		return false;
+	return append_bytes(result, &newline, 1U);
+}
+
+bool
+yt_config_prepare_menu_working(const struct yt_config *config,
+    uint8_t scoreboard_path[41], struct yt_config_menu_working *working)
+{
+	bool overflow;
+	int path_length;
+
+	if (config == NULL || scoreboard_path == NULL || working == NULL)
+		return false;
+	path_length = (int)qb_cint(config->scoreboard_length, &overflow);
+	if (overflow || path_length < 0 || path_length > 41)
+		return false;
+	working->local_screen = config->local_screen;
+	working->lottery_plays = config->lottery_plays;
+	working->maximum_holds = config->maximum_holds;
+	if (working->maximum_holds < 20.0f)
+		working->maximum_holds = 200.0f;
+	if (path_length == 0) {
+		memcpy(scoreboard_path, "NUL", 3U);
+		path_length = 3;
+	}
+	else
+		memcpy(scoreboard_path, config->record.bytes, (size_t)path_length);
+	working->scoreboard_path = scoreboard_path;
+	working->scoreboard_path_length = (size_t)path_length;
+	if (working->local_screen < -1.0f || working->local_screen > 0.0f)
+		working->local_screen = -1.0f;
+	if (working->lottery_plays < 1.0f)
+		working->lottery_plays = 1.0f;
+	if (working->maximum_holds < 5.0f
+	    || working->maximum_holds > 1000.0f)
+		working->maximum_holds = 1000.0f;
+	return true;
+}
+
+bool
+yt_config_compose_menu_prompt(const struct yt_config *config,
+    const struct yt_config_menu_working *working, int today,
+    size_t initial_column, struct yt_config_output_result *result)
+{
+	static const uint8_t newline = '\r';
+
+	if (config == NULL || working == NULL || result == NULL
+	    || (working->scoreboard_path == NULL
+	    && working->scoreboard_path_length != 0U)
+	    || working->scoreboard_path_length > 41U
+	    || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	if (!append_line(result, "Yankee Trader Configuration Program")
+	    || !append_line(result, "By Alan Davenport")
+	    || !append_line(result, "")
+	    || !append_line(result, "Version 1.8 -=- 03/13/94")
+	    || !append_line(result, "")
+	    || !append_literal(result, "<A> Maximum Number of Holds:")
+	    || !append_single(result, working->maximum_holds, false)
+	    || !append_bytes(result, &newline, 1U)
+	    || !append_numeric_line(result, "<B> Turns per day:",
+		config->turns_per_day)
+	    || !append_numeric_line(result, "<C> Initial fighters:",
+		config->initial_fighters)
+	    || !append_numeric_line(result, "<D> Initial credits:",
+		config->initial_credits)
+	    || !append_numeric_line(result, "<E> Initial cargo holds:",
+		config->initial_holds)
+	    || !append_numeric_line(result,
+		"<F> Days until a dead player is deleted:",
+		config->retention_days)
+	    || !append_literal(result, "<G> OK to run Maintenance?:")
+	    || !append_line(result, config->last_maintenance == (float)today
+		? " No, Ran Today Already" : " Yes")
+	    || !append_numeric_line(result,
+		"<H> Xannor Headquarters is in:", config->headquarters)
+	    || !append_literal(result, "<I> Scoreboard File Path\\Name: ")
+	    || !append_binary_line(result, working->scoreboard_path,
+		working->scoreboard_path_length)
+	    || !append_literal(result,
+		"<J> Local Screen With Remote Callers: ")
+	    || !append_line(result, working->local_screen == 0.0f ? "Off" : "On")
+	    || !append_numeric_line(result,
+		"<K> Maximum Lottery Plays Per Day :", working->lottery_plays)
+	    || !append_genesis_line(result, config->genesis_ports)
+	    || !append_line(result, "<N> Player NAME/ALIAS editor.")
+	    || !append_line(result, "<O> pOrt name editor.")
+	    || !append_line(result, "<P> Planet name editor.")
+	    || !append_line(result, "")
+	    || !append_line(result, "<X> Exit Program")
+	    || !append_line(result, "")
+	    || !append_literal(result, "Command: "))
+		return false;
+	return true;
+}
+
+bool
+yt_config_compose_command_echo(uint8_t command, size_t initial_column,
+    uint8_t *folded, struct yt_config_output_result *result)
+{
+	uint8_t output[3];
+
+	if (folded == NULL || result == NULL
+	    || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	*folded = command & 0xdfU;
+	output[0] = *folded;
+	output[1] = '\r';
+	output[2] = '\r';
+	return append_bytes(result, output, sizeof(output));
+}
+
+bool
+yt_config_compose_exit(size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_line(result, "-=* End of Run *=-");
+}
+
+bool
+yt_config_compose_missing_data(size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_line(result,
+	    "\aMAIN DATA FILE NOT FOUND. PLEASE RUN YT-INIT FIRST!");
+}

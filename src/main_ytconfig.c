@@ -1,5 +1,6 @@
 #include "qb.h"
 #include "yt_cli.h"
+#include "yt_config_output.h"
 #include "yt_game.h"
 #include "yt_names.h"
 
@@ -70,43 +71,26 @@ redraw_repairs(struct yt_game *game, float maximum,
 	return true;
 }
 
-static void
-show_menu(const struct yt_config *config, int today)
+static bool
+write_output(const struct yt_config_output_result *output,
+    struct yt_error *error)
 {
-	puts("\nYankee Trader Configuration Program");
-	puts("By Alan Davenport");
-	printf("<A> Maximum Number of Holds: %.9g\n", config->maximum_holds);
-	printf("<B> Turns per day: %.9g\n", config->turns_per_day);
-	printf("<C> Initial fighters: %.9g\n", config->initial_fighters);
-	printf("<D> Initial credits: %.9g\n", config->initial_credits);
-	printf("<E> Initial cargo holds: %.9g\n", config->initial_holds);
-	printf("<F> Days until a dead player is deleted: %.9g\n",
-	    config->retention_days);
-	printf("<G> OK to run Maintenance?:%s\n",
-	    config->last_maintenance == (float)today
-	    ? " No, Ran Today Already" : " Yes");
-	printf("<H> Xannor Headquarters is in: %.9g\n",
-	    config->headquarters);
-	printf("<I> Scoreboard File Path\\Name: %s\n", config->scoreboard);
-	printf("<J> Local Screen With Remote Callers: %s\n",
-	    config->local_screen != 0.0f
-	    ? "On" : "Off");
-	printf("<K> Maximum Lottery Plays Per Day : %.9g\n",
-	    config->lottery_plays);
-	if (config->genesis_ports > 300.0f)
-		puts("<L> Ports needed to initiate Genesis: DISABLED");
-	else
-		printf("<L> Ports needed to initiate Genesis: %.9g\n",
-		    config->genesis_ports);
-	puts("<N> Player NAME/ALIAS editor.");
-	puts("<O> pOrt name editor.");
-	puts("<P> Planet name editor.");
-	puts("<X> Exit Program");
-	fputs("Command: ", stdout);
+	if (output->output_length != 0U
+	    && fwrite(output->output, 1, output->output_length, stdout)
+	    != output->output_length) {
+		if (error != NULL) {
+			error->status = YT_IO_ERROR;
+			snprintf(error->operation, sizeof(error->operation),
+			    "write configuration screen");
+			snprintf(error->path, sizeof(error->path), "stdout");
+		}
+		return false;
+	}
+	return true;
 }
 
 static bool
-numeric_edit(struct yt_game *game, char key, float *maximum,
+numeric_edit(struct yt_game *game, char key, float *maximum, float *lottery,
     struct yt_error *error)
 {
 	float value;
@@ -186,6 +170,8 @@ numeric_edit(struct yt_game *game, char key, float *maximum,
 	*field = value;
 	if (key == 'A')
 		*maximum = value;
+	else if (key == 'K')
+		*lottery = value;
 	return store_config(game, error);
 }
 
@@ -220,9 +206,12 @@ edit_maintenance(struct yt_game *game, struct yt_error *error)
 }
 
 static bool
-edit_scoreboard(struct yt_game *game, struct yt_error *error)
+edit_scoreboard(struct yt_game *game, uint8_t working_path[41],
+    size_t *working_path_length, struct yt_error *error)
 {
 	char line[160];
+	const char *stored;
+	size_t length;
 
 	puts("Enter new scoreboard and path or hit ENTER for 'YTSCORE.ASC'.");
 	fputs("-=> ", stdout);
@@ -232,9 +221,15 @@ edit_scoreboard(struct yt_game *game, struct yt_error *error)
 		puts("Too long! 41 chars max!!");
 		return true;
 	}
+	stored = line[0] == '\0' ? "YTSCORE.ASC" : line;
+	length = strlen(stored);
 	snprintf(game->config.scoreboard, sizeof(game->config.scoreboard), "%s",
-	    line[0] == '\0' ? "YTSCORE.ASC" : line);
-	return store_config(game, error);
+	    stored);
+	if (!store_config(game, error))
+		return false;
+	memcpy(working_path, stored, length);
+	*working_path_length = length;
+	return true;
 }
 
 static bool
@@ -594,8 +589,8 @@ main(void)
 {
 	struct yt_game game;
 	struct yt_error error;
-	float maximum;
-	float local_screen;
+	struct yt_config_menu_working working;
+	uint8_t scoreboard[41];
 	size_t file_size;
 
 	yt_error_clear(&error);
@@ -612,48 +607,48 @@ main(void)
 	if (!yt_file_size(game.database.path, &file_size, &error))
 		goto failure;
 	if (file_size == 0) {
+		struct yt_config_output_result output;
+
+		if (!yt_config_compose_missing_data(0U, &output)
+		    || !write_output(&output, &error))
+			goto failure;
 		yt_database_close(&game.database);
-		fputs("\aMAIN DATA FILE NOT FOUND. PLEASE RUN YT-INIT FIRST!\a\n",
-		    stdout);
 		if (!yt_file_delete("ytdata.dat", true, &error))
 			goto failure_closed;
 		return EXIT_SUCCESS;
 	}
 	if (!yt_config_load(&game.database, &game.config, &error))
 		goto failure;
-	maximum = game.config.maximum_holds;
-	if (maximum < 20.0f)
-		maximum = 200.0f;
-	if (game.config.scoreboard[0] == '\0')
-		strcpy(game.config.scoreboard, "NUL");
-	local_screen = game.config.local_screen;
-	if (local_screen < -1.0f || local_screen > 0.0f)
-		local_screen = -1.0f;
-	if (game.config.lottery_plays < 1.0f)
-		game.config.lottery_plays = 1.0f;
-	if (maximum < 5.0f || maximum > 1000.0f)
-		maximum = 1000.0f;
-	puts("Version 1.8 -=- 03/13/94");
+	if (!yt_config_prepare_menu_working(&game.config, scoreboard, &working))
+		goto failure;
 	for (;;) {
+		struct yt_config_output_result output;
 		int today;
 		int year;
 		int raw_key;
+		uint8_t folded;
 		char key;
 
 		if (!yt_config_load(&game.database, &game.config, &error)
 		    || !yt_current_date_serial(game.config.epoch_year, &today, &year,
 		    &error)
-		    || !redraw_repairs(&game, maximum, &error))
+		    || !redraw_repairs(&game, working.maximum_holds, &error))
 			goto failure;
-		show_menu(&game.config, today);
+		if (!yt_config_compose_menu_prompt(&game.config, &working, today,
+		    0U, &output) || !write_output(&output, &error))
+			goto failure;
 		fflush(stdout);
 		raw_key = yt_cli_key();
 		if (raw_key == EOF)
 			break;
-		key = (char)((unsigned char)raw_key & 0xdfU);
-		fputc(key, stdout);
+		if (!yt_config_compose_command_echo((uint8_t)raw_key,
+		    output.final_column, &folded, &output)
+		    || !write_output(&output, &error))
+			goto failure;
+		key = (char)folded;
 		if (strchr("ABCDEFKL", key) != NULL) {
-			if (!numeric_edit(&game, key, &maximum, &error))
+			if (!numeric_edit(&game, key, &working.maximum_holds,
+			    &working.lottery_plays, &error))
 				goto failure;
 		}
 		else if (key == 'G') {
@@ -665,17 +660,18 @@ main(void)
 				goto failure;
 		}
 		else if (key == 'I') {
-			if (!edit_scoreboard(&game, &error))
+			if (!edit_scoreboard(&game, scoreboard,
+			    &working.scoreboard_path_length, &error))
 				goto failure;
 		}
 		else if (key == 'J') {
 			bool overflow;
-			int value = (int)qb_cint(local_screen,
+			int value = (int)qb_cint(working.local_screen,
 			    &overflow);
 
 			if (!overflow) {
-				local_screen = (float)(~value);
-				game.config.local_screen = local_screen;
+				working.local_screen = (float)(~value);
+				game.config.local_screen = working.local_screen;
 				if (!store_config(&game, &error))
 					goto failure;
 			}
@@ -693,7 +689,9 @@ main(void)
 				goto failure;
 		}
 		else if (key == 'X') {
-			puts("-=* End of Run *=-");
+			if (!yt_config_compose_exit(output.final_column, &output)
+			    || !write_output(&output, &error))
+				goto failure;
 			break;
 		}
 	}

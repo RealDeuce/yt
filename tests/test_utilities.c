@@ -1,4 +1,5 @@
 #include "yt_config.h"
+#include "yt_config_output.h"
 #include "yt_file.h"
 #include "yt_game.h"
 #include "yt_init.h"
@@ -3380,32 +3381,115 @@ done:
 static bool
 test_ytconfig(struct yt_error *error)
 {
+	uint8_t expected[4096];
+	uint8_t scoreboard[41];
+	uint8_t *actual = NULL;
+	size_t expected_length = 0U;
+	size_t actual_length = 0U;
 	struct yt_game game;
+	struct yt_config_menu_working working;
+	struct yt_config_output_result output;
+	int today;
+	int year;
+	uint8_t folded;
 	static const char input[] = "JX";
+	bool valid = false;
+
+#define APPEND_CONFIG_OUTPUT() do { \
+	if (output.output_length > sizeof(expected) - expected_length) \
+		goto done; \
+	memcpy(expected + expected_length, output.output, output.output_length); \
+	expected_length += output.output_length; \
+} while (0)
 
 	memset(&game, 0, sizeof(game));
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_UPDATE,
 	    error) || !yt_config_load(&game.database, &game.config, error))
 		return false;
 	game.config.local_screen = -2.0f;
-	if (!yt_config_store(&game.database, &game.config, error)) {
-		yt_game_close(&game);
-		return false;
-	}
+	game.config.last_maintenance = -1.0f;
+	if (!yt_config_store(&game.database, &game.config, error))
+		goto done;
+	if (!yt_config_prepare_menu_working(&game.config, scoreboard, &working))
+		goto done;
+	if (!yt_current_date_serial(game.config.epoch_year, &today, &year,
+	    error))
+		goto done;
+	if (!yt_config_compose_menu_prompt(&game.config, &working, today, 0U,
+	    &output))
+		goto done;
+	APPEND_CONFIG_OUTPUT();
+	if (!yt_config_compose_command_echo((uint8_t)'J',
+	    output.final_column, &folded, &output) || folded != (uint8_t)'J')
+		goto done;
+	APPEND_CONFIG_OUTPUT();
+	working.local_screen = 0.0f;
+	game.config.local_screen = 0.0f;
+	if (!yt_config_compose_menu_prompt(&game.config, &working, today, 0U,
+	    &output))
+		goto done;
+	APPEND_CONFIG_OUTPUT();
+	if (!yt_config_compose_command_echo((uint8_t)'X',
+	    output.final_column, &folded, &output) || folded != (uint8_t)'X')
+		goto done;
+	APPEND_CONFIG_OUTPUT();
+	if (!yt_config_compose_exit(output.final_column, &output))
+		goto done;
+	APPEND_CONFIG_OUTPUT();
 	yt_game_close(&game);
 	if (!write_file("config.in", input, sizeof(input) - 1U)
-	    || !run_redirected(YT_CONFIG_EXE, "config.in", "config.out"))
-		return false;
+	    || !run_redirected(YT_CONFIG_EXE, "config.in", "config.out")
+	    || !read_file("config.out", &actual, &actual_length)
+	    || actual_length != expected_length
+	    || memcmp(actual, expected, expected_length) != 0)
+		goto done_closed;
 	memset(&game, 0, sizeof(game));
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_READ,
 	    error) || !yt_config_load(&game.database, &game.config, error))
-		return false;
-	if (game.config.local_screen != 0.0f) {
-		yt_game_close(&game);
-		return false;
-	}
+		goto done;
+	valid = game.config.local_screen == 0.0f;
+
+done:
 	yt_game_close(&game);
-	return true;
+done_closed:
+	free(actual);
+#undef APPEND_CONFIG_OUTPUT
+	return valid;
+}
+
+static bool
+test_ytconfig_missing_data(void)
+{
+	static const uint8_t expected[] =
+	    "\aMAIN DATA FILE NOT FOUND. PLEASE RUN YT-INIT FIRST!\r";
+	uint8_t *database = NULL;
+	uint8_t *output = NULL;
+	size_t database_length = 0U;
+	size_t output_length = 0U;
+	FILE *probe;
+	bool removed;
+	bool valid = false;
+
+	if (!read_file("YTDATA.DAT", &database, &database_length)
+	    || remove("YTDATA.DAT") != 0
+	    || !write_file("config.in", "", 0U)
+	    || !run_redirected(YT_CONFIG_EXE, "config.in", "config.out")
+	    || !read_file("config.out", &output, &output_length))
+		goto done;
+	probe = fopen("YTDATA.DAT", "rb");
+	removed = probe == NULL;
+	if (probe != NULL)
+		(void)fclose(probe);
+	valid = removed && output_length == sizeof(expected) - 1U
+	    && memcmp(output, expected, sizeof(expected) - 1U) == 0;
+
+done:
+	if (database != NULL
+	    && !write_file("YTDATA.DAT", database, database_length))
+		valid = false;
+	free(database);
+	free(output);
+	return valid;
 }
 
 static bool
@@ -4141,6 +4225,8 @@ main(void)
 		failure = "cannot restore post-route utility test database";
 	else if (!test_ytconfig(&error))
 		failure = "YTCONFIG executable behavior differs";
+	else if (!test_ytconfig_missing_data())
+		failure = "YTCONFIG missing-data terminal differs";
 	else if (!test_portname(&error))
 		failure = "PORTNAME changed data outside its two owned fields";
 	else if (!test_rmt_standalone_decline(&error))

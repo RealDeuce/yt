@@ -76,6 +76,7 @@ set(YT_CORE_SOURCES
 
 set(YT_GAME_SOURCES
     src/yt_config.c
+    src/yt_config_output.c
     src/yt_game.c
     src/yt_init.c
     src/yt_maint.c
@@ -161,6 +162,7 @@ if(BUILD_TESTING)
         target_compile_definitions(test_input_model PRIVATE _XOPEN_SOURCE=700)
     endif()
     yt_add_test(test_presentation tests/test_presentation.c yt_game)
+    yt_add_test(test_ytconfig_output tests/test_ytconfig_output.c yt_game)
     yt_add_test(test_score tests/test_score.c yt_game)
 
     add_executable(test_assets tests/test_assets.c)
