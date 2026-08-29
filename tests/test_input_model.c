@@ -503,6 +503,25 @@ test_ab36_printable_transaction(void)
 	    && strcmp(paged_text, "B") == 0 && newline_flag == 1.0f);
 }
 
+static void
+test_command_save_gate(void)
+{
+	bool requested;
+
+	CHECK(yt_input_command_save_requested("", 1U, &requested)
+	    && !requested);
+	CHECK(yt_input_command_save_requested("A", 2U, &requested)
+	    && !requested);
+	CHECK(yt_input_command_save_requested("A/", 3U, &requested)
+	    && requested);
+	CHECK(yt_input_command_save_requested("/", 2U, &requested)
+	    && requested);
+	CHECK(yt_input_command_save_requested("A//", 4U, &requested)
+	    && requested);
+	CHECK(!yt_input_command_save_requested("A", 1U, &requested));
+	CHECK(!yt_input_command_save_requested("A", 2U, NULL));
+}
+
 struct ab36_terminal_tape {
 	uint8_t notice[64];
 	size_t notice_length;
@@ -1854,6 +1873,7 @@ main(void)
 	test_ab36_submission();
 	test_ab36_backspace_transaction();
 	test_ab36_printable_transaction();
+	test_command_save_gate();
 	test_ab36_terminal_transaction();
 	test_source_fifo();
 	test_merged_fifo();

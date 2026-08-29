@@ -324,6 +324,19 @@ yt_input_ab36_printable_run(uint8_t selected_key, char *accumulator,
 }
 
 bool
+yt_input_command_save_requested(const char *text, size_t capacity,
+    bool *requested)
+{
+	size_t length;
+
+	if (requested == NULL
+	    || !bounded_string_length(text, capacity, &length))
+		return false;
+	*requested = length != 0U && text[length - 1U] == '/';
+	return true;
+}
+
+bool
 yt_input_ab36_inactivity_expired(float timer, float deadline, float mode)
 {
 	return timer > deadline && mode != 1.0f;

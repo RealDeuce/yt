@@ -219,6 +219,8 @@ bool yt_input_ab36_printable_run(uint8_t selected_key, char *accumulator,
     char *paged_text, size_t paged_text_capacity, float *newline_flag,
     bool *handled, yt_ab36_echo_fn echo, yt_ab36_carrier_fn carrier,
     void *context);
+bool yt_input_command_save_requested(const char *text, size_t capacity,
+    bool *requested);
 bool yt_input_ab36_inactivity_expired(float timer, float deadline,
     float mode);
 bool yt_input_ab36_session_expired(float timer, float deadline);

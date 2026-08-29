@@ -636,12 +636,15 @@ expand_repeat(struct yt_session *session, char *text, size_t size)
 static bool
 session_line(struct yt_session *session, char *text, size_t size)
 {
+	bool save_requested;
 	size_t length;
 
 	if (!read_keyboard_line(session, text, size))
 		return false;
+	if (!yt_input_command_save_requested(text, size, &save_requested))
+		return false;
 	length = strlen(text);
-	if (length > 0 && text[length - 1U] == '/') {
+	if (save_requested) {
 		text[--length] = '\0';
 		clear_queue(session);
 		snprintf(session->saved_command, sizeof(session->saved_command),
