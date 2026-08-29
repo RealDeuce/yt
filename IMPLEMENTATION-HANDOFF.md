@@ -198,7 +198,7 @@ not authoritative. Use the corrected goal above in the new workspace.
   `3552bd61c9cb9b7197aeb6fbad1f37cba69cd09f125d878d0c9072a691e8950a`.
   All immutable identity columns and TSV widths match the regenerated trusted
   snapshot.
-- One final-analysis blocker is currently known. The generated
+- Three final-analysis blockers/gaps are currently known. First, the generated
   `YTCONFIG:0030..053B` startup/menu print catalog is internally inconsistent
   with its pinned reachable disassembly: it labels `02A3` as a record-1
   local-screen row although `02A3..02BB` constructs and prints
@@ -208,6 +208,21 @@ not authoritative. Use the corrected goal above in the new workspace.
   `ytconfig-startup-menu-output` family from that catalog until the upstream
   analysis project corrects and regenerates it. Other independent families
   remain actionable, so this does not globally block the active goal.
+- Second, canonical Mercenary prose says that a moving fleet traverses one
+  FIFO-route hop, while the pinned executable has empty-hop, friendly-merge,
+  and winning-attack joins at `4EE7`, `4F5F`, and `51E0` that reach
+  `5315 -> 4932` and advance the route-workspace cursor again. The adjacent
+  and disconnected zero-successor arm is independently pinned and native;
+  do not implement or map the wider multi-hop continuation until the analysis
+  project reconciles the traversal contract.
+- Third, the bounded maintenance-entry output model deliberately exposes
+  `date-or-epoch`, `time-or-date`, `dynamic-status`, and
+  `dynamic-player-status` as address-owned injected operands, but the current
+  final artifacts do not assign their concrete production meanings at
+  `0389`, `03D3`, `03EC`, `03FD`, and `050D`. The byte composer is exact for
+  supplied operands; do not connect it to `yt_maintenance_run()` or promote
+  root `YTMAINT:0073` until the upstream project identifies the values and
+  their acquisition/order.
 - The exact LOCAL BIOS framebuffer launcher and cross-platform OpenDoors
   startup/exit/local-console adapter boundary remain explicitly deferred by
   the user. The present stdout/ANSI `src/main_local.c` path is not exact and
@@ -493,9 +508,15 @@ not authoritative. Use the corrected goal above in the new workspace.
   and `1`, while boundary reducers pin the link and owner predicates. Native
   raw-disk fixtures now also pin the descending movement sweep, route choice,
   merge/join behavior, selector-before-combat order, exact Won/Lost output,
-  and the 201-on-201 combat quantum. The cached empty-next-hop shortcut, a
-  completely joined route/mine/planet-absorption composition, and staged
-  physical failures remain open.
+  and the 201-on-201 combat quantum. A newly exposed upstream conflict blocks
+  the wider composition: canonical prose says one FIFO-route hop, but
+  executable joins `4EE7`, `4F5F`, and `51E0` reach `5315 -> 4932`, where the
+  route-workspace cursor is used to copy another successor before the zero
+  test. This appears to continue after an empty hop, friendly merge, or
+  winning attack; a failed route instead reaches the zero-successor target
+  install directly. Do not choose between those contracts or map
+  `495A..49D1` until the analysis project reconciles them. Raw
+  route/FOR/FIELD state and staged physical failures also remain open.
 - The Mercenary defection controller is now fully mapped through its bounded
   `4661..47C6` loop. All ten qualified first-entry, positive/skip,
   post-draw-conjunction, news-call, terminal and ascending back-edge
