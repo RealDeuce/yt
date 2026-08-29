@@ -187,12 +187,12 @@ not authoritative. Use the corrected goal above in the new workspace.
   destination-selector and destination-combat transactions,
   ledger dispositions are roots
   `167 candidate / 1 missing`, transfers
-  `5278 candidate / 2089 missing / 1 explicitly
+  `5290 candidate / 2077 missing / 1 explicitly
   deferred`, and presentation `136 candidate / 8 missing / 6 verified`.
   Current SHA-256
   values are roots
   `64b17a8ae6550d4ef994a6e872d1f06c9ff8a6bc33ab9ab64d390da38a87e8be`,
-  transfers `39968aa8244417eb530a4747a625d1518ce113cd05c1c75dfee8d3efd380e791`,
+  transfers `7f3a932f3c6dc0a78369c8c880fe19e7b10095eaa0cfd7a3817c9aa7290ab6b1`,
   presentation `b899734f3487d364fbad0b2d5be7936334cc753b4c676d3407d6703d522b5afe`,
   and manifest
   `3552bd61c9cb9b7197aeb6fbad1f37cba69cd09f125d878d0c9072a691e8950a`.
@@ -1869,6 +1869,15 @@ not authoritative. Use the corrected goal above in the new workspace.
   `YT-INIT:13D3`/`15EA` and all 19 body transfers are now candidate. Raw BFS
   arrays, failure cuts, physical writes and the separate RMT graph remain
   open.
+- Twelve main-module graph-controller transfers are now candidate without
+  crediting the still-open sector prepass or untested inner alternatives.
+  They cover the six fixed reciprocal links, entry and completion of the
+  2,004-sector randomized pass, the 2..2,004 verification scan, both
+  connectivity arms, 21 observed repair calls, and the final graph-to-disk
+  join. The native tape now asserts both 21 address-owned no-path rows and 21
+  linked-result rows in addition to 35 long-warp triples and 2,003
+  verification triples. Inner self-target/provider-failure alternatives and
+  raw array/runtime state remain uncredited.
 - RMT-INIT now has the corresponding dynamic-layout complete-world fixture:
   245 recovered-LCG draws, final state `3FED05`, and the independently pinned
   4,110-byte database image. Roots `RMT-INIT:2DBE`/`3031` and all 21 body

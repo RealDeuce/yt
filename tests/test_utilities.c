@@ -1843,6 +1843,8 @@ test_yt_init_presented_world(void)
 	    && yt_init_capture_site_count(&capture, 0x10f8U) == 35U
 	    && yt_init_capture_site_count(&capture, 0x1102U) == 35U
 	    && yt_init_capture_site_count(&capture, 0x110aU) == 35U
+	    && yt_init_capture_site_count(&capture, 0x1501U) == 21U
+	    && yt_init_capture_site_count(&capture, 0x15c8U) == 21U
 	    && yt_init_capture_site_count(&capture, 0x12acU) == 2003U
 	    && yt_init_capture_site_count(&capture, 0x12b9U) == 2003U
 	    && yt_init_capture_site_count(&capture, 0x12c1U) == 2003U
