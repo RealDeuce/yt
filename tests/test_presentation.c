@@ -1272,23 +1272,98 @@ test_attention(void)
 static void
 test_sound_toggle(void)
 {
+	static const uint8_t ansi_on[] =
+	    "Sound ON\r\n"
+	    "\x1b[MBO4L32P32CP64CP64CP64L16EP64L32CP64L12E\x0e";
+	static const uint8_t plain_on[] = "Sound ON\r\n\x07";
+	static const uint8_t off[] = "Sound OFF\r\n";
+	static const uint8_t ansi_cue[] =
+	    "MBO4L32P32CP64CP64CP64L16EP64L32CP64L12E";
 	struct yt_present_state current = state(true);
 	struct yt_present_result result;
 
+	current.color_initialized = 1.0f;
+	current.cached_foreground = current.foreground;
+	current.cached_background = current.background;
 	current.sound.user_sound = 0.0f;
 	CHECK(yt_present_sound_toggle(&current, &result) == YT_PRESENT_OK);
 	CHECK(current.sound.user_sound == -1.0f);
-	CHECK(result.remote_length > 9);
-	CHECK(result.event_count == 7);
+	CHECK(current.sound.local_sound == -1.0f);
+	CHECK(result.remote_length == sizeof(ansi_on) - 1U);
+	CHECK(memcmp(result.remote, ansi_on, sizeof(ansi_on) - 1U) == 0);
+	CHECK(result.event_count == 6);
 	CHECK(result.events[0].operation == YT_PRESENT_LOCAL_COLOR);
-	CHECK(result.events[1].operation == YT_PRESENT_REMOTE_SEMI);
-	CHECK(result.events[2].operation == YT_PRESENT_LOCAL_LINE);
-	CHECK(result.events[3].operation == YT_PRESENT_REMOTE_LINE);
-	CHECK(result.events[3].length == 8
-	    && memcmp(result.events[3].data, "Sound ON", 8) == 0);
+	CHECK(result.events[1].operation == YT_PRESENT_LOCAL_LINE);
+	CHECK(result.events[1].length == 8
+	    && memcmp(result.events[1].data, "Sound ON", 8) == 0);
+	CHECK(result.events[2].operation == YT_PRESENT_REMOTE_LINE);
+	CHECK(result.events[3].operation == YT_PRESENT_REMOTE_SEMI);
 	CHECK(result.events[4].operation == YT_PRESENT_REMOTE_SEMI);
-	CHECK(result.events[5].operation == YT_PRESENT_REMOTE_SEMI);
-	CHECK(result.events[6].operation == YT_PRESENT_LOCAL_PLAY);
+	CHECK(result.events[4].length == sizeof(ansi_cue) + 2U);
+	CHECK(result.events[5].operation == YT_PRESENT_LOCAL_PLAY);
+	CHECK(result.events[5].length == sizeof(ansi_cue) - 1U
+	    && memcmp(result.events[5].data, ansi_cue,
+	    sizeof(ansi_cue) - 1U) == 0);
+
+	current = state(false);
+	current.sound.user_sound = 0.0f;
+	current.sound.local_sound = 77.0f;
+	CHECK(yt_present_sound_toggle(&current, &result) == YT_PRESENT_OK);
+	CHECK(current.sound.user_sound == -1.0f);
+	CHECK(current.sound.local_sound == 77.0f);
+	CHECK(result.remote_length == sizeof(plain_on) - 1U
+	    && memcmp(result.remote, plain_on, sizeof(plain_on) - 1U) == 0);
+	CHECK(result.event_count == 5);
+	CHECK(result.events[0].operation == YT_PRESENT_LOCAL_LINE);
+	CHECK(result.events[1].operation == YT_PRESENT_REMOTE_LINE);
+	CHECK(result.events[2].operation == YT_PRESENT_REMOTE_SEMI);
+	CHECK(result.events[3].operation == YT_PRESENT_REMOTE_SEMI
+	    && result.events[3].length == 1U
+	    && result.events[3].data[0] == '\x07');
+	CHECK(result.events[4].operation == YT_PRESENT_LOCAL_PLAY);
+
+	current = state(true);
+	current.color_initialized = 1.0f;
+	current.cached_foreground = current.foreground;
+	current.cached_background = current.background;
+	current.sound.user_sound = -1.0f;
+	CHECK(yt_present_sound_toggle(&current, &result) == YT_PRESENT_OK);
+	CHECK(current.sound.user_sound == 0.0f);
+	CHECK(result.remote_length == sizeof(off) - 1U
+	    && memcmp(result.remote, off, sizeof(off) - 1U) == 0);
+	CHECK(result.event_count == 4);
+	CHECK(result.events[0].operation == YT_PRESENT_LOCAL_COLOR);
+	CHECK(result.events[1].operation == YT_PRESENT_LOCAL_LINE);
+	CHECK(result.events[2].operation == YT_PRESENT_REMOTE_LINE);
+	CHECK(result.events[3].operation == YT_PRESENT_REMOTE_SEMI);
+
+	current = state(true);
+	current.sound.mode = 1.0f;
+	current.sound.user_sound = 0.0f;
+	current.sound.local_sound = 77.0f;
+	CHECK(yt_present_sound_toggle(&current, &result) == YT_PRESENT_OK);
+	CHECK(current.sound.user_sound == -1.0f
+	    && current.sound.local_sound == -1.0f);
+	CHECK(result.remote_length == 0 && result.event_count == 3);
+	CHECK(result.events[0].operation == YT_PRESENT_LOCAL_COLOR);
+	CHECK(result.events[1].operation == YT_PRESENT_LOCAL_LINE);
+	CHECK(result.events[2].operation == YT_PRESENT_LOCAL_PLAY);
+
+	current = state(true);
+	current.sound.mode = 2.0f;
+	current.sound.user_sound = 0.0f;
+	current.sound.local_sound = 77.0f;
+	CHECK(yt_present_sound_toggle(&current, &result) == YT_PRESENT_OK);
+	CHECK(current.sound.user_sound == -1.0f
+	    && current.sound.local_sound == -1.0f);
+	CHECK(result.remote_length == 10U
+	    && memcmp(result.remote, "Sound ON\r\n", 10U) == 0);
+	CHECK(result.event_count == 5);
+	CHECK(result.events[0].operation == YT_PRESENT_LOCAL_COLOR);
+	CHECK(result.events[1].operation == YT_PRESENT_LOCAL_LINE);
+	CHECK(result.events[2].operation == YT_PRESENT_REMOTE_LINE);
+	CHECK(result.events[3].operation == YT_PRESENT_REMOTE_SEMI);
+	CHECK(result.events[4].operation == YT_PRESENT_LOCAL_PLAY);
 
 	current = state(false);
 	current.sound.user_sound = 40000.0f;
