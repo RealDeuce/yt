@@ -339,6 +339,60 @@ test_ab36_submission(void)
 	CHECK(tape.calls == 1U && newline_flag == 0.0f);
 }
 
+struct ab36_backspace_tape {
+	char *accumulator;
+	size_t calls;
+	bool fail;
+};
+
+static bool
+ab36_backspace_echo(void *context, const uint8_t *local,
+    size_t local_length, const uint8_t *remote, size_t remote_length)
+{
+	static const uint8_t local_erase[] = {0x1d, ' ', 0x1d};
+	static const uint8_t remote_erase[] = {'\b', ' ', '\b'};
+	struct ab36_backspace_tape *tape = context;
+
+	++tape->calls;
+	CHECK(strcmp(tape->accumulator, "A") == 0);
+	CHECK(local_length == sizeof(local_erase)
+	    && memcmp(local, local_erase, sizeof(local_erase)) == 0);
+	CHECK(remote_length == sizeof(remote_erase)
+	    && memcmp(remote, remote_erase, sizeof(remote_erase)) == 0);
+	return !tape->fail;
+}
+
+static void
+test_ab36_backspace_transaction(void)
+{
+	char accumulator[8] = "AB";
+	bool handled;
+	struct ab36_backspace_tape tape = {
+		.accumulator = accumulator,
+	};
+
+	CHECK(yt_input_ab36_backspace_run('\b', accumulator,
+	    sizeof(accumulator), &handled, ab36_backspace_echo, &tape));
+	CHECK(handled && tape.calls == 1U && strcmp(accumulator, "A") == 0);
+
+	memcpy(accumulator, "AB", 3U);
+	tape.calls = 0U;
+	CHECK(yt_input_ab36_backspace_run(0x7fU, accumulator,
+	    sizeof(accumulator), &handled, ab36_backspace_echo, &tape));
+	CHECK(!handled && tape.calls == 0U && strcmp(accumulator, "AB") == 0);
+
+	accumulator[0] = '\0';
+	CHECK(yt_input_ab36_backspace_run('\b', accumulator,
+	    sizeof(accumulator), &handled, ab36_backspace_echo, &tape));
+	CHECK(!handled && tape.calls == 0U && accumulator[0] == '\0');
+
+	memcpy(accumulator, "AB", 3U);
+	tape.fail = true;
+	CHECK(!yt_input_ab36_backspace_run('\b', accumulator,
+	    sizeof(accumulator), &handled, ab36_backspace_echo, &tape));
+	CHECK(handled && tape.calls == 1U && strcmp(accumulator, "A") == 0);
+}
+
 struct ab36_terminal_tape {
 	uint8_t notice[64];
 	size_t notice_length;
@@ -1688,6 +1742,7 @@ main(void)
 	test_ab36_repeat_recognition();
 	test_ab36_repeat_transaction();
 	test_ab36_submission();
+	test_ab36_backspace_transaction();
 	test_ab36_terminal_transaction();
 	test_source_fifo();
 	test_merged_fifo();

@@ -268,6 +268,28 @@ yt_input_ab36_submit_run(float *newline_flag, yt_ab36_submit_line_fn line,
 }
 
 bool
+yt_input_ab36_backspace_run(uint8_t selected_key, char *accumulator,
+    size_t accumulator_capacity, bool *handled,
+    yt_ab36_backspace_echo_fn echo, void *context)
+{
+	static const uint8_t local_erase[] = {0x1d, ' ', 0x1d};
+	static const uint8_t remote_erase[] = {'\b', ' ', '\b'};
+	size_t length;
+
+	if (handled == NULL || echo == NULL
+	    || !bounded_string_length(accumulator, accumulator_capacity,
+	    &length))
+		return false;
+	*handled = false;
+	if (selected_key != '\b' || length == 0U)
+		return true;
+	accumulator[length - 1U] = '\0';
+	*handled = true;
+	return echo(context, local_erase, sizeof(local_erase), remote_erase,
+	    sizeof(remote_erase));
+}
+
+bool
 yt_input_ab36_inactivity_expired(float timer, float deadline, float mode)
 {
 	return timer > deadline && mode != 1.0f;

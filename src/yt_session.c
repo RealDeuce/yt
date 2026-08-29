@@ -246,6 +246,22 @@ session_ab36_submit_line(void *context)
 	return true;
 }
 
+static bool
+session_ab36_backspace_echo(void *context, const uint8_t *local,
+    size_t local_length, const uint8_t *remote, size_t remote_length)
+{
+	struct yt_session *session = context;
+	struct yt_present_result presentation;
+	enum yt_present_status status;
+
+	status = yt_present_editor_echo(local, local_length, remote,
+	    remote_length, &session->presentation, &presentation);
+	if (status != YT_PRESENT_OK)
+		return false;
+	yt_out_present_result(&presentation);
+	return true;
+}
+
 static float
 single_add(float left, float right)
 {
@@ -450,8 +466,6 @@ read_physical_line(FILE *file, char *dest, size_t size)
 static bool
 read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 {
-	static const uint8_t local_erase[] = {0x1d, ' ', 0x1d};
-	static const uint8_t remote_erase[] = {'\b', ' ', '\b'};
 	size_t used;
 	float inactivity_deadline;
 
@@ -521,16 +535,16 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 			snprintf(dest, size, "%s", session->command_accumulator);
 			return true;
 		}
-		if ((key == 8 || key == 127) && used > 0) {
-			session->command_accumulator[--used] = '\0';
-			status = yt_present_editor_echo(local_erase,
-			    sizeof(local_erase), remote_erase,
-			    sizeof(remote_erase), &session->presentation,
-			    &presentation);
-			if (status != YT_PRESENT_OK)
+		{
+			bool handled;
+
+			if (!yt_input_ab36_backspace_run(key,
+			    session->command_accumulator,
+			    sizeof(session->command_accumulator), &handled,
+			    session_ab36_backspace_echo, session))
 				return false;
-			yt_out_present_result(&presentation);
-			continue;
+			if (handled)
+				continue;
 		}
 		if (key >= 0x20 && key <= 0x7f
 		    && used + 1U < sizeof(session->command_accumulator)
