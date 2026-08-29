@@ -1413,6 +1413,97 @@ check_counterlaunch_model(void)
 	return true;
 }
 
+struct salvage_draw_tape {
+	float range[4];
+	float result[4];
+	size_t calls;
+	size_t fail_call;
+};
+
+static bool
+salvage_draw(void *context, float range, float *one_based,
+    struct yt_error *error)
+{
+	struct salvage_draw_tape *tape = context;
+	size_t call = tape->calls++;
+
+	(void)error;
+	if (call >= YT_ARRAY_LEN(tape->range))
+		return false;
+	tape->range[call] = range;
+	if (tape->fail_call != 0U && call + 1U == tape->fail_call)
+		return false;
+	*one_based = tape->result[call];
+	return true;
+}
+
+static bool
+check_salvage_cargo_sampler(void)
+{
+	struct yt_salvage_cargo_state state;
+	struct salvage_draw_tape tape;
+	static const float descending[4] = {4.0f, 3.0f, 2.0f, 1.0f};
+	static const float each_one[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+
+	memset(&state, 0, sizeof(state));
+	memset(&tape, 0, sizeof(tape));
+	state.requested = 4.0f;
+	state.stock[0] = 1.0f;
+	state.stock[1] = 1.0f;
+	state.stock[2] = 1.0f;
+	state.remaining = 4.0f;
+	memcpy(tape.result, each_one, sizeof(each_one));
+	if (!yt_salvage_cargo_sample(&state, salvage_draw, &tape, NULL)
+	    || tape.calls != 4U
+	    || memcmp(tape.range, descending, sizeof(descending)) != 0
+	    || memcmp(state.awards, each_one, sizeof(each_one)) != 0
+	    || state.stock[0] != 0.0f || state.stock[1] != 0.0f
+	    || state.stock[2] != 0.0f || state.remaining != 0.0f)
+		return false;
+
+	memset(&state, 0, sizeof(state));
+	memset(&tape, 0, sizeof(tape));
+	state.requested = 1.5f;
+	state.stock[0] = 0.5f;
+	state.remaining = 1.0f;
+	tape.result[0] = 1.0f;
+	if (!yt_salvage_cargo_sample(&state, salvage_draw, &tape, NULL)
+	    || tape.calls != 1U || state.awards[0] != 1.0f
+	    || state.stock[0] != -0.5f || state.remaining != 0.0f)
+		return false;
+
+	memset(&state, 0, sizeof(state));
+	memset(&tape, 0, sizeof(tape));
+	state.requested = 1.0f;
+	state.remaining = -3.5f;
+	tape.result[0] = -1.0f;
+	if (!yt_salvage_cargo_sample(&state, salvage_draw, &tape, NULL)
+	    || tape.calls != 1U || tape.range[0] != -3.5f
+	    || state.awards[0] != 1.0f || state.remaining != -4.5f)
+		return false;
+
+	memset(&state, 0, sizeof(state));
+	memset(&tape, 0, sizeof(tape));
+	state.requested = 1.0f;
+	state.remaining = 1.0f;
+	tape.result[0] = 5.0f;
+	if (!yt_salvage_cargo_sample(&state, salvage_draw, &tape, NULL)
+	    || state.awards[3] != 1.0f)
+		return false;
+
+	memset(&state, 0, sizeof(state));
+	memset(&tape, 0, sizeof(tape));
+	state.requested = 3.0f;
+	state.stock[0] = 3.0f;
+	state.remaining = 3.0f;
+	tape.result[0] = 1.0f;
+	tape.fail_call = 2U;
+	return !yt_salvage_cargo_sample(&state, salvage_draw, &tape, NULL)
+	    && tape.calls == 2U && tape.range[0] == 3.0f
+	    && tape.range[1] == 2.0f && state.awards[0] == 1.0f
+	    && state.stock[0] == 2.0f && state.remaining == 2.0f;
+}
+
 static bool
 check_port_name_editor_model(void)
 {
@@ -8442,6 +8533,8 @@ main(void)
 		return fail("Xannor retaliation transaction differs");
 	if (!check_counterlaunch_model())
 		return fail("player counterlaunch transaction differs");
+	if (!check_salvage_cargo_sampler())
+		return fail("salvage cargo sampler differs");
 	if (!check_port_name_editor_model())
 		return fail("port name editor model differs");
 	if (!check_planet_garrison_model())

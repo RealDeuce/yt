@@ -3386,9 +3386,11 @@ random_value(struct yt_session *session, float *value,
 }
 
 static bool
-session_random_one_based(struct yt_session *session, float range,
+session_random_one_based(void *context, float range,
     float *value, struct yt_error *error)
 {
+	struct yt_session *session = context;
+
 	return yt_random_one_based_single(&session->door->game.random, range,
 	    value, error);
 }
@@ -3953,35 +3955,18 @@ salvage_player(struct yt_session *session, int victim_record,
 	 * population.
 	 */
 	if (awards[0] > 0.0f) {
-		float stock[4] = {
-			victim->ore, victim->organics, victim->equipment,
-			victim->holds - victim->ore - victim->organics
-			    - victim->equipment
+		struct yt_salvage_cargo_state cargo = {
+			awards[0],
+			{victim->ore, victim->organics, victim->equipment},
+			victim->holds,
+			{0},
 		};
-		float remaining = victim->holds;
-		int count = (int)awards[0];
-		int hold;
 
 		emitted = true;
-		for (hold = 0; hold < count && remaining > 0.0f; ++hold) {
-			float selected;
-			float cursor = 0.0f;
-			int kind;
-
-			if (!session_random_one_based(session, remaining, &selected,
-			    error))
-				return false;
-			for (kind = 0; kind < 4; ++kind) {
-				cursor += stock[kind];
-				if (selected <= cursor) {
-					cargo_awards[kind] =
-					    single_add(cargo_awards[kind], 1.0f);
-					stock[kind] -= 1.0f;
-					break;
-				}
-			}
-			remaining -= 1.0f;
-		}
+		if (!yt_salvage_cargo_sample(&cargo, session_random_one_based,
+		    session, error))
+			return false;
+		memcpy(cargo_awards, cargo.awards, sizeof(cargo_awards));
 		if (!reload_player(session, error))
 			return false;
 		for (index = 0; index < 4; ++index)

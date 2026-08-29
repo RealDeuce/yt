@@ -503,6 +503,64 @@ yt_counterlaunch_run(struct yt_counterlaunch_state *state,
 	return ops->wait(context, 4.0, error);
 }
 
+static float
+salvage_single_add(float left, float right)
+{
+	volatile float result = left + right;
+
+	return result;
+}
+
+static float
+salvage_single_sub(float left, float right)
+{
+	volatile float result = left - right;
+
+	return result;
+}
+
+bool
+yt_salvage_cargo_sample(struct yt_salvage_cargo_state *state,
+    yt_salvage_cargo_draw_fn draw, void *context, struct yt_error *error)
+{
+	float counter;
+
+	if (state == NULL || draw == NULL)
+		return false;
+	memset(state->awards, 0, sizeof(state->awards));
+	for (counter = 1.0f; counter <= state->requested;
+	    counter = salvage_single_add(counter, 1.0f)) {
+		float one_based;
+		float pick;
+		float boundary;
+		int selected;
+
+		if (!draw(context, state->remaining, &one_based, error))
+			return false;
+		pick = salvage_single_sub(one_based, 1.0f);
+		if (pick < state->stock[0])
+			selected = 0;
+		else {
+			boundary = salvage_single_add(state->stock[0],
+			    state->stock[1]);
+			if (pick < boundary)
+				selected = 1;
+			else {
+				boundary = salvage_single_add(boundary,
+				    state->stock[2]);
+				selected = pick < boundary ? 2 : 3;
+			}
+		}
+		state->awards[selected] = salvage_single_add(
+		    state->awards[selected], 1.0f);
+		if (selected < 3)
+			state->stock[selected] = salvage_single_sub(
+			    state->stock[selected], 1.0f);
+		state->remaining = salvage_single_sub(state->remaining, 1.0f);
+	}
+	return true;
+}
+
 void
 yt_player_decode(struct yt_player *player, const struct yt_record *record)
 {

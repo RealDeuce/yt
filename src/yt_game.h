@@ -286,6 +286,16 @@ struct yt_counterlaunch_ops {
 	yt_counterlaunch_wait_fn wait;
 };
 
+struct yt_salvage_cargo_state {
+	float requested;
+	float stock[3];
+	float remaining;
+	float awards[4];
+};
+
+typedef bool (*yt_salvage_cargo_draw_fn)(void *context, float range,
+    float *one_based, struct yt_error *error);
+
 struct yt_game {
 	struct yt_database database;
 	struct yt_config config;
@@ -730,6 +740,8 @@ bool yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
 bool yt_counterlaunch_run(struct yt_counterlaunch_state *state,
     const struct yt_counterlaunch_ops *ops, void *context,
     struct yt_error *error);
+bool yt_salvage_cargo_sample(struct yt_salvage_cargo_state *state,
+    yt_salvage_cargo_draw_fn draw, void *context, struct yt_error *error);
 
 void yt_player_construct(struct yt_player *player,
     const struct yt_config *config, float today);
