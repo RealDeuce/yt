@@ -46,6 +46,10 @@ typedef bool (*yt_file_viewer_present_fn)(void *context,
     const uint8_t *text, size_t length, bool paged,
     struct yt_error *error);
 
+bool yt_file_viewer_entry(char *pager_key, float *line_count,
+    yt_file_viewer_present_fn present, void *context,
+    struct yt_error *error);
+
 bool yt_file_viewer_play(const uint8_t *data, size_t data_length,
     struct yt_file_viewer_play_state *state,
     yt_file_viewer_present_fn present, void *context,

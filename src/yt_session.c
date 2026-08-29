@@ -1067,6 +1067,19 @@ session_pager_step(struct yt_session *session)
 }
 
 static bool
+session_file_viewer_entry_present(void *context, const uint8_t *text,
+    size_t length, bool paged, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	if (paged)
+		return session_0317(session, text, length,
+		    "file viewer notice", error);
+	return session_present_text(session, text, length,
+	    SESSION_PRESENT_LINE, "file viewer pre-open blank", error);
+}
+
+static bool
 session_file_viewer_present(void *context, const uint8_t *text,
     size_t length, bool paged, struct yt_error *error)
 {
@@ -1104,13 +1117,10 @@ display_game_file(struct yt_session *session, const char *path,
 	float saved_foreground = session->presentation.foreground;
 	int saved_pager_foreground = session->pager.foreground;
 
-	session->pager.key[0] = '\0';
-	if (!session_0317(session, (const uint8_t *)"Cntl-X to Stop",
-	    strlen("Cntl-X to Stop"), "file viewer notice", error)
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "file viewer pre-open blank", error))
+	if (!yt_file_viewer_entry(session->pager.key,
+	    &session->pager.line_count, session_file_viewer_entry_present,
+	    session, error))
 		return false;
-	session->pager.line_count = 0.0f;
 	if (!yt_text_read(path, &file, error)) {
 		yt_error_clear(error);
 		return yt_file_viewer_missing((const uint8_t *)path, strlen(path),

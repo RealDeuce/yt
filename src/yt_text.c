@@ -93,6 +93,23 @@ yt_file_viewer_next(const uint8_t *data, size_t data_length,
 }
 
 bool
+yt_file_viewer_entry(char *pager_key, float *line_count,
+    yt_file_viewer_present_fn present, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t notice[] = "Cntl-X to Stop";
+
+	if (pager_key == NULL || line_count == NULL || present == NULL)
+		return false;
+	pager_key[0] = '\0';
+	if (!present(context, notice, sizeof(notice) - 1U, true, error)
+	    || !present(context, NULL, 0U, false, error))
+		return false;
+	*line_count = 0.0f;
+	return true;
+}
+
+bool
 yt_file_viewer_play(const uint8_t *data, size_t data_length,
     struct yt_file_viewer_play_state *state,
     yt_file_viewer_present_fn present, void *context,

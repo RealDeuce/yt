@@ -711,6 +711,60 @@ struct viewer_play_tape {
 	size_t fail_call;
 };
 
+struct viewer_entry_tape {
+	int events[2];
+	size_t calls;
+	size_t fail_call;
+	char *key;
+};
+
+static bool
+viewer_entry_present(void *context, const uint8_t *text, size_t length,
+    bool paged, struct yt_error *error)
+{
+	static const uint8_t notice[] = "Cntl-X to Stop";
+	struct viewer_entry_tape *tape = context;
+
+	(void)error;
+	CHECK(tape->key[0] == '\0');
+	if (paged)
+		CHECK(length == sizeof(notice) - 1U
+		    && memcmp(text, notice, length) == 0);
+	else
+		CHECK(text == NULL && length == 0U);
+	tape->events[tape->calls++] = paged ? 1 : 2;
+	return tape->fail_call == 0U || tape->calls != tape->fail_call;
+}
+
+static void
+test_file_viewer_entry(void)
+{
+	struct viewer_entry_tape tape;
+	char key[2] = "Q";
+	float line_count = 17.0f;
+
+	memset(&tape, 0, sizeof(tape));
+	tape.key = key;
+	CHECK(yt_file_viewer_entry(key, &line_count, viewer_entry_present,
+	    &tape, NULL));
+	CHECK(tape.calls == 2U && tape.events[0] == 1 && tape.events[1] == 2
+	    && key[0] == '\0' && line_count == 0.0f);
+	memset(&tape, 0, sizeof(tape));
+	tape.key = key;
+	tape.fail_call = 1U;
+	key[0] = 'Q';
+	line_count = 17.0f;
+	CHECK(!yt_file_viewer_entry(key, &line_count, viewer_entry_present,
+	    &tape, NULL) && tape.calls == 1U && key[0] == '\0'
+	    && line_count == 17.0f);
+	memset(&tape, 0, sizeof(tape));
+	tape.key = key;
+	tape.fail_call = 2U;
+	key[0] = 'Q';
+	CHECK(!yt_file_viewer_entry(key, &line_count, viewer_entry_present,
+	    &tape, NULL) && tape.calls == 2U && line_count == 17.0f);
+}
+
 static bool
 viewer_play_present(void *context, const uint8_t *text, size_t length,
     bool paged, struct yt_error *error)
@@ -838,6 +892,7 @@ main(void)
 	test_main_error_fatal_transaction();
 	test_line_input_grammar();
 	test_file_viewer_records();
+	test_file_viewer_entry();
 	test_file_viewer_play();
 	test_file_viewer_missing();
 	if (failures != 0) {
