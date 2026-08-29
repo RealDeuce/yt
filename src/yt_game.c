@@ -4617,6 +4617,175 @@ yt_deployed_attack_sector_overlay(struct yt_sector *sector, float fighters)
 }
 
 void
+yt_death_player_overlay(struct yt_player *player, float killer)
+{
+	static const uint8_t dirty_zero[4] = {0x00, 0x00, 0x7a, 0x00};
+
+	if (player == NULL)
+		return;
+	player->killed_by = killer;
+	player->sector = 0.0f;
+	player->ports_owned = 0.0f;
+	(void)yt_record_set_number(&player->record, YT_F45, killer);
+	(void)yt_record_set_raw_number(&player->record, YT_F57, dirty_zero);
+	(void)yt_record_set_raw_number(&player->record, YT_F117, dirty_zero);
+}
+
+bool
+yt_death_sector_overlay(struct yt_sector *sector, float victim)
+{
+	if (sector == NULL || sector->fighter_owner != victim)
+		return false;
+	sector->fighter_owner = -2.0f;
+	(void)yt_record_set_number(&sector->record, YT_F85, -2.0f);
+	return true;
+}
+
+void
+yt_death_team_roster_overlay(struct yt_record *record, float victim)
+{
+	static const size_t offsets[4] = {
+		YT_F109, YT_F117, YT_F121, YT_F125
+	};
+	size_t index;
+
+	if (record == NULL)
+		return;
+	for (index = 0; index < sizeof(offsets) / sizeof(offsets[0]); ++index)
+		if (yt_record_get_number(record, offsets[index]) == victim)
+			(void)yt_record_set_number(record, offsets[index], 0.0f);
+}
+
+enum yt_death_port_route
+yt_death_port_overlay(struct yt_port *port, float victim, float killer,
+    float last_player)
+{
+	bool valid;
+
+	if (port == NULL || port->owner != victim)
+		return YT_DEATH_PORT_UNMATCHED;
+	valid = (killer != victim) & (killer > 1.0f)
+	    & (killer <= last_player);
+	if (valid) {
+		port->owner = killer;
+		port->last_minute = killer;
+		(void)yt_record_set_number(&port->record, YT_F97, killer);
+		(void)yt_record_set_number(&port->record, YT_F101, killer);
+		return YT_DEATH_PORT_TRANSFERRED;
+	}
+	port->owner = 0.0f;
+	port->treasury = 0.0f;
+	(void)yt_record_set_number(&port->record, YT_F97, 0.0f);
+	(void)yt_record_set_number(&port->record, YT_F89, 0.0f);
+	return YT_DEATH_PORT_CLEARED;
+}
+
+void
+yt_death_killer_credit_overlay(struct yt_player *player, float ports)
+{
+	volatile float updated;
+
+	if (player == NULL)
+		return;
+	updated = player->ports_owned + ports;
+	player->ports_owned = updated;
+	(void)yt_record_set_number(&player->record, YT_F117, updated);
+}
+
+bool
+yt_death_title_row(const uint8_t *victim, size_t victim_length,
+    float ports, uint8_t *row, size_t capacity, size_t *length)
+{
+	static const uint8_t prefix[] = "The titles to";
+	static const uint8_t middle[] = " ports of ";
+	static const uint8_t suffix[] = "'s are now yours!";
+	char number[64];
+	int number_length;
+	size_t position = 0U;
+
+	if (length == NULL)
+		return false;
+	*length = 0U;
+	if (row == NULL || (victim == NULL && victim_length != 0U))
+		return false;
+	number_length = qb_str_single(number, sizeof(number), ports);
+	if (number_length < 0
+	    || !direct_attack_append(row, capacity, &position, prefix,
+	    sizeof(prefix) - 1U)
+	    || !direct_attack_append(row, capacity, &position,
+	    (const uint8_t *)number, (size_t)number_length)
+	    || !direct_attack_append(row, capacity, &position, middle,
+	    sizeof(middle) - 1U)
+	    || !direct_attack_append(row, capacity, &position, victim,
+	    victim_length)
+	    || !direct_attack_append(row, capacity, &position, suffix,
+	    sizeof(suffix) - 1U))
+		return false;
+	*length = position;
+	return true;
+}
+
+bool
+yt_death_kill_news_row(const uint8_t *killer, size_t killer_length,
+    const uint8_t *victim, size_t victim_length, bool self,
+    uint8_t *row, size_t capacity, size_t *length)
+{
+	static const uint8_t prefix[] = "  -  ";
+	static const uint8_t self_suffix[] = " was killed!";
+	static const uint8_t other_infix[] = " killed ";
+	size_t position = 0U;
+
+	if (length == NULL)
+		return false;
+	*length = 0U;
+	if (row == NULL || (killer == NULL && killer_length != 0U)
+	    || (victim == NULL && victim_length != 0U))
+		return false;
+	if (!direct_attack_append(row, capacity, &position, prefix,
+	    sizeof(prefix) - 1U)
+	    || !direct_attack_append(row, capacity, &position, killer,
+	    killer_length)
+	    || !direct_attack_append(row, capacity, &position,
+	    self ? self_suffix : other_infix,
+	    self ? sizeof(self_suffix) - 1U : sizeof(other_infix) - 1U)
+	    || (!self && !direct_attack_append(row, capacity, &position,
+	    victim, victim_length)))
+		return false;
+	*length = position;
+	return true;
+}
+
+bool
+yt_death_port_news_row(const uint8_t *victim, size_t victim_length,
+    float ports, uint8_t *row, size_t capacity, size_t *length)
+{
+	static const uint8_t prefix[] = "  -  Took";
+	static const uint8_t middle[] = " ports from ";
+	char number[64];
+	int number_length;
+	size_t position = 0U;
+
+	if (length == NULL)
+		return false;
+	*length = 0U;
+	if (row == NULL || (victim == NULL && victim_length != 0U))
+		return false;
+	number_length = qb_str_single(number, sizeof(number), ports);
+	if (number_length < 0
+	    || !direct_attack_append(row, capacity, &position, prefix,
+	    sizeof(prefix) - 1U)
+	    || !direct_attack_append(row, capacity, &position,
+	    (const uint8_t *)number, (size_t)number_length)
+	    || !direct_attack_append(row, capacity, &position, middle,
+	    sizeof(middle) - 1U)
+	    || !direct_attack_append(row, capacity, &position, victim,
+	    victim_length))
+		return false;
+	*length = position;
+	return true;
+}
+
+void
 yt_bribe_sector_overlay(struct yt_sector *sector)
 {
 	if (sector == NULL)

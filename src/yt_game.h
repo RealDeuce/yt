@@ -110,6 +110,12 @@ enum yt_port_owner_kind {
 	YT_PORT_OWNER_INVALID,
 };
 
+enum yt_death_port_route {
+	YT_DEATH_PORT_UNMATCHED,
+	YT_DEATH_PORT_TRANSFERRED,
+	YT_DEATH_PORT_CLEARED,
+};
+
 enum yt_hostile_menu_route {
 	YT_HOSTILE_MENU_HELP,
 	YT_HOSTILE_MENU_SECTOR,
@@ -758,6 +764,19 @@ void yt_deployed_attack_player_overlay(struct yt_player *player,
     float shields, float fighters);
 void yt_deployed_attack_sector_overlay(struct yt_sector *sector,
     float fighters);
+void yt_death_player_overlay(struct yt_player *player, float killer);
+bool yt_death_sector_overlay(struct yt_sector *sector, float victim);
+void yt_death_team_roster_overlay(struct yt_record *record, float victim);
+enum yt_death_port_route yt_death_port_overlay(struct yt_port *port,
+    float victim, float killer, float last_player);
+void yt_death_killer_credit_overlay(struct yt_player *player, float ports);
+bool yt_death_title_row(const uint8_t *victim, size_t victim_length,
+    float ports, uint8_t *row, size_t capacity, size_t *length);
+bool yt_death_kill_news_row(const uint8_t *killer, size_t killer_length,
+    const uint8_t *victim, size_t victim_length, bool self,
+    uint8_t *row, size_t capacity, size_t *length);
+bool yt_death_port_news_row(const uint8_t *victim, size_t victim_length,
+    float ports, uint8_t *row, size_t capacity, size_t *length);
 void yt_bribe_sector_overlay(struct yt_sector *sector);
 void yt_bribe_player_overlay(struct yt_player *player, float fighters,
     float credits);

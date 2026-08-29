@@ -2551,6 +2551,126 @@ check_direct_fighter_kill_model(void)
 }
 
 static bool
+check_player_death_model(void)
+{
+	static const uint8_t dirty_zero[4] = {0x00, 0x00, 0x7a, 0x00};
+	static const uint8_t victim_name[] = {'V', 0, 'X'};
+	static const uint8_t killer_name[] = {'K', 0, 'Y'};
+	static const uint8_t title_expected[] =
+	    "The titles to 2 ports of V\0X's are now yours!";
+	static const uint8_t self_expected[] = "  -  K\0Y was killed!";
+	static const uint8_t kill_expected[] = "  -  K\0Y killed V\0X";
+	static const uint8_t ports_expected[] = "  -  Took 2 ports from V\0X";
+	static const size_t roster_offsets[4] = {
+		YT_F109, YT_F117, YT_F121, YT_F125
+	};
+	struct yt_player player;
+	struct yt_sector sector;
+	struct yt_port port;
+	struct yt_record record;
+	struct yt_record team;
+	struct yt_record before;
+	uint8_t row[128];
+	size_t length;
+	size_t index;
+
+	yt_record_blank(&record);
+	(void)yt_record_set_number(&record, YT_F45, 9.0f);
+	(void)yt_record_set_number(&record, YT_F57, 77.0f);
+	(void)yt_record_set_number(&record, YT_F61, 123.0f);
+	(void)yt_record_set_number(&record, YT_F117, 4.0f);
+	yt_player_decode(&player, &record);
+	before = player.record;
+	yt_death_player_overlay(&player, 3.0f);
+	if (player.killed_by != 3.0f || player.sector != 0.0f
+	    || player.ports_owned != 0.0f
+	    || yt_record_get_number(&player.record, YT_F45) != 3.0f
+	    || memcmp(player.record.bytes + YT_F57, dirty_zero, 4U) != 0
+	    || memcmp(player.record.bytes + YT_F117, dirty_zero, 4U) != 0
+	    || yt_record_get_number(&player.record, YT_F61) != 123.0f)
+		return false;
+	for (index = 0U; index < YT_RECORD_SIZE; ++index)
+		if ((index < YT_F45 || index >= YT_F45 + 4U)
+		    && (index < YT_F57 || index >= YT_F57 + 4U)
+		    && (index < YT_F117 || index >= YT_F117 + 4U)
+		    && player.record.bytes[index] != before.bytes[index])
+			return false;
+
+	yt_record_blank(&record);
+	(void)yt_record_set_number(&record, YT_F81, 0.0f);
+	(void)yt_record_set_number(&record, YT_F85, 2.0f);
+	yt_sector_decode(&sector, &record);
+	if (!yt_death_sector_overlay(&sector, 2.0f)
+	    || sector.fighters != 0.0f || sector.fighter_owner != -2.0f
+	    || yt_record_get_number(&sector.record, YT_F85) != -2.0f
+	    || yt_death_sector_overlay(&sector, 7.0f))
+		return false;
+
+	yt_record_blank(&team);
+	(void)yt_record_set_number(&team, YT_F77, 2.0f);
+	for (index = 0U; index < 4U; ++index)
+		(void)yt_record_set_number(&team, roster_offsets[index],
+		    index == 2U ? 9.0f : 2.0f);
+	yt_death_team_roster_overlay(&team, 2.0f);
+	if (yt_record_get_number(&team, YT_F77) != 2.0f
+	    || yt_record_get_number(&team, YT_F109) != 0.0f
+	    || yt_record_get_number(&team, YT_F117) != 0.0f
+	    || yt_record_get_number(&team, YT_F121) != 9.0f
+	    || yt_record_get_number(&team, YT_F125) != 0.0f)
+		return false;
+
+	yt_record_blank(&record);
+	(void)yt_record_set_number(&record, YT_F89, 77.0f);
+	(void)yt_record_set_number(&record, YT_F97, 2.0f);
+	(void)yt_record_set_number(&record, YT_F101, 55.0f);
+	yt_port_decode(&port, &record);
+	if (yt_death_port_overlay(&port, 2.0f, 3.0f, 51.0f)
+	    != YT_DEATH_PORT_TRANSFERRED
+	    || port.owner != 3.0f || port.last_minute != 3.0f
+	    || port.treasury != 77.0f)
+		return false;
+	if (yt_death_port_overlay(&port, 2.0f, 3.0f, 51.0f)
+	    != YT_DEATH_PORT_UNMATCHED)
+		return false;
+	yt_record_blank(&record);
+	(void)yt_record_set_number(&record, YT_F89, 77.0f);
+	(void)yt_record_set_number(&record, YT_F97, 2.0f);
+	(void)yt_record_set_number(&record, YT_F101, 55.0f);
+	yt_port_decode(&port, &record);
+	if (yt_death_port_overlay(&port, 2.0f, -1.0f, 51.0f)
+	    != YT_DEATH_PORT_CLEARED
+	    || port.owner != 0.0f || port.treasury != 0.0f
+	    || port.last_minute != 55.0f)
+		return false;
+
+	yt_record_blank(&record);
+	(void)yt_record_set_number(&record, YT_F117, 4.0f);
+	yt_player_decode(&player, &record);
+	yt_death_killer_credit_overlay(&player, 2.0f);
+	if (player.ports_owned != 6.0f
+	    || yt_record_get_number(&player.record, YT_F117) != 6.0f)
+		return false;
+	return yt_death_title_row(victim_name, sizeof(victim_name), 2.0f,
+	    row, sizeof(row), &length)
+	    && length == sizeof(title_expected) - 1U
+	    && memcmp(row, title_expected, length) == 0
+	    && yt_death_kill_news_row(killer_name, sizeof(killer_name),
+	    victim_name, sizeof(victim_name), true, row, sizeof(row), &length)
+	    && length == sizeof(self_expected) - 1U
+	    && memcmp(row, self_expected, length) == 0
+	    && yt_death_kill_news_row(killer_name, sizeof(killer_name),
+	    victim_name, sizeof(victim_name), false, row, sizeof(row), &length)
+	    && length == sizeof(kill_expected) - 1U
+	    && memcmp(row, kill_expected, length) == 0
+	    && yt_death_port_news_row(victim_name, sizeof(victim_name), 2.0f,
+	    row, sizeof(row), &length)
+	    && length == sizeof(ports_expected) - 1U
+	    && memcmp(row, ports_expected, length) == 0
+	    && !yt_death_title_row(victim_name, sizeof(victim_name), 2.0f,
+	    row, sizeof(title_expected) - 2U, &length);
+}
+
+static bool
 check_emergency_warp_model(void)
 {
 	static const uint8_t result_expected[] =
@@ -8900,6 +9020,8 @@ main(void)
 		return fail("sector mine model differs");
 	if (!check_direct_fighter_kill_model())
 		return fail("direct fighter kill model differs");
+	if (!check_player_death_model())
+		return fail("player death model differs");
 	if (!check_emergency_warp_model())
 		return fail("emergency warp model differs");
 	if (!check_movement_model())
