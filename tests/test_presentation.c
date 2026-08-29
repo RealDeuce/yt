@@ -1880,6 +1880,63 @@ test_time_helpers(void)
 }
 
 static void
+test_opening_streamer(void)
+{
+	static const uint8_t row[] = {'A', 0, 'B'};
+	static const uint8_t remote[] = {'A', 0, 'B', '\n', '\r'};
+	static const uint8_t reset[] = "\x1b[0m";
+	struct yt_present_result result;
+
+	CHECK(yt_present_opening_row(row, sizeof(row), 0.0f, -1.0f,
+	    &result) == YT_PRESENT_OK);
+	CHECK(result.remote_length == sizeof(remote)
+	    && memcmp(result.remote, remote, sizeof(remote)) == 0
+	    && result.event_count == 3);
+	CHECK(result.events[0].operation == YT_PRESENT_LOCAL_LINE
+	    && result.events[0].length == sizeof(row)
+	    && memcmp(result.events[0].data, row, sizeof(row)) == 0);
+	CHECK(result.events[1].operation == YT_PRESENT_REMOTE_SEMI
+	    && result.events[1].length == sizeof(row));
+	CHECK(result.events[2].operation == YT_PRESENT_REMOTE_LINE
+	    && result.events[2].length == 1U
+	    && result.events[2].data[0] == '\n');
+
+	CHECK(yt_present_opening_row(row, sizeof(row), 1.0f, 1.0f,
+	    &result) == YT_PRESENT_OK);
+	CHECK(result.remote_length == 0U && result.event_count == 1U
+	    && result.events[0].operation == YT_PRESENT_LOCAL_LINE);
+	CHECK(yt_present_opening_row(row, sizeof(row), 2.0f, 0.0f,
+	    &result) == YT_PRESENT_OK);
+	CHECK(result.remote_length == sizeof(remote)
+	    && memcmp(result.remote, remote, sizeof(remote)) == 0
+	    && result.event_count == 2U);
+
+	CHECK(yt_present_opening_cleanup(0.0f, -1.0f, &result)
+	    == YT_PRESENT_OK);
+	CHECK(result.remote_length == sizeof(reset) - 1U
+	    && memcmp(result.remote, reset, sizeof(reset) - 1U) == 0
+	    && result.event_count == 2U
+	    && result.events[0].operation == YT_PRESENT_REMOTE_SEMI
+	    && result.events[1].operation == YT_PRESENT_LOCAL_SEMI
+	    && result.events[1].length == sizeof(reset) - 1U);
+	CHECK(yt_present_opening_cleanup(2.0f, 1.0f, &result)
+	    == YT_PRESENT_OK);
+	CHECK(result.remote_length == 0U && result.event_count == 1U
+	    && result.events[0].operation == YT_PRESENT_LOCAL_SEMI);
+	CHECK(yt_present_opening_cleanup(0.0f, 0.0f, &result)
+	    == YT_PRESENT_OK);
+	CHECK(result.remote_length == sizeof(reset) - 1U
+	    && result.event_count == 1U
+	    && result.events[0].operation == YT_PRESENT_REMOTE_SEMI);
+	CHECK(yt_present_opening_row(NULL, 1U, 0.0f, 0.0f, &result)
+	    == YT_PRESENT_CAPACITY);
+	CHECK(yt_present_opening_row(NULL, 0U, 0.0f, 0.0f, NULL)
+	    == YT_PRESENT_CAPACITY);
+	CHECK(yt_present_opening_cleanup(0.0f, 0.0f, NULL)
+	    == YT_PRESENT_CAPACITY);
+}
+
+static void
 test_press_any_key_presentation(void)
 {
 	static const uint8_t ansi_prompt[] =
@@ -9574,6 +9631,7 @@ main(void)
 	test_shared_error_model();
 	test_serial_startup_output();
 	test_time_helpers();
+	test_opening_streamer();
 	test_press_any_key_presentation();
 	test_post_login_press_presentation();
 	test_gameplay_reentry_hostile_warning();

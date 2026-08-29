@@ -206,3 +206,57 @@ yt_out_file(const char *path, struct yt_error *error)
 	yt_text_free(&file);
 	return true;
 }
+
+bool
+yt_out_opening_file(const char *path, float mode, float snoop,
+    struct yt_error *error)
+{
+	struct yt_text_file file;
+	struct yt_present_result presentation;
+	uint8_t *line;
+	size_t cursor = 0U;
+	bool available;
+	bool success = true;
+
+	if (!yt_text_read(path, &file, error))
+		return false;
+	line = malloc(file.length + 1U);
+	if (line == NULL) {
+		if (error != NULL) {
+			error->status = YT_NO_MEMORY;
+			(void)snprintf(error->operation, sizeof(error->operation),
+			    "%s", "allocate opening row");
+			(void)snprintf(error->path, sizeof(error->path), "%s", path);
+		}
+		yt_text_free(&file);
+		return false;
+	}
+	for (;;) {
+		size_t length;
+		enum yt_present_status status;
+
+		if (!yt_text_line_input_next(file.data, file.length, &cursor,
+		    line, file.length, &length, &available)) {
+			success = false;
+			break;
+		}
+		if (!available)
+			break;
+		status = yt_present_opening_row(line, length, mode, snoop,
+		    &presentation);
+		if (status != YT_PRESENT_OK) {
+			success = false;
+			break;
+		}
+		yt_out_present_result(&presentation);
+	}
+	if (!success && error != NULL) {
+		error->status = YT_RANGE;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    "compose opening row");
+		(void)snprintf(error->path, sizeof(error->path), "%s", path);
+	}
+	free(line);
+	yt_text_free(&file);
+	return success;
+}

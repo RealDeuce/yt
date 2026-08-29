@@ -13,5 +13,7 @@ void yt_outf(const char *format, ...);
 void yt_out_line(const char *text);
 void yt_out_clear(void);
 bool yt_out_file(const char *path, struct yt_error *error);
+bool yt_out_opening_file(const char *path, float mode, float snoop,
+    struct yt_error *error);
 
 #endif

@@ -174,6 +174,11 @@ enum yt_present_status yt_present_low_time(const uint8_t *text, size_t length,
 enum yt_present_status yt_present_status_row(const uint8_t *real_name,
     size_t real_name_length, const uint8_t *alias, size_t alias_length,
     struct yt_present_state *state, struct yt_present_result *result);
+enum yt_present_status yt_present_opening_row(const uint8_t *text,
+    size_t length, float mode, float snoop,
+    struct yt_present_result *result);
+enum yt_present_status yt_present_opening_cleanup(float mode, float snoop,
+    struct yt_present_result *result);
 void yt_present_replay(const struct yt_present_result *result,
     const struct yt_present_sink *sink);
 uint8_t yt_present_pc_attribute(int foreground, int background);

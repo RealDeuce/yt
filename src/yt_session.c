@@ -1423,10 +1423,25 @@ opening_and_date(struct yt_session *session, struct yt_error *error)
 			return false;
 	}
 	if (session->door->identity.ansi) {
-		if (!yt_out_file("YTOPEN.ANS", error)
+		if (!yt_out_opening_file("YTOPEN.ANS",
+		    session->presentation.sound.mode,
+		    session->presentation.sound.snoop, error)
 		    || !session_wait(session, 3.0,
 		    "ANSI opening EOF wait", error))
 			return false;
+		status = yt_present_opening_cleanup(
+		    session->presentation.sound.mode,
+		    session->presentation.sound.snoop, &presentation);
+		if (status != YT_PRESENT_OK) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				(void)snprintf(error->operation,
+				    sizeof(error->operation), "%s",
+				    "startup opening cleanup");
+			}
+			return false;
+		}
+		yt_out_present_result(&presentation);
 	}
 	snprintf(real_name, sizeof(real_name), "%s %s",
 	    session->door->identity.real_first,

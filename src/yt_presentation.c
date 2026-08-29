@@ -1077,6 +1077,52 @@ done:
 }
 
 enum yt_present_status
+yt_present_opening_row(const uint8_t *text, size_t length, float mode,
+    float snoop, struct yt_present_result *result)
+{
+	static const uint8_t line_feed = '\n';
+	enum yt_present_status status;
+
+	if (result == NULL || (text == NULL && length != 0U))
+		return YT_PRESENT_CAPACITY;
+	memset(result, 0, sizeof(*result));
+	if (snoop != 0.0f) {
+		status = append_local(result, YT_PRESENT_LOCAL_LINE, text, length,
+		    0, 0);
+		if (status != YT_PRESENT_OK)
+			return status;
+	}
+	if (mode == 1.0f)
+		return YT_PRESENT_OK;
+	status = append_remote(result, YT_PRESENT_REMOTE_SEMI, text, length);
+	if (status != YT_PRESENT_OK)
+		return status;
+	return append_remote(result, YT_PRESENT_REMOTE_LINE, &line_feed, 1U);
+}
+
+enum yt_present_status
+yt_present_opening_cleanup(float mode, float snoop,
+    struct yt_present_result *result)
+{
+	static const uint8_t reset[] = "\x1b[0m";
+	enum yt_present_status status;
+
+	if (result == NULL)
+		return YT_PRESENT_CAPACITY;
+	memset(result, 0, sizeof(*result));
+	if (mode == 0.0f) {
+		status = append_remote(result, YT_PRESENT_REMOTE_SEMI, reset,
+		    sizeof(reset) - 1U);
+		if (status != YT_PRESENT_OK)
+			return status;
+	}
+	if (snoop != 0.0f)
+		return append_local(result, YT_PRESENT_LOCAL_SEMI, reset,
+		    sizeof(reset) - 1U, 0, 0);
+	return YT_PRESENT_OK;
+}
+
+enum yt_present_status
 yt_present_low_time(const uint8_t *text, size_t length, float *remembered,
     struct yt_present_state *state, struct yt_present_result *result,
     bool *warned)
