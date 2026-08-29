@@ -218,6 +218,24 @@ test_ab36_live_input(void)
 	    && selected.remote);
 }
 
+static void
+test_ab36_repeat_recognition(void)
+{
+	struct yt_input_value selected = one(0x12U);
+
+	CHECK(yt_input_ab36_repeat_requested(false, &selected));
+	CHECK(!yt_input_ab36_repeat_requested(true, &selected));
+	selected.bytes[0] = 0U;
+	selected.bytes[1] = 0x12U;
+	selected.length = 2U;
+	CHECK(!yt_input_ab36_repeat_requested(false, &selected));
+	selected = one('R');
+	CHECK(!yt_input_ab36_repeat_requested(false, &selected));
+	selected.length = 0U;
+	CHECK(!yt_input_ab36_repeat_requested(false, &selected));
+	CHECK(!yt_input_ab36_repeat_requested(false, NULL));
+}
+
 struct ab36_terminal_tape {
 	uint8_t notice[64];
 	size_t notice_length;
@@ -1564,6 +1582,7 @@ main(void)
 	test_ab36_inactivity_gate();
 	test_ab36_queued_input();
 	test_ab36_live_input();
+	test_ab36_repeat_recognition();
 	test_ab36_terminal_transaction();
 	test_source_fifo();
 	test_merged_fifo();

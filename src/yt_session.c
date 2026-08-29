@@ -481,7 +481,7 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 			continue;
 		key = selected.bytes[0];
 		used = strlen(session->command_accumulator);
-		if (!queued && key == 0x12) {
+		if (yt_input_ab36_repeat_requested(queued, &selected)) {
 			uint8_t prefix[YT_COMMAND_SIZE];
 
 			memcpy(prefix, session->command_accumulator, used);

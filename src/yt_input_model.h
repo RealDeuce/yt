@@ -194,6 +194,8 @@ bool yt_input_ab36_remote_replace(float mode,
     const struct yt_input_value *remote, struct yt_input_value *selected);
 bool yt_input_ab36_queue_pop(char *queue, size_t capacity,
     size_t *position, size_t *length, struct yt_input_value *selected);
+bool yt_input_ab36_repeat_requested(bool queued,
+    const struct yt_input_value *selected);
 bool yt_input_ab36_inactivity_expired(float timer, float deadline,
     float mode);
 bool yt_input_ab36_session_expired(float timer, float deadline);

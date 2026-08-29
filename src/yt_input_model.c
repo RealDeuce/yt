@@ -201,6 +201,14 @@ yt_input_ab36_queue_pop(char *queue, size_t capacity, size_t *position,
 }
 
 bool
+yt_input_ab36_repeat_requested(bool queued,
+    const struct yt_input_value *selected)
+{
+	return !queued && selected != NULL && selected->length == 1U
+	    && selected->bytes[0] == 0x12U;
+}
+
+bool
 yt_input_ab36_inactivity_expired(float timer, float deadline, float mode)
 {
 	return timer > deadline && mode != 1.0f;
