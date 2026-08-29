@@ -79,6 +79,96 @@ yt_team_loader_finish(const struct yt_record *overlay,
 }
 
 bool
+yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
+    const struct yt_xannor_retaliation_ops *ops, void *context,
+    struct yt_error *error)
+{
+	struct yt_player saved_player;
+	struct yt_sector headquarters;
+	int saved_record;
+	float saved_cloak = 0.0f;
+	int target_candidate;
+	float target;
+	int amount;
+	int ignored_counterattack = 0;
+	char amount_text[64];
+	char target_text[64];
+	char row[192];
+	bool valid_cache;
+
+	if (state == NULL || ops == NULL || state->player == NULL
+	    || state->player_record == NULL || state->destroyed == NULL
+	    || state->provoker == NULL || state->headquarters == NULL
+	    || ops->read_sector == NULL || ops->random == NULL
+	    || ops->present == NULL || ops->projectile == NULL
+	    || ops->read_player == NULL || ops->wait == NULL)
+		return false;
+
+	if (*state->provoker == 0 && state->player->score < 25000000.0f)
+		return true;
+	if (!ops->read_sector(context, (int)*state->headquarters,
+	    &headquarters, error))
+		return false;
+	if (headquarters.fighters == 0.0f
+	    || headquarters.fighter_owner != -1.0f)
+		return true;
+	if (!ops->random(context, 3, 100, &amount, error)
+	    || !ops->present(context, NULL, 0U, false, error))
+		return false;
+
+	saved_player = *state->player;
+	saved_record = *state->player_record;
+	valid_cache = saved_record >= 0
+	    && (size_t)saved_record < state->cache_count
+	    && state->cloak_cache != NULL;
+	if (valid_cache) {
+		saved_cloak = state->cloak_cache[saved_record];
+		if (*state->provoker != 0)
+			state->cloak_cache[saved_record] = 0.0f;
+	}
+	*state->player_record = -1;
+	(void)snprintf(state->player->name, sizeof(state->player->name), "%s",
+	    "The Xannor");
+
+	if (!ops->random(context, 1, state->sector_count,
+	    &target_candidate, error))
+		return false;
+	target = (float)target_candidate;
+	if (*state->provoker != 0)
+		target = saved_player.sector;
+	if (qb_str_single(amount_text, sizeof(amount_text), (float)amount) < 0
+	    || qb_str_single(target_text, sizeof(target_text), target) < 0
+	    || snprintf(row, sizeof(row),
+	    "The Xannor have launched%s missiles at sector%s!",
+	    amount_text, target_text) < 0)
+		return false;
+	if (!ops->present(context, (const uint8_t *)row, strlen(row), true,
+	    error)
+	    || !ops->projectile(context, state->headquarters, target,
+	    (float)amount, false, &ignored_counterattack, state->provoker,
+	    error))
+		return false;
+
+	*state->player_record = saved_record;
+	*state->player = saved_player;
+	if (valid_cache)
+		state->cloak_cache[saved_record] = saved_cloak;
+	if (!ops->read_player(context, saved_record, state->player, error))
+		return false;
+	if (qb_mbf32_truth(state->player->record.bytes + YT_F45)) {
+		*state->destroyed = true;
+		if (saved_record >= 0
+		    && (size_t)saved_record < state->cache_count
+		    && state->sector_cache != NULL)
+			state->sector_cache[saved_record] = 0.0f;
+	}
+	if (!ops->wait(context, 4.0, error))
+		return false;
+	*state->provoker = 0;
+	return true;
+}
+
+bool
 yt_projectile_target_prompt(bool plasma, float displayed, float maximum,
     uint8_t *prompt, size_t capacity, size_t *length)
 {

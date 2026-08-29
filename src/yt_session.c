@@ -97,7 +97,7 @@ static bool mine_encounter(struct yt_session *session,
 static bool clearance(struct yt_session *session, bool create,
     struct yt_error *error);
 static bool launch_xannor_retaliation(struct yt_session *session,
-    int provoking_player, struct yt_error *error);
+    int *provoking_player, struct yt_error *error);
 static void clear_queue(struct yt_session *session);
 static bool show_ship(struct yt_session *session, struct yt_error *error);
 static bool command_mines(struct yt_session *session,
@@ -3275,6 +3275,7 @@ static bool
 finalize_action(struct yt_session *session, float amount,
     struct yt_error *error)
 {
+	int xannor_provoker = 0;
 	float quotient;
 	float draw;
 	char number[64];
@@ -3353,7 +3354,8 @@ finalize_action(struct yt_session *session, float amount,
 	if (!random_value(session, &draw, error))
 		return false;
 	if (draw > 0.99000000953674316f) {
-		if (!launch_xannor_retaliation(session, 0, error))
+		if (!launch_xannor_retaliation(session, &xannor_provoker,
+		    error))
 			return false;
 		if (session->destroyed)
 			return false;
@@ -13042,77 +13044,79 @@ session_nested_integer(struct yt_session *session, int count, int range,
 }
 
 static bool
-launch_xannor_retaliation(struct yt_session *session, int provoking_player,
+session_xannor_read_sector(void *context, int logical_sector,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_read_sector(&session->door->game, logical_sector, sector,
+	    error);
+}
+
+static bool
+session_xannor_random(void *context, int count, int range, int *value,
     struct yt_error *error)
 {
-	struct yt_player saved_player = session->player;
-	struct yt_sector headquarters;
-	int saved_record = session->player_record;
-	float saved_cloak = 0.0f;
-	int target_candidate;
-	float target;
-	int amount;
-	int ignored_counterattack = 0;
-	int ignored_xannor = provoking_player;
-	bool result;
-	char amount_text[64];
-	char target_text[64];
-	char row[192];
+	struct yt_session *session = context;
 
-	if (provoking_player == 0 && session->player.score < 25000000.0f)
-		return true;
-	if (!yt_game_read_sector(&session->door->game,
-	    (int)session->door->game.config.headquarters, &headquarters,
-	    error))
-		return false;
-	if (headquarters.fighters == 0.0f
-	    || headquarters.fighter_owner != -1.0f)
-		return true;
-	if (!session_nested_integer(session, 3, 100, &amount, error))
-		return false;
-	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "Xannor retaliation blank", error))
-		return false;
-	if (saved_record >= 0 && saved_record <= YT_PLAYER_LAST) {
-		saved_cloak = session->cloak_cache[saved_record];
-		if (provoking_player != 0)
-			session->cloak_cache[saved_record] = 0.0f;
-	}
-	session->player_record = -1;
-	snprintf(session->player.name, sizeof(session->player.name),
-	    "%s", "The Xannor");
-	session->player.sector = session->door->game.config.headquarters;
-	if (!session_random_integer(session, sector_count(session),
-	    &target_candidate, error))
-		return false;
-	target = (float)target_candidate;
-	if (provoking_player != 0)
-		target = saved_player.sector;
-	qb_str_single(amount_text, sizeof(amount_text), (float)amount);
-	qb_str_single(target_text, sizeof(target_text), target);
-	snprintf(row, sizeof(row), "The Xannor have launched%s missiles at "
-	    "sector%s!", amount_text, target_text);
-	if (!session_present_text(session, (const uint8_t *)row, strlen(row),
-	    SESSION_PRESENT_BOLD_LINE, "Xannor retaliation row", error))
-		return false;
-	result = launch_projectile(session, target, (float)amount,
-	    false, NULL, &session->door->game.config.headquarters,
-	    &ignored_counterattack, &ignored_xannor, error);
-	if (!result)
-		return false;
-	session->player_record = saved_record;
-	session->player = saved_player;
-	if (saved_record >= 0 && saved_record <= YT_PLAYER_LAST)
-		session->cloak_cache[saved_record] = saved_cloak;
-	if (!reload_player(session, error))
-		return false;
-	if (qb_mbf32_truth(session->player.record.bytes + YT_F45)) {
-		session->destroyed = true;
-		session->sector_cache[session->player_record] = 0.0f;
-	}
-	if (!session_wait(session, 4.0, "Xannor retaliation wait", error))
-		return false;
-	return true;
+	if (count == 1)
+		return session_random_integer(session, range, value, error);
+	return session_nested_integer(session, count, range, value, error);
+}
+
+static bool
+session_xannor_present(void *context, const uint8_t *text, size_t length,
+    bool bold, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return session_present_text(session, text, length,
+	    bold ? SESSION_PRESENT_BOLD_LINE : SESSION_PRESENT_LINE,
+	    bold ? "Xannor retaliation row" : "Xannor retaliation blank",
+	    error);
+}
+
+static bool
+session_xannor_read_player(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_read_player(&session->door->game, player_record, player,
+	    error);
+}
+
+static bool
+session_xannor_wait(void *context, double seconds, struct yt_error *error)
+{
+	return session_wait(context, seconds, "Xannor retaliation wait", error);
+}
+
+static bool
+launch_xannor_retaliation(struct yt_session *session, int *provoking_player,
+    struct yt_error *error)
+{
+	static const struct yt_xannor_retaliation_ops ops = {
+		session_xannor_read_sector,
+		session_xannor_random,
+		session_xannor_present,
+		session_projectile_resolver,
+		session_xannor_read_player,
+		session_xannor_wait,
+	};
+	struct yt_xannor_retaliation_state state = {
+		&session->player,
+		&session->player_record,
+		session->sector_cache,
+		session->cloak_cache,
+		YT_ARRAY_LEN(session->sector_cache),
+		&session->destroyed,
+		provoking_player,
+		&session->door->game.config.headquarters,
+		sector_count(session),
+	};
+
+	return yt_xannor_retaliation_run(&state, &ops, session, error);
 }
 
 static bool
@@ -13222,7 +13226,7 @@ launch_player_counterattack(struct yt_session *session, int counterattacker,
 	if (!session_wait(session, 4.0, "player counterattack wait", error))
 		return false;
 	if (xannor_provoker != 0
-	    && !launch_xannor_retaliation(session, xannor_provoker, error))
+	    && !launch_xannor_retaliation(session, &xannor_provoker, error))
 		return false;
 	return true;
 }
@@ -13307,7 +13311,7 @@ command_projectile(struct yt_session *session, bool plasma,
 	    &session->destroyed, &counterattack, &xannor_provoker,
 	    session_projectile_resolver, session, error)
 	    || !launch_player_counterattack(session, counterattack, error)
-	    || !launch_xannor_retaliation(session, xannor_provoker, error))
+	    || !launch_xannor_retaliation(session, &xannor_provoker, error))
 		return false;
 	if (session->destroyed)
 		return common_fatal_self(session, error);

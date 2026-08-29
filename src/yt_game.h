@@ -212,6 +212,41 @@ enum yt_projectile_target_result {
 	YT_PROJECTILE_TARGET_ACCEPT,
 };
 
+struct yt_xannor_retaliation_state {
+	struct yt_player *player;
+	int *player_record;
+	float *sector_cache;
+	float *cloak_cache;
+	size_t cache_count;
+	bool *destroyed;
+	int *provoker;
+	float *headquarters;
+	int sector_count;
+};
+
+typedef bool (*yt_xannor_retaliation_read_sector_fn)(void *context,
+    int logical_sector, struct yt_sector *sector, struct yt_error *error);
+typedef bool (*yt_xannor_retaliation_random_fn)(void *context, int count,
+    int range, int *value, struct yt_error *error);
+typedef bool (*yt_xannor_retaliation_present_fn)(void *context,
+    const uint8_t *text, size_t length, bool bold, struct yt_error *error);
+typedef bool (*yt_xannor_retaliation_projectile_fn)(void *context,
+    float *origin, float target, float amount, bool plasma,
+    int *counterattack, int *xannor_provoker, struct yt_error *error);
+typedef bool (*yt_xannor_retaliation_read_player_fn)(void *context,
+    int player_record, struct yt_player *player, struct yt_error *error);
+typedef bool (*yt_xannor_retaliation_wait_fn)(void *context, double seconds,
+    struct yt_error *error);
+
+struct yt_xannor_retaliation_ops {
+	yt_xannor_retaliation_read_sector_fn read_sector;
+	yt_xannor_retaliation_random_fn random;
+	yt_xannor_retaliation_present_fn present;
+	yt_xannor_retaliation_projectile_fn projectile;
+	yt_xannor_retaliation_read_player_fn read_player;
+	yt_xannor_retaliation_wait_fn wait;
+};
+
 struct yt_game {
 	struct yt_database database;
 	struct yt_config config;
@@ -650,6 +685,9 @@ bool yt_counterlaunch_rows(const uint8_t *target_name,
     const uint8_t *saved_name, size_t saved_name_length,
     uint8_t *terminal, size_t terminal_capacity, size_t *terminal_length,
     uint8_t *news, size_t news_capacity, size_t *news_length);
+bool yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
+    const struct yt_xannor_retaliation_ops *ops, void *context,
+    struct yt_error *error);
 
 void yt_player_construct(struct yt_player *player,
     const struct yt_config *config, float today);
