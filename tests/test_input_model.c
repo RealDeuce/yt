@@ -269,6 +269,7 @@ test_ab36_repeat_transaction(void)
 {
 	char accumulator[16] = "AB";
 	char saved[16] = "NS";
+	char paged_text[16] = "old";
 	float newline_flag = -1.0f;
 	uint8_t selected_key = 0x12U;
 	struct ab36_repeat_tape tape = {
@@ -277,14 +278,17 @@ test_ab36_repeat_transaction(void)
 	};
 
 	CHECK(yt_input_ab36_repeat_run(accumulator, sizeof(accumulator),
-	    saved, sizeof(saved), &newline_flag, &selected_key,
+	    saved, sizeof(saved), paged_text, sizeof(paged_text),
+	    &newline_flag, &selected_key,
 	    ab36_repeat_emit, &tape));
 	CHECK(tape.calls == 1U && tape.length == 2U
 	    && memcmp(tape.prefix, "AB", 2U) == 0
+	    && strcmp(paged_text, "AB") == 0
 	    && strcmp(accumulator, "NS") == 0 && newline_flag == 0.0f
 	    && selected_key == '\r');
 
 	memcpy(accumulator, "AB", 3U);
+	memcpy(paged_text, "old", 4U);
 	newline_flag = -1.0f;
 	selected_key = 0x12U;
 	memset(&tape, 0, sizeof(tape));
@@ -292,10 +296,12 @@ test_ab36_repeat_transaction(void)
 	tape.newline_flag = &newline_flag;
 	tape.fail = true;
 	CHECK(!yt_input_ab36_repeat_run(accumulator, sizeof(accumulator),
-	    saved, sizeof(saved), &newline_flag, &selected_key,
+	    saved, sizeof(saved), paged_text, sizeof(paged_text),
+	    &newline_flag, &selected_key,
 	    ab36_repeat_emit, &tape));
 	CHECK(tape.calls == 1U && tape.length == 2U
 	    && memcmp(tape.prefix, "AB", 2U) == 0
+	    && strcmp(paged_text, "AB") == 0
 	    && strcmp(accumulator, "X") == 0 && newline_flag == 1.0f
 	    && selected_key == 0x12U);
 }
@@ -391,6 +397,110 @@ test_ab36_backspace_transaction(void)
 	CHECK(!yt_input_ab36_backspace_run('\b', accumulator,
 	    sizeof(accumulator), &handled, ab36_backspace_echo, &tape));
 	CHECK(handled && tape.calls == 1U && strcmp(accumulator, "A") == 0);
+}
+
+struct ab36_printable_tape {
+	char *accumulator;
+	char *paged_text;
+	float *newline_flag;
+	size_t echo_calls;
+	size_t carrier_calls;
+	bool fail_echo;
+	bool fail_carrier;
+};
+
+static bool
+ab36_printable_echo(void *context, const uint8_t *local,
+    size_t local_length, const uint8_t *remote, size_t remote_length)
+{
+	struct ab36_printable_tape *tape = context;
+
+	++tape->echo_calls;
+	CHECK(strcmp(tape->accumulator, "A") == 0);
+	CHECK(strcmp(tape->paged_text, "old") == 0);
+	CHECK(*tape->newline_flag == -1.0f);
+	CHECK(local_length == 1U && remote_length == 1U
+	    && local[0] == remote[0]);
+	return !tape->fail_echo;
+}
+
+static bool
+ab36_printable_carrier(void *context)
+{
+	struct ab36_printable_tape *tape = context;
+
+	++tape->carrier_calls;
+	CHECK(tape->accumulator[0] == 'A'
+	    && (uint8_t)tape->accumulator[1]
+	    == (uint8_t)tape->paged_text[0]
+	    && tape->accumulator[2] == '\0'
+	    && tape->paged_text[1] == '\0'
+	    && *tape->newline_flag == 1.0f);
+	return !tape->fail_carrier;
+}
+
+static void
+test_ab36_printable_transaction(void)
+{
+	char accumulator[8] = "A";
+	char paged_text[8] = "old";
+	float newline_flag = -1.0f;
+	bool handled;
+	struct ab36_printable_tape tape = {
+		.accumulator = accumulator,
+		.paged_text = paged_text,
+		.newline_flag = &newline_flag,
+	};
+
+	CHECK(yt_input_ab36_printable_run(0x7fU, accumulator,
+	    sizeof(accumulator), sizeof(accumulator), paged_text,
+	    sizeof(paged_text), &newline_flag, &handled,
+	    ab36_printable_echo, ab36_printable_carrier, &tape));
+	CHECK(handled && tape.echo_calls == 1U && tape.carrier_calls == 1U
+	    && (uint8_t)accumulator[1] == 0x7fU
+	    && (uint8_t)paged_text[0] == 0x7fU && newline_flag == 1.0f);
+
+	memcpy(accumulator, "A", 2U);
+	memcpy(paged_text, "old", 4U);
+	newline_flag = -1.0f;
+	memset(&tape, 0, sizeof(tape));
+	tape.accumulator = accumulator;
+	tape.paged_text = paged_text;
+	tape.newline_flag = &newline_flag;
+	CHECK(yt_input_ab36_printable_run(0x1fU, accumulator,
+	    sizeof(accumulator), sizeof(accumulator), paged_text,
+	    sizeof(paged_text), &newline_flag, &handled,
+	    ab36_printable_echo, ab36_printable_carrier, &tape));
+	CHECK(!handled && tape.echo_calls == 0U && tape.carrier_calls == 0U
+	    && strcmp(accumulator, "A") == 0
+	    && strcmp(paged_text, "old") == 0 && newline_flag == -1.0f);
+	CHECK(yt_input_ab36_printable_run(0x80U, accumulator,
+	    sizeof(accumulator), sizeof(accumulator), paged_text,
+	    sizeof(paged_text), &newline_flag, &handled,
+	    ab36_printable_echo, ab36_printable_carrier, &tape));
+	CHECK(!handled && tape.echo_calls == 0U && tape.carrier_calls == 0U
+	    && strcmp(accumulator, "A") == 0
+	    && strcmp(paged_text, "old") == 0 && newline_flag == -1.0f);
+
+	tape.fail_echo = true;
+	CHECK(!yt_input_ab36_printable_run(0x20U, accumulator,
+	    sizeof(accumulator), sizeof(accumulator), paged_text,
+	    sizeof(paged_text), &newline_flag, &handled,
+	    ab36_printable_echo, ab36_printable_carrier, &tape));
+	CHECK(handled && tape.echo_calls == 1U && tape.carrier_calls == 0U
+	    && strcmp(accumulator, "A") == 0
+	    && strcmp(paged_text, "old") == 0 && newline_flag == -1.0f);
+
+	tape.fail_echo = false;
+	tape.fail_carrier = true;
+	tape.echo_calls = 0U;
+	CHECK(!yt_input_ab36_printable_run('B', accumulator,
+	    sizeof(accumulator), sizeof(accumulator), paged_text,
+	    sizeof(paged_text), &newline_flag, &handled,
+	    ab36_printable_echo, ab36_printable_carrier, &tape));
+	CHECK(handled && tape.echo_calls == 1U && tape.carrier_calls == 1U
+	    && strcmp(accumulator, "AB") == 0
+	    && strcmp(paged_text, "B") == 0 && newline_flag == 1.0f);
 }
 
 struct ab36_terminal_tape {
@@ -1743,6 +1853,7 @@ main(void)
 	test_ab36_repeat_transaction();
 	test_ab36_submission();
 	test_ab36_backspace_transaction();
+	test_ab36_printable_transaction();
 	test_ab36_terminal_transaction();
 	test_source_fifo();
 	test_merged_fifo();

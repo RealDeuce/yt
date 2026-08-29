@@ -35,6 +35,7 @@ struct yt_session {
 	size_t queue_length;
 	size_t queue_position;
 	char command_accumulator[YT_COMMAND_SIZE];
+	char paged_text[YT_COMMAND_SIZE];
 	char output_source[YT_COMMAND_SIZE];
 	struct yt_input_splitter input;
 	char saved_command[YT_COMMAND_SIZE];
@@ -247,7 +248,7 @@ session_ab36_submit_line(void *context)
 }
 
 static bool
-session_ab36_backspace_echo(void *context, const uint8_t *local,
+session_ab36_editor_echo(void *context, const uint8_t *local,
     size_t local_length, const uint8_t *remote, size_t remote_length)
 {
 	struct yt_session *session = context;
@@ -260,6 +261,12 @@ session_ab36_backspace_echo(void *context, const uint8_t *local,
 		return false;
 	yt_out_present_result(&presentation);
 	return true;
+}
+
+static bool
+session_ab36_printable_carrier(void *context)
+{
+	return session_carrier(context);
 }
 
 static float
@@ -466,7 +473,6 @@ read_physical_line(FILE *file, char *dest, size_t size)
 static bool
 read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 {
-	size_t used;
 	float inactivity_deadline;
 
 	if (size == 0)
@@ -478,8 +484,6 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 	dest[0] = '\0';
 	for (;;) {
 		struct yt_input_value selected = {{0, 0}, 0, 0, false};
-		struct yt_present_result presentation;
-		enum yt_present_status status;
 		bool queued = session->queue_position < session->queue_length;
 		uint8_t key;
 
@@ -515,17 +519,17 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 		if (selected.length != 1)
 			continue;
 		key = selected.bytes[0];
-		used = strlen(session->command_accumulator);
 		if (yt_input_ab36_repeat_requested(queued, &selected)) {
 			if (!yt_input_ab36_repeat_run(
 			    session->command_accumulator,
 			    sizeof(session->command_accumulator),
 			    session->saved_command,
 			    sizeof(session->saved_command),
+			    session->paged_text,
+			    sizeof(session->paged_text),
 			    &session->pager.newline_flag, &key,
 			    session_ab36_repeat_emit, session))
 				return false;
-			used = strlen(session->command_accumulator);
 		}
 		if (yt_input_ab36_submit_requested(key)) {
 			if (!yt_input_ab36_submit_run(
@@ -541,24 +545,24 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 			if (!yt_input_ab36_backspace_run(key,
 			    session->command_accumulator,
 			    sizeof(session->command_accumulator), &handled,
-			    session_ab36_backspace_echo, session))
+			    session_ab36_editor_echo, session))
 				return false;
 			if (handled)
 				continue;
 		}
-		if (key >= 0x20 && key <= 0x7f
-		    && used + 1U < sizeof(session->command_accumulator)
-		    && used + 1U < size) {
-			session->command_accumulator[used++] = (char)key;
-			session->command_accumulator[used] = '\0';
-			status = yt_present_editor_echo(&key, 1, &key, 1,
-			    &session->presentation, &presentation);
-			if (status != YT_PRESENT_OK)
+		{
+			bool handled;
+
+			if (!yt_input_ab36_printable_run(key,
+			    session->command_accumulator,
+			    sizeof(session->command_accumulator), size,
+			    session->paged_text, sizeof(session->paged_text),
+			    &session->pager.newline_flag, &handled,
+			    session_ab36_editor_echo,
+			    session_ab36_printable_carrier, session))
 				return false;
-			yt_out_present_result(&presentation);
-			session->pager.newline_flag = 1.0f;
-			if (!session_carrier(session))
-				return false;
+			if (handled)
+				continue;
 		}
 	}
 }

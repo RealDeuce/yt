@@ -226,8 +226,9 @@ yt_input_ab36_repeat_requested(bool queued,
 
 bool
 yt_input_ab36_repeat_run(char *accumulator, size_t accumulator_capacity,
-    const char *saved_command, size_t saved_capacity, float *newline_flag,
-    uint8_t *selected_key, yt_ab36_repeat_emit_fn emit, void *context)
+    const char *saved_command, size_t saved_capacity, char *paged_text,
+    size_t paged_text_capacity, float *newline_flag, uint8_t *selected_key,
+    yt_ab36_repeat_emit_fn emit, void *context)
 {
 	uint8_t prefix[YT_INPUT_PENDING];
 	size_t prefix_length;
@@ -239,10 +240,12 @@ yt_input_ab36_repeat_run(char *accumulator, size_t accumulator_capacity,
 	    || !bounded_string_length(saved_command, saved_capacity,
 	    &saved_length)
 	    || prefix_length > sizeof(prefix)
+	    || paged_text == NULL || prefix_length >= paged_text_capacity
 	    || saved_length >= accumulator_capacity)
 		return false;
 	if (prefix_length != 0U)
 		memcpy(prefix, accumulator, prefix_length);
+	memcpy(paged_text, accumulator, prefix_length + 1U);
 	*newline_flag = 1.0f;
 	if (!emit(context, prefix, prefix_length))
 		return false;
@@ -270,7 +273,7 @@ yt_input_ab36_submit_run(float *newline_flag, yt_ab36_submit_line_fn line,
 bool
 yt_input_ab36_backspace_run(uint8_t selected_key, char *accumulator,
     size_t accumulator_capacity, bool *handled,
-    yt_ab36_backspace_echo_fn echo, void *context)
+    yt_ab36_echo_fn echo, void *context)
 {
 	static const uint8_t local_erase[] = {0x1d, ' ', 0x1d};
 	static const uint8_t remote_erase[] = {'\b', ' ', '\b'};
@@ -287,6 +290,37 @@ yt_input_ab36_backspace_run(uint8_t selected_key, char *accumulator,
 	*handled = true;
 	return echo(context, local_erase, sizeof(local_erase), remote_erase,
 	    sizeof(remote_erase));
+}
+
+bool
+yt_input_ab36_printable_run(uint8_t selected_key, char *accumulator,
+    size_t accumulator_capacity, size_t response_capacity,
+    char *paged_text, size_t paged_text_capacity, float *newline_flag,
+    bool *handled, yt_ab36_echo_fn echo, yt_ab36_carrier_fn carrier,
+    void *context)
+{
+	size_t length;
+
+	if (paged_text == NULL || paged_text_capacity < 2U
+	    || newline_flag == NULL || handled == NULL || echo == NULL
+	    || carrier == NULL
+	    || !bounded_string_length(accumulator, accumulator_capacity,
+	    &length))
+		return false;
+	*handled = false;
+	if (selected_key < 0x20U || selected_key > 0x7fU
+	    || length + 1U >= accumulator_capacity
+	    || length + 1U >= response_capacity)
+		return true;
+	*handled = true;
+	if (!echo(context, &selected_key, 1U, &selected_key, 1U))
+		return false;
+	accumulator[length] = (char)selected_key;
+	accumulator[length + 1U] = '\0';
+	paged_text[0] = (char)selected_key;
+	paged_text[1] = '\0';
+	*newline_flag = 1.0f;
+	return carrier(context);
 }
 
 bool

@@ -67,9 +67,10 @@ typedef bool (*yt_ab36_terminal_close_fn)(void *context);
 typedef bool (*yt_ab36_repeat_emit_fn)(void *context,
     const uint8_t *prefix, size_t length);
 typedef bool (*yt_ab36_submit_line_fn)(void *context);
-typedef bool (*yt_ab36_backspace_echo_fn)(void *context,
+typedef bool (*yt_ab36_echo_fn)(void *context,
     const uint8_t *local, size_t local_length, const uint8_t *remote,
     size_t remote_length);
+typedef bool (*yt_ab36_carrier_fn)(void *context);
 
 enum yt_timed_wait_reason {
 	YT_TIMED_WAIT_CONTINUE,
@@ -204,14 +205,20 @@ bool yt_input_ab36_repeat_requested(bool queued,
     const struct yt_input_value *selected);
 bool yt_input_ab36_repeat_run(char *accumulator,
     size_t accumulator_capacity, const char *saved_command,
-    size_t saved_capacity, float *newline_flag, uint8_t *selected_key,
+    size_t saved_capacity, char *paged_text, size_t paged_text_capacity,
+    float *newline_flag, uint8_t *selected_key,
     yt_ab36_repeat_emit_fn emit, void *context);
 bool yt_input_ab36_submit_requested(uint8_t selected_key);
 bool yt_input_ab36_submit_run(float *newline_flag,
     yt_ab36_submit_line_fn line, void *context);
 bool yt_input_ab36_backspace_run(uint8_t selected_key, char *accumulator,
     size_t accumulator_capacity, bool *handled,
-    yt_ab36_backspace_echo_fn echo, void *context);
+    yt_ab36_echo_fn echo, void *context);
+bool yt_input_ab36_printable_run(uint8_t selected_key, char *accumulator,
+    size_t accumulator_capacity, size_t response_capacity,
+    char *paged_text, size_t paged_text_capacity, float *newline_flag,
+    bool *handled, yt_ab36_echo_fn echo, yt_ab36_carrier_fn carrier,
+    void *context);
 bool yt_input_ab36_inactivity_expired(float timer, float deadline,
     float mode);
 bool yt_input_ab36_session_expired(float timer, float deadline);
