@@ -187,12 +187,12 @@ not authoritative. Use the corrected goal above in the new workspace.
   destination-selector and destination-combat transactions,
   ledger dispositions are roots
   `167 candidate / 1 missing`, transfers
-  `5266 candidate / 2101 missing / 1 explicitly
+  `5271 candidate / 2096 missing / 1 explicitly
   deferred`, and presentation `136 candidate / 8 missing / 6 verified`.
   Current SHA-256
   values are roots
   `64b17a8ae6550d4ef994a6e872d1f06c9ff8a6bc33ab9ab64d390da38a87e8be`,
-  transfers `d104e84da4c73b85eb527c6bb69fa6997933b5f9d59fb9aba836b42633e522f6`,
+  transfers `84834340229f63a923629775ef3a5f4a80d6048cc0d529abc16a38457b2e98cb`,
   presentation `b899734f3487d364fbad0b2d5be7936334cc753b4c676d3407d6703d522b5afe`,
   and manifest
   `3552bd61c9cb9b7197aeb6fbad1f37cba69cd09f125d878d0c9072a691e8950a`.
@@ -1830,6 +1830,15 @@ not authoritative. Use the corrected goal above in the new workspace.
   after truncation. Canonical BRUN B5 editing/echo/cursor state, the nonempty
   79-byte cap, raw descriptors, Break/runtime cuts and the physical console
   adapter remain open.
+- The five qualified confirmation-decision transfers at `YT-INIT:06B5..06CF`
+  are candidate. The native predicate reproduces the executable's two
+  case-sensitive equality results and their AND: exact one-byte `Y` takes the
+  first equal arm, exact one-byte `y` takes the second, and only a mismatch to
+  both reaches the ordinary END. Pure fixtures cover both accepted arms plus
+  empty, `N`, and suffix-bearing rejection; subprocess fixtures pin accepted
+  entry into the opening/persistence transaction and rejected success exit
+  before any nonempty `YTDATA.DAT` mutation. The unrelated `0712` binding call
+  remains separately uncredited.
 - Initializer date roots `YT-INIT:00B5` and `RMT-INIT:2339`, plus the remote
   identity title normalizer `RMT-INIT:2B42`, are candidate with all 128
   qualified helper-body transfers mapped to the already exact native date
