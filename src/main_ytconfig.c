@@ -325,78 +325,179 @@ edit_headquarters(struct yt_game *game, struct yt_error *error)
 static bool
 edit_planets(struct yt_game *game, struct yt_error *error)
 {
+	char names[76][42];
+	bool active[76] = {false};
+	unsigned active_count = 0U;
+	struct yt_config_output_result output;
+	int logical;
+
+	memset(names, 0, sizeof(names));
+	for (logical = 1; logical <= 75; ++logical) {
+		struct yt_planet planet;
+
+		if (!yt_game_read_planet(game, logical, &planet, error))
+			return false;
+		if (planet.name_length == 0.0f)
+			continue;
+		active[logical] = true;
+		++active_count;
+		snprintf(names[logical], sizeof(names[logical]), "%s", planet.name);
+	}
+	if (!yt_config_compose_planet_entry(active_count, 0U, &output)
+	    || !write_output(&output, error))
+		return false;
+	if (active_count == 0U)
+		return true;
 	for (;;) {
-		char choice[80];
-		int logical;
+		int raw_key;
+		uint8_t folded;
 
-		puts("L) List planets  C) Change planet");
-		fputs("Press enter to quit. Please Select: ", stdout);
-		if (!yt_cli_line(choice, sizeof(choice)) || choice[0] == '\0')
+		if (!yt_config_compose_planet_menu(0U, &output)
+		    || !write_output(&output, error))
+			return false;
+		raw_key = yt_cli_key();
+		if (raw_key == EOF)
 			return true;
-		if (((unsigned char)choice[0] & 0xdfU) == 'L') {
+		if (raw_key == '\n')
+			raw_key = '\r';
+		if (!yt_config_compose_planet_key_echo((uint8_t)raw_key,
+		    output.final_column, &folded, &output)
+		    || !write_output(&output, error))
+			return false;
+		if (folded == '\r')
+			return true;
+		if (folded == 'L') {
+			if (!yt_config_compose_planet_list_header(0U, &output)
+			    || !write_output(&output, error))
+				return false;
 			for (logical = 1; logical <= 75; ++logical) {
-				struct yt_planet planet;
-
-				if (!yt_game_read_planet(game, logical, &planet, error))
+				if (!active[logical])
+					continue;
+				if (!yt_config_compose_planet_list_row(logical,
+				    (const uint8_t *)names[logical],
+				    strlen(names[logical]), 0U, &output)
+				    || !write_output(&output, error))
 					return false;
-				if (planet.name_length != 0.0f)
-					printf("%d] %s\n", logical, planet.name);
+				if (yt_config_planet_pause_after(logical,
+				    active_count)) {
+					if (!yt_config_compose_planet_pause(
+					    output.final_column, &output)
+					    || !write_output(&output, error))
+						return false;
+					(void)yt_cli_key();
+					if (!yt_config_compose_planet_blank(
+					    output.final_column, &output)
+					    || !write_output(&output, error))
+						return false;
+				}
 			}
+			if (!yt_config_compose_planet_blank(0U, &output)
+			    || !write_output(&output, error))
+				return false;
 			continue;
 		}
-		if (((unsigned char)choice[0] & 0xdfU) == 'C') {
+		if (folded == 'C') {
+			struct qb_val_result parsed;
 			float raw;
-			bool blank;
 			bool overflow;
 			int selected;
-			struct yt_planet planet;
+			char entered[160];
 			char name[160];
 
-			if (!read_single("Edit which planet number? ", &raw, &blank)
-			    || blank || raw == 0.0f)
+			if (!yt_config_compose_planet_number_prompt(0U, &output)
+			    || !write_output(&output, error))
+				return false;
+			if (!yt_cli_line(entered, sizeof(entered)))
 				return true;
-			if (raw < 1.0f || raw > 75.0f)
+			parsed = qb_val(entered);
+			raw = (float)(parsed.valid ? parsed.value : 0.0);
+			if (raw == 0.0f)
 				continue;
+			if (!yt_config_planet_selection_in_range(raw)) {
+				if (!yt_config_compose_planet_invalid(
+				    (const uint8_t *)entered, strlen(entered),
+				    output.final_column, &output)
+				    || !write_output(&output, error))
+					return false;
+				continue;
+			}
 			selected = (int)qb_cint(raw, &overflow);
 			if (overflow)
 				continue;
-			if (!yt_game_read_planet(game, selected, &planet, error))
-				return false;
-			if (planet.name_length == 0.0f) {
-				puts("INVALID PLANET NUMBER!!");
+			if (!active[selected]) {
+				if (!yt_config_compose_planet_invalid(
+				    (const uint8_t *)entered, strlen(entered),
+				    output.final_column, &output)
+				    || !write_output(&output, error))
+					return false;
 				continue;
 			}
-			if (raw == 1.0f || raw == 75.0f) {
-				puts("The planets The Wanderer and Xannoron cannot be re-named!");
+			if (yt_config_planet_selection_protected(raw)) {
+				if (!yt_config_compose_planet_protected(
+				    output.final_column, &output)
+				    || !write_output(&output, error))
+					return false;
 				continue;
 			}
 			for (;;) {
-				char prompt[240];
-
-				printf("Editing: %s\n", planet.name);
-				puts("Press enter to quit.");
-				fputs("Please enter new name. -=> ", stdout);
+				if (!yt_config_compose_planet_edit(
+				    (const uint8_t *)names[selected],
+				    strlen(names[selected]), 0U, &output)
+				    || !write_output(&output, error))
+					return false;
 				if (!yt_cli_line(name, sizeof(name)))
 					return true;
 				name[41] = '\0';
 				qb_title_case(name);
-				if (name[0] == '\0')
+				if (name[0] == '\0') {
+					if (!yt_config_compose_planet_blank(
+					    output.final_column, &output)
+					    || !write_output(&output, error))
+						return false;
 					break;
-				snprintf(prompt, sizeof(prompt),
-				    "Change name to %s? [Y/N] -=> ", name);
-				if (confirm(prompt))
-					goto save_planet_name;
-				puts("Canceled!");
+				}
+				for (;;) {
+					if (!yt_config_compose_planet_confirmation(
+					    (const uint8_t *)name, strlen(name),
+					    output.final_column, &output)
+					    || !write_output(&output, error))
+						return false;
+					raw_key = yt_cli_key();
+					if (raw_key == EOF)
+						return true;
+					if (!yt_config_compose_planet_response_echo(
+					    (uint8_t)raw_key, output.final_column,
+					    &folded, &output)
+					    || !write_output(&output, error))
+						return false;
+					if (folded == 'Y')
+						goto save_planet_name;
+					if (folded == 'N')
+						break;
+				}
+				if (!yt_config_compose_planet_cancel(
+				    (const uint8_t *)name, strlen(name),
+				    output.final_column, &output)
+				    || !write_output(&output, error))
+					return false;
 			}
 			continue;
 save_planet_name:
-			snprintf(planet.name, sizeof(planet.name), "%s", name);
-			planet.name_length = (float)strlen(name);
-			if (!yt_game_write_planet(game, selected, &planet, error))
+			{
+				struct yt_planet planet;
+
+				if (!yt_game_read_planet(game, selected, &planet, error))
+					return false;
+				snprintf(planet.name, sizeof(planet.name), "%s", name);
+				planet.name_length = (float)strlen(name);
+				if (!yt_game_write_planet(game, selected, &planet, error))
+					return false;
+			}
+			snprintf(names[selected], sizeof(names[selected]), "%s", name);
+			if (!yt_config_compose_planet_saved(output.final_column, &output)
+			    || !write_output(&output, error))
 				return false;
-			fputs("New name saved! Press any key.", stdout);
 			(void)yt_cli_key();
-			fputc('\n', stdout);
 			return true;
 		}
 	}

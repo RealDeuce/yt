@@ -3877,6 +3877,197 @@ done_closed:
 }
 
 static bool
+test_ytconfig_planet_editor(struct yt_error *error)
+{
+	static const char empty_input[] = "PX";
+	static const char input[] =
+	    "P"
+	    "Lz"
+	    "C76\n"
+	    "C3\n"
+	    "C1\n"
+	    "C1.4\n\n"
+	    "C2\nmars base\nxnnew world\nyz"
+	    "X";
+	static const uint8_t empty_entry[] =
+	    "P\r\r"
+	    "Loading planet names...\r\r"
+	    "There are 0  planets in your game.\r\r"
+	    "YOUR GAME HAS NO PLANETS!\r\a";
+	static const uint8_t entry[] =
+	    "P\r\r"
+	    "Loading planet names...\r\r"
+	    "There are 4  planets in your game.\r";
+	static const uint8_t list[] =
+	    "L\r\r"
+	    "  #   Name"
+	    "-------------------------------------------------------------------------------\r"
+	    "  1 : The Wanderer\r"
+	    "  2 : Earth\r"
+	    " 20 : Twenty\r"
+	    "[ Pause ]\r"
+	    " 75 : Legacy Slot\r\r";
+	static const uint8_t range_invalid[] =
+	    "C\r\rEdit which planet number? "
+	    "\rINVALID PLANET NUMBER!!\r76\r\a";
+	static const uint8_t slot_invalid[] =
+	    "C\r\rEdit which planet number? "
+	    "\rINVALID PLANET NUMBER!!\r3\r\a";
+	static const uint8_t protected[] =
+	    "C\r\rEdit which planet number? "
+	    "The planets \"The Wanderer\" and \"Xannoron\" "
+	    "cannot be re-named!\r\r\a";
+	static const uint8_t bypass[] =
+	    "C\r\rEdit which planet number? "
+	    "Editing: The Wanderer\r\r"
+	    "Press enter to quit.\r"
+	    "The Wanderer\r"
+	    "Please enter new name. -=> \r";
+	static const uint8_t canceled[] =
+	    "Editing: Earth\r\r"
+	    "Press enter to quit.\r"
+	    "Earth\r"
+	    "Please enter new name. -=> "
+	    "\rChange name to Mars Base? [Y/N] -=> X\r"
+	    "\rChange name to Mars Base? [Y/N] -=> N\r"
+	    "\rCanceled!\rMars Base\r"
+	    "Editing: Earth\r\r";
+	static const uint8_t saved[] =
+	    "\rChange name to New World? [Y/N] -=> Y\r"
+	    "New name saved! Press any key.\r";
+	struct yt_game game;
+	struct yt_game restore;
+	struct yt_record originals[75];
+	struct yt_record forced[75];
+	struct yt_record expected;
+	struct yt_planet actual;
+	uint8_t *screen = NULL;
+	size_t screen_length = 0U;
+	bool snapshots = false;
+	bool valid = false;
+	int logical;
+
+	memset(&game, 0, sizeof(game));
+	if (!yt_game_open(&game, YT_OPEN_UPDATE, error))
+		goto done;
+	for (logical = 1; logical <= 75; ++logical) {
+		size_t record = (size_t)yt_planet_basic_record(&game.config,
+		    logical);
+
+		if (!yt_database_read(&game.database, record,
+		    &originals[logical - 1], error))
+			goto done;
+	}
+	snapshots = true;
+	for (logical = 1; logical <= 75; ++logical) {
+		size_t record = (size_t)yt_planet_basic_record(&game.config,
+		    logical);
+
+		forced[logical - 1] = originals[logical - 1];
+		yt_record_set_text(&forced[logical - 1], NULL, 0U);
+		if (!yt_record_set_number(&forced[logical - 1], YT_F85, 0.0f)
+		    || !yt_database_write(&game.database, record,
+			&forced[logical - 1], error))
+			goto done;
+	}
+	if (!yt_database_flush(&game.database, error))
+		goto done;
+	yt_game_close(&game);
+	if (!write_file("config.in", empty_input, sizeof(empty_input) - 1U)
+	    || !run_redirected(YT_CONFIG_EXE, "config.in", "config.out")
+	    || !read_file("config.out", &screen, &screen_length)
+	    || !bytes_contain(screen, screen_length, empty_entry,
+		sizeof(empty_entry) - 1U))
+		goto done_closed;
+	free(screen);
+	screen = NULL;
+	memset(&game, 0, sizeof(game));
+	if (!yt_game_open(&game, YT_OPEN_UPDATE, error))
+		goto done;
+#define SET_ACTIVE_PLANET(number, text) do { \
+	struct yt_record *record = &forced[(number) - 1]; \
+	yt_record_set_text(record, (const uint8_t *)(text), strlen(text)); \
+	if (!yt_record_set_number(record, YT_F85, (float)strlen(text)) \
+	    || !yt_database_write(&game.database, \
+		(size_t)yt_planet_basic_record(&game.config, (number)), \
+		record, error)) \
+		goto done; \
+} while (0)
+	SET_ACTIVE_PLANET(1, "The Wanderer");
+	SET_ACTIVE_PLANET(2, "Earth");
+	SET_ACTIVE_PLANET(20, "Twenty");
+	SET_ACTIVE_PLANET(75, "Legacy Slot");
+#undef SET_ACTIVE_PLANET
+	if (!yt_database_flush(&game.database, error))
+		goto done;
+	yt_game_close(&game);
+	if (!write_file("config.in", input, sizeof(input) - 1U)
+	    || !run_redirected(YT_CONFIG_EXE, "config.in", "config.out")
+	    || !read_file("config.out", &screen, &screen_length)
+	    || !bytes_contain(screen, screen_length, entry,
+		sizeof(entry) - 1U)
+	    || !bytes_contain(screen, screen_length, list,
+		sizeof(list) - 1U)
+	    || !bytes_contain(screen, screen_length, range_invalid,
+		sizeof(range_invalid) - 1U)
+	    || !bytes_contain(screen, screen_length, slot_invalid,
+		sizeof(slot_invalid) - 1U)
+	    || !bytes_contain(screen, screen_length, protected,
+		sizeof(protected) - 1U)
+	    || !bytes_contain(screen, screen_length, bypass,
+		sizeof(bypass) - 1U)
+	    || !bytes_contain(screen, screen_length, canceled,
+		sizeof(canceled) - 1U)
+	    || !bytes_contain(screen, screen_length, saved,
+		sizeof(saved) - 1U))
+		goto done_closed;
+	memset(&game, 0, sizeof(game));
+	if (!yt_game_open(&game, YT_OPEN_READ, error)
+	    || !yt_game_read_planet(&game, 2, &actual, error))
+		goto done;
+	expected = forced[1];
+	yt_record_set_text(&expected, (const uint8_t *)"New World", 9U);
+	valid = yt_record_set_number(&expected, YT_F85, 9.0f)
+	    && memcmp(actual.record.bytes, expected.bytes, YT_RECORD_SIZE) == 0;
+	for (logical = 1; valid && logical <= 75; ++logical) {
+		struct yt_record unchanged;
+
+		if (logical == 2)
+			continue;
+		if (!yt_database_read(&game.database,
+		    (size_t)yt_planet_basic_record(&game.config, logical),
+		    &unchanged, error)
+		    || memcmp(unchanged.bytes, forced[logical - 1].bytes,
+			YT_RECORD_SIZE) != 0)
+			valid = false;
+	}
+
+done:
+	yt_game_close(&game);
+done_closed:
+	if (snapshots) {
+		memset(&restore, 0, sizeof(restore));
+		if (!yt_game_open(&restore, YT_OPEN_UPDATE, error))
+			valid = false;
+		else {
+			for (logical = 1; logical <= 75; ++logical) {
+				if (!yt_database_write(&restore.database,
+				    (size_t)yt_planet_basic_record(&restore.config,
+				    logical), &originals[logical - 1], error)) {
+					valid = false;
+					break;
+				}
+			}
+			if (!yt_database_flush(&restore.database, error))
+				valid = false;
+		}
+		yt_game_close(&restore);
+	}
+	free(screen);
+	return valid;
+}
+
+static bool
 test_portname(struct yt_error *error)
 {
 	static const uint8_t intro[] =
@@ -4617,6 +4808,8 @@ main(void)
 		failure = "YTCONFIG Headquarters relocation differs";
 	else if (!test_ytconfig_scalar_options(&error))
 		failure = "YTCONFIG scalar options differ";
+	else if (!test_ytconfig_planet_editor(&error))
+		failure = "YTCONFIG planet editor differs";
 	else if (!test_portname(&error))
 		failure = "PORTNAME changed data outside its two owned fields";
 	else if (!test_rmt_standalone_decline(&error))

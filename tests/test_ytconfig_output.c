@@ -322,6 +322,116 @@ test_scalar_options(void)
 	return true;
 }
 
+static bool
+test_planet_editor_output(void)
+{
+	static const uint8_t entry[] =
+	    "Loading planet names...\r"
+	    "\r"
+	    "There are 3  planets in your game.\r";
+	static const uint8_t empty[] =
+	    "Loading planet names...\r"
+	    "\r"
+	    "There are 0  planets in your game.\r"
+	    "\r"
+	    "YOUR GAME HAS NO PLANETS!\r";
+	static const uint8_t menu[] =
+	    "Press enter to quit. Please Select:\r"
+	    "\r"
+	    "[L] List planets\r"
+	    "[C] Choose a planet to edit\r"
+	    "\r"
+	    "-+> ";
+	static const uint8_t header[] =
+	    "  #   Name"
+	    "-------------------------------------------------------------------------------\r";
+	static const uint8_t row[] = "  1 : Earth\r";
+	static const uint8_t invalid[] =
+	    "\rINVALID PLANET NUMBER!!\r99\r";
+	static const uint8_t protected[] =
+	    "The planets \"The Wanderer\" and \"Xannoron\" cannot be re-named!\r\r";
+	static const uint8_t edit[] =
+	    "Editing: Earth\r\r"
+	    "Press enter to quit.\r"
+	    "Earth\r"
+	    "Please enter new name. -=> ";
+	static const uint8_t confirmation[] =
+	    "\rChange name to Mars? [Y/N] -=> ";
+	static const uint8_t cancel[] = "\rCanceled!\rMars\r";
+	static const uint8_t saved[] = "New name saved! Press any key.\r";
+	struct yt_config_output_result result;
+	uint8_t folded;
+
+	CHECK(yt_config_compose_planet_entry(3U, 0U, &result));
+	CHECK(result.output_length == sizeof(entry) - 1U);
+	CHECK(memcmp(result.output, entry, sizeof(entry) - 1U) == 0);
+	CHECK(result.local_beeps == 0U);
+	CHECK(yt_config_compose_planet_entry(0U, 0U, &result));
+	CHECK(result.output_length == sizeof(empty) - 1U);
+	CHECK(memcmp(result.output, empty, sizeof(empty) - 1U) == 0);
+	CHECK(result.local_beeps == 1U);
+	CHECK(yt_config_compose_planet_menu(0U, &result));
+	CHECK(result.output_length == sizeof(menu) - 1U);
+	CHECK(memcmp(result.output, menu, sizeof(menu) - 1U) == 0);
+	CHECK(yt_config_compose_planet_key_echo('l', result.final_column,
+	    &folded, &result));
+	CHECK(folded == 'L');
+	CHECK(result.output_length == 3U);
+	CHECK(memcmp(result.output, "L\r\r", 3U) == 0);
+	CHECK(yt_config_compose_planet_list_header(0U, &result));
+	CHECK(result.output_length == sizeof(header) - 1U);
+	CHECK(memcmp(result.output, header, sizeof(header) - 1U) == 0);
+	CHECK(yt_config_compose_planet_list_row(1,
+	    (const uint8_t *)"Earth", 5U, 0U, &result));
+	CHECK(result.output_length == sizeof(row) - 1U);
+	CHECK(memcmp(result.output, row, sizeof(row) - 1U) == 0);
+	CHECK(yt_config_compose_planet_pause(0U, &result));
+	CHECK(result.output_length == 9U);
+	CHECK(memcmp(result.output, "[ Pause ]", 9U) == 0);
+	CHECK(yt_config_compose_planet_invalid((const uint8_t *)"99", 2U,
+	    0U, &result));
+	CHECK(result.output_length == sizeof(invalid) - 1U);
+	CHECK(memcmp(result.output, invalid, sizeof(invalid) - 1U) == 0);
+	CHECK(result.local_beeps == 1U);
+	CHECK(yt_config_compose_planet_protected(0U, &result));
+	CHECK(result.output_length == sizeof(protected) - 1U);
+	CHECK(memcmp(result.output, protected, sizeof(protected) - 1U) == 0);
+	CHECK(result.local_beeps == 1U);
+	CHECK(yt_config_compose_planet_edit((const uint8_t *)"Earth", 5U,
+	    0U, &result));
+	CHECK(result.output_length == sizeof(edit) - 1U);
+	CHECK(memcmp(result.output, edit, sizeof(edit) - 1U) == 0);
+	CHECK(yt_config_compose_planet_confirmation((const uint8_t *)"Mars", 4U,
+	    result.final_column, &result));
+	CHECK(result.output_length == sizeof(confirmation) - 1U);
+	CHECK(memcmp(result.output, confirmation,
+	    sizeof(confirmation) - 1U) == 0);
+	CHECK(yt_config_compose_planet_response_echo('x', result.final_column,
+	    &folded, &result));
+	CHECK(folded == 'X');
+	CHECK(result.output_length == 2U);
+	CHECK(memcmp(result.output, "X\r", 2U) == 0);
+	CHECK(yt_config_compose_planet_cancel((const uint8_t *)"Mars", 4U,
+	    0U, &result));
+	CHECK(result.output_length == sizeof(cancel) - 1U);
+	CHECK(memcmp(result.output, cancel, sizeof(cancel) - 1U) == 0);
+	CHECK(yt_config_compose_planet_saved(0U, &result));
+	CHECK(result.output_length == sizeof(saved) - 1U);
+	CHECK(memcmp(result.output, saved, sizeof(saved) - 1U) == 0);
+	CHECK(!yt_config_planet_selection_in_range(0.999999f));
+	CHECK(yt_config_planet_selection_in_range(1.0f));
+	CHECK(yt_config_planet_selection_in_range(75.0f));
+	CHECK(!yt_config_planet_selection_in_range(75.00001f));
+	CHECK(yt_config_planet_selection_protected(1.0f));
+	CHECK(!yt_config_planet_selection_protected(1.4f));
+	CHECK(!yt_config_planet_selection_protected(74.6f));
+	CHECK(yt_config_planet_selection_protected(75.0f));
+	CHECK(yt_config_planet_pause_after(20, 3U));
+	CHECK(yt_config_planet_pause_after(3, 3U));
+	CHECK(!yt_config_planet_pause_after(4, 3U));
+	return true;
+}
+
 int
 main(void)
 {
@@ -331,7 +441,8 @@ main(void)
 	    || !test_dispatch_and_exit()
 	    || !test_genesis_editor()
 	    || !test_headquarters_editor()
-	    || !test_scalar_options())
+	    || !test_scalar_options()
+	    || !test_planet_editor_output())
 		return 1;
 	puts("ytconfig output tests passed");
 	return 0;

@@ -431,3 +431,248 @@ yt_config_scalar_valid(enum yt_config_scalar_key key, float value)
 		return false;
 	}
 }
+
+bool
+yt_config_compose_planet_entry(unsigned active_count, size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	static const uint8_t newline = '\r';
+
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	if (!append_line(result, "Loading planet names...")
+	    || !append_line(result, "")
+	    || !append_literal(result, "There are")
+	    || !append_single(result, (float)active_count, true)
+	    || !append_line(result, " planets in your game."))
+		return false;
+	if (active_count != 0U)
+		return true;
+	result->local_beeps = 1U;
+	return append_bytes(result, &newline, 1U)
+	    && append_line(result, "YOUR GAME HAS NO PLANETS!");
+}
+
+bool
+yt_config_compose_planet_menu(size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_line(result, "Press enter to quit. Please Select:")
+	    && append_line(result, "")
+	    && append_line(result, "[L] List planets")
+	    && append_line(result, "[C] Choose a planet to edit")
+	    && append_line(result, "")
+	    && append_literal(result, "-+> ");
+}
+
+bool
+yt_config_compose_planet_key_echo(uint8_t key, size_t initial_column,
+    uint8_t *folded, struct yt_config_output_result *result)
+{
+	uint8_t output[3];
+
+	if (folded == NULL || result == NULL
+	    || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	*folded = key & 0xdfU;
+	output[0] = *folded;
+	output[1] = '\r';
+	output[2] = '\r';
+	return append_bytes(result, output, sizeof(output));
+}
+
+bool
+yt_config_compose_planet_number_prompt(size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_literal(result, "Edit which planet number? ");
+}
+
+bool
+yt_config_compose_planet_response_echo(uint8_t key, size_t initial_column,
+    uint8_t *folded, struct yt_config_output_result *result)
+{
+	uint8_t output[2];
+
+	if (folded == NULL || result == NULL
+	    || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	*folded = key & 0xdfU;
+	output[0] = *folded;
+	output[1] = '\r';
+	return append_bytes(result, output, sizeof(output));
+}
+
+bool
+yt_config_compose_planet_list_header(size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	static const char rule[] =
+	    "-------------------------------------------------------------------------------";
+
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_literal(result, "  #   Name")
+	    && append_line(result, rule);
+}
+
+bool
+yt_config_compose_planet_list_row(int logical, const uint8_t *name,
+    size_t name_length, size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || logical < 1 || logical > 75
+	    || (name == NULL && name_length != 0U)
+	    || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return (logical >= 10 || append_literal(result, " "))
+	    && append_single(result, (float)logical, true)
+	    && append_literal(result, ": ")
+	    && append_binary_line(result, name, name_length);
+}
+
+bool
+yt_config_compose_planet_pause(size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_literal(result, "[ Pause ]");
+}
+
+bool
+yt_config_compose_planet_blank(size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_line(result, "");
+}
+
+bool
+yt_config_compose_planet_invalid(const uint8_t *entered,
+    size_t entered_length, size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || (entered == NULL && entered_length != 0U)
+	    || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	result->local_beeps = 1U;
+	return append_line(result, "")
+	    && append_line(result, "INVALID PLANET NUMBER!!")
+	    && append_binary_line(result, entered, entered_length);
+}
+
+bool
+yt_config_compose_planet_protected(size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	result->local_beeps = 1U;
+	return append_line(result,
+	    "The planets \"The Wanderer\" and \"Xannoron\" cannot be re-named!")
+	    && append_line(result, "");
+}
+
+bool
+yt_config_compose_planet_edit(const uint8_t *name, size_t name_length,
+    size_t initial_column, struct yt_config_output_result *result)
+{
+	if (result == NULL || (name == NULL && name_length != 0U)
+	    || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_literal(result, "Editing: ")
+	    && append_binary_line(result, name, name_length)
+	    && append_line(result, "")
+	    && append_line(result, "Press enter to quit.")
+	    && append_binary_line(result, name, name_length)
+	    && append_literal(result, "Please enter new name. -=> ");
+}
+
+bool
+yt_config_compose_planet_confirmation(const uint8_t *name,
+    size_t name_length, size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || (name == NULL && name_length != 0U)
+	    || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_line(result, "")
+	    && append_literal(result, "Change name to ")
+	    && append_bytes(result, name, name_length)
+	    && append_literal(result, "? [Y/N] -=> ");
+}
+
+bool
+yt_config_compose_planet_cancel(const uint8_t *name, size_t name_length,
+    size_t initial_column, struct yt_config_output_result *result)
+{
+	if (result == NULL || (name == NULL && name_length != 0U)
+	    || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_line(result, "")
+	    && append_line(result, "Canceled!")
+	    && append_binary_line(result, name, name_length);
+}
+
+bool
+yt_config_compose_planet_saved(size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_line(result, "New name saved! Press any key.");
+}
+
+bool
+yt_config_planet_selection_in_range(float selection)
+{
+	return selection >= 1.0f && selection <= 75.0f;
+}
+
+bool
+yt_config_planet_selection_protected(float selection)
+{
+	return selection == 1.0f || selection == 75.0f;
+}
+
+bool
+yt_config_planet_pause_after(int logical, unsigned active_count)
+{
+	return logical % 20 == 0 || (unsigned)logical == active_count;
+}
