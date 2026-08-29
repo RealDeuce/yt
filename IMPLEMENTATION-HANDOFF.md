@@ -187,12 +187,12 @@ not authoritative. Use the corrected goal above in the new workspace.
   destination-selector and destination-combat transactions,
   ledger dispositions are roots
   `167 candidate / 1 missing`, transfers
-  `5338 candidate / 2029 missing / 1 explicitly
+  `5356 candidate / 2011 missing / 1 explicitly
   deferred`, and presentation `136 candidate / 8 missing / 6 verified`.
   Current SHA-256
   values are roots
   `64b17a8ae6550d4ef994a6e872d1f06c9ff8a6bc33ab9ab64d390da38a87e8be`,
-  transfers `7c36c2b4327d7a09f62aef4a478fe2c6f81c1e1e2ecd51a0be9e1d386e374105`,
+  transfers `eb5482fc331a02fc60dc44bc333acdb50936dab0ffe5f874d11761592b74d5cf`,
   presentation `b899734f3487d364fbad0b2d5be7936334cc753b4c676d3407d6703d522b5afe`,
   and manifest
   `3552bd61c9cb9b7197aeb6fbad1f37cba69cd09f125d878d0c9072a691e8950a`.
@@ -1882,9 +1882,13 @@ not authoritative. Use the corrected goal above in the new workspace.
   candidate. A scripted seven-sector YT fixture forces a long self-target and
   fresh-draw retry, an occupied target with no mutation, an empty reciprocal
   write, and an all-zero sector pass followed by a successful local-link
-  retry. It pins 100 total draws, the exact 2,055-byte image/hash and the
-  affected reciprocal lanes. Raw loop/SINGLE/array cells, provider failures
-  and the remaining local-warp inner alternatives stay open.
+  retry. The same fixture forces all eighteen local-warp transfers at
+  `0ED7..1023`: threshold and slot gates, tailward distance, occupied source,
+  occupied destination, fresh reciprocal write, and duplicate-pair
+  suppression. The full 2,004-sector image pins the complementary forward
+  distance. It pins 105 total draws, the exact 2,055-byte image/hash and all
+  affected reciprocal lanes. Raw loop/SINGLE/array cells and provider
+  failures stay open.
 - All five shortcut-controller transfers at `1391..13CD` are candidate. The
   recovered YT sequence pins eleven cumulative positions, the terminal
   overshoot, both empty-slot mutation and occupied-slot preservation, exact

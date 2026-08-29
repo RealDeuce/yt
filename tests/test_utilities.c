@@ -1543,28 +1543,40 @@ utility_graph_retry_fill(void *context, void *buffer, size_t length,
 		return false;
 	}
 	switch (script->draws) {
-	case 13U: /* Sector 2 long-warp probability: admit a target draw. */
+	case 7U: /* Sector 2 slot 1 targets occupied sector-1 slot 1. */
+	case 8U:
+	case 18U: /* Sector 3 slot 1 writes a reciprocal link to sector 2. */
+	case 19U:
+	case 20U: /* Sector 3 slot 2 finds an occupied destination slot. */
+	case 21U:
+	case 22U: /* Sector 3 slot 3 starts occupied at the source. */
+	case 23U:
+	case 24U: /* Sector 3 slot 4 suppresses a duplicate sector pair. */
+	case 25U:
+		sample = 0U;
+		break;
+	case 14U: /* Sector 2 long-warp probability: admit a target draw. */
 		sample = UINT32_C(0xfd70a4);
 		break;
-	case 14U: /* Bound seven maps this sample back to sector 2 itself. */
+	case 15U: /* Bound seven maps this sample back to sector 2 itself. */
 		sample = UINT32_C(0x333333);
 		break;
-	case 15U: /* The required retry admits a second target draw. */
-	case 23U: /* Sector 3 admits an empty long-warp destination. */
+	case 16U: /* The required retry admits a second target draw. */
+	case 28U: /* Sector 3 admits an empty long-warp destination. */
 		sample = UINT32_C(0xfd70a4);
 		break;
-	case 16U: /* Sector 6 already owns its sixth reciprocal slot. */
+	case 17U: /* Sector 6 already owns its sixth reciprocal slot. */
 		sample = UINT32_C(0xcccccc);
 		break;
-	case 24U: /* Bound seven maps the empty target to sector 4. */
+	case 29U: /* Bound seven maps the empty target to sector 4. */
 		sample = UINT32_C(0x800000);
 		break;
-	case 37U:
-	case 50U: /* Sector 7 remains empty after its first pass. */
-	case 51U: /* Its retry takes a local warp to sector 6. */
-	case 52U:
-	case 58U:
-	case 59U: /* The first shortcut position is 8, beyond sector 7. */
+	case 42U:
+	case 55U: /* Sector 7 remains empty after its first pass. */
+	case 56U: /* Its retry takes a local warp to sector 6. */
+	case 57U:
+	case 63U:
+	case 64U: /* The first shortcut position is 8, beyond sector 7. */
 		sample = 0U;
 		break;
 	default:
@@ -2067,7 +2079,7 @@ test_initializer_graph_retries(void)
 	yt_platform_set_clock_provider(utility_fixed_clock, NULL);
 	ok = yt_initialize_world(&options, &random, &error);
 	yt_platform_set_clock_provider(NULL, NULL);
-	if (!ok || random.draws != 100U || script.draws != 100U
+	if (!ok || random.draws != 105U || script.draws != 105U
 	    || !read_file("YTDATA.DAT", &database, &length)
 	    || length != 2055U) {
 		fprintf(stderr, "initializer graph retry: ok=%d status=%d draws=%zu/%zu length=%zu\n",
@@ -2096,16 +2108,24 @@ test_initializer_graph_retries(void)
 	    * YT_RECORD_SIZE;
 	memcpy(sector_seven.bytes, database + offset, YT_RECORD_SIZE);
 	hash = utility_fnv1a64(database, length);
-	ok = yt_record_get_number(&sector_two, YT_F61) == 0.0f
+	ok = yt_record_get_number(&sector_two, YT_F41) == 3.0f
+	    && yt_record_get_number(&sector_two, YT_F61) == 0.0f
+	    && yt_record_get_number(&sector_three, YT_F41) == 2.0f
+	    && yt_record_get_number(&sector_three, YT_F45) == 0.0f
+	    && yt_record_get_number(&sector_three, YT_F53) == 0.0f
 	    && yt_record_get_number(&sector_three, YT_F61) == 4.0f
 	    && yt_record_get_number(&sector_four, YT_F61) == 3.0f
 	    && yt_record_get_number(&sector_six, YT_F41) == 7.0f
 	    && yt_record_get_number(&sector_seven, YT_F41) == 6.0f
-	    && hash == UINT64_C(0x7f7d755646c7a098);
+	    && hash == UINT64_C(0x4cda66caf10b15d4);
 	if (!ok)
-		fprintf(stderr, "initializer graph retry image: hash=%016llx s2.6=%g s3.6=%g s4.6=%g s6.0=%g s7.0=%g\n",
+		fprintf(stderr, "initializer graph retry image: hash=%016llx s2.0=%g s2.6=%g s3.0=%g s3.1=%g s3.3=%g s3.6=%g s4.6=%g s6.0=%g s7.0=%g\n",
 		    (unsigned long long)hash,
+		    (double)yt_record_get_number(&sector_two, YT_F41),
 		    (double)yt_record_get_number(&sector_two, YT_F61),
+		    (double)yt_record_get_number(&sector_three, YT_F41),
+		    (double)yt_record_get_number(&sector_three, YT_F45),
+		    (double)yt_record_get_number(&sector_three, YT_F53),
 		    (double)yt_record_get_number(&sector_three, YT_F61),
 		    (double)yt_record_get_number(&sector_four, YT_F61),
 		    (double)yt_record_get_number(&sector_six, YT_F41),
