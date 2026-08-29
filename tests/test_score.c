@@ -1598,6 +1598,259 @@ check_salvage_cargo_sampler(void)
 	    && state.stock[0] == 2.0f && state.remaining == 2.0f;
 }
 
+struct port_name_tape {
+	int events[32];
+	size_t calls;
+	size_t fail_call;
+	const uint8_t *entered[4];
+	size_t entered_length[4];
+	size_t edit_calls;
+	bool accepted[4];
+	uint8_t confirmation[4][128];
+	size_t confirmation_length[4];
+	size_t confirm_calls;
+	size_t blank_calls;
+	size_t write_calls;
+	uint8_t current_row[128];
+	size_t current_length;
+	int logical_port;
+	struct yt_record durable;
+};
+
+static bool
+port_name_tape_event(struct port_name_tape *tape, int event)
+{
+	if (tape->calls >= YT_ARRAY_LEN(tape->events))
+		return false;
+	tape->events[tape->calls++] = event;
+	return tape->fail_call == 0U || tape->calls != tape->fail_call;
+}
+
+static bool
+port_name_tape_row(void *context, enum yt_port_name_row_kind kind,
+    const uint8_t *text, size_t length, struct yt_error *error)
+{
+	struct port_name_tape *tape = context;
+
+	(void)error;
+	if (kind == YT_PORT_NAME_CURRENT_ROW) {
+		if (length > sizeof(tape->current_row))
+			return false;
+		memcpy(tape->current_row, text, length);
+		tape->current_length = length;
+	}
+	return port_name_tape_event(tape, 10 + (int)kind);
+}
+
+static bool
+port_name_tape_prompt(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	static const uint8_t expected[] = "-=> ";
+
+	(void)error;
+	if (length != sizeof(expected) - 1U
+	    || memcmp(text, expected, length) != 0)
+		return false;
+	return port_name_tape_event(context, 20);
+}
+
+static bool
+port_name_tape_edit(void *context, uint8_t *response, size_t capacity,
+    size_t *length, struct yt_error *error)
+{
+	struct port_name_tape *tape = context;
+	size_t index = tape->edit_calls++;
+
+	(void)error;
+	if (!port_name_tape_event(tape, 30)
+	    || index >= YT_ARRAY_LEN(tape->entered)
+	    || tape->entered_length[index] > capacity)
+		return false;
+	memcpy(response, tape->entered[index], tape->entered_length[index]);
+	*length = tape->entered_length[index];
+	return true;
+}
+
+static bool
+port_name_tape_blank(void *context, struct yt_error *error)
+{
+	struct port_name_tape *tape = context;
+
+	(void)error;
+	++tape->blank_calls;
+	return port_name_tape_event(tape, 40);
+}
+
+static bool
+port_name_tape_confirm(void *context, const uint8_t *prompt, size_t length,
+    bool *accepted, struct yt_error *error)
+{
+	struct port_name_tape *tape = context;
+	size_t index = tape->confirm_calls++;
+
+	(void)error;
+	if (!port_name_tape_event(tape, 50)
+	    || index >= YT_ARRAY_LEN(tape->accepted)
+	    || length > sizeof(tape->confirmation[index]))
+		return false;
+	memcpy(tape->confirmation[index], prompt, length);
+	tape->confirmation_length[index] = length;
+	*accepted = tape->accepted[index];
+	return true;
+}
+
+static bool
+port_name_tape_write(void *context, int logical_port,
+    const struct yt_record *record, struct yt_error *error)
+{
+	struct port_name_tape *tape = context;
+
+	(void)error;
+	++tape->write_calls;
+	tape->logical_port = logical_port;
+	if (!port_name_tape_event(tape, 60))
+		return false;
+	tape->durable = *record;
+	return true;
+}
+
+static bool
+check_port_name_editor_transaction(void)
+{
+	static const struct yt_port_name_editor_ops ops = {
+		.row = port_name_tape_row,
+		.prompt = port_name_tape_prompt,
+		.edit = port_name_tape_edit,
+		.blank = port_name_tape_blank,
+		.confirm = port_name_tape_confirm,
+		.write = port_name_tape_write,
+	};
+	static const uint8_t cached[] = {'C', 0, 'P'};
+	static const uint8_t spaces[] = "   ";
+	static const uint8_t replacement[] = "  new PORT  ";
+	static const uint8_t expected_current[] =
+	    "This port is called: \"C\0P\".";
+	static const uint8_t expected_cached_confirmation[] =
+	    "\"C\0P\" Is this OK? [y/N]";
+	static const uint8_t expected_new_confirmation[] =
+	    "\"New Port\" Is this OK? [y/N]";
+	static const int expected_events[] = {
+		10, 11, 12, 20, 30, 40, 50,
+		10, 11, 12, 20, 30, 40, 50, 60,
+	};
+	struct yt_port_name_editor_state state;
+	struct port_name_tape tape;
+	struct yt_port port;
+	struct yt_record before;
+	uint8_t long_cached[42];
+	size_t index;
+
+	memset(&port, 0, sizeof(port));
+	for (index = 0U; index < sizeof(port.record.bytes); ++index)
+		port.record.bytes[index] = (uint8_t)(index ^ 0x5aU);
+	before = port.record;
+	memset(&tape, 0, sizeof(tape));
+	tape.entered[0] = spaces;
+	tape.entered_length[0] = sizeof(spaces) - 1U;
+	tape.entered[1] = replacement;
+	tape.entered_length[1] = sizeof(replacement) - 1U;
+	tape.accepted[0] = false;
+	tape.accepted[1] = true;
+	state.cached = cached;
+	state.cached_length = sizeof(cached);
+	state.logical_port = 17;
+	state.port = &port;
+	if (!yt_port_name_editor_run(&state, &ops, &tape, NULL)
+	    || tape.calls != YT_ARRAY_LEN(expected_events)
+	    || memcmp(tape.events, expected_events,
+	    sizeof(expected_events)) != 0
+	    || tape.current_length != sizeof(expected_current) - 1U
+	    || memcmp(tape.current_row, expected_current,
+	    sizeof(expected_current) - 1U) != 0
+	    || tape.confirmation_length[0]
+	    != sizeof(expected_cached_confirmation) - 1U
+	    || memcmp(tape.confirmation[0], expected_cached_confirmation,
+	    sizeof(expected_cached_confirmation) - 1U) != 0
+	    || tape.confirmation_length[1]
+	    != sizeof(expected_new_confirmation) - 1U
+	    || memcmp(tape.confirmation[1], expected_new_confirmation,
+	    sizeof(expected_new_confirmation) - 1U) != 0
+	    || tape.blank_calls != 2U || tape.confirm_calls != 2U
+	    || tape.write_calls != 1U || tape.logical_port != 17
+	    || memcmp(port.record.bytes, "New Port", 8U) != 0
+	    || yt_record_get_number(&port.record, YT_F85) != 8.0f
+	    || memcmp(&tape.durable, &port.record, sizeof(port.record)) != 0
+	    || memcmp(port.record.bytes + YT_TEXT_FIELD_SIZE,
+	    before.bytes + YT_TEXT_FIELD_SIZE,
+	    YT_F85 - YT_TEXT_FIELD_SIZE) != 0
+	    || memcmp(port.record.bytes + YT_F89, before.bytes + YT_F89,
+	    sizeof(port.record.bytes) - YT_F89) != 0)
+		return false;
+
+	memset(&port, 0xa5, sizeof(port));
+	before = port.record;
+	memset(&tape, 0, sizeof(tape));
+	tape.entered[0] = (const uint8_t *)"";
+	tape.entered[1] = (const uint8_t *)"";
+	tape.fail_call = 6U;
+	state.cached = NULL;
+	state.cached_length = 0U;
+	state.port = &port;
+	if (yt_port_name_editor_run(&state, &ops, &tape, NULL)
+	    || tape.calls != 6U || tape.events[5] != 10
+	    || tape.blank_calls != 0U || tape.confirm_calls != 0U
+	    || tape.write_calls != 0U
+	    || memcmp(&port.record, &before, sizeof(before)) != 0)
+		return false;
+
+	memset(long_cached, 'Z', sizeof(long_cached));
+	memset(&port, 0x3c, sizeof(port));
+	before = port.record;
+	memset(&tape, 0, sizeof(tape));
+	tape.entered[0] = (const uint8_t *)"";
+	tape.accepted[0] = true;
+	state.cached = long_cached;
+	state.cached_length = sizeof(long_cached);
+	if (!yt_port_name_editor_run(&state, &ops, &tape, NULL)
+	    || tape.write_calls != 1U || port.name_length != 42.0f
+	    || yt_record_get_number(&port.record, YT_F85) != 42.0f)
+		return false;
+	for (index = 0U; index < YT_TEXT_FIELD_SIZE; ++index) {
+		if (port.record.bytes[index] != 'Z')
+			return false;
+	}
+	if (memcmp(port.record.bytes + YT_TEXT_FIELD_SIZE,
+	    before.bytes + YT_TEXT_FIELD_SIZE,
+	    YT_F85 - YT_TEXT_FIELD_SIZE) != 0)
+		return false;
+
+	for (index = 1U; index <= 8U; ++index) {
+		memset(&port, 0x69, sizeof(port));
+		before = port.record;
+		memset(&tape, 0, sizeof(tape));
+		tape.entered[0] = replacement;
+		tape.entered_length[0] = sizeof(replacement) - 1U;
+		tape.accepted[0] = true;
+		tape.fail_call = index;
+		state.cached = cached;
+		state.cached_length = sizeof(cached);
+		if (yt_port_name_editor_run(&state, &ops, &tape, NULL)
+		    || tape.calls != index)
+			return false;
+		if (index < 8U) {
+			if (memcmp(&port.record, &before, sizeof(before)) != 0)
+				return false;
+		}
+		else if (memcmp(port.record.bytes, "New Port", 8U) != 0
+		    || yt_record_get_number(&port.record, YT_F85) != 8.0f
+		    || memcmp(&tape.durable, &(struct yt_record){0},
+		    sizeof(tape.durable)) != 0)
+			return false;
+	}
+	return true;
+}
+
 static bool
 check_port_name_editor_model(void)
 {
@@ -8631,6 +8884,8 @@ main(void)
 		return fail("salvage cargo sampler differs");
 	if (!check_port_name_editor_model())
 		return fail("port name editor model differs");
+	if (!check_port_name_editor_transaction())
+		return fail("port name editor transaction differs");
 	if (!check_planet_garrison_model())
 		return fail("planet garrison model differs");
 	if (!check_planet_landing_model())

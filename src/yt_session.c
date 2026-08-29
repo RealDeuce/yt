@@ -10844,59 +10844,99 @@ command_team(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
-port_rename(struct yt_session *session, int logical_port,
-    struct yt_port *port, struct yt_error *error)
+port_name_row(void *context, enum yt_port_name_row_kind kind,
+    const uint8_t *text, size_t length, struct yt_error *error)
 {
-	static const uint8_t keep[] = "Press [ENTER] to keep same name.";
-	static const uint8_t instruction[] =
-	    "Please enter a NAME for your port.";
-	static const uint8_t name_prompt[] = "-=> ";
-	uint8_t cached[YT_TEXT_FIELD_SIZE];
-	uint8_t candidate[YT_COMMAND_SIZE];
-	uint8_t row[256];
-	char entered[YT_COMMAND_SIZE];
-	size_t cached_length;
-	size_t candidate_length;
-	size_t row_length;
+	struct yt_session *session = context;
+	const char *operation;
 
-	if (!port_report_length(session, port->name_length,
-	    YT_TEXT_FIELD_SIZE, &cached_length, "port name length", error))
+	switch (kind) {
+	case YT_PORT_NAME_CURRENT_ROW:
+		operation = "port name current row";
+		break;
+	case YT_PORT_NAME_KEEP_ROW:
+		operation = "port name keep row";
+		break;
+	case YT_PORT_NAME_INSTRUCTION_ROW:
+		operation = "port name instruction row";
+		break;
+	default:
 		return false;
-	memcpy(cached, port->record.bytes, cached_length);
-	for (;;) {
-		enum yt_yes_no_answer answer;
-
-		if (!yt_port_name_display_row(cached, cached_length, row,
-		    sizeof(row), &row_length)
-		    || !session_0317(session, row, row_length,
-		    "port name current row", error)
-		    || !session_0317(session, keep, sizeof(keep) - 1U,
-		    "port name keep row", error)
-		    || !session_0317(session, instruction,
-		    sizeof(instruction) - 1U, "port name instruction row", error)
-		    || !session_031f(session, name_prompt,
-		    sizeof(name_prompt) - 1U, "port name prompt", error)
-		    || !session_0345(session, entered, sizeof(entered))
-		    || !yt_port_name_prepare_candidate((const uint8_t *)entered,
-		    strlen(entered), cached, cached_length, candidate,
-		    sizeof(candidate), &candidate_length))
-			return false;
-		if (candidate_length == 0U)
-			continue;
-		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-		    "port name confirmation leading blank", error)
-		    || !yt_port_name_confirmation_prompt(candidate,
-		    candidate_length, row, sizeof(row), &row_length)
-		    || !session_a8d2(session, row, row_length, &answer, error))
-			return false;
-		if (answer != YT_YES_NO_YES)
-			continue;
-		if (!yt_port_name_overlay(port, candidate, candidate_length))
-			return port_report_failure(error, "port name FIELD overlay");
-		return yt_database_write(&session->door->game.database,
-		    (size_t)yt_port_basic_record(&session->door->game.config,
-		    logical_port), &port->record, error);
 	}
+	return session_0317(session, text, length, operation, error);
+}
+
+static bool
+port_name_prompt(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	return session_031f(context, text, length, "port name prompt", error);
+}
+
+static bool
+port_name_edit(void *context, uint8_t *response, size_t capacity,
+    size_t *length, struct yt_error *error)
+{
+	(void)error;
+	if (length == NULL
+	    || !session_0345(context, (char *)response, capacity))
+		return false;
+	*length = strlen((const char *)response);
+	return true;
+}
+
+static bool
+port_name_blank(void *context, struct yt_error *error)
+{
+	return session_present_text(context, NULL, 0U, SESSION_PRESENT_LINE,
+	    "port name confirmation leading blank", error);
+}
+
+static bool
+port_name_confirm(void *context, const uint8_t *prompt, size_t length,
+    bool *accepted, struct yt_error *error)
+{
+	enum yt_yes_no_answer answer;
+
+	if (accepted == NULL
+	    || !session_a8d2(context, prompt, length, &answer, error))
+		return false;
+	*accepted = answer == YT_YES_NO_YES;
+	return true;
+}
+
+static bool
+port_name_write(void *context, int logical_port,
+    const struct yt_record *record, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_database_write(&session->door->game.database,
+	    (size_t)yt_port_basic_record(&session->door->game.config,
+	    logical_port), record, error);
+}
+
+static bool
+port_rename(struct yt_session *session, int logical_port,
+    const uint8_t *cached, size_t cached_length, struct yt_port *port,
+    struct yt_error *error)
+{
+	static const struct yt_port_name_editor_ops ops = {
+		.row = port_name_row,
+		.prompt = port_name_prompt,
+		.edit = port_name_edit,
+		.blank = port_name_blank,
+		.confirm = port_name_confirm,
+		.write = port_name_write,
+	};
+	struct yt_port_name_editor_state state = {
+		.cached = cached,
+		.cached_length = cached_length,
+		.logical_port = logical_port,
+		.port = port,
+	};
+
+	return yt_port_name_editor_run(&state, &ops, session, error);
 }
 
 static bool
@@ -10907,8 +10947,10 @@ command_rename_port(struct yt_session *session, struct yt_error *error)
 	static const uint8_t earth[] = "Can't rename Earth!";
 	struct yt_sector sector;
 	struct yt_port port;
+	uint8_t cached[YT_TEXT_FIELD_SIZE];
 	int logical_port;
 	float relative_port;
+	size_t cached_length;
 
 	if (!reload_player(session, error)
 	    || !yt_game_read_sector(&session->door->game,
@@ -10929,7 +10971,12 @@ command_rename_port(struct yt_session *session, struct yt_error *error)
 	if (relative_port == 1.0f)
 		return session_02db(session, earth, sizeof(earth) - 1U,
 		    "rename Earth row", error);
-	return port_rename(session, logical_port, &port, error);
+	if (!port_report_length(session, port.name_length,
+	    YT_TEXT_FIELD_SIZE, &cached_length, "port name length", error))
+		return false;
+	memcpy(cached, port.record.bytes, cached_length);
+	return port_rename(session, logical_port, cached, cached_length, &port,
+	    error);
 }
 
 static bool
@@ -11135,7 +11182,8 @@ command_buy_port(struct yt_session *session, struct yt_error *error)
 			return false;
 	}
 	if (relative_port > 1.0f
-	    && !port_rename(session, logical_port, &port, error))
+	    && !port_rename(session, logical_port, old_name, old_name_length,
+	    &port, error))
 		return false;
 	if (!yt_game_read_port(&session->door->game, logical_port, &port,
 	    error))

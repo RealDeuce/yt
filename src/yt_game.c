@@ -1768,6 +1768,65 @@ yt_port_name_overlay(struct yt_port *port, const uint8_t *candidate,
 }
 
 bool
+yt_port_name_editor_run(struct yt_port_name_editor_state *state,
+    const struct yt_port_name_editor_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t keep[] = "Press [ENTER] to keep same name.";
+	static const uint8_t instruction[] =
+	    "Please enter a NAME for your port.";
+	static const uint8_t name_prompt[] = "-=> ";
+	uint8_t entered[4096];
+	uint8_t candidate[4096];
+	uint8_t row[4096];
+	size_t entered_length;
+	size_t candidate_length;
+	size_t row_length;
+
+	if (state == NULL || ops == NULL || state->port == NULL
+	    || (state->cached == NULL && state->cached_length != 0U)
+	    || state->cached_length > sizeof(candidate) || ops->row == NULL
+	    || ops->prompt == NULL || ops->edit == NULL || ops->blank == NULL
+	    || ops->confirm == NULL || ops->write == NULL)
+		return false;
+	for (;;) {
+		bool accepted;
+
+		if (!yt_port_name_display_row(state->cached,
+		    state->cached_length, row, sizeof(row), &row_length)
+		    || !ops->row(context, YT_PORT_NAME_CURRENT_ROW, row,
+		    row_length, error)
+		    || !ops->row(context, YT_PORT_NAME_KEEP_ROW, keep,
+		    sizeof(keep) - 1U, error)
+		    || !ops->row(context, YT_PORT_NAME_INSTRUCTION_ROW,
+		    instruction, sizeof(instruction) - 1U, error)
+		    || !ops->prompt(context, name_prompt,
+		    sizeof(name_prompt) - 1U, error)
+		    || !ops->edit(context, entered, sizeof(entered),
+		    &entered_length, error)
+		    || entered_length > sizeof(entered)
+		    || !yt_port_name_prepare_candidate(entered, entered_length,
+		    state->cached, state->cached_length, candidate,
+		    sizeof(candidate), &candidate_length))
+			return false;
+		if (candidate_length == 0U)
+			continue;
+		if (!ops->blank(context, error)
+		    || !yt_port_name_confirmation_prompt(candidate,
+		    candidate_length, row, sizeof(row), &row_length)
+		    || !ops->confirm(context, row, row_length, &accepted, error))
+			return false;
+		if (!accepted)
+			continue;
+		if (!yt_port_name_overlay(state->port, candidate,
+		    candidate_length))
+			return false;
+		return ops->write(context, state->logical_port,
+		    &state->port->record, error);
+	}
+}
+
+bool
 yt_port_rename_record(float port_offset, float sector_link,
     int *logical_port, float *relative_port)
 {

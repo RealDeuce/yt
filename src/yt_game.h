@@ -311,6 +311,43 @@ struct yt_current_player_hydration_state {
 typedef bool (*yt_current_player_read_fn)(void *context, int player_record,
     struct yt_player *player, struct yt_error *error);
 
+enum yt_port_name_row_kind {
+	YT_PORT_NAME_CURRENT_ROW,
+	YT_PORT_NAME_KEEP_ROW,
+	YT_PORT_NAME_INSTRUCTION_ROW,
+};
+
+struct yt_port_name_editor_state {
+	const uint8_t *cached;
+	size_t cached_length;
+	int logical_port;
+	struct yt_port *port;
+};
+
+typedef bool (*yt_port_name_row_fn)(void *context,
+    enum yt_port_name_row_kind kind, const uint8_t *text, size_t length,
+    struct yt_error *error);
+typedef bool (*yt_port_name_prompt_fn)(void *context, const uint8_t *text,
+    size_t length, struct yt_error *error);
+typedef bool (*yt_port_name_edit_fn)(void *context, uint8_t *response,
+    size_t capacity, size_t *length, struct yt_error *error);
+typedef bool (*yt_port_name_blank_fn)(void *context,
+    struct yt_error *error);
+typedef bool (*yt_port_name_confirm_fn)(void *context,
+    const uint8_t *prompt, size_t length, bool *accepted,
+    struct yt_error *error);
+typedef bool (*yt_port_name_write_fn)(void *context, int logical_port,
+    const struct yt_record *record, struct yt_error *error);
+
+struct yt_port_name_editor_ops {
+	yt_port_name_row_fn row;
+	yt_port_name_prompt_fn prompt;
+	yt_port_name_edit_fn edit;
+	yt_port_name_blank_fn blank;
+	yt_port_name_confirm_fn confirm;
+	yt_port_name_write_fn write;
+};
+
 struct yt_game {
 	struct yt_database database;
 	struct yt_config config;
@@ -437,6 +474,9 @@ bool yt_port_name_confirmation_prompt(const uint8_t *candidate,
     size_t *length);
 bool yt_port_name_overlay(struct yt_port *port, const uint8_t *candidate,
     size_t candidate_length);
+bool yt_port_name_editor_run(struct yt_port_name_editor_state *state,
+    const struct yt_port_name_editor_ops *ops, void *context,
+    struct yt_error *error);
 bool yt_port_rename_record(float port_offset, float sector_link,
     int *logical_port, float *relative_port);
 double yt_port_purchase_price(const float production[3]);
