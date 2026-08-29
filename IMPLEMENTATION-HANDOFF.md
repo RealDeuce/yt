@@ -187,12 +187,12 @@ not authoritative. Use the corrected goal above in the new workspace.
   destination-selector and destination-combat transactions,
   ledger dispositions are roots
   `167 candidate / 1 missing`, transfers
-  `5273 candidate / 2094 missing / 1 explicitly
+  `5275 candidate / 2092 missing / 1 explicitly
   deferred`, and presentation `136 candidate / 8 missing / 6 verified`.
   Current SHA-256
   values are roots
   `64b17a8ae6550d4ef994a6e872d1f06c9ff8a6bc33ab9ab64d390da38a87e8be`,
-  transfers `48ded10d4ccc3f54de2e96271628bfeef063c3f18a49e0df024eed168629c684`,
+  transfers `76e8e792e38eb1190eea81c8ba45f6403501c7ba0f26d6f6258021235e3dadfe`,
   presentation `b899734f3487d364fbad0b2d5be7936334cc753b4c676d3407d6703d522b5afe`,
   and manifest
   `3552bd61c9cb9b7197aeb6fbad1f37cba69cd09f125d878d0c9072a691e8950a`.
@@ -1830,6 +1830,11 @@ not authoritative. Use the corrected goal above in the new workspace.
   after truncation. Canonical BRUN B5 editing/echo/cursor state, the nonempty
   79-byte cap, raw descriptors, Break/runtime cuts and the physical console
   adapter remain open.
+- Both qualified scoreboard-selection transfers at `YT-INIT:0A81/0A83` are
+  candidate. Empty input copies `YTSCORE.ASC`; nonempty input bypasses that
+  copy and retains its exact text/length for configuration serialization.
+  Accepted blank and nonempty whole-world fixtures pin both results; the
+  nonempty executable editor/cap and raw descriptor state remain open.
 - The five qualified confirmation-decision transfers at `YT-INIT:06B5..06CF`
   are candidate. The native predicate reproduces the executable's two
   case-sensitive equality results and their AND: exact one-byte `Y` takes the
