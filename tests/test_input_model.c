@@ -755,6 +755,15 @@ test_semicolon_queue(void)
 	size_t position;
 	size_t length;
 
+	snprintf(text, sizeof(text), "ABC");
+	snprintf(queue, sizeof(queue), "XYZ");
+	position = 1U;
+	length = 3U;
+	CHECK(yt_input_split_semicolon(text, queue, sizeof(queue), &position,
+	    &length));
+	CHECK(strcmp(text, "ABC") == 0 && strcmp(queue, "XYZ") == 0
+	    && position == 1U && length == 3U);
+
 	snprintf(text, sizeof(text), "A;B;C");
 	queue[0] = '\0';
 	position = length = 0;
