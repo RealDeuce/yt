@@ -1071,6 +1071,7 @@ display_game_file(struct yt_session *session, const char *path,
     struct yt_error *error)
 {
 	struct yt_text_file file;
+	uint8_t *line;
 	size_t cursor = 0;
 	float saved_foreground = session->presentation.foreground;
 	int saved_pager_foreground = session->pager.foreground;
@@ -1094,42 +1095,50 @@ display_game_file(struct yt_session *session, const char *path,
 			return false;
 		return true;
 	}
+	line = malloc(file.length == 0U ? 1U : file.length);
+	if (line == NULL) {
+		yt_text_free(&file);
+		if (error != NULL)
+			error->status = YT_NO_MEMORY;
+		return false;
+	}
 	while (cursor < file.length && file.data[cursor] != 0x1a
 	    && strcmp(session->pager.key, "Q") != 0) {
-		size_t start = cursor;
 		size_t length;
+		bool available;
 		int color = 2;
 
-		while (cursor < file.length && file.data[cursor] != '\r'
-		    && file.data[cursor] != '\n'
-		    && file.data[cursor] != 0x1a)
-			++cursor;
-		length = cursor - start;
+		if (!yt_text_line_input_next(file.data, file.length, &cursor,
+		    line, file.length, &length, &available)) {
+			free(line);
+			yt_text_free(&file);
+			return false;
+		}
+		if (!available)
+			break;
 		if (length >= 4U
-		    && memcmp(file.data + start, "  - ", 4) == 0)
+		    && memcmp(line, "  - ", 4) == 0)
 			color = 3;
 		else if (length >= 4U
-		    && memcmp(file.data + start, " ***", 4) == 0)
+		    && memcmp(line, " ***", 4) == 0)
 			color = 4;
 		else if (length >= 4U
-		    && memcmp(file.data + start, " +++", 4) == 0)
+		    && memcmp(line, " +++", 4) == 0)
 			color = 1;
 		else if (length >= 3U
-		    && memcmp(file.data + start, "-=*", 3) == 0)
+		    && memcmp(line, "-=*", 3) == 0)
 			color = 7;
 		session->pager.foreground = color;
 		session->presentation.foreground = (float)color;
 		if (color != 2)
 			session->presentation.bold = 1.0f;
-		if (!session_b05d(session, file.data + start, length)) {
+		if (!session_b05d(session, line, length)) {
+			free(line);
 			yt_text_free(&file);
 			return false;
 		}
-		if (cursor < file.length && file.data[cursor] == '\r')
-			++cursor;
-		if (cursor < file.length && file.data[cursor] == '\n')
-			++cursor;
 	}
+	free(line);
 	yt_text_free(&file);
 	session->pager.line_count = 0.0f;
 	session->pager.foreground = saved_pager_foreground;
