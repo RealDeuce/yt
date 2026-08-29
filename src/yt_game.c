@@ -7,6 +7,77 @@
 #include <stdio.h>
 #include <string.h>
 
+void
+yt_team_loader_begin(float team_id, struct yt_team_loader_cache *cache,
+    bool *needs_overlay)
+{
+	if (cache == NULL)
+		return;
+	cache->available = -1.0f;
+	memset(cache->roster, 0, sizeof(cache->roster));
+	cache->counter = 5.0f;
+	if (needs_overlay != NULL)
+		*needs_overlay = team_id >= 1.0f && team_id <= 50.0f;
+}
+
+bool
+yt_team_loader_finish(const struct yt_record *overlay,
+    float current_player, uint8_t conversion_mode,
+    struct yt_team_loader_cache *cache, enum yt_team_loader_route *route,
+    struct yt_error *error)
+{
+	static const size_t roster_offsets[4] = {
+		YT_F109, YT_F117, YT_F121, YT_F125
+	};
+	float roster[4];
+	bool overflow;
+	int32_t converted_length;
+	size_t name_length;
+	size_t index;
+	bool live = false;
+
+	if (overlay == NULL || cache == NULL || route == NULL)
+		return false;
+	for (index = 0; index < YT_ARRAY_LEN(roster); ++index) {
+		roster[index] = yt_record_get_number(overlay,
+		    roster_offsets[index]);
+		if (roster[index] != 0.0f)
+			live = true;
+	}
+	if (!live) {
+		*route = YT_TEAM_LOADER_ROSTER_DEAD;
+		return true;
+	}
+
+	cache->available = 0.0f;
+	converted_length = qb_cint_mode(
+	    yt_record_get_number(overlay, YT_F73), conversion_mode,
+	    &overflow);
+	if (overflow || converted_length < 0) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation,
+			    sizeof(error->operation), "%s",
+			    "team loader name length");
+		}
+		return false;
+	}
+	name_length = (size_t)converted_length;
+	if (name_length > YT_TEXT_FIELD_SIZE)
+		name_length = YT_TEXT_FIELD_SIZE;
+	memcpy(cache->name, overlay->bytes, name_length);
+	cache->name[name_length] = '\0';
+	cache->name_length = name_length;
+	memcpy(cache->password, overlay->bytes + YT_F113, 4U);
+	cache->password[4] = '\0';
+	cache->captain = yt_record_get_number(overlay, YT_F77);
+	if (cache->captain == current_player)
+		cache->captain_flag = -1.0f;
+	memcpy(cache->roster, roster, sizeof(roster));
+	*route = YT_TEAM_LOADER_LIVE;
+	return true;
+}
+
 bool
 yt_projectile_target_prompt(bool plasma, float displayed, float maximum,
     uint8_t *prompt, size_t capacity, size_t *length)

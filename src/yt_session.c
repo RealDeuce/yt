@@ -74,7 +74,7 @@ struct yt_session {
 	struct yt_input_value input_residue;
 	char team_audit_message[YT_COMMAND_SIZE];
 	char hostile_owner_label[80];
-	float team_roster_cache[4];
+	struct yt_team_loader_cache team_cache;
 };
 
 struct yt_team {
@@ -9521,33 +9521,34 @@ static bool
 team_load(struct yt_session *session, int id, struct yt_team *team,
     struct yt_error *error)
 {
-	static const size_t offsets[4] = {
-		YT_F109, YT_F117, YT_F121, YT_F125
-	};
+	enum yt_team_loader_route route = YT_TEAM_LOADER_OUT_OF_RANGE;
+	bool needs_overlay;
 	size_t index;
 
 	memset(team, 0, sizeof(*team));
-	memset(session->team_roster_cache, 0,
-	    sizeof(session->team_roster_cache));
 	team->id = id;
-	if (id < 1 || id > YT_DEFAULT_PLAYER_COUNT)
-		return true;
+	yt_team_loader_begin((float)id, &session->team_cache, &needs_overlay);
+	if (!needs_overlay)
+		goto loaded;
 	if (!yt_game_read_sector(&session->door->game, id, &team->overlay,
 	    error))
 		return false;
-	yt_record_get_text(&team->overlay.record, team->name,
+	if (!yt_team_loader_finish(&team->overlay.record,
+	    (float)session->player_record,
+	    session->presentation.sound.conversion_mode,
+	    &session->team_cache, &route, error))
+		return false;
+
+loaded:
+	memcpy(team->name, session->team_cache.name,
 	    sizeof(team->name));
-	memcpy(team->password, team->overlay.record.bytes + YT_F113, 4);
-	team->password[4] = '\0';
-	team->captain =
-	    yt_record_get_number(&team->overlay.record, YT_F77);
-	team->full = true;
+	memcpy(team->password, session->team_cache.password,
+	    sizeof(team->password));
+	team->captain = session->team_cache.captain;
+	team->live = route == YT_TEAM_LOADER_LIVE;
+	team->full = team->live;
 	for (index = 0; index < 4; ++index) {
-		team->roster[index] = yt_record_get_number(
-		    &team->overlay.record, offsets[index]);
-		session->team_roster_cache[index] = team->roster[index];
-		if (team->roster[index] != 0.0f)
-			team->live = true;
+		team->roster[index] = session->team_cache.roster[index];
 		if (team->roster[index] <= 0.0f)
 			team->full = false;
 	}
@@ -9805,6 +9806,7 @@ info_team_lines(struct yt_session *session, struct yt_team *resolved_team,
 		    && info_line(session, NULL, 0, error);
 	if (team_id != floorf(team_id) || team_id < 1.0f || team_id > 50.0f)
 		return info_failure(error, "Info team record");
+	session->team_cache.captain_flag = 0.0f;
 	if (!team_load(session, (int)team_id, &team, error))
 		return false;
 	qb_str_single(number, sizeof(number), team_id);
@@ -9812,7 +9814,7 @@ info_team_lines(struct yt_session *session, struct yt_team *resolved_team,
 	if (!info_line(session, row, strlen(row), error)
 	    || !info_line(session, NULL, 0, error))
 		return false;
-	if (team.captain == (float)session->player_record) {
+	if (session->team_cache.captain_flag != 0.0f) {
 		if (resolved_team != NULL)
 			*resolved_team = team;
 		if (current_is_captain != NULL)
@@ -10097,7 +10099,7 @@ team_create(struct yt_session *session, struct yt_error *error)
 		return false;
 	session->player.team = selected;
 	if (!write_player(session, error)
-	    || !team_load(session, id, &team, error))
+	    || !team_read_overlay(session, id, &team, error))
 		return false;
 	team.id = id;
 	team.captain = (float)session->player_record;
@@ -10105,7 +10107,12 @@ team_create(struct yt_session *session, struct yt_error *error)
 	team.roster[1] = 0.0f;
 	team.roster[2] = 0.0f;
 	team.roster[3] = 0.0f;
-	if (!team_store(session, &team, error)
+	yt_record_set_number_if_changed(&team.overlay.record, YT_F77,
+	    team.captain);
+	yt_team_roster_overlay(&team.overlay.record, team.roster);
+	if (!yt_database_write(&session->door->game.database,
+	    (size_t)yt_sector_basic_record(&session->door->game.config,
+	    team.id), &team.overlay.record, error)
 	    || !team_create_password(session, id, password, error))
 		return false;
 	session->presentation.foreground = 3.0f;
@@ -10593,7 +10600,7 @@ team_banish(struct yt_session *session, struct yt_team *team,
 		    (size_t)member_record, &member.record, error))
 			return false;
 		team->roster[index] = 0.0f;
-		session->team_roster_cache[index] = 0.0f;
+		session->team_cache.roster[index] = 0.0f;
 		if (!yt_game_read_sector(&session->door->game, team_id,
 		    &team->overlay, error)
 		    || !team_store_roster(session, team, error))
@@ -14911,7 +14918,7 @@ computer_nearest_ports(struct yt_session *session, struct yt_error *error)
 			if (session->player.team != 0.0f) {
 				for (index = 0; index < 4; ++index) {
 					if (port.owner
-					    == session->team_roster_cache[index])
+					    == session->team_cache.roster[index])
 						member = true;
 				}
 			}

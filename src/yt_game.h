@@ -80,6 +80,23 @@ struct yt_post_login_repairs {
 	unsigned writes;
 };
 
+enum yt_team_loader_route {
+	YT_TEAM_LOADER_OUT_OF_RANGE,
+	YT_TEAM_LOADER_ROSTER_DEAD,
+	YT_TEAM_LOADER_LIVE,
+};
+
+struct yt_team_loader_cache {
+	float available;
+	float roster[4];
+	float captain;
+	float captain_flag;
+	char name[YT_TEXT_FIELD_SIZE + 1U];
+	size_t name_length;
+	char password[5];
+	float counter;
+};
+
 enum yt_sector_force_route {
 	YT_SECTOR_FORCE_FRIENDLY,
 	YT_SECTOR_FORCE_HOSTILE,
@@ -235,6 +252,12 @@ bool yt_game_construct_player(struct yt_game *game, int basic_record,
     float today, struct yt_player *player, struct yt_error *error);
 bool yt_game_set_player_identity(struct yt_game *game, int basic_record,
     const uint8_t *name, size_t length, struct yt_player *player,
+    struct yt_error *error);
+void yt_team_loader_begin(float team_id, struct yt_team_loader_cache *cache,
+    bool *needs_overlay);
+bool yt_team_loader_finish(const struct yt_record *overlay,
+    float current_player, uint8_t conversion_mode,
+    struct yt_team_loader_cache *cache, enum yt_team_loader_route *route,
     struct yt_error *error);
 bool yt_game_post_login_repairs(struct yt_game *game, int basic_record,
     float maximum_holds, struct yt_player *player,
