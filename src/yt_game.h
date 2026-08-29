@@ -247,6 +247,45 @@ struct yt_xannor_retaliation_ops {
 	yt_xannor_retaliation_wait_fn wait;
 };
 
+struct yt_counterlaunch_state {
+	struct yt_player *player;
+	int *player_record;
+	float *sector_cache;
+	float *cloak_cache;
+	size_t cache_count;
+	bool *destroyed;
+	float *retained_count;
+	int *counterattacker;
+	int *xannor_provoker;
+	int last_player_record;
+};
+
+typedef bool (*yt_counterlaunch_read_player_fn)(void *context,
+    int player_record, struct yt_player *player, struct yt_error *error);
+typedef bool (*yt_counterlaunch_random_fn)(void *context, float *value,
+    struct yt_error *error);
+typedef bool (*yt_counterlaunch_write_player_fn)(void *context,
+    int player_record, struct yt_player *player, struct yt_error *error);
+typedef bool (*yt_counterlaunch_present_fn)(void *context,
+    const uint8_t *text, size_t length, bool bold, struct yt_error *error);
+typedef bool (*yt_counterlaunch_news_fn)(void *context, const uint8_t *text,
+    size_t length, struct yt_error *error);
+typedef bool (*yt_counterlaunch_projectile_fn)(void *context, float *origin,
+    float target, float *amount, bool plasma, int *counterattack,
+    int *xannor_provoker, struct yt_error *error);
+typedef bool (*yt_counterlaunch_wait_fn)(void *context, double seconds,
+    struct yt_error *error);
+
+struct yt_counterlaunch_ops {
+	yt_counterlaunch_read_player_fn read_player;
+	yt_counterlaunch_random_fn random;
+	yt_counterlaunch_write_player_fn write_player;
+	yt_counterlaunch_present_fn present;
+	yt_counterlaunch_news_fn append_news;
+	yt_counterlaunch_projectile_fn projectile;
+	yt_counterlaunch_wait_fn wait;
+};
+
 struct yt_game {
 	struct yt_database database;
 	struct yt_config config;
@@ -687,6 +726,9 @@ bool yt_counterlaunch_rows(const uint8_t *target_name,
     uint8_t *news, size_t news_capacity, size_t *news_length);
 bool yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
     const struct yt_xannor_retaliation_ops *ops, void *context,
+    struct yt_error *error);
+bool yt_counterlaunch_run(struct yt_counterlaunch_state *state,
+    const struct yt_counterlaunch_ops *ops, void *context,
     struct yt_error *error);
 
 void yt_player_construct(struct yt_player *player,

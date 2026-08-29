@@ -13133,115 +13133,86 @@ launch_xannor_retaliation(struct yt_session *session, int *provoking_player,
 }
 
 static bool
-launch_player_counterattack(struct yt_session *session, int counterattacker,
+session_counterlaunch_random(void *context, float *value,
     struct yt_error *error)
 {
-	struct yt_player saved_player = session->player;
-	struct yt_player attacker;
-	struct yt_player debit_player;
-	int saved_record = session->player_record;
-	float saved_cloak = 0.0f;
-	float amount;
-	float available;
-	float target = saved_player.sector;
-	int ignored_counterattack = 0;
-	int xannor_provoker = 0;
-	bool result;
-	uint8_t stored_name[YT_TEXT_FIELD_SIZE];
-	uint8_t saved_name[YT_TEXT_FIELD_SIZE];
-	size_t stored_name_length;
-	size_t saved_name_length;
-	uint8_t terminal_row[256];
-	uint8_t news_row[256];
-	size_t terminal_length;
-	size_t news_length;
-	char attacker_name[42];
+	return random_value(context, value, error);
+}
 
-	if (counterattacker < YT_PLAYER_FIRST
-	    || counterattacker > YT_PLAYER_LAST
-	    || counterattacker == saved_record)
-		return true;
-	if (!yt_game_read_player(&session->door->game, counterattacker,
-	    &attacker, error))
-		return false;
-	if (attacker.killed_by != 0.0f || attacker.missiles <= 0.0f)
-		return true;
-	available = attacker.missiles;
-	saved_name_length = strlen(saved_player.name);
-	if (saved_name_length > sizeof(saved_name))
-		saved_name_length = sizeof(saved_name);
-	memcpy(saved_name, saved_player.name, saved_name_length);
-	if (saved_record >= 0 && saved_record <= YT_PLAYER_LAST) {
-		saved_cloak = session->cloak_cache[saved_record];
-		session->cloak_cache[saved_record] = 0.0f;
-	}
-	session->player_record = counterattacker;
-	session->player = attacker;
-	if (!yt_player_stored_name(&attacker, stored_name,
-	    &stored_name_length, error))
-		return false;
-	memset(attacker_name, 0, sizeof(attacker_name));
-	memcpy(attacker_name, stored_name, stored_name_length);
-	memcpy(session->player.name, attacker_name, sizeof(attacker_name));
-	session->counterlaunch_count = yt_counterlaunch_score_count(
-	    (double)saved_player.score, session->counterlaunch_count);
-	amount = session->counterlaunch_count;
-	if (amount > available || amount == 0.0f) {
-		float draw;
+static bool
+session_counterlaunch_write_player(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
 
-		if (!random_value(session, &draw, error))
-			return false;
-		amount = single_add(floorf(single_mul(draw, available)),
-		    1.0f);
-		session->counterlaunch_count = amount;
-	}
-	if (!yt_game_read_player(&session->door->game, counterattacker,
-	    &debit_player, error))
-		return false;
-	yt_counterlaunch_debit_overlay(&debit_player, available, amount);
-	if (!yt_game_write_player(&session->door->game, counterattacker,
-	    &debit_player, error))
-		return false;
+	return yt_game_write_player(&session->door->game, player_record, player,
+	    error);
+}
 
-	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "player counterlaunch blank", error))
-		return false;
-	if (!yt_counterlaunch_rows(stored_name, stored_name_length, amount,
-	    saved_name, saved_name_length, terminal_row, sizeof(terminal_row),
-	    &terminal_length, news_row, sizeof(news_row), &news_length)) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			(void)snprintf(error->operation, sizeof(error->operation), "%s",
-			    "counterlaunch row capacity");
-		}
-		return false;
-	}
-	if (!session_present_text(session, terminal_row, terminal_length,
-	    SESSION_PRESENT_BOLD_LINE, "player counterlaunch row", error))
-		return false;
-	if (!append_news_bytes(session, news_row, news_length, error))
-		return false;
-	result = launch_projectile(session, target, amount,
-	    false, &session->counterlaunch_count, NULL,
-	    &ignored_counterattack, &xannor_provoker, error);
-	if (!result)
-		return false;
-	session->player_record = saved_record;
-	session->player = saved_player;
-	if (saved_record >= 0 && saved_record <= YT_PLAYER_LAST)
-		session->cloak_cache[saved_record] = saved_cloak;
-	if (!reload_player(session, error))
-		return false;
-	if (qb_mbf32_truth(session->player.record.bytes + YT_F45)) {
-		session->destroyed = true;
-		session->sector_cache[session->player_record] = 0.0f;
-	}
-	if (!session_wait(session, 4.0, "player counterattack wait", error))
-		return false;
-	if (xannor_provoker != 0
-	    && !launch_xannor_retaliation(session, &xannor_provoker, error))
-		return false;
-	return true;
+static bool
+session_counterlaunch_present(void *context, const uint8_t *text,
+    size_t length, bool bold, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return session_present_text(session, text, length,
+	    bold ? SESSION_PRESENT_BOLD_LINE : SESSION_PRESENT_LINE,
+	    bold ? "player counterlaunch row" : "player counterlaunch blank",
+	    error);
+}
+
+static bool
+session_counterlaunch_news(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	return append_news_bytes(context, text, length, error);
+}
+
+static bool
+session_counterlaunch_projectile(void *context, float *origin, float target,
+    float *amount, bool plasma, int *counterattack, int *xannor_provoker,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return launch_projectile(session, target, *amount, plasma, amount, origin,
+	    counterattack, xannor_provoker, error);
+}
+
+static bool
+session_counterlaunch_wait(void *context, double seconds,
+    struct yt_error *error)
+{
+	return session_wait(context, seconds, "player counterattack wait", error);
+}
+
+static bool
+launch_player_counterattack(struct yt_session *session, int *counterattacker,
+    int *xannor_provoker, struct yt_error *error)
+{
+	static const struct yt_counterlaunch_ops ops = {
+		session_xannor_read_player,
+		session_counterlaunch_random,
+		session_counterlaunch_write_player,
+		session_counterlaunch_present,
+		session_counterlaunch_news,
+		session_counterlaunch_projectile,
+		session_counterlaunch_wait,
+	};
+	struct yt_counterlaunch_state state = {
+		&session->player,
+		&session->player_record,
+		session->sector_cache,
+		session->cloak_cache,
+		YT_ARRAY_LEN(session->sector_cache),
+		&session->destroyed,
+		&session->counterlaunch_count,
+		counterattacker,
+		xannor_provoker,
+		(int)session->door->game.config.sector_offset,
+	};
+
+	return yt_counterlaunch_run(&state, &ops, session, error);
 }
 
 static bool
@@ -13323,7 +13294,8 @@ command_projectile(struct yt_session *session, bool plasma,
 	    &session->player, plasma, &origin, target, amount,
 	    &session->destroyed, &counterattack, &xannor_provoker,
 	    session_projectile_resolver, session, error)
-	    || !launch_player_counterattack(session, counterattack, error)
+	    || !launch_player_counterattack(session, &counterattack,
+	    &xannor_provoker, error)
 	    || !launch_xannor_retaliation(session, &xannor_provoker, error))
 		return false;
 	if (session->destroyed)

@@ -1043,6 +1043,376 @@ check_xannor_retaliation_model(void)
 	    && player_record == 2 && cloak_cache[2] == 0.75f;
 }
 
+enum counterlaunch_tape_event {
+	COUNTERLAUNCH_FIRST_GET = 1,
+	COUNTERLAUNCH_RANDOM,
+	COUNTERLAUNCH_SECOND_GET,
+	COUNTERLAUNCH_WRITE,
+	COUNTERLAUNCH_BLANK,
+	COUNTERLAUNCH_ROW,
+	COUNTERLAUNCH_NEWS,
+	COUNTERLAUNCH_PROJECTILE,
+	COUNTERLAUNCH_FINAL_GET,
+	COUNTERLAUNCH_WAIT,
+};
+
+struct counterlaunch_tape {
+	int events[10];
+	size_t event_count;
+	int fail_event;
+	size_t read_calls;
+	size_t random_calls;
+	struct yt_player first_target;
+	struct yt_player second_target;
+	struct yt_player final_player;
+	struct yt_player written_player;
+	int written_record;
+	float draw;
+	uint8_t row[192];
+	size_t row_length;
+	uint8_t news[192];
+	size_t news_length;
+	struct yt_player *live_player;
+	int *live_record;
+	float *live_cloak;
+	float *live_retained;
+	int *live_counterattacker;
+	int *live_xannor;
+	float projectile_origin;
+	float projectile_target;
+	float projectile_amount;
+	bool child_valid;
+	bool mutate_child;
+	double wait_seconds;
+};
+
+static bool
+counterlaunch_tape_step(struct counterlaunch_tape *tape, int event)
+{
+	if (tape->event_count >= YT_ARRAY_LEN(tape->events))
+		return false;
+	tape->events[tape->event_count++] = event;
+	return tape->fail_event != event;
+}
+
+static bool
+counterlaunch_read_player(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct counterlaunch_tape *tape = context;
+	int event;
+	const struct yt_player *source;
+
+	(void)error;
+	if (tape->read_calls == 0U) {
+		event = COUNTERLAUNCH_FIRST_GET;
+		source = &tape->first_target;
+		if (player_record != *tape->live_counterattacker)
+			return false;
+	}
+	else if (tape->read_calls == 1U) {
+		event = COUNTERLAUNCH_SECOND_GET;
+		source = &tape->second_target;
+		if (player_record != *tape->live_counterattacker)
+			return false;
+	}
+	else {
+		event = COUNTERLAUNCH_FINAL_GET;
+		source = &tape->final_player;
+		if (player_record != 2)
+			return false;
+	}
+	++tape->read_calls;
+	if (!counterlaunch_tape_step(tape, event))
+		return false;
+	*player = *source;
+	return true;
+}
+
+static bool
+counterlaunch_random(void *context, float *value, struct yt_error *error)
+{
+	struct counterlaunch_tape *tape = context;
+
+	(void)error;
+	++tape->random_calls;
+	if (!counterlaunch_tape_step(tape, COUNTERLAUNCH_RANDOM))
+		return false;
+	*value = tape->draw;
+	return true;
+}
+
+static bool
+counterlaunch_write_player(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct counterlaunch_tape *tape = context;
+
+	(void)error;
+	tape->written_record = player_record;
+	tape->written_player = *player;
+	return counterlaunch_tape_step(tape, COUNTERLAUNCH_WRITE);
+}
+
+static bool
+counterlaunch_present(void *context, const uint8_t *text, size_t length,
+    bool bold, struct yt_error *error)
+{
+	struct counterlaunch_tape *tape = context;
+	int event = bold ? COUNTERLAUNCH_ROW : COUNTERLAUNCH_BLANK;
+
+	(void)error;
+	if (!counterlaunch_tape_step(tape, event))
+		return false;
+	if ((!bold && (text != NULL || length != 0U))
+	    || length > sizeof(tape->row))
+		return false;
+	if (bold && length != 0U)
+		memcpy(tape->row, text, length);
+	if (bold)
+		tape->row_length = length;
+	return true;
+}
+
+static bool
+counterlaunch_news(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	struct counterlaunch_tape *tape = context;
+
+	(void)error;
+	if (!counterlaunch_tape_step(tape, COUNTERLAUNCH_NEWS)
+	    || length > sizeof(tape->news))
+		return false;
+	memcpy(tape->news, text, length);
+	tape->news_length = length;
+	return true;
+}
+
+static bool
+counterlaunch_projectile(void *context, float *origin, float target,
+    float *amount, bool plasma, int *counterattack, int *xannor_provoker,
+    struct yt_error *error)
+{
+	struct counterlaunch_tape *tape = context;
+
+	(void)error;
+	tape->projectile_origin = *origin;
+	tape->projectile_target = target;
+	tape->projectile_amount = *amount;
+	tape->child_valid = !plasma && origin != NULL && amount != NULL
+	    && counterattack == tape->live_counterattacker
+	    && xannor_provoker == tape->live_xannor
+	    && amount == tape->live_retained
+	    && *tape->live_record == 3
+	    && strcmp(tape->live_player->name, "Bob") == 0
+	    && tape->live_player->sector == 733.0f
+	    && tape->live_cloak[2] == 0.0f;
+	if (tape->mutate_child) {
+		*origin = 12.0f;
+		*amount = 4.0f;
+		*counterattack = 5;
+		*xannor_provoker = 11;
+	}
+	return counterlaunch_tape_step(tape, COUNTERLAUNCH_PROJECTILE);
+}
+
+static bool
+counterlaunch_wait(void *context, double seconds, struct yt_error *error)
+{
+	struct counterlaunch_tape *tape = context;
+
+	(void)error;
+	tape->wait_seconds = seconds;
+	return counterlaunch_tape_step(tape, COUNTERLAUNCH_WAIT);
+}
+
+static void
+counterlaunch_fixture(struct counterlaunch_tape *tape,
+    struct yt_counterlaunch_state *state, struct yt_player *player,
+    int *player_record, float sector_cache[6], float cloak_cache[6],
+    bool *destroyed, float *retained, int *counterattacker, int *xannor)
+{
+	memset(tape, 0, sizeof(*tape));
+	memset(player, 0, sizeof(*player));
+	memset(sector_cache, 0, 6U * sizeof(*sector_cache));
+	memset(cloak_cache, 0, 6U * sizeof(*cloak_cache));
+	(void)snprintf(player->name, sizeof(player->name), "%s", "Alice");
+	player->name_length = 5.0f;
+	player->score = 2000000.0f;
+	player->sector = 733.0f;
+	yt_player_encode(player);
+	*player_record = 2;
+	sector_cache[2] = 733.0f;
+	cloak_cache[2] = 0.75f;
+	*destroyed = false;
+	*retained = 9.0f;
+	*counterattacker = 3;
+	*xannor = 8;
+	(void)snprintf(tape->first_target.name,
+	    sizeof(tape->first_target.name), "%s", "Bob");
+	tape->first_target.name_length = 3.0f;
+	tape->first_target.missiles = 10.0f;
+	tape->first_target.sector = 99.0f;
+	yt_player_encode(&tape->first_target);
+	tape->second_target = tape->first_target;
+	tape->second_target.missiles = 99.0f;
+	yt_player_encode(&tape->second_target);
+	tape->second_target.record.bytes[YT_RECORD_TAIL_OFFSET] = 0x7f;
+	tape->final_player = *player;
+	tape->final_player.score = 123.0f;
+	yt_player_encode(&tape->final_player);
+	tape->draw = 0.25f;
+	tape->live_player = player;
+	tape->live_record = player_record;
+	tape->live_cloak = cloak_cache;
+	tape->live_retained = retained;
+	tape->live_counterattacker = counterattacker;
+	tape->live_xannor = xannor;
+	state->player = player;
+	state->player_record = player_record;
+	state->sector_cache = sector_cache;
+	state->cloak_cache = cloak_cache;
+	state->cache_count = 6U;
+	state->destroyed = destroyed;
+	state->retained_count = retained;
+	state->counterattacker = counterattacker;
+	state->xannor_provoker = xannor;
+	state->last_player_record = 51;
+}
+
+static bool
+check_counterlaunch_model(void)
+{
+	static const struct yt_counterlaunch_ops ops = {
+		counterlaunch_read_player,
+		counterlaunch_random,
+		counterlaunch_write_player,
+		counterlaunch_present,
+		counterlaunch_news,
+		counterlaunch_projectile,
+		counterlaunch_wait,
+	};
+	static const int full_events[10] = {
+		COUNTERLAUNCH_FIRST_GET, COUNTERLAUNCH_RANDOM,
+		COUNTERLAUNCH_SECOND_GET, COUNTERLAUNCH_WRITE,
+		COUNTERLAUNCH_BLANK, COUNTERLAUNCH_ROW, COUNTERLAUNCH_NEWS,
+		COUNTERLAUNCH_PROJECTILE, COUNTERLAUNCH_FINAL_GET,
+		COUNTERLAUNCH_WAIT,
+	};
+	static const uint8_t expected_row[] =
+	    "Bob shot back with 3 missiles at you!";
+	static const uint8_t expected_news[] =
+	    "Bob shot back with 3 missiles at Alice!";
+	struct yt_counterlaunch_state state;
+	struct counterlaunch_tape tape;
+	struct yt_player player;
+	struct yt_player original;
+	float sector_cache[6];
+	float cloak_cache[6];
+	float retained;
+	int player_record;
+	int counterattacker;
+	int xannor;
+	bool destroyed;
+	int gate;
+	int failure;
+
+	for (gate = 0; gate < 3; ++gate) {
+		counterlaunch_fixture(&tape, &state, &player, &player_record,
+		    sector_cache, cloak_cache, &destroyed, &retained,
+		    &counterattacker, &xannor);
+		counterattacker = gate == 0 ? 1 : gate == 1 ? 52 : 2;
+		if (!yt_counterlaunch_run(&state, &ops, &tape, NULL)
+		    || tape.event_count != 0U
+		    || counterattacker != (gate == 0 ? 1 : gate == 1 ? 52 : 2))
+			return false;
+	}
+
+	counterlaunch_fixture(&tape, &state, &player, &player_record,
+	    sector_cache, cloak_cache, &destroyed, &retained, &counterattacker,
+	    &xannor);
+	tape.first_target.killed_by = -1.0f;
+	yt_player_encode(&tape.first_target);
+	if (!yt_counterlaunch_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != 1U || counterattacker != 0
+	    || player_record != 2 || cloak_cache[2] != 0.75f)
+		return false;
+	counterlaunch_fixture(&tape, &state, &player, &player_record,
+	    sector_cache, cloak_cache, &destroyed, &retained, &counterattacker,
+	    &xannor);
+	tape.first_target.missiles = 0.5f;
+	yt_player_encode(&tape.first_target);
+	if (!yt_counterlaunch_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != 1U || counterattacker != 0)
+		return false;
+
+	counterlaunch_fixture(&tape, &state, &player, &player_record,
+	    sector_cache, cloak_cache, &destroyed, &retained, &counterattacker,
+	    &xannor);
+	original = player;
+	tape.final_player.killed_by = -1.0f;
+	yt_player_encode(&tape.final_player);
+	tape.mutate_child = true;
+	if (!yt_counterlaunch_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != YT_ARRAY_LEN(full_events)
+	    || memcmp(tape.events, full_events, sizeof(full_events)) != 0
+	    || tape.random_calls != 1U || !tape.child_valid
+	    || tape.projectile_origin != 99.0f
+	    || tape.projectile_target != 733.0f
+	    || tape.projectile_amount != 3.0f || tape.written_record != 3
+	    || tape.written_player.missiles != 7.0f
+	    || tape.written_player.record.bytes[YT_RECORD_TAIL_OFFSET] != 0x7f
+	    || tape.row_length != sizeof(expected_row) - 1U
+	    || memcmp(tape.row, expected_row, sizeof(expected_row) - 1U) != 0
+	    || tape.news_length != sizeof(expected_news) - 1U
+	    || memcmp(tape.news, expected_news, sizeof(expected_news) - 1U) != 0
+	    || player_record != 2 || memcmp(&player, &original, sizeof(player)) != 0
+	    || cloak_cache[2] != 0.75f || sector_cache[2] != 0.0f
+	    || !destroyed || retained != 4.0f || counterattacker != 0
+	    || xannor != 11 || tape.wait_seconds != 4.0)
+		return false;
+
+	counterlaunch_fixture(&tape, &state, &player, &player_record,
+	    sector_cache, cloak_cache, &destroyed, &retained, &counterattacker,
+	    &xannor);
+	player.score = -1.0f;
+	yt_player_encode(&player);
+	retained = -2.5f;
+	if (!yt_counterlaunch_run(&state, &ops, &tape, NULL)
+	    || tape.random_calls != 0U || tape.projectile_amount != -2.5f
+	    || tape.written_player.missiles != 12.5f || retained != -2.5f
+	    || counterattacker != 0 || xannor != 8)
+		return false;
+
+	for (failure = COUNTERLAUNCH_FIRST_GET;
+	    failure <= COUNTERLAUNCH_WAIT; ++failure) {
+		counterlaunch_fixture(&tape, &state, &player, &player_record,
+		    sector_cache, cloak_cache, &destroyed, &retained,
+		    &counterattacker, &xannor);
+		tape.fail_event = failure;
+		tape.mutate_child = true;
+		if (yt_counterlaunch_run(&state, &ops, &tape, NULL)
+		    || tape.event_count != (size_t)failure
+		    || tape.events[tape.event_count - 1U] != failure)
+			return false;
+		if (failure == COUNTERLAUNCH_FIRST_GET
+		    && (player_record != 2 || counterattacker != 3
+		    || cloak_cache[2] != 0.75f))
+			return false;
+		if (failure == COUNTERLAUNCH_PROJECTILE
+		    && (player_record != 3 || strcmp(player.name, "Bob") != 0
+		    || player.sector != 733.0f || cloak_cache[2] != 0.0f
+		    || retained != 4.0f || counterattacker != 5 || xannor != 11))
+			return false;
+		if (failure == COUNTERLAUNCH_WAIT
+		    && (player_record != 2 || counterattacker != 0
+		    || cloak_cache[2] != 0.75f))
+			return false;
+	}
+	return true;
+}
+
 static bool
 check_port_name_editor_model(void)
 {
@@ -8070,6 +8440,8 @@ main(void)
 		return fail("projectile debit/resolver bridge differs");
 	if (!check_xannor_retaliation_model())
 		return fail("Xannor retaliation transaction differs");
+	if (!check_counterlaunch_model())
+		return fail("player counterlaunch transaction differs");
 	if (!check_port_name_editor_model())
 		return fail("port name editor model differs");
 	if (!check_planet_garrison_model())
