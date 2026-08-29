@@ -186,6 +186,45 @@ yt_input_ab36_inactivity_expired(float timer, float deadline, float mode)
 }
 
 bool
+yt_input_ab36_session_expired(float timer, float deadline)
+{
+	return timer > deadline;
+}
+
+bool
+yt_input_ab36_terminal_run(enum yt_ab36_terminal_kind kind,
+    bool *running, bool *terminated, yt_ab36_terminal_notice_fn notice,
+    yt_ab36_terminal_close_fn close_all, void *context)
+{
+	static const uint8_t inactivity[] = "\aUSER FELL ASLEEP!";
+	static const uint8_t session_limit[] =
+	    "\a\a\aTIME LIMIT EXCEEDED!\a\a\a";
+	const uint8_t *text;
+	size_t length;
+
+	if (running == NULL || terminated == NULL || notice == NULL
+	    || close_all == NULL)
+		return false;
+	switch (kind) {
+	case YT_AB36_TERMINAL_INACTIVITY:
+		text = inactivity;
+		length = sizeof(inactivity) - 1U;
+		break;
+	case YT_AB36_TERMINAL_SESSION_LIMIT:
+		text = session_limit;
+		length = sizeof(session_limit) - 1U;
+		break;
+	default:
+		return false;
+	}
+	if (!notice(context, text, length) || !close_all(context))
+		return false;
+	*running = false;
+	*terminated = true;
+	return true;
+}
+
+bool
 yt_b05d_process_key(const struct yt_input_value *value,
     struct yt_b05d_key_state *state)
 {

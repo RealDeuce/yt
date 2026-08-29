@@ -130,6 +130,87 @@ test_ab36_inactivity_gate(void)
 	CHECK(!yt_input_ab36_inactivity_expired(281.0f, 280.0f, 1.0f));
 	CHECK(yt_input_ab36_inactivity_expired(281.0f, 280.0f, 2.0f));
 	CHECK(yt_input_ab36_inactivity_expired(281.0f, 280.0f, -1.0f));
+	CHECK(!yt_input_ab36_session_expired(279.0f, 280.0f));
+	CHECK(!yt_input_ab36_session_expired(280.0f, 280.0f));
+	CHECK(yt_input_ab36_session_expired(281.0f, 280.0f));
+}
+
+struct ab36_terminal_tape {
+	uint8_t notice[64];
+	size_t notice_length;
+	size_t calls;
+	size_t fail_call;
+};
+
+static bool
+ab36_terminal_notice(void *context, const uint8_t *notice, size_t length)
+{
+	struct ab36_terminal_tape *tape = context;
+
+	++tape->calls;
+	if (length > sizeof(tape->notice))
+		return false;
+	memcpy(tape->notice, notice, length);
+	tape->notice_length = length;
+	return tape->calls != tape->fail_call;
+}
+
+static bool
+ab36_terminal_close(void *context)
+{
+	struct ab36_terminal_tape *tape = context;
+
+	++tape->calls;
+	return tape->calls != tape->fail_call;
+}
+
+static void
+test_ab36_terminal_transaction(void)
+{
+	static const uint8_t inactivity[] = "\aUSER FELL ASLEEP!";
+	static const uint8_t session_limit[] =
+	    "\a\a\aTIME LIMIT EXCEEDED!\a\a\a";
+	struct ab36_terminal_tape tape;
+	bool running;
+	bool terminated;
+
+	memset(&tape, 0, sizeof(tape));
+	running = true;
+	terminated = false;
+	CHECK(yt_input_ab36_terminal_run(YT_AB36_TERMINAL_INACTIVITY,
+	    &running, &terminated, ab36_terminal_notice,
+	    ab36_terminal_close, &tape));
+	CHECK(tape.calls == 2U
+	    && tape.notice_length == sizeof(inactivity) - 1U
+	    && memcmp(tape.notice, inactivity, sizeof(inactivity) - 1U) == 0
+	    && !running && terminated);
+
+	memset(&tape, 0, sizeof(tape));
+	running = true;
+	terminated = false;
+	CHECK(yt_input_ab36_terminal_run(YT_AB36_TERMINAL_SESSION_LIMIT,
+	    &running, &terminated, ab36_terminal_notice,
+	    ab36_terminal_close, &tape));
+	CHECK(tape.calls == 2U
+	    && tape.notice_length == sizeof(session_limit) - 1U
+	    && memcmp(tape.notice, session_limit,
+	    sizeof(session_limit) - 1U) == 0 && !running && terminated);
+
+	for (tape.fail_call = 1U; tape.fail_call <= 2U; ++tape.fail_call) {
+		size_t fail_call = tape.fail_call;
+
+		memset(&tape, 0, sizeof(tape));
+		tape.fail_call = fail_call;
+		running = true;
+		terminated = false;
+		CHECK(!yt_input_ab36_terminal_run(
+		    YT_AB36_TERMINAL_INACTIVITY, &running, &terminated,
+		    ab36_terminal_notice, ab36_terminal_close, &tape));
+		CHECK(tape.calls == fail_call && running && !terminated);
+	}
+	CHECK(!yt_input_ab36_terminal_run((enum yt_ab36_terminal_kind)99,
+	    &running, &terminated, ab36_terminal_notice,
+	    ab36_terminal_close, &tape));
 }
 
 static void
@@ -1398,6 +1479,7 @@ main(void)
 {
 	test_arbitration();
 	test_ab36_inactivity_gate();
+	test_ab36_terminal_transaction();
 	test_source_fifo();
 	test_merged_fifo();
 	test_b05d_keys();

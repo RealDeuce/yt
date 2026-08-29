@@ -197,14 +197,31 @@ session_wait(struct yt_session *session, double seconds,
 }
 
 static bool
-session_editor_end(struct yt_session *session, const uint8_t *notice,
-    size_t notice_length)
+session_editor_notice(void *context, const uint8_t *notice, size_t length)
 {
-	if (!session_0317(session, notice, notice_length,
-	    "editor terminal notice", NULL))
-		return false;
-	session->running = false;
-	session->terminated = true;
+	return session_0317(context, notice, length,
+	    "editor terminal notice", NULL);
+}
+
+static bool
+session_editor_close_all(void *context)
+{
+	struct yt_session *session = context;
+
+	if (session->door->game_open) {
+		session->door->game_open = false;
+		yt_game_close(&session->door->game);
+	}
+	return true;
+}
+
+static bool
+session_editor_end(struct yt_session *session,
+    enum yt_ab36_terminal_kind kind)
+{
+	(void)yt_input_ab36_terminal_run(kind, &session->running,
+	    &session->terminated, session_editor_notice,
+	    session_editor_close_all, session);
 	return false;
 }
 
@@ -414,10 +431,6 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 {
 	static const uint8_t local_erase[] = {0x1d, ' ', 0x1d};
 	static const uint8_t remote_erase[] = {'\b', ' ', '\b'};
-	static const uint8_t inactivity_notice[] =
-	    "\aUSER FELL ASLEEP!";
-	static const uint8_t session_notice[] =
-	    "\a\a\aTIME LIMIT EXCEEDED!\a\a\a";
 	size_t used;
 	float inactivity_deadline;
 
@@ -438,15 +451,16 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 		if (yt_input_ab36_inactivity_expired(
 		    (float)yt_platform_timer(), inactivity_deadline,
 		    session->presentation.sound.mode))
-			return session_editor_end(session, inactivity_notice,
-			    sizeof(inactivity_notice) - 1U);
+			return session_editor_end(session,
+			    YT_AB36_TERMINAL_INACTIVITY);
 		if (!session_carrier(session))
 			return false;
 		if (!info_refresh_time(session, NULL))
 			return false;
-		if ((float)yt_platform_timer() > session->session_deadline)
-			return session_editor_end(session, session_notice,
-			    sizeof(session_notice) - 1U);
+		if (yt_input_ab36_session_expired((float)yt_platform_timer(),
+		    session->session_deadline))
+			return session_editor_end(session,
+			    YT_AB36_TERMINAL_SESSION_LIMIT);
 		if (queued) {
 			struct yt_input_value remote = {{0, 0}, 0, 0, false};
 

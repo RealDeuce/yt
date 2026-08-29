@@ -56,6 +56,15 @@ enum yt_yes_no_answer {
 	YT_YES_NO_INVALID,
 };
 
+enum yt_ab36_terminal_kind {
+	YT_AB36_TERMINAL_INACTIVITY,
+	YT_AB36_TERMINAL_SESSION_LIMIT,
+};
+
+typedef bool (*yt_ab36_terminal_notice_fn)(void *context,
+    const uint8_t *notice, size_t length);
+typedef bool (*yt_ab36_terminal_close_fn)(void *context);
+
 enum yt_timed_wait_reason {
 	YT_TIMED_WAIT_CONTINUE,
 	YT_TIMED_WAIT_TIMER,
@@ -185,6 +194,10 @@ bool yt_input_ab36_remote_replace(float mode,
     const struct yt_input_value *remote, struct yt_input_value *selected);
 bool yt_input_ab36_inactivity_expired(float timer, float deadline,
     float mode);
+bool yt_input_ab36_session_expired(float timer, float deadline);
+bool yt_input_ab36_terminal_run(enum yt_ab36_terminal_kind kind,
+    bool *running, bool *terminated, yt_ab36_terminal_notice_fn notice,
+    yt_ab36_terminal_close_fn close_all, void *context);
 bool yt_b05d_process_key(const struct yt_input_value *value,
     struct yt_b05d_key_state *state);
 bool yt_input_expand_repeat(char *text, size_t text_capacity,
