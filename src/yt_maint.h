@@ -222,6 +222,7 @@ enum yt_maintenance_enqueue_result {
 
 struct yt_maintenance_route_cache {
 	float *warps;
+	int *successors;
 	int sector_count;
 };
 

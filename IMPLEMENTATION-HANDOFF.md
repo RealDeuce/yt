@@ -191,13 +191,13 @@ not authoritative. Use the corrected goal above in the new workspace.
   destination-selector and destination-combat transactions,
   ledger dispositions are roots
   `167 candidate / 1 missing`, transfers
-  `5439 candidate / 1928 missing / 1 explicitly
+  `5453 candidate / 1914 missing / 1 explicitly
   deferred`, and presentation `136 candidate / 8 missing / 6 verified`.
   Current SHA-256
   values are roots
   `bdfe421392181c1814c1536b217951b6a8637c2d2811fddd51d560e0bfe933d1`,
-  transfers `348cbf6770817bcbc03373e832b597995a516d80404276047e950f360405018e`,
-  presentation `b327b45469b4077ab8a1179bf9be85241572310f97095a592f4842ce522a3f4c`,
+  transfers `a359c70bec2080d22ecfc0e2cc5e15b6ab3e74b4ead2e3613f657e4adc2ebc02`,
+  presentation `c2be106776f9161270b4c9376f59dec004f9ae10dfce6fe9a9a02149991ffdcf`,
   and manifest
   `3552bd61c9cb9b7197aeb6fbad1f37cba69cd09f125d878d0c9072a691e8950a`.
   All immutable identity columns and TSV widths match the regenerated trusted
@@ -507,15 +507,18 @@ not authoritative. Use the corrected goal above in the new workspace.
   and `1`, while boundary reducers pin the link and owner predicates. Native
   raw-disk fixtures now also pin the descending movement sweep, route choice,
   merge/join behavior, selector-before-combat order, exact Won/Lost output,
-  and the 201-on-201 combat quantum. A newly exposed upstream conflict blocks
-  the wider composition: canonical prose says one FIFO-route hop, but
-  executable joins `4EE7`, `4F5F`, and `51E0` reach `5315 -> 4932`, where the
-  route-workspace cursor is used to copy another successor before the zero
-  test. This appears to continue after an empty hop, friendly merge, or
-  winning attack; a failed route instead reaches the zero-successor target
-  install directly. Do not choose between those contracts or map
-  `495A..49D1` until the analysis project reconciles them. Raw
-  route/FOR/FIELD state and staged physical failures also remain open.
+  and the 201-on-201 combat quantum. Upstream `0fe41956` resolved the former
+  route conflict: the path helper leaves a predecessor-to-successor workspace,
+  and `4932` repeatedly replaces the cursor from that workspace. The native
+  controller now follows the complete chain. Empty arrivals, friendly merges,
+  and surviving attacks fetch another successor; depletion, planet absorption,
+  and player joins terminate; zero successor installs a positive survivor in
+  the originally selected target. Two physical fixtures pin a hostile linked
+  intermediate, silent merge, surviving target attack/terminal install, and a
+  copied lower intermediate that re-enters the descending sweep before
+  depleting against Xannor. All newly unblocked `495A..49D1`, arrival-back-edge,
+  and terminal-loop transfers are candidate. Raw route/FOR/FIELD state and
+  staged physical failures remain open.
 - The Mercenary defection controller is now fully mapped through its bounded
   `4661..47C6` loop. All ten qualified first-entry, positive/skip,
   post-draw-conjunction, news-call, terminal and ascending back-edge

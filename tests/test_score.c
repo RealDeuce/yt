@@ -2701,28 +2701,29 @@ check_maintenance_mercenary_movement_pass(void)
 {
 	static const uint8_t random_bytes[] = {
 		0x00, 0x00, 0x80,
-		0x00, 0x00, 0x80,
 		0x00, 0x00, 0xC0,
 		0x00, 0x00, 0x00,
-		0x00, 0x00, 0x80,
-		0xFF, 0xFF, 0xFF
+		0x00, 0x00, 0x00
 	};
 	static const uint8_t expected_screen[] =
-	    "  -  4 Mercenaries moving from sector 5 \r"
-	    "  -  6 Mercenaries moving from sector 4 \r";
-	static const float warps[6][2] = {
+	    "  -  5 Mercenaries moving from sector 1 \r"
+	    " *** 5 Mercenaries attacking 1 fighters beloning to The Xannor!\r"
+	    " *** The Mercenaries Won!\r";
+	static const uint8_t expected_news[] =
+	    " *** 5 Mercenaries attacking 1 fighters beloning to The Xannor!"
+	    "\r\n *** The Mercenaries Won!\r\n\x1a";
+	static const float warps[4][2] = {
 		{2.0f, 0.0f},
-		{1.0f, 3.0f},
-		{2.0f, 4.0f},
-		{3.0f, 5.0f},
-		{4.0f, 6.0f},
-		{5.0f, 0.0f}
+		{3.0f, 0.0f},
+		{4.0f, 0.0f},
+		{0.0f, 0.0f}
 	};
 	struct score_random_script script = {
 		random_bytes, sizeof(random_bytes), 0U
 	};
 	struct score_line_tape screen = {0};
-	struct yt_record before[6];
+	struct yt_text_file news = {0};
+	struct yt_record before[4];
 	struct yt_record expected;
 	struct yt_record after;
 	struct yt_game game;
@@ -2734,14 +2735,14 @@ check_maintenance_mercenary_movement_pass(void)
 	(void)remove("YTNEWS.DAT");
 	memset(&game, 0, sizeof(game));
 	game.config.sector_offset = 1.0f;
-	game.config.port_offset = 7.0f;
+	game.config.port_offset = 5.0f;
 	yt_random_init(&game.random);
 	yt_random_set_provider(&game.random, score_random_fill, &script);
 	yt_error_clear(&error);
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
 		goto done;
-	for (sector = 1; sector <= 6; ++sector) {
+	for (sector = 1; sector <= 4; ++sector) {
 		yt_record_blank(&before[sector - 1]);
 		before[sector - 1].bytes[YT_RECORD_TAIL_OFFSET] =
 		    (uint8_t)(0x90 + sector);
@@ -2749,37 +2750,42 @@ check_maintenance_mercenary_movement_pass(void)
 		    warps[sector - 1][0])
 		    || !yt_record_set_number(&before[sector - 1], YT_F45,
 		    warps[sector - 1][1])
-		    || (sector == 4
-		    && (!yt_record_set_number(&before[sector - 1], YT_F81, 2.0f)
-		    || !yt_record_set_number(&before[sector - 1], YT_F85, 0.0f)))
-		    || (sector == 5
-		    && (!yt_record_set_number(&before[sector - 1], YT_F81, 4.0f)
-		    || !yt_record_set_number(&before[sector - 1], YT_F85, -2.0f)))
-		    || (sector == 6
+		    || (sector == 1
 		    && (!yt_record_set_number(&before[sector - 1], YT_F81, 5.0f)
-		    || !yt_record_set_number(&before[sector - 1], YT_F85, -2.0f)
+		    || !yt_record_set_number(&before[sector - 1], YT_F85, -2.0f)))
+		    || (sector == 2
+		    && (!yt_record_set_number(&before[sector - 1], YT_F85, 2.0f)
 		    || !yt_record_set_number(&before[sector - 1], YT_F93, 1.0f)))
+		    || (sector == 3
+		    && !yt_record_set_number(&before[sector - 1], YT_F85, -2.0f))
+		    || (sector == 4
+		    && (!yt_record_set_number(&before[sector - 1], YT_F81, 1.0f)
+		    || !yt_record_set_number(&before[sector - 1], YT_F85, -1.0f)))
 		    || !yt_database_write(&game.database, (size_t)sector + 1U,
 		    &before[sector - 1], &error))
 			goto done;
 	}
-	if (!yt_maintenance_move_mercenaries(&game, 6, score_line_collect,
+	if (!yt_maintenance_move_mercenaries(&game, 4, score_line_collect,
 	    &screen, &error)
-	    || game.random.draws != 6U
+	    || game.random.draws != 4U
 	    || script.position != sizeof(random_bytes)
-	    || screen.lines != 2U
+	    || screen.lines != 3U
 	    || screen.length != sizeof(expected_screen) - 1U
 	    || memcmp(screen.data, expected_screen,
-	    sizeof(expected_screen) - 1U) != 0)
+	    sizeof(expected_screen) - 1U) != 0
+	    || !yt_text_read("YTNEWS.DAT", &news, &error)
+	    || news.length != sizeof(expected_news) - 1U
+	    || memcmp(news.data, expected_news,
+	    sizeof(expected_news) - 1U) != 0)
 		goto done;
-	for (sector = 1; sector <= 6; ++sector) {
+	for (sector = 1; sector <= 4; ++sector) {
 		expected = before[sector - 1];
-		if (sector == 4
+		if (sector == 1
 		    && (!yt_record_set_number(&expected, YT_F81, 0.0f)
 		    || !yt_record_set_number(&expected, YT_F85, 0.0f)))
 			goto done;
-		if (sector == 5
-		    && (!yt_record_set_number(&expected, YT_F81, 6.0f)
+		if ((sector == 3 || sector == 4)
+		    && (!yt_record_set_number(&expected, YT_F81, 5.0f)
 		    || !yt_record_set_number(&expected, YT_F85, -2.0f)))
 			goto done;
 		if (!yt_database_read(&game.database, (size_t)sector + 1U,
@@ -2787,19 +2793,114 @@ check_maintenance_mercenary_movement_pass(void)
 		    || memcmp(after.bytes, expected.bytes, YT_RECORD_SIZE) != 0)
 			goto done;
 	}
-	if (yt_maintenance_move_mercenaries(NULL, 6, score_line_collect,
+	if (yt_maintenance_move_mercenaries(NULL, 4, score_line_collect,
 	    &screen, &error)
 	    || yt_maintenance_move_mercenaries(&game, 0, score_line_collect,
 	    &screen, &error)
-	    || yt_maintenance_move_mercenaries(&game, 6, NULL, &screen,
+	    || yt_maintenance_move_mercenaries(&game, 4, NULL, &screen,
 	    &error))
 		goto done;
+	valid = true;
+
+done:
+	yt_text_free(&news);
+	yt_game_close(&game);
+	(void)remove("YTDATA.DAT");
+	(void)remove("YTNEWS.DAT");
+	return valid;
+}
+
+static bool
+check_maintenance_mercenary_lower_reentry_pass(void)
+{
+	static const uint8_t random_bytes[] = {
+		0x00, 0x00, 0x80,
+		0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00,
+		0x00, 0x00, 0x80,
+		0xFF, 0xFF, 0xFF,
+		0x00, 0x00, 0x00,
+		0x00, 0x00, 0xC0
+	};
+	static const uint8_t expected_screen[] =
+	    "  -  1 Mercenaries moving from sector 3 \r"
+	    " *** 1 Mercenaries joined AB's Defense force in Sector 1!\r"
+	    "  -  1 Mercenaries moving from sector 2 \r"
+	    " *** 1 Mercenaries attacking 2 fighters beloning to The Xannor!\r"
+	    " *** The Mercenaries Lost!\r";
+	struct score_random_script script = {
+		random_bytes, sizeof(random_bytes), 0U
+	};
+	struct score_line_tape screen = {0};
+	struct yt_record before[4];
+	struct yt_record after;
+	struct yt_game game;
+	struct yt_error error;
+	int sector;
+	bool valid = false;
+
+	(void)remove("YTDATA.DAT");
+	(void)remove("YTNEWS.DAT");
+	(void)remove("YTRMSG.DAT");
+	memset(&game, 0, sizeof(game));
+	game.config.sector_offset = 1.0f;
+	game.config.port_offset = 5.0f;
+	yt_random_init(&game.random);
+	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_error_clear(&error);
+	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
+	    &error))
+		goto done;
+	for (sector = 1; sector <= 4; ++sector) {
+		yt_record_blank(&before[sector - 1]);
+		before[sector - 1].bytes[YT_RECORD_TAIL_OFFSET] =
+		    (uint8_t)(0xB0 + sector);
+	}
+	memcpy(before[0].bytes, "AB", 2U);
+	if (!yt_record_set_number(&before[0], YT_F81, 1.0f)
+	    || !yt_record_set_number(&before[0], YT_F85, 2.0f)
+	    || !yt_record_set_number(&before[1], YT_F41, 1.0f)
+	    || !yt_record_set_number(&before[1], YT_F45, 4.0f)
+	    || !yt_record_set_number(&before[1], YT_F85, -2.0f)
+	    || !yt_record_set_number(&before[2], YT_F41, 2.0f)
+	    || !yt_record_set_number(&before[2], YT_F81, 1.0f)
+	    || !yt_record_set_number(&before[2], YT_F85, -2.0f)
+	    || !yt_record_set_number(&before[3], YT_F81, 2.0f)
+	    || !yt_record_set_number(&before[3], YT_F85, -1.0f))
+		goto done;
+	for (sector = 1; sector <= 4; ++sector) {
+		if (!yt_database_write(&game.database, (size_t)sector + 1U,
+		    &before[sector - 1], &error))
+			goto done;
+	}
+	if (!yt_maintenance_move_mercenaries(&game, 4, score_line_collect,
+	    &screen, &error)
+	    || game.random.draws != 7U
+	    || script.position != sizeof(random_bytes)
+	    || screen.lines != 5U
+	    || screen.length != sizeof(expected_screen) - 1U
+	    || memcmp(screen.data, expected_screen,
+	    sizeof(expected_screen) - 1U) != 0)
+		goto done;
+	for (sector = 1; sector <= 4; ++sector) {
+		float fighters = sector == 1 ? 2.0f : sector == 4 ? 2.0f : 0.0f;
+		float owner = sector == 1 ? 2.0f : sector == 4 ? -1.0f : 0.0f;
+
+		if (!yt_database_read(&game.database, (size_t)sector + 1U,
+		    &after, &error)
+		    || yt_record_get_number(&after, YT_F81) != fighters
+		    || yt_record_get_number(&after, YT_F85) != owner
+		    || after.bytes[YT_RECORD_TAIL_OFFSET]
+		    != before[sector - 1].bytes[YT_RECORD_TAIL_OFFSET])
+			goto done;
+	}
 	valid = true;
 
 done:
 	yt_game_close(&game);
 	(void)remove("YTDATA.DAT");
 	(void)remove("YTNEWS.DAT");
+	(void)remove("YTRMSG.DAT");
 	return valid;
 }
 
@@ -7318,6 +7419,8 @@ main(void)
 	if (!check_maintenance_mercenary_defection_pass())
 		goto done;
 	if (!check_maintenance_mercenary_movement_pass())
+		goto done;
+	if (!check_maintenance_mercenary_lower_reentry_pass())
 		goto done;
 	if (!check_maintenance_mercenary_destination_pass())
 		goto done;

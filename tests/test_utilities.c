@@ -3347,6 +3347,8 @@ test_maintenance_route_builder(struct yt_error *error)
 		goto done;
 	if (!yt_maintenance_route_next_hop(&game, &cache, 1, 4, &next,
 	    error) || next != 2 || cache.warps == NULL
+	    || cache.successors == NULL || cache.successors[1] != 2
+	    || cache.successors[2] != 4 || cache.successors[4] != 0
 	    || cache.sector_count != 2004)
 		goto done;
 
@@ -3358,9 +3360,11 @@ test_maintenance_route_builder(struct yt_error *error)
 	    || !yt_maintenance_route_next_hop(&game, &cache, 1, 4, &next,
 	    error) || next != 2
 	    || !yt_maintenance_route_next_hop(&game, &cache, 1, 0, &next,
-	    error) || next != 0
+	    error) || next != 0 || cache.successors == NULL
+	    || cache.successors[1] != 0
 	    || !yt_maintenance_route_next_hop(&game, &cache, 1, 5, &next,
-	    error) || next != 0
+	    error) || next != 0 || cache.successors == NULL
+	    || cache.successors[1] != 0
 	    || !yt_text_read("YTNEWS.DAT", &news, error))
 		goto done;
 	valid = news.length == sizeof(expected_news) - 1U

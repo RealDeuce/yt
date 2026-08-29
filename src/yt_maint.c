@@ -2599,7 +2599,9 @@ yt_maintenance_route_cache_free(struct yt_maintenance_route_cache *cache)
 	if (cache == NULL)
 		return;
 	free(cache->warps);
+	free(cache->successors);
 	cache->warps = NULL;
+	cache->successors = NULL;
 	cache->sector_count = 0;
 }
 
@@ -2678,6 +2680,7 @@ yt_maintenance_route_next_hop(struct yt_game *game,
 {
 	int *queue;
 	int *previous;
+	int *successors;
 	int sector_count;
 	size_t head = 0;
 	size_t tail = 0;
@@ -2698,6 +2701,8 @@ yt_maintenance_route_next_hop(struct yt_game *game,
 		return false;
 	}
 	if (source == target) {
+		free(cache->successors);
+		cache->successors = NULL;
 		*next_hop = 0;
 		return true;
 	}
@@ -2729,9 +2734,12 @@ yt_maintenance_route_next_hop(struct yt_game *game,
 	queue = malloc(((size_t)sector_count + 1U) * sizeof(*queue));
 	previous = calloc((size_t)sector_count + 1U,
 	    sizeof(*previous));
-	if (queue == NULL || previous == NULL) {
+	successors = calloc((size_t)sector_count + 1U,
+	    sizeof(*successors));
+	if (queue == NULL || previous == NULL || successors == NULL) {
 		free(queue);
 		free(previous);
+		free(successors);
 		set_error(error, YT_NO_MEMORY, "maintenance route", "");
 		return false;
 	}
@@ -2763,9 +2771,20 @@ yt_maintenance_route_next_hop(struct yt_game *game,
 		}
 	}
 	if (found) {
-		result = target;
-		while (previous[result] != source && previous[result] != 0)
-			result = previous[result];
+		int current = target;
+
+		while (previous[current] != -1) {
+			int predecessor = previous[current];
+
+			if (predecessor < 1 || predecessor > sector_count) {
+				set_error(error, YT_RANGE,
+				    "maintenance route predecessor", "YTDATA.DAT");
+				goto done;
+			}
+			successors[predecessor] = current;
+			current = predecessor;
+		}
+		result = successors[source];
 	}
 	else {
 		char from[48];
@@ -2781,6 +2800,8 @@ yt_maintenance_route_next_hop(struct yt_game *game,
 			goto done;
 	}
 	*next_hop = result;
+	free(cache->successors);
+	cache->successors = successors;
 	free(queue);
 	free(previous);
 	return true;
@@ -2788,6 +2809,7 @@ yt_maintenance_route_next_hop(struct yt_game *game,
 done:
 	free(queue);
 	free(previous);
+	free(successors);
 	return false;
 }
 
@@ -5139,11 +5161,12 @@ mercenary_destination_join_lines(double moving, int sector_number,
 	    radio_length, (const uint8_t *)"!", 1U);
 }
 
-bool
-yt_maintenance_mercenary_destination(struct yt_game *game,
+static bool
+mercenary_destination_impl(struct yt_game *game,
     int sector_number, float moving_fighters,
     yt_maintenance_score_line_fn line_output, void *line_context,
-    struct yt_sector *arrival_sector, struct yt_error *error)
+    struct yt_sector *arrival_sector, float *moving_after,
+    bool *continues, struct yt_error *error)
 {
 	static const uint8_t xannor[] = "The Xannor";
 	static const uint8_t won[] = " *** The Mercenaries Won!";
@@ -5164,10 +5187,13 @@ yt_maintenance_mercenary_destination(struct yt_game *game,
 	bool overflow;
 
 	if (game == NULL || sector_number < 1 || line_output == NULL
-	    || arrival_sector == NULL) {
+	    || arrival_sector == NULL || moving_after == NULL
+	    || continues == NULL) {
 		set_error(error, YT_INVALID, "Mercenary destination", "YTDATA.DAT");
 		return false;
 	}
+	*moving_after = moving_fighters;
+	*continues = false;
 	original_owner = arrival_sector->fighter_owner;
 	moving = (double)moving_fighters;
 	if (original_owner == -2.0f || original_owner == 0.0f) {
@@ -5178,6 +5204,8 @@ yt_maintenance_mercenary_destination(struct yt_game *game,
 		if (!yt_game_write_sector(game, sector_number, &fresh, error))
 			return false;
 		*arrival_sector = fresh;
+		*moving_after = fresh.fighters;
+		*continues = true;
 		return true;
 	}
 	if (original_owner == -1.0f) {
@@ -5229,6 +5257,7 @@ yt_maintenance_mercenary_destination(struct yt_game *game,
 			if (!yt_game_write_sector(game, sector_number, &fresh, error))
 				return false;
 			*arrival_sector = fresh;
+			*moving_after = 0.0f;
 			return true;
 		}
 	}
@@ -5282,33 +5311,76 @@ yt_maintenance_mercenary_destination(struct yt_game *game,
 			return false;
 	}
 	*arrival_sector = fresh;
+	*moving_after = (float)moving;
+	*continues = moving > 0.0;
 	return true;
 }
 
+bool
+yt_maintenance_mercenary_destination(struct yt_game *game,
+    int sector_number, float moving_fighters,
+    yt_maintenance_score_line_fn line_output, void *line_context,
+    struct yt_sector *arrival_sector, struct yt_error *error)
+{
+	float moving_after;
+	bool continues;
+
+	return mercenary_destination_impl(game, sector_number, moving_fighters,
+	    line_output, line_context, arrival_sector, &moving_after, &continues,
+	    error);
+}
+
+enum mercenary_arrival_result {
+	MERCENARY_ARRIVAL_TERMINAL,
+	MERCENARY_ARRIVAL_CONTINUE
+};
+
 static bool
 mercenary_arrival(struct yt_game *game, int sector_number,
-    int selected_destination, float moving,
+    int selected_destination, float *moving,
     yt_maintenance_score_line_fn line_output, void *line_context,
-    struct yt_error *error)
+    enum mercenary_arrival_result *arrival_result, struct yt_error *error)
 {
 	struct yt_sector sector;
 	struct yt_maintenance_mercenary_mine_result mines;
 	struct yt_maintenance_mercenary_planet_result planet;
 
-	if (!yt_maintenance_mercenary_mines(game, sector_number,
-	    moving, line_output, line_context, &sector, &mines, error))
+	if (moving == NULL || arrival_result == NULL) {
+		set_error(error, YT_INVALID, "Mercenary routed arrival",
+		    "YTDATA.DAT");
 		return false;
-	moving = mines.survivors;
-	if (mines.killed)
+	}
+	if (!yt_maintenance_mercenary_mines(game, sector_number,
+	    *moving, line_output, line_context, &sector, &mines, error))
+		return false;
+	*moving = mines.survivors;
+	if (mines.killed) {
+		*arrival_result = MERCENARY_ARRIVAL_TERMINAL;
 		return true;
+	}
 	if (!yt_maintenance_mercenary_planet_absorption(game,
-	    sector_number, selected_destination, (double)moving,
+	    sector_number, selected_destination, (double)*moving,
 	    line_output, line_context, &sector, &planet, error))
 		return false;
-	if (planet.absorbed)
+	if (planet.absorbed) {
+		*moving = 0.0f;
+		*arrival_result = MERCENARY_ARRIVAL_TERMINAL;
 		return true;
-	return yt_maintenance_mercenary_destination(game, sector_number,
-	    moving, line_output, line_context, &sector, error);
+	}
+	if (*moving <= 0.0f || sector.planet != 0.0f) {
+		*arrival_result = MERCENARY_ARRIVAL_CONTINUE;
+		return true;
+	}
+	{
+		bool continues;
+
+		if (!mercenary_destination_impl(game, sector_number, *moving,
+		    line_output, line_context, &sector, moving, &continues, error))
+			return false;
+		*arrival_result = continues ? MERCENARY_ARRIVAL_CONTINUE
+		    : MERCENARY_ARRIVAL_TERMINAL;
+	}
+	return true;
 }
 
 static bool
@@ -5324,6 +5396,8 @@ move_mercenaries_impl(struct yt_game *game, int sector_count,
 		struct yt_maintenance_output_result output;
 		int target;
 		int next;
+		int cursor;
+		int hops;
 		float moving;
 
 		if (!yt_game_read_sector(game, origin, &sector, error))
@@ -5353,10 +5427,50 @@ move_mercenaries_impl(struct yt_game *game, int sector_count,
 		    || !yt_maintenance_compose_mercenary_movement((double)moving,
 		    (float)origin, &output)
 		    || !maintenance_emit_output_row(&output, 0x4911U,
-		    line_output, line_context, error)
-		    || !mercenary_arrival(game, next, target, moving,
 		    line_output, line_context, error))
 			return false;
+		if (route_cache->successors == NULL) {
+			set_error(error, YT_INVALID, "Mercenary route workspace",
+			    "YTDATA.DAT");
+			return false;
+		}
+		cursor = origin;
+		for (hops = 0; hops <= sector_count; ++hops) {
+			enum mercenary_arrival_result arrival_result;
+
+			next = route_cache->successors[cursor];
+			if (next == 0) {
+				if (moving > 0.0f) {
+					struct yt_sector destination;
+
+					if (!yt_game_read_sector(game, target,
+					    &destination, error))
+						return false;
+					destination.fighters = moving;
+					destination.fighter_owner = -2.0f;
+					if (!yt_game_write_sector(game, target,
+					    &destination, error))
+						return false;
+				}
+				break;
+			}
+			if (next < 1 || next > sector_count) {
+				set_error(error, YT_RANGE,
+				    "Mercenary route successor", "YTDATA.DAT");
+				return false;
+			}
+			cursor = next;
+			if (!mercenary_arrival(game, cursor, target, &moving,
+			    line_output, line_context, &arrival_result, error))
+				return false;
+			if (arrival_result == MERCENARY_ARRIVAL_TERMINAL)
+				break;
+		}
+		if (hops > sector_count) {
+			set_error(error, YT_RANGE, "Mercenary route cycle",
+			    "YTDATA.DAT");
+			return false;
+		}
 	}
 	return true;
 }
