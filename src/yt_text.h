@@ -19,4 +19,17 @@ bool yt_text_line_input_next(const uint8_t *data, size_t data_length,
     size_t *cursor, uint8_t *line, size_t capacity, size_t *line_length,
     bool *available);
 
+struct yt_file_viewer_record {
+	bool eof_checked;
+	bool key_checked;
+	bool available;
+	int foreground;
+	bool set_bold;
+	size_t length;
+};
+
+bool yt_file_viewer_next(const uint8_t *data, size_t data_length,
+    size_t *cursor, const char *pager_key, uint8_t *line, size_t capacity,
+    struct yt_file_viewer_record *record);
+
 #endif

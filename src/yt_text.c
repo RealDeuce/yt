@@ -55,6 +55,43 @@ yt_text_line_input_next(const uint8_t *data, size_t data_length,
 	return true;
 }
 
+bool
+yt_file_viewer_next(const uint8_t *data, size_t data_length,
+    size_t *cursor, const char *pager_key, uint8_t *line, size_t capacity,
+    struct yt_file_viewer_record *record)
+{
+	bool eof;
+	bool stopped;
+
+	if (cursor == NULL || pager_key == NULL || record == NULL
+	    || (data == NULL && data_length != 0U) || *cursor > data_length)
+		return false;
+	memset(record, 0, sizeof(*record));
+	record->eof_checked = true;
+	eof = *cursor >= data_length
+	    || (data != NULL && data[*cursor] == 0x1aU);
+	record->key_checked = true;
+	stopped = strcmp(pager_key, "Q") == 0;
+	if (eof || stopped)
+		return true;
+	if (!yt_text_line_input_next(data, data_length, cursor, line, capacity,
+	    &record->length, &record->available))
+		return false;
+	if (!record->available)
+		return true;
+	record->foreground = 2;
+	if (record->length >= 4U && memcmp(line, "  - ", 4U) == 0)
+		record->foreground = 3;
+	else if (record->length >= 4U && memcmp(line, " ***", 4U) == 0)
+		record->foreground = 4;
+	else if (record->length >= 4U && memcmp(line, " +++", 4U) == 0)
+		record->foreground = 1;
+	else if (record->length >= 3U && memcmp(line, "-=*", 3U) == 0)
+		record->foreground = 7;
+	record->set_bold = record->foreground != 2;
+	return true;
+}
+
 #ifdef _WIN32
 #include <io.h>
 #else

@@ -1102,37 +1102,22 @@ display_game_file(struct yt_session *session, const char *path,
 			error->status = YT_NO_MEMORY;
 		return false;
 	}
-	while (cursor < file.length && file.data[cursor] != 0x1a
-	    && strcmp(session->pager.key, "Q") != 0) {
-		size_t length;
-		bool available;
-		int color = 2;
+	for (;;) {
+		struct yt_file_viewer_record record;
 
-		if (!yt_text_line_input_next(file.data, file.length, &cursor,
-		    line, file.length, &length, &available)) {
+		if (!yt_file_viewer_next(file.data, file.length, &cursor,
+		    session->pager.key, line, file.length, &record)) {
 			free(line);
 			yt_text_free(&file);
 			return false;
 		}
-		if (!available)
+		if (!record.available)
 			break;
-		if (length >= 4U
-		    && memcmp(line, "  - ", 4) == 0)
-			color = 3;
-		else if (length >= 4U
-		    && memcmp(line, " ***", 4) == 0)
-			color = 4;
-		else if (length >= 4U
-		    && memcmp(line, " +++", 4) == 0)
-			color = 1;
-		else if (length >= 3U
-		    && memcmp(line, "-=*", 3) == 0)
-			color = 7;
-		session->pager.foreground = color;
-		session->presentation.foreground = (float)color;
-		if (color != 2)
+		session->pager.foreground = record.foreground;
+		session->presentation.foreground = (float)record.foreground;
+		if (record.set_bold)
 			session->presentation.bold = 1.0f;
-		if (!session_b05d(session, line, length)) {
+		if (!session_b05d(session, line, record.length)) {
 			free(line);
 			yt_text_free(&file);
 			return false;

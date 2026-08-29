@@ -673,6 +673,37 @@ test_line_input_grammar(void)
 	}
 }
 
+static void
+test_file_viewer_records(void)
+{
+	static const uint8_t source[] =
+	    "ordinary\r\n  - item\r\n ***blue\r\n +++red\r\n-=*white\r\nA\nB\r\n\x1aZ";
+	static const int foreground[] = {2, 3, 4, 1, 7, 2};
+	struct yt_file_viewer_record record;
+	uint8_t line[32];
+	size_t cursor = 0U;
+	size_t index;
+
+	for (index = 0U; index < YT_ARRAY_LEN(foreground); ++index) {
+		CHECK(yt_file_viewer_next(source, sizeof(source) - 1U, &cursor,
+		    "", line, sizeof(line), &record));
+		CHECK(record.eof_checked && record.key_checked && record.available
+		    && record.foreground == foreground[index]
+		    && record.set_bold == (foreground[index] != 2));
+	}
+	CHECK(record.length == 3U && line[0] == 'A' && line[1] == '\n'
+	    && line[2] == 'B');
+	CHECK(yt_file_viewer_next(source, sizeof(source) - 1U, &cursor, "Q",
+	    line, sizeof(line), &record));
+	CHECK(record.eof_checked && record.key_checked && !record.available);
+
+	cursor = 0U;
+	CHECK(yt_file_viewer_next(source, sizeof(source) - 1U, &cursor, "Q",
+	    line, sizeof(line), &record));
+	CHECK(record.eof_checked && record.key_checked && !record.available
+	    && cursor == 0U);
+}
+
 int
 main(void)
 {
@@ -683,6 +714,7 @@ main(void)
 	test_append_window();
 	test_main_error_fatal_transaction();
 	test_line_input_grammar();
+	test_file_viewer_records();
 	if (failures != 0) {
 		fprintf(stderr, "%u test(s) failed\n", failures);
 		return EXIT_FAILURE;
