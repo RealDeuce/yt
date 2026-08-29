@@ -191,12 +191,12 @@ not authoritative. Use the corrected goal above in the new workspace.
   destination-selector and destination-combat transactions,
   ledger dispositions are roots
   `167 candidate / 1 missing`, transfers
-  `5425 candidate / 1942 missing / 1 explicitly
+  `5426 candidate / 1941 missing / 1 explicitly
   deferred`, and presentation `136 candidate / 8 missing / 6 verified`.
   Current SHA-256
   values are roots
   `64b17a8ae6550d4ef994a6e872d1f06c9ff8a6bc33ab9ab64d390da38a87e8be`,
-  transfers `b1704948db447ec26bd42e50468cdd63e260bd8a2292f7dc58bcf99c6757290b`,
+  transfers `4b60d3492f36687bf340494fcde3366601a88f9b99751473d4d4398726f4832b`,
   presentation `b899734f3487d364fbad0b2d5be7936334cc753b4c676d3407d6703d522b5afe`,
   and manifest
   `3552bd61c9cb9b7197aeb6fbad1f37cba69cd09f125d878d0c9072a691e8950a`.
@@ -1218,11 +1218,14 @@ not authoritative. Use the corrected goal above in the new workspace.
   reducers pin physical/fractional/wrapped records, owner/vacancy predicates,
   SINGLE attrition, exact dynamic rows, commitment flooring/bounds and
   unrelated-byte preservation; the canonical plain denial/decline stream is
-  exact and all 27 focused upstream landing tests pass. The presentation
-  family and all 63 caller/helper edges are candidate. A complete injected
-  database/FIELD/cache/wait/sound/input/assault transaction, ANSI/local/mode/
-  carrier variants, malformed-link continuation, dirty result-cell state and
-  every physical/failure prefix remain open.
+  exact and all 27 focused upstream landing tests pass. Successful landing
+  also credits the distinct `369D -> 39B1` continuation: native
+  `command_land()` runs inventory and then the existing planet-menu owner
+  without an extra caller row. The presentation family, all 63 caller/helper
+  edges and that menu join are candidate. A complete injected database/FIELD/
+  cache/wait/sound/input/assault/menu transaction, ANSI/local/mode/carrier
+  variants, malformed-link continuation, dirty result-cell state and every
+  physical/failure prefix remain open.
 - The independently bounded ground-assault body at
   `YT-SUB:[8F35,9328)` now replaces its abbreviated combat/news/output
   implementation. It emits the entry blank before saving foreground and
