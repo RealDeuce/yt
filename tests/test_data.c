@@ -1,5 +1,6 @@
 #include "yt_data.h"
 #include "yt_file.h"
+#include "yt_main_error.h"
 #include "yt_platform.h"
 #include "yt_random.h"
 #include "yt_text.h"
@@ -34,6 +35,53 @@ struct scripted_random {
 };
 
 static bool write_bytes(const char *path, const uint8_t *bytes, size_t length);
+
+struct main_error_present_capture {
+	const char *path;
+	const uint8_t *expected_before;
+	size_t expected_before_length;
+	uint8_t row[YT_MAIN_ERROR_TEXT];
+	size_t row_length;
+	unsigned calls;
+	bool succeeds;
+};
+
+static bool
+capture_main_error_row(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	struct main_error_present_capture *capture = context;
+	struct yt_text_file before;
+
+	++capture->calls;
+	if (capture->expected_before == NULL) {
+		FILE *file = fopen(capture->path, "rb");
+
+		CHECK(file == NULL);
+		if (file != NULL)
+			(void)fclose(file);
+	} else {
+		CHECK(yt_text_read(capture->path, &before, error));
+		if (before.data != NULL) {
+			CHECK(before.length == capture->expected_before_length);
+			CHECK(before.length != capture->expected_before_length
+			    || memcmp(before.data, capture->expected_before,
+			    before.length) == 0);
+			yt_text_free(&before);
+		}
+	}
+	CHECK(length <= sizeof(capture->row));
+	if (length <= sizeof(capture->row)) {
+		memcpy(capture->row, text, length);
+		capture->row_length = length;
+	}
+	if (!capture->succeeds && error != NULL) {
+		error->status = YT_IO_ERROR;
+		snprintf(error->operation, sizeof(error->operation),
+		    "present fatal main error");
+	}
+	return capture->succeeds;
+}
 
 static bool
 scripted_fill(void *context, void *buffer, size_t length,
@@ -407,6 +455,122 @@ test_append_window(void)
 }
 
 static void
+test_main_error_fatal_transaction(void)
+{
+	static const uint8_t record[] =
+	    "YTMerg2 1.15 Untrapped Error ERL= 12345 ERR= 11 "
+	    "Date >07-23-2026 14:05:09";
+	static const uint8_t stale[] = "old\r\n\x1a" "STALE";
+	static const uint8_t stale_expected[] =
+	    "old\r\n"
+	    "YTMerg2 1.15 Untrapped Error ERL= 12345 ERR= 11 "
+	    "Date >07-23-2026 14:05:09\r\n\x1a";
+	char directory[256];
+	char path[320];
+	char failed_path[320];
+	struct yt_main_error_result result;
+	struct yt_main_error_result invalid;
+	struct main_error_present_capture capture;
+	struct yt_text_file text;
+	struct yt_error error;
+
+#ifdef _WIN32
+	snprintf(directory, sizeof(directory), "yt-main-error-%lu",
+	    (unsigned long)GetCurrentProcessId());
+#else
+	snprintf(directory, sizeof(directory), "/tmp/yt-main-error-%ld",
+	    (long)getpid());
+#endif
+	(void)mkdir_one(directory);
+	snprintf(path, sizeof(path), "%s/ERRORS.DOR", directory);
+	snprintf(failed_path, sizeof(failed_path), "%s", directory);
+	yt_error_clear(&error);
+	CHECK(yt_main_error_compose(11, 12345, NULL, 0U,
+	    (const uint8_t *)"07-23-2026", strlen("07-23-2026"),
+	    (const uint8_t *)"14:05:09", strlen("14:05:09"), &result));
+	CHECK(result.route == YT_MAIN_ERROR_FATAL
+	    && result.action_length == sizeof(record) - 1U
+	    && memcmp(result.action, record, sizeof(record) - 1U) == 0);
+
+	memset(&capture, 0, sizeof(capture));
+	capture.path = path;
+	capture.succeeds = true;
+	CHECK(yt_main_error_commit_fatal_to(path, &result,
+	    capture_main_error_row, &capture, &error));
+	CHECK(capture.calls == 1U
+	    && capture.row_length == sizeof(record) - 1U
+	    && memcmp(capture.row, record, sizeof(record) - 1U) == 0);
+	CHECK(yt_text_read(path, &text, &error));
+	CHECK(text.length == sizeof(record) + 2U
+	    && memcmp(text.data, record, sizeof(record) - 1U) == 0
+	    && memcmp(text.data + sizeof(record) - 1U, "\r\n\x1a", 3U) == 0);
+	yt_text_free(&text);
+
+	CHECK(write_bytes(path, stale, sizeof(stale) - 1U));
+	memset(&capture, 0, sizeof(capture));
+	capture.path = path;
+	capture.expected_before = stale;
+	capture.expected_before_length = sizeof(stale) - 1U;
+	capture.succeeds = true;
+	CHECK(yt_main_error_commit_fatal_to(path, &result,
+	    capture_main_error_row, &capture, &error));
+	CHECK(capture.calls == 1U);
+	CHECK(yt_text_read(path, &text, &error));
+	CHECK(text.length == sizeof(stale_expected) - 1U
+	    && memcmp(text.data, stale_expected,
+	    sizeof(stale_expected) - 1U) == 0);
+	yt_text_free(&text);
+
+	CHECK(write_bytes(path, stale, sizeof(stale) - 1U));
+	memset(&capture, 0, sizeof(capture));
+	capture.path = path;
+	capture.expected_before = stale;
+	capture.expected_before_length = sizeof(stale) - 1U;
+	capture.succeeds = false;
+	yt_error_clear(&error);
+	CHECK(!yt_main_error_commit_fatal_to(path, &result,
+	    capture_main_error_row, &capture, &error));
+	CHECK(capture.calls == 1U && error.status == YT_IO_ERROR);
+	CHECK(yt_text_read(path, &text, &error));
+	CHECK(text.length == sizeof(stale) - 1U
+	    && memcmp(text.data, stale, sizeof(stale) - 1U) == 0);
+	yt_text_free(&text);
+
+	invalid = result;
+	invalid.route = YT_MAIN_ERROR_GAMEPLAY;
+	memset(&capture, 0, sizeof(capture));
+	capture.path = path;
+	capture.expected_before = stale;
+	capture.expected_before_length = sizeof(stale) - 1U;
+	capture.succeeds = true;
+	yt_error_clear(&error);
+	CHECK(!yt_main_error_commit_fatal_to(path, &invalid,
+	    capture_main_error_row, &capture, &error));
+	CHECK(capture.calls == 0U && error.status == YT_INVALID);
+
+	memset(&capture, 0, sizeof(capture));
+	capture.path = path;
+	capture.expected_before = stale;
+	capture.expected_before_length = sizeof(stale) - 1U;
+	capture.succeeds = true;
+	yt_error_clear(&error);
+	CHECK(!yt_main_error_commit_fatal_to(failed_path, &result,
+	    capture_main_error_row, &capture, &error));
+	CHECK(capture.calls == 1U && error.status == YT_IO_ERROR);
+	CHECK(yt_text_read(path, &text, &error));
+	CHECK(text.length == sizeof(stale) - 1U
+	    && memcmp(text.data, stale, sizeof(stale) - 1U) == 0);
+	yt_text_free(&text);
+
+	CHECK(yt_file_delete(path, false, &error));
+#ifdef _WIN32
+	_rmdir(directory);
+#else
+	rmdir(directory);
+#endif
+}
+
+static void
 test_line_input_grammar(void)
 {
 	static const uint8_t source[] = {
@@ -460,6 +624,7 @@ main(void)
 	test_random();
 	test_files();
 	test_append_window();
+	test_main_error_fatal_transaction();
 	test_line_input_grammar();
 	if (failures != 0) {
 		fprintf(stderr, "%u test(s) failed\n", failures);

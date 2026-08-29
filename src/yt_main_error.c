@@ -1,6 +1,7 @@
 #include "yt_main_error.h"
 
 #include "qb.h"
+#include "yt_text.h"
 
 #include <string.h>
 
@@ -147,6 +148,47 @@ yt_main_error_compose(int16_t error_number, int32_t source_line,
 	result->route = YT_MAIN_ERROR_FATAL;
 	return compose_fatal(error_number, source_line, date_text, date_length,
 	    time_text, time_length, result);
+}
+
+static void
+set_transaction_error(struct yt_error *error, const char *operation,
+    const char *path)
+{
+	if (error == NULL)
+		return;
+	error->status = YT_INVALID;
+	error->system_error = 0;
+	snprintf(error->operation, sizeof(error->operation), "%s", operation);
+	snprintf(error->path, sizeof(error->path), "%s", path != NULL ? path : "");
+}
+
+bool
+yt_main_error_commit_fatal_to(const char *path,
+    const struct yt_main_error_result *result,
+    yt_main_error_present_fn present, void *present_context,
+    struct yt_error *error)
+{
+	if (path == NULL || result == NULL || present == NULL
+	    || result->route != YT_MAIN_ERROR_FATAL
+	    || result->action_length > sizeof(result->action)) {
+		set_transaction_error(error, "commit fatal main error", path);
+		return false;
+	}
+	/* YT:B3C3 completes the paged session row before OPEN at B3DA. */
+	if (!present(present_context, result->action, result->action_length,
+	    error))
+		return false;
+	return yt_text_append_line(path, result->action, result->action_length,
+	    error);
+}
+
+bool
+yt_main_error_commit_fatal(const struct yt_main_error_result *result,
+    yt_main_error_present_fn present, void *present_context,
+    struct yt_error *error)
+{
+	return yt_main_error_commit_fatal_to("ERRORS.DOR", result, present,
+	    present_context, error);
 }
 
 static bool
