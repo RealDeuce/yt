@@ -137,6 +137,7 @@ test_paged_output(void)
 {
 	struct yt_present_state current = state(false);
 	struct yt_present_result result;
+	static const uint8_t green[] = "\x1b[0;32;40m";
 
 	CHECK(yt_present_paged_text((const uint8_t *)"row", 3,
 	    &current, &result) == YT_PRESENT_OK);
@@ -170,6 +171,51 @@ test_paged_output(void)
 	    == YT_PRESENT_OK);
 	CHECK(result.remote_length == 0 && result.event_count == 1);
 	CHECK(result.events[0].operation == YT_PRESENT_LOCAL_COLOR);
+	current.sound.snoop = 0.0f;
+	CHECK(yt_present_paged_finish(false, &current, &result)
+	    == YT_PRESENT_OK);
+	CHECK(result.remote_length == 0U && result.event_count == 1U
+	    && result.events[0].operation == YT_PRESENT_LOCAL_COLOR);
+	current.sound.mode = 0.0f;
+	CHECK(yt_present_paged_finish(false, &current, &result)
+	    == YT_PRESENT_OK);
+	CHECK(result.remote_length == 2U
+	    && memcmp(result.remote, "\n\r", 2U) == 0
+	    && result.event_count == 2U
+	    && result.events[0].operation == YT_PRESENT_REMOTE_LINE
+	    && result.events[1].operation == YT_PRESENT_LOCAL_COLOR);
+
+	current = state(true);
+	CHECK(yt_present_paged_text((const uint8_t *)"row", 3,
+	    &current, &result) == YT_PRESENT_OK);
+	CHECK(result.remote_length == sizeof(green) - 1U + 3U
+	    && memcmp(result.remote, green, sizeof(green) - 1U) == 0
+	    && memcmp(result.remote + sizeof(green) - 1U, "row", 3U) == 0);
+	CHECK(result.event_count == 4U
+	    && result.events[0].operation == YT_PRESENT_LOCAL_COLOR
+	    && result.events[1].operation == YT_PRESENT_REMOTE_SEMI
+	    && result.events[2].operation == YT_PRESENT_LOCAL_SEMI
+	    && result.events[3].operation == YT_PRESENT_REMOTE_SEMI);
+	CHECK(current.color_initialized == 1.0f
+	    && current.cached_foreground == 2.0f
+	    && current.cached_background == 0.0f);
+
+	current = state(true);
+	current.sound.mode = 2.0f;
+	current.sound.snoop = 0.0f;
+	CHECK(yt_present_paged_text((const uint8_t *)"hidden", 6,
+	    &current, &result) == YT_PRESENT_OK);
+	CHECK(result.remote_length == 0U && result.event_count == 1U
+	    && result.events[0].operation == YT_PRESENT_LOCAL_COLOR);
+
+	current = state(false);
+	current.sound.snoop = 0.0f;
+	CHECK(yt_present_paged_text((const uint8_t *)"remote", 6,
+	    &current, &result) == YT_PRESENT_OK);
+	CHECK(result.remote_length == 6U
+	    && memcmp(result.remote, "remote", 6U) == 0
+	    && result.event_count == 1U
+	    && result.events[0].operation == YT_PRESENT_REMOTE_SEMI);
 }
 
 static void
