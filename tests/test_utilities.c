@@ -2082,6 +2082,65 @@ done:
 }
 
 static bool
+test_yt_init_random_binding(void)
+{
+	static const uint8_t short_record[] = {'A', 'B', 'C'};
+	struct yt_database database = {0};
+	struct yt_init_binding binding;
+	struct yt_error error;
+	size_t index;
+	bool ok = false;
+
+	(void)remove("YTDATA.DAT");
+	yt_error_clear(&error);
+	if (!yt_initialize_begin_yt(&error)
+	    || !yt_initialize_bind_yt(&database, &binding, &error)
+	    || database.file == NULL || database.records != 0U
+	    || binding.first_accepted != 0U
+	    || binding.second_accepted != 0U)
+		goto done;
+	for (index = 0U; index < YT_RECORD_SIZE; ++index) {
+		if (binding.loaded.record.bytes[index] != 0U
+		    || binding.second_record.bytes[index] != 0U)
+			goto done;
+	}
+	if (binding.loaded.scoreboard[0] != '\0'
+	    || binding.loaded.scoreboard_length != 0.0f
+	    || binding.loaded.epoch_year != 0.0f
+	    || binding.loaded.total_records != 0.0f)
+		goto done;
+	yt_database_close(&database);
+	if (!write_file("YTDATA.DAT", short_record, sizeof(short_record)))
+		goto done;
+	yt_error_clear(&error);
+	if (!yt_initialize_bind_yt(&database, &binding, &error)
+	    || database.file == NULL || database.records != 0U
+	    || binding.first_accepted != sizeof(short_record)
+	    || binding.second_accepted != sizeof(short_record)
+	    || memcmp(binding.loaded.record.bytes, short_record,
+	    sizeof(short_record)) != 0
+	    || memcmp(binding.second_record.bytes, short_record,
+	    sizeof(short_record)) != 0)
+		goto done;
+	for (index = sizeof(short_record); index < YT_RECORD_SIZE; ++index) {
+		if (binding.loaded.record.bytes[index] != 0U
+		    || binding.second_record.bytes[index] != 0U)
+			goto done;
+	}
+	yt_database_close(&database);
+	(void)remove("YTDATA.DAT");
+	yt_error_clear(&error);
+	ok = !yt_initialize_bind_yt(&database, &binding, &error)
+	    && database.file == NULL && error.status == YT_NOT_FOUND
+	    && strcmp(error.operation, "resolve path") == 0;
+
+done:
+	yt_database_close(&database);
+	(void)remove("YTDATA.DAT");
+	return ok;
+}
+
+static bool
 test_initializer_world_image(void)
 {
 	struct utility_lcg lcg = {UINT32_C(0x89b405)};
@@ -4040,6 +4099,8 @@ main(void)
 		failure = "YT-INIT presentation failure prefix differs";
 	else if (!test_yt_init_sector_prepass())
 		failure = "YT-INIT sector prepass differs";
+	else if (!test_yt_init_random_binding())
+		failure = "YT-INIT random-file binding differs";
 	else if (!test_initializer_world_image())
 		failure = "deterministic initializer world image differs";
 	else if (!test_initializer_graph_retries())

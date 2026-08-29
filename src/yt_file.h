@@ -23,6 +23,9 @@ bool yt_database_open(struct yt_database *database, const char *path,
 void yt_database_close(struct yt_database *database);
 bool yt_database_read(struct yt_database *database, size_t basic_record,
     struct yt_record *record, struct yt_error *error);
+bool yt_database_random_get(struct yt_database *database,
+    size_t basic_record, struct yt_record *record, size_t *accepted,
+    struct yt_error *error);
 bool yt_database_write(struct yt_database *database, size_t basic_record,
     const struct yt_record *record, struct yt_error *error);
 bool yt_database_flush(struct yt_database *database, struct yt_error *error);

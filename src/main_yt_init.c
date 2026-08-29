@@ -83,6 +83,8 @@ main(int argc, char **argv)
 	struct yt_error error;
 	struct yt_random random;
 	struct yt_initializer_preparation preparation;
+	struct yt_database database = {0};
+	struct yt_init_binding binding;
 	struct console_output console = {stdout, 0U};
 	const struct yt_init_presenter presenter = {
 	    .context = &console,
@@ -106,21 +108,26 @@ main(int argc, char **argv)
 	    || !yt_initializer_confirm_response(answer))
 		return EXIT_SUCCESS;
 	if (!yt_init_present_opening(&presenter, &error)
-	    || !yt_initialize_begin_yt(&error)) {
+	    || !yt_initialize_begin_yt(&error)
+	    || !yt_initialize_bind_yt(&database, &binding, &error)) {
 		yt_cli_error("YT-INIT", &error);
 		return EXIT_FAILURE;
 	}
 	if (!yt_initializer_prepare_yt(&random, &preparation, &error)
 	    || !yt_init_present_prepared_configuration(&preparation,
 	    &presenter, &error)) {
+		yt_database_close(&database);
 		yt_cli_error("YT-INIT", &error);
 		return EXIT_FAILURE;
 	}
-	if (!yt_cli_line(scoreboard, sizeof(scoreboard)))
+	if (!yt_cli_line(scoreboard, sizeof(scoreboard))) {
+		yt_database_close(&database);
 		return EXIT_SUCCESS;
+	}
 	if (scoreboard[0] == '\0')
 		strcpy(scoreboard, "YTSCORE.ASC");
-	if (!yt_initialize_yt_prepared(&preparation, scoreboard, &random,
+	if (!yt_initialize_yt_prepared_bound(&database, &preparation, scoreboard,
+	    &random,
 	    &presenter, &error)) {
 		yt_cli_error("YT-INIT", &error);
 		return EXIT_FAILURE;

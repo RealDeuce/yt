@@ -213,6 +213,14 @@ struct yt_initializer_options {
 	const struct yt_rmt_presenter *rmt_presenter;
 	const struct yt_init_presenter *yt_presenter;
 	bool prepared_yt;
+	struct yt_database *bound_database;
+};
+
+struct yt_init_binding {
+	struct yt_config loaded;
+	struct yt_record second_record;
+	size_t first_accepted;
+	size_t second_accepted;
 };
 
 bool yt_generate_port_name(struct yt_random *random, char name[42],
@@ -280,11 +288,18 @@ bool yt_init_sector_prepass(struct yt_database *database,
     float sector_offset, int sector_count, float *port_offset,
     struct yt_error *error);
 bool yt_initialize_begin_yt(struct yt_error *error);
+bool yt_initialize_bind_yt(struct yt_database *database,
+    struct yt_init_binding *binding, struct yt_error *error);
 bool yt_initialize_world(const struct yt_initializer_options *options,
     struct yt_random *random, struct yt_error *error);
 bool yt_initialize_yt(const char *scoreboard, struct yt_random *random,
     struct yt_error *error);
 bool yt_initialize_yt_prepared(
+	const struct yt_initializer_preparation *preparation,
+	const char *scoreboard, struct yt_random *random,
+	const struct yt_init_presenter *presenter, struct yt_error *error);
+/* Consumes and closes the successfully bound database. */
+bool yt_initialize_yt_prepared_bound(struct yt_database *database,
 	const struct yt_initializer_preparation *preparation,
 	const char *scoreboard, struct yt_random *random,
 	const struct yt_init_presenter *presenter, struct yt_error *error);

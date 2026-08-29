@@ -187,12 +187,12 @@ not authoritative. Use the corrected goal above in the new workspace.
   destination-selector and destination-combat transactions,
   ledger dispositions are roots
   `167 candidate / 1 missing`, transfers
-  `5362 candidate / 2005 missing / 1 explicitly
+  `5363 candidate / 2004 missing / 1 explicitly
   deferred`, and presentation `136 candidate / 8 missing / 6 verified`.
   Current SHA-256
   values are roots
   `64b17a8ae6550d4ef994a6e872d1f06c9ff8a6bc33ab9ab64d390da38a87e8be`,
-  transfers `70eea5c5377d46abbf3cf32e62c59ba9fd87236c611ad369608d8871abb4ce8c`,
+  transfers `60c93d3b6af7821f2b3aaecbcbb2b862a85a239def7c0f70423c603f820a163c`,
   presentation `b899734f3487d364fbad0b2d5be7936334cc753b4c676d3407d6703d522b5afe`,
   and manifest
   `3552bd61c9cb9b7197aeb6fbad1f37cba69cd09f125d878d0c9072a691e8950a`.
@@ -1857,8 +1857,21 @@ not authoritative. Use the corrected goal above in the new workspace.
   both reaches the ordinary END. Pure fixtures cover both accepted arms plus
   empty, `N`, and suffix-bearing rejection; subprocess fixtures pin accepted
   entry into the opening/persistence transaction and rejected success exit
-  before any nonempty `YTDATA.DAT` mutation. The unrelated `0712` binding call
-  remains separately uncredited.
+  before any nonempty `YTDATA.DAT` mutation.
+- The accepted `YT-INIT:0712 -> 03C9` binding call is candidate. Immediately
+  after truncation/close, `yt_initialize_bind_yt()` reopens `YTDATA.DAT` in
+  update mode, applies the 137-byte configuration binding, performs the
+  helper's direct record-1 GET and decodes its zero-filled FIELD state, then
+  performs the distinct direct record-1 GET at `071B`. BRUN short-read
+  success is explicit: the native random GET zero-fills first and accepts
+  zero through 137 bytes without synthesizing EOF. The executable retains
+  the same open handle across the two clock samples, headquarters draw,
+  configuration presentation and scoreboard input, then passes it directly
+  into persistence. Native fixtures pin empty 0/0-byte reads, identical
+  three-byte prefixes with zero suffixes, all-zero decoded helper state,
+  missing-file failure, retained/closed handle boundaries, early-input EOF,
+  and the unchanged full database image. Raw FIELD descriptors, BRUN status/
+  cursor/file-registry cells and physical seek/read failures remain open.
 - The three YT-INIT entry/default transitions at `0030`, `004C`, and `0099`
   are candidate. Native process entry now initializes the authorized
   replacement CSPRNG provider and the shipped 50-player, 2,004-sector,
@@ -2269,13 +2282,15 @@ not authoritative. Use the corrected goal above in the new workspace.
 - The first YT-INIT whole-program presentation slice is now native. The
   executable no longer asks for the scoreboard path before it knows the
   values it displays: after exact confirmation it emits the opening rows,
-  truncates `YTDATA.DAT`, samples distinct epoch and maintenance startup
-  clocks followed by one headquarters draw into
+  truncates and closes `YTDATA.DAT`, reopens/binds it, performs both
+  zero-filled direct record-1 GETs, and retains that handle while it samples
+  distinct epoch and maintenance startup clocks followed by one headquarters
+  draw into
   `struct yt_initializer_preparation`, presents those values, and
-  only then reads the scoreboard pathname. `yt_initialize_yt_prepared()`
-  carries that state into persistence without repeating either startup clock
-  or the headquarters draw; the later port finalizer takes its own fresh
-  clock observation;
+  only then reads the scoreboard pathname. `yt_initialize_yt_prepared_bound()`
+  carries the state and already-open file into persistence without repeating
+  either startup clock or the headquarters draw; the later port finalizer
+  takes its own fresh clock observation;
   the pre-existing `yt_initialize_yt()` entry retains its generic behavior.
   The YT-only presenter owns line, inline, comma-zone, locate and logical-PLAY
   events without changing OpenDoors or its ABI. The successful fixed-clock /
@@ -2287,7 +2302,7 @@ not authoritative. Use the corrected goal above in the new workspace.
   `A546`, successful `PUT` preserves it, and `0B07` supplies it to
   `PRINT_STR_NL`; the row is therefore the four offset-53 bytes for MBF32 51,
   `00 00 4C 86`, plus its newline. A failure at `0ABB` leaves the already
-  truncated database empty. A failure injected at `0B1B` stops after that
+  bound database empty. A failure injected at `0B1B` stops after that
   blank and the raw row, consumes no post-headquarters draw and leaves exactly
   the 137-byte configuration record durable. Normal termination emits the
   shipped status rows and records

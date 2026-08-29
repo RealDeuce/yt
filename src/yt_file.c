@@ -220,6 +220,35 @@ yt_database_read(struct yt_database *database, size_t basic_record,
 }
 
 bool
+yt_database_random_get(struct yt_database *database, size_t basic_record,
+    struct yt_record *record, size_t *accepted, struct yt_error *error)
+{
+	off_t offset;
+	size_t count;
+
+	if (accepted != NULL)
+		*accepted = 0U;
+	if (basic_record == 0) {
+		set_error(error, YT_RANGE, "random GET", database->path);
+		return false;
+	}
+	offset = (off_t)((basic_record - 1U) * YT_RECORD_SIZE);
+	if (yt_fseeko(database->file, offset, SEEK_SET) != 0) {
+		set_error(error, YT_IO_ERROR, "random GET", database->path);
+		return false;
+	}
+	memset(record->bytes, 0, sizeof(record->bytes));
+	count = fread(record->bytes, 1, sizeof(record->bytes), database->file);
+	if (ferror(database->file)) {
+		set_error(error, YT_IO_ERROR, "random GET", database->path);
+		return false;
+	}
+	if (accepted != NULL)
+		*accepted = count;
+	return true;
+}
+
+bool
 yt_database_write(struct yt_database *database, size_t basic_record,
     const struct yt_record *record, struct yt_error *error)
 {

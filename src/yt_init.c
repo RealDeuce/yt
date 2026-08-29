@@ -2250,7 +2250,8 @@ yt_initialize_world(const struct yt_initializer_options *options,
 {
 	struct yt_clock_value current;
 	struct yt_config config;
-	struct yt_database database;
+	struct yt_database owned_database;
+	struct yt_database *database;
 	struct world world = {0};
 	float sample;
 	bool result = false;
@@ -2259,8 +2260,14 @@ yt_initialize_world(const struct yt_initializer_options *options,
 		set_error(error, YT_INVALID, "initializer arguments", "");
 		return false;
 	}
-	memset(&database, 0, sizeof(database));
+	memset(&owned_database, 0, sizeof(owned_database));
+	database = options->bound_database != NULL
+	    ? options->bound_database : &owned_database;
 	if (options->family == YT_INITIALIZER_RMT) {
+		if (options->bound_database != NULL) {
+			set_error(error, YT_INVALID, "bound RMT initializer", "");
+			goto done;
+		}
 		if (!options->use_existing_config) {
 			set_error(error, YT_INVALID, "RMT initializer configuration", "");
 			goto done;
@@ -2275,7 +2282,7 @@ yt_initialize_world(const struct yt_initializer_options *options,
 		}
 		if (!allocate_world(&world, error)
 		    || !rmt_present_preopen(options, error)
-		    || !yt_database_open(&database, "YTDATA.DAT", YT_OPEN_CREATE,
+		    || !yt_database_open(database, "YTDATA.DAT", YT_OPEN_CREATE,
 		    error)
 		    || !yt_platform_clock(&current, error))
 			goto done;
@@ -2288,7 +2295,7 @@ yt_initialize_world(const struct yt_initializer_options *options,
 		if (!rmt_present_after_headquarters(options, &config, error))
 			goto done;
 		make_config_record(&config, config.scoreboard_length);
-		if (!write_config_and_players(&database, &config, options, error)
+		if (!write_config_and_players(database, &config, options, error)
 		    || !rmt_present_graph_opening(options, error))
 			goto done;
 	}
@@ -2296,7 +2303,14 @@ yt_initialize_world(const struct yt_initializer_options *options,
 		const char *scoreboard;
 		size_t scoreboard_length;
 
-		if (!yt_database_open(&database, "YTDATA.DAT",
+		if (options->bound_database != NULL) {
+			if (database->file == NULL) {
+				set_error(error, YT_INVALID,
+				    "bound YT initializer", "YTDATA.DAT");
+				goto done;
+			}
+		}
+		else if (!yt_database_open(database, "YTDATA.DAT",
 		    options->database_already_truncated ? YT_OPEN_UPDATE
 		    : YT_OPEN_CREATE, error))
 			goto done;
@@ -2372,8 +2386,8 @@ yt_initialize_world(const struct yt_initializer_options *options,
 			    single_add((float)world.sectors, -7.0f))) + 1);
 		}
 		make_config_record(&config, config.scoreboard_length);
-		if (!write_config_and_players(&database, &config, options, error)
-		    || !yt_init_sector_prepass(&database, config.sector_offset,
+		if (!write_config_and_players(database, &config, options, error)
+		    || !yt_init_sector_prepass(database, config.sector_offset,
 		    world.sectors, &config.port_offset, error)
 		    || !allocate_world(&world, error))
 			goto done;
@@ -2381,17 +2395,17 @@ yt_initialize_world(const struct yt_initializer_options *options,
 	if (!yt_present_graph_opening(options, error)
 	    || !build_graph(&world, options->family, random, options, error)
 	    || !assign_ports(&world, random, error)
-	    || !write_world_database(&database, options, &config, &world,
+	    || !write_world_database(database, options, &config, &world,
 	    random, error))
 		goto done;
-	yt_database_close(&database);
+	yt_database_close(database);
 	if (options->family == YT_INITIALIZER_YT)
 		result = write_yt_auxiliary(options, error);
 	else
 		result = write_rmt_auxiliary(options->credited_name, options, error);
 
 done:
-	yt_database_close(&database);
+	yt_database_close(database);
 	free_world(&world);
 	return result;
 }
@@ -2404,6 +2418,29 @@ yt_initialize_begin_yt(struct yt_error *error)
 	if (!yt_database_open(&database, "YTDATA.DAT", YT_OPEN_CREATE, error))
 		return false;
 	yt_database_close(&database);
+	return true;
+}
+
+bool
+yt_initialize_bind_yt(struct yt_database *database,
+    struct yt_init_binding *binding, struct yt_error *error)
+{
+	struct yt_record first;
+
+	if (database == NULL || binding == NULL) {
+		set_error(error, YT_INVALID, "bind YT initializer", "YTDATA.DAT");
+		return false;
+	}
+	memset(binding, 0, sizeof(*binding));
+	if (!yt_database_open(database, "YTDATA.DAT", YT_OPEN_UPDATE, error)
+	    || !yt_database_random_get(database, 1U, &first,
+	    &binding->first_accepted, error)
+	    || !yt_config_decode(&binding->loaded, &first, error)
+	    || !yt_database_random_get(database, 1U, &binding->second_record,
+	    &binding->second_accepted, error)) {
+		yt_database_close(database);
+		return false;
+	}
 	return true;
 }
 
@@ -2421,6 +2458,16 @@ yt_initialize_yt(const char *scoreboard, struct yt_random *random,
 
 bool
 yt_initialize_yt_prepared(
+    const struct yt_initializer_preparation *preparation,
+    const char *scoreboard, struct yt_random *random,
+    const struct yt_init_presenter *presenter, struct yt_error *error)
+{
+	return yt_initialize_yt_prepared_bound(NULL, preparation, scoreboard,
+	    random, presenter, error);
+}
+
+bool
+yt_initialize_yt_prepared_bound(struct yt_database *database,
     const struct yt_initializer_preparation *preparation,
     const char *scoreboard, struct yt_random *random,
     const struct yt_init_presenter *presenter, struct yt_error *error)
@@ -2449,6 +2496,7 @@ yt_initialize_yt_prepared(
 	options.database_already_truncated = true;
 	options.yt_presenter = presenter;
 	options.prepared_yt = true;
+	options.bound_database = database;
 	return yt_initialize_world(&options, random, error);
 }
 
