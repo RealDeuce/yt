@@ -195,6 +195,7 @@ bool yt_input_ab36_remote_replace(float mode,
 bool yt_input_ab36_inactivity_expired(float timer, float deadline,
     float mode);
 bool yt_input_ab36_session_expired(float timer, float deadline);
+bool yt_input_carrier_returns(float mode, bool carrier_detected);
 bool yt_input_ab36_terminal_run(enum yt_ab36_terminal_kind kind,
     bool *running, bool *terminated, yt_ab36_terminal_notice_fn notice,
     yt_ab36_terminal_close_fn close_all, void *context);

@@ -133,6 +133,11 @@ test_ab36_inactivity_gate(void)
 	CHECK(!yt_input_ab36_session_expired(279.0f, 280.0f));
 	CHECK(!yt_input_ab36_session_expired(280.0f, 280.0f));
 	CHECK(yt_input_ab36_session_expired(281.0f, 280.0f));
+	CHECK(yt_input_carrier_returns(0.0f, true));
+	CHECK(!yt_input_carrier_returns(0.0f, false));
+	CHECK(yt_input_carrier_returns(1.0f, false));
+	CHECK(yt_input_carrier_returns(2.0f, false));
+	CHECK(yt_input_carrier_returns(-1.0f, false));
 }
 
 struct ab36_terminal_tape {

@@ -680,12 +680,16 @@ session_carrier(struct yt_session *session)
 {
 	struct yt_present_result presentation;
 	enum yt_present_status status;
+	bool carrier_detected;
 
-	if (session->presentation.sound.mode != 0.0f || od_carrier())
+	carrier_detected = od_carrier();
+	if (yt_input_carrier_returns(session->presentation.sound.mode,
+	    carrier_detected))
 		return true;
 	status = yt_present_carrier_drop(&session->presentation, &presentation);
 	if (status == YT_PRESENT_OK)
 		yt_out_present_result(&presentation);
+	(void)session_editor_close_all(session);
 	session->running = false;
 	session->terminated = true;
 	return false;
