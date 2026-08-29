@@ -231,6 +231,21 @@ session_ab36_repeat_emit(void *context, const uint8_t *prefix, size_t length)
 	return session_b05d(context, prefix, length);
 }
 
+static bool
+session_ab36_submit_line(void *context)
+{
+	struct yt_session *session = context;
+	struct yt_present_result presentation;
+	enum yt_present_status status;
+
+	status = yt_present_line(NULL, 0, &session->presentation,
+	    &presentation);
+	if (status != YT_PRESENT_OK)
+		return false;
+	yt_out_present_result(&presentation);
+	return true;
+}
+
 static float
 single_add(float left, float right)
 {
@@ -498,13 +513,11 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 				return false;
 			used = strlen(session->command_accumulator);
 		}
-		if (key == '\r') {
-			session->pager.newline_flag = 0.0f;
-			status = yt_present_line(NULL, 0, &session->presentation,
-			    &presentation);
-			if (status != YT_PRESENT_OK)
+		if (yt_input_ab36_submit_requested(key)) {
+			if (!yt_input_ab36_submit_run(
+			    &session->pager.newline_flag,
+			    session_ab36_submit_line, session))
 				return false;
-			yt_out_present_result(&presentation);
 			snprintf(dest, size, "%s", session->command_accumulator);
 			return true;
 		}

@@ -300,6 +300,45 @@ test_ab36_repeat_transaction(void)
 	    && selected_key == 0x12U);
 }
 
+struct ab36_submit_tape {
+	float *newline_flag;
+	size_t calls;
+	bool fail;
+};
+
+static bool
+ab36_submit_line(void *context)
+{
+	struct ab36_submit_tape *tape = context;
+
+	++tape->calls;
+	CHECK(*tape->newline_flag == 0.0f);
+	return !tape->fail;
+}
+
+static void
+test_ab36_submission(void)
+{
+	float newline_flag = 1.0f;
+	struct ab36_submit_tape tape = {
+		.newline_flag = &newline_flag,
+	};
+
+	CHECK(yt_input_ab36_submit_requested('\r'));
+	CHECK(!yt_input_ab36_submit_requested(0x12U));
+	CHECK(!yt_input_ab36_submit_requested('\b'));
+	CHECK(!yt_input_ab36_submit_requested('A'));
+	CHECK(yt_input_ab36_submit_run(&newline_flag, ab36_submit_line, &tape));
+	CHECK(tape.calls == 1U && newline_flag == 0.0f);
+
+	newline_flag = 1.0f;
+	tape.calls = 0U;
+	tape.fail = true;
+	CHECK(!yt_input_ab36_submit_run(&newline_flag, ab36_submit_line,
+	    &tape));
+	CHECK(tape.calls == 1U && newline_flag == 0.0f);
+}
+
 struct ab36_terminal_tape {
 	uint8_t notice[64];
 	size_t notice_length;
@@ -1648,6 +1687,7 @@ main(void)
 	test_ab36_live_input();
 	test_ab36_repeat_recognition();
 	test_ab36_repeat_transaction();
+	test_ab36_submission();
 	test_ab36_terminal_transaction();
 	test_source_fifo();
 	test_merged_fifo();

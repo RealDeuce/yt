@@ -252,6 +252,22 @@ yt_input_ab36_repeat_run(char *accumulator, size_t accumulator_capacity,
 }
 
 bool
+yt_input_ab36_submit_requested(uint8_t selected_key)
+{
+	return selected_key == '\r';
+}
+
+bool
+yt_input_ab36_submit_run(float *newline_flag, yt_ab36_submit_line_fn line,
+    void *context)
+{
+	if (newline_flag == NULL || line == NULL)
+		return false;
+	*newline_flag = 0.0f;
+	return line(context);
+}
+
+bool
 yt_input_ab36_inactivity_expired(float timer, float deadline, float mode)
 {
 	return timer > deadline && mode != 1.0f;
