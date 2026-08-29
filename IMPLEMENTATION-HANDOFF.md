@@ -191,12 +191,12 @@ not authoritative. Use the corrected goal above in the new workspace.
   destination-selector and destination-combat transactions,
   ledger dispositions are roots
   `167 candidate / 1 missing`, transfers
-  `5426 candidate / 1941 missing / 1 explicitly
+  `5429 candidate / 1938 missing / 1 explicitly
   deferred`, and presentation `136 candidate / 8 missing / 6 verified`.
   Current SHA-256
   values are roots
   `64b17a8ae6550d4ef994a6e872d1f06c9ff8a6bc33ab9ab64d390da38a87e8be`,
-  transfers `4b60d3492f36687bf340494fcde3366601a88f9b99751473d4d4398726f4832b`,
+  transfers `33fa409687f5034a307aec34696f2182cd2da716d06afb0cc3c6d50721a88831`,
   presentation `b899734f3487d364fbad0b2d5be7936334cc753b4c676d3407d6703d522b5afe`,
   and manifest
   `3552bd61c9cb9b7197aeb6fbad1f37cba69cd09f125d878d0c9072a691e8950a`.
@@ -986,6 +986,15 @@ not authoritative. Use the corrected goal above in the new workspace.
   images, injected operation failures, complete RNG tapes, positive-award
   ANSI/local/news fixtures, every alternate/editor/pager/carrier/mode path,
   redraw joins and physical I/O/framebuffer proof remain open.
+- Shared current-player hydration now applies A41C's successful cache tail in
+  native code. `reload_player()` always refreshes the current player's sector
+  cache and refreshes cloak only while the anti-cloak latch is false; the
+  computer prompt uses that same owner rather than a private cloak-only
+  approximation. A reducer pins both cloak branches, sector replacement,
+  unrelated slots and invalid indices. Qualified edges `A54F`, `A551`, and
+  the shared `A579` return are candidate. Exact raw FIELD replacement, ordered
+  cache/temp writes, conversion-fault prefixes and the physical GET boundary
+  remain open.
 - The main missile/plasma command parent at `YT:[2059,2341)` now preserves
   the command-entry displayed-ammunition snapshot while performing the two
   shipped fresh player hydrations on every target pass. It tests no-turn

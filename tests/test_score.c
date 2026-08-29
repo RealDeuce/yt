@@ -28,6 +28,35 @@ fail(const char *message)
 }
 
 static bool
+check_current_player_cache_model(void)
+{
+	struct yt_player player;
+	float sector_cache[5] = {-1.0f, -2.0f, -3.0f, -4.0f, -5.0f};
+	float cloak_cache[5] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+
+	memset(&player, 0, sizeof(player));
+	player.sector = 42.0f;
+	player.cloak = 0.75f;
+	yt_current_player_cache_overlay(sector_cache, cloak_cache,
+	    YT_ARRAY_LEN(sector_cache), 2, false, &player);
+	if (sector_cache[2] != 42.0f || cloak_cache[2] != 0.75f
+	    || sector_cache[1] != -2.0f || cloak_cache[1] != 2.0f)
+		return false;
+	player.sector = 99.0f;
+	player.cloak = 0.25f;
+	yt_current_player_cache_overlay(sector_cache, cloak_cache,
+	    YT_ARRAY_LEN(sector_cache), 2, true, &player);
+	if (sector_cache[2] != 99.0f || cloak_cache[2] != 0.75f)
+		return false;
+	yt_current_player_cache_overlay(sector_cache, cloak_cache,
+	    YT_ARRAY_LEN(sector_cache), -1, false, &player);
+	yt_current_player_cache_overlay(sector_cache, cloak_cache,
+	    YT_ARRAY_LEN(sector_cache), 5, false, &player);
+	return sector_cache[0] == -1.0f && cloak_cache[0] == 1.0f
+	    && sector_cache[4] == -5.0f && cloak_cache[4] == 5.0f;
+}
+
+static bool
 check_projectile_parent_model(void)
 {
 	static const uint8_t missile[] =
@@ -7149,6 +7178,8 @@ main(void)
 
 	if (!check_formatter_boundaries())
 		return fail("PRINT USING boundary formatting differs");
+	if (!check_current_player_cache_model())
+		return fail("current-player cache model differs");
 	if (!check_projectile_parent_model())
 		return fail("projectile parent model differs");
 	if (!check_port_name_editor_model())

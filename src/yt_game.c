@@ -80,6 +80,19 @@ yt_projectile_debit_overlay(struct yt_player *player, bool plasma,
 	(void)yt_record_set_number(&player->record, offset, remaining);
 }
 
+void
+yt_current_player_cache_overlay(float *sector_cache, float *cloak_cache,
+    size_t cache_count, int player_record, bool anti_cloak,
+    const struct yt_player *player)
+{
+	if (sector_cache == NULL || cloak_cache == NULL || player == NULL
+	    || player_record < 0 || (size_t)player_record >= cache_count)
+		return;
+	sector_cache[player_record] = player->sector;
+	if (!anti_cloak)
+		cloak_cache[player_record] = player->cloak;
+}
+
 float
 yt_counterlaunch_score_count(double cached_score, float retained)
 {

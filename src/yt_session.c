@@ -294,18 +294,19 @@ write_player(struct yt_session *session, struct yt_error *error)
 static bool
 reload_player(struct yt_session *session, struct yt_error *error)
 {
-	return yt_game_read_player(&session->door->game,
-	    session->player_record, &session->player, error);
+	if (!yt_game_read_player(&session->door->game,
+	    session->player_record, &session->player, error))
+		return false;
+	yt_current_player_cache_overlay(session->sector_cache,
+	    session->cloak_cache, YT_ARRAY_LEN(session->sector_cache),
+	    session->player_record, session->anti_cloak, &session->player);
+	return true;
 }
 
 static bool
 computer_prompt_hydrate(struct yt_session *session, struct yt_error *error)
 {
-	if (!reload_player(session, error))
-		return false;
-	if (!session->anti_cloak)
-		session->cloak_cache[session->player_record] = session->player.cloak;
-	return true;
+	return reload_player(session, error);
 }
 
 static bool

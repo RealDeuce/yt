@@ -590,6 +590,9 @@ enum yt_projectile_target_result yt_projectile_target_response(
 float yt_projectile_quantity_response(const char *response);
 void yt_projectile_debit_overlay(struct yt_player *player, bool plasma,
     float amount);
+void yt_current_player_cache_overlay(float *sector_cache, float *cloak_cache,
+    size_t cache_count, int player_record, bool anti_cloak,
+    const struct yt_player *player);
 float yt_counterlaunch_score_count(double cached_score, float retained);
 void yt_counterlaunch_debit_overlay(struct yt_player *fresh_target,
     float first_available, float selected_count);
