@@ -309,3 +309,125 @@ yt_config_hq_in_range(float candidate, float upper_bound)
 {
 	return candidate >= 8.0f && candidate <= upper_bound;
 }
+
+bool
+yt_config_compose_scoreboard_prompt(size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_line(result,
+	    "Enter new scoreboard and path or hit ENTER for 'YTSCORE.ASC'.");
+}
+
+bool
+yt_config_compose_scoreboard_too_long(size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_line(result, "Too long! 41 chars max!!");
+}
+
+bool
+yt_config_compose_scalar_prompt(enum yt_config_scalar_key key,
+    float working_maximum, size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	switch (key) {
+	case YT_CONFIG_SCALAR_MAXIMUM_HOLDS:
+		return append_literal(result,
+		    "What is the Maximum amount of Cargo Holds allowed? "
+		    "(5 - 1000) -=> ");
+	case YT_CONFIG_SCALAR_TURNS:
+		return append_literal(result,
+		    "Turns allowed per day? (100 - 1000) ");
+	case YT_CONFIG_SCALAR_FIGHTERS:
+		return append_literal(result,
+		    "Starting Number of Fighters? (1 to 10,000) -=> ");
+	case YT_CONFIG_SCALAR_CREDITS:
+		return append_literal(result,
+		    "Starting credits? (25 to 10,000) -=> ");
+	case YT_CONFIG_SCALAR_INITIAL_HOLDS:
+		return append_literal(result,
+		    "Starting Amount of Holds? (1 to ")
+		    && append_single(result, working_maximum, true)
+		    && append_literal(result, ") -=> ");
+	case YT_CONFIG_SCALAR_DEAD_DAYS:
+		return append_literal(result, "Days until deleted? ");
+	case YT_CONFIG_SCALAR_MAINTENANCE:
+		return append_literal(result,
+		    "OK to Run Maintenence [Y/N] -=> ");
+	case YT_CONFIG_SCALAR_LOTTERY:
+		return append_literal(result,
+		    "How many times per day may a user play the lottery? "
+		    "(0 - 9) -=> ");
+	default:
+		return false;
+	}
+}
+
+bool
+yt_config_compose_scalar_rejection(enum yt_config_scalar_key key,
+    size_t initial_column, struct yt_config_output_result *result)
+{
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	switch (key) {
+	case YT_CONFIG_SCALAR_MAXIMUM_HOLDS:
+	case YT_CONFIG_SCALAR_CREDITS:
+	case YT_CONFIG_SCALAR_DEAD_DAYS:
+		return true;
+	case YT_CONFIG_SCALAR_TURNS:
+	case YT_CONFIG_SCALAR_INITIAL_HOLDS:
+		return append_line(result, "")
+		    && append_line(result, " Invalid Range!");
+	case YT_CONFIG_SCALAR_FIGHTERS:
+		return append_line(result, "")
+		    && append_line(result, "Invalid Range!");
+	case YT_CONFIG_SCALAR_LOTTERY:
+		return append_line(result, "Range is 1 to 10!");
+	default:
+		return false;
+	}
+}
+
+bool
+yt_config_scalar_blank_unchanged(enum yt_config_scalar_key key)
+{
+	return key != YT_CONFIG_SCALAR_MAXIMUM_HOLDS
+	    && key != YT_CONFIG_SCALAR_LOTTERY;
+}
+
+bool
+yt_config_scalar_valid(enum yt_config_scalar_key key, float value)
+{
+	switch (key) {
+	case YT_CONFIG_SCALAR_MAXIMUM_HOLDS:
+		return value >= 5.0f && value <= 1000.0f;
+	case YT_CONFIG_SCALAR_TURNS:
+		return value >= 100.0f && value <= 1000.0f;
+	case YT_CONFIG_SCALAR_FIGHTERS:
+		return value >= 0.0f && value <= 10000.0f;
+	case YT_CONFIG_SCALAR_CREDITS:
+		return value >= 25.0f && value <= 10000.0f;
+	case YT_CONFIG_SCALAR_INITIAL_HOLDS:
+		return value >= 0.0f && value <= 1000.0f;
+	case YT_CONFIG_SCALAR_DEAD_DAYS:
+		return value >= 1.0f;
+	case YT_CONFIG_SCALAR_LOTTERY:
+		return value >= 0.0f && value <= 9.0f;
+	default:
+		return false;
+	}
+}

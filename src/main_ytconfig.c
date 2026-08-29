@@ -106,69 +106,53 @@ static bool
 numeric_edit(struct yt_game *game, char key, float *maximum, float *lottery,
     struct yt_error *error)
 {
+	struct yt_config_output_result output;
+	struct qb_val_result parsed;
+	char line[160];
 	float value;
 	bool blank;
-	const char *prompt = "";
-	float minimum = 0.0f;
-	float high = 0.0f;
-	bool bounded_high = true;
-	bool blank_unchanged = true;
 	float *field = NULL;
-	char dynamic_prompt[120];
+	enum yt_config_scalar_key scalar = (enum yt_config_scalar_key)key;
 
 	switch (key) {
 	case 'A':
-		prompt = "What is the Maximum amount of Cargo Holds allowed? (5 - 1000) -=> ";
-		minimum = 5.0f; high = 1000.0f;
 		field = &game->config.maximum_holds;
 		break;
 	case 'B':
-		prompt = "Turns allowed per day? (100 - 1000) ";
-		minimum = 100.0f; high = 1000.0f;
 		field = &game->config.turns_per_day;
 		break;
 	case 'C':
-		prompt = "Starting Number of Fighters? (1 to 10,000) -=> ";
-		minimum = 0.0f; high = 10000.0f;
 		field = &game->config.initial_fighters;
 		break;
 	case 'D':
-		prompt = "Starting credits? (25 to 10,000) -=> ";
-		minimum = 25.0f; high = 10000.0f;
 		field = &game->config.initial_credits;
 		break;
 	case 'E':
-		snprintf(dynamic_prompt, sizeof(dynamic_prompt),
-		    "Starting Amount of Holds? (1 to %.9g) -=> ",
-		    (double)*maximum);
-		prompt = dynamic_prompt;
-		minimum = 0.0f; high = 1000.0f;
 		field = &game->config.initial_holds;
 		break;
 	case 'F':
-		prompt = "Days until deleted? ";
-		minimum = 1.0f; bounded_high = false;
 		field = &game->config.retention_days;
 		break;
 	case 'K':
-		prompt = "How many times per day may a user play the lottery? (0 - 9) -=> ";
-		minimum = 0.0f; high = 9.0f; blank_unchanged = false;
 		field = &game->config.lottery_plays;
 		break;
 	default:
 		return true;
 	}
-	if (!read_single(prompt, &value, &blank))
+	if (!yt_config_compose_scalar_prompt(scalar, *maximum, 0U, &output)
+	    || !write_output(&output, error))
+		return false;
+	if (!yt_cli_line(line, sizeof(line)))
 		return true;
-	if (blank && blank_unchanged)
+	blank = line[0] == '\0';
+	if (blank && yt_config_scalar_blank_unchanged(scalar))
 		return true;
-	if (value < minimum || (bounded_high && value > high)) {
-		if (key == 'B' || key == 'E')
-			puts("\n Invalid Range!");
-		else if (key == 'C')
-			puts("Invalid Range!");
-		else if (key == 'K')
-			puts("Range is 1 to 10!");
+	parsed = qb_val(line);
+	value = (float)(parsed.valid ? parsed.value : 0.0);
+	if (!yt_config_scalar_valid(scalar, value)) {
+		if (!yt_config_compose_scalar_rejection(scalar,
+		    output.final_column, &output) || !write_output(&output, error))
+			return false;
 		return true;
 	}
 	*field = value;
@@ -207,12 +191,15 @@ edit_genesis(struct yt_game *game, struct yt_error *error)
 static bool
 edit_maintenance(struct yt_game *game, struct yt_error *error)
 {
+	struct yt_config_output_result output;
 	char line[80];
 	int adjusted;
 	int serial;
 
 	for (;;) {
-		fputs("OK to Run Maintenence [Y/N] -=> ", stdout);
+		if (!yt_config_compose_scalar_prompt(YT_CONFIG_SCALAR_MAINTENANCE,
+		    0.0f, 0U, &output) || !write_output(&output, error))
+			return false;
 		if (!yt_cli_line(line, sizeof(line)) || line[0] == '\0')
 			return true;
 		if (((unsigned char)line[0] & 0xdfU) == 'Y'
@@ -238,16 +225,20 @@ static bool
 edit_scoreboard(struct yt_game *game, uint8_t working_path[41],
     size_t *working_path_length, struct yt_error *error)
 {
+	struct yt_config_output_result output;
 	char line[160];
 	const char *stored;
 	size_t length;
 
-	puts("Enter new scoreboard and path or hit ENTER for 'YTSCORE.ASC'.");
-	fputs("-=> ", stdout);
+	if (!yt_config_compose_scoreboard_prompt(0U, &output)
+	    || !write_output(&output, error))
+		return false;
 	if (!yt_cli_line(line, sizeof(line)))
 		return true;
 	if (strlen(line) > 41U) {
-		puts("Too long! 41 chars max!!");
+		if (!yt_config_compose_scoreboard_too_long(output.final_column,
+		    &output) || !write_output(&output, error))
+			return false;
 		return true;
 	}
 	stored = line[0] == '\0' ? "YTSCORE.ASC" : line;

@@ -25,6 +25,17 @@ enum yt_config_hq_diagnostic {
 	YT_CONFIG_HQ_OCCUPIED
 };
 
+enum yt_config_scalar_key {
+	YT_CONFIG_SCALAR_MAXIMUM_HOLDS = 'A',
+	YT_CONFIG_SCALAR_TURNS = 'B',
+	YT_CONFIG_SCALAR_FIGHTERS = 'C',
+	YT_CONFIG_SCALAR_CREDITS = 'D',
+	YT_CONFIG_SCALAR_INITIAL_HOLDS = 'E',
+	YT_CONFIG_SCALAR_DEAD_DAYS = 'F',
+	YT_CONFIG_SCALAR_MAINTENANCE = 'G',
+	YT_CONFIG_SCALAR_LOTTERY = 'K'
+};
+
 bool yt_config_prepare_menu_working(const struct yt_config *config,
     uint8_t scoreboard_path[41], struct yt_config_menu_working *working);
 bool yt_config_compose_menu_prompt(const struct yt_config *config,
@@ -48,5 +59,16 @@ bool yt_config_compose_hq_prompt(float current_hq, float upper_bound,
 bool yt_config_compose_hq_diagnostic(enum yt_config_hq_diagnostic diagnostic,
     size_t initial_column, struct yt_config_output_result *result);
 bool yt_config_hq_in_range(float candidate, float upper_bound);
+bool yt_config_compose_scoreboard_prompt(size_t initial_column,
+    struct yt_config_output_result *result);
+bool yt_config_compose_scoreboard_too_long(size_t initial_column,
+    struct yt_config_output_result *result);
+bool yt_config_compose_scalar_prompt(enum yt_config_scalar_key key,
+    float working_maximum, size_t initial_column,
+    struct yt_config_output_result *result);
+bool yt_config_compose_scalar_rejection(enum yt_config_scalar_key key,
+    size_t initial_column, struct yt_config_output_result *result);
+bool yt_config_scalar_blank_unchanged(enum yt_config_scalar_key key);
+bool yt_config_scalar_valid(enum yt_config_scalar_key key, float value);
 
 #endif

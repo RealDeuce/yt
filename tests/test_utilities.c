@@ -3735,6 +3735,148 @@ done_closed:
 }
 
 static bool
+test_ytconfig_scalar_options(struct yt_error *error)
+{
+	static const char input[] =
+	    "Ixxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n"
+	    "I\n"
+	    "J"
+	    "K\nK10\n"
+	    "A\nA4\nA1000\n"
+	    "B\nB99\nB1000\n"
+	    "C\nC-1\nC0\n"
+	    "D\nD1\nD25.5\n"
+	    "E\nE-1\nE1000\n"
+	    "F\nF0\nF123.5junk\n"
+	    "G\nGx\ny\n"
+	    "X";
+	static const uint8_t scoreboard[] =
+	    "I\r\r"
+	    "Enter new scoreboard and path or hit ENTER for 'YTSCORE.ASC'.\r";
+	static const uint8_t too_long[] = "Too long! 41 chars max!!\r";
+	static const uint8_t lottery_invalid[] =
+	    "K\r\rHow many times per day may a user play the lottery? "
+	    "(0 - 9) -=> Range is 1 to 10!\r";
+	static const uint8_t maximum_silent[] =
+	    "A\r\rWhat is the Maximum amount of Cargo Holds allowed? "
+	    "(5 - 1000) -=> Yankee Trader Configuration Program\r";
+	static const uint8_t turns_invalid[] =
+	    "B\r\rTurns allowed per day? (100 - 1000) "
+	    "\r Invalid Range!\r";
+	static const uint8_t fighters_invalid[] =
+	    "C\r\rStarting Number of Fighters? (1 to 10,000) -=> "
+	    "\rInvalid Range!\r";
+	static const uint8_t credits_silent[] =
+	    "D\r\rStarting credits? (25 to 10,000) -=> "
+	    "Yankee Trader Configuration Program\r";
+	static const uint8_t holds_invalid[] =
+	    "E\r\rStarting Amount of Holds? (1 to  1000 ) -=> "
+	    "\r Invalid Range!\r";
+	static const uint8_t dead_silent[] =
+	    "F\r\rDays until deleted? "
+	    "Yankee Trader Configuration Program\r";
+	static const uint8_t maintenance_reprompt[] =
+	    "G\r\rOK to Run Maintenence [Y/N] -=> "
+	    "OK to Run Maintenence [Y/N] -=> ";
+	static const uint8_t ending[] = "X\r\r-=* End of Run *=-\r";
+	static const uint8_t raw_allow[4] = {0x00, 0x00, 0x7d, 0x00};
+	struct yt_game game;
+	struct yt_game restore;
+	struct yt_record original;
+	struct yt_record baseline;
+	struct yt_record expected;
+	uint8_t *screen = NULL;
+	size_t screen_length = 0U;
+	bool snapshot = false;
+	bool valid = false;
+
+	memset(&game, 0, sizeof(game));
+	if (!yt_game_open(&game, YT_OPEN_UPDATE, error))
+		goto done;
+	original = game.config.record;
+	snapshot = true;
+	snprintf(game.config.scoreboard, sizeof(game.config.scoreboard),
+	    "OLD.ASC");
+	game.config.local_screen = 0.0f;
+	game.config.lottery_plays = 3.0f;
+	game.config.maximum_holds = 200.0f;
+	game.config.turns_per_day = 500.0f;
+	game.config.initial_fighters = 500.0f;
+	game.config.initial_credits = 1000.0f;
+	game.config.initial_holds = 20.0f;
+	game.config.retention_days = 30.0f;
+	game.config.last_maintenance = -1.0f;
+	if (game.config.headquarters == 0.0f)
+		game.config.headquarters = 85.0f;
+	if (!yt_config_store(&game.database, &game.config, error)
+	    || !yt_database_flush(&game.database, error)
+	    || !yt_config_load(&game.database, &game.config, error))
+		goto done;
+	baseline = game.config.record;
+	yt_game_close(&game);
+	if (!write_file("config.in", input, sizeof(input) - 1U)
+	    || !run_redirected(YT_CONFIG_EXE, "config.in", "config.out")
+	    || !read_file("config.out", &screen, &screen_length)
+	    || !bytes_contain(screen, screen_length, scoreboard,
+		sizeof(scoreboard) - 1U)
+	    || !bytes_contain(screen, screen_length, too_long,
+		sizeof(too_long) - 1U)
+	    || !bytes_contain(screen, screen_length, lottery_invalid,
+		sizeof(lottery_invalid) - 1U)
+	    || !bytes_contain(screen, screen_length, maximum_silent,
+		sizeof(maximum_silent) - 1U)
+	    || !bytes_contain(screen, screen_length, turns_invalid,
+		sizeof(turns_invalid) - 1U)
+	    || !bytes_contain(screen, screen_length, fighters_invalid,
+		sizeof(fighters_invalid) - 1U)
+	    || !bytes_contain(screen, screen_length, credits_silent,
+		sizeof(credits_silent) - 1U)
+	    || !bytes_contain(screen, screen_length, holds_invalid,
+		sizeof(holds_invalid) - 1U)
+	    || !bytes_contain(screen, screen_length, dead_silent,
+		sizeof(dead_silent) - 1U)
+	    || !bytes_contain(screen, screen_length, maintenance_reprompt,
+		sizeof(maintenance_reprompt) - 1U)
+	    || !bytes_contain(screen, screen_length, ending,
+		sizeof(ending) - 1U))
+		goto done_closed;
+	memset(&game, 0, sizeof(game));
+	if (!yt_game_open(&game, YT_OPEN_READ, error))
+		goto done;
+	expected = baseline;
+	yt_record_set_text(&expected, (const uint8_t *)"YTSCORE.ASC", 11U);
+	valid = yt_record_set_number(&expected, YT_F41, 11.0f)
+	    && yt_record_set_number(&expected, YT_F85, -1.0f)
+	    && yt_record_set_number(&expected, YT_F101, 0.0f)
+	    && yt_record_set_number(&expected, YT_F121, 1000.0f)
+	    && yt_record_set_number(&expected, YT_F49, 1000.0f)
+	    && yt_record_set_number(&expected, YT_F65, 0.0f)
+	    && yt_record_set_number(&expected, YT_F69, 25.5f)
+	    && yt_record_set_number(&expected, YT_F73, 1000.0f)
+	    && yt_record_set_number(&expected, YT_F77, 123.5f)
+	    && yt_record_set_number(&expected, YT_F45,
+		game.config.epoch_year);
+	yt_record_set_raw_number(&expected, YT_F81, raw_allow);
+	valid = valid && game.config.last_maintenance == 0.0f
+	    && memcmp(game.config.record.bytes, expected.bytes,
+		YT_RECORD_SIZE) == 0;
+
+done:
+	yt_game_close(&game);
+done_closed:
+	if (snapshot) {
+		memset(&restore, 0, sizeof(restore));
+		if (!yt_game_open(&restore, YT_OPEN_UPDATE, error)
+		    || !yt_database_write(&restore.database, 1, &original, error)
+		    || !yt_database_flush(&restore.database, error))
+			valid = false;
+		yt_game_close(&restore);
+	}
+	free(screen);
+	return valid;
+}
+
+static bool
 test_portname(struct yt_error *error)
 {
 	static const uint8_t intro[] =
@@ -4473,6 +4615,8 @@ main(void)
 		failure = "YTCONFIG Genesis editor differs";
 	else if (!test_ytconfig_headquarters(&error))
 		failure = "YTCONFIG Headquarters relocation differs";
+	else if (!test_ytconfig_scalar_options(&error))
+		failure = "YTCONFIG scalar options differ";
 	else if (!test_portname(&error))
 		failure = "PORTNAME changed data outside its two owned fields";
 	else if (!test_rmt_standalone_decline(&error))

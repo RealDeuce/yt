@@ -235,6 +235,93 @@ test_headquarters_editor(void)
 	return true;
 }
 
+static bool
+test_scalar_options(void)
+{
+	static const uint8_t scoreboard_prompt[] =
+	    "Enter new scoreboard and path or hit ENTER for 'YTSCORE.ASC'.\r";
+	static const uint8_t scoreboard_long[] =
+	    "Too long! 41 chars max!!\r";
+	static const struct {
+		enum yt_config_scalar_key key;
+		const char *prompt;
+		const char *rejection;
+	} cases[] = {
+		{YT_CONFIG_SCALAR_MAXIMUM_HOLDS,
+		    "What is the Maximum amount of Cargo Holds allowed? "
+		    "(5 - 1000) -=> ", ""},
+		{YT_CONFIG_SCALAR_TURNS,
+		    "Turns allowed per day? (100 - 1000) ",
+		    "\r Invalid Range!\r"},
+		{YT_CONFIG_SCALAR_FIGHTERS,
+		    "Starting Number of Fighters? (1 to 10,000) -=> ",
+		    "\rInvalid Range!\r"},
+		{YT_CONFIG_SCALAR_CREDITS,
+		    "Starting credits? (25 to 10,000) -=> ", ""},
+		{YT_CONFIG_SCALAR_INITIAL_HOLDS,
+		    "Starting Amount of Holds? (1 to  200 ) -=> ",
+		    "\r Invalid Range!\r"},
+		{YT_CONFIG_SCALAR_DEAD_DAYS,
+		    "Days until deleted? ", ""},
+		{YT_CONFIG_SCALAR_MAINTENANCE,
+		    "OK to Run Maintenence [Y/N] -=> ", NULL},
+		{YT_CONFIG_SCALAR_LOTTERY,
+		    "How many times per day may a user play the lottery? "
+		    "(0 - 9) -=> ", "Range is 1 to 10!\r"}
+	};
+	struct yt_config_output_result result;
+	size_t index;
+
+	CHECK(yt_config_compose_scoreboard_prompt(17U, &result));
+	CHECK(result.output_length == sizeof(scoreboard_prompt) - 1U);
+	CHECK(memcmp(result.output, scoreboard_prompt,
+	    sizeof(scoreboard_prompt) - 1U) == 0);
+	CHECK(result.final_column == 0U);
+	CHECK(yt_config_compose_scoreboard_too_long(29U, &result));
+	CHECK(result.output_length == sizeof(scoreboard_long) - 1U);
+	CHECK(memcmp(result.output, scoreboard_long,
+	    sizeof(scoreboard_long) - 1U) == 0);
+	for (index = 0U; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+		CHECK(yt_config_compose_scalar_prompt(cases[index].key, 200.0f,
+		    0U, &result));
+		CHECK(result.output_length == strlen(cases[index].prompt));
+		CHECK(memcmp(result.output, cases[index].prompt,
+		    result.output_length) == 0);
+		if (cases[index].rejection == NULL)
+			continue;
+		CHECK(yt_config_compose_scalar_rejection(cases[index].key,
+		    result.final_column, &result));
+		CHECK(result.output_length == strlen(cases[index].rejection));
+		CHECK(memcmp(result.output, cases[index].rejection,
+		    result.output_length) == 0);
+	}
+	CHECK(!yt_config_scalar_blank_unchanged(
+	    YT_CONFIG_SCALAR_MAXIMUM_HOLDS));
+	CHECK(!yt_config_scalar_blank_unchanged(YT_CONFIG_SCALAR_LOTTERY));
+	CHECK(yt_config_scalar_blank_unchanged(YT_CONFIG_SCALAR_TURNS));
+	CHECK(!yt_config_scalar_valid(YT_CONFIG_SCALAR_MAXIMUM_HOLDS, 4.0f));
+	CHECK(yt_config_scalar_valid(YT_CONFIG_SCALAR_MAXIMUM_HOLDS, 5.0f));
+	CHECK(yt_config_scalar_valid(YT_CONFIG_SCALAR_MAXIMUM_HOLDS, 1000.0f));
+	CHECK(!yt_config_scalar_valid(YT_CONFIG_SCALAR_MAXIMUM_HOLDS, 1001.0f));
+	CHECK(!yt_config_scalar_valid(YT_CONFIG_SCALAR_TURNS, 99.0f));
+	CHECK(yt_config_scalar_valid(YT_CONFIG_SCALAR_TURNS, 1000.0f));
+	CHECK(!yt_config_scalar_valid(YT_CONFIG_SCALAR_TURNS, 1001.0f));
+	CHECK(yt_config_scalar_valid(YT_CONFIG_SCALAR_FIGHTERS, 0.0f));
+	CHECK(!yt_config_scalar_valid(YT_CONFIG_SCALAR_FIGHTERS, -0.01f));
+	CHECK(yt_config_scalar_valid(YT_CONFIG_SCALAR_FIGHTERS, 10000.0f));
+	CHECK(!yt_config_scalar_valid(YT_CONFIG_SCALAR_CREDITS, 24.999f));
+	CHECK(yt_config_scalar_valid(YT_CONFIG_SCALAR_CREDITS, 25.0f));
+	CHECK(yt_config_scalar_valid(YT_CONFIG_SCALAR_INITIAL_HOLDS, 0.0f));
+	CHECK(yt_config_scalar_valid(YT_CONFIG_SCALAR_INITIAL_HOLDS, 1000.0f));
+	CHECK(!yt_config_scalar_valid(YT_CONFIG_SCALAR_DEAD_DAYS, 0.999f));
+	CHECK(yt_config_scalar_valid(YT_CONFIG_SCALAR_DEAD_DAYS, 1.0f));
+	CHECK(yt_config_scalar_valid(YT_CONFIG_SCALAR_DEAD_DAYS, 1.0e20f));
+	CHECK(yt_config_scalar_valid(YT_CONFIG_SCALAR_LOTTERY, 0.0f));
+	CHECK(yt_config_scalar_valid(YT_CONFIG_SCALAR_LOTTERY, 9.0f));
+	CHECK(!yt_config_scalar_valid(YT_CONFIG_SCALAR_LOTTERY, 9.01f));
+	return true;
+}
+
 int
 main(void)
 {
@@ -243,7 +330,8 @@ main(void)
 	    || !test_alternate_rows_and_binary_path()
 	    || !test_dispatch_and_exit()
 	    || !test_genesis_editor()
-	    || !test_headquarters_editor())
+	    || !test_headquarters_editor()
+	    || !test_scalar_options())
 		return 1;
 	puts("ytconfig output tests passed");
 	return 0;
