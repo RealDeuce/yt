@@ -280,6 +280,11 @@ test_random(void)
 		0x9a, 0x99, 0x19,
 		0x80, 0x00, 0x80,
 	};
+	static const uint8_t one_based_bytes[] = {
+		0x00, 0x00, 0x80,
+		0x00, 0x00, 0x80,
+		0x00, 0x00, 0x80,
+	};
 	static const uint8_t market_bytes[] = {
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x80,
 		0x00, 0x00, 0x40, 0x00, 0x00, 0xc0,
@@ -291,6 +296,9 @@ test_random(void)
 	};
 	struct scripted_random integer_script = {
 		integer_bytes, sizeof(integer_bytes), 0
+	};
+	struct scripted_random one_based_script = {
+		one_based_bytes, sizeof(one_based_bytes), 0
 	};
 	struct yt_random random;
 	struct yt_error error;
@@ -334,6 +342,21 @@ test_random(void)
 	CHECK(!yt_random_integer(&random, 10, &integer, &error));
 	CHECK(error.status == YT_RANDOM_ERROR && integer == 77
 	    && random.draws == 5);
+
+	yt_random_set_provider(&random, scripted_fill, &one_based_script);
+	value = 77.0f;
+	CHECK(yt_random_one_based_single(&random, 3.5f, &value, NULL));
+	CHECK(value == 2.0f);
+	CHECK(yt_random_one_based_single(&random, -3.5f, &value, NULL));
+	CHECK(value == -1.0f);
+	CHECK(yt_random_one_based_single(&random, 0.0f, &value, NULL));
+	CHECK(value == 1.0f && random.draws == 3
+	    && one_based_script.position == sizeof(one_based_bytes));
+	yt_error_clear(&error);
+	value = 77.0f;
+	CHECK(!yt_random_one_based_single(&random, 3.5f, &value, &error));
+	CHECK(error.status == YT_RANDOM_ERROR && value == 77.0f
+	    && random.draws == 3);
 }
 
 static void

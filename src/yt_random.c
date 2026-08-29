@@ -67,6 +67,24 @@ random_single_add(float left, float right)
 }
 
 bool
+yt_random_one_based_single(struct yt_random *random, float range,
+    float *value, struct yt_error *error)
+{
+	float selection;
+	volatile float product;
+	volatile float integral;
+	volatile float result;
+
+	if (!yt_random_next(random, &selection, error))
+		return false;
+	product = selection * range;
+	integral = floorf(product);
+	result = integral + 1.0f;
+	*value = result;
+	return true;
+}
+
+bool
 yt_random_integer(struct yt_random *random, int range, int *value,
     struct yt_error *error)
 {
@@ -80,9 +98,10 @@ yt_random_integer(struct yt_random *random, int range, int *value,
 		}
 		return false;
 	}
-	if (!yt_random_next(random, &selection, error))
+	if (!yt_random_one_based_single(random, (float)range, &selection,
+	    error))
 		return false;
-	*value = (int)floorf(random_single_mul(selection, (float)range)) + 1;
+	*value = (int)selection;
 	return true;
 }
 

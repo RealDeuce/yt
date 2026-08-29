@@ -3386,6 +3386,14 @@ random_value(struct yt_session *session, float *value,
 }
 
 static bool
+session_random_one_based(struct yt_session *session, float range,
+    float *value, struct yt_error *error)
+{
+	return yt_random_one_based_single(&session->door->game.random, range,
+	    value, error);
+}
+
+static bool
 emergency_warp(struct yt_session *session, struct yt_error *error)
 {
 	static const uint8_t wormhole[] =
@@ -3960,9 +3968,9 @@ salvage_player(struct yt_session *session, int victim_record,
 			float cursor = 0.0f;
 			int kind;
 
-			if (!random_value(session, &selected, error))
+			if (!session_random_one_based(session, remaining, &selected,
+			    error))
 				return false;
-			selected = floorf(single_mul(selected, remaining)) + 1.0f;
 			for (kind = 0; kind < 4; ++kind) {
 				cursor += stock[kind];
 				if (selected <= cursor) {
