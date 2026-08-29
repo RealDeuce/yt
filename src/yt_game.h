@@ -602,6 +602,14 @@ enum yt_projectile_target_result yt_projectile_target_response(
 float yt_projectile_quantity_response(const char *response);
 void yt_projectile_debit_overlay(struct yt_player *player, bool plasma,
     float amount);
+typedef bool (*yt_projectile_resolver_fn)(void *context, float *origin,
+    float target, float amount, bool plasma, int *counterattack,
+    int *xannor_provoker, struct yt_error *error);
+bool yt_projectile_commit(struct yt_game *game, int player_record,
+    struct yt_player *player, bool plasma, float *origin, float target,
+    float amount, bool *destroyed, int *counterattack, int *xannor_provoker,
+    yt_projectile_resolver_fn resolver, void *resolver_context,
+    struct yt_error *error);
 void yt_current_player_cache_overlay(float *sector_cache, float *cloak_cache,
     size_t cache_count, int player_record, bool anti_cloak,
     const struct yt_player *player);

@@ -12986,6 +12986,17 @@ launch_projectile(struct yt_session *session, float target, float amount,
 }
 
 static bool
+session_projectile_resolver(void *context, float *origin, float target,
+    float amount, bool plasma, int *counterattack, int *xannor_provoker,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return launch_projectile(session, target, amount, plasma, NULL, origin,
+	    counterattack, xannor_provoker, error);
+}
+
+static bool
 session_random_integer(struct yt_session *session, int range, int *value,
     struct yt_error *error)
 {
@@ -13221,6 +13232,7 @@ command_projectile(struct yt_session *session, bool plasma,
 	float available = 0.0f;
 	float target;
 	float amount;
+	float origin;
 	int counterattack = 0;
 	int xannor_provoker = 0;
 
@@ -13281,11 +13293,11 @@ command_projectile(struct yt_session *session, bool plasma,
 	    "projectile accepted blank", error)
 	    || !finalize_action(session, 1.0f, error))
 		return error == NULL || error->status == YT_OK;
-	yt_projectile_debit_overlay(&session->player, plasma, amount);
-	if (!write_player(session, error))
-		return false;
-	if (!launch_projectile(session, target, amount, plasma, NULL, NULL,
-	    &counterattack, &xannor_provoker, error)
+	origin = session->player.sector;
+	if (!yt_projectile_commit(&session->door->game, session->player_record,
+	    &session->player, plasma, &origin, target, amount,
+	    &session->destroyed, &counterattack, &xannor_provoker,
+	    session_projectile_resolver, session, error)
 	    || !launch_player_counterattack(session, counterattack, error)
 	    || !launch_xannor_retaliation(session, xannor_provoker, error))
 		return false;
