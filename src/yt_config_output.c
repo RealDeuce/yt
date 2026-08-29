@@ -227,3 +227,41 @@ yt_config_compose_missing_data(size_t initial_column,
 	return append_line(result,
 	    "\aMAIN DATA FILE NOT FOUND. PLEASE RUN YT-INIT FIRST!");
 }
+
+bool
+yt_config_compose_genesis_prompt(const uint8_t *current_value,
+    size_t current_value_length, size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || (current_value == NULL && current_value_length != 0U)
+	    || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_line(result,
+	    "There are 1000 ports in the game, enter a number")
+	    && append_line(result,
+		"greater than 1000 to TURN OFF the Genesis Function.")
+	    && append_binary_line(result, current_value, current_value_length)
+	    && append_literal(result,
+		"How many ports will a player need to initiate Genesis? "
+		"[50 - 1000] ");
+}
+
+bool
+yt_config_compose_local_beep(size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	result->local_beeps = 1U;
+	return true;
+}
+
+bool
+yt_config_genesis_valid(float threshold)
+{
+	return threshold >= 50.0f;
+}

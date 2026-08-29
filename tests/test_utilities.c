@@ -63,6 +63,21 @@ static bool read_file(const char *path, uint8_t **data, size_t *length);
 static bool write_file(const char *path, const void *data, size_t length);
 
 static bool
+bytes_contain(const uint8_t *data, size_t length, const uint8_t *needle,
+    size_t needle_length)
+{
+	size_t offset;
+
+	if (needle_length > length)
+		return false;
+	for (offset = 0U; offset <= length - needle_length; ++offset) {
+		if (memcmp(data + offset, needle, needle_length) == 0)
+			return true;
+	}
+	return false;
+}
+
+static bool
 utility_random_fill(void *context, void *buffer, size_t length,
     struct yt_error *error)
 {
@@ -3493,6 +3508,103 @@ done:
 }
 
 static bool
+test_ytconfig_genesis(struct yt_error *error)
+{
+	static const uint8_t prompt[] =
+	    "L\r\r"
+	    "There are 1000 ports in the game, enter a number\r"
+	    "greater than 1000 to TURN OFF the Genesis Function.\r"
+	    "\r"
+	    "How many ports will a player need to initiate Genesis? "
+	    "[50 - 1000] ";
+	static const uint8_t stored_row[] =
+	    "<L> Ports needed to initiate Genesis: 100\r";
+	static const char blank_input[] = "L\nX";
+	static const char invalid_input[] = "L10\nX";
+	static const char valid_input[] = "L100\nX";
+	struct yt_game game;
+	struct yt_record baseline;
+	struct yt_record expected_record;
+	uint8_t *output = NULL;
+	size_t output_length = 0U;
+	float original_genesis;
+	bool valid = false;
+
+	memset(&game, 0, sizeof(game));
+	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_UPDATE,
+	    error) || !yt_config_load(&game.database, &game.config, error))
+		goto done;
+	original_genesis = game.config.genesis_ports;
+	game.config.genesis_ports = 300.0f;
+	if (!yt_config_store(&game.database, &game.config, error))
+		goto done;
+	yt_game_close(&game);
+	memset(&game, 0, sizeof(game));
+	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_READ,
+	    error) || !yt_config_load(&game.database, &game.config, error))
+		goto done;
+	baseline = game.config.record;
+	yt_game_close(&game);
+	if (!write_file("config.in", blank_input, sizeof(blank_input) - 1U)
+	    || !run_redirected(YT_CONFIG_EXE, "config.in", "config.out")
+	    || !read_file("config.out", &output, &output_length)
+	    || !bytes_contain(output, output_length, prompt, sizeof(prompt) - 1U)
+	    || memchr(output, '\a', output_length) != NULL)
+		goto done_closed;
+	free(output);
+	output = NULL;
+	memset(&game, 0, sizeof(game));
+	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_READ,
+	    error) || !yt_config_load(&game.database, &game.config, error)
+	    || memcmp(game.config.record.bytes, baseline.bytes,
+		YT_RECORD_SIZE) != 0)
+		goto done;
+	yt_game_close(&game);
+	if (!write_file("config.in", invalid_input, sizeof(invalid_input) - 1U)
+	    || !run_redirected(YT_CONFIG_EXE, "config.in", "config.out")
+	    || !read_file("config.out", &output, &output_length)
+	    || !bytes_contain(output, output_length, prompt, sizeof(prompt) - 1U)
+	    || memchr(output, '\a', output_length) == NULL)
+		goto done_closed;
+	free(output);
+	output = NULL;
+	memset(&game, 0, sizeof(game));
+	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_READ,
+	    error) || !yt_config_load(&game.database, &game.config, error)
+	    || game.config.genesis_ports != 300.0f
+	    || memcmp(game.config.record.bytes, baseline.bytes,
+		YT_RECORD_SIZE) != 0)
+		goto done;
+	yt_game_close(&game);
+	if (!write_file("config.in", valid_input, sizeof(valid_input) - 1U)
+	    || !run_redirected(YT_CONFIG_EXE, "config.in", "config.out")
+	    || !read_file("config.out", &output, &output_length)
+	    || !bytes_contain(output, output_length, prompt, sizeof(prompt) - 1U)
+	    || !bytes_contain(output, output_length, stored_row,
+		sizeof(stored_row) - 1U)
+	    || memchr(output, '\a', output_length) != NULL)
+		goto done_closed;
+	memset(&game, 0, sizeof(game));
+	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_UPDATE,
+	    error) || !yt_config_load(&game.database, &game.config, error))
+		goto done;
+	expected_record = baseline;
+	valid = yt_record_set_number(&expected_record, YT_F105, 100.0f)
+	    && game.config.genesis_ports == 100.0f
+	    && memcmp(game.config.record.bytes, expected_record.bytes,
+		YT_RECORD_SIZE) == 0;
+	game.config.genesis_ports = original_genesis;
+	if (!yt_config_store(&game.database, &game.config, error))
+		valid = false;
+
+done:
+	yt_game_close(&game);
+done_closed:
+	free(output);
+	return valid;
+}
+
+static bool
 test_portname(struct yt_error *error)
 {
 	static const uint8_t intro[] =
@@ -4227,6 +4339,8 @@ main(void)
 		failure = "YTCONFIG executable behavior differs";
 	else if (!test_ytconfig_missing_data())
 		failure = "YTCONFIG missing-data terminal differs";
+	else if (!test_ytconfig_genesis(&error))
+		failure = "YTCONFIG Genesis editor differs";
 	else if (!test_portname(&error))
 		failure = "PORTNAME changed data outside its two owned fields";
 	else if (!test_rmt_standalone_decline(&error))

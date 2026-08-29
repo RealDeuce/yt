@@ -17,6 +17,7 @@ struct yt_config_output_result {
 	uint8_t output[YT_CONFIG_OUTPUT_SIZE];
 	size_t output_length;
 	size_t final_column;
+	unsigned local_beeps;
 };
 
 bool yt_config_prepare_menu_working(const struct yt_config *config,
@@ -31,5 +32,11 @@ bool yt_config_compose_exit(size_t initial_column,
     struct yt_config_output_result *result);
 bool yt_config_compose_missing_data(size_t initial_column,
     struct yt_config_output_result *result);
+bool yt_config_compose_genesis_prompt(const uint8_t *current_value,
+    size_t current_value_length, size_t initial_column,
+    struct yt_config_output_result *result);
+bool yt_config_compose_local_beep(size_t initial_column,
+    struct yt_config_output_result *result);
+bool yt_config_genesis_valid(float threshold);
 
 #endif

@@ -75,6 +75,8 @@ static bool
 write_output(const struct yt_config_output_result *output,
     struct yt_error *error)
 {
+	unsigned beep;
+
 	if (output->output_length != 0U
 	    && fwrite(output->output, 1, output->output_length, stdout)
 	    != output->output_length) {
@@ -85,6 +87,17 @@ write_output(const struct yt_config_output_result *output,
 			snprintf(error->path, sizeof(error->path), "stdout");
 		}
 		return false;
+	}
+	for (beep = 0U; beep < output->local_beeps; ++beep) {
+		if (fputc('\a', stdout) == EOF) {
+			if (error != NULL) {
+				error->status = YT_IO_ERROR;
+				snprintf(error->operation, sizeof(error->operation),
+				    "beep configuration console");
+				snprintf(error->path, sizeof(error->path), "stdout");
+			}
+			return false;
+		}
 	}
 	return true;
 }
@@ -142,13 +155,6 @@ numeric_edit(struct yt_game *game, char key, float *maximum, float *lottery,
 		minimum = 0.0f; high = 9.0f; blank_unchanged = false;
 		field = &game->config.lottery_plays;
 		break;
-	case 'L':
-		puts("There are 1000 ports in the game, enter a number");
-		puts("greater than 1000 to TURN OFF the Genesis Function.");
-		prompt = "How many ports will a player need to initiate Genesis? [50 - 1000] ";
-		minimum = 50.0f; bounded_high = false;
-		field = &game->config.genesis_ports;
-		break;
 	default:
 		return true;
 	}
@@ -163,8 +169,6 @@ numeric_edit(struct yt_game *game, char key, float *maximum, float *lottery,
 			puts("Invalid Range!");
 		else if (key == 'K')
 			puts("Range is 1 to 10!");
-		else if (key == 'L')
-			fputc('\a', stdout);
 		return true;
 	}
 	*field = value;
@@ -172,6 +176,31 @@ numeric_edit(struct yt_game *game, char key, float *maximum, float *lottery,
 		*maximum = value;
 	else if (key == 'K')
 		*lottery = value;
+	return store_config(game, error);
+}
+
+static bool
+edit_genesis(struct yt_game *game, struct yt_error *error)
+{
+	struct yt_config_output_result output;
+	struct qb_val_result parsed;
+	char line[160];
+	float threshold;
+
+	if (!yt_config_compose_genesis_prompt(NULL, 0U, 0U, &output)
+	    || !write_output(&output, error))
+		return false;
+	if (!yt_cli_line(line, sizeof(line)) || line[0] == '\0')
+		return true;
+	parsed = qb_val(line);
+	threshold = (float)(parsed.valid ? parsed.value : 0.0);
+	if (!yt_config_genesis_valid(threshold)) {
+		if (!yt_config_compose_local_beep(output.final_column, &output)
+		    || !write_output(&output, error))
+			return false;
+		return true;
+	}
+	game->config.genesis_ports = threshold;
 	return store_config(game, error);
 }
 
@@ -646,7 +675,7 @@ main(void)
 		    || !write_output(&output, &error))
 			goto failure;
 		key = (char)folded;
-		if (strchr("ABCDEFKL", key) != NULL) {
+		if (strchr("ABCDEFK", key) != NULL) {
 			if (!numeric_edit(&game, key, &working.maximum_holds,
 			    &working.lottery_plays, &error))
 				goto failure;
@@ -675,6 +704,10 @@ main(void)
 				if (!store_config(&game, &error))
 					goto failure;
 			}
+		}
+		else if (key == 'L') {
+			if (!edit_genesis(&game, &error))
+				goto failure;
 		}
 		else if (key == 'N') {
 			if (!edit_aliases(&game, &error))

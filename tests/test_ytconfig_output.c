@@ -177,13 +177,41 @@ test_dispatch_and_exit(void)
 	return true;
 }
 
+static bool
+test_genesis_editor(void)
+{
+	static const uint8_t expected[] =
+	    "There are 1000 ports in the game, enter a number\r"
+	    "greater than 1000 to TURN OFF the Genesis Function.\r"
+	    "Version\r"
+	    "How many ports will a player need to initiate Genesis? "
+	    "[50 - 1000] ";
+	struct yt_config_output_result result;
+
+	CHECK(yt_config_compose_genesis_prompt((const uint8_t *)"Version", 7U,
+	    0U, &result));
+	CHECK(result.output_length == sizeof(expected) - 1U);
+	CHECK(memcmp(result.output, expected, sizeof(expected) - 1U) == 0);
+	CHECK(result.final_column == 67U);
+	CHECK(result.local_beeps == 0U);
+	CHECK(yt_config_compose_local_beep(result.final_column, &result));
+	CHECK(result.output_length == 0U);
+	CHECK(result.final_column == 67U);
+	CHECK(result.local_beeps == 1U);
+	CHECK(!yt_config_genesis_valid(49.999996f));
+	CHECK(yt_config_genesis_valid(50.0f));
+	CHECK(yt_config_genesis_valid(1001.0f));
+	return true;
+}
+
 int
 main(void)
 {
 	if (!test_startup_working_values()
 	    || !test_canonical_menu()
 	    || !test_alternate_rows_and_binary_path()
-	    || !test_dispatch_and_exit())
+	    || !test_dispatch_and_exit()
+	    || !test_genesis_editor())
 		return 1;
 	puts("ytconfig output tests passed");
 	return 0;
