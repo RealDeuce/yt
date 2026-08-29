@@ -1105,30 +1105,24 @@ static bool
 check_maintenance_entry_output(void)
 {
 	static const uint8_t expected_common[] =
-	    "08/22/26\rYankee Trader Maintenance program\r"
-	    "        by Alan Davenport\rEpoch 26\r"
-	    "       12:34:56\rStatus\rThis should be run once per day.\r"
-	    "08/22/26\rLoading players, deleting inactive players and "
-	    "subtracting cloak charge.\rPlayers\r";
+	    "\rYankee Trader Maintenance program\r"
+	    "        by Alan Davenport\r\r"
+	    "       (Revision 03/14/94)\r\r"
+	    "This should be run once per day.\r"
+	    "\rLoading players, deleting inactive players and "
+	    "subtracting cloak charge.\r\r";
 	static const uint8_t expected_same_day[] =
-	    "08/22/26\rMaintenance not needed!\r";
+	    "\rMaintenance not needed!\r";
 	static const uint8_t expected_wrapper[] =
-	    "08/22/26\rDaily Maintenance Completed OK\r";
+	    "\rDaily Maintenance Completed OK\r";
 	static const uint8_t expected_compaction[] =
-	    "08/22/26\rCompressing Message Base's\r";
-	struct yt_maintenance_entry_dynamic dynamic = {
-		{(const uint8_t *)"08/22/26", 8U},
-		{(const uint8_t *)"Epoch 26", 8U},
-		{(const uint8_t *)"12:34:56", 8U},
-		{(const uint8_t *)"Status", 6U},
-		{(const uint8_t *)"Players", 7U},
-	};
+	    "\rCompressing Message Base's\r";
 	struct yt_maintenance_output_result result;
 	size_t prefix_length = sizeof(expected_same_day) - 1U;
 
 	if (!yt_maintenance_same_day(123.0f, 123.0f)
 	    || yt_maintenance_same_day(122.0f, 123.0f)
-	    || !yt_maintenance_compose_entry(&dynamic, false, &result)
+	    || !yt_maintenance_compose_entry(false, &result)
 	    || result.row_count != 11U || result.final_column != 0U
 	    || result.output_length != sizeof(expected_common) - 1U
 	    || memcmp(result.output, expected_common,
@@ -1138,7 +1132,7 @@ check_maintenance_entry_output(void)
 	    || result.rows[4].newline
 	    || result.rows[10].address != 0x050DU)
 		return false;
-	if (!yt_maintenance_compose_entry(&dynamic, true, &result)
+	if (!yt_maintenance_compose_entry(true, &result)
 	    || result.row_count != 13U
 	    || result.output_length != prefix_length
 	    + sizeof(expected_common) - 1U
@@ -1148,8 +1142,7 @@ check_maintenance_entry_output(void)
 	    || result.rows[0].address != 0x036DU
 	    || result.rows[1].address != 0x037FU)
 		return false;
-	if (!yt_maintenance_compose_wrapper(dynamic.date_heading.data,
-	    dynamic.date_heading.length, &result)
+	if (!yt_maintenance_compose_wrapper(&result)
 	    || result.row_count != 2U
 	    || result.output_length != sizeof(expected_wrapper) - 1U
 	    || memcmp(result.output, expected_wrapper,
@@ -1157,8 +1150,7 @@ check_maintenance_entry_output(void)
 	    || result.rows[0].address != 0x004FU
 	    || result.rows[1].address != 0x0061U)
 		return false;
-	if (!yt_maintenance_compose_message_compaction(
-	    dynamic.date_heading.data, dynamic.date_heading.length, &result)
+	if (!yt_maintenance_compose_message_compaction(&result)
 	    || result.row_count != 2U
 	    || result.output_length != sizeof(expected_compaction) - 1U
 	    || memcmp(result.output, expected_compaction,
@@ -1166,9 +1158,9 @@ check_maintenance_entry_output(void)
 	    || result.rows[0].address != 0x673AU
 	    || result.rows[1].address != 0x674CU)
 		return false;
-	return !yt_maintenance_compose_entry(NULL, false, &result)
-	    && !yt_maintenance_compose_wrapper(NULL, 1U, &result)
-	    && !yt_maintenance_compose_message_compaction(NULL, 1U, &result);
+	return !yt_maintenance_compose_entry(false, NULL)
+	    && !yt_maintenance_compose_wrapper(NULL)
+	    && !yt_maintenance_compose_message_compaction(NULL);
 }
 
 struct score_random_script {
@@ -1197,10 +1189,10 @@ static bool
 check_maintenance_port_model(void)
 {
 	static const uint8_t zero_output[] =
-	    "08/22/26\rRunning port maintenance...\r";
+	    "\rRunning port maintenance...\r";
 	static const uint8_t plague_output[] =
-	    "08/22/26\rRunning port maintenance...\r"
-	    "08/22/26\r"
+	    "\rRunning port maintenance...\r"
+	    "\r"
 	    " 3 *** ports contracted the plague and lost productivity! ***\r";
 	static const uint8_t draws[] = {
 		0x00, 0x00, 0x40,
@@ -1214,14 +1206,14 @@ check_maintenance_port_model(void)
 	struct yt_port port;
 	struct yt_error error;
 
-	if (!yt_maintenance_compose_port_phase((const uint8_t *)"08/22/26",
-	    8U, 0, &output) || output.row_count != 2U
+	if (!yt_maintenance_compose_port_phase(NULL,
+	    0U, 0, &output) || output.row_count != 2U
 	    || output.output_length != sizeof(zero_output) - 1U
 	    || memcmp(output.output, zero_output, sizeof(zero_output) - 1U) != 0
 	    || output.rows[0].address != 0x07A3U
 	    || output.rows[1].address != 0x07B5U
 	    || !yt_maintenance_compose_port_phase(
-	    (const uint8_t *)"08/22/26", 8U, 3, &output)
+	    NULL, 0U, 3, &output)
 	    || output.row_count != 4U
 	    || output.output_length != sizeof(plague_output) - 1U
 	    || memcmp(output.output, plague_output,
@@ -1298,11 +1290,11 @@ static bool
 check_maintenance_mercenary_output(void)
 {
 	static const uint8_t expected[] =
-	    "08/22/26\r\r"
+	    "\r\r"
 	    "  -  The goverment has collected 100 credits tax from the ports.\r"
-	    "08/22/26\rMercenary Maintenance...\r\r"
+	    "\rMercenary Maintenance...\r\r"
 	    "Checking for Mercenary Planet.. Rebuild if missing\r"
-	    "08/22/26\r"
+	    "\r"
 	    "  -  The Mercenaries have built a home base using a captured "
 	    "Genesis Device!\r"
 	    "  -  The government has hired 100 mercenaries to help Fight the "
@@ -1312,7 +1304,7 @@ check_maintenance_mercenary_output(void)
 	struct yt_maintenance_output_result output;
 
 	if (!yt_maintenance_compose_mercenary_phase(
-	    (const uint8_t *)"08/22/26", 8U, 100.0f, true, 100.0f,
+	    NULL, 0U, 100.0f, true, 100.0f,
 	    &output)
 	    || output.row_count != 10U
 	    || output.output_length != sizeof(expected) - 1U
@@ -1363,10 +1355,10 @@ static bool
 check_maintenance_planet_model(void)
 {
 	static const uint8_t heading[] =
-	    "08/22/26\rRunning planet maintenance...\r";
+	    "\rRunning planet maintenance...\r";
 	static const uint8_t civil_output[] =
-	    "08/22/26\rRunning planet maintenance...\r"
-	    "08/22/26\r"
+	    "\rRunning planet maintenance...\r"
+	    "\r"
 	    "  -  CIVIL WAR has struck planet Xannoron as a result of "
 	    "overcrowding!\r"
 	    "  -  Productivity reduced from 600 units to 300 units!\r"
@@ -1405,12 +1397,12 @@ check_maintenance_planet_model(void)
 	struct yt_error error;
 
 	if (!yt_maintenance_compose_planet_phase(
-	    (const uint8_t *)"08/22/26", 8U, NULL, NULL, &output)
+	    NULL, 0U, NULL, NULL, &output)
 	    || output.row_count != 2U
 	    || output.output_length != sizeof(heading) - 1U
 	    || memcmp(output.output, heading, sizeof(heading) - 1U) != 0
 	    || !yt_maintenance_compose_planet_phase(
-	    (const uint8_t *)"08/22/26", 8U, &name, &synthetic, &output)
+	    NULL, 0U, &name, &synthetic, &output)
 	    || output.row_count != 7U
 	    || output.output_length != sizeof(civil_output) - 1U
 	    || memcmp(output.output, civil_output,
@@ -1493,7 +1485,7 @@ check_maintenance_planet_model(void)
 	    || planet.production[2] != 1000000.0f
 	    || script.position != sizeof(plague_draws)
 	    || !yt_maintenance_compose_planet_phase(
-	    (const uint8_t *)"08/22/26", 8U, &name, &mutation, &output)
+	    NULL, 0U, &name, &mutation, &output)
 	    || output.row_count != 5U
 	    || output.rows[3].length < sizeof("  -  A PLAGUE") - 1U
 	    || memcmp(output.rows[3].data, "  -  A PLAGUE",
@@ -1508,17 +1500,17 @@ static bool
 check_maintenance_wanderer_model(void)
 {
 	static const uint8_t existing[] =
-	    "08/22/26\rMoving The Wanderer (Planet #1)\r"
-	    "08/22/26\rWanderer has successfully warped!\r";
+	    "\rMoving The Wanderer (Planet #1)\r"
+	    "\rWanderer has successfully warped!\r";
 	static const uint8_t rebuilt[] =
-	    "08/22/26\rMoving The Wanderer (Planet #1)\r"
+	    "\rMoving The Wanderer (Planet #1)\r"
 	    "  -  The Wanderer is missing or has been destroyed!\r"
 	    "  -  The Wanderer regenerated with P.H.O.E.N.I.X. device!\r"
-	    "08/22/26\rWanderer has successfully warped!\r";
+	    "\rWanderer has successfully warped!\r";
 	struct yt_maintenance_output_result output;
 
 	if (!yt_maintenance_compose_wanderer_phase(
-	    (const uint8_t *)"08/22/26", 8U, false, &output)
+	    NULL, 0U, false, &output)
 	    || output.row_count != 4U
 	    || output.output_length != sizeof(existing) - 1U
 	    || memcmp(output.output, existing, sizeof(existing) - 1U) != 0
@@ -1527,7 +1519,7 @@ check_maintenance_wanderer_model(void)
 	    || output.rows[2].address != 0x1F6CU
 	    || output.rows[3].address != 0x1F93U
 	    || !yt_maintenance_compose_wanderer_phase(
-	    (const uint8_t *)"08/22/26", 8U, true, &output)
+	    NULL, 0U, true, &output)
 	    || output.row_count != 6U
 	    || output.output_length != sizeof(rebuilt) - 1U
 	    || memcmp(output.output, rebuilt, sizeof(rebuilt) - 1U) != 0
@@ -1543,22 +1535,22 @@ static bool
 check_maintenance_xannor_home_model(void)
 {
 	static const uint8_t existing[] =
-	    "08/22/26\rChecking for Planet Xannor, create it if missing.\r";
+	    "\rChecking for Planet Xannor, create it if missing.\r";
 	static const uint8_t rebuilt[] =
-	    "08/22/26\rChecking for Planet Xannor, create it if missing.\r"
-	    "08/22/26\r  -  The Xannor have made a Planet!\r"
+	    "\rChecking for Planet Xannor, create it if missing.\r"
+	    "\r  -  The Xannor have made a Planet!\r"
 	    "The Xannor home base now has a planet!\r";
 	struct yt_maintenance_output_result output;
 
 	if (!yt_maintenance_compose_xannor_home(
-	    (const uint8_t *)"08/22/26", 8U, false, &output)
+	    NULL, 0U, false, &output)
 	    || output.row_count != 2U
 	    || output.output_length != sizeof(existing) - 1U
 	    || memcmp(output.output, existing, sizeof(existing) - 1U) != 0
 	    || output.rows[0].address != 0x2073U
 	    || output.rows[1].address != 0x2085U
 	    || !yt_maintenance_compose_xannor_home(
-	    (const uint8_t *)"08/22/26", 8U, true, &output)
+	    NULL, 0U, true, &output)
 	    || output.row_count != 5U
 	    || output.output_length != sizeof(rebuilt) - 1U
 	    || memcmp(output.output, rebuilt, sizeof(rebuilt) - 1U) != 0
@@ -1574,17 +1566,17 @@ static bool
 check_maintenance_xannor_hunt_model(void)
 {
 	static const uint8_t ordinary[] =
-	    "08/22/26\rProcessing the Xannor.....\r\r"
+	    "\rProcessing the Xannor.....\r\r"
 	    "Locating Top Player... (For Groups 16 - 20 to Pick on!)\r";
 	static const uint8_t selected[] =
-	    "08/22/26\rProcessing the Xannor.....\r\r"
+	    "\rProcessing the Xannor.....\r\r"
 	    "Locating Top Player... (For Groups 16 - 20 to Pick on!)\r"
-	    "08/22/26\rGroup 20 will hunt for Alice\r";
+	    "\rGroup 20 will hunt for Alice\r";
 	struct yt_maintenance_text name = {(const uint8_t *)"Alice", 5U};
 	struct yt_maintenance_output_result output;
 
 	if (!yt_maintenance_compose_xannor_hunt(
-	    (const uint8_t *)"08/22/26", 8U, NULL, &output)
+	    NULL, 0U, NULL, &output)
 	    || output.row_count != 4U
 	    || output.output_length != sizeof(ordinary) - 1U
 	    || memcmp(output.output, ordinary, sizeof(ordinary) - 1U) != 0
@@ -1593,7 +1585,7 @@ check_maintenance_xannor_hunt_model(void)
 	    || output.rows[2].address != 0x240FU
 	    || output.rows[3].address != 0x2421U
 	    || !yt_maintenance_compose_xannor_hunt(
-	    (const uint8_t *)"08/22/26", 8U, &name, &output)
+	    NULL, 0U, &name, &output)
 	    || output.row_count != 6U
 	    || output.output_length != sizeof(selected) - 1U
 	    || memcmp(output.output, selected, sizeof(selected) - 1U) != 0
@@ -1653,8 +1645,8 @@ static bool
 check_maintenance_xannor_regeneration_model(void)
 {
 	static const uint8_t expected[] =
-	    "08/22/26\rCalculated Dynamic Xannor Regeneration is 200 fighters.\r"
-	    "08/22/26\r";
+	    "\rCalculated Dynamic Xannor Regeneration is 200 fighters.\r"
+	    "\r";
 	struct yt_maintenance_xannor_regeneration_result mutation;
 	struct yt_maintenance_output_result output;
 	float size[21] = {0};
@@ -1666,7 +1658,7 @@ check_maintenance_xannor_regeneration_model(void)
 	    || mutation.regeneration != 200.0
 	    || mutation.group_one_after != 1200.0f
 	    || !yt_maintenance_compose_xannor_regeneration(
-	    (const uint8_t *)"08/22/26", 8U, mutation.regeneration, &output)
+	    NULL, 0U, mutation.regeneration, &output)
 	    || output.row_count != 3U
 	    || output.output_length != sizeof(expected) - 1U
 	    || memcmp(output.output, expected, sizeof(expected) - 1U) != 0
@@ -1976,7 +1968,7 @@ score_line_collect(void *context, const uint8_t *line, size_t length,
 {
 	struct score_line_tape *tape = context;
 
-	if (tape == NULL || line == NULL
+	if (tape == NULL || (line == NULL && length != 0U)
 	    || length + 1U > sizeof(tape->data) - tape->length) {
 		if (error != NULL)
 			error->status = YT_RANGE;
@@ -2216,8 +2208,8 @@ check_maintenance_port_pass(void)
 		0x00, 0x00, 0xc0
 	};
 	static const uint8_t expected_screen[] =
-	    "08/22/26\rRunning port maintenance...\r"
-	    "08/22/26\r"
+	    "\rRunning port maintenance...\r"
+	    "\r"
 	    " 1 *** ports contracted the plague and lost productivity! ***\r";
 	static const uint8_t expected_news[] =
 	    " 1 *** ports contracted the plague and lost productivity! ***\r\n\x1a";
@@ -2261,7 +2253,7 @@ check_maintenance_port_pass(void)
 	}
 	yt_platform_set_clock_provider(score_clock_read, &clock_script);
 	if (!yt_maintenance_maintain_ports(&game,
-	    (const uint8_t *)"08/22/26", 8U, score_line_collect, &screen,
+	    NULL, 0U, score_line_collect, &screen,
 	    &plagued, &error) || plagued != 1
 	    || clock_script.position != 4U
 	    || random_script.position != sizeof(random_bytes)
@@ -3266,10 +3258,10 @@ check_maintenance_super_lottery_pass(void)
 	};
 	static const uint8_t coin_draw[] = {0x00, 0x00, 0x00};
 	static const uint8_t expected_screen[] =
-	    "08/22/26\rRunning Super Planet Lottery\r"
+	    "\rRunning Super Planet Lottery\r"
 	    " *** A\0da won a PLANET in the SUPER LOTTERY!!!!!\a\r";
 	static const uint8_t expected_failure[] =
-	    "08/22/26\rRunning Super Planet Lottery\r"
+	    "\rRunning Super Planet Lottery\r"
 	    "No one won a planet today.\r";
 	static const uint8_t expected_news[] =
 	    " *** A\0da won a PLANET in the SUPER LOTTERY!!!!!\a\r\n\x1a";
@@ -3337,7 +3329,7 @@ check_maintenance_super_lottery_pass(void)
 	    || !yt_database_write(&game.database, 11U, &sector_before, &error))
 		goto done;
 	if (!yt_maintenance_super_lottery(&game, 1, 1, 1,
-	    (const uint8_t *)"08/22/26", 8U, score_line_collect, &screen,
+	    NULL, 0U, score_line_collect, &screen,
 	    &result, &error)
 	    || result.failure != YT_MAINTENANCE_LOTTERY_SUCCESS
 	    || result.player_record != 2 || result.planet_number != 1
@@ -3402,7 +3394,7 @@ check_maintenance_super_lottery_pass(void)
 	if (!yt_record_set_number(&player, YT_F85, 0.0f)
 	    || !yt_database_write(&game.database, 2U, &player, &error)
 	    || !yt_maintenance_super_lottery(&game, 1, 1, 1,
-	    (const uint8_t *)"08/22/26", 8U, score_line_collect, &screen,
+	    NULL, 0U, score_line_collect, &screen,
 	    &result, &error)
 	    || result.failure != YT_MAINTENANCE_LOTTERY_BLANK_PLAYER
 	    || result.player_record != 2 || result.draws_consumed != 2U
@@ -3419,7 +3411,7 @@ check_maintenance_super_lottery_pass(void)
 	    || !yt_record_set_number(&planet_before, YT_F85, 1.0f)
 	    || !yt_database_write(&game.database, 31U, &planet_before, &error)
 	    || !yt_maintenance_super_lottery(&game, 1, 1, 1,
-	    (const uint8_t *)"08/22/26", 8U, score_line_collect, &screen,
+	    NULL, 0U, score_line_collect, &screen,
 	    &result, &error)
 	    || result.failure != YT_MAINTENANCE_LOTTERY_OCCUPIED_PLANET
 	    || result.planet_number != 1 || result.draws_consumed != 3U
@@ -3436,7 +3428,7 @@ check_maintenance_super_lottery_pass(void)
 	    || !yt_record_set_number(&sector_before, YT_F93, 1.0f)
 	    || !yt_database_write(&game.database, 11U, &sector_before, &error)
 	    || !yt_maintenance_super_lottery(&game, 1, 1, 1,
-	    (const uint8_t *)"08/22/26", 8U, score_line_collect, &screen,
+	    NULL, 0U, score_line_collect, &screen,
 	    &result, &error)
 	    || result.failure != YT_MAINTENANCE_LOTTERY_OCCUPIED_SECTOR
 	    || result.sector_number != 1 || result.draws_consumed != 4U
@@ -3449,7 +3441,7 @@ check_maintenance_super_lottery_pass(void)
 	yt_random_init(&game.random);
 	yt_random_set_provider(&game.random, score_random_fill, &script);
 	if (!yt_maintenance_super_lottery(&game, 1, 1, 1,
-	    (const uint8_t *)"08/22/26", 8U, score_line_collect, &screen,
+	    NULL, 0U, score_line_collect, &screen,
 	    &result, &error)
 	    || result.failure != YT_MAINTENANCE_LOTTERY_COIN
 	    || result.draws_consumed != 1U
@@ -3568,8 +3560,8 @@ check_maintenance_planet_pass(void)
 		0x00, 0x00, 0x80, 0x00, 0x00, 0x80, 0x00, 0x00, 0x40
 	};
 	static const uint8_t expected_screen[] =
-	    "08/22/26\rRunning planet maintenance...\r"
-	    "08/22/26\r"
+	    "\rRunning planet maintenance...\r"
+	    "\r"
 	    "  -  CIVIL WAR has struck planet Xannoron as a result of "
 	    "overcrowding!\r"
 	    "  -  Productivity reduced from 600 units to 300 units!\r"
@@ -3622,7 +3614,7 @@ check_maintenance_planet_pass(void)
 	}
 	yt_platform_set_clock_provider(score_clock_read, &clock_script);
 	if (!yt_maintenance_maintain_planets(&game,
-	    (const uint8_t *)"08/22/26", 8U, score_line_collect, &screen,
+	    NULL, 0U, score_line_collect, &screen,
 	    &events, &error) || events != 1 || clock_script.position != 4U
 	    || random_script.position != sizeof(random_bytes)
 	    || game.random.draws != 12U || screen.lines != 7U
@@ -3712,13 +3704,13 @@ check_maintenance_wanderer_pass(void)
 		0x00, 0x00, 0x00, 0x00, 0x00, 0xc0
 	};
 	static const uint8_t expected_existing[] =
-	    "08/22/26\rMoving The Wanderer (Planet #1)\r"
-	    "08/22/26\rWanderer has successfully warped!\r";
+	    "\rMoving The Wanderer (Planet #1)\r"
+	    "\rWanderer has successfully warped!\r";
 	static const uint8_t expected_missing[] =
-	    "08/22/26\rMoving The Wanderer (Planet #1)\r"
+	    "\rMoving The Wanderer (Planet #1)\r"
 	    "  -  The Wanderer is missing or has been destroyed!\r"
 	    "  -  The Wanderer regenerated with P.H.O.E.N.I.X. device!\r"
-	    "08/22/26\rWanderer has successfully warped!\r";
+	    "\rWanderer has successfully warped!\r";
 	static const uint8_t expected_news[] =
 	    "  -  The Wanderer is missing or has been destroyed!\r\n"
 	    "  -  The Wanderer regenerated with P.H.O.E.N.I.X. device!\r\n"
@@ -3766,7 +3758,7 @@ check_maintenance_wanderer_pass(void)
 	}
 	memset(&screen, 0, sizeof(screen));
 	if (!yt_maintenance_maintain_wanderer(&game,
-	    (const uint8_t *)"08/22/26", 8U, score_line_collect, &screen,
+	    NULL, 0U, score_line_collect, &screen,
 	    &mutation, &error)
 	    || mutation.scanned_sectors != 1 || mutation.removed_sector != 1
 	    || mutation.rebuilt || mutation.candidate_attempts != 2
@@ -3826,7 +3818,7 @@ check_maintenance_wanderer_pass(void)
 	memset(&screen, 0, sizeof(screen));
 	yt_platform_set_clock_provider(score_clock_read, &clock_script);
 	if (!yt_maintenance_maintain_wanderer(&game,
-	    (const uint8_t *)"08/22/26", 8U, score_line_collect, &screen,
+	    NULL, 0U, score_line_collect, &screen,
 	    &mutation, &error)
 	    || mutation.scanned_sectors != 3 || mutation.removed_sector != 0
 	    || !mutation.rebuilt || mutation.candidate_attempts != 2
@@ -3903,11 +3895,11 @@ check_maintenance_xannor_home_pass(void)
 	static const uint8_t bypass_draw[] = {0x00, 0x00, 0xc0};
 	static const uint8_t existing_draw[] = {0x00, 0x00, 0x00};
 	static const uint8_t expected_rebuild[] =
-	    "08/22/26\rChecking for Planet Xannor, create it if missing.\r"
-	    "08/22/26\r  -  The Xannor have made a Planet!\r"
+	    "\rChecking for Planet Xannor, create it if missing.\r"
+	    "\r  -  The Xannor have made a Planet!\r"
 	    "The Xannor home base now has a planet!\r";
 	static const uint8_t expected_bypass[] =
-	    "08/22/26\rChecking for Planet Xannor, create it if missing.\r";
+	    "\rChecking for Planet Xannor, create it if missing.\r";
 	static const uint8_t expected_news[] =
 	    "  -  The Xannor have made a Planet!\r\n"
 	    "The Xannor home base now has a planet!\r\n\x1a";
@@ -3953,7 +3945,7 @@ check_maintenance_xannor_home_pass(void)
 		goto done;
 	yt_platform_set_clock_provider(score_clock_read, &clock_script);
 	if (!yt_maintenance_maintain_xannor_home(&game,
-	    (const uint8_t *)"08/22/26", 8U, score_line_collect, &screen,
+	    NULL, 0U, score_line_collect, &screen,
 	    &mutation, &error)
 	    || mutation.planet_link_before != 0.0f || !mutation.rebuilt
 	    || mutation.ground_before_daily_update != 125.0f
@@ -4014,7 +4006,7 @@ check_maintenance_xannor_home_pass(void)
 	memset(&screen, 0, sizeof(screen));
 	clock_script.position = 0U;
 	if (!yt_maintenance_maintain_xannor_home(&game,
-	    (const uint8_t *)"08/22/26", 8U, score_line_collect, &screen,
+	    NULL, 0U, score_line_collect, &screen,
 	    &mutation, &error)
 	    || mutation.planet_link_before != 2.0f || mutation.rebuilt
 	    || mutation.ground_before_daily_update != 10.0f
@@ -4054,7 +4046,7 @@ check_maintenance_xannor_home_pass(void)
 	memset(&screen, 0, sizeof(screen));
 	clock_script.position = 0U;
 	if (!yt_maintenance_maintain_xannor_home(&game,
-	    (const uint8_t *)"08/22/26", 8U, score_line_collect, &screen,
+	    NULL, 0U, score_line_collect, &screen,
 	    &mutation, &error)
 	    || mutation.planet_link_before != 3.0f || mutation.rebuilt
 	    || mutation.ground_before_daily_update != 10.0f
@@ -4110,11 +4102,11 @@ check_maintenance_xannor_hunt_pass(void)
 	};
 	static const uint8_t rejected_draw[] = {0xff, 0xff, 0xe5};
 	static const uint8_t selected_screen[] =
-	    "08/22/26\rProcessing the Xannor.....\r\r"
+	    "\rProcessing the Xannor.....\r\r"
 	    "Locating Top Player... (For Groups 16 - 20 to Pick on!)\r"
-	    "08/22/26\rGroup 20 will hunt for Alice\r";
+	    "\rGroup 20 will hunt for Alice\r";
 	static const uint8_t rejected_screen[] =
-	    "08/22/26\rProcessing the Xannor.....\r\r"
+	    "\rProcessing the Xannor.....\r\r"
 	    "Locating Top Player... (For Groups 16 - 20 to Pick on!)\r";
 	static const uint8_t expected_news[] = "  -  Xannor report:\r\n\x1a";
 	struct score_random_script random_script = {
@@ -4156,7 +4148,7 @@ check_maintenance_xannor_hunt_pass(void)
 	sector_cache[2] = 11.0f;
 	cloak_cache[2] = 0.33000001311302185f;
 	if (!yt_maintenance_xannor_hunt(&game, sector_cache, cloak_cache,
-	    YT_ARRAY_LEN(sector_cache), (const uint8_t *)"08/22/26", 8U,
+	    YT_ARRAY_LEN(sector_cache), NULL, 0U,
 	    score_line_collect, &screen, &hunt, &error)
 	    || hunt.top_record != 2 || hunt.top_score != 2500000.0f
 	    || !hunt.selected || hunt.used_cached_sector
@@ -4197,7 +4189,7 @@ check_maintenance_xannor_hunt_pass(void)
 	memset(&screen, 0, sizeof(screen));
 	(void)remove("YTNEWS.DAT");
 	if (!yt_maintenance_xannor_hunt(&game, sector_cache, cloak_cache,
-	    YT_ARRAY_LEN(sector_cache), (const uint8_t *)"08/22/26", 8U,
+	    YT_ARRAY_LEN(sector_cache), NULL, 0U,
 	    score_line_collect, &screen, &hunt, &error)
 	    || hunt.top_record != 2 || hunt.top_score != 2499999.0f
 	    || hunt.selected || hunt.used_cached_sector
@@ -4703,7 +4695,7 @@ check_maintenance_xannor_headquarters_relocation_pass(void)
 	static const uint8_t failure_draw[] = {0xff, 0xff, 0xff};
 	static const uint8_t expected_screen[] =
 	    " *** The Xannor have MOVED their Headquarters! ***\a\r"
-	    "08/22/26\r";
+	    "\r";
 	static const uint8_t expected_news[] =
 	    " *** The Xannor have MOVED their Headquarters! ***\a\r\n\x1a";
 	struct score_random_script script = {
@@ -4765,7 +4757,7 @@ check_maintenance_xannor_headquarters_relocation_pass(void)
 	location[1] = 8.0f;
 	/* The false predicate is a true no-op, including the RNG stream. */
 	if (!yt_maintenance_xannor_headquarters_relocate(&game, location,
-	    false, 1.0f, 2.0, (const uint8_t *)"08/22/26", 8U,
+	    false, 1.0f, 2.0, NULL, 0U,
 	    score_line_collect, &screen, &relocation, &error)
 	    || relocation.triggered || relocation.draws_consumed != 0U
 	    || game.random.draws != 0U || script.position != 0U
@@ -4773,7 +4765,7 @@ check_maintenance_xannor_headquarters_relocation_pass(void)
 	    || game.config.headquarters != 8.0f)
 		goto done;
 	if (!yt_maintenance_xannor_headquarters_relocate(&game, location,
-	    true, 1.0f, 0.0, (const uint8_t *)"08/22/26", 8U,
+	    true, 1.0f, 0.0, NULL, 0U,
 	    score_line_collect, &screen, &relocation, &error)
 	    || !relocation.triggered || relocation.old_headquarters != 8
 	    || relocation.target_sector != 11 || relocation.attempts != 2
@@ -4834,7 +4826,7 @@ check_maintenance_xannor_headquarters_relocation_pass(void)
 	game.config.headquarters = 12.0f;
 	location[1] = 12.0f;
 	if (yt_maintenance_xannor_headquarters_relocate(&game, location,
-	    true, 1.0f, 0.0, (const uint8_t *)"08/22/26", 8U,
+	    true, 1.0f, 0.0, NULL, 0U,
 	    score_line_collect, &screen, &relocation, &error)
 	    || game.random.draws != 1U || script.position != sizeof(failure_draw)
 	    || game.config.headquarters != 11.0f || location[1] != 11.0f
@@ -4859,7 +4851,7 @@ static bool
 check_maintenance_xannor_revenge_slot_pass(void)
 {
 	static const uint8_t expected_screen[] =
-	    "08/22/26\r *** Xannor REVENGE! ***\a\r08/22/26\r";
+	    "\r *** Xannor REVENGE! ***\a\r\r";
 	static const uint8_t expected_news[] =
 	    " *** Xannor REVENGE! ***\a\r\n\x1a";
 	static const uint8_t cleared_raw[4] = {0x00, 0x00, 0x28, 0x00};
@@ -4897,7 +4889,7 @@ check_maintenance_xannor_revenge_slot_pass(void)
 		goto done;
 	player_sector[4] = 902.0f;
 	if (!yt_maintenance_xannor_revenge_slot(&game, player_sector,
-	    YT_ARRAY_LEN(player_sector), (const uint8_t *)"08/22/26", 8U,
+	    YT_ARRAY_LEN(player_sector), NULL, 0U,
 	    score_line_collect, &screen, &revenge, &error)
 	    || !revenge.eligible || revenge.live_sector != 733
 	    || revenge.cached_target != 902
@@ -4930,7 +4922,7 @@ check_maintenance_xannor_revenge_slot_pass(void)
 	    (size_t)yt_sector_basic_record(&game.config, 21),
 	    &metadata_before, &error)
 	    || !yt_maintenance_xannor_revenge_slot(&game, player_sector,
-	    YT_ARRAY_LEN(player_sector), (const uint8_t *)"08/22/26", 8U,
+	    YT_ARRAY_LEN(player_sector), NULL, 0U,
 	    score_line_collect, &screen, &revenge, &error)
 	    || revenge.eligible || revenge.live_sector != 0
 	    || revenge.cached_target != 0 || screen.length != 0U
@@ -4948,7 +4940,7 @@ check_maintenance_xannor_revenge_slot_pass(void)
 	    (size_t)yt_sector_basic_record(&game.config, 21),
 	    &metadata_before, &error)
 	    || !yt_maintenance_xannor_revenge_slot(&game, player_sector,
-	    YT_ARRAY_LEN(player_sector), (const uint8_t *)"08/22/26", 8U,
+	    YT_ARRAY_LEN(player_sector), NULL, 0U,
 	    score_line_collect, &screen, &revenge, &error)
 	    || revenge.eligible || screen.length != 0U
 	    || !yt_database_read(&game.database,
@@ -4975,7 +4967,7 @@ check_maintenance_xannor_roaming_split(void)
 		0x00, 0x00, 0x80, 0x00, 0x00, 0x80
 	};
 	static const uint8_t expected_output[] =
-	    "The Xannor are on the prowl...\r08/22/26\r";
+	    "The Xannor are on the prowl...\r\r";
 	static const uint8_t expected_group_two[] =
 	    "  -  Group: 2               Size: 1 \r";
 	static const uint8_t expected_group_sixteen[] =
@@ -4995,7 +4987,7 @@ check_maintenance_xannor_roaming_split(void)
 	float location;
 
 	if (!yt_maintenance_compose_xannor_roaming(
-	    (const uint8_t *)"08/22/26", 8U, &output)
+	    NULL, 0U, &output)
 	    || output.row_count != 2U
 	    || output.rows[0].address != 0x30F7U
 	    || output.rows[1].address != 0x3109U

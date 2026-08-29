@@ -313,6 +313,17 @@ main(void)
 		failure = "redirected output lacks the maintenance handoff message";
 		goto done;
 	}
+	if (!output_contains(
+	    "\nYankee Trader Maintenance program\n"
+	    "        by Alan Davenport\n\n"
+	    "       (Revision 03/14/94)\n\n"
+	    "This should be run once per day.\n\n"
+	    "Compressing Message Base's\n\n"
+	    "Loading players, deleting inactive players and subtracting cloak "
+	    "charge.\n\n\nRunning port maintenance...\n")) {
+		failure = "redirected output differs from YTMAINT entry prefix";
+		goto done;
+	}
 	if (!output_contains("Daily Maintenance Completed OK")) {
 		failure = "redirected output lacks YTMAINT completion";
 		goto done;

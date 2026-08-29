@@ -195,9 +195,9 @@ not authoritative. Use the corrected goal above in the new workspace.
   deferred`, and presentation `136 candidate / 8 missing / 6 verified`.
   Current SHA-256
   values are roots
-  `86ab8a344764e6f3f0c5685b76950bab421b3c32907ef9c7bb9b7511b196d2ac`,
+  `bdfe421392181c1814c1536b217951b6a8637c2d2811fddd51d560e0bfe933d1`,
   transfers `348cbf6770817bcbc03373e832b597995a516d80404276047e950f360405018e`,
-  presentation `ced8c53de18d42d7efa3492cf35288d1f1e1db1bd5fa5f27de0ba94823e1f23f`,
+  presentation `b327b45469b4077ab8a1179bf9be85241572310f97095a592f4842ce522a3f4c`,
   and manifest
   `3552bd61c9cb9b7197aeb6fbad1f37cba69cd09f125d878d0c9072a691e8950a`.
   All immutable identity columns and TSV widths match the regenerated trusted
@@ -229,11 +229,15 @@ not authoritative. Use the corrected goal above in the new workspace.
 - The three outer YTMAINT transfers at `0030`, `003F`, and `006B` are
   candidate independently of the driver root. `main()` reaches the one native
   maintenance driver, propagates its failure, and on success emits the exact
-  dated completion wrapper before normal process termination. The clean-
+  completion wrapper before normal process termination. The clean-
   install replacement-process fixture pins the ordered completion and durable
   result; bounded fixtures pin the wrapper and an early driver failure cut.
-  This does not connect the unresolved injected entry operands or promote
-  `YTMAINT:0073`, and it does not credit the blocked Mercenary multi-hop joins.
+  Upstream `0fe41956` proved that every startup placeholder is the immutable
+  empty `DS:7E60` descriptor and that only `03EC` copies the fixed revision.
+  The native driver now emits those entry rows, the compaction heading, and
+  the player-phase prefix in shipped operation order, without the former
+  synthesized date or its extra clock sample. This does not by itself promote
+  the broader `YTMAINT:0073` orchestration root.
 - The first bounded `YTMAINT:0073` orchestration slices are now native without
   promoting that 6,185-node root. Headquarters numeric zero is durably changed
   to 85 before the later process-local scoreboard/local-screen/lottery/holds
@@ -2109,9 +2113,9 @@ not authoritative. Use the corrected goal above in the new workspace.
   decoded numeric-zero omission, ordered nonzero retention, raw bytes 0..83
   copying with emitted zero bytes 84..85, incomplete-tail omission, TEMP
   replacement, and unconditional whole-current-news rotation over yesterday.
-  The clean-install composition remains intact; all nine native CTests and all
-  39 focused YTRMSG/maintenance-daily oracle tests pass. The exact dynamic
-  date-heading and `Compressing Message Base's` output, raw
+  The clean-install composition now physically pins the immutable blank and
+  `Compressing Message Base's` row before file work; all nine native CTests
+  and all 39 focused YTRMSG/maintenance-daily oracle tests pass. Raw
   RANDOM/FIELD/LOF/GET/file-number state, missing-file variants, and every
   physical OPEN/CLOSE/GET/PUT/KILL/NAME/runtime prefix and failure remain
   open.

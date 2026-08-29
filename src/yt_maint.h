@@ -12,14 +12,6 @@ struct yt_maintenance_text {
 	size_t length;
 };
 
-struct yt_maintenance_entry_dynamic {
-	struct yt_maintenance_text date_heading;
-	struct yt_maintenance_text date_or_epoch;
-	struct yt_maintenance_text time_or_date;
-	struct yt_maintenance_text status;
-	struct yt_maintenance_text player_status;
-};
-
 struct yt_maintenance_output_row {
 	uint16_t address;
 	bool newline;
@@ -258,18 +250,17 @@ bool yt_maintenance_maintain_players(struct yt_game *game,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_error *error);
 bool yt_maintenance_same_day(float stored_marker, float computed_serial);
-bool yt_maintenance_compose_entry(
-    const struct yt_maintenance_entry_dynamic *dynamic, bool same_day,
+bool yt_maintenance_compose_entry(bool same_day,
     struct yt_maintenance_output_result *result);
-bool yt_maintenance_compose_wrapper(const uint8_t *date_heading,
-    size_t date_heading_length, struct yt_maintenance_output_result *result);
-bool yt_maintenance_compose_message_compaction(const uint8_t *date_heading,
-    size_t date_heading_length, struct yt_maintenance_output_result *result);
-bool yt_maintenance_compose_port_phase(const uint8_t *date_heading,
-    size_t date_heading_length, int plagued_count,
+bool yt_maintenance_compose_wrapper(
     struct yt_maintenance_output_result *result);
-bool yt_maintenance_compose_mercenary_phase(const uint8_t *date_heading,
-    size_t date_heading_length, float tax_pool, bool rebuilt_base,
+bool yt_maintenance_compose_message_compaction(
+    struct yt_maintenance_output_result *result);
+bool yt_maintenance_compose_port_phase(const uint8_t *blank,
+    size_t blank_length, int plagued_count,
+    struct yt_maintenance_output_result *result);
+bool yt_maintenance_compose_mercenary_phase(const uint8_t *blank,
+    size_t blank_length, float tax_pool, bool rebuilt_base,
     float hired_fighters, struct yt_maintenance_output_result *result);
 bool yt_maintenance_compose_mercenary_movement(double moving_fighters,
     float origin_sector, struct yt_maintenance_output_result *result);
@@ -307,8 +298,8 @@ bool yt_maintenance_mercenary_destination(struct yt_game *game,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_sector *arrival_sector, struct yt_error *error);
 bool yt_maintenance_super_lottery(struct yt_game *game, int player_count,
-    int planet_count, int sector_count, const uint8_t *date_heading,
-    size_t date_heading_length, yt_maintenance_score_line_fn line_output,
+    int planet_count, int sector_count, const uint8_t *blank,
+    size_t blank_length, yt_maintenance_score_line_fn line_output,
     void *line_context, struct yt_maintenance_lottery_result *result,
     struct yt_error *error);
 bool yt_maintenance_store_final_marker(struct yt_game *game, float serial,
@@ -328,59 +319,59 @@ bool yt_maintenance_update_port(struct yt_random *random,
     struct yt_port *port, float current_day, float current_minute,
     struct yt_maintenance_port_result *result, struct yt_error *error);
 bool yt_maintenance_maintain_ports(struct yt_game *game,
-    const uint8_t *date_heading, size_t date_heading_length,
+    const uint8_t *blank, size_t blank_length,
     yt_maintenance_score_line_fn line_output, void *line_context,
     int *plagued_count, struct yt_error *error);
-bool yt_maintenance_compose_planet_phase(const uint8_t *date_heading,
-    size_t date_heading_length, const struct yt_maintenance_text *planet_name,
+bool yt_maintenance_compose_planet_phase(const uint8_t *blank,
+    size_t blank_length, const struct yt_maintenance_text *planet_name,
     const struct yt_maintenance_planet_result *mutation,
     struct yt_maintenance_output_result *result);
 bool yt_maintenance_update_planet(struct yt_random *random,
     struct yt_planet *planet, float current_day, float current_minute,
     struct yt_maintenance_planet_result *result, struct yt_error *error);
 bool yt_maintenance_maintain_planets(struct yt_game *game,
-    const uint8_t *date_heading, size_t date_heading_length,
+    const uint8_t *blank, size_t blank_length,
     yt_maintenance_score_line_fn line_output, void *line_context,
     int *event_count, struct yt_error *error);
-bool yt_maintenance_compose_wanderer_phase(const uint8_t *date_heading,
-    size_t date_heading_length, bool rebuilt,
+bool yt_maintenance_compose_wanderer_phase(const uint8_t *blank,
+    size_t blank_length, bool rebuilt,
     struct yt_maintenance_output_result *result);
 bool yt_maintenance_maintain_wanderer(struct yt_game *game,
-    const uint8_t *date_heading, size_t date_heading_length,
+    const uint8_t *blank, size_t blank_length,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_maintenance_wanderer_result *result, struct yt_error *error);
-bool yt_maintenance_compose_xannor_home(const uint8_t *date_heading,
-    size_t date_heading_length, bool rebuilt,
+bool yt_maintenance_compose_xannor_home(const uint8_t *blank,
+    size_t blank_length, bool rebuilt,
     struct yt_maintenance_output_result *result);
 bool yt_maintenance_maintain_xannor_home(struct yt_game *game,
-    const uint8_t *date_heading, size_t date_heading_length,
+    const uint8_t *blank, size_t blank_length,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_maintenance_xannor_home_result *result,
     struct yt_error *error);
-bool yt_maintenance_compose_xannor_hunt(const uint8_t *date_heading,
-    size_t date_heading_length, const struct yt_maintenance_text *hunt_name,
+bool yt_maintenance_compose_xannor_hunt(const uint8_t *blank,
+    size_t blank_length, const struct yt_maintenance_text *hunt_name,
     struct yt_maintenance_output_result *result);
 bool yt_maintenance_compose_xannor_regeneration(
-    const uint8_t *date_heading, size_t date_heading_length,
+    const uint8_t *blank, size_t blank_length,
     double regeneration, struct yt_maintenance_output_result *result);
 bool yt_maintenance_compose_xannor_reclaim_attempt(
     const struct yt_maintenance_text *opponent,
     struct yt_maintenance_output_result *result);
 bool yt_maintenance_compose_xannor_reclaim_result(bool successful,
     struct yt_maintenance_output_result *result);
-bool yt_maintenance_compose_xannor_relocation(const uint8_t *date_heading,
-    size_t date_heading_length, struct yt_maintenance_output_result *result);
-bool yt_maintenance_compose_xannor_revenge(const uint8_t *date_heading,
-    size_t date_heading_length, struct yt_maintenance_output_result *result);
-bool yt_maintenance_compose_xannor_roaming(const uint8_t *date_heading,
-    size_t date_heading_length, struct yt_maintenance_output_result *result);
+bool yt_maintenance_compose_xannor_relocation(const uint8_t *blank,
+    size_t blank_length, struct yt_maintenance_output_result *result);
+bool yt_maintenance_compose_xannor_revenge(const uint8_t *blank,
+    size_t blank_length, struct yt_maintenance_output_result *result);
+bool yt_maintenance_compose_xannor_roaming(const uint8_t *blank,
+    size_t blank_length, struct yt_maintenance_output_result *result);
 bool yt_maintenance_compose_xannor_group(int group_number, float group_size,
     struct yt_maintenance_output_result *result);
 bool yt_maintenance_compose_xannor_path_error(float source, float target,
     struct yt_maintenance_output_result *result);
 bool yt_maintenance_xannor_hunt(struct yt_game *game,
     const float *player_sector, const float *player_cloak, size_t cache_count,
-    const uint8_t *date_heading, size_t date_heading_length,
+    const uint8_t *blank, size_t blank_length,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_maintenance_xannor_hunt_result *result,
     struct yt_error *error);
@@ -403,13 +394,13 @@ bool yt_maintenance_xannor_headquarters_reclaim(struct yt_game *game,
     struct yt_error *error);
 bool yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
     float location[21], bool original_hostile, float group_one,
-    double regeneration, const uint8_t *date_heading,
-    size_t date_heading_length, yt_maintenance_score_line_fn line_output,
+    double regeneration, const uint8_t *blank,
+    size_t blank_length, yt_maintenance_score_line_fn line_output,
     void *line_context, struct yt_maintenance_xannor_relocation_result *result,
     struct yt_error *error);
 bool yt_maintenance_xannor_revenge_slot(struct yt_game *game,
     const float *player_sector, size_t cache_count,
-    const uint8_t *date_heading, size_t date_heading_length,
+    const uint8_t *blank, size_t blank_length,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_maintenance_xannor_revenge_result *result,
     struct yt_error *error);

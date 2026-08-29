@@ -12,7 +12,6 @@
 
 struct maint_state {
 	struct yt_game game;
-	char date_heading[9];
 	float *player_sector;
 	float *player_cloak;
 	int player_count;
@@ -25,6 +24,8 @@ struct maint_state {
 
 static float xannor_quantum(float first, float second);
 static bool maintenance_stdout_line(void *context, const uint8_t *line,
+    size_t length, struct yt_error *error);
+static bool maintenance_stdout_semi(void *context, const uint8_t *text,
     size_t length, struct yt_error *error);
 static bool maintenance_copy_part(uint8_t *dest, size_t capacity,
     size_t *length, const uint8_t *data, size_t data_length);
@@ -86,24 +87,20 @@ yt_maintenance_same_day(float stored_marker, float computed_serial)
 }
 
 bool
-yt_maintenance_compose_entry(
-    const struct yt_maintenance_entry_dynamic *dynamic, bool same_day,
+yt_maintenance_compose_entry(bool same_day,
     struct yt_maintenance_output_result *result)
 {
+	static const struct yt_maintenance_text empty = {NULL, 0U};
 	static const uint8_t same_day_text[] = "Maintenance not needed!";
 	static const uint8_t title[] = "Yankee Trader Maintenance program";
 	static const uint8_t byline[] = "        by Alan Davenport";
 	static const uint8_t spacer[] = "       ";
+	static const uint8_t revision[] = "(Revision 03/14/94)";
 	static const uint8_t warning[] = "This should be run once per day.";
 	static const uint8_t player_phase[] =
 	    "Loading players, deleting inactive players and subtracting cloak charge.";
 
-	if (result == NULL || dynamic == NULL
-	    || !maintenance_text_valid(&dynamic->date_heading)
-	    || !maintenance_text_valid(&dynamic->date_or_epoch)
-	    || !maintenance_text_valid(&dynamic->time_or_date)
-	    || !maintenance_text_valid(&dynamic->status)
-	    || !maintenance_text_valid(&dynamic->player_status))
+	if (result == NULL)
 		return false;
 	memset(result, 0, sizeof(*result));
 #define ROW(address, value, line) \
@@ -111,20 +108,20 @@ yt_maintenance_compose_entry(
 #define LITERAL(address, value, line) \
 	maintenance_output_row(result, address, value, sizeof(value) - 1U, line)
 	if (same_day
-	    && (!ROW(0x036DU, dynamic->date_heading, true)
+	    && (!ROW(0x036DU, empty, true)
 	    || !LITERAL(0x037FU, same_day_text, true)))
 		return false;
-	if (!ROW(0x0399U, dynamic->date_heading, true)
+	if (!ROW(0x0399U, empty, true)
 	    || !LITERAL(0x03ADU, title, true)
 	    || !LITERAL(0x03BFU, byline, true)
-	    || !ROW(0x03D3U, dynamic->date_or_epoch, true)
+	    || !ROW(0x03D3U, empty, true)
 	    || !LITERAL(0x03E5U, spacer, false)
-	    || !ROW(0x03ECU, dynamic->time_or_date, true)
-	    || !ROW(0x03FDU, dynamic->status, true)
+	    || !LITERAL(0x03ECU, revision, true)
+	    || !ROW(0x03FDU, empty, true)
 	    || !LITERAL(0x040CU, warning, true)
-	    || !ROW(0x04E8U, dynamic->date_heading, true)
+	    || !ROW(0x04E8U, empty, true)
 	    || !LITERAL(0x04FCU, player_phase, true)
-	    || !ROW(0x050DU, dynamic->player_status, true))
+	    || !ROW(0x050DU, empty, true))
 		return false;
 #undef LITERAL
 #undef ROW
@@ -132,44 +129,40 @@ yt_maintenance_compose_entry(
 }
 
 static bool
-maintenance_two_rows(const uint8_t *date_heading,
-    size_t date_heading_length, uint16_t first_address,
-    uint16_t second_address, const uint8_t *second, size_t second_length,
+maintenance_two_rows(uint16_t first_address, uint16_t second_address,
+    const uint8_t *second, size_t second_length,
     struct yt_maintenance_output_result *result)
 {
-	if (result == NULL || (date_heading == NULL && date_heading_length != 0U)
-	    || (second == NULL && second_length != 0U))
+	if (result == NULL || (second == NULL && second_length != 0U))
 		return false;
 	memset(result, 0, sizeof(*result));
-	return maintenance_output_row(result, first_address, date_heading,
-	    date_heading_length, true)
+	return maintenance_output_row(result, first_address, NULL, 0U, true)
 	    && maintenance_output_row(result, second_address, second,
 	    second_length, true);
 }
 
 bool
-yt_maintenance_compose_wrapper(const uint8_t *date_heading,
-    size_t date_heading_length, struct yt_maintenance_output_result *result)
+yt_maintenance_compose_wrapper(struct yt_maintenance_output_result *result)
 {
 	static const uint8_t completed[] = "Daily Maintenance Completed OK";
 
-	return maintenance_two_rows(date_heading, date_heading_length, 0x004FU,
+	return maintenance_two_rows(0x004FU,
 	    0x0061U, completed, sizeof(completed) - 1U, result);
 }
 
 bool
-yt_maintenance_compose_message_compaction(const uint8_t *date_heading,
-    size_t date_heading_length, struct yt_maintenance_output_result *result)
+yt_maintenance_compose_message_compaction(
+    struct yt_maintenance_output_result *result)
 {
 	static const uint8_t compact[] = "Compressing Message Base's";
 
-	return maintenance_two_rows(date_heading, date_heading_length, 0x673AU,
+	return maintenance_two_rows(0x673AU,
 	    0x674CU, compact, sizeof(compact) - 1U, result);
 }
 
 bool
-yt_maintenance_compose_port_phase(const uint8_t *date_heading,
-    size_t date_heading_length, int plagued_count,
+yt_maintenance_compose_port_phase(const uint8_t *blank,
+    size_t blank_length, int plagued_count,
     struct yt_maintenance_output_result *result)
 {
 	static const uint8_t phase[] = "Running port maintenance...";
@@ -180,13 +173,13 @@ yt_maintenance_compose_port_phase(const uint8_t *date_heading,
 	size_t length = 0U;
 	int number_length;
 
-	if (result == NULL || (date_heading == NULL
-	    && date_heading_length != 0U) || plagued_count < 0
+	if (result == NULL || (blank == NULL
+	    && blank_length != 0U) || plagued_count < 0
 	    || plagued_count > 1000)
 		return false;
 	memset(result, 0, sizeof(*result));
-	if (!maintenance_output_row(result, 0x07A3U, date_heading,
-	    date_heading_length, true)
+	if (!maintenance_output_row(result, 0x07A3U, blank,
+	    blank_length, true)
 	    || !maintenance_output_row(result, 0x07B5U, phase,
 	    sizeof(phase) - 1U, true))
 		return false;
@@ -199,16 +192,16 @@ yt_maintenance_compose_port_phase(const uint8_t *date_heading,
 	    (const uint8_t *)number, (size_t)number_length)
 	    || !maintenance_copy_part(line, sizeof(line), &length,
 	    count_suffix, sizeof(count_suffix) - 1U)
-	    || !maintenance_output_row(result, 0x0F62U, date_heading,
-	    date_heading_length, true)
+	    || !maintenance_output_row(result, 0x0F62U, blank,
+	    blank_length, true)
 	    || !maintenance_output_row(result, 0x0F94U, line, length, true))
 		return false;
 	return true;
 }
 
 bool
-yt_maintenance_compose_mercenary_phase(const uint8_t *date_heading,
-    size_t date_heading_length, float tax_pool, bool rebuilt_base,
+yt_maintenance_compose_mercenary_phase(const uint8_t *blank,
+    size_t blank_length, float tax_pool, bool rebuilt_base,
     float hired_fighters, struct yt_maintenance_output_result *result)
 {
 	static const uint8_t tax_prefix[] =
@@ -228,12 +221,12 @@ yt_maintenance_compose_mercenary_phase(const uint8_t *date_heading,
 	size_t length;
 	int number_length;
 
-	if (result == NULL || (date_heading == NULL
-	    && date_heading_length != 0U))
+	if (result == NULL || (blank == NULL
+	    && blank_length != 0U))
 		return false;
 	memset(result, 0, sizeof(*result));
-	if (!maintenance_output_row(result, 0x3F86U, date_heading,
-	    date_heading_length, true)
+	if (!maintenance_output_row(result, 0x3F86U, blank,
+	    blank_length, true)
 	    || !maintenance_output_row(result, 0x3F95U, NULL, 0U, true))
 		return false;
 	if (tax_pool != 0.0f) {
@@ -250,8 +243,8 @@ yt_maintenance_compose_mercenary_phase(const uint8_t *date_heading,
 		    true))
 			return false;
 	}
-	if (!maintenance_output_row(result, 0x40DEU, date_heading,
-	    date_heading_length, true)
+	if (!maintenance_output_row(result, 0x40DEU, blank,
+	    blank_length, true)
 	    || !maintenance_output_row(result, 0x40F2U, phase,
 	    sizeof(phase) - 1U, true)
 	    || !maintenance_output_row(result, 0x4103U, NULL, 0U, true)
@@ -259,8 +252,8 @@ yt_maintenance_compose_mercenary_phase(const uint8_t *date_heading,
 	    sizeof(checking) - 1U, true))
 		return false;
 	if (rebuilt_base
-	    && (!maintenance_output_row(result, 0x41DEU, date_heading,
-	    date_heading_length, true)
+	    && (!maintenance_output_row(result, 0x41DEU, blank,
+	    blank_length, true)
 	    || !maintenance_output_row(result, 0x41FAU, rebuilt,
 	    sizeof(rebuilt) - 1U, true)))
 		return false;
@@ -315,8 +308,8 @@ yt_maintenance_compose_mercenary_movement(double moving_fighters,
 }
 
 bool
-yt_maintenance_compose_planet_phase(const uint8_t *date_heading,
-    size_t date_heading_length, const struct yt_maintenance_text *planet_name,
+yt_maintenance_compose_planet_phase(const uint8_t *blank,
+    size_t blank_length, const struct yt_maintenance_text *planet_name,
     const struct yt_maintenance_planet_result *mutation,
     struct yt_maintenance_output_result *result)
 {
@@ -346,8 +339,8 @@ yt_maintenance_compose_planet_phase(const uint8_t *date_heading,
 	int first_length;
 	int second_length;
 
-	if (result == NULL || (date_heading == NULL
-	    && date_heading_length != 0U))
+	if (result == NULL || (blank == NULL
+	    && blank_length != 0U))
 		return false;
 	if (mutation != NULL
 	    && (mutation->event < YT_MAINTENANCE_PLANET_NO_EVENT
@@ -363,8 +356,8 @@ yt_maintenance_compose_planet_phase(const uint8_t *date_heading,
 	    && !maintenance_text_valid(planet_name))
 		return false;
 	memset(result, 0, sizeof(*result));
-	if (!maintenance_output_row(result, 0x0FB6U, date_heading,
-	    date_heading_length, true)
+	if (!maintenance_output_row(result, 0x0FB6U, blank,
+	    blank_length, true)
 	    || !maintenance_output_row(result, 0x0FC8U, phase,
 	    sizeof(phase) - 1U, true))
 		return false;
@@ -381,8 +374,8 @@ yt_maintenance_compose_planet_phase(const uint8_t *date_heading,
 	}
 	else
 		return false;
-	if (!maintenance_output_row(result, 0x1899U, date_heading,
-	    date_heading_length, true))
+	if (!maintenance_output_row(result, 0x1899U, blank,
+	    blank_length, true))
 		return false;
 	length = 0U;
 	if (!maintenance_copy_part(line, sizeof(line), &length,
@@ -456,8 +449,8 @@ yt_maintenance_compose_planet_phase(const uint8_t *date_heading,
 }
 
 bool
-yt_maintenance_compose_wanderer_phase(const uint8_t *date_heading,
-    size_t date_heading_length, bool rebuilt,
+yt_maintenance_compose_wanderer_phase(const uint8_t *blank,
+    size_t blank_length, bool rebuilt,
     struct yt_maintenance_output_result *result)
 {
 	static const uint8_t phase[] = "Moving The Wanderer (Planet #1)";
@@ -467,12 +460,12 @@ yt_maintenance_compose_wanderer_phase(const uint8_t *date_heading,
 	    "  -  The Wanderer regenerated with P.H.O.E.N.I.X. device!";
 	static const uint8_t warped[] = "Wanderer has successfully warped!";
 
-	if (result == NULL || (date_heading == NULL
-	    && date_heading_length != 0U))
+	if (result == NULL || (blank == NULL
+	    && blank_length != 0U))
 		return false;
 	memset(result, 0, sizeof(*result));
-	if (!maintenance_output_row(result, 0x1CEBU, date_heading,
-	    date_heading_length, true)
+	if (!maintenance_output_row(result, 0x1CEBU, blank,
+	    blank_length, true)
 	    || !maintenance_output_row(result, 0x1CFDU, phase,
 	    sizeof(phase) - 1U, true))
 		return false;
@@ -482,15 +475,15 @@ yt_maintenance_compose_wanderer_phase(const uint8_t *date_heading,
 	    || !maintenance_output_row(result, 0x1F37U, regenerated,
 	    sizeof(regenerated) - 1U, true)))
 		return false;
-	return maintenance_output_row(result, 0x1F6CU, date_heading,
-	    date_heading_length, true)
+	return maintenance_output_row(result, 0x1F6CU, blank,
+	    blank_length, true)
 	    && maintenance_output_row(result, 0x1F93U, warped,
 	    sizeof(warped) - 1U, true);
 }
 
 bool
-yt_maintenance_compose_xannor_home(const uint8_t *date_heading,
-    size_t date_heading_length, bool rebuilt,
+yt_maintenance_compose_xannor_home(const uint8_t *blank,
+    size_t blank_length, bool rebuilt,
     struct yt_maintenance_output_result *result)
 {
 	static const uint8_t phase[] =
@@ -500,19 +493,19 @@ yt_maintenance_compose_xannor_home(const uint8_t *date_heading,
 	static const uint8_t linked[] =
 	    "The Xannor home base now has a planet!";
 
-	if (result == NULL || (date_heading == NULL
-	    && date_heading_length != 0U))
+	if (result == NULL || (blank == NULL
+	    && blank_length != 0U))
 		return false;
 	memset(result, 0, sizeof(*result));
-	if (!maintenance_output_row(result, 0x2073U, date_heading,
-	    date_heading_length, true)
+	if (!maintenance_output_row(result, 0x2073U, blank,
+	    blank_length, true)
 	    || !maintenance_output_row(result, 0x2085U, phase,
 	    sizeof(phase) - 1U, true))
 		return false;
 	if (!rebuilt)
 		return true;
-	return maintenance_output_row(result, 0x2107U, date_heading,
-	    date_heading_length, true)
+	return maintenance_output_row(result, 0x2107U, blank,
+	    blank_length, true)
 	    && maintenance_output_row(result, 0x2123U, created,
 	    sizeof(created) - 1U, true)
 	    && maintenance_output_row(result, 0x22C4U, linked,
@@ -520,8 +513,8 @@ yt_maintenance_compose_xannor_home(const uint8_t *date_heading,
 }
 
 bool
-yt_maintenance_compose_xannor_hunt(const uint8_t *date_heading,
-    size_t date_heading_length, const struct yt_maintenance_text *hunt_name,
+yt_maintenance_compose_xannor_hunt(const uint8_t *blank,
+    size_t blank_length, const struct yt_maintenance_text *hunt_name,
     struct yt_maintenance_output_result *result)
 {
 	static const uint8_t processing[] = "Processing the Xannor.....";
@@ -531,13 +524,13 @@ yt_maintenance_compose_xannor_hunt(const uint8_t *date_heading,
 	uint8_t line[YT_MAINTENANCE_OUTPUT_ROW_SIZE];
 	size_t length = 0U;
 
-	if (result == NULL || (date_heading == NULL
-	    && date_heading_length != 0U)
+	if (result == NULL || (blank == NULL
+	    && blank_length != 0U)
 	    || (hunt_name != NULL && !maintenance_text_valid(hunt_name)))
 		return false;
 	memset(result, 0, sizeof(*result));
-	if (!maintenance_output_row(result, 0x23EAU, date_heading,
-	    date_heading_length, true)
+	if (!maintenance_output_row(result, 0x23EAU, blank,
+	    blank_length, true)
 	    || !maintenance_output_row(result, 0x23FEU, processing,
 	    sizeof(processing) - 1U, true)
 	    || !maintenance_output_row(result, 0x240FU, NULL, 0U, true)
@@ -551,14 +544,14 @@ yt_maintenance_compose_xannor_hunt(const uint8_t *date_heading,
 	    || !maintenance_copy_part(line, sizeof(line), &length,
 	    hunt_name->data, hunt_name->length))
 		return false;
-	return maintenance_output_row(result, 0x25D6U, date_heading,
-	    date_heading_length, true)
+	return maintenance_output_row(result, 0x25D6U, blank,
+	    blank_length, true)
 	    && maintenance_output_row(result, 0x2604U, line, length, true);
 }
 
 bool
-yt_maintenance_compose_xannor_regeneration(const uint8_t *date_heading,
-    size_t date_heading_length, double regeneration,
+yt_maintenance_compose_xannor_regeneration(const uint8_t *blank,
+    size_t blank_length, double regeneration,
     struct yt_maintenance_output_result *result)
 {
 	static const uint8_t prefix[] =
@@ -569,8 +562,8 @@ yt_maintenance_compose_xannor_regeneration(const uint8_t *date_heading,
 	size_t length = 0U;
 	int number_length;
 
-	if (result == NULL || (date_heading == NULL
-	    && date_heading_length != 0U))
+	if (result == NULL || (blank == NULL
+	    && blank_length != 0U))
 		return false;
 	number_length = qb_str_double(number, sizeof(number), regeneration);
 	if (number_length < 0
@@ -582,11 +575,11 @@ yt_maintenance_compose_xannor_regeneration(const uint8_t *date_heading,
 	    suffix, sizeof(suffix) - 1U))
 		return false;
 	memset(result, 0, sizeof(*result));
-	return maintenance_output_row(result, 0x2A47U, date_heading,
-	    date_heading_length, true)
+	return maintenance_output_row(result, 0x2A47U, blank,
+	    blank_length, true)
 	    && maintenance_output_row(result, 0x2A7AU, line, length, true)
-	    && maintenance_output_row(result, 0x2A9CU, date_heading,
-	    date_heading_length, true);
+	    && maintenance_output_row(result, 0x2A9CU, blank,
+	    blank_length, true);
 }
 
 bool
@@ -628,54 +621,54 @@ yt_maintenance_compose_xannor_reclaim_result(bool successful,
 }
 
 bool
-yt_maintenance_compose_xannor_relocation(const uint8_t *date_heading,
-    size_t date_heading_length, struct yt_maintenance_output_result *result)
+yt_maintenance_compose_xannor_relocation(const uint8_t *blank,
+    size_t blank_length, struct yt_maintenance_output_result *result)
 {
 	static const uint8_t line[] =
 	    " *** The Xannor have MOVED their Headquarters! ***\a";
 
-	if (result == NULL || (date_heading == NULL
-	    && date_heading_length != 0U))
+	if (result == NULL || (blank == NULL
+	    && blank_length != 0U))
 		return false;
 	memset(result, 0, sizeof(*result));
 	return maintenance_output_row(result, 0x2F8FU, line,
 	    sizeof(line) - 1U, true)
-	    && maintenance_output_row(result, 0x2FA1U, date_heading,
-	    date_heading_length, true);
+	    && maintenance_output_row(result, 0x2FA1U, blank,
+	    blank_length, true);
 }
 
 bool
-yt_maintenance_compose_xannor_revenge(const uint8_t *date_heading,
-    size_t date_heading_length, struct yt_maintenance_output_result *result)
+yt_maintenance_compose_xannor_revenge(const uint8_t *blank,
+    size_t blank_length, struct yt_maintenance_output_result *result)
 {
 	static const uint8_t line[] = " *** Xannor REVENGE! ***\a";
 
-	if (result == NULL || (date_heading == NULL
-	    && date_heading_length != 0U))
+	if (result == NULL || (blank == NULL
+	    && blank_length != 0U))
 		return false;
 	memset(result, 0, sizeof(*result));
-	return maintenance_output_row(result, 0x3051U, date_heading,
-	    date_heading_length, true)
+	return maintenance_output_row(result, 0x3051U, blank,
+	    blank_length, true)
 	    && maintenance_output_row(result, 0x308BU, line,
 	    sizeof(line) - 1U, true)
-	    && maintenance_output_row(result, 0x309DU, date_heading,
-	    date_heading_length, true);
+	    && maintenance_output_row(result, 0x309DU, blank,
+	    blank_length, true);
 }
 
 bool
-yt_maintenance_compose_xannor_roaming(const uint8_t *date_heading,
-    size_t date_heading_length, struct yt_maintenance_output_result *result)
+yt_maintenance_compose_xannor_roaming(const uint8_t *blank,
+    size_t blank_length, struct yt_maintenance_output_result *result)
 {
 	static const uint8_t line[] = "The Xannor are on the prowl...";
 
-	if (result == NULL || (date_heading == NULL
-	    && date_heading_length != 0U))
+	if (result == NULL || (blank == NULL
+	    && blank_length != 0U))
 		return false;
 	memset(result, 0, sizeof(*result));
 	return maintenance_output_row(result, 0x30F7U, line,
 	    sizeof(line) - 1U, true)
-	    && maintenance_output_row(result, 0x3109U, date_heading,
-	    date_heading_length, true);
+	    && maintenance_output_row(result, 0x3109U, blank,
+	    blank_length, true);
 }
 
 bool
@@ -1603,23 +1596,6 @@ yt_maintenance_write_header(struct yt_error *error)
 	return yt_news_append(line, error);
 }
 
-static void
-maintenance_format_date_heading(const struct yt_clock_value *value,
-    char dest[9])
-{
-	int year = value->year % 100;
-
-	dest[0] = (char)('0' + value->month / 10);
-	dest[1] = (char)('0' + value->month % 10);
-	dest[2] = '/';
-	dest[3] = (char)('0' + value->day / 10);
-	dest[4] = (char)('0' + value->day % 10);
-	dest[5] = '/';
-	dest[6] = (char)('0' + year / 10);
-	dest[7] = (char)('0' + year % 10);
-	dest[8] = '\0';
-}
-
 bool
 yt_maintenance_clear_protected_mines(struct yt_game *game,
     struct yt_error *error)
@@ -2093,7 +2069,7 @@ maintenance_write_port(struct yt_game *game, int logical,
 
 bool
 yt_maintenance_maintain_ports(struct yt_game *game,
-    const uint8_t *date_heading, size_t date_heading_length,
+    const uint8_t *blank, size_t blank_length,
     yt_maintenance_score_line_fn line_output, void *line_context,
     int *plagued_count, struct yt_error *error)
 {
@@ -2104,15 +2080,15 @@ yt_maintenance_maintain_ports(struct yt_game *game,
 	int logical;
 
 	if (game == NULL || line_output == NULL
-	    || (date_heading == NULL && date_heading_length != 0U)) {
+	    || (blank == NULL && blank_length != 0U)) {
 		set_error(error, YT_INVALID, "maintain ports", "YTDATA.DAT");
 		return false;
 	}
 	port_count = (int)(game->config.planet_offset
 	    - game->config.port_offset);
 	if (port_count < 1 || port_count > 1000
-	    || !yt_maintenance_compose_port_phase(date_heading,
-	    date_heading_length, 0, &output)) {
+	    || !yt_maintenance_compose_port_phase(blank,
+	    blank_length, 0, &output)) {
 		set_error(error, YT_RANGE, "maintain ports", "YTDATA.DAT");
 		return false;
 	}
@@ -2140,8 +2116,8 @@ yt_maintenance_maintain_ports(struct yt_game *game,
 		if (mutation.plagued)
 			++plagued;
 	}
-	if (!yt_maintenance_compose_port_phase(date_heading,
-	    date_heading_length, plagued, &output)) {
+	if (!yt_maintenance_compose_port_phase(blank,
+	    blank_length, plagued, &output)) {
 		set_error(error, YT_RANGE, "compose port output", "");
 		return false;
 	}
@@ -2355,7 +2331,7 @@ range:
 
 bool
 yt_maintenance_maintain_planets(struct yt_game *game,
-    const uint8_t *date_heading, size_t date_heading_length,
+    const uint8_t *blank, size_t blank_length,
     yt_maintenance_score_line_fn line_output, void *line_context,
     int *event_count, struct yt_error *error)
 {
@@ -2366,15 +2342,15 @@ yt_maintenance_maintain_planets(struct yt_game *game,
 	int logical;
 
 	if (game == NULL || line_output == NULL
-	    || (date_heading == NULL && date_heading_length != 0U)) {
+	    || (blank == NULL && blank_length != 0U)) {
 		set_error(error, YT_INVALID, "maintain planets", "YTDATA.DAT");
 		return false;
 	}
 	planet_count = (int)(game->config.total_records
 	    - game->config.planet_offset);
 	if (planet_count < 1 || planet_count > 100
-	    || !yt_maintenance_compose_planet_phase(date_heading,
-	    date_heading_length, NULL, NULL, &output)) {
+	    || !yt_maintenance_compose_planet_phase(blank,
+	    blank_length, NULL, NULL, &output)) {
 		set_error(error, YT_RANGE, "maintain planets", "YTDATA.DAT");
 		return false;
 	}
@@ -2413,8 +2389,8 @@ yt_maintenance_maintain_planets(struct yt_game *game,
 		if (!current_day_minute(&clock_state, &day, &minute, error)
 		    || !yt_maintenance_update_planet(&game->random, &planet, day,
 		    minute, &mutation, error)
-		    || !yt_maintenance_compose_planet_phase(date_heading,
-		    date_heading_length, &name, &mutation, &output))
+		    || !yt_maintenance_compose_planet_phase(blank,
+		    blank_length, &name, &mutation, &output))
 			return false;
 		for (row = 2U; row < output.row_count; ++row) {
 			if (!line_output(line_context, output.rows[row].data,
@@ -2499,7 +2475,7 @@ maintenance_write_wanderer_planet(struct yt_game *game,
 
 bool
 yt_maintenance_maintain_wanderer(struct yt_game *game,
-    const uint8_t *date_heading, size_t date_heading_length,
+    const uint8_t *blank, size_t blank_length,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_maintenance_wanderer_result *result, struct yt_error *error)
 {
@@ -2514,7 +2490,7 @@ yt_maintenance_maintain_wanderer(struct yt_game *game,
 	size_t row;
 
 	if (game == NULL || line_output == NULL
-	    || (date_heading == NULL && date_heading_length != 0U)) {
+	    || (blank == NULL && blank_length != 0U)) {
 		set_error(error, YT_INVALID, "maintain Wanderer", "YTDATA.DAT");
 		return false;
 	}
@@ -2522,8 +2498,8 @@ yt_maintenance_maintain_wanderer(struct yt_game *game,
 	    - game->config.sector_offset);
 	if (sector_count < 1
 	    || game->config.total_records - game->config.planet_offset < 1.0f
-	    || !yt_maintenance_compose_wanderer_phase(date_heading,
-	    date_heading_length, false, &output)) {
+	    || !yt_maintenance_compose_wanderer_phase(blank,
+	    blank_length, false, &output)) {
 		set_error(error, YT_RANGE, "maintain Wanderer", "YTDATA.DAT");
 		return false;
 	}
@@ -2551,8 +2527,8 @@ yt_maintenance_maintain_wanderer(struct yt_game *game,
 	if (local.rebuilt) {
 		if (!yt_current_date_serial(game->config.epoch_year, &today,
 		    NULL, error)
-		    || !yt_maintenance_compose_wanderer_phase(date_heading,
-		    date_heading_length, true, &output))
+		    || !yt_maintenance_compose_wanderer_phase(blank,
+		    blank_length, true, &output))
 			return false;
 		if (!line_output(line_context, output.rows[2].data,
 		    output.rows[2].length, error)
@@ -2677,6 +2653,18 @@ maintenance_stdout_line(void *context, const uint8_t *line, size_t length,
 	(void)context;
 	if ((length > 0 && fwrite(line, 1, length, stdout) != length)
 	    || fputc('\n', stdout) == EOF) {
+		set_error(error, YT_IO_ERROR, "write maintenance screen", "stdout");
+		return false;
+	}
+	return true;
+}
+
+static bool
+maintenance_stdout_semi(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	(void)context;
+	if (length != 0U && fwrite(text, 1, length, stdout) != length) {
 		set_error(error, YT_IO_ERROR, "write maintenance screen", "stdout");
 		return false;
 	}
@@ -2862,18 +2850,15 @@ bool
 yt_maintenance_run(struct yt_error *error)
 {
 	struct maint_state state;
+	struct yt_maintenance_output_result entry_output;
+	struct yt_maintenance_output_result compaction_output;
 	struct yt_maintenance_output_result wrapper_output;
-	struct yt_clock_value date_now;
-	char date_heading[9];
+	bool same_day;
 	bool result = false;
 
 	memset(&state, 0, sizeof(state));
 	if (!yt_game_open(&state.game, YT_OPEN_UPDATE, error))
 		return false;
-	if (!yt_platform_clock(&date_now, error))
-		goto done;
-	maintenance_format_date_heading(&date_now, date_heading);
-	memcpy(state.date_heading, date_heading, sizeof(state.date_heading));
 	/* The shipped 0244..0270 branch persists this before later defaults. */
 	if (yt_maintenance_default_headquarters(
 	    &state.game.config.headquarters)
@@ -2889,6 +2874,8 @@ yt_maintenance_run(struct yt_error *error)
 	state.planet_count = (int)(state.game.config.total_records
 	    - state.game.config.planet_offset);
 	state.today = state.game.today;
+	same_day = yt_maintenance_same_day(state.game.config.last_maintenance,
+	    (float)state.today);
 	if (state.player_count < 1 || state.sector_count < 7
 	    || state.port_count < 1 || state.planet_count < 1) {
 		set_error(error, YT_RANGE, "maintenance layout", "YTDATA.DAT");
@@ -2902,20 +2889,53 @@ yt_maintenance_run(struct yt_error *error)
 		set_error(error, YT_NO_MEMORY, "maintenance player cache", "");
 		goto done;
 	}
-	if (!yt_maintenance_clear_protected_mines(&state.game, error)
+	if (!yt_maintenance_compose_entry(same_day, &entry_output)
+	    || (same_day
+	    && (!maintenance_emit_output_row(&entry_output, 0x036DU,
+	    maintenance_stdout_line, NULL, error)
+	    || !maintenance_emit_output_row(&entry_output, 0x037FU,
+	    maintenance_stdout_line, NULL, error)))
+	    || !maintenance_emit_output_row(&entry_output, 0x0399U,
+	    maintenance_stdout_line, NULL, error)
+	    || !maintenance_emit_output_row(&entry_output, 0x03ADU,
+	    maintenance_stdout_line, NULL, error)
+	    || !maintenance_emit_output_row(&entry_output, 0x03BFU,
+	    maintenance_stdout_line, NULL, error)
+	    || !maintenance_emit_output_row(&entry_output, 0x03D3U,
+	    maintenance_stdout_line, NULL, error)
+	    || !maintenance_emit_output_row(&entry_output, 0x03E5U,
+	    maintenance_stdout_semi, NULL, error)
+	    || !maintenance_emit_output_row(&entry_output, 0x03ECU,
+	    maintenance_stdout_line, NULL, error)
+	    || !maintenance_emit_output_row(&entry_output, 0x03FDU,
+	    maintenance_stdout_line, NULL, error)
+	    || !maintenance_emit_output_row(&entry_output, 0x040CU,
+	    maintenance_stdout_line, NULL, error)
+	    || !yt_maintenance_clear_protected_mines(&state.game, error)
+	    || !yt_maintenance_compose_message_compaction(&compaction_output)
+	    || !maintenance_emit_output_row(&compaction_output, 0x673AU,
+	    maintenance_stdout_line, NULL, error)
+	    || !maintenance_emit_output_row(&compaction_output, 0x674CU,
+	    maintenance_stdout_line, NULL, error)
 	    || !yt_radio_compact(error)
 	    || !yt_news_rotate(error)
 	    || !yt_maintenance_write_header(error)
+	    || !maintenance_emit_output_row(&entry_output, 0x04E8U,
+	    maintenance_stdout_line, NULL, error)
+	    || !maintenance_emit_output_row(&entry_output, 0x04FCU,
+	    maintenance_stdout_line, NULL, error)
+	    || !maintenance_emit_output_row(&entry_output, 0x050DU,
+	    maintenance_stdout_line, NULL, error)
 	    || !maintain_players_impl(&state, maintenance_stdout_line, NULL,
 	    error)
 	    || !yt_maintenance_maintain_ports(&state.game,
-	    (const uint8_t *)date_heading, strlen(date_heading),
+	    NULL, 0U,
 	    maintenance_stdout_line, NULL, NULL, error)
 	    || !yt_maintenance_maintain_planets(&state.game,
-	    (const uint8_t *)date_heading, strlen(date_heading),
+	    NULL, 0U,
 	    maintenance_stdout_line, NULL, NULL, error)
 	    || !yt_maintenance_maintain_wanderer(&state.game,
-	    (const uint8_t *)date_heading, strlen(date_heading),
+	    NULL, 0U,
 	    maintenance_stdout_line, NULL, NULL, error)
 	    || !maintain_factions(&state, error)
 	    || !super_lottery(&state, error)
@@ -2925,8 +2945,7 @@ yt_maintenance_run(struct yt_error *error)
 		goto done;
 	/* 57C1 CLOSE-all precedes the 57C6 return into the wrapper rows. */
 	yt_game_close(&state.game);
-	if (!yt_maintenance_compose_wrapper((const uint8_t *)date_heading,
-	    strlen(date_heading), &wrapper_output)
+	if (!yt_maintenance_compose_wrapper(&wrapper_output)
 	    || !maintenance_emit_output_row(&wrapper_output, 0x004FU,
 	    maintenance_stdout_line, NULL, error)
 	    || !maintenance_emit_output_row(&wrapper_output, 0x0061U,
@@ -3268,8 +3287,8 @@ encode_error:
 bool
 yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
     float location[21], bool original_hostile, float group_one,
-    double regeneration, const uint8_t *date_heading,
-    size_t date_heading_length, yt_maintenance_score_line_fn line_output,
+    double regeneration, const uint8_t *blank,
+    size_t blank_length, yt_maintenance_score_line_fn line_output,
     void *line_context, struct yt_maintenance_xannor_relocation_result *result,
     struct yt_error *error)
 {
@@ -3286,7 +3305,7 @@ yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
 	int candidate;
 
 	if (game == NULL || location == NULL || line_output == NULL
-	    || (date_heading == NULL && date_heading_length != 0U)) {
+	    || (blank == NULL && blank_length != 0U)) {
 		set_error(error, YT_INVALID, "Xannor headquarters relocation",
 		    "YTDATA.DAT");
 		return false;
@@ -3369,8 +3388,8 @@ yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
 			    "encode new Xannor headquarters", "YTDATA.DAT");
 		return false;
 	}
-	if (!yt_maintenance_compose_xannor_relocation(date_heading,
-	    date_heading_length, &output)
+	if (!yt_maintenance_compose_xannor_relocation(blank,
+	    blank_length, &output)
 	    || !yt_news_append_bytes(output.rows[0].data,
 	    output.rows[0].length, error)
 	    || !line_output(line_context, output.rows[0].data,
@@ -3386,7 +3405,7 @@ yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
 bool
 yt_maintenance_xannor_revenge_slot(struct yt_game *game,
     const float *player_sector, size_t cache_count,
-    const uint8_t *date_heading, size_t date_heading_length,
+    const uint8_t *blank, size_t blank_length,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_maintenance_xannor_revenge_result *result,
     struct yt_error *error)
@@ -3400,7 +3419,7 @@ yt_maintenance_xannor_revenge_slot(struct yt_game *game,
 	int32_t record;
 
 	if (game == NULL || player_sector == NULL || line_output == NULL
-	    || (date_heading == NULL && date_heading_length != 0U)) {
+	    || (blank == NULL && blank_length != 0U)) {
 		set_error(error, YT_INVALID, "Xannor revenge slot", "YTDATA.DAT");
 		return false;
 	}
@@ -3435,8 +3454,8 @@ yt_maintenance_xannor_revenge_slot(struct yt_game *game,
 				return false;
 			}
 			local.eligible = true;
-			if (!yt_maintenance_compose_xannor_revenge(date_heading,
-			    date_heading_length, &output)
+			if (!yt_maintenance_compose_xannor_revenge(blank,
+			    blank_length, &output)
 			    || !line_output(line_context, output.rows[0].data,
 			    output.rows[0].length, error)
 			    || !yt_news_append_bytes(output.rows[1].data,
@@ -3531,7 +3550,7 @@ maintenance_write_xannor_sector(struct yt_game *game, int logical,
 
 bool
 yt_maintenance_maintain_xannor_home(struct yt_game *game,
-    const uint8_t *date_heading, size_t date_heading_length,
+    const uint8_t *blank, size_t blank_length,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_maintenance_xannor_home_result *result,
     struct yt_error *error)
@@ -3550,7 +3569,7 @@ yt_maintenance_maintain_xannor_home(struct yt_game *game,
 	size_t row;
 
 	if (game == NULL || line_output == NULL
-	    || (date_heading == NULL && date_heading_length != 0U)) {
+	    || (blank == NULL && blank_length != 0U)) {
 		set_error(error, YT_INVALID, "maintain Xannoron", "YTDATA.DAT");
 		return false;
 	}
@@ -3561,8 +3580,8 @@ yt_maintenance_maintain_xannor_home(struct yt_game *game,
 	headquarters = (int)game->config.headquarters;
 	if (headquarters < 1 || headquarters > sector_count
 	    || planet_count < 1 || planet_count > 100
-	    || !yt_maintenance_compose_xannor_home(date_heading,
-	    date_heading_length, false, &output)) {
+	    || !yt_maintenance_compose_xannor_home(blank,
+	    blank_length, false, &output)) {
 		set_error(error, YT_RANGE, "maintain Xannoron", "YTDATA.DAT");
 		return false;
 	}
@@ -3581,8 +3600,8 @@ yt_maintenance_maintain_xannor_home(struct yt_game *game,
 	if (local.rebuilt) {
 		if (!yt_current_date_serial(game->config.epoch_year, &today,
 		    NULL, error)
-		    || !yt_maintenance_compose_xannor_home(date_heading,
-		    date_heading_length, true, &output))
+		    || !yt_maintenance_compose_xannor_home(blank,
+		    blank_length, true, &output))
 			return false;
 		for (row = 2U; row < 4U; ++row) {
 			if (!line_output(line_context, output.rows[row].data,
@@ -3637,7 +3656,7 @@ yt_maintenance_maintain_xannor_home(struct yt_game *game,
 bool
 yt_maintenance_xannor_hunt(struct yt_game *game,
     const float *player_sector, const float *player_cloak, size_t cache_count,
-    const uint8_t *date_heading, size_t date_heading_length,
+    const uint8_t *blank, size_t blank_length,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_maintenance_xannor_hunt_result *result,
     struct yt_error *error)
@@ -3656,15 +3675,15 @@ yt_maintenance_xannor_hunt(struct yt_game *game,
 	size_t row;
 
 	if (game == NULL || player_sector == NULL || player_cloak == NULL
-	    || line_output == NULL || (date_heading == NULL
-	    && date_heading_length != 0U)) {
+	    || line_output == NULL || (blank == NULL
+	    && blank_length != 0U)) {
 		set_error(error, YT_INVALID, "Xannor hunt", "YTDATA.DAT");
 		return false;
 	}
 	player_count = (int)game->config.sector_offset - 1;
 	if (player_count < 1 || cache_count < (size_t)player_count + 2U
-	    || !yt_maintenance_compose_xannor_hunt(date_heading,
-	    date_heading_length, NULL, &output)) {
+	    || !yt_maintenance_compose_xannor_hunt(blank,
+	    blank_length, NULL, &output)) {
 		set_error(error, YT_RANGE, "Xannor hunt", "YTDATA.DAT");
 		return false;
 	}
@@ -3711,8 +3730,8 @@ yt_maintenance_xannor_hunt(struct yt_game *game,
 	name.data = player.record.bytes;
 	name.length = (size_t)stored_length < YT_TEXT_FIELD_SIZE
 	    ? (size_t)stored_length : YT_TEXT_FIELD_SIZE;
-	if (!yt_maintenance_compose_xannor_hunt(date_heading,
-	    date_heading_length, &name, &output))
+	if (!yt_maintenance_compose_xannor_hunt(blank,
+	    blank_length, &name, &output))
 		return false;
 	for (row = 4U; row < output.row_count; ++row) {
 		if (!line_output(line_context, output.rows[row].data,
@@ -3744,7 +3763,7 @@ xannor_reclaim_and_relocate(struct maint_state *state, float location[21],
 		return false;
 	return yt_maintenance_xannor_headquarters_relocate(&state->game,
 	    location, reclaim.original_hostile, size[1], (double)regeneration,
-	    (const uint8_t *)state->date_heading, strlen(state->date_heading),
+	    NULL, 0U,
 	    maintenance_stdout_line, NULL, NULL, error);
 }
 
@@ -3756,7 +3775,7 @@ consume_revenge_slot(struct maint_state *state, int *live_sector,
 
 	if (!yt_maintenance_xannor_revenge_slot(&state->game,
 	    state->player_sector, (size_t)state->player_count + 2U,
-	    (const uint8_t *)state->date_heading, strlen(state->date_heading),
+	    NULL, 0U,
 	    maintenance_stdout_line, NULL, &revenge, error))
 		return false;
 	*live_sector = revenge.live_sector;
@@ -4320,11 +4339,11 @@ maintain_xannor(struct maint_state *state, struct yt_error *error)
 	int group;
 
 	if (!yt_maintenance_maintain_xannor_home(&state->game,
-	    (const uint8_t *)state->date_heading, strlen(state->date_heading),
+	    NULL, 0U,
 	    maintenance_stdout_line, NULL, NULL, error)
 	    || !yt_maintenance_xannor_hunt(&state->game, state->player_sector,
 	    state->player_cloak, (size_t)state->player_count + 2U,
-	    (const uint8_t *)state->date_heading, strlen(state->date_heading),
+	    NULL, 0U,
 	    maintenance_stdout_line, NULL, &hunt, error))
 		return false;
 	score = hunt.top_score;
@@ -4338,7 +4357,7 @@ maintain_xannor(struct maint_state *state, struct yt_error *error)
 	hunt_player = target_result.hunt_player;
 	if (!yt_maintenance_xannor_regeneration(score, size, &regen_result)
 	    || !yt_maintenance_compose_xannor_regeneration(
-	    (const uint8_t *)state->date_heading, strlen(state->date_heading),
+	    NULL, 0U,
 	    regen_result.regeneration, &regen_output)
 	    || !maintenance_stdout_line(NULL, regen_output.rows[0].data,
 	    regen_output.rows[0].length, error)
@@ -4357,7 +4376,7 @@ maintain_xannor(struct maint_state *state, struct yt_error *error)
 	    || !consume_revenge_slot(state, &revenge_live, &revenge_cached,
 	    error)
 	    || !yt_maintenance_compose_xannor_roaming(
-	    (const uint8_t *)state->date_heading, strlen(state->date_heading),
+	    NULL, 0U,
 	    &roaming_output)
 	    || !maintenance_stdout_line(NULL, roaming_output.rows[0].data,
 	    roaming_output.rows[0].length, error)
@@ -5379,7 +5398,7 @@ maintain_factions(struct maint_state *state, struct yt_error *error)
 
 	if (!maintain_xannor(state, error)
 	    || !yt_maintenance_compose_mercenary_phase(
-	    (const uint8_t *)state->date_heading, strlen(state->date_heading),
+	    NULL, 0U,
 	    0.0f, false, 0.0f, &output)
 	    || !maintenance_emit_output_row(&output, 0x3F86U,
 	    maintenance_stdout_line, NULL, error)
@@ -5388,7 +5407,7 @@ maintain_factions(struct maint_state *state, struct yt_error *error)
 	    || !yt_maintenance_collect_mercenary_tax(&state->game,
 	    state->port_count, &tax, error)
 	    || !yt_maintenance_compose_mercenary_phase(
-	    (const uint8_t *)state->date_heading, strlen(state->date_heading),
+	    NULL, 0U,
 	    tax.tax_pool, false, 0.0f, &output))
 		return false;
 	if (tax.tax_pool != 0.0f
@@ -5410,8 +5429,7 @@ maintain_factions(struct maint_state *state, struct yt_error *error)
 		return false;
 	if (rebuilt) {
 		if (!yt_maintenance_compose_mercenary_phase(
-		    (const uint8_t *)state->date_heading,
-		    strlen(state->date_heading), tax.tax_pool, true, 0.0f,
+		    NULL, 0U, tax.tax_pool, true, 0.0f,
 		    &output)
 		    || !maintenance_emit_output_row(&output, 0x41DEU,
 		    maintenance_stdout_line, NULL, error)
@@ -5425,7 +5443,7 @@ maintain_factions(struct maint_state *state, struct yt_error *error)
 		return false;
 	if (hired != 0.0f
 	    && (!yt_maintenance_compose_mercenary_phase(
-	    (const uint8_t *)state->date_heading, strlen(state->date_heading),
+	    NULL, 0U,
 	    tax.tax_pool, rebuilt, hired, &output)
 	    || !maintenance_emit_output_row(&output, 0x4631U,
 	    maintenance_stdout_line, NULL, error)
@@ -5462,8 +5480,8 @@ lottery_fail(yt_maintenance_score_line_fn line_output, void *line_context,
 
 bool
 yt_maintenance_super_lottery(struct yt_game *game, int player_count,
-    int planet_count, int sector_count, const uint8_t *date_heading,
-    size_t date_heading_length, yt_maintenance_score_line_fn line_output,
+    int planet_count, int sector_count, const uint8_t *blank,
+    size_t blank_length, yt_maintenance_score_line_fn line_output,
     void *line_context, struct yt_maintenance_lottery_result *result,
     struct yt_error *error)
 {
@@ -5496,16 +5514,16 @@ yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 	bool overflow;
 
 	if (game == NULL || player_count < 1 || planet_count < 1
-	    || sector_count < 1 || (date_heading == NULL
-	    && date_heading_length != 0U) || line_output == NULL
+	    || sector_count < 1 || (blank == NULL
+	    && blank_length != 0U) || line_output == NULL
 	    || result == NULL) {
 		set_error(error, YT_INVALID, "Super Lottery", "YTDATA.DAT");
 		return false;
 	}
 	memset(result, 0, sizeof(*result));
 	starting_draws = game->random.draws;
-	if (!lottery_output(line_output, line_context, date_heading,
-	    date_heading_length, error)
+	if (!lottery_output(line_output, line_context, blank,
+	    blank_length, error)
 	    || !lottery_output(line_output, line_context, phase,
 	    sizeof(phase) - 1U, error)
 	    || !yt_random_next(&game->random, &gate, error))
@@ -5639,6 +5657,6 @@ super_lottery(struct maint_state *state, struct yt_error *error)
 
 	return yt_maintenance_super_lottery(&state->game, state->player_count,
 	    state->planet_count, state->sector_count,
-	    (const uint8_t *)state->date_heading, strlen(state->date_heading),
+	    NULL, 0U,
 	    maintenance_stdout_line, NULL, &result, error);
 }
