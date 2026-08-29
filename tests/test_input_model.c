@@ -219,6 +219,51 @@ test_ab36_live_input(void)
 }
 
 static void
+test_b05d_live_input(void)
+{
+	static const float local_only_modes[] = {1.0f, 2.0f, -1.0f};
+	struct yt_input_splitter splitter;
+	struct yt_input_value local = one('L');
+	struct yt_input_value remote = one('R');
+	struct yt_input_value selected;
+	size_t index;
+
+	yt_input_splitter_init(&splitter);
+	CHECK(yt_input_splitter_push(&splitter, false, &local));
+	CHECK(yt_input_splitter_push(&splitter, true, &remote));
+	selected = yt_input_splitter_select(&splitter, 0.0f,
+	    YT_INPUT_PHASE_B05D);
+	CHECK(selected.length == 1U && selected.bytes[0] == 'R'
+	    && selected.remote && splitter.local.length == 0U
+	    && splitter.remote.length == 0U);
+
+	for (index = 0U; index < sizeof(local_only_modes)
+	    / sizeof(local_only_modes[0]); ++index) {
+		yt_input_splitter_init(&splitter);
+		CHECK(yt_input_splitter_push(&splitter, false, &local));
+		CHECK(yt_input_splitter_push(&splitter, true, &remote));
+		selected = yt_input_splitter_select(&splitter,
+		    local_only_modes[index], YT_INPUT_PHASE_B05D);
+		CHECK(selected.length == 1U && selected.bytes[0] == 'L'
+		    && !selected.remote && splitter.local.length == 0U
+		    && splitter.remote.length == 1U);
+	}
+
+	yt_input_splitter_init(&splitter);
+	CHECK(yt_input_splitter_push(&splitter, true, &remote));
+	selected = yt_input_splitter_select(&splitter, 2.0f,
+	    YT_INPUT_PHASE_B05D);
+	CHECK(selected.length == 0U && splitter.remote.length == 1U);
+
+	yt_input_splitter_init(&splitter);
+	CHECK(yt_input_splitter_push(&splitter, false, &local));
+	selected = yt_input_splitter_select(&splitter, 0.0f,
+	    YT_INPUT_PHASE_B05D);
+	CHECK(selected.length == 1U && selected.bytes[0] == 'L'
+	    && !selected.remote);
+}
+
+static void
 test_ab36_repeat_recognition(void)
 {
 	struct yt_input_value selected = one(0x12U);
@@ -1891,6 +1936,7 @@ main(void)
 	test_ab36_inactivity_gate();
 	test_ab36_queued_input();
 	test_ab36_live_input();
+	test_b05d_live_input();
 	test_ab36_repeat_recognition();
 	test_ab36_repeat_transaction();
 	test_ab36_submission();
