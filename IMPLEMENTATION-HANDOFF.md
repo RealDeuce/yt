@@ -187,12 +187,12 @@ not authoritative. Use the corrected goal above in the new workspace.
   destination-selector and destination-combat transactions,
   ledger dispositions are roots
   `167 candidate / 1 missing`, transfers
-  `5363 candidate / 2004 missing / 1 explicitly
+  `5366 candidate / 2001 missing / 1 explicitly
   deferred`, and presentation `136 candidate / 8 missing / 6 verified`.
   Current SHA-256
   values are roots
   `64b17a8ae6550d4ef994a6e872d1f06c9ff8a6bc33ab9ab64d390da38a87e8be`,
-  transfers `60c93d3b6af7821f2b3aaecbcbb2b862a85a239def7c0f70423c603f820a163c`,
+  transfers `a05d472db41272274ba6b10f71005350b54e78ba24cad5f4a77c6d0a027523e0`,
   presentation `b899734f3487d364fbad0b2d5be7936334cc753b4c676d3407d6703d522b5afe`,
   and manifest
   `3552bd61c9cb9b7197aeb6fbad1f37cba69cd09f125d878d0c9072a691e8950a`.
@@ -239,6 +239,14 @@ not authoritative. Use the corrected goal above in the new workspace.
   single-clock-sample owner directly. Native suites and all 124 focused
   YTCONFIG/helper tests pass. Raw DATE$/VAL/string descriptors, allocation and
   clock failures, and the still-unmapped caller-specific joins remain open.
+- The three outer YTMAINT transfers at `0030`, `003F`, and `006B` are
+  candidate independently of the driver root. `main()` reaches the one native
+  maintenance driver, propagates its failure, and on success emits the exact
+  dated completion wrapper before normal process termination. The clean-
+  install replacement-process fixture pins the ordered completion and durable
+  result; bounded fixtures pin the wrapper and an early driver failure cut.
+  This does not connect the unresolved injected entry operands or promote
+  `YTMAINT:0073`, and it does not credit the blocked Mercenary multi-hop joins.
 - The first bounded `YTMAINT:0073` orchestration slices are now native without
   promoting that 6,185-node root. Headquarters numeric zero is durably changed
   to 85 before the later process-local scoreboard/local-screen/lottery/holds
