@@ -68,9 +68,18 @@ test_branches_and_gates(void)
 
 	memcpy(current.scratch, "stale", 5);
 	current.scratch_length = 5;
+	CHECK(yt_sound_dispatch(0.0f, &current, &result) == YT_SOUND_OK);
+	CHECK(result.remote_length == 0U && result.play_length == 0U
+	    && current.scratch_length == 5U);
 	CHECK(yt_sound_dispatch(2.0f, &current, &result) == YT_SOUND_OK);
 	CHECK(result.remote_length == 0 && result.play_length == 0);
 	CHECK(current.scratch_length == 5);
+	CHECK(yt_sound_dispatch(4.0f, &current, &result) == YT_SOUND_OK);
+	CHECK(result.remote_length == 0 && result.play_length == 0);
+	CHECK(current.scratch_length == 5);
+	CHECK(yt_sound_dispatch(2.5f, &current, &result) == YT_SOUND_OK);
+	CHECK(result.remote_length == 1U && result.remote[0] == 0x07
+	    && result.play_length == 11U && current.scratch_length == 5U);
 	CHECK(yt_sound_dispatch(8.0f, &current, &result) == YT_SOUND_OK);
 	CHECK(result.remote_length == 1 && result.remote[0] == 0x07);
 	CHECK(result.play_length == 11);
@@ -100,6 +109,14 @@ test_stale_and_failures(void)
 	CHECK(memcmp(result.remote, "\x1b[stale\x0e", 8) == 0);
 	CHECK(memcmp(result.play, "stale", 5) == 0);
 	CHECK(current.scratch_length == 0);
+	current = state(true);
+	current.mode = 2.0f;
+	current.snoop = 0.0f;
+	memcpy(current.scratch, "stale", 5U);
+	current.scratch_length = 5U;
+	CHECK(yt_sound_dispatch(1.5f, &current, &result) == YT_SOUND_OK);
+	CHECK(result.remote_length == 0U && result.play_length == 0U
+	    && current.scratch_length == 0U);
 
 	current = state(true);
 	current.user_sound = 40000.0f;
