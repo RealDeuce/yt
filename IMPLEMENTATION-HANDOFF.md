@@ -187,12 +187,12 @@ not authoritative. Use the corrected goal above in the new workspace.
   destination-selector and destination-combat transactions,
   ledger dispositions are roots
   `167 candidate / 1 missing`, transfers
-  `5313 candidate / 2054 missing / 1 explicitly
+  `5318 candidate / 2049 missing / 1 explicitly
   deferred`, and presentation `136 candidate / 8 missing / 6 verified`.
   Current SHA-256
   values are roots
   `64b17a8ae6550d4ef994a6e872d1f06c9ff8a6bc33ab9ab64d390da38a87e8be`,
-  transfers `91e1c90d3ddd12e40019ab3d5dff0802a56e1b3f3571d9e0740adf35b1b2d0db`,
+  transfers `fe3e2e4f128da40db02f55c13cfe49abbf596c88f18c7427564c18fe7c2caa32`,
   presentation `b899734f3487d364fbad0b2d5be7936334cc753b4c676d3407d6703d522b5afe`,
   and manifest
   `3552bd61c9cb9b7197aeb6fbad1f37cba69cd09f125d878d0c9072a691e8950a`.
@@ -1878,6 +1878,11 @@ not authoritative. Use the corrected goal above in the new workspace.
   linked-result rows in addition to 35 long-warp triples and 2,003
   verification triples. Inner self-target/provider-failure alternatives and
   raw array/runtime state remain uncredited.
+- All five shortcut-controller transfers at `1391..13CD` are candidate. The
+  recovered YT sequence pins eleven cumulative positions, the terminal
+  overshoot, both empty-slot mutation and occupied-slot preservation, exact
+  sixth-warp bytes and final RNG state. Raw SINGLE/index/array cells,
+  provider failures and invalid-conversion paths remain open.
 - The three final-sector persistence transfers and seven port-assignment
   controller transfers at `166E..1A3C` are candidate. Exact raw bytes pin all
   2,004 final sector records, fixed ports 1/3/5/7, the shipped occupied-index
