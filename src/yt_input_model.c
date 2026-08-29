@@ -354,6 +354,16 @@ yt_input_carrier_returns(float mode, bool carrier_detected)
 	return mode != 0.0f || carrier_detected;
 }
 
+enum yt_opening_row_route
+yt_input_opening_row_route(bool local_key, bool remote_pending)
+{
+	if (local_key)
+		return YT_OPENING_ROW_STOP_LOCAL;
+	if (remote_pending)
+		return YT_OPENING_ROW_STOP_REMOTE;
+	return YT_OPENING_ROW_CONTINUE;
+}
+
 bool
 yt_input_ab36_terminal_run(enum yt_ab36_terminal_kind kind,
     bool *running, bool *terminated, yt_ab36_terminal_notice_fn notice,

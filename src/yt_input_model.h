@@ -97,6 +97,12 @@ enum yt_input_drain_reason {
 	YT_INPUT_DRAIN_ERROR,
 };
 
+enum yt_opening_row_route {
+	YT_OPENING_ROW_CONTINUE,
+	YT_OPENING_ROW_STOP_LOCAL,
+	YT_OPENING_ROW_STOP_REMOTE,
+};
+
 struct yt_input_drain_state {
 	uint8_t residue[2];
 	size_t residue_length;
@@ -225,6 +231,8 @@ bool yt_input_ab36_inactivity_expired(float timer, float deadline,
     float mode);
 bool yt_input_ab36_session_expired(float timer, float deadline);
 bool yt_input_carrier_returns(float mode, bool carrier_detected);
+enum yt_opening_row_route yt_input_opening_row_route(bool local_key,
+    bool remote_pending);
 bool yt_input_ab36_terminal_run(enum yt_ab36_terminal_kind kind,
     bool *running, bool *terminated, yt_ab36_terminal_notice_fn notice,
     yt_ab36_terminal_close_fn close_all, void *context);

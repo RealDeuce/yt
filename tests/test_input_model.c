@@ -138,6 +138,14 @@ test_ab36_inactivity_gate(void)
 	CHECK(yt_input_carrier_returns(1.0f, false));
 	CHECK(yt_input_carrier_returns(2.0f, false));
 	CHECK(yt_input_carrier_returns(-1.0f, false));
+	CHECK(yt_input_opening_row_route(false, false)
+	    == YT_OPENING_ROW_CONTINUE);
+	CHECK(yt_input_opening_row_route(true, false)
+	    == YT_OPENING_ROW_STOP_LOCAL);
+	CHECK(yt_input_opening_row_route(false, true)
+	    == YT_OPENING_ROW_STOP_REMOTE);
+	CHECK(yt_input_opening_row_route(true, true)
+	    == YT_OPENING_ROW_STOP_LOCAL);
 }
 
 static void

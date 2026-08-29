@@ -13,7 +13,15 @@ void yt_outf(const char *format, ...);
 void yt_out_line(const char *text);
 void yt_out_clear(void);
 bool yt_out_file(const char *path, struct yt_error *error);
+enum yt_opening_exit {
+	YT_OPENING_EXIT_EOF,
+	YT_OPENING_EXIT_LOCAL_KEY,
+	YT_OPENING_EXIT_REMOTE_PENDING,
+};
+typedef bool (*yt_opening_poll_fn)(void *context, bool *local_key,
+    bool *remote_pending);
 bool yt_out_opening_file(const char *path, float mode, float snoop,
-    struct yt_error *error);
+    yt_opening_poll_fn poll, void *poll_context,
+    enum yt_opening_exit *exit_reason, struct yt_error *error);
 
 #endif

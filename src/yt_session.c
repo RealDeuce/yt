@@ -1474,6 +1474,20 @@ registration(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
+opening_poll(void *context, bool *local_key, bool *remote_pending)
+{
+	struct yt_session *session = context;
+	struct yt_input_value local = {{0, 0}, 0, 0, false};
+
+	if (!yt_input_poll_source(&session->input, false, &local))
+		return false;
+	*local_key = local.length != 0U;
+	*remote_pending = session->input.remote.position
+	    < session->input.remote.length;
+	return true;
+}
+
+static bool
 opening_and_date(struct yt_session *session, struct yt_error *error)
 {
 	int16_t route[YT_ROUTE_CAPACITY];
@@ -1481,6 +1495,7 @@ opening_and_date(struct yt_session *session, struct yt_error *error)
 	char real_name[258];
 	struct yt_present_result presentation;
 	enum yt_present_status status;
+	enum yt_opening_exit opening_exit;
 
 	if (!build_route(session, 1, 2, route, false, &found, error))
 		return false;
@@ -1503,9 +1518,11 @@ opening_and_date(struct yt_session *session, struct yt_error *error)
 	if (session->door->identity.ansi) {
 		if (!yt_out_opening_file("YTOPEN.ANS",
 		    session->presentation.sound.mode,
-		    session->presentation.sound.snoop, error)
-		    || !session_wait(session, 3.0,
-		    "ANSI opening EOF wait", error))
+		    session->presentation.sound.snoop, opening_poll, session,
+		    &opening_exit, error)
+		    || (opening_exit == YT_OPENING_EXIT_EOF
+		    && !session_wait(session, 3.0,
+		    "ANSI opening EOF wait", error)))
 			return false;
 		status = yt_present_opening_cleanup(
 		    session->presentation.sound.mode,

@@ -2,6 +2,7 @@
 
 #include "OpenDoor.h"
 #include "ODScrn.h"
+#include "yt_input_model.h"
 #include "yt_text.h"
 
 #include <stdarg.h>
@@ -209,7 +210,8 @@ yt_out_file(const char *path, struct yt_error *error)
 
 bool
 yt_out_opening_file(const char *path, float mode, float snoop,
-    struct yt_error *error)
+    yt_opening_poll_fn poll, void *poll_context,
+    enum yt_opening_exit *exit_reason, struct yt_error *error)
 {
 	struct yt_text_file file;
 	struct yt_present_result presentation;
@@ -217,7 +219,16 @@ yt_out_opening_file(const char *path, float mode, float snoop,
 	size_t cursor = 0U;
 	bool available;
 	bool success = true;
+	enum yt_opening_exit reason = YT_OPENING_EXIT_EOF;
 
+	if (poll == NULL || exit_reason == NULL) {
+		if (error != NULL) {
+			error->status = YT_INVALID;
+			(void)snprintf(error->operation, sizeof(error->operation),
+			    "%s", "opening poll arguments");
+		}
+		return false;
+	}
 	if (!yt_text_read(path, &file, error))
 		return false;
 	line = malloc(file.length + 1U);
@@ -234,6 +245,9 @@ yt_out_opening_file(const char *path, float mode, float snoop,
 	for (;;) {
 		size_t length;
 		enum yt_present_status status;
+		bool local_key;
+		bool remote_pending;
+		enum yt_opening_row_route route;
 
 		if (!yt_text_line_input_next(file.data, file.length, &cursor,
 		    line, file.length, &length, &available)) {
@@ -242,13 +256,33 @@ yt_out_opening_file(const char *path, float mode, float snoop,
 		}
 		if (!available)
 			break;
-		status = yt_present_opening_row(line, length, mode, snoop,
+		status = yt_present_opening_row(line, length, 1.0f, snoop,
 		    &presentation);
 		if (status != YT_PRESENT_OK) {
 			success = false;
 			break;
 		}
 		yt_out_present_result(&presentation);
+		if (!poll(poll_context, &local_key, &remote_pending)) {
+			success = false;
+			break;
+		}
+		route = yt_input_opening_row_route(local_key, remote_pending);
+		if (route == YT_OPENING_ROW_STOP_LOCAL) {
+			reason = YT_OPENING_EXIT_LOCAL_KEY;
+			break;
+		}
+		status = yt_present_opening_row(line, length, mode, 0.0f,
+		    &presentation);
+		if (status != YT_PRESENT_OK) {
+			success = false;
+			break;
+		}
+		yt_out_present_result(&presentation);
+		if (route == YT_OPENING_ROW_STOP_REMOTE) {
+			reason = YT_OPENING_EXIT_REMOTE_PENDING;
+			break;
+		}
 	}
 	if (!success && error != NULL) {
 		error->status = YT_RANGE;
@@ -258,5 +292,7 @@ yt_out_opening_file(const char *path, float mode, float snoop,
 	}
 	free(line);
 	yt_text_free(&file);
+	if (success)
+		*exit_reason = reason;
 	return success;
 }
