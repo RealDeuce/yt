@@ -204,6 +204,37 @@ test_genesis_editor(void)
 	return true;
 }
 
+static bool
+test_headquarters_editor(void)
+{
+	static const uint8_t prompt[] =
+	    "The Xannor Headquarters is currently in sector: 85 \r"
+	    "Location? [ 8 to  2001 ] -=> ";
+	static const uint8_t invalid[] = "Invalid Range!\r";
+	static const uint8_t occupied[] =
+	    "That sector is already occupied!\r";
+	struct yt_config_output_result result;
+
+	CHECK(yt_config_compose_hq_prompt(85.0f, 2001.0f, 0U, &result));
+	CHECK(result.output_length == sizeof(prompt) - 1U);
+	CHECK(memcmp(result.output, prompt, sizeof(prompt) - 1U) == 0);
+	CHECK(result.final_column == 29U);
+	CHECK(yt_config_compose_hq_diagnostic(YT_CONFIG_HQ_INVALID,
+	    result.final_column, &result));
+	CHECK(result.output_length == sizeof(invalid) - 1U);
+	CHECK(memcmp(result.output, invalid, sizeof(invalid) - 1U) == 0);
+	CHECK(result.final_column == 0U);
+	CHECK(yt_config_compose_hq_diagnostic(YT_CONFIG_HQ_OCCUPIED, 29U,
+	    &result));
+	CHECK(result.output_length == sizeof(occupied) - 1U);
+	CHECK(memcmp(result.output, occupied, sizeof(occupied) - 1U) == 0);
+	CHECK(!yt_config_hq_in_range(7.9999995f, 2001.0f));
+	CHECK(yt_config_hq_in_range(8.0f, 2001.0f));
+	CHECK(yt_config_hq_in_range(2001.0f, 2001.0f));
+	CHECK(!yt_config_hq_in_range(2001.0001f, 2001.0f));
+	return true;
+}
+
 int
 main(void)
 {
@@ -211,7 +242,8 @@ main(void)
 	    || !test_canonical_menu()
 	    || !test_alternate_rows_and_binary_path()
 	    || !test_dispatch_and_exit()
-	    || !test_genesis_editor())
+	    || !test_genesis_editor()
+	    || !test_headquarters_editor())
 		return 1;
 	puts("ytconfig output tests passed");
 	return 0;

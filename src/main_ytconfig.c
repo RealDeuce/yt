@@ -265,30 +265,31 @@ static bool
 edit_headquarters(struct yt_game *game, struct yt_error *error)
 {
 	static const uint8_t raw_clear[4] = {0x00, 0x00, 0x80, 0x00};
+	struct yt_config_output_result output;
+	struct qb_val_result parsed;
+	char line[160];
 	float raw;
-	bool blank;
 	bool overflow;
 	int candidate_number;
 	int old_number;
-	int upper = (int)(game->config.port_offset
-	    - game->config.sector_offset);
+	float upper = game->config.port_offset
+	    - game->config.sector_offset;
 	struct yt_sector candidate;
 	struct yt_sector old;
 	struct yt_sector sector_one;
 	float merged;
 
-	printf("The Xannor Headquarters is currently in sector: %.9g\n",
-	    game->config.headquarters);
-	{
-		char prompt[100];
-
-		snprintf(prompt, sizeof(prompt), "Location? [ 8 to %d] -=> ",
-		    upper);
-		if (!read_single(prompt, &raw, &blank) || blank)
-			return true;
-	}
-	if (raw < 8.0f || raw > (float)upper) {
-		puts("Invalid Range!");
+	if (!yt_config_compose_hq_prompt(game->config.headquarters, upper, 0U,
+	    &output) || !write_output(&output, error))
+		return false;
+	if (!yt_cli_line(line, sizeof(line)) || line[0] == '\0')
+		return true;
+	parsed = qb_val(line);
+	raw = (float)(parsed.valid ? parsed.value : 0.0);
+	if (!yt_config_hq_in_range(raw, upper)) {
+		if (!yt_config_compose_hq_diagnostic(YT_CONFIG_HQ_INVALID,
+		    output.final_column, &output) || !write_output(&output, error))
+			return false;
 		return true;
 	}
 	candidate_number = (int)qb_cint(raw, &overflow);
@@ -299,7 +300,9 @@ edit_headquarters(struct yt_game *game, struct yt_error *error)
 	if (qb_cint(candidate.planet, &overflow) != 0
 	    || (qb_cint(candidate.fighters, &overflow) != 0
 	    && candidate.fighter_owner != -1.0f)) {
-		puts("That sector is already occupied!");
+		if (!yt_config_compose_hq_diagnostic(YT_CONFIG_HQ_OCCUPIED,
+		    output.final_column, &output) || !write_output(&output, error))
+			return false;
 		return true;
 	}
 	old_number = (int)qb_cint(game->config.headquarters, &overflow);

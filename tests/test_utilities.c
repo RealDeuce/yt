@@ -1,3 +1,4 @@
+#include "qb.h"
 #include "yt_config.h"
 #include "yt_config_output.h"
 #include "yt_file.h"
@@ -3605,6 +3606,135 @@ done_closed:
 }
 
 static bool
+test_ytconfig_headquarters(struct yt_error *error)
+{
+	static const uint8_t raw_clear[4] = {0x00, 0x00, 0x80, 0x00};
+	static const char input[] = "H8.6\nX";
+	static const uint8_t command_prefix[] = "H\r\r";
+	static const uint8_t stored_row[] =
+	    "<H> Xannor Headquarters is in: 8.6 \r";
+	struct yt_game game;
+	struct yt_game restore;
+	struct yt_config original_config;
+	struct yt_sector original_old;
+	struct yt_sector original_candidate;
+	struct yt_sector original_one;
+	struct yt_sector forced_candidate;
+	struct yt_sector actual_old;
+	struct yt_sector actual_candidate;
+	struct yt_sector actual_one;
+	struct yt_record expected_old;
+	struct yt_record expected_candidate;
+	struct yt_record expected_one;
+	struct yt_record expected_config;
+	struct yt_config_output_result prompt;
+	uint8_t prompt_fragment[256];
+	uint8_t *screen = NULL;
+	size_t screen_length = 0U;
+	size_t prompt_length;
+	float merged;
+	float planet_link;
+	bool overflow;
+	bool snapshots = false;
+	bool valid = false;
+	int old_number;
+	const int candidate_number = 9;
+
+	memset(&game, 0, sizeof(game));
+	if (!yt_game_open(&game, YT_OPEN_UPDATE, error))
+		goto done;
+	original_config = game.config;
+	old_number = (int)qb_cint(original_config.headquarters, &overflow);
+	if (overflow || old_number == 1 || old_number == candidate_number
+	    || !yt_game_read_sector(&game, old_number, &original_old, error)
+	    || !yt_game_read_sector(&game, candidate_number,
+		&original_candidate, error)
+	    || !yt_game_read_sector(&game, 1, &original_one, error))
+		goto done;
+	snapshots = true;
+	forced_candidate = original_candidate;
+	forced_candidate.planet = 0.0f;
+	forced_candidate.fighters = 2.0f;
+	forced_candidate.fighter_owner = -1.0f;
+	if (!yt_game_write_sector(&game, candidate_number, &forced_candidate,
+	    error))
+		goto done;
+	if (!yt_config_compose_hq_prompt(original_config.headquarters,
+	    original_config.port_offset - original_config.sector_offset, 0U,
+	    &prompt))
+		goto done;
+	prompt_length = sizeof(command_prefix) - 1U + prompt.output_length;
+	if (prompt_length > sizeof(prompt_fragment))
+		goto done;
+	memcpy(prompt_fragment, command_prefix, sizeof(command_prefix) - 1U);
+	memcpy(prompt_fragment + sizeof(command_prefix) - 1U, prompt.output,
+	    prompt.output_length);
+	yt_game_close(&game);
+	if (!write_file("config.in", input, sizeof(input) - 1U)
+	    || !run_redirected(YT_CONFIG_EXE, "config.in", "config.out")
+	    || !read_file("config.out", &screen, &screen_length)
+	    || !bytes_contain(screen, screen_length, prompt_fragment,
+		prompt_length)
+	    || !bytes_contain(screen, screen_length, stored_row,
+		sizeof(stored_row) - 1U))
+		goto done_closed;
+	memset(&game, 0, sizeof(game));
+	if (!yt_game_open(&game, YT_OPEN_READ, error)
+	    || !yt_game_read_sector(&game, old_number, &actual_old, error)
+	    || !yt_game_read_sector(&game, candidate_number, &actual_candidate,
+		error)
+	    || !yt_game_read_sector(&game, 1, &actual_one, error))
+		goto done;
+	merged = original_old.fighters + forced_candidate.fighters;
+	planet_link = original_config.total_records
+	    - original_config.planet_offset;
+	expected_old = original_old.record;
+	yt_record_set_raw_number(&expected_old, YT_F93, raw_clear);
+	yt_record_set_raw_number(&expected_old, YT_F85, raw_clear);
+	yt_record_set_raw_number(&expected_old, YT_F81, raw_clear);
+	expected_candidate = forced_candidate.record;
+	expected_one = original_one.record;
+	expected_config = original_config.record;
+	valid = yt_record_set_number(&expected_candidate, YT_F85, -1.0f)
+	    && yt_record_set_number(&expected_candidate, YT_F81, merged)
+	    && yt_record_set_number(&expected_candidate, YT_F93, planet_link)
+	    && yt_record_set_number(&expected_one, YT_F105, 8.6f)
+	    && yt_record_set_number(&expected_config, YT_F117, 8.6f)
+	    && memcmp(actual_old.record.bytes, expected_old.bytes,
+		YT_RECORD_SIZE) == 0
+	    && memcmp(actual_candidate.record.bytes, expected_candidate.bytes,
+		YT_RECORD_SIZE) == 0
+	    && memcmp(actual_one.record.bytes, expected_one.bytes,
+		YT_RECORD_SIZE) == 0
+	    && memcmp(game.config.record.bytes, expected_config.bytes,
+		YT_RECORD_SIZE) == 0;
+
+done:
+	yt_game_close(&game);
+done_closed:
+	if (snapshots) {
+		memset(&restore, 0, sizeof(restore));
+		if (!yt_game_open(&restore, YT_OPEN_UPDATE, error)
+		    || !yt_database_write(&restore.database, 1,
+			&original_config.record, error)
+		    || !yt_database_write(&restore.database,
+			(size_t)yt_sector_basic_record(&original_config, old_number),
+			&original_old.record, error)
+		    || !yt_database_write(&restore.database,
+			(size_t)yt_sector_basic_record(&original_config,
+			candidate_number), &original_candidate.record, error)
+		    || !yt_database_write(&restore.database,
+			(size_t)yt_sector_basic_record(&original_config, 1),
+			&original_one.record, error)
+		    || !yt_database_flush(&restore.database, error))
+			valid = false;
+		yt_game_close(&restore);
+	}
+	free(screen);
+	return valid;
+}
+
+static bool
 test_portname(struct yt_error *error)
 {
 	static const uint8_t intro[] =
@@ -4341,6 +4471,8 @@ main(void)
 		failure = "YTCONFIG missing-data terminal differs";
 	else if (!test_ytconfig_genesis(&error))
 		failure = "YTCONFIG Genesis editor differs";
+	else if (!test_ytconfig_headquarters(&error))
+		failure = "YTCONFIG Headquarters relocation differs";
 	else if (!test_portname(&error))
 		failure = "PORTNAME changed data outside its two owned fields";
 	else if (!test_rmt_standalone_decline(&error))

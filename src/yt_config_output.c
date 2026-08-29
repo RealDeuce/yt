@@ -265,3 +265,47 @@ yt_config_genesis_valid(float threshold)
 {
 	return threshold >= 50.0f;
 }
+
+bool
+yt_config_compose_hq_prompt(float current_hq, float upper_bound,
+    size_t initial_column, struct yt_config_output_result *result)
+{
+	static const uint8_t newline = '\r';
+
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_literal(result,
+	    "The Xannor Headquarters is currently in sector:")
+	    && append_single(result, current_hq, true)
+	    && append_bytes(result, &newline, 1U)
+	    && append_literal(result, "Location? [ 8 to ")
+	    && append_single(result, upper_bound, true)
+	    && append_literal(result, "] -=> ");
+}
+
+bool
+yt_config_compose_hq_diagnostic(enum yt_config_hq_diagnostic diagnostic,
+    size_t initial_column, struct yt_config_output_result *result)
+{
+	const char *text;
+
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	if (diagnostic == YT_CONFIG_HQ_INVALID)
+		text = "Invalid Range!";
+	else if (diagnostic == YT_CONFIG_HQ_OCCUPIED)
+		text = "That sector is already occupied!";
+	else
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_line(result, text);
+}
+
+bool
+yt_config_hq_in_range(float candidate, float upper_bound)
+{
+	return candidate >= 8.0f && candidate <= upper_bound;
+}
