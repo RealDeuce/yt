@@ -462,17 +462,9 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 			return session_editor_end(session,
 			    YT_AB36_TERMINAL_SESSION_LIMIT);
 		if (queued) {
-			struct yt_input_value remote = {{0, 0}, 0, 0, false};
-
-			selected.bytes[0] = (uint8_t)
-			    session->queue[session->queue_position++];
-			selected.length = 1;
-			if (session->queue_position >= session->queue_length)
-				clear_queue(session);
-			if (session->presentation.sound.mode != 1.0f
-			    && (!yt_input_poll_source(&session->input, true, &remote)
-			    || !yt_input_ab36_remote_replace(
-			    session->presentation.sound.mode, &remote, &selected)))
+			if (!yt_input_ab36_queue_pop(session->queue,
+			    sizeof(session->queue), &session->queue_position,
+			    &session->queue_length, &selected))
 				return false;
 		}
 		else {

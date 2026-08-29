@@ -140,6 +140,35 @@ test_ab36_inactivity_gate(void)
 	CHECK(yt_input_carrier_returns(-1.0f, false));
 }
 
+static void
+test_ab36_queued_input(void)
+{
+	char queue[8] = "AB";
+	size_t position = 0U;
+	size_t length = 2U;
+	struct yt_input_value selected;
+
+	CHECK(yt_input_ab36_queue_pop(queue, sizeof(queue), &position,
+	    &length, &selected));
+	CHECK(selected.length == 1U && selected.bytes[0] == 'A'
+	    && !selected.remote && position == 1U && length == 2U
+	    && memcmp(queue, "AB", 2U) == 0);
+	CHECK(yt_input_ab36_queue_pop(queue, sizeof(queue), &position,
+	    &length, &selected));
+	CHECK(selected.length == 1U && selected.bytes[0] == 'B'
+	    && position == 0U && length == 0U && queue[0] == '\0');
+	CHECK(yt_input_ab36_queue_pop(queue, sizeof(queue), &position,
+	    &length, &selected) && selected.length == 0U);
+	position = 2U;
+	length = 1U;
+	CHECK(!yt_input_ab36_queue_pop(queue, sizeof(queue), &position,
+	    &length, &selected));
+	position = 0U;
+	length = sizeof(queue);
+	CHECK(!yt_input_ab36_queue_pop(queue, sizeof(queue), &position,
+	    &length, &selected));
+}
+
 struct ab36_terminal_tape {
 	uint8_t notice[64];
 	size_t notice_length;
@@ -1484,6 +1513,7 @@ main(void)
 {
 	test_arbitration();
 	test_ab36_inactivity_gate();
+	test_ab36_queued_input();
 	test_ab36_terminal_transaction();
 	test_source_fifo();
 	test_merged_fifo();
