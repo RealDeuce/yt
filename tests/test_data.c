@@ -176,7 +176,12 @@ test_record(void)
 	CHECK(yt_radio_get_number(&mutated, 0) == 28.0f);
 	CHECK(memcmp(mutated.bytes + 4, before_mutation.bytes + 4,
 	    sizeof(mutated.bytes) - 4U) == 0);
+	CHECK(yt_radio_reader_mutate(&mutated, 2.0f));
+	CHECK(memcmp(mutated.bytes, "\0\0\0\0", 4) == 0);
 	CHECK(yt_radio_reader_mutate(&mutated, 1.0f));
+	CHECK(memcmp(mutated.bytes, radio_dirty_zero,
+	    sizeof(radio_dirty_zero)) == 0);
+	CHECK(yt_radio_reader_mutate(&mutated, 0.0f));
 	CHECK(memcmp(mutated.bytes, radio_dirty_zero,
 	    sizeof(radio_dirty_zero)) == 0);
 	CHECK(yt_radio_reader_header((const uint8_t *)"A\0da", 4,
@@ -210,6 +215,18 @@ test_record(void)
 	CHECK(yt_radio_reader_decide(0.0f, 8.0f, 9.0f, 7.0f, 1.0f,
 	    &decision, &error));
 	CHECK(!decision.visible);
+	CHECK(yt_radio_reader_decide(0.0f, 7.0f, 9.0f, 7.0f, 1.0f,
+	    &decision, &error));
+	CHECK(decision.log_heading && decision.visible
+	    && !decision.automatic_write);
+	CHECK(yt_radio_reader_decide(0.0f, 9.0f, 7.0f, 7.0f, 1.0f,
+	    &decision, &error));
+	CHECK(decision.log_heading && decision.visible
+	    && !decision.automatic_write);
+	CHECK(yt_radio_reader_decide(0.0f, 0.0f, 0.0f, 0.0f, 2.0f,
+	    &decision, &error));
+	CHECK(decision.log_heading && decision.visible
+	    && !decision.automatic_write);
 	CHECK(yt_radio_reader_decide(1.0f, 7.0f, 8.0f, 7.0f, 0.49f,
 	    &decision, &error));
 	CHECK(decision.log_heading);
@@ -220,6 +237,10 @@ test_record(void)
 	CHECK(decision.log_heading);
 	CHECK(!decision.visible);
 	CHECK(!decision.automatic_write);
+	CHECK(yt_radio_reader_decide(2.0f, 8.0f, 9.0f, 7.0f, 0.49f,
+	    &decision, &error));
+	CHECK(decision.log_heading && decision.visible
+	    && !decision.automatic_write);
 	yt_error_clear(&error);
 	CHECK(!yt_radio_reader_decide(1.0f, 7.0f, 8.0f, 7.0f,
 	    40000.0f, &decision, &error));

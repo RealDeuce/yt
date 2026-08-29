@@ -2251,10 +2251,10 @@ radio_read(struct yt_session *session, float reader_mode,
 			size_t header_length = 0;
 
 			visible = true;
-			if (!radio_name_bytes(session, sender, from, sizeof(from),
-			    &from_length, true, error)
-			    || !radio_name_bytes(session, recipient, to, sizeof(to),
-			    &to_length, false, error)) {
+			if (!radio_name_bytes(session, recipient, to, sizeof(to),
+			    &to_length, false, error)
+			    || !radio_name_bytes(session, sender, from, sizeof(from),
+			    &from_length, true, error)) {
 				(void)fclose(file);
 				return false;
 			}
