@@ -1,0 +1,222 @@
+#include "yt_route.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+static unsigned failures;
+
+#define CHECK(expr) do { \
+	if (!(expr)) { \
+		fprintf(stderr, "%s:%d: check failed: %s\n", \
+		    __FILE__, __LINE__, #expr); \
+		++failures; \
+	} \
+} while (0)
+
+struct graph {
+	float rows[8][6];
+	int maximum;
+	int expanded[32];
+	size_t expanded_count;
+	int fail_sector;
+};
+
+static bool
+read_sector(void *context, int sector, float warps[6],
+    struct yt_error *error)
+{
+	struct graph *graph = context;
+
+	if (graph->expanded_count < YT_ARRAY_LEN(graph->expanded))
+		graph->expanded[graph->expanded_count++] = sector;
+	if (sector == graph->fail_sector || sector < 0
+	    || sector > graph->maximum) {
+		if (error != NULL) {
+			error->status = YT_IO_ERROR;
+			(void)snprintf(error->operation, sizeof(error->operation),
+			    "%s", "route sector GET");
+		}
+		return false;
+	}
+	memcpy(warps, graph->rows[sector], sizeof(graph->rows[sector]));
+	return true;
+}
+
+static bool
+run_route(struct graph *graph, float start, float destination, float *status,
+    const float avoid[YT_ROUTE_AVOID_COUNT], int conversion_mode,
+    int16_t predecessor[YT_ROUTE_CAPACITY],
+    int16_t second[YT_ROUTE_CAPACITY], enum yt_route_outcome *outcome,
+    struct yt_error *error)
+{
+	graph->expanded_count = 0U;
+	return yt_route_build(start, destination, status, avoid,
+	    conversion_mode, predecessor, second, read_sector, graph, outcome,
+	    error);
+}
+
+static void
+test_fifo_and_failure_residue(void)
+{
+	struct graph graph = {.maximum = 4, .fail_sector = -1};
+	float avoid[YT_ROUTE_AVOID_COUNT] = {0};
+	int16_t predecessor[YT_ROUTE_CAPACITY];
+	int16_t second[YT_ROUTE_CAPACITY];
+	enum yt_route_outcome outcome;
+	float status = 0.0f;
+
+	graph.rows[1][0] = 3.0f;
+	graph.rows[1][1] = 2.0f;
+	graph.rows[2][0] = 4.0f;
+	graph.rows[3][0] = 4.0f;
+	CHECK(run_route(&graph, 1.0f, 4.0f, &status, avoid, 0,
+	    predecessor, second, &outcome, NULL));
+	CHECK(outcome == YT_ROUTE_FOUND && status == 0.0f);
+	CHECK(second[1] == 3 && second[3] == 4 && second[4] == 0);
+	CHECK(graph.expanded_count == 2U
+	    && graph.expanded[0] == 1 && graph.expanded[1] == 3);
+
+	memset(&graph, 0, sizeof(graph));
+	graph.maximum = 3;
+	graph.fail_sector = -1;
+	graph.rows[1][0] = 2.0f;
+	status = 0.0f;
+	CHECK(run_route(&graph, 1.0f, 3.0f, &status, avoid, 0,
+	    predecessor, second, &outcome, NULL));
+	CHECK(outcome == YT_ROUTE_NOT_FOUND && status == 1.0f);
+	CHECK(second[1] == 0 && second[2] == 2);
+}
+
+static void
+test_avoid_semantics(void)
+{
+	struct graph graph = {.maximum = 3, .fail_sector = -1};
+	float avoid[YT_ROUTE_AVOID_COUNT] = {0};
+	int16_t predecessor[YT_ROUTE_CAPACITY];
+	int16_t second[YT_ROUTE_CAPACITY];
+	enum yt_route_outcome outcome;
+	struct yt_error error;
+	float status;
+
+	graph.rows[1][0] = 2.0f;
+	graph.rows[2][0] = 3.0f;
+	status = 1.0f;
+	avoid[0] = 1.0f;
+	CHECK(run_route(&graph, 1.0f, 3.0f, &status, avoid, 0,
+	    predecessor, second, &outcome, NULL));
+	CHECK(outcome == YT_ROUTE_NOT_FOUND && status == 1.0f
+	    && graph.expanded_count == 0U && second[1] == 0);
+
+	memset(avoid, 0, sizeof(avoid));
+	status = 1.0f;
+	avoid[0] = 1.5f;
+	CHECK(run_route(&graph, 1.0f, 3.0f, &status, avoid, 0,
+	    predecessor, second, &outcome, NULL));
+	CHECK(outcome == YT_ROUTE_NOT_FOUND && predecessor[2] == 2);
+
+	memset(avoid, 0, sizeof(avoid));
+	status = 1.0f;
+	avoid[0] = 1.4f;
+	yt_error_clear(&error);
+	CHECK(!run_route(&graph, 1.0f, 3.0f, &status, avoid, 0,
+	    predecessor, second, &outcome, &error));
+	CHECK(error.status == YT_RANGE
+	    && strcmp(error.operation, "route predecessor cycle") == 0);
+
+	memset(avoid, 0, sizeof(avoid));
+	status = 1.0f;
+	avoid[0] = 2.6f;
+	yt_error_clear(&error);
+	CHECK(!run_route(&graph, 1.0f, 3.0f, &status, avoid, 0,
+	    predecessor, second, &outcome, &error));
+	CHECK(error.status == YT_RANGE
+	    && strcmp(error.operation, "route predecessor cycle") == 0);
+
+	memset(avoid, 0, sizeof(avoid));
+	status = 0.0f;
+	avoid[0] = 1000000.0f;
+	CHECK(run_route(&graph, 1.0f, 3.0f, &status, avoid, 0,
+	    predecessor, second, &outcome, NULL));
+	CHECK(outcome == YT_ROUTE_FOUND && status == 0.0f);
+
+	memset(avoid, 0, sizeof(avoid));
+	status = 1.0f;
+	avoid[0] = 3000.4f;
+	CHECK(run_route(&graph, 1.0f, 3.0f, &status, avoid, 0,
+	    predecessor, second, &outcome, NULL));
+	CHECK(outcome == YT_ROUTE_FOUND && predecessor[3000] == 3000);
+
+	avoid[0] = 3000.6f;
+	status = 1.0f;
+	yt_error_clear(&error);
+	CHECK(!run_route(&graph, 1.0f, 3.0f, &status, avoid, 0,
+	    predecessor, second, &outcome, &error));
+	CHECK(error.status == YT_RANGE
+	    && strcmp(error.operation, "route avoid CINT") == 0);
+
+	memset(avoid, 0, sizeof(avoid));
+	status = 1.0f;
+	avoid[0] = 1.5f;
+	yt_error_clear(&error);
+	CHECK(!run_route(&graph, 1.0f, 3.0f, &status, avoid, 4,
+	    predecessor, second, &outcome, &error));
+	CHECK(error.status == YT_RANGE
+	    && strcmp(error.operation, "route predecessor cycle") == 0);
+}
+
+static void
+test_same_zero_and_conversion_order(void)
+{
+	struct graph graph = {.maximum = 3, .fail_sector = -1};
+	float avoid[YT_ROUTE_AVOID_COUNT] = {0};
+	int16_t predecessor[YT_ROUTE_CAPACITY];
+	int16_t second[YT_ROUTE_CAPACITY];
+	enum yt_route_outcome outcome;
+	struct yt_error error;
+	float status = 7.0f;
+
+	avoid[0] = 1000000.0f;
+	CHECK(run_route(&graph, 1.0f, 1.0f, &status, avoid, 0,
+	    predecessor, second, &outcome, NULL));
+	CHECK(outcome == YT_ROUTE_SAME && status == 7.0f
+	    && predecessor[0] == 1 && second[1] == 0
+	    && graph.expanded_count == 0U);
+
+	memset(&graph, 0, sizeof(graph));
+	graph.maximum = 3;
+	graph.fail_sector = -1;
+	graph.rows[0][0] = 3.0f;
+	status = 0.0f;
+	memset(avoid, 0, sizeof(avoid));
+	CHECK(run_route(&graph, 1.0f, 3.0f, &status, avoid, 0,
+	    predecessor, second, &outcome, NULL));
+	CHECK(outcome == YT_ROUTE_NOT_FOUND && graph.expanded_count == 3U);
+	CHECK(graph.expanded[0] == 1 && graph.expanded[1] == 0
+	    && graph.expanded[2] == 3);
+
+	memset(&graph, 0, sizeof(graph));
+	graph.maximum = 3;
+	graph.fail_sector = -1;
+	graph.rows[1][0] = 2.0f;
+	graph.rows[1][5] = 40000.0f;
+	status = 0.0f;
+	yt_error_clear(&error);
+	CHECK(!run_route(&graph, 1.0f, 3.0f, &status, avoid, 0,
+	    predecessor, second, &outcome, &error));
+	CHECK(error.status == YT_RANGE
+	    && strcmp(error.operation, "route warp CINT") == 0
+	    && predecessor[2] == 0);
+}
+
+int
+main(void)
+{
+	test_fifo_and_failure_residue();
+	test_avoid_semantics();
+	test_same_zero_and_conversion_order();
+	if (failures != 0U)
+		return EXIT_FAILURE;
+	puts("test_route: ok");
+	return EXIT_SUCCESS;
+}

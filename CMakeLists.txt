@@ -70,6 +70,7 @@ set(YT_CORE_SOURCES
     src/yt_platform.c
     src/yt_presentation.c
     src/yt_random.c
+    src/yt_route.c
     src/yt_sound.c
 	    src/yt_startup_model.c
     src/yt_text.c)
@@ -164,6 +165,7 @@ if(BUILD_TESTING)
     yt_add_test(test_presentation tests/test_presentation.c yt_game)
     yt_add_test(test_ytconfig_output tests/test_ytconfig_output.c yt_game)
     yt_add_test(test_score tests/test_score.c yt_game)
+    yt_add_test(test_route tests/test_route.c yt_core)
 
     add_executable(test_assets tests/test_assets.c)
     yt_configure_target(test_assets)

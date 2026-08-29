@@ -8,6 +8,7 @@
 #include "yt_output.h"
 #include "yt_pager.h"
 #include "yt_platform.h"
+#include "yt_route.h"
 #include "yt_score.h"
 #include "yt_sound.h"
 #include "yt_text.h"
@@ -115,8 +116,8 @@ static bool quit_session(struct yt_session *session,
     struct yt_error *error);
 static bool info_refresh_time(struct yt_session *session,
     struct yt_error *error);
-static bool build_route(struct yt_session *session, int start,
-    int destination, int *next_hop, bool use_avoid, bool *found,
+static bool build_route(struct yt_session *session, float start,
+    float destination, int16_t *next_hop, bool use_avoid, bool *found,
     struct yt_error *error);
 static bool session_carrier(struct yt_session *session);
 static bool session_b05d(struct yt_session *session, const uint8_t *text,
@@ -1475,7 +1476,7 @@ registration(struct yt_session *session, struct yt_error *error)
 static bool
 opening_and_date(struct yt_session *session, struct yt_error *error)
 {
-	int route[3001];
+	int16_t route[YT_ROUTE_CAPACITY];
 	bool found;
 	char real_name[258];
 	struct yt_present_result presentation;
@@ -8456,96 +8457,41 @@ planet_assault(struct yt_session *session, uint32_t physical_planet,
 }
 
 static bool
-build_route(struct yt_session *session, int start, int destination,
-    int *next_hop, bool use_avoid, bool *found, struct yt_error *error)
+route_sector_reader(void *context, int logical_sector, float warps[6],
+    struct yt_error *error)
 {
-	int count = sector_count(session);
-	int *predecessor;
-	int *queue;
-	int head = 0;
-	int tail = 0;
-	int current;
+	struct yt_session *session = context;
+	struct yt_sector sector;
 
-	*found = false;
-	if (count > 3000 || start < 0 || start > count
-	    || destination < 0 || destination > count) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			snprintf(error->operation, sizeof(error->operation),
-			    "route bounds");
-		}
+	if (!yt_game_read_sector(&session->door->game, logical_sector, &sector,
+	    error))
 		return false;
-	}
-	predecessor = calloc((size_t)count + 1U, sizeof(*predecessor));
-	queue = calloc((size_t)count + 2U, sizeof(*queue));
-	if (predecessor == NULL || queue == NULL) {
-		free(predecessor);
-		free(queue);
+	memcpy(warps, sector.warps, sizeof(sector.warps));
+	return true;
+}
+
+static bool
+build_route(struct yt_session *session, float start, float destination,
+    int16_t *next_hop, bool use_avoid, bool *found, struct yt_error *error)
+{
+	int16_t *predecessor;
+	float status = use_avoid ? 1.0f : 0.0f;
+	enum yt_route_outcome outcome;
+	bool success;
+
+	predecessor = calloc(YT_ROUTE_CAPACITY, sizeof(*predecessor));
+	if (predecessor == NULL) {
 		if (error != NULL)
 			error->status = YT_NO_MEMORY;
 		return false;
 	}
-	memset(next_hop, 0, ((size_t)count + 1U) * sizeof(*next_hop));
-	if (start == destination) {
-		*found = true;
-		free(predecessor);
-		free(queue);
-		return true;
-	}
-	predecessor[start] = -1;
-	if (use_avoid) {
-		size_t index;
-
-		for (index = 0; index < YT_ARRAY_LEN(session->avoid); ++index) {
-			bool overflow;
-			int avoided = (int)qb_cint(session->avoid[index],
-			    &overflow);
-
-			if (!overflow && avoided >= 0 && avoided <= count)
-				predecessor[avoided] = avoided;
-			if (avoided == start || avoided == destination) {
-				free(predecessor);
-				free(queue);
-				return true;
-			}
-		}
-		predecessor[start] = -1;
-	}
-	queue[tail++] = start;
-	while (head < tail && predecessor[destination] == 0) {
-		struct yt_sector sector;
-		size_t slot;
-
-		current = queue[head++];
-		if (!yt_game_read_sector(&session->door->game, current, &sector,
-		    error)) {
-			free(predecessor);
-			free(queue);
-			return false;
-		}
-		for (slot = 0; slot < YT_ARRAY_LEN(sector.warps); ++slot) {
-			bool overflow;
-			int neighbor = (int)qb_cint(sector.warps[slot], &overflow);
-
-			if (overflow || neighbor < 0 || neighbor > count
-			    || predecessor[neighbor] != 0)
-				continue;
-			predecessor[neighbor] = current;
-			queue[tail++] = neighbor;
-			if (neighbor == destination)
-				break;
-		}
-	}
-	if (predecessor[destination] != 0) {
-		current = destination;
-		while (predecessor[current] != -1) {
-			next_hop[predecessor[current]] = current;
-			current = predecessor[current];
-		}
-		*found = true;
-	}
+	success = yt_route_build(start, destination, &status, session->avoid,
+	    session->presentation.sound.conversion_mode, predecessor, next_hop,
+	    route_sector_reader, session, &outcome, error);
 	free(predecessor);
-	free(queue);
+	if (!success)
+		return false;
+	*found = outcome != YT_ROUTE_NOT_FOUND;
 	return true;
 }
 
@@ -8832,8 +8778,7 @@ planet_move(struct yt_session *session, bool *enter_sector,
 	float cost = 0.0f;
 	int start_node;
 	int destination_node;
-	int count = sector_count(session);
-	int *route;
+	int16_t *route;
 	int cursor;
 	bool conversion_overflow;
 	bool found;
@@ -8875,7 +8820,8 @@ planet_move(struct yt_session *session, bool *enter_sector,
 	    || !session_031f(session, working, sizeof(working) - 1U,
 	    "planet Thrusters working", error))
 		return false;
-	start_node = (int)qb_cint(start, &conversion_overflow);
+	start_node = (int)qb_cint_mode((double)start,
+	    session->presentation.sound.conversion_mode, &conversion_overflow);
 	if (conversion_overflow) {
 		if (error != NULL) {
 			error->status = YT_RANGE;
@@ -8884,7 +8830,8 @@ planet_move(struct yt_session *session, bool *enter_sector,
 		}
 		return false;
 	}
-	destination_node = (int)qb_cint(destination, &conversion_overflow);
+	destination_node = (int)qb_cint_mode((double)destination,
+	    session->presentation.sound.conversion_mode, &conversion_overflow);
 	if (conversion_overflow) {
 		if (error != NULL) {
 			error->status = YT_RANGE;
@@ -8893,13 +8840,13 @@ planet_move(struct yt_session *session, bool *enter_sector,
 		}
 		return false;
 	}
-	route = calloc((size_t)count + 1U, sizeof(*route));
+	route = calloc(YT_ROUTE_CAPACITY, sizeof(*route));
 	if (route == NULL) {
 		if (error != NULL)
 			error->status = YT_NO_MEMORY;
 		return false;
 	}
-	if (!build_route(session, start_node, destination_node, route, true,
+	if (!build_route(session, start, destination, route, true,
 	    &found, error)) {
 		free(route);
 		return false;
@@ -12942,7 +12889,7 @@ launch_projectile(struct yt_session *session, float target, float amount,
 	int count = sector_count(session);
 	int destination;
 	bool overflow;
-	int *route;
+	int16_t *route;
 	bool found;
 	int cursor;
 	float local_missiles = amount;
@@ -12967,7 +12914,7 @@ launch_projectile(struct yt_session *session, float target, float amount,
 		return true;
 	if (!projectile_opening(session, amount, energy, plasma, error))
 		return false;
-	route = calloc((size_t)count + 1U, sizeof(*route));
+	route = calloc(YT_ROUTE_CAPACITY, sizeof(*route));
 	if (route == NULL) {
 		if (error != NULL)
 			error->status = YT_NO_MEMORY;
@@ -13015,7 +12962,7 @@ launch_projectile(struct yt_session *session, float target, float amount,
 	for (;;) {
 		bool rerouted = false;
 
-		if (!build_route(session, start, destination, route,
+		if (!build_route(session, (float)start, (float)destination, route,
 		    !plasma && *counterattack == 0
 		    && session->player_record != -1, &found, error)) {
 			free(route);
@@ -13918,7 +13865,8 @@ computer_route(struct yt_session *session, bool autopilot,
 	int start;
 	int destination;
 	int count = sector_count(session);
-	int *route;
+	int16_t *route;
+	bool conversion_overflow;
 	bool found;
 	int cursor;
 	int hops = 0;
@@ -13981,11 +13929,17 @@ computer_route(struct yt_session *session, bool autopilot,
 	if (start_value == destination_value)
 		return session_02db(session, same, sizeof(same) - 1U,
 		    "path equal endpoint", error);
-	start = (int)start_value;
-	destination = (int)destination_value;
+	start = (int)qb_cint_mode((double)start_value,
+	    session->presentation.sound.conversion_mode, &conversion_overflow);
+	if (conversion_overflow)
+		return false;
+	destination = (int)qb_cint_mode((double)destination_value,
+	    session->presentation.sound.conversion_mode, &conversion_overflow);
+	if (conversion_overflow)
+		return false;
 	if (start < 0 || start > count || destination < 0 || destination > count)
 		return true;
-	route = calloc((size_t)count + 1U, sizeof(*route));
+	route = calloc(YT_ROUTE_CAPACITY, sizeof(*route));
 	if (route == NULL) {
 		if (error != NULL)
 			error->status = YT_NO_MEMORY;
@@ -13998,7 +13952,8 @@ computer_route(struct yt_session *session, bool autopilot,
 		free(route);
 		return false;
 	}
-	if (!build_route(session, start, destination, route, true, &found,
+	if (!build_route(session, start_value, destination_value, route, true,
+	    &found,
 	    error)) {
 		free(route);
 		return false;
