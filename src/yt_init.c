@@ -959,7 +959,8 @@ bool
 yt_initializer_prepare_yt(struct yt_random *random,
     struct yt_initializer_preparation *preparation, struct yt_error *error)
 {
-	struct yt_clock_value current;
+	struct yt_clock_value epoch_date;
+	struct yt_clock_value maintenance_date;
 	float sample;
 
 	if (random == NULL || preparation == NULL) {
@@ -967,9 +968,11 @@ yt_initializer_prepare_yt(struct yt_random *random,
 		return false;
 	}
 	memset(preparation, 0, sizeof(*preparation));
-	if (!yt_platform_clock(&current, error) || !draw(random, &sample, error))
+	if (!yt_platform_clock(&epoch_date, error)
+	    || !yt_platform_clock(&maintenance_date, error)
+	    || !draw(random, &sample, error))
 		return false;
-	preparation->config.epoch_year = (float)(current.year % 100);
+	preparation->config.epoch_year = (float)(epoch_date.year % 100);
 	preparation->config.turns_per_day = 500.0f;
 	preparation->config.sector_offset = YT_INIT_PLAYERS + 1.0f;
 	preparation->config.port_offset = preparation->config.sector_offset
@@ -988,7 +991,7 @@ yt_initializer_prepare_yt(struct yt_random *random,
 	preparation->config.maximum_holds = 1000.0f;
 	preparation->config.marker = 6324.0f;
 	preparation->config.maximum_planets = 0.0f;
-	preparation->today = yt_date_serial(&current,
+	preparation->today = yt_date_serial(&maintenance_date,
 	    (int)preparation->config.epoch_year, NULL);
 	preparation->config.last_maintenance = (float)(preparation->today - 1);
 	preparation->config.headquarters = (float)((int)floorf(single_mul(sample,
@@ -1767,10 +1770,12 @@ write_config_and_players(struct yt_database *database,
 static bool
 write_world_database(struct yt_database *database,
     const struct yt_initializer_options *options, struct yt_config *config,
-    const struct world *world, struct yt_random *random, int today,
+    const struct world *world, struct yt_random *random,
     struct yt_error *error)
 {
 	struct yt_record record;
+	struct yt_clock_value port_date;
+	int today;
 	int logical;
 
 	if (!yt_present_text(options, 0x163fU, YT_INIT_OUTPUT_LINE, "", error)
@@ -1811,13 +1816,9 @@ write_world_database(struct yt_database *database,
 	    || !rmt_present_text(options, 0x1689U, YT_RMT_OUTPUT_LINE,
 	    "Initializing ports... (Be patient)", error))
 		return false;
-	if (options->family == YT_INITIALIZER_RMT) {
-		struct yt_clock_value port_date;
-
-		if (!yt_platform_clock(&port_date, error))
-			return false;
-		today = yt_date_serial(&port_date, (int)config->epoch_year, NULL);
-	}
+	if (!yt_platform_clock(&port_date, error))
+		return false;
+	today = yt_date_serial(&port_date, (int)config->epoch_year, NULL);
 	if (!yt_present_text(options, 0x1a55U, YT_INIT_OUTPUT_LINE, "", error)
 	    || !yt_present_text(options, 0x1a69U, YT_INIT_OUTPUT_LINE,
 	    "   They started producing 10 days ago...", error)
@@ -2225,7 +2226,6 @@ yt_initialize_world(const struct yt_initializer_options *options,
 	struct yt_database database;
 	struct world world = {0};
 	float sample;
-	int today = 0;
 	bool result = false;
 
 	if (options == NULL || random == NULL) {
@@ -2286,7 +2286,6 @@ yt_initialize_world(const struct yt_initializer_options *options,
 			    - config.sector_offset);
 			world.ports = (int)(config.planet_offset
 			    - config.port_offset);
-			today = options->prepared_today;
 		}
 		else if (!yt_platform_clock(&current, error))
 			goto done;
@@ -2336,8 +2335,10 @@ yt_initialize_world(const struct yt_initializer_options *options,
 			goto done;
 		}
 		if (!options->prepared_yt) {
-			today = yt_date_serial(&current, (int)config.epoch_year, NULL);
-			config.last_maintenance = (float)(today - 1);
+			if (!yt_platform_clock(&current, error))
+				goto done;
+			config.last_maintenance = (float)(yt_date_serial(&current,
+			    (int)config.epoch_year, NULL) - 1);
 			if (!draw(random, &sample, error))
 				goto done;
 			config.headquarters = (float)((int)floorf(single_mul(sample,
@@ -2352,7 +2353,7 @@ yt_initialize_world(const struct yt_initializer_options *options,
 	    || !build_graph(&world, options->family, random, options, error)
 	    || !assign_ports(&world, random, error)
 	    || !write_world_database(&database, options, &config, &world,
-	    random, today, error))
+	    random, error))
 		goto done;
 	yt_database_close(&database);
 	if (options->family == YT_INITIALIZER_YT)
@@ -2419,7 +2420,6 @@ yt_initialize_yt_prepared(
 	options.database_already_truncated = true;
 	options.yt_presenter = presenter;
 	options.prepared_yt = true;
-	options.prepared_today = preparation->today;
 	return yt_initialize_world(&options, random, error);
 }
 

@@ -1545,7 +1545,7 @@ utility_counted_fixed_clock(void *context, struct yt_clock_value *value,
 {
 	struct utility_clock_count *count = context;
 
-	if (count == NULL || count->calls >= 15U) {
+	if (count == NULL || count->calls >= 17U) {
 		if (error != NULL)
 			error->status = YT_RANGE;
 		return false;
@@ -1666,7 +1666,7 @@ test_yt_init_pre_input_presentation(void)
 	}
 	yt_platform_set_clock_provider(NULL, NULL);
 	if (random.draws != 1U || lcg.state != UINT32_C(0x5dd6b4)
-	    || clock.calls != 1U
+	    || clock.calls != 2U
 	    || preparation.config.epoch_year != 26.0f
 	    || preparation.config.headquarters != 733.0f
 	    || preparation.config.last_maintenance != 202.0f
@@ -1709,7 +1709,8 @@ struct utility_clock_sequence {
 };
 
 static bool
-utility_rmt_clock_sequence(void *context, struct yt_clock_value *value,
+utility_initializer_clock_sequence(void *context,
+    struct yt_clock_value *value,
     struct yt_error *error)
 {
 	struct utility_clock_sequence *sequence = context;
@@ -1833,7 +1834,7 @@ test_yt_init_presented_world(void)
 	}
 	tape_hash = yt_init_capture_hash(&capture);
 	ok = random.draws == 31297U && lcg.state == UINT32_C(0x9f26f4)
-	    && clock.calls == 15U
+	    && clock.calls == 17U
 	    && database_length == 432235U
 	    && utility_fnv1a64(database, database_length)
 	    == UINT64_C(0xe1010e9fdf9998f1)
@@ -2219,6 +2220,56 @@ test_rmt_dynamic_presentation(void)
 }
 
 static bool
+test_yt_clock_boundaries(void)
+{
+	struct utility_lcg lcg = {UINT32_C(0x89b405)};
+	struct utility_clock_sequence sequence = {0U};
+	struct yt_random random;
+	struct yt_initializer_preparation preparation;
+	struct yt_config config;
+	struct yt_error error;
+	struct yt_record config_record;
+	struct yt_record port_record;
+	uint8_t *database = NULL;
+	size_t length = 0U;
+	size_t port_offset;
+	bool ok;
+
+	yt_error_clear(&error);
+	yt_random_init(&random);
+	yt_random_set_provider(&random, utility_lcg_fill, &lcg);
+	yt_platform_set_clock_provider(utility_initializer_clock_sequence,
+	    &sequence);
+	ok = yt_initialize_begin_yt(&error)
+	    && yt_initializer_prepare_yt(&random, &preparation, &error)
+	    && yt_initialize_yt_prepared(&preparation, "YTSCORE.ASC", &random,
+	    NULL, &error);
+	yt_platform_set_clock_provider(NULL, NULL);
+	if (!ok || sequence.calls != 17U
+	    || !read_file("YTDATA.DAT", &database, &length)
+	    || length < YT_RECORD_SIZE) {
+		free(database);
+		return false;
+	}
+	memcpy(config_record.bytes, database, YT_RECORD_SIZE);
+	if (!yt_config_decode(&config, &config_record, &error)) {
+		free(database);
+		return false;
+	}
+	port_offset = ((size_t)yt_port_basic_record(&config, 1) - 1U)
+	    * YT_RECORD_SIZE;
+	if (length < port_offset + YT_RECORD_SIZE) {
+		free(database);
+		return false;
+	}
+	memcpy(port_record.bytes, database + port_offset, YT_RECORD_SIZE);
+	free(database);
+	return yt_record_get_number(&config_record, YT_F45) == 26.0f
+	    && yt_record_get_number(&config_record, YT_F81) == 1.0f
+	    && yt_record_get_number(&port_record, YT_F45) == 0.0f;
+}
+
+static bool
 test_rmt_clock_boundaries(void)
 {
 	struct utility_lcg lcg = {UINT32_C(0x123456)};
@@ -2237,7 +2288,8 @@ test_rmt_clock_boundaries(void)
 	yt_error_clear(&error);
 	yt_random_init(&random);
 	yt_random_set_provider(&random, utility_lcg_fill, &lcg);
-	yt_platform_set_clock_provider(utility_rmt_clock_sequence, &sequence);
+	yt_platform_set_clock_provider(utility_initializer_clock_sequence,
+	    &sequence);
 	ok = yt_initialize_rmt(&config, "The Sysop", &random, &error);
 	yt_platform_set_clock_provider(NULL, NULL);
 	port_offset = ((size_t)yt_port_basic_record(&config, 1) - 1U)
@@ -3756,6 +3808,8 @@ main(void)
 		failure = "maintenance Xannor player combat differs";
 	else if (!test_yt_init_presented_world())
 		failure = "deterministic YT-INIT presentation differs";
+	else if (!test_yt_clock_boundaries())
+		failure = "YT-INIT date observation boundaries differ";
 	else if (!test_yt_init_presentation_pre_put_failure())
 		failure = "YT-INIT pre-PUT presentation failure differs";
 	else if (!test_yt_init_presentation_failure_prefix())

@@ -213,7 +213,6 @@ struct yt_initializer_options {
 	const struct yt_rmt_presenter *rmt_presenter;
 	const struct yt_init_presenter *yt_presenter;
 	bool prepared_yt;
-	int prepared_today;
 };
 
 bool yt_generate_port_name(struct yt_random *random, char name[42],

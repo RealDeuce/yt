@@ -187,12 +187,12 @@ not authoritative. Use the corrected goal above in the new workspace.
   destination-selector and destination-combat transactions,
   ledger dispositions are roots
   `167 candidate / 1 missing`, transfers
-  `5271 candidate / 2096 missing / 1 explicitly
+  `5273 candidate / 2094 missing / 1 explicitly
   deferred`, and presentation `136 candidate / 8 missing / 6 verified`.
   Current SHA-256
   values are roots
   `64b17a8ae6550d4ef994a6e872d1f06c9ff8a6bc33ab9ab64d390da38a87e8be`,
-  transfers `84834340229f63a923629775ef3a5f4a80d6048cc0d529abc16a38457b2e98cb`,
+  transfers `48ded10d4ccc3f54de2e96271628bfeef063c3f18a49e0df024eed168629c684`,
   presentation `b899734f3487d364fbad0b2d5be7936334cc753b4c676d3407d6703d522b5afe`,
   and manifest
   `3552bd61c9cb9b7197aeb6fbad1f37cba69cd09f125d878d0c9072a691e8950a`.
@@ -1842,8 +1842,12 @@ not authoritative. Use the corrected goal above in the new workspace.
 - Initializer date roots `YT-INIT:00B5` and `RMT-INIT:2339`, plus the remote
   identity title normalizer `RMT-INIT:2B42`, are candidate with all 128
   qualified helper-body transfers mapped to the already exact native date
-  and byte-transform owners. Caller joins, raw DATE$/VAL/movable-string
-  state, physical clock and runtime failure prefixes remain open.
+  and byte-transform owners. The YT-INIT caller joins at `087A` and `1A3F`
+  are also candidate: the accepted path now preserves distinct epoch,
+  maintenance and port-finalizer date observations, with maintenance serial
+  minus one and port serial minus ten pinned by a varying-date disk fixture.
+  Other caller joins, raw DATE$/VAL/movable-string state, physical clock and
+  runtime failure prefixes remain open.
 - YT-INIT now has a deterministic complete-world fixture driven by the
   recovered 24-bit BASIC RNG sequence and a fixed clock. It matches all
   31,297 draws, final state `9F26F4`, and an independent digest of the full
@@ -2196,14 +2200,17 @@ not authoritative. Use the corrected goal above in the new workspace.
 - The first YT-INIT whole-program presentation slice is now native. The
   executable no longer asks for the scoreboard path before it knows the
   values it displays: after exact confirmation it emits the opening rows,
-  truncates `YTDATA.DAT`, samples the one startup clock and one headquarters
-  draw into `struct yt_initializer_preparation`, presents those values, and
+  truncates `YTDATA.DAT`, samples distinct epoch and maintenance startup
+  clocks followed by one headquarters draw into
+  `struct yt_initializer_preparation`, presents those values, and
   only then reads the scoreboard pathname. `yt_initialize_yt_prepared()`
-  carries that state into persistence without a duplicate clock or RNG draw;
+  carries that state into persistence without repeating either startup clock
+  or the headquarters draw; the later port finalizer takes its own fresh
+  clock observation;
   the pre-existing `yt_initialize_yt()` entry retains its generic behavior.
   The YT-only presenter owns line, inline, comma-zone, locate and logical-PLAY
   events without changing OpenDoors or its ABI. The successful fixed-clock /
-  recovered-LCG fixture pins 15 clock calls, 31,297 draws/final `9F26F4`, the
+  recovered-LCG fixture pins 17 clock calls, 31,297 draws/final `9F26F4`, the
   unchanged 432,235-byte database/FNV, an 8,379-event current tape/FNV
   `E72AA6DB06FEF26C`, 35
   long-warp triples, 2,003 verification triples and 1,000 port number/name
