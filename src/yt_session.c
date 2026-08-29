@@ -1067,12 +1067,22 @@ session_pager_step(struct yt_session *session)
 }
 
 static bool
+session_file_viewer_present(void *context, const uint8_t *text,
+    size_t length, bool paged, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	if (paged)
+		return session_b05d(session, text, length);
+	return session_present_text(session, text, length,
+	    SESSION_PRESENT_LINE, "file viewer final blank", error);
+}
+
+static bool
 display_game_file(struct yt_session *session, const char *path,
     struct yt_error *error)
 {
 	struct yt_text_file file;
-	uint8_t *line;
-	size_t cursor = 0;
 	float saved_foreground = session->presentation.foreground;
 	int saved_pager_foreground = session->pager.foreground;
 
@@ -1095,41 +1105,25 @@ display_game_file(struct yt_session *session, const char *path,
 			return false;
 		return true;
 	}
-	line = malloc(file.length == 0U ? 1U : file.length);
-	if (line == NULL) {
-		yt_text_free(&file);
-		if (error != NULL)
-			error->status = YT_NO_MEMORY;
-		return false;
-	}
-	for (;;) {
-		struct yt_file_viewer_record record;
+	{
+		struct yt_file_viewer_play_state state = {
+			&session->presentation.foreground,
+			&session->pager.foreground,
+			&session->presentation.bold,
+			&session->pager.line_count,
+			session->pager.key,
+			saved_foreground,
+			saved_pager_foreground,
+		};
 
-		if (!yt_file_viewer_next(file.data, file.length, &cursor,
-		    session->pager.key, line, file.length, &record)) {
-			free(line);
-			yt_text_free(&file);
-			return false;
-		}
-		if (!record.available)
-			break;
-		session->pager.foreground = record.foreground;
-		session->presentation.foreground = (float)record.foreground;
-		if (record.set_bold)
-			session->presentation.bold = 1.0f;
-		if (!session_b05d(session, line, record.length)) {
-			free(line);
+		if (!yt_file_viewer_play(file.data, file.length, &state,
+		    session_file_viewer_present, session, error)) {
 			yt_text_free(&file);
 			return false;
 		}
 	}
-	free(line);
 	yt_text_free(&file);
-	session->pager.line_count = 0.0f;
-	session->pager.foreground = saved_pager_foreground;
-	session->presentation.foreground = saved_foreground;
-	return session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "file viewer final blank", error);
+	return true;
 }
 
 static bool

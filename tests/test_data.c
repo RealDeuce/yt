@@ -704,6 +704,70 @@ test_file_viewer_records(void)
 	    && cursor == 0U);
 }
 
+struct viewer_play_tape {
+	int events[4];
+	size_t lengths[4];
+	size_t calls;
+	size_t fail_call;
+};
+
+static bool
+viewer_play_present(void *context, const uint8_t *text, size_t length,
+    bool paged, struct yt_error *error)
+{
+	struct viewer_play_tape *tape = context;
+	size_t call = tape->calls++;
+
+	(void)error;
+	if (call >= YT_ARRAY_LEN(tape->events))
+		return false;
+	tape->events[call] = paged ? 1 : 2;
+	tape->lengths[call] = length;
+	if (!paged)
+		CHECK(text == NULL && length == 0U);
+	return tape->fail_call == 0U || call + 1U != tape->fail_call;
+}
+
+static void
+test_file_viewer_play(void)
+{
+	static const uint8_t source[] = "ordinary\r\n  - item\r\n";
+	struct yt_file_viewer_play_state state;
+	struct viewer_play_tape tape;
+	float foreground = 5.0f;
+	float bold = 0.0f;
+	float line_count = 17.0f;
+	int pager_foreground = 5;
+	char key[2] = "";
+
+	memset(&tape, 0, sizeof(tape));
+	state.foreground = &foreground;
+	state.pager_foreground = &pager_foreground;
+	state.bold = &bold;
+	state.line_count = &line_count;
+	state.pager_key = key;
+	state.saved_foreground = 5.0f;
+	state.saved_pager_foreground = 5;
+	CHECK(yt_file_viewer_play(source, sizeof(source) - 1U, &state,
+	    viewer_play_present, &tape, NULL));
+	CHECK(tape.calls == 3U && tape.events[0] == 1 && tape.events[1] == 1
+	    && tape.events[2] == 2 && tape.lengths[0] == 8U
+	    && tape.lengths[1] == 8U && foreground == 5.0f
+	    && pager_foreground == 5 && bold == 1.0f && line_count == 0.0f);
+
+	memset(&tape, 0, sizeof(tape));
+	tape.fail_call = 2U;
+	foreground = 5.0f;
+	pager_foreground = 5;
+	bold = 0.0f;
+	line_count = 17.0f;
+	CHECK(!yt_file_viewer_play(source, sizeof(source) - 1U, &state,
+	    viewer_play_present, &tape, NULL));
+	CHECK(tape.calls == 2U && foreground == 3.0f
+	    && pager_foreground == 3 && bold == 1.0f
+	    && line_count == 17.0f);
+}
+
 int
 main(void)
 {
@@ -715,6 +779,7 @@ main(void)
 	test_main_error_fatal_transaction();
 	test_line_input_grammar();
 	test_file_viewer_records();
+	test_file_viewer_play();
 	if (failures != 0) {
 		fprintf(stderr, "%u test(s) failed\n", failures);
 		return EXIT_FAILURE;

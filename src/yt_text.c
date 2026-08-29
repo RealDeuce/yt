@@ -92,6 +92,55 @@ yt_file_viewer_next(const uint8_t *data, size_t data_length,
 	return true;
 }
 
+bool
+yt_file_viewer_play(const uint8_t *data, size_t data_length,
+    struct yt_file_viewer_play_state *state,
+    yt_file_viewer_present_fn present, void *context,
+    struct yt_error *error)
+{
+	uint8_t *line;
+	size_t cursor = 0U;
+	bool ok = true;
+
+	if (state == NULL || state->foreground == NULL
+	    || state->pager_foreground == NULL || state->bold == NULL
+	    || state->line_count == NULL || state->pager_key == NULL
+	    || present == NULL || (data == NULL && data_length != 0U))
+		return false;
+	line = malloc(data_length == 0U ? 1U : data_length);
+	if (line == NULL) {
+		if (error != NULL)
+			error->status = YT_NO_MEMORY;
+		return false;
+	}
+	for (;;) {
+		struct yt_file_viewer_record record;
+
+		if (!yt_file_viewer_next(data, data_length, &cursor,
+		    state->pager_key, line, data_length, &record)) {
+			ok = false;
+			break;
+		}
+		if (!record.available)
+			break;
+		*state->foreground = (float)record.foreground;
+		*state->pager_foreground = record.foreground;
+		if (record.set_bold)
+			*state->bold = 1.0f;
+		if (!present(context, line, record.length, true, error)) {
+			ok = false;
+			break;
+		}
+	}
+	free(line);
+	if (!ok)
+		return false;
+	*state->line_count = 0.0f;
+	*state->foreground = state->saved_foreground;
+	*state->pager_foreground = state->saved_pager_foreground;
+	return present(context, NULL, 0U, false, error);
+}
+
 #ifdef _WIN32
 #include <io.h>
 #else
