@@ -180,6 +180,12 @@ yt_input_ab36_remote_replace(float mode, const struct yt_input_value *remote,
 }
 
 bool
+yt_input_ab36_inactivity_expired(float timer, float deadline, float mode)
+{
+	return timer > deadline && mode != 1.0f;
+}
+
+bool
 yt_b05d_process_key(const struct yt_input_value *value,
     struct yt_b05d_key_state *state)
 {

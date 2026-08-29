@@ -122,6 +122,17 @@ test_arbitration(void)
 }
 
 static void
+test_ab36_inactivity_gate(void)
+{
+	CHECK(!yt_input_ab36_inactivity_expired(280.0f, 280.0f, 0.0f));
+	CHECK(!yt_input_ab36_inactivity_expired(279.0f, 280.0f, 0.0f));
+	CHECK(yt_input_ab36_inactivity_expired(281.0f, 280.0f, 0.0f));
+	CHECK(!yt_input_ab36_inactivity_expired(281.0f, 280.0f, 1.0f));
+	CHECK(yt_input_ab36_inactivity_expired(281.0f, 280.0f, 2.0f));
+	CHECK(yt_input_ab36_inactivity_expired(281.0f, 280.0f, -1.0f));
+}
+
+static void
 test_source_fifo(void)
 {
 	struct yt_input_splitter splitter;
@@ -1386,6 +1397,7 @@ int
 main(void)
 {
 	test_arbitration();
+	test_ab36_inactivity_gate();
 	test_source_fifo();
 	test_merged_fifo();
 	test_b05d_keys();

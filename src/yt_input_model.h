@@ -183,6 +183,8 @@ struct yt_input_value yt_input_splitter_select_source(
     struct yt_input_splitter *splitter, bool remote);
 bool yt_input_ab36_remote_replace(float mode,
     const struct yt_input_value *remote, struct yt_input_value *selected);
+bool yt_input_ab36_inactivity_expired(float timer, float deadline,
+    float mode);
 bool yt_b05d_process_key(const struct yt_input_value *value,
     struct yt_b05d_key_state *state);
 bool yt_input_expand_repeat(char *text, size_t text_capacity,

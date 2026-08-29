@@ -435,8 +435,9 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 		bool queued = session->queue_position < session->queue_length;
 		uint8_t key;
 
-		if (session->presentation.sound.mode != 1.0f
-		    && (float)yt_platform_timer() > inactivity_deadline)
+		if (yt_input_ab36_inactivity_expired(
+		    (float)yt_platform_timer(), inactivity_deadline,
+		    session->presentation.sound.mode))
 			return session_editor_end(session, inactivity_notice,
 			    sizeof(inactivity_notice) - 1U);
 		if (!session_carrier(session))
