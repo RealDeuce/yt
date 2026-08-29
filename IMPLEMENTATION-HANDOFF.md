@@ -159,10 +159,14 @@ not authoritative. Use the corrected goal above in the new workspace.
   eleven 40-column direct rows and seven narrative rows. Native fixtures pin
   complete 1,212-byte plain and 1,242-byte ANSI help cycles plus invalid,
   empty-display, instruction-default, and quit-cancel branches; all 19
-  focused upstream shell tests pass. The site-free presentation family and
-  all 62 address-owned front-end transfers are candidate. Complete injected
-  A41C/FIELD/editor/queue/carrier/local/physical failure transactions remain
-  open.
+  focused upstream shell tests pass. The empty branch now also credits the
+  four shared `1627..1656` mode-zero scanner call/return/back-edge transfers:
+  the exact Display prefix enters the current-sector owner, its ordinary
+  return adds no wrapper output, and `162C` begins the distinct fresh prompt.
+  The site-free presentation family, all 62 address-owned front-end transfers
+  and those four scanner-wrapper transfers are candidate. A complete injected
+  scanner-to-A41C/FIELD/editor/queue/carrier/local/physical failure
+  transaction remains open.
 - After the exact Transfer, Bank, Productivity, Clearance, Earth-front,
   Earth-purchase, Planet Rename, shared compatibility-uppercase, Team
   name/password, Planet inventory/menu-parent, shared sector-mine, YTMAINT
@@ -187,12 +191,12 @@ not authoritative. Use the corrected goal above in the new workspace.
   destination-selector and destination-combat transactions,
   ledger dispositions are roots
   `167 candidate / 1 missing`, transfers
-  `5366 candidate / 2001 missing / 1 explicitly
+  `5370 candidate / 1997 missing / 1 explicitly
   deferred`, and presentation `136 candidate / 8 missing / 6 verified`.
   Current SHA-256
   values are roots
   `64b17a8ae6550d4ef994a6e872d1f06c9ff8a6bc33ab9ab64d390da38a87e8be`,
-  transfers `a05d472db41272274ba6b10f71005350b54e78ba24cad5f4a77c6d0a027523e0`,
+  transfers `b5511a077e9f9d83b994223ba3b28194715fba26b8be9aa97e0a7d67a5be1ac9`,
   presentation `b899734f3487d364fbad0b2d5be7936334cc753b4c676d3407d6703d522b5afe`,
   and manifest
   `3552bd61c9cb9b7197aeb6fbad1f37cba69cd09f125d878d0c9072a691e8950a`.
