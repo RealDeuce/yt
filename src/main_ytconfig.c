@@ -506,67 +506,135 @@ save_planet_name:
 static bool
 edit_ports(struct yt_game *game, struct yt_error *error)
 {
+	struct yt_config_output_result output;
 	char search[160];
 	char upper[160];
 	int logical;
 	bool matched = false;
 
-	fputs("Enter port name to change (Search String) -+> ", stdout);
-	if (!yt_cli_line(search, sizeof(search)) || search[0] == '\0')
+	if (!yt_config_compose_port_search_prompt(0U, &output)
+	    || !write_output(&output, error))
+		return false;
+	if (!yt_cli_line(search, sizeof(search)))
+		return true;
+	if (!yt_config_compose_port_search_echo((const uint8_t *)search,
+	    strlen(search), output.final_column, &output)
+	    || !write_output(&output, error))
+		return false;
+	if (search[0] == '\0')
 		return true;
 	snprintf(upper, sizeof(upper), "%s", search);
 	qb_ascii_upper(upper);
 	for (logical = 2; logical <= 300; ++logical) {
 		struct yt_port port;
 		char candidate[42];
+		bool overflow;
+		int name_length;
 
 		if (!yt_game_read_port(game, logical, &port, error))
 			return false;
-		snprintf(candidate, sizeof(candidate), "%s", port.name);
+		name_length = (int)qb_cint(port.name_length, &overflow);
+		if (overflow || name_length < 0 || name_length > 41)
+			return false;
+		memcpy(candidate, port.name, (size_t)name_length);
+		candidate[name_length] = '\0';
 		qb_ascii_upper(candidate);
 		if (strstr(candidate, upper) == NULL)
 			continue;
 		matched = true;
-		{
-			char prompt[120];
+		for (;;) {
+			int raw_key;
+			uint8_t folded;
 
-			snprintf(prompt, sizeof(prompt), "Change \"%s\" [Y/N]? ",
-			    port.name);
-			if (!confirm(prompt))
-				continue;
+			if (!yt_config_compose_port_match_prompt(
+			    (const uint8_t *)port.name, (size_t)name_length,
+			    output.final_column, &output)
+			    || !write_output(&output, error))
+				return false;
+			raw_key = yt_cli_key();
+			if (raw_key == EOF)
+				return true;
+			if (!yt_config_compose_port_response_echo((uint8_t)raw_key,
+			    output.final_column, &folded, &output)
+			    || !write_output(&output, error))
+				return false;
+			if (folded == 'N')
+				break;
+			if (folded == 'Y')
+				goto replace_port_name;
 		}
+		continue;
+replace_port_name:
 		{
 			char name[160];
 
-			puts("Please enter a new name for this port.");
-			fputs("-=> ", stdout);
+			if (!yt_config_compose_port_replacement_prompt(
+			    output.final_column, &output)
+			    || !write_output(&output, error))
+				return false;
 			if (!yt_cli_line(name, sizeof(name)))
 				return true;
 			qb_title_case(name);
 			name[41] = '\0';
 			if (name[0] == '\0')
 				return true;
-			if (!confirm(" Is this OK? [Y/N]?")) {
-				puts("CANCELED!");
-				fputs("Press Enter", stdout);
-				(void)yt_cli_line(search, sizeof(search));
-				return true;
+			for (;;) {
+				int raw_key;
+				uint8_t folded;
+
+				if (!yt_config_compose_port_confirmation(
+				    (const uint8_t *)name, strlen(name),
+				    output.final_column, &output)
+				    || !write_output(&output, error))
+					return false;
+				raw_key = yt_cli_key();
+				if (raw_key == EOF)
+					return true;
+				if (!yt_config_compose_port_response_echo(
+				    (uint8_t)raw_key, output.final_column,
+				    &folded, &output)
+				    || !write_output(&output, error))
+					return false;
+				if (folded == 'Y')
+					break;
+				if (folded == 'N') {
+					if (!yt_config_compose_port_cancel(
+					    output.final_column, &output)
+					    || !write_output(&output, error)
+					    || !yt_config_compose_port_wait_prompt(
+					    output.final_column, &output)
+					    || !write_output(&output, error))
+						return false;
+					(void)yt_cli_line(search, sizeof(search));
+					return true;
+				}
 			}
 			snprintf(port.name, sizeof(port.name), "%s", name);
 			port.name_length = (float)strlen(name);
-			if (!yt_game_write_port(game, logical, &port, error))
+			if (!yt_game_write_port(game, logical, &port, error)
+			    || !yt_config_compose_port_saved(output.final_column,
+				&output)
+			    || !write_output(&output, error)
+			    || !yt_config_compose_port_wait_prompt(
+				output.final_column, &output)
+			    || !write_output(&output, error))
 				return false;
-			puts("Name change successful!!!");
-			fputs("Press Enter", stdout);
 			(void)yt_cli_line(search, sizeof(search));
 			return true;
 		}
 	}
-	puts(matched ? "-= End of List =-" : "Not Found");
 	if (matched) {
-		fputs("Press Enter", stdout);
+		if (!yt_config_compose_port_end_list(output.final_column, &output)
+		    || !write_output(&output, error)
+		    || !yt_config_compose_port_wait_prompt(output.final_column,
+			&output)
+		    || !write_output(&output, error))
+			return false;
 		(void)yt_cli_line(search, sizeof(search));
 	}
+	else if (!yt_config_compose_port_not_found(output.final_column, &output)
+	    || !write_output(&output, error))
+		return false;
 	return true;
 }
 

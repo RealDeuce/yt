@@ -4068,6 +4068,152 @@ done_closed:
 }
 
 static bool
+test_ytconfig_port_editor(struct yt_error *error)
+{
+	static const char blank_input[] = "O\nX";
+	static const char missing_input[] = "Omissing\nX";
+	static const char end_input[] = "Oalpha\nnn\nX";
+	static const char cancel_input[] = "Oalpha\nynew name\nxn\nX";
+	static const char empty_input[] = "Oalpha\ny\nX";
+	static const char save_input[] = "Oalpha\nynew harbor\ny\nX";
+	static const uint8_t blank[] =
+	    "O\r\rPress enter to quit.\r\r"
+	    "Enter port name to change (Search String) -+> \r";
+	static const uint8_t missing[] =
+	    "O\r\rPress enter to quit.\r\r"
+	    "Enter port name to change (Search String) -+> missing\r"
+	    "Not Found\r";
+	static const uint8_t end[] =
+	    "Change \"Alpha\" [Y/N]? N\r\r"
+	    "Change \"Alphabet\" [Y/N]? N\r\r"
+	    "-= End of List =-\rPress Enter";
+	static const uint8_t cancel[] =
+	    "Change \"Alpha\" [Y/N]? Y\r\r\r"
+	    "Please enter a new name for this port.\r-=> "
+	    "\"New Name\" Is this OK? [Y/N]? X\r\r"
+	    "\"New Name\" Is this OK? [Y/N]? N\r\r"
+	    "CANCELED!\rPress Enter";
+	static const uint8_t empty[] =
+	    "Change \"Alpha\" [Y/N]? Y\r\r\r"
+	    "Please enter a new name for this port.\r-=> ";
+	static const uint8_t saved[] =
+	    "Change \"Alpha\" [Y/N]? Y\r\r\r"
+	    "Please enter a new name for this port.\r-=> "
+	    "\"New Harbor\" Is this OK? [Y/N]? Y\r\r"
+	    "Name change successful!!!\rPress Enter";
+	struct yt_game game;
+	struct yt_game restore;
+	struct yt_record originals[299];
+	struct yt_record forced[299];
+	struct yt_record expected;
+	struct yt_port actual;
+	uint8_t *screen = NULL;
+	size_t screen_length = 0U;
+	bool snapshots = false;
+	bool valid = false;
+	int logical;
+
+	memset(&game, 0, sizeof(game));
+	if (!yt_game_open(&game, YT_OPEN_UPDATE, error))
+		goto done;
+	for (logical = 2; logical <= 300; ++logical) {
+		if (!yt_database_read(&game.database,
+		    (size_t)yt_port_basic_record(&game.config, logical),
+		    &originals[logical - 2], error))
+			goto done;
+	}
+	snapshots = true;
+	for (logical = 2; logical <= 300; ++logical) {
+		forced[logical - 2] = originals[logical - 2];
+		yt_record_set_text(&forced[logical - 2],
+		    (const uint8_t *)"Ordinary", 8U);
+		if (!yt_record_set_number(&forced[logical - 2], YT_F85, 8.0f)
+		    || !yt_database_write(&game.database,
+			(size_t)yt_port_basic_record(&game.config, logical),
+			&forced[logical - 2], error))
+			goto done;
+	}
+	yt_record_set_text(&forced[0], (const uint8_t *)"Alpha", 5U);
+	yt_record_set_text(&forced[1], (const uint8_t *)"Alphabet", 8U);
+	if (!yt_record_set_number(&forced[0], YT_F85, 5.0f)
+	    || !yt_record_set_number(&forced[1], YT_F85, 8.0f)
+	    || !yt_database_write(&game.database,
+		(size_t)yt_port_basic_record(&game.config, 2), &forced[0], error)
+	    || !yt_database_write(&game.database,
+		(size_t)yt_port_basic_record(&game.config, 3), &forced[1], error)
+	    || !yt_database_flush(&game.database, error))
+		goto done;
+	yt_game_close(&game);
+
+#define RUN_PORT_CASE(input_name, fragment) do { \
+	if (!write_file("config.in", (input_name), sizeof(input_name) - 1U) \
+	    || !run_redirected(YT_CONFIG_EXE, "config.in", "config.out") \
+	    || !read_file("config.out", &screen, &screen_length) \
+	    || !bytes_contain(screen, screen_length, (fragment), \
+		sizeof(fragment) - 1U)) \
+		goto done_closed; \
+	free(screen); \
+	screen = NULL; \
+} while (0)
+	RUN_PORT_CASE(blank_input, blank);
+	RUN_PORT_CASE(missing_input, missing);
+	RUN_PORT_CASE(end_input, end);
+	RUN_PORT_CASE(cancel_input, cancel);
+	RUN_PORT_CASE(empty_input, empty);
+	memset(&game, 0, sizeof(game));
+	if (!yt_game_open(&game, YT_OPEN_READ, error)
+	    || !yt_game_read_port(&game, 2, &actual, error)
+	    || memcmp(actual.record.bytes, forced[0].bytes,
+		YT_RECORD_SIZE) != 0)
+		goto done;
+	yt_game_close(&game);
+	RUN_PORT_CASE(save_input, saved);
+#undef RUN_PORT_CASE
+	memset(&game, 0, sizeof(game));
+	if (!yt_game_open(&game, YT_OPEN_READ, error)
+	    || !yt_game_read_port(&game, 2, &actual, error))
+		goto done;
+	expected = forced[0];
+	yt_record_set_text(&expected, (const uint8_t *)"New Harbor", 10U);
+	valid = yt_record_set_number(&expected, YT_F85, 10.0f)
+	    && memcmp(actual.record.bytes, expected.bytes, YT_RECORD_SIZE) == 0;
+	for (logical = 3; valid && logical <= 300; ++logical) {
+		struct yt_record unchanged;
+
+		if (!yt_database_read(&game.database,
+		    (size_t)yt_port_basic_record(&game.config, logical),
+		    &unchanged, error)
+		    || memcmp(unchanged.bytes, forced[logical - 2].bytes,
+			YT_RECORD_SIZE) != 0)
+			valid = false;
+	}
+
+done:
+	yt_game_close(&game);
+done_closed:
+	if (snapshots) {
+		memset(&restore, 0, sizeof(restore));
+		if (!yt_game_open(&restore, YT_OPEN_UPDATE, error))
+			valid = false;
+		else {
+			for (logical = 2; logical <= 300; ++logical) {
+				if (!yt_database_write(&restore.database,
+				    (size_t)yt_port_basic_record(&restore.config,
+				    logical), &originals[logical - 2], error)) {
+					valid = false;
+					break;
+				}
+			}
+			if (!yt_database_flush(&restore.database, error))
+				valid = false;
+		}
+		yt_game_close(&restore);
+	}
+	free(screen);
+	return valid;
+}
+
+static bool
 test_portname(struct yt_error *error)
 {
 	static const uint8_t intro[] =
@@ -4810,6 +4956,8 @@ main(void)
 		failure = "YTCONFIG scalar options differ";
 	else if (!test_ytconfig_planet_editor(&error))
 		failure = "YTCONFIG planet editor differs";
+	else if (!test_ytconfig_port_editor(&error))
+		failure = "YTCONFIG port editor differs";
 	else if (!test_portname(&error))
 		failure = "PORTNAME changed data outside its two owned fields";
 	else if (!test_rmt_standalone_decline(&error))

@@ -432,6 +432,64 @@ test_planet_editor_output(void)
 	return true;
 }
 
+static bool
+test_port_editor_output(void)
+{
+	static const uint8_t search_prompt[] =
+	    "Press enter to quit.\r\r"
+	    "Enter port name to change (Search String) -+> ";
+	static const uint8_t match[] = "Change \"Alpha\" [Y/N]? ";
+	static const uint8_t replacement[] =
+	    "\rPlease enter a new name for this port.\r-=> ";
+	static const uint8_t confirmation[] =
+	    "\"New Name\" Is this OK? [Y/N]? ";
+	struct yt_config_output_result result;
+	uint8_t folded;
+
+	CHECK(yt_config_compose_port_search_prompt(0U, &result));
+	CHECK(result.output_length == sizeof(search_prompt) - 1U);
+	CHECK(memcmp(result.output, search_prompt,
+	    sizeof(search_prompt) - 1U) == 0);
+	CHECK(yt_config_compose_port_search_echo((const uint8_t *)"alpha", 5U,
+	    result.final_column, &result));
+	CHECK(result.output_length == 6U);
+	CHECK(memcmp(result.output, "alpha\r", 6U) == 0);
+	CHECK(yt_config_compose_port_match_prompt((const uint8_t *)"Alpha", 5U,
+	    0U, &result));
+	CHECK(result.output_length == sizeof(match) - 1U);
+	CHECK(memcmp(result.output, match, sizeof(match) - 1U) == 0);
+	CHECK(yt_config_compose_port_response_echo('n', result.final_column,
+	    &folded, &result));
+	CHECK(folded == 'N');
+	CHECK(result.output_length == 3U);
+	CHECK(memcmp(result.output, "N\r\r", 3U) == 0);
+	CHECK(yt_config_compose_port_not_found(0U, &result));
+	CHECK(result.output_length == 10U);
+	CHECK(memcmp(result.output, "Not Found\r", 10U) == 0);
+	CHECK(yt_config_compose_port_end_list(0U, &result));
+	CHECK(result.output_length == 18U);
+	CHECK(memcmp(result.output, "-= End of List =-\r", 18U) == 0);
+	CHECK(yt_config_compose_port_wait_prompt(0U, &result));
+	CHECK(result.output_length == 11U);
+	CHECK(memcmp(result.output, "Press Enter", 11U) == 0);
+	CHECK(yt_config_compose_port_replacement_prompt(0U, &result));
+	CHECK(result.output_length == sizeof(replacement) - 1U);
+	CHECK(memcmp(result.output, replacement,
+	    sizeof(replacement) - 1U) == 0);
+	CHECK(yt_config_compose_port_confirmation(
+	    (const uint8_t *)"New Name", 8U, 0U, &result));
+	CHECK(result.output_length == sizeof(confirmation) - 1U);
+	CHECK(memcmp(result.output, confirmation,
+	    sizeof(confirmation) - 1U) == 0);
+	CHECK(yt_config_compose_port_cancel(0U, &result));
+	CHECK(result.output_length == 10U);
+	CHECK(memcmp(result.output, "CANCELED!\r", 10U) == 0);
+	CHECK(yt_config_compose_port_saved(0U, &result));
+	CHECK(result.output_length == 26U);
+	CHECK(memcmp(result.output, "Name change successful!!!\r", 26U) == 0);
+	return true;
+}
+
 int
 main(void)
 {
@@ -442,7 +500,8 @@ main(void)
 	    || !test_genesis_editor()
 	    || !test_headquarters_editor()
 	    || !test_scalar_options()
-	    || !test_planet_editor_output())
+	    || !test_planet_editor_output()
+	    || !test_port_editor_output())
 		return 1;
 	puts("ytconfig output tests passed");
 	return 0;

@@ -676,3 +676,146 @@ yt_config_planet_pause_after(int logical, unsigned active_count)
 {
 	return logical % 20 == 0 || (unsigned)logical == active_count;
 }
+
+bool
+yt_config_compose_port_search_prompt(size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_line(result, "Press enter to quit.")
+	    && append_line(result, "")
+	    && append_literal(result,
+		"Enter port name to change (Search String) -+> ");
+}
+
+bool
+yt_config_compose_port_search_echo(const uint8_t *search,
+    size_t search_length, size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || (search == NULL && search_length != 0U)
+	    || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_binary_line(result, search, search_length);
+}
+
+bool
+yt_config_compose_port_match_prompt(const uint8_t *name,
+    size_t name_length, size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || (name == NULL && name_length != 0U)
+	    || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_literal(result, "Change \"")
+	    && append_bytes(result, name, name_length)
+	    && append_literal(result, "\" [Y/N]? ");
+}
+
+bool
+yt_config_compose_port_response_echo(uint8_t key, size_t initial_column,
+    uint8_t *folded, struct yt_config_output_result *result)
+{
+	uint8_t output[3];
+
+	if (folded == NULL || result == NULL
+	    || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	*folded = key & 0xdfU;
+	output[0] = *folded;
+	output[1] = '\r';
+	output[2] = '\r';
+	return append_bytes(result, output, sizeof(output));
+}
+
+bool
+yt_config_compose_port_not_found(size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_line(result, "Not Found");
+}
+
+bool
+yt_config_compose_port_end_list(size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_line(result, "-= End of List =-");
+}
+
+bool
+yt_config_compose_port_wait_prompt(size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_literal(result, "Press Enter");
+}
+
+bool
+yt_config_compose_port_replacement_prompt(size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_line(result, "")
+	    && append_line(result, "Please enter a new name for this port.")
+	    && append_literal(result, "-=> ");
+}
+
+bool
+yt_config_compose_port_confirmation(const uint8_t *name,
+    size_t name_length, size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || (name == NULL && name_length != 0U)
+	    || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_literal(result, "\"")
+	    && append_bytes(result, name, name_length)
+	    && append_literal(result, "\" Is this OK? [Y/N]? ");
+}
+
+bool
+yt_config_compose_port_cancel(size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_line(result, "CANCELED!");
+}
+
+bool
+yt_config_compose_port_saved(size_t initial_column,
+    struct yt_config_output_result *result)
+{
+	if (result == NULL || initial_column >= YT_CONFIG_SCREEN_WIDTH)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->final_column = initial_column;
+	return append_line(result, "Name change successful!!!");
+}

@@ -107,5 +107,31 @@ bool yt_config_compose_planet_saved(size_t initial_column,
 bool yt_config_planet_selection_in_range(float selection);
 bool yt_config_planet_selection_protected(float selection);
 bool yt_config_planet_pause_after(int logical, unsigned active_count);
+bool yt_config_compose_port_search_prompt(size_t initial_column,
+    struct yt_config_output_result *result);
+bool yt_config_compose_port_search_echo(const uint8_t *search,
+    size_t search_length, size_t initial_column,
+    struct yt_config_output_result *result);
+bool yt_config_compose_port_match_prompt(const uint8_t *name,
+    size_t name_length, size_t initial_column,
+    struct yt_config_output_result *result);
+bool yt_config_compose_port_response_echo(uint8_t key,
+    size_t initial_column, uint8_t *folded,
+    struct yt_config_output_result *result);
+bool yt_config_compose_port_not_found(size_t initial_column,
+    struct yt_config_output_result *result);
+bool yt_config_compose_port_end_list(size_t initial_column,
+    struct yt_config_output_result *result);
+bool yt_config_compose_port_wait_prompt(size_t initial_column,
+    struct yt_config_output_result *result);
+bool yt_config_compose_port_replacement_prompt(size_t initial_column,
+    struct yt_config_output_result *result);
+bool yt_config_compose_port_confirmation(const uint8_t *name,
+    size_t name_length, size_t initial_column,
+    struct yt_config_output_result *result);
+bool yt_config_compose_port_cancel(size_t initial_column,
+    struct yt_config_output_result *result);
+bool yt_config_compose_port_saved(size_t initial_column,
+    struct yt_config_output_result *result);
 
 #endif
