@@ -11,6 +11,22 @@ pending(const struct yt_input_value_queue *queue)
 	return queue->length - queue->position;
 }
 
+static bool
+bounded_string_length(const char *text, size_t capacity, size_t *length)
+{
+	size_t index;
+
+	if (text == NULL || capacity == 0U || length == NULL)
+		return false;
+	for (index = 0U; index < capacity; ++index) {
+		if (text[index] == '\0') {
+			*length = index;
+			return true;
+		}
+	}
+	return false;
+}
+
 static void
 compact(struct yt_input_value_queue *queue)
 {
@@ -206,6 +222,33 @@ yt_input_ab36_repeat_requested(bool queued,
 {
 	return !queued && selected != NULL && selected->length == 1U
 	    && selected->bytes[0] == 0x12U;
+}
+
+bool
+yt_input_ab36_repeat_run(char *accumulator, size_t accumulator_capacity,
+    const char *saved_command, size_t saved_capacity, float *newline_flag,
+    uint8_t *selected_key, yt_ab36_repeat_emit_fn emit, void *context)
+{
+	uint8_t prefix[YT_INPUT_PENDING];
+	size_t prefix_length;
+	size_t saved_length;
+
+	if (newline_flag == NULL || selected_key == NULL || emit == NULL
+	    || !bounded_string_length(accumulator, accumulator_capacity,
+	    &prefix_length)
+	    || !bounded_string_length(saved_command, saved_capacity,
+	    &saved_length)
+	    || prefix_length > sizeof(prefix)
+	    || saved_length >= accumulator_capacity)
+		return false;
+	if (prefix_length != 0U)
+		memcpy(prefix, accumulator, prefix_length);
+	*newline_flag = 1.0f;
+	if (!emit(context, prefix, prefix_length))
+		return false;
+	memmove(accumulator, saved_command, saved_length + 1U);
+	*selected_key = '\r';
+	return true;
 }
 
 bool

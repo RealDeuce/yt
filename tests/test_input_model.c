@@ -236,6 +236,70 @@ test_ab36_repeat_recognition(void)
 	CHECK(!yt_input_ab36_repeat_requested(false, NULL));
 }
 
+struct ab36_repeat_tape {
+	uint8_t prefix[16];
+	size_t length;
+	size_t calls;
+	char *accumulator;
+	float *newline_flag;
+	bool fail;
+};
+
+static bool
+ab36_repeat_emit(void *context, const uint8_t *prefix, size_t length)
+{
+	struct ab36_repeat_tape *tape = context;
+
+	++tape->calls;
+	CHECK(*tape->newline_flag == 1.0f);
+	CHECK(length <= sizeof(tape->prefix));
+	if (length <= sizeof(tape->prefix))
+		memcpy(tape->prefix, prefix, length);
+	tape->length = length;
+	if (tape->fail) {
+		memcpy(tape->accumulator, "X", 2U);
+		return false;
+	}
+	*tape->newline_flag = 0.0f;
+	return true;
+}
+
+static void
+test_ab36_repeat_transaction(void)
+{
+	char accumulator[16] = "AB";
+	char saved[16] = "NS";
+	float newline_flag = -1.0f;
+	uint8_t selected_key = 0x12U;
+	struct ab36_repeat_tape tape = {
+		.accumulator = accumulator,
+		.newline_flag = &newline_flag,
+	};
+
+	CHECK(yt_input_ab36_repeat_run(accumulator, sizeof(accumulator),
+	    saved, sizeof(saved), &newline_flag, &selected_key,
+	    ab36_repeat_emit, &tape));
+	CHECK(tape.calls == 1U && tape.length == 2U
+	    && memcmp(tape.prefix, "AB", 2U) == 0
+	    && strcmp(accumulator, "NS") == 0 && newline_flag == 0.0f
+	    && selected_key == '\r');
+
+	memcpy(accumulator, "AB", 3U);
+	newline_flag = -1.0f;
+	selected_key = 0x12U;
+	memset(&tape, 0, sizeof(tape));
+	tape.accumulator = accumulator;
+	tape.newline_flag = &newline_flag;
+	tape.fail = true;
+	CHECK(!yt_input_ab36_repeat_run(accumulator, sizeof(accumulator),
+	    saved, sizeof(saved), &newline_flag, &selected_key,
+	    ab36_repeat_emit, &tape));
+	CHECK(tape.calls == 1U && tape.length == 2U
+	    && memcmp(tape.prefix, "AB", 2U) == 0
+	    && strcmp(accumulator, "X") == 0 && newline_flag == 1.0f
+	    && selected_key == 0x12U);
+}
+
 struct ab36_terminal_tape {
 	uint8_t notice[64];
 	size_t notice_length;
@@ -1583,6 +1647,7 @@ main(void)
 	test_ab36_queued_input();
 	test_ab36_live_input();
 	test_ab36_repeat_recognition();
+	test_ab36_repeat_transaction();
 	test_ab36_terminal_transaction();
 	test_source_fifo();
 	test_merged_fifo();

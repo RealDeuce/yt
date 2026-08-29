@@ -225,6 +225,12 @@ session_editor_end(struct yt_session *session,
 	return false;
 }
 
+static bool
+session_ab36_repeat_emit(void *context, const uint8_t *prefix, size_t length)
+{
+	return session_b05d(context, prefix, length);
+}
+
 static float
 single_add(float left, float right)
 {
@@ -482,16 +488,14 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 		key = selected.bytes[0];
 		used = strlen(session->command_accumulator);
 		if (yt_input_ab36_repeat_requested(queued, &selected)) {
-			uint8_t prefix[YT_COMMAND_SIZE];
-
-			memcpy(prefix, session->command_accumulator, used);
-			session->pager.newline_flag = 1.0f;
-			if (!session_b05d(session, prefix, used))
+			if (!yt_input_ab36_repeat_run(
+			    session->command_accumulator,
+			    sizeof(session->command_accumulator),
+			    session->saved_command,
+			    sizeof(session->saved_command),
+			    &session->pager.newline_flag, &key,
+			    session_ab36_repeat_emit, session))
 				return false;
-			snprintf(session->command_accumulator,
-			    sizeof(session->command_accumulator), "%s",
-			    session->saved_command);
-			key = '\r';
 			used = strlen(session->command_accumulator);
 		}
 		if (key == '\r') {

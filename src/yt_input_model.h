@@ -64,6 +64,8 @@ enum yt_ab36_terminal_kind {
 typedef bool (*yt_ab36_terminal_notice_fn)(void *context,
     const uint8_t *notice, size_t length);
 typedef bool (*yt_ab36_terminal_close_fn)(void *context);
+typedef bool (*yt_ab36_repeat_emit_fn)(void *context,
+    const uint8_t *prefix, size_t length);
 
 enum yt_timed_wait_reason {
 	YT_TIMED_WAIT_CONTINUE,
@@ -196,6 +198,10 @@ bool yt_input_ab36_queue_pop(char *queue, size_t capacity,
     size_t *position, size_t *length, struct yt_input_value *selected);
 bool yt_input_ab36_repeat_requested(bool queued,
     const struct yt_input_value *selected);
+bool yt_input_ab36_repeat_run(char *accumulator,
+    size_t accumulator_capacity, const char *saved_command,
+    size_t saved_capacity, float *newline_flag, uint8_t *selected_key,
+    yt_ab36_repeat_emit_fn emit, void *context);
 bool yt_input_ab36_inactivity_expired(float timer, float deadline,
     float mode);
 bool yt_input_ab36_session_expired(float timer, float deadline);
