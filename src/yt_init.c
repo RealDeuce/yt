@@ -925,6 +925,25 @@ single_add(float left, float right)
 	return result;
 }
 
+bool
+yt_init_sector_prepass(struct yt_database *database, float sector_offset,
+    int sector_count, float *port_offset, struct yt_error *error)
+{
+	struct yt_record record;
+	float computed;
+
+	if (database == NULL || port_offset == NULL || sector_count < 0) {
+		set_error(error, YT_INVALID, "YT-INIT sector prepass", "");
+		return false;
+	}
+	computed = single_add(sector_offset, (float)sector_count);
+	*port_offset = computed;
+	if (!yt_database_read(database, 1U, &record, error))
+		return false;
+	yt_record_set_number(&record, YT_F57, computed);
+	return yt_database_write(database, 1U, &record, error);
+}
+
 static float
 single_mul(float left, float right)
 {
@@ -2346,6 +2365,8 @@ yt_initialize_world(const struct yt_initializer_options *options,
 		}
 		make_config_record(&config, config.scoreboard_length);
 		if (!write_config_and_players(&database, &config, options, error)
+		    || !yt_init_sector_prepass(&database, config.sector_offset,
+		    world.sectors, &config.port_offset, error)
 		    || !allocate_world(&world, error))
 			goto done;
 	}

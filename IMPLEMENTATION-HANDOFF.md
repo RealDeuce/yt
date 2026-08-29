@@ -187,12 +187,12 @@ not authoritative. Use the corrected goal above in the new workspace.
   destination-selector and destination-combat transactions,
   ledger dispositions are roots
   `167 candidate / 1 missing`, transfers
-  `5356 candidate / 2011 missing / 1 explicitly
+  `5359 candidate / 2008 missing / 1 explicitly
   deferred`, and presentation `136 candidate / 8 missing / 6 verified`.
   Current SHA-256
   values are roots
   `64b17a8ae6550d4ef994a6e872d1f06c9ff8a6bc33ab9ab64d390da38a87e8be`,
-  transfers `eb5482fc331a02fc60dc44bc333acdb50936dab0ffe5f874d11761592b74d5cf`,
+  transfers `09c356543a4d4cae27a90a053a58b1a735d93c472fff2b982889a42d2c1f76c8`,
   presentation `b899734f3487d364fbad0b2d5be7936334cc753b4c676d3407d6703d522b5afe`,
   and manifest
   `3552bd61c9cb9b7197aeb6fbad1f37cba69cd09f125d878d0c9072a691e8950a`.
@@ -1840,8 +1840,16 @@ not authoritative. Use the corrected goal above in the new workspace.
   writes blank physical records 2 through 2,004 in ascending order and exits
   only after logical player 2,003. The complete 432,235-byte image pins every
   record and both bounds; raw loop/FIELD state and staged PUT failures remain
-  open. The following sector-clear loop remains separately uncredited because
-  its intermediate physical-write chronology is not yet represented.
+  open.
+- The following three sector-prepass/clear transfers at `0D5F..0DE4` are now
+  candidate. `yt_init_sector_prepass()` reproduces the separate record-1 GET,
+  SINGLE addition of sector base 51 and count 2,004, field-57 rewrite to port
+  base 2,055, and PUT before graph allocation. Its raw fixture pins that
+  only field 57 changes and covers both GET and PUT failures. The zeroed native
+  allocation represents the executable's inclusive six-warp-lane clear for
+  sectors 1 through 2,004; the seven-sector scripted and complete-world images
+  pin both scales and later exact graph effects. Raw FIELD/file-registry/loop
+  cells, allocation failure and partial physical-write prefixes remain open.
 - The five qualified confirmation-decision transfers at `YT-INIT:06B5..06CF`
   are candidate. The native predicate reproduces the executable's two
   case-sensitive equality results and their AND: exact one-byte `Y` takes the

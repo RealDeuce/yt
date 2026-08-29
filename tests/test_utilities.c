@@ -2013,6 +2013,67 @@ test_yt_init_presentation_failure_prefix(void)
 }
 
 static bool
+test_yt_init_sector_prepass(void)
+{
+	static const uint8_t port_offset_raw[] = {
+		0x00U, 0x70U, 0x00U, 0x8cU
+	};
+	struct yt_database database = {0};
+	struct yt_record initial;
+	struct yt_record expected;
+	struct yt_record actual;
+	struct yt_error error;
+	float port_offset = 0.0f;
+	bool ok = false;
+
+	(void)remove("YTPREPASS.DAT");
+	memset(initial.bytes, 0xa5, sizeof(initial.bytes));
+	expected = initial;
+	memcpy(expected.bytes + YT_F57, port_offset_raw,
+	    sizeof(port_offset_raw));
+	yt_error_clear(&error);
+	if (!yt_database_open(&database, "YTPREPASS.DAT", YT_OPEN_CREATE,
+	    &error)
+	    || !yt_database_write(&database, 1U, &initial, &error)
+	    || !yt_database_flush(&database, &error)
+	    || !yt_init_sector_prepass(&database, 51.0f, 2004,
+	    &port_offset, &error)
+	    || port_offset != 2055.0f
+	    || !yt_database_read(&database, 1U, &actual, &error)
+	    || memcmp(actual.bytes, expected.bytes, sizeof(actual.bytes)) != 0)
+		goto done;
+	yt_database_close(&database);
+	memset(&database, 0, sizeof(database));
+	yt_error_clear(&error);
+	if (!yt_database_open(&database, "YTPREPASS.DAT", YT_OPEN_READ,
+	    &error))
+		goto done;
+	port_offset = 0.0f;
+	if (yt_init_sector_prepass(&database, 51.0f, 2004,
+	    &port_offset, &error)
+	    || port_offset != 2055.0f || error.status != YT_IO_ERROR
+	    || strcmp(error.operation, "write record") != 0)
+		goto done;
+	yt_database_close(&database);
+	memset(&database, 0, sizeof(database));
+	(void)remove("YTPREPASS.DAT");
+	yt_error_clear(&error);
+	if (!yt_database_open(&database, "YTPREPASS.DAT", YT_OPEN_CREATE,
+	    &error))
+		goto done;
+	port_offset = 0.0f;
+	ok = !yt_init_sector_prepass(&database, 51.0f, 2004,
+	    &port_offset, &error)
+	    && port_offset == 2055.0f && error.status == YT_EOF
+	    && strcmp(error.operation, "read record") == 0;
+
+done:
+	yt_database_close(&database);
+	(void)remove("YTPREPASS.DAT");
+	return ok;
+}
+
+static bool
 test_initializer_world_image(void)
 {
 	struct utility_lcg lcg = {UINT32_C(0x89b405)};
@@ -3969,6 +4030,8 @@ main(void)
 		failure = "YT-INIT pre-PUT presentation failure differs";
 	else if (!test_yt_init_presentation_failure_prefix())
 		failure = "YT-INIT presentation failure prefix differs";
+	else if (!test_yt_init_sector_prepass())
+		failure = "YT-INIT sector prepass differs";
 	else if (!test_initializer_world_image())
 		failure = "deterministic initializer world image differs";
 	else if (!test_initializer_graph_retries())

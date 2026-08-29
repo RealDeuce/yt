@@ -274,6 +274,9 @@ bool yt_rmt_credited_name(const char *first, const char *last,
 void yt_rmt_normalize_config(struct yt_config *config, bool local_mode);
 bool yt_rmt_preprocess_old_database(struct yt_database *database,
     struct yt_config *config, struct yt_error *error);
+bool yt_init_sector_prepass(struct yt_database *database,
+    float sector_offset, int sector_count, float *port_offset,
+    struct yt_error *error);
 bool yt_initialize_begin_yt(struct yt_error *error);
 bool yt_initialize_world(const struct yt_initializer_options *options,
     struct yt_random *random, struct yt_error *error);
