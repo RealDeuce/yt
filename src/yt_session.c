@@ -1079,6 +1079,24 @@ session_file_viewer_present(void *context, const uint8_t *text,
 }
 
 static bool
+session_file_viewer_missing_present(void *context, const uint8_t *text,
+    size_t length, bool paged, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	(void)paged;
+	return session_0317(session, text, length,
+	    "file viewer missing row", error);
+}
+
+static bool
+session_file_viewer_missing_news(void *context, const uint8_t *text,
+    size_t length, struct yt_error *error)
+{
+	return append_news_bytes(context, text, length, error);
+}
+
+static bool
 display_game_file(struct yt_session *session, const char *path,
     struct yt_error *error)
 {
@@ -1094,16 +1112,10 @@ display_game_file(struct yt_session *session, const char *path,
 		return false;
 	session->pager.line_count = 0.0f;
 	if (!yt_text_read(path, &file, error)) {
-		char message[640];
-
 		yt_error_clear(error);
-		snprintf(message, sizeof(message),
-		    "*** GAME FILE [%s] NOT FOUND! ***", path);
-		if (!session_0317(session, (const uint8_t *)message,
-		    strlen(message), "file viewer missing row", error)
-		    || !append_news(session, message, error))
-			return false;
-		return true;
+		return yt_file_viewer_missing((const uint8_t *)path, strlen(path),
+		    session_file_viewer_missing_present,
+		    session_file_viewer_missing_news, session, error);
 	}
 	{
 		struct yt_file_viewer_play_state state = {

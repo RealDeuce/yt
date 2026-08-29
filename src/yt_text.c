@@ -141,6 +141,43 @@ yt_file_viewer_play(const uint8_t *data, size_t data_length,
 	return present(context, NULL, 0U, false, error);
 }
 
+bool
+yt_file_viewer_missing(const uint8_t *path, size_t path_length,
+    yt_file_viewer_present_fn present, yt_file_viewer_news_fn append_news,
+    void *context, struct yt_error *error)
+{
+	static const uint8_t prefix[] = "*** GAME FILE [";
+	static const uint8_t suffix[] = "] NOT FOUND! ***";
+	uint8_t *row;
+	size_t length;
+
+	if ((path == NULL && path_length != 0U) || present == NULL
+	    || append_news == NULL
+	    || path_length > SIZE_MAX - (sizeof(prefix) - 1U)
+	    || path_length + sizeof(prefix) - 1U
+	    > SIZE_MAX - (sizeof(suffix) - 1U))
+		return false;
+	length = sizeof(prefix) - 1U + path_length + sizeof(suffix) - 1U;
+	row = malloc(length == 0U ? 1U : length);
+	if (row == NULL) {
+		if (error != NULL)
+			error->status = YT_NO_MEMORY;
+		return false;
+	}
+	memcpy(row, prefix, sizeof(prefix) - 1U);
+	if (path_length != 0U)
+		memcpy(row + sizeof(prefix) - 1U, path, path_length);
+	memcpy(row + sizeof(prefix) - 1U + path_length, suffix,
+	    sizeof(suffix) - 1U);
+	if (!present(context, row, length, true, error)
+	    || !append_news(context, row, length, error)) {
+		free(row);
+		return false;
+	}
+	free(row);
+	return true;
+}
+
 #ifdef _WIN32
 #include <io.h>
 #else

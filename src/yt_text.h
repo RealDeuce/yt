@@ -51,4 +51,11 @@ bool yt_file_viewer_play(const uint8_t *data, size_t data_length,
     yt_file_viewer_present_fn present, void *context,
     struct yt_error *error);
 
+typedef bool (*yt_file_viewer_news_fn)(void *context,
+    const uint8_t *text, size_t length, struct yt_error *error);
+
+bool yt_file_viewer_missing(const uint8_t *path, size_t path_length,
+    yt_file_viewer_present_fn present, yt_file_viewer_news_fn append_news,
+    void *context, struct yt_error *error);
+
 #endif
