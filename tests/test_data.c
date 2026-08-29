@@ -273,6 +273,13 @@ static void
 test_random(void)
 {
 	static const uint8_t bytes[] = {0xb4, 0xf2, 0x2a, 0xa7, 0x96, 0x2d};
+	static const uint8_t integer_bytes[] = {
+		0x00, 0x00, 0x00,
+		0xff, 0xff, 0xff,
+		0x99, 0x99, 0x19,
+		0x9a, 0x99, 0x19,
+		0x80, 0x00, 0x80,
+	};
 	static const uint8_t market_bytes[] = {
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x80,
 		0x00, 0x00, 0x40, 0x00, 0x00, 0xc0,
@@ -282,9 +289,14 @@ test_random(void)
 	struct scripted_random market_script = {
 		market_bytes, sizeof(market_bytes), 0
 	};
+	struct scripted_random integer_script = {
+		integer_bytes, sizeof(integer_bytes), 0
+	};
 	struct yt_random random;
+	struct yt_error error;
 	float value;
 	float bases[3];
+	int integer = -1;
 
 	yt_random_init(&random);
 	yt_random_set_provider(&random, scripted_fill, &script);
@@ -300,6 +312,28 @@ test_random(void)
 	CHECK(bases[1] == 33.5f);
 	CHECK(bases[2] == 35.0f);
 	CHECK(random.draws == 6 && market_script.position == sizeof(market_bytes));
+
+	yt_random_set_provider(&random, scripted_fill, &integer_script);
+	CHECK(yt_random_integer(&random, 2004, &integer, NULL));
+	CHECK(integer == 1);
+	CHECK(yt_random_integer(&random, 2004, &integer, NULL));
+	CHECK(integer == 2004);
+	CHECK(yt_random_integer(&random, 10, &integer, NULL));
+	CHECK(integer == 1);
+	CHECK(yt_random_integer(&random, 10, &integer, NULL));
+	CHECK(integer == 2);
+	CHECK(yt_random_integer(&random, 1, &integer, NULL));
+	CHECK(integer == 1 && random.draws == 5
+	    && integer_script.position == sizeof(integer_bytes));
+	yt_error_clear(&error);
+	integer = 77;
+	CHECK(!yt_random_integer(&random, 0, &integer, &error));
+	CHECK(error.status == YT_RANGE && integer == 77 && random.draws == 5
+	    && integer_script.position == sizeof(integer_bytes));
+	yt_error_clear(&error);
+	CHECK(!yt_random_integer(&random, 10, &integer, &error));
+	CHECK(error.status == YT_RANDOM_ERROR && integer == 77
+	    && random.draws == 5);
 }
 
 static void
