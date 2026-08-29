@@ -190,13 +190,13 @@ not authoritative. Use the corrected goal above in the new workspace.
   the ordinary main-command front end, plus Mercenary defection, movement,
   destination-selector and destination-combat transactions,
   ledger dispositions are roots
-  `167 candidate / 1 missing`, transfers
+  `168 candidate / 0 missing`, transfers
   `5453 candidate / 1914 missing / 1 explicitly
   deferred`, and presentation `136 candidate / 8 missing / 6 verified`.
   Current SHA-256
   values are roots
-  `bdfe421392181c1814c1536b217951b6a8637c2d2811fddd51d560e0bfe933d1`,
-  transfers `a359c70bec2080d22ecfc0e2cc5e15b6ab3e74b4ead2e3613f657e4adc2ebc02`,
+  `f3b9c32197222e2739bdf74836ab1fd9f5879b63e7299dd798c29bd5703d06c2`,
+  transfers `c681fc09a6b644a418073e2c2239e3301b5b527953f355c9e29582f45f49cfbe`,
   presentation `c2be106776f9161270b4c9376f59dec004f9ae10dfce6fe9a9a02149991ffdcf`,
   and manifest
   `3552bd61c9cb9b7197aeb6fbad1f37cba69cd09f125d878d0c9072a691e8950a`.
@@ -226,8 +226,8 @@ not authoritative. Use the corrected goal above in the new workspace.
   single-clock-sample owner directly. Native suites and all 124 focused
   YTCONFIG/helper tests pass. Raw DATE$/VAL/string descriptors, allocation and
   clock failures, and the still-unmapped caller-specific joins remain open.
-- The three outer YTMAINT transfers at `0030`, `003F`, and `006B` are
-  candidate independently of the driver root. `main()` reaches the one native
+- The three outer YTMAINT transfers at `0030`, `003F`, and `006B` compose with
+  the candidate driver root. `main()` reaches the one native
   maintenance driver, propagates its failure, and on success emits the exact
   completion wrapper before normal process termination. The clean-
   install replacement-process fixture pins the ordered completion and durable
@@ -236,10 +236,11 @@ not authoritative. Use the corrected goal above in the new workspace.
   empty `DS:7E60` descriptor and that only `03EC` copies the fixed revision.
   The native driver now emits those entry rows, the compaction heading, and
   the player-phase prefix in shipped operation order, without the former
-  synthesized date or its extra clock sample. This does not by itself promote
-  the broader `YTMAINT:0073` orchestration root.
-- The first bounded `YTMAINT:0073` orchestration slices are now native without
-  promoting that 6,185-node root. Headquarters numeric zero is durably changed
+  synthesized date or its extra clock sample. With every child root and all
+  938 qualified driver transfers now candidate, the broader `YTMAINT:0073`
+  orchestration root is candidate as well.
+- The first bounded `YTMAINT:0073` orchestration slices form the front of that
+  6,185-node candidate root. Headquarters numeric zero is durably changed
   to 85 before the later process-local scoreboard/local-screen/lottery/holds
   defaults; an isolated failure-cut fixture proves those later defaults do not
   leak into record 1. Logical sectors 1 through 7 have their mine cell cleared
@@ -254,10 +255,10 @@ not authoritative. Use the corrected goal above in the new workspace.
   and direct-screen output and skips deletion. A four-record physical fixture
   closes the loop-control transfers with empty, ordinary, expiry and
   normalized-negative visits, exact cache/durable results and final-record
-  exit. Broader driver orchestration, raw runtime state and physical failure
-  prefixes remain missing.
+  exit. A deterministic shipped-scale whole transcript/effect digest, raw
+  runtime state and physical failure prefixes remain open.
 - The following bounded `YTMAINT:07A3..0FAE` port phase is now connected
-  without promoting the maintenance driver root. The native reducer preserves
+  within the candidate maintenance driver root. The native reducer preserves
   the shipped SINGLE elapsed-day expression and anomaly clamp, DOUBLE stock
   accumulation, strict production/plague/cap/maximum predicates, conditional
   RNG order, classification and factor signs. Its output reducer uses the
