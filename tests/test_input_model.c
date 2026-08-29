@@ -169,6 +169,55 @@ test_ab36_queued_input(void)
 	    &length, &selected));
 }
 
+static void
+test_ab36_live_input(void)
+{
+	static const float replacing_modes[] = {0.0f, 2.0f, -1.0f};
+	struct yt_input_splitter splitter;
+	struct yt_input_value local = one('L');
+	struct yt_input_value remote = one('R');
+	struct yt_input_value selected;
+	size_t index;
+
+	for (index = 0U; index < sizeof(replacing_modes)
+	    / sizeof(replacing_modes[0]); ++index) {
+		yt_input_splitter_init(&splitter);
+		CHECK(yt_input_splitter_push(&splitter, false, &local));
+		CHECK(yt_input_splitter_push(&splitter, true, &remote));
+		selected = yt_input_splitter_select(&splitter,
+		    replacing_modes[index], YT_INPUT_PHASE_AB36);
+		CHECK(selected.length == 1U && selected.bytes[0] == 'R'
+		    && selected.remote && splitter.local.length == 0U
+		    && splitter.remote.length == 0U);
+	}
+
+	yt_input_splitter_init(&splitter);
+	CHECK(yt_input_splitter_push(&splitter, false, &local));
+	CHECK(yt_input_splitter_push(&splitter, true, &remote));
+	selected = yt_input_splitter_select(&splitter, 1.0f,
+	    YT_INPUT_PHASE_AB36);
+	CHECK(selected.length == 1U && selected.bytes[0] == 'L'
+	    && !selected.remote && splitter.local.length == 0U
+	    && splitter.remote.length == 1U);
+	selected = yt_input_splitter_select(&splitter, 1.0f,
+	    YT_INPUT_PHASE_AB36);
+	CHECK(selected.length == 0U && splitter.remote.length == 1U);
+
+	yt_input_splitter_init(&splitter);
+	CHECK(yt_input_splitter_push(&splitter, false, &local));
+	selected = yt_input_splitter_select(&splitter, 0.0f,
+	    YT_INPUT_PHASE_AB36);
+	CHECK(selected.length == 1U && selected.bytes[0] == 'L'
+	    && !selected.remote);
+
+	yt_input_splitter_init(&splitter);
+	CHECK(yt_input_splitter_push(&splitter, true, &remote));
+	selected = yt_input_splitter_select(&splitter, 0.0f,
+	    YT_INPUT_PHASE_AB36);
+	CHECK(selected.length == 1U && selected.bytes[0] == 'R'
+	    && selected.remote);
+}
+
 struct ab36_terminal_tape {
 	uint8_t notice[64];
 	size_t notice_length;
@@ -1514,6 +1563,7 @@ main(void)
 	test_arbitration();
 	test_ab36_inactivity_gate();
 	test_ab36_queued_input();
+	test_ab36_live_input();
 	test_ab36_terminal_transaction();
 	test_source_fifo();
 	test_merged_fifo();
