@@ -2822,6 +2822,34 @@ test_alias_key_preparation(void)
 }
 
 static bool
+test_name_append(struct yt_error *error)
+{
+	static const struct yt_name_row first =
+	    {"John", "Doe", "Star", "Lord"};
+	static const struct yt_name_row second =
+	    {"Jane", "Roe", "Void", "Walker"};
+	static const uint8_t expected[] =
+	    "John,Doe,Star,Lord\r\n"
+	    "Jane,Roe,Void,Walker\r\n\x1a";
+	struct yt_text_file text = {0};
+	bool valid;
+
+	(void)remove("names.append");
+	if (!yt_names_append("names.append", &first, error)
+	    || !yt_names_append("names.append", &second, error)
+	    || !yt_text_read("names.append", &text, error)) {
+		yt_text_free(&text);
+		(void)remove("names.append");
+		return false;
+	}
+	valid = text.length == sizeof(expected) - 1U
+	    && memcmp(text.data, expected, sizeof(expected) - 1U) == 0;
+	yt_text_free(&text);
+	(void)remove("names.append");
+	return valid;
+}
+
+static bool
 read_file(const char *path, uint8_t **data, size_t *length)
 {
 	FILE *file = fopen(path, "rb");
@@ -5035,7 +5063,7 @@ cleanup_files(void)
 		"RMTOLD.DAT",
 		"config.in", "config.out", "portname.in", "portname.out",
 		"rmt.in", "rmt.out", "local", "local.out", "yt", "child.out",
-		"DORINFO1.DEF", "names.in"
+		"DORINFO1.DEF", "names.in", "names.append"
 	};
 	size_t index;
 
@@ -5188,6 +5216,8 @@ main(void)
 		failure = "RMT-INIT missing-old-data branch differs";
 	else if (!test_name_input_grammar(&error))
 		failure = "YTNAME INPUT# grammar differs";
+	else if (!test_name_append(&error))
+		failure = "YTNAME append bytes differ";
 	else if (!test_alias_key_preparation())
 		failure = "YT alias-key preparation differs";
 #ifndef _WIN32
