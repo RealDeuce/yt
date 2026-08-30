@@ -8042,6 +8042,161 @@ presentation_fnv1a64(const uint8_t *data, size_t length)
 	return value;
 }
 
+struct info_panel_presentation_context {
+	struct yt_present_state current;
+	struct pager_capture capture;
+	struct yt_player player;
+};
+
+static bool
+info_panel_presentation_refresh(void *context, uint8_t *text,
+    size_t capacity, size_t *length, struct yt_error *error)
+{
+	static const uint8_t value[] = " 15:09  ";
+
+	(void)context;
+	(void)error;
+	if (length == NULL || capacity < sizeof(value) - 1U)
+		return false;
+	memcpy(text, value, sizeof(value) - 1U);
+	*length = sizeof(value) - 1U;
+	return true;
+}
+
+static bool
+info_panel_presentation_team(void *context, struct yt_error *error)
+{
+	static const uint8_t none[] = "Team  : None";
+	struct info_panel_presentation_context *fixture = context;
+	struct yt_present_result result;
+
+	(void)error;
+	if (yt_present_line(none, sizeof(none) - 1U, &fixture->current,
+	    &result) != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(&fixture->capture, &result);
+	if (yt_present_line(NULL, 0U, &fixture->current,
+	    &result) != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(&fixture->capture, &result);
+	return true;
+}
+
+static bool
+info_panel_presentation_read(void *context, struct yt_player *player,
+    struct yt_error *error)
+{
+	struct info_panel_presentation_context *fixture = context;
+
+	(void)error;
+	*player = fixture->player;
+	return true;
+}
+
+static bool
+info_panel_presentation_present(void *context, const uint8_t *text,
+    size_t length, enum yt_info_panel_output_kind kind, float width,
+    struct yt_info_panel_state *state, struct yt_error *error)
+{
+	struct info_panel_presentation_context *fixture = context;
+	struct yt_present_result result;
+	enum yt_present_status status;
+	uint8_t mutable[256];
+	size_t mutable_length = length;
+
+	(void)error;
+	fixture->current.foreground = state->foreground;
+	fixture->current.background = state->background;
+	fixture->current.bold = state->bold;
+	if (kind == YT_INFO_PANEL_LINE)
+		status = yt_present_line(text, length, &fixture->current, &result);
+	else if (kind == YT_INFO_PANEL_FIXED && length <= sizeof(mutable)
+	    && (text != NULL || length == 0U)) {
+		if (length != 0U)
+			memcpy(mutable, text, length);
+		status = yt_present_fixed_width(mutable, &mutable_length,
+		    sizeof(mutable), width, &fixture->current, &result);
+	}
+	else
+		return false;
+	state->foreground = fixture->current.foreground;
+	state->background = fixture->current.background;
+	state->bold = fixture->current.bold;
+	if (status != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(&fixture->capture, &result);
+	return true;
+}
+
+static struct info_panel_presentation_context
+info_panel_presentation_fixture(bool ansi)
+{
+	static const struct yt_info_panel_ops ops = {
+		info_panel_presentation_refresh,
+		info_panel_presentation_team,
+		info_panel_presentation_read,
+		info_panel_presentation_present,
+	};
+	static const uint8_t name[] = "Pilot";
+	struct info_panel_presentation_context fixture;
+	struct yt_info_panel_state panel;
+
+	memset(&fixture, 0, sizeof(fixture));
+	memset(&panel, 0, sizeof(panel));
+	fixture.current = state(ansi);
+	fixture.current.foreground = 6.0f;
+	fixture.player.credits = 12345.0f;
+	fixture.player.sector = 733.0f;
+	fixture.player.turns = 42.0f;
+	fixture.player.holds = 20.0f;
+	fixture.player.fighters = 1000.0f;
+	fixture.player.ore = 3.0f;
+	fixture.player.mines = 4.0f;
+	fixture.player.organics = 5.0f;
+	fixture.player.missiles = 6.0f;
+	fixture.player.equipment = 7.0f;
+	fixture.player.danger_scanner = 1.0f;
+	fixture.player.ports_owned = 8.0f;
+	fixture.player.shields = 90.0f;
+	fixture.player.cloak = 0.75f;
+	fixture.player.ground_forces = 9.0f;
+	fixture.player.plasma = 10.0f;
+	panel.cached_name = name;
+	panel.cached_name_length = sizeof(name) - 1U;
+	panel.foreground = fixture.current.foreground;
+	panel.background = fixture.current.background;
+	panel.bold = fixture.current.bold;
+	CHECK(yt_info_panel_run(&panel, &ops, &fixture, NULL));
+	fixture.current.foreground = panel.foreground;
+	fixture.current.background = panel.background;
+	fixture.current.bold = panel.bold;
+	return fixture;
+}
+
+static void
+test_info_panel_presentation(void)
+{
+	struct info_panel_presentation_context plain =
+	    info_panel_presentation_fixture(false);
+	struct info_panel_presentation_context ansi =
+	    info_panel_presentation_fixture(true);
+
+	CHECK(plain.capture.remote_length == 602U
+	    && presentation_fnv1a64(plain.capture.remote,
+	    plain.capture.remote_length) == UINT64_C(0x9b1a7fd0d0c4f1fd));
+	CHECK(ansi.capture.remote_length == 678U
+	    && presentation_fnv1a64(ansi.capture.remote,
+	    ansi.capture.remote_length) == UINT64_C(0xb8f87d3dc030ed22));
+	CHECK(plain.current.foreground == 6.0f
+	    && plain.current.background == 0.0f
+	    && plain.current.bold == 1.0f);
+	CHECK(ansi.current.foreground == 6.0f
+	    && ansi.current.background == 0.0f
+	    && ansi.current.bold == 0.0f
+	    && ansi.current.cached_foreground == 2.0f
+	    && ansi.current.cached_background == 0.0f);
+}
+
 static void
 test_black_hole_presentation(void)
 {
@@ -10198,6 +10353,7 @@ main(void)
 	test_planet_move_presentation();
 	test_sector_mine_presentation();
 	test_direct_fighter_kill_warning_presentation();
+	test_info_panel_presentation();
 	test_black_hole_presentation();
 	test_movement_presentation();
 	test_direct_attack_presentation();

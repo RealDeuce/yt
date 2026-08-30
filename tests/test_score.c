@@ -1061,6 +1061,353 @@ check_info_team_resolver_transaction(void)
 	    && !yt_info_team_resolver_run(&state, NULL, &tape, NULL);
 }
 
+enum info_panel_event {
+	INFO_PANEL_REFRESH = 1,
+	INFO_PANEL_TEAM,
+	INFO_PANEL_READ_PLAYER,
+	INFO_PANEL_PRESENT,
+};
+
+struct info_panel_tape {
+	int events[40];
+	size_t event_count;
+	size_t fail_at;
+	uint8_t time_text[64];
+	size_t time_length;
+	struct yt_player final_player;
+	enum yt_info_panel_output_kind kinds[35];
+	float widths[35];
+	float foreground[35];
+	float background[35];
+	float bold[35];
+	size_t present_count;
+	size_t line_count;
+	size_t fixed_count;
+	uint8_t serial[1024];
+	size_t serial_length;
+	uint8_t cached_name[YT_TEXT_FIELD_SIZE];
+};
+
+static bool
+info_panel_step(struct info_panel_tape *tape, enum info_panel_event event)
+{
+	if (tape->event_count >= YT_ARRAY_LEN(tape->events))
+		return false;
+	tape->events[tape->event_count++] = (int)event;
+	return tape->event_count != tape->fail_at;
+}
+
+static bool
+info_panel_append(struct info_panel_tape *tape, const uint8_t *text,
+    size_t length)
+{
+	if (length > sizeof(tape->serial) - tape->serial_length
+	    || (text == NULL && length != 0U))
+		return false;
+	if (length != 0U)
+		memcpy(tape->serial + tape->serial_length, text, length);
+	tape->serial_length += length;
+	return true;
+}
+
+static bool
+info_panel_refresh_test(void *context, uint8_t *text, size_t capacity,
+    size_t *length, struct yt_error *error)
+{
+	struct info_panel_tape *tape = context;
+
+	(void)error;
+	if (!info_panel_step(tape, INFO_PANEL_REFRESH)
+	    || tape->time_length > capacity || length == NULL)
+		return false;
+	if (tape->time_length != 0U)
+		memcpy(text, tape->time_text, tape->time_length);
+	*length = tape->time_length;
+	return true;
+}
+
+static bool
+info_panel_team_test(void *context, struct yt_error *error)
+{
+	static const uint8_t rows[] = "Team  : None\r\n\r\n";
+	struct info_panel_tape *tape = context;
+
+	(void)error;
+	return info_panel_step(tape, INFO_PANEL_TEAM)
+	    && info_panel_append(tape, rows, sizeof(rows) - 1U);
+}
+
+static bool
+info_panel_read_player_test(void *context, struct yt_player *player,
+    struct yt_error *error)
+{
+	struct info_panel_tape *tape = context;
+
+	(void)error;
+	if (!info_panel_step(tape, INFO_PANEL_READ_PLAYER))
+		return false;
+	*player = tape->final_player;
+	return true;
+}
+
+static bool
+info_panel_present_test(void *context, const uint8_t *text, size_t length,
+    enum yt_info_panel_output_kind kind, float width,
+    struct yt_info_panel_state *state, struct yt_error *error)
+{
+	static const uint8_t newline[] = "\r\n";
+	static const uint8_t spaces[64] = {
+		' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ',
+		' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ',
+		' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ',
+		' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ',
+		' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ',
+		' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ',
+		' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ',
+		' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '
+	};
+	struct info_panel_tape *tape = context;
+	size_t position = tape->present_count;
+	size_t rendered;
+	size_t fixed_width;
+
+	(void)error;
+	if (position >= YT_ARRAY_LEN(tape->kinds))
+		return false;
+	tape->kinds[position] = kind;
+	tape->widths[position] = width;
+	tape->foreground[position] = state->foreground;
+	tape->background[position] = state->background;
+	tape->bold[position] = state->bold;
+	tape->present_count++;
+	if (!info_panel_step(tape, INFO_PANEL_PRESENT))
+		return false;
+	if (kind == YT_INFO_PANEL_LINE) {
+		tape->line_count++;
+		return info_panel_append(tape, text, length)
+		    && info_panel_append(tape, newline, sizeof(newline) - 1U);
+	}
+	if (kind != YT_INFO_PANEL_FIXED || width < 0.0f
+	    || width > (float)sizeof(spaces)
+	    || width != floorf(width))
+		return false;
+	tape->fixed_count++;
+	fixed_width = (size_t)width;
+	rendered = length < fixed_width ? length : fixed_width;
+	return info_panel_append(tape, text, rendered)
+	    && info_panel_append(tape, spaces, fixed_width - rendered);
+}
+
+static void
+info_panel_fixture(struct info_panel_tape *tape,
+    struct yt_info_panel_state *state)
+{
+	memset(tape, 0, sizeof(*tape));
+	memset(state, 0, sizeof(*state));
+	tape->fail_at = SIZE_MAX;
+	memcpy(tape->cached_name, "Pilot", 5U);
+	memcpy(tape->time_text, " 15:09  ", 8U);
+	tape->time_length = 8U;
+	tape->final_player.credits = 12345.0f;
+	tape->final_player.sector = 733.0f;
+	tape->final_player.turns = 42.0f;
+	tape->final_player.holds = 20.0f;
+	tape->final_player.fighters = 1000.0f;
+	tape->final_player.ore = 3.0f;
+	tape->final_player.mines = 4.0f;
+	tape->final_player.organics = 5.0f;
+	tape->final_player.missiles = 6.0f;
+	tape->final_player.equipment = 7.0f;
+	tape->final_player.danger_scanner = 1.0f;
+	tape->final_player.ports_owned = 8.0f;
+	tape->final_player.shields = 90.0f;
+	tape->final_player.cloak = 0.75f;
+	tape->final_player.ground_forces = 9.0f;
+	tape->final_player.plasma = 10.0f;
+	state->cached_name = tape->cached_name;
+	state->cached_name_length = 5U;
+	state->foreground = 6.0f;
+}
+
+static uint64_t
+info_panel_fnv1a64(const uint8_t *data, size_t length)
+{
+	uint64_t value = UINT64_C(14695981039346656037);
+	size_t index;
+
+	for (index = 0U; index < length; ++index) {
+		value ^= data[index];
+		value *= UINT64_C(1099511628211);
+	}
+	return value;
+}
+
+static bool
+info_panel_contains(const uint8_t *data, size_t data_length,
+    const uint8_t *needle, size_t needle_length)
+{
+	size_t index;
+
+	if (needle_length == 0U)
+		return true;
+	if (needle_length > data_length)
+		return false;
+	for (index = 0U; index <= data_length - needle_length; ++index)
+		if (memcmp(data + index, needle, needle_length) == 0)
+			return true;
+	return false;
+}
+
+static bool
+check_info_panel_transaction(void)
+{
+	static const struct yt_info_panel_ops ops = {
+		info_panel_refresh_test,
+		info_panel_team_test,
+		info_panel_read_player_test,
+		info_panel_present_test,
+	};
+	static const enum yt_info_panel_output_kind expected_kinds[35] = {
+		YT_INFO_PANEL_LINE, YT_INFO_PANEL_FIXED,
+		YT_INFO_PANEL_LINE, YT_INFO_PANEL_LINE,
+		YT_INFO_PANEL_LINE, YT_INFO_PANEL_LINE,
+		YT_INFO_PANEL_LINE,
+		YT_INFO_PANEL_FIXED, YT_INFO_PANEL_FIXED, YT_INFO_PANEL_LINE,
+		YT_INFO_PANEL_FIXED, YT_INFO_PANEL_FIXED, YT_INFO_PANEL_LINE,
+		YT_INFO_PANEL_FIXED, YT_INFO_PANEL_FIXED, YT_INFO_PANEL_FIXED,
+		YT_INFO_PANEL_LINE,
+		YT_INFO_PANEL_FIXED, YT_INFO_PANEL_FIXED, YT_INFO_PANEL_FIXED,
+		YT_INFO_PANEL_LINE,
+		YT_INFO_PANEL_FIXED, YT_INFO_PANEL_FIXED, YT_INFO_PANEL_FIXED,
+		YT_INFO_PANEL_LINE,
+		YT_INFO_PANEL_FIXED, YT_INFO_PANEL_FIXED, YT_INFO_PANEL_LINE,
+		YT_INFO_PANEL_FIXED, YT_INFO_PANEL_FIXED, YT_INFO_PANEL_LINE,
+		YT_INFO_PANEL_FIXED, YT_INFO_PANEL_FIXED, YT_INFO_PANEL_LINE,
+		YT_INFO_PANEL_LINE,
+	};
+	static const float expected_widths[35] = {
+		0, 20, 0, 0, 0, 0, 0,
+		26, 23, 0, 26, 23, 0,
+		26, 17, 6, 0, 26, 17, 6, 0, 26, 17, 6, 0,
+		26, 23, 0, 26, 23, 0, 26, 23, 0, 0,
+	};
+	static const uint8_t heading[] =
+	    "\r\n                    [ Info ]\r\n\r\n"
+	    "Name  : Pilot\r\nTime  : 15:09  \r\n"
+	    "Team  : None\r\n\r\n";
+	static const uint8_t binary_name[] =
+	    {'N','a','m','e',' ',' ',':',' ','A',0,'B','\r','\n'};
+	static const uint8_t cloak_fail[] = " Cloak Energy. : FAIL";
+	static const uint8_t cloak_negative[] = " Cloak Energy. :-2%";
+	struct info_panel_tape expected;
+	struct info_panel_tape tape;
+	struct yt_info_panel_state state;
+	size_t failure;
+	size_t position;
+	size_t row;
+
+	info_panel_fixture(&expected, &state);
+	if (!yt_info_panel_run(&state, &ops, &expected, NULL)
+	    || expected.event_count != 38U
+	    || expected.events[0] != INFO_PANEL_REFRESH
+	    || expected.events[7] != INFO_PANEL_TEAM
+	    || expected.events[8] != INFO_PANEL_READ_PLAYER
+	    || expected.present_count != 35U || expected.line_count != 15U
+	    || expected.fixed_count != 20U
+	    || memcmp(expected.kinds, expected_kinds, sizeof(expected_kinds)) != 0
+	    || memcmp(expected.widths, expected_widths,
+	    sizeof(expected_widths)) != 0
+	    || expected.serial_length != 602U
+	    || info_panel_fnv1a64(expected.serial, expected.serial_length)
+	    != UINT64_C(0x9b1a7fd0d0c4f1fd)
+	    || sizeof(heading) - 1U != 82U
+	    || memcmp(expected.serial, heading, sizeof(heading) - 1U) != 0
+	    || state.foreground != 6.0f || state.background != 0.0f
+	    || state.bold != 1.0f
+	    || expected.foreground[15] != 7.0f
+	    || expected.background[15] != 4.0f
+	    || expected.bold[15] != 1.0f
+	    || expected.foreground[16] != 2.0f
+	    || expected.background[16] != 0.0f
+	    || expected.bold[16] != 1.0f)
+		return false;
+	for (position = 1U; position < 7U; ++position)
+		if (expected.events[position] != INFO_PANEL_PRESENT)
+			return false;
+	for (position = 9U; position < expected.event_count; ++position)
+		if (expected.events[position] != INFO_PANEL_PRESENT)
+			return false;
+	for (row = 0U; row < 10U; ++row) {
+		const uint8_t *line = expected.serial + 82U + row * 52U;
+
+		if (line[50] != '\r' || line[51] != '\n')
+			return false;
+		if (row > 0U && row < 9U
+		    && (line[0] != 0xba || line[26] != 0xba
+		    || line[49] != 0xba))
+			return false;
+	}
+	if (expected.serial[82] != 0xc9 || expected.serial[82 + 25] != 0xcd
+	    || expected.serial[82 + 26] != 0xcb
+	    || expected.serial[82 + 49] != 0xbb
+	    || expected.serial[550] != 0xc8
+	    || expected.serial[550 + 26] != 0xca
+	    || expected.serial[550 + 49] != 0xbc)
+		return false;
+
+	for (failure = 1U; failure <= expected.event_count; ++failure) {
+		info_panel_fixture(&tape, &state);
+		tape.fail_at = failure;
+		if (yt_info_panel_run(&state, &ops, &tape, NULL)
+		    || tape.event_count != failure
+		    || memcmp(tape.events, expected.events,
+		    failure * sizeof(tape.events[0])) != 0
+		    || tape.serial_length > expected.serial_length
+		    || memcmp(tape.serial, expected.serial,
+		    tape.serial_length) != 0)
+			return false;
+		if (failure == 1U
+		    && (state.foreground != 6.0f || state.bold != 0.0f))
+			return false;
+		if (tape.present_count != 0U) {
+			position = tape.present_count - 1U;
+			if (state.foreground != tape.foreground[position]
+			    || state.background != tape.background[position]
+			    || state.bold != tape.bold[position])
+				return false;
+		}
+	}
+
+	info_panel_fixture(&tape, &state);
+	memcpy(tape.cached_name, "A\0B", 3U);
+	state.cached_name_length = 3U;
+	state.anti_cloak = -1.0f;
+	tape.final_player.ore = 0.0f;
+	tape.final_player.organics = 0.0f;
+	tape.final_player.equipment = 0.0f;
+	tape.final_player.danger_scanner = 0.0f;
+	if (!yt_info_panel_run(&state, &ops, &tape, NULL)
+	    || !info_panel_contains(tape.serial, tape.serial_length,
+	    binary_name, sizeof(binary_name))
+	    || !info_panel_contains(tape.serial, tape.serial_length,
+	    cloak_fail, sizeof(cloak_fail) - 1U)
+	    || !info_panel_contains(tape.serial, tape.serial_length,
+	    (const uint8_t *)" Scanner.. : NONE",
+	    sizeof(" Scanner.. : NONE") - 1U)
+	    || state.bold != 0.0f)
+		return false;
+
+	info_panel_fixture(&tape, &state);
+	tape.final_player.cloak = -0.015f;
+	if (!yt_info_panel_run(&state, &ops, &tape, NULL)
+	    || !info_panel_contains(tape.serial, tape.serial_length,
+	    cloak_negative, sizeof(cloak_negative) - 1U))
+		return false;
+
+	return !yt_info_panel_run(NULL, &ops, &tape, NULL)
+	    && !yt_info_panel_run(&state, NULL, &tape, NULL);
+}
+
 static bool
 check_port_owner_row_model(void)
 {
@@ -14472,6 +14819,8 @@ main(void)
 		return fail("team-loader model differs");
 	if (!check_info_team_resolver_transaction())
 		return fail("Info team resolver transaction differs");
+	if (!check_info_panel_transaction())
+		return fail("Info panel transaction differs");
 	if (!check_projectile_parent_model())
 		return fail("projectile parent model differs");
 	if (!check_projectile_cruise_opening_transaction())

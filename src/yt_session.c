@@ -30,6 +30,8 @@ struct yt_session {
 	const char *executable_path;
 	int player_record;
 	struct yt_player player;
+	uint8_t cached_player_name[YT_TEXT_FIELD_SIZE];
+	size_t cached_player_name_length;
 	float sector_cache[YT_PLAYER_LAST + 1];
 	float cloak_cache[YT_PLAYER_LAST + 1];
 	float black_hole[2];
@@ -2073,6 +2075,10 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 		if (matches) {
 			session->player_record = basic;
 			session->player = candidate;
+			if (!yt_player_stored_name(&candidate,
+			    session->cached_player_name,
+			    &session->cached_player_name_length, error))
+				return false;
 			returning = true;
 			break;
 		}
@@ -2145,6 +2151,9 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 		if (!construct_player_visible(session, error)
 		    || !yt_game_set_player_identity(&session->door->game, vacant,
 		    (const uint8_t *)full, strlen(full), &session->player, error)
+		    || !yt_player_stored_name(&session->player,
+		    session->cached_player_name,
+		    &session->cached_player_name_length, error)
 		    || !yt_database_flush(&session->door->game.database, error))
 			return false;
 		if (!yt_platform_clock(&now, error))
@@ -10144,71 +10153,6 @@ info_line(struct yt_session *session, const void *text, size_t length,
 }
 
 static bool
-info_fixed(struct yt_session *session, const char *text, float width,
-    struct yt_error *error)
-{
-	return session_fixed_width(session, text, width,
-	    "Info fixed-width presentation", error);
-}
-
-static void
-info_cell(char *dest, size_t size, const char *label, const char *value)
-{
-	if (size == 0)
-		return;
-	dest[0] = (char)0xba;
-	if (size == 1)
-		return;
-	(void)snprintf(dest + 1, size - 1U, "%s%s", label, value);
-}
-
-static bool
-info_ordinary_row(struct yt_session *session, const char *left_label,
-    const char *left_value, const char *right_label, const char *right_value,
-    struct yt_error *error)
-{
-	char left[160];
-	char right[160];
-	static const uint8_t bar = 0xba;
-
-	info_cell(left, sizeof(left), left_label, left_value);
-	info_cell(right, sizeof(right), right_label, right_value);
-	return info_fixed(session, left, 26.0f, error)
-	    && info_fixed(session, right, 23.0f, error)
-	    && info_line(session, &bar, 1, error);
-}
-
-static bool
-info_commodity_row(struct yt_session *session, const char *left_label,
-    const char *left_value, const char *right_label, float right_value,
-    struct yt_error *error)
-{
-	char left[160];
-	char right[160];
-	char number[64];
-	static const uint8_t bar = 0xba;
-
-	info_cell(left, sizeof(left), left_label, left_value);
-	info_cell(right, sizeof(right), right_label, "");
-	qb_str_single(number, sizeof(number), right_value);
-	if (!info_fixed(session, left, 26.0f, error)
-	    || !info_fixed(session, right, 17.0f, error))
-		return false;
-	if (right_value != 0.0f) {
-		session->presentation.bold = 1.0f;
-		session->presentation.foreground = 7.0f;
-		session->presentation.background = 4.0f;
-		session->pager.foreground = 7;
-	}
-	if (!info_fixed(session, number, 6.0f, error))
-		return false;
-	session->presentation.foreground = 2.0f;
-	session->presentation.background = 0.0f;
-	session->pager.foreground = 2;
-	return info_line(session, &bar, 1, error);
-}
-
-static bool
 info_team_read_player(void *context, float record, struct yt_player *player,
     struct yt_error *error)
 {
@@ -10333,101 +10277,89 @@ info_team_lines(struct yt_session *session, struct yt_team *resolved_team,
 }
 
 static bool
+info_panel_refresh(void *context, uint8_t *text, size_t capacity,
+    size_t *length, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	if (length == NULL || !info_refresh_time(session, error))
+		return false;
+	if (session->time.text_length > capacity)
+		return info_failure(error, "Info time text capacity");
+	if (session->time.text_length != 0U)
+		memcpy(text, session->time.text, session->time.text_length);
+	*length = session->time.text_length;
+	return true;
+}
+
+static bool
+info_panel_team(void *context, struct yt_error *error)
+{
+	return info_team_lines(context, NULL, NULL, error);
+}
+
+static bool
+info_panel_read_player(void *context, struct yt_player *player,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	if (!reload_player(session, error))
+		return false;
+	*player = session->player;
+	return true;
+}
+
+static bool
+info_panel_present(void *context, const uint8_t *text, size_t length,
+    enum yt_info_panel_output_kind kind, float width,
+    struct yt_info_panel_state *state, struct yt_error *error)
+{
+	struct yt_session *session = context;
+	bool result;
+
+	session->presentation.foreground = state->foreground;
+	session->presentation.background = state->background;
+	session->presentation.bold = state->bold;
+	session->pager.foreground = (int)state->foreground;
+	if (kind == YT_INFO_PANEL_LINE)
+		result = info_line(session, text, length, error);
+	else if (kind == YT_INFO_PANEL_FIXED)
+		result = session_fixed_width_bytes(session, text, length, width,
+		    "Info fixed-width presentation", error);
+	else
+		return info_failure(error, "Info presentation kind");
+	state->foreground = session->presentation.foreground;
+	state->background = session->presentation.background;
+	state->bold = session->presentation.bold;
+	return result;
+}
+
+static bool
 show_ship(struct yt_session *session, struct yt_error *error)
 {
-	static const uint8_t top[50] = {
-		0xc9, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
-		0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
-		0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcb, 0xcd, 0xcd, 0xcd,
-		0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
-		0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xbb
+	static const struct yt_info_panel_ops ops = {
+		info_panel_refresh,
+		info_panel_team,
+		info_panel_read_player,
+		info_panel_present,
 	};
-	static const uint8_t bottom[50] = {
-		0xc8, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
-		0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
-		0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xca, 0xcd, 0xcd, 0xcd,
-		0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd,
-		0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xcd, 0xbc
-	};
-	char cached_name[sizeof(session->player.name)];
-	char row[256];
-	char left[64];
-	char right[64];
-	int saved_foreground;
-	float cloak_percent;
+	struct yt_info_panel_state state;
+	bool result;
 
-	if (!info_refresh_time(session, error))
-		return false;
-	(void)snprintf(cached_name, sizeof(cached_name), "%s",
-	    session->player.name);
-	saved_foreground = session->pager.foreground;
-	session->pager.foreground = 2;
-	session->presentation.foreground = 2.0f;
-	if (!info_line(session, NULL, 0, error)
-	    || !info_fixed(session, "", 20.0f, error)
-	    || !info_line(session, "[ Info ]", 8, error)
-	    || !info_line(session, NULL, 0, error))
-		return false;
-	(void)snprintf(row, sizeof(row), "Name  : %s", cached_name);
-	if (!info_line(session, row, strlen(row), error))
-		return false;
-	if (session->time.text_length > sizeof(row) - 8U)
-		return info_failure(error, "Info time text capacity");
-	memcpy(row, "Time  :", 7);
-	memcpy(row + 7, session->time.text, session->time.text_length);
-	if (!info_line(session, row, 7U + session->time.text_length, error)
-	    || !info_team_lines(session, NULL, NULL, error)
-	    || !reload_player(session, error)
-	    || !info_line(session, top, sizeof(top), error))
-		return false;
-	qb_str_double(left, sizeof(left), (double)session->player.credits);
-	qb_str_single(right, sizeof(right), session->player.sector);
-	if (!info_ordinary_row(session, " Credits.. :", left,
-	    " Sector....... :", right, error))
-		return false;
-	qb_str_single(left, sizeof(left), session->player.turns);
-	qb_str_single(right, sizeof(right), session->player.holds);
-	if (!info_ordinary_row(session, " Turns.... :", left,
-	    " Holds........ :", right, error))
-		return false;
-	qb_str_double(left, sizeof(left), (double)session->player.fighters);
-	if (!info_commodity_row(session, " Fighters. :", left,
-	    " Ore.......... :", session->player.ore, error))
-		return false;
-	qb_str_single(left, sizeof(left), session->player.mines);
-	if (!info_commodity_row(session, " Mines.... :", left,
-	    " Organics..... :", session->player.organics, error))
-		return false;
-	qb_str_single(left, sizeof(left), session->player.missiles);
-	if (!info_commodity_row(session, " Missiles. :", left,
-	    " Equipment.... :", session->player.equipment, error))
-		return false;
-	(void)snprintf(left, sizeof(left), "%s",
-	    session->player.danger_scanner == 0.0f ? " NONE" : " Installed");
-	qb_str_single(right, sizeof(right), session->player.ports_owned);
-	if (!info_ordinary_row(session, " Scanner.. :", left,
-	    " Ports Owned.. :", right, error))
-		return false;
-	qb_str_double(left, sizeof(left), (double)session->player.shields);
-	if (session->anti_cloak)
-		(void)snprintf(right, sizeof(right), " FAIL");
-	else {
-		cloak_percent = floorf(single_mul(session->player.cloak, 100.0f));
-		qb_str_single(right, sizeof(right), cloak_percent);
-		(void)strncat(right, "%", sizeof(right) - strlen(right) - 1U);
-	}
-	if (!info_ordinary_row(session, " Shields.. :", left,
-	    " Cloak Energy. :", right, error))
-		return false;
-	qb_str_single(left, sizeof(left), session->player.ground_forces);
-	qb_str_single(right, sizeof(right), session->player.plasma);
-	if (!info_ordinary_row(session, " Forces... :", left,
-	    " Plasma Bolts. :", right, error)
-	    || !info_line(session, bottom, sizeof(bottom), error))
-		return false;
-	session->pager.foreground = saved_foreground;
-	session->presentation.foreground = (float)saved_foreground;
-	return true;
+	memset(&state, 0, sizeof(state));
+	state.cached_name = session->cached_player_name;
+	state.cached_name_length = session->cached_player_name_length;
+	state.anti_cloak = session->anti_cloak ? -1.0f : 0.0f;
+	state.foreground = session->presentation.foreground;
+	state.background = session->presentation.background;
+	state.bold = session->presentation.bold;
+	result = yt_info_panel_run(&state, &ops, session, error);
+	session->presentation.foreground = state.foreground;
+	session->presentation.background = state.background;
+	session->presentation.bold = state.bold;
+	session->pager.foreground = (int)state.foreground;
+	return result;
 }
 
 static bool
