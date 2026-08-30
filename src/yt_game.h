@@ -849,6 +849,7 @@ struct yt_projectile_planet_impact_state {
 	float *remaining;
 	uint32_t physical_planet;
 	uint32_t physical_sector;
+	bool early_return;
 };
 bool yt_projectile_planet_ground_row(float ground, uint8_t *row,
     size_t capacity, size_t *length);
@@ -858,6 +859,15 @@ bool yt_projectile_planet_impact_run(
     struct yt_projectile_planet_impact_state *state,
     const struct yt_projectile_planet_impact_ops *ops, void *context,
     struct yt_error *error);
+enum yt_projectile_post_impact_route {
+	YT_PROJECTILE_POST_IMPACT_FOOTER,
+	YT_PROJECTILE_POST_IMPACT_NEXT_HOP,
+};
+enum yt_projectile_post_impact_route yt_projectile_post_impact_route(
+    float remaining);
+bool yt_projectile_route_has_next(int16_t next_hop);
+bool yt_projectile_footer_row(uint8_t *row, size_t capacity,
+    size_t *length);
 bool yt_projectile_player_damage(struct yt_player *target, float *remaining,
     yt_projectile_damage_draw_fn draw, void *context,
     struct yt_projectile_damage_result *result, struct yt_error *error);

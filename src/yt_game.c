@@ -4835,6 +4835,7 @@ yt_projectile_planet_impact_run(
 	    || ops->present == NULL || ops->append_news == NULL
 	    || ops->sound == NULL)
 		return false;
+	state->early_return = false;
 
 	if (state->planet->ground_forces != 0.0f) {
 		struct yt_projectile_ground_result impact;
@@ -4860,8 +4861,10 @@ yt_projectile_planet_impact_run(
 		    || !ops->present(context, row, row_length, error)
 		    || !ops->append_news(context, row, row_length, error))
 			return false;
-		if (*state->remaining < 1.0f)
+		if (*state->remaining < 1.0f) {
+			state->early_return = true;
 			return true;
+		}
 	}
 
 	{
@@ -4907,6 +4910,36 @@ yt_projectile_planet_impact_run(
 		    sizeof(destroyed) - 1U, error))
 			return false;
 	}
+	if (*state->remaining < 1.0f)
+		state->early_return = true;
+	return true;
+}
+
+enum yt_projectile_post_impact_route
+yt_projectile_post_impact_route(float remaining)
+{
+	return remaining > 0.0f ? YT_PROJECTILE_POST_IMPACT_NEXT_HOP
+	    : YT_PROJECTILE_POST_IMPACT_FOOTER;
+}
+
+bool
+yt_projectile_route_has_next(int16_t next_hop)
+{
+	return next_hop != 0;
+}
+
+bool
+yt_projectile_footer_row(uint8_t *row, size_t capacity, size_t *length)
+{
+	static const uint8_t footer[] = "*** End of Report ***";
+
+	if (length == NULL)
+		return false;
+	*length = 0U;
+	if (capacity < sizeof(footer) - 1U || row == NULL)
+		return false;
+	memcpy(row, footer, sizeof(footer) - 1U);
+	*length = sizeof(footer) - 1U;
 	return true;
 }
 

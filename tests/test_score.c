@@ -1001,6 +1001,7 @@ check_projectile_planet_impact_transaction(void)
 	    || tape.event_count != YT_ARRAY_LEN(expected_events)
 	    || memcmp(tape.events, expected_events, sizeof(expected_events)) != 0
 	    || tape.draw_position != 4U || remaining != 0.0f
+	    || !state.early_return
 	    || planet.ground_forces != 0.0f || planet.owner != 0.0f
 	    || planet.production[0] != 0.0f
 	    || planet.production[1] != 0.0f
@@ -1062,7 +1063,8 @@ check_projectile_planet_impact_transaction(void)
 	    || tape.event_count != 5U
 	    || memcmp(tape.events, expected_events,
 	    tape.event_count * sizeof(expected_events[0])) != 0
-	    || remaining != 0.0f || tape.present_count != 1U
+	    || remaining != 0.0f || !state.early_return
+	    || tape.present_count != 1U
 	    || tape.news_count != 1U || tape.planet_writes != 1U)
 		return false;
 	return true;
@@ -1115,6 +1117,7 @@ check_projectile_parent_model(void)
 	    "The plasma bolts hit planet P\0P in sector 7!";
 	static const uint8_t plasma_planet_news_expected[] =
 	    "A\0A's plasma bolts hit planet P\0P in sector 7!";
+	static const uint8_t footer_expected[] = "*** End of Report ***";
 	static const uint8_t victory_winner_expected[] =
 	    "Congratulations go to A\0A who defeated the Xannor HQ!!!";
 	struct yt_planet planet;
@@ -1231,6 +1234,11 @@ check_projectile_parent_model(void)
 	    terminal_length) != 0
 	    || news_length != sizeof(plasma_planet_news_expected) - 1U
 	    || memcmp(news, plasma_planet_news_expected, news_length) != 0
+	    || !yt_projectile_footer_row(direct, sizeof(direct),
+	    &terminal_length)
+	    || terminal_length != sizeof(footer_expected) - 1U
+	    || memcmp(direct, footer_expected, terminal_length) != 0
+	    || yt_projectile_footer_row(direct, 8U, &terminal_length)
 	    || !yt_xannor_victory_winner(saved_binary,
 	    sizeof(saved_binary), news, sizeof(news), &news_length)
 	    || news_length != sizeof(victory_winner_expected) - 1U
@@ -1273,6 +1281,17 @@ check_projectile_parent_model(void)
 	    && !yt_projectile_candidate_admitted(3, 1.0f, 0)
 	    && yt_projectile_candidate_admitted(3, 1.0f, 3)
 	    && !yt_projectile_candidate_admitted(3, 0.0f, 4)
+	    && yt_projectile_post_impact_route(1.0f)
+	    == YT_PROJECTILE_POST_IMPACT_NEXT_HOP
+	    && yt_projectile_post_impact_route(0.0f)
+	    == YT_PROJECTILE_POST_IMPACT_FOOTER
+	    && yt_projectile_post_impact_route(-1.0f)
+	    == YT_PROJECTILE_POST_IMPACT_FOOTER
+	    && yt_projectile_post_impact_route(NAN)
+	    == YT_PROJECTILE_POST_IMPACT_FOOTER
+	    && !yt_projectile_route_has_next(0)
+	    && yt_projectile_route_has_next(1)
+	    && yt_projectile_route_has_next(-1)
 	    && !yt_projectile_player_survives(0.999f)
 	    && yt_projectile_player_survives(1.0f)
 	    && yt_projectile_salvage_admitted(0, 0)

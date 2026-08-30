@@ -11740,7 +11740,8 @@ projectile_planet_sound(void *context, float selector,
 
 static bool
 missile_planet_impact(struct yt_session *session, int sector_number,
-    struct yt_sector *sector, float *remaining, struct yt_error *error)
+    struct yt_sector *sector, float *remaining, bool *early_return,
+    struct yt_error *error)
 {
 	static const struct yt_projectile_planet_impact_ops impact_ops = {
 		projectile_damage_draw,
@@ -11770,8 +11771,13 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 	size_t direct_length;
 	size_t news_length;
 
-	if (*remaining <= 0.0f)
+	if (early_return == NULL)
+		return false;
+	*early_return = false;
+	if (*remaining <= 0.0f) {
+		*early_return = true;
 		return true;
+	}
 	logical_planet = (int)qb_cint((double)sector->planet, &overflow);
 	if (overflow) {
 		if (error != NULL) {
@@ -11838,8 +11844,11 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 	impact_state.remaining = remaining;
 	impact_state.physical_planet = physical_planet;
 	impact_state.physical_sector = physical_sector;
-	return yt_projectile_planet_impact_run(&impact_state, &impact_ops,
-	    session, error);
+	if (!yt_projectile_planet_impact_run(&impact_state, &impact_ops,
+	    session, error))
+		return false;
+	*early_return = impact_state.early_return;
+	return true;
 }
 
 static bool
@@ -11926,15 +11935,24 @@ projectile_fighter_owner(struct yt_session *session, float owner,
 	return true;
 }
 
+enum missile_sector_route {
+	MISSILE_SECTOR_RETURN,
+	MISSILE_SECTOR_POST_IMPACT,
+};
+
 static bool
 missile_sector(struct yt_session *session, int sector_number,
     float *remaining, int *counterattack, int *xannor_provoker,
-	int *last_mine_news_sector, struct yt_error *error)
+	int *last_mine_news_sector, enum missile_sector_route *route,
+	struct yt_error *error)
 {
 	struct yt_sector sector;
 	float old_fighter_owner;
 	int basic;
 
+	if (route == NULL)
+		return false;
+	*route = MISSILE_SECTOR_RETURN;
 	if (!yt_game_read_sector(&session->door->game, sector_number, &sector,
 	    error))
 		return false;
@@ -12266,8 +12284,16 @@ missile_mines:
 	if (!yt_game_read_sector(&session->door->game, sector_number, &sector,
 	    error))
 		return false;
-	return missile_planet_impact(session, sector_number, &sector,
-	    remaining, error);
+	{
+		bool early_return;
+
+		if (!missile_planet_impact(session, sector_number, &sector,
+		    remaining, &early_return, error))
+			return false;
+		if (!early_return)
+			*route = MISSILE_SECTOR_POST_IMPACT;
+		return true;
+	}
 }
 
 static bool
@@ -12945,6 +12971,17 @@ plasma_hop_report(struct yt_session *session, int sector_number,
 }
 
 static bool
+missile_footer(struct yt_session *session, struct yt_error *error)
+{
+	uint8_t row[32];
+	size_t length;
+
+	return yt_projectile_footer_row(row, sizeof(row), &length)
+	    && session_present_text(session, row, length, SESSION_PRESENT_LINE,
+	    "cruise missile end report", error);
+}
+
+static bool
 launch_projectile(struct yt_session *session, float target, float amount,
     bool plasma, float *returned_missiles, float *origin_alias,
     int *pending_counterattack, int *pending_xannor,
@@ -13013,10 +13050,7 @@ launch_projectile(struct yt_session *session, float target, float amount,
 			free(route);
 			return true;
 		}
-		if (!session_present_text(session,
-		    (const uint8_t *)"*** End of Report ***",
-		    strlen("*** End of Report ***"), SESSION_PRESENT_LINE,
-		    "cruise missile end report", error)) {
+		if (!missile_footer(session, error)) {
 			free(route);
 			return false;
 		}
@@ -13060,8 +13094,8 @@ launch_projectile(struct yt_session *session, float target, float amount,
 			return true;
 		}
 		cursor = start;
-		while (route[cursor] != 0
-		    && (plasma ? energy >= 1.0 : *missiles > 0.0f)) {
+		while (yt_projectile_route_has_next(route[cursor])
+		    && (!plasma || energy >= 1.0)) {
 		int next = route[cursor];
 
 		if (plasma) {
@@ -13133,11 +13167,22 @@ launch_projectile(struct yt_session *session, float target, float amount,
 				return false;
 			}
 		}
-		else if (!missile_sector(session, next, missiles,
-		    counterattack, xannor_provoker, &last_mine_news_sector,
-		    error)) {
-			free(route);
-			return false;
+		else {
+			enum missile_sector_route sector_route;
+
+			if (!missile_sector(session, next, missiles,
+			    counterattack, xannor_provoker, &last_mine_news_sector,
+			    &sector_route, error)) {
+				free(route);
+				return false;
+			}
+			if (sector_route == MISSILE_SECTOR_RETURN) {
+				free(route);
+				return true;
+			}
+			if (yt_projectile_post_impact_route(*missiles)
+			    == YT_PROJECTILE_POST_IMPACT_FOOTER)
+				break;
 		}
 		cursor = next;
 		}
@@ -13149,11 +13194,7 @@ launch_projectile(struct yt_session *session, float target, float amount,
 		if (!plasma_footer(session, error))
 			return false;
 	}
-	else if (*missiles > 0.0f
-	    && !session_present_text(session,
-	    (const uint8_t *)"*** End of Report ***",
-	    strlen("*** End of Report ***"), SESSION_PRESENT_LINE,
-	    "cruise missile end report", error))
+	else if (!missile_footer(session, error))
 		return false;
 	return true;
 }
