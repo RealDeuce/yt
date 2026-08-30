@@ -1078,6 +1078,7 @@ struct viewer_pager_join {
 	char response[80];
 	char source[80];
 	size_t source_length;
+	size_t sample_calls;
 	size_t total_rows;
 	size_t position;
 	size_t eof_calls;
@@ -1086,6 +1087,14 @@ struct viewer_pager_join {
 	size_t active_sample;
 	size_t ctrl_x_row;
 	uint8_t line[32];
+	uint8_t local_rows[32][80];
+	size_t local_lengths[32];
+	size_t local_row_count;
+	uint8_t local_fragment[80];
+	size_t local_fragment_length;
+	int local_foregrounds[64];
+	int local_backgrounds[64];
+	size_t local_color_count;
 	bool file_open;
 	bool final_blank;
 };
@@ -1109,6 +1118,55 @@ viewer_pager_record(struct viewer_pager_join *join,
 	return false;
 }
 
+static void
+viewer_pager_capture_result(struct viewer_pager_join *join,
+    const struct yt_present_result *result)
+{
+	size_t index;
+
+	pager_capture_result(&join->capture, result);
+	for (index = 0U; index < result->event_count; ++index) {
+		const struct yt_present_event *event = &result->events[index];
+
+		if (event->operation == YT_PRESENT_LOCAL_COLOR) {
+			CHECK(join->local_color_count
+			    < YT_ARRAY_LEN(join->local_foregrounds));
+			if (join->local_color_count
+			    < YT_ARRAY_LEN(join->local_foregrounds)) {
+				join->local_foregrounds[join->local_color_count] =
+				    event->foreground;
+				join->local_backgrounds[join->local_color_count] =
+				    event->background;
+			}
+			++join->local_color_count;
+			continue;
+		}
+		if (event->operation != YT_PRESENT_LOCAL_SEMI
+		    && event->operation != YT_PRESENT_LOCAL_LINE)
+			continue;
+		CHECK(event->length <= sizeof(join->local_fragment)
+		    - join->local_fragment_length);
+		if (event->length > sizeof(join->local_fragment)
+		    - join->local_fragment_length)
+			continue;
+		if (event->length != 0U)
+			memcpy(join->local_fragment + join->local_fragment_length,
+			    event->data, event->length);
+		join->local_fragment_length += event->length;
+		if (event->operation != YT_PRESENT_LOCAL_LINE)
+			continue;
+		CHECK(join->local_row_count < YT_ARRAY_LEN(join->local_rows));
+		if (join->local_row_count < YT_ARRAY_LEN(join->local_rows)) {
+			memcpy(join->local_rows[join->local_row_count],
+			    join->local_fragment, join->local_fragment_length);
+			join->local_lengths[join->local_row_count] =
+			    join->local_fragment_length;
+		}
+		++join->local_row_count;
+		join->local_fragment_length = 0U;
+	}
+}
+
 static bool
 viewer_pager_carrier(void *context)
 {
@@ -1123,8 +1181,10 @@ viewer_pager_sample(void *context, struct yt_input_value *sampled)
 	if (!viewer_pager_record(join, VIEWER_PAGER_SAMPLE))
 		return false;
 	memset(sampled, 0, sizeof(*sampled));
+	++join->sample_calls;
 	++join->active_sample;
-	if (join->active_row == join->ctrl_x_row
+	if (join->ctrl_x_row != 0U
+	    && join->active_row == join->ctrl_x_row
 	    && join->active_sample == 1U) {
 		sampled->bytes[0] = 0x18U;
 		sampled->length = 1U;
@@ -1150,7 +1210,7 @@ viewer_pager_present(void *context, const uint8_t *text, size_t length)
 	if (yt_present_paged_text(text, length, &join->presentation, &result)
 	    != YT_PRESENT_OK)
 		return false;
-	pager_capture_result(&join->capture, &result);
+	viewer_pager_capture_result(join, &result);
 	return true;
 }
 
@@ -1165,7 +1225,7 @@ viewer_pager_finish(void *context, bool newline_flag)
 	if (yt_present_paged_finish(newline_flag, &join->presentation,
 	    &result) != YT_PRESENT_OK)
 		return false;
-	pager_capture_result(&join->capture, &result);
+	viewer_pager_capture_result(join, &result);
 	return true;
 }
 
@@ -1192,13 +1252,13 @@ viewer_pager_response(void *context, char *response, size_t capacity)
 		if (yt_present_editor_echo(&byte, 1U, &byte, 1U,
 		    &join->presentation, &result) != YT_PRESENT_OK)
 			return false;
-		pager_capture_result(&join->capture, &result);
+		viewer_pager_capture_result(join, &result);
 	}
 	join->pager.newline_flag = 0.0f;
 	if (yt_present_line(NULL, 0U, &join->presentation, &result)
 	    != YT_PRESENT_OK)
 		return false;
-	pager_capture_result(&join->capture, &result);
+	viewer_pager_capture_result(join, &result);
 	(void)snprintf(response, capacity, "%s", join->accumulator);
 	join->source[0] = '\r';
 	join->source[1] = '\0';
@@ -1283,7 +1343,7 @@ viewer_pager_stream_present(void *context, const uint8_t *text,
 		if (yt_present_line(NULL, 0U, &join->presentation, &result)
 		    != YT_PRESENT_OK)
 			return false;
-		pager_capture_result(&join->capture, &result);
+		viewer_pager_capture_result(join, &result);
 		join->final_blank = true;
 		return true;
 	}
@@ -1432,6 +1492,328 @@ test_file_viewer_pager_join(void)
 			CHECK(join.events[index]
 			    == threshold_events[index % 5U]);
 	}
+}
+
+static const char *const startup_ascii_lines[] = {
+	"",
+	"Welcome to .....",
+	"",
+	"Y A N K E E   T R A D E R ! ! !",
+	"",
+	"Coming to you compliments of your Sysop!",
+	"",
+	"Stacked commands are available in YT!",
+	"EXAMPLE: M;7   (Move to sector 7)",
+	"EXAMPLE: L;A;L (Land at planet, take all, leave planet)",
+	"Command strings can be as l-o-n-g as you want!",
+	"",
+	"If something is in [brackets], it is a default and",
+	"you can just hit enter. (Or use an extra \";\".)",
+	"",
+	"SAVE COMMANDS FOR RE-USE BY PUTTING A \"/\" AS LAST CHARACTER!",
+	"RE-USE THEM WITH ONE [!] KEYSTROKE BY HITTING CTRL-R!!",
+};
+
+struct startup_ascii_join {
+	struct viewer_pager_join join;
+	struct yt_text_input input;
+	size_t close_calls;
+	size_t open_calls;
+};
+
+static bool
+startup_ascii_close(void *context, struct yt_error *error)
+{
+	struct startup_ascii_join *startup = context;
+	bool ok;
+
+	++startup->close_calls;
+	ok = yt_text_input_close(&startup->input, error);
+	if (ok)
+		startup->join.file_open = false;
+	return ok;
+}
+
+static bool
+startup_ascii_open(void *context, const char *path, struct yt_error *error)
+{
+	struct startup_ascii_join *startup = context;
+	bool ok;
+
+	++startup->open_calls;
+	ok = yt_text_input_open(&startup->input, path, error);
+	if (ok)
+		startup->join.file_open = true;
+	return ok;
+}
+
+static bool
+startup_ascii_eof(void *context, bool *eof, struct yt_error *error)
+{
+	struct startup_ascii_join *startup = context;
+
+	return yt_text_input_eof(&startup->input, eof, error);
+}
+
+static bool
+startup_ascii_read(void *context, const uint8_t **line, size_t *length,
+    bool *available, struct yt_error *error)
+{
+	struct startup_ascii_join *startup = context;
+	bool ok = yt_text_input_read_line(&startup->input, line, length,
+	    available, error);
+
+	if (ok && *available)
+		++startup->join.position;
+	return ok;
+}
+
+static bool
+startup_ascii_present(void *context, const uint8_t *text, size_t length,
+    bool paged, struct yt_error *error)
+{
+	struct startup_ascii_join *startup = context;
+
+	return viewer_pager_stream_present(&startup->join, text, length, paged,
+	    error);
+}
+
+static const struct yt_file_viewer_stream_ops startup_ascii_ops = {
+	startup_ascii_close,
+	startup_ascii_open,
+	startup_ascii_eof,
+	startup_ascii_read,
+	startup_ascii_present,
+};
+
+static bool
+startup_ascii_append(uint8_t *output, size_t capacity, size_t *length,
+    const void *data, size_t data_length)
+{
+	if (*length > capacity || data_length > capacity - *length)
+		return false;
+	if (data_length != 0U)
+		memcpy(output + *length, data, data_length);
+	*length += data_length;
+	return true;
+}
+
+static size_t
+startup_ascii_expected(uint8_t *output, size_t capacity, bool ansi,
+    size_t body_rows)
+{
+	static const uint8_t prefix[] = "\r\nCntl-X to Stop\n\r\r\n";
+	static const uint8_t body_color[] = "\x1b[0;32;40m";
+	static const uint8_t restored_color[] = "\x1b[0;36;40m";
+	static const uint8_t paged_end[] = "\n\r";
+	static const uint8_t direct_end[] = "\r\n";
+	size_t length = 0U;
+	size_t index;
+
+	CHECK(body_rows <= YT_ARRAY_LEN(startup_ascii_lines));
+	if (body_rows > YT_ARRAY_LEN(startup_ascii_lines))
+		return 0U;
+	CHECK(startup_ascii_append(output, capacity, &length, prefix,
+	    sizeof(prefix) - 1U));
+	if (ansi)
+		CHECK(startup_ascii_append(output, capacity, &length, body_color,
+		    sizeof(body_color) - 1U));
+	for (index = 0U; index < body_rows; ++index) {
+		CHECK(startup_ascii_append(output, capacity, &length,
+		    startup_ascii_lines[index],
+		    strlen(startup_ascii_lines[index])));
+		CHECK(startup_ascii_append(output, capacity, &length, paged_end,
+		    sizeof(paged_end) - 1U));
+	}
+	if (ansi)
+		CHECK(startup_ascii_append(output, capacity, &length,
+		    restored_color, sizeof(restored_color) - 1U));
+	CHECK(startup_ascii_append(output, capacity, &length, direct_end,
+	    sizeof(direct_end) - 1U));
+	return length;
+}
+
+static void
+startup_ascii_initialize(struct startup_ascii_join *startup,
+    struct yt_file_viewer_stream_state *stream, bool ansi, float mode,
+    float snoop, size_t ctrl_x_row)
+{
+	viewer_pager_initialize(&startup->join, stream, 0U, 0.0f, "",
+	    ctrl_x_row);
+	startup->join.presentation = state(ansi);
+	startup->join.presentation.sound.mode = mode;
+	startup->join.presentation.sound.snoop = snoop;
+	startup->join.presentation.foreground = 6.0f;
+	startup->join.presentation.cached_foreground = ansi ? 6.0f : 0.0f;
+	startup->join.pager.foreground = 6;
+	startup->join.pager.nonstop = 1.0f;
+	startup->join.accumulator[0] = '\0';
+	startup->join.queue[0] = '\0';
+	startup->join.queue_position = 0U;
+	startup->join.queue_length = 0U;
+	stream->path = YT_DATA_DIR "YTOPEN.ASC";
+	yt_text_input_init(&startup->input);
+}
+
+static bool
+startup_ascii_run(struct startup_ascii_join *startup,
+    struct yt_file_viewer_stream_state *stream, struct yt_error *error)
+{
+	struct yt_present_result result;
+
+	if (yt_present_line(NULL, 0U, &startup->join.presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(&startup->join, &result);
+	if (!yt_file_viewer_entry(startup->join.pager.key,
+	    &startup->join.pager.line_count, viewer_pager_stream_present,
+	    &startup->join, error))
+		return false;
+	return yt_file_viewer_stream_run(stream, &startup_ascii_ops, startup,
+	    error);
+}
+
+static void
+startup_ascii_check_rows(const struct viewer_pager_join *join,
+    size_t body_rows)
+{
+	size_t index;
+
+	CHECK(join->local_row_count == body_rows + 4U
+	    && join->local_lengths[0] == 0U
+	    && join->local_lengths[1] == strlen("Cntl-X to Stop")
+	    && memcmp(join->local_rows[1], "Cntl-X to Stop",
+	    strlen("Cntl-X to Stop")) == 0
+	    && join->local_lengths[2] == 0U);
+	for (index = 0U; index < body_rows; ++index) {
+		size_t length = strlen(startup_ascii_lines[index]);
+
+		CHECK(join->local_lengths[index + 3U] == length
+		    && memcmp(join->local_rows[index + 3U],
+		    startup_ascii_lines[index], length) == 0);
+	}
+	CHECK(join->local_lengths[body_rows + 3U] == 0U);
+}
+
+static size_t
+startup_ascii_color_count(const struct viewer_pager_join *join,
+    int foreground, int background)
+{
+	size_t count = 0U;
+	size_t index;
+
+	for (index = 0U; index < join->local_color_count; ++index) {
+		if (join->local_foregrounds[index] == foreground
+		    && join->local_backgrounds[index] == background)
+			++count;
+	}
+	return count;
+}
+
+static void
+test_startup_ascii_physical_join(void)
+{
+	struct startup_ascii_join startup;
+	struct yt_file_viewer_stream_state stream;
+	struct yt_error error;
+	uint8_t expected[600];
+	size_t expected_length;
+
+	memset(&startup, 0, sizeof(startup));
+	startup_ascii_initialize(&startup, &stream, true, 0.0f, -1.0f, 0U);
+	yt_error_clear(&error);
+	CHECK(startup_ascii_run(&startup, &stream, &error));
+	expected_length = startup_ascii_expected(expected, sizeof(expected),
+	    true, YT_ARRAY_LEN(startup_ascii_lines));
+	CHECK(expected_length == 544U
+	    && startup.join.capture.remote_length == expected_length
+	    && memcmp(startup.join.capture.remote, expected,
+	    expected_length) == 0);
+	startup_ascii_check_rows(&startup.join,
+	    YT_ARRAY_LEN(startup_ascii_lines));
+	CHECK(!stream.file_open && !startup.join.file_open
+	    && startup.input.file == NULL && startup.close_calls == 2U
+	    && startup.open_calls == 1U && stream.eof_checks == 18U
+	    && stream.key_checks == 18U && stream.read_count == 17U
+	    && stream.line_count == 17U && startup.join.position == 17U
+	    && startup.join.sample_calls == 18U
+	    && startup.join.event_count == 90U
+	    && startup.join.pager.line_count == 0.0f
+	    && startup.join.pager.nonstop == 1.0f
+	    && startup.join.pager.key[0] == '\0'
+	    && startup.join.accumulator[0] == '\0'
+	    && startup.join.queue_length == 0U
+	    && startup.join.presentation.foreground == 6.0f
+	    && startup.join.presentation.cached_foreground == 6.0f
+	    && startup.join.capture.last_local_foreground == 3
+	    && startup.join.local_color_count == 39U
+	    && startup_ascii_color_count(&startup.join, 2, 0) == 17U
+	    && startup_ascii_color_count(&startup.join, 3, 0) == 4U
+	    && startup_ascii_color_count(&startup.join, 7, 0) == 18U
+	    && startup.join.source_length
+	    == strlen(startup_ascii_lines[16])
+	    && memcmp(startup.join.source, startup_ascii_lines[16],
+	    startup.join.source_length) == 0);
+	yt_text_input_destroy(&startup.input);
+
+	memset(&startup, 0, sizeof(startup));
+	startup_ascii_initialize(&startup, &stream, false, 0.0f, -1.0f, 0U);
+	CHECK(startup_ascii_run(&startup, &stream, NULL));
+	expected_length = startup_ascii_expected(expected, sizeof(expected),
+	    false, YT_ARRAY_LEN(startup_ascii_lines));
+	CHECK(expected_length == 524U
+	    && startup.join.capture.remote_length == expected_length
+	    && memcmp(startup.join.capture.remote, expected,
+	    expected_length) == 0
+	    && startup.join.local_color_count == 18U
+	    && startup_ascii_color_count(&startup.join, 7, 0) == 18U
+	    && startup.join.capture.last_local_foreground == 7);
+	startup_ascii_check_rows(&startup.join,
+	    YT_ARRAY_LEN(startup_ascii_lines));
+	yt_text_input_destroy(&startup.input);
+
+	memset(&startup, 0, sizeof(startup));
+	startup_ascii_initialize(&startup, &stream, true, 1.0f, -1.0f, 0U);
+	CHECK(startup_ascii_run(&startup, &stream, NULL));
+	CHECK(startup.join.capture.remote_length == 0U
+	    && startup.join.sample_calls == 18U
+	    && stream.read_count == 17U);
+	startup_ascii_check_rows(&startup.join,
+	    YT_ARRAY_LEN(startup_ascii_lines));
+	yt_text_input_destroy(&startup.input);
+
+	memset(&startup, 0, sizeof(startup));
+	startup_ascii_initialize(&startup, &stream, true, 2.0f, 0.0f, 0U);
+	CHECK(startup_ascii_run(&startup, &stream, NULL));
+	CHECK(startup.join.capture.remote_length == 6U
+	    && memcmp(startup.join.capture.remote,
+	    "\r\n\r\n\r\n", 6U) == 0
+	    && startup.join.local_row_count == 0U
+	    && startup.join.sample_calls == 18U
+	    && stream.read_count == 17U);
+	yt_text_input_destroy(&startup.input);
+
+	memset(&startup, 0, sizeof(startup));
+	startup_ascii_initialize(&startup, &stream, true, 0.0f, -1.0f, 2U);
+	(void)snprintf(startup.join.accumulator,
+	    sizeof(startup.join.accumulator), "%s", "typed");
+	(void)snprintf(startup.join.queue, sizeof(startup.join.queue), "%s",
+	    "abc");
+	startup.join.queue_length = 3U;
+	CHECK(startup_ascii_run(&startup, &stream, NULL));
+	expected_length = startup_ascii_expected(expected, sizeof(expected),
+	    true, 2U);
+	CHECK(startup.join.capture.remote_length == expected_length
+	    && memcmp(startup.join.capture.remote, expected,
+	    expected_length) == 0
+	    && stream.eof_checks == 3U && stream.read_count == 2U
+	    && stream.line_count == 2U && startup.join.position == 2U
+	    && startup.join.sample_calls == 3U
+	    && strcmp(startup.join.pager.key, "Q") == 0
+	    && startup.join.accumulator[0] == '\0'
+	    && startup.join.queue_length == 0U);
+	startup_ascii_check_rows(&startup.join, 2U);
+	yt_text_input_destroy(&startup.input);
 }
 
 static void
@@ -11338,6 +11720,7 @@ main(void)
 	test_pager_transactions();
 	test_pager_gates();
 	test_file_viewer_pager_join();
+	test_startup_ascii_physical_join();
 	test_sector_private_pager();
 	test_sector_scanner_rows();
 	test_radio_private_pager();
