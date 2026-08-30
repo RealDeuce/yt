@@ -12591,6 +12591,298 @@ test_planet_leave_cycle_presentation(void)
 }
 
 static bool
+planet_thrusters_accepted_cycle_run(struct physical_viewer_join *viewer,
+    bool ansi, size_t ends[7])
+{
+	static const uint8_t free_holds[] =
+	    "You have 65 free cargo holds.";
+	static const uint8_t planet_prompt[] =
+	    "Time: 14:59  Planet command (?=help) [A]? ";
+	static const uint8_t command[] = "!";
+	static const uint8_t cost[] =
+	    "Moving planets costs 10 turns per sector.";
+	static const uint8_t sector_one[] = "Sector: 1";
+	static const uint8_t sector_two[] = "Sector: 2";
+	static const uint8_t planet[] = "Planet: Gaia * Forces: 0";
+	static const uint8_t warps[] = "Warps lead to:";
+	static const uint8_t warp_two[] = " 2";
+	static const uint8_t destination[] = "Move planet to what sector? ";
+	static const uint8_t destination_response[] = "2";
+	static const uint8_t working[] = "Working. ";
+	static const uint8_t confirmation[] = "Move the planet? (Y/[N])";
+	static const uint8_t confirmation_response[] = "Y";
+	static const uint8_t engaged[] = "Planet thrusters engaged.";
+	static const uint8_t moving[] = "Moving to sector:";
+	static const uint8_t main_prompt[] =
+	    "Time: 14:59  Main Command (?=Help)? ";
+	struct viewer_pager_join *join = &viewer->join;
+	struct yt_present_result result;
+	uint8_t row[256];
+	size_t row_length;
+	char number[64];
+	int number_length;
+
+	if (ends == NULL)
+		return false;
+	join->presentation = state(ansi);
+	join->presentation.foreground = 6.0f;
+	join->presentation.cached_foreground = ansi ? 6.0f : 0.0f;
+	join->pager.foreground = 6;
+	join->pager.line_count = 0.0f;
+	if (!ansi) {
+		join->presentation.sound.user_sound = 0.0f;
+		join->presentation.sound.local_sound = 0.0f;
+	}
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, free_holds,
+	    sizeof(free_holds) - 1U, 0.0f)
+	    || !normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, planet_prompt,
+	    sizeof(planet_prompt) - 1U, 1.0f))
+		return false;
+	ends[0] = join->remote_length;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	memcpy(join->accumulator, command, sizeof(command));
+	if (yt_present_editor_echo(command, sizeof(command) - 1U,
+	    command, sizeof(command) - 1U, &join->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
+	ends[1] = join->remote_length;
+
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, cost, sizeof(cost) - 1U, 0.0f))
+		return false;
+	ends[2] = join->remote_length;
+	join->presentation.foreground = 1.0f;
+	join->pager.foreground = 1;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_line(join, sector_one, sizeof(sector_one) - 1U))
+		return false;
+	join->presentation.foreground = 3.0f;
+	join->pager.foreground = 3;
+	if (!sensor_join_present(join, &(const struct sensor_join_output){
+	    SENSOR_JOIN_BOLD_LINE, (const char *)planet}))
+		return false;
+	join->presentation.foreground = 1.0f;
+	join->pager.foreground = 1;
+	if (!sensor_join_present(join, &(const struct sensor_join_output){
+	    SENSOR_JOIN_RAW, (const char *)warps})
+	    || !sensor_join_present(join, &(const struct sensor_join_output){
+	    SENSOR_JOIN_RAW, (const char *)warp_two})
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	ends[3] = join->remote_length;
+
+	join->presentation.foreground = 6.0f;
+	join->pager.foreground = 6;
+	if (!normal_exit_b05d(join, destination,
+	    sizeof(destination) - 1U, 1.0f))
+		return false;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	memcpy(join->accumulator, destination_response,
+	    sizeof(destination_response));
+	if (yt_present_editor_echo(destination_response,
+	    sizeof(destination_response) - 1U, destination_response,
+	    sizeof(destination_response) - 1U, &join->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, working, sizeof(working) - 1U, 1.0f)
+	    || !yt_planet_move_path_heading(1.0f, 2.0f, row,
+	    sizeof(row), &row_length)
+	    || !normal_exit_b05d(join, row, row_length, 0.0f)
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	number_length = qb_str_single(number, sizeof(number), 1.0f);
+	if (number_length < 0 || !normal_exit_b05d(join,
+	    (const uint8_t *)number, (size_t)number_length, 1.0f))
+		return false;
+	number_length = qb_str_single(number, sizeof(number), 2.0f);
+	join->pager.line_count = 0.0f;
+	if (number_length < 0 || !normal_exit_b05d(join,
+	    (const uint8_t *)number, (size_t)number_length, 1.0f)
+	    || !normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_line(join, NULL, 0U)
+	    || !yt_planet_move_summary(10.0f, row, sizeof(row), &row_length)
+	    || !normal_exit_b05d(join, row, row_length, 0.0f)
+	    || !yt_planet_move_turns_row(100.0f, row, sizeof(row), &row_length)
+	    || !normal_exit_b05d(join, row, row_length, 0.0f)
+	    || yt_present_character(confirmation, sizeof(confirmation) - 1U,
+	    &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	memcpy(join->accumulator, confirmation_response,
+	    sizeof(confirmation_response));
+	if (yt_present_editor_echo(confirmation_response,
+	    sizeof(confirmation_response) - 1U, confirmation_response,
+	    sizeof(confirmation_response) - 1U, &join->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.bold = 1.0f;
+	join->presentation.blink = 1.0f;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, engaged, sizeof(engaged) - 1U, 0.0f))
+		return false;
+	join->pager.line_count = 0.0f;
+	if (!normal_exit_b05d(join, moving, sizeof(moving) - 1U, 1.0f))
+		return false;
+	ends[4] = join->remote_length;
+	number_length = qb_str_single(number, sizeof(number), 2.0f);
+	if (number_length < 0 || !normal_exit_b05d(join,
+	    (const uint8_t *)number, (size_t)number_length, 1.0f))
+		return false;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_line(join, NULL, 0U)
+	    || !yt_planet_move_success_row((const uint8_t *)"Gaia", 4U,
+	    row, sizeof(row), &row_length)
+	    || !normal_exit_line(join, row, row_length)
+	    || !sensor_join_sound(join))
+		return false;
+	ends[5] = join->remote_length;
+
+	join->presentation.foreground = 1.0f;
+	join->pager.foreground = 1;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_line(join, sector_two, sizeof(sector_two) - 1U))
+		return false;
+	join->presentation.foreground = 3.0f;
+	join->pager.foreground = 3;
+	if (!sensor_join_present(join, &(const struct sensor_join_output){
+	    SENSOR_JOIN_BOLD_LINE, (const char *)planet}))
+		return false;
+	join->presentation.foreground = 1.0f;
+	join->pager.foreground = 1;
+	if (!sensor_join_present(join, &(const struct sensor_join_output){
+	    SENSOR_JOIN_RAW, (const char *)warps})
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	join->pager.line_count = 0.0f;
+	join->presentation.foreground = 2.0f;
+	join->pager.foreground = 2;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, main_prompt,
+	    sizeof(main_prompt) - 1U, 1.0f))
+		return false;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	ends[6] = join->remote_length;
+	return true;
+}
+
+static void
+test_planet_thrusters_accepted_cycle_presentation(void)
+{
+	static const uint8_t plain[] =
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? !\r\n"
+	    "\r\nMoving planets costs 10 turns per sector.\n\r"
+	    "\r\nSector: 1\r\nPlanet: Gaia * Forces: 0\r\n"
+	    "Warps lead to: 2\r\nMove planet to what sector? 2\r\n"
+	    "\r\nWorking. The shortest path from sector 1 to sector 2 is:\n\r"
+	    "\r\n 1 2\r\n\r\nDistance is 1 and will take 10 turns.\n\r"
+	    "You have 100 turns left.\n\rMove the planet? (Y/[N])Y\r\n"
+	    "\r\nPlanet thrusters engaged.\n\rMoving to sector: 2\r\n"
+	    "\r\nGaia moved! (Xannoron Movers, we move anyTHING, anyWHERE!)\r\n"
+	    "\r\nSector: 2\r\nPlanet: Gaia * Forces: 0\r\n"
+	    "Warps lead to:\r\n\r\nTime: 14:59  Main Command (?=Help)? ";
+	static const uint8_t ansi[] =
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? !\r\n"
+	    "\r\nMoving planets costs 10 turns per sector.\n\r"
+	    "\x1b[0;31;40m\r\nSector: 1\r\n"
+	    "\x1b[0;33;40;1mPlanet: Gaia * Forces: 0\r\n"
+	    "\x1b[0;31;40mWarps lead to: 2\r\n"
+	    "\x1b[0;36;40mMove planet to what sector? 2\r\n"
+	    "\r\nWorking. The shortest path from sector 1 to sector 2 is:\n\r"
+	    "\r\n 1 2\r\n\r\nDistance is 1 and will take 10 turns.\n\r"
+	    "You have 100 turns left.\n\rMove the planet? (Y/[N])Y\r\n"
+	    "\x1b[0;36;40;5;1m\r\n"
+	    "\x1b[0;36;40mPlanet thrusters engaged.\n\r"
+	    "Moving to sector: 2\r\n\r\n"
+	    "Gaia moved! (Xannoron Movers, we move anyTHING, anyWHERE!)\r\n"
+	    "\x1b[MBT128O5L48P64CP64C\x0e"
+	    "\x1b[0;31;40m\r\nSector: 2\r\n"
+	    "\x1b[0;33;40;1mPlanet: Gaia * Forces: 0\r\n"
+	    "\x1b[0;31;40mWarps lead to:\r\n"
+	    "\x1b[0;32;40m\r\nTime: 14:59  Main Command (?=Help)? ";
+	static const struct {
+		bool ansi;
+		const uint8_t *expected;
+		size_t expected_length;
+		size_t ends[7];
+	} cases[] = {
+		{false, plain, sizeof(plain) - 1U,
+		    {77U, 80U, 125U, 182U, 421U, 487U, 580U}},
+		{true, ansi, sizeof(ansi) - 1U,
+		    {77U, 80U, 125U, 214U, 487U, 575U, 710U}},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	uint8_t remote[760];
+	size_t ends[7];
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
+		CHECK(planet_thrusters_accepted_cycle_run(&viewer,
+		    cases[pass].ansi, ends));
+		CHECK(memcmp(ends, cases[pass].ends, sizeof(ends)) == 0
+		    && viewer.join.remote_length == cases[pass].expected_length
+		    && memcmp(remote, cases[pass].expected,
+		    cases[pass].expected_length) == 0
+		    && viewer.join.presentation.foreground == 2.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold
+		    == (cases[pass].ansi ? 0.0f : 1.0f)
+		    && viewer.join.presentation.blink
+		    == (cases[pass].ansi ? 0.0f : 1.0f)
+		    && viewer.join.presentation.cached_foreground
+		    == (cases[pass].ansi ? 2.0f : 0.0f)
+		    && viewer.join.pager.foreground == 2
+		    && viewer.join.pager.line_count == 0.0f
+		    && viewer.join.pager.nonstop == 0.0f
+		    && viewer.join.local_row_count == 29U
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == UINT64_C(0x17e3257096542482)
+		    && viewer.join.local_color_count
+		    == (cases[pass].ansi ? 55U : 14U)
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == (cases[pass].ansi
+		    ? UINT64_C(0xa58d99221dc72c11)
+		    : UINT64_C(0x4692bc1a44da0ecd))
+		    && viewer.join.local_fragment_length == 36U
+		    && memcmp(viewer.join.local_fragment,
+		    "Time: 14:59  Main Command (?=Help)? ", 36U) == 0
+		    && viewer.join.accumulator[0] == '\0'
+		    && viewer.join.queue_length == 0U
+		    && viewer.join.sample_calls == 14U
+		    && viewer.join.event_count == 70U
+		    && stream.eof_checks == 0U && stream.key_checks == 0U
+		    && stream.read_count == 0U && stream.line_count == 0U
+		    && !stream.file_open && !viewer.join.file_open
+		    && viewer.input.file == NULL && viewer.close_calls == 0U
+		    && viewer.open_calls == 0U);
+		yt_text_input_destroy(&viewer.input);
+	}
+	CHECK(sizeof(plain) - 1U == 580U && sizeof(ansi) - 1U == 710U);
+}
+
+static bool
 computer_quit_accept_prefix(struct physical_viewer_join *viewer, bool ansi)
 {
 	static const uint8_t prompt[] =
@@ -16369,6 +16661,7 @@ main(void)
 	test_planet_rename_protected_cycle_presentation();
 	test_planet_take_one_accepted_cycle_presentation();
 	test_planet_leave_cycle_presentation();
+	test_planet_thrusters_accepted_cycle_presentation();
 	test_computer_quit_accept_presentation();
 	test_planet_quit_accept_presentation();
 	test_hostile_quit_accept_presentation();

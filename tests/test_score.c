@@ -14634,6 +14634,7 @@ static bool
 check_planet_menu_selector(void)
 {
 	static const char selector[] = "F!MPC1234569LTAB$";
+	char thrusters[sizeof(selector)];
 	size_t index;
 
 	for (index = 0U; index < sizeof(selector) - 1U; ++index) {
@@ -14641,6 +14642,12 @@ check_planet_menu_selector(void)
 
 		if (yt_planet_menu_selector_position(command)
 		    != (int)index + 1)
+			return false;
+	}
+	for (index = 1U; index < sizeof(selector) - 1U; ++index) {
+		memcpy(thrusters, selector + 1U, index);
+		thrusters[index] = '\0';
+		if (yt_planet_menu_selector_position(thrusters) != 2)
 			return false;
 	}
 	return yt_planet_menu_selector_position("") == 1
