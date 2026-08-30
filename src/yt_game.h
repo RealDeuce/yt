@@ -953,6 +953,39 @@ float yt_earth_cloak_default(float deficit, float credits);
 float yt_earth_cloak_overlay(float points, float quantity);
 void yt_earth_supply_overlay(struct yt_player *player, int choice,
     float quantity);
+struct yt_earth_anti_cloak_state {
+	float price;
+	float current_record;
+	float player_terminal;
+	uint8_t conversion_mode;
+	float *cloak_cache;
+	size_t cloak_cache_count;
+	float foreground;
+	float counter;
+	bool reported;
+	struct yt_player field_player;
+	float field_record;
+	float credit_argument;
+	bool credit_loaded;
+};
+typedef bool (*yt_earth_anti_cloak_read_player_fn)(void *context,
+    float record, struct yt_player *player, struct yt_error *error);
+typedef bool (*yt_earth_anti_cloak_write_player_fn)(void *context,
+    float record, const struct yt_player *player, struct yt_error *error);
+typedef bool (*yt_earth_anti_cloak_present_fn)(void *context,
+    const uint8_t *text, size_t length, float foreground, bool bold,
+    struct yt_error *error);
+typedef bool (*yt_earth_anti_cloak_sound_fn)(void *context, float selector,
+    struct yt_error *error);
+struct yt_earth_anti_cloak_ops {
+	yt_earth_anti_cloak_read_player_fn read_player;
+	yt_earth_anti_cloak_write_player_fn write_player;
+	yt_earth_anti_cloak_present_fn present;
+	yt_earth_anti_cloak_sound_fn sound;
+};
+bool yt_earth_anti_cloak_run(struct yt_earth_anti_cloak_state *state,
+    const struct yt_earth_anti_cloak_ops *ops, void *context,
+    struct yt_error *error);
 int yt_lottery_match_count(const int winning[6], const char ticket[6],
     bool matched_winning[6]);
 float yt_lottery_award(int matches);

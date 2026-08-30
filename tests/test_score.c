@@ -10176,6 +10176,310 @@ check_clearance_model(void)
 	return yt_clearance_percentage(0.10000000149011612f) == 10.0f;
 }
 
+enum anti_cloak_event {
+	ANTI_CLOAK_PRESENT = 1,
+	ANTI_CLOAK_SOUND,
+	ANTI_CLOAK_READ,
+	ANTI_CLOAK_WRITE,
+};
+
+struct anti_cloak_tape {
+	int events[24];
+	size_t event_count;
+	size_t fail_at;
+	struct yt_player players[4];
+	float read_records[4];
+	size_t read_position;
+	float write_record;
+	struct yt_player written;
+	uint8_t rows[10][128];
+	size_t row_lengths[10];
+	float row_foregrounds[10];
+	bool row_bold[10];
+	size_t row_count;
+	float sounds[4];
+	size_t sound_count;
+};
+
+static bool
+anti_cloak_step(struct anti_cloak_tape *tape, enum anti_cloak_event event)
+{
+	if (tape->event_count >= YT_ARRAY_LEN(tape->events))
+		return false;
+	tape->events[tape->event_count++] = (int)event;
+	return tape->event_count != tape->fail_at;
+}
+
+static bool
+anti_cloak_read(void *context, float record, struct yt_player *player,
+    struct yt_error *error)
+{
+	struct anti_cloak_tape *tape = context;
+	size_t position = tape->read_position;
+
+	(void)error;
+	if (position >= YT_ARRAY_LEN(tape->players)
+	    || !anti_cloak_step(tape, ANTI_CLOAK_READ))
+		return false;
+	tape->read_records[position] = record;
+	*player = tape->players[position];
+	tape->read_position++;
+	return true;
+}
+
+static bool
+anti_cloak_write(void *context, float record,
+    const struct yt_player *player, struct yt_error *error)
+{
+	struct anti_cloak_tape *tape = context;
+
+	(void)error;
+	if (!anti_cloak_step(tape, ANTI_CLOAK_WRITE))
+		return false;
+	tape->write_record = record;
+	tape->written = *player;
+	return true;
+}
+
+static bool
+anti_cloak_present(void *context, const uint8_t *text, size_t length,
+    float foreground, bool bold, struct yt_error *error)
+{
+	struct anti_cloak_tape *tape = context;
+	size_t position = tape->row_count;
+
+	(void)error;
+	if (position >= YT_ARRAY_LEN(tape->rows)
+	    || length > sizeof(tape->rows[position])
+	    || !anti_cloak_step(tape, ANTI_CLOAK_PRESENT))
+		return false;
+	if (length != 0U)
+		memcpy(tape->rows[position], text, length);
+	tape->row_lengths[position] = length;
+	tape->row_foregrounds[position] = foreground;
+	tape->row_bold[position] = bold;
+	tape->row_count++;
+	return true;
+}
+
+static bool
+anti_cloak_sound(void *context, float selector, struct yt_error *error)
+{
+	struct anti_cloak_tape *tape = context;
+
+	(void)error;
+	if (tape->sound_count >= YT_ARRAY_LEN(tape->sounds)
+	    || !anti_cloak_step(tape, ANTI_CLOAK_SOUND))
+		return false;
+	tape->sounds[tape->sound_count++] = selector;
+	return true;
+}
+
+static void
+anti_cloak_fixture(struct anti_cloak_tape *tape,
+    struct yt_earth_anti_cloak_state *state, float cache[8])
+{
+	static const uint8_t target_name[] = {'A', 0, 'B', 'C'};
+
+	memset(tape, 0, sizeof(*tape));
+	memset(state, 0, sizeof(*state));
+	memset(cache, 0, 8U * sizeof(cache[0]));
+	tape->fail_at = SIZE_MAX;
+	memcpy(tape->players[0].record.bytes, target_name,
+	    sizeof(target_name));
+	tape->players[0].name_length = 3.5f;
+	tape->players[0].killed_by = 0.0f;
+	tape->players[1].killed_by = -1.0f;
+	memset(tape->players[2].record.bytes, 0xa5,
+	    sizeof(tape->players[2].record.bytes));
+	tape->players[2].credits = 100.75f;
+	(void)yt_record_set_number(&tape->players[2].record, YT_F81, 100.75f);
+	cache[2] = 1.0f;
+	cache[3] = -1.0f;
+	cache[4] = 0.5f;
+	state->price = 10.25f;
+	state->current_record = 7.0f;
+	state->player_terminal = 4.0f;
+	state->conversion_mode = 4U;
+	state->cloak_cache = cache;
+	state->cloak_cache_count = 8U;
+	state->foreground = 4.0f;
+}
+
+static bool
+check_earth_anti_cloak_transaction(void)
+{
+	static const struct yt_earth_anti_cloak_ops ops = {
+		anti_cloak_read,
+		anti_cloak_write,
+		anti_cloak_present,
+		anti_cloak_sound,
+	};
+	static const int reported_events[] = {
+		ANTI_CLOAK_PRESENT, ANTI_CLOAK_PRESENT,
+		ANTI_CLOAK_PRESENT, ANTI_CLOAK_PRESENT,
+		ANTI_CLOAK_SOUND, ANTI_CLOAK_READ,
+		ANTI_CLOAK_PRESENT, ANTI_CLOAK_SOUND,
+		ANTI_CLOAK_READ, ANTI_CLOAK_PRESENT,
+		ANTI_CLOAK_PRESENT, ANTI_CLOAK_SOUND,
+		ANTI_CLOAK_READ, ANTI_CLOAK_WRITE,
+	};
+	static const int none_events[] = {
+		ANTI_CLOAK_PRESENT, ANTI_CLOAK_PRESENT,
+		ANTI_CLOAK_PRESENT, ANTI_CLOAK_PRESENT,
+		ANTI_CLOAK_SOUND, ANTI_CLOAK_PRESENT,
+		ANTI_CLOAK_PRESENT, ANTI_CLOAK_PRESENT,
+		ANTI_CLOAK_PRESENT, ANTI_CLOAK_SOUND,
+		ANTI_CLOAK_READ, ANTI_CLOAK_WRITE,
+	};
+	static const uint8_t activation[] =
+	    "ti-Cloaking device activated!\xd4" "D";
+	static const uint8_t waves[] =
+	    "Waves of electromagnetic disruption flood the galaxy..."
+	    "\xd4\x0e\x00\x86\xc1" " is uncl";
+	static const uint8_t target_row[] =
+	    {'A', 0, 'B', ' ', 'i', 's', ' ', 'u', 'n', 'c', 'l', 'o', 'a',
+	     'k', 'e', 'd', '!'};
+	static const uint8_t none[] = "Too bad noone was cloaked anyhow!";
+	static const uint8_t fade[] = "...the effect fades.";
+	struct anti_cloak_tape tape;
+	struct yt_earth_anti_cloak_state state;
+	struct yt_record original;
+	float cache[8];
+	size_t failure;
+	size_t index;
+
+	anti_cloak_fixture(&tape, &state, cache);
+	original = tape.players[2].record;
+	if (!yt_earth_anti_cloak_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != YT_ARRAY_LEN(reported_events)
+	    || memcmp(tape.events, reported_events,
+	    sizeof(reported_events)) != 0
+	    || tape.read_position != 3U || tape.read_records[0] != 2.0f
+	    || tape.read_records[1] != 4.0f
+	    || tape.read_records[2] != 7.0f || tape.write_record != 7.0f
+	    || cache[2] != 0.0f || cache[3] != -1.0f || cache[4] != 0.0f
+	    || !state.reported || state.counter != 5.0f
+	    || state.foreground != 3.0f || state.field_record != 7.0f
+	    || state.credit_argument != -10.25f || !state.credit_loaded
+	    || tape.written.credits != 90.0f
+	    || yt_record_get_number(&tape.written.record, YT_F81) != 90.0f
+	    || tape.row_count != 7U || tape.sound_count != 3U
+	    || tape.sounds[0] != 2.0f || tape.sounds[1] != 1.0f
+	    || tape.sounds[2] != 5.0f
+	    || tape.row_lengths[0] != sizeof(activation) - 1U
+	    || memcmp(tape.rows[0], activation, sizeof(activation) - 1U) != 0
+	    || tape.row_foregrounds[0] != 4.0f || tape.row_bold[0]
+	    || tape.row_lengths[1] != 0U
+	    || tape.row_lengths[2] != sizeof(waves) - 1U
+	    || memcmp(tape.rows[2], waves, sizeof(waves) - 1U) != 0
+	    || tape.row_foregrounds[2] != 2.0f || !tape.row_bold[2]
+	    || tape.row_lengths[4] != sizeof(target_row)
+	    || memcmp(tape.rows[4], target_row, sizeof(target_row)) != 0
+	    || tape.row_foregrounds[4] != 6.0f || !tape.row_bold[4]
+	    || tape.row_lengths[5] != 0U
+	    || tape.row_lengths[6] != sizeof(fade) - 1U
+	    || memcmp(tape.rows[6], fade, sizeof(fade) - 1U) != 0
+	    || tape.row_foregrounds[6] != 2.0f || !tape.row_bold[6])
+		return false;
+	for (index = 0U; index < YT_RECORD_SIZE; ++index) {
+		if (index >= YT_F81 && index < YT_F81 + 4U)
+			continue;
+		if (tape.written.record.bytes[index] != original.bytes[index])
+			return false;
+	}
+
+	anti_cloak_fixture(&tape, &state, cache);
+	state.player_terminal = 1.5f;
+	if (!yt_earth_anti_cloak_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != YT_ARRAY_LEN(none_events)
+	    || memcmp(tape.events, none_events, sizeof(none_events)) != 0
+	    || tape.read_position != 1U || tape.read_records[0] != 7.0f
+	    || state.reported || state.counter != 2.0f
+	    || tape.row_count != 8U
+	    || tape.row_lengths[4] != 0U
+	    || tape.row_lengths[5] != sizeof(none) - 1U
+	    || memcmp(tape.rows[5], none, sizeof(none) - 1U) != 0)
+		return false;
+
+	anti_cloak_fixture(&tape, &state, cache);
+	state.player_terminal = 2.0f;
+	cache[2] = NAN;
+	if (!yt_earth_anti_cloak_run(&state, &ops, &tape, NULL)
+	    || tape.read_position != 1U || tape.read_records[0] != 7.0f
+	    || !isnan(cache[2]) || state.reported)
+		return false;
+
+	anti_cloak_fixture(&tape, &state, cache);
+	state.player_terminal = 2.5f;
+	tape.players[1] = tape.players[2];
+	if (!yt_earth_anti_cloak_run(&state, &ops, &tape, NULL)
+	    || state.counter != 3.0f || tape.read_position != 2U
+	    || tape.read_records[0] != 2.0f || tape.read_records[1] != 7.0f)
+		return false;
+
+	anti_cloak_fixture(&tape, &state, cache);
+	state.player_terminal = 2.0f;
+	tape.players[0].name_length = -1.0f;
+	if (yt_earth_anti_cloak_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != 6U || tape.events[5] != ANTI_CLOAK_READ
+	    || cache[2] != 0.0f || state.field_record != 2.0f
+	    || state.counter != 2.0f || state.foreground != 6.0f
+	    || state.credit_loaded
+	    || memcmp(&state.field_player, &tape.players[0],
+	    sizeof(state.field_player)) != 0)
+		return false;
+
+	anti_cloak_fixture(&tape, &state, cache);
+	tape.fail_at = 9U;
+	if (yt_earth_anti_cloak_run(&state, &ops, &tape, NULL)
+	    || state.field_record != 2.0f || state.counter != 4.0f
+	    || !state.reported || state.credit_loaded
+	    || cache[2] != 0.0f || cache[4] != 0.0f
+	    || memcmp(&state.field_player, &tape.players[0],
+	    sizeof(state.field_player)) != 0)
+		return false;
+
+	anti_cloak_fixture(&tape, &state, cache);
+	tape.fail_at = 13U;
+	if (yt_earth_anti_cloak_run(&state, &ops, &tape, NULL)
+	    || state.field_record != 4.0f || state.credit_loaded
+	    || state.credit_argument != -10.25f
+	    || memcmp(&state.field_player, &tape.players[1],
+	    sizeof(state.field_player)) != 0)
+		return false;
+
+	anti_cloak_fixture(&tape, &state, cache);
+	tape.fail_at = 14U;
+	if (yt_earth_anti_cloak_run(&state, &ops, &tape, NULL)
+	    || state.field_record != 7.0f || !state.credit_loaded
+	    || state.field_player.credits != 90.0f
+	    || yt_record_get_number(&state.field_player.record, YT_F81) != 90.0f)
+		return false;
+
+	for (failure = 1U; failure <= YT_ARRAY_LEN(reported_events); ++failure) {
+		anti_cloak_fixture(&tape, &state, cache);
+		tape.fail_at = failure;
+		if (yt_earth_anti_cloak_run(&state, &ops, &tape, NULL)
+		    || tape.event_count != failure
+		    || memcmp(tape.events, reported_events,
+		    failure * sizeof(reported_events[0])) != 0)
+			return false;
+	}
+	for (failure = 1U; failure <= YT_ARRAY_LEN(none_events); ++failure) {
+		anti_cloak_fixture(&tape, &state, cache);
+		state.player_terminal = 1.5f;
+		tape.fail_at = failure;
+		if (yt_earth_anti_cloak_run(&state, &ops, &tape, NULL)
+		    || tape.event_count != failure
+		    || memcmp(tape.events, none_events,
+		    failure * sizeof(none_events[0])) != 0)
+			return false;
+	}
+	return !yt_earth_anti_cloak_run(NULL, &ops, &tape, NULL)
+	    && !yt_earth_anti_cloak_run(&state, NULL, &tape, NULL);
+}
+
 static bool
 check_earth_report_model(void)
 {
@@ -11502,6 +11806,8 @@ main(void)
 		return fail("planet Productivity overlay arithmetic differs");
 	if (!check_clearance_model())
 		return fail("clearance-sale predicate arithmetic differs");
+	if (!check_earth_anti_cloak_transaction())
+		return fail("Earth Anti-Cloak transaction differs");
 	if (!check_earth_report_model())
 		return fail("Earth report arithmetic or selector differs");
 	if (!check_port_owner_row_model())

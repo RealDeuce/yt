@@ -4246,6 +4246,128 @@ yt_earth_supply_overlay(struct yt_player *player, int choice, float quantity)
 		    player->shields, quantity));
 }
 
+bool
+yt_earth_anti_cloak_run(struct yt_earth_anti_cloak_state *state,
+    const struct yt_earth_anti_cloak_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t activation[] =
+	    "ti-Cloaking device activated!\xd4" "D";
+	static const uint8_t waves[] =
+	    "Waves of electromagnetic disruption flood the galaxy..."
+	    "\xd4\x0e\x00\x86\xc1" " is uncl";
+	static const uint8_t uncloaked[] = " is uncloaked!";
+	static const uint8_t none[] = "Too bad noone was cloaked anyhow!";
+	static const uint8_t fade[] = "...the effect fades.";
+	uint8_t row[YT_TEXT_FIELD_SIZE + sizeof(uncloaked) - 1U];
+
+	if (state == NULL || ops == NULL || ops->read_player == NULL
+	    || ops->write_player == NULL || ops->present == NULL
+	    || ops->sound == NULL || state->cloak_cache == NULL)
+		return false;
+	state->counter = 2.0f;
+	state->reported = false;
+	state->field_record = 0.0f;
+	state->credit_argument = 0.0f;
+	state->credit_loaded = false;
+	if (!ops->present(context, activation, sizeof(activation) - 1U,
+	    state->foreground, false, error)
+	    || !ops->present(context, NULL, 0U, state->foreground, false,
+	    error))
+		return false;
+	state->foreground = 2.0f;
+	if (!ops->present(context, waves, sizeof(waves) - 1U,
+	    state->foreground, true, error)
+	    || !ops->present(context, NULL, 0U, state->foreground, false,
+	    error)
+	    || !ops->sound(context, 2.0f, error))
+		return false;
+	state->foreground = 6.0f;
+	while (state->counter <= state->player_terminal) {
+		bool overflow;
+		int32_t converted = qb_cint_mode((double)state->counter,
+		    state->conversion_mode, &overflow);
+		size_t index;
+
+		if (overflow || converted < 0
+		    || (size_t)converted >= state->cloak_cache_count) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				(void)snprintf(error->operation,
+				    sizeof(error->operation), "%s",
+				    "Anti-Cloak cache index");
+			}
+			return false;
+		}
+		index = (size_t)converted;
+		if (state->cloak_cache[index] > 0.0f) {
+			int32_t converted_length;
+			size_t name_length;
+
+			state->cloak_cache[index] = 0.0f;
+			if (!ops->read_player(context, state->counter,
+			    &state->field_player, error))
+				return false;
+			state->field_record = state->counter;
+			if (state->field_player.killed_by == 0.0f) {
+				converted_length = qb_cint_mode(
+				    (double)state->field_player.name_length,
+				    state->conversion_mode, &overflow);
+				if (overflow || converted_length < 0) {
+					if (error != NULL) {
+						error->status = YT_RANGE;
+						(void)snprintf(error->operation,
+						    sizeof(error->operation), "%s",
+						    "Anti-Cloak player name length");
+					}
+					return false;
+				}
+				name_length = (size_t)converted_length;
+				if (name_length > YT_TEXT_FIELD_SIZE)
+					name_length = YT_TEXT_FIELD_SIZE;
+				memcpy(row, state->field_player.record.bytes,
+				    name_length);
+				memcpy(row + name_length, uncloaked,
+				    sizeof(uncloaked) - 1U);
+				if (!ops->present(context, row,
+				    name_length + sizeof(uncloaked) - 1U,
+				    state->foreground, true, error)
+				    || !ops->sound(context, 1.0f, error))
+					return false;
+				state->reported = true;
+			}
+		}
+		state->counter = take_all_single_add(state->counter, 1.0f);
+	}
+	state->foreground = 2.0f;
+	if (!state->reported
+	    && (!ops->present(context, NULL, 0U, state->foreground, false,
+	    error)
+	    || !ops->present(context, none, sizeof(none) - 1U,
+	    state->foreground, false, error)))
+		return false;
+	if (!ops->present(context, NULL, 0U, state->foreground, false, error)
+	    || !ops->present(context, fade, sizeof(fade) - 1U,
+	    state->foreground, true, error)
+	    || !ops->sound(context, 5.0f, error))
+		return false;
+	state->credit_argument = -state->price;
+	if (!ops->read_player(context, state->current_record,
+	    &state->field_player, error))
+		return false;
+	state->field_record = state->current_record;
+	state->credit_loaded = true;
+	state->field_player.credits = floorf(take_all_single_add(
+	    state->field_player.credits, state->credit_argument));
+	if (!yt_record_set_number(&state->field_player.record, YT_F81,
+	    state->field_player.credits)
+	    || !ops->write_player(context, state->current_record,
+	    &state->field_player, error))
+		return false;
+	state->foreground = 3.0f;
+	return true;
+}
+
 int
 yt_lottery_match_count(const int winning[6], const char ticket[6],
     bool matched_winning[6])
