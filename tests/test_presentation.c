@@ -2,6 +2,7 @@
 #include "yt_pager.h"
 #include "yt_main_error.h"
 #include "yt_game.h"
+#include "yt_text.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -65,6 +66,143 @@ state(bool ansi)
 	value.sound.local_sound = -1.0f;
 	value.foreground = 2.0f;
 	return value;
+}
+
+struct xannor_file_capture {
+	struct yt_text_input input;
+	struct yt_present_state presentation;
+	uint8_t remote[512];
+	size_t remote_length;
+	size_t presented;
+	size_t local_colors;
+	size_t local_lines;
+	size_t remote_lines;
+	size_t remote_fragments;
+};
+
+static bool
+xannor_file_close(void *context, struct yt_error *error)
+{
+	struct xannor_file_capture *capture = context;
+
+	return yt_text_input_close(&capture->input, error);
+}
+
+static bool
+xannor_file_open(void *context, const char *path, struct yt_error *error)
+{
+	struct xannor_file_capture *capture = context;
+
+	return yt_text_input_open(&capture->input, path, error);
+}
+
+static bool
+xannor_file_read(void *context, const uint8_t **line, size_t *length,
+    bool *available, struct yt_error *error)
+{
+	struct xannor_file_capture *capture = context;
+
+	return yt_text_input_read_line(&capture->input, line, length, available,
+	    error);
+}
+
+static bool
+xannor_file_present(void *context, const uint8_t *line, size_t length,
+    struct yt_error *error)
+{
+	struct xannor_file_capture *capture = context;
+	struct yt_present_result result;
+	size_t index;
+
+	(void)error;
+	if (yt_present_line(line, length, &capture->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	CHECK(result.remote_length <= sizeof(capture->remote)
+	    - capture->remote_length);
+	if (result.remote_length > sizeof(capture->remote)
+	    - capture->remote_length)
+		return false;
+	memcpy(capture->remote + capture->remote_length, result.remote,
+	    result.remote_length);
+	capture->remote_length += result.remote_length;
+	for (index = 0U; index < result.event_count; ++index) {
+		switch (result.events[index].operation) {
+		case YT_PRESENT_LOCAL_COLOR:
+			++capture->local_colors;
+			break;
+		case YT_PRESENT_LOCAL_LINE:
+			++capture->local_lines;
+			break;
+		case YT_PRESENT_REMOTE_LINE:
+			++capture->remote_lines;
+			break;
+		case YT_PRESENT_REMOTE_SEMI:
+			++capture->remote_fragments;
+			break;
+		default:
+			CHECK(false);
+			break;
+		}
+	}
+	++capture->presented;
+	return true;
+}
+
+static void
+test_xannor_file_playback(void)
+{
+	static const struct yt_text_sequential_play_ops ops = {
+		xannor_file_close,
+		xannor_file_open,
+		xannor_file_read,
+		xannor_file_present,
+	};
+	static const uint8_t plain[] =
+	    "\r\n"
+	    "Congratulations! You have defeated the Xannor Headquarters! This marks you as\r\n"
+	    "a SUPERIOR Trader! Be warned however, the Xannor have spies everywhere and\r\n"
+	    "will be on the lookout for you! Hide or defend yourself well tonight!\r\n"
+	    "\r\n";
+	static const uint8_t ansi[] =
+	    "\x1b[0;37;40m"
+	    "\r\n"
+	    "Congratulations! You have defeated the Xannor Headquarters! This marks you as\r\n"
+	    "a SUPERIOR Trader! Be warned however, the Xannor have spies everywhere and\r\n"
+	    "will be on the lookout for you! Hide or defend yourself well tonight!\r\n"
+	    "\r\n";
+	struct xannor_file_capture capture;
+	struct yt_text_sequential_play_state playback;
+	struct yt_error error;
+	size_t pass;
+
+	for (pass = 0U; pass < 2U; ++pass) {
+		const uint8_t *expected = pass == 0U ? plain : ansi;
+		size_t expected_length = pass == 0U ? sizeof(plain) - 1U
+		    : sizeof(ansi) - 1U;
+
+		memset(&capture, 0, sizeof(capture));
+		yt_text_input_init(&capture.input);
+		capture.presentation = state(pass != 0U);
+		capture.presentation.foreground = 7.0f;
+		memset(&playback, 0, sizeof(playback));
+		playback.path = YT_DATA_DIR "XANNORHQ.TXT";
+		yt_error_clear(&error);
+		CHECK(yt_text_sequential_play_run(&playback, &ops, &capture,
+		    &error));
+		CHECK(!playback.file_open && playback.read_count == 6U
+		    && playback.line_count == 5U && capture.presented == 5U);
+		CHECK(capture.remote_length == expected_length
+		    && memcmp(capture.remote, expected, expected_length) == 0);
+		CHECK(capture.local_lines == 5U && capture.remote_lines == 5U
+		    && capture.remote_fragments == (pass == 0U ? 5U : 6U)
+		    && capture.local_colors == (pass == 0U ? 0U : 5U));
+		CHECK(capture.presentation.foreground == 7.0f
+		    && capture.presentation.background == 0.0f
+		    && capture.presentation.bold == 0.0f
+		    && capture.presentation.blink == 0.0f);
+		yt_text_input_destroy(&capture.input);
+	}
 }
 
 static void
@@ -10806,6 +10944,7 @@ test_returning_player_presentation(void)
 int
 main(void)
 {
+	test_xannor_file_playback();
 	test_color();
 	test_direct_output();
 	test_paged_output();
