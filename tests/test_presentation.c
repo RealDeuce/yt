@@ -73,6 +73,7 @@ test_color(void)
 	struct yt_present_state current = state(false);
 	struct yt_present_result result;
 	static const uint8_t green[] = "\x1b[0;32;40m";
+	static const uint8_t emphasized[] = "\x1b[0;33;40;5;1m";
 
 	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
 	CHECK(result.remote_length == sizeof(green) - 1U);
@@ -96,6 +97,37 @@ test_color(void)
 	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
 	CHECK(result.remote_length == 0);
 	CHECK(current.cached_foreground == 3.0f);
+
+	current = state(false);
+	current.foreground = 3.0f;
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(result.remote_length == sizeof(emphasized) - 1U
+	    && memcmp(result.remote, emphasized, sizeof(emphasized) - 1U) == 0);
+	CHECK(result.event_count == 2U
+	    && result.events[0].operation == YT_PRESENT_LOCAL_COLOR
+	    && result.events[0].foreground == 30
+	    && result.events[0].background == 0
+	    && result.events[1].operation == YT_PRESENT_REMOTE_SEMI);
+	CHECK(current.cached_foreground == 0.0f
+	    && current.cached_background == 0.0f
+	    && current.bold == 0.0f && current.blink == 0.0f);
+
+	current = state(false);
+	current.bold = 2.0f;
+	current.sound.snoop = 0.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(result.remote_length == sizeof(green) - 1U
+	    && memcmp(result.remote, green, sizeof(green) - 1U) == 0);
+	CHECK(result.event_count == 2U
+	    && result.events[0].operation == YT_PRESENT_LOCAL_COLOR
+	    && result.events[0].foreground == 2
+	    && result.events[0].background == 0
+	    && result.events[1].operation == YT_PRESENT_REMOTE_SEMI);
+	CHECK(current.cached_foreground == 0.0f
+	    && current.cached_background == 0.0f
+	    && current.bold == 0.0f && current.blink == 0.0f);
 }
 
 static void
