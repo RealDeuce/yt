@@ -12060,9 +12060,16 @@ test_planet_productivity_blank_cycle_presentation(void)
 	}
 }
 
+enum planet_transfer_cycle_outcome {
+	PLANET_TRANSFER_CANCEL_CYCLE,
+	PLANET_TRANSFER_NO_CARGO_CYCLE,
+	PLANET_TRANSFER_CARGO_CYCLE,
+};
+
 static bool
 planet_transfer_cycle_run(struct physical_viewer_join *viewer, bool ansi,
-    bool no_cargo, size_t *prompt_end, size_t *editor_end, size_t *body_end)
+    enum planet_transfer_cycle_outcome outcome, size_t *prompt_end,
+    size_t *editor_end, size_t *body_end)
 {
 	static const uint8_t free_holds_65[] =
 	    "You have 65 free cargo holds.";
@@ -12083,19 +12090,26 @@ planet_transfer_cycle_run(struct physical_viewer_join *viewer, bool ansi,
 	static const uint8_t cargo_selector[] = "C";
 	static const uint8_t no_cargo_message[] =
 	    "You don't have any cargo!";
+	static const uint8_t cargo_message[] = "Cargo transferred!!";
 	static const double empty_held[3] = {0.0, 0.0, 0.0};
+	static const double nonempty_held[3] = {10.0, 20.0, 5.0};
+	bool no_cargo = outcome == PLANET_TRANSFER_NO_CARGO_CYCLE;
+	bool cargo = outcome == PLANET_TRANSFER_CARGO_CYCLE;
 	const uint8_t *free_holds = no_cargo
 	    ? free_holds_100 : free_holds_65;
 	size_t free_holds_length = no_cargo
 	    ? sizeof(free_holds_100) - 1U : sizeof(free_holds_65) - 1U;
-	const uint8_t *selector = no_cargo ? cargo_selector : empty_selector;
-	size_t selector_length = no_cargo ? 1U : 0U;
+	const uint8_t *selector = no_cargo || cargo
+	    ? cargo_selector : empty_selector;
+	size_t selector_length = no_cargo || cargo ? 1U : 0U;
 	struct viewer_pager_join *join = &viewer->join;
 	struct yt_present_result result;
 
 	if (prompt_end == NULL || editor_end == NULL || body_end == NULL)
 		return false;
 	if (no_cargo && !yt_planet_transfer_cargo_empty(empty_held))
+		return false;
+	if (cargo && yt_planet_transfer_cargo_empty(nonempty_held))
 		return false;
 	join->presentation = state(ansi);
 	join->presentation.foreground = 6.0f;
@@ -12162,6 +12176,11 @@ planet_transfer_cycle_run(struct physical_viewer_join *viewer, bool ansi,
 		if (!normal_exit_b05d(join, no_cargo_message,
 		    sizeof(no_cargo_message) - 1U, 0.0f))
 			return false;
+	} else if (cargo) {
+		if (!normal_exit_line(join, NULL, 0U)
+		    || !normal_exit_b05d(join, cargo_message,
+		    sizeof(cargo_message) - 1U, 0.0f))
+			return false;
 	}
 	*body_end = join->remote_length;
 	join->pager.line_count = 0.0f;
@@ -12194,7 +12213,8 @@ test_planet_transfer_cancel_cycle_presentation(void)
 		fixture_viewer_initialize(&viewer, &stream,
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", ansi, remote, sizeof(remote));
-		CHECK(planet_transfer_cycle_run(&viewer, ansi, false,
+		CHECK(planet_transfer_cycle_run(&viewer, ansi,
+		    PLANET_TRANSFER_CANCEL_CYCLE,
 		    &prompt_end, &editor_end, &body_end));
 		CHECK(prompt_end == 77U && editor_end == 80U
 		    && body_end == 211U && viewer.join.remote_length == 288U
@@ -12273,7 +12293,8 @@ test_planet_transfer_no_cargo_cycle_presentation(void)
 		fixture_viewer_initialize(&viewer, &stream,
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", ansi_mode, remote, sizeof(remote));
-		CHECK(planet_transfer_cycle_run(&viewer, ansi_mode, true,
+		CHECK(planet_transfer_cycle_run(&viewer, ansi_mode,
+		    PLANET_TRANSFER_NO_CARGO_CYCLE,
 		    &prompt_end, &editor_end, &body_end));
 		CHECK(prompt_end == 78U && editor_end == 81U
 		    && body_end == (ansi_mode ? 256U : 242U)
@@ -12304,6 +12325,75 @@ test_planet_transfer_no_cargo_cycle_presentation(void)
 		    && viewer.join.pager.nonstop == 0.0f
 		    && strcmp(viewer.join.accumulator, "C") == 0
 		    && viewer.join.queue_position == 0U
+		    && viewer.join.queue_length == 0U
+		    && viewer.join.sample_calls == 13U
+		    && viewer.join.event_count == 65U
+		    && stream.eof_checks == 0U && stream.key_checks == 0U
+		    && stream.read_count == 0U && stream.line_count == 0U
+		    && !stream.file_open && !viewer.join.file_open
+		    && viewer.input.file == NULL && viewer.close_calls == 0U
+		    && viewer.open_calls == 0U);
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
+static void
+test_planet_transfer_cargo_cycle_presentation(void)
+{
+	static const uint8_t expected[] =
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? t\r\n"
+	    "\r\n<Transfer items to planet>\n\r"
+	    "\r\nTransfer which item?\n\r"
+	    "\r\n[B] Plasma Bolts\n\r[C] Cargo\n\r[F] Fighters\n\r"
+	    "[S] Missiles\n\r[M] Mines\n\r\r\n-=>C\r\n"
+	    "\r\nCargo transferred!!\n\r"
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? ";
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	uint8_t remote[350];
+	size_t prompt_end;
+	size_t editor_end;
+	size_t body_end;
+	int pass;
+
+	for (pass = 0; pass < 2; ++pass) {
+		bool ansi = pass == 0;
+
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", ansi, remote, sizeof(remote));
+		CHECK(planet_transfer_cycle_run(&viewer, ansi,
+		    PLANET_TRANSFER_CARGO_CYCLE,
+		    &prompt_end, &editor_end, &body_end));
+		CHECK(prompt_end == 77U && editor_end == 80U
+		    && body_end == 235U && viewer.join.remote_length == 312U
+		    && sizeof(expected) - 1U == 312U
+		    && memcmp(remote, expected, sizeof(expected) - 1U) == 0
+		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+		    == UINT64_C(0x753cb2447151ea4b)
+		    && viewer.join.local_row_count == 21U
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == UINT64_C(0x6a1922c2618fe533)
+		    && viewer.join.local_fragment_length == 42U
+		    && memcmp(viewer.join.local_fragment,
+		    "Time: 14:59  Planet command (?=help) [A]? ", 42U) == 0
+		    && viewer.join.local_color_count == (ansi ? 37U : 13U)
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == (ansi ? UINT64_C(0xae1a9d6eec788b62)
+		    : UINT64_C(0xe4fcd46e10198702))
+		    && viewer.join.presentation.foreground == 6.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold == 0.0f
+		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.cached_foreground
+		    == (ansi ? 6.0f : 0.0f)
+		    && viewer.join.pager.foreground == 6
+		    && viewer.join.pager.line_count == 2.0f
+		    && viewer.join.pager.nonstop == 0.0f
+		    && strcmp(viewer.join.accumulator, "C") == 0
 		    && viewer.join.queue_length == 0U
 		    && viewer.join.sample_calls == 13U
 		    && viewer.join.event_count == 65U
@@ -17716,6 +17806,7 @@ main(void)
 	test_planet_productivity_blank_cycle_presentation();
 	test_planet_transfer_cancel_cycle_presentation();
 	test_planet_transfer_no_cargo_cycle_presentation();
+	test_planet_transfer_cargo_cycle_presentation();
 	test_planet_rename_protected_cycle_presentation();
 	test_planet_take_one_accepted_cycle_presentation();
 	test_planet_take_one_blank_default_cycle_presentation();
