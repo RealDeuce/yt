@@ -599,6 +599,310 @@ yt_info_panel_run(struct yt_info_panel_state *state,
 	return true;
 }
 
+static bool
+spy_present(struct yt_spy_sweep_state *state,
+    const struct yt_spy_sweep_ops *ops, void *context,
+    const uint8_t *text, size_t length, enum yt_spy_output_kind kind,
+    struct yt_error *error)
+{
+	return ops->present(context, text, length, kind, state, error);
+}
+
+static bool
+spy_first_finding(struct yt_spy_sweep_state *state,
+    const struct yt_spy_sweep_ops *ops, void *context, size_t spy,
+    int sector, struct yt_error *error)
+{
+	static const uint8_t prefix[] = "*** RADIO MESSAGE FROM SPY ";
+	static const uint8_t middle[] =
+	    "! The following was found in sector";
+	uint8_t row[256];
+	char spy_number[64];
+	char sector_number[64];
+	size_t length = 0U;
+	int amount;
+
+	if (!spy_present(state, ops, context, NULL, 0U, YT_SPY_LINE, error))
+		return false;
+	if (state->found_scratch != 0.0f)
+		return true;
+	state->found_scratch = 1.0f;
+	state->last_reported_sectors[spy] = sector;
+	if (!ops->sound(context, 9.0f, error))
+		return false;
+	amount = qb_str_single(spy_number, sizeof(spy_number), (float)(spy + 1U));
+	if (amount < 1)
+		return false;
+	spy_number[0] = '#';
+	if (qb_str_single(sector_number, sizeof(sector_number),
+	    (float)sector) < 0
+	    || !info_team_append(row, sizeof(row), &length,
+	    prefix, sizeof(prefix) - 1U)
+	    || !info_team_append(row, sizeof(row), &length,
+	    spy_number, (size_t)amount)
+	    || !info_team_append(row, sizeof(row), &length,
+	    middle, sizeof(middle) - 1U)
+	    || !info_team_append(row, sizeof(row), &length,
+	    sector_number, strlen(sector_number))
+	    || !info_team_append(row, sizeof(row), &length, ":", 1U)
+	    || !spy_present(state, ops, context, row, length,
+	    YT_SPY_BOLD_LINE, error)
+	    || !spy_present(state, ops, context, NULL, 0U,
+	    YT_SPY_LINE, error))
+		return false;
+	return true;
+}
+
+bool
+yt_spy_sweep_run(struct yt_spy_sweep_state *state,
+    const struct yt_spy_sweep_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t disruption[] =
+	    "** Space-time disruption detected! **";
+	static const uint8_t cloak_notice[] =
+	    "The spy detected the shimmering of a cloaking device!";
+	static const uint8_t ship_heading[] = "Other Ships: ";
+	static const uint8_t fighter_heading[] = "Fighters in sector:";
+	float iterator;
+
+	if (state == NULL || ops == NULL || state->spy_sectors == NULL
+	    || state->last_reported_sectors == NULL
+	    || state->sector_cache == NULL || state->cloak_cache == NULL
+	    || ops->read_sector == NULL || ops->update_planet == NULL
+	    || ops->read_planet == NULL || ops->read_player == NULL
+	    || ops->read_team == NULL || ops->random == NULL
+	    || ops->sound == NULL || ops->present == NULL
+	    || ops->pause == NULL)
+		return false;
+	if (state->active_spies == 0.0f)
+		return true;
+	iterator = 1.0f;
+	while (iterator <= state->active_spies) {
+		struct yt_sector sector;
+		bool overflow;
+		int32_t converted_spy = qb_cint(iterator, &overflow);
+		size_t spy;
+		int sector_number;
+		bool first_ship = true;
+		int candidate;
+
+		if (overflow || converted_spy < 1
+		    || (size_t)converted_spy > state->spy_capacity)
+			return startup_configuration_error(error, YT_RANGE,
+			    "active spy count adjacent memory");
+		spy = (size_t)converted_spy - 1U;
+		sector_number = state->spy_sectors[spy];
+		state->foreground = 7.0f;
+		if (!(sector_number == state->last_reported_sectors[spy]
+		    && sector_number != 0)) {
+			state->found_scratch = 0.0f;
+			state->warp_destination_scratch = (float)sector_number;
+			if (!ops->read_sector(context, sector_number, &sector, error))
+				return false;
+			if ((float)sector_number == state->disruption_sectors[0]
+			    || (float)sector_number == state->disruption_sectors[1]) {
+				if (!spy_first_finding(state, ops, context, spy,
+				    sector_number, error)
+				    || !spy_present(state, ops, context, disruption,
+				    sizeof(disruption) - 1U, YT_SPY_ATTENTION, error))
+					return false;
+			}
+			if (sector.mines != 0.0f) {
+				uint8_t row[128];
+				size_t length;
+
+				if (!spy_first_finding(state, ops, context, spy,
+				    sector_number, error)
+				    || !yt_sector_mine_warning_row(sector.mines, row,
+				    sizeof(row), &length)
+				    || !spy_present(state, ops, context, row, length,
+				    YT_SPY_ATTENTION, error))
+					return false;
+			}
+			if (sector.planet > 0.0f) {
+				struct yt_planet planet;
+				uint8_t row[160];
+				size_t length;
+
+				if (!ops->update_planet(context, sector.planet, error)
+				    || !ops->read_planet(context, sector.planet,
+				    &planet, error)
+				    || !spy_first_finding(state, ops, context, spy,
+				    sector_number, error)
+				    || !yt_sector_planet_row(&planet, row, sizeof(row),
+				    &length, error)
+				    || !spy_present(state, ops, context, row, length,
+				    YT_SPY_BOLD_LINE, error)
+				    || !ops->read_sector(context, sector_number,
+				    &sector, error))
+					return false;
+			}
+			for (candidate = 2;
+			    (float)candidate <= state->last_player_record;
+			    ++candidate) {
+				float draw;
+				float cloak;
+				bool detected;
+
+				if ((size_t)candidate >= state->cache_count)
+					return startup_configuration_error(error, YT_RANGE,
+					    "last player cache aliases adjacent memory");
+				if (!yt_sector_candidate_eligible(candidate,
+				    state->current_player_record,
+				    state->sector_cache[candidate],
+				    (float)sector_number))
+					continue;
+				if (!ops->random(context, &draw, error))
+					return false;
+				cloak = state->cloak_cache[candidate];
+				detected = yt_sector_cloak_revealed(draw, cloak);
+				if (detected) {
+					if (!spy_first_finding(state, ops, context,
+					    spy, sector_number, error)
+					    || !spy_present(state, ops, context,
+					    cloak_notice, sizeof(cloak_notice) - 1U,
+					    YT_SPY_BOLD_LINE, error))
+						return false;
+					state->cloak_cache[candidate] = 0.0f;
+					if (!ops->sound(context, 4.0f, error))
+						return false;
+				}
+				if (state->cloak_cache[candidate] != 0.0f
+				    && !detected)
+					continue;
+				if (!spy_first_finding(state, ops, context, spy,
+				    sector_number, error))
+					return false;
+				if (first_ship) {
+					if (!spy_present(state, ops, context,
+					    ship_heading, sizeof(ship_heading) - 1U,
+					    YT_SPY_BOLD_LINE, error))
+						return false;
+					first_ship = false;
+				}
+				{
+					struct yt_player player;
+					uint8_t row[256];
+					size_t length;
+
+					if (!ops->read_player(context, (float)candidate,
+					    &player, error))
+						return false;
+					state->dead_counter_scratch = startup_single_add(
+					    state->dead_counter_scratch, 1.0f);
+					if (!yt_sector_player_row(&player, row,
+					    sizeof(row), &length, error))
+						return false;
+					state->bold = 1.0f;
+					if (!spy_present(state, ops, context, row,
+					    length, YT_SPY_LINE, error))
+						return false;
+				}
+			}
+			if (!ops->read_sector(context, sector_number, &sector, error))
+				return false;
+			if (sector.fighters != 0.0f
+			    && sector.fighter_owner
+			    != (float)state->current_player_record) {
+				struct yt_sector refreshed;
+				struct yt_sector displayed;
+				struct yt_player owner_player;
+				struct yt_sector team_overlay;
+				const struct yt_player *owner_pointer = NULL;
+				const struct yt_sector *team_pointer = NULL;
+				uint8_t row[256];
+				uint8_t scratch[160];
+				size_t length;
+				size_t scratch_length = 0U;
+				bool scratch_changed;
+				float owner = sector.fighter_owner;
+
+				if (!ops->read_sector(context, sector_number,
+				    &refreshed, error)
+				    || !spy_first_finding(state, ops, context, spy,
+				    sector_number, error)
+				    || !spy_present(state, ops, context,
+				    fighter_heading, sizeof(fighter_heading) - 1U,
+				    YT_SPY_BOLD_RAW, error))
+					return false;
+				state->bold = 1.0f;
+				displayed = refreshed;
+				displayed.fighter_owner = owner;
+				if (owner != -1.0f && owner != -2.0f) {
+					uint8_t ignored_name[YT_TEXT_FIELD_SIZE];
+					size_t ignored_length;
+
+					if (!ops->read_player(context, owner,
+					    &owner_player, error)
+					    || !yt_player_stored_name(&owner_player,
+					    ignored_name, &ignored_length, error))
+						return false;
+					owner_pointer = &owner_player;
+					if (owner_player.team != 0.0f) {
+						state->dead_counter_scratch =
+						    startup_single_add(
+						    state->dead_counter_scratch, 1.0f);
+						if (!ops->read_team(context,
+						    owner_player.team, &team_overlay, error))
+							return false;
+						team_pointer = &team_overlay;
+					}
+				}
+				if (!yt_sector_fighter_row(&displayed,
+				    state->current_player_record, owner_pointer,
+				    team_pointer, row, sizeof(row), &length,
+				    scratch, sizeof(scratch), &scratch_length,
+				    &scratch_changed, error)
+				    || !spy_present(state, ops, context, row, length,
+				    YT_SPY_LINE, error))
+					return false;
+			}
+		}
+		if (state->found_scratch != 0.0f) {
+			if (!spy_present(state, ops, context, NULL, 0U,
+			    YT_SPY_LINE, error)
+			    || !ops->pause(context, state, error))
+				return false;
+		}
+		if (!ops->read_sector(context, sector_number, &sector, error))
+			return false;
+		state->warp_destination_scratch = 0.0f;
+		{
+			int32_t warps[6];
+			size_t slot;
+
+			for (slot = 0U; slot < YT_ARRAY_LEN(warps); ++slot) {
+				warps[slot] = qb_cint(sector.warps[slot], &overflow);
+				if (overflow)
+					return startup_configuration_error(error,
+					    YT_RANGE, "active spy warp CINT");
+			}
+			for (;;) {
+				float draw;
+				int selected;
+
+				if (!ops->random(context, &draw, error))
+					return false;
+				selected = (int)floorf(startup_single_multiply(
+				    draw, 6.0f));
+				if (selected < 0 || selected >= 6)
+					return startup_configuration_error(error,
+					    YT_RANGE, "active spy RND slot");
+				state->warp_destination_scratch =
+				    (float)warps[selected];
+				if (warps[selected] != 0) {
+					state->spy_sectors[spy] = warps[selected];
+					break;
+				}
+			}
+		}
+		iterator = startup_single_add(iterator, 1.0f);
+	}
+	state->foreground = 0.0f;
+	return true;
+}
+
 bool
 yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
     const struct yt_xannor_retaliation_ops *ops, void *context,

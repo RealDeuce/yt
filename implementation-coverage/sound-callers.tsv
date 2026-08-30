@@ -56,5 +56,5 @@ YT-SUB:B633	3	live	src/yt_session.c::plasma_sector	non-self plasma death before 
 YT-SUB:B846	2	live	src/yt_session.c::plasma_planet_impact	plasma planet attack
 YT-SUB:BBFC	3	live	src/yt_session.c::plasma_planet_impact	plasma planet destruction
 YT-SUB2:1CAC	8	live	src/yt_session.c::dangerous_destination	first destination-danger warning
-YT-SUB2:1FDE	4	live	src/yt_session.c::spy_sweep	spy cloak detection
-YT-SUB2:24FF	9	live	src/yt_session.c::spy_sweep	first finding in each spy report
+YT-SUB2:1FDE	4	live	src/yt_game.c::yt_spy_sweep_run; src/yt_session.c::spy_sound	spy cloak detection
+YT-SUB2:24FF	9	live	src/yt_game.c::{yt_spy_sweep_run,spy_first_finding}; src/yt_session.c::spy_sound	first finding in each spy report

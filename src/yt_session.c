@@ -67,6 +67,9 @@ struct yt_session {
 	int spies[3];
 	int spy_marker[3];
 	int spy_count;
+	float spy_found_scratch;
+	float spy_dead_counter_scratch;
+	float spy_warp_destination_scratch;
 	float avoid[30];
 	float computer_path_marker;
 	float computer_path_start;
@@ -3578,155 +3581,194 @@ dangerous_destination(struct yt_session *session, float target,
 }
 
 static bool
+spy_read_sector(void *context, int logical_sector, struct yt_sector *sector,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_read_sector(&session->door->game, logical_sector,
+	    sector, error);
+}
+
+static bool
+spy_update_planet(void *context, float link, struct yt_error *error)
+{
+	struct yt_session *session = context;
+	struct yt_planet planet;
+	uint32_t physical = qb_brun_random_record_number(single_add(
+	    session->door->game.config.planet_offset, link));
+
+	return planet_update_cached_physical(session, physical, &planet, NULL,
+	    error);
+}
+
+static bool
+spy_read_planet(void *context, float link, struct yt_planet *planet,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+	uint32_t physical = qb_brun_random_record_number(single_add(
+	    session->door->game.config.planet_offset, link));
+
+	return read_planet_physical(session, physical, planet, error);
+}
+
+static bool
+spy_read_player(void *context, float record, struct yt_player *player,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+	struct yt_record raw;
+	uint32_t physical = qb_brun_random_record_number(record);
+
+	if (!yt_database_read(&session->door->game.database, physical, &raw,
+	    error))
+		return false;
+	yt_player_decode(player, &raw);
+	return true;
+}
+
+static bool
+spy_read_team(void *context, float team, struct yt_sector *overlay,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+	struct yt_record raw;
+	uint32_t physical = qb_brun_random_record_number(single_add(
+	    session->door->game.config.sector_offset, team));
+
+	if (!yt_database_read(&session->door->game.database, physical, &raw,
+	    error))
+		return false;
+	yt_sector_decode(overlay, &raw);
+	return true;
+}
+
+static bool
+spy_random(void *context, float *value, struct yt_error *error)
+{
+	return random_value(context, value, error);
+}
+
+static bool
+spy_sound(void *context, float selector, struct yt_error *error)
+{
+	return session_sound(context, selector, selector == 9.0f
+	    ? "spy finding sound" : "spy cloak sound", error);
+}
+
+static void
+spy_import_presentation(struct yt_session *session,
+    const struct yt_spy_sweep_state *state)
+{
+	session->presentation.foreground = state->foreground;
+	session->presentation.background = state->background;
+	session->presentation.bold = state->bold;
+	session->presentation.blink = state->blink;
+	session->pager.foreground = (int)state->foreground;
+}
+
+static void
+spy_export_presentation(struct yt_spy_sweep_state *state,
+    const struct yt_session *session)
+{
+	state->foreground = session->presentation.foreground;
+	state->background = session->presentation.background;
+	state->bold = session->presentation.bold;
+	state->blink = session->presentation.blink;
+}
+
+static bool
+spy_present(void *context, const uint8_t *text, size_t length,
+    enum yt_spy_output_kind kind, struct yt_spy_sweep_state *state,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+	bool result;
+
+	spy_import_presentation(session, state);
+	if (kind == YT_SPY_ATTENTION)
+		result = session_attention_bytes(session, text, length,
+		    "spy attention row", error);
+	else {
+		enum session_present_text_kind session_kind;
+
+		switch (kind) {
+		case YT_SPY_LINE:
+			session_kind = SESSION_PRESENT_LINE;
+			break;
+		case YT_SPY_BOLD_LINE:
+			session_kind = SESSION_PRESENT_BOLD_LINE;
+			break;
+		case YT_SPY_BOLD_RAW:
+			session_kind = SESSION_PRESENT_BOLD_RAW;
+			break;
+		default:
+			return false;
+		}
+		result = session_present_text(session, text, length, session_kind,
+		    "spy direct output", error);
+	}
+	spy_export_presentation(state, session);
+	return result;
+}
+
+static bool
+spy_pause(void *context, struct yt_spy_sweep_state *state,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+	bool result;
+
+	spy_import_presentation(session, state);
+	result = session_press_any_key(session, true, error);
+	spy_export_presentation(state, session);
+	return result;
+}
+
+static bool
 spy_sweep(struct yt_session *session, struct yt_error *error)
 {
-	int spy;
+	static const struct yt_spy_sweep_ops ops = {
+		spy_read_sector,
+		spy_update_planet,
+		spy_read_planet,
+		spy_read_player,
+		spy_read_team,
+		spy_random,
+		spy_sound,
+		spy_present,
+		spy_pause,
+	};
+	struct yt_spy_sweep_state state = {
+		.active_spies = (float)session->spy_count,
+		.spy_sectors = session->spies,
+		.last_reported_sectors = session->spy_marker,
+		.spy_capacity = YT_ARRAY_LEN(session->spies),
+		.current_player_record = session->player_record,
+		.last_player_record = session->door->game.config.sector_offset,
+		.disruption_sectors = {
+			session->black_hole[0], session->black_hole[1]
+		},
+		.sector_cache = session->sector_cache,
+		.cloak_cache = session->cloak_cache,
+		.cache_count = YT_ARRAY_LEN(session->sector_cache),
+		.found_scratch = session->spy_found_scratch,
+		.dead_counter_scratch = session->spy_dead_counter_scratch,
+		.warp_destination_scratch =
+		    session->spy_warp_destination_scratch,
+		.foreground = session->presentation.foreground,
+		.background = session->presentation.background,
+		.bold = session->presentation.bold,
+		.blink = session->presentation.blink,
+	};
+	bool result = yt_spy_sweep_run(&state, &ops, session, error);
 
-	for (spy = 0; spy < session->spy_count; ++spy) {
-		int sector_number = session->spies[spy];
-		struct yt_sector sector;
-		bool found = false;
-		int basic;
-
-		if (sector_number == 0)
-			continue;
-		if (session->spy_marker[spy] != sector_number) {
-			if (!yt_game_read_sector(&session->door->game,
-			    sector_number, &sector, error))
-				return false;
-			if ((float)sector_number == session->black_hole[0]
-			    || (float)sector_number == session->black_hole[1]) {
-				if (!session_sound(session, 9.0f,
-				    "spy finding sound", error))
-					return false;
-				yt_outf("*** RADIO MESSAGE FROM SPY # %d!"
-				    " The following was found in sector %d:\r\n",
-				    spy + 1, sector_number);
-				yt_out_line("Electromagnetic disruption detected.");
-				found = true;
-			}
-			if (sector.mines != 0.0f) {
-				if (!found) {
-					if (!session_sound(session, 9.0f,
-					    "spy finding sound", error))
-						return false;
-					yt_outf("*** RADIO MESSAGE FROM SPY # %d!"
-					    " The following was found in sector"
-					    " %d:\r\n", spy + 1,
-					    sector_number);
-				}
-				yt_outf("Sector mines: %.9g\r\n",
-				    (double)sector.mines);
-				found = true;
-			}
-			if (sector.planet > 0.0f) {
-				struct yt_planet planet;
-
-				if (!planet_update(session, (int)sector.planet,
-				    &planet, error))
-					return false;
-				if (!found) {
-					if (!session_sound(session, 9.0f,
-					    "spy finding sound", error))
-						return false;
-					yt_outf("*** RADIO MESSAGE FROM SPY # %d!"
-					    " The following was found in sector"
-					    " %d:\r\n", spy + 1,
-					    sector_number);
-				}
-				yt_outf("Planet: %s  Ground Forces: %.9g\r\n",
-				    planet.name,
-				    (double)floorf(planet.ground_forces));
-				found = true;
-			}
-			for (basic = YT_PLAYER_FIRST;
-			    basic <= (int)session->door->game.config.sector_offset;
-			    ++basic) {
-				float draw;
-
-				if (basic == session->player_record
-				    || session->sector_cache[basic]
-				    != (float)sector_number)
-					continue;
-				if (!random_value(session, &draw, error))
-					return false;
-				if (session->cloak_cache[basic] != 0.0f
-				    && draw <= session->cloak_cache[basic])
-					continue;
-				if (!found) {
-					if (!session_sound(session, 9.0f,
-					    "spy finding sound", error))
-						return false;
-					yt_outf("*** RADIO MESSAGE FROM SPY # %d!"
-					    " The following was found in sector"
-					    " %d:\r\n", spy + 1,
-					    sector_number);
-				}
-				if (session->cloak_cache[basic] != 0.0f) {
-					if (!session_sound(session, 4.0f,
-					    "spy cloak sound", error))
-						return false;
-					yt_out_line(
-					    "A shimmering cloaking device was detected.");
-					session->cloak_cache[basic] = 0.0f;
-				}
-				{
-					struct yt_player player;
-
-					if (!yt_game_read_player(
-					    &session->door->game, basic,
-					    &player, error))
-						return false;
-					yt_outf("Ship: %s  Team %.9g"
-					    "  Fighters %.9g  Shields %.9g\r\n",
-					    player.name, (double)player.team,
-					    (double)player.fighters,
-					    (double)player.shields);
-				}
-				found = true;
-			}
-			if (sector.fighters != 0.0f
-			    && sector.fighter_owner
-			    != (float)session->player_record) {
-				if (!found) {
-					if (!session_sound(session, 9.0f,
-					    "spy finding sound", error))
-						return false;
-					yt_outf("*** RADIO MESSAGE FROM SPY # %d!"
-					    " The following was found in sector"
-					    " %d:\r\n", spy + 1,
-					    sector_number);
-				}
-				yt_outf("Deployed fighters: %.9g  Owner %.9g\r\n",
-				    (double)sector.fighters,
-				    (double)sector.fighter_owner);
-				found = true;
-			}
-			if (found) {
-				session->spy_marker[spy] = sector_number;
-				if (!session_present_text(session, NULL, 0,
-				    SESSION_PRESENT_LINE, "spy pause blank", error)
-				    || !session_press_any_key(session, true, error))
-					return false;
-			}
-		}
-		if (!yt_game_read_sector(&session->door->game, sector_number,
-		    &sector, error))
-			return false;
-		for (;;) {
-			float draw;
-			int slot;
-
-			if (!random_value(session, &draw, error))
-				return false;
-			slot = (int)floorf(single_mul(draw, 6.0f));
-			if (sector.warps[slot] != 0.0f) {
-				session->spies[spy] = (int)sector.warps[slot];
-				break;
-			}
-		}
-	}
-	return true;
+	session->spy_found_scratch = state.found_scratch;
+	session->spy_dead_counter_scratch = state.dead_counter_scratch;
+	session->spy_warp_destination_scratch = state.warp_destination_scratch;
+	spy_import_presentation(session, &state);
+	return result;
 }
 
 static bool
