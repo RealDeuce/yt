@@ -660,6 +660,22 @@ check_info_team_resolver_transaction(void)
 	    || state.route != YT_INFO_TEAM_OTHER_CAPTAIN
 	    || state.captain_name_length != YT_TEXT_FIELD_SIZE)
 		return false;
+	info_team_fixture(&tape, &state);
+	state.sector_offset = 51.0f;
+	tape.team.captain = 51.0f;
+	if (!yt_info_team_resolver_run(&state, &ops, &tape, NULL)
+	    || state.route != YT_INFO_TEAM_OTHER_CAPTAIN
+	    || tape.player_position != 3U
+	    || tape.player_records[1] != 51.0f
+	    || tape.player_records[2] != 51.0f)
+		return false;
+	info_team_fixture(&tape, &state);
+	state.sector_offset = 51.0f;
+	tape.team.captain = 51.25f;
+	if (!yt_info_team_resolver_run(&state, &ops, &tape, NULL)
+	    || state.route != YT_INFO_TEAM_PROMOTED
+	    || tape.player_position != 1U)
+		return false;
 
 	for (failure = 1U; failure <= YT_ARRAY_LEN(other_events); ++failure) {
 		info_team_fixture(&tape, &state);

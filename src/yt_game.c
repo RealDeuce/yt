@@ -165,7 +165,7 @@ yt_info_team_resolver_run(struct yt_info_team_state *state,
 	}
 	state->captain_record = state->team.captain;
 	if (state->captain_record >= 2.0f
-	    && state->captain_record < state->sector_offset) {
+	    && state->captain_record <= state->sector_offset) {
 		struct yt_player captain;
 
 		if (!ops->read_player(context, state->captain_record, &captain,
@@ -195,7 +195,7 @@ yt_info_team_resolver_run(struct yt_info_team_state *state,
 			state->captain_record = 0.0f;
 	}
 	if (!(state->captain_record >= 2.0f
-	    && state->captain_record < state->sector_offset)) {
+	    && state->captain_record <= state->sector_offset)) {
 		struct yt_sector fresh;
 
 		state->captain_record = state->current_record;
