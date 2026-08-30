@@ -1,6 +1,7 @@
 #include "yt_input_model.h"
 #include "yt_platform.h"
 #include "yt_startup_model.h"
+#include "yt_text.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,6 +22,197 @@ static unsigned failures;
 		++failures; \
 	} \
 } while (0)
+
+enum registration_event {
+	REG_CLOSE,
+	REG_RANDOM_OPEN,
+	REG_SIZE,
+	REG_DELETE,
+	REG_SEQUENTIAL_OPEN,
+	REG_READ,
+	REG_CENTERED,
+	REG_BEEP,
+	REG_FORCED_LOCAL,
+	REG_CLOSE_ALL,
+	REG_END,
+};
+
+struct registration_tape {
+	const uint8_t *file;
+	size_t file_length;
+	size_t cursor;
+	enum registration_event event[32];
+	size_t event_count;
+	size_t fail_at;
+	uint8_t presented[128];
+	size_t presented_length;
+};
+
+static bool
+registration_record(struct registration_tape *tape,
+    enum registration_event event, struct yt_error *error)
+{
+	CHECK(tape->event_count < YT_ARRAY_LEN(tape->event));
+	if (tape->event_count < YT_ARRAY_LEN(tape->event))
+		tape->event[tape->event_count] = event;
+	++tape->event_count;
+	if (tape->event_count != tape->fail_at)
+		return true;
+	if (error != NULL) {
+		error->status = YT_IO_ERROR;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    "injected registration failure");
+	}
+	return false;
+}
+
+static bool
+registration_close(void *context, struct yt_error *error)
+{
+	return registration_record(context, REG_CLOSE, error);
+}
+
+static bool
+registration_random_open(void *context, struct yt_error *error)
+{
+	return registration_record(context, REG_RANDOM_OPEN, error);
+}
+
+static bool
+registration_size(void *context, uint64_t *size, struct yt_error *error)
+{
+	struct registration_tape *tape = context;
+
+	if (!registration_record(tape, REG_SIZE, error))
+		return false;
+	*size = tape->file_length;
+	return true;
+}
+
+static bool
+registration_delete(void *context, struct yt_error *error)
+{
+	return registration_record(context, REG_DELETE, error);
+}
+
+static bool
+registration_sequential_open(void *context, struct yt_error *error)
+{
+	struct registration_tape *tape = context;
+
+	if (!registration_record(tape, REG_SEQUENTIAL_OPEN, error))
+		return false;
+	tape->cursor = 0U;
+	return true;
+}
+
+static bool
+registration_read(void *context, uint8_t *data, size_t capacity,
+    size_t *length, struct yt_error *error)
+{
+	struct registration_tape *tape = context;
+	bool available;
+
+	if (!registration_record(tape, REG_READ, error))
+		return false;
+	if (!yt_text_line_input_next(tape->file, tape->file_length,
+	    &tape->cursor, data, capacity, length, &available) || !available) {
+		if (error != NULL) {
+			error->status = YT_EOF;
+			(void)snprintf(error->operation,
+			    sizeof(error->operation), "%s",
+			    "registration LINE INPUT");
+		}
+		return false;
+	}
+	return true;
+}
+
+static bool
+registration_present(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error, enum registration_event event)
+{
+	struct registration_tape *tape = context;
+
+	if (!registration_record(tape, event, error))
+		return false;
+	CHECK(length <= sizeof(tape->presented));
+	if (length <= sizeof(tape->presented)) {
+		memcpy(tape->presented, text, length);
+		tape->presented_length = length;
+	}
+	return true;
+}
+
+static bool
+registration_centered(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	return registration_present(context, text, length, error, REG_CENTERED);
+}
+
+static bool
+registration_beep(void *context, struct yt_error *error)
+{
+	return registration_record(context, REG_BEEP, error);
+}
+
+static bool
+registration_forced(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	return registration_present(context, text, length, error,
+	    REG_FORCED_LOCAL);
+}
+
+static void
+registration_close_all(void *context)
+{
+	struct registration_tape *tape = context;
+
+	(void)registration_record(tape, REG_CLOSE_ALL, NULL);
+}
+
+static void
+registration_end(void *context)
+{
+	struct registration_tape *tape = context;
+
+	(void)registration_record(tape, REG_END, NULL);
+}
+
+static const struct yt_registration_ops registration_ops = {
+	registration_close,
+	registration_random_open,
+	registration_size,
+	registration_delete,
+	registration_sequential_open,
+	registration_read,
+	registration_centered,
+	registration_beep,
+	registration_forced,
+	registration_close_all,
+	registration_end,
+};
+
+static void
+registration_state_init(struct yt_registration_state *state,
+	uint8_t storage[5][256])
+{
+	size_t index;
+
+	memset(state, 0, sizeof(*state));
+	for (index = 0U; index < 3U; ++index) {
+		state->line[index].data = storage[index];
+		state->line[index].capacity = sizeof(storage[index]);
+	}
+	for (index = 0U; index < 2U; ++index) {
+		state->display[index].data = storage[index + 3U];
+		state->display[index].capacity = sizeof(storage[index + 3U]);
+	}
+	state->expected_evaluation_sum[0] = 2085U;
+	state->expected_evaluation_sum[1] = 3496U;
+}
 
 static struct yt_input_value
 one(uint8_t byte)
@@ -1952,6 +2144,212 @@ test_startup_lockout_scan(void)
 	    sizeof(identity) - 1U, &matched, &lines));
 }
 
+static void
+test_registration_transaction(void)
+{
+	static const uint8_t shipped[] =
+	    "This BBS\r\nThe Sysop\r\n3484625551\r\nignored\r\n";
+	static const uint8_t odd_bytes[] = {
+		' ', 'a', 0, 'B', '\'', 'C', '-', 0x80, ' ', '\r', '\n',
+		'x', '\n', 'Y', '\r', '\n',
+		'0', '\r', '\n',
+	};
+	static const uint8_t expected_key[8] =
+	    {0x00, 0x00, 0x00, 0x8f, 0x2a, 0xb3, 0x4f, 0xa0};
+	static const uint8_t expected_first_sum[8] =
+	    {0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x08, 0x8c};
+	static const uint8_t expected_first_product[8] =
+	    {0x00, 0x6a, 0xb3, 0x86, 0xb9, 0x94, 0x5c, 0xb0};
+	static const uint8_t expected_first_root[8] =
+	    {0x00, 0x00, 0x00, 0x00, 0xa9, 0xa1, 0x6d, 0x98};
+	static const uint8_t expected_second_sum[8] =
+	    {0x00, 0x00, 0x00, 0x00, 0x84, 0xb2, 0x6d, 0x98};
+	static const uint8_t expected_final_product[8] =
+	    {0x7d, 0x5d, 0xea, 0x37, 0x3c, 0x83, 0x28, 0xc0};
+	static const enum registration_event registered_events[] = {
+		REG_CLOSE, REG_RANDOM_OPEN, REG_SIZE, REG_CLOSE,
+		REG_SEQUENTIAL_OPEN, REG_READ, REG_READ, REG_READ, REG_CLOSE,
+	};
+	static const enum registration_event invalid_tail[] = {
+		REG_BEEP, REG_BEEP, REG_FORCED_LOCAL, REG_BEEP, REG_BEEP,
+		REG_CLOSE_ALL, REG_END,
+	};
+	struct yt_registration_state state;
+	struct registration_tape tape;
+	struct yt_error error;
+	uint8_t storage[5][256];
+	size_t index;
+
+	registration_state_init(&state, storage);
+	memset(&tape, 0, sizeof(tape));
+	tape.file = shipped;
+	tape.file_length = sizeof(shipped) - 1U;
+	yt_error_clear(&error);
+	CHECK(yt_registration_run(&state, &registration_ops, &tape, &error));
+	CHECK(state.outcome == YT_REGISTRATION_REGISTERED && state.nonempty
+	    && state.registered && !state.ended && !state.closed_all);
+	CHECK(state.line[0].length == 8U
+	    && memcmp(state.line[0].data, "This Bbs", 8U) == 0);
+	CHECK(state.line[1].length == 9U
+	    && memcmp(state.line[1].data, "The Sysop", 9U) == 0);
+	CHECK(state.display[0].length == 22U
+	    && memcmp(state.display[0].data, "Registered to This Bbs", 22U) == 0);
+	CHECK(state.display[1].length == 23U
+	    && memcmp(state.display[1].data, "Registered by The Sysop", 23U) == 0);
+	CHECK(memcmp(state.calculated_key, expected_key, 8U) == 0
+	    && memcmp(state.parsed_key, expected_key, 8U) == 0);
+	CHECK(memcmp(state.first_sum, expected_first_sum, 8U) == 0
+	    && memcmp(state.first_product, expected_first_product, 8U) == 0
+	    && memcmp(state.first_root, expected_first_root, 8U) == 0
+	    && memcmp(state.second_sum, expected_second_sum, 8U) == 0
+	    && memcmp(state.final_product, expected_final_product, 8U) == 0);
+	CHECK(tape.event_count == YT_ARRAY_LEN(registered_events)
+	    && memcmp(tape.event, registered_events,
+	    sizeof(registered_events)) == 0);
+
+	/* Every fallible file/read boundary retains its accepted prefix. */
+	for (index = 1U; index <= YT_ARRAY_LEN(registered_events); ++index) {
+		registration_state_init(&state, storage);
+		memset(&tape, 0, sizeof(tape));
+		tape.file = shipped;
+		tape.file_length = sizeof(shipped) - 1U;
+		tape.fail_at = index;
+		yt_error_clear(&error);
+		CHECK(!yt_registration_run(&state, &registration_ops, &tape,
+		    &error));
+		CHECK(tape.event_count == index && error.status == YT_IO_ERROR);
+		CHECK(state.outcome == YT_REGISTRATION_IN_PROGRESS
+		    && !state.registered);
+		CHECK(memcmp(tape.event, registered_events,
+		    index * sizeof(registered_events[0])) == 0);
+		if (index <= 6U)
+			CHECK(state.line[0].length == 0U);
+		else
+			CHECK(state.line[0].length == 8U
+			    && memcmp(state.line[0].data, "This BBS", 8U) == 0);
+		if (index <= 7U)
+			CHECK(state.line[1].length == 0U);
+		else
+			CHECK(state.line[1].length == 9U
+			    && memcmp(state.line[1].data, "The Sysop", 9U) == 0);
+		CHECK(state.line[2].length == (index == 9U ? 10U : 0U));
+	}
+
+	/* Empty input is deleted before ordinary evaluation construction. */
+	registration_state_init(&state, storage);
+	memset(&tape, 0, sizeof(tape));
+	CHECK(yt_registration_run(&state, &registration_ops, &tape, NULL));
+	CHECK(state.outcome == YT_REGISTRATION_EVALUATION && !state.nonempty
+	    && !state.registered && state.evaluation_sum[0] == 2085U
+	    && state.evaluation_sum[1] == 3496U
+	    && state.evaluation_counter[0] == 30.0f
+	    && state.evaluation_counter[1] == 51.0f);
+	CHECK(state.display[0].length == 29U
+	    && state.display[1].length == 50U
+	    && tape.event_count == 5U && tape.event[4] == REG_DELETE);
+	for (index = 1U; index <= 5U; ++index) {
+		registration_state_init(&state, storage);
+		memset(&tape, 0, sizeof(tape));
+		tape.fail_at = index;
+		CHECK(!yt_registration_run(&state, &registration_ops, &tape,
+		    NULL));
+		CHECK(tape.event_count == index);
+		CHECK(state.nonempty == (index < 5U));
+	}
+
+	/* The beta terminal has no explicit CLOSE ALL. */
+	registration_state_init(&state, storage);
+	state.beta_only = true;
+	memset(&tape, 0, sizeof(tape));
+	CHECK(yt_registration_run(&state, &registration_ops, &tape, NULL));
+	CHECK(state.outcome == YT_REGISTRATION_BETA_END && state.ended
+	    && !state.closed_all && tape.event_count == 9U
+	    && tape.event[5] == REG_CENTERED && tape.event[6] == REG_BEEP
+	    && tape.event[7] == REG_BEEP && tape.event[8] == REG_END);
+	CHECK(tape.presented_length == 48U
+	    && memcmp(tape.presented,
+	    "ONLY REGISTERED SYSOPS CAN RUN BETA TEST COPIES!", 48U) == 0);
+	for (index = 6U; index <= 8U; ++index) {
+		registration_state_init(&state, storage);
+		state.beta_only = true;
+		memset(&tape, 0, sizeof(tape));
+		tape.fail_at = index;
+		CHECK(!yt_registration_run(&state, &registration_ops, &tape,
+		    NULL));
+		CHECK(tape.event_count == index && !state.ended);
+	}
+
+	/* Either immutable checksum mismatch closes all and does not END. */
+	registration_state_init(&state, storage);
+	state.expected_evaluation_sum[1] = 3495U;
+	memset(&tape, 0, sizeof(tape));
+	CHECK(yt_registration_run(&state, &registration_ops, &tape, NULL));
+	CHECK(state.outcome == YT_REGISTRATION_ANTI_TAMPER_BUSY_LOOP
+	    && state.closed_all && state.busy_loop && !state.ended
+	    && tape.event_count == 6U && tape.event[5] == REG_CLOSE_ALL);
+
+	/* NUL is discarded, bare LF retained, and high bytes survive title case. */
+	registration_state_init(&state, storage);
+	memset(&tape, 0, sizeof(tape));
+	tape.file = odd_bytes;
+	tape.file_length = sizeof(odd_bytes);
+	CHECK(yt_registration_run(&state, &registration_ops, &tape, NULL));
+	CHECK(state.outcome == YT_REGISTRATION_INVALID_END);
+	CHECK(state.line[0].length == 6U
+	    && memcmp(state.line[0].data, "Ab'c-\x80", 6U) == 0);
+	CHECK(state.line[1].length == 3U
+	    && memcmp(state.line[1].data, "X\nY", 3U) == 0);
+	CHECK(tape.event_count == 16U
+	    && memcmp(tape.event + 9U, invalid_tail,
+	    sizeof(invalid_tail)) == 0);
+	CHECK(tape.presented_length == 30U
+	    && memcmp(tape.presented, " * INVALID REGISTRATION KEY! *", 30U)
+	    == 0);
+	for (index = 10U; index <= 14U; ++index) {
+		registration_state_init(&state, storage);
+		memset(&tape, 0, sizeof(tape));
+		tape.file = odd_bytes;
+		tape.file_length = sizeof(odd_bytes);
+		tape.fail_at = index;
+		CHECK(!yt_registration_run(&state, &registration_ops, &tape,
+		    NULL));
+		CHECK(tape.event_count == index && !state.closed_all
+		    && !state.ended);
+	}
+
+	/* VAL overflow faults after the file has closed and before arithmetic. */
+	{
+		static const uint8_t overflow[] = "A\rB\r1E99\r";
+
+		registration_state_init(&state, storage);
+		memset(&tape, 0, sizeof(tape));
+		tape.file = overflow;
+		tape.file_length = sizeof(overflow) - 1U;
+		yt_error_clear(&error);
+		CHECK(!yt_registration_run(&state, &registration_ops, &tape,
+		    &error));
+		CHECK(tape.event_count == 9U && error.status == YT_RANGE
+		    && strcmp(error.operation, "registration key VAL") == 0);
+	}
+	{
+		static const uint8_t short_file[] = "First\r\nSecond\r\n";
+
+		registration_state_init(&state, storage);
+		memset(&tape, 0, sizeof(tape));
+		tape.file = short_file;
+		tape.file_length = sizeof(short_file) - 1U;
+		yt_error_clear(&error);
+		CHECK(!yt_registration_run(&state, &registration_ops, &tape,
+		    &error));
+		CHECK(tape.event_count == 8U && error.status == YT_EOF
+		    && state.line[0].length == 5U && state.line[1].length == 6U
+		    && state.line[2].length == 0U);
+	}
+
+	CHECK(!yt_registration_run(NULL, &registration_ops, &tape, NULL));
+	CHECK(!yt_registration_run(&state, NULL, &tape, NULL));
+}
+
 int
 main(void)
 {
@@ -1983,6 +2381,7 @@ main(void)
 	test_startup_dorinfo_parser();
 	test_startup_dorinfo_state();
 	test_startup_lockout_scan();
+	test_registration_transaction();
 	if (failures != 0) {
 		fprintf(stderr, "%u input-model test(s) failed\n", failures);
 		return 1;

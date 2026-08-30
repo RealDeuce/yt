@@ -11,9 +11,11 @@
 #include "yt_route.h"
 #include "yt_score.h"
 #include "yt_sound.h"
+#include "yt_startup_model.h"
 #include "yt_text.h"
 
 #include <ctype.h>
+#include <errno.h>
 #include <limits.h>
 #include <math.h>
 #include <stdlib.h>
@@ -448,20 +450,6 @@ radio_append(const char *text, float sender, float recipient,
 {
 	return radio_append_bytes((const uint8_t *)text, strlen(text), sender,
 	    recipient, error);
-}
-
-static bool
-read_physical_line(FILE *file, char *dest, size_t size)
-{
-	size_t length;
-
-	if (size == 0 || fgets(dest, (int)size, file) == NULL)
-		return false;
-	length = strlen(dest);
-	while (length > 0 && (dest[length - 1] == '\r'
-	    || dest[length - 1] == '\n' || dest[length - 1] == 0x1a))
-		dest[--length] = '\0';
-	return true;
 }
 
 static bool
@@ -1069,13 +1057,14 @@ session_right_aligned(struct yt_session *session, const char *text,
 }
 
 static bool
-session_centered_line(struct yt_session *session, const char *text,
+session_centered_line_bytes(struct yt_session *session, const uint8_t *text,
+    size_t length,
     const char *operation, struct yt_error *error)
 {
 	struct yt_present_result presentation;
 	enum yt_present_status status;
 
-	status = yt_present_centered_line((const uint8_t *)text, strlen(text),
+	status = yt_present_centered_line(text, length,
 	    &session->presentation, &presentation);
 	if (status == YT_PRESENT_OK) {
 		yt_out_present_result(&presentation);
@@ -1087,6 +1076,14 @@ session_centered_line(struct yt_session *session, const char *text,
 		    operation);
 	}
 	return false;
+}
+
+static bool
+session_centered_line(struct yt_session *session, const char *text,
+    const char *operation, struct yt_error *error)
+{
+	return session_centered_line_bytes(session, (const uint8_t *)text,
+	    strlen(text), operation, error);
 }
 
 static bool
@@ -1320,6 +1317,207 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 	return yt_database_flush(&game->database, error);
 }
 
+struct registration_context {
+	struct yt_session *session;
+	FILE *file;
+	char path[512];
+	bool path_resolved;
+};
+
+static bool
+registration_io_error(struct registration_context *context,
+    struct yt_error *error, enum yt_status status, const char *operation)
+{
+	if (error != NULL) {
+		error->status = status;
+		error->system_error = status == YT_IO_ERROR ? errno : 0;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    operation);
+		(void)snprintf(error->path, sizeof(error->path), "%s",
+		    context->path_resolved ? context->path : "YT.REG");
+	}
+	return false;
+}
+
+static bool
+registration_resolve_path(struct registration_context *context,
+    struct yt_error *error)
+{
+	if (context->path_resolved)
+		return true;
+	if (!yt_resolve_case_path("YT.REG", true, context->path,
+	    sizeof(context->path), error))
+		return false;
+	context->path_resolved = true;
+	return true;
+}
+
+static bool
+registration_close_file4(void *opaque, struct yt_error *error)
+{
+	struct registration_context *context = opaque;
+	FILE *file = context->file;
+
+	if (file == NULL)
+		return true;
+	context->file = NULL;
+	if (fclose(file) != 0)
+		return registration_io_error(context, error, YT_IO_ERROR,
+		    "close registration file");
+	return true;
+}
+
+static bool
+registration_random_open(void *opaque, struct yt_error *error)
+{
+	struct registration_context *context = opaque;
+
+	if (!registration_resolve_path(context, error))
+		return false;
+	errno = 0;
+	context->file = fopen(context->path, "a+b");
+	if (context->file == NULL)
+		return registration_io_error(context, error, YT_IO_ERROR,
+		    "open registration random");
+	return true;
+}
+
+static bool
+registration_file_size(void *opaque, uint64_t *size,
+    struct yt_error *error)
+{
+	struct registration_context *context = opaque;
+	long position;
+
+	if (context->file == NULL)
+		return registration_io_error(context, error, YT_INVALID,
+		    "registration LOF without file");
+	if (fseek(context->file, 0L, SEEK_END) != 0
+	    || (position = ftell(context->file)) < 0L)
+		return registration_io_error(context, error, YT_IO_ERROR,
+		    "registration LOF");
+	*size = (uint64_t)position;
+	return true;
+}
+
+static bool
+registration_delete_empty(void *opaque, struct yt_error *error)
+{
+	struct registration_context *context = opaque;
+
+	return yt_file_delete(context->path, false, error);
+}
+
+static bool
+registration_sequential_open(void *opaque, struct yt_error *error)
+{
+	struct registration_context *context = opaque;
+
+	errno = 0;
+	context->file = fopen(context->path, "rb");
+	if (context->file == NULL)
+		return registration_io_error(context, error, YT_IO_ERROR,
+		    "open registration input");
+	return true;
+}
+
+static bool
+registration_read_line(void *opaque, uint8_t *data, size_t capacity,
+    size_t *length, struct yt_error *error)
+{
+	struct registration_context *context = opaque;
+	enum yt_text_stream_line_status status;
+
+	if (context->file == NULL)
+		return registration_io_error(context, error, YT_INVALID,
+		    "registration LINE INPUT without file");
+	status = yt_text_stream_line_input_next(context->file, data, capacity,
+	    length);
+	if (status == YT_TEXT_STREAM_LINE_EOF)
+		return registration_io_error(context, error, YT_EOF,
+		    "registration LINE INPUT past end");
+	if (status == YT_TEXT_STREAM_LINE_TOO_LONG)
+		return registration_io_error(context, error, YT_NO_MEMORY,
+		    "registration LINE INPUT string space");
+	if (status == YT_TEXT_STREAM_LINE_IO_ERROR)
+		return registration_io_error(context, error, YT_IO_ERROR,
+		    "registration LINE INPUT");
+	return status == YT_TEXT_STREAM_LINE_OK;
+}
+
+static bool
+registration_centered(void *opaque, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	struct registration_context *context = opaque;
+
+	return session_centered_line_bytes(context->session, text, length,
+	    "registration centered terminal", error);
+}
+
+static bool
+registration_beep(void *opaque, struct yt_error *error)
+{
+	struct yt_present_result presentation;
+	enum yt_present_status status = yt_present_local_beep(&presentation);
+
+	(void)opaque;
+	if (status == YT_PRESENT_OK) {
+		yt_out_present_result(&presentation);
+		return true;
+	}
+	if (error != NULL) {
+		error->status = YT_RANGE;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    "registration local BEEP");
+	}
+	return false;
+}
+
+static bool
+registration_forced_local(void *opaque, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	struct yt_present_result presentation;
+	enum yt_present_status status;
+
+	(void)opaque;
+	status = yt_present_forced_local_line(text, length, &presentation);
+	if (status == YT_PRESENT_OK) {
+		yt_out_present_result(&presentation);
+		return true;
+	}
+	if (error != NULL) {
+		error->status = YT_RANGE;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    "registration forced local row");
+	}
+	return false;
+}
+
+static void
+registration_close_all(void *opaque)
+{
+	struct registration_context *context = opaque;
+
+	if (context->file != NULL) {
+		(void)fclose(context->file);
+		context->file = NULL;
+	}
+	(void)session_editor_close_all(context->session);
+}
+
+static void
+registration_end(void *opaque)
+{
+	struct registration_context *context = opaque;
+
+	/* END performs its own all-file cleanup even without explicit CLOSE ALL. */
+	(void)session_editor_close_all(context->session);
+	context->session->running = false;
+	context->session->terminated = true;
+}
+
 static bool
 registration(struct yt_session *session, struct yt_error *error)
 {
@@ -1330,19 +1528,27 @@ registration(struct yt_session *session, struct yt_error *error)
 		"Strategy Guide: www.starflt.com/yt.html      ",
 		"Version 3.6g * YT * Mod 02/09/2024  ",
 	};
-	char path[512];
-	FILE *file;
-	long size;
-	char registered_to[256];
-	char registered_by[256];
-	char key[256];
-	struct qb_val_result parsed;
-	double value = 21.0;
-	double expected;
+	static const struct yt_registration_ops ops = {
+		registration_close_file4,
+		registration_random_open,
+		registration_file_size,
+		registration_delete_empty,
+		registration_sequential_open,
+		registration_read_line,
+		registration_centered,
+		registration_beep,
+		registration_forced_local,
+		registration_close_all,
+		registration_end,
+	};
+	struct registration_context context = {session, NULL, {0}, false};
+	struct yt_registration_state state;
+	uint8_t *storage;
+	bool completed;
 	size_t index;
 
-	for (index = 0; index < 3; ++index) {
-		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	for (index = 0U; index < 3U; ++index) {
+		if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 		    "registration title blank", error))
 			return false;
 	}
@@ -1352,126 +1558,76 @@ registration(struct yt_session *session, struct yt_error *error)
 	    "registration copyright", error)
 	    || !session_centered_line(session, centered[2],
 	    "registration features", error)
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "registration title blank", error)
 	    || !session_centered_line(session, centered[3],
 	    "registration strategy", error)
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "registration title blank", error)
 	    || !session_centered_line(session, centered[4],
 	    "registration version", error)
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
 	    "registration title blank", error))
 		return false;
-	if (!yt_resolve_case_path("YT.REG", true, path, sizeof(path), error))
-		return false;
-	file = fopen(path, "ab");
-	if (file == NULL)
-		return false;
-	if (fclose(file) != 0)
-		return false;
-	file = fopen(path, "rb");
-	if (file == NULL)
-		return false;
-	if (fseek(file, 0, SEEK_END) != 0 || (size = ftell(file)) < 0) {
-		fclose(file);
+	storage = malloc(5U * YT_REGISTRATION_STRING_MAX);
+	if (storage == NULL) {
+		if (error != NULL) {
+			error->status = YT_NO_MEMORY;
+			(void)snprintf(error->operation,
+			    sizeof(error->operation), "%s",
+			    "registration string storage");
+		}
 		return false;
 	}
-	fclose(file);
-	if (size == 0) {
-		if (!yt_file_delete(path, false, error))
-			return false;
-		session->registered = false;
-		if (!session_centered_line(session,
-		    "UNREGISTERED EVALUATION COPY!",
-		    "registration evaluation row", error)
-		    || !session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "registration evaluation blank", error)
-		    || !session_centered_line(session,
-		    "PLEASE ENCOURAGE YOUR SYSOP TO REGISTER THIS GAME.",
-		    "registration evaluation row", error)
-		    || !session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "registration evaluation blank", error))
-			return false;
-		return session_wait(session, 10.0,
-		    "registration evaluation wait", error);
+	memset(&state, 0, sizeof(state));
+	for (index = 0U; index < 3U; ++index) {
+		state.line[index].data = storage
+		    + index * YT_REGISTRATION_STRING_MAX;
+		state.line[index].capacity = YT_REGISTRATION_STRING_MAX;
 	}
-	file = fopen(path, "rb");
-	if (file == NULL)
-		return false;
-	if (!read_physical_line(file, registered_to, sizeof(registered_to))
-	    || !read_physical_line(file, registered_by, sizeof(registered_by))
-	    || !read_physical_line(file, key, sizeof(key))) {
-		fclose(file);
+	for (index = 0U; index < 2U; ++index) {
+		state.display[index].data = storage
+		    + (index + 3U) * YT_REGISTRATION_STRING_MAX;
+		state.display[index].capacity = YT_REGISTRATION_STRING_MAX;
+	}
+	state.beta_only = false;
+	state.expected_evaluation_sum[0] = 2085U;
+	state.expected_evaluation_sum[1] = 3496U;
+	/* A478 clears the live validated flag before the first file operation. */
+	session->registered = false;
+	completed = yt_registration_run(&state, &ops, &context, error);
+	if (context.file != NULL)
+		(void)registration_close_file4(&context, NULL);
+	if (!completed) {
+		free(storage);
 		return false;
 	}
-	fclose(file);
-	qb_title_case(registered_to);
-	qb_title_case(registered_by);
-	for (index = 0; registered_to[index] != '\0'; ++index)
-		value += 3.0 * (double)(unsigned char)registered_to[index];
-	value = floor(sqrt(111355062389.0 * value));
-	for (index = 0; registered_by[index] != '\0'; ++index)
-		value += 5.0 * (double)(unsigned char)registered_by[index];
-	expected = floor(sqrt(7.0 * 111355062389.0 * value));
-	parsed = qb_val(key);
-	if (!parsed.valid || parsed.value != expected) {
-		struct yt_present_result presentation;
-		enum yt_present_status status;
-		static const uint8_t notice[] =
-		    " * INVALID REGISTRATION KEY! *";
-
-		status = yt_present_local_beep(&presentation);
-		if (status == YT_PRESENT_OK)
-			yt_out_present_result(&presentation);
-		if (status == YT_PRESENT_OK)
-			status = yt_present_local_beep(&presentation);
-		if (status == YT_PRESENT_OK)
-			yt_out_present_result(&presentation);
-		if (status == YT_PRESENT_OK)
-			status = yt_present_forced_local_line(notice,
-			    sizeof(notice) - 1U, &presentation);
-		if (status == YT_PRESENT_OK)
-			yt_out_present_result(&presentation);
-		if (status == YT_PRESENT_OK)
-			status = yt_present_local_beep(&presentation);
-		if (status == YT_PRESENT_OK)
-			yt_out_present_result(&presentation);
-		if (status == YT_PRESENT_OK)
-			status = yt_present_local_beep(&presentation);
-		if (status == YT_PRESENT_OK)
-			yt_out_present_result(&presentation);
-		if (status != YT_PRESENT_OK) {
-			if (error != NULL) {
-				error->status = YT_RANGE;
-				snprintf(error->operation,
-				    sizeof(error->operation), "%s",
-				    "invalid registration presentation");
-			}
+	session->registered = state.registered;
+	if (state.outcome == YT_REGISTRATION_INVALID_END
+	    || state.outcome == YT_REGISTRATION_BETA_END) {
+		free(storage);
+		return true;
+	}
+	if (state.outcome == YT_REGISTRATION_ANTI_TAMPER_BUSY_LOOP) {
+		/* Immutable shipped literals make this modeled terminal unreachable. */
+		session->running = false;
+		free(storage);
+		return true;
+	}
+	for (index = 0U; index < 2U; ++index) {
+		if (!session_centered_line_bytes(session, state.display[index].data,
+		    state.display[index].length, "registration result row", error)
+		    || !session_present_text(session, NULL, 0U,
+		    SESSION_PRESENT_LINE, "registration result blank", error)) {
+			free(storage);
 			return false;
 		}
-		session->running = false;
-		session->terminated = true;
-		return false;
 	}
-	session->registered = true;
-	{
-		char row[sizeof(registered_to) + 32U];
-
-		snprintf(row, sizeof(row), "Registered to %s", registered_to);
-		if (!session_centered_line(session, row,
-		    "registration registered-to row", error)
-		    || !session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "registration registered blank", error))
-			return false;
-		snprintf(row, sizeof(row), "Registered by %s", registered_by);
-		if (!session_centered_line(session, row,
-		    "registration registered-by row", error)
-		    || !session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "registration registered blank", error))
-			return false;
-	}
-	return session_wait(session, 2.0, "registration registered wait",
+	free(storage);
+	return session_wait(session,
+	    state.outcome == YT_REGISTRATION_REGISTERED ? 2.0 : 10.0,
+	    state.outcome == YT_REGISTRATION_REGISTERED
+	    ? "registration registered wait" : "registration evaluation wait",
 	    error);
 }
 

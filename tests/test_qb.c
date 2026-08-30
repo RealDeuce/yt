@@ -117,6 +117,28 @@ test_mbf64(void)
 	static const uint8_t maximum_double[8] =
 	    {0xf8, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f, 0xff};
 	uint8_t encoded[8];
+	uint8_t scratch[8];
+	uint8_t result[8];
+	static const uint8_t signature[8] =
+	    {0x00, 0x00, 0xa8, 0x43, 0x3b, 0x6a, 0x4f, 0xa5};
+	static const uint8_t first_sum[8] =
+	    {0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x08, 0x8c};
+	static const uint8_t first_product[8] =
+	    {0x00, 0x6a, 0xb3, 0x86, 0xb9, 0x94, 0x5c, 0xb0};
+	static const uint8_t first_root[8] =
+	    {0x3e, 0x9e, 0x8d, 0x48, 0xa9, 0xa1, 0x6d, 0x98};
+	static const uint8_t first_integer[8] =
+	    {0x00, 0x00, 0x00, 0x00, 0xa9, 0xa1, 0x6d, 0x98};
+	static const uint8_t second_sum[8] =
+	    {0x00, 0x00, 0x00, 0x00, 0x84, 0xb2, 0x6d, 0x98};
+	static const uint8_t second_product[8] =
+	    {0xb3, 0x21, 0x9e, 0xad, 0xfb, 0x95, 0x40, 0xbd};
+	static const uint8_t seven_product[8] =
+	    {0x7d, 0x5d, 0xea, 0x37, 0x3c, 0x83, 0x28, 0xc0};
+	static const uint8_t final_root[8] =
+	    {0xad, 0x10, 0x12, 0x8f, 0x2a, 0xb3, 0x4f, 0xa0};
+	static const uint8_t final_integer[8] =
+	    {0x00, 0x00, 0x00, 0x8f, 0x2a, 0xb3, 0x4f, 0xa0};
 
 	CHECK(qb_mbf64_decode(value) == 250000.0);
 	CHECK(double_bits(qb_mbf64_decode(tie_even_down))
@@ -140,6 +162,33 @@ test_mbf64(void)
 	    sizeof(encoded)) == 0);
 	CHECK(qb_mbf64_encode(INFINITY, encoded) == QB_MBF_OVERFLOW);
 	CHECK(qb_mbf64_encode(NAN, encoded) == QB_MBF_OVERFLOW);
+
+	/* The registration path needs all 56 MBF bits, not host binary64. */
+	CHECK(qb_mbf64_mul_raw(signature, first_sum, scratch) == QB_MBF_OK);
+	CHECK(memcmp(scratch, first_product, sizeof(scratch)) == 0);
+	CHECK(qb_mbf64_sqrt_raw(scratch, result) == QB_MBF_OK);
+	CHECK(memcmp(result, first_root, sizeof(result)) == 0);
+	CHECK(qb_mbf64_floor_positive_raw(result, scratch) == QB_MBF_OK);
+	CHECK(memcmp(scratch, first_integer, sizeof(scratch)) == 0);
+	CHECK(qb_mbf64_from_u64(UINT64_C(15577732), scratch) == QB_MBF_OK);
+	CHECK(memcmp(scratch, second_sum, sizeof(scratch)) == 0);
+	CHECK(qb_mbf64_mul_raw(signature, scratch, result) == QB_MBF_OK);
+	CHECK(memcmp(result, second_product, sizeof(result)) == 0);
+	CHECK(qb_mbf64_from_u64(7U, scratch) == QB_MBF_OK);
+	CHECK(qb_mbf64_mul_raw(result, scratch, result) == QB_MBF_OK);
+	CHECK(memcmp(result, seven_product, sizeof(result)) == 0);
+	CHECK(qb_mbf64_sqrt_raw(result, scratch) == QB_MBF_OK);
+	CHECK(memcmp(scratch, final_root, sizeof(scratch)) == 0);
+	CHECK(qb_mbf64_floor_positive_raw(scratch, result) == QB_MBF_OK);
+	CHECK(memcmp(result, final_integer, sizeof(result)) == 0);
+	memset(scratch, 0, sizeof(scratch));
+	CHECK(qb_mbf64_div_raw(signature, scratch, result) == QB_MBF_DOMAIN);
+	memcpy(scratch, signature, sizeof(scratch));
+	scratch[6] |= 0x80U;
+	CHECK(qb_mbf64_sqrt_raw(scratch, result) == QB_MBF_DOMAIN);
+	memcpy(scratch, "\xa5\x5a\x11\x22\x33\x44\xd5\0", 8U);
+	CHECK(qb_mbf64_sqrt_raw(scratch, result) == QB_MBF_OK
+	    && memcmp(result, scratch, sizeof(result)) == 0);
 }
 
 static void

@@ -55,6 +55,59 @@ yt_text_line_input_next(const uint8_t *data, size_t data_length,
 	return true;
 }
 
+enum yt_text_stream_line_status
+yt_text_stream_line_input_next(FILE *file, uint8_t *line, size_t capacity,
+    size_t *line_length)
+{
+	size_t used = 0U;
+	bool consumed = false;
+	bool overflow = false;
+
+	if (file == NULL || line_length == NULL
+	    || (line == NULL && capacity != 0U))
+		return YT_TEXT_STREAM_LINE_IO_ERROR;
+	*line_length = 0U;
+	for (;;) {
+		int value = fgetc(file);
+
+		if (value == EOF) {
+			if (ferror(file))
+				return YT_TEXT_STREAM_LINE_IO_ERROR;
+			break;
+		}
+		if ((uint8_t)value == 0x1aU) {
+			if (ungetc(value, file) == EOF)
+				return YT_TEXT_STREAM_LINE_IO_ERROR;
+			break;
+		}
+		consumed = true;
+		if ((uint8_t)value == '\r') {
+			int following = fgetc(file);
+
+			if (following == EOF) {
+				if (ferror(file))
+					return YT_TEXT_STREAM_LINE_IO_ERROR;
+			}
+			else if ((uint8_t)following != '\n'
+			    && ungetc(following, file) == EOF)
+				return YT_TEXT_STREAM_LINE_IO_ERROR;
+			break;
+		}
+		if ((uint8_t)value == 0U)
+			continue;
+		if (used < capacity)
+			line[used++] = (uint8_t)value;
+		else
+			overflow = true;
+	}
+	if (!consumed)
+		return YT_TEXT_STREAM_LINE_EOF;
+	if (overflow)
+		return YT_TEXT_STREAM_LINE_TOO_LONG;
+	*line_length = used;
+	return YT_TEXT_STREAM_LINE_OK;
+}
+
 bool
 yt_file_viewer_next(const uint8_t *data, size_t data_length,
     size_t *cursor, const char *pager_key, uint8_t *line, size_t capacity,

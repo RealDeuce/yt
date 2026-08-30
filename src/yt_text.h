@@ -19,6 +19,16 @@ bool yt_text_line_input_next(const uint8_t *data, size_t data_length,
     size_t *cursor, uint8_t *line, size_t capacity, size_t *line_length,
     bool *available);
 
+enum yt_text_stream_line_status {
+	YT_TEXT_STREAM_LINE_OK,
+	YT_TEXT_STREAM_LINE_EOF,
+	YT_TEXT_STREAM_LINE_TOO_LONG,
+	YT_TEXT_STREAM_LINE_IO_ERROR,
+};
+
+enum yt_text_stream_line_status yt_text_stream_line_input_next(FILE *file,
+    uint8_t *line, size_t capacity, size_t *line_length);
+
 struct yt_file_viewer_record {
 	bool eof_checked;
 	bool key_checked;

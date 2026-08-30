@@ -79,7 +79,7 @@ not authoritative. Use the corrected goal above in the new workspace.
 - OpenDoors is the `third_party/opendoors` submodule pinned to upstream commit
   `c70189d79e1743200eb01b7c7edfde3084e1a0a9`. The authoritative CMake build
   links `OpenDoors::Static`; it no longer consumes Synchronet's sibling copy.
-- A fresh Release build from the standalone checkout passes all nine CTest
+- A fresh Release build from the standalone checkout passes all eleven CTest
   suites.
 - Origin-aware local/remote input arbitration is implemented in
   `src/yt_input_model.c`; `src/yt_input.c` supplies legacy and merged polling,
@@ -167,6 +167,19 @@ not authoritative. Use the corrected goal above in the new workspace.
   and those four scanner-wrapper transfers are candidate. A complete injected
   scanner-to-A41C/FIELD/editor/queue/carrier/local/physical failure
   transaction remains open.
+- Registration root `YT-SUB:A46C`, its caller/return and all 32 formerly
+  missing internal transfers are now candidate. A provider-driven transaction
+  owns random create/LOF/close, empty delete or sequential reopen, exactly
+  three byte-oriented `LINE INPUT` records, binary title-case names, VAL,
+  registered/evaluation construction, invalid local BEEP/row/CLOSE ALL/END,
+  beta END and anti-tamper CLOSE ALL/nonreturn. The physical stream owner
+  leaves DOS EOF pending and consumes an over-capacity record before failure.
+  Portable limb arithmetic preserves all 56 MBF64 bits through add,
+  multiply, divide, the truncated-SINGLE seed, two Newton passes and positive
+  INT; shipped intermediate bytes are pinned, and 500 deterministic random
+  add/multiply/divide/SQR samples independently matched the upstream exact
+  Fraction oracle. Unrestricted BRUN heap/frame/file-block residue and DOS
+  device/fault joins remain explicit seams.
 - After the exact Transfer, Bank, Productivity, Clearance, Earth-front,
   Earth-purchase, Planet Rename, shared compatibility-uppercase, Team
   name/password, Planet inventory/menu-parent, shared sector-mine, YTMAINT
@@ -188,16 +201,17 @@ not authoritative. Use the corrected goal above in the new workspace.
   parent plus its active-main M cycle, the direct player-Attack parent
   plus its active-main A cycle, the deployed-fighter Attack/Bribe bodies, and
   the ordinary main-command front end, plus Mercenary defection, movement,
-  destination-selector and destination-combat transactions,
+  destination-selector and destination-combat transactions, and the exact
+  provider-driven YT.REG registration transaction,
   ledger dispositions are roots
   `168 candidate / 0 missing`, transfers
-  `5453 candidate / 1914 missing / 1 explicitly
-  deferred`, and presentation `136 candidate / 8 missing / 6 verified`.
+  `6933 candidate / 434 missing / 1 explicitly
+  deferred`, and presentation `143 candidate / 1 missing / 6 verified`.
   Current SHA-256
   values are roots
-  `f3b9c32197222e2739bdf74836ab1fd9f5879b63e7299dd798c29bd5703d06c2`,
-  transfers `c681fc09a6b644a418073e2c2239e3301b5b527953f355c9e29582f45f49cfbe`,
-  presentation `c2be106776f9161270b4c9376f59dec004f9ae10dfce6fe9a9a02149991ffdcf`,
+  `2834789f34e5e9e87580f15d9b52bcc23886c6397c6ea9ada11b9c7f194f01a7`,
+  transfers `e692722f3d0dbe94c2ee264842c6de94064f2e3d1629af24c7f7feb70015b5a5`,
+  presentation `dee9d952b32972acfca56851b16a8f2c6a63ca67204d1bcb2109740bf5faa12c`,
   and manifest
   `3552bd61c9cb9b7197aeb6fbad1f37cba69cd09f125d878d0c9072a691e8950a`.
   All immutable identity columns and TSV widths match the regenerated trusted
@@ -2614,8 +2628,10 @@ test_data: ok
 test_sound: ok
 input-model tests passed
 test_presentation: ok
+test_ytconfig_output: ok
 test_assets: ok
 test_score: ok
+test_route: ok
 test_clean_install: ok
 test_utilities: ok
 ```

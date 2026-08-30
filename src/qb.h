@@ -16,7 +16,8 @@ struct qb_val_result {
 enum qb_mbf_status {
 	QB_MBF_OK,
 	QB_MBF_UNDERFLOW,
-	QB_MBF_OVERFLOW
+	QB_MBF_OVERFLOW,
+	QB_MBF_DOMAIN
 };
 
 float qb_mbf32_decode(const uint8_t raw[4]);
@@ -24,6 +25,17 @@ enum qb_mbf_status qb_mbf32_encode(float value, uint8_t raw[4]);
 bool qb_mbf32_truth(const uint8_t raw[4]);
 double qb_mbf64_decode(const uint8_t raw[8]);
 enum qb_mbf_status qb_mbf64_encode(double value, uint8_t raw[8]);
+enum qb_mbf_status qb_mbf64_from_u64(uint64_t value, uint8_t raw[8]);
+enum qb_mbf_status qb_mbf64_add_raw(const uint8_t left[8],
+    const uint8_t right[8], uint8_t raw[8]);
+enum qb_mbf_status qb_mbf64_mul_raw(const uint8_t left[8],
+    const uint8_t right[8], uint8_t raw[8]);
+enum qb_mbf_status qb_mbf64_div_raw(const uint8_t numerator[8],
+    const uint8_t denominator[8], uint8_t raw[8]);
+enum qb_mbf_status qb_mbf64_sqrt_raw(const uint8_t operand[8],
+    uint8_t raw[8]);
+enum qb_mbf_status qb_mbf64_floor_positive_raw(const uint8_t operand[8],
+    uint8_t raw[8]);
 
 double qb_int(double value);
 double qb_fix(double value);

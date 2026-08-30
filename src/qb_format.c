@@ -26,6 +26,12 @@ static bool big_add(struct qb_big *left, const struct qb_big *right);
 static bool rounded_quotient(const struct qb_big *numerator,
     const struct qb_big *denominator, uint64_t maximum, uint64_t *result);
 
+struct mbf64_parts {
+	uint64_t significand;
+	int binary_shift;
+	bool negative;
+};
+
 static void
 big_normalize(struct qb_big *value)
 {
@@ -252,6 +258,314 @@ ratio_to_mbf64(const struct qb_big *numerator,
 		raw[6] |= 0x80U;
 	raw[7] = (uint8_t)(exponent + 129);
 	return true;
+}
+
+static struct mbf64_parts
+mbf64_parts(const uint8_t raw[8])
+{
+	struct mbf64_parts result = {0, 0, false};
+	size_t index;
+
+	if (raw[7] == 0U)
+		return result;
+	result.significand = UINT64_C(0x80000000000000);
+	for (index = 0; index < 6U; ++index)
+		result.significand |= (uint64_t)raw[index] << (index * 8U);
+	result.significand |= (uint64_t)(raw[6] & 0x7fU) << 48;
+	result.binary_shift = (int)raw[7] - 129 - 55;
+	result.negative = (raw[6] & 0x80U) != 0U;
+	return result;
+}
+
+static enum qb_mbf_status
+scaled_big_to_mbf64(const struct qb_big *magnitude, int binary_shift,
+    bool negative, uint8_t raw[8])
+{
+	struct qb_big numerator = *magnitude;
+	struct qb_big denominator = big_from_u64(1);
+
+	if (magnitude->used == 0U) {
+		memset(raw, 0, 8U);
+		return QB_MBF_OK;
+	}
+	if (binary_shift >= 0) {
+		if (!big_shift_left(&numerator, (unsigned)binary_shift))
+			return QB_MBF_OVERFLOW;
+	}
+	else if (!big_shift_left(&denominator, (unsigned)-binary_shift))
+		return QB_MBF_UNDERFLOW;
+	if (!ratio_to_mbf64(&numerator, &denominator, negative, raw))
+		return QB_MBF_OVERFLOW;
+	return raw[7] == 0U ? QB_MBF_UNDERFLOW : QB_MBF_OK;
+}
+
+enum qb_mbf_status
+qb_mbf64_from_u64(uint64_t value, uint8_t raw[8])
+{
+	struct qb_big magnitude = big_from_u64(value);
+
+	return scaled_big_to_mbf64(&magnitude, 0, false, raw);
+}
+
+enum qb_mbf_status
+qb_mbf64_add_raw(const uint8_t left_raw[8], const uint8_t right_raw[8],
+    uint8_t raw[8])
+{
+	struct mbf64_parts left;
+	struct mbf64_parts right;
+	struct qb_big left_magnitude;
+	struct qb_big right_magnitude;
+	struct qb_big result;
+	int binary_shift;
+	bool negative;
+	int comparison;
+
+	if (left_raw == NULL || right_raw == NULL || raw == NULL)
+		return QB_MBF_DOMAIN;
+	left = mbf64_parts(left_raw);
+	right = mbf64_parts(right_raw);
+	if (left.significand == 0U) {
+		memcpy(raw, right_raw, 8U);
+		if (raw[7] == 0U)
+			memset(raw, 0, 8U);
+		return QB_MBF_OK;
+	}
+	if (right.significand == 0U) {
+		memcpy(raw, left_raw, 8U);
+		return QB_MBF_OK;
+	}
+	binary_shift = left.binary_shift < right.binary_shift
+	    ? left.binary_shift : right.binary_shift;
+	left_magnitude = big_from_u64(left.significand);
+	right_magnitude = big_from_u64(right.significand);
+	if (!big_shift_left(&left_magnitude,
+	    (unsigned)(left.binary_shift - binary_shift))
+	    || !big_shift_left(&right_magnitude,
+	    (unsigned)(right.binary_shift - binary_shift)))
+		return QB_MBF_OVERFLOW;
+	if (left.negative == right.negative) {
+		result = left_magnitude;
+		if (!big_add(&result, &right_magnitude))
+			return QB_MBF_OVERFLOW;
+		negative = left.negative;
+	}
+	else {
+		comparison = big_compare(&left_magnitude, &right_magnitude);
+		if (comparison == 0) {
+			memset(raw, 0, 8U);
+			return QB_MBF_OK;
+		}
+		if (comparison > 0) {
+			result = left_magnitude;
+			big_subtract(&result, &right_magnitude);
+			negative = left.negative;
+		}
+		else {
+			result = right_magnitude;
+			big_subtract(&result, &left_magnitude);
+			negative = right.negative;
+		}
+	}
+	return scaled_big_to_mbf64(&result, binary_shift, negative, raw);
+}
+
+enum qb_mbf_status
+qb_mbf64_mul_raw(const uint8_t left_raw[8], const uint8_t right_raw[8],
+    uint8_t raw[8])
+{
+	struct mbf64_parts left;
+	struct mbf64_parts right;
+	struct qb_big left_magnitude;
+	struct qb_big product;
+
+	if (left_raw == NULL || right_raw == NULL || raw == NULL)
+		return QB_MBF_DOMAIN;
+	left = mbf64_parts(left_raw);
+	right = mbf64_parts(right_raw);
+	if (left.significand == 0U || right.significand == 0U) {
+		memset(raw, 0, 8U);
+		return QB_MBF_OK;
+	}
+	left_magnitude = big_from_u64(left.significand);
+	if (!big_multiply_u64(&left_magnitude, right.significand, &product))
+		return QB_MBF_OVERFLOW;
+	return scaled_big_to_mbf64(&product,
+	    left.binary_shift + right.binary_shift,
+	    left.negative != right.negative, raw);
+}
+
+enum qb_mbf_status
+qb_mbf64_div_raw(const uint8_t numerator_raw[8],
+    const uint8_t denominator_raw[8], uint8_t raw[8])
+{
+	struct mbf64_parts numerator;
+	struct mbf64_parts denominator;
+	struct qb_big numerator_big;
+	struct qb_big denominator_big;
+	int binary_shift;
+
+	if (numerator_raw == NULL || denominator_raw == NULL || raw == NULL)
+		return QB_MBF_DOMAIN;
+	numerator = mbf64_parts(numerator_raw);
+	denominator = mbf64_parts(denominator_raw);
+	if (denominator.significand == 0U)
+		return QB_MBF_DOMAIN;
+	if (numerator.significand == 0U) {
+		memset(raw, 0, 8U);
+		return QB_MBF_OK;
+	}
+	numerator_big = big_from_u64(numerator.significand);
+	denominator_big = big_from_u64(denominator.significand);
+	binary_shift = numerator.binary_shift - denominator.binary_shift;
+	if (binary_shift >= 0) {
+		if (!big_shift_left(&numerator_big, (unsigned)binary_shift))
+			return QB_MBF_OVERFLOW;
+	}
+	else if (!big_shift_left(&denominator_big, (unsigned)-binary_shift))
+		return QB_MBF_UNDERFLOW;
+	if (!ratio_to_mbf64(&numerator_big, &denominator_big,
+	    numerator.negative != denominator.negative, raw))
+		return QB_MBF_OVERFLOW;
+	return raw[7] == 0U ? QB_MBF_UNDERFLOW : QB_MBF_OK;
+}
+
+static uint64_t
+integer_sqrt_u64(uint64_t value)
+{
+	uint64_t result = 0;
+	uint64_t bit = UINT64_C(1) << 62;
+
+	while (bit > value)
+		bit >>= 2;
+	while (bit != 0U) {
+		if (value >= result + bit) {
+			value -= result + bit;
+			result = (result >> 1) + bit;
+		}
+		else
+			result >>= 1;
+		bit >>= 2;
+	}
+	return result;
+}
+
+static enum qb_mbf_status
+mbf32_sqrt_positive_raw(const uint8_t operand[4], uint8_t raw[4])
+{
+	uint32_t significand;
+	uint64_t radicand;
+	uint64_t root;
+	uint64_t midpoint;
+	int exponent;
+	int result_exponent;
+	unsigned shift;
+
+	if (operand[3] == 0U) {
+		memset(raw, 0, 4U);
+		return QB_MBF_OK;
+	}
+	if ((operand[2] & 0x80U) != 0U)
+		return QB_MBF_DOMAIN;
+	significand = UINT32_C(0x800000) | (uint32_t)operand[0]
+	    | ((uint32_t)operand[1] << 8)
+	    | ((uint32_t)(operand[2] & 0x7fU) << 16);
+	exponent = (int)operand[3] - 129;
+	result_exponent = exponent >= 0 ? exponent / 2
+	    : -((-exponent + 1) / 2);
+	shift = (unsigned)(23 + exponent - 2 * result_exponent);
+	radicand = (uint64_t)significand << shift;
+	root = integer_sqrt_u64(radicand);
+	midpoint = 2U * root + 1U;
+	if (4U * radicand > midpoint * midpoint
+	    || (4U * radicand == midpoint * midpoint && (root & 1U) != 0U))
+		++root;
+	if (root == UINT64_C(0x1000000)) {
+		root >>= 1;
+		++result_exponent;
+	}
+	if (result_exponent < -128) {
+		memset(raw, 0, 4U);
+		return QB_MBF_UNDERFLOW;
+	}
+	if (result_exponent > 126)
+		return QB_MBF_OVERFLOW;
+	root -= UINT64_C(0x800000);
+	raw[0] = (uint8_t)root;
+	raw[1] = (uint8_t)(root >> 8);
+	raw[2] = (uint8_t)(root >> 16);
+	raw[3] = (uint8_t)(result_exponent + 129);
+	return QB_MBF_OK;
+}
+
+enum qb_mbf_status
+qb_mbf64_sqrt_raw(const uint8_t operand[8], uint8_t raw[8])
+{
+	uint8_t seed_single[4];
+	uint8_t current[8] = {0};
+	uint8_t quotient[8];
+	uint8_t total[8];
+	enum qb_mbf_status status;
+	unsigned pass;
+
+	if (operand == NULL || raw == NULL)
+		return QB_MBF_DOMAIN;
+	if (operand[7] == 0U) {
+		/* BRUN clears only the exponent cell on the zero SQR lane. */
+		memcpy(raw, operand, 8U);
+		raw[7] = 0U;
+		return QB_MBF_OK;
+	}
+	if ((operand[6] & 0x80U) != 0U)
+		return QB_MBF_DOMAIN;
+	status = mbf32_sqrt_positive_raw(operand + 4U, seed_single);
+	if (status != QB_MBF_OK)
+		return status;
+	memcpy(current + 4U, seed_single, 4U);
+	for (pass = 0; pass < 2U; ++pass) {
+		status = qb_mbf64_div_raw(operand, current, quotient);
+		if (status != QB_MBF_OK)
+			return status;
+		status = qb_mbf64_add_raw(quotient, current, total);
+		if (status != QB_MBF_OK)
+			return status;
+		if (total[7] <= 1U) {
+			memset(current, 0, 8U);
+			return QB_MBF_UNDERFLOW;
+		}
+		memcpy(current, total, 8U);
+		--current[7];
+	}
+	memcpy(raw, current, 8U);
+	return QB_MBF_OK;
+}
+
+enum qb_mbf_status
+qb_mbf64_floor_positive_raw(const uint8_t operand[8], uint8_t raw[8])
+{
+	struct mbf64_parts value;
+	int exponent;
+	uint64_t integer;
+
+	if (operand == NULL || raw == NULL)
+		return QB_MBF_DOMAIN;
+	value = mbf64_parts(operand);
+	if (value.negative)
+		return QB_MBF_DOMAIN;
+	if (value.significand == 0U) {
+		memset(raw, 0, 8U);
+		return QB_MBF_OK;
+	}
+	exponent = (int)operand[7] - 129;
+	if (exponent < 0) {
+		memset(raw, 0, 8U);
+		return QB_MBF_OK;
+	}
+	if (exponent >= 55) {
+		memcpy(raw, operand, 8U);
+		return QB_MBF_OK;
+	}
+	integer = value.significand >> (unsigned)(55 - exponent);
+	return qb_mbf64_from_u64(integer, raw);
 }
 
 static bool

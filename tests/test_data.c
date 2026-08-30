@@ -692,6 +692,33 @@ test_line_input_grammar(void)
 		    line, sizeof(line), &length, &available));
 		CHECK(available && length == 0U && cursor == 1U);
 	}
+	{
+		FILE *file = tmpfile();
+
+		CHECK(file != NULL);
+		if (file != NULL) {
+			CHECK(fwrite(source, 1U, sizeof(source), file)
+			    == sizeof(source));
+			rewind(file);
+			CHECK(yt_text_stream_line_input_next(file, line,
+			    sizeof(line), &length) == YT_TEXT_STREAM_LINE_OK
+			    && length == 0U);
+			CHECK(yt_text_stream_line_input_next(file, line, 1U,
+			    &length) == YT_TEXT_STREAM_LINE_TOO_LONG);
+			CHECK(yt_text_stream_line_input_next(file, line,
+			    sizeof(line), &length) == YT_TEXT_STREAM_LINE_OK
+			    && length == sizeof(expected_two)
+			    && memcmp(line, expected_two, length) == 0);
+			CHECK(yt_text_stream_line_input_next(file, line,
+			    sizeof(line), &length) == YT_TEXT_STREAM_LINE_OK
+			    && length == 1U && line[0] == 'E');
+			CHECK(yt_text_stream_line_input_next(file, line,
+			    sizeof(line), &length) == YT_TEXT_STREAM_LINE_EOF);
+			CHECK(yt_text_stream_line_input_next(file, line,
+			    sizeof(line), &length) == YT_TEXT_STREAM_LINE_EOF);
+			CHECK(fclose(file) == 0);
+		}
+	}
 }
 
 static void
