@@ -187,10 +187,15 @@ not authoritative. Use the corrected goal above in the new workspace.
   terminated by the following empty line, and preserves both waits, the raw
   fractional `FOR` terminal, selector-four/selector-seven calls and the
   one-asterisk tracking heading. All fifteen presentation/sound/wait failure
-  cuts retain their exact prefix. The session route no longer deducts hop
-  loss before its first selected sector, and a black-hole RNG failure now
-  observes the already-mutated origin. Connected route/impact provider and
-  physical failure fixtures remain open.
+  cuts retain their exact prefix. A second injected owner covers
+  `AB3D..AD17`: same-sector origin/route-array mutation, route-child calls,
+  first-versus-later hop loss, the zero-hop/sub-one-energy footer gate, exact
+  hop row and half-second wait, non-black-hole impact handoff, and black-hole
+  origin/RNG/destination/blank/attention/blank/reroute order. Same-sector
+  completion now performs its terminal loss pass; exhausted impacts do not.
+  Every route callback cut is pinned, including already-mutated origin on RNG
+  failure. Connected impact provider and physical failure fixtures remain
+  open.
 - After the exact Transfer, Bank, Productivity, Clearance, Earth-front,
   Earth-purchase, Planet Rename, shared compatibility-uppercase, Team
   name/password, Planet inventory/menu-parent, shared sector-mine, YTMAINT
@@ -216,13 +221,13 @@ not authoritative. Use the corrected goal above in the new workspace.
   provider-driven YT.REG registration transaction,
   ledger dispositions are roots
   `168 candidate / 0 missing`, transfers
-  `6947 candidate / 420 missing / 1 explicitly
+  `6967 candidate / 400 missing / 1 explicitly
   deferred`, and presentation `143 candidate / 1 missing / 6 verified`.
   Current SHA-256
   values are roots
-  `5ae5df5a1b3bd42cfad59874c294da572e84e787bc364f73f55086c849a5c5d2`,
-  transfers `c236ad19c79984b7f0f0a8554fdd975d14e895023f94a5d7022eaec129d7ceeb`,
-  presentation `7527b56dd61331b39f2d057062434dfebe17777f702553db65c9bbf897655fae`,
+  `4ef81b69dfefcf02c8e27838623a8c65ecf8933d07b3ded94ac5c69c967f0703`,
+  transfers `b7897425bd3714c016e37e12ff0e4eacff45d0b6b77e825e04499d2c16085872`,
+  presentation `207a444489272829a1a16e961499dd7626b25746f922ce0403d305caeb8a0919`,
   and manifest
   `3552bd61c9cb9b7197aeb6fbad1f37cba69cd09f125d878d0c9072a691e8950a`.
   All immutable identity columns and TSV widths match the regenerated trusted

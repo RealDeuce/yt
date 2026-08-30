@@ -13276,6 +13276,69 @@ cruise_union_police_present(void *context, const uint8_t *text, size_t length,
 }
 
 static bool
+plasma_route_build(void *context, float origin, float destination,
+    int16_t *route, size_t route_capacity, float *status,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+	bool found;
+	enum yt_route_outcome outcome;
+
+	if (route_capacity != YT_ROUTE_CAPACITY)
+		return false;
+	return build_route(session, origin, destination, route, false, &found,
+	    &outcome, status, error);
+}
+
+static bool
+plasma_route_line(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	return session_present_text(context, text, length, SESSION_PRESENT_LINE,
+	    "plasma route line", error);
+}
+
+static bool
+plasma_route_attention(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	return session_attention_bytes(context, text, length,
+	    "plasma black-hole attention", error);
+}
+
+static bool
+plasma_route_wait(void *context, float duration, struct yt_error *error)
+{
+	return session_wait(context, duration, "plasma hop wait", error);
+}
+
+static bool
+plasma_route_random(void *context, float *value, struct yt_error *error)
+{
+	return random_value(context, value, error);
+}
+
+static bool
+plasma_route_impact(void *context, int hop, double *energy,
+    enum yt_projectile_plasma_impact_route *route, struct yt_error *error)
+{
+	if (!plasma_sector(context, hop, energy, error))
+		return false;
+	*route = *energy < 1.0 ? YT_PROJECTILE_PLASMA_FOOTER
+	    : YT_PROJECTILE_PLASMA_NEXT_HOP;
+	return true;
+}
+
+static bool
+plasma_route_footer(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	(void)text;
+	(void)length;
+	return plasma_footer(context, error);
+}
+
+static bool
 launch_projectile(struct yt_session *session, float target, float amount,
     bool plasma, float *returned_missiles, float *origin_alias,
     int *pending_counterattack, int *pending_xannor,
@@ -13315,6 +13378,40 @@ launch_projectile(struct yt_session *session, float target, float amount,
 		if (error != NULL)
 			error->status = YT_NO_MEMORY;
 		return false;
+	}
+	if (plasma) {
+		static const struct yt_projectile_plasma_route_ops ops = {
+			plasma_route_build,
+			plasma_route_line,
+			plasma_route_attention,
+			plasma_route_wait,
+			plasma_route_random,
+			plasma_route_impact,
+			plasma_route_footer,
+		};
+		float local_origin = (float)start;
+		float *origin = origin_alias != NULL ? origin_alias : &local_origin;
+		struct yt_projectile_plasma_route_state state = {
+			origin,
+			&destination,
+			&energy,
+			hop_loss,
+			{session->black_hole[0], session->black_hole[1]},
+			session->door->game.config.sector_offset,
+			session->door->game.config.port_offset,
+			route,
+			YT_ROUTE_CAPACITY,
+			YT_ROUTE_CAPACITY * 4U,
+			0.0f,
+			0.0f,
+			0U,
+			0U,
+		};
+		bool result = yt_projectile_plasma_route_run(&state, &ops,
+		    session, error);
+
+		free(route);
+		return result;
 	}
 	if ((float)start == destination && plasma) {
 			if (origin_alias != NULL)

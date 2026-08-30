@@ -1403,6 +1403,316 @@ check_projectile_plasma_opening_transaction(void)
 	    && !yt_projectile_plasma_opening_run(&state, &ops, &tape, NULL);
 }
 
+enum plasma_route_event {
+	PLASMA_ROUTE_BUILD = 1,
+	PLASMA_ROUTE_LINE,
+	PLASMA_ROUTE_WAIT,
+	PLASMA_ROUTE_RANDOM,
+	PLASMA_ROUTE_ATTENTION,
+	PLASMA_ROUTE_IMPACT,
+	PLASMA_ROUTE_FOOTER,
+};
+
+struct plasma_route_tape {
+	int events[16];
+	uint8_t lines[4][192];
+	size_t line_lengths[4];
+	uint8_t attention[192];
+	size_t attention_length;
+	size_t event_count;
+	size_t line_count;
+	size_t build_count;
+	size_t impact_count;
+	size_t fail_at;
+	bool empty_route;
+	bool impact_footer;
+	double impact_energy;
+	float draw;
+	float wait_duration;
+	int impact_hop;
+};
+
+static bool
+plasma_route_step(struct plasma_route_tape *tape, int event)
+{
+	size_t position = tape->event_count++;
+
+	if (position >= YT_ARRAY_LEN(tape->events))
+		return false;
+	tape->events[position] = event;
+	return tape->event_count != tape->fail_at;
+}
+
+static bool
+plasma_route_build(void *context, float origin, float destination,
+    int16_t *route, size_t route_capacity, float *status,
+    struct yt_error *error)
+{
+	struct plasma_route_tape *tape = context;
+	int from = (int)origin;
+	int to = (int)destination;
+	bool empty;
+
+	(void)error;
+	++tape->build_count;
+	if (!plasma_route_step(tape, PLASMA_ROUTE_BUILD))
+		return false;
+	if (from < 0 || to < 0 || (size_t)from >= route_capacity
+	    || (size_t)to >= route_capacity)
+		return false;
+	memset(route, 0, route_capacity * sizeof(*route));
+	empty = tape->empty_route;
+	*status = empty ? 1.0f : 0.0f;
+	if (!empty) {
+		route[from] = (int16_t)to;
+		route[to] = 0;
+	}
+	return true;
+}
+
+static bool
+plasma_route_line(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	struct plasma_route_tape *tape = context;
+	size_t position = tape->line_count++;
+
+	(void)error;
+	if (position >= YT_ARRAY_LEN(tape->lines)
+	    || length > sizeof(tape->lines[position]))
+		return false;
+	if (length != 0U)
+		memcpy(tape->lines[position], text, length);
+	tape->line_lengths[position] = length;
+	return plasma_route_step(tape, PLASMA_ROUTE_LINE);
+}
+
+static bool
+plasma_route_attention(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	struct plasma_route_tape *tape = context;
+
+	(void)error;
+	if (length > sizeof(tape->attention))
+		return false;
+	if (length != 0U)
+		memcpy(tape->attention, text, length);
+	tape->attention_length = length;
+	return plasma_route_step(tape, PLASMA_ROUTE_ATTENTION);
+}
+
+static bool
+plasma_route_wait(void *context, float duration, struct yt_error *error)
+{
+	struct plasma_route_tape *tape = context;
+
+	(void)error;
+	tape->wait_duration = duration;
+	return plasma_route_step(tape, PLASMA_ROUTE_WAIT);
+}
+
+static bool
+plasma_route_random(void *context, float *value, struct yt_error *error)
+{
+	struct plasma_route_tape *tape = context;
+
+	(void)error;
+	if (!plasma_route_step(tape, PLASMA_ROUTE_RANDOM))
+		return false;
+	*value = tape->draw;
+	return true;
+}
+
+static bool
+plasma_route_impact(void *context, int hop, double *energy,
+    enum yt_projectile_plasma_impact_route *route, struct yt_error *error)
+{
+	struct plasma_route_tape *tape = context;
+
+	(void)error;
+	++tape->impact_count;
+	tape->impact_hop = hop;
+	tape->impact_energy = *energy;
+	if (!plasma_route_step(tape, PLASMA_ROUTE_IMPACT))
+		return false;
+	if (tape->impact_footer) {
+		*energy = 0.0;
+		*route = YT_PROJECTILE_PLASMA_FOOTER;
+	}
+	else
+		*route = YT_PROJECTILE_PLASMA_NEXT_HOP;
+	return true;
+}
+
+static bool
+plasma_route_footer(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	(void)text;
+	(void)length;
+	(void)error;
+	return plasma_route_step(context, PLASMA_ROUTE_FOOTER);
+}
+
+static void
+plasma_route_fixture(struct yt_projectile_plasma_route_state *state,
+    struct plasma_route_tape *tape, int16_t *route, float *origin,
+    float *destination, double *energy)
+{
+	memset(tape, 0, sizeof(*tape));
+	tape->fail_at = SIZE_MAX;
+	tape->draw = 0.5f;
+	memset(route, 0, 2048U * sizeof(*route));
+	*origin = 7.0f;
+	*destination = 8.0f;
+	*energy = 1000.0;
+	memset(state, 0, sizeof(*state));
+	state->origin = origin;
+	state->destination = destination;
+	state->energy = energy;
+	state->hop_loss = 100.0f;
+	state->black_hole[0] = 1999.0f;
+	state->black_hole[1] = 1998.0f;
+	state->sector_record_offset = 51.0f;
+	state->port_record_offset = 2055.0f;
+	state->route = route;
+	state->route_capacity = 2048U;
+	state->step_limit = 32U;
+}
+
+static bool
+check_projectile_plasma_route_transaction(void)
+{
+	static const struct yt_projectile_plasma_route_ops ops = {
+		plasma_route_build,
+		plasma_route_line,
+		plasma_route_attention,
+		plasma_route_wait,
+		plasma_route_random,
+		plasma_route_impact,
+		plasma_route_footer,
+	};
+	static const int ordinary_events[] = {
+		PLASMA_ROUTE_BUILD, PLASMA_ROUTE_LINE, PLASMA_ROUTE_WAIT,
+		PLASMA_ROUTE_IMPACT, PLASMA_ROUTE_FOOTER,
+	};
+	static const int same_events[] = {
+		PLASMA_ROUTE_LINE, PLASMA_ROUTE_WAIT, PLASMA_ROUTE_IMPACT,
+		PLASMA_ROUTE_FOOTER,
+	};
+	static const int black_events[] = {
+		PLASMA_ROUTE_LINE, PLASMA_ROUTE_WAIT, PLASMA_ROUTE_RANDOM,
+		PLASMA_ROUTE_LINE, PLASMA_ROUTE_ATTENTION, PLASMA_ROUTE_LINE,
+		PLASMA_ROUTE_BUILD, PLASMA_ROUTE_FOOTER,
+	};
+	static const uint8_t hop_row[] =
+	    "Bolt entering sector 8. 1000 Megawatts remaining.";
+	static const uint8_t same_row[] =
+	    "Bolt entering sector 7. 1000 Megawatts remaining.";
+	static const uint8_t black_row[] =
+	    "The plasma bolt is deflected by a black hole in sector 7 to "
+	    "sector 1003!";
+	struct yt_projectile_plasma_route_state state;
+	struct plasma_route_tape tape;
+	int16_t route[2048];
+	float origin;
+	float destination;
+	double energy;
+	size_t failure;
+
+	plasma_route_fixture(&state, &tape, route, &origin, &destination,
+	    &energy);
+	if (!yt_projectile_plasma_route_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != YT_ARRAY_LEN(ordinary_events)
+	    || memcmp(tape.events, ordinary_events, sizeof(ordinary_events)) != 0
+	    || state.route_calls != 1U || state.hops != 1U
+	    || tape.impact_count != 1U || tape.impact_hop != 8
+	    || tape.impact_energy != 1000.0 || energy != 900.0
+	    || tape.wait_duration != 0.5f
+	    || tape.line_lengths[0] != sizeof(hop_row) - 1U
+	    || memcmp(tape.lines[0], hop_row, sizeof(hop_row) - 1U) != 0)
+		return false;
+
+	plasma_route_fixture(&state, &tape, route, &origin, &destination,
+	    &energy);
+	destination = origin;
+	if (!yt_projectile_plasma_route_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != YT_ARRAY_LEN(same_events)
+	    || memcmp(tape.events, same_events, sizeof(same_events)) != 0
+	    || origin != 0.0f || route[0] != 7 || route[7] != 0
+	    || state.route_calls != 0U || state.hops != 1U || energy != 900.0
+	    || tape.line_lengths[0] != sizeof(same_row) - 1U
+	    || memcmp(tape.lines[0], same_row, sizeof(same_row) - 1U) != 0)
+		return false;
+
+	plasma_route_fixture(&state, &tape, route, &origin, &destination,
+	    &energy);
+	tape.empty_route = true;
+	if (!yt_projectile_plasma_route_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != 2U || tape.events[0] != PLASMA_ROUTE_BUILD
+	    || tape.events[1] != PLASMA_ROUTE_FOOTER || state.hops != 0U
+	    || state.route_status != 1.0f || energy != 1000.0)
+		return false;
+
+	plasma_route_fixture(&state, &tape, route, &origin, &destination,
+	    &energy);
+	destination = origin;
+	tape.impact_footer = true;
+	if (!yt_projectile_plasma_route_run(&state, &ops, &tape, NULL)
+	    || memcmp(tape.events, same_events, sizeof(same_events)) != 0
+	    || energy != 0.0)
+		return false;
+
+	plasma_route_fixture(&state, &tape, route, &origin, &destination,
+	    &energy);
+	destination = origin;
+	state.black_hole[0] = origin;
+	tape.empty_route = true;
+	if (!yt_projectile_plasma_route_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != YT_ARRAY_LEN(black_events)
+	    || memcmp(tape.events, black_events, sizeof(black_events)) != 0
+	    || origin != 7.0f || destination != 1003.0f
+	    || state.route_calls != 1U || state.hops != 1U || energy != 1000.0
+	    || tape.attention_length != sizeof(black_row) - 1U
+	    || memcmp(tape.attention, black_row, sizeof(black_row) - 1U) != 0
+	    || tape.line_count != 3U || tape.line_lengths[1] != 0U
+	    || tape.line_lengths[2] != 0U)
+		return false;
+
+	for (failure = 1U; failure <= YT_ARRAY_LEN(ordinary_events); ++failure) {
+		plasma_route_fixture(&state, &tape, route, &origin, &destination,
+		    &energy);
+		tape.fail_at = failure;
+		if (yt_projectile_plasma_route_run(&state, &ops, &tape, NULL)
+		    || tape.event_count != failure
+		    || memcmp(tape.events, ordinary_events,
+		    failure * sizeof(ordinary_events[0])) != 0)
+			return false;
+	}
+	for (failure = 1U; failure <= YT_ARRAY_LEN(black_events); ++failure) {
+		plasma_route_fixture(&state, &tape, route, &origin, &destination,
+		    &energy);
+		destination = origin;
+		state.black_hole[0] = origin;
+		tape.empty_route = true;
+		tape.fail_at = failure;
+		if (yt_projectile_plasma_route_run(&state, &ops, &tape, NULL)
+		    || tape.event_count != failure
+		    || memcmp(tape.events, black_events,
+		    failure * sizeof(black_events[0])) != 0
+		    || (failure == 3U && (origin != 7.0f
+		    || destination != 7.0f)))
+			return false;
+	}
+
+	plasma_route_fixture(&state, &tape, route, &origin, &destination,
+	    &energy);
+	state.step_limit = 1U;
+	return !yt_projectile_plasma_route_run(NULL, &ops, &tape, NULL)
+	    && !yt_projectile_plasma_route_run(&state, &ops, &tape, NULL);
+}
+
 struct projectile_route_entry_tape {
 	struct yt_player player;
 	int requested_record;
@@ -11929,6 +12239,8 @@ main(void)
 		return fail("projectile cruise-opening transaction differs");
 	if (!check_projectile_plasma_opening_transaction())
 		return fail("projectile plasma-opening transaction differs");
+	if (!check_projectile_plasma_route_transaction())
+		return fail("projectile plasma-route transaction differs");
 	if (!check_projectile_route_entry_transaction())
 		return fail("projectile route-entry transaction differs");
 	if (!check_projectile_cruise_reroute_transaction())
