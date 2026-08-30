@@ -1536,8 +1536,19 @@ check_salvage_cargo_sampler(void)
 {
 	struct yt_salvage_cargo_state state;
 	struct salvage_draw_tape tape;
+	static const uint8_t salvor[] = {'A', 0, 'B'};
+	static const uint8_t victim[] = {'V', 0, 'X'};
+	static const uint8_t header_expected[] =
+	    " *** A\0B salvaged the following from V\0X's ship:";
+	static const uint8_t credit_expected[] = "  -  Credits: 2";
+	static const uint8_t mine_expected[] = "  -  Sector Mines:-1";
+	static const uint8_t empty_expected[] = "  -  2 empty holds";
+	static const uint8_t equipment_expected[] =
+	    "  -  3 holds of equipment";
 	static const float descending[4] = {4.0f, 3.0f, 2.0f, 1.0f};
 	static const float each_one[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+	uint8_t row[128];
+	size_t length;
 
 	memset(&state, 0, sizeof(state));
 	memset(&tape, 0, sizeof(tape));
@@ -1592,10 +1603,37 @@ check_salvage_cargo_sampler(void)
 	state.remaining = 3.0f;
 	tape.result[0] = 1.0f;
 	tape.fail_call = 2U;
-	return !yt_salvage_cargo_sample(&state, salvage_draw, &tape, NULL)
-	    && tape.calls == 2U && tape.range[0] == 3.0f
-	    && tape.range[1] == 2.0f && state.awards[0] == 1.0f
-	    && state.stock[0] == 2.0f && state.remaining == 2.0f;
+	if (yt_salvage_cargo_sample(&state, salvage_draw, &tape, NULL)
+	    || tape.calls != 2U || tape.range[0] != 3.0f
+	    || tape.range[1] != 2.0f || state.awards[0] != 1.0f
+	    || state.stock[0] != 2.0f || state.remaining != 2.0f)
+		return false;
+	return yt_salvage_header_row(salvor, sizeof(salvor), victim,
+	    sizeof(victim), row, sizeof(row), &length)
+	    && length == sizeof(header_expected) - 1U
+	    && memcmp(row, header_expected, length) == 0
+	    && yt_salvage_simple_row(YT_SALVAGE_CREDITS, 2.0f,
+	    row, sizeof(row), &length)
+	    && length == sizeof(credit_expected) - 1U
+	    && memcmp(row, credit_expected, length) == 0
+	    && yt_salvage_simple_row(YT_SALVAGE_MINES, -1.0f,
+	    row, sizeof(row), &length)
+	    && length == sizeof(mine_expected) - 1U
+	    && memcmp(row, mine_expected, length) == 0
+	    && yt_salvage_cargo_row(YT_SALVAGE_EMPTY_HOLDS, 2.0f,
+	    row, sizeof(row), &length)
+	    && length == sizeof(empty_expected) - 1U
+	    && memcmp(row, empty_expected, length) == 0
+	    && yt_salvage_cargo_row(YT_SALVAGE_EQUIPMENT, 3.0f,
+	    row, sizeof(row), &length)
+	    && length == sizeof(equipment_expected) - 1U
+	    && memcmp(row, equipment_expected, length) == 0
+	    && !yt_salvage_header_row(salvor, sizeof(salvor), victim,
+	    sizeof(victim), row, sizeof(header_expected) - 2U, &length)
+	    && !yt_salvage_simple_row((enum yt_salvage_simple_kind)99, 1.0f,
+	    row, sizeof(row), &length)
+	    && !yt_salvage_cargo_row((enum yt_salvage_cargo_kind)99, 1.0f,
+	    row, sizeof(row), &length);
 }
 
 struct port_name_tape {

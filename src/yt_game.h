@@ -299,6 +299,21 @@ struct yt_salvage_cargo_state {
 	float awards[4];
 };
 
+enum yt_salvage_simple_kind {
+	YT_SALVAGE_CREDITS,
+	YT_SALVAGE_MISSILES,
+	YT_SALVAGE_PLASMA,
+	YT_SALVAGE_GROUND_FORCES,
+	YT_SALVAGE_MINES,
+};
+
+enum yt_salvage_cargo_kind {
+	YT_SALVAGE_EMPTY_HOLDS,
+	YT_SALVAGE_ORE,
+	YT_SALVAGE_ORGANICS,
+	YT_SALVAGE_EQUIPMENT,
+};
+
 typedef bool (*yt_salvage_cargo_draw_fn)(void *context, float range,
     float *one_based, struct yt_error *error);
 
@@ -813,6 +828,13 @@ bool yt_counterlaunch_run(struct yt_counterlaunch_state *state,
     struct yt_error *error);
 bool yt_salvage_cargo_sample(struct yt_salvage_cargo_state *state,
     yt_salvage_cargo_draw_fn draw, void *context, struct yt_error *error);
+bool yt_salvage_header_row(const uint8_t *salvor, size_t salvor_length,
+    const uint8_t *victim, size_t victim_length, uint8_t *row,
+    size_t capacity, size_t *length);
+bool yt_salvage_simple_row(enum yt_salvage_simple_kind kind, float amount,
+    uint8_t *row, size_t capacity, size_t *length);
+bool yt_salvage_cargo_row(enum yt_salvage_cargo_kind kind, float amount,
+    uint8_t *row, size_t capacity, size_t *length);
 bool yt_current_player_hydrate_run(
     struct yt_current_player_hydration_state *state,
     yt_current_player_read_fn read_player, void *context,

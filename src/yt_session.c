@@ -3963,34 +3963,46 @@ common_fatal_self(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
-salvage_player(struct yt_session *session, int victim_record,
+salvage_player(struct yt_session *session, int victim_record, float killer,
     struct yt_error *error)
 {
+	static const uint8_t title[] =
+	    "You destroyed the ship and salvaged the following:";
+	static const uint8_t nothing[] = "  -  NOTHING!";
 	struct yt_player victim_storage;
 	const struct yt_player *victim = &victim_storage;
 	float draw[6];
 	float awards[6];
 	float cargo_awards[4] = {0};
-	char number[64];
-	char news[300];
+	uint8_t victim_name[YT_TEXT_FIELD_SIZE];
+	uint8_t current_name[YT_TEXT_FIELD_SIZE];
+	uint8_t row[300];
+	size_t victim_name_length;
+	size_t current_name_length;
+	size_t row_length;
 	bool emitted = false;
 	int index;
 
 	if (!yt_game_read_player(&session->door->game, victim_record,
 	    &victim_storage, error))
 		return false;
-	if (session->player_record < YT_PLAYER_FIRST
-	    || session->player_record
-	    > (int)session->door->game.config.sector_offset)
+	if (killer < (float)YT_PLAYER_FIRST
+	    || killer > session->door->game.config.sector_offset)
 		return true;
-	yt_out_line("");
-	yt_out_line("You destroyed the ship and salvaged the following:");
-	snprintf(news, sizeof(news),
-	    " *** %s salvaged the following from %s's ship:",
-	    session->player.name, victim->name);
-	if (!append_news(session, news, error))
+	if (!yt_player_stored_name(victim, victim_name, &victim_name_length,
+	    error)
+	    || !yt_player_stored_name(&session->player, current_name,
+	    &current_name_length, error)
+	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "salvage opening blank", error)
+	    || !session_present_text(session, title, sizeof(title) - 1U,
+	    SESSION_PRESENT_BOLD_LINE, "salvage title", error)
+	    || !yt_salvage_header_row(current_name, current_name_length,
+	    victim_name, victim_name_length, row, sizeof(row), &row_length)
+	    || !append_news_bytes(session, row, row_length, error)
+	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "salvage post-header blank", error))
 		return false;
-	yt_out_line("");
 	for (index = 0; index < 6; ++index) {
 		if (!random_value(session, &draw[index], error))
 			return false;
@@ -4006,10 +4018,6 @@ salvage_player(struct yt_session *session, int victim_record,
 	if (!reload_player(session, error))
 		return false;
 	{
-		static const char *const labels[5] = {
-			"Credits:", "Cruise Missiles:", "Plasma Bolts:",
-			"Ground Forces:", "Sector Mines:"
-		};
 		float *const fields[5] = {
 			&session->player.credits, &session->player.missiles,
 			&session->player.plasma, &session->player.ground_forces,
@@ -4023,12 +4031,13 @@ salvage_player(struct yt_session *session, int victim_record,
 			    "salvage simple-award wait", error))
 				return false;
 			emitted = true;
-			qb_str_single(number, sizeof(number), awards[index]);
-			snprintf(news, sizeof(news), "  -  %s%s",
-			    labels[index - 1], number);
-			if (!append_news(session, news, error))
+			if (!yt_salvage_simple_row(
+			    (enum yt_salvage_simple_kind)(index - 1), awards[index],
+			    row, sizeof(row), &row_length)
+			    || !append_news_bytes(session, row, row_length, error)
+			    || !session_present_text(session, row, row_length,
+			    SESSION_PRESENT_LINE, "salvage simple row", error))
 				return false;
-			yt_out_line(news);
 			*fields[index - 1] = single_add(*fields[index - 1],
 			    awards[index]);
 		}
@@ -4075,35 +4084,37 @@ salvage_player(struct yt_session *session, int victim_record,
 			return false;
 		{
 			static const int order[4] = {3, 0, 1, 2};
-			static const char *const suffix[4] = {
-				" empty holds", " holds of ore",
-				" holds of organics", " holds of equipment"
+			static const enum yt_salvage_cargo_kind row_kind[4] = {
+				YT_SALVAGE_EMPTY_HOLDS, YT_SALVAGE_ORE,
+				YT_SALVAGE_ORGANICS, YT_SALVAGE_EQUIPMENT
 			};
 
 			for (index = 0; index < 4; ++index) {
-				int kind = order[index];
+				int award_kind = order[index];
 
-				if (cargo_awards[kind] <= 0.0f)
+				if (cargo_awards[award_kind] <= 0.0f)
 					continue;
 				if (!session_wait(session, 0.5,
 				    "salvage cargo-row wait", error))
 					return false;
-				qb_str_single(number, sizeof(number),
-				    cargo_awards[kind]);
-				snprintf(news, sizeof(news), "  - %s%s",
-				    number, suffix[index]);
-				if (!append_news(session, news, error))
+				if (!yt_salvage_cargo_row(row_kind[index],
+				    cargo_awards[award_kind], row, sizeof(row), &row_length)
+				    || !append_news_bytes(session, row, row_length, error)
+				    || !session_present_text(session, row, row_length,
+				    SESSION_PRESENT_LINE, "salvage cargo row", error))
 					return false;
-				yt_out_line(news);
 			}
 		}
 	}
 	if (!emitted) {
 		if (!session_wait(session, 0.5, "salvage nothing wait", error))
 			return false;
-		if (!append_news(session, "  -  NOTHING!", error))
+		if (!append_news_bytes(session, nothing, sizeof(nothing) - 1U,
+		    error)
+		    || !session_present_text(session, nothing,
+		    sizeof(nothing) - 1U, SESSION_PRESENT_LINE,
+		    "salvage nothing row", error))
 			return false;
-		yt_out_line("  -  NOTHING!");
 	}
 	return session_wait(session, 4.0, "salvage final wait", error);
 }
@@ -4346,7 +4357,8 @@ attack_player(struct yt_session *session, int target_record,
 	if (!kill_player(session, target_record,
 	    (float)session->player_record, error))
 		return false;
-	if (!salvage_player(session, target_record, error))
+	if (!salvage_player(session, target_record,
+	    (float)session->player_record, error))
 		return false;
 	if (!(victim_mines > 0.0f))
 		return true;
@@ -12174,7 +12186,8 @@ missile_mines:
 			if (*counterattack == 0 && *xannor_provoker == 0) {
 				if (!session_sound(session, 3.0f,
 				    "cruise missile salvage sound", error)
-				    || !salvage_player(session, basic, error))
+				    || !salvage_player(session, basic,
+				    (float)session->player_record, error))
 					return false;
 			}
 			if (*remaining > 0.0f && mines > 0.0f)
@@ -12747,7 +12760,8 @@ plasma_reload_sector:
 					return false;
 				if (!session_sound(session, 3.0f,
 				    "plasma salvage sound", error)
-				    || !salvage_player(session, basic, error))
+				    || !salvage_player(session, basic,
+				    (float)session->player_record, error))
 					return false;
 			}
 			if (*energy > 0.0 && mines > 0.0f)
