@@ -1067,7 +1067,7 @@ struct viewer_pager_join {
 	struct yt_present_state presentation;
 	struct yt_b05d_key_state key_state;
 	struct pager_capture capture;
-	enum viewer_pager_event events[256];
+	enum viewer_pager_event events[4096];
 	size_t event_count;
 	size_t fail_at;
 	struct yt_error *active_error;
@@ -1078,7 +1078,12 @@ struct viewer_pager_join {
 	char response[80];
 	char source[80];
 	size_t source_length;
+	uint8_t *remote_output;
+	size_t remote_capacity;
+	size_t remote_length;
 	size_t sample_calls;
+	size_t response_calls;
+	size_t direct_calls;
 	size_t total_rows;
 	size_t position;
 	size_t eof_calls;
@@ -1087,13 +1092,13 @@ struct viewer_pager_join {
 	size_t active_sample;
 	size_t ctrl_x_row;
 	uint8_t line[32];
-	uint8_t local_rows[32][80];
-	size_t local_lengths[32];
+	uint8_t local_rows[600][80];
+	size_t local_lengths[600];
 	size_t local_row_count;
 	uint8_t local_fragment[80];
 	size_t local_fragment_length;
-	int local_foregrounds[64];
-	int local_backgrounds[64];
+	int local_foregrounds[1200];
+	int local_backgrounds[1200];
 	size_t local_color_count;
 	bool file_open;
 	bool final_blank;
@@ -1124,11 +1129,26 @@ viewer_pager_capture_result(struct viewer_pager_join *join,
 {
 	size_t index;
 
-	pager_capture_result(&join->capture, result);
+	if (join->remote_output == NULL)
+		pager_capture_result(&join->capture, result);
+	else {
+		CHECK(join->remote_length <= join->remote_capacity
+		    && result->remote_length <= join->remote_capacity
+		    - join->remote_length);
+		if (join->remote_length <= join->remote_capacity
+		    && result->remote_length <= join->remote_capacity
+		    - join->remote_length) {
+			memcpy(join->remote_output + join->remote_length,
+			    result->remote, result->remote_length);
+			join->remote_length += result->remote_length;
+		}
+	}
 	for (index = 0U; index < result->event_count; ++index) {
 		const struct yt_present_event *event = &result->events[index];
 
 		if (event->operation == YT_PRESENT_LOCAL_COLOR) {
+			join->capture.last_local_foreground = event->foreground;
+			join->capture.last_local_background = event->background;
 			CHECK(join->local_color_count
 			    < YT_ARRAY_LEN(join->local_foregrounds));
 			if (join->local_color_count
@@ -1239,6 +1259,7 @@ viewer_pager_response(void *context, char *response, size_t capacity)
 
 	if (!viewer_pager_record(join, VIEWER_PAGER_RESPONSE))
 		return false;
+	++join->response_calls;
 	if (length >= capacity)
 		return false;
 	yt_pager_editor_enter(&join->pager, join->accumulator,
@@ -1339,6 +1360,7 @@ viewer_pager_stream_present(void *context, const uint8_t *text,
 	bool ok;
 
 	if (!paged) {
+		++join->direct_calls;
 		CHECK(text == NULL && length == 0U);
 		if (yt_present_line(NULL, 0U, &join->presentation, &result)
 		    != YT_PRESENT_OK)
@@ -1514,7 +1536,7 @@ static const char *const startup_ascii_lines[] = {
 	"RE-USE THEM WITH ONE [!] KEYSTROKE BY HITTING CTRL-R!!",
 };
 
-struct startup_ascii_join {
+struct physical_viewer_join {
 	struct viewer_pager_join join;
 	struct yt_text_input input;
 	size_t close_calls;
@@ -1522,9 +1544,9 @@ struct startup_ascii_join {
 };
 
 static bool
-startup_ascii_close(void *context, struct yt_error *error)
+physical_viewer_close(void *context, struct yt_error *error)
 {
-	struct startup_ascii_join *startup = context;
+	struct physical_viewer_join *startup = context;
 	bool ok;
 
 	++startup->close_calls;
@@ -1535,9 +1557,9 @@ startup_ascii_close(void *context, struct yt_error *error)
 }
 
 static bool
-startup_ascii_open(void *context, const char *path, struct yt_error *error)
+physical_viewer_open(void *context, const char *path, struct yt_error *error)
 {
-	struct startup_ascii_join *startup = context;
+	struct physical_viewer_join *startup = context;
 	bool ok;
 
 	++startup->open_calls;
@@ -1548,18 +1570,18 @@ startup_ascii_open(void *context, const char *path, struct yt_error *error)
 }
 
 static bool
-startup_ascii_eof(void *context, bool *eof, struct yt_error *error)
+physical_viewer_eof(void *context, bool *eof, struct yt_error *error)
 {
-	struct startup_ascii_join *startup = context;
+	struct physical_viewer_join *startup = context;
 
 	return yt_text_input_eof(&startup->input, eof, error);
 }
 
 static bool
-startup_ascii_read(void *context, const uint8_t **line, size_t *length,
+physical_viewer_read(void *context, const uint8_t **line, size_t *length,
     bool *available, struct yt_error *error)
 {
-	struct startup_ascii_join *startup = context;
+	struct physical_viewer_join *startup = context;
 	bool ok = yt_text_input_read_line(&startup->input, line, length,
 	    available, error);
 
@@ -1569,21 +1591,21 @@ startup_ascii_read(void *context, const uint8_t **line, size_t *length,
 }
 
 static bool
-startup_ascii_present(void *context, const uint8_t *text, size_t length,
+physical_viewer_present(void *context, const uint8_t *text, size_t length,
     bool paged, struct yt_error *error)
 {
-	struct startup_ascii_join *startup = context;
+	struct physical_viewer_join *startup = context;
 
 	return viewer_pager_stream_present(&startup->join, text, length, paged,
 	    error);
 }
 
-static const struct yt_file_viewer_stream_ops startup_ascii_ops = {
-	startup_ascii_close,
-	startup_ascii_open,
-	startup_ascii_eof,
-	startup_ascii_read,
-	startup_ascii_present,
+static const struct yt_file_viewer_stream_ops physical_viewer_ops = {
+	physical_viewer_close,
+	physical_viewer_open,
+	physical_viewer_eof,
+	physical_viewer_read,
+	physical_viewer_present,
 };
 
 static bool
@@ -1634,7 +1656,7 @@ startup_ascii_expected(uint8_t *output, size_t capacity, bool ansi,
 }
 
 static void
-startup_ascii_initialize(struct startup_ascii_join *startup,
+startup_ascii_initialize(struct physical_viewer_join *startup,
     struct yt_file_viewer_stream_state *stream, bool ansi, float mode,
     float snoop, size_t ctrl_x_row)
 {
@@ -1656,7 +1678,7 @@ startup_ascii_initialize(struct startup_ascii_join *startup,
 }
 
 static bool
-startup_ascii_run(struct startup_ascii_join *startup,
+physical_viewer_run(struct physical_viewer_join *startup,
     struct yt_file_viewer_stream_state *stream, struct yt_error *error)
 {
 	struct yt_present_result result;
@@ -1669,7 +1691,7 @@ startup_ascii_run(struct startup_ascii_join *startup,
 	    &startup->join.pager.line_count, viewer_pager_stream_present,
 	    &startup->join, error))
 		return false;
-	return yt_file_viewer_stream_run(stream, &startup_ascii_ops, startup,
+	return yt_file_viewer_stream_run(stream, &physical_viewer_ops, startup,
 	    error);
 }
 
@@ -1696,7 +1718,7 @@ startup_ascii_check_rows(const struct viewer_pager_join *join,
 }
 
 static size_t
-startup_ascii_color_count(const struct viewer_pager_join *join,
+viewer_local_color_count(const struct viewer_pager_join *join,
     int foreground, int background)
 {
 	size_t count = 0U;
@@ -1713,7 +1735,7 @@ startup_ascii_color_count(const struct viewer_pager_join *join,
 static void
 test_startup_ascii_physical_join(void)
 {
-	struct startup_ascii_join startup;
+	struct physical_viewer_join startup;
 	struct yt_file_viewer_stream_state stream;
 	struct yt_error error;
 	uint8_t expected[600];
@@ -1722,7 +1744,7 @@ test_startup_ascii_physical_join(void)
 	memset(&startup, 0, sizeof(startup));
 	startup_ascii_initialize(&startup, &stream, true, 0.0f, -1.0f, 0U);
 	yt_error_clear(&error);
-	CHECK(startup_ascii_run(&startup, &stream, &error));
+	CHECK(physical_viewer_run(&startup, &stream, &error));
 	expected_length = startup_ascii_expected(expected, sizeof(expected),
 	    true, YT_ARRAY_LEN(startup_ascii_lines));
 	CHECK(expected_length == 544U
@@ -1747,9 +1769,9 @@ test_startup_ascii_physical_join(void)
 	    && startup.join.presentation.cached_foreground == 6.0f
 	    && startup.join.capture.last_local_foreground == 3
 	    && startup.join.local_color_count == 39U
-	    && startup_ascii_color_count(&startup.join, 2, 0) == 17U
-	    && startup_ascii_color_count(&startup.join, 3, 0) == 4U
-	    && startup_ascii_color_count(&startup.join, 7, 0) == 18U
+	    && viewer_local_color_count(&startup.join, 2, 0) == 17U
+	    && viewer_local_color_count(&startup.join, 3, 0) == 4U
+	    && viewer_local_color_count(&startup.join, 7, 0) == 18U
 	    && startup.join.source_length
 	    == strlen(startup_ascii_lines[16])
 	    && memcmp(startup.join.source, startup_ascii_lines[16],
@@ -1758,7 +1780,7 @@ test_startup_ascii_physical_join(void)
 
 	memset(&startup, 0, sizeof(startup));
 	startup_ascii_initialize(&startup, &stream, false, 0.0f, -1.0f, 0U);
-	CHECK(startup_ascii_run(&startup, &stream, NULL));
+	CHECK(physical_viewer_run(&startup, &stream, NULL));
 	expected_length = startup_ascii_expected(expected, sizeof(expected),
 	    false, YT_ARRAY_LEN(startup_ascii_lines));
 	CHECK(expected_length == 524U
@@ -1766,7 +1788,7 @@ test_startup_ascii_physical_join(void)
 	    && memcmp(startup.join.capture.remote, expected,
 	    expected_length) == 0
 	    && startup.join.local_color_count == 18U
-	    && startup_ascii_color_count(&startup.join, 7, 0) == 18U
+	    && viewer_local_color_count(&startup.join, 7, 0) == 18U
 	    && startup.join.capture.last_local_foreground == 7);
 	startup_ascii_check_rows(&startup.join,
 	    YT_ARRAY_LEN(startup_ascii_lines));
@@ -1774,7 +1796,7 @@ test_startup_ascii_physical_join(void)
 
 	memset(&startup, 0, sizeof(startup));
 	startup_ascii_initialize(&startup, &stream, true, 1.0f, -1.0f, 0U);
-	CHECK(startup_ascii_run(&startup, &stream, NULL));
+	CHECK(physical_viewer_run(&startup, &stream, NULL));
 	CHECK(startup.join.capture.remote_length == 0U
 	    && startup.join.sample_calls == 18U
 	    && stream.read_count == 17U);
@@ -1784,7 +1806,7 @@ test_startup_ascii_physical_join(void)
 
 	memset(&startup, 0, sizeof(startup));
 	startup_ascii_initialize(&startup, &stream, true, 2.0f, 0.0f, 0U);
-	CHECK(startup_ascii_run(&startup, &stream, NULL));
+	CHECK(physical_viewer_run(&startup, &stream, NULL));
 	CHECK(startup.join.capture.remote_length == 6U
 	    && memcmp(startup.join.capture.remote,
 	    "\r\n\r\n\r\n", 6U) == 0
@@ -1800,7 +1822,7 @@ test_startup_ascii_physical_join(void)
 	(void)snprintf(startup.join.queue, sizeof(startup.join.queue), "%s",
 	    "abc");
 	startup.join.queue_length = 3U;
-	CHECK(startup_ascii_run(&startup, &stream, NULL));
+	CHECK(physical_viewer_run(&startup, &stream, NULL));
 	expected_length = startup_ascii_expected(expected, sizeof(expected),
 	    true, 2U);
 	CHECK(startup.join.capture.remote_length == expected_length
@@ -1814,6 +1836,181 @@ test_startup_ascii_physical_join(void)
 	    && startup.join.queue_length == 0U);
 	startup_ascii_check_rows(&startup.join, 2U);
 	yt_text_input_destroy(&startup.input);
+}
+
+static uint64_t
+viewer_bytes_fnv1a64(const uint8_t *data, size_t length)
+{
+	uint64_t value = UINT64_C(14695981039346656037);
+	size_t index;
+
+	for (index = 0U; index < length; ++index) {
+		value ^= data[index];
+		value *= UINT64_C(1099511628211);
+	}
+	return value;
+}
+
+static uint64_t
+viewer_rows_fnv1a64(const struct viewer_pager_join *join)
+{
+	uint64_t value = UINT64_C(14695981039346656037);
+	size_t row;
+
+	for (row = 0U; row < join->local_row_count; ++row) {
+		size_t index;
+		uint8_t low = (uint8_t)(join->local_lengths[row] & 0xffU);
+		uint8_t high = (uint8_t)(join->local_lengths[row] >> 8U);
+
+		value ^= low;
+		value *= UINT64_C(1099511628211);
+		value ^= high;
+		value *= UINT64_C(1099511628211);
+		for (index = 0U; index < join->local_lengths[row]; ++index) {
+			value ^= join->local_rows[row][index];
+			value *= UINT64_C(1099511628211);
+		}
+	}
+	return value;
+}
+
+static void
+instruction_viewer_initialize(struct physical_viewer_join *viewer,
+    struct yt_file_viewer_stream_state *stream, int foreground, bool ansi,
+    uint8_t *remote, size_t remote_capacity)
+{
+	viewer_pager_initialize(&viewer->join, stream, 0U, 0.0f, "", 0U);
+	viewer->join.presentation = state(ansi);
+	viewer->join.presentation.foreground = (float)foreground;
+	viewer->join.presentation.cached_foreground =
+	    ansi ? (float)foreground : 0.0f;
+	viewer->join.pager.foreground = foreground;
+	viewer->join.pager.nonstop = 0.0f;
+	viewer->join.accumulator[0] = '\0';
+	viewer->join.queue[0] = '\0';
+	viewer->join.queue_position = 0U;
+	viewer->join.queue_length = 0U;
+	viewer->join.remote_output = remote;
+	viewer->join.remote_capacity = remote_capacity;
+	stream->path = YT_DATA_DIR "YTINSTR.DOC";
+	stream->play.saved_foreground = (float)foreground;
+	stream->play.saved_pager_foreground = foreground;
+	yt_text_input_init(&viewer->input);
+}
+
+static void
+test_instruction_physical_viewer_join(void)
+{
+	static const struct {
+		int foreground;
+		bool ansi;
+		size_t remote_length;
+		uint64_t remote_fnv;
+		size_t color_count;
+		size_t color_2;
+		size_t color_5;
+		size_t color_6;
+		size_t color_7;
+		size_t color_14;
+		int final_local_foreground;
+		float final_cached_foreground;
+	} cases[] = {
+		{2, true, 26713U, UINT64_C(0x42977bcf6e6d8fd2),
+		    1158U, 546U, 0U, 23U, 566U, 23U, 2, 2.0f},
+		{2, false, 25977U, UINT64_C(0x6dfc2dba3b88596e),
+		    566U, 0U, 0U, 0U, 566U, 0U, 7, 0.0f},
+		{5, true, 26733U, UINT64_C(0xab525e365be36563),
+		    1158U, 542U, 4U, 23U, 566U, 23U, 5, 5.0f},
+		{5, false, 25977U, UINT64_C(0x6dfc2dba3b88596e),
+		    566U, 0U, 0U, 0U, 566U, 0U, 7, 0.0f},
+	};
+	static const uint8_t final_row[] =
+	    "Door Distribution System Headquarters";
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	uint8_t remote[27000];
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		instruction_viewer_initialize(&viewer, &stream,
+		    cases[pass].foreground, cases[pass].ansi, remote,
+		    sizeof(remote));
+		CHECK(physical_viewer_run(&viewer, &stream, NULL));
+		if (viewer.join.remote_length != cases[pass].remote_length
+		    || viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+		    != cases[pass].remote_fnv
+		    || viewer.join.local_row_count != 569U
+		    || viewer_rows_fnv1a64(&viewer.join)
+		    != UINT64_C(0x2eff94178c21f61e)
+		    || viewer.join.event_count != 2853U) {
+			fprintf(stderr, "instruction pass %zu: remote=%zu/%llx "
+			    "rows=%zu/%llx colors=%zu "
+			    "c2=%zu c5=%zu c6=%zu c7=%zu c14=%zu "
+			    "cache=%g local=%d samples=%zu responses=%zu "
+			    "direct=%zu events=%zu\n", pass,
+			    viewer.join.remote_length,
+			    (unsigned long long)viewer_bytes_fnv1a64(remote,
+			    viewer.join.remote_length), viewer.join.local_row_count,
+			    (unsigned long long)viewer_rows_fnv1a64(&viewer.join),
+			    viewer.join.local_color_count,
+			    viewer_local_color_count(&viewer.join, 2, 0),
+			    viewer_local_color_count(&viewer.join, 5, 0),
+			    viewer_local_color_count(&viewer.join, 6, 0),
+			    viewer_local_color_count(&viewer.join, 7, 0),
+			    viewer_local_color_count(&viewer.join, 14, 0),
+			    (double)viewer.join.presentation.cached_foreground,
+			    viewer.join.capture.last_local_foreground,
+			    viewer.join.sample_calls, viewer.join.response_calls,
+			    viewer.join.direct_calls, viewer.join.event_count);
+		}
+		CHECK(viewer.join.remote_length == cases[pass].remote_length
+		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+		    == cases[pass].remote_fnv);
+		CHECK(viewer.join.local_row_count == 569U
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == UINT64_C(0x2eff94178c21f61e)
+		    && viewer.join.local_fragment_length == 0U
+		    && viewer.join.local_color_count == cases[pass].color_count
+		    && viewer_local_color_count(&viewer.join, 2, 0)
+		    == cases[pass].color_2
+		    && viewer_local_color_count(&viewer.join, 5, 0)
+		    == cases[pass].color_5
+		    && viewer_local_color_count(&viewer.join, 6, 0)
+		    == cases[pass].color_6
+		    && viewer_local_color_count(&viewer.join, 7, 0)
+		    == cases[pass].color_7
+		    && viewer_local_color_count(&viewer.join, 14, 0)
+		    == cases[pass].color_14
+		    && viewer.join.capture.last_local_foreground
+		    == cases[pass].final_local_foreground);
+		CHECK(viewer.join.presentation.cached_foreground
+		    == cases[pass].final_cached_foreground
+		    && viewer.join.presentation.foreground
+		    == (float)cases[pass].foreground
+		    && viewer.join.pager.foreground == cases[pass].foreground
+		    && viewer.join.pager.line_count == 0.0f
+		    && viewer.join.pager.nonstop == 0.0f
+		    && viewer.join.pager.key[0] == '\0'
+		    && viewer.join.sample_calls == 566U
+		    && viewer.join.response_calls == 23U
+		    && viewer.join.direct_calls == 2U
+		    && viewer.join.event_count == 2853U);
+		CHECK(viewer.join.position == 542U
+		    && stream.eof_checks == 543U
+		    && stream.key_checks == 543U
+		    && stream.read_count == 542U
+		    && stream.line_count == 542U
+		    && !stream.file_open && !viewer.join.file_open
+		    && viewer.input.file == NULL && viewer.close_calls == 2U
+		    && viewer.open_calls == 1U
+		    && viewer.join.source_length == sizeof(final_row) - 1U
+		    && memcmp(viewer.join.source, final_row,
+		    sizeof(final_row) - 1U) == 0
+		    && viewer.join.accumulator[0] == '\0'
+		    && viewer.join.queue_length == 0U);
+		yt_text_input_destroy(&viewer.input);
+	}
 }
 
 static void
@@ -11721,6 +11918,7 @@ main(void)
 	test_pager_gates();
 	test_file_viewer_pager_join();
 	test_startup_ascii_physical_join();
+	test_instruction_physical_viewer_join();
 	test_sector_private_pager();
 	test_sector_scanner_rows();
 	test_radio_private_pager();
