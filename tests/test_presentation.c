@@ -10106,13 +10106,20 @@ enum normal_exit_info_effect {
 	NORMAL_EXIT_INFO_READ_FINAL,
 };
 
+enum normal_exit_info_team_fixture_route {
+	NORMAL_EXIT_INFO_TEAM_NONE,
+	NORMAL_EXIT_INFO_TEAM_SELF,
+	NORMAL_EXIT_INFO_TEAM_OTHER,
+	NORMAL_EXIT_INFO_TEAM_PROMOTION,
+};
+
 struct normal_exit_info_observation {
 	struct yt_present_result refresh;
 	struct yt_present_time_state time;
 	struct yt_info_team_state team;
 	struct yt_sector written_overlay;
 	enum normal_exit_info_effect effects[16];
-	float player_records[2];
+	float player_records[3];
 	size_t effect_count;
 	size_t player_read_count;
 	size_t timer_used;
@@ -10132,7 +10139,7 @@ struct normal_exit_info_context {
 	struct yt_sector overlay;
 	struct normal_exit_info_observation *observation;
 	bool refresh_due;
-	bool promotion;
+	enum normal_exit_info_team_fixture_route team_route;
 };
 
 static bool
@@ -10229,7 +10236,8 @@ normal_exit_info_team_load(void *context, float team_id,
 	    || !normal_exit_info_effect(fixture,
 	    NORMAL_EXIT_INFO_LOAD_TEAM))
 		return false;
-	*captain_flag = 0.0f;
+	*captain_flag = fixture->team_route == NORMAL_EXIT_INFO_TEAM_SELF
+	    ? -1.0f : 0.0f;
 	*team = fixture->team;
 	return true;
 }
@@ -10297,7 +10305,7 @@ normal_exit_info_team(void *context, struct yt_error *error)
 	struct viewer_pager_join *join = &fixture->viewer->join;
 	struct yt_present_result result;
 
-	if (fixture->promotion) {
+	if (fixture->team_route != NORMAL_EXIT_INFO_TEAM_NONE) {
 		if (fixture->observation == NULL)
 			return false;
 		memset(&fixture->observation->team, 0,
@@ -10377,8 +10385,36 @@ struct normal_exit_info_values {
 	size_t cached_name_length;
 	struct normal_exit_info_observation *observation;
 	bool refresh_due;
-	bool promotion;
+	enum normal_exit_info_team_fixture_route team_route;
 };
+
+static struct normal_exit_info_values
+normal_exit_info_values_fixture(void)
+{
+	static const uint8_t name[] = "Pilot";
+	struct normal_exit_info_values values;
+
+	memset(&values, 0, sizeof(values));
+	values.player.credits = 12345.0f;
+	values.player.sector = 733.0f;
+	values.player.turns = 42.0f;
+	values.player.holds = 20.0f;
+	values.player.fighters = 1000.0f;
+	values.player.ore = 3.0f;
+	values.player.mines = 4.0f;
+	values.player.organics = 5.0f;
+	values.player.missiles = 6.0f;
+	values.player.equipment = 7.0f;
+	values.player.danger_scanner = 1.0f;
+	values.player.ports_owned = 8.0f;
+	values.player.shields = 90.0f;
+	values.player.cloak = 0.75f;
+	values.player.ground_forces = 9.0f;
+	values.player.plasma = 10.0f;
+	values.cached_name = name;
+	values.cached_name_length = sizeof(name) - 1U;
+	return values;
+}
 
 static bool
 normal_exit_info_run(struct physical_viewer_join *viewer,
@@ -10425,7 +10461,7 @@ normal_exit_info_run(struct physical_viewer_join *viewer,
 		fixture.player = values->player;
 		fixture.observation = values->observation;
 		fixture.refresh_due = values->refresh_due;
-		fixture.promotion = values->promotion;
+		fixture.team_route = values->team_route;
 		panel.cached_name = values->cached_name;
 		panel.cached_name_length = values->cached_name_length;
 	}
@@ -10438,20 +10474,31 @@ normal_exit_info_run(struct physical_viewer_join *viewer,
 			memcpy(fixture.time.text, time_text, time_length);
 		fixture.time.text_length = time_length;
 	}
-	if (fixture.promotion) {
+	if (fixture.team_route != NORMAL_EXIT_INFO_TEAM_NONE) {
 		static const uint8_t team_name[] = "Raiders";
-		static const uint8_t captain_name[] = "Wrong Team";
+		static const uint8_t valid_captain_name[] = "LongCaptainName";
+		static const uint8_t stale_captain_name[] = "Wrong Team";
 
 		fixture.team_current.team = 7.0f;
-		memcpy(fixture.team_captain.name, captain_name,
-		    sizeof(captain_name) - 1U);
-		fixture.team_captain.name_length =
-		    (float)(sizeof(captain_name) - 1U);
-		fixture.team_captain.team = 8.0f;
 		fixture.team.id = 7;
 		memcpy(fixture.team.name, team_name, sizeof(team_name) - 1U);
 		fixture.team.name_length = sizeof(team_name) - 1U;
-		fixture.team.captain = 3.0f;
+		fixture.team.captain = fixture.team_route
+		    == NORMAL_EXIT_INFO_TEAM_SELF ? 2.0f : 3.0f;
+		if (fixture.team_route == NORMAL_EXIT_INFO_TEAM_OTHER) {
+			memcpy(fixture.team_captain.name, valid_captain_name,
+			    sizeof(valid_captain_name) - 1U);
+			fixture.team_captain.name_length = 4.0f;
+			fixture.team_captain.team = 7.0f;
+		}
+		else if (fixture.team_route
+		    == NORMAL_EXIT_INFO_TEAM_PROMOTION) {
+			memcpy(fixture.team_captain.name, stale_captain_name,
+			    sizeof(stale_captain_name) - 1U);
+			fixture.team_captain.name_length =
+			    (float)(sizeof(stale_captain_name) - 1U);
+			fixture.team_captain.team = 8.0f;
+		}
 		memset(fixture.overlay.record.bytes, 0xa5,
 		    sizeof(fixture.overlay.record.bytes));
 	}
@@ -11062,27 +11109,9 @@ test_planet_info_promotion_refresh_cycle_presentation(void)
 	size_t info_end;
 	size_t pass;
 
-	memset(&info, 0, sizeof(info));
-	info.player.credits = 12345.0f;
-	info.player.sector = 733.0f;
-	info.player.turns = 42.0f;
-	info.player.holds = 20.0f;
-	info.player.fighters = 1000.0f;
-	info.player.ore = 3.0f;
-	info.player.mines = 4.0f;
-	info.player.organics = 5.0f;
-	info.player.missiles = 6.0f;
-	info.player.equipment = 7.0f;
-	info.player.danger_scanner = 1.0f;
-	info.player.ports_owned = 8.0f;
-	info.player.shields = 90.0f;
-	info.player.cloak = 0.75f;
-	info.player.ground_forces = 9.0f;
-	info.player.plasma = 10.0f;
-	info.cached_name = (const uint8_t *)"Pilot";
-	info.cached_name_length = 5U;
+	info = normal_exit_info_values_fixture();
 	info.refresh_due = true;
-	info.promotion = true;
+	info.team_route = NORMAL_EXIT_INFO_TEAM_PROMOTION;
 	memset(expected_overlay.bytes, 0xa5, sizeof(expected_overlay.bytes));
 	CHECK(yt_record_set_number(&expected_overlay, YT_F77, 2.0f));
 	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
@@ -11176,6 +11205,150 @@ test_planet_info_promotion_refresh_cycle_presentation(void)
 		    && !stream.file_open && !viewer.join.file_open
 		    && viewer.input.file == NULL && viewer.close_calls == 0U
 		    && viewer.open_calls == 0U);
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
+static void
+test_planet_info_captain_route_cycles_presentation(void)
+{
+	static const enum normal_exit_info_effect self_effects[] = {
+		NORMAL_EXIT_INFO_READ_CURRENT,
+		NORMAL_EXIT_INFO_LOAD_TEAM,
+		NORMAL_EXIT_INFO_TEAM_ROW,
+		NORMAL_EXIT_INFO_TEAM_ROW,
+		NORMAL_EXIT_INFO_TEAM_ROW,
+		NORMAL_EXIT_INFO_TEAM_ROW,
+		NORMAL_EXIT_INFO_READ_FINAL,
+	};
+	static const enum normal_exit_info_effect other_effects[] = {
+		NORMAL_EXIT_INFO_READ_CURRENT,
+		NORMAL_EXIT_INFO_LOAD_TEAM,
+		NORMAL_EXIT_INFO_TEAM_ROW,
+		NORMAL_EXIT_INFO_TEAM_ROW,
+		NORMAL_EXIT_INFO_READ_CAPTAIN,
+		NORMAL_EXIT_INFO_READ_CAPTAIN,
+		NORMAL_EXIT_INFO_TEAM_ROW,
+		NORMAL_EXIT_INFO_TEAM_ROW,
+		NORMAL_EXIT_INFO_READ_FINAL,
+	};
+	static const struct {
+		enum normal_exit_info_team_fixture_route route;
+		bool ansi;
+		size_t info_end;
+		size_t remote_length;
+		uint64_t remote_fnv;
+		const enum normal_exit_info_effect *effects;
+		size_t effect_count;
+		size_t player_reads;
+		uint64_t row_fnv;
+		size_t colors;
+		uint64_t color_fnv;
+	} cases[] = {
+		{NORMAL_EXIT_INFO_TEAM_SELF, true, 797U, 883U,
+		    UINT64_C(0x24c6596c05f63213), self_effects,
+		    YT_ARRAY_LEN(self_effects), 1U,
+		    UINT64_C(0x2d651dc232f7957e), 52U,
+		    UINT64_C(0x16871e44ce846c36)},
+		{NORMAL_EXIT_INFO_TEAM_SELF, false, 721U, 797U,
+		    UINT64_C(0x08eb41ede6b5f3b1e), self_effects,
+		    YT_ARRAY_LEN(self_effects), 1U,
+		    UINT64_C(0x2d651dc232f7957e), 4U,
+		    UINT64_C(0x01b4fd96ce8921d5)},
+		{NORMAL_EXIT_INFO_TEAM_OTHER, true, 794U, 880U,
+		    UINT64_C(0x31e902e583211ace), other_effects,
+		    YT_ARRAY_LEN(other_effects), 3U,
+		    UINT64_C(0x40a7e9608ebb4ab4), 52U,
+		    UINT64_C(0x16871e44ce846c36)},
+		{NORMAL_EXIT_INFO_TEAM_OTHER, false, 718U, 794U,
+		    UINT64_C(0xc02acb964bb54383), other_effects,
+		    YT_ARRAY_LEN(other_effects), 3U,
+		    UINT64_C(0x40a7e9608ebb4ab4), 4U,
+		    UINT64_C(0x01b4fd96ce8921d5)},
+	};
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Planet command (?=help) [A]? ";
+	struct normal_exit_info_values info;
+	struct normal_exit_info_observation observation;
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	uint8_t remote[1000];
+	size_t prompt_end;
+	size_t editor_end;
+	size_t info_end;
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		memset(&observation, 0, sizeof(observation));
+		info = normal_exit_info_values_fixture();
+		info.observation = &observation;
+		info.team_route = cases[pass].route;
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
+		CHECK(planet_info_cycle_run(&viewer, cases[pass].ansi, false,
+		    &info, &prompt_end, &editor_end, &info_end));
+		CHECK(prompt_end == 76U && editor_end == 79U
+		    && info_end == cases[pass].info_end
+		    && viewer.join.remote_length == cases[pass].remote_length
+		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+		    == cases[pass].remote_fnv
+		    && observation.timer_used == 0U
+		    && !observation.time_updated
+		    && observation.refresh.event_count == 0U
+		    && observation.effect_count == cases[pass].effect_count
+		    && memcmp(observation.effects, cases[pass].effects,
+		    cases[pass].effect_count * sizeof(cases[pass].effects[0])) == 0
+		    && observation.player_read_count == cases[pass].player_reads
+		    && observation.player_records[0] == 2.0f
+		    && observation.team.team_id == 7.0f
+		    && !observation.overlay_written);
+		if (cases[pass].route == NORMAL_EXIT_INFO_TEAM_SELF) {
+			CHECK(observation.team.route == YT_INFO_TEAM_SELF_CAPTAIN
+			    && observation.team.current_is_captain
+			    && observation.team.team.captain == 2.0f);
+		}
+		else {
+			CHECK(observation.player_records[1] == 3.0f
+			    && observation.player_records[2] == 3.0f
+			    && observation.team.route
+			    == YT_INFO_TEAM_OTHER_CAPTAIN
+			    && !observation.team.current_is_captain
+			    && observation.team.captain_record == 3.0f
+			    && observation.team.captain_name_length == 4U
+			    && memcmp(observation.team.captain_name,
+			    "Long", 4U) == 0);
+		}
+		CHECK(viewer.join.local_row_count == 26U
+		    && viewer_rows_fnv1a64(&viewer.join) == cases[pass].row_fnv
+		    && viewer.join.local_fragment_length == sizeof(prompt) - 1U
+		    && memcmp(viewer.join.local_fragment, prompt,
+		    sizeof(prompt) - 1U) == 0
+		    && viewer.join.local_color_count == cases[pass].colors
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == cases[pass].color_fnv
+		    && viewer.join.presentation.foreground == 6.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold
+		    == (cases[pass].ansi ? 0.0f : 1.0f)
+		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.cached_foreground
+		    == (cases[pass].ansi ? 6.0f : 0.0f)
+		    && viewer.join.pager.foreground == 6
+		    && viewer.join.pager.line_count == 2.0f
+		    && viewer.join.queue_length == 0U
+		    && viewer.join.sample_calls == 4U
+		    && viewer.join.event_count == 20U
+		    && stream.eof_checks == 0U && stream.key_checks == 0U
+		    && stream.read_count == 0U && stream.line_count == 0U
+		    && !stream.file_open && !viewer.join.file_open
+		    && viewer.input.file == NULL && viewer.close_calls == 0U
+		    && viewer.open_calls == 0U
+		    && strcmp(viewer.join.accumulator, "I") == 0
+		    && viewer.join.source_length == sizeof(prompt) - 1U
+		    && memcmp(viewer.join.source, prompt,
+		    sizeof(prompt) - 1U) == 0);
 		yt_text_input_destroy(&viewer.input);
 	}
 }
@@ -14950,6 +15123,7 @@ main(void)
 	test_computer_info_cycle_presentation();
 	test_planet_info_cycle_presentation();
 	test_planet_info_promotion_refresh_cycle_presentation();
+	test_planet_info_captain_route_cycles_presentation();
 	test_computer_quit_accept_presentation();
 	test_planet_quit_accept_presentation();
 	test_hostile_quit_accept_presentation();
