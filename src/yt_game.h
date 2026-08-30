@@ -231,7 +231,7 @@ struct yt_projectile_cruise_opening_ops {
 	yt_projectile_opening_sound_fn sound;
 	yt_projectile_opening_present_fn present;
 };
-bool yt_projectile_cruise_opening_run(int *last_mine_news_sector,
+bool yt_projectile_cruise_opening_run(float *last_mine_news_sector,
     const struct yt_projectile_cruise_opening_ops *ops, void *context,
     struct yt_error *error);
 
@@ -369,6 +369,33 @@ struct yt_projectile_defense_combat_ops {
 bool yt_projectile_defense_combat_run(
     struct yt_projectile_defense_combat_state *state,
     const struct yt_projectile_defense_combat_ops *ops, void *context,
+    struct yt_error *error);
+
+enum yt_projectile_sector_mine_route {
+	YT_PROJECTILE_SECTOR_MINE_CONTINUE_PLAYERS,
+	YT_PROJECTILE_SECTOR_MINE_RETURN,
+};
+struct yt_projectile_sector_mine_state {
+	float sector;
+	const uint8_t *shooter_name;
+	size_t shooter_name_length;
+	float *missiles;
+	float *last_news_sector;
+	double observed_mines;
+	float destroyed;
+	struct yt_sector persistence;
+	enum yt_projectile_sector_mine_route route;
+};
+struct yt_projectile_sector_mine_ops {
+	yt_projectile_defense_sector_read_fn read_sector;
+	yt_projectile_cruise_reroute_output_fn present;
+	yt_projectile_defense_sound_fn sound;
+	yt_projectile_cruise_reroute_output_fn news;
+	yt_projectile_defense_sector_write_fn write_sector;
+};
+bool yt_projectile_sector_mine_run(
+    struct yt_projectile_sector_mine_state *state,
+    const struct yt_projectile_sector_mine_ops *ops, void *context,
     struct yt_error *error);
 
 struct yt_xannor_retaliation_state {
