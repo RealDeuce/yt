@@ -1902,6 +1902,21 @@ viewer_rows_fnv1a64(const struct viewer_pager_join *join)
 	return value;
 }
 
+static uint64_t
+viewer_colors_fnv1a64(const struct viewer_pager_join *join)
+{
+	uint64_t value = UINT64_C(14695981039346656037);
+	size_t index;
+
+	for (index = 0U; index < join->local_color_count; ++index) {
+		value ^= (uint8_t)join->local_foregrounds[index];
+		value *= UINT64_C(1099511628211);
+		value ^= (uint8_t)join->local_backgrounds[index];
+		value *= UINT64_C(1099511628211);
+	}
+	return value;
+}
+
 static void
 instruction_viewer_initialize(struct physical_viewer_join *viewer,
     struct yt_file_viewer_stream_state *stream, int foreground, bool ansi,
@@ -10072,6 +10087,325 @@ test_info_panel_presentation(void)
 	    && ansi.current.cached_background == 0.0f);
 }
 
+struct normal_exit_info_context {
+	struct physical_viewer_join *viewer;
+	struct yt_player player;
+};
+
+static bool
+normal_exit_info_refresh(void *context, uint8_t *text, size_t capacity,
+    size_t *length, struct yt_error *error)
+{
+	static const uint8_t value[] = " 15:00  ";
+
+	(void)context;
+	(void)error;
+	if (length == NULL || capacity < sizeof(value) - 1U)
+		return false;
+	memcpy(text, value, sizeof(value) - 1U);
+	*length = sizeof(value) - 1U;
+	return true;
+}
+
+static bool
+normal_exit_info_team(void *context, struct yt_error *error)
+{
+	static const uint8_t none[] = "Team  : None";
+	struct normal_exit_info_context *fixture = context;
+	struct viewer_pager_join *join = &fixture->viewer->join;
+	struct yt_present_result result;
+
+	(void)error;
+	if (yt_present_line(none, sizeof(none) - 1U, &join->presentation,
+	    &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (yt_present_line(NULL, 0U, &join->presentation,
+	    &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	return true;
+}
+
+static bool
+normal_exit_info_read(void *context, struct yt_player *player,
+    struct yt_error *error)
+{
+	struct normal_exit_info_context *fixture = context;
+
+	(void)error;
+	*player = fixture->player;
+	return true;
+}
+
+static bool
+normal_exit_info_present(void *context, const uint8_t *text, size_t length,
+    enum yt_info_panel_output_kind kind, float width,
+    struct yt_info_panel_state *state, struct yt_error *error)
+{
+	struct normal_exit_info_context *fixture = context;
+	struct viewer_pager_join *join = &fixture->viewer->join;
+	struct yt_present_result result;
+	enum yt_present_status status;
+	uint8_t mutable[256];
+	size_t mutable_length = length;
+
+	(void)error;
+	join->presentation.foreground = state->foreground;
+	join->presentation.background = state->background;
+	join->presentation.bold = state->bold;
+	join->pager.foreground = (int)state->foreground;
+	if (kind == YT_INFO_PANEL_LINE)
+		status = yt_present_line(text, length, &join->presentation, &result);
+	else if (kind == YT_INFO_PANEL_FIXED && length <= sizeof(mutable)
+	    && (text != NULL || length == 0U)) {
+		if (length != 0U)
+			memcpy(mutable, text, length);
+		status = yt_present_fixed_width(mutable, &mutable_length,
+		    sizeof(mutable), width, &join->presentation, &result);
+	}
+	else
+		return false;
+	state->foreground = join->presentation.foreground;
+	state->background = join->presentation.background;
+	state->bold = join->presentation.bold;
+	if (status != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	return true;
+}
+
+static bool
+normal_exit_info_run(struct physical_viewer_join *viewer)
+{
+	static const struct yt_info_panel_ops ops = {
+		normal_exit_info_refresh,
+		normal_exit_info_team,
+		normal_exit_info_read,
+		normal_exit_info_present,
+	};
+	static const uint8_t name[] = "Pilot";
+	struct normal_exit_info_context fixture;
+	struct yt_info_panel_state panel;
+	bool ok;
+
+	memset(&fixture, 0, sizeof(fixture));
+	memset(&panel, 0, sizeof(panel));
+	fixture.viewer = viewer;
+	fixture.player.credits = 12345.0f;
+	fixture.player.sector = 733.0f;
+	fixture.player.turns = 42.0f;
+	fixture.player.holds = 20.0f;
+	fixture.player.fighters = 1000.0f;
+	fixture.player.ore = 3.0f;
+	fixture.player.mines = 4.0f;
+	fixture.player.organics = 5.0f;
+	fixture.player.missiles = 6.0f;
+	fixture.player.equipment = 7.0f;
+	fixture.player.danger_scanner = 1.0f;
+	fixture.player.ports_owned = 8.0f;
+	fixture.player.shields = 90.0f;
+	fixture.player.cloak = 0.75f;
+	fixture.player.ground_forces = 9.0f;
+	fixture.player.plasma = 10.0f;
+	panel.cached_name = name;
+	panel.cached_name_length = sizeof(name) - 1U;
+	panel.foreground = viewer->join.presentation.foreground;
+	panel.background = viewer->join.presentation.background;
+	panel.bold = viewer->join.presentation.bold;
+	ok = yt_info_panel_run(&panel, &ops, &fixture, NULL);
+	viewer->join.presentation.foreground = panel.foreground;
+	viewer->join.presentation.background = panel.background;
+	viewer->join.presentation.bold = panel.bold;
+	viewer->join.pager.foreground = (int)panel.foreground;
+	return ok;
+}
+
+static bool
+normal_exit_line(struct viewer_pager_join *join, const uint8_t *text,
+    size_t length)
+{
+	struct yt_present_result result;
+
+	if (yt_present_line(text, length, &join->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	return true;
+}
+
+static bool
+normal_exit_b05d(struct viewer_pager_join *join, const uint8_t *text,
+    size_t length, float newline_flag)
+{
+	join->pager.newline_flag = newline_flag;
+	return yt_paged_row_run(&join->pager, &join->presentation,
+	    &join->key_state, text, length, &viewer_pager_ops, join);
+}
+
+static void
+test_full_normal_exit_presentation(void)
+{
+	static const uint8_t generating[] = "Generating ScoreBoard";
+	static const uint8_t reminder[] =
+	    "PLEASE HELP YOUR SYSOP REGISTER THIS GAME.";
+	static const uint8_t returning[] = "Returning to Example BBS...";
+	static const struct {
+		bool ansi;
+		bool evaluation;
+		size_t info_end;
+		size_t post_info_end;
+		size_t generating_end;
+		size_t progress_end;
+		size_t post_generator_end;
+		size_t viewer_end;
+		size_t remote_length;
+		uint64_t remote_fnv;
+		size_t local_rows;
+		uint64_t local_fnv;
+		size_t colors;
+		uint64_t color_fnv;
+		size_t color_2;
+		size_t color_4;
+		size_t color_6;
+		size_t color_7;
+		size_t color_15_1;
+		size_t color_30_4;
+		float final_foreground;
+		float final_bold;
+		float final_blink;
+	} cases[] = {
+		{true, false, 678U, 690U, 711U, 715U, 717U, 1361U,
+		    1390U, UINT64_C(0xd040452f34f501f1), 43U,
+		    UINT64_C(0xe295e3155a115e93), 90U,
+		    UINT64_C(0x20fdcf946f026a07), 53U, 12U, 0U, 22U,
+		    3U, 0U, 1.0f, 0.0f, 0.0f},
+		{true, true, 678U, 690U, 711U, 715U, 717U, 1361U,
+		    1460U, UINT64_C(0x9127422a4aeb8699), 45U,
+		    UINT64_C(0x4be101adfc6edb2e), 93U,
+		    UINT64_C(0xc25b28ebb02d307f), 53U, 11U, 3U, 22U,
+		    3U, 1U, 3.0f, 0.0f, 0.0f},
+		{false, false, 602U, 604U, 625U, 629U, 631U, 1255U,
+		    1284U, UINT64_C(0xa3047bee853ba1a2), 43U,
+		    UINT64_C(0xe295e3155a115e93), 22U,
+		    UINT64_C(0xbb8c8de9cb516c2d), 0U, 0U, 0U, 22U,
+		    0U, 0U, 1.0f, 1.0f, 0.0f},
+		{false, true, 602U, 604U, 625U, 629U, 631U, 1255U,
+		    1330U, UINT64_C(0xe54c542459e21b0d), 45U,
+		    UINT64_C(0x4be101adfc6edb2e), 22U,
+		    UINT64_C(0xbb8c8de9cb516c2d), 0U, 0U, 0U, 22U,
+		    0U, 0U, 3.0f, 1.0f, 1.0f},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct yt_present_result result;
+	struct yt_timed_wait_state wait;
+	uint8_t remote[1600];
+	float remembered;
+	bool warned;
+	size_t pass;
+	size_t index;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
+		viewer.join.presentation.foreground = 1.0f;
+		viewer.join.presentation.sound.user_sound = 0.0f;
+		viewer.join.presentation.sound.local_sound = 0.0f;
+		viewer.join.pager.foreground = 1;
+		viewer.join.pager.line_count = 1.0f;
+		CHECK(normal_exit_info_run(&viewer));
+		CHECK(viewer.join.remote_length == cases[pass].info_end);
+		CHECK(normal_exit_line(&viewer.join, NULL, 0U));
+		CHECK(viewer.join.remote_length == cases[pass].post_info_end);
+		remembered = 15.0f;
+		CHECK(yt_present_low_time((const uint8_t *)" 15:00  ", 8U,
+		    &remembered, &viewer.join.presentation, &result, &warned)
+		    == YT_PRESENT_OK);
+		viewer_pager_capture_result(&viewer.join, &result);
+		CHECK(!warned && remembered == 15.0f);
+		CHECK(normal_exit_b05d(&viewer.join, generating,
+		    sizeof(generating) - 1U, 1.0f));
+		CHECK(viewer.join.remote_length == cases[pass].generating_end);
+		for (index = 0U; index < 4U; ++index) {
+			CHECK(yt_present_character((const uint8_t *)".", 1U,
+			    &viewer.join.presentation, &result) == YT_PRESENT_OK);
+			viewer_pager_capture_result(&viewer.join, &result);
+		}
+		CHECK(viewer.join.remote_length == cases[pass].progress_end);
+		CHECK(normal_exit_line(&viewer.join, NULL, 0U));
+		CHECK(viewer.join.remote_length == cases[pass].post_generator_end);
+		viewer.join.pager.nonstop = 1.0f;
+		CHECK(physical_viewer_run(&viewer, &stream, NULL));
+		CHECK(viewer.join.remote_length == cases[pass].viewer_end);
+		if (cases[pass].evaluation) {
+			CHECK(yt_present_attention(reminder,
+			    sizeof(reminder) - 1U, &viewer.join.presentation,
+			    &result) == YT_PRESENT_OK);
+			viewer_pager_capture_result(&viewer.join, &result);
+			CHECK(yt_timed_wait_begin(&wait, 10.0f, 0.0f));
+			CHECK(yt_timed_wait_timer(&wait, 0.0f)
+			    == YT_TIMED_WAIT_CONTINUE);
+			CHECK(yt_timed_wait_timer(&wait, 10.0f)
+			    == YT_TIMED_WAIT_TIMER);
+			CHECK(wait.duration_cell == 10.0f
+			    && wait.timer_reads == 3U);
+			CHECK(normal_exit_line(&viewer.join, NULL, 0U));
+		}
+		CHECK(normal_exit_b05d(&viewer.join, returning,
+		    sizeof(returning) - 1U, 0.0f));
+		CHECK(viewer.join.remote_length == cases[pass].remote_length
+		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+		    == cases[pass].remote_fnv);
+		CHECK(viewer.join.local_row_count == cases[pass].local_rows
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == cases[pass].local_fnv
+		    && viewer.join.local_fragment_length == 0U
+		    && viewer.join.local_color_count == cases[pass].colors
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == cases[pass].color_fnv
+		    && viewer_local_color_count(&viewer.join, 2, 0)
+		    == cases[pass].color_2
+		    && viewer_local_color_count(&viewer.join, 4, 0)
+		    == cases[pass].color_4
+		    && viewer_local_color_count(&viewer.join, 6, 0)
+		    == cases[pass].color_6
+		    && viewer_local_color_count(&viewer.join, 7, 0)
+		    == cases[pass].color_7
+		    && viewer_local_color_count(&viewer.join, 15, 1)
+		    == cases[pass].color_15_1
+		    && viewer_local_color_count(&viewer.join, 30, 4)
+		    == cases[pass].color_30_4);
+		CHECK(viewer.join.presentation.foreground
+		    == cases[pass].final_foreground
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold == cases[pass].final_bold
+		    && viewer.join.presentation.blink == cases[pass].final_blink
+		    && viewer.join.pager.foreground == 1
+		    && viewer.join.pager.line_count == 1.0f
+		    && viewer.join.pager.nonstop == 1.0f
+		    && viewer.join.pager.key[0] == '\0');
+		CHECK(viewer.join.position == 19U
+		    && stream.eof_checks == 20U && stream.key_checks == 20U
+		    && stream.read_count == 19U && stream.line_count == 19U
+		    && viewer.join.sample_calls == 22U
+		    && viewer.join.response_calls == 0U
+		    && viewer.join.direct_calls == 2U
+		    && viewer.join.event_count == 110U
+		    && !stream.file_open && !viewer.join.file_open
+		    && viewer.input.file == NULL && viewer.close_calls == 2U
+		    && viewer.open_calls == 1U
+		    && viewer.join.source_length == sizeof(returning) - 1U
+		    && memcmp(viewer.join.source, returning,
+		    sizeof(returning) - 1U) == 0
+		    && viewer.join.accumulator[0] == '\0'
+		    && viewer.join.queue_length == 0U);
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
 struct spy_sweep_presentation_context {
 	struct yt_present_state current;
 	struct pager_capture capture;
@@ -12502,6 +12836,7 @@ main(void)
 	test_sector_mine_presentation();
 	test_direct_fighter_kill_warning_presentation();
 	test_info_panel_presentation();
+	test_full_normal_exit_presentation();
 	test_spy_sweep_presentation();
 	test_black_hole_presentation();
 	test_movement_presentation();
