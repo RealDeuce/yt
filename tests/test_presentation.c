@@ -1054,6 +1054,386 @@ test_pager_gates(void)
 	    && present.foreground == 5.0f);
 }
 
+enum viewer_pager_event {
+	VIEWER_PAGER_CARRIER,
+	VIEWER_PAGER_SAMPLE,
+	VIEWER_PAGER_PRESENT,
+	VIEWER_PAGER_FINISH,
+	VIEWER_PAGER_RESPONSE,
+};
+
+struct viewer_pager_join {
+	struct yt_pager_state pager;
+	struct yt_present_state presentation;
+	struct yt_b05d_key_state key_state;
+	struct pager_capture capture;
+	enum viewer_pager_event events[256];
+	size_t event_count;
+	size_t fail_at;
+	struct yt_error *active_error;
+	char accumulator[80];
+	char queue[80];
+	size_t queue_position;
+	size_t queue_length;
+	char response[80];
+	char source[80];
+	size_t source_length;
+	size_t total_rows;
+	size_t position;
+	size_t eof_calls;
+	size_t read_calls;
+	size_t active_row;
+	size_t active_sample;
+	size_t ctrl_x_row;
+	uint8_t line[32];
+	bool file_open;
+	bool final_blank;
+};
+
+static bool
+viewer_pager_record(struct viewer_pager_join *join,
+    enum viewer_pager_event event)
+{
+	CHECK(join->event_count < YT_ARRAY_LEN(join->events));
+	if (join->event_count < YT_ARRAY_LEN(join->events))
+		join->events[join->event_count] = event;
+	++join->event_count;
+	if (join->event_count != join->fail_at)
+		return true;
+	if (join->active_error != NULL) {
+		join->active_error->status = YT_IO_ERROR;
+		(void)snprintf(join->active_error->operation,
+		    sizeof(join->active_error->operation), "%s",
+		    "injected joined pager failure");
+	}
+	return false;
+}
+
+static bool
+viewer_pager_carrier(void *context)
+{
+	return viewer_pager_record(context, VIEWER_PAGER_CARRIER);
+}
+
+static bool
+viewer_pager_sample(void *context, struct yt_input_value *sampled)
+{
+	struct viewer_pager_join *join = context;
+
+	if (!viewer_pager_record(join, VIEWER_PAGER_SAMPLE))
+		return false;
+	memset(sampled, 0, sizeof(*sampled));
+	++join->active_sample;
+	if (join->active_row == join->ctrl_x_row
+	    && join->active_sample == 1U) {
+		sampled->bytes[0] = 0x18U;
+		sampled->length = 1U;
+	}
+	return true;
+}
+
+static bool
+viewer_pager_present(void *context, const uint8_t *text, size_t length)
+{
+	struct viewer_pager_join *join = context;
+	struct yt_present_result result;
+
+	if (!viewer_pager_record(join, VIEWER_PAGER_PRESENT))
+		return false;
+	CHECK(length < sizeof(join->source));
+	if (length >= sizeof(join->source))
+		return false;
+	if (length != 0U)
+		memcpy(join->source, text, length);
+	join->source[length] = '\0';
+	join->source_length = length;
+	if (yt_present_paged_text(text, length, &join->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(&join->capture, &result);
+	return true;
+}
+
+static bool
+viewer_pager_finish(void *context, bool newline_flag)
+{
+	struct viewer_pager_join *join = context;
+	struct yt_present_result result;
+
+	if (!viewer_pager_record(join, VIEWER_PAGER_FINISH))
+		return false;
+	if (yt_present_paged_finish(newline_flag, &join->presentation,
+	    &result) != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(&join->capture, &result);
+	return true;
+}
+
+static bool
+viewer_pager_response(void *context, char *response, size_t capacity)
+{
+	struct viewer_pager_join *join = context;
+	struct yt_present_result result;
+	size_t length = strlen(join->response);
+	size_t index;
+
+	if (!viewer_pager_record(join, VIEWER_PAGER_RESPONSE))
+		return false;
+	if (length >= capacity)
+		return false;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	for (index = 0U; index < length; ++index) {
+		uint8_t byte = (uint8_t)join->response[index];
+
+		join->accumulator[index] = (char)byte;
+		join->accumulator[index + 1U] = '\0';
+		join->pager.newline_flag = 1.0f;
+		if (yt_present_editor_echo(&byte, 1U, &byte, 1U,
+		    &join->presentation, &result) != YT_PRESENT_OK)
+			return false;
+		pager_capture_result(&join->capture, &result);
+	}
+	join->pager.newline_flag = 0.0f;
+	if (yt_present_line(NULL, 0U, &join->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(&join->capture, &result);
+	(void)snprintf(response, capacity, "%s", join->accumulator);
+	join->source[0] = '\r';
+	join->source[1] = '\0';
+	join->source_length = 1U;
+	return true;
+}
+
+static const struct yt_paged_row_ops viewer_pager_ops = {
+	viewer_pager_carrier,
+	viewer_pager_sample,
+	viewer_pager_present,
+	viewer_pager_finish,
+	viewer_pager_response,
+};
+
+static bool
+viewer_pager_close(void *context, struct yt_error *error)
+{
+	struct viewer_pager_join *join = context;
+
+	(void)error;
+	join->file_open = false;
+	return true;
+}
+
+static bool
+viewer_pager_open(void *context, const char *path, struct yt_error *error)
+{
+	struct viewer_pager_join *join = context;
+
+	(void)path;
+	(void)error;
+	join->file_open = true;
+	return true;
+}
+
+static bool
+viewer_pager_eof(void *context, bool *eof, struct yt_error *error)
+{
+	struct viewer_pager_join *join = context;
+
+	(void)error;
+	++join->eof_calls;
+	*eof = join->position == join->total_rows;
+	return true;
+}
+
+static bool
+viewer_pager_read(void *context, const uint8_t **line, size_t *length,
+    bool *available, struct yt_error *error)
+{
+	struct viewer_pager_join *join = context;
+	int count;
+
+	(void)error;
+	CHECK(join->position < join->total_rows);
+	if (join->position >= join->total_rows)
+		return false;
+	++join->position;
+	++join->read_calls;
+	count = snprintf((char *)join->line, sizeof(join->line), "row %02zu",
+	    join->position);
+	CHECK(count > 0 && (size_t)count < sizeof(join->line));
+	if (count <= 0 || (size_t)count >= sizeof(join->line))
+		return false;
+	*line = join->line;
+	*length = (size_t)count;
+	*available = true;
+	return true;
+}
+
+static bool
+viewer_pager_stream_present(void *context, const uint8_t *text,
+    size_t length, bool paged, struct yt_error *error)
+{
+	struct viewer_pager_join *join = context;
+	struct yt_present_result result;
+	bool ok;
+
+	if (!paged) {
+		CHECK(text == NULL && length == 0U);
+		if (yt_present_line(NULL, 0U, &join->presentation, &result)
+		    != YT_PRESENT_OK)
+			return false;
+		pager_capture_result(&join->capture, &result);
+		join->final_blank = true;
+		return true;
+	}
+	join->active_row = join->position;
+	join->active_sample = 0U;
+	join->active_error = error;
+	ok = yt_paged_row_run(&join->pager, &join->presentation,
+	    &join->key_state, text, length, &viewer_pager_ops, join);
+	join->active_error = NULL;
+	return ok;
+}
+
+static const struct yt_file_viewer_stream_ops viewer_pager_stream_ops = {
+	viewer_pager_close,
+	viewer_pager_open,
+	viewer_pager_eof,
+	viewer_pager_read,
+	viewer_pager_stream_present,
+};
+
+static void
+viewer_pager_initialize(struct viewer_pager_join *join,
+    struct yt_file_viewer_stream_state *stream, size_t rows,
+    float initial_count, const char *response, size_t ctrl_x_row)
+{
+	memset(join, 0, sizeof(*join));
+	join->presentation = state(false);
+	join->presentation.foreground = 6.0f;
+	join->pager.foreground = 6;
+	join->pager.line_count = initial_count;
+	join->total_rows = rows;
+	join->ctrl_x_row = ctrl_x_row;
+	(void)snprintf(join->response, sizeof(join->response), "%s", response);
+	(void)snprintf(join->accumulator, sizeof(join->accumulator), "%s",
+	    "typed");
+	(void)snprintf(join->queue, sizeof(join->queue), "%s", "abc");
+	join->queue_length = 3U;
+	join->key_state.accumulator = join->accumulator;
+	join->key_state.accumulator_capacity = sizeof(join->accumulator);
+	join->key_state.queue = join->queue;
+	join->key_state.queue_capacity = sizeof(join->queue);
+	join->key_state.queue_position = &join->queue_position;
+	join->key_state.queue_length = &join->queue_length;
+	join->key_state.pager_key = join->pager.key;
+	join->key_state.pager_key_capacity = sizeof(join->pager.key);
+	memset(stream, 0, sizeof(*stream));
+	stream->path = "joined.txt";
+	stream->play.foreground = &join->presentation.foreground;
+	stream->play.pager_foreground = &join->pager.foreground;
+	stream->play.bold = &join->presentation.bold;
+	stream->play.line_count = &join->pager.line_count;
+	stream->play.pager_key = join->pager.key;
+	stream->play.saved_foreground = 6.0f;
+	stream->play.saved_pager_foreground = 6;
+}
+
+static void
+test_file_viewer_pager_join(void)
+{
+	static const uint8_t ansi_one_row[] =
+	    "\x1b[0;32;40mrow 01\n\r\x1b[0;36;40m\r\n";
+	static const enum viewer_pager_event threshold_events[] = {
+		VIEWER_PAGER_CARRIER, VIEWER_PAGER_SAMPLE,
+		VIEWER_PAGER_PRESENT, VIEWER_PAGER_CARRIER,
+		VIEWER_PAGER_FINISH,
+		VIEWER_PAGER_CARRIER, VIEWER_PAGER_SAMPLE,
+		VIEWER_PAGER_PRESENT, VIEWER_PAGER_CARRIER,
+		VIEWER_PAGER_FINISH, VIEWER_PAGER_RESPONSE,
+	};
+	struct viewer_pager_join join;
+	struct yt_file_viewer_stream_state stream;
+	struct yt_error error;
+	size_t failure;
+	size_t index;
+
+	viewer_pager_initialize(&join, &stream, 24U, 0.0f, "E", 0U);
+	CHECK(yt_file_viewer_stream_run(&stream, &viewer_pager_stream_ops,
+	    &join, NULL));
+	CHECK(join.read_calls == 23U && join.eof_calls == 24U
+	    && strcmp(join.pager.key, "Q") == 0
+	    && join.source_length == 1U && join.source[0] == '\r'
+	    && !join.file_open && join.final_blank);
+
+	viewer_pager_initialize(&join, &stream, 24U, 0.0f, "", 5U);
+	CHECK(yt_file_viewer_stream_run(&stream, &viewer_pager_stream_ops,
+	    &join, NULL));
+	CHECK(join.read_calls == 5U && join.eof_calls == 6U
+	    && strcmp(join.pager.key, "Q") == 0
+	    && join.source_length == 6U
+	    && memcmp(join.source, "row 05", 6U) == 0
+	    && join.accumulator[0] == '\0' && join.queue_length == 0U);
+
+	viewer_pager_initialize(&join, &stream, 24U, 0.0f, "", 23U);
+	CHECK(yt_file_viewer_stream_run(&stream, &viewer_pager_stream_ops,
+	    &join, NULL));
+	CHECK(join.read_calls == 24U && join.eof_calls == 25U
+	    && join.pager.key[0] == '\0' && join.queue_length == 0U
+	    && join.source_length == 6U
+	    && memcmp(join.source, "row 24", 6U) == 0);
+
+	viewer_pager_initialize(&join, &stream, 24U, 0.0f, "NS", 0U);
+	CHECK(yt_file_viewer_stream_run(&stream, &viewer_pager_stream_ops,
+	    &join, NULL));
+	CHECK(join.read_calls == 24U && join.eof_calls == 25U
+	    && strcmp(join.pager.key, "NS") == 0
+	    && join.pager.nonstop == 1.0f
+	    && join.source_length == 6U
+	    && memcmp(join.source, "row 24", 6U) == 0);
+
+	viewer_pager_initialize(&join, &stream, 1U, 0.0f, "", 0U);
+	join.presentation = state(true);
+	join.presentation.foreground = 6.0f;
+	CHECK(yt_file_viewer_stream_run(&stream, &viewer_pager_stream_ops,
+	    &join, NULL));
+	CHECK(join.capture.remote_length == sizeof(ansi_one_row) - 1U
+	    && memcmp(join.capture.remote, ansi_one_row,
+	    sizeof(ansi_one_row) - 1U) == 0);
+	CHECK(join.presentation.foreground == 6.0f);
+	CHECK(join.presentation.cached_foreground == 6.0f);
+	CHECK(join.capture.last_local_foreground == 3);
+
+	viewer_pager_initialize(&join, &stream, 1U, 0.0f, "", 0U);
+	join.presentation.sound.mode = 2.0f;
+	CHECK(yt_file_viewer_stream_run(&stream, &viewer_pager_stream_ops,
+	    &join, NULL));
+	CHECK(join.capture.remote_length == 2U
+	    && memcmp(join.capture.remote, "\r\n", 2U) == 0);
+	CHECK(join.presentation.foreground == 6.0f);
+	CHECK(join.capture.last_local_foreground == 7);
+
+	for (failure = 1U; failure <= YT_ARRAY_LEN(threshold_events);
+	    ++failure) {
+		viewer_pager_initialize(&join, &stream, 23U, 0.0f, "E", 0U);
+		join.fail_at = 110U + failure;
+		yt_error_clear(&error);
+		CHECK(!yt_file_viewer_stream_run(&stream,
+		    &viewer_pager_stream_ops, &join, &error));
+		CHECK(error.status == YT_IO_ERROR
+		    && join.event_count == 110U + failure
+		    && memcmp(join.events + 110U, threshold_events,
+		    failure * sizeof(threshold_events[0])) == 0
+		    && stream.file_open && join.file_open
+		    && stream.eof_checks == 23U && stream.read_count == 23U
+		    && stream.line_count == 22U);
+		for (index = 0U; index < 110U; ++index)
+			CHECK(join.events[index]
+			    == threshold_events[index % 5U]);
+	}
+}
+
 static void
 test_sector_private_pager(void)
 {
@@ -10957,6 +11337,7 @@ main(void)
 	test_projectile_early_terminal_presentation();
 	test_pager_transactions();
 	test_pager_gates();
+	test_file_viewer_pager_join();
 	test_sector_private_pager();
 	test_sector_scanner_rows();
 	test_radio_private_pager();

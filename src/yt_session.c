@@ -659,26 +659,6 @@ session_036f(struct yt_session *session, char *text, size_t size)
 	return true;
 }
 
-static bool session_pager_step(struct yt_session *session);
-
-static bool
-append_sampled_key(struct yt_session *session,
-    const struct yt_input_value *key)
-{
-	struct yt_b05d_key_state state = {
-		.accumulator = session->command_accumulator,
-		.accumulator_capacity = sizeof(session->command_accumulator),
-		.queue = session->queue,
-		.queue_capacity = sizeof(session->queue),
-		.queue_position = &session->queue_position,
-		.queue_length = &session->queue_length,
-		.pager_key = session->pager.key,
-		.pager_key_capacity = sizeof(session->pager.key),
-	};
-
-	return yt_b05d_process_key(key, &state);
-}
-
 static bool
 session_carrier(struct yt_session *session)
 {
@@ -700,34 +680,75 @@ session_carrier(struct yt_session *session)
 }
 
 static bool
-session_b05d(struct yt_session *session, const uint8_t *text, size_t length)
+session_paged_carrier(void *context)
 {
+	return session_carrier(context);
+}
+
+static bool
+session_paged_sample(void *context, struct yt_input_value *sampled)
+{
+	struct yt_session *session = context;
+
+	return yt_input_poll_legacy(&session->input,
+	    session->presentation.sound.mode, YT_INPUT_PHASE_B05D, sampled);
+}
+
+static bool
+session_paged_present(void *context, const uint8_t *text, size_t length)
+{
+	struct yt_session *session = context;
 	struct yt_present_result presentation;
 	enum yt_present_status status;
-	struct yt_input_value sampled;
 
-	if (!session_carrier(session))
-		return false;
-	if (!yt_input_poll_legacy(&session->input,
-	    session->presentation.sound.mode, YT_INPUT_PHASE_B05D, &sampled)
-	    || !append_sampled_key(session, &sampled))
-		return false;
 	status = yt_present_paged_text(text, length, &session->presentation,
 	    &presentation);
 	yt_out_present_result(&presentation);
-	if (status != YT_PRESENT_OK)
-		return false;
-	if (!session_carrier(session))
-		return false;
-	status = yt_present_paged_finish(session->pager.newline_flag != 0.0f,
+	return status == YT_PRESENT_OK;
+}
+
+static bool
+session_paged_finish(void *context, bool newline_flag)
+{
+	struct yt_session *session = context;
+	struct yt_present_result presentation;
+	enum yt_present_status status;
+
+	status = yt_present_paged_finish(newline_flag,
 	    &session->presentation, &presentation);
 	yt_out_present_result(&presentation);
-	if (status != YT_PRESENT_OK)
-		return false;
-	if (!session_pager_step(session))
-		return false;
-	session->pager.newline_flag = 0.0f;
-	return true;
+	return status == YT_PRESENT_OK;
+}
+
+static bool
+session_paged_response(void *context, char *response, size_t capacity)
+{
+	return read_keyboard_line(context, response, capacity);
+}
+
+static bool
+session_b05d(struct yt_session *session, const uint8_t *text, size_t length)
+{
+	static const struct yt_paged_row_ops ops = {
+		session_paged_carrier,
+		session_paged_sample,
+		session_paged_present,
+		session_paged_finish,
+		session_paged_response,
+	};
+	struct yt_b05d_key_state key_state = {
+		.accumulator = session->command_accumulator,
+		.accumulator_capacity = sizeof(session->command_accumulator),
+		.queue = session->queue,
+		.queue_capacity = sizeof(session->queue),
+		.queue_position = &session->queue_position,
+		.queue_length = &session->queue_length,
+		.pager_key = session->pager.key,
+		.pager_key_capacity = sizeof(session->pager.key),
+	};
+
+	return yt_paged_row_run(&session->pager, &session->presentation,
+	    &key_state, text, length, &ops, session);
 }
 
 static void
@@ -1076,35 +1097,6 @@ session_centered_line(struct yt_session *session, const char *text,
 {
 	return session_centered_line_bytes(session, (const uint8_t *)text,
 	    strlen(text), operation, error);
-}
-
-static bool
-session_pager_step(struct yt_session *session)
-{
-	char response[80];
-	int saved_foreground;
-	bool notice;
-
-	if (!yt_pager_advance(&session->pager, &session->presentation,
-	    &saved_foreground))
-		return true;
-	if (!session_b05d(session,
-	    (const uint8_t *)
-	    "[ENTER] for more, [E] to end, or [NS] for Non-stop ",
-	    strlen("[ENTER] for more, [E] to end, or [NS] for Non-stop ")))
-		return false;
-	if (!read_keyboard_line(session, response, sizeof(response)))
-		return false;
-	notice = yt_pager_accept_response(&session->pager, response,
-	    sizeof(response));
-	if (notice) {
-		if (!session_b05d(session, (const uint8_t *)"Ctrl-X to Stop",
-		    strlen("Ctrl-X to Stop")))
-			return false;
-	}
-	yt_pager_complete(&session->pager, &session->presentation,
-	    saved_foreground);
-	return true;
 }
 
 static bool
