@@ -64,6 +64,8 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 	    || ops->read_player == NULL || ops->write_player == NULL
 	    || ops->random == NULL)
 		return false;
+	state->installed_handler = 0x45F7U;
+	state->handler_installed = true;
 	config = state->config;
 	if (!ops->open_data(context, error)
 	    || !ops->load_config(context, config, error))

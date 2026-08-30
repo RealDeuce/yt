@@ -33,6 +33,8 @@ struct yt_player {
 
 struct yt_startup_configuration_state {
 	struct yt_config *config;
+	uint16_t installed_handler;
+	bool handler_installed;
 	float local_mode;
 	float cache_guard;
 	float *sector_cache;

@@ -36,6 +36,84 @@ single_divide(float left, float right)
 	return result;
 }
 
+bool
+yt_startup_main_prefix_begin(struct yt_startup_main_prefix *result)
+{
+	static const uint16_t keys[YT_STARTUP_SYSOP_BINDINGS] =
+	    {4U, 5U, 8U, 9U, 10U};
+	static const uint16_t handlers[YT_STARTUP_SYSOP_BINDINGS] =
+	    {0xA9E1U, 0xBA00U, 0xB6D7U, 0xB66AU, 0xB3FBU};
+	size_t index;
+
+	if (result == NULL)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->key_count = YT_STARTUP_SYSOP_BINDINGS;
+	for (index = 0U; index < YT_STARTUP_SYSOP_BINDINGS; ++index) {
+		result->key[index].key = keys[index];
+		result->key[index].handler = handlers[index];
+		result->key[index].enabled = true;
+	}
+	result->main_error_handler = 0xB2DAU;
+	result->main_error_handler_installed = true;
+	return true;
+}
+
+bool
+yt_startup_main_prefix_finish(uint8_t *user_first,
+    size_t *user_first_length, uint8_t *user_last,
+    size_t *user_last_length, struct yt_startup_main_prefix *result)
+{
+	static const char *const labels[YT_STARTUP_DISPLAY_LABELS] = {
+		"Ore..........",
+		"Organics.....",
+		"Equipment....",
+		"Fighters.....",
+		"Missiles.....",
+		"Mines........",
+		"Credits......",
+		"Forces.......",
+		"Plasma bolts.",
+		"YT.REG",
+	};
+	static const uint8_t signature[8] =
+	    {0x00, 0x00, 0xa8, 0x43, 0x3b, 0x6a, 0x4f, 0xa5};
+	size_t index;
+
+	if (result == NULL || result->key_count != YT_STARTUP_SYSOP_BINDINGS
+	    || !result->main_error_handler_installed
+	    || result->main_error_handler != 0xB2DAU
+	    || user_first_length == NULL || user_last_length == NULL
+	    || (user_first == NULL && *user_first_length != 0U)
+	    || (user_last == NULL && *user_last_length != 0U))
+		return false;
+	result->serial_setup_entered = true;
+	result->carriage_return = '\r';
+	result->line_feed = '\n';
+	memcpy(result->local_erase, "\x1d \x1d", 3U);
+	memcpy(result->remote_erase, "\x08 \x08", 3U);
+	for (index = 0U; index < YT_STARTUP_DISPLAY_LABELS; ++index) {
+		result->display_label_length[index] = strlen(labels[index]);
+		memcpy(result->display_label[index], labels[index],
+		    result->display_label_length[index]);
+	}
+	memcpy(result->registration_signature, signature, sizeof(signature));
+	*user_first_length = qb_title_case_n(user_first, *user_first_length);
+	*user_last_length = qb_title_case_n(user_last, *user_last_length);
+	result->continuation = 0x0409U;
+	return true;
+}
+
+bool
+yt_startup_main_prefix_compose(uint8_t *user_first,
+    size_t *user_first_length, uint8_t *user_last,
+    size_t *user_last_length, struct yt_startup_main_prefix *result)
+{
+	return yt_startup_main_prefix_begin(result)
+	    && yt_startup_main_prefix_finish(user_first, user_first_length,
+	    user_last, user_last_length, result);
+}
+
 static bool
 registration_error(struct yt_error *error, enum yt_status status,
     const char *operation)

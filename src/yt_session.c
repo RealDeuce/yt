@@ -36,6 +36,7 @@ struct yt_session {
 	float cloak_cache[YT_PLAYER_LAST + 1];
 	float black_hole[2];
 	float market_base[3];
+	struct yt_startup_main_prefix startup_prefix;
 	float startup_cache_guard;
 	char queue[YT_COMMAND_SIZE];
 	size_t queue_length;
@@ -16649,6 +16650,7 @@ command_shell(struct yt_session *session, struct yt_error *error)
 
 bool
 yt_session_run(struct yt_door *door, const char *executable_path,
+    const struct yt_startup_main_prefix *startup_prefix,
     struct yt_error *error)
 {
 	struct yt_session session;
@@ -16656,7 +16658,9 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	char first[128];
 	char last[128];
 
-	if (door == NULL) {
+	if (door == NULL || startup_prefix == NULL
+	    || !startup_prefix->serial_setup_entered
+	    || startup_prefix->continuation != 0x0409U) {
 		if (error != NULL) {
 			error->status = YT_INVALID;
 			snprintf(error->operation, sizeof(error->operation),
@@ -16667,6 +16671,7 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	memset(&session, 0, sizeof(session));
 	session.door = door;
 	session.executable_path = executable_path;
+	session.startup_prefix = *startup_prefix;
 	session.running = true;
 	session.presentation.sound.ansi = door->identity.ansi ? -1.0f : 0.0f;
 	session.presentation.sound.mode = door->identity.local ? 1.0f : 0.0f;

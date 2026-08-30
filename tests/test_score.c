@@ -235,6 +235,7 @@ check_startup_configuration_transaction(void)
 	if (!startup_configuration_fixture(&tape, &state, &config,
 	    sector_cache, cloak_cache)
 	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
+	    || !state.handler_installed || state.installed_handler != 0x45F7U
 	    || tape.event_count != YT_ARRAY_LEN(events)
 	    || memcmp(tape.events, events, sizeof(events)) != 0
 	    || memcmp(tape.records, records, sizeof(records)) != 0
@@ -277,6 +278,7 @@ check_startup_configuration_transaction(void)
 	tape.fail_at = 3U;
 	if (yt_startup_configuration_run(&state, &ops, &tape, NULL)
 	    || tape.event_count != 3U || config.headquarters != 0.0f
+	    || !state.handler_installed || state.installed_handler != 0x45F7U
 	    || yt_record_get_number(&config.record, YT_F117) != 85.0f)
 		return false;
 
@@ -365,6 +367,8 @@ check_startup_configuration_transaction(void)
 		tape.fail_at = failure;
 		if (yt_startup_configuration_run(&state, &ops, &tape, NULL)
 		    || tape.event_count != failure
+		    || !state.handler_installed
+		    || state.installed_handler != 0x45F7U
 		    || memcmp(tape.events, events,
 		    failure * sizeof(events[0])) != 0)
 			return false;
