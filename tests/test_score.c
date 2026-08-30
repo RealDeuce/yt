@@ -3660,6 +3660,26 @@ struct score_line_tape {
 	unsigned lines;
 };
 
+struct score_progress_tape {
+	unsigned phases[4];
+	size_t count;
+};
+
+static bool
+score_progress_collect(void *context, unsigned phase,
+    struct yt_error *error)
+{
+	struct score_progress_tape *tape = context;
+
+	if (tape == NULL || tape->count >= YT_ARRAY_LEN(tape->phases)) {
+		if (error != NULL)
+			error->status = YT_RANGE;
+		return false;
+	}
+	tape->phases[tape->count++] = phase;
+	return true;
+}
+
 static bool
 score_line_collect(void *context, const uint8_t *line, size_t length,
     struct yt_error *error)
@@ -9003,6 +9023,7 @@ main(void)
 		{2027, 1, 1, 0, 0, 5, 0},
 		{2027, 1, 1, 0, 0, 6, 0}
 	}, 0};
+	struct score_progress_tape progress = {0};
 	struct yt_error error;
 	struct yt_record blank;
 	struct yt_sector sector;
@@ -9320,7 +9341,11 @@ main(void)
 		goto close;
 	strcpy(game.config.scoreboard, "NUL");
 	yt_error_clear(&error);
-	if (!yt_score_generate(&game, &error))
+	if (!yt_score_generate_progress(&game, score_progress_collect,
+	    &progress, &error)
+	    || progress.count != YT_ARRAY_LEN(progress.phases)
+	    || progress.phases[0] != 1U || progress.phases[1] != 2U
+	    || progress.phases[2] != 3U || progress.phases[3] != 4U)
 		goto close;
 	score = fopen("yttemp", "rb");
 	if (score == NULL)
@@ -9355,7 +9380,7 @@ main(void)
 	memset(&sector, 0, sizeof(sector));
 	yt_record_blank(&sector.record);
 	yt_record_set_text(&sector.record, (const uint8_t *)"Team One", 8U);
-	sector.fighters = 2.0f;
+	sector.fighters = 1.0f;
 	sector.fighter_owner = 3.0f;
 	if (!yt_game_write_sector(&game, 1, &sector, &error))
 		goto close;
@@ -9400,8 +9425,8 @@ main(void)
 		char *team_one = strstr((char *)bytes, "Team One\r\n");
 
 		if (length == 0 || bytes[length - 1U] != 0x1a || lines != 23U
-		    || bob == NULL || alice == NULL || bob >= alice
-		    || team_two == NULL || team_one == NULL || team_two >= team_one
+		    || bob == NULL || alice == NULL || alice >= bob
+		    || team_two == NULL || team_one == NULL || team_one >= team_two
 		    || rich_screen.lines != 23U
 		    || rich_screen.length != expected_screen_length
 		    || memcmp(rich_screen.data, expected_screen,
@@ -9411,7 +9436,7 @@ main(void)
 	if (!yt_game_read_player(&game, 2, &player, &error)
 	    || player.score != 100.0f
 	    || !yt_game_read_player(&game, 3, &player, &error)
-	    || player.score != 200.0f)
+	    || player.score != 100.0f)
 		goto close;
 	if (clock_script.position != YT_ARRAY_LEN(clock_script.values))
 		goto close;
