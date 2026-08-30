@@ -10487,6 +10487,161 @@ test_full_normal_exit_presentation(void)
 }
 
 static bool
+computer_info_cycle_run(struct physical_viewer_join *viewer, bool ansi,
+    bool typeahead, size_t *front_end, size_t *info_end)
+{
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Computer command (?=help)? ";
+	static const uint8_t time_text[] = " 14:59  ";
+	static const uint8_t command[] = "I";
+	static const uint8_t queued_command[] = "I;NEXT";
+	const uint8_t *typed = typeahead ? queued_command : command;
+	size_t typed_length = typeahead
+	    ? sizeof(queued_command) - 1U : sizeof(command) - 1U;
+	struct viewer_pager_join *join = &viewer->join;
+	struct yt_present_result result;
+
+	if (front_end == NULL || info_end == NULL)
+		return false;
+	join->presentation = state(ansi);
+	join->presentation.foreground = 6.0f;
+	join->pager.foreground = 6;
+	join->pager.line_count = 0.0f;
+	if (ansi) {
+		if (yt_present_color(&join->presentation, &result)
+		    != YT_PRESENT_OK)
+			return false;
+	}
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.foreground = 1.0f;
+	join->pager.foreground = 1;
+	if (!normal_exit_b05d(join, prompt, sizeof(prompt) - 1U, 1.0f))
+		return false;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	memcpy(join->accumulator, typed, typed_length + 1U);
+	if (typeahead
+	    && (!yt_input_split_semicolon(join->accumulator, join->queue,
+	    sizeof(join->queue), &join->queue_position, &join->queue_length)
+	    || strcmp(join->accumulator, "I") != 0
+	    || join->queue_position != 0U || join->queue_length != 5U
+	    || memcmp(join->queue, "NEXT\r", 5U) != 0))
+		return false;
+	if (yt_present_editor_echo(typed, typed_length, typed, typed_length,
+	    &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
+	*front_end = join->remote_length;
+	if (!normal_exit_info_run(viewer, time_text, sizeof(time_text) - 1U,
+	    NULL))
+		return false;
+	*info_end = join->remote_length;
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.foreground = 1.0f;
+	join->pager.foreground = 1;
+	return normal_exit_b05d(join, prompt, sizeof(prompt) - 1U, 1.0f);
+}
+
+static void
+test_computer_info_cycle_presentation(void)
+{
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Computer command (?=help)? ";
+	static const struct {
+		bool ansi;
+		bool typeahead;
+		size_t front_end;
+		size_t info_end;
+		size_t remote_length;
+		uint64_t remote_fnv;
+		uint64_t local_fnv;
+		size_t colors;
+		uint64_t color_fnv;
+		float final_bold;
+	} cases[] = {
+		{true, false, 55U, 733U, 785U,
+		    UINT64_C(0x8650562b7840844e),
+		    UINT64_C(0x8c7faf96b291d077), 44U,
+		    UINT64_C(0xa24fad23efd389fe), 0.0f},
+		{false, false, 45U, 647U, 689U,
+		    UINT64_C(0x673801e6321068fb),
+		    UINT64_C(0x8c7faf96b291d077), 2U,
+		    UINT64_C(0x6d3fa4669b3587bd), 1.0f},
+		{true, true, 60U, 738U, 790U,
+		    UINT64_C(0x762e60ceeecd1b2c),
+		    UINT64_C(0x72b2f9dcd2b14114), 44U,
+		    UINT64_C(0xa24fad23efd389fe), 0.0f},
+		{false, true, 50U, 652U, 694U,
+		    UINT64_C(0x397fd08e06b70e37),
+		    UINT64_C(0x72b2f9dcd2b14114), 2U,
+		    UINT64_C(0x6d3fa4669b3587bd), 1.0f},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	uint8_t remote[900];
+	size_t front_end;
+	size_t info_end;
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
+		CHECK(computer_info_cycle_run(&viewer, cases[pass].ansi,
+		    cases[pass].typeahead, &front_end, &info_end));
+		CHECK(front_end == cases[pass].front_end
+		    && info_end == cases[pass].info_end
+		    && viewer.join.remote_length == cases[pass].remote_length
+		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+		    == cases[pass].remote_fnv
+		    && viewer.join.local_row_count == 20U
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == cases[pass].local_fnv
+		    && viewer.join.local_fragment_length == sizeof(prompt) - 1U
+		    && memcmp(viewer.join.local_fragment, prompt,
+		    sizeof(prompt) - 1U) == 0
+		    && viewer.join.local_color_count == cases[pass].colors
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == cases[pass].color_fnv
+		    && viewer.join.presentation.foreground == 1.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold == cases[pass].final_bold
+		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.cached_foreground
+		    == (cases[pass].ansi ? 1.0f : 0.0f)
+		    && viewer.join.pager.foreground == 1
+		    && viewer.join.pager.line_count == 1.0f
+		    && viewer.join.pager.nonstop == 0.0f
+		    && viewer.join.pager.key[0] == '\0'
+		    && strcmp(viewer.join.accumulator, "I") == 0
+		    && viewer.join.queue_position == 0U
+		    && viewer.join.queue_length
+		    == (cases[pass].typeahead ? 5U : 0U)
+		    && (!cases[pass].typeahead
+		    || memcmp(viewer.join.queue, "NEXT\r", 5U) == 0)
+		    && viewer.join.source_length == sizeof(prompt) - 1U
+		    && memcmp(viewer.join.source, prompt,
+		    sizeof(prompt) - 1U) == 0);
+		CHECK(viewer.join.sample_calls == 2U
+		    && viewer.join.response_calls == 0U
+		    && viewer.join.direct_calls == 0U
+		    && viewer.join.event_count == 10U
+		    && viewer.join.position == 0U
+		    && stream.eof_checks == 0U && stream.key_checks == 0U
+		    && stream.read_count == 0U && stream.line_count == 0U
+		    && !stream.file_open && !viewer.join.file_open
+		    && viewer.input.file == NULL && viewer.close_calls == 0U
+		    && viewer.open_calls == 0U);
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
+static bool
 computer_quit_accept_prefix(struct physical_viewer_join *viewer, bool ansi)
 {
 	static const uint8_t prompt[] =
@@ -14253,6 +14408,7 @@ main(void)
 	test_direct_fighter_kill_warning_presentation();
 	test_info_panel_presentation();
 	test_full_normal_exit_presentation();
+	test_computer_info_cycle_presentation();
 	test_computer_quit_accept_presentation();
 	test_planet_quit_accept_presentation();
 	test_hostile_quit_accept_presentation();
