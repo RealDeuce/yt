@@ -249,6 +249,28 @@ bool yt_projectile_route_entry_run(
     yt_projectile_route_entry_read_player_fn read_player, void *context,
     struct yt_error *error);
 
+typedef bool (*yt_projectile_cruise_reroute_output_fn)(void *context,
+    const uint8_t *text, size_t length, struct yt_error *error);
+typedef bool (*yt_projectile_cruise_reroute_random_fn)(void *context,
+    float *value, struct yt_error *error);
+struct yt_projectile_cruise_reroute_ops {
+	yt_projectile_cruise_reroute_output_fn line;
+	yt_projectile_cruise_reroute_output_fn attention;
+	yt_projectile_cruise_reroute_random_fn random;
+};
+struct yt_projectile_cruise_reroute_state {
+	float hop;
+	float sector_record_offset;
+	float port_record_offset;
+	float *origin;
+	float *destination;
+};
+bool yt_projectile_is_black_hole(float hop, float first, float second);
+bool yt_projectile_cruise_reroute_run(
+    struct yt_projectile_cruise_reroute_state *state,
+    const struct yt_projectile_cruise_reroute_ops *ops, void *context,
+    struct yt_error *error);
+
 struct yt_xannor_retaliation_state {
 	struct yt_player *player;
 	int *player_record;

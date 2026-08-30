@@ -1052,6 +1052,17 @@ not authoritative. Use the corrected goal above in the new workspace.
   failed-GET state before sentinel replacement. All six formerly missing
   branches and joins at `6DA0..6DDD` are candidate. Raw scratch/FIELD/FLAGS
   state, physical adapter cuts and repeated reroute composition remain open.
+- Cruise black-hole rerouting now follows the executable's output-before-
+  mutation order. Either configured-hop equality emits the direct blank and
+  complete attention event first, then writes the old hop to the by-reference
+  origin, consumes one draw, writes the SINGLE/`INT`-derived destination and
+  rebuilds the route without replaying the opening. The former native path
+  drew and mutated before output. A provider tape pins the exact row, callback
+  order, arithmetic and three failure prefixes: both output failures leave
+  the arguments and RNG untouched, while RNG failure retains only the origin
+  rewrite. All seven formerly missing detection/output/back-edge transfers at
+  `6E21..6EA3` are candidate. Raw argument/temp/FLAGS state, A406 internals,
+  physical adapters and repeated-reroute composition remain open.
 - The projectile resolver's already recovered early terminals no longer
   bypass presentation. Missile/plasma openings, cruise end-report,
   same-sector `Missles self destructed!`, the two-blank unreachable-route

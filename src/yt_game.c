@@ -4634,6 +4634,57 @@ projectile_single_mul(float left, float right)
 }
 
 bool
+yt_projectile_is_black_hole(float hop, float first, float second)
+{
+	return hop == first || hop == second;
+}
+
+bool
+yt_projectile_cruise_reroute_run(
+    struct yt_projectile_cruise_reroute_state *state,
+    const struct yt_projectile_cruise_reroute_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t prefix[] =
+	    "The missiles are deflected by a black hole in sector";
+	static const uint8_t suffix[] = "!";
+	uint8_t row[160];
+	char number[64];
+	int number_length;
+	size_t row_length;
+	float draw;
+	float span;
+	float selected;
+
+	if (state == NULL || ops == NULL || state->origin == NULL
+	    || state->destination == NULL || ops->line == NULL
+	    || ops->attention == NULL || ops->random == NULL)
+		return false;
+	if (!ops->line(context, NULL, 0U, error))
+		return false;
+	number_length = qb_str_single(number, sizeof(number), state->hop);
+	if (number_length < 0
+	    || sizeof(prefix) - 1U + (size_t)number_length + sizeof(suffix) - 1U
+	    > sizeof(row))
+		return false;
+	memcpy(row, prefix, sizeof(prefix) - 1U);
+	memcpy(row + sizeof(prefix) - 1U, number, (size_t)number_length);
+	row_length = sizeof(prefix) - 1U + (size_t)number_length;
+	memcpy(row + row_length, suffix, sizeof(suffix) - 1U);
+	row_length += sizeof(suffix) - 1U;
+	if (!ops->attention(context, row, row_length, error))
+		return false;
+	*state->origin = state->hop;
+	if (!ops->random(context, &draw, error))
+		return false;
+	span = projectile_single_sub(state->port_record_offset,
+	    state->sector_record_offset);
+	selected = floorf(projectile_single_mul(draw, span));
+	*state->destination = projectile_single_add(selected, 1.0f);
+	return true;
+}
+
+bool
 yt_projectile_survivor_overlay(struct yt_player *player, float shields,
     double fighters, float scanner, bool scanner_disabled)
 {

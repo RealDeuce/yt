@@ -794,14 +794,15 @@ session_sound(struct yt_session *session, float selector,
 }
 
 static bool
-session_attention(struct yt_session *session, const char *text,
+session_attention_bytes(struct yt_session *session, const uint8_t *text,
+    size_t length,
     const char *operation, struct yt_error *error)
 {
 	struct yt_present_result presentation;
 	enum yt_present_status status;
 
-	status = yt_present_attention((const uint8_t *)text, strlen(text),
-	    &session->presentation, &presentation);
+	status = yt_present_attention(text, length, &session->presentation,
+	    &presentation);
 	yt_out_present_result(&presentation);
 	if (status == YT_PRESENT_OK)
 		return true;
@@ -811,6 +812,14 @@ session_attention(struct yt_session *session, const char *text,
 		    operation);
 	}
 	return false;
+}
+
+static bool
+session_attention(struct yt_session *session, const char *text,
+    const char *operation, struct yt_error *error)
+{
+	return session_attention_bytes(session, (const uint8_t *)text,
+	    strlen(text), operation, error);
 }
 
 enum session_present_text_kind {
@@ -13040,6 +13049,28 @@ cruise_route_entry_read_player(void *context, int player_record,
 }
 
 static bool
+cruise_reroute_line(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	return session_present_text(context, text, length, SESSION_PRESENT_LINE,
+	    "cruise black-hole blank", error);
+}
+
+static bool
+cruise_reroute_attention(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	return session_attention_bytes(context, text, length,
+	    "cruise black-hole attention", error);
+}
+
+static bool
+cruise_reroute_random(void *context, float *value, struct yt_error *error)
+{
+	return random_value(context, value, error);
+}
+
+static bool
 launch_projectile(struct yt_session *session, float target, float amount,
     bool plasma, float *returned_missiles, float *origin_alias,
     int *pending_counterattack, int *pending_xannor,
@@ -13154,12 +13185,40 @@ launch_projectile(struct yt_session *session, float target, float amount,
 				return false;
 			}
 		}
-		if ((float)next == session->black_hole[0]
-		    || (float)next == session->black_hole[1]) {
+		if (yt_projectile_is_black_hole((float)next,
+		    session->black_hole[0], session->black_hole[1])) {
 			float draw;
 			char old_text[64];
 			char new_text[64];
 			char row[192];
+			float local_origin = (float)start;
+			float local_destination = (float)destination;
+			static const struct yt_projectile_cruise_reroute_ops
+			    cruise_ops = {
+				cruise_reroute_line,
+				cruise_reroute_attention,
+				cruise_reroute_random,
+			};
+
+			if (!plasma) {
+				struct yt_projectile_cruise_reroute_state state = {
+					(float)next,
+					session->door->game.config.sector_offset,
+					session->door->game.config.port_offset,
+					origin_alias != NULL ? origin_alias : &local_origin,
+					&local_destination,
+				};
+
+				if (!yt_projectile_cruise_reroute_run(&state,
+				    &cruise_ops, session, error)) {
+					free(route);
+					return false;
+				}
+				start = (int)*state.origin;
+				destination = (int)*state.destination;
+				rerouted = true;
+				break;
+			}
 
 			if (!random_value(session, &draw, error)) {
 				free(route);
@@ -13178,17 +13237,11 @@ launch_projectile(struct yt_session *session, float target, float amount,
 				free(route);
 				return false;
 			}
-			if (plasma)
-				snprintf(row, sizeof(row), "The plasma bolt is "
-				    "deflected by a black hole in sector%s to "
-				    "sector%s!", old_text, new_text);
-			else
-				snprintf(row, sizeof(row), "The missiles are "
-				    "deflected by a black hole in sector%s!",
-				    old_text);
+			snprintf(row, sizeof(row), "The plasma bolt is "
+			    "deflected by a black hole in sector%s to "
+			    "sector%s!", old_text, new_text);
 			if (!session_attention(session, row,
-			    plasma ? "plasma black-hole attention"
-			    : "missile black-hole attention", error)) {
+			    "plasma black-hole attention", error)) {
 				free(route);
 				return false;
 			}
