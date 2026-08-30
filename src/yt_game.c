@@ -45,6 +45,109 @@ startup_single_add(float left, float right)
 	return result;
 }
 
+static bool
+owned_planets_error(struct yt_error *error, enum yt_status status,
+    const char *operation)
+{
+	if (error != NULL) {
+		error->status = status;
+		error->system_error = 0;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    operation);
+		error->path[0] = '\0';
+	}
+	return false;
+}
+
+bool
+yt_owned_planets_run(struct yt_owned_planets_state *state,
+    const struct yt_owned_planets_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t scanning[] = "Scanning...";
+	static const uint8_t none[] = "None found!";
+	static const uint8_t prefix[] = "Planet: ";
+	static const uint8_t infix[] = " Sector:";
+	int sector_number;
+
+	if (state == NULL || ops == NULL || ops->read_sector == NULL
+	    || ops->read_planet == NULL || ops->present == NULL
+	    || ops->set_color == NULL || ops->set_blink == NULL
+	    || state->maximum_sector < 0)
+		return owned_planets_error(error, YT_INVALID,
+		    "owned-planet state");
+	state->found = false;
+	state->current_sector = 0;
+	state->current_link = 0.0f;
+	state->current_record_expression = 0.0f;
+	state->current_planet_record = 0U;
+	state->foreground = 2.0f;
+	ops->set_color(context, 2);
+	if (!ops->present(context, NULL, 0U, false,
+	    "owned-planet opening blank", error)
+	    || !ops->present(context, scanning, sizeof(scanning) - 1U, false,
+	    "owned-planet scanning row", error)
+	    || !ops->present(context, NULL, 0U, false,
+	    "owned-planet scanning blank", error))
+		return false;
+	state->foreground = 3.0f;
+	ops->set_color(context, 3);
+	for (sector_number = 1; sector_number <= state->maximum_sector;
+	    ++sector_number) {
+		struct yt_sector sector;
+		struct yt_planet planet;
+		volatile float record_expression;
+		uint32_t physical_record;
+
+		state->current_sector = sector_number;
+		if (!ops->read_sector(context, sector_number, &sector, error))
+			return false;
+		state->current_link = sector.planet;
+		if (sector.planet == 0.0f)
+			continue;
+		record_expression = state->planet_record_base + sector.planet;
+		state->current_record_expression = record_expression;
+		physical_record = qb_brun_random_record_number(record_expression);
+		state->current_planet_record = physical_record;
+		if (physical_record == 0U)
+			return owned_planets_error(error, YT_RANGE,
+			    "owned-planet record number");
+		if (!ops->read_planet(context, physical_record, &planet, error))
+			return false;
+		if (planet.owner == state->current_player) {
+			uint8_t row[128];
+			char number[64];
+			size_t length = 0U;
+			int number_length = qb_str_single(number, sizeof(number),
+			    (float)sector_number);
+
+			if (number_length < 0)
+				return owned_planets_error(error, YT_RANGE,
+				    "owned-planet sector format");
+			memcpy(row + length, prefix, sizeof(prefix) - 1U);
+			length += sizeof(prefix) - 1U;
+			memcpy(row + length, planet.record.bytes,
+			    YT_TEXT_FIELD_SIZE);
+			length += YT_TEXT_FIELD_SIZE;
+			memcpy(row + length, infix, sizeof(infix) - 1U);
+			length += sizeof(infix) - 1U;
+			memcpy(row + length, number, (size_t)number_length);
+			length += (size_t)number_length;
+			if (!ops->present(context, row, length, true,
+			    "owned-planet match row", error))
+				return false;
+			state->found = true;
+		}
+	}
+	if (!state->found) {
+		state->blink = 1.0f;
+		ops->set_blink(context, 1.0f);
+		return ops->present(context, none, sizeof(none) - 1U, true,
+		    "owned-planet none row", error);
+	}
+	return true;
+}
+
 bool
 yt_startup_configuration_run(struct yt_startup_configuration_state *state,
     const struct yt_startup_configuration_ops *ops, void *context,

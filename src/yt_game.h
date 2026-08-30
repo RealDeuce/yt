@@ -127,6 +127,42 @@ struct yt_planet {
 	float fighters;
 };
 
+struct yt_owned_planets_state {
+	int maximum_sector;
+	float planet_record_base;
+	float current_player;
+	int current_sector;
+	float current_link;
+	float current_record_expression;
+	uint32_t current_planet_record;
+	float foreground;
+	float blink;
+	bool found;
+};
+
+typedef bool (*yt_owned_planets_read_sector_fn)(void *context,
+    int logical_sector, struct yt_sector *sector, struct yt_error *error);
+typedef bool (*yt_owned_planets_read_planet_fn)(void *context,
+    uint32_t physical_record, struct yt_planet *planet,
+    struct yt_error *error);
+typedef bool (*yt_owned_planets_present_fn)(void *context,
+    const uint8_t *text, size_t length, bool bold, const char *operation,
+    struct yt_error *error);
+typedef void (*yt_owned_planets_color_fn)(void *context, int foreground);
+typedef void (*yt_owned_planets_blink_fn)(void *context, float blink);
+
+struct yt_owned_planets_ops {
+	yt_owned_planets_read_sector_fn read_sector;
+	yt_owned_planets_read_planet_fn read_planet;
+	yt_owned_planets_present_fn present;
+	yt_owned_planets_color_fn set_color;
+	yt_owned_planets_blink_fn set_blink;
+};
+
+bool yt_owned_planets_run(struct yt_owned_planets_state *state,
+    const struct yt_owned_planets_ops *ops, void *context,
+    struct yt_error *error);
+
 struct yt_post_login_repairs {
 	bool turns;
 	bool holds;

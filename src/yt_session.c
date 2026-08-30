@@ -14724,68 +14724,72 @@ computer_owned_fighters(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
+owned_planets_read_sector(void *context, int logical_sector,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_read_sector(&session->door->game, logical_sector,
+	    sector, error);
+}
+
+static bool
+owned_planets_read_planet(void *context, uint32_t physical_record,
+    struct yt_planet *planet, struct yt_error *error)
+{
+	struct yt_session *session = context;
+	struct yt_record record;
+
+	if (!yt_database_read(&session->door->game.database,
+	    (size_t)physical_record, &record, error))
+		return false;
+	yt_planet_decode(planet, &record);
+	return true;
+}
+
+static bool
+owned_planets_present(void *context, const uint8_t *text, size_t length,
+    bool bold, const char *operation, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return session_present_text(session, text, length,
+	    bold ? SESSION_PRESENT_BOLD_LINE : SESSION_PRESENT_LINE,
+	    operation, error);
+}
+
+static void
+owned_planets_set_color(void *context, int foreground)
+{
+	session_set_color(context, foreground);
+}
+
+static void
+owned_planets_set_blink(void *context, float blink)
+{
+	struct yt_session *session = context;
+
+	session->presentation.blink = blink;
+}
+
+static bool
 computer_owned_planets(struct yt_session *session, struct yt_error *error)
 {
-	int sector_number;
-	bool found = false;
+	static const struct yt_owned_planets_ops ops = {
+		owned_planets_read_sector,
+		owned_planets_read_planet,
+		owned_planets_present,
+		owned_planets_set_color,
+		owned_planets_set_blink,
+	};
+	struct yt_owned_planets_state state = {
+		.maximum_sector = sector_count(session),
+		.planet_record_base = session->door->game.config.planet_offset,
+		.current_player = (float)session->player_record,
+		.blink = session->presentation.blink,
+	};
 
-	session_set_color(session, 2);
-	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "owned-planet opening blank", error)
-	    || !session_present_text(session, (const uint8_t *)"Scanning...",
-	    strlen("Scanning..."), SESSION_PRESENT_LINE,
-	    "owned-planet scanning row", error)
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "owned-planet scanning blank", error))
-		return false;
-	session_set_color(session, 3);
-	for (sector_number = 1; sector_number <= sector_count(session);
-	    ++sector_number) {
-		struct yt_sector sector;
-		struct yt_planet planet;
-
-		if (!yt_game_read_sector(&session->door->game, sector_number,
-		    &sector, error))
-			return false;
-		if (sector.planet == 0.0f)
-			continue;
-		if (!yt_game_read_planet(&session->door->game,
-		    (int)sector.planet, &planet, error))
-			return false;
-		if (planet.owner == (float)session->player_record) {
-			static const uint8_t prefix[] = "Planet: ";
-			static const uint8_t infix[] = " Sector:";
-			uint8_t row[128];
-			char number[64];
-			size_t length = 0;
-
-			if (qb_str_single(number, sizeof(number),
-			    (float)sector_number) < 0)
-				return port_report_failure(error,
-				    "owned-planet sector format");
-			memcpy(row + length, prefix, sizeof(prefix) - 1U);
-			length += sizeof(prefix) - 1U;
-			memcpy(row + length, planet.record.bytes,
-			    YT_TEXT_FIELD_SIZE);
-			length += YT_TEXT_FIELD_SIZE;
-			memcpy(row + length, infix, sizeof(infix) - 1U);
-			length += sizeof(infix) - 1U;
-			memcpy(row + length, number, strlen(number));
-			length += strlen(number);
-			if (!session_present_text(session, row, length,
-			    SESSION_PRESENT_BOLD_LINE,
-			    "owned-planet match row", error))
-				return false;
-			found = true;
-		}
-	}
-	if (!found) {
-		session->presentation.blink = 1.0f;
-		return session_present_text(session,
-		    (const uint8_t *)"None found!", strlen("None found!"),
-		    SESSION_PRESENT_BOLD_LINE, "owned-planet none row", error);
-	}
-	return true;
+	return yt_owned_planets_run(&state, &ops, session, error);
 }
 
 static bool
