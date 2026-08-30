@@ -2113,6 +2113,7 @@ test_time_helpers(void)
 	struct yt_present_state current = state(true);
 	struct yt_present_time_state time;
 	struct yt_present_result result;
+	uint8_t long_time[YT_PRESENT_EVENT_DATA - 9U];
 	static const float update_reads[] = {100, 100, 100, 100};
 	static const float gated_reads[] = {100, 100};
 	static const float rollover_reads[] = {1, 10, 10};
@@ -2221,6 +2222,48 @@ test_time_helpers(void)
 	CHECK(warned && result.event_count == 4);
 	CHECK(result.events[1].operation == YT_PRESENT_LOCAL_BEEP);
 	CHECK(current.bold == 1.0f && current.blink == 1.0f);
+
+	current = state(false);
+	current.sound.snoop = 0.0f;
+	remembered = 7.0f;
+	CHECK(yt_present_low_time((const uint8_t *)" 6:00  ", 7,
+	    &remembered, &current, &result, &warned) == YT_PRESENT_OK);
+	CHECK(!warned && remembered == 6.0f && result.event_count == 0U
+	    && result.remote_length == 0U);
+	remembered = 6.0f;
+	CHECK(yt_present_low_time((const uint8_t *)"5.9999999", 9,
+	    &remembered, &current, &result, &warned) == YT_PRESENT_OK);
+	CHECK(!warned && remembered == 6.0f && result.event_count == 0U);
+
+	remembered = 6.0f;
+	CHECK(yt_present_low_time((const uint8_t *)"5.9:00", 6,
+	    &remembered, &current, &result, &warned) == YT_PRESENT_OK);
+	CHECK(warned && remembered == (float)5.9
+	    && result.remote_length != 0U);
+	CHECK(yt_present_low_time((const uint8_t *)"5.9:00", 6,
+	    &remembered, &current, &result, &warned) == YT_PRESENT_OK);
+	CHECK(warned && remembered == (float)5.9
+	    && result.remote_length != 0U);
+
+	current = state(false);
+	current.sound.snoop = 0.0f;
+	remembered = 6.0f;
+	memset(long_time, 'x', sizeof(long_time));
+	long_time[0] = '5';
+	CHECK(yt_present_low_time(long_time, sizeof(long_time), &remembered,
+	    &current, &result, &warned) == YT_PRESENT_CAPACITY);
+	CHECK(!warned && remembered == 5.0f && current.foreground == 5.0f
+	    && current.blink == 1.0f && current.bold == 0.0f
+	    && result.event_count == 3U && result.remote_length == 3U
+	    && memcmp(result.remote, "\r\n\a", 3U) == 0);
+
+	current = state(false);
+	remembered = 6.0f;
+	CHECK(yt_present_low_time((const uint8_t *)"2E38", 4, &remembered,
+	    &current, &result, &warned) == YT_PRESENT_OVERFLOW);
+	CHECK(!warned && remembered == 6.0f && current.foreground == 2.0f
+	    && current.blink == 0.0f && result.event_count == 0U
+	    && result.remote_length == 0U);
 }
 
 static void
