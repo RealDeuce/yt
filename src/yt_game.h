@@ -797,6 +797,24 @@ bool yt_projectile_planet_productivity_overlay(struct yt_planet *planet,
     const float production[3], const float stock[3]);
 bool yt_projectile_planet_destroy_overlay(struct yt_planet *planet);
 bool yt_projectile_sector_unlink_overlay(struct yt_sector *sector);
+struct yt_projectile_ground_result {
+	float ground;
+	float owner;
+	size_t iterations;
+};
+bool yt_projectile_planet_ground_damage(float ground, float owner,
+    float *remaining, yt_projectile_damage_draw_fn draw, void *context,
+    struct yt_projectile_ground_result *result, struct yt_error *error);
+struct yt_projectile_productivity_result {
+	float old_total;
+	float new_total;
+	size_t iterations;
+};
+bool yt_projectile_planet_productivity_damage(float updater_ore,
+    float production[3], float stock[3], float *remaining,
+    yt_projectile_damage_draw_fn draw, void *context,
+    struct yt_projectile_productivity_result *result,
+    struct yt_error *error);
 bool yt_projectile_player_damage(struct yt_player *target, float *remaining,
     yt_projectile_damage_draw_fn draw, void *context,
     struct yt_projectile_damage_result *result, struct yt_error *error);

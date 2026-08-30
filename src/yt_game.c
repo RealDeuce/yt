@@ -4694,6 +4694,84 @@ yt_projectile_sector_unlink_overlay(struct yt_sector *sector)
 }
 
 bool
+yt_projectile_planet_ground_damage(float ground, float owner,
+    float *remaining, yt_projectile_damage_draw_fn draw, void *context,
+    struct yt_projectile_ground_result *result, struct yt_error *error)
+{
+	size_t iterations = 0U;
+
+	if (remaining == NULL || draw == NULL || result == NULL)
+		return false;
+	while (ground > 0.0f && *remaining > 0.0f) {
+		float value;
+
+		if (!draw(context, &value, error))
+			return false;
+		ground = projectile_single_sub(ground,
+		    projectile_single_mul(value, 25.0f));
+		*remaining = projectile_single_sub(*remaining, 1.0f);
+		++iterations;
+	}
+	ground = floorf(ground);
+	if (ground < 1.0f) {
+		ground = 0.0f;
+		owner = 0.0f;
+	}
+	result->ground = ground;
+	result->owner = owner;
+	result->iterations = iterations;
+	return true;
+}
+
+bool
+yt_projectile_planet_productivity_damage(float updater_ore,
+    float production[3], float stock[3], float *remaining,
+    yt_projectile_damage_draw_fn draw, void *context,
+    struct yt_projectile_productivity_result *result,
+    struct yt_error *error)
+{
+	float old_total;
+	float new_total;
+	size_t iterations = 0U;
+	size_t index;
+
+	if (production == NULL || stock == NULL || remaining == NULL
+	    || draw == NULL || result == NULL)
+		return false;
+	old_total = projectile_single_add(projectile_single_add(production[0],
+	    production[1]), production[2]);
+	while ((updater_ore > 0.0f || production[1] > 0.0f
+	    || production[2] > 0.0f) && *remaining > 0.0f) {
+		for (index = 0U; index < 3U; ++index) {
+			float value;
+
+			if (!draw(context, &value, error))
+				return false;
+			production[index] = projectile_single_sub(
+			    production[index], projectile_single_mul(value,
+			    2000.0f));
+		}
+		*remaining = projectile_single_sub(*remaining, 1.0f);
+		++iterations;
+	}
+	for (index = 0U; index < 3U; ++index) {
+		float cap;
+
+		if (production[index] < 0.0f)
+			production[index] = 0.0f;
+		cap = projectile_single_mul(production[index], 10.0f);
+		if (stock[index] > cap)
+			stock[index] = cap;
+	}
+	new_total = projectile_single_add(projectile_single_add(production[0],
+	    production[1]), production[2]);
+	result->old_total = old_total;
+	result->new_total = new_total;
+	result->iterations = iterations;
+	return true;
+}
+
+bool
 yt_projectile_player_damage(struct yt_player *target, float *remaining,
     yt_projectile_damage_draw_fn draw, void *context,
     struct yt_projectile_damage_result *result, struct yt_error *error)

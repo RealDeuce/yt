@@ -94,6 +94,8 @@ struct yt_team {
 
 static bool random_value(struct yt_session *session, float *value,
     struct yt_error *error);
+static bool projectile_damage_draw(void *context, float *value,
+    struct yt_error *error);
 static bool computer_spies(struct yt_session *session,
     struct yt_error *error);
 static bool mine_encounter(struct yt_session *session,
@@ -11682,7 +11684,6 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 	uint32_t physical_planet;
 	uint32_t physical_sector;
 	float original_ore;
-	float old_total;
 	bool friendly = false;
 	uint8_t planet_name[YT_TEXT_FIELD_SIZE];
 	uint8_t attacker_name[YT_TEXT_FIELD_SIZE];
@@ -11763,20 +11764,13 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 		float ground = planet.ground_forces;
 		float owner = planet.owner;
 		struct yt_planet persistence;
+		struct yt_projectile_ground_result impact;
 
-		while (ground > 0.0f && *remaining > 0.0f) {
-			float draw;
-
-			if (!random_value(session, &draw, error))
-				return false;
-			ground = single_sub(ground, single_mul(draw, 25.0f));
-			*remaining = single_sub(*remaining, 1.0f);
-		}
-		ground = floorf(ground);
-		if (ground < 1.0f) {
-			ground = 0.0f;
-			owner = 0.0f;
-		}
+		if (!yt_projectile_planet_ground_damage(ground, owner, remaining,
+		    projectile_damage_draw, session, &impact, error))
+			return false;
+		ground = impact.ground;
+		owner = impact.owner;
 		if (!read_planet_physical(session, physical_planet, &persistence,
 		    error))
 			return false;
@@ -11797,42 +11791,17 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 		if (*remaining < 1.0f)
 			return true;
 	}
-	old_total = single_add(single_add(planet.production[0],
-	    planet.production[1]), planet.production[2]);
-	while ((original_ore > 0.0f || planet.production[1] > 0.0f
-	    || planet.production[2] > 0.0f) && *remaining > 0.0f) {
-		size_t index;
-
-		for (index = 0; index < 3; ++index) {
-			float draw;
-
-			if (!random_value(session, &draw, error))
-				return false;
-			planet.production[index] =
-			    single_sub(planet.production[index],
-			    single_mul(draw, 2000.0f));
-		}
-		*remaining = single_sub(*remaining, 1.0f);
-	}
 	{
-		size_t index;
+		struct yt_projectile_productivity_result impact;
 
-		for (index = 0; index < 3; ++index) {
-			if (planet.production[index] < 0.0f)
-				planet.production[index] = 0.0f;
-			if (planet.stock[index]
-			    > single_mul(planet.production[index], 10.0f))
-				planet.stock[index] =
-				    single_mul(planet.production[index], 10.0f);
-		}
-	}
-	{
-		float new_total = single_add(single_add(planet.production[0],
-		    planet.production[1]), planet.production[2]);
+		if (!yt_projectile_planet_productivity_damage(original_ore,
+		    planet.production, planet.stock, remaining,
+		    projectile_damage_draw, session, &impact, error))
+			return false;
 
 		qb_str_single(number_one, sizeof(number_one),
-		    single_sub(old_total, new_total));
-		qb_str_single(number_two, sizeof(number_two), new_total);
+		    single_sub(impact.old_total, impact.new_total));
+		qb_str_single(number_two, sizeof(number_two), impact.new_total);
 		snprintf(row, sizeof(row), "Productivity reduced by%s units to%s "
 		    "units!", number_one, number_two);
 		if (!session_present_text(session, (const uint8_t *)row,

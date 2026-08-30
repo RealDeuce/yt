@@ -661,6 +661,94 @@ check_projectile_persistence_model(void)
 }
 
 static bool
+check_projectile_planet_damage_model(void)
+{
+	static const float ground_draws[] = {0.5f, 0.5f};
+	static const float productivity_draws[] = {
+		0.001f, 0.002f, 0.003f
+	};
+	static const float clamp_draws[] = {0.01f, 0.01f, 0.01f};
+	struct projectile_damage_tape tape;
+	struct yt_projectile_ground_result ground;
+	struct yt_projectile_productivity_result productivity;
+	struct yt_error error;
+	float production[3];
+	float stock[3];
+	float remaining;
+
+	tape.values = ground_draws;
+	tape.count = YT_ARRAY_LEN(ground_draws);
+	tape.position = 0U;
+	tape.fail_at = SIZE_MAX;
+	remaining = 2.0f;
+	if (!yt_projectile_planet_ground_damage(20.0f, 7.0f, &remaining,
+	    projectile_damage_draw, &tape, &ground, &error)
+	    || tape.position != 2U || ground.iterations != 2U
+	    || ground.ground != 0.0f || ground.owner != 0.0f
+	    || remaining != 0.0f)
+		return false;
+	tape.position = 0U;
+	remaining = 3.0f;
+	if (!yt_projectile_planet_ground_damage(-2.5f, 7.0f, &remaining,
+	    projectile_damage_draw, &tape, &ground, &error)
+	    || tape.position != 0U || ground.iterations != 0U
+	    || ground.ground != 0.0f || ground.owner != 0.0f
+	    || remaining != 3.0f)
+		return false;
+
+	memset(production, 0, sizeof(production));
+	stock[0] = stock[1] = stock[2] = 5.0f;
+	tape.values = productivity_draws;
+	tape.count = YT_ARRAY_LEN(productivity_draws);
+	tape.position = 0U;
+	remaining = 1.0f;
+	if (!yt_projectile_planet_productivity_damage(1.0f, production,
+	    stock, &remaining, projectile_damage_draw, &tape, &productivity,
+	    &error)
+	    || tape.position != 3U || productivity.iterations != 1U
+	    || productivity.old_total != 0.0f
+	    || productivity.new_total != 0.0f || remaining != 0.0f
+	    || production[0] != 0.0f || production[1] != 0.0f
+	    || production[2] != 0.0f || stock[0] != 0.0f
+	    || stock[1] != 0.0f || stock[2] != 0.0f)
+		return false;
+
+	production[0] = 0.0f;
+	production[1] = 100.0f;
+	production[2] = 0.0f;
+	stock[0] = 999.0f;
+	stock[1] = 800.0f;
+	stock[2] = 1.0f;
+	tape.values = clamp_draws;
+	tape.count = YT_ARRAY_LEN(clamp_draws);
+	tape.position = 0U;
+	remaining = 1.0f;
+	if (!yt_projectile_planet_productivity_damage(0.0f, production,
+	    stock, &remaining, projectile_damage_draw, &tape, &productivity,
+	    &error)
+	    || productivity.old_total != 100.0f
+	    || productivity.new_total != 80.0f
+	    || stock[0] != 0.0f || stock[1] != 800.0f
+	    || stock[2] != 0.0f)
+		return false;
+
+	production[0] = 10.0f;
+	production[1] = 20.0f;
+	production[2] = 30.0f;
+	stock[0] = stock[1] = stock[2] = 0.0f;
+	tape.position = 0U;
+	tape.fail_at = 1U;
+	remaining = 1.0f;
+	yt_error_clear(&error);
+	return !yt_projectile_planet_productivity_damage(0.0f, production,
+	    stock, &remaining, projectile_damage_draw, &tape, &productivity,
+	    &error)
+	    && tape.position == 2U && production[0] == -10.0f
+	    && production[1] == 20.0f && production[2] == 30.0f
+	    && remaining == 1.0f && error.status == YT_IO_ERROR;
+}
+
+static bool
 check_projectile_parent_model(void)
 {
 	static const uint8_t missile[] =
@@ -9320,6 +9408,8 @@ main(void)
 		return fail("projectile player-damage model differs");
 	if (!check_projectile_persistence_model())
 		return fail("projectile persistence model differs");
+	if (!check_projectile_planet_damage_model())
+		return fail("projectile planet-damage model differs");
 	if (!check_projectile_bridge())
 		return fail("projectile debit/resolver bridge differs");
 	if (!check_xannor_retaliation_model())
