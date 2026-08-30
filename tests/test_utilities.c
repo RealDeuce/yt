@@ -2651,7 +2651,8 @@ test_name_input_grammar(struct yt_error *error)
 	static const uint8_t duplicates[] =
 	    "Jane,Doe,First,Alias\r\n"
 	    "Other,Player,Wrong,Person\r\n"
-	    "Jane,Doe,Last,Winner\r\n\x1a";
+	    "Jane,Doe,Last,Winner\r\n"
+	    "A B,C,Split Alias,Tail\r\n\x1a";
 	static const uint8_t quoted[] =
 	    "\"Real, First\",Last,Alias,Name\r\n\x1a";
 	static const uint8_t multiline[] =
@@ -2696,9 +2697,13 @@ test_name_input_grammar(struct yt_error *error)
 		const struct yt_name_row *match =
 		    yt_names_find_real_last(&names, "Jane", "Doe");
 
-		ok = names.count == 3U && match == &names.rows[2]
+		ok = names.count == 4U && match == &names.rows[2]
 		    && strcmp(match->alias_first, "Last") == 0
-		    && strcmp(match->alias_last, "Winner") == 0;
+		    && strcmp(match->alias_last, "Winner") == 0
+		    && yt_names_find_real_last(&names, "A", "B C")
+		    == &names.rows[3]
+		    && yt_names_alias_exists(&names, "Split", "Alias Tail")
+		    && !yt_names_alias_exists(&names, "split", "Alias Tail");
 	}
 	yt_names_free(&names);
 	REQUIRE_NAMES(ok, "last duplicate real-name match");

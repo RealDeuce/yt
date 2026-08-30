@@ -236,6 +236,33 @@ yt_names_append(const char *path, const struct yt_name_row *row,
 	    error);
 }
 
+static bool
+joined_name_equal(const char *left_first, const char *left_last,
+    const char *right_first, const char *right_last)
+{
+	size_t left_first_length = strlen(left_first);
+	size_t left_last_length = strlen(left_last);
+	size_t right_first_length = strlen(right_first);
+	size_t right_last_length = strlen(right_last);
+	size_t length = left_first_length + 1U + left_last_length;
+	size_t index;
+
+	if (length != right_first_length + 1U + right_last_length)
+		return false;
+	for (index = 0; index < length; ++index) {
+		char left = index < left_first_length ? left_first[index]
+		    : index == left_first_length ? ' '
+		    : left_last[index - left_first_length - 1U];
+		char right = index < right_first_length ? right_first[index]
+		    : index == right_first_length ? ' '
+		    : right_last[index - right_first_length - 1U];
+
+		if (left != right)
+			return false;
+	}
+	return true;
+}
+
 const struct yt_name_row *
 yt_names_find_real_last(const struct yt_name_file *names, const char *first,
     const char *last)
@@ -244,8 +271,8 @@ yt_names_find_real_last(const struct yt_name_file *names, const char *first,
 	size_t index;
 
 	for (index = 0; index < names->count; ++index) {
-		if (strcmp(names->rows[index].real_first, first) == 0
-		    && strcmp(names->rows[index].real_last, last) == 0)
+		if (joined_name_equal(names->rows[index].real_first,
+		    names->rows[index].real_last, first, last))
 			match = &names->rows[index];
 	}
 	return match;
@@ -258,8 +285,8 @@ yt_names_alias_exists(const struct yt_name_file *names, const char *first,
 	size_t index;
 
 	for (index = 0; index < names->count; ++index) {
-		if (strcmp(names->rows[index].alias_first, first) == 0
-		    && strcmp(names->rows[index].alias_last, last) == 0)
+		if (joined_name_equal(names->rows[index].alias_first,
+		    names->rows[index].alias_last, first, last))
 			return true;
 	}
 	return false;
