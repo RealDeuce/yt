@@ -12065,6 +12065,9 @@ enum planet_transfer_cycle_outcome {
 	PLANET_TRANSFER_NO_CARGO_CYCLE,
 	PLANET_TRANSFER_CARGO_CYCLE,
 	PLANET_TRANSFER_FIGHTER_CYCLE,
+	PLANET_TRANSFER_PLASMA_CYCLE,
+	PLANET_TRANSFER_MISSILE_CYCLE,
+	PLANET_TRANSFER_MINE_CYCLE,
 };
 
 static bool
@@ -12090,6 +12093,9 @@ planet_transfer_cycle_run(struct physical_viewer_join *viewer, bool ansi,
 	static const uint8_t empty_selector[] = "";
 	static const uint8_t cargo_selector[] = "C";
 	static const uint8_t fighter_selector[] = "F";
+	static const uint8_t plasma_selector[] = "B";
+	static const uint8_t missile_selector[] = "S";
+	static const uint8_t mine_selector[] = "M";
 	static const uint8_t fighter_prompt[] =
 	    "You have 7 fighters. Transfer how many -=>";
 	static const uint8_t fighter_amount[] = "3";
@@ -12097,18 +12103,32 @@ planet_transfer_cycle_run(struct physical_viewer_join *viewer, bool ansi,
 	    "You don't have any cargo!";
 	static const uint8_t cargo_message[] = "Cargo transferred!!";
 	static const uint8_t fighter_message[] = "Fighters Transferred!";
+	static const uint8_t plasma_message[] = "Plasma Bolts Transferred!";
+	static const uint8_t missile_message[] = "Missiles Transferred!";
+	static const uint8_t mine_message[] = "Mines Transferred!";
 	static const double empty_held[3] = {0.0, 0.0, 0.0};
 	static const double nonempty_held[3] = {10.0, 20.0, 5.0};
 	bool no_cargo = outcome == PLANET_TRANSFER_NO_CARGO_CYCLE;
 	bool cargo = outcome == PLANET_TRANSFER_CARGO_CYCLE;
 	bool fighter = outcome == PLANET_TRANSFER_FIGHTER_CYCLE;
+	bool plasma = outcome == PLANET_TRANSFER_PLASMA_CYCLE;
+	bool missile = outcome == PLANET_TRANSFER_MISSILE_CYCLE;
+	bool mine = outcome == PLANET_TRANSFER_MINE_CYCLE;
+	bool direct = plasma || missile || mine;
 	const uint8_t *free_holds = no_cargo
 	    ? free_holds_100 : free_holds_65;
 	size_t free_holds_length = no_cargo
 	    ? sizeof(free_holds_100) - 1U : sizeof(free_holds_65) - 1U;
 	const uint8_t *selector = fighter ? fighter_selector
-	    : no_cargo || cargo ? cargo_selector : empty_selector;
-	size_t selector_length = no_cargo || cargo || fighter ? 1U : 0U;
+	    : plasma ? plasma_selector : missile ? missile_selector
+	    : mine ? mine_selector : no_cargo || cargo
+	    ? cargo_selector : empty_selector;
+	const uint8_t *direct_message = plasma ? plasma_message
+	    : missile ? missile_message : mine_message;
+	size_t direct_message_length = plasma ? sizeof(plasma_message) - 1U
+	    : missile ? sizeof(missile_message) - 1U
+	    : sizeof(mine_message) - 1U;
+	size_t selector_length = no_cargo || cargo || fighter || direct ? 1U : 0U;
 	struct viewer_pager_join *join = &viewer->join;
 	struct yt_present_result result;
 
@@ -12211,6 +12231,13 @@ planet_transfer_cycle_run(struct physical_viewer_join *viewer, bool ansi,
 		join->presentation.blink = 1.0f;
 		if (!normal_exit_b05d(join, fighter_message,
 		    sizeof(fighter_message) - 1U, 0.0f))
+			return false;
+	} else if (direct) {
+		if (!normal_exit_line(join, NULL, 0U))
+			return false;
+		join->presentation.blink = 1.0f;
+		if (!normal_exit_b05d(join, direct_message,
+		    direct_message_length, 0.0f))
 			return false;
 	}
 	*body_end = join->remote_length;
@@ -12522,6 +12549,173 @@ test_planet_transfer_fighter_cycle_presentation(void)
 		    && viewer.input.file == NULL && viewer.close_calls == 0U
 		    && viewer.open_calls == 0U);
 		yt_text_input_destroy(&viewer.input);
+	}
+}
+
+static void
+test_planet_transfer_direct_cycles_presentation(void)
+{
+	static const uint8_t plasma_ansi[] =
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? t\r\n"
+	    "\r\n<Transfer items to planet>\n\r"
+	    "\r\nTransfer which item?\n\r"
+	    "\r\n[B] Plasma Bolts\n\r[C] Cargo\n\r[F] Fighters\n\r"
+	    "[S] Missiles\n\r[M] Mines\n\r\r\n-=>B\r\n"
+	    "\r\n\x1b[0;36;40;5mPlasma Bolts Transferred!\n\r"
+	    "\x1b[0;36;40m\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? ";
+	static const uint8_t plasma_plain[] =
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? t\r\n"
+	    "\r\n<Transfer items to planet>\n\r"
+	    "\r\nTransfer which item?\n\r"
+	    "\r\n[B] Plasma Bolts\n\r[C] Cargo\n\r[F] Fighters\n\r"
+	    "[S] Missiles\n\r[M] Mines\n\r\r\n-=>B\r\n"
+	    "\r\nPlasma Bolts Transferred!\n\r"
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? ";
+	static const uint8_t missile_ansi[] =
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? t\r\n"
+	    "\r\n<Transfer items to planet>\n\r"
+	    "\r\nTransfer which item?\n\r"
+	    "\r\n[B] Plasma Bolts\n\r[C] Cargo\n\r[F] Fighters\n\r"
+	    "[S] Missiles\n\r[M] Mines\n\r\r\n-=>S\r\n"
+	    "\r\n\x1b[0;36;40;5mMissiles Transferred!\n\r"
+	    "\x1b[0;36;40m\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? ";
+	static const uint8_t missile_plain[] =
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? t\r\n"
+	    "\r\n<Transfer items to planet>\n\r"
+	    "\r\nTransfer which item?\n\r"
+	    "\r\n[B] Plasma Bolts\n\r[C] Cargo\n\r[F] Fighters\n\r"
+	    "[S] Missiles\n\r[M] Mines\n\r\r\n-=>S\r\n"
+	    "\r\nMissiles Transferred!\n\r"
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? ";
+	static const uint8_t mine_ansi[] =
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? t\r\n"
+	    "\r\n<Transfer items to planet>\n\r"
+	    "\r\nTransfer which item?\n\r"
+	    "\r\n[B] Plasma Bolts\n\r[C] Cargo\n\r[F] Fighters\n\r"
+	    "[S] Missiles\n\r[M] Mines\n\r\r\n-=>M\r\n"
+	    "\r\n\x1b[0;36;40;5mMines Transferred!\n\r"
+	    "\x1b[0;36;40m\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? ";
+	static const uint8_t mine_plain[] =
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? t\r\n"
+	    "\r\n<Transfer items to planet>\n\r"
+	    "\r\nTransfer which item?\n\r"
+	    "\r\n[B] Plasma Bolts\n\r[C] Cargo\n\r[F] Fighters\n\r"
+	    "[S] Missiles\n\r[M] Mines\n\r\r\n-=>M\r\n"
+	    "\r\nMines Transferred!\n\r"
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? ";
+	static const struct {
+		enum planet_transfer_cycle_outcome outcome;
+		const uint8_t *expected[2];
+		size_t expected_length[2];
+		size_t body_end[2];
+		uint64_t remote_fnv[2];
+		uint64_t row_fnv;
+		const char *accumulator;
+	} cases[] = {
+		{PLANET_TRANSFER_PLASMA_CYCLE,
+		    {plasma_ansi, plasma_plain},
+		    {sizeof(plasma_ansi) - 1U, sizeof(plasma_plain) - 1U},
+		    {253U, 241U},
+		    {UINT64_C(0x2903bc60fa338a81),
+		    UINT64_C(0xba6778c2aff95645)},
+		    UINT64_C(0x24ed977995771d9b), "B"},
+		{PLANET_TRANSFER_MISSILE_CYCLE,
+		    {missile_ansi, missile_plain},
+		    {sizeof(missile_ansi) - 1U, sizeof(missile_plain) - 1U},
+		    {249U, 237U},
+		    {UINT64_C(0x015fa913e629b4fd),
+		    UINT64_C(0xc7d8da2104193399)},
+		    UINT64_C(0x8cf2c0d00029ddc7), "S"},
+		{PLANET_TRANSFER_MINE_CYCLE,
+		    {mine_ansi, mine_plain},
+		    {sizeof(mine_ansi) - 1U, sizeof(mine_plain) - 1U},
+		    {246U, 234U},
+		    {UINT64_C(0x5855b9fdcb230cca),
+		    UINT64_C(0x46090502f23b09ca)},
+		    UINT64_C(0x7d9a8a5b05756741), "M"},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	uint8_t remote[380];
+	size_t prompt_end;
+	size_t editor_end;
+	size_t body_end;
+	size_t index;
+	int pass;
+
+	CHECK(sizeof(plasma_ansi) - 1U == 340U
+	    && sizeof(plasma_plain) - 1U == 318U
+	    && sizeof(missile_ansi) - 1U == 336U
+	    && sizeof(missile_plain) - 1U == 314U
+	    && sizeof(mine_ansi) - 1U == 333U
+	    && sizeof(mine_plain) - 1U == 311U);
+	for (index = 0U; index < YT_ARRAY_LEN(cases); ++index) {
+		for (pass = 0; pass < 2; ++pass) {
+			bool ansi_mode = pass == 0;
+
+			memset(&viewer, 0, sizeof(viewer));
+			fixture_viewer_initialize(&viewer, &stream,
+			    retained_scoreboard,
+			    sizeof(retained_scoreboard) - 1U,
+			    "YTSCORE.ASC", ansi_mode, remote, sizeof(remote));
+			CHECK(planet_transfer_cycle_run(&viewer, ansi_mode,
+			    cases[index].outcome,
+			    &prompt_end, &editor_end, &body_end));
+			CHECK(prompt_end == 77U && editor_end == 80U
+			    && body_end == cases[index].body_end[pass]
+			    && viewer.join.remote_length
+			    == cases[index].expected_length[pass]
+			    && memcmp(remote, cases[index].expected[pass],
+			    cases[index].expected_length[pass]) == 0
+			    && viewer_bytes_fnv1a64(remote,
+			    viewer.join.remote_length)
+			    == cases[index].remote_fnv[pass]
+			    && viewer.join.local_row_count == 21U
+			    && viewer_rows_fnv1a64(&viewer.join)
+			    == cases[index].row_fnv
+			    && viewer.join.local_fragment_length == 42U
+			    && memcmp(viewer.join.local_fragment,
+			    "Time: 14:59  Planet command (?=help) [A]? ", 42U)
+			    == 0
+			    && viewer.join.local_color_count
+			    == (ansi_mode ? 37U : 13U)
+			    && viewer_colors_fnv1a64(&viewer.join)
+			    == (ansi_mode ? UINT64_C(0x9dfbf9f01dca0f72)
+			    : UINT64_C(0xe4fcd46e10198702))
+			    && viewer.join.presentation.foreground == 6.0f
+			    && viewer.join.presentation.background == 0.0f
+			    && viewer.join.presentation.bold == 0.0f
+			    && viewer.join.presentation.blink
+			    == (ansi_mode ? 0.0f : 1.0f)
+			    && viewer.join.presentation.cached_foreground
+			    == (ansi_mode ? 6.0f : 0.0f)
+			    && viewer.join.pager.foreground == 6
+			    && viewer.join.pager.line_count == 2.0f
+			    && viewer.join.pager.nonstop == 0.0f
+			    && strcmp(viewer.join.accumulator,
+			    cases[index].accumulator) == 0
+			    && viewer.join.queue_length == 0U
+			    && viewer.join.sample_calls == 13U
+			    && viewer.join.event_count == 65U
+			    && stream.eof_checks == 0U && stream.key_checks == 0U
+			    && stream.read_count == 0U && stream.line_count == 0U
+			    && !stream.file_open && !viewer.join.file_open
+			    && viewer.input.file == NULL && viewer.close_calls == 0U
+			    && viewer.open_calls == 0U);
+			yt_text_input_destroy(&viewer.input);
+		}
 	}
 }
 
@@ -17927,6 +18121,7 @@ main(void)
 	test_planet_transfer_no_cargo_cycle_presentation();
 	test_planet_transfer_cargo_cycle_presentation();
 	test_planet_transfer_fighter_cycle_presentation();
+	test_planet_transfer_direct_cycles_presentation();
 	test_planet_rename_protected_cycle_presentation();
 	test_planet_take_one_accepted_cycle_presentation();
 	test_planet_take_one_blank_default_cycle_presentation();
