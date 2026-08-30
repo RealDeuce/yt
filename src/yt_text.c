@@ -572,6 +572,111 @@ yt_file_viewer_missing(const uint8_t *path, size_t path_length,
 	return true;
 }
 
+bool
+yt_opening_stream_run(struct yt_opening_stream_state *state,
+    const struct yt_opening_stream_ops *ops, void *context,
+    struct yt_error *error)
+{
+	if (state == NULL || state->path == NULL || ops == NULL
+	    || ops->open_input == NULL || ops->open_local == NULL
+	    || ops->eof == NULL || ops->read == NULL
+	    || ops->present_local == NULL || ops->poll_local == NULL
+	    || ops->present_remote == NULL || ops->poll_remote == NULL
+	    || ops->wait == NULL || ops->reset_remote == NULL
+	    || ops->reset_local == NULL || ops->close_input == NULL
+	    || ops->close_local == NULL) {
+		errno = 0;
+		set_error(error, YT_INVALID, "ANSI opening stream", NULL);
+		return false;
+	}
+	state->exit_reason = YT_OPENING_EXIT_EOF;
+	state->input_open = false;
+	state->local_open = false;
+	state->waited = false;
+	state->remote_reset = false;
+	state->local_reset = false;
+	state->eof_checks = 0U;
+	state->read_count = 0U;
+	state->local_lines = 0U;
+	state->local_polls = 0U;
+	state->remote_lines = 0U;
+	state->remote_polls = 0U;
+	if (!ops->open_input(context, state->path, error))
+		return false;
+	state->input_open = true;
+	if (!ops->open_local(context, error))
+		return false;
+	state->local_open = true;
+	for (;;) {
+		const uint8_t *line;
+		size_t length;
+		bool available;
+		bool eof;
+		bool ready;
+
+		if (!ops->eof(context, &eof, error))
+			return false;
+		++state->eof_checks;
+		if (eof) {
+			if (!ops->wait(context, 3.0f, error))
+				return false;
+			state->waited = true;
+			break;
+		}
+		if (!ops->read(context, &line, &length, &available, error))
+			return false;
+		++state->read_count;
+		if (!available) {
+			errno = 0;
+			set_error(error, YT_EOF,
+			    "ANSI LINE INPUT after EOF check", state->path);
+			return false;
+		}
+		if (state->snoop != 0.0f) {
+			if (!ops->present_local(context, line, length, error))
+				return false;
+			++state->local_lines;
+		}
+		if (!ops->poll_local(context, &ready, error))
+			return false;
+		++state->local_polls;
+		if (ready) {
+			state->exit_reason = YT_OPENING_EXIT_LOCAL_KEY;
+			break;
+		}
+		if (state->mode != 1.0f) {
+			if (!ops->present_remote(context, line, length, error))
+				return false;
+			++state->remote_lines;
+			if (!ops->poll_remote(context, &ready, error))
+				return false;
+			++state->remote_polls;
+			if (ready) {
+				state->exit_reason =
+				    YT_OPENING_EXIT_REMOTE_PENDING;
+				break;
+			}
+		}
+	}
+	if (state->mode == 0.0f) {
+		if (!ops->reset_remote(context, error))
+			return false;
+		state->remote_reset = true;
+	}
+	if (state->snoop != 0.0f) {
+		if (!ops->reset_local(context, error))
+			return false;
+		state->local_reset = true;
+	}
+	if (!ops->close_input(context, error))
+		return false;
+	state->input_open = false;
+	if (!ops->close_local(context, error))
+		return false;
+	state->local_open = false;
+	return true;
+}
+
 #ifdef _WIN32
 #include <io.h>
 #else

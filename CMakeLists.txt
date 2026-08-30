@@ -157,6 +157,9 @@ if(BUILD_TESTING)
 
     yt_add_test(test_qb tests/test_qb.c yt_core)
     yt_add_test(test_data tests/test_data.c yt_core)
+    target_compile_definitions(test_data PRIVATE
+        YT_DATA_DIR="${YT_GENERATED_DATA_DIR}/")
+    add_dependencies(test_data yt-data)
     yt_add_test(test_sound tests/test_sound.c yt_core)
     yt_add_test(test_input_model tests/test_input_model.c yt_core)
     if(NOT WIN32)

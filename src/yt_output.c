@@ -2,7 +2,6 @@
 
 #include "OpenDoor.h"
 #include "ODScrn.h"
-#include "yt_input_model.h"
 #include "yt_text.h"
 
 #include <stdarg.h>
@@ -208,91 +207,181 @@ yt_out_file(const char *path, struct yt_error *error)
 	return true;
 }
 
+struct yt_out_opening_context {
+	struct yt_text_input input;
+	yt_out_opening_poll_fn poll_local;
+	yt_out_opening_poll_fn poll_remote;
+	yt_out_opening_wait_fn wait;
+	void *client;
+};
+
+static bool
+out_opening_open_input(void *context, const char *path,
+    struct yt_error *error)
+{
+	struct yt_out_opening_context *opening = context;
+
+	return yt_text_input_open(&opening->input, path, error);
+}
+
+static bool
+out_opening_open_local(void *context, struct yt_error *error)
+{
+	(void)context;
+	(void)error;
+	return true;
+}
+
+static bool
+out_opening_eof(void *context, bool *eof, struct yt_error *error)
+{
+	struct yt_out_opening_context *opening = context;
+
+	return yt_text_input_eof(&opening->input, eof, error);
+}
+
+static bool
+out_opening_read(void *context, const uint8_t **line, size_t *length,
+    bool *available, struct yt_error *error)
+{
+	struct yt_out_opening_context *opening = context;
+
+	return yt_text_input_read_line(&opening->input, line, length, available,
+	    error);
+}
+
+static bool
+out_opening_present_local(void *context, const uint8_t *line, size_t length,
+    struct yt_error *error)
+{
+	static const uint8_t newline[] = {'\r', '\n'};
+
+	(void)context;
+	(void)error;
+	present_local_bytes(line, length);
+	present_local_bytes(newline, sizeof(newline));
+	return true;
+}
+
+static bool
+out_opening_poll_local(void *context, bool *ready, struct yt_error *error)
+{
+	struct yt_out_opening_context *opening = context;
+
+	return opening->poll_local(opening->client, ready, error);
+}
+
+static bool
+out_opening_present_remote(void *context, const uint8_t *line, size_t length,
+    struct yt_error *error)
+{
+	static const uint8_t newline[] = {'\n', '\r'};
+
+	(void)context;
+	(void)error;
+	yt_out_remote_bytes(line, length);
+	yt_out_remote_bytes(newline, sizeof(newline));
+	return true;
+}
+
+static bool
+out_opening_poll_remote(void *context, bool *ready, struct yt_error *error)
+{
+	struct yt_out_opening_context *opening = context;
+
+	return opening->poll_remote(opening->client, ready, error);
+}
+
+static bool
+out_opening_wait(void *context, float seconds, struct yt_error *error)
+{
+	struct yt_out_opening_context *opening = context;
+
+	return opening->wait(opening->client, seconds, error);
+}
+
+static bool
+out_opening_reset_remote(void *context, struct yt_error *error)
+{
+	static const uint8_t reset[] = "\x1b[0m";
+
+	(void)context;
+	(void)error;
+	yt_out_remote_bytes(reset, sizeof(reset) - 1U);
+	return true;
+}
+
+static bool
+out_opening_reset_local(void *context, struct yt_error *error)
+{
+	static const uint8_t reset[] = "\x1b[0m";
+
+	(void)context;
+	(void)error;
+	present_local_bytes(reset, sizeof(reset) - 1U);
+	return true;
+}
+
+static bool
+out_opening_close_input(void *context, struct yt_error *error)
+{
+	struct yt_out_opening_context *opening = context;
+
+	return yt_text_input_close(&opening->input, error);
+}
+
+static bool
+out_opening_close_local(void *context, struct yt_error *error)
+{
+	(void)context;
+	(void)error;
+	return true;
+}
+
 bool
 yt_out_opening_file(const char *path, float mode, float snoop,
-    yt_opening_poll_fn poll, void *poll_context,
-    enum yt_opening_exit *exit_reason, struct yt_error *error)
+    yt_out_opening_poll_fn poll_local,
+    yt_out_opening_poll_fn poll_remote, yt_out_opening_wait_fn wait,
+    void *poll_context, struct yt_error *error)
 {
-	struct yt_text_file file;
-	struct yt_present_result presentation;
-	uint8_t *line;
-	size_t cursor = 0U;
-	bool available;
-	bool success = true;
-	enum yt_opening_exit reason = YT_OPENING_EXIT_EOF;
+	static const struct yt_opening_stream_ops ops = {
+		out_opening_open_input,
+		out_opening_open_local,
+		out_opening_eof,
+		out_opening_read,
+		out_opening_present_local,
+		out_opening_poll_local,
+		out_opening_present_remote,
+		out_opening_poll_remote,
+		out_opening_wait,
+		out_opening_reset_remote,
+		out_opening_reset_local,
+		out_opening_close_input,
+		out_opening_close_local,
+	};
+	struct yt_out_opening_context context = {
+		.poll_local = poll_local,
+		.poll_remote = poll_remote,
+		.wait = wait,
+		.client = poll_context,
+	};
+	struct yt_opening_stream_state state = {
+		.path = path,
+		.mode = mode,
+		.snoop = snoop,
+	};
+	bool ok;
 
-	if (poll == NULL || exit_reason == NULL) {
+	if (poll_local == NULL || poll_remote == NULL || wait == NULL) {
 		if (error != NULL) {
 			error->status = YT_INVALID;
 			(void)snprintf(error->operation, sizeof(error->operation),
-			    "%s", "opening poll arguments");
+			    "%s", "opening stream arguments");
 		}
 		return false;
 	}
-	if (!yt_text_read(path, &file, error))
-		return false;
-	line = malloc(file.length + 1U);
-	if (line == NULL) {
-		if (error != NULL) {
-			error->status = YT_NO_MEMORY;
-			(void)snprintf(error->operation, sizeof(error->operation),
-			    "%s", "allocate opening row");
-			(void)snprintf(error->path, sizeof(error->path), "%s", path);
-		}
-		yt_text_free(&file);
-		return false;
-	}
-	for (;;) {
-		size_t length;
-		enum yt_present_status status;
-		bool local_key;
-		bool remote_pending;
-		enum yt_opening_row_route route;
-
-		if (!yt_text_line_input_next(file.data, file.length, &cursor,
-		    line, file.length, &length, &available)) {
-			success = false;
-			break;
-		}
-		if (!available)
-			break;
-		status = yt_present_opening_row(line, length, 1.0f, snoop,
-		    &presentation);
-		if (status != YT_PRESENT_OK) {
-			success = false;
-			break;
-		}
-		yt_out_present_result(&presentation);
-		if (!poll(poll_context, &local_key, &remote_pending)) {
-			success = false;
-			break;
-		}
-		route = yt_input_opening_row_route(local_key, remote_pending);
-		if (route == YT_OPENING_ROW_STOP_LOCAL) {
-			reason = YT_OPENING_EXIT_LOCAL_KEY;
-			break;
-		}
-		status = yt_present_opening_row(line, length, mode, 0.0f,
-		    &presentation);
-		if (status != YT_PRESENT_OK) {
-			success = false;
-			break;
-		}
-		yt_out_present_result(&presentation);
-		if (route == YT_OPENING_ROW_STOP_REMOTE) {
-			reason = YT_OPENING_EXIT_REMOTE_PENDING;
-			break;
-		}
-	}
-	if (!success && error != NULL) {
-		error->status = YT_RANGE;
-		(void)snprintf(error->operation, sizeof(error->operation), "%s",
-		    "compose opening row");
-		(void)snprintf(error->path, sizeof(error->path), "%s", path);
-	}
-	free(line);
-	yt_text_free(&file);
-	if (success)
-		*exit_reason = reason;
-	return success;
+	yt_text_input_init(&context.input);
+	ok = yt_opening_stream_run(&state, &ops, &context, error);
+	yt_text_input_destroy(&context.input);
+	return ok;
 }

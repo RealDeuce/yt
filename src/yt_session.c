@@ -1748,17 +1748,38 @@ registration(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
-opening_poll(void *context, bool *local_key, bool *remote_pending)
+opening_poll_local(void *context, bool *ready, struct yt_error *error)
 {
 	struct yt_session *session = context;
 	struct yt_input_value local = {{0, 0}, 0, 0, false};
 
-	if (!yt_input_poll_source(&session->input, false, &local))
+	if (!yt_input_poll_source(&session->input, false, &local)) {
+		if (error != NULL) {
+			error->status = YT_IO_ERROR;
+			(void)snprintf(error->operation, sizeof(error->operation),
+			    "%s", "ANSI opening local input poll");
+		}
 		return false;
-	*local_key = local.length != 0U;
-	*remote_pending = session->input.remote.position
+	}
+	*ready = local.length != 0U;
+	return true;
+}
+
+static bool
+opening_poll_remote(void *context, bool *ready, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	(void)error;
+	*ready = session->input.remote.position
 	    < session->input.remote.length;
 	return true;
+}
+
+static bool
+opening_wait(void *context, float seconds, struct yt_error *error)
+{
+	return session_wait(context, seconds, "ANSI opening EOF wait", error);
 }
 
 static bool
@@ -1769,7 +1790,6 @@ opening_and_date(struct yt_session *session, struct yt_error *error)
 	char real_name[258];
 	struct yt_present_result presentation;
 	enum yt_present_status status;
-	enum yt_opening_exit opening_exit;
 
 	if (!build_route(session, 1, 2, route, false, &found, NULL, NULL,
 	    error))
@@ -1793,25 +1813,9 @@ opening_and_date(struct yt_session *session, struct yt_error *error)
 	if (session->door->identity.ansi) {
 		if (!yt_out_opening_file("YTOPEN.ANS",
 		    session->presentation.sound.mode,
-		    session->presentation.sound.snoop, opening_poll, session,
-		    &opening_exit, error)
-		    || (opening_exit == YT_OPENING_EXIT_EOF
-		    && !session_wait(session, 3.0,
-		    "ANSI opening EOF wait", error)))
+		    session->presentation.sound.snoop, opening_poll_local,
+		    opening_poll_remote, opening_wait, session, error))
 			return false;
-		status = yt_present_opening_cleanup(
-		    session->presentation.sound.mode,
-		    session->presentation.sound.snoop, &presentation);
-		if (status != YT_PRESENT_OK) {
-			if (error != NULL) {
-				error->status = YT_RANGE;
-				(void)snprintf(error->operation,
-				    sizeof(error->operation), "%s",
-				    "startup opening cleanup");
-			}
-			return false;
-		}
-		yt_out_present_result(&presentation);
 	}
 	snprintf(real_name, sizeof(real_name), "%s %s",
 	    session->door->identity.real_first,
