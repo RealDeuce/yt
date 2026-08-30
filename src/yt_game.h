@@ -531,6 +531,57 @@ bool yt_projectile_plasma_dispatch_run(
     struct yt_projectile_plasma_dispatch_state *state,
     struct yt_error *error);
 
+enum yt_projectile_plasma_player_route {
+	YT_PROJECTILE_PLASMA_PLAYER_KILLED,
+	YT_PROJECTILE_PLASMA_PLAYER_CONTINUE_DISPATCH,
+	YT_PROJECTILE_PLASMA_PLAYER_FOOTER,
+};
+enum yt_projectile_plasma_player_output_kind {
+	YT_PROJECTILE_PLASMA_PLAYER_FIRST_ROW,
+	YT_PROJECTILE_PLASMA_PLAYER_SECOND_ROW,
+};
+struct yt_projectile_plasma_player_state {
+	int target;
+	float sector;
+	const uint8_t *attacker;
+	size_t attacker_length;
+	double *energy;
+	float foreground;
+	float saved_foreground;
+	double original_fighters;
+	float original_shields;
+	double destroyed_fighters;
+	float destroyed_shields;
+	double remaining_fighters;
+	float remaining_shields;
+	struct yt_player persistence;
+	enum yt_projectile_plasma_player_route route;
+};
+typedef bool (*yt_projectile_plasma_player_read_fn)(void *context,
+    int player_record, struct yt_player *value, struct yt_error *error);
+typedef bool (*yt_projectile_plasma_player_write_fn)(void *context,
+    int player_record, const struct yt_player *value,
+    struct yt_error *error);
+typedef void (*yt_projectile_plasma_player_color_fn)(void *context,
+    float foreground);
+typedef bool (*yt_projectile_plasma_player_present_fn)(void *context,
+    const uint8_t *text, size_t length,
+    enum yt_projectile_plasma_player_output_kind kind,
+    struct yt_error *error);
+struct yt_projectile_plasma_player_ops {
+	yt_projectile_plasma_player_read_fn read_player;
+	yt_projectile_plasma_player_write_fn write_player;
+	yt_projectile_plasma_player_color_fn color;
+	yt_projectile_plasma_fighter_sound_fn sound;
+	yt_projectile_plasma_fighter_random_fn random;
+	yt_projectile_plasma_fighter_news_fn news;
+	yt_projectile_plasma_player_present_fn present;
+};
+bool yt_projectile_plasma_player_run(
+    struct yt_projectile_plasma_player_state *state,
+    const struct yt_projectile_plasma_player_ops *ops, void *context,
+    struct yt_error *error);
+
 enum yt_projectile_defense_front_route {
 	YT_PROJECTILE_DEFENSE_NO_DEFENSE,
 	YT_PROJECTILE_DEFENSE_FRIENDLY,

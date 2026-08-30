@@ -82,8 +82,16 @@ owner route, loop back-edge, output and callback failure prefix.
 post-player scan entries, every cached-player comparison, terminal-plus-one
 write, pre-increment footer gate, and the exact planet/next-hop/footer
 partition. Its fixture pins initial selection, retained-counter resumption,
-fractional terminal and planet-link behavior, and corrupt cache bounds. The
-remaining connected plasma impact frontier begins at the `B2B1` player body.
+fractional terminal and planet-link behavior, and corrupt cache bounds.
+`src/yt_game.c::yt_projectile_plasma_player_run` owns `B2B1..B500` and the
+survivor branch `B68E..B6C8`: three distinct fresh player reads, foreground
+five and restoration, selector two, continuous fighter-then-shield RNG,
+strict clamps, retained binary-attacker/fresh-victim output, both
+news-before-direct pairs, and shields/fighters-only raw persistence. Its
+fixture pins both loop back-edges, clamp arms, survivor and killed routes,
+negative energy retention, unrelated-record preservation and every injected
+failure prefix. The remaining connected plasma impact frontier begins at the
+`B500` killed-player body.
 
 | Component | Native owner | Native evidence | Status | Required before promotion |
 |---|---|---|---|---|

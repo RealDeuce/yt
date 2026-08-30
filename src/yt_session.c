@@ -12154,6 +12154,51 @@ plasma_mine_present(void *context, const uint8_t *text, size_t length,
 }
 
 static bool
+plasma_player_read(void *context, int player_record,
+    struct yt_player *value, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_read_player(&session->door->game, player_record, value,
+	    error);
+}
+
+static bool
+plasma_player_write(void *context, int player_record,
+    const struct yt_player *value, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_database_write(&session->door->game.database,
+	    (size_t)player_record, &value->record, error);
+}
+
+static void
+plasma_player_color(void *context, float foreground)
+{
+	session_set_color(context, (int)foreground);
+}
+
+static bool
+plasma_player_sound(void *context, float selector, struct yt_error *error)
+{
+	return session_sound(context, selector, "plasma player-attack sound",
+	    error);
+}
+
+static bool
+plasma_player_present(void *context, const uint8_t *text, size_t length,
+    enum yt_projectile_plasma_player_output_kind kind,
+    struct yt_error *error)
+{
+	return session_present_text(context, text, length,
+	    SESSION_PRESENT_BOLD_LINE,
+	    kind == YT_PROJECTILE_PLASMA_PLAYER_FIRST_ROW
+	    ? "plasma player attack first row"
+	    : "plasma player attack second row", error);
+}
+
+static bool
 cruise_defense_owner(void *context, float owner, uint8_t *name,
     size_t *name_length, struct yt_error *error)
 {
@@ -12776,10 +12821,20 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
 		plasma_fighter_read_sector,
 		plasma_fighter_write_sector,
 	};
+	static const struct yt_projectile_plasma_player_ops player_ops = {
+		plasma_player_read,
+		plasma_player_write,
+		plasma_player_color,
+		plasma_player_sound,
+		projectile_damage_draw,
+		plasma_fighter_news,
+		plasma_player_present,
+	};
 	struct yt_sector sector;
 	struct yt_projectile_plasma_fighter_state fighter;
 	struct yt_projectile_plasma_mine_state mine;
 	struct yt_projectile_plasma_dispatch_state dispatch;
+	struct yt_projectile_plasma_player_state player;
 	float planet_link;
 	int basic;
 
@@ -12826,92 +12881,23 @@ plasma_reload_sector:
 	dispatch.sector_cache = session->sector_cache;
 	dispatch.cache_count = YT_ARRAY_LEN(session->sector_cache);
 	for (;;) {
-		struct yt_player target;
-		double original_fighters;
-		float original_shields;
-		double fighter_damage = 0.0;
-		float shield_damage = 0.0f;
-		int saved_foreground;
-		uint8_t attacker_name[YT_TEXT_FIELD_SIZE];
-		uint8_t victim_name[YT_TEXT_FIELD_SIZE];
-		uint8_t first_news[256];
-		uint8_t first_direct[256];
-		size_t attacker_length;
-		size_t victim_length;
-		size_t first_news_length;
-		size_t first_direct_length;
-		char shield_text[64];
-		char fighter_text[64];
-		char row[256];
-
 		dispatch.energy = *energy;
 		if (!yt_projectile_plasma_dispatch_run(&dispatch, error))
 			return false;
 		if (dispatch.route != YT_PROJECTILE_PLASMA_DISPATCH_PLAYER)
 			break;
 		basic = dispatch.selected_player;
-		if (!yt_game_read_player(&session->door->game, basic, &target,
+		memset(&player, 0, sizeof(player));
+		player.target = basic;
+		player.sector = (float)sector_number;
+		player.attacker = attacker;
+		player.attacker_length = launch_attacker_length;
+		player.energy = energy;
+		player.foreground = session->presentation.foreground;
+		if (!yt_projectile_plasma_player_run(&player, &player_ops, session,
 		    error))
 			return false;
-		original_fighters = (double)target.fighters;
-		original_shields = target.shields;
-		saved_foreground = session->pager.foreground;
-		session_set_color(session, 5);
-		if (!session_sound(session, 2.0f,
-		    "plasma player-attack sound", error))
-			return false;
-		while (*energy > 0.0 && fighter_damage < original_fighters) {
-			float draw;
-
-			fighter_damage += floor(*energy / 5000.0) + 1.0;
-			if (!random_value(session, &draw, error))
-				return false;
-			*energy -= (double)single_mul(draw, 25000.0f);
-		}
-		if (fighter_damage > original_fighters)
-			fighter_damage = original_fighters;
-		while (*energy > 0.0 && shield_damage < original_shields) {
-			float draw;
-
-			shield_damage = (float)((double)shield_damage
-			    + floor(*energy / 10000.0) + 1.0);
-			if (!random_value(session, &draw, error))
-				return false;
-			*energy -= (double)single_mul(draw, 25000.0f);
-		}
-		if (shield_damage > original_shields)
-			shield_damage = original_shields;
-		if (!yt_game_read_player(&session->door->game, basic, &target,
-		    error))
-			return false;
-		qb_str_single(shield_text, sizeof(shield_text),
-		    single_sub(original_shields, shield_damage));
-		qb_str_double(fighter_text, sizeof(fighter_text), fighter_damage);
-		if (!yt_player_stored_name(&session->player, attacker_name,
-		    &attacker_length, error)
-		    || !yt_player_stored_name(&target, victim_name,
-		    &victim_length, error)
-		    || !yt_projectile_attack_first_rows(true,
-		    attacker_name, attacker_length, victim_name, victim_length,
-		    (float)sector_number, first_news, sizeof(first_news),
-		    &first_news_length, first_direct, sizeof(first_direct),
-		    &first_direct_length)
-		    || !append_news_bytes(session, first_news, first_news_length,
-		    error)
-		    || !session_present_text(session, first_direct,
-		    first_direct_length, SESSION_PRESENT_BOLD_LINE,
-		    "plasma player attack first row", error))
-			return false;
-		snprintf(row, sizeof(row), "shields to%s units and destroying%s "
-		    "fighters!", shield_text, fighter_text);
-		if (!append_news(session, row, error))
-			return false;
-		if (!session_present_text(session, (const uint8_t *)row,
-		    strlen(row), SESSION_PRESENT_BOLD_LINE,
-		    "plasma player attack second row", error))
-			return false;
-		session_set_color(session, saved_foreground);
-		if (single_sub(original_shields, shield_damage) < 1.0f) {
+		if (player.route == YT_PROJECTILE_PLASMA_PLAYER_KILLED) {
 			struct yt_player victim;
 			float mines;
 			uint8_t killed_name[YT_TEXT_FIELD_SIZE];
@@ -12993,24 +12979,8 @@ plasma_reload_sector:
 			if (*energy > 0.0 && mines > 0.0f)
 				goto plasma_reload_sector;
 		}
-		else {
-			struct yt_player persistence;
-
-			if (!yt_game_read_player(&session->door->game, basic,
-			    &persistence, error))
-				return false;
-			persistence.shields =
-			    single_sub(original_shields, shield_damage);
-			persistence.fighters =
-			    (float)(original_fighters - fighter_damage);
-			if (!yt_record_set_number(&persistence.record, YT_F53,
-			    persistence.shields)
-			    || !yt_record_set_number(&persistence.record, YT_F61,
-			    persistence.fighters)
-			    || !yt_game_write_player(&session->door->game, basic,
-			    &persistence, error))
-				return false;
-		}
+		if (player.route == YT_PROJECTILE_PLASMA_PLAYER_FOOTER)
+			return true;
 		dispatch.resume_after_player = true;
 	}
 	if (dispatch.route == YT_PROJECTILE_PLASMA_DISPATCH_FOOTER
