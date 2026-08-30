@@ -280,6 +280,174 @@ yt_database_flush(struct yt_database *database, struct yt_error *error)
 	return true;
 }
 
+void
+yt_radio_file_init(struct yt_radio_file *radio)
+{
+	if (radio != NULL)
+		memset(radio, 0, sizeof(*radio));
+}
+
+bool
+yt_radio_file_close(struct yt_radio_file *radio, struct yt_error *error)
+{
+	FILE *file;
+
+	if (radio == NULL) {
+		set_error(error, YT_INVALID, "close radio", NULL);
+		return false;
+	}
+	file = radio->file;
+	radio->file = NULL;
+	if (file != NULL && fclose(file) != 0) {
+		set_error(error, YT_IO_ERROR, "close radio", radio->path);
+		return false;
+	}
+	return true;
+}
+
+bool
+yt_radio_file_open(struct yt_radio_file *radio, const char *path,
+    struct yt_error *error)
+{
+	static const struct yt_radio_field fields[YT_RADIO_FIELD_COUNT] = {
+		{0U, 4U},
+		{4U, 4U},
+		{8U, 4U},
+		{12U, 74U},
+	};
+	char resolved[512];
+
+	if (radio == NULL || path == NULL) {
+		set_error(error, YT_INVALID, "open radio", path);
+		return false;
+	}
+	if (!yt_radio_file_close(radio, error))
+		return false;
+	radio->path[0] = '\0';
+	radio->record_length = 0U;
+	radio->field_count = 0U;
+	memset(radio->fields, 0, sizeof(radio->fields));
+	if (!yt_resolve_case_path(path, true, resolved, sizeof(resolved), error))
+		return false;
+	radio->file = fopen(resolved, "r+b");
+	if (radio->file == NULL && errno == ENOENT)
+		radio->file = fopen(resolved, "w+b");
+	if (radio->file == NULL) {
+		set_error(error, YT_IO_ERROR, "open radio", resolved);
+		return false;
+	}
+	(void)snprintf(radio->path, sizeof(radio->path), "%s", resolved);
+	radio->record_length = YT_RADIO_RECORD_SIZE;
+	memcpy(radio->fields, fields, sizeof(fields));
+	radio->field_count = YT_RADIO_FIELD_COUNT;
+	return true;
+}
+
+bool
+yt_radio_file_size(struct yt_radio_file *radio, uint64_t *size,
+    struct yt_error *error)
+{
+	off_t position;
+	off_t length;
+
+	if (radio == NULL || radio->file == NULL || size == NULL) {
+		set_error(error, YT_INVALID, "radio LOF", radio != NULL
+		    ? radio->path : NULL);
+		return false;
+	}
+	position = yt_ftello(radio->file);
+	if (position < 0 || yt_fseeko(radio->file, 0, SEEK_END) != 0) {
+		set_error(error, YT_IO_ERROR, "radio LOF", radio->path);
+		return false;
+	}
+	length = yt_ftello(radio->file);
+	if (length < 0 || yt_fseeko(radio->file, position, SEEK_SET) != 0) {
+		set_error(error, YT_IO_ERROR, "radio LOF", radio->path);
+		return false;
+	}
+	*size = (uint64_t)length;
+	return true;
+}
+
+bool
+yt_radio_file_get(struct yt_radio_file *radio, uint32_t basic_record,
+    struct yt_radio_record *record, size_t *accepted,
+    struct yt_error *error)
+{
+	off_t offset;
+	size_t count;
+
+	if (accepted != NULL)
+		*accepted = 0U;
+	if (radio == NULL || radio->file == NULL || record == NULL
+	    || basic_record == 0U || basic_record > 0xFFFFFFU) {
+		set_error(error, YT_RANGE, "radio GET", radio != NULL
+		    ? radio->path : NULL);
+		return false;
+	}
+	offset = (off_t)((uint64_t)(basic_record - 1U)
+	    * YT_RADIO_RECORD_SIZE);
+	if (yt_fseeko(radio->file, offset, SEEK_SET) != 0) {
+		set_error(error, YT_IO_ERROR, "radio GET", radio->path);
+		return false;
+	}
+	memset(record->bytes, 0, sizeof(record->bytes));
+	clearerr(radio->file);
+	count = fread(record->bytes, 1, sizeof(record->bytes), radio->file);
+	if (ferror(radio->file)) {
+		set_error(error, YT_IO_ERROR, "radio GET", radio->path);
+		return false;
+	}
+	if (accepted != NULL)
+		*accepted = count;
+	return true;
+}
+
+bool
+yt_radio_file_put(struct yt_radio_file *radio, uint32_t basic_record,
+    const struct yt_radio_record *record, struct yt_error *error)
+{
+	off_t offset;
+
+	if (radio == NULL || radio->file == NULL || record == NULL
+	    || basic_record == 0U || basic_record > 0xFFFFFFU) {
+		set_error(error, YT_RANGE, "radio PUT", radio != NULL
+		    ? radio->path : NULL);
+		return false;
+	}
+	offset = (off_t)((uint64_t)(basic_record - 1U)
+	    * YT_RADIO_RECORD_SIZE);
+	if (yt_fseeko(radio->file, offset, SEEK_SET) != 0
+	    || fwrite(record->bytes, 1, sizeof(record->bytes), radio->file)
+	    != sizeof(record->bytes)) {
+		set_error(error, YT_IO_ERROR, "radio PUT", radio->path);
+		return false;
+	}
+	return true;
+}
+
+bool
+yt_radio_file_next_record(struct yt_radio_file *radio,
+    uint32_t *basic_record, struct yt_error *error)
+{
+	uint64_t length;
+	uint64_t record;
+
+	if (basic_record == NULL || !yt_radio_file_size(radio, &length, error))
+		return false;
+	if (length % YT_RADIO_RECORD_SIZE != 0U) {
+		set_error(error, YT_RANGE, "radio record number", radio->path);
+		return false;
+	}
+	record = length / YT_RADIO_RECORD_SIZE + 1U;
+	if (record > 0xFFFFFFU) {
+		set_error(error, YT_RANGE, "radio record number", radio->path);
+		return false;
+	}
+	*basic_record = (uint32_t)record;
+	return true;
+}
+
 bool
 yt_file_delete(const char *path, bool missing_ok, struct yt_error *error)
 {

@@ -536,6 +536,112 @@ test_files(void)
 #endif
 }
 
+static void
+test_radio_file(void)
+{
+	char directory[256];
+	char mixed_path[320];
+	char requested_path[320];
+	char second_path[320];
+	char failed_path[320];
+	uint8_t partial[3] = {0x11, 0x22, 0x33};
+	uint8_t complete[YT_RADIO_RECORD_SIZE];
+	struct yt_radio_file radio;
+	struct yt_radio_record record;
+	struct yt_radio_record written;
+	struct yt_error error;
+	uint64_t size;
+	uint32_t next;
+	size_t accepted;
+	size_t index;
+	FILE *file;
+
+#ifdef _WIN32
+	snprintf(directory, sizeof(directory), "yt-radio-%lu",
+	    (unsigned long)GetCurrentProcessId());
+#else
+	snprintf(directory, sizeof(directory), "/tmp/yt-radio-%ld",
+	    (long)getpid());
+#endif
+	(void)mkdir_one(directory);
+	snprintf(mixed_path, sizeof(mixed_path), "%s/ytRMSG.Dat", directory);
+	snprintf(requested_path, sizeof(requested_path), "%s/YTRMSG.DAT",
+	    directory);
+	snprintf(second_path, sizeof(second_path), "%s/second.dat", directory);
+	snprintf(failed_path, sizeof(failed_path), "%s/missing/YTRMSG.DAT",
+	    directory);
+	CHECK(write_bytes(mixed_path, partial, sizeof(partial)));
+
+	yt_radio_file_init(&radio);
+	yt_error_clear(&error);
+	CHECK(yt_radio_file_open(&radio, requested_path, &error));
+	CHECK(radio.file != NULL && strcmp(radio.path, mixed_path) == 0
+	    && radio.record_length == YT_RADIO_RECORD_SIZE
+	    && radio.field_count == YT_RADIO_FIELD_COUNT
+	    && radio.fields[0].offset == 0U && radio.fields[0].length == 4U
+	    && radio.fields[1].offset == 4U && radio.fields[1].length == 4U
+	    && radio.fields[2].offset == 8U && radio.fields[2].length == 4U
+	    && radio.fields[3].offset == 12U && radio.fields[3].length == 74U);
+	CHECK(yt_radio_file_size(&radio, &size, &error) && size == 3U);
+	memset(&record, 0xff, sizeof(record));
+	CHECK(yt_radio_file_get(&radio, 1U, &record, &accepted, &error)
+	    && accepted == sizeof(partial)
+	    && memcmp(record.bytes, partial, sizeof(partial)) == 0);
+	for (index = sizeof(partial); index < sizeof(record.bytes); ++index)
+		CHECK(record.bytes[index] == 0U);
+	memset(&record, 0xff, sizeof(record));
+	CHECK(yt_radio_file_get(&radio, 2U, &record, &accepted, &error)
+	    && accepted == 0U);
+	for (index = 0U; index < sizeof(record.bytes); ++index)
+		CHECK(record.bytes[index] == 0U);
+	yt_error_clear(&error);
+	CHECK(!yt_radio_file_next_record(&radio, &next, &error)
+	    && error.status == YT_RANGE
+	    && strcmp(error.operation, "radio record number") == 0);
+	CHECK(yt_radio_file_size(&radio, &size, &error) && size == 3U);
+
+	/* Reopening the same BASIC file slot closes the prior handle first. */
+	CHECK(yt_radio_file_open(&radio, second_path, &error));
+	CHECK(strcmp(radio.path, second_path) == 0
+	    && yt_radio_file_size(&radio, &size, &error) && size == 0U);
+	CHECK(yt_radio_file_next_record(&radio, &next, &error) && next == 1U);
+	CHECK(yt_radio_message_record(&written, (const uint8_t *)"A\0B", 3U,
+	    7.0f, -2.0f));
+	CHECK(yt_radio_file_get(&radio, next, &record, &accepted, &error)
+	    && accepted == 0U);
+	record = written;
+	CHECK(yt_radio_file_put(&radio, next, &record, &error));
+	CHECK(yt_radio_file_size(&radio, &size, &error)
+	    && size == YT_RADIO_RECORD_SIZE);
+	CHECK(yt_radio_file_next_record(&radio, &next, &error) && next == 2U);
+	CHECK(yt_radio_file_close(&radio, &error) && radio.file == NULL);
+
+	file = fopen(second_path, "rb");
+	CHECK(file != NULL);
+	if (file != NULL) {
+		CHECK(fread(complete, 1, sizeof(complete), file) == sizeof(complete));
+		CHECK(fgetc(file) == EOF && !ferror(file));
+		CHECK(fclose(file) == 0);
+		CHECK(memcmp(complete, written.bytes, sizeof(complete)) == 0);
+	}
+
+	yt_radio_file_init(&radio);
+	yt_error_clear(&error);
+	CHECK(!yt_radio_file_open(&radio, failed_path, &error)
+	    && error.status == YT_IO_ERROR && radio.file == NULL
+	    && radio.field_count == 0U && radio.record_length == 0U);
+	CHECK(!yt_radio_file_get(&radio, 1U, &record, NULL, &error));
+	CHECK(!yt_radio_file_put(&radio, 1U, &record, &error));
+
+	CHECK(yt_file_delete(mixed_path, false, &error));
+	CHECK(yt_file_delete(second_path, false, &error));
+#ifdef _WIN32
+	_rmdir(directory);
+#else
+	rmdir(directory);
+#endif
+}
+
 static bool
 write_bytes(const char *path, const uint8_t *bytes, size_t length)
 {
@@ -1017,6 +1123,7 @@ main(void)
 	test_clock();
 	test_random();
 	test_files();
+	test_radio_file();
 	test_append_window();
 	test_main_error_fatal_transaction();
 	test_line_input_grammar();

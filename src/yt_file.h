@@ -16,6 +16,21 @@ struct yt_database {
 	size_t records;
 };
 
+#define YT_RADIO_FIELD_COUNT 4U
+
+struct yt_radio_field {
+	size_t offset;
+	size_t length;
+};
+
+struct yt_radio_file {
+	FILE *file;
+	char path[512];
+	size_t record_length;
+	struct yt_radio_field fields[YT_RADIO_FIELD_COUNT];
+	size_t field_count;
+};
+
 bool yt_resolve_case_path(const char *requested, bool allow_missing,
     char *resolved, size_t size, struct yt_error *error);
 bool yt_database_open(struct yt_database *database, const char *path,
@@ -29,6 +44,20 @@ bool yt_database_random_get(struct yt_database *database,
 bool yt_database_write(struct yt_database *database, size_t basic_record,
     const struct yt_record *record, struct yt_error *error);
 bool yt_database_flush(struct yt_database *database, struct yt_error *error);
+void yt_radio_file_init(struct yt_radio_file *radio);
+bool yt_radio_file_open(struct yt_radio_file *radio, const char *path,
+    struct yt_error *error);
+bool yt_radio_file_close(struct yt_radio_file *radio,
+    struct yt_error *error);
+bool yt_radio_file_size(struct yt_radio_file *radio, uint64_t *size,
+    struct yt_error *error);
+bool yt_radio_file_get(struct yt_radio_file *radio, uint32_t basic_record,
+    struct yt_radio_record *record, size_t *accepted,
+    struct yt_error *error);
+bool yt_radio_file_put(struct yt_radio_file *radio, uint32_t basic_record,
+    const struct yt_radio_record *record, struct yt_error *error);
+bool yt_radio_file_next_record(struct yt_radio_file *radio,
+    uint32_t *basic_record, struct yt_error *error);
 bool yt_file_delete(const char *path, bool missing_ok, struct yt_error *error);
 bool yt_file_rename(const char *old_path, const char *new_path,
     struct yt_error *error);
