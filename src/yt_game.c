@@ -7,6 +7,9 @@
 #include <stdio.h>
 #include <string.h>
 
+static float projectile_single_add(float left, float right);
+static float projectile_single_mul(float left, float right);
+
 void
 yt_team_loader_begin(float team_id, struct yt_team_loader_cache *cache,
     bool *needs_overlay)
@@ -371,6 +374,89 @@ yt_projectile_cruise_opening_run(float *last_mine_news_sector,
 		return false;
 	*last_mine_news_sector = 0.0f;
 	return ops->present(context, tracking, sizeof(tracking) - 1U,
+	    YT_PROJECTILE_OPENING_DIRECT_LINE, error);
+}
+
+bool
+yt_projectile_plasma_opening_run(
+    struct yt_projectile_plasma_opening_state *state,
+    const struct yt_projectile_plasma_opening_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t mercenary[] = "The Mercenary";
+	static const uint8_t loading[] =
+	    "Loading course into targeting computer.";
+	static const uint8_t tracking[] = "* Tracking Report *";
+	char number[64];
+	uint8_t row[192];
+	const uint8_t *attacker;
+	size_t attacker_length;
+	int written;
+	volatile double quotient;
+	volatile float rounded;
+
+	if (state == NULL || ops == NULL || ops->sound == NULL
+	    || ops->present == NULL || ops->wait == NULL
+	    || (state->player_name == NULL && state->player_name_length != 0U))
+		return false;
+	if (state->special_attacker != 0.0f) {
+		attacker = mercenary;
+		attacker_length = sizeof(mercenary) - 1U;
+	}
+	else {
+		attacker = state->player_name;
+		attacker_length = state->player_name_length;
+	}
+	if (attacker_length > sizeof(state->attacker))
+		return false;
+	if (attacker_length != 0U)
+		memcpy(state->attacker, attacker, attacker_length);
+	state->attacker_length = attacker_length;
+	state->energy = (double)projectile_single_mul(2500000.0f,
+	    state->bolts);
+	quotient = state->energy / 50.0;
+	rounded = (float)quotient;
+	state->hop_loss = rounded;
+
+	if (!ops->present(context, NULL, 0U,
+	    YT_PROJECTILE_OPENING_DIRECT_LINE, error)
+	    || !ops->present(context, loading, sizeof(loading) - 1U,
+	    YT_PROJECTILE_OPENING_RAW, error)
+	    || !ops->present(context, NULL, 0U,
+	    YT_PROJECTILE_OPENING_DIRECT_LINE, error)
+	    || !ops->sound(context, 4.0f, error)
+	    || !ops->wait(context, 1.0f, error))
+		return false;
+	if (qb_str_double(number, sizeof(number), state->energy) < 0)
+		return false;
+	written = snprintf((char *)row, sizeof(row),
+	    "Plasma bolts targeted... firing%s megawatts!", number);
+	if (written < 0 || (size_t)written >= sizeof(row)
+	    || !ops->present(context, row, (size_t)written,
+	    YT_PROJECTILE_OPENING_DIRECT_LINE, error)
+	    || !ops->present(context, NULL, 0U,
+	    YT_PROJECTILE_OPENING_DIRECT_LINE, error)
+	    || !ops->wait(context, 1.0f, error))
+		return false;
+
+	state->firing_counter = 1.0f;
+	while (state->firing_counter <= state->bolts) {
+		if (qb_str_single(number, sizeof(number), state->firing_counter) < 0)
+			return false;
+		written = snprintf((char *)row, sizeof(row), "Firing%s!", number);
+		if (written < 0 || (size_t)written >= sizeof(row)
+		    || !ops->present(context, row, (size_t)written,
+		    YT_PROJECTILE_OPENING_DIRECT_LINE, error)
+		    || !ops->sound(context, 7.0f, error))
+			return false;
+		state->firing_counter = projectile_single_add(
+		    state->firing_counter, 1.0f);
+	}
+	return ops->present(context, NULL, 0U,
+	    YT_PROJECTILE_OPENING_DIRECT_LINE, error)
+	    && ops->present(context, tracking, sizeof(tracking) - 1U,
+	    YT_PROJECTILE_OPENING_DIRECT_LINE, error)
+	    && ops->present(context, NULL, 0U,
 	    YT_PROJECTILE_OPENING_DIRECT_LINE, error);
 }
 

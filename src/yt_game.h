@@ -281,12 +281,36 @@ typedef bool (*yt_projectile_opening_sound_fn)(void *context,
 typedef bool (*yt_projectile_opening_present_fn)(void *context,
     const uint8_t *text, size_t length,
     enum yt_projectile_opening_output_kind kind, struct yt_error *error);
+typedef bool (*yt_projectile_opening_wait_fn)(void *context, float duration,
+    struct yt_error *error);
 struct yt_projectile_cruise_opening_ops {
 	yt_projectile_opening_sound_fn sound;
 	yt_projectile_opening_present_fn present;
 };
 bool yt_projectile_cruise_opening_run(float *last_mine_news_sector,
     const struct yt_projectile_cruise_opening_ops *ops, void *context,
+    struct yt_error *error);
+
+#define YT_PROJECTILE_ATTACKER_CAPACITY 64U
+struct yt_projectile_plasma_opening_state {
+	float special_attacker;
+	float bolts;
+	const uint8_t *player_name;
+	size_t player_name_length;
+	uint8_t attacker[YT_PROJECTILE_ATTACKER_CAPACITY];
+	size_t attacker_length;
+	double energy;
+	float hop_loss;
+	float firing_counter;
+};
+struct yt_projectile_plasma_opening_ops {
+	yt_projectile_opening_sound_fn sound;
+	yt_projectile_opening_present_fn present;
+	yt_projectile_opening_wait_fn wait;
+};
+bool yt_projectile_plasma_opening_run(
+    struct yt_projectile_plasma_opening_state *state,
+    const struct yt_projectile_plasma_opening_ops *ops, void *context,
     struct yt_error *error);
 
 typedef bool (*yt_projectile_route_entry_read_player_fn)(void *context,
