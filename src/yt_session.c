@@ -1132,6 +1132,56 @@ session_file_viewer_present(void *context, const uint8_t *text,
 	    SESSION_PRESENT_LINE, "file viewer final blank", error);
 }
 
+struct session_file_viewer_context {
+	struct yt_session *session;
+	struct yt_text_input input;
+};
+
+static bool
+session_file_viewer_close(void *context, struct yt_error *error)
+{
+	struct session_file_viewer_context *viewer = context;
+
+	return yt_text_input_close(&viewer->input, error);
+}
+
+static bool
+session_file_viewer_open(void *context, const char *path,
+    struct yt_error *error)
+{
+	struct session_file_viewer_context *viewer = context;
+
+	return yt_text_input_open(&viewer->input, path, error);
+}
+
+static bool
+session_file_viewer_eof(void *context, bool *eof, struct yt_error *error)
+{
+	struct session_file_viewer_context *viewer = context;
+
+	return yt_text_input_eof(&viewer->input, eof, error);
+}
+
+static bool
+session_file_viewer_read(void *context, const uint8_t **line,
+    size_t *length, bool *available, struct yt_error *error)
+{
+	struct session_file_viewer_context *viewer = context;
+
+	return yt_text_input_read_line(&viewer->input, line, length, available,
+	    error);
+}
+
+static bool
+session_file_viewer_stream_present(void *context, const uint8_t *text,
+    size_t length, bool paged, struct yt_error *error)
+{
+	struct session_file_viewer_context *viewer = context;
+
+	return session_file_viewer_present(viewer->session, text, length, paged,
+	    error);
+}
+
 static bool
 session_file_viewer_missing_present(void *context, const uint8_t *text,
     size_t length, bool paged, struct yt_error *error)
@@ -1154,39 +1204,50 @@ static bool
 display_game_file(struct yt_session *session, const char *path,
     struct yt_error *error)
 {
-	struct yt_text_file file;
+	static const struct yt_file_viewer_stream_ops ops = {
+		session_file_viewer_close,
+		session_file_viewer_open,
+		session_file_viewer_eof,
+		session_file_viewer_read,
+		session_file_viewer_stream_present,
+	};
+	struct session_file_viewer_context context = {
+		.session = session,
+	};
+	struct yt_error local_error;
+	struct yt_error *active_error = error == NULL ? &local_error : error;
 	float saved_foreground = session->presentation.foreground;
 	int saved_pager_foreground = session->pager.foreground;
+	struct yt_file_viewer_stream_state state = {
+		.play = {
+			.foreground = &session->presentation.foreground,
+			.pager_foreground = &session->pager.foreground,
+			.bold = &session->presentation.bold,
+			.line_count = &session->pager.line_count,
+			.pager_key = session->pager.key,
+			.saved_foreground = saved_foreground,
+			.saved_pager_foreground = saved_pager_foreground,
+		},
+		.path = path,
+	};
+	bool ok;
 
+	if (error == NULL)
+		yt_error_clear(&local_error);
 	if (!yt_file_viewer_entry(session->pager.key,
 	    &session->pager.line_count, session_file_viewer_entry_present,
-	    session, error))
+	    session, active_error))
 		return false;
-	if (!yt_text_read(path, &file, error)) {
-		yt_error_clear(error);
+	yt_text_input_init(&context.input);
+	ok = yt_file_viewer_stream_run(&state, &ops, &context, active_error);
+	yt_text_input_destroy(&context.input);
+	if (!ok && active_error->status == YT_NOT_FOUND) {
+		yt_error_clear(active_error);
 		return yt_file_viewer_missing((const uint8_t *)path, strlen(path),
 		    session_file_viewer_missing_present,
-		    session_file_viewer_missing_news, session, error);
+		    session_file_viewer_missing_news, session, active_error);
 	}
-	{
-		struct yt_file_viewer_play_state state = {
-			&session->presentation.foreground,
-			&session->pager.foreground,
-			&session->presentation.bold,
-			&session->pager.line_count,
-			session->pager.key,
-			saved_foreground,
-			saved_pager_foreground,
-		};
-
-		if (!yt_file_viewer_play(file.data, file.length, &state,
-		    session_file_viewer_present, session, error)) {
-			yt_text_free(&file);
-			return false;
-		}
-	}
-	yt_text_free(&file);
-	return true;
+	return ok;
 }
 
 struct xannor_victory_file_context {

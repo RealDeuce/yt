@@ -42,6 +42,8 @@ bool yt_text_input_open(struct yt_text_input *input, const char *path,
 bool yt_text_input_read_line(struct yt_text_input *input,
 	const uint8_t **line, size_t *length, bool *available,
 	struct yt_error *error);
+bool yt_text_input_eof(struct yt_text_input *input, bool *eof,
+	struct yt_error *error);
 bool yt_text_input_close(struct yt_text_input *input,
 	struct yt_error *error);
 void yt_text_input_destroy(struct yt_text_input *input);
@@ -110,6 +112,37 @@ bool yt_file_viewer_play(const uint8_t *data, size_t data_length,
     struct yt_file_viewer_play_state *state,
     yt_file_viewer_present_fn present, void *context,
     struct yt_error *error);
+
+struct yt_file_viewer_stream_state {
+	struct yt_file_viewer_play_state play;
+	const char *path;
+	bool file_open;
+	size_t eof_checks;
+	size_t key_checks;
+	size_t read_count;
+	size_t line_count;
+};
+
+typedef bool (*yt_file_viewer_close_fn)(void *context,
+	struct yt_error *error);
+typedef bool (*yt_file_viewer_open_fn)(void *context, const char *path,
+	struct yt_error *error);
+typedef bool (*yt_file_viewer_eof_fn)(void *context, bool *eof,
+	struct yt_error *error);
+typedef bool (*yt_file_viewer_read_fn)(void *context, const uint8_t **line,
+	size_t *length, bool *available, struct yt_error *error);
+
+struct yt_file_viewer_stream_ops {
+	yt_file_viewer_close_fn close;
+	yt_file_viewer_open_fn open;
+	yt_file_viewer_eof_fn eof;
+	yt_file_viewer_read_fn read;
+	yt_file_viewer_present_fn present;
+};
+
+bool yt_file_viewer_stream_run(struct yt_file_viewer_stream_state *state,
+	const struct yt_file_viewer_stream_ops *ops, void *context,
+	struct yt_error *error);
 
 typedef bool (*yt_file_viewer_news_fn)(void *context,
     const uint8_t *text, size_t length, struct yt_error *error);
