@@ -11891,22 +11891,19 @@ projectile_damage_draw(void *context, float *value, struct yt_error *error)
 }
 
 static bool
-projectile_fighter_owner(struct yt_session *session, float owner,
-    bool missile, uint8_t *label, size_t size, size_t *label_length,
-    bool *friendly,
+projectile_plasma_fighter_owner(struct yt_session *session, float owner,
+    uint8_t *label, size_t size, size_t *label_length,
     struct yt_error *error)
 {
 	static const uint8_t xannor[] = "The Xannor";
 	static const uint8_t mercenaries[] = "Mercenaries";
 	static const uint8_t you[] = "YOU";
-	static const uint8_t them[] = "THEM";
 	const uint8_t *initial = xannor;
 	size_t initial_length = sizeof(xannor) - 1U;
 
-	if (label == NULL || label_length == NULL || friendly == NULL
+	if (label == NULL || label_length == NULL
 	    || size < YT_TEXT_FIELD_SIZE)
 		return false;
-	*friendly = false;
 	if (owner == -2.0f) {
 		initial = mercenaries;
 		initial_length = sizeof(mercenaries) - 1U;
@@ -11914,8 +11911,7 @@ projectile_fighter_owner(struct yt_session *session, float owner,
 	memcpy(label, initial, initial_length);
 	*label_length = initial_length;
 	if (owner != -2.0f && owner > 1.0f
-	    && (missile
-	    || owner <= session->door->game.config.sector_offset)) {
+	    && owner <= session->door->game.config.sector_offset) {
 		struct yt_player defender;
 		bool overflow;
 		int owner_record;
@@ -11934,22 +11930,55 @@ projectile_fighter_owner(struct yt_session *session, float owner,
 			return false;
 		if (!yt_player_stored_name(&defender, label, label_length, error))
 			return false;
-		if (missile)
-			*friendly = session->player.team > 0.0f
-			    && defender.team == session->player.team;
 	}
 	if (owner == (float)session->player_record) {
-		const uint8_t *replacement = missile
-		    && session->player_record == -1 ? them : you;
-		size_t replacement_length = missile
-		    && session->player_record == -1
-		    ? sizeof(them) - 1U : sizeof(you) - 1U;
-
-		memcpy(label, replacement, replacement_length);
-		*label_length = replacement_length;
-		*friendly = true;
+		memcpy(label, you, sizeof(you) - 1U);
+		*label_length = sizeof(you) - 1U;
 	}
 	return true;
+}
+
+static bool
+cruise_defense_owner(void *context, float owner, uint8_t *name,
+    size_t *name_length, struct yt_error *error)
+{
+	struct yt_session *session = context;
+	struct yt_player defender;
+	uint32_t record = qb_brun_random_record_number(owner);
+
+	if (!yt_game_read_player(&session->door->game, (int)record, &defender,
+	    error))
+		return false;
+	return yt_player_stored_name(&defender, name, name_length, error);
+}
+
+static bool
+cruise_defense_friendship(void *context, float owner, bool *friendly,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_friendship_resolve(owner, (float)session->player_record,
+	    session->door->game.config.sector_offset,
+	    friendship_read_player, &session->door->game, friendly, error);
+}
+
+static bool
+cruise_defense_present(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	return session_present_text(context, text, length,
+	    SESSION_PRESENT_BOLD_LINE, "cruise missile defense report", error);
+}
+
+static bool
+cruise_defense_sound(void *context, float selector, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	session->presentation.bold = 1.0f;
+	return session_sound(session, selector,
+	    "cruise missile fighter-defense sound", error);
 }
 
 enum missile_sector_route {
@@ -11963,7 +11992,14 @@ missile_sector(struct yt_session *session, int sector_number,
 	int *last_mine_news_sector, enum missile_sector_route *route,
 	struct yt_error *error)
 {
+	static const struct yt_projectile_defense_front_ops defense_ops = {
+		cruise_defense_owner,
+		cruise_defense_friendship,
+		cruise_defense_present,
+		cruise_defense_sound,
+	};
 	struct yt_sector sector;
+	struct yt_projectile_defense_front_state defense;
 	struct yt_projectile_sector_probe_state probe;
 	float old_fighter_owner;
 	int basic;
@@ -11987,39 +12023,27 @@ missile_sector(struct yt_session *session, int sector_number,
 		*route = MISSILE_SECTOR_POST_IMPACT;
 		return true;
 	}
+	defense.sector = (float)sector_number;
+	defense.fighters = (double)sector.fighters;
+	defense.owner = sector.fighter_owner;
+	defense.shooter = (float)session->player_record;
+	if (!yt_projectile_defense_front_run(&defense, &defense_ops, session,
+	    error))
+		return false;
+	if (defense.route == YT_PROJECTILE_DEFENSE_NO_DEFENSE)
+		goto missile_mines;
 	old_fighter_owner = sector.fighter_owner;
-	if (sector.fighters > 0.0f) {
+	if (defense.route == YT_PROJECTILE_DEFENSE_FRIENDLY)
+		goto missile_mines;
+	{
 		float original_fighters = sector.fighters;
 		float destroyed = 0.0f;
-		bool friendly;
-		uint8_t owner[YT_TEXT_FIELD_SIZE];
-		size_t owner_length;
-		size_t row_length;
 		char sector_text[64];
 		char fighter_text[64];
 		uint8_t row[256];
 
-		if (!projectile_fighter_owner(session, sector.fighter_owner,
-		    true, owner, sizeof(owner), &owner_length, &friendly, error))
-			return false;
-		qb_str_double(fighter_text, sizeof(fighter_text),
-		    (double)sector.fighters);
-		if (!yt_projectile_defense_row((float)sector_number, owner,
-		    owner_length, (double)sector.fighters, row, sizeof(row),
-		    &row_length)
-		    || !session_present_text(session, row, row_length,
-		    SESSION_PRESENT_BOLD_LINE,
-		    "cruise missile defense report", error))
-			return false;
 		qb_str_single(sector_text, sizeof(sector_text),
 		    (float)sector_number);
-		if (friendly)
-			goto missile_mines;
-
-		session->presentation.bold = 1.0f;
-		if (!session_sound(session, 2.0f,
-		    "cruise missile fighter-defense sound", error))
-			return false;
 		while (*remaining > 0.0f && destroyed < sector.fighters) {
 			float draw;
 
@@ -12542,7 +12566,6 @@ plasma_sector(struct yt_session *session, int sector_number,
 	if (sector.fighters > 0.0f) {
 		double original_fighters = (double)sector.fighters;
 		double destroyed = 0.0;
-		bool ignored_friendly;
 		uint8_t owner[YT_TEXT_FIELD_SIZE];
 		size_t owner_length;
 		size_t row_length;
@@ -12550,9 +12573,9 @@ plasma_sector(struct yt_session *session, int sector_number,
 		char fighter_text[64];
 		uint8_t row[256];
 
-		if (!projectile_fighter_owner(session, sector.fighter_owner,
-		    false, owner, sizeof(owner), &owner_length,
-		    &ignored_friendly, error))
+		if (!projectile_plasma_fighter_owner(session,
+		    sector.fighter_owner, owner, sizeof(owner), &owner_length,
+		    error))
 			return false;
 		qb_str_single(sector_text, sizeof(sector_text),
 		    (float)sector_number);

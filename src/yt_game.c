@@ -4751,6 +4751,63 @@ yt_projectile_sector_probe_run(struct yt_projectile_sector_probe_state *state,
 }
 
 bool
+yt_projectile_defense_front_run(
+    struct yt_projectile_defense_front_state *state,
+    const struct yt_projectile_defense_front_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t xannor[] = "The Xannor";
+	static const uint8_t mercenaries[] = "Mercenaries";
+	static const uint8_t you[] = "YOU";
+	static const uint8_t them[] = "THEM";
+	uint8_t owner_name[YT_TEXT_FIELD_SIZE];
+	uint8_t row[256];
+	const uint8_t *initial = xannor;
+	size_t owner_length = sizeof(xannor) - 1U;
+	size_t row_length;
+	bool friendly = false;
+
+	if (state == NULL || ops == NULL || ops->owner == NULL
+	    || ops->friendship == NULL || ops->present == NULL
+	    || ops->sound == NULL)
+		return false;
+	state->route = YT_PROJECTILE_DEFENSE_NO_DEFENSE;
+	if (!(state->fighters > 0.0))
+		return true;
+	if (state->owner == -2.0f) {
+		initial = mercenaries;
+		owner_length = sizeof(mercenaries) - 1U;
+	}
+	memcpy(owner_name, initial, owner_length);
+	if (state->owner > 1.0f) {
+		if (!ops->owner(context, state->owner, owner_name, &owner_length,
+		    error)
+		    || owner_length > sizeof(owner_name)
+		    || !ops->friendship(context, state->owner, &friendly, error))
+			return false;
+	}
+	if (state->owner == state->shooter) {
+		const uint8_t *replacement = state->shooter == -1.0f ? them : you;
+		size_t replacement_length = state->shooter == -1.0f
+		    ? sizeof(them) - 1U : sizeof(you) - 1U;
+
+		memcpy(owner_name, replacement, replacement_length);
+		owner_length = replacement_length;
+		friendly = true;
+	}
+	if (!yt_projectile_defense_row(state->sector, owner_name, owner_length,
+	    state->fighters, row, sizeof(row), &row_length)
+	    || !ops->present(context, row, row_length, error))
+		return false;
+	if (friendly) {
+		state->route = YT_PROJECTILE_DEFENSE_FRIENDLY;
+		return true;
+	}
+	state->route = YT_PROJECTILE_DEFENSE_HOSTILE;
+	return ops->sound(context, 2.0f, error);
+}
+
+bool
 yt_projectile_survivor_overlay(struct yt_player *player, float shields,
     double fighters, float scanner, bool scanner_disabled)
 {

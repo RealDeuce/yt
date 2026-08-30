@@ -301,6 +301,35 @@ bool yt_projectile_sector_probe_run(
     struct yt_projectile_sector_probe_state *state,
     struct yt_error *error);
 
+enum yt_projectile_defense_front_route {
+	YT_PROJECTILE_DEFENSE_NO_DEFENSE,
+	YT_PROJECTILE_DEFENSE_FRIENDLY,
+	YT_PROJECTILE_DEFENSE_HOSTILE,
+};
+struct yt_projectile_defense_front_state {
+	float sector;
+	double fighters;
+	float owner;
+	float shooter;
+	enum yt_projectile_defense_front_route route;
+};
+typedef bool (*yt_projectile_defense_owner_fn)(void *context, float owner,
+    uint8_t *name, size_t *name_length, struct yt_error *error);
+typedef bool (*yt_projectile_defense_friendship_fn)(void *context,
+    float owner, bool *friendly, struct yt_error *error);
+typedef bool (*yt_projectile_defense_sound_fn)(void *context, float selector,
+    struct yt_error *error);
+struct yt_projectile_defense_front_ops {
+	yt_projectile_defense_owner_fn owner;
+	yt_projectile_defense_friendship_fn friendship;
+	yt_projectile_cruise_reroute_output_fn present;
+	yt_projectile_defense_sound_fn sound;
+};
+bool yt_projectile_defense_front_run(
+    struct yt_projectile_defense_front_state *state,
+    const struct yt_projectile_defense_front_ops *ops, void *context,
+    struct yt_error *error);
+
 struct yt_xannor_retaliation_state {
 	struct yt_player *player;
 	int *player_record;
