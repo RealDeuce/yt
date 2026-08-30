@@ -4929,6 +4929,33 @@ yt_projectile_route_has_next(int16_t next_hop)
 }
 
 bool
+yt_projectile_route_avoid_enabled(bool plasma, int counterattack, int shooter)
+{
+	return !plasma && counterattack == 0 && shooter != -1;
+}
+
+bool
+yt_projectile_route_failure_row(bool caller_suffix, uint8_t *row,
+    size_t capacity, size_t *length)
+{
+	static const uint8_t helper[] =
+	    "*** You can't get there without going someplace you dont want to!";
+	static const uint8_t suffix[] = "Missles self destructed!";
+	const uint8_t *source = caller_suffix ? suffix : helper;
+	size_t source_length = caller_suffix
+	    ? sizeof(suffix) - 1U : sizeof(helper) - 1U;
+
+	if (length == NULL)
+		return false;
+	*length = 0U;
+	if (capacity < source_length || row == NULL)
+		return false;
+	memcpy(row, source, source_length);
+	*length = source_length;
+	return true;
+}
+
+bool
 yt_projectile_footer_row(uint8_t *row, size_t capacity, size_t *length)
 {
 	static const uint8_t footer[] = "*** End of Report ***";

@@ -675,24 +675,49 @@ test_projectile_early_terminal_presentation(void)
 	    "The Union Police have destroyed the Missiles!\r\n";
 	static const uint8_t plasma_expected[] =
 	    "\r\nPlasma bolts dissipated.\r\n\r\n";
+	static const uint8_t route_ansi_expected[] =
+	    "\x1b[0;32;40m\r\n\r\n\x1b[0;32;40;5;1m"
+	    "*** You can't get there without going someplace you dont want to!"
+	    "\r\n\x1b[0;32;40m\r\n\x1b[0;32;40;5;1m"
+	    "Missles self destructed!\r\n";
 	struct yt_present_state current = state(false);
 	struct pager_capture capture;
+	struct yt_present_result result;
+	uint8_t row[96];
+	size_t row_length;
 
 	memset(&capture, 0, sizeof(capture));
 	pager_capture_line(&capture, &current, NULL, 0U);
 	pager_capture_line(&capture, &current, NULL, 0U);
-	pager_capture_line(&capture, &current, route, sizeof(route) - 1U);
+	CHECK(yt_projectile_route_failure_row(false, row, sizeof(row),
+	    &row_length));
+	CHECK(row_length == sizeof(route) - 1U
+	    && memcmp(row, route, row_length) == 0);
+	current.blink = 1.0f;
+	CHECK(yt_present_bold_line(row, row_length, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
 	pager_capture_line(&capture, &current, NULL, 0U);
-	pager_capture_line(&capture, &current, self_destruct,
-	    sizeof(self_destruct) - 1U);
+	CHECK(yt_projectile_route_failure_row(true, row, sizeof(row),
+	    &row_length));
+	CHECK(row_length == sizeof(self_destruct) - 1U
+	    && memcmp(row, self_destruct, row_length) == 0);
+	current.blink = 1.0f;
+	CHECK(yt_present_bold_line(row, row_length, &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
 	CHECK(capture.remote_length == sizeof(route_expected) - 1U
 	    && memcmp(capture.remote, route_expected,
 	    sizeof(route_expected) - 1U) == 0);
+	CHECK(current.bold == 1.0f && current.blink == 1.0f);
 
+	current = state(false);
 	memset(&capture, 0, sizeof(capture));
 	pager_capture_line(&capture, &current, NULL, 0U);
-	pager_capture_line(&capture, &current, self_destruct,
-	    sizeof(self_destruct) - 1U);
+	current.blink = 1.0f;
+	CHECK(yt_present_bold_line(self_destruct,
+	    sizeof(self_destruct) - 1U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
 	CHECK(capture.remote_length == sizeof(self_expected) - 1U
 	    && memcmp(capture.remote, self_expected,
 	    sizeof(self_expected) - 1U) == 0);
@@ -710,6 +735,24 @@ test_projectile_early_terminal_presentation(void)
 	CHECK(capture.remote_length == sizeof(plasma_expected) - 1U
 	    && memcmp(capture.remote, plasma_expected,
 	    sizeof(plasma_expected) - 1U) == 0);
+
+	current = state(true);
+	memset(&capture, 0, sizeof(capture));
+	pager_capture_line(&capture, &current, NULL, 0U);
+	pager_capture_line(&capture, &current, NULL, 0U);
+	current.blink = 1.0f;
+	CHECK(yt_present_bold_line(route, sizeof(route) - 1U, &current,
+	    &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_capture_line(&capture, &current, NULL, 0U);
+	current.blink = 1.0f;
+	CHECK(yt_present_bold_line(self_destruct,
+	    sizeof(self_destruct) - 1U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(route_ansi_expected) - 1U
+	    && memcmp(capture.remote, route_ansi_expected,
+	    sizeof(route_ansi_expected) - 1U) == 0);
+	CHECK(current.bold == 0.0f && current.blink == 0.0f);
 }
 
 static struct pager_capture

@@ -121,6 +121,7 @@ static bool info_refresh_time(struct yt_session *session,
     struct yt_error *error);
 static bool build_route(struct yt_session *session, float start,
     float destination, int16_t *next_hop, bool use_avoid, bool *found,
+    enum yt_route_outcome *route_outcome, float *returned_status,
     struct yt_error *error);
 static bool session_carrier(struct yt_session *session);
 static bool session_b05d(struct yt_session *session, const uint8_t *text,
@@ -1500,7 +1501,8 @@ opening_and_date(struct yt_session *session, struct yt_error *error)
 	enum yt_present_status status;
 	enum yt_opening_exit opening_exit;
 
-	if (!build_route(session, 1, 2, route, false, &found, error))
+	if (!build_route(session, 1, 2, route, false, &found, NULL, NULL,
+	    error))
 		return false;
 	if (!found) {
 		static const uint8_t diagnostic[] =
@@ -8670,7 +8672,9 @@ route_sector_reader(void *context, int logical_sector, float warps[6],
 
 static bool
 build_route(struct yt_session *session, float start, float destination,
-    int16_t *next_hop, bool use_avoid, bool *found, struct yt_error *error)
+    int16_t *next_hop, bool use_avoid, bool *found,
+    enum yt_route_outcome *route_outcome, float *returned_status,
+    struct yt_error *error)
 {
 	int16_t *predecessor;
 	float status = use_avoid ? 1.0f : 0.0f;
@@ -8690,6 +8694,10 @@ build_route(struct yt_session *session, float start, float destination,
 	if (!success)
 		return false;
 	*found = outcome != YT_ROUTE_NOT_FOUND;
+	if (route_outcome != NULL)
+		*route_outcome = outcome;
+	if (returned_status != NULL)
+		*returned_status = status;
 	return true;
 }
 
@@ -9045,7 +9053,7 @@ planet_move(struct yt_session *session, bool *enter_sector,
 		return false;
 	}
 	if (!build_route(session, start, destination, route, true,
-	    &found, error)) {
+	    &found, NULL, NULL, error)) {
 		free(route);
 		return false;
 	}
@@ -12929,15 +12937,36 @@ projectile_opening(struct yt_session *session, float amount, double energy,
 static bool
 route_failure_report(struct yt_session *session, struct yt_error *error)
 {
-	return session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	uint8_t row[96];
+	size_t length;
+
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "projectile route failure blank", error)
-	    && session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "projectile route failure blank", error)
-	    && session_present_text(session,
-	    (const uint8_t *)
-	    "*** You can't get there without going someplace you dont want to!",
-	    strlen("*** You can't get there without going someplace you dont want to!"),
-	    SESSION_PRESENT_LINE, "projectile route failure row", error);
+	    || !yt_projectile_route_failure_row(false, row, sizeof(row),
+	    &length))
+		return false;
+	session->presentation.blink = 1.0f;
+	return session_present_text(session, row, length,
+	    SESSION_PRESENT_BOLD_LINE, "projectile route failure row", error);
+}
+
+static bool
+missile_route_failure_suffix(struct yt_session *session,
+    struct yt_error *error)
+{
+	uint8_t row[32];
+	size_t length;
+
+	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
+	    "cruise missile self-destruct blank", error)
+	    || !yt_projectile_route_failure_row(true, row, sizeof(row),
+	    &length))
+		return false;
+	session->presentation.blink = 1.0f;
+	return session_present_text(session, row, length,
+	    SESSION_PRESENT_BOLD_LINE, "cruise missile self-destruct row", error);
 }
 
 static bool
@@ -13021,8 +13050,7 @@ launch_projectile(struct yt_session *session, float target, float amount,
 			error->status = YT_NO_MEMORY;
 		return false;
 	}
-	if (start == destination) {
-		if (plasma) {
+	if (start == destination && plasma) {
 			if (origin_alias != NULL)
 				*origin_alias = 0.0f;
 			if (!plasma_hop_report(session, start, energy, error)) {
@@ -13034,43 +13062,25 @@ launch_projectile(struct yt_session *session, float target, float amount,
 				found = plasma_footer(session, error);
 			free(route);
 			return found;
-		}
-		if (*counterattack == 0 && session->player_record != -1) {
-			if (!session_present_text(session, NULL, 0,
-			    SESSION_PRESENT_LINE,
-			    "cruise missile self-destruct blank", error)
-			    || !session_present_text(session,
-			    (const uint8_t *)"Missles self destructed!",
-			    strlen("Missles self destructed!"),
-			    SESSION_PRESENT_LINE,
-			    "cruise missile self-destruct row", error)) {
-				free(route);
-				return false;
-			}
-			free(route);
-			return true;
-		}
-		if (!missile_footer(session, error)) {
-			free(route);
-			return false;
-		}
-		free(route);
-		return true;
 	}
 	for (;;) {
 		bool rerouted = false;
+		enum yt_route_outcome route_outcome;
+		float route_status;
 
 		if (!build_route(session, (float)start, (float)destination, route,
-		    !plasma && *counterattack == 0
-		    && session->player_record != -1, &found, error)) {
+		    yt_projectile_route_avoid_enabled(plasma, *counterattack,
+		    session->player_record), &found, &route_outcome, &route_status,
+		    error)) {
 			free(route);
 			return false;
 		}
-		if (!found) {
-			if (!route_failure_report(session, error)) {
-				free(route);
-				return false;
-			}
+		if (route_outcome == YT_ROUTE_NOT_FOUND
+		    && !route_failure_report(session, error)) {
+			free(route);
+			return false;
+		}
+		if (route_status != 0.0f) {
 			if (plasma) {
 				if (!plasma_footer(session, error)) {
 					free(route);
@@ -13078,14 +13088,7 @@ launch_projectile(struct yt_session *session, float target, float amount,
 				}
 			}
 			else {
-				if (!session_present_text(session, NULL, 0,
-				    SESSION_PRESENT_LINE,
-				    "cruise missile self-destruct blank", error)
-				    || !session_present_text(session,
-				    (const uint8_t *)"Missles self destructed!",
-				    strlen("Missles self destructed!"),
-				    SESSION_PRESENT_LINE,
-				    "cruise missile self-destruct row", error)) {
+				if (!missile_route_failure_suffix(session, error)) {
 					free(route);
 					return false;
 				}
@@ -14058,8 +14061,7 @@ computer_route(struct yt_session *session, bool autopilot,
 		return false;
 	}
 	if (!build_route(session, start_value, destination_value, route, true,
-	    &found,
-	    error)) {
+	    &found, NULL, NULL, error)) {
 		free(route);
 		return false;
 	}
