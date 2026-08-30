@@ -12139,6 +12139,21 @@ plasma_fighter_victory(void *context, struct yt_error *error)
 }
 
 static bool
+plasma_mine_sound(void *context, float selector, struct yt_error *error)
+{
+	return session_sound(context, selector, "plasma sector-mine sound",
+	    error);
+}
+
+static bool
+plasma_mine_present(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	return session_present_text(context, text, length,
+	    SESSION_PRESENT_BOLD_LINE, "plasma destroyed-mines row", error);
+}
+
+static bool
 cruise_defense_owner(void *context, float owner, uint8_t *name,
     size_t *name_length, struct yt_error *error)
 {
@@ -12753,8 +12768,17 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
 		plasma_fighter_write_sector,
 		plasma_fighter_victory,
 	};
+	static const struct yt_projectile_plasma_mine_ops mine_ops = {
+		plasma_mine_sound,
+		plasma_fighter_news,
+		projectile_damage_draw,
+		plasma_mine_present,
+		plasma_fighter_read_sector,
+		plasma_fighter_write_sector,
+	};
 	struct yt_sector sector;
 	struct yt_projectile_plasma_fighter_state fighter;
+	struct yt_projectile_plasma_mine_state mine;
 	float planet_link;
 	int basic;
 
@@ -12784,63 +12808,16 @@ plasma_reload_sector:
 	    error))
 		return false;
 	planet_link = sector.planet;
-	if (*energy > 0.0 && sector.mines > 0.0f) {
-		float original_mines = sector.mines;
-		float destroyed = 0.0f;
-		char destroyed_text[64];
-		char sector_text[64];
-		char row[256];
-
-		if (!session_sound(session, 5.0f,
-		    "plasma sector-mine sound", error))
-			return false;
-		qb_str_single(sector_text, sizeof(sector_text),
-		    (float)sector_number);
-		snprintf(row, sizeof(row), "%s's Plasma Bolts hit sector mines in "
-		    "sector%s!", session->player.name, sector_text);
-		if (!append_news(session, row, error))
-			return false;
-		while (*energy > 0.0 && destroyed < sector.mines) {
-			float draw;
-
-			destroyed = (float)((double)destroyed
-			    + floor(*energy * 0.000001) + 1.0);
-			if (!random_value(session, &draw, error))
-				return false;
-			*energy -= (double)single_mul(draw, 25000.0f);
-		}
-		if (destroyed > sector.mines)
-			destroyed = sector.mines;
-		if (*energy < 0.0)
-			*energy = 0.0;
-		qb_str_single(destroyed_text, sizeof(destroyed_text), destroyed);
-		snprintf(row, sizeof(row), "%s's plasma bolts destroyed%s mines in "
-		    "sector%s!", session->player.name, destroyed_text,
-		    sector_text);
-		if (!append_news(session, row, error))
-			return false;
-		snprintf(row, sizeof(row), "The plasma bolts destroyed%s mines in "
-		    "sector%s!", destroyed_text, sector_text);
-		if (!session_present_text(session, (const uint8_t *)row,
-		    strlen(row), SESSION_PRESENT_BOLD_LINE,
-		    "plasma destroyed-mines row", error))
-			return false;
-		{
-			struct yt_sector persistence;
-
-			if (!yt_game_read_sector(&session->door->game,
-			    sector_number, &persistence, error))
-				return false;
-			persistence.mines = single_sub(original_mines, destroyed);
-			if (!yt_record_set_number(&persistence.record, YT_F129,
-			    persistence.mines)
-			    || !yt_game_write_sector(&session->door->game,
-			    sector_number, &persistence, error))
-				return false;
-		}
-		if (*energy < 1.0)
-			return true;
-	}
+	memset(&mine, 0, sizeof(mine));
+	mine.sector = (float)sector_number;
+	mine.mines = (double)sector.mines;
+	mine.attacker = attacker;
+	mine.attacker_length = launch_attacker_length;
+	mine.energy = energy;
+	if (!yt_projectile_plasma_mine_run(&mine, &mine_ops, session, error))
+		return false;
+	if (mine.route == YT_PROJECTILE_PLASMA_MINE_FOOTER)
+		return true;
 	for (basic = YT_PLAYER_FIRST;
 	    basic <= (int)session->door->game.config.sector_offset
 	    && *energy > 0.0; ++basic) {

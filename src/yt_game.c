@@ -5390,6 +5390,127 @@ yt_projectile_plasma_fighter_run(
 }
 
 bool
+yt_projectile_plasma_mine_run(struct yt_projectile_plasma_mine_state *state,
+    const struct yt_projectile_plasma_mine_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t entry_infix[] =
+	    "'s Plasma Bolts hit sector mines in sector";
+	static const uint8_t news_infix[] =
+	    "'s plasma bolts destroyed";
+	static const uint8_t direct_prefix[] =
+	    "The plasma bolts destroyed";
+	static const uint8_t result_infix[] = " mines in sector";
+	uint8_t row[256];
+	char destroyed_text[64];
+	char sector_text[64];
+	size_t row_length;
+	int destroyed_length;
+	int sector_length;
+
+	if (state == NULL || ops == NULL || state->energy == NULL
+	    || (state->attacker == NULL && state->attacker_length != 0U)
+	    || ops->sound == NULL || ops->news == NULL || ops->random == NULL
+	    || ops->present == NULL || ops->read_sector == NULL
+	    || ops->write_sector == NULL)
+		return false;
+	state->destroyed = 0.0f;
+	state->remaining_mines = (float)state->mines;
+	state->route = YT_PROJECTILE_PLASMA_MINE_CONTINUE_PLAYERS;
+	if (!(state->mines > 0.0))
+		return true;
+	if (!ops->sound(context, 5.0f, error))
+		return false;
+	sector_length = qb_str_single(sector_text, sizeof(sector_text),
+	    state->sector);
+	if (sector_length < 0
+	    || state->attacker_length + sizeof(entry_infix) - 1U
+	    + (size_t)sector_length + 1U > sizeof(row))
+		return false;
+	row_length = 0U;
+	if (state->attacker_length != 0U) {
+		memcpy(row, state->attacker, state->attacker_length);
+		row_length = state->attacker_length;
+	}
+	memcpy(row + row_length, entry_infix, sizeof(entry_infix) - 1U);
+	row_length += sizeof(entry_infix) - 1U;
+	memcpy(row + row_length, sector_text, (size_t)sector_length);
+	row_length += (size_t)sector_length;
+	row[row_length++] = '!';
+	if (!ops->news(context, row, row_length, error))
+		return false;
+
+	while (*state->energy > 0.0
+	    && (double)state->destroyed < state->mines) {
+		float draw;
+		volatile double quantum = floor(*state->energy * 0.000001);
+		volatile double accumulated = (double)state->destroyed + quantum;
+
+		state->destroyed = (float)(accumulated + 1.0);
+		if (!ops->random(context, &draw, error))
+			return false;
+		*state->energy -= (double)projectile_single_mul(draw, 25000.0f);
+	}
+	if (*state->energy < 0.0)
+		*state->energy = 0.0;
+	if ((double)state->destroyed > state->mines)
+		state->destroyed = (float)state->mines;
+	destroyed_length = qb_str_single(destroyed_text,
+	    sizeof(destroyed_text), state->destroyed);
+	if (destroyed_length < 0
+	    || state->attacker_length + sizeof(news_infix) - 1U
+	    + (size_t)destroyed_length + sizeof(result_infix) - 1U
+	    + (size_t)sector_length + 1U > sizeof(row))
+		return false;
+	row_length = 0U;
+	if (state->attacker_length != 0U) {
+		memcpy(row, state->attacker, state->attacker_length);
+		row_length = state->attacker_length;
+	}
+	memcpy(row + row_length, news_infix, sizeof(news_infix) - 1U);
+	row_length += sizeof(news_infix) - 1U;
+	memcpy(row + row_length, destroyed_text, (size_t)destroyed_length);
+	row_length += (size_t)destroyed_length;
+	memcpy(row + row_length, result_infix, sizeof(result_infix) - 1U);
+	row_length += sizeof(result_infix) - 1U;
+	memcpy(row + row_length, sector_text, (size_t)sector_length);
+	row_length += (size_t)sector_length;
+	row[row_length++] = '!';
+	if (!ops->news(context, row, row_length, error))
+		return false;
+	if (sizeof(direct_prefix) - 1U + (size_t)destroyed_length
+	    + sizeof(result_infix) - 1U + (size_t)sector_length + 1U
+	    > sizeof(row))
+		return false;
+	memcpy(row, direct_prefix, sizeof(direct_prefix) - 1U);
+	memcpy(row + sizeof(direct_prefix) - 1U, destroyed_text,
+	    (size_t)destroyed_length);
+	row_length = sizeof(direct_prefix) - 1U + (size_t)destroyed_length;
+	memcpy(row + row_length, result_infix, sizeof(result_infix) - 1U);
+	row_length += sizeof(result_infix) - 1U;
+	memcpy(row + row_length, sector_text, (size_t)sector_length);
+	row_length += (size_t)sector_length;
+	row[row_length++] = '!';
+	if (!ops->present(context, row, row_length, error))
+		return false;
+
+	if (!ops->read_sector(context, state->sector, &state->persistence,
+	    error))
+		return false;
+	state->remaining_mines = projectile_single_sub((float)state->mines,
+	    state->destroyed);
+	state->persistence.mines = state->remaining_mines;
+	if (!yt_record_set_number(&state->persistence.record, YT_F129,
+	    state->persistence.mines)
+	    || !ops->write_sector(context, state->sector, &state->persistence,
+	    error))
+		return false;
+	if (*state->energy < 1.0)
+		state->route = YT_PROJECTILE_PLASMA_MINE_FOOTER;
+	return true;
+}
+
+bool
 yt_projectile_defense_front_run(
     struct yt_projectile_defense_front_state *state,
     const struct yt_projectile_defense_front_ops *ops, void *context,
