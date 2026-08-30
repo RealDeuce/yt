@@ -11096,6 +11096,132 @@ test_hostile_quit_accept_presentation(void)
 	}
 }
 
+static bool
+main_quit_accept_handoff_prefix(struct physical_viewer_join *viewer,
+    bool ansi)
+{
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Main Command (?=Help)? ";
+	static const uint8_t heading[] = "<Quit>";
+	static const uint8_t confirmation[] = "Are you sure (Y/N)? ";
+	static const uint8_t q[] = "Q";
+	static const uint8_t y[] = "Y";
+	struct viewer_pager_join *join = &viewer->join;
+	struct yt_present_result result;
+
+	join->presentation = state(ansi);
+	join->presentation.foreground = 6.0f;
+	join->presentation.cached_foreground = ansi ? 6.0f : 0.0f;
+	join->pager.foreground = 6;
+	join->pager.line_count = 0.0f;
+	join->presentation.foreground = 2.0f;
+	join->pager.foreground = 2;
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
+	if (!normal_exit_b05d(join, prompt, sizeof(prompt) - 1U, 1.0f))
+		return false;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	memcpy(join->accumulator, q, sizeof(q));
+	if (yt_present_editor_echo(q, sizeof(q) - 1U, q, sizeof(q) - 1U,
+	    &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.foreground = 7.0f;
+	join->pager.foreground = 7;
+	if (!normal_exit_b05d(join, heading, sizeof(heading) - 1U, 0.0f))
+		return false;
+	if (yt_present_character(confirmation, sizeof(confirmation) - 1U,
+	    &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	memcpy(join->accumulator, y, sizeof(y));
+	if (yt_present_editor_echo(y, sizeof(y) - 1U, y, sizeof(y) - 1U,
+	    &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
+	memcpy(join->source, y, sizeof(y));
+	join->source_length = sizeof(y) - 1U;
+	return true;
+}
+
+static void
+test_main_quit_accept_handoff_presentation(void)
+{
+	static const struct {
+		bool ansi;
+		size_t remote_length;
+		uint64_t remote_fnv;
+		size_t colors;
+		uint64_t color_fnv;
+		size_t color_2;
+		size_t color_7;
+	} cases[] = {
+		{true, 92U, UINT64_C(0x475c02557a9c6bd2), 8U,
+		    UINT64_C(0x42a61ad6e51524c0), 3U, 5U},
+		{false, 72U, UINT64_C(0x52b6bdb6ae1d3ceb), 2U,
+		    UINT64_C(0x6d3fa4669b3587bd), 0U, 2U},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	uint8_t remote[128];
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
+		CHECK(main_quit_accept_handoff_prefix(&viewer,
+		    cases[pass].ansi));
+		CHECK(viewer.join.remote_length == cases[pass].remote_length
+		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+		    == cases[pass].remote_fnv
+		    && viewer.join.local_row_count == 4U
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == UINT64_C(0x7bb9d88388d0695d)
+		    && viewer.join.local_fragment_length == 0U
+		    && viewer.join.local_color_count == cases[pass].colors
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == cases[pass].color_fnv
+		    && viewer_local_color_count(&viewer.join, 2, 0)
+		    == cases[pass].color_2
+		    && viewer_local_color_count(&viewer.join, 7, 0)
+		    == cases[pass].color_7);
+		CHECK(viewer.join.presentation.foreground == 7.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold == 0.0f
+		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.cached_foreground
+		    == (cases[pass].ansi ? 7.0f : 0.0f)
+		    && viewer.join.pager.foreground == 7
+		    && viewer.join.pager.line_count == 0.0f
+		    && viewer.join.pager.nonstop == 0.0f
+		    && viewer.join.pager.key[0] == '\0'
+		    && strcmp(viewer.join.accumulator, "Y") == 0
+		    && viewer.join.source_length == 1U
+		    && viewer.join.source[0] == 'Y'
+		    && viewer.join.queue_length == 0U);
+		CHECK(viewer.join.sample_calls == 2U
+		    && viewer.join.response_calls == 0U
+		    && viewer.join.direct_calls == 0U
+		    && viewer.join.event_count == 10U
+		    && viewer.join.position == 0U
+		    && stream.eof_checks == 0U && stream.key_checks == 0U
+		    && stream.read_count == 0U && stream.line_count == 0U
+		    && !stream.file_open && !viewer.join.file_open
+		    && viewer.input.file == NULL && viewer.close_calls == 0U
+		    && viewer.open_calls == 0U);
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
 struct spy_sweep_presentation_context {
 	struct yt_present_state current;
 	struct pager_capture capture;
@@ -13530,6 +13656,7 @@ main(void)
 	test_computer_quit_accept_presentation();
 	test_planet_quit_accept_presentation();
 	test_hostile_quit_accept_presentation();
+	test_main_quit_accept_handoff_presentation();
 	test_spy_sweep_presentation();
 	test_black_hole_presentation();
 	test_movement_presentation();
