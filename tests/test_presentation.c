@@ -12330,23 +12330,57 @@ test_planet_rename_protected_cycle_presentation(void)
 
 static bool
 planet_take_one_accepted_cycle_run(struct physical_viewer_join *viewer,
-    bool ansi, const uint8_t *amount, size_t amount_length,
+    bool ansi, int item, const uint8_t *amount, size_t amount_length,
     size_t *prompt_end, size_t *editor_end, size_t *body_end)
 {
 	static const uint8_t free_holds[] =
 	    "You have 65 free cargo holds.";
 	static const uint8_t planet_prompt[] =
 	    "Time: 14:59  Planet command (?=help) [A]? ";
-	static const uint8_t command[] = "1";
-	static const uint8_t amount_prompt[] = "How much [ 65 ]? ";
-	const char *title = yt_planet_take_one_title(1);
+	static const uint8_t maximum_65[] = "How much [ 65 ]? ";
+	static const uint8_t maximum_404[] = "How much [ 404 ]? ";
+	static const uint8_t maximum_5[] = "How much [ 5 ]? ";
+	static const uint8_t maximum_6[] = "How much [ 6 ]? ";
+	static const uint8_t maximum_9[] = "How much [ 9 ]? ";
+	const uint8_t *amount_prompt;
+	size_t amount_prompt_length;
+	uint8_t command[2];
+	const char *title = yt_planet_take_one_title(item);
 	struct viewer_pager_join *join = &viewer->join;
 	struct yt_present_result result;
 
 	if (amount == NULL || amount_length >= sizeof(join->accumulator)
 	    || prompt_end == NULL || editor_end == NULL || body_end == NULL
-	    || title == NULL || strcmp(title, "<Take Ore>") != 0)
+	    || title == NULL)
 		return false;
+	switch (item) {
+	case 1:
+	case 2:
+	case 3:
+		amount_prompt = maximum_65;
+		amount_prompt_length = sizeof(maximum_65) - 1U;
+		break;
+	case 4:
+		amount_prompt = maximum_404;
+		amount_prompt_length = sizeof(maximum_404) - 1U;
+		break;
+	case 5:
+		amount_prompt = maximum_5;
+		amount_prompt_length = sizeof(maximum_5) - 1U;
+		break;
+	case 6:
+		amount_prompt = maximum_6;
+		amount_prompt_length = sizeof(maximum_6) - 1U;
+		break;
+	case 9:
+		amount_prompt = maximum_9;
+		amount_prompt_length = sizeof(maximum_9) - 1U;
+		break;
+	default:
+		return false;
+	}
+	command[0] = (uint8_t)('0' + item);
+	command[1] = '\0';
 	join->presentation = state(ansi);
 	join->presentation.foreground = 6.0f;
 	join->presentation.cached_foreground = ansi ? 6.0f : 0.0f;
@@ -12363,8 +12397,8 @@ planet_take_one_accepted_cycle_run(struct physical_viewer_join *viewer,
 	yt_pager_editor_enter(&join->pager, join->accumulator,
 	    sizeof(join->accumulator));
 	memcpy(join->accumulator, command, sizeof(command));
-	if (yt_present_editor_echo(command, sizeof(command) - 1U,
-	    command, sizeof(command) - 1U, &join->presentation, &result)
+	if (yt_present_editor_echo(command, 1U, command, 1U,
+	    &join->presentation, &result)
 	    != YT_PRESENT_OK)
 		return false;
 	viewer_pager_capture_result(join, &result);
@@ -12376,7 +12410,7 @@ planet_take_one_accepted_cycle_run(struct physical_viewer_join *viewer,
 	    strlen(title), 0.0f)
 	    || !normal_exit_line(join, NULL, 0U)
 	    || !normal_exit_b05d(join, amount_prompt,
-	    sizeof(amount_prompt) - 1U, 1.0f))
+	    amount_prompt_length, 1.0f))
 		return false;
 	yt_pager_editor_enter(&join->pager, join->accumulator,
 	    sizeof(join->accumulator));
@@ -12406,57 +12440,89 @@ static void
 test_planet_take_one_accepted_cycle_presentation(void)
 {
 	static const uint8_t amount[] = "1";
+	static const struct {
+		int item;
+		size_t body_end;
+		size_t remote_length;
+		uint64_t remote_fnv;
+		uint64_t row_fnv;
+	} cases[] = {
+		{1, 116U, 193U, UINT64_C(0xdb6145e26d95ab96),
+		    UINT64_C(0x6132704c827a456b)},
+		{2, 121U, 198U, UINT64_C(0x472cf90269f8614c),
+		    UINT64_C(0xcab94f57a137c8fe)},
+		{3, 122U, 199U, UINT64_C(0xbbb904922a08660f),
+		    UINT64_C(0x0a7d16eb8c0256dc)},
+		{4, 122U, 199U, UINT64_C(0x75846f146912b3e1),
+		    UINT64_C(0x24bf8c90281fe66a)},
+		{5, 120U, 197U, UINT64_C(0xebd8edd337944176),
+		    UINT64_C(0xd408f1a7e23e30b3)},
+		{6, 117U, 194U, UINT64_C(0xf470ca250563f37b),
+		    UINT64_C(0xdbc1cc58885e68e1)},
+		{9, 124U, 201U, UINT64_C(0xac175d85c7178aae),
+		    UINT64_C(0x15d28c1540df4537)},
+	};
 	struct physical_viewer_join viewer;
 	struct yt_file_viewer_stream_state stream;
 	uint8_t remote[250];
 	size_t prompt_end;
 	size_t editor_end;
 	size_t body_end;
-	int pass;
+	size_t index;
 
-	for (pass = 0; pass < 2; ++pass) {
-		bool ansi = pass == 0;
+	for (index = 0U; index < YT_ARRAY_LEN(cases); ++index) {
+		int pass;
 
-		memset(&viewer, 0, sizeof(viewer));
-		fixture_viewer_initialize(&viewer, &stream,
-		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
-		    "YTSCORE.ASC", ansi, remote, sizeof(remote));
-		CHECK(planet_take_one_accepted_cycle_run(&viewer, ansi,
-		    amount, sizeof(amount) - 1U, &prompt_end, &editor_end,
-		    &body_end));
-		CHECK(prompt_end == 77U && editor_end == 80U
-		    && body_end == 116U && viewer.join.remote_length == 193U
-		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
-		    == UINT64_C(0xdb6145e26d95ab96)
-		    && viewer.join.local_row_count == 11U
-		    && viewer_rows_fnv1a64(&viewer.join)
-		    == UINT64_C(0x6132704c827a456b)
-		    && viewer.join.local_fragment_length == 42U
-		    && memcmp(viewer.join.local_fragment,
-		    "Time: 14:59  Planet command (?=help) [A]? ", 42U) == 0
-		    && viewer.join.local_color_count == (ansi ? 20U : 6U)
-		    && viewer_colors_fnv1a64(&viewer.join)
-		    == (ansi ? UINT64_C(0x6ffcc2ba1c2c6835)
-		    : UINT64_C(0x17798e683d05096d))
-		    && viewer.join.presentation.foreground == 6.0f
-		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold == 0.0f
-		    && viewer.join.presentation.blink == 0.0f
-		    && viewer.join.presentation.cached_foreground
-		    == (ansi ? 6.0f : 0.0f)
-		    && viewer.join.pager.foreground == 6
-		    && viewer.join.pager.line_count == 2.0f
-		    && viewer.join.pager.nonstop == 0.0f
-		    && strcmp(viewer.join.accumulator, "1") == 0
-		    && viewer.join.queue_length == 0U
-		    && viewer.join.sample_calls == 6U
-		    && viewer.join.event_count == 30U
-		    && stream.eof_checks == 0U && stream.key_checks == 0U
-		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
-		yt_text_input_destroy(&viewer.input);
+		for (pass = 0; pass < 2; ++pass) {
+			bool ansi = pass == 0;
+
+			memset(&viewer, 0, sizeof(viewer));
+			fixture_viewer_initialize(&viewer, &stream,
+			    retained_scoreboard,
+			    sizeof(retained_scoreboard) - 1U,
+			    "YTSCORE.ASC", ansi, remote, sizeof(remote));
+			CHECK(planet_take_one_accepted_cycle_run(&viewer, ansi,
+			    cases[index].item, amount, sizeof(amount) - 1U,
+			    &prompt_end, &editor_end, &body_end));
+			CHECK(prompt_end == 77U && editor_end == 80U
+			    && body_end == cases[index].body_end
+			    && viewer.join.remote_length
+			    == cases[index].remote_length
+			    && viewer_bytes_fnv1a64(remote,
+			    viewer.join.remote_length) == cases[index].remote_fnv
+			    && viewer.join.local_row_count == 11U
+			    && viewer_rows_fnv1a64(&viewer.join)
+			    == cases[index].row_fnv
+			    && viewer.join.local_fragment_length == 42U
+			    && memcmp(viewer.join.local_fragment,
+			    "Time: 14:59  Planet command (?=help) [A]? ", 42U)
+			    == 0
+			    && viewer.join.local_color_count
+			    == (ansi ? 20U : 6U)
+			    && viewer_colors_fnv1a64(&viewer.join)
+			    == (ansi ? UINT64_C(0x6ffcc2ba1c2c6835)
+			    : UINT64_C(0x17798e683d05096d))
+			    && viewer.join.presentation.foreground == 6.0f
+			    && viewer.join.presentation.background == 0.0f
+			    && viewer.join.presentation.bold == 0.0f
+			    && viewer.join.presentation.blink == 0.0f
+			    && viewer.join.presentation.cached_foreground
+			    == (ansi ? 6.0f : 0.0f)
+			    && viewer.join.pager.foreground == 6
+			    && viewer.join.pager.line_count == 2.0f
+			    && viewer.join.pager.nonstop == 0.0f
+			    && strcmp(viewer.join.accumulator, "1") == 0
+			    && viewer.join.queue_length == 0U
+			    && viewer.join.sample_calls == 6U
+			    && viewer.join.event_count == 30U
+			    && stream.eof_checks == 0U && stream.key_checks == 0U
+			    && stream.read_count == 0U && stream.line_count == 0U
+			    && !stream.file_open && !viewer.join.file_open
+			    && viewer.input.file == NULL
+			    && viewer.close_calls == 0U
+			    && viewer.open_calls == 0U);
+			yt_text_input_destroy(&viewer.input);
+		}
 	}
 }
 
@@ -12485,7 +12551,7 @@ test_planet_take_one_blank_default_cycle_presentation(void)
 		fixture_viewer_initialize(&viewer, &stream,
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", ansi, remote, sizeof(remote));
-		CHECK(planet_take_one_accepted_cycle_run(&viewer, ansi,
+		CHECK(planet_take_one_accepted_cycle_run(&viewer, ansi, 1,
 		    amount, 0U, &prompt_end, &editor_end, &body_end));
 		CHECK(prompt_end == 77U && editor_end == 80U
 		    && body_end == 115U && viewer.join.remote_length == 192U
@@ -12550,7 +12616,7 @@ test_planet_take_one_e_default_cycle_presentation(void)
 		fixture_viewer_initialize(&viewer, &stream,
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", ansi, remote, sizeof(remote));
-		CHECK(planet_take_one_accepted_cycle_run(&viewer, ansi,
+		CHECK(planet_take_one_accepted_cycle_run(&viewer, ansi, 1,
 		    amount, sizeof(amount) - 1U, &prompt_end, &editor_end,
 		    &body_end));
 		CHECK(prompt_end == 77U && editor_end == 80U
@@ -12616,7 +12682,7 @@ test_planet_take_one_zero_cycle_presentation(void)
 		fixture_viewer_initialize(&viewer, &stream,
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", ansi, remote, sizeof(remote));
-		CHECK(planet_take_one_accepted_cycle_run(&viewer, ansi,
+		CHECK(planet_take_one_accepted_cycle_run(&viewer, ansi, 1,
 		    amount, sizeof(amount) - 1U, &prompt_end, &editor_end,
 		    &body_end));
 		CHECK(prompt_end == 77U && editor_end == 80U
