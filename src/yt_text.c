@@ -5,6 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+static void set_error(struct yt_error *error, enum yt_status status,
+    const char *operation, const char *path);
+
 bool
 yt_text_line_input_next(const uint8_t *data, size_t data_length,
     size_t *cursor, uint8_t *line, size_t capacity, size_t *line_length,
@@ -106,6 +109,209 @@ yt_text_stream_line_input_next(FILE *file, uint8_t *line, size_t capacity,
 		return YT_TEXT_STREAM_LINE_TOO_LONG;
 	*line_length = used;
 	return YT_TEXT_STREAM_LINE_OK;
+}
+
+void
+yt_text_input_init(struct yt_text_input *input)
+{
+	if (input != NULL)
+		memset(input, 0, sizeof(*input));
+}
+
+bool
+yt_text_input_open(struct yt_text_input *input, const char *path,
+    struct yt_error *error)
+{
+	char resolved[512];
+
+	if (input == NULL || path == NULL || input->file != NULL) {
+		errno = 0;
+		set_error(error, YT_INVALID, "open text input", path);
+		return false;
+	}
+	if (!yt_resolve_case_path(path, false, resolved, sizeof(resolved), error))
+		return false;
+	errno = 0;
+	input->file = fopen(resolved, "rb");
+	if (input->file == NULL) {
+		set_error(error, errno == ENOENT ? YT_NOT_FOUND : YT_IO_ERROR,
+		    "open text input", resolved);
+		return false;
+	}
+	(void)snprintf(input->path, sizeof(input->path), "%s", resolved);
+	return true;
+}
+
+static bool
+text_input_reserve(struct yt_text_input *input, size_t needed,
+    struct yt_error *error)
+{
+	size_t capacity;
+	uint8_t *line;
+
+	if (needed <= input->line_capacity)
+		return true;
+	capacity = input->line_capacity == 0U ? 128U : input->line_capacity;
+	while (capacity < needed) {
+		if (capacity > SIZE_MAX / 2U) {
+			errno = 0;
+			set_error(error, YT_NO_MEMORY, "grow text input line",
+			    input->path);
+			return false;
+		}
+		capacity *= 2U;
+	}
+	line = realloc(input->line, capacity);
+	if (line == NULL) {
+		set_error(error, YT_NO_MEMORY, "grow text input line",
+		    input->path);
+		return false;
+	}
+	input->line = line;
+	input->line_capacity = capacity;
+	return true;
+}
+
+bool
+yt_text_input_read_line(struct yt_text_input *input, const uint8_t **line,
+    size_t *length, bool *available, struct yt_error *error)
+{
+	size_t used = 0U;
+	bool consumed = false;
+
+	if (line != NULL)
+		*line = NULL;
+	if (length != NULL)
+		*length = 0U;
+	if (available != NULL)
+		*available = false;
+	if (input == NULL || input->file == NULL || line == NULL
+	    || length == NULL || available == NULL) {
+		errno = 0;
+		set_error(error, YT_INVALID, "LINE INPUT text", input == NULL
+		    ? NULL : input->path);
+		return false;
+	}
+	for (;;) {
+		int value = fgetc(input->file);
+
+		if (value == EOF) {
+			if (ferror(input->file)) {
+				set_error(error, YT_IO_ERROR, "LINE INPUT text",
+				    input->path);
+				return false;
+			}
+			break;
+		}
+		if ((uint8_t)value == 0x1aU) {
+			if (ungetc(value, input->file) == EOF) {
+				set_error(error, YT_IO_ERROR, "LINE INPUT text",
+				    input->path);
+				return false;
+			}
+			break;
+		}
+		consumed = true;
+		if ((uint8_t)value == '\r') {
+			int following = fgetc(input->file);
+
+			if (following == EOF) {
+				if (ferror(input->file)) {
+					set_error(error, YT_IO_ERROR,
+					    "LINE INPUT text", input->path);
+					return false;
+				}
+			}
+			else if ((uint8_t)following != '\n'
+			    && ungetc(following, input->file) == EOF) {
+				set_error(error, YT_IO_ERROR, "LINE INPUT text",
+				    input->path);
+				return false;
+			}
+			break;
+		}
+		if ((uint8_t)value == 0U)
+			continue;
+		if (!text_input_reserve(input, used + 1U, error))
+			return false;
+		input->line[used++] = (uint8_t)value;
+	}
+	*line = input->line;
+	*length = used;
+	*available = consumed;
+	return true;
+}
+
+bool
+yt_text_input_close(struct yt_text_input *input, struct yt_error *error)
+{
+	FILE *file;
+
+	if (input == NULL) {
+		errno = 0;
+		set_error(error, YT_INVALID, "close text input", NULL);
+		return false;
+	}
+	file = input->file;
+	input->file = NULL;
+	if (file == NULL)
+		return true;
+	errno = 0;
+	if (fclose(file) != 0) {
+		set_error(error, YT_IO_ERROR, "close text input", input->path);
+		return false;
+	}
+	return true;
+}
+
+void
+yt_text_input_destroy(struct yt_text_input *input)
+{
+	if (input == NULL)
+		return;
+	if (input->file != NULL)
+		(void)fclose(input->file);
+	free(input->line);
+	memset(input, 0, sizeof(*input));
+}
+
+bool
+yt_text_sequential_play_run(struct yt_text_sequential_play_state *state,
+    const struct yt_text_sequential_play_ops *ops, void *context,
+    struct yt_error *error)
+{
+	if (state == NULL || state->path == NULL || ops == NULL
+	    || ops->close == NULL || ops->open == NULL || ops->read == NULL
+	    || ops->present == NULL) {
+		errno = 0;
+		set_error(error, YT_INVALID, "sequential text playback", NULL);
+		return false;
+	}
+	state->file_open = false;
+	state->read_count = 0U;
+	state->line_count = 0U;
+	if (!ops->close(context, error)
+	    || !ops->open(context, state->path, error))
+		return false;
+	state->file_open = true;
+	for (;;) {
+		const uint8_t *line;
+		size_t length;
+		bool available;
+
+		if (!ops->read(context, &line, &length, &available, error))
+			return false;
+		++state->read_count;
+		if (!available)
+			break;
+		if (!ops->present(context, line, length, error))
+			return false;
+		++state->line_count;
+	}
+	if (!ops->close(context, error))
+		return false;
+	state->file_open = false;
+	return true;
 }
 
 bool

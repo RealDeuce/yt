@@ -29,6 +29,52 @@ enum yt_text_stream_line_status {
 enum yt_text_stream_line_status yt_text_stream_line_input_next(FILE *file,
     uint8_t *line, size_t capacity, size_t *line_length);
 
+struct yt_text_input {
+	FILE *file;
+	char path[512];
+	uint8_t *line;
+	size_t line_capacity;
+};
+
+void yt_text_input_init(struct yt_text_input *input);
+bool yt_text_input_open(struct yt_text_input *input, const char *path,
+	struct yt_error *error);
+bool yt_text_input_read_line(struct yt_text_input *input,
+	const uint8_t **line, size_t *length, bool *available,
+	struct yt_error *error);
+bool yt_text_input_close(struct yt_text_input *input,
+	struct yt_error *error);
+void yt_text_input_destroy(struct yt_text_input *input);
+
+struct yt_text_sequential_play_state {
+	const char *path;
+	bool file_open;
+	size_t read_count;
+	size_t line_count;
+};
+
+typedef bool (*yt_text_sequential_close_fn)(void *context,
+	struct yt_error *error);
+typedef bool (*yt_text_sequential_open_fn)(void *context, const char *path,
+	struct yt_error *error);
+typedef bool (*yt_text_sequential_read_fn)(void *context,
+	const uint8_t **line, size_t *length, bool *available,
+	struct yt_error *error);
+typedef bool (*yt_text_sequential_present_fn)(void *context,
+	const uint8_t *line, size_t length, struct yt_error *error);
+
+struct yt_text_sequential_play_ops {
+	yt_text_sequential_close_fn close;
+	yt_text_sequential_open_fn open;
+	yt_text_sequential_read_fn read;
+	yt_text_sequential_present_fn present;
+};
+
+bool yt_text_sequential_play_run(
+	struct yt_text_sequential_play_state *state,
+	const struct yt_text_sequential_play_ops *ops, void *context,
+	struct yt_error *error);
+
 struct yt_file_viewer_record {
 	bool eof_checked;
 	bool key_checked;

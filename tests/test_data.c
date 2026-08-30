@@ -908,6 +908,309 @@ test_line_input_grammar(void)
 	}
 }
 
+enum sequential_play_event {
+	SEQUENTIAL_PLAY_PRECLOSE = 1,
+	SEQUENTIAL_PLAY_OPEN,
+	SEQUENTIAL_PLAY_READ,
+	SEQUENTIAL_PLAY_PRESENT,
+	SEQUENTIAL_PLAY_FINAL_CLOSE,
+};
+
+struct sequential_play_tape {
+	enum sequential_play_event events[20];
+	size_t event_count;
+	size_t calls;
+	size_t fail_at;
+	bool open;
+	char path[32];
+	const uint8_t *lines[5];
+	size_t lengths[5];
+	size_t line_count;
+	size_t read_position;
+	uint8_t presented[5][96];
+	size_t presented_length[5];
+	size_t presented_count;
+};
+
+static bool
+sequential_play_step(struct sequential_play_tape *tape,
+    enum sequential_play_event event, struct yt_error *error)
+{
+	CHECK(tape->event_count < YT_ARRAY_LEN(tape->events));
+	if (tape->event_count < YT_ARRAY_LEN(tape->events))
+		tape->events[tape->event_count++] = event;
+	++tape->calls;
+	if (tape->calls == tape->fail_at) {
+		if (error != NULL) {
+			error->status = YT_IO_ERROR;
+			(void)snprintf(error->operation, sizeof(error->operation), "%s",
+			    "sequential fixture");
+		}
+		return false;
+	}
+	return true;
+}
+
+static bool
+sequential_play_close(void *context, struct yt_error *error)
+{
+	struct sequential_play_tape *tape = context;
+	enum sequential_play_event event = tape->open
+	    ? SEQUENTIAL_PLAY_FINAL_CLOSE : SEQUENTIAL_PLAY_PRECLOSE;
+
+	if (!sequential_play_step(tape, event, error))
+		return false;
+	tape->open = false;
+	return true;
+}
+
+static bool
+sequential_play_open(void *context, const char *path,
+    struct yt_error *error)
+{
+	struct sequential_play_tape *tape = context;
+
+	if (!sequential_play_step(tape, SEQUENTIAL_PLAY_OPEN, error))
+		return false;
+	(void)snprintf(tape->path, sizeof(tape->path), "%s", path);
+	tape->open = true;
+	return true;
+}
+
+static bool
+sequential_play_read(void *context, const uint8_t **line, size_t *length,
+    bool *available, struct yt_error *error)
+{
+	struct sequential_play_tape *tape = context;
+	size_t index = tape->read_position;
+
+	if (!sequential_play_step(tape, SEQUENTIAL_PLAY_READ, error))
+		return false;
+	if (index == tape->line_count) {
+		*line = NULL;
+		*length = 0U;
+		*available = false;
+		return true;
+	}
+	*line = tape->lines[index];
+	*length = tape->lengths[index];
+	*available = true;
+	++tape->read_position;
+	return true;
+}
+
+static bool
+sequential_play_present(void *context, const uint8_t *line, size_t length,
+    struct yt_error *error)
+{
+	struct sequential_play_tape *tape = context;
+	size_t index = tape->presented_count;
+
+	if (!sequential_play_step(tape, SEQUENTIAL_PLAY_PRESENT, error))
+		return false;
+	CHECK(index < YT_ARRAY_LEN(tape->presented)
+	    && length <= sizeof(tape->presented[0]));
+	if (index >= YT_ARRAY_LEN(tape->presented)
+	    || length > sizeof(tape->presented[0]))
+		return false;
+	if (length != 0U)
+		memcpy(tape->presented[index], line, length);
+	tape->presented_length[index] = length;
+	++tape->presented_count;
+	return true;
+}
+
+static void
+sequential_play_fixture(struct sequential_play_tape *tape)
+{
+	static const uint8_t empty[] = "";
+	static const uint8_t first[] =
+	    "Congratulations! You have defeated the Xannor Headquarters! This marks you as";
+	static const uint8_t second[] =
+	    "a SUPERIOR Trader! Be warned however, the Xannor have spies everywhere and";
+	static const uint8_t third[] =
+	    "will be on the lookout for you! Hide or defend yourself well tonight!";
+
+	memset(tape, 0, sizeof(*tape));
+	tape->lines[0] = empty;
+	tape->lines[1] = first;
+	tape->lines[2] = second;
+	tape->lines[3] = third;
+	tape->lines[4] = empty;
+	tape->lengths[0] = 0U;
+	tape->lengths[1] = sizeof(first) - 1U;
+	tape->lengths[2] = sizeof(second) - 1U;
+	tape->lengths[3] = sizeof(third) - 1U;
+	tape->lengths[4] = 0U;
+	tape->line_count = YT_ARRAY_LEN(tape->lines);
+}
+
+static void
+test_sequential_text_playback(void)
+{
+	static const struct yt_text_sequential_play_ops ops = {
+		sequential_play_close,
+		sequential_play_open,
+		sequential_play_read,
+		sequential_play_present,
+	};
+	static const enum sequential_play_event expected[] = {
+		SEQUENTIAL_PLAY_PRECLOSE,
+		SEQUENTIAL_PLAY_OPEN,
+		SEQUENTIAL_PLAY_READ,
+		SEQUENTIAL_PLAY_PRESENT,
+		SEQUENTIAL_PLAY_READ,
+		SEQUENTIAL_PLAY_PRESENT,
+		SEQUENTIAL_PLAY_READ,
+		SEQUENTIAL_PLAY_PRESENT,
+		SEQUENTIAL_PLAY_READ,
+		SEQUENTIAL_PLAY_PRESENT,
+		SEQUENTIAL_PLAY_READ,
+		SEQUENTIAL_PLAY_PRESENT,
+		SEQUENTIAL_PLAY_READ,
+		SEQUENTIAL_PLAY_FINAL_CLOSE,
+	};
+	static const enum sequential_play_event empty_expected[] = {
+		SEQUENTIAL_PLAY_PRECLOSE,
+		SEQUENTIAL_PLAY_OPEN,
+		SEQUENTIAL_PLAY_READ,
+		SEQUENTIAL_PLAY_FINAL_CLOSE,
+	};
+	struct sequential_play_tape success;
+	struct sequential_play_tape tape;
+	struct yt_text_sequential_play_state state;
+	struct yt_error error;
+	size_t failure;
+
+	sequential_play_fixture(&success);
+	memset(&state, 0, sizeof(state));
+	state.path = "XannorHQ.TXT";
+	yt_error_clear(&error);
+	CHECK(yt_text_sequential_play_run(&state, &ops, &success, &error));
+	CHECK(success.calls == YT_ARRAY_LEN(expected)
+	    && success.event_count == YT_ARRAY_LEN(expected)
+	    && memcmp(success.events, expected, sizeof(expected)) == 0
+	    && strcmp(success.path, "XannorHQ.TXT") == 0
+	    && !success.open && !state.file_open
+	    && state.read_count == 6U && state.line_count == 5U
+	    && success.presented_count == 5U);
+	for (failure = 0U; failure < success.line_count; ++failure) {
+		CHECK(success.presented_length[failure]
+		    == success.lengths[failure]);
+		CHECK(memcmp(success.presented[failure], success.lines[failure],
+		    success.lengths[failure]) == 0);
+	}
+	for (failure = 1U; failure <= success.calls; ++failure) {
+		sequential_play_fixture(&tape);
+		tape.fail_at = failure;
+		memset(&state, 0, sizeof(state));
+		state.path = "XannorHQ.TXT";
+		yt_error_clear(&error);
+		CHECK(!yt_text_sequential_play_run(&state, &ops, &tape, &error));
+		CHECK(error.status == YT_IO_ERROR && tape.calls == failure
+		    && tape.event_count == failure
+		    && memcmp(tape.events, expected,
+		    failure * sizeof(expected[0])) == 0);
+		if (failure == 1U || failure == 2U)
+			CHECK(!state.file_open);
+		else
+			CHECK(state.file_open);
+	}
+	sequential_play_fixture(&tape);
+	tape.line_count = 0U;
+	memset(&state, 0, sizeof(state));
+	state.path = "XannorHQ.TXT";
+	yt_error_clear(&error);
+	CHECK(yt_text_sequential_play_run(&state, &ops, &tape, &error));
+	CHECK(tape.event_count == YT_ARRAY_LEN(empty_expected)
+	    && memcmp(tape.events, empty_expected, sizeof(empty_expected)) == 0
+	    && tape.presented_count == 0U && state.read_count == 1U
+	    && state.line_count == 0U && !state.file_open);
+}
+
+static void
+test_text_input(void)
+{
+	char directory[256];
+	char actual[320];
+	char requested[320];
+	char missing[320];
+	uint8_t source[640];
+	struct yt_text_input input;
+	struct yt_error error;
+	const uint8_t *line;
+	size_t length;
+	size_t position = 0U;
+	bool available;
+	size_t index;
+
+#ifdef _WIN32
+	snprintf(directory, sizeof(directory), "yt-text-input-%lu",
+	    (unsigned long)GetCurrentProcessId());
+#else
+	snprintf(directory, sizeof(directory), "/tmp/yt-text-input-%ld",
+	    (long)getpid());
+#endif
+	(void)mkdir_one(directory);
+	snprintf(actual, sizeof(actual), "%s/xannorhq.txt", directory);
+	snprintf(requested, sizeof(requested), "%s/XannorHQ.TXT", directory);
+	snprintf(missing, sizeof(missing), "%s/MISSING.TXT", directory);
+	source[position++] = '\r';
+	source[position++] = '\n';
+	source[position++] = 'A';
+	source[position++] = 0U;
+	source[position++] = 'B';
+	source[position++] = '\r';
+	source[position++] = '\n';
+	for (index = 0U; index < 600U; ++index)
+		source[position++] = 'q';
+	source[position++] = '\r';
+	source[position++] = 'X';
+	source[position++] = 0x1aU;
+	source[position++] = 'Z';
+	CHECK(write_bytes(actual, source, position));
+	yt_text_input_init(&input);
+	yt_error_clear(&error);
+	CHECK(yt_text_input_close(&input, &error));
+	CHECK(yt_text_input_open(&input, requested, &error));
+	CHECK(input.file != NULL && strcmp(input.path, actual) == 0);
+	CHECK(yt_text_input_read_line(&input, &line, &length, &available,
+	    &error) && available && length == 0U);
+	CHECK(yt_text_input_read_line(&input, &line, &length, &available,
+	    &error) && available && length == 2U
+	    && memcmp(line, "AB", 2U) == 0);
+	CHECK(yt_text_input_read_line(&input, &line, &length, &available,
+	    &error) && available && length == 600U
+	    && input.line_capacity >= 600U);
+	for (index = 0U; index < length; ++index)
+		CHECK(line[index] == 'q');
+	CHECK(yt_text_input_read_line(&input, &line, &length, &available,
+	    &error) && available && length == 1U && line[0] == 'X');
+	CHECK(yt_text_input_read_line(&input, &line, &length, &available,
+	    &error) && !available && length == 0U);
+	CHECK(yt_text_input_read_line(&input, &line, &length, &available,
+	    &error) && !available && length == 0U);
+	CHECK(yt_text_input_close(&input, &error) && input.file == NULL);
+	CHECK(write_bytes(actual, (const uint8_t *)"tail", 4U));
+	CHECK(yt_text_input_open(&input, requested, &error));
+	CHECK(yt_text_input_read_line(&input, &line, &length, &available,
+	    &error) && available && length == 4U
+	    && memcmp(line, "tail", 4U) == 0);
+	CHECK(yt_text_input_read_line(&input, &line, &length, &available,
+	    &error) && !available && length == 0U);
+	CHECK(yt_text_input_close(&input, &error) && input.file == NULL);
+	yt_error_clear(&error);
+	CHECK(!yt_text_input_open(&input, missing, &error)
+	    && error.status == YT_NOT_FOUND && input.file == NULL);
+	yt_text_input_destroy(&input);
+	CHECK(yt_file_delete(actual, false, &error));
+#ifdef _WIN32
+	_rmdir(directory);
+#else
+	rmdir(directory);
+#endif
+}
+
 static void
 test_file_viewer_records(void)
 {
@@ -1127,6 +1430,8 @@ main(void)
 	test_append_window();
 	test_main_error_fatal_transaction();
 	test_line_input_grammar();
+	test_sequential_text_playback();
+	test_text_input();
 	test_file_viewer_records();
 	test_file_viewer_entry();
 	test_file_viewer_play();
