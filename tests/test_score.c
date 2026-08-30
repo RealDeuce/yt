@@ -14630,6 +14630,33 @@ check_planet_bank_overlays(void)
 	return player.credits == 16777216.0f;
 }
 
+static bool
+check_planet_menu_selector(void)
+{
+	static const char selector[] = "F!MPC1234569LTAB$";
+	size_t index;
+
+	for (index = 0U; index < sizeof(selector) - 1U; ++index) {
+		char command[2] = {selector[index], '\0'};
+
+		if (yt_planet_menu_selector_position(command)
+		    != (int)index + 1)
+			return false;
+	}
+	return yt_planet_menu_selector_position("") == 1
+	    && yt_planet_menu_selector_position("L") == 13
+	    && yt_planet_menu_selector_position("LT") == 13
+	    && yt_planet_menu_selector_position("LTA") == 13
+	    && yt_planet_menu_selector_position("LTAB") == 13
+	    && yt_planet_menu_selector_position("LTAB$") == 13
+	    && yt_planet_menu_selector_position("9L") == 12
+	    && yt_planet_menu_selector_position("AL") == 0
+	    && yt_planet_menu_selector_position("LL") == 0
+	    && yt_planet_menu_selector_position("Lx") == 0
+	    && yt_planet_menu_selector_position("l") == 0
+	    && yt_planet_menu_selector_position(NULL) == 0;
+}
+
 enum credit_mutation_event {
 	CREDIT_MUTATION_READ = 1,
 	CREDIT_MUTATION_WRITE,
@@ -16605,6 +16632,8 @@ main(void)
 		return fail("planet Take-All overlay arithmetic differs");
 	if (!check_planet_bank_overlays())
 		return fail("planet Bank overlay arithmetic differs");
+	if (!check_planet_menu_selector())
+		return fail("planet menu selector differs");
 	if (!check_credit_mutation_transaction())
 		return fail("shared credit mutation transaction differs");
 	if (!check_planet_productivity_overlays())

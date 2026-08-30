@@ -5195,6 +5195,18 @@ yt_planet_transfer_selector_position(const char *command)
 	return position == NULL ? 0 : (int)(position - "CSFMB") + 1;
 }
 
+int
+yt_planet_menu_selector_position(const char *command)
+{
+	static const char selector[] = "F!MPC1234569LTAB$";
+	const char *position;
+
+	if (command == NULL)
+		return 0;
+	position = strstr(selector, command);
+	return position == NULL ? 0 : (int)(position - selector) + 1;
+}
+
 bool
 yt_planet_transfer_cargo_empty(const double held[3])
 {

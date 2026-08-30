@@ -9700,8 +9700,7 @@ planet_menu(struct yt_session *session, int logical_planet,
 		    + sizeof(session->time.text) + sizeof(prompt_body) - 1U];
 		size_t prompt_length = 0;
 		double free_holds;
-		const char *position;
-		const char *alphabet = "F!MPC1234569LTAB$";
+		int position;
 
 		session->pager.line_count = 0.0f;
 		if (!reload_player(session, error))
@@ -9816,8 +9815,8 @@ planet_menu(struct yt_session *session, int logical_planet,
 			}
 			continue;
 		}
-		position = strstr(alphabet, upper);
-		if (position == NULL) {
+		position = yt_planet_menu_selector_position(upper);
+		if (position == 0) {
 			static const uint8_t invalid[] = "Invalid command.";
 
 			if (!session_02db(session, invalid,
@@ -9825,7 +9824,7 @@ planet_menu(struct yt_session *session, int logical_planet,
 				return false;
 			continue;
 		}
-		switch ((int)(position - alphabet)) {
+		switch (position - 1) {
 		case 0:
 			if (!planet_garrison(session, logical_planet, error))
 				return false;
@@ -9854,7 +9853,7 @@ planet_menu(struct yt_session *session, int logical_planet,
 			return computer_menu(session, enter_sector, error);
 		case 5: case 6: case 7: case 8: case 9: case 10:
 			if (!planet_take_one(session, logical_planet,
-			    (int)(position - alphabet) - 4, error))
+			    position - 5, error))
 				return false;
 			break;
 		case 11:

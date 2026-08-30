@@ -1585,6 +1585,7 @@ void yt_planet_transfer_fighter_player_overlay(struct yt_player *player,
 void yt_planet_transfer_fighter_planet_overlay(struct yt_planet *planet,
     double cached_quantity, float amount);
 int yt_planet_transfer_selector_position(const char *command);
+int yt_planet_menu_selector_position(const char *command);
 bool yt_planet_transfer_cargo_empty(const double held[3]);
 bool yt_planet_transfer_fighter_rejected(float amount,
     float cached_fighters);
