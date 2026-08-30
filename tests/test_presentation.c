@@ -1082,6 +1082,7 @@ struct viewer_pager_join {
 	size_t remote_capacity;
 	size_t remote_length;
 	size_t sample_calls;
+	float first_finish_line_count;
 	size_t response_calls;
 	size_t direct_calls;
 	size_t total_rows;
@@ -1242,6 +1243,8 @@ viewer_pager_finish(void *context, bool newline_flag)
 
 	if (!viewer_pager_record(join, VIEWER_PAGER_FINISH))
 		return false;
+	if (join->sample_calls == 1U)
+		join->first_finish_line_count = join->pager.line_count;
 	if (yt_present_paged_finish(newline_flag, &join->presentation,
 	    &result) != YT_PRESENT_OK)
 		return false;
@@ -2433,6 +2436,82 @@ test_scoreboard_physical_viewer_join(void)
 		    && (cases[pass].response_length == 0U
 		    || memcmp(viewer.join.accumulator, cases[pass].response,
 		    cases[pass].response_length) == 0)
+		    && viewer.join.queue_length == 0U);
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
+static void
+test_normal_exit_scoreboard_viewer_join(void)
+{
+	static const struct {
+		bool ansi;
+		size_t remote_length;
+		uint64_t remote_fnv;
+		size_t color_count;
+		size_t color_2;
+		size_t color_4;
+		size_t color_7;
+		int final_local_foreground;
+		float final_bold;
+	} cases[] = {
+		{true, 644U, UINT64_C(0x69a557fced8584c9),
+		    43U, 19U, 4U, 20U, 4, 0.0f},
+		{false, 624U, UINT64_C(0xec9a3c8421b271f8),
+		    20U, 0U, 0U, 20U, 7, 1.0f},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	uint8_t remote[700];
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
+		viewer.join.presentation.bold = cases[pass].ansi ? 0.0f : 1.0f;
+		viewer.join.pager.line_count = 2.0f;
+		viewer.join.pager.nonstop = 1.0f;
+		CHECK(physical_viewer_run(&viewer, &stream, NULL));
+		CHECK(viewer.join.remote_length == cases[pass].remote_length
+		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+		    == cases[pass].remote_fnv);
+		CHECK(viewer.join.local_row_count == 23U
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == UINT64_C(0xab40768a3e8feefd)
+		    && viewer.join.local_fragment_length == 0U
+		    && viewer.join.local_color_count == cases[pass].color_count
+		    && viewer_local_color_count(&viewer.join, 2, 0)
+		    == cases[pass].color_2
+		    && viewer_local_color_count(&viewer.join, 4, 0)
+		    == cases[pass].color_4
+		    && viewer_local_color_count(&viewer.join, 7, 0)
+		    == cases[pass].color_7
+		    && viewer.join.capture.last_local_foreground
+		    == cases[pass].final_local_foreground);
+		CHECK(viewer.join.first_finish_line_count == 2.0f
+		    && viewer.join.presentation.foreground == 1.0f
+		    && viewer.join.presentation.cached_foreground
+		    == (cases[pass].ansi ? 1.0f : 0.0f)
+		    && viewer.join.presentation.bold == cases[pass].final_bold
+		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.pager.foreground == 1
+		    && viewer.join.pager.line_count == 0.0f
+		    && viewer.join.pager.nonstop == 1.0f
+		    && viewer.join.pager.key[0] == '\0');
+		CHECK(viewer.join.position == 19U
+		    && stream.eof_checks == 20U && stream.key_checks == 20U
+		    && stream.read_count == 19U && stream.line_count == 19U
+		    && viewer.join.sample_calls == 20U
+		    && viewer.join.response_calls == 0U
+		    && viewer.join.direct_calls == 2U
+		    && viewer.join.event_count == 100U
+		    && !stream.file_open && !viewer.join.file_open
+		    && viewer.input.file == NULL && viewer.close_calls == 2U
+		    && viewer.open_calls == 1U
+		    && viewer.join.source_length == 0U
+		    && viewer.join.accumulator[0] == '\0'
 		    && viewer.join.queue_length == 0U);
 		yt_text_input_destroy(&viewer.input);
 	}
@@ -12346,6 +12425,7 @@ main(void)
 	test_instruction_physical_viewer_join();
 	test_newspaper_physical_viewer_join();
 	test_scoreboard_physical_viewer_join();
+	test_normal_exit_scoreboard_viewer_join();
 	test_sector_private_pager();
 	test_sector_scanner_rows();
 	test_radio_private_pager();
