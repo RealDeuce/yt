@@ -216,6 +216,28 @@ yt_projectile_cruise_opening_run(int *last_mine_news_sector,
 	    YT_PROJECTILE_OPENING_DIRECT_LINE, error);
 }
 
+bool
+yt_projectile_route_entry_run(struct yt_projectile_route_entry_state *state,
+    yt_projectile_route_entry_read_player_fn read_player, void *context,
+    struct yt_error *error)
+{
+	if (state == NULL || read_player == NULL)
+		return false;
+	state->current_hop = state->start;
+	state->shooter_team = 0.0f;
+	if ((float)state->shooter > 2.0f
+	    && (float)state->shooter <= state->maximum_player_record) {
+		struct yt_player shooter;
+
+		if (!read_player(context, state->shooter, &shooter, error))
+			return false;
+		state->shooter_team = shooter.team;
+	}
+	if (state->shooter_team < 1.0f)
+		state->shooter_team = -99999.0f;
+	return true;
+}
+
 enum yt_projectile_target_result
 yt_projectile_target_response(const char *response, float maximum,
     float *target)

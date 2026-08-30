@@ -13030,6 +13030,16 @@ missile_footer(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
+cruise_route_entry_read_player(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_read_player(&session->door->game, player_record, player,
+	    error);
+}
+
+static bool
 launch_projectile(struct yt_session *session, float target, float amount,
     bool plasma, float *returned_missiles, float *origin_alias,
     int *pending_counterattack, int *pending_xannor,
@@ -13087,6 +13097,7 @@ launch_projectile(struct yt_session *session, float target, float amount,
 		bool rerouted = false;
 		enum yt_route_outcome route_outcome;
 		float route_status;
+		struct yt_projectile_route_entry_state route_entry;
 
 		if (!build_route(session, (float)start, (float)destination, route,
 		    yt_projectile_route_avoid_enabled(plasma, *counterattack,
@@ -13116,7 +13127,20 @@ launch_projectile(struct yt_session *session, float target, float amount,
 			free(route);
 			return true;
 		}
-		cursor = start;
+		if (!plasma) {
+			route_entry.shooter = session->player_record;
+			route_entry.maximum_player_record =
+			    session->door->game.config.sector_offset;
+			route_entry.start = (float)start;
+			if (!yt_projectile_route_entry_run(&route_entry,
+			    cruise_route_entry_read_player, session, error)) {
+				free(route);
+				return false;
+			}
+			cursor = (int)route_entry.current_hop;
+		}
+		else
+			cursor = start;
 		while (yt_projectile_route_has_next(route[cursor])
 		    && (!plasma || energy >= 1.0)) {
 		int next = route[cursor];

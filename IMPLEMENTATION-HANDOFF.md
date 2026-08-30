@@ -1042,6 +1042,16 @@ not authoritative. Use the corrected goal above in the new workspace.
   plus the selector-four call at `6CA5`, are candidate. Raw BRUN descriptor/
   frame residue, inherited-state variants and physical endpoint failures
   remain open.
+- The route-entry side effect at `6D82..6DE9` now runs after every successful
+  initial or black-hole-rebuilt route. It copies start to current-hop,
+  initializes team scratch to zero, conditionally GETs the shooter only for
+  records `3..sector_offset`, copies the fresh team and replaces values below
+  one with `-99999`. The team has no later reader, but the GET and its failure
+  prefix remain observable. A provider fixture pins both range gates, all
+  no-GET lanes, positive/zero/fractional/negative/unordered teams and the
+  failed-GET state before sentinel replacement. All six formerly missing
+  branches and joins at `6DA0..6DDD` are candidate. Raw scratch/FIELD/FLAGS
+  state, physical adapter cuts and repeated reroute composition remain open.
 - The projectile resolver's already recovered early terminals no longer
   bypass presentation. Missile/plasma openings, cruise end-report,
   same-sector `Missles self destructed!`, the two-blank unreachable-route

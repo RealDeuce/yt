@@ -235,6 +235,20 @@ bool yt_projectile_cruise_opening_run(int *last_mine_news_sector,
     const struct yt_projectile_cruise_opening_ops *ops, void *context,
     struct yt_error *error);
 
+typedef bool (*yt_projectile_route_entry_read_player_fn)(void *context,
+    int player_record, struct yt_player *player, struct yt_error *error);
+struct yt_projectile_route_entry_state {
+	int shooter;
+	float maximum_player_record;
+	float start;
+	float current_hop;
+	float shooter_team;
+};
+bool yt_projectile_route_entry_run(
+    struct yt_projectile_route_entry_state *state,
+    yt_projectile_route_entry_read_player_fn read_player, void *context,
+    struct yt_error *error);
+
 struct yt_xannor_retaliation_state {
 	struct yt_player *player;
 	int *player_record;
