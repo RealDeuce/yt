@@ -6670,11 +6670,9 @@ xannor_victory_tape_clear(void *context)
 }
 
 static bool
-xannor_victory_tape_read_player(void *context, struct yt_player *player,
-    struct yt_error *error)
+xannor_victory_tape_read_player(struct xannor_victory_tape *tape,
+    struct yt_player *player, struct yt_error *error)
 {
-	struct xannor_victory_tape *tape = context;
-
 	if (!xannor_victory_tape_step(tape, XANNOR_VICTORY_READ_PLAYER, true,
 	    "victory player GET", error))
 		return false;
@@ -6683,17 +6681,35 @@ xannor_victory_tape_read_player(void *context, struct yt_player *player,
 }
 
 static bool
-xannor_victory_tape_write_player(void *context, struct yt_player *player,
-    struct yt_error *error)
+xannor_victory_tape_write_player(struct xannor_victory_tape *tape,
+    struct yt_player *player, struct yt_error *error)
 {
-	struct xannor_victory_tape *tape = context;
-
 	if (!xannor_victory_tape_step(tape, XANNOR_VICTORY_WRITE_PLAYER,
 	    true, "victory player PUT", error))
 		return false;
 	tape->player_written = *player;
 	tape->player_write_completed = true;
 	return true;
+}
+
+static bool
+xannor_victory_tape_mutate_credits(void *context, float player_record,
+    float argument, struct yt_player *player, bool *hydrated,
+    struct yt_error *error)
+{
+	struct xannor_victory_tape *tape = context;
+
+	if (hydrated != NULL)
+		*hydrated = false;
+	if (player_record != 2.5f || argument != 16000000.0f
+	    || !xannor_victory_tape_read_player(tape, player, error))
+		return false;
+	if (hydrated != NULL)
+		*hydrated = true;
+	yt_planet_bank_credit_overlay(player, argument);
+	if (!yt_record_set_number(&player->record, YT_F81, player->credits))
+		return false;
+	return xannor_victory_tape_write_player(tape, player, error);
 }
 
 static bool
@@ -6792,6 +6808,8 @@ xannor_victory_fixture(struct xannor_victory_tape *tape)
 	tape->player_source.record.bytes[2] = 'B';
 	tape->player_source.name_length = 3.0f;
 	tape->player_source.credits = 16000001.0f;
+	(void)yt_record_set_number(&tape->player_source.record, YT_F81,
+	    tape->player_source.credits);
 	memset(&tape->sector_source, 0x5a, sizeof(tape->sector_source));
 	for (index = 0U; index < sizeof(tape->sector_source.record.bytes);
 	    ++index)
@@ -6809,8 +6827,7 @@ check_xannor_victory_transaction(void)
 		xannor_victory_tape_foreground,
 		xannor_victory_tape_blink,
 		xannor_victory_tape_clear,
-		xannor_victory_tape_read_player,
-		xannor_victory_tape_write_player,
+		xannor_victory_tape_mutate_credits,
 		xannor_victory_tape_sound,
 		xannor_victory_tape_news,
 		xannor_victory_tape_radio,
@@ -6891,6 +6908,8 @@ check_xannor_victory_transaction(void)
 		return false;
 	expected_player = success.player_source;
 	expected_player.credits = 32000000.0f;
+	(void)yt_record_set_number(&expected_player.record, YT_F81,
+	    expected_player.credits);
 	if (memcmp(&success.player_written, &expected_player,
 	    sizeof(expected_player)) != 0)
 		return false;
@@ -14611,6 +14630,231 @@ check_planet_bank_overlays(void)
 	return player.credits == 16777216.0f;
 }
 
+enum credit_mutation_event {
+	CREDIT_MUTATION_READ = 1,
+	CREDIT_MUTATION_WRITE,
+};
+
+struct credit_mutation_tape {
+	struct yt_player fresh;
+	struct yt_record persistent;
+	enum credit_mutation_event events[2];
+	size_t event_count;
+	bool fail_read;
+	bool fail_write;
+};
+
+static bool
+credit_mutation_read(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct credit_mutation_tape *tape = context;
+
+	if (tape->event_count >= YT_ARRAY_LEN(tape->events)
+	    || player_record != 2)
+		return false;
+	tape->events[tape->event_count++] = CREDIT_MUTATION_READ;
+	if (tape->fail_read)
+		return planet_permission_fixture_error(error,
+		    "credit mutation read");
+	*player = tape->fresh;
+	return true;
+}
+
+static bool
+credit_mutation_write(void *context, int player_record,
+    const struct yt_record *record, struct yt_error *error)
+{
+	struct credit_mutation_tape *tape = context;
+
+	if (tape->event_count >= YT_ARRAY_LEN(tape->events)
+	    || player_record != 2 || record == NULL)
+		return false;
+	tape->events[tape->event_count++] = CREDIT_MUTATION_WRITE;
+	if (tape->fail_write)
+		return planet_permission_fixture_error(error,
+		    "credit mutation write");
+	tape->persistent = *record;
+	return true;
+}
+
+static void
+credit_mutation_initialize(struct yt_credit_mutation_state *state,
+    struct yt_player *player, float *current_sector, float sector_cache[52],
+    float cloak_cache[52])
+{
+	memset(state, 0, sizeof(*state));
+	state->hydration.player = player;
+	state->hydration.player_record = 2;
+	state->hydration.last_player_record = 51;
+	state->hydration.sector_record_offset = 100.0f;
+	state->hydration.current_sector_record = current_sector;
+	state->hydration.sector_cache = sector_cache;
+	state->hydration.cloak_cache = cloak_cache;
+	state->hydration.cache_count = 52U;
+	state->argument = -1.25f;
+}
+
+static bool
+check_credit_mutation_transaction(void)
+{
+	static const struct yt_credit_mutation_ops ops = {
+		credit_mutation_read,
+		credit_mutation_write,
+	};
+	struct yt_credit_mutation_state state;
+	struct credit_mutation_tape tape;
+	struct yt_player player;
+	struct yt_record source_record;
+	struct yt_record boundary_record;
+	struct yt_record player_before;
+	struct yt_error error;
+	float sector_cache[52];
+	float cloak_cache[52];
+	float current_sector;
+	uint8_t expected_argument[4];
+	uint8_t expected_sum[4];
+	uint8_t expected_result[4];
+	size_t index;
+
+	memset(&tape, 0, sizeof(tape));
+	for (index = 0U; index < YT_RECORD_SIZE; ++index)
+		source_record.bytes[index] = (uint8_t)(index * 13U + 7U);
+	(void)yt_record_set_number(&source_record, YT_F57, 9.0f);
+	(void)yt_record_set_number(&source_record, YT_F81, 100.75f);
+	(void)yt_record_set_number(&source_record, YT_F125, 0.75f);
+	yt_player_decode(&tape.fresh, &source_record);
+	memset(&player, 0xa5, sizeof(player));
+	for (index = 0U; index < YT_ARRAY_LEN(sector_cache); ++index) {
+		sector_cache[index] = -9.0f;
+		cloak_cache[index] = -8.0f;
+	}
+	current_sector = -7.0f;
+	credit_mutation_initialize(&state, &player, &current_sector,
+	    sector_cache, cloak_cache);
+	yt_error_clear(&error);
+	if (!yt_credit_mutation_run(&state, &ops, &tape, &error)
+	    || tape.event_count != 2U
+	    || tape.events[0] != CREDIT_MUTATION_READ
+	    || tape.events[1] != CREDIT_MUTATION_WRITE
+	    || !state.hydrated || !state.overlay_applied
+	    || !state.write_attempted || !state.written
+	    || state.fresh_credits != 100.75f
+	    || state.summed_credits != 99.5f
+	    || state.result_credits != 99.0f || player.credits != 99.0f
+	    || current_sector != 109.0f || sector_cache[2] != 9.0f
+	    || cloak_cache[2] != 0.75f
+	    || yt_record_get_number(&tape.persistent, YT_F81) != 99.0f
+	    || memcmp(&tape.persistent, &player.record,
+	    sizeof(tape.persistent)) != 0
+	    || qb_mbf32_encode(-1.25f, expected_argument) != QB_MBF_OK
+	    || qb_mbf32_encode(99.5f, expected_sum) != QB_MBF_OK
+	    || qb_mbf32_encode(99.0f, expected_result) != QB_MBF_OK
+	    || memcmp(state.argument_raw, expected_argument, 4U) != 0
+	    || memcmp(state.fresh_credits_raw,
+	    source_record.bytes + YT_F81, 4U) != 0
+	    || memcmp(state.summed_credits_raw, expected_sum, 4U) != 0
+	    || memcmp(state.result_credits_raw, expected_result, 4U) != 0)
+		return false;
+	for (index = 0U; index < YT_RECORD_SIZE; ++index) {
+		if ((index < YT_F81 || index >= YT_F81 + 4U)
+		    && tape.persistent.bytes[index] != source_record.bytes[index])
+			return false;
+	}
+
+	/* MBF has only one zero; a negative IEEE zero persists and hydrates as +0. */
+	memset(&tape, 0, sizeof(tape));
+	boundary_record = source_record;
+	(void)yt_record_set_number(&boundary_record, YT_F81, 0.0f);
+	yt_player_decode(&tape.fresh, &boundary_record);
+	memset(&player, 0, sizeof(player));
+	current_sector = -7.0f;
+	credit_mutation_initialize(&state, &player, &current_sector,
+	    sector_cache, cloak_cache);
+	state.argument = -0.0f;
+	yt_error_clear(&error);
+	if (!yt_credit_mutation_run(&state, &ops, &tape, &error)
+	    || tape.event_count != 2U || signbit(player.credits)
+	    || memcmp(player.record.bytes + YT_F81,
+	    (const uint8_t[4]){0U, 0U, 0U, 0U}, 4U) != 0)
+		return false;
+
+	/* A representable MBF argument may overflow the SINGLE sum after GET. */
+	memset(&tape, 0, sizeof(tape));
+	boundary_record = source_record;
+	(void)yt_record_set_raw_number(&boundary_record, YT_F81,
+	    (const uint8_t[4]){0xffU, 0xffU, 0x7fU, 0xffU});
+	yt_player_decode(&tape.fresh, &boundary_record);
+	memset(&player, 0, sizeof(player));
+	current_sector = -7.0f;
+	credit_mutation_initialize(&state, &player, &current_sector,
+	    sector_cache, cloak_cache);
+	state.argument = tape.fresh.credits;
+	yt_error_clear(&error);
+	if (yt_credit_mutation_run(&state, &ops, &tape, &error)
+	    || tape.event_count != 1U || !state.hydrated
+	    || state.overlay_applied || state.write_attempted || state.written
+	    || strcmp(error.operation, "credit mutation result MBF32") != 0)
+		return false;
+
+	/* An unrepresentable argument fails before the helper performs its GET. */
+	memset(&tape, 0, sizeof(tape));
+	memset(&player, 0, sizeof(player));
+	current_sector = -7.0f;
+	credit_mutation_initialize(&state, &player, &current_sector,
+	    sector_cache, cloak_cache);
+	state.argument = NAN;
+	yt_error_clear(&error);
+	if (yt_credit_mutation_run(&state, &ops, &tape, &error)
+	    || tape.event_count != 0U || state.hydrated
+	    || strcmp(error.operation, "credit mutation argument MBF32") != 0)
+		return false;
+
+	memset(&tape, 0, sizeof(tape));
+	yt_player_decode(&tape.fresh, &source_record);
+	tape.fail_read = true;
+	memset(&player, 0x5a, sizeof(player));
+	player_before = player.record;
+	current_sector = -7.0f;
+	sector_cache[2] = -9.0f;
+	cloak_cache[2] = -8.0f;
+	credit_mutation_initialize(&state, &player, &current_sector,
+	    sector_cache, cloak_cache);
+	yt_error_clear(&error);
+	if (yt_credit_mutation_run(&state, &ops, &tape, &error)
+	    || tape.event_count != 1U
+	    || tape.events[0] != CREDIT_MUTATION_READ || state.hydrated
+	    || state.overlay_applied || state.write_attempted || state.written
+	    || memcmp(&player.record, &player_before, sizeof(player_before)) != 0
+	    || current_sector != -7.0f || sector_cache[2] != -9.0f
+	    || cloak_cache[2] != -8.0f
+	    || strcmp(error.operation, "credit mutation read") != 0)
+		return false;
+
+	memset(&tape, 0, sizeof(tape));
+	yt_player_decode(&tape.fresh, &source_record);
+	tape.persistent = source_record;
+	tape.fail_write = true;
+	memset(&player, 0, sizeof(player));
+	current_sector = -7.0f;
+	credit_mutation_initialize(&state, &player, &current_sector,
+	    sector_cache, cloak_cache);
+	yt_error_clear(&error);
+	if (yt_credit_mutation_run(&state, &ops, &tape, &error)
+	    || tape.event_count != 2U
+	    || tape.events[0] != CREDIT_MUTATION_READ
+	    || tape.events[1] != CREDIT_MUTATION_WRITE
+	    || !state.hydrated || !state.overlay_applied
+	    || !state.write_attempted || state.written
+	    || player.credits != 99.0f
+	    || yt_record_get_number(&player.record, YT_F81) != 99.0f
+	    || memcmp(&tape.persistent, &source_record,
+	    sizeof(source_record)) != 0
+	    || strcmp(error.operation, "credit mutation write") != 0)
+		return false;
+	return true;
+}
+
 static bool
 check_planet_productivity_overlays(void)
 {
@@ -14743,17 +14987,33 @@ anti_cloak_read(void *context, float record, struct yt_player *player,
 }
 
 static bool
-anti_cloak_write(void *context, float record,
+anti_cloak_write(struct anti_cloak_tape *tape, float record,
     const struct yt_player *player, struct yt_error *error)
 {
-	struct anti_cloak_tape *tape = context;
-
 	(void)error;
 	if (!anti_cloak_step(tape, ANTI_CLOAK_WRITE))
 		return false;
 	tape->write_record = record;
 	tape->written = *player;
 	return true;
+}
+
+static bool
+anti_cloak_mutate_credits(void *context, float record, float argument,
+    struct yt_player *player, bool *hydrated, struct yt_error *error)
+{
+	struct anti_cloak_tape *tape = context;
+
+	if (hydrated != NULL)
+		*hydrated = false;
+	if (!anti_cloak_read(context, record, player, error))
+		return false;
+	if (hydrated != NULL)
+		*hydrated = true;
+	yt_planet_bank_credit_overlay(player, argument);
+	if (!yt_record_set_number(&player->record, YT_F81, player->credits))
+		return false;
+	return anti_cloak_write(tape, record, player, error);
 }
 
 static bool
@@ -14826,7 +15086,7 @@ check_earth_anti_cloak_transaction(void)
 {
 	static const struct yt_earth_anti_cloak_ops ops = {
 		anti_cloak_read,
-		anti_cloak_write,
+		anti_cloak_mutate_credits,
 		anti_cloak_present,
 		anti_cloak_sound,
 	};
@@ -16345,6 +16605,8 @@ main(void)
 		return fail("planet Take-All overlay arithmetic differs");
 	if (!check_planet_bank_overlays())
 		return fail("planet Bank overlay arithmetic differs");
+	if (!check_credit_mutation_transaction())
+		return fail("shared credit mutation transaction differs");
 	if (!check_planet_productivity_overlays())
 		return fail("planet Productivity overlay arithmetic differs");
 	if (!check_clearance_model())

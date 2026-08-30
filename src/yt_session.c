@@ -380,6 +380,87 @@ reload_player(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
+credit_mutation_write_player(void *context, int player_record,
+    const struct yt_record *record, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_database_write(&session->door->game.database,
+	    (size_t)player_record, record, error)
+	    && yt_database_flush(&session->door->game.database, error);
+}
+
+static bool
+mutate_player_credits_observed(struct yt_session *session, float argument,
+    bool *hydrated, struct yt_error *error)
+{
+	static const struct yt_credit_mutation_ops ops = {
+		session_hydration_read_player,
+		credit_mutation_write_player,
+	};
+	struct yt_credit_mutation_state state;
+
+	memset(&state, 0, sizeof(state));
+	state.hydration.player = &session->player;
+	state.hydration.player_record = session->player_record;
+	state.hydration.last_player_record =
+	    (int)session->door->game.config.sector_offset;
+	state.hydration.sector_record_offset =
+	    session->door->game.config.sector_offset;
+	state.hydration.current_sector_record =
+	    &session->current_sector_record;
+	state.hydration.sector_cache = session->sector_cache;
+	state.hydration.cloak_cache = session->cloak_cache;
+	state.hydration.cache_count = YT_ARRAY_LEN(session->sector_cache);
+	state.hydration.anti_cloak = session->anti_cloak;
+	state.argument = argument;
+	if (!yt_credit_mutation_run(&state, &ops, session, error)) {
+		if (hydrated != NULL)
+			*hydrated = state.hydrated;
+		return false;
+	}
+	if (hydrated != NULL)
+		*hydrated = state.hydrated;
+	return true;
+}
+
+static bool
+mutate_player_credits(struct yt_session *session, float argument,
+    struct yt_error *error)
+{
+	return mutate_player_credits_observed(session, argument, NULL, error);
+}
+
+static bool
+apply_player_credit_mutation(void *context, float player_record,
+    float argument, struct yt_player *player, bool *hydrated,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	if (player_record != (float)session->player_record) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation,
+			    sizeof(error->operation), "%s",
+			    "credit mutation player record");
+		}
+		return false;
+	}
+	if (hydrated != NULL)
+		*hydrated = false;
+	if (!mutate_player_credits_observed(session, argument, hydrated,
+	    error)) {
+		if (player != NULL && hydrated != NULL && *hydrated)
+			*player = session->player;
+		return false;
+	}
+	if (player != NULL)
+		*player = session->player;
+	return true;
+}
+
+static bool
 computer_prompt_hydrate(struct yt_session *session, struct yt_error *error)
 {
 	return reload_player(session, error);
@@ -4776,31 +4857,6 @@ xannor_victory_clear_queue(void *context)
 }
 
 static bool
-xannor_victory_read_player(void *context, struct yt_player *player,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	if (!reload_player(session, error))
-		return false;
-	*player = session->player;
-	return true;
-}
-
-static bool
-xannor_victory_write_player(void *context, struct yt_player *player,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-	bool ok;
-
-	session->player = *player;
-	ok = write_player(session, error);
-	*player = session->player;
-	return ok;
-}
-
-static bool
 xannor_victory_sound(void *context, float selector, const char *operation,
     struct yt_error *error)
 {
@@ -4852,8 +4908,7 @@ xannor_victory(struct yt_session *session, struct yt_error *error)
 		xannor_victory_set_foreground,
 		xannor_victory_set_blink,
 		xannor_victory_clear_queue,
-		xannor_victory_read_player,
-		xannor_victory_write_player,
+		apply_player_credit_mutation,
 		xannor_victory_sound,
 		xannor_victory_news,
 		xannor_victory_radio,
@@ -7012,12 +7067,7 @@ trade_commodity(struct yt_session *session, const struct yt_port *cached_port,
 			    &fresh_port.record, error))
 				return false;
 		}
-		if (!reload_player(session, error))
-			return false;
-		yt_trade_credit_overlay(&session->player, credit_delta);
-		if (!yt_database_write(&session->door->game.database,
-		    (size_t)session->player_record, &session->player.record,
-		    error)
+		if (!mutate_player_credits(session, credit_delta, error)
 		    || !reload_player(session, error))
 			return false;
 		yt_trade_holds_overlay(&session->player, commodity, quantity,
@@ -7161,11 +7211,7 @@ earth_receipt(struct yt_session *session, const struct yt_port *cached_earth,
 {
 	struct yt_port earth;
 
-	if (!reload_player(session, error))
-		return false;
-	session->player.credits =
-	    floorf(single_sub(session->player.credits, cost));
-	if (!write_player(session, error))
+	if (!mutate_player_credits(session, -cost, error))
 		return false;
 	if (cached_earth->owner != 0.0f) {
 		float receipt = yt_earth_receipt_amount(cached_earth->owner,
@@ -7487,18 +7533,6 @@ earth_anti_cloak_read_player(void *context, float record,
 }
 
 static bool
-earth_anti_cloak_write_player(void *context, float record,
-    const struct yt_player *player, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	uint32_t physical = qb_brun_random_record_number(record);
-
-	return yt_database_write(&session->door->game.database, (size_t)physical,
-	    &player->record, error)
-	    && yt_database_flush(&session->door->game.database, error);
-}
-
-static bool
 earth_anti_cloak_present(void *context, const uint8_t *text, size_t length,
     float foreground, bool bold, struct yt_error *error)
 {
@@ -7525,7 +7559,7 @@ earth_anti_cloak(struct yt_session *session, float price,
 {
 	static const struct yt_earth_anti_cloak_ops ops = {
 		earth_anti_cloak_read_player,
-		earth_anti_cloak_write_player,
+		apply_player_credit_mutation,
 		earth_anti_cloak_present,
 		earth_anti_cloak_sound,
 	};
@@ -7900,11 +7934,7 @@ lottery(struct yt_session *session, const struct yt_port *cached_earth,
 		if (!append_news(session, news, error))
 			return false;
 	}
-	if (!reload_player(session, error))
-		return false;
-	session->player.credits = floorf(single_add(session->player.credits,
-	    award));
-	if (!write_player(session, error)
+	if (!mutate_player_credits(session, award, error)
 	    || !session_wait(session, 3.0, "lottery award wait", error))
 		return false;
 	return lottery_settle(session, cached_earth, 5.0f, error);
@@ -8619,10 +8649,7 @@ planet_bank(struct yt_session *session, int logical_planet,
 	    || !session_sound(session, 4.0f, "planet bank sound", error))
 		return false;
 	credit_argument = yt_planet_bank_credit_argument(old_bank, target);
-	if (!reload_player(session, error))
-		return false;
-	yt_planet_bank_credit_overlay(&session->player, credit_argument);
-	return write_player(session, error);
+	return mutate_player_credits(session, credit_argument, error);
 }
 
 static bool
@@ -8974,10 +9001,7 @@ planet_productivity(struct yt_session *session, int logical_planet,
 	    "planet Productivity derived ending", error))
 		return false;
 	credit_argument = yt_planet_productivity_credit_argument(units);
-	if (!reload_player(session, error))
-		return false;
-	yt_planet_bank_credit_overlay(&session->player, credit_argument);
-	if (!write_player(session, error)
+	if (!mutate_player_credits(session, credit_argument, error)
 	    || !yt_game_read_planet(&session->door->game, logical_planet,
 	    &planet, error))
 		return false;
@@ -9988,13 +10012,9 @@ create_planet(struct yt_session *session, struct yt_error *error)
 		return false;
 	yt_planet_creation_timestamp_overlay(&planet, (float)today, minute);
 	if (!write_planet_physical(session, selected_physical, &planet, false,
-	    error)
-	    || !reload_player(session, error))
+	    error))
 		return false;
-	yt_planet_creation_credit_overlay(&session->player, -25000.0f);
-	if (!yt_database_write(&session->door->game.database,
-	    (size_t)session->player_record, &session->player.record, error)
-	    || !yt_database_flush(&session->door->game.database, error)
+	if (!mutate_player_credits(session, -25000.0f, error)
 	    || !yt_planet_creation_news(cached_trader, cached_trader_length,
 	    (const uint8_t *)session->planet_name, strlen(session->planet_name),
 	    row, sizeof(row), &row_length)

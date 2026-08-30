@@ -162,14 +162,6 @@ xannor_victory_error(struct yt_error *error, enum yt_status status,
 	return false;
 }
 
-static float
-xannor_victory_single_add(float left, float right)
-{
-	volatile float result = left + right;
-
-	return result;
-}
-
 bool
 yt_xannor_victory_run(struct yt_xannor_victory_state *state,
     const struct yt_xannor_victory_ops *ops, void *context,
@@ -181,13 +173,14 @@ yt_xannor_victory_run(struct yt_xannor_victory_state *state,
 	uint8_t player_name[YT_TEXT_FIELD_SIZE];
 	size_t player_name_length;
 	uint8_t banner[79];
+	bool credit_hydrated;
 	unsigned ordinal;
 
 	if (state == NULL || ops == NULL || ops->play_file == NULL
 	    || ops->present == NULL || ops->wait == NULL
 	    || ops->set_foreground == NULL || ops->set_blink == NULL
-	    || ops->clear_queue == NULL || ops->read_player == NULL
-	    || ops->write_player == NULL || ops->sound == NULL
+	    || ops->clear_queue == NULL || ops->mutate_credits == NULL
+	    || ops->sound == NULL
 	    || ops->append_news == NULL || ops->append_radio == NULL
 	    || ops->read_sector == NULL || ops->write_sector == NULL)
 		return xannor_victory_error(error, YT_INVALID,
@@ -212,13 +205,14 @@ yt_xannor_victory_run(struct yt_xannor_victory_state *state,
 	    YT_XANNOR_VICTORY_BOLD_LINE, "Xannor victory bonus", error))
 		return false;
 	ops->clear_queue(context);
-	if (!ops->read_player(context, &state->player, error))
+	credit_hydrated = false;
+	if (!ops->mutate_credits(context, state->current_player,
+	    16000000.0f, &state->player, &credit_hydrated, error))
 		return false;
-	state->player.credits = floorf(xannor_victory_single_add(
-	    state->player.credits, 16000000.0f));
+	if (!credit_hydrated)
+		return xannor_victory_error(error, YT_INVALID,
+		    "Xannor victory credit hydrate");
 	state->awarded_credits = state->player.credits;
-	if (!ops->write_player(context, &state->player, error))
-		return false;
 	for (ordinal = 0U; ordinal < 3U; ++ordinal) {
 		if (!ops->sound(context, 2.0f, "Xannor victory sound", error))
 			return false;
@@ -5252,6 +5246,66 @@ yt_planet_bank_credit_overlay(struct yt_player *player, float argument)
 		    argument));
 }
 
+bool
+yt_credit_mutation_run(struct yt_credit_mutation_state *state,
+    const struct yt_credit_mutation_ops *ops, void *context,
+    struct yt_error *error)
+{
+	struct yt_player *player;
+
+	if (state == NULL || ops == NULL || ops->read_player == NULL
+	    || ops->write_player == NULL || state->hydration.player == NULL)
+		return startup_configuration_error(error, YT_RANGE,
+		    "credit mutation arguments");
+	state->fresh_credits = 0.0f;
+	state->summed_credits = 0.0f;
+	state->result_credits = 0.0f;
+	memset(state->argument_raw, 0, sizeof(state->argument_raw));
+	memset(state->fresh_credits_raw, 0,
+	    sizeof(state->fresh_credits_raw));
+	memset(state->summed_credits_raw, 0,
+	    sizeof(state->summed_credits_raw));
+	memset(state->result_credits_raw, 0,
+	    sizeof(state->result_credits_raw));
+	state->hydrated = false;
+	state->overlay_applied = false;
+	state->write_attempted = false;
+	state->written = false;
+	if (qb_mbf32_encode(state->argument, state->argument_raw)
+	    == QB_MBF_OVERFLOW)
+		return startup_configuration_error(error, YT_RANGE,
+		    "credit mutation argument MBF32");
+	if (!yt_current_player_hydrate_run(&state->hydration,
+	    ops->read_player, context, error))
+		return false;
+	state->hydrated = true;
+	player = state->hydration.player;
+	state->fresh_credits = player->credits;
+	memcpy(state->fresh_credits_raw,
+	    player->record.bytes + YT_F81, sizeof(state->fresh_credits_raw));
+	state->summed_credits = take_all_single_add(player->credits,
+	    state->argument);
+	state->result_credits = floorf(state->summed_credits);
+	if (qb_mbf32_encode(state->summed_credits,
+	    state->summed_credits_raw) == QB_MBF_OVERFLOW
+	    || qb_mbf32_encode(state->result_credits,
+	    state->result_credits_raw) == QB_MBF_OVERFLOW)
+		return startup_configuration_error(error, YT_RANGE,
+		    "credit mutation result MBF32");
+	player->credits = qb_mbf32_decode(state->result_credits_raw);
+	if (!yt_record_set_raw_number(&player->record, YT_F81,
+	    state->result_credits_raw))
+		return startup_configuration_error(error, YT_RANGE,
+		    "credit mutation overlay");
+	state->overlay_applied = true;
+	state->write_attempted = true;
+	if (!ops->write_player(context, state->hydration.player_record,
+	    &player->record, error))
+		return false;
+	state->written = true;
+	return true;
+}
+
 double
 yt_planet_productivity_units(double spend)
 {
@@ -5494,7 +5548,7 @@ yt_earth_anti_cloak_run(struct yt_earth_anti_cloak_state *state,
 	uint8_t row[YT_TEXT_FIELD_SIZE + sizeof(uncloaked) - 1U];
 
 	if (state == NULL || ops == NULL || ops->read_player == NULL
-	    || ops->write_player == NULL || ops->present == NULL
+	    || ops->mutate_credits == NULL || ops->present == NULL
 	    || ops->sound == NULL || state->cloak_cache == NULL)
 		return false;
 	state->counter = 2.0f;
@@ -5584,17 +5638,17 @@ yt_earth_anti_cloak_run(struct yt_earth_anti_cloak_state *state,
 	    || !ops->sound(context, 5.0f, error))
 		return false;
 	state->credit_argument = -state->price;
-	if (!ops->read_player(context, state->current_record,
-	    &state->field_player, error))
-		return false;
-	state->field_record = state->current_record;
-	state->credit_loaded = true;
-	state->field_player.credits = floorf(take_all_single_add(
-	    state->field_player.credits, state->credit_argument));
-	if (!yt_record_set_number(&state->field_player.record, YT_F81,
-	    state->field_player.credits)
-	    || !ops->write_player(context, state->current_record,
-	    &state->field_player, error))
+	{
+		bool completed = ops->mutate_credits(context,
+		    state->current_record, state->credit_argument,
+		    &state->field_player, &state->credit_loaded, error);
+
+		if (state->credit_loaded)
+			state->field_record = state->current_record;
+		if (!completed)
+			return false;
+	}
+	if (!state->credit_loaded)
 		return false;
 	state->foreground = 3.0f;
 	return true;

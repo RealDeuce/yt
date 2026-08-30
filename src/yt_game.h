@@ -31,6 +31,10 @@ struct yt_player {
 	float mines;
 };
 
+typedef bool (*yt_credit_mutation_apply_fn)(void *context,
+	float player_record, float argument, struct yt_player *player,
+	bool *hydrated, struct yt_error *error);
+
 struct yt_startup_configuration_state {
 	struct yt_config *config;
 	uint16_t installed_handler;
@@ -196,10 +200,6 @@ typedef void (*yt_xannor_victory_foreground_fn)(void *context,
 	float foreground);
 typedef void (*yt_xannor_victory_blink_fn)(void *context, float blink);
 typedef void (*yt_xannor_victory_clear_queue_fn)(void *context);
-typedef bool (*yt_xannor_victory_read_player_fn)(void *context,
-	struct yt_player *player, struct yt_error *error);
-typedef bool (*yt_xannor_victory_write_player_fn)(void *context,
-	struct yt_player *player, struct yt_error *error);
 typedef bool (*yt_xannor_victory_sound_fn)(void *context, float selector,
 	const char *operation, struct yt_error *error);
 typedef bool (*yt_xannor_victory_news_fn)(void *context,
@@ -219,8 +219,7 @@ struct yt_xannor_victory_ops {
 	yt_xannor_victory_foreground_fn set_foreground;
 	yt_xannor_victory_blink_fn set_blink;
 	yt_xannor_victory_clear_queue_fn clear_queue;
-	yt_xannor_victory_read_player_fn read_player;
-	yt_xannor_victory_write_player_fn write_player;
+	yt_credit_mutation_apply_fn mutate_credits;
 	yt_xannor_victory_sound_fn sound;
 	yt_xannor_victory_news_fn append_news;
 	yt_xannor_victory_radio_fn append_radio;
@@ -1595,6 +1594,35 @@ double yt_planet_bank_remaining(float cached_credits, float cached_bank,
 void yt_planet_bank_planet_overlay(struct yt_planet *planet, double target);
 float yt_planet_bank_credit_argument(float cached_bank, double target);
 void yt_planet_bank_credit_overlay(struct yt_player *player, float argument);
+
+typedef bool (*yt_credit_mutation_write_fn)(void *context,
+    int player_record, const struct yt_record *record,
+    struct yt_error *error);
+
+struct yt_credit_mutation_ops {
+	yt_current_player_read_fn read_player;
+	yt_credit_mutation_write_fn write_player;
+};
+
+struct yt_credit_mutation_state {
+	struct yt_current_player_hydration_state hydration;
+	float argument;
+	float fresh_credits;
+	float summed_credits;
+	float result_credits;
+	uint8_t argument_raw[4];
+	uint8_t fresh_credits_raw[4];
+	uint8_t summed_credits_raw[4];
+	uint8_t result_credits_raw[4];
+	bool hydrated;
+	bool overlay_applied;
+	bool write_attempted;
+	bool written;
+};
+
+bool yt_credit_mutation_run(struct yt_credit_mutation_state *state,
+    const struct yt_credit_mutation_ops *ops, void *context,
+    struct yt_error *error);
 double yt_planet_productivity_units(double spend);
 void yt_planet_productivity_cache(float rate[10], double units,
     float delta[4]);
@@ -1639,8 +1667,6 @@ struct yt_earth_anti_cloak_state {
 };
 typedef bool (*yt_earth_anti_cloak_read_player_fn)(void *context,
     float record, struct yt_player *player, struct yt_error *error);
-typedef bool (*yt_earth_anti_cloak_write_player_fn)(void *context,
-    float record, const struct yt_player *player, struct yt_error *error);
 typedef bool (*yt_earth_anti_cloak_present_fn)(void *context,
     const uint8_t *text, size_t length, float foreground, bool bold,
     struct yt_error *error);
@@ -1648,7 +1674,7 @@ typedef bool (*yt_earth_anti_cloak_sound_fn)(void *context, float selector,
     struct yt_error *error);
 struct yt_earth_anti_cloak_ops {
 	yt_earth_anti_cloak_read_player_fn read_player;
-	yt_earth_anti_cloak_write_player_fn write_player;
+	yt_credit_mutation_apply_fn mutate_credits;
 	yt_earth_anti_cloak_present_fn present;
 	yt_earth_anti_cloak_sound_fn sound;
 };
