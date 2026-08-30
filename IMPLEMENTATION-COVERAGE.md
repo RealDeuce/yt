@@ -91,7 +91,16 @@ news-before-direct pairs, and shields/fighters-only raw persistence. Its
 fixture pins both loop back-edges, clamp arms, survivor and killed routes,
 negative energy retention, unrelated-record preservation and every injected
 failure prefix. The remaining connected plasma impact frontier begins at the
-`B500` killed-player body.
+`B500` killed-player body at that checkpoint.
+`src/yt_game.c::yt_projectile_plasma_killed_run` now owns `B500..B6D9`:
+fresh victim read, self/non-self row selection, mines/scanner-only victim
+persistence, both blink rows, nonzero carried-mine deployment, self dead/cache
+state, the death-selector-three-salvage child order, and the positive-mine
+reload versus footer/retained-counter partition. Its fixture pins binary
+victim rows, self bypass, positive/zero/negative mine distinctions, sub-one
+reload, raw player/sector preservation, corrupt cache bounds, and every
+injected callback failure prefix. The remaining connected plasma impact
+frontier begins at the `B713` planet body.
 
 | Component | Native owner | Native evidence | Status | Required before promotion |
 |---|---|---|---|---|

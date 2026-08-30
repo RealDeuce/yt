@@ -12199,6 +12199,63 @@ plasma_player_present(void *context, const uint8_t *text, size_t length,
 }
 
 static bool
+plasma_killed_present(void *context, const uint8_t *text, size_t length,
+    enum yt_projectile_plasma_killed_output_kind kind,
+    struct yt_error *error)
+{
+	const char *operation;
+
+	if (kind == YT_PROJECTILE_PLASMA_KILLED_DESTROYED_ROW)
+		operation = "plasma victim-destruction row";
+	else if (kind == YT_PROJECTILE_PLASMA_KILLED_SELF_DESTROYED_ROW)
+		operation = "plasma self-destruction row";
+	else
+		operation = "plasma carried-mine warning";
+	return session_present_text(context, text, length,
+	    SESSION_PRESENT_BOLD_LINE, operation, error);
+}
+
+static bool
+plasma_killed_read_sector(void *context, int sector,
+    struct yt_sector *value, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_read_sector(&session->door->game, sector, value, error);
+}
+
+static bool
+plasma_killed_write_sector(void *context, int sector,
+    const struct yt_sector *value, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_database_write(&session->door->game.database,
+	    (size_t)yt_sector_basic_record(&session->door->game.config, sector),
+	    &value->record, error);
+}
+
+static bool
+plasma_killed_death(void *context, int victim, int shooter,
+    struct yt_error *error)
+{
+	return kill_player(context, victim, (float)shooter, error);
+}
+
+static bool
+plasma_killed_sound(void *context, float selector, struct yt_error *error)
+{
+	return session_sound(context, selector, "plasma salvage sound", error);
+}
+
+static bool
+plasma_killed_salvage(void *context, int victim, int shooter,
+    struct yt_error *error)
+{
+	return salvage_player(context, victim, (float)shooter, error);
+}
+
+static bool
 cruise_defense_owner(void *context, float owner, uint8_t *name,
     size_t *name_length, struct yt_error *error)
 {
@@ -12830,11 +12887,22 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
 		plasma_fighter_news,
 		plasma_player_present,
 	};
+	static const struct yt_projectile_plasma_killed_ops killed_ops = {
+		plasma_player_read,
+		plasma_player_write,
+		plasma_killed_present,
+		plasma_killed_read_sector,
+		plasma_killed_write_sector,
+		plasma_killed_death,
+		plasma_killed_sound,
+		plasma_killed_salvage,
+	};
 	struct yt_sector sector;
 	struct yt_projectile_plasma_fighter_state fighter;
 	struct yt_projectile_plasma_mine_state mine;
 	struct yt_projectile_plasma_dispatch_state dispatch;
 	struct yt_projectile_plasma_player_state player;
+	struct yt_projectile_plasma_killed_state killed;
 	float planet_link;
 	int basic;
 
@@ -12898,86 +12966,23 @@ plasma_reload_sector:
 		    error))
 			return false;
 		if (player.route == YT_PROJECTILE_PLASMA_PLAYER_KILLED) {
-			struct yt_player victim;
-			float mines;
-			uint8_t killed_name[YT_TEXT_FIELD_SIZE];
-			uint8_t destroyed_row[128];
-			uint8_t warning_row[160];
-			size_t killed_name_length;
-			size_t destroyed_length;
-			size_t warning_length;
-
-			if (!yt_game_read_player(&session->door->game, basic,
-			    &victim, error))
+			memset(&killed, 0, sizeof(killed));
+			killed.victim = basic;
+			killed.shooter = session->player_record;
+			killed.sector = sector_number;
+			killed.energy = energy;
+			killed.blink = &session->presentation.blink;
+			killed.destroyed = &session->destroyed;
+			killed.sector_cache = session->sector_cache;
+			killed.cache_count = YT_ARRAY_LEN(session->sector_cache);
+			if (!yt_projectile_plasma_killed_run(&killed, &killed_ops,
+			    session, error))
 				return false;
-			mines = victim.mines;
-			if (basic != session->player_record
-			    && (!yt_player_stored_name(&victim, killed_name,
-			    &killed_name_length, error)
-			    || !yt_projectile_destroyed_rows(killed_name,
-			    killed_name_length, destroyed_row, sizeof(destroyed_row),
-			    &destroyed_length, warning_row, sizeof(warning_row),
-			    &warning_length)))
-				return false;
-			victim.mines = 0.0f;
-			victim.danger_scanner = 0.0f;
-			if (!yt_record_set_number(&victim.record, YT_F129, 0.0f)
-			    || !yt_record_set_number(&victim.record, YT_F93, 0.0f)
-			    || !yt_game_write_player(&session->door->game, basic,
-			    &victim, error))
-				return false;
-
-			session->presentation.blink = 1.0f;
-			if (basic == session->player_record) {
-				if (!session_present_text(session,
-				    (const uint8_t *)"YOU were destroyed!",
-				    strlen("YOU were destroyed!"),
-				    SESSION_PRESENT_BOLD_LINE,
-				    "plasma self-destruction row", error))
-					return false;
-			}
-			else {
-				if (!session_present_text(session, destroyed_row,
-				    destroyed_length, SESSION_PRESENT_BOLD_LINE,
-				    "plasma victim-destruction row", error))
-					return false;
-			}
-			if (mines != 0.0f) {
-				if (!yt_player_stored_name(&victim, killed_name,
-				    &killed_name_length, error)
-				    || !yt_projectile_destroyed_rows(killed_name,
-				    killed_name_length, destroyed_row,
-				    sizeof(destroyed_row), &destroyed_length,
-				    warning_row, sizeof(warning_row),
-				    &warning_length))
-					return false;
-				session->presentation.blink = 1.0f;
-				if (!session_present_text(session, warning_row,
-				    warning_length, SESSION_PRESENT_BOLD_LINE,
-				    "plasma carried-mine warning", error))
-					return false;
-			}
-			if (mines != 0.0f
-			    && !deploy_victim_mines(session, sector_number, mines,
-			    error))
-				return false;
-			if (basic == session->player_record) {
-				session->player = victim;
-				session->destroyed = true;
-				session->sector_cache[basic] = 0.0f;
-			}
-			else {
-				if (!kill_player(session, basic,
-				    (float)session->player_record, error))
-					return false;
-				if (!session_sound(session, 3.0f,
-				    "plasma salvage sound", error)
-				    || !salvage_player(session, basic,
-				    (float)session->player_record, error))
-					return false;
-			}
-			if (*energy > 0.0 && mines > 0.0f)
+			if (killed.route ==
+			    YT_PROJECTILE_PLASMA_KILLED_RELOAD_SECTOR)
 				goto plasma_reload_sector;
+			if (killed.route == YT_PROJECTILE_PLASMA_KILLED_FOOTER)
+				return true;
 		}
 		if (player.route == YT_PROJECTILE_PLASMA_PLAYER_FOOTER)
 			return true;

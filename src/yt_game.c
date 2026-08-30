@@ -5713,6 +5713,121 @@ yt_projectile_plasma_player_run(
 }
 
 bool
+yt_projectile_plasma_killed_run(
+    struct yt_projectile_plasma_killed_state *state,
+    const struct yt_projectile_plasma_killed_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t self_row[] = "YOU were destroyed!";
+	struct yt_player victim;
+	uint8_t victim_name[YT_TEXT_FIELD_SIZE];
+	uint8_t destroyed_row[128];
+	uint8_t warning_row[160];
+	size_t victim_name_length = 0U;
+	size_t destroyed_length = 0U;
+	size_t warning_length = 0U;
+	bool rows_ready = false;
+
+	if (state == NULL || ops == NULL || state->energy == NULL
+	    || state->blink == NULL || state->destroyed == NULL
+	    || state->sector_cache == NULL || ops->read_player == NULL
+	    || ops->write_player == NULL || ops->present == NULL
+	    || ops->read_sector == NULL || ops->write_sector == NULL
+	    || ops->death == NULL || ops->sound == NULL || ops->salvage == NULL)
+		return false;
+	state->self_hit = state->victim == state->shooter;
+	state->saved_mines = 0.0f;
+	memset(&state->victim_persistence, 0,
+	    sizeof(state->victim_persistence));
+	memset(&state->mine_persistence, 0, sizeof(state->mine_persistence));
+	state->route = YT_PROJECTILE_PLASMA_KILLED_CONTINUE_DISPATCH;
+	if (!ops->read_player(context, state->victim, &victim, error))
+		return false;
+	if (!state->self_hit) {
+		if (!yt_player_stored_name(&victim, victim_name,
+		    &victim_name_length, error)
+		    || !yt_projectile_destroyed_rows(victim_name,
+		    victim_name_length, destroyed_row, sizeof(destroyed_row),
+		    &destroyed_length, warning_row, sizeof(warning_row),
+		    &warning_length))
+			return false;
+		rows_ready = true;
+	}
+	state->saved_mines = victim.mines;
+	victim.mines = 0.0f;
+	victim.danger_scanner = 0.0f;
+	if (!yt_record_set_number(&victim.record, YT_F129, 0.0f)
+	    || !yt_record_set_number(&victim.record, YT_F93, 0.0f))
+		return false;
+	state->victim_persistence = victim;
+	if (!ops->write_player(context, state->victim,
+	    &state->victim_persistence, error))
+		return false;
+
+	*state->blink = 1.0f;
+	if (state->self_hit) {
+		if (!ops->present(context, self_row, sizeof(self_row) - 1U,
+		    YT_PROJECTILE_PLASMA_KILLED_SELF_DESTROYED_ROW, error))
+			return false;
+	}
+	else if (!ops->present(context, destroyed_row, destroyed_length,
+	    YT_PROJECTILE_PLASMA_KILLED_DESTROYED_ROW, error))
+		return false;
+
+	if (state->saved_mines != 0.0f) {
+		if (!rows_ready) {
+			if (!yt_player_stored_name(&victim, victim_name,
+			    &victim_name_length, error)
+			    || !yt_projectile_destroyed_rows(victim_name,
+			    victim_name_length, destroyed_row, sizeof(destroyed_row),
+			    &destroyed_length, warning_row, sizeof(warning_row),
+			    &warning_length))
+				return false;
+		}
+		*state->blink = 1.0f;
+		if (!ops->present(context, warning_row, warning_length,
+		    YT_PROJECTILE_PLASMA_KILLED_WARNING_ROW, error)
+		    || !ops->read_sector(context, state->sector,
+		    &state->mine_persistence, error))
+			return false;
+		state->mine_persistence.mines = projectile_single_add(
+		    state->mine_persistence.mines, state->saved_mines);
+		if (!yt_record_set_number(&state->mine_persistence.record, YT_F129,
+		    state->mine_persistence.mines)
+		    || !ops->write_sector(context, state->sector,
+		    &state->mine_persistence, error))
+			return false;
+	}
+
+	if (state->self_hit) {
+		if (state->shooter < 0
+		    || (size_t)state->shooter >= state->cache_count) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				snprintf(error->operation, sizeof(error->operation), "%s",
+				    "plasma killed self cache index");
+			}
+			return false;
+		}
+		*state->destroyed = true;
+		state->sector_cache[state->shooter] = 0.0f;
+	}
+	else {
+		if (!ops->death(context, state->victim, state->shooter, error)
+		    || !ops->sound(context, 3.0f, error)
+		    || !ops->salvage(context, state->victim, state->shooter,
+		    error))
+			return false;
+	}
+
+	if (*state->energy > 0.0 && state->saved_mines > 0.0f)
+		state->route = YT_PROJECTILE_PLASMA_KILLED_RELOAD_SECTOR;
+	else if (*state->energy < 1.0)
+		state->route = YT_PROJECTILE_PLASMA_KILLED_FOOTER;
+	return true;
+}
+
+bool
 yt_projectile_defense_front_run(
     struct yt_projectile_defense_front_state *state,
     const struct yt_projectile_defense_front_ops *ops, void *context,

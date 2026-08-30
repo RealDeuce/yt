@@ -582,6 +582,56 @@ bool yt_projectile_plasma_player_run(
     const struct yt_projectile_plasma_player_ops *ops, void *context,
     struct yt_error *error);
 
+enum yt_projectile_plasma_killed_route {
+	YT_PROJECTILE_PLASMA_KILLED_RELOAD_SECTOR,
+	YT_PROJECTILE_PLASMA_KILLED_CONTINUE_DISPATCH,
+	YT_PROJECTILE_PLASMA_KILLED_FOOTER,
+};
+enum yt_projectile_plasma_killed_output_kind {
+	YT_PROJECTILE_PLASMA_KILLED_DESTROYED_ROW,
+	YT_PROJECTILE_PLASMA_KILLED_SELF_DESTROYED_ROW,
+	YT_PROJECTILE_PLASMA_KILLED_WARNING_ROW,
+};
+struct yt_projectile_plasma_killed_state {
+	int victim;
+	int shooter;
+	int sector;
+	double *energy;
+	float *blink;
+	bool *destroyed;
+	float *sector_cache;
+	size_t cache_count;
+	bool self_hit;
+	float saved_mines;
+	struct yt_player victim_persistence;
+	struct yt_sector mine_persistence;
+	enum yt_projectile_plasma_killed_route route;
+};
+typedef bool (*yt_projectile_plasma_killed_present_fn)(void *context,
+    const uint8_t *text, size_t length,
+    enum yt_projectile_plasma_killed_output_kind kind,
+    struct yt_error *error);
+typedef bool (*yt_projectile_plasma_killed_read_sector_fn)(void *context,
+    int sector, struct yt_sector *value, struct yt_error *error);
+typedef bool (*yt_projectile_plasma_killed_write_sector_fn)(void *context,
+    int sector, const struct yt_sector *value, struct yt_error *error);
+typedef bool (*yt_projectile_plasma_killed_child_fn)(void *context,
+    int victim, int shooter, struct yt_error *error);
+struct yt_projectile_plasma_killed_ops {
+	yt_projectile_plasma_player_read_fn read_player;
+	yt_projectile_plasma_player_write_fn write_player;
+	yt_projectile_plasma_killed_present_fn present;
+	yt_projectile_plasma_killed_read_sector_fn read_sector;
+	yt_projectile_plasma_killed_write_sector_fn write_sector;
+	yt_projectile_plasma_killed_child_fn death;
+	yt_projectile_plasma_fighter_sound_fn sound;
+	yt_projectile_plasma_killed_child_fn salvage;
+};
+bool yt_projectile_plasma_killed_run(
+    struct yt_projectile_plasma_killed_state *state,
+    const struct yt_projectile_plasma_killed_ops *ops, void *context,
+    struct yt_error *error);
+
 enum yt_projectile_defense_front_route {
 	YT_PROJECTILE_DEFENSE_NO_DEFENSE,
 	YT_PROJECTILE_DEFENSE_FRIENDLY,
