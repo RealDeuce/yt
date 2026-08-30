@@ -4528,64 +4528,159 @@ combat_attrition(struct yt_session *session, double committed,
 }
 
 static bool
-xannor_victory(struct yt_session *session, struct yt_error *error)
+xannor_victory_play_file(void *context, const char *path,
+    struct yt_error *error)
 {
-	static const uint8_t pause[] = "[PAUSE]";
-	static const uint8_t bonus[] =
-	    "Collect 16,000,000 credit bonus!";
-	uint8_t player_name[YT_TEXT_FIELD_SIZE];
-	uint8_t winner[128];
-	uint8_t banner[79];
-	size_t player_name_length;
-	size_t winner_length;
-	struct yt_sector overlay;
+	return xannor_victory_file(context, path, error);
+}
 
-	session->presentation.foreground = 7.0f;
-	session->pager.foreground = 7;
-	if (!xannor_victory_file(session, "XannorHQ.TXT", error))
+static bool
+xannor_victory_present(void *context, const uint8_t *text, size_t length,
+    enum yt_xannor_victory_output_kind kind, const char *operation,
+    struct yt_error *error)
+{
+	enum session_present_text_kind session_kind;
+
+	switch (kind) {
+	case YT_XANNOR_VICTORY_RAW:
+		session_kind = SESSION_PRESENT_RAW;
+		break;
+	case YT_XANNOR_VICTORY_LINE:
+		session_kind = SESSION_PRESENT_LINE;
+		break;
+	case YT_XANNOR_VICTORY_BOLD_LINE:
+		session_kind = SESSION_PRESENT_BOLD_LINE;
+		break;
+	default:
 		return false;
-	if (!session_present_text(session, pause, sizeof(pause) - 1U,
-	    SESSION_PRESENT_RAW, "Xannor victory pause", error)
-	    || !session_wait(session, 99.0, "Xannor victory wait", error)
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "Xannor victory post-wait blank", error))
-		return false;
-	session->presentation.blink = 1.0f;
-	if (!session_present_text(session, bonus, sizeof(bonus) - 1U,
-	    SESSION_PRESENT_BOLD_LINE, "Xannor victory bonus", error))
-		return false;
-	clear_queue(session);
+	}
+	return session_present_text(context, text, length, session_kind,
+	    operation, error);
+}
+
+static bool
+xannor_victory_wait(void *context, double seconds, const char *operation,
+    struct yt_error *error)
+{
+	return session_wait(context, seconds, operation, error);
+}
+
+static void
+xannor_victory_set_foreground(void *context, float foreground)
+{
+	struct yt_session *session = context;
+
+	session->presentation.foreground = foreground;
+	session->pager.foreground = (int)foreground;
+}
+
+static void
+xannor_victory_set_blink(void *context, float blink)
+{
+	struct yt_session *session = context;
+
+	session->presentation.blink = blink;
+}
+
+static void
+xannor_victory_clear_queue(void *context)
+{
+	clear_queue(context);
+}
+
+static bool
+xannor_victory_read_player(void *context, struct yt_player *player,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+
 	if (!reload_player(session, error))
 		return false;
-	session->player.credits = floorf(single_add(session->player.credits,
-	    16000000.0f));
-	if (!write_player(session, error))
-		return false;
-	for (int ordinal = 0; ordinal < 3; ++ordinal) {
-		if (!session_sound(session, 2.0f,
-		    "Xannor victory sound", error))
-			return false;
-	}
-	memset(banner, '*', 79);
-	if (!yt_player_stored_name(&session->player, player_name,
-	    &player_name_length, error)
-	    || !yt_xannor_victory_winner(player_name, player_name_length,
-	    winner, sizeof(winner), &winner_length)
-	    || !append_news_bytes(session, banner, sizeof(banner), error)
-	    || !append_news_bytes(session, winner, winner_length, error)
-	    || !append_news_bytes(session, banner, sizeof(banner), error)
-	    || !radio_append_bytes(banner, sizeof(banner), -2.0f, -2.0f,
-	    error)
-	    || !radio_append_bytes(winner, winner_length, -2.0f, -2.0f,
-	    error)
-	    || !radio_append_bytes(banner, sizeof(banner), -2.0f, -2.0f,
-	    error))
-		return false;
-	if (!yt_game_read_sector(&session->door->game, 21, &overlay, error))
-		return false;
-	overlay.metadata = (float)session->player_record;
-	return yt_game_write_sector(&session->door->game, 21, &overlay,
+	*player = session->player;
+	return true;
+}
+
+static bool
+xannor_victory_write_player(void *context, struct yt_player *player,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+	bool ok;
+
+	session->player = *player;
+	ok = write_player(session, error);
+	*player = session->player;
+	return ok;
+}
+
+static bool
+xannor_victory_sound(void *context, float selector, const char *operation,
+    struct yt_error *error)
+{
+	return session_sound(context, selector, operation, error);
+}
+
+static bool
+xannor_victory_news(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	return append_news_bytes(context, text, length, error);
+}
+
+static bool
+xannor_victory_radio(void *context, const uint8_t *text, size_t length,
+    float sender, float recipient, struct yt_error *error)
+{
+	(void)context;
+	return radio_append_bytes(text, length, sender, recipient, error);
+}
+
+static bool
+xannor_victory_read_sector(void *context, int logical_sector,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_read_sector(&session->door->game, logical_sector, sector,
 	    error);
+}
+
+static bool
+xannor_victory_write_sector(void *context, int logical_sector,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_write_sector(&session->door->game, logical_sector,
+	    sector, error);
+}
+
+static bool
+xannor_victory(struct yt_session *session, struct yt_error *error)
+{
+	static const struct yt_xannor_victory_ops ops = {
+		xannor_victory_play_file,
+		xannor_victory_present,
+		xannor_victory_wait,
+		xannor_victory_set_foreground,
+		xannor_victory_set_blink,
+		xannor_victory_clear_queue,
+		xannor_victory_read_player,
+		xannor_victory_write_player,
+		xannor_victory_sound,
+		xannor_victory_news,
+		xannor_victory_radio,
+		xannor_victory_read_sector,
+		xannor_victory_write_sector,
+	};
+	struct yt_xannor_victory_state state = {
+		.current_player = (float)session->player_record,
+		.foreground = session->presentation.foreground,
+		.pager_foreground = (float)session->pager.foreground,
+		.blink = session->presentation.blink,
+	};
+
+	return yt_xannor_victory_run(&state, &ops, session, error);
 }
 
 static bool
