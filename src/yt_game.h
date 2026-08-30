@@ -310,7 +310,7 @@ struct yt_projectile_defense_front_state {
 	float sector;
 	double fighters;
 	float owner;
-	float shooter;
+	int shooter;
 	enum yt_projectile_defense_front_route route;
 };
 typedef bool (*yt_projectile_defense_owner_fn)(void *context, float owner,
@@ -328,6 +328,47 @@ struct yt_projectile_defense_front_ops {
 bool yt_projectile_defense_front_run(
     struct yt_projectile_defense_front_state *state,
     const struct yt_projectile_defense_front_ops *ops, void *context,
+    struct yt_error *error);
+
+enum yt_projectile_defense_combat_route {
+	YT_PROJECTILE_DEFENSE_CONTINUE_MINES,
+	YT_PROJECTILE_DEFENSE_RETURN,
+};
+struct yt_projectile_defense_combat_state {
+	float sector;
+	double fighters;
+	float owner;
+	int shooter;
+	float headquarters;
+	const uint8_t *shooter_name;
+	size_t shooter_name_length;
+	float *missiles;
+	int *xannor_provoker;
+	float saved_missiles;
+	float destroyed;
+	float counter;
+	double remaining_fighters;
+	struct yt_sector persistence;
+	bool victory_called;
+	enum yt_projectile_defense_combat_route route;
+};
+typedef bool (*yt_projectile_defense_sector_read_fn)(void *context,
+    float sector, struct yt_sector *value, struct yt_error *error);
+typedef bool (*yt_projectile_defense_sector_write_fn)(void *context,
+    float sector, const struct yt_sector *value, struct yt_error *error);
+typedef bool (*yt_projectile_defense_victory_fn)(void *context,
+    struct yt_error *error);
+struct yt_projectile_defense_combat_ops {
+	yt_projectile_cruise_reroute_random_fn random;
+	yt_projectile_cruise_reroute_output_fn present;
+	yt_projectile_cruise_reroute_output_fn news;
+	yt_projectile_defense_sector_read_fn read_sector;
+	yt_projectile_defense_sector_write_fn write_sector;
+	yt_projectile_defense_victory_fn victory;
+};
+bool yt_projectile_defense_combat_run(
+    struct yt_projectile_defense_combat_state *state,
+    const struct yt_projectile_defense_combat_ops *ops, void *context,
     struct yt_error *error);
 
 struct yt_xannor_retaliation_state {

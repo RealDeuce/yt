@@ -1452,7 +1452,7 @@ check_projectile_defense_front_transaction(void)
 		return false;
 
 	projectile_defense_front_fixture(&tape, &state);
-	state.owner = state.shooter;
+	state.owner = (float)state.shooter;
 	if (!yt_projectile_defense_front_run(&state, &ops, &tape, NULL)
 	    || state.route != YT_PROJECTILE_DEFENSE_FRIENDLY
 	    || tape.event_count != 3U
@@ -1509,6 +1509,294 @@ check_projectile_defense_front_transaction(void)
 	}
 	return !yt_projectile_defense_front_run(NULL, &ops, &tape, NULL)
 	    && !yt_projectile_defense_front_run(&state, NULL, &tape, NULL);
+}
+
+enum projectile_defense_combat_event {
+	PROJECTILE_DEFENSE_RANDOM = 1,
+	PROJECTILE_DEFENSE_DAMAGE_PRESENT,
+	PROJECTILE_DEFENSE_NEWS,
+	PROJECTILE_DEFENSE_READ,
+	PROJECTILE_DEFENSE_WRITE,
+	PROJECTILE_DEFENSE_VICTORY,
+};
+
+struct projectile_defense_combat_tape {
+	int events[12];
+	size_t event_count;
+	size_t fail_at;
+	float draws[4];
+	size_t draw_position;
+	uint8_t direct[256];
+	size_t direct_length;
+	uint8_t news[256];
+	size_t news_length;
+	struct yt_sector source;
+	struct yt_sector written;
+	float sector_at_read;
+	float sector_at_write;
+	int *provoker;
+	int provoker_at_write;
+};
+
+static bool
+projectile_defense_combat_step(struct projectile_defense_combat_tape *tape,
+    enum projectile_defense_combat_event event)
+{
+	if (tape->event_count >= YT_ARRAY_LEN(tape->events))
+		return false;
+	tape->events[tape->event_count++] = (int)event;
+	return tape->event_count != tape->fail_at;
+}
+
+static bool
+projectile_defense_combat_random(void *context, float *value,
+    struct yt_error *error)
+{
+	struct projectile_defense_combat_tape *tape = context;
+
+	(void)error;
+	if (!projectile_defense_combat_step(tape, PROJECTILE_DEFENSE_RANDOM)
+	    || tape->draw_position >= YT_ARRAY_LEN(tape->draws))
+		return false;
+	*value = tape->draws[tape->draw_position++];
+	return true;
+}
+
+static bool
+projectile_defense_combat_present(void *context, const uint8_t *text,
+    size_t length, struct yt_error *error)
+{
+	struct projectile_defense_combat_tape *tape = context;
+
+	(void)error;
+	if (!projectile_defense_combat_step(tape,
+	    PROJECTILE_DEFENSE_DAMAGE_PRESENT) || length > sizeof(tape->direct))
+		return false;
+	memcpy(tape->direct, text, length);
+	tape->direct_length = length;
+	return true;
+}
+
+static bool
+projectile_defense_combat_news(void *context, const uint8_t *text,
+    size_t length, struct yt_error *error)
+{
+	struct projectile_defense_combat_tape *tape = context;
+
+	(void)error;
+	if (!projectile_defense_combat_step(tape, PROJECTILE_DEFENSE_NEWS)
+	    || length > sizeof(tape->news))
+		return false;
+	memcpy(tape->news, text, length);
+	tape->news_length = length;
+	return true;
+}
+
+static bool
+projectile_defense_combat_read(void *context, float sector,
+    struct yt_sector *value, struct yt_error *error)
+{
+	struct projectile_defense_combat_tape *tape = context;
+
+	(void)error;
+	tape->sector_at_read = sector;
+	if (!projectile_defense_combat_step(tape, PROJECTILE_DEFENSE_READ))
+		return false;
+	*value = tape->source;
+	return true;
+}
+
+static bool
+projectile_defense_combat_write(void *context, float sector,
+    const struct yt_sector *value, struct yt_error *error)
+{
+	struct projectile_defense_combat_tape *tape = context;
+
+	(void)error;
+	tape->sector_at_write = sector;
+	tape->written = *value;
+	tape->provoker_at_write = *tape->provoker;
+	return projectile_defense_combat_step(tape, PROJECTILE_DEFENSE_WRITE);
+}
+
+static bool
+projectile_defense_combat_victory(void *context, struct yt_error *error)
+{
+	struct projectile_defense_combat_tape *tape = context;
+
+	(void)error;
+	return projectile_defense_combat_step(tape, PROJECTILE_DEFENSE_VICTORY);
+}
+
+static void
+projectile_defense_combat_fixture(
+    struct projectile_defense_combat_tape *tape,
+    struct yt_projectile_defense_combat_state *state, float *missiles,
+    int *provoker)
+{
+	static const uint8_t shooter_name[] = {'A', 0, 'B'};
+
+	memset(tape, 0, sizeof(*tape));
+	memset(state, 0, sizeof(*state));
+	memset(&tape->source, 0, sizeof(tape->source));
+	memset(tape->source.record.bytes, 0xa5,
+	    sizeof(tape->source.record.bytes));
+	tape->source.fighters = 999.0f;
+	tape->source.fighter_owner = -1.0f;
+	(void)yt_record_set_number(&tape->source.record, YT_F81,
+	    tape->source.fighters);
+	(void)yt_record_set_number(&tape->source.record, YT_F85,
+	    tape->source.fighter_owner);
+	tape->fail_at = SIZE_MAX;
+	tape->draws[0] = 0.002f;
+	tape->draws[1] = 0.003f;
+	tape->provoker = provoker;
+	*missiles = 2.5f;
+	*provoker = 99;
+	state->sector = 7.0f;
+	state->fighters = 100.0;
+	state->owner = -1.0f;
+	state->shooter = 2;
+	state->headquarters = 85.0f;
+	state->shooter_name = shooter_name;
+	state->shooter_name_length = sizeof(shooter_name);
+	state->missiles = missiles;
+	state->xannor_provoker = provoker;
+}
+
+static bool
+check_projectile_defense_combat_transaction(void)
+{
+	static const struct yt_projectile_defense_combat_ops ops = {
+		projectile_defense_combat_random,
+		projectile_defense_combat_present,
+		projectile_defense_combat_news,
+		projectile_defense_combat_read,
+		projectile_defense_combat_write,
+		projectile_defense_combat_victory,
+	};
+	static const int ordinary_events[] = {
+		PROJECTILE_DEFENSE_RANDOM,
+		PROJECTILE_DEFENSE_RANDOM,
+		PROJECTILE_DEFENSE_DAMAGE_PRESENT,
+		PROJECTILE_DEFENSE_NEWS,
+		PROJECTILE_DEFENSE_READ,
+		PROJECTILE_DEFENSE_WRITE,
+	};
+	static const int victory_events[] = {
+		PROJECTILE_DEFENSE_RANDOM,
+		PROJECTILE_DEFENSE_DAMAGE_PRESENT,
+		PROJECTILE_DEFENSE_NEWS,
+		PROJECTILE_DEFENSE_READ,
+		PROJECTILE_DEFENSE_WRITE,
+		PROJECTILE_DEFENSE_VICTORY,
+	};
+	static const uint8_t direct[] =
+	    "The Missiles destroyed 25 fighters!";
+	static const uint8_t news[] =
+	    "A\0B's Missiles destroyed 25 fighters in sector 7!";
+	static const uint8_t zero_direct[] =
+	    "The Missiles destroyed 0 fighters!";
+	struct projectile_defense_combat_tape tape;
+	struct yt_projectile_defense_combat_state state;
+	struct yt_record expected;
+	float missiles;
+	int provoker;
+	size_t failure;
+
+	projectile_defense_combat_fixture(&tape, &state, &missiles, &provoker);
+	expected = tape.source.record;
+	(void)yt_record_set_number(&expected, YT_F81, 75.0f);
+	if (!yt_projectile_defense_combat_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != YT_ARRAY_LEN(ordinary_events)
+	    || memcmp(tape.events, ordinary_events, sizeof(ordinary_events)) != 0
+	    || state.saved_missiles != 2.5f || state.destroyed != 25.0f
+	    || state.counter != 3.0f || state.remaining_fighters != 75.0
+	    || missiles != 0.5f || provoker != 2
+	    || tape.provoker_at_write != 2
+	    || state.route != YT_PROJECTILE_DEFENSE_RETURN
+	    || state.victory_called || tape.sector_at_read != 7.0f
+	    || tape.sector_at_write != 7.0f
+	    || tape.direct_length != sizeof(direct) - 1U
+	    || memcmp(tape.direct, direct, sizeof(direct) - 1U) != 0
+	    || tape.news_length != sizeof(news) - 1U
+	    || memcmp(tape.news, news, sizeof(news) - 1U) != 0
+	    || tape.written.fighters != 75.0f
+	    || tape.written.fighter_owner != -1.0f
+	    || memcmp(&tape.written.record, &expected, sizeof(expected)) != 0)
+		return false;
+
+	projectile_defense_combat_fixture(&tape, &state, &missiles, &provoker);
+	missiles = 0.5f;
+	if (!yt_projectile_defense_combat_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != 3U
+	    || tape.events[0] != PROJECTILE_DEFENSE_DAMAGE_PRESENT
+	    || tape.events[1] != PROJECTILE_DEFENSE_READ
+	    || tape.events[2] != PROJECTILE_DEFENSE_WRITE
+	    || tape.draw_position != 0U || state.destroyed != 0.0f
+	    || state.counter != 1.0f || missiles != 0.5f
+	    || state.remaining_fighters != 100.0
+	    || state.route != YT_PROJECTILE_DEFENSE_RETURN
+	    || tape.direct_length != sizeof(zero_direct) - 1U
+	    || memcmp(tape.direct, zero_direct, sizeof(zero_direct) - 1U) != 0)
+		return false;
+
+	projectile_defense_combat_fixture(&tape, &state, &missiles, &provoker);
+	missiles = NAN;
+	if (!yt_projectile_defense_combat_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != 0U
+	    || state.route != YT_PROJECTILE_DEFENSE_CONTINUE_MINES
+	    || state.saved_missiles != 0.0f || state.counter != 1.0f)
+		return false;
+	missiles = -0.1f;
+	if (!yt_projectile_defense_combat_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != 0U
+	    || state.route != YT_PROJECTILE_DEFENSE_CONTINUE_MINES)
+		return false;
+
+	projectile_defense_combat_fixture(&tape, &state, &missiles, &provoker);
+	state.fighters = 10.0;
+	state.headquarters = 7.0f;
+	missiles = 1.0f;
+	tape.draws[0] = 0.9f;
+	if (!yt_projectile_defense_combat_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != YT_ARRAY_LEN(victory_events)
+	    || memcmp(tape.events, victory_events, sizeof(victory_events)) != 0
+	    || state.destroyed != 10.0f || state.remaining_fighters != 0.0
+	    || missiles != 0.0f || provoker != 99 || !state.victory_called
+	    || state.route != YT_PROJECTILE_DEFENSE_RETURN
+	    || memcmp(tape.written.record.bytes + YT_F81,
+	    (const uint8_t[]){0x00, 0x00, 0x10, 0x00}, 4U) != 0
+	    || memcmp(tape.written.record.bytes + YT_F85,
+	    (const uint8_t[]){0x00, 0x00, 0x10, 0x00}, 4U) != 0)
+		return false;
+
+	projectile_defense_combat_fixture(&tape, &state, &missiles, &provoker);
+	state.shooter = -1;
+	missiles = 1.0f;
+	tape.draws[0] = 0.0f;
+	if (!yt_projectile_defense_combat_run(&state, &ops, &tape, NULL)
+	    || provoker != -1 || tape.provoker_at_write != -1
+	    || state.route != YT_PROJECTILE_DEFENSE_RETURN)
+		return false;
+
+	for (failure = 1U; failure <= YT_ARRAY_LEN(victory_events); ++failure) {
+		projectile_defense_combat_fixture(&tape, &state, &missiles,
+		    &provoker);
+		state.fighters = 10.0;
+		state.headquarters = 7.0f;
+		missiles = 1.0f;
+		tape.draws[0] = 0.9f;
+		tape.fail_at = failure;
+		if (yt_projectile_defense_combat_run(&state, &ops, &tape, NULL)
+		    || tape.event_count != failure
+		    || memcmp(tape.events, victory_events,
+		    failure * sizeof(victory_events[0])) != 0
+		    || state.victory_called != (failure == 6U))
+			return false;
+	}
+	return !yt_projectile_defense_combat_run(NULL, &ops, &tape, NULL)
+	    && !yt_projectile_defense_combat_run(&state, NULL, &tape, NULL);
 }
 
 enum projectile_planet_event {
@@ -10537,6 +10825,8 @@ main(void)
 		return fail("projectile sector-probe transaction differs");
 	if (!check_projectile_defense_front_transaction())
 		return fail("projectile defense-front transaction differs");
+	if (!check_projectile_defense_combat_transaction())
+		return fail("projectile defense-combat transaction differs");
 	if (!check_projectile_damage_model())
 		return fail("projectile player-damage model differs");
 	if (!check_projectile_persistence_model())
