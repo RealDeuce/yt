@@ -261,6 +261,22 @@ not authoritative. Use the corrected goal above in the new workspace.
   preservation, self dead/cache state, corrupt cache bounds and every
   injected callback prefix. The connected frontier now begins at the `B713`
   planet-impact body.
+- The `B713..BC7D` plasma planet-impact continuation now has one injected
+  native owner joined directly from the cached dispatcher. It uses the
+  updater-return `P(1)` cache rather than the updater's stored `P(1)-A(1)`,
+  retains the binary launch attacker instead of reconstructing mutable
+  session identity, orders hit/news/selector two before damage, applies one
+  SINGLE quantum and one RNG draw per iteration, and reports productivity
+  before a fresh raw six-field/ground/owner PUT. Destruction performs fresh
+  planet and sector reads, writes canonical numeric zero to the active marker
+  and link while preserving unrelated bytes, orders direct row/selector
+  three/news, and suppresses the surviving-ground row. Fixtures pin a
+  multi-draw survivor, all-zero destruction, both updater-cache asymmetries,
+  binary identities, exact rows, raw overlays, route gates and all 17
+  callback failure prefixes. The compiled REDIM/far-array/string and
+  dependency-internal physical prefixes remain candidate boundaries; the
+  next connected control-flow frontier is the shared `BC80` footer and
+  `ABB1` route join.
 - After the exact Transfer, Bank, Productivity, Clearance, Earth-front,
   Earth-purchase, Planet Rename, shared compatibility-uppercase, Team
   name/password, Planet inventory/menu-parent, shared sector-mine, YTMAINT
@@ -286,13 +302,13 @@ not authoritative. Use the corrected goal above in the new workspace.
   provider-driven YT.REG registration transaction,
   ledger dispositions are roots
   `168 candidate / 0 missing`, transfers
-  `7082 candidate / 285 missing / 1 explicitly
+  `7120 candidate / 247 missing / 1 explicitly
   deferred`, and presentation `143 candidate / 1 missing / 6 verified`.
   Current SHA-256
   values are roots
-  `67d97add7a3e8a5f96b2ca3c191394df97c9b620c38fe5e090847de789a2c6b4`,
-  transfers `00c5f1923311125b770adb09e69a47a7681f5be95363154f2665ba70981297d3`,
-  presentation `18c3de9786d42e9c9eadb99e0e8bd9d2014238cd84c6d72c82892c8685aba242`,
+  `2b312bc5c1dbed42a79f2a42ee9117381b05c1a6c2d74d96d34bf09bffc2e1ab`,
+  transfers `6548c3782c8a6d061b790459a8a4380fc5526ff645854c27e4d23c0a6118c066`,
+  presentation `e7d0385f0a72a386287567cf9bcd06a2484b39e69d19124cd3bf705a25b4ff22`,
   and manifest
   `3552bd61c9cb9b7197aeb6fbad1f37cba69cd09f125d878d0c9072a691e8950a`.
   All immutable identity columns and TSV widths match the regenerated trusted

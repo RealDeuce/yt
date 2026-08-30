@@ -5828,6 +5828,177 @@ yt_projectile_plasma_killed_run(
 }
 
 bool
+yt_projectile_plasma_planet_run(
+    struct yt_projectile_plasma_planet_state *state,
+    const struct yt_projectile_plasma_planet_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t destroyed_row[] = "The planet was destroyed!!";
+	static const uint8_t ground_prefix[] = "Ground forces reduced by";
+	static const uint8_t ground_middle[] = " units to";
+	struct yt_planet planet;
+	uint8_t planet_name[YT_TEXT_FIELD_SIZE];
+	uint8_t direct_row[256];
+	uint8_t news_row[256];
+	uint8_t row[256];
+	char first_number[64];
+	char second_number[64];
+	size_t planet_name_length;
+	size_t direct_length;
+	size_t news_length;
+	size_t row_length;
+	int first_length;
+	int second_length;
+	size_t index;
+
+	if (state == NULL || ops == NULL || state->energy == NULL
+	    || (state->attacker == NULL && state->attacker_length != 0U)
+	    || ops->update == NULL || ops->read_planet == NULL
+	    || ops->write_planet == NULL || ops->read_sector == NULL
+	    || ops->write_sector == NULL || ops->present == NULL
+	    || ops->news == NULL || ops->sound == NULL || ops->random == NULL)
+		return false;
+	state->destroyed = false;
+	state->route = YT_PROJECTILE_PLASMA_PLANET_NEXT_HOP;
+	memset(&state->persistence, 0, sizeof(state->persistence));
+	memset(&state->destruction, 0, sizeof(state->destruction));
+	memset(&state->unlink, 0, sizeof(state->unlink));
+	if (!ops->update(context, state->planet, &state->stale_ore, error)
+	    || !ops->read_planet(context, state->planet, &planet, error))
+		return false;
+	for (index = 0U; index < 3U; ++index) {
+		state->production[index] = planet.production[index];
+		state->stock[index] = planet.stock[index];
+	}
+	state->original_ground = planet.ground_forces;
+	state->remaining_ground = state->original_ground;
+	if (!yt_planet_stored_name(&planet, planet_name, &planet_name_length,
+	    error)
+	    || !yt_projectile_planet_attack_rows(true,
+	    state->attacker, state->attacker_length,
+	    planet_name, planet_name_length, (float)state->sector,
+	    direct_row, sizeof(direct_row), &direct_length,
+	    news_row, sizeof(news_row), &news_length)
+	    || !ops->present(context, direct_row, direct_length,
+	    YT_PROJECTILE_PLASMA_PLANET_HIT_ROW, error)
+	    || !ops->news(context, news_row, news_length, error)
+	    || !ops->sound(context, 2.0f, error))
+		return false;
+
+	state->original_productivity = projectile_single_add(
+	    projectile_single_add(state->production[0], state->production[1]),
+	    state->production[2]);
+	while ((state->stale_ore > 0.0f || state->production[1] > 0.0f
+	    || state->production[2] > 0.0f) && *state->energy > 0.0) {
+		float draw;
+		volatile double product = *state->energy * 0.000004;
+		float quantity = (float)product;
+
+		state->remaining_ground = projectile_single_sub(
+		    state->remaining_ground, quantity);
+		for (index = 0U; index < 3U; ++index)
+			state->production[index] = projectile_single_sub(
+			    state->production[index], quantity);
+		if (!ops->random(context, &draw, error))
+			return false;
+		*state->energy -= (double)projectile_single_mul(draw, 25000.0f);
+	}
+	for (index = 0U; index < 3U; ++index) {
+		float cap;
+
+		if (state->production[index] < 0.0f)
+			state->production[index] = 0.0f;
+		cap = projectile_single_mul(state->production[index], 10.0f);
+		if (state->stock[index] > cap)
+			state->stock[index] = cap;
+	}
+	state->remaining_productivity = projectile_single_add(
+	    projectile_single_add(state->production[0], state->production[1]),
+	    state->production[2]);
+	if (!yt_projectile_planet_productivity_row(
+	    state->original_productivity, state->remaining_productivity,
+	    row, sizeof(row), &row_length)
+	    || !ops->present(context, row, row_length,
+	    YT_PROJECTILE_PLASMA_PLANET_PRODUCTIVITY_ROW, error)
+	    || !ops->news(context, row, row_length, error)
+	    || !ops->read_planet(context, state->planet, &state->persistence,
+	    error)
+	    || !yt_projectile_planet_productivity_overlay(&state->persistence,
+	    state->production, state->stock))
+		return false;
+	state->remaining_ground = floorf(state->remaining_ground);
+	if (state->remaining_ground < 1.0f) {
+		state->remaining_ground = 0.0f;
+		state->persistence.owner = 0.0f;
+		if (!yt_record_set_number(&state->persistence.record, YT_F73,
+		    0.0f))
+			return false;
+	}
+	state->persistence.ground_forces = state->remaining_ground;
+	if (!yt_record_set_number(&state->persistence.record, YT_F77,
+	    state->remaining_ground)
+	    || !ops->write_planet(context, state->planet, &state->persistence,
+	    error))
+		return false;
+
+	if (state->production[0] == 0.0f
+	    && state->production[1] == 0.0f
+	    && state->production[2] == 0.0f) {
+		state->destroyed = true;
+		if (!ops->read_planet(context, state->planet,
+		    &state->destruction, error))
+			return false;
+		state->destruction.name_length = 0.0f;
+		if (!yt_record_set_number(&state->destruction.record, YT_F85, 0.0f)
+		    || !ops->write_planet(context, state->planet,
+		    &state->destruction, error)
+		    || !ops->read_sector(context, state->sector, &state->unlink,
+		    error))
+			return false;
+		state->unlink.planet = 0.0f;
+		if (!yt_record_set_number(&state->unlink.record, YT_F93, 0.0f)
+		    || !ops->write_sector(context, state->sector, &state->unlink,
+		    error)
+		    || !ops->present(context, destroyed_row,
+		    sizeof(destroyed_row) - 1U,
+		    YT_PROJECTILE_PLASMA_PLANET_DESTROYED_ROW, error)
+		    || !ops->sound(context, 3.0f, error)
+		    || !ops->news(context, destroyed_row,
+		    sizeof(destroyed_row) - 1U, error))
+			return false;
+	}
+	else if (state->original_ground != 0.0f) {
+		first_length = qb_str_single(first_number, sizeof(first_number),
+		    projectile_single_sub(state->original_ground,
+		    state->remaining_ground));
+		second_length = qb_str_single(second_number, sizeof(second_number),
+		    state->remaining_ground);
+		if (first_length < 0 || second_length < 0
+		    || sizeof(ground_prefix) - 1U + (size_t)first_length
+		    + sizeof(ground_middle) - 1U + (size_t)second_length + 1U
+		    > sizeof(row))
+			return false;
+		memcpy(row, ground_prefix, sizeof(ground_prefix) - 1U);
+		row_length = sizeof(ground_prefix) - 1U;
+		memcpy(row + row_length, first_number, (size_t)first_length);
+		row_length += (size_t)first_length;
+		memcpy(row + row_length, ground_middle,
+		    sizeof(ground_middle) - 1U);
+		row_length += sizeof(ground_middle) - 1U;
+		memcpy(row + row_length, second_number, (size_t)second_length);
+		row_length += (size_t)second_length;
+		row[row_length++] = '!';
+		if (!ops->present(context, row, row_length,
+		    YT_PROJECTILE_PLASMA_PLANET_GROUND_ROW, error)
+		    || !ops->news(context, row, row_length, error))
+			return false;
+	}
+	if (*state->energy < 1.0)
+		state->route = YT_PROJECTILE_PLASMA_PLANET_FOOTER;
+	return true;
+}
+
+bool
 yt_projectile_defense_front_run(
     struct yt_projectile_defense_front_state *state,
     const struct yt_projectile_defense_front_ops *ops, void *context,

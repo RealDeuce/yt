@@ -12256,6 +12256,89 @@ plasma_killed_salvage(void *context, int victim, int shooter,
 }
 
 static bool
+plasma_planet_update(void *context, int logical_planet, float *stale_ore,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+	struct planet_update_cache cache;
+	struct yt_planet planet;
+
+	if (stale_ore == NULL)
+		return false;
+	if (!planet_update_cached(session, logical_planet, &planet, &cache,
+	    error))
+		return false;
+	/* B735 exposes the updater's returned P(1), not its stored P(1)-A(1). */
+	*stale_ore = cache.rate[1];
+	return true;
+}
+
+static bool
+plasma_planet_read(void *context, int logical_planet,
+    struct yt_planet *value, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_read_planet(&session->door->game, logical_planet, value,
+	    error);
+}
+
+static bool
+plasma_planet_write(void *context, int logical_planet,
+    const struct yt_planet *value, struct yt_error *error)
+{
+	struct yt_session *session = context;
+	int physical = yt_planet_basic_record(&session->door->game.config,
+	    logical_planet);
+
+	if (physical < 0) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			snprintf(error->operation, sizeof(error->operation), "%s",
+			    "plasma planet physical record");
+		}
+		return false;
+	}
+	return yt_database_write(&session->door->game.database, (size_t)physical,
+	    &value->record, error);
+}
+
+static bool
+plasma_planet_present(void *context, const uint8_t *text, size_t length,
+    enum yt_projectile_plasma_planet_output_kind kind,
+    struct yt_error *error)
+{
+	const char *operation;
+
+	switch (kind) {
+	case YT_PROJECTILE_PLASMA_PLANET_HIT_ROW:
+		operation = "plasma planet-hit row";
+		break;
+	case YT_PROJECTILE_PLASMA_PLANET_PRODUCTIVITY_ROW:
+		operation = "plasma productivity row";
+		break;
+	case YT_PROJECTILE_PLASMA_PLANET_DESTROYED_ROW:
+		operation = "plasma planet-destroyed row";
+		break;
+	case YT_PROJECTILE_PLASMA_PLANET_GROUND_ROW:
+		operation = "plasma ground-force row";
+		break;
+	default:
+		return false;
+	}
+	return session_present_text(context, text, length, SESSION_PRESENT_LINE,
+	    operation, error);
+}
+
+static bool
+plasma_planet_sound(void *context, float selector, struct yt_error *error)
+{
+	return session_sound(context, selector,
+	    selector == 2.0f ? "plasma planet attack sound"
+	    : "plasma planet destruction sound", error);
+}
+
+static bool
 cruise_defense_owner(void *context, float owner, uint8_t *name,
     size_t *name_length, struct yt_error *error)
 {
@@ -12656,26 +12739,23 @@ missile_mines:
 
 static bool
 plasma_planet_impact(struct yt_session *session, int sector_number,
-    struct yt_sector *sector, double *energy, struct yt_error *error)
+    struct yt_sector *sector, const uint8_t *attacker,
+    size_t attacker_length, double *energy, struct yt_error *error)
 {
-	struct yt_planet planet;
-	struct yt_planet updater_planet;
+	static const struct yt_projectile_plasma_planet_ops ops = {
+		plasma_planet_update,
+		plasma_planet_read,
+		plasma_planet_write,
+		plasma_killed_read_sector,
+		plasma_killed_write_sector,
+		plasma_planet_present,
+		plasma_fighter_news,
+		plasma_planet_sound,
+		projectile_damage_draw,
+	};
+	struct yt_projectile_plasma_planet_state state;
 	bool overflow;
 	int logical_planet;
-	float original_ore;
-	float old_total;
-	float old_ground;
-	uint8_t planet_name[YT_TEXT_FIELD_SIZE];
-	uint8_t attacker_name[YT_TEXT_FIELD_SIZE];
-	uint8_t direct_row[256];
-	uint8_t news_row[256];
-	size_t planet_name_length;
-	size_t attacker_name_length;
-	size_t direct_length;
-	size_t news_length;
-	char number_one[64];
-	char number_two[64];
-	char row[256];
 
 	if (*energy <= 0.0)
 		return true;
@@ -12690,169 +12770,13 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 	}
 	if (logical_planet == 0)
 		return true;
-	if (!planet_update(session, logical_planet, &updater_planet, error))
-		return false;
-	original_ore = updater_planet.production[0];
-	if (!yt_game_read_planet(&session->door->game, logical_planet, &planet,
-	    error))
-		return false;
-	if (!yt_planet_stored_name(&planet, planet_name, &planet_name_length,
-	    error)
-	    || !yt_player_stored_name(&session->player, attacker_name,
-	    &attacker_name_length, error)
-	    || !yt_projectile_planet_attack_rows(true, attacker_name,
-	    attacker_name_length, planet_name, planet_name_length,
-	    (float)sector_number, direct_row, sizeof(direct_row),
-	    &direct_length, news_row, sizeof(news_row), &news_length)
-	    || !session_present_text(session, direct_row, direct_length,
-	    SESSION_PRESENT_LINE, "plasma planet-hit row", error)
-	    || !append_news_bytes(session, news_row, news_length, error))
-		return false;
-	if (!session_sound(session, 2.0f,
-	    "plasma planet attack sound", error))
-		return false;
-	old_total = single_add(single_add(planet.production[0],
-	    planet.production[1]), planet.production[2]);
-	old_ground = planet.ground_forces;
-	while ((original_ore > 0.0f || planet.production[1] > 0.0f
-	    || planet.production[2] > 0.0f) && *energy > 0.0) {
-		float quantity = (float)(*energy * 0.000004);
-		float draw;
-		size_t index;
-
-		planet.ground_forces =
-		    single_sub(planet.ground_forces, quantity);
-		for (index = 0; index < 3; ++index)
-			planet.production[index] =
-			    single_sub(planet.production[index], quantity);
-		if (!random_value(session, &draw, error))
-			return false;
-		*energy -= (double)single_mul(draw, 25000.0f);
-	}
-	{
-		size_t index;
-
-		for (index = 0; index < 3; ++index) {
-			if (planet.production[index] < 0.0f)
-				planet.production[index] = 0.0f;
-			if (planet.stock[index]
-			    > single_mul(planet.production[index], 10.0f))
-				planet.stock[index] =
-				    single_mul(planet.production[index], 10.0f);
-		}
-	}
-	{
-		float new_total = single_add(single_add(planet.production[0],
-		    planet.production[1]), planet.production[2]);
-
-		qb_str_single(number_one, sizeof(number_one),
-		    single_sub(old_total, new_total));
-		qb_str_single(number_two, sizeof(number_two), new_total);
-		snprintf(row, sizeof(row), "Productivity reduced by%s units to%s "
-		    "units!", number_one, number_two);
-		if (!session_present_text(session, (const uint8_t *)row,
-		    strlen(row), SESSION_PRESENT_LINE,
-		    "plasma productivity row", error)
-		    || !append_news(session, row, error))
-			return false;
-	}
-	{
-		struct yt_planet persistence;
-		size_t index;
-
-		if (!yt_game_read_planet(&session->door->game, logical_planet,
-		    &persistence, error))
-			return false;
-		for (index = 0; index < 3; ++index) {
-			persistence.production[index] = planet.production[index];
-			persistence.stock[index] = planet.stock[index];
-			if (!yt_record_set_number(&persistence.record,
-			    YT_F45 + index * 4U, planet.production[index])
-			    || !yt_record_set_number(&persistence.record,
-			    YT_F57 + index * 4U, planet.stock[index])) {
-				if (error != NULL) {
-					error->status = YT_RANGE;
-					snprintf(error->operation,
-					    sizeof(error->operation), "%s",
-					    "plasma productivity overlay");
-				}
-				return false;
-			}
-		}
-		planet.ground_forces = floorf(planet.ground_forces);
-		if (planet.ground_forces < 1.0f) {
-			planet.ground_forces = 0.0f;
-			persistence.owner = 0.0f;
-			if (!yt_record_set_number(&persistence.record, YT_F73,
-			    0.0f)) {
-				if (error != NULL) {
-					error->status = YT_RANGE;
-					snprintf(error->operation,
-					    sizeof(error->operation), "%s",
-					    "plasma planet-owner overlay");
-				}
-				return false;
-			}
-		}
-		persistence.ground_forces = planet.ground_forces;
-		if (!yt_record_set_number(&persistence.record, YT_F77,
-		    planet.ground_forces)) {
-			if (error != NULL) {
-				error->status = YT_RANGE;
-				snprintf(error->operation, sizeof(error->operation), "%s",
-				    "plasma ground-force overlay");
-			}
-			return false;
-		}
-		if (!yt_game_write_planet(&session->door->game, logical_planet,
-		    &persistence, error))
-			return false;
-	}
-	if (planet.production[0] == 0.0f
-	    && planet.production[1] == 0.0f
-	    && planet.production[2] == 0.0f) {
-		struct yt_planet destruction;
-		struct yt_sector unlink;
-
-		if (!yt_game_read_planet(&session->door->game, logical_planet,
-		    &destruction, error))
-			return false;
-		destruction.name_length = 0.0f;
-		if (!yt_record_set_number(&destruction.record, YT_F85, 0.0f)
-		    || !yt_game_write_planet(&session->door->game,
-		    logical_planet, &destruction, error))
-			return false;
-		if (!yt_game_read_sector(&session->door->game, sector_number,
-		    &unlink, error))
-			return false;
-		unlink.planet = 0.0f;
-		if (!yt_record_set_number(&unlink.record, YT_F93, 0.0f)
-		    || !yt_game_write_sector(&session->door->game, sector_number,
-		    &unlink, error))
-			return false;
-		if (!session_present_text(session,
-		    (const uint8_t *)"The planet was destroyed!!",
-		    strlen("The planet was destroyed!!"), SESSION_PRESENT_LINE,
-		    "plasma planet-destroyed row", error)
-		    || !session_sound(session, 3.0f,
-		    "plasma planet destruction sound", error)
-		    || !append_news(session, "The planet was destroyed!!", error))
-			return false;
-	}
-	else if (old_ground != 0.0f) {
-		qb_str_single(number_one, sizeof(number_one),
-		    single_sub(old_ground, planet.ground_forces));
-		qb_str_single(number_two, sizeof(number_two),
-		    planet.ground_forces);
-		snprintf(row, sizeof(row), "Ground forces reduced by%s units to%s!",
-		    number_one, number_two);
-		if (!session_present_text(session, (const uint8_t *)row,
-		    strlen(row), SESSION_PRESENT_LINE,
-		    "plasma ground-force row", error)
-		    || !append_news(session, row, error))
-			return false;
-	}
-	return true;
+	memset(&state, 0, sizeof(state));
+	state.planet = logical_planet;
+	state.sector = sector_number;
+	state.attacker = attacker;
+	state.attacker_length = attacker_length;
+	state.energy = energy;
+	return yt_projectile_plasma_planet_run(&state, &ops, session, error);
 }
 
 static bool
@@ -12993,8 +12917,8 @@ plasma_reload_sector:
 		return true;
 	/* The B099 dispatch cached this link before mines and the player scan. */
 	sector.planet = planet_link;
-	return plasma_planet_impact(session, sector_number, &sector, energy,
-	    error);
+	return plasma_planet_impact(session, sector_number, &sector, attacker,
+	    launch_attacker_length, energy, error);
 }
 
 static bool

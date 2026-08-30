@@ -3480,6 +3480,486 @@ check_projectile_plasma_killed_transaction(void)
 	    && !yt_projectile_plasma_killed_run(&state, NULL, &tape, NULL);
 }
 
+enum plasma_planet_event {
+	PLASMA_PLANET_UPDATE = 1,
+	PLASMA_PLANET_READ,
+	PLASMA_PLANET_PRESENT,
+	PLASMA_PLANET_NEWS,
+	PLASMA_PLANET_SOUND,
+	PLASMA_PLANET_RANDOM,
+	PLASMA_PLANET_WRITE,
+	PLASMA_PLANET_SECTOR_READ,
+	PLASMA_PLANET_SECTOR_WRITE,
+};
+
+struct plasma_planet_tape {
+	int events[32];
+	size_t event_count;
+	size_t fail_at;
+	int logical_planet;
+	int sector;
+	float stale_ore;
+	float draws[4];
+	size_t draw_count;
+	size_t draw_position;
+	struct yt_planet planet_source[3];
+	struct yt_planet planet_write[3];
+	size_t planet_reads;
+	size_t planet_writes;
+	struct yt_sector sector_source;
+	struct yt_sector sector_write;
+	uint8_t output[4][256];
+	size_t output_length[4];
+	enum yt_projectile_plasma_planet_output_kind output_kind[4];
+	size_t output_count;
+	uint8_t news[4][256];
+	size_t news_length[4];
+	size_t news_count;
+	float selectors[2];
+	size_t sound_count;
+};
+
+static bool
+plasma_planet_step(struct plasma_planet_tape *tape, int event)
+{
+	if (tape->event_count >= YT_ARRAY_LEN(tape->events))
+		return false;
+	tape->events[tape->event_count++] = event;
+	return tape->event_count != tape->fail_at;
+}
+
+static bool
+plasma_planet_update(void *context, int planet, float *stale_ore,
+    struct yt_error *error)
+{
+	struct plasma_planet_tape *tape = context;
+
+	(void)error;
+	if (!plasma_planet_step(tape, PLASMA_PLANET_UPDATE)
+	    || planet != tape->logical_planet || stale_ore == NULL)
+		return false;
+	*stale_ore = tape->stale_ore;
+	return true;
+}
+
+static bool
+plasma_planet_read(void *context, int planet, struct yt_planet *value,
+    struct yt_error *error)
+{
+	struct plasma_planet_tape *tape = context;
+	size_t position = tape->planet_reads++;
+
+	(void)error;
+	if (!plasma_planet_step(tape, PLASMA_PLANET_READ)
+	    || planet != tape->logical_planet
+	    || position >= YT_ARRAY_LEN(tape->planet_source))
+		return false;
+	*value = tape->planet_source[position];
+	return true;
+}
+
+static bool
+plasma_planet_write(void *context, int planet,
+    const struct yt_planet *value, struct yt_error *error)
+{
+	struct plasma_planet_tape *tape = context;
+	size_t position = tape->planet_writes++;
+
+	(void)error;
+	if (!plasma_planet_step(tape, PLASMA_PLANET_WRITE)
+	    || planet != tape->logical_planet
+	    || position >= YT_ARRAY_LEN(tape->planet_write))
+		return false;
+	tape->planet_write[position] = *value;
+	return true;
+}
+
+static bool
+plasma_planet_sector_read(void *context, int sector,
+    struct yt_sector *value, struct yt_error *error)
+{
+	struct plasma_planet_tape *tape = context;
+
+	(void)error;
+	if (!plasma_planet_step(tape, PLASMA_PLANET_SECTOR_READ)
+	    || sector != tape->sector)
+		return false;
+	*value = tape->sector_source;
+	return true;
+}
+
+static bool
+plasma_planet_sector_write(void *context, int sector,
+    const struct yt_sector *value, struct yt_error *error)
+{
+	struct plasma_planet_tape *tape = context;
+
+	(void)error;
+	if (!plasma_planet_step(tape, PLASMA_PLANET_SECTOR_WRITE)
+	    || sector != tape->sector)
+		return false;
+	tape->sector_write = *value;
+	return true;
+}
+
+static bool
+plasma_planet_present(void *context, const uint8_t *text, size_t length,
+    enum yt_projectile_plasma_planet_output_kind kind,
+    struct yt_error *error)
+{
+	struct plasma_planet_tape *tape = context;
+	size_t position = tape->output_count++;
+
+	(void)error;
+	if (!plasma_planet_step(tape, PLASMA_PLANET_PRESENT)
+	    || position >= YT_ARRAY_LEN(tape->output)
+	    || length > sizeof(tape->output[position]))
+		return false;
+	memcpy(tape->output[position], text, length);
+	tape->output_length[position] = length;
+	tape->output_kind[position] = kind;
+	return true;
+}
+
+static bool
+plasma_planet_news(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	struct plasma_planet_tape *tape = context;
+	size_t position = tape->news_count++;
+
+	(void)error;
+	if (!plasma_planet_step(tape, PLASMA_PLANET_NEWS)
+	    || position >= YT_ARRAY_LEN(tape->news)
+	    || length > sizeof(tape->news[position]))
+		return false;
+	memcpy(tape->news[position], text, length);
+	tape->news_length[position] = length;
+	return true;
+}
+
+static bool
+plasma_planet_sound(void *context, float selector, struct yt_error *error)
+{
+	struct plasma_planet_tape *tape = context;
+	size_t position = tape->sound_count++;
+
+	(void)error;
+	if (!plasma_planet_step(tape, PLASMA_PLANET_SOUND)
+	    || position >= YT_ARRAY_LEN(tape->selectors))
+		return false;
+	tape->selectors[position] = selector;
+	return true;
+}
+
+static bool
+plasma_planet_random(void *context, float *value, struct yt_error *error)
+{
+	struct plasma_planet_tape *tape = context;
+	size_t position = tape->draw_position++;
+
+	(void)error;
+	if (!plasma_planet_step(tape, PLASMA_PLANET_RANDOM)
+	    || position >= tape->draw_count)
+		return false;
+	*value = tape->draws[position];
+	return true;
+}
+
+static bool
+plasma_planet_source(struct yt_planet *planet, uint8_t salt,
+    const uint8_t *name, size_t name_length, const float production[3],
+    const float stock[3], float ground, float owner)
+{
+	struct yt_record record;
+	size_t index;
+
+	yt_record_blank(&record);
+	if (name_length > YT_TEXT_FIELD_SIZE)
+		return false;
+	if (name_length != 0U)
+		memcpy(record.bytes, name, name_length);
+	record.bytes[YT_RECORD_TAIL_OFFSET] = salt;
+	record.bytes[YT_RECORD_TAIL_OFFSET + 1U] = (uint8_t)(salt ^ 0x55U);
+	record.bytes[YT_RECORD_TAIL_OFFSET + 2U] = (uint8_t)(salt ^ 0xaaU);
+	record.bytes[YT_RECORD_TAIL_OFFSET + 3U] = (uint8_t)~salt;
+	if (!yt_record_set_number(&record, YT_F41, (float)salt)
+	    || !yt_record_set_number(&record, YT_F73, owner)
+	    || !yt_record_set_number(&record, YT_F77, ground)
+	    || !yt_record_set_number(&record, YT_F85, (float)name_length))
+		return false;
+	for (index = 0U; index < 3U; ++index) {
+		if (!yt_record_set_number(&record, YT_F45 + index * 4U,
+		    production[index])
+		    || !yt_record_set_number(&record, YT_F57 + index * 4U,
+		    stock[index]))
+			return false;
+	}
+	yt_planet_decode(planet, &record);
+	return true;
+}
+
+static bool
+plasma_planet_fixture(struct plasma_planet_tape *tape,
+    struct yt_projectile_plasma_planet_state *state, double *energy)
+{
+	static const uint8_t attacker[] = {'A', 0, 'B'};
+	static const uint8_t planet_name[] = {'P', 0, 'Q'};
+	static const float opening_production[3] = {0.25f, 0.25f, 0.25f};
+	static const float opening_stock[3] = {5.0f, 5.0f, 5.0f};
+	static const float fresh_production[3] = {7.0f, 8.0f, 9.0f};
+	static const float fresh_stock[3] = {70.0f, 80.0f, 90.0f};
+	struct yt_record sector_record;
+
+	memset(tape, 0, sizeof(*tape));
+	memset(state, 0, sizeof(*state));
+	tape->fail_at = SIZE_MAX;
+	tape->logical_planet = 12;
+	tape->sector = 42;
+	tape->draws[0] = 0.5f;
+	tape->draw_count = 1U;
+	if (!plasma_planet_source(&tape->planet_source[0], 0x11,
+	    planet_name, sizeof(planet_name), opening_production, opening_stock,
+	    2.0f, 7.0f)
+	    || !plasma_planet_source(&tape->planet_source[1], 0x22,
+	    (const uint8_t *)"Commit", 6U, fresh_production, fresh_stock,
+	    88.0f, 13.0f)
+	    || !plasma_planet_source(&tape->planet_source[2], 0x33,
+	    (const uint8_t *)"Destroy", 7U, fresh_production, fresh_stock,
+	    77.0f, 17.0f))
+		return false;
+	yt_record_blank(&sector_record);
+	sector_record.bytes[YT_RECORD_TAIL_OFFSET] = 0x5a;
+	if (!yt_record_set_number(&sector_record, YT_F93, 12.0f))
+		return false;
+	yt_sector_decode(&tape->sector_source, &sector_record);
+	*energy = 100000.0;
+	state->planet = tape->logical_planet;
+	state->sector = tape->sector;
+	state->attacker = attacker;
+	state->attacker_length = sizeof(attacker);
+	state->energy = energy;
+	return true;
+}
+
+static bool
+check_projectile_plasma_planet_transaction(void)
+{
+	static const struct yt_projectile_plasma_planet_ops ops = {
+		plasma_planet_update,
+		plasma_planet_read,
+		plasma_planet_write,
+		plasma_planet_sector_read,
+		plasma_planet_sector_write,
+		plasma_planet_present,
+		plasma_planet_news,
+		plasma_planet_sound,
+		plasma_planet_random,
+	};
+	static const int destroy_events[] = {
+		PLASMA_PLANET_UPDATE, PLASMA_PLANET_READ,
+		PLASMA_PLANET_PRESENT, PLASMA_PLANET_NEWS, PLASMA_PLANET_SOUND,
+		PLASMA_PLANET_RANDOM,
+		PLASMA_PLANET_PRESENT, PLASMA_PLANET_NEWS,
+		PLASMA_PLANET_READ, PLASMA_PLANET_WRITE,
+		PLASMA_PLANET_READ, PLASMA_PLANET_WRITE,
+		PLASMA_PLANET_SECTOR_READ, PLASMA_PLANET_SECTOR_WRITE,
+		PLASMA_PLANET_PRESENT, PLASMA_PLANET_SOUND, PLASMA_PLANET_NEWS,
+	};
+	static const int survivor_events[] = {
+		PLASMA_PLANET_UPDATE, PLASMA_PLANET_READ,
+		PLASMA_PLANET_PRESENT, PLASMA_PLANET_NEWS, PLASMA_PLANET_SOUND,
+		PLASMA_PLANET_RANDOM, PLASMA_PLANET_RANDOM,
+		PLASMA_PLANET_PRESENT, PLASMA_PLANET_NEWS,
+		PLASMA_PLANET_READ, PLASMA_PLANET_WRITE,
+		PLASMA_PLANET_PRESENT, PLASMA_PLANET_NEWS,
+	};
+	static const uint8_t hit_row[] =
+	    "The plasma bolts hit planet P\0Q in sector 42!";
+	static const uint8_t hit_news[] =
+	    "A\0B's plasma bolts hit planet P\0Q in sector 42!";
+	static const uint8_t productivity_row[] =
+	    "Productivity reduced by .28125 units to 59.71875 units!";
+	static const uint8_t ground_row[] =
+	    "Ground forces reduced by .75 units to 11!";
+	static const uint8_t destroyed_row[] = "The planet was destroyed!!";
+	static const float survivor_production[3] = {10.0f, 20.0f, 30.0f};
+	static const float survivor_stock[3] = {101.0f, 199.0f, 301.0f};
+	static const float expected_production[3] = {
+		9.90625f, 19.90625f, 29.90625f
+	};
+	static const float expected_stock[3] = {
+		99.0625f, 199.0f, 299.0625f
+	};
+	struct plasma_planet_tape tape;
+	struct yt_projectile_plasma_planet_state state;
+	struct yt_record expected_planet;
+	struct yt_record expected_sector;
+	double energy;
+	size_t index;
+	size_t failure;
+
+	if (!plasma_planet_fixture(&tape, &state, &energy)
+	    || !plasma_planet_source(&tape.planet_source[0], 0x11,
+	    (const uint8_t *)"P\0Q", 3U, survivor_production, survivor_stock,
+	    11.75f, 7.0f))
+		return false;
+	energy = 15625.0;
+	tape.draws[0] = 0.3125f;
+	tape.draws[1] = 0.3125f;
+	tape.draw_count = 2U;
+	if (!yt_projectile_plasma_planet_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != YT_ARRAY_LEN(survivor_events)
+	    || memcmp(tape.events, survivor_events, sizeof(survivor_events)) != 0
+	    || tape.draw_position != 2U || energy != 0.0
+	    || state.route != YT_PROJECTILE_PLASMA_PLANET_FOOTER
+	    || state.destroyed || state.stale_ore != 0.0f
+	    || state.original_productivity != 60.0f
+	    || state.remaining_productivity != 59.71875f
+	    || state.original_ground != 11.75f || state.remaining_ground != 11.0f
+	    || memcmp(state.production, expected_production,
+	    sizeof(expected_production)) != 0
+	    || memcmp(state.stock, expected_stock, sizeof(expected_stock)) != 0
+	    || tape.output_count != 3U || tape.news_count != 3U
+	    || tape.sound_count != 1U || tape.selectors[0] != 2.0f
+	    || tape.output_kind[0] != YT_PROJECTILE_PLASMA_PLANET_HIT_ROW
+	    || tape.output_kind[1] !=
+	    YT_PROJECTILE_PLASMA_PLANET_PRODUCTIVITY_ROW
+	    || tape.output_kind[2] != YT_PROJECTILE_PLASMA_PLANET_GROUND_ROW
+	    || tape.output_length[0] != sizeof(hit_row) - 1U
+	    || memcmp(tape.output[0], hit_row, sizeof(hit_row) - 1U) != 0
+	    || tape.news_length[0] != sizeof(hit_news) - 1U
+	    || memcmp(tape.news[0], hit_news, sizeof(hit_news) - 1U) != 0
+	    || tape.output_length[1] != sizeof(productivity_row) - 1U
+	    || memcmp(tape.output[1], productivity_row,
+	    sizeof(productivity_row) - 1U) != 0
+	    || tape.news_length[1] != sizeof(productivity_row) - 1U
+	    || memcmp(tape.news[1], productivity_row,
+	    sizeof(productivity_row) - 1U) != 0
+	    || tape.output_length[2] != sizeof(ground_row) - 1U
+	    || memcmp(tape.output[2], ground_row, sizeof(ground_row) - 1U) != 0
+	    || tape.news_length[2] != sizeof(ground_row) - 1U
+	    || memcmp(tape.news[2], ground_row, sizeof(ground_row) - 1U) != 0
+	    || tape.planet_reads != 2U || tape.planet_writes != 1U)
+		return false;
+	expected_planet = tape.planet_source[1].record;
+	for (index = 0U; index < 3U; ++index) {
+		if (!yt_record_set_number(&expected_planet,
+		    YT_F45 + index * 4U, expected_production[index])
+		    || !yt_record_set_number(&expected_planet,
+		    YT_F57 + index * 4U, expected_stock[index]))
+			return false;
+	}
+	if (!yt_record_set_number(&expected_planet, YT_F77, 11.0f)
+	    || memcmp(&tape.planet_write[0].record, &expected_planet,
+	    sizeof(expected_planet)) != 0)
+		return false;
+
+	if (!plasma_planet_fixture(&tape, &state, &energy)
+	    || !yt_projectile_plasma_planet_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != YT_ARRAY_LEN(destroy_events)
+	    || memcmp(tape.events, destroy_events, sizeof(destroy_events)) != 0
+	    || tape.draw_position != 1U || energy != 87500.0
+	    || !state.destroyed
+	    || state.route != YT_PROJECTILE_PLASMA_PLANET_NEXT_HOP
+	    || state.remaining_ground != 1.0f
+	    || tape.planet_reads != 3U || tape.planet_writes != 2U
+	    || tape.output_count != 3U || tape.news_count != 3U
+	    || tape.sound_count != 2U || tape.selectors[0] != 2.0f
+	    || tape.selectors[1] != 3.0f
+	    || tape.output_kind[2] !=
+	    YT_PROJECTILE_PLASMA_PLANET_DESTROYED_ROW
+	    || tape.output_length[2] != sizeof(destroyed_row) - 1U
+	    || memcmp(tape.output[2], destroyed_row,
+	    sizeof(destroyed_row) - 1U) != 0
+	    || tape.news_length[2] != sizeof(destroyed_row) - 1U
+	    || memcmp(tape.news[2], destroyed_row,
+	    sizeof(destroyed_row) - 1U) != 0)
+		return false;
+	expected_planet = tape.planet_source[1].record;
+	for (index = 0U; index < 3U; ++index) {
+		if (!yt_record_set_number(&expected_planet,
+		    YT_F45 + index * 4U, 0.0f)
+		    || !yt_record_set_number(&expected_planet,
+		    YT_F57 + index * 4U, 0.0f))
+			return false;
+	}
+	if (!yt_record_set_number(&expected_planet, YT_F77, 1.0f)
+	    || memcmp(&tape.planet_write[0].record, &expected_planet,
+	    sizeof(expected_planet)) != 0)
+		return false;
+	expected_planet = tape.planet_source[2].record;
+	if (!yt_record_set_number(&expected_planet, YT_F85, 0.0f)
+	    || memcmp(&tape.planet_write[1].record, &expected_planet,
+	    sizeof(expected_planet)) != 0
+	    || memcmp(tape.planet_write[1].record.bytes + YT_F85,
+	    "\0\0\0\0", 4U) != 0)
+		return false;
+	expected_sector = tape.sector_source.record;
+	if (!yt_record_set_number(&expected_sector, YT_F93, 0.0f)
+	    || memcmp(&tape.sector_write.record, &expected_sector,
+	    sizeof(expected_sector)) != 0
+	    || memcmp(tape.sector_write.record.bytes + YT_F93,
+	    "\0\0\0\0", 4U) != 0)
+		return false;
+
+	/* The loop must use updater-return P(1), even when the loaded row is zero. */
+	if (!plasma_planet_fixture(&tape, &state, &energy))
+		return false;
+	{
+		static const float zero[3] = {0.0f, 0.0f, 0.0f};
+
+		if (!plasma_planet_source(&tape.planet_source[0], 0x11,
+		    (const uint8_t *)"P\0Q", 3U, zero, zero, 0.0f, 7.0f))
+			return false;
+	}
+	tape.stale_ore = 3.0f;
+	tape.draws[0] = 0.625f;
+	tape.draw_count = 1U;
+	energy = 15625.0;
+	if (!yt_projectile_plasma_planet_run(&state, &ops, &tape, NULL)
+	    || tape.draw_position != 1U || state.stale_ore != 3.0f
+	    || energy != 0.0
+	    || state.route != YT_PROJECTILE_PLASMA_PLANET_FOOTER)
+		return false;
+
+	/* Conversely, fresh P(1) alone cannot admit the loop when stale P(1) is zero. */
+	if (!plasma_planet_fixture(&tape, &state, &energy))
+		return false;
+	{
+		static const float first_only[3] = {1.0f, 0.0f, 0.0f};
+		static const float zero[3] = {0.0f, 0.0f, 0.0f};
+
+		if (!plasma_planet_source(&tape.planet_source[0], 0x11,
+		    (const uint8_t *)"P\0Q", 3U, first_only, zero, 2.0f, 7.0f))
+			return false;
+	}
+	energy = 1000.0;
+	if (!yt_projectile_plasma_planet_run(&state, &ops, &tape, NULL)
+	    || tape.draw_position != 0U || energy != 1000.0
+	    || state.production[0] != 1.0f || state.remaining_ground != 2.0f
+	    || state.destroyed
+	    || state.route != YT_PROJECTILE_PLASMA_PLANET_NEXT_HOP)
+		return false;
+
+	for (failure = 1U; failure <= YT_ARRAY_LEN(destroy_events); ++failure) {
+		if (!plasma_planet_fixture(&tape, &state, &energy))
+			return false;
+		tape.fail_at = failure;
+		if (yt_projectile_plasma_planet_run(&state, &ops, &tape, NULL)
+		    || tape.event_count != failure
+		    || memcmp(tape.events, destroy_events,
+		    failure * sizeof(destroy_events[0])) != 0)
+			return false;
+	}
+	if (!plasma_planet_fixture(&tape, &state, &energy))
+		return false;
+	state.attacker = NULL;
+	return !yt_projectile_plasma_planet_run(NULL, &ops, &tape, NULL)
+	    && !yt_projectile_plasma_planet_run(&state, NULL, &tape, NULL)
+	    && !yt_projectile_plasma_planet_run(&state, &ops, &tape, NULL);
+}
+
 enum projectile_defense_front_event {
 	PROJECTILE_DEFENSE_OWNER = 1,
 	PROJECTILE_DEFENSE_FRIENDSHIP,
@@ -13595,6 +14075,8 @@ main(void)
 		return fail("projectile plasma-player transaction differs");
 	if (!check_projectile_plasma_killed_transaction())
 		return fail("projectile plasma-killed transaction differs");
+	if (!check_projectile_plasma_planet_transaction())
+		return fail("projectile plasma-planet transaction differs");
 	if (!check_projectile_defense_front_transaction())
 		return fail("projectile defense-front transaction differs");
 	if (!check_projectile_defense_combat_transaction())

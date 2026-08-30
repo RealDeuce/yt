@@ -632,6 +632,61 @@ bool yt_projectile_plasma_killed_run(
     const struct yt_projectile_plasma_killed_ops *ops, void *context,
     struct yt_error *error);
 
+enum yt_projectile_plasma_planet_route {
+	YT_PROJECTILE_PLASMA_PLANET_NEXT_HOP,
+	YT_PROJECTILE_PLASMA_PLANET_FOOTER,
+};
+enum yt_projectile_plasma_planet_output_kind {
+	YT_PROJECTILE_PLASMA_PLANET_HIT_ROW,
+	YT_PROJECTILE_PLASMA_PLANET_PRODUCTIVITY_ROW,
+	YT_PROJECTILE_PLASMA_PLANET_DESTROYED_ROW,
+	YT_PROJECTILE_PLASMA_PLANET_GROUND_ROW,
+};
+struct yt_projectile_plasma_planet_state {
+	int planet;
+	int sector;
+	const uint8_t *attacker;
+	size_t attacker_length;
+	double *energy;
+	float stale_ore;
+	float production[3];
+	float stock[3];
+	float original_productivity;
+	float remaining_productivity;
+	float original_ground;
+	float remaining_ground;
+	bool destroyed;
+	struct yt_planet persistence;
+	struct yt_planet destruction;
+	struct yt_sector unlink;
+	enum yt_projectile_plasma_planet_route route;
+};
+typedef bool (*yt_projectile_plasma_planet_update_fn)(void *context,
+    int planet, float *stale_ore, struct yt_error *error);
+typedef bool (*yt_projectile_plasma_planet_read_fn)(void *context,
+    int planet, struct yt_planet *value, struct yt_error *error);
+typedef bool (*yt_projectile_plasma_planet_write_fn)(void *context,
+    int planet, const struct yt_planet *value, struct yt_error *error);
+typedef bool (*yt_projectile_plasma_planet_present_fn)(void *context,
+    const uint8_t *text, size_t length,
+    enum yt_projectile_plasma_planet_output_kind kind,
+    struct yt_error *error);
+struct yt_projectile_plasma_planet_ops {
+	yt_projectile_plasma_planet_update_fn update;
+	yt_projectile_plasma_planet_read_fn read_planet;
+	yt_projectile_plasma_planet_write_fn write_planet;
+	yt_projectile_plasma_killed_read_sector_fn read_sector;
+	yt_projectile_plasma_killed_write_sector_fn write_sector;
+	yt_projectile_plasma_planet_present_fn present;
+	yt_projectile_plasma_fighter_news_fn news;
+	yt_projectile_plasma_fighter_sound_fn sound;
+	yt_projectile_plasma_fighter_random_fn random;
+};
+bool yt_projectile_plasma_planet_run(
+    struct yt_projectile_plasma_planet_state *state,
+    const struct yt_projectile_plasma_planet_ops *ops, void *context,
+    struct yt_error *error);
+
 enum yt_projectile_defense_front_route {
 	YT_PROJECTILE_DEFENSE_NO_DEFENSE,
 	YT_PROJECTILE_DEFENSE_FRIENDLY,
