@@ -1418,7 +1418,10 @@ test_formatting_wrappers(void)
 	struct yt_present_result result;
 	uint8_t mutable[16] = {'a', 'b'};
 	size_t mutable_length = 2;
+	static const uint8_t binary_three[] = {'A', 0, 'C'};
+	uint8_t exact_limit[78];
 	uint8_t overlong[79];
+	uint8_t over_capacity[YT_PRESENT_EVENT_DATA + 1U];
 
 	CHECK(yt_present_right_aligned((const uint8_t *)"abcd", 4, 2.5f,
 	    &current, &result) == YT_PRESENT_OK);
@@ -1457,14 +1460,30 @@ test_formatting_wrappers(void)
 	CHECK(result.remote_length == 42);
 	CHECK(result.remote[38] == ' ' && result.remote[39] == 'A');
 	CHECK(result.remote[40] == '\r' && result.remote[41] == '\n');
+	CHECK(yt_present_centered_line(binary_three, sizeof(binary_three),
+	    &current, &result) == YT_PRESENT_OK);
+	CHECK(result.remote_length == 43U
+	    && memcmp(result.remote + 38U, binary_three,
+	    sizeof(binary_three)) == 0
+	    && result.remote[41] == '\r' && result.remote[42] == '\n');
 	CHECK(yt_present_centered_line(NULL, 0, &current, &result)
 	    == YT_PRESENT_OK);
 	CHECK(result.remote_length == 2
 	    && memcmp(result.remote, "\r\n", 2) == 0);
+	memset(exact_limit, 'Y', sizeof(exact_limit));
+	CHECK(yt_present_centered_line(exact_limit, sizeof(exact_limit),
+	    &current, &result) == YT_PRESENT_OK);
+	CHECK(result.remote_length == sizeof(exact_limit) + 2U
+	    && memcmp(result.remote, exact_limit, sizeof(exact_limit)) == 0);
 	memset(overlong, 'Z', sizeof(overlong));
 	CHECK(yt_present_centered_line(overlong, sizeof(overlong),
 	    &current, &result) == YT_PRESENT_OK);
-	CHECK(result.remote_length == sizeof(overlong) + 2U);
+	CHECK(result.remote_length == sizeof(overlong) + 2U
+	    && memcmp(result.remote, overlong, sizeof(overlong)) == 0);
+	memset(over_capacity, 'Q', sizeof(over_capacity));
+	CHECK(yt_present_centered_line(over_capacity, sizeof(over_capacity),
+	    &current, &result) == YT_PRESENT_CAPACITY);
+	CHECK(result.event_count == 0U && result.remote_length == 0U);
 }
 
 static void
