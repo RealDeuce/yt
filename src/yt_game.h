@@ -31,6 +31,45 @@ struct yt_player {
 	float mines;
 };
 
+struct yt_startup_configuration_state {
+	struct yt_config *config;
+	float local_mode;
+	float cache_guard;
+	float *sector_cache;
+	float *cloak_cache;
+	size_t cache_count;
+	float black_hole[2];
+	size_t scoreboard_path_length;
+};
+
+typedef bool (*yt_startup_configuration_open_fn)(void *context,
+	struct yt_error *error);
+typedef bool (*yt_startup_configuration_load_fn)(void *context,
+	struct yt_config *config, struct yt_error *error);
+typedef bool (*yt_startup_configuration_store_fn)(void *context,
+	const struct yt_config *config, struct yt_error *error);
+typedef bool (*yt_startup_configuration_read_player_fn)(void *context,
+	int basic_record, struct yt_player *player, struct yt_error *error);
+typedef bool (*yt_startup_configuration_write_player_fn)(void *context,
+	int basic_record, const struct yt_player *player,
+	struct yt_error *error);
+typedef bool (*yt_startup_configuration_random_fn)(void *context,
+	float *value, struct yt_error *error);
+
+struct yt_startup_configuration_ops {
+	yt_startup_configuration_open_fn open_data;
+	yt_startup_configuration_load_fn load_config;
+	yt_startup_configuration_store_fn store_config;
+	yt_startup_configuration_read_player_fn read_player;
+	yt_startup_configuration_write_player_fn write_player;
+	yt_startup_configuration_random_fn random;
+};
+
+bool yt_startup_configuration_run(
+	struct yt_startup_configuration_state *state,
+	const struct yt_startup_configuration_ops *ops, void *context,
+	struct yt_error *error);
+
 struct yt_sector {
 	struct yt_record record;
 	float warps[6];

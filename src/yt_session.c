@@ -34,6 +34,7 @@ struct yt_session {
 	float cloak_cache[YT_PLAYER_LAST + 1];
 	float black_hole[2];
 	float market_base[3];
+	float startup_cache_guard;
 	char queue[YT_COMMAND_SIZE];
 	size_t queue_length;
 	size_t queue_position;
@@ -319,12 +320,6 @@ double_div(double left, double right)
 {
 	volatile double result = left / right;
 	return result;
-}
-
-static int
-player_count(const struct yt_session *session)
-{
-	return (int)session->door->game.config.sector_offset - 1;
 }
 
 static int
@@ -1261,60 +1256,97 @@ session_a8d2(struct yt_session *session, const uint8_t *prompt,
 }
 
 static bool
+startup_configuration_open(void *context, struct yt_error *error)
+{
+	struct yt_session *session = context;
+	bool opened = yt_database_open(&session->door->game.database,
+	    "YTDATA.DAT", YT_OPEN_UPDATE, error);
+
+	if (opened)
+		session->door->game_open = true;
+	return opened;
+}
+
+static bool
+startup_configuration_load(void *context, struct yt_config *config,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_config_load(&session->door->game.database, config, error);
+}
+
+static bool
+startup_configuration_store(void *context, const struct yt_config *config,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_database_write(&session->door->game.database, 1U,
+	    &config->record, error)
+	    && yt_database_flush(&session->door->game.database, error);
+}
+
+static bool
+startup_configuration_read_player(void *context, int basic,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_read_player(&session->door->game, basic, player, error);
+}
+
+static bool
+startup_configuration_write_player(void *context, int basic,
+    const struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_database_write(&session->door->game.database, (size_t)basic,
+	    &player->record, error)
+	    && yt_database_flush(&session->door->game.database, error);
+}
+
+static bool
+startup_configuration_random(void *context, float *value,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_random_next(&session->door->game.random, value, error);
+}
+
+static bool
 load_configuration(struct yt_session *session, struct yt_error *error)
 {
+	static const struct yt_startup_configuration_ops ops = {
+		startup_configuration_open,
+		startup_configuration_load,
+		startup_configuration_store,
+		startup_configuration_read_player,
+		startup_configuration_write_player,
+		startup_configuration_random,
+	};
 	struct yt_game *game = &session->door->game;
-	int basic;
+	struct yt_startup_configuration_state state;
+	bool ok;
 
 	memset(game, 0, sizeof(*game));
 	yt_random_init(&game->random);
-	if (!yt_random_market_bases(&game->random, session->market_base, error))
-		return false;
-	if (!yt_database_open(&game->database, "YTDATA.DAT", YT_OPEN_UPDATE,
-	    error) || !yt_config_load(&game->database, &game->config, error)) {
-		yt_database_close(&game->database);
-		return false;
-	}
-	session->door->game_open = true;
-	if (game->config.headquarters == 0.0f) {
-		game->config.headquarters = 85.0f;
-		if (!yt_config_store(&game->database, &game->config, error))
-			return false;
-	}
-	yt_config_normalize_game(&game->config, session->door->identity.local);
-	if (player_count(session) > YT_DEFAULT_PLAYER_COUNT
-	    || player_count(session) < 1) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			snprintf(error->operation, sizeof(error->operation),
-			    "player cache size");
-		}
-		return false;
-	}
-	for (basic = YT_PLAYER_FIRST;
-	    basic <= (int)game->config.sector_offset; ++basic) {
-		struct yt_player player;
-
-		if (!yt_game_read_player(game, basic, &player, error))
-			return false;
-		session->sector_cache[basic] = player.sector;
-		if (player.cloak < 0.0f || player.cloak > 1.0f) {
-			player.cloak = 1.0f;
-			if (!yt_game_write_player(game, basic, &player, error))
-				return false;
-		}
-		session->cloak_cache[basic] = player.cloak;
-	}
-	for (basic = 0; basic < 2; ++basic) {
-		float random_value;
-		float span = (float)(sector_count(session) - 2);
-
-		if (!yt_random_next(&game->random, &random_value, error))
-			return false;
-		session->black_hole[basic] =
-		    floorf(single_mul(random_value, span)) + 2.0f;
-	}
-	return yt_database_flush(&game->database, error);
+	memset(&state, 0, sizeof(state));
+	state.config = &game->config;
+	state.local_mode = session->door->identity.local ? -1.0f : 0.0f;
+	state.cache_guard = session->startup_cache_guard;
+	state.sector_cache = session->sector_cache;
+	state.cloak_cache = session->cloak_cache;
+	state.cache_count = YT_ARRAY_LEN(session->sector_cache);
+	state.black_hole[0] = session->black_hole[0];
+	state.black_hole[1] = session->black_hole[1];
+	ok = yt_startup_configuration_run(&state, &ops, session, error);
+	session->startup_cache_guard = state.cache_guard;
+	session->black_hole[0] = state.black_hole[0];
+	session->black_hole[1] = state.black_hole[1];
+	return ok;
 }
 
 struct registration_context {
@@ -16646,6 +16678,7 @@ yt_session_run(struct yt_door *door, const char *executable_path,
     struct yt_error *error)
 {
 	struct yt_session session;
+	struct yt_random launch_random;
 	char first[128];
 	char last[128];
 
@@ -16668,6 +16701,9 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	    door->identity.local ? -1.0f : 0.0f;
 	session.presentation.foreground = 7.0f;
 	session.pager.foreground = 7;
+	yt_random_init(&launch_random);
+	if (!yt_random_market_bases(&launch_random, session.market_base, error))
+		return false;
 	{
 		float requested = single_add(single_add(
 		    floorf((float)yt_platform_timer()),

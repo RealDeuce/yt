@@ -27,6 +27,367 @@ fail(const char *message)
 	return EXIT_FAILURE;
 }
 
+enum startup_configuration_event {
+	STARTUP_CONFIGURATION_OPEN = 1,
+	STARTUP_CONFIGURATION_LOAD,
+	STARTUP_CONFIGURATION_STORE_CONFIG,
+	STARTUP_CONFIGURATION_READ_PLAYER,
+	STARTUP_CONFIGURATION_WRITE_PLAYER,
+	STARTUP_CONFIGURATION_RANDOM,
+};
+
+struct startup_configuration_tape {
+	int events[16];
+	int records[16];
+	size_t event_count;
+	size_t fail_at;
+	struct yt_record config_source;
+	struct yt_record player_source[8];
+	struct yt_config config_write;
+	struct yt_player player_write[8];
+	bool wrote_config;
+	bool wrote_player[8];
+	float draws[2];
+	size_t draw_position;
+};
+
+static bool
+startup_configuration_step(struct startup_configuration_tape *tape,
+    enum startup_configuration_event event, int record)
+{
+	if (tape->event_count >= YT_ARRAY_LEN(tape->events))
+		return false;
+	tape->events[tape->event_count] = (int)event;
+	tape->records[tape->event_count] = record;
+	++tape->event_count;
+	return tape->event_count != tape->fail_at;
+}
+
+static bool
+startup_configuration_open_test(void *context, struct yt_error *error)
+{
+	(void)error;
+	return startup_configuration_step(context, STARTUP_CONFIGURATION_OPEN,
+	    0);
+}
+
+static bool
+startup_configuration_load_test(void *context, struct yt_config *config,
+    struct yt_error *error)
+{
+	struct startup_configuration_tape *tape = context;
+
+	if (!startup_configuration_step(tape, STARTUP_CONFIGURATION_LOAD, 1))
+		return false;
+	return yt_config_decode(config, &tape->config_source, error);
+}
+
+static bool
+startup_configuration_store_test(void *context,
+    const struct yt_config *config, struct yt_error *error)
+{
+	struct startup_configuration_tape *tape = context;
+
+	(void)error;
+	if (!startup_configuration_step(tape,
+	    STARTUP_CONFIGURATION_STORE_CONFIG, 1))
+		return false;
+	tape->config_write = *config;
+	tape->wrote_config = true;
+	return true;
+}
+
+static bool
+startup_configuration_read_test(void *context, int basic,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct startup_configuration_tape *tape = context;
+
+	(void)error;
+	if (!startup_configuration_step(tape,
+	    STARTUP_CONFIGURATION_READ_PLAYER, basic))
+		return false;
+	if (basic < 0 || (size_t)basic >= YT_ARRAY_LEN(tape->player_source))
+		return false;
+	yt_player_decode(player, &tape->player_source[basic]);
+	return true;
+}
+
+static bool
+startup_configuration_write_test(void *context, int basic,
+    const struct yt_player *player, struct yt_error *error)
+{
+	struct startup_configuration_tape *tape = context;
+
+	(void)error;
+	if (!startup_configuration_step(tape,
+	    STARTUP_CONFIGURATION_WRITE_PLAYER, basic))
+		return false;
+	if (basic < 0 || (size_t)basic >= YT_ARRAY_LEN(tape->player_write))
+		return false;
+	tape->player_write[basic] = *player;
+	tape->wrote_player[basic] = true;
+	return true;
+}
+
+static bool
+startup_configuration_random_test(void *context, float *value,
+    struct yt_error *error)
+{
+	struct startup_configuration_tape *tape = context;
+
+	(void)error;
+	if (!startup_configuration_step(tape, STARTUP_CONFIGURATION_RANDOM, 0))
+		return false;
+	if (tape->draw_position >= YT_ARRAY_LEN(tape->draws))
+		return false;
+	*value = tape->draws[tape->draw_position++];
+	return true;
+}
+
+static bool
+startup_configuration_fixture(struct startup_configuration_tape *tape,
+    struct yt_startup_configuration_state *state, struct yt_config *config,
+    float sector_cache[8], float cloak_cache[8])
+{
+	size_t index;
+
+	memset(tape, 0, sizeof(*tape));
+	memset(state, 0, sizeof(*state));
+	memset(config, 0, sizeof(*config));
+	for (index = 0U; index < 8U; ++index) {
+		sector_cache[index] = -100.0f - (float)index;
+		cloak_cache[index] = -200.0f - (float)index;
+	}
+	tape->fail_at = SIZE_MAX;
+	memset(tape->config_source.bytes, 0x5a,
+	    sizeof(tape->config_source.bytes));
+	memcpy(tape->config_source.bytes, "ab{", 3U);
+	if (!yt_record_set_number(&tape->config_source, YT_F41, 3.0f)
+	    || !yt_record_set_number(&tape->config_source, YT_F45, 26.0f)
+	    || !yt_record_set_number(&tape->config_source, YT_F49, 99.0f)
+	    || !yt_record_set_number(&tape->config_source, YT_F53, 4.5f)
+	    || !yt_record_set_number(&tape->config_source, YT_F57, 10.75f)
+	    || !yt_record_set_number(&tape->config_source, YT_F61, 20.0f)
+	    || !yt_record_set_number(&tape->config_source, YT_F85, -0.5f)
+	    || !yt_record_set_number(&tape->config_source, YT_F93, 99.0f)
+	    || !yt_record_set_number(&tape->config_source, YT_F101, -0.25f)
+	    || !yt_record_set_number(&tape->config_source, YT_F105, 19.0f)
+	    || !yt_record_set_number(&tape->config_source, YT_F117, 0.0f)
+	    || !yt_record_set_number(&tape->config_source, YT_F121, 1001.0f)
+	    || !yt_record_set_number(&tape->config_source, YT_F129, 0.0f))
+		return false;
+	for (index = 2U; index <= 4U; ++index) {
+		memset(tape->player_source[index].bytes, (int)(0x20U + index),
+		    sizeof(tape->player_source[index].bytes));
+		if (!yt_record_set_number(&tape->player_source[index], YT_F57,
+		    (float)(index * 10U)))
+			return false;
+	}
+	if (!yt_record_set_number(&tape->player_source[2], YT_F125, -0.25f)
+	    || !yt_record_set_number(&tape->player_source[3], YT_F125, 0.5f)
+	    || !yt_record_set_number(&tape->player_source[4], YT_F125, 1.25f))
+		return false;
+	tape->draws[0] = 0.25f;
+	tape->draws[1] = 0.75f;
+	state->config = config;
+	state->local_mode = 0.5f;
+	state->sector_cache = sector_cache;
+	state->cloak_cache = cloak_cache;
+	state->cache_count = 8U;
+	return true;
+}
+
+static bool
+check_startup_configuration_transaction(void)
+{
+	static const struct yt_startup_configuration_ops ops = {
+		startup_configuration_open_test,
+		startup_configuration_load_test,
+		startup_configuration_store_test,
+		startup_configuration_read_test,
+		startup_configuration_write_test,
+		startup_configuration_random_test,
+	};
+	static const int events[] = {
+		STARTUP_CONFIGURATION_OPEN,
+		STARTUP_CONFIGURATION_LOAD,
+		STARTUP_CONFIGURATION_STORE_CONFIG,
+		STARTUP_CONFIGURATION_READ_PLAYER,
+		STARTUP_CONFIGURATION_WRITE_PLAYER,
+		STARTUP_CONFIGURATION_READ_PLAYER,
+		STARTUP_CONFIGURATION_READ_PLAYER,
+		STARTUP_CONFIGURATION_WRITE_PLAYER,
+		STARTUP_CONFIGURATION_RANDOM,
+		STARTUP_CONFIGURATION_RANDOM,
+	};
+	static const int records[] = {0, 1, 1, 2, 2, 3, 4, 4, 0, 0};
+	struct startup_configuration_tape tape;
+	struct yt_startup_configuration_state state;
+	struct yt_config config;
+	struct yt_record expected;
+	struct yt_error error;
+	float sector_cache[8];
+	float cloak_cache[8];
+	size_t failure;
+
+	if (!startup_configuration_fixture(&tape, &state, &config,
+	    sector_cache, cloak_cache)
+	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != YT_ARRAY_LEN(events)
+	    || memcmp(tape.events, events, sizeof(events)) != 0
+	    || memcmp(tape.records, records, sizeof(records)) != 0
+	    || state.scoreboard_path_length != 3U
+	    || memcmp(config.scoreboard, "AB[", 3U) != 0
+	    || config.scoreboard[3] != '\0'
+	    || config.headquarters != 85.0f || config.genesis_ports != 200.0f
+	    || config.local_screen != -1.0f || config.lottery_plays != 3.0f
+	    || config.maximum_planets != 100.0f
+	    || config.maximum_holds != 1000.0f
+	    || config.turns_per_day != 500.0f || state.cache_guard != 1.0f
+	    || sector_cache[2] != 20.0f || sector_cache[3] != 30.0f
+	    || sector_cache[4] != 40.0f || sector_cache[1] != -101.0f
+	    || cloak_cache[2] != 1.0f || cloak_cache[3] != 0.5f
+	    || cloak_cache[4] != 1.0f || cloak_cache[1] != -201.0f
+	    || state.black_hole[0] != 3.0f || state.black_hole[1] != 5.0f
+	    || tape.draw_position != 2U || !tape.wrote_config
+	    || !tape.wrote_player[2] || tape.wrote_player[3]
+	    || !tape.wrote_player[4])
+		return false;
+	expected = tape.config_source;
+	if (!yt_record_set_number(&expected, YT_F117, 85.0f)
+	    || memcmp(&tape.config_write.record, &expected, sizeof(expected)) != 0)
+		return false;
+	expected = tape.player_source[2];
+	if (!yt_record_set_number(&expected, YT_F125, 1.0f)
+	    || memcmp(&tape.player_write[2].record, &expected,
+	    sizeof(expected)) != 0)
+		return false;
+	expected = tape.player_source[4];
+	if (!yt_record_set_number(&expected, YT_F125, 1.0f)
+	    || memcmp(&tape.player_write[4].record, &expected,
+	    sizeof(expected)) != 0)
+		return false;
+
+	/* A failed Headquarters PUT retains FIELD bytes but not the later global. */
+	if (!startup_configuration_fixture(&tape, &state, &config,
+	    sector_cache, cloak_cache))
+		return false;
+	tape.fail_at = 3U;
+	if (yt_startup_configuration_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != 3U || config.headquarters != 0.0f
+	    || yt_record_get_number(&config.record, YT_F117) != 85.0f)
+		return false;
+
+	/* A nonzero one-shot guard skips all player I/O but not either draw. */
+	if (!startup_configuration_fixture(&tape, &state, &config,
+	    sector_cache, cloak_cache))
+		return false;
+	state.cache_guard = -0.25f;
+	if (!yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
+	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != 4U
+	    || tape.events[0] != STARTUP_CONFIGURATION_OPEN
+	    || tape.events[1] != STARTUP_CONFIGURATION_LOAD
+	    || tape.events[2] != STARTUP_CONFIGURATION_RANDOM
+	    || tape.events[3] != STARTUP_CONFIGURATION_RANDOM
+	    || state.cache_guard != -0.25f || tape.draw_position != 2U)
+		return false;
+
+	/* Descriptor length, not an embedded NUL byte, controls path emptiness. */
+	if (!startup_configuration_fixture(&tape, &state, &config,
+	    sector_cache, cloak_cache))
+		return false;
+	state.cache_guard = 1.0f;
+	tape.config_source.bytes[0] = 'a';
+	tape.config_source.bytes[1] = 0U;
+	tape.config_source.bytes[2] = 'b';
+	if (!yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
+	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
+	    || state.scoreboard_path_length != 3U
+	    || config.scoreboard[0] != 'A' || config.scoreboard[1] != 0
+	    || config.scoreboard[2] != 'B')
+		return false;
+
+	/* A genuinely empty descriptor receives the lowercase compiled default. */
+	if (!startup_configuration_fixture(&tape, &state, &config,
+	    sector_cache, cloak_cache))
+		return false;
+	state.cache_guard = 1.0f;
+	if (!yt_record_set_number(&tape.config_source, YT_F41, 0.0f)
+	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
+	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
+	    || state.scoreboard_path_length != 11U
+	    || memcmp(config.scoreboard, "ytscore.asc", 12U) != 0)
+		return false;
+
+	/* The initial FOR test admits no GET when the raw terminal is below two. */
+	if (!startup_configuration_fixture(&tape, &state, &config,
+	    sector_cache, cloak_cache))
+		return false;
+	if (!yt_record_set_number(&tape.config_source, YT_F53, 1.75f)
+	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
+	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != 4U || state.cache_guard != 1.0f
+	    || tape.draw_position != 2U)
+		return false;
+
+	/* LEFT$ clamps a positive count to its 41-byte FIELD source. */
+	if (!startup_configuration_fixture(&tape, &state, &config,
+	    sector_cache, cloak_cache))
+		return false;
+	state.cache_guard = 1.0f;
+	if (!yt_record_set_number(&tape.config_source, YT_F41, 45.0f)
+	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
+	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
+	    || state.scoreboard_path_length != YT_TEXT_FIELD_SIZE)
+		return false;
+
+	/* CINT overflow stops after earlier HQ/Genesis/path mutations. */
+	if (!startup_configuration_fixture(&tape, &state, &config,
+	    sector_cache, cloak_cache))
+		return false;
+	state.local_mode = 40000.0f;
+	yt_error_clear(&error);
+	if (yt_startup_configuration_run(&state, &ops, &tape, &error)
+	    || error.status != YT_RANGE
+	    || strcmp(error.operation, "startup local-mode CINT") != 0
+	    || tape.event_count != 3U || !tape.wrote_config
+	    || config.headquarters != 85.0f || config.genesis_ports != 200.0f
+	    || config.lottery_plays != -0.25f || tape.draw_position != 0U)
+		return false;
+
+	for (failure = 1U; failure <= YT_ARRAY_LEN(events); ++failure) {
+		if (!startup_configuration_fixture(&tape, &state, &config,
+		    sector_cache, cloak_cache))
+			return false;
+		tape.fail_at = failure;
+		if (yt_startup_configuration_run(&state, &ops, &tape, NULL)
+		    || tape.event_count != failure
+		    || memcmp(tape.events, events,
+		    failure * sizeof(events[0])) != 0)
+			return false;
+	}
+	if (!startup_configuration_fixture(&tape, &state, &config,
+	    sector_cache, cloak_cache))
+		return false;
+	tape.fail_at = 5U;
+	if (yt_startup_configuration_run(&state, &ops, &tape, NULL)
+	    || sector_cache[2] != 20.0f || cloak_cache[2] != 1.0f
+	    || state.cache_guard != 0.0f || tape.draw_position != 0U)
+		return false;
+	if (!startup_configuration_fixture(&tape, &state, &config,
+	    sector_cache, cloak_cache))
+		return false;
+	tape.fail_at = 10U;
+	if (yt_startup_configuration_run(&state, &ops, &tape, NULL)
+	    || state.cache_guard != 1.0f || state.black_hole[0] != 3.0f
+	    || state.black_hole[1] != 0.0f || tape.draw_position != 1U)
+		return false;
+	return !yt_startup_configuration_run(NULL, &ops, &tape, NULL)
+	    && !yt_startup_configuration_run(&state, NULL, &tape, NULL);
+}
+
 struct hydration_tape {
 	struct yt_player fresh;
 	int requested_record;
@@ -14101,6 +14462,8 @@ main(void)
 
 	if (!check_formatter_boundaries())
 		return fail("PRINT USING boundary formatting differs");
+	if (!check_startup_configuration_transaction())
+		return fail("startup configuration transaction differs");
 	if (!check_current_player_cache_model())
 		return fail("current-player cache model differs");
 	if (!check_friendship_model())

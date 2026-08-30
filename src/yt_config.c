@@ -14,7 +14,7 @@ yt_config_decode(struct yt_config *config, const struct yt_record *record,
 	config->record = *record;
 	config->scoreboard_length = yt_record_get_number(record, YT_F41);
 	stored_length = (int)qb_cint(config->scoreboard_length, &overflow);
-	if (overflow || stored_length < 0 || stored_length > 41) {
+	if (overflow || stored_length < 0) {
 		if (error != NULL) {
 			error->status = YT_RANGE;
 			snprintf(error->operation, sizeof(error->operation),
@@ -22,6 +22,8 @@ yt_config_decode(struct yt_config *config, const struct yt_record *record,
 		}
 		return false;
 	}
+	if (stored_length > 41)
+		stored_length = 41;
 	memcpy(config->scoreboard, record->bytes, (size_t)stored_length);
 	config->scoreboard[stored_length] = '\0';
 	config->epoch_year = yt_record_get_number(record, YT_F45);

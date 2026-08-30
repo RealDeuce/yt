@@ -7,6 +7,156 @@
 #include <stdio.h>
 #include <string.h>
 
+static bool
+startup_configuration_error(struct yt_error *error, enum yt_status status,
+    const char *operation)
+{
+	if (error != NULL) {
+		error->status = status;
+		error->system_error = 0;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    operation);
+		error->path[0] = '\0';
+	}
+	return false;
+}
+
+static float
+startup_single_subtract(float left, float right)
+{
+	volatile float result = left - right;
+
+	return result;
+}
+
+static float
+startup_single_multiply(float left, float right)
+{
+	volatile float result = left * right;
+
+	return result;
+}
+
+static float
+startup_single_add(float left, float right)
+{
+	volatile float result = left + right;
+
+	return result;
+}
+
+bool
+yt_startup_configuration_run(struct yt_startup_configuration_state *state,
+    const struct yt_startup_configuration_ops *ops, void *context,
+    struct yt_error *error)
+{
+	struct yt_config *config;
+	bool overflow;
+	int32_t path_count;
+	int32_t local_mode;
+	float counter;
+	size_t index;
+
+	if (state == NULL || ops == NULL || state->config == NULL
+	    || state->sector_cache == NULL || state->cloak_cache == NULL
+	    || state->cache_count == 0U || ops->open_data == NULL
+	    || ops->load_config == NULL || ops->store_config == NULL
+	    || ops->read_player == NULL || ops->write_player == NULL
+	    || ops->random == NULL)
+		return false;
+	config = state->config;
+	if (!ops->open_data(context, error)
+	    || !ops->load_config(context, config, error))
+		return false;
+
+	path_count = qb_cint(config->scoreboard_length, &overflow);
+	if (overflow || path_count < 0)
+		return startup_configuration_error(error, YT_RANGE,
+		    "startup scoreboard LEFT$");
+	state->scoreboard_path_length = (size_t)path_count;
+	if (state->scoreboard_path_length > YT_TEXT_FIELD_SIZE)
+		state->scoreboard_path_length = YT_TEXT_FIELD_SIZE;
+	memcpy(config->scoreboard, config->record.bytes,
+	    state->scoreboard_path_length);
+	qb_compat_upper_n((uint8_t *)config->scoreboard,
+	    state->scoreboard_path_length);
+	config->scoreboard[state->scoreboard_path_length] = '\0';
+
+	if (config->headquarters == 0.0f) {
+		if (!yt_record_set_number(&config->record, YT_F117, 85.0f)
+		    || !ops->store_config(context, config, error))
+			return false;
+		config->headquarters = 85.0f;
+	}
+	if (config->genesis_ports < 20.0f)
+		config->genesis_ports = 200.0f;
+	if (state->scoreboard_path_length == 0U) {
+		static const char default_path[] = "ytscore.asc";
+
+		memcpy(config->scoreboard, default_path, sizeof(default_path));
+		state->scoreboard_path_length = sizeof(default_path) - 1U;
+	}
+	local_mode = qb_cint(state->local_mode, &overflow);
+	if (overflow)
+		return startup_configuration_error(error, YT_RANGE,
+		    "startup local-mode CINT");
+	if (config->local_screen < -1.0f || config->local_screen > 0.0f
+	    || local_mode != 0)
+		config->local_screen = -1.0f;
+	if (config->lottery_plays < 0.0f || config->lottery_plays > 9.0f)
+		config->lottery_plays = 3.0f;
+	if (config->maximum_planets == 0.0f)
+		config->maximum_planets = 100.0f;
+	if (config->maximum_holds < 5.0f || config->maximum_holds > 1000.0f)
+		config->maximum_holds = 1000.0f;
+	if (config->turns_per_day < 100.0f || config->turns_per_day > 2500.0f)
+		config->turns_per_day = 500.0f;
+
+	if (state->cache_guard == 0.0f) {
+		counter = 2.0f;
+		while (counter <= config->sector_offset) {
+			struct yt_player player;
+			int32_t basic = qb_cint(counter, &overflow);
+
+			if (overflow || basic < 0
+			    || (size_t)basic >= state->cache_count)
+				return startup_configuration_error(error, YT_RANGE,
+				    "startup player-cache index");
+			if (!ops->read_player(context, basic, &player, error))
+				return false;
+			state->sector_cache[basic] = player.sector;
+			state->cloak_cache[basic] = player.cloak;
+			if (player.cloak < 0.0f || player.cloak > 1.0f) {
+				player.cloak = 1.0f;
+				state->cloak_cache[basic] = 1.0f;
+				if (!yt_record_set_number(&player.record, YT_F125,
+				    1.0f)
+				    || !ops->write_player(context, basic, &player,
+				    error))
+					return false;
+			}
+			counter = startup_single_add(counter, 1.0f);
+		}
+		state->cache_guard = 1.0f;
+	}
+	for (index = 0U; index < 2U; ++index) {
+		float draw;
+		float difference;
+		float span;
+		float product;
+
+		if (!ops->random(context, &draw, error))
+			return false;
+		difference = startup_single_subtract(config->port_offset,
+		    config->sector_offset);
+		span = startup_single_subtract(difference, 2.0f);
+		product = startup_single_multiply(draw, span);
+		state->black_hole[index] = startup_single_add(floorf(product),
+		    2.0f);
+	}
+	return true;
+}
+
 static float projectile_single_add(float left, float right);
 static float projectile_single_sub(float left, float right);
 static float projectile_single_mul(float left, float right);
