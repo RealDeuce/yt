@@ -12068,6 +12068,12 @@ enum planet_transfer_cycle_outcome {
 	PLANET_TRANSFER_PLASMA_CYCLE,
 	PLANET_TRANSFER_MISSILE_CYCLE,
 	PLANET_TRANSFER_MINE_CYCLE,
+	PLANET_TRANSFER_INVALID_CYCLE,
+	PLANET_TRANSFER_SUBSTRING_CYCLE,
+	PLANET_TRANSFER_FIGHTER_BLANK_CYCLE,
+	PLANET_TRANSFER_FIGHTER_E_CYCLE,
+	PLANET_TRANSFER_FIGHTER_NEGATIVE_CYCLE,
+	PLANET_TRANSFER_FIGHTER_HIGH_CYCLE,
 };
 
 static bool
@@ -12096,9 +12102,14 @@ planet_transfer_cycle_run(struct physical_viewer_join *viewer, bool ansi,
 	static const uint8_t plasma_selector[] = "B";
 	static const uint8_t missile_selector[] = "S";
 	static const uint8_t mine_selector[] = "M";
+	static const uint8_t invalid_selector[] = "X";
+	static const uint8_t substring_selector[] = "SF";
 	static const uint8_t fighter_prompt[] =
 	    "You have 7 fighters. Transfer how many -=>";
 	static const uint8_t fighter_amount[] = "3";
+	static const uint8_t fighter_e_amount[] = "1e2";
+	static const uint8_t fighter_negative_amount[] = "-1";
+	static const uint8_t fighter_high_amount[] = "8";
 	static const uint8_t no_cargo_message[] =
 	    "You don't have any cargo!";
 	static const uint8_t cargo_message[] = "Cargo transferred!!";
@@ -12110,35 +12121,82 @@ planet_transfer_cycle_run(struct physical_viewer_join *viewer, bool ansi,
 	static const double nonempty_held[3] = {10.0, 20.0, 5.0};
 	bool no_cargo = outcome == PLANET_TRANSFER_NO_CARGO_CYCLE;
 	bool cargo = outcome == PLANET_TRANSFER_CARGO_CYCLE;
-	bool fighter = outcome == PLANET_TRANSFER_FIGHTER_CYCLE;
+	bool fighter_accepted = outcome == PLANET_TRANSFER_FIGHTER_CYCLE;
+	bool fighter_blank = outcome == PLANET_TRANSFER_FIGHTER_BLANK_CYCLE;
+	bool fighter_e = outcome == PLANET_TRANSFER_FIGHTER_E_CYCLE;
+	bool fighter_negative =
+	    outcome == PLANET_TRANSFER_FIGHTER_NEGATIVE_CYCLE;
+	bool fighter_high = outcome == PLANET_TRANSFER_FIGHTER_HIGH_CYCLE;
+	bool fighter = fighter_accepted || fighter_blank || fighter_e
+	    || fighter_negative || fighter_high;
 	bool plasma = outcome == PLANET_TRANSFER_PLASMA_CYCLE;
 	bool missile = outcome == PLANET_TRANSFER_MISSILE_CYCLE;
 	bool mine = outcome == PLANET_TRANSFER_MINE_CYCLE;
 	bool direct = plasma || missile || mine;
+	bool invalid = outcome == PLANET_TRANSFER_INVALID_CYCLE;
+	bool substring = outcome == PLANET_TRANSFER_SUBSTRING_CYCLE;
 	const uint8_t *free_holds = no_cargo
 	    ? free_holds_100 : free_holds_65;
 	size_t free_holds_length = no_cargo
 	    ? sizeof(free_holds_100) - 1U : sizeof(free_holds_65) - 1U;
-	const uint8_t *selector = fighter ? fighter_selector
-	    : plasma ? plasma_selector : missile ? missile_selector
-	    : mine ? mine_selector : no_cargo || cargo
-	    ? cargo_selector : empty_selector;
+	const uint8_t *selector = empty_selector;
+	size_t selector_length = 0U;
 	const uint8_t *direct_message = plasma ? plasma_message
 	    : missile ? missile_message : mine_message;
 	size_t direct_message_length = plasma ? sizeof(plasma_message) - 1U
 	    : missile ? sizeof(missile_message) - 1U
 	    : sizeof(mine_message) - 1U;
-	size_t selector_length = no_cargo || cargo || fighter || direct ? 1U : 0U;
+	const uint8_t *amount = fighter_accepted ? fighter_amount
+	    : fighter_e ? fighter_e_amount
+	    : fighter_negative ? fighter_negative_amount
+	    : fighter_high ? fighter_high_amount : empty_selector;
+	size_t amount_length = fighter_accepted ? sizeof(fighter_amount) - 1U
+	    : fighter_e ? sizeof(fighter_e_amount) - 1U
+	    : fighter_negative ? sizeof(fighter_negative_amount) - 1U
+	    : fighter_high ? sizeof(fighter_high_amount) - 1U : 0U;
 	struct viewer_pager_join *join = &viewer->join;
 	struct yt_present_result result;
 
+	if (no_cargo || cargo) {
+		selector = cargo_selector;
+		selector_length = sizeof(cargo_selector) - 1U;
+	} else if (fighter) {
+		selector = fighter_selector;
+		selector_length = sizeof(fighter_selector) - 1U;
+	} else if (plasma) {
+		selector = plasma_selector;
+		selector_length = sizeof(plasma_selector) - 1U;
+	} else if (missile) {
+		selector = missile_selector;
+		selector_length = sizeof(missile_selector) - 1U;
+	} else if (mine) {
+		selector = mine_selector;
+		selector_length = sizeof(mine_selector) - 1U;
+	} else if (invalid) {
+		selector = invalid_selector;
+		selector_length = sizeof(invalid_selector) - 1U;
+	} else if (substring) {
+		selector = substring_selector;
+		selector_length = sizeof(substring_selector) - 1U;
+	}
 	if (prompt_end == NULL || editor_end == NULL || body_end == NULL)
 		return false;
 	if (no_cargo && !yt_planet_transfer_cargo_empty(empty_held))
 		return false;
 	if (cargo && yt_planet_transfer_cargo_empty(nonempty_held))
 		return false;
-	if (fighter && yt_planet_transfer_fighter_rejected(3.0f, 7.0f))
+	if (fighter_accepted
+	    && yt_planet_transfer_fighter_rejected(3.0f, 7.0f))
+		return false;
+	if (fighter_negative
+	    && !yt_planet_transfer_fighter_rejected(-1.0f, 7.0f))
+		return false;
+	if (fighter_high
+	    && !yt_planet_transfer_fighter_rejected(8.0f, 7.0f))
+		return false;
+	if (invalid && yt_planet_transfer_selector_position("X") != 0)
+		return false;
+	if (substring && yt_planet_transfer_selector_position("SF") != 2)
 		return false;
 	join->presentation = state(ansi);
 	join->presentation.foreground = 6.0f;
@@ -12217,21 +12275,23 @@ planet_transfer_cycle_run(struct physical_viewer_join *viewer, bool ansi,
 			return false;
 		yt_pager_editor_enter(&join->pager, join->accumulator,
 		    sizeof(join->accumulator));
-		memcpy(join->accumulator, fighter_amount,
-		    sizeof(fighter_amount));
-		if (yt_present_editor_echo(fighter_amount,
-		    sizeof(fighter_amount) - 1U, fighter_amount,
-		    sizeof(fighter_amount) - 1U,
+		memcpy(join->accumulator, amount, amount_length);
+		join->accumulator[amount_length] = '\0';
+		if (yt_present_editor_echo(amount, amount_length,
+		    amount, amount_length,
 		    &join->presentation, &result) != YT_PRESENT_OK)
 			return false;
 		viewer_pager_capture_result(join, &result);
-		if (!normal_exit_line(join, NULL, 0U)
-		    || !normal_exit_line(join, NULL, 0U))
+		if (!normal_exit_line(join, NULL, 0U))
 			return false;
-		join->presentation.blink = 1.0f;
-		if (!normal_exit_b05d(join, fighter_message,
-		    sizeof(fighter_message) - 1U, 0.0f))
-			return false;
+		if (fighter_accepted) {
+			if (!normal_exit_line(join, NULL, 0U))
+				return false;
+			join->presentation.blink = 1.0f;
+			if (!normal_exit_b05d(join, fighter_message,
+			    sizeof(fighter_message) - 1U, 0.0f))
+				return false;
+		}
 	} else if (direct) {
 		if (!normal_exit_line(join, NULL, 0U))
 			return false;
@@ -12717,6 +12777,152 @@ test_planet_transfer_direct_cycles_presentation(void)
 			yt_text_input_destroy(&viewer.input);
 		}
 	}
+}
+
+static void
+test_planet_transfer_remaining_cycles_presentation(void)
+{
+#define TRANSFER_REMAINING_PREFIX \
+	"\r\nYou have 65 free cargo holds.\n\r" \
+	"\r\nTime: 14:59  Planet command (?=help) [A]? t\r\n" \
+	"\r\n<Transfer items to planet>\n\r" \
+	"\r\nTransfer which item?\n\r" \
+	"\r\n[B] Plasma Bolts\n\r[C] Cargo\n\r[F] Fighters\n\r" \
+	"[S] Missiles\n\r[M] Mines\n\r\r\n-=>"
+#define TRANSFER_REMAINING_REDRAW \
+	"\r\nYou have 65 free cargo holds.\n\r" \
+	"\r\nTime: 14:59  Planet command (?=help) [A]? "
+	static const uint8_t invalid[] =
+	    TRANSFER_REMAINING_PREFIX "X\r\n" TRANSFER_REMAINING_REDRAW;
+	static const uint8_t substring[] =
+	    TRANSFER_REMAINING_PREFIX "SF\r\n" TRANSFER_REMAINING_REDRAW;
+	static const uint8_t fighter_blank[] =
+	    TRANSFER_REMAINING_PREFIX "F\r\n"
+	    "\r\nYou have 7 fighters. Transfer how many -=>\r\n"
+	    TRANSFER_REMAINING_REDRAW;
+	static const uint8_t fighter_e[] =
+	    TRANSFER_REMAINING_PREFIX "F\r\n"
+	    "\r\nYou have 7 fighters. Transfer how many -=>1e2\r\n"
+	    TRANSFER_REMAINING_REDRAW;
+	static const uint8_t fighter_negative[] =
+	    TRANSFER_REMAINING_PREFIX "F\r\n"
+	    "\r\nYou have 7 fighters. Transfer how many -=>-1\r\n"
+	    TRANSFER_REMAINING_REDRAW;
+	static const uint8_t fighter_high[] =
+	    TRANSFER_REMAINING_PREFIX "F\r\n"
+	    "\r\nYou have 7 fighters. Transfer how many -=>8\r\n"
+	    TRANSFER_REMAINING_REDRAW;
+	static const struct {
+		enum planet_transfer_cycle_outcome outcome;
+		const uint8_t *expected;
+		size_t expected_length;
+		size_t body_end;
+		uint64_t remote_fnv;
+		uint64_t row_fnv;
+		const char *accumulator;
+	} cases[] = {
+		{PLANET_TRANSFER_INVALID_CYCLE, invalid, sizeof(invalid) - 1U,
+		    212U, UINT64_C(0x4cf74b255676ee7e),
+		    UINT64_C(0x22bd76d4852df485), "X"},
+		{PLANET_TRANSFER_SUBSTRING_CYCLE, substring,
+		    sizeof(substring) - 1U, 213U,
+		    UINT64_C(0x178bf7b8c3921bef),
+		    UINT64_C(0x5808eab225fa70cf), "SF"},
+		{PLANET_TRANSFER_FIGHTER_BLANK_CYCLE, fighter_blank,
+		    sizeof(fighter_blank) - 1U, 258U,
+		    UINT64_C(0x151bc2e9c7445b12),
+		    UINT64_C(0x5713343941d2d2ab), ""},
+		{PLANET_TRANSFER_FIGHTER_E_CYCLE, fighter_e,
+		    sizeof(fighter_e) - 1U, 261U,
+		    UINT64_C(0xf3c1fd8ebb16a2e8),
+		    UINT64_C(0xaf81d5e354334abc), "1e2"},
+		{PLANET_TRANSFER_FIGHTER_NEGATIVE_CYCLE, fighter_negative,
+		    sizeof(fighter_negative) - 1U, 260U,
+		    UINT64_C(0x661bb15b5bc8e060),
+		    UINT64_C(0xfbc7639aa390e4cf), "-1"},
+		{PLANET_TRANSFER_FIGHTER_HIGH_CYCLE, fighter_high,
+		    sizeof(fighter_high) - 1U, 259U,
+		    UINT64_C(0xe88da78c1e0b05cc),
+		    UINT64_C(0x253c9a8a65b8802e), "8"},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	uint8_t remote[380];
+	size_t prompt_end;
+	size_t editor_end;
+	size_t body_end;
+	size_t index;
+	int pass;
+
+	CHECK(sizeof(invalid) - 1U == 289U
+	    && sizeof(substring) - 1U == 290U
+	    && sizeof(fighter_blank) - 1U == 335U
+	    && sizeof(fighter_e) - 1U == 338U
+	    && sizeof(fighter_negative) - 1U == 337U
+	    && sizeof(fighter_high) - 1U == 336U);
+	for (index = 0U; index < YT_ARRAY_LEN(cases); ++index) {
+		for (pass = 0; pass < 2; ++pass) {
+			bool ansi = pass == 0;
+
+			memset(&viewer, 0, sizeof(viewer));
+			fixture_viewer_initialize(&viewer, &stream,
+			    retained_scoreboard,
+			    sizeof(retained_scoreboard) - 1U,
+			    "YTSCORE.ASC", ansi, remote, sizeof(remote));
+			CHECK(planet_transfer_cycle_run(&viewer, ansi,
+			    cases[index].outcome,
+			    &prompt_end, &editor_end, &body_end));
+			CHECK(prompt_end == 77U && editor_end == 80U
+			    && body_end == cases[index].body_end
+			    && viewer.join.remote_length
+			    == cases[index].expected_length
+			    && memcmp(remote, cases[index].expected,
+			    cases[index].expected_length) == 0
+			    && viewer_bytes_fnv1a64(remote,
+			    viewer.join.remote_length) == cases[index].remote_fnv
+			    && viewer.join.local_row_count
+			    == (index < 2U ? 19U : 21U)
+			    && viewer_rows_fnv1a64(&viewer.join)
+			    == cases[index].row_fnv
+			    && viewer.join.local_fragment_length == 42U
+			    && memcmp(viewer.join.local_fragment,
+			    "Time: 14:59  Planet command (?=help) [A]? ", 42U)
+			    == 0
+			    && viewer.join.local_color_count
+			    == (index < 2U ? (ansi ? 34U : 12U)
+			    : (ansi ? 38U : 13U))
+			    && viewer_colors_fnv1a64(&viewer.join)
+			    == (index < 2U
+			    ? (ansi ? UINT64_C(0x9c0cee38eed56cdd)
+			    : UINT64_C(0x5218ab7752360135))
+			    : (ansi ? UINT64_C(0xf999c19b50ef5a89)
+			    : UINT64_C(0xe4fcd46e10198702)))
+			    && viewer.join.presentation.foreground == 6.0f
+			    && viewer.join.presentation.background == 0.0f
+			    && viewer.join.presentation.bold == 0.0f
+			    && viewer.join.presentation.blink == 0.0f
+			    && viewer.join.presentation.cached_foreground
+			    == (ansi ? 6.0f : 0.0f)
+			    && viewer.join.pager.foreground == 6
+			    && viewer.join.pager.line_count == 2.0f
+			    && viewer.join.pager.nonstop == 0.0f
+			    && strcmp(viewer.join.accumulator,
+			    cases[index].accumulator) == 0
+			    && viewer.join.queue_length == 0U
+			    && viewer.join.sample_calls
+			    == (index < 2U ? 12U : 13U)
+			    && viewer.join.event_count
+			    == (index < 2U ? 60U : 65U)
+			    && stream.eof_checks == 0U && stream.key_checks == 0U
+			    && stream.read_count == 0U && stream.line_count == 0U
+			    && !stream.file_open && !viewer.join.file_open
+			    && viewer.input.file == NULL && viewer.close_calls == 0U
+			    && viewer.open_calls == 0U);
+			yt_text_input_destroy(&viewer.input);
+		}
+	}
+#undef TRANSFER_REMAINING_PREFIX
+#undef TRANSFER_REMAINING_REDRAW
 }
 
 static bool
@@ -18122,6 +18328,7 @@ main(void)
 	test_planet_transfer_cargo_cycle_presentation();
 	test_planet_transfer_fighter_cycle_presentation();
 	test_planet_transfer_direct_cycles_presentation();
+	test_planet_transfer_remaining_cycles_presentation();
 	test_planet_rename_protected_cycle_presentation();
 	test_planet_take_one_accepted_cycle_presentation();
 	test_planet_take_one_blank_default_cycle_presentation();
