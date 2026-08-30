@@ -10096,20 +10096,87 @@ test_info_panel_presentation(void)
 	    && ansi.current.cached_background == 0.0f);
 }
 
+enum normal_exit_info_effect {
+	NORMAL_EXIT_INFO_READ_CURRENT = 1,
+	NORMAL_EXIT_INFO_LOAD_TEAM,
+	NORMAL_EXIT_INFO_TEAM_ROW,
+	NORMAL_EXIT_INFO_READ_CAPTAIN,
+	NORMAL_EXIT_INFO_READ_OVERLAY,
+	NORMAL_EXIT_INFO_WRITE_OVERLAY,
+	NORMAL_EXIT_INFO_READ_FINAL,
+};
+
+struct normal_exit_info_observation {
+	struct yt_present_result refresh;
+	struct yt_present_time_state time;
+	struct yt_info_team_state team;
+	struct yt_sector written_overlay;
+	enum normal_exit_info_effect effects[16];
+	float player_records[2];
+	size_t effect_count;
+	size_t player_read_count;
+	size_t timer_used;
+	bool time_updated;
+	bool overlay_written;
+};
+
 struct normal_exit_info_context {
 	struct physical_viewer_join *viewer;
 	struct yt_player player;
 	const uint8_t *time_text;
 	size_t time_length;
+	struct yt_present_time_state time;
+	struct yt_player team_current;
+	struct yt_player team_captain;
+	struct yt_team team;
+	struct yt_sector overlay;
+	struct normal_exit_info_observation *observation;
+	bool refresh_due;
+	bool promotion;
 };
+
+static bool
+normal_exit_info_effect(struct normal_exit_info_context *fixture,
+    enum normal_exit_info_effect effect)
+{
+	struct normal_exit_info_observation *observation = fixture->observation;
+
+	if (observation == NULL
+	    || observation->effect_count >= YT_ARRAY_LEN(observation->effects))
+		return false;
+	observation->effects[observation->effect_count++] = effect;
+	return true;
+}
 
 static bool
 normal_exit_info_refresh(void *context, uint8_t *text, size_t capacity,
     size_t *length, struct yt_error *error)
 {
 	struct normal_exit_info_context *fixture = context;
+	static const float reads[] = {100.0f, 100.0f, 100.0f, 100.0f};
+	struct yt_present_result result;
+	size_t used;
+	bool updated;
 
 	(void)error;
+	if (fixture->refresh_due) {
+		if (length == NULL || fixture->observation == NULL
+		    || yt_present_refresh_time(&fixture->time, reads,
+		    YT_ARRAY_LEN(reads), &used, 1, 1,
+		    &fixture->viewer->join.presentation, &result, &updated)
+		    != YT_PRESENT_OK || fixture->time.text_length > capacity)
+			return false;
+		fixture->observation->refresh = result;
+		fixture->observation->time = fixture->time;
+		fixture->observation->timer_used = used;
+		fixture->observation->time_updated = updated;
+		viewer_pager_capture_result(&fixture->viewer->join, &result);
+		if (fixture->time.text_length != 0U)
+			memcpy(text, fixture->time.text,
+			    fixture->time.text_length);
+		*length = fixture->time.text_length;
+		return true;
+	}
 	if (length == NULL || fixture->time_text == NULL
 	    || capacity < fixture->time_length)
 		return false;
@@ -10119,13 +10186,127 @@ normal_exit_info_refresh(void *context, uint8_t *text, size_t capacity,
 }
 
 static bool
+normal_exit_info_team_read(void *context, float record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct normal_exit_info_context *fixture = context;
+	struct normal_exit_info_observation *observation = fixture->observation;
+	size_t position;
+
+	(void)error;
+	if (observation == NULL || player == NULL)
+		return false;
+	position = observation->player_read_count;
+	if (position >= YT_ARRAY_LEN(observation->player_records))
+		return false;
+	observation->player_records[position] = record;
+	++observation->player_read_count;
+	if (position == 0U) {
+		if (!normal_exit_info_effect(fixture,
+		    NORMAL_EXIT_INFO_READ_CURRENT))
+			return false;
+		*player = fixture->team_current;
+	}
+	else {
+		if (!normal_exit_info_effect(fixture,
+		    NORMAL_EXIT_INFO_READ_CAPTAIN))
+			return false;
+		*player = fixture->team_captain;
+	}
+	return true;
+}
+
+static bool
+normal_exit_info_team_load(void *context, float team_id,
+    float current_record, float *captain_flag, struct yt_team *team,
+    struct yt_error *error)
+{
+	struct normal_exit_info_context *fixture = context;
+
+	(void)error;
+	if (team_id != 7.0f || current_record != 2.0f
+	    || captain_flag == NULL || team == NULL
+	    || !normal_exit_info_effect(fixture,
+	    NORMAL_EXIT_INFO_LOAD_TEAM))
+		return false;
+	*captain_flag = 0.0f;
+	*team = fixture->team;
+	return true;
+}
+
+static bool
+normal_exit_info_team_read_overlay(void *context, float team_id,
+    struct yt_sector *overlay, struct yt_error *error)
+{
+	struct normal_exit_info_context *fixture = context;
+
+	(void)error;
+	if (team_id != 7.0f || overlay == NULL
+	    || !normal_exit_info_effect(fixture,
+	    NORMAL_EXIT_INFO_READ_OVERLAY))
+		return false;
+	*overlay = fixture->overlay;
+	return true;
+}
+
+static bool
+normal_exit_info_team_write_overlay(void *context, float team_id,
+    const struct yt_sector *overlay, struct yt_error *error)
+{
+	struct normal_exit_info_context *fixture = context;
+
+	(void)error;
+	if (fixture->observation == NULL || team_id != 7.0f
+	    || overlay == NULL || !normal_exit_info_effect(fixture,
+	    NORMAL_EXIT_INFO_WRITE_OVERLAY))
+		return false;
+	fixture->observation->written_overlay = *overlay;
+	fixture->observation->overlay_written = true;
+	return true;
+}
+
+static bool
+normal_exit_info_team_present(void *context, const uint8_t *text,
+    size_t length, struct yt_error *error)
+{
+	struct normal_exit_info_context *fixture = context;
+	struct viewer_pager_join *join = &fixture->viewer->join;
+	struct yt_present_result result;
+
+	(void)error;
+	if (!normal_exit_info_effect(fixture, NORMAL_EXIT_INFO_TEAM_ROW)
+	    || yt_present_line(text, length, &join->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	return true;
+}
+
+static bool
 normal_exit_info_team(void *context, struct yt_error *error)
 {
+	static const struct yt_info_team_ops promotion_ops = {
+		normal_exit_info_team_read,
+		normal_exit_info_team_load,
+		normal_exit_info_team_read_overlay,
+		normal_exit_info_team_write_overlay,
+		normal_exit_info_team_present,
+	};
 	static const uint8_t none[] = "Team  : None";
 	struct normal_exit_info_context *fixture = context;
 	struct viewer_pager_join *join = &fixture->viewer->join;
 	struct yt_present_result result;
 
+	if (fixture->promotion) {
+		if (fixture->observation == NULL)
+			return false;
+		memset(&fixture->observation->team, 0,
+		    sizeof(fixture->observation->team));
+		fixture->observation->team.current_record = 2.0f;
+		fixture->observation->team.sector_offset = 52.0f;
+		return yt_info_team_resolver_run(&fixture->observation->team,
+		    &promotion_ops, fixture, error);
+	}
 	(void)error;
 	if (yt_present_line(none, sizeof(none) - 1U, &join->presentation,
 	    &result) != YT_PRESENT_OK)
@@ -10145,6 +10326,10 @@ normal_exit_info_read(void *context, struct yt_player *player,
 	struct normal_exit_info_context *fixture = context;
 
 	(void)error;
+	if (fixture->observation != NULL
+	    && !normal_exit_info_effect(fixture,
+	    NORMAL_EXIT_INFO_READ_FINAL))
+		return false;
 	*player = fixture->player;
 	return true;
 }
@@ -10190,6 +10375,9 @@ struct normal_exit_info_values {
 	struct yt_player player;
 	const uint8_t *cached_name;
 	size_t cached_name_length;
+	struct normal_exit_info_observation *observation;
+	bool refresh_due;
+	bool promotion;
 };
 
 static bool
@@ -10235,8 +10423,37 @@ normal_exit_info_run(struct physical_viewer_join *viewer,
 	}
 	else {
 		fixture.player = values->player;
+		fixture.observation = values->observation;
+		fixture.refresh_due = values->refresh_due;
+		fixture.promotion = values->promotion;
 		panel.cached_name = values->cached_name;
 		panel.cached_name_length = values->cached_name_length;
+	}
+	if (fixture.refresh_due) {
+		fixture.time.deadline = 1000.0f;
+		fixture.time.next_refresh = 50.0f;
+		if (time_text == NULL || time_length > sizeof(fixture.time.text))
+			return false;
+		if (time_length != 0U)
+			memcpy(fixture.time.text, time_text, time_length);
+		fixture.time.text_length = time_length;
+	}
+	if (fixture.promotion) {
+		static const uint8_t team_name[] = "Raiders";
+		static const uint8_t captain_name[] = "Wrong Team";
+
+		fixture.team_current.team = 7.0f;
+		memcpy(fixture.team_captain.name, captain_name,
+		    sizeof(captain_name) - 1U);
+		fixture.team_captain.name_length =
+		    (float)(sizeof(captain_name) - 1U);
+		fixture.team_captain.team = 8.0f;
+		fixture.team.id = 7;
+		memcpy(fixture.team.name, team_name, sizeof(team_name) - 1U);
+		fixture.team.name_length = sizeof(team_name) - 1U;
+		fixture.team.captain = 3.0f;
+		memset(fixture.overlay.record.bytes, 0xa5,
+		    sizeof(fixture.overlay.record.bytes));
 	}
 	panel.foreground = viewer->join.presentation.foreground;
 	panel.background = viewer->join.presentation.background;
@@ -10643,7 +10860,8 @@ test_computer_info_cycle_presentation(void)
 
 static bool
 planet_info_cycle_run(struct physical_viewer_join *viewer, bool ansi,
-    bool typeahead, size_t *prompt_end, size_t *editor_end, size_t *info_end)
+    bool typeahead, const struct normal_exit_info_values *info,
+    size_t *prompt_end, size_t *editor_end, size_t *info_end)
 {
 	static const uint8_t free_holds[] =
 	    "You have 5 free cargo holds.";
@@ -10690,7 +10908,7 @@ planet_info_cycle_run(struct physical_viewer_join *viewer, bool ansi,
 		return false;
 	*editor_end = join->remote_length;
 	if (!normal_exit_info_run(viewer, time_text, sizeof(time_text) - 1U,
-	    NULL))
+	    info))
 		return false;
 	*info_end = join->remote_length;
 	if (!normal_exit_line(join, NULL, 0U)
@@ -10751,7 +10969,8 @@ test_planet_info_cycle_presentation(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
 		CHECK(planet_info_cycle_run(&viewer, cases[pass].ansi,
-		    cases[pass].typeahead, &prompt_end, &editor_end, &info_end));
+		    cases[pass].typeahead, NULL, &prompt_end, &editor_end,
+		    &info_end));
 		CHECK(prompt_end == 76U && editor_end == cases[pass].editor_end
 		    && info_end == cases[pass].info_end
 		    && viewer.join.remote_length == cases[pass].remote_length
@@ -10788,6 +11007,168 @@ test_planet_info_cycle_presentation(void)
 		CHECK(viewer.join.sample_calls == 4U
 		    && viewer.join.response_calls == 0U
 		    && viewer.join.direct_calls == 0U
+		    && viewer.join.event_count == 20U
+		    && viewer.join.position == 0U
+		    && stream.eof_checks == 0U && stream.key_checks == 0U
+		    && stream.read_count == 0U && stream.line_count == 0U
+		    && !stream.file_open && !viewer.join.file_open
+		    && viewer.input.file == NULL && viewer.close_calls == 0U
+		    && viewer.open_calls == 0U);
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
+static void
+test_planet_info_promotion_refresh_cycle_presentation(void)
+{
+	static const enum normal_exit_info_effect expected_effects[] = {
+		NORMAL_EXIT_INFO_READ_CURRENT,
+		NORMAL_EXIT_INFO_LOAD_TEAM,
+		NORMAL_EXIT_INFO_TEAM_ROW,
+		NORMAL_EXIT_INFO_TEAM_ROW,
+		NORMAL_EXIT_INFO_READ_CAPTAIN,
+		NORMAL_EXIT_INFO_READ_OVERLAY,
+		NORMAL_EXIT_INFO_WRITE_OVERLAY,
+		NORMAL_EXIT_INFO_TEAM_ROW,
+		NORMAL_EXIT_INFO_TEAM_ROW,
+		NORMAL_EXIT_INFO_TEAM_ROW,
+		NORMAL_EXIT_INFO_READ_FINAL,
+	};
+	static const struct {
+		bool ansi;
+		size_t info_end;
+		size_t remote_length;
+		uint64_t remote_fnv;
+		size_t colors;
+		uint64_t color_fnv;
+		float final_bold;
+	} cases[] = {
+		{true, 887U, 973U, UINT64_C(0x0883189690943781),
+		    55U, UINT64_C(0x8a10014347635983), 0.0f},
+		{false, 811U, 887U, UINT64_C(0x19b54d3b1a6cc58c),
+		    6U, UINT64_C(0xda1f2a2392998d66), 1.0f},
+	};
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Planet command (?=help) [A]? ";
+	struct normal_exit_info_values info;
+	struct normal_exit_info_observation observation;
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct yt_record expected_overlay;
+	uint8_t remote[1100];
+	float written_captain;
+	size_t prompt_end;
+	size_t editor_end;
+	size_t info_end;
+	size_t pass;
+
+	memset(&info, 0, sizeof(info));
+	info.player.credits = 12345.0f;
+	info.player.sector = 733.0f;
+	info.player.turns = 42.0f;
+	info.player.holds = 20.0f;
+	info.player.fighters = 1000.0f;
+	info.player.ore = 3.0f;
+	info.player.mines = 4.0f;
+	info.player.organics = 5.0f;
+	info.player.missiles = 6.0f;
+	info.player.equipment = 7.0f;
+	info.player.danger_scanner = 1.0f;
+	info.player.ports_owned = 8.0f;
+	info.player.shields = 90.0f;
+	info.player.cloak = 0.75f;
+	info.player.ground_forces = 9.0f;
+	info.player.plasma = 10.0f;
+	info.cached_name = (const uint8_t *)"Pilot";
+	info.cached_name_length = 5U;
+	info.refresh_due = true;
+	info.promotion = true;
+	memset(expected_overlay.bytes, 0xa5, sizeof(expected_overlay.bytes));
+	CHECK(yt_record_set_number(&expected_overlay, YT_F77, 2.0f));
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		memset(&observation, 0, sizeof(observation));
+		info.observation = &observation;
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
+		CHECK(planet_info_cycle_run(&viewer, cases[pass].ansi, false,
+		    &info, &prompt_end, &editor_end, &info_end));
+		CHECK(prompt_end == 76U && editor_end == 79U
+		    && info_end == cases[pass].info_end
+		    && viewer.join.remote_length == cases[pass].remote_length
+		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+		    == cases[pass].remote_fnv);
+		CHECK(observation.timer_used == 4U && observation.time_updated
+		    && observation.time.deadline == 1000.0f
+		    && observation.time.next_refresh == 101.0f
+		    && observation.time.saved_row == 1
+		    && observation.time.saved_column == 1
+		    && observation.time.text_length == 8U
+		    && memcmp(observation.time.text, " 14:59  ", 8U) == 0
+		    && observation.refresh.remote_length == 0U
+		    && observation.refresh.event_count == 5U);
+		CHECK(observation.refresh.events[0].operation
+		    == YT_PRESENT_LOCAL_LOCATE
+		    && observation.refresh.events[0].row == 25
+		    && observation.refresh.events[0].column == 71
+		    && observation.refresh.events[1].operation
+		    == YT_PRESENT_LOCAL_COLOR
+		    && observation.refresh.events[1].foreground == 11
+		    && observation.refresh.events[1].background == 1
+		    && observation.refresh.events[2].operation
+		    == YT_PRESENT_LOCAL_SEMI
+		    && observation.refresh.events[2].length == 8U
+		    && memcmp(observation.refresh.events[2].data,
+		    " 14:59  ", 8U) == 0
+		    && observation.refresh.events[3].operation
+		    == YT_PRESENT_LOCAL_LOCATE
+		    && observation.refresh.events[3].row == 1
+		    && observation.refresh.events[3].column == 1
+		    && observation.refresh.events[3].cursor_visible == 1
+		    && observation.refresh.events[3].cursor_start == 1
+		    && observation.refresh.events[3].cursor_stop == 16
+		    && observation.refresh.events[4].operation
+		    == YT_PRESENT_LOCAL_COLOR
+		    && observation.refresh.events[4].foreground == 7
+		    && observation.refresh.events[4].background == 0);
+		CHECK(observation.effect_count == YT_ARRAY_LEN(expected_effects)
+		    && memcmp(observation.effects, expected_effects,
+		    sizeof(expected_effects)) == 0
+		    && observation.player_read_count == 2U
+		    && observation.player_records[0] == 2.0f
+		    && observation.player_records[1] == 3.0f
+		    && observation.team.route == YT_INFO_TEAM_PROMOTED
+		    && observation.team.team_id == 7.0f
+		    && observation.team.captain_record == 2.0f
+		    && observation.team.team.captain == 2.0f
+		    && observation.team.captain_flag == 1.0f
+		    && observation.team.current_is_captain
+		    && observation.overlay_written);
+		written_captain = yt_record_get_number(
+		    &observation.written_overlay.record, YT_F77);
+		CHECK(written_captain == 2.0f
+		    && memcmp(observation.written_overlay.record.bytes,
+		    expected_overlay.bytes, sizeof(expected_overlay.bytes)) == 0
+		    && viewer.join.local_row_count == 27U
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == UINT64_C(0x4f8e177d59bb4b6c)
+		    && viewer.join.local_fragment_length == sizeof(prompt) - 1U
+		    && memcmp(viewer.join.local_fragment, prompt,
+		    sizeof(prompt) - 1U) == 0
+		    && viewer.join.local_color_count == cases[pass].colors
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == cases[pass].color_fnv
+		    && viewer.join.presentation.foreground == 6.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold == cases[pass].final_bold
+		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.cached_foreground
+		    == (cases[pass].ansi ? 6.0f : 0.0f)
+		    && viewer.join.pager.foreground == 6
+		    && viewer.join.pager.line_count == 2.0f
+		    && viewer.join.queue_length == 0U
+		    && viewer.join.sample_calls == 4U
 		    && viewer.join.event_count == 20U
 		    && viewer.join.position == 0U
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
@@ -14568,6 +14949,7 @@ main(void)
 	test_full_normal_exit_presentation();
 	test_computer_info_cycle_presentation();
 	test_planet_info_cycle_presentation();
+	test_planet_info_promotion_refresh_cycle_presentation();
 	test_computer_quit_accept_presentation();
 	test_planet_quit_accept_presentation();
 	test_hostile_quit_accept_presentation();
