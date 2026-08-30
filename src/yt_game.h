@@ -765,6 +765,16 @@ enum yt_projectile_candidate_route yt_projectile_candidate_route(
     float remaining);
 bool yt_projectile_candidate_admitted(int candidate, float cached_cloak,
     int xannor_provoker);
+enum yt_projectile_death_route {
+	YT_PROJECTILE_DEATH_REENTER_MINES,
+	YT_PROJECTILE_DEATH_RETURN,
+	YT_PROJECTILE_DEATH_NEXT_PLAYER
+};
+bool yt_projectile_player_survives(float shields);
+bool yt_projectile_salvage_admitted(int counterattack, int xannor_provoker);
+enum yt_projectile_death_route yt_projectile_death_continuation(
+    float remaining, float saved_mines);
+bool yt_projectile_survivor_sets_counterattack(int shooter);
 typedef bool (*yt_projectile_damage_draw_fn)(void *context, float *value,
     struct yt_error *error);
 struct yt_projectile_damage_result {
@@ -774,6 +784,12 @@ struct yt_projectile_damage_result {
 	size_t iterations;
 };
 bool yt_projectile_damage_iteration(float counter, float saved_missiles);
+bool yt_projectile_survivor_overlay(struct yt_player *player, float shields,
+    double fighters, float scanner, bool scanner_disabled);
+bool yt_projectile_victim_mines_overlay(struct yt_player *player,
+    float *saved_mines);
+bool yt_projectile_sector_mines_overlay(struct yt_sector *sector,
+    float carried_mines);
 bool yt_projectile_player_damage(struct yt_player *target, float *remaining,
     yt_projectile_damage_draw_fn draw, void *context,
     struct yt_projectile_damage_result *result, struct yt_error *error);

@@ -4529,6 +4529,34 @@ yt_projectile_candidate_route(int candidate, int shooter,
 }
 
 bool
+yt_projectile_player_survives(float shields)
+{
+	return shields >= 1.0f;
+}
+
+bool
+yt_projectile_salvage_admitted(int counterattack, int xannor_provoker)
+{
+	return counterattack == 0 && xannor_provoker == 0;
+}
+
+enum yt_projectile_death_route
+yt_projectile_death_continuation(float remaining, float saved_mines)
+{
+	if (remaining > 0.0f && saved_mines > 0.0f)
+		return YT_PROJECTILE_DEATH_REENTER_MINES;
+	if (remaining < 1.0f)
+		return YT_PROJECTILE_DEATH_RETURN;
+	return YT_PROJECTILE_DEATH_NEXT_PLAYER;
+}
+
+bool
+yt_projectile_survivor_sets_counterattack(int shooter)
+{
+	return shooter != -1;
+}
+
+bool
 yt_projectile_damage_iteration(float counter, float saved_missiles)
 {
 	return counter <= saved_missiles;
@@ -4556,6 +4584,48 @@ projectile_single_mul(float left, float right)
 	volatile float result = left * right;
 
 	return result;
+}
+
+bool
+yt_projectile_survivor_overlay(struct yt_player *player, float shields,
+    double fighters, float scanner, bool scanner_disabled)
+{
+	static const uint8_t scanner_zero[4] = {
+		0x00, 0x00, 0x48, 0x00
+	};
+
+	if (player == NULL)
+		return false;
+	player->shields = shields;
+	player->fighters = (float)fighters;
+	player->danger_scanner = scanner_disabled ? 0.0f : scanner;
+	return yt_record_set_number(&player->record, YT_F53, shields)
+	    && yt_record_set_number(&player->record, YT_F61,
+	    player->fighters)
+	    && (scanner_disabled
+	    ? yt_record_set_raw_number(&player->record, YT_F93, scanner_zero)
+	    : yt_record_set_number(&player->record, YT_F93, scanner));
+}
+
+bool
+yt_projectile_victim_mines_overlay(struct yt_player *player,
+    float *saved_mines)
+{
+	if (player == NULL || saved_mines == NULL)
+		return false;
+	*saved_mines = player->mines;
+	player->mines = 0.0f;
+	return yt_record_set_number(&player->record, YT_F129, 0.0f);
+}
+
+bool
+yt_projectile_sector_mines_overlay(struct yt_sector *sector,
+    float carried_mines)
+{
+	if (sector == NULL)
+		return false;
+	sector->mines = projectile_single_add(sector->mines, carried_mines);
+	return yt_record_set_number(&sector->record, YT_F129, sector->mines);
 }
 
 bool

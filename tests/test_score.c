@@ -549,6 +549,67 @@ check_projectile_damage_model(void)
 }
 
 static bool
+check_projectile_persistence_model(void)
+{
+	static const uint8_t scanner_zero[4] = {
+		0x00, 0x00, 0x48, 0x00
+	};
+	struct yt_player player;
+	struct yt_sector sector;
+	struct yt_record expected;
+	float saved_mines;
+	size_t index;
+
+	memset(&player, 0, sizeof(player));
+	for (index = 0U; index < YT_RECORD_SIZE; ++index)
+		player.record.bytes[index] = (uint8_t)(index ^ 0xa5U);
+	expected = player.record;
+	if (!yt_record_set_number(&expected, YT_F53, 12.5f)
+	    || !yt_record_set_number(&expected, YT_F61, 7.25f)
+	    || !yt_record_set_number(&expected, YT_F93, -0.5f)
+	    || !yt_projectile_survivor_overlay(&player, 12.5f, 7.25,
+	    -0.5f, false)
+	    || player.shields != 12.5f || player.fighters != 7.25f
+	    || player.danger_scanner != -0.5f
+	    || memcmp(&player.record, &expected, sizeof(expected)) != 0)
+		return false;
+
+	memset(&player, 0, sizeof(player));
+	for (index = 0U; index < YT_RECORD_SIZE; ++index)
+		player.record.bytes[index] = (uint8_t)(index ^ 0x5aU);
+	expected = player.record;
+	if (!yt_record_set_number(&expected, YT_F53, 1.0f)
+	    || !yt_record_set_number(&expected, YT_F61, 2.0f)
+	    || !yt_record_set_raw_number(&expected, YT_F93, scanner_zero)
+	    || !yt_projectile_survivor_overlay(&player, 1.0f, 2.0,
+	    99.0f, true)
+	    || player.danger_scanner != 0.0f
+	    || memcmp(&player.record, &expected, sizeof(expected)) != 0)
+		return false;
+
+	memset(&player, 0, sizeof(player));
+	for (index = 0U; index < YT_RECORD_SIZE; ++index)
+		player.record.bytes[index] = (uint8_t)(index ^ 0x3cU);
+	player.mines = -2.5f;
+	expected = player.record;
+	if (!yt_record_set_number(&expected, YT_F129, 0.0f)
+	    || !yt_projectile_victim_mines_overlay(&player, &saved_mines)
+	    || saved_mines != -2.5f || player.mines != 0.0f
+	    || memcmp(&player.record, &expected, sizeof(expected)) != 0)
+		return false;
+
+	memset(&sector, 0, sizeof(sector));
+	for (index = 0U; index < YT_RECORD_SIZE; ++index)
+		sector.record.bytes[index] = (uint8_t)(index ^ 0xc3U);
+	sector.mines = 1.25f;
+	expected = sector.record;
+	return yt_record_set_number(&expected, YT_F129, 1.75f)
+	    && yt_projectile_sector_mines_overlay(&sector, 0.5f)
+	    && sector.mines == 1.75f
+	    && memcmp(&sector.record, &expected, sizeof(expected)) == 0;
+}
+
+static bool
 check_projectile_parent_model(void)
 {
 	static const uint8_t missile[] =
@@ -753,6 +814,21 @@ check_projectile_parent_model(void)
 	    && !yt_projectile_candidate_admitted(3, 1.0f, 0)
 	    && yt_projectile_candidate_admitted(3, 1.0f, 3)
 	    && !yt_projectile_candidate_admitted(3, 0.0f, 4)
+	    && !yt_projectile_player_survives(0.999f)
+	    && yt_projectile_player_survives(1.0f)
+	    && yt_projectile_salvage_admitted(0, 0)
+	    && !yt_projectile_salvage_admitted(2, 0)
+	    && !yt_projectile_salvage_admitted(0, 3)
+	    && yt_projectile_death_continuation(0.5f, 7.0f)
+	    == YT_PROJECTILE_DEATH_REENTER_MINES
+	    && yt_projectile_death_continuation(0.5f, 0.0f)
+	    == YT_PROJECTILE_DEATH_RETURN
+	    && yt_projectile_death_continuation(0.0f, 7.0f)
+	    == YT_PROJECTILE_DEATH_RETURN
+	    && yt_projectile_death_continuation(1.0f, 0.0f)
+	    == YT_PROJECTILE_DEATH_NEXT_PLAYER
+	    && !yt_projectile_survivor_sets_counterattack(-1)
+	    && yt_projectile_survivor_sets_counterattack(2)
 	    && !yt_projectile_damage_iteration(1.0f, 0.5f)
 	    && yt_projectile_damage_iteration(1.0f, 2.5f)
 	    && yt_projectile_damage_iteration(2.0f, 2.5f)
@@ -9191,6 +9267,8 @@ main(void)
 		return fail("projectile parent model differs");
 	if (!check_projectile_damage_model())
 		return fail("projectile player-damage model differs");
+	if (!check_projectile_persistence_model())
+		return fail("projectile persistence model differs");
 	if (!check_projectile_bridge())
 		return fail("projectile debit/resolver bridge differs");
 	if (!check_xannor_retaliation_model())
