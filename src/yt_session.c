@@ -12711,15 +12711,17 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 }
 
 static bool
-plasma_sector(struct yt_session *session, int sector_number,
-    double *energy, struct yt_error *error)
+plasma_sector_loaded(struct yt_session *session, int sector_number,
+    const struct yt_sector *initial, double *energy, struct yt_error *error)
 {
 	struct yt_sector sector;
 	float planet_link;
 	int basic;
 
-	if (!yt_game_read_sector(&session->door->game, sector_number, &sector,
-	    error))
+	if (initial != NULL)
+		sector = *initial;
+	else if (!yt_game_read_sector(&session->door->game, sector_number,
+	    &sector, error))
 		return false;
 	if (sector.fighters > 0.0f) {
 		double original_fighters = (double)sector.fighters;
@@ -13069,6 +13071,13 @@ plasma_reload_sector:
 }
 
 static bool
+plasma_sector(struct yt_session *session, int sector_number,
+    double *energy, struct yt_error *error)
+{
+	return plasma_sector_loaded(session, sector_number, NULL, energy, error);
+}
+
+static bool
 cruise_opening_sound(void *context, float selector, struct yt_error *error)
 {
 	return session_sound(context, selector, "cruise missile launch sound",
@@ -13275,12 +13284,18 @@ cruise_union_police_present(void *context, const uint8_t *text, size_t length,
 	    "Union Police missile row", error);
 }
 
+struct plasma_route_context {
+	struct yt_session *session;
+	int *xannor_provoker;
+};
+
 static bool
 plasma_route_build(void *context, float origin, float destination,
     int16_t *route, size_t route_capacity, float *status,
     struct yt_error *error)
 {
-	struct yt_session *session = context;
+	struct plasma_route_context *route_context = context;
+	struct yt_session *session = route_context->session;
 	bool found;
 	enum yt_route_outcome outcome;
 
@@ -13294,7 +13309,10 @@ static bool
 plasma_route_line(void *context, const uint8_t *text, size_t length,
     struct yt_error *error)
 {
-	return session_present_text(context, text, length, SESSION_PRESENT_LINE,
+	struct plasma_route_context *route_context = context;
+
+	return session_present_text(route_context->session, text, length,
+	    SESSION_PRESENT_LINE,
 	    "plasma route line", error);
 }
 
@@ -13302,27 +13320,56 @@ static bool
 plasma_route_attention(void *context, const uint8_t *text, size_t length,
     struct yt_error *error)
 {
-	return session_attention_bytes(context, text, length,
+	struct plasma_route_context *route_context = context;
+
+	return session_attention_bytes(route_context->session, text, length,
 	    "plasma black-hole attention", error);
 }
 
 static bool
 plasma_route_wait(void *context, float duration, struct yt_error *error)
 {
-	return session_wait(context, duration, "plasma hop wait", error);
+	struct plasma_route_context *route_context = context;
+
+	return session_wait(route_context->session, duration, "plasma hop wait",
+	    error);
 }
 
 static bool
 plasma_route_random(void *context, float *value, struct yt_error *error)
 {
-	return random_value(context, value, error);
+	struct plasma_route_context *route_context = context;
+
+	return random_value(route_context->session, value, error);
 }
 
 static bool
 plasma_route_impact(void *context, int hop, double *energy,
     enum yt_projectile_plasma_impact_route *route, struct yt_error *error)
 {
-	if (!plasma_sector(context, hop, energy, error))
+	struct plasma_route_context *route_context = context;
+	struct yt_session *session = route_context->session;
+	struct yt_sector sector;
+	struct yt_projectile_sector_probe_state probe;
+
+	if (!yt_game_read_sector(&session->door->game, hop, &sector, error))
+		return false;
+	memset(&probe, 0, sizeof(probe));
+	probe.sector = &sector;
+	probe.sector_cache = session->sector_cache;
+	probe.cloak_cache = session->cloak_cache;
+	probe.cache_count = YT_ARRAY_LEN(session->sector_cache);
+	probe.hop = (float)hop;
+	probe.player_terminal = session->door->game.config.sector_offset;
+	probe.xannor_provoker = route_context->xannor_provoker != NULL
+	    ? (float)*route_context->xannor_provoker : 0.0f;
+	if (!yt_projectile_sector_probe_run(&probe, error))
+		return false;
+	if (probe.presence == 0.0f) {
+		*route = YT_PROJECTILE_PLASMA_NEXT_HOP;
+		return true;
+	}
+	if (!plasma_sector_loaded(session, hop, &sector, energy, error))
 		return false;
 	*route = *energy < 1.0 ? YT_PROJECTILE_PLASMA_FOOTER
 	    : YT_PROJECTILE_PLASMA_NEXT_HOP;
@@ -13333,9 +13380,11 @@ static bool
 plasma_route_footer(void *context, const uint8_t *text, size_t length,
     struct yt_error *error)
 {
+	struct plasma_route_context *route_context = context;
+
 	(void)text;
 	(void)length;
-	return plasma_footer(context, error);
+	return plasma_footer(route_context->session, error);
 }
 
 static bool
@@ -13391,6 +13440,10 @@ launch_projectile(struct yt_session *session, float target, float amount,
 		};
 		float local_origin = (float)start;
 		float *origin = origin_alias != NULL ? origin_alias : &local_origin;
+		struct plasma_route_context route_context = {
+			session,
+			xannor_provoker,
+		};
 		struct yt_projectile_plasma_route_state state = {
 			origin,
 			&destination,
@@ -13408,7 +13461,7 @@ launch_projectile(struct yt_session *session, float target, float amount,
 			0U,
 		};
 		bool result = yt_projectile_plasma_route_run(&state, &ops,
-		    session, error);
+		    &route_context, error);
 
 		free(route);
 		return result;

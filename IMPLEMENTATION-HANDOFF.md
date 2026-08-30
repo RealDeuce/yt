@@ -196,6 +196,14 @@ not authoritative. Use the corrected goal above in the new workspace.
   Every route callback cut is pinned, including already-mutated origin on RNG
   failure. Connected impact provider and physical failure fixtures remain
   open.
+- The joined `AD17..ADF7` presence front now performs one physical sector
+  read, tests mines/fighters/port/planet with strict positivity, scans the
+  ascending sector/cloak caches with the Xannor-provoker exception, and
+  returns directly to `ABB1` when empty. Positive presence passes that same
+  loaded record into the fighter/impact body, eliminating the prior extra
+  opening GET. Pure fixtures pin all field, fractional-terminal, cloak,
+  provoker, range-failure and no-presence branches; a raw physical joined
+  failure-prefix fixture remains open.
 - After the exact Transfer, Bank, Productivity, Clearance, Earth-front,
   Earth-purchase, Planet Rename, shared compatibility-uppercase, Team
   name/password, Planet inventory/menu-parent, shared sector-mine, YTMAINT
@@ -221,13 +229,13 @@ not authoritative. Use the corrected goal above in the new workspace.
   provider-driven YT.REG registration transaction,
   ledger dispositions are roots
   `168 candidate / 0 missing`, transfers
-  `6967 candidate / 400 missing / 1 explicitly
+  `6981 candidate / 386 missing / 1 explicitly
   deferred`, and presentation `143 candidate / 1 missing / 6 verified`.
   Current SHA-256
   values are roots
-  `4ef81b69dfefcf02c8e27838623a8c65ecf8933d07b3ded94ac5c69c967f0703`,
-  transfers `b7897425bd3714c016e37e12ff0e4eacff45d0b6b77e825e04499d2c16085872`,
-  presentation `207a444489272829a1a16e961499dd7626b25746f922ce0403d305caeb8a0919`,
+  `3f2a2e242ccd5fd1db58627f337c4fa420c7ba327ce296735abc351dd9db2da4`,
+  transfers `5e34367da3eacc6ad8242838ce1c276c96602e212cb2d5f12718fb5b057210a2`,
+  presentation `c6bd73a587d402b40ad2c6e4859dabeaa8a813b18168a0af95a0adb326bd73e3`,
   and manifest
   `3552bd61c9cb9b7197aeb6fbad1f37cba69cd09f125d878d0c9072a691e8950a`.
   All immutable identity columns and TSV widths match the regenerated trusted
