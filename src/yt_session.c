@@ -12865,28 +12865,47 @@ plasma_reload_sector:
 }
 
 static bool
-projectile_opening(struct yt_session *session, float amount, double energy,
-    bool plasma, struct yt_error *error)
+cruise_opening_sound(void *context, float selector, struct yt_error *error)
 {
+	return session_sound(context, selector, "cruise missile launch sound",
+	    error);
+}
+
+static bool
+cruise_opening_present(void *context, const uint8_t *text, size_t length,
+    enum yt_projectile_opening_output_kind kind, struct yt_error *error)
+{
+	struct yt_session *session = context;
+	enum session_present_text_kind session_kind;
+	const char *operation;
+
+	if (kind == YT_PROJECTILE_OPENING_RAW) {
+		session_kind = SESSION_PRESENT_RAW;
+		operation = "cruise missile loading text";
+	}
+	else {
+		session_kind = SESSION_PRESENT_LINE;
+		operation = length == 0U ? "cruise missile opening line"
+		    : "cruise missile tracking row";
+	}
+	return session_present_text(session, text, length, session_kind,
+	    operation, error);
+}
+
+static bool
+projectile_opening(struct yt_session *session, float amount, double energy,
+    bool plasma, int *last_mine_news_sector, struct yt_error *error)
+{
+	static const struct yt_projectile_cruise_opening_ops cruise_ops = {
+		cruise_opening_sound,
+		cruise_opening_present,
+	};
 	char number[64];
 	char row[160];
 
-	if (!plasma) {
-		if (!session_sound(session, 4.0f,
-		    "cruise missile launch sound", error))
-			return false;
-		return session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "cruise missile opening blank", error)
-		    && session_present_text(session,
-		    (const uint8_t *)
-		    "Loading course into misile targeting computer.",
-		    strlen("Loading course into misile targeting computer."),
-		    SESSION_PRESENT_LINE, "cruise missile loading row", error)
-		    && session_present_text(session,
-		    (const uint8_t *)"*** Tracking Report ***",
-		    strlen("*** Tracking Report ***"), SESSION_PRESENT_LINE,
-		    "cruise missile tracking row", error);
-	}
+	if (!plasma)
+		return yt_projectile_cruise_opening_run(last_mine_news_sector,
+		    &cruise_ops, session, error);
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "plasma opening blank", error)
 	    || !session_present_text(session,
@@ -13033,7 +13052,7 @@ launch_projectile(struct yt_session *session, float target, float amount,
 	    ? pending_counterattack : &local_counterattack;
 	int *xannor_provoker = pending_xannor != NULL
 	    ? pending_xannor : &local_xannor_provoker;
-	int last_mine_news_sector = 0;
+	int last_mine_news_sector;
 	int start = (int)(origin_alias != NULL
 	    ? *origin_alias : session->player.sector);
 
@@ -13042,7 +13061,8 @@ launch_projectile(struct yt_session *session, float target, float amount,
 	destination = (int)qb_cint(target, &overflow);
 	if (overflow)
 		return true;
-	if (!projectile_opening(session, amount, energy, plasma, error))
+	if (!projectile_opening(session, amount, energy, plasma,
+	    &last_mine_news_sector, error))
 		return false;
 	route = calloc(YT_ROUTE_CAPACITY, sizeof(*route));
 	if (route == NULL) {

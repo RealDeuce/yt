@@ -218,6 +218,23 @@ enum yt_projectile_target_result {
 	YT_PROJECTILE_TARGET_ACCEPT,
 };
 
+enum yt_projectile_opening_output_kind {
+	YT_PROJECTILE_OPENING_DIRECT_LINE,
+	YT_PROJECTILE_OPENING_RAW,
+};
+typedef bool (*yt_projectile_opening_sound_fn)(void *context,
+    float selector, struct yt_error *error);
+typedef bool (*yt_projectile_opening_present_fn)(void *context,
+    const uint8_t *text, size_t length,
+    enum yt_projectile_opening_output_kind kind, struct yt_error *error);
+struct yt_projectile_cruise_opening_ops {
+	yt_projectile_opening_sound_fn sound;
+	yt_projectile_opening_present_fn present;
+};
+bool yt_projectile_cruise_opening_run(int *last_mine_news_sector,
+    const struct yt_projectile_cruise_opening_ops *ops, void *context,
+    struct yt_error *error);
+
 struct yt_xannor_retaliation_state {
 	struct yt_player *player;
 	int *player_record;

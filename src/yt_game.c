@@ -191,6 +191,31 @@ yt_projectile_target_prompt(bool plasma, float displayed, float maximum,
 	return true;
 }
 
+bool
+yt_projectile_cruise_opening_run(int *last_mine_news_sector,
+    const struct yt_projectile_cruise_opening_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t loading[] =
+	    "Loading course into misile targeting computer.";
+	static const uint8_t tracking[] = "*** Tracking Report ***";
+
+	if (last_mine_news_sector == NULL || ops == NULL || ops->sound == NULL
+	    || ops->present == NULL)
+		return false;
+	if (!ops->sound(context, 4.0f, error)
+	    || !ops->present(context, NULL, 0U,
+	    YT_PROJECTILE_OPENING_DIRECT_LINE, error)
+	    || !ops->present(context, loading, sizeof(loading) - 1U,
+	    YT_PROJECTILE_OPENING_RAW, error)
+	    || !ops->present(context, NULL, 0U,
+	    YT_PROJECTILE_OPENING_DIRECT_LINE, error))
+		return false;
+	*last_mine_news_sector = 0;
+	return ops->present(context, tracking, sizeof(tracking) - 1U,
+	    YT_PROJECTILE_OPENING_DIRECT_LINE, error);
+}
+
 enum yt_projectile_target_result
 yt_projectile_target_response(const char *response, float maximum,
     float *target)

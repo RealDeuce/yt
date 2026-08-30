@@ -461,7 +461,10 @@ projectile_ordinary_cycle_fixture(bool ansi, struct yt_present_state *current,
 	pager_fixture_b05d(pager, current, turn_row, sizeof(turn_row) - 1U,
 	    &capture);
 	pager_capture_line(&capture, current, NULL, 0U);
-	pager_capture_line(&capture, current, loading, sizeof(loading) - 1U);
+	CHECK(yt_present_character(loading, sizeof(loading) - 1U, current,
+	    &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager_capture_line(&capture, current, NULL, 0U);
 	pager_capture_line(&capture, current, tracking, sizeof(tracking) - 1U);
 	pager_capture_line(&capture, current, ending, sizeof(ending) - 1U);
 

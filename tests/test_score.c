@@ -748,6 +748,129 @@ check_projectile_planet_damage_model(void)
 	    && remaining == 1.0f && error.status == YT_IO_ERROR;
 }
 
+enum projectile_opening_event {
+	PROJECTILE_OPENING_SOUND = 1,
+	PROJECTILE_OPENING_PRESENT,
+};
+
+struct projectile_opening_tape {
+	int events[5];
+	int scratch_at_event[5];
+	enum yt_projectile_opening_output_kind kinds[4];
+	uint8_t text[4][64];
+	size_t lengths[4];
+	size_t event_count;
+	size_t present_count;
+	size_t fail_at;
+	int *scratch;
+	float selector;
+};
+
+static bool
+projectile_opening_step(struct projectile_opening_tape *tape, int event)
+{
+	size_t position = tape->event_count++;
+
+	if (position >= YT_ARRAY_LEN(tape->events))
+		return false;
+	tape->events[position] = event;
+	tape->scratch_at_event[position] = *tape->scratch;
+	return tape->event_count != tape->fail_at;
+}
+
+static bool
+projectile_opening_sound(void *context, float selector,
+    struct yt_error *error)
+{
+	struct projectile_opening_tape *tape = context;
+
+	(void)error;
+	tape->selector = selector;
+	return projectile_opening_step(tape, PROJECTILE_OPENING_SOUND);
+}
+
+static bool
+projectile_opening_present(void *context, const uint8_t *text, size_t length,
+    enum yt_projectile_opening_output_kind kind, struct yt_error *error)
+{
+	struct projectile_opening_tape *tape = context;
+	size_t position = tape->present_count++;
+
+	(void)error;
+	if (!projectile_opening_step(tape, PROJECTILE_OPENING_PRESENT)
+	    || position >= YT_ARRAY_LEN(tape->text)
+	    || length > sizeof(tape->text[position]))
+		return false;
+	tape->kinds[position] = kind;
+	if (length > 0U)
+		memcpy(tape->text[position], text, length);
+	tape->lengths[position] = length;
+	return true;
+}
+
+static bool
+check_projectile_cruise_opening_transaction(void)
+{
+	static const struct yt_projectile_cruise_opening_ops ops = {
+		projectile_opening_sound,
+		projectile_opening_present,
+	};
+	static const int expected_events[] = {
+		PROJECTILE_OPENING_SOUND,
+		PROJECTILE_OPENING_PRESENT,
+		PROJECTILE_OPENING_PRESENT,
+		PROJECTILE_OPENING_PRESENT,
+		PROJECTILE_OPENING_PRESENT,
+	};
+	static const int expected_scratch[] = {77, 77, 77, 77, 0};
+	static const enum yt_projectile_opening_output_kind expected_kinds[] = {
+		YT_PROJECTILE_OPENING_DIRECT_LINE,
+		YT_PROJECTILE_OPENING_RAW,
+		YT_PROJECTILE_OPENING_DIRECT_LINE,
+		YT_PROJECTILE_OPENING_DIRECT_LINE,
+	};
+	static const uint8_t loading[] =
+	    "Loading course into misile targeting computer.";
+	static const uint8_t tracking[] = "*** Tracking Report ***";
+	struct projectile_opening_tape tape;
+	int scratch;
+	size_t failure;
+
+	memset(&tape, 0, sizeof(tape));
+	scratch = 77;
+	tape.scratch = &scratch;
+	tape.fail_at = SIZE_MAX;
+	if (!yt_projectile_cruise_opening_run(&scratch, &ops, &tape, NULL)
+	    || tape.event_count != YT_ARRAY_LEN(expected_events)
+	    || memcmp(tape.events, expected_events, sizeof(expected_events)) != 0
+	    || memcmp(tape.scratch_at_event, expected_scratch,
+	    sizeof(expected_scratch)) != 0
+	    || tape.present_count != YT_ARRAY_LEN(expected_kinds)
+	    || memcmp(tape.kinds, expected_kinds, sizeof(expected_kinds)) != 0
+	    || tape.selector != 4.0f || scratch != 0
+	    || tape.lengths[0] != 0U
+	    || tape.lengths[1] != sizeof(loading) - 1U
+	    || memcmp(tape.text[1], loading, sizeof(loading) - 1U) != 0
+	    || tape.lengths[2] != 0U
+	    || tape.lengths[3] != sizeof(tracking) - 1U
+	    || memcmp(tape.text[3], tracking, sizeof(tracking) - 1U) != 0)
+		return false;
+
+	for (failure = 1U; failure <= YT_ARRAY_LEN(expected_events); ++failure) {
+		memset(&tape, 0, sizeof(tape));
+		scratch = 77;
+		tape.scratch = &scratch;
+		tape.fail_at = failure;
+		if (yt_projectile_cruise_opening_run(&scratch, &ops, &tape, NULL)
+		    || tape.event_count != failure
+		    || memcmp(tape.events, expected_events,
+		    failure * sizeof(expected_events[0])) != 0
+		    || scratch != (failure == 5U ? 0 : 77))
+			return false;
+	}
+	return true;
+}
+
 enum projectile_planet_event {
 	PROJECTILE_PLANET_RANDOM = 1,
 	PROJECTILE_PLANET_READ,
@@ -9762,6 +9885,8 @@ main(void)
 		return fail("team-loader model differs");
 	if (!check_projectile_parent_model())
 		return fail("projectile parent model differs");
+	if (!check_projectile_cruise_opening_transaction())
+		return fail("projectile cruise-opening transaction differs");
 	if (!check_projectile_damage_model())
 		return fail("projectile player-damage model differs");
 	if (!check_projectile_persistence_model())

@@ -1030,6 +1030,18 @@ not authoritative. Use the corrected goal above in the new workspace.
   FIELD/store/cache/RNG/by-reference state, terminal scanner residue, AB36
   arbitration, nonempty successors, local framebuffer and failures remain
   open.
+- The cruise opening at `6CA5..6CF6` now has one ordered live transaction
+  rather than a byte-equivalent line-output shortcut. It invokes selector
+  four, emits an empty direct line, emits the exact 46-byte loading sentence
+  through the raw character owner, emits a second empty direct line, clears
+  the last-mine-news-sector scratch, and only then emits the direct tracking
+  row. A provider tape distinguishes raw from direct calls, observes the
+  scratch at every boundary and pins all five callback failure prefixes; the
+  joined 331/351-byte command-cycle streams remain unchanged. The four
+  formerly missing output transfers at `6CB7`, `6CC9`, `6CDB` and `6CF6`,
+  plus the selector-four call at `6CA5`, are candidate. Raw BRUN descriptor/
+  frame residue, inherited-state variants and physical endpoint failures
+  remain open.
 - The projectile resolver's already recovered early terminals no longer
   bypass presentation. Missile/plasma openings, cruise end-report,
   same-sector `Missles self destructed!`, the two-blank unreachable-route

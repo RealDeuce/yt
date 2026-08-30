@@ -25,7 +25,7 @@ YT-SUB:5C74	4	live	src/yt_session.c::display_sector_one	sector-mine follow-up cu
 YT-SUB:5EFA	4	live	src/yt_session.c::display_sector_one	cloak reveal
 YT-SUB:641E	5	live	src/yt_session.c::mine_encounter	sector-mine encounter warning
 YT-SUB:6BF7	2	live	src/yt_session.c::mine_encounter	each successful damaged-player PUT
-YT-SUB:6CA5	4	live	src/yt_session.c::launch_projectile	cruise launch entry
+YT-SUB:6CA5	4	live	src/yt_game.c::yt_projectile_cruise_opening_run; src/yt_session.c::cruise_opening_sound	cruise launch entry
 YT-SUB:7168	2	live	src/yt_session.c::missile_sector	cruise fighter-defense encounter
 YT-SUB:73C2	5	live	src/yt_session.c::missile_sector	cruise sector-mine encounter
 YT-SUB:75FB	2	live	src/yt_session.c::missile_sector	cruise player attack
