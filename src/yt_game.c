@@ -4508,6 +4508,134 @@ yt_projectile_defense_row(float sector, const uint8_t *owner,
 }
 
 bool
+yt_projectile_candidate_admitted(int candidate, float cached_cloak,
+    int xannor_provoker)
+{
+	return (cached_cloak == 0.0f || candidate == xannor_provoker)
+	    && (xannor_provoker == 0 || candidate == xannor_provoker);
+}
+
+enum yt_projectile_candidate_route
+yt_projectile_candidate_route(int candidate, int shooter,
+    float cached_sector, float sector, float remaining)
+{
+	if (cached_sector != sector)
+		return YT_PROJECTILE_CANDIDATE_SKIP;
+	if (remaining <= 0.0f)
+		return YT_PROJECTILE_CANDIDATE_TERMINATE;
+	if (candidate == shooter)
+		return YT_PROJECTILE_CANDIDATE_SKIP;
+	return YT_PROJECTILE_CANDIDATE_FRIENDSHIP;
+}
+
+bool
+yt_projectile_damage_iteration(float counter, float saved_missiles)
+{
+	return counter <= saved_missiles;
+}
+
+static float
+projectile_single_add(float left, float right)
+{
+	volatile float result = left + right;
+
+	return result;
+}
+
+static float
+projectile_single_sub(float left, float right)
+{
+	volatile float result = left - right;
+
+	return result;
+}
+
+static float
+projectile_single_mul(float left, float right)
+{
+	volatile float result = left * right;
+
+	return result;
+}
+
+bool
+yt_projectile_player_damage(struct yt_player *target, float *remaining,
+    yt_projectile_damage_draw_fn draw, void *context,
+    struct yt_projectile_damage_result *result, struct yt_error *error)
+{
+	double original_fighters;
+	double fighter_damage = 0.0;
+	float original_shields;
+	float shield_damage = 0.0f;
+	float saved_missiles;
+	float counter = 1.0f;
+	bool scanner_disabled = false;
+	size_t iterations = 0U;
+
+	if (target == NULL || remaining == NULL || draw == NULL
+	    || result == NULL)
+		return false;
+	original_fighters = (double)target->fighters;
+	original_shields = target->shields;
+	saved_missiles = *remaining;
+	while (yt_projectile_damage_iteration(counter, saved_missiles)) {
+		bool overflow;
+		float value;
+		float scanner_product;
+		int32_t scanner;
+
+		++iterations;
+		*remaining = projectile_single_sub(*remaining, 1.0f);
+		if (!draw(context, &value, error))
+			return false;
+		scanner_product = projectile_single_mul(value, *remaining);
+		scanner = qb_cint(target->danger_scanner, &overflow);
+		if (overflow) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				(void)snprintf(error->operation,
+				    sizeof(error->operation), "%s",
+				    "cruise missile scanner CINT");
+			}
+			return false;
+		}
+		if (scanner_product > 100.0f && scanner != 0) {
+			target->danger_scanner = 0.0f;
+			scanner_disabled = true;
+		}
+		if (!draw(context, &value, error))
+			return false;
+		fighter_damage = floor((double)projectile_single_mul(value,
+		    4001.0f) + fighter_damage);
+		if (!draw(context, &value, error))
+			return false;
+		/* The SINGLE draw is promoted for the DOUBLE fighter operand. */
+		if ((double)value * original_fighters < fighter_damage) {
+			if (!draw(context, &value, error))
+				return false;
+			shield_damage = projectile_single_add(shield_damage,
+			    floorf(projectile_single_mul(value, 1001.0f)));
+		}
+		if (fighter_damage >= original_fighters
+		    && shield_damage >= original_shields)
+			break;
+		counter = projectile_single_add(counter, 1.0f);
+	}
+	if (fighter_damage > original_fighters)
+		fighter_damage = original_fighters;
+	if (shield_damage > original_shields)
+		shield_damage = original_shields;
+	target->fighters = (float)(original_fighters - fighter_damage);
+	target->shields = projectile_single_sub(original_shields,
+	    shield_damage);
+	result->fighters = fighter_damage;
+	result->shields = shield_damage;
+	result->scanner_disabled = scanner_disabled;
+	result->iterations = iterations;
+	return true;
+}
+
+bool
 yt_projectile_attack_first_rows(bool plasma,
     const uint8_t *attacker, size_t attacker_length,
     const uint8_t *victim, size_t victim_length, float sector,

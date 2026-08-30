@@ -11813,8 +11813,9 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 			}
 			return false;
 		}
-		if (!yt_game_write_planet(&session->door->game, logical_planet,
-		    &persistence, error))
+		if (!yt_database_write(&session->door->game.database,
+		    (size_t)yt_planet_basic_record(&session->door->game.config,
+		    logical_planet), &persistence.record, error))
 			return false;
 		qb_str_single(number_one, sizeof(number_one), ground);
 		snprintf(row, sizeof(row), "Ground forces reduced to%s!",
@@ -11894,8 +11895,9 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 				return false;
 			}
 		}
-		if (!yt_game_write_planet(&session->door->game, logical_planet,
-		    &persistence, error))
+		if (!yt_database_write(&session->door->game.database,
+		    (size_t)yt_planet_basic_record(&session->door->game.config,
+		    logical_planet), &persistence.record, error))
 			return false;
 	}
 	if (planet.production[0] == 0.0f
@@ -11920,8 +11922,9 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 			}
 			return false;
 		}
-		if (!yt_game_write_planet(&session->door->game, logical_planet,
-		    &destruction, error))
+		if (!yt_database_write(&session->door->game.database,
+		    (size_t)yt_planet_basic_record(&session->door->game.config,
+		    logical_planet), &destruction.record, error))
 			return false;
 		if (!yt_game_read_sector(&session->door->game, sector_number,
 		    &unlink, error))
@@ -11936,8 +11939,9 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 			}
 			return false;
 		}
-		if (!yt_game_write_sector(&session->door->game, sector_number,
-		    &unlink, error))
+		if (!yt_database_write(&session->door->game.database,
+		    (size_t)yt_sector_basic_record(&session->door->game.config,
+		    sector_number), &unlink.record, error))
 			return false;
 		if (!session_present_text(session,
 		    (const uint8_t *)"The planet was destroyed!!",
@@ -11961,8 +11965,17 @@ deploy_victim_mines(struct yt_session *session, int sector_number,
 	    error))
 		return false;
 	sector.mines = single_add(sector.mines, mines);
-	return yt_game_write_sector(&session->door->game, sector_number,
-	    &sector, error);
+	if (!yt_record_set_number(&sector.record, YT_F129, sector.mines))
+		return false;
+	return yt_database_write(&session->door->game.database,
+	    (size_t)yt_sector_basic_record(&session->door->game.config,
+	    sector_number), &sector.record, error);
+}
+
+static bool
+projectile_damage_draw(void *context, float *value, struct yt_error *error)
+{
+	return random_value(context, value, error);
 }
 
 static bool
@@ -12123,8 +12136,13 @@ missile_sector(struct yt_session *session, int sector_number,
 		if (old_fighter_owner == -1.0f && sector.fighters > 0.0f
 		    && session->player_record != -1)
 			*xannor_provoker = session->player_record;
-		if (!yt_game_write_sector(&session->door->game, sector_number,
-		    &sector, error))
+		if (sector.fighters != 0.0f
+		    && !yt_record_set_number(&sector.record, YT_F81,
+		    sector.fighters))
+			return false;
+		if (!yt_database_write(&session->door->game.database,
+		    (size_t)yt_sector_basic_record(&session->door->game.config,
+		    sector_number), &sector.record, error))
 			return false;
 		if (sector.fighters == 0.0f && old_fighter_owner == -1.0f
 		    && (float)sector_number
@@ -12187,8 +12205,11 @@ missile_mines:
 		    &persistence, error))
 			return false;
 		persistence.mines = single_sub(observed_mines, destroyed);
-		if (!yt_game_write_sector(&session->door->game, sector_number,
-		    &persistence, error))
+		if (!yt_record_set_number(&persistence.record, YT_F129,
+		    persistence.mines)
+		    || !yt_database_write(&session->door->game.database,
+		    (size_t)yt_sector_basic_record(&session->door->game.config,
+		    sector_number), &persistence.record, error))
 			return false;
 		*remaining = single_sub(*remaining, destroyed);
 		if (*remaining < 1.0f)
@@ -12196,11 +12217,8 @@ missile_mines:
 	}
 	for (basic = YT_PLAYER_FIRST;
 	    basic <= (int)session->door->game.config.sector_offset; ++basic) {
-		struct yt_player friendship;
 		struct yt_player target;
-		double original_fighters;
-		double fighter_damage = 0.0;
-		float shield_damage = 0.0f;
+		struct yt_projectile_damage_result damage;
 		bool scanner_disabled = false;
 		uint8_t attacker_name[YT_TEXT_FIELD_SIZE];
 		uint8_t victim_name[YT_TEXT_FIELD_SIZE];
@@ -12214,79 +12232,42 @@ missile_mines:
 		char fighter_text[64];
 		char row[256];
 
-		if (session->sector_cache[basic] != (float)sector_number)
-			continue;
-		if (*remaining <= 0.0f)
+		enum yt_projectile_candidate_route candidate_route =
+		    yt_projectile_candidate_route(basic, session->player_record,
+		    session->sector_cache[basic], (float)sector_number,
+		    *remaining);
+
+		if (candidate_route == YT_PROJECTILE_CANDIDATE_TERMINATE)
 			break;
-		if (basic == session->player_record)
+		if (candidate_route == YT_PROJECTILE_CANDIDATE_SKIP)
 			continue;
-		/* YT-SUB:974F is called for its side effects; its Boolean is ignored. */
-		if (!yt_game_read_player(&session->door->game, basic, &friendship,
-		    error))
-			return false;
+		/* YT-SUB:974F is called for its exact GET effects; its result is ignored. */
+		{
+			bool ignored_friendship;
+
+			if (!yt_friendship_resolve((float)basic,
+			    (float)session->player_record,
+			    session->door->game.config.sector_offset,
+			    friendship_read_player, &session->door->game,
+			    &ignored_friendship, error))
+				return false;
+		}
 		if (!yt_game_read_player(&session->door->game, basic, &target,
 		    error))
 			return false;
-		if (session->cloak_cache[basic] != 0.0f
-		    && basic != *xannor_provoker)
+		if (!yt_projectile_candidate_admitted(basic,
+		    session->cloak_cache[basic], *xannor_provoker))
 			continue;
-		if (*xannor_provoker != 0 && basic != *xannor_provoker)
-			continue;
-		original_fighters = (double)target.fighters;
 		if (!session_sound(session, 2.0f,
 		    "cruise missile player-attack sound", error))
 			return false;
-		while (*remaining > 0.0f) {
-			bool overflow;
-			float draw;
-			float scanner_product;
-			int32_t scanner_value;
-
-			*remaining = single_sub(*remaining, 1.0f);
-			if (!random_value(session, &draw, error))
-				return false;
-			scanner_product = single_mul(draw, *remaining);
-			scanner_value = qb_cint(target.danger_scanner, &overflow);
-			if (overflow) {
-				if (error != NULL) {
-					error->status = YT_RANGE;
-					snprintf(error->operation,
-					    sizeof(error->operation), "%s",
-					    "cruise missile scanner CINT");
-				}
-				return false;
-			}
-			if (scanner_product > 100.0f && scanner_value != 0) {
-				target.danger_scanner = 0.0f;
-				scanner_disabled = true;
-			}
-			if (!random_value(session, &draw, error))
-				return false;
-			fighter_damage = floor((double)single_mul(draw, 4001.0f)
-			    + fighter_damage);
-			if (!random_value(session, &draw, error))
-				return false;
-			if ((double)single_mul(draw, target.fighters)
-			    < fighter_damage) {
-				if (!random_value(session, &draw, error))
-					return false;
-				shield_damage = single_add(shield_damage,
-				    floorf(single_mul(draw, 1001.0f)));
-			}
-			if (fighter_damage >= original_fighters
-			    && shield_damage >= target.shields)
-				break;
-		}
-		if (fighter_damage > original_fighters)
-			fighter_damage = original_fighters;
-		if (shield_damage > target.shields)
-			shield_damage = target.shields;
-		target.fighters = (float)(original_fighters - fighter_damage);
-		target.shields =
-		    single_sub(target.shields, shield_damage);
+		if (!yt_projectile_player_damage(&target, remaining,
+		    projectile_damage_draw, session, &damage, error))
+			return false;
+		scanner_disabled = damage.scanner_disabled;
 		qb_str_single(shield_text, sizeof(shield_text), target.shields);
 		qb_str_double(fighter_text, sizeof(fighter_text),
-		    fighter_damage);
+		    damage.fighters);
 		if (!yt_player_stored_name(&session->player, attacker_name,
 		    &attacker_length, error)
 		    || !yt_player_stored_name(&target, victim_name,
@@ -12332,8 +12313,9 @@ missile_mines:
 			    &warning_length))
 				return false;
 			target.mines = 0.0f;
-			if (!yt_game_write_player(&session->door->game, basic,
-			    &target, error))
+			if (!yt_record_set_number(&target.record, YT_F129, 0.0f)
+			    || !yt_database_write(&session->door->game.database,
+			    (size_t)basic, &target.record, error))
 				return false;
 			session->presentation.blink = 1.0f;
 			if (!session_present_text(session, destroyed_row,
@@ -12374,6 +12356,11 @@ missile_mines:
 			persistence.shields = target.shields;
 			persistence.fighters = target.fighters;
 			persistence.danger_scanner = target.danger_scanner;
+			if (!yt_record_set_number(&persistence.record, YT_F53,
+			    persistence.shields)
+			    || !yt_record_set_number(&persistence.record, YT_F61,
+			    persistence.fighters))
+				return false;
 			if (scanner_disabled) {
 				static const uint8_t scanner_zero[4] = {
 					0x00, 0x00, 0x48, 0x00
@@ -12390,8 +12377,8 @@ missile_mines:
 					return false;
 				}
 			}
-			if (!yt_game_write_player(&session->door->game, basic,
-			    &persistence, error))
+			if (!yt_database_write(&session->door->game.database,
+			    (size_t)basic, &persistence.record, error))
 				return false;
 			if (session->player_record != -1)
 				*counterattack = basic;

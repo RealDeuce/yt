@@ -755,6 +755,28 @@ bool yt_sector_fighter_row(const struct yt_sector *sector,
 bool yt_projectile_defense_row(float sector, const uint8_t *owner,
     size_t owner_length, double fighters, uint8_t *row, size_t capacity,
     size_t *length);
+enum yt_projectile_candidate_route {
+	YT_PROJECTILE_CANDIDATE_SKIP,
+	YT_PROJECTILE_CANDIDATE_TERMINATE,
+	YT_PROJECTILE_CANDIDATE_FRIENDSHIP
+};
+enum yt_projectile_candidate_route yt_projectile_candidate_route(
+    int candidate, int shooter, float cached_sector, float sector,
+    float remaining);
+bool yt_projectile_candidate_admitted(int candidate, float cached_cloak,
+    int xannor_provoker);
+typedef bool (*yt_projectile_damage_draw_fn)(void *context, float *value,
+    struct yt_error *error);
+struct yt_projectile_damage_result {
+	double fighters;
+	float shields;
+	bool scanner_disabled;
+	size_t iterations;
+};
+bool yt_projectile_damage_iteration(float counter, float saved_missiles);
+bool yt_projectile_player_damage(struct yt_player *target, float *remaining,
+    yt_projectile_damage_draw_fn draw, void *context,
+    struct yt_projectile_damage_result *result, struct yt_error *error);
 bool yt_projectile_attack_first_rows(bool plasma,
     const uint8_t *attacker, size_t attacker_length,
     const uint8_t *victim, size_t victim_length, float sector,

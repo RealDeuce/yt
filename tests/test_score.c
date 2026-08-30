@@ -428,6 +428,126 @@ check_port_owner_row_model(void)
 	return true;
 }
 
+struct projectile_damage_tape {
+	const float *values;
+	size_t count;
+	size_t position;
+	size_t fail_at;
+};
+
+static bool
+projectile_damage_draw(void *context, float *value, struct yt_error *error)
+{
+	struct projectile_damage_tape *tape = context;
+	size_t call = tape->position++;
+
+	if (call == tape->fail_at || call >= tape->count) {
+		if (error != NULL) {
+			error->status = YT_IO_ERROR;
+			(void)snprintf(error->operation,
+			    sizeof(error->operation), "%s", "projectile RND");
+		}
+		return false;
+	}
+	*value = tape->values[call];
+	return true;
+}
+
+static bool
+check_projectile_damage_model(void)
+{
+	static const float lethal_draws[] = {
+		0.0f, 0.1f, 0.1f, 0.05f,
+		0.0f, 0.2f, 0.2f, 0.1f
+	};
+	static const float no_shield_draws[] = {0.0f, 0.0f, 1.0f};
+	static const float scanner_draws[] = {1.0f, 1.0f, 0.0f, 1.0f};
+	struct yt_player target;
+	struct yt_projectile_damage_result damage;
+	struct yt_error error;
+	struct projectile_damage_tape tape;
+	float remaining;
+
+	memset(&target, 0, sizeof(target));
+	target.fighters = 1000.0f;
+	target.shields = 100.0f;
+	target.danger_scanner = 2.0f;
+	remaining = 2.5f;
+	tape.values = lethal_draws;
+	tape.count = YT_ARRAY_LEN(lethal_draws);
+	tape.position = 0U;
+	tape.fail_at = SIZE_MAX;
+	if (!yt_projectile_player_damage(&target, &remaining,
+	    projectile_damage_draw, &tape, &damage, &error)
+	    || tape.position != 8U || damage.iterations != 2U
+	    || remaining != 0.5f || damage.fighters != 1000.0
+	    || damage.shields != 100.0f || damage.scanner_disabled
+	    || target.fighters != 0.0f || target.shields != 0.0f
+	    || target.danger_scanner != 2.0f)
+		return false;
+
+	memset(&target, 0, sizeof(target));
+	target.fighters = 1000.0f;
+	target.shields = 100.0f;
+	remaining = 1.0f;
+	tape.values = no_shield_draws;
+	tape.count = YT_ARRAY_LEN(no_shield_draws);
+	tape.position = 0U;
+	if (!yt_projectile_player_damage(&target, &remaining,
+	    projectile_damage_draw, &tape, &damage, &error)
+	    || tape.position != 3U || damage.iterations != 1U
+	    || damage.fighters != 0.0 || damage.shields != 0.0f
+	    || target.fighters != 1000.0f || target.shields != 100.0f)
+		return false;
+
+	memset(&target, 0, sizeof(target));
+	target.fighters = 1.0f;
+	target.shields = 1.0f;
+	target.danger_scanner = 7.0f;
+	remaining = 101.5f;
+	tape.values = scanner_draws;
+	tape.count = YT_ARRAY_LEN(scanner_draws);
+	tape.position = 0U;
+	if (!yt_projectile_player_damage(&target, &remaining,
+	    projectile_damage_draw, &tape, &damage, &error)
+	    || tape.position != 4U || damage.iterations != 1U
+	    || remaining != 100.5f || !damage.scanner_disabled
+	    || target.danger_scanner != 0.0f)
+		return false;
+
+	memset(&target, 0, sizeof(target));
+	target.fighters = 10.0f;
+	target.shields = 10.0f;
+	target.danger_scanner = 1.0f;
+	remaining = 1.0f;
+	tape.values = no_shield_draws;
+	tape.count = YT_ARRAY_LEN(no_shield_draws);
+	tape.position = 0U;
+	tape.fail_at = 1U;
+	yt_error_clear(&error);
+	if (yt_projectile_player_damage(&target, &remaining,
+	    projectile_damage_draw, &tape, &damage, &error)
+	    || tape.position != 2U || remaining != 0.0f
+	    || target.fighters != 10.0f || target.shields != 10.0f
+	    || error.status != YT_IO_ERROR
+	    || strcmp(error.operation, "projectile RND") != 0)
+		return false;
+
+	memset(&target, 0, sizeof(target));
+	target.fighters = 10.0f;
+	target.shields = 10.0f;
+	target.danger_scanner = INFINITY;
+	remaining = 1.0f;
+	tape.position = 0U;
+	tape.fail_at = SIZE_MAX;
+	yt_error_clear(&error);
+	return !yt_projectile_player_damage(&target, &remaining,
+	    projectile_damage_draw, &tape, &damage, &error)
+	    && tape.position == 1U && remaining == 0.0f
+	    && error.status == YT_RANGE
+	    && strcmp(error.operation, "cruise missile scanner CINT") == 0;
+}
+
 static bool
 check_projectile_parent_model(void)
 {
@@ -621,6 +741,22 @@ check_projectile_parent_model(void)
 	    && yt_projectile_quantity_response("-.1") == -1.0f
 	    && yt_projectile_quantity_response("E") == 0.0f
 	    && yt_projectile_quantity_response(NULL) == 0.0f
+	    && yt_projectile_candidate_route(3, 2, 8.0f, 7.0f, 0.0f)
+	    == YT_PROJECTILE_CANDIDATE_SKIP
+	    && yt_projectile_candidate_route(3, 2, 7.0f, 7.0f, 0.0f)
+	    == YT_PROJECTILE_CANDIDATE_TERMINATE
+	    && yt_projectile_candidate_route(2, 2, 7.0f, 7.0f, 0.5f)
+	    == YT_PROJECTILE_CANDIDATE_SKIP
+	    && yt_projectile_candidate_route(3, 2, 7.0f, 7.0f, 0.5f)
+	    == YT_PROJECTILE_CANDIDATE_FRIENDSHIP
+	    && yt_projectile_candidate_admitted(3, 0.0f, 0)
+	    && !yt_projectile_candidate_admitted(3, 1.0f, 0)
+	    && yt_projectile_candidate_admitted(3, 1.0f, 3)
+	    && !yt_projectile_candidate_admitted(3, 0.0f, 4)
+	    && !yt_projectile_damage_iteration(1.0f, 0.5f)
+	    && yt_projectile_damage_iteration(1.0f, 2.5f)
+	    && yt_projectile_damage_iteration(2.0f, 2.5f)
+	    && !yt_projectile_damage_iteration(3.0f, 2.5f)
 	    && yt_counterlaunch_score_count(-1.0, -2.5f) == -2.5f
 	    && yt_counterlaunch_score_count(0.0, 4.0f) == 4.0f
 	    && yt_counterlaunch_score_count(100000.0, 9.0f) == 1.0f
@@ -9053,6 +9189,8 @@ main(void)
 		return fail("team-loader model differs");
 	if (!check_projectile_parent_model())
 		return fail("projectile parent model differs");
+	if (!check_projectile_damage_model())
+		return fail("projectile player-damage model differs");
 	if (!check_projectile_bridge())
 		return fail("projectile debit/resolver bridge differs");
 	if (!check_xannor_retaliation_model())
