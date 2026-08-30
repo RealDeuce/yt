@@ -285,6 +285,22 @@ bool yt_projectile_union_police_run(
     yt_projectile_cruise_reroute_output_fn present, void *context,
     struct yt_error *error);
 
+struct yt_projectile_sector_probe_state {
+	const struct yt_sector *sector;
+	float hop;
+	float player_terminal;
+	const float *sector_cache;
+	const float *cloak_cache;
+	size_t cache_count;
+	float xannor_provoker;
+	float presence;
+	float matched_player;
+	float counter;
+};
+bool yt_projectile_sector_probe_run(
+    struct yt_projectile_sector_probe_state *state,
+    struct yt_error *error);
+
 struct yt_xannor_retaliation_state {
 	struct yt_player *player;
 	int *player_record;

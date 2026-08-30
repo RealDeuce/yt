@@ -11964,6 +11964,7 @@ missile_sector(struct yt_session *session, int sector_number,
 	struct yt_error *error)
 {
 	struct yt_sector sector;
+	struct yt_projectile_sector_probe_state probe;
 	float old_fighter_owner;
 	int basic;
 
@@ -11973,6 +11974,19 @@ missile_sector(struct yt_session *session, int sector_number,
 	if (!yt_game_read_sector(&session->door->game, sector_number, &sector,
 	    error))
 		return false;
+	probe.sector = &sector;
+	probe.hop = (float)sector_number;
+	probe.player_terminal = session->door->game.config.sector_offset;
+	probe.sector_cache = session->sector_cache;
+	probe.cloak_cache = session->cloak_cache;
+	probe.cache_count = YT_ARRAY_LEN(session->sector_cache);
+	probe.xannor_provoker = (float)*xannor_provoker;
+	if (!yt_projectile_sector_probe_run(&probe, error))
+		return false;
+	if (probe.presence == 0.0f) {
+		*route = MISSILE_SECTOR_POST_IMPACT;
+		return true;
+	}
 	old_fighter_owner = sector.fighter_owner;
 	if (sector.fighters > 0.0f) {
 		float original_fighters = sector.fighters;

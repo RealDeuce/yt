@@ -4712,6 +4712,45 @@ yt_projectile_union_police_run(
 }
 
 bool
+yt_projectile_sector_probe_run(struct yt_projectile_sector_probe_state *state,
+    struct yt_error *error)
+{
+	bool overflow;
+
+	if (state == NULL || state->sector == NULL
+	    || state->sector_cache == NULL || state->cloak_cache == NULL)
+		return false;
+	state->presence = 0.0f;
+	state->matched_player = 0.0f;
+	if (state->sector->mines > 0.0f || state->sector->fighters > 0.0f
+	    || state->sector->port > 0.0f || state->sector->planet > 0.0f)
+		state->presence = 1.0f;
+	state->counter = 2.0f;
+	while (state->counter <= state->player_terminal) {
+		int candidate = (int)qb_cint(state->counter, &overflow);
+
+		if (overflow || candidate < 0
+		    || (size_t)candidate >= state->cache_count) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				snprintf(error->operation, sizeof(error->operation), "%s",
+				    "projectile sector-probe cache index");
+			}
+			return false;
+		}
+		if (state->sector_cache[candidate] == state->hop
+		    && (state->cloak_cache[candidate] == 0.0f
+		    || state->counter == state->xannor_provoker)) {
+			state->presence = 1.0f;
+			state->matched_player = state->counter;
+			break;
+		}
+		state->counter = projectile_single_add(state->counter, 1.0f);
+	}
+	return true;
+}
+
+bool
 yt_projectile_survivor_overlay(struct yt_player *player, float shields,
     double fighters, float scanner, bool scanner_disabled)
 {

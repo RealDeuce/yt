@@ -1211,6 +1211,97 @@ check_projectile_union_police_transaction(void)
 	    && tape.calls == 1U && state.intercepted;
 }
 
+static bool
+check_projectile_sector_probe_transaction(void)
+{
+	struct yt_projectile_sector_probe_state state;
+	struct yt_sector sector;
+	struct yt_error error;
+	float sector_cache[8] = {0};
+	float cloak_cache[8] = {0};
+	float *objects[] = {
+		&sector.mines,
+		&sector.fighters,
+		&sector.port,
+		&sector.planet,
+	};
+	size_t index;
+
+	memset(&sector, 0, sizeof(sector));
+	memset(&state, 0, sizeof(state));
+	state.sector = &sector;
+	state.hop = 17.0f;
+	state.player_terminal = 3.5f;
+	state.sector_cache = sector_cache;
+	state.cloak_cache = cloak_cache;
+	state.cache_count = YT_ARRAY_LEN(sector_cache);
+	for (index = 0U; index < YT_ARRAY_LEN(objects); ++index) {
+		memset(&sector, 0, sizeof(sector));
+		*objects[index] = 0.001f;
+		if (!yt_projectile_sector_probe_run(&state, NULL)
+		    || state.presence != 1.0f || state.matched_player != 0.0f
+		    || state.counter != 4.0f)
+			return false;
+	}
+
+	sector.mines = -1.0f;
+	sector.fighters = NAN;
+	sector.port = -INFINITY;
+	sector.planet = -0.0f;
+	state.player_terminal = 1.9f;
+	state.xannor_provoker = 0.0f;
+	if (!yt_projectile_sector_probe_run(&state, NULL)
+	    || state.presence != 0.0f || state.matched_player != 0.0f
+	    || state.counter != 2.0f)
+		return false;
+
+	memset(&sector, 0, sizeof(sector));
+	sector_cache[2] = 17.0f;
+	state.player_terminal = 5.0f;
+	if (!yt_projectile_sector_probe_run(&state, NULL)
+	    || state.presence != 1.0f || state.matched_player != 2.0f
+	    || state.counter != 2.0f)
+		return false;
+
+	sector_cache[2] = 0.0f;
+	sector_cache[3] = 17.0f;
+	cloak_cache[3] = -1.0f;
+	state.player_terminal = 3.5f;
+	if (!yt_projectile_sector_probe_run(&state, NULL)
+	    || state.presence != 0.0f || state.matched_player != 0.0f
+	    || state.counter != 4.0f)
+		return false;
+	state.xannor_provoker = 3.0f;
+	if (!yt_projectile_sector_probe_run(&state, NULL)
+	    || state.presence != 1.0f || state.matched_player != 3.0f
+	    || state.counter != 3.0f)
+		return false;
+
+	state.player_terminal = NAN;
+	state.xannor_provoker = 0.0f;
+	if (!yt_projectile_sector_probe_run(&state, NULL)
+	    || state.presence != 0.0f || state.counter != 2.0f)
+		return false;
+
+	state.player_terminal = 3.0f;
+	state.cache_count = 3U;
+	yt_error_clear(&error);
+	if (yt_projectile_sector_probe_run(&state, &error)
+	    || error.status != YT_RANGE
+	    || strcmp(error.operation,
+	    "projectile sector-probe cache index") != 0
+	    || state.presence != 0.0f || state.counter != 3.0f)
+		return false;
+
+	sector.mines = 1.0f;
+	state.player_terminal = 2.0f;
+	state.cache_count = 2U;
+	if (yt_projectile_sector_probe_run(&state, NULL)
+	    || state.presence != 1.0f || state.counter != 2.0f)
+		return false;
+	return !yt_projectile_sector_probe_run(NULL, NULL);
+}
+
 enum projectile_planet_event {
 	PROJECTILE_PLANET_RANDOM = 1,
 	PROJECTILE_PLANET_READ,
@@ -10233,6 +10324,8 @@ main(void)
 		return fail("projectile cruise-reroute transaction differs");
 	if (!check_projectile_union_police_transaction())
 		return fail("projectile Union Police transaction differs");
+	if (!check_projectile_sector_probe_transaction())
+		return fail("projectile sector-probe transaction differs");
 	if (!check_projectile_damage_model())
 		return fail("projectile player-damage model differs");
 	if (!check_projectile_persistence_model())
