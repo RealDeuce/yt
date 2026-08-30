@@ -11353,6 +11353,301 @@ test_planet_info_captain_route_cycles_presentation(void)
 	}
 }
 
+enum sensor_join_output_kind {
+	SENSOR_JOIN_LINE,
+	SENSOR_JOIN_BOLD_LINE,
+	SENSOR_JOIN_RAW,
+	SENSOR_JOIN_BOLD_RAW,
+	SENSOR_JOIN_ATTENTION,
+};
+
+struct sensor_join_output {
+	enum sensor_join_output_kind kind;
+	const char *text;
+};
+
+static bool
+sensor_join_present(struct viewer_pager_join *join,
+    const struct sensor_join_output *output)
+{
+	const uint8_t *text = (const uint8_t *)output->text;
+	size_t length = output->text == NULL ? 0U : strlen(output->text);
+	struct yt_present_result result;
+	enum yt_present_status status;
+
+	switch (output->kind) {
+	case SENSOR_JOIN_LINE:
+		status = yt_present_line(text, length, &join->presentation,
+		    &result);
+		break;
+	case SENSOR_JOIN_BOLD_LINE:
+		status = yt_present_bold_line(text, length,
+		    &join->presentation, &result);
+		break;
+	case SENSOR_JOIN_RAW:
+		status = yt_present_character(text, length, &join->presentation,
+		    &result);
+		break;
+	case SENSOR_JOIN_BOLD_RAW:
+		status = yt_present_bold_character(text, length,
+		    &join->presentation, &result);
+		break;
+	case SENSOR_JOIN_ATTENTION:
+		status = yt_present_attention(text, length, &join->presentation,
+		    &result);
+		break;
+	default:
+		return false;
+	}
+	if (status != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	return true;
+}
+
+static bool
+sensor_join_sound(struct viewer_pager_join *join)
+{
+	struct yt_present_result result;
+
+	if (yt_present_sound(4.0f, &join->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	return true;
+}
+
+static bool
+planet_sensor_nonzero_cycle_run(struct physical_viewer_join *viewer,
+    bool ansi, size_t *prompt_end, size_t *editor_end, size_t *sensor_end)
+{
+	static const uint8_t free_holds[] =
+	    "You have 65 free cargo holds.";
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Planet command (?=help) [A]? ";
+	static const uint8_t command[] = "S";
+	static const struct sensor_join_output output[] = {
+		{SENSOR_JOIN_LINE, NULL},
+		{SENSOR_JOIN_BOLD_LINE, "[ Sensors Activated ]"},
+		{SENSOR_JOIN_LINE, NULL},
+		{SENSOR_JOIN_LINE, "Sector: 9"},
+		{SENSOR_JOIN_LINE, "Port: Relay, Selling: Equ"},
+		{SENSOR_JOIN_BOLD_LINE, "Planet: Outpost * Forces: 5"},
+		{SENSOR_JOIN_BOLD_LINE,
+		    "You detect the shimmering of a cloaking device!"},
+		{SENSOR_JOIN_BOLD_LINE, "Other Ships: "},
+		{SENSOR_JOIN_LINE,
+		    "    Cloaked - Fighters: 8 - Shields: 2"},
+		{SENSOR_JOIN_RAW, "Warps lead to:"},
+		{SENSOR_JOIN_RAW, " 9"},
+		{SENSOR_JOIN_RAW, ", 42"},
+		{SENSOR_JOIN_RAW, ", 7"},
+		{SENSOR_JOIN_RAW, ", 9"},
+		{SENSOR_JOIN_LINE, NULL},
+		{SENSOR_JOIN_LINE, NULL},
+		{SENSOR_JOIN_LINE, "Sector: 9"},
+		{SENSOR_JOIN_LINE, "Port: Relay, Selling: Equ"},
+		{SENSOR_JOIN_BOLD_LINE, "Planet: Outpost * Forces: 5"},
+		{SENSOR_JOIN_BOLD_LINE, "Other Ships: "},
+		{SENSOR_JOIN_LINE,
+		    "    Cloaked - Fighters: 8 - Shields: 2"},
+		{SENSOR_JOIN_RAW, "Warps lead to:"},
+		{SENSOR_JOIN_RAW, " 9"},
+		{SENSOR_JOIN_RAW, ", 42"},
+		{SENSOR_JOIN_RAW, ", 7"},
+		{SENSOR_JOIN_RAW, ", 9"},
+		{SENSOR_JOIN_LINE, NULL},
+		{SENSOR_JOIN_LINE, NULL},
+		{SENSOR_JOIN_LINE, "Sector: 42"},
+		{SENSOR_JOIN_BOLD_LINE, "Other Ships: "},
+		{SENSOR_JOIN_LINE,
+		    "    Neighbor - Team: 3 - Fighters: 5 - Shields: 6"},
+		{SENSOR_JOIN_RAW, "Warps lead to:"},
+		{SENSOR_JOIN_RAW, " 42"},
+		{SENSOR_JOIN_RAW, ", 9"},
+		{SENSOR_JOIN_LINE, NULL},
+		{SENSOR_JOIN_LINE, NULL},
+		{SENSOR_JOIN_BOLD_LINE, "[ Pause ]"},
+		{SENSOR_JOIN_LINE, NULL},
+		{SENSOR_JOIN_LINE, "Sector: 7"},
+		{SENSOR_JOIN_ATTENTION,
+		    "** Space-time disruption detected! **"},
+		{SENSOR_JOIN_ATTENTION,
+		    "** WARNING! SECTOR HAS 2 MINES! **"},
+		{SENSOR_JOIN_BOLD_RAW, "Fighters in sector:"},
+		{SENSOR_JOIN_LINE, " 12 (Belong to The Xannor)"},
+		{SENSOR_JOIN_RAW, "Warps lead to:"},
+		{SENSOR_JOIN_RAW, " 9"},
+		{SENSOR_JOIN_RAW, ", 42"},
+		{SENSOR_JOIN_LINE, NULL},
+		{SENSOR_JOIN_LINE, NULL},
+		{SENSOR_JOIN_BOLD_LINE, "[ End Sensor Scan ]"},
+	};
+	struct viewer_pager_join *join = &viewer->join;
+	struct yt_present_result result;
+	struct yt_timed_wait_state wait;
+	size_t index;
+
+	if (prompt_end == NULL || editor_end == NULL || sensor_end == NULL)
+		return false;
+	memset(&wait, 0, sizeof(wait));
+	join->presentation = state(ansi);
+	join->presentation.foreground = 6.0f;
+	join->pager.foreground = 6;
+	join->pager.line_count = 0.0f;
+	if (ansi) {
+		if (yt_present_color(&join->presentation, &result)
+		    != YT_PRESENT_OK)
+			return false;
+	}
+	else {
+		join->presentation.sound.user_sound = 0.0f;
+		join->presentation.sound.local_sound = 0.0f;
+	}
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, free_holds,
+	    sizeof(free_holds) - 1U, 0.0f)
+	    || !normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, prompt, sizeof(prompt) - 1U, 1.0f))
+		return false;
+	*prompt_end = join->remote_length;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	memcpy(join->accumulator, command, sizeof(command));
+	if (yt_present_editor_echo(command, sizeof(command) - 1U,
+	    command, sizeof(command) - 1U, &join->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
+	*editor_end = join->remote_length;
+	for (index = 0U; index < YT_ARRAY_LEN(output); ++index) {
+		if (index == 1U || index == 36U || index == 48U) {
+			join->presentation.foreground = 7.0f;
+			join->pager.foreground = 7;
+		}
+		else if (index == 2U || index == 37U) {
+			join->presentation.foreground = 1.0f;
+			join->pager.foreground = 1;
+		}
+		else if (index == 5U || index == 18U) {
+			join->presentation.foreground = 3.0f;
+			join->pager.foreground = 3;
+		}
+		if (!sensor_join_present(join, &output[index]))
+			return false;
+		if (index == 1U || index == 6U) {
+			if (!sensor_join_sound(join))
+				return false;
+		}
+		if (index == 5U || index == 18U) {
+			join->presentation.foreground = 1.0f;
+			join->pager.foreground = 1;
+		}
+		if (index == 36U) {
+			if (!yt_timed_wait_begin(&wait, 15.0f, 0.0f)
+			    || yt_timed_wait_timer(&wait, 0.0f)
+			    != YT_TIMED_WAIT_CONTINUE
+			    || yt_timed_wait_timer(&wait, 15.0f)
+			    != YT_TIMED_WAIT_TIMER
+			    || wait.duration_cell != 15.0f
+			    || wait.timer_reads != 3U)
+				return false;
+		}
+		if (index == 40U) {
+			size_t sound;
+
+			for (sound = 0U; sound < 3U; ++sound)
+				if (!sensor_join_sound(join))
+					return false;
+		}
+	}
+	*sensor_end = join->remote_length;
+	join->presentation.foreground = 6.0f;
+	join->pager.foreground = 6;
+	join->pager.line_count = 0.0f;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, free_holds,
+	    sizeof(free_holds) - 1U, 0.0f)
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.foreground = 6.0f;
+	join->pager.foreground = 6;
+	return normal_exit_b05d(join, prompt, sizeof(prompt) - 1U, 1.0f);
+}
+
+static void
+test_planet_sensor_nonzero_cycle_presentation(void)
+{
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Planet command (?=help) [A]? ";
+	static const struct {
+		bool ansi;
+		size_t sensor_end;
+		size_t remote_length;
+		uint64_t remote_fnv;
+		float final_bold;
+		float final_blink;
+		size_t local_colors;
+		uint64_t local_color_fnv;
+	} cases[] = {
+		{true, 1199U, 1286U, UINT64_C(0x25e89cef154445d8),
+		    0.0f, 0.0f, 64U, UINT64_C(0x968cacea8669d75c)},
+		{false, 753U, 830U, UINT64_C(0x3fc5a736f8f4ebf8),
+		    1.0f, 1.0f, 4U, UINT64_C(0x01b4fd96ce8921d5)},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	uint8_t remote[1400];
+	size_t prompt_end;
+	size_t editor_end;
+	size_t sensor_end;
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
+		CHECK(planet_sensor_nonzero_cycle_run(&viewer, cases[pass].ansi,
+		    &prompt_end, &editor_end, &sensor_end));
+		CHECK(prompt_end == 77U && editor_end == 80U
+		    && sensor_end == cases[pass].sensor_end
+		    && viewer.join.remote_length == cases[pass].remote_length
+		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+		    == cases[pass].remote_fnv
+		    && viewer.join.presentation.foreground == 6.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold == cases[pass].final_bold
+		    && viewer.join.presentation.blink == cases[pass].final_blink
+		    && viewer.join.presentation.cached_foreground
+		    == (cases[pass].ansi ? 6.0f : 0.0f)
+		    && viewer.join.pager.foreground == 6
+		    && viewer.join.pager.line_count == 2.0f
+		    && viewer.join.pager.nonstop == 0.0f
+		    && viewer.join.local_row_count == 39U
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == UINT64_C(0x6a7469c3f7491002)
+		    && viewer.join.local_fragment_length == sizeof(prompt) - 1U
+		    && memcmp(viewer.join.local_fragment, prompt,
+		    sizeof(prompt) - 1U) == 0
+		    && viewer.join.local_color_count == cases[pass].local_colors
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == cases[pass].local_color_fnv
+		    && strcmp(viewer.join.accumulator, "S") == 0
+		    && viewer.join.queue_length == 0U
+		    && viewer.join.sample_calls == 4U
+		    && viewer.join.event_count == 20U
+		    && stream.eof_checks == 0U && stream.key_checks == 0U
+		    && stream.read_count == 0U && stream.line_count == 0U
+		    && !stream.file_open && !viewer.join.file_open
+		    && viewer.input.file == NULL && viewer.close_calls == 0U
+		    && viewer.open_calls == 0U);
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
 static bool
 computer_quit_accept_prefix(struct physical_viewer_join *viewer, bool ansi)
 {
@@ -15124,6 +15419,7 @@ main(void)
 	test_planet_info_cycle_presentation();
 	test_planet_info_promotion_refresh_cycle_presentation();
 	test_planet_info_captain_route_cycles_presentation();
+	test_planet_sensor_nonzero_cycle_presentation();
 	test_computer_quit_accept_presentation();
 	test_planet_quit_accept_presentation();
 	test_hostile_quit_accept_presentation();
