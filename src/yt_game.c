@@ -4628,6 +4628,71 @@ yt_projectile_sector_mines_overlay(struct yt_sector *sector,
 	return yt_record_set_number(&sector->record, YT_F129, sector->mines);
 }
 
+uint32_t
+yt_projectile_physical_record(float offset, float logical)
+{
+	return qb_brun_random_record_number(projectile_single_add(offset,
+	    logical));
+}
+
+bool
+yt_projectile_planet_ground_overlay(struct yt_planet *planet,
+    float ground, float owner)
+{
+	if (planet == NULL)
+		return false;
+	planet->ground_forces = ground;
+	planet->owner = owner;
+	return yt_record_set_number(&planet->record, YT_F77, ground)
+	    && yt_record_set_number(&planet->record, YT_F73, owner);
+}
+
+bool
+yt_projectile_planet_productivity_overlay(struct yt_planet *planet,
+    const float production[3], const float stock[3])
+{
+	size_t index;
+
+	if (planet == NULL || production == NULL || stock == NULL)
+		return false;
+	for (index = 0U; index < 3U; ++index) {
+		planet->production[index] = production[index];
+		planet->stock[index] = stock[index];
+		if (!yt_record_set_number(&planet->record, YT_F45 + index * 4U,
+		    production[index])
+		    || !yt_record_set_number(&planet->record,
+		    YT_F57 + index * 4U, stock[index]))
+			return false;
+	}
+	return true;
+}
+
+bool
+yt_projectile_planet_destroy_overlay(struct yt_planet *planet)
+{
+	static const uint8_t link_zero[4] = {
+		0x00, 0x00, 0x20, 0x00
+	};
+
+	if (planet == NULL)
+		return false;
+	planet->name_length = 0.0f;
+	return yt_record_set_raw_number(&planet->record, YT_F85, link_zero);
+}
+
+bool
+yt_projectile_sector_unlink_overlay(struct yt_sector *sector)
+{
+	static const uint8_t link_zero[4] = {
+		0x00, 0x00, 0x20, 0x00
+	};
+
+	if (sector == NULL)
+		return false;
+	sector->planet = 0.0f;
+	return yt_record_set_raw_number(&sector->record, YT_F93, link_zero);
+}
+
 bool
 yt_projectile_player_damage(struct yt_player *target, float *remaining,
     yt_projectile_damage_draw_fn draw, void *context,

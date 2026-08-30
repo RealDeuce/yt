@@ -11679,6 +11679,8 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 	struct yt_planet updater_planet;
 	bool overflow;
 	int logical_planet;
+	uint32_t physical_planet;
+	uint32_t physical_sector;
 	float original_ore;
 	float old_total;
 	bool friendly = false;
@@ -11707,12 +11709,16 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 	}
 	if (logical_planet == 0)
 		return true;
-	if (!planet_update(session, logical_planet, &updater_planet, error))
+	physical_planet = yt_projectile_physical_record(
+	    session->door->game.config.planet_offset, sector->planet);
+	physical_sector = yt_projectile_physical_record(
+	    session->door->game.config.sector_offset, (float)sector_number);
+	if (!planet_update_cached_physical(session, physical_planet,
+	    &updater_planet, NULL, error))
 		return false;
 	/* DS:1A48 remains the updater's ore value across the independent GET. */
 	original_ore = updater_planet.production[0];
-	if (!yt_game_read_planet(&session->door->game, logical_planet, &planet,
-	    error))
+	if (!read_planet_physical(session, physical_planet, &planet, error))
 		return false;
 	if (!yt_planet_stored_name(&planet, planet_name, &planet_name_length,
 	    error))
@@ -11721,42 +11727,14 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 		friendly = true;
 	else if (planet.owner > 1.0f
 	    && planet.owner <= session->door->game.config.sector_offset) {
-		/*
-		 * YT-SUB:974F clears its result before validating both records,
-		 * then physically GETs the current player and (for a nonzero team)
-		 * the candidate.  Its Boolean result is consumed here, after which
-		 * the caller restores the planet FIELD with another independent GET.
-		 */
-		if (session->player_record >= YT_PLAYER_FIRST
-		    && (float)session->player_record
-		    <= session->door->game.config.sector_offset) {
-			struct yt_player current;
-
-			if (!yt_game_read_player(&session->door->game,
-			    session->player_record, &current, error))
-				return false;
-			if (current.team != 0.0f) {
-				struct yt_player candidate;
-				int owner_record = (int)qb_cint(
-				    (double)planet.owner, &overflow);
-
-				if (overflow) {
-					if (error != NULL) {
-						error->status = YT_RANGE;
-						snprintf(error->operation,
-						    sizeof(error->operation), "%s",
-						    "cruise missile planet-owner CINT");
-					}
-					return false;
-				}
-				if (!yt_game_read_player(&session->door->game,
-				    owner_record, &candidate, error))
-					return false;
-				friendly = candidate.team == current.team;
-			}
-		}
-		if (!yt_game_read_planet(&session->door->game,
-		    logical_planet, &planet, error))
+		if (!yt_friendship_resolve(planet.owner,
+		    (float)session->player_record,
+		    session->door->game.config.sector_offset,
+		    friendship_read_player, &session->door->game, &friendly,
+		    error))
+			return false;
+		if (!read_planet_physical(session, physical_planet, &planet,
+		    error))
 			return false;
 	}
 	if (friendly) {
@@ -11799,23 +11777,14 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 			ground = 0.0f;
 			owner = 0.0f;
 		}
-		if (!yt_game_read_planet(&session->door->game, logical_planet,
-		    &persistence, error))
+		if (!read_planet_physical(session, physical_planet, &persistence,
+		    error))
 			return false;
-		persistence.ground_forces = ground;
-		persistence.owner = owner;
-		if (!yt_record_set_number(&persistence.record, YT_F77, ground)
-		    || !yt_record_set_number(&persistence.record, YT_F73, owner)) {
-			if (error != NULL) {
-				error->status = YT_RANGE;
-				snprintf(error->operation, sizeof(error->operation), "%s",
-				    "cruise missile ground-force overlay");
-			}
+		if (!yt_projectile_planet_ground_overlay(&persistence, ground,
+		    owner))
 			return false;
-		}
 		if (!yt_database_write(&session->door->game.database,
-		    (size_t)yt_planet_basic_record(&session->door->game.config,
-		    logical_planet), &persistence.record, error))
+		    (size_t)physical_planet, &persistence.record, error))
 			return false;
 		qb_str_single(number_one, sizeof(number_one), ground);
 		snprintf(row, sizeof(row), "Ground forces reduced to%s!",
@@ -11874,74 +11843,38 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 	}
 	{
 		struct yt_planet persistence;
-		size_t index;
 
-		if (!yt_game_read_planet(&session->door->game, logical_planet,
-		    &persistence, error))
+		if (!read_planet_physical(session, physical_planet, &persistence,
+		    error))
 			return false;
-		for (index = 0; index < 3; ++index) {
-			persistence.production[index] = planet.production[index];
-			persistence.stock[index] = planet.stock[index];
-			if (!yt_record_set_number(&persistence.record,
-			    YT_F45 + index * 4U, planet.production[index])
-			    || !yt_record_set_number(&persistence.record,
-			    YT_F57 + index * 4U, planet.stock[index])) {
-				if (error != NULL) {
-					error->status = YT_RANGE;
-					snprintf(error->operation,
-					    sizeof(error->operation), "%s",
-					    "cruise missile productivity overlay");
-				}
-				return false;
-			}
-		}
+		if (!yt_projectile_planet_productivity_overlay(&persistence,
+		    planet.production, planet.stock))
+			return false;
 		if (!yt_database_write(&session->door->game.database,
-		    (size_t)yt_planet_basic_record(&session->door->game.config,
-		    logical_planet), &persistence.record, error))
+		    (size_t)physical_planet, &persistence.record, error))
 			return false;
 	}
 	if (planet.production[0] == 0.0f
 	    && planet.production[1] == 0.0f
 	    && planet.production[2] == 0.0f) {
-		static const uint8_t link_zero[4] = {
-			0x00, 0x00, 0x20, 0x00
-		};
 		struct yt_planet destruction;
 		struct yt_sector unlink;
 
-		if (!yt_game_read_planet(&session->door->game, logical_planet,
-		    &destruction, error))
+		if (!read_planet_physical(session, physical_planet, &destruction,
+		    error))
 			return false;
-		destruction.name_length = 0.0f;
-		if (!yt_record_set_raw_number(&destruction.record, YT_F85,
-		    link_zero)) {
-			if (error != NULL) {
-				error->status = YT_RANGE;
-				snprintf(error->operation, sizeof(error->operation), "%s",
-				    "cruise missile planet-active zero overlay");
-			}
+		if (!yt_projectile_planet_destroy_overlay(&destruction))
 			return false;
-		}
 		if (!yt_database_write(&session->door->game.database,
-		    (size_t)yt_planet_basic_record(&session->door->game.config,
-		    logical_planet), &destruction.record, error))
+		    (size_t)physical_planet, &destruction.record, error))
 			return false;
-		if (!yt_game_read_sector(&session->door->game, sector_number,
-		    &unlink, error))
+		if (!scanner_read_sector(session, (float)sector_number, &unlink,
+		    error))
 			return false;
-		unlink.planet = 0.0f;
-		if (!yt_record_set_raw_number(&unlink.record, YT_F93,
-		    link_zero)) {
-			if (error != NULL) {
-				error->status = YT_RANGE;
-				snprintf(error->operation, sizeof(error->operation), "%s",
-				    "cruise missile sector-link zero overlay");
-			}
+		if (!yt_projectile_sector_unlink_overlay(&unlink))
 			return false;
-		}
 		if (!yt_database_write(&session->door->game.database,
-		    (size_t)yt_sector_basic_record(&session->door->game.config,
-		    sector_number), &unlink.record, error))
+		    (size_t)physical_sector, &unlink.record, error))
 			return false;
 		if (!session_present_text(session,
 		    (const uint8_t *)"The planet was destroyed!!",

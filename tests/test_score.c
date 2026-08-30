@@ -556,7 +556,10 @@ check_projectile_persistence_model(void)
 	};
 	struct yt_player player;
 	struct yt_sector sector;
+	struct yt_planet planet;
 	struct yt_record expected;
+	const float production[3] = {1.25f, -2.5f, 3.75f};
+	const float stock[3] = {4.5f, 5.5f, 6.5f};
 	float saved_mines;
 	size_t index;
 
@@ -603,10 +606,58 @@ check_projectile_persistence_model(void)
 		sector.record.bytes[index] = (uint8_t)(index ^ 0xc3U);
 	sector.mines = 1.25f;
 	expected = sector.record;
-	return yt_record_set_number(&expected, YT_F129, 1.75f)
-	    && yt_projectile_sector_mines_overlay(&sector, 0.5f)
-	    && sector.mines == 1.75f
-	    && memcmp(&sector.record, &expected, sizeof(expected)) == 0;
+	if (!yt_record_set_number(&expected, YT_F129, 1.75f)
+	    || !yt_projectile_sector_mines_overlay(&sector, 0.5f)
+	    || sector.mines != 1.75f
+	    || memcmp(&sector.record, &expected, sizeof(expected)) != 0
+	    || yt_projectile_physical_record(10.75f, 0.5f) != 11U
+	    || yt_projectile_physical_record(16777216.0f, 1.0f)
+	    != 0U)
+		return false;
+
+	memset(&planet, 0, sizeof(planet));
+	for (index = 0U; index < YT_RECORD_SIZE; ++index)
+		planet.record.bytes[index] = (uint8_t)(index ^ 0x96U);
+	expected = planet.record;
+	if (!yt_record_set_number(&expected, YT_F77, 8.5f)
+	    || !yt_record_set_number(&expected, YT_F73, -2.0f)
+	    || !yt_projectile_planet_ground_overlay(&planet, 8.5f, -2.0f)
+	    || memcmp(&planet.record, &expected, sizeof(expected)) != 0)
+		return false;
+
+	expected = planet.record;
+	for (index = 0U; index < 3U; ++index) {
+		if (!yt_record_set_number(&expected, YT_F45 + index * 4U,
+		    production[index])
+		    || !yt_record_set_number(&expected, YT_F57 + index * 4U,
+		    stock[index]))
+			return false;
+	}
+	if (!yt_projectile_planet_productivity_overlay(&planet, production,
+	    stock)
+	    || memcmp(&planet.record, &expected, sizeof(expected)) != 0)
+		return false;
+
+	{
+		static const uint8_t link_zero[4] = {
+			0x00, 0x00, 0x20, 0x00
+		};
+
+		expected = planet.record;
+		if (!yt_record_set_raw_number(&expected, YT_F85, link_zero)
+		    || !yt_projectile_planet_destroy_overlay(&planet)
+		    || memcmp(&planet.record, &expected, sizeof(expected)) != 0)
+			return false;
+		memset(&sector, 0, sizeof(sector));
+		for (index = 0U; index < YT_RECORD_SIZE; ++index)
+			sector.record.bytes[index] = (uint8_t)(index ^ 0x69U);
+		expected = sector.record;
+		if (!yt_record_set_raw_number(&expected, YT_F93, link_zero)
+		    || !yt_projectile_sector_unlink_overlay(&sector)
+		    || memcmp(&sector.record, &expected, sizeof(expected)) != 0)
+			return false;
+	}
+	return true;
 }
 
 static bool
