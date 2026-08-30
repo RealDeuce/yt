@@ -10642,6 +10642,164 @@ test_computer_info_cycle_presentation(void)
 }
 
 static bool
+planet_info_cycle_run(struct physical_viewer_join *viewer, bool ansi,
+    bool typeahead, size_t *prompt_end, size_t *editor_end, size_t *info_end)
+{
+	static const uint8_t free_holds[] =
+	    "You have 5 free cargo holds.";
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Planet command (?=help) [A]? ";
+	static const uint8_t time_text[] = " 14:59  ";
+	static const uint8_t command[] = "I";
+	static const uint8_t queued_command[] = "I;NEXT";
+	const uint8_t *typed = typeahead ? queued_command : command;
+	size_t typed_length = typeahead
+	    ? sizeof(queued_command) - 1U : sizeof(command) - 1U;
+	struct viewer_pager_join *join = &viewer->join;
+	struct yt_present_result result;
+
+	if (prompt_end == NULL || editor_end == NULL || info_end == NULL)
+		return false;
+	join->presentation = state(ansi);
+	join->presentation.foreground = 6.0f;
+	join->presentation.cached_foreground = ansi ? 6.0f : 0.0f;
+	join->pager.foreground = 6;
+	join->pager.line_count = 0.0f;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, free_holds,
+	    sizeof(free_holds) - 1U, 0.0f)
+	    || !normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, prompt, sizeof(prompt) - 1U, 1.0f))
+		return false;
+	*prompt_end = join->remote_length;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	memcpy(join->accumulator, typed, typed_length + 1U);
+	if (typeahead
+	    && (!yt_input_split_semicolon(join->accumulator, join->queue,
+	    sizeof(join->queue), &join->queue_position, &join->queue_length)
+	    || strcmp(join->accumulator, "I") != 0
+	    || join->queue_position != 0U || join->queue_length != 5U
+	    || memcmp(join->queue, "NEXT\r", 5U) != 0))
+		return false;
+	if (yt_present_editor_echo(typed, typed_length, typed, typed_length,
+	    &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
+	*editor_end = join->remote_length;
+	if (!normal_exit_info_run(viewer, time_text, sizeof(time_text) - 1U,
+	    NULL))
+		return false;
+	*info_end = join->remote_length;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, free_holds,
+	    sizeof(free_holds) - 1U, 0.0f)
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.foreground = 6.0f;
+	join->pager.foreground = 6;
+	return normal_exit_b05d(join, prompt, sizeof(prompt) - 1U, 1.0f);
+}
+
+static void
+test_planet_info_cycle_presentation(void)
+{
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Planet command (?=help) [A]? ";
+	static const struct {
+		bool ansi;
+		bool typeahead;
+		size_t editor_end;
+		size_t info_end;
+		size_t remote_length;
+		uint64_t remote_fnv;
+		uint64_t local_fnv;
+		size_t colors;
+		uint64_t color_fnv;
+		float final_bold;
+	} cases[] = {
+		{true, false, 79U, 757U, 843U,
+		    UINT64_C(0xf9979621eb64ff26),
+		    UINT64_C(0xa6faad25a1d0a32f), 50U,
+		    UINT64_C(0xb9e6e80a37c666a6), 0.0f},
+		{false, false, 79U, 681U, 757U,
+		    UINT64_C(0x24db98d57ab837d7),
+		    UINT64_C(0xa6faad25a1d0a32f), 4U,
+		    UINT64_C(0x01b4fd96ce8921d5), 1.0f},
+		{true, true, 84U, 762U, 848U,
+		    UINT64_C(0x587e2ca5225bdc76),
+		    UINT64_C(0xab6ae1d072bf9950), 50U,
+		    UINT64_C(0xb9e6e80a37c666a6), 0.0f},
+		{false, true, 84U, 686U, 762U,
+		    UINT64_C(0xb505adf4f01c2aa7),
+		    UINT64_C(0xab6ae1d072bf9950), 4U,
+		    UINT64_C(0x01b4fd96ce8921d5), 1.0f},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	uint8_t remote[900];
+	size_t prompt_end;
+	size_t editor_end;
+	size_t info_end;
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
+		CHECK(planet_info_cycle_run(&viewer, cases[pass].ansi,
+		    cases[pass].typeahead, &prompt_end, &editor_end, &info_end));
+		CHECK(prompt_end == 76U && editor_end == cases[pass].editor_end
+		    && info_end == cases[pass].info_end
+		    && viewer.join.remote_length == cases[pass].remote_length
+		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+		    == cases[pass].remote_fnv
+		    && viewer.join.local_row_count == 24U
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == cases[pass].local_fnv
+		    && viewer.join.local_fragment_length == sizeof(prompt) - 1U
+		    && memcmp(viewer.join.local_fragment, prompt,
+		    sizeof(prompt) - 1U) == 0
+		    && viewer.join.local_color_count == cases[pass].colors
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == cases[pass].color_fnv
+		    && viewer.join.presentation.foreground == 6.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold == cases[pass].final_bold
+		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.cached_foreground
+		    == (cases[pass].ansi ? 6.0f : 0.0f)
+		    && viewer.join.pager.foreground == 6
+		    && viewer.join.pager.line_count == 2.0f
+		    && viewer.join.pager.nonstop == 0.0f
+		    && viewer.join.pager.key[0] == '\0'
+		    && strcmp(viewer.join.accumulator, "I") == 0
+		    && viewer.join.queue_position == 0U
+		    && viewer.join.queue_length
+		    == (cases[pass].typeahead ? 5U : 0U)
+		    && (!cases[pass].typeahead
+		    || memcmp(viewer.join.queue, "NEXT\r", 5U) == 0)
+		    && viewer.join.source_length == sizeof(prompt) - 1U
+		    && memcmp(viewer.join.source, prompt,
+		    sizeof(prompt) - 1U) == 0);
+		CHECK(viewer.join.sample_calls == 4U
+		    && viewer.join.response_calls == 0U
+		    && viewer.join.direct_calls == 0U
+		    && viewer.join.event_count == 20U
+		    && viewer.join.position == 0U
+		    && stream.eof_checks == 0U && stream.key_checks == 0U
+		    && stream.read_count == 0U && stream.line_count == 0U
+		    && !stream.file_open && !viewer.join.file_open
+		    && viewer.input.file == NULL && viewer.close_calls == 0U
+		    && viewer.open_calls == 0U);
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
+static bool
 computer_quit_accept_prefix(struct physical_viewer_join *viewer, bool ansi)
 {
 	static const uint8_t prompt[] =
@@ -14409,6 +14567,7 @@ main(void)
 	test_info_panel_presentation();
 	test_full_normal_exit_presentation();
 	test_computer_info_cycle_presentation();
+	test_planet_info_cycle_presentation();
 	test_computer_quit_accept_presentation();
 	test_planet_quit_accept_presentation();
 	test_hostile_quit_accept_presentation();
