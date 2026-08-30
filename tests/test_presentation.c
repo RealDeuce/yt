@@ -12203,6 +12203,132 @@ test_planet_transfer_cancel_cycle_presentation(void)
 }
 
 static bool
+planet_rename_protected_cycle_run(struct physical_viewer_join *viewer,
+    bool ansi, size_t *prompt_end, size_t *editor_end, size_t *body_end)
+{
+	static const uint8_t free_holds[] =
+	    "You have 65 free cargo holds.";
+	static const uint8_t planet_prompt[] =
+	    "Time: 14:59  Planet command (?=help) [A]? ";
+	static const uint8_t command[] = "n";
+	static const uint8_t protected[] = "You can't re-name this planet!";
+	struct viewer_pager_join *join = &viewer->join;
+	struct yt_present_result result;
+
+	if (prompt_end == NULL || editor_end == NULL || body_end == NULL
+	    || !yt_planet_rename_protected(101.5f, 100.5f, 400.25f))
+		return false;
+	join->presentation = state(ansi);
+	join->presentation.foreground = 6.0f;
+	join->presentation.cached_foreground = ansi ? 6.0f : 0.0f;
+	join->pager.foreground = 6;
+	join->pager.line_count = 0.0f;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, free_holds,
+	    sizeof(free_holds) - 1U, 0.0f)
+	    || !normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, planet_prompt,
+	    sizeof(planet_prompt) - 1U, 1.0f))
+		return false;
+	*prompt_end = join->remote_length;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	memcpy(join->accumulator, command, sizeof(command));
+	if (yt_present_editor_echo(command, sizeof(command) - 1U,
+	    command, sizeof(command) - 1U, &join->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
+	*editor_end = join->remote_length;
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.bold = 1.0f;
+	join->presentation.blink = 1.0f;
+	if (!normal_exit_b05d(join, protected, sizeof(protected) - 1U, 0.0f))
+		return false;
+	*body_end = join->remote_length;
+	join->pager.line_count = 0.0f;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, free_holds,
+	    sizeof(free_holds) - 1U, 0.0f)
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.foreground = 6.0f;
+	join->pager.foreground = 6;
+	return normal_exit_b05d(join, planet_prompt,
+	    sizeof(planet_prompt) - 1U, 1.0f);
+}
+
+static void
+test_planet_rename_protected_cycle_presentation(void)
+{
+	static const struct {
+		bool ansi;
+		size_t body_end;
+		size_t remote_length;
+		uint64_t remote_fnv;
+	} cases[] = {
+		{true, 128U, 215U, UINT64_C(0x11c71a9d41ed31b4)},
+		{false, 114U, 191U, UINT64_C(0x8d6f837de0241530)},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	uint8_t remote[250];
+	size_t prompt_end;
+	size_t editor_end;
+	size_t body_end;
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
+		CHECK(planet_rename_protected_cycle_run(&viewer,
+		    cases[pass].ansi, &prompt_end, &editor_end, &body_end));
+		CHECK(prompt_end == 77U && editor_end == 80U
+		    && body_end == cases[pass].body_end
+		    && viewer.join.remote_length == cases[pass].remote_length
+		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+		    == cases[pass].remote_fnv
+		    && viewer.join.local_row_count == 9U
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == UINT64_C(0xe7cdb4566a9fbf2f)
+		    && viewer.join.local_fragment_length == 42U
+		    && memcmp(viewer.join.local_fragment,
+		    "Time: 14:59  Planet command (?=help) [A]? ", 42U) == 0
+		    && viewer.join.local_color_count
+		    == (cases[pass].ansi ? 16U : 5U)
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == (cases[pass].ansi ? UINT64_C(0xb96bd9b68b68a999)
+		    : UINT64_C(0xc6f69f5cf097a0a2))
+		    && viewer.join.presentation.foreground == 6.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold
+		    == (cases[pass].ansi ? 0.0f : 1.0f)
+		    && viewer.join.presentation.blink
+		    == (cases[pass].ansi ? 0.0f : 1.0f)
+		    && viewer.join.presentation.cached_foreground
+		    == (cases[pass].ansi ? 6.0f : 0.0f)
+		    && viewer.join.pager.foreground == 6
+		    && viewer.join.pager.line_count == 2.0f
+		    && viewer.join.pager.nonstop == 0.0f
+		    && strcmp(viewer.join.accumulator, "n") == 0
+		    && viewer.join.queue_length == 0U
+		    && viewer.join.sample_calls == 5U
+		    && viewer.join.event_count == 25U
+		    && stream.eof_checks == 0U && stream.key_checks == 0U
+		    && stream.read_count == 0U && stream.line_count == 0U
+		    && !stream.file_open && !viewer.join.file_open
+		    && viewer.input.file == NULL && viewer.close_calls == 0U
+		    && viewer.open_calls == 0U);
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
+static bool
 computer_quit_accept_prefix(struct physical_viewer_join *viewer, bool ansi)
 {
 	static const uint8_t prompt[] =
@@ -15978,6 +16104,7 @@ main(void)
 	test_planet_bank_cancel_cycle_presentation();
 	test_planet_productivity_blank_cycle_presentation();
 	test_planet_transfer_cancel_cycle_presentation();
+	test_planet_rename_protected_cycle_presentation();
 	test_computer_quit_accept_presentation();
 	test_planet_quit_accept_presentation();
 	test_hostile_quit_accept_presentation();
