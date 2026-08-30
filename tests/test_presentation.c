@@ -12703,6 +12703,87 @@ test_planet_take_one_capacity_error_cycle_presentation(void)
 	}
 }
 
+static void
+test_planet_take_one_negative_error_cycle_presentation(void)
+{
+	static const uint8_t amount[] = "-1";
+	static const uint8_t message[] = "They don't have that many.";
+	static const uint8_t ansi[] =
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? 1\r\n"
+	    "\r\n<Take Ore>\n\r\r\nHow much [ 65 ]? -1\r\n"
+	    "\r\n\x1b[0;36;40;5;1mThey don't have that many.\n\r"
+	    "\x1b[0;36;40m\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? ";
+	static const uint8_t plain[] =
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? 1\r\n"
+	    "\r\n<Take Ore>\n\r\r\nHow much [ 65 ]? -1\r\n"
+	    "\r\nThey don't have that many.\n\r"
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? ";
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	uint8_t remote[280];
+	size_t prompt_end;
+	size_t editor_end;
+	size_t body_end;
+	int pass;
+
+	for (pass = 0; pass < 2; ++pass) {
+		bool ansi_mode = pass == 0;
+		const uint8_t *expected = ansi_mode ? ansi : plain;
+		size_t expected_length = ansi_mode
+		    ? sizeof(ansi) - 1U : sizeof(plain) - 1U;
+
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", ansi_mode, remote, sizeof(remote));
+		CHECK(planet_take_one_error_cycle_run(&viewer, ansi_mode,
+		    amount, sizeof(amount) - 1U, message, sizeof(message) - 1U,
+		    &prompt_end, &editor_end, &body_end));
+		CHECK(prompt_end == 77U && editor_end == 80U
+		    && body_end == (ansi_mode ? 161U : 147U)
+		    && viewer.join.remote_length == expected_length
+		    && expected_length == (ansi_mode ? 248U : 224U)
+		    && memcmp(remote, expected, expected_length) == 0
+		    && viewer_bytes_fnv1a64(remote, expected_length)
+		    == (ansi_mode ? UINT64_C(0x317b7dc7b83fbf27)
+		    : UINT64_C(0x6ade58e6b4363e3b))
+		    && viewer.join.local_row_count == 13U
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == UINT64_C(0x42d9ac5ff8f00851)
+		    && viewer.join.local_fragment_length == 42U
+		    && memcmp(viewer.join.local_fragment,
+		    "Time: 14:59  Planet command (?=help) [A]? ", 42U) == 0
+		    && viewer.join.local_color_count == (ansi_mode ? 23U : 7U)
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == (ansi_mode ? UINT64_C(0x545b7944971a4be2)
+		    : UINT64_C(0xc68cf2d74ffb7ffa))
+		    && viewer.join.presentation.foreground == 6.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold == (ansi_mode ? 0.0f : 1.0f)
+		    && viewer.join.presentation.blink == (ansi_mode ? 0.0f : 1.0f)
+		    && viewer.join.presentation.cached_foreground
+		    == (ansi_mode ? 6.0f : 0.0f)
+		    && viewer.join.pager.foreground == 6
+		    && viewer.join.pager.line_count == 2.0f
+		    && viewer.join.pager.nonstop == 0.0f
+		    && strcmp(viewer.join.accumulator, "-1") == 0
+		    && viewer.join.queue_position == 0U
+		    && viewer.join.queue_length == 0U
+		    && viewer.join.sample_calls == 7U
+		    && viewer.join.event_count == 35U
+		    && stream.eof_checks == 0U && stream.key_checks == 0U
+		    && stream.read_count == 0U && stream.line_count == 0U
+		    && !stream.file_open && !viewer.join.file_open
+		    && viewer.input.file == NULL && viewer.close_calls == 0U
+		    && viewer.open_calls == 0U);
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
 static bool
 planet_leave_cycle_run(struct physical_viewer_join *viewer, bool ansi,
     size_t *prompt_end, size_t *editor_end, size_t *reentry_end)
@@ -17257,6 +17338,7 @@ main(void)
 	test_planet_take_one_accepted_cycle_presentation();
 	test_planet_take_one_stock_error_cycle_presentation();
 	test_planet_take_one_capacity_error_cycle_presentation();
+	test_planet_take_one_negative_error_cycle_presentation();
 	test_planet_leave_cycle_presentation();
 	test_planet_thrusters_accepted_cycle_presentation();
 	test_planet_movement_accepted_cycle_presentation();
