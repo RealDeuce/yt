@@ -10090,20 +10090,22 @@ test_info_panel_presentation(void)
 struct normal_exit_info_context {
 	struct physical_viewer_join *viewer;
 	struct yt_player player;
+	const uint8_t *time_text;
+	size_t time_length;
 };
 
 static bool
 normal_exit_info_refresh(void *context, uint8_t *text, size_t capacity,
     size_t *length, struct yt_error *error)
 {
-	static const uint8_t value[] = " 15:00  ";
+	struct normal_exit_info_context *fixture = context;
 
-	(void)context;
 	(void)error;
-	if (length == NULL || capacity < sizeof(value) - 1U)
+	if (length == NULL || fixture->time_text == NULL
+	    || capacity < fixture->time_length)
 		return false;
-	memcpy(text, value, sizeof(value) - 1U);
-	*length = sizeof(value) - 1U;
+	memcpy(text, fixture->time_text, fixture->time_length);
+	*length = fixture->time_length;
 	return true;
 }
 
@@ -10176,7 +10178,8 @@ normal_exit_info_present(void *context, const uint8_t *text, size_t length,
 }
 
 static bool
-normal_exit_info_run(struct physical_viewer_join *viewer)
+normal_exit_info_run(struct physical_viewer_join *viewer,
+    const uint8_t *time_text, size_t time_length)
 {
 	static const struct yt_info_panel_ops ops = {
 		normal_exit_info_refresh,
@@ -10192,6 +10195,8 @@ normal_exit_info_run(struct physical_viewer_join *viewer)
 	memset(&fixture, 0, sizeof(fixture));
 	memset(&panel, 0, sizeof(panel));
 	fixture.viewer = viewer;
+	fixture.time_text = time_text;
+	fixture.time_length = time_length;
 	fixture.player.credits = 12345.0f;
 	fixture.player.sector = 733.0f;
 	fixture.player.turns = 42.0f;
@@ -10243,13 +10248,91 @@ normal_exit_b05d(struct viewer_pager_join *join, const uint8_t *text,
 	    &join->key_state, text, length, &viewer_pager_ops, join);
 }
 
-static void
-test_full_normal_exit_presentation(void)
+struct normal_exit_body_observation {
+	size_t info_end;
+	size_t post_info_end;
+	size_t generating_end;
+	size_t progress_end;
+	size_t post_generator_end;
+	size_t viewer_end;
+	bool waited;
+};
+
+static bool
+normal_exit_body_run(struct physical_viewer_join *viewer,
+    struct yt_file_viewer_stream_state *stream, bool evaluation,
+    const uint8_t *time_text, size_t time_length, float remembered,
+    struct normal_exit_body_observation *observation)
 {
 	static const uint8_t generating[] = "Generating ScoreBoard";
 	static const uint8_t reminder[] =
 	    "PLEASE HELP YOUR SYSOP REGISTER THIS GAME.";
 	static const uint8_t returning[] = "Returning to Example BBS...";
+	struct yt_present_result result;
+	struct yt_timed_wait_state wait;
+	bool warned;
+	size_t index;
+
+	if (observation == NULL || time_text == NULL)
+		return false;
+	memset(observation, 0, sizeof(*observation));
+	viewer->join.presentation.foreground = 1.0f;
+	viewer->join.presentation.sound.user_sound = 0.0f;
+	viewer->join.presentation.sound.local_sound = 0.0f;
+	viewer->join.pager.foreground = 1;
+	if (!normal_exit_info_run(viewer, time_text, time_length))
+		return false;
+	observation->info_end = viewer->join.remote_length;
+	if (!normal_exit_line(&viewer->join, NULL, 0U))
+		return false;
+	observation->post_info_end = viewer->join.remote_length;
+	if (yt_present_low_time(time_text, time_length, &remembered,
+	    &viewer->join.presentation, &result, &warned) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(&viewer->join, &result);
+	if (warned)
+		return false;
+	if (!normal_exit_b05d(&viewer->join, generating,
+	    sizeof(generating) - 1U, 1.0f))
+		return false;
+	observation->generating_end = viewer->join.remote_length;
+	for (index = 0U; index < 4U; ++index) {
+		if (yt_present_character((const uint8_t *)".", 1U,
+		    &viewer->join.presentation, &result) != YT_PRESENT_OK)
+			return false;
+		viewer_pager_capture_result(&viewer->join, &result);
+	}
+	observation->progress_end = viewer->join.remote_length;
+	if (!normal_exit_line(&viewer->join, NULL, 0U))
+		return false;
+	observation->post_generator_end = viewer->join.remote_length;
+	viewer->join.pager.nonstop = 1.0f;
+	if (!physical_viewer_run(viewer, stream, NULL))
+		return false;
+	observation->viewer_end = viewer->join.remote_length;
+	if (evaluation) {
+		if (yt_present_attention(reminder, sizeof(reminder) - 1U,
+		    &viewer->join.presentation, &result) != YT_PRESENT_OK)
+			return false;
+		viewer_pager_capture_result(&viewer->join, &result);
+		if (!yt_timed_wait_begin(&wait, 10.0f, 0.0f)
+		    || yt_timed_wait_timer(&wait, 0.0f)
+		    != YT_TIMED_WAIT_CONTINUE
+		    || yt_timed_wait_timer(&wait, 10.0f) != YT_TIMED_WAIT_TIMER
+		    || wait.duration_cell != 10.0f || wait.timer_reads != 3U
+		    || !normal_exit_line(&viewer->join, NULL, 0U))
+			return false;
+		observation->waited = true;
+	}
+	return normal_exit_b05d(&viewer->join, returning,
+	    sizeof(returning) - 1U, 0.0f);
+}
+
+static void
+test_full_normal_exit_presentation(void)
+{
+	static const uint8_t returning[] = "Returning to Example BBS...";
+	static const uint8_t time_text[] = " 15:00  ";
 	static const struct {
 		bool ansi;
 		bool evaluation;
@@ -10298,64 +10381,27 @@ test_full_normal_exit_presentation(void)
 	};
 	struct physical_viewer_join viewer;
 	struct yt_file_viewer_stream_state stream;
-	struct yt_present_result result;
-	struct yt_timed_wait_state wait;
+	struct normal_exit_body_observation observation;
 	uint8_t remote[1600];
-	float remembered;
-	bool warned;
 	size_t pass;
-	size_t index;
 
 	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
 		memset(&viewer, 0, sizeof(viewer));
 		fixture_viewer_initialize(&viewer, &stream,
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
-		viewer.join.presentation.foreground = 1.0f;
-		viewer.join.presentation.sound.user_sound = 0.0f;
-		viewer.join.presentation.sound.local_sound = 0.0f;
-		viewer.join.pager.foreground = 1;
 		viewer.join.pager.line_count = 1.0f;
-		CHECK(normal_exit_info_run(&viewer));
-		CHECK(viewer.join.remote_length == cases[pass].info_end);
-		CHECK(normal_exit_line(&viewer.join, NULL, 0U));
-		CHECK(viewer.join.remote_length == cases[pass].post_info_end);
-		remembered = 15.0f;
-		CHECK(yt_present_low_time((const uint8_t *)" 15:00  ", 8U,
-		    &remembered, &viewer.join.presentation, &result, &warned)
-		    == YT_PRESENT_OK);
-		viewer_pager_capture_result(&viewer.join, &result);
-		CHECK(!warned && remembered == 15.0f);
-		CHECK(normal_exit_b05d(&viewer.join, generating,
-		    sizeof(generating) - 1U, 1.0f));
-		CHECK(viewer.join.remote_length == cases[pass].generating_end);
-		for (index = 0U; index < 4U; ++index) {
-			CHECK(yt_present_character((const uint8_t *)".", 1U,
-			    &viewer.join.presentation, &result) == YT_PRESENT_OK);
-			viewer_pager_capture_result(&viewer.join, &result);
-		}
-		CHECK(viewer.join.remote_length == cases[pass].progress_end);
-		CHECK(normal_exit_line(&viewer.join, NULL, 0U));
-		CHECK(viewer.join.remote_length == cases[pass].post_generator_end);
-		viewer.join.pager.nonstop = 1.0f;
-		CHECK(physical_viewer_run(&viewer, &stream, NULL));
-		CHECK(viewer.join.remote_length == cases[pass].viewer_end);
-		if (cases[pass].evaluation) {
-			CHECK(yt_present_attention(reminder,
-			    sizeof(reminder) - 1U, &viewer.join.presentation,
-			    &result) == YT_PRESENT_OK);
-			viewer_pager_capture_result(&viewer.join, &result);
-			CHECK(yt_timed_wait_begin(&wait, 10.0f, 0.0f));
-			CHECK(yt_timed_wait_timer(&wait, 0.0f)
-			    == YT_TIMED_WAIT_CONTINUE);
-			CHECK(yt_timed_wait_timer(&wait, 10.0f)
-			    == YT_TIMED_WAIT_TIMER);
-			CHECK(wait.duration_cell == 10.0f
-			    && wait.timer_reads == 3U);
-			CHECK(normal_exit_line(&viewer.join, NULL, 0U));
-		}
-		CHECK(normal_exit_b05d(&viewer.join, returning,
-		    sizeof(returning) - 1U, 0.0f));
+		CHECK(normal_exit_body_run(&viewer, &stream,
+		    cases[pass].evaluation, time_text, sizeof(time_text) - 1U,
+		    15.0f, &observation));
+		CHECK(observation.info_end == cases[pass].info_end
+		    && observation.post_info_end == cases[pass].post_info_end
+		    && observation.generating_end == cases[pass].generating_end
+		    && observation.progress_end == cases[pass].progress_end
+		    && observation.post_generator_end
+		    == cases[pass].post_generator_end
+		    && observation.viewer_end == cases[pass].viewer_end
+		    && observation.waited == cases[pass].evaluation);
 		CHECK(viewer.join.remote_length == cases[pass].remote_length
 		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
 		    == cases[pass].remote_fnv);
@@ -10401,6 +10447,207 @@ test_full_normal_exit_presentation(void)
 		    && memcmp(viewer.join.source, returning,
 		    sizeof(returning) - 1U) == 0
 		    && viewer.join.accumulator[0] == '\0'
+		    && viewer.join.queue_length == 0U);
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
+static bool
+computer_quit_accept_prefix(struct physical_viewer_join *viewer, bool ansi)
+{
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Computer command (?=help)? ";
+	static const uint8_t heading[] = "<Quit>";
+	static const uint8_t confirmation[] = "Are you sure (Y/N)? ";
+	static const uint8_t q[] = "Q";
+	static const uint8_t y[] = "Y";
+	struct viewer_pager_join *join = &viewer->join;
+	struct yt_present_result result;
+
+	join->presentation = state(ansi);
+	join->presentation.foreground = 6.0f;
+	join->pager.foreground = 6;
+	join->pager.line_count = 0.0f;
+	if (ansi) {
+		if (yt_present_color(&join->presentation, &result)
+		    != YT_PRESENT_OK)
+			return false;
+	}
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.foreground = 1.0f;
+	join->pager.foreground = 1;
+	if (!normal_exit_b05d(join, prompt, sizeof(prompt) - 1U, 1.0f))
+		return false;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	memcpy(join->accumulator, q, sizeof(q));
+	if (yt_present_editor_echo(q, sizeof(q) - 1U, q, sizeof(q) - 1U,
+	    &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.foreground = 7.0f;
+	join->pager.foreground = 7;
+	if (!normal_exit_b05d(join, heading, sizeof(heading) - 1U, 0.0f))
+		return false;
+	if (yt_present_character(confirmation, sizeof(confirmation) - 1U,
+	    &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	memcpy(join->accumulator, y, sizeof(y));
+	if (yt_present_editor_echo(y, sizeof(y) - 1U, y, sizeof(y) - 1U,
+	    &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
+	memcpy(join->source, y, sizeof(y));
+	join->source_length = sizeof(y) - 1U;
+	return true;
+}
+
+static void
+test_computer_quit_accept_presentation(void)
+{
+	static const uint8_t returning[] = "Returning to Example BBS...";
+	static const uint8_t time_text[] = " 14:59  ";
+	static const struct {
+		bool ansi;
+		bool evaluation;
+		size_t prefix_length;
+		uint64_t prefix_fnv;
+		size_t remote_length;
+		uint64_t remote_fnv;
+		size_t local_rows;
+		uint64_t local_fnv;
+		size_t colors;
+		uint64_t color_fnv;
+		size_t color_2;
+		size_t color_3;
+		size_t color_4;
+		size_t color_6;
+		size_t color_7;
+		size_t color_15_1;
+		size_t color_30_4;
+		float final_foreground;
+		float final_bold;
+		float final_blink;
+	} cases[] = {
+		{true, false, 96U, UINT64_C(0x45eb0112a4c890ab),
+		    1486U, UINT64_C(0x2ba3dd656dba1e24), 47U,
+		    UINT64_C(0xd00cf13ed2b3256c), 98U,
+		    UINT64_C(0xed4be8e9f309720b), 53U, 1U, 14U, 0U,
+		    27U, 3U, 0U, 1.0f, 0.0f, 0.0f},
+		{true, true, 96U, UINT64_C(0x45eb0112a4c890ab),
+		    1556U, UINT64_C(0x29b38d17beab85dc), 49U,
+		    UINT64_C(0x4d6205171ec1dc71), 101U,
+		    UINT64_C(0x729ff8d62687d8f3), 53U, 1U, 13U, 3U,
+		    27U, 3U, 1U, 3.0f, 0.0f, 0.0f},
+		{false, false, 76U, UINT64_C(0x6500496cfbaef11f),
+		    1360U, UINT64_C(0x3715fad633cdc227), 47U,
+		    UINT64_C(0xd00cf13ed2b3256c), 24U,
+		    UINT64_C(0x24ce503d7547c545), 0U, 0U, 0U, 0U,
+		    24U, 0U, 0U, 1.0f, 1.0f, 0.0f},
+		{false, true, 76U, UINT64_C(0x6500496cfbaef11f),
+		    1406U, UINT64_C(0xf303a068c40b4d04), 49U,
+		    UINT64_C(0x4d6205171ec1dc71), 24U,
+		    UINT64_C(0x24ce503d7547c545), 0U, 0U, 0U, 0U,
+		    24U, 0U, 0U, 3.0f, 1.0f, 1.0f},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct normal_exit_body_observation observation;
+	uint8_t remote[1700];
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
+		CHECK(computer_quit_accept_prefix(&viewer, cases[pass].ansi));
+		CHECK(viewer.join.remote_length == cases[pass].prefix_length
+		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+		    == cases[pass].prefix_fnv
+		    && viewer.join.presentation.foreground == 7.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold == 0.0f
+		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.cached_foreground
+		    == (cases[pass].ansi ? 7.0f : 0.0f)
+		    && viewer.join.pager.foreground == 7
+		    && viewer.join.pager.line_count == 0.0f
+		    && viewer.join.pager.nonstop == 0.0f
+		    && strcmp(viewer.join.accumulator, "Y") == 0
+		    && viewer.join.source_length == 1U
+		    && viewer.join.source[0] == 'Y');
+		CHECK(normal_exit_body_run(&viewer, &stream,
+		    cases[pass].evaluation, time_text, sizeof(time_text) - 1U,
+		    14.0f, &observation));
+		CHECK(observation.info_end == cases[pass].prefix_length
+		    + (cases[pass].ansi ? 678U : 602U)
+		    && observation.post_info_end == cases[pass].prefix_length
+		    + (cases[pass].ansi ? 690U : 604U)
+		    && observation.generating_end == cases[pass].prefix_length
+		    + (cases[pass].ansi ? 711U : 625U)
+		    && observation.progress_end == cases[pass].prefix_length
+		    + (cases[pass].ansi ? 715U : 629U)
+		    && observation.post_generator_end == cases[pass].prefix_length
+		    + (cases[pass].ansi ? 717U : 631U)
+		    && observation.viewer_end == cases[pass].prefix_length
+		    + (cases[pass].ansi ? 1361U : 1255U)
+		    && observation.waited == cases[pass].evaluation);
+		CHECK(viewer.join.remote_length == cases[pass].remote_length
+		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+		    == cases[pass].remote_fnv);
+		CHECK(viewer.join.local_row_count == cases[pass].local_rows
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == cases[pass].local_fnv
+		    && viewer.join.local_fragment_length == 0U
+		    && viewer.join.local_color_count == cases[pass].colors
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == cases[pass].color_fnv
+		    && viewer_local_color_count(&viewer.join, 2, 0)
+		    == cases[pass].color_2
+		    && viewer_local_color_count(&viewer.join, 3, 0)
+		    == cases[pass].color_3
+		    && viewer_local_color_count(&viewer.join, 4, 0)
+		    == cases[pass].color_4
+		    && viewer_local_color_count(&viewer.join, 6, 0)
+		    == cases[pass].color_6
+		    && viewer_local_color_count(&viewer.join, 7, 0)
+		    == cases[pass].color_7
+		    && viewer_local_color_count(&viewer.join, 15, 1)
+		    == cases[pass].color_15_1
+		    && viewer_local_color_count(&viewer.join, 30, 4)
+		    == cases[pass].color_30_4);
+		CHECK(viewer.join.presentation.foreground
+		    == cases[pass].final_foreground
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold == cases[pass].final_bold
+		    && viewer.join.presentation.blink == cases[pass].final_blink
+		    && viewer.join.pager.foreground == 1
+		    && viewer.join.pager.line_count == 1.0f
+		    && viewer.join.pager.nonstop == 1.0f
+		    && viewer.join.pager.key[0] == '\0');
+		CHECK(viewer.join.position == 19U
+		    && stream.eof_checks == 20U && stream.key_checks == 20U
+		    && stream.read_count == 19U && stream.line_count == 19U
+		    && viewer.join.sample_calls == 24U
+		    && viewer.join.response_calls == 0U
+		    && viewer.join.direct_calls == 2U
+		    && viewer.join.event_count == 120U
+		    && !stream.file_open && !viewer.join.file_open
+		    && viewer.input.file == NULL && viewer.close_calls == 2U
+		    && viewer.open_calls == 1U
+		    && viewer.join.source_length == sizeof(returning) - 1U
+		    && memcmp(viewer.join.source, returning,
+		    sizeof(returning) - 1U) == 0
+		    && strcmp(viewer.join.accumulator, "Y") == 0
 		    && viewer.join.queue_length == 0U);
 		yt_text_input_destroy(&viewer.input);
 	}
@@ -12837,6 +13084,7 @@ main(void)
 	test_direct_fighter_kill_warning_presentation();
 	test_info_panel_presentation();
 	test_full_normal_exit_presentation();
+	test_computer_quit_accept_presentation();
 	test_spy_sweep_presentation();
 	test_black_hole_presentation();
 	test_movement_presentation();
