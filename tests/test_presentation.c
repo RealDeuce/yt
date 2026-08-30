@@ -12457,6 +12457,168 @@ test_planet_take_one_accepted_cycle_presentation(void)
 }
 
 static bool
+planet_take_one_stock_error_cycle_run(struct physical_viewer_join *viewer,
+    bool ansi, size_t *prompt_end, size_t *editor_end, size_t *body_end)
+{
+	static const uint8_t free_holds[] =
+	    "You have 65 free cargo holds.";
+	static const uint8_t planet_prompt[] =
+	    "Time: 14:59  Planet command (?=help) [A]? ";
+	static const uint8_t command[] = "1";
+	static const uint8_t amount_prompt[] = "How much [ 65 ]? ";
+	static const uint8_t amount[] = "102";
+	static const uint8_t stock_error[] =
+	    "They don't have that many.";
+	const char *title = yt_planet_take_one_title(1);
+	struct viewer_pager_join *join = &viewer->join;
+	struct yt_present_result result;
+
+	if (prompt_end == NULL || editor_end == NULL || body_end == NULL
+	    || title == NULL || strcmp(title, "<Take Ore>") != 0)
+		return false;
+	join->presentation = state(ansi);
+	join->presentation.foreground = 6.0f;
+	join->presentation.cached_foreground = ansi ? 6.0f : 0.0f;
+	join->pager.foreground = 6;
+	join->pager.line_count = 0.0f;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, free_holds,
+	    sizeof(free_holds) - 1U, 0.0f)
+	    || !normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, planet_prompt,
+	    sizeof(planet_prompt) - 1U, 1.0f))
+		return false;
+	*prompt_end = join->remote_length;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	memcpy(join->accumulator, command, sizeof(command));
+	if (yt_present_editor_echo(command, sizeof(command) - 1U,
+	    command, sizeof(command) - 1U, &join->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
+	*editor_end = join->remote_length;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, (const uint8_t *)title,
+	    strlen(title), 0.0f)
+	    || !normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, amount_prompt,
+	    sizeof(amount_prompt) - 1U, 1.0f))
+		return false;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	memcpy(join->accumulator, amount, sizeof(amount));
+	if (yt_present_editor_echo(amount, sizeof(amount) - 1U,
+	    amount, sizeof(amount) - 1U, &join->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	/* YT:02DB clears pending input before the styled error row. */
+	join->queue_position = 0U;
+	join->queue_length = 0U;
+	join->queue[0] = '\0';
+	join->presentation.bold = 1.0f;
+	join->presentation.blink = 1.0f;
+	if (!normal_exit_b05d(join, stock_error,
+	    sizeof(stock_error) - 1U, 0.0f))
+		return false;
+	*body_end = join->remote_length;
+	join->pager.line_count = 0.0f;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, free_holds,
+	    sizeof(free_holds) - 1U, 0.0f)
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.foreground = 6.0f;
+	join->pager.foreground = 6;
+	return normal_exit_b05d(join, planet_prompt,
+	    sizeof(planet_prompt) - 1U, 1.0f);
+}
+
+static void
+test_planet_take_one_stock_error_cycle_presentation(void)
+{
+	static const uint8_t ansi[] =
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? 1\r\n"
+	    "\r\n<Take Ore>\n\r\r\nHow much [ 65 ]? 102\r\n"
+	    "\r\n\x1b[0;36;40;5;1mThey don't have that many.\n\r"
+	    "\x1b[0;36;40m\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? ";
+	static const uint8_t plain[] =
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? 1\r\n"
+	    "\r\n<Take Ore>\n\r\r\nHow much [ 65 ]? 102\r\n"
+	    "\r\nThey don't have that many.\n\r"
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? ";
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	uint8_t remote[280];
+	size_t prompt_end;
+	size_t editor_end;
+	size_t body_end;
+	int pass;
+
+	for (pass = 0; pass < 2; ++pass) {
+		bool ansi_mode = pass == 0;
+		const uint8_t *expected = ansi_mode ? ansi : plain;
+		size_t expected_length = ansi_mode
+		    ? sizeof(ansi) - 1U : sizeof(plain) - 1U;
+
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", ansi_mode, remote, sizeof(remote));
+		CHECK(planet_take_one_stock_error_cycle_run(&viewer,
+		    ansi_mode, &prompt_end, &editor_end, &body_end));
+		CHECK(prompt_end == 77U && editor_end == 80U
+		    && body_end == (ansi_mode ? 162U : 148U)
+		    && viewer.join.remote_length == expected_length
+		    && expected_length == (ansi_mode ? 249U : 225U)
+		    && memcmp(remote, expected, expected_length) == 0
+		    && viewer_bytes_fnv1a64(remote, expected_length)
+		    == (ansi_mode ? UINT64_C(0x9e5237b421267f0e)
+		    : UINT64_C(0xa2428df53ea81f52))
+		    && viewer.join.local_row_count == 13U
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == UINT64_C(0x92968389684fd139)
+		    && viewer.join.local_fragment_length == 42U
+		    && memcmp(viewer.join.local_fragment,
+		    "Time: 14:59  Planet command (?=help) [A]? ", 42U) == 0
+		    && viewer.join.local_color_count == (ansi_mode ? 23U : 7U)
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == (ansi_mode ? UINT64_C(0x545b7944971a4be2)
+		    : UINT64_C(0xc68cf2d74ffb7ffa))
+		    && viewer.join.presentation.foreground == 6.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold == (ansi_mode ? 0.0f : 1.0f)
+		    && viewer.join.presentation.blink == (ansi_mode ? 0.0f : 1.0f)
+		    && viewer.join.presentation.cached_foreground
+		    == (ansi_mode ? 6.0f : 0.0f)
+		    && viewer.join.pager.foreground == 6
+		    && viewer.join.pager.line_count == 2.0f
+		    && viewer.join.pager.nonstop == 0.0f
+		    && strcmp(viewer.join.accumulator, "102") == 0
+		    && viewer.join.queue_position == 0U
+		    && viewer.join.queue_length == 0U
+		    && viewer.join.sample_calls == 7U
+		    && viewer.join.event_count == 35U
+		    && stream.eof_checks == 0U && stream.key_checks == 0U
+		    && stream.read_count == 0U && stream.line_count == 0U
+		    && !stream.file_open && !viewer.join.file_open
+		    && viewer.input.file == NULL && viewer.close_calls == 0U
+		    && viewer.open_calls == 0U);
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
+static bool
 planet_leave_cycle_run(struct physical_viewer_join *viewer, bool ansi,
     size_t *prompt_end, size_t *editor_end, size_t *reentry_end)
 {
@@ -17008,6 +17170,7 @@ main(void)
 	test_planet_transfer_cancel_cycle_presentation();
 	test_planet_rename_protected_cycle_presentation();
 	test_planet_take_one_accepted_cycle_presentation();
+	test_planet_take_one_stock_error_cycle_presentation();
 	test_planet_leave_cycle_presentation();
 	test_planet_thrusters_accepted_cycle_presentation();
 	test_planet_movement_accepted_cycle_presentation();
