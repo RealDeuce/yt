@@ -2169,6 +2169,340 @@ test_startup_dorinfo_state(void)
 	    YT_STARTUP_WAIT_TIMER, 0U, 0U, 0U, &event_result));
 }
 
+enum lockout_event {
+	LOCKOUT_OPEN_RANDOM,
+	LOCKOUT_EMPTY,
+	LOCKOUT_CLOSE,
+	LOCKOUT_OPEN_INPUT,
+	LOCKOUT_READ,
+	LOCKOUT_PRESENT_BLANK,
+	LOCKOUT_PRESENT_REVOKED,
+	LOCKOUT_PRESENT_CONTACT,
+	LOCKOUT_WAIT,
+	LOCKOUT_CLOSE_ALL,
+	LOCKOUT_END,
+};
+
+struct lockout_tape {
+	const uint8_t *file;
+	size_t file_length;
+	size_t cursor;
+	uint8_t line[128];
+	enum lockout_event events[20];
+	size_t event_count;
+	size_t fail_at;
+	bool open;
+	char random_path[32];
+	char input_path[32];
+	uint8_t presented[3][96];
+	size_t presented_length[3];
+	float wait_seconds;
+	bool ended;
+};
+
+static const uint8_t lockout_identity[] = "John Doe";
+static const uint8_t lockout_contact[] =
+    "Please contact your sysop Jane Sysop.";
+static const uint8_t lockout_revoked[] =
+    "\aYOUR ACCESS TO THIS GAME HAS BEEN REVOKED!\a";
+
+static bool
+lockout_tape_record(struct lockout_tape *tape, enum lockout_event event,
+    struct yt_error *error)
+{
+	CHECK(tape->event_count < YT_ARRAY_LEN(tape->events));
+	if (tape->event_count < YT_ARRAY_LEN(tape->events))
+		tape->events[tape->event_count] = event;
+	++tape->event_count;
+	if (tape->event_count != tape->fail_at)
+		return true;
+	if (error != NULL) {
+		error->status = YT_IO_ERROR;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    "injected lockout failure");
+	}
+	return false;
+}
+
+static bool
+lockout_tape_open_random(void *context, const char *path,
+    struct yt_error *error)
+{
+	struct lockout_tape *tape = context;
+
+	if (!lockout_tape_record(tape, LOCKOUT_OPEN_RANDOM, error))
+		return false;
+	(void)snprintf(tape->random_path, sizeof(tape->random_path), "%s",
+	    path);
+	tape->open = true;
+	return true;
+}
+
+static bool
+lockout_tape_empty(void *context, bool *empty, struct yt_error *error)
+{
+	struct lockout_tape *tape = context;
+
+	if (!lockout_tape_record(tape, LOCKOUT_EMPTY, error))
+		return false;
+	*empty = tape->file_length == 0U;
+	return true;
+}
+
+static bool
+lockout_tape_close(void *context, struct yt_error *error)
+{
+	struct lockout_tape *tape = context;
+
+	if (!lockout_tape_record(tape, LOCKOUT_CLOSE, error))
+		return false;
+	tape->open = false;
+	return true;
+}
+
+static bool
+lockout_tape_open_input(void *context, const char *path,
+    struct yt_error *error)
+{
+	struct lockout_tape *tape = context;
+
+	if (!lockout_tape_record(tape, LOCKOUT_OPEN_INPUT, error))
+		return false;
+	(void)snprintf(tape->input_path, sizeof(tape->input_path), "%s", path);
+	tape->cursor = 0U;
+	tape->open = true;
+	return true;
+}
+
+static bool
+lockout_tape_read(void *context, const uint8_t **line, size_t *length,
+    bool *available, struct yt_error *error)
+{
+	struct lockout_tape *tape = context;
+
+	if (!lockout_tape_record(tape, LOCKOUT_READ, error))
+		return false;
+	if (!yt_text_line_input_next(tape->file, tape->file_length,
+	    &tape->cursor, tape->line, sizeof(tape->line), length, available))
+		return false;
+	*line = tape->line;
+	return true;
+}
+
+static bool
+lockout_tape_present(void *context, enum yt_startup_lockout_row row,
+    const uint8_t *text, size_t length, struct yt_error *error)
+{
+	struct lockout_tape *tape = context;
+	enum lockout_event event = row == YT_STARTUP_LOCKOUT_BLANK
+	    ? LOCKOUT_PRESENT_BLANK : row == YT_STARTUP_LOCKOUT_REVOKED
+	    ? LOCKOUT_PRESENT_REVOKED : LOCKOUT_PRESENT_CONTACT;
+
+	if (!lockout_tape_record(tape, event, error))
+		return false;
+	CHECK((size_t)row < YT_ARRAY_LEN(tape->presented)
+	    && length <= sizeof(tape->presented[0]));
+	if ((size_t)row >= YT_ARRAY_LEN(tape->presented)
+	    || length > sizeof(tape->presented[0]))
+		return false;
+	if (length != 0U)
+		memcpy(tape->presented[row], text, length);
+	tape->presented_length[row] = length;
+	return true;
+}
+
+static bool
+lockout_tape_wait(void *context, float seconds, struct yt_error *error)
+{
+	struct lockout_tape *tape = context;
+
+	if (!lockout_tape_record(tape, LOCKOUT_WAIT, error))
+		return false;
+	tape->wait_seconds = seconds;
+	return true;
+}
+
+static bool
+lockout_tape_close_all(void *context, struct yt_error *error)
+{
+	struct lockout_tape *tape = context;
+
+	if (!lockout_tape_record(tape, LOCKOUT_CLOSE_ALL, error))
+		return false;
+	tape->open = false;
+	return true;
+}
+
+static void
+lockout_tape_end(void *context)
+{
+	struct lockout_tape *tape = context;
+
+	(void)lockout_tape_record(tape, LOCKOUT_END, NULL);
+	tape->ended = true;
+}
+
+static const struct yt_startup_lockout_ops lockout_ops = {
+	lockout_tape_open_random,
+	lockout_tape_empty,
+	lockout_tape_close,
+	lockout_tape_open_input,
+	lockout_tape_read,
+	lockout_tape_present,
+	lockout_tape_wait,
+	lockout_tape_close_all,
+	lockout_tape_end,
+};
+
+static void
+lockout_state_init(struct yt_startup_lockout_state *state)
+{
+	memset(state, 0, sizeof(*state));
+	state->random_path = "lockout.dat";
+	state->input_path = "Lockout.dat";
+	state->identity = lockout_identity;
+	state->identity_length = sizeof(lockout_identity) - 1U;
+	state->contact = lockout_contact;
+	state->contact_length = sizeof(lockout_contact) - 1U;
+}
+
+static void
+test_startup_lockout_transaction(void)
+{
+	static const uint8_t matching[] =
+	    "Other User\r\n  jOhN   dOE \r\nIgnored User\r\n";
+	static const uint8_t nonmatching[] =
+	    "Other User\r\nStill Else\r\n";
+	static const enum lockout_event denied_events[] = {
+		LOCKOUT_OPEN_RANDOM,
+		LOCKOUT_EMPTY,
+		LOCKOUT_CLOSE,
+		LOCKOUT_OPEN_INPUT,
+		LOCKOUT_READ,
+		LOCKOUT_READ,
+		LOCKOUT_PRESENT_BLANK,
+		LOCKOUT_PRESENT_REVOKED,
+		LOCKOUT_PRESENT_CONTACT,
+		LOCKOUT_WAIT,
+		LOCKOUT_CLOSE_ALL,
+		LOCKOUT_END,
+	};
+	static const enum lockout_event nonmatch_events[] = {
+		LOCKOUT_OPEN_RANDOM,
+		LOCKOUT_EMPTY,
+		LOCKOUT_CLOSE,
+		LOCKOUT_OPEN_INPUT,
+		LOCKOUT_READ,
+		LOCKOUT_READ,
+		LOCKOUT_READ,
+		LOCKOUT_CLOSE,
+	};
+	static const enum lockout_event empty_events[] = {
+		LOCKOUT_OPEN_RANDOM,
+		LOCKOUT_EMPTY,
+		LOCKOUT_CLOSE,
+	};
+	struct yt_startup_lockout_state state;
+	struct lockout_tape tape;
+	struct yt_error error;
+	size_t failure;
+
+	lockout_state_init(&state);
+	memset(&tape, 0, sizeof(tape));
+	tape.file = matching;
+	tape.file_length = sizeof(matching) - 1U;
+	yt_error_clear(&error);
+	CHECK(yt_startup_lockout_run(&state, &lockout_ops, &tape, &error));
+	CHECK(tape.event_count == YT_ARRAY_LEN(denied_events)
+	    && memcmp(tape.events, denied_events, sizeof(denied_events)) == 0
+	    && strcmp(tape.random_path, "lockout.dat") == 0
+	    && strcmp(tape.input_path, "Lockout.dat") == 0
+	    && !tape.open && tape.ended && tape.wait_seconds == 10.0f);
+	CHECK(state.denied && state.terminated && !state.file_open
+	    && state.lines_read == 2U);
+	CHECK(tape.presented_length[YT_STARTUP_LOCKOUT_BLANK] == 0U
+	    && tape.presented_length[YT_STARTUP_LOCKOUT_REVOKED]
+	    == sizeof(lockout_revoked) - 1U
+	    && memcmp(tape.presented[YT_STARTUP_LOCKOUT_REVOKED],
+	    lockout_revoked, sizeof(lockout_revoked) - 1U) == 0
+	    && tape.presented_length[YT_STARTUP_LOCKOUT_CONTACT]
+	    == sizeof(lockout_contact) - 1U
+	    && memcmp(tape.presented[YT_STARTUP_LOCKOUT_CONTACT],
+	    lockout_contact, sizeof(lockout_contact) - 1U) == 0);
+
+	for (failure = 1U; failure < YT_ARRAY_LEN(denied_events); ++failure) {
+		lockout_state_init(&state);
+		memset(&tape, 0, sizeof(tape));
+		tape.file = matching;
+		tape.file_length = sizeof(matching) - 1U;
+		tape.fail_at = failure;
+		yt_error_clear(&error);
+		CHECK(!yt_startup_lockout_run(&state, &lockout_ops, &tape,
+		    &error));
+		CHECK(error.status == YT_IO_ERROR && tape.event_count == failure
+		    && memcmp(tape.events, denied_events,
+		    failure * sizeof(denied_events[0])) == 0
+		    && !state.terminated && !tape.ended);
+		CHECK(state.lines_read == (failure <= 5U ? 0U
+		    : failure == 6U ? 1U : 2U));
+		CHECK(state.denied == (failure >= 7U));
+		CHECK(state.file_open == (failure == 2U || failure == 3U
+		    || failure >= 5U));
+	}
+
+	lockout_state_init(&state);
+	memset(&tape, 0, sizeof(tape));
+	tape.file = nonmatching;
+	tape.file_length = sizeof(nonmatching) - 1U;
+	CHECK(yt_startup_lockout_run(&state, &lockout_ops, &tape, NULL));
+	CHECK(tape.event_count == YT_ARRAY_LEN(nonmatch_events)
+	    && memcmp(tape.events, nonmatch_events, sizeof(nonmatch_events)) == 0
+	    && !state.denied && !state.terminated && !state.file_open
+	    && state.lines_read == 2U && !tape.open && !tape.ended);
+	for (failure = 1U; failure <= YT_ARRAY_LEN(nonmatch_events);
+	    ++failure) {
+		lockout_state_init(&state);
+		memset(&tape, 0, sizeof(tape));
+		tape.file = nonmatching;
+		tape.file_length = sizeof(nonmatching) - 1U;
+		tape.fail_at = failure;
+		yt_error_clear(&error);
+		CHECK(!yt_startup_lockout_run(&state, &lockout_ops, &tape,
+		    &error));
+		CHECK(error.status == YT_IO_ERROR && tape.event_count == failure
+		    && memcmp(tape.events, nonmatch_events,
+		    failure * sizeof(nonmatch_events[0])) == 0
+		    && !state.denied && !state.terminated && !tape.ended);
+		CHECK(state.lines_read == (failure <= 5U ? 0U
+		    : failure == 6U ? 1U : 2U));
+		CHECK(state.file_open == (failure == 2U || failure == 3U
+		    || failure >= 5U));
+	}
+
+	lockout_state_init(&state);
+	memset(&tape, 0, sizeof(tape));
+	CHECK(yt_startup_lockout_run(&state, &lockout_ops, &tape, NULL));
+	CHECK(tape.event_count == YT_ARRAY_LEN(empty_events)
+	    && memcmp(tape.events, empty_events, sizeof(empty_events)) == 0
+	    && !state.denied && !state.terminated && !state.file_open
+	    && state.lines_read == 0U && !tape.open && !tape.ended);
+	for (failure = 1U; failure <= YT_ARRAY_LEN(empty_events); ++failure) {
+		lockout_state_init(&state);
+		memset(&tape, 0, sizeof(tape));
+		tape.fail_at = failure;
+		yt_error_clear(&error);
+		CHECK(!yt_startup_lockout_run(&state, &lockout_ops, &tape,
+		    &error));
+		CHECK(error.status == YT_IO_ERROR && tape.event_count == failure
+		    && memcmp(tape.events, empty_events,
+		    failure * sizeof(empty_events[0])) == 0
+		    && !state.denied && !state.terminated && !tape.ended
+		    && state.lines_read == 0U);
+		CHECK(state.file_open == (failure >= 2U));
+	}
+	CHECK(!yt_startup_lockout_run(NULL, &lockout_ops, &tape, NULL));
+}
+
 static void
 test_startup_lockout_scan(void)
 {
@@ -2445,6 +2779,7 @@ main(void)
 	test_sysop_f5();
 	test_startup_dorinfo_parser();
 	test_startup_dorinfo_state();
+	test_startup_lockout_transaction();
 	test_startup_lockout_scan();
 	test_registration_transaction();
 	if (failures != 0) {

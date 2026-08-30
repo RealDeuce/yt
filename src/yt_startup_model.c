@@ -658,6 +658,112 @@ yt_startup_lockout_scan(const uint8_t *data, size_t data_length,
 	return true;
 }
 
+static bool
+lockout_line_matches(const uint8_t *line, size_t length,
+    const uint8_t *identity, size_t identity_length, bool *matched,
+    struct yt_error *error)
+{
+	uint8_t *canonical;
+	size_t canonical_length;
+
+	*matched = false;
+	canonical = malloc(length == 0U ? 1U : length);
+	if (canonical == NULL) {
+		if (error != NULL) {
+			error->status = YT_NO_MEMORY;
+			(void)snprintf(error->operation, sizeof(error->operation), "%s",
+			    "canonicalize lockout row");
+		}
+		return false;
+	}
+	if (length != 0U)
+		memcpy(canonical, line, length);
+	canonical_length = qb_title_case_n(canonical, length);
+	*matched = canonical_length == identity_length
+	    && (canonical_length == 0U
+	    || memcmp(canonical, identity, canonical_length) == 0);
+	free(canonical);
+	return true;
+}
+
+bool
+yt_startup_lockout_run(struct yt_startup_lockout_state *state,
+    const struct yt_startup_lockout_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t revoked[] =
+	    "\aYOUR ACCESS TO THIS GAME HAS BEEN REVOKED!\a";
+	bool empty;
+
+	if (state == NULL || state->random_path == NULL
+	    || state->input_path == NULL
+	    || (state->identity == NULL && state->identity_length != 0U)
+	    || (state->contact == NULL && state->contact_length != 0U)
+	    || ops == NULL || ops->open_random == NULL || ops->empty == NULL
+	    || ops->close == NULL || ops->open_input == NULL || ops->read == NULL
+	    || ops->present == NULL || ops->wait == NULL
+	    || ops->close_all == NULL || ops->end == NULL) {
+		if (error != NULL) {
+			error->status = YT_INVALID;
+			(void)snprintf(error->operation, sizeof(error->operation), "%s",
+			    "startup lockout transaction");
+		}
+		return false;
+	}
+	state->file_open = false;
+	state->denied = false;
+	state->terminated = false;
+	state->lines_read = 0U;
+	if (!ops->open_random(context, state->random_path, error))
+		return false;
+	state->file_open = true;
+	if (!ops->empty(context, &empty, error))
+		return false;
+	if (!ops->close(context, error))
+		return false;
+	state->file_open = false;
+	if (empty)
+		return true;
+	if (!ops->open_input(context, state->input_path, error))
+		return false;
+	state->file_open = true;
+	for (;;) {
+		const uint8_t *line;
+		size_t length;
+		bool available;
+		bool matched;
+
+		if (!ops->read(context, &line, &length, &available, error))
+			return false;
+		if (!available)
+			break;
+		++state->lines_read;
+		if (!lockout_line_matches(line, length, state->identity,
+		    state->identity_length, &matched, error))
+			return false;
+		if (!matched)
+			continue;
+		state->denied = true;
+		if (!ops->present(context, YT_STARTUP_LOCKOUT_BLANK, NULL, 0U,
+		    error)
+		    || !ops->present(context, YT_STARTUP_LOCKOUT_REVOKED, revoked,
+		    sizeof(revoked) - 1U, error)
+		    || !ops->present(context, YT_STARTUP_LOCKOUT_CONTACT,
+		    state->contact, state->contact_length, error)
+		    || !ops->wait(context, 10.0f, error)
+		    || !ops->close_all(context, error))
+			return false;
+		state->file_open = false;
+		ops->end(context);
+		state->terminated = true;
+		return true;
+	}
+	if (!ops->close(context, error))
+		return false;
+	state->file_open = false;
+	return true;
+}
+
 bool
 yt_startup_parse_dorinfo(const uint8_t *raw, size_t raw_length,
     uint8_t *storage, size_t storage_capacity,
