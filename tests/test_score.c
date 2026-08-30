@@ -2144,6 +2144,366 @@ check_projectile_sector_probe_transaction(void)
 	return !yt_projectile_sector_probe_run(NULL, NULL);
 }
 
+enum plasma_fighter_event {
+	PLASMA_FIGHTER_OWNER = 1,
+	PLASMA_FIGHTER_ENCOUNTER,
+	PLASMA_FIGHTER_SOUND,
+	PLASMA_FIGHTER_RANDOM,
+	PLASMA_FIGHTER_DAMAGE,
+	PLASMA_FIGHTER_NEWS,
+	PLASMA_FIGHTER_READ,
+	PLASMA_FIGHTER_WRITE,
+	PLASMA_FIGHTER_VICTORY,
+};
+
+struct plasma_fighter_tape {
+	int events[16];
+	size_t event_count;
+	size_t fail_at;
+	float draws[4];
+	size_t draw_position;
+	float owner_at_read;
+	uint8_t owner_name[YT_TEXT_FIELD_SIZE];
+	size_t owner_name_length;
+	uint8_t encounter[256];
+	size_t encounter_length;
+	uint8_t damage[256];
+	size_t damage_length;
+	uint8_t news[256];
+	size_t news_length;
+	float selector;
+	float *bold;
+	float bold_at_sound;
+	struct yt_sector source;
+	struct yt_sector written;
+	float sector_at_read;
+	float sector_at_write;
+};
+
+static bool
+plasma_fighter_step(struct plasma_fighter_tape *tape,
+    enum plasma_fighter_event event)
+{
+	if (tape->event_count >= YT_ARRAY_LEN(tape->events))
+		return false;
+	tape->events[tape->event_count++] = (int)event;
+	return tape->event_count != tape->fail_at;
+}
+
+static bool
+plasma_fighter_test_owner(void *context, float owner, uint8_t *name,
+    size_t *name_length, struct yt_error *error)
+{
+	struct plasma_fighter_tape *tape = context;
+
+	(void)error;
+	tape->owner_at_read = owner;
+	if (!plasma_fighter_step(tape, PLASMA_FIGHTER_OWNER))
+		return false;
+	memcpy(name, tape->owner_name, tape->owner_name_length);
+	*name_length = tape->owner_name_length;
+	return true;
+}
+
+static bool
+plasma_fighter_test_present(void *context, const uint8_t *text,
+    size_t length, enum yt_projectile_plasma_fighter_output_kind kind,
+    struct yt_error *error)
+{
+	struct plasma_fighter_tape *tape = context;
+	uint8_t *target;
+	size_t *target_length;
+	enum plasma_fighter_event event;
+
+	(void)error;
+	if (kind == YT_PROJECTILE_PLASMA_FIGHTER_ENCOUNTER) {
+		target = tape->encounter;
+		target_length = &tape->encounter_length;
+		event = PLASMA_FIGHTER_ENCOUNTER;
+	}
+	else {
+		target = tape->damage;
+		target_length = &tape->damage_length;
+		event = PLASMA_FIGHTER_DAMAGE;
+	}
+	if (!plasma_fighter_step(tape, event) || length > 256U)
+		return false;
+	memcpy(target, text, length);
+	*target_length = length;
+	return true;
+}
+
+static bool
+plasma_fighter_test_sound(void *context, float selector,
+    struct yt_error *error)
+{
+	struct plasma_fighter_tape *tape = context;
+
+	(void)error;
+	tape->selector = selector;
+	tape->bold_at_sound = *tape->bold;
+	return plasma_fighter_step(tape, PLASMA_FIGHTER_SOUND);
+}
+
+static bool
+plasma_fighter_test_random(void *context, float *value,
+    struct yt_error *error)
+{
+	struct plasma_fighter_tape *tape = context;
+
+	(void)error;
+	if (!plasma_fighter_step(tape, PLASMA_FIGHTER_RANDOM)
+	    || tape->draw_position >= YT_ARRAY_LEN(tape->draws))
+		return false;
+	*value = tape->draws[tape->draw_position++];
+	return true;
+}
+
+static bool
+plasma_fighter_test_news(void *context, const uint8_t *text,
+    size_t length, struct yt_error *error)
+{
+	struct plasma_fighter_tape *tape = context;
+
+	(void)error;
+	if (!plasma_fighter_step(tape, PLASMA_FIGHTER_NEWS)
+	    || length > sizeof(tape->news))
+		return false;
+	memcpy(tape->news, text, length);
+	tape->news_length = length;
+	return true;
+}
+
+static bool
+plasma_fighter_test_read(void *context, float sector,
+    struct yt_sector *value, struct yt_error *error)
+{
+	struct plasma_fighter_tape *tape = context;
+
+	(void)error;
+	tape->sector_at_read = sector;
+	if (!plasma_fighter_step(tape, PLASMA_FIGHTER_READ))
+		return false;
+	*value = tape->source;
+	return true;
+}
+
+static bool
+plasma_fighter_test_write(void *context, float sector,
+    const struct yt_sector *value, struct yt_error *error)
+{
+	struct plasma_fighter_tape *tape = context;
+
+	(void)error;
+	tape->sector_at_write = sector;
+	tape->written = *value;
+	return plasma_fighter_step(tape, PLASMA_FIGHTER_WRITE);
+}
+
+static bool
+plasma_fighter_test_victory(void *context, struct yt_error *error)
+{
+	(void)error;
+	return plasma_fighter_step(context, PLASMA_FIGHTER_VICTORY);
+}
+
+static void
+plasma_fighter_fixture(struct plasma_fighter_tape *tape,
+    struct yt_projectile_plasma_fighter_state *state, double *energy,
+    float *bold)
+{
+	static const uint8_t attacker[] = {'A', 0, 'B'};
+
+	memset(tape, 0, sizeof(*tape));
+	memset(state, 0, sizeof(*state));
+	memset(&tape->source, 0, sizeof(tape->source));
+	memset(tape->source.record.bytes, 0xa5,
+	    sizeof(tape->source.record.bytes));
+	tape->source.fighters = 777.0f;
+	tape->source.fighter_owner = -2.0f;
+	(void)yt_record_set_number(&tape->source.record, YT_F81,
+	    tape->source.fighters);
+	(void)yt_record_set_number(&tape->source.record, YT_F85,
+	    tape->source.fighter_owner);
+	tape->fail_at = SIZE_MAX;
+	tape->draws[0] = 0.5f;
+	tape->owner_name[0] = 'R';
+	tape->owner_name[1] = 0;
+	tape->owner_name[2] = 'X';
+	tape->owner_name_length = 3U;
+	tape->bold = bold;
+	*energy = 1.0;
+	*bold = 0.0f;
+	state->sector = 7.0f;
+	state->fighters = 100.0;
+	state->owner = -1.0f;
+	state->shooter = 2;
+	state->headquarters = 999.0f;
+	state->attacker = attacker;
+	state->attacker_length = sizeof(attacker);
+	state->energy = energy;
+	state->bold = bold;
+}
+
+static bool
+check_projectile_plasma_fighter_transaction(void)
+{
+	static const struct yt_projectile_plasma_fighter_ops ops = {
+		plasma_fighter_test_owner,
+		plasma_fighter_test_present,
+		plasma_fighter_test_sound,
+		plasma_fighter_test_random,
+		plasma_fighter_test_news,
+		plasma_fighter_test_read,
+		plasma_fighter_test_write,
+		plasma_fighter_test_victory,
+	};
+	static const int low_energy_events[] = {
+		PLASMA_FIGHTER_ENCOUNTER,
+		PLASMA_FIGHTER_SOUND,
+		PLASMA_FIGHTER_RANDOM,
+		PLASMA_FIGHTER_DAMAGE,
+		PLASMA_FIGHTER_READ,
+		PLASMA_FIGHTER_WRITE,
+	};
+	static const int victory_events[] = {
+		PLASMA_FIGHTER_OWNER,
+		PLASMA_FIGHTER_ENCOUNTER,
+		PLASMA_FIGHTER_SOUND,
+		PLASMA_FIGHTER_RANDOM,
+		PLASMA_FIGHTER_DAMAGE,
+		PLASMA_FIGHTER_NEWS,
+		PLASMA_FIGHTER_READ,
+		PLASMA_FIGHTER_WRITE,
+		PLASMA_FIGHTER_VICTORY,
+	};
+	static const uint8_t xannor_row[] =
+	    "Sector: 7 defended by The Xannor with 100 fighters.";
+	static const uint8_t mercenary_row[] =
+	    "Sector: 7 defended by Mercenaries with 100 fighters.";
+	static const uint8_t player_row[] =
+	    "Sector: 7 defended by R\0X with 100 fighters.";
+	static const uint8_t self_row[] =
+	    "Sector: 7 defended by YOU with 10 fighters.";
+	static const uint8_t damage_row[] =
+	    "The plasma bolts destroyed 1 fighters!";
+	static const uint8_t news_row[] =
+	    "A\0B's plasma bolts destroyed 10 fighters in sector 7!";
+	struct plasma_fighter_tape tape;
+	struct yt_projectile_plasma_fighter_state state;
+	struct yt_record expected;
+	double energy;
+	float bold;
+	size_t failure;
+
+	plasma_fighter_fixture(&tape, &state, &energy, &bold);
+	expected = tape.source.record;
+	(void)yt_record_set_number(&expected, YT_F81, 99.0f);
+	if (!yt_projectile_plasma_fighter_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != YT_ARRAY_LEN(low_energy_events)
+	    || memcmp(tape.events, low_energy_events,
+	    sizeof(low_energy_events)) != 0
+	    || state.destroyed != 1.0 || state.remaining_fighters != 99.0
+	    || energy != 0.0
+	    || state.route != YT_PROJECTILE_PLASMA_FIGHTER_FOOTER
+	    || bold != 1.0f || tape.bold_at_sound != 1.0f
+	    || tape.selector != 2.0f
+	    || tape.encounter_length != sizeof(xannor_row) - 1U
+	    || memcmp(tape.encounter, xannor_row, sizeof(xannor_row) - 1U) != 0
+	    || tape.damage_length != sizeof(damage_row) - 1U
+	    || memcmp(tape.damage, damage_row, sizeof(damage_row) - 1U) != 0
+	    || tape.sector_at_read != 7.0f || tape.sector_at_write != 7.0f
+	    || tape.written.fighters != 99.0f
+	    || tape.written.fighter_owner != -2.0f
+	    || memcmp(&tape.written.record, &expected, sizeof(expected)) != 0)
+		return false;
+
+	plasma_fighter_fixture(&tape, &state, &energy, &bold);
+	state.fighters = 0.0;
+	if (!yt_projectile_plasma_fighter_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != 0U || state.destroyed != 0.0
+	    || state.remaining_fighters != 0.0
+	    || state.route != YT_PROJECTILE_PLASMA_FIGHTER_CONTINUE_SECTOR)
+		return false;
+
+	plasma_fighter_fixture(&tape, &state, &energy, &bold);
+	energy = 0.0;
+	if (!yt_projectile_plasma_fighter_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != 2U
+	    || tape.events[0] != PLASMA_FIGHTER_ENCOUNTER
+	    || tape.events[1] != PLASMA_FIGHTER_SOUND
+	    || tape.damage_length != 0U || tape.draw_position != 0U
+	    || state.route != YT_PROJECTILE_PLASMA_FIGHTER_CONTINUE_SECTOR)
+		return false;
+
+	plasma_fighter_fixture(&tape, &state, &energy, &bold);
+	state.owner = -2.0f;
+	if (!yt_projectile_plasma_fighter_run(&state, &ops, &tape, NULL)
+	    || tape.encounter_length != sizeof(mercenary_row) - 1U
+	    || memcmp(tape.encounter, mercenary_row,
+	    sizeof(mercenary_row) - 1U) != 0)
+		return false;
+
+	plasma_fighter_fixture(&tape, &state, &energy, &bold);
+	state.owner = 3.0f;
+	if (!yt_projectile_plasma_fighter_run(&state, &ops, &tape, NULL)
+	    || tape.owner_at_read != 3.0f
+	    || tape.encounter_length != sizeof(player_row) - 1U
+	    || memcmp(tape.encounter, player_row, sizeof(player_row) - 1U) != 0)
+		return false;
+
+	plasma_fighter_fixture(&tape, &state, &energy, &bold);
+	energy = 10000.0;
+	tape.draws[0] = 0.0f;
+	tape.draws[1] = 0.5f;
+	if (!yt_projectile_plasma_fighter_run(&state, &ops, &tape, NULL)
+	    || tape.draw_position != 2U || state.destroyed != 6.0
+	    || state.remaining_fighters != 94.0 || energy != 0.0
+	    || tape.event_count != 7U
+	    || tape.events[2] != PLASMA_FIGHTER_RANDOM
+	    || tape.events[3] != PLASMA_FIGHTER_RANDOM
+	    || tape.events[4] != PLASMA_FIGHTER_DAMAGE)
+		return false;
+
+	plasma_fighter_fixture(&tape, &state, &energy, &bold);
+	state.fighters = 10.0;
+	state.owner = 2.0f;
+	state.headquarters = 7.0f;
+	energy = 100000.0;
+	if (!yt_projectile_plasma_fighter_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != YT_ARRAY_LEN(victory_events)
+	    || memcmp(tape.events, victory_events, sizeof(victory_events)) != 0
+	    || tape.encounter_length != sizeof(self_row) - 1U
+	    || memcmp(tape.encounter, self_row, sizeof(self_row) - 1U) != 0
+	    || state.destroyed != 10.0 || state.remaining_fighters != 0.0
+	    || !state.victory_called
+	    || state.route != YT_PROJECTILE_PLASMA_FIGHTER_CONTINUE_SECTOR
+	    || tape.news_length != sizeof(news_row) - 1U
+	    || memcmp(tape.news, news_row, sizeof(news_row) - 1U) != 0
+	    || memcmp(tape.written.record.bytes + YT_F81,
+	    (const uint8_t[]){0x00, 0x00, 0x10, 0x00}, 4U) != 0
+	    || memcmp(tape.written.record.bytes + YT_F85,
+	    (const uint8_t[]){0x00, 0x00, 0x10, 0x00}, 4U) != 0)
+		return false;
+
+	for (failure = 1U; failure <= YT_ARRAY_LEN(victory_events); ++failure) {
+		plasma_fighter_fixture(&tape, &state, &energy, &bold);
+		state.fighters = 10.0;
+		state.owner = 2.0f;
+		state.headquarters = 7.0f;
+		energy = 100000.0;
+		tape.fail_at = failure;
+		if (yt_projectile_plasma_fighter_run(&state, &ops, &tape, NULL)
+		    || tape.event_count != failure
+		    || memcmp(tape.events, victory_events,
+		    failure * sizeof(victory_events[0])) != 0
+		    || state.victory_called != (failure == 9U))
+			return false;
+	}
+	return !yt_projectile_plasma_fighter_run(NULL, &ops, &tape, NULL)
+	    && !yt_projectile_plasma_fighter_run(&state, NULL, &tape, NULL);
+}
+
 enum projectile_defense_front_event {
 	PROJECTILE_DEFENSE_OWNER = 1,
 	PROJECTILE_DEFENSE_FRIENDSHIP,
@@ -12249,6 +12609,8 @@ main(void)
 		return fail("projectile Union Police transaction differs");
 	if (!check_projectile_sector_probe_transaction())
 		return fail("projectile sector-probe transaction differs");
+	if (!check_projectile_plasma_fighter_transaction())
+		return fail("projectile plasma-fighter transaction differs");
 	if (!check_projectile_defense_front_transaction())
 		return fail("projectile defense-front transaction differs");
 	if (!check_projectile_defense_combat_transaction())

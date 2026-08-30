@@ -12063,51 +12063,79 @@ projectile_damage_draw(void *context, float *value, struct yt_error *error)
 }
 
 static bool
-projectile_plasma_fighter_owner(struct yt_session *session, float owner,
-    uint8_t *label, size_t size, size_t *label_length,
+plasma_fighter_owner(void *context, float owner, uint8_t *label,
+    size_t *label_length, struct yt_error *error)
+{
+	struct yt_session *session = context;
+	struct yt_player defender;
+	bool overflow;
+	int owner_record = (int)qb_cint((double)owner, &overflow);
+
+	if (overflow) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			snprintf(error->operation, sizeof(error->operation), "%s",
+			    "plasma fighter owner CINT");
+		}
+		return false;
+	}
+	if (!yt_game_read_player(&session->door->game, owner_record, &defender,
+	    error))
+		return false;
+	return yt_player_stored_name(&defender, label, label_length, error);
+}
+
+static bool
+plasma_fighter_present(void *context, const uint8_t *text, size_t length,
+    enum yt_projectile_plasma_fighter_output_kind kind,
     struct yt_error *error)
 {
-	static const uint8_t xannor[] = "The Xannor";
-	static const uint8_t mercenaries[] = "Mercenaries";
-	static const uint8_t you[] = "YOU";
-	const uint8_t *initial = xannor;
-	size_t initial_length = sizeof(xannor) - 1U;
+	return session_present_text(context, text, length,
+	    kind == YT_PROJECTILE_PLASMA_FIGHTER_ENCOUNTER
+	    ? SESSION_PRESENT_BOLD_LINE : SESSION_PRESENT_LINE,
+	    kind == YT_PROJECTILE_PLASMA_FIGHTER_ENCOUNTER
+	    ? "plasma defense report" : "plasma destroyed-defense row", error);
+}
 
-	if (label == NULL || label_length == NULL
-	    || size < YT_TEXT_FIELD_SIZE)
-		return false;
-	if (owner == -2.0f) {
-		initial = mercenaries;
-		initial_length = sizeof(mercenaries) - 1U;
-	}
-	memcpy(label, initial, initial_length);
-	*label_length = initial_length;
-	if (owner != -2.0f && owner > 1.0f
-	    && owner <= session->door->game.config.sector_offset) {
-		struct yt_player defender;
-		bool overflow;
-		int owner_record;
+static bool
+plasma_fighter_sound(void *context, float selector, struct yt_error *error)
+{
+	return session_sound(context, selector,
+	    "plasma fighter-defense sound", error);
+}
 
-		owner_record = (int)qb_cint((double)owner, &overflow);
-		if (overflow) {
-			if (error != NULL) {
-				error->status = YT_RANGE;
-				snprintf(error->operation, sizeof(error->operation), "%s",
-				    "projectile defense-owner CINT");
-			}
-			return false;
-		}
-		if (!yt_game_read_player(&session->door->game, owner_record,
-		    &defender, error))
-			return false;
-		if (!yt_player_stored_name(&defender, label, label_length, error))
-			return false;
-	}
-	if (owner == (float)session->player_record) {
-		memcpy(label, you, sizeof(you) - 1U);
-		*label_length = sizeof(you) - 1U;
-	}
-	return true;
+static bool
+plasma_fighter_news(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	return append_news_bytes(context, text, length, error);
+}
+
+static bool
+plasma_fighter_read_sector(void *context, float sector,
+    struct yt_sector *value, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_read_sector(&session->door->game, (int)sector, value,
+	    error);
+}
+
+static bool
+plasma_fighter_write_sector(void *context, float sector,
+    const struct yt_sector *value, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_database_write(&session->door->game.database,
+	    (size_t)yt_sector_basic_record(&session->door->game.config,
+	    (int)sector), &value->record, error);
+}
+
+static bool
+plasma_fighter_victory(void *context, struct yt_error *error)
+{
+	return xannor_victory(context, error);
 }
 
 static bool
@@ -12712,9 +12740,21 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 
 static bool
 plasma_sector_loaded(struct yt_session *session, int sector_number,
-    const struct yt_sector *initial, double *energy, struct yt_error *error)
+    const struct yt_sector *initial, const uint8_t *attacker,
+    size_t launch_attacker_length, double *energy, struct yt_error *error)
 {
+	static const struct yt_projectile_plasma_fighter_ops fighter_ops = {
+		plasma_fighter_owner,
+		plasma_fighter_present,
+		plasma_fighter_sound,
+		projectile_damage_draw,
+		plasma_fighter_news,
+		plasma_fighter_read_sector,
+		plasma_fighter_write_sector,
+		plasma_fighter_victory,
+	};
 	struct yt_sector sector;
+	struct yt_projectile_plasma_fighter_state fighter;
 	float planet_link;
 	int basic;
 
@@ -12723,99 +12763,21 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
 	else if (!yt_game_read_sector(&session->door->game, sector_number,
 	    &sector, error))
 		return false;
-	if (sector.fighters > 0.0f) {
-		double original_fighters = (double)sector.fighters;
-		double destroyed = 0.0;
-		uint8_t owner[YT_TEXT_FIELD_SIZE];
-		size_t owner_length;
-		size_t row_length;
-		char sector_text[64];
-		char fighter_text[64];
-		uint8_t row[256];
-
-		if (!projectile_plasma_fighter_owner(session,
-		    sector.fighter_owner, owner, sizeof(owner), &owner_length,
-		    error))
-			return false;
-		qb_str_single(sector_text, sizeof(sector_text),
-		    (float)sector_number);
-		if (!yt_projectile_defense_row((float)sector_number, owner,
-		    owner_length, (double)sector.fighters, row, sizeof(row),
-		    &row_length)
-		    || !session_present_text(session, row, row_length,
-		    SESSION_PRESENT_BOLD_LINE,
-		    "plasma defense report", error))
-			return false;
-
-		session->presentation.bold = 1.0f;
-		if (!session_sound(session, 2.0f,
-		    "plasma fighter-defense sound", error))
-			return false;
-		while (*energy > 0.0 && destroyed < original_fighters) {
-			float draw;
-
-			destroyed += floor(*energy / 5000.0) + 1.0;
-			if (!random_value(session, &draw, error))
-				return false;
-			*energy -= (double)single_mul(draw, 25000.0f);
-		}
-		if (*energy < 0.0)
-			*energy = 0.0;
-		if (destroyed > original_fighters)
-			destroyed = original_fighters;
-		qb_str_double(fighter_text, sizeof(fighter_text), destroyed);
-		snprintf((char *)row, sizeof(row),
-		    "The plasma bolts destroyed%s fighters!",
-		    fighter_text);
-		if (!session_present_text(session, row,
-		    strlen((const char *)row), SESSION_PRESENT_LINE,
-		    "plasma destroyed-defense row", error))
-			return false;
-		if (destroyed > 9.0) {
-			snprintf((char *)row, sizeof(row), "%s's plasma bolts destroyed%s "
-			    "fighters in sector%s!", session->player.name,
-			    fighter_text, sector_text);
-			if (!append_news(session, (const char *)row, error))
-				return false;
-		}
-		{
-			static const uint8_t defense_zero[4] = {
-				0x00, 0x00, 0x10, 0x00
-			};
-			struct yt_sector persistence;
-			float remaining = (float)(original_fighters - destroyed);
-
-			if (!yt_game_read_sector(&session->door->game,
-			    sector_number, &persistence, error))
-				return false;
-			persistence.fighters = remaining;
-			if (remaining == 0.0f) {
-				persistence.fighter_owner = 0.0f;
-				if (!yt_record_set_raw_number(&persistence.record,
-				    YT_F81, defense_zero)
-				    || !yt_record_set_raw_number(&persistence.record,
-				    YT_F85, defense_zero)) {
-					if (error != NULL) {
-						error->status = YT_RANGE;
-						snprintf(error->operation,
-						    sizeof(error->operation), "%s",
-						    "plasma defense zero overlay");
-					}
-					return false;
-				}
-			}
-			if (!yt_game_write_sector(&session->door->game,
-			    sector_number, &persistence, error))
-				return false;
-			if (remaining == 0.0f
-			    && (float)sector_number
-			    == session->door->game.config.headquarters
-			    && !xannor_victory(session, error))
-				return false;
-		}
-		if (*energy < 1.0)
-			return true;
-	}
+	memset(&fighter, 0, sizeof(fighter));
+	fighter.sector = (float)sector_number;
+	fighter.fighters = (double)sector.fighters;
+	fighter.owner = sector.fighter_owner;
+	fighter.shooter = session->player_record;
+	fighter.headquarters = session->door->game.config.headquarters;
+	fighter.attacker = attacker;
+	fighter.attacker_length = launch_attacker_length;
+	fighter.energy = energy;
+	fighter.bold = &session->presentation.bold;
+	if (!yt_projectile_plasma_fighter_run(&fighter, &fighter_ops, session,
+	    error))
+		return false;
+	if (fighter.route == YT_PROJECTILE_PLASMA_FIGHTER_FOOTER)
+		return true;
 plasma_reload_sector:
 	/* B099 performs a new sector GET before caching mines and planet link. */
 	if (!yt_game_read_sector(&session->door->game, sector_number, &sector,
@@ -13072,9 +13034,11 @@ plasma_reload_sector:
 
 static bool
 plasma_sector(struct yt_session *session, int sector_number,
-    double *energy, struct yt_error *error)
+    const uint8_t *attacker, size_t attacker_length, double *energy,
+    struct yt_error *error)
 {
-	return plasma_sector_loaded(session, sector_number, NULL, energy, error);
+	return plasma_sector_loaded(session, sector_number, NULL, attacker,
+	    attacker_length, energy, error);
 }
 
 static bool
@@ -13132,6 +13096,7 @@ plasma_opening_wait(void *context, float duration, struct yt_error *error)
 static bool
 projectile_opening(struct yt_session *session, float amount, bool plasma,
     float *last_mine_news_sector, double *energy, float *hop_loss,
+    uint8_t *attacker, size_t attacker_capacity, size_t *attacker_length,
     struct yt_error *error)
 {
 	static const struct yt_projectile_cruise_opening_ops cruise_ops = {
@@ -13150,6 +13115,7 @@ projectile_opening(struct yt_session *session, float amount, bool plasma,
 	if (!plasma) {
 		*energy = 0.0;
 		*hop_loss = 0.0f;
+		*attacker_length = 0U;
 		return yt_projectile_cruise_opening_run(last_mine_news_sector,
 		    &cruise_ops, session, error);
 	}
@@ -13163,6 +13129,11 @@ projectile_opening(struct yt_session *session, float amount, bool plasma,
 	if (!yt_projectile_plasma_opening_run(&state, &plasma_ops, session,
 	    error))
 		return false;
+	if (state.attacker_length > attacker_capacity)
+		return false;
+	if (state.attacker_length != 0U)
+		memcpy(attacker, state.attacker, state.attacker_length);
+	*attacker_length = state.attacker_length;
 	*energy = state.energy;
 	*hop_loss = state.hop_loss;
 	return true;
@@ -13287,6 +13258,8 @@ cruise_union_police_present(void *context, const uint8_t *text, size_t length,
 struct plasma_route_context {
 	struct yt_session *session;
 	int *xannor_provoker;
+	const uint8_t *attacker;
+	size_t attacker_length;
 };
 
 static bool
@@ -13369,7 +13342,9 @@ plasma_route_impact(void *context, int hop, double *energy,
 		*route = YT_PROJECTILE_PLASMA_NEXT_HOP;
 		return true;
 	}
-	if (!plasma_sector_loaded(session, hop, &sector, energy, error))
+	if (!plasma_sector_loaded(session, hop, &sector,
+	    route_context->attacker, route_context->attacker_length, energy,
+	    error))
 		return false;
 	*route = *energy < 1.0 ? YT_PROJECTILE_PLASMA_FOOTER
 	    : YT_PROJECTILE_PLASMA_NEXT_HOP;
@@ -13404,6 +13379,8 @@ launch_projectile(struct yt_session *session, float target, float amount,
 	    ? returned_missiles : &local_missiles;
 	double energy;
 	float hop_loss;
+	uint8_t attacker[YT_PROJECTILE_ATTACKER_CAPACITY];
+	size_t attacker_length;
 	int local_counterattack = 0;
 	int local_xannor_provoker = 0;
 	int *counterattack = pending_counterattack != NULL
@@ -13420,7 +13397,8 @@ launch_projectile(struct yt_session *session, float target, float amount,
 	if (overflow)
 		return true;
 	if (!projectile_opening(session, amount, plasma,
-	    &last_mine_news_sector, &energy, &hop_loss, error))
+	    &last_mine_news_sector, &energy, &hop_loss, attacker,
+	    sizeof(attacker), &attacker_length, error))
 		return false;
 	route = calloc(YT_ROUTE_CAPACITY, sizeof(*route));
 	if (route == NULL) {
@@ -13443,6 +13421,8 @@ launch_projectile(struct yt_session *session, float target, float amount,
 		struct plasma_route_context route_context = {
 			session,
 			xannor_provoker,
+			attacker,
+			attacker_length,
 		};
 		struct yt_projectile_plasma_route_state state = {
 			origin,
@@ -13473,7 +13453,8 @@ launch_projectile(struct yt_session *session, float target, float amount,
 				free(route);
 				return false;
 			}
-			found = plasma_sector(session, start, &energy, error);
+			found = plasma_sector(session, start, attacker,
+			    attacker_length, &energy, error);
 			if (found)
 				found = plasma_footer(session, error);
 			free(route);
@@ -13624,7 +13605,8 @@ launch_projectile(struct yt_session *session, float target, float amount,
 			}
 		}
 		if (plasma) {
-			if (!plasma_sector(session, next, &energy, error)) {
+			if (!plasma_sector(session, next, attacker,
+			    attacker_length, &energy, error)) {
 				free(route);
 				return false;
 			}

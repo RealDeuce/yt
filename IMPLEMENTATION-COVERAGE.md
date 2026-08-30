@@ -69,6 +69,15 @@ baseline stated in the handoff, not whole-program compatibility.
 
 ## Shared prerequisites
 
+The plasma resolver's connected native frontier now extends through
+`YT-SUB:AE00..B099`. `src/yt_game.c::yt_projectile_plasma_fighter_run` owns
+the deployed-fighter owner, encounter, DOUBLE damage, result/news,
+fresh-persistence, Headquarters, and footer dispatch transaction; the live
+launcher retains the binary attacker descriptor produced by its opening.
+`tests/test_score.c::check_projectile_plasma_fighter_transaction` pins every
+owner route, loop back-edge, output and provider failure prefix. The remaining
+connected plasma impact frontier begins at sector mines `B0D1`.
+
 | Component | Native owner | Native evidence | Status | Required before promotion |
 |---|---|---|---|---|
 | YTCONFIG player name/alias editor | `src/main_ytconfig.c::{main,edit_aliases,fixed_contains,write_output}`, `src/yt_config_output.c::{yt_config_compose_alias_entry,yt_config_compose_alias_menu,yt_config_compose_alias_key_echo,yt_config_compose_alias_list_header,yt_config_compose_alias_list_row,yt_config_compose_alias_pause,yt_config_compose_alias_blank,yt_config_compose_alias_number_prompt,yt_config_compose_alias_invalid,yt_config_compose_alias_edit,yt_config_compose_alias_confirmation,yt_config_compose_alias_response_echo,yt_config_compose_alias_cancel,yt_config_compose_alias_saved,yt_config_alias_selection_in_range,yt_config_alias_pause_after}`, `src/yt_names.c::{yt_names_load,yt_names_write,yt_names_split}`, `src/yt_game.c::{yt_game_read_player,yt_game_write_player}`, `src/qb.c::{qb_cint,qb_title_case}` | N hides physical YTNAME row zero, reports the logical count, folds the one-key submenu, lists rows with the 79-equals header and shipped pause predicate, preserves raw-zero and fractional selector behavior, clips before comma replacement/title normalization, and loops invalid confirmation or N cancellation back through the current edit. The composer follows the actual immutable blank descriptor at `1264` and after `Canceled!` at `1399`; the generated upstream detail labels calling those values aliases are stale. Y confirmation rewrites every YTNAME row before scanning all 50 player records, then case-sensitively replaces every fixed-field substring match regardless of active/name-length state. Focused fixtures pin exact output/predicates. A disk-backed fixture proves the hidden sentinel, zero-player BEEP, list/pause, invalid and fractional selection, cancellation, blank retry, rewrite bytes with DOS EOF, three-of-50 propagation overlays, nonmatches, unrelated bytes and complete restoration. All 176 presentation sites and 74 qualified transfers are candidate. | `candidate` | add exact local LOCATE/framebuffer reduction, raw BRUN INPUT#/EOF/static-array-overflow/INKEY$/INPUT/CINT/FIELD/GET/PUT/sequential-output/frame state, malformed YTNAME domains, all non-atomic failure prefixes and physical endpoint behavior |

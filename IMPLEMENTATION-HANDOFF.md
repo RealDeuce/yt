@@ -204,6 +204,18 @@ not authoritative. Use the corrected goal above in the new workspace.
   opening GET. Pure fixtures pin all field, fractional-terminal, cloak,
   provoker, range-failure and no-presence branches; a raw physical joined
   failure-prefix fixture remains open.
+- The connected `AE00..B099` deployed-fighter continuation now has one
+  injected plasma-specific native transaction. It preserves the retained
+  binary attacker label from the launch prelude, performs the optional owner
+  GET before the `YOU` override, emits the bold encounter before selector
+  two, and sends nonpositive incoming energy directly to `B099` without a
+  fabricated zero-destruction row. Its DOUBLE damage loop, continuous RNG
+  tape, negative-energy zero seam, direct row, strict-greater-than-nine news,
+  fresh GET/dirty-zero overlay/PUT, owner-independent Headquarters call, and
+  footer-versus-`B099` join are pinned. Every injected provider failure prefix
+  is covered, including news-before-persistence and PUT-before-victory.
+  Mine, player, and planet impact continuations remain the next connected
+  frontier.
 - After the exact Transfer, Bank, Productivity, Clearance, Earth-front,
   Earth-purchase, Planet Rename, shared compatibility-uppercase, Team
   name/password, Planet inventory/menu-parent, shared sector-mine, YTMAINT
@@ -229,13 +241,13 @@ not authoritative. Use the corrected goal above in the new workspace.
   provider-driven YT.REG registration transaction,
   ledger dispositions are roots
   `168 candidate / 0 missing`, transfers
-  `6981 candidate / 386 missing / 1 explicitly
+  `7014 candidate / 353 missing / 1 explicitly
   deferred`, and presentation `143 candidate / 1 missing / 6 verified`.
   Current SHA-256
   values are roots
-  `3f2a2e242ccd5fd1db58627f337c4fa420c7ba327ce296735abc351dd9db2da4`,
-  transfers `5e34367da3eacc6ad8242838ce1c276c96602e212cb2d5f12718fb5b057210a2`,
-  presentation `c6bd73a587d402b40ad2c6e4859dabeaa8a813b18168a0af95a0adb326bd73e3`,
+  `d452c86c598c91c6d63c67d79d11a0cab6566caea5eb1cc83f4a4f33d08fa532`,
+  transfers `272e2fb493411e9a7786516aa282a8b07e562b5ff348e0cea951b7c2d1497f09`,
+  presentation `c3204a9ff8df83ff448079ee80dd388728bd07b4ebdedcfc84f0bae3b12bbc57`,
   and manifest
   `3552bd61c9cb9b7197aeb6fbad1f37cba69cd09f125d878d0c9072a691e8950a`.
   All immutable identity columns and TSV widths match the regenerated trusted

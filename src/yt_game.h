@@ -423,6 +423,64 @@ bool yt_projectile_sector_probe_run(
     struct yt_projectile_sector_probe_state *state,
     struct yt_error *error);
 
+enum yt_projectile_plasma_fighter_route {
+	YT_PROJECTILE_PLASMA_FIGHTER_CONTINUE_SECTOR,
+	YT_PROJECTILE_PLASMA_FIGHTER_FOOTER,
+};
+enum yt_projectile_plasma_fighter_output_kind {
+	YT_PROJECTILE_PLASMA_FIGHTER_ENCOUNTER,
+	YT_PROJECTILE_PLASMA_FIGHTER_DAMAGE,
+};
+struct yt_projectile_plasma_fighter_state {
+	float sector;
+	double fighters;
+	float owner;
+	int shooter;
+	float headquarters;
+	const uint8_t *attacker;
+	size_t attacker_length;
+	double *energy;
+	float *bold;
+	double destroyed;
+	double remaining_fighters;
+	struct yt_sector persistence;
+	bool victory_called;
+	enum yt_projectile_plasma_fighter_route route;
+};
+typedef bool (*yt_projectile_plasma_fighter_owner_fn)(void *context,
+    float owner, uint8_t *name, size_t *name_length,
+    struct yt_error *error);
+typedef bool (*yt_projectile_plasma_fighter_present_fn)(void *context,
+    const uint8_t *text, size_t length,
+    enum yt_projectile_plasma_fighter_output_kind kind,
+    struct yt_error *error);
+typedef bool (*yt_projectile_plasma_fighter_sound_fn)(void *context,
+    float selector, struct yt_error *error);
+typedef bool (*yt_projectile_plasma_fighter_random_fn)(void *context,
+    float *value, struct yt_error *error);
+typedef bool (*yt_projectile_plasma_fighter_news_fn)(void *context,
+    const uint8_t *text, size_t length, struct yt_error *error);
+typedef bool (*yt_projectile_plasma_fighter_read_fn)(void *context,
+    float sector, struct yt_sector *value, struct yt_error *error);
+typedef bool (*yt_projectile_plasma_fighter_write_fn)(void *context,
+    float sector, const struct yt_sector *value, struct yt_error *error);
+typedef bool (*yt_projectile_plasma_fighter_victory_fn)(void *context,
+    struct yt_error *error);
+struct yt_projectile_plasma_fighter_ops {
+	yt_projectile_plasma_fighter_owner_fn owner;
+	yt_projectile_plasma_fighter_present_fn present;
+	yt_projectile_plasma_fighter_sound_fn sound;
+	yt_projectile_plasma_fighter_random_fn random;
+	yt_projectile_plasma_fighter_news_fn news;
+	yt_projectile_plasma_fighter_read_fn read_sector;
+	yt_projectile_plasma_fighter_write_fn write_sector;
+	yt_projectile_plasma_fighter_victory_fn victory;
+};
+bool yt_projectile_plasma_fighter_run(
+    struct yt_projectile_plasma_fighter_state *state,
+    const struct yt_projectile_plasma_fighter_ops *ops, void *context,
+    struct yt_error *error);
+
 enum yt_projectile_defense_front_route {
 	YT_PROJECTILE_DEFENSE_NO_DEFENSE,
 	YT_PROJECTILE_DEFENSE_FRIENDLY,
