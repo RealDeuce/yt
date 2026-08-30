@@ -11446,9 +11446,13 @@ computer_quit_valid_typeahead_prefix(struct physical_viewer_join *viewer,
 	if (!yt_input_split_semicolon(join->accumulator, join->queue,
 	    sizeof(join->queue), &join->queue_position, &join->queue_length)
 	    || strcmp(join->accumulator, "Q") != 0
-	    || join->queue_position != 0U || join->queue_length != 7U
-	    || join->queue[0] != (char)typed_answer
-	    || memcmp(join->queue + 1U, "\rNEXT\r", 6U) != 0)
+	    || join->queue_position != 0U
+	    || join->queue_length != (typed_answer == 0U ? 6U : 7U)
+	    || join->queue[0] != (char)(typed_answer == 0U
+	    ? '\r' : typed_answer)
+	    || memcmp(join->queue + 1U,
+	    typed_answer == 0U ? "NEXT\r" : "\rNEXT\r",
+	    typed_answer == 0U ? 5U : 6U) != 0)
 		return false;
 	if (yt_present_editor_echo(command, command_length, command,
 	    command_length, &join->presentation, &result)
@@ -11469,31 +11473,37 @@ computer_quit_valid_typeahead_prefix(struct physical_viewer_join *viewer,
 	    sizeof(join->accumulator));
 	if (!yt_input_ab36_queue_pop(join->queue, sizeof(join->queue),
 	    &join->queue_position, &join->queue_length, &selected)
-	    || selected.length != 1U || selected.bytes[0] != typed_answer
+	    || selected.length != 1U
+	    || selected.bytes[0] != (typed_answer == 0U ? '\r' : typed_answer)
 	    || selected.remote)
 		return false;
-	join->accumulator[0] = (char)selected.bytes[0];
-	join->accumulator[1] = '\0';
-	if (!yt_input_ab36_queue_pop(join->queue, sizeof(join->queue),
-	    &join->queue_position, &join->queue_length, &selected)
-	    || selected.length != 1U || selected.bytes[0] != '\r'
-	    || selected.remote)
-		return false;
-	if (yt_present_editor_echo(&typed_answer, 1U, &typed_answer, 1U,
-	    &join->presentation, &result) != YT_PRESENT_OK)
-		return false;
-	viewer_pager_capture_result(join, &result);
+	if (typed_answer != 0U) {
+		join->accumulator[0] = (char)selected.bytes[0];
+		join->accumulator[1] = '\0';
+		if (!yt_input_ab36_queue_pop(join->queue, sizeof(join->queue),
+		    &join->queue_position, &join->queue_length, &selected)
+		    || selected.length != 1U || selected.bytes[0] != '\r'
+		    || selected.remote)
+			return false;
+		if (yt_present_editor_echo(&typed_answer, 1U, &typed_answer, 1U,
+		    &join->presentation, &result) != YT_PRESENT_OK)
+			return false;
+		viewer_pager_capture_result(join, &result);
+	}
 	if (!normal_exit_line(join, NULL, 0U)
 	    || !yt_input_yes_no_candidate(join->accumulator, output,
 	    sizeof(output), &answer)
-	    || answer != (confirmed ? YT_YES_NO_YES : YT_YES_NO_NO)
-	    || output[0] != (char)answer_byte || output[1] != '\0'
-	    || join->queue_position != 2U || join->queue_length != 7U
+	    || answer != (confirmed ? YT_YES_NO_YES
+	    : (typed_answer == 0U ? YT_YES_NO_EMPTY : YT_YES_NO_NO))
+	    || output[0] != (char)(typed_answer == 0U ? 0U : answer_byte)
+	    || output[1] != '\0'
+	    || join->queue_position != (typed_answer == 0U ? 1U : 2U)
+	    || join->queue_length != (typed_answer == 0U ? 6U : 7U)
 	    || memcmp(join->queue + join->queue_position, retained,
 	    sizeof(retained) - 1U) != 0)
 		return false;
 	memcpy(join->source, output, 2U);
-	join->source_length = 1U;
+	join->source_length = typed_answer == 0U ? 0U : 1U;
 	if (confirmed)
 		return true;
 	if (!normal_exit_line(join, NULL, 0U))
@@ -11510,6 +11520,7 @@ test_quit_valid_typeahead_presentation(void)
 	    "Time: 14:59  Computer command (?=help)? ";
 	static const uint8_t upper_cancel[] = "Q;N;NEXT";
 	static const uint8_t lower_cancel[] = "Q;n;NEXT";
+	static const uint8_t blank_cancel[] = "Q;;NEXT";
 	static const uint8_t upper_confirm[] = "Q;Y;NEXT";
 	static const uint8_t lower_confirm[] = "Q;y;NEXT";
 	static const struct {
@@ -11518,6 +11529,8 @@ test_quit_valid_typeahead_presentation(void)
 		const uint8_t *command;
 		uint8_t typed_answer;
 		const char *accumulator;
+		size_t queue_position;
+		size_t queue_length;
 		size_t remote_length;
 		uint64_t remote_fnv;
 		size_t local_rows;
@@ -11525,38 +11538,46 @@ test_quit_valid_typeahead_presentation(void)
 		size_t colors;
 		uint64_t color_fnv;
 	} cases[] = {
-		{true, false, upper_cancel, 'N', "N", 155U,
+		{true, false, upper_cancel, 'N', "N", 2U, 7U, 155U,
 		    UINT64_C(0x38fbbcf4306f7d9a),
 		    5U, UINT64_C(0xde94eff5c6423566), 11U,
 		    UINT64_C(0x7001331ec067494d)},
-		{false, false, upper_cancel, 'N', "N", 125U,
+		{false, false, upper_cancel, 'N', "N", 2U, 7U, 125U,
 		    UINT64_C(0x3367e9c74106cdab),
 		    5U, UINT64_C(0xde94eff5c6423566), 3U,
 		    UINT64_C(0x2207a27a6260aaca)},
-		{true, true, upper_confirm, 'Y', "Y", 103U,
+		{true, true, upper_confirm, 'Y', "Y", 2U, 7U, 103U,
 		    UINT64_C(0x3e303d2c6ed01e21),
 		    4U, UINT64_C(0xf04bbc982e5de59a), 8U,
 		    UINT64_C(0xba58856d547852c1)},
-		{false, true, upper_confirm, 'Y', "Y", 83U,
+		{false, true, upper_confirm, 'Y', "Y", 2U, 7U, 83U,
 		    UINT64_C(0x04535d9c89803da3),
 		    4U, UINT64_C(0xf04bbc982e5de59a), 2U,
 		    UINT64_C(0x6d3fa4669b3587bd)},
-		{true, false, lower_cancel, 'n', "n", 155U,
+		{true, false, lower_cancel, 'n', "n", 2U, 7U, 155U,
 		    UINT64_C(0xe23d28b38f2ff81a), 5U,
 		    UINT64_C(0xc948f84b83d84fe6), 11U,
 		    UINT64_C(0x7001331ec067494d)},
-		{false, false, lower_cancel, 'n', "n", 125U,
+		{false, false, lower_cancel, 'n', "n", 2U, 7U, 125U,
 		    UINT64_C(0xdde08618f64fa7eb), 5U,
 		    UINT64_C(0xc948f84b83d84fe6), 3U,
 		    UINT64_C(0x2207a27a6260aaca)},
-		{true, true, lower_confirm, 'y', "y", 103U,
+		{true, true, lower_confirm, 'y', "y", 2U, 7U, 103U,
 		    UINT64_C(0xf503ce140fd6afa1), 4U,
 		    UINT64_C(0x37f0ec1c9e67651a), 8U,
 		    UINT64_C(0xba58856d547852c1)},
-		{false, true, lower_confirm, 'y', "y", 83U,
+		{false, true, lower_confirm, 'y', "y", 2U, 7U, 83U,
 		    UINT64_C(0x28fcfb8c7b6d0663), 4U,
 		    UINT64_C(0x37f0ec1c9e67651a), 2U,
 		    UINT64_C(0x6d3fa4669b3587bd)},
+		{true, false, blank_cancel, 0U, "", 1U, 6U, 153U,
+		    UINT64_C(0xf9f1b1c4d8691caa), 5U,
+		    UINT64_C(0x5ec2ad45f9c3dc6e), 11U,
+		    UINT64_C(0x7001331ec067494d)},
+		{false, false, blank_cancel, 0U, "", 1U, 6U, 123U,
+		    UINT64_C(0xc9da5ebd59a6af05), 5U,
+		    UINT64_C(0x5ec2ad45f9c3dc6e), 3U,
+		    UINT64_C(0x2207a27a6260aaca)},
 	};
 	struct physical_viewer_join viewer;
 	struct yt_file_viewer_stream_state stream;
@@ -11587,8 +11608,8 @@ test_quit_valid_typeahead_presentation(void)
 		    == cases[pass].color_fnv
 		    && strcmp(viewer.join.accumulator,
 		    cases[pass].accumulator) == 0
-		    && viewer.join.queue_position == 2U
-		    && viewer.join.queue_length == 7U
+		    && viewer.join.queue_position == cases[pass].queue_position
+		    && viewer.join.queue_length == cases[pass].queue_length
 		    && memcmp(viewer.join.queue + viewer.join.queue_position,
 		    "NEXT\r", 5U) == 0
 		    && viewer.join.pager.line_count
