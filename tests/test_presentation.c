@@ -1555,6 +1555,44 @@ test_attention(void)
 	CHECK(result.event_count == 7);
 	CHECK(result.events[6].operation == YT_PRESENT_LOCAL_PLAY);
 	CHECK(result.events[6].length == 11);
+	CHECK(current.foreground == 3.0f && current.background == 0.0f
+	    && current.bold == 0.0f && current.blink == 1.0f);
+
+	current = state(true);
+	current.sound.mode = 1.0f;
+	CHECK(yt_present_attention((const uint8_t *)"ALERT", 5,
+	    &current, &result) == YT_PRESENT_OK);
+	CHECK(result.remote_length == 0U && result.event_count == 5U);
+	CHECK(result.events[0].operation == YT_PRESENT_LOCAL_COLOR
+	    && result.events[0].foreground == 30
+	    && result.events[0].background == 4);
+	CHECK(result.events[1].operation == YT_PRESENT_LOCAL_SEMI
+	    && result.events[1].length == 5U
+	    && memcmp(result.events[1].data, "ALERT", 5U) == 0);
+	CHECK(result.events[2].operation == YT_PRESENT_LOCAL_COLOR
+	    && result.events[2].foreground == 6
+	    && result.events[2].background == 0);
+	CHECK(result.events[3].operation == YT_PRESENT_LOCAL_LINE
+	    && result.events[3].length == 0U);
+	CHECK(result.events[4].operation == YT_PRESENT_LOCAL_PLAY
+	    && result.events[4].length == sizeof(cue) - 1U);
+	CHECK(current.foreground == 3.0f && current.background == 0.0f
+	    && current.bold == 0.0f && current.blink == 0.0f);
+
+	current = state(false);
+	current.sound.user_sound = 40000.0f;
+	CHECK(yt_present_attention((const uint8_t *)"ALERT", 5,
+	    &current, &result) == YT_PRESENT_SOUND_ERROR);
+	CHECK(result.remote_length == 7U
+	    && memcmp(result.remote, "ALERT\r\n", 7U) == 0);
+	CHECK(result.event_count == 5U
+	    && result.events[0].operation == YT_PRESENT_LOCAL_SEMI
+	    && result.events[1].operation == YT_PRESENT_REMOTE_SEMI
+	    && result.events[2].operation == YT_PRESENT_LOCAL_LINE
+	    && result.events[3].operation == YT_PRESENT_REMOTE_LINE
+	    && result.events[4].operation == YT_PRESENT_REMOTE_SEMI);
+	CHECK(current.foreground == 3.0f && current.background == 0.0f
+	    && current.bold == 0.0f && current.blink == 1.0f);
 }
 
 static void
