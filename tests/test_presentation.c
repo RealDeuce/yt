@@ -11402,6 +11402,229 @@ test_quit_invalid_retry_typeahead_presentation(void)
 	}
 }
 
+static bool
+computer_quit_valid_typeahead_prefix(struct physical_viewer_join *viewer,
+    bool ansi, const uint8_t *command, uint8_t typed_answer, bool confirmed)
+{
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Computer command (?=help)? ";
+	static const uint8_t heading[] = "<Quit>";
+	static const uint8_t confirmation[] = "Are you sure (Y/N)? ";
+	static const uint8_t retained[] = "NEXT\r";
+	const uint8_t answer_byte = confirmed ? 'Y' : 'N';
+	struct viewer_pager_join *join = &viewer->join;
+	struct yt_present_result result;
+	struct yt_input_value selected;
+	enum yt_yes_no_answer answer;
+	char output[80];
+	size_t command_length;
+
+	if (command == NULL)
+		return false;
+	command_length = strlen((const char *)command);
+
+	join->presentation = state(ansi);
+	join->presentation.foreground = 6.0f;
+	join->pager.foreground = 6;
+	join->pager.line_count = 0.0f;
+	if (ansi) {
+		if (yt_present_color(&join->presentation, &result)
+		    != YT_PRESENT_OK)
+			return false;
+	}
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.foreground = 1.0f;
+	join->pager.foreground = 1;
+	if (!normal_exit_b05d(join, prompt, sizeof(prompt) - 1U, 1.0f))
+		return false;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	if (command_length >= sizeof(join->accumulator))
+		return false;
+	memcpy(join->accumulator, command, command_length + 1U);
+	if (!yt_input_split_semicolon(join->accumulator, join->queue,
+	    sizeof(join->queue), &join->queue_position, &join->queue_length)
+	    || strcmp(join->accumulator, "Q") != 0
+	    || join->queue_position != 0U || join->queue_length != 7U
+	    || join->queue[0] != (char)typed_answer
+	    || memcmp(join->queue + 1U, "\rNEXT\r", 6U) != 0)
+		return false;
+	if (yt_present_editor_echo(command, command_length, command,
+	    command_length, &join->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.foreground = 7.0f;
+	join->pager.foreground = 7;
+	if (!normal_exit_b05d(join, heading, sizeof(heading) - 1U, 0.0f))
+		return false;
+	if (yt_present_character(confirmation, sizeof(confirmation) - 1U,
+	    &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	if (!yt_input_ab36_queue_pop(join->queue, sizeof(join->queue),
+	    &join->queue_position, &join->queue_length, &selected)
+	    || selected.length != 1U || selected.bytes[0] != typed_answer
+	    || selected.remote)
+		return false;
+	join->accumulator[0] = (char)selected.bytes[0];
+	join->accumulator[1] = '\0';
+	if (!yt_input_ab36_queue_pop(join->queue, sizeof(join->queue),
+	    &join->queue_position, &join->queue_length, &selected)
+	    || selected.length != 1U || selected.bytes[0] != '\r'
+	    || selected.remote)
+		return false;
+	if (yt_present_editor_echo(&typed_answer, 1U, &typed_answer, 1U,
+	    &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !yt_input_yes_no_candidate(join->accumulator, output,
+	    sizeof(output), &answer)
+	    || answer != (confirmed ? YT_YES_NO_YES : YT_YES_NO_NO)
+	    || output[0] != (char)answer_byte || output[1] != '\0'
+	    || join->queue_position != 2U || join->queue_length != 7U
+	    || memcmp(join->queue + join->queue_position, retained,
+	    sizeof(retained) - 1U) != 0)
+		return false;
+	memcpy(join->source, output, 2U);
+	join->source_length = 1U;
+	if (confirmed)
+		return true;
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.foreground = 1.0f;
+	join->pager.foreground = 1;
+	return normal_exit_b05d(join, prompt, sizeof(prompt) - 1U, 1.0f);
+}
+
+static void
+test_quit_valid_typeahead_presentation(void)
+{
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Computer command (?=help)? ";
+	static const uint8_t upper_cancel[] = "Q;N;NEXT";
+	static const uint8_t lower_cancel[] = "Q;n;NEXT";
+	static const uint8_t upper_confirm[] = "Q;Y;NEXT";
+	static const uint8_t lower_confirm[] = "Q;y;NEXT";
+	static const struct {
+		bool ansi;
+		bool confirmed;
+		const uint8_t *command;
+		uint8_t typed_answer;
+		const char *accumulator;
+		size_t remote_length;
+		uint64_t remote_fnv;
+		size_t local_rows;
+		uint64_t local_fnv;
+		size_t colors;
+		uint64_t color_fnv;
+	} cases[] = {
+		{true, false, upper_cancel, 'N', "N", 155U,
+		    UINT64_C(0x38fbbcf4306f7d9a),
+		    5U, UINT64_C(0xde94eff5c6423566), 11U,
+		    UINT64_C(0x7001331ec067494d)},
+		{false, false, upper_cancel, 'N', "N", 125U,
+		    UINT64_C(0x3367e9c74106cdab),
+		    5U, UINT64_C(0xde94eff5c6423566), 3U,
+		    UINT64_C(0x2207a27a6260aaca)},
+		{true, true, upper_confirm, 'Y', "Y", 103U,
+		    UINT64_C(0x3e303d2c6ed01e21),
+		    4U, UINT64_C(0xf04bbc982e5de59a), 8U,
+		    UINT64_C(0xba58856d547852c1)},
+		{false, true, upper_confirm, 'Y', "Y", 83U,
+		    UINT64_C(0x04535d9c89803da3),
+		    4U, UINT64_C(0xf04bbc982e5de59a), 2U,
+		    UINT64_C(0x6d3fa4669b3587bd)},
+		{true, false, lower_cancel, 'n', "n", 155U,
+		    UINT64_C(0xe23d28b38f2ff81a), 5U,
+		    UINT64_C(0xc948f84b83d84fe6), 11U,
+		    UINT64_C(0x7001331ec067494d)},
+		{false, false, lower_cancel, 'n', "n", 125U,
+		    UINT64_C(0xdde08618f64fa7eb), 5U,
+		    UINT64_C(0xc948f84b83d84fe6), 3U,
+		    UINT64_C(0x2207a27a6260aaca)},
+		{true, true, lower_confirm, 'y', "y", 103U,
+		    UINT64_C(0xf503ce140fd6afa1), 4U,
+		    UINT64_C(0x37f0ec1c9e67651a), 8U,
+		    UINT64_C(0xba58856d547852c1)},
+		{false, true, lower_confirm, 'y', "y", 83U,
+		    UINT64_C(0x28fcfb8c7b6d0663), 4U,
+		    UINT64_C(0x37f0ec1c9e67651a), 2U,
+		    UINT64_C(0x6d3fa4669b3587bd)},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	uint8_t remote[192];
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
+		CHECK(computer_quit_valid_typeahead_prefix(&viewer,
+		    cases[pass].ansi, cases[pass].command,
+		    cases[pass].typed_answer, cases[pass].confirmed));
+		CHECK(viewer.join.remote_length == cases[pass].remote_length
+		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+		    == cases[pass].remote_fnv
+		    && viewer.join.local_row_count == cases[pass].local_rows
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == cases[pass].local_fnv
+		    && viewer.join.local_fragment_length
+		    == (cases[pass].confirmed ? 0U : sizeof(prompt) - 1U)
+		    && (cases[pass].confirmed
+		    || memcmp(viewer.join.local_fragment, prompt,
+		    viewer.join.local_fragment_length) == 0)
+		    && viewer.join.local_color_count == cases[pass].colors
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == cases[pass].color_fnv
+		    && strcmp(viewer.join.accumulator,
+		    cases[pass].accumulator) == 0
+		    && viewer.join.queue_position == 2U
+		    && viewer.join.queue_length == 7U
+		    && memcmp(viewer.join.queue + viewer.join.queue_position,
+		    "NEXT\r", 5U) == 0
+		    && viewer.join.pager.line_count
+		    == (cases[pass].confirmed ? 0.0f : 1.0f)
+		    && viewer.join.pager.foreground
+		    == (cases[pass].confirmed ? 7 : 1)
+		    && viewer.join.presentation.foreground
+		    == (cases[pass].confirmed ? 7.0f : 1.0f)
+		    && viewer.join.presentation.cached_foreground
+		    == (cases[pass].ansi
+		    ? (cases[pass].confirmed ? 7.0f : 1.0f) : 0.0f)
+		    && viewer.join.presentation.bold == 0.0f
+		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.pager.nonstop == 0.0f
+		    && viewer.join.pager.key[0] == '\0');
+		CHECK(viewer.join.sample_calls
+		    == (cases[pass].confirmed ? 2U : 3U)
+		    && viewer.join.response_calls == 0U
+		    && viewer.join.direct_calls == 0U
+		    && viewer.join.event_count
+		    == (cases[pass].confirmed ? 10U : 15U)
+		    && viewer.join.position == 0U
+		    && stream.eof_checks == 0U && stream.key_checks == 0U
+		    && stream.read_count == 0U && stream.line_count == 0U
+		    && !stream.file_open && !viewer.join.file_open
+		    && viewer.input.file == NULL && viewer.close_calls == 0U
+		    && viewer.open_calls == 0U);
+		CHECK(viewer.join.source_length
+		    == (cases[pass].confirmed ? 1U : sizeof(prompt) - 1U)
+		    && memcmp(viewer.join.source,
+		    cases[pass].confirmed ? (const uint8_t *)"Y" : prompt,
+		    viewer.join.source_length) == 0);
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
 struct spy_sweep_presentation_context {
 	struct yt_present_state current;
 	struct pager_capture capture;
@@ -13838,6 +14061,7 @@ main(void)
 	test_hostile_quit_accept_presentation();
 	test_main_quit_accept_handoff_presentation();
 	test_quit_invalid_retry_typeahead_presentation();
+	test_quit_valid_typeahead_presentation();
 	test_spy_sweep_presentation();
 	test_black_hole_presentation();
 	test_movement_presentation();
