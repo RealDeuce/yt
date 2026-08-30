@@ -1349,6 +1349,79 @@ void yt_planet_garrison_player_overlay(struct yt_player *player,
     float remaining);
 bool yt_planet_garrison_success_row(float desired, uint8_t *row,
     size_t capacity, size_t *length);
+
+enum yt_planet_permission_output_kind {
+	YT_PLANET_PERMISSION_RAW,
+	YT_PLANET_PERMISSION_LINE,
+	YT_PLANET_PERMISSION_BOLD_LINE,
+};
+
+struct yt_planet_permission_state {
+	float planet_record_value;
+	float planet_offset;
+	int current_player_record;
+	int last_player_record;
+	uint32_t physical_planet_record;
+	float updater_logical;
+	struct yt_planet planet;
+	float cached_owner;
+	float cached_ground_forces;
+	uint8_t cached_name[YT_TEXT_FIELD_SIZE];
+	size_t cached_name_length;
+	struct yt_player friendship_current;
+	struct yt_player friendship_owner;
+	struct yt_player vacancy_owner;
+	int owner_record;
+	bool friendly;
+	bool vacant;
+	bool allowed;
+	bool denied;
+	float draws[2];
+	float reduced_ground_forces;
+	float foreground;
+	float blink;
+};
+
+typedef bool (*yt_planet_permission_update_fn)(void *context,
+	float logical_planet, struct yt_error *error);
+typedef bool (*yt_planet_permission_read_planet_fn)(void *context,
+	uint32_t physical_record, struct yt_planet *planet,
+	struct yt_error *error);
+typedef bool (*yt_planet_permission_write_planet_fn)(void *context,
+	uint32_t physical_record, struct yt_planet *planet,
+	struct yt_error *error);
+typedef bool (*yt_planet_permission_read_player_fn)(void *context,
+	int physical_record, struct yt_player *player, struct yt_error *error);
+typedef bool (*yt_planet_permission_present_fn)(void *context,
+	const uint8_t *text, size_t length,
+	enum yt_planet_permission_output_kind kind, const char *operation,
+	struct yt_error *error);
+typedef bool (*yt_planet_permission_sound_fn)(void *context, float selector,
+	const char *operation, struct yt_error *error);
+typedef bool (*yt_planet_permission_wait_fn)(void *context, double seconds,
+	const char *operation, struct yt_error *error);
+typedef bool (*yt_planet_permission_random_fn)(void *context, float *value,
+	struct yt_error *error);
+typedef void (*yt_planet_permission_foreground_fn)(void *context,
+	float foreground);
+typedef void (*yt_planet_permission_blink_fn)(void *context, float blink);
+
+struct yt_planet_permission_ops {
+	yt_planet_permission_update_fn update_planet;
+	yt_planet_permission_read_planet_fn read_planet;
+	yt_planet_permission_write_planet_fn write_planet;
+	yt_planet_permission_read_player_fn read_player;
+	yt_planet_permission_present_fn present;
+	yt_planet_permission_sound_fn sound;
+	yt_planet_permission_wait_fn wait;
+	yt_planet_permission_random_fn random;
+	yt_planet_permission_foreground_fn set_foreground;
+	yt_planet_permission_blink_fn set_blink;
+};
+
+bool yt_planet_permission_run(struct yt_planet_permission_state *state,
+	const struct yt_planet_permission_ops *ops, void *context,
+	struct yt_error *error);
 bool yt_planet_landing_record(float planet_offset, float sector_link,
     uint32_t *physical_record, float *updater_logical);
 bool yt_planet_landing_immediate_allow(float ground_forces, float owner,

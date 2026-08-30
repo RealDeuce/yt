@@ -9825,61 +9825,136 @@ create_planet(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
-planet_landing_same_team(struct yt_session *session, float owner,
-    bool *friendly, struct yt_error *error)
+planet_permission_update(void *context, float logical_planet,
+    struct yt_error *error)
 {
-	struct yt_player current;
-	struct yt_player other;
-	int owner_record;
+	struct yt_session *session = context;
+	volatile float record_value = session->door->game.config.planet_offset
+	    + logical_planet;
+	uint32_t physical = qb_brun_random_record_number(record_value);
 
-	if (friendly == NULL)
+	return planet_update_cached_physical(session, physical,
+	    &(struct yt_planet){0}, NULL, error);
+}
+
+static bool
+planet_permission_read_planet(void *context, uint32_t physical_record,
+    struct yt_planet *planet, struct yt_error *error)
+{
+	return read_planet_physical(context, physical_record, planet, error);
+}
+
+static bool
+planet_permission_write_planet(void *context, uint32_t physical_record,
+    struct yt_planet *planet, struct yt_error *error)
+{
+	return write_planet_physical(context, physical_record, planet, false,
+	    error);
+}
+
+static bool
+planet_permission_read_player(void *context, int physical_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_read_player(&session->door->game, physical_record, player,
+	    error);
+}
+
+static bool
+planet_permission_present(void *context, const uint8_t *text, size_t length,
+    enum yt_planet_permission_output_kind kind, const char *operation,
+    struct yt_error *error)
+{
+	enum session_present_text_kind session_kind;
+
+	switch (kind) {
+	case YT_PLANET_PERMISSION_RAW:
+		session_kind = SESSION_PRESENT_RAW;
+		break;
+	case YT_PLANET_PERMISSION_LINE:
+		session_kind = SESSION_PRESENT_LINE;
+		break;
+	case YT_PLANET_PERMISSION_BOLD_LINE:
+		session_kind = SESSION_PRESENT_BOLD_LINE;
+		break;
+	default:
 		return false;
-	*friendly = false;
-	if (session->player_record < YT_PLAYER_FIRST
-	    || session->player_record > YT_PLAYER_LAST
-	    || !yt_planet_landing_valid_owner(owner, YT_PLAYER_LAST,
-	    &owner_record))
-		return true;
-	if (!yt_game_read_player(&session->door->game, session->player_record,
-	    &current, error))
-		return false;
-	if (current.team == 0.0f)
-		return true;
-	if (!yt_game_read_player(&session->door->game, owner_record, &other,
-	    error))
-		return false;
-	*friendly = yt_sector_force_same_team(current.team, other.team);
-	return true;
+	}
+	return session_present_text(context, text, length, session_kind,
+	    operation, error);
+}
+
+static bool
+planet_permission_sound(void *context, float selector,
+    const char *operation, struct yt_error *error)
+{
+	return session_sound(context, selector, operation, error);
+}
+
+static bool
+planet_permission_wait(void *context, double seconds, const char *operation,
+    struct yt_error *error)
+{
+	return session_wait(context, seconds, operation, error);
+}
+
+static bool
+planet_permission_random(void *context, float *value,
+    struct yt_error *error)
+{
+	return random_value(context, value, error);
+}
+
+static void
+planet_permission_set_foreground(void *context, float foreground)
+{
+	struct yt_session *session = context;
+
+	session->pager.foreground = (int)foreground;
+	session->presentation.foreground = foreground;
+}
+
+static void
+planet_permission_set_blink(void *context, float blink)
+{
+	struct yt_session *session = context;
+
+	session->presentation.blink = blink;
 }
 
 static bool
 command_land(struct yt_session *session, bool *enter_sector,
     struct yt_error *error)
 {
+	static const struct yt_planet_permission_ops permission_ops = {
+		planet_permission_update,
+		planet_permission_read_planet,
+		planet_permission_write_planet,
+		planet_permission_read_player,
+		planet_permission_present,
+		planet_permission_sound,
+		planet_permission_wait,
+		planet_permission_random,
+		planet_permission_set_foreground,
+		planet_permission_set_blink,
+	};
 	static const uint8_t title[] = "<Land/Create planet>";
 	static const uint8_t landing[] = "Landing...";
-	static const uint8_t governor[] =
-	    "This planet has no governor! Hail to the new planetary governor!!";
-	static const uint8_t unrest[] =
-	    "Due to the unrest caused by the lack of planetary govornment, ";
-	static const uint8_t permission[] = "Permission to land is ";
-	static const uint8_t denied[] = "DENIED!";
 	static const uint8_t confirmation[] =
 	    "Do you wish to try to force a landing? [y/N] ";
 	struct yt_sector sector;
 	struct yt_planet planet;
-	uint8_t name[YT_TEXT_FIELD_SIZE];
 	uint8_t row[256];
 	uint8_t prompt[160];
-	size_t name_length;
 	size_t row_length;
 	size_t prompt_length;
 	uint32_t physical;
-	float updater_logical;
+	volatile float planet_record_value;
 	float cached_carried;
-	float cached_ground;
 	int logical;
-	bool allowed = false;
+	struct yt_planet_permission_state permission_state;
 
 	if (!session_0317(session, title, sizeof(title) - 1U,
 	    "planet landing title", error)
@@ -9899,101 +9974,28 @@ command_land(struct yt_session *session, bool *enter_sector,
 	session->pager.foreground = 6;
 	session->presentation.foreground = 6.0f;
 	if (!session_0317(session, landing, sizeof(landing) - 1U,
-	    "planet landing progress", error)
-	    || !yt_planet_landing_record(
-	    session->door->game.config.planet_offset, sector.planet,
-	    &physical, &updater_logical))
+	    "planet landing progress", error))
 		return false;
-	(void)updater_logical;
-	if (!planet_update_cached_physical(session, physical, &planet, NULL,
-	    error)
-	    || !read_planet_physical(session, physical, &planet, error)
-	    || !yt_planet_stored_name(&planet, name, &name_length, error))
+	planet_record_value = session->door->game.config.planet_offset
+	    + sector.planet;
+	memset(&permission_state, 0, sizeof(permission_state));
+	permission_state.planet_record_value = planet_record_value;
+	permission_state.planet_offset =
+	    session->door->game.config.planet_offset;
+	permission_state.current_player_record = session->player_record;
+	permission_state.last_player_record = YT_PLAYER_LAST;
+	permission_state.foreground = session->presentation.foreground;
+	permission_state.blink = session->presentation.blink;
+	if (!yt_planet_permission_run(&permission_state, &permission_ops,
+	    session, error))
 		return false;
-	cached_ground = planet.ground_forces;
-	if (yt_planet_landing_immediate_allow(cached_ground, planet.owner,
-	    session->player_record))
-		allowed = true;
-	else if (!planet_landing_same_team(session, planet.owner, &allowed,
-	    error))
-		return false;
-	if (!allowed && !session_present_text(session, NULL, 0,
-	    SESSION_PRESENT_LINE, "planet permission late blank", error))
-		return false;
-	if (!allowed) {
-		struct yt_player owner;
-		bool vacant = planet.owner == 0.0f;
-		int owner_record = 0;
-
-		if (!vacant && yt_planet_landing_valid_owner(planet.owner,
-		    YT_PLAYER_LAST, &owner_record)) {
-			if (!yt_game_read_player(&session->door->game,
-			    owner_record, &owner, error))
-				return false;
-			vacant = yt_planet_landing_vacant(planet.owner,
-			    owner.killed_by, YT_PLAYER_LAST);
-		}
-		if (vacant) {
-			struct yt_planet fresh;
-			float first;
-			float second;
-			float new_ground;
-
-			if (!session_present_text(session, governor,
-			    sizeof(governor) - 1U, SESSION_PRESENT_LINE,
-			    "vacant planet governor row", error)
-			    || !session_sound(session, 1.0f,
-			    "vacant planet sound", error)
-			    || !session_wait(session, 2.0,
-			    "vacant-planet governor wait", error))
-				return false;
-			if (!read_planet_physical(session, physical, &fresh, error)
-			    || !random_value(session, &first, error)
-			    || !random_value(session, &second, error))
-				return false;
-			new_ground = yt_planet_landing_attrition(first, second,
-			    cached_ground);
-			if (!session_present_text(session, unrest,
-			    sizeof(unrest) - 1U, SESSION_PRESENT_LINE,
-			    "vacant planet unrest row", error)
-			    || !yt_planet_landing_unrest_row(new_ground,
-			    cached_ground, row, sizeof(row), &row_length)
-			    || !session_present_text(session, row, row_length,
-			    SESSION_PRESENT_LINE, "vacant planet reduction row", error))
-				return false;
-			yt_planet_landing_vacancy_overlay(&fresh, new_ground,
-			    session->player_record);
-			if (!write_planet_physical(session, physical, &fresh, false,
-			    error)
-			    || !session_wait(session, 5.0,
-			    "vacant-planet unrest wait", error))
-				return false;
-			planet = fresh;
-			allowed = true;
-		}
-	}
-	if (!allowed) {
+	physical = permission_state.physical_planet_record;
+	if (permission_state.denied) {
 		enum yt_yes_no_answer answer;
 		char response[YT_COMMAND_SIZE];
 		float commitment;
 		bool defeated;
 
-		if (!yt_planet_landing_traffic_row(name, name_length, row,
-		    sizeof(row), &row_length)
-		    || !session_present_text(session, row, row_length,
-		    SESSION_PRESENT_LINE, "planet permission traffic row", error)
-		    || !session_present_text(session, permission,
-		    sizeof(permission) - 1U, SESSION_PRESENT_RAW,
-		    "planet permission prefix", error))
-			return false;
-		session->presentation.blink = 1.0f;
-		session->pager.foreground = 3;
-		session->presentation.foreground = 3.0f;
-		if (!session_present_text(session, denied, sizeof(denied) - 1U,
-		    SESSION_PRESENT_BOLD_LINE, "planet permission denial", error))
-			return false;
-		session->pager.foreground = 6;
-		session->presentation.foreground = 6.0f;
 		if (!read_planet_physical(session, physical, &planet, error)
 		    || !yt_planet_landing_sensor_row(planet.ground_forces,
 		    cached_carried, row, sizeof(row), &row_length)

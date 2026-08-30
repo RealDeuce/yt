@@ -3454,6 +3454,153 @@ yt_planet_garrison_success_row(float desired, uint8_t *row,
 }
 
 bool
+yt_planet_permission_run(struct yt_planet_permission_state *state,
+    const struct yt_planet_permission_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t governor[] =
+	    "This planet has no governor! Hail to the new planetary governor!!";
+	static const uint8_t unrest[] =
+	    "Due to the unrest caused by the lack of planetary govornment, ";
+	static const uint8_t permission[] = "Permission to land is ";
+	static const uint8_t denied[] = "DENIED!";
+	uint8_t row[256];
+	size_t row_length;
+	volatile float updater_logical;
+	int owner_record;
+
+	if (state == NULL || ops == NULL || ops->update_planet == NULL
+	    || ops->read_planet == NULL || ops->write_planet == NULL
+	    || ops->read_player == NULL || ops->present == NULL
+	    || ops->sound == NULL || ops->wait == NULL || ops->random == NULL
+	    || ops->set_foreground == NULL || ops->set_blink == NULL
+	    || state->last_player_record < 0) {
+		if (error != NULL) {
+			error->status = YT_INVALID;
+			error->system_error = 0;
+			(void)snprintf(error->operation, sizeof(error->operation), "%s",
+			    "planet permission state");
+			error->path[0] = '\0';
+		}
+		return false;
+	}
+	state->physical_planet_record = qb_brun_random_record_number(
+	    state->planet_record_value);
+	updater_logical = state->planet_record_value - state->planet_offset;
+	state->updater_logical = updater_logical;
+	state->cached_name_length = 0U;
+	state->owner_record = 0;
+	state->friendly = false;
+	state->vacant = false;
+	state->allowed = false;
+	state->denied = false;
+	state->draws[0] = 0.0f;
+	state->draws[1] = 0.0f;
+	state->reduced_ground_forces = 0.0f;
+	if (!ops->update_planet(context, updater_logical, error)
+	    || !ops->read_planet(context, state->physical_planet_record,
+	    &state->planet, error)
+	    || !yt_planet_stored_name(&state->planet, state->cached_name,
+	    &state->cached_name_length, error))
+		return false;
+	state->cached_owner = state->planet.owner;
+	state->cached_ground_forces = state->planet.ground_forces;
+	if (yt_planet_landing_immediate_allow(state->cached_ground_forces,
+	    state->cached_owner, state->current_player_record)) {
+		state->allowed = true;
+		return true;
+	}
+	if (state->current_player_record >= 2
+	    && state->current_player_record <= state->last_player_record
+	    && yt_planet_landing_valid_owner(state->cached_owner,
+	    state->last_player_record, &owner_record)) {
+		state->owner_record = owner_record;
+		if (!ops->read_player(context, state->current_player_record,
+		    &state->friendship_current, error))
+			return false;
+		if (state->friendship_current.team != 0.0f) {
+			if (!ops->read_player(context, owner_record,
+			    &state->friendship_owner, error))
+				return false;
+			state->friendly = yt_sector_force_same_team(
+			    state->friendship_current.team,
+			    state->friendship_owner.team);
+		}
+	}
+	if (state->friendly) {
+		state->allowed = true;
+		return true;
+	}
+	if (!ops->present(context, NULL, 0U, YT_PLANET_PERMISSION_LINE,
+	    "planet permission late blank", error))
+		return false;
+	state->vacant = state->cached_owner == 0.0f;
+	if (!state->vacant && yt_planet_landing_valid_owner(
+	    state->cached_owner, state->last_player_record, &owner_record)) {
+		state->owner_record = owner_record;
+		if (!ops->read_player(context, owner_record,
+		    &state->vacancy_owner, error))
+			return false;
+		state->vacant = yt_planet_landing_vacant(state->cached_owner,
+		    state->vacancy_owner.killed_by, state->last_player_record);
+	}
+	if (state->vacant) {
+		struct yt_planet fresh;
+
+		if (!ops->present(context, governor, sizeof(governor) - 1U,
+		    YT_PLANET_PERMISSION_LINE, "vacant planet governor row", error)
+		    || !ops->sound(context, 1.0f, "vacant planet sound", error)
+		    || !ops->wait(context, 2.0,
+		    "vacant-planet governor wait", error)
+		    || !ops->read_planet(context, state->physical_planet_record,
+		    &fresh, error)
+		    || !ops->random(context, &state->draws[0], error)
+		    || !ops->random(context, &state->draws[1], error))
+			return false;
+		state->reduced_ground_forces = yt_planet_landing_attrition(
+		    state->draws[0], state->draws[1],
+		    state->cached_ground_forces);
+		if (!ops->present(context, unrest, sizeof(unrest) - 1U,
+		    YT_PLANET_PERMISSION_LINE, "vacant planet unrest row", error)
+		    || !yt_planet_landing_unrest_row(
+		    state->reduced_ground_forces, state->cached_ground_forces,
+		    row, sizeof(row), &row_length)
+		    || !ops->present(context, row, row_length,
+		    YT_PLANET_PERMISSION_LINE,
+		    "vacant planet reduction row", error))
+			return false;
+		yt_planet_landing_vacancy_overlay(&fresh,
+		    state->reduced_ground_forces, state->current_player_record);
+		state->planet = fresh;
+		if (!ops->write_planet(context, state->physical_planet_record,
+		    &state->planet, error)
+		    || !ops->wait(context, 5.0,
+		    "vacant-planet unrest wait", error))
+			return false;
+		state->allowed = true;
+		return true;
+	}
+	if (!yt_planet_landing_traffic_row(state->cached_name,
+	    state->cached_name_length, row, sizeof(row), &row_length)
+	    || !ops->present(context, row, row_length,
+	    YT_PLANET_PERMISSION_LINE, "planet permission traffic row", error)
+	    || !ops->present(context, permission, sizeof(permission) - 1U,
+	    YT_PLANET_PERMISSION_RAW, "planet permission prefix", error))
+		return false;
+	state->blink = 1.0f;
+	ops->set_blink(context, 1.0f);
+	state->foreground = 3.0f;
+	ops->set_foreground(context, 3.0f);
+	if (!ops->present(context, denied, sizeof(denied) - 1U,
+	    YT_PLANET_PERMISSION_BOLD_LINE, "planet permission denial", error))
+		return false;
+	state->denied = true;
+	state->foreground = 6.0f;
+	ops->set_foreground(context, 6.0f);
+	return true;
+}
+
+bool
 yt_planet_landing_record(float planet_offset, float sector_link,
     uint32_t *physical_record, float *updater_logical)
 {
