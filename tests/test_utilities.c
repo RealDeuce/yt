@@ -1284,12 +1284,22 @@ test_maintenance_random_helpers(void)
 	    || error.status != YT_RANGE || random.draws != 5U)
 		return false;
 	yt_error_clear(&error);
-	if (yt_maintenance_nested_integer(&random, 0, 100, &value, &error)
-	    || error.status != YT_RANGE || random.draws != 5U)
+	value = 37;
+	if (!yt_maintenance_nested_integer(&random, 0, 100, &value, &error)
+	    || error.status != YT_OK || value != 37 || random.draws != 5U)
 		return false;
 	yt_error_clear(&error);
-	return !yt_maintenance_nested_integer(&random, 2, 0, &value, &error)
-	    && error.status == YT_RANGE && random.draws == 5U;
+	if (!yt_maintenance_nested_integer(&random, 2, 0, &value, &error)
+	    || error.status != YT_OK || value != 37 || random.draws != 5U)
+		return false;
+	script.position = 0;
+	script.length = 3;
+	yt_random_set_provider(&random, utility_random_fill, &script);
+	value = 37;
+	yt_error_clear(&error);
+	return !yt_maintenance_nested_integer(&random, 2, 100, &value, &error)
+	    && error.status == YT_RANDOM_ERROR && value == 1
+	    && random.draws == 1U && script.position == 3U;
 }
 
 static bool

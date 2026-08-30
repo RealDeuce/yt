@@ -5567,18 +5567,10 @@ static bool
 shrink_three(struct yt_session *session, float initial, float *result,
     struct yt_error *error)
 {
-	float value = initial;
-	int index;
+	float range = initial;
 
-	for (index = 0; index < 3; ++index) {
-		float draw;
-
-		if (!random_value(session, &draw, error))
-			return false;
-		value = floorf(single_mul(draw, value)) + 1.0f;
-	}
-	*result = value;
-	return true;
+	return yt_random_nested_single(&session->door->game.random, 3.0f,
+	    &range, result, error);
 }
 
 static bool
@@ -9091,14 +9083,12 @@ planet_move_hop(struct yt_session *session, int source_number,
 		    || !reload_player(session, error))
 			return false;
 		if (session->player.fighters != 0.0f) {
-			float first;
-			float second;
+			float range = session->player.fighters;
 
-			if (!random_value(session, &first, error)
-			    || !random_value(session, &second, error))
+			if (!yt_random_nested_single(
+			    &session->door->game.random, 2.0f, &range, &loss,
+			    error))
 				return false;
-			loss = yt_planet_move_fighter_loss(
-			    session->player.fighters, first, second);
 		}
 		yt_planet_move_fighter_overlay(&session->player, loss);
 		if (!yt_database_write(&session->door->game.database,

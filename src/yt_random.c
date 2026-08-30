@@ -106,30 +106,64 @@ yt_random_integer(struct yt_random *random, int range, int *value,
 }
 
 bool
-yt_random_nested_integer(struct yt_random *random, int count, int range,
-    int *value, struct yt_error *error)
+yt_random_nested_single(struct yt_random *random, float count, float *range,
+    float *value, struct yt_error *error)
 {
-	int index;
-	int current = range;
+	float index;
+	float terminal;
 
-	if (count < 1 || range < 1) {
+	if (random == NULL || range == NULL || value == NULL) {
 		if (error != NULL) {
-			error->status = YT_RANGE;
+			error->status = YT_INVALID;
 			(void)snprintf(error->operation, sizeof(error->operation),
-			    "%s", "nested random range");
+			    "%s", "nested random arguments");
 		}
 		return false;
 	}
-	for (index = 0; index < count; ++index) {
+	if (count == 0.0f || *range == 0.0f)
+		return true;
+	terminal = count;
+	for (index = 1.0f; index <= terminal;
+	    index = random_single_add(index, 1.0f)) {
 		float selection;
+		float integral;
+		float result;
 
 		if (!yt_random_next(random, &selection, error))
 			return false;
-		current = (int)floorf(random_single_mul(selection,
-		    (float)current)) + 1;
+		integral = floorf(random_single_mul(selection, *range));
+		result = random_single_add(integral, 1.0f);
+		*value = result;
+		*range = result;
 	}
-	*value = current;
 	return true;
+}
+
+bool
+yt_random_nested_integer(struct yt_random *random, int count, int range,
+    int *value, struct yt_error *error)
+{
+	float current;
+	float result;
+	uint64_t starting_draws;
+	bool succeeded;
+
+	if (value == NULL) {
+		if (error != NULL) {
+			error->status = YT_INVALID;
+			(void)snprintf(error->operation, sizeof(error->operation),
+			    "%s", "nested random result");
+		}
+		return false;
+	}
+	current = (float)range;
+	result = 0.0f;
+	starting_draws = random != NULL ? random->draws : 0U;
+	succeeded = yt_random_nested_single(random, (float)count, &current,
+	    &result, error);
+	if (random != NULL && random->draws != starting_draws)
+		*value = (int)result;
+	return succeeded;
 }
 
 bool

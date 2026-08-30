@@ -23,6 +23,8 @@ bool yt_random_one_based_single(struct yt_random *random, float range,
     float *value, struct yt_error *error);
 bool yt_random_integer(struct yt_random *random, int range, int *value,
     struct yt_error *error);
+bool yt_random_nested_single(struct yt_random *random, float count,
+    float *range, float *value, struct yt_error *error);
 bool yt_random_nested_integer(struct yt_random *random, int count, int range,
     int *value, struct yt_error *error);
 bool yt_random_market_bases(struct yt_random *random, float bases[3],

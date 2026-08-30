@@ -306,6 +306,16 @@ test_random(void)
 		0x00, 0x00, 0x80,
 		0x00, 0x00, 0x80,
 	};
+	static const uint8_t nested_bytes[] = {
+		0x00, 0x00, 0x80,
+		0x00, 0x00, 0x40,
+		0xff, 0xff, 0xff,
+	};
+	static const uint8_t negative_nested_bytes[] = {
+		0x00, 0x00, 0x80,
+		0x00, 0x00, 0x80,
+		0x00, 0x00, 0x80,
+	};
 	static const uint8_t market_bytes[] = {
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x80,
 		0x00, 0x00, 0x40, 0x00, 0x00, 0xc0,
@@ -321,9 +331,16 @@ test_random(void)
 	struct scripted_random one_based_script = {
 		one_based_bytes, sizeof(one_based_bytes), 0
 	};
+	struct scripted_random nested_script = {
+		nested_bytes, sizeof(nested_bytes), 0
+	};
+	struct scripted_random negative_nested_script = {
+		negative_nested_bytes, sizeof(negative_nested_bytes), 0
+	};
 	struct yt_random random;
 	struct yt_error error;
 	float value;
+	float range;
 	float bases[3];
 	int integer = -1;
 
@@ -378,6 +395,70 @@ test_random(void)
 	CHECK(!yt_random_one_based_single(&random, 3.5f, &value, &error));
 	CHECK(error.status == YT_RANDOM_ERROR && value == 77.0f
 	    && random.draws == 3);
+
+	/* YT-SUB:4ADB copies its raw SINGLE terminal, mutates the range and
+	 * result after every draw, and gates only exact numeric zero. */
+	yt_random_set_provider(&random, scripted_fill, &nested_script);
+	range = 100.0f;
+	value = 77.0f;
+	CHECK(yt_random_nested_single(&random, 3.0f, &range, &value, NULL));
+	CHECK(value == 13.0f && range == 13.0f && random.draws == 3
+	    && nested_script.position == sizeof(nested_bytes));
+	range = 10.0f;
+	value = 77.0f;
+	CHECK(yt_random_nested_single(&random, 0.5f, &range, &value, NULL));
+	CHECK(value == 77.0f && range == 10.0f && random.draws == 3);
+	CHECK(yt_random_nested_single(&random, -2.0f, &range, &value, NULL));
+	CHECK(value == 77.0f && range == 10.0f && random.draws == 3);
+	CHECK(yt_random_nested_single(&random, 0.0f, &range, &value, NULL));
+	CHECK(value == 77.0f && range == 10.0f && random.draws == 3);
+	range = 0.0f;
+	CHECK(yt_random_nested_single(&random, 3.0f, &range, &value, NULL));
+	CHECK(value == 77.0f && range == 0.0f && random.draws == 3);
+
+	yt_random_set_provider(&random, scripted_fill, &negative_nested_script);
+	range = -3.5f;
+	value = 77.0f;
+	CHECK(yt_random_nested_single(&random, 2.5f, &range, &value, NULL));
+	CHECK(value == 0.0f && range == 0.0f && random.draws == 2
+	    && negative_nested_script.position == 6);
+
+	/* A provider failure exposes every completed assignment prefix. */
+	nested_script.position = 0;
+	nested_script.length = 0;
+	yt_random_set_provider(&random, scripted_fill, &nested_script);
+	range = 100.0f;
+	value = 77.0f;
+	yt_error_clear(&error);
+	CHECK(!yt_random_nested_single(&random, 3.0f, &range, &value, &error));
+	CHECK(error.status == YT_RANDOM_ERROR && value == 77.0f
+	    && range == 100.0f && random.draws == 0
+	    && nested_script.position == 0);
+	nested_script.length = 3;
+	yt_random_set_provider(&random, scripted_fill, &nested_script);
+	yt_error_clear(&error);
+	CHECK(!yt_random_nested_single(&random, 3.0f, &range, &value, &error));
+	CHECK(error.status == YT_RANDOM_ERROR && value == 51.0f
+	    && range == 51.0f && random.draws == 1
+	    && nested_script.position == 3);
+	nested_script.length = 6;
+	nested_script.position = 0;
+	yt_random_set_provider(&random, scripted_fill, &nested_script);
+	range = 100.0f;
+	value = 77.0f;
+	yt_error_clear(&error);
+	CHECK(!yt_random_nested_single(&random, 3.0f, &range, &value, &error));
+	CHECK(error.status == YT_RANDOM_ERROR && value == 13.0f
+	    && range == 13.0f && random.draws == 2
+	    && nested_script.position == 6);
+	nested_script.length = 3;
+	nested_script.position = 0;
+	yt_random_set_provider(&random, scripted_fill, &nested_script);
+	integer = 77;
+	yt_error_clear(&error);
+	CHECK(!yt_random_nested_integer(&random, 3, 100, &integer, &error));
+	CHECK(error.status == YT_RANDOM_ERROR && integer == 51
+	    && random.draws == 1 && nested_script.position == 3);
 }
 
 static void
