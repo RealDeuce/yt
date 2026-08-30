@@ -69,15 +69,21 @@ baseline stated in the handoff, not whole-program compatibility.
 
 ## Shared prerequisites
 
-The plasma resolver's connected native frontier now extends through
-`YT-SUB:B26E`. `src/yt_game.c::yt_projectile_plasma_fighter_run` owns the
+The plasma resolver's connected native frontier now extends through the
+shared `YT-SUB:B26E..B713` player/planet dispatcher.
+`src/yt_game.c::yt_projectile_plasma_fighter_run` owns the
 deployed-fighter owner, encounter, DOUBLE damage, result/news,
 fresh-persistence, Headquarters, and footer dispatch transaction.
 `src/yt_game.c::yt_projectile_plasma_mine_run` then owns selector five, both
 binary-attacker news rows, the SINGLE/DOUBLE damage loop, bold result, fresh
 mines-only persistence, and footer dispatch. Their provider fixtures pin every
-owner route, loop back-edge, output and callback failure prefix. The remaining
-connected plasma impact frontier begins at the cached-player scan `B26E`.
+owner route, loop back-edge, output and callback failure prefix.
+`src/yt_game.c::yt_projectile_plasma_dispatch_run` owns the initial and
+post-player scan entries, every cached-player comparison, terminal-plus-one
+write, pre-increment footer gate, and the exact planet/next-hop/footer
+partition. Its fixture pins initial selection, retained-counter resumption,
+fractional terminal and planet-link behavior, and corrupt cache bounds. The
+remaining connected plasma impact frontier begins at the `B2B1` player body.
 
 | Component | Native owner | Native evidence | Status | Required before promotion |
 |---|---|---|---|---|

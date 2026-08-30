@@ -2739,6 +2739,78 @@ check_projectile_plasma_mine_transaction(void)
 	    && !yt_projectile_plasma_mine_run(&state, NULL, &tape, NULL);
 }
 
+static bool
+check_projectile_plasma_dispatch_transaction(void)
+{
+	float cache[8] = {0.0f};
+	struct yt_projectile_plasma_dispatch_state state;
+	struct yt_error error;
+
+	memset(&state, 0, sizeof(state));
+	state.energy = 100.0;
+	state.sector = 7.0f;
+	state.player_terminal = 5.0f;
+	state.sector_cache = cache;
+	state.cache_count = YT_ARRAY_LEN(cache);
+	cache[3] = 7.0f;
+	cache[4] = 7.0f;
+	if (!yt_projectile_plasma_dispatch_run(&state, NULL)
+	    || state.route != YT_PROJECTILE_PLASMA_DISPATCH_PLAYER
+	    || state.selected_player != 3 || state.counter != 3.0f)
+		return false;
+	state.resume_after_player = true;
+	if (!yt_projectile_plasma_dispatch_run(&state, NULL)
+	    || state.route != YT_PROJECTILE_PLASMA_DISPATCH_PLAYER
+	    || state.selected_player != 4 || state.counter != 4.0f)
+		return false;
+	state.energy = 0.5;
+	if (!yt_projectile_plasma_dispatch_run(&state, NULL)
+	    || state.route != YT_PROJECTILE_PLASMA_DISPATCH_FOOTER
+	    || state.counter != 4.0f)
+		return false;
+
+	memset(cache, 0, sizeof(cache));
+	memset(&state, 0, sizeof(state));
+	state.energy = 1.0;
+	state.sector = 7.0f;
+	state.player_terminal = 3.5f;
+	state.sector_cache = cache;
+	state.cache_count = YT_ARRAY_LEN(cache);
+	if (!yt_projectile_plasma_dispatch_run(&state, NULL)
+	    || state.route != YT_PROJECTILE_PLASMA_DISPATCH_NEXT_HOP
+	    || state.counter != 4.0f || state.selected_player != 0)
+		return false;
+
+	state.planet_link = 0.6f;
+	if (!yt_projectile_plasma_dispatch_run(&state, NULL)
+	    || state.route != YT_PROJECTILE_PLASMA_DISPATCH_PLANET)
+		return false;
+	state.planet_link = 0.4f;
+	if (!yt_projectile_plasma_dispatch_run(&state, NULL)
+	    || state.route != YT_PROJECTILE_PLASMA_DISPATCH_NEXT_HOP)
+		return false;
+	state.energy = 0.0;
+	state.planet_link = 12.0f;
+	if (!yt_projectile_plasma_dispatch_run(&state, NULL)
+	    || state.route != YT_PROJECTILE_PLASMA_DISPATCH_FOOTER)
+		return false;
+
+	state.energy = 1.0;
+	state.player_terminal = 1.5f;
+	if (!yt_projectile_plasma_dispatch_run(&state, NULL)
+	    || state.counter != 2.0f
+	    || state.route != YT_PROJECTILE_PLASMA_DISPATCH_PLANET)
+		return false;
+
+	state.player_terminal = 2.0f;
+	state.cache_count = 2U;
+	yt_error_clear(&error);
+	if (yt_projectile_plasma_dispatch_run(&state, &error)
+	    || error.status != YT_RANGE)
+		return false;
+	return !yt_projectile_plasma_dispatch_run(NULL, NULL);
+}
+
 enum projectile_defense_front_event {
 	PROJECTILE_DEFENSE_OWNER = 1,
 	PROJECTILE_DEFENSE_FRIENDSHIP,
@@ -12848,6 +12920,8 @@ main(void)
 		return fail("projectile plasma-fighter transaction differs");
 	if (!check_projectile_plasma_mine_transaction())
 		return fail("projectile plasma-mine transaction differs");
+	if (!check_projectile_plasma_dispatch_transaction())
+		return fail("projectile plasma-dispatch transaction differs");
 	if (!check_projectile_defense_front_transaction())
 		return fail("projectile defense-front transaction differs");
 	if (!check_projectile_defense_combat_transaction())

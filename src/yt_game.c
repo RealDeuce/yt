@@ -5511,6 +5511,73 @@ yt_projectile_plasma_mine_run(struct yt_projectile_plasma_mine_state *state,
 }
 
 bool
+yt_projectile_plasma_dispatch_run(
+    struct yt_projectile_plasma_dispatch_state *state,
+    struct yt_error *error)
+{
+	bool overflow;
+
+	if (state == NULL || state->sector_cache == NULL)
+		return false;
+	state->selected_player = 0;
+	if (state->resume_after_player && state->energy < 1.0) {
+		state->route = YT_PROJECTILE_PLASMA_DISPATCH_FOOTER;
+		return true;
+	}
+	if (state->resume_after_player)
+		state->counter = projectile_single_add(state->counter, 1.0f);
+	else
+		state->counter = 2.0f;
+	while (state->counter <= state->player_terminal) {
+		int candidate = qb_cint(state->counter, &overflow);
+
+		if (overflow || candidate < 0
+		    || (size_t)candidate >= state->cache_count) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				snprintf(error->operation, sizeof(error->operation), "%s",
+				    "plasma player-dispatch cache index");
+			}
+			return false;
+		}
+		if (state->sector_cache[candidate] == state->sector
+		    && state->energy > 0.0) {
+			state->selected_player = candidate;
+			state->route = YT_PROJECTILE_PLASMA_DISPATCH_PLAYER;
+			return true;
+		}
+		state->counter = projectile_single_add(state->counter, 1.0f);
+	}
+	if (!(state->energy > 0.0)) {
+		state->route = YT_PROJECTILE_PLASMA_DISPATCH_FOOTER;
+		return true;
+	}
+	if (qb_cint(state->planet_link, &overflow) != 0) {
+		if (overflow) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				snprintf(error->operation, sizeof(error->operation), "%s",
+				    "plasma player-dispatch planet CINT");
+			}
+			return false;
+		}
+		state->route = YT_PROJECTILE_PLASMA_DISPATCH_PLANET;
+	}
+	else {
+		if (overflow) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				snprintf(error->operation, sizeof(error->operation), "%s",
+				    "plasma player-dispatch planet CINT");
+			}
+			return false;
+		}
+		state->route = YT_PROJECTILE_PLASMA_DISPATCH_NEXT_HOP;
+	}
+	return true;
+}
+
+bool
 yt_projectile_defense_front_run(
     struct yt_projectile_defense_front_state *state,
     const struct yt_projectile_defense_front_ops *ops, void *context,

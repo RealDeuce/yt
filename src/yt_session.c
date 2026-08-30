@@ -12779,6 +12779,7 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
 	struct yt_sector sector;
 	struct yt_projectile_plasma_fighter_state fighter;
 	struct yt_projectile_plasma_mine_state mine;
+	struct yt_projectile_plasma_dispatch_state dispatch;
 	float planet_link;
 	int basic;
 
@@ -12818,9 +12819,13 @@ plasma_reload_sector:
 		return false;
 	if (mine.route == YT_PROJECTILE_PLASMA_MINE_FOOTER)
 		return true;
-	for (basic = YT_PLAYER_FIRST;
-	    basic <= (int)session->door->game.config.sector_offset
-	    && *energy > 0.0; ++basic) {
+	memset(&dispatch, 0, sizeof(dispatch));
+	dispatch.sector = (float)sector_number;
+	dispatch.planet_link = planet_link;
+	dispatch.player_terminal = session->door->game.config.sector_offset;
+	dispatch.sector_cache = session->sector_cache;
+	dispatch.cache_count = YT_ARRAY_LEN(session->sector_cache);
+	for (;;) {
 		struct yt_player target;
 		double original_fighters;
 		float original_shields;
@@ -12839,8 +12844,12 @@ plasma_reload_sector:
 		char fighter_text[64];
 		char row[256];
 
-		if (session->sector_cache[basic] != (float)sector_number)
-			continue;
+		dispatch.energy = *energy;
+		if (!yt_projectile_plasma_dispatch_run(&dispatch, error))
+			return false;
+		if (dispatch.route != YT_PROJECTILE_PLASMA_DISPATCH_PLAYER)
+			break;
+		basic = dispatch.selected_player;
 		if (!yt_game_read_player(&session->door->game, basic, &target,
 		    error))
 			return false;
@@ -13002,7 +13011,11 @@ plasma_reload_sector:
 			    &persistence, error))
 				return false;
 		}
+		dispatch.resume_after_player = true;
 	}
+	if (dispatch.route == YT_PROJECTILE_PLASMA_DISPATCH_FOOTER
+	    || dispatch.route == YT_PROJECTILE_PLASMA_DISPATCH_NEXT_HOP)
+		return true;
 	/* The B099 dispatch cached this link before mines and the player scan. */
 	sector.planet = planet_link;
 	return plasma_planet_impact(session, sector_number, &sector, energy,

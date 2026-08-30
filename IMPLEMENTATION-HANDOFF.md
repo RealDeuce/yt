@@ -225,7 +225,19 @@ not authoritative. Use the corrected goal above in the new workspace.
   strict sub-one footer gate. Fixtures pin the no-mine route, zero-energy
   zero-destruction body, multi-draw back-edge, unrelated-byte preservation,
   both news payloads, and every callback failure prefix. The cached-player
-  scan and player/planet impacts are the next connected frontier.
+  scan and player/planet impacts remained the next connected frontier at that
+  checkpoint.
+- The shared `B26E..B713` cached-player/planet dispatcher now has one native
+  owner joined directly after both the no-mine and successful mine paths. It
+  copies the initial raw player terminal, starts at record two, compares the
+  exact cached sector before the strictly-positive energy predicate, writes
+  the terminal-plus-one candidate, and partitions exhausted scans between
+  `CINT(planet link)` planet impact, next hop, and footer. The genuine `B6D1`
+  return checks sub-one energy before mutating the retained candidate; only
+  the continuing return increments it. Focused fixtures pin initial and
+  resumed selections, fractional terminals and planet links, the unmodified
+  footer counter, and cache-range failure. The `B2B1` player-impact body is
+  the next connected frontier.
 - After the exact Transfer, Bank, Productivity, Clearance, Earth-front,
   Earth-purchase, Planet Rename, shared compatibility-uppercase, Team
   name/password, Planet inventory/menu-parent, shared sector-mine, YTMAINT
@@ -251,13 +263,13 @@ not authoritative. Use the corrected goal above in the new workspace.
   provider-driven YT.REG registration transaction,
   ledger dispositions are roots
   `168 candidate / 0 missing`, transfers
-  `7031 candidate / 336 missing / 1 explicitly
+  `7044 candidate / 323 missing / 1 explicitly
   deferred`, and presentation `143 candidate / 1 missing / 6 verified`.
   Current SHA-256
   values are roots
-  `f506df158ff10ca2f26e4783f431915bf947c495b8a6137d916e2517d7c47be1`,
-  transfers `9836ab4adc0c678f4401b1a1892cd7fca02a08c336f6f57a6f743290f6ebe256`,
-  presentation `89d74c9618df174399c4af0c6166d06aef61984d1807f6f8484f5dfc93fd1506`,
+  `d5f736c879083cf79544135234a288bdc4a4a331cd03e37c2e11a7fa846fef6c`,
+  transfers `462508696091ce342089e562074bec8cfce5eb3e7c63b5889af53bbc2989248d`,
+  presentation `2bd4e8bd2f13f08eb6c1432c07f844cffc8d6995708f861520c05e01bc473b1e`,
   and manifest
   `3552bd61c9cb9b7197aeb6fbad1f37cba69cd09f125d878d0c9072a691e8950a`.
   All immutable identity columns and TSV widths match the regenerated trusted

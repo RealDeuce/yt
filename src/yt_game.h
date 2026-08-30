@@ -509,6 +509,28 @@ bool yt_projectile_plasma_mine_run(
     const struct yt_projectile_plasma_mine_ops *ops, void *context,
     struct yt_error *error);
 
+enum yt_projectile_plasma_dispatch_route {
+	YT_PROJECTILE_PLASMA_DISPATCH_PLAYER,
+	YT_PROJECTILE_PLASMA_DISPATCH_PLANET,
+	YT_PROJECTILE_PLASMA_DISPATCH_NEXT_HOP,
+	YT_PROJECTILE_PLASMA_DISPATCH_FOOTER,
+};
+struct yt_projectile_plasma_dispatch_state {
+	double energy;
+	float sector;
+	float planet_link;
+	float player_terminal;
+	const float *sector_cache;
+	size_t cache_count;
+	bool resume_after_player;
+	float counter;
+	int selected_player;
+	enum yt_projectile_plasma_dispatch_route route;
+};
+bool yt_projectile_plasma_dispatch_run(
+    struct yt_projectile_plasma_dispatch_state *state,
+    struct yt_error *error);
+
 enum yt_projectile_defense_front_route {
 	YT_PROJECTILE_DEFENSE_NO_DEFENSE,
 	YT_PROJECTILE_DEFENSE_FRIENDLY,
