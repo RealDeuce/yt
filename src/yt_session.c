@@ -81,17 +81,6 @@ struct yt_session {
 	struct yt_team_loader_cache team_cache;
 };
 
-struct yt_team {
-	int id;
-	struct yt_sector overlay;
-	char name[42];
-	char password[5];
-	float captain;
-	float roster[4];
-	bool live;
-	bool full;
-};
-
 static bool random_value(struct yt_session *session, float *value,
     struct yt_error *error);
 static bool projectile_damage_draw(void *context, float *value,
@@ -9796,6 +9785,7 @@ team_load(struct yt_session *session, int id, struct yt_team *team,
 loaded:
 	memcpy(team->name, session->team_cache.name,
 	    sizeof(team->name));
+	team->name_length = session->team_cache.name_length;
 	memcpy(team->password, session->team_cache.password,
 	    sizeof(team->password));
 	team->captain = session->team_cache.captain;
@@ -10035,97 +10025,127 @@ info_commodity_row(struct yt_session *session, const char *left_label,
 }
 
 static bool
+info_team_read_player(void *context, float record, struct yt_player *player,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+	struct yt_record raw;
+	uint32_t physical = qb_brun_random_record_number(record);
+
+	if (!yt_database_read(&session->door->game.database, (size_t)physical,
+	    &raw, error))
+		return false;
+	yt_player_decode(player, &raw);
+	return true;
+}
+
+static bool
+info_team_load_team(void *context, float team_id, float current_record,
+    float *captain_flag, struct yt_team *team, struct yt_error *error)
+{
+	struct yt_session *session = context;
+	enum yt_team_loader_route route = YT_TEAM_LOADER_OUT_OF_RANGE;
+	bool needs_overlay;
+	size_t index;
+
+	memset(team, 0, sizeof(*team));
+	team->id = (int)team_id;
+	session->team_cache.captain_flag = *captain_flag;
+	yt_team_loader_begin(team_id, &session->team_cache, &needs_overlay);
+	if (needs_overlay) {
+		struct yt_record raw;
+		float expression = single_add(
+		    session->door->game.config.sector_offset, team_id);
+		uint32_t physical = qb_brun_random_record_number(expression);
+
+		if (!yt_database_read(&session->door->game.database,
+		    (size_t)physical, &raw, error))
+			return false;
+		yt_sector_decode(&team->overlay, &raw);
+		if (!yt_team_loader_finish(&team->overlay.record, current_record,
+		    session->presentation.sound.conversion_mode,
+		    &session->team_cache, &route, error))
+			return false;
+	}
+	memcpy(team->name, session->team_cache.name, sizeof(team->name));
+	team->name_length = session->team_cache.name_length;
+	memcpy(team->password, session->team_cache.password,
+	    sizeof(team->password));
+	team->captain = session->team_cache.captain;
+	team->live = route == YT_TEAM_LOADER_LIVE;
+	team->full = team->live;
+	for (index = 0; index < YT_ARRAY_LEN(team->roster); ++index) {
+		team->roster[index] = session->team_cache.roster[index];
+		if (team->roster[index] <= 0.0f)
+			team->full = false;
+	}
+	*captain_flag = session->team_cache.captain_flag;
+	return true;
+}
+
+static bool
+info_team_read_overlay(void *context, float team_id,
+    struct yt_sector *overlay, struct yt_error *error)
+{
+	struct yt_session *session = context;
+	struct yt_record raw;
+	float expression = single_add(
+	    session->door->game.config.sector_offset, team_id);
+	uint32_t physical = qb_brun_random_record_number(expression);
+
+	if (!yt_database_read(&session->door->game.database, (size_t)physical,
+	    &raw, error))
+		return false;
+	yt_sector_decode(overlay, &raw);
+	return true;
+}
+
+static bool
+info_team_write_overlay(void *context, float team_id,
+    const struct yt_sector *overlay, struct yt_error *error)
+{
+	struct yt_session *session = context;
+	float expression = single_add(
+	    session->door->game.config.sector_offset, team_id);
+	uint32_t physical = qb_brun_random_record_number(expression);
+
+	return yt_database_write(&session->door->game.database,
+	    (size_t)physical, &overlay->record, error);
+}
+
+static bool
+info_team_present(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	return info_line(context, text, length, error);
+}
+
+static bool
 info_team_lines(struct yt_session *session, struct yt_team *resolved_team,
     bool *current_is_captain, struct yt_error *error)
 {
-	struct yt_team team;
-	struct yt_player captain;
-	float team_id;
-	char number[64];
-	char row[256];
-	int captain_record;
-	int last_player = (int)session->door->game.config.sector_offset - 1;
-	bool captain_valid;
+	static const struct yt_info_team_ops ops = {
+		info_team_read_player,
+		info_team_load_team,
+		info_team_read_overlay,
+		info_team_write_overlay,
+		info_team_present,
+	};
+	struct yt_info_team_state state = {
+		.current_record = (float)session->player_record,
+		.sector_offset = session->door->game.config.sector_offset,
+		.conversion_mode = session->presentation.sound.conversion_mode,
+	};
 
-	if (current_is_captain != NULL)
-		*current_is_captain = false;
+	if (!yt_info_team_resolver_run(&state, &ops, session, error))
+		return false;
+	session->player.record = state.current_player.record;
+	session->player.team = state.current_player.team;
 	if (resolved_team != NULL)
-		memset(resolved_team, 0, sizeof(*resolved_team));
-
-	if (!reload_player(session, error))
-		return false;
-	team_id = session->player.team;
-	if (team_id == 0.0f)
-		return info_line(session, "Team  : None", 12, error)
-		    && info_line(session, NULL, 0, error);
-	if (team_id != floorf(team_id) || team_id < 1.0f || team_id > 50.0f)
-		return info_failure(error, "Info team record");
-	session->team_cache.captain_flag = 0.0f;
-	if (!team_load(session, (int)team_id, &team, error))
-		return false;
-	qb_str_single(number, sizeof(number), team_id);
-	(void)snprintf(row, sizeof(row), "Team  :%s, %s", number, team.name);
-	if (!info_line(session, row, strlen(row), error)
-	    || !info_line(session, NULL, 0, error))
-		return false;
-	if (session->team_cache.captain_flag != 0.0f) {
-		if (resolved_team != NULL)
-			*resolved_team = team;
-		if (current_is_captain != NULL)
-			*current_is_captain = true;
-		(void)snprintf(row, sizeof(row),
-		    "You are the Captain of team%s!", number);
-		return info_line(session, row, strlen(row), error)
-		    && info_line(session, NULL, 0, error);
-	}
-	captain_valid = team.captain == floorf(team.captain)
-	    && team.captain >= YT_PLAYER_FIRST
-	    && team.captain <= (float)last_player;
-	captain_record = (int)team.captain;
-	if (captain_valid) {
-		if (!yt_game_read_player(&session->door->game, captain_record,
-		    &captain, error))
-			return false;
-		captain_valid = captain.name_length > 0.0f
-		    && captain.team == team_id;
-	}
-	if (captain_valid) {
-		bool overflow;
-		int32_t length;
-
-		if (!yt_game_read_player(&session->door->game, captain_record,
-		    &captain, error))
-			return false;
-		length = qb_cint((double)captain.name_length, &overflow);
-		if (overflow || length < 0 || length > (int)YT_TEXT_FIELD_SIZE)
-			return info_failure(error, "Info captain name length");
-		(void)snprintf(row, sizeof(row), "Your Team Captain is: %.*s!",
-		    (int)length, captain.name);
-		if (resolved_team != NULL)
-			*resolved_team = team;
-		return info_line(session, row, strlen(row), error)
-		    && info_line(session, NULL, 0, error);
-	}
-	if (!team_load(session, (int)team_id, &team, error))
-		return false;
-	team.captain = (float)session->player_record;
+		*resolved_team = state.team;
 	if (current_is_captain != NULL)
-		*current_is_captain = true;
-	yt_record_set_number_if_changed(&team.overlay.record, YT_F77,
-	    team.captain);
-	if (!yt_database_write(&session->door->game.database,
-	    (size_t)yt_sector_basic_record(&session->door->game.config,
-	    team.id), &team.overlay.record, error))
-		return false;
-	if (resolved_team != NULL)
-		*resolved_team = team;
-	return info_line(session,
-	    "Your team has no captain! You've been promoted to Captain!", 58,
-	    error)
-	    && info_line(session,
-	    "Congratulations Captain! See Team Menu for your new options!", 60,
-	    error)
-	    && info_line(session, NULL, 0, error);
+		*current_is_captain = state.current_is_captain;
+	return true;
 }
 
 static bool

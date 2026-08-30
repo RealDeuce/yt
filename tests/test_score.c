@@ -373,6 +373,317 @@ check_team_loader_model(void)
 	return true;
 }
 
+enum info_team_event {
+	INFO_TEAM_READ_PLAYER = 1,
+	INFO_TEAM_LOAD,
+	INFO_TEAM_READ_OVERLAY,
+	INFO_TEAM_WRITE_OVERLAY,
+	INFO_TEAM_PRESENT,
+};
+
+struct info_team_tape {
+	int events[16];
+	size_t event_count;
+	size_t fail_at;
+	struct yt_player players[3];
+	float player_records[3];
+	size_t player_position;
+	struct yt_team team;
+	float captain_flag;
+	float loaded_team_id;
+	float loaded_current_record;
+	struct yt_sector overlay;
+	struct yt_sector written;
+	float overlay_read_team;
+	float overlay_write_team;
+	uint8_t rows[5][256];
+	size_t row_lengths[5];
+	size_t row_count;
+};
+
+static bool
+info_team_step(struct info_team_tape *tape, enum info_team_event event)
+{
+	if (tape->event_count >= YT_ARRAY_LEN(tape->events))
+		return false;
+	tape->events[tape->event_count++] = (int)event;
+	return tape->event_count != tape->fail_at;
+}
+
+static bool
+info_team_read_player(void *context, float record, struct yt_player *player,
+    struct yt_error *error)
+{
+	struct info_team_tape *tape = context;
+	size_t position = tape->player_position;
+
+	(void)error;
+	if (position >= YT_ARRAY_LEN(tape->players)
+	    || !info_team_step(tape, INFO_TEAM_READ_PLAYER))
+		return false;
+	tape->player_records[position] = record;
+	*player = tape->players[position];
+	tape->player_position++;
+	return true;
+}
+
+static bool
+info_team_load(void *context, float team_id, float current_record,
+    float *captain_flag, struct yt_team *team, struct yt_error *error)
+{
+	struct info_team_tape *tape = context;
+
+	(void)error;
+	if (!info_team_step(tape, INFO_TEAM_LOAD))
+		return false;
+	tape->loaded_team_id = team_id;
+	tape->loaded_current_record = current_record;
+	*captain_flag = tape->captain_flag;
+	*team = tape->team;
+	return true;
+}
+
+static bool
+info_team_read_overlay(void *context, float team_id,
+    struct yt_sector *overlay, struct yt_error *error)
+{
+	struct info_team_tape *tape = context;
+
+	(void)error;
+	if (!info_team_step(tape, INFO_TEAM_READ_OVERLAY))
+		return false;
+	tape->overlay_read_team = team_id;
+	*overlay = tape->overlay;
+	return true;
+}
+
+static bool
+info_team_write_overlay(void *context, float team_id,
+    const struct yt_sector *overlay, struct yt_error *error)
+{
+	struct info_team_tape *tape = context;
+
+	(void)error;
+	if (!info_team_step(tape, INFO_TEAM_WRITE_OVERLAY))
+		return false;
+	tape->overlay_write_team = team_id;
+	tape->written = *overlay;
+	return true;
+}
+
+static bool
+info_team_present(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	struct info_team_tape *tape = context;
+	size_t position = tape->row_count;
+
+	(void)error;
+	if (position >= YT_ARRAY_LEN(tape->rows)
+	    || length > sizeof(tape->rows[position])
+	    || !info_team_step(tape, INFO_TEAM_PRESENT))
+		return false;
+	if (length != 0U)
+		memcpy(tape->rows[position], text, length);
+	tape->row_lengths[position] = length;
+	tape->row_count++;
+	return true;
+}
+
+static void
+info_team_fixture(struct info_team_tape *tape,
+    struct yt_info_team_state *state)
+{
+	static const uint8_t team_name[] = {'T', 0, 'M'};
+	static const uint8_t captain_name[] = {'C', 0, 'P'};
+
+	memset(tape, 0, sizeof(*tape));
+	memset(state, 0, sizeof(*state));
+	tape->fail_at = SIZE_MAX;
+	tape->players[0].team = 3.5f;
+	memcpy(tape->players[1].name, captain_name, sizeof(captain_name));
+	tape->players[1].name_length = 3.0f;
+	tape->players[1].team = 3.5f;
+	memcpy(tape->players[2].name, "SECOND", 6U);
+	tape->players[2].name_length = 6.0f;
+	tape->players[2].team = 3.5f;
+	tape->team.id = 3;
+	memcpy(tape->team.name, team_name, sizeof(team_name));
+	tape->team.name_length = sizeof(team_name);
+	tape->team.captain = 2.5f;
+	memset(tape->overlay.record.bytes, 0xa5,
+	    sizeof(tape->overlay.record.bytes));
+	state->current_record = 7.0f;
+	state->sector_offset = 52.0f;
+}
+
+static bool
+check_info_team_resolver_transaction(void)
+{
+	static const struct yt_info_team_ops ops = {
+		info_team_read_player,
+		info_team_load,
+		info_team_read_overlay,
+		info_team_write_overlay,
+		info_team_present,
+	};
+	static const int other_events[] = {
+		INFO_TEAM_READ_PLAYER,
+		INFO_TEAM_LOAD,
+		INFO_TEAM_PRESENT,
+		INFO_TEAM_PRESENT,
+		INFO_TEAM_READ_PLAYER,
+		INFO_TEAM_READ_PLAYER,
+		INFO_TEAM_PRESENT,
+		INFO_TEAM_PRESENT,
+	};
+	static const int self_events[] = {
+		INFO_TEAM_READ_PLAYER,
+		INFO_TEAM_LOAD,
+		INFO_TEAM_PRESENT,
+		INFO_TEAM_PRESENT,
+		INFO_TEAM_PRESENT,
+		INFO_TEAM_PRESENT,
+	};
+	static const int promotion_events[] = {
+		INFO_TEAM_READ_PLAYER,
+		INFO_TEAM_LOAD,
+		INFO_TEAM_PRESENT,
+		INFO_TEAM_PRESENT,
+		INFO_TEAM_READ_OVERLAY,
+		INFO_TEAM_WRITE_OVERLAY,
+		INFO_TEAM_PRESENT,
+		INFO_TEAM_PRESENT,
+		INFO_TEAM_PRESENT,
+	};
+	static const uint8_t team_row[] =
+	    {'T','e','a','m',' ',' ',':',' ','3','.','5',',',' ','T',0,'M'};
+	static const uint8_t captain_row[] =
+	    {'Y','o','u','r',' ','T','e','a','m',' ','C','a','p','t','a','i','n',
+	     ' ','i','s',':',' ','C',0,'P','!'};
+	static const uint8_t none[] = "Team  : None";
+	static const uint8_t self[] = "You are the Captain of team 3.5!";
+	static const uint8_t promoted[] =
+	    "Your team has no captain! You've been promoted to Captain!";
+	static const uint8_t congratulations[] =
+	    "Congratulations Captain! See Team Menu for your new options!";
+	struct info_team_tape tape;
+	struct yt_info_team_state state;
+	float written_captain;
+	size_t failure;
+
+	info_team_fixture(&tape, &state);
+	if (!yt_info_team_resolver_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != YT_ARRAY_LEN(other_events)
+	    || memcmp(tape.events, other_events, sizeof(other_events)) != 0
+	    || tape.player_position != 3U
+	    || tape.player_records[0] != 7.0f
+	    || tape.player_records[1] != 2.5f
+	    || tape.player_records[2] != 2.5f
+	    || tape.loaded_team_id != 3.5f
+	    || tape.loaded_current_record != 7.0f
+	    || state.team_id != 3.5f || state.captain_record != 2.5f
+	    || state.captain_name_length != 3U
+	    || memcmp(state.captain_name, "C\0P", 3U) != 0
+	    || state.current_is_captain
+	    || state.route != YT_INFO_TEAM_OTHER_CAPTAIN
+	    || tape.row_count != 4U
+	    || tape.row_lengths[0] != sizeof(team_row)
+	    || memcmp(tape.rows[0], team_row, sizeof(team_row)) != 0
+	    || tape.row_lengths[1] != 0U
+	    || tape.row_lengths[2] != sizeof(captain_row)
+	    || memcmp(tape.rows[2], captain_row, sizeof(captain_row)) != 0
+	    || tape.row_lengths[3] != 0U)
+		return false;
+
+	info_team_fixture(&tape, &state);
+	tape.captain_flag = -1.0f;
+	if (!yt_info_team_resolver_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != YT_ARRAY_LEN(self_events)
+	    || memcmp(tape.events, self_events, sizeof(self_events)) != 0
+	    || !state.current_is_captain
+	    || state.route != YT_INFO_TEAM_SELF_CAPTAIN
+	    || tape.row_lengths[2] != sizeof(self) - 1U
+	    || memcmp(tape.rows[2], self, sizeof(self) - 1U) != 0)
+		return false;
+
+	info_team_fixture(&tape, &state);
+	tape.players[0].team = 0.0f;
+	if (!yt_info_team_resolver_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != 3U
+	    || tape.events[0] != INFO_TEAM_READ_PLAYER
+	    || tape.events[1] != INFO_TEAM_PRESENT
+	    || tape.events[2] != INFO_TEAM_PRESENT
+	    || tape.row_lengths[0] != sizeof(none) - 1U
+	    || memcmp(tape.rows[0], none, sizeof(none) - 1U) != 0
+	    || tape.row_lengths[1] != 0U || state.team_id != 0.0f
+	    || state.route != YT_INFO_TEAM_NONE)
+		return false;
+
+	info_team_fixture(&tape, &state);
+	tape.team.captain = 1.5f;
+	if (!yt_info_team_resolver_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != YT_ARRAY_LEN(promotion_events)
+	    || memcmp(tape.events, promotion_events,
+	    sizeof(promotion_events)) != 0
+	    || tape.player_position != 1U || !state.current_is_captain
+	    || state.route != YT_INFO_TEAM_PROMOTED
+	    || state.captain_record != 7.0f || state.captain_flag != 1.0f
+	    || tape.overlay_read_team != 3.5f
+	    || tape.overlay_write_team != 3.5f
+	    || tape.row_lengths[2] != sizeof(promoted) - 1U
+	    || memcmp(tape.rows[2], promoted, sizeof(promoted) - 1U) != 0
+	    || tape.row_lengths[3] != sizeof(congratulations) - 1U
+	    || memcmp(tape.rows[3], congratulations,
+	    sizeof(congratulations) - 1U) != 0
+	    || tape.row_lengths[4] != 0U
+	    || (written_captain = yt_record_get_number(&tape.written.record,
+	    YT_F77)) != 7.0f)
+		return false;
+
+	info_team_fixture(&tape, &state);
+	tape.players[1].name_length = 0.0f;
+	if (!yt_info_team_resolver_run(&state, &ops, &tape, NULL)
+	    || state.route != YT_INFO_TEAM_PROMOTED
+	    || tape.player_position != 2U)
+		return false;
+	info_team_fixture(&tape, &state);
+	tape.players[1].team = 9.0f;
+	if (!yt_info_team_resolver_run(&state, &ops, &tape, NULL)
+	    || state.route != YT_INFO_TEAM_PROMOTED
+	    || tape.player_position != 2U)
+		return false;
+	info_team_fixture(&tape, &state);
+	tape.players[1].name_length = 99.0f;
+	memset(tape.players[1].name, 'Q', YT_TEXT_FIELD_SIZE);
+	if (!yt_info_team_resolver_run(&state, &ops, &tape, NULL)
+	    || state.route != YT_INFO_TEAM_OTHER_CAPTAIN
+	    || state.captain_name_length != YT_TEXT_FIELD_SIZE)
+		return false;
+
+	for (failure = 1U; failure <= YT_ARRAY_LEN(other_events); ++failure) {
+		info_team_fixture(&tape, &state);
+		tape.fail_at = failure;
+		if (yt_info_team_resolver_run(&state, &ops, &tape, NULL)
+		    || tape.event_count != failure
+		    || memcmp(tape.events, other_events,
+		    failure * sizeof(other_events[0])) != 0)
+			return false;
+	}
+	for (failure = 1U; failure <= YT_ARRAY_LEN(promotion_events); ++failure) {
+		info_team_fixture(&tape, &state);
+		tape.team.captain = 1.5f;
+		tape.fail_at = failure;
+		if (yt_info_team_resolver_run(&state, &ops, &tape, NULL)
+		    || tape.event_count != failure
+		    || memcmp(tape.events, promotion_events,
+		    failure * sizeof(promotion_events[0])) != 0)
+			return false;
+	}
+	return !yt_info_team_resolver_run(NULL, &ops, &tape, NULL)
+	    && !yt_info_team_resolver_run(&state, NULL, &tape, NULL);
+}
+
 static bool
 check_port_owner_row_model(void)
 {
@@ -11087,6 +11398,8 @@ main(void)
 		return fail("friendship model differs");
 	if (!check_team_loader_model())
 		return fail("team-loader model differs");
+	if (!check_info_team_resolver_transaction())
+		return fail("Info team resolver transaction differs");
 	if (!check_projectile_parent_model())
 		return fail("projectile parent model differs");
 	if (!check_projectile_cruise_opening_transaction())

@@ -78,6 +78,164 @@ yt_team_loader_finish(const struct yt_record *overlay,
 	return true;
 }
 
+static bool
+info_team_append(uint8_t *row, size_t capacity, size_t *length,
+    const void *text, size_t text_length)
+{
+	if (row == NULL || length == NULL || *length > capacity
+	    || text_length > capacity - *length
+	    || (text == NULL && text_length != 0U))
+		return false;
+	if (text_length != 0U)
+		memcpy(row + *length, text, text_length);
+	*length += text_length;
+	return true;
+}
+
+bool
+yt_info_team_resolver_run(struct yt_info_team_state *state,
+    const struct yt_info_team_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t none[] = "Team  : None";
+	static const uint8_t team_prefix[] = "Team  :";
+	static const uint8_t separator[] = ", ";
+	static const uint8_t self_prefix[] = "You are the Captain of team";
+	static const uint8_t other_prefix[] = "Your Team Captain is: ";
+	static const uint8_t promoted[] =
+	    "Your team has no captain! You've been promoted to Captain!";
+	static const uint8_t congratulations[] =
+	    "Congratulations Captain! See Team Menu for your new options!";
+	uint8_t row[256];
+	char number[64];
+	int number_length;
+	size_t row_length;
+	bool overflow;
+	int32_t name_length;
+
+	if (state == NULL || ops == NULL || ops->read_player == NULL
+	    || ops->load_team == NULL || ops->read_overlay == NULL
+	    || ops->write_overlay == NULL || ops->present == NULL)
+		return false;
+	memset(&state->current_player, 0, sizeof(state->current_player));
+	memset(&state->team, 0, sizeof(state->team));
+	state->team_id = 0.0f;
+	state->captain_flag = 0.0f;
+	state->captain_record = 0.0f;
+	state->captain_name_length = 0U;
+	state->current_is_captain = false;
+	state->route = YT_INFO_TEAM_NONE;
+	if (!ops->read_player(context, state->current_record,
+	    &state->current_player, error))
+		return false;
+	state->team_id = state->current_player.team;
+	if (state->team_id == 0.0f)
+		return ops->present(context, none, sizeof(none) - 1U, error)
+		    && ops->present(context, NULL, 0U, error);
+	if (!ops->load_team(context, state->team_id, state->current_record,
+	    &state->captain_flag, &state->team, error))
+		return false;
+	number_length = qb_str_single(number, sizeof(number), state->team_id);
+	row_length = 0U;
+	if (number_length < 0 || state->team.name_length > YT_TEXT_FIELD_SIZE
+	    || !info_team_append(row, sizeof(row), &row_length, team_prefix,
+	    sizeof(team_prefix) - 1U)
+	    || !info_team_append(row, sizeof(row), &row_length, number,
+	    (size_t)number_length)
+	    || !info_team_append(row, sizeof(row), &row_length, separator,
+	    sizeof(separator) - 1U)
+	    || !info_team_append(row, sizeof(row), &row_length, state->team.name,
+	    state->team.name_length))
+		return false;
+	if (!ops->present(context, row, row_length, error)
+	    || !ops->present(context, NULL, 0U, error))
+		return false;
+	if (state->captain_flag != 0.0f) {
+		state->current_is_captain = true;
+		state->route = YT_INFO_TEAM_SELF_CAPTAIN;
+		row_length = 0U;
+		if (!info_team_append(row, sizeof(row), &row_length, self_prefix,
+		    sizeof(self_prefix) - 1U)
+		    || !info_team_append(row, sizeof(row), &row_length, number,
+		    (size_t)number_length)
+		    || !info_team_append(row, sizeof(row), &row_length, "!", 1U))
+			return false;
+		return ops->present(context, row, row_length, error)
+		    && ops->present(context, NULL, 0U, error);
+	}
+	state->captain_record = state->team.captain;
+	if (state->captain_record >= 2.0f
+	    && state->captain_record < state->sector_offset) {
+		struct yt_player captain;
+
+		if (!ops->read_player(context, state->captain_record, &captain,
+		    error))
+			return false;
+		if (captain.name_length > 0.0f) {
+			name_length = qb_cint_mode((double)captain.name_length,
+			    state->conversion_mode, &overflow);
+			if (overflow || name_length < 0) {
+				if (error != NULL) {
+					error->status = YT_RANGE;
+					(void)snprintf(error->operation,
+					    sizeof(error->operation), "%s",
+					    "Info captain name length");
+				}
+				return false;
+			}
+			state->captain_name_length = (size_t)name_length;
+			if (state->captain_name_length > YT_TEXT_FIELD_SIZE)
+				state->captain_name_length = YT_TEXT_FIELD_SIZE;
+			memcpy(state->captain_name, captain.name,
+			    state->captain_name_length);
+		}
+		else
+			state->captain_record = 0.0f;
+		if (captain.team != state->team_id)
+			state->captain_record = 0.0f;
+	}
+	if (!(state->captain_record >= 2.0f
+	    && state->captain_record < state->sector_offset)) {
+		struct yt_sector fresh;
+
+		state->captain_record = state->current_record;
+		state->captain_flag = 1.0f;
+		state->current_is_captain = true;
+		state->route = YT_INFO_TEAM_PROMOTED;
+		if (!ops->read_overlay(context, state->team_id, &fresh, error)
+		    || !yt_record_set_number(&fresh.record, YT_F77,
+		    state->current_record))
+			return false;
+		state->team.overlay = fresh;
+		state->team.captain = state->current_record;
+		if (!ops->write_overlay(context, state->team_id, &fresh, error)
+		    || !ops->present(context, promoted, sizeof(promoted) - 1U,
+		    error)
+		    || !ops->present(context, congratulations,
+		    sizeof(congratulations) - 1U, error)
+		    || !ops->present(context, NULL, 0U, error))
+			return false;
+		return true;
+	}
+	{
+		struct yt_player ignored;
+
+		if (!ops->read_player(context, state->captain_record, &ignored,
+		    error))
+			return false;
+	}
+	state->route = YT_INFO_TEAM_OTHER_CAPTAIN;
+	row_length = 0U;
+	if (!info_team_append(row, sizeof(row), &row_length, other_prefix,
+	    sizeof(other_prefix) - 1U)
+	    || !info_team_append(row, sizeof(row), &row_length,
+	    state->captain_name, state->captain_name_length)
+	    || !info_team_append(row, sizeof(row), &row_length, "!", 1U))
+		return false;
+	return ops->present(context, row, row_length, error)
+	    && ops->present(context, NULL, 0U, error);
+}
+
 bool
 yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
     const struct yt_xannor_retaliation_ops *ops, void *context,

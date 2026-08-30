@@ -42,6 +42,18 @@ struct yt_sector {
 	float mines;
 };
 
+struct yt_team {
+	int id;
+	struct yt_sector overlay;
+	char name[42];
+	size_t name_length;
+	char password[5];
+	float captain;
+	float roster[4];
+	bool live;
+	bool full;
+};
+
 struct yt_port {
 	struct yt_record record;
 	char name[42];
@@ -96,6 +108,48 @@ struct yt_team_loader_cache {
 	char password[5];
 	float counter;
 };
+
+enum yt_info_team_route {
+	YT_INFO_TEAM_NONE,
+	YT_INFO_TEAM_SELF_CAPTAIN,
+	YT_INFO_TEAM_OTHER_CAPTAIN,
+	YT_INFO_TEAM_PROMOTED,
+};
+struct yt_info_team_state {
+	float current_record;
+	float sector_offset;
+	uint8_t conversion_mode;
+	struct yt_player current_player;
+	float team_id;
+	struct yt_team team;
+	float captain_flag;
+	float captain_record;
+	uint8_t captain_name[YT_TEXT_FIELD_SIZE];
+	size_t captain_name_length;
+	bool current_is_captain;
+	enum yt_info_team_route route;
+};
+typedef bool (*yt_info_team_read_player_fn)(void *context, float record,
+    struct yt_player *player, struct yt_error *error);
+typedef bool (*yt_info_team_load_team_fn)(void *context, float team_id,
+    float current_record, float *captain_flag, struct yt_team *team,
+    struct yt_error *error);
+typedef bool (*yt_info_team_read_overlay_fn)(void *context, float team_id,
+    struct yt_sector *overlay, struct yt_error *error);
+typedef bool (*yt_info_team_write_overlay_fn)(void *context, float team_id,
+    const struct yt_sector *overlay, struct yt_error *error);
+typedef bool (*yt_info_team_present_fn)(void *context, const uint8_t *text,
+    size_t length, struct yt_error *error);
+struct yt_info_team_ops {
+	yt_info_team_read_player_fn read_player;
+	yt_info_team_load_team_fn load_team;
+	yt_info_team_read_overlay_fn read_overlay;
+	yt_info_team_write_overlay_fn write_overlay;
+	yt_info_team_present_fn present;
+};
+bool yt_info_team_resolver_run(struct yt_info_team_state *state,
+    const struct yt_info_team_ops *ops, void *context,
+    struct yt_error *error);
 
 enum yt_sector_force_route {
 	YT_SECTOR_FORCE_FRIENDLY,
