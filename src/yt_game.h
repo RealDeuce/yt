@@ -815,6 +815,49 @@ bool yt_projectile_planet_productivity_damage(float updater_ore,
     yt_projectile_damage_draw_fn draw, void *context,
     struct yt_projectile_productivity_result *result,
     struct yt_error *error);
+typedef bool (*yt_projectile_planet_read_fn)(void *context,
+    uint32_t physical_record, struct yt_planet *planet,
+    struct yt_error *error);
+typedef bool (*yt_projectile_planet_write_fn)(void *context,
+    uint32_t physical_record, struct yt_planet *planet,
+    struct yt_error *error);
+typedef bool (*yt_projectile_sector_read_fn)(void *context,
+    uint32_t physical_record, struct yt_sector *sector,
+    struct yt_error *error);
+typedef bool (*yt_projectile_sector_write_fn)(void *context,
+    uint32_t physical_record, struct yt_sector *sector,
+    struct yt_error *error);
+typedef bool (*yt_projectile_planet_present_fn)(void *context,
+    const uint8_t *text, size_t length, struct yt_error *error);
+typedef bool (*yt_projectile_planet_news_fn)(void *context,
+    const uint8_t *text, size_t length, struct yt_error *error);
+typedef bool (*yt_projectile_planet_sound_fn)(void *context,
+    float selector, struct yt_error *error);
+struct yt_projectile_planet_impact_ops {
+	yt_projectile_damage_draw_fn random;
+	yt_projectile_planet_read_fn read_planet;
+	yt_projectile_planet_write_fn write_planet;
+	yt_projectile_sector_read_fn read_sector;
+	yt_projectile_sector_write_fn write_sector;
+	yt_projectile_planet_present_fn present;
+	yt_projectile_planet_news_fn append_news;
+	yt_projectile_planet_sound_fn sound;
+};
+struct yt_projectile_planet_impact_state {
+	struct yt_planet *planet;
+	float updater_ore;
+	float *remaining;
+	uint32_t physical_planet;
+	uint32_t physical_sector;
+};
+bool yt_projectile_planet_ground_row(float ground, uint8_t *row,
+    size_t capacity, size_t *length);
+bool yt_projectile_planet_productivity_row(float old_total, float new_total,
+    uint8_t *row, size_t capacity, size_t *length);
+bool yt_projectile_planet_impact_run(
+    struct yt_projectile_planet_impact_state *state,
+    const struct yt_projectile_planet_impact_ops *ops, void *context,
+    struct yt_error *error);
 bool yt_projectile_player_damage(struct yt_player *target, float *remaining,
     yt_projectile_damage_draw_fn draw, void *context,
     struct yt_projectile_damage_result *result, struct yt_error *error);

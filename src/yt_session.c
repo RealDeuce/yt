@@ -11673,12 +11673,88 @@ command_genesis(struct yt_session *session, struct yt_error *error)
 	return true; /* Unreachable after a successful RUN replacement. */
 }
 
+static bool projectile_damage_draw(void *context, float *value,
+    struct yt_error *error);
+
+static bool
+projectile_planet_read(void *context, uint32_t physical_record,
+    struct yt_planet *planet, struct yt_error *error)
+{
+	return read_planet_physical(context, physical_record, planet, error);
+}
+
+static bool
+projectile_planet_write(void *context, uint32_t physical_record,
+    struct yt_planet *planet, struct yt_error *error)
+{
+	return write_planet_physical(context, physical_record, planet, false,
+	    error);
+}
+
+static bool
+projectile_sector_read(void *context, uint32_t physical_record,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct yt_session *session = context;
+	struct yt_record record;
+
+	if (!yt_database_read(&session->door->game.database,
+	    (size_t)physical_record, &record, error))
+		return false;
+	yt_sector_decode(sector, &record);
+	return true;
+}
+
+static bool
+projectile_sector_write(void *context, uint32_t physical_record,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_database_write(&session->door->game.database,
+	    (size_t)physical_record, &sector->record, error);
+}
+
+static bool
+projectile_planet_present(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	return session_present_text(context, text, length, SESSION_PRESENT_LINE,
+	    "cruise missile planet impact row", error);
+}
+
+static bool
+projectile_planet_news(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	return append_news_bytes(context, text, length, error);
+}
+
+static bool
+projectile_planet_sound(void *context, float selector,
+    struct yt_error *error)
+{
+	return session_sound(context, selector,
+	    "cruise missile planet destruction sound", error);
+}
+
 static bool
 missile_planet_impact(struct yt_session *session, int sector_number,
     struct yt_sector *sector, float *remaining, struct yt_error *error)
 {
+	static const struct yt_projectile_planet_impact_ops impact_ops = {
+		projectile_damage_draw,
+		projectile_planet_read,
+		projectile_planet_write,
+		projectile_sector_read,
+		projectile_sector_write,
+		projectile_planet_present,
+		projectile_planet_news,
+		projectile_planet_sound,
+	};
 	struct yt_planet planet;
 	struct yt_planet updater_planet;
+	struct yt_projectile_planet_impact_state impact_state;
 	bool overflow;
 	int logical_planet;
 	uint32_t physical_planet;
@@ -11693,9 +11769,6 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 	size_t attacker_name_length;
 	size_t direct_length;
 	size_t news_length;
-	char number_one[64];
-	char number_two[64];
-	char row[256];
 
 	if (*remaining <= 0.0f)
 		return true;
@@ -11760,101 +11833,13 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 	if (!session_sound(session, 2.0f,
 	    "cruise missile planet attack sound", error))
 		return false;
-	if (planet.ground_forces != 0.0f) {
-		float ground = planet.ground_forces;
-		float owner = planet.owner;
-		struct yt_planet persistence;
-		struct yt_projectile_ground_result impact;
-
-		if (!yt_projectile_planet_ground_damage(ground, owner, remaining,
-		    projectile_damage_draw, session, &impact, error))
-			return false;
-		ground = impact.ground;
-		owner = impact.owner;
-		if (!read_planet_physical(session, physical_planet, &persistence,
-		    error))
-			return false;
-		if (!yt_projectile_planet_ground_overlay(&persistence, ground,
-		    owner))
-			return false;
-		if (!yt_database_write(&session->door->game.database,
-		    (size_t)physical_planet, &persistence.record, error))
-			return false;
-		qb_str_single(number_one, sizeof(number_one), ground);
-		snprintf(row, sizeof(row), "Ground forces reduced to%s!",
-		    number_one);
-		if (!session_present_text(session, (const uint8_t *)row,
-		    strlen(row), SESSION_PRESENT_LINE,
-		    "cruise missile ground-force row", error)
-		    || !append_news(session, row, error))
-			return false;
-		if (*remaining < 1.0f)
-			return true;
-	}
-	{
-		struct yt_projectile_productivity_result impact;
-
-		if (!yt_projectile_planet_productivity_damage(original_ore,
-		    planet.production, planet.stock, remaining,
-		    projectile_damage_draw, session, &impact, error))
-			return false;
-
-		qb_str_single(number_one, sizeof(number_one),
-		    single_sub(impact.old_total, impact.new_total));
-		qb_str_single(number_two, sizeof(number_two), impact.new_total);
-		snprintf(row, sizeof(row), "Productivity reduced by%s units to%s "
-		    "units!", number_one, number_two);
-		if (!session_present_text(session, (const uint8_t *)row,
-		    strlen(row), SESSION_PRESENT_LINE,
-		    "cruise missile productivity row", error)
-		    || !append_news(session, row, error))
-			return false;
-	}
-	{
-		struct yt_planet persistence;
-
-		if (!read_planet_physical(session, physical_planet, &persistence,
-		    error))
-			return false;
-		if (!yt_projectile_planet_productivity_overlay(&persistence,
-		    planet.production, planet.stock))
-			return false;
-		if (!yt_database_write(&session->door->game.database,
-		    (size_t)physical_planet, &persistence.record, error))
-			return false;
-	}
-	if (planet.production[0] == 0.0f
-	    && planet.production[1] == 0.0f
-	    && planet.production[2] == 0.0f) {
-		struct yt_planet destruction;
-		struct yt_sector unlink;
-
-		if (!read_planet_physical(session, physical_planet, &destruction,
-		    error))
-			return false;
-		if (!yt_projectile_planet_destroy_overlay(&destruction))
-			return false;
-		if (!yt_database_write(&session->door->game.database,
-		    (size_t)physical_planet, &destruction.record, error))
-			return false;
-		if (!scanner_read_sector(session, (float)sector_number, &unlink,
-		    error))
-			return false;
-		if (!yt_projectile_sector_unlink_overlay(&unlink))
-			return false;
-		if (!yt_database_write(&session->door->game.database,
-		    (size_t)physical_sector, &unlink.record, error))
-			return false;
-		if (!session_present_text(session,
-		    (const uint8_t *)"The planet was destroyed!!",
-		    strlen("The planet was destroyed!!"), SESSION_PRESENT_LINE,
-		    "cruise missile planet-destroyed row", error)
-		    || !session_sound(session, 3.0f,
-		    "cruise missile planet destruction sound", error)
-		    || !append_news(session, "The planet was destroyed!!", error))
-			return false;
-	}
-	return true;
+	impact_state.planet = &planet;
+	impact_state.updater_ore = original_ore;
+	impact_state.remaining = remaining;
+	impact_state.physical_planet = physical_planet;
+	impact_state.physical_sector = physical_sector;
+	return yt_projectile_planet_impact_run(&impact_state, &impact_ops,
+	    session, error);
 }
 
 static bool

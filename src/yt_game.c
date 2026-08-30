@@ -4702,6 +4702,9 @@ yt_projectile_planet_ground_damage(float ground, float owner,
 
 	if (remaining == NULL || draw == NULL || result == NULL)
 		return false;
+	result->ground = ground;
+	result->owner = owner;
+	result->iterations = 0U;
 	while (ground > 0.0f && *remaining > 0.0f) {
 		float value;
 
@@ -4711,6 +4714,8 @@ yt_projectile_planet_ground_damage(float ground, float owner,
 		    projectile_single_mul(value, 25.0f));
 		*remaining = projectile_single_sub(*remaining, 1.0f);
 		++iterations;
+		result->ground = ground;
+		result->iterations = iterations;
 	}
 	ground = floorf(ground);
 	if (ground < 1.0f) {
@@ -4768,6 +4773,140 @@ yt_projectile_planet_productivity_damage(float updater_ore,
 	result->old_total = old_total;
 	result->new_total = new_total;
 	result->iterations = iterations;
+	return true;
+}
+
+bool
+yt_projectile_planet_ground_row(float ground, uint8_t *row,
+    size_t capacity, size_t *length)
+{
+	static const uint8_t prefix[] = "Ground forces reduced to";
+	static const uint8_t suffix[] = "!";
+	struct sector_row_builder builder = {row, capacity, 0U};
+
+	if (length != NULL)
+		*length = 0U;
+	if (!sector_row_append(&builder, prefix, sizeof(prefix) - 1U)
+	    || !sector_row_number(&builder, ground, false)
+	    || !sector_row_append(&builder, suffix, sizeof(suffix) - 1U))
+		return false;
+	if (length != NULL)
+		*length = builder.length;
+	return true;
+}
+
+bool
+yt_projectile_planet_productivity_row(float old_total, float new_total,
+    uint8_t *row, size_t capacity, size_t *length)
+{
+	static const uint8_t prefix[] = "Productivity reduced by";
+	static const uint8_t middle[] = " units to";
+	static const uint8_t suffix[] = " units!";
+	struct sector_row_builder builder = {row, capacity, 0U};
+
+	if (length != NULL)
+		*length = 0U;
+	if (!sector_row_append(&builder, prefix, sizeof(prefix) - 1U)
+	    || !sector_row_number(&builder,
+	    projectile_single_sub(old_total, new_total), false)
+	    || !sector_row_append(&builder, middle, sizeof(middle) - 1U)
+	    || !sector_row_number(&builder, new_total, false)
+	    || !sector_row_append(&builder, suffix, sizeof(suffix) - 1U))
+		return false;
+	if (length != NULL)
+		*length = builder.length;
+	return true;
+}
+
+bool
+yt_projectile_planet_impact_run(
+    struct yt_projectile_planet_impact_state *state,
+    const struct yt_projectile_planet_impact_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t destroyed[] = "The planet was destroyed!!";
+	uint8_t row[256];
+	size_t row_length;
+
+	if (state == NULL || ops == NULL || state->planet == NULL
+	    || state->remaining == NULL || ops->random == NULL
+	    || ops->read_planet == NULL || ops->write_planet == NULL
+	    || ops->read_sector == NULL || ops->write_sector == NULL
+	    || ops->present == NULL || ops->append_news == NULL
+	    || ops->sound == NULL)
+		return false;
+
+	if (state->planet->ground_forces != 0.0f) {
+		struct yt_projectile_ground_result impact;
+		struct yt_planet persistence;
+
+		if (!yt_projectile_planet_ground_damage(
+		    state->planet->ground_forces, state->planet->owner,
+		    state->remaining, ops->random, context, &impact, error)) {
+			state->planet->ground_forces = impact.ground;
+			state->planet->owner = impact.owner;
+			return false;
+		}
+		state->planet->ground_forces = impact.ground;
+		state->planet->owner = impact.owner;
+		if (!ops->read_planet(context, state->physical_planet,
+		    &persistence, error)
+		    || !yt_projectile_planet_ground_overlay(&persistence,
+		    impact.ground, impact.owner)
+		    || !ops->write_planet(context, state->physical_planet,
+		    &persistence, error)
+		    || !yt_projectile_planet_ground_row(impact.ground, row,
+		    sizeof(row), &row_length)
+		    || !ops->present(context, row, row_length, error)
+		    || !ops->append_news(context, row, row_length, error))
+			return false;
+		if (*state->remaining < 1.0f)
+			return true;
+	}
+
+	{
+		struct yt_projectile_productivity_result impact;
+		struct yt_planet persistence;
+
+		if (!yt_projectile_planet_productivity_damage(state->updater_ore,
+		    state->planet->production, state->planet->stock,
+		    state->remaining, ops->random, context, &impact, error)
+		    || !yt_projectile_planet_productivity_row(impact.old_total,
+		    impact.new_total, row, sizeof(row), &row_length)
+		    || !ops->present(context, row, row_length, error)
+		    || !ops->append_news(context, row, row_length, error)
+		    || !ops->read_planet(context, state->physical_planet,
+		    &persistence, error)
+		    || !yt_projectile_planet_productivity_overlay(&persistence,
+		    state->planet->production, state->planet->stock)
+		    || !ops->write_planet(context, state->physical_planet,
+		    &persistence, error))
+			return false;
+	}
+
+	if (state->planet->production[0] == 0.0f
+	    && state->planet->production[1] == 0.0f
+	    && state->planet->production[2] == 0.0f) {
+		struct yt_planet destruction;
+		struct yt_sector unlink;
+
+		if (!ops->read_planet(context, state->physical_planet,
+		    &destruction, error)
+		    || !yt_projectile_planet_destroy_overlay(&destruction)
+		    || !ops->write_planet(context, state->physical_planet,
+		    &destruction, error)
+		    || !ops->read_sector(context, state->physical_sector, &unlink,
+		    error)
+		    || !yt_projectile_sector_unlink_overlay(&unlink)
+		    || !ops->write_sector(context, state->physical_sector, &unlink,
+		    error)
+		    || !ops->present(context, destroyed, sizeof(destroyed) - 1U,
+		    error)
+		    || !ops->sound(context, 3.0f, error)
+		    || !ops->append_news(context, destroyed,
+		    sizeof(destroyed) - 1U, error))
+			return false;
+	}
 	return true;
 }
 
