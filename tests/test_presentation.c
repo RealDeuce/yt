@@ -12457,8 +12457,10 @@ test_planet_take_one_accepted_cycle_presentation(void)
 }
 
 static bool
-planet_take_one_stock_error_cycle_run(struct physical_viewer_join *viewer,
-    bool ansi, size_t *prompt_end, size_t *editor_end, size_t *body_end)
+planet_take_one_error_cycle_run(struct physical_viewer_join *viewer,
+    bool ansi, const uint8_t *amount, size_t amount_length,
+    const uint8_t *message, size_t message_length, size_t *prompt_end,
+    size_t *editor_end, size_t *body_end)
 {
 	static const uint8_t free_holds[] =
 	    "You have 65 free cargo holds.";
@@ -12466,14 +12468,13 @@ planet_take_one_stock_error_cycle_run(struct physical_viewer_join *viewer,
 	    "Time: 14:59  Planet command (?=help) [A]? ";
 	static const uint8_t command[] = "1";
 	static const uint8_t amount_prompt[] = "How much [ 65 ]? ";
-	static const uint8_t amount[] = "102";
-	static const uint8_t stock_error[] =
-	    "They don't have that many.";
 	const char *title = yt_planet_take_one_title(1);
 	struct viewer_pager_join *join = &viewer->join;
 	struct yt_present_result result;
 
-	if (prompt_end == NULL || editor_end == NULL || body_end == NULL
+	if (amount == NULL || amount_length >= sizeof(join->accumulator)
+	    || message == NULL || prompt_end == NULL || editor_end == NULL
+	    || body_end == NULL
 	    || title == NULL || strcmp(title, "<Take Ore>") != 0)
 		return false;
 	join->presentation = state(ansi);
@@ -12509,9 +12510,10 @@ planet_take_one_stock_error_cycle_run(struct physical_viewer_join *viewer,
 		return false;
 	yt_pager_editor_enter(&join->pager, join->accumulator,
 	    sizeof(join->accumulator));
-	memcpy(join->accumulator, amount, sizeof(amount));
-	if (yt_present_editor_echo(amount, sizeof(amount) - 1U,
-	    amount, sizeof(amount) - 1U, &join->presentation, &result)
+	memcpy(join->accumulator, amount, amount_length);
+	join->accumulator[amount_length] = '\0';
+	if (yt_present_editor_echo(amount, amount_length,
+	    amount, amount_length, &join->presentation, &result)
 	    != YT_PRESENT_OK)
 		return false;
 	viewer_pager_capture_result(join, &result);
@@ -12524,8 +12526,7 @@ planet_take_one_stock_error_cycle_run(struct physical_viewer_join *viewer,
 	join->queue[0] = '\0';
 	join->presentation.bold = 1.0f;
 	join->presentation.blink = 1.0f;
-	if (!normal_exit_b05d(join, stock_error,
-	    sizeof(stock_error) - 1U, 0.0f))
+	if (!normal_exit_b05d(join, message, message_length, 0.0f))
 		return false;
 	*body_end = join->remote_length;
 	join->pager.line_count = 0.0f;
@@ -12543,6 +12544,8 @@ planet_take_one_stock_error_cycle_run(struct physical_viewer_join *viewer,
 static void
 test_planet_take_one_stock_error_cycle_presentation(void)
 {
+	static const uint8_t amount[] = "102";
+	static const uint8_t message[] = "They don't have that many.";
 	static const uint8_t ansi[] =
 	    "\r\nYou have 65 free cargo holds.\n\r"
 	    "\r\nTime: 14:59  Planet command (?=help) [A]? 1\r\n"
@@ -12575,8 +12578,9 @@ test_planet_take_one_stock_error_cycle_presentation(void)
 		fixture_viewer_initialize(&viewer, &stream,
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", ansi_mode, remote, sizeof(remote));
-		CHECK(planet_take_one_stock_error_cycle_run(&viewer,
-		    ansi_mode, &prompt_end, &editor_end, &body_end));
+		CHECK(planet_take_one_error_cycle_run(&viewer, ansi_mode,
+		    amount, sizeof(amount) - 1U, message, sizeof(message) - 1U,
+		    &prompt_end, &editor_end, &body_end));
 		CHECK(prompt_end == 77U && editor_end == 80U
 		    && body_end == (ansi_mode ? 162U : 148U)
 		    && viewer.join.remote_length == expected_length
@@ -12605,6 +12609,87 @@ test_planet_take_one_stock_error_cycle_presentation(void)
 		    && viewer.join.pager.line_count == 2.0f
 		    && viewer.join.pager.nonstop == 0.0f
 		    && strcmp(viewer.join.accumulator, "102") == 0
+		    && viewer.join.queue_position == 0U
+		    && viewer.join.queue_length == 0U
+		    && viewer.join.sample_calls == 7U
+		    && viewer.join.event_count == 35U
+		    && stream.eof_checks == 0U && stream.key_checks == 0U
+		    && stream.read_count == 0U && stream.line_count == 0U
+		    && !stream.file_open && !viewer.join.file_open
+		    && viewer.input.file == NULL && viewer.close_calls == 0U
+		    && viewer.open_calls == 0U);
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
+static void
+test_planet_take_one_capacity_error_cycle_presentation(void)
+{
+	static const uint8_t amount[] = "66";
+	static const uint8_t message[] = "You can't take that much!";
+	static const uint8_t ansi[] =
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? 1\r\n"
+	    "\r\n<Take Ore>\n\r\r\nHow much [ 65 ]? 66\r\n"
+	    "\r\n\x1b[0;36;40;5;1mYou can't take that much!\n\r"
+	    "\x1b[0;36;40m\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? ";
+	static const uint8_t plain[] =
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? 1\r\n"
+	    "\r\n<Take Ore>\n\r\r\nHow much [ 65 ]? 66\r\n"
+	    "\r\nYou can't take that much!\n\r"
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? ";
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	uint8_t remote[280];
+	size_t prompt_end;
+	size_t editor_end;
+	size_t body_end;
+	int pass;
+
+	for (pass = 0; pass < 2; ++pass) {
+		bool ansi_mode = pass == 0;
+		const uint8_t *expected = ansi_mode ? ansi : plain;
+		size_t expected_length = ansi_mode
+		    ? sizeof(ansi) - 1U : sizeof(plain) - 1U;
+
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", ansi_mode, remote, sizeof(remote));
+		CHECK(planet_take_one_error_cycle_run(&viewer, ansi_mode,
+		    amount, sizeof(amount) - 1U, message, sizeof(message) - 1U,
+		    &prompt_end, &editor_end, &body_end));
+		CHECK(prompt_end == 77U && editor_end == 80U
+		    && body_end == (ansi_mode ? 160U : 146U)
+		    && viewer.join.remote_length == expected_length
+		    && expected_length == (ansi_mode ? 247U : 223U)
+		    && memcmp(remote, expected, expected_length) == 0
+		    && viewer_bytes_fnv1a64(remote, expected_length)
+		    == (ansi_mode ? UINT64_C(0x502635455717481f)
+		    : UINT64_C(0xe3e2fe6bbbe431df))
+		    && viewer.join.local_row_count == 13U
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == UINT64_C(0xc1a18b60eab17766)
+		    && viewer.join.local_fragment_length == 42U
+		    && memcmp(viewer.join.local_fragment,
+		    "Time: 14:59  Planet command (?=help) [A]? ", 42U) == 0
+		    && viewer.join.local_color_count == (ansi_mode ? 23U : 7U)
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == (ansi_mode ? UINT64_C(0x545b7944971a4be2)
+		    : UINT64_C(0xc68cf2d74ffb7ffa))
+		    && viewer.join.presentation.foreground == 6.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold == (ansi_mode ? 0.0f : 1.0f)
+		    && viewer.join.presentation.blink == (ansi_mode ? 0.0f : 1.0f)
+		    && viewer.join.presentation.cached_foreground
+		    == (ansi_mode ? 6.0f : 0.0f)
+		    && viewer.join.pager.foreground == 6
+		    && viewer.join.pager.line_count == 2.0f
+		    && viewer.join.pager.nonstop == 0.0f
+		    && strcmp(viewer.join.accumulator, "66") == 0
 		    && viewer.join.queue_position == 0U
 		    && viewer.join.queue_length == 0U
 		    && viewer.join.sample_calls == 7U
@@ -17171,6 +17256,7 @@ main(void)
 	test_planet_rename_protected_cycle_presentation();
 	test_planet_take_one_accepted_cycle_presentation();
 	test_planet_take_one_stock_error_cycle_presentation();
+	test_planet_take_one_capacity_error_cycle_presentation();
 	test_planet_leave_cycle_presentation();
 	test_planet_thrusters_accepted_cycle_presentation();
 	test_planet_movement_accepted_cycle_presentation();
