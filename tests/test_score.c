@@ -14392,6 +14392,12 @@ check_planet_take_all_overlays(void)
 	yt_planet_take_one_planet_overlay(&planet, 1, 101.75, 3.0f);
 	if (player.ore != 43.0f || planet.stock[0] != 98.75f)
 		return false;
+	player.ore = 10.0f;
+	planet.stock[0] = 999.0f;
+	yt_planet_take_one_player_overlay(&player, 1, 65.0f);
+	yt_planet_take_one_planet_overlay(&planet, 1, 101.0, 65.0f);
+	if (player.ore != 75.0f || planet.stock[0] != 36.0f)
+		return false;
 	player.plasma = 4.0f;
 	planet.plasma = 999.0f;
 	yt_planet_take_one_player_overlay(&player, 9, 3.0f);
