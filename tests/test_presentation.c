@@ -1539,6 +1539,9 @@ static const char *const startup_ascii_lines[] = {
 struct physical_viewer_join {
 	struct viewer_pager_join join;
 	struct yt_text_input input;
+	const uint8_t *fixture;
+	size_t fixture_length;
+	const char *expected_path;
 	size_t close_calls;
 	size_t open_calls;
 };
@@ -1563,7 +1566,29 @@ physical_viewer_open(void *context, const char *path, struct yt_error *error)
 	bool ok;
 
 	++startup->open_calls;
-	ok = yt_text_input_open(&startup->input, path, error);
+	if (startup->fixture == NULL)
+		ok = yt_text_input_open(&startup->input, path, error);
+	else {
+		CHECK(startup->expected_path != NULL
+		    && strcmp(path, startup->expected_path) == 0
+		    && startup->input.file == NULL);
+		if (startup->expected_path == NULL
+		    || strcmp(path, startup->expected_path) != 0
+		    || startup->input.file != NULL)
+			return false;
+		startup->input.file = tmpfile();
+		ok = startup->input.file != NULL
+		    && fwrite(startup->fixture, 1U, startup->fixture_length,
+		    startup->input.file) == startup->fixture_length
+		    && fseek(startup->input.file, 0L, SEEK_SET) == 0;
+		if (ok)
+			(void)snprintf(startup->input.path,
+			    sizeof(startup->input.path), "%s", path);
+		else if (startup->input.file != NULL) {
+			(void)fclose(startup->input.file);
+			startup->input.file = NULL;
+		}
+	}
 	if (ok)
 		startup->join.file_open = true;
 	return ok;
@@ -2008,6 +2033,214 @@ test_instruction_physical_viewer_join(void)
 		    && memcmp(viewer.join.source, final_row,
 		    sizeof(final_row) - 1U) == 0
 		    && viewer.join.accumulator[0] == '\0'
+		    && viewer.join.queue_length == 0U);
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
+static const uint8_t retained_current_news[] =
+    "22:47:29 07-22-2026: Maintenance Program Ran (Revision 03/14/94)\r\n"
+    "  -  The Wanderer is missing or has been destroyed!\r\n"
+    "  -  The Wanderer regenerated with P.H.O.E.N.I.X. device!\r\n"
+    "  -  The Xannor have made a Planet!\r\n"
+    "The Xannor home base now has a planet!\r\n"
+    "  -  Xannor report:\r\n"
+    "Calculated Dynamic Xannor Regeneration is 0 fighters.\r\n"
+    "  -  Mercenary Report:\r\n"
+    "  -  The Mercenaries have built a home base using a captured "
+    "Genesis Device!\r\n"
+    "\x1a";
+
+static const uint8_t retained_yesterday_news[] =
+    "22:47:23 07-22-2026 **********************\r\n"
+    "22:47:23 07-22-2026 **********************\r\n"
+    "22:47:23 07-22-2026 **                  **\r\n"
+    "22:47:23 07-22-2026 ** Game Initialized **\r\n"
+    "22:47:23 07-22-2026 **                  **\r\n"
+    "22:47:23 07-22-2026 **********************\r\n"
+    "22:47:23 07-22-2026 **********************\r\n"
+    "\x1a";
+
+static void
+newspaper_viewer_initialize(struct physical_viewer_join *viewer,
+    struct yt_file_viewer_stream_state *stream, const uint8_t *fixture,
+    size_t fixture_length, const char *path, bool ansi, uint8_t *remote,
+    size_t remote_capacity)
+{
+	viewer_pager_initialize(&viewer->join, stream, 0U, 0.0f, "", 0U);
+	viewer->join.presentation = state(ansi);
+	viewer->join.presentation.foreground = 1.0f;
+	viewer->join.presentation.cached_foreground = ansi ? 1.0f : 0.0f;
+	viewer->join.pager.foreground = 1;
+	viewer->join.pager.nonstop = 0.0f;
+	viewer->join.accumulator[0] = '\0';
+	viewer->join.queue[0] = '\0';
+	viewer->join.queue_position = 0U;
+	viewer->join.queue_length = 0U;
+	viewer->join.remote_output = remote;
+	viewer->join.remote_capacity = remote_capacity;
+	viewer->fixture = fixture;
+	viewer->fixture_length = fixture_length;
+	viewer->expected_path = path;
+	stream->path = path;
+	stream->play.saved_foreground = 1.0f;
+	stream->play.saved_pager_foreground = 1;
+	yt_text_input_init(&viewer->input);
+}
+
+static bool
+newspaper_viewer_run(struct physical_viewer_join *viewer,
+    struct yt_file_viewer_stream_state *stream, uint8_t response)
+{
+	static const uint8_t prompt[] =
+	    "Do you want to read [T]oday's or [Y]esterday's news? [T/Y] -=> ";
+	struct yt_present_result result;
+
+	if (yt_present_line(NULL, 0U, &viewer->join.presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(&viewer->join, &result);
+	viewer->join.pager.newline_flag = 1.0f;
+	if (!yt_paged_row_run(&viewer->join.pager,
+	    &viewer->join.presentation, &viewer->join.key_state, prompt,
+	    sizeof(prompt) - 1U, &viewer_pager_ops, &viewer->join))
+		return false;
+	yt_pager_editor_enter(&viewer->join.pager, viewer->join.accumulator,
+	    sizeof(viewer->join.accumulator));
+	viewer->join.accumulator[0] = (char)response;
+	viewer->join.accumulator[1] = '\0';
+	if (yt_present_editor_echo(&response, 1U, &response, 1U,
+	    &viewer->join.presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(&viewer->join, &result);
+	if (yt_present_line(NULL, 0U, &viewer->join.presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(&viewer->join, &result);
+	return physical_viewer_run(viewer, stream, NULL);
+}
+
+static void
+test_newspaper_physical_viewer_join(void)
+{
+	static const uint8_t today_final[] =
+	    "  -  The Mercenaries have built a home base using a captured "
+	    "Genesis Device!";
+	static const uint8_t yesterday_final[] =
+	    "22:47:23 07-22-2026 **********************";
+	static const struct {
+		uint8_t response;
+		bool ansi;
+		const uint8_t *fixture;
+		size_t fixture_length;
+		uint64_t fixture_fnv;
+		const char *path;
+		size_t lines;
+		size_t remote_length;
+		uint64_t remote_fnv;
+		size_t local_rows;
+		uint64_t local_fnv;
+		size_t color_count;
+		size_t color_2;
+		size_t color_4;
+		size_t color_7;
+		size_t color_14;
+		int final_local_foreground;
+		float final_cached_foreground;
+		float final_bold;
+		const uint8_t *final_row;
+		size_t final_length;
+	} cases[] = {
+		{'T', true, retained_current_news,
+		    sizeof(retained_current_news) - 1U,
+		    UINT64_C(0xfb0c273ced751bf2), "ytnews.dat", 9U,
+		    635U, UINT64_C(0xac361e7754a450cb), 15U,
+		    UINT64_C(0xcad0a9fb8ef9163e), 27U, 3U, 7U, 11U,
+		    6U, 4, 1.0f, 0.0f, today_final,
+		    sizeof(today_final) - 1U},
+		{'T', false, retained_current_news,
+		    sizeof(retained_current_news) - 1U,
+		    UINT64_C(0xfb0c273ced751bf2), "ytnews.dat", 9U,
+		    523U, UINT64_C(0x94346bf3d8d4e0de), 15U,
+		    UINT64_C(0xcad0a9fb8ef9163e), 11U, 0U, 0U, 11U,
+		    0U, 7, 0.0f, 1.0f, today_final,
+		    sizeof(today_final) - 1U},
+		{'Y', true, retained_yesterday_news,
+		    sizeof(retained_yesterday_news) - 1U,
+		    UINT64_C(0x05a68e56016562c5), "YTYNEWS.DAT", 7U,
+		    418U, UINT64_C(0x9a9613242a316ba3), 13U,
+		    UINT64_C(0x89bb3b2737cdd9d9), 23U, 7U, 7U, 9U,
+		    0U, 4, 1.0f, 0.0f, yesterday_final,
+		    sizeof(yesterday_final) - 1U},
+		{'Y', false, retained_yesterday_news,
+		    sizeof(retained_yesterday_news) - 1U,
+		    UINT64_C(0x05a68e56016562c5), "YTYNEWS.DAT", 7U,
+		    398U, UINT64_C(0xe3aacbb5cc2624f2), 13U,
+		    UINT64_C(0x89bb3b2737cdd9d9), 9U, 0U, 0U, 9U,
+		    0U, 7, 0.0f, 0.0f, yesterday_final,
+		    sizeof(yesterday_final) - 1U},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	uint8_t remote[800];
+	size_t pass;
+
+	CHECK(sizeof(retained_current_news) - 1U == 434U
+	    && sizeof(retained_yesterday_news) - 1U == 309U);
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		CHECK(viewer_bytes_fnv1a64(cases[pass].fixture,
+		    cases[pass].fixture_length) == cases[pass].fixture_fnv);
+		newspaper_viewer_initialize(&viewer, &stream,
+		    cases[pass].fixture, cases[pass].fixture_length,
+		    cases[pass].path, cases[pass].ansi, remote,
+		    sizeof(remote));
+		CHECK(newspaper_viewer_run(&viewer, &stream,
+		    cases[pass].response));
+		CHECK(viewer.join.remote_length == cases[pass].remote_length
+		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+		    == cases[pass].remote_fnv);
+		CHECK(viewer.join.local_row_count == cases[pass].local_rows
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == cases[pass].local_fnv
+		    && viewer.join.local_fragment_length == 0U
+		    && viewer.join.local_color_count == cases[pass].color_count
+		    && viewer_local_color_count(&viewer.join, 2, 0)
+		    == cases[pass].color_2
+		    && viewer_local_color_count(&viewer.join, 4, 0)
+		    == cases[pass].color_4
+		    && viewer_local_color_count(&viewer.join, 7, 0)
+		    == cases[pass].color_7
+		    && viewer_local_color_count(&viewer.join, 14, 0)
+		    == cases[pass].color_14
+		    && viewer.join.capture.last_local_foreground
+		    == cases[pass].final_local_foreground);
+		CHECK(viewer.join.presentation.foreground == 1.0f
+		    && viewer.join.presentation.cached_foreground
+		    == cases[pass].final_cached_foreground
+		    && viewer.join.presentation.bold == cases[pass].final_bold
+		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.pager.foreground == 1
+		    && viewer.join.pager.line_count == 0.0f
+		    && viewer.join.pager.nonstop == 0.0f
+		    && viewer.join.pager.key[0] == '\0');
+		CHECK(viewer.join.position == cases[pass].lines
+		    && stream.eof_checks == cases[pass].lines + 1U
+		    && stream.key_checks == cases[pass].lines + 1U
+		    && stream.read_count == cases[pass].lines
+		    && stream.line_count == cases[pass].lines
+		    && viewer.join.sample_calls == cases[pass].lines + 2U
+		    && viewer.join.response_calls == 0U
+		    && viewer.join.direct_calls == 2U
+		    && viewer.join.event_count == 5U * (cases[pass].lines + 2U)
+		    && !stream.file_open && !viewer.join.file_open
+		    && viewer.input.file == NULL && viewer.close_calls == 2U
+		    && viewer.open_calls == 1U
+		    && viewer.join.source_length == cases[pass].final_length
+		    && memcmp(viewer.join.source, cases[pass].final_row,
+		    cases[pass].final_length) == 0
+		    && viewer.join.accumulator[0]
+		    == (char)cases[pass].response
 		    && viewer.join.queue_length == 0U);
 		yt_text_input_destroy(&viewer.input);
 	}
@@ -11919,6 +12152,7 @@ main(void)
 	test_file_viewer_pager_join();
 	test_startup_ascii_physical_join();
 	test_instruction_physical_viewer_join();
+	test_newspaper_physical_viewer_join();
 	test_sector_private_pager();
 	test_sector_scanner_rows();
 	test_radio_private_pager();
