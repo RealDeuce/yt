@@ -76,7 +76,8 @@ struct yt_session {
 	struct yt_timed_wait_state wait;
 	struct yt_input_value input_residue;
 	char team_audit_message[YT_COMMAND_SIZE];
-	char hostile_owner_label[80];
+	uint8_t hostile_owner_label[160];
+	size_t hostile_owner_label_length;
 	struct yt_team_loader_cache team_cache;
 };
 
@@ -2493,8 +2494,13 @@ static bool
 write_planet_physical(struct yt_session *session, uint32_t physical_record,
     struct yt_planet *planet, bool encode, struct yt_error *error)
 {
-	if (encode)
+	if (encode) {
+		uint8_t stored_name[YT_TEXT_FIELD_SIZE];
+
+		memcpy(stored_name, planet->record.bytes, sizeof(stored_name));
 		yt_planet_encode(planet);
+		memcpy(planet->record.bytes, stored_name, sizeof(stored_name));
+	}
 	return yt_database_write(&session->door->game.database,
 	    (size_t)physical_record, &planet->record, error);
 }
@@ -2671,47 +2677,144 @@ sector_force_friendly(struct yt_session *session,
 }
 
 static bool
-display_sector_one(struct yt_session *session, int logical_sector,
+scanner_read_sector(struct yt_session *session, float logical_sector,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct yt_record record;
+	float expression = single_add(session->door->game.config.sector_offset,
+	    logical_sector);
+	uint32_t physical = qb_brun_random_record_number(expression);
+
+	if (!yt_database_read(&session->door->game.database, (size_t)physical,
+	    &record, error))
+		return false;
+	yt_sector_decode(sector, &record);
+	return true;
+}
+
+static bool
+scanner_read_port(struct yt_session *session, float logical_port,
+    struct yt_port *port, uint32_t *physical_record, struct yt_error *error)
+{
+	struct yt_record record;
+	float expression = single_add(session->door->game.config.port_offset,
+	    logical_port);
+	uint32_t physical = qb_brun_random_record_number(expression);
+
+	if (!yt_database_read(&session->door->game.database, (size_t)physical,
+	    &record, error))
+		return false;
+	yt_port_decode(port, &record);
+	if (physical_record != NULL)
+		*physical_record = physical;
+	return true;
+}
+
+static bool
+scanner_write_port(struct yt_session *session, uint32_t physical_record,
+    struct yt_port *port, struct yt_error *error)
+{
+	yt_record_set_number_if_changed(&port->record, YT_F93, port->sector);
+	return yt_database_write(&session->door->game.database,
+	    (size_t)physical_record, &port->record, error);
+}
+
+static bool
+scanner_read_planet(struct yt_session *session, uint32_t physical_record,
+    struct yt_planet *planet, struct yt_error *error)
+{
+	struct yt_record record;
+
+	if (!yt_database_read(&session->door->game.database,
+	    (size_t)physical_record, &record, error))
+		return false;
+	yt_planet_decode(planet, &record);
+	return true;
+}
+
+static bool
+scanner_read_player(struct yt_session *session, float basic_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct yt_record record;
+	uint32_t physical = qb_brun_random_record_number(basic_record);
+
+	if (!yt_database_read(&session->door->game.database, (size_t)physical,
+	    &record, error))
+		return false;
+	yt_player_decode(player, &record);
+	return true;
+}
+
+static bool
+scanner_read_current_player(struct yt_session *session,
+    struct yt_error *error)
+{
+	return yt_game_read_player(&session->door->game, session->player_record,
+	    &session->player, error);
+}
+
+static bool
+scanner_read_team_overlay(struct yt_session *session, float team,
+    struct yt_sector *overlay, struct yt_error *error)
+{
+	struct yt_record record;
+	float expression = single_add(session->door->game.config.sector_offset,
+	    team);
+	uint32_t physical = qb_brun_random_record_number(expression);
+
+	if (!yt_database_read(&session->door->game.database, (size_t)physical,
+	    &record, error))
+		return false;
+	yt_sector_decode(overlay, &record);
+	return true;
+}
+
+static bool
+display_sector_one(struct yt_session *session, float logical_sector,
     struct yt_sector_pager_state *private_pager, struct yt_error *error)
 {
 	struct yt_sector sector;
 	char sector_number[64];
-	char row[128];
-	char warp_row[512];
-	size_t warp_length;
-	char warning[128];
+	uint8_t row[512];
+	size_t row_length;
 	size_t slot;
 	int basic;
+	bool first_visible = true;
 	bool first_warp = true;
 
-	if (!yt_game_read_sector(&session->door->game, logical_sector,
-	    &sector, error))
+	session->current_sector_record = logical_sector;
+	if (!scanner_read_sector(session, logical_sector, &sector, error))
 		return false;
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "sector leading blank", error))
 		return false;
 	if (qb_str_single(sector_number, sizeof(sector_number),
-	    (float)logical_sector) < 0)
+	    logical_sector) < 0)
 		return false;
-	if (snprintf(row, sizeof(row), "Sector:%s", sector_number) < 0
-	    || !session_present_text(session, (const uint8_t *)row, strlen(row),
+	row_length = sizeof("Sector:") - 1U;
+	memcpy(row, "Sector:", row_length);
+	memcpy(row + row_length, sector_number, strlen(sector_number));
+	row_length += strlen(sector_number);
+	if (!session_present_text(session, row, row_length,
 	    SESSION_PRESENT_LINE, "sector number row", error))
 		return false;
 	yt_sector_pager_add(private_pager, 1.0f);
-	if (((float)logical_sector == session->black_hole[0]
-	    || (float)logical_sector == session->black_hole[1])
+	if ((logical_sector == session->black_hole[0]
+	    || logical_sector == session->black_hole[1])
 	    && !session_attention(session,
 	    "** Space-time disruption detected! **",
 	    "sector disruption attention", error))
 		return false;
-	if ((float)logical_sector == session->black_hole[0]
-	    || (float)logical_sector == session->black_hole[1])
+	if (logical_sector == session->black_hole[0]
+	    || logical_sector == session->black_hole[1])
 		yt_sector_pager_add(private_pager, 1.0f);
 	if (sector.mines != 0.0f) {
-		snprintf(warning, sizeof(warning),
-		    "** WARNING! SECTOR HAS %.9g MINES! **",
-		    (double)sector.mines);
-		if (!session_attention(session, warning,
+		if (!yt_sector_mine_warning_row(sector.mines, row,
+		    sizeof(row) - 1U, &row_length))
+			return false;
+		row[row_length] = '\0';
+		if (!session_attention(session, (const char *)row,
 		    "sector mine attention", error))
 			return false;
 		for (slot = 0; slot < 3; ++slot) {
@@ -2723,136 +2826,199 @@ display_sector_one(struct yt_session *session, int logical_sector,
 	}
 	if (sector.port > 0.0f) {
 		struct yt_port port;
-		int logical_port = (int)sector.port;
-		static const char *commodities[3] = {
-			"Ore", "Organics", "Equipment"
-		};
-		int commodity;
+		uint32_t physical_port;
 
-		if (!yt_game_read_port(&session->door->game, logical_port, &port,
+		if (!scanner_read_port(session, sector.port, &port,
+		    &physical_port, error)
+		    || !yt_sector_port_row(&port, row, sizeof(row), &row_length,
+		    error)
+		    || !session_present_text(session, row, row_length,
+		    SESSION_PRESENT_LINE, "sector port row", error))
+			return false;
+		port.sector = logical_sector;
+		if (!scanner_write_port(session, physical_port, &port,
 		    error))
 			return false;
-		port.sector = (float)logical_sector;
-		if (!yt_game_write_port(&session->door->game, logical_port, &port,
-		    error))
-			return false;
-		commodity = (int)port.commodity_class - 1;
-		yt_outf("Port: %s", port.name);
-		if (commodity >= 0 && commodity < 3)
-			yt_outf(" (sells %s)", commodities[commodity]);
-		yt_out("\r\n");
 		yt_sector_pager_add(private_pager, 1.0f);
 	}
+	if (!scanner_read_sector(session, logical_sector, &sector, error))
+		return false;
 	if (sector.planet > 0.0f) {
 		struct yt_planet planet;
+		float expression = single_add(
+		    session->door->game.config.planet_offset, sector.planet);
+		uint32_t physical_planet =
+		    qb_brun_random_record_number(expression);
+		float saved_foreground;
+		int saved_pager_foreground;
 
-		if (!planet_update(session, (int)sector.planet, &planet, error))
+		if (!planet_update_cached_physical(session, physical_planet,
+		    &planet, NULL, error)
+		    || !scanner_read_planet(session, physical_planet, &planet,
+		    error)
+		    || !yt_sector_planet_row(&planet, row, sizeof(row),
+		    &row_length, error))
 			return false;
-		yt_outf("Planet: %s\r\n", planet.name);
+		saved_foreground = session->presentation.foreground;
+		saved_pager_foreground = session->pager.foreground;
+		session->presentation.foreground = 3.0f;
+		session->pager.foreground = 3;
+		if (!session_present_text(session, row, row_length,
+		    SESSION_PRESENT_BOLD_LINE, "sector planet row", error))
+			return false;
+		session->presentation.foreground = saved_foreground;
+		session->pager.foreground = saved_pager_foreground;
 		yt_sector_pager_add(private_pager, 1.0f);
+		if (!scanner_read_sector(session, logical_sector, &sector, error))
+			return false;
 	}
 	for (basic = YT_PLAYER_FIRST;
 	    basic <= (int)session->door->game.config.sector_offset; ++basic) {
 		float random_value;
 
-		if (basic == session->player_record
-		    || session->sector_cache[basic] != (float)logical_sector)
+		if (!yt_sector_candidate_eligible(basic, session->player_record,
+		    session->sector_cache[basic], logical_sector))
 			continue;
 		if (!yt_random_next(&session->door->game.random, &random_value,
 		    error))
 			return false;
-		if (session->cloak_cache[basic] != 0.0f) {
-			if (random_value <= session->cloak_cache[basic])
-				continue;
-			yt_out_line(
-			    "You detect the shimmering of a cloaking device!");
+		if (yt_sector_cloak_revealed(random_value,
+		    session->cloak_cache[basic])) {
+			static const uint8_t shimmer[] =
+			    "You detect the shimmering of a cloaking device!";
+
+			if (!session_present_text(session, shimmer,
+			    sizeof(shimmer) - 1U, SESSION_PRESENT_BOLD_LINE,
+			    "sector cloak shimmer row", error))
+				return false;
 			yt_sector_pager_add(private_pager, 1.0f);
 			session->cloak_cache[basic] = 0.0f;
 			if (!session_sound(session, 4.0f,
 			    "sector cloak-reveal sound", error))
 				return false;
 		}
-		{
+		if (session->cloak_cache[basic] == 0.0f) {
 			struct yt_player other;
 
-			if (!yt_game_read_player(&session->door->game, basic,
-			    &other, error))
-				return false;
-			yt_outf("Ship: %s  Team %.9g  Fighters %.9g"
-			    "  Shields %.9g\r\n", other.name,
-			    (double)other.team, (double)other.fighters,
-			    (double)other.shields);
 			yt_sector_pager_add(private_pager, 1.0f);
+			if (first_visible) {
+				static const uint8_t heading[] = "Other Ships: ";
+
+				if (!session_present_text(session, heading,
+				    sizeof(heading) - 1U,
+				    SESSION_PRESENT_BOLD_LINE,
+				    "sector other-ships heading", error))
+					return false;
+				first_visible = false;
+			}
+			if (!yt_game_read_player(&session->door->game, basic,
+			    &other, error)
+			    || !yt_sector_player_row(&other, row, sizeof(row),
+			    &row_length, error)
+			    || !session_present_text(session, row, row_length,
+			    SESSION_PRESENT_LINE, "sector visible-player row", error))
+				return false;
 		}
 	}
+	if (!scanner_read_sector(session, logical_sector, &sector, error))
+		return false;
 	if (sector.fighters != 0.0f) {
+		static const uint8_t heading[] = "Fighters in sector:";
+		struct yt_player owner;
+		struct yt_sector team_overlay;
+		const struct yt_player *owner_pointer = NULL;
+		const struct yt_sector *team_pointer = NULL;
+		bool scratch_changed;
 		bool owner_team_nonzero = false;
+		size_t scratch_length = session->hostile_owner_label_length;
 
-		if (sector.fighter_owner == -1.0f) {
-			(void)snprintf(session->hostile_owner_label,
-			    sizeof(session->hostile_owner_label), "%s", "The Xannor");
-			yt_outf("Deployed Fighters: %.9g (The Xannor)\r\n",
-			    (double)sector.fighters);
-		}
-		else if (sector.fighter_owner == -2.0f) {
-			(void)snprintf(session->hostile_owner_label,
-			    sizeof(session->hostile_owner_label), "%s",
-			    "The Mercenaries");
-			yt_outf("Deployed Fighters: %.9g (The Mercenaries)\r\n",
-			    (double)sector.fighters);
-		}
-		else if (sector.fighter_owner
-		    == (float)session->player_record) {
-			(void)snprintf(session->hostile_owner_label,
-			    sizeof(session->hostile_owner_label), "%s", "Yours");
-			yt_outf("Deployed Fighters: %.9g (Yours)\r\n",
-			    (double)sector.fighters);
-		}
-		else {
-			struct yt_player owner;
-
-			if (!yt_game_read_player(&session->door->game,
-			    (int)sector.fighter_owner, &owner, error))
+		if (!session_present_text(session, heading,
+		    sizeof(heading) - 1U, SESSION_PRESENT_BOLD_RAW,
+		    "sector fighter heading", error))
+			return false;
+		if (sector.fighter_owner != -1.0f
+		    && sector.fighter_owner != -2.0f
+		    && sector.fighter_owner != (float)session->player_record) {
+			if (!scanner_read_player(session, sector.fighter_owner,
+			    &owner, error))
 				return false;
-			(void)snprintf(session->hostile_owner_label,
-			    sizeof(session->hostile_owner_label), "%s", owner.name);
-			yt_outf("Deployed Fighters: %.9g (%s)\r\n",
-			    (double)sector.fighters, owner.name);
+			owner_pointer = &owner;
 			owner_team_nonzero = owner.team != 0.0f;
+			if (owner_team_nonzero) {
+				uint8_t owner_name[YT_TEXT_FIELD_SIZE];
+				size_t owner_name_length;
+				char team_number[64];
+				int team_number_length;
+				static const uint8_t team_prefix[] = " Team [";
+
+				if (!yt_player_stored_name(&owner, owner_name,
+				    &owner_name_length, error))
+					return false;
+				team_number_length = qb_str_single(team_number,
+				    sizeof(team_number), owner.team);
+				if (team_number_length < 1
+				    || owner_name_length + sizeof(team_prefix) - 1U
+				    + (size_t)team_number_length >
+				    sizeof(session->hostile_owner_label))
+					return false;
+				memcpy(session->hostile_owner_label, owner_name,
+				    owner_name_length);
+				scratch_length = owner_name_length;
+				memcpy(session->hostile_owner_label + scratch_length,
+				    team_prefix, sizeof(team_prefix) - 1U);
+				scratch_length += sizeof(team_prefix) - 1U;
+				memcpy(session->hostile_owner_label + scratch_length,
+				    team_number + 1,
+				    (size_t)team_number_length - 1U);
+				scratch_length += (size_t)team_number_length - 1U;
+				session->hostile_owner_label[scratch_length++] = ']';
+				session->hostile_owner_label_length = scratch_length;
+				if (!scanner_read_team_overlay(session, owner.team,
+				    &team_overlay, error))
+					return false;
+				team_pointer = &team_overlay;
+			}
 		}
+		if (!yt_sector_fighter_row(&sector, session->player_record,
+		    owner_pointer, team_pointer, row, sizeof(row), &row_length,
+		    session->hostile_owner_label,
+		    sizeof(session->hostile_owner_label), &scratch_length,
+		    &scratch_changed, error)
+		    || !session_present_text(session, row, row_length,
+		    SESSION_PRESENT_LINE, "sector fighter owner row", error))
+			return false;
+		if (scratch_changed)
+			session->hostile_owner_label_length = scratch_length;
 		yt_sector_pager_add(private_pager,
 		    owner_team_nonzero ? 3.0f : 2.0f);
 	}
-	warp_length = strlen("Warps lead to:");
-	memcpy(warp_row, "Warps lead to:", warp_length);
+	if (!session_present_text(session, (const uint8_t *)"Warps lead to:",
+	    sizeof("Warps lead to:") - 1U, SESSION_PRESENT_RAW,
+	    "sector warp heading", error))
+		return false;
 	for (slot = 0; slot < YT_ARRAY_LEN(sector.warps); ++slot) {
 		if (sector.warps[slot] != 0.0f) {
 			char warp[64];
-			size_t warp_size;
+			int warp_size;
+			size_t fragment_length = 0U;
 
-			if (qb_str_single(warp, sizeof(warp),
-			    sector.warps[slot]) < 0)
+			warp_size = qb_str_single(warp, sizeof(warp),
+			    sector.warps[slot]);
+			if (warp_size < 0)
 				return false;
-			warp_size = strlen(warp);
-			if (warp_length + (first_warp ? 0U : 1U) + warp_size
-			    > sizeof(warp_row)) {
-				if (error != NULL) {
-					error->status = YT_RANGE;
-					(void)snprintf(error->operation,
-					    sizeof(error->operation), "%s",
-					    "sector warp row capacity");
-				}
-				return false;
-			}
 			if (!first_warp)
-				warp_row[warp_length++] = ',';
-			memcpy(warp_row + warp_length, warp, warp_size);
-			warp_length += warp_size;
+				row[fragment_length++] = ',';
+			memcpy(row + fragment_length, warp, (size_t)warp_size);
+			fragment_length += (size_t)warp_size;
+			if (!session_present_text(session, row, fragment_length,
+			    SESSION_PRESENT_RAW,
+			    "sector warp target", error))
+				return false;
 			first_warp = false;
 		}
 	}
-	if (!session_present_text(session, (const uint8_t *)warp_row,
-	    warp_length, SESSION_PRESENT_LINE, "sector warp row", error))
+	if (!session_present_text(session, NULL, 0U,
+	    SESSION_PRESENT_LINE, "sector warp terminator", error))
 		return false;
 	yt_sector_pager_add(private_pager, 1.0f);
 	if (yt_sector_pager_finish_sector(private_pager)) {
@@ -2884,29 +3050,31 @@ static bool
 display_sector(struct yt_session *session, bool adjacent,
     struct yt_error *error)
 {
-	int current;
+	float current;
 	struct yt_sector_pager_state private_pager;
 	float caller_warps[YT_ARRAY_LEN(session->current_warps)];
+	float targets[YT_ARRAY_LEN(session->current_warps)];
 	float saved_foreground = session->presentation.foreground;
 	int saved_pager_foreground = session->pager.foreground;
+	size_t target_count;
 	size_t slot;
 
 	yt_sector_pager_begin(&private_pager);
 	if (!adjacent) {
-		session->hostile_owner_label[0] = '\0';
 		session->presentation.foreground = 1.0f;
 		session->pager.foreground = 1;
-		if (!reload_player(session, error))
+		if (!scanner_read_current_player(session, error))
 			return false;
-		current = (int)session->player.sector;
+		current = session->player.sector;
 		if (!display_sector_one(session, current, &private_pager, error)
-		    || !reload_player(session, error))
+		    || !scanner_read_current_player(session, error))
 			return false;
 		session->presentation.foreground = saved_foreground;
 		session->pager.foreground = saved_pager_foreground;
 		return true;
 	}
 	memcpy(caller_warps, session->current_warps, sizeof(caller_warps));
+	target_count = yt_sector_sensor_targets(caller_warps, targets);
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "adjacent-sector sensor leading blank", error))
 		return false;
@@ -2922,9 +3090,8 @@ display_sector(struct yt_session *session, bool adjacent,
 		return false;
 	session->presentation.foreground = 1.0f;
 	session->pager.foreground = 1;
-	for (slot = 0; slot < YT_ARRAY_LEN(caller_warps); ++slot) {
-		if (caller_warps[slot] != 0.0f
-		    && !display_sector_one(session, (int)caller_warps[slot],
+	for (slot = 0; slot < target_count; ++slot) {
+		if (!display_sector_one(session, targets[slot],
 		    &private_pager, error))
 			return false;
 	}
@@ -2937,7 +3104,7 @@ display_sector(struct yt_session *session, bool adjacent,
 	    (const uint8_t *)"[ End Sensor Scan ]",
 	    strlen("[ End Sensor Scan ]"), SESSION_PRESENT_BOLD_LINE,
 	    "adjacent-sector sensor ending", error)
-	    || !reload_player(session, error))
+	    || !scanner_read_current_player(session, error))
 		return false;
 	session->presentation.foreground = saved_foreground;
 	session->pager.foreground = saved_pager_foreground;
@@ -2951,16 +3118,18 @@ display_current_sector_cached(struct yt_session *session,
 	struct yt_sector_pager_state private_pager;
 	float saved_foreground = session->presentation.foreground;
 	int saved_pager_foreground = session->pager.foreground;
-	int current = (int)session->player.sector;
+	float current = session->player.sector;
 	bool ok;
 
 	yt_sector_pager_begin(&private_pager);
-	session->hostile_owner_label[0] = '\0';
 	session->presentation.foreground = 1.0f;
 	session->pager.foreground = 1;
-	ok = display_sector_one(session, current, &private_pager, error);
-	session->presentation.foreground = saved_foreground;
-	session->pager.foreground = saved_pager_foreground;
+	ok = display_sector_one(session, current, &private_pager, error)
+	    && scanner_read_current_player(session, error);
+	if (ok) {
+		session->presentation.foreground = saved_foreground;
+		session->pager.foreground = saved_pager_foreground;
+	}
 	return ok;
 }
 
@@ -4529,7 +4698,7 @@ attack_deployed_committed(struct yt_session *session,
 	bool surrendered = false;
 	struct yt_sector opened_sector;
 	struct yt_sector persisted_sector;
-	char owner_name[80];
+	uint8_t owner_name[160];
 	char number_one[64];
 	char number_two[64];
 	char loss_row[128];
@@ -4795,13 +4964,16 @@ attack_deployed_committed(struct yt_session *session,
 		ship_fighters = (double)session->player.fighters;
 		(void)snprintf(session->player.name, sizeof(session->player.name),
 		    "%s", cached_player_name_text);
-		(void)snprintf(owner_name, sizeof(owner_name), "%s",
-		    session->hostile_owner_label);
+		owner_length = session->hostile_owner_label_length;
+		if (owner_length > sizeof(owner_name))
+			return false;
+		if (owner_length != 0U)
+			memcpy(owner_name, session->hostile_owner_label,
+			    owner_length);
 		loss_number_length = qb_str_double(number_one,
 		    sizeof(number_one), defender_loss);
 		if (loss_number_length < 0)
 			return false;
-		owner_length = strlen(owner_name);
 		loss_news_length = cached_player_name_length
 		    + sizeof(" destroyed") - 1U + (size_t)loss_number_length
 		    + sizeof(" fighters belonging to ") - 1U + owner_length;

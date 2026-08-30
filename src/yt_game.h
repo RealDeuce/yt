@@ -728,9 +728,30 @@ bool yt_player_name_matches(const struct yt_player *player,
 bool yt_player_stored_name(const struct yt_player *player,
     uint8_t name[YT_TEXT_FIELD_SIZE], size_t *length,
     struct yt_error *error);
+bool yt_port_stored_name(const struct yt_port *port,
+    uint8_t name[YT_TEXT_FIELD_SIZE], size_t *length,
+    struct yt_error *error);
 bool yt_planet_stored_name(const struct yt_planet *planet,
     uint8_t name[YT_TEXT_FIELD_SIZE], size_t *length,
     struct yt_error *error);
+bool yt_sector_mine_warning_row(float mines, uint8_t *row,
+    size_t capacity, size_t *length);
+bool yt_sector_candidate_eligible(int candidate, int current_player_record,
+    float cached_sector, float logical_sector);
+bool yt_sector_cloak_revealed(float draw, float cached_cloak);
+size_t yt_sector_sensor_targets(const float caller_warps[6],
+    float targets[6]);
+bool yt_sector_port_row(const struct yt_port *port, uint8_t *row,
+    size_t capacity, size_t *length, struct yt_error *error);
+bool yt_sector_planet_row(const struct yt_planet *planet, uint8_t *row,
+    size_t capacity, size_t *length, struct yt_error *error);
+bool yt_sector_player_row(const struct yt_player *player, uint8_t *row,
+    size_t capacity, size_t *length, struct yt_error *error);
+bool yt_sector_fighter_row(const struct yt_sector *sector,
+    int current_player_record, const struct yt_player *owner,
+    const struct yt_sector *team_overlay, uint8_t *row, size_t capacity,
+    size_t *length, uint8_t *scratch, size_t scratch_capacity,
+    size_t *scratch_length, bool *scratch_changed, struct yt_error *error);
 bool yt_projectile_defense_row(float sector, const uint8_t *owner,
     size_t owner_length, double fighters, uint8_t *row, size_t capacity,
     size_t *length);

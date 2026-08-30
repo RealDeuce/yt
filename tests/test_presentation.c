@@ -892,6 +892,151 @@ test_sector_private_pager(void)
 }
 
 static void
+test_sector_scanner_rows(void)
+{
+	static const uint8_t raw_name[] = {'A', 0, 'B'};
+	static const uint8_t raw_team_name[] = {'R', 0, 'V'};
+	static const uint8_t mine_expected[] =
+	    "** WARNING! SECTOR HAS 3 MINES! **";
+	static const uint8_t port_equ_expected[] = {
+		'P', 'o', 'r', 't', ':', ' ', 'A', 0, 'B',
+		',', ' ', 'S', 'e', 'l', 'l', 'i', 'n', 'g', ':', ' ',
+		'E', 'q', 'u'
+	};
+	static const uint8_t planet_expected[] = {
+		'P', 'l', 'a', 'n', 'e', 't', ':', ' ', 'A', 0, 'B',
+		' ', '*', ' ', 'F', 'o', 'r', 'c', 'e', 's', ':', '-', '2'
+	};
+	static const uint8_t player_expected[] = {
+		' ', ' ', ' ', ' ', 'A', 0, 'B',
+		' ', '-', ' ', 'T', 'e', 'a', 'm', ':', ' ', '4',
+		' ', '-', ' ', 'F', 'i', 'g', 'h', 't', 'e', 'r', 's', ':',
+		' ', '1', '2', '0', '0',
+		' ', '-', ' ', 'S', 'h', 'i', 'e', 'l', 'd', 's', ':',
+		' ', '8', '0'
+	};
+	static const uint8_t owner_expected[] = {
+		' ', '1', '2', '3', ' ', '(', 'B', 'e', 'l', 'o', 'n', 'g',
+		' ', 't', 'o', ' ', 'A', 0, 'B', ' ', 'T', 'e', 'a', 'm',
+		' ', '[', '4', ']', ' ', '[', 'R', 0, 'V', ']', ')'
+	};
+	static const uint8_t scratch_expected[] = {
+		'A', 0, 'B', ' ', 'T', 'e', 'a', 'm', ' ', '[', '4', ']',
+		' ', '[', 'R', 0, 'V', ']'
+	};
+	static const uint8_t xannor_expected[] =
+	    " 123 (Belong to The Xannor)";
+	static const uint8_t mercenary_expected[] =
+	    " 123 (Belong to Mercenaries)";
+	static const uint8_t self_expected[] = " 123 (Belong to YOU)";
+	struct yt_record record;
+	struct yt_port port;
+	struct yt_planet planet;
+	struct yt_player player;
+	struct yt_sector sector;
+	struct yt_sector overlay;
+	struct yt_error error;
+	uint8_t row[256];
+	uint8_t scratch[160] = {'k', 'e', 'e', 'p'};
+	float caller_warps[6] = {9.0f, 0.0f, 9.0f, 42.0f, 0.0f, 7.0f};
+	float targets[6] = {0};
+	size_t length;
+	size_t scratch_length = 4U;
+	bool changed;
+
+	yt_error_clear(&error);
+	CHECK(yt_sector_mine_warning_row(3.0f, row, sizeof(row), &length)
+	    && length == sizeof(mine_expected) - 1U
+	    && memcmp(row, mine_expected, length) == 0);
+	CHECK(!yt_sector_candidate_eligible(2, 2, 42.0f, 42.0f)
+	    && !yt_sector_candidate_eligible(3, 2, 41.0f, 42.0f)
+	    && yt_sector_candidate_eligible(3, 2, 42.0f, 42.0f));
+	CHECK(!yt_sector_cloak_revealed(0.9f, 0.0f)
+	    && !yt_sector_cloak_revealed(0.5f, 0.5f)
+	    && yt_sector_cloak_revealed(0.5001f, 0.5f));
+	CHECK(yt_sector_sensor_targets(caller_warps, targets) == 4U
+	    && targets[0] == 9.0f && targets[1] == 9.0f
+	    && targets[2] == 42.0f && targets[3] == 7.0f);
+
+	yt_record_blank(&record);
+	memcpy(record.bytes, raw_name, sizeof(raw_name));
+	yt_record_set_number(&record, YT_F41, 1.0f);
+	yt_record_set_number(&record, YT_F85, 3.0f);
+	yt_port_decode(&port, &record);
+	CHECK(yt_sector_port_row(&port, row, sizeof(row), &length, &error)
+	    && length == sizeof(port_equ_expected)
+	    && memcmp(row, port_equ_expected, length) == 0);
+	port.commodity_class = 2.0f;
+	CHECK(yt_sector_port_row(&port, row, sizeof(row), &length, &error)
+	    && memcmp(row + length - 3U, "Org", 3U) == 0);
+	port.commodity_class = -7.0f;
+	CHECK(yt_sector_port_row(&port, row, sizeof(row), &length, &error)
+	    && memcmp(row + length - 3U, "Ore", 3U) == 0);
+	CHECK(!yt_sector_port_row(&port, row, length - 1U, &length, &error));
+
+	yt_record_blank(&record);
+	memcpy(record.bytes, raw_name, sizeof(raw_name));
+	yt_record_set_number(&record, YT_F77, -1.25f);
+	yt_record_set_number(&record, YT_F85, 3.0f);
+	yt_planet_decode(&planet, &record);
+	CHECK(yt_sector_planet_row(&planet, row, sizeof(row), &length, &error)
+	    && length == sizeof(planet_expected)
+	    && memcmp(row, planet_expected, length) == 0);
+
+	yt_record_blank(&record);
+	memcpy(record.bytes, raw_name, sizeof(raw_name));
+	yt_record_set_number(&record, YT_F53, 80.0f);
+	yt_record_set_number(&record, YT_F61, 1200.0f);
+	yt_record_set_number(&record, YT_F85, 3.0f);
+	yt_record_set_number(&record, YT_F89, 4.0f);
+	yt_player_decode(&player, &record);
+	CHECK(yt_sector_player_row(&player, row, sizeof(row), &length, &error)
+	    && length == sizeof(player_expected)
+	    && memcmp(row, player_expected, length) == 0);
+
+	memset(&sector, 0, sizeof(sector));
+	sector.fighters = 123.0f;
+	sector.fighter_owner = 3.0f;
+	player.team = -4.0f;
+	yt_record_blank(&record);
+	memcpy(record.bytes, raw_team_name, sizeof(raw_team_name));
+	yt_record_set_number(&record, YT_F73, 3.0f);
+	yt_sector_decode(&overlay, &record);
+	CHECK(yt_sector_fighter_row(&sector, 2, &player, &overlay,
+	    row, sizeof(row), &length, scratch, sizeof(scratch),
+	    &scratch_length, &changed, &error)
+	    && changed && length == sizeof(owner_expected)
+	    && memcmp(row, owner_expected, length) == 0
+	    && scratch_length == sizeof(scratch_expected)
+	    && memcmp(scratch, scratch_expected, scratch_length) == 0);
+
+	sector.fighter_owner = -1.0f;
+	CHECK(yt_sector_fighter_row(&sector, 2, NULL, NULL,
+	    row, sizeof(row), &length, scratch, sizeof(scratch),
+	    &scratch_length, &changed, &error)
+	    && changed && length == sizeof(xannor_expected) - 1U
+	    && memcmp(row, xannor_expected, length) == 0
+	    && scratch_length == strlen("The Xannor")
+	    && memcmp(scratch, "The Xannor", scratch_length) == 0);
+	sector.fighter_owner = -2.0f;
+	CHECK(yt_sector_fighter_row(&sector, 2, NULL, NULL,
+	    row, sizeof(row), &length, scratch, sizeof(scratch),
+	    &scratch_length, &changed, &error)
+	    && changed && length == sizeof(mercenary_expected) - 1U
+	    && memcmp(row, mercenary_expected, length) == 0);
+	memcpy(scratch, "keep", 4U);
+	scratch_length = 4U;
+	sector.fighter_owner = 2.0f;
+	CHECK(yt_sector_fighter_row(&sector, 2, NULL, NULL,
+	    row, sizeof(row), &length, scratch, sizeof(scratch),
+	    &scratch_length, &changed, &error)
+	    && !changed && scratch_length == 4U
+	    && memcmp(scratch, "keep", 4U) == 0
+	    && length == sizeof(self_expected) - 1U
+	    && memcmp(row, self_expected, length) == 0);
+}
+
+static void
 test_radio_private_pager(void)
 {
 	struct yt_radio_pager_state pager;
@@ -9834,6 +9979,7 @@ main(void)
 	test_pager_transactions();
 	test_pager_gates();
 	test_sector_private_pager();
+	test_sector_scanner_rows();
 	test_radio_private_pager();
 	test_radio_reader_presentation();
 	test_editor_aux_notices();
