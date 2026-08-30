@@ -687,6 +687,22 @@ bool yt_projectile_plasma_planet_run(
     const struct yt_projectile_plasma_planet_ops *ops, void *context,
     struct yt_error *error);
 
+enum yt_projectile_plasma_footer_output_kind {
+	YT_PROJECTILE_PLASMA_FOOTER_LEADING_BLANK,
+	YT_PROJECTILE_PLASMA_FOOTER_TEXT,
+	YT_PROJECTILE_PLASMA_FOOTER_TRAILING_BLANK,
+};
+typedef bool (*yt_projectile_plasma_footer_present_fn)(void *context,
+    const uint8_t *text, size_t length,
+    enum yt_projectile_plasma_footer_output_kind kind,
+    struct yt_error *error);
+struct yt_projectile_plasma_footer_ops {
+	yt_projectile_plasma_footer_present_fn present;
+};
+bool yt_projectile_plasma_footer_run(
+    const struct yt_projectile_plasma_footer_ops *ops, void *context,
+    struct yt_error *error);
+
 enum yt_projectile_defense_front_route {
 	YT_PROJECTILE_DEFENSE_NO_DEFENSE,
 	YT_PROJECTILE_DEFENSE_FRIENDLY,

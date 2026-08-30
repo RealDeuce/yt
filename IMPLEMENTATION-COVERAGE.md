@@ -111,6 +111,13 @@ updater-cache-only loop admission and rejection, embedded-NUL identities,
 fresh patterned-record overlays, unrelated-byte preservation and every one
 of the 17 callback failure prefixes. The compiled REDIM/far-array/string and
 dependency-internal physical runtime boundaries remain separately candidate.
+`src/yt_game.c::yt_projectile_plasma_footer_run` owns the shared
+`BC80..BCB6` suffix as three independently fallible direct rows: empty,
+`Plasma bolts dissipated.`, empty. Its provider fixture pins all payloads,
+row roles, short-circuit order and each output failure prefix, while the
+route fixture joins both route exhaustion and impact-driven footer entry.
+Raw compiled string-copy and direct-output dependency prefixes remain
+separate runtime obligations.
 
 | Component | Native owner | Native evidence | Status | Required before promotion |
 |---|---|---|---|---|

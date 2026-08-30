@@ -274,9 +274,14 @@ not authoritative. Use the corrected goal above in the new workspace.
   multi-draw survivor, all-zero destruction, both updater-cache asymmetries,
   binary identities, exact rows, raw overlays, route gates and all 17
   callback failure prefixes. The compiled REDIM/far-array/string and
-  dependency-internal physical prefixes remain candidate boundaries; the
-  next connected control-flow frontier is the shared `BC80` footer and
-  `ABB1` route join.
+  dependency-internal physical prefixes remain candidate boundaries.
+- The shared `BC80..BCB6` plasma footer now has one injected native owner.
+  It emits the exact empty, `Plasma bolts dissipated.`, empty direct rows,
+  short-circuits at each failed output, and is joined from both ordinary
+  route exhaustion and impact-driven dissipation. The three calls and the
+  root's ordinary `BCB6 -> YT:22E1` return are candidate. Raw compiled string
+  copies, dependency-internal direct-output prefixes and return-frame residue
+  remain explicit prerequisites.
 - After the exact Transfer, Bank, Productivity, Clearance, Earth-front,
   Earth-purchase, Planet Rename, shared compatibility-uppercase, Team
   name/password, Planet inventory/menu-parent, shared sector-mine, YTMAINT
@@ -302,13 +307,13 @@ not authoritative. Use the corrected goal above in the new workspace.
   provider-driven YT.REG registration transaction,
   ledger dispositions are roots
   `168 candidate / 0 missing`, transfers
-  `7120 candidate / 247 missing / 1 explicitly
+  `7124 candidate / 243 missing / 1 explicitly
   deferred`, and presentation `143 candidate / 1 missing / 6 verified`.
   Current SHA-256
   values are roots
-  `2b312bc5c1dbed42a79f2a42ee9117381b05c1a6c2d74d96d34bf09bffc2e1ab`,
-  transfers `6548c3782c8a6d061b790459a8a4380fc5526ff645854c27e4d23c0a6118c066`,
-  presentation `e7d0385f0a72a386287567cf9bcd06a2484b39e69d19124cd3bf705a25b4ff22`,
+  `f806fc4860ddafb772d25bcc4d0696bb00bbc519e9081fc5cc8b254ff6a1493c`,
+  transfers `050d46331c852f7232705c178874c7b3cfb059fde4c2c96be751bc1ac7c0e43f`,
+  presentation `1849fd4f8ec41974d6e7878c0544726f1d003ffa42c244b1b6daf739546369a9`,
   and manifest
   `3552bd61c9cb9b7197aeb6fbad1f37cba69cd09f125d878d0c9072a691e8950a`.
   All immutable identity columns and TSV widths match the regenerated trusted

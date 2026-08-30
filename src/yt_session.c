@@ -13064,16 +13064,32 @@ missile_route_failure_suffix(struct yt_session *session,
 }
 
 static bool
+plasma_footer_present(void *context, const uint8_t *text, size_t length,
+    enum yt_projectile_plasma_footer_output_kind kind,
+    struct yt_error *error)
+{
+	const char *operation;
+
+	if (kind == YT_PROJECTILE_PLASMA_FOOTER_LEADING_BLANK)
+		operation = "plasma footer leading blank";
+	else if (kind == YT_PROJECTILE_PLASMA_FOOTER_TEXT)
+		operation = "plasma footer row";
+	else if (kind == YT_PROJECTILE_PLASMA_FOOTER_TRAILING_BLANK)
+		operation = "plasma footer trailing blank";
+	else
+		return false;
+	return session_present_text(context, text, length, SESSION_PRESENT_LINE,
+	    operation, error);
+}
+
+static bool
 plasma_footer(struct yt_session *session, struct yt_error *error)
 {
-	return session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "plasma footer leading blank", error)
-	    && session_present_text(session,
-	    (const uint8_t *)"Plasma bolts dissipated.",
-	    strlen("Plasma bolts dissipated."), SESSION_PRESENT_LINE,
-	    "plasma footer row", error)
-	    && session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "plasma footer trailing blank", error);
+	static const struct yt_projectile_plasma_footer_ops ops = {
+		plasma_footer_present,
+	};
+
+	return yt_projectile_plasma_footer_run(&ops, session, error);
 }
 
 static bool
