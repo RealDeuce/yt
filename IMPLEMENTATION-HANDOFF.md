@@ -1063,6 +1063,16 @@ not authoritative. Use the corrected goal above in the new workspace.
   rewrite. All seven formerly missing detection/output/back-edge transfers at
   `6E21..6EA3` are candidate. Raw argument/temp/FLAGS state, A406 internals,
   physical adapters and repeated-reroute composition remain open.
+- The Union Police terminal at `6EA6..6EF8` now retains and compares the raw
+  SINGLE destination rather than the former eager native `CINT` result. It
+  admits only hop and destination below eight with both pending latches
+  numeric zero, emits the exact 45-byte destruction row, and returns without
+  footer, sector GET or RNG. A provider fixture pins fractional `7.5`, exact-
+  eight, unordered and both nonzero-latch polarities, silent rejection, exact
+  output and its failed-output terminal prefix. All eight formerly missing
+  predicate/rejection/output/return transfers are candidate. Raw argument/
+  latch/FLAGS state, physical output details and caller-return composition
+  remain open.
 - The projectile resolver's already recovered early terminals no longer
   bypass presentation. Missile/plasma openings, cruise end-report,
   same-sector `Missles self destructed!`, the two-blank unreachable-route

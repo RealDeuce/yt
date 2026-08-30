@@ -13071,13 +13071,21 @@ cruise_reroute_random(void *context, float *value, struct yt_error *error)
 }
 
 static bool
+cruise_union_police_present(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	return session_present_text(context, text, length, SESSION_PRESENT_LINE,
+	    "Union Police missile row", error);
+}
+
+static bool
 launch_projectile(struct yt_session *session, float target, float amount,
     bool plasma, float *returned_missiles, float *origin_alias,
     int *pending_counterattack, int *pending_xannor,
-    struct yt_error *error)
+	struct yt_error *error)
 {
 	int count = sector_count(session);
-	int destination;
+	float destination = target;
 	bool overflow;
 	int16_t *route;
 	bool found;
@@ -13099,7 +13107,7 @@ launch_projectile(struct yt_session *session, float target, float amount,
 
 	*missiles = amount;
 
-	destination = (int)qb_cint(target, &overflow);
+	(void)qb_cint(target, &overflow);
 	if (overflow)
 		return true;
 	if (!projectile_opening(session, amount, energy, plasma,
@@ -13111,7 +13119,7 @@ launch_projectile(struct yt_session *session, float target, float amount,
 			error->status = YT_NO_MEMORY;
 		return false;
 	}
-	if (start == destination && plasma) {
+	if ((float)start == destination && plasma) {
 			if (origin_alias != NULL)
 				*origin_alias = 0.0f;
 			if (!plasma_hop_report(session, start, energy, error)) {
@@ -13130,7 +13138,7 @@ launch_projectile(struct yt_session *session, float target, float amount,
 		float route_status;
 		struct yt_projectile_route_entry_state route_entry;
 
-		if (!build_route(session, (float)start, (float)destination, route,
+		if (!build_route(session, (float)start, destination, route,
 		    yt_projectile_route_avoid_enabled(plasma, *counterattack,
 		    session->player_record), &found, &route_outcome, &route_status,
 		    error)) {
@@ -13192,7 +13200,7 @@ launch_projectile(struct yt_session *session, float target, float amount,
 			char new_text[64];
 			char row[192];
 			float local_origin = (float)start;
-			float local_destination = (float)destination;
+			float local_destination = destination;
 			static const struct yt_projectile_cruise_reroute_ops
 			    cruise_ops = {
 				cruise_reroute_line,
@@ -13215,7 +13223,7 @@ launch_projectile(struct yt_session *session, float target, float amount,
 					return false;
 				}
 				start = (int)*state.origin;
-				destination = (int)*state.destination;
+				destination = *state.destination;
 				rerouted = true;
 				break;
 			}
@@ -13227,8 +13235,8 @@ launch_projectile(struct yt_session *session, float target, float amount,
 			start = next;
 			if (origin_alias != NULL)
 				*origin_alias = (float)next;
-			destination = 1
-			    + (int)floorf(single_mul(draw, (float)count));
+			destination = (float)(1
+			    + (int)floorf(single_mul(draw, (float)count)));
 			qb_str_single(old_text, sizeof(old_text), (float)next);
 			qb_str_single(new_text, sizeof(new_text),
 			    (float)destination);
@@ -13248,18 +13256,24 @@ launch_projectile(struct yt_session *session, float target, float amount,
 			rerouted = true;
 			break;
 		}
-		if (!plasma && next < 8 && destination < 8
-		    && *counterattack == 0 && *xannor_provoker == 0) {
-			if (!session_present_text(session,
-			    (const uint8_t *)
-			    "The Union Police have destroyed the Missiles!",
-			    strlen("The Union Police have destroyed the Missiles!"),
-			    SESSION_PRESENT_LINE, "Union Police missile row", error)) {
+		if (!plasma) {
+			struct yt_projectile_union_police_state police = {
+				(float)next,
+				destination,
+				*counterattack,
+				*xannor_provoker,
+				false,
+			};
+
+			if (!yt_projectile_union_police_run(&police,
+			    cruise_union_police_present, session, error)) {
 				free(route);
 				return false;
 			}
-			free(route);
-			return true;
+			if (police.intercepted) {
+				free(route);
+				return true;
+			}
 		}
 		if (plasma) {
 			if (!plasma_sector(session, next, &energy, error)) {

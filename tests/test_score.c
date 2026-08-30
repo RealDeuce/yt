@@ -1129,6 +1129,88 @@ check_projectile_cruise_reroute_transaction(void)
 	return true;
 }
 
+struct projectile_union_police_tape {
+	uint8_t row[64];
+	size_t length;
+	size_t calls;
+	bool succeeds;
+};
+
+static bool
+projectile_union_police_present(void *context, const uint8_t *text,
+    size_t length, struct yt_error *error)
+{
+	struct projectile_union_police_tape *tape = context;
+
+	(void)error;
+	++tape->calls;
+	if (!tape->succeeds || length > sizeof(tape->row))
+		return false;
+	memcpy(tape->row, text, length);
+	tape->length = length;
+	return true;
+}
+
+static bool
+check_projectile_union_police_transaction(void)
+{
+	static const uint8_t expected[] =
+	    "The Union Police have destroyed the Missiles!";
+	static const struct {
+		float hop;
+		float destination;
+		int counterattack;
+		int xannor_provoker;
+		bool admitted;
+	} cases[] = {
+		{7.999f, 7.5f, 0, 0, true},
+		{-1.0f, -2.0f, 0, 0, true},
+		{8.0f, 7.0f, 0, 0, false},
+		{7.0f, 8.0f, 0, 0, false},
+		{NAN, 7.0f, 0, 0, false},
+		{7.0f, NAN, 0, 0, false},
+		{7.0f, 7.0f, 1, 0, false},
+		{7.0f, 7.0f, -1, 0, false},
+		{7.0f, 7.0f, 0, 1, false},
+		{7.0f, 7.0f, 0, -1, false},
+	};
+	struct projectile_union_police_tape tape;
+	struct yt_projectile_union_police_state state;
+	size_t index;
+
+	for (index = 0U; index < YT_ARRAY_LEN(cases); ++index) {
+		memset(&tape, 0, sizeof(tape));
+		tape.succeeds = true;
+		state.hop = cases[index].hop;
+		state.destination = cases[index].destination;
+		state.counterattack = cases[index].counterattack;
+		state.xannor_provoker = cases[index].xannor_provoker;
+		state.intercepted = true;
+		if (yt_projectile_union_police_admitted(state.hop,
+		    state.destination, state.counterattack,
+		    state.xannor_provoker) != cases[index].admitted
+		    || !yt_projectile_union_police_run(&state,
+		    projectile_union_police_present, &tape, NULL)
+		    || state.intercepted != cases[index].admitted
+		    || tape.calls != (cases[index].admitted ? 1U : 0U))
+			return false;
+		if (cases[index].admitted
+		    && (tape.length != sizeof(expected) - 1U
+		    || memcmp(tape.row, expected, sizeof(expected) - 1U) != 0))
+			return false;
+	}
+
+	memset(&tape, 0, sizeof(tape));
+	state.hop = 7.0f;
+	state.destination = 7.0f;
+	state.counterattack = 0;
+	state.xannor_provoker = 0;
+	state.intercepted = false;
+	return !yt_projectile_union_police_run(&state,
+	    projectile_union_police_present, &tape, NULL)
+	    && tape.calls == 1U && state.intercepted;
+}
+
 enum projectile_planet_event {
 	PROJECTILE_PLANET_RANDOM = 1,
 	PROJECTILE_PLANET_READ,
@@ -10149,6 +10231,8 @@ main(void)
 		return fail("projectile route-entry transaction differs");
 	if (!check_projectile_cruise_reroute_transaction())
 		return fail("projectile cruise-reroute transaction differs");
+	if (!check_projectile_union_police_transaction())
+		return fail("projectile Union Police transaction differs");
 	if (!check_projectile_damage_model())
 		return fail("projectile player-damage model differs");
 	if (!check_projectile_persistence_model())

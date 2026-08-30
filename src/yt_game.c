@@ -4685,6 +4685,33 @@ yt_projectile_cruise_reroute_run(
 }
 
 bool
+yt_projectile_union_police_admitted(float hop, float destination,
+    int counterattack, int xannor_provoker)
+{
+	return hop < 8.0f && destination < 8.0f
+	    && counterattack == 0 && xannor_provoker == 0;
+}
+
+bool
+yt_projectile_union_police_run(
+    struct yt_projectile_union_police_state *state,
+    yt_projectile_cruise_reroute_output_fn present, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t row[] =
+	    "The Union Police have destroyed the Missiles!";
+
+	if (state == NULL || present == NULL)
+		return false;
+	state->intercepted = false;
+	if (!yt_projectile_union_police_admitted(state->hop,
+	    state->destination, state->counterattack, state->xannor_provoker))
+		return true;
+	state->intercepted = true;
+	return present(context, row, sizeof(row) - 1U, error);
+}
+
+bool
 yt_projectile_survivor_overlay(struct yt_player *player, float shields,
     double fighters, float scanner, bool scanner_disabled)
 {

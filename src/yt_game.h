@@ -271,6 +271,20 @@ bool yt_projectile_cruise_reroute_run(
     const struct yt_projectile_cruise_reroute_ops *ops, void *context,
     struct yt_error *error);
 
+struct yt_projectile_union_police_state {
+	float hop;
+	float destination;
+	int counterattack;
+	int xannor_provoker;
+	bool intercepted;
+};
+bool yt_projectile_union_police_admitted(float hop, float destination,
+    int counterattack, int xannor_provoker);
+bool yt_projectile_union_police_run(
+    struct yt_projectile_union_police_state *state,
+    yt_projectile_cruise_reroute_output_fn present, void *context,
+    struct yt_error *error);
+
 struct yt_xannor_retaliation_state {
 	struct yt_player *player;
 	int *player_record;
