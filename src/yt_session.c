@@ -1545,7 +1545,7 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 struct registration_context {
 	struct yt_session *session;
 	struct yt_database random;
-	FILE *sequential;
+	struct yt_text_input sequential;
 	char path[512];
 	bool path_resolved;
 };
@@ -1582,15 +1582,10 @@ static bool
 registration_close_file4(void *opaque, struct yt_error *error)
 {
 	struct registration_context *context = opaque;
-	FILE *file = context->sequential;
 
-	if (file != NULL) {
-		context->sequential = NULL;
-		if (fclose(file) != 0)
-			return registration_io_error(context, error, YT_IO_ERROR,
-			    "close registration input");
-		return true;
-	}
+	if (context->sequential.file != NULL
+	    || context->sequential.orphaned_file != NULL)
+		return yt_text_input_close(&context->sequential, error);
 	return yt_database_random_close(&context->random, error);
 }
 
@@ -1634,12 +1629,7 @@ registration_sequential_open(void *opaque, struct yt_error *error)
 {
 	struct registration_context *context = opaque;
 
-	errno = 0;
-	context->sequential = fopen(context->path, "rb");
-	if (context->sequential == NULL)
-		return registration_io_error(context, error, YT_IO_ERROR,
-		    "open registration input");
-	return true;
+	return yt_text_input_open(&context->sequential, context->path, error);
 }
 
 static bool
@@ -1647,23 +1637,26 @@ registration_read_line(void *opaque, uint8_t *data, size_t capacity,
     size_t *length, struct yt_error *error)
 {
 	struct registration_context *context = opaque;
-	enum yt_text_stream_line_status status;
+	const uint8_t *line;
+	size_t line_length;
+	bool available;
 
-	if (context->sequential == NULL)
+	if (context->sequential.file == NULL)
 		return registration_io_error(context, error, YT_INVALID,
 		    "registration LINE INPUT without file");
-	status = yt_text_stream_line_input_next(context->sequential, data,
-	    capacity, length);
-	if (status == YT_TEXT_STREAM_LINE_EOF)
+	if (!yt_text_input_read_line(&context->sequential, &line,
+	    &line_length, &available, error))
+		return false;
+	if (!available)
 		return registration_io_error(context, error, YT_EOF,
 		    "registration LINE INPUT past end");
-	if (status == YT_TEXT_STREAM_LINE_TOO_LONG)
+	if (line_length > capacity)
 		return registration_io_error(context, error, YT_NO_MEMORY,
 		    "registration LINE INPUT string space");
-	if (status == YT_TEXT_STREAM_LINE_IO_ERROR)
-		return registration_io_error(context, error, YT_IO_ERROR,
-		    "registration LINE INPUT");
-	return status == YT_TEXT_STREAM_LINE_OK;
+	if (line_length != 0U)
+		memcpy(data, line, line_length);
+	*length = line_length;
+	return true;
 }
 
 static bool
@@ -1721,10 +1714,7 @@ registration_close_all(void *opaque)
 {
 	struct registration_context *context = opaque;
 
-	if (context->sequential != NULL) {
-		(void)fclose(context->sequential);
-		context->sequential = NULL;
-	}
+	(void)yt_text_input_close(&context->sequential, NULL);
 	yt_database_close(&context->random);
 	(void)session_editor_close_all(context->session);
 }
@@ -1818,9 +1808,12 @@ registration(struct yt_session *session, struct yt_error *error)
 	/* A478 clears the live validated flag before the first file operation. */
 	session->registered = false;
 	completed = yt_registration_run(&state, &ops, &context, error);
-	if (context.sequential != NULL || context.random.file != NULL
+	if (context.sequential.file != NULL
+	    || context.sequential.orphaned_file != NULL
+	    || context.random.file != NULL
 	    || context.random.orphaned_file != NULL)
 		(void)registration_close_file4(&context, NULL);
+	yt_text_input_destroy(&context.sequential);
 	if (!completed) {
 		free(storage);
 		return false;
