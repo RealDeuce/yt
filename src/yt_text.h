@@ -50,21 +50,21 @@ void yt_text_input_destroy(struct yt_text_input *input);
 
 #define YT_TEXT_OUTPUT_BUFFER_SIZE 128U
 
-enum yt_text_append_open_operation {
-	YT_TEXT_APPEND_OPEN_EXISTING,
-	YT_TEXT_APPEND_OPEN_CREATE,
-	YT_TEXT_APPEND_OPEN_TEMP_CLOSE,
-	YT_TEXT_APPEND_OPEN_REOPEN,
-	YT_TEXT_APPEND_OPEN_EXTENDED_ERROR,
-	YT_TEXT_APPEND_OPEN_QUERY_DEVICE,
-	YT_TEXT_APPEND_OPEN_CONFIGURE_DEVICE,
-	YT_TEXT_APPEND_OPEN_SEEK_END,
-	YT_TEXT_APPEND_OPEN_SEEK_WINDOW,
-	YT_TEXT_APPEND_OPEN_READ_WINDOW,
-	YT_TEXT_APPEND_OPEN_SEEK_SELECTED,
+enum yt_text_open_operation {
+	YT_TEXT_OPEN_EXISTING,
+	YT_TEXT_OPEN_CREATE,
+	YT_TEXT_OPEN_TEMP_CLOSE,
+	YT_TEXT_OPEN_REOPEN,
+	YT_TEXT_OPEN_EXTENDED_ERROR,
+	YT_TEXT_OPEN_QUERY_DEVICE,
+	YT_TEXT_OPEN_CONFIGURE_DEVICE,
+	YT_TEXT_OPEN_SEEK_END,
+	YT_TEXT_OPEN_SEEK_WINDOW,
+	YT_TEXT_OPEN_READ_WINDOW,
+	YT_TEXT_OPEN_SEEK_SELECTED,
 };
 
-struct yt_text_append_open_observation {
+struct yt_text_open_observation {
 	FILE *file;
 	size_t accepted;
 	bool carry;
@@ -75,28 +75,28 @@ struct yt_text_append_open_observation {
 	int64_t terminal_position;
 };
 
-typedef bool (*yt_text_append_open_provider)(void *context,
-	const char *path, enum yt_text_append_open_operation operation,
+typedef bool (*yt_text_open_provider)(void *context,
+	const char *path, enum yt_text_open_operation operation,
 	uint8_t access, FILE *active_file, int64_t offset, uint8_t *data,
 	size_t requested, uint16_t prior_dos_error,
-	struct yt_text_append_open_observation *observation);
+	struct yt_text_open_observation *observation);
 
-enum yt_text_append_open_outcome {
-	YT_TEXT_APPEND_OPEN_NONE,
-	YT_TEXT_APPEND_OPEN_RETURNED,
-	YT_TEXT_APPEND_OPEN_INITIAL_ERROR,
-	YT_TEXT_APPEND_OPEN_CREATE_ERROR,
-	YT_TEXT_APPEND_OPEN_TEMP_CLOSE_ERROR,
-	YT_TEXT_APPEND_OPEN_REOPEN_ERROR,
-	YT_TEXT_APPEND_OPEN_DEVICE_ERROR,
-	YT_TEXT_APPEND_OPEN_SEEK_ERROR,
-	YT_TEXT_APPEND_OPEN_READ_ERROR,
-	YT_TEXT_APPEND_OPEN_PROVIDER_ERROR,
+enum yt_text_open_outcome {
+	YT_TEXT_OPEN_NONE,
+	YT_TEXT_OPEN_RETURNED,
+	YT_TEXT_OPEN_INITIAL_ERROR,
+	YT_TEXT_OPEN_CREATE_ERROR,
+	YT_TEXT_OPEN_TEMP_CLOSE_ERROR,
+	YT_TEXT_OPEN_REOPEN_ERROR,
+	YT_TEXT_OPEN_DEVICE_ERROR,
+	YT_TEXT_OPEN_SEEK_ERROR,
+	YT_TEXT_OPEN_READ_ERROR,
+	YT_TEXT_OPEN_PROVIDER_ERROR,
 };
 
-struct yt_text_append_open_result {
-	enum yt_text_append_open_outcome outcome;
-	enum yt_text_append_open_operation failed_operation;
+struct yt_text_open_result {
+	enum yt_text_open_outcome outcome;
+	enum yt_text_open_operation failed_operation;
 	uint16_t dos_error;
 	uint16_t basic_error;
 	uint8_t access_attempts[4];
@@ -199,15 +199,16 @@ struct yt_text_output {
 	char path[512];
 	uint8_t pending[YT_TEXT_OUTPUT_BUFFER_SIZE];
 	size_t pending_count;
-	yt_text_append_open_provider append_open_provider;
-	void *append_open_context;
+	yt_text_open_provider open_provider;
+	void *open_context;
 	yt_text_output_write_provider write_provider;
 	void *write_context;
 	yt_text_output_close_provider close_provider;
 	void *close_context;
 	struct yt_text_output_write_result last_write;
 	struct yt_text_output_close_result last_close;
-	struct yt_text_append_open_result last_append_open;
+	struct yt_text_open_result last_output_open;
+	struct yt_text_open_result last_append_open;
 };
 
 void yt_text_output_init(struct yt_text_output *output);
@@ -227,8 +228,8 @@ void yt_text_output_set_close_provider(struct yt_text_output *output,
 	yt_text_output_close_provider provider, void *context);
 void yt_text_output_set_write_provider(struct yt_text_output *output,
 	yt_text_output_write_provider provider, void *context);
-void yt_text_output_set_append_open_provider(struct yt_text_output *output,
-	yt_text_append_open_provider provider, void *context);
+void yt_text_output_set_open_provider(struct yt_text_output *output,
+	yt_text_open_provider provider, void *context);
 void yt_text_output_destroy(struct yt_text_output *output);
 
 struct yt_text_sequential_play_state {
