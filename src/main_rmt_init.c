@@ -28,24 +28,53 @@ struct rmt_output_context {
 	struct yt_rmt_output_state state;
 };
 
+struct rmt_handoff_file {
+	struct yt_database random;
+	struct yt_text_input sequential;
+};
+
+static void
+rmt_handoff_init(struct rmt_handoff_file *handoff)
+{
+	memset(handoff, 0, sizeof(*handoff));
+	yt_text_input_init(&handoff->sequential);
+}
+
+static void
+rmt_handoff_destroy(struct rmt_handoff_file *handoff)
+{
+	if (handoff == NULL)
+		return;
+	yt_database_close(&handoff->random);
+	yt_text_input_destroy(&handoff->sequential);
+}
+
 static bool
-read_handoff(char path[512], bool *standalone, struct yt_error *error)
+rmt_handoff_close(struct rmt_handoff_file *handoff, struct yt_error *error)
+{
+	if (handoff->random.file != NULL
+	    && !yt_database_random_close(&handoff->random, error))
+		return false;
+	if (handoff->sequential.file != NULL
+	    && !yt_text_input_close(&handoff->sequential, error))
+		return false;
+	return true;
+}
+
+static bool
+read_handoff(struct rmt_handoff_file *handoff, char path[512],
+    bool *standalone, struct yt_error *error)
 {
 	struct yt_rmt_handoff_result parsed;
-	struct yt_text_file text;
-	FILE *file;
-	char resolved[512];
-	size_t size;
+	const uint8_t *line;
+	uint32_t size;
+	size_t length;
+	bool available;
 
 	path[0] = '\0';
-	if (!yt_resolve_case_path("rmtinit.tmp", true, resolved,
-	    sizeof(resolved), error))
-		return false;
-	file = fopen(resolved, "ab");
-	if (file == NULL)
-		return false;
-	fclose(file);
-	if (!yt_file_size("rmtinit.tmp", &size, error))
+	if (!yt_database_open(&handoff->random, "rmtinit.tmp",
+	    YT_OPEN_UPDATE_CREATE, error)
+	    || !yt_database_random_lof(&handoff->random, &size, error))
 		return false;
 	if (size == 0U) {
 		if (!yt_rmt_handoff_parse(NULL, 0U, &parsed))
@@ -53,18 +82,27 @@ read_handoff(char path[512], bool *standalone, struct yt_error *error)
 		*standalone = parsed.standalone;
 		return true;
 	}
-	if (!yt_text_read("rmtinit.tmp", &text, error))
+	if (!yt_database_random_close(&handoff->random, error)
+	    || !yt_text_input_open(&handoff->sequential, "rmtinit.tmp", error)
+	    || !yt_text_input_read_line(&handoff->sequential, &line, &length,
+	    &available, error))
 		return false;
-	if (!yt_rmt_handoff_parse(text.data, text.length, &parsed)) {
-		yt_text_free(&text);
+	/* A physical nonempty file remains the remote branch for an empty line. */
+	if (length == 0U) {
+		static const uint8_t empty_line[] = "\r";
+
+		line = empty_line;
+		length = 1U;
+	}
+	if (!yt_rmt_handoff_parse(line, length, &parsed)) {
 		if (error != NULL)
 			error->status = YT_RANGE;
 		return false;
 	}
 	memcpy(path, parsed.path, parsed.path_length + 1U);
 	*standalone = parsed.standalone;
-	yt_text_free(&text);
-	return true;
+	(void)available;
+	return yt_text_input_close(&handoff->sequential, error);
 }
 
 static bool
@@ -340,8 +378,10 @@ write_rmt_presentation(void *opaque, uint16_t site,
 }
 
 static int
-finish_rmt(struct yt_rmt_door *door, int status)
+finish_rmt(struct rmt_handoff_file *handoff, struct yt_rmt_door *door,
+    int status)
 {
+	rmt_handoff_destroy(handoff);
 	yt_rmt_door_finish(door, status);
 	return status;
 }
@@ -350,6 +390,7 @@ int
 main(void)
 {
 	struct yt_error error;
+	struct rmt_handoff_file handoff_file;
 	struct yt_database old;
 	struct yt_config config;
 	struct yt_random random;
@@ -368,17 +409,18 @@ main(void)
 	bool standalone;
 	bool local_mode;
 	float com_port = 0.0f;
-	size_t old_size;
+	uint32_t old_size;
 	uint8_t dll;
 	uint8_t dlm;
 
 	yt_error_clear(&error);
+	rmt_handoff_init(&handoff_file);
 	memset(&old, 0, sizeof(old));
 	memset(&door, 0, sizeof(door));
 	memset(&remote, 0, sizeof(remote));
-	if (!read_handoff(handoff, &standalone, &error)) {
+	if (!read_handoff(&handoff_file, handoff, &standalone, &error)) {
 		yt_cli_error("RMT-INIT", &error);
-		return finish_rmt(&door, EXIT_FAILURE);
+		return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
 	}
 	if (standalone) {
 		struct yt_rmt_standalone_output output;
@@ -386,18 +428,18 @@ main(void)
 		if (!yt_rmt_standalone_prompt_compose(&output)
 		    || !write_local_bytes(&door, output.bytes, output.length, &error)) {
 			yt_cli_error("RMT-INIT", &error);
-			return finish_rmt(&door, EXIT_FAILURE);
+			return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
 		}
 		if (!yt_cli_line(answer, sizeof(answer)))
-			return finish_rmt(&door, EXIT_SUCCESS);
+			return finish_rmt(&handoff_file, &door, EXIT_SUCCESS);
 		if (!yt_rmt_standalone_response_compose(
 		    (const uint8_t *)answer, strlen(answer), &output)
 		    || !write_local_bytes(&door, output.bytes, output.length, &error)) {
 			yt_cli_error("RMT-INIT", &error);
-			return finish_rmt(&door, EXIT_FAILURE);
+			return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
 		}
 		if (!output.proceed)
-			return finish_rmt(&door, EXIT_SUCCESS);
+			return finish_rmt(&handoff_file, &door, EXIT_SUCCESS);
 		local_mode = true;
 		strcpy(credited, "The Sysop");
 	}
@@ -405,16 +447,17 @@ main(void)
 		local_mode = false;
 		credited[0] = '\0';
 	}
-	if (!yt_file_delete("rmtinit.tmp", false, &error)) {
+	if (!rmt_handoff_close(&handoff_file, &error)
+	    || !yt_file_delete("rmtinit.tmp", false, &error)) {
 		yt_cli_error("RMT-INIT", &error);
-		return finish_rmt(&door, EXIT_FAILURE);
+		return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
 	}
 	if (!standalone) {
 		struct yt_rmt_standalone_output output;
 
 		if (!read_dorinfo_name(handoff, &remote, &error)) {
 			yt_cli_error("RMT-INIT", &error);
-			return finish_rmt(&door, EXIT_FAILURE);
+			return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
 		}
 		local_mode = remote.local_mode;
 		com_port = remote.com_port;
@@ -435,7 +478,7 @@ main(void)
 					    "adapt observed RMT serial speed");
 				}
 				yt_cli_error("RMT-INIT", &error);
-				return finish_rmt(&door, EXIT_FAILURE);
+				return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
 			}
 		}
 		if (!yt_rmt_remote_status_compose(!local_mode, com_port,
@@ -444,63 +487,50 @@ main(void)
 		    || !credited_remote_name(remote.first, remote.last, credited,
 		    &error)) {
 			yt_cli_error("RMT-INIT", &error);
-			return finish_rmt(&door, EXIT_FAILURE);
+			return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
 		}
 	}
 	output_context.local_mode = local_mode;
 	output_context.door = &door;
-	if (!yt_file_size("YTDATA.DAT", &old_size, &error)) {
-		FILE *empty;
-
-		if (error.status != YT_NOT_FOUND) {
-			yt_cli_error("RMT-INIT", &error);
-			return finish_rmt(&door, EXIT_FAILURE);
-		}
-		empty = fopen("YTDATA.DAT", "wb");
-		if (empty == NULL) {
-			error.status = YT_IO_ERROR;
-			snprintf(error.operation, sizeof(error.operation),
-			    "create old YTDATA.DAT");
-			yt_cli_error("RMT-INIT", &error);
-			return finish_rmt(&door, EXIT_FAILURE);
-		}
-		if (fclose(empty) != 0) {
-			error.status = YT_IO_ERROR;
-			snprintf(error.operation, sizeof(error.operation),
-			    "close old YTDATA.DAT");
-			yt_cli_error("RMT-INIT", &error);
-			return finish_rmt(&door, EXIT_FAILURE);
-		}
-		old_size = 0U;
-		yt_error_clear(&error);
+	if (!yt_database_open(&old, "YTDATA.DAT", YT_OPEN_UPDATE_CREATE,
+	    &error)
+	    || !yt_database_random_lof(&old, &old_size, &error)) {
+		yt_database_close(&old);
+		yt_cli_error("RMT-INIT", &error);
+		return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
 	}
 	if (old_size == 0U) {
 		if (!write_missing_old_data(&output_context, &error)
+		    || !yt_database_random_close(&old, &error)
 		    || !yt_file_delete("YTDATA.DAT", false, &error)) {
+			yt_database_close(&old);
 			yt_cli_error("RMT-INIT", &error);
-			return finish_rmt(&door, EXIT_FAILURE);
+			return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
 		}
 		/* Shipped CLOSE-all/KILL/END is a normal process terminal. */
-		return finish_rmt(&door, EXIT_SUCCESS);
+		return finish_rmt(&handoff_file, &door, EXIT_SUCCESS);
 	}
-	if (!yt_database_open(&old, "YTDATA.DAT", YT_OPEN_UPDATE, &error)
-	    || !yt_config_load(&old, &config, &error)
+	if (!yt_config_load(&old, &config, &error)
 	    || !yt_rmt_preprocess_old_database(&old, &config, &error)) {
 		yt_database_close(&old);
 		yt_cli_error("RMT-INIT", &error);
-		return finish_rmt(&door, EXIT_FAILURE);
+		return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
 	}
-	yt_database_close(&old);
+	if (!yt_database_random_close(&old, &error)) {
+		yt_database_close(&old);
+		yt_cli_error("RMT-INIT", &error);
+		return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
+	}
 	yt_rmt_normalize_config(&config, local_mode || standalone);
 	yt_random_init(&random);
 	if (!yt_initialize_rmt_presented(&config, credited, &random, &presenter,
 	    &error)) {
 		yt_cli_error("RMT-INIT", &error);
-		return finish_rmt(&door, EXIT_FAILURE);
+		return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
 	}
 	if (!write_rmt_completion(&output_context, credited, &error)) {
 		yt_cli_error("RMT-INIT", &error);
-		return finish_rmt(&door, EXIT_FAILURE);
+		return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
 	}
-	return finish_rmt(&door, EXIT_SUCCESS);
+	return finish_rmt(&handoff_file, &door, EXIT_SUCCESS);
 }
