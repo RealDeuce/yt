@@ -2578,8 +2578,11 @@ not authoritative. Use the corrected goal above in the new workspace.
   through the 111/145-byte plain/ANSI exhausted-A prefix, 377/527-byte child,
   zero-effect return and following friendly reentry, pinning the exact
   564/768-byte streams and terminal prompt state. Admitted mine and mine-warp
-  joined fixtures, independent raw A41C/FIELD/cache/RNG/radio state, local
-  framebuffer and every staged failure prefix remain open.
+  joins use the same carried-state structure; the nonfatal mine witness now
+  pins its 146/204-byte prefix, 90/136-byte child, zero-effect return and
+  following friendly reentry as exact 309/433-byte streams. The admitted
+  mine-warp joined fixture, independent raw A41C/FIELD/cache/RNG/radio state,
+  local framebuffer and every staged failure prefix remain open.
 - Upstream `c08f1fca` resolved the two implementation documentation gaps.
   Native commit `7bc5005` now performs YTMAINT radio compaction as the exact
   OUTPUT/CLOSE/KILL, fresh RANDOM destination/source, explicit dense PUT,
