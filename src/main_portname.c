@@ -35,6 +35,21 @@ write_composed(enum yt_portname_output_kind kind, struct yt_error *error)
 }
 
 static bool
+portname_close_all(struct yt_game *game, struct yt_error *error)
+{
+	struct yt_close_all_control control = {
+		.heap_type = YT_CLOSE_ALL_HEAP_FILE,
+		.file_class = 0,
+		.method = yt_database_close_all_method,
+		.context = &game->database,
+	};
+	size_t control_count = game->database.file != NULL ? 1U : 0U;
+
+	return yt_close_all_run(control_count != 0U ? &control : NULL,
+	    control_count, NULL, NULL, error);
+}
+
+static bool
 read_confirmation(uint8_t value[256], size_t *value_length,
     struct yt_error *error)
 {
@@ -97,9 +112,10 @@ main(void)
 		return EXIT_FAILURE;
 	}
 	if (file_size == 0) {
-		yt_database_close(&game.database);
 		if (!write_composed(YT_PORTNAME_OUTPUT_MISSING_DATA, &error)
+		    || !portname_close_all(&game, &error)
 		    || !yt_file_delete("YTDATA.DAT", true, &error)) {
+			yt_database_close(&game.database);
 			yt_cli_error("PORTNAME", &error);
 			return EXIT_FAILURE;
 		}
@@ -121,7 +137,11 @@ main(void)
 	}
 	if (yt_portname_confirm(answer, answer_length)
 	    == YT_PORTNAME_CONFIRM_BLANK) {
-		/* BASIC END owns implicit file cleanup; there is no explicit CLOSE. */
+		if (!portname_close_all(&game, &error)) {
+			yt_database_close(&game.database);
+			yt_cli_error("PORTNAME", &error);
+			return EXIT_FAILURE;
+		}
 		return EXIT_SUCCESS;
 	}
 	if (yt_portname_confirm(answer, answer_length)
@@ -131,7 +151,11 @@ main(void)
 			yt_cli_error("PORTNAME", &error);
 			return EXIT_FAILURE;
 		}
-		yt_database_close(&game.database);
+		if (!portname_close_all(&game, &error)) {
+			yt_database_close(&game.database);
+			yt_cli_error("PORTNAME", &error);
+			return EXIT_FAILURE;
+		}
 		return EXIT_SUCCESS;
 	}
 	if (!yt_database_random_close(&game.database, &error)) {
@@ -153,7 +177,9 @@ main(void)
 	    game.config.planet_offset, &random, write_output, stdout,
 	    &rename_result, &error))
 		goto failure;
-	/* The transaction closed the database, then retained logical PLAY. */
+	/* 02A3 CLOSE-all sees the database already closed, then reaches PLAY. */
+	if (!portname_close_all(&game, &error))
+		goto failure;
 	return EXIT_SUCCESS;
 
 failure:
