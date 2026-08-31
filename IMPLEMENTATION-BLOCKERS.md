@@ -8,7 +8,32 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
-None currently.
+### DOC-GAP-003: unshielded sector-mine missile RNG in joined fatal contracts
+
+Affected coverage:
+
+- anonymous sector-mine body and its caller continuations;
+- direct fighter-kill raw FIELD/store/news/RNG composition; and
+- direct fighter destroyed-to-fatal raw transaction.
+
+The upstream contracts disagree about the positive-missile branch of an
+unshielded sector-mine batch:
+
+- `docs/runtime/sector-mine-output.md` specifies one direct missile `RND`,
+  identifies site `YT-SUB:679B`, and agrees with
+  `tools/ytmine_output.py`, which consumes
+  `batch<N>.missiles` once and applies
+  `INT(RND * (batch * missiles)) + 1`.
+- `docs/runtime/direct-fighter-fatal-cycle-output.md` instead lists
+  `missile TIMER/RANDOMIZE/RND x3` in its joined RNG order.
+
+The retained direct-fighter fatal fixture has zero missiles, so its generated
+artifact, 13-draw trace, and 1,597/1,900-byte transcripts do not exercise or
+resolve the disagreement. The native `mine_encounter()` currently follows
+the sector-mine component contract and executable model by consuming one
+direct draw. Do not promote a joined raw transaction that admits positive
+missiles until the upstream fatal-cycle prose is corrected or the intended
+caller-specific difference is documented and pinned by an exercised fixture.
 
 ## Resolved documentation gaps
 
