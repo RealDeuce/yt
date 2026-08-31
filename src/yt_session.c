@@ -467,11 +467,20 @@ computer_prompt_hydrate(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
+session_close_file5(struct yt_error *error)
+{
+	struct yt_database file = {0};
+
+	/* These callers have no live random file-5 owner at this boundary. */
+	return yt_database_random_close(&file, error);
+}
+
+static bool
 append_news(struct yt_session *session, const char *text,
     struct yt_error *error)
 {
 	(void)session;
-	return yt_news_append(text, error);
+	return session_close_file5(error) && yt_news_append(text, error);
 }
 
 static bool
@@ -479,7 +488,8 @@ append_news_bytes(struct yt_session *session, const uint8_t *text,
     size_t length, struct yt_error *error)
 {
 	(void)session;
-	return yt_news_append_bytes(text, length, error);
+	return session_close_file5(error)
+	    && yt_news_append_bytes(text, length, error);
 }
 
 static bool
@@ -2360,7 +2370,8 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 			if (!yt_platform_clock(&now, error))
 				return false;
 			yt_format_date(&now, date);
-			if (!yt_news_append_game_full(date, full, error))
+			if (!session_close_file5(error)
+			    || !yt_news_append_game_full(date, full, error))
 				return false;
 			session->running = false;
 			session->terminated = true;
@@ -2403,7 +2414,8 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 			char date[11];
 
 			yt_format_date(&now, date);
-			if (!yt_news_append_new_player(date, full, error))
+			if (!session_close_file5(error)
+			    || !yt_news_append_new_player(date, full, error))
 				return false;
 		}
 		return instruction_offer(session, error);
@@ -2440,7 +2452,8 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 			char time_text[9];
 
 			yt_format_time(&now, time_text);
-			if (!yt_news_append_login(time_text,
+			if (!session_close_file5(error)
+			    || !yt_news_append_login(time_text,
 			    session->player.name, error))
 				return false;
 		}
@@ -12091,6 +12104,8 @@ command_genesis(struct yt_session *session, struct yt_error *error)
 		return false;
 	session->presentation.bold = 1.0f;
 	if (!session_02fc(session, success_two, sizeof(success_two) - 1U))
+		return false;
+	if (!session_close_file5(error))
 		return false;
 	/*
 	 * QuickBASIC PRINT # inserts CR/LF before the DOS EOF written on close.
