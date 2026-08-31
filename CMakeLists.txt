@@ -82,6 +82,7 @@ set(YT_GAME_SOURCES
     src/yt_init.c
     src/yt_maint.c
     src/yt_names.c
+    src/yt_planet_updater.c
     src/yt_portname.c
     src/yt_score.c
     src/yt_score_format.c)

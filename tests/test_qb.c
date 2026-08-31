@@ -116,7 +116,15 @@ test_mbf64(void)
 	    {0x0c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x81};
 	static const uint8_t maximum_double[8] =
 	    {0xf8, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f, 0xff};
+	static const uint8_t csng_source[8] =
+	    {0x00, 0x00, 0x00, 0x90, 0x7c, 0xd6, 0x0d, 0x81};
+	static const uint8_t csng_expected[4] = {0x7d, 0xd6, 0x0d, 0x81};
+	static const uint8_t fractional[8] =
+	    {0x00, 0x00, 0x00, 0x00, 0x9a, 0x99, 0x19, 0x80};
+	static const uint8_t fractional_int[8] =
+	    {0x00, 0x00, 0x00, 0x00, 0x9a, 0x99, 0x19, 0x00};
 	uint8_t encoded[8];
+	uint8_t encoded_single[4];
 	uint8_t scratch[8];
 	uint8_t result[8];
 	static const uint8_t signature[8] =
@@ -162,6 +170,13 @@ test_mbf64(void)
 	    sizeof(encoded)) == 0);
 	CHECK(qb_mbf64_encode(INFINITY, encoded) == QB_MBF_OVERFLOW);
 	CHECK(qb_mbf64_encode(NAN, encoded) == QB_MBF_OVERFLOW);
+	CHECK(qb_mbf32_from_mbf64_raw(csng_source, encoded_single) == QB_MBF_OK);
+	CHECK(memcmp(encoded_single, csng_expected, sizeof(encoded_single)) == 0);
+	CHECK(qb_mbf64_int_positive_raw(fractional, encoded) == QB_MBF_OK);
+	CHECK(memcmp(encoded, fractional_int, sizeof(encoded)) == 0);
+	CHECK(qb_mbf32_from_mbf64_raw(encoded, encoded_single) == QB_MBF_OK);
+	CHECK(memcmp(encoded_single, fractional_int + 4U,
+	    sizeof(encoded_single)) == 0);
 
 	/* The registration path needs all 56 MBF bits, not host binary64. */
 	CHECK(qb_mbf64_mul_raw(signature, first_sum, scratch) == QB_MBF_OK);

@@ -2943,109 +2943,138 @@ write_planet_physical(struct yt_session *session, uint32_t physical_record,
 }
 
 static bool
-planet_update_cached_physical(struct yt_session *session,
-    uint32_t physical_record,
-    struct yt_planet *planet, struct planet_update_cache *cache,
+planet_updater_date(void *context, uint8_t current_day_raw[4],
     struct yt_error *error)
 {
-	float rate[10] = {0};
-	float contribution[10] = {0};
-	double quantity[10] = {0};
-	float elapsed;
-	float minute;
-	float sum;
-	float one_percent = 0.009999999776482582f;
+	struct yt_session *session = context;
 	int today;
 	int adjusted_year;
-	size_t index;
 
 	if (!yt_current_date_serial(session->door->game.config.epoch_year,
 	    &today, &adjusted_year, error))
 		return false;
 	session->door->game.today = today;
 	session->door->game.adjusted_year = adjusted_year;
-	if (!read_planet_physical(session, physical_record, planet, error))
+	if (qb_mbf32_encode((float)today, current_day_raw) == QB_MBF_OVERFLOW) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation, sizeof(error->operation), "%s",
+			    "planet updater current day MBF32");
+		}
 		return false;
-	for (index = 1; index <= 3; ++index) {
-		rate[index] = planet->production[index - 1U];
-		quantity[index] = (double)planet->stock[index - 1U];
 	}
-	quantity[4] = (double)planet->fighters;
-	quantity[5] = (double)planet->missiles;
-	quantity[6] = (double)planet->mines;
-	quantity[7] = (double)planet->bank;
-	quantity[8] = (double)planet->ground_forces;
-	quantity[9] = (double)planet->plasma;
-	sum = single_add(single_add(rate[1], rate[2]), rate[3]);
-	rate[4] = floorf(sum);
-	sum = single_add(single_add(rate[1], rate[2]), rate[3]);
-	rate[5] = floorf(single_div(sum, 2500.0f));
-	sum = single_add(single_add(rate[1], rate[2]), rate[3]);
-	rate[6] = floorf(single_div(sum, 25000.0f));
-	sum = single_add(single_add(rate[1], rate[2]), rate[3]);
-	rate[9] = floorf(single_mul(sum, 0.00001f));
-	minute = current_minute();
-	elapsed = single_add(
-	    single_sub((float)today, planet->last_day),
-	    single_div(single_sub(minute, planet->last_minute), 1440.0f));
-	if (elapsed > 10.0f || elapsed < 0.0f)
-		elapsed = 10.0f;
-	contribution[1] = (float)(quantity[7] / 10000.0);
-	contribution[2] = (float)(quantity[7] / 20000.0);
-	contribution[3] = (float)(quantity[7] / 30000.0);
-	contribution[4] = (float)(quantity[7] / 500.0);
-	contribution[5] = (float)(quantity[7] * 0.00001);
-	contribution[6] = (float)(quantity[7] * 0.000004);
-	contribution[8] = (float)(quantity[7] / 10000.0);
-	contribution[9] = (float)(quantity[7] * 0.00000004);
-	{
-		float fraction = single_mul(elapsed, one_percent);
+	return true;
+}
 
-		quantity[7] = floor(quantity[7]
-		    + quantity[7] * (double)fraction);
+static bool
+planet_updater_record_expression(void *context, bool closing,
+    struct yt_error *error)
+{
+	(void)context;
+	(void)closing;
+	(void)error;
+	return true;
+}
+
+static bool
+planet_updater_get(void *context, uint32_t physical_record,
+    struct yt_record *record, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_database_read(&session->door->game.database,
+	    (size_t)physical_record, record, error);
+}
+
+static bool
+planet_updater_timer(void *context, uint8_t timer_seconds_raw[4],
+    struct yt_error *error)
+{
+	float timer_seconds;
+
+	(void)context;
+	timer_seconds = (float)yt_platform_timer();
+	if (qb_mbf32_encode(timer_seconds, timer_seconds_raw) == QB_MBF_OVERFLOW) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation, sizeof(error->operation), "%s",
+			    "planet updater TIMER MBF32");
+		}
+		return false;
 	}
-	quantity[8] = floor(quantity[8]
-	    + (double)elapsed * quantity[8] * (double)one_percent
-	    + (double)single_mul(contribution[8], elapsed));
-	for (index = 1; index <= 3; ++index)
-		rate[index] = single_add(rate[index],
-		    single_mul(single_mul(rate[index], elapsed), one_percent));
-	for (index = 1; index <= 6; ++index) {
-		rate[index] = single_add(rate[index], contribution[index]);
-		quantity[index] +=
-		    (double)single_mul(rate[index], elapsed);
-		if (index <= 3
-		    && quantity[index]
-		    > (double)single_mul(rate[index], 10.0f))
-			rate[index] = (float)(quantity[index] / 10.0
-			    + (double)contribution[index]);
+	return true;
+}
+
+static bool
+planet_updater_lset(void *context, enum yt_planet_updater_stage stage,
+    size_t offset, const uint8_t raw[4], struct yt_error *error)
+{
+	(void)context;
+	(void)stage;
+	(void)offset;
+	(void)raw;
+	(void)error;
+	return true;
+}
+
+static bool
+planet_updater_put(void *context, uint32_t physical_record,
+    const struct yt_record *record, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_database_write(&session->door->game.database,
+	    (size_t)physical_record, record, error)
+	    && yt_database_flush(&session->door->game.database, error);
+}
+
+static bool
+planet_update_cached_physical(struct yt_session *session,
+    uint32_t physical_record,
+    struct yt_planet *planet, struct planet_update_cache *cache,
+    struct yt_error *error)
+{
+	static const struct yt_planet_updater_ops ops = {
+		planet_updater_date,
+		planet_updater_record_expression,
+		planet_updater_get,
+		planet_updater_timer,
+		planet_updater_lset,
+		planet_updater_put,
+	};
+	struct yt_planet_updater_state state = {0};
+	float logical;
+	float expression;
+
+	logical = single_sub((float)physical_record,
+	    session->door->game.config.planet_offset);
+	expression = single_add(session->door->game.config.planet_offset,
+	    logical);
+	if (qb_brun_random_record_number(expression) != physical_record
+	    || qb_mbf32_encode(logical, state.logical_planet_raw)
+	    == QB_MBF_OVERFLOW
+	    || qb_mbf32_encode(session->door->game.config.planet_offset,
+	    state.planet_offset_raw) == QB_MBF_OVERFLOW) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation, sizeof(error->operation), "%s",
+			    "planet updater physical record");
+		}
+		return false;
 	}
-	rate[9] = single_add(rate[9], contribution[9]);
-	quantity[9] += (double)single_mul(rate[9], elapsed);
-	for (index = 1; index <= 3; ++index) {
-		planet->production[index - 1U] =
-		    single_sub(rate[index], contribution[index]);
-		planet->stock[index - 1U] = (float)quantity[index];
-	}
-	planet->fighters = (float)quantity[4];
-	planet->missiles = (float)quantity[5];
-	planet->mines = (float)quantity[6];
-	planet->bank = (float)quantity[7];
-	planet->ground_forces = (float)quantity[8];
-	planet->plasma = (float)quantity[9];
-	planet->last_day = (float)today;
-	planet->last_minute = minute;
-	memcpy(session->planet_quantity, quantity,
+	if (!yt_planet_updater_run(&state, &ops, session, error))
+		return false;
+	yt_planet_decode(planet, &state.field);
+	memcpy(session->planet_quantity, state.cache.quantity,
 	    sizeof(session->planet_quantity));
 	if (cache != NULL) {
-		memcpy(cache->rate, rate, sizeof(cache->rate));
-		memcpy(cache->quantity, quantity, sizeof(cache->quantity));
-		memcpy(cache->contribution, contribution,
+		memcpy(cache->rate, state.cache.production, sizeof(cache->rate));
+		memcpy(cache->quantity, state.cache.quantity,
+		    sizeof(cache->quantity));
+		memcpy(cache->contribution, state.cache.contribution,
 		    sizeof(cache->contribution));
 	}
-	return write_planet_physical(session, physical_record, planet, true,
-	    error)
-	    && yt_database_flush(&session->door->game.database, error);
+	return true;
 }
 
 static bool

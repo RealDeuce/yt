@@ -16486,6 +16486,432 @@ check_datetime_format(void)
 	return true;
 }
 
+struct planet_updater_tape {
+	enum yt_planet_updater_stage events[YT_PLANET_UPDATER_STAGE_COUNT];
+	size_t event_count;
+	size_t fail_at;
+	struct yt_record stored;
+	uint8_t day_raw[4];
+	uint8_t timer_raw[4];
+	bool has_record;
+};
+
+static bool
+planet_updater_test_error(struct yt_error *error, const char *operation)
+{
+	if (error != NULL) {
+		error->status = YT_IO_ERROR;
+		error->system_error = 0;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    operation);
+		error->path[0] = '\0';
+	}
+	return false;
+}
+
+static bool
+planet_updater_step(struct planet_updater_tape *tape,
+    enum yt_planet_updater_stage stage, struct yt_error *error)
+{
+	if (tape->event_count >= YT_ARRAY_LEN(tape->events))
+		return planet_updater_test_error(error, "updater tape overflow");
+	tape->events[tape->event_count++] = stage;
+	if (tape->event_count == tape->fail_at)
+		return planet_updater_test_error(error,
+		    yt_planet_updater_stage_name(stage));
+	return true;
+}
+
+static bool
+planet_updater_date_test(void *context, uint8_t current_day_raw[4],
+    struct yt_error *error)
+{
+	struct planet_updater_tape *tape = context;
+
+	if (!planet_updater_step(tape, YT_PLANET_UPDATER_DATE_HELPER, error))
+		return false;
+	memcpy(current_day_raw, tape->day_raw, 4U);
+	return true;
+}
+
+static bool
+planet_updater_expression_test(void *context, bool closing,
+    struct yt_error *error)
+{
+	struct planet_updater_tape *tape = context;
+
+	return planet_updater_step(tape, closing
+	    ? YT_PLANET_UPDATER_CLOSING_RECORD_EXPRESSION
+	    : YT_PLANET_UPDATER_OPENING_RECORD_EXPRESSION, error);
+}
+
+static bool
+planet_updater_get_test(void *context, uint32_t physical_record,
+    struct yt_record *record, struct yt_error *error)
+{
+	struct planet_updater_tape *tape = context;
+
+	if (!planet_updater_step(tape, YT_PLANET_UPDATER_GET, error))
+		return false;
+	if (!tape->has_record || physical_record != 2001U)
+		return planet_updater_test_error(error, "planet updater GET #1");
+	*record = tape->stored;
+	return true;
+}
+
+static bool
+planet_updater_timer_test(void *context, uint8_t timer_seconds_raw[4],
+    struct yt_error *error)
+{
+	struct planet_updater_tape *tape = context;
+
+	if (!planet_updater_step(tape, YT_PLANET_UPDATER_TIMER, error))
+		return false;
+	memcpy(timer_seconds_raw, tape->timer_raw, 4U);
+	return true;
+}
+
+static bool
+planet_updater_lset_test(void *context,
+    enum yt_planet_updater_stage stage, size_t offset,
+    const uint8_t raw[4], struct yt_error *error)
+{
+	struct planet_updater_tape *tape = context;
+
+	(void)offset;
+	(void)raw;
+	return planet_updater_step(tape, stage, error);
+}
+
+static bool
+planet_updater_put_test(void *context, uint32_t physical_record,
+    const struct yt_record *record, struct yt_error *error)
+{
+	struct planet_updater_tape *tape = context;
+
+	if (!planet_updater_step(tape, YT_PLANET_UPDATER_PUT, error))
+		return false;
+	if (physical_record != 2001U)
+		return planet_updater_test_error(error, "planet updater PUT #1");
+	tape->stored = *record;
+	return true;
+}
+
+static const struct yt_planet_updater_ops planet_updater_test_ops = {
+	planet_updater_date_test,
+	planet_updater_expression_test,
+	planet_updater_get_test,
+	planet_updater_timer_test,
+	planet_updater_lset_test,
+	planet_updater_put_test,
+};
+
+static void
+planet_updater_record_fixture(struct yt_record *record)
+{
+	static const uint8_t dirty_zero[4] = {0x00, 0x00, 0x20, 0x00};
+	size_t index;
+
+	for (index = 0U; index < sizeof(record->bytes); ++index)
+		record->bytes[index] = (uint8_t)((index * 7U + 11U) & 0xffU);
+	memcpy(record->bytes, "Haven", 5U);
+	(void)yt_record_set_number(record, YT_F41, 100.0f);
+	(void)yt_record_set_number(record, YT_F45, 100.0f);
+	(void)yt_record_set_number(record, YT_F49, 200.0f);
+	(void)yt_record_set_number(record, YT_F53, 300.0f);
+	(void)yt_record_set_number(record, YT_F57, 1000.0f);
+	(void)yt_record_set_number(record, YT_F61, 2000.0f);
+	(void)yt_record_set_number(record, YT_F65, 3000.0f);
+	(void)yt_record_set_raw_number(record, YT_F69, dirty_zero);
+	(void)yt_record_set_number(record, YT_F77, 12.75f);
+	(void)yt_record_set_number(record, YT_F89, 60.0f);
+	(void)yt_record_set_number(record, YT_F113, 2.0f);
+	(void)yt_record_set_number(record, YT_F117, 10000.5f);
+	(void)yt_record_set_raw_number(record, YT_F125, dirty_zero);
+	(void)yt_record_set_number(record, YT_F129, 30.0f);
+}
+
+static bool
+planet_updater_hex(const char *hex, uint8_t *raw, size_t length)
+{
+	size_t index;
+
+	for (index = 0U; index < length; ++index) {
+		unsigned high;
+		unsigned low;
+		char first = hex[index * 2U];
+		char second = hex[index * 2U + 1U];
+
+		high = first >= '0' && first <= '9' ? (unsigned)(first - '0')
+		    : first >= 'a' && first <= 'f'
+		    ? (unsigned)(first - 'a' + 10) : 16U;
+		low = second >= '0' && second <= '9' ? (unsigned)(second - '0')
+		    : second >= 'a' && second <= 'f'
+		    ? (unsigned)(second - 'a' + 10) : 16U;
+		if (high > 15U || low > 15U)
+			return false;
+		raw[index] = (uint8_t)((high << 4U) | low);
+	}
+	return hex[length * 2U] == '\0';
+}
+
+static void
+planet_updater_fixture(struct planet_updater_tape *tape,
+    struct yt_planet_updater_state *state, const struct yt_record *record,
+    float day, float timer)
+{
+	memset(tape, 0, sizeof(*tape));
+	tape->stored = *record;
+	tape->has_record = true;
+	tape->fail_at = SIZE_MAX;
+	(void)qb_mbf32_encode(day, tape->day_raw);
+	(void)qb_mbf32_encode(timer, tape->timer_raw);
+	memset(state, 0, sizeof(*state));
+	memset(state->field.bytes, 0x55, sizeof(state->field.bytes));
+	(void)qb_mbf32_encode(1.0f, state->logical_planet_raw);
+	(void)qb_mbf32_encode(2000.0f, state->planet_offset_raw);
+}
+
+static bool
+check_planet_updater_transaction(void)
+{
+	static const enum yt_planet_updater_stage expected_events[] = {
+		YT_PLANET_UPDATER_DATE_HELPER,
+		YT_PLANET_UPDATER_OPENING_RECORD_EXPRESSION,
+		YT_PLANET_UPDATER_GET,
+		YT_PLANET_UPDATER_TIMER,
+		YT_PLANET_UPDATER_LSET_DAY,
+		YT_PLANET_UPDATER_LSET_BASE_ORE,
+		YT_PLANET_UPDATER_LSET_BASE_ORGANICS,
+		YT_PLANET_UPDATER_LSET_BASE_EQUIPMENT,
+		YT_PLANET_UPDATER_LSET_STOCK_ORE,
+		YT_PLANET_UPDATER_LSET_STOCK_ORGANICS,
+		YT_PLANET_UPDATER_LSET_STOCK_EQUIPMENT,
+		YT_PLANET_UPDATER_LSET_MISSILES,
+		YT_PLANET_UPDATER_LSET_FORCES,
+		YT_PLANET_UPDATER_LSET_MINUTE,
+		YT_PLANET_UPDATER_LSET_PLASMA,
+		YT_PLANET_UPDATER_LSET_BANK,
+		YT_PLANET_UPDATER_LSET_MINES,
+		YT_PLANET_UPDATER_LSET_FIGHTERS,
+		YT_PLANET_UPDATER_CLOSING_RECORD_EXPRESSION,
+		YT_PLANET_UPDATER_PUT,
+	};
+	static const char expected_hex[] =
+	    "486176656e2e353c434a51585f666d747b828990979ea5acb3bac1c8cfd6dde4"
+	    "ebf2f900070e151c2300004a8739425d87391a5d881dce258964490a8b64300a"
+	    "8ca4414f8c1058557d0a11181f00005084424950575e656c7300007087969da4"
+	    "abb2b9c0c7ced5dce3eaf1f8ff060d141bd406008200e01d8e5a61686fd9ac2"
+	    "a7c66f5288aaeb5bcc3";
+	static const size_t changed_offsets[] = {
+		YT_F41, YT_F45, YT_F49, YT_F53, YT_F57, YT_F61, YT_F65,
+		YT_F69, YT_F77, YT_F89, YT_F113, YT_F117, YT_F125, YT_F129,
+	};
+	static const char *const expected_sites[] = {
+		"YT-SUB2:0AA5", "YT-SUB2:0AB3", "YT-SUB2:0AC1",
+		"YT-SUB2:0BF6", "YT-SUB2:0EBF", "YT-SUB2:0ECB",
+		"YT-SUB2:0EE0", "YT-SUB2:0EF5", "YT-SUB2:0F0A",
+		"YT-SUB2:0F1C", "YT-SUB2:0F2E", "YT-SUB2:0F40",
+		"YT-SUB2:0F52", "YT-SUB2:0F64", "YT-SUB2:0F70",
+		"YT-SUB2:0F82", "YT-SUB2:0F94", "YT-SUB2:0FA6",
+		"YT-SUB2:0FBE", "YT-SUB2:0FCC",
+	};
+	struct yt_record original;
+	struct yt_record expected;
+	struct yt_record partial;
+	struct yt_planet_updater_state state;
+	struct planet_updater_tape tape;
+	struct yt_error error;
+	size_t failure;
+
+	planet_updater_record_fixture(&original);
+	if (!planet_updater_hex(expected_hex, expected.bytes,
+	    sizeof(expected.bytes)))
+		return false;
+	for (failure = 0U; failure < YT_ARRAY_LEN(expected_events); ++failure) {
+		if (strcmp(yt_planet_updater_stage_site(expected_events[failure]),
+		    expected_sites[failure]) != 0)
+			return false;
+	}
+	planet_updater_fixture(&tape, &state, &original, 101.0f, 7200.0f);
+	yt_error_clear(&error);
+	if (!yt_planet_updater_run(&state, &planet_updater_test_ops, &tape,
+	    &error)
+	    || tape.event_count != YT_ARRAY_LEN(expected_events)
+	    || memcmp(tape.events, expected_events, sizeof(expected_events)) != 0
+	    || state.effect_count != YT_ARRAY_LEN(expected_events)
+	    || state.completed_effects != YT_ARRAY_LEN(expected_events)
+	    || state.physical_record != 2001U || !state.field_loaded
+	    || state.field_dirty || !state.written
+	    || memcmp(state.field.bytes, expected.bytes,
+	    sizeof(expected.bytes)) != 0
+	    || memcmp(tape.stored.bytes, expected.bytes,
+	    sizeof(expected.bytes)) != 0
+	    || memcmp(state.field.bytes + YT_RECORD_TAIL_OFFSET,
+	    original.bytes + YT_RECORD_TAIL_OFFSET, YT_RECORD_TAIL_SIZE) != 0
+	    || state.cache.elapsed != 1.04166662693023681640625f)
+		return false;
+	for (failure = 1U; failure <= YT_ARRAY_LEN(expected_events); ++failure) {
+		size_t completed_lsets;
+		size_t write;
+
+		planet_updater_fixture(&tape, &state, &original, 101.0f, 7200.0f);
+		tape.fail_at = failure;
+		yt_error_clear(&error);
+		if (yt_planet_updater_run(&state, &planet_updater_test_ops,
+		    &tape, &error) || error.status != YT_IO_ERROR
+		    || tape.event_count != failure || state.effect_count != failure
+		    || state.completed_effects != failure - 1U
+		    || state.stage != expected_events[failure - 1U]
+		    || memcmp(tape.stored.bytes, original.bytes,
+		    sizeof(original.bytes)) != 0 || state.written
+		    || state.field_loaded != (failure >= 4U)
+		    || state.field_dirty != (failure >= 6U))
+			return false;
+		memset(partial.bytes, 0x55, sizeof(partial.bytes));
+		if (failure >= 4U)
+			partial = original;
+		completed_lsets = failure > 5U ? failure - 5U : 0U;
+		if (completed_lsets > YT_ARRAY_LEN(changed_offsets))
+			completed_lsets = YT_ARRAY_LEN(changed_offsets);
+		for (write = 0U; write < completed_lsets; ++write)
+			memcpy(partial.bytes + changed_offsets[write],
+			    expected.bytes + changed_offsets[write], 4U);
+		if (memcmp(state.field.bytes, partial.bytes,
+		    sizeof(partial.bytes)) != 0)
+			return false;
+	}
+
+	planet_updater_fixture(&tape, &state, &original, 101.0f, 7200.0f);
+	tape.has_record = false;
+	yt_error_clear(&error);
+	if (yt_planet_updater_run(&state, &planet_updater_test_ops, &tape,
+	    &error) || tape.event_count != 3U
+	    || state.stage != YT_PLANET_UPDATER_GET || state.field_loaded
+	    || memcmp(tape.stored.bytes, original.bytes,
+	    sizeof(original.bytes)) != 0)
+		return false;
+
+	planet_updater_record_fixture(&original);
+	(void)yt_record_set_number(&original, YT_F41, 100.0f);
+	(void)yt_record_set_number(&original, YT_F89, 60.0f);
+	(void)yt_record_set_number(&original, YT_F77, 0.6f);
+	(void)yt_record_set_number(&original, YT_F117, 0.6f);
+	planet_updater_fixture(&tape, &state, &original, 100.0f, 3600.0f);
+	yt_error_clear(&error);
+	if (!yt_planet_updater_run(&state, &planet_updater_test_ops, &tape,
+	    &error)
+	    || memcmp(tape.stored.bytes + YT_F77, "\x9a\x99\x19\0", 4U) != 0
+	    || memcmp(tape.stored.bytes + YT_F117, "\x9a\x99\x19\0", 4U) != 0)
+		return false;
+	partial = tape.stored;
+	planet_updater_fixture(&tape, &state, &partial, 100.0f, 3600.0f);
+	yt_error_clear(&error);
+	if (!yt_planet_updater_run(&state, &planet_updater_test_ops, &tape,
+	    &error)
+	    || memcmp(tape.stored.bytes + YT_F77, "\x9a\x99\x19\0", 4U) != 0
+	    || memcmp(tape.stored.bytes + YT_F117, "\x9a\x99\x19\0", 4U) != 0)
+		return false;
+
+	planet_updater_record_fixture(&original);
+	planet_updater_fixture(&tape, &state, &original, 100.0f, 3600.0f);
+	yt_error_clear(&error);
+	if (!yt_planet_updater_run(&state, &planet_updater_test_ops, &tape,
+	    &error) || state.cache.elapsed != 0.0f
+	    || memcmp(tape.stored.bytes + YT_F69, "\0\0\x20\0", 4U) != 0
+	    || memcmp(tape.stored.bytes + YT_F125, "\0\0\x20\0", 4U) != 0)
+		return false;
+
+	planet_updater_record_fixture(&original);
+	(void)yt_record_set_number(&original, YT_F41, 100.0f);
+	(void)yt_record_set_number(&original, YT_F45, 0.0f);
+	(void)yt_record_set_number(&original, YT_F49, 0.0f);
+	(void)yt_record_set_number(&original, YT_F53, 0.0f);
+	(void)yt_record_set_number(&original, YT_F57, 0.0f);
+	(void)yt_record_set_number(&original, YT_F61, 0.0f);
+	(void)yt_record_set_number(&original, YT_F65, 0.0f);
+	(void)yt_record_set_number(&original, YT_F77, 0.0f);
+	(void)yt_record_set_number(&original, YT_F89, 60.0f);
+	(void)yt_record_set_number(&original, YT_F113, 1.1f);
+	(void)yt_record_set_number(&original, YT_F117, 10000.0f);
+	(void)yt_record_set_number(&original, YT_F129, 0.0f);
+	planet_updater_fixture(&tape, &state, &original, 100.0f, 3600.0f);
+	yt_error_clear(&error);
+	if (!yt_planet_updater_run(&state, &planet_updater_test_ops, &tape,
+	    &error)
+	    || memcmp(tape.stored.bytes + YT_F45, "\xcd\xcc\x0c\0", 4U) != 0
+	    || memcmp(tape.stored.bytes + YT_F49, "\xcd\xcc\x0c\0", 4U) != 0
+	    || memcmp(tape.stored.bytes + YT_F53, "\xcd\xcc\x0c\0", 4U) != 0)
+		return false;
+
+	planet_updater_record_fixture(&original);
+	(void)yt_record_set_number(&original, YT_F41, 100.0f);
+	(void)yt_record_set_number(&original, YT_F45, 10.0f);
+	(void)yt_record_set_number(&original, YT_F49, 0.0f);
+	(void)yt_record_set_number(&original, YT_F53, 0.0f);
+	(void)yt_record_set_number(&original, YT_F57, 100.0f);
+	(void)yt_record_set_number(&original, YT_F61, 0.0f);
+	(void)yt_record_set_number(&original, YT_F65, 0.0f);
+	(void)yt_record_set_number(&original, YT_F77, 0.0f);
+	(void)yt_record_set_number(&original, YT_F89, 60.0f);
+	(void)yt_record_set_number(&original, YT_F113, 0.0f);
+	(void)yt_record_set_number(&original, YT_F117, 0.0f);
+	(void)yt_record_set_number(&original, YT_F129, 0.0f);
+	planet_updater_fixture(&tape, &state, &original, 100.0f, 3600.0f);
+	yt_error_clear(&error);
+	if (!yt_planet_updater_run(&state, &planet_updater_test_ops, &tape,
+	    &error) || yt_record_get_number(&tape.stored, YT_F45) != 10.0f)
+		return false;
+	(void)yt_record_set_number(&original, YT_F57, 101.0f);
+	planet_updater_fixture(&tape, &state, &original, 100.0f, 3600.0f);
+	yt_error_clear(&error);
+	if (!yt_planet_updater_run(&state, &planet_updater_test_ops, &tape,
+	    &error) || yt_record_get_number(&tape.stored, YT_F45) != 10.1f)
+		return false;
+
+	planet_updater_record_fixture(&original);
+	(void)yt_record_set_number(&original, YT_F41, 100.0f);
+	(void)yt_record_set_number(&original, YT_F45, 2499.0f);
+	(void)yt_record_set_number(&original, YT_F49, 0.0f);
+	(void)yt_record_set_number(&original, YT_F53, 0.0f);
+	(void)yt_record_set_number(&original, YT_F57, 0.0f);
+	(void)yt_record_set_number(&original, YT_F61, 0.0f);
+	(void)yt_record_set_number(&original, YT_F65, 0.0f);
+	(void)yt_record_set_number(&original, YT_F77, 0.0f);
+	(void)yt_record_set_number(&original, YT_F89, 0.0f);
+	(void)yt_record_set_number(&original, YT_F113, 0.0f);
+	(void)yt_record_set_number(&original, YT_F117, 0.0f);
+	(void)yt_record_set_number(&original, YT_F129, 0.0f);
+	planet_updater_fixture(&tape, &state, &original, 110.0f, 0.0f);
+	yt_error_clear(&error);
+	if (!yt_planet_updater_run(&state, &planet_updater_test_ops, &tape,
+	    &error) || state.cache.elapsed != 10.0f
+	    || memcmp(tape.stored.bytes + YT_F69, "\0\0\x20\0", 4U) != 0)
+		return false;
+	planet_updater_fixture(&tape, &state, &original, 110.0f, 60.0f);
+	yt_error_clear(&error);
+	if (!yt_planet_updater_run(&state, &planet_updater_test_ops, &tape,
+	    &error) || state.cache.elapsed != 10.0f)
+		return false;
+	planet_updater_fixture(&tape, &state, &original, 99.0f, 0.0f);
+	yt_error_clear(&error);
+	if (!yt_planet_updater_run(&state, &planet_updater_test_ops, &tape,
+	    &error) || state.cache.elapsed != 10.0f)
+		return false;
+
+	planet_updater_record_fixture(&original);
+	memcpy(original.bytes + YT_F45, "\x01\x02\x03\0", 4U);
+	planet_updater_fixture(&tape, &state, &original, 101.0f, 7200.0f);
+	yt_error_clear(&error);
+	if (yt_planet_updater_run(&state, &planet_updater_test_ops, &tape,
+	    &error) || error.status != YT_RANGE || tape.event_count != 3U
+	    || state.completed_effects != 3U || !state.field_loaded
+	    || memcmp(tape.stored.bytes, original.bytes,
+	    sizeof(original.bytes)) != 0)
+		return false;
+	return true;
+}
+
 int
 main(void)
 {
@@ -16607,6 +17033,8 @@ main(void)
 		return fail("planet garrison model differs");
 	if (!check_planet_permission_transaction())
 		return fail("planet landing permission transaction differs");
+	if (!check_planet_updater_transaction())
+		return fail("planet updater transaction differs");
 	if (!check_planet_landing_model())
 		return fail("planet landing model differs");
 	if (!check_planet_assault_model())

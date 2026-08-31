@@ -308,6 +308,47 @@ qb_mbf64_from_u64(uint64_t value, uint8_t raw[8])
 }
 
 enum qb_mbf_status
+qb_mbf32_from_mbf64_raw(const uint8_t source[8], uint8_t raw[4])
+{
+	uint64_t significand = UINT64_C(0x80000000000000);
+	uint64_t discarded;
+	uint32_t rounded;
+	unsigned exponent;
+	size_t index;
+
+	if (source == NULL || raw == NULL)
+		return QB_MBF_DOMAIN;
+	if (source[7] == 0U) {
+		memcpy(raw, source + 4U, 4U);
+		return QB_MBF_OK;
+	}
+	for (index = 0U; index < 6U; ++index)
+		significand |= (uint64_t)source[index] << (index * 8U);
+	significand |= (uint64_t)(source[6] & 0x7fU) << 48U;
+	discarded = significand & UINT64_C(0xffffffff);
+	rounded = (uint32_t)(significand >> 32U);
+	if (discarded > UINT64_C(0x80000000)
+	    || (discarded == UINT64_C(0x80000000)
+	    && (rounded & 1U) != 0U))
+		++rounded;
+	exponent = source[7];
+	if (rounded == UINT32_C(0x01000000)) {
+		rounded >>= 1U;
+		if (exponent == 255U)
+			return QB_MBF_OVERFLOW;
+		++exponent;
+	}
+	rounded &= UINT32_C(0x007fffff);
+	raw[0] = (uint8_t)rounded;
+	raw[1] = (uint8_t)(rounded >> 8U);
+	raw[2] = (uint8_t)(rounded >> 16U);
+	if ((source[6] & 0x80U) != 0U)
+		raw[2] |= 0x80U;
+	raw[3] = (uint8_t)exponent;
+	return QB_MBF_OK;
+}
+
+enum qb_mbf_status
 qb_mbf64_add_raw(const uint8_t left_raw[8], const uint8_t right_raw[8],
     uint8_t raw[8])
 {
@@ -566,6 +607,23 @@ qb_mbf64_floor_positive_raw(const uint8_t operand[8], uint8_t raw[8])
 	}
 	integer = value.significand >> (unsigned)(55 - exponent);
 	return qb_mbf64_from_u64(integer, raw);
+}
+
+enum qb_mbf_status
+qb_mbf64_int_positive_raw(const uint8_t operand[8], uint8_t raw[8])
+{
+	if (operand == NULL || raw == NULL)
+		return QB_MBF_DOMAIN;
+	if (operand[7] != 0U && (operand[6] & 0x80U) != 0U)
+		return QB_MBF_DOMAIN;
+	memcpy(raw, operand, 8U);
+	if (operand[7] == 0U)
+		return QB_MBF_OK;
+	if (operand[7] < 129U) {
+		raw[7] = 0U;
+		return QB_MBF_OK;
+	}
+	return qb_mbf64_floor_positive_raw(operand, raw);
 }
 
 static bool

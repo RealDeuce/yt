@@ -1215,6 +1215,87 @@ void yt_port_encode(struct yt_port *port);
 void yt_planet_decode(struct yt_planet *planet, const struct yt_record *record);
 void yt_planet_encode(struct yt_planet *planet);
 
+enum yt_planet_updater_stage {
+	YT_PLANET_UPDATER_DATE_HELPER,
+	YT_PLANET_UPDATER_OPENING_RECORD_EXPRESSION,
+	YT_PLANET_UPDATER_GET,
+	YT_PLANET_UPDATER_TIMER,
+	YT_PLANET_UPDATER_LSET_DAY,
+	YT_PLANET_UPDATER_LSET_BASE_ORE,
+	YT_PLANET_UPDATER_LSET_BASE_ORGANICS,
+	YT_PLANET_UPDATER_LSET_BASE_EQUIPMENT,
+	YT_PLANET_UPDATER_LSET_STOCK_ORE,
+	YT_PLANET_UPDATER_LSET_STOCK_ORGANICS,
+	YT_PLANET_UPDATER_LSET_STOCK_EQUIPMENT,
+	YT_PLANET_UPDATER_LSET_MISSILES,
+	YT_PLANET_UPDATER_LSET_FORCES,
+	YT_PLANET_UPDATER_LSET_MINUTE,
+	YT_PLANET_UPDATER_LSET_PLASMA,
+	YT_PLANET_UPDATER_LSET_BANK,
+	YT_PLANET_UPDATER_LSET_MINES,
+	YT_PLANET_UPDATER_LSET_FIGHTERS,
+	YT_PLANET_UPDATER_CLOSING_RECORD_EXPRESSION,
+	YT_PLANET_UPDATER_PUT,
+	YT_PLANET_UPDATER_STAGE_COUNT
+};
+
+struct yt_planet_updater_cache {
+	float current_day;
+	float current_minute;
+	float elapsed;
+	float production[10];
+	double quantity[10];
+	float contribution[10];
+	uint8_t quantity_raw[10][8];
+};
+
+struct yt_planet_updater_state {
+	uint8_t logical_planet_raw[4];
+	uint8_t planet_offset_raw[4];
+	uint8_t current_day_raw[4];
+	uint8_t timer_seconds_raw[4];
+	uint32_t physical_record;
+	struct yt_record field;
+	struct yt_planet_updater_cache cache;
+	enum yt_planet_updater_stage stage;
+	size_t effect_count;
+	size_t completed_effects;
+	bool field_loaded;
+	bool field_dirty;
+	bool written;
+};
+
+typedef bool (*yt_planet_updater_date_fn)(void *context,
+	uint8_t current_day_raw[4], struct yt_error *error);
+typedef bool (*yt_planet_updater_record_expression_fn)(void *context,
+	bool closing, struct yt_error *error);
+typedef bool (*yt_planet_updater_get_fn)(void *context,
+	uint32_t physical_record, struct yt_record *record,
+	struct yt_error *error);
+typedef bool (*yt_planet_updater_timer_fn)(void *context,
+	uint8_t timer_seconds_raw[4], struct yt_error *error);
+typedef bool (*yt_planet_updater_lset_fn)(void *context,
+	enum yt_planet_updater_stage stage, size_t offset,
+	const uint8_t raw[4], struct yt_error *error);
+typedef bool (*yt_planet_updater_put_fn)(void *context,
+	uint32_t physical_record, const struct yt_record *record,
+	struct yt_error *error);
+
+struct yt_planet_updater_ops {
+	yt_planet_updater_date_fn date;
+	yt_planet_updater_record_expression_fn record_expression;
+	yt_planet_updater_get_fn get;
+	yt_planet_updater_timer_fn timer;
+	yt_planet_updater_lset_fn lset;
+	yt_planet_updater_put_fn put;
+};
+
+const char *yt_planet_updater_stage_name(enum yt_planet_updater_stage stage);
+const char *yt_planet_updater_stage_site(enum yt_planet_updater_stage stage);
+bool yt_planet_updater_run(struct yt_planet_updater_state *state,
+	const struct yt_planet_updater_ops *ops, void *context,
+	struct yt_error *error);
+
 bool yt_game_open(struct yt_game *game, enum yt_open_mode mode,
     struct yt_error *error);
 void yt_game_close(struct yt_game *game);
