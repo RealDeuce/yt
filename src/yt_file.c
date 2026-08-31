@@ -847,7 +847,7 @@ yt_database_write(struct yt_database *database, size_t basic_record,
     const struct yt_record *record, struct yt_error *error)
 {
 	bool written = yt_database_random_put(database, basic_record, record,
-	    true, NULL, error);
+	    false, NULL, error);
 
 	if (!written && error != NULL)
 		(void)snprintf(error->operation, sizeof(error->operation), "%s",

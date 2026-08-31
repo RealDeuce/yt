@@ -3602,9 +3602,10 @@ test_files(void)
 	write_script = (struct database_write_script){.accepted = 136U};
 	yt_database_set_write_provider(&database, scripted_database_write,
 	    &write_script);
-	CHECK(yt_database_write(&database, 1U, &replacement, &error));
+	CHECK(yt_database_random_put(&database, 1U, &replacement, true,
+	    &accepted, &error));
 	CHECK(write_script.calls == 1U
-	    && write_script.requested == YT_RECORD_SIZE);
+	    && write_script.requested == YT_RECORD_SIZE && accepted == 136U);
 	CHECK(database.last_put.outcome == YT_DATABASE_PUT_RETURNED
 	    && database.last_put.accepted == 136U
 	    && database.last_put.basic_error == 0U
@@ -3619,10 +3620,9 @@ test_files(void)
 	yt_database_set_write_provider(&database, scripted_database_write,
 	    &write_script);
 	yt_error_clear(&error);
-	CHECK(!yt_database_random_put(&database, 1U, &replacement, false,
-	    &accepted, &error) && error.status == YT_IO_ERROR
-	    && accepted == 136U
-	    && strcmp(error.operation, "random PUT rejected short") == 0);
+	CHECK(!yt_database_write(&database, 1U, &replacement, &error)
+	    && error.status == YT_IO_ERROR
+	    && strcmp(error.operation, "write record") == 0);
 	CHECK(database.file == NULL && database.orphaned_file == NULL
 	    && database.records == 0U && database.short_close_attempted
 	    && database.short_close_succeeded);
