@@ -4733,7 +4733,10 @@ test_rmt_standalone_decline(struct yt_error *error)
 static bool
 test_rmt_init(struct yt_error *error)
 {
+	static const uint8_t expected_prophecy[] =
+	    "** The Prophesy has been fulfilled by The Sysop!! **";
 	struct yt_text_file output;
+	struct yt_text_file messages;
 	struct yt_game game;
 	static const char input[] = "Y\n";
 	static const uint8_t expected_prefix[] =
@@ -4759,6 +4762,10 @@ test_rmt_init(struct yt_error *error)
 	    (long)(sizeof(scoreboard) - 1U))
 	    || !yt_text_read("rmt.out", &output, error))
 		return false;
+	if (!yt_text_read("YTRMSG.DAT", &messages, error)) {
+		yt_text_free(&output);
+		return false;
+	}
 	result = output.length >= sizeof(expected_prefix) - 1U
 	    && memcmp(output.data, expected_prefix,
 	    sizeof(expected_prefix) - 1U) == 0
@@ -4768,8 +4775,24 @@ test_rmt_init(struct yt_error *error)
 	    && strstr((const char *)output.data, "Congratulations") == NULL
 	    && strstr((const char *)output.data,
 	    "Running stand alone... re-initializing using old sysop defined defaults.")
-	    != NULL;
+	    != NULL
+	    && messages.length == 5U * sizeof(struct yt_radio_record);
+	for (size_t index = 0U; result && index < 5U; ++index) {
+		struct yt_radio_record record;
+
+		memcpy(record.bytes, messages.data
+		    + index * sizeof(record.bytes), sizeof(record.bytes));
+		result = yt_radio_get_number(&record, 0U) == 50.0f
+		    && yt_radio_get_number(&record, 4U) == -2.0f
+		    && yt_radio_get_number(&record, 8U) == -2.0f
+		    && memcmp(record.bytes + 12U, expected_prophecy,
+		    sizeof(expected_prophecy) - 1U) == 0;
+		for (size_t offset = 12U + sizeof(expected_prophecy) - 1U;
+		    result && offset < sizeof(record.bytes); ++offset)
+			result = record.bytes[offset] == (offset < 84U ? ' ' : 0U);
+	}
 	yt_text_free(&output);
+	yt_text_free(&messages);
 	if (!result)
 		return false;
 	memset(&game, 0, sizeof(game));

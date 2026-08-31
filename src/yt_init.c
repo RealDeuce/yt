@@ -2156,10 +2156,13 @@ write_rmt_auxiliary(const char *credited_name,
 	    "NO YESTERDAY'S NEWS TO READ!\r\n"
 	    "NO YESTERDAY'S NEWS TO READ!\r\n";
 	struct yt_radio_record radio;
-	FILE *file;
+	struct yt_radio_file file;
 	char prophecy[180];
 	int written;
 	int index;
+	bool valid = false;
+
+	yt_radio_file_init(&file);
 
 	if (!rmt_present(options, 0x1dfaU, YT_RMT_OUTPUT_BLANK, NULL, 0U,
 	    error)
@@ -2196,26 +2199,26 @@ write_rmt_auxiliary(const char *credited_name,
 	yt_radio_set_number(&radio, 8, -2.0f);
 	yt_radio_set_text(&radio, (const uint8_t *)prophecy,
 	    (size_t)written, 72);
-	file = fopen("YTRMSG.DAT", "wb");
-	if (file == NULL) {
-		set_error(error, YT_IO_ERROR, "open output", "YTRMSG.DAT");
-		return false;
-	}
+	if (!yt_text_write("YTRMSG.DAT", NULL, 0U, false, error)
+	    || !yt_radio_file_open(&file, "YTRMSG.DAT", error))
+		goto done;
 	for (index = 0; index < 5; ++index) {
-		if (fwrite(radio.bytes, 1, sizeof(radio.bytes), file)
-		    != sizeof(radio.bytes)) {
-			fclose(file);
-			set_error(error, YT_IO_ERROR, "write output",
-			    "YTRMSG.DAT");
-			return false;
-		}
+		uint32_t record;
+
+		if (!yt_radio_file_next_record(&file, &record, error)
+		    || !yt_radio_file_put(&file, record, &radio, error))
+			goto done;
 	}
-	if (fclose(file) != 0) {
-		set_error(error, YT_IO_ERROR, "close output", "YTRMSG.DAT");
-		return false;
-	}
-	return rmt_present(options, 0x227eU, YT_RMT_OUTPUT_BLANK, NULL, 0U,
-	    error);
+	if (!yt_radio_file_close(&file, error)
+	    || !rmt_present(options, 0x227eU, YT_RMT_OUTPUT_BLANK, NULL, 0U,
+	    error))
+		goto done;
+	valid = true;
+
+done:
+	if (file.file != NULL)
+		(void)yt_radio_file_close(&file, NULL);
+	return valid;
 }
 
 static void
