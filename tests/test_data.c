@@ -600,6 +600,22 @@ struct file_kill_script {
 	size_t position;
 };
 
+struct file_rename_step {
+	enum yt_file_rename_operation operation;
+	struct yt_file_rename_observation observation;
+	char selected_old[512];
+	char selected_new[512];
+	bool provider_ok;
+	bool replace_old;
+	bool replace_new;
+};
+
+struct file_rename_script {
+	struct file_rename_step steps[5];
+	size_t length;
+	size_t position;
+};
+
 struct text_open_step {
 	enum yt_text_open_operation operation;
 	uint8_t access;
@@ -1261,6 +1277,84 @@ scripted_file_kill(void *context, enum yt_file_kill_operation operation,
 	return true;
 }
 
+static struct file_rename_step *
+file_rename_add(struct file_rename_script *script,
+    enum yt_file_rename_operation operation, bool carry, uint16_t dos_error,
+    bool open_collision, const char *selected_old, const char *selected_new)
+{
+	struct file_rename_step *step;
+
+	CHECK(script->length < YT_ARRAY_LEN(script->steps));
+	if (script->length >= YT_ARRAY_LEN(script->steps))
+		return NULL;
+	step = &script->steps[script->length++];
+	memset(step, 0, sizeof(*step));
+	step->operation = operation;
+	step->observation.carry = carry;
+	step->observation.dos_error = dos_error;
+	step->observation.open_collision = open_collision;
+	step->provider_ok = true;
+	if (selected_old != NULL) {
+		(void)snprintf(step->selected_old, sizeof(step->selected_old),
+		    "%s", selected_old);
+		step->replace_old = true;
+	}
+	if (selected_new != NULL) {
+		(void)snprintf(step->selected_new, sizeof(step->selected_new),
+		    "%s", selected_new);
+		step->replace_new = true;
+	}
+	return step;
+}
+
+static void
+file_rename_success_script(struct file_rename_script *script)
+{
+	file_rename_add(script, YT_FILE_RENAME_PARSE_OLD, false, 0U, false,
+	    "Temp", NULL);
+	file_rename_add(script, YT_FILE_RENAME_PARSE_NEW, false, 0U, false,
+	    NULL, "ytrmsg.dat");
+	file_rename_add(script, YT_FILE_RENAME_CHECK_OLD_OPEN, false, 0U,
+	    false, NULL, NULL);
+	file_rename_add(script, YT_FILE_RENAME_CHECK_NEW_OPEN, false, 0U,
+	    false, NULL, NULL);
+	file_rename_add(script, YT_FILE_RENAME_RENAME, false, 0U, false,
+	    NULL, NULL);
+}
+
+static bool
+scripted_file_rename(void *context, enum yt_file_rename_operation operation,
+    const char *old_source, const char *new_source, char *selected_old,
+    size_t selected_old_size, char *selected_new, size_t selected_new_size,
+    struct yt_file_rename_observation *observation)
+{
+	struct file_rename_script *script = context;
+	struct file_rename_step *step;
+
+	CHECK(script->position < script->length);
+	if (script->position >= script->length)
+		return false;
+	step = &script->steps[script->position++];
+	CHECK(operation == step->operation
+	    && strcmp(old_source, "TEMP") == 0
+	    && strcmp(new_source, "YTRMSG.DAT") == 0
+	    && selected_old_size == 512U && selected_new_size == 512U);
+	if (operation != step->operation || strcmp(old_source, "TEMP") != 0
+	    || strcmp(new_source, "YTRMSG.DAT") != 0
+	    || selected_old_size != 512U || selected_new_size != 512U)
+		return false;
+	if (!step->provider_ok)
+		return false;
+	if (step->replace_old)
+		(void)snprintf(selected_old, selected_old_size, "%s",
+		    step->selected_old);
+	if (step->replace_new)
+		(void)snprintf(selected_new, selected_new_size, "%s",
+		    step->selected_new);
+	*observation = step->observation;
+	return true;
+}
+
 struct close_all_tape {
 	int identifiers[8];
 	int classes[8];
@@ -1901,6 +1995,218 @@ test_file_kill(void)
 	CHECK(!yt_file_kill(requested, &result, &error)
 	    && result.outcome == YT_FILE_KILL_FIND_ERROR
 	    && result.basic_error == 53U && error.status == YT_NOT_FOUND);
+#ifdef _WIN32
+	_rmdir(directory);
+#else
+	rmdir(directory);
+#endif
+}
+
+static void
+test_file_rename(void)
+{
+	struct file_rename_script script;
+	struct yt_file_rename_result result;
+	struct yt_error error;
+	char directory[256];
+	char old_actual[320];
+	char old_requested[320];
+	char new_path[320];
+	char missing_old[320];
+	char missing_new[320];
+	char bytes[6];
+	FILE *file;
+	unsigned dos_error;
+	unsigned ordinal;
+
+	/* The rooted NAME tape parses and checks both names before one rename. */
+	memset(&script, 0, sizeof(script));
+	file_rename_success_script(&script);
+	yt_error_clear(&error);
+	CHECK(yt_file_rename_observed("TEMP", "YTRMSG.DAT",
+	    scripted_file_rename, &script, &result, &error)
+	    && result.outcome == YT_FILE_RENAME_RETURNED
+	    && result.operation_count == 5U
+	    && result.old_parsed && result.new_parsed
+	    && result.old_checked_open && result.new_checked_open
+	    && result.renamed && result.dos_error == 0U
+	    && result.basic_error == 0U
+	    && strcmp(result.selected_old, "Temp") == 0
+	    && strcmp(result.selected_new, "ytrmsg.dat") == 0
+	    && script.position == script.length);
+
+	/* The physical classifier consumes the complete DOS error-byte domain. */
+	for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
+		uint16_t expected = dos_error == 2U ? 53U
+		    : dos_error == 3U ? 76U
+		    : dos_error == 5U ? 58U : 5U;
+
+		memset(&script, 0, sizeof(script));
+		file_rename_success_script(&script);
+		script.steps[4].observation.carry = true;
+		script.steps[4].observation.dos_error = (uint16_t)dos_error;
+		CHECK(!yt_file_rename_observed("TEMP", "YTRMSG.DAT",
+		    scripted_file_rename, &script, &result, &error)
+		    && result.outcome == YT_FILE_RENAME_DOS_ERROR
+		    && result.failed_operation == YT_FILE_RENAME_RENAME
+		    && result.operation_count == 5U
+		    && result.dos_error == dos_error
+		    && result.basic_error == expected
+		    && result.old_parsed && result.new_parsed
+		    && result.old_checked_open && result.new_checked_open
+		    && !result.renamed
+		    && script.position == script.length);
+	}
+
+	/* Either live-name collision enters the same ERR55 terminal pre-rename. */
+	for (ordinal = 2U; ordinal <= 3U; ++ordinal) {
+		memset(&script, 0, sizeof(script));
+		file_rename_success_script(&script);
+		script.length = ordinal + 1U;
+		script.steps[ordinal].observation.open_collision = true;
+		CHECK(!yt_file_rename_observed("TEMP", "YTRMSG.DAT",
+		    scripted_file_rename, &script, &result, &error)
+		    && result.outcome == (ordinal == 2U
+		    ? YT_FILE_RENAME_OLD_OPEN_ERROR
+		    : YT_FILE_RENAME_NEW_OPEN_ERROR)
+		    && result.failed_operation
+		    == (enum yt_file_rename_operation)ordinal
+		    && result.basic_error == 55U && !result.renamed
+		    && script.position == script.length);
+	}
+
+	/* A rooted parser failure is ERR64 and suppresses every later operation. */
+	for (ordinal = 0U; ordinal <= 1U; ++ordinal) {
+		memset(&script, 0, sizeof(script));
+		file_rename_success_script(&script);
+		script.length = ordinal + 1U;
+		script.steps[ordinal].observation.path_error = true;
+		if (ordinal == 0U)
+			script.steps[ordinal].replace_old = false;
+		else
+			script.steps[ordinal].replace_new = false;
+		CHECK(!yt_file_rename_observed("TEMP", "YTRMSG.DAT",
+		    scripted_file_rename, &script, &result, &error)
+		    && result.outcome == (ordinal == 0U
+		    ? YT_FILE_RENAME_OLD_PATH_ERROR
+		    : YT_FILE_RENAME_NEW_PATH_ERROR)
+		    && result.basic_error == 64U
+		    && result.operation_count == ordinal + 1U
+		    && script.position == script.length);
+	}
+
+	/* Provider rejection at each ordinal retains the completed prefix. */
+	for (ordinal = 0U; ordinal < 5U; ++ordinal) {
+		memset(&script, 0, sizeof(script));
+		file_rename_success_script(&script);
+		script.length = ordinal + 1U;
+		script.steps[ordinal].provider_ok = false;
+		CHECK(!yt_file_rename_observed("TEMP", "YTRMSG.DAT",
+		    scripted_file_rename, &script, &result, &error)
+		    && result.outcome == YT_FILE_RENAME_PROVIDER_ERROR
+		    && result.failed_operation
+		    == (enum yt_file_rename_operation)ordinal
+		    && result.operation_count == ordinal + 1U
+		    && result.old_parsed == (ordinal > 0U)
+		    && result.new_parsed == (ordinal > 1U)
+		    && result.old_checked_open == (ordinal > 2U)
+		    && result.new_checked_open == (ordinal > 3U)
+		    && !result.renamed
+		    && script.position == script.length);
+	}
+
+	/* Malformed observation shapes cannot alias a canonical terminal. */
+	for (ordinal = 0U; ordinal < 8U; ++ordinal) {
+		memset(&script, 0, sizeof(script));
+		file_rename_success_script(&script);
+		switch (ordinal) {
+		case 0U:
+			script.steps[0].replace_old = false;
+			break;
+		case 1U:
+			script.steps[0].observation.dos_error = 1U;
+			break;
+		case 2U:
+			(void)snprintf(script.steps[1].selected_old,
+			    sizeof(script.steps[1].selected_old), "%s", "Other");
+			script.steps[1].replace_old = true;
+			break;
+		case 3U:
+			script.steps[1].replace_new = false;
+			break;
+		case 4U:
+			script.steps[2].observation.carry = true;
+			script.steps[2].observation.dos_error = 1U;
+			break;
+		case 5U:
+			(void)snprintf(script.steps[3].selected_new,
+			    sizeof(script.steps[3].selected_new), "%s", "Other");
+			script.steps[3].replace_new = true;
+			break;
+		case 6U:
+			script.steps[4].observation.open_collision = true;
+			break;
+		default:
+			script.steps[4].observation.dos_error = 1U;
+			break;
+		}
+		CHECK(!yt_file_rename_observed("TEMP", "YTRMSG.DAT",
+		    scripted_file_rename, &script, &result, &error)
+		    && result.outcome == YT_FILE_RENAME_PROVIDER_ERROR);
+	}
+
+	/* Native DOS-like behavior resolves source case and never replaces a target. */
+#ifdef _WIN32
+	snprintf(directory, sizeof(directory), "yt-file-rename-%lu",
+	    (unsigned long)GetCurrentProcessId());
+#else
+	snprintf(directory, sizeof(directory), "/tmp/yt-file-rename-%ld",
+	    (long)getpid());
+#endif
+	(void)mkdir_one(directory);
+	snprintf(old_actual, sizeof(old_actual), "%s/Temp", directory);
+	snprintf(old_requested, sizeof(old_requested), "%s/TEMP", directory);
+	snprintf(new_path, sizeof(new_path), "%s/ytrmsg.dat", directory);
+	snprintf(missing_old, sizeof(missing_old), "%s/MISSING", directory);
+	snprintf(missing_new, sizeof(missing_new), "%s/absent/name", directory);
+	file = fopen(old_actual, "wb");
+	CHECK(file != NULL);
+	if (file != NULL) {
+		CHECK(fwrite("source", 1U, 6U, file) == 6U);
+		CHECK(fclose(file) == 0);
+	}
+	CHECK(yt_file_rename_observed(old_requested, new_path, NULL, NULL,
+	    &result, &error)
+	    && result.outcome == YT_FILE_RENAME_RETURNED && result.renamed
+	    && strcmp(result.selected_old, old_actual) == 0
+	    && strcmp(result.selected_new, new_path) == 0);
+	file = fopen(new_path, "rb");
+	CHECK(file != NULL);
+	if (file != NULL) {
+		CHECK(fread(bytes, 1U, sizeof(bytes), file) == sizeof(bytes)
+		    && memcmp(bytes, "source", sizeof(bytes)) == 0);
+		CHECK(fclose(file) == 0);
+	}
+
+	file = fopen(old_actual, "wb");
+	CHECK(file != NULL);
+	if (file != NULL)
+		CHECK(fclose(file) == 0);
+	CHECK(!yt_file_rename_observed(old_requested, new_path, NULL, NULL,
+	    &result, &error)
+	    && result.outcome == YT_FILE_RENAME_DOS_ERROR
+	    && result.dos_error == 5U && result.basic_error == 58U);
+	CHECK(!yt_file_rename_observed(missing_old, new_path, NULL, NULL,
+	    &result, &error)
+	    && result.dos_error == 5U && result.basic_error == 58U);
+	(void)remove(new_path);
+	CHECK(!yt_file_rename_observed(missing_old, new_path, NULL, NULL,
+	    &result, &error)
+	    && result.dos_error == 2U && result.basic_error == 53U);
+	CHECK(!yt_file_rename_observed(old_requested, missing_new, NULL, NULL,
+	    &result, &error)
+	    && result.dos_error == 3U && result.basic_error == 76U);
+	(void)remove(old_actual);
 #ifdef _WIN32
 	_rmdir(directory);
 #else
@@ -6867,6 +7173,7 @@ main(void)
 	test_random();
 	test_database_random_open();
 	test_file_kill();
+	test_file_rename();
 	test_close_all_registry();
 	test_database_random_close();
 	test_text_output_write();
