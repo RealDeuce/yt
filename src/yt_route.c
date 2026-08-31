@@ -17,7 +17,7 @@ route_error(struct yt_error *error, const char *operation)
 }
 
 static bool
-route_index(float value, int conversion_mode, int *index,
+route_index(float value, uint8_t conversion_mode, int *index,
     struct yt_error *error, const char *operation)
 {
 	bool overflow;
@@ -33,7 +33,7 @@ route_index(float value, int conversion_mode, int *index,
 
 bool
 yt_route_build(float start_value, float destination_value, float *status,
-    const float avoid[YT_ROUTE_AVOID_COUNT], int conversion_mode,
+    const float avoid[YT_ROUTE_AVOID_COUNT], uint8_t conversion_mode,
     int16_t predecessor[YT_ROUTE_CAPACITY],
     int16_t second[YT_ROUTE_CAPACITY], yt_route_sector_reader reader,
     void *reader_context, enum yt_route_outcome *outcome,

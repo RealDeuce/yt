@@ -23,7 +23,7 @@ typedef bool (*yt_route_sector_reader)(void *context, int sector,
  * status is both the avoid-enable input and the success/failure output.
  */
 bool yt_route_build(float start_value, float destination_value, float *status,
-    const float avoid[YT_ROUTE_AVOID_COUNT], int conversion_mode,
+    const float avoid[YT_ROUTE_AVOID_COUNT], uint8_t conversion_mode,
     int16_t predecessor[YT_ROUTE_CAPACITY],
     int16_t second[YT_ROUTE_CAPACITY], yt_route_sector_reader reader,
     void *reader_context, enum yt_route_outcome *outcome,

@@ -45,7 +45,7 @@ read_sector(void *context, int sector, float warps[6],
 
 static bool
 run_route(struct graph *graph, float start, float destination, float *status,
-    const float avoid[YT_ROUTE_AVOID_COUNT], int conversion_mode,
+    const float avoid[YT_ROUTE_AVOID_COUNT], uint8_t conversion_mode,
     int16_t predecessor[YT_ROUTE_CAPACITY],
     int16_t second[YT_ROUTE_CAPACITY], enum yt_route_outcome *outcome,
     struct yt_error *error)
