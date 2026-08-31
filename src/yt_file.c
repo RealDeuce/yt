@@ -1665,6 +1665,172 @@ yt_radio_file_next_record(struct yt_radio_file *radio,
 	return true;
 }
 
+static bool
+file_kill_default(void *context, enum yt_file_kill_operation operation,
+    const char *source, char *selected, size_t selected_size,
+    struct yt_file_kill_observation *observation)
+{
+	struct yt_error local_error;
+	int saved_errno;
+
+	(void)context;
+	memset(observation, 0, sizeof(*observation));
+	switch (operation) {
+	case YT_FILE_KILL_FIND_FIRST:
+		yt_error_clear(&local_error);
+		errno = 0;
+		if (!yt_resolve_case_path(source, false, selected,
+		    selected_size, &local_error)) {
+			observation->carry = true;
+			observation->dos_error = local_error.status == YT_NOT_FOUND
+			    ? database_dos_error(source, ENOENT) : 3U;
+		}
+		return true;
+	case YT_FILE_KILL_CHECK_OPEN:
+		return true;
+	case YT_FILE_KILL_DELETE:
+		errno = 0;
+		if (remove(selected) != 0) {
+			saved_errno = errno;
+			observation->carry = true;
+			observation->dos_error = database_dos_error(selected,
+			    saved_errno);
+			errno = saved_errno;
+		}
+		return true;
+	case YT_FILE_KILL_FIND_NEXT:
+		observation->carry = true;
+		observation->dos_error = 18U;
+		return true;
+	default:
+		return false;
+	}
+}
+
+static bool
+file_kill_fail(struct yt_file_kill_result *result,
+    enum yt_file_kill_outcome outcome,
+    enum yt_file_kill_operation operation, uint16_t dos_error,
+    uint16_t basic_error, const char *path, struct yt_error *error)
+{
+	result->outcome = outcome;
+	result->failed_operation = operation;
+	result->dos_error = dos_error;
+	result->basic_error = basic_error;
+	errno = 0;
+	set_error(error, outcome == YT_FILE_KILL_FIND_ERROR
+	    ? YT_NOT_FOUND : YT_IO_ERROR,
+	    outcome == YT_FILE_KILL_PROVIDER_ERROR ? "KILL provider" : "KILL",
+	    result->selected_path[0] != '\0' ? result->selected_path : path);
+	return false;
+}
+
+bool
+yt_file_kill_observed(const char *path, yt_file_kill_provider provider,
+    void *context, struct yt_file_kill_result *result,
+    struct yt_error *error)
+{
+	static const enum yt_file_kill_operation operations[] = {
+		YT_FILE_KILL_FIND_FIRST,
+		YT_FILE_KILL_CHECK_OPEN,
+		YT_FILE_KILL_DELETE,
+		YT_FILE_KILL_FIND_NEXT,
+	};
+	struct yt_file_kill_result local_result;
+	struct yt_file_kill_result *active = result != NULL
+	    ? result : &local_result;
+	yt_file_kill_provider active_provider = provider != NULL
+	    ? provider : file_kill_default;
+	struct yt_file_kill_observation observation;
+	char retained[sizeof(active->selected_path)];
+	size_t index;
+
+	memset(active, 0, sizeof(*active));
+	active->failed_operation = YT_FILE_KILL_FIND_FIRST;
+	if (path == NULL) {
+		errno = 0;
+		set_error(error, YT_INVALID, "KILL", NULL);
+		active->outcome = YT_FILE_KILL_PROVIDER_ERROR;
+		active->basic_error = 64U;
+		return false;
+	}
+	for (index = 0U; index < YT_ARRAY_LEN(operations); ++index) {
+		enum yt_file_kill_operation operation = operations[index];
+		bool delivered;
+		bool valid;
+
+		if (operation != YT_FILE_KILL_FIND_FIRST)
+			(void)snprintf(retained, sizeof(retained), "%s",
+			    active->selected_path);
+		memset(&observation, 0, sizeof(observation));
+		++active->operation_count;
+		delivered = active_provider(context, operation, path,
+		    active->selected_path, sizeof(active->selected_path),
+		    &observation);
+		valid = delivered
+		    && ((!observation.carry && observation.dos_error == 0U)
+		    || (observation.carry && observation.dos_error >= 1U
+		    && observation.dos_error <= 0xffU))
+		    && (operation == YT_FILE_KILL_CHECK_OPEN
+		    || !observation.open_collision)
+		    && memchr(active->selected_path, '\0',
+		    sizeof(active->selected_path)) != NULL;
+		if (operation == YT_FILE_KILL_FIND_FIRST) {
+			valid = valid && ((observation.carry
+			    && active->selected_path[0] == '\0')
+			    || (!observation.carry
+			    && active->selected_path[0] != '\0'));
+		}
+		else
+			valid = valid && strcmp(retained,
+			    active->selected_path) == 0;
+		if (operation == YT_FILE_KILL_CHECK_OPEN)
+			valid = valid && !observation.carry;
+		if (operation == YT_FILE_KILL_FIND_NEXT)
+			valid = valid && observation.carry;
+		if (!valid)
+			return file_kill_fail(active,
+			    YT_FILE_KILL_PROVIDER_ERROR, operation,
+			    observation.dos_error, 53U, path, error);
+		if (operation == YT_FILE_KILL_FIND_FIRST) {
+			if (observation.carry)
+				return file_kill_fail(active,
+				    YT_FILE_KILL_FIND_ERROR, operation,
+				    observation.dos_error, 53U, path, error);
+			active->found = true;
+		}
+		else if (operation == YT_FILE_KILL_CHECK_OPEN) {
+			active->checked_open = true;
+			if (observation.open_collision)
+				return file_kill_fail(active,
+				    YT_FILE_KILL_OPEN_ERROR, operation, 0U,
+				    55U, path, error);
+		}
+		else if (operation == YT_FILE_KILL_DELETE) {
+			if (observation.carry)
+				return file_kill_fail(active,
+				    YT_FILE_KILL_DELETE_ERROR, operation,
+				    observation.dos_error,
+				    observation.dos_error == 5U ? 75U : 53U,
+				    path, error);
+			active->deleted = true;
+			active->deleted_count = 1U;
+		}
+		else
+			active->find_next_attempted = true;
+	}
+	active->outcome = YT_FILE_KILL_RETURNED;
+	return true;
+}
+
+bool
+yt_file_kill(const char *path, struct yt_file_kill_result *result,
+    struct yt_error *error)
+{
+	return yt_file_kill_observed(path, file_kill_default, NULL, result,
+	    error);
+}
+
 bool
 yt_file_delete(const char *path, bool missing_ok, struct yt_error *error)
 {

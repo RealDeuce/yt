@@ -496,7 +496,7 @@ main(void)
 		credited[0] = '\0';
 	}
 	if (!rmt_handoff_close(&handoff_file, &error)
-	    || !yt_file_delete("rmtinit.tmp", false, &error)) {
+	    || !yt_file_kill("rmtinit.tmp", NULL, &error)) {
 		yt_cli_error("RMT-INIT", &error);
 		return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
 	}
@@ -554,7 +554,7 @@ main(void)
 			yt_cli_error("RMT-INIT", &error);
 			return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
 		}
-		if (!yt_file_delete("YTDATA.DAT", false, &error)) {
+		if (!yt_file_kill("YTDATA.DAT", NULL, &error)) {
 			yt_cli_error("RMT-INIT", &error);
 			return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
 		}

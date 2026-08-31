@@ -284,6 +284,47 @@ struct yt_radio_file {
 	size_t field_count;
 };
 
+enum yt_file_kill_operation {
+	YT_FILE_KILL_FIND_FIRST,
+	YT_FILE_KILL_CHECK_OPEN,
+	YT_FILE_KILL_DELETE,
+	YT_FILE_KILL_FIND_NEXT,
+};
+
+struct yt_file_kill_observation {
+	bool carry;
+	bool open_collision;
+	uint16_t dos_error;
+};
+
+typedef bool (*yt_file_kill_provider)(void *context,
+	enum yt_file_kill_operation operation, const char *source,
+	char *selected, size_t selected_size,
+	struct yt_file_kill_observation *observation);
+
+enum yt_file_kill_outcome {
+	YT_FILE_KILL_NONE,
+	YT_FILE_KILL_RETURNED,
+	YT_FILE_KILL_FIND_ERROR,
+	YT_FILE_KILL_OPEN_ERROR,
+	YT_FILE_KILL_DELETE_ERROR,
+	YT_FILE_KILL_PROVIDER_ERROR,
+};
+
+struct yt_file_kill_result {
+	enum yt_file_kill_outcome outcome;
+	enum yt_file_kill_operation failed_operation;
+	size_t operation_count;
+	size_t deleted_count;
+	uint16_t dos_error;
+	uint16_t basic_error;
+	char selected_path[512];
+	bool found;
+	bool checked_open;
+	bool deleted;
+	bool find_next_attempted;
+};
+
 bool yt_resolve_case_path(const char *requested, bool allow_missing,
     char *resolved, size_t size, struct yt_error *error);
 bool yt_database_open(struct yt_database *database, const char *path,
@@ -343,6 +384,11 @@ bool yt_radio_file_put(struct yt_radio_file *radio, uint32_t basic_record,
     const struct yt_radio_record *record, struct yt_error *error);
 bool yt_radio_file_next_record(struct yt_radio_file *radio,
     uint32_t *basic_record, struct yt_error *error);
+bool yt_file_kill(const char *path, struct yt_file_kill_result *result,
+	struct yt_error *error);
+bool yt_file_kill_observed(const char *path, yt_file_kill_provider provider,
+	void *context, struct yt_file_kill_result *result,
+	struct yt_error *error);
 bool yt_file_delete(const char *path, bool missing_ok, struct yt_error *error);
 bool yt_file_rename(const char *old_path, const char *new_path,
     struct yt_error *error);

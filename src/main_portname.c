@@ -114,7 +114,7 @@ main(void)
 	if (file_size == 0) {
 		if (!write_composed(YT_PORTNAME_OUTPUT_MISSING_DATA, &error)
 		    || !portname_close_all(&game, &error)
-		    || !yt_file_delete("YTDATA.DAT", true, &error)) {
+		    || !yt_file_kill("YTDATA.DAT", NULL, &error)) {
 			yt_database_close(&game.database);
 			yt_cli_error("PORTNAME", &error);
 			return EXIT_FAILURE;

@@ -1513,7 +1513,7 @@ yt_radio_compact(struct yt_error *error)
 		goto done;
 	}
 	dest = NULL;
-	if (!yt_file_delete("YTRMSG.DAT", false, error)
+	if (!yt_file_kill("YTRMSG.DAT", NULL, error)
 	    || !yt_file_rename("Temp", "ytrmsg.dat", error))
 		goto done;
 	result = true;
@@ -1543,7 +1543,7 @@ yt_news_rotate(struct yt_error *error)
 		return false;
 	}
 	fclose(file);
-	if (!yt_file_delete("YTYNEWS.DAT", false, error))
+	if (!yt_file_kill("YTYNEWS.DAT", NULL, error))
 		return false;
 	return yt_file_rename("YTNEWS.DAT", "YTYNEWS.DAT", error);
 }
@@ -1689,7 +1689,7 @@ yt_maintenance_remove_alias(const char *player_name, struct yt_error *error)
 		return false;
 	}
 	yt_names_free(&names);
-	if (!yt_file_delete("YTNAME.DAT", false, error)
+	if (!yt_file_kill("YTNAME.DAT", NULL, error)
 	    || !yt_file_rename("tempwork", "ytname.dat", error))
 		return false;
 	return true;

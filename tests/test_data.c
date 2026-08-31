@@ -586,6 +586,20 @@ struct text_input_read_script {
 	size_t position;
 };
 
+struct file_kill_step {
+	enum yt_file_kill_operation operation;
+	struct yt_file_kill_observation observation;
+	char selected[512];
+	bool provider_ok;
+	bool replace_selected;
+};
+
+struct file_kill_script {
+	struct file_kill_step steps[4];
+	size_t length;
+	size_t position;
+};
+
 struct text_open_step {
 	enum yt_text_open_operation operation;
 	uint8_t access;
@@ -1185,6 +1199,68 @@ text_input_read_fixture(struct yt_text_input *input,
 	return true;
 }
 
+static struct file_kill_step *
+file_kill_add(struct file_kill_script *script,
+    enum yt_file_kill_operation operation, bool carry, uint16_t dos_error,
+    bool open_collision, const char *selected)
+{
+	struct file_kill_step *step;
+
+	CHECK(script->length < YT_ARRAY_LEN(script->steps));
+	if (script->length >= YT_ARRAY_LEN(script->steps))
+		return NULL;
+	step = &script->steps[script->length++];
+	memset(step, 0, sizeof(*step));
+	step->operation = operation;
+	step->observation.carry = carry;
+	step->observation.dos_error = dos_error;
+	step->observation.open_collision = open_collision;
+	step->provider_ok = true;
+	if (selected != NULL) {
+		(void)snprintf(step->selected, sizeof(step->selected), "%s",
+		    selected);
+		step->replace_selected = true;
+	}
+	return step;
+}
+
+static void
+file_kill_success_script(struct file_kill_script *script,
+    uint16_t find_next_error)
+{
+	file_kill_add(script, YT_FILE_KILL_FIND_FIRST, false, 0U, false,
+	    "yt.reg");
+	file_kill_add(script, YT_FILE_KILL_CHECK_OPEN, false, 0U, false, NULL);
+	file_kill_add(script, YT_FILE_KILL_DELETE, false, 0U, false, NULL);
+	file_kill_add(script, YT_FILE_KILL_FIND_NEXT, true, find_next_error,
+	    false, NULL);
+}
+
+static bool
+scripted_file_kill(void *context, enum yt_file_kill_operation operation,
+    const char *source, char *selected, size_t selected_size,
+    struct yt_file_kill_observation *observation)
+{
+	struct file_kill_script *script = context;
+	struct file_kill_step *step;
+
+	CHECK(script->position < script->length);
+	if (script->position >= script->length)
+		return false;
+	step = &script->steps[script->position++];
+	CHECK(operation == step->operation && strcmp(source, "YT.REG") == 0
+	    && selected_size == 512U);
+	if (operation != step->operation || strcmp(source, "YT.REG") != 0
+	    || selected_size != 512U)
+		return false;
+	if (!step->provider_ok)
+		return false;
+	if (step->replace_selected)
+		(void)snprintf(selected, selected_size, "%s", step->selected);
+	*observation = step->observation;
+	return true;
+}
+
 struct close_all_tape {
 	int identifiers[8];
 	int classes[8];
@@ -1643,6 +1719,193 @@ test_database_random_open(void)
 	    && database.last_open.operation_count == 1U
 	    && database.last_open.access_attempt_count == 1U
 	    && database.file == NULL && database.orphaned_file == NULL);
+}
+
+static void
+test_file_kill(void)
+{
+	struct file_kill_script script;
+	struct yt_file_kill_result result;
+	struct yt_error error;
+	char directory[256];
+	char actual[320];
+	char requested[320];
+	FILE *file;
+	unsigned dos_error;
+	unsigned ordinal;
+
+	/* One rooted literal owns find/check/delete/ignored FindNext carry. */
+	memset(&script, 0, sizeof(script));
+	file_kill_success_script(&script, 18U);
+	yt_error_clear(&error);
+	CHECK(yt_file_kill_observed("YT.REG", scripted_file_kill, &script,
+	    &result, &error)
+	    && result.outcome == YT_FILE_KILL_RETURNED
+	    && result.operation_count == 4U && result.deleted_count == 1U
+	    && result.found && result.checked_open && result.deleted
+	    && result.find_next_attempted
+	    && strcmp(result.selected_path, "yt.reg") == 0
+	    && result.dos_error == 0U && result.basic_error == 0U
+	    && script.position == script.length);
+
+	/* FindFirst maps every DOS error byte, including 5, to ERR53. */
+	for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
+		memset(&script, 0, sizeof(script));
+		file_kill_add(&script, YT_FILE_KILL_FIND_FIRST, true,
+		    (uint16_t)dos_error, false, NULL);
+		yt_error_clear(&error);
+		CHECK(!yt_file_kill_observed("YT.REG", scripted_file_kill,
+		    &script, &result, &error)
+		    && result.outcome == YT_FILE_KILL_FIND_ERROR
+		    && result.failed_operation == YT_FILE_KILL_FIND_FIRST
+		    && result.operation_count == 1U
+		    && result.dos_error == dos_error
+		    && result.basic_error == 53U
+		    && !result.found && !result.deleted
+		    && error.status == YT_NOT_FOUND
+		    && script.position == script.length);
+	}
+
+	/* Delete maps only DOS error 5 to ERR75; every other byte is ERR53. */
+	for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
+		memset(&script, 0, sizeof(script));
+		file_kill_add(&script, YT_FILE_KILL_FIND_FIRST, false, 0U,
+		    false, "yt.reg");
+		file_kill_add(&script, YT_FILE_KILL_CHECK_OPEN, false, 0U,
+		    false, NULL);
+		file_kill_add(&script, YT_FILE_KILL_DELETE, true,
+		    (uint16_t)dos_error, false, NULL);
+		CHECK(!yt_file_kill_observed("YT.REG", scripted_file_kill,
+		    &script, &result, &error)
+		    && result.outcome == YT_FILE_KILL_DELETE_ERROR
+		    && result.failed_operation == YT_FILE_KILL_DELETE
+		    && result.operation_count == 3U
+		    && result.dos_error == dos_error
+		    && result.basic_error == (dos_error == 5U ? 75U : 53U)
+		    && result.found && result.checked_open && !result.deleted
+		    && error.status == YT_IO_ERROR
+		    && script.position == script.length);
+	}
+
+	/* FindNext carry ignores its complete DOS-byte domain after deletion. */
+	for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
+		memset(&script, 0, sizeof(script));
+		file_kill_success_script(&script, (uint16_t)dos_error);
+		CHECK(yt_file_kill_observed("YT.REG", scripted_file_kill,
+		    &script, &result, &error)
+		    && result.outcome == YT_FILE_KILL_RETURNED
+		    && result.operation_count == 4U && result.deleted_count == 1U
+		    && result.deleted && result.find_next_attempted
+		    && result.dos_error == 0U && result.basic_error == 0U
+		    && script.position == script.length);
+	}
+
+	/* A matching live control enters ERR55 before delete. */
+	memset(&script, 0, sizeof(script));
+	file_kill_add(&script, YT_FILE_KILL_FIND_FIRST, false, 0U, false,
+	    "yt.reg");
+	file_kill_add(&script, YT_FILE_KILL_CHECK_OPEN, false, 0U, true, NULL);
+	CHECK(!yt_file_kill_observed("YT.REG", scripted_file_kill, &script,
+	    &result, &error)
+	    && result.outcome == YT_FILE_KILL_OPEN_ERROR
+	    && result.failed_operation == YT_FILE_KILL_CHECK_OPEN
+	    && result.operation_count == 2U && result.basic_error == 55U
+	    && result.found && result.checked_open && !result.deleted
+	    && script.position == script.length);
+
+	/* Provider rejection at every ordinal preserves its completed prefix. */
+	for (ordinal = 0U; ordinal < 4U; ++ordinal) {
+		memset(&script, 0, sizeof(script));
+		file_kill_success_script(&script, 18U);
+		script.length = ordinal + 1U;
+		script.steps[ordinal].provider_ok = false;
+		CHECK(!yt_file_kill_observed("YT.REG", scripted_file_kill,
+		    &script, &result, &error)
+		    && result.outcome == YT_FILE_KILL_PROVIDER_ERROR
+		    && result.failed_operation
+		    == (enum yt_file_kill_operation)ordinal
+		    && result.operation_count == ordinal + 1U
+		    && result.found == (ordinal > 0U)
+		    && result.checked_open == (ordinal > 1U)
+		    && result.deleted == (ordinal > 2U)
+		    && result.deleted_count == (ordinal > 2U ? 1U : 0U)
+		    && script.position == script.length);
+	}
+
+	/* Malformed result shapes cannot be mistaken for DOS branches. */
+	for (ordinal = 0U; ordinal < 8U; ++ordinal) {
+		memset(&script, 0, sizeof(script));
+		file_kill_success_script(&script, 18U);
+		switch (ordinal) {
+		case 0U:
+			script.steps[0].replace_selected = false;
+			break;
+		case 1U:
+			script.steps[0].observation.carry = true;
+			script.steps[0].observation.dos_error = 2U;
+			break;
+		case 2U:
+			script.steps[0].observation.dos_error = 2U;
+			break;
+		case 3U:
+			script.steps[1].observation.carry = true;
+			script.steps[1].observation.dos_error = 1U;
+			break;
+		case 4U:
+			(void)snprintf(script.steps[1].selected,
+			    sizeof(script.steps[1].selected), "%s", "other.reg");
+			script.steps[1].replace_selected = true;
+			break;
+		case 5U:
+			script.steps[2].observation.open_collision = true;
+			break;
+		case 6U:
+			script.steps[2].observation.dos_error = 1U;
+			break;
+		default:
+			script.steps[3].observation.carry = false;
+			script.steps[3].observation.dos_error = 0U;
+			break;
+		}
+		CHECK(!yt_file_kill_observed("YT.REG", scripted_file_kill,
+		    &script, &result, &error)
+		    && result.outcome == YT_FILE_KILL_PROVIDER_ERROR);
+	}
+
+	/* The host adapter resolves case, removes the literal, and rejects missing. */
+#ifdef _WIN32
+	snprintf(directory, sizeof(directory), "yt-file-kill-%lu",
+	    (unsigned long)GetCurrentProcessId());
+#else
+	snprintf(directory, sizeof(directory), "/tmp/yt-file-kill-%ld",
+	    (long)getpid());
+#endif
+	(void)mkdir_one(directory);
+	snprintf(actual, sizeof(actual), "%s/yt.reg", directory);
+	snprintf(requested, sizeof(requested), "%s/YT.REG", directory);
+	file = fopen(actual, "wb");
+	CHECK(file != NULL);
+	if (file != NULL) {
+		CHECK(fwrite("registration", 1U, 12U, file) == 12U);
+		CHECK(fclose(file) == 0);
+	}
+	CHECK(yt_file_kill(requested, &result, &error)
+	    && result.outcome == YT_FILE_KILL_RETURNED
+	    && result.operation_count == 4U && result.deleted_count == 1U
+	    && strcmp(result.selected_path, actual) == 0);
+	file = fopen(actual, "rb");
+	CHECK(file == NULL);
+	if (file != NULL)
+		(void)fclose(file);
+	yt_error_clear(&error);
+	CHECK(!yt_file_kill(requested, &result, &error)
+	    && result.outcome == YT_FILE_KILL_FIND_ERROR
+	    && result.basic_error == 53U && error.status == YT_NOT_FOUND);
+#ifdef _WIN32
+	_rmdir(directory);
+#else
+	rmdir(directory);
+#endif
 }
 
 static void
@@ -6603,6 +6866,7 @@ main(void)
 	test_clock();
 	test_random();
 	test_database_random_open();
+	test_file_kill();
 	test_close_all_registry();
 	test_database_random_close();
 	test_text_output_write();
