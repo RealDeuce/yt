@@ -30,6 +30,10 @@ Resolved upstream by commit `c08f1fca` in
 - the absence of a synthetic carrier-loss edge; and
 - the device-code newline distinctions used by rooted callers.
 
+The shared projection is implemented by `yt_text_device_print()` with focused
+per-write provider tests. Raw allocator/registration cleanup remains a mapped
+implementation obligation, not a documentation gap.
+
 ### DOC-GAP-002: `YTMAINT` radio-compaction file transaction
 
 Affected coverage:
@@ -44,6 +48,8 @@ Resolved upstream by commit `c08f1fca` in
 - a fresh RANDOM destination with the 4/4/4/72 FIELD layout;
 - explicit source `GET` and dense destination `PUT` record numbers; and
 - source `#5`, then destination `#4`, then KILL, then NAME ordering.
+
+The documented transaction is implemented by `yt_radio_compact()`.
 
 ## Explicitly deferred work
 

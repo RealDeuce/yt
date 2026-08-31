@@ -577,6 +577,22 @@ struct text_output_write_script {
 	size_t position;
 };
 
+struct text_device_write_step {
+	enum yt_text_device_write_phase phase;
+	uint8_t expected;
+	size_t requested;
+	struct yt_text_device_write_observation observation;
+	bool provider_ok;
+};
+
+struct text_device_write_script {
+	struct text_device_write_step steps[8];
+	uint8_t physical[8];
+	size_t length;
+	size_t position;
+	size_t physical_length;
+};
+
 struct text_input_read_step {
 	uint8_t data[YT_TEXT_INPUT_BUFFER_SIZE];
 	struct yt_text_input_read_observation observation;
@@ -1150,6 +1166,64 @@ scripted_text_output_write(void *context, FILE *active_file,
 	if (!step->provider_ok)
 		return false;
 	*observation = step->observation;
+	return true;
+}
+
+static void
+text_device_write_add(struct text_device_write_script *script,
+    enum yt_text_device_write_phase phase, uint8_t expected,
+    size_t requested, size_t accepted, bool carry, bool physical_unknown,
+    uint16_t dos_error, uint16_t extended_ax)
+{
+	struct text_device_write_step *step;
+
+	CHECK(script->length < YT_ARRAY_LEN(script->steps));
+	if (script->length >= YT_ARRAY_LEN(script->steps))
+		return;
+	step = &script->steps[script->length++];
+	memset(step, 0, sizeof(*step));
+	step->phase = phase;
+	step->expected = expected;
+	step->requested = requested;
+	step->observation.accepted = accepted;
+	step->observation.carry = carry;
+	step->observation.physical_unknown = physical_unknown;
+	step->observation.dos_error = dos_error;
+	step->observation.extended_ax = extended_ax;
+	step->observation.terminal_position = carry ? -1 : 51;
+	step->provider_ok = true;
+}
+
+static bool
+scripted_text_device_write(void *context,
+    enum yt_text_device_write_phase phase, const uint8_t *data,
+    size_t requested, struct yt_text_device_write_observation *observation)
+{
+	struct text_device_write_script *script = context;
+	struct text_device_write_step *step;
+
+	CHECK(script->position < script->length);
+	if (script->position >= script->length)
+		return false;
+	step = &script->steps[script->position++];
+	CHECK(phase == step->phase && requested == step->requested
+	    && data != NULL
+	    && (requested == 0U || data[0] == step->expected));
+	if (phase != step->phase || requested != step->requested
+	    || data == NULL
+	    || (requested != 0U && data[0] != step->expected))
+		return false;
+	if (!step->provider_ok)
+		return false;
+	*observation = step->observation;
+	if (!observation->physical_unknown) {
+		CHECK(script->physical_length + observation->accepted
+		    <= sizeof(script->physical));
+		if (script->physical_length + observation->accepted
+		    <= sizeof(script->physical)
+		    && observation->accepted != 0U)
+			script->physical[script->physical_length++] = data[0];
+	}
 	return true;
 }
 
@@ -2844,6 +2918,161 @@ test_text_output_write(void)
 #else
 	rmdir(directory);
 #endif
+}
+
+static void
+test_text_device_print(void)
+{
+	static const uint8_t values[] = {'A', '\r', 'B'};
+	static const uint8_t pair[] = {'A', 'B'};
+	static const uint8_t wrap_pair[] = {'Z', 'A'};
+	static const uint8_t one[] = {'X'};
+	struct text_device_write_script script;
+	struct yt_text_device_state state;
+	struct yt_text_device_print_result result;
+	struct yt_error error;
+
+	/* One logical byte is offered per write, with the final byte at completion. */
+	memset(&script, 0, sizeof(script));
+	text_device_write_add(&script, YT_TEXT_DEVICE_WRITE_VALUE, 'A',
+	    1U, 1U, false, false, 0U, 0U);
+	text_device_write_add(&script, YT_TEXT_DEVICE_WRITE_VALUE, '\r',
+	    1U, 1U, false, false, 0U, 0U);
+	text_device_write_add(&script, YT_TEXT_DEVICE_WRITE_COMPLETION, 'B',
+	    1U, 1U, false, false, 0U, 0U);
+	state = (struct yt_text_device_state){.selected = true};
+	yt_error_clear(&error);
+	CHECK(yt_text_device_print(&state, values, sizeof(values), false,
+	    YT_TEXT_DEVICE_CONS, 0x82U, 5U, scripted_text_device_write,
+	    &script, &result, &error)
+	    && script.position == script.length
+	    && script.physical_length == sizeof(values)
+	    && memcmp(script.physical, values, sizeof(values)) == 0
+	    && result.outcome == YT_TEXT_DEVICE_PRINT_RETURNED
+	    && result.logical_length == 3U && result.staged == 3U
+	    && result.write_count == 3U && result.accepted_count == 3U
+	    && result.terminal_position == 51
+	    && state.index == 3U && state.column == 1U
+	    && !state.pending && state.buffer == 'B' && !state.selected);
+
+	/* COM newline is CR only; CONS retains LF after CR. */
+	memset(&script, 0, sizeof(script));
+	text_device_write_add(&script, YT_TEXT_DEVICE_WRITE_VALUE, 'X',
+	    1U, 1U, false, false, 0U, 0U);
+	text_device_write_add(&script, YT_TEXT_DEVICE_WRITE_COMPLETION, '\r',
+	    1U, 1U, false, false, 0U, 0U);
+	state = (struct yt_text_device_state){.selected = true};
+	CHECK(yt_text_device_print(&state, one, sizeof(one), true,
+	    YT_TEXT_DEVICE_COM1, 0x82U, 5U, scripted_text_device_write,
+	    &script, &result, &error)
+	    && result.logical_length == 2U && state.index == 2U
+	    && state.column == 0U && state.buffer == '\r');
+	memset(&script, 0, sizeof(script));
+	text_device_write_add(&script, YT_TEXT_DEVICE_WRITE_VALUE, 'X',
+	    1U, 1U, false, false, 0U, 0U);
+	text_device_write_add(&script, YT_TEXT_DEVICE_WRITE_VALUE, '\r',
+	    1U, 1U, false, false, 0U, 0U);
+	text_device_write_add(&script, YT_TEXT_DEVICE_WRITE_COMPLETION, '\n',
+	    1U, 1U, false, false, 0U, 0U);
+	state = (struct yt_text_device_state){.selected = true};
+	CHECK(yt_text_device_print(&state, one, sizeof(one), true,
+	    YT_TEXT_DEVICE_CONS, 0x82U, 5U, scripted_text_device_write,
+	    &script, &result, &error)
+	    && result.logical_length == 3U && state.index == 3U
+	    && state.column == 0U && state.buffer == '\n');
+
+	/* Compatibility bit 02 accepts a zero-count write as a dropped byte. */
+	memset(&script, 0, sizeof(script));
+	text_device_write_add(&script, YT_TEXT_DEVICE_WRITE_VALUE, 'A',
+	    1U, 0U, false, false, 0U, 0U);
+	text_device_write_add(&script, YT_TEXT_DEVICE_WRITE_COMPLETION, 'B',
+	    1U, 1U, false, false, 0U, 0U);
+	state = (struct yt_text_device_state){.selected = true};
+	CHECK(yt_text_device_print(&state, pair, sizeof(pair), false,
+	    YT_TEXT_DEVICE_COM1, 0x82U, 5U, scripted_text_device_write,
+	    &script, &result, &error)
+	    && script.physical_length == 1U && script.physical[0] == 'B'
+	    && result.accepted_count == 1U && state.index == 2U
+	    && state.column == 2U && state.buffer == 'B');
+
+	/* Without bit 02, value-time zero retains the previous pending byte. */
+	memset(&script, 0, sizeof(script));
+	text_device_write_add(&script, YT_TEXT_DEVICE_WRITE_VALUE, 'A',
+	    1U, 0U, false, false, 0U, 0U);
+	state = (struct yt_text_device_state){.selected = true};
+	CHECK(!yt_text_device_print(&state, pair, sizeof(pair), false,
+	    YT_TEXT_DEVICE_CONS, 0x80U, 5U, scripted_text_device_write,
+	    &script, &result, &error)
+	    && result.outcome == YT_TEXT_DEVICE_PRINT_VALUE_SHORT_ERROR
+	    && result.basic_error == 57U && result.staged == 1U
+	    && state.index == 1U && state.column == 1U
+	    && state.pending && state.buffer == 'A' && state.selected);
+
+	/* Value carry preserves pending state and uses the DOS-version mapping. */
+	memset(&script, 0, sizeof(script));
+	text_device_write_add(&script, YT_TEXT_DEVICE_WRITE_VALUE, 'Z',
+	    1U, 0U, true, true, 5U, 0x0021U);
+	state = (struct yt_text_device_state){
+		.index = 0xffffffU,
+		.selected = true,
+	};
+	CHECK(!yt_text_device_print(&state, wrap_pair, sizeof(wrap_pair), false,
+	    YT_TEXT_DEVICE_COM1, 0x82U, 5U, scripted_text_device_write,
+	    &script, &result, &error)
+	    && result.outcome == YT_TEXT_DEVICE_PRINT_VALUE_DISK_ERROR
+	    && result.basic_error == 70U && result.dos_error == 5U
+	    && result.physical_unknown && state.physical_unknown
+	    && state.index == 0U && state.pending && state.buffer == 'Z'
+	    && state.selected);
+	memset(&script, 0, sizeof(script));
+	text_device_write_add(&script, YT_TEXT_DEVICE_WRITE_VALUE, 'A',
+	    1U, 0U, true, false, 6U, 0x0021U);
+	state = (struct yt_text_device_state){.selected = true};
+	CHECK(!yt_text_device_print(&state, pair, sizeof(pair), false,
+	    YT_TEXT_DEVICE_COM1, 0x82U, 2U, scripted_text_device_write,
+	    &script, &result, &error)
+	    && result.basic_error == 52U && result.dos_error == 6U);
+
+	/* Completion exchanges pending to zero before carry routes to ERR57. */
+	memset(&script, 0, sizeof(script));
+	text_device_write_add(&script, YT_TEXT_DEVICE_WRITE_COMPLETION, 'X',
+	    1U, 0U, true, false, 5U, 0U);
+	state = (struct yt_text_device_state){.selected = true};
+	CHECK(!yt_text_device_print(&state, one, sizeof(one), false,
+	    YT_TEXT_DEVICE_COM1, 0x82U, 5U, scripted_text_device_write,
+	    &script, &result, &error)
+	    && result.outcome == YT_TEXT_DEVICE_PRINT_COMPLETION_ERROR
+	    && result.basic_error == 57U && result.dos_error == 5U
+	    && !state.pending && state.buffer == 'X' && state.selected);
+
+	/* Even an empty statement performs one zero-length completion write. */
+	memset(&script, 0, sizeof(script));
+	text_device_write_add(&script, YT_TEXT_DEVICE_WRITE_COMPLETION, 0U,
+	    0U, 0U, false, false, 0U, 0U);
+	state = (struct yt_text_device_state){.selected = true};
+	CHECK(yt_text_device_print(&state, NULL, 0U, false,
+	    YT_TEXT_DEVICE_COM1, 0x82U, 5U, scripted_text_device_write,
+	    &script, &result, &error)
+	    && result.logical_length == 0U && result.staged == 0U
+	    && result.write_count == 1U && !state.selected);
+
+	/* Adapter rejection preserves completion's already-cleared pending count. */
+	memset(&script, 0, sizeof(script));
+	text_device_write_add(&script, YT_TEXT_DEVICE_WRITE_COMPLETION, 'X',
+	    1U, 1U, false, false, 0U, 0U);
+	script.steps[0].provider_ok = false;
+	state = (struct yt_text_device_state){.selected = true};
+	CHECK(!yt_text_device_print(&state, one, sizeof(one), false,
+	    YT_TEXT_DEVICE_COM1, 0x82U, 5U, scripted_text_device_write,
+	    &script, &result, &error)
+	    && result.outcome == YT_TEXT_DEVICE_PRINT_PROVIDER_ERROR
+	    && result.basic_error == 57U && !state.pending
+	    && state.buffer == 'X' && state.selected);
+
+	state = (struct yt_text_device_state){.selected = true};
+	CHECK(!yt_text_device_print(&state, one, sizeof(one), false,
+	    YT_TEXT_DEVICE_COM1, 0x02U, 5U, scripted_text_device_write,
+	    &script, &result, &error) && error.status == YT_INVALID);
 }
 
 static void
@@ -7506,6 +7735,7 @@ main(void)
 	test_close_all_registry();
 	test_database_random_close();
 	test_text_output_write();
+	test_text_device_print();
 	test_text_output_close();
 	test_database_random_lof();
 	test_files();
