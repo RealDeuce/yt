@@ -10148,6 +10148,424 @@ check_direct_fighter_kill_transaction(void)
 	return true;
 }
 
+enum player_death_event {
+	PLAYER_DEATH_CLEAR_CACHE,
+	PLAYER_DEATH_READ_PLAYER,
+	PLAYER_DEATH_WRITE_PLAYER,
+	PLAYER_DEATH_READ_SECTOR,
+	PLAYER_DEATH_WRITE_SECTOR,
+	PLAYER_DEATH_REMOVE_TEAM,
+	PLAYER_DEATH_READ_PORT,
+	PLAYER_DEATH_WRITE_PORT,
+	PLAYER_DEATH_PRESENT,
+	PLAYER_DEATH_NEWS,
+	PLAYER_DEATH_SET_CURRENT,
+	PLAYER_DEATH_FLUSH,
+};
+
+static const enum player_death_event player_death_distinct_events[] = {
+	PLAYER_DEATH_CLEAR_CACHE,
+	PLAYER_DEATH_READ_PLAYER,
+	PLAYER_DEATH_WRITE_PLAYER,
+	PLAYER_DEATH_READ_SECTOR,
+	PLAYER_DEATH_WRITE_SECTOR,
+	PLAYER_DEATH_READ_SECTOR,
+	PLAYER_DEATH_REMOVE_TEAM,
+	PLAYER_DEATH_READ_PORT,
+	PLAYER_DEATH_WRITE_PORT,
+	PLAYER_DEATH_READ_PORT,
+	PLAYER_DEATH_WRITE_PORT,
+	PLAYER_DEATH_PRESENT,
+	PLAYER_DEATH_READ_PLAYER,
+	PLAYER_DEATH_WRITE_PLAYER,
+	PLAYER_DEATH_READ_PLAYER,
+	PLAYER_DEATH_NEWS,
+	PLAYER_DEATH_NEWS,
+	PLAYER_DEATH_FLUSH,
+};
+
+static const enum player_death_event player_death_self_events[] = {
+	PLAYER_DEATH_CLEAR_CACHE,
+	PLAYER_DEATH_READ_PLAYER,
+	PLAYER_DEATH_WRITE_PLAYER,
+	PLAYER_DEATH_READ_SECTOR,
+	PLAYER_DEATH_WRITE_SECTOR,
+	PLAYER_DEATH_READ_SECTOR,
+	PLAYER_DEATH_REMOVE_TEAM,
+	PLAYER_DEATH_READ_PORT,
+	PLAYER_DEATH_WRITE_PORT,
+	PLAYER_DEATH_READ_PORT,
+	PLAYER_DEATH_WRITE_PORT,
+	PLAYER_DEATH_NEWS,
+	PLAYER_DEATH_SET_CURRENT,
+	PLAYER_DEATH_FLUSH,
+};
+
+struct player_death_tape {
+	const enum player_death_event *expected;
+	size_t expected_count;
+	size_t event_count;
+	size_t fail_at;
+	struct yt_player players[4];
+	struct yt_sector sectors[3];
+	struct yt_port ports[3];
+	struct yt_player staged_player;
+	struct yt_sector staged_sector;
+	struct yt_port staged_port;
+	bool cache_cleared;
+	bool player_written[4];
+	bool sector_written[3];
+	bool port_written[3];
+	bool title_visible;
+	uint8_t news[2][128];
+	size_t news_length[2];
+	size_t news_count;
+	bool current_set;
+	bool flushed;
+	size_t rng_position;
+};
+
+static bool
+player_death_test_step(struct player_death_tape *tape,
+    enum player_death_event event, struct yt_error *error)
+{
+	if (tape->event_count >= tape->expected_count
+	    || tape->expected[tape->event_count] != event)
+		return false;
+	++tape->event_count;
+	if (tape->event_count != tape->fail_at)
+		return true;
+	if (error != NULL) {
+		error->status = YT_IO_ERROR;
+		(void)snprintf(error->operation, sizeof(error->operation),
+		    "player death event %u", (unsigned)event);
+	}
+	return false;
+}
+
+static void
+player_death_test_clear_cache(void *context, int victim_record)
+{
+	struct player_death_tape *tape = context;
+
+	if (victim_record == 3
+	    && player_death_test_step(tape, PLAYER_DEATH_CLEAR_CACHE, NULL))
+		tape->cache_cleared = true;
+}
+
+static bool
+player_death_test_read_player(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct player_death_tape *tape = context;
+
+	if (player_record < 0 || player_record >= (int)YT_ARRAY_LEN(tape->players)
+	    || !player_death_test_step(tape, PLAYER_DEATH_READ_PLAYER, error))
+		return false;
+	*player = tape->players[player_record];
+	return true;
+}
+
+static bool
+player_death_test_write_player(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct player_death_tape *tape = context;
+
+	if (player_record < 0 || player_record >= (int)YT_ARRAY_LEN(tape->players))
+		return false;
+	tape->staged_player = *player;
+	if (!player_death_test_step(tape, PLAYER_DEATH_WRITE_PLAYER, error))
+		return false;
+	tape->players[player_record] = *player;
+	tape->player_written[player_record] = true;
+	return true;
+}
+
+static bool
+player_death_test_read_sector(void *context, int logical_sector,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct player_death_tape *tape = context;
+
+	if (logical_sector < 1 || logical_sector > 2
+	    || !player_death_test_step(tape, PLAYER_DEATH_READ_SECTOR, error))
+		return false;
+	*sector = tape->sectors[logical_sector];
+	return true;
+}
+
+static bool
+player_death_test_write_sector(void *context, int logical_sector,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct player_death_tape *tape = context;
+
+	if (logical_sector < 1 || logical_sector > 2)
+		return false;
+	tape->staged_sector = *sector;
+	if (!player_death_test_step(tape, PLAYER_DEATH_WRITE_SECTOR, error))
+		return false;
+	tape->sectors[logical_sector] = *sector;
+	tape->sector_written[logical_sector] = true;
+	return true;
+}
+
+static bool
+player_death_test_remove_team(void *context, int victim_record,
+    struct yt_error *error)
+{
+	struct player_death_tape *tape = context;
+
+	return victim_record == 3 && player_death_test_step(tape,
+	    PLAYER_DEATH_REMOVE_TEAM, error);
+}
+
+static bool
+player_death_test_read_port(void *context, int logical_port,
+    struct yt_port *port, struct yt_error *error)
+{
+	struct player_death_tape *tape = context;
+
+	if (logical_port < 1 || logical_port > 2
+	    || !player_death_test_step(tape, PLAYER_DEATH_READ_PORT, error))
+		return false;
+	*port = tape->ports[logical_port];
+	return true;
+}
+
+static bool
+player_death_test_write_port(void *context, int logical_port,
+    struct yt_port *port, struct yt_error *error)
+{
+	struct player_death_tape *tape = context;
+
+	if (logical_port < 1 || logical_port > 2)
+		return false;
+	tape->staged_port = *port;
+	if (!player_death_test_step(tape, PLAYER_DEATH_WRITE_PORT, error))
+		return false;
+	tape->ports[logical_port] = *port;
+	tape->port_written[logical_port] = true;
+	return true;
+}
+
+static bool
+player_death_test_present(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	static const uint8_t expected[] =
+	    "The titles to 2 ports of V\0X's are now yours!";
+	struct player_death_tape *tape = context;
+
+	if (length != sizeof(expected) - 1U
+	    || memcmp(text, expected, length) != 0
+	    || !player_death_test_step(tape, PLAYER_DEATH_PRESENT, error))
+		return false;
+	tape->title_visible = true;
+	return true;
+}
+
+static bool
+player_death_test_news(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	struct player_death_tape *tape = context;
+
+	if (tape->news_count >= YT_ARRAY_LEN(tape->news)
+	    || length > sizeof(tape->news[0])
+	    || !player_death_test_step(tape, PLAYER_DEATH_NEWS, error))
+		return false;
+	memcpy(tape->news[tape->news_count], text, length);
+	tape->news_length[tape->news_count] = length;
+	++tape->news_count;
+	return true;
+}
+
+static void
+player_death_test_set_current(void *context,
+    const struct yt_player *player)
+{
+	struct player_death_tape *tape = context;
+
+	if (player != NULL && player_death_test_step(tape,
+	    PLAYER_DEATH_SET_CURRENT, NULL))
+		tape->current_set = true;
+}
+
+static bool
+player_death_test_flush(void *context, struct yt_error *error)
+{
+	struct player_death_tape *tape = context;
+
+	if (!player_death_test_step(tape, PLAYER_DEATH_FLUSH, error))
+		return false;
+	tape->flushed = true;
+	return true;
+}
+
+static const struct yt_player_death_ops player_death_test_ops = {
+	player_death_test_clear_cache,
+	player_death_test_read_player,
+	player_death_test_write_player,
+	player_death_test_read_sector,
+	player_death_test_write_sector,
+	player_death_test_remove_team,
+	player_death_test_read_port,
+	player_death_test_write_port,
+	player_death_test_present,
+	player_death_test_news,
+	player_death_test_set_current,
+	player_death_test_flush,
+};
+
+static void
+player_death_test_reset(struct player_death_tape *tape,
+    const struct yt_player players[4], const struct yt_sector sectors[3],
+    const struct yt_port ports[3], bool self, size_t fail_at)
+{
+	memset(tape, 0, sizeof(*tape));
+	memcpy(tape->players, players, sizeof(tape->players));
+	memcpy(tape->sectors, sectors, sizeof(tape->sectors));
+	memcpy(tape->ports, ports, sizeof(tape->ports));
+	tape->expected = self ? player_death_self_events
+	    : player_death_distinct_events;
+	tape->expected_count = self ? YT_ARRAY_LEN(player_death_self_events)
+	    : YT_ARRAY_LEN(player_death_distinct_events);
+	tape->fail_at = fail_at;
+	tape->rng_position = 23U;
+}
+
+static bool
+check_player_death_transaction(void)
+{
+	static const uint8_t kill_news[] = "  -  CURRENT killed V\0X";
+	static const uint8_t port_news[] = "  -  Took 2 ports from V\0X";
+	static const uint8_t self_news[] = "  -  CURRENT was killed!";
+	static const uint8_t dirty_zero[4] = {0x00, 0x00, 0x7a, 0x00};
+	struct player_death_tape tape;
+	struct yt_player_death_state state;
+	struct yt_player players[4];
+	struct yt_sector sectors[3];
+	struct yt_port ports[3];
+	struct yt_record raw;
+	struct yt_error error;
+	size_t index;
+
+	memset(players, 0, sizeof(players));
+	memset(sectors, 0, sizeof(sectors));
+	memset(ports, 0, sizeof(ports));
+	for (index = 0U; index < YT_RECORD_SIZE; ++index)
+		raw.bytes[index] = (uint8_t)(index ^ 0x5dU);
+	raw.bytes[0] = 'V';
+	raw.bytes[1] = 0;
+	raw.bytes[2] = 'X';
+	if (!yt_record_set_number(&raw, YT_F85, 3.0f)
+	    || !yt_record_set_number(&raw, YT_F117, 99.0f))
+		return false;
+	yt_player_decode(&players[3], &raw);
+	for (index = 0U; index < YT_RECORD_SIZE; ++index)
+		raw.bytes[index] = (uint8_t)(index ^ 0xa7U);
+	memcpy(raw.bytes, "RAW", 3U);
+	if (!yt_record_set_number(&raw, YT_F85, 3.0f)
+	    || !yt_record_set_number(&raw, YT_F117, 5.0f))
+		return false;
+	yt_player_decode(&players[2], &raw);
+	for (index = 1U; index <= 2U; ++index) {
+		yt_record_blank(&raw);
+		if (!yt_record_set_number(&raw, YT_F81, index == 1U ? 0.0f : 7.0f)
+		    || !yt_record_set_number(&raw, YT_F85,
+		    index == 1U ? 3.0f : 4.0f))
+			return false;
+		yt_sector_decode(&sectors[index], &raw);
+		yt_record_blank(&raw);
+		if (!yt_record_set_number(&raw, YT_F89, 50.0f + (float)index)
+		    || !yt_record_set_number(&raw, YT_F97, 3.0f)
+		    || !yt_record_set_number(&raw, YT_F101, 70.0f + (float)index))
+			return false;
+		yt_port_decode(&ports[index], &raw);
+	}
+
+	player_death_test_reset(&tape, players, sectors, ports, false, 0U);
+	state = (struct yt_player_death_state){
+		.victim_record = 3,
+		.current_player_record = 2,
+		.killer = 2.0f,
+		.sector_count = 2,
+		.port_count = 2,
+		.last_player_record = 51.0f,
+		.current_name = (const uint8_t *)"CURRENT",
+		.current_name_length = 7U,
+	};
+	if (!yt_player_death_run(&state, &player_death_test_ops, &tape, NULL)
+	    || tape.event_count != tape.expected_count || !tape.cache_cleared
+	    || !tape.player_written[3] || !tape.sector_written[1]
+	    || tape.sector_written[2] || !tape.port_written[1]
+	    || !tape.port_written[2] || !tape.title_visible
+	    || !tape.player_written[2] || tape.news_count != 2U
+	    || tape.news_length[0] != sizeof(kill_news) - 1U
+	    || memcmp(tape.news[0], kill_news, sizeof(kill_news) - 1U) != 0
+	    || tape.news_length[1] != sizeof(port_news) - 1U
+	    || memcmp(tape.news[1], port_news, sizeof(port_news) - 1U) != 0
+	    || !tape.flushed || tape.current_set || tape.rng_position != 23U
+	    || !state.complete || state.old_ports_owned != 99.0f
+	    || state.matched_ports != 2 || state.victim_name_length != 3U
+	    || memcmp(state.victim_name, "V\0X", 3U) != 0
+	    || tape.sectors[1].fighter_owner != -2.0f
+	    || tape.sectors[1].fighters != 0.0f
+	    || tape.ports[1].owner != 2.0f || tape.ports[1].last_minute != 2.0f
+	    || tape.ports[1].treasury != 51.0f
+	    || tape.players[2].ports_owned != 7.0f
+	    || memcmp(tape.players[3].record.bytes + YT_F57, dirty_zero, 4U)
+	    != 0 || memcmp(tape.players[3].record.bytes + YT_F117,
+	    dirty_zero, 4U) != 0)
+		return false;
+
+	for (index = 2U; index <= YT_ARRAY_LEN(player_death_distinct_events);
+	    ++index) {
+		player_death_test_reset(&tape, players, sectors, ports, false,
+		    index);
+		state = (struct yt_player_death_state){
+			.victim_record = 3,
+			.current_player_record = 2,
+			.killer = 2.0f,
+			.sector_count = 2,
+			.port_count = 2,
+			.last_player_record = 51.0f,
+			.current_name = (const uint8_t *)"CURRENT",
+			.current_name_length = 7U,
+		};
+		yt_error_clear(&error);
+		if (yt_player_death_run(&state, &player_death_test_ops, &tape,
+		    &error) || tape.event_count != index
+		    || !tape.cache_cleared || error.status != YT_IO_ERROR
+		    || tape.rng_position != 23U || state.complete)
+			return false;
+	}
+
+	player_death_test_reset(&tape, players, sectors, ports, true, 0U);
+	state = (struct yt_player_death_state){
+		.victim_record = 3,
+		.current_player_record = 3,
+		.killer = 3.0f,
+		.sector_count = 2,
+		.port_count = 2,
+		.last_player_record = 51.0f,
+		.current_name = (const uint8_t *)"CURRENT",
+		.current_name_length = 7U,
+	};
+	if (!yt_player_death_run(&state, &player_death_test_ops, &tape, NULL)
+	    || tape.event_count != tape.expected_count || tape.title_visible
+	    || tape.news_count != 1U
+	    || tape.news_length[0] != sizeof(self_news) - 1U
+	    || memcmp(tape.news[0], self_news, sizeof(self_news) - 1U) != 0
+	    || !tape.current_set || !tape.flushed || !state.complete
+	    || tape.ports[1].owner != 0.0f || tape.ports[1].treasury != 0.0f
+	    || tape.ports[1].last_minute != 71.0f)
+		return false;
+	return true;
+}
+
 static bool
 check_player_death_model(void)
 {
@@ -17752,6 +18170,8 @@ main(void)
 		return fail("common fatal transaction differs");
 	if (!check_direct_fighter_kill_transaction())
 		return fail("direct fighter kill transaction differs");
+	if (!check_player_death_transaction())
+		return fail("player death transaction differs");
 	if (!check_player_death_model())
 		return fail("player death model differs");
 	if (!check_emergency_warp_model())

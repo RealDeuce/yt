@@ -1518,6 +1518,21 @@ not authoritative. Use the corrected goal above in the new workspace.
   foreground/background/style, color cache and pager state pinned. The
   preceding combat transaction, dependency-internal child failures,
   local/pager/carrier modes and physical failure prefixes remain open.
+- The shared player-death body now delegates to one provider-driven native
+  transaction. It clears the victim's active-sector cache before the first
+  victim GET, snapshots the raw fixed-field victim name, writes only the
+  killed-by/current-sector/ports-owned fields, performs the complete
+  configured sector sweep, invokes team removal, gates the complete port
+  sweep on the saved count, and retains title-before-killer-credit and
+  final-victim-GET-before-news ordering. The current-player identity used by
+  kill news now comes from the caller's cached name rather than being
+  reconstructed from the player record; common fatal preserves that cache
+  through its reload and killed-player projection. A two-sector/two-port raw
+  tape pins matching zero-fighter conversion, both port mutations, distinct
+  title/credit/two-news behavior, self clearing/one-news behavior, zero RNG,
+  and all seventeen fallible caller boundaries. Full configured loop scale,
+  raw dirty active-cache bytes, team-loader internals, corrupt arguments,
+  physical I/O and handler suffixes remain open.
 - The direct fighter destroyed-to-fatal cycle now preserves the mine body's
   nonzero destruction result without inserting output, RNG, I/O or state
   normalization. It inherits the mine background, pager and input state into
