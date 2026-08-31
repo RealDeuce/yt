@@ -77,6 +77,7 @@ struct yt_database_close_result {
 	bool missing;
 	bool retry_attempted;
 	bool device;
+	bool close_all;
 	bool registered;
 	bool handle_open;
 };
@@ -251,6 +252,9 @@ bool yt_database_open_observed(struct yt_database *database, const char *path,
     enum yt_open_mode mode, yt_database_open_provider provider, void *context,
     struct yt_error *error);
 bool yt_database_random_close(struct yt_database *database,
+    struct yt_error *error);
+/* CLOSE-all projection for a registry known to contain at most this control. */
+bool yt_database_close_all_single(struct yt_database *database,
     struct yt_error *error);
 bool yt_database_random_lof(struct yt_database *database, uint32_t *length,
     struct yt_error *error);

@@ -964,11 +964,13 @@ database_close_failure(struct yt_database *database,
 	database->last_close.registered = database->file != NULL;
 	database->last_close.handle_open = database->file != NULL
 	    || database->orphaned_file != NULL;
-	set_error(error, YT_IO_ERROR, "random CLOSE", database->path);
+	set_error(error, YT_IO_ERROR, database->last_close.close_all
+	    ? "CLOSE all" : "random CLOSE", database->path);
 }
 
-bool
-yt_database_random_close(struct yt_database *database, struct yt_error *error)
+static bool
+database_close_execute(struct yt_database *database, bool close_all,
+    struct yt_error *error)
 {
 	yt_database_close_provider provider;
 	struct yt_database_close_observation observation;
@@ -979,13 +981,15 @@ yt_database_random_close(struct yt_database *database, struct yt_error *error)
 	bool retry_active;
 
 	if (database == NULL) {
-		set_error(error, YT_INVALID, "random CLOSE", NULL);
+		set_error(error, YT_INVALID,
+		    close_all ? "CLOSE all" : "random CLOSE", NULL);
 		return false;
 	}
 	memset(&database->last_close, 0, sizeof(database->last_close));
+	database->last_close.close_all = close_all;
 	if (database->file == NULL) {
 		database->last_close.outcome = YT_DATABASE_CLOSE_RETURNED;
-		database->last_close.missing = true;
+		database->last_close.missing = !close_all;
 		database->last_close.handle_open = database->orphaned_file != NULL;
 		return true;
 	}
@@ -1036,6 +1040,19 @@ yt_database_random_close(struct yt_database *database, struct yt_error *error)
 	    ? YT_DATABASE_CLOSE_DEVICE_ERROR : YT_DATABASE_CLOSE_DISK_ERROR,
 	    database->last_close.device ? 57U : 70U, first_dos_error, error);
 	return false;
+}
+
+bool
+yt_database_random_close(struct yt_database *database, struct yt_error *error)
+{
+	return database_close_execute(database, false, error);
+}
+
+bool
+yt_database_close_all_single(struct yt_database *database,
+    struct yt_error *error)
+{
+	return database_close_execute(database, true, error);
 }
 
 static bool

@@ -501,13 +501,17 @@ main(void)
 	}
 	if (old_size == 0U) {
 		if (!write_missing_old_data(&output_context, &error)
-		    || !yt_database_random_close(&old, &error)
-		    || !yt_file_delete("YTDATA.DAT", false, &error)) {
+		    || !yt_database_close_all_single(&old, &error)) {
 			yt_database_close(&old);
 			yt_cli_error("RMT-INIT", &error);
 			return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
 		}
-		/* Shipped CLOSE-all/KILL/END is a normal process terminal. */
+		/* 281F CLOSE-all closes the remaining COM control before KILL. */
+		yt_rmt_door_finish(&door, EXIT_SUCCESS);
+		if (!yt_file_delete("YTDATA.DAT", false, &error)) {
+			yt_cli_error("RMT-INIT", &error);
+			return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
+		}
 		return finish_rmt(&handoff_file, &door, EXIT_SUCCESS);
 	}
 	if (!yt_config_load(&old, &config, &error)

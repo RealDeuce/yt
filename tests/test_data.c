@@ -1174,6 +1174,40 @@ test_database_random_close(void)
 	}
 	yt_database_close(&database);
 
+	/* CLOSE-all has a distinct public identity over the same file method. */
+	memset(&database, 0, sizeof(database));
+	memset(&script, 0, sizeof(script));
+	yt_database_set_close_provider(&database, scripted_database_public_close,
+	    &script);
+	yt_error_clear(&error);
+	CHECK(yt_database_close_all_single(&database, &error)
+	    && database.last_close.outcome == YT_DATABASE_CLOSE_RETURNED
+	    && database.last_close.close_all && !database.last_close.missing
+	    && database.last_close.attempt_count == 0U
+	    && script.position == 0U);
+	memset(&script, 0, sizeof(script));
+	database_close_add(&script, false, 0U, false, true, true);
+	CHECK(database_close_fixture(&database, false, &script));
+	yt_error_clear(&error);
+	CHECK(yt_database_close_all_single(&database, &error)
+	    && database.last_close.close_all && !database.last_close.missing
+	    && database.last_close.outcome == YT_DATABASE_CLOSE_RETURNED
+	    && database.last_close.attempt_count == 1U
+	    && database.file == NULL && script.position == script.length);
+	yt_database_close(&database);
+	memset(&script, 0, sizeof(script));
+	database_close_add(&script, true, 5U, true, true, false);
+	database_close_add(&script, false, 0U, false, true, true);
+	CHECK(database_close_fixture(&database, false, &script));
+	yt_error_clear(&error);
+	CHECK(!yt_database_close_all_single(&database, &error)
+	    && database.last_close.close_all
+	    && database.last_close.outcome == YT_DATABASE_CLOSE_DISK_ERROR
+	    && database.last_close.basic_error == 70U
+	    && database.last_close.dos_error == 5U
+	    && strcmp(error.operation, "CLOSE all") == 0);
+	yt_database_close(&database);
+
 	/* One clear-carry CLOSE unregisters ordinary and device random files. */
 	for (device = 0U; device < 2U; ++device) {
 		memset(&script, 0, sizeof(script));
