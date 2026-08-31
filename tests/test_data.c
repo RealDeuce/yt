@@ -574,6 +574,203 @@ struct text_output_write_script {
 	size_t position;
 };
 
+struct text_append_open_step {
+	enum yt_text_append_open_operation operation;
+	uint8_t access;
+	uint16_t prior_dos_error;
+	int64_t offset;
+	size_t requested;
+	uint8_t data[YT_TEXT_OUTPUT_BUFFER_SIZE];
+	struct yt_text_append_open_observation observation;
+	bool provider_ok;
+	bool expect_active;
+	bool supply_file;
+	bool close_active;
+};
+
+struct text_append_open_script {
+	struct text_append_open_step steps[16];
+	size_t length;
+	size_t position;
+};
+
+static struct text_append_open_step *
+text_append_open_add(struct text_append_open_script *script,
+    enum yt_text_append_open_operation operation, uint8_t access,
+    uint16_t prior_dos_error)
+{
+	struct text_append_open_step *step;
+
+	CHECK(script->length < YT_ARRAY_LEN(script->steps));
+	if (script->length >= YT_ARRAY_LEN(script->steps))
+		return NULL;
+	step = &script->steps[script->length++];
+	memset(step, 0, sizeof(*step));
+	step->operation = operation;
+	step->access = access;
+	step->prior_dos_error = prior_dos_error;
+	step->observation.terminal_position = -1;
+	step->provider_ok = true;
+	step->expect_active = operation == YT_TEXT_APPEND_OPEN_TEMP_CLOSE
+	    || operation == YT_TEXT_APPEND_OPEN_QUERY_DEVICE
+	    || operation == YT_TEXT_APPEND_OPEN_CONFIGURE_DEVICE
+	    || operation == YT_TEXT_APPEND_OPEN_SEEK_END
+	    || operation == YT_TEXT_APPEND_OPEN_SEEK_WINDOW
+	    || operation == YT_TEXT_APPEND_OPEN_READ_WINDOW
+	    || operation == YT_TEXT_APPEND_OPEN_SEEK_SELECTED;
+	return step;
+}
+
+static void
+text_append_open_add_error(struct text_append_open_script *script,
+    enum yt_text_append_open_operation operation, uint8_t access,
+    uint16_t prior_dos_error, uint16_t dos_error, uint16_t mapped_error)
+{
+	struct text_append_open_step *step = text_append_open_add(script,
+	    operation, access, prior_dos_error);
+
+	if (step == NULL)
+		return;
+	step->observation.carry = true;
+	step->observation.dos_error = dos_error;
+	step->observation.mapped_error = mapped_error;
+	step->observation.handle_open = step->expect_active;
+}
+
+static void
+text_append_open_add_file(struct text_append_open_script *script,
+    enum yt_text_append_open_operation operation, uint8_t access)
+{
+	struct text_append_open_step *step = text_append_open_add(script,
+	    operation, access, 0U);
+
+	if (step == NULL)
+		return;
+	step->observation.handle_open = true;
+	step->supply_file = true;
+}
+
+static void
+text_append_open_add_query(struct text_append_open_script *script,
+    uint8_t access, bool carry, uint16_t dos_error, bool device)
+{
+	struct text_append_open_step *step = text_append_open_add(script,
+	    YT_TEXT_APPEND_OPEN_QUERY_DEVICE, access, 0U);
+
+	if (step == NULL)
+		return;
+	step->observation.carry = carry;
+	step->observation.dos_error = dos_error;
+	step->observation.device = device;
+	step->observation.handle_open = true;
+}
+
+static void
+text_append_open_add_extended(struct text_append_open_script *script,
+    uint16_t prior_dos_error, uint16_t mapped_error)
+{
+	struct text_append_open_step *step = text_append_open_add(script,
+	    YT_TEXT_APPEND_OPEN_EXTENDED_ERROR, 0U, prior_dos_error);
+
+	if (step != NULL)
+		step->observation.mapped_error = mapped_error;
+}
+
+static void
+text_append_open_add_seek(struct text_append_open_script *script,
+    enum yt_text_append_open_operation operation, uint8_t access,
+    int64_t offset, int64_t terminal_position)
+{
+	struct text_append_open_step *step = text_append_open_add(script,
+	    operation, access, 0U);
+
+	if (step == NULL)
+		return;
+	step->offset = offset;
+	step->observation.handle_open = true;
+	step->observation.terminal_position = terminal_position;
+}
+
+static void
+text_append_open_add_read(struct text_append_open_script *script,
+    uint8_t access, const uint8_t *data, size_t accepted,
+    int64_t terminal_position)
+{
+	struct text_append_open_step *step = text_append_open_add(script,
+	    YT_TEXT_APPEND_OPEN_READ_WINDOW, access, 0U);
+
+	if (step == NULL)
+		return;
+	step->requested = YT_TEXT_OUTPUT_BUFFER_SIZE;
+	step->observation.accepted = accepted;
+	step->observation.handle_open = true;
+	step->observation.terminal_position = terminal_position;
+	if (accepted != 0U)
+		memcpy(step->data, data, accepted);
+}
+
+static bool
+scripted_text_append_open(void *context, const char *path,
+    enum yt_text_append_open_operation operation, uint8_t access,
+    FILE *active_file, int64_t offset, uint8_t *data, size_t requested,
+    uint16_t prior_dos_error,
+    struct yt_text_append_open_observation *observation)
+{
+	struct text_append_open_script *script = context;
+	struct text_append_open_step *step;
+
+	(void)path;
+	CHECK(script->position < script->length);
+	if (script->position >= script->length)
+		return false;
+	step = &script->steps[script->position++];
+	CHECK(operation == step->operation && access == step->access
+	    && prior_dos_error == step->prior_dos_error
+	    && (active_file != NULL) == step->expect_active
+	    && offset == step->offset && requested == step->requested);
+	if (operation != step->operation || access != step->access
+	    || prior_dos_error != step->prior_dos_error
+	    || (active_file != NULL) != step->expect_active
+	    || offset != step->offset || requested != step->requested)
+		return false;
+	if (!step->provider_ok)
+		return false;
+	*observation = step->observation;
+	if (step->supply_file) {
+		observation->file = tmpfile();
+		CHECK(observation->file != NULL);
+		if (observation->file == NULL)
+			return false;
+	}
+	if (step->observation.accepted != 0U) {
+		CHECK(data != NULL);
+		if (data == NULL)
+			return false;
+		memcpy(data, step->data, step->observation.accepted);
+	}
+	if (step->close_active) {
+		CHECK(active_file != NULL);
+		if (active_file == NULL || fclose(active_file) != 0)
+			return false;
+	}
+	return true;
+}
+
+static void
+text_append_open_use(struct yt_text_output *output,
+    struct text_append_open_script *script)
+{
+	yt_text_output_init(output);
+	yt_text_output_set_append_open_provider(output,
+	    scripted_text_append_open, script);
+}
+
+static void
+text_append_open_check_consumed(const struct text_append_open_script *script)
+{
+	CHECK(script->position == script->length);
+}
+
 static void
 database_open_add(struct database_open_script *script,
     enum yt_database_open_operation operation, uint8_t access,
@@ -3016,10 +3213,448 @@ write_bytes(const char *path, const uint8_t *bytes, size_t length)
 }
 
 static void
+text_append_existing_prefix(struct text_append_open_script *script,
+    int64_t length)
+{
+	text_append_open_add_file(script, YT_TEXT_APPEND_OPEN_EXISTING, 2U);
+	text_append_open_add_query(script, 2U, false, 0U, false);
+	text_append_open_add_seek(script, YT_TEXT_APPEND_OPEN_SEEK_END, 2U, 0,
+	    length);
+	if (length != 0)
+		text_append_open_add_seek(script, YT_TEXT_APPEND_OPEN_SEEK_WINDOW,
+		    2U, length > YT_TEXT_OUTPUT_BUFFER_SIZE
+		    ? length - YT_TEXT_OUTPUT_BUFFER_SIZE : 0,
+		    length > YT_TEXT_OUTPUT_BUFFER_SIZE
+		    ? length - YT_TEXT_OUTPUT_BUFFER_SIZE : 0);
+}
+
+static void
+text_append_missing_closed_prefix(struct text_append_open_script *script)
+{
+	struct text_append_open_step *step;
+
+	text_append_open_add_error(script, YT_TEXT_APPEND_OPEN_EXISTING, 2U,
+	    0U, 2U, 0U);
+	text_append_open_add_file(script, YT_TEXT_APPEND_OPEN_CREATE, 2U);
+	step = text_append_open_add(script, YT_TEXT_APPEND_OPEN_TEMP_CLOSE, 0U,
+	    0U);
+	if (step != NULL)
+		step->close_active = true;
+}
+
+static void
+test_append_open_success_model(void)
+{
+	struct text_append_open_script script;
+	struct text_append_open_step *step;
+	struct yt_text_output output;
+	struct yt_error error;
+	uint8_t window[YT_TEXT_OUTPUT_BUFFER_SIZE];
+
+	memset(window, 'x', sizeof(window));
+	window[18] = 0x1aU;
+	memset(&script, 0, sizeof(script));
+	text_append_existing_prefix(&script, 200);
+	text_append_open_add_read(&script, 2U, window, sizeof(window), 200);
+	text_append_open_add_seek(&script, YT_TEXT_APPEND_OPEN_SEEK_SELECTED, 2U,
+	    90, 90);
+	text_append_open_use(&output, &script);
+	yt_error_clear(&error);
+	CHECK(yt_text_output_open_append(&output, "append-script.dat", &error)
+	    && output.last_append_open.outcome == YT_TEXT_APPEND_OPEN_RETURNED
+	    && output.last_append_open.operation_count == 6U
+	    && output.last_append_open.access_attempt_count == 1U
+	    && output.last_append_open.access_attempts[0] == 2U
+	    && output.last_append_open.refill_count == 1U
+	    && output.last_append_open.physical_length == 200
+	    && output.last_append_open.window_start == 72
+	    && output.last_append_open.selected_position == 90
+	    && output.last_append_open.terminal_position == 90
+	    && output.last_append_open.registered
+	    && output.last_append_open.handle_open
+	    && !output.last_append_open.created
+	    && !output.last_append_open.device);
+	text_append_open_check_consumed(&script);
+	yt_text_output_destroy(&output);
+
+	/* Access denied retries ordinary APPEND once with access selector one. */
+	memset(&script, 0, sizeof(script));
+	text_append_open_add_error(&script, YT_TEXT_APPEND_OPEN_EXISTING, 2U,
+	    0U, 5U, 0U);
+	text_append_open_add_file(&script, YT_TEXT_APPEND_OPEN_EXISTING, 1U);
+	text_append_open_add_query(&script, 1U, false, 0U, false);
+	text_append_open_add_seek(&script, YT_TEXT_APPEND_OPEN_SEEK_END, 1U, 0, 0);
+	text_append_open_add_read(&script, 1U, NULL, 0U, 0);
+	text_append_open_add_seek(&script, YT_TEXT_APPEND_OPEN_SEEK_SELECTED, 1U,
+	    0, 0);
+	text_append_open_use(&output, &script);
+	CHECK(yt_text_output_open_append(&output, "append-script.dat", &error)
+	    && output.last_append_open.access_attempt_count == 2U
+	    && output.last_append_open.access_attempts[0] == 2U
+	    && output.last_append_open.access_attempts[1] == 1U
+	    && output.last_append_open.operation_count == 6U
+	    && output.last_append_open.selected_position == 0);
+	text_append_open_check_consumed(&script);
+	yt_text_output_destroy(&output);
+
+	/* A full final window with no marker performs the terminal zero refill. */
+	memset(window, 'q', sizeof(window));
+	memset(&script, 0, sizeof(script));
+	text_append_existing_prefix(&script, 200);
+	text_append_open_add_read(&script, 2U, window, sizeof(window), 200);
+	text_append_open_add_read(&script, 2U, NULL, 0U, 200);
+	text_append_open_add_seek(&script, YT_TEXT_APPEND_OPEN_SEEK_SELECTED, 2U,
+	    200, 200);
+	text_append_open_use(&output, &script);
+	CHECK(yt_text_output_open_append(&output, "append-script.dat", &error)
+	    && output.last_append_open.refill_count == 2U
+	    && output.last_append_open.selected_position == 200
+	    && output.last_append_open.operation_count == 7U);
+	text_append_open_check_consumed(&script);
+	yt_text_output_destroy(&output);
+
+	/* Missing-file create, temporary close, and reopen are one transaction. */
+	memset(&script, 0, sizeof(script));
+	text_append_missing_closed_prefix(&script);
+	text_append_open_add_file(&script, YT_TEXT_APPEND_OPEN_REOPEN, 2U);
+	text_append_open_add_query(&script, 2U, false, 0U, false);
+	text_append_open_add_seek(&script, YT_TEXT_APPEND_OPEN_SEEK_END, 2U, 0, 0);
+	text_append_open_add_read(&script, 2U, NULL, 0U, 0);
+	text_append_open_add_seek(&script, YT_TEXT_APPEND_OPEN_SEEK_SELECTED, 2U,
+	    0, 0);
+	text_append_open_use(&output, &script);
+	CHECK(yt_text_output_open_append(&output, "append-script.dat", &error)
+	    && output.last_append_open.created
+	    && output.last_append_open.temporary_close_attempted
+	    && !output.last_append_open.temporary_close_retried
+	    && output.last_append_open.access_attempt_count == 2U
+	    && output.last_append_open.access_attempts[0] == 2U
+	    && output.last_append_open.access_attempts[1] == 2U
+	    && output.last_append_open.refill_count == 1U
+	    && output.last_append_open.selected_position == 0);
+	text_append_open_check_consumed(&script);
+	yt_text_output_destroy(&output);
+
+	/* Carry from the device query is ignored; returned DL still selects. */
+	memset(&script, 0, sizeof(script));
+	text_append_open_add_file(&script, YT_TEXT_APPEND_OPEN_EXISTING, 2U);
+	text_append_open_add_query(&script, 2U, true, 5U, false);
+	text_append_open_add_seek(&script, YT_TEXT_APPEND_OPEN_SEEK_END, 2U, 0, 0);
+	text_append_open_add_read(&script, 2U, NULL, 0U, 0);
+	text_append_open_add_seek(&script, YT_TEXT_APPEND_OPEN_SEEK_SELECTED, 2U,
+	    0, 0);
+	text_append_open_use(&output, &script);
+	CHECK(yt_text_output_open_append(&output, "append-script.dat", &error)
+	    && output.last_append_open.outcome == YT_TEXT_APPEND_OPEN_RETURNED);
+	text_append_open_check_consumed(&script);
+	yt_text_output_destroy(&output);
+
+	/* A selected device's configuration carry maps to ERR57. */
+	memset(&script, 0, sizeof(script));
+	text_append_open_add_file(&script, YT_TEXT_APPEND_OPEN_EXISTING, 2U);
+	text_append_open_add_query(&script, 2U, true, 1U, true);
+	step = text_append_open_add(&script,
+	    YT_TEXT_APPEND_OPEN_CONFIGURE_DEVICE, 2U, 0U);
+	if (step != NULL) {
+		step->observation.carry = true;
+		step->observation.dos_error = 5U;
+		step->observation.handle_open = true;
+	}
+	text_append_open_use(&output, &script);
+	CHECK(!yt_text_output_open_append(&output, "append-script.dat", &error)
+	    && output.last_append_open.outcome
+	    == YT_TEXT_APPEND_OPEN_DEVICE_ERROR
+	    && output.last_append_open.failed_operation
+	    == YT_TEXT_APPEND_OPEN_CONFIGURE_DEVICE
+	    && output.last_append_open.basic_error == 57U
+	    && output.last_append_open.dos_error == 5U
+	    && output.last_append_open.registered);
+	text_append_open_check_consumed(&script);
+	yt_text_output_destroy(&output);
+}
+
+static void
+test_append_open_error_model(void)
+{
+	struct text_append_open_script script;
+	struct text_append_open_step *step;
+	struct yt_text_output output;
+	struct yt_error error;
+	uint8_t window[YT_TEXT_OUTPUT_BUFFER_SIZE];
+	unsigned dos_error;
+	unsigned mapped_error;
+	unsigned failed_seek;
+
+	/* Every ordinary initial OPEN error byte has the APPEND classifier. */
+	for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
+		if (dos_error == 2U || dos_error == 5U)
+			continue;
+		memset(&script, 0, sizeof(script));
+		text_append_open_add_error(&script,
+		    YT_TEXT_APPEND_OPEN_EXISTING, 2U, 0U,
+		    (uint16_t)dos_error, 0U);
+		text_append_open_use(&output, &script);
+		yt_error_clear(&error);
+		CHECK(!yt_text_output_open_append(&output, "append-script.dat",
+		    &error)
+		    && output.last_append_open.outcome
+		    == YT_TEXT_APPEND_OPEN_INITIAL_ERROR
+		    && output.last_append_open.basic_error
+		    == (dos_error == 3U ? 76U : 75U)
+		    && output.last_append_open.dos_error == dos_error);
+		text_append_open_check_consumed(&script);
+		yt_text_output_destroy(&output);
+	}
+	for (mapped_error = 70U; mapped_error <= 75U; mapped_error += 5U) {
+		memset(&script, 0, sizeof(script));
+		text_append_open_add_error(&script,
+		    YT_TEXT_APPEND_OPEN_EXISTING, 2U, 0U, 5U, 0U);
+		text_append_open_add_error(&script,
+		    YT_TEXT_APPEND_OPEN_EXISTING, 1U, 0U, 5U, 0U);
+		text_append_open_add_extended(&script, 5U,
+		    (uint16_t)mapped_error);
+		text_append_open_use(&output, &script);
+		CHECK(!yt_text_output_open_append(&output, "append-script.dat",
+		    &error)
+		    && output.last_append_open.outcome
+		    == YT_TEXT_APPEND_OPEN_INITIAL_ERROR
+		    && output.last_append_open.failed_operation
+		    == YT_TEXT_APPEND_OPEN_EXTENDED_ERROR
+		    && output.last_append_open.basic_error == mapped_error
+		    && output.last_append_open.access_attempt_count == 2U
+		    && output.last_append_open.access_attempts[0] == 2U
+		    && output.last_append_open.access_attempts[1] == 1U);
+		text_append_open_check_consumed(&script);
+		yt_text_output_destroy(&output);
+	}
+
+	/* Create error 5 alone uses extended classification; error 2 is ERR53. */
+	for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
+		memset(&script, 0, sizeof(script));
+		text_append_open_add_error(&script,
+		    YT_TEXT_APPEND_OPEN_EXISTING, 2U, 0U, 2U, 0U);
+		text_append_open_add_error(&script, YT_TEXT_APPEND_OPEN_CREATE,
+		    2U, 0U, (uint16_t)dos_error, 0U);
+		if (dos_error == 5U)
+			text_append_open_add_extended(&script, 5U, 70U);
+		text_append_open_use(&output, &script);
+		CHECK(!yt_text_output_open_append(&output, "append-script.dat",
+		    &error)
+		    && output.last_append_open.outcome
+		    == YT_TEXT_APPEND_OPEN_CREATE_ERROR
+		    && output.last_append_open.basic_error
+		    == (dos_error == 2U ? 53U
+		    : dos_error == 5U ? 70U : 75U)
+		    && output.last_append_open.dos_error == dos_error);
+		text_append_open_check_consumed(&script);
+		yt_text_output_destroy(&output);
+	}
+
+	/* A failed temporary create-handle CLOSE retries once, then ERR70. */
+	for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
+		memset(&script, 0, sizeof(script));
+		text_append_open_add_error(&script,
+		    YT_TEXT_APPEND_OPEN_EXISTING, 2U, 0U, 2U, 0U);
+		text_append_open_add_file(&script, YT_TEXT_APPEND_OPEN_CREATE, 2U);
+		text_append_open_add_error(&script,
+		    YT_TEXT_APPEND_OPEN_TEMP_CLOSE, 0U, 0U,
+		    (uint16_t)dos_error, 0U);
+		step = text_append_open_add(&script,
+		    YT_TEXT_APPEND_OPEN_TEMP_CLOSE, 0U, (uint16_t)dos_error);
+		if (step != NULL)
+			step->close_active = true;
+		text_append_open_use(&output, &script);
+		CHECK(!yt_text_output_open_append(&output, "append-script.dat",
+		    &error)
+		    && output.last_append_open.outcome
+		    == YT_TEXT_APPEND_OPEN_TEMP_CLOSE_ERROR
+		    && output.last_append_open.basic_error == 70U
+		    && output.last_append_open.dos_error == dos_error
+		    && output.last_append_open.created
+		    && output.last_append_open.temporary_close_retried
+		    && !output.last_append_open.registered
+		    && !output.last_append_open.handle_open);
+		text_append_open_check_consumed(&script);
+		yt_text_output_destroy(&output);
+	}
+	/* The ignored retry may itself carry and retain or lose the handle. */
+	memset(&script, 0, sizeof(script));
+	text_append_open_add_error(&script, YT_TEXT_APPEND_OPEN_EXISTING, 2U,
+	    0U, 2U, 0U);
+	text_append_open_add_file(&script, YT_TEXT_APPEND_OPEN_CREATE, 2U);
+	text_append_open_add_error(&script, YT_TEXT_APPEND_OPEN_TEMP_CLOSE, 0U,
+	    0U, 5U, 0U);
+	text_append_open_add_error(&script, YT_TEXT_APPEND_OPEN_TEMP_CLOSE, 0U,
+	    5U, 6U, 0U);
+	text_append_open_use(&output, &script);
+	CHECK(!yt_text_output_open_append(&output, "append-script.dat", &error)
+	    && output.last_append_open.outcome
+	    == YT_TEXT_APPEND_OPEN_TEMP_CLOSE_ERROR
+	    && output.last_append_open.basic_error == 70U
+	    && output.last_append_open.dos_error == 5U
+	    && output.last_append_open.handle_open
+	    && output.orphaned_file != NULL);
+	text_append_open_check_consumed(&script);
+	yt_text_output_destroy(&output);
+
+	memset(&script, 0, sizeof(script));
+	text_append_open_add_error(&script, YT_TEXT_APPEND_OPEN_EXISTING, 2U,
+	    0U, 2U, 0U);
+	text_append_open_add_file(&script, YT_TEXT_APPEND_OPEN_CREATE, 2U);
+	text_append_open_add_error(&script, YT_TEXT_APPEND_OPEN_TEMP_CLOSE, 0U,
+	    0U, 5U, 0U);
+	script.steps[2].observation.handle_open = false;
+	script.steps[2].close_active = true;
+	step = text_append_open_add(&script, YT_TEXT_APPEND_OPEN_TEMP_CLOSE, 0U,
+	    5U);
+	if (step != NULL) {
+		step->expect_active = false;
+		step->observation.carry = true;
+		step->observation.dos_error = 6U;
+	}
+	text_append_open_use(&output, &script);
+	CHECK(!yt_text_output_open_append(&output, "append-script.dat", &error)
+	    && output.last_append_open.outcome
+	    == YT_TEXT_APPEND_OPEN_TEMP_CLOSE_ERROR
+	    && output.last_append_open.basic_error == 70U
+	    && output.last_append_open.dos_error == 5U
+	    && !output.last_append_open.handle_open
+	    && output.orphaned_file == NULL);
+	text_append_open_check_consumed(&script);
+	yt_text_output_destroy(&output);
+
+	/* Reopen does not repeat initial error 3's path-not-found mapping. */
+	for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
+		memset(&script, 0, sizeof(script));
+		text_append_missing_closed_prefix(&script);
+		text_append_open_add_error(&script, YT_TEXT_APPEND_OPEN_REOPEN,
+		    2U, 0U, (uint16_t)dos_error, 0U);
+		if (dos_error == 5U) {
+			text_append_open_add_error(&script,
+			    YT_TEXT_APPEND_OPEN_REOPEN, 1U, 0U, 5U, 0U);
+			text_append_open_add_extended(&script, 5U, 75U);
+		}
+		text_append_open_use(&output, &script);
+		CHECK(!yt_text_output_open_append(&output, "append-script.dat",
+		    &error)
+		    && output.last_append_open.outcome
+		    == YT_TEXT_APPEND_OPEN_REOPEN_ERROR
+		    && output.last_append_open.basic_error
+		    == (dos_error == 2U ? 53U : 75U)
+		    && output.last_append_open.dos_error == dos_error);
+		text_append_open_check_consumed(&script);
+		yt_text_output_destroy(&output);
+	}
+
+	/* Each of the three APPEND seeks maps every DOS error to ERR52. */
+	memset(window, 'x', sizeof(window));
+	window[18] = 0x1aU;
+	for (failed_seek = 0U; failed_seek < 3U; ++failed_seek) {
+		for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
+			memset(&script, 0, sizeof(script));
+			text_append_open_add_file(&script,
+			    YT_TEXT_APPEND_OPEN_EXISTING, 2U);
+			text_append_open_add_query(&script, 2U, false, 0U, false);
+			if (failed_seek == 0U) {
+				text_append_open_add_error(&script,
+				    YT_TEXT_APPEND_OPEN_SEEK_END, 2U, 0U,
+				    (uint16_t)dos_error, 0U);
+			}
+			else {
+				text_append_open_add_seek(&script,
+				    YT_TEXT_APPEND_OPEN_SEEK_END, 2U, 0, 200);
+				if (failed_seek == 1U) {
+					step = text_append_open_add(&script,
+					    YT_TEXT_APPEND_OPEN_SEEK_WINDOW, 2U, 0U);
+					if (step != NULL) {
+						step->offset = 72;
+						step->observation.carry = true;
+						step->observation.dos_error =
+						    (uint16_t)dos_error;
+						step->observation.handle_open = true;
+					}
+				}
+				else {
+					text_append_open_add_seek(&script,
+					    YT_TEXT_APPEND_OPEN_SEEK_WINDOW,
+					    2U, 72, 72);
+					text_append_open_add_read(&script, 2U,
+					    window, sizeof(window), 200);
+					step = text_append_open_add(&script,
+					    YT_TEXT_APPEND_OPEN_SEEK_SELECTED,
+					    2U, 0U);
+					if (step != NULL) {
+						step->offset = 90;
+						step->observation.carry = true;
+						step->observation.dos_error =
+						    (uint16_t)dos_error;
+						step->observation.handle_open = true;
+					}
+				}
+			}
+			text_append_open_use(&output, &script);
+			CHECK(!yt_text_output_open_append(&output,
+			    "append-script.dat", &error)
+			    && output.last_append_open.outcome
+			    == YT_TEXT_APPEND_OPEN_SEEK_ERROR
+			    && output.last_append_open.basic_error == 52U
+			    && output.last_append_open.dos_error == dos_error);
+			text_append_open_check_consumed(&script);
+			yt_text_output_destroy(&output);
+		}
+	}
+
+	/* Window reads retain their accepted prefix and extended error mapping. */
+	for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
+		memset(&script, 0, sizeof(script));
+		text_append_existing_prefix(&script, 200);
+		step = text_append_open_add(&script,
+		    YT_TEXT_APPEND_OPEN_READ_WINDOW, 2U, 0U);
+		if (step != NULL) {
+			step->requested = YT_TEXT_OUTPUT_BUFFER_SIZE;
+			step->observation.accepted = 7U;
+			step->observation.carry = true;
+			step->observation.dos_error = (uint16_t)dos_error;
+			step->observation.mapped_error = dos_error == 5U ? 70U : 0U;
+			step->observation.handle_open = true;
+			step->observation.terminal_position = 79;
+		}
+		text_append_open_use(&output, &script);
+		CHECK(!yt_text_output_open_append(&output, "append-script.dat",
+		    &error)
+		    && output.last_append_open.outcome
+		    == YT_TEXT_APPEND_OPEN_READ_ERROR
+		    && output.last_append_open.basic_error
+		    == (dos_error == 5U ? 70U : 57U)
+		    && output.last_append_open.dos_error == dos_error
+		    && output.last_append_open.accepted == 7U
+		    && output.last_append_open.terminal_position == 79);
+		text_append_open_check_consumed(&script);
+		yt_text_output_destroy(&output);
+	}
+
+	/* A missing provider result is not mistaken for a runtime DOS edge. */
+	memset(&script, 0, sizeof(script));
+	step = text_append_open_add(&script, YT_TEXT_APPEND_OPEN_EXISTING, 2U,
+	    0U);
+	if (step != NULL)
+		step->provider_ok = false;
+	text_append_open_use(&output, &script);
+	CHECK(!yt_text_output_open_append(&output, "append-script.dat", &error)
+	    && output.last_append_open.outcome
+	    == YT_TEXT_APPEND_OPEN_PROVIDER_ERROR
+	    && output.last_append_open.failed_operation
+	    == YT_TEXT_APPEND_OPEN_EXISTING);
+	text_append_open_check_consumed(&script);
+	yt_text_output_destroy(&output);
+}
+
+static void
 test_append_window(void)
 {
 	char directory[256];
 	char path[320];
+	char missing_parent_path[384];
 	uint8_t original[200];
 	uint8_t payload[127];
 	uint8_t embedded[] = {'A', 0x1a, 'B'};
@@ -3037,8 +3672,30 @@ test_append_window(void)
 #endif
 	(void)mkdir_one(directory);
 	snprintf(path, sizeof(path), "%s/window.dat", directory);
+	snprintf(missing_parent_path, sizeof(missing_parent_path),
+	    "%s/missing/window.dat", directory);
 	for (index = 0; index < sizeof(original); ++index)
 		original[index] = (uint8_t)(index == 0 ? 0 : 'x');
+
+	/* Native absence takes create/temporary-close/reopen; no parent is ERR76. */
+	yt_text_output_init(&output);
+	yt_error_clear(&error);
+	CHECK(yt_text_output_open_append(&output, path, &error)
+	    && output.last_append_open.outcome == YT_TEXT_APPEND_OPEN_RETURNED
+	    && output.last_append_open.created
+	    && output.last_append_open.temporary_close_attempted
+	    && output.last_append_open.access_attempt_count == 2U
+	    && output.last_append_open.refill_count == 1U
+	    && output.last_append_open.selected_position == 0);
+	yt_text_output_destroy(&output);
+	yt_text_output_init(&output);
+	CHECK(!yt_text_output_open_append(&output, missing_parent_path, &error)
+	    && output.last_append_open.outcome
+	    == YT_TEXT_APPEND_OPEN_INITIAL_ERROR
+	    && output.last_append_open.basic_error == 76U
+	    && output.last_append_open.dos_error == 3U
+	    && output.last_append_open.access_attempt_count == 1U);
+	yt_text_output_destroy(&output);
 
 	/* Empty sequential OUTPUT/CLOSE retains the BRUN DOS EOF byte. */
 	yt_error_clear(&error);
@@ -3085,7 +3742,12 @@ test_append_window(void)
 	CHECK(write_bytes(path, (const uint8_t *)"old\x1a" "stale", 9U));
 	yt_text_output_init(&output);
 	CHECK(yt_text_output_open_append(&output, path, &error)
-	    && ftell(output.file) == 3L);
+	    && ftell(output.file) == 3L
+	    && output.last_append_open.outcome == YT_TEXT_APPEND_OPEN_RETURNED
+	    && output.last_append_open.physical_length == 9
+	    && output.last_append_open.window_start == 0
+	    && output.last_append_open.selected_position == 3
+	    && output.last_append_open.refill_count == 1U);
 	yt_text_output_destroy(&output);
 	CHECK(yt_text_read(path, &text, &error));
 	CHECK(text.length == 9U && memcmp(text.data, "old\x1a" "stale", 9U) == 0);
@@ -4914,6 +5576,8 @@ main(void)
 	test_database_random_lof();
 	test_files();
 	test_radio_file();
+	test_append_open_success_model();
+	test_append_open_error_model();
 	test_append_window();
 	test_main_error_fatal_transaction();
 	test_line_input_grammar();

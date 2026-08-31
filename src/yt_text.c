@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 static void set_error(struct yt_error *error, enum yt_status status,
     const char *operation, const char *path);
@@ -680,11 +681,17 @@ yt_opening_stream_run(struct yt_opening_stream_state *state,
 #ifdef _WIN32
 #include <io.h>
 #define yt_text_fileno _fileno
+#define yt_text_fseeko _fseeki64
 #define yt_text_ftello _ftelli64
+#define yt_text_isatty _isatty
+#define yt_text_stat_is_dir(mode) (((mode) & _S_IFMT) == _S_IFDIR)
 #else
 #include <unistd.h>
 #define yt_text_fileno fileno
+#define yt_text_fseeko fseeko
 #define yt_text_ftello ftello
+#define yt_text_isatty isatty
+#define yt_text_stat_is_dir(mode) S_ISDIR(mode)
 #endif
 
 static void
@@ -699,12 +706,48 @@ set_error(struct yt_error *error, enum yt_status status, const char *operation,
 	snprintf(error->path, sizeof(error->path), "%s", path != NULL ? path : "");
 }
 
+static bool
+text_output_parent_exists(const char *path)
+{
+	const char *slash;
+	char directory[512];
+	struct stat info;
+	size_t length;
+
+	if (path == NULL)
+		return true;
+	slash = strrchr(path, '/');
+#ifdef _WIN32
+	{
+		const char *backslash = strrchr(path, '\\');
+
+		if (backslash != NULL && (slash == NULL || backslash > slash))
+			slash = backslash;
+	}
+#endif
+	if (slash == NULL)
+		return true;
+	length = (size_t)(slash - path);
+	if (length == 0U)
+		length = 1U;
+#ifdef _WIN32
+	if (length == 2U && path[1] == ':')
+		++length;
+#endif
+	if (length >= sizeof(directory))
+		return false;
+	memcpy(directory, path, length);
+	directory[length] = '\0';
+	return stat(directory, &info) == 0
+	    && yt_text_stat_is_dir(info.st_mode);
+}
+
 static uint16_t
-text_output_dos_error(int system_error)
+text_output_dos_error(const char *path, int system_error)
 {
 	switch (system_error) {
 	case ENOENT:
-		return 2U;
+		return text_output_parent_exists(path) ? 2U : 3U;
 	case ENOTDIR:
 		return 3U;
 #if defined(ENFILE) && ENFILE != EMFILE
@@ -763,7 +806,7 @@ text_output_write_default_common(FILE *file, const uint8_t *data,
 	observation->carry = ferror(file) != 0;
 	observation->handle_open = true;
 	observation->dos_error = observation->carry
-	    ? text_output_dos_error(saved_errno) : 0U;
+	    ? text_output_dos_error(NULL, saved_errno) : 0U;
 	observation->terminal_position = text_output_position(file);
 	errno = saved_errno;
 	return true;
@@ -828,7 +871,7 @@ text_output_close_default(void *context, FILE *file,
 		observation->carry = result != 0;
 		observation->handle_open = true;
 		observation->dos_error = result != 0
-		    ? text_output_dos_error(saved_errno) : 0U;
+		    ? text_output_dos_error(NULL, saved_errno) : 0U;
 		errno = saved_errno;
 		return true;
 	case YT_TEXT_OUTPUT_CLOSE_HANDLE:
@@ -846,7 +889,7 @@ text_output_close_default(void *context, FILE *file,
 		saved_errno = errno;
 		observation->carry = result != 0;
 		observation->dos_error = result != 0
-		    ? text_output_dos_error(saved_errno) : 0U;
+		    ? text_output_dos_error(NULL, saved_errno) : 0U;
 		observation->handle_open = false;
 		errno = saved_errno;
 		return true;
@@ -914,7 +957,219 @@ yt_text_output_open(struct yt_text_output *output, const char *path,
 	output->pending_count = 0U;
 	memset(&output->last_write, 0, sizeof(output->last_write));
 	memset(&output->last_close, 0, sizeof(output->last_close));
+	memset(&output->last_append_open, 0,
+	    sizeof(output->last_append_open));
 	return true;
+}
+
+static bool
+text_append_open_default(void *context, const char *path,
+    enum yt_text_append_open_operation operation, uint8_t access,
+    FILE *active_file, int64_t offset, uint8_t *data, size_t requested,
+    uint16_t prior_dos_error,
+    struct yt_text_append_open_observation *observation)
+{
+	int64_t position;
+	int result;
+	int saved_errno;
+
+	(void)context;
+	(void)access;
+	(void)prior_dos_error;
+	memset(observation, 0, sizeof(*observation));
+	observation->terminal_position = -1;
+	switch (operation) {
+	case YT_TEXT_APPEND_OPEN_EXISTING:
+	case YT_TEXT_APPEND_OPEN_REOPEN:
+	case YT_TEXT_APPEND_OPEN_CREATE:
+		errno = 0;
+		observation->file = fopen(path,
+		    operation == YT_TEXT_APPEND_OPEN_CREATE ? "w+b" : "r+b");
+		if (observation->file == NULL) {
+			observation->carry = true;
+			observation->dos_error = text_output_dos_error(path, errno);
+		}
+		else
+			observation->handle_open = true;
+		return true;
+	case YT_TEXT_APPEND_OPEN_TEMP_CLOSE:
+		if (active_file == NULL) {
+			observation->carry = true;
+			observation->dos_error = 6U;
+			return true;
+		}
+		errno = 0;
+		result = fclose(active_file);
+		saved_errno = errno;
+		observation->carry = result != 0;
+		observation->dos_error = result != 0
+		    ? text_output_dos_error(NULL, saved_errno) : 0U;
+		observation->handle_open = false;
+		errno = saved_errno;
+		return true;
+	case YT_TEXT_APPEND_OPEN_EXTENDED_ERROR:
+		observation->mapped_error = 75U;
+		return true;
+	case YT_TEXT_APPEND_OPEN_QUERY_DEVICE:
+		if (active_file == NULL)
+			return false;
+		observation->device = yt_text_isatty(
+		    yt_text_fileno(active_file)) != 0;
+		observation->handle_open = true;
+		return true;
+	case YT_TEXT_APPEND_OPEN_CONFIGURE_DEVICE:
+		if (active_file == NULL)
+			return false;
+		observation->handle_open = true;
+		return true;
+	case YT_TEXT_APPEND_OPEN_SEEK_END:
+	case YT_TEXT_APPEND_OPEN_SEEK_WINDOW:
+	case YT_TEXT_APPEND_OPEN_SEEK_SELECTED:
+		if (active_file == NULL)
+			return false;
+		errno = 0;
+		result = yt_text_fseeko(active_file,
+		    operation == YT_TEXT_APPEND_OPEN_SEEK_END ? 0 : offset,
+		    operation == YT_TEXT_APPEND_OPEN_SEEK_END
+		    ? SEEK_END : SEEK_SET);
+		saved_errno = errno;
+		position = (int64_t)yt_text_ftello(active_file);
+		observation->carry = result != 0 || position < 0;
+		observation->dos_error = observation->carry
+		    ? text_output_dos_error(NULL, saved_errno) : 0U;
+		observation->terminal_position = position >= 0 ? position : -1;
+		observation->handle_open = true;
+		errno = saved_errno;
+		return true;
+	case YT_TEXT_APPEND_OPEN_READ_WINDOW:
+		if (active_file == NULL || (data == NULL && requested != 0U))
+			return false;
+		errno = 0;
+		observation->accepted = fread(data, 1U, requested, active_file);
+		saved_errno = errno;
+		position = (int64_t)yt_text_ftello(active_file);
+		observation->carry = ferror(active_file) != 0;
+		observation->dos_error = observation->carry
+		    ? text_output_dos_error(NULL, saved_errno) : 0U;
+		observation->mapped_error = observation->carry
+		    && observation->dos_error == 5U ? 75U : 0U;
+		observation->terminal_position = position >= 0 ? position : -1;
+		observation->handle_open = true;
+		errno = saved_errno;
+		return true;
+	default:
+		return false;
+	}
+}
+
+static void
+text_append_open_failure(struct yt_text_output *output,
+    enum yt_text_append_open_outcome outcome,
+    enum yt_text_append_open_operation operation, uint16_t basic_error,
+    uint16_t dos_error, struct yt_error *error)
+{
+	output->last_append_open.outcome = outcome;
+	output->last_append_open.failed_operation = operation;
+	output->last_append_open.basic_error = basic_error;
+	output->last_append_open.dos_error = dos_error;
+	output->last_append_open.registered = output->file != NULL;
+	output->last_append_open.handle_open = output->file != NULL
+	    || output->orphaned_file != NULL;
+	set_error(error, basic_error == 53U || basic_error == 76U
+	    ? YT_NOT_FOUND : YT_IO_ERROR,
+	    "sequential APPEND OPEN", output->path);
+}
+
+static bool
+text_append_observe(struct yt_text_output *output, const char *path,
+    enum yt_text_append_open_operation operation, uint8_t access,
+    FILE *active_file, int64_t offset, uint8_t *data, size_t requested,
+    uint16_t prior_dos_error,
+    struct yt_text_append_open_observation *observation)
+{
+	yt_text_append_open_provider provider = output->append_open_provider != NULL
+	    ? output->append_open_provider : text_append_open_default;
+	bool delivered;
+
+	++output->last_append_open.operation_count;
+	memset(observation, 0, sizeof(*observation));
+	observation->terminal_position = -1;
+	delivered = provider(output->append_open_context, path, operation, access,
+	    active_file, offset, data, requested, prior_dos_error, observation);
+	output->last_append_open.accepted = observation->accepted;
+	output->last_append_open.terminal_position =
+	    observation->terminal_position;
+	return delivered;
+}
+
+static bool
+text_append_open_observation_valid(enum yt_text_append_open_operation operation,
+    size_t requested, const struct yt_text_append_open_observation *observation)
+{
+	bool opening = operation == YT_TEXT_APPEND_OPEN_EXISTING
+	    || operation == YT_TEXT_APPEND_OPEN_CREATE
+	    || operation == YT_TEXT_APPEND_OPEN_REOPEN;
+
+	if (observation->terminal_position < -1
+	    || observation->accepted > requested
+	    || observation->dos_error > 0xffU)
+		return false;
+	if (opening)
+		return observation->accepted == 0U
+		    && observation->terminal_position == -1
+		    && observation->mapped_error == 0U
+		    && (observation->carry
+		    ? observation->file == NULL && !observation->handle_open
+		    && observation->dos_error >= 1U
+		    : observation->file != NULL && observation->handle_open
+		    && observation->dos_error == 0U);
+	if (operation == YT_TEXT_APPEND_OPEN_TEMP_CLOSE)
+		return observation->file == NULL && observation->accepted == 0U
+		    && observation->terminal_position == -1
+		    && observation->mapped_error == 0U
+		    && (observation->carry ? observation->dos_error >= 1U
+		    : observation->dos_error == 0U && !observation->handle_open);
+	if (operation == YT_TEXT_APPEND_OPEN_EXTENDED_ERROR)
+		return observation->file == NULL && observation->accepted == 0U
+		    && observation->terminal_position == -1
+		    && !observation->carry && !observation->handle_open
+		    && observation->dos_error == 0U
+		    && (observation->mapped_error == 70U
+		    || observation->mapped_error == 75U);
+	if (operation == YT_TEXT_APPEND_OPEN_QUERY_DEVICE)
+		return observation->file == NULL && observation->handle_open
+		    && observation->accepted == 0U
+		    && observation->terminal_position == -1
+		    && observation->mapped_error == 0U
+		    && (observation->carry ? observation->dos_error >= 1U
+		    : observation->dos_error == 0U);
+	if (operation == YT_TEXT_APPEND_OPEN_CONFIGURE_DEVICE)
+		return observation->file == NULL && observation->handle_open
+		    && observation->accepted == 0U
+		    && observation->terminal_position == -1
+		    && observation->mapped_error == 0U
+		    && (observation->carry ? observation->dos_error >= 1U
+		    : observation->dos_error == 0U);
+	if (!observation->handle_open || observation->file != NULL)
+		return false;
+	if (operation == YT_TEXT_APPEND_OPEN_READ_WINDOW) {
+		if (observation->carry)
+			return observation->dos_error >= 1U
+			    && (observation->dos_error == 5U
+			    ? observation->mapped_error == 70U
+			    || observation->mapped_error == 75U
+			    : observation->mapped_error == 0U
+			    || observation->mapped_error == 57U);
+		return observation->dos_error == 0U
+		    && observation->mapped_error == 0U
+		    && observation->terminal_position >= 0;
+	}
+	if (observation->accepted != 0U || observation->mapped_error != 0U)
+		return false;
+	if (observation->carry)
+		return observation->dos_error >= 1U;
+	return observation->dos_error == 0U
+	    && observation->terminal_position >= 0;
 }
 
 bool
@@ -922,12 +1177,21 @@ yt_text_output_open_append(struct yt_text_output *output, const char *path,
     struct yt_error *error)
 {
 	char resolved[512];
-	FILE *file;
-	long end;
-	long window_start;
-	size_t window_length;
-	size_t index;
+	struct yt_text_append_open_observation observation;
+	FILE *temporary = NULL;
 	uint8_t window[YT_TEXT_OUTPUT_BUFFER_SIZE];
+	uint8_t access = 2U;
+	uint16_t first_close_error;
+	int64_t length;
+	int64_t start;
+	int64_t candidate;
+	int64_t cursor;
+	size_t index;
+	enum yt_text_append_open_operation open_operation;
+	bool delivered;
+	bool valid;
+	bool reopening = false;
+	bool temporary_open = false;
 
 	if (output == NULL || path == NULL || output->file != NULL
 	    || output->orphaned_file != NULL) {
@@ -935,49 +1199,307 @@ yt_text_output_open_append(struct yt_text_output *output, const char *path,
 		set_error(error, YT_INVALID, "open text append", path);
 		return false;
 	}
+	memset(&output->last_append_open, 0, sizeof(output->last_append_open));
+	output->last_append_open.failed_operation = YT_TEXT_APPEND_OPEN_EXISTING;
+	output->last_append_open.terminal_position = -1;
 	if (!yt_resolve_case_path(path, true, resolved, sizeof(resolved), error))
 		return false;
-	errno = 0;
-	file = fopen(resolved, "r+b");
-	if (file == NULL && errno == ENOENT) {
-		file = fopen(resolved, "w+b");
-		if (file != NULL && fclose(file) == 0)
-			file = fopen(resolved, "r+b");
-		else
-			file = NULL;
-	}
-	if (file == NULL) {
-		set_error(error, YT_IO_ERROR, "open text append", resolved);
+	(void)snprintf(output->path, sizeof(output->path), "%s", resolved);
+
+open_attempt:
+	if (output->last_append_open.access_attempt_count
+	    >= sizeof(output->last_append_open.access_attempts)) {
+		text_append_open_failure(output,
+		    YT_TEXT_APPEND_OPEN_PROVIDER_ERROR,
+		    reopening ? YT_TEXT_APPEND_OPEN_REOPEN
+		    : YT_TEXT_APPEND_OPEN_EXISTING, 75U, 0U, error);
 		return false;
 	}
-	if (fseek(file, 0L, SEEK_END) != 0 || (end = ftell(file)) < 0) {
-		set_error(error, YT_IO_ERROR, "seek text append", resolved);
-		(void)fclose(file);
+	output->last_append_open.access_attempts[
+	    output->last_append_open.access_attempt_count++] = access;
+	open_operation = reopening ? YT_TEXT_APPEND_OPEN_REOPEN
+	    : YT_TEXT_APPEND_OPEN_EXISTING;
+	delivered = text_append_observe(output, resolved, open_operation,
+	    access, NULL, 0, NULL, 0U, 0U, &observation);
+	valid = delivered && text_append_open_observation_valid(open_operation,
+	    0U, &observation);
+	if (!valid) {
+		if (observation.file != NULL && observation.handle_open)
+			output->orphaned_file = observation.file;
+		text_append_open_failure(output, YT_TEXT_APPEND_OPEN_PROVIDER_ERROR,
+		    open_operation, 75U, observation.dos_error, error);
 		return false;
 	}
-	window_start = end > (long)sizeof(window)
-	    ? end - (long)sizeof(window) : 0L;
-	window_length = (size_t)(end - window_start);
-	if (fseek(file, window_start, SEEK_SET) != 0
-	    || (window_length != 0U
-	    && fread(window, 1U, window_length, file) != window_length)) {
-		set_error(error, YT_IO_ERROR, "read text append", resolved);
-		(void)fclose(file);
+	if (!observation.carry) {
+		output->file = observation.file;
+		goto opened;
+	}
+	if (observation.dos_error == 5U && access > 1U) {
+		--access;
+		goto open_attempt;
+	}
+	if (observation.dos_error == 5U) {
+		if (!text_append_observe(output, resolved,
+		    YT_TEXT_APPEND_OPEN_EXTENDED_ERROR, 0U, NULL, 0, NULL, 0U,
+		    observation.dos_error, &observation)
+		    || !text_append_open_observation_valid(
+		    YT_TEXT_APPEND_OPEN_EXTENDED_ERROR, 0U, &observation)) {
+			text_append_open_failure(output,
+			    YT_TEXT_APPEND_OPEN_PROVIDER_ERROR,
+			    YT_TEXT_APPEND_OPEN_EXTENDED_ERROR, 75U, 5U, error);
+			return false;
+		}
+		text_append_open_failure(output, reopening
+		    ? YT_TEXT_APPEND_OPEN_REOPEN_ERROR
+		    : YT_TEXT_APPEND_OPEN_INITIAL_ERROR,
+		    YT_TEXT_APPEND_OPEN_EXTENDED_ERROR, observation.mapped_error,
+		    5U, error);
 		return false;
 	}
-	for (index = 0U; index < window_length; ++index) {
-		if (window[index] == 0x1aU) {
-			end = window_start + (long)index;
-			break;
+	if (!reopening && observation.dos_error == 2U)
+		goto create_missing;
+	text_append_open_failure(output, reopening
+	    ? YT_TEXT_APPEND_OPEN_REOPEN_ERROR
+	    : YT_TEXT_APPEND_OPEN_INITIAL_ERROR, reopening
+	    ? YT_TEXT_APPEND_OPEN_REOPEN : YT_TEXT_APPEND_OPEN_EXISTING,
+	    !reopening && observation.dos_error == 3U ? 76U
+	    : reopening && observation.dos_error == 2U ? 53U : 75U,
+	    observation.dos_error, error);
+	return false;
+
+create_missing:
+	delivered = text_append_observe(output, resolved,
+	    YT_TEXT_APPEND_OPEN_CREATE, 2U, NULL, 0, NULL, 0U, 0U,
+	    &observation);
+	valid = delivered && text_append_open_observation_valid(
+	    YT_TEXT_APPEND_OPEN_CREATE, 0U, &observation);
+	if (!valid) {
+		if (observation.file != NULL && observation.handle_open)
+			output->orphaned_file = observation.file;
+		text_append_open_failure(output, YT_TEXT_APPEND_OPEN_PROVIDER_ERROR,
+		    YT_TEXT_APPEND_OPEN_CREATE, 75U, observation.dos_error, error);
+		return false;
+	}
+	if (observation.carry) {
+		uint16_t create_error = observation.dos_error;
+
+		if (create_error == 5U) {
+			delivered = text_append_observe(output, resolved,
+			    YT_TEXT_APPEND_OPEN_EXTENDED_ERROR, 0U, NULL, 0,
+			    NULL, 0U, create_error, &observation);
+			valid = delivered && text_append_open_observation_valid(
+			    YT_TEXT_APPEND_OPEN_EXTENDED_ERROR, 0U,
+			    &observation);
+			if (!valid) {
+				text_append_open_failure(output,
+				    YT_TEXT_APPEND_OPEN_PROVIDER_ERROR,
+				    YT_TEXT_APPEND_OPEN_EXTENDED_ERROR, 75U,
+				    create_error, error);
+				return false;
+			}
+			text_append_open_failure(output,
+			    YT_TEXT_APPEND_OPEN_CREATE_ERROR,
+			    YT_TEXT_APPEND_OPEN_EXTENDED_ERROR,
+			    observation.mapped_error, create_error, error);
+			return false;
+		}
+		text_append_open_failure(output, YT_TEXT_APPEND_OPEN_CREATE_ERROR,
+		    YT_TEXT_APPEND_OPEN_CREATE,
+		    create_error == 2U ? 53U : 75U, create_error, error);
+		return false;
+	}
+	output->last_append_open.created = true;
+	temporary = observation.file;
+	temporary_open = true;
+	output->last_append_open.temporary_close_attempted = true;
+	delivered = text_append_observe(output, resolved,
+	    YT_TEXT_APPEND_OPEN_TEMP_CLOSE, 0U, temporary, 0, NULL, 0U, 0U,
+	    &observation);
+	valid = delivered && text_append_open_observation_valid(
+	    YT_TEXT_APPEND_OPEN_TEMP_CLOSE, 0U, &observation);
+	if (!valid) {
+		if (!delivered || observation.handle_open)
+			output->orphaned_file = temporary;
+		text_append_open_failure(output, YT_TEXT_APPEND_OPEN_PROVIDER_ERROR,
+		    YT_TEXT_APPEND_OPEN_TEMP_CLOSE, 75U, observation.dos_error,
+		    error);
+		return false;
+	}
+	temporary_open = observation.handle_open;
+	if (observation.carry) {
+		first_close_error = observation.dos_error;
+		output->last_append_open.temporary_close_retried = true;
+		delivered = text_append_observe(output, resolved,
+		    YT_TEXT_APPEND_OPEN_TEMP_CLOSE, 0U,
+		    temporary_open ? temporary : NULL, 0, NULL, 0U,
+		    first_close_error, &observation);
+		valid = delivered && text_append_open_observation_valid(
+		    YT_TEXT_APPEND_OPEN_TEMP_CLOSE, 0U, &observation);
+		if (!valid || observation.handle_open)
+			output->orphaned_file = temporary;
+		text_append_open_failure(output,
+		    YT_TEXT_APPEND_OPEN_TEMP_CLOSE_ERROR,
+		    YT_TEXT_APPEND_OPEN_TEMP_CLOSE, 70U, first_close_error, error);
+		return false;
+	}
+	reopening = true;
+	access = 2U;
+	goto open_attempt;
+
+opened:
+	delivered = text_append_observe(output, resolved,
+	    YT_TEXT_APPEND_OPEN_QUERY_DEVICE, access, output->file, 0, NULL, 0U,
+	    0U, &observation);
+	valid = delivered && text_append_open_observation_valid(
+	    YT_TEXT_APPEND_OPEN_QUERY_DEVICE, 0U, &observation);
+	if (!valid) {
+		text_append_open_failure(output, YT_TEXT_APPEND_OPEN_PROVIDER_ERROR,
+		    YT_TEXT_APPEND_OPEN_QUERY_DEVICE, 75U, observation.dos_error,
+		    error);
+		return false;
+	}
+	output->last_append_open.device = observation.device;
+	if (observation.device) {
+		delivered = text_append_observe(output, resolved,
+		    YT_TEXT_APPEND_OPEN_CONFIGURE_DEVICE, access, output->file, 0,
+		    NULL, 0U, 0U, &observation);
+		valid = delivered && text_append_open_observation_valid(
+		    YT_TEXT_APPEND_OPEN_CONFIGURE_DEVICE, 0U, &observation);
+		if (!valid) {
+			text_append_open_failure(output,
+			    YT_TEXT_APPEND_OPEN_PROVIDER_ERROR,
+			    YT_TEXT_APPEND_OPEN_CONFIGURE_DEVICE, 57U,
+			    observation.dos_error, error);
+			return false;
+		}
+		if (observation.carry) {
+			text_append_open_failure(output,
+			    YT_TEXT_APPEND_OPEN_DEVICE_ERROR,
+			    YT_TEXT_APPEND_OPEN_CONFIGURE_DEVICE, 57U,
+			    observation.dos_error, error);
+			return false;
+		}
+		text_append_open_failure(output, YT_TEXT_APPEND_OPEN_DEVICE_ERROR,
+		    YT_TEXT_APPEND_OPEN_CONFIGURE_DEVICE, 57U, 0U, error);
+		return false;
+	}
+	delivered = text_append_observe(output, resolved,
+	    YT_TEXT_APPEND_OPEN_SEEK_END, access, output->file, 0, NULL, 0U, 0U,
+	    &observation);
+	valid = delivered && text_append_open_observation_valid(
+	    YT_TEXT_APPEND_OPEN_SEEK_END, 0U, &observation);
+	if (!valid) {
+		text_append_open_failure(output, YT_TEXT_APPEND_OPEN_PROVIDER_ERROR,
+		    YT_TEXT_APPEND_OPEN_SEEK_END, 57U, observation.dos_error, error);
+		return false;
+	}
+	if (observation.carry) {
+		text_append_open_failure(output, YT_TEXT_APPEND_OPEN_SEEK_ERROR,
+		    YT_TEXT_APPEND_OPEN_SEEK_END, 52U, observation.dos_error, error);
+		return false;
+	}
+	length = observation.terminal_position;
+	start = length > YT_TEXT_OUTPUT_BUFFER_SIZE
+	    ? length - YT_TEXT_OUTPUT_BUFFER_SIZE : 0;
+	output->last_append_open.physical_length = length;
+	output->last_append_open.window_start = start;
+	cursor = start;
+	if (length != 0) {
+		delivered = text_append_observe(output, resolved,
+		    YT_TEXT_APPEND_OPEN_SEEK_WINDOW, access, output->file, start,
+		    NULL, 0U, 0U, &observation);
+		valid = delivered && text_append_open_observation_valid(
+		    YT_TEXT_APPEND_OPEN_SEEK_WINDOW, 0U, &observation);
+		if (!valid) {
+			text_append_open_failure(output,
+			    YT_TEXT_APPEND_OPEN_PROVIDER_ERROR,
+			    YT_TEXT_APPEND_OPEN_SEEK_WINDOW, 57U,
+			    observation.dos_error, error);
+			return false;
+		}
+		if (observation.carry) {
+			text_append_open_failure(output,
+			    YT_TEXT_APPEND_OPEN_SEEK_ERROR,
+			    YT_TEXT_APPEND_OPEN_SEEK_WINDOW, 52U,
+			    observation.dos_error, error);
+			return false;
+		}
+		if (observation.terminal_position != start) {
+			text_append_open_failure(output,
+			    YT_TEXT_APPEND_OPEN_PROVIDER_ERROR,
+			    YT_TEXT_APPEND_OPEN_SEEK_WINDOW, 57U, 0U, error);
+			return false;
 		}
 	}
-	if (fseek(file, end, SEEK_SET) != 0) {
-		set_error(error, YT_IO_ERROR, "position text append", resolved);
-		(void)fclose(file);
+	candidate = start;
+	for (;;) {
+		delivered = text_append_observe(output, resolved,
+		    YT_TEXT_APPEND_OPEN_READ_WINDOW, access, output->file, 0, window,
+		    sizeof(window), 0U, &observation);
+		valid = delivered && text_append_open_observation_valid(
+		    YT_TEXT_APPEND_OPEN_READ_WINDOW, sizeof(window), &observation);
+		if (!valid) {
+			text_append_open_failure(output,
+			    YT_TEXT_APPEND_OPEN_PROVIDER_ERROR,
+			    YT_TEXT_APPEND_OPEN_READ_WINDOW, 57U,
+			    observation.dos_error, error);
+			return false;
+		}
+		if (observation.carry) {
+			text_append_open_failure(output, YT_TEXT_APPEND_OPEN_READ_ERROR,
+			    YT_TEXT_APPEND_OPEN_READ_WINDOW,
+			    observation.dos_error == 5U
+			    ? observation.mapped_error : 57U,
+			    observation.dos_error, error);
+			return false;
+		}
+		if (observation.accepted > (size_t)(length - cursor)
+		    || observation.terminal_position
+		    != cursor + (int64_t)observation.accepted) {
+			text_append_open_failure(output,
+			    YT_TEXT_APPEND_OPEN_PROVIDER_ERROR,
+			    YT_TEXT_APPEND_OPEN_READ_WINDOW, 57U, 0U, error);
+			return false;
+		}
+		++output->last_append_open.refill_count;
+		cursor = observation.terminal_position;
+		if (observation.accepted == 0U)
+			break;
+		for (index = 0U; index < observation.accepted; ++index) {
+			if (window[index] == 0x1aU)
+				goto selected;
+			++candidate;
+		}
+	}
+
+selected:
+	delivered = text_append_observe(output, resolved,
+	    YT_TEXT_APPEND_OPEN_SEEK_SELECTED, access, output->file, candidate,
+	    NULL, 0U, 0U, &observation);
+	valid = delivered && text_append_open_observation_valid(
+	    YT_TEXT_APPEND_OPEN_SEEK_SELECTED, 0U, &observation);
+	if (!valid) {
+		text_append_open_failure(output, YT_TEXT_APPEND_OPEN_PROVIDER_ERROR,
+		    YT_TEXT_APPEND_OPEN_SEEK_SELECTED, 57U,
+		    observation.dos_error, error);
 		return false;
 	}
-	output->file = file;
-	(void)snprintf(output->path, sizeof(output->path), "%s", resolved);
+	if (observation.carry) {
+		text_append_open_failure(output, YT_TEXT_APPEND_OPEN_SEEK_ERROR,
+		    YT_TEXT_APPEND_OPEN_SEEK_SELECTED, 52U,
+		    observation.dos_error, error);
+		return false;
+	}
+	if (observation.terminal_position != candidate) {
+		text_append_open_failure(output,
+		    YT_TEXT_APPEND_OPEN_PROVIDER_ERROR,
+		    YT_TEXT_APPEND_OPEN_SEEK_SELECTED, 57U, 0U, error);
+		return false;
+	}
+	output->last_append_open.outcome = YT_TEXT_APPEND_OPEN_RETURNED;
+	output->last_append_open.selected_position = candidate;
+	output->last_append_open.registered = true;
+	output->last_append_open.handle_open = true;
 	output->pending_count = 0U;
 	memset(&output->last_write, 0, sizeof(output->last_write));
 	memset(&output->last_close, 0, sizeof(output->last_close));
@@ -1320,6 +1842,16 @@ yt_text_output_set_write_provider(struct yt_text_output *output,
 		return;
 	output->write_provider = provider;
 	output->write_context = context;
+}
+
+void
+yt_text_output_set_append_open_provider(struct yt_text_output *output,
+    yt_text_append_open_provider provider, void *context)
+{
+	if (output == NULL)
+		return;
+	output->append_open_provider = provider;
+	output->append_open_context = context;
 }
 
 void
