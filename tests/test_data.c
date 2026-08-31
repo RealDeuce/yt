@@ -4141,27 +4141,29 @@ test_radio_file(void)
 	    && radio.random.last_close.retry_attempted
 	    && radio.record_length == 0U && radio.field_count == 0U);
 	yt_database_close(&radio.random);
-	CHECK(yt_radio_file_open(&radio, second_path, &error));
-	write_script = (struct database_write_script){
-		.accepted = YT_RADIO_RECORD_SIZE - 1U,
-	};
-	memset(&close_script, 0, sizeof(close_script));
-	database_close_add(&close_script, false, 0U, false, true, true);
-	yt_database_set_write_provider(&radio.random, scripted_database_write,
-	    &write_script);
-	yt_database_set_close_provider(&radio.random,
-	    scripted_database_public_close, &close_script);
-	CHECK(!yt_radio_file_put(&radio, 1U, &written, &error)
-	    && close_script.position == close_script.length
-	    && radio.random.last_put.outcome == YT_DATABASE_PUT_REJECTED_SHORT
-	    && radio.random.last_put.accepted == YT_RADIO_RECORD_SIZE - 1U
-	    && radio.random.last_put.basic_error == 61U
-	    && radio.random.last_put.terminal_position
-	    == YT_RADIO_RECORD_SIZE - 1U
-	    && !radio.random.last_put.registered
-	    && radio.random.last_put.close_attempted
-	    && radio.random.last_put.close_succeeded
-	    && !radio.random.last_put.handle_open);
+	for (index = 0U; index < YT_RADIO_RECORD_SIZE; ++index) {
+		CHECK(yt_radio_file_open(&radio, second_path, &error));
+		write_script = (struct database_write_script){
+			.accepted = index,
+		};
+		memset(&close_script, 0, sizeof(close_script));
+		database_close_add(&close_script, false, 0U, false, true, true);
+		yt_database_set_write_provider(&radio.random,
+		    scripted_database_write, &write_script);
+		yt_database_set_close_provider(&radio.random,
+		    scripted_database_public_close, &close_script);
+		CHECK(!yt_radio_file_put(&radio, 1U, &written, &error)
+		    && close_script.position == close_script.length
+		    && radio.random.last_put.outcome
+		    == YT_DATABASE_PUT_REJECTED_SHORT
+		    && radio.random.last_put.accepted == index
+		    && radio.random.last_put.basic_error == 61U
+		    && radio.random.last_put.terminal_position == (int64_t)index
+		    && !radio.random.last_put.registered
+		    && radio.random.last_put.close_attempted
+		    && radio.random.last_put.close_succeeded
+		    && !radio.random.last_put.handle_open);
+	}
 	CHECK(yt_radio_file_close(&radio, &error));
 
 	yt_radio_file_init(&radio);
