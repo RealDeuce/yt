@@ -1528,21 +1528,24 @@ done:
 bool
 yt_news_rotate(struct yt_error *error)
 {
-	FILE *file;
+	struct yt_text_output output;
+	bool opened;
 
 	/* The two empty OPEN/CLOSE operations precede KILL and NAME. */
-	file = fopen("YTNEWS.DAT", "ab");
-	if (file == NULL) {
-		set_error(error, YT_IO_ERROR, "open current news", "YTNEWS.DAT");
+	yt_text_output_init(&output);
+	opened = yt_text_output_open_append(&output, "YTNEWS.DAT", error);
+	if (!opened || !yt_text_output_close(&output, error)) {
+		yt_text_output_destroy(&output);
 		return false;
 	}
-	fclose(file);
-	file = fopen("YTYNEWS.DAT", "ab");
-	if (file == NULL) {
-		set_error(error, YT_IO_ERROR, "open old news", "YTYNEWS.DAT");
+	yt_text_output_destroy(&output);
+	yt_text_output_init(&output);
+	opened = yt_text_output_open_append(&output, "YTYNEWS.DAT", error);
+	if (!opened || !yt_text_output_close(&output, error)) {
+		yt_text_output_destroy(&output);
 		return false;
 	}
-	fclose(file);
+	yt_text_output_destroy(&output);
 	if (!yt_file_kill("YTYNEWS.DAT", NULL, error))
 		return false;
 	return yt_file_rename("YTNEWS.DAT", "YTYNEWS.DAT", error);

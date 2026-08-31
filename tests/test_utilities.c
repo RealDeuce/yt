@@ -1237,6 +1237,8 @@ test_maintenance_message_compaction(void)
 	};
 	static const uint8_t current_news[] = "current news\r\n\x1a";
 	static const uint8_t old_news[] = "old news\r\n\x1a";
+	static const uint8_t stale_news[] = "retained news\r\n\x1astale tail";
+	static const uint8_t normalized_news[] = "retained news\r\n\x1a";
 	struct yt_radio_record zero;
 	struct yt_radio_record first;
 	struct yt_radio_record second;
@@ -1296,6 +1298,23 @@ test_maintenance_message_compaction(void)
 		(void)fclose(file);
 		goto done;
 	}
+	free(data);
+	data = NULL;
+	(void)remove("YTYNEWS.DAT");
+	if (!yt_news_rotate(&error)
+	    || !read_file("YTYNEWS.DAT", &data, &length)
+	    || length != 1U || data[0] != 0x1aU)
+		goto done;
+	free(data);
+	data = NULL;
+	(void)remove("YTYNEWS.DAT");
+	if (!write_file("YTNEWS.DAT", stale_news, sizeof(stale_news) - 1U)
+	    || !yt_news_rotate(&error)
+	    || !read_file("YTYNEWS.DAT", &data, &length)
+	    || length != sizeof(normalized_news) - 1U
+	    || memcmp(data, normalized_news,
+	    sizeof(normalized_news) - 1U) != 0)
+		goto done;
 	valid = true;
 
 done:
