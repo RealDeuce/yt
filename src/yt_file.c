@@ -1660,8 +1660,7 @@ yt_radio_file_get(struct yt_radio_file *radio, uint32_t basic_record,
 {
 	if (accepted != NULL)
 		*accepted = 0U;
-	if (radio == NULL || radio->random.file == NULL || record == NULL
-	    || basic_record == 0U || basic_record > 0xFFFFFFU) {
+	if (radio == NULL || radio->random.file == NULL || record == NULL) {
 		set_error(error, YT_RANGE, "radio GET", radio != NULL
 		    ? radio->random.path : NULL);
 		return false;
@@ -1674,8 +1673,7 @@ bool
 yt_radio_file_put(struct yt_radio_file *radio, uint32_t basic_record,
     const struct yt_radio_record *record, struct yt_error *error)
 {
-	if (radio == NULL || radio->random.file == NULL || record == NULL
-	    || basic_record == 0U || basic_record > 0xFFFFFFU) {
+	if (radio == NULL || radio->random.file == NULL || record == NULL) {
 		set_error(error, YT_RANGE, "radio PUT", radio != NULL
 		    ? radio->random.path : NULL);
 		return false;

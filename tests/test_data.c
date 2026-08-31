@@ -3995,6 +3995,47 @@ test_radio_file(void)
 	    && radio.fields[1].offset == 4U && radio.fields[1].length == 4U
 	    && radio.fields[2].offset == 8U && radio.fields[2].length == 4U
 	    && radio.fields[3].offset == 12U && radio.fields[3].length == 74U);
+	seek_script = (struct database_seek_script){.success = true};
+	read_script = (struct database_read_script){
+		.accepted = YT_RADIO_RECORD_SIZE,
+	};
+	write_script = (struct database_write_script){
+		.accepted = YT_RADIO_RECORD_SIZE,
+	};
+	yt_database_set_seek_provider(&radio.random, scripted_database_seek,
+	    &seek_script);
+	yt_database_set_read_provider(&radio.random, scripted_database_read,
+	    &read_script);
+	yt_database_set_write_provider(&radio.random, scripted_database_write,
+	    &write_script);
+	memset(&record, 0xff, sizeof(record));
+	accepted = 99U;
+	CHECK(!yt_radio_file_get(&radio, 0U, &record, &accepted, &error)
+	    && accepted == 0U && error.status == YT_RANGE
+	    && radio.random.last_get.outcome == YT_DATABASE_GET_RECORD_ERROR
+	    && radio.random.last_get.basic_error == 63U
+	    && radio.random.last_get.registered
+	    && radio.random.last_get.handle_open);
+	CHECK(!yt_radio_file_get(&radio, 0x1000000U, &record, &accepted,
+	    &error)
+	    && radio.random.last_get.outcome == YT_DATABASE_GET_RECORD_ERROR
+	    && radio.random.last_get.basic_error == 63U);
+	CHECK(!yt_radio_file_put(&radio, 0U, &record, &error)
+	    && error.status == YT_RANGE
+	    && radio.random.last_put.outcome == YT_DATABASE_PUT_RECORD_ERROR
+	    && radio.random.last_put.basic_error == 63U
+	    && radio.random.last_put.registered
+	    && radio.random.last_put.handle_open);
+	CHECK(!yt_radio_file_put(&radio, 0x1000000U, &record, &error)
+	    && radio.random.last_put.outcome == YT_DATABASE_PUT_RECORD_ERROR
+	    && radio.random.last_put.basic_error == 63U
+	    && seek_script.calls == 0U && read_script.calls == 0U
+	    && write_script.calls == 0U);
+	for (index = 0U; index < sizeof(record.bytes); ++index)
+		CHECK(record.bytes[index] == 0xffU);
+	yt_database_set_seek_provider(&radio.random, NULL, NULL);
+	yt_database_set_read_provider(&radio.random, NULL, NULL);
+	yt_database_set_write_provider(&radio.random, NULL, NULL);
 	CHECK(yt_radio_file_size(&radio, &size, &error) && size == 3U);
 	CHECK(fseek(radio.random.file, 2L, SEEK_SET) == 0
 	    && yt_radio_file_size(&radio, &size, &error) && size == 3U
