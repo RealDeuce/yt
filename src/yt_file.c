@@ -444,7 +444,8 @@ database_open_extended_error(struct yt_database *database, const char *path,
 
 static bool
 database_open_random(struct yt_database *database, const char *path,
-    yt_database_open_provider provider, void *context, struct yt_error *error)
+    size_t record_size, yt_database_open_provider provider, void *context,
+    struct yt_error *error)
 {
 	struct yt_database_open_observation observation;
 	FILE *temporary = NULL;
@@ -614,23 +615,23 @@ opened:
 		    57U, database_dos_error(path, errno), error);
 		return false;
 	}
-	database->records = (size_t)(length / YT_RECORD_SIZE);
+	database->records = (size_t)(length / record_size);
 	database->last_open.outcome = YT_DATABASE_OPEN_RETURNED;
 	database->last_open.registered = true;
 	database->last_open.handle_open = true;
 	return true;
 }
 
-bool
-yt_database_open_observed(struct yt_database *database, const char *path,
-    enum yt_open_mode mode, yt_database_open_provider provider, void *context,
-    struct yt_error *error)
+static bool
+database_open_observed_sized(struct yt_database *database, const char *path,
+    enum yt_open_mode mode, size_t record_size,
+    yt_database_open_provider provider, void *context, struct yt_error *error)
 {
 	char resolved[sizeof(database->path)];
 	const char *file_mode;
 	uint64_t length;
 
-	if (database == NULL || path == NULL) {
+	if (database == NULL || path == NULL || record_size == 0U) {
 		set_error(error, YT_INVALID, "database open", path);
 		return false;
 	}
@@ -641,7 +642,7 @@ yt_database_open_observed(struct yt_database *database, const char *path,
 		return false;
 	(void)snprintf(database->path, sizeof(database->path), "%s", resolved);
 	if (mode == YT_OPEN_UPDATE_CREATE)
-		return database_open_random(database, resolved,
+		return database_open_random(database, resolved, record_size,
 		    provider != NULL ? provider : database_open_default,
 		    context, error);
 	switch (mode) {
@@ -669,11 +670,20 @@ yt_database_open_observed(struct yt_database *database, const char *path,
 		yt_database_close(database);
 		return false;
 	}
-	database->records = (size_t)(length / YT_RECORD_SIZE);
+	database->records = (size_t)(length / record_size);
 	database->last_open.outcome = YT_DATABASE_OPEN_RETURNED;
 	database->last_open.registered = true;
 	database->last_open.handle_open = true;
 	return true;
+}
+
+bool
+yt_database_open_observed(struct yt_database *database, const char *path,
+    enum yt_open_mode mode, yt_database_open_provider provider, void *context,
+    struct yt_error *error)
+{
+	return database_open_observed_sized(database, path, mode, YT_RECORD_SIZE,
+	    provider, context, error);
 }
 
 bool
@@ -1617,8 +1627,8 @@ yt_radio_file_open(struct yt_radio_file *radio, const char *path,
 	}
 	if (!yt_radio_file_close(radio, error))
 		return false;
-	if (!yt_database_open(&radio->random, path, YT_OPEN_UPDATE_CREATE,
-	    error))
+	if (!database_open_observed_sized(&radio->random, path,
+	    YT_OPEN_UPDATE_CREATE, YT_RADIO_RECORD_SIZE, NULL, NULL, error))
 		return false;
 	radio->record_length = YT_RADIO_RECORD_SIZE;
 	memcpy(radio->fields, fields, sizeof(fields));

@@ -3949,6 +3949,7 @@ test_radio_file(void)
 	char mixed_path[320];
 	char requested_path[320];
 	char second_path[320];
+	char sized_path[320];
 	char failed_path[320];
 	uint8_t partial[3] = {0x11, 0x22, 0x33};
 	uint8_t complete[YT_RADIO_RECORD_SIZE];
@@ -3978,6 +3979,7 @@ test_radio_file(void)
 	snprintf(requested_path, sizeof(requested_path), "%s/YTRMSG.DAT",
 	    directory);
 	snprintf(second_path, sizeof(second_path), "%s/second.dat", directory);
+	snprintf(sized_path, sizeof(sized_path), "%s/sized.dat", directory);
 	snprintf(failed_path, sizeof(failed_path), "%s/missing/YTRMSG.DAT",
 	    directory);
 	CHECK(write_bytes(mixed_path, partial, sizeof(partial)));
@@ -4187,6 +4189,21 @@ test_radio_file(void)
 		    && !radio.random.last_put.handle_open);
 	}
 	CHECK(yt_radio_file_close(&radio, &error));
+	file = fopen(sized_path, "wb");
+	CHECK(file != NULL);
+	if (file != NULL) {
+		CHECK(fwrite(complete, 1U, sizeof(complete), file)
+		    == sizeof(complete));
+		CHECK(fwrite(complete, 1U, sizeof(complete), file)
+		    == sizeof(complete));
+		CHECK(fclose(file) == 0);
+	}
+	yt_radio_file_init(&radio);
+	CHECK(yt_radio_file_open(&radio, sized_path, &error)
+	    && radio.random.records == 2U
+	    && yt_radio_file_size(&radio, &size, &error)
+	    && size == 2U * YT_RADIO_RECORD_SIZE);
+	CHECK(yt_radio_file_close(&radio, &error));
 
 	yt_radio_file_init(&radio);
 	yt_error_clear(&error);
@@ -4198,6 +4215,7 @@ test_radio_file(void)
 
 	CHECK(yt_file_delete(mixed_path, false, &error));
 	CHECK(yt_file_delete(second_path, false, &error));
+	CHECK(yt_file_delete(sized_path, false, &error));
 #ifdef _WIN32
 	_rmdir(directory);
 #else
