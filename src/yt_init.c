@@ -2095,8 +2095,8 @@ failure:
 }
 
 static bool
-write_yt_auxiliary(const struct yt_initializer_options *options,
-    struct yt_error *error)
+write_yt_auxiliary(struct yt_database *database,
+    const struct yt_initializer_options *options, struct yt_error *error)
 {
 	static const uint8_t dummy[] = "Dummy,Dummy,Dummy,Dummy\r\n";
 	static const uint8_t play[] = "L64cgaL1p1p1p1";
@@ -2106,6 +2106,7 @@ write_yt_auxiliary(const struct yt_initializer_options *options,
 	    error)
 	    || !yt_present_text(options, 0x225fU, YT_INIT_OUTPUT_LINE,
 	    "Initializing the alias file (Matches real name to alias.)", error)
+	    || !yt_database_random_close(database, error)
 	    || !yt_text_write("YTNAME.DAT", dummy, sizeof(dummy) - 1U,
 	    true, error)
 	    || !yt_present_text(options, 0x22deU, YT_INIT_OUTPUT_LINE, "",
@@ -2432,7 +2433,7 @@ yt_initialize_world(const struct yt_initializer_options *options,
 		goto done;
 	}
 	if (options->family == YT_INITIALIZER_YT)
-		result = write_yt_auxiliary(options, error);
+		result = write_yt_auxiliary(database, options, error);
 	else
 		result = write_rmt_auxiliary(database, options->credited_name,
 		    options, error);
