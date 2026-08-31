@@ -2544,13 +2544,15 @@ not authoritative. Use the corrected goal above in the new workspace.
   whether a hop occurred. Main, Planet and Computer callers now enter sector
   reentry only after an actual hop; the command shell uses its loop-top A41C as
   the single following-prompt hydration. Native fixtures pin arithmetic,
-  unrelated-byte preservation and the canonical 89-byte safe-parent stream;
-  all 24 isolated-parent and 15 active-cycle upstream tests and all nine native
+  unrelated-byte preservation and the canonical 89-byte safe-parent stream.
+  The natural active-main witness now joins its exact 41/89/75-byte shell,
+  movement-parent and gameplay-reentry partitions into native 205-byte plain
+  and 235-byte ANSI streams through the empty-poll AB36 boundary. All 24
+  isolated-parent and 15 active-cycle upstream tests and all current native
   suites pass. All 44 qualified parent transfers and both presentation
-  families are candidate. A complete native 205/235-byte joined cycle,
-  independent raw shell/gate/danger/finalizer/router FIELD/cache/RNG/queue
-  state, typed terminal/hazard/hostile joins, and the Earth predecessor remain
-  open.
+  families are candidate. Independent raw shell/gate/danger/finalizer/router
+  FIELD/cache/RNG/queue state, typed terminal/hazard/hostile joins, the Earth
+  predecessor and local framebuffer remain open.
 - The direct player-Attack parent `YT:[292A,2E80)` and active-main A-cycle
   composition are now candidate. The former coarse live path omitted the
   `<Attack>` title and required hydrations, used different prompts and rows,

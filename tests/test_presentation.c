@@ -14201,6 +14201,169 @@ test_planet_thrusters_accepted_cycle_presentation(void)
 }
 
 static bool
+main_movement_accepted_cycle_run(struct physical_viewer_join *viewer,
+    bool ansi, size_t ends[3])
+{
+	static const uint8_t main_prompt[] =
+	    "Time: 14:59  Main Command (?=Help)? ";
+	static const uint8_t command[] = "M";
+	static const uint8_t destination_prompt[] = "Move to which sector? ";
+	static const uint8_t destination[] = "42";
+	static const uint8_t finalizer_row[] =
+	    "One Turn Deducted, 59 left.";
+	static const uint8_t sector[] = "Sector: 42";
+	static const uint8_t warps[] = "Warps lead to:";
+	static const uint8_t warp_one[] = " 12";
+	static const uint8_t warp_two[] = ", 99";
+	static const float warp_values[6] = {
+		7.0f, 42.0f, 0.0f, 0.0f, 12.5f, 0.0f
+	};
+	struct viewer_pager_join *join = &viewer->join;
+	struct yt_present_result result;
+	uint8_t row[128];
+	size_t row_length;
+
+	if (ends == NULL)
+		return false;
+	join->presentation = state(ansi);
+	join->presentation.foreground = 6.0f;
+	join->presentation.cached_foreground = ansi ? 6.0f : 0.0f;
+	join->pager.foreground = 6;
+	join->pager.line_count = 8.0f;
+
+	join->presentation.foreground = 2.0f;
+	join->pager.foreground = 2;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, main_prompt,
+	    sizeof(main_prompt) - 1U, 1.0f))
+		return false;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	memcpy(join->accumulator, command, sizeof(command));
+	if (yt_present_editor_echo(command, sizeof(command) - 1U,
+	    command, sizeof(command) - 1U, &join->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
+	ends[0] = join->remote_length;
+
+	if (!yt_movement_warp_row(warp_values, row, sizeof(row), &row_length)
+	    || !normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, row, row_length, 0.0f)
+	    || !normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, destination_prompt,
+	    sizeof(destination_prompt) - 1U, 1.0f))
+		return false;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	memcpy(join->accumulator, destination, sizeof(destination));
+	if (yt_present_editor_echo(destination, sizeof(destination) - 1U,
+	    destination, sizeof(destination) - 1U,
+	    &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, finalizer_row,
+	    sizeof(finalizer_row) - 1U, 0.0f))
+		return false;
+	ends[1] = join->remote_length;
+
+	join->presentation.foreground = 1.0f;
+	join->pager.foreground = 1;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_line(join, sector, sizeof(sector) - 1U)
+	    || !sensor_join_present(join, &(const struct sensor_join_output){
+	    SENSOR_JOIN_RAW, (const char *)warps})
+	    || !sensor_join_present(join, &(const struct sensor_join_output){
+	    SENSOR_JOIN_RAW, (const char *)warp_one})
+	    || !sensor_join_present(join, &(const struct sensor_join_output){
+	    SENSOR_JOIN_RAW, (const char *)warp_two})
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	join->pager.line_count = 0.0f;
+	join->presentation.foreground = 2.0f;
+	join->pager.foreground = 2;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, main_prompt,
+	    sizeof(main_prompt) - 1U, 1.0f))
+		return false;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	ends[2] = join->remote_length;
+	return true;
+}
+
+static void
+test_main_movement_accepted_cycle_presentation(void)
+{
+	static const uint8_t plain[] =
+	    "\r\nTime: 14:59  Main Command (?=Help)? M\r\n"
+	    "\r\nWarps lead to, 7, 42, 12.5\n\r"
+	    "\r\nMove to which sector? 42\r\n"
+	    "\r\nOne Turn Deducted, 59 left.\n\r"
+	    "\r\nSector: 42\r\nWarps lead to: 12, 99\r\n"
+	    "\r\nTime: 14:59  Main Command (?=Help)? ";
+	static const uint8_t ansi[] =
+	    "\x1b[0;32;40m\r\nTime: 14:59  Main Command (?=Help)? M\r\n"
+	    "\r\nWarps lead to, 7, 42, 12.5\n\r"
+	    "\r\nMove to which sector? 42\r\n"
+	    "\r\nOne Turn Deducted, 59 left.\n\r"
+	    "\x1b[0;31;40m\r\nSector: 42\r\nWarps lead to: 12, 99\r\n"
+	    "\x1b[0;32;40m\r\nTime: 14:59  Main Command (?=Help)? ";
+	static const struct {
+		bool ansi;
+		const uint8_t *expected;
+		size_t expected_length;
+		size_t ends[3];
+	} cases[] = {
+		{false, plain, sizeof(plain) - 1U, {41U, 130U, 205U}},
+		{true, ansi, sizeof(ansi) - 1U, {51U, 140U, 235U}},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	uint8_t remote[260];
+	size_t ends[3];
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
+		CHECK(main_movement_accepted_cycle_run(&viewer,
+		    cases[pass].ansi, ends));
+		CHECK(memcmp(ends, cases[pass].ends, sizeof(ends)) == 0
+		    && viewer.join.remote_length == cases[pass].expected_length
+		    && memcmp(remote, cases[pass].expected,
+		    cases[pass].expected_length) == 0
+		    && viewer.join.presentation.foreground == 2.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold == 0.0f
+		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.cached_foreground
+		    == (cases[pass].ansi ? 2.0f : 0.0f)
+		    && viewer.join.pager.foreground == 2
+		    && viewer.join.pager.line_count == 0.0f
+		    && viewer.join.pager.nonstop == 0.0f
+		    && viewer.join.local_fragment_length == 36U
+		    && memcmp(viewer.join.local_fragment,
+		    "Time: 14:59  Main Command (?=Help)? ", 36U) == 0
+		    && viewer.join.accumulator[0] == '\0'
+		    && viewer.join.queue_length == 0U
+		    && stream.eof_checks == 0U && stream.key_checks == 0U
+		    && stream.read_count == 0U && stream.line_count == 0U
+		    && !stream.file_open && !viewer.join.file_open
+		    && viewer.input.file == NULL && viewer.close_calls == 0U
+		    && viewer.open_calls == 0U);
+		yt_text_input_destroy(&viewer.input);
+	}
+	CHECK(sizeof(plain) - 1U == 205U && sizeof(ansi) - 1U == 235U);
+}
+
+static bool
 planet_movement_accepted_cycle_run(struct physical_viewer_join *viewer,
     bool ansi, size_t ends[4])
 {
@@ -18339,6 +18502,7 @@ main(void)
 	test_planet_take_one_negative_error_cycle_presentation();
 	test_planet_leave_cycle_presentation();
 	test_planet_thrusters_accepted_cycle_presentation();
+	test_main_movement_accepted_cycle_presentation();
 	test_planet_movement_accepted_cycle_presentation();
 	test_planet_port_no_port_cycle_presentation();
 	test_computer_quit_accept_presentation();
