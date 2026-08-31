@@ -2122,6 +2122,25 @@ done:
 }
 
 static bool
+write_small_sequential_file(const char *path, const uint8_t *data,
+    size_t length, struct yt_error *error)
+{
+	struct yt_text_output output;
+	bool result = false;
+
+	yt_text_output_init(&output);
+	if (!yt_text_output_open(&output, path, error)
+	    || !yt_text_output_stage(&output, data, length, error)
+	    || !yt_text_output_close(&output, error))
+		goto done;
+	result = true;
+
+done:
+	yt_text_output_destroy(&output);
+	return result;
+}
+
+static bool
 write_yt_auxiliary(struct yt_database *database,
     const struct yt_initializer_options *options, struct yt_error *error)
 {
@@ -2134,8 +2153,8 @@ write_yt_auxiliary(struct yt_database *database,
 	    || !yt_present_text(options, 0x225fU, YT_INIT_OUTPUT_LINE,
 	    "Initializing the alias file (Matches real name to alias.)", error)
 	    || !yt_database_random_close(database, error)
-	    || !yt_text_write("YTNAME.DAT", dummy, sizeof(dummy) - 1U,
-	    true, error)
+	    || !write_small_sequential_file("YTNAME.DAT", dummy,
+	    sizeof(dummy) - 1U, error)
 	    || !yt_present_text(options, 0x22deU, YT_INIT_OUTPUT_LINE, "",
 	    error)
 	    || !yt_present_text(options, 0x22f0U, YT_INIT_OUTPUT_LINE,
@@ -2199,8 +2218,8 @@ write_rmt_auxiliary(struct yt_database *database, const char *credited_name,
 	    || !rmt_present_text(options, 0x20afU, YT_RMT_OUTPUT_LINE,
 	    "Initializing the alias file (Matches real name to alias.)", error)
 	    || !yt_database_random_close(database, error)
-	    || !yt_text_write("YTNAME.DAT", dummy, sizeof(dummy) - 1U,
-	    true, error)
+	    || !write_small_sequential_file("YTNAME.DAT", dummy,
+	    sizeof(dummy) - 1U, error)
 	    || !rmt_present(options, 0x20ebU, YT_RMT_OUTPUT_BLANK, NULL, 0U,
 	    error)
 	    || !rmt_present_text(options, 0x20f9U, YT_RMT_OUTPUT_LINE,
@@ -2219,7 +2238,7 @@ write_rmt_auxiliary(struct yt_database *database, const char *credited_name,
 	yt_radio_set_number(&radio, 8, -2.0f);
 	yt_radio_set_text(&radio, (const uint8_t *)prophecy,
 	    (size_t)written, 72);
-	if (!yt_text_write("YTRMSG.DAT", NULL, 0U, true, error)
+	if (!write_small_sequential_file("YTRMSG.DAT", NULL, 0U, error)
 	    || !yt_radio_file_open(&file, "YTRMSG.DAT", error))
 		goto done;
 	for (index = 0; index < 5; ++index) {
