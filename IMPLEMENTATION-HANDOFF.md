@@ -61,6 +61,9 @@ authoritative resolution is evident. Request user direction in that case.
 Formally mark the goal blocked only when the goal system's repeated-blocker
 threshold has been satisfied. Do not search for more reverse-engineering
 evidence speculatively; identify the exact missing or conflicting fact first.
+Record every such fact in `IMPLEMENTATION-BLOCKERS.md` so the upstream
+documentation work and the paused implementation boundary remain visible
+outside the conversation.
 
 There is no requirement for a monolithic full-session transcript test, and
 one is not expected to be created. Completion proof is compositional: exact
