@@ -14,6 +14,12 @@ static bool text_input_close_execute(struct yt_text_input *input,
     struct yt_error *error);
 static bool text_output_open_execute(struct yt_text_output *output,
     const char *path, struct yt_error *error);
+static bool text_input_read_default(void *context, FILE *file,
+    uint8_t *data, size_t requested,
+    struct yt_text_input_read_observation *observation);
+static bool text_input_get_byte(struct yt_text_input *input, uint8_t *value,
+    bool *eof, struct yt_error *error);
+static void text_input_read_snapshot(struct yt_text_input *input);
 
 bool
 yt_text_line_input_next(const uint8_t *data, size_t data_length,
@@ -136,6 +142,16 @@ yt_text_input_set_open_provider(struct yt_text_input *input,
 }
 
 void
+yt_text_input_set_read_provider(struct yt_text_input *input,
+    yt_text_input_read_provider provider, void *context)
+{
+	if (input == NULL)
+		return;
+	input->read_provider = provider;
+	input->read_context = context;
+}
+
+void
 yt_text_input_set_close_provider(struct yt_text_input *input,
     yt_text_close_provider provider, void *context)
 {
@@ -149,6 +165,17 @@ bool
 yt_text_input_open(struct yt_text_input *input, const char *path,
     struct yt_error *error)
 {
+	if (input != NULL && input->file == NULL
+	    && input->orphaned_file == NULL) {
+		memset(input->read_ahead, 0, sizeof(input->read_ahead));
+		input->read_total = 0U;
+		input->read_remaining = 0U;
+		input->refill_index = 0U;
+		input->logical_position = 0U;
+		input->physical_position = 0;
+		memset(&input->last_read, 0, sizeof(input->last_read));
+		input->last_read.terminal_position = -1;
+	}
 	return text_input_open_execute(input, path, error);
 }
 
@@ -182,11 +209,107 @@ text_input_reserve(struct yt_text_input *input, size_t needed,
 	return true;
 }
 
+static void
+text_input_read_snapshot(struct yt_text_input *input)
+{
+	input->last_read.refill_index = input->refill_index;
+	input->last_read.buffer_total = input->read_total;
+	input->last_read.buffer_remaining = input->read_remaining;
+	input->last_read.logical_position = input->logical_position;
+	input->last_read.registered = input->file != NULL;
+	input->last_read.handle_open = input->file != NULL
+	    || input->orphaned_file != NULL;
+}
+
+static bool
+text_input_refill(struct yt_text_input *input, struct yt_error *error)
+{
+	yt_text_input_read_provider provider = input->read_provider != NULL
+	    ? input->read_provider : text_input_read_default;
+	struct yt_text_input_read_observation observation;
+	bool delivered;
+	bool valid;
+
+	memset(input->read_ahead, 0, sizeof(input->read_ahead));
+	input->last_read.buffer_cleared = true;
+	memset(&observation, 0, sizeof(observation));
+	observation.terminal_position = -1;
+	++input->last_read.operation_count;
+	delivered = provider(input->read_context, input->file,
+	    input->read_ahead, sizeof(input->read_ahead), &observation);
+	valid = delivered
+	    && observation.accepted <= sizeof(input->read_ahead)
+	    && observation.terminal_position >= -1
+	    && ((observation.carry
+	    && observation.dos_error >= 1U
+	    && observation.dos_error <= 0xffU
+	    && observation.basic_error >= 1U
+	    && observation.basic_error <= 0xffU)
+	    || (!observation.carry && observation.dos_error == 0U
+	    && observation.basic_error == 0U));
+	input->last_read.accepted = observation.accepted;
+	input->last_read.dos_error = observation.dos_error;
+	input->last_read.basic_error = observation.basic_error;
+	input->last_read.terminal_position = observation.terminal_position;
+	if (!valid) {
+		input->last_read.outcome = YT_TEXT_INPUT_READ_PROVIDER_ERROR;
+		input->last_read.basic_error = 57U;
+		text_input_read_snapshot(input);
+		errno = 0;
+		set_error(error, YT_IO_ERROR,
+		    "sequential INPUT read provider", input->path);
+		return false;
+	}
+	if (observation.terminal_position >= 0)
+		input->physical_position = observation.terminal_position;
+	if (observation.carry) {
+		input->last_read.outcome = YT_TEXT_INPUT_READ_DISK_ERROR;
+		text_input_read_snapshot(input);
+		errno = 0;
+		set_error(error, YT_IO_ERROR, "sequential INPUT read",
+		    input->path);
+		return false;
+	}
+	input->refill_index = (input->refill_index + 1U) & 0x00ffffffU;
+	if (observation.accepted != 0U) {
+		input->read_total = observation.accepted;
+		input->read_remaining = observation.accepted;
+	}
+	return true;
+}
+
+static bool
+text_input_get_byte(struct yt_text_input *input, uint8_t *value, bool *eof,
+    struct yt_error *error)
+{
+	size_t index;
+
+	*value = 0x1aU;
+	*eof = false;
+	if (input->read_remaining == 0U) {
+		if (!text_input_refill(input, error))
+			return false;
+		if (input->read_remaining == 0U) {
+			*eof = true;
+			return true;
+		}
+	}
+	index = input->read_total - input->read_remaining;
+	*value = input->read_ahead[index];
+	--input->read_remaining;
+	if (*value == 0x1aU) {
+		++input->read_remaining;
+		*eof = true;
+	}
+	return true;
+}
+
 bool
 yt_text_input_read_line(struct yt_text_input *input, const uint8_t **line,
     size_t *length, bool *available, struct yt_error *error)
 {
 	size_t used = 0U;
+	uint64_t entry_position;
 	bool consumed = false;
 
 	if (line != NULL)
@@ -202,53 +325,67 @@ yt_text_input_read_line(struct yt_text_input *input, const uint8_t **line,
 		    ? NULL : input->path);
 		return false;
 	}
+	memset(&input->last_read, 0, sizeof(input->last_read));
+	entry_position = input->logical_position;
+	input->last_read.terminal_position = input->physical_position;
+	input->last_read.registered = true;
+	input->last_read.handle_open = true;
 	for (;;) {
-		int value = fgetc(input->file);
+		uint8_t value;
+		bool eof;
 
-		if (value == EOF) {
-			if (ferror(input->file)) {
-				set_error(error, YT_IO_ERROR, "LINE INPUT text",
-				    input->path);
-				return false;
-			}
-			break;
-		}
-		if ((uint8_t)value == 0x1aU) {
-			if (ungetc(value, input->file) == EOF) {
-				set_error(error, YT_IO_ERROR, "LINE INPUT text",
-				    input->path);
-				return false;
-			}
-			break;
-		}
-		consumed = true;
-		if ((uint8_t)value == '\r') {
-			int following = fgetc(input->file);
-
-			if (following == EOF) {
-				if (ferror(input->file)) {
-					set_error(error, YT_IO_ERROR,
-					    "LINE INPUT text", input->path);
-					return false;
-				}
-			}
-			else if ((uint8_t)following != '\n'
-			    && ungetc(following, input->file) == EOF) {
-				set_error(error, YT_IO_ERROR, "LINE INPUT text",
-				    input->path);
-				return false;
-			}
-			break;
-		}
-		if ((uint8_t)value == 0U)
-			continue;
-		if (!text_input_reserve(input, used + 1U, error))
+		if (!text_input_get_byte(input, &value, &eof, error)) {
+			input->last_read.consumed = (size_t)(input->logical_position
+			    - entry_position);
+			input->last_read.returned = used;
+			text_input_read_snapshot(input);
 			return false;
-		input->line[used++] = (uint8_t)value;
+		}
+		if (eof)
+			break;
+		consumed = true;
+		++input->logical_position;
+		if (value == '\r') {
+			uint8_t following;
+			bool following_eof;
+
+			if (!text_input_get_byte(input, &following,
+			    &following_eof, error)) {
+				input->last_read.consumed = (size_t)(input->logical_position
+				    - entry_position);
+				input->last_read.returned = used;
+				text_input_read_snapshot(input);
+				return false;
+			}
+			if (!following_eof) {
+				if (following == '\n')
+					++input->logical_position;
+				else
+					++input->read_remaining;
+			}
+			break;
+		}
+		if (value == 0U)
+			continue;
+		if (!text_input_reserve(input, used + 1U, error)) {
+			input->last_read.outcome = YT_TEXT_INPUT_READ_MEMORY_ERROR;
+			input->last_read.consumed = (size_t)(input->logical_position
+			    - entry_position);
+			input->last_read.returned = used;
+			text_input_read_snapshot(input);
+			return false;
+		}
+		input->line[used++] = value;
 	}
 	*line = input->line;
 	*length = used;
 	*available = consumed;
+	input->last_read.outcome = YT_TEXT_INPUT_READ_RETURNED;
+	input->last_read.consumed = (size_t)(input->logical_position
+	    - entry_position);
+	input->last_read.returned = used;
+	input->last_read.eof = !consumed;
+	text_input_read_snapshot(input);
 	return true;
 }
 
@@ -256,7 +393,8 @@ bool
 yt_text_input_eof(struct yt_text_input *input, bool *eof,
     struct yt_error *error)
 {
-	int value;
+	uint8_t value;
+	bool physical_eof;
 
 	if (eof != NULL)
 		*eof = false;
@@ -266,21 +404,21 @@ yt_text_input_eof(struct yt_text_input *input, bool *eof,
 		    ? NULL : input->path);
 		return false;
 	}
-	errno = 0;
-	value = fgetc(input->file);
-	if (value == EOF) {
-		if (ferror(input->file)) {
-			set_error(error, YT_IO_ERROR, "EOF text input", input->path);
-			return false;
-		}
-		*eof = true;
-		return true;
-	}
-	if (ungetc(value, input->file) == EOF) {
-		set_error(error, YT_IO_ERROR, "EOF text input", input->path);
+	memset(&input->last_read, 0, sizeof(input->last_read));
+	input->last_read.terminal_position = input->physical_position;
+	input->last_read.eof_probe = true;
+	input->last_read.registered = true;
+	input->last_read.handle_open = true;
+	if (!text_input_get_byte(input, &value, &physical_eof, error)) {
+		text_input_read_snapshot(input);
 		return false;
 	}
-	*eof = (uint8_t)value == 0x1aU;
+	if (!physical_eof)
+		++input->read_remaining;
+	*eof = physical_eof;
+	input->last_read.outcome = YT_TEXT_INPUT_READ_RETURNED;
+	input->last_read.eof = physical_eof;
+	text_input_read_snapshot(input);
 	return true;
 }
 
@@ -785,6 +923,29 @@ text_output_position(FILE *file)
 		return -1;
 	position = (int64_t)yt_text_ftello(file);
 	return position >= 0 ? position : -1;
+}
+
+static bool
+text_input_read_default(void *context, FILE *file, uint8_t *data,
+    size_t requested, struct yt_text_input_read_observation *observation)
+{
+	int saved_errno;
+
+	(void)context;
+	if (file == NULL || data == NULL || requested == 0U
+	    || observation == NULL)
+		return false;
+	memset(observation, 0, sizeof(*observation));
+	errno = 0;
+	observation->accepted = fread(data, 1U, requested, file);
+	saved_errno = errno;
+	observation->carry = ferror(file) != 0;
+	observation->dos_error = observation->carry
+	    ? text_output_dos_error(NULL, saved_errno) : 0U;
+	observation->basic_error = observation->carry ? 57U : 0U;
+	observation->terminal_position = text_output_position(file);
+	errno = saved_errno;
+	return true;
 }
 
 static bool
