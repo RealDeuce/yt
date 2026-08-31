@@ -1615,14 +1615,25 @@ bool
 yt_radio_file_open(struct yt_radio_file *radio, const char *path,
     struct yt_error *error)
 {
-	static const struct yt_radio_field fields[YT_RADIO_FIELD_COUNT] = {
+	return yt_radio_file_open_text_width(radio, path, 74U, error);
+}
+
+bool
+yt_radio_file_open_text_width(struct yt_radio_file *radio, const char *path,
+    size_t text_width, struct yt_error *error)
+{
+	const struct yt_radio_field fields[YT_RADIO_FIELD_COUNT] = {
 		{0U, 4U},
 		{4U, 4U},
 		{8U, 4U},
-		{12U, 74U},
+		{12U, text_width},
 	};
 	if (radio == NULL || path == NULL) {
 		set_error(error, YT_INVALID, "open radio", path);
+		return false;
+	}
+	if (text_width > YT_RADIO_RECORD_SIZE - 12U) {
+		set_error(error, YT_RANGE, "radio FIELD", path);
 		return false;
 	}
 	if (!yt_radio_file_close(radio, error))

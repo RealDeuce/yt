@@ -1459,26 +1459,34 @@ bool
 yt_radio_compact(struct yt_error *error)
 {
 	char source_path[512];
+	struct yt_text_output temporary_output;
+	struct yt_radio_file destination;
 	struct yt_radio_file source;
-	FILE *dest = NULL;
 	struct yt_radio_record input;
 	struct yt_radio_record output;
 	uint64_t length;
 	uint64_t record_count;
 	uint32_t basic_record;
+	uint32_t retained_record = 0U;
 	size_t accepted;
 	bool result = false;
 
+	yt_text_output_init(&temporary_output);
+	yt_radio_file_init(&destination);
 	yt_radio_file_init(&source);
-	dest = fopen("temp", "w+b");
-	if (dest == NULL) {
-		set_error(error, YT_IO_ERROR, "create radio temporary", "temp");
-		return false;
-	}
+	if (!yt_text_output_open(&temporary_output, "temp", error)
+	    || !yt_text_output_close(&temporary_output, error))
+		goto done;
+	yt_text_output_destroy(&temporary_output);
+	yt_text_output_init(&temporary_output);
+	if (!yt_file_kill("temp", NULL, error)
+	    || !yt_radio_file_open_text_width(&destination, "temp", 72U,
+	    error))
+		goto done;
 	if (!yt_resolve_case_path("YTRMSG.DAT", true, source_path,
 	    sizeof(source_path), error))
 		goto done;
-	if (!yt_radio_file_open(&source, source_path, error)
+	if (!yt_radio_file_open_text_width(&source, source_path, 72U, error)
 	    || !yt_radio_file_size(&source, &length, error))
 		goto done;
 	record_count = length / YT_RADIO_RECORD_SIZE;
@@ -1498,21 +1506,15 @@ yt_radio_compact(struct yt_error *error)
 		memset(&output, 0, sizeof(output));
 		memcpy(output.bytes, input.bytes, 12);
 		memcpy(output.bytes + 12, input.bytes + 12, 72);
-		if (fwrite(output.bytes, 1, sizeof(output.bytes), dest)
-		    != sizeof(output.bytes)) {
-			set_error(error, YT_IO_ERROR, "write radio temporary",
-			    "temp");
+		++retained_record;
+		if (!yt_radio_file_put(&destination, retained_record, &output,
+		    error))
 			goto done;
-		}
 	}
 	if (!yt_radio_file_close(&source, error))
 		goto done;
-	if (fclose(dest) != 0) {
-		dest = NULL;
-		set_error(error, YT_IO_ERROR, "close radio temporary", "temp");
+	if (!yt_radio_file_close(&destination, error))
 		goto done;
-	}
-	dest = NULL;
 	if (!yt_file_kill("YTRMSG.DAT", NULL, error)
 	    || !yt_file_rename("Temp", "ytrmsg.dat", error))
 		goto done;
@@ -1520,8 +1522,8 @@ yt_radio_compact(struct yt_error *error)
 
 done:
 	(void)yt_radio_file_close(&source, NULL);
-	if (dest != NULL)
-		fclose(dest);
+	(void)yt_radio_file_close(&destination, NULL);
+	yt_text_output_destroy(&temporary_output);
 	return result;
 }
 

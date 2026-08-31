@@ -429,6 +429,8 @@ bool yt_database_flush(struct yt_database *database, struct yt_error *error);
 void yt_radio_file_init(struct yt_radio_file *radio);
 bool yt_radio_file_open(struct yt_radio_file *radio, const char *path,
     struct yt_error *error);
+bool yt_radio_file_open_text_width(struct yt_radio_file *radio,
+    const char *path, size_t text_width, struct yt_error *error);
 bool yt_radio_file_close(struct yt_radio_file *radio,
     struct yt_error *error);
 bool yt_radio_file_size(struct yt_radio_file *radio, uint64_t *size,

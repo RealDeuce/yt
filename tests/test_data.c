@@ -3995,6 +3995,15 @@ test_radio_file(void)
 	    && radio.fields[1].offset == 4U && radio.fields[1].length == 4U
 	    && radio.fields[2].offset == 8U && radio.fields[2].length == 4U
 	    && radio.fields[3].offset == 12U && radio.fields[3].length == 74U);
+	CHECK(yt_radio_file_close(&radio, &error));
+	CHECK(yt_radio_file_open_text_width(&radio, requested_path, 72U,
+	    &error)
+	    && radio.record_length == YT_RADIO_RECORD_SIZE
+	    && radio.field_count == YT_RADIO_FIELD_COUNT
+	    && radio.fields[0].offset == 0U && radio.fields[0].length == 4U
+	    && radio.fields[1].offset == 4U && radio.fields[1].length == 4U
+	    && radio.fields[2].offset == 8U && radio.fields[2].length == 4U
+	    && radio.fields[3].offset == 12U && radio.fields[3].length == 72U);
 	seek_script = (struct database_seek_script){.success = true};
 	read_script = (struct database_read_script){
 		.accepted = YT_RADIO_RECORD_SIZE,

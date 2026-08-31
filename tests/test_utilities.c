@@ -1235,6 +1235,7 @@ test_maintenance_message_compaction(void)
 	static const uint8_t partial[] = {
 		0xde, 0xad, 0xbe, 0xef, 0x11, 0x22, 0x33
 	};
+	static const uint8_t stale_temp[YT_RADIO_RECORD_SIZE * 4U] = {0x7f};
 	static const uint8_t current_news[] = "current news\r\n\x1a";
 	static const uint8_t old_news[] = "old news\r\n\x1a";
 	static const uint8_t stale_news[] = "retained news\r\n\x1astale tail";
@@ -1274,6 +1275,7 @@ test_maintenance_message_compaction(void)
 	memset(expected + sizeof(first) + 84U, 0, 2U);
 	yt_error_clear(&error);
 	if (!write_file("YTRMSG.DAT", input, sizeof(input))
+	    || !write_file("temp", stale_temp, sizeof(stale_temp))
 	    || !yt_radio_compact(&error)
 	    || !read_file("ytrmsg.dat", &data, &length)
 	    || length != sizeof(expected)
