@@ -2356,6 +2356,77 @@ test_initializer_graph_retries(void)
 }
 
 static bool
+test_yt_init_random_close_failure(void)
+{
+	struct utility_graph_script script = {0U};
+	struct portname_close_fault close_fault = {0U};
+	struct yt_initializer_options options;
+	struct yt_database database = {0};
+	struct yt_random random;
+	struct yt_error error;
+	uint8_t *auxiliary = NULL;
+	size_t auxiliary_length = 0U;
+	bool news_exists;
+	bool names_exist;
+	bool ok = false;
+
+	(void)remove("YTDATA.DAT");
+	(void)remove("YTNEWS.DAT");
+	(void)remove("YTNAME.DAT");
+	memset(&options, 0, sizeof(options));
+	options.family = YT_INITIALIZER_YT;
+	rmt_small_config(&options.config);
+	options.config.epoch_year = 26.0f;
+	options.config.port_offset = 10.0f;
+	options.config.planet_offset = 14.0f;
+	options.config.total_records = 15.0f;
+	options.use_existing_config = true;
+	options.bound_database = &database;
+	yt_error_clear(&error);
+	yt_random_init(&random);
+	yt_random_set_provider(&random, utility_graph_retry_fill, &script);
+	if (!yt_database_open(&database, "YTDATA.DAT", YT_OPEN_CREATE,
+	    &error))
+		goto done;
+	yt_database_set_close_provider(&database, portname_close_fail,
+	    &close_fault);
+	yt_platform_set_clock_provider(utility_fixed_clock, NULL);
+	if (yt_initialize_world(&options, &random, &error))
+		goto clock_done;
+	yt_platform_set_clock_provider(NULL, NULL);
+	news_exists = read_file("YTNEWS.DAT", &auxiliary, &auxiliary_length);
+	free(auxiliary);
+	auxiliary = NULL;
+	auxiliary_length = 0U;
+	names_exist = read_file("YTNAME.DAT", &auxiliary, &auxiliary_length);
+	free(auxiliary);
+	auxiliary = NULL;
+	ok = error.status == YT_IO_ERROR
+	    && strcmp(error.operation, "random CLOSE") == 0
+	    && random.draws == 105U && script.draws == 105U
+	    && close_fault.calls == 2U
+	    && database.last_close.outcome == YT_DATABASE_CLOSE_DISK_ERROR
+	    && database.last_close.basic_error == 70U
+	    && database.last_close.dos_error == 5U
+	    && database.last_close.retry_attempted
+	    && !database.last_close.registered
+	    && database.last_close.handle_open
+	    && database.file == NULL && database.orphaned_file != NULL
+	    && !news_exists && !names_exist;
+	goto done;
+
+clock_done:
+	yt_platform_set_clock_provider(NULL, NULL);
+done:
+	free(auxiliary);
+	yt_database_close(&database);
+	(void)remove("YTDATA.DAT");
+	(void)remove("YTNEWS.DAT");
+	(void)remove("YTNAME.DAT");
+	return ok;
+}
+
+static bool
 test_rmt_initializer_world_image(void)
 {
 	static const uint16_t expected_sites[] = {
@@ -5249,6 +5320,8 @@ main(void)
 		failure = "deterministic initializer world image differs";
 	else if (!test_initializer_graph_retries())
 		failure = "initializer graph retry fixture differs";
+	else if (!test_yt_init_random_close_failure())
+		failure = "YT-INIT random CLOSE failure differs";
 	else if (!test_rmt_initializer_world_image())
 		failure = "deterministic RMT initializer world image differs";
 	else if (!test_rmt_presentation_failure_prefixes())

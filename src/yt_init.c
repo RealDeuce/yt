@@ -2257,6 +2257,7 @@ yt_initialize_world(const struct yt_initializer_options *options,
 	struct yt_database *database;
 	struct world world = {0};
 	float sample;
+	bool explicit_close_failed = false;
 	bool result = false;
 
 	if (options == NULL || random == NULL) {
@@ -2401,14 +2402,18 @@ yt_initialize_world(const struct yt_initializer_options *options,
 	    || !write_world_database(database, options, &config, &world,
 	    random, error))
 		goto done;
-	yt_database_close(database);
+	if (!yt_database_random_close(database, error)) {
+		explicit_close_failed = true;
+		goto done;
+	}
 	if (options->family == YT_INITIALIZER_YT)
 		result = write_yt_auxiliary(options, error);
 	else
 		result = write_rmt_auxiliary(options->credited_name, options, error);
 
 done:
-	yt_database_close(database);
+	if (!explicit_close_failed)
+		yt_database_close(database);
 	free_world(&world);
 	return result;
 }
@@ -2420,8 +2425,7 @@ yt_initialize_begin_yt(struct yt_error *error)
 
 	if (!yt_database_open(&database, "YTDATA.DAT", YT_OPEN_CREATE, error))
 		return false;
-	yt_database_close(&database);
-	return true;
+	return yt_database_random_close(&database, error);
 }
 
 bool
