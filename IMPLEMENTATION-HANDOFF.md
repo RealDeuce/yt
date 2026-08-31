@@ -1496,9 +1496,15 @@ not authoritative. Use the corrected goal above in the new workspace.
   the row builder and exact 48-byte plain warning framing; all 20 focused
   upstream wrapper tests pass, all 15 transfers and its presentation family
   are candidate, and the caller—not the mine body—owns the destroyed-to-
-  common-fatal disposition. A complete injected raw combat/death/salvage/
-  mine composition, full 403/738-byte native transcripts, local/pager/
-  carrier modes and every dependency/physical failure prefix remain open.
+  common-fatal disposition. The deterministic distinct-player kill now
+  composes selector three, the 50-byte death title, shared salvage, the
+  caller warning and all three surviving-shield mine batches into exact
+  403/738-byte native plain/ANSI transcripts. Their five partitions are
+  1/50/78/48/226 and 51/50/100/62/475 bytes respectively, with the final
+  foreground/background/style, color cache and pager state pinned. A
+  complete injected raw combat/death/salvage/mine FIELD/store/news/RNG
+  transaction, local/pager/carrier modes and every dependency/physical
+  failure prefix remain open.
 - The direct fighter destroyed-to-fatal cycle now preserves the mine body's
   nonzero destruction result without inserting output, RNG, I/O or state
   normalization. It inherits the mine background, pager and input state into

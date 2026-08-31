@@ -9809,6 +9809,169 @@ test_direct_fighter_kill_warning_presentation(void)
 	CHECK(pager.line_count == 1.0f);
 }
 
+static bool
+direct_fighter_kill_composition_run(bool ansi, struct pager_capture *capture,
+    struct yt_present_state *current, struct yt_pager_state *pager,
+    size_t ends[5])
+{
+	static const uint8_t salvage_heading[] =
+	    "You destroyed the ship and salvaged the following:";
+	static const uint8_t mined[] = "** Sector is Mined!! **";
+	struct yt_present_result result;
+	uint8_t row[160];
+	size_t row_length;
+	size_t batch;
+
+	if (capture == NULL || current == NULL || pager == NULL || ends == NULL)
+		return false;
+	*current = state(ansi);
+	current->foreground = 6.0f;
+	current->color_initialized = ansi ? 1.0f : 0.0f;
+	current->cached_foreground = ansi ? 6.0f : 0.0f;
+	memset(pager, 0, sizeof(*pager));
+	pager->foreground = 6;
+	memset(capture, 0, sizeof(*capture));
+
+	if (yt_present_sound(3.0f, current, &result) != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(capture, &result);
+	ends[0] = capture->remote_length;
+
+	if (!yt_death_title_row((const uint8_t *)"VICTIM", 6U, 1.0f,
+	    row, sizeof(row), &row_length))
+		return false;
+	pager_capture_line(capture, current, row, row_length);
+	ends[1] = capture->remote_length;
+
+	pager_capture_line(capture, current, NULL, 0U);
+	if (yt_present_bold_line(salvage_heading,
+	    sizeof(salvage_heading) - 1U, current, &result) != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(capture, &result);
+	pager_capture_line(capture, current, NULL, 0U);
+	if (!yt_salvage_simple_row(YT_SALVAGE_MINES, 1.0f, row,
+	    sizeof(row), &row_length))
+		return false;
+	pager_capture_line(capture, current, row, row_length);
+	ends[2] = capture->remote_length;
+
+	if (!yt_direct_fighter_mine_warning((const uint8_t *)"VICTIM", 6U,
+	    row, sizeof(row), &row_length))
+		return false;
+	pager_capture_line(capture, current, NULL, 0U);
+	current->bold = 1.0f;
+	current->blink = 1.0f;
+	pager->newline_flag = 0.0f;
+	pager_fixture_b05d(pager, current, row, row_length, capture);
+	ends[3] = capture->remote_length;
+
+	pager_capture_line(capture, current, NULL, 0U);
+	current->blink = 1.0f;
+	pager_capture_line(capture, current, mined, sizeof(mined) - 1U);
+	if (yt_present_sound(5.0f, current, &result) != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(capture, &result);
+	for (batch = 0U; batch < 3U; ++batch) {
+		current->foreground = 3.0f;
+		current->background = 0.0f;
+		current->blink = 0.0f;
+		if (!yt_sector_mine_explosion_row(3.0f - (float)batch,
+		    1.0f, row, sizeof(row), &row_length)
+		    || yt_present_bold_character(row, row_length, current,
+		    &result) != YT_PRESENT_OK)
+			return false;
+		pager_capture_result(capture, &result);
+		current->background = 1.0f;
+		pager_capture_line(capture, current, NULL, 0U);
+		if (!yt_sector_mine_shields_row(10000.0f, row, sizeof(row),
+		    &row_length)
+		    || yt_present_bold_line(row, row_length, current, &result)
+		    != YT_PRESENT_OK)
+			return false;
+		pager_capture_result(capture, &result);
+		if (yt_present_sound(2.0f, current, &result) != YT_PRESENT_OK)
+			return false;
+		pager_capture_result(capture, &result);
+	}
+	ends[4] = capture->remote_length;
+	return true;
+}
+
+static void
+test_direct_fighter_kill_composition_presentation(void)
+{
+	static const uint8_t plain[] =
+	    "\x07The titles to 1 ports of VICTIM's are now yours!\r\n"
+	    "\r\nYou destroyed the ship and salvaged the following:\r\n"
+	    "\r\n  -  Sector Mines: 1\r\n"
+	    "\r\n  -  VICTIM had sector mines! They EXPLODED!\n\r"
+	    "\r\n** Sector is Mined!! **\r\n\x07"
+	    "There are 3 mines here! 1 EXPLODE!\r\n"
+	    "Shields down to 10000 units!\r\n"
+	    "There are 2 mines here! 1 EXPLODE!\r\n"
+	    "Shields down to 10000 units!\r\n"
+	    "There are 1 mines here! 1 EXPLODE!\r\n"
+	    "Shields down to 10000 units!\r\n";
+	static const uint8_t ansi[] =
+	    "\x1b[MBO2L2P32CL3CL8CP32L3CP6E-L8DL3DL8CL3CO1L8BO2L1C\x0e"
+	    "The titles to 1 ports of VICTIM's are now yours!\r\n"
+	    "\r\n\x1b[0;36;40;1m"
+	    "You destroyed the ship and salvaged the following:\r\n"
+	    "\x1b[0;36;40m\r\n  -  Sector Mines: 1\r\n"
+	    "\r\n\x1b[0;36;40;5;1m"
+	    "  -  VICTIM had sector mines! They EXPLODED!\n\r"
+	    "\x1b[0;36;40m\r\n\x1b[0;36;40;5m"
+	    "** Sector is Mined!! **\r\n"
+	    "\x1b[MBO1L64P8CdGCdGCdGCDGCGD\x0e"
+	    "\x1b[0;33;40;1mThere are 3 mines here! 1 EXPLODE!"
+	    "\x1b[0;33;41m\r\n"
+	    "\x1b[0;33;41;1mShields down to 10000 units!\r\n"
+	    "\x1b[MBO1L64P32CEDFEGFAGBAO5BAGFEDC\x0e"
+	    "\x1b[0;33;40;1mThere are 2 mines here! 1 EXPLODE!"
+	    "\x1b[0;33;41m\r\n"
+	    "\x1b[0;33;41;1mShields down to 10000 units!\r\n"
+	    "\x1b[MBO1L64P32CEDFEGFAGBAO5BAGFEDC\x0e"
+	    "\x1b[0;33;40;1mThere are 1 mines here! 1 EXPLODE!"
+	    "\x1b[0;33;41m\r\n"
+	    "\x1b[0;33;41;1mShields down to 10000 units!\r\n"
+	    "\x1b[MBO1L64P32CEDFEGFAGBAO5BAGFEDC\x0e";
+	static const struct {
+		bool ansi;
+		const uint8_t *expected;
+		size_t expected_length;
+		size_t ends[5];
+	} cases[] = {
+		{false, plain, sizeof(plain) - 1U,
+		    {1U, 51U, 129U, 177U, 403U}},
+		{true, ansi, sizeof(ansi) - 1U,
+		    {51U, 101U, 201U, 263U, 738U}},
+	};
+	struct yt_present_state current;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	size_t ends[5];
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		CHECK(direct_fighter_kill_composition_run(cases[pass].ansi,
+		    &capture, &current, &pager, ends));
+		CHECK(memcmp(ends, cases[pass].ends, sizeof(ends)) == 0);
+		CHECK(capture.remote_length == cases[pass].expected_length);
+		CHECK(capture.remote_length != cases[pass].expected_length
+		    || memcmp(capture.remote, cases[pass].expected,
+		    cases[pass].expected_length) == 0);
+		CHECK(current.foreground == 3.0f
+		    && current.background == 1.0f
+		    && current.bold == (cases[pass].ansi ? 0.0f : 1.0f)
+		    && current.blink == 0.0f
+		    && current.cached_foreground == 0.0f
+		    && current.cached_background == 0.0f
+		    && pager.foreground == 6 && pager.line_count == 1.0f
+		    && pager.nonstop == 0.0f && pager.newline_flag == 0.0f);
+	}
+	CHECK(sizeof(plain) - 1U == 403U && sizeof(ansi) - 1U == 738U);
+}
+
 static struct pager_capture
 black_hole_fixture(bool ansi, bool meltdown)
 {
@@ -19218,6 +19381,7 @@ main(void)
 	test_planet_move_presentation();
 	test_sector_mine_presentation();
 	test_direct_fighter_kill_warning_presentation();
+	test_direct_fighter_kill_composition_presentation();
 	test_info_panel_presentation();
 	test_full_normal_exit_presentation();
 	test_computer_info_cycle_presentation();
