@@ -3599,6 +3599,31 @@ test_files(void)
 	}
 	yt_database_set_seek_provider(&database, NULL, NULL);
 	yt_database_set_read_provider(&database, NULL, NULL);
+	seek_script = (struct database_seek_script){.success = true};
+	write_script = (struct database_write_script){.accepted = YT_RECORD_SIZE};
+	yt_database_set_seek_provider(&database, scripted_database_seek,
+	    &seek_script);
+	yt_database_set_write_provider(&database, scripted_database_write,
+	    &write_script);
+	accepted = 99U;
+	CHECK(!yt_database_random_put(&database, 0U, &replacement, false,
+	    &accepted, &error) && error.status == YT_RANGE && accepted == 0U
+	    && seek_script.calls == 0U && write_script.calls == 0U
+	    && database.last_put.outcome == YT_DATABASE_PUT_RECORD_ERROR
+	    && database.last_put.basic_error == 63U
+	    && database.last_put.current_record == 0U
+	    && database.last_put.record_index == 0U
+	    && database.last_put.desired_offset == 0
+	    && database.last_put.registered && database.last_put.handle_open);
+	accepted = 99U;
+	CHECK(!yt_database_random_put(&database, 0x1000000U, &replacement,
+	    false, &accepted, &error) && error.status == YT_RANGE
+	    && accepted == 0U && seek_script.calls == 0U
+	    && write_script.calls == 0U
+	    && database.last_put.outcome == YT_DATABASE_PUT_RECORD_ERROR
+	    && database.last_put.basic_error == 63U);
+	yt_database_set_seek_provider(&database, NULL, NULL);
+	yt_database_set_write_provider(&database, NULL, NULL);
 	write_script = (struct database_write_script){.accepted = 136U};
 	yt_database_set_write_provider(&database, scripted_database_write,
 	    &write_script);

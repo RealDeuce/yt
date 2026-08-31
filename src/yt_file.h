@@ -216,6 +216,7 @@ struct yt_database_get_result {
 enum yt_database_put_outcome {
 	YT_DATABASE_PUT_NONE,
 	YT_DATABASE_PUT_RETURNED,
+	YT_DATABASE_PUT_RECORD_ERROR,
 	YT_DATABASE_PUT_SEEK_ERROR,
 	YT_DATABASE_PUT_WRITE_ERROR,
 	YT_DATABASE_PUT_REJECTED_SHORT,
@@ -224,8 +225,11 @@ enum yt_database_put_outcome {
 struct yt_database_put_result {
 	enum yt_database_put_outcome outcome;
 	size_t accepted;
+	uint32_t current_record;
+	uint32_t record_index;
 	uint16_t dos_error;
 	uint16_t basic_error;
+	int64_t desired_offset;
 	int64_t terminal_position;
 	bool registered;
 	bool close_attempted;

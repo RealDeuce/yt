@@ -1365,11 +1365,16 @@ yt_database_random_put(struct yt_database *database, size_t basic_record,
 	database->last_put.registered = true;
 	database->last_put.handle_open = true;
 
-	if (basic_record == 0) {
+	if (basic_record == 0U || basic_record > 0xFFFFFFU) {
+		database->last_put.outcome = YT_DATABASE_PUT_RECORD_ERROR;
+		database->last_put.basic_error = 63U;
 		set_error(error, YT_RANGE, "random PUT", database->path);
 		return false;
 	}
 	offset = (off_t)((basic_record - 1U) * YT_RECORD_SIZE);
+	database->last_put.current_record = (uint32_t)basic_record;
+	database->last_put.record_index = (uint32_t)basic_record - 1U;
+	database->last_put.desired_offset = (int64_t)offset;
 	database->short_close_attempted = false;
 	database->short_close_succeeded = false;
 	seek_provider = database->seek_provider != NULL ? database->seek_provider
