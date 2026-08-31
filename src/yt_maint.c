@@ -2835,6 +2835,21 @@ store_final_marker(struct maint_state *state, struct yt_error *error)
 	    error);
 }
 
+static bool
+maintenance_close_all(struct yt_game *game, struct yt_error *error)
+{
+	struct yt_close_all_control control = {
+		.heap_type = YT_CLOSE_ALL_HEAP_FILE,
+		.file_class = 0,
+		.method = yt_database_close_all_method,
+		.context = &game->database,
+	};
+	size_t control_count = game->database.file != NULL ? 1U : 0U;
+
+	return yt_close_all_run(control_count != 0U ? &control : NULL,
+	    control_count, NULL, NULL, error);
+}
+
 bool
 yt_maintenance_run(struct yt_error *error)
 {
@@ -2933,7 +2948,8 @@ yt_maintenance_run(struct yt_error *error)
 	    maintenance_stdout_line, NULL, error))
 		goto done;
 	/* 57C1 CLOSE-all precedes the 57C6 return into the wrapper rows. */
-	yt_game_close(&state.game);
+	if (!maintenance_close_all(&state.game, error))
+		goto done;
 	if (!yt_maintenance_compose_wrapper(&wrapper_output)
 	    || !maintenance_emit_output_row(&wrapper_output, 0x004FU,
 	    maintenance_stdout_line, NULL, error)
