@@ -2568,11 +2568,14 @@ not authoritative. Use the corrected goal above in the new workspace.
   into the existing fighter-kill/fatal child. Only candidate exhaustion enters
   the existing sector/hazard loop; direct results return to the loop-top fresh
   prompt. Binary-safe row, stale-value, rounding and unrelated-byte fixtures
-  are native; all 29 isolated-body and 34 joined cycle/hazard upstream tests
-  plus all nine native suites pass. All 74 parent transfers and the active-
-  cycle presentation family are candidate. Exact native 327/370-byte active
-  and admitted-hazard joined fixtures, independent raw A41C/FIELD/cache/RNG/
-  radio state, local framebuffer and every staged failure prefix remain open.
+  are native. The natural positive-shield witness now joins the exact shell,
+  248/281-byte plain/ANSI Attack body, zero-byte survivor tail and 38-byte
+  fresh-prompt partitions into native 327/370-byte streams, including the
+  ANSI selector-two PLAY payload. All 29 isolated-body and 34 joined cycle/
+  hazard upstream tests and all current native suites pass. All 74 parent
+  transfers and the active-cycle presentation family are candidate.
+  Admitted-hazard joined fixtures, independent raw A41C/FIELD/cache/RNG/radio
+  state, local framebuffer and every staged failure prefix remain open.
 - Upstream `c08f1fca` resolved the two implementation documentation gaps.
   Native commit `7bc5005` now performs YTMAINT radio compaction as the exact
   OUTPUT/CLOSE/KILL, fresh RANDOM destination/source, explicit dense PUT,

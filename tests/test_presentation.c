@@ -14364,6 +14364,201 @@ test_main_movement_accepted_cycle_presentation(void)
 }
 
 static bool
+main_attack_survivor_cycle_run(struct physical_viewer_join *viewer,
+    bool ansi, size_t ends[4])
+{
+	static const uint8_t main_prompt[] =
+	    "Time: 14:59  Main Command (?=Help)? ";
+	static const uint8_t command[] = "A";
+	static const uint8_t title[] = "<Attack>";
+	static const uint8_t candidate_name[] = "VICTIM";
+	static const uint8_t candidate_answer[] = "Y";
+	static const uint8_t commitment[] = "2";
+	static const uint8_t eliminated[] =
+	    "Fighters eliminated! Attacking the ship!";
+	struct viewer_pager_join *join = &viewer->join;
+	struct yt_present_result result;
+	uint8_t prompt[160];
+	uint8_t attacker_row[160];
+	uint8_t defender_row[160];
+	uint8_t fighter_row[128];
+	uint8_t shield_row[128];
+	size_t prompt_length;
+	size_t attacker_length;
+	size_t defender_length;
+	size_t fighter_length;
+	size_t shield_length;
+
+	if (ends == NULL)
+		return false;
+	join->presentation = state(ansi);
+	join->presentation.foreground = 6.0f;
+	join->presentation.cached_foreground = ansi ? 6.0f : 0.0f;
+	join->pager.foreground = 6;
+	join->pager.line_count = 8.0f;
+
+	join->presentation.foreground = 2.0f;
+	join->pager.foreground = 2;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, main_prompt,
+	    sizeof(main_prompt) - 1U, 1.0f))
+		return false;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	memcpy(join->accumulator, command, sizeof(command));
+	if (yt_present_editor_echo(command, sizeof(command) - 1U,
+	    command, sizeof(command) - 1U, &join->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
+	ends[0] = join->remote_length;
+
+	if (!normal_exit_b05d(join, title, sizeof(title) - 1U, 0.0f)
+	    || !yt_direct_attack_candidate_prompt(candidate_name,
+	    sizeof(candidate_name) - 1U, prompt, sizeof(prompt),
+	    &prompt_length)
+	    || yt_present_character(prompt, prompt_length,
+	    &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	memcpy(join->accumulator, candidate_answer, sizeof(candidate_answer));
+	if (yt_present_editor_echo(candidate_answer,
+	    sizeof(candidate_answer) - 1U, candidate_answer,
+	    sizeof(candidate_answer) - 1U, &join->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !yt_direct_attack_commitment_prompt(3.0, prompt,
+	    sizeof(prompt), &prompt_length)
+	    || !normal_exit_b05d(join, prompt, prompt_length, 1.0f))
+		return false;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	memcpy(join->accumulator, commitment, sizeof(commitment));
+	if (yt_present_editor_echo(commitment, sizeof(commitment) - 1U,
+	    commitment, sizeof(commitment) - 1U,
+	    &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U)
+	    || yt_present_sound(2.0f, &join->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!yt_direct_attack_result_rows(0.0, 1.0, 1.0, 0.0,
+	    attacker_row, sizeof(attacker_row), &attacker_length,
+	    defender_row, sizeof(defender_row), &defender_length)
+	    || !normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, attacker_row, attacker_length, 0.0f)
+	    || !normal_exit_b05d(join, defender_row, defender_length, 0.0f)
+	    || !normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, eliminated,
+	    sizeof(eliminated) - 1U, 0.0f)
+	    || !yt_fighter_shield_spill_rows(0.0, 2.0f,
+	    fighter_row, sizeof(fighter_row), &fighter_length,
+	    shield_row, sizeof(shield_row), &shield_length)
+	    || !normal_exit_line(join, fighter_row, fighter_length)
+	    || !normal_exit_line(join, shield_row, shield_length))
+		return false;
+	ends[1] = join->remote_length;
+
+	/* Positive target shields make the fighter-kill tail output-free. */
+	ends[2] = join->remote_length;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, main_prompt,
+	    sizeof(main_prompt) - 1U, 1.0f))
+		return false;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	ends[3] = join->remote_length;
+	return true;
+}
+
+static void
+test_main_attack_survivor_cycle_presentation(void)
+{
+	static const uint8_t plain[] =
+	    "\r\nTime: 14:59  Main Command (?=Help)? A\r\n"
+	    "<Attack>\n\r"
+	    "Attack VICTIM (Y/N)[Y]? Y\r\n"
+	    "You have 3. Use how many fighters? [0] 2\r\n"
+	    "\r\nYou lost 0 fighter(s), 1 remain.\n\r"
+	    "You destroyed 1 enemy fighters, 0 remain.\n\r"
+	    "\r\nFighters eliminated! Attacking the ship!\n\r"
+	    "Fighters remaining: 0\r\n"
+	    "Shields reduced to: 2\r\n"
+	    "\r\nTime: 14:59  Main Command (?=Help)? ";
+	static const uint8_t ansi[] =
+	    "\x1b[0;32;40m\r\nTime: 14:59  Main Command (?=Help)? A\r\n"
+	    "<Attack>\n\r"
+	    "Attack VICTIM (Y/N)[Y]? Y\r\n"
+	    "You have 3. Use how many fighters? [0] 2\r\n"
+	    "\x1b[MBO1L64P32CEDFEGFAGBAO5BAGFEDC\x0e"
+	    "\r\nYou lost 0 fighter(s), 1 remain.\n\r"
+	    "You destroyed 1 enemy fighters, 0 remain.\n\r"
+	    "\r\nFighters eliminated! Attacking the ship!\n\r"
+	    "Fighters remaining: 0\r\n"
+	    "Shields reduced to: 2\r\n"
+	    "\r\nTime: 14:59  Main Command (?=Help)? ";
+	static const struct {
+		bool ansi;
+		const uint8_t *expected;
+		size_t expected_length;
+		size_t ends[4];
+	} cases[] = {
+		{false, plain, sizeof(plain) - 1U,
+		    {41U, 289U, 289U, 327U}},
+		{true, ansi, sizeof(ansi) - 1U,
+		    {51U, 332U, 332U, 370U}},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	uint8_t remote[400];
+	size_t ends[4];
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
+		CHECK(main_attack_survivor_cycle_run(&viewer,
+		    cases[pass].ansi, ends));
+		CHECK(memcmp(ends, cases[pass].ends, sizeof(ends)) == 0);
+		CHECK(viewer.join.remote_length == cases[pass].expected_length);
+		CHECK(viewer.join.remote_length != cases[pass].expected_length
+		    || memcmp(remote, cases[pass].expected,
+		    cases[pass].expected_length) == 0);
+		CHECK(viewer.join.presentation.foreground == 2.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold == 0.0f
+		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.cached_foreground
+		    == (cases[pass].ansi ? 2.0f : 0.0f));
+		CHECK(viewer.join.pager.foreground == 2
+		    && viewer.join.pager.line_count == 0.0f
+		    && viewer.join.pager.nonstop == 0.0f);
+		CHECK(viewer.join.local_fragment_length == 36U
+		    && memcmp(viewer.join.local_fragment,
+		    "Time: 14:59  Main Command (?=Help)? ", 36U) == 0
+		    && viewer.join.accumulator[0] == '\0'
+		    && viewer.join.queue_length == 0U);
+		CHECK(stream.eof_checks == 0U && stream.key_checks == 0U
+		    && stream.read_count == 0U && stream.line_count == 0U
+		    && !stream.file_open && !viewer.join.file_open
+		    && viewer.input.file == NULL && viewer.close_calls == 0U
+		    && viewer.open_calls == 0U);
+		yt_text_input_destroy(&viewer.input);
+	}
+	CHECK(sizeof(plain) - 1U == 327U && sizeof(ansi) - 1U == 370U);
+}
+
+static bool
 planet_movement_accepted_cycle_run(struct physical_viewer_join *viewer,
     bool ansi, size_t ends[4])
 {
@@ -18503,6 +18698,7 @@ main(void)
 	test_planet_leave_cycle_presentation();
 	test_planet_thrusters_accepted_cycle_presentation();
 	test_main_movement_accepted_cycle_presentation();
+	test_main_attack_survivor_cycle_presentation();
 	test_planet_movement_accepted_cycle_presentation();
 	test_planet_port_no_port_cycle_presentation();
 	test_computer_quit_accept_presentation();
