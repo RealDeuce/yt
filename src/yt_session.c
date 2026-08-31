@@ -1576,16 +1576,16 @@ registration_file_size(void *opaque, uint64_t *size,
     struct yt_error *error)
 {
 	struct registration_context *context = opaque;
-	long position;
+	struct yt_database_lof_result result;
+	uint32_t length;
 
 	if (context->file == NULL)
 		return registration_io_error(context, error, YT_INVALID,
 		    "registration LOF without file");
-	if (fseek(context->file, 0L, SEEK_END) != 0
-	    || (position = ftell(context->file)) < 0L)
-		return registration_io_error(context, error, YT_IO_ERROR,
-		    "registration LOF");
-	*size = (uint64_t)position;
+	if (!yt_random_file_lof(context->file, context->path, &length, &result,
+	    error))
+		return false;
+	*size = length;
 	return true;
 }
 

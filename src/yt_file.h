@@ -242,6 +242,7 @@ struct yt_radio_file {
 	size_t record_length;
 	struct yt_radio_field fields[YT_RADIO_FIELD_COUNT];
 	size_t field_count;
+	struct yt_database_lof_result last_lof;
 };
 
 bool yt_resolve_case_path(const char *requested, bool allow_missing,
@@ -255,6 +256,8 @@ bool yt_database_random_close(struct yt_database *database,
     struct yt_error *error);
 bool yt_database_random_lof(struct yt_database *database, uint32_t *length,
     struct yt_error *error);
+bool yt_random_file_lof(FILE *file, const char *path, uint32_t *length,
+    struct yt_database_lof_result *result, struct yt_error *error);
 void yt_database_close(struct yt_database *database);
 bool yt_database_read(struct yt_database *database, size_t basic_record,
     struct yt_record *record, struct yt_error *error);

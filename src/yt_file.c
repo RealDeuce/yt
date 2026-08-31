@@ -1190,6 +1190,23 @@ yt_database_random_lof(struct yt_database *database, uint32_t *length,
 	return true;
 }
 
+bool
+yt_random_file_lof(FILE *file, const char *path, uint32_t *length,
+    struct yt_database_lof_result *result, struct yt_error *error)
+{
+	struct yt_database database;
+	bool returned;
+
+	memset(&database, 0, sizeof(database));
+	database.file = file;
+	if (path != NULL)
+		(void)snprintf(database.path, sizeof(database.path), "%s", path);
+	returned = yt_database_random_lof(&database, length, error);
+	if (result != NULL)
+		*result = database.last_lof;
+	return returned;
+}
+
 static bool
 database_flush_default(void *context, FILE *file)
 {
@@ -1448,6 +1465,7 @@ yt_radio_file_open(struct yt_radio_file *radio, const char *path,
 	radio->record_length = 0U;
 	radio->field_count = 0U;
 	memset(radio->fields, 0, sizeof(radio->fields));
+	memset(&radio->last_lof, 0, sizeof(radio->last_lof));
 	if (!yt_resolve_case_path(path, true, resolved, sizeof(resolved), error))
 		return false;
 	radio->file = fopen(resolved, "r+b");
@@ -1468,25 +1486,17 @@ bool
 yt_radio_file_size(struct yt_radio_file *radio, uint64_t *size,
     struct yt_error *error)
 {
-	off_t position;
-	off_t length;
+	uint32_t length;
 
 	if (radio == NULL || radio->file == NULL || size == NULL) {
 		set_error(error, YT_INVALID, "radio LOF", radio != NULL
 		    ? radio->path : NULL);
 		return false;
 	}
-	position = yt_ftello(radio->file);
-	if (position < 0 || yt_fseeko(radio->file, 0, SEEK_END) != 0) {
-		set_error(error, YT_IO_ERROR, "radio LOF", radio->path);
+	if (!yt_random_file_lof(radio->file, radio->path, &length,
+	    &radio->last_lof, error))
 		return false;
-	}
-	length = yt_ftello(radio->file);
-	if (length < 0 || yt_fseeko(radio->file, position, SEEK_SET) != 0) {
-		set_error(error, YT_IO_ERROR, "radio LOF", radio->path);
-		return false;
-	}
-	*size = (uint64_t)length;
+	*size = length;
 	return true;
 }
 

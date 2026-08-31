@@ -1986,6 +1986,13 @@ test_radio_file(void)
 	    && radio.fields[2].offset == 8U && radio.fields[2].length == 4U
 	    && radio.fields[3].offset == 12U && radio.fields[3].length == 74U);
 	CHECK(yt_radio_file_size(&radio, &size, &error) && size == 3U);
+	CHECK(fseek(radio.file, 2L, SEEK_SET) == 0
+	    && yt_radio_file_size(&radio, &size, &error) && size == 3U
+	    && ftell(radio.file) == 2L
+	    && radio.last_lof.outcome == YT_DATABASE_LOF_RETURNED
+	    && radio.last_lof.saved_position == 2U
+	    && radio.last_lof.length == 3U
+	    && radio.last_lof.operation_count == 3U);
 	memset(&record, 0xff, sizeof(record));
 	CHECK(yt_radio_file_get(&radio, 1U, &record, &accepted, &error)
 	    && accepted == sizeof(partial)
