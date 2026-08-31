@@ -699,20 +699,6 @@ set_error(struct yt_error *error, enum yt_status status, const char *operation,
 	snprintf(error->path, sizeof(error->path), "%s", path != NULL ? path : "");
 }
 
-static bool
-truncate_at_cursor(FILE *file)
-{
-	long position = ftell(file);
-
-	if (position < 0 || fflush(file) != 0)
-		return false;
-#ifdef _WIN32
-	return _chsize_s(_fileno(file), (long long)position) == 0;
-#else
-	return ftruncate(fileno(file), (off_t)position) == 0;
-#endif
-}
-
 static uint16_t
 text_output_dos_error(int system_error)
 {
@@ -924,6 +910,73 @@ yt_text_output_open(struct yt_text_output *output, const char *path,
 		set_error(error, YT_IO_ERROR, "open text output", resolved);
 		return false;
 	}
+	(void)snprintf(output->path, sizeof(output->path), "%s", resolved);
+	output->pending_count = 0U;
+	memset(&output->last_write, 0, sizeof(output->last_write));
+	memset(&output->last_close, 0, sizeof(output->last_close));
+	return true;
+}
+
+bool
+yt_text_output_open_append(struct yt_text_output *output, const char *path,
+    struct yt_error *error)
+{
+	char resolved[512];
+	FILE *file;
+	long end;
+	long window_start;
+	size_t window_length;
+	size_t index;
+	uint8_t window[YT_TEXT_OUTPUT_BUFFER_SIZE];
+
+	if (output == NULL || path == NULL || output->file != NULL
+	    || output->orphaned_file != NULL) {
+		errno = 0;
+		set_error(error, YT_INVALID, "open text append", path);
+		return false;
+	}
+	if (!yt_resolve_case_path(path, true, resolved, sizeof(resolved), error))
+		return false;
+	errno = 0;
+	file = fopen(resolved, "r+b");
+	if (file == NULL && errno == ENOENT) {
+		file = fopen(resolved, "w+b");
+		if (file != NULL && fclose(file) == 0)
+			file = fopen(resolved, "r+b");
+		else
+			file = NULL;
+	}
+	if (file == NULL) {
+		set_error(error, YT_IO_ERROR, "open text append", resolved);
+		return false;
+	}
+	if (fseek(file, 0L, SEEK_END) != 0 || (end = ftell(file)) < 0) {
+		set_error(error, YT_IO_ERROR, "seek text append", resolved);
+		(void)fclose(file);
+		return false;
+	}
+	window_start = end > (long)sizeof(window)
+	    ? end - (long)sizeof(window) : 0L;
+	window_length = (size_t)(end - window_start);
+	if (fseek(file, window_start, SEEK_SET) != 0
+	    || (window_length != 0U
+	    && fread(window, 1U, window_length, file) != window_length)) {
+		set_error(error, YT_IO_ERROR, "read text append", resolved);
+		(void)fclose(file);
+		return false;
+	}
+	for (index = 0U; index < window_length; ++index) {
+		if (window[index] == 0x1aU) {
+			end = window_start + (long)index;
+			break;
+		}
+	}
+	if (fseek(file, end, SEEK_SET) != 0) {
+		set_error(error, YT_IO_ERROR, "position text append", resolved);
+		(void)fclose(file);
+		return false;
+	}
+	output->file = file;
 	(void)snprintf(output->path, sizeof(output->path), "%s", resolved);
 	output->pending_count = 0U;
 	memset(&output->last_write, 0, sizeof(output->last_write));
@@ -1369,56 +1422,16 @@ bool
 yt_text_append_line(const char *path, const uint8_t *line, size_t length,
     struct yt_error *error)
 {
-	char resolved[512];
-	FILE *file;
-	long end;
-	long window_start;
-	size_t window_length;
-	size_t index;
-	uint8_t window[128];
-	static const uint8_t ending[] = {'\r', '\n', 0x1a};
+	static const uint8_t newline[] = {'\r', '\n'};
+	struct yt_text_output output;
+	bool result = false;
 
-	if (!yt_resolve_case_path(path, true, resolved, sizeof(resolved), error))
-		return false;
-	file = fopen(resolved, "r+b");
-	if (file == NULL && errno == ENOENT)
-		file = fopen(resolved, "w+b");
-	if (file == NULL) {
-		set_error(error, YT_IO_ERROR, "open append", resolved);
-		return false;
-	}
-	if (fseek(file, 0, SEEK_END) != 0 || (end = ftell(file)) < 0) {
-		set_error(error, YT_IO_ERROR, "seek append", resolved);
-		fclose(file);
-		return false;
-	}
-	window_start = end > (long)sizeof(window)
-	    ? end - (long)sizeof(window) : 0;
-	window_length = (size_t)(end - window_start);
-	if (fseek(file, window_start, SEEK_SET) != 0
-	    || (window_length > 0
-	    && fread(window, 1, window_length, file) != window_length)) {
-		set_error(error, YT_IO_ERROR, "read append window", resolved);
-		fclose(file);
-		return false;
-	}
-	for (index = 0; index < window_length; ++index) {
-		if (window[index] == 0x1a) {
-			end = window_start + (long)index;
-			break;
-		}
-	}
-	if (fseek(file, end, SEEK_SET) != 0
-	    || (length > 0 && fwrite(line, 1, length, file) != length)
-	    || fwrite(ending, 1, sizeof(ending), file) != sizeof(ending)
-	    || !truncate_at_cursor(file)) {
-		set_error(error, YT_IO_ERROR, "append line", resolved);
-		fclose(file);
-		return false;
-	}
-	if (fclose(file) != 0) {
-		set_error(error, YT_IO_ERROR, "close append", resolved);
-		return false;
-	}
-	return true;
+	yt_text_output_init(&output);
+	if (yt_text_output_open_append(&output, path, error)
+	    && yt_text_output_write(&output, line, length, error)
+	    && yt_text_output_write(&output, newline, sizeof(newline), error)
+	    && yt_text_output_close(&output, error))
+		result = true;
+	yt_text_output_destroy(&output);
+	return result;
 }

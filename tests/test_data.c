@@ -3021,7 +3021,9 @@ test_append_window(void)
 	char directory[256];
 	char path[320];
 	uint8_t original[200];
+	uint8_t payload[127];
 	uint8_t embedded[] = {'A', 0x1a, 'B'};
+	struct yt_text_output output;
 	struct yt_text_file text;
 	struct yt_error error;
 	size_t index;
@@ -3077,6 +3079,33 @@ test_append_window(void)
 	CHECK(yt_text_read(path, &text, &error));
 	CHECK(text.length == 5);
 	CHECK(memcmp(text.data, "AC\r\n\x1a", 5) == 0);
+	yt_text_free(&text);
+
+	/* OPEN APPEND selects the tail marker without changing stale bytes. */
+	CHECK(write_bytes(path, (const uint8_t *)"old\x1a" "stale", 9U));
+	yt_text_output_init(&output);
+	CHECK(yt_text_output_open_append(&output, path, &error)
+	    && ftell(output.file) == 3L);
+	yt_text_output_destroy(&output);
+	CHECK(yt_text_read(path, &text, &error));
+	CHECK(text.length == 9U && memcmp(text.data, "old\x1a" "stale", 9U) == 0);
+	yt_text_free(&text);
+
+	/* Payload 128 stays pending; payload 129 flushes before accepting LF. */
+	memset(payload, 'p', sizeof(payload));
+	CHECK(write_bytes(path, NULL, 0U)
+	    && yt_text_append_line(path, payload, 126U, &error)
+	    && yt_text_read(path, &text, &error));
+	CHECK(text.length == 129U
+	    && memcmp(text.data, payload, 126U) == 0
+	    && memcmp(text.data + 126U, "\r\n\x1a", 3U) == 0);
+	yt_text_free(&text);
+	CHECK(write_bytes(path, NULL, 0U)
+	    && yt_text_append_line(path, payload, 127U, &error)
+	    && yt_text_read(path, &text, &error));
+	CHECK(text.length == 130U
+	    && memcmp(text.data, payload, 127U) == 0
+	    && memcmp(text.data + 127U, "\r\n\x1a", 3U) == 0);
 	yt_text_free(&text);
 
 	CHECK(yt_file_delete(path, false, &error));

@@ -144,6 +144,8 @@ struct yt_text_output {
 void yt_text_output_init(struct yt_text_output *output);
 bool yt_text_output_open(struct yt_text_output *output, const char *path,
 	struct yt_error *error);
+bool yt_text_output_open_append(struct yt_text_output *output,
+	const char *path, struct yt_error *error);
 bool yt_text_output_stage(struct yt_text_output *output,
 	const uint8_t *data, size_t length, struct yt_error *error);
 bool yt_text_output_write(struct yt_text_output *output,
