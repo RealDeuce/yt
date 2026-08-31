@@ -465,6 +465,7 @@ test_random(void)
 struct database_write_script {
 	size_t accepted;
 	bool carry;
+	bool provider_reject;
 	uint16_t dos_error;
 	uint16_t mapped_error;
 	int64_t terminal_position;
@@ -476,6 +477,7 @@ struct database_read_script {
 	const uint8_t *data;
 	size_t accepted;
 	bool carry;
+	bool provider_reject;
 	uint16_t dos_error;
 	uint16_t mapped_error;
 	int64_t terminal_position;
@@ -485,6 +487,7 @@ struct database_read_script {
 
 struct database_seek_script {
 	bool success;
+	bool provider_reject;
 	uint16_t dos_error;
 	int64_t terminal_position;
 	size_t calls;
@@ -3321,6 +3324,8 @@ scripted_database_read(void *context, FILE *file, uint8_t *data,
 	++script->calls;
 	script->requested = requested;
 	memset(observation, 0, sizeof(*observation));
+	if (script->provider_reject)
+		return false;
 	if (count != 0U && script->data != NULL)
 		memcpy(data, script->data, count);
 	observation->accepted = count;
@@ -3341,6 +3346,8 @@ scripted_database_write(void *context, FILE *file, const uint8_t *data,
 	++script->calls;
 	script->requested = requested;
 	memset(observation, 0, sizeof(*observation));
+	if (script->provider_reject)
+		return false;
 	observation->accepted = fwrite(data, 1U, count, file);
 	observation->carry = script->carry;
 	observation->dos_error = script->dos_error;
@@ -3358,6 +3365,9 @@ scripted_database_seek(void *context, FILE *file, int64_t absolute_offset,
 	(void)file;
 	++script->calls;
 	script->absolute_offset = absolute_offset;
+	memset(observation, 0, sizeof(*observation));
+	if (script->provider_reject)
+		return false;
 	observation->carry = !script->success;
 	observation->dos_error = script->success ? 0U : script->dos_error;
 	observation->terminal_position = script->terminal_position;
@@ -3603,7 +3613,55 @@ test_files(void)
 		    && database.last_get.registered
 		    && database.last_get.handle_open);
 	}
+	seek_script = (struct database_seek_script){
+		.success = true,
+		.provider_reject = true,
+	};
+	read_script = (struct database_read_script){.accepted = YT_RECORD_SIZE};
+	accepted = 99U;
+	CHECK(!yt_database_random_get(&database, 1U, &after, &accepted, &error)
+	    && accepted == 0U && seek_script.calls == 1U
+	    && read_script.calls == 0U
+	    && database.last_get.outcome == YT_DATABASE_GET_PROVIDER_ERROR
+	    && database.last_get.basic_error == 52U
+	    && database.last_get.dos_error == 0U
+	    && database.last_get.registered && database.last_get.handle_open);
+	seek_script = (struct database_seek_script){
+		.success = false,
+		.dos_error = 0U,
+		.terminal_position = 0x5678,
+	};
+	CHECK(!yt_database_random_get(&database, 1U, &after, &accepted, &error)
+	    && seek_script.calls == 1U && read_script.calls == 0U
+	    && database.last_get.outcome == YT_DATABASE_GET_PROVIDER_ERROR
+	    && database.last_get.basic_error == 52U
+	    && database.last_get.dos_error == 0U
+	    && database.last_get.terminal_position == 0x5678);
 	yt_database_set_seek_provider(&database, NULL, NULL);
+	read_script = (struct database_read_script){.provider_reject = true};
+	accepted = 99U;
+	after = replacement;
+	CHECK(!yt_database_random_get(&database, 1U, &after, &accepted, &error)
+	    && accepted == 0U && read_script.calls == 1U
+	    && database.last_get.outcome == YT_DATABASE_GET_PROVIDER_ERROR
+	    && database.last_get.basic_error == 57U
+	    && database.last_get.dos_error == 0U
+	    && database.last_get.accepted == 0U);
+	for (index = 0U; index < sizeof(after.bytes); ++index)
+		CHECK(after.bytes[index] == 0U);
+	read_script = (struct database_read_script){.dos_error = 1U};
+	CHECK(!yt_database_random_get(&database, 1U, &after, &accepted, &error)
+	    && database.last_get.outcome == YT_DATABASE_GET_PROVIDER_ERROR
+	    && database.last_get.basic_error == 57U
+	    && database.last_get.dos_error == 1U);
+	read_script = (struct database_read_script){
+		.carry = true,
+		.dos_error = 5U,
+	};
+	CHECK(!yt_database_random_get(&database, 1U, &after, &accepted, &error)
+	    && database.last_get.outcome == YT_DATABASE_GET_PROVIDER_ERROR
+	    && database.last_get.basic_error == 57U
+	    && database.last_get.dos_error == 5U);
 	yt_database_set_read_provider(&database, NULL, NULL);
 	seek_script = (struct database_seek_script){.success = true};
 	write_script = (struct database_write_script){.accepted = YT_RECORD_SIZE};
@@ -3756,7 +3814,60 @@ test_files(void)
 		    && !database.last_put.close_attempted);
 	}
 	CHECK(database.file != NULL && database.orphaned_file == NULL);
+	seek_script = (struct database_seek_script){
+		.success = true,
+		.provider_reject = true,
+	};
+	write_script = (struct database_write_script){
+		.accepted = YT_RECORD_SIZE,
+	};
+	accepted = 99U;
+	CHECK(!yt_database_random_put(&database, 1U, &replacement, true,
+	    &accepted, &error) && accepted == 0U && seek_script.calls == 1U
+	    && write_script.calls == 0U
+	    && database.last_put.outcome == YT_DATABASE_PUT_PROVIDER_ERROR
+	    && database.last_put.basic_error == 52U
+	    && database.last_put.dos_error == 0U
+	    && database.last_put.registered && database.last_put.handle_open
+	    && !database.last_put.close_attempted);
+	seek_script = (struct database_seek_script){
+		.success = false,
+		.dos_error = 0U,
+		.terminal_position = 0x6789,
+	};
+	CHECK(!yt_database_random_put(&database, 1U, &replacement, true,
+	    &accepted, &error) && seek_script.calls == 1U
+	    && write_script.calls == 0U
+	    && database.last_put.outcome == YT_DATABASE_PUT_PROVIDER_ERROR
+	    && database.last_put.basic_error == 52U
+	    && database.last_put.dos_error == 0U
+	    && database.last_put.terminal_position == 0x6789);
 	yt_database_set_seek_provider(&database, NULL, NULL);
+	write_script = (struct database_write_script){.provider_reject = true};
+	accepted = 99U;
+	CHECK(!yt_database_random_put(&database, 1U, &replacement, true,
+	    &accepted, &error) && accepted == 0U && write_script.calls == 1U
+	    && database.last_put.outcome == YT_DATABASE_PUT_PROVIDER_ERROR
+	    && database.last_put.basic_error == 57U
+	    && database.last_put.dos_error == 0U
+	    && database.last_put.accepted == 0U
+	    && database.last_put.registered && database.last_put.handle_open
+	    && !database.last_put.close_attempted);
+	write_script = (struct database_write_script){.dos_error = 1U};
+	CHECK(!yt_database_random_put(&database, 1U, &replacement, true,
+	    &accepted, &error)
+	    && database.last_put.outcome == YT_DATABASE_PUT_PROVIDER_ERROR
+	    && database.last_put.basic_error == 57U
+	    && database.last_put.dos_error == 1U);
+	write_script = (struct database_write_script){
+		.carry = true,
+		.dos_error = 5U,
+	};
+	CHECK(!yt_database_random_put(&database, 1U, &replacement, true,
+	    &accepted, &error)
+	    && database.last_put.outcome == YT_DATABASE_PUT_PROVIDER_ERROR
+	    && database.last_put.basic_error == 57U
+	    && database.last_put.dos_error == 5U);
 	for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
 		write_script = (struct database_write_script){
 			.carry = true,

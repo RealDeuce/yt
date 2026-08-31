@@ -753,6 +753,34 @@ database_read_default(void *context, FILE *file, uint8_t *data,
 }
 
 static bool
+database_seek_observation_valid(
+    const struct yt_database_seek_observation *observation)
+{
+	if (observation->carry)
+		return observation->dos_error >= 1U
+		    && observation->dos_error <= 0xffU;
+	return observation->dos_error == 0U;
+}
+
+static bool
+database_read_observation_valid(
+    const struct yt_database_read_observation *observation, size_t requested)
+{
+	if (observation->accepted > requested)
+		return false;
+	if (!observation->carry)
+		return observation->dos_error == 0U
+		    && observation->mapped_error == 0U;
+	if (observation->dos_error < 1U || observation->dos_error > 0xffU)
+		return false;
+	if (observation->dos_error == 5U)
+		return observation->mapped_error == 70U
+		    || observation->mapped_error == 75U;
+	return observation->mapped_error == 0U
+	    || observation->mapped_error == 57U;
+}
+
+static bool
 database_random_get_bytes(struct yt_database *database, size_t basic_record,
     uint8_t *data, size_t record_size, size_t *accepted,
     struct yt_error *error)
@@ -787,13 +815,14 @@ database_random_get_bytes(struct yt_database *database, size_t basic_record,
 	seek_provider = database->seek_provider != NULL ? database->seek_provider
 	    : database_seek_default;
 	if (!seek_provider(database->seek_context, database->file,
-	    (int64_t)offset, &seek) || (seek.carry
-	    && (seek.dos_error == 0U || seek.dos_error > 0xffU))) {
-		database->last_get.outcome = YT_DATABASE_GET_SEEK_ERROR;
+	    (int64_t)offset, &seek)
+	    || !database_seek_observation_valid(&seek)) {
+		database->last_get.outcome = YT_DATABASE_GET_PROVIDER_ERROR;
 		database->last_get.basic_error = 52U;
 		database->last_get.dos_error = seek.dos_error;
 		database->last_get.terminal_position = seek.terminal_position;
-		set_error(error, YT_IO_ERROR, "random GET seek", database->path);
+		set_error(error, YT_IO_ERROR, "random GET provider",
+		    database->path);
 		return false;
 	}
 	if (seek.carry) {
@@ -808,16 +837,9 @@ database_random_get_bytes(struct yt_database *database, size_t basic_record,
 	read_provider = database->read_provider != NULL ? database->read_provider
 	    : database_read_default;
 	if (!read_provider(database->read_context, database->file, data,
-	    record_size, &read) || read.accepted > record_size
-	    || (read.carry && (read.dos_error == 0U
-	    || read.dos_error > 0xffU))
-	    || (read.carry && read.dos_error == 5U
-	    && read.mapped_error != 70U && read.mapped_error != 75U)
-	    || (read.carry && read.dos_error != 5U
-	    && read.mapped_error != 0U && read.mapped_error != 57U)
-	    || (!read.carry && (read.dos_error != 0U
-	    || read.mapped_error != 0U))) {
-		database->last_get.outcome = YT_DATABASE_GET_READ_ERROR;
+	    record_size, &read)
+	    || !database_read_observation_valid(&read, record_size)) {
+		database->last_get.outcome = YT_DATABASE_GET_PROVIDER_ERROR;
 		database->last_get.accepted = read.accepted;
 		database->last_get.basic_error = 57U;
 		database->last_get.dos_error = read.dos_error;
@@ -913,6 +935,24 @@ database_write_default(void *context, FILE *file, const uint8_t *data,
 	}
 	errno = saved_errno;
 	return true;
+}
+
+static bool
+database_write_observation_valid(
+    const struct yt_database_write_observation *observation, size_t requested)
+{
+	if (observation->accepted > requested)
+		return false;
+	if (!observation->carry)
+		return observation->dos_error == 0U
+		    && observation->mapped_error == 0U;
+	if (observation->dos_error < 1U || observation->dos_error > 0xffU)
+		return false;
+	if (observation->dos_error == 5U)
+		return observation->mapped_error == 70U
+		    || observation->mapped_error == 75U;
+	return observation->mapped_error == 0U
+	    || observation->mapped_error == 57U;
 }
 
 static bool
@@ -1392,13 +1432,14 @@ database_random_put_bytes(struct yt_database *database, size_t basic_record,
 	seek_provider = database->seek_provider != NULL ? database->seek_provider
 	    : database_seek_default;
 	if (!seek_provider(database->seek_context, database->file,
-	    (int64_t)offset, &seek) || (seek.carry
-	    && (seek.dos_error == 0U || seek.dos_error > 0xffU))) {
-		database->last_put.outcome = YT_DATABASE_PUT_SEEK_ERROR;
+	    (int64_t)offset, &seek)
+	    || !database_seek_observation_valid(&seek)) {
+		database->last_put.outcome = YT_DATABASE_PUT_PROVIDER_ERROR;
 		database->last_put.basic_error = 52U;
 		database->last_put.dos_error = seek.dos_error;
 		database->last_put.terminal_position = seek.terminal_position;
-		set_error(error, YT_IO_ERROR, "random PUT seek", database->path);
+		set_error(error, YT_IO_ERROR, "random PUT provider",
+		    database->path);
 		return false;
 	}
 	if (seek.carry) {
@@ -1412,16 +1453,9 @@ database_random_put_bytes(struct yt_database *database, size_t basic_record,
 	write_provider = database->write_provider != NULL ? database->write_provider
 	    : database_write_default;
 	if (!write_provider(database->write_context, database->file, data,
-	    record_size, &write) || write.accepted > record_size
-	    || (write.carry && (write.dos_error == 0U
-	    || write.dos_error > 0xffU))
-	    || (write.carry && write.dos_error == 5U
-	    && write.mapped_error != 70U && write.mapped_error != 75U)
-	    || (write.carry && write.dos_error != 5U
-	    && write.mapped_error != 0U && write.mapped_error != 57U)
-	    || (!write.carry && (write.dos_error != 0U
-	    || write.mapped_error != 0U))) {
-		database->last_put.outcome = YT_DATABASE_PUT_WRITE_ERROR;
+	    record_size, &write)
+	    || !database_write_observation_valid(&write, record_size)) {
+		database->last_put.outcome = YT_DATABASE_PUT_PROVIDER_ERROR;
 		database->last_put.accepted = write.accepted;
 		database->last_put.basic_error = 57U;
 		database->last_put.dos_error = write.dos_error;

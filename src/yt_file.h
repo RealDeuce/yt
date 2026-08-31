@@ -197,6 +197,7 @@ enum yt_database_get_outcome {
 	YT_DATABASE_GET_RECORD_ERROR,
 	YT_DATABASE_GET_SEEK_ERROR,
 	YT_DATABASE_GET_READ_ERROR,
+	YT_DATABASE_GET_PROVIDER_ERROR,
 };
 
 struct yt_database_get_result {
@@ -220,6 +221,7 @@ enum yt_database_put_outcome {
 	YT_DATABASE_PUT_SEEK_ERROR,
 	YT_DATABASE_PUT_WRITE_ERROR,
 	YT_DATABASE_PUT_REJECTED_SHORT,
+	YT_DATABASE_PUT_PROVIDER_ERROR,
 };
 
 struct yt_database_put_result {
@@ -237,11 +239,14 @@ struct yt_database_put_result {
 	bool handle_open;
 };
 
+/* A false provider return rejects the observation and performs no I/O. */
 typedef bool (*yt_database_seek_provider)(void *context, FILE *file,
     int64_t absolute_offset, struct yt_database_seek_observation *observation);
+/* A false provider return rejects the observation and performs no I/O. */
 typedef bool (*yt_database_read_provider)(void *context, FILE *file,
     uint8_t *data, size_t requested,
     struct yt_database_read_observation *observation);
+/* A false provider return rejects the observation and performs no I/O. */
 typedef bool (*yt_database_write_provider)(void *context, FILE *file,
     const uint8_t *data, size_t requested,
     struct yt_database_write_observation *observation);
