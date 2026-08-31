@@ -4041,6 +4041,28 @@ test_radio_file(void)
 	CHECK(yt_radio_file_next_record(&radio, &next, &error) && next == 1U);
 	CHECK(yt_radio_message_record(&written, (const uint8_t *)"A\0B", 3U,
 	    7.0f, -2.0f));
+	for (index = 0U; index <= YT_RADIO_RECORD_SIZE; ++index) {
+		read_script = (struct database_read_script){
+			.data = written.bytes,
+			.accepted = index,
+		};
+		yt_database_set_read_provider(&radio.random,
+		    scripted_database_read, &read_script);
+		memset(&record, 0xff, sizeof(record));
+		CHECK(yt_radio_file_get(&radio, 1U, &record, &accepted, &error)
+		    && accepted == index && read_script.calls == 1U
+		    && read_script.requested == YT_RADIO_RECORD_SIZE
+		    && radio.random.last_get.outcome
+		    == YT_DATABASE_GET_RETURNED
+		    && radio.random.last_get.accepted == index
+		    && radio.random.last_get.terminal_position == (int64_t)index
+		    && radio.random.last_get.full_record
+		    == (index == YT_RADIO_RECORD_SIZE));
+		CHECK(memcmp(record.bytes, written.bytes, index) == 0);
+		for (accepted = index; accepted < sizeof(record.bytes); ++accepted)
+			CHECK(record.bytes[accepted] == 0U);
+	}
+	yt_database_set_read_provider(&radio.random, NULL, NULL);
 	CHECK(yt_radio_file_get(&radio, next, &record, &accepted, &error)
 	    && accepted == 0U);
 	record = written;
