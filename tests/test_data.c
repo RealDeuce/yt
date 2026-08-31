@@ -546,6 +546,22 @@ struct database_lof_script {
 	size_t position;
 };
 
+struct text_output_close_step {
+	enum yt_text_output_close_operation operation;
+	size_t requested;
+	uint8_t expected[YT_TEXT_OUTPUT_BUFFER_SIZE];
+	struct yt_text_output_close_observation observation;
+	bool provider_ok;
+	bool expect_active;
+	bool close_active;
+};
+
+struct text_output_close_script {
+	struct text_output_close_step steps[5];
+	size_t length;
+	size_t position;
+};
+
 static void
 database_open_add(struct database_open_script *script,
     enum yt_database_open_operation operation, uint8_t access,
@@ -723,6 +739,88 @@ database_close_fixture(struct yt_database *database, bool device,
 	database->records = 2U;
 	database->last_open.device = device;
 	yt_database_set_close_provider(database, scripted_database_public_close,
+	    script);
+	return true;
+}
+
+static void
+text_output_close_add(struct text_output_close_script *script,
+    enum yt_text_output_close_operation operation, const uint8_t *expected,
+    size_t requested, size_t accepted, bool carry, uint16_t dos_error,
+    bool handle_open, bool expect_active, bool close_active)
+{
+	struct text_output_close_step *step;
+
+	CHECK(script->length < YT_ARRAY_LEN(script->steps));
+	if (script->length >= YT_ARRAY_LEN(script->steps))
+		return;
+	step = &script->steps[script->length++];
+	memset(step, 0, sizeof(*step));
+	step->operation = operation;
+	step->requested = requested;
+	CHECK(requested <= sizeof(step->expected));
+	if (expected != NULL && requested <= sizeof(step->expected))
+		memcpy(step->expected, expected, requested);
+	step->observation.accepted = accepted;
+	step->observation.carry = carry;
+	step->observation.handle_open = handle_open;
+	step->observation.dos_error = dos_error;
+	step->observation.terminal_position = 37;
+	step->provider_ok = true;
+	step->expect_active = expect_active;
+	step->close_active = close_active;
+}
+
+static bool
+scripted_text_output_close(void *context, FILE *active_file,
+    enum yt_text_output_close_operation operation, const uint8_t *data,
+    size_t requested, struct yt_text_output_close_observation *observation)
+{
+	struct text_output_close_script *script = context;
+	struct text_output_close_step *step;
+
+	CHECK(script->position < script->length);
+	if (script->position >= script->length)
+		return false;
+	step = &script->steps[script->position++];
+	CHECK(operation == step->operation && requested == step->requested
+	    && (active_file != NULL) == step->expect_active);
+	if (operation != step->operation || requested != step->requested
+	    || (active_file != NULL) != step->expect_active)
+		return false;
+	CHECK(requested == 0U || (data != NULL
+	    && memcmp(data, step->expected, requested) == 0));
+	if (requested != 0U && (data == NULL
+	    || memcmp(data, step->expected, requested) != 0))
+		return false;
+	if (!step->provider_ok)
+		return false;
+	*observation = step->observation;
+	if (step->close_active) {
+		CHECK(active_file != NULL);
+		if (active_file == NULL || fclose(active_file) != 0)
+			return false;
+	}
+	return true;
+}
+
+static bool
+text_output_close_fixture(struct yt_text_output *output,
+    struct text_output_close_script *script, const uint8_t *pending,
+    size_t pending_length)
+{
+	yt_text_output_init(output);
+	output->file = tmpfile();
+	if (output->file == NULL)
+		return false;
+	(void)snprintf(output->path, sizeof(output->path), "%s",
+	    "TEXT-CLOSE-ORACLE.DAT");
+	if (pending_length > sizeof(output->pending))
+		return false;
+	if (pending_length != 0U)
+		memcpy(output->pending, pending, pending_length);
+	output->pending_count = pending_length;
+	yt_text_output_set_close_provider(output, scripted_text_output_close,
 	    script);
 	return true;
 }
@@ -1549,6 +1647,281 @@ test_database_random_close(void)
 		    && database.file == NULL && database.records == 0U);
 	}
 	yt_database_close(&database);
+}
+
+static void
+text_output_add_success(struct text_output_close_script *script,
+    enum yt_text_output_close_operation operation, const uint8_t *pending,
+    size_t pending_length)
+{
+	static const uint8_t eof_byte = 0x1aU;
+	const uint8_t *expected = NULL;
+	size_t requested = 0U;
+	bool handle_open = true;
+	bool close_active = false;
+
+	if (operation == YT_TEXT_OUTPUT_CLOSE_PENDING_WRITE) {
+		expected = pending;
+		requested = pending_length;
+	}
+	else if (operation == YT_TEXT_OUTPUT_CLOSE_EOF_WRITE) {
+		expected = &eof_byte;
+		requested = 1U;
+	}
+	else if (operation == YT_TEXT_OUTPUT_CLOSE_HANDLE) {
+		handle_open = false;
+		close_active = true;
+	}
+	text_output_close_add(script, operation, expected, requested, requested,
+	    false, 0U, handle_open, true, close_active);
+}
+
+static void
+test_text_output_close(void)
+{
+	static const uint8_t pending[] = {'A', 'B', 'C'};
+	static const uint8_t eof_byte = 0x1aU;
+	char directory[256];
+	char path[320];
+	struct text_output_close_script script;
+	struct yt_text_output output;
+	struct yt_close_all_control control;
+	struct yt_close_all_result close_all;
+	struct yt_text_file text;
+	struct yt_error error;
+	unsigned failed_operation;
+	unsigned dos_error;
+
+#ifdef _WIN32
+	snprintf(directory, sizeof(directory), "yt-text-close-%lu",
+	    (unsigned long)GetCurrentProcessId());
+#else
+	snprintf(directory, sizeof(directory), "/tmp/yt-text-close-%ld",
+	    (long)getpid());
+#endif
+	(void)mkdir_one(directory);
+	snprintf(path, sizeof(path), "%s/output.dat", directory);
+
+	/* Native OUTPUT/CLOSE writes DOS EOF and truncates at the final cursor. */
+	yt_text_output_init(&output);
+	yt_error_clear(&error);
+	CHECK(yt_text_output_open(&output, path, &error));
+	CHECK(yt_text_output_close(&output, &error)
+	    && output.last_close.outcome == YT_TEXT_OUTPUT_CLOSE_RETURNED
+	    && output.last_close.operation_count == 4U
+	    && !output.last_close.close_all && !output.last_close.missing
+	    && !output.last_close.registered && !output.last_close.handle_open);
+	CHECK(yt_text_read(path, &text, &error));
+	if (text.data != NULL) {
+		CHECK(text.length == 1U && text.data[0] == eof_byte);
+		yt_text_free(&text);
+	}
+	yt_text_output_destroy(&output);
+
+	CHECK(write_bytes(path, (const uint8_t *)"stale-tail", 10U));
+	yt_text_output_init(&output);
+	output.file = fopen(path, "r+b");
+	CHECK(output.file != NULL);
+	(void)snprintf(output.path, sizeof(output.path), "%s", path);
+	CHECK(output.file != NULL && fseek(output.file, 0L, SEEK_SET) == 0
+	    && yt_text_output_stage(&output, pending, sizeof(pending), &error)
+	    && yt_text_output_close(&output, &error));
+	CHECK(yt_text_read(path, &text, &error));
+	if (text.data != NULL) {
+		CHECK(text.length == 4U
+		    && memcmp(text.data, "ABC\x1a", 4U) == 0);
+		yt_text_free(&text);
+	}
+	yt_text_output_destroy(&output);
+
+	/* The typed provider sees the four exact operations and staged bytes. */
+	memset(&script, 0, sizeof(script));
+	for (failed_operation = YT_TEXT_OUTPUT_CLOSE_PENDING_WRITE;
+	    failed_operation <= YT_TEXT_OUTPUT_CLOSE_HANDLE;
+	    ++failed_operation)
+		text_output_add_success(&script,
+		    (enum yt_text_output_close_operation)failed_operation,
+		    pending, sizeof(pending));
+	CHECK(text_output_close_fixture(&output, &script, pending,
+	    sizeof(pending)));
+	control = (struct yt_close_all_control){YT_CLOSE_ALL_HEAP_FILE, 0,
+	    yt_text_output_close_all_method, &output};
+	CHECK(yt_close_all_run(&control, 1U, NULL, &close_all, &error)
+	    && close_all.returned && close_all.completed_count == 1U
+	    && script.position == script.length
+	    && output.last_close.close_all
+	    && output.last_close.outcome == YT_TEXT_OUTPUT_CLOSE_RETURNED
+	    && output.last_close.operation_count == 4U
+	    && output.last_close.terminal_position == 37
+	    && output.file == NULL && output.orphaned_file == NULL);
+	yt_text_output_destroy(&output);
+
+	/* Every physical operation retains every DOS error and then retries CLOSE. */
+	for (failed_operation = YT_TEXT_OUTPUT_CLOSE_PENDING_WRITE;
+	    failed_operation <= YT_TEXT_OUTPUT_CLOSE_HANDLE;
+	    ++failed_operation) {
+		for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
+			memset(&script, 0, sizeof(script));
+			for (unsigned operation =
+			    YT_TEXT_OUTPUT_CLOSE_PENDING_WRITE;
+			    operation < failed_operation; ++operation)
+				text_output_add_success(&script,
+				    (enum yt_text_output_close_operation)operation,
+				    pending, sizeof(pending));
+			{
+				const uint8_t *expected = NULL;
+				size_t requested = 0U;
+
+				if (failed_operation
+				    == YT_TEXT_OUTPUT_CLOSE_PENDING_WRITE) {
+					expected = pending;
+					requested = sizeof(pending);
+				}
+				else if (failed_operation
+				    == YT_TEXT_OUTPUT_CLOSE_EOF_WRITE) {
+					expected = &eof_byte;
+					requested = 1U;
+				}
+				text_output_close_add(&script,
+				    (enum yt_text_output_close_operation)failed_operation,
+				    expected, requested, 0U, true,
+				    (uint16_t)dos_error, true, true, false);
+			}
+			text_output_close_add(&script,
+			    YT_TEXT_OUTPUT_CLOSE_CLEANUP_HANDLE, NULL, 0U, 0U,
+			    false, 0U, false, true, true);
+			CHECK(text_output_close_fixture(&output, &script, pending,
+			    sizeof(pending)));
+			yt_error_clear(&error);
+			CHECK(!yt_text_output_close(&output, &error)
+			    && error.status == YT_IO_ERROR
+			    && strcmp(error.operation, "sequential CLOSE") == 0
+			    && script.position == script.length
+			    && output.last_close.outcome
+			    == YT_TEXT_OUTPUT_CLOSE_DISK_ERROR
+			    && output.last_close.failed_operation
+			    == (enum yt_text_output_close_operation)failed_operation
+			    && output.last_close.basic_error == 70U
+			    && output.last_close.dos_error == dos_error
+			    && output.last_close.cleanup_close_attempted
+			    && output.last_close.operation_count
+			    == (size_t)failed_operation + 2U
+			    && !output.last_close.registered
+			    && !output.last_close.handle_open
+			    && output.file == NULL
+			    && output.orphaned_file == NULL);
+			yt_text_output_destroy(&output);
+		}
+	}
+
+	/* Clear-carry short writes route ERR61 without the DOS CLOSE retry. */
+	memset(&script, 0, sizeof(script));
+	text_output_close_add(&script, YT_TEXT_OUTPUT_CLOSE_PENDING_WRITE,
+	    pending, sizeof(pending), 2U, false, 0U, true, true, false);
+	CHECK(text_output_close_fixture(&output, &script, pending,
+	    sizeof(pending)));
+	yt_error_clear(&error);
+	CHECK(!yt_text_output_close(&output, &error)
+	    && script.position == script.length
+	    && output.last_close.outcome == YT_TEXT_OUTPUT_CLOSE_SHORT_ERROR
+	    && output.last_close.failed_operation
+	    == YT_TEXT_OUTPUT_CLOSE_PENDING_WRITE
+	    && output.last_close.basic_error == 61U
+	    && output.last_close.accepted == 2U
+	    && output.last_close.operation_count == 1U
+	    && !output.last_close.cleanup_close_attempted
+	    && !output.last_close.registered && output.last_close.handle_open
+	    && output.file == NULL && output.orphaned_file != NULL
+	    && output.pending_count == 0U);
+	yt_text_output_destroy(&output);
+
+	memset(&script, 0, sizeof(script));
+	text_output_add_success(&script,
+	    YT_TEXT_OUTPUT_CLOSE_PENDING_WRITE, pending, sizeof(pending));
+	text_output_close_add(&script, YT_TEXT_OUTPUT_CLOSE_EOF_WRITE,
+	    &eof_byte, 1U, 0U, false, 0U, true, true, false);
+	CHECK(text_output_close_fixture(&output, &script, pending,
+	    sizeof(pending)));
+	yt_error_clear(&error);
+	CHECK(!yt_text_output_close(&output, &error)
+	    && output.last_close.outcome == YT_TEXT_OUTPUT_CLOSE_SHORT_ERROR
+	    && output.last_close.failed_operation
+	    == YT_TEXT_OUTPUT_CLOSE_EOF_WRITE
+	    && output.last_close.operation_count == 2U
+	    && !output.last_close.cleanup_close_attempted
+	    && output.pending_count == 0U && output.orphaned_file != NULL);
+	yt_text_output_destroy(&output);
+
+	/* Cleanup carry is ignored, while adapter faults remain separately typed. */
+	memset(&script, 0, sizeof(script));
+	text_output_close_add(&script, YT_TEXT_OUTPUT_CLOSE_PENDING_WRITE,
+	    pending, sizeof(pending), 0U, true, 5U, true, true, false);
+	text_output_close_add(&script, YT_TEXT_OUTPUT_CLOSE_CLEANUP_HANDLE,
+	    NULL, 0U, 0U, true, 6U, true, true, false);
+	CHECK(text_output_close_fixture(&output, &script, pending,
+	    sizeof(pending)));
+	CHECK(!yt_text_output_close(&output, &error)
+	    && output.last_close.outcome == YT_TEXT_OUTPUT_CLOSE_DISK_ERROR
+	    && output.last_close.dos_error == 5U
+	    && output.last_close.handle_open
+	    && output.file == NULL && output.orphaned_file != NULL);
+	yt_text_output_destroy(&output);
+
+	memset(&script, 0, sizeof(script));
+	text_output_add_success(&script,
+	    YT_TEXT_OUTPUT_CLOSE_PENDING_WRITE, pending, sizeof(pending));
+	text_output_add_success(&script, YT_TEXT_OUTPUT_CLOSE_EOF_WRITE,
+	    pending, sizeof(pending));
+	text_output_add_success(&script, YT_TEXT_OUTPUT_CLOSE_TRUNCATE,
+	    pending, sizeof(pending));
+	text_output_close_add(&script, YT_TEXT_OUTPUT_CLOSE_HANDLE, NULL, 0U,
+	    0U, true, 5U, false, true, true);
+	text_output_close_add(&script, YT_TEXT_OUTPUT_CLOSE_CLEANUP_HANDLE, NULL,
+	    0U, 0U, true, 6U, false, false, false);
+	CHECK(text_output_close_fixture(&output, &script, pending,
+	    sizeof(pending)));
+	CHECK(!yt_text_output_close(&output, &error)
+	    && script.position == script.length
+	    && output.last_close.outcome == YT_TEXT_OUTPUT_CLOSE_DISK_ERROR
+	    && output.last_close.dos_error == 5U
+	    && output.last_close.cleanup_close_attempted
+	    && !output.last_close.handle_open
+	    && output.file == NULL && output.orphaned_file == NULL);
+	yt_text_output_destroy(&output);
+
+	memset(&script, 0, sizeof(script));
+	text_output_close_add(&script, YT_TEXT_OUTPUT_CLOSE_PENDING_WRITE,
+	    pending, sizeof(pending), sizeof(pending), false, 0U, true,
+	    true, false);
+	script.steps[0].provider_ok = false;
+	CHECK(text_output_close_fixture(&output, &script, pending,
+	    sizeof(pending)));
+	CHECK(!yt_text_output_close(&output, &error)
+	    && output.last_close.outcome == YT_TEXT_OUTPUT_CLOSE_PROVIDER_ERROR
+	    && output.last_close.basic_error == 57U
+	    && output.last_close.operation_count == 1U
+	    && output.last_close.registered && output.last_close.handle_open
+	    && output.file != NULL && output.orphaned_file == NULL);
+	yt_text_output_destroy(&output);
+
+	/* Missing explicit CLOSE and empty CLOSE-all retain distinct identities. */
+	yt_text_output_init(&output);
+	CHECK(yt_text_output_close(&output, &error)
+	    && output.last_close.missing && !output.last_close.close_all
+	    && output.last_close.operation_count == 0U);
+	CHECK(yt_text_output_close_all_method(&output, 0, &error)
+	    && !output.last_close.missing && output.last_close.close_all
+	    && output.last_close.operation_count == 0U);
+	CHECK(!yt_text_output_close_all_method(&output, -1, &error)
+	    && error.status == YT_INVALID);
+	yt_text_output_destroy(&output);
+
+	CHECK(yt_file_delete(path, false, &error));
+#ifdef _WIN32
+	_rmdir(directory);
+#else
+	rmdir(directory);
+#endif
 }
 
 static void
@@ -4182,6 +4555,7 @@ main(void)
 	test_database_random_open();
 	test_close_all_registry();
 	test_database_random_close();
+	test_text_output_close();
 	test_database_random_lof();
 	test_files();
 	test_radio_file();

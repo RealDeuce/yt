@@ -2095,6 +2095,33 @@ failure:
 }
 
 static bool
+clear_yt_radio_messages(struct yt_error *error)
+{
+	struct yt_text_output output;
+	struct yt_close_all_control control;
+	bool result = false;
+
+	yt_text_output_init(&output);
+	if (!yt_text_output_open(&output, "YTRMSG.DAT", error))
+		goto done;
+	control = (struct yt_close_all_control){
+		.heap_type = YT_CLOSE_ALL_HEAP_FILE,
+		.file_class = 0,
+		.method = yt_text_output_close_all_method,
+		.context = &output,
+	};
+	if (!yt_close_all_run(&control, 1U, NULL, NULL, error)
+	    || !yt_file_delete("YTRMSG.DAT", false, error)
+	    || !yt_close_all_run(NULL, 0U, NULL, NULL, error))
+		goto done;
+	result = true;
+
+done:
+	yt_text_output_destroy(&output);
+	return result;
+}
+
+static bool
 write_yt_auxiliary(struct yt_database *database,
     const struct yt_initializer_options *options, struct yt_error *error)
 {
@@ -2113,8 +2140,7 @@ write_yt_auxiliary(struct yt_database *database,
 	    error)
 	    || !yt_present_text(options, 0x22f0U, YT_INIT_OUTPUT_LINE,
 	    "Clearing YTRMSG.DAT  (Radio message file)", error)
-	    || !yt_text_write("YTRMSG.DAT", NULL, 0, true, error)
-	    || !yt_file_delete("YTRMSG.DAT", false, error)
+	    || !clear_yt_radio_messages(error)
 	    || !yt_present_text(options, 0x2325U, YT_INIT_OUTPUT_LINE, "",
 	    error)
 	    || !yt_present_text(options, 0x2339U, YT_INIT_OUTPUT_LINE,

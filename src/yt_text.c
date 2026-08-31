@@ -679,8 +679,12 @@ yt_opening_stream_run(struct yt_opening_stream_state *state,
 
 #ifdef _WIN32
 #include <io.h>
+#define yt_text_fileno _fileno
+#define yt_text_ftello _ftelli64
 #else
 #include <unistd.h>
+#define yt_text_fileno fileno
+#define yt_text_ftello ftello
 #endif
 
 static void
@@ -707,6 +711,395 @@ truncate_at_cursor(FILE *file)
 #else
 	return ftruncate(fileno(file), (off_t)position) == 0;
 #endif
+}
+
+static uint16_t
+text_output_dos_error(int system_error)
+{
+	switch (system_error) {
+	case ENOENT:
+		return 2U;
+	case ENOTDIR:
+		return 3U;
+#if defined(ENFILE) && ENFILE != EMFILE
+	case ENFILE:
+#endif
+	case EMFILE:
+		return 4U;
+	case EACCES:
+#if defined(EPERM) && EPERM != EACCES
+	case EPERM:
+#endif
+#if defined(EROFS) && EROFS != EACCES && EROFS != EPERM
+	case EROFS:
+#endif
+#if defined(EISDIR) && EISDIR != EACCES && EISDIR != EPERM \
+    && EISDIR != EROFS
+	case EISDIR:
+#endif
+		return 5U;
+	case EBADF:
+		return 6U;
+	case ENOMEM:
+		return 8U;
+#ifdef EEXIST
+	case EEXIST:
+		return 80U;
+#endif
+	default:
+		return 1U;
+	}
+}
+
+static int64_t
+text_output_position(FILE *file)
+{
+	int64_t position;
+
+	if (file == NULL)
+		return -1;
+	position = (int64_t)yt_text_ftello(file);
+	return position >= 0 ? position : -1;
+}
+
+static bool
+text_output_close_default(void *context, FILE *file,
+    enum yt_text_output_close_operation operation, const uint8_t *data,
+    size_t requested, struct yt_text_output_close_observation *observation)
+{
+	int result;
+	int saved_errno;
+
+	(void)context;
+	memset(observation, 0, sizeof(*observation));
+	observation->terminal_position = text_output_position(file);
+	switch (operation) {
+	case YT_TEXT_OUTPUT_CLOSE_PENDING_WRITE:
+	case YT_TEXT_OUTPUT_CLOSE_EOF_WRITE:
+		if (file == NULL || (data == NULL && requested != 0U))
+			return false;
+		errno = 0;
+		observation->accepted = fwrite(data, 1U, requested, file);
+		saved_errno = errno;
+		observation->carry = ferror(file) != 0;
+		observation->handle_open = true;
+		observation->dos_error = observation->carry
+		    ? text_output_dos_error(saved_errno) : 0U;
+		observation->terminal_position = text_output_position(file);
+		errno = saved_errno;
+		return true;
+	case YT_TEXT_OUTPUT_CLOSE_TRUNCATE:
+		if (file == NULL || data != NULL || requested != 0U)
+			return false;
+		errno = 0;
+		observation->terminal_position = text_output_position(file);
+		result = observation->terminal_position < 0 || fflush(file) != 0;
+#ifdef _WIN32
+		if (!result)
+			result = _chsize_s(yt_text_fileno(file),
+			    observation->terminal_position) != 0;
+#else
+		if (!result)
+			result = ftruncate(yt_text_fileno(file),
+			    (off_t)observation->terminal_position) != 0;
+#endif
+		saved_errno = errno;
+		observation->carry = result != 0;
+		observation->handle_open = true;
+		observation->dos_error = result != 0
+		    ? text_output_dos_error(saved_errno) : 0U;
+		errno = saved_errno;
+		return true;
+	case YT_TEXT_OUTPUT_CLOSE_HANDLE:
+	case YT_TEXT_OUTPUT_CLOSE_CLEANUP_HANDLE:
+		if (data != NULL || requested != 0U)
+			return false;
+		if (file == NULL) {
+			observation->carry = true;
+			observation->dos_error = 6U;
+			return true;
+		}
+		errno = 0;
+		observation->terminal_position = text_output_position(file);
+		result = fclose(file);
+		saved_errno = errno;
+		observation->carry = result != 0;
+		observation->dos_error = result != 0
+		    ? text_output_dos_error(saved_errno) : 0U;
+		observation->handle_open = false;
+		errno = saved_errno;
+		return true;
+	default:
+		return false;
+	}
+}
+
+static bool
+text_output_close_observation_valid(
+    enum yt_text_output_close_operation operation, size_t requested,
+    const struct yt_text_output_close_observation *observation)
+{
+	bool write = operation == YT_TEXT_OUTPUT_CLOSE_PENDING_WRITE
+	    || operation == YT_TEXT_OUTPUT_CLOSE_EOF_WRITE;
+	bool handle = operation == YT_TEXT_OUTPUT_CLOSE_HANDLE
+	    || operation == YT_TEXT_OUTPUT_CLOSE_CLEANUP_HANDLE;
+
+	if (observation->accepted > requested
+	    || observation->terminal_position < -1)
+		return false;
+	if (!write && observation->accepted != 0U)
+		return false;
+	if (observation->carry) {
+		if (observation->dos_error < 1U
+		    || observation->dos_error > 0xffU)
+			return false;
+		return handle || observation->handle_open;
+	}
+	if (observation->dos_error != 0U)
+		return false;
+	if (handle)
+		return !observation->handle_open;
+	return observation->handle_open;
+}
+
+void
+yt_text_output_init(struct yt_text_output *output)
+{
+	if (output != NULL)
+		memset(output, 0, sizeof(*output));
+}
+
+bool
+yt_text_output_open(struct yt_text_output *output, const char *path,
+    struct yt_error *error)
+{
+	char resolved[512];
+
+	if (output == NULL || path == NULL || output->file != NULL
+	    || output->orphaned_file != NULL) {
+		errno = 0;
+		set_error(error, YT_INVALID, "open text output", path);
+		return false;
+	}
+	if (!yt_resolve_case_path(path, true, resolved, sizeof(resolved), error))
+		return false;
+	errno = 0;
+	output->file = fopen(resolved, "w+b");
+	if (output->file == NULL) {
+		set_error(error, YT_IO_ERROR, "open text output", resolved);
+		return false;
+	}
+	(void)snprintf(output->path, sizeof(output->path), "%s", resolved);
+	output->pending_count = 0U;
+	memset(&output->last_close, 0, sizeof(output->last_close));
+	return true;
+}
+
+bool
+yt_text_output_stage(struct yt_text_output *output, const uint8_t *data,
+    size_t length, struct yt_error *error)
+{
+	if (output == NULL || output->file == NULL
+	    || (data == NULL && length != 0U)
+	    || length > sizeof(output->pending)) {
+		errno = 0;
+		set_error(error, YT_INVALID, "stage text output",
+		    output == NULL ? NULL : output->path);
+		return false;
+	}
+	if (length != 0U)
+		memcpy(output->pending, data, length);
+	output->pending_count = length;
+	return true;
+}
+
+static bool
+text_output_close_observe(struct yt_text_output *output,
+    yt_text_output_close_provider provider, FILE *file,
+    enum yt_text_output_close_operation operation, const uint8_t *data,
+    size_t requested, struct yt_text_output_close_observation *observation)
+{
+	++output->last_close.operation_count;
+	memset(observation, 0, sizeof(*observation));
+	observation->terminal_position = -1;
+	return provider(output->close_context, file, operation, data, requested,
+	    observation);
+}
+
+static void
+text_output_close_failure(struct yt_text_output *output,
+    enum yt_text_output_close_outcome outcome,
+    enum yt_text_output_close_operation operation, uint16_t basic_error,
+    uint16_t dos_error, const struct yt_text_output_close_observation *observed,
+    struct yt_error *error)
+{
+	output->last_close.outcome = outcome;
+	output->last_close.failed_operation = operation;
+	output->last_close.basic_error = basic_error;
+	output->last_close.dos_error = dos_error;
+	if (observed != NULL) {
+		output->last_close.accepted = observed->accepted;
+		output->last_close.terminal_position =
+		    observed->terminal_position;
+	}
+	output->last_close.registered = output->file != NULL;
+	output->last_close.handle_open = output->file != NULL
+	    || output->orphaned_file != NULL;
+	set_error(error, YT_IO_ERROR, output->last_close.close_all
+	    ? "CLOSE all" : "sequential CLOSE", output->path);
+}
+
+static bool
+text_output_cleanup_after_carry(struct yt_text_output *output,
+    yt_text_output_close_provider provider, FILE *file, bool handle_open,
+    struct yt_error *error,
+    enum yt_text_output_close_operation failed_operation,
+    const struct yt_text_output_close_observation *failure)
+{
+	struct yt_text_output_close_observation cleanup;
+	bool delivered;
+	bool valid;
+
+	output->file = NULL;
+	output->pending_count = 0U;
+	output->last_close.cleanup_close_attempted = true;
+	delivered = text_output_close_observe(output, provider,
+	    handle_open ? file : NULL, YT_TEXT_OUTPUT_CLOSE_CLEANUP_HANDLE,
+	    NULL, 0U, &cleanup);
+	valid = delivered && text_output_close_observation_valid(
+	    YT_TEXT_OUTPUT_CLOSE_CLEANUP_HANDLE, 0U, &cleanup);
+	if ((!valid && handle_open) || (valid && cleanup.handle_open))
+		output->orphaned_file = file;
+	text_output_close_failure(output, valid
+	    ? YT_TEXT_OUTPUT_CLOSE_DISK_ERROR
+	    : YT_TEXT_OUTPUT_CLOSE_PROVIDER_ERROR, failed_operation,
+	    valid ? 70U : 57U, failure->dos_error, failure, error);
+	return false;
+}
+
+static bool
+text_output_close_execute(struct yt_text_output *output, bool close_all,
+    struct yt_error *error)
+{
+	yt_text_output_close_provider provider;
+	struct yt_text_output_close_observation observation;
+	FILE *file;
+	const uint8_t *data;
+	size_t requested;
+	enum yt_text_output_close_operation operation;
+	bool delivered;
+	static const uint8_t eof_byte = 0x1aU;
+
+	if (output == NULL) {
+		errno = 0;
+		set_error(error, YT_INVALID,
+		    close_all ? "CLOSE all" : "sequential CLOSE", NULL);
+		return false;
+	}
+	memset(&output->last_close, 0, sizeof(output->last_close));
+	output->last_close.close_all = close_all;
+	output->last_close.terminal_position = -1;
+	if (output->file == NULL) {
+		output->last_close.outcome = YT_TEXT_OUTPUT_CLOSE_RETURNED;
+		output->last_close.missing = !close_all;
+		output->last_close.handle_open = output->orphaned_file != NULL;
+		return true;
+	}
+	file = output->file;
+	provider = output->close_provider != NULL ? output->close_provider
+	    : text_output_close_default;
+	for (operation = YT_TEXT_OUTPUT_CLOSE_PENDING_WRITE;
+	    operation <= YT_TEXT_OUTPUT_CLOSE_HANDLE; ++operation) {
+		if (operation == YT_TEXT_OUTPUT_CLOSE_PENDING_WRITE) {
+			data = output->pending;
+			requested = output->pending_count;
+			output->pending_count = 0U;
+		}
+		else if (operation == YT_TEXT_OUTPUT_CLOSE_EOF_WRITE) {
+			output->pending[0] = eof_byte;
+			output->pending_count = 1U;
+			data = output->pending;
+			requested = 1U;
+			output->pending_count = 0U;
+		}
+		else {
+			data = NULL;
+			requested = 0U;
+		}
+		delivered = text_output_close_observe(output, provider, file,
+		    operation, data, requested, &observation);
+		if (!delivered || !text_output_close_observation_valid(operation,
+		    requested, &observation)) {
+			if (delivered && !observation.handle_open)
+				output->file = NULL;
+			text_output_close_failure(output,
+			    YT_TEXT_OUTPUT_CLOSE_PROVIDER_ERROR, operation, 57U,
+			    observation.dos_error, delivered ? &observation : NULL,
+			    error);
+			return false;
+		}
+		if (observation.carry)
+			return text_output_cleanup_after_carry(output, provider,
+			    file, observation.handle_open, error, operation,
+			    &observation);
+		if (observation.accepted != requested) {
+			output->file = NULL;
+			output->orphaned_file = file;
+			text_output_close_failure(output,
+			    YT_TEXT_OUTPUT_CLOSE_SHORT_ERROR, operation, 61U, 0U,
+			    &observation, error);
+			return false;
+		}
+		output->last_close.terminal_position =
+		    observation.terminal_position;
+	}
+	output->file = NULL;
+	output->pending_count = 0U;
+	output->last_close.outcome = YT_TEXT_OUTPUT_CLOSE_RETURNED;
+	output->last_close.registered = false;
+	output->last_close.handle_open = output->orphaned_file != NULL;
+	return true;
+}
+
+bool
+yt_text_output_close(struct yt_text_output *output, struct yt_error *error)
+{
+	return text_output_close_execute(output, false, error);
+}
+
+bool
+yt_text_output_close_all_method(void *context, int8_t file_class,
+    struct yt_error *error)
+{
+	if (file_class < 0) {
+		errno = 0;
+		set_error(error, YT_INVALID, "CLOSE all class", NULL);
+		return false;
+	}
+	return text_output_close_execute(context, true, error);
+}
+
+void
+yt_text_output_set_close_provider(struct yt_text_output *output,
+    yt_text_output_close_provider provider, void *context)
+{
+	if (output == NULL)
+		return;
+	output->close_provider = provider;
+	output->close_context = context;
+}
+
+void
+yt_text_output_destroy(struct yt_text_output *output)
+{
+	if (output == NULL)
+		return;
+	if (output->file != NULL)
+		(void)fclose(output->file);
+	if (output->orphaned_file != NULL
+	    && output->orphaned_file != output->file)
+		(void)fclose(output->orphaned_file);
+	memset(output, 0, sizeof(*output));
 }
 
 bool

@@ -48,6 +48,75 @@ bool yt_text_input_close(struct yt_text_input *input,
 	struct yt_error *error);
 void yt_text_input_destroy(struct yt_text_input *input);
 
+#define YT_TEXT_OUTPUT_BUFFER_SIZE 128U
+
+enum yt_text_output_close_operation {
+	YT_TEXT_OUTPUT_CLOSE_PENDING_WRITE,
+	YT_TEXT_OUTPUT_CLOSE_EOF_WRITE,
+	YT_TEXT_OUTPUT_CLOSE_TRUNCATE,
+	YT_TEXT_OUTPUT_CLOSE_HANDLE,
+	YT_TEXT_OUTPUT_CLOSE_CLEANUP_HANDLE,
+};
+
+struct yt_text_output_close_observation {
+	size_t accepted;
+	bool carry;
+	bool handle_open;
+	uint16_t dos_error;
+	int64_t terminal_position;
+};
+
+typedef bool (*yt_text_output_close_provider)(void *context, FILE *file,
+	enum yt_text_output_close_operation operation, const uint8_t *data,
+	size_t requested, struct yt_text_output_close_observation *observation);
+
+enum yt_text_output_close_outcome {
+	YT_TEXT_OUTPUT_CLOSE_NONE,
+	YT_TEXT_OUTPUT_CLOSE_RETURNED,
+	YT_TEXT_OUTPUT_CLOSE_SHORT_ERROR,
+	YT_TEXT_OUTPUT_CLOSE_DISK_ERROR,
+	YT_TEXT_OUTPUT_CLOSE_PROVIDER_ERROR,
+};
+
+struct yt_text_output_close_result {
+	enum yt_text_output_close_outcome outcome;
+	enum yt_text_output_close_operation failed_operation;
+	size_t operation_count;
+	size_t accepted;
+	uint16_t dos_error;
+	uint16_t basic_error;
+	int64_t terminal_position;
+	bool close_all;
+	bool missing;
+	bool cleanup_close_attempted;
+	bool registered;
+	bool handle_open;
+};
+
+struct yt_text_output {
+	FILE *file;
+	FILE *orphaned_file;
+	char path[512];
+	uint8_t pending[YT_TEXT_OUTPUT_BUFFER_SIZE];
+	size_t pending_count;
+	yt_text_output_close_provider close_provider;
+	void *close_context;
+	struct yt_text_output_close_result last_close;
+};
+
+void yt_text_output_init(struct yt_text_output *output);
+bool yt_text_output_open(struct yt_text_output *output, const char *path,
+	struct yt_error *error);
+bool yt_text_output_stage(struct yt_text_output *output,
+	const uint8_t *data, size_t length, struct yt_error *error);
+bool yt_text_output_close(struct yt_text_output *output,
+	struct yt_error *error);
+bool yt_text_output_close_all_method(void *context, int8_t file_class,
+	struct yt_error *error);
+void yt_text_output_set_close_provider(struct yt_text_output *output,
+	yt_text_output_close_provider provider, void *context);
+void yt_text_output_destroy(struct yt_text_output *output);
+
 struct yt_text_sequential_play_state {
 	const char *path;
 	bool file_open;
