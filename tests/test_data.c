@@ -767,6 +767,15 @@ text_open_use(struct yt_text_output *output,
 }
 
 static void
+text_open_use_input(struct yt_text_input *input,
+    struct text_open_script *script)
+{
+	yt_text_input_init(input);
+	yt_text_input_set_open_provider(input,
+	    scripted_text_open, script);
+}
+
+static void
 text_open_check_consumed(const struct text_open_script *script)
 {
 	CHECK(script->position == script->length);
@@ -3350,6 +3359,177 @@ test_output_open_success_model(void)
 }
 
 static void
+test_input_open_success_model(void)
+{
+	struct text_open_script script;
+	struct text_open_step *step;
+	struct yt_text_input input;
+	struct yt_error error;
+
+	memset(&script, 0, sizeof(script));
+	text_open_add_file(&script, YT_TEXT_OPEN_EXISTING, 0U);
+	text_open_add_query(&script, 0U, false, 0U, false);
+	text_open_use_input(&input, &script);
+	yt_error_clear(&error);
+	CHECK(yt_text_input_open(&input, "input-script.dat", &error)
+	    && input.last_open.outcome == YT_TEXT_OPEN_RETURNED
+	    && input.last_open.operation_count == 2U
+	    && input.last_open.access_attempt_count == 1U
+	    && input.last_open.access_attempts[0] == 0U
+	    && input.last_open.terminal_position == 0
+	    && !input.last_open.created && !input.last_open.device
+	    && input.last_open.registered && input.last_open.handle_open
+	    && ftell(input.file) == 0L);
+	text_open_check_consumed(&script);
+	yt_text_input_destroy(&input);
+
+	/* Query carry is ignored; returned device state still selects configure. */
+	memset(&script, 0, sizeof(script));
+	text_open_add_file(&script, YT_TEXT_OPEN_EXISTING, 0U);
+	text_open_add_query(&script, 0U, true, 6U, true);
+	step = text_open_add(&script,
+	    YT_TEXT_OPEN_CONFIGURE_DEVICE, 0U, 0U);
+	if (step != NULL)
+		step->observation.handle_open = true;
+	text_open_use_input(&input, &script);
+	CHECK(yt_text_input_open(&input, "input-script.dat", &error)
+	    && input.last_open.outcome == YT_TEXT_OPEN_RETURNED
+	    && input.last_open.operation_count == 3U
+	    && input.last_open.device && input.last_open.registered
+	    && input.last_open.handle_open);
+	text_open_check_consumed(&script);
+	yt_text_input_destroy(&input);
+}
+
+static void
+test_input_open_error_model(void)
+{
+	struct text_open_script script;
+	struct text_open_step *step;
+	struct yt_text_input input;
+	struct yt_error error;
+	unsigned dos_error;
+	unsigned mapped_error;
+
+	for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
+		if (dos_error == 5U)
+			continue;
+		memset(&script, 0, sizeof(script));
+		text_open_add_error(&script, YT_TEXT_OPEN_EXISTING,
+		    0U, 0U, (uint16_t)dos_error, 0U);
+		text_open_use_input(&input, &script);
+		yt_error_clear(&error);
+		CHECK(!yt_text_input_open(&input, "input-script.dat", &error)
+		    && input.last_open.outcome == YT_TEXT_OPEN_INITIAL_ERROR
+		    && input.last_open.basic_error
+		    == (dos_error == 3U ? 76U : 53U)
+		    && input.last_open.dos_error == dos_error
+		    && input.last_open.operation_count == 1U
+		    && input.last_open.access_attempt_count == 1U
+		    && input.last_open.access_attempts[0] == 0U
+		    && !input.last_open.registered
+		    && !input.last_open.handle_open);
+		text_open_check_consumed(&script);
+		yt_text_input_destroy(&input);
+	}
+	for (mapped_error = 70U; mapped_error <= 75U; mapped_error += 5U) {
+		memset(&script, 0, sizeof(script));
+		text_open_add_error(&script, YT_TEXT_OPEN_EXISTING,
+		    0U, 0U, 5U, 0U);
+		text_open_add_extended(&script, 5U,
+		    (uint16_t)mapped_error);
+		text_open_use_input(&input, &script);
+		CHECK(!yt_text_input_open(&input, "input-script.dat", &error)
+		    && input.last_open.outcome == YT_TEXT_OPEN_INITIAL_ERROR
+		    && input.last_open.failed_operation
+		    == YT_TEXT_OPEN_EXTENDED_ERROR
+		    && input.last_open.basic_error == mapped_error
+		    && input.last_open.dos_error == 5U
+		    && input.last_open.operation_count == 2U);
+		text_open_check_consumed(&script);
+		yt_text_input_destroy(&input);
+	}
+
+	/* Device configuration carry maps every DOS byte to ERR57. */
+	for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
+		memset(&script, 0, sizeof(script));
+		text_open_add_file(&script, YT_TEXT_OPEN_EXISTING, 0U);
+		text_open_add_query(&script, 0U, false, 0U, true);
+		step = text_open_add(&script,
+		    YT_TEXT_OPEN_CONFIGURE_DEVICE, 0U, 0U);
+		if (step != NULL) {
+			step->observation.carry = true;
+			step->observation.dos_error = (uint16_t)dos_error;
+			step->observation.handle_open = true;
+		}
+		text_open_use_input(&input, &script);
+		CHECK(!yt_text_input_open(&input, "input-script.dat", &error)
+		    && input.last_open.outcome == YT_TEXT_OPEN_DEVICE_ERROR
+		    && input.last_open.failed_operation
+		    == YT_TEXT_OPEN_CONFIGURE_DEVICE
+		    && input.last_open.basic_error == 57U
+		    && input.last_open.dos_error == dos_error
+		    && input.last_open.device && input.last_open.registered
+		    && input.last_open.handle_open);
+		text_open_check_consumed(&script);
+		yt_text_input_destroy(&input);
+	}
+
+	memset(&script, 0, sizeof(script));
+	step = text_open_add(&script, YT_TEXT_OPEN_EXISTING, 0U, 0U);
+	if (step != NULL)
+		step->provider_ok = false;
+	text_open_use_input(&input, &script);
+	CHECK(!yt_text_input_open(&input, "input-script.dat", &error)
+	    && input.last_open.outcome == YT_TEXT_OPEN_PROVIDER_ERROR
+	    && !input.last_open.registered && !input.last_open.handle_open);
+	text_open_check_consumed(&script);
+	yt_text_input_destroy(&input);
+
+	memset(&script, 0, sizeof(script));
+	text_open_add_error(&script, YT_TEXT_OPEN_EXISTING,
+	    0U, 0U, 5U, 0U);
+	step = text_open_add(&script, YT_TEXT_OPEN_EXTENDED_ERROR,
+	    0U, 5U);
+	text_open_use_input(&input, &script);
+	CHECK(!yt_text_input_open(&input, "input-script.dat", &error)
+	    && input.last_open.outcome == YT_TEXT_OPEN_PROVIDER_ERROR
+	    && input.last_open.failed_operation
+	    == YT_TEXT_OPEN_EXTENDED_ERROR
+	    && input.last_open.operation_count == 2U
+	    && !input.last_open.registered && !input.last_open.handle_open);
+	text_open_check_consumed(&script);
+	yt_text_input_destroy(&input);
+
+	memset(&script, 0, sizeof(script));
+	text_open_add_file(&script, YT_TEXT_OPEN_EXISTING, 0U);
+	step = text_open_add(&script, YT_TEXT_OPEN_QUERY_DEVICE, 0U, 0U);
+	if (step != NULL)
+		step->provider_ok = false;
+	text_open_use_input(&input, &script);
+	CHECK(!yt_text_input_open(&input, "input-script.dat", &error)
+	    && input.last_open.outcome == YT_TEXT_OPEN_PROVIDER_ERROR
+	    && input.last_open.failed_operation == YT_TEXT_OPEN_QUERY_DEVICE
+	    && input.last_open.operation_count == 2U
+	    && input.last_open.registered && input.last_open.handle_open);
+	text_open_check_consumed(&script);
+	yt_text_input_destroy(&input);
+
+	/* A malformed supplied live handle is retained for explicit cleanup. */
+	memset(&script, 0, sizeof(script));
+	text_open_add_file(&script, YT_TEXT_OPEN_EXISTING, 0U);
+	if (script.length != 0U)
+		script.steps[0].observation.terminal_position = 1;
+	text_open_use_input(&input, &script);
+	CHECK(!yt_text_input_open(&input, "input-script.dat", &error)
+	    && input.last_open.outcome == YT_TEXT_OPEN_PROVIDER_ERROR
+	    && !input.last_open.registered && input.last_open.handle_open
+	    && input.file == NULL && input.orphaned_file != NULL);
+	text_open_check_consumed(&script);
+	yt_text_input_destroy(&input);
+}
+
+static void
 test_output_open_error_model(void)
 {
 	struct text_open_script script;
@@ -4448,6 +4628,7 @@ test_text_input(void)
 	char actual[320];
 	char requested[320];
 	char missing[320];
+	char missing_parent[384];
 	uint8_t source[640];
 	struct yt_text_input input;
 	struct yt_error error;
@@ -4469,6 +4650,8 @@ test_text_input(void)
 	snprintf(actual, sizeof(actual), "%s/xannorhq.txt", directory);
 	snprintf(requested, sizeof(requested), "%s/XannorHQ.TXT", directory);
 	snprintf(missing, sizeof(missing), "%s/MISSING.TXT", directory);
+	snprintf(missing_parent, sizeof(missing_parent),
+	    "%s/absent/MISSING.TXT", directory);
 	source[position++] = '\r';
 	source[position++] = '\n';
 	source[position++] = 'A';
@@ -4487,7 +4670,13 @@ test_text_input(void)
 	yt_error_clear(&error);
 	CHECK(yt_text_input_close(&input, &error));
 	CHECK(yt_text_input_open(&input, requested, &error));
-	CHECK(input.file != NULL && strcmp(input.path, actual) == 0);
+	CHECK(input.file != NULL && strcmp(input.path, actual) == 0
+	    && input.last_open.outcome == YT_TEXT_OPEN_RETURNED
+	    && input.last_open.operation_count == 2U
+	    && input.last_open.access_attempt_count == 1U
+	    && input.last_open.access_attempts[0] == 0U
+	    && input.last_open.terminal_position == 0
+	    && input.last_open.registered && input.last_open.handle_open);
 	CHECK(yt_text_input_eof(&input, &eof, &error) && !eof);
 	CHECK(yt_text_input_read_line(&input, &line, &length, &available,
 	    &error) && available && length == 0U);
@@ -4522,7 +4711,16 @@ test_text_input(void)
 	CHECK(yt_text_input_close(&input, &error) && input.file == NULL);
 	yt_error_clear(&error);
 	CHECK(!yt_text_input_open(&input, missing, &error)
-	    && error.status == YT_NOT_FOUND && input.file == NULL);
+	    && error.status == YT_NOT_FOUND && input.file == NULL
+	    && input.last_open.outcome == YT_TEXT_OPEN_INITIAL_ERROR
+	    && input.last_open.dos_error == 2U
+	    && input.last_open.basic_error == 53U);
+	yt_error_clear(&error);
+	CHECK(!yt_text_input_open(&input, missing_parent, &error)
+	    && error.status == YT_NOT_FOUND && input.file == NULL
+	    && input.last_open.outcome == YT_TEXT_OPEN_INITIAL_ERROR
+	    && input.last_open.dos_error == 3U
+	    && input.last_open.basic_error == 76U);
 	yt_text_input_destroy(&input);
 	CHECK(yt_file_delete(actual, false, &error));
 #ifdef _WIN32
@@ -5830,6 +6028,8 @@ main(void)
 	test_database_random_lof();
 	test_files();
 	test_radio_file();
+	test_input_open_success_model();
+	test_input_open_error_model();
 	test_output_open_success_model();
 	test_output_open_error_model();
 	test_append_open_success_model();

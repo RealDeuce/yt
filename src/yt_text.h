@@ -29,25 +29,6 @@ enum yt_text_stream_line_status {
 enum yt_text_stream_line_status yt_text_stream_line_input_next(FILE *file,
     uint8_t *line, size_t capacity, size_t *line_length);
 
-struct yt_text_input {
-	FILE *file;
-	char path[512];
-	uint8_t *line;
-	size_t line_capacity;
-};
-
-void yt_text_input_init(struct yt_text_input *input);
-bool yt_text_input_open(struct yt_text_input *input, const char *path,
-	struct yt_error *error);
-bool yt_text_input_read_line(struct yt_text_input *input,
-	const uint8_t **line, size_t *length, bool *available,
-	struct yt_error *error);
-bool yt_text_input_eof(struct yt_text_input *input, bool *eof,
-	struct yt_error *error);
-bool yt_text_input_close(struct yt_text_input *input,
-	struct yt_error *error);
-void yt_text_input_destroy(struct yt_text_input *input);
-
 #define YT_TEXT_OUTPUT_BUFFER_SIZE 128U
 
 enum yt_text_open_operation {
@@ -115,6 +96,31 @@ struct yt_text_open_result {
 	bool registered;
 	bool handle_open;
 };
+
+struct yt_text_input {
+	FILE *file;
+	FILE *orphaned_file;
+	char path[512];
+	uint8_t *line;
+	size_t line_capacity;
+	yt_text_open_provider open_provider;
+	void *open_context;
+	struct yt_text_open_result last_open;
+};
+
+void yt_text_input_init(struct yt_text_input *input);
+bool yt_text_input_open(struct yt_text_input *input, const char *path,
+	struct yt_error *error);
+bool yt_text_input_read_line(struct yt_text_input *input,
+	const uint8_t **line, size_t *length, bool *available,
+	struct yt_error *error);
+bool yt_text_input_eof(struct yt_text_input *input, bool *eof,
+	struct yt_error *error);
+bool yt_text_input_close(struct yt_text_input *input,
+	struct yt_error *error);
+void yt_text_input_set_open_provider(struct yt_text_input *input,
+	yt_text_open_provider provider, void *context);
+void yt_text_input_destroy(struct yt_text_input *input);
 
 struct yt_text_output_write_observation {
 	size_t accepted;

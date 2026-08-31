@@ -8,6 +8,8 @@
 
 static void set_error(struct yt_error *error, enum yt_status status,
     const char *operation, const char *path);
+static bool text_input_open_execute(struct yt_text_input *input,
+    const char *path, struct yt_error *error);
 static bool text_output_open_execute(struct yt_text_output *output,
     const char *path, struct yt_error *error);
 
@@ -121,28 +123,21 @@ yt_text_input_init(struct yt_text_input *input)
 		memset(input, 0, sizeof(*input));
 }
 
+void
+yt_text_input_set_open_provider(struct yt_text_input *input,
+    yt_text_open_provider provider, void *context)
+{
+	if (input == NULL)
+		return;
+	input->open_provider = provider;
+	input->open_context = context;
+}
+
 bool
 yt_text_input_open(struct yt_text_input *input, const char *path,
     struct yt_error *error)
 {
-	char resolved[512];
-
-	if (input == NULL || path == NULL || input->file != NULL) {
-		errno = 0;
-		set_error(error, YT_INVALID, "open text input", path);
-		return false;
-	}
-	if (!yt_resolve_case_path(path, false, resolved, sizeof(resolved), error))
-		return false;
-	errno = 0;
-	input->file = fopen(resolved, "rb");
-	if (input->file == NULL) {
-		set_error(error, errno == ENOENT ? YT_NOT_FOUND : YT_IO_ERROR,
-		    "open text input", resolved);
-		return false;
-	}
-	(void)snprintf(input->path, sizeof(input->path), "%s", resolved);
-	return true;
+	return text_input_open_execute(input, path, error);
 }
 
 static bool
@@ -306,6 +301,9 @@ yt_text_input_destroy(struct yt_text_input *input)
 		return;
 	if (input->file != NULL)
 		(void)fclose(input->file);
+	if (input->orphaned_file != NULL
+	    && input->orphaned_file != input->file)
+		(void)fclose(input->orphaned_file);
 	free(input->line);
 	memset(input, 0, sizeof(*input));
 }
@@ -954,7 +952,6 @@ text_open_default(void *context, const char *path,
 	int saved_errno;
 
 	(void)context;
-	(void)access;
 	(void)prior_dos_error;
 	memset(observation, 0, sizeof(*observation));
 	observation->terminal_position = -1;
@@ -964,7 +961,8 @@ text_open_default(void *context, const char *path,
 	case YT_TEXT_OPEN_CREATE:
 		errno = 0;
 		observation->file = fopen(path,
-		    operation == YT_TEXT_OPEN_CREATE ? "w+b" : "r+b");
+		    operation == YT_TEXT_OPEN_CREATE ? "w+b"
+		    : access == 0U ? "rb" : "r+b");
 		if (observation->file == NULL) {
 			observation->carry = true;
 			observation->dos_error = text_output_dos_error(path, errno);
@@ -1154,6 +1152,144 @@ text_open_observation_valid(enum yt_text_open_operation operation,
 		return observation->dos_error >= 1U;
 	return observation->dos_error == 0U
 	    && observation->terminal_position >= 0;
+}
+
+static void
+text_input_open_failure(struct yt_text_input *input,
+    enum yt_text_open_outcome outcome,
+    enum yt_text_open_operation operation, uint16_t basic_error,
+    uint16_t dos_error, struct yt_error *error)
+{
+	input->last_open.outcome = outcome;
+	input->last_open.failed_operation = operation;
+	input->last_open.basic_error = basic_error;
+	input->last_open.dos_error = dos_error;
+	input->last_open.registered = input->file != NULL;
+	input->last_open.handle_open = input->file != NULL
+	    || input->orphaned_file != NULL;
+	set_error(error, basic_error == 53U || basic_error == 76U
+	    ? YT_NOT_FOUND : YT_IO_ERROR, "sequential INPUT OPEN", input->path);
+}
+
+static bool
+text_input_open_observe(struct yt_text_input *input, const char *path,
+    enum yt_text_open_operation operation, FILE *active_file,
+    uint16_t prior_dos_error,
+    struct yt_text_open_observation *observation)
+{
+	yt_text_open_provider provider = input->open_provider != NULL
+	    ? input->open_provider : text_open_default;
+	bool delivered;
+
+	++input->last_open.operation_count;
+	memset(observation, 0, sizeof(*observation));
+	observation->terminal_position = -1;
+	delivered = provider(input->open_context, path, operation, 0U,
+	    active_file, 0, NULL, 0U, prior_dos_error, observation);
+	input->last_open.accepted = observation->accepted;
+	if (observation->terminal_position >= 0)
+		input->last_open.terminal_position =
+		    observation->terminal_position;
+	return delivered;
+}
+
+static bool
+text_input_open_execute(struct yt_text_input *input, const char *path,
+    struct yt_error *error)
+{
+	char resolved[512];
+	struct yt_text_open_observation observation;
+	bool delivered;
+	bool valid;
+
+	if (input == NULL || path == NULL || input->file != NULL
+	    || input->orphaned_file != NULL) {
+		errno = 0;
+		set_error(error, YT_INVALID, "open text input", path);
+		return false;
+	}
+	memset(&input->last_open, 0, sizeof(input->last_open));
+	input->last_open.failed_operation = YT_TEXT_OPEN_EXISTING;
+	input->last_open.terminal_position = -1;
+	if (!yt_resolve_case_path(path, true, resolved, sizeof(resolved), error))
+		return false;
+	(void)snprintf(input->path, sizeof(input->path), "%s", resolved);
+	input->last_open.access_attempts[
+	    input->last_open.access_attempt_count++] = 0U;
+	delivered = text_input_open_observe(input, resolved,
+	    YT_TEXT_OPEN_EXISTING, NULL, 0U, &observation);
+	valid = delivered && text_open_observation_valid(
+	    YT_TEXT_OPEN_EXISTING, 0U, &observation);
+	if (!valid) {
+		if (observation.file != NULL && observation.handle_open)
+			input->orphaned_file = observation.file;
+		text_input_open_failure(input, YT_TEXT_OPEN_PROVIDER_ERROR,
+		    YT_TEXT_OPEN_EXISTING, 53U, observation.dos_error, error);
+		return false;
+	}
+	if (observation.carry) {
+		uint16_t dos_error = observation.dos_error;
+
+		if (dos_error == 5U) {
+			delivered = text_input_open_observe(input, resolved,
+			    YT_TEXT_OPEN_EXTENDED_ERROR, NULL, dos_error,
+			    &observation);
+			valid = delivered && text_open_observation_valid(
+			    YT_TEXT_OPEN_EXTENDED_ERROR, 0U, &observation);
+			if (!valid) {
+				text_input_open_failure(input,
+				    YT_TEXT_OPEN_PROVIDER_ERROR,
+				    YT_TEXT_OPEN_EXTENDED_ERROR, 53U,
+				    dos_error, error);
+				return false;
+			}
+			text_input_open_failure(input,
+			    YT_TEXT_OPEN_INITIAL_ERROR,
+			    YT_TEXT_OPEN_EXTENDED_ERROR,
+			    observation.mapped_error, dos_error, error);
+			return false;
+		}
+		text_input_open_failure(input, YT_TEXT_OPEN_INITIAL_ERROR,
+		    YT_TEXT_OPEN_EXISTING, dos_error == 3U ? 76U : 53U,
+		    dos_error, error);
+		return false;
+	}
+	input->file = observation.file;
+	delivered = text_input_open_observe(input, resolved,
+	    YT_TEXT_OPEN_QUERY_DEVICE, input->file, 0U, &observation);
+	valid = delivered && text_open_observation_valid(
+	    YT_TEXT_OPEN_QUERY_DEVICE, 0U, &observation);
+	if (!valid) {
+		text_input_open_failure(input, YT_TEXT_OPEN_PROVIDER_ERROR,
+		    YT_TEXT_OPEN_QUERY_DEVICE, 57U, observation.dos_error, error);
+		return false;
+	}
+	input->last_open.device = observation.device;
+	if (observation.device) {
+		delivered = text_input_open_observe(input, resolved,
+		    YT_TEXT_OPEN_CONFIGURE_DEVICE, input->file, 0U,
+		    &observation);
+		valid = delivered && text_open_observation_valid(
+		    YT_TEXT_OPEN_CONFIGURE_DEVICE, 0U, &observation);
+		if (!valid) {
+			text_input_open_failure(input,
+			    YT_TEXT_OPEN_PROVIDER_ERROR,
+			    YT_TEXT_OPEN_CONFIGURE_DEVICE, 57U,
+			    observation.dos_error, error);
+			return false;
+		}
+		if (observation.carry) {
+			text_input_open_failure(input,
+			    YT_TEXT_OPEN_DEVICE_ERROR,
+			    YT_TEXT_OPEN_CONFIGURE_DEVICE, 57U,
+			    observation.dos_error, error);
+			return false;
+		}
+	}
+	input->last_open.outcome = YT_TEXT_OPEN_RETURNED;
+	input->last_open.registered = true;
+	input->last_open.handle_open = true;
+	return true;
 }
 
 static bool
