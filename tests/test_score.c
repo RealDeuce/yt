@@ -28,6 +28,37 @@ fail(const char *message)
 	return EXIT_FAILURE;
 }
 
+struct score_database_read_fault {
+	size_t calls;
+	size_t fail_at;
+};
+
+static bool
+score_database_read_with_fault(void *context, FILE *file, uint8_t *data,
+    size_t requested, struct yt_database_read_observation *observation)
+{
+	struct score_database_read_fault *fault = context;
+	long position;
+
+	memset(observation, 0, sizeof(*observation));
+	++fault->calls;
+	if (fault->calls == fault->fail_at) {
+		observation->carry = true;
+		observation->dos_error = 6U;
+		observation->terminal_position = 0x55667788;
+		return true;
+	}
+	observation->accepted = fread(data, 1U, requested, file);
+	observation->carry = ferror(file) != 0;
+	position = ftell(file);
+	observation->terminal_position = position >= 0 ? position : 0;
+	if (observation->carry) {
+		observation->dos_error = 1U;
+		observation->mapped_error = 57U;
+	}
+	return true;
+}
+
 enum startup_configuration_event {
 	STARTUP_CONFIGURATION_OPEN = 1,
 	STARTUP_CONFIGURATION_LOAD,
@@ -13410,6 +13441,7 @@ check_maintenance_xannor_headquarters_relocation_pass(void)
 	struct yt_record sector_after;
 	struct yt_game game;
 	struct yt_error error;
+	struct score_database_read_fault read_fault = {0U, 3U};
 	float location[21] = {0};
 	size_t offset;
 	int sector;
@@ -13525,13 +13557,22 @@ check_maintenance_xannor_headquarters_relocation_pass(void)
 	yt_random_set_provider(&game.random, score_random_fill, &script);
 	game.config.headquarters = 12.0f;
 	location[1] = 12.0f;
+	yt_database_set_read_provider(&game.database,
+	    score_database_read_with_fault, &read_fault);
 	if (yt_maintenance_xannor_headquarters_relocate(&game, location,
 	    true, 1.0f, 0.0, NULL, 0U,
 	    score_line_collect, &screen, &relocation, &error)
-	    || game.random.draws != 1U || script.position != sizeof(failure_draw)
+	    || game.random.draws != 1U
+	    || script.position != sizeof(failure_draw)
+	    || read_fault.calls != 3U
+	    || game.database.last_get.outcome != YT_DATABASE_GET_READ_ERROR
+	    || game.database.last_get.basic_error != 57U
+	    || game.database.last_get.dos_error != 6U
+	    || game.database.last_get.terminal_position != 0x55667788
 	    || game.config.headquarters != 11.0f || location[1] != 11.0f
 	    || screen.length != 0U)
 		goto done;
+	yt_database_set_read_provider(&game.database, NULL, NULL);
 	yt_error_clear(&error);
 	if (!yt_database_read(&game.database, 1U, &config_after, &error)
 	    || yt_record_get_number(&config_after, YT_F117) != 11.0f
@@ -13540,6 +13581,7 @@ check_maintenance_xannor_headquarters_relocation_pass(void)
 	valid = true;
 
 done:
+	yt_database_set_read_provider(&game.database, NULL, NULL);
 	yt_text_free(&news);
 	yt_game_close(&game);
 	(void)remove("YTDATA.DAT");
@@ -15416,6 +15458,7 @@ check_player_constructor_failures(void)
 	struct yt_record after;
 	struct yt_player player;
 	struct yt_error error;
+	struct score_database_read_fault read_fault = {0U, 1U};
 	bool valid = false;
 
 	remove("CONSTRUCT.DAT");
@@ -15424,9 +15467,13 @@ check_player_constructor_failures(void)
 	if (!yt_database_open(&game.database, "CONSTRUCT.DAT", YT_OPEN_CREATE,
 	    &error))
 		return false;
+	yt_database_set_read_provider(&game.database,
+	    score_database_read_with_fault, &read_fault);
 	if (yt_game_construct_player(&game, 2, 77.0f, &player, &error)
-	    || error.status != YT_EOF)
+	    || error.status != YT_IO_ERROR || read_fault.calls != 1U
+	    || game.database.last_get.basic_error != 57U)
 		goto close;
+	yt_database_set_read_provider(&game.database, NULL, NULL);
 
 	yt_record_blank(&config);
 	yt_record_set_number(&config, YT_F49, 123.0f);
@@ -15435,10 +15482,15 @@ check_player_constructor_failures(void)
 	yt_record_set_number(&config, YT_F73, 9.0f);
 	if (!yt_database_write(&game.database, 1, &config, &error))
 		goto close;
+	read_fault = (struct score_database_read_fault){0U, 2U};
+	yt_database_set_read_provider(&game.database,
+	    score_database_read_with_fault, &read_fault);
 	yt_error_clear(&error);
 	if (yt_game_construct_player(&game, 2, 77.0f, &player, &error)
-	    || error.status != YT_EOF)
+	    || error.status != YT_IO_ERROR || read_fault.calls != 2U
+	    || game.database.last_get.basic_error != 57U)
 		goto close;
+	yt_database_set_read_provider(&game.database, NULL, NULL);
 
 	yt_record_blank(&target);
 	yt_record_set_text(&target, (const uint8_t *)"Keep Name", 9);
@@ -15479,6 +15531,7 @@ check_player_constructor_failures(void)
 	valid = true;
 
 close:
+	yt_database_set_read_provider(&game.database, NULL, NULL);
 	yt_database_close(&game.database);
 done:
 	remove("CONSTRUCT.DAT");

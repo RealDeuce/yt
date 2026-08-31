@@ -208,24 +208,53 @@ yt_database_close(struct yt_database *database)
 		(void)fclose(orphaned);
 }
 
+static bool database_seek_default(void *context, FILE *file,
+    int64_t absolute_offset,
+    struct yt_database_seek_observation *observation);
+
 bool
 yt_database_read(struct yt_database *database, size_t basic_record,
     struct yt_record *record, struct yt_error *error)
 {
-	off_t offset;
+	bool read = yt_database_random_get(database, basic_record, record, NULL,
+	    error);
 
-	if (basic_record == 0) {
-		set_error(error, YT_RANGE, "read record", database->path);
-		return false;
+	if (!read && error != NULL)
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    "read record");
+	return read;
+}
+
+static void
+database_prepare_io(FILE *file)
+{
+	/* DOS carry describes one call; C stream errors and errno are sticky. */
+	clearerr(file);
+	errno = 0;
+}
+
+static bool
+database_read_default(void *context, FILE *file, uint8_t *data,
+    size_t requested, struct yt_database_read_observation *observation)
+{
+	off_t position;
+	int saved_errno;
+
+	(void)context;
+	memset(observation, 0, sizeof(*observation));
+	database_prepare_io(file);
+	observation->accepted = fread(data, 1U, requested, file);
+	saved_errno = errno;
+	observation->carry = ferror(file) != 0;
+	position = yt_ftello(file);
+	observation->terminal_position = position >= 0 ? (int64_t)position : 0;
+	if (observation->carry) {
+		observation->dos_error = (saved_errno == EACCES
+		    || saved_errno == EPERM) ? 5U : 1U;
+		observation->mapped_error = observation->dos_error == 5U
+		    ? 70U : 57U;
 	}
-	offset = (off_t)((basic_record - 1U) * YT_RECORD_SIZE);
-	if (yt_fseeko(database->file, offset, SEEK_SET) != 0
-	    || fread(record->bytes, 1, YT_RECORD_SIZE, database->file)
-	    != YT_RECORD_SIZE) {
-		set_error(error, feof(database->file) ? YT_EOF : YT_IO_ERROR,
-		    "read record", database->path);
-		return false;
-	}
+	errno = saved_errno;
 	return true;
 }
 
@@ -233,28 +262,84 @@ bool
 yt_database_random_get(struct yt_database *database, size_t basic_record,
     struct yt_record *record, size_t *accepted, struct yt_error *error)
 {
+	yt_database_seek_provider seek_provider;
+	yt_database_read_provider read_provider;
+	struct yt_database_seek_observation seek = {0};
+	struct yt_database_read_observation read = {0};
 	off_t offset;
-	size_t count;
 
 	if (accepted != NULL)
 		*accepted = 0U;
+	if (database == NULL || database->file == NULL || record == NULL) {
+		set_error(error, YT_INVALID, "random GET",
+		    database != NULL ? database->path : NULL);
+		return false;
+	}
+	memset(&database->last_get, 0, sizeof(database->last_get));
+	database->last_get.registered = true;
+	database->last_get.handle_open = true;
 	if (basic_record == 0) {
 		set_error(error, YT_RANGE, "random GET", database->path);
 		return false;
 	}
 	offset = (off_t)((basic_record - 1U) * YT_RECORD_SIZE);
-	if (yt_fseeko(database->file, offset, SEEK_SET) != 0) {
-		set_error(error, YT_IO_ERROR, "random GET", database->path);
+	seek_provider = database->seek_provider != NULL ? database->seek_provider
+	    : database_seek_default;
+	if (!seek_provider(database->seek_context, database->file,
+	    (int64_t)offset, &seek) || (seek.carry
+	    && (seek.dos_error == 0U || seek.dos_error > 0xffU))) {
+		database->last_get.outcome = YT_DATABASE_GET_SEEK_ERROR;
+		database->last_get.basic_error = 52U;
+		database->last_get.dos_error = seek.dos_error;
+		database->last_get.terminal_position = seek.terminal_position;
+		set_error(error, YT_IO_ERROR, "random GET seek", database->path);
+		return false;
+	}
+	if (seek.carry) {
+		database->last_get.outcome = YT_DATABASE_GET_SEEK_ERROR;
+		database->last_get.basic_error = 52U;
+		database->last_get.dos_error = seek.dos_error;
+		database->last_get.terminal_position = seek.terminal_position;
+		set_error(error, YT_IO_ERROR, "random GET seek", database->path);
 		return false;
 	}
 	memset(record->bytes, 0, sizeof(record->bytes));
-	count = fread(record->bytes, 1, sizeof(record->bytes), database->file);
-	if (ferror(database->file)) {
-		set_error(error, YT_IO_ERROR, "random GET", database->path);
+	read_provider = database->read_provider != NULL ? database->read_provider
+	    : database_read_default;
+	if (!read_provider(database->read_context, database->file, record->bytes,
+	    sizeof(record->bytes), &read) || read.accepted > YT_RECORD_SIZE
+	    || (read.carry && (read.dos_error == 0U
+	    || read.dos_error > 0xffU))
+	    || (read.carry && read.dos_error == 5U
+	    && read.mapped_error != 70U && read.mapped_error != 75U)
+	    || (read.carry && read.dos_error != 5U
+	    && read.mapped_error != 0U && read.mapped_error != 57U)
+	    || (!read.carry && (read.dos_error != 0U
+	    || read.mapped_error != 0U))) {
+		database->last_get.outcome = YT_DATABASE_GET_READ_ERROR;
+		database->last_get.accepted = read.accepted;
+		database->last_get.basic_error = 57U;
+		database->last_get.dos_error = read.dos_error;
+		database->last_get.terminal_position = read.terminal_position;
+		set_error(error, YT_IO_ERROR, "random GET provider", database->path);
 		return false;
 	}
 	if (accepted != NULL)
-		*accepted = count;
+		*accepted = read.accepted;
+	database->last_get.accepted = read.accepted;
+	if (read.carry) {
+		database->last_get.outcome = YT_DATABASE_GET_READ_ERROR;
+		database->last_get.dos_error = read.dos_error;
+		database->last_get.basic_error = read.dos_error == 5U
+		    ? read.mapped_error : 57U;
+		database->last_get.terminal_position = read.terminal_position;
+		set_error(error, YT_IO_ERROR, "random GET", database->path);
+		return false;
+	}
+	database->last_get.outcome = YT_DATABASE_GET_RETURNED;
+	database->last_get.full_record = read.accepted == YT_RECORD_SIZE;
+	database->last_get.terminal_position = (int64_t)offset
+	    + (int64_t)read.accepted;
 	return true;
 }
 
@@ -280,6 +365,7 @@ database_seek_default(void *context, FILE *file, int64_t absolute_offset,
 
 	(void)context;
 	memset(observation, 0, sizeof(*observation));
+	database_prepare_io(file);
 	if (yt_fseeko(file, (off_t)absolute_offset, SEEK_SET) == 0) {
 		observation->terminal_position = absolute_offset;
 		return true;
@@ -303,6 +389,7 @@ database_write_default(void *context, FILE *file, const uint8_t *data,
 
 	(void)context;
 	memset(observation, 0, sizeof(*observation));
+	database_prepare_io(file);
 	observation->accepted = fwrite(data, 1U, requested, file);
 	saved_errno = errno;
 	observation->carry = ferror(file) != 0;
@@ -465,6 +552,16 @@ yt_database_set_write_provider(struct yt_database *database,
 		return;
 	database->write_provider = provider;
 	database->write_context = context;
+}
+
+void
+yt_database_set_read_provider(struct yt_database *database,
+    yt_database_read_provider provider, void *context)
+{
+	if (database == NULL)
+		return;
+	database->read_provider = provider;
+	database->read_context = context;
 }
 
 void

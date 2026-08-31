@@ -167,8 +167,9 @@ test_portname_controller(void)
 	static const uint8_t zero_iteration[] =
 	    "\r\rRenaming ports...\r"
 	    "\rNew, random names applied to all ports!\r";
-	static const uint8_t failed_get[] =
-	    "\r\rRenaming ports...\r 1 Earth\r 2 Inging\r";
+	static const uint8_t short_get[] =
+	    "\r\rRenaming ports...\r 1 Earth\r 2 Inging\r"
+	    "\rNew, random names applied to all ports!\r";
 	static const uint8_t zero_draws[24] = {0};
 	struct utility_random_script script = {
 		zero_draws, sizeof(zero_draws), 0U
@@ -283,16 +284,25 @@ test_portname_controller(void)
 	yt_random_set_provider(&random, utility_random_fill, &script);
 	if (!yt_database_open(&database, "PORTTEST.DAT", YT_OPEN_CREATE, &error)
 	    || !yt_database_write(&database, 2U, &before[0], &error)
-	    || yt_portname_rename(&database, 1.0f, 3.0f, &random,
+	    || !yt_portname_rename(&database, 1.0f, 3.0f, &random,
 	    portname_output_collect, &tape, &result, &error)
-	    || result.play_event || database.file == NULL || random.draws != 4U
-	    || tape.length != sizeof(failed_get) - 1U
-	    || memcmp(tape.bytes, failed_get, sizeof(failed_get) - 1U) != 0)
+	    || !result.play_event || database.file != NULL || random.draws != 4U
+	    || result.iterations != 2
+	    || tape.length != sizeof(short_get) - 1U
+	    || memcmp(tape.bytes, short_get, sizeof(short_get) - 1U) != 0
+	    || !yt_database_open(&database, "PORTTEST.DAT", YT_OPEN_READ,
+	    &error))
 		goto done;
 	expected = before[0];
 	if (!yt_portname_overlay_record(&expected, (const uint8_t *)"Earth", 5U,
 	    &error)
 	    || !yt_database_read(&database, 2U, &after, &error)
+	    || memcmp(after.bytes, expected.bytes, YT_RECORD_SIZE) != 0)
+		goto done;
+	yt_record_clear(&expected);
+	if (!yt_portname_overlay_record(&expected, (const uint8_t *)"Inging", 6U,
+	    &error)
+	    || !yt_database_read(&database, 3U, &after, &error)
 	    || memcmp(after.bytes, expected.bytes, YT_RECORD_SIZE) != 0)
 		goto done;
 	valid = !yt_portname_rename(NULL, 1.0f, 4.0f, &random,
@@ -2101,10 +2111,14 @@ test_yt_init_sector_prepass(void)
 	    &error))
 		goto done;
 	port_offset = 0.0f;
-	ok = !yt_init_sector_prepass(&database, 51.0f, 2004,
+	yt_record_clear(&expected);
+	memcpy(expected.bytes + YT_F57, port_offset_raw,
+	    sizeof(port_offset_raw));
+	ok = yt_init_sector_prepass(&database, 51.0f, 2004,
 	    &port_offset, &error)
-	    && port_offset == 2055.0f && error.status == YT_EOF
-	    && strcmp(error.operation, "read record") == 0;
+	    && port_offset == 2055.0f && database.records == 1U
+	    && yt_database_read(&database, 1U, &actual, &error)
+	    && memcmp(actual.bytes, expected.bytes, sizeof(actual.bytes)) == 0;
 
 done:
 	yt_database_close(&database);

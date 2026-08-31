@@ -471,6 +471,17 @@ struct database_write_script {
 	size_t requested;
 };
 
+struct database_read_script {
+	const uint8_t *data;
+	size_t accepted;
+	bool carry;
+	uint16_t dos_error;
+	uint16_t mapped_error;
+	int64_t terminal_position;
+	size_t calls;
+	size_t requested;
+};
+
 struct database_seek_script {
 	bool success;
 	uint16_t dos_error;
@@ -489,6 +500,27 @@ struct database_flush_script {
 	bool success;
 	size_t calls;
 };
+
+static bool
+scripted_database_read(void *context, FILE *file, uint8_t *data,
+    size_t requested, struct yt_database_read_observation *observation)
+{
+	struct database_read_script *script = context;
+	size_t count = script->accepted < requested ? script->accepted : requested;
+
+	(void)file;
+	++script->calls;
+	script->requested = requested;
+	memset(observation, 0, sizeof(*observation));
+	if (count != 0U && script->data != NULL)
+		memcpy(data, script->data, count);
+	observation->accepted = count;
+	observation->carry = script->carry;
+	observation->dos_error = script->dos_error;
+	observation->mapped_error = script->mapped_error;
+	observation->terminal_position = script->terminal_position;
+	return true;
+}
 
 static bool
 scripted_database_write(void *context, FILE *file, const uint8_t *data,
@@ -560,6 +592,7 @@ test_files(void)
 	struct yt_record before;
 	struct yt_record after;
 	struct yt_record replacement;
+	struct database_read_script read_script;
 	struct database_write_script write_script;
 	struct database_seek_script seek_script;
 	struct database_close_script close_script;
@@ -597,8 +630,115 @@ test_files(void)
 	CHECK(yt_database_flush(&database, &error));
 	CHECK(yt_database_read(&database, 1, &after, &error));
 	CHECK(memcmp(before.bytes, after.bytes, sizeof(before.bytes)) == 0);
+	CHECK(database.last_get.outcome == YT_DATABASE_GET_RETURNED
+	    && database.last_get.accepted == YT_RECORD_SIZE
+	    && database.last_get.full_record
+	    && database.last_get.terminal_position == YT_RECORD_SIZE
+	    && database.last_get.registered && database.last_get.handle_open);
 	for (index = 0U; index < sizeof(replacement.bytes); ++index)
 		replacement.bytes[index] = (uint8_t)(index ^ 0xa5U);
+	read_script = (struct database_read_script){
+		.data = replacement.bytes,
+		.accepted = 3U,
+	};
+	yt_database_set_read_provider(&database, scripted_database_read,
+	    &read_script);
+	CHECK(yt_database_read(&database, 1U, &after, &error)
+	    && read_script.calls == 1U && read_script.requested == YT_RECORD_SIZE);
+	CHECK(memcmp(after.bytes, replacement.bytes, 3U) == 0);
+	for (index = 3U; index < sizeof(after.bytes); ++index)
+		CHECK(after.bytes[index] == 0U);
+	CHECK(database.last_get.outcome == YT_DATABASE_GET_RETURNED
+	    && database.last_get.accepted == 3U
+	    && !database.last_get.full_record
+	    && database.last_get.terminal_position == 3);
+	read_script = (struct database_read_script){0};
+	CHECK(yt_database_random_get(&database, 1U, &after, &accepted, &error)
+	    && accepted == 0U && read_script.calls == 1U);
+	for (index = 0U; index < sizeof(after.bytes); ++index)
+		CHECK(after.bytes[index] == 0U);
+	CHECK(database.last_get.outcome == YT_DATABASE_GET_RETURNED
+	    && database.last_get.accepted == 0U
+	    && !database.last_get.full_record
+	    && database.last_get.terminal_position == 0);
+	yt_database_set_read_provider(&database, NULL, NULL);
+	read_script = (struct database_read_script){
+		.data = replacement.bytes,
+		.accepted = 3U,
+		.carry = true,
+		.dos_error = 6U,
+		.terminal_position = 0x55667788,
+	};
+	yt_database_set_read_provider(&database, scripted_database_read,
+	    &read_script);
+	yt_error_clear(&error);
+	CHECK(!yt_database_random_get(&database, 1U, &after, &accepted, &error)
+	    && error.status == YT_IO_ERROR && accepted == 3U);
+	CHECK(memcmp(after.bytes, replacement.bytes, 3U) == 0);
+	for (index = 3U; index < sizeof(after.bytes); ++index)
+		CHECK(after.bytes[index] == 0U);
+	CHECK(database.last_get.outcome == YT_DATABASE_GET_READ_ERROR
+	    && database.last_get.accepted == 3U
+	    && database.last_get.dos_error == 6U
+	    && database.last_get.basic_error == 57U
+	    && database.last_get.terminal_position == 0x55667788
+	    && database.last_get.registered && database.last_get.handle_open);
+	for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
+		read_script = (struct database_read_script){
+			.carry = true,
+			.dos_error = (uint16_t)dos_error,
+			.mapped_error = dos_error == 5U ? 70U : 0U,
+			.terminal_position = (int64_t)(0x3000U + dos_error),
+		};
+		yt_error_clear(&error);
+		CHECK(!yt_database_random_get(&database, 1U, &after, &accepted,
+		    &error) && error.status == YT_IO_ERROR && accepted == 0U
+		    && read_script.calls == 1U);
+		CHECK(database.last_get.outcome == YT_DATABASE_GET_READ_ERROR
+		    && database.last_get.dos_error == dos_error
+		    && database.last_get.basic_error
+		    == (dos_error == 5U ? 70U : 57U)
+		    && database.last_get.terminal_position
+		    == (int64_t)(0x3000U + dos_error)
+		    && database.last_get.registered
+		    && database.last_get.handle_open);
+	}
+	read_script = (struct database_read_script){
+		.carry = true,
+		.dos_error = 5U,
+		.mapped_error = 75U,
+		.terminal_position = 0x3750,
+	};
+	CHECK(!yt_database_random_get(&database, 1U, &after, &accepted, &error)
+	    && database.last_get.basic_error == 75U
+	    && database.last_get.dos_error == 5U
+	    && database.last_get.terminal_position == 0x3750);
+	yt_database_set_read_provider(&database, NULL, NULL);
+	seek_script = (struct database_seek_script){0};
+	read_script = (struct database_read_script){.accepted = 137U};
+	yt_database_set_seek_provider(&database, scripted_database_seek,
+	    &seek_script);
+	yt_database_set_read_provider(&database, scripted_database_read,
+	    &read_script);
+	for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
+		seek_script = (struct database_seek_script){
+			.dos_error = (uint16_t)dos_error,
+			.terminal_position = (int64_t)(0x5000U + dos_error),
+		};
+		yt_error_clear(&error);
+		CHECK(!yt_database_random_get(&database, 1U, &after, &accepted,
+		    &error) && error.status == YT_IO_ERROR && accepted == 0U
+		    && seek_script.calls == 1U && read_script.calls == 0U);
+		CHECK(database.last_get.outcome == YT_DATABASE_GET_SEEK_ERROR
+		    && database.last_get.dos_error == dos_error
+		    && database.last_get.basic_error == 52U
+		    && database.last_get.terminal_position
+		    == (int64_t)(0x5000U + dos_error)
+		    && database.last_get.registered
+		    && database.last_get.handle_open);
+	}
+	yt_database_set_seek_provider(&database, NULL, NULL);
+	yt_database_set_read_provider(&database, NULL, NULL);
 	write_script = (struct database_write_script){.accepted = 136U};
 	yt_database_set_write_provider(&database, scripted_database_write,
 	    &write_script);
@@ -685,7 +825,9 @@ test_files(void)
 	    && !database.last_put.close_succeeded
 	    && database.last_put.handle_open);
 	CHECK(yt_database_open(&observer, database_path, YT_OPEN_READ, &error));
+	CHECK(fputc(0, observer.file) == EOF && ferror(observer.file));
 	CHECK(yt_database_read(&observer, 1U, &after, &error));
+	CHECK(!ferror(observer.file));
 	CHECK(memcmp(after.bytes, replacement.bytes, 3U) == 0
 	    && memcmp(after.bytes + 3U, before.bytes + 3U,
 	    YT_RECORD_SIZE - 3U) == 0);

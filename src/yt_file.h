@@ -24,6 +24,32 @@ struct yt_database_write_observation {
 	int64_t terminal_position;
 };
 
+struct yt_database_read_observation {
+	size_t accepted;
+	bool carry;
+	uint16_t dos_error;
+	uint16_t mapped_error;
+	int64_t terminal_position;
+};
+
+enum yt_database_get_outcome {
+	YT_DATABASE_GET_NONE,
+	YT_DATABASE_GET_RETURNED,
+	YT_DATABASE_GET_SEEK_ERROR,
+	YT_DATABASE_GET_READ_ERROR,
+};
+
+struct yt_database_get_result {
+	enum yt_database_get_outcome outcome;
+	size_t accepted;
+	uint16_t dos_error;
+	uint16_t basic_error;
+	int64_t terminal_position;
+	bool full_record;
+	bool registered;
+	bool handle_open;
+};
+
 enum yt_database_put_outcome {
 	YT_DATABASE_PUT_NONE,
 	YT_DATABASE_PUT_RETURNED,
@@ -46,6 +72,9 @@ struct yt_database_put_result {
 
 typedef bool (*yt_database_seek_provider)(void *context, FILE *file,
     int64_t absolute_offset, struct yt_database_seek_observation *observation);
+typedef bool (*yt_database_read_provider)(void *context, FILE *file,
+    uint8_t *data, size_t requested,
+    struct yt_database_read_observation *observation);
 typedef bool (*yt_database_write_provider)(void *context, FILE *file,
     const uint8_t *data, size_t requested,
     struct yt_database_write_observation *observation);
@@ -60,6 +89,8 @@ struct yt_database {
 	size_t records;
 	yt_database_seek_provider seek_provider;
 	void *seek_context;
+	yt_database_read_provider read_provider;
+	void *read_context;
 	yt_database_write_provider write_provider;
 	void *write_context;
 	yt_database_close_provider close_provider;
@@ -68,6 +99,7 @@ struct yt_database {
 	void *flush_context;
 	bool short_close_attempted;
 	bool short_close_succeeded;
+	struct yt_database_get_result last_get;
 	struct yt_database_put_result last_put;
 };
 
@@ -103,6 +135,8 @@ bool yt_database_random_put(struct yt_database *database,
     bool one_byte_short_ok, size_t *accepted, struct yt_error *error);
 void yt_database_set_write_provider(struct yt_database *database,
     yt_database_write_provider provider, void *context);
+void yt_database_set_read_provider(struct yt_database *database,
+    yt_database_read_provider provider, void *context);
 void yt_database_set_seek_provider(struct yt_database *database,
     yt_database_seek_provider provider, void *context);
 void yt_database_set_close_provider(struct yt_database *database,
