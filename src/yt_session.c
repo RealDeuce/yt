@@ -476,6 +476,19 @@ session_close_file5(struct yt_error *error)
 }
 
 static bool
+session_close_game_all(void *context, int8_t file_class,
+    struct yt_error *error)
+{
+	struct yt_door *door = context;
+	bool result = yt_database_close_all_method(&door->game.database,
+	    file_class, error);
+
+	if (door->game.database.file == NULL)
+		door->game_open = false;
+	return result;
+}
+
+static bool
 append_news(struct yt_session *session, const char *text,
     struct yt_error *error)
 {
@@ -12108,13 +12121,18 @@ command_genesis(struct yt_session *session, struct yt_error *error)
 	if (!session_close_file5(error))
 		return false;
 	/*
-	 * QuickBASIC PRINT # inserts CR/LF before the DOS EOF written on close.
-	 * Build that exact shape before handing off.
+	 * The database file-1 control predates the new sequential file-5
+	 * control.  CLOSE with no file number therefore walks file 5 first,
+	 * appending its DOS EOF, and then closes file 1 before RUN.
 	 */
 	{
+		struct yt_close_all_control controls[2];
+		struct yt_close_all_result close_all;
+		struct yt_text_output handoff;
 		size_t length = strlen(session->door->command_line);
 		uint8_t *line = malloc(length + 2U);
-		bool ok;
+		size_t control_count = 0U;
+		bool ok = false;
 
 		if (line == NULL) {
 			if (error != NULL)
@@ -12124,8 +12142,23 @@ command_genesis(struct yt_session *session, struct yt_error *error)
 		memcpy(line, session->door->command_line, length);
 		line[length] = '\r';
 		line[length + 1U] = '\n';
-		ok = yt_text_write("RMTINIT.TMP", line, length + 2U, true,
+		yt_text_output_init(&handoff);
+		if (!yt_text_output_open(&handoff, "RMTINIT.TMP", error)
+		    || !yt_text_output_write(&handoff, line, length + 2U, error))
+			goto handoff_done;
+		if (session->door->game_open) {
+			controls[control_count++] = (struct yt_close_all_control){
+				YT_CLOSE_ALL_HEAP_FILE, 0,
+				session_close_game_all, session->door};
+		}
+		controls[control_count++] = (struct yt_close_all_control){
+			YT_CLOSE_ALL_HEAP_FILE, 0,
+			yt_text_output_close_all_method, &handoff};
+		ok = yt_close_all_run(controls, control_count, NULL, &close_all,
 		    error);
+
+handoff_done:
+		yt_text_output_destroy(&handoff);
 		free(line);
 		if (!ok)
 			return false;

@@ -1918,6 +1918,21 @@ test_text_output_write(void)
 		yt_text_free(&text);
 	}
 	yt_text_output_destroy(&output);
+	CHECK(yt_text_write(path, bytes, sizeof(bytes), true, &error)
+	    && yt_text_read(path, &text, &error));
+	if (text.data != NULL) {
+		CHECK(text.length == sizeof(bytes) + 1U
+		    && memcmp(text.data, bytes, sizeof(bytes)) == 0
+		    && text.data[sizeof(bytes)] == 0x1aU);
+		yt_text_free(&text);
+	}
+	CHECK(yt_text_write(path, bytes, sizeof(bytes), false, &error)
+	    && yt_text_read(path, &text, &error));
+	if (text.data != NULL) {
+		CHECK(text.length == sizeof(bytes)
+		    && memcmp(text.data, bytes, sizeof(bytes)) == 0);
+		yt_text_free(&text);
+	}
 
 	yt_text_output_init(&output);
 	CHECK(!yt_text_output_write(&output, &next, 1U, &error)
@@ -1939,8 +1954,11 @@ test_text_output_close(void)
 	char directory[256];
 	char path[320];
 	struct text_output_close_script script;
+	struct database_public_close_script database_script;
+	struct yt_database database;
 	struct yt_text_output output;
 	struct yt_close_all_control control;
+	struct yt_close_all_control genesis_controls[2];
 	struct yt_close_all_result close_all;
 	struct yt_text_file text;
 	struct yt_error error;
@@ -2010,6 +2028,58 @@ test_text_output_close(void)
 	    && output.last_close.terminal_position == 37
 	    && output.file == NULL && output.orphaned_file == NULL);
 	yt_text_output_destroy(&output);
+
+	/* Genesis allocates database #1 before output #5, so #5 closes first. */
+	memset(&script, 0, sizeof(script));
+	for (failed_operation = YT_TEXT_OUTPUT_CLOSE_PENDING_WRITE;
+	    failed_operation <= YT_TEXT_OUTPUT_CLOSE_HANDLE;
+	    ++failed_operation)
+		text_output_add_success(&script,
+		    (enum yt_text_output_close_operation)failed_operation,
+		    pending, sizeof(pending));
+	memset(&database_script, 0, sizeof(database_script));
+	database_close_add(&database_script, false, 0U, false, true, true);
+	CHECK(text_output_close_fixture(&output, &script, pending,
+	    sizeof(pending))
+	    && database_close_fixture(&database, false, &database_script));
+	genesis_controls[0] = (struct yt_close_all_control){
+		YT_CLOSE_ALL_HEAP_FILE, 0, yt_database_close_all_method,
+		&database};
+	genesis_controls[1] = (struct yt_close_all_control){
+		YT_CLOSE_ALL_HEAP_FILE, 0, yt_text_output_close_all_method,
+		&output};
+	CHECK(yt_close_all_run(genesis_controls,
+	    YT_ARRAY_LEN(genesis_controls), NULL, &close_all, &error)
+	    && close_all.scanned_count == 2U && close_all.attempt_count == 2U
+	    && close_all.completed_count == 2U && close_all.returned
+	    && script.position == script.length
+	    && database_script.position == database_script.length
+	    && output.last_close.close_all && database.last_close.close_all
+	    && output.file == NULL && database.file == NULL);
+	yt_text_output_destroy(&output);
+	yt_database_close(&database);
+
+	/* A file-5 failure stops the walk before the older database control. */
+	memset(&script, 0, sizeof(script));
+	text_output_close_add(&script, YT_TEXT_OUTPUT_CLOSE_PENDING_WRITE,
+	    pending, sizeof(pending), 2U, false, 0U, true, true, false);
+	memset(&database_script, 0, sizeof(database_script));
+	database_close_add(&database_script, false, 0U, false, true, true);
+	CHECK(text_output_close_fixture(&output, &script, pending,
+	    sizeof(pending))
+	    && database_close_fixture(&database, false, &database_script));
+	yt_error_clear(&error);
+	CHECK(!yt_close_all_run(genesis_controls,
+	    YT_ARRAY_LEN(genesis_controls), NULL, &close_all, &error)
+	    && close_all.failed && close_all.failed_index == 1U
+	    && close_all.scanned_count == 1U && close_all.attempt_count == 1U
+	    && close_all.completed_count == 0U && !close_all.returned
+	    && script.position == script.length
+	    && database_script.position == 0U && database.file != NULL
+	    && database.last_close.outcome == YT_DATABASE_CLOSE_NONE
+	    && output.last_close.outcome == YT_TEXT_OUTPUT_CLOSE_SHORT_ERROR);
+	yt_text_output_destroy(&output);
+	yt_database_close(&database);
 
 	/* Every physical operation retains every DOS error and then retries CLOSE. */
 	for (failed_operation = YT_TEXT_OUTPUT_CLOSE_PENDING_WRITE;

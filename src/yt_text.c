@@ -1335,9 +1335,20 @@ bool
 yt_text_write(const char *path, const uint8_t *data, size_t length,
     bool dos_eof, struct yt_error *error)
 {
+	struct yt_text_output output;
 	char resolved[512];
 	FILE *file;
-	static const uint8_t eof_byte = 0x1a;
+	bool result = false;
+
+	if (dos_eof) {
+		yt_text_output_init(&output);
+		if (yt_text_output_open(&output, path, error)
+		    && yt_text_output_write(&output, data, length, error)
+		    && yt_text_output_close(&output, error))
+			result = true;
+		yt_text_output_destroy(&output);
+		return result;
+	}
 
 	if (!yt_resolve_case_path(path, true, resolved, sizeof(resolved), error))
 		return false;
@@ -1347,7 +1358,6 @@ yt_text_write(const char *path, const uint8_t *data, size_t length,
 		return false;
 	}
 	if ((length > 0 && fwrite(data, 1, length, file) != length)
-	    || (dos_eof && fwrite(&eof_byte, 1, 1, file) != 1)
 	    || fclose(file) != 0) {
 		set_error(error, YT_IO_ERROR, "write output", resolved);
 		return false;
