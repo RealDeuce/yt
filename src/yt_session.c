@@ -1508,7 +1508,8 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 
 struct registration_context {
 	struct yt_session *session;
-	FILE *file;
+	struct yt_database random;
+	FILE *sequential;
 	char path[512];
 	bool path_resolved;
 };
@@ -1545,15 +1546,16 @@ static bool
 registration_close_file4(void *opaque, struct yt_error *error)
 {
 	struct registration_context *context = opaque;
-	FILE *file = context->file;
+	FILE *file = context->sequential;
 
-	if (file == NULL)
+	if (file != NULL) {
+		context->sequential = NULL;
+		if (fclose(file) != 0)
+			return registration_io_error(context, error, YT_IO_ERROR,
+			    "close registration input");
 		return true;
-	context->file = NULL;
-	if (fclose(file) != 0)
-		return registration_io_error(context, error, YT_IO_ERROR,
-		    "close registration file");
-	return true;
+	}
+	return yt_database_random_close(&context->random, error);
 }
 
 static bool
@@ -1563,12 +1565,8 @@ registration_random_open(void *opaque, struct yt_error *error)
 
 	if (!registration_resolve_path(context, error))
 		return false;
-	errno = 0;
-	context->file = fopen(context->path, "a+b");
-	if (context->file == NULL)
-		return registration_io_error(context, error, YT_IO_ERROR,
-		    "open registration random");
-	return true;
+	return yt_database_open(&context->random, context->path,
+	    YT_OPEN_UPDATE_CREATE, error);
 }
 
 static bool
@@ -1576,14 +1574,12 @@ registration_file_size(void *opaque, uint64_t *size,
     struct yt_error *error)
 {
 	struct registration_context *context = opaque;
-	struct yt_database_lof_result result;
 	uint32_t length;
 
-	if (context->file == NULL)
+	if (context->random.file == NULL)
 		return registration_io_error(context, error, YT_INVALID,
 		    "registration LOF without file");
-	if (!yt_random_file_lof(context->file, context->path, &length, &result,
-	    error))
+	if (!yt_database_random_lof(&context->random, &length, error))
 		return false;
 	*size = length;
 	return true;
@@ -1603,8 +1599,8 @@ registration_sequential_open(void *opaque, struct yt_error *error)
 	struct registration_context *context = opaque;
 
 	errno = 0;
-	context->file = fopen(context->path, "rb");
-	if (context->file == NULL)
+	context->sequential = fopen(context->path, "rb");
+	if (context->sequential == NULL)
 		return registration_io_error(context, error, YT_IO_ERROR,
 		    "open registration input");
 	return true;
@@ -1617,11 +1613,11 @@ registration_read_line(void *opaque, uint8_t *data, size_t capacity,
 	struct registration_context *context = opaque;
 	enum yt_text_stream_line_status status;
 
-	if (context->file == NULL)
+	if (context->sequential == NULL)
 		return registration_io_error(context, error, YT_INVALID,
 		    "registration LINE INPUT without file");
-	status = yt_text_stream_line_input_next(context->file, data, capacity,
-	    length);
+	status = yt_text_stream_line_input_next(context->sequential, data,
+	    capacity, length);
 	if (status == YT_TEXT_STREAM_LINE_EOF)
 		return registration_io_error(context, error, YT_EOF,
 		    "registration LINE INPUT past end");
@@ -1689,10 +1685,11 @@ registration_close_all(void *opaque)
 {
 	struct registration_context *context = opaque;
 
-	if (context->file != NULL) {
-		(void)fclose(context->file);
-		context->file = NULL;
+	if (context->sequential != NULL) {
+		(void)fclose(context->sequential);
+		context->sequential = NULL;
 	}
+	yt_database_close(&context->random);
 	(void)session_editor_close_all(context->session);
 }
 
@@ -1730,7 +1727,7 @@ registration(struct yt_session *session, struct yt_error *error)
 		registration_close_all,
 		registration_end,
 	};
-	struct registration_context context = {session, NULL, {0}, false};
+	struct registration_context context = {.session = session};
 	struct yt_registration_state state;
 	uint8_t *storage;
 	bool completed;
@@ -1785,7 +1782,8 @@ registration(struct yt_session *session, struct yt_error *error)
 	/* A478 clears the live validated flag before the first file operation. */
 	session->registered = false;
 	completed = yt_registration_run(&state, &ops, &context, error);
-	if (context.file != NULL)
+	if (context.sequential != NULL || context.random.file != NULL
+	    || context.random.orphaned_file != NULL)
 		(void)registration_close_file4(&context, NULL);
 	if (!completed) {
 		free(storage);
