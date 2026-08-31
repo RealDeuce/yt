@@ -1,8 +1,8 @@
 #include "yt_score.h"
 #include "qb.h"
 #include "yt_score_format.h"
+#include "yt_text.h"
 
-#include <errno.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,49 +20,33 @@ struct score_team {
 };
 
 static bool
-write_bytes(FILE *file, const char *text, const char *path,
+write_bytes(struct yt_text_output *output, const char *text,
     struct yt_error *error)
 {
-	size_t length = strlen(text);
-
-	if (fwrite(text, 1, length, file) == length)
-		return true;
-	if (error != NULL) {
-		error->status = YT_IO_ERROR;
-		error->system_error = errno;
-		snprintf(error->operation, sizeof(error->operation),
-		    "write scoreboard");
-		snprintf(error->path, sizeof(error->path), "%s", path);
-	}
-	return false;
+	return yt_text_output_write(output, (const uint8_t *)text,
+	    strlen(text), error);
 }
 
-static FILE *
-open_scoreboard(const struct yt_game *game, char path[512],
+static bool
+open_scoreboard(const struct yt_game *game, struct yt_text_output *output,
+    char path[512],
     struct yt_error *error)
 {
 	const char *requested = strcmp(game->config.scoreboard, "NUL") == 0
 	    ? "yttemp" : game->config.scoreboard;
-	FILE *file;
 
 	if (!yt_resolve_case_path(requested, true, path, 512, error))
-		return NULL;
-	file = fopen(path, "wb");
-	if (file == NULL && error != NULL) {
-		error->status = YT_IO_ERROR;
-		error->system_error = errno;
-		snprintf(error->operation, sizeof(error->operation),
-		    "open scoreboard");
-		snprintf(error->path, sizeof(error->path), "%s", path);
-	}
-	return file;
+		return false;
+	return yt_text_output_open(output, path, error);
 }
 
 static bool
-scoreboard_division_error(FILE *file, const char *path,
+scoreboard_division_error(struct yt_text_output *output, const char *path,
     struct yt_error *error)
 {
-	(void)fclose(file);
+	/* Fatal END cleanup closes the still-registered sequential file. */
+	(void)yt_text_output_close_all_method(output, 0, NULL);
+	yt_text_output_destroy(output);
 	if (error != NULL) {
 		error->status = YT_RANGE;
 		error->system_error = 0;
@@ -257,7 +241,7 @@ yt_score_generate_progress(struct yt_game *game,
 	char time_text[9];
 	char line[256];
 	char path[512];
-	FILE *file;
+	struct yt_text_output output;
 	int player_count = (int)game->config.sector_offset - 1;
 	int sector_count = (int)(game->config.port_offset
 	    - game->config.sector_offset);
@@ -330,12 +314,12 @@ yt_score_generate_progress(struct yt_game *game,
 	if (denominator == 0)
 		denominator = xannor > mercenaries ? xannor : mercenaries;
 	team_denominator = teams[0].score;
-	file = open_scoreboard(game, path, error);
-	if (file == NULL)
+	yt_text_output_init(&output);
+	if (!open_scoreboard(game, &output, path, error))
 		return false;
-	if (!write_bytes(file, "\r\n"
+	if (!write_bytes(&output, "\r\n"
 	    "Y a n k e e   T r a d e r   S c o r e b o a r d\r\n\r\n",
-	    path, error))
+	    error))
 		goto failure;
 	if (!yt_platform_clock(&date_now, error)
 	    || !yt_platform_clock(&time_now, error))
@@ -344,11 +328,11 @@ yt_score_generate_progress(struct yt_game *game,
 	yt_format_time(&time_now, time_text);
 	snprintf(line, sizeof(line), "Last updated at: %s %s\r\n\r\n", date,
 	    time_text);
-	if (!write_bytes(file, line, path, error)
-	    || !write_bytes(file,
+	if (!write_bytes(&output, line, error)
+	    || !write_bytes(&output,
 	    "Rank  Rank%        Score        Team   Ports   Player\r\n"
 	    "==== ======= ================= ====== ======= "
-	    "================================\r\n", path, error))
+	    "================================\r\n", error))
 		goto failure;
 	{
 		int rank = 0;
@@ -359,7 +343,7 @@ yt_score_generate_progress(struct yt_game *game,
 				continue;
 			++rank;
 			if (denominator == 0)
-				return scoreboard_division_error(file, path, error);
+				return scoreboard_division_error(&output, path, error);
 			if (players[index].player.team == 0.0f)
 				strcpy(team_text, "None");
 			else {
@@ -382,14 +366,14 @@ yt_score_generate_progress(struct yt_game *game,
 					error->status = YT_RANGE;
 				goto failure;
 			}
-			if (!write_bytes(file, line, path, error))
+			if (!write_bytes(&output, line, error))
 				goto failure;
 		}
 	}
-	if (!write_bytes(file, "\r\nT e a m   R a n k i n g s\r\n\r\n"
+	if (!write_bytes(&output, "\r\nT e a m   R a n k i n g s\r\n\r\n"
 	    "Rank  Rank%        Score        Team   Team Name\r\n"
 	    "==== ======= ================= ====== "
-	    "========================================\r\n", path, error))
+	    "========================================\r\n", error))
 		goto failure;
 	if (team_denominator > 0) {
 		int rank = 0;
@@ -411,18 +395,18 @@ yt_score_generate_progress(struct yt_game *game,
 					error->status = YT_RANGE;
 				goto failure;
 			}
-			if (!write_bytes(file, line, path, error))
+			if (!write_bytes(&output, line, error))
 				goto failure;
 		}
 	}
-	if (!write_bytes(file,
+	if (!write_bytes(&output,
 	    "\r\nN o n  -  H u m a n   P l a y e r s\r\n\r\n"
 	    "    The Xannor       Rank%     The Mercenaries   Rank%\r\n"
 	    "================== =========  ================= =======\r\n",
-	    path, error))
+	    error))
 		goto failure;
 	if (denominator == 0)
-		return scoreboard_division_error(file, path, error);
+		return scoreboard_division_error(&output, path, error);
 	if (!format_nonhuman_row(line, sizeof(line), xannor,
 	    xannor / denominator * 100.0, mercenaries,
 	    mercenaries / denominator * 100.0)) {
@@ -430,31 +414,18 @@ yt_score_generate_progress(struct yt_game *game,
 			error->status = YT_RANGE;
 		goto failure;
 	}
-	if (!write_bytes(file, line, path, error)
-	    || fputc(0x1a, file) == EOF) {
-		if (error != NULL && error->status == YT_OK) {
-			error->status = YT_IO_ERROR;
-			error->system_error = errno;
-			snprintf(error->operation, sizeof(error->operation),
-			    "write scoreboard EOF");
-			snprintf(error->path, sizeof(error->path), "%s", path);
-		}
+	if (!write_bytes(&output, line, error))
 		goto failure;
-	}
-	if (fclose(file) != 0) {
-		if (error != NULL) {
-			error->status = YT_IO_ERROR;
-			error->system_error = errno;
-			snprintf(error->operation, sizeof(error->operation),
-			    "close scoreboard");
-			snprintf(error->path, sizeof(error->path), "%s", path);
-		}
+	if (!yt_text_output_close(&output, error)) {
+		yt_text_output_destroy(&output);
 		return false;
 	}
+	yt_text_output_destroy(&output);
 	return true;
 
 failure:
-	(void)fclose(file);
+	(void)yt_text_output_close_all_method(&output, 0, NULL);
+	yt_text_output_destroy(&output);
 	return false;
 }
 

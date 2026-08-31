@@ -17369,7 +17369,7 @@ main(void)
 	if (ferror(score) || fclose(score) != 0 || length >= sizeof(bytes))
 		goto close;
 	bytes[length] = '\0';
-	if (length == 0 || bytes[length - 1U] == 0x1a
+	if (length == 0 || bytes[length - 1U] != 0x1a
 	    || strstr((const char *)bytes,
 	    "================== =========  ================= =======\r\n")
 	    == NULL)
