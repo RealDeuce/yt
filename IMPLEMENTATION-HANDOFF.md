@@ -1513,11 +1513,15 @@ not authoritative. Use the corrected goal above in the new workspace.
   `fatal_wait_complete` prevents the outer session owner from repeating the
   wait, and the result enters normal exit directly without confirmation.
   Native presentation pins the exact plain `CRLF + fatal LFCR + BEL` splice
-  under inherited background one; all 11 focused upstream cycle tests pass,
-  and the presentation family is candidate. A complete injected 1,597/1,900-
-  byte raw transaction, its exact 133-event local tape, full Info/scoreboard/
-  death/news/FIELD/cache state, lazy nonfatal/emergency branches and every
-  carrier/dependency/physical failure prefix remain open.
+  under inherited background one. It now also carries the naturally fatal
+  277/466-byte direct child through the 34/98-byte fatal bridge prefix and
+  exact killed-player Info/scoreboard/return body, producing the complete
+  1,597/1,900-byte plain/ANSI remote transcripts with terminal presentation,
+  pager and viewer state pinned. All 11 focused upstream cycle tests pass,
+  and the presentation family is candidate. A complete injected raw
+  transaction, the exact 133-event local-only tape, full death/news/FIELD/
+  cache/RNG state, lazy nonfatal/emergency branches and every carrier/
+  dependency/physical failure prefix remain open.
 - The shared emergency-warp child at `YT-SUB:[9FC4,A400)` now emits the exact
   wormhole and temperature gauge instead of the prior coarse dot loop. Its
   duration draws occur after the gauge open, the SINGLE counter begins at

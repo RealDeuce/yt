@@ -10914,6 +10914,176 @@ test_full_normal_exit_presentation(void)
 }
 
 static bool
+direct_fighter_fatal_cycle_run(struct physical_viewer_join *viewer,
+    struct yt_file_viewer_stream_state *stream, bool ansi, size_t ends[3])
+{
+	static const uint8_t victim[] = "VICTIM";
+	static const uint8_t current_name[] = "CURRENT";
+	static const uint8_t salvage_heading[] =
+	    "You destroyed the ship and salvaged the following:";
+	static const uint8_t mined[] = "** Sector is Mined!! **";
+	static const uint8_t fatal[] = "Your ship has been destroyed!";
+	static const uint8_t time_text[] = " 15:00  ";
+	struct viewer_pager_join *join;
+	struct normal_exit_info_values info;
+	struct normal_exit_body_observation observation;
+	struct yt_present_result result;
+	uint8_t row[160];
+	size_t row_length;
+
+	if (viewer == NULL || stream == NULL || ends == NULL)
+		return false;
+	join = &viewer->join;
+	join->presentation = state(ansi);
+	join->presentation.foreground = 6.0f;
+	join->pager.foreground = 6;
+	join->pager.line_count = 0.0f;
+	if (ansi) {
+		if (yt_present_color(&join->presentation, &result)
+		    != YT_PRESENT_OK)
+			return false;
+		/* The fixture enters after this inherited color is established. */
+	}
+
+	if (yt_present_sound(3.0f, &join->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!yt_death_title_row(victim, sizeof(victim) - 1U, 1.0f,
+	    row, sizeof(row), &row_length)
+	    || !normal_exit_line(join, row, row_length)
+	    || !normal_exit_line(join, NULL, 0U)
+	    || yt_present_bold_line(salvage_heading,
+	    sizeof(salvage_heading) - 1U, &join->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !yt_salvage_simple_row(YT_SALVAGE_MINES, 1.0f, row,
+	    sizeof(row), &row_length)
+	    || !normal_exit_line(join, row, row_length)
+	    || !yt_direct_fighter_mine_warning(victim,
+	    sizeof(victim) - 1U, row, sizeof(row), &row_length)
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.bold = 1.0f;
+	join->presentation.blink = 1.0f;
+	join->accumulator[0] = '\0';
+	join->queue[0] = '\0';
+	join->queue_position = 0U;
+	join->queue_length = 0U;
+	if (!normal_exit_b05d(join, row, row_length, 0.0f)
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.blink = 1.0f;
+	if (!normal_exit_line(join, mined, sizeof(mined) - 1U)
+	    || yt_present_sound(5.0f, &join->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	join->presentation.foreground = 3.0f;
+	join->presentation.background = 0.0f;
+	join->presentation.blink = 0.0f;
+	if (!yt_sector_mine_explosion_row(3.0f, 1.0f, row,
+	    sizeof(row), &row_length)
+	    || yt_present_bold_character(row, row_length,
+	    &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	join->presentation.background = 1.0f;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !yt_sector_mine_loss_row(YT_SECTOR_MINE_LOSS_MINES, 1.0f,
+	    row, sizeof(row), &row_length)
+	    || !normal_exit_line(join, row, row_length)
+	    || !yt_sector_mine_loss_row(YT_SECTOR_MINE_LOSS_EMPTY_HOLDS,
+	    1.0f, row, sizeof(row), &row_length)
+	    || !normal_exit_line(join, row, row_length)
+	    || yt_present_sound(2.0f, &join->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	ends[0] = join->remote_length;
+
+	join->presentation.foreground = 3.0f;
+	join->pager.foreground = 3;
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.bold = 1.0f;
+	join->presentation.blink = 1.0f;
+	join->accumulator[0] = '\0';
+	join->queue[0] = '\0';
+	join->queue_position = 0U;
+	join->queue_length = 0U;
+	if (!normal_exit_b05d(join, fatal, sizeof(fatal) - 1U, 0.0f)
+	    || yt_present_sound(3.0f, &join->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	ends[1] = join->remote_length;
+
+	memset(&info, 0, sizeof(info));
+	info.cached_name = current_name;
+	info.cached_name_length = sizeof(current_name) - 1U;
+	if (!normal_exit_body_run_info(viewer, stream, false, time_text,
+	    sizeof(time_text) - 1U, 15.0f, &info, &observation))
+		return false;
+	ends[2] = join->remote_length;
+	return true;
+}
+
+static void
+test_direct_fighter_fatal_cycle_presentation(void)
+{
+	static const struct {
+		bool ansi;
+		size_t ends[3];
+		uint64_t remote_fnv;
+	} cases[] = {
+		{false, {277U, 311U, 1597U},
+		    UINT64_C(0x8b6f898ced6524fb)},
+		{true, {466U, 564U, 1900U},
+		    UINT64_C(0x05c22c7e9ba14f68)},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	uint8_t remote[2000];
+	size_t ends[3];
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
+		CHECK(direct_fighter_fatal_cycle_run(&viewer, &stream,
+		    cases[pass].ansi, ends));
+		CHECK(memcmp(ends, cases[pass].ends, sizeof(ends)) == 0
+		    && viewer.join.remote_length == cases[pass].ends[2]
+		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+		    == cases[pass].remote_fnv
+		    && viewer.join.presentation.foreground == 1.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold
+		    == (cases[pass].ansi ? 0.0f : 1.0f)
+		    && viewer.join.presentation.blink
+		    == (cases[pass].ansi ? 0.0f : 1.0f)
+		    && viewer.join.presentation.cached_foreground
+		    == (cases[pass].ansi ? 1.0f : 0.0f)
+		    && viewer.join.pager.foreground == 1
+		    && viewer.join.pager.line_count == 1.0f
+		    && viewer.join.pager.nonstop == 1.0f
+		    && viewer.join.position == 19U
+		    && stream.eof_checks == 20U && stream.key_checks == 20U
+		    && stream.read_count == 19U && stream.line_count == 19U
+		    && !stream.file_open && !viewer.join.file_open
+		    && viewer.input.file == NULL && viewer.close_calls == 2U
+		    && viewer.open_calls == 1U
+		    && viewer.join.queue_length == 0U);
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
+static bool
 computer_info_cycle_run(struct physical_viewer_join *viewer, bool ansi,
     bool typeahead, size_t *front_end, size_t *info_end)
 {
@@ -19384,6 +19554,7 @@ main(void)
 	test_direct_fighter_kill_composition_presentation();
 	test_info_panel_presentation();
 	test_full_normal_exit_presentation();
+	test_direct_fighter_fatal_cycle_presentation();
 	test_computer_info_cycle_presentation();
 	test_planet_info_cycle_presentation();
 	test_planet_info_promotion_refresh_cycle_presentation();
