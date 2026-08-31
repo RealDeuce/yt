@@ -695,6 +695,7 @@ yt_database_close(struct yt_database *database)
 	orphaned = database->orphaned_file;
 	database->file = NULL;
 	database->orphaned_file = NULL;
+	database->records = 0U;
 	if (file != NULL)
 		(void)fclose(file);
 	if (orphaned != NULL && orphaned != file)
@@ -904,14 +905,137 @@ database_write_default(void *context, FILE *file, const uint8_t *data,
 }
 
 static bool
-database_close_default(void *context, FILE *file, bool *handle_open)
+database_close_default(void *context, FILE *file, size_t attempt,
+    struct yt_database_close_observation *observation)
 {
 	int result;
+	int saved_errno;
 
 	(void)context;
+	(void)attempt;
+	memset(observation, 0, sizeof(*observation));
+	if (file == NULL) {
+		observation->carry = true;
+		observation->dos_error = 6U;
+		return true;
+	}
+	errno = 0;
 	result = fclose(file);
-	*handle_open = false;
-	return result == 0;
+	saved_errno = errno;
+	observation->carry = result != 0;
+	observation->dos_error = result != 0
+	    ? database_dos_error(NULL, saved_errno) : 0U;
+	observation->handle_open = false;
+	errno = saved_errno;
+	return true;
+}
+
+static bool
+database_close_observation_valid(
+    const struct yt_database_close_observation *observation,
+    bool active_handle)
+{
+	if (observation->handle_open && !active_handle)
+		return false;
+	if (observation->carry)
+		return observation->dos_error >= 1U
+		    && observation->dos_error <= 0xffU;
+	return observation->dos_error == 0U && !observation->handle_open;
+}
+
+static bool
+database_close_observe(struct yt_database *database,
+    yt_database_close_provider provider, FILE *file, size_t attempt,
+    struct yt_database_close_observation *observation)
+{
+	++database->last_close.attempt_count;
+	memset(observation, 0, sizeof(*observation));
+	return provider(database->close_context, file, attempt, observation);
+}
+
+static void
+database_close_failure(struct yt_database *database,
+    enum yt_database_close_outcome outcome, uint16_t basic_error,
+    uint16_t dos_error, struct yt_error *error)
+{
+	database->last_close.outcome = outcome;
+	database->last_close.basic_error = basic_error;
+	database->last_close.dos_error = dos_error;
+	database->last_close.registered = database->file != NULL;
+	database->last_close.handle_open = database->file != NULL
+	    || database->orphaned_file != NULL;
+	set_error(error, YT_IO_ERROR, "random CLOSE", database->path);
+}
+
+bool
+yt_database_random_close(struct yt_database *database, struct yt_error *error)
+{
+	yt_database_close_provider provider;
+	struct yt_database_close_observation observation;
+	FILE *file;
+	uint16_t first_dos_error;
+	bool delivered;
+	bool handle_open;
+	bool retry_active;
+
+	if (database == NULL) {
+		set_error(error, YT_INVALID, "random CLOSE", NULL);
+		return false;
+	}
+	memset(&database->last_close, 0, sizeof(database->last_close));
+	if (database->file == NULL) {
+		database->last_close.outcome = YT_DATABASE_CLOSE_RETURNED;
+		database->last_close.missing = true;
+		database->last_close.handle_open = database->orphaned_file != NULL;
+		return true;
+	}
+	database->last_close.device = database->last_open.device;
+	file = database->file;
+	provider = database->close_provider != NULL ? database->close_provider
+	    : database_close_default;
+	delivered = database_close_observe(database, provider, file, 1U,
+	    &observation);
+	if (delivered && !observation.handle_open) {
+		database->file = NULL;
+		database->records = 0U;
+	}
+	if (!delivered || !database_close_observation_valid(&observation, true)) {
+		database_close_failure(database, YT_DATABASE_CLOSE_PROVIDER_ERROR,
+		    57U, observation.dos_error, error);
+		return false;
+	}
+	if (!observation.carry) {
+		database->file = NULL;
+		database->records = 0U;
+		database->last_close.outcome = YT_DATABASE_CLOSE_RETURNED;
+		database->last_close.registered = false;
+		database->last_close.handle_open = database->orphaned_file != NULL;
+		return true;
+	}
+	first_dos_error = observation.dos_error;
+	handle_open = observation.handle_open;
+	database->file = NULL;
+	database->records = 0U;
+	database->last_close.retry_attempted = true;
+	retry_active = handle_open;
+	delivered = database_close_observe(database, provider,
+	    retry_active ? file : NULL, 2U, &observation);
+	if (!delivered || !database_close_observation_valid(&observation,
+	    retry_active)) {
+		if ((delivered && observation.handle_open)
+		    || (!delivered && handle_open))
+			database->orphaned_file = file;
+		database_close_failure(database, YT_DATABASE_CLOSE_PROVIDER_ERROR,
+		    57U, first_dos_error, error);
+		return false;
+	}
+	handle_open = observation.handle_open;
+	if (handle_open)
+		database->orphaned_file = file;
+	database_close_failure(database, database->last_close.device
+	    ? YT_DATABASE_CLOSE_DEVICE_ERROR : YT_DATABASE_CLOSE_DISK_ERROR,
+	    database->last_close.device ? 57U : 70U, first_dos_error, error);
+	return false;
 }
 
 static bool
@@ -925,17 +1049,21 @@ static void
 database_reject_short(struct yt_database *database, struct yt_error *error)
 {
 	yt_database_close_provider provider;
+	struct yt_database_close_observation observation = {0};
 	FILE *file = database->file;
-	bool handle_open = false;
+	bool delivered;
+	bool valid;
 
 	database->file = NULL;
 	database->records = 0U;
 	database->short_close_attempted = true;
 	provider = database->close_provider != NULL ? database->close_provider
 	    : database_close_default;
-	database->short_close_succeeded = provider(database->close_context, file,
-	    &handle_open);
-	if (!database->short_close_succeeded && handle_open)
+	delivered = provider(database->close_context, file, 1U, &observation);
+	valid = delivered && database_close_observation_valid(&observation, true);
+	database->short_close_succeeded = valid && !observation.carry;
+	if ((!delivered || observation.handle_open)
+	    && !database->short_close_succeeded)
 		database->orphaned_file = file;
 	database->last_put.outcome = YT_DATABASE_PUT_REJECTED_SHORT;
 	database->last_put.basic_error = 61U;

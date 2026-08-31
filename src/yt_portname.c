@@ -267,7 +267,8 @@ yt_portname_rename(struct yt_database *database, float port_offset,
 	if (!emit(YT_PORTNAME_OUTPUT_COMPLETE, 0.0f, NULL, 0U, output,
 	    output_context, error))
 		return false;
-	yt_database_close(database);
+	if (!yt_database_random_close(database, error))
+		return false;
 	/* Authorized departure: retain PLAY ordering without host audio. */
 	local.play_event = true;
 	local.final_logical_port = logical;

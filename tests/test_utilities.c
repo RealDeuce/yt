@@ -148,6 +148,26 @@ portname_output_collect(void *context, const uint8_t *data, size_t length,
 	return true;
 }
 
+struct portname_close_fault {
+	size_t calls;
+};
+
+static bool
+portname_close_fail(void *context, FILE *active_file, size_t attempt,
+    struct yt_database_close_observation *observation)
+{
+	struct portname_close_fault *fault = context;
+
+	if (active_file == NULL || attempt != fault->calls + 1U)
+		return false;
+	++fault->calls;
+	memset(observation, 0, sizeof(*observation));
+	observation->carry = true;
+	observation->handle_open = true;
+	observation->dos_error = attempt == 1U ? 5U : 6U;
+	return true;
+}
+
 static bool
 test_portname_controller(void)
 {
@@ -183,6 +203,7 @@ test_portname_controller(void)
 	struct yt_record expected;
 	struct yt_random random;
 	struct yt_error error;
+	struct portname_close_fault close_fault;
 	uint8_t parsed[256];
 	size_t parsed_length;
 	int index;
@@ -304,6 +325,33 @@ test_portname_controller(void)
 	    &error)
 	    || !yt_database_read(&database, 3U, &after, &error)
 	    || memcmp(after.bytes, expected.bytes, YT_RECORD_SIZE) != 0)
+		goto done;
+	yt_database_close(&database);
+	(void)remove("PORTTEST.DAT");
+	memset(&tape, 0, sizeof(tape));
+	memset(&result, 0, sizeof(result));
+	memset(&close_fault, 0, sizeof(close_fault));
+	script = (struct utility_random_script){NULL, 0U, 0U};
+	yt_random_init(&random);
+	yt_random_set_provider(&random, utility_random_fill, &script);
+	if (!yt_database_open(&database, "PORTTEST.DAT", YT_OPEN_CREATE, &error))
+		goto done;
+	yt_database_set_close_provider(&database, portname_close_fail,
+	    &close_fault);
+	yt_error_clear(&error);
+	if (yt_portname_rename(&database, 2.0f, 2.5f, &random,
+	    portname_output_collect, &tape, &result, &error)
+	    || error.status != YT_IO_ERROR || result.play_event
+	    || close_fault.calls != 2U
+	    || database.last_close.outcome != YT_DATABASE_CLOSE_DISK_ERROR
+	    || database.last_close.basic_error != 70U
+	    || database.last_close.dos_error != 5U
+	    || database.last_close.registered
+	    || !database.last_close.handle_open
+	    || database.file != NULL || database.orphaned_file == NULL
+	    || tape.length != sizeof(zero_iteration) - 1U
+	    || memcmp(tape.bytes, zero_iteration,
+	    sizeof(zero_iteration) - 1U) != 0)
 		goto done;
 	valid = !yt_portname_rename(NULL, 1.0f, 4.0f, &random,
 	    portname_output_collect, &tape, &result, &error)

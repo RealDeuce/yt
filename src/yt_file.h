@@ -55,11 +55,40 @@ struct yt_database_open_result {
 	bool handle_open;
 };
 
+struct yt_database_close_observation {
+	bool carry;
+	bool handle_open;
+	uint16_t dos_error;
+};
+
+enum yt_database_close_outcome {
+	YT_DATABASE_CLOSE_NONE,
+	YT_DATABASE_CLOSE_RETURNED,
+	YT_DATABASE_CLOSE_DISK_ERROR,
+	YT_DATABASE_CLOSE_DEVICE_ERROR,
+	YT_DATABASE_CLOSE_PROVIDER_ERROR,
+};
+
+struct yt_database_close_result {
+	enum yt_database_close_outcome outcome;
+	uint16_t dos_error;
+	uint16_t basic_error;
+	size_t attempt_count;
+	bool missing;
+	bool retry_attempted;
+	bool device;
+	bool registered;
+	bool handle_open;
+};
+
 /* A false provider return rejects the observation and performs no I/O. */
 typedef bool (*yt_database_open_provider)(void *context, const char *path,
     enum yt_database_open_operation operation, uint8_t access,
     FILE *active_file, uint16_t prior_dos_error,
     struct yt_database_open_observation *observation);
+/* A false provider return rejects the observation and performs no I/O. */
+typedef bool (*yt_database_close_provider)(void *context, FILE *active_file,
+    size_t attempt, struct yt_database_close_observation *observation);
 
 struct yt_database_seek_observation {
 	bool carry;
@@ -133,8 +162,6 @@ typedef bool (*yt_database_read_provider)(void *context, FILE *file,
 typedef bool (*yt_database_write_provider)(void *context, FILE *file,
     const uint8_t *data, size_t requested,
     struct yt_database_write_observation *observation);
-typedef bool (*yt_database_close_provider)(void *context, FILE *file,
-    bool *handle_open);
 typedef bool (*yt_database_flush_provider)(void *context, FILE *file);
 
 struct yt_database {
@@ -155,6 +182,7 @@ struct yt_database {
 	bool short_close_attempted;
 	bool short_close_succeeded;
 	struct yt_database_open_result last_open;
+	struct yt_database_close_result last_close;
 	struct yt_database_get_result last_get;
 	struct yt_database_put_result last_put;
 };
@@ -180,6 +208,8 @@ bool yt_database_open(struct yt_database *database, const char *path,
     enum yt_open_mode mode, struct yt_error *error);
 bool yt_database_open_observed(struct yt_database *database, const char *path,
     enum yt_open_mode mode, yt_database_open_provider provider, void *context,
+    struct yt_error *error);
+bool yt_database_random_close(struct yt_database *database,
     struct yt_error *error);
 void yt_database_close(struct yt_database *database);
 bool yt_database_read(struct yt_database *database, size_t basic_record,

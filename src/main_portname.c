@@ -82,7 +82,10 @@ main(void)
 	yt_error_clear(&error);
 	yt_random_init(&random);
 	/* The shipped random-file opener begins with CLOSE #1. */
-	yt_database_close(&game.database);
+	if (!yt_database_random_close(&game.database, &error)) {
+		yt_cli_error("PORTNAME", &error);
+		return EXIT_FAILURE;
+	}
 	if (!yt_database_open(&game.database, "ytdata.dat",
 	    YT_OPEN_UPDATE_CREATE, &error)) {
 		yt_cli_error("PORTNAME", &error);
@@ -131,9 +134,15 @@ main(void)
 		yt_database_close(&game.database);
 		return EXIT_SUCCESS;
 	}
-	yt_database_close(&game.database);
+	if (!yt_database_random_close(&game.database, &error)) {
+		yt_cli_error("PORTNAME", &error);
+		return EXIT_FAILURE;
+	}
 	/* The shared opener redundantly closes file 1 before reopening it. */
-	yt_database_close(&game.database);
+	if (!yt_database_random_close(&game.database, &error)) {
+		yt_cli_error("PORTNAME", &error);
+		return EXIT_FAILURE;
+	}
 	if (!yt_database_open(&game.database, "ytdata.dat",
 	    YT_OPEN_UPDATE_CREATE,
 	    &error)) {
