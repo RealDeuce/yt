@@ -1628,6 +1628,31 @@ bool yt_sector_mine_final_news(float shields, uint8_t *row,
 bool yt_direct_fighter_mine_warning(const uint8_t *victim_name,
     size_t victim_name_length, uint8_t *row, size_t capacity,
     size_t *length);
+struct yt_common_fatal_state {
+	int current_player_record;
+	float foreground;
+	int pager_foreground;
+	float target_record;
+	struct yt_player field_player;
+	bool field_valid;
+	bool wait_complete;
+	bool normal_exit;
+};
+struct yt_common_fatal_ops {
+	void (*set_foreground)(void *context, float foreground,
+	    int pager_foreground);
+	bool (*present)(void *context, const uint8_t *text, size_t length,
+	    struct yt_error *error);
+	bool (*read_player)(void *context, int player_record,
+	    struct yt_player *player, struct yt_error *error);
+	bool (*sound)(void *context, struct yt_error *error);
+	bool (*death)(void *context, int victim_record, float killer,
+	    struct yt_error *error);
+	bool (*wait)(void *context, float duration, struct yt_error *error);
+};
+bool yt_common_fatal_run(struct yt_common_fatal_state *state,
+    const struct yt_common_fatal_ops *ops, void *context,
+    struct yt_error *error);
 enum yt_direct_fighter_kill_route {
 	YT_DIRECT_FIGHTER_NO_KILL,
 	YT_DIRECT_FIGHTER_FRESH_PROMPT,

@@ -4674,6 +4674,41 @@ yt_direct_fighter_mine_warning(const uint8_t *victim_name,
 }
 
 bool
+yt_common_fatal_run(struct yt_common_fatal_state *state,
+    const struct yt_common_fatal_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t notice[] = "Your ship has been destroyed!";
+	struct yt_player player;
+
+	if (state == NULL || ops == NULL || ops->set_foreground == NULL
+	    || ops->present == NULL || ops->read_player == NULL
+	    || ops->sound == NULL || ops->death == NULL || ops->wait == NULL)
+		return false;
+	state->foreground = 3.0f;
+	state->pager_foreground = 3;
+	state->wait_complete = false;
+	state->normal_exit = false;
+	ops->set_foreground(context, state->foreground,
+	    state->pager_foreground);
+	if (!ops->present(context, notice, sizeof(notice) - 1U, error)
+	    || !ops->read_player(context, state->current_player_record,
+	    &player, error))
+		return false;
+	state->field_player = player;
+	state->field_valid = true;
+	state->target_record = (float)state->current_player_record;
+	if (!ops->sound(context, error)
+	    || !ops->death(context, state->current_player_record,
+	    state->target_record, error)
+	    || !ops->wait(context, 5.0f, error))
+		return false;
+	state->wait_complete = true;
+	state->normal_exit = true;
+	return true;
+}
+
+bool
 yt_direct_fighter_kill_run(struct yt_direct_fighter_kill_state *state,
     const struct yt_direct_fighter_kill_ops *ops, void *context,
     struct yt_error *error)

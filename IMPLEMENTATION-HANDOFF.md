@@ -1525,16 +1525,24 @@ not authoritative. Use the corrected goal above in the new workspace.
   selector-three sound, self-death and one five-second wait in that order.
   `fatal_wait_complete` prevents the outer session owner from repeating the
   wait, and the result enters normal exit directly without confirmation.
+  The live bridge now delegates to a provider-driven transaction that pins
+  foreground three before the exact notice, the fresh raw current-player
+  FIELD, target-cell replacement only after that GET, selector three,
+  self-death, a separately fallible five-second wait, and the normal-exit
+  handoff. Its patterned-record tape proves zero bridge RNG draws and all
+  five fallible caller boundaries, including durable self-death/news before
+  a failed wait. Only this bridge suppresses the death helper's historical
+  embedded wait; all other death callers retain their existing behavior.
   Native presentation pins the exact plain `CRLF + fatal LFCR + BEL` splice
   under inherited background one. It now also carries the naturally fatal
   277/466-byte direct child through the 34/98-byte fatal bridge prefix and
   exact killed-player Info/scoreboard/return body, producing the complete
   1,597/1,900-byte plain/ANSI remote transcripts with terminal presentation,
   pager and viewer state pinned. All 11 focused upstream cycle tests pass,
-  and the presentation family is candidate. A complete injected raw
-  transaction, the exact 133-event local-only tape, full death/news/FIELD/
-  cache/RNG state, lazy nonfatal/emergency branches and every carrier/
-  dependency/physical failure prefix remain open.
+  and the presentation family is candidate. The exact 133-event local-only
+  tape, dependency-internal death/news/FIELD/cache prefixes, complete joined
+  normal-exit state, carrier/pager/input variants and every physical failure
+  prefix remain open.
 - The shared emergency-warp child at `YT-SUB:[9FC4,A400)` now emits the exact
   wormhole and temperature gauge instead of the prior coarse dot loop. Its
   duration draws occur after the gauge open, the SINGLE counter begins at
@@ -1555,9 +1563,11 @@ not authoritative. Use the corrected goal above in the new workspace.
 - With the black-hole and mine children exact, the bounded gameplay-hazard
   family is now candidate. One native `sector_entry` loop owns the scanner
   and admission once, carries the black-hole or mine child's live state into
-  its following scan, composes the mine's optional emergency warp, and uses
-  the returned destruction flag alone for the common-fatal split. No return
-  edge replays scanner output, admission, RNG or persistence. All 16 focused
+  its following scan, and composes the mine's optional emergency warp. Only
+  an ordinary mine return exposes destruction to the common-fatal split; a
+  successful emergency-warp handoff remains terminal even when destruction
+  is already nonzero. No return edge replays scanner output, admission, RNG
+  or persistence. All 16 focused
   upstream composition tests pass across the canonical 489/649-byte black-
   hole, 234/324-byte mine and 583/799-byte mine-warp lanes. A complete joined
   raw FIELD/cache/RNG/news/wait/local transaction, recursive second hazards

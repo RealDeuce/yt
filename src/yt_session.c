@@ -4501,8 +4501,8 @@ team_remove_player(struct yt_session *session, int victim,
 }
 
 static bool
-kill_player(struct yt_session *session, int victim_record,
-    float killer, struct yt_error *error)
+kill_player_run(struct yt_session *session, int victim_record,
+    float killer, bool wait_for_current, struct yt_error *error)
 {
 	struct yt_player victim;
 	uint8_t victim_name[YT_TEXT_FIELD_SIZE];
@@ -4609,7 +4609,7 @@ kill_player(struct yt_session *session, int victim_record,
 	}
 	if (!yt_database_flush(&session->door->game.database, error))
 		return false;
-	if (victim_record == session->player_record) {
+	if (victim_record == session->player_record && wait_for_current) {
 		if (!session_wait(session, 5.0, "common fatal wait", error))
 			return false;
 		session->fatal_wait_complete = true;
@@ -4618,19 +4618,84 @@ kill_player(struct yt_session *session, int victim_record,
 }
 
 static bool
+kill_player(struct yt_session *session, int victim_record,
+    float killer, struct yt_error *error)
+{
+	return kill_player_run(session, victim_record, killer, true, error);
+}
+
+static void
+common_fatal_set_foreground(void *context, float foreground,
+    int pager_foreground)
+{
+	struct yt_session *session = context;
+
+	session->presentation.foreground = foreground;
+	session->pager.foreground = pager_foreground;
+}
+
+static bool
+common_fatal_present(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	return session_02db(context, text, length, "common fatal notice", error);
+}
+
+static bool
+common_fatal_read_player(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	if (player_record != session->player_record
+	    || !reload_player(session, error))
+		return false;
+	*player = session->player;
+	return true;
+}
+
+static bool
+common_fatal_sound(void *context, struct yt_error *error)
+{
+	return session_sound(context, 3.0f, "fatal destruction sound", error);
+}
+
+static bool
+common_fatal_death(void *context, int victim_record, float killer,
+    struct yt_error *error)
+{
+	return kill_player_run(context, victim_record, killer, false, error);
+}
+
+static bool
+common_fatal_wait(void *context, float duration, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	if (!session_wait(session, (double)duration, "common fatal wait", error))
+		return false;
+	session->fatal_wait_complete = true;
+	return true;
+}
+
+static bool
 common_fatal_self(struct yt_session *session, struct yt_error *error)
 {
-	static const uint8_t notice[] = "Your ship has been destroyed!";
+	static const struct yt_common_fatal_ops ops = {
+		common_fatal_set_foreground,
+		common_fatal_present,
+		common_fatal_read_player,
+		common_fatal_sound,
+		common_fatal_death,
+		common_fatal_wait,
+	};
+	struct yt_common_fatal_state state = {
+		.current_player_record = session->player_record,
+		.foreground = session->presentation.foreground,
+		.pager_foreground = session->pager.foreground,
+	};
 
-	session->pager.foreground = 3;
-	session->presentation.foreground = 3.0f;
-	if (!session_02db(session, notice, sizeof(notice) - 1U,
-	    "common fatal notice", error)
-	    || !reload_player(session, error)
-	    || !session_sound(session, 3.0f, "fatal destruction sound", error))
-		return false;
-	return kill_player(session, session->player_record,
-	    (float)session->player_record, error);
+	return yt_common_fatal_run(&state, &ops, session, error);
 }
 
 static bool
