@@ -16,6 +16,21 @@ store_config(struct yt_game *game, struct yt_error *error)
 }
 
 static bool
+ytconfig_close_all(struct yt_game *game, struct yt_error *error)
+{
+	struct yt_close_all_control control = {
+		.heap_type = YT_CLOSE_ALL_HEAP_FILE,
+		.file_class = 0,
+		.method = yt_database_close_all_method,
+		.context = &game->database,
+	};
+	size_t control_count = game->database.file != NULL ? 1U : 0U;
+
+	return yt_close_all_run(control_count != 0U ? &control : NULL,
+	    control_count, NULL, NULL, error);
+}
+
+static bool
 redraw_repairs(struct yt_game *game, float maximum,
     struct yt_error *error)
 {
@@ -910,7 +925,8 @@ main(void)
 		if (!yt_config_compose_missing_data(0U, &output)
 		    || !write_output(&output, &error))
 			goto failure;
-		yt_database_close(&game.database);
+		if (!ytconfig_close_all(&game, &error))
+			goto failure;
 		if (!yt_file_delete("ytdata.dat", true, &error))
 			goto failure_closed;
 		return EXIT_SUCCESS;
@@ -997,7 +1013,8 @@ main(void)
 			break;
 		}
 	}
-	yt_game_close(&game);
+	if (!ytconfig_close_all(&game, &error))
+		goto failure;
 	return EXIT_SUCCESS;
 
 failure:
