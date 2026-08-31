@@ -82,6 +82,46 @@ struct yt_database_close_result {
 	bool handle_open;
 };
 
+/*
+ * CLOSE_NO_ARGS scans general-heap controls in physical high-to-low order.
+ * The array is supplied in low-to-high allocator order; only live type-3
+ * controls dispatch a class-specific close method.  Type-1 and type-2 blocks
+ * remain visible so their skip/order behavior can be retained exactly.
+ */
+enum yt_close_all_heap_type {
+	YT_CLOSE_ALL_HEAP_FREE = 1,
+	YT_CLOSE_ALL_HEAP_NON_FILE = 2,
+	YT_CLOSE_ALL_HEAP_FILE = 3,
+};
+
+typedef bool (*yt_close_all_method)(void *context, int8_t file_class,
+	struct yt_error *error);
+typedef void (*yt_close_all_fixed_method)(void *context);
+
+struct yt_close_all_control {
+	enum yt_close_all_heap_type heap_type;
+	int8_t file_class;
+	yt_close_all_method method;
+	void *context;
+};
+
+struct yt_close_all_fixed_control {
+	size_t *lazy_open_count;
+	yt_close_all_fixed_method method;
+	void *context;
+};
+
+struct yt_close_all_result {
+	size_t scanned_count;
+	size_t attempt_count;
+	size_t completed_count;
+	size_t failed_index;
+	bool failed;
+	bool fixed_was_open;
+	bool fixed_close_attempted;
+	bool returned;
+};
+
 enum yt_database_lof_operation {
 	YT_DATABASE_LOF_OPERATION_NONE,
 	YT_DATABASE_LOF_CURRENT,
@@ -256,6 +296,11 @@ bool yt_database_random_close(struct yt_database *database,
 /* CLOSE-all projection for a registry known to contain at most this control. */
 bool yt_database_close_all_single(struct yt_database *database,
     struct yt_error *error);
+bool yt_database_close_all_method(void *context, int8_t file_class,
+    struct yt_error *error);
+bool yt_close_all_run(const struct yt_close_all_control *controls,
+    size_t control_count, const struct yt_close_all_fixed_control *fixed,
+    struct yt_close_all_result *result, struct yt_error *error);
 bool yt_database_random_lof(struct yt_database *database, uint32_t *length,
     struct yt_error *error);
 bool yt_random_file_lof(FILE *file, const char *path, uint32_t *length,

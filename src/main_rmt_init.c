@@ -388,6 +388,36 @@ finish_rmt(struct rmt_handoff_file *handoff, struct yt_rmt_door *door,
 	return status;
 }
 
+static void
+rmt_close_all_fixed(void *context)
+{
+	yt_rmt_door_finish(context, EXIT_SUCCESS);
+}
+
+static bool
+rmt_close_all(struct yt_database *database, struct yt_rmt_door *door,
+    struct yt_error *error)
+{
+	struct yt_close_all_control control = {
+		.heap_type = YT_CLOSE_ALL_HEAP_FILE,
+		.file_class = 0,
+		.method = yt_database_close_all_method,
+		.context = database,
+	};
+	size_t fixed_open_count = door != NULL
+	    && (door->initialized || door->serial.prepared) ? 1U : 0U;
+	struct yt_close_all_fixed_control fixed = {
+		.lazy_open_count = &fixed_open_count,
+		.method = rmt_close_all_fixed,
+		.context = door,
+	};
+	size_t control_count = database != NULL && database->file != NULL
+	    ? 1U : 0U;
+
+	return yt_close_all_run(control_count != 0U ? &control : NULL,
+	    control_count, &fixed, NULL, error);
+}
+
 int
 main(void)
 {
@@ -503,13 +533,11 @@ main(void)
 	}
 	if (old_size == 0U) {
 		if (!write_missing_old_data(&output_context, &error)
-		    || !yt_database_close_all_single(&old, &error)) {
+		    || !rmt_close_all(&old, &door, &error)) {
 			yt_database_close(&old);
 			yt_cli_error("RMT-INIT", &error);
 			return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
 		}
-		/* 281F CLOSE-all closes the remaining COM control before KILL. */
-		yt_rmt_door_finish(&door, EXIT_SUCCESS);
 		if (!yt_file_delete("YTDATA.DAT", false, &error)) {
 			yt_cli_error("RMT-INIT", &error);
 			return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
@@ -535,6 +563,10 @@ main(void)
 		return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
 	}
 	if (!write_rmt_completion(&output_context, credited, &error)) {
+		yt_cli_error("RMT-INIT", &error);
+		return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
+	}
+	if (!rmt_close_all(NULL, &door, &error)) {
 		yt_cli_error("RMT-INIT", &error);
 		return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
 	}

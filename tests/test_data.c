@@ -727,6 +727,55 @@ database_close_fixture(struct yt_database *database, bool device,
 	return true;
 }
 
+struct close_all_tape {
+	int identifiers[8];
+	int classes[8];
+	size_t length;
+	size_t fixed_count_at_call;
+	unsigned fixed_calls;
+};
+
+struct close_all_entry {
+	struct close_all_tape *tape;
+	int identifier;
+	bool succeeds;
+};
+
+struct close_all_fixed_entry {
+	struct close_all_tape *tape;
+	size_t *lazy_open_count;
+};
+
+static bool
+scripted_close_all_method(void *context, int8_t file_class,
+    struct yt_error *error)
+{
+	struct close_all_entry *entry = context;
+	struct close_all_tape *tape = entry->tape;
+
+	CHECK(tape->length < YT_ARRAY_LEN(tape->identifiers));
+	if (tape->length < YT_ARRAY_LEN(tape->identifiers)) {
+		tape->identifiers[tape->length] = entry->identifier;
+		tape->classes[tape->length] = file_class;
+		++tape->length;
+	}
+	if (!entry->succeeds && error != NULL) {
+		error->status = YT_IO_ERROR;
+		snprintf(error->operation, sizeof(error->operation),
+		    "scripted CLOSE all method");
+	}
+	return entry->succeeds;
+}
+
+static void
+scripted_close_all_fixed(void *context)
+{
+	struct close_all_fixed_entry *entry = context;
+
+	entry->tape->fixed_count_at_call = *entry->lazy_open_count;
+	++entry->tape->fixed_calls;
+}
+
 static void
 database_lof_add(struct database_lof_script *script,
     enum yt_database_lof_operation operation, uint32_t restore_position,
@@ -1136,6 +1185,145 @@ test_database_random_open(void)
 	    && database.last_open.operation_count == 1U
 	    && database.last_open.access_attempt_count == 1U
 	    && database.file == NULL && database.orphaned_file == NULL);
+}
+
+static void
+test_close_all_registry(void)
+{
+	struct close_all_tape tape;
+	struct close_all_entry entries[3];
+	struct yt_close_all_control controls[5];
+	struct close_all_fixed_entry fixed_entry;
+	struct yt_close_all_fixed_control fixed;
+	struct yt_close_all_result result;
+	struct yt_error error;
+	struct yt_database databases[2];
+	struct database_public_close_script close_scripts[2];
+	struct yt_close_all_control database_controls[2];
+	size_t lazy_open_count;
+	static const int expected_identifiers[] = {50, 30, 10};
+	static const int expected_classes[] = {-1, -4, 0};
+
+	memset(&tape, 0, sizeof(tape));
+	yt_error_clear(&error);
+	CHECK(yt_close_all_run(NULL, 0U, NULL, &result, &error)
+	    && result.scanned_count == 0U && result.attempt_count == 0U
+	    && result.completed_count == 0U && result.failed_index == SIZE_MAX
+	    && !result.failed && !result.fixed_was_open
+	    && !result.fixed_close_attempted && result.returned);
+
+	entries[0] = (struct close_all_entry){&tape, 10, true};
+	entries[1] = (struct close_all_entry){&tape, 30, true};
+	entries[2] = (struct close_all_entry){&tape, 50, true};
+	controls[0] = (struct yt_close_all_control){
+		YT_CLOSE_ALL_HEAP_FILE, 0, scripted_close_all_method, &entries[0]};
+	controls[1] = (struct yt_close_all_control){
+		YT_CLOSE_ALL_HEAP_NON_FILE, 0, NULL, NULL};
+	controls[2] = (struct yt_close_all_control){
+		YT_CLOSE_ALL_HEAP_FILE, -4, scripted_close_all_method, &entries[1]};
+	controls[3] = (struct yt_close_all_control){
+		YT_CLOSE_ALL_HEAP_FREE, 0, NULL, NULL};
+	controls[4] = (struct yt_close_all_control){
+		YT_CLOSE_ALL_HEAP_FILE, -1, scripted_close_all_method, &entries[2]};
+	lazy_open_count = 2U;
+	fixed_entry = (struct close_all_fixed_entry){&tape, &lazy_open_count};
+	fixed = (struct yt_close_all_fixed_control){
+		&lazy_open_count, scripted_close_all_fixed, &fixed_entry};
+	CHECK(yt_close_all_run(controls, YT_ARRAY_LEN(controls), &fixed,
+	    &result, &error));
+	CHECK(tape.length == YT_ARRAY_LEN(expected_identifiers)
+	    && memcmp(tape.identifiers, expected_identifiers,
+	    sizeof(expected_identifiers)) == 0
+	    && memcmp(tape.classes, expected_classes,
+	    sizeof(expected_classes)) == 0);
+	CHECK(result.scanned_count == YT_ARRAY_LEN(controls)
+	    && result.attempt_count == 3U && result.completed_count == 3U
+	    && result.failed_index == SIZE_MAX && !result.failed
+	    && result.fixed_was_open && result.fixed_close_attempted
+	    && result.returned && lazy_open_count == 0U
+	    && tape.fixed_calls == 1U && tape.fixed_count_at_call == 0U);
+
+	/* A nonlocal file-method failure commits only higher controls. */
+	memset(&tape, 0, sizeof(tape));
+	entries[1].succeeds = false;
+	lazy_open_count = 2U;
+	yt_error_clear(&error);
+	CHECK(!yt_close_all_run(controls, YT_ARRAY_LEN(controls), &fixed,
+	    &result, &error)
+	    && error.status == YT_IO_ERROR
+	    && strcmp(error.operation, "scripted CLOSE all method") == 0);
+	CHECK(tape.length == 2U && tape.identifiers[0] == 50
+	    && tape.identifiers[1] == 30
+	    && result.scanned_count == 3U && result.attempt_count == 2U
+	    && result.completed_count == 1U && result.failed_index == 2U
+	    && result.failed && !result.fixed_was_open
+	    && !result.fixed_close_attempted && !result.returned
+	    && lazy_open_count == 2U && tape.fixed_calls == 0U);
+
+	/* A zero lazy count skips the stable fixed control. */
+	memset(&tape, 0, sizeof(tape));
+	entries[1].succeeds = true;
+	lazy_open_count = 0U;
+	CHECK(yt_close_all_run(NULL, 0U, &fixed, &result, &error)
+	    && result.returned && !result.fixed_was_open
+	    && !result.fixed_close_attempted && tape.fixed_calls == 0U);
+
+	/* Ordinary controls compose the exact per-file method in registry order. */
+	memset(close_scripts, 0, sizeof(close_scripts));
+	database_close_add(&close_scripts[0], false, 0U, false, true, true);
+	database_close_add(&close_scripts[1], false, 0U, false, true, true);
+	CHECK(database_close_fixture(&databases[0], false, &close_scripts[0])
+	    && database_close_fixture(&databases[1], false, &close_scripts[1]));
+	database_controls[0] = (struct yt_close_all_control){
+		YT_CLOSE_ALL_HEAP_FILE, 0, yt_database_close_all_method,
+		&databases[0]};
+	database_controls[1] = (struct yt_close_all_control){
+		YT_CLOSE_ALL_HEAP_FILE, 0, yt_database_close_all_method,
+		&databases[1]};
+	CHECK(yt_close_all_run(database_controls,
+	    YT_ARRAY_LEN(database_controls), NULL, &result, &error)
+	    && close_scripts[0].position == close_scripts[0].length
+	    && close_scripts[1].position == close_scripts[1].length
+	    && databases[0].last_close.close_all
+	    && databases[1].last_close.close_all
+	    && databases[0].file == NULL && databases[1].file == NULL);
+	yt_database_close(&databases[0]);
+	yt_database_close(&databases[1]);
+
+	/* Failure of the high control leaves the lower ordinary file untouched. */
+	memset(close_scripts, 0, sizeof(close_scripts));
+	database_close_add(&close_scripts[0], false, 0U, false, true, true);
+	database_close_add(&close_scripts[1], true, 5U, true, true, false);
+	database_close_add(&close_scripts[1], false, 0U, false, true, true);
+	CHECK(database_close_fixture(&databases[0], false, &close_scripts[0])
+	    && database_close_fixture(&databases[1], false, &close_scripts[1]));
+	yt_error_clear(&error);
+	CHECK(!yt_close_all_run(database_controls,
+	    YT_ARRAY_LEN(database_controls), NULL, &result, &error)
+	    && result.failed_index == 1U && result.scanned_count == 1U
+	    && result.attempt_count == 1U && result.completed_count == 0U
+	    && close_scripts[0].position == 0U
+	    && close_scripts[1].position == close_scripts[1].length
+	    && databases[0].file != NULL
+	    && databases[0].last_close.outcome == YT_DATABASE_CLOSE_NONE
+	    && databases[1].file == NULL
+	    && databases[1].last_close.outcome == YT_DATABASE_CLOSE_DISK_ERROR
+	    && strcmp(error.operation, "CLOSE all") == 0);
+	yt_database_close(&databases[0]);
+	yt_database_close(&databases[1]);
+
+	/* Malformed registries are rejected before any control is touched. */
+	memset(&tape, 0, sizeof(tape));
+	controls[0].method = NULL;
+	yt_error_clear(&error);
+	CHECK(!yt_close_all_run(controls, YT_ARRAY_LEN(controls), NULL,
+	    &result, &error) && error.status == YT_INVALID
+	    && strcmp(error.operation, "CLOSE all registry") == 0
+	    && tape.length == 0U && result.scanned_count == 0U
+	    && result.failed_index == SIZE_MAX && !result.returned);
+	yt_error_clear(&error);
+	CHECK(!yt_close_all_run(NULL, 1U, NULL, &result, &error)
+	    && error.status == YT_INVALID && result.scanned_count == 0U);
 }
 
 static void
@@ -3992,6 +4180,7 @@ main(void)
 	test_clock();
 	test_random();
 	test_database_random_open();
+	test_close_all_registry();
 	test_database_random_close();
 	test_database_random_lof();
 	test_files();

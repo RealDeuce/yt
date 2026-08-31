@@ -1049,10 +1049,92 @@ yt_database_random_close(struct yt_database *database, struct yt_error *error)
 }
 
 bool
+yt_database_close_all_method(void *context, int8_t file_class,
+    struct yt_error *error)
+{
+	if (file_class < 0) {
+		set_error(error, YT_INVALID, "CLOSE all class", NULL);
+		return false;
+	}
+	return database_close_execute(context, true, error);
+}
+
+bool
+yt_close_all_run(const struct yt_close_all_control *controls,
+    size_t control_count, const struct yt_close_all_fixed_control *fixed,
+    struct yt_close_all_result *result, struct yt_error *error)
+{
+	struct yt_close_all_result local;
+	size_t index;
+
+	memset(&local, 0, sizeof(local));
+	local.failed_index = SIZE_MAX;
+	if ((controls == NULL && control_count != 0U)
+	    || (fixed != NULL && (fixed->lazy_open_count == NULL
+	    || fixed->method == NULL))) {
+		set_error(error, YT_INVALID, "CLOSE all registry", NULL);
+		if (result != NULL)
+			*result = local;
+		return false;
+	}
+	for (index = 0U; index < control_count; ++index) {
+		if ((controls[index].heap_type != YT_CLOSE_ALL_HEAP_FREE
+		    && controls[index].heap_type != YT_CLOSE_ALL_HEAP_NON_FILE
+		    && controls[index].heap_type != YT_CLOSE_ALL_HEAP_FILE)
+		    || (controls[index].heap_type == YT_CLOSE_ALL_HEAP_FILE
+		    && controls[index].method == NULL)) {
+			set_error(error, YT_INVALID, "CLOSE all registry", NULL);
+			if (result != NULL)
+				*result = local;
+			return false;
+		}
+	}
+	for (index = control_count; index != 0U;) {
+		const struct yt_close_all_control *control;
+
+		--index;
+		control = &controls[index];
+		++local.scanned_count;
+		if (control->heap_type != YT_CLOSE_ALL_HEAP_FILE)
+			continue;
+		++local.attempt_count;
+		if (!control->method(control->context, control->file_class,
+		    error)) {
+			local.failed = true;
+			local.failed_index = index;
+			if (result != NULL)
+				*result = local;
+			return false;
+		}
+		++local.completed_count;
+	}
+	if (fixed != NULL && *fixed->lazy_open_count != 0U) {
+		local.fixed_was_open = true;
+		*fixed->lazy_open_count = 0U;
+		local.fixed_close_attempted = true;
+		fixed->method(fixed->context);
+	}
+	local.returned = true;
+	if (result != NULL)
+		*result = local;
+	return true;
+}
+
+bool
 yt_database_close_all_single(struct yt_database *database,
     struct yt_error *error)
 {
-	return database_close_execute(database, true, error);
+	struct yt_close_all_control control = {
+		.heap_type = YT_CLOSE_ALL_HEAP_FILE,
+		.file_class = 0,
+		.method = yt_database_close_all_method,
+		.context = database,
+	};
+
+	/* No allocated block exists for an unregistered file number. */
+	if (database != NULL && database->file == NULL)
+		return database_close_execute(database, true, error);
+	return yt_close_all_run(&control, 1U, NULL, NULL, error);
 }
 
 static bool
