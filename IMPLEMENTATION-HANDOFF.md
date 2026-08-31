@@ -1469,7 +1469,10 @@ not authoritative. Use the corrected goal above in the new workspace.
   without a draw and persists raw MBF32 `00 00 48 00`. Fighters, carried
   mines, commodities and empty holds retain their three-draw shrink
   cardinality under the authorized CSPRNG-source departure, while cloak and
-  missiles keep their direct one-draw arithmetic. Each player commit starts
+  missiles keep their direct one-draw arithmetic. The missile step now has
+  an injected native boundary that proves exact-zero suppression, one call
+  for every nonzero stock, the capped SINGLE result, and unchanged outputs
+  when that one provider call fails. Each player commit starts
   with a second fresh GET and overlays only touched raw fields. Selector two
   precedes the unconditional emergency draw, destroyed ships can still warp,
   and the body no longer consumes its caller's common-death continuation.
@@ -1496,15 +1499,25 @@ not authoritative. Use the corrected goal above in the new workspace.
   the row builder and exact 48-byte plain warning framing; all 20 focused
   upstream wrapper tests pass, all 15 transfers and its presentation family
   are candidate, and the caller—not the mine body—owns the destroyed-to-
-  common-fatal disposition. The deterministic distinct-player kill now
+  common-fatal disposition. A provider-driven caller transaction now pins
+  the complete selector/victim snapshot/name conversion/death/salvage/
+  sector GET/dirty overlay/PUT/warning/news/mine/fatal order. Its patterned
+  records prove that deployment changes only raw sector offset 129; its
+  binary name crosses both children unchanged; the shared child tape proves
+  six salvage draws precede mine draws; and all eleven callback failure
+  boundaries retain their staged FIELD, durable sector, news, and RNG
+  prefixes. Numeric no-kill and nonpositive-mine returns, raw-zero nonfatal
+  return, raw-nonzero fatal return, and the lazy emergency-warp terminal are
+  independently pinned. The live wrapper uses this transaction and no longer
+  routes an emergency-warp handoff into common fatal death. The deterministic
+  distinct-player kill now
   composes selector three, the 50-byte death title, shared salvage, the
   caller warning and all three surviving-shield mine batches into exact
   403/738-byte native plain/ANSI transcripts. Their five partitions are
   1/50/78/48/226 and 51/50/100/62/475 bytes respectively, with the final
-  foreground/background/style, color cache and pager state pinned. A
-  complete injected raw combat/death/salvage/mine FIELD/store/news/RNG
-  transaction, local/pager/carrier modes and every dependency/physical
-  failure prefix remain open.
+  foreground/background/style, color cache and pager state pinned. The
+  preceding combat transaction, dependency-internal child failures,
+  local/pager/carrier modes and physical failure prefixes remain open.
 - The direct fighter destroyed-to-fatal cycle now preserves the mine body's
   nonzero destruction result without inserting output, RNG, I/O or state
   normalization. It inherits the mine background, pager and input state into

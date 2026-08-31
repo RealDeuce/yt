@@ -1599,6 +1599,16 @@ float yt_sector_mine_batch(float mines_before);
 float yt_sector_mine_shield_result(float shields, float batch, float draw);
 float yt_sector_mine_cloak_loss(float cloak, float batch, float draw);
 float yt_sector_mine_missile_loss(float missiles, float batch, float draw);
+typedef bool (*yt_sector_mine_draw_fn)(void *context, float *value,
+    struct yt_error *error);
+struct yt_sector_mine_missile_result {
+	float remaining;
+	float loss;
+	bool applied;
+};
+bool yt_sector_mine_missile_step(float missiles, float batch,
+    yt_sector_mine_draw_fn draw, void *context,
+    struct yt_sector_mine_missile_result *result, struct yt_error *error);
 float yt_sector_mine_empty_holds(const struct yt_player *player);
 void yt_sector_mine_sector_overlay(struct yt_sector *sector,
     float mines_after);
@@ -1618,6 +1628,48 @@ bool yt_sector_mine_final_news(float shields, uint8_t *row,
 bool yt_direct_fighter_mine_warning(const uint8_t *victim_name,
     size_t victim_name_length, uint8_t *row, size_t capacity,
     size_t *length);
+enum yt_direct_fighter_kill_route {
+	YT_DIRECT_FIGHTER_NO_KILL,
+	YT_DIRECT_FIGHTER_FRESH_PROMPT,
+	YT_DIRECT_FIGHTER_MINE_TERMINAL,
+	YT_DIRECT_FIGHTER_COMMON_FATAL,
+};
+struct yt_direct_fighter_kill_state {
+	float target_shields;
+	int target_record;
+	int current_player_record;
+	float current_sector;
+	float saved_mines;
+	uint8_t saved_name[YT_TEXT_FIELD_SIZE];
+	size_t saved_name_length;
+	uint8_t destroyed_raw[4];
+	enum yt_direct_fighter_kill_route route;
+};
+struct yt_direct_fighter_kill_ops {
+	bool (*sound)(void *context, struct yt_error *error);
+	bool (*read_player)(void *context, int player_record,
+	    struct yt_player *player, struct yt_error *error);
+	bool (*name_length)(void *context, float raw_length, size_t *length,
+	    struct yt_error *error);
+	bool (*death)(void *context, int victim_record, float killer,
+	    struct yt_error *error);
+	bool (*salvage)(void *context, int victim_record, float killer,
+	    struct yt_error *error);
+	bool (*read_sector)(void *context, float logical_sector,
+	    struct yt_sector *sector, struct yt_error *error);
+	bool (*write_sector)(void *context, float logical_sector,
+	    struct yt_sector *sector, struct yt_error *error);
+	bool (*present)(void *context, const uint8_t *text, size_t length,
+	    struct yt_error *error);
+	bool (*news)(void *context, const uint8_t *text, size_t length,
+	    struct yt_error *error);
+	bool (*mine)(void *context, bool *terminal, uint8_t destroyed_raw[4],
+	    struct yt_error *error);
+	bool (*fatal)(void *context, struct yt_error *error);
+};
+bool yt_direct_fighter_kill_run(struct yt_direct_fighter_kill_state *state,
+    const struct yt_direct_fighter_kill_ops *ops, void *context,
+    struct yt_error *error);
 float yt_emergency_warp_duration(float first, float second);
 float yt_emergency_warp_destination(float draw, float sector_count);
 float yt_emergency_warp_cost(float heat, float draw, float turns,

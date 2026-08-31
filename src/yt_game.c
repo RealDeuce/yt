@@ -4471,6 +4471,34 @@ yt_sector_mine_missile_loss(float missiles, float batch, float draw)
 	return loss > missiles ? missiles : loss;
 }
 
+bool
+yt_sector_mine_missile_step(float missiles, float batch,
+    yt_sector_mine_draw_fn draw, void *context,
+    struct yt_sector_mine_missile_result *result, struct yt_error *error)
+{
+	struct yt_sector_mine_missile_result next;
+	float sampled;
+	volatile float remaining;
+
+	if (draw == NULL || result == NULL)
+		return false;
+	if (missiles == 0.0f) {
+		next.remaining = missiles;
+		next.loss = 0.0f;
+		next.applied = false;
+		*result = next;
+		return true;
+	}
+	if (!draw(context, &sampled, error))
+		return false;
+	next.loss = yt_sector_mine_missile_loss(missiles, batch, sampled);
+	remaining = missiles - next.loss;
+	next.remaining = remaining;
+	next.applied = true;
+	*result = next;
+	return true;
+}
+
 float
 yt_sector_mine_empty_holds(const struct yt_player *player)
 {
@@ -4643,6 +4671,80 @@ yt_direct_fighter_mine_warning(const uint8_t *victim_name,
 	return move_join_parts(prefix, sizeof(prefix) - 1U,
 	    victim_name, victim_name_length, suffix, sizeof(suffix) - 1U,
 	    NULL, 0U, NULL, 0U, row, capacity, length);
+}
+
+bool
+yt_direct_fighter_kill_run(struct yt_direct_fighter_kill_state *state,
+    const struct yt_direct_fighter_kill_ops *ops, void *context,
+    struct yt_error *error)
+{
+	struct yt_player target;
+	struct yt_sector sector;
+	uint8_t warning[128];
+	size_t warning_length;
+	bool terminal;
+	volatile float deployed;
+
+	if (state == NULL || ops == NULL)
+		return false;
+	if (state->target_shields > 0.0f) {
+		state->route = YT_DIRECT_FIGHTER_NO_KILL;
+		return true;
+	}
+	if (ops->sound == NULL || ops->read_player == NULL
+	    || ops->name_length == NULL || ops->death == NULL
+	    || ops->salvage == NULL)
+		return false;
+	if (!ops->sound(context, error)
+	    || !ops->read_player(context, state->target_record, &target, error))
+		return false;
+	state->saved_mines = target.mines;
+	if (!ops->name_length(context, target.name_length,
+	    &state->saved_name_length, error))
+		return false;
+	if (state->saved_name_length > sizeof(state->saved_name))
+		return false;
+	if (state->saved_name_length != 0U)
+		memcpy(state->saved_name, target.record.bytes,
+		    state->saved_name_length);
+	if (!ops->death(context, state->target_record,
+	    (float)state->current_player_record, error)
+	    || !ops->salvage(context, state->target_record,
+	    (float)state->current_player_record, error))
+		return false;
+	if (!(state->saved_mines > 0.0f)) {
+		state->route = YT_DIRECT_FIGHTER_FRESH_PROMPT;
+		return true;
+	}
+	if (ops->read_sector == NULL || ops->write_sector == NULL
+	    || ops->present == NULL || ops->news == NULL || ops->mine == NULL)
+		return false;
+	if (!ops->read_sector(context, state->current_sector, &sector, error))
+		return false;
+	deployed = sector.mines + state->saved_mines;
+	yt_sector_mine_sector_overlay(&sector, deployed);
+	if (!ops->write_sector(context, state->current_sector, &sector, error)
+	    || !yt_direct_fighter_mine_warning(state->saved_name,
+	    state->saved_name_length, warning, sizeof(warning),
+	    &warning_length)
+	    || !ops->present(context, warning, warning_length, error)
+	    || !ops->news(context, warning, warning_length, error))
+		return false;
+	terminal = false;
+	if (!ops->mine(context, &terminal, state->destroyed_raw, error))
+		return false;
+	if (terminal) {
+		state->route = YT_DIRECT_FIGHTER_MINE_TERMINAL;
+		return true;
+	}
+	if (!qb_mbf32_truth(state->destroyed_raw)) {
+		state->route = YT_DIRECT_FIGHTER_FRESH_PROMPT;
+		return true;
+	}
+	state->route = YT_DIRECT_FIGHTER_COMMON_FATAL;
+	if (ops->fatal == NULL)
+		return false;
+	return ops->fatal(context, error);
 }
 
 float

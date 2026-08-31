@@ -96,7 +96,7 @@ static bool projectile_damage_draw(void *context, float *value,
     struct yt_error *error);
 static bool computer_spies(struct yt_session *session,
     struct yt_error *error);
-static bool mine_encounter(struct yt_session *session,
+static bool mine_encounter(struct yt_session *session, bool *terminal,
     struct yt_error *error);
 static bool clearance(struct yt_session *session, bool create,
     struct yt_error *error);
@@ -4952,6 +4952,124 @@ xannor_victory(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
+direct_fighter_kill_sound(void *context, struct yt_error *error)
+{
+	return session_sound(context, 3.0f, "player kill sound", error);
+}
+
+static bool
+direct_fighter_kill_read_player(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_read_player(&session->door->game, player_record, player,
+	    error);
+}
+
+static bool
+direct_fighter_kill_name_length(void *context, float raw_length,
+    size_t *length, struct yt_error *error)
+{
+	return port_report_length(context, raw_length, YT_TEXT_FIELD_SIZE,
+	    length, "direct fighter victim name length", error);
+}
+
+static bool
+direct_fighter_kill_death(void *context, int victim_record, float killer,
+    struct yt_error *error)
+{
+	return kill_player(context, victim_record, killer, error);
+}
+
+static bool
+direct_fighter_kill_salvage(void *context, int victim_record, float killer,
+    struct yt_error *error)
+{
+	return salvage_player(context, victim_record, killer, error);
+}
+
+static bool
+direct_fighter_kill_sector_number(struct yt_session *session, float raw,
+    int *logical, struct yt_error *error)
+{
+	bool overflow;
+
+	*logical = (int)qb_cint_mode((double)raw,
+	    session->presentation.sound.conversion_mode, &overflow);
+	if (!overflow)
+		return true;
+	if (error != NULL) {
+		error->status = YT_RANGE;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    "direct fighter sector record CINT");
+	}
+	return false;
+}
+
+static bool
+direct_fighter_kill_read_sector(void *context, float raw_sector,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct yt_session *session = context;
+	int logical_sector;
+
+	if (!direct_fighter_kill_sector_number(session, raw_sector,
+	    &logical_sector, error))
+		return false;
+	return yt_game_read_sector(&session->door->game, logical_sector, sector,
+	    error);
+}
+
+static bool
+direct_fighter_kill_write_sector(void *context, float raw_sector,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct yt_session *session = context;
+	int logical_sector;
+
+	if (!direct_fighter_kill_sector_number(session, raw_sector,
+	    &logical_sector, error))
+		return false;
+	return yt_database_write(&session->door->game.database,
+	    (size_t)yt_sector_basic_record(&session->door->game.config,
+	    logical_sector), &sector->record, error);
+}
+
+static bool
+direct_fighter_kill_present(void *context, const uint8_t *text,
+    size_t length, struct yt_error *error)
+{
+	return session_02db(context, text, length,
+	    "direct fighter mine warning", error);
+}
+
+static bool
+direct_fighter_kill_news(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	return append_news_bytes(context, text, length, error);
+}
+
+static bool
+direct_fighter_kill_mine(void *context, bool *terminal,
+    uint8_t destroyed_raw[4], struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	if (!mine_encounter(session, terminal, error))
+		return false;
+	return qb_mbf32_encode(session->destroyed ? -1.0f : 0.0f,
+	    destroyed_raw) == QB_MBF_OK;
+}
+
+static bool
+direct_fighter_kill_fatal(void *context, struct yt_error *error)
+{
+	return common_fatal_self(context, error);
+}
+
+static bool
 attack_player(struct yt_session *session, int target_record,
     double committed, struct yt_error *error)
 {
@@ -4961,12 +5079,9 @@ attack_player(struct yt_session *session, int target_record,
 	double attacking;
 	double defenders;
 	double cached_reserve;
-	float victim_mines;
 	float current_sector;
-	uint8_t victim_name[YT_TEXT_FIELD_SIZE];
 	uint8_t line[300];
 	uint8_t second_line[300];
-	size_t victim_name_length;
 	size_t line_length;
 	size_t second_line_length;
 
@@ -5083,60 +5198,29 @@ attack_player(struct yt_session *session, int target_record,
 		return false;
 	if (target.shields > 0.0f)
 		return true;
-	if (!session_sound(session, 3.0f, "player kill sound", error)
-	    || !yt_game_read_player(&session->door->game, target_record,
-	    &target, error))
-		return false;
-	victim_mines = target.mines;
-	if (!port_report_length(session, target.name_length,
-	    YT_TEXT_FIELD_SIZE, &victim_name_length,
-	    "direct fighter victim name length", error))
-		return false;
-	if (victim_name_length != 0U)
-		memcpy(victim_name, target.record.bytes, victim_name_length);
-	if (!kill_player(session, target_record,
-	    (float)session->player_record, error))
-		return false;
-	if (!salvage_player(session, target_record,
-	    (float)session->player_record, error))
-		return false;
-	if (!(victim_mines > 0.0f))
-		return true;
 	{
-		struct yt_sector sector;
-		bool overflow;
-		int current = (int)qb_cint_mode((double)current_sector,
-		    session->presentation.sound.conversion_mode, &overflow);
+		static const struct yt_direct_fighter_kill_ops ops = {
+			direct_fighter_kill_sound,
+			direct_fighter_kill_read_player,
+			direct_fighter_kill_name_length,
+			direct_fighter_kill_death,
+			direct_fighter_kill_salvage,
+			direct_fighter_kill_read_sector,
+			direct_fighter_kill_write_sector,
+			direct_fighter_kill_present,
+			direct_fighter_kill_news,
+			direct_fighter_kill_mine,
+			direct_fighter_kill_fatal,
+		};
+		struct yt_direct_fighter_kill_state state = {
+			.target_shields = target.shields,
+			.target_record = target_record,
+			.current_player_record = session->player_record,
+			.current_sector = current_sector,
+		};
 
-		if (overflow) {
-			if (error != NULL) {
-				error->status = YT_RANGE;
-				(void)snprintf(error->operation,
-				    sizeof(error->operation), "%s",
-				    "direct fighter sector record CINT");
-			}
-			return false;
-		}
-		if (!yt_game_read_sector(&session->door->game, current, &sector,
-		    error))
-			return false;
-		yt_sector_mine_sector_overlay(&sector,
-		    single_add(sector.mines, victim_mines));
-		if (!yt_database_write(&session->door->game.database,
-		    (size_t)yt_sector_basic_record(&session->door->game.config,
-		    current), &sector.record, error))
-			return false;
+		return yt_direct_fighter_kill_run(&state, &ops, session, error);
 	}
-	if (!yt_direct_fighter_mine_warning(victim_name, victim_name_length,
-	    line, sizeof(line), &line_length)
-	    || !session_02db(session, line, line_length,
-	    "direct fighter mine warning", error)
-	    || !append_news_bytes(session, line, line_length, error)
-	    || !mine_encounter(session, error))
-		return false;
-	if (session->destroyed)
-		return common_fatal_self(session, error);
-	return true;
 }
 
 static bool
@@ -5922,7 +6006,14 @@ mine_stock_loss(struct yt_session *session, float batch, float *stock,
 }
 
 static bool
-mine_encounter(struct yt_session *session, struct yt_error *error)
+mine_missile_draw(void *context, float *value, struct yt_error *error)
+{
+	return random_value(context, value, error);
+}
+
+static bool
+mine_encounter(struct yt_session *session, bool *terminal,
+    struct yt_error *error)
 {
 	float current_sector = session->player.sector;
 	bool overflow;
@@ -5936,6 +6027,10 @@ mine_encounter(struct yt_session *session, struct yt_error *error)
 	static const uint8_t shields_destroyed[] = "Shields disintegrated!";
 	static const uint8_t scanner_destroyed[] =
 	    "Danger scanner destroyed!";
+
+	if (terminal == NULL)
+		return false;
+	*terminal = false;
 
 	if (overflow) {
 		if (error != NULL) {
@@ -5975,6 +6070,7 @@ mine_encounter(struct yt_session *session, struct yt_error *error)
 		float draw;
 		float loss;
 		float empty;
+		struct yt_sector_mine_missile_result missile;
 
 		if (!yt_game_read_sector(&session->door->game, current, &sector,
 		    error))
@@ -6083,13 +6179,12 @@ mine_encounter(struct yt_session *session, struct yt_error *error)
 				    error))
 					return false;
 			}
-			if (working.missiles != 0.0f) {
-				if (!random_value(session, &draw, error))
-					return false;
-				loss = yt_sector_mine_missile_loss(working.missiles,
-				    batch, draw);
-				working.missiles = single_sub(working.missiles,
-				    loss);
+			if (!yt_sector_mine_missile_step(working.missiles, batch,
+			    mine_missile_draw, session, &missile, error))
+				return false;
+			if (missile.applied) {
+				loss = missile.loss;
+				working.missiles = missile.remaining;
 				touched |= YT_SECTOR_MINE_DAMAGE_MISSILES;
 				if (!yt_sector_mine_loss_row(
 				    YT_SECTOR_MINE_LOSS_MISSILES, loss, row,
@@ -6176,6 +6271,7 @@ mine_encounter(struct yt_session *session, struct yt_error *error)
 		if (draw > 0.800000011920929f && working.holds < 10.0f) {
 			if (!emergency_warp(session, error))
 				return false;
+			*terminal = true;
 			return true;
 		}
 		if (sector.mines > 0.0f && !session->destroyed)
@@ -6290,8 +6386,14 @@ sector_entry(struct yt_session *session, struct yt_error *error)
 			return false;
 		if (yt_sector_mines_admitted(sector.mines,
 		    session->suppress_self_mines ? -1.0f : 0.0f)) {
-			if (!mine_encounter(session, error))
-				return false;
+			{
+				bool mine_terminal;
+
+				if (!mine_encounter(session, &mine_terminal, error))
+					return false;
+				if (mine_terminal)
+					continue;
+			}
 			if (session->destroyed)
 				return common_fatal_self(session, error);
 			continue;

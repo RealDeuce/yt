@@ -8,6 +8,10 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
+None currently.
+
+## Resolved documentation gaps
+
 ### DOC-GAP-003: unshielded sector-mine missile RNG in joined fatal contracts
 
 Affected coverage:
@@ -16,7 +20,7 @@ Affected coverage:
 - direct fighter-kill raw FIELD/store/news/RNG composition; and
 - direct fighter destroyed-to-fatal raw transaction.
 
-The upstream contracts disagree about the positive-missile branch of an
+The upstream contracts disagreed about the positive-missile branch of an
 unshielded sector-mine batch:
 
 - `docs/runtime/sector-mine-output.md` specifies one direct missile `RND`,
@@ -27,15 +31,18 @@ unshielded sector-mine batch:
 - `docs/runtime/direct-fighter-fatal-cycle-output.md` instead lists
   `missile TIMER/RANDOMIZE/RND x3` in its joined RNG order.
 
-The retained direct-fighter fatal fixture has zero missiles, so its generated
-artifact, 13-draw trace, and 1,597/1,900-byte transcripts do not exercise or
-resolve the disagreement. The native `mine_encounter()` currently follows
-the sector-mine component contract and executable model by consuming one
-direct draw. Do not promote a joined raw transaction that admits positive
-missiles until the upstream fatal-cycle prose is corrected or the intended
-caller-specific difference is documented and pinned by an exercised fixture.
+Resolved by the user's authoritative clarification: the fatal-cycle sentence
+is a prose error. An unshielded nonzero missile field consumes exactly one
+direct `RND` at `YT-SUB:679B`, then computes
+`INT(RND * (batch * missiles)) + 1` and caps the result to the current missile
+stock. The three-step TIMER/RANDOMIZE/RND shrink helper applies to fighters,
+carried mines, commodities, and empty holds, not missiles.
 
-## Resolved documentation gaps
+The retained direct-fighter fatal fixture has zero missiles, so its generated
+artifact, 13-draw trace, and 1,597/1,900-byte transcripts are unchanged. The
+native `mine_encounter()` follows the correct component model, and its
+provider-driven missile step now pins exact-zero suppression, one-call
+cardinality, capped arithmetic, and the single failure boundary explicitly.
 
 ### DOC-GAP-001: sequential character-device `PRINT` adapter
 
