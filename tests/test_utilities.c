@@ -2500,8 +2500,8 @@ test_rmt_presentation_failure_prefixes(void)
 		bool preserves_old;
 	} cases[] = {
 		{0x0863U, 0U, sizeof(sentinel) - 1U, true},
-		{0x0907U, 0U, 0U, false},
-		{0x0ab6U, 1U, 0U, false},
+		{0x0907U, 0U, 1U, false},
+		{0x0ab6U, 1U, 1U, false},
 		{0x0b7bU, 1U, YT_RECORD_SIZE, false},
 	};
 	struct yt_config config;

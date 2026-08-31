@@ -2286,8 +2286,11 @@ yt_initialize_world(const struct yt_initializer_options *options,
 		}
 		if (!allocate_world(&world, error)
 		    || !rmt_present_preopen(options, error)
-		    || !yt_database_open(database, "YTDATA.DAT", YT_OPEN_CREATE,
-		    error)
+		    /* 08A1 OUTPUT/CLOSE leaves DOS EOF before 26D7 RANDOM reopen. */
+		    || !yt_text_write("YTDATA.DAT", NULL, 0U, true, error)
+		    || !yt_database_random_close(database, error)
+		    || !yt_database_open(database, "YTDATA.DAT",
+		    YT_OPEN_UPDATE_CREATE, error)
 		    || !yt_platform_clock(&current, error))
 			goto done;
 		config.epoch_year = (float)(current.year % 100);
