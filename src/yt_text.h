@@ -97,6 +97,50 @@ struct yt_text_open_result {
 	bool handle_open;
 };
 
+enum yt_text_close_operation {
+	YT_TEXT_CLOSE_PENDING_WRITE,
+	YT_TEXT_CLOSE_EOF_WRITE,
+	YT_TEXT_CLOSE_TRUNCATE,
+	YT_TEXT_CLOSE_HANDLE,
+	YT_TEXT_CLOSE_CLEANUP_HANDLE,
+};
+
+struct yt_text_close_observation {
+	size_t accepted;
+	bool carry;
+	bool handle_open;
+	uint16_t dos_error;
+	int64_t terminal_position;
+};
+
+typedef bool (*yt_text_close_provider)(void *context, FILE *file,
+	enum yt_text_close_operation operation, const uint8_t *data,
+	size_t requested, struct yt_text_close_observation *observation);
+
+enum yt_text_close_outcome {
+	YT_TEXT_CLOSE_NONE,
+	YT_TEXT_CLOSE_RETURNED,
+	YT_TEXT_CLOSE_SHORT_ERROR,
+	YT_TEXT_CLOSE_DISK_ERROR,
+	YT_TEXT_CLOSE_PROVIDER_ERROR,
+};
+
+struct yt_text_close_result {
+	enum yt_text_close_outcome outcome;
+	enum yt_text_close_operation failed_operation;
+	size_t operation_count;
+	size_t accepted;
+	uint16_t dos_error;
+	uint16_t basic_error;
+	int64_t terminal_position;
+	bool close_all;
+	bool missing;
+	bool device;
+	bool cleanup_close_attempted;
+	bool registered;
+	bool handle_open;
+};
+
 struct yt_text_input {
 	FILE *file;
 	FILE *orphaned_file;
@@ -105,7 +149,10 @@ struct yt_text_input {
 	size_t line_capacity;
 	yt_text_open_provider open_provider;
 	void *open_context;
+	yt_text_close_provider close_provider;
+	void *close_context;
 	struct yt_text_open_result last_open;
+	struct yt_text_close_result last_close;
 };
 
 void yt_text_input_init(struct yt_text_input *input);
@@ -120,6 +167,8 @@ bool yt_text_input_close(struct yt_text_input *input,
 	struct yt_error *error);
 void yt_text_input_set_open_provider(struct yt_text_input *input,
 	yt_text_open_provider provider, void *context);
+void yt_text_input_set_close_provider(struct yt_text_input *input,
+	yt_text_close_provider provider, void *context);
 void yt_text_input_destroy(struct yt_text_input *input);
 
 struct yt_text_output_write_observation {
@@ -156,49 +205,6 @@ struct yt_text_output_write_result {
 	bool handle_open;
 };
 
-enum yt_text_output_close_operation {
-	YT_TEXT_OUTPUT_CLOSE_PENDING_WRITE,
-	YT_TEXT_OUTPUT_CLOSE_EOF_WRITE,
-	YT_TEXT_OUTPUT_CLOSE_TRUNCATE,
-	YT_TEXT_OUTPUT_CLOSE_HANDLE,
-	YT_TEXT_OUTPUT_CLOSE_CLEANUP_HANDLE,
-};
-
-struct yt_text_output_close_observation {
-	size_t accepted;
-	bool carry;
-	bool handle_open;
-	uint16_t dos_error;
-	int64_t terminal_position;
-};
-
-typedef bool (*yt_text_output_close_provider)(void *context, FILE *file,
-	enum yt_text_output_close_operation operation, const uint8_t *data,
-	size_t requested, struct yt_text_output_close_observation *observation);
-
-enum yt_text_output_close_outcome {
-	YT_TEXT_OUTPUT_CLOSE_NONE,
-	YT_TEXT_OUTPUT_CLOSE_RETURNED,
-	YT_TEXT_OUTPUT_CLOSE_SHORT_ERROR,
-	YT_TEXT_OUTPUT_CLOSE_DISK_ERROR,
-	YT_TEXT_OUTPUT_CLOSE_PROVIDER_ERROR,
-};
-
-struct yt_text_output_close_result {
-	enum yt_text_output_close_outcome outcome;
-	enum yt_text_output_close_operation failed_operation;
-	size_t operation_count;
-	size_t accepted;
-	uint16_t dos_error;
-	uint16_t basic_error;
-	int64_t terminal_position;
-	bool close_all;
-	bool missing;
-	bool cleanup_close_attempted;
-	bool registered;
-	bool handle_open;
-};
-
 struct yt_text_output {
 	FILE *file;
 	FILE *orphaned_file;
@@ -209,10 +215,10 @@ struct yt_text_output {
 	void *open_context;
 	yt_text_output_write_provider write_provider;
 	void *write_context;
-	yt_text_output_close_provider close_provider;
+	yt_text_close_provider close_provider;
 	void *close_context;
 	struct yt_text_output_write_result last_write;
-	struct yt_text_output_close_result last_close;
+	struct yt_text_close_result last_close;
 	struct yt_text_open_result last_output_open;
 	struct yt_text_open_result last_append_open;
 };
@@ -231,7 +237,7 @@ bool yt_text_output_close(struct yt_text_output *output,
 bool yt_text_output_close_all_method(void *context, int8_t file_class,
 	struct yt_error *error);
 void yt_text_output_set_close_provider(struct yt_text_output *output,
-	yt_text_output_close_provider provider, void *context);
+	yt_text_close_provider provider, void *context);
 void yt_text_output_set_write_provider(struct yt_text_output *output,
 	yt_text_output_write_provider provider, void *context);
 void yt_text_output_set_open_provider(struct yt_text_output *output,
