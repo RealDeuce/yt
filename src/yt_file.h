@@ -10,14 +10,30 @@ enum yt_open_mode {
 	YT_OPEN_UPDATE_CREATE
 };
 
+typedef bool (*yt_database_seek_provider)(void *context, FILE *file,
+    int64_t absolute_offset);
+typedef bool (*yt_database_write_provider)(void *context, FILE *file,
+    const uint8_t *data, size_t requested, size_t *accepted,
+    bool *write_error);
+typedef bool (*yt_database_close_provider)(void *context, FILE *file,
+    bool *handle_open);
+typedef bool (*yt_database_flush_provider)(void *context, FILE *file);
+
 struct yt_database {
 	FILE *file;
+	FILE *orphaned_file;
 	char path[512];
 	size_t records;
-	bool (*write_provider)(void *context, FILE *file,
-	    const uint8_t *data, size_t requested, size_t *accepted,
-	    bool *write_error);
+	yt_database_seek_provider seek_provider;
+	void *seek_context;
+	yt_database_write_provider write_provider;
 	void *write_context;
+	yt_database_close_provider close_provider;
+	void *close_context;
+	yt_database_flush_provider flush_provider;
+	void *flush_context;
+	bool short_close_attempted;
+	bool short_close_succeeded;
 };
 
 #define YT_RADIO_FIELD_COUNT 4U
@@ -51,8 +67,13 @@ bool yt_database_random_put(struct yt_database *database,
     size_t basic_record, const struct yt_record *record,
     bool one_byte_short_ok, size_t *accepted, struct yt_error *error);
 void yt_database_set_write_provider(struct yt_database *database,
-    bool (*provider)(void *context, FILE *file, const uint8_t *data,
-    size_t requested, size_t *accepted, bool *write_error), void *context);
+    yt_database_write_provider provider, void *context);
+void yt_database_set_seek_provider(struct yt_database *database,
+    yt_database_seek_provider provider, void *context);
+void yt_database_set_close_provider(struct yt_database *database,
+    yt_database_close_provider provider, void *context);
+void yt_database_set_flush_provider(struct yt_database *database,
+    yt_database_flush_provider provider, void *context);
 bool yt_database_flush(struct yt_database *database, struct yt_error *error);
 void yt_radio_file_init(struct yt_radio_file *radio);
 bool yt_radio_file_open(struct yt_radio_file *radio, const char *path,

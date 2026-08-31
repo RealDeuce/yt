@@ -193,9 +193,19 @@ yt_database_open(struct yt_database *database, const char *path,
 void
 yt_database_close(struct yt_database *database)
 {
-	if (database->file != NULL)
-		fclose(database->file);
+	FILE *file;
+	FILE *orphaned;
+
+	if (database == NULL)
+		return;
+	file = database->file;
+	orphaned = database->orphaned_file;
 	database->file = NULL;
+	database->orphaned_file = NULL;
+	if (file != NULL)
+		(void)fclose(file);
+	if (orphaned != NULL && orphaned != file)
+		(void)fclose(orphaned);
 }
 
 bool
@@ -262,6 +272,13 @@ yt_database_write(struct yt_database *database, size_t basic_record,
 }
 
 static bool
+database_seek_default(void *context, FILE *file, int64_t absolute_offset)
+{
+	(void)context;
+	return yt_fseeko(file, (off_t)absolute_offset, SEEK_SET) == 0;
+}
+
+static bool
 database_write_default(void *context, FILE *file, const uint8_t *data,
     size_t requested, size_t *accepted, bool *write_error)
 {
@@ -271,13 +288,50 @@ database_write_default(void *context, FILE *file, const uint8_t *data,
 	return true;
 }
 
+static bool
+database_close_default(void *context, FILE *file, bool *handle_open)
+{
+	int result;
+
+	(void)context;
+	result = fclose(file);
+	*handle_open = false;
+	return result == 0;
+}
+
+static bool
+database_flush_default(void *context, FILE *file)
+{
+	(void)context;
+	return fflush(file) == 0;
+}
+
+static void
+database_reject_short(struct yt_database *database, struct yt_error *error)
+{
+	yt_database_close_provider provider;
+	FILE *file = database->file;
+	bool handle_open = false;
+
+	database->file = NULL;
+	database->records = 0U;
+	database->short_close_attempted = true;
+	provider = database->close_provider != NULL ? database->close_provider
+	    : database_close_default;
+	database->short_close_succeeded = provider(database->close_context, file,
+	    &handle_open);
+	if (!database->short_close_succeeded && handle_open)
+		database->orphaned_file = file;
+	set_error(error, YT_IO_ERROR, "random PUT rejected short", database->path);
+}
+
 bool
 yt_database_random_put(struct yt_database *database, size_t basic_record,
     const struct yt_record *record, bool one_byte_short_ok, size_t *accepted,
     struct yt_error *error)
 {
-	bool (*provider)(void *, FILE *, const uint8_t *, size_t, size_t *,
-	    bool *);
+	yt_database_seek_provider seek_provider;
+	yt_database_write_provider write_provider;
 	off_t offset;
 	size_t count = 0U;
 	bool write_error = false;
@@ -296,13 +350,18 @@ yt_database_random_put(struct yt_database *database, size_t basic_record,
 		return false;
 	}
 	offset = (off_t)((basic_record - 1U) * YT_RECORD_SIZE);
-	if (yt_fseeko(database->file, offset, SEEK_SET) != 0) {
+	database->short_close_attempted = false;
+	database->short_close_succeeded = false;
+	seek_provider = database->seek_provider != NULL ? database->seek_provider
+	    : database_seek_default;
+	if (!seek_provider(database->seek_context, database->file,
+	    (int64_t)offset)) {
 		set_error(error, YT_IO_ERROR, "random PUT", database->path);
 		return false;
 	}
-	provider = database->write_provider != NULL ? database->write_provider
+	write_provider = database->write_provider != NULL ? database->write_provider
 	    : database_write_default;
-	if (!provider(database->write_context, database->file, record->bytes,
+	if (!write_provider(database->write_context, database->file, record->bytes,
 	    YT_RECORD_SIZE, &count, &write_error) || count > YT_RECORD_SIZE) {
 		set_error(error, YT_IO_ERROR, "random PUT provider", database->path);
 		return false;
@@ -310,8 +369,12 @@ yt_database_random_put(struct yt_database *database, size_t basic_record,
 	if (accepted != NULL)
 		*accepted = count;
 	tolerated_short = one_byte_short_ok && count == YT_RECORD_SIZE - 1U;
-	if (write_error || (count != YT_RECORD_SIZE && !tolerated_short)) {
+	if (write_error) {
 		set_error(error, YT_IO_ERROR, "random PUT", database->path);
+		return false;
+	}
+	if (count != YT_RECORD_SIZE && !tolerated_short) {
+		database_reject_short(database, error);
 		return false;
 	}
 	if (basic_record > database->records)
@@ -321,8 +384,7 @@ yt_database_random_put(struct yt_database *database, size_t basic_record,
 
 void
 yt_database_set_write_provider(struct yt_database *database,
-    bool (*provider)(void *context, FILE *file, const uint8_t *data,
-    size_t requested, size_t *accepted, bool *write_error), void *context)
+    yt_database_write_provider provider, void *context)
 {
 	if (database == NULL)
 		return;
@@ -330,10 +392,49 @@ yt_database_set_write_provider(struct yt_database *database,
 	database->write_context = context;
 }
 
+void
+yt_database_set_seek_provider(struct yt_database *database,
+    yt_database_seek_provider provider, void *context)
+{
+	if (database == NULL)
+		return;
+	database->seek_provider = provider;
+	database->seek_context = context;
+}
+
+void
+yt_database_set_close_provider(struct yt_database *database,
+    yt_database_close_provider provider, void *context)
+{
+	if (database == NULL)
+		return;
+	database->close_provider = provider;
+	database->close_context = context;
+}
+
+void
+yt_database_set_flush_provider(struct yt_database *database,
+    yt_database_flush_provider provider, void *context)
+{
+	if (database == NULL)
+		return;
+	database->flush_provider = provider;
+	database->flush_context = context;
+}
+
 bool
 yt_database_flush(struct yt_database *database, struct yt_error *error)
 {
-	if (fflush(database->file) != 0) {
+	yt_database_flush_provider provider;
+
+	if (database == NULL || database->file == NULL) {
+		set_error(error, YT_INVALID, "flush database",
+		    database != NULL ? database->path : NULL);
+		return false;
+	}
+	provider = database->flush_provider != NULL ? database->flush_provider
+	    : database_flush_default;
+	if (!provider(database->flush_context, database->file)) {
 		set_error(error, YT_IO_ERROR, "flush database", database->path);
 		return false;
 	}
