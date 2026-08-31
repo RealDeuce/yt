@@ -14772,9 +14772,74 @@ test_main_attack_black_hole_cycle_presentation(void)
 }
 
 static bool
-main_attack_mine_cycle_run(bool ansi, struct pager_capture *capture,
+mine_emergency_warp_present(struct pager_capture *capture,
+    struct yt_present_state *current)
+{
+	static const uint8_t title[] = " * EMERGENCY WARP ENGAGED! * ";
+	static const uint8_t wormhole[] =
+	    "You enter a wormhole as your engines build up to emergency power!";
+	static const uint8_t temperature[] = "     * Engine Temperature *";
+	static const uint8_t scale[] = "[ Normal ][ Danger ][ Overheat ]";
+	static const uint8_t ruler[] = "================================";
+	static const uint8_t relief[] =
+	    "You sigh in relief as you look at your scanner and find yourself in";
+	struct yt_present_result result;
+	uint8_t row[128];
+	size_t row_length;
+
+	pager_capture_line(capture, current, NULL, 0U);
+	if (yt_present_attention(title, sizeof(title) - 1U, current, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(capture, &result);
+	pager_capture_line(capture, current, NULL, 0U);
+	if (yt_present_bold_line(wormhole, sizeof(wormhole) - 1U,
+	    current, &result) != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(capture, &result);
+	pager_capture_line(capture, current, NULL, 0U);
+	current->foreground = 6.0f;
+	if (yt_present_bold_line(temperature, sizeof(temperature) - 1U,
+	    current, &result) != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(capture, &result);
+	if (yt_present_bold_line(scale, sizeof(scale) - 1U,
+	    current, &result) != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(capture, &result);
+	current->foreground = 2.0f;
+	if (yt_present_bold_line(ruler, sizeof(ruler) - 1U,
+	    current, &result) != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(capture, &result);
+	current->foreground = 6.0f;
+	if (yt_present_bold_character((const uint8_t *)"[", 1U,
+	    current, &result) != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(capture, &result);
+	current->foreground = 2.0f;
+	if (yt_present_bold_character((const uint8_t *)"*", 1U,
+	    current, &result) != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(capture, &result);
+	pager_capture_line(capture, current, NULL, 0U);
+	pager_capture_line(capture, current, NULL, 0U);
+	if (yt_present_sound(1.0f, current, &result) != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(capture, &result);
+	pager_capture_line(capture, current, relief, sizeof(relief) - 1U);
+	if (!yt_emergency_warp_result_row(1003.0f, 3.0f, row,
+	    sizeof(row), &row_length))
+		return false;
+	pager_capture_line(capture, current, row, row_length);
+	return true;
+}
+
+static bool
+main_attack_mine_cycle_run(bool ansi, bool emergency_warp,
+    struct pager_capture *capture,
     struct yt_present_state *current, struct yt_pager_state *pager,
-    size_t ends[3])
+    size_t ends[4])
 {
 	static const uint8_t main_prompt[] =
 	    "Time: 14:59  Main Command (?=Help)? ";
@@ -14785,6 +14850,8 @@ main_attack_mine_cycle_run(bool ansi, struct pager_capture *capture,
 	static const uint8_t mine_warning[] =
 	    "** WARNING! SECTOR HAS 1 MINES! **";
 	static const uint8_t warps[] = "Warps lead to: 2, 9";
+	static const uint8_t warp_sector[] = "Sector: 1003";
+	static const uint8_t warp_warps[] = "Warps lead to: 1, 42";
 	static const uint8_t mined[] = "** Sector is Mined!! **";
 	struct yt_present_result result;
 	char accumulator[80] = "";
@@ -14859,12 +14926,28 @@ main_attack_mine_cycle_run(bool ansi, struct pager_capture *capture,
 	pager_capture_result(capture, &result);
 	ends[1] = capture->remote_length;
 
-	if (ansi)
-		current->background = 0.0f;
-	pager->foreground = 3;
+	if (emergency_warp) {
+		if (!mine_emergency_warp_present(capture, current))
+			return false;
+	}
+	ends[2] = capture->remote_length;
+
+	if (emergency_warp) {
+		current->foreground = 1.0f;
+		pager->foreground = 1;
+	}
+	else {
+		if (ansi)
+			current->background = 0.0f;
+		pager->foreground = 3;
+	}
 	pager_capture_line(capture, current, NULL, 0U);
-	pager_capture_line(capture, current, sector, sizeof(sector) - 1U);
-	pager_capture_line(capture, current, warps, sizeof(warps) - 1U);
+	pager_capture_line(capture, current,
+	    emergency_warp ? warp_sector : sector,
+	    emergency_warp ? sizeof(warp_sector) - 1U : sizeof(sector) - 1U);
+	pager_capture_line(capture, current,
+	    emergency_warp ? warp_warps : warps,
+	    emergency_warp ? sizeof(warp_warps) - 1U : sizeof(warps) - 1U);
 	pager->line_count = 0.0f;
 	current->foreground = 2.0f;
 	pager->foreground = 2;
@@ -14873,7 +14956,7 @@ main_attack_mine_cycle_run(bool ansi, struct pager_capture *capture,
 	pager_fixture_b05d(pager, current, main_prompt,
 	    sizeof(main_prompt) - 1U, capture);
 	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
-	ends[2] = capture->remote_length;
+	ends[3] = capture->remote_length;
 	return true;
 }
 
@@ -14907,19 +14990,21 @@ test_main_attack_mine_cycle_presentation(void)
 		bool ansi;
 		const uint8_t *expected;
 		size_t expected_length;
-		size_t ends[3];
+		size_t ends[4];
 	} cases[] = {
-		{false, plain, sizeof(plain) - 1U, {146U, 236U, 309U}},
-		{true, ansi, sizeof(ansi) - 1U, {204U, 340U, 433U}},
+		{false, plain, sizeof(plain) - 1U,
+		    {146U, 236U, 236U, 309U}},
+		{true, ansi, sizeof(ansi) - 1U,
+		    {204U, 340U, 340U, 433U}},
 	};
 	struct yt_present_state current;
 	struct yt_pager_state pager;
 	struct pager_capture capture;
-	size_t ends[3];
+	size_t ends[4];
 	size_t pass;
 
 	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
-		CHECK(main_attack_mine_cycle_run(cases[pass].ansi,
+		CHECK(main_attack_mine_cycle_run(cases[pass].ansi, false,
 		    &capture, &current, &pager, ends));
 		CHECK(memcmp(ends, cases[pass].ends, sizeof(ends)) == 0);
 		CHECK(capture.remote_length == cases[pass].expected_length);
@@ -14936,6 +15021,88 @@ test_main_attack_mine_cycle_presentation(void)
 		    && pager.nonstop == 0.0f);
 	}
 	CHECK(sizeof(plain) - 1U == 309U && sizeof(ansi) - 1U == 433U);
+}
+
+static void
+test_main_attack_mine_warp_cycle_presentation(void)
+{
+	static const uint8_t plain[] =
+	    "\r\nTime: 14:59  Main Command (?=Help)? A\r\n"
+	    "<Attack>\n\r\r\nThere's no one here!\n\r"
+	    "\r\nSector: 42\r\n"
+	    "** WARNING! SECTOR HAS 1 MINES! **\r\n"
+	    "Warps lead to: 2, 9\r\n"
+	    "\r\n** Sector is Mined!! **\r\n"
+	    "There are 1 mines here! 1 EXPLODE!\r\n"
+	    "Shields down to 10 units!\r\n"
+	    "\r\n * EMERGENCY WARP ENGAGED! * \r\n"
+	    "\r\nYou enter a wormhole as your engines build up to emergency power!\r\n"
+	    "\r\n     * Engine Temperature *\r\n"
+	    "[ Normal ][ Danger ][ Overheat ]\r\n"
+	    "================================\r\n[*\r\n\r\n"
+	    "You sigh in relief as you look at your scanner and find yourself in\r\n"
+	    "sector 1003. However, it takes you 3 turns to recharge your engines!\r\n"
+	    "\r\nSector: 1003\r\nWarps lead to: 1, 42\r\n"
+	    "\r\nTime: 14:59  Main Command (?=Help)? ";
+	static const uint8_t ansi[] =
+	    "\x1b[0;32;40m\r\nTime: 14:59  Main Command (?=Help)? A\r\n"
+	    "<Attack>\n\r\r\n\x1b[0;32;40;5;1mThere's no one here!\n\r"
+	    "\x1b[0;31;40m\r\nSector: 42\r\n"
+	    "\x1b[0;33;41;5;1m** WARNING! SECTOR HAS 1 MINES! **"
+	    "\x1b[0;33;40m\r\nWarps lead to: 2, 9\r\n"
+	    "\r\n\x1b[0;33;40;5m** Sector is Mined!! **\r\n"
+	    "\x1b[0;33;40;1mThere are 1 mines here! 1 EXPLODE!"
+	    "\x1b[0;33;41m\r\n"
+	    "\x1b[0;33;41;1mShields down to 10 units!\r\n"
+	    "\x1b[0;33;41m\r\n"
+	    "\x1b[0;33;41;5;1m * EMERGENCY WARP ENGAGED! * "
+	    "\x1b[0;33;40m\r\n\r\n"
+	    "\x1b[0;33;40;1mYou enter a wormhole as your engines build up to emergency power!\r\n"
+	    "\x1b[0;33;40m\r\n"
+	    "\x1b[0;36;40;1m     * Engine Temperature *\r\n"
+	    "\x1b[0;36;40;1m[ Normal ][ Danger ][ Overheat ]\r\n"
+	    "\x1b[0;32;40;1m================================\r\n"
+	    "\x1b[0;36;40;1m[\x1b[0;32;40;1m*"
+	    "\x1b[0;32;40m\r\n\r\n"
+	    "You sigh in relief as you look at your scanner and find yourself in\r\n"
+	    "sector 1003. However, it takes you 3 turns to recharge your engines!\r\n"
+	    "\x1b[0;31;40m\r\nSector: 1003\r\nWarps lead to: 1, 42\r\n"
+	    "\x1b[0;32;40m\r\nTime: 14:59  Main Command (?=Help)? ";
+	static const struct {
+		bool ansi;
+		const uint8_t *expected;
+		size_t expected_length;
+		size_t ends[4];
+	} cases[] = {
+		{false, plain, sizeof(plain) - 1U,
+		    {146U, 236U, 582U, 658U}},
+		{true, ansi, sizeof(ansi) - 1U,
+		    {204U, 340U, 812U, 908U}},
+	};
+	struct yt_present_state current;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	size_t ends[4];
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		CHECK(main_attack_mine_cycle_run(cases[pass].ansi, true,
+		    &capture, &current, &pager, ends));
+		CHECK(memcmp(ends, cases[pass].ends, sizeof(ends)) == 0);
+		CHECK(capture.remote_length == cases[pass].expected_length);
+		CHECK(capture.remote_length != cases[pass].expected_length
+		    || memcmp(capture.remote, cases[pass].expected,
+		    cases[pass].expected_length) == 0);
+		CHECK(current.foreground == 2.0f
+		    && current.background == 0.0f
+		    && current.bold == (cases[pass].ansi ? 0.0f : 1.0f)
+		    && current.blink == (cases[pass].ansi ? 0.0f : 1.0f)
+		    && current.cached_foreground
+		    == (cases[pass].ansi ? 2.0f : 6.0f)
+		    && pager.foreground == 2 && pager.line_count == 0.0f
+		    && pager.nonstop == 0.0f);
+	}
+	CHECK(sizeof(plain) - 1U == 658U && sizeof(ansi) - 1U == 908U);
 }
 
 static bool
@@ -19081,6 +19248,7 @@ main(void)
 	test_main_attack_survivor_cycle_presentation();
 	test_main_attack_black_hole_cycle_presentation();
 	test_main_attack_mine_cycle_presentation();
+	test_main_attack_mine_warp_cycle_presentation();
 	test_planet_movement_accepted_cycle_presentation();
 	test_planet_port_no_port_cycle_presentation();
 	test_computer_quit_accept_presentation();

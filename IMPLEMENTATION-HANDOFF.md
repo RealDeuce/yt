@@ -2581,8 +2581,11 @@ not authoritative. Use the corrected goal above in the new workspace.
   joins use the same carried-state structure; the nonfatal mine witness now
   pins its 146/204-byte prefix, 90/136-byte child, zero-effect return and
   following friendly reentry as exact 309/433-byte streams. The admitted
-  mine-warp joined fixture, independent raw A41C/FIELD/cache/RNG/radio state,
-  local framebuffer and every staged failure prefix remain open.
+  mine-warp witness now carries that same prefix and mine state through the
+  346/472-byte plain/ANSI emergency-warp child, zero-effect subroutine return
+  and following friendly reentry as exact 658/908-byte streams. Independent
+  raw A41C/FIELD/cache/RNG/radio state, local framebuffer, alternate hazard
+  outcomes and every staged failure prefix remain open.
 - Upstream `c08f1fca` resolved the two implementation documentation gaps.
   Native commit `7bc5005` now performs YTMAINT radio compaction as the exact
   OUTPUT/CLOSE/KILL, fresh RANDOM destination/source, explicit dense PUT,
