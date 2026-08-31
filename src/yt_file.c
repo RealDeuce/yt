@@ -731,7 +731,7 @@ static bool
 database_read_default(void *context, FILE *file, uint8_t *data,
     size_t requested, struct yt_database_read_observation *observation)
 {
-	off_t position;
+	int64_t position;
 	int saved_errno;
 
 	(void)context;
@@ -761,7 +761,7 @@ database_random_get_bytes(struct yt_database *database, size_t basic_record,
 	yt_database_read_provider read_provider;
 	struct yt_database_seek_observation seek = {0};
 	struct yt_database_read_observation read = {0};
-	off_t offset;
+	int64_t offset;
 
 	if (accepted != NULL)
 		*accepted = 0U;
@@ -780,7 +780,7 @@ database_random_get_bytes(struct yt_database *database, size_t basic_record,
 		set_error(error, YT_RANGE, "random GET", database->path);
 		return false;
 	}
-	offset = (off_t)((uint64_t)(basic_record - 1U) * record_size);
+	offset = (int64_t)((uint64_t)(basic_record - 1U) * record_size);
 	database->last_get.current_record = (uint32_t)basic_record;
 	database->last_get.record_index = (uint32_t)basic_record - 1U;
 	database->last_get.desired_offset = (int64_t)offset;
@@ -870,13 +870,13 @@ static bool
 database_seek_default(void *context, FILE *file, int64_t absolute_offset,
     struct yt_database_seek_observation *observation)
 {
-	off_t position;
+	int64_t position;
 	int saved_errno;
 
 	(void)context;
 	memset(observation, 0, sizeof(*observation));
 	database_prepare_io(file);
-	if (yt_fseeko(file, (off_t)absolute_offset, SEEK_SET) == 0) {
+	if (yt_fseeko(file, absolute_offset, SEEK_SET) == 0) {
 		observation->terminal_position = absolute_offset;
 		return true;
 	}
@@ -894,7 +894,7 @@ static bool
 database_write_default(void *context, FILE *file, const uint8_t *data,
     size_t requested, struct yt_database_write_observation *observation)
 {
-	off_t position;
+	int64_t position;
 	int saved_errno;
 
 	(void)context;
@@ -1154,7 +1154,7 @@ database_lof_default(void *context, FILE *file,
     struct yt_database_lof_observation *observation)
 {
 	int64_t position;
-	off_t offset;
+	int64_t offset;
 	int saved_errno;
 	int whence;
 
@@ -1172,7 +1172,7 @@ database_lof_default(void *context, FILE *file,
 		whence = SEEK_END;
 		break;
 	case YT_DATABASE_LOF_RESTORE:
-		offset = (off_t)restore_position;
+		offset = (int64_t)restore_position;
 		whence = SEEK_SET;
 		break;
 	default:
@@ -1362,7 +1362,7 @@ database_random_put_bytes(struct yt_database *database, size_t basic_record,
 	yt_database_write_provider write_provider;
 	struct yt_database_seek_observation seek = {0};
 	struct yt_database_write_observation write = {0};
-	off_t offset;
+	int64_t offset;
 	bool tolerated_short;
 
 	if (accepted != NULL)
@@ -1383,7 +1383,7 @@ database_random_put_bytes(struct yt_database *database, size_t basic_record,
 		set_error(error, YT_RANGE, "random PUT", database->path);
 		return false;
 	}
-	offset = (off_t)((uint64_t)(basic_record - 1U) * record_size);
+	offset = (int64_t)((uint64_t)(basic_record - 1U) * record_size);
 	database->last_put.current_record = (uint32_t)basic_record;
 	database->last_put.record_index = (uint32_t)basic_record - 1U;
 	database->last_put.desired_offset = (int64_t)offset;

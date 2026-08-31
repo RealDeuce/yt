@@ -3497,6 +3497,12 @@ test_files(void)
 	    == (int64_t)(0xFFFFFFU - 1U) * YT_RECORD_SIZE);
 	yt_database_set_seek_provider(&database, NULL, NULL);
 	yt_database_set_read_provider(&database, NULL, NULL);
+	CHECK(yt_database_random_get(&database, 0xFFFFFFU, &after, &accepted,
+	    &error) && accepted == 0U
+	    && database.last_get.desired_offset
+	    == (int64_t)(0xFFFFFFU - 1U) * YT_RECORD_SIZE
+	    && database.last_get.terminal_position
+	    == (int64_t)(0xFFFFFFU - 1U) * YT_RECORD_SIZE);
 	read_script = (struct database_read_script){
 		.data = replacement.bytes,
 		.accepted = 3U,
