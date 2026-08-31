@@ -752,9 +752,10 @@ database_read_default(void *context, FILE *file, uint8_t *data,
 	return true;
 }
 
-bool
-yt_database_random_get(struct yt_database *database, size_t basic_record,
-    struct yt_record *record, size_t *accepted, struct yt_error *error)
+static bool
+database_random_get_bytes(struct yt_database *database, size_t basic_record,
+    uint8_t *data, size_t record_size, size_t *accepted,
+    struct yt_error *error)
 {
 	yt_database_seek_provider seek_provider;
 	yt_database_read_provider read_provider;
@@ -764,7 +765,8 @@ yt_database_random_get(struct yt_database *database, size_t basic_record,
 
 	if (accepted != NULL)
 		*accepted = 0U;
-	if (database == NULL || database->file == NULL || record == NULL) {
+	if (database == NULL || database->file == NULL || data == NULL
+	    || record_size == 0U) {
 		set_error(error, YT_INVALID, "random GET",
 		    database != NULL ? database->path : NULL);
 		return false;
@@ -778,7 +780,7 @@ yt_database_random_get(struct yt_database *database, size_t basic_record,
 		set_error(error, YT_RANGE, "random GET", database->path);
 		return false;
 	}
-	offset = (off_t)((basic_record - 1U) * YT_RECORD_SIZE);
+	offset = (off_t)((uint64_t)(basic_record - 1U) * record_size);
 	database->last_get.current_record = (uint32_t)basic_record;
 	database->last_get.record_index = (uint32_t)basic_record - 1U;
 	database->last_get.desired_offset = (int64_t)offset;
@@ -802,11 +804,11 @@ yt_database_random_get(struct yt_database *database, size_t basic_record,
 		set_error(error, YT_IO_ERROR, "random GET seek", database->path);
 		return false;
 	}
-	memset(record->bytes, 0, sizeof(record->bytes));
+	memset(data, 0, record_size);
 	read_provider = database->read_provider != NULL ? database->read_provider
 	    : database_read_default;
-	if (!read_provider(database->read_context, database->file, record->bytes,
-	    sizeof(record->bytes), &read) || read.accepted > YT_RECORD_SIZE
+	if (!read_provider(database->read_context, database->file, data,
+	    record_size, &read) || read.accepted > record_size
 	    || (read.carry && (read.dos_error == 0U
 	    || read.dos_error > 0xffU))
 	    || (read.carry && read.dos_error == 5U
@@ -836,10 +838,19 @@ yt_database_random_get(struct yt_database *database, size_t basic_record,
 		return false;
 	}
 	database->last_get.outcome = YT_DATABASE_GET_RETURNED;
-	database->last_get.full_record = read.accepted == YT_RECORD_SIZE;
+	database->last_get.full_record = read.accepted == record_size;
 	database->last_get.terminal_position = (int64_t)offset
 	    + (int64_t)read.accepted;
 	return true;
+}
+
+bool
+yt_database_random_get(struct yt_database *database, size_t basic_record,
+    struct yt_record *record, size_t *accepted, struct yt_error *error)
+{
+	return database_random_get_bytes(database, basic_record,
+	    record != NULL ? record->bytes : NULL, YT_RECORD_SIZE, accepted,
+	    error);
 }
 
 bool
@@ -1342,10 +1353,10 @@ database_reject_short(struct yt_database *database, struct yt_error *error)
 	set_error(error, YT_IO_ERROR, "random PUT rejected short", database->path);
 }
 
-bool
-yt_database_random_put(struct yt_database *database, size_t basic_record,
-    const struct yt_record *record, bool one_byte_short_ok, size_t *accepted,
-    struct yt_error *error)
+static bool
+database_random_put_bytes(struct yt_database *database, size_t basic_record,
+    const uint8_t *data, size_t record_size, bool one_byte_short_ok,
+    size_t *accepted, struct yt_error *error)
 {
 	yt_database_seek_provider seek_provider;
 	yt_database_write_provider write_provider;
@@ -1356,7 +1367,8 @@ yt_database_random_put(struct yt_database *database, size_t basic_record,
 
 	if (accepted != NULL)
 		*accepted = 0U;
-	if (database == NULL || database->file == NULL || record == NULL) {
+	if (database == NULL || database->file == NULL || data == NULL
+	    || record_size == 0U) {
 		set_error(error, YT_INVALID, "random PUT",
 		    database != NULL ? database->path : NULL);
 		return false;
@@ -1371,7 +1383,7 @@ yt_database_random_put(struct yt_database *database, size_t basic_record,
 		set_error(error, YT_RANGE, "random PUT", database->path);
 		return false;
 	}
-	offset = (off_t)((basic_record - 1U) * YT_RECORD_SIZE);
+	offset = (off_t)((uint64_t)(basic_record - 1U) * record_size);
 	database->last_put.current_record = (uint32_t)basic_record;
 	database->last_put.record_index = (uint32_t)basic_record - 1U;
 	database->last_put.desired_offset = (int64_t)offset;
@@ -1399,8 +1411,8 @@ yt_database_random_put(struct yt_database *database, size_t basic_record,
 	}
 	write_provider = database->write_provider != NULL ? database->write_provider
 	    : database_write_default;
-	if (!write_provider(database->write_context, database->file, record->bytes,
-	    YT_RECORD_SIZE, &write) || write.accepted > YT_RECORD_SIZE
+	if (!write_provider(database->write_context, database->file, data,
+	    record_size, &write) || write.accepted > record_size
 	    || (write.carry && (write.dos_error == 0U
 	    || write.dos_error > 0xffU))
 	    || (write.carry && write.dos_error == 5U
@@ -1432,8 +1444,8 @@ yt_database_random_put(struct yt_database *database, size_t basic_record,
 	database->last_put.terminal_position = (int64_t)offset
 	    + (int64_t)write.accepted;
 	tolerated_short = one_byte_short_ok
-	    && write.accepted == YT_RECORD_SIZE - 1U;
-	if (write.accepted != YT_RECORD_SIZE && !tolerated_short) {
+	    && write.accepted == record_size - 1U;
+	if (write.accepted != record_size && !tolerated_short) {
 		database_reject_short(database, error);
 		return false;
 	}
@@ -1441,6 +1453,16 @@ yt_database_random_put(struct yt_database *database, size_t basic_record,
 	if (basic_record > database->records)
 		database->records = basic_record;
 	return true;
+}
+
+bool
+yt_database_random_put(struct yt_database *database, size_t basic_record,
+    const struct yt_record *record, bool one_byte_short_ok, size_t *accepted,
+    struct yt_error *error)
+{
+	return database_random_put_bytes(database, basic_record,
+	    record != NULL ? record->bytes : NULL, YT_RECORD_SIZE,
+	    one_byte_short_ok, accepted, error);
 }
 
 void
@@ -1592,9 +1614,6 @@ yt_radio_file_get(struct yt_radio_file *radio, uint32_t basic_record,
     struct yt_radio_record *record, size_t *accepted,
     struct yt_error *error)
 {
-	off_t offset;
-	size_t count;
-
 	if (accepted != NULL)
 		*accepted = 0U;
 	if (radio == NULL || radio->random.file == NULL || record == NULL
@@ -1603,47 +1622,22 @@ yt_radio_file_get(struct yt_radio_file *radio, uint32_t basic_record,
 		    ? radio->random.path : NULL);
 		return false;
 	}
-	offset = (off_t)((uint64_t)(basic_record - 1U)
-	    * YT_RADIO_RECORD_SIZE);
-	if (yt_fseeko(radio->random.file, offset, SEEK_SET) != 0) {
-		set_error(error, YT_IO_ERROR, "radio GET", radio->random.path);
-		return false;
-	}
-	memset(record->bytes, 0, sizeof(record->bytes));
-	clearerr(radio->random.file);
-	count = fread(record->bytes, 1, sizeof(record->bytes),
-	    radio->random.file);
-	if (ferror(radio->random.file)) {
-		set_error(error, YT_IO_ERROR, "radio GET", radio->random.path);
-		return false;
-	}
-	if (accepted != NULL)
-		*accepted = count;
-	return true;
+	return database_random_get_bytes(&radio->random, basic_record,
+	    record->bytes, YT_RADIO_RECORD_SIZE, accepted, error);
 }
 
 bool
 yt_radio_file_put(struct yt_radio_file *radio, uint32_t basic_record,
     const struct yt_radio_record *record, struct yt_error *error)
 {
-	off_t offset;
-
 	if (radio == NULL || radio->random.file == NULL || record == NULL
 	    || basic_record == 0U || basic_record > 0xFFFFFFU) {
 		set_error(error, YT_RANGE, "radio PUT", radio != NULL
 		    ? radio->random.path : NULL);
 		return false;
 	}
-	offset = (off_t)((uint64_t)(basic_record - 1U)
-	    * YT_RADIO_RECORD_SIZE);
-	if (yt_fseeko(radio->random.file, offset, SEEK_SET) != 0
-	    || fwrite(record->bytes, 1, sizeof(record->bytes),
-	    radio->random.file)
-	    != sizeof(record->bytes)) {
-		set_error(error, YT_IO_ERROR, "radio PUT", radio->random.path);
-		return false;
-	}
-	return true;
+	return database_random_put_bytes(&radio->random, basic_record,
+	    record->bytes, YT_RADIO_RECORD_SIZE, false, NULL, error);
 }
 
 bool

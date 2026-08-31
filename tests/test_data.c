@@ -3839,6 +3839,9 @@ test_radio_file(void)
 	struct yt_radio_record record;
 	struct yt_radio_record written;
 	struct database_public_close_script close_script;
+	struct database_read_script read_script;
+	struct database_write_script write_script;
+	struct database_seek_script seek_script;
 	struct yt_error error;
 	uint64_t size;
 	uint32_t next;
@@ -3884,12 +3887,23 @@ test_radio_file(void)
 	memset(&record, 0xff, sizeof(record));
 	CHECK(yt_radio_file_get(&radio, 1U, &record, &accepted, &error)
 	    && accepted == sizeof(partial)
-	    && memcmp(record.bytes, partial, sizeof(partial)) == 0);
+	    && memcmp(record.bytes, partial, sizeof(partial)) == 0
+	    && radio.random.last_get.outcome == YT_DATABASE_GET_RETURNED
+	    && radio.random.last_get.current_record == 1U
+	    && radio.random.last_get.record_index == 0U
+	    && radio.random.last_get.desired_offset == 0
+	    && radio.random.last_get.terminal_position == 3
+	    && !radio.random.last_get.full_record);
 	for (index = sizeof(partial); index < sizeof(record.bytes); ++index)
 		CHECK(record.bytes[index] == 0U);
 	memset(&record, 0xff, sizeof(record));
 	CHECK(yt_radio_file_get(&radio, 2U, &record, &accepted, &error)
-	    && accepted == 0U);
+	    && accepted == 0U
+	    && radio.random.last_get.current_record == 2U
+	    && radio.random.last_get.record_index == 1U
+	    && radio.random.last_get.desired_offset == YT_RADIO_RECORD_SIZE
+	    && radio.random.last_get.terminal_position == YT_RADIO_RECORD_SIZE
+	    && !radio.random.last_get.full_record);
 	for (index = 0U; index < sizeof(record.bytes); ++index)
 		CHECK(record.bytes[index] == 0U);
 	yt_error_clear(&error);
@@ -3913,10 +3927,69 @@ test_radio_file(void)
 	CHECK(yt_radio_file_get(&radio, next, &record, &accepted, &error)
 	    && accepted == 0U);
 	record = written;
-	CHECK(yt_radio_file_put(&radio, next, &record, &error));
+	CHECK(yt_radio_file_put(&radio, next, &record, &error)
+	    && radio.random.last_put.outcome == YT_DATABASE_PUT_RETURNED
+	    && radio.random.last_put.accepted == YT_RADIO_RECORD_SIZE
+	    && radio.random.last_put.current_record == 1U
+	    && radio.random.last_put.record_index == 0U
+	    && radio.random.last_put.desired_offset == 0
+	    && radio.random.last_put.terminal_position == YT_RADIO_RECORD_SIZE
+	    && radio.random.last_put.registered
+	    && radio.random.last_put.handle_open);
 	CHECK(yt_radio_file_size(&radio, &size, &error)
 	    && size == YT_RADIO_RECORD_SIZE);
 	CHECK(yt_radio_file_next_record(&radio, &next, &error) && next == 2U);
+
+	seek_script = (struct database_seek_script){
+		.success = false,
+		.dos_error = 19U,
+		.terminal_position = 0x1234,
+	};
+	yt_database_set_seek_provider(&radio.random, scripted_database_seek,
+	    &seek_script);
+	CHECK(!yt_radio_file_get(&radio, 1U, &record, &accepted, &error)
+	    && accepted == 0U && seek_script.calls == 1U
+	    && radio.random.last_get.outcome == YT_DATABASE_GET_SEEK_ERROR
+	    && radio.random.last_get.basic_error == 52U
+	    && radio.random.last_get.dos_error == 19U
+	    && radio.random.last_get.terminal_position == 0x1234);
+	yt_database_set_seek_provider(&radio.random, NULL, NULL);
+	read_script = (struct database_read_script){
+		.data = written.bytes,
+		.accepted = 3U,
+		.carry = true,
+		.dos_error = 6U,
+		.terminal_position = 0x2345,
+	};
+	yt_database_set_read_provider(&radio.random, scripted_database_read,
+	    &read_script);
+	CHECK(!yt_radio_file_get(&radio, 1U, &record, &accepted, &error)
+	    && accepted == 3U
+	    && radio.random.last_get.outcome == YT_DATABASE_GET_READ_ERROR
+	    && radio.random.last_get.basic_error == 57U
+	    && radio.random.last_get.dos_error == 6U
+	    && radio.random.last_get.terminal_position == 0x2345
+	    && memcmp(record.bytes, written.bytes, 3U) == 0);
+	for (index = 3U; index < sizeof(record.bytes); ++index)
+		CHECK(record.bytes[index] == 0U);
+	yt_database_set_read_provider(&radio.random, NULL, NULL);
+	write_script = (struct database_write_script){
+		.accepted = 3U,
+		.carry = true,
+		.dos_error = 6U,
+		.terminal_position = 0x3456,
+	};
+	yt_database_set_write_provider(&radio.random, scripted_database_write,
+	    &write_script);
+	CHECK(!yt_radio_file_put(&radio, 1U, &written, &error)
+	    && radio.random.last_put.outcome == YT_DATABASE_PUT_WRITE_ERROR
+	    && radio.random.last_put.accepted == 3U
+	    && radio.random.last_put.basic_error == 57U
+	    && radio.random.last_put.dos_error == 6U
+	    && radio.random.last_put.terminal_position == 0x3456
+	    && radio.random.last_put.registered
+	    && radio.random.last_put.handle_open);
+	yt_database_set_write_provider(&radio.random, NULL, NULL);
 	CHECK(yt_radio_file_close(&radio, &error)
 	    && radio.random.file == NULL
 	    && radio.random.last_close.outcome == YT_DATABASE_CLOSE_RETURNED
@@ -3951,6 +4024,28 @@ test_radio_file(void)
 	    && radio.random.last_close.retry_attempted
 	    && radio.record_length == 0U && radio.field_count == 0U);
 	yt_database_close(&radio.random);
+	CHECK(yt_radio_file_open(&radio, second_path, &error));
+	write_script = (struct database_write_script){
+		.accepted = YT_RADIO_RECORD_SIZE - 1U,
+	};
+	memset(&close_script, 0, sizeof(close_script));
+	database_close_add(&close_script, false, 0U, false, true, true);
+	yt_database_set_write_provider(&radio.random, scripted_database_write,
+	    &write_script);
+	yt_database_set_close_provider(&radio.random,
+	    scripted_database_public_close, &close_script);
+	CHECK(!yt_radio_file_put(&radio, 1U, &written, &error)
+	    && close_script.position == close_script.length
+	    && radio.random.last_put.outcome == YT_DATABASE_PUT_REJECTED_SHORT
+	    && radio.random.last_put.accepted == YT_RADIO_RECORD_SIZE - 1U
+	    && radio.random.last_put.basic_error == 61U
+	    && radio.random.last_put.terminal_position
+	    == YT_RADIO_RECORD_SIZE - 1U
+	    && !radio.random.last_put.registered
+	    && radio.random.last_put.close_attempted
+	    && radio.random.last_put.close_succeeded
+	    && !radio.random.last_put.handle_open);
+	CHECK(yt_radio_file_close(&radio, &error));
 
 	yt_radio_file_init(&radio);
 	yt_error_clear(&error);
