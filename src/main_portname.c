@@ -76,7 +76,7 @@ main(void)
 	struct yt_portname_result rename_result;
 	uint8_t answer[256];
 	size_t answer_length;
-	size_t file_size;
+	uint32_t file_size;
 
 	memset(&game, 0, sizeof(game));
 	yt_error_clear(&error);
@@ -91,7 +91,7 @@ main(void)
 		yt_cli_error("PORTNAME", &error);
 		return EXIT_FAILURE;
 	}
-	if (!yt_file_size(game.database.path, &file_size, &error)) {
+	if (!yt_database_random_lof(&game.database, &file_size, &error)) {
 		yt_database_close(&game.database);
 		yt_cli_error("PORTNAME", &error);
 		return EXIT_FAILURE;

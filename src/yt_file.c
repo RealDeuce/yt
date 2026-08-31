@@ -1039,6 +1039,158 @@ yt_database_random_close(struct yt_database *database, struct yt_error *error)
 }
 
 static bool
+database_lof_default(void *context, FILE *file,
+    enum yt_database_lof_operation operation, uint32_t restore_position,
+    struct yt_database_lof_observation *observation)
+{
+	int64_t position;
+	off_t offset;
+	int saved_errno;
+	int whence;
+
+	(void)context;
+	memset(observation, 0, sizeof(*observation));
+	if (file == NULL)
+		return false;
+	switch (operation) {
+	case YT_DATABASE_LOF_CURRENT:
+		offset = 0;
+		whence = SEEK_CUR;
+		break;
+	case YT_DATABASE_LOF_END:
+		offset = 0;
+		whence = SEEK_END;
+		break;
+	case YT_DATABASE_LOF_RESTORE:
+		offset = (off_t)restore_position;
+		whence = SEEK_SET;
+		break;
+	default:
+		return false;
+	}
+	database_prepare_io(file);
+	if (yt_fseeko(file, offset, whence) != 0) {
+		saved_errno = errno;
+		position = yt_ftello(file);
+		observation->carry = true;
+		observation->dos_error = database_dos_error(NULL, saved_errno);
+		observation->terminal_position = position >= 0 ? position : -1;
+		errno = saved_errno;
+		return true;
+	}
+	position = yt_ftello(file);
+	saved_errno = errno;
+	observation->terminal_position = position >= 0 ? position : -1;
+	if (position < 0 || (uint64_t)position > UINT32_MAX) {
+		observation->carry = true;
+		observation->dos_error = position < 0
+		    ? database_dos_error(NULL, saved_errno) : 1U;
+	}
+	errno = saved_errno;
+	return true;
+}
+
+static bool
+database_lof_observation_valid(
+    const struct yt_database_lof_observation *observation)
+{
+	if (observation->carry)
+		return observation->dos_error >= 1U
+		    && observation->dos_error <= 0xffU;
+	return observation->dos_error == 0U
+	    && observation->terminal_position >= 0
+	    && (uint64_t)observation->terminal_position <= UINT32_MAX;
+}
+
+static bool
+database_lof_fail(struct yt_database *database,
+    enum yt_database_lof_outcome outcome,
+    enum yt_database_lof_operation operation, uint16_t dos_error,
+    struct yt_error *error)
+{
+	database->last_lof.outcome = outcome;
+	database->last_lof.failed_operation = operation;
+	database->last_lof.dos_error = dos_error;
+	database->last_lof.basic_error = 52U;
+	database->last_lof.registered = database->file != NULL;
+	database->last_lof.handle_open = database->file != NULL
+	    || database->orphaned_file != NULL;
+	set_error(error, YT_IO_ERROR, outcome == YT_DATABASE_LOF_SEEK_ERROR
+	    ? "random LOF seek" : "random LOF provider", database->path);
+	return false;
+}
+
+bool
+yt_database_random_lof(struct yt_database *database, uint32_t *length,
+    struct yt_error *error)
+{
+	static const enum yt_database_lof_operation operations[] = {
+		YT_DATABASE_LOF_CURRENT,
+		YT_DATABASE_LOF_END,
+		YT_DATABASE_LOF_RESTORE,
+	};
+	yt_database_lof_provider provider;
+	struct yt_database_lof_observation observation;
+	uint32_t saved_position = 0U;
+	uint32_t restore_position = 0U;
+	size_t index;
+
+	if (length != NULL)
+		*length = 0U;
+	if (database == NULL || database->file == NULL || length == NULL) {
+		set_error(error, YT_INVALID, "random LOF", database != NULL
+		    ? database->path : NULL);
+		return false;
+	}
+	memset(&database->last_lof, 0, sizeof(database->last_lof));
+	database->last_lof.device = database->last_open.device;
+	database->last_lof.registered = true;
+	database->last_lof.handle_open = true;
+	if (database->last_lof.device) {
+		database->last_lof.outcome = YT_DATABASE_LOF_RETURNED;
+		database->last_lof.length = database->device_position;
+		database->last_lof.saved_position = database->device_position;
+		database->last_lof.terminal_position = database->device_position;
+		*length = database->device_position;
+		return true;
+	}
+	provider = database->lof_provider != NULL ? database->lof_provider
+	    : database_lof_default;
+	for (index = 0U; index < YT_ARRAY_LEN(operations); ++index) {
+		enum yt_database_lof_operation operation = operations[index];
+
+		++database->last_lof.operation_count;
+		memset(&observation, 0, sizeof(observation));
+		if (!provider(database->lof_context, database->file, operation,
+		    operation == YT_DATABASE_LOF_RESTORE ? restore_position : 0U,
+		    &observation))
+			return database_lof_fail(database,
+			    YT_DATABASE_LOF_PROVIDER_ERROR, operation, 0U, error);
+		database->last_lof.terminal_position
+		    = observation.terminal_position;
+		if (!database_lof_observation_valid(&observation))
+			return database_lof_fail(database,
+			    YT_DATABASE_LOF_PROVIDER_ERROR, operation,
+			    observation.dos_error, error);
+		if (observation.carry)
+			return database_lof_fail(database,
+			    YT_DATABASE_LOF_SEEK_ERROR, operation,
+			    observation.dos_error, error);
+		if (operation == YT_DATABASE_LOF_CURRENT) {
+			saved_position = (uint32_t)observation.terminal_position;
+			restore_position = saved_position;
+			database->last_lof.saved_position = saved_position;
+		}
+		else if (operation == YT_DATABASE_LOF_END)
+			database->last_lof.length
+			    = (uint32_t)observation.terminal_position;
+	}
+	database->last_lof.outcome = YT_DATABASE_LOF_RETURNED;
+	*length = database->last_lof.length;
+	return true;
+}
+
+static bool
 database_flush_default(void *context, FILE *file)
 {
 	(void)context;
@@ -1208,6 +1360,16 @@ yt_database_set_close_provider(struct yt_database *database,
 		return;
 	database->close_provider = provider;
 	database->close_context = context;
+}
+
+void
+yt_database_set_lof_provider(struct yt_database *database,
+    yt_database_lof_provider provider, void *context)
+{
+	if (database == NULL)
+		return;
+	database->lof_provider = provider;
+	database->lof_context = context;
 }
 
 void

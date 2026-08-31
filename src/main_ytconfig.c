@@ -888,7 +888,7 @@ main(void)
 	struct yt_error error;
 	struct yt_config_menu_working working;
 	uint8_t scoreboard[41];
-	size_t file_size;
+	uint32_t file_size;
 
 	yt_error_clear(&error);
 	memset(&game, 0, sizeof(game));
@@ -901,7 +901,7 @@ main(void)
 		    YT_OPEN_CREATE, &error))
 			goto failure;
 	}
-	if (!yt_file_size(game.database.path, &file_size, &error))
+	if (!yt_database_random_lof(&game.database, &file_size, &error))
 		goto failure;
 	if (file_size == 0) {
 		struct yt_config_output_result output;

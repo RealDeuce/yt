@@ -81,6 +81,40 @@ struct yt_database_close_result {
 	bool handle_open;
 };
 
+enum yt_database_lof_operation {
+	YT_DATABASE_LOF_OPERATION_NONE,
+	YT_DATABASE_LOF_CURRENT,
+	YT_DATABASE_LOF_END,
+	YT_DATABASE_LOF_RESTORE,
+};
+
+struct yt_database_lof_observation {
+	bool carry;
+	uint16_t dos_error;
+	int64_t terminal_position;
+};
+
+enum yt_database_lof_outcome {
+	YT_DATABASE_LOF_NONE,
+	YT_DATABASE_LOF_RETURNED,
+	YT_DATABASE_LOF_SEEK_ERROR,
+	YT_DATABASE_LOF_PROVIDER_ERROR,
+};
+
+struct yt_database_lof_result {
+	enum yt_database_lof_outcome outcome;
+	enum yt_database_lof_operation failed_operation;
+	uint32_t length;
+	uint32_t saved_position;
+	uint16_t dos_error;
+	uint16_t basic_error;
+	size_t operation_count;
+	int64_t terminal_position;
+	bool device;
+	bool registered;
+	bool handle_open;
+};
+
 /* A false provider return rejects the observation and performs no I/O. */
 typedef bool (*yt_database_open_provider)(void *context, const char *path,
     enum yt_database_open_operation operation, uint8_t access,
@@ -89,6 +123,10 @@ typedef bool (*yt_database_open_provider)(void *context, const char *path,
 /* A false provider return rejects the observation and performs no I/O. */
 typedef bool (*yt_database_close_provider)(void *context, FILE *active_file,
     size_t attempt, struct yt_database_close_observation *observation);
+/* A false provider return rejects the observation and performs no I/O. */
+typedef bool (*yt_database_lof_provider)(void *context, FILE *active_file,
+    enum yt_database_lof_operation operation, uint32_t restore_position,
+    struct yt_database_lof_observation *observation);
 
 struct yt_database_seek_observation {
 	bool carry;
@@ -177,12 +215,16 @@ struct yt_database {
 	void *write_context;
 	yt_database_close_provider close_provider;
 	void *close_context;
+	yt_database_lof_provider lof_provider;
+	void *lof_context;
 	yt_database_flush_provider flush_provider;
 	void *flush_context;
+	uint32_t device_position;
 	bool short_close_attempted;
 	bool short_close_succeeded;
 	struct yt_database_open_result last_open;
 	struct yt_database_close_result last_close;
+	struct yt_database_lof_result last_lof;
 	struct yt_database_get_result last_get;
 	struct yt_database_put_result last_put;
 };
@@ -211,6 +253,8 @@ bool yt_database_open_observed(struct yt_database *database, const char *path,
     struct yt_error *error);
 bool yt_database_random_close(struct yt_database *database,
     struct yt_error *error);
+bool yt_database_random_lof(struct yt_database *database, uint32_t *length,
+    struct yt_error *error);
 void yt_database_close(struct yt_database *database);
 bool yt_database_read(struct yt_database *database, size_t basic_record,
     struct yt_record *record, struct yt_error *error);
@@ -230,6 +274,8 @@ void yt_database_set_seek_provider(struct yt_database *database,
     yt_database_seek_provider provider, void *context);
 void yt_database_set_close_provider(struct yt_database *database,
     yt_database_close_provider provider, void *context);
+void yt_database_set_lof_provider(struct yt_database *database,
+    yt_database_lof_provider provider, void *context);
 void yt_database_set_flush_provider(struct yt_database *database,
     yt_database_flush_provider provider, void *context);
 bool yt_database_flush(struct yt_database *database, struct yt_error *error);

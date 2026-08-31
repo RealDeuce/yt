@@ -69,6 +69,8 @@ baseline stated in the handoff, not whole-program compatibility.
 
 ## Shared prerequisites
 
+| BRUN regular-random `LOF` | `src/yt_file.c::{yt_database_random_lof,yt_database_set_lof_provider}`, `src/main_portname.c::main`, `src/main_ytconfig.c::main` | a typed live-handle transaction performs the exact current/end/restore seek order, retains the current/end prefix at each failure cut, maps all 255 DOS error bytes at all three ordinals to ERR 52, validates provider observations, restores the native cursor on success, and takes the no-seek device position-window arm. PORTNAME and YTCONFIG now use this transaction for file 1 instead of pathname metadata. Exhaustive component fixtures are in `tests/test_data.c::test_database_random_lof`; the existing utility process fixtures join both zero and nonzero results. | `candidate` | connect the remaining 16 rooted file-1/4/5 callers; add raw MBF64 dirty-zero mantissa, handler/file-block scratch, unrestricted external cursor carrier and caller-specific error-router prefixes |
+
 The plasma resolver's connected native frontier now extends through the
 `YT-SUB:B713..BC7D` planet-impact continuation.
 `src/yt_game.c::yt_projectile_plasma_fighter_run` owns the
