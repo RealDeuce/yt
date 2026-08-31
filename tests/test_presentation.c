@@ -14393,7 +14393,8 @@ main_attack_survivor_cycle_run(struct physical_viewer_join *viewer,
 		return false;
 	join->presentation = state(ansi);
 	join->presentation.foreground = 6.0f;
-	join->presentation.cached_foreground = ansi ? 6.0f : 0.0f;
+	join->presentation.color_initialized = 1.0f;
+	join->presentation.cached_foreground = 6.0f;
 	join->pager.foreground = 6;
 	join->pager.line_count = 8.0f;
 
@@ -14539,7 +14540,7 @@ test_main_attack_survivor_cycle_presentation(void)
 		    && viewer.join.presentation.bold == 0.0f
 		    && viewer.join.presentation.blink == 0.0f
 		    && viewer.join.presentation.cached_foreground
-		    == (cases[pass].ansi ? 2.0f : 0.0f));
+		    == (cases[pass].ansi ? 2.0f : 6.0f));
 		CHECK(viewer.join.pager.foreground == 2
 		    && viewer.join.pager.line_count == 0.0f
 		    && viewer.join.pager.nonstop == 0.0f);
@@ -14556,6 +14557,218 @@ test_main_attack_survivor_cycle_presentation(void)
 		yt_text_input_destroy(&viewer.input);
 	}
 	CHECK(sizeof(plain) - 1U == 327U && sizeof(ansi) - 1U == 370U);
+}
+
+static bool
+main_attack_black_hole_cycle_run(bool ansi, struct pager_capture *capture,
+    struct yt_present_state *current, struct yt_pager_state *pager,
+    size_t ends[3])
+{
+	static const uint8_t main_prompt[] =
+	    "Time: 14:59  Main Command (?=Help)? ";
+	static const uint8_t command[] = "A";
+	static const uint8_t title[] = "<Attack>";
+	static const uint8_t none[] = "There's no one here!";
+	static const uint8_t first_sector[] = "Sector: 733";
+	static const uint8_t first_warps[] = "Warps lead to: 2, 9";
+	static const uint8_t black_hole[] = "A *-BLACK HOLE-* grabs you!";
+	static const uint8_t warp_title[] = " * EMERGENCY WARP ENGAGED! * ";
+	static const uint8_t wormhole[] =
+	    "You enter a wormhole as your engines build up to emergency power!";
+	static const uint8_t temperature[] = "     * Engine Temperature *";
+	static const uint8_t scale[] = "[ Normal ][ Danger ][ Overheat ]";
+	static const uint8_t ruler[] = "================================";
+	static const uint8_t relief[] =
+	    "You sigh in relief as you look at your scanner and find yourself in";
+	static const uint8_t second_sector[] = "Sector: 1003";
+	static const uint8_t second_warps[] = "Warps lead to: 1, 42";
+	struct yt_present_result result;
+	char accumulator[80] = "";
+	uint8_t row[128];
+	size_t row_length;
+
+	if (capture == NULL || current == NULL || pager == NULL || ends == NULL)
+		return false;
+	*current = state(ansi);
+	current->foreground = 6.0f;
+	current->color_initialized = 1.0f;
+	current->cached_foreground = 6.0f;
+	current->sound.user_sound = 0.0f;
+	memset(pager, 0, sizeof(*pager));
+	pager->foreground = 6;
+	pager->line_count = 8.0f;
+	memset(capture, 0, sizeof(*capture));
+
+	current->foreground = 2.0f;
+	pager->foreground = 2;
+	pager_capture_line(capture, current, NULL, 0U);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, main_prompt,
+	    sizeof(main_prompt) - 1U, capture);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	if (yt_present_editor_echo(command, sizeof(command) - 1U,
+	    command, sizeof(command) - 1U, current, &result) != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(capture, &result);
+	pager_capture_line(capture, current, NULL, 0U);
+	pager_fixture_b05d(pager, current, title, sizeof(title) - 1U, capture);
+	pager_capture_line(capture, current, NULL, 0U);
+	current->bold = 1.0f;
+	current->blink = 1.0f;
+	pager_fixture_b05d(pager, current, none, sizeof(none) - 1U, capture);
+
+	current->foreground = 1.0f;
+	pager->foreground = 1;
+	pager_capture_line(capture, current, NULL, 0U);
+	pager_capture_line(capture, current, first_sector,
+	    sizeof(first_sector) - 1U);
+	pager_capture_line(capture, current, first_warps,
+	    sizeof(first_warps) - 1U);
+	ends[0] = capture->remote_length;
+
+	/* The admitted black-hole child selects foreground two before its blank. */
+	current->foreground = 2.0f;
+	pager_capture_line(capture, current, NULL, 0U);
+	if (yt_present_attention(black_hole, sizeof(black_hole) - 1U,
+	    current, &result) != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(capture, &result);
+	pager_capture_line(capture, current, NULL, 0U);
+	if (yt_present_attention(warp_title, sizeof(warp_title) - 1U,
+	    current, &result) != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(capture, &result);
+	pager_capture_line(capture, current, NULL, 0U);
+	if (yt_present_bold_line(wormhole, sizeof(wormhole) - 1U,
+	    current, &result) != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(capture, &result);
+	pager_capture_line(capture, current, NULL, 0U);
+	current->foreground = 6.0f;
+	if (yt_present_bold_line(temperature, sizeof(temperature) - 1U,
+	    current, &result) != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(capture, &result);
+	if (yt_present_bold_line(scale, sizeof(scale) - 1U,
+	    current, &result) != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(capture, &result);
+	current->foreground = 2.0f;
+	if (yt_present_bold_line(ruler, sizeof(ruler) - 1U,
+	    current, &result) != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(capture, &result);
+	current->foreground = 6.0f;
+	if (yt_present_bold_character((const uint8_t *)"[", 1U,
+	    current, &result) != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(capture, &result);
+	current->foreground = 2.0f;
+	if (yt_present_bold_character((const uint8_t *)"*", 1U,
+	    current, &result) != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(capture, &result);
+	pager_capture_line(capture, current, NULL, 0U);
+	pager_capture_line(capture, current, NULL, 0U);
+	if (yt_present_sound(1.0f, current, &result) != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(capture, &result);
+	pager_capture_line(capture, current, relief, sizeof(relief) - 1U);
+	if (!yt_emergency_warp_result_row(1003.0f, 3.0f, row,
+	    sizeof(row), &row_length))
+		return false;
+	pager_capture_line(capture, current, row, row_length);
+	ends[1] = capture->remote_length;
+
+	current->foreground = 1.0f;
+	pager->foreground = 1;
+	pager_capture_line(capture, current, NULL, 0U);
+	pager_capture_line(capture, current, second_sector,
+	    sizeof(second_sector) - 1U);
+	pager_capture_line(capture, current, second_warps,
+	    sizeof(second_warps) - 1U);
+	pager->line_count = 0.0f;
+	current->foreground = 2.0f;
+	pager->foreground = 2;
+	pager_capture_line(capture, current, NULL, 0U);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, main_prompt,
+	    sizeof(main_prompt) - 1U, capture);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	ends[2] = capture->remote_length;
+	return true;
+}
+
+static void
+test_main_attack_black_hole_cycle_presentation(void)
+{
+	static const uint8_t plain[] =
+	    "\r\nTime: 14:59  Main Command (?=Help)? A\r\n"
+	    "<Attack>\n\r\r\nThere's no one here!\n\r"
+	    "\r\nSector: 733\r\nWarps lead to: 2, 9\r\n"
+	    "\r\nA *-BLACK HOLE-* grabs you!\r\n"
+	    "\r\n * EMERGENCY WARP ENGAGED! * \r\n"
+	    "\r\nYou enter a wormhole as your engines build up to emergency power!\r\n"
+	    "\r\n     * Engine Temperature *\r\n"
+	    "[ Normal ][ Danger ][ Overheat ]\r\n"
+	    "================================\r\n[*\r\n\r\n"
+	    "You sigh in relief as you look at your scanner and find yourself in\r\n"
+	    "sector 1003. However, it takes you 3 turns to recharge your engines!\r\n"
+	    "\r\nSector: 1003\r\nWarps lead to: 1, 42\r\n"
+	    "\r\nTime: 14:59  Main Command (?=Help)? ";
+	static const uint8_t ansi[] =
+	    "\x1b[0;32;40m\r\nTime: 14:59  Main Command (?=Help)? A\r\n"
+	    "<Attack>\n\r\r\n\x1b[0;32;40;5;1mThere's no one here!\n\r"
+	    "\x1b[0;31;40m\r\nSector: 733\r\nWarps lead to: 2, 9\r\n"
+	    "\x1b[0;32;40m\r\n"
+	    "\x1b[0;33;41;5;1mA *-BLACK HOLE-* grabs you!"
+	    "\x1b[0;33;40m\r\n\r\n"
+	    "\x1b[0;33;41;5;1m * EMERGENCY WARP ENGAGED! * "
+	    "\x1b[0;33;40m\r\n\r\n"
+	    "\x1b[0;33;40;1mYou enter a wormhole as your engines build up to emergency power!\r\n"
+	    "\x1b[0;33;40m\r\n"
+	    "\x1b[0;36;40;1m     * Engine Temperature *\r\n"
+	    "\x1b[0;36;40;1m[ Normal ][ Danger ][ Overheat ]\r\n"
+	    "\x1b[0;32;40;1m================================\r\n"
+	    "\x1b[0;36;40;1m[\x1b[0;32;40;1m*"
+	    "\x1b[0;32;40m\r\n\r\n"
+	    "You sigh in relief as you look at your scanner and find yourself in\r\n"
+	    "sector 1003. However, it takes you 3 turns to recharge your engines!\r\n"
+	    "\x1b[0;31;40m\r\nSector: 1003\r\nWarps lead to: 1, 42\r\n"
+	    "\x1b[0;32;40m\r\nTime: 14:59  Main Command (?=Help)? ";
+	static const struct {
+		bool ansi;
+		const uint8_t *expected;
+		size_t expected_length;
+		size_t ends[3];
+	} cases[] = {
+		{false, plain, sizeof(plain) - 1U, {111U, 488U, 564U}},
+		{true, ansi, sizeof(ansi) - 1U, {145U, 672U, 768U}},
+	};
+	struct yt_present_state current;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	size_t ends[3];
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		CHECK(main_attack_black_hole_cycle_run(cases[pass].ansi,
+		    &capture, &current, &pager, ends));
+		CHECK(memcmp(ends, cases[pass].ends, sizeof(ends)) == 0);
+		CHECK(capture.remote_length == cases[pass].expected_length);
+		CHECK(capture.remote_length != cases[pass].expected_length
+		    || memcmp(capture.remote, cases[pass].expected,
+		    cases[pass].expected_length) == 0);
+		CHECK(current.foreground == 2.0f
+		    && current.background == 0.0f
+		    && current.bold == (cases[pass].ansi ? 0.0f : 1.0f)
+		    && current.blink == (cases[pass].ansi ? 0.0f : 1.0f)
+		    && current.cached_foreground
+		    == (cases[pass].ansi ? 2.0f : 6.0f)
+		    && pager.foreground == 2 && pager.line_count == 0.0f
+		    && pager.nonstop == 0.0f);
+	}
+	CHECK(sizeof(plain) - 1U == 564U && sizeof(ansi) - 1U == 768U);
 }
 
 static bool
@@ -18699,6 +18912,7 @@ main(void)
 	test_planet_thrusters_accepted_cycle_presentation();
 	test_main_movement_accepted_cycle_presentation();
 	test_main_attack_survivor_cycle_presentation();
+	test_main_attack_black_hole_cycle_presentation();
 	test_planet_movement_accepted_cycle_presentation();
 	test_planet_port_no_port_cycle_presentation();
 	test_computer_quit_accept_presentation();

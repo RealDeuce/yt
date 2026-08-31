@@ -2574,8 +2574,12 @@ not authoritative. Use the corrected goal above in the new workspace.
   ANSI selector-two PLAY payload. All 29 isolated-body and 34 joined cycle/
   hazard upstream tests and all current native suites pass. All 74 parent
   transfers and the active-cycle presentation family are candidate.
-  Admitted-hazard joined fixtures, independent raw A41C/FIELD/cache/RNG/radio
-  state, local framebuffer and every staged failure prefix remain open.
+  The admitted black-hole witness also carries one live presentation state
+  through the 111/145-byte plain/ANSI exhausted-A prefix, 377/527-byte child,
+  zero-effect return and following friendly reentry, pinning the exact
+  564/768-byte streams and terminal prompt state. Admitted mine and mine-warp
+  joined fixtures, independent raw A41C/FIELD/cache/RNG/radio state, local
+  framebuffer and every staged failure prefix remain open.
 - Upstream `c08f1fca` resolved the two implementation documentation gaps.
   Native commit `7bc5005` now performs YTMAINT radio compaction as the exact
   OUTPUT/CLOSE/KILL, fresh RANDOM destination/source, explicit dense PUT,
