@@ -195,10 +195,12 @@ static bool
 credited_remote_name(const char *first, const char *last, char credited[90],
     struct yt_error *error)
 {
+	struct yt_database alias_random = {0};
 	struct yt_name_file names;
 	bool result;
 
-	if (!yt_names_load("YTNAME.DAT", &names, error))
+	if (!yt_database_random_close(&alias_random, error)
+	    || !yt_names_load("YTNAME.DAT", &names, error))
 		return false;
 	result = yt_rmt_credited_name(first, last, &names, credited, 90U);
 	yt_names_free(&names);
