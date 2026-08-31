@@ -14,6 +14,10 @@ struct yt_database {
 	FILE *file;
 	char path[512];
 	size_t records;
+	bool (*write_provider)(void *context, FILE *file,
+	    const uint8_t *data, size_t requested, size_t *accepted,
+	    bool *write_error);
+	void *write_context;
 };
 
 #define YT_RADIO_FIELD_COUNT 4U
@@ -43,6 +47,12 @@ bool yt_database_random_get(struct yt_database *database,
     struct yt_error *error);
 bool yt_database_write(struct yt_database *database, size_t basic_record,
     const struct yt_record *record, struct yt_error *error);
+bool yt_database_random_put(struct yt_database *database,
+    size_t basic_record, const struct yt_record *record,
+    bool one_byte_short_ok, size_t *accepted, struct yt_error *error);
+void yt_database_set_write_provider(struct yt_database *database,
+    bool (*provider)(void *context, FILE *file, const uint8_t *data,
+    size_t requested, size_t *accepted, bool *write_error), void *context);
 bool yt_database_flush(struct yt_database *database, struct yt_error *error);
 void yt_radio_file_init(struct yt_radio_file *radio);
 bool yt_radio_file_open(struct yt_radio_file *radio, const char *path,

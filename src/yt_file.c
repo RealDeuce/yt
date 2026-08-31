@@ -252,22 +252,82 @@ bool
 yt_database_write(struct yt_database *database, size_t basic_record,
     const struct yt_record *record, struct yt_error *error)
 {
+	bool written = yt_database_random_put(database, basic_record, record,
+	    true, NULL, error);
+
+	if (!written && error != NULL)
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    "write record");
+	return written;
+}
+
+static bool
+database_write_default(void *context, FILE *file, const uint8_t *data,
+    size_t requested, size_t *accepted, bool *write_error)
+{
+	(void)context;
+	*accepted = fwrite(data, 1U, requested, file);
+	*write_error = ferror(file) != 0;
+	return true;
+}
+
+bool
+yt_database_random_put(struct yt_database *database, size_t basic_record,
+    const struct yt_record *record, bool one_byte_short_ok, size_t *accepted,
+    struct yt_error *error)
+{
+	bool (*provider)(void *, FILE *, const uint8_t *, size_t, size_t *,
+	    bool *);
 	off_t offset;
+	size_t count = 0U;
+	bool write_error = false;
+	bool tolerated_short;
+
+	if (accepted != NULL)
+		*accepted = 0U;
+	if (database == NULL || database->file == NULL || record == NULL) {
+		set_error(error, YT_INVALID, "random PUT",
+		    database != NULL ? database->path : NULL);
+		return false;
+	}
 
 	if (basic_record == 0) {
-		set_error(error, YT_RANGE, "write record", database->path);
+		set_error(error, YT_RANGE, "random PUT", database->path);
 		return false;
 	}
 	offset = (off_t)((basic_record - 1U) * YT_RECORD_SIZE);
-	if (yt_fseeko(database->file, offset, SEEK_SET) != 0
-	    || fwrite(record->bytes, 1, YT_RECORD_SIZE, database->file)
-	    != YT_RECORD_SIZE) {
-		set_error(error, YT_IO_ERROR, "write record", database->path);
+	if (yt_fseeko(database->file, offset, SEEK_SET) != 0) {
+		set_error(error, YT_IO_ERROR, "random PUT", database->path);
+		return false;
+	}
+	provider = database->write_provider != NULL ? database->write_provider
+	    : database_write_default;
+	if (!provider(database->write_context, database->file, record->bytes,
+	    YT_RECORD_SIZE, &count, &write_error) || count > YT_RECORD_SIZE) {
+		set_error(error, YT_IO_ERROR, "random PUT provider", database->path);
+		return false;
+	}
+	if (accepted != NULL)
+		*accepted = count;
+	tolerated_short = one_byte_short_ok && count == YT_RECORD_SIZE - 1U;
+	if (write_error || (count != YT_RECORD_SIZE && !tolerated_short)) {
+		set_error(error, YT_IO_ERROR, "random PUT", database->path);
 		return false;
 	}
 	if (basic_record > database->records)
 		database->records = basic_record;
 	return true;
+}
+
+void
+yt_database_set_write_provider(struct yt_database *database,
+    bool (*provider)(void *context, FILE *file, const uint8_t *data,
+    size_t requested, size_t *accepted, bool *write_error), void *context)
+{
+	if (database == NULL)
+		return;
+	database->write_provider = provider;
+	database->write_context = context;
 }
 
 bool

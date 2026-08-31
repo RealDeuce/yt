@@ -461,6 +461,27 @@ test_random(void)
 	    && random.draws == 1 && nested_script.position == 3);
 }
 
+struct database_write_script {
+	size_t accepted;
+	bool write_error;
+	size_t calls;
+	size_t requested;
+};
+
+static bool
+scripted_database_write(void *context, FILE *file, const uint8_t *data,
+    size_t requested, size_t *accepted, bool *write_error)
+{
+	struct database_write_script *script = context;
+	size_t count = script->accepted < requested ? script->accepted : requested;
+
+	++script->calls;
+	script->requested = requested;
+	*accepted = fwrite(data, 1U, count, file);
+	*write_error = script->write_error;
+	return *accepted == count;
+}
+
 static void
 test_files(void)
 {
@@ -474,8 +495,12 @@ test_files(void)
 	struct yt_database database;
 	struct yt_record before;
 	struct yt_record after;
+	struct yt_record replacement;
+	struct database_write_script write_script;
 	struct yt_text_file text;
 	struct yt_error error;
+	size_t accepted;
+	size_t index;
 
 #ifdef _WIN32
 	snprintf(template_path, sizeof(template_path), "yt-test-%lu",
@@ -503,6 +528,43 @@ test_files(void)
 	CHECK(yt_database_flush(&database, &error));
 	CHECK(yt_database_read(&database, 1, &after, &error));
 	CHECK(memcmp(before.bytes, after.bytes, sizeof(before.bytes)) == 0);
+	for (index = 0U; index < sizeof(replacement.bytes); ++index)
+		replacement.bytes[index] = (uint8_t)(index ^ 0xa5U);
+	write_script = (struct database_write_script){136U, false, 0U, 0U};
+	yt_database_set_write_provider(&database, scripted_database_write,
+	    &write_script);
+	CHECK(yt_database_write(&database, 1U, &replacement, &error));
+	CHECK(write_script.calls == 1U
+	    && write_script.requested == YT_RECORD_SIZE);
+	CHECK(yt_database_read(&database, 1U, &after, &error));
+	CHECK(memcmp(after.bytes, replacement.bytes, 136U) == 0
+	    && after.bytes[136] == before.bytes[136]);
+	yt_database_set_write_provider(&database, NULL, NULL);
+	CHECK(yt_database_write(&database, 1U, &before, &error));
+	write_script = (struct database_write_script){136U, false, 0U, 0U};
+	yt_database_set_write_provider(&database, scripted_database_write,
+	    &write_script);
+	yt_error_clear(&error);
+	CHECK(!yt_database_random_put(&database, 1U, &replacement, false,
+	    &accepted, &error) && error.status == YT_IO_ERROR
+	    && accepted == 136U);
+	CHECK(yt_database_read(&database, 1U, &after, &error));
+	CHECK(memcmp(after.bytes, replacement.bytes, 136U) == 0
+	    && after.bytes[136] == before.bytes[136]);
+	yt_database_set_write_provider(&database, NULL, NULL);
+	CHECK(yt_database_write(&database, 1U, &before, &error));
+	write_script = (struct database_write_script){3U, true, 0U, 0U};
+	yt_database_set_write_provider(&database, scripted_database_write,
+	    &write_script);
+	yt_error_clear(&error);
+	CHECK(!yt_database_random_put(&database, 1U, &replacement, true,
+	    &accepted, &error) && error.status == YT_IO_ERROR
+	    && accepted == 3U);
+	CHECK(yt_database_read(&database, 1U, &after, &error));
+	CHECK(memcmp(after.bytes, replacement.bytes, 3U) == 0
+	    && memcmp(after.bytes + 3U, before.bytes + 3U,
+	    YT_RECORD_SIZE - 3U) == 0);
+	yt_database_set_write_provider(&database, NULL, NULL);
 	yt_database_close(&database);
 
 	CHECK(yt_text_append_line(text_path, (const uint8_t *)"One", 3, &error));
