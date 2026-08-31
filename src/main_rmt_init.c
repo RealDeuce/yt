@@ -388,34 +388,50 @@ finish_rmt(struct rmt_handoff_file *handoff, struct yt_rmt_door *door,
 	return status;
 }
 
-static void
-rmt_close_all_fixed(void *context)
+static bool
+rmt_close_all_com(void *context, int8_t file_class, struct yt_error *error)
 {
+	if (file_class != -4 && file_class != -5) {
+		if (error != NULL) {
+			error->status = YT_INVALID;
+			error->system_error = 0;
+			snprintf(error->operation, sizeof(error->operation),
+			    "RMT CLOSE-all COM class");
+			error->path[0] = '\0';
+		}
+		return false;
+	}
 	yt_rmt_door_finish(context, EXIT_SUCCESS);
+	return true;
 }
 
 static bool
 rmt_close_all(struct yt_database *database, struct yt_rmt_door *door,
-    struct yt_error *error)
+    float com_port, struct yt_error *error)
 {
-	struct yt_close_all_control control = {
-		.heap_type = YT_CLOSE_ALL_HEAP_FILE,
-		.file_class = 0,
-		.method = yt_database_close_all_method,
-		.context = database,
-	};
-	size_t fixed_open_count = door != NULL
-	    && (door->initialized || door->serial.prepared) ? 1U : 0U;
-	struct yt_close_all_fixed_control fixed = {
-		.lazy_open_count = &fixed_open_count,
-		.method = rmt_close_all_fixed,
-		.context = door,
-	};
-	size_t control_count = database != NULL && database->file != NULL
-	    ? 1U : 0U;
+	struct yt_close_all_control controls[2];
+	size_t control_count = 0U;
 
-	return yt_close_all_run(control_count != 0U ? &control : NULL,
-	    control_count, &fixed, NULL, error);
+	/* The COM alias is allocated before the later YTDATA random block. */
+	if (door != NULL && (door->initialized || door->serial.prepared)) {
+		controls[control_count++] = (struct yt_close_all_control){
+			.heap_type = YT_CLOSE_ALL_HEAP_FILE,
+			.file_class = com_port == 1.0f || com_port == 3.0f
+			    ? -4 : -5,
+			.method = rmt_close_all_com,
+			.context = door,
+		};
+	}
+	if (database != NULL && database->file != NULL) {
+		controls[control_count++] = (struct yt_close_all_control){
+			.heap_type = YT_CLOSE_ALL_HEAP_FILE,
+			.file_class = 0,
+			.method = yt_database_close_all_method,
+			.context = database,
+		};
+	}
+	return yt_close_all_run(control_count != 0U ? controls : NULL,
+	    control_count, NULL, NULL, error);
 }
 
 int
@@ -533,7 +549,7 @@ main(void)
 	}
 	if (old_size == 0U) {
 		if (!write_missing_old_data(&output_context, &error)
-		    || !rmt_close_all(&old, &door, &error)) {
+		    || !rmt_close_all(&old, &door, com_port, &error)) {
 			yt_database_close(&old);
 			yt_cli_error("RMT-INIT", &error);
 			return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
@@ -566,7 +582,7 @@ main(void)
 		yt_cli_error("RMT-INIT", &error);
 		return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
 	}
-	if (!rmt_close_all(NULL, &door, &error)) {
+	if (!rmt_close_all(NULL, &door, com_port, &error)) {
 		yt_cli_error("RMT-INIT", &error);
 		return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
 	}
