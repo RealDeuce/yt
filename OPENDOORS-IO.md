@@ -1261,8 +1261,8 @@ The current implementation uses only a deliberately small subset:
 |---|---|
 | `od_parse_cmd_line()` before `od_init()` | Correct ordering and correct platform-specific signature |
 | cleanup registered with both `atexit()` and `od_before_exit` before initialization | Required because parsing/initialization and later kernel activity can call `exit()` |
-| `od_disp(buffer, length, TRUE)` in the general `yt_out*` path | Correct only for values established not to contain terminal-emulator commands. It sends intended commands correctly to the player but renders them as raw glyphs on Win32 |
-| `yt_out_file("YTOPEN.ANS")` followed by `od_disp(..., TRUE)` | Incorrect for the Win32 local display. The shipped file begins with ANSI commands, including `ESC [ 40 m`, `ESC [ 2 J`, and cursor positioning, all of which are rendered locally as raw bytes |
+| `od_disp(buffer, length, TRUE)` in the remaining counted `yt_out*` path | Used only for plain literal/editor bytes established not to contain terminal-emulator commands; presentation replay uses separate exact remote and local sinks |
+| `yt_out_opening_file("YTOPEN.ANS")` | The exact remote line bytes remain counted and remote-only; the trusted NUL-free local lines and final reset use `od_disp_emu(..., FALSE)`, so the Win32 local display interprets their ANSI commands without retransmitting them |
 | manually read text/display files followed by `od_disp()` | Requires a per-file provenance decision. Manual reading avoids `od_send_file()` selection, substitution, paging, stop-key, and hotkey behavior, but does not provide local terminal emulation |
 | `session->user_sound` toggle without a sound dispatcher | Incomplete. The current session code changes and reports the flag but emits none of the recovered ANSI-music, BEL, or local-speaker endpoints from the legacy 59-caller dispatcher |
 | `od_putch()` for accepted key echo | Correct when the recovered program echoes that individual key |
@@ -1323,11 +1323,10 @@ Additional limitations matter for pending work:
    command-introducing C0 bytes. Its acceptance of the extended CP437 glyph
    range must still match the recovered input rules before the function is
    used.
-6. `yt_outf()` includes numerous substitutions from player records, messages,
-   port/planet/team names, registration text, and BBS identity data. A
-   formatting wrapper does not establish their byte range. Each source must
-   be traced to its input or file decoder before retaining raw local echo or
-   selecting emulation.
+6. The retained generic `yt_outf()` interface still does not establish the
+   provenance of substitutions. It currently has no production caller; any
+   future use must trace each source to its input or file decoder before
+   retaining raw local echo or selecting emulation.
 
 No current call should be replaced wholesale by `od_printf()`,
 `od_input_str()`, `od_disp_emu()`, or `od_send_file()` merely because it is

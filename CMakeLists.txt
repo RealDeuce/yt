@@ -170,6 +170,12 @@ if(BUILD_TESTING)
     target_compile_definitions(test_presentation PRIVATE
         YT_DATA_DIR="${YT_GENERATED_DATA_DIR}/")
     add_dependencies(test_presentation yt-data)
+
+    add_executable(test_output tests/test_output.c src/yt_output.c)
+    yt_configure_target(test_output)
+    target_compile_definitions(test_output PRIVATE YT_TESTING)
+    target_link_libraries(test_output PRIVATE yt_game OpenDoors::Static)
+    add_test(NAME test_output COMMAND test_output)
     yt_add_test(test_ytconfig_output tests/test_ytconfig_output.c yt_game)
     yt_add_test(test_score tests/test_score.c yt_game)
     yt_add_test(test_route tests/test_route.c yt_core)

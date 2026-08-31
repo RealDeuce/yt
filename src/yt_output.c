@@ -42,6 +42,47 @@ yt_out_remote_bytes(const void *data, size_t length)
 	}
 }
 
+bool
+yt_out_local_emulated_bytes(const void *data, size_t length,
+    struct yt_error *error)
+{
+	char stack[1024];
+	char *text = stack;
+
+	if ((data == NULL && length != 0U) || length == SIZE_MAX
+	    || (length != 0U && memchr(data, 0, length) != NULL)) {
+		if (error != NULL) {
+			error->status = YT_INVALID;
+			error->system_error = 0;
+			(void)snprintf(error->operation, sizeof(error->operation),
+			    "%s", "local emulated output");
+			error->path[0] = '\0';
+		}
+		return false;
+	}
+	if (length >= sizeof(stack)) {
+		text = malloc(length + 1U);
+		if (text == NULL) {
+			if (error != NULL) {
+				error->status = YT_NO_MEMORY;
+				error->system_error = 0;
+				(void)snprintf(error->operation,
+				    sizeof(error->operation), "%s",
+				    "allocate local emulated output");
+				error->path[0] = '\0';
+			}
+			return false;
+		}
+	}
+	if (length != 0U)
+		memcpy(text, data, length);
+	text[length] = '\0';
+	od_disp_emu(text, FALSE);
+	if (text != stack)
+		free(text);
+	return true;
+}
+
 static void
 present_remote(void *context, const uint8_t *data, size_t length, bool line)
 {
@@ -257,10 +298,8 @@ out_opening_present_local(void *context, const uint8_t *line, size_t length,
 	static const uint8_t newline[] = {'\r', '\n'};
 
 	(void)context;
-	(void)error;
-	present_local_bytes(line, length);
-	present_local_bytes(newline, sizeof(newline));
-	return true;
+	return yt_out_local_emulated_bytes(line, length, error)
+	    && yt_out_local_emulated_bytes(newline, sizeof(newline), error);
 }
 
 static bool
@@ -317,9 +356,7 @@ out_opening_reset_local(void *context, struct yt_error *error)
 	static const uint8_t reset[] = "\x1b[0m";
 
 	(void)context;
-	(void)error;
-	present_local_bytes(reset, sizeof(reset) - 1U);
-	return true;
+	return yt_out_local_emulated_bytes(reset, sizeof(reset) - 1U, error);
 }
 
 static bool

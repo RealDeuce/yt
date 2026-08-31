@@ -2571,6 +2571,24 @@ not authoritative. Use the corrected goal above in the new workspace.
   cycle presentation family are candidate. Exact native 327/370-byte active
   and admitted-hazard joined fixtures, independent raw A41C/FIELD/cache/RNG/
   radio state, local framebuffer and every staged failure prefix remain open.
+- Upstream `c08f1fca` resolved the two implementation documentation gaps.
+  Native commit `7bc5005` now performs YTMAINT radio compaction as the exact
+  OUTPUT/CLOSE/KILL, fresh RANDOM destination/source, explicit dense PUT,
+  source-close, destination-close, KILL, NAME transaction. Native commit
+  `cafae7c` adds the shared per-write character-device PRINT reducer with its
+  one-byte write-behind state, compatibility drops, device newline classes,
+  DOS error mapping and distinct completion residue. Both gaps remain visible
+  as resolved entries in `IMPLEMENTATION-BLOCKERS.md`; no documentation gap is
+  currently open.
+- The ANSI opening's local endpoint no longer feeds escape sequences to the
+  raw OpenDoors cell writer. Its exact remote bytes remain counted and
+  remote-only, while trusted NUL-free local rows and reset use the published
+  local-only terminal emulator. A stubbed production-adapter fixture pins the
+  route and rejects embedded NUL before emulation. The main door also forces
+  exact CP437 output and disables RA/QBBS substitution after command-line
+  parsing; OpenDoors source, API and ABI remain unchanged. Physical Win32
+  framebuffer execution and remaining generic provenance classifications
+  remain open.
 
 ## The task
 

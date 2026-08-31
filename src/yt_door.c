@@ -369,6 +369,9 @@ yt_door_start(struct yt_door *door, int argc, char **argv,
 #else
 	od_parse_cmd_line(argc, argv);
 #endif
+	/* Exact mode keeps CP437 bytes and disables RA/QBBS substitutions. */
+	od_control.od_cp437_to_utf8_out = FALSE;
+	od_control.od_no_ra_codes = TRUE;
 	copy_text(requested_path, sizeof(requested_path), od_control.info_path);
 	od_init();
 	return finish_start(door, requested_path, error);
