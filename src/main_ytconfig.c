@@ -892,7 +892,8 @@ main(void)
 
 	yt_error_clear(&error);
 	memset(&game, 0, sizeof(game));
-	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_UPDATE,
+	if (!yt_database_random_close(&game.database, &error)
+	    || !yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_UPDATE,
 	    &error)) {
 		if (error.status != YT_NOT_FOUND)
 			goto failure;
