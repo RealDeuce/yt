@@ -272,19 +272,49 @@ yt_database_write(struct yt_database *database, size_t basic_record,
 }
 
 static bool
-database_seek_default(void *context, FILE *file, int64_t absolute_offset)
+database_seek_default(void *context, FILE *file, int64_t absolute_offset,
+    struct yt_database_seek_observation *observation)
 {
+	off_t position;
+	int saved_errno;
+
 	(void)context;
-	return yt_fseeko(file, (off_t)absolute_offset, SEEK_SET) == 0;
+	memset(observation, 0, sizeof(*observation));
+	if (yt_fseeko(file, (off_t)absolute_offset, SEEK_SET) == 0) {
+		observation->terminal_position = absolute_offset;
+		return true;
+	}
+	saved_errno = errno;
+	position = yt_ftello(file);
+	observation->carry = true;
+	observation->dos_error = (saved_errno == EACCES || saved_errno == EPERM)
+	    ? 5U : 1U;
+	observation->terminal_position = position >= 0 ? (int64_t)position : 0;
+	errno = saved_errno;
+	return true;
 }
 
 static bool
 database_write_default(void *context, FILE *file, const uint8_t *data,
-    size_t requested, size_t *accepted, bool *write_error)
+    size_t requested, struct yt_database_write_observation *observation)
 {
+	off_t position;
+	int saved_errno;
+
 	(void)context;
-	*accepted = fwrite(data, 1U, requested, file);
-	*write_error = ferror(file) != 0;
+	memset(observation, 0, sizeof(*observation));
+	observation->accepted = fwrite(data, 1U, requested, file);
+	saved_errno = errno;
+	observation->carry = ferror(file) != 0;
+	position = yt_ftello(file);
+	observation->terminal_position = position >= 0 ? (int64_t)position : 0;
+	if (observation->carry) {
+		observation->dos_error = (saved_errno == EACCES
+		    || saved_errno == EPERM) ? 5U : 1U;
+		observation->mapped_error = observation->dos_error == 5U
+		    ? 70U : 57U;
+	}
+	errno = saved_errno;
 	return true;
 }
 
@@ -322,6 +352,12 @@ database_reject_short(struct yt_database *database, struct yt_error *error)
 	    &handle_open);
 	if (!database->short_close_succeeded && handle_open)
 		database->orphaned_file = file;
+	database->last_put.outcome = YT_DATABASE_PUT_REJECTED_SHORT;
+	database->last_put.basic_error = 61U;
+	database->last_put.registered = false;
+	database->last_put.close_attempted = true;
+	database->last_put.close_succeeded = database->short_close_succeeded;
+	database->last_put.handle_open = database->orphaned_file != NULL;
 	set_error(error, YT_IO_ERROR, "random PUT rejected short", database->path);
 }
 
@@ -332,9 +368,9 @@ yt_database_random_put(struct yt_database *database, size_t basic_record,
 {
 	yt_database_seek_provider seek_provider;
 	yt_database_write_provider write_provider;
+	struct yt_database_seek_observation seek = {0};
+	struct yt_database_write_observation write = {0};
 	off_t offset;
-	size_t count = 0U;
-	bool write_error = false;
 	bool tolerated_short;
 
 	if (accepted != NULL)
@@ -344,6 +380,9 @@ yt_database_random_put(struct yt_database *database, size_t basic_record,
 		    database != NULL ? database->path : NULL);
 		return false;
 	}
+	memset(&database->last_put, 0, sizeof(database->last_put));
+	database->last_put.registered = true;
+	database->last_put.handle_open = true;
 
 	if (basic_record == 0) {
 		set_error(error, YT_RANGE, "random PUT", database->path);
@@ -355,28 +394,64 @@ yt_database_random_put(struct yt_database *database, size_t basic_record,
 	seek_provider = database->seek_provider != NULL ? database->seek_provider
 	    : database_seek_default;
 	if (!seek_provider(database->seek_context, database->file,
-	    (int64_t)offset)) {
-		set_error(error, YT_IO_ERROR, "random PUT", database->path);
+	    (int64_t)offset, &seek) || (seek.carry
+	    && (seek.dos_error == 0U || seek.dos_error > 0xffU))) {
+		database->last_put.outcome = YT_DATABASE_PUT_SEEK_ERROR;
+		database->last_put.basic_error = 52U;
+		database->last_put.dos_error = seek.dos_error;
+		database->last_put.terminal_position = seek.terminal_position;
+		set_error(error, YT_IO_ERROR, "random PUT seek", database->path);
+		return false;
+	}
+	if (seek.carry) {
+		database->last_put.outcome = YT_DATABASE_PUT_SEEK_ERROR;
+		database->last_put.basic_error = 52U;
+		database->last_put.dos_error = seek.dos_error;
+		database->last_put.terminal_position = seek.terminal_position;
+		set_error(error, YT_IO_ERROR, "random PUT seek", database->path);
 		return false;
 	}
 	write_provider = database->write_provider != NULL ? database->write_provider
 	    : database_write_default;
 	if (!write_provider(database->write_context, database->file, record->bytes,
-	    YT_RECORD_SIZE, &count, &write_error) || count > YT_RECORD_SIZE) {
+	    YT_RECORD_SIZE, &write) || write.accepted > YT_RECORD_SIZE
+	    || (write.carry && (write.dos_error == 0U
+	    || write.dos_error > 0xffU))
+	    || (write.carry && write.dos_error == 5U
+	    && write.mapped_error != 70U && write.mapped_error != 75U)
+	    || (write.carry && write.dos_error != 5U
+	    && write.mapped_error != 0U && write.mapped_error != 57U)
+	    || (!write.carry && (write.dos_error != 0U
+	    || write.mapped_error != 0U))) {
+		database->last_put.outcome = YT_DATABASE_PUT_WRITE_ERROR;
+		database->last_put.accepted = write.accepted;
+		database->last_put.basic_error = 57U;
+		database->last_put.dos_error = write.dos_error;
+		database->last_put.terminal_position = write.terminal_position;
 		set_error(error, YT_IO_ERROR, "random PUT provider", database->path);
 		return false;
 	}
 	if (accepted != NULL)
-		*accepted = count;
-	tolerated_short = one_byte_short_ok && count == YT_RECORD_SIZE - 1U;
-	if (write_error) {
+		*accepted = write.accepted;
+	database->last_put.accepted = write.accepted;
+	if (write.carry) {
+		database->last_put.outcome = YT_DATABASE_PUT_WRITE_ERROR;
+		database->last_put.dos_error = write.dos_error;
+		database->last_put.basic_error = write.dos_error == 5U
+		    ? write.mapped_error : 57U;
+		database->last_put.terminal_position = write.terminal_position;
 		set_error(error, YT_IO_ERROR, "random PUT", database->path);
 		return false;
 	}
-	if (count != YT_RECORD_SIZE && !tolerated_short) {
+	database->last_put.terminal_position = (int64_t)offset
+	    + (int64_t)write.accepted;
+	tolerated_short = one_byte_short_ok
+	    && write.accepted == YT_RECORD_SIZE - 1U;
+	if (write.accepted != YT_RECORD_SIZE && !tolerated_short) {
 		database_reject_short(database, error);
 		return false;
 	}
+	database->last_put.outcome = YT_DATABASE_PUT_RETURNED;
 	if (basic_record > database->records)
 		database->records = basic_record;
 	return true;

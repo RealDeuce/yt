@@ -10,11 +10,45 @@ enum yt_open_mode {
 	YT_OPEN_UPDATE_CREATE
 };
 
+struct yt_database_seek_observation {
+	bool carry;
+	uint16_t dos_error;
+	int64_t terminal_position;
+};
+
+struct yt_database_write_observation {
+	size_t accepted;
+	bool carry;
+	uint16_t dos_error;
+	uint16_t mapped_error;
+	int64_t terminal_position;
+};
+
+enum yt_database_put_outcome {
+	YT_DATABASE_PUT_NONE,
+	YT_DATABASE_PUT_RETURNED,
+	YT_DATABASE_PUT_SEEK_ERROR,
+	YT_DATABASE_PUT_WRITE_ERROR,
+	YT_DATABASE_PUT_REJECTED_SHORT,
+};
+
+struct yt_database_put_result {
+	enum yt_database_put_outcome outcome;
+	size_t accepted;
+	uint16_t dos_error;
+	uint16_t basic_error;
+	int64_t terminal_position;
+	bool registered;
+	bool close_attempted;
+	bool close_succeeded;
+	bool handle_open;
+};
+
 typedef bool (*yt_database_seek_provider)(void *context, FILE *file,
-    int64_t absolute_offset);
+    int64_t absolute_offset, struct yt_database_seek_observation *observation);
 typedef bool (*yt_database_write_provider)(void *context, FILE *file,
-    const uint8_t *data, size_t requested, size_t *accepted,
-    bool *write_error);
+    const uint8_t *data, size_t requested,
+    struct yt_database_write_observation *observation);
 typedef bool (*yt_database_close_provider)(void *context, FILE *file,
     bool *handle_open);
 typedef bool (*yt_database_flush_provider)(void *context, FILE *file);
@@ -34,6 +68,7 @@ struct yt_database {
 	void *flush_context;
 	bool short_close_attempted;
 	bool short_close_succeeded;
+	struct yt_database_put_result last_put;
 };
 
 #define YT_RADIO_FIELD_COUNT 4U
