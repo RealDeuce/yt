@@ -60,7 +60,8 @@ score_database_read_with_fault(void *context, FILE *file, uint8_t *data,
 }
 
 enum startup_configuration_event {
-	STARTUP_CONFIGURATION_OPEN = 1,
+	STARTUP_CONFIGURATION_CLOSE = 1,
+	STARTUP_CONFIGURATION_OPEN,
 	STARTUP_CONFIGURATION_LOAD,
 	STARTUP_CONFIGURATION_STORE_CONFIG,
 	STARTUP_CONFIGURATION_READ_PLAYER,
@@ -93,6 +94,14 @@ startup_configuration_step(struct startup_configuration_tape *tape,
 	tape->records[tape->event_count] = record;
 	++tape->event_count;
 	return tape->event_count != tape->fail_at;
+}
+
+static bool
+startup_configuration_close_test(void *context, struct yt_error *error)
+{
+	(void)error;
+	return startup_configuration_step(context, STARTUP_CONFIGURATION_CLOSE,
+	    0);
 }
 
 static bool
@@ -234,6 +243,7 @@ static bool
 check_startup_configuration_transaction(void)
 {
 	static const struct yt_startup_configuration_ops ops = {
+		startup_configuration_close_test,
 		startup_configuration_open_test,
 		startup_configuration_load_test,
 		startup_configuration_store_test,
@@ -242,6 +252,7 @@ check_startup_configuration_transaction(void)
 		startup_configuration_random_test,
 	};
 	static const int events[] = {
+		STARTUP_CONFIGURATION_CLOSE,
 		STARTUP_CONFIGURATION_OPEN,
 		STARTUP_CONFIGURATION_LOAD,
 		STARTUP_CONFIGURATION_STORE_CONFIG,
@@ -253,7 +264,7 @@ check_startup_configuration_transaction(void)
 		STARTUP_CONFIGURATION_RANDOM,
 		STARTUP_CONFIGURATION_RANDOM,
 	};
-	static const int records[] = {0, 1, 1, 2, 2, 3, 4, 4, 0, 0};
+	static const int records[] = {0, 0, 1, 1, 2, 2, 3, 4, 4, 0, 0};
 	struct startup_configuration_tape tape;
 	struct yt_startup_configuration_state state;
 	struct yt_config config;
@@ -306,9 +317,9 @@ check_startup_configuration_transaction(void)
 	if (!startup_configuration_fixture(&tape, &state, &config,
 	    sector_cache, cloak_cache))
 		return false;
-	tape.fail_at = 3U;
+	tape.fail_at = 4U;
 	if (yt_startup_configuration_run(&state, &ops, &tape, NULL)
-	    || tape.event_count != 3U || config.headquarters != 0.0f
+	    || tape.event_count != 4U || config.headquarters != 0.0f
 	    || !state.handler_installed || state.installed_handler != 0x45F7U
 	    || yt_record_get_number(&config.record, YT_F117) != 85.0f)
 		return false;
@@ -320,11 +331,12 @@ check_startup_configuration_transaction(void)
 	state.cache_guard = -0.25f;
 	if (!yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
 	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
-	    || tape.event_count != 4U
-	    || tape.events[0] != STARTUP_CONFIGURATION_OPEN
-	    || tape.events[1] != STARTUP_CONFIGURATION_LOAD
-	    || tape.events[2] != STARTUP_CONFIGURATION_RANDOM
+	    || tape.event_count != 5U
+	    || tape.events[0] != STARTUP_CONFIGURATION_CLOSE
+	    || tape.events[1] != STARTUP_CONFIGURATION_OPEN
+	    || tape.events[2] != STARTUP_CONFIGURATION_LOAD
 	    || tape.events[3] != STARTUP_CONFIGURATION_RANDOM
+	    || tape.events[4] != STARTUP_CONFIGURATION_RANDOM
 	    || state.cache_guard != -0.25f || tape.draw_position != 2U)
 		return false;
 
@@ -362,7 +374,7 @@ check_startup_configuration_transaction(void)
 	if (!yt_record_set_number(&tape.config_source, YT_F53, 1.75f)
 	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
 	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
-	    || tape.event_count != 4U || state.cache_guard != 1.0f
+	    || tape.event_count != 5U || state.cache_guard != 1.0f
 	    || tape.draw_position != 2U)
 		return false;
 
@@ -386,7 +398,7 @@ check_startup_configuration_transaction(void)
 	if (yt_startup_configuration_run(&state, &ops, &tape, &error)
 	    || error.status != YT_RANGE
 	    || strcmp(error.operation, "startup local-mode CINT") != 0
-	    || tape.event_count != 3U || !tape.wrote_config
+	    || tape.event_count != 4U || !tape.wrote_config
 	    || config.headquarters != 85.0f || config.genesis_ports != 200.0f
 	    || config.lottery_plays != -0.25f || tape.draw_position != 0U)
 		return false;
@@ -407,7 +419,7 @@ check_startup_configuration_transaction(void)
 	if (!startup_configuration_fixture(&tape, &state, &config,
 	    sector_cache, cloak_cache))
 		return false;
-	tape.fail_at = 5U;
+	tape.fail_at = 6U;
 	if (yt_startup_configuration_run(&state, &ops, &tape, NULL)
 	    || sector_cache[2] != 20.0f || cloak_cache[2] != 1.0f
 	    || state.cache_guard != 0.0f || tape.draw_position != 0U)
@@ -415,7 +427,7 @@ check_startup_configuration_transaction(void)
 	if (!startup_configuration_fixture(&tape, &state, &config,
 	    sector_cache, cloak_cache))
 		return false;
-	tape.fail_at = 10U;
+	tape.fail_at = 11U;
 	if (yt_startup_configuration_run(&state, &ops, &tape, NULL)
 	    || state.cache_guard != 1.0f || state.black_hole[0] != 3.0f
 	    || state.black_hole[1] != 0.0f || tape.draw_position != 1U)

@@ -1413,6 +1413,18 @@ session_a8d2(struct yt_session *session, const uint8_t *prompt,
 }
 
 static bool
+startup_configuration_close(void *context, struct yt_error *error)
+{
+	struct yt_session *session = context;
+	bool closed = yt_database_random_close(&session->door->game.database,
+	    error);
+
+	if (closed)
+		session->door->game_open = false;
+	return closed;
+}
+
+static bool
 startup_configuration_open(void *context, struct yt_error *error)
 {
 	struct yt_session *session = context;
@@ -1477,6 +1489,7 @@ static bool
 load_configuration(struct yt_session *session, struct yt_error *error)
 {
 	static const struct yt_startup_configuration_ops ops = {
+		startup_configuration_close,
 		startup_configuration_open,
 		startup_configuration_load,
 		startup_configuration_store,

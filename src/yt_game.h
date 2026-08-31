@@ -50,6 +50,8 @@ struct yt_startup_configuration_state {
 
 typedef bool (*yt_startup_configuration_open_fn)(void *context,
 	struct yt_error *error);
+typedef bool (*yt_startup_configuration_close_fn)(void *context,
+	struct yt_error *error);
 typedef bool (*yt_startup_configuration_load_fn)(void *context,
 	struct yt_config *config, struct yt_error *error);
 typedef bool (*yt_startup_configuration_store_fn)(void *context,
@@ -63,6 +65,7 @@ typedef bool (*yt_startup_configuration_random_fn)(void *context,
 	float *value, struct yt_error *error);
 
 struct yt_startup_configuration_ops {
+	yt_startup_configuration_close_fn close_data;
 	yt_startup_configuration_open_fn open_data;
 	yt_startup_configuration_load_fn load_config;
 	yt_startup_configuration_store_fn store_config;

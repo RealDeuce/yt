@@ -266,7 +266,8 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 
 	if (state == NULL || ops == NULL || state->config == NULL
 	    || state->sector_cache == NULL || state->cloak_cache == NULL
-	    || state->cache_count == 0U || ops->open_data == NULL
+	    || state->cache_count == 0U || ops->close_data == NULL
+	    || ops->open_data == NULL
 	    || ops->load_config == NULL || ops->store_config == NULL
 	    || ops->read_player == NULL || ops->write_player == NULL
 	    || ops->random == NULL)
@@ -274,7 +275,8 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 	state->installed_handler = 0x45F7U;
 	state->handler_installed = true;
 	config = state->config;
-	if (!ops->open_data(context, error)
+	if (!ops->close_data(context, error)
+	    || !ops->open_data(context, error)
 	    || !ops->load_config(context, config, error))
 		return false;
 
