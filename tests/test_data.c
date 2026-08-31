@@ -1952,6 +1952,7 @@ test_radio_file(void)
 	struct yt_radio_file radio;
 	struct yt_radio_record record;
 	struct yt_radio_record written;
+	struct database_public_close_script close_script;
 	struct yt_error error;
 	uint64_t size;
 	uint32_t next;
@@ -1978,7 +1979,8 @@ test_radio_file(void)
 	yt_radio_file_init(&radio);
 	yt_error_clear(&error);
 	CHECK(yt_radio_file_open(&radio, requested_path, &error));
-	CHECK(radio.file != NULL && strcmp(radio.path, mixed_path) == 0
+	CHECK(radio.random.file != NULL
+	    && strcmp(radio.random.path, mixed_path) == 0
 	    && radio.record_length == YT_RADIO_RECORD_SIZE
 	    && radio.field_count == YT_RADIO_FIELD_COUNT
 	    && radio.fields[0].offset == 0U && radio.fields[0].length == 4U
@@ -1986,13 +1988,13 @@ test_radio_file(void)
 	    && radio.fields[2].offset == 8U && radio.fields[2].length == 4U
 	    && radio.fields[3].offset == 12U && radio.fields[3].length == 74U);
 	CHECK(yt_radio_file_size(&radio, &size, &error) && size == 3U);
-	CHECK(fseek(radio.file, 2L, SEEK_SET) == 0
+	CHECK(fseek(radio.random.file, 2L, SEEK_SET) == 0
 	    && yt_radio_file_size(&radio, &size, &error) && size == 3U
-	    && ftell(radio.file) == 2L
-	    && radio.last_lof.outcome == YT_DATABASE_LOF_RETURNED
-	    && radio.last_lof.saved_position == 2U
-	    && radio.last_lof.length == 3U
-	    && radio.last_lof.operation_count == 3U);
+	    && ftell(radio.random.file) == 2L
+	    && radio.random.last_lof.outcome == YT_DATABASE_LOF_RETURNED
+	    && radio.random.last_lof.saved_position == 2U
+	    && radio.random.last_lof.length == 3U
+	    && radio.random.last_lof.operation_count == 3U);
 	memset(&record, 0xff, sizeof(record));
 	CHECK(yt_radio_file_get(&radio, 1U, &record, &accepted, &error)
 	    && accepted == sizeof(partial)
@@ -2011,8 +2013,13 @@ test_radio_file(void)
 	CHECK(yt_radio_file_size(&radio, &size, &error) && size == 3U);
 
 	/* Reopening the same BASIC file slot closes the prior handle first. */
+	memset(&close_script, 0, sizeof(close_script));
+	database_close_add(&close_script, false, 0U, false, true, true);
+	yt_database_set_close_provider(&radio.random,
+	    scripted_database_public_close, &close_script);
 	CHECK(yt_radio_file_open(&radio, second_path, &error));
-	CHECK(strcmp(radio.path, second_path) == 0
+	CHECK(close_script.position == close_script.length
+	    && strcmp(radio.random.path, second_path) == 0
 	    && yt_radio_file_size(&radio, &size, &error) && size == 0U);
 	CHECK(yt_radio_file_next_record(&radio, &next, &error) && next == 1U);
 	CHECK(yt_radio_message_record(&written, (const uint8_t *)"A\0B", 3U,
@@ -2024,7 +2031,11 @@ test_radio_file(void)
 	CHECK(yt_radio_file_size(&radio, &size, &error)
 	    && size == YT_RADIO_RECORD_SIZE);
 	CHECK(yt_radio_file_next_record(&radio, &next, &error) && next == 2U);
-	CHECK(yt_radio_file_close(&radio, &error) && radio.file == NULL);
+	CHECK(yt_radio_file_close(&radio, &error)
+	    && radio.random.file == NULL
+	    && radio.random.last_close.outcome == YT_DATABASE_CLOSE_RETURNED
+	    && radio.random.last_close.attempt_count == 1U
+	    && radio.record_length == 0U && radio.field_count == 0U);
 
 	file = fopen(second_path, "rb");
 	CHECK(file != NULL);
@@ -2034,11 +2045,31 @@ test_radio_file(void)
 		CHECK(fclose(file) == 0);
 		CHECK(memcmp(complete, written.bytes, sizeof(complete)) == 0);
 	}
+	CHECK(yt_radio_file_open(&radio, second_path, &error));
+	memset(&close_script, 0, sizeof(close_script));
+	database_close_add(&close_script, true, 5U, true, true, false);
+	database_close_add(&close_script, false, 0U, false, true, true);
+	yt_database_set_close_provider(&radio.random,
+	    scripted_database_public_close, &close_script);
+	yt_error_clear(&error);
+	CHECK(!yt_radio_file_close(&radio, &error)
+	    && error.status == YT_IO_ERROR
+	    && strcmp(error.operation, "random CLOSE") == 0
+	    && close_script.position == close_script.length
+	    && radio.random.file == NULL
+	    && radio.random.orphaned_file == NULL
+	    && radio.random.last_close.outcome == YT_DATABASE_CLOSE_DISK_ERROR
+	    && radio.random.last_close.basic_error == 70U
+	    && radio.random.last_close.dos_error == 5U
+	    && radio.random.last_close.attempt_count == 2U
+	    && radio.random.last_close.retry_attempted
+	    && radio.record_length == 0U && radio.field_count == 0U);
+	yt_database_close(&radio.random);
 
 	yt_radio_file_init(&radio);
 	yt_error_clear(&error);
 	CHECK(!yt_radio_file_open(&radio, failed_path, &error)
-	    && error.status == YT_IO_ERROR && radio.file == NULL
+	    && error.status == YT_IO_ERROR && radio.random.file == NULL
 	    && radio.field_count == 0U && radio.record_length == 0U);
 	CHECK(!yt_radio_file_get(&radio, 1U, &record, NULL, &error));
 	CHECK(!yt_radio_file_put(&radio, 1U, &record, &error));

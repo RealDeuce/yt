@@ -1483,7 +1483,8 @@ yt_radio_compact(struct yt_error *error)
 		goto done;
 	record_count = length / YT_RADIO_RECORD_SIZE;
 	if (record_count > 0xFFFFFFU) {
-		set_error(error, YT_RANGE, "radio compaction bound", source.path);
+		set_error(error, YT_RANGE, "radio compaction bound",
+		    source.random.path);
 		goto done;
 	}
 	for (basic_record = 1U; basic_record <= record_count; ++basic_record) {
@@ -1638,7 +1639,8 @@ invalidate_radio(int player_record, struct yt_error *error)
 	}
 	record_count = length / YT_RADIO_RECORD_SIZE;
 	if (record_count > 0xFFFFFFU) {
-		set_error(error, YT_RANGE, "radio invalidation bound", file.path);
+		set_error(error, YT_RANGE, "radio invalidation bound",
+		    file.random.path);
 		(void)yt_radio_file_close(&file, NULL);
 		return false;
 	}

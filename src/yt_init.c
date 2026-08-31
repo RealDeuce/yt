@@ -2216,7 +2216,7 @@ write_rmt_auxiliary(const char *credited_name,
 	valid = true;
 
 done:
-	if (file.file != NULL)
+	if (file.random.file != NULL)
 		(void)yt_radio_file_close(&file, NULL);
 	return valid;
 }

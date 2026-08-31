@@ -237,12 +237,10 @@ struct yt_radio_field {
 };
 
 struct yt_radio_file {
-	FILE *file;
-	char path[512];
+	struct yt_database random;
 	size_t record_length;
 	struct yt_radio_field fields[YT_RADIO_FIELD_COUNT];
 	size_t field_count;
-	struct yt_database_lof_result last_lof;
 };
 
 bool yt_resolve_case_path(const char *requested, bool allow_missing,

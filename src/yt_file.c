@@ -1428,19 +1428,17 @@ yt_radio_file_init(struct yt_radio_file *radio)
 bool
 yt_radio_file_close(struct yt_radio_file *radio, struct yt_error *error)
 {
-	FILE *file;
+	bool result;
 
 	if (radio == NULL) {
 		set_error(error, YT_INVALID, "close radio", NULL);
 		return false;
 	}
-	file = radio->file;
-	radio->file = NULL;
-	if (file != NULL && fclose(file) != 0) {
-		set_error(error, YT_IO_ERROR, "close radio", radio->path);
-		return false;
-	}
-	return true;
+	result = yt_database_random_close(&radio->random, error);
+	radio->record_length = 0U;
+	radio->field_count = 0U;
+	memset(radio->fields, 0, sizeof(radio->fields));
+	return result;
 }
 
 bool
@@ -1453,29 +1451,15 @@ yt_radio_file_open(struct yt_radio_file *radio, const char *path,
 		{8U, 4U},
 		{12U, 74U},
 	};
-	char resolved[512];
-
 	if (radio == NULL || path == NULL) {
 		set_error(error, YT_INVALID, "open radio", path);
 		return false;
 	}
 	if (!yt_radio_file_close(radio, error))
 		return false;
-	radio->path[0] = '\0';
-	radio->record_length = 0U;
-	radio->field_count = 0U;
-	memset(radio->fields, 0, sizeof(radio->fields));
-	memset(&radio->last_lof, 0, sizeof(radio->last_lof));
-	if (!yt_resolve_case_path(path, true, resolved, sizeof(resolved), error))
+	if (!yt_database_open(&radio->random, path, YT_OPEN_UPDATE_CREATE,
+	    error))
 		return false;
-	radio->file = fopen(resolved, "r+b");
-	if (radio->file == NULL && errno == ENOENT)
-		radio->file = fopen(resolved, "w+b");
-	if (radio->file == NULL) {
-		set_error(error, YT_IO_ERROR, "open radio", resolved);
-		return false;
-	}
-	(void)snprintf(radio->path, sizeof(radio->path), "%s", resolved);
 	radio->record_length = YT_RADIO_RECORD_SIZE;
 	memcpy(radio->fields, fields, sizeof(fields));
 	radio->field_count = YT_RADIO_FIELD_COUNT;
@@ -1488,13 +1472,12 @@ yt_radio_file_size(struct yt_radio_file *radio, uint64_t *size,
 {
 	uint32_t length;
 
-	if (radio == NULL || radio->file == NULL || size == NULL) {
+	if (radio == NULL || radio->random.file == NULL || size == NULL) {
 		set_error(error, YT_INVALID, "radio LOF", radio != NULL
-		    ? radio->path : NULL);
+		    ? radio->random.path : NULL);
 		return false;
 	}
-	if (!yt_random_file_lof(radio->file, radio->path, &length,
-	    &radio->last_lof, error))
+	if (!yt_database_random_lof(&radio->random, &length, error))
 		return false;
 	*size = length;
 	return true;
@@ -1510,23 +1493,24 @@ yt_radio_file_get(struct yt_radio_file *radio, uint32_t basic_record,
 
 	if (accepted != NULL)
 		*accepted = 0U;
-	if (radio == NULL || radio->file == NULL || record == NULL
+	if (radio == NULL || radio->random.file == NULL || record == NULL
 	    || basic_record == 0U || basic_record > 0xFFFFFFU) {
 		set_error(error, YT_RANGE, "radio GET", radio != NULL
-		    ? radio->path : NULL);
+		    ? radio->random.path : NULL);
 		return false;
 	}
 	offset = (off_t)((uint64_t)(basic_record - 1U)
 	    * YT_RADIO_RECORD_SIZE);
-	if (yt_fseeko(radio->file, offset, SEEK_SET) != 0) {
-		set_error(error, YT_IO_ERROR, "radio GET", radio->path);
+	if (yt_fseeko(radio->random.file, offset, SEEK_SET) != 0) {
+		set_error(error, YT_IO_ERROR, "radio GET", radio->random.path);
 		return false;
 	}
 	memset(record->bytes, 0, sizeof(record->bytes));
-	clearerr(radio->file);
-	count = fread(record->bytes, 1, sizeof(record->bytes), radio->file);
-	if (ferror(radio->file)) {
-		set_error(error, YT_IO_ERROR, "radio GET", radio->path);
+	clearerr(radio->random.file);
+	count = fread(record->bytes, 1, sizeof(record->bytes),
+	    radio->random.file);
+	if (ferror(radio->random.file)) {
+		set_error(error, YT_IO_ERROR, "radio GET", radio->random.path);
 		return false;
 	}
 	if (accepted != NULL)
@@ -1540,18 +1524,19 @@ yt_radio_file_put(struct yt_radio_file *radio, uint32_t basic_record,
 {
 	off_t offset;
 
-	if (radio == NULL || radio->file == NULL || record == NULL
+	if (radio == NULL || radio->random.file == NULL || record == NULL
 	    || basic_record == 0U || basic_record > 0xFFFFFFU) {
 		set_error(error, YT_RANGE, "radio PUT", radio != NULL
-		    ? radio->path : NULL);
+		    ? radio->random.path : NULL);
 		return false;
 	}
 	offset = (off_t)((uint64_t)(basic_record - 1U)
 	    * YT_RADIO_RECORD_SIZE);
-	if (yt_fseeko(radio->file, offset, SEEK_SET) != 0
-	    || fwrite(record->bytes, 1, sizeof(record->bytes), radio->file)
+	if (yt_fseeko(radio->random.file, offset, SEEK_SET) != 0
+	    || fwrite(record->bytes, 1, sizeof(record->bytes),
+	    radio->random.file)
 	    != sizeof(record->bytes)) {
-		set_error(error, YT_IO_ERROR, "radio PUT", radio->path);
+		set_error(error, YT_IO_ERROR, "radio PUT", radio->random.path);
 		return false;
 	}
 	return true;
@@ -1567,12 +1552,14 @@ yt_radio_file_next_record(struct yt_radio_file *radio,
 	if (basic_record == NULL || !yt_radio_file_size(radio, &length, error))
 		return false;
 	if (length % YT_RADIO_RECORD_SIZE != 0U) {
-		set_error(error, YT_RANGE, "radio record number", radio->path);
+		set_error(error, YT_RANGE, "radio record number",
+		    radio->random.path);
 		return false;
 	}
 	record = length / YT_RADIO_RECORD_SIZE + 1U;
 	if (record > 0xFFFFFFU) {
-		set_error(error, YT_RANGE, "radio record number", radio->path);
+		set_error(error, YT_RANGE, "radio record number",
+		    radio->random.path);
 		return false;
 	}
 	*basic_record = (uint32_t)record;

@@ -2634,7 +2634,7 @@ radio_read(struct yt_session *session, float reader_mode,
 			(void)snprintf(error->operation,
 			    sizeof(error->operation), "%s", "radio scan bound");
 			(void)snprintf(error->path, sizeof(error->path), "%s",
-			    file.path);
+			    file.random.path);
 		}
 		(void)yt_radio_file_close(&file, NULL);
 		return false;
