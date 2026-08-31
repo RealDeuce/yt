@@ -1425,27 +1425,23 @@ static bool
 maintenance_radio_append_bytes(const uint8_t *text, size_t length,
     float sender, float recipient, struct yt_error *error)
 {
+	struct yt_radio_file file;
 	struct yt_radio_record record;
-	char resolved[512];
-	FILE *file;
+	uint32_t basic_record;
 
-	if ((text == NULL && length != 0U)
-	    || !yt_resolve_case_path("YTRMSG.DAT", true, resolved,
-	    sizeof(resolved), error))
+	if (text == NULL && length != 0U)
 		return false;
-	file = fopen(resolved, "ab");
-	if (file == NULL) {
-		set_error(error, YT_IO_ERROR, "append radio", resolved);
-		return false;
-	}
 	memset(&record, 0, sizeof(record));
 	yt_radio_set_number(&record, 0, recipient == -2.0f ? 20.0f : 1.0f);
 	yt_radio_set_number(&record, 4, recipient);
 	yt_radio_set_number(&record, 8, sender);
 	yt_radio_set_text(&record, text, length, 72);
-	if (fwrite(record.bytes, 1, sizeof(record.bytes), file)
-	    != sizeof(record.bytes) || fclose(file) != 0) {
-		set_error(error, YT_IO_ERROR, "append radio", resolved);
+	yt_radio_file_init(&file);
+	if (!yt_radio_file_open(&file, "YTRMSG.DAT", error)
+	    || !yt_radio_file_next_record(&file, &basic_record, error)
+	    || !yt_radio_file_put(&file, basic_record, &record, error)
+	    || !yt_radio_file_close(&file, error)) {
+		(void)yt_radio_file_close(&file, NULL);
 		return false;
 	}
 	return true;
@@ -1463,12 +1459,17 @@ bool
 yt_radio_compact(struct yt_error *error)
 {
 	char source_path[512];
-	FILE *source = NULL;
+	struct yt_radio_file source;
 	FILE *dest = NULL;
 	struct yt_radio_record input;
 	struct yt_radio_record output;
+	uint64_t length;
+	uint64_t record_count;
+	uint32_t basic_record;
+	size_t accepted;
 	bool result = false;
 
+	yt_radio_file_init(&source);
 	dest = fopen("temp", "w+b");
 	if (dest == NULL) {
 		set_error(error, YT_IO_ERROR, "create radio temporary", "temp");
@@ -1477,17 +1478,20 @@ yt_radio_compact(struct yt_error *error)
 	if (!yt_resolve_case_path("YTRMSG.DAT", true, source_path,
 	    sizeof(source_path), error))
 		goto done;
-	source = fopen(source_path, "a+b");
-	if (source == NULL) {
-		set_error(error, YT_IO_ERROR, "open radio", source_path);
+	if (!yt_radio_file_open(&source, source_path, error)
+	    || !yt_radio_file_size(&source, &length, error))
+		goto done;
+	record_count = length / YT_RADIO_RECORD_SIZE;
+	if (record_count > 0xFFFFFFU) {
+		set_error(error, YT_RANGE, "radio compaction bound", source.path);
 		goto done;
 	}
-	if (fseek(source, 0, SEEK_SET) != 0) {
-		set_error(error, YT_IO_ERROR, "rewind radio", source_path);
-		goto done;
-	}
-	while (fread(input.bytes, 1, sizeof(input.bytes), source)
-	    == sizeof(input.bytes)) {
+	for (basic_record = 1U; basic_record <= record_count; ++basic_record) {
+		if (!yt_radio_file_get(&source, basic_record, &input, &accepted,
+		    error))
+			goto done;
+		if (accepted != sizeof(input.bytes))
+			break;
 		if (yt_radio_get_number(&input, 0) == 0.0f)
 			continue;
 		memset(&output, 0, sizeof(output));
@@ -1500,16 +1504,8 @@ yt_radio_compact(struct yt_error *error)
 			goto done;
 		}
 	}
-	if (ferror(source)) {
-		set_error(error, YT_IO_ERROR, "read radio", source_path);
+	if (!yt_radio_file_close(&source, error))
 		goto done;
-	}
-	if (fclose(source) != 0) {
-		source = NULL;
-		set_error(error, YT_IO_ERROR, "close radio", source_path);
-		goto done;
-	}
-	source = NULL;
 	if (fclose(dest) != 0) {
 		dest = NULL;
 		set_error(error, YT_IO_ERROR, "close radio temporary", "temp");
@@ -1522,8 +1518,7 @@ yt_radio_compact(struct yt_error *error)
 	result = true;
 
 done:
-	if (source != NULL)
-		fclose(source);
+	(void)yt_radio_file_close(&source, NULL);
 	if (dest != NULL)
 		fclose(dest);
 	return result;
@@ -1628,47 +1623,41 @@ remove_from_teams(struct maint_state *state, int player_record,
 static bool
 invalidate_radio(int player_record, struct yt_error *error)
 {
-	char path[512];
-	FILE *file;
+	struct yt_radio_file file;
 	struct yt_radio_record record;
-	long offset;
+	uint64_t length;
+	uint64_t record_count;
+	uint32_t basic_record;
 
-	if (!yt_resolve_case_path("YTRMSG.DAT", true, path, sizeof(path),
-	    error))
-		return false;
-	file = fopen(path, "r+b");
-	if (file == NULL && errno == ENOENT)
-		file = fopen(path, "w+b");
-	if (file == NULL) {
-		set_error(error, YT_IO_ERROR, "open radio", path);
+	yt_radio_file_init(&file);
+	if (!yt_radio_file_open(&file, "YTRMSG.DAT", error)
+	    || !yt_radio_file_get(&file, 1U, &record, NULL, error)
+	    || !yt_radio_file_size(&file, &length, error)) {
+		(void)yt_radio_file_close(&file, NULL);
 		return false;
 	}
-	if (fseek(file, 0, SEEK_SET) != 0) {
-		fclose(file);
-		set_error(error, YT_IO_ERROR, "rewind radio", path);
+	record_count = length / YT_RADIO_RECORD_SIZE;
+	if (record_count > 0xFFFFFFU) {
+		set_error(error, YT_RANGE, "radio invalidation bound", file.path);
+		(void)yt_radio_file_close(&file, NULL);
 		return false;
 	}
-	while ((offset = ftell(file)) >= 0
-	    && fread(record.bytes, 1, sizeof(record.bytes), file)
-	    == sizeof(record.bytes)) {
+	for (basic_record = 1U; basic_record <= record_count; ++basic_record) {
+		if (!yt_radio_file_get(&file, basic_record, &record, NULL, error)) {
+			(void)yt_radio_file_close(&file, NULL);
+			return false;
+		}
 		if (yt_radio_get_number(&record, 4) == (float)player_record
 		    || yt_radio_get_number(&record, 8) == (float)player_record) {
 			yt_radio_set_number(&record, 0, 0.0f);
-			if (fseek(file, offset, SEEK_SET) != 0
-			    || fwrite(record.bytes, 1, sizeof(record.bytes), file)
-			    != sizeof(record.bytes)
-			    || fseek(file, offset + (long)sizeof(record.bytes),
-			    SEEK_SET) != 0) {
-				fclose(file);
-				set_error(error, YT_IO_ERROR, "update radio", path);
+			if (!yt_radio_file_put(&file, basic_record, &record, error)) {
+				(void)yt_radio_file_close(&file, NULL);
 				return false;
 			}
 		}
 	}
-	if (ferror(file) || fclose(file) != 0) {
-		set_error(error, YT_IO_ERROR, "scan radio", path);
+	if (!yt_radio_file_close(&file, error))
 		return false;
-	}
 	return true;
 }
 

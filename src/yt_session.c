@@ -1909,25 +1909,9 @@ opening_and_date(struct yt_session *session, struct yt_error *error)
 	return display_game_file(session, "YTOPEN.ASC", error);
 }
 
-static bool
-lockout_set_io_error(struct yt_error *error, const char *operation,
-    const char *path)
-{
-	if (error != NULL) {
-		error->status = YT_IO_ERROR;
-		error->system_error = errno;
-		(void)snprintf(error->operation, sizeof(error->operation), "%s",
-		    operation);
-		(void)snprintf(error->path, sizeof(error->path), "%s",
-		    path == NULL ? "" : path);
-	}
-	return false;
-}
-
 struct lockout_context {
 	struct yt_session *session;
-	FILE *random_file;
-	char random_path[512];
+	struct yt_database random;
 	struct yt_text_input input;
 };
 
@@ -1936,29 +1920,19 @@ lockout_open_random(void *context, const char *path, struct yt_error *error)
 {
 	struct lockout_context *lockout = context;
 
-	if (!yt_resolve_case_path(path, true, lockout->random_path,
-	    sizeof(lockout->random_path), error))
-		return false;
-	errno = 0;
-	lockout->random_file = fopen(lockout->random_path, "ab+");
-	if (lockout->random_file == NULL)
-		return lockout_set_io_error(error, "open lockout random",
-		    lockout->random_path);
-	return true;
+	return yt_database_open(&lockout->random, path, YT_OPEN_UPDATE_CREATE,
+	    error);
 }
 
 static bool
 lockout_empty(void *context, bool *empty, struct yt_error *error)
 {
 	struct lockout_context *lockout = context;
-	long size;
+	uint32_t size;
 
-	errno = 0;
-	if (fseek(lockout->random_file, 0, SEEK_END) != 0
-	    || (size = ftell(lockout->random_file)) < 0)
-		return lockout_set_io_error(error, "size lockout random",
-		    lockout->random_path);
-	*empty = size == 0;
+	if (!yt_database_random_lof(&lockout->random, &size, error))
+		return false;
+	*empty = size == 0U;
 	return true;
 }
 
@@ -1966,16 +1940,10 @@ static bool
 lockout_close(void *context, struct yt_error *error)
 {
 	struct lockout_context *lockout = context;
-	FILE *file = lockout->random_file;
 
-	if (file == NULL)
-		return yt_text_input_close(&lockout->input, error);
-	lockout->random_file = NULL;
-	errno = 0;
-	if (fclose(file) != 0)
-		return lockout_set_io_error(error, "close lockout random",
-		    lockout->random_path);
-	return true;
+	if (lockout->random.file != NULL)
+		return yt_database_random_close(&lockout->random, error);
+	return yt_text_input_close(&lockout->input, error);
 }
 
 static bool
@@ -2093,8 +2061,7 @@ lockout(struct yt_session *session, struct yt_error *error)
 	state.contact_length = strlen(contact);
 	yt_text_input_init(&context.input);
 	ok = yt_startup_lockout_run(&state, &ops, &context, error);
-	if (context.random_file != NULL)
-		(void)fclose(context.random_file);
+	yt_database_close(&context.random);
 	yt_text_input_destroy(&context.input);
 	return ok && !state.denied;
 }
