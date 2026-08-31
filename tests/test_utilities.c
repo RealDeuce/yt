@@ -2363,6 +2363,11 @@ test_yt_init_random_close_failure(void)
 	struct yt_initializer_options options;
 	struct yt_database database = {0};
 	struct yt_random random;
+	struct yt_init_capture capture = {0};
+	struct yt_init_presenter presenter = {
+		.context = &capture,
+		.write = yt_init_capture_write
+	};
 	struct yt_error error;
 	uint8_t *auxiliary = NULL;
 	size_t auxiliary_length = 0U;
@@ -2382,6 +2387,7 @@ test_yt_init_random_close_failure(void)
 	options.config.total_records = 15.0f;
 	options.use_existing_config = true;
 	options.bound_database = &database;
+	options.yt_presenter = &presenter;
 	yt_error_clear(&error);
 	yt_random_init(&random);
 	yt_random_set_provider(&random, utility_graph_retry_fill, &script);
@@ -2412,6 +2418,11 @@ test_yt_init_random_close_failure(void)
 	    && !database.last_close.registered
 	    && database.last_close.handle_open
 	    && database.file == NULL && database.orphaned_file != NULL
+	    && capture.calls >= 2U
+	    && yt_init_capture_is(&capture, capture.calls - 2U, 0x208cU,
+	    YT_INIT_OUTPUT_LINE, "")
+	    && yt_init_capture_is(&capture, capture.calls - 1U, 0x209eU,
+	    YT_INIT_OUTPUT_LINE, "Setting up newspaper file.")
 	    && !news_exists && !names_exist;
 	goto done;
 

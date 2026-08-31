@@ -2101,11 +2101,7 @@ write_yt_auxiliary(const struct yt_initializer_options *options,
 	static const uint8_t dummy[] = "Dummy,Dummy,Dummy,Dummy\r\n";
 	static const uint8_t play[] = "L64cgaL1p1p1p1";
 
-	if (!yt_present_text(options, 0x208cU, YT_INIT_OUTPUT_LINE, "",
-	    error)
-	    || !yt_present_text(options, 0x209eU, YT_INIT_OUTPUT_LINE,
-	    "Setting up newspaper file.", error)
-	    || !write_banner(NULL, false, error)
+	if (!write_banner(NULL, false, error)
 	    || !yt_present_text(options, 0x224bU, YT_INIT_OUTPUT_LINE, "",
 	    error)
 	    || !yt_present_text(options, 0x225fU, YT_INIT_OUTPUT_LINE,
@@ -2164,11 +2160,7 @@ write_rmt_auxiliary(struct yt_database *database, const char *credited_name,
 
 	yt_radio_file_init(&file);
 
-	if (!rmt_present(options, 0x1dfaU, YT_RMT_OUTPUT_BLANK, NULL, 0U,
-	    error)
-	    || !rmt_present_text(options, 0x1e08U, YT_RMT_OUTPUT_LINE,
-	    "Setting up newspaper file.", error)
-	    || !write_banner(credited_name, true, error)
+	if (!write_banner(credited_name, true, error)
 	    || !rmt_present(options, 0x2014U, YT_RMT_OUTPUT_BLANK, NULL, 0U,
 	    error)
 	    || !rmt_present_text(options, 0x2022U, YT_RMT_OUTPUT_LINE,
@@ -2422,6 +2414,18 @@ yt_initialize_world(const struct yt_initializer_options *options,
 	    || !assign_ports(&world, random, error)
 	    || !write_world_database(database, options, &config, &world,
 	    random, error))
+		goto done;
+	if (options->family == YT_INITIALIZER_YT) {
+		if (!yt_present_text(options, 0x208cU, YT_INIT_OUTPUT_LINE, "",
+		    error)
+		    || !yt_present_text(options, 0x209eU, YT_INIT_OUTPUT_LINE,
+		    "Setting up newspaper file.", error))
+			goto done;
+	}
+	else if (!rmt_present(options, 0x1dfaU, YT_RMT_OUTPUT_BLANK, NULL,
+	    0U, error)
+	    || !rmt_present_text(options, 0x1e08U, YT_RMT_OUTPUT_LINE,
+	    "Setting up newspaper file.", error))
 		goto done;
 	if (!yt_database_random_close(database, error)) {
 		explicit_close_failed = true;
