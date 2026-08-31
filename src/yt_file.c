@@ -278,11 +278,16 @@ yt_database_random_get(struct yt_database *database, size_t basic_record,
 	memset(&database->last_get, 0, sizeof(database->last_get));
 	database->last_get.registered = true;
 	database->last_get.handle_open = true;
-	if (basic_record == 0) {
+	if (basic_record == 0U || basic_record > 0xFFFFFFU) {
+		database->last_get.outcome = YT_DATABASE_GET_RECORD_ERROR;
+		database->last_get.basic_error = 63U;
 		set_error(error, YT_RANGE, "random GET", database->path);
 		return false;
 	}
 	offset = (off_t)((basic_record - 1U) * YT_RECORD_SIZE);
+	database->last_get.current_record = (uint32_t)basic_record;
+	database->last_get.record_index = (uint32_t)basic_record - 1U;
+	database->last_get.desired_offset = (int64_t)offset;
 	seek_provider = database->seek_provider != NULL ? database->seek_provider
 	    : database_seek_default;
 	if (!seek_provider(database->seek_context, database->file,

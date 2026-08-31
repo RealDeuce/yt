@@ -35,6 +35,7 @@ struct yt_database_read_observation {
 enum yt_database_get_outcome {
 	YT_DATABASE_GET_NONE,
 	YT_DATABASE_GET_RETURNED,
+	YT_DATABASE_GET_RECORD_ERROR,
 	YT_DATABASE_GET_SEEK_ERROR,
 	YT_DATABASE_GET_READ_ERROR,
 };
@@ -42,8 +43,11 @@ enum yt_database_get_outcome {
 struct yt_database_get_result {
 	enum yt_database_get_outcome outcome;
 	size_t accepted;
+	uint32_t current_record;
+	uint32_t record_index;
 	uint16_t dos_error;
 	uint16_t basic_error;
+	int64_t desired_offset;
 	int64_t terminal_position;
 	bool full_record;
 	bool registered;

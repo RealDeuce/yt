@@ -637,6 +637,50 @@ test_files(void)
 	    && database.last_get.registered && database.last_get.handle_open);
 	for (index = 0U; index < sizeof(replacement.bytes); ++index)
 		replacement.bytes[index] = (uint8_t)(index ^ 0xa5U);
+	seek_script = (struct database_seek_script){.success = true};
+	read_script = (struct database_read_script){.accepted = YT_RECORD_SIZE};
+	yt_database_set_seek_provider(&database, scripted_database_seek,
+	    &seek_script);
+	yt_database_set_read_provider(&database, scripted_database_read,
+	    &read_script);
+	after = replacement;
+	accepted = 99U;
+	yt_error_clear(&error);
+	CHECK(!yt_database_random_get(&database, 0U, &after, &accepted, &error)
+	    && error.status == YT_RANGE && accepted == 0U
+	    && seek_script.calls == 0U && read_script.calls == 0U
+	    && memcmp(after.bytes, replacement.bytes, YT_RECORD_SIZE) == 0);
+	CHECK(database.last_get.outcome == YT_DATABASE_GET_RECORD_ERROR
+	    && database.last_get.basic_error == 63U
+	    && database.last_get.current_record == 0U
+	    && database.last_get.record_index == 0U
+	    && database.last_get.desired_offset == 0
+	    && database.last_get.registered && database.last_get.handle_open);
+	after = replacement;
+	accepted = 99U;
+	yt_error_clear(&error);
+	CHECK(!yt_database_random_get(&database, 0x1000000U, &after, &accepted,
+	    &error) && error.status == YT_RANGE && accepted == 0U
+	    && seek_script.calls == 0U && read_script.calls == 0U
+	    && memcmp(after.bytes, replacement.bytes, YT_RECORD_SIZE) == 0
+	    && database.last_get.outcome == YT_DATABASE_GET_RECORD_ERROR
+	    && database.last_get.basic_error == 63U);
+	seek_script = (struct database_seek_script){.success = true};
+	read_script = (struct database_read_script){0};
+	CHECK(yt_database_random_get(&database, 0xFFFFFFU, &after, &accepted,
+	    &error) && accepted == 0U && seek_script.calls == 1U
+	    && seek_script.absolute_offset
+	    == (int64_t)(0xFFFFFFU - 1U) * YT_RECORD_SIZE
+	    && read_script.calls == 1U
+	    && database.last_get.outcome == YT_DATABASE_GET_RETURNED
+	    && database.last_get.current_record == 0xFFFFFFU
+	    && database.last_get.record_index == 0xFFFFFEU
+	    && database.last_get.desired_offset
+	    == (int64_t)(0xFFFFFFU - 1U) * YT_RECORD_SIZE
+	    && database.last_get.terminal_position
+	    == (int64_t)(0xFFFFFFU - 1U) * YT_RECORD_SIZE);
+	yt_database_set_seek_provider(&database, NULL, NULL);
+	yt_database_set_read_provider(&database, NULL, NULL);
 	read_script = (struct database_read_script){
 		.data = replacement.bytes,
 		.accepted = 3U,
