@@ -3184,8 +3184,10 @@ yt_maintenance_xannor_headquarters_reclaim(struct yt_game *game,
 		mercenaries, sizeof(mercenaries) - 1U
 	};
 	struct yt_sector host;
+	struct yt_player player;
 	uint64_t starting_draws;
 	double defenders;
+	bool occupied;
 	bool overflow;
 	int32_t hq;
 
@@ -3214,8 +3216,6 @@ yt_maintenance_xannor_headquarters_reclaim(struct yt_game *game,
 		return true;
 	}
 	if (host.fighter_owner > 0.0f) {
-		struct yt_player player;
-		bool occupied;
 		int32_t record = qb_cint(host.fighter_owner, &overflow);
 
 		if (overflow || record < 1
