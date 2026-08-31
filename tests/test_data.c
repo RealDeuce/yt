@@ -2118,6 +2118,13 @@ test_append_window(void)
 	for (index = 0; index < sizeof(original); ++index)
 		original[index] = (uint8_t)(index == 0 ? 0 : 'x');
 
+	/* Empty sequential OUTPUT/CLOSE retains the BRUN DOS EOF byte. */
+	yt_error_clear(&error);
+	CHECK(yt_text_write(path, NULL, 0U, true, &error));
+	CHECK(yt_text_read(path, &text, &error));
+	CHECK(text.length == 1U && text.data[0] == 0x1aU);
+	yt_text_free(&text);
+
 	/* The marker at length-129 is ignored; length-128 is included. */
 	original[71] = 0x1a;
 	original[72] = 0x1a;

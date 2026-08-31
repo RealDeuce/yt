@@ -2145,7 +2145,7 @@ write_yt_auxiliary(const struct yt_initializer_options *options,
 }
 
 static bool
-write_rmt_auxiliary(const char *credited_name,
+write_rmt_auxiliary(struct yt_database *database, const char *credited_name,
     const struct yt_initializer_options *options, struct yt_error *error)
 {
 	static const uint8_t dummy[] = "Dummy,Dummy,Dummy,Dummy\r\n";
@@ -2179,6 +2179,7 @@ write_rmt_auxiliary(const char *credited_name,
 	    error)
 	    || !rmt_present_text(options, 0x20afU, YT_RMT_OUTPUT_LINE,
 	    "Initializing the alias file (Matches real name to alias.)", error)
+	    || !yt_database_random_close(database, error)
 	    || !yt_text_write("YTNAME.DAT", dummy, sizeof(dummy) - 1U,
 	    true, error)
 	    || !rmt_present(options, 0x20ebU, YT_RMT_OUTPUT_BLANK, NULL, 0U,
@@ -2199,14 +2200,31 @@ write_rmt_auxiliary(const char *credited_name,
 	yt_radio_set_number(&radio, 8, -2.0f);
 	yt_radio_set_text(&radio, (const uint8_t *)prophecy,
 	    (size_t)written, 72);
-	if (!yt_text_write("YTRMSG.DAT", NULL, 0U, false, error)
+	if (!yt_text_write("YTRMSG.DAT", NULL, 0U, true, error)
 	    || !yt_radio_file_open(&file, "YTRMSG.DAT", error))
 		goto done;
 	for (index = 0; index < 5; ++index) {
 		uint32_t record;
+		uint64_t size;
 
-		if (!yt_radio_file_next_record(&file, &record, error)
-		    || !yt_radio_file_put(&file, record, &radio, error))
+		/*
+		 * The empty OUTPUT close at 2113 leaves one DOS EOF byte.  The
+		 * first LOF/86+1 expression converts that fractional value to
+		 * record 1 and overwrites it; the following four LOFs are aligned.
+		 */
+		if (index == 0) {
+			if (!yt_radio_file_size(&file, &size, error)
+			    || size != 1U) {
+				if (error != NULL && error->status == YT_OK)
+					set_error(error, YT_RANGE,
+					    "RMT initial radio LOF", "YTRMSG.DAT");
+				goto done;
+			}
+			record = 1U;
+		}
+		else if (!yt_radio_file_next_record(&file, &record, error))
+			goto done;
+		if (!yt_radio_file_put(&file, record, &radio, error))
 			goto done;
 	}
 	if (!yt_radio_file_close(&file, error)
@@ -2412,7 +2430,8 @@ yt_initialize_world(const struct yt_initializer_options *options,
 	if (options->family == YT_INITIALIZER_YT)
 		result = write_yt_auxiliary(options, error);
 	else
-		result = write_rmt_auxiliary(options->credited_name, options, error);
+		result = write_rmt_auxiliary(database, options->credited_name,
+		    options, error);
 
 done:
 	if (!explicit_close_failed)
