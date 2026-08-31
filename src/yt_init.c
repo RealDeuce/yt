@@ -2112,7 +2112,7 @@ write_yt_auxiliary(const struct yt_initializer_options *options,
 	    error)
 	    || !yt_present_text(options, 0x22f0U, YT_INIT_OUTPUT_LINE,
 	    "Clearing YTRMSG.DAT  (Radio message file)", error)
-	    || !yt_text_write("YTRMSG.DAT", NULL, 0, false, error)
+	    || !yt_text_write("YTRMSG.DAT", NULL, 0, true, error)
 	    || !yt_file_delete("YTRMSG.DAT", false, error)
 	    || !yt_present_text(options, 0x2325U, YT_INIT_OUTPUT_LINE, "",
 	    error)
