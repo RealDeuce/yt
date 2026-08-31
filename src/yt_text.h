@@ -50,6 +50,40 @@ void yt_text_input_destroy(struct yt_text_input *input);
 
 #define YT_TEXT_OUTPUT_BUFFER_SIZE 128U
 
+struct yt_text_output_write_observation {
+	size_t accepted;
+	bool carry;
+	bool handle_open;
+	uint16_t dos_error;
+	int64_t terminal_position;
+};
+
+typedef bool (*yt_text_output_write_provider)(void *context, FILE *file,
+	const uint8_t *data, size_t requested,
+	struct yt_text_output_write_observation *observation);
+
+enum yt_text_output_write_outcome {
+	YT_TEXT_OUTPUT_WRITE_NONE,
+	YT_TEXT_OUTPUT_WRITE_RETURNED,
+	YT_TEXT_OUTPUT_WRITE_SHORT_ERROR,
+	YT_TEXT_OUTPUT_WRITE_DISK_ERROR,
+	YT_TEXT_OUTPUT_WRITE_PROVIDER_ERROR,
+};
+
+struct yt_text_output_write_result {
+	enum yt_text_output_write_outcome outcome;
+	size_t flush_count;
+	size_t accepted;
+	size_t failed_flush_accepted;
+	uint16_t dos_error;
+	uint16_t basic_error;
+	int64_t terminal_position;
+	bool physical_unknown;
+	bool cleanup_close_attempted;
+	bool registered;
+	bool handle_open;
+};
+
 enum yt_text_output_close_operation {
 	YT_TEXT_OUTPUT_CLOSE_PENDING_WRITE,
 	YT_TEXT_OUTPUT_CLOSE_EOF_WRITE,
@@ -99,8 +133,11 @@ struct yt_text_output {
 	char path[512];
 	uint8_t pending[YT_TEXT_OUTPUT_BUFFER_SIZE];
 	size_t pending_count;
+	yt_text_output_write_provider write_provider;
+	void *write_context;
 	yt_text_output_close_provider close_provider;
 	void *close_context;
+	struct yt_text_output_write_result last_write;
 	struct yt_text_output_close_result last_close;
 };
 
@@ -109,12 +146,16 @@ bool yt_text_output_open(struct yt_text_output *output, const char *path,
 	struct yt_error *error);
 bool yt_text_output_stage(struct yt_text_output *output,
 	const uint8_t *data, size_t length, struct yt_error *error);
+bool yt_text_output_write(struct yt_text_output *output,
+	const uint8_t *data, size_t length, struct yt_error *error);
 bool yt_text_output_close(struct yt_text_output *output,
 	struct yt_error *error);
 bool yt_text_output_close_all_method(void *context, int8_t file_class,
 	struct yt_error *error);
 void yt_text_output_set_close_provider(struct yt_text_output *output,
 	yt_text_output_close_provider provider, void *context);
+void yt_text_output_set_write_provider(struct yt_text_output *output,
+	yt_text_output_write_provider provider, void *context);
 void yt_text_output_destroy(struct yt_text_output *output);
 
 struct yt_text_sequential_play_state {

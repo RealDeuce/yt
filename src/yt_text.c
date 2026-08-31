@@ -763,10 +763,48 @@ text_output_position(FILE *file)
 }
 
 static bool
+text_output_write_default_common(FILE *file, const uint8_t *data,
+    size_t requested, struct yt_text_output_write_observation *observation)
+{
+	int saved_errno;
+
+	if (file == NULL || (data == NULL && requested != 0U))
+		return false;
+	memset(observation, 0, sizeof(*observation));
+	errno = 0;
+	observation->accepted = fwrite(data, 1U, requested, file);
+	saved_errno = errno;
+	observation->carry = ferror(file) != 0;
+	observation->handle_open = true;
+	observation->dos_error = observation->carry
+	    ? text_output_dos_error(saved_errno) : 0U;
+	observation->terminal_position = text_output_position(file);
+	errno = saved_errno;
+	return true;
+}
+
+static bool
+text_output_write_default(void *context, FILE *file, const uint8_t *data,
+    size_t requested, struct yt_text_output_write_observation *observation)
+{
+	bool delivered;
+
+	(void)context;
+	delivered = text_output_write_default_common(file, data, requested,
+	    observation);
+	if (delivered && observation->carry) {
+		observation->accepted = 0U;
+		observation->terminal_position = -1;
+	}
+	return delivered;
+}
+
+static bool
 text_output_close_default(void *context, FILE *file,
     enum yt_text_output_close_operation operation, const uint8_t *data,
     size_t requested, struct yt_text_output_close_observation *observation)
 {
+	struct yt_text_output_write_observation write;
 	int result;
 	int saved_errno;
 
@@ -776,17 +814,14 @@ text_output_close_default(void *context, FILE *file,
 	switch (operation) {
 	case YT_TEXT_OUTPUT_CLOSE_PENDING_WRITE:
 	case YT_TEXT_OUTPUT_CLOSE_EOF_WRITE:
-		if (file == NULL || (data == NULL && requested != 0U))
+		if (!text_output_write_default_common(file, data, requested,
+		    &write))
 			return false;
-		errno = 0;
-		observation->accepted = fwrite(data, 1U, requested, file);
-		saved_errno = errno;
-		observation->carry = ferror(file) != 0;
-		observation->handle_open = true;
-		observation->dos_error = observation->carry
-		    ? text_output_dos_error(saved_errno) : 0U;
-		observation->terminal_position = text_output_position(file);
-		errno = saved_errno;
+		observation->accepted = write.accepted;
+		observation->carry = write.carry;
+		observation->handle_open = write.handle_open;
+		observation->dos_error = write.dos_error;
+		observation->terminal_position = write.terminal_position;
 		return true;
 	case YT_TEXT_OUTPUT_CLOSE_TRUNCATE:
 		if (file == NULL || data != NULL || requested != 0U)
@@ -891,6 +926,7 @@ yt_text_output_open(struct yt_text_output *output, const char *path,
 	}
 	(void)snprintf(output->path, sizeof(output->path), "%s", resolved);
 	output->pending_count = 0U;
+	memset(&output->last_write, 0, sizeof(output->last_write));
 	memset(&output->last_close, 0, sizeof(output->last_close));
 	return true;
 }
@@ -910,6 +946,140 @@ yt_text_output_stage(struct yt_text_output *output, const uint8_t *data,
 	if (length != 0U)
 		memcpy(output->pending, data, length);
 	output->pending_count = length;
+	return true;
+}
+
+static bool
+text_output_write_observation_valid(size_t requested,
+    const struct yt_text_output_write_observation *observation)
+{
+	if (requested != YT_TEXT_OUTPUT_BUFFER_SIZE
+	    || observation->accepted > requested
+	    || observation->terminal_position < -1
+	    || !observation->handle_open)
+		return false;
+	if (observation->carry)
+		return observation->accepted == 0U
+		    && observation->terminal_position == -1
+		    && observation->dos_error >= 1U
+		    && observation->dos_error <= 0xffU;
+	return observation->dos_error == 0U;
+}
+
+static void
+text_output_write_failure(struct yt_text_output *output,
+    enum yt_text_output_write_outcome outcome, uint16_t basic_error,
+    uint16_t dos_error, size_t accepted, size_t failed_flush_accepted,
+    int64_t terminal_position, bool physical_unknown, struct yt_error *error)
+{
+	output->last_write.outcome = outcome;
+	output->last_write.accepted = accepted;
+	output->last_write.failed_flush_accepted = failed_flush_accepted;
+	output->last_write.basic_error = basic_error;
+	output->last_write.dos_error = dos_error;
+	output->last_write.terminal_position = terminal_position;
+	output->last_write.physical_unknown = physical_unknown;
+	output->last_write.registered = output->file != NULL;
+	output->last_write.handle_open = output->file != NULL
+	    || output->orphaned_file != NULL;
+	set_error(error, YT_IO_ERROR, "sequential PRINT", output->path);
+}
+
+static bool
+text_output_write_cleanup_after_carry(struct yt_text_output *output,
+    FILE *file, size_t accepted,
+    const struct yt_text_output_write_observation *failure,
+    struct yt_error *error)
+{
+	yt_text_output_close_provider provider;
+	struct yt_text_output_close_observation cleanup;
+	bool delivered;
+	bool valid;
+
+	output->file = NULL;
+	output->pending_count = 0U;
+	output->last_write.cleanup_close_attempted = true;
+	provider = output->close_provider != NULL ? output->close_provider
+	    : text_output_close_default;
+	memset(&cleanup, 0, sizeof(cleanup));
+	cleanup.terminal_position = -1;
+	delivered = provider(output->close_context, file,
+	    YT_TEXT_OUTPUT_CLOSE_CLEANUP_HANDLE, NULL, 0U, &cleanup);
+	valid = delivered && text_output_close_observation_valid(
+	    YT_TEXT_OUTPUT_CLOSE_CLEANUP_HANDLE, 0U, &cleanup);
+	if (!valid || cleanup.handle_open)
+		output->orphaned_file = file;
+	text_output_write_failure(output, valid
+	    ? YT_TEXT_OUTPUT_WRITE_DISK_ERROR
+	    : YT_TEXT_OUTPUT_WRITE_PROVIDER_ERROR, valid ? 71U : 57U,
+	    failure->dos_error, accepted, 0U, failure->terminal_position,
+	    true, error);
+	return false;
+}
+
+bool
+yt_text_output_write(struct yt_text_output *output, const uint8_t *data,
+    size_t length, struct yt_error *error)
+{
+	yt_text_output_write_provider provider;
+	struct yt_text_output_write_observation observation;
+	FILE *file;
+	size_t index;
+	bool delivered;
+
+	if (output == NULL || output->file == NULL
+	    || (data == NULL && length != 0U)) {
+		errno = 0;
+		set_error(error, YT_INVALID, "sequential PRINT",
+		    output == NULL ? NULL : output->path);
+		return false;
+	}
+	memset(&output->last_write, 0, sizeof(output->last_write));
+	output->last_write.terminal_position = -1;
+	file = output->file;
+	provider = output->write_provider != NULL ? output->write_provider
+	    : text_output_write_default;
+	for (index = 0U; index < length; ++index) {
+		if (output->pending_count == sizeof(output->pending)) {
+			output->pending_count = 0U;
+			++output->last_write.flush_count;
+			memset(&observation, 0, sizeof(observation));
+			observation.terminal_position = -1;
+			delivered = provider(output->write_context, file,
+			    output->pending, sizeof(output->pending), &observation);
+			if (!delivered || !text_output_write_observation_valid(
+			    sizeof(output->pending), &observation)) {
+				if (delivered && !observation.handle_open)
+					output->file = NULL;
+				text_output_write_failure(output,
+				    YT_TEXT_OUTPUT_WRITE_PROVIDER_ERROR, 57U,
+				    observation.dos_error, index,
+				    delivered ? observation.accepted : 0U,
+				    delivered ? observation.terminal_position : -1,
+				    false, error);
+				return false;
+			}
+			if (observation.carry)
+				return text_output_write_cleanup_after_carry(output,
+				    file, index, &observation, error);
+			if (observation.accepted != sizeof(output->pending)) {
+				output->file = NULL;
+				output->orphaned_file = file;
+				text_output_write_failure(output,
+				    YT_TEXT_OUTPUT_WRITE_SHORT_ERROR, 61U, 0U,
+				    index, observation.accepted,
+				    observation.terminal_position, false, error);
+				return false;
+			}
+			output->last_write.terminal_position =
+			    observation.terminal_position;
+		}
+		output->pending[output->pending_count++] = data[index];
+	}
+	output->last_write.outcome = YT_TEXT_OUTPUT_WRITE_RETURNED;
+	output->last_write.accepted = length;
+	output->last_write.registered = true;
+	output->last_write.handle_open = true;
 	return true;
 }
 
@@ -1087,6 +1257,16 @@ yt_text_output_set_close_provider(struct yt_text_output *output,
 		return;
 	output->close_provider = provider;
 	output->close_context = context;
+}
+
+void
+yt_text_output_set_write_provider(struct yt_text_output *output,
+    yt_text_output_write_provider provider, void *context)
+{
+	if (output == NULL)
+		return;
+	output->write_provider = provider;
+	output->write_context = context;
 }
 
 void
