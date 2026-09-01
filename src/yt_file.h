@@ -410,6 +410,9 @@ bool yt_database_random_get(struct yt_database *database,
     struct yt_error *error);
 bool yt_database_write(struct yt_database *database, size_t basic_record,
     const struct yt_record *record, struct yt_error *error);
+bool yt_database_write_durable(struct yt_database *database,
+    size_t basic_record, const struct yt_record *record,
+    struct yt_error *error);
 bool yt_database_random_put(struct yt_database *database,
     size_t basic_record, const struct yt_record *record,
     bool one_byte_short_ok, size_t *accepted, struct yt_error *error);

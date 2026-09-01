@@ -4129,6 +4129,42 @@ test_files(void)
 	    &accepted, &error) && database.last_put.basic_error == 75U
 	    && database.last_put.dos_error == 5U
 	    && database.last_put.terminal_position == 0x2750);
+
+	/* A durable native write is one PUT boundary with ordered host steps. */
+	flush_script = (struct database_flush_script){true, 0U};
+	yt_database_set_flush_provider(&database, scripted_database_flush,
+	    &flush_script);
+	write_script = (struct database_write_script){
+		.accepted = 3U,
+		.carry = true,
+		.dos_error = 6U,
+		.terminal_position = 3,
+	};
+	yt_error_clear(&error);
+	CHECK(!yt_database_write_durable(&database, 1U, &replacement, &error)
+	    && write_script.calls == 1U && flush_script.calls == 0U
+	    && database.last_put.outcome == YT_DATABASE_PUT_WRITE_ERROR
+	    && database.last_put.accepted == 3U
+	    && strcmp(error.operation, "write record") == 0);
+	write_script = (struct database_write_script){
+		.accepted = YT_RECORD_SIZE,
+	};
+	flush_script = (struct database_flush_script){false, 0U};
+	yt_error_clear(&error);
+	CHECK(!yt_database_write_durable(&database, 1U, &replacement, &error)
+	    && write_script.calls == 1U && flush_script.calls == 1U
+	    && database.last_put.outcome == YT_DATABASE_PUT_RETURNED
+	    && database.last_put.accepted == YT_RECORD_SIZE
+	    && strcmp(error.operation, "flush database") == 0);
+	write_script = (struct database_write_script){
+		.accepted = YT_RECORD_SIZE,
+	};
+	flush_script = (struct database_flush_script){true, 0U};
+	yt_error_clear(&error);
+	CHECK(yt_database_write_durable(&database, 1U, &replacement, &error)
+	    && write_script.calls == 1U && flush_script.calls == 1U
+	    && database.last_put.outcome == YT_DATABASE_PUT_RETURNED);
+
 	yt_database_set_write_provider(&database, NULL, NULL);
 	flush_script = (struct database_flush_script){false, 0U};
 	yt_database_set_flush_provider(&database, scripted_database_flush,

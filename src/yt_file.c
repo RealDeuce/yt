@@ -898,6 +898,14 @@ yt_database_write(struct yt_database *database, size_t basic_record,
 	return written;
 }
 
+bool
+yt_database_write_durable(struct yt_database *database, size_t basic_record,
+    const struct yt_record *record, struct yt_error *error)
+{
+	return yt_database_write(database, basic_record, record, error)
+	    && yt_database_flush(database, error);
+}
+
 static bool
 database_seek_default(void *context, FILE *file, int64_t absolute_offset,
     struct yt_database_seek_observation *observation)

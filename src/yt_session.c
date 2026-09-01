@@ -2892,9 +2892,8 @@ port_update_write_port(void *context, uint32_t physical_record,
 {
 	struct yt_session *session = context;
 
-	return yt_database_write(&session->door->game.database,
-	    (size_t)physical_record, &port->record, error)
-	    && yt_database_flush(&session->door->game.database, error);
+	return yt_database_write_durable(&session->door->game.database,
+	    (size_t)physical_record, &port->record, error);
 }
 
 static bool
