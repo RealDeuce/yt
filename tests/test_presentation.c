@@ -9594,6 +9594,17 @@ test_computer_port_report_earth_cycle_presentation(void)
 	    "----------------------*--------*------------\n\r"
 	    "\r\n\x1b[0;31;40m"
 	    "Time:15:00  Computer command (?=help)? ";
+	static const uint8_t mode_two[] =
+	    "\r\n\r\n\r\n\r\n"
+	    "[1] Cloak Energy      * 1000   "
+	    "[2] Cargo Holds       * 250    "
+	    "[3] Fighters          * 50     "
+	    "[4] Play Lottery      * 5      "
+	    "[5] Danger Scanner    * 500000 "
+	    "[6] Anti-Cloak Device * 1E+09  "
+	    "[7] Ground Forces     * 200    "
+	    "[8] Shield Power      * 50     "
+	    "[9] Hire Spies (Each) * 1E+09  \r\n";
 	static const uint8_t prompt[] =
 	    "Enter sector number port is in -=> ";
 	static const uint8_t computer_prompt[] =
@@ -9607,6 +9618,7 @@ test_computer_port_report_earth_cycle_presentation(void)
 		{false, 0.0f, plain, sizeof(plain) - 1U},
 		{true, 0.0f, ansi, sizeof(ansi) - 1U},
 		{true, 1.0f, NULL, 0U},
+		{true, 2.0f, mode_two, sizeof(mode_two) - 1U},
 	};
 	struct yt_present_state current;
 	struct yt_present_result result;
@@ -9662,7 +9674,83 @@ test_computer_port_report_earth_cycle_presentation(void)
 		    && pager.newline_flag == 0.0f
 		    && accumulator[0] == '\0');
 	}
-	CHECK(sizeof(plain) - 1U == 650U && sizeof(ansi) - 1U == 670U);
+	CHECK(sizeof(plain) - 1U == 650U && sizeof(ansi) - 1U == 670U
+	    && sizeof(mode_two) - 1U == 289U);
+}
+
+static void
+test_computer_port_report_earth_failure_presentation(void)
+{
+	static const uint8_t earth_port_get[] =
+	    "\r\nEnter sector number port is in -=> 1\r\n";
+	static const uint8_t current_player_get[] =
+	    "\r\nEnter sector number port is in -=> 1\r\n"
+	    "\x1b[0;33;40m\r\n"
+	    "Commerce report for Earth: 07-25-2026 12:34:56\n\r"
+	    "\r\n";
+	static const uint8_t prompt[] =
+	    "Enter sector number port is in -=> ";
+	static const uint8_t title[] =
+	    "Commerce report for Earth: 07-25-2026 12:34:56";
+	static const struct {
+		bool current_player_failure;
+		const uint8_t *expected;
+		size_t expected_length;
+		float expected_line_count;
+	} cases[] = {
+		{false, earth_port_get, sizeof(earth_port_get) - 1U, 0.0f},
+		{true, current_player_get,
+		    sizeof(current_player_get) - 1U, 1.0f},
+	};
+	struct yt_present_state current;
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80];
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		current = state(true);
+		current.foreground = 1.0f;
+		current.cached_foreground = 1.0f;
+		memset(&pager, 0, sizeof(pager));
+		pager.foreground = 1;
+		memset(&capture, 0, sizeof(capture));
+		memset(accumulator, 0, sizeof(accumulator));
+		CHECK(yt_present_line(NULL, 0U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager.newline_flag = 1.0f;
+		pager_fixture_b05d(&pager, &current, prompt,
+		    sizeof(prompt) - 1U, &capture);
+		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+		CHECK(yt_present_editor_echo((const uint8_t *)"1", 1U,
+		    (const uint8_t *)"1", 1U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_line(NULL, 0U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		if (cases[pass].current_player_failure) {
+			pager.line_count = 0.0f;
+			current.foreground = 3.0f;
+			pager.foreground = 3;
+			CHECK(yt_present_line(NULL, 0U, &current, &result)
+			    == YT_PRESENT_OK);
+			pager_capture_result(&capture, &result);
+			pager_fixture_b05d(&pager, &current, title,
+			    sizeof(title) - 1U, &capture);
+			CHECK(yt_present_line(NULL, 0U, &current, &result)
+			    == YT_PRESENT_OK);
+			pager_capture_result(&capture, &result);
+		}
+		CHECK(capture.remote_length == cases[pass].expected_length
+		    && memcmp(capture.remote, cases[pass].expected,
+		    cases[pass].expected_length) == 0
+		    && pager.line_count == cases[pass].expected_line_count);
+	}
+	CHECK(sizeof(earth_port_get) - 1U == 40U
+	    && sizeof(current_player_get) - 1U == 102U);
 }
 
 static void
@@ -22115,6 +22203,7 @@ main(void)
 	test_computer_port_report_terminal_presentation();
 	test_computer_port_report_ab36_state_joins();
 	test_computer_port_report_earth_cycle_presentation();
+	test_computer_port_report_earth_failure_presentation();
 	test_computer_port_report_ordinary_cycle_presentation();
 	test_computer_port_report_low_time_cycle_presentation();
 	test_computer_port_report_low_time_retry_cycle_presentation();
