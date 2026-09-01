@@ -22140,6 +22140,386 @@ check_port_market_update(void)
 	return yt_port_market_update(&state, NULL) && state.elapsed == 10.0f;
 }
 
+enum commodity_trade_event {
+	COMMODITY_TRADE_READ_PLAYER = 1,
+	COMMODITY_TRADE_WRITE_PLAYER,
+	COMMODITY_TRADE_READ_PORT,
+	COMMODITY_TRADE_WRITE_PORT,
+};
+struct commodity_trade_fragment {
+	enum yt_commodity_trade_output_kind kind;
+	uint8_t text[256];
+	size_t length;
+};
+struct commodity_trade_tape {
+	enum commodity_trade_event events[12];
+	size_t event_count;
+	size_t dependency_calls;
+	size_t fail_at;
+	struct yt_player player_reads[3];
+	size_t player_read_count;
+	struct yt_port port_reads[2];
+	size_t port_read_count;
+	struct yt_player written_players[2];
+	size_t player_write_count;
+	struct yt_port written_ports[2];
+	size_t port_write_count;
+	struct commodity_trade_fragment fragments[16];
+	size_t fragment_count;
+	const char *responses[3];
+	size_t response_count;
+	size_t response_index;
+	bool accepted;
+};
+
+static bool
+commodity_trade_test_step(struct commodity_trade_tape *tape,
+    enum commodity_trade_event event, struct yt_error *error)
+{
+	size_t call = tape->dependency_calls++;
+
+	if (tape->event_count < YT_ARRAY_LEN(tape->events))
+		tape->events[tape->event_count++] = event;
+	if (call != tape->fail_at)
+		return true;
+	if (error != NULL)
+		error->status = YT_IO_ERROR;
+	return false;
+}
+
+static bool
+commodity_trade_test_read_player(void *context, uint32_t physical_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct commodity_trade_tape *tape = context;
+
+	if (physical_record != 2U
+	    || tape->player_read_count >= YT_ARRAY_LEN(tape->player_reads)
+	    || !commodity_trade_test_step(tape,
+	    COMMODITY_TRADE_READ_PLAYER, error))
+		return false;
+	*player = tape->player_reads[tape->player_read_count++];
+	return true;
+}
+
+static bool
+commodity_trade_test_write_player(void *context, uint32_t physical_record,
+    const struct yt_player *player, struct yt_error *error)
+{
+	struct commodity_trade_tape *tape = context;
+
+	if (physical_record != 2U
+	    || tape->player_write_count >= YT_ARRAY_LEN(tape->written_players)
+	    || !commodity_trade_test_step(tape,
+	    COMMODITY_TRADE_WRITE_PLAYER, error))
+		return false;
+	tape->written_players[tape->player_write_count++] = *player;
+	return true;
+}
+
+static bool
+commodity_trade_test_mutate_credits(void *context, float player_record,
+    float argument, struct yt_player *player, bool *hydrated,
+    struct yt_error *error)
+{
+	struct yt_player fresh;
+
+	*hydrated = false;
+	if (player_record != 2.0f
+	    || !commodity_trade_test_read_player(context, 2U, &fresh, error))
+		return false;
+	*hydrated = true;
+	yt_trade_credit_overlay(&fresh, argument);
+	*player = fresh;
+	return commodity_trade_test_write_player(context, 2U, &fresh, error);
+}
+
+static bool
+commodity_trade_test_read_port(void *context, uint32_t physical_record,
+    struct yt_port *port, struct yt_error *error)
+{
+	struct commodity_trade_tape *tape = context;
+
+	if (physical_record != 2057U
+	    || tape->port_read_count >= YT_ARRAY_LEN(tape->port_reads)
+	    || !commodity_trade_test_step(tape,
+	    COMMODITY_TRADE_READ_PORT, error))
+		return false;
+	*port = tape->port_reads[tape->port_read_count++];
+	return true;
+}
+
+static bool
+commodity_trade_test_write_port(void *context, uint32_t physical_record,
+    const struct yt_port *port, struct yt_error *error)
+{
+	struct commodity_trade_tape *tape = context;
+
+	if (physical_record != 2057U
+	    || tape->port_write_count >= YT_ARRAY_LEN(tape->written_ports)
+	    || !commodity_trade_test_step(tape,
+	    COMMODITY_TRADE_WRITE_PORT, error))
+		return false;
+	tape->written_ports[tape->port_write_count++] = *port;
+	return true;
+}
+
+static bool
+commodity_trade_test_present(void *context, const uint8_t *text,
+    size_t length, enum yt_commodity_trade_output_kind kind,
+    struct yt_error *error)
+{
+	struct commodity_trade_tape *tape = context;
+	struct commodity_trade_fragment *fragment;
+
+	(void)error;
+	if (tape->fragment_count >= YT_ARRAY_LEN(tape->fragments)
+	    || length > sizeof(tape->fragments[0].text))
+		return false;
+	fragment = &tape->fragments[tape->fragment_count++];
+	fragment->kind = kind;
+	fragment->length = length;
+	if (length != 0U)
+		memcpy(fragment->text, text, length);
+	return true;
+}
+
+static bool
+commodity_trade_test_input(void *context, char *response, size_t capacity,
+    struct yt_error *error)
+{
+	struct commodity_trade_tape *tape = context;
+	const char *source;
+
+	(void)error;
+	if (tape->response_index >= tape->response_count)
+		return false;
+	source = tape->responses[tape->response_index++];
+	if (strlen(source) >= capacity)
+		return false;
+	strcpy(response, source);
+	return true;
+}
+
+static bool
+commodity_trade_test_confirm(void *context, const uint8_t *prompt,
+    size_t length, bool *accepted, struct yt_error *error)
+{
+	static const uint8_t expected[] = "Do you agree? [Y/n] ";
+	struct commodity_trade_tape *tape = context;
+
+	(void)error;
+	if (length != sizeof(expected) - 1U
+	    || memcmp(prompt, expected, length) != 0)
+		return false;
+	*accepted = tape->accepted;
+	return true;
+}
+
+static const struct yt_commodity_trade_ops commodity_trade_test_ops = {
+	commodity_trade_test_read_player,
+	commodity_trade_test_write_player,
+	commodity_trade_test_mutate_credits,
+	commodity_trade_test_read_port,
+	commodity_trade_test_write_port,
+	commodity_trade_test_present,
+	commodity_trade_test_input,
+	commodity_trade_test_confirm,
+};
+
+static void
+commodity_trade_player(struct yt_player *player, uint8_t pattern,
+    float credits, float ore)
+{
+	struct yt_record record;
+
+	memset(record.bytes, pattern, sizeof(record.bytes));
+	(void)yt_record_set_number(&record, YT_F65, 100.0f);
+	(void)yt_record_set_number(&record, YT_F69, ore);
+	(void)yt_record_set_number(&record, YT_F73, 20.0f);
+	(void)yt_record_set_number(&record, YT_F77, 5.0f);
+	(void)yt_record_set_number(&record, YT_F81, credits);
+	yt_player_decode(player, &record);
+}
+
+static void
+commodity_trade_fixture(struct commodity_trade_tape *tape,
+    struct yt_commodity_trade_state *state)
+{
+	struct yt_record record;
+	size_t index;
+	static const float stock[3] = {100.0f, 80.0f, 60.0f};
+	static const float factors[3] = {66.0f, -74.0f, -60.0f};
+	static const float prices[3] = {20.0f, 30.0f, 40.0f};
+
+	memset(tape, 0, sizeof(*tape));
+	memset(state, 0, sizeof(*state));
+	tape->fail_at = SIZE_MAX;
+	tape->accepted = true;
+	tape->responses[0] = "3";
+	tape->response_count = 1U;
+	commodity_trade_player(&tape->player_reads[0], 0x11, 12345.0f, 10.0f);
+	commodity_trade_player(&tape->player_reads[1], 0x22, 20000.0f, 10.0f);
+	commodity_trade_player(&tape->player_reads[2], 0x33, 19940.0f, 40.0f);
+	memset(record.bytes, 0x44, sizeof(record.bytes));
+	for (index = 0U; index < 3U; ++index) {
+		(void)yt_record_set_number(&record, YT_F49 + index * 4U,
+		    stock[index]);
+		(void)yt_record_set_number(&record, YT_F73 + index * 4U,
+		    factors[index]);
+	}
+	(void)yt_record_set_number(&record, YT_F89, 1000.0f);
+	(void)yt_record_set_number(&record, YT_F97, 8.0f);
+	yt_port_decode(&state->market.port, &record);
+	tape->port_reads[0] = state->market.port;
+	tape->port_reads[1] = state->market.port;
+	record = tape->port_reads[1].record;
+	(void)yt_record_set_number(&record, YT_F89, 1060.0f);
+	yt_port_decode(&tape->port_reads[1], &record);
+	for (index = 0U; index < 3U; ++index) {
+		(void)qb_mbf64_encode((double)stock[index],
+		    state->market.capacity_raw[index]);
+		state->market.capacity[index] = stock[index];
+		state->market.price[index] = prices[index];
+	}
+	state->current_player_record = 2U;
+	state->port_physical_record = 2057U;
+	state->commodity = 0U;
+}
+
+static bool
+commodity_trade_fragment_equal(const struct commodity_trade_fragment *fragment,
+    enum yt_commodity_trade_output_kind kind, const char *text)
+{
+	size_t length = strlen(text);
+
+	return fragment->kind == kind && fragment->length == length
+	    && memcmp(fragment->text, text, length) == 0;
+}
+
+static bool
+check_commodity_trade_transaction(void)
+{
+	static const enum commodity_trade_event expected[] = {
+		COMMODITY_TRADE_READ_PLAYER,
+		COMMODITY_TRADE_READ_PORT,
+		COMMODITY_TRADE_WRITE_PORT,
+		COMMODITY_TRADE_READ_PLAYER,
+		COMMODITY_TRADE_WRITE_PLAYER,
+		COMMODITY_TRADE_READ_PLAYER,
+		COMMODITY_TRADE_WRITE_PLAYER,
+		COMMODITY_TRADE_READ_PORT,
+		COMMODITY_TRADE_WRITE_PORT,
+	};
+	static const size_t completed_writes[] = {0U, 0U, 0U, 1U, 1U,
+	    2U, 2U, 3U, 3U};
+	struct commodity_trade_tape tape;
+	struct yt_commodity_trade_state state;
+	struct yt_error error;
+	size_t failure;
+
+	commodity_trade_fixture(&tape, &state);
+	if (!yt_commodity_trade_run(&state, &commodity_trade_test_ops, &tape,
+	    NULL) || !state.complete
+	    || state.route != YT_COMMODITY_TRADE_ACCEPTED
+	    || !state.port_sells || state.free_holds != 65.0f
+	    || state.maximum != 65.0f || state.quantity != 3.0f
+	    || state.total != 60.0f || state.direction != 1.0f
+	    || state.credit_delta != -60.0f || !state.prompt_reached
+	    || qb_mbf64_decode(state.caller_trade_flag_raw) != 1.0
+	    || tape.event_count != YT_ARRAY_LEN(expected)
+	    || memcmp(tape.events, expected, sizeof(expected)) != 0
+	    || tape.fragment_count != 6U
+	    || !commodity_trade_fragment_equal(&tape.fragments[0],
+	    YT_COMMODITY_TRADE_STATUS,
+	    "You have 12345 credits and 65 empty cargo holds.")
+	    || !commodity_trade_fragment_equal(&tape.fragments[1],
+	    YT_COMMODITY_TRADE_MARKET,
+	    "We are selling up to 100.  You have 10 in your holds.")
+	    || !commodity_trade_fragment_equal(&tape.fragments[2],
+	    YT_COMMODITY_TRADE_QUANTITY_PROMPT,
+	    "How many holds of Ore do you want to buy [ 65 ]? ")
+	    || !commodity_trade_fragment_equal(&tape.fragments[3],
+	    YT_COMMODITY_TRADE_AGREED, "Agreed, 3 units.")
+	    || !commodity_trade_fragment_equal(&tape.fragments[4],
+	    YT_COMMODITY_TRADE_OFFER,
+	    "We'll sell them for 60 credits.")
+	    || !commodity_trade_fragment_equal(&tape.fragments[5],
+	    YT_COMMODITY_TRADE_SUCCESS, "It's Yours!")
+	    || tape.written_ports[0].treasury != 1060.0f
+	    || tape.written_players[0].credits != 19940.0f
+	    || tape.written_players[1].ore != 43.0f
+	    || tape.written_players[1].record.bytes[0] != 0x33
+	    || tape.written_ports[1].stock[0] != 97.0f
+	    || tape.written_ports[1].treasury != 1060.0f
+	    || tape.written_ports[1].record.bytes[0] != 0x44)
+		return false;
+
+	for (failure = 0U; failure < YT_ARRAY_LEN(expected); ++failure) {
+		size_t writes;
+
+		commodity_trade_fixture(&tape, &state);
+		tape.fail_at = failure;
+		yt_error_clear(&error);
+		if (yt_commodity_trade_run(&state, &commodity_trade_test_ops,
+		    &tape, &error) || error.status != YT_IO_ERROR || state.complete
+		    || tape.dependency_calls != failure + 1U)
+			return false;
+		writes = tape.player_write_count + tape.port_write_count;
+		if (writes != completed_writes[failure])
+			return false;
+	}
+
+	commodity_trade_fixture(&tape, &state);
+	tape.player_reads[0].holds = 35.0f;
+	(void)yt_record_set_number(&tape.player_reads[0].record,
+	    YT_F65, 35.0f);
+	if (!yt_commodity_trade_run(&state, &commodity_trade_test_ops, &tape,
+	    NULL) || state.route != YT_COMMODITY_TRADE_MAXIMUM_ZERO
+	    || state.prompt_reached || tape.fragment_count != 0U
+	    || tape.dependency_calls != 1U)
+		return false;
+
+	commodity_trade_fixture(&tape, &state);
+	tape.responses[0] = "12345";
+	tape.responses[1] = "2";
+	tape.response_count = 2U;
+	if (!yt_commodity_trade_run(&state, &commodity_trade_test_ops, &tape,
+	    NULL) || state.quantity_attempts != 2U || state.quantity != 2.0f
+	    || tape.fragment_count != 7U)
+		return false;
+
+	commodity_trade_fixture(&tape, &state);
+	(void)qb_mbf64_encode(3.75, state.market.capacity_raw[0]);
+	state.market.capacity[0] = 3.75;
+	if (!yt_commodity_trade_run(&state, &commodity_trade_test_ops, &tape,
+	    NULL) || state.selected_quantity != 3.75
+	    || tape.written_ports[1].stock[0] != 0.75f)
+		return false;
+
+	/* INT(.5) chooses buying prose while SGN(.5) mutates positively. */
+	commodity_trade_fixture(&tape, &state);
+	state.market.port.factor[0] = 0.5f;
+	(void)yt_record_set_number(&state.market.port.record, YT_F73, 0.5f);
+	if (!yt_commodity_trade_run(&state, &commodity_trade_test_ops, &tape,
+	    NULL) || state.port_sells || state.direction != 1.0f
+	    || state.credit_delta != -60.0f
+	    || !commodity_trade_fragment_equal(&tape.fragments[1],
+	    YT_COMMODITY_TRADE_MARKET,
+	    "We are buying up to 100.  You have 10 in your holds.")
+	    || !commodity_trade_fragment_equal(&tape.fragments[5],
+	    YT_COMMODITY_TRADE_SUCCESS, "We'll take them!"))
+		return false;
+
+	commodity_trade_fixture(&tape, &state);
+	tape.accepted = false;
+	return yt_commodity_trade_run(&state, &commodity_trade_test_ops, &tape,
+	    NULL) && state.route == YT_COMMODITY_TRADE_DECLINED_ROUTE
+	    && tape.dependency_calls == 1U && tape.fragment_count == 6U
+	    && commodity_trade_fragment_equal(&tape.fragments[5],
+	    YT_COMMODITY_TRADE_DECLINED, "Never mind!");
+}
+
 enum port_update_event {
 	PORT_UPDATE_READ_SECTOR = 1,
 	PORT_UPDATE_DAY,
@@ -26067,6 +26447,8 @@ main(void)
 		return fail("ordinary-port updater transaction differs");
 	if (!check_port_report_transaction())
 		return fail("ordinary-port report transaction differs");
+	if (!check_commodity_trade_transaction())
+		return fail("commodity-trade transaction differs");
 	if (!check_treasury_transaction())
 		return fail("owned-port treasury transaction differs");
 	if (!check_movement_transaction())

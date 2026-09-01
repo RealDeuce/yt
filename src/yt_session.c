@@ -7112,246 +7112,156 @@ port_report(struct yt_session *session, int logical_port,
 }
 
 static bool
-trade_commodity(struct yt_session *session, const struct yt_port *cached_port,
-    int logical_port, size_t commodity, float price, double cached_quantity,
-    bool *prompt_reached, struct yt_error *error)
+commodity_trade_read_player(void *context, uint32_t physical_record,
+    struct yt_player *player, struct yt_error *error)
 {
-	static const char *const names[3] = {"Ore", "Organics", "Equipment"};
-	static const uint8_t confirmation[] = "Do you agree? [Y/n] ";
-	static const uint8_t never_mind[] = "Never mind!";
-	static const uint8_t yours[] = "It's Yours!";
-	static const uint8_t take[] = "We'll take them!";
-	struct qb_val_result parsed;
-	enum yt_yes_no_answer answer;
-	double displayed_hold;
-	double credits;
-	double free_double;
-	float free_holds;
-	float maximum;
-	float quantity;
-	float total;
-	bool port_sells;
-	char number_one[64];
-	char number_two[64];
-	char row[256];
-	char response[80];
+	struct yt_session *session = context;
 
+	if (physical_record != (uint32_t)session->player_record)
+		return port_report_failure(error,
+		    "commodity trade player record");
 	if (!reload_player(session, error))
 		return false;
-	switch (commodity) {
-	case 0:
-		displayed_hold = (double)session->player.ore;
-		break;
-	case 1:
-		displayed_hold = (double)session->player.organics;
-		break;
-	case 2:
-		displayed_hold = (double)session->player.equipment;
-		break;
+	*player = session->player;
+	return true;
+}
+
+static bool
+commodity_trade_write_player(void *context, uint32_t physical_record,
+    const struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	if (physical_record != (uint32_t)session->player_record)
+		return port_report_failure(error,
+		    "commodity trade player record");
+	session->player = *player;
+	return yt_database_write(&session->door->game.database,
+	    (size_t)physical_record, &player->record, error);
+}
+
+static bool
+commodity_trade_read_port(void *context, uint32_t physical_record,
+    struct yt_port *port, struct yt_error *error)
+{
+	struct yt_session *session = context;
+	struct yt_record record;
+
+	if (!yt_database_read(&session->door->game.database,
+	    (size_t)physical_record, &record, error))
+		return false;
+	yt_port_decode(port, &record);
+	return true;
+}
+
+static bool
+commodity_trade_write_port(void *context, uint32_t physical_record,
+    const struct yt_port *port, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_database_write(&session->door->game.database,
+	    (size_t)physical_record, &port->record, error);
+}
+
+static bool
+commodity_trade_present(void *context, const uint8_t *text, size_t length,
+    enum yt_commodity_trade_output_kind kind, struct yt_error *error)
+{
+	struct yt_session *session = context;
+	const char *operation;
+
+	switch (kind) {
+	case YT_COMMODITY_TRADE_STATUS:
+		operation = "commodity trade player status";
+		return session_0317(session, text, length, operation, error);
+	case YT_COMMODITY_TRADE_MARKET:
+		operation = "commodity trade market status";
+		return session_0317(session, text, length, operation, error);
+	case YT_COMMODITY_TRADE_QUANTITY_PROMPT:
+		operation = "commodity trade quantity prompt";
+		return session_031f(session, text, length, operation, error);
+	case YT_COMMODITY_TRADE_CAPACITY_ERROR:
+		operation = "commodity trade capacity rejection";
+		return session_02db(session, text, length, operation, error);
+	case YT_COMMODITY_TRADE_FREE_HOLDS_ERROR:
+		operation = "commodity trade free-holds rejection";
+		return session_02db(session, text, length, operation, error);
+	case YT_COMMODITY_TRADE_FREE_HOLDS_BLANK:
+		return session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE,
+		    "commodity trade free-holds retry blank", error);
+	case YT_COMMODITY_TRADE_MAXIMUM_ERROR:
+		operation = "commodity trade maximum rejection";
+		return session_02db(session, text, length, operation, error);
+	case YT_COMMODITY_TRADE_NOT_SELLING_ERROR:
+		return session_02fc(session, text, length);
+	case YT_COMMODITY_TRADE_DONT_WANT_ERROR:
+		operation = "commodity trade buying retry";
+		return session_02db(session, text, length, operation, error);
+	case YT_COMMODITY_TRADE_PLAYER_AMOUNT_ERROR:
+		operation = "commodity trade hold retry";
+		return session_02db(session, text, length, operation, error);
+	case YT_COMMODITY_TRADE_AGREED:
+	case YT_COMMODITY_TRADE_DECLINED:
+	case YT_COMMODITY_TRADE_SUCCESS:
+		return session_02fc(session, text, length);
+	case YT_COMMODITY_TRADE_OFFER:
+		return session_0317(session, text, length,
+		    "commodity trade offer row", error);
 	default:
 		return false;
 	}
-	credits = (double)session->player.credits;
-	free_double = double_sub(
-	    double_sub(double_sub((double)session->player.holds,
-	    (double)session->player.ore), (double)session->player.organics),
-	    (double)session->player.equipment);
-	free_holds = (float)free_double;
-	port_sells = floorf(cached_port->factor[commodity]) > 0.0f;
-	if (port_sells) {
-		float required;
+}
 
-		maximum = free_holds;
-		if ((double)maximum > floor(cached_quantity))
-			maximum = (float)floor(cached_quantity);
-		required = floorf(single_mul(price, maximum));
-		if ((double)required > credits)
-			maximum = (float)floor(credits / (double)price);
-	}
-	else {
-		maximum = (float)floor(cached_quantity);
-		if ((double)maximum > floor(displayed_hold))
-			maximum = (float)floor(displayed_hold);
-	}
-	if (maximum == 0.0f)
-		return true;
+static bool
+commodity_trade_input(void *context, char *response, size_t capacity,
+    struct yt_error *error)
+{
+	(void)error;
+	return session_0357(context, response, capacity);
+}
 
-	if (qb_str_double(number_one, sizeof(number_one), credits) < 0
-	    || qb_str_single(number_two, sizeof(number_two), free_holds) < 0
-	    || snprintf(row, sizeof(row),
-	    "You have%s credits and%s empty cargo holds.",
-	    number_one, number_two) < 0
-	    || !session_0317(session, (const uint8_t *)row, strlen(row),
-	    "commodity trade player status", error)
-	    || qb_str_double(number_one, sizeof(number_one),
-	    floor(cached_quantity)) < 0
-	    || qb_str_double(number_two, sizeof(number_two), displayed_hold) < 0
-	    || snprintf(row, sizeof(row),
-	    "We are %sing up to%s.  You have%s in your holds.",
-	    port_sells ? "sell" : "buy", number_one, number_two) < 0
-	    || !session_0317(session, (const uint8_t *)row, strlen(row),
-	    "commodity trade market status", error))
+static bool
+commodity_trade_confirm(void *context, const uint8_t *prompt, size_t length,
+    bool *accepted, struct yt_error *error)
+{
+	enum yt_yes_no_answer answer;
+
+	if (!session_a8d2(context, prompt, length, &answer, error))
 		return false;
+	*accepted = answer != YT_YES_NO_NO;
+	return true;
+}
 
-	for (;;) {
-		if (qb_str_single(number_one, sizeof(number_one), maximum) < 0
-		    || snprintf(row, sizeof(row),
-		    "How many holds of %s do you want to %s [%s ]? ",
-		    names[commodity], port_sells ? "buy" : "sell",
-		    number_one) < 0)
-			return false;
-		if (prompt_reached != NULL)
-			*prompt_reached = true;
-		if (!session_031f(session, (const uint8_t *)row, strlen(row),
-		    "commodity trade quantity prompt", error)
-		    || !session_0357(session, response, sizeof(response)))
-			return false;
-		if (strlen(response) > 4U)
-			continue;
-		if (response[0] == '\0')
-			quantity = maximum;
-		else {
-			parsed = qb_val(response);
-			if (parsed.overflow) {
-				if (error != NULL) {
-					error->status = YT_RANGE;
-					(void)snprintf(error->operation,
-					    sizeof(error->operation), "%s",
-					    "commodity trade:VAL");
-				}
-				return false;
-			}
-			quantity = parsed.valid
-			    ? (float)floor(parsed.value) : 0.0f;
-		}
-		if (quantity < 1.0f)
-			return true;
-		if ((double)quantity > cached_quantity)
-			return session_02db(session,
-			    (const uint8_t *)(port_sells
-			    ? "We don't have that much!"
-			    : "We don't need that much!"),
-			    strlen(port_sells
-			    ? "We don't have that much!"
-			    : "We don't need that much!"),
-			    "commodity trade capacity rejection", error);
-		if (port_sells && quantity > free_holds) {
-			static const uint8_t no_holds[] =
-			    "You don't have enough cargo holds.";
+static bool
+trade_commodity(struct yt_session *session,
+    const struct yt_port_market_state *market, size_t commodity,
+    bool *prompt_reached, struct yt_error *error)
+{
+	static const struct yt_commodity_trade_ops ops = {
+		commodity_trade_read_player,
+		commodity_trade_write_player,
+		apply_player_credit_mutation,
+		commodity_trade_read_port,
+		commodity_trade_write_port,
+		commodity_trade_present,
+		commodity_trade_input,
+		commodity_trade_confirm,
+	};
+	struct yt_commodity_trade_state transaction;
 
-			if (!session_02db(session, no_holds,
-			    sizeof(no_holds) - 1U,
-			    "commodity trade free-holds rejection", error)
-			    || !session_present_text(session, NULL, 0,
-			    SESSION_PRESENT_LINE,
-			    "commodity trade free-holds retry blank", error))
-				return false;
-			continue;
-		}
-		if (quantity > maximum)
-			return session_02db(session,
-			    (const uint8_t *)(port_sells
-			    ? "You can't afford that much!"
-			    : "You don't have that much!"),
-			    strlen(port_sells
-			    ? "You can't afford that much!"
-			    : "You don't have that much!"),
-			    "commodity trade maximum rejection", error);
-		if (port_sells && (double)quantity > floor(cached_quantity)) {
-			static const uint8_t many[] =
-			    "We're not selling that many.";
-
-			if (!session_02fc(session, many, sizeof(many) - 1U))
-				return false;
-			continue;
-		}
-		if (!port_sells && (double)quantity > floor(cached_quantity)) {
-			static const uint8_t many[] =
-			    "We don't want that many.";
-
-			if (!session_02db(session, many, sizeof(many) - 1U,
-			    "commodity trade buying retry", error))
-				return false;
-			continue;
-		}
-		if (!port_sells && (double)quantity > displayed_hold) {
-			static const uint8_t many[] =
-			    "You don't have that much!";
-
-			if (!session_02db(session, many, sizeof(many) - 1U,
-			    "commodity trade hold retry", error))
-				return false;
-			continue;
-		}
-		break;
-	}
-
-	total = floorf(single_add(single_mul(price, quantity), 0.5f));
-	if (qb_str_single(number_one, sizeof(number_one), quantity) < 0
-	    || snprintf(row, sizeof(row), "Agreed,%s units.", number_one) < 0
-	    || !session_02fc(session, (const uint8_t *)row, strlen(row))
-	    || qb_str_single(number_one, sizeof(number_one), total) < 0
-	    || snprintf(row, sizeof(row), "We'll %s them for%s credits.",
-	    port_sells ? "sell" : "buy", number_one) < 0
-	    || !session_0317(session, (const uint8_t *)row, strlen(row),
-	    "commodity trade offer row", error)
-	    || !session_a8d2(session, confirmation,
-	    sizeof(confirmation) - 1U, &answer, error))
+	if (market == NULL)
 		return false;
-	if (answer == YT_YES_NO_NO)
-		return session_02fc(session, never_mind,
-		    sizeof(never_mind) - 1U);
-	if (!session_02fc(session, port_sells ? yours : take,
-	    port_sells ? sizeof(yours) - 1U : sizeof(take) - 1U))
+	memset(&transaction, 0, sizeof(transaction));
+	transaction.current_player_record = (uint32_t)session->player_record;
+	transaction.port_physical_record = market->port_physical_record;
+	transaction.commodity = commodity;
+	transaction.market = *market;
+	if (!yt_commodity_trade_run(&transaction, &ops, session, error))
 		return false;
-
-	{
-		float factor = cached_port->factor[commodity];
-		float direction = factor > 0.0f ? 1.0f
-		    : factor < 0.0f ? -1.0f : 0.0f;
-		float credit_delta = -single_mul(total, direction);
-
-		if (port_sells && cached_port->owner != 0.0f) {
-			struct yt_port fresh_port;
-			float receipt = total;
-
-			if (cached_port->owner == (float)session->player_record)
-				receipt = floorf(single_mul(
-				    0.009999999776482582f, total));
-			if (!yt_game_read_port(&session->door->game,
-			    logical_port, &fresh_port, error))
-				return false;
-			yt_trade_treasury_overlay(&fresh_port, receipt);
-			if (!yt_database_write(&session->door->game.database,
-			    (size_t)yt_port_basic_record(
-			    &session->door->game.config, logical_port),
-			    &fresh_port.record, error))
-				return false;
-		}
-		if (!mutate_player_credits(session, credit_delta, error)
-		    || !reload_player(session, error))
-			return false;
-		yt_trade_holds_overlay(&session->player, commodity, quantity,
-		    direction);
-		if (!yt_database_write(&session->door->game.database,
-		    (size_t)session->player_record, &session->player.record,
-		    error))
-			return false;
-		{
-			struct yt_port fresh_port;
-
-			if (!yt_game_read_port(&session->door->game,
-			    logical_port, &fresh_port, error))
-				return false;
-			yt_trade_stock_overlay(&fresh_port, commodity,
-			    cached_quantity, quantity);
-			if (!yt_database_write(&session->door->game.database,
-			    (size_t)yt_port_basic_record(
-			    &session->door->game.config, logical_port),
-			    &fresh_port.record, error))
-				return false;
-		}
-	}
+	if (prompt_reached != NULL && transaction.prompt_reached)
+		*prompt_reached = true;
 	return true;
 }
 static bool
@@ -7413,8 +7323,7 @@ command_trade(struct yt_session *session, struct yt_error *error)
 	for (scheduled_index = 0; scheduled_index < scheduled_count;
 	    ++scheduled_index) {
 		commodity = schedule[scheduled_index];
-		if (!trade_commodity(session, &market.port, logical_port, commodity,
-		    market.price[commodity], market.capacity[commodity],
+		if (!trade_commodity(session, &market, commodity,
 		    &prompt_reached, error))
 			return false;
 	}
