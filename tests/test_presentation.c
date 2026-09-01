@@ -5729,6 +5729,79 @@ test_commodity_trade_recursive_pager(void)
 }
 
 static void
+test_port_report_b05d_adapter_cuts(void)
+{
+	static const uint8_t owner[] =
+	    "This port is owned by: YOU, Credits: 1234.5";
+	static const uint8_t title[] =
+	    "Commerce report for Argus: 07-25-2026 12:34:56";
+	static const uint8_t header[] =
+	    " Items         Status      # units    in holds   Cost";
+	static const uint8_t rule[] =
+	    "=======       =========   =========   ========   ====";
+	static const uint8_t carrier_before[] =
+	    "\r\nThis port is owned by: YOU, Credits: 1234.5\r\n\r\n";
+	static const uint8_t carrier_after[] =
+	    "\r\nThis port is owned by: YOU, Credits: 1234.5\r\n"
+	    "\r\nCommerce report for Argus: 07-25-2026 12:34:56";
+	struct commodity_trade_join join;
+	struct commodity_b05d_cut cut;
+
+	commodity_trade_join_init(&join);
+	join.current = state(false);
+	commodity_trade_join_line(&join);
+	pager_capture_line(&join.capture, &join.current, owner,
+	    sizeof(owner) - 1U);
+	commodity_trade_join_line(&join);
+	commodity_b05d_cut_init(&cut, &join, 0U);
+	CHECK(!yt_paged_row_run(&join.pager, &join.current, &cut.key_state,
+	    title, sizeof(title) - 1U, &commodity_b05d_cut_ops, &cut));
+	CHECK(sizeof(carrier_before) - 1U == 49U);
+	commodity_trade_join_check(&join, carrier_before,
+	    sizeof(carrier_before) - 1U);
+	CHECK(cut.carrier_calls == 1U && cut.sample_calls == 0U
+	    && cut.present_calls == 0U && cut.finish_calls == 0U
+	    && join.pager.line_count == 0.0f);
+
+	commodity_trade_join_init(&join);
+	join.current = state(false);
+	commodity_trade_join_line(&join);
+	pager_capture_line(&join.capture, &join.current, owner,
+	    sizeof(owner) - 1U);
+	commodity_trade_join_line(&join);
+	commodity_b05d_cut_init(&cut, &join, 1U);
+	CHECK(!yt_paged_row_run(&join.pager, &join.current, &cut.key_state,
+	    title, sizeof(title) - 1U, &commodity_b05d_cut_ops, &cut));
+	CHECK(sizeof(carrier_after) - 1U == 95U);
+	commodity_trade_join_check(&join, carrier_after,
+	    sizeof(carrier_after) - 1U);
+	CHECK(cut.carrier_calls == 2U && cut.sample_calls == 1U
+	    && cut.present_calls == 1U && cut.finish_calls == 0U
+	    && join.pager.line_count == 0.0f);
+
+	commodity_trade_join_init(&join);
+	join.current = state(false);
+	commodity_b05d_cut_init(&cut, &join, SIZE_MAX);
+	cut.sampled.bytes[0] = 'A';
+	cut.sampled.length = 1U;
+	CHECK(yt_paged_row_run(&join.pager, &join.current, &cut.key_state,
+	    title, sizeof(title) - 1U, &commodity_b05d_cut_ops, &cut));
+	cut.sampled.bytes[0] = 0x18U;
+	CHECK(yt_paged_row_run(&join.pager, &join.current, &cut.key_state,
+	    header, sizeof(header) - 1U, &commodity_b05d_cut_ops, &cut));
+	join.current.bold = 1.0f;
+	cut.sampled.bytes[0] = 'B';
+	CHECK(yt_paged_row_run(&join.pager, &join.current, &cut.key_state,
+	    rule, sizeof(rule) - 1U, &commodity_b05d_cut_ops, &cut));
+	CHECK(cut.carrier_calls == 6U && cut.sample_calls == 3U
+	    && cut.present_calls == 3U && cut.finish_calls == 3U
+	    && cut.response_calls == 0U && cut.queue_position == 0U
+	    && cut.queue_length == 1U && strcmp(cut.queue, "B") == 0
+	    && strcmp(join.pager.key, "Q") == 0
+	    && join.pager.line_count == 3.0f);
+}
+
+static void
 computer_return_prompt_fixture(bool ansi, float mode,
     struct pager_capture *capture, struct yt_present_state *current,
     struct yt_pager_state *pager)
@@ -20104,6 +20177,7 @@ main(void)
 	test_commodity_trade_branch_presentation();
 	test_commodity_trade_adapter_cuts();
 	test_commodity_trade_recursive_pager();
+	test_port_report_b05d_adapter_cuts();
 	test_computer_return_prompt_presentation();
 	test_computer_quit_cancel_presentation();
 	test_main_quit_cancel_presentation();
