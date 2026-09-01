@@ -2451,6 +2451,53 @@ bool yt_hostile_attack_combat_run(
     struct yt_hostile_attack_combat_state *state,
     const struct yt_hostile_attack_combat_ops *ops, void *context,
     struct yt_error *error);
+
+struct yt_hostile_bribe_accept_state {
+	int current_player_record;
+	int current_sector;
+	float cached_defenders;
+	float offer;
+	struct yt_sector sector;
+	struct yt_player current;
+	float persisted_fighters;
+	float persisted_credits;
+	bool deal_presented;
+	bool sound_played;
+	bool sector_read;
+	bool sector_written;
+	bool player_read;
+	bool player_written;
+	bool complete;
+};
+
+typedef bool (*yt_hostile_bribe_accept_present_fn)(void *context,
+    const uint8_t *text, size_t length, struct yt_error *error);
+typedef bool (*yt_hostile_bribe_accept_sound_fn)(void *context,
+    float selector, struct yt_error *error);
+typedef bool (*yt_hostile_bribe_accept_read_sector_fn)(void *context,
+    int sector_number, struct yt_sector *sector, struct yt_error *error);
+typedef bool (*yt_hostile_bribe_accept_write_sector_fn)(void *context,
+    int sector_number, const struct yt_sector *sector,
+    struct yt_error *error);
+typedef bool (*yt_hostile_bribe_accept_read_player_fn)(void *context,
+    int player_record, struct yt_player *player, struct yt_error *error);
+typedef bool (*yt_hostile_bribe_accept_write_player_fn)(void *context,
+    int player_record, const struct yt_player *player,
+    struct yt_error *error);
+
+struct yt_hostile_bribe_accept_ops {
+	yt_hostile_bribe_accept_present_fn present;
+	yt_hostile_bribe_accept_sound_fn sound;
+	yt_hostile_bribe_accept_read_sector_fn read_sector;
+	yt_hostile_bribe_accept_write_sector_fn write_sector;
+	yt_hostile_bribe_accept_read_player_fn read_player;
+	yt_hostile_bribe_accept_write_player_fn write_player;
+};
+
+bool yt_hostile_bribe_accept_run(
+    struct yt_hostile_bribe_accept_state *state,
+    const struct yt_hostile_bribe_accept_ops *ops, void *context,
+    struct yt_error *error);
 bool yt_direct_attack_team_row(const uint8_t *name, size_t name_length,
     uint8_t *row, size_t capacity, size_t *length);
 bool yt_direct_attack_candidate_prompt(const uint8_t *name,

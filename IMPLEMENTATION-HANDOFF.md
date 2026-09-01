@@ -1824,12 +1824,17 @@ not authoritative. Use the corrected goal above in the new workspace.
   nonempty offer uses `VAL` plus MBF32 `CSNG`, always consumes the threshold
   draw after the above-credits comparison, preserves the emitted DOUBLE
   multiplication/addition association, and accepts equality. Success emits
-  the exact row and selector-one sound, persists sector owner/fighters first,
-  hydrates the player afresh, then persists fighter/credit changes before
-  the `YT:081F` scanner/router return. Native fixtures pin the exact 132/188,
-  35/49, 94/94, and 34/48-byte plain/ANSI action bodies and the strict
-  predicate boundaries. Full injected RNG/raw WORLD/FIELD/store/failure
-  joins, corrupt sticky/conversion paths, and forced/sub-one/fatal Bribe
+  the exact row and selector-one sound through the provider-driven
+  `yt_hostile_bribe_accept_run()` transaction, persists sector owner/fighters
+  first, hydrates the player afresh, then persists fighter/credit changes
+  before the `YT:081F` scanner/router return. Its six-event patterned-record
+  tape pins exact arithmetic and output, every callback cut, unrelated-byte
+  preservation and the dirty-sector-FIELD failed-PUT boundary; the live
+  adapter deliberately retains all four stale process caches. Native
+  presentation fixtures pin the exact 132/188, 35/49, 94/94, and 34/48-byte
+  plain/ANSI action bodies and the strict predicate boundaries. The
+  decision/editor's injected RNG/WORLD/cache carrier, corrupt sticky/
+  conversion paths, physical partials, and forced/sub-one/fatal Bribe
   continuations remain open.
 - Forced Bribe now preserves the distinct post-output commitment and fatal
   seams. The Mercenary life-demand and rejected-offer rows are exact; both

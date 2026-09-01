@@ -17731,6 +17731,223 @@ check_hostile_attack_combat_transaction(void)
 	    && !yt_hostile_attack_combat_run(&state, NULL, &tape, NULL);
 }
 
+enum hostile_bribe_accept_event {
+	HOSTILE_BRIBE_ACCEPT_DEAL,
+	HOSTILE_BRIBE_ACCEPT_SOUND,
+	HOSTILE_BRIBE_ACCEPT_SECTOR_READ,
+	HOSTILE_BRIBE_ACCEPT_SECTOR_WRITE,
+	HOSTILE_BRIBE_ACCEPT_PLAYER_READ,
+	HOSTILE_BRIBE_ACCEPT_PLAYER_WRITE,
+};
+
+struct hostile_bribe_accept_tape {
+	struct yt_sector sector;
+	struct yt_player player;
+	struct yt_sector written_sector;
+	struct yt_player written_player;
+	enum hostile_bribe_accept_event events[8];
+	size_t calls;
+	size_t fail_at;
+	uint8_t deal[64];
+	size_t deal_length;
+};
+
+static bool
+hostile_bribe_accept_event(struct hostile_bribe_accept_tape *tape,
+    enum hostile_bribe_accept_event event, struct yt_error *error)
+{
+	size_t call = tape->calls++;
+
+	if (call < YT_ARRAY_LEN(tape->events))
+		tape->events[call] = event;
+	if (call != tape->fail_at)
+		return true;
+	if (error != NULL) {
+		error->status = YT_IO_ERROR;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    "hostile Bribe acceptance injected failure");
+	}
+	return false;
+}
+
+static bool
+hostile_bribe_accept_present(void *context, const uint8_t *text,
+    size_t length, struct yt_error *error)
+{
+	struct hostile_bribe_accept_tape *tape = context;
+
+	if (length > sizeof(tape->deal) || !hostile_bribe_accept_event(tape,
+	    HOSTILE_BRIBE_ACCEPT_DEAL, error))
+		return false;
+	memcpy(tape->deal, text, length);
+	tape->deal_length = length;
+	return true;
+}
+
+static bool
+hostile_bribe_accept_sound(void *context, float selector,
+    struct yt_error *error)
+{
+	return selector == 1.0f && hostile_bribe_accept_event(context,
+	    HOSTILE_BRIBE_ACCEPT_SOUND, error);
+}
+
+static bool
+hostile_bribe_accept_read_sector(void *context, int sector_number,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct hostile_bribe_accept_tape *tape = context;
+
+	if (sector_number != 733 || !hostile_bribe_accept_event(tape,
+	    HOSTILE_BRIBE_ACCEPT_SECTOR_READ, error))
+		return false;
+	*sector = tape->sector;
+	return true;
+}
+
+static bool
+hostile_bribe_accept_write_sector(void *context, int sector_number,
+    const struct yt_sector *sector, struct yt_error *error)
+{
+	struct hostile_bribe_accept_tape *tape = context;
+
+	if (sector_number != 733 || !hostile_bribe_accept_event(tape,
+	    HOSTILE_BRIBE_ACCEPT_SECTOR_WRITE, error))
+		return false;
+	tape->written_sector = *sector;
+	return true;
+}
+
+static bool
+hostile_bribe_accept_read_player(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct hostile_bribe_accept_tape *tape = context;
+
+	if (player_record != 2 || !hostile_bribe_accept_event(tape,
+	    HOSTILE_BRIBE_ACCEPT_PLAYER_READ, error))
+		return false;
+	*player = tape->player;
+	return true;
+}
+
+static bool
+hostile_bribe_accept_write_player(void *context, int player_record,
+    const struct yt_player *player, struct yt_error *error)
+{
+	struct hostile_bribe_accept_tape *tape = context;
+
+	if (player_record != 2 || !hostile_bribe_accept_event(tape,
+	    HOSTILE_BRIBE_ACCEPT_PLAYER_WRITE, error))
+		return false;
+	tape->written_player = *player;
+	return true;
+}
+
+static const struct yt_hostile_bribe_accept_ops hostile_bribe_accept_ops = {
+	hostile_bribe_accept_present,
+	hostile_bribe_accept_sound,
+	hostile_bribe_accept_read_sector,
+	hostile_bribe_accept_write_sector,
+	hostile_bribe_accept_read_player,
+	hostile_bribe_accept_write_player,
+};
+
+static void
+hostile_bribe_accept_fixture(struct hostile_bribe_accept_tape *tape,
+    struct yt_hostile_bribe_accept_state *state)
+{
+	memset(tape, 0, sizeof(*tape));
+	tape->fail_at = (size_t)-1;
+	memset(tape->sector.record.bytes, 0x5a,
+	    sizeof(tape->sector.record.bytes));
+	tape->sector.fighters = 99.0f;
+	tape->sector.fighter_owner = -2.0f;
+	memset(tape->player.record.bytes, 0xa5,
+	    sizeof(tape->player.record.bytes));
+	tape->player.fighters = 7.25f;
+	tape->player.credits = 100.5f;
+	*state = (struct yt_hostile_bribe_accept_state){
+		.current_player_record = 2,
+		.current_sector = 733,
+		.cached_defenders = 10.5f,
+		.offer = 30.25f,
+	};
+}
+
+static bool
+check_hostile_bribe_accept_transaction(void)
+{
+	static const enum hostile_bribe_accept_event expected_events[] = {
+		HOSTILE_BRIBE_ACCEPT_DEAL,
+		HOSTILE_BRIBE_ACCEPT_SOUND,
+		HOSTILE_BRIBE_ACCEPT_SECTOR_READ,
+		HOSTILE_BRIBE_ACCEPT_SECTOR_WRITE,
+		HOSTILE_BRIBE_ACCEPT_PLAYER_READ,
+		HOSTILE_BRIBE_ACCEPT_PLAYER_WRITE,
+	};
+	static const uint8_t expected_deal[] =
+	    "Good Deal! We join up with you!";
+	struct hostile_bribe_accept_tape tape;
+	struct yt_hostile_bribe_accept_state state;
+	struct yt_record expected_sector;
+	struct yt_record expected_player;
+	struct yt_error error;
+	size_t failure;
+
+	hostile_bribe_accept_fixture(&tape, &state);
+	expected_sector = tape.sector.record;
+	(void)yt_record_set_number(&expected_sector, YT_F85, 0.0f);
+	(void)yt_record_set_number(&expected_sector, YT_F81, 0.0f);
+	expected_player = tape.player.record;
+	(void)yt_record_set_number(&expected_player, YT_F61, 17.75f);
+	(void)yt_record_set_number(&expected_player, YT_F81, 70.25f);
+	if (!yt_hostile_bribe_accept_run(&state, &hostile_bribe_accept_ops,
+	    &tape, NULL) || !state.complete || !state.deal_presented
+	    || !state.sound_played || !state.sector_read
+	    || !state.sector_written || !state.player_read
+	    || !state.player_written || state.persisted_fighters != 17.75f
+	    || state.persisted_credits != 70.25f
+	    || tape.calls != YT_ARRAY_LEN(expected_events)
+	    || memcmp(tape.events, expected_events, sizeof(expected_events)) != 0
+	    || tape.deal_length != sizeof(expected_deal) - 1U
+	    || memcmp(tape.deal, expected_deal, sizeof(expected_deal) - 1U) != 0
+	    || memcmp(tape.written_sector.record.bytes, expected_sector.bytes,
+	    sizeof(expected_sector.bytes)) != 0
+	    || memcmp(tape.written_player.record.bytes, expected_player.bytes,
+	    sizeof(expected_player.bytes)) != 0)
+		return false;
+
+	for (failure = 0U; failure < YT_ARRAY_LEN(expected_events); ++failure) {
+		hostile_bribe_accept_fixture(&tape, &state);
+		tape.fail_at = failure;
+		yt_error_clear(&error);
+		if (yt_hostile_bribe_accept_run(&state,
+		    &hostile_bribe_accept_ops, &tape, &error)
+		    || error.status != YT_IO_ERROR || state.complete
+		    || tape.calls != failure + 1U
+		    || memcmp(tape.events, expected_events,
+		    (failure + 1U) * sizeof(expected_events[0])) != 0)
+			return false;
+	}
+
+	/* A failed sector PUT retains the dirty FIELD and blocks player I/O. */
+	hostile_bribe_accept_fixture(&tape, &state);
+	tape.fail_at = 3U;
+	yt_error_clear(&error);
+	if (yt_hostile_bribe_accept_run(&state, &hostile_bribe_accept_ops,
+	    &tape, &error) || error.status != YT_IO_ERROR
+	    || !state.sector_read || state.sector_written || state.player_read
+	    || memcmp(state.sector.record.bytes, expected_sector.bytes,
+	    sizeof(expected_sector.bytes)) != 0)
+		return false;
+
+	hostile_bribe_accept_fixture(&tape, &state);
+	return !yt_hostile_bribe_accept_run(NULL, &hostile_bribe_accept_ops,
+	    &tape, NULL)
+	    && !yt_hostile_bribe_accept_run(&state, NULL, &tape, NULL);
+}
+
 struct direct_attack_attrition_tape {
 	float values[8];
 	size_t calls;
@@ -21622,6 +21839,8 @@ main(void)
 		return fail("hostile Attack tail transaction differs");
 	if (!check_hostile_attack_combat_transaction())
 		return fail("hostile Attack composite transaction differs");
+	if (!check_hostile_bribe_accept_transaction())
+		return fail("hostile Bribe acceptance transaction differs");
 	if (!check_direct_attack_attrition_model())
 		return fail("direct Attack attrition model differs");
 	if (!check_fighter_shield_spill_transaction())

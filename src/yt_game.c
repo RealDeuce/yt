@@ -9717,6 +9717,66 @@ yt_hostile_attack_combat_run(struct yt_hostile_attack_combat_state *state,
 }
 
 bool
+yt_hostile_bribe_accept_run(struct yt_hostile_bribe_accept_state *state,
+    const struct yt_hostile_bribe_accept_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t deal[] = "Good Deal! We join up with you!";
+	volatile double fighters;
+	volatile double credits;
+
+	if (state == NULL || ops == NULL || ops->present == NULL
+	    || ops->sound == NULL || ops->read_sector == NULL
+	    || ops->write_sector == NULL || ops->read_player == NULL
+	    || ops->write_player == NULL)
+		return false;
+	state->persisted_fighters = 0.0f;
+	state->persisted_credits = 0.0f;
+	state->deal_presented = false;
+	state->sound_played = false;
+	state->sector_read = false;
+	state->sector_written = false;
+	state->player_read = false;
+	state->player_written = false;
+	state->complete = false;
+	memset(&state->sector, 0, sizeof(state->sector));
+	memset(&state->current, 0, sizeof(state->current));
+	if (!ops->present(context, deal, sizeof(deal) - 1U, error))
+		return false;
+	state->deal_presented = true;
+	if (!ops->sound(context, 1.0f, error))
+		return false;
+	state->sound_played = true;
+	if (!ops->read_sector(context, state->current_sector, &state->sector,
+	    error))
+		return false;
+	state->sector_read = true;
+	yt_bribe_sector_overlay(&state->sector);
+	if (!ops->write_sector(context, state->current_sector, &state->sector,
+	    error))
+		return false;
+	state->sector_written = true;
+	if (!ops->read_player(context, state->current_player_record,
+	    &state->current, error))
+		return false;
+	state->player_read = true;
+	fighters = direct_attack_double_add((double)state->current.fighters,
+	    (double)state->cached_defenders);
+	credits = direct_attack_double_sub((double)state->current.credits,
+	    (double)state->offer);
+	state->persisted_fighters = (float)fighters;
+	state->persisted_credits = (float)credits;
+	yt_bribe_player_overlay(&state->current, state->persisted_fighters,
+	    state->persisted_credits);
+	if (!ops->write_player(context, state->current_player_record,
+	    &state->current, error))
+		return false;
+	state->player_written = true;
+	state->complete = true;
+	return true;
+}
+
+bool
 yt_direct_attack_attrition_run(
     struct yt_direct_attack_attrition_state *state,
     yt_direct_attack_attrition_draw_fn draw, void *context,

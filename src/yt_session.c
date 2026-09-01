@@ -5916,6 +5916,65 @@ bribe_forced_attack(struct yt_session *session, struct yt_sector *sector,
 }
 
 static bool
+hostile_bribe_accept_present(void *context, const uint8_t *text,
+    size_t length, struct yt_error *error)
+{
+	return session_02db(context, text, length,
+	    "accepted Mercenary Bribe", error);
+}
+
+static bool
+hostile_bribe_accept_sound(void *context, float selector,
+    struct yt_error *error)
+{
+	return session_sound(context, selector, "accepted bribe sound", error);
+}
+
+static bool
+hostile_bribe_accept_read_sector(void *context, int sector_number,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_read_sector(&session->door->game, sector_number, sector,
+	    error);
+}
+
+static bool
+hostile_bribe_accept_write_sector(void *context, int sector_number,
+    const struct yt_sector *sector, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_database_write(&session->door->game.database,
+	    (size_t)yt_sector_basic_record(&session->door->game.config,
+	    sector_number), &sector->record, error);
+}
+
+static bool
+hostile_bribe_accept_read_player(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	if (player_record != session->player_record
+	    || !reload_player(session, error))
+		return false;
+	*player = session->player;
+	return true;
+}
+
+static bool
+hostile_bribe_accept_write_player(void *context, int player_record,
+    const struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_database_write(&session->door->game.database,
+	    (size_t)player_record, &player->record, error);
+}
+
+static bool
 bribe_deployed(struct yt_session *session, struct yt_sector *sector,
     bool *direct_hostile_menu, bool *forced_attack,
     struct yt_error *error)
@@ -6030,38 +6089,23 @@ bribe_deployed(struct yt_session *session, struct yt_sector *sector,
 		if (!above_credits
 		    && yt_bribe_offer_accepted(offer, session->player.credits,
 		    threshold)) {
-			struct yt_sector persisted;
-			struct yt_player player_overlay;
-			float cached_defenders = sector->fighters;
+			static const struct yt_hostile_bribe_accept_ops ops = {
+				hostile_bribe_accept_present,
+				hostile_bribe_accept_sound,
+				hostile_bribe_accept_read_sector,
+				hostile_bribe_accept_write_sector,
+				hostile_bribe_accept_read_player,
+				hostile_bribe_accept_write_player,
+			};
+			struct yt_hostile_bribe_accept_state state = {
+				.current_player_record = session->player_record,
+				.current_sector = (int)session->player.sector,
+				.cached_defenders = sector->fighters,
+				.offer = offer,
+			};
 
-			if (!session_02db(session,
-			    (const uint8_t *)"Good Deal! We join up with you!",
-			    strlen("Good Deal! We join up with you!"),
-			    "accepted Mercenary Bribe", error))
-				return false;
-			if (!session_sound(session, 1.0f,
-			    "accepted bribe sound", error))
-				return false;
-			if (!yt_game_read_sector(&session->door->game,
-			    (int)session->player.sector, &persisted, error))
-				return false;
-			yt_bribe_sector_overlay(&persisted);
-			if (!yt_database_write(&session->door->game.database,
-			    (size_t)yt_sector_basic_record(
-			    &session->door->game.config,
-			    (int)session->player.sector), &persisted.record, error)
-			    || !reload_player(session, error))
-				return false;
-			player_overlay = session->player;
-			yt_bribe_player_overlay(&player_overlay, (float)double_add(
-			    (double)session->player.fighters,
-			    (double)cached_defenders), (float)double_sub(
-			    (double)session->player.credits, (double)offer));
-			if (!yt_database_write(&session->door->game.database,
-			    (size_t)session->player_record,
-			    &player_overlay.record, error))
-				return false;
-			return true;
+			return yt_hostile_bribe_accept_run(&state, &ops, session,
+			    error);
 		}
 	}
 	(void)snprintf(row, sizeof(row), "You insult us %s! Prepare to DIE!",
