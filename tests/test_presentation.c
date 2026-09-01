@@ -9087,6 +9087,233 @@ test_computer_port_report_short_cycles_presentation(void)
 	CHECK(sizeof(no_port) - 1U == 110U && sizeof(blank) - 1U == 80U);
 }
 
+struct computer_port_terminal_join {
+	struct yt_present_state *current;
+	struct yt_pager_state *pager;
+	struct pager_capture *capture;
+	bool *running;
+	bool *terminated;
+	int notice_carrier_failure;
+	bool closed;
+};
+
+static bool
+computer_port_terminal_carrier_end(struct computer_port_terminal_join *join)
+{
+	join->closed = true;
+	*join->running = false;
+	*join->terminated = true;
+	return false;
+}
+
+static bool
+computer_port_terminal_notice(void *context, const uint8_t *notice,
+    size_t length)
+{
+	struct computer_port_terminal_join *join = context;
+	struct yt_present_result result;
+
+	if (yt_present_line(NULL, 0U, join->current, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(join->capture, &result);
+	if (join->notice_carrier_failure == 1)
+		return computer_port_terminal_carrier_end(join);
+	if (join->notice_carrier_failure == 2) {
+		if (yt_present_paged_text(notice, length, join->current, &result)
+		    != YT_PRESENT_OK)
+			return false;
+		pager_capture_result(join->capture, &result);
+		return computer_port_terminal_carrier_end(join);
+	}
+	pager_fixture_b05d(join->pager, join->current, notice, length,
+	    join->capture);
+	return true;
+}
+
+static bool
+computer_port_terminal_close(void *context)
+{
+	struct computer_port_terminal_join *join = context;
+
+	join->closed = true;
+	return true;
+}
+
+static void
+test_computer_port_report_terminal_presentation(void)
+{
+	static const uint8_t prompt[] =
+	    "Enter sector number port is in -=> ";
+	static const uint8_t inactivity[] =
+	    "\r\nEnter sector number port is in -=> "
+	    "\r\n\aUSER FELL ASLEEP!\n\r";
+	static const uint8_t session_limit[] =
+	    "\r\nEnter sector number port is in -=> "
+	    "\r\n\a\a\aTIME LIMIT EXCEEDED!\a\a\a\n\r";
+	static const uint8_t inactivity_carrier[] =
+	    "\r\nEnter sector number port is in -=> \r\n";
+	static const uint8_t direct_carrier[] =
+	    "\r\nEnter sector number port is in -=> ";
+	static const uint8_t session_carrier[] =
+	    "\r\nEnter sector number port is in -=> "
+	    "\r\n\a\a\aTIME LIMIT EXCEEDED!\a\a\a";
+	static const struct {
+		enum yt_ab36_terminal_kind kind;
+		const uint8_t *expected;
+		size_t expected_length;
+	} cases[] = {
+		{YT_AB36_TERMINAL_INACTIVITY, inactivity,
+		    sizeof(inactivity) - 1U},
+		{YT_AB36_TERMINAL_SESSION_LIMIT, session_limit,
+		    sizeof(session_limit) - 1U},
+	};
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		struct yt_present_state current = state(true);
+		struct yt_present_result result;
+		struct yt_pager_state pager;
+		struct pager_capture capture;
+		struct computer_port_terminal_join join;
+		char accumulator[80];
+		bool running = true;
+		bool terminated = false;
+
+		current.foreground = 1.0f;
+		current.cached_foreground = 1.0f;
+		memset(&pager, 0, sizeof(pager));
+		pager.foreground = 1;
+		memset(&capture, 0, sizeof(capture));
+		memset(accumulator, 0, sizeof(accumulator));
+		CHECK(yt_present_line(NULL, 0U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager.newline_flag = 1.0f;
+		pager_fixture_b05d(&pager, &current, prompt,
+		    sizeof(prompt) - 1U, &capture);
+		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+		join.current = &current;
+		join.pager = &pager;
+		join.capture = &capture;
+		join.running = &running;
+		join.terminated = &terminated;
+		join.notice_carrier_failure = 0;
+		join.closed = false;
+		CHECK(yt_input_ab36_terminal_run(cases[pass].kind, &running,
+		    &terminated, computer_port_terminal_notice,
+		    computer_port_terminal_close, &join));
+		CHECK(capture.remote_length == cases[pass].expected_length
+		    && memcmp(capture.remote, cases[pass].expected,
+		    cases[pass].expected_length) == 0
+		    && !running && terminated && join.closed
+		    && pager.line_count == 1.0f
+		    && pager.newline_flag == 0.0f
+		    && accumulator[0] == '\0');
+	}
+	{
+		static const struct {
+			enum yt_ab36_terminal_kind kind;
+			int failure;
+			const uint8_t *expected;
+			size_t expected_length;
+		} carrier_cases[] = {
+			{YT_AB36_TERMINAL_INACTIVITY, 1,
+			    inactivity_carrier, sizeof(inactivity_carrier) - 1U},
+			{YT_AB36_TERMINAL_SESSION_LIMIT, 2,
+			    session_carrier, sizeof(session_carrier) - 1U},
+		};
+		size_t failure;
+
+		for (failure = 0U; failure < YT_ARRAY_LEN(carrier_cases);
+		    ++failure) {
+			struct yt_present_state current = state(true);
+			struct yt_present_result result;
+			struct yt_pager_state pager;
+			struct pager_capture capture;
+			struct computer_port_terminal_join join;
+			char accumulator[80];
+			bool running = true;
+			bool terminated = false;
+
+			current.foreground = 1.0f;
+			current.cached_foreground = 1.0f;
+			memset(&pager, 0, sizeof(pager));
+			pager.foreground = 1;
+			memset(&capture, 0, sizeof(capture));
+			memset(accumulator, 0, sizeof(accumulator));
+			CHECK(yt_present_line(NULL, 0U, &current, &result)
+			    == YT_PRESENT_OK);
+			pager_capture_result(&capture, &result);
+			pager.newline_flag = 1.0f;
+			pager_fixture_b05d(&pager, &current, prompt,
+			    sizeof(prompt) - 1U, &capture);
+			yt_pager_editor_enter(&pager, accumulator,
+			    sizeof(accumulator));
+			join.current = &current;
+			join.pager = &pager;
+			join.capture = &capture;
+			join.running = &running;
+			join.terminated = &terminated;
+			join.notice_carrier_failure =
+			    carrier_cases[failure].failure;
+			join.closed = false;
+			CHECK(!yt_input_ab36_terminal_run(
+			    carrier_cases[failure].kind,
+			    &running, &terminated, computer_port_terminal_notice,
+			    computer_port_terminal_close, &join));
+			CHECK(capture.remote_length
+			    == carrier_cases[failure].expected_length
+			    && memcmp(capture.remote,
+			    carrier_cases[failure].expected,
+			    carrier_cases[failure].expected_length) == 0
+			    && !running && terminated && join.closed
+			    && pager.line_count == 0.0f);
+		}
+	}
+	{
+		struct yt_present_state current = state(true);
+		struct yt_present_result result;
+		struct yt_pager_state pager;
+		struct pager_capture capture;
+		struct computer_port_terminal_join join;
+		char accumulator[80];
+		bool running = true;
+		bool terminated = false;
+
+		current.foreground = 1.0f;
+		current.cached_foreground = 1.0f;
+		memset(&pager, 0, sizeof(pager));
+		pager.foreground = 1;
+		memset(&capture, 0, sizeof(capture));
+		memset(accumulator, 0, sizeof(accumulator));
+		CHECK(yt_present_line(NULL, 0U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager.newline_flag = 1.0f;
+		pager_fixture_b05d(&pager, &current, prompt,
+		    sizeof(prompt) - 1U, &capture);
+		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+		join.current = &current;
+		join.pager = &pager;
+		join.capture = &capture;
+		join.running = &running;
+		join.terminated = &terminated;
+		join.notice_carrier_failure = 0;
+		join.closed = false;
+		CHECK(!computer_port_terminal_carrier_end(&join));
+		CHECK(capture.remote_length == sizeof(direct_carrier) - 1U
+		    && memcmp(capture.remote, direct_carrier,
+		    sizeof(direct_carrier) - 1U) == 0
+		    && !running && terminated && join.closed);
+	}
+	CHECK(sizeof(inactivity) - 1U == 59U
+	    && sizeof(session_limit) - 1U == 67U
+	    && sizeof(inactivity_carrier) - 1U == 39U
+	    && sizeof(direct_carrier) - 1U == 37U
+	    && sizeof(session_carrier) - 1U == 65U);
+}
+
 static void
 test_computer_port_report_earth_cycle_presentation(void)
 {
@@ -21244,6 +21471,7 @@ main(void)
 	test_computer_avoid_presentation();
 	test_computer_port_report_presentation();
 	test_computer_port_report_short_cycles_presentation();
+	test_computer_port_report_terminal_presentation();
 	test_computer_port_report_earth_cycle_presentation();
 	test_computer_port_report_ordinary_cycle_presentation();
 	test_computer_planet_report_front_presentation();
