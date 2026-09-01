@@ -89,7 +89,9 @@ set(YT_GAME_SOURCES
 
 add_library(yt_core STATIC ${YT_CORE_SOURCES})
 yt_configure_target(yt_core)
-if(NOT WIN32)
+if(WIN32)
+	target_link_libraries(yt_core PUBLIC bcrypt)
+else()
     target_link_libraries(yt_core PUBLIC m)
 endif()
 
