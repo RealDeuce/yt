@@ -16710,9 +16710,34 @@ docking_earth_row(struct viewer_pager_join *join, const char *label,
 	    strlen(affordable), 0.0f);
 }
 
+struct docking_earth_terminal_context {
+	struct viewer_pager_join *join;
+	bool closed;
+};
+
+static bool
+docking_earth_terminal_notice(void *context, const uint8_t *notice,
+    size_t length)
+{
+	struct docking_earth_terminal_context *terminal = context;
+
+	return normal_exit_line(terminal->join, NULL, 0U)
+	    && normal_exit_b05d(terminal->join, notice, length, 0.0f);
+}
+
+static bool
+docking_earth_terminal_close(void *context)
+{
+	struct docking_earth_terminal_context *terminal = context;
+
+	terminal->closed = true;
+	return true;
+}
+
 static bool
 docking_earth_leave_cycle_run(struct physical_viewer_join *viewer,
-    bool ansi, size_t ends[3])
+    bool ansi, enum yt_ab36_terminal_kind terminal_kind, size_t ends[3],
+    bool *running, bool *terminated, bool *closed)
 {
 	static const char *const label[9] = {
 		"[1] Cloak Energy", "[2] Cargo Holds", "[3] Fighters",
@@ -16749,6 +16774,7 @@ docking_earth_leave_cycle_run(struct physical_viewer_join *viewer,
 	static const uint8_t main_prompt[] =
 	    "Time:10:00  Main Command (?=Help)? ";
 	struct viewer_pager_join *join = &viewer->join;
+	struct docking_earth_terminal_context terminal = {join, false};
 	struct yt_present_result result;
 	size_t index;
 
@@ -16795,6 +16821,22 @@ docking_earth_leave_cycle_run(struct physical_viewer_join *viewer,
 		return false;
 	yt_pager_editor_enter(&join->pager, join->accumulator,
 	    sizeof(join->accumulator));
+	if (terminal_kind == YT_AB36_TERMINAL_INACTIVITY
+	    || terminal_kind == YT_AB36_TERMINAL_SESSION_LIMIT) {
+		if (running == NULL || terminated == NULL || closed == NULL)
+			return false;
+		*running = true;
+		*terminated = false;
+		*closed = false;
+		if (!yt_input_ab36_terminal_run(terminal_kind, running,
+		    terminated, docking_earth_terminal_notice,
+		    docking_earth_terminal_close, &terminal))
+			return false;
+		*closed = terminal.closed;
+		ends[1] = join->remote_length;
+		ends[2] = join->remote_length;
+		return true;
+	}
 	memcpy(join->accumulator, response, sizeof(response));
 	if (yt_present_editor_echo(response, sizeof(response) - 1U,
 	    response, sizeof(response) - 1U, &join->presentation, &result)
@@ -16895,7 +16937,8 @@ test_docking_earth_leave_cycle_presentation(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
 		CHECK(docking_earth_leave_cycle_run(&viewer,
-		    cases[pass].ansi, ends));
+		    cases[pass].ansi, (enum yt_ab36_terminal_kind)-1,
+		    ends, NULL, NULL, NULL));
 		CHECK(memcmp(ends, cases[pass].ends, sizeof(ends)) == 0);
 		CHECK(viewer.join.remote_length == cases[pass].expected_length);
 		CHECK(viewer.join.remote_length != cases[pass].expected_length
@@ -16922,6 +16965,62 @@ test_docking_earth_leave_cycle_presentation(void)
 		    && viewer.input.file == NULL && viewer.close_calls == 0U
 		    && viewer.open_calls == 0U);
 		yt_text_input_destroy(&viewer.input);
+	}
+	{
+		static const uint8_t inactivity[] =
+		    "\r\n\aUSER FELL ASLEEP!\n\r";
+		static const uint8_t session_limit[] =
+		    "\r\n\a\a\aTIME LIMIT EXCEEDED!\a\a\a\n\r";
+		static const struct {
+			enum yt_ab36_terminal_kind kind;
+			const uint8_t *suffix;
+			size_t suffix_length;
+		} terminals[] = {
+			{YT_AB36_TERMINAL_INACTIVITY, inactivity,
+			    sizeof(inactivity) - 1U},
+			{YT_AB36_TERMINAL_SESSION_LIMIT, session_limit,
+			    sizeof(session_limit) - 1U},
+		};
+		size_t terminal_index;
+
+		for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+			for (terminal_index = 0U;
+			    terminal_index < YT_ARRAY_LEN(terminals);
+			    ++terminal_index) {
+				size_t prompt_end = cases[pass].ansi ? 717U : 697U;
+				bool running;
+				bool terminated;
+				bool closed;
+
+				memset(&viewer, 0, sizeof(viewer));
+				fixture_viewer_initialize(&viewer, &stream,
+				    retained_scoreboard,
+				    sizeof(retained_scoreboard) - 1U,
+				    "YTSCORE.ASC", cases[pass].ansi, remote,
+				    sizeof(remote));
+				CHECK(docking_earth_leave_cycle_run(&viewer,
+				    cases[pass].ansi,
+				    terminals[terminal_index].kind, ends,
+				    &running, &terminated, &closed));
+				CHECK(ends[0] == cases[pass].ends[0]
+				    && ends[1] == prompt_end
+				    + terminals[terminal_index].suffix_length
+				    && ends[2] == ends[1]
+				    && viewer.join.remote_length == ends[1]
+				    && memcmp(remote, cases[pass].expected,
+				    prompt_end) == 0
+				    && memcmp(remote + prompt_end,
+				    terminals[terminal_index].suffix,
+				    terminals[terminal_index].suffix_length) == 0
+				    && !running && terminated && closed
+				    && viewer.join.pager.line_count == 1.0f
+				    && viewer.join.pager.newline_flag == 0.0f
+				    && viewer.join.sample_calls == 20U
+				    && !stream.file_open && !viewer.join.file_open
+				    && viewer.input.file == NULL);
+				yt_text_input_destroy(&viewer.input);
+			}
+		}
 	}
 	CHECK(sizeof(plain) - 1U == 773U && sizeof(ansi) - 1U == 813U);
 }
