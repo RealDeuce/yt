@@ -5523,10 +5523,22 @@ test_commodity_trade_adapter_cuts(void)
 	static const uint8_t carrier_before[] = "\r\n";
 	static const uint8_t carrier_after[] =
 	    "\r\nYou have 12345 credits and 65 empty cargo holds.";
+	static const uint8_t editor_loop_head[] =
+	    "\r\nYou have 12345 credits and 65 empty cargo holds.\n\r"
+	    "\r\nWe are selling up to 100.  You have 10 in your holds.\n\r"
+	    "How many holds of Ore do you want to buy [ 65 ]? ";
 	static const uint8_t editor_after_two[] =
 	    "\r\nYou have 12345 credits and 65 empty cargo holds.\n\r"
 	    "\r\nWe are selling up to 100.  You have 10 in your holds.\n\r"
 	    "How many holds of Ore do you want to buy [ 65 ]? 12";
+	static const uint8_t confirmation_after_y[] =
+	    "\r\nYou have 12345 credits and 65 empty cargo holds.\n\r"
+	    "\r\nWe are selling up to 100.  You have 10 in your holds.\n\r"
+	    "How many holds of Ore do you want to buy [ 65 ]? 3\r\n"
+	    "Agreed, 3 units.\n\r"
+	    "\r\nWe'll sell them for 60 credits.\n\r"
+	    "Do you agree? [Y/n] Y";
+	static const uint8_t confirmation[] = "Do you agree? [Y/n] ";
 	static const uint8_t low_time[] =
 	    "\r\nYou have 12345 credits and 65 empty cargo holds.\n\r"
 	    "\r\nWe are selling up to 100.  You have 10 in your holds.\n\r"
@@ -5575,6 +5587,22 @@ test_commodity_trade_adapter_cuts(void)
 	commodity_trade_join_b05d(&join, prompt, sizeof(prompt) - 1U, true);
 	yt_pager_editor_enter(&join.pager, join.accumulator,
 	    sizeof(join.accumulator));
+	editor.join = &join;
+	editor.carrier_calls = 0U;
+	editor.fail_carrier_at = 0U;
+	CHECK(!commodity_editor_cut_carrier(&editor));
+	commodity_trade_join_check(&join, editor_loop_head,
+	    sizeof(editor_loop_head) - 1U);
+	CHECK(editor.carrier_calls == 1U && join.accumulator[0] == '\0'
+	    && join.pager.line_count == 0.0f && join.pager.nonstop == 0.0f
+	    && join.pager.key[0] == '\0');
+
+	commodity_trade_join_init(&join);
+	commodity_trade_join_0317(&join, status, sizeof(status) - 1U);
+	commodity_trade_join_0317(&join, selling, sizeof(selling) - 1U);
+	commodity_trade_join_b05d(&join, prompt, sizeof(prompt) - 1U, true);
+	yt_pager_editor_enter(&join.pager, join.accumulator,
+	    sizeof(join.accumulator));
 	(void)snprintf(paged_text, sizeof(paged_text), "%s", prompt);
 	newline_flag = 0.0f;
 	editor.join = &join;
@@ -5594,6 +5622,32 @@ test_commodity_trade_adapter_cuts(void)
 	CHECK(handled && editor.carrier_calls == 2U
 	    && strcmp(join.accumulator, "12") == 0
 	    && strcmp(paged_text, "2") == 0 && newline_flag == 1.0f);
+
+	commodity_trade_join_init(&join);
+	commodity_trade_join_front(&join, status, sizeof(status) - 1U,
+	    selling, sizeof(selling) - 1U, prompt, sizeof(prompt) - 1U,
+	    (const uint8_t *)"3", 1U);
+	commodity_trade_join_b05d(&join, agreed, sizeof(agreed) - 1U, false);
+	commodity_trade_join_0317(&join, offer, sizeof(offer) - 1U);
+	CHECK(yt_present_character(confirmation, sizeof(confirmation) - 1U,
+	    &join.current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&join.capture, &result);
+	yt_pager_editor_enter(&join.pager, join.accumulator,
+	    sizeof(join.accumulator));
+	(void)snprintf(paged_text, sizeof(paged_text), "%s", confirmation);
+	newline_flag = 0.0f;
+	editor.join = &join;
+	editor.carrier_calls = 0U;
+	editor.fail_carrier_at = 0U;
+	CHECK(!yt_input_ab36_printable_run('Y', join.accumulator,
+	    sizeof(join.accumulator), sizeof(join.accumulator), paged_text,
+	    sizeof(paged_text), &newline_flag, &handled,
+	    commodity_editor_cut_echo, commodity_editor_cut_carrier, &editor));
+	commodity_trade_join_check(&join, confirmation_after_y,
+	    sizeof(confirmation_after_y) - 1U);
+	CHECK(handled && editor.carrier_calls == 1U
+	    && strcmp(join.accumulator, "Y") == 0
+	    && strcmp(paged_text, "Y") == 0 && newline_flag == 1.0f);
 
 	commodity_trade_join_init(&join);
 	commodity_trade_join_0317(&join, status, sizeof(status) - 1U);
