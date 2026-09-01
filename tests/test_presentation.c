@@ -8873,7 +8873,7 @@ test_computer_front_presentation(void)
 }
 
 static void
-computer_avoid_accepted_cycle_fixture(bool ansi,
+computer_avoid_accepted_cycle_fixture(bool ansi, float mode,
     struct pager_capture *capture, struct yt_present_state *current,
     struct yt_pager_state *pager)
 {
@@ -8891,7 +8891,7 @@ computer_avoid_accepted_cycle_fixture(bool ansi,
 	char accumulator[80] = "";
 	int row;
 
-	computer_return_prompt_fixture(ansi, 0.0f, capture, current, pager);
+	computer_return_prompt_fixture(ansi, mode, capture, current, pager);
 	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
 	CHECK(yt_present_editor_echo((const uint8_t *)"7", 1U,
 	    (const uint8_t *)"7", 1U, current, &result) == YT_PRESENT_OK);
@@ -9035,6 +9035,19 @@ test_computer_avoid_presentation(void)
 	    "\r\nEnter the sector you wish to avoid [1 - 2004] (0 to clear): "
 	    "5\r\n\x1b[0;32;40m\r\nSector 5 now locked out.\n\r"
 	    "\x1b[0;31;40m\r\nTime: 14:59  Computer command (?=help)? ";
+	static const uint8_t accepted_mode_two[] =
+	    "\r\n\r\n\r\n\r\n\r\n"
+	    "[  1 ]  -=>  0      [ 11 ]  -=>  0      "
+	    "[  2 ]  -=>  0      [ 12 ]  -=>  0      "
+	    "[  3 ]  -=>  0      [ 13 ]  -=>  0      "
+	    "[  4 ]  -=>  0      [ 14 ]  -=>  0      "
+	    "[  5 ]  -=>  0      [ 15 ]  -=>  0      "
+	    "[  6 ]  -=>  0      [ 16 ]  -=>  0      "
+	    "[  7 ]  -=>  0      [ 17 ]  -=>  0      "
+	    "[  8 ]  -=>  0      [ 18 ]  -=>  0      "
+	    "[  9 ]  -=>  0      [ 19 ]  -=>  0      "
+	    "[ 10 ]  -=>  0      [ 20 ]  -=>  0      "
+	    "\r\n\r\n\r\n\r\n\r\n\r\n";
 	struct yt_present_state current = state(false);
 	struct yt_present_result result;
 	struct yt_pager_state pager;
@@ -9099,20 +9112,35 @@ test_computer_avoid_presentation(void)
 	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
 	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f);
 
-	computer_avoid_accepted_cycle_fixture(false, &capture, &current,
+	computer_avoid_accepted_cycle_fixture(false, 0.0f, &capture, &current,
 	    &pager);
 	CHECK(sizeof(accepted_plain) - 1U == 884U);
 	CHECK(capture.remote_length == sizeof(accepted_plain) - 1U
 	    && memcmp(capture.remote, accepted_plain,
 	    sizeof(accepted_plain) - 1U) == 0);
 	CHECK(pager.line_count == 2.0f && pager.newline_flag == 0.0f);
-	computer_avoid_accepted_cycle_fixture(true, &capture, &current,
+	computer_avoid_accepted_cycle_fixture(true, 0.0f, &capture, &current,
 	    &pager);
 	CHECK(sizeof(accepted_ansi) - 1U == 914U);
 	CHECK(capture.remote_length == sizeof(accepted_ansi) - 1U
 	    && memcmp(capture.remote, accepted_ansi,
 	    sizeof(accepted_ansi) - 1U) == 0);
 	CHECK(pager.line_count == 2.0f && pager.newline_flag == 0.0f);
+	computer_avoid_accepted_cycle_fixture(true, 1.0f, &capture, &current,
+	    &pager);
+	CHECK(capture.remote_length == 0U && pager.line_count == 2.0f
+	    && pager.newline_flag == 0.0f
+	    && capture.last_local_foreground == 7
+	    && capture.last_local_background == 0);
+	computer_avoid_accepted_cycle_fixture(true, 2.0f, &capture, &current,
+	    &pager);
+	CHECK(sizeof(accepted_mode_two) - 1U == 422U);
+	CHECK(capture.remote_length == sizeof(accepted_mode_two) - 1U
+	    && memcmp(capture.remote, accepted_mode_two,
+	    sizeof(accepted_mode_two) - 1U) == 0);
+	CHECK(pager.line_count == 2.0f && pager.newline_flag == 0.0f
+	    && capture.last_local_foreground == 7
+	    && capture.last_local_background == 0);
 }
 
 static void
