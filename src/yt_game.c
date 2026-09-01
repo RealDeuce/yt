@@ -3265,6 +3265,215 @@ yt_sector_mine_admit(float carried, float amount)
 	return YT_SECTOR_MINE_ACCEPTED;
 }
 
+static bool
+drop_mines_error(struct yt_error *error, enum yt_status status,
+    const char *operation)
+{
+	if (error != NULL) {
+		error->status = status;
+		error->system_error = 0;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    operation);
+		error->path[0] = '\0';
+	}
+	return false;
+}
+
+static float
+drop_mines_single_add(float left, float right)
+{
+	volatile float result = left + right;
+
+	return result;
+}
+
+static float
+drop_mines_single_sub(float left, float right)
+{
+	volatile float result = left - right;
+
+	return result;
+}
+
+bool
+yt_drop_mines_run(struct yt_drop_mines_state *state,
+    const struct yt_drop_mines_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t no_mines[] = "You don't HAVE any!";
+	static const uint8_t union_refusal[] =
+	    "The Union doesnt like the home 7 sectors mined!";
+	static const char prompt_suffix[] =
+	    " mines. Drop how many? [0] -=>";
+	static const char success_suffix[] = " is now mined!";
+	struct qb_val_result parsed;
+	enum qb_mbf_status conversion;
+	enum yt_sector_mine_admission admission;
+	char number[64];
+	uint8_t row[192];
+	char response[4096] = {0};
+	int number_length;
+	size_t row_length;
+
+	if (state == NULL || ops == NULL || ops->read_player == NULL
+	    || ops->write_player == NULL || ops->flush == NULL
+	    || ops->read_sector == NULL || ops->write_sector == NULL
+	    || ops->present == NULL || ops->amount == NULL
+	    || ops->suppress == NULL || ops->sound == NULL
+	    || state->current_player_record < 1)
+		return drop_mines_error(error, YT_INVALID, "drop-mines state");
+	memset(&state->current, 0, sizeof(state->current));
+	memset(&state->sector, 0, sizeof(state->sector));
+	state->current_sector = 0;
+	state->carried = 0.0f;
+	state->amount = 0.0f;
+	memset(state->amount_raw, 0, sizeof(state->amount_raw));
+	state->player_mines_after = 0.0f;
+	state->sector_mines_before = 0.0f;
+	state->sector_mines_after = 0.0f;
+	state->player_read = false;
+	state->negative_repair = false;
+	state->repair_written = false;
+	state->repair_flushed = false;
+	state->amount_stored = false;
+	state->suppression_set = false;
+	state->player_written = false;
+	state->player_flushed = false;
+	state->sector_read = false;
+	state->sector_written = false;
+	state->sector_flushed = false;
+	state->route = YT_DROP_MINES_INCOMPLETE;
+	state->complete = false;
+
+	if (!ops->read_player(context, state->current_player_record,
+	    &state->current, error))
+		return false;
+	state->player_read = true;
+	state->carried = state->current.mines;
+	state->current_sector = (int)state->current.sector;
+	if (state->carried < 0.0f) {
+		state->negative_repair = true;
+		state->current.mines = 0.0f;
+		if (!yt_record_set_number(&state->current.record, YT_F129, 0.0f)
+		    || !ops->write_player(context, state->current_player_record,
+		    &state->current, error))
+			return false;
+		state->repair_written = true;
+		if (!ops->flush(context, error))
+			return false;
+		state->repair_flushed = true;
+	}
+	if (state->carried < 1.0f) {
+		state->route = YT_DROP_MINES_NO_MINES;
+		if (!ops->present(context, no_mines, sizeof(no_mines) - 1U,
+		    YT_DROP_MINES_NO_MINES_ROW, error))
+			return false;
+		state->complete = true;
+		return true;
+	}
+	if (state->current.sector < 8.0f) {
+		state->route = YT_DROP_MINES_UNION_REFUSAL;
+		if (!ops->present(context, union_refusal,
+		    sizeof(union_refusal) - 1U, YT_DROP_MINES_UNION_ROW, error))
+			return false;
+		state->complete = true;
+		return true;
+	}
+
+	number_length = qb_str_single(number, sizeof(number), state->carried);
+	if (number_length < 0
+	    || sizeof("You have") - 1U + (size_t)number_length
+	    + sizeof(prompt_suffix) - 1U > sizeof(row))
+		return drop_mines_error(error, YT_RANGE, "drop-mines prompt");
+	memcpy(row, "You have", sizeof("You have") - 1U);
+	row_length = sizeof("You have") - 1U;
+	memcpy(row + row_length, number, (size_t)number_length);
+	row_length += (size_t)number_length;
+	memcpy(row + row_length, prompt_suffix, sizeof(prompt_suffix) - 1U);
+	row_length += sizeof(prompt_suffix) - 1U;
+	if (!ops->present(context, NULL, 0U, YT_DROP_MINES_PROMPT_BLANK,
+	    error)
+	    || !ops->present(context, row, row_length, YT_DROP_MINES_PROMPT,
+	    error)
+	    || !ops->amount(context, response, sizeof(response), error))
+		return false;
+	if (response[0] == '\0') {
+		state->amount = 0.0f;
+	}
+	else {
+		parsed = qb_val(response);
+		if (!parsed.valid || parsed.overflow)
+			return drop_mines_error(error, YT_RANGE, "drop-mines:VAL");
+		state->amount = (float)parsed.value;
+	}
+	conversion = qb_mbf32_encode(state->amount, state->amount_raw);
+	if (conversion == QB_MBF_OVERFLOW)
+		return drop_mines_error(error, YT_RANGE,
+		    "drop-mines:amount-csng");
+	state->amount = qb_mbf32_decode(state->amount_raw);
+	state->amount_stored = true;
+	admission = yt_sector_mine_admit(state->carried, state->amount);
+	if (admission != YT_SECTOR_MINE_ACCEPTED) {
+		state->route = YT_DROP_MINES_CANCELLED;
+		state->complete = true;
+		return true;
+	}
+
+	ops->suppress(context);
+	state->suppression_set = true;
+	state->player_mines_after = drop_mines_single_sub(state->carried,
+	    state->amount);
+	state->current.mines = state->player_mines_after;
+	if (!yt_record_set_number(&state->current.record, YT_F129,
+	    state->player_mines_after)
+	    || !ops->write_player(context, state->current_player_record,
+	    &state->current, error))
+		return false;
+	state->player_written = true;
+	if (!ops->flush(context, error))
+		return false;
+	state->player_flushed = true;
+	if (!ops->read_sector(context, state->current_sector, &state->sector,
+	    error))
+		return false;
+	state->sector_read = true;
+	state->sector_mines_before = state->sector.mines;
+	state->sector_mines_after = drop_mines_single_add(
+	    state->sector_mines_before, state->amount);
+	state->sector.mines = state->sector_mines_after;
+	if (!yt_record_set_number(&state->sector.record, YT_F129,
+	    state->sector_mines_after)
+	    || !ops->write_sector(context, state->current_sector,
+	    &state->sector, error))
+		return false;
+	state->sector_written = true;
+	if (!ops->flush(context, error))
+		return false;
+	state->sector_flushed = true;
+
+	number_length = qb_str_single(number, sizeof(number),
+	    state->current.sector);
+	if (number_length < 0
+	    || sizeof("Sector") - 1U + (size_t)number_length
+	    + sizeof(success_suffix) - 1U > sizeof(row))
+		return drop_mines_error(error, YT_RANGE, "drop-mines success row");
+	memcpy(row, "Sector", sizeof("Sector") - 1U);
+	row_length = sizeof("Sector") - 1U;
+	memcpy(row + row_length, number, (size_t)number_length);
+	row_length += (size_t)number_length;
+	memcpy(row + row_length, success_suffix, sizeof(success_suffix) - 1U);
+	row_length += sizeof(success_suffix) - 1U;
+	state->route = YT_DROP_MINES_ACCEPTED;
+	if (!ops->present(context, NULL, 0U, YT_DROP_MINES_SUCCESS_BLANK,
+	    error)
+	    || !ops->present(context, row, row_length,
+	    YT_DROP_MINES_SUCCESS_ROW, error)
+	    || !ops->sound(context, 4.0f, error))
+		return false;
+	state->complete = true;
+	return true;
+}
+
 bool
 yt_no_turn_gate_denied(float turns)
 {

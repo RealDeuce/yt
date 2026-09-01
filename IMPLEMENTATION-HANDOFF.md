@@ -2776,6 +2776,18 @@ not authoritative. Use the corrected goal above in the new workspace.
   parsing; OpenDoors source, API and ABI remain unchanged. Physical Win32
   framebuffer execution and remaining generic provenance classifications
   remain open.
+- The shared Drop Mine root `YT:[1ECC,2059)` now delegates to
+  `yt_drop_mines_run()`. Its native provider tape pins the complete accepted
+  order—fresh player read, exact prompt/editor, suppression, player PUT and
+  flush, fresh sector GET, sector PUT and flush, styled success and sound—plus
+  every outer callback failure prefix. Patterned raw records prove that only
+  offset 129 changes in either record and that the process player source stays
+  stale. Separate tapes pin the durable negative-carried repair while its
+  scratch remains negative, all no-mine/Union/blank/below-one/above-carried
+  exits, and fractional credit into a negative sector mine field. The joined
+  hostile scanner/hazard/menu and main scanner/fresh-prompt endpoints, raw
+  BRUN/FIELD/file-registry state, and dependency-internal physical faults
+  remain open.
 
 ## The task
 

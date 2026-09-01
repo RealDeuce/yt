@@ -21976,6 +21976,398 @@ check_planet_updater_transaction(void)
 	return true;
 }
 
+enum drop_mines_event {
+	DROP_MINES_READ_PLAYER = 1,
+	DROP_MINES_WRITE_PLAYER,
+	DROP_MINES_FLUSH,
+	DROP_MINES_READ_SECTOR,
+	DROP_MINES_WRITE_SECTOR,
+	DROP_MINES_PRESENT,
+	DROP_MINES_AMOUNT,
+	DROP_MINES_SUPPRESS,
+	DROP_MINES_SOUND,
+};
+
+struct drop_mines_tape {
+	enum drop_mines_event events[24];
+	size_t calls;
+	size_t fail_at;
+	struct yt_player player;
+	struct yt_player written_player;
+	struct yt_sector sector;
+	struct yt_sector written_sector;
+	int player_read_record;
+	int player_write_record;
+	int sector_read_record;
+	int sector_write_record;
+	const char *response;
+	uint8_t rows[6][192];
+	size_t row_lengths[6];
+	enum yt_drop_mines_output_kind kinds[6];
+	size_t row_count;
+	float selector;
+	bool suppressed;
+};
+
+static bool
+drop_mines_step(struct drop_mines_tape *tape, enum drop_mines_event event,
+    struct yt_error *error)
+{
+	size_t call = tape->calls++;
+
+	if (call < YT_ARRAY_LEN(tape->events))
+		tape->events[call] = event;
+	if (call != tape->fail_at)
+		return true;
+	if (error != NULL) {
+		error->status = YT_IO_ERROR;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    "Drop Mine injected failure");
+	}
+	return false;
+}
+
+static bool
+drop_mines_test_read_player(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct drop_mines_tape *tape = context;
+
+	tape->player_read_record = player_record;
+	if (!drop_mines_step(tape, DROP_MINES_READ_PLAYER, error))
+		return false;
+	*player = tape->player;
+	return true;
+}
+
+static bool
+drop_mines_test_write_player(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct drop_mines_tape *tape = context;
+
+	tape->player_write_record = player_record;
+	if (!drop_mines_step(tape, DROP_MINES_WRITE_PLAYER, error))
+		return false;
+	tape->written_player = *player;
+	return true;
+}
+
+static bool
+drop_mines_test_flush(void *context, struct yt_error *error)
+{
+	return drop_mines_step(context, DROP_MINES_FLUSH, error);
+}
+
+static bool
+drop_mines_test_read_sector(void *context, int sector_number,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct drop_mines_tape *tape = context;
+
+	tape->sector_read_record = sector_number;
+	if (!drop_mines_step(tape, DROP_MINES_READ_SECTOR, error))
+		return false;
+	*sector = tape->sector;
+	return true;
+}
+
+static bool
+drop_mines_test_write_sector(void *context, int sector_number,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct drop_mines_tape *tape = context;
+
+	tape->sector_write_record = sector_number;
+	if (!drop_mines_step(tape, DROP_MINES_WRITE_SECTOR, error))
+		return false;
+	tape->written_sector = *sector;
+	return true;
+}
+
+static bool
+drop_mines_test_present(void *context, const uint8_t *text, size_t length,
+    enum yt_drop_mines_output_kind kind, struct yt_error *error)
+{
+	struct drop_mines_tape *tape = context;
+	size_t row = tape->row_count;
+
+	if (row >= YT_ARRAY_LEN(tape->rows) || length > sizeof(tape->rows[0])
+	    || !drop_mines_step(tape, DROP_MINES_PRESENT, error))
+		return false;
+	if (length != 0U)
+		memcpy(tape->rows[row], text, length);
+	tape->row_lengths[row] = length;
+	tape->kinds[row] = kind;
+	tape->row_count++;
+	return true;
+}
+
+static bool
+drop_mines_test_amount(void *context, char *response, size_t capacity,
+    struct yt_error *error)
+{
+	struct drop_mines_tape *tape = context;
+	size_t length = strlen(tape->response);
+
+	if (length + 1U > capacity
+	    || !drop_mines_step(tape, DROP_MINES_AMOUNT, error))
+		return false;
+	memcpy(response, tape->response, length + 1U);
+	return true;
+}
+
+static void
+drop_mines_test_suppress(void *context)
+{
+	struct drop_mines_tape *tape = context;
+
+	if (tape->calls < YT_ARRAY_LEN(tape->events))
+		tape->events[tape->calls] = DROP_MINES_SUPPRESS;
+	tape->calls++;
+	tape->suppressed = true;
+}
+
+static bool
+drop_mines_test_sound(void *context, float selector,
+    struct yt_error *error)
+{
+	struct drop_mines_tape *tape = context;
+
+	tape->selector = selector;
+	return drop_mines_step(tape, DROP_MINES_SOUND, error);
+}
+
+static const struct yt_drop_mines_ops drop_mines_ops = {
+	drop_mines_test_read_player,
+	drop_mines_test_write_player,
+	drop_mines_test_flush,
+	drop_mines_test_read_sector,
+	drop_mines_test_write_sector,
+	drop_mines_test_present,
+	drop_mines_test_amount,
+	drop_mines_test_suppress,
+	drop_mines_test_sound,
+};
+
+static void
+drop_mines_fixture(struct drop_mines_tape *tape,
+    struct yt_drop_mines_state *state)
+{
+	size_t index;
+
+	memset(tape, 0, sizeof(*tape));
+	memset(state, 0, sizeof(*state));
+	tape->fail_at = (size_t)-1;
+	tape->response = "1.5";
+	for (index = 0U; index < YT_RECORD_SIZE; ++index) {
+		tape->player.record.bytes[index] = (uint8_t)(index ^ 0xa5U);
+		tape->sector.record.bytes[index] = (uint8_t)(index ^ 0x5aU);
+	}
+	tape->player.sector = 42.0f;
+	tape->player.mines = 5.0f;
+	(void)yt_record_set_number(&tape->player.record, YT_F57, 42.0f);
+	(void)yt_record_set_number(&tape->player.record, YT_F129, 5.0f);
+	tape->sector.mines = -2.0f;
+	(void)yt_record_set_number(&tape->sector.record, YT_F129, -2.0f);
+	state->current_player_record = 2;
+}
+
+static bool
+check_drop_mines_transaction(void)
+{
+	static const enum drop_mines_event accepted_events[] = {
+		DROP_MINES_READ_PLAYER,
+		DROP_MINES_PRESENT,
+		DROP_MINES_PRESENT,
+		DROP_MINES_AMOUNT,
+		DROP_MINES_SUPPRESS,
+		DROP_MINES_WRITE_PLAYER,
+		DROP_MINES_FLUSH,
+		DROP_MINES_READ_SECTOR,
+		DROP_MINES_WRITE_SECTOR,
+		DROP_MINES_FLUSH,
+		DROP_MINES_PRESENT,
+		DROP_MINES_PRESENT,
+		DROP_MINES_SOUND,
+	};
+	static const size_t failable_calls[] = {
+		0U, 1U, 2U, 3U, 5U, 6U, 7U, 8U, 9U, 10U, 11U, 12U,
+	};
+	static const enum drop_mines_event repair_events[] = {
+		DROP_MINES_READ_PLAYER,
+		DROP_MINES_WRITE_PLAYER,
+		DROP_MINES_FLUSH,
+		DROP_MINES_PRESENT,
+	};
+	static const uint8_t prompt[] =
+	    "You have 5 mines. Drop how many? [0] -=>";
+	static const uint8_t success[] = "Sector 42 is now mined!";
+	static const uint8_t no_mines[] = "You don't HAVE any!";
+	static const uint8_t union_refusal[] =
+	    "The Union doesnt like the home 7 sectors mined!";
+	struct drop_mines_tape tape;
+	struct yt_drop_mines_state state;
+	struct yt_record expected_player;
+	struct yt_record expected_sector;
+	struct yt_error error;
+	size_t index;
+
+	drop_mines_fixture(&tape, &state);
+	expected_player = tape.player.record;
+	expected_sector = tape.sector.record;
+	(void)yt_record_set_number(&expected_player, YT_F129, 3.5f);
+	(void)yt_record_set_number(&expected_sector, YT_F129, -0.5f);
+	if (!yt_drop_mines_run(&state, &drop_mines_ops, &tape, NULL)
+	    || !state.complete || state.route != YT_DROP_MINES_ACCEPTED
+	    || !state.player_read || !state.amount_stored
+	    || !state.suppression_set || !state.player_written
+	    || !state.player_flushed || !state.sector_read
+	    || !state.sector_written || !state.sector_flushed
+	    || state.negative_repair || state.current_sector != 42
+	    || state.carried != 5.0f || state.amount != 1.5f
+	    || state.player_mines_after != 3.5f
+	    || state.sector_mines_before != -2.0f
+	    || state.sector_mines_after != -0.5f
+	    || tape.calls != YT_ARRAY_LEN(accepted_events)
+	    || memcmp(tape.events, accepted_events, sizeof(accepted_events)) != 0
+	    || tape.player_read_record != 2 || tape.player_write_record != 2
+	    || tape.sector_read_record != 42 || tape.sector_write_record != 42
+	    || !tape.suppressed || tape.selector != 4.0f
+	    || tape.player.mines != 5.0f || tape.sector.mines != -2.0f
+	    || memcmp(tape.written_player.record.bytes, expected_player.bytes,
+	    YT_RECORD_SIZE) != 0
+	    || memcmp(tape.written_sector.record.bytes, expected_sector.bytes,
+	    YT_RECORD_SIZE) != 0
+	    || tape.row_count != 4U || tape.row_lengths[0] != 0U
+	    || tape.kinds[0] != YT_DROP_MINES_PROMPT_BLANK
+	    || tape.row_lengths[1] != sizeof(prompt) - 1U
+	    || tape.kinds[1] != YT_DROP_MINES_PROMPT
+	    || memcmp(tape.rows[1], prompt, sizeof(prompt) - 1U) != 0
+	    || tape.row_lengths[2] != 0U
+	    || tape.kinds[2] != YT_DROP_MINES_SUCCESS_BLANK
+	    || tape.row_lengths[3] != sizeof(success) - 1U
+	    || tape.kinds[3] != YT_DROP_MINES_SUCCESS_ROW
+	    || memcmp(tape.rows[3], success, sizeof(success) - 1U) != 0)
+		return false;
+
+	for (index = 0U; index < YT_ARRAY_LEN(failable_calls); ++index) {
+		drop_mines_fixture(&tape, &state);
+		tape.fail_at = failable_calls[index];
+		yt_error_clear(&error);
+		if (yt_drop_mines_run(&state, &drop_mines_ops, &tape, &error)
+		    || error.status != YT_IO_ERROR || state.complete
+		    || tape.calls != failable_calls[index] + 1U
+		    || memcmp(tape.events, accepted_events,
+		    tape.calls * sizeof(accepted_events[0])) != 0
+		    || (failable_calls[index] > 4U && !state.suppression_set)
+		    || (failable_calls[index] > 6U
+		    && (!state.player_written || !state.player_flushed))
+		    || (failable_calls[index] > 9U
+		    && (!state.sector_written || !state.sector_flushed)))
+			return false;
+	}
+
+	/* A negative carried value is repaired and flushed, but its scratch
+	 * value remains negative and selects the ordinary no-mines row. */
+	drop_mines_fixture(&tape, &state);
+	tape.player.mines = -2.0f;
+	(void)yt_record_set_number(&tape.player.record, YT_F129, -2.0f);
+	expected_player = tape.player.record;
+	(void)yt_record_set_number(&expected_player, YT_F129, 0.0f);
+	if (!yt_drop_mines_run(&state, &drop_mines_ops, &tape, NULL)
+	    || state.route != YT_DROP_MINES_NO_MINES || !state.complete
+	    || !state.negative_repair || !state.repair_written
+	    || !state.repair_flushed || state.carried != -2.0f
+	    || tape.calls != 4U || tape.events[0] != DROP_MINES_READ_PLAYER
+	    || tape.events[1] != DROP_MINES_WRITE_PLAYER
+	    || tape.events[2] != DROP_MINES_FLUSH
+	    || tape.events[3] != DROP_MINES_PRESENT
+	    || tape.row_count != 1U
+	    || tape.kinds[0] != YT_DROP_MINES_NO_MINES_ROW
+	    || tape.row_lengths[0] != sizeof(no_mines) - 1U
+	    || memcmp(tape.rows[0], no_mines, sizeof(no_mines) - 1U) != 0
+	    || memcmp(tape.written_player.record.bytes, expected_player.bytes,
+	    YT_RECORD_SIZE) != 0)
+		return false;
+	for (index = 1U; index < YT_ARRAY_LEN(repair_events); ++index) {
+		drop_mines_fixture(&tape, &state);
+		tape.player.mines = -2.0f;
+		(void)yt_record_set_number(&tape.player.record, YT_F129, -2.0f);
+		tape.fail_at = index;
+		yt_error_clear(&error);
+		if (yt_drop_mines_run(&state, &drop_mines_ops, &tape, &error)
+		    || error.status != YT_IO_ERROR || state.complete
+		    || state.carried != -2.0f || !state.negative_repair
+		    || tape.calls != index + 1U
+		    || memcmp(tape.events, repair_events,
+		    tape.calls * sizeof(repair_events[0])) != 0
+		    || (index > 1U && !state.repair_written)
+		    || (index > 2U && !state.repair_flushed))
+			return false;
+	}
+
+	/* Zero, Union, blank, below-one and above-carried routes do no sector
+	 * I/O and never enable self-mine suppression. */
+	drop_mines_fixture(&tape, &state);
+	tape.player.mines = 0.0f;
+	if (!yt_drop_mines_run(&state, &drop_mines_ops, &tape, NULL)
+	    || state.route != YT_DROP_MINES_NO_MINES || tape.calls != 2U)
+		return false;
+	drop_mines_fixture(&tape, &state);
+	tape.player.mines = 0.0f;
+	tape.fail_at = 1U;
+	if (yt_drop_mines_run(&state, &drop_mines_ops, &tape, NULL)
+	    || state.complete || tape.calls != 2U)
+		return false;
+	drop_mines_fixture(&tape, &state);
+	tape.player.sector = 7.0f;
+	if (!yt_drop_mines_run(&state, &drop_mines_ops, &tape, NULL)
+	    || state.route != YT_DROP_MINES_UNION_REFUSAL
+	    || tape.row_count != 1U
+	    || tape.kinds[0] != YT_DROP_MINES_UNION_ROW
+	    || tape.row_lengths[0] != sizeof(union_refusal) - 1U
+	    || memcmp(tape.rows[0], union_refusal,
+	    sizeof(union_refusal) - 1U) != 0)
+		return false;
+	drop_mines_fixture(&tape, &state);
+	tape.player.sector = 7.0f;
+	tape.fail_at = 1U;
+	if (yt_drop_mines_run(&state, &drop_mines_ops, &tape, NULL)
+	    || state.complete || tape.calls != 2U)
+		return false;
+	drop_mines_fixture(&tape, &state);
+	tape.response = "";
+	if (!yt_drop_mines_run(&state, &drop_mines_ops, &tape, NULL)
+	    || state.route != YT_DROP_MINES_CANCELLED || state.amount != 0.0f
+	    || !state.amount_stored || tape.calls != 4U || tape.suppressed)
+		return false;
+	drop_mines_fixture(&tape, &state);
+	tape.response = ".5";
+	if (!yt_drop_mines_run(&state, &drop_mines_ops, &tape, NULL)
+	    || state.route != YT_DROP_MINES_CANCELLED || state.amount != 0.5f
+	    || tape.calls != 4U || tape.suppressed)
+		return false;
+	drop_mines_fixture(&tape, &state);
+	tape.response = "5.5";
+	if (!yt_drop_mines_run(&state, &drop_mines_ops, &tape, NULL)
+	    || state.route != YT_DROP_MINES_CANCELLED || state.amount != 5.5f
+	    || tape.calls != 4U || tape.suppressed)
+		return false;
+
+	drop_mines_fixture(&tape, &state);
+	tape.response = "not-a-number";
+	yt_error_clear(&error);
+	if (yt_drop_mines_run(&state, &drop_mines_ops, &tape, &error)
+	    || error.status != YT_RANGE || state.amount_stored
+	    || strcmp(error.operation, "drop-mines:VAL") != 0)
+		return false;
+
+	drop_mines_fixture(&tape, &state);
+	return !yt_drop_mines_run(NULL, &drop_mines_ops, &tape, NULL)
+	    && !yt_drop_mines_run(&state, NULL, &tape, NULL);
+}
+
 int
 main(void)
 {
@@ -22117,6 +22509,8 @@ main(void)
 		return fail("sector mine model differs");
 	if (!check_sector_mine_transaction())
 		return fail("sector mine transaction differs");
+	if (!check_drop_mines_transaction())
+		return fail("Drop Mine transaction differs");
 	if (!check_direct_fighter_kill_model())
 		return fail("direct fighter kill model differs");
 	if (!check_common_fatal_transaction())

@@ -6618,108 +6618,134 @@ command_fighters(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
+drop_mines_read_player(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	if (player_record != session->player_record
+	    || !reload_player(session, error))
+		return false;
+	*player = session->player;
+	return true;
+}
+
+static bool
+drop_mines_write_player(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_write_player(&session->door->game, player_record,
+	    player, error);
+}
+
+static bool
+drop_mines_flush(void *context, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_database_flush(&session->door->game.database, error);
+}
+
+static bool
+drop_mines_read_sector(void *context, int sector_number,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_read_sector(&session->door->game, sector_number, sector,
+	    error);
+}
+
+static bool
+drop_mines_write_sector(void *context, int sector_number,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_write_sector(&session->door->game, sector_number, sector,
+	    error);
+}
+
+static bool
+drop_mines_present(void *context, const uint8_t *text, size_t length,
+    enum yt_drop_mines_output_kind kind, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	switch (kind) {
+	case YT_DROP_MINES_NO_MINES_ROW:
+		return session_02db(session, text, length, "no sector mines",
+		    error);
+	case YT_DROP_MINES_UNION_ROW:
+		return session_02db(session, text, length,
+		    "Union sector mine refusal", error);
+	case YT_DROP_MINES_PROMPT_BLANK:
+		return session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "sector mine prompt blank", error);
+	case YT_DROP_MINES_PROMPT:
+		return session_031f(session, text, length, "sector mine prompt",
+		    error);
+	case YT_DROP_MINES_SUCCESS_BLANK:
+		session->presentation.foreground = 6.0f;
+		session->pager.foreground = 6;
+		return session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "sector mine success blank", error);
+	case YT_DROP_MINES_SUCCESS_ROW:
+		session->presentation.bold = 1.0f;
+		session->presentation.blink = 1.0f;
+		return session_02fc(session, text, length);
+	default:
+		return false;
+	}
+}
+
+static bool
+drop_mines_amount(void *context, char *response, size_t capacity,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	(void)error;
+	return session_036f(session, response, capacity);
+}
+
+static void
+drop_mines_suppress(void *context)
+{
+	struct yt_session *session = context;
+
+	session->suppress_self_mines = true;
+}
+
+static bool
+drop_mines_sound(void *context, float selector, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return session_sound(session, selector, "sector mine sound", error);
+}
+
+static bool
 command_mines(struct yt_session *session, struct yt_error *error)
 {
-	struct yt_sector sector;
-	struct yt_player persisted_player;
-	struct qb_val_result parsed;
-	enum qb_mbf_status conversion;
-	enum yt_sector_mine_admission admission;
-	char carried_text[64];
-	char prompt[160];
-	char response[160];
-	char sector_text[64];
-	char row[160];
-	float carried;
-	float amount;
-	uint8_t amount_raw[4];
+	static const struct yt_drop_mines_ops ops = {
+		drop_mines_read_player,
+		drop_mines_write_player,
+		drop_mines_flush,
+		drop_mines_read_sector,
+		drop_mines_write_sector,
+		drop_mines_present,
+		drop_mines_amount,
+		drop_mines_suppress,
+		drop_mines_sound,
+	};
+	struct yt_drop_mines_state state = {
+		.current_player_record = session->player_record,
+	};
 
-	if (!reload_player(session, error))
-		return false;
-	carried = session->player.mines;
-	if (carried < 0.0f) {
-		persisted_player = session->player;
-		persisted_player.mines = 0.0f;
-		if (!yt_game_write_player(&session->door->game,
-		    session->player_record, &persisted_player, error)
-		    || !yt_database_flush(&session->door->game.database, error))
-			return false;
-	}
-	if (carried < 1.0f)
-		return session_02db(session,
-		    (const uint8_t *)"You don't HAVE any!",
-		    strlen("You don't HAVE any!"), "no sector mines", error);
-	if (session->player.sector < 8.0f)
-		return session_02db(session,
-		    (const uint8_t *)
-		    "The Union doesnt like the home 7 sectors mined!",
-		    strlen("The Union doesnt like the home 7 sectors mined!"),
-		    "Union sector mine refusal", error);
-	if (qb_str_single(carried_text, sizeof(carried_text), carried) < 0
-	    || snprintf(prompt, sizeof(prompt),
-	    "You have%s mines. Drop how many? [0] -=>", carried_text) < 0
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "sector mine prompt blank", error)
-	    || !session_031f(session, (const uint8_t *)prompt, strlen(prompt),
-	    "sector mine prompt", error)
-	    || !session_036f(session, response, sizeof(response)))
-		return false;
-	if (response[0] == '\0')
-		amount = 0.0f;
-	else {
-		parsed = qb_val(response);
-		if (!parsed.valid || parsed.overflow) {
-			if (error != NULL) {
-				error->status = YT_RANGE;
-				(void)snprintf(error->operation,
-				    sizeof(error->operation), "%s", "mines:VAL");
-			}
-			return false;
-		}
-		amount = (float)parsed.value;
-	}
-	conversion = qb_mbf32_encode(amount, amount_raw);
-	if (conversion == QB_MBF_OVERFLOW) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			(void)snprintf(error->operation, sizeof(error->operation),
-			    "%s", "mines:amount-csng");
-		}
-		return false;
-	}
-	amount = qb_mbf32_decode(amount_raw);
-	admission = yt_sector_mine_admit(carried, amount);
-	if (admission != YT_SECTOR_MINE_ACCEPTED)
-		return true;
-	session->suppress_self_mines = true;
-	persisted_player = session->player;
-	persisted_player.mines = single_sub(carried, amount);
-	if (!yt_game_write_player(&session->door->game,
-	    session->player_record, &persisted_player, error)
-	    || !yt_database_flush(&session->door->game.database, error)
-	    || !yt_game_read_sector(&session->door->game,
-	    (int)session->player.sector, &sector, error))
-		return false;
-	sector.mines = single_add(sector.mines, amount);
-	if (!yt_game_write_sector(&session->door->game,
-	    (int)session->player.sector, &sector, error)
-	    || !yt_database_flush(&session->door->game.database, error))
-		return false;
-	session->presentation.foreground = 6.0f;
-	session->pager.foreground = 6;
-	if (qb_str_single(sector_text, sizeof(sector_text),
-	    session->player.sector) < 0
-	    || snprintf(row, sizeof(row), "Sector%s is now mined!",
-	    sector_text) < 0
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "sector mine success blank", error))
-		return false;
-	session->presentation.bold = 1.0f;
-	session->presentation.blink = 1.0f;
-	if (!session_02fc(session, (const uint8_t *)row, strlen(row)))
-		return false;
-	return session_sound(session, 4.0f,
-	    "sector mine sound", error);
+	return yt_drop_mines_run(&state, &ops, session, error);
 }
 
 static bool
