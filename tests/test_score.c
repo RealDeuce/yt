@@ -22037,6 +22037,417 @@ check_planet_updater_transaction(void)
 	return true;
 }
 
+enum movement_event {
+	MOVEMENT_GATE = 1,
+	MOVEMENT_PRESENT,
+	MOVEMENT_INPUT,
+	MOVEMENT_DANGER,
+	MOVEMENT_CLEAR_QUEUE,
+	MOVEMENT_CONFIRM,
+	MOVEMENT_FINALIZE,
+	MOVEMENT_CLEAR_SELF_MINES,
+	MOVEMENT_HYDRATE,
+	MOVEMENT_WRITE_PLAYER,
+	MOVEMENT_FLUSH,
+	MOVEMENT_CACHE,
+};
+struct movement_tape {
+	enum movement_event events[24];
+	size_t calls;
+	size_t fail_at;
+	struct yt_player gate_player;
+	struct yt_player accepted_player;
+	struct yt_player written_player;
+	bool denied;
+	bool dangerous;
+	bool confirmed;
+	bool finalizer_result;
+	const char *responses[4];
+	size_t response_count;
+	size_t response_index;
+	uint8_t rows[7][256];
+	size_t row_lengths[7];
+	bool row_seen[7];
+	float cached_target;
+};
+static bool
+movement_step(struct movement_tape *tape, enum movement_event event,
+    struct yt_error *error)
+{
+	size_t call = tape->calls++;
+
+	if (call < YT_ARRAY_LEN(tape->events))
+		tape->events[call] = event;
+	if (call != tape->fail_at)
+		return true;
+	if (error != NULL)
+		error->status = YT_IO_ERROR;
+	return false;
+}
+static void
+movement_record(struct movement_tape *tape, enum movement_event event)
+{
+	if (tape->calls < YT_ARRAY_LEN(tape->events))
+		tape->events[tape->calls] = event;
+	++tape->calls;
+}
+static bool
+movement_gate_test(void *context, int player_record, struct yt_player *player,
+    bool *denied, struct yt_error *error)
+{
+	struct movement_tape *tape = context;
+
+	if (player_record != 2 || player == NULL || denied == NULL
+	    || !movement_step(tape, MOVEMENT_GATE, error))
+		return false;
+	*player = tape->gate_player;
+	*denied = tape->denied;
+	return true;
+}
+static bool
+movement_present_test(void *context, const uint8_t *text, size_t length,
+    enum yt_movement_output_kind kind, struct yt_error *error)
+{
+	struct movement_tape *tape = context;
+
+	if ((size_t)kind >= YT_ARRAY_LEN(tape->rows)
+	    || length > sizeof(tape->rows[0])
+	    || !movement_step(tape, MOVEMENT_PRESENT, error))
+		return false;
+	if (length != 0U)
+		memcpy(tape->rows[kind], text, length);
+	tape->row_lengths[kind] = length;
+	tape->row_seen[kind] = true;
+	return true;
+}
+static bool
+movement_input_test(void *context, char *response, size_t capacity,
+    struct yt_error *error)
+{
+	struct movement_tape *tape = context;
+	const char *source;
+	size_t length;
+
+	if (tape->response_index >= tape->response_count)
+		return false;
+	source = tape->responses[tape->response_index++];
+	length = strlen(source);
+	if (length + 1U > capacity
+	    || !movement_step(tape, MOVEMENT_INPUT, error))
+		return false;
+	memcpy(response, source, length + 1U);
+	return true;
+}
+static bool
+movement_danger_test(void *context, float target, bool *dangerous,
+    struct yt_error *error)
+{
+	struct movement_tape *tape = context;
+
+	if (target != 42.0f || dangerous == NULL
+	    || !movement_step(tape, MOVEMENT_DANGER, error))
+		return false;
+	*dangerous = tape->dangerous;
+	return true;
+}
+static void
+movement_clear_queue_test(void *context)
+{
+	movement_record(context, MOVEMENT_CLEAR_QUEUE);
+}
+static bool
+movement_confirm_test(void *context, const uint8_t *prompt, size_t length,
+    bool *accepted, struct yt_error *error)
+{
+	static const uint8_t expected[] = "Move into sector 42? [y/N] ";
+	struct movement_tape *tape = context;
+
+	if (accepted == NULL || length != sizeof(expected) - 1U
+	    || memcmp(prompt, expected, sizeof(expected) - 1U) != 0
+	    || !movement_step(tape, MOVEMENT_CONFIRM, error))
+		return false;
+	*accepted = tape->confirmed;
+	return true;
+}
+static bool
+movement_finalize_test(void *context, struct yt_error *error)
+{
+	struct movement_tape *tape = context;
+
+	if (!movement_step(tape, MOVEMENT_FINALIZE, error))
+		return false;
+	return tape->finalizer_result;
+}
+static void
+movement_clear_self_mines_test(void *context)
+{
+	movement_record(context, MOVEMENT_CLEAR_SELF_MINES);
+}
+static bool
+movement_hydrate_test(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct movement_tape *tape = context;
+
+	if (player_record != 2
+	    || !movement_step(tape, MOVEMENT_HYDRATE, error))
+		return false;
+	*player = tape->accepted_player;
+	return true;
+}
+static bool
+movement_write_player_test(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct movement_tape *tape = context;
+
+	if (player_record != 2
+	    || !movement_step(tape, MOVEMENT_WRITE_PLAYER, error))
+		return false;
+	tape->written_player = *player;
+	return true;
+}
+static bool
+movement_flush_test(void *context, struct yt_error *error)
+{
+	return movement_step(context, MOVEMENT_FLUSH, error);
+}
+static bool
+movement_cache_test(void *context, int player_record, float target,
+    struct yt_error *error)
+{
+	struct movement_tape *tape = context;
+
+	if (player_record != 2 || target != 42.0f
+	    || !movement_step(tape, MOVEMENT_CACHE, error))
+		return false;
+	tape->cached_target = target;
+	return true;
+}
+static const struct yt_movement_ops movement_test_ops = {
+	movement_gate_test,
+	movement_present_test,
+	movement_input_test,
+	movement_danger_test,
+	movement_clear_queue_test,
+	movement_confirm_test,
+	movement_finalize_test,
+	movement_clear_self_mines_test,
+	movement_hydrate_test,
+	movement_write_player_test,
+	movement_flush_test,
+	movement_cache_test,
+};
+static void
+movement_fixture(struct movement_tape *tape,
+    struct yt_movement_state *state)
+{
+	memset(tape, 0, sizeof(*tape));
+	memset(state, 0, sizeof(*state));
+	tape->fail_at = SIZE_MAX;
+	tape->confirmed = true;
+	tape->finalizer_result = true;
+	tape->responses[0] = "42";
+	tape->response_count = 1U;
+	memset(tape->gate_player.record.bytes, 0xa1,
+	    sizeof(tape->gate_player.record.bytes));
+	tape->gate_player.sector = 7.0f;
+	tape->gate_player.danger_scanner = 0.0f;
+	memset(tape->accepted_player.record.bytes, 0xb2,
+	    sizeof(tape->accepted_player.record.bytes));
+	tape->accepted_player.sector = 99.0f;
+	*state = (struct yt_movement_state){
+		.current_player_record = 2,
+		.port_offset = 2055.0f,
+		.sector_offset = 51.0f,
+		.warps = {7.0f, 42.0f, 12.5f, 42.0f, 0.0f, 0.0f},
+	};
+}
+static bool
+check_movement_transaction(void)
+{
+	static const enum movement_event success_events[] = {
+		MOVEMENT_GATE,
+		MOVEMENT_PRESENT,
+		MOVEMENT_PRESENT,
+		MOVEMENT_PRESENT,
+		MOVEMENT_INPUT,
+		MOVEMENT_PRESENT,
+		MOVEMENT_FINALIZE,
+		MOVEMENT_CLEAR_SELF_MINES,
+		MOVEMENT_HYDRATE,
+		MOVEMENT_WRITE_PLAYER,
+		MOVEMENT_FLUSH,
+		MOVEMENT_CACHE,
+	};
+	static const enum movement_event danger_events[] = {
+		MOVEMENT_GATE,
+		MOVEMENT_PRESENT,
+		MOVEMENT_PRESENT,
+		MOVEMENT_PRESENT,
+		MOVEMENT_INPUT,
+		MOVEMENT_PRESENT,
+		MOVEMENT_DANGER,
+		MOVEMENT_PRESENT,
+		MOVEMENT_CLEAR_QUEUE,
+		MOVEMENT_CONFIRM,
+		MOVEMENT_FINALIZE,
+		MOVEMENT_CLEAR_SELF_MINES,
+		MOVEMENT_HYDRATE,
+		MOVEMENT_WRITE_PLAYER,
+		MOVEMENT_FLUSH,
+		MOVEMENT_CACHE,
+	};
+	static const uint8_t warp[] =
+	    "Warps lead to, 7, 42, 12.5, 42";
+	static const uint8_t destination[] = "Move to which sector? ";
+	static const uint8_t same[] =
+	    "That was quick! Felt like we didn't even move!";
+	static const uint8_t adjacent[] = "You can't get there from here.";
+	struct movement_tape tape;
+	struct yt_movement_state state;
+	struct yt_player expected;
+	struct yt_error error;
+	size_t failure;
+
+	movement_fixture(&tape, &state);
+	expected = tape.accepted_player;
+	yt_movement_player_overlay(&expected, 42.0f);
+	if (!yt_movement_run(&state, &movement_test_ops, &tape, NULL)
+	    || !state.complete || state.route != YT_MOVEMENT_MOVED
+	    || state.maximum != 2004.0f || state.target != 42.0f
+	    || !state.target_stored || state.attempts != 1U
+	    || !state.adjacent || state.matching_warp != 2U
+	    || state.danger_called || state.confirmation_read
+	    || !state.finalizer_called || !state.self_mine_suppression_cleared
+	    || !state.player_hydrated || !state.player_written
+	    || !state.player_flushed || !state.cache_updated
+	    || tape.cached_target != 42.0f
+	    || tape.calls != YT_ARRAY_LEN(success_events)
+	    || memcmp(tape.events, success_events, sizeof(success_events)) != 0
+	    || tape.row_lengths[YT_MOVEMENT_WARP_ROW] != sizeof(warp) - 1U
+	    || memcmp(tape.rows[YT_MOVEMENT_WARP_ROW], warp,
+	    sizeof(warp) - 1U) != 0
+	    || tape.row_lengths[YT_MOVEMENT_DESTINATION_PROMPT]
+	    != sizeof(destination) - 1U
+	    || memcmp(tape.rows[YT_MOVEMENT_DESTINATION_PROMPT], destination,
+	    sizeof(destination) - 1U) != 0
+	    || memcmp(tape.written_player.record.bytes, expected.record.bytes,
+	    sizeof(expected.record.bytes)) != 0)
+		return false;
+
+	for (failure = 0U; failure < YT_ARRAY_LEN(success_events); ++failure) {
+		if (success_events[failure] == MOVEMENT_CLEAR_SELF_MINES)
+			continue;
+		movement_fixture(&tape, &state);
+		tape.fail_at = failure;
+		yt_error_clear(&error);
+		if (yt_movement_run(&state, &movement_test_ops, &tape, &error)
+		    || error.status != YT_IO_ERROR || state.complete
+		    || tape.calls != failure + 1U
+		    || memcmp(tape.events, success_events,
+		    tape.calls * sizeof(success_events[0])) != 0)
+			return false;
+	}
+
+	movement_fixture(&tape, &state);
+	tape.denied = true;
+	if (!yt_movement_run(&state, &movement_test_ops, &tape, NULL)
+	    || state.route != YT_MOVEMENT_TURN_DENIED || tape.calls != 1U)
+		return false;
+
+	movement_fixture(&tape, &state);
+	tape.responses[0] = "";
+	if (!yt_movement_run(&state, &movement_test_ops, &tape, NULL)
+	    || state.route != YT_MOVEMENT_BOUNDS_CANCELLED
+	    || !state.target_stored || state.maximum != 2004.0f
+	    || tape.calls != 5U)
+		return false;
+
+	movement_fixture(&tape, &state);
+	tape.gate_player.sector = 42.0f;
+	if (!yt_movement_run(&state, &movement_test_ops, &tape, NULL)
+	    || state.route != YT_MOVEMENT_SAME_SECTOR_ROUTE
+	    || tape.calls != 6U
+	    || tape.row_lengths[YT_MOVEMENT_SAME_SECTOR] != sizeof(same) - 1U
+	    || memcmp(tape.rows[YT_MOVEMENT_SAME_SECTOR], same,
+	    sizeof(same) - 1U) != 0)
+		return false;
+
+	movement_fixture(&tape, &state);
+	tape.responses[0] = "13";
+	if (!yt_movement_run(&state, &movement_test_ops, &tape, NULL)
+	    || state.route != YT_MOVEMENT_NOT_ADJACENT_ROUTE
+	    || tape.calls != 6U
+	    || tape.row_lengths[YT_MOVEMENT_NOT_ADJACENT]
+	    != sizeof(adjacent) - 1U
+	    || memcmp(tape.rows[YT_MOVEMENT_NOT_ADJACENT], adjacent,
+	    sizeof(adjacent) - 1U) != 0)
+		return false;
+
+	movement_fixture(&tape, &state);
+	tape.responses[0] = "M";
+	tape.responses[1] = "42";
+	tape.response_count = 2U;
+	if (!yt_movement_run(&state, &movement_test_ops, &tape, NULL)
+	    || state.route != YT_MOVEMENT_MOVED || state.attempts != 2U
+	    || tape.calls != YT_ARRAY_LEN(success_events) + 2U
+	    || tape.events[5] != MOVEMENT_PRESENT
+	    || tape.events[6] != MOVEMENT_INPUT)
+		return false;
+
+	movement_fixture(&tape, &state);
+	tape.gate_player.danger_scanner = 1.0f;
+	tape.dangerous = true;
+	tape.confirmed = false;
+	if (!yt_movement_run(&state, &movement_test_ops, &tape, NULL)
+	    || state.route != YT_MOVEMENT_DANGER_DECLINED
+	    || !state.danger_called || !state.dangerous
+	    || !state.confirmation_read || state.finalizer_called
+	    || tape.calls != 10U
+	    || memcmp(tape.events, danger_events,
+	    10U * sizeof(danger_events[0])) != 0)
+		return false;
+
+	movement_fixture(&tape, &state);
+	tape.gate_player.danger_scanner = 1.0f;
+	tape.dangerous = true;
+	if (!yt_movement_run(&state, &movement_test_ops, &tape, NULL)
+	    || state.route != YT_MOVEMENT_MOVED
+	    || tape.calls != YT_ARRAY_LEN(danger_events)
+	    || memcmp(tape.events, danger_events, sizeof(danger_events)) != 0)
+		return false;
+	for (failure = 0U; failure < YT_ARRAY_LEN(danger_events); ++failure) {
+		if (danger_events[failure] == MOVEMENT_CLEAR_QUEUE
+		    || danger_events[failure] == MOVEMENT_CLEAR_SELF_MINES)
+			continue;
+		movement_fixture(&tape, &state);
+		tape.gate_player.danger_scanner = 1.0f;
+		tape.dangerous = true;
+		tape.fail_at = failure;
+		yt_error_clear(&error);
+		if (yt_movement_run(&state, &movement_test_ops, &tape, &error)
+		    || error.status != YT_IO_ERROR || state.complete
+		    || tape.calls != failure + 1U
+		    || memcmp(tape.events, danger_events,
+		    tape.calls * sizeof(danger_events[0])) != 0)
+			return false;
+	}
+
+	movement_fixture(&tape, &state);
+	tape.finalizer_result = false;
+	yt_error_clear(&error);
+	if (!yt_movement_run(&state, &movement_test_ops, &tape, &error)
+	    || state.route != YT_MOVEMENT_FINALIZER_TERMINAL
+	    || !state.finalizer_called || state.self_mine_suppression_cleared
+	    || tape.calls != 7U)
+		return false;
+
+	movement_fixture(&tape, &state);
+	return !yt_movement_run(NULL, &movement_test_ops, &tape, NULL)
+	    && !yt_movement_run(&state, NULL, &tape, NULL);
+}
+
 enum main_fighters_event {
 	MAIN_FIGHTERS_PRESENT = 1,
 	MAIN_FIGHTERS_HYDRATE,
@@ -24614,6 +25025,8 @@ main(void)
 		return fail("salvage cargo sampler differs");
 	if (!check_salvage_transaction())
 		return fail("ship salvage transaction differs");
+	if (!check_movement_transaction())
+		return fail("ordinary movement transaction differs");
 	if (!check_main_fighters_transaction())
 		return fail("main sector-fighter transaction differs");
 	if (!check_genesis_transaction())

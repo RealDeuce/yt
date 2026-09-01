@@ -2329,6 +2329,78 @@ bool yt_movement_warp_row(const float warps[6], uint8_t *row,
 bool yt_movement_confirmation_prompt(float target, uint8_t *row,
     size_t capacity, size_t *length);
 void yt_movement_player_overlay(struct yt_player *player, float target);
+enum yt_movement_output_kind {
+	YT_MOVEMENT_WARP_ROW,
+	YT_MOVEMENT_POST_WARP_BLANK,
+	YT_MOVEMENT_DESTINATION_PROMPT,
+	YT_MOVEMENT_SAME_SECTOR,
+	YT_MOVEMENT_NOT_ADJACENT,
+	YT_MOVEMENT_ACCEPTED_BLANK,
+	YT_MOVEMENT_CONFIRMATION_BLANK,
+};
+enum yt_movement_route {
+	YT_MOVEMENT_INCOMPLETE,
+	YT_MOVEMENT_TURN_DENIED,
+	YT_MOVEMENT_BOUNDS_CANCELLED,
+	YT_MOVEMENT_SAME_SECTOR_ROUTE,
+	YT_MOVEMENT_NOT_ADJACENT_ROUTE,
+	YT_MOVEMENT_DANGER_DECLINED,
+	YT_MOVEMENT_FINALIZER_TERMINAL,
+	YT_MOVEMENT_MOVED,
+};
+struct yt_movement_state {
+	int current_player_record;
+	float port_offset;
+	float sector_offset;
+	float warps[6];
+	struct yt_player player;
+	struct yt_player accepted_player;
+	float maximum;
+	float target;
+	uint8_t target_raw[4];
+	size_t attempts;
+	size_t matching_warp;
+	bool turn_gate_called;
+	bool turn_denied;
+	bool target_stored;
+	bool adjacent;
+	bool danger_called;
+	bool dangerous;
+	bool confirmation_read;
+	bool finalizer_called;
+	bool self_mine_suppression_cleared;
+	bool player_hydrated;
+	bool player_written;
+	bool player_flushed;
+	bool cache_updated;
+	bool complete;
+	enum yt_movement_route route;
+};
+struct yt_movement_ops {
+	bool (*turn_gate)(void *context, int player_record,
+	    struct yt_player *player, bool *denied, struct yt_error *error);
+	bool (*present)(void *context, const uint8_t *text, size_t length,
+	    enum yt_movement_output_kind kind, struct yt_error *error);
+	bool (*input)(void *context, char *response, size_t capacity,
+	    struct yt_error *error);
+	bool (*danger)(void *context, float target, bool *dangerous,
+	    struct yt_error *error);
+	void (*clear_queue)(void *context);
+	bool (*confirm)(void *context, const uint8_t *prompt, size_t length,
+	    bool *accepted, struct yt_error *error);
+	bool (*finalize)(void *context, struct yt_error *error);
+	void (*clear_self_mine_suppression)(void *context);
+	bool (*hydrate)(void *context, int player_record,
+	    struct yt_player *player, struct yt_error *error);
+	bool (*write_player)(void *context, int player_record,
+	    struct yt_player *player, struct yt_error *error);
+	bool (*flush_player)(void *context, struct yt_error *error);
+	bool (*update_cache)(void *context, int player_record, float target,
+	    struct yt_error *error);
+};
+bool yt_movement_run(struct yt_movement_state *state,
+	const struct yt_movement_ops *ops, void *context,
+	struct yt_error *error);
 size_t yt_port_trade_schedule(const float factors[3], size_t order[3]);
 int yt_computer_selector_position(const char *command);
 void yt_trade_treasury_overlay(struct yt_port *port, float receipt);

@@ -4364,106 +4364,179 @@ direct_emergency_warp(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
+movement_turn_gate(void *context, int player_record, struct yt_player *player,
+    bool *denied, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	if (player_record != session->player_record || player == NULL
+	    || !fresh_no_turn_gate(session, denied, error))
+		return false;
+	*player = session->player;
+	return true;
+}
+
+static bool
+movement_present(void *context, const uint8_t *text, size_t length,
+    enum yt_movement_output_kind kind, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	switch (kind) {
+	case YT_MOVEMENT_WARP_ROW:
+		return session_0317(session, text, length, "movement warp row",
+		    error);
+	case YT_MOVEMENT_POST_WARP_BLANK:
+		return session_present_text(session, NULL, 0U,
+		    SESSION_PRESENT_LINE, "movement post-warp blank", error);
+	case YT_MOVEMENT_DESTINATION_PROMPT:
+		return session_031f(session, text, length,
+		    "movement destination prompt", error);
+	case YT_MOVEMENT_SAME_SECTOR:
+		return session_02db(session, text, length,
+		    "movement same-sector row", error);
+	case YT_MOVEMENT_NOT_ADJACENT:
+		return session_02db(session, text, length,
+		    "movement not-adjacent row", error);
+	case YT_MOVEMENT_ACCEPTED_BLANK:
+		return session_present_text(session, NULL, 0U,
+		    SESSION_PRESENT_LINE, "movement accepted blank", error);
+	case YT_MOVEMENT_CONFIRMATION_BLANK:
+		return session_present_text(session, NULL, 0U,
+		    SESSION_PRESENT_LINE, "danger confirmation blank", error);
+	default:
+		return false;
+	}
+}
+
+static bool
+movement_input(void *context, char *response, size_t capacity,
+    struct yt_error *error)
+{
+	(void)error;
+	return session_036f(context, response, capacity);
+}
+
+static bool
+movement_danger(void *context, float target, bool *dangerous,
+    struct yt_error *error)
+{
+	return dangerous_destination(context, target, dangerous, error);
+}
+
+static void
+movement_clear_queue(void *context)
+{
+	clear_queue(context);
+}
+
+static bool
+movement_confirm(void *context, const uint8_t *prompt, size_t length,
+    bool *accepted, struct yt_error *error)
+{
+	enum yt_yes_no_answer answer;
+
+	if (accepted == NULL
+	    || !session_a8d2(context, prompt, length, &answer, error))
+		return false;
+	*accepted = answer == YT_YES_NO_YES;
+	return true;
+}
+
+static bool
+movement_finalize(void *context, struct yt_error *error)
+{
+	return finalize_action(context, 1.0f, error);
+}
+
+static void
+movement_clear_self_mines(void *context)
+{
+	struct yt_session *session = context;
+
+	session->suppress_self_mines = false;
+}
+
+static bool
+movement_hydrate(void *context, int player_record, struct yt_player *player,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	if (player_record != session->player_record
+	    || !reload_player(session, error))
+		return false;
+	*player = session->player;
+	return true;
+}
+
+static bool
+movement_write_player(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	if (player_record != session->player_record)
+		return false;
+	session->player = *player;
+	return yt_database_write(&session->door->game.database,
+	    (size_t)player_record, &session->player.record, error);
+}
+
+static bool
+movement_flush_player(void *context, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_database_flush(&session->door->game.database, error);
+}
+
+static bool
+movement_update_cache(void *context, int player_record, float target,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	(void)error;
+	if (player_record < 0
+	    || (size_t)player_record >= YT_ARRAY_LEN(session->sector_cache))
+		return false;
+	session->sector_cache[player_record] = target;
+	return true;
+}
+
+static bool
 command_move(struct yt_session *session, bool *moved,
     struct yt_error *error)
 {
-	static const uint8_t prompt[] = "Move to which sector? ";
-	static const uint8_t same_sector[] =
-	    "That was quick! Felt like we didn't even move!";
-	static const uint8_t not_adjacent[] =
-	    "You can't get there from here.";
-	char line[YT_COMMAND_SIZE];
-	float target;
-	float maximum;
-	struct qb_val_result parsed;
-	uint8_t row[256];
-	size_t row_length;
-	size_t slot;
-	bool adjacent = false;
-	bool danger;
-	bool denied;
+	static const struct yt_movement_ops ops = {
+		movement_turn_gate,
+		movement_present,
+		movement_input,
+		movement_danger,
+		movement_clear_queue,
+		movement_confirm,
+		movement_finalize,
+		movement_clear_self_mines,
+		movement_hydrate,
+		movement_write_player,
+		movement_flush_player,
+		movement_update_cache,
+	};
+	struct yt_movement_state state;
 
 	if (moved == NULL)
 		return false;
 	*moved = false;
-	if (!fresh_no_turn_gate(session, &denied, error))
+	state = (struct yt_movement_state){
+		.current_player_record = session->player_record,
+		.port_offset = session->door->game.config.port_offset,
+		.sector_offset = session->door->game.config.sector_offset,
+	};
+	memcpy(state.warps, session->current_warps, sizeof(state.warps));
+	if (!yt_movement_run(&state, &ops, session, error))
 		return false;
-	if (denied)
-		return true;
-	if (!yt_movement_warp_row(session->current_warps, row,
-	    sizeof(row), &row_length)) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			(void)snprintf(error->operation, sizeof(error->operation), "%s",
-			    "movement warp row");
-		}
-		return false;
-	}
-	if (!session_0317(session, row, row_length, "movement warp row", error)
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "movement post-warp blank", error))
-		return false;
-	for (;;) {
-		if (!session_031f(session, prompt, sizeof(prompt) - 1U,
-		    "movement destination prompt", error)
-		    || !session_036f(session, line, sizeof(line)))
-			return false;
-		if (strcmp(line, "M") == 0)
-			continue;
-		parsed = qb_val(line);
-		target = (float)(parsed.valid ? parsed.value : 0.0);
-		break;
-	}
-	maximum = single_sub(session->door->game.config.port_offset,
-	    session->door->game.config.sector_offset);
-	if (target < 1.0f || target > maximum)
-		return true;
-	if (target == session->player.sector) {
-		return session_02db(session, same_sector,
-		    sizeof(same_sector) - 1U, "movement same-sector row", error);
-	}
-	for (slot = 0; slot < YT_ARRAY_LEN(session->current_warps); ++slot) {
-		if (session->current_warps[slot] == target) {
-			adjacent = true;
-			break;
-		}
-	}
-	if (!adjacent)
-		return session_02db(session, not_adjacent,
-		    sizeof(not_adjacent) - 1U, "movement not-adjacent row", error);
-	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "movement accepted blank", error))
-		return false;
-	if (session->player.danger_scanner != 0.0f) {
-		if (!dangerous_destination(session, target, &danger, error))
-			return false;
-		if (danger) {
-			enum yt_yes_no_answer answer;
-
-			if (!session_present_text(session, NULL, 0,
-			    SESSION_PRESENT_LINE, "danger confirmation blank", error))
-				return false;
-			clear_queue(session);
-			if (!yt_movement_confirmation_prompt(target, row,
-			    sizeof(row), &row_length)
-			    || !session_a8d2(session, row, row_length, &answer, error))
-				return false;
-			if (answer != YT_YES_NO_YES)
-				return true;
-		}
-	}
-	if (!finalize_action(session, 1.0f, error))
-		return error == NULL || error->status == YT_OK;
-	session->suppress_self_mines = false;
-	if (!reload_player(session, error))
-		return false;
-	yt_movement_player_overlay(&session->player, target);
-	if (!yt_database_write(&session->door->game.database,
-	    (size_t)session->player_record, &session->player.record, error)
-	    || !yt_database_flush(&session->door->game.database, error))
-		return false;
-	session->sector_cache[session->player_record] = target;
-	*moved = true;
+	*moved = state.route == YT_MOVEMENT_MOVED;
 	return true;
 }
 
