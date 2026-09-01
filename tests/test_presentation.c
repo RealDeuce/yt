@@ -21260,6 +21260,106 @@ test_computer_autopilot_destination_terminal_presentation(void)
 }
 
 static void
+test_computer_path_destination_terminal_presentation(void)
+{
+	static const uint8_t start_prompt[] =
+	    "Enter start for path search? ";
+	static const uint8_t destination_prompt[] =
+	    "What sector do you want to go to? ";
+	static const uint8_t prefix[] =
+	    "\r\nEnter start for path search? 1\r\n"
+	    "\r\nWhat sector do you want to go to? ";
+	static const uint8_t inactivity[] =
+	    "\r\n\aUSER FELL ASLEEP!\n\r";
+	static const uint8_t notice_before[] = "\r\n";
+	static const uint8_t session_limit[] =
+	    "\r\n\a\a\aTIME LIMIT EXCEEDED!\a\a\a\n\r";
+	static const uint8_t session_after[] =
+	    "\r\n\a\a\aTIME LIMIT EXCEEDED!\a\a\a";
+	static const struct {
+		enum yt_ab36_terminal_kind kind;
+		int carrier_failure;
+		const uint8_t *suffix;
+		size_t suffix_length;
+		bool succeeds;
+	} cases[] = {
+		{YT_AB36_TERMINAL_INACTIVITY, 0, inactivity,
+		    sizeof(inactivity) - 1U, true},
+		{YT_AB36_TERMINAL_INACTIVITY, 1, notice_before,
+		    sizeof(notice_before) - 1U, false},
+		{YT_AB36_TERMINAL_SESSION_LIMIT, 0, session_limit,
+		    sizeof(session_limit) - 1U, true},
+		{YT_AB36_TERMINAL_SESSION_LIMIT, 2, session_after,
+		    sizeof(session_after) - 1U, false},
+	};
+	size_t pass;
+
+	for (pass = 0U; pass <= YT_ARRAY_LEN(cases); ++pass) {
+		struct yt_present_state current = state(true);
+		struct yt_present_result result;
+		struct yt_pager_state pager;
+		struct pager_capture capture;
+		struct computer_port_terminal_join join;
+		char accumulator[80];
+		bool running = true;
+		bool terminated = false;
+		bool result_ok;
+
+		current.foreground = 1.0f;
+		current.cached_foreground = 1.0f;
+		memset(&pager, 0, sizeof(pager));
+		pager.foreground = 1;
+		memset(&capture, 0, sizeof(capture));
+		memset(accumulator, 0, sizeof(accumulator));
+		CHECK(yt_present_line(NULL, 0U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager.newline_flag = 1.0f;
+		pager_fixture_b05d(&pager, &current, start_prompt,
+		    sizeof(start_prompt) - 1U, &capture);
+		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+		CHECK(yt_present_editor_echo((const uint8_t *)"1", 1U,
+		    (const uint8_t *)"1", 1U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_line(NULL, 0U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_line(NULL, 0U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager.newline_flag = 1.0f;
+		pager_fixture_b05d(&pager, &current, destination_prompt,
+		    sizeof(destination_prompt) - 1U, &capture);
+		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+		CHECK(capture.remote_length == sizeof(prefix) - 1U
+		    && memcmp(capture.remote, prefix, sizeof(prefix) - 1U) == 0
+		    && pager.line_count == 0.0f
+		    && pager.newline_flag == 0.0f);
+		if (pass == YT_ARRAY_LEN(cases))
+			continue;
+		join.current = &current;
+		join.pager = &pager;
+		join.capture = &capture;
+		join.running = &running;
+		join.terminated = &terminated;
+		join.notice_carrier_failure = cases[pass].carrier_failure;
+		join.closed = false;
+		result_ok = yt_input_ab36_terminal_run(cases[pass].kind,
+		    &running, &terminated, computer_port_terminal_notice,
+		    computer_port_terminal_close, &join);
+		CHECK(result_ok == cases[pass].succeeds
+		    && capture.remote_length == sizeof(prefix) - 1U
+		    + cases[pass].suffix_length
+		    && memcmp(capture.remote + sizeof(prefix) - 1U,
+		    cases[pass].suffix, cases[pass].suffix_length) == 0
+		    && !running && terminated && join.closed
+		    && pager.line_count == (cases[pass].succeeds ? 1.0f : 0.0f)
+		    && pager.newline_flag == 0.0f && accumulator[0] == '\0');
+	}
+}
+
+static void
 test_computer_autopilot_presentation(void)
 {
 	static const uint8_t destination_prompt[] =
@@ -23378,6 +23478,7 @@ main(void)
 	test_computer_path_presentation();
 	test_computer_path_start_terminal_presentation();
 	test_computer_autopilot_destination_terminal_presentation();
+	test_computer_path_destination_terminal_presentation();
 	test_computer_autopilot_presentation();
 	test_computer_autopilot_alternate_presentation();
 	test_computer_autopilot_confirmation_terminal_presentation();
