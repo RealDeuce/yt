@@ -7316,71 +7316,122 @@ ordinary_commerce_foreground(void *context, float foreground)
 }
 
 static bool
+docking_front_present(void *context, const uint8_t *text, size_t length,
+    enum yt_port_docking_output_kind kind, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	switch (kind) {
+	case YT_PORT_DOCKING_LABEL:
+		return session_02fc(session, text, length);
+	case YT_PORT_DOCKING_NO_PORT:
+		return session_02db(session, text, length,
+		    "port docking no port", error);
+	case YT_PORT_DOCKING_LEADING_BLANK:
+		return session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "port docking leading blank", error);
+	case YT_PORT_DOCKING_PREFIX:
+		return session_031f(session, text, length,
+		    "port docking prelude", error);
+	default:
+		return false;
+	}
+}
+
+static bool
+docking_front_gate(void *context, bool *denied, float *current_sector,
+    float *sector_record_expression, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	if (!fresh_no_turn_gate(session, denied, error))
+		return false;
+	*current_sector = session->player.sector;
+	*sector_record_expression = session->current_sector_record;
+	return true;
+}
+
+static bool
+docking_front_read_sector(void *context, uint32_t physical_record,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct yt_session *session = context;
+	struct yt_record record;
+
+	if (!yt_database_read(&session->door->game.database,
+	    (size_t)physical_record, &record, error))
+		return false;
+	yt_sector_decode(sector, &record);
+	return true;
+}
+
+static bool
+docking_front_finalize(void *context, bool *returned, float *current_sector,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+	bool ok = finalize_action(session, 1.0f, error);
+
+	*current_sector = session->player.sector;
+	if (ok) {
+		*returned = true;
+		return true;
+	}
+	if (error == NULL || error->status == YT_OK) {
+		*returned = false;
+		return true;
+	}
+	return false;
+}
+
+static bool
+docking_front_earth(void *context, struct yt_error *error)
+{
+	return earth_store(context, error);
+}
+
+static bool
+docking_front_ordinary(void *context, int sector_number,
+    struct yt_error *error)
+{
+	static const struct yt_ordinary_commerce_ops ops = {
+		ordinary_commerce_update,
+		ordinary_commerce_report,
+		ordinary_commerce_trade,
+		commodity_trade_read_player,
+		ordinary_commerce_present,
+		ordinary_commerce_foreground,
+	};
+	struct yt_session *session = context;
+	struct yt_ordinary_commerce_state commerce;
+
+	memset(&commerce, 0, sizeof(commerce));
+	commerce.sector_number = sector_number;
+	commerce.current_player_record = (uint32_t)session->player_record;
+	commerce.first_name =
+	    (const uint8_t *)session->door->identity.real_first;
+	commerce.first_name_length = strlen(session->door->identity.real_first);
+	return yt_ordinary_commerce_run(&commerce, &ops, session, error);
+}
+
+static bool
 command_trade(struct yt_session *session, struct yt_error *error)
 {
-	static const uint8_t heading[] = "<Port>";
-	static const uint8_t no_port[] = "No port here!";
-	static const uint8_t docking[] = "Docking, ";
-	struct yt_sector gate_sector;
-	struct yt_port selected_port;
-	struct yt_ordinary_commerce_state commerce;
-	float selected_expression;
-	uint32_t selected_physical_record;
-	bool denied;
+	static const struct yt_port_docking_ops ops = {
+		docking_front_present,
+		ordinary_commerce_foreground,
+		docking_front_gate,
+		docking_front_read_sector,
+		docking_front_finalize,
+		commodity_trade_read_port,
+		docking_front_earth,
+		docking_front_ordinary,
+	};
+	struct yt_port_docking_state state;
 
-	if (!session_02fc(session, heading, sizeof(heading) - 1U))
-		return false;
-	session->presentation.foreground = 3.0f;
-	session->pager.foreground = 3;
-	if (!fresh_no_turn_gate(session, &denied, error))
-		return false;
-	if (denied)
-		return true;
-	if (!yt_game_read_sector(&session->door->game,
-	    (int)session->player.sector, &gate_sector, error))
-		return false;
-	selected_expression = yt_port_selected_expression(
-	    session->door->game.config.port_offset, gate_sector.port);
-	if (yt_port_link_missing(gate_sector.port))
-		return session_02db(session, no_port, sizeof(no_port) - 1U,
-		    "port docking no port", error);
-	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "port docking leading blank", error)
-	    || !session_031f(session, docking, sizeof(docking) - 1U,
-	    "port docking prelude", error))
-		return false;
-	if (!finalize_action(session, 1.0f, error))
-		return error == NULL || error->status == YT_OK;
-	selected_physical_record = qb_brun_random_record_number(
-	    selected_expression);
-	if (selected_physical_record == 0U)
-		return port_report_failure(error,
-		    "port docking selected record conversion");
-	if (!commodity_trade_read_port(session, selected_physical_record,
-	    &selected_port, error))
-		return false;
-	(void)selected_port;
-	if (session->player.sector == 1.0f)
-		return earth_store(session, error);
-	{
-		static const struct yt_ordinary_commerce_ops ops = {
-			ordinary_commerce_update,
-			ordinary_commerce_report,
-			ordinary_commerce_trade,
-			commodity_trade_read_player,
-			ordinary_commerce_present,
-			ordinary_commerce_foreground,
-		};
-
-		memset(&commerce, 0, sizeof(commerce));
-		commerce.sector_number = (int)session->player.sector;
-		commerce.current_player_record = (uint32_t)session->player_record;
-		commerce.first_name =
-		    (const uint8_t *)session->door->identity.real_first;
-		commerce.first_name_length = strlen(
-		    session->door->identity.real_first);
-		return yt_ordinary_commerce_run(&commerce, &ops, session, error);
-	}
+	memset(&state, 0, sizeof(state));
+	state.port_offset = session->door->game.config.port_offset;
+	return yt_port_docking_run(&state, &ops, session, error);
 }
 
 static bool

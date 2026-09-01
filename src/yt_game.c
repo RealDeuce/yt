@@ -8552,6 +8552,125 @@ yt_ordinary_commerce_run(struct yt_ordinary_commerce_state *state,
 	return true;
 }
 
+bool
+yt_port_docking_run(struct yt_port_docking_state *state,
+    const struct yt_port_docking_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t label[] = "<Port>";
+	static const uint8_t no_port[] = "No port here!";
+	static const uint8_t docking[] = "Docking, ";
+	bool returned;
+
+	if (state == NULL || ops == NULL || ops->present == NULL
+	    || ops->set_foreground == NULL || ops->turn_gate == NULL
+	    || ops->read_sector == NULL || ops->finalize == NULL
+	    || ops->read_port == NULL || ops->earth == NULL
+	    || ops->ordinary == NULL)
+		return startup_configuration_error(error, YT_INVALID,
+		    "port docking arguments");
+	state->gate_sector = 0.0f;
+	state->gate_sector_record_expression = 0.0f;
+	state->gate_sector_physical_record = 0U;
+	memset(&state->sector, 0, sizeof(state->sector));
+	state->logical_port = 0.0f;
+	state->selected_port_expression = 0.0f;
+	state->selected_port_physical_record = 0U;
+	memset(&state->selected_port, 0, sizeof(state->selected_port));
+	state->post_finalizer_sector = 0.0f;
+	state->label_presented = false;
+	state->foreground_selected = false;
+	state->gate_complete = false;
+	state->gate_denied = false;
+	state->sector_read = false;
+	state->no_port_presented = false;
+	state->docking_blank_presented = false;
+	state->docking_prefix_presented = false;
+	state->finalizer_complete = false;
+	state->selected_port_read = false;
+	state->child_complete = false;
+	state->complete = false;
+	state->route = YT_PORT_DOCKING_INCOMPLETE;
+
+	if (!ops->present(context, label, sizeof(label) - 1U,
+	    YT_PORT_DOCKING_LABEL, error))
+		return false;
+	state->label_presented = true;
+	ops->set_foreground(context, 3.0f);
+	state->foreground_selected = true;
+	if (!ops->turn_gate(context, &state->gate_denied,
+	    &state->gate_sector, &state->gate_sector_record_expression, error))
+		return false;
+	state->gate_complete = true;
+	if (state->gate_denied) {
+		state->route = YT_PORT_DOCKING_GATE_DENIED;
+		state->complete = true;
+		return true;
+	}
+	state->gate_sector_physical_record = qb_brun_random_record_number(
+	    state->gate_sector_record_expression);
+	if (state->gate_sector_physical_record == 0U)
+		return startup_configuration_error(error, YT_RANGE,
+		    "port docking sector record conversion");
+	if (!ops->read_sector(context, state->gate_sector_physical_record,
+	    &state->sector, error))
+		return false;
+	state->sector_read = true;
+	state->logical_port = state->sector.port;
+	state->selected_port_expression = yt_port_selected_expression(
+	    state->port_offset, state->logical_port);
+	if (yt_port_link_missing(state->logical_port)) {
+		if (!ops->present(context, no_port, sizeof(no_port) - 1U,
+		    YT_PORT_DOCKING_NO_PORT, error))
+			return false;
+		state->no_port_presented = true;
+		state->route = YT_PORT_DOCKING_NO_PORT_ROUTE;
+		state->complete = true;
+		return true;
+	}
+	if (!ops->present(context, NULL, 0U,
+	    YT_PORT_DOCKING_LEADING_BLANK, error))
+		return false;
+	state->docking_blank_presented = true;
+	if (!ops->present(context, docking, sizeof(docking) - 1U,
+	    YT_PORT_DOCKING_PREFIX, error))
+		return false;
+	state->docking_prefix_presented = true;
+	returned = false;
+	if (!ops->finalize(context, &returned,
+	    &state->post_finalizer_sector, error))
+		return false;
+	state->finalizer_complete = true;
+	if (!returned) {
+		state->route = YT_PORT_DOCKING_FINALIZER_TERMINAL;
+		state->complete = true;
+		return true;
+	}
+	state->selected_port_physical_record = qb_brun_random_record_number(
+	    state->selected_port_expression);
+	if (state->selected_port_physical_record == 0U)
+		return startup_configuration_error(error, YT_RANGE,
+		    "port docking selected record conversion");
+	if (!ops->read_port(context, state->selected_port_physical_record,
+	    &state->selected_port, error))
+		return false;
+	state->selected_port_read = true;
+	if (state->post_finalizer_sector == 1.0f) {
+		if (!ops->earth(context, error))
+			return false;
+		state->route = YT_PORT_DOCKING_EARTH;
+	}
+	else {
+		if (!ops->ordinary(context,
+		    (int)state->post_finalizer_sector, error))
+			return false;
+		state->route = YT_PORT_DOCKING_ORDINARY;
+	}
+	state->child_complete = true;
+	state->complete = true;
+	return true;
+}
+
 size_t
 yt_port_trade_schedule(const float factors[3], size_t order[3])
 {
