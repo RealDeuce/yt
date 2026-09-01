@@ -23260,6 +23260,23 @@ check_port_docking_transaction(void)
 	    || tape.events[tape.event_count - 1U] != PORT_DOCKING_FINALIZE)
 		return false;
 
+	/* The SINGLE add faults before the zero-link test and turn finalizer. */
+	port_docking_fixture(&tape, &state);
+	state.port_offset = qb_mbf32_decode(
+	    (const uint8_t[]){0xff, 0xff, 0x7f, 0xff});
+	tape.sector.port = state.port_offset;
+	yt_error_clear(&error);
+	if (yt_port_docking_run(&state, &port_docking_test_ops, &tape, &error)
+	    || error.status != YT_RANGE
+	    || strcmp(error.operation,
+	    "port docking selected expression add") != 0
+	    || !state.sector_read || state.no_port_presented
+	    || state.docking_blank_presented || state.finalizer_complete
+	    || state.selected_port_read
+	    || tape.event_count != 4U
+	    || tape.events[3] != PORT_DOCKING_READ_SECTOR)
+		return false;
+
 	/* The initial sector GET uses the gate hydrator's cached expression. */
 	port_docking_fixture(&tape, &state);
 	tape.gate_sector_record = 0.5f;

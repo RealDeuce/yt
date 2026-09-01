@@ -8632,6 +8632,17 @@ yt_port_docking_run(struct yt_port_docking_state *state,
 	state->logical_port = state->sector.port;
 	state->selected_port_expression = yt_port_selected_expression(
 	    state->port_offset, state->logical_port);
+	{
+		uint8_t selected_raw[4];
+		enum qb_mbf_status status = qb_mbf32_encode(
+		    state->selected_port_expression, selected_raw);
+
+		if (status == QB_MBF_OVERFLOW)
+			return startup_configuration_error(error, YT_RANGE,
+			    "port docking selected expression add");
+		state->selected_port_expression = status == QB_MBF_UNDERFLOW
+		    ? 0.0f : qb_mbf32_decode(selected_raw);
+	}
 	if (yt_port_link_missing(state->logical_port)) {
 		if (!ops->present(context, no_port, sizeof(no_port) - 1U,
 		    YT_PORT_DOCKING_NO_PORT, error))
