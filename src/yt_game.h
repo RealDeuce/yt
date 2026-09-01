@@ -517,6 +517,23 @@ enum yt_hostile_surrender_route {
 	YT_HOSTILE_SURRENDER_QUIET,
 };
 
+enum yt_hostile_surrender_answer {
+	YT_HOSTILE_SURRENDER_ANSWER_NO,
+	YT_HOSTILE_SURRENDER_ANSWER_YES,
+	YT_HOSTILE_SURRENDER_ANSWER_EMPTY,
+};
+
+enum yt_hostile_surrender_output_kind {
+	YT_HOSTILE_SURRENDER_RADIO_ROW,
+	YT_HOSTILE_SURRENDER_CAPTAIN_ROW,
+	YT_HOSTILE_SURRENDER_WISH_ROW,
+	YT_HOSTILE_SURRENDER_PROMPT_BLANK,
+	YT_HOSTILE_SURRENDER_JOINED_ROW,
+	YT_HOSTILE_SURRENDER_COUNT_ROW,
+	YT_HOSTILE_SURRENDER_XANNOR_REFUSAL_ROW,
+	YT_HOSTILE_SURRENDER_MERCENARY_REFUSAL_ROW,
+};
+
 enum yt_bribe_forced_admission {
 	YT_BRIBE_FORCED_FATAL,
 	YT_BRIBE_FORCED_LESS_THAN_ONE,
@@ -2180,6 +2197,53 @@ bool yt_radio_player_prompt(const struct yt_player *player, uint8_t *prompt,
     size_t capacity, size_t *length, struct yt_error *error);
 bool yt_direct_attack_radio_text(const uint8_t *name, size_t name_length,
     double defender_loss, uint8_t *text, size_t capacity, size_t *length);
+
+struct yt_hostile_surrender_state {
+	int current_player_record;
+	float old_owner;
+	double attacker_loss;
+	double defender_loss;
+	double deployed_fighters;
+	const uint8_t *cached_player_name;
+	size_t cached_player_name_length;
+	const uint8_t *real_first_name;
+	size_t real_first_name_length;
+	struct yt_player current;
+	double surrendered_fighters;
+	double ship_fighters;
+	double deployed_remaining;
+	float fighter_owner;
+	enum yt_hostile_surrender_route owner_route;
+	bool checked;
+	bool accepted;
+	bool complete;
+};
+
+typedef bool (*yt_hostile_surrender_read_fn)(void *context,
+    int player_record, struct yt_player *player, struct yt_error *error);
+typedef bool (*yt_hostile_surrender_present_fn)(void *context,
+    const uint8_t *text, size_t length,
+    enum yt_hostile_surrender_output_kind kind, struct yt_error *error);
+typedef bool (*yt_hostile_surrender_sound_fn)(void *context, float selector,
+    struct yt_error *error);
+typedef bool (*yt_hostile_surrender_prompt_fn)(void *context,
+    const uint8_t *prompt, size_t length,
+    enum yt_hostile_surrender_answer *answer, struct yt_error *error);
+typedef bool (*yt_hostile_surrender_news_fn)(void *context,
+    const uint8_t *text, size_t length, struct yt_error *error);
+
+struct yt_hostile_surrender_ops {
+	yt_hostile_surrender_read_fn read_player;
+	yt_hostile_surrender_present_fn present;
+	yt_hostile_surrender_sound_fn sound;
+	yt_hostile_surrender_prompt_fn prompt;
+	yt_hostile_surrender_news_fn append_news;
+};
+
+bool yt_hostile_attack_surrender_run(
+    struct yt_hostile_surrender_state *state,
+    const struct yt_hostile_surrender_ops *ops, void *context,
+    struct yt_error *error);
 bool yt_direct_attack_team_row(const uint8_t *name, size_t name_length,
     uint8_t *row, size_t capacity, size_t *length);
 bool yt_direct_attack_candidate_prompt(const uint8_t *name,

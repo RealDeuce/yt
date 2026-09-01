@@ -16384,6 +16384,303 @@ check_player_name_match(void)
 	return true;
 }
 
+enum hostile_surrender_event {
+	HOSTILE_SURRENDER_READ,
+	HOSTILE_SURRENDER_RADIO,
+	HOSTILE_SURRENDER_SOUND_FOUR,
+	HOSTILE_SURRENDER_CAPTAIN,
+	HOSTILE_SURRENDER_WISH,
+	HOSTILE_SURRENDER_BLANK,
+	HOSTILE_SURRENDER_PROMPT,
+	HOSTILE_SURRENDER_JOINED,
+	HOSTILE_SURRENDER_SOUND_ONE,
+	HOSTILE_SURRENDER_NEWS,
+	HOSTILE_SURRENDER_COUNT,
+	HOSTILE_SURRENDER_XANNOR,
+	HOSTILE_SURRENDER_MERCENARY,
+	HOSTILE_SURRENDER_SOUND_FIVE,
+};
+
+struct hostile_surrender_tape {
+	struct yt_player player;
+	enum hostile_surrender_event events[16];
+	size_t calls;
+	size_t fail_at;
+	enum yt_hostile_surrender_answer answer;
+	uint8_t rows[8][384];
+	size_t row_lengths[8];
+	uint8_t news[384];
+	size_t news_length;
+};
+
+static bool
+hostile_surrender_event(struct hostile_surrender_tape *tape,
+    enum hostile_surrender_event event, struct yt_error *error)
+{
+	size_t call = tape->calls++;
+
+	if (call < YT_ARRAY_LEN(tape->events))
+		tape->events[call] = event;
+	if (call != tape->fail_at)
+		return true;
+	if (error != NULL) {
+		error->status = YT_IO_ERROR;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    "hostile surrender injected failure");
+	}
+	return false;
+}
+
+static bool
+hostile_surrender_read(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct hostile_surrender_tape *tape = context;
+
+	if (player_record != 2
+	    || !hostile_surrender_event(tape, HOSTILE_SURRENDER_READ, error))
+		return false;
+	*player = tape->player;
+	return true;
+}
+
+static bool
+hostile_surrender_present(void *context, const uint8_t *text, size_t length,
+    enum yt_hostile_surrender_output_kind kind, struct yt_error *error)
+{
+	static const enum hostile_surrender_event events[] = {
+		HOSTILE_SURRENDER_RADIO,
+		HOSTILE_SURRENDER_CAPTAIN,
+		HOSTILE_SURRENDER_WISH,
+		HOSTILE_SURRENDER_BLANK,
+		HOSTILE_SURRENDER_JOINED,
+		HOSTILE_SURRENDER_COUNT,
+		HOSTILE_SURRENDER_XANNOR,
+		HOSTILE_SURRENDER_MERCENARY,
+	};
+	struct hostile_surrender_tape *tape = context;
+
+	if ((size_t)kind >= YT_ARRAY_LEN(events)
+	    || length > sizeof(tape->rows[0])
+	    || !hostile_surrender_event(tape, events[kind], error))
+		return false;
+	if (length != 0U)
+		memcpy(tape->rows[kind], text, length);
+	tape->row_lengths[kind] = length;
+	return true;
+}
+
+static bool
+hostile_surrender_sound(void *context, float selector,
+    struct yt_error *error)
+{
+	enum hostile_surrender_event event;
+
+	if (selector == 4.0f)
+		event = HOSTILE_SURRENDER_SOUND_FOUR;
+	else if (selector == 1.0f)
+		event = HOSTILE_SURRENDER_SOUND_ONE;
+	else if (selector == 5.0f)
+		event = HOSTILE_SURRENDER_SOUND_FIVE;
+	else
+		return false;
+	return hostile_surrender_event(context, event, error);
+}
+
+static bool
+hostile_surrender_prompt(void *context, const uint8_t *prompt, size_t length,
+    enum yt_hostile_surrender_answer *answer, struct yt_error *error)
+{
+	static const uint8_t expected[] =
+	    "Will you accept our surrender? [Y]/N -=>";
+	struct hostile_surrender_tape *tape = context;
+
+	if (length != sizeof(expected) - 1U
+	    || memcmp(prompt, expected, sizeof(expected) - 1U) != 0
+	    || !hostile_surrender_event(tape, HOSTILE_SURRENDER_PROMPT, error))
+		return false;
+	*answer = tape->answer;
+	return true;
+}
+
+static bool
+hostile_surrender_news(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	struct hostile_surrender_tape *tape = context;
+
+	if (length > sizeof(tape->news)
+	    || !hostile_surrender_event(tape, HOSTILE_SURRENDER_NEWS, error))
+		return false;
+	if (length != 0U)
+		memcpy(tape->news, text, length);
+	tape->news_length = length;
+	return true;
+}
+
+static const struct yt_hostile_surrender_ops hostile_surrender_ops = {
+	hostile_surrender_read,
+	hostile_surrender_present,
+	hostile_surrender_sound,
+	hostile_surrender_prompt,
+	hostile_surrender_news,
+};
+
+static void
+hostile_surrender_fixture(struct hostile_surrender_tape *tape,
+    struct yt_hostile_surrender_state *state, float owner,
+    enum yt_hostile_surrender_answer answer)
+{
+	static const uint8_t cached_name[] = {'A', 0, 'B'};
+
+	memset(tape, 0, sizeof(*tape));
+	tape->fail_at = (size_t)-1;
+	tape->answer = answer;
+	memset(tape->player.record.bytes, 0xa5,
+	    sizeof(tape->player.record.bytes));
+	tape->player.fighters = 11.0f;
+	tape->player.sector = 733.0f;
+	*state = (struct yt_hostile_surrender_state){
+		.current_player_record = 2,
+		.old_owner = owner,
+		.attacker_loss = 0.0,
+		.defender_loss = 0.0,
+		.deployed_fighters = 10.0,
+		.cached_player_name = cached_name,
+		.cached_player_name_length = sizeof(cached_name),
+		.real_first_name = (const uint8_t *)"Sysop",
+		.real_first_name_length = 5U,
+	};
+}
+
+static bool
+check_hostile_surrender_transaction(void)
+{
+	static const enum hostile_surrender_event accepted_events[] = {
+		HOSTILE_SURRENDER_READ,
+		HOSTILE_SURRENDER_RADIO,
+		HOSTILE_SURRENDER_SOUND_FOUR,
+		HOSTILE_SURRENDER_CAPTAIN,
+		HOSTILE_SURRENDER_WISH,
+		HOSTILE_SURRENDER_BLANK,
+		HOSTILE_SURRENDER_PROMPT,
+		HOSTILE_SURRENDER_JOINED,
+		HOSTILE_SURRENDER_SOUND_ONE,
+		HOSTILE_SURRENDER_NEWS,
+		HOSTILE_SURRENDER_COUNT,
+	};
+	static const uint8_t radio[] = "RADIO MESSAGE COMING IN!";
+	static const uint8_t captain[] =
+	    "This is the captain of the fighter group in sector 733";
+	static const uint8_t news[] =
+	    {' ', '1', '0', ' ', 'f', 'i', 'g', 'h', 't', 'e', 'r', 's', ' ',
+	    'i', 'n', ' ', 's', 'e', 'c', 't', 'o', 'r', ' ', '7', '3', '3',
+	    ' ', 's', 'u', 'r', 'r', 'e', 'n', 'd', 'e', 'r', 'e', 'd', ' ',
+	    't', 'o', ' ', 'A', 0, 'B'};
+	static const uint8_t count[] = " 10 fighters surrendered!";
+	static const uint8_t xannor[] =
+	    "Whee fyte to the deeth hoo-man slyme!";
+	static const uint8_t mercenary[] =
+	    "We'll DIE before joining with a slyme like you Sysop!";
+	struct hostile_surrender_tape tape;
+	struct yt_hostile_surrender_state state;
+	struct yt_error error;
+	size_t failure;
+
+	hostile_surrender_fixture(&tape, &state, 2.0f,
+	    YT_HOSTILE_SURRENDER_ANSWER_EMPTY);
+	if (!yt_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
+	    &tape, NULL)
+	    || !state.checked || !state.accepted || !state.complete
+	    || state.owner_route != YT_HOSTILE_SURRENDER_PLAYER
+	    || state.surrendered_fighters != 10.0
+	    || state.ship_fighters != 21.0 || state.current.fighters != 21.0f
+	    || state.deployed_remaining != 0.0 || state.fighter_owner != 0.0f
+	    || tape.calls != YT_ARRAY_LEN(accepted_events)
+	    || memcmp(tape.events, accepted_events, sizeof(accepted_events)) != 0
+	    || tape.row_lengths[YT_HOSTILE_SURRENDER_RADIO_ROW]
+	    != sizeof(radio) - 1U
+	    || memcmp(tape.rows[YT_HOSTILE_SURRENDER_RADIO_ROW], radio,
+	    sizeof(radio) - 1U) != 0
+	    || tape.row_lengths[YT_HOSTILE_SURRENDER_CAPTAIN_ROW]
+	    != sizeof(captain) - 1U
+	    || memcmp(tape.rows[YT_HOSTILE_SURRENDER_CAPTAIN_ROW], captain,
+	    sizeof(captain) - 1U) != 0
+	    || tape.news_length != sizeof(news)
+	    || memcmp(tape.news, news, sizeof(news)) != 0
+	    || tape.row_lengths[YT_HOSTILE_SURRENDER_COUNT_ROW]
+	    != sizeof(count) - 1U
+	    || memcmp(tape.rows[YT_HOSTILE_SURRENDER_COUNT_ROW], count,
+	    sizeof(count) - 1U) != 0
+	    || memcmp(state.current.record.bytes, tape.player.record.bytes,
+	    sizeof(state.current.record.bytes)) != 0)
+		return false;
+
+	for (failure = 0U; failure < YT_ARRAY_LEN(accepted_events); ++failure) {
+		hostile_surrender_fixture(&tape, &state, 2.0f,
+		    YT_HOSTILE_SURRENDER_ANSWER_YES);
+		tape.fail_at = failure;
+		yt_error_clear(&error);
+		if (yt_hostile_attack_surrender_run(&state,
+		    &hostile_surrender_ops, &tape, &error)
+		    || error.status != YT_IO_ERROR || tape.calls != failure + 1U
+		    || memcmp(tape.events, accepted_events,
+		    (failure + 1U) * sizeof(accepted_events[0])) != 0
+		    || state.complete
+		    || (failure < 7U && (state.checked || state.accepted))
+		    || (failure >= 7U && (!state.checked || !state.accepted)))
+			return false;
+	}
+
+	hostile_surrender_fixture(&tape, &state, 2.0f,
+	    YT_HOSTILE_SURRENDER_ANSWER_NO);
+	if (!yt_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
+	    &tape, NULL) || !state.checked || state.accepted || !state.complete
+	    || tape.calls != 7U || tape.news_length != 0U
+	    || state.ship_fighters != 11.0
+	    || state.deployed_remaining != 10.0 || state.fighter_owner != 2.0f)
+		return false;
+
+	hostile_surrender_fixture(&tape, &state, -1.0f,
+	    YT_HOSTILE_SURRENDER_ANSWER_YES);
+	if (!yt_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
+	    &tape, NULL) || state.owner_route != YT_HOSTILE_SURRENDER_XANNOR
+	    || state.accepted || tape.calls != 6U
+	    || tape.events[4] != HOSTILE_SURRENDER_XANNOR
+	    || tape.events[5] != HOSTILE_SURRENDER_SOUND_FIVE
+	    || tape.row_lengths[YT_HOSTILE_SURRENDER_XANNOR_REFUSAL_ROW]
+	    != sizeof(xannor) - 1U
+	    || memcmp(tape.rows[YT_HOSTILE_SURRENDER_XANNOR_REFUSAL_ROW],
+	    xannor, sizeof(xannor) - 1U) != 0)
+		return false;
+
+	hostile_surrender_fixture(&tape, &state, -2.0f,
+	    YT_HOSTILE_SURRENDER_ANSWER_YES);
+	if (!yt_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
+	    &tape, NULL) || state.owner_route != YT_HOSTILE_SURRENDER_MERCENARY
+	    || state.accepted || tape.calls != 6U
+	    || tape.events[4] != HOSTILE_SURRENDER_MERCENARY
+	    || tape.events[5] != HOSTILE_SURRENDER_SOUND_FIVE
+	    || tape.row_lengths[YT_HOSTILE_SURRENDER_MERCENARY_REFUSAL_ROW]
+	    != sizeof(mercenary) - 1U
+	    || memcmp(tape.rows[YT_HOSTILE_SURRENDER_MERCENARY_REFUSAL_ROW],
+	    mercenary, sizeof(mercenary) - 1U) != 0)
+		return false;
+
+	hostile_surrender_fixture(&tape, &state, 1.0f,
+	    YT_HOSTILE_SURRENDER_ANSWER_YES);
+	if (!yt_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
+	    &tape, NULL) || state.owner_route != YT_HOSTILE_SURRENDER_QUIET
+	    || state.accepted || !state.complete || tape.calls != 4U)
+		return false;
+
+	hostile_surrender_fixture(&tape, &state, 2.0f,
+	    YT_HOSTILE_SURRENDER_ANSWER_YES);
+	return !yt_hostile_attack_surrender_run(NULL, &hostile_surrender_ops,
+	    &tape, NULL)
+	    && !yt_hostile_attack_surrender_run(&state, NULL, &tape, NULL);
+}
+
 struct direct_attack_attrition_tape {
 	float values[8];
 	size_t calls;
@@ -20267,6 +20564,8 @@ main(void)
 		return fail("maintenance route enqueue helper differs");
 	if (!check_player_name_match())
 		return fail("returning-player fixed-field name match differs");
+	if (!check_hostile_surrender_transaction())
+		return fail("hostile surrender transaction differs");
 	if (!check_direct_attack_attrition_model())
 		return fail("direct Attack attrition model differs");
 	if (!check_fighter_shield_spill_transaction())

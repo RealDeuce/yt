@@ -1753,6 +1753,21 @@ not authoritative. Use the corrected goal above in the new workspace.
   owner through its extracted combat transaction. The focused provider tape
   pins 100-then-one mutation, all RNG/row failures, initial nonpositive output
   and unclamped negative overshoot. Raw-world caller fixtures remain open.
+- The one-shot hostile surrender owner reached by both admitted Attack and a
+  forced-Bribe commitment of at least one is now a provider-driven native
+  transaction. It performs the independent fresh player read, exact
+  radio/selector-four/captain prefix, player prompt or faction refusal, latch
+  timing, and accepted joined-row/selector-one/news/state/count sequence with
+  no RNG draw. Accepted arithmetic follows the documented left-associated
+  `ship - attacker loss - defender loss + deployed` order; cached player-name
+  news is binary-safe and precedes the ship/deployed/owner mutation. The
+  canonical accepted tape, all eleven callback cuts, decline, Xannor and
+  Mercenary refusals, quiet owners, raw-record preservation and exact dynamic
+  rows are pinned. Upstream commit `35039c3e` corrected the joined fixture's
+  COM1 carrier to the real `FCh` device class; the formerly failing focused
+  forced-Bribe-to-surrender test now passes and explicitly rejects the
+  erroneous `CR LF LF` prefix. The complete raw forced-Bribe/admitted-Attack
+  WORLD/FIELD/store composition around this extracted owner remains open.
 - The hostile defenders-cleared tail now has the documented positive-loss
   rehydration/news ordering, ordinary-owner surrender dialogue and default
   acceptance, accepted transfer/sound/row/news sequence, refusal-to-same-
