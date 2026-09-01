@@ -8913,9 +8913,55 @@ test_computer_front_presentation(void)
 	CHECK(pager.line_count == 11.0f && pager.newline_flag == 0.0f);
 }
 
+enum computer_avoid_fixture_stop {
+	COMPUTER_AVOID_FIXTURE_COMPLETE,
+	COMPUTER_AVOID_FIXTURE_SLOT_EDITOR,
+	COMPUTER_AVOID_FIXTURE_SECTOR_EDITOR,
+};
+
+struct computer_avoid_fixture_cut {
+	size_t ordinal;
+	size_t target;
+	size_t fail_carrier_at;
+};
+
+static bool
+computer_avoid_fixture_b05d(struct yt_pager_state *pager,
+    struct yt_present_state *current, const uint8_t *text, size_t length,
+    struct pager_capture *capture, struct computer_avoid_fixture_cut *control)
+{
+	if (control == NULL || control->ordinal != control->target) {
+		pager_fixture_b05d(pager, current, text, length, capture);
+		if (control != NULL)
+			control->ordinal++;
+		return true;
+	}
+	else {
+		struct commodity_trade_join join;
+		struct commodity_b05d_cut cut;
+		bool result;
+
+		memset(&join, 0, sizeof(join));
+		join.current = *current;
+		join.pager = *pager;
+		join.capture = *capture;
+		commodity_b05d_cut_init(&cut, &join,
+		    control->fail_carrier_at);
+		result = yt_paged_row_run(&join.pager, &join.current,
+		    &cut.key_state, text, length, &commodity_b05d_cut_ops, &cut);
+		*current = join.current;
+		*pager = join.pager;
+		*capture = join.capture;
+		control->ordinal++;
+		return result;
+	}
+}
+
 static void
 computer_avoid_accepted_cycle_fixture(bool ansi, float mode,
     float old_value, const char *sector_response,
+    enum computer_avoid_fixture_stop stop,
+    struct computer_avoid_fixture_cut *cut,
     struct pager_capture *capture, struct yt_present_state *current,
     struct yt_pager_state *pager)
 {
@@ -8951,12 +8997,14 @@ computer_avoid_accepted_cycle_fixture(bool ansi, float mode,
 
 	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
 	pager_capture_result(capture, &result);
-	pager_fixture_b05d(pager, current, heading_one,
-	    sizeof(heading_one) - 1U, capture);
+	if (!computer_avoid_fixture_b05d(pager, current, heading_one,
+	    sizeof(heading_one) - 1U, capture, cut))
+		return;
 	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
 	pager_capture_result(capture, &result);
-	pager_fixture_b05d(pager, current, heading_two,
-	    sizeof(heading_two) - 1U, capture);
+	if (!computer_avoid_fixture_b05d(pager, current, heading_two,
+	    sizeof(heading_two) - 1U, capture, cut))
+		return;
 	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
 	pager_capture_result(capture, &result);
 	for (row = 1; row <= 10; ++row) {
@@ -8985,16 +9033,20 @@ computer_avoid_accepted_cycle_fixture(bool ansi, float mode,
 		CHECK(yt_present_fixed_width(mutable, &length, sizeof(mutable),
 		    20.0f, current, &result) == YT_PRESENT_OK);
 		pager_capture_result(capture, &result);
-		pager_fixture_b05d(pager, current, (const uint8_t *)last,
-		    strlen(last), capture);
+		if (!computer_avoid_fixture_b05d(pager, current,
+		    (const uint8_t *)last, strlen(last), capture, cut))
+			return;
 	}
 
 	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
 	pager_capture_result(capture, &result);
 	pager->newline_flag = 1.0f;
-	pager_fixture_b05d(pager, current, slot_prompt,
-	    sizeof(slot_prompt) - 1U, capture);
+	if (!computer_avoid_fixture_b05d(pager, current, slot_prompt,
+	    sizeof(slot_prompt) - 1U, capture, cut))
+		return;
 	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	if (stop == COMPUTER_AVOID_FIXTURE_SLOT_EDITOR)
+		return;
 	CHECK(yt_present_editor_echo((const uint8_t *)"1", 1U,
 	    (const uint8_t *)"1", 1U, current, &result) == YT_PRESENT_OK);
 	pager_capture_result(capture, &result);
@@ -9004,9 +9056,12 @@ computer_avoid_accepted_cycle_fixture(bool ansi, float mode,
 	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
 	pager_capture_result(capture, &result);
 	pager->newline_flag = 1.0f;
-	pager_fixture_b05d(pager, current, sector_prompt,
-	    sizeof(sector_prompt) - 1U, capture);
+	if (!computer_avoid_fixture_b05d(pager, current, sector_prompt,
+	    sizeof(sector_prompt) - 1U, capture, cut))
+		return;
 	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	if (stop == COMPUTER_AVOID_FIXTURE_SECTOR_EDITOR)
+		return;
 	CHECK(yt_present_editor_echo((const uint8_t *)sector_response,
 	    strlen(sector_response), (const uint8_t *)sector_response,
 	    strlen(sector_response), current, &result) == YT_PRESENT_OK);
@@ -9026,8 +9081,9 @@ computer_avoid_accepted_cycle_fixture(bool ansi, float mode,
 		CHECK(yt_present_line(NULL, 0U, current, &result)
 		    == YT_PRESENT_OK);
 		pager_capture_result(capture, &result);
-		pager_fixture_b05d(pager, current, (const uint8_t *)status,
-		    strlen(status), capture);
+		if (!computer_avoid_fixture_b05d(pager, current,
+		    (const uint8_t *)status, strlen(status), capture, cut))
+			return;
 	}
 	if (available) {
 		char number[64];
@@ -9039,16 +9095,17 @@ computer_avoid_accepted_cycle_fixture(bool ansi, float mode,
 		CHECK(yt_present_line(NULL, 0U, current, &result)
 		    == YT_PRESENT_OK);
 		pager_capture_result(capture, &result);
-		pager_fixture_b05d(pager, current, (const uint8_t *)status,
-		    strlen(status), capture);
+		if (!computer_avoid_fixture_b05d(pager, current,
+		    (const uint8_t *)status, strlen(status), capture, cut))
+			return;
 	}
 	current->foreground = 1.0f;
 	pager->foreground = 1;
 	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
 	pager_capture_result(capture, &result);
 	pager->newline_flag = 1.0f;
-	pager_fixture_b05d(pager, current, computer_prompt,
-	    sizeof(computer_prompt) - 1U, capture);
+	(void)computer_avoid_fixture_b05d(pager, current, computer_prompt,
+	    sizeof(computer_prompt) - 1U, capture, cut);
 }
 
 static void
@@ -9205,14 +9262,14 @@ test_computer_avoid_presentation(void)
 	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f);
 
 	computer_avoid_accepted_cycle_fixture(false, 0.0f, 0.0f, "5",
-	    &capture, &current, &pager);
+	    COMPUTER_AVOID_FIXTURE_COMPLETE, NULL, &capture, &current, &pager);
 	CHECK(sizeof(accepted_plain) - 1U == 884U);
 	CHECK(capture.remote_length == sizeof(accepted_plain) - 1U
 	    && memcmp(capture.remote, accepted_plain,
 	    sizeof(accepted_plain) - 1U) == 0);
 	CHECK(pager.line_count == 2.0f && pager.newline_flag == 0.0f);
 	computer_avoid_accepted_cycle_fixture(true, 0.0f, 0.0f, "5",
-	    &capture, &current, &pager);
+	    COMPUTER_AVOID_FIXTURE_COMPLETE, NULL, &capture, &current, &pager);
 	CHECK(sizeof(accepted_ansi) - 1U == 914U);
 	CHECK(capture.remote_length == sizeof(accepted_ansi) - 1U
 	    && memcmp(capture.remote, accepted_ansi,
@@ -9225,13 +9282,13 @@ test_computer_avoid_presentation(void)
 	    && capture.local_byte_count == 836U
 	    && capture.local_fnv == UINT64_C(0x95f5f48462d30f5c));
 	computer_avoid_accepted_cycle_fixture(true, 1.0f, 0.0f, "5",
-	    &capture, &current, &pager);
+	    COMPUTER_AVOID_FIXTURE_COMPLETE, NULL, &capture, &current, &pager);
 	CHECK(capture.remote_length == 0U && pager.line_count == 2.0f
 	    && pager.newline_flag == 0.0f
 	    && capture.last_local_foreground == 7
 	    && capture.last_local_background == 0);
 	computer_avoid_accepted_cycle_fixture(true, 2.0f, 0.0f, "5",
-	    &capture, &current, &pager);
+	    COMPUTER_AVOID_FIXTURE_COMPLETE, NULL, &capture, &current, &pager);
 	CHECK(sizeof(accepted_mode_two) - 1U == 422U);
 	CHECK(capture.remote_length == sizeof(accepted_mode_two) - 1U
 	    && memcmp(capture.remote, accepted_mode_two,
@@ -9243,7 +9300,8 @@ test_computer_avoid_presentation(void)
 	    ++transition) {
 		computer_avoid_accepted_cycle_fixture(
 		    transition_cases[transition].ansi, 0.0f, 5.0f,
-		    transition_cases[transition].response, &capture, &current,
+		    transition_cases[transition].response,
+		    COMPUTER_AVOID_FIXTURE_COMPLETE, NULL, &capture, &current,
 		    &pager);
 		CHECK(capture.remote_length == transition_cases[transition].length
 		    && viewer_bytes_fnv1a64(capture.remote,
@@ -9758,6 +9816,182 @@ test_computer_port_report_terminal_presentation(void)
 	    && sizeof(inactivity_carrier) - 1U == 39U
 	    && sizeof(direct_carrier) - 1U == 37U
 	    && sizeof(session_carrier) - 1U == 65U);
+}
+
+static void
+test_computer_avoid_terminal_presentation(void)
+{
+	static const struct {
+		enum computer_avoid_fixture_stop stop;
+		bool ansi;
+		size_t prefix_length;
+		uint64_t prefix_fnv;
+		size_t inactivity_length;
+		uint64_t inactivity_fnv;
+		size_t session_length;
+		uint64_t session_fnv;
+	} cases[] = {
+		{COMPUTER_AVOID_FIXTURE_SLOT_EDITOR, false,
+		    746U, UINT64_C(0x668590d6d691f5e3),
+		    768U, UINT64_C(0x875a8566c9e3b46f),
+		    776U, UINT64_C(0x733cdcdc12c30bc1)},
+		{COMPUTER_AVOID_FIXTURE_SLOT_EDITOR, true,
+		    756U, UINT64_C(0x0d976d4ba97f19b4),
+		    778U, UINT64_C(0x6234d311f50b5ed4),
+		    786U, UINT64_C(0xb897f95a379da376)},
+		{COMPUTER_AVOID_FIXTURE_SECTOR_EDITOR, false,
+		    811U, UINT64_C(0xdb26edf5a552323e),
+		    833U, UINT64_C(0xd336f712950de70a),
+		    841U, UINT64_C(0x691c295df1aa1f1c)},
+		{COMPUTER_AVOID_FIXTURE_SECTOR_EDITOR, true,
+		    821U, UINT64_C(0xa2746da79a150673),
+		    843U, UINT64_C(0x1ae761c0cbbe315f),
+		    851U, UINT64_C(0xb451bf573d5e11b1)},
+	};
+	static const struct {
+		enum yt_ab36_terminal_kind kind;
+		bool inactivity;
+	} terminals[] = {
+		{YT_AB36_TERMINAL_INACTIVITY, true},
+		{YT_AB36_TERMINAL_SESSION_LIMIT, false},
+	};
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		struct yt_present_state current;
+		struct yt_pager_state pager;
+		struct pager_capture capture;
+		struct computer_port_terminal_join join;
+		bool running = true;
+		bool terminated = false;
+		size_t terminal;
+
+		computer_avoid_accepted_cycle_fixture(cases[pass].ansi, 0.0f,
+		    0.0f, "5", cases[pass].stop, NULL, &capture, &current,
+		    &pager);
+		CHECK(capture.remote_length == cases[pass].prefix_length
+		    && viewer_bytes_fnv1a64(capture.remote,
+		    capture.remote_length) == cases[pass].prefix_fnv
+		    && pager.line_count == 0.0f && pager.newline_flag == 0.0f);
+		join.current = &current;
+		join.pager = &pager;
+		join.capture = &capture;
+		join.running = &running;
+		join.terminated = &terminated;
+		join.notice_carrier_failure = 0;
+		join.closed = false;
+		CHECK(!computer_port_terminal_carrier_end(&join));
+		CHECK(!running && terminated && join.closed
+		    && capture.remote_length == cases[pass].prefix_length);
+
+		for (terminal = 0U; terminal < YT_ARRAY_LEN(terminals);
+		    ++terminal) {
+			size_t expected_length = terminals[terminal].inactivity
+			    ? cases[pass].inactivity_length
+			    : cases[pass].session_length;
+			uint64_t expected_fnv = terminals[terminal].inactivity
+			    ? cases[pass].inactivity_fnv
+			    : cases[pass].session_fnv;
+
+			computer_avoid_accepted_cycle_fixture(cases[pass].ansi,
+			    0.0f, 0.0f, "5", cases[pass].stop, NULL, &capture,
+			    &current, &pager);
+			running = true;
+			terminated = false;
+			join.current = &current;
+			join.pager = &pager;
+			join.capture = &capture;
+			join.running = &running;
+			join.terminated = &terminated;
+			join.notice_carrier_failure = 0;
+			join.closed = false;
+			CHECK(yt_input_ab36_terminal_run(
+			    terminals[terminal].kind, &running, &terminated,
+			    computer_port_terminal_notice,
+			    computer_port_terminal_close, &join));
+			CHECK(capture.remote_length == expected_length
+			    && viewer_bytes_fnv1a64(capture.remote,
+			    capture.remote_length) == expected_fnv
+			    && !running && terminated && join.closed
+			    && pager.line_count == 1.0f
+			    && pager.newline_flag == 0.0f);
+		}
+	}
+}
+
+static void
+test_computer_avoid_b05d_cuts(void)
+{
+	static const struct {
+		size_t before_length;
+		uint64_t before_fnv;
+		size_t after_length;
+		uint64_t after_fnv;
+	} cuts[] = {
+		{57U, UINT64_C(0x3cb36c15963fd333),
+		    108U, UINT64_C(0xc38f75e6a1aa9115)},
+		{112U, UINT64_C(0x31923d6309f79b27),
+		    141U, UINT64_C(0x96d169eeb43ea95f)},
+		{185U, UINT64_C(0x994316daf4249237),
+		    199U, UINT64_C(0xaaafa81d3cc3c046)},
+		{241U, UINT64_C(0xfde51a6b989fef76),
+		    255U, UINT64_C(0xff834fedac2525aa)},
+		{297U, UINT64_C(0x220538d26dfb3da6),
+		    311U, UINT64_C(0xd51e7f4868a9262d)},
+		{353U, UINT64_C(0x07b2028637884659),
+		    367U, UINT64_C(0x9ce9fbcec8d817ab)},
+		{409U, UINT64_C(0x89aeb2d69d832d17),
+		    423U, UINT64_C(0xb778b2bf4f829072)},
+		{465U, UINT64_C(0x4e62db44754dec3a),
+		    479U, UINT64_C(0x341074a10419d28a)},
+		{521U, UINT64_C(0x4034ec77d88e1fee),
+		    535U, UINT64_C(0x10a1e0a3b53a78d9)},
+		{577U, UINT64_C(0x249881a78ecfec4d),
+		    591U, UINT64_C(0x0ee764f490253fdb)},
+		{633U, UINT64_C(0xa59efaaab18276b7),
+		    647U, UINT64_C(0xd712c9f2f036850e)},
+		{689U, UINT64_C(0x4953d1b55d4dcf50),
+		    703U, UINT64_C(0xfce1f5e4088a76ef)},
+		{707U, UINT64_C(0xe1f16131d16d15d1),
+		    756U, UINT64_C(0xfc4f56102d9cc6ad)},
+		{761U, UINT64_C(0x78dd6b41821dd440),
+		    821U, UINT64_C(0x39228cc21c21a344)},
+		{836U, UINT64_C(0x4a5f4fcc31cc242b),
+		    860U, UINT64_C(0x85083d0072774708)},
+		{864U, UINT64_C(0xa6db08ece5c67d3a),
+		    887U, UINT64_C(0x2a96b3b4a2c76256)},
+		{901U, UINT64_C(0x313724eadc584cf7),
+		    941U, UINT64_C(0xb3e2d1b2892dd7f4)},
+	};
+	size_t ordinal;
+
+	for (ordinal = 0U; ordinal < YT_ARRAY_LEN(cuts); ++ordinal) {
+		size_t side;
+
+		for (side = 0U; side < 2U; ++side) {
+			struct computer_avoid_fixture_cut cut = {
+				.ordinal = 0U,
+				.target = ordinal,
+				.fail_carrier_at = side,
+			};
+			struct yt_present_state current;
+			struct yt_pager_state pager;
+			struct pager_capture capture;
+			size_t expected_length = side == 0U
+			    ? cuts[ordinal].before_length
+			    : cuts[ordinal].after_length;
+			uint64_t expected_fnv = side == 0U
+			    ? cuts[ordinal].before_fnv : cuts[ordinal].after_fnv;
+
+			computer_avoid_accepted_cycle_fixture(true, 0.0f, 5.0f,
+			    "7", COMPUTER_AVOID_FIXTURE_COMPLETE, &cut, &capture,
+			    &current, &pager);
+			CHECK(cut.ordinal == ordinal + 1U
+			    && capture.remote_length == expected_length
+			    && viewer_bytes_fnv1a64(capture.remote,
+			    capture.remote_length) == expected_fnv);
+		}
+	}
 }
 
 static void
@@ -22622,6 +22856,8 @@ main(void)
 	test_computer_port_report_short_cycles_presentation();
 	test_computer_port_report_wrapper_b05d_cuts();
 	test_computer_port_report_terminal_presentation();
+	test_computer_avoid_terminal_presentation();
+	test_computer_avoid_b05d_cuts();
 	test_computer_port_report_ab36_state_joins();
 	test_computer_port_report_earth_cycle_presentation();
 	test_computer_port_report_earth_failure_presentation();
