@@ -379,9 +379,8 @@ credit_mutation_write_player(void *context, int player_record,
 {
 	struct yt_session *session = context;
 
-	return yt_database_write(&session->door->game.database,
-	    (size_t)player_record, record, error)
-	    && yt_database_flush(&session->door->game.database, error);
+	return yt_database_write_durable(&session->door->game.database,
+	    (size_t)player_record, record, error);
 }
 
 static bool
@@ -7145,7 +7144,7 @@ commodity_trade_write_player(void *context, uint32_t physical_record,
 		return port_report_failure(error,
 		    "commodity trade player record");
 	session->player = *player;
-	return yt_database_write(&session->door->game.database,
+	return yt_database_write_durable(&session->door->game.database,
 	    (size_t)physical_record, &player->record, error);
 }
 
@@ -7169,7 +7168,7 @@ commodity_trade_write_port(void *context, uint32_t physical_record,
 {
 	struct yt_session *session = context;
 
-	return yt_database_write(&session->door->game.database,
+	return yt_database_write_durable(&session->door->game.database,
 	    (size_t)physical_record, &port->record, error);
 }
 
