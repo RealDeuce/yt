@@ -5437,6 +5437,61 @@ hostile_surrender_news(void *context, const uint8_t *text, size_t length,
 }
 
 static bool
+hostile_attack_persistence_read_player(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	return direct_attack_combat_read(context, player_record, player, error);
+}
+
+static bool
+hostile_attack_persistence_write_player(void *context, int player_record,
+    const struct yt_player *player, struct yt_error *error)
+{
+	return direct_attack_combat_write(context, player_record, player, error);
+}
+
+static bool
+hostile_attack_persistence_read_sector(void *context, int sector_number,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_read_sector(&session->door->game, sector_number, sector,
+	    error);
+}
+
+static bool
+hostile_attack_persistence_write_sector(void *context, int sector_number,
+    const struct yt_sector *sector, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_database_write(&session->door->game.database,
+	    (size_t)yt_sector_basic_record(&session->door->game.config,
+	    sector_number), &sector->record, error);
+}
+
+static bool
+hostile_attack_persistence_blank(void *context, struct yt_error *error)
+{
+	return session_present_text(context, NULL, 0, SESSION_PRESENT_LINE,
+	    "deployed attack post-persist blank", error);
+}
+
+static bool
+hostile_attack_persistence_news(void *context, const uint8_t *text,
+    size_t length, struct yt_error *error)
+{
+	return append_news_bytes(context, text, length, error);
+}
+
+static bool
+hostile_attack_persistence_fatal(void *context, struct yt_error *error)
+{
+	return common_fatal_self(context, error);
+}
+
+static bool
 attack_deployed_committed(struct yt_session *session,
     struct yt_sector *sector, double commitment, bool allow_surrender,
     struct yt_error *error)
@@ -5451,8 +5506,6 @@ attack_deployed_committed(struct yt_session *session,
 	bool surrender_checked = false;
 	bool surrendered = false;
 	struct yt_sector opened_sector;
-	struct yt_sector persisted_sector;
-	uint8_t owner_name[160];
 	char number_one[64];
 	char number_two[64];
 	char loss_row[128];
@@ -5579,80 +5632,43 @@ attack_deployed_committed(struct yt_session *session,
 		    &session->player.shields, error))
 			return false;
 	}
-	sector->fighters = (float)deployed_remaining;
 	{
-		float final_shields = session->player.shields;
-		float final_fighters = (float)ship_fighters;
+		static const struct yt_hostile_attack_persistence_ops ops = {
+			hostile_attack_persistence_read_player,
+			hostile_attack_persistence_write_player,
+			hostile_attack_persistence_read_sector,
+			hostile_attack_persistence_write_sector,
+			hostile_attack_persistence_blank,
+			hostile_attack_persistence_news,
+			hostile_attack_persistence_fatal,
+		};
+		struct yt_hostile_attack_persistence_state persistence = {
+			.current_player_record = session->player_record,
+			.current_sector = (int)session->player.sector,
+			.ship_fighters = ship_fighters,
+			.shields = session->player.shields,
+			.deployed_fighters = deployed_remaining,
+			.defender_loss = defender_loss,
+			.old_owner = old_owner,
+			.cached_player_name = cached_player_name,
+			.cached_player_name_length = cached_player_name_length,
+			.owner_label = session->hostile_owner_label,
+			.owner_label_length = session->hostile_owner_label_length,
+		};
 
-		if (!reload_player(session, error))
+		if (!yt_hostile_attack_persistence_run(&persistence, &ops,
+		    session, error))
 			return false;
+		if (persistence.route == YT_HOSTILE_ATTACK_PERSISTENCE_FATAL)
+			return true;
+		session->player = persistence.current;
 		(void)snprintf(session->player.name, sizeof(session->player.name),
 		    "%s", cached_player_name_text);
-		yt_deployed_attack_player_overlay(&session->player,
-		    final_shields, final_fighters);
+		*sector = persistence.sector;
+		ship_fighters = persistence.ship_fighters;
+		if (persistence.mercenaries_hurt)
+			session->mercenaries_hurt = true;
 	}
-	if (!yt_database_write(&session->door->game.database,
-	    (size_t)session->player_record, &session->player.record, error)
-	    || !yt_game_read_sector(&session->door->game,
-	    (int)session->player.sector, &persisted_sector, error))
-		return false;
-	yt_deployed_attack_sector_overlay(&persisted_sector, sector->fighters);
-	if (!yt_database_write(&session->door->game.database,
-	    (size_t)yt_sector_basic_record(&session->door->game.config,
-	    (int)session->player.sector), &persisted_sector.record, error))
-		return false;
-	*sector = persisted_sector;
-	if (ship_fighters < 1.0
-	    && session->player.shields < 1.0f)
-		return common_fatal_self(session, error);
-	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "deployed attack post-persist blank", error))
-		return false;
-	if (defender_loss > 0.0f) {
-		uint8_t loss_news[320];
-		size_t owner_length;
-		size_t loss_news_length;
-		int loss_number_length;
-
-		if (!reload_player(session, error))
-			return false;
-		ship_fighters = (double)session->player.fighters;
-		(void)snprintf(session->player.name, sizeof(session->player.name),
-		    "%s", cached_player_name_text);
-		owner_length = session->hostile_owner_label_length;
-		if (owner_length > sizeof(owner_name))
-			return false;
-		if (owner_length != 0U)
-			memcpy(owner_name, session->hostile_owner_label,
-			    owner_length);
-		loss_number_length = qb_str_double(number_one,
-		    sizeof(number_one), defender_loss);
-		if (loss_number_length < 0)
-			return false;
-		loss_news_length = cached_player_name_length
-		    + sizeof(" destroyed") - 1U + (size_t)loss_number_length
-		    + sizeof(" fighters belonging to ") - 1U + owner_length;
-		if (loss_news_length > sizeof(loss_news))
-			return false;
-		if (cached_player_name_length != 0U)
-			memcpy(loss_news, cached_player_name,
-			    cached_player_name_length);
-		memcpy(loss_news + cached_player_name_length, " destroyed",
-		    sizeof(" destroyed") - 1U);
-		memcpy(loss_news + cached_player_name_length
-		    + sizeof(" destroyed") - 1U, number_one,
-		    (size_t)loss_number_length);
-		memcpy(loss_news + cached_player_name_length
-		    + sizeof(" destroyed") - 1U + (size_t)loss_number_length,
-		    " fighters belonging to ",
-		    sizeof(" fighters belonging to ") - 1U);
-		memcpy(loss_news + loss_news_length - owner_length, owner_name,
-		    owner_length);
-		if (!append_news_bytes(session, loss_news, loss_news_length, error))
-			return false;
-	}
-	if (old_owner == -2.0f && defender_loss > 0.0f)
-		session->mercenaries_hurt = true;
 	if (old_owner == -1.0f && defender_loss > 0.0f) {
 		float bonus;
 		uint8_t display[240];

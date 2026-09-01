@@ -1768,6 +1768,18 @@ not authoritative. Use the corrected goal above in the new workspace.
   forced-Bribe-to-surrender test now passes and explicitly rejects the
   erroneous `CR LF LF` prefix. The complete raw forced-Bribe/admitted-Attack
   WORLD/FIELD/store composition around this extracted owner remains open.
+- The post-combat hostile persistence owner is also provider-driven and used
+  by the same ordinary-Attack/forced-Bribe session path. It performs the
+  documented fresh player read, shields/fighters overlay and PUT before the
+  fresh sector read, fighters/conditional-owner overlay and PUT. The exact
+  DOUBLE-ship/SINGLE-shield fatal gate follows that durable sector write;
+  nonfatal state emits the direct blank, then positive defender loss performs
+  an independent player hydration and binary cached-player/stale-owner news
+  append before setting the Mercenary-hurt latch. The canonical seven-event
+  raw-record tape, every callback cut, the five-event fatal route, no-loss
+  suppression, exact binary news, unrelated-byte preservation and fresh
+  post-news fighter cache are pinned. The opening attrition/RNG prefix and
+  later reward/clearance/tail still need composition around this owner.
 - The hostile defenders-cleared tail now has the documented positive-loss
   rehydration/news ordering, ordinary-owner surrender dialogue and default
   acceptance, accepted transfer/sound/row/news sequence, refusal-to-same-

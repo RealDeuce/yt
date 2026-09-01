@@ -2244,6 +2244,66 @@ bool yt_hostile_attack_surrender_run(
     struct yt_hostile_surrender_state *state,
     const struct yt_hostile_surrender_ops *ops, void *context,
     struct yt_error *error);
+
+enum yt_hostile_attack_persistence_route {
+	YT_HOSTILE_ATTACK_PERSISTENCE_NORMAL,
+	YT_HOSTILE_ATTACK_PERSISTENCE_FATAL,
+};
+
+struct yt_hostile_attack_persistence_state {
+	int current_player_record;
+	int current_sector;
+	double ship_fighters;
+	float shields;
+	double deployed_fighters;
+	double defender_loss;
+	float old_owner;
+	const uint8_t *cached_player_name;
+	size_t cached_player_name_length;
+	const uint8_t *owner_label;
+	size_t owner_label_length;
+	struct yt_player current;
+	struct yt_sector sector;
+	enum yt_hostile_attack_persistence_route route;
+	bool player_written;
+	bool sector_written;
+	bool post_loss_read;
+	bool news_written;
+	bool mercenaries_hurt;
+	bool complete;
+};
+
+typedef bool (*yt_hostile_attack_persistence_read_player_fn)(void *context,
+    int player_record, struct yt_player *player, struct yt_error *error);
+typedef bool (*yt_hostile_attack_persistence_write_player_fn)(void *context,
+    int player_record, const struct yt_player *player,
+    struct yt_error *error);
+typedef bool (*yt_hostile_attack_persistence_read_sector_fn)(void *context,
+    int sector_number, struct yt_sector *sector, struct yt_error *error);
+typedef bool (*yt_hostile_attack_persistence_write_sector_fn)(void *context,
+    int sector_number, const struct yt_sector *sector,
+    struct yt_error *error);
+typedef bool (*yt_hostile_attack_persistence_blank_fn)(void *context,
+    struct yt_error *error);
+typedef bool (*yt_hostile_attack_persistence_news_fn)(void *context,
+    const uint8_t *text, size_t length, struct yt_error *error);
+typedef bool (*yt_hostile_attack_persistence_fatal_fn)(void *context,
+    struct yt_error *error);
+
+struct yt_hostile_attack_persistence_ops {
+	yt_hostile_attack_persistence_read_player_fn read_player;
+	yt_hostile_attack_persistence_write_player_fn write_player;
+	yt_hostile_attack_persistence_read_sector_fn read_sector;
+	yt_hostile_attack_persistence_write_sector_fn write_sector;
+	yt_hostile_attack_persistence_blank_fn present_blank;
+	yt_hostile_attack_persistence_news_fn append_news;
+	yt_hostile_attack_persistence_fatal_fn fatal;
+};
+
+bool yt_hostile_attack_persistence_run(
+    struct yt_hostile_attack_persistence_state *state,
+    const struct yt_hostile_attack_persistence_ops *ops, void *context,
+    struct yt_error *error);
 bool yt_direct_attack_team_row(const uint8_t *name, size_t name_length,
     uint8_t *row, size_t capacity, size_t *length);
 bool yt_direct_attack_candidate_prompt(const uint8_t *name,

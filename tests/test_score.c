@@ -16681,6 +16681,275 @@ check_hostile_surrender_transaction(void)
 	    && !yt_hostile_attack_surrender_run(&state, NULL, &tape, NULL);
 }
 
+enum hostile_persistence_event {
+	HOSTILE_PERSISTENCE_PLAYER_READ_ONE,
+	HOSTILE_PERSISTENCE_PLAYER_WRITE,
+	HOSTILE_PERSISTENCE_SECTOR_READ,
+	HOSTILE_PERSISTENCE_SECTOR_WRITE,
+	HOSTILE_PERSISTENCE_BLANK,
+	HOSTILE_PERSISTENCE_PLAYER_READ_TWO,
+	HOSTILE_PERSISTENCE_NEWS,
+	HOSTILE_PERSISTENCE_FATAL,
+};
+
+struct hostile_persistence_tape {
+	struct yt_player players[2];
+	struct yt_sector sector;
+	struct yt_player written_player;
+	struct yt_sector written_sector;
+	enum hostile_persistence_event events[12];
+	size_t calls;
+	size_t fail_at;
+	size_t player_reads;
+	uint8_t news[384];
+	size_t news_length;
+};
+
+static bool
+hostile_persistence_event(struct hostile_persistence_tape *tape,
+    enum hostile_persistence_event event, struct yt_error *error)
+{
+	size_t call = tape->calls++;
+
+	if (call < YT_ARRAY_LEN(tape->events))
+		tape->events[call] = event;
+	if (call != tape->fail_at)
+		return true;
+	if (error != NULL) {
+		error->status = YT_IO_ERROR;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    "hostile persistence injected failure");
+	}
+	return false;
+}
+
+static bool
+hostile_persistence_read_player(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct hostile_persistence_tape *tape = context;
+	size_t read = tape->player_reads++;
+	enum hostile_persistence_event event = read == 0U
+	    ? HOSTILE_PERSISTENCE_PLAYER_READ_ONE
+	    : HOSTILE_PERSISTENCE_PLAYER_READ_TWO;
+
+	if (player_record != 2 || read >= YT_ARRAY_LEN(tape->players)
+	    || !hostile_persistence_event(tape, event, error))
+		return false;
+	*player = tape->players[read];
+	return true;
+}
+
+static bool
+hostile_persistence_write_player(void *context, int player_record,
+    const struct yt_player *player, struct yt_error *error)
+{
+	struct hostile_persistence_tape *tape = context;
+
+	if (player_record != 2 || !hostile_persistence_event(tape,
+	    HOSTILE_PERSISTENCE_PLAYER_WRITE, error))
+		return false;
+	tape->written_player = *player;
+	return true;
+}
+
+static bool
+hostile_persistence_read_sector(void *context, int sector_number,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct hostile_persistence_tape *tape = context;
+
+	if (sector_number != 733 || !hostile_persistence_event(tape,
+	    HOSTILE_PERSISTENCE_SECTOR_READ, error))
+		return false;
+	*sector = tape->sector;
+	return true;
+}
+
+static bool
+hostile_persistence_write_sector(void *context, int sector_number,
+    const struct yt_sector *sector, struct yt_error *error)
+{
+	struct hostile_persistence_tape *tape = context;
+
+	if (sector_number != 733 || !hostile_persistence_event(tape,
+	    HOSTILE_PERSISTENCE_SECTOR_WRITE, error))
+		return false;
+	tape->written_sector = *sector;
+	return true;
+}
+
+static bool
+hostile_persistence_blank(void *context, struct yt_error *error)
+{
+	return hostile_persistence_event(context, HOSTILE_PERSISTENCE_BLANK,
+	    error);
+}
+
+static bool
+hostile_persistence_news(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	struct hostile_persistence_tape *tape = context;
+
+	if (length > sizeof(tape->news) || !hostile_persistence_event(tape,
+	    HOSTILE_PERSISTENCE_NEWS, error))
+		return false;
+	if (length != 0U)
+		memcpy(tape->news, text, length);
+	tape->news_length = length;
+	return true;
+}
+
+static bool
+hostile_persistence_fatal(void *context, struct yt_error *error)
+{
+	return hostile_persistence_event(context, HOSTILE_PERSISTENCE_FATAL,
+	    error);
+}
+
+static const struct yt_hostile_attack_persistence_ops
+hostile_persistence_ops = {
+	hostile_persistence_read_player,
+	hostile_persistence_write_player,
+	hostile_persistence_read_sector,
+	hostile_persistence_write_sector,
+	hostile_persistence_blank,
+	hostile_persistence_news,
+	hostile_persistence_fatal,
+};
+
+static void
+hostile_persistence_fixture(struct hostile_persistence_tape *tape,
+    struct yt_hostile_attack_persistence_state *state)
+{
+	static const uint8_t cached_name[] = {'A', 0, 'B'};
+	static const uint8_t owner_label[] = {'X', 0, 'Y'};
+
+	memset(tape, 0, sizeof(*tape));
+	tape->fail_at = (size_t)-1;
+	memset(tape->players[0].record.bytes, 0xa5,
+	    sizeof(tape->players[0].record.bytes));
+	tape->players[0].fighters = 90.0f;
+	tape->players[0].shields = 80.0f;
+	memset(tape->players[1].record.bytes, 0x3c,
+	    sizeof(tape->players[1].record.bytes));
+	tape->players[1].fighters = 9.25f;
+	memset(tape->sector.record.bytes, 0x5a,
+	    sizeof(tape->sector.record.bytes));
+	tape->sector.fighters = 12.0f;
+	tape->sector.fighter_owner = 9.0f;
+	*state = (struct yt_hostile_attack_persistence_state){
+		.current_player_record = 2,
+		.current_sector = 733,
+		.ship_fighters = 7.5,
+		.shields = 6.25f,
+		.deployed_fighters = 0.0,
+		.defender_loss = 2.0,
+		.old_owner = -2.0f,
+		.cached_player_name = cached_name,
+		.cached_player_name_length = sizeof(cached_name),
+		.owner_label = owner_label,
+		.owner_label_length = sizeof(owner_label),
+	};
+}
+
+static bool
+check_hostile_attack_persistence_transaction(void)
+{
+	static const enum hostile_persistence_event expected_events[] = {
+		HOSTILE_PERSISTENCE_PLAYER_READ_ONE,
+		HOSTILE_PERSISTENCE_PLAYER_WRITE,
+		HOSTILE_PERSISTENCE_SECTOR_READ,
+		HOSTILE_PERSISTENCE_SECTOR_WRITE,
+		HOSTILE_PERSISTENCE_BLANK,
+		HOSTILE_PERSISTENCE_PLAYER_READ_TWO,
+		HOSTILE_PERSISTENCE_NEWS,
+	};
+	static const enum hostile_persistence_event fatal_events[] = {
+		HOSTILE_PERSISTENCE_PLAYER_READ_ONE,
+		HOSTILE_PERSISTENCE_PLAYER_WRITE,
+		HOSTILE_PERSISTENCE_SECTOR_READ,
+		HOSTILE_PERSISTENCE_SECTOR_WRITE,
+		HOSTILE_PERSISTENCE_FATAL,
+	};
+	static const uint8_t expected_news[] = {
+		'A', 0, 'B', ' ', 'd', 'e', 's', 't', 'r', 'o', 'y', 'e', 'd',
+		' ', '2', ' ', 'f', 'i', 'g', 'h', 't', 'e', 'r', 's', ' ',
+		'b', 'e', 'l', 'o', 'n', 'g', 'i', 'n', 'g', ' ', 't', 'o', ' ',
+		'X', 0, 'Y',
+	};
+	struct hostile_persistence_tape tape;
+	struct yt_hostile_attack_persistence_state state;
+	struct yt_record expected_player;
+	struct yt_record expected_sector;
+	struct yt_error error;
+	size_t failure;
+
+	hostile_persistence_fixture(&tape, &state);
+	expected_player = tape.players[0].record;
+	(void)yt_record_set_number(&expected_player, YT_F53, 6.25f);
+	(void)yt_record_set_number(&expected_player, YT_F61, 7.5f);
+	expected_sector = tape.sector.record;
+	(void)yt_record_set_number(&expected_sector, YT_F81, 0.0f);
+	(void)yt_record_set_number(&expected_sector, YT_F85, 0.0f);
+	if (!yt_hostile_attack_persistence_run(&state,
+	    &hostile_persistence_ops, &tape, NULL)
+	    || !state.complete
+	    || state.route != YT_HOSTILE_ATTACK_PERSISTENCE_NORMAL
+	    || !state.player_written || !state.sector_written
+	    || !state.post_loss_read || !state.news_written
+	    || !state.mercenaries_hurt || state.ship_fighters != 9.25
+	    || tape.calls != YT_ARRAY_LEN(expected_events)
+	    || memcmp(tape.events, expected_events, sizeof(expected_events)) != 0
+	    || memcmp(tape.written_player.record.bytes, expected_player.bytes,
+	    sizeof(expected_player.bytes)) != 0
+	    || memcmp(tape.written_sector.record.bytes, expected_sector.bytes,
+	    sizeof(expected_sector.bytes)) != 0
+	    || tape.news_length != sizeof(expected_news)
+	    || memcmp(tape.news, expected_news, sizeof(expected_news)) != 0)
+		return false;
+
+	for (failure = 0U; failure < YT_ARRAY_LEN(expected_events); ++failure) {
+		hostile_persistence_fixture(&tape, &state);
+		tape.fail_at = failure;
+		yt_error_clear(&error);
+		if (yt_hostile_attack_persistence_run(&state,
+		    &hostile_persistence_ops, &tape, &error)
+		    || error.status != YT_IO_ERROR || state.complete
+		    || tape.calls != failure + 1U
+		    || memcmp(tape.events, expected_events,
+		    (failure + 1U) * sizeof(expected_events[0])) != 0)
+			return false;
+	}
+
+	hostile_persistence_fixture(&tape, &state);
+	state.ship_fighters = 0.0;
+	state.shields = 0.0f;
+	state.defender_loss = 0.0;
+	if (!yt_hostile_attack_persistence_run(&state,
+	    &hostile_persistence_ops, &tape, NULL)
+	    || !state.complete
+	    || state.route != YT_HOSTILE_ATTACK_PERSISTENCE_FATAL
+	    || tape.calls != YT_ARRAY_LEN(fatal_events)
+	    || memcmp(tape.events, fatal_events, sizeof(fatal_events)) != 0
+	    || state.post_loss_read || state.news_written)
+		return false;
+
+	hostile_persistence_fixture(&tape, &state);
+	state.defender_loss = 0.0;
+	if (!yt_hostile_attack_persistence_run(&state,
+	    &hostile_persistence_ops, &tape, NULL)
+	    || tape.calls != 5U || state.post_loss_read || state.news_written
+	    || state.mercenaries_hurt || state.ship_fighters != 7.5)
+		return false;
+
+	hostile_persistence_fixture(&tape, &state);
+	return !yt_hostile_attack_persistence_run(NULL,
+	    &hostile_persistence_ops, &tape, NULL)
+	    && !yt_hostile_attack_persistence_run(&state, NULL, &tape, NULL);
+}
+
 struct direct_attack_attrition_tape {
 	float values[8];
 	size_t calls;
@@ -20566,6 +20835,8 @@ main(void)
 		return fail("returning-player fixed-field name match differs");
 	if (!check_hostile_surrender_transaction())
 		return fail("hostile surrender transaction differs");
+	if (!check_hostile_attack_persistence_transaction())
+		return fail("hostile Attack persistence transaction differs");
 	if (!check_direct_attack_attrition_model())
 		return fail("direct Attack attrition model differs");
 	if (!check_fighter_shield_spill_transaction())
