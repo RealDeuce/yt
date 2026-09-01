@@ -2832,36 +2832,31 @@ current_minute(void)
 
 static bool
 port_update(struct yt_session *session, int logical_port,
-    struct yt_port *port, float prices[3], double quantities[3],
-    struct yt_error *error)
+    struct yt_port_market_state *market, struct yt_error *error)
 {
-	struct yt_port_market_state market = {0};
 	int today;
 	int adjusted_year;
-	size_t index;
 
+	if (market == NULL)
+		return false;
+	memset(market, 0, sizeof(*market));
 	if (!yt_current_date_serial(session->door->game.config.epoch_year,
 	    &today, &adjusted_year, error))
 		return false;
 	session->door->game.today = today;
 	session->door->game.adjusted_year = adjusted_year;
-	if (!yt_game_read_port(&session->door->game, logical_port, port, error))
+	if (!yt_game_read_port(&session->door->game, logical_port,
+	    &market->port, error))
 		return false;
-	market.port = *port;
-	market.current_day = (float)session->door->game.today;
-	market.timer_seconds = (float)yt_platform_timer();
-	memcpy(market.base_price, session->market_base,
-	    sizeof(market.base_price));
-	if (!yt_port_market_update(&market, error))
+	market->current_day = (float)session->door->game.today;
+	market->timer_seconds = (float)yt_platform_timer();
+	memcpy(market->base_price, session->market_base,
+	    sizeof(market->base_price));
+	if (!yt_port_market_update(market, error))
 		return false;
-	*port = market.port;
-	for (index = 0U; index < 3U; ++index) {
-		prices[index] = market.price[index];
-		if (quantities != NULL)
-			quantities[index] = market.capacity[index];
-	}
-	return yt_game_write_port(&session->door->game, logical_port, port,
-	    error) && yt_database_flush(&session->door->game.database, error);
+	return yt_game_write_port(&session->door->game, logical_port,
+	    &market->port, error)
+	    && yt_database_flush(&session->door->game.database, error);
 }
 
 struct planet_update_cache {
@@ -6812,25 +6807,6 @@ port_report_length(struct yt_session *session, float raw, size_t maximum,
 	return true;
 }
 
-static void
-port_report_right(char *dest, size_t size, const char *source, size_t width)
-{
-	size_t length;
-	size_t amount;
-	size_t padding;
-
-	if (size == 0)
-		return;
-	if (width >= size)
-		width = size - 1U;
-	length = strlen(source);
-	amount = length < width ? length : width;
-	padding = width - amount;
-	memset(dest, ' ', padding);
-	memcpy(dest + padding, source + length - amount, amount);
-	dest[width] = '\0';
-}
-
 static bool
 port_owner_row_capture(struct yt_session *session, const struct yt_port *port,
     uint8_t *captured_name, size_t captured_capacity,
@@ -6890,118 +6866,184 @@ port_owner_row(struct yt_session *session, const struct yt_port *port,
 }
 
 static bool
-port_report_capture(struct yt_session *session, int logical_port,
-    const struct yt_port *port, const float prices[3],
-    const double quantities[3], struct yt_port *terminal_port,
+port_report_read_player(void *context, uint32_t physical_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+	struct yt_record record;
+
+	if (physical_record == (uint32_t)session->player_record) {
+		if (!reload_player(session, error))
+			return false;
+		*player = session->player;
+		return true;
+	}
+	if (!yt_database_read(&session->door->game.database,
+	    (size_t)physical_record, &record, error))
+		return false;
+	yt_player_decode(player, &record);
+	return true;
+}
+
+static bool
+port_report_read_port(void *context, uint32_t physical_record,
+    struct yt_port *port, struct yt_error *error)
+{
+	struct yt_session *session = context;
+	struct yt_record record;
+
+	if (!yt_database_read(&session->door->game.database,
+	    (size_t)physical_record, &record, error))
+		return false;
+	yt_port_decode(port, &record);
+	return true;
+}
+
+static bool
+port_report_observe_date(void *context, uint8_t date[10],
     struct yt_error *error)
 {
-	static const char *commodity[3] = {
-		"Ore..........", "Organics.....", "Equipment...."
-	};
-	static const uint8_t header[] =
-	    " Items         Status      # units    in holds   Cost";
-	static const uint8_t rule[] =
-	    "=======       =========   =========   ========   ====";
-	struct yt_port final_port;
-	struct yt_clock_value date_now;
-	struct yt_clock_value time_now;
-	char date[11];
-	char time_text[9];
-	uint8_t title[256];
-	size_t title_length = 0;
-	size_t name_length;
-	float holds[3];
-	size_t index;
+	struct yt_clock_value now;
+	char rendered[11];
 
-	session->pager.line_count = 0.0f;
-	if (!port_owner_row(session, port, error)
-	    || !reload_player(session, error)
-	    || !yt_game_read_port(&session->door->game, logical_port,
-	    &final_port, error)
-	    || !port_report_length(session, final_port.name_length,
-	    YT_TEXT_FIELD_SIZE, &name_length, "port report name length", error)
-	    || !yt_platform_clock(&date_now, error)
-	    || !yt_platform_clock(&time_now, error))
+	(void)context;
+	if (!yt_platform_clock(&now, error))
 		return false;
-	yt_format_date(&date_now, date);
-	yt_format_time(&time_now, time_text);
-	memcpy(title + title_length, "Commerce report for ",
-	    sizeof("Commerce report for ") - 1U);
-	title_length += sizeof("Commerce report for ") - 1U;
-	memcpy(title + title_length, final_port.record.bytes, name_length);
-	title_length += name_length;
-	title[title_length++] = ':';
-	memcpy(title + title_length, date, 10);
-	title_length += 10;
-	title[title_length++] = ' ';
-	memcpy(title + title_length, time_text, 8);
-	title_length += 8;
-	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "port report title blank", error)
-	    || !session_b05d(session, title, title_length)
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "port report header blank", error)
-	    || !session_b05d(session, header, sizeof(header) - 1U))
-		return false;
-	session->presentation.bold = 1.0f;
-	if (!session_b05d(session, rule, sizeof(rule) - 1U))
-		return false;
-	holds[0] = session->player.ore;
-	holds[1] = session->player.organics;
-	holds[2] = session->player.equipment;
-	for (index = 0; index < 3; ++index) {
-		const char *status;
-		char fragment[128];
-		char number[80];
-		char aligned[32];
+	yt_format_date(&now, rendered);
+	memcpy(date, rendered, 10U);
+	return true;
+}
 
-		if (port->factor[index] < 0.0f) {
-			status = "  Buying ";
-			session->pager.foreground = 3;
-			session->presentation.foreground = 3.0f;
-		}
-		else {
-			status = "  Selling";
-			session->pager.foreground = 2;
-			session->presentation.foreground = 2.0f;
-		}
-		(void)snprintf(fragment, sizeof(fragment), "%s%s",
-		    commodity[index], status);
-		if (!session_present_text(session, (const uint8_t *)fragment,
-		    strlen(fragment), SESSION_PRESENT_RAW,
-		    "port report commodity/status", error))
-			return false;
-		qb_str_double(number, sizeof(number), floor(quantities[index]));
-		port_report_right(aligned, sizeof(aligned), number, 12);
-		if (!session_present_text(session, (const uint8_t *)aligned, 12,
-		    SESSION_PRESENT_RAW, "port report stock", error))
-			return false;
-		qb_str_double(number, sizeof(number), (double)holds[index]);
-		port_report_right(aligned, sizeof(aligned), number, 11);
-		if (!session_present_text(session, (const uint8_t *)aligned, 11,
-		    SESSION_PRESENT_RAW, "port report player hold", error))
-			return false;
-		qb_str_single(number, sizeof(number), prices[index]);
-		(void)snprintf(fragment, sizeof(fragment), "%s    ", number);
-		if (!session_present_text(session, (const uint8_t *)fragment,
-		    strlen(fragment), SESSION_PRESENT_LINE,
-		    "port report price", error))
-			return false;
+static bool
+port_report_observe_time(void *context, uint8_t time_text[8],
+    struct yt_error *error)
+{
+	struct yt_clock_value now;
+	char rendered[9];
+
+	(void)context;
+	if (!yt_platform_clock(&now, error))
+		return false;
+	yt_format_time(&now, rendered);
+	memcpy(time_text, rendered, 8U);
+	return true;
+}
+
+static bool
+port_report_present(void *context, const uint8_t *text, size_t length,
+    enum yt_port_report_output_kind kind, size_t item,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+	const char *operation;
+
+	(void)item;
+	switch (kind) {
+	case YT_PORT_REPORT_OWNER_BLANK:
+		operation = "port owner leading blank";
+		break;
+	case YT_PORT_REPORT_OWNER_ROW:
+		operation = "port owner row";
+		break;
+	case YT_PORT_REPORT_TITLE_BLANK:
+		operation = "port report title blank";
+		break;
+	case YT_PORT_REPORT_HEADER_BLANK:
+		operation = "port report header blank";
+		break;
+	case YT_PORT_REPORT_ITEM_NAME_STATUS:
+		operation = "port report commodity/status";
+		break;
+	case YT_PORT_REPORT_ITEM_CAPACITY:
+		operation = "port report stock";
+		break;
+	case YT_PORT_REPORT_ITEM_HOLD:
+		operation = "port report player hold";
+		break;
+	case YT_PORT_REPORT_ITEM_PRICE:
+		operation = "port report price";
+		break;
+	case YT_PORT_REPORT_TITLE:
+	case YT_PORT_REPORT_HEADER:
+	case YT_PORT_REPORT_RULE:
+		return session_b05d(session, text, length);
+	default:
+		return false;
 	}
-	session->pager.foreground = 3;
-	session->presentation.foreground = 3.0f;
+	return session_present_text(session, text, length,
+	    kind == YT_PORT_REPORT_ITEM_NAME_STATUS
+	    || kind == YT_PORT_REPORT_ITEM_CAPACITY
+	    || kind == YT_PORT_REPORT_ITEM_HOLD
+	    ? SESSION_PRESENT_RAW : SESSION_PRESENT_LINE, operation, error);
+}
+
+static void
+port_report_reset_pager(void *context, const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	session->pager.line_count = qb_mbf32_decode(raw);
+}
+
+static void
+port_report_set_bold(void *context, float bold)
+{
+	struct yt_session *session = context;
+
+	session->presentation.bold = bold;
+}
+
+static void
+port_report_set_foreground(void *context, float foreground)
+{
+	struct yt_session *session = context;
+
+	session->presentation.foreground = foreground;
+	session->pager.foreground = (int)foreground;
+}
+
+static bool
+port_report_capture(struct yt_session *session, int logical_port,
+    const struct yt_port_market_state *market,
+    struct yt_port *terminal_port, struct yt_error *error)
+{
+	static const struct yt_port_report_ops ops = {
+		port_report_read_player,
+		port_report_read_port,
+		port_report_observe_date,
+		port_report_observe_time,
+		port_report_present,
+		port_report_reset_pager,
+		port_report_set_bold,
+		port_report_set_foreground,
+	};
+	struct yt_port_report_state state;
+	int physical_record;
+
+	if (market == NULL)
+		return false;
+	physical_record = yt_port_basic_record(&session->door->game.config,
+	    logical_port);
+	if (physical_record < 1)
+		return port_report_failure(error,
+		    "port report record conversion");
+	memset(&state, 0, sizeof(state));
+	state.current_player_record = session->player_record;
+	state.port_physical_record = (uint32_t)physical_record;
+	state.conversion_mode = session->presentation.sound.conversion_mode;
+	state.market = *market;
+	if (!yt_port_report_run(&state, &ops, session, error))
+		return false;
 	if (terminal_port != NULL)
-		*terminal_port = final_port;
+		*terminal_port = state.report_port;
 	return true;
 }
 
 static bool
 port_report(struct yt_session *session, int logical_port,
-    const struct yt_port *port, const float prices[3],
-    const double quantities[3], struct yt_error *error)
+    const struct yt_port_market_state *market, struct yt_error *error)
 {
-	return port_report_capture(session, logical_port, port, prices,
-	    quantities, NULL, error);
+	return port_report_capture(session, logical_port, market, NULL, error);
 }
 
 static bool
@@ -7254,10 +7296,8 @@ command_trade(struct yt_session *session, struct yt_error *error)
 	static const uint8_t no_port[] = "No port here!";
 	static const uint8_t docking[] = "Docking, ";
 	struct yt_sector gate_sector;
-	struct yt_port port;
+	struct yt_port_market_state market;
 	struct yt_port selected_port;
-	float prices[3];
-	double quantities[3];
 	volatile float selected_expression;
 	int logical_port;
 	size_t commodity;
@@ -7306,19 +7346,17 @@ command_trade(struct yt_session *session, struct yt_error *error)
 			return false;
 		logical_port = (int)updater_sector.port;
 	}
-	if (!port_update(session, logical_port, &port, prices, quantities,
-	    error))
+	if (!port_update(session, logical_port, &market, error))
 		return false;
-	if (!port_report(session, logical_port, &port, prices, quantities,
-	    error))
+	if (!port_report(session, logical_port, &market, error))
 		return false;
-	scheduled_count = yt_port_trade_schedule(port.factor, schedule);
+	scheduled_count = yt_port_trade_schedule(market.port.factor, schedule);
 	for (scheduled_index = 0; scheduled_index < scheduled_count;
 	    ++scheduled_index) {
 		commodity = schedule[scheduled_index];
-		if (!trade_commodity(session, &port, logical_port, commodity,
-		    prices[commodity], quantities[commodity], &prompt_reached,
-		    error))
+		if (!trade_commodity(session, &market.port, logical_port, commodity,
+		    market.price[commodity], market.capacity[commodity],
+		    &prompt_reached, error))
 			return false;
 	}
 	if (!prompt_reached) {
@@ -11984,16 +12022,15 @@ port_purchase_report(void *context, int logical_port, bool earth,
 		return true;
 	}
 	{
-		float prices[3];
-		double quantities[3];
+		struct yt_port_market_state market;
 
-		if (!port_update(session, logical_port, early_port, prices,
-		    quantities, error))
+		if (!port_update(session, logical_port, &market, error))
 			return false;
-		memcpy(production, early_port->production,
+		*early_port = market.port;
+		memcpy(production, market.port.production,
 		    3U * sizeof(production[0]));
-		return port_report_capture(session, logical_port, early_port,
-		    prices, quantities, terminal_port, error);
+		return port_report_capture(session, logical_port, &market,
+		    terminal_port, error);
 	}
 }
 
@@ -15558,20 +15595,16 @@ computer_port_report(struct yt_session *session, struct yt_error *error)
 		return earth_store(session, error);
 	{
 		struct yt_sector updater_sector;
-		struct yt_port port;
-		float prices[3];
-		double quantities[3];
+		struct yt_port_market_state market;
 		int logical_port;
 
 		if (!yt_game_read_sector(&session->door->game, sector_number,
 		    &updater_sector, error))
 			return false;
 		logical_port = (int)updater_sector.port;
-		if (!port_update(session, logical_port, &port, prices, quantities,
-		    error))
+		if (!port_update(session, logical_port, &market, error))
 			return false;
-		return port_report(session, logical_port, &port, prices,
-		    quantities, error);
+		return port_report(session, logical_port, &market, error);
 	}
 }
 

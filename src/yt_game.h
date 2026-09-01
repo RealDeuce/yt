@@ -2492,6 +2492,61 @@ struct yt_port_market_state {
 };
 bool yt_port_market_update(struct yt_port_market_state *state,
 	struct yt_error *error);
+enum yt_port_report_output_kind {
+	YT_PORT_REPORT_OWNER_BLANK,
+	YT_PORT_REPORT_OWNER_ROW,
+	YT_PORT_REPORT_TITLE_BLANK,
+	YT_PORT_REPORT_TITLE,
+	YT_PORT_REPORT_HEADER_BLANK,
+	YT_PORT_REPORT_HEADER,
+	YT_PORT_REPORT_RULE,
+	YT_PORT_REPORT_ITEM_NAME_STATUS,
+	YT_PORT_REPORT_ITEM_CAPACITY,
+	YT_PORT_REPORT_ITEM_HOLD,
+	YT_PORT_REPORT_ITEM_PRICE,
+};
+struct yt_port_report_state {
+	int current_player_record;
+	uint32_t port_physical_record;
+	uint8_t conversion_mode;
+	struct yt_port_market_state market;
+	struct yt_player owner_player;
+	struct yt_player current_player;
+	struct yt_port report_port;
+	uint8_t pager_line_count_raw[4];
+	int owner_record;
+	enum yt_port_owner_kind owner_kind;
+	float foreground;
+	float bold;
+	size_t output_count;
+	size_t completed_items;
+	bool pager_reset;
+	bool owner_player_read;
+	bool current_player_read;
+	bool report_port_read;
+	bool date_observed;
+	bool time_observed;
+	bool complete;
+};
+struct yt_port_report_ops {
+	bool (*read_player)(void *context, uint32_t physical_record,
+	    struct yt_player *player, struct yt_error *error);
+	bool (*read_port)(void *context, uint32_t physical_record,
+	    struct yt_port *port, struct yt_error *error);
+	bool (*observe_date)(void *context, uint8_t date[10],
+	    struct yt_error *error);
+	bool (*observe_time)(void *context, uint8_t time[8],
+	    struct yt_error *error);
+	bool (*present)(void *context, const uint8_t *text, size_t length,
+	    enum yt_port_report_output_kind kind, size_t item,
+	    struct yt_error *error);
+	void (*reset_pager)(void *context, const uint8_t raw[4]);
+	void (*set_bold)(void *context, float bold);
+	void (*set_foreground)(void *context, float foreground);
+};
+bool yt_port_report_run(struct yt_port_report_state *state,
+	const struct yt_port_report_ops *ops, void *context,
+	struct yt_error *error);
 size_t yt_port_trade_schedule(const float factors[3], size_t order[3]);
 int yt_computer_selector_position(const char *command);
 void yt_trade_treasury_overlay(struct yt_port *port, float receipt);

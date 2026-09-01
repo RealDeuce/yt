@@ -177,6 +177,17 @@ test_mbf64(void)
 	CHECK(qb_mbf32_from_mbf64_raw(encoded, encoded_single) == QB_MBF_OK);
 	CHECK(memcmp(encoded_single, fractional_int + 4U,
 	    sizeof(encoded_single)) == 0);
+	CHECK(qb_mbf64_encode(-5.5, scratch) == QB_MBF_OK);
+	CHECK(qb_mbf64_floor_raw(scratch, scratch) == QB_MBF_OK);
+	CHECK(qb_mbf64_encode(-6.0, result) == QB_MBF_OK);
+	CHECK(memcmp(scratch, result, sizeof(scratch)) == 0);
+	CHECK(qb_mbf64_encode(-5.0, scratch) == QB_MBF_OK);
+	CHECK(qb_mbf64_floor_raw(scratch, encoded) == QB_MBF_OK);
+	CHECK(memcmp(scratch, encoded, sizeof(scratch)) == 0);
+	CHECK(qb_mbf64_encode(-0.5, scratch) == QB_MBF_OK);
+	CHECK(qb_mbf64_floor_raw(scratch, encoded) == QB_MBF_OK);
+	CHECK(qb_mbf64_encode(-1.0, result) == QB_MBF_OK);
+	CHECK(memcmp(encoded, result, sizeof(encoded)) == 0);
 
 	/* The registration path needs all 56 MBF bits, not host binary64. */
 	CHECK(qb_mbf64_mul_raw(signature, first_sum, scratch) == QB_MBF_OK);

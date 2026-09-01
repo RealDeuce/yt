@@ -610,6 +610,37 @@ qb_mbf64_floor_positive_raw(const uint8_t operand[8], uint8_t raw[8])
 }
 
 enum qb_mbf_status
+qb_mbf64_floor_raw(const uint8_t operand[8], uint8_t raw[8])
+{
+	uint8_t magnitude[8];
+	uint8_t integer[8];
+	uint8_t one[8];
+	enum qb_mbf_status status;
+
+	if (operand == NULL || raw == NULL)
+		return QB_MBF_DOMAIN;
+	if (operand[7] == 0U || (operand[6] & 0x80U) == 0U)
+		return qb_mbf64_floor_positive_raw(operand, raw);
+	memcpy(magnitude, operand, sizeof(magnitude));
+	magnitude[6] &= 0x7fU;
+	status = qb_mbf64_floor_positive_raw(magnitude, integer);
+	if (status != QB_MBF_OK)
+		return status;
+	if (memcmp(integer, magnitude, sizeof(integer)) != 0) {
+		status = qb_mbf64_from_u64(1U, one);
+		if (status != QB_MBF_OK)
+			return status;
+		status = qb_mbf64_add_raw(integer, one, integer);
+		if (status != QB_MBF_OK)
+			return status;
+	}
+	if (integer[7] != 0U)
+		integer[6] |= 0x80U;
+	memcpy(raw, integer, sizeof(integer));
+	return QB_MBF_OK;
+}
+
+enum qb_mbf_status
 qb_mbf64_int_positive_raw(const uint8_t operand[8], uint8_t raw[8])
 {
 	if (operand == NULL || raw == NULL)

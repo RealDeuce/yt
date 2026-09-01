@@ -38,6 +38,8 @@ enum qb_mbf_status qb_mbf64_sqrt_raw(const uint8_t operand[8],
     uint8_t raw[8]);
 enum qb_mbf_status qb_mbf64_floor_positive_raw(const uint8_t operand[8],
     uint8_t raw[8]);
+enum qb_mbf_status qb_mbf64_floor_raw(const uint8_t operand[8],
+    uint8_t raw[8]);
 enum qb_mbf_status qb_mbf64_int_positive_raw(const uint8_t operand[8],
     uint8_t raw[8]);
 
