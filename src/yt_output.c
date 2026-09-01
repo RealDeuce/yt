@@ -4,18 +4,17 @@
 #include "ODScrn.h"
 #include "yt_text.h"
 
-#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 
 void
-yt_out(const char *text)
+yt_out_plain(const char *text)
 {
 	od_disp(text, (INT)strlen(text), TRUE);
 }
 
 void
-yt_out_bytes(const void *data, size_t length)
+yt_out_plain_bytes(const void *data, size_t length)
 {
 	const uint8_t *cursor = data;
 
@@ -193,59 +192,16 @@ yt_out_cursor_position(int *row, int *column)
 }
 
 void
-yt_outf(const char *format, ...)
+yt_out_plain_line(const char *text)
 {
-	char stack[1024];
-	char *buffer = stack;
-	va_list arguments;
-	va_list copy;
-	int length;
-
-	va_start(arguments, format);
-	va_copy(copy, arguments);
-	length = vsnprintf(stack, sizeof(stack), format, arguments);
-	va_end(arguments);
-	if (length < 0) {
-		va_end(copy);
-		return;
-	}
-	if ((size_t)length >= sizeof(stack)) {
-		buffer = malloc((size_t)length + 1U);
-		if (buffer == NULL) {
-			va_end(copy);
-			return;
-		}
-		(void)vsnprintf(buffer, (size_t)length + 1U, format, copy);
-	}
-	va_end(copy);
-	yt_out_bytes(buffer, (size_t)length);
-	if (buffer != stack)
-		free(buffer);
-}
-
-void
-yt_out_line(const char *text)
-{
-	yt_out(text);
-	yt_out("\r\n");
+	yt_out_plain(text);
+	yt_out_plain("\r\n");
 }
 
 void
 yt_out_clear(void)
 {
 	od_clr_scr();
-}
-
-bool
-yt_out_file(const char *path, struct yt_error *error)
-{
-	struct yt_text_file file;
-
-	if (!yt_text_read(path, &file, error))
-		return false;
-	yt_out_bytes(file.data, file.length);
-	yt_text_free(&file);
-	return true;
 }
 
 struct yt_out_opening_context {

@@ -15000,7 +15000,7 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 						++line_count;
 						wrap_marker = 0;
 						if (line_count >= 20) {
-							yt_out_line("Message full!");
+							yt_out_plain_line("Message full!");
 							menu = true;
 						}
 						else {
@@ -15016,7 +15016,7 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 				if (key == 8 || key == 127) {
 					if (length != 0) {
 						lines[line_count][length - 1U] = '\0';
-						yt_out("\b \b");
+						yt_out_plain("\b \b");
 					}
 					continue;
 				}

@@ -151,7 +151,7 @@ test_counted_routes(void)
 	size_t index;
 
 	reset_calls();
-	yt_out("abc");
+	yt_out_plain("abc");
 	CHECK(output_call_count == 1U
 	    && output_calls[0].length == 3U
 	    && output_calls[0].local_echo
@@ -164,7 +164,7 @@ test_counted_routes(void)
 	for (index = 0U; index < 32768U; ++index)
 		large[index] = (uint8_t)(index & 0xffU);
 	reset_calls();
-	yt_out_bytes(large, 32768U);
+	yt_out_plain_bytes(large, 32768U);
 	CHECK(output_call_count == 2U
 	    && output_calls[0].length == 32767U
 	    && output_calls[1].length == 1U

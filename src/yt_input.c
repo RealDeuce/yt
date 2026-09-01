@@ -45,13 +45,13 @@ yt_input_line(char *text, size_t size)
 		if (key == EOF)
 			return false;
 		if (key == '\r' || key == '\n') {
-			yt_out("\r\n");
+			yt_out_plain("\r\n");
 			text[used] = '\0';
 			return true;
 		}
 		if ((key == 8 || key == 127) && used > 0) {
 			--used;
-			yt_out("\b \b");
+			yt_out_plain("\b \b");
 			continue;
 		}
 		if (key >= 32 && key <= 255 && used + 1U < size) {
@@ -67,7 +67,7 @@ yt_input_number(const char *prompt, double *value)
 	char line[80];
 	struct qb_val_result parsed;
 
-	yt_out(prompt);
+	yt_out_plain(prompt);
 	if (!yt_input_line(line, sizeof(line)))
 		return false;
 	parsed = qb_val(line);
@@ -80,14 +80,14 @@ yt_input_yes_no(const char *prompt)
 {
 	int key;
 
-	yt_out(prompt);
+	yt_out_plain(prompt);
 	do {
 		key = yt_input_command();
 	} while (key != EOF && key != 'Y' && key != 'N');
 	if (key == EOF)
 		return false;
 	od_putch((char)key);
-	yt_out("\r\n");
+	yt_out_plain("\r\n");
 	return key == 'Y';
 }
 
