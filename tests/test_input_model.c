@@ -367,6 +367,15 @@ test_ab36_queued_input(void)
 	length = sizeof(queue);
 	CHECK(!yt_input_ab36_queue_pop(queue, sizeof(queue), &position,
 	    &length, &selected));
+
+	memcpy(queue, "AB", 3U);
+	position = 1U;
+	length = 2U;
+	CHECK(yt_input_queue_clear(queue, sizeof(queue), &position, &length)
+	    && queue[0] == '\0' && position == 0U && length == 0U);
+	position = 2U;
+	length = 1U;
+	CHECK(!yt_input_queue_clear(queue, sizeof(queue), &position, &length));
 }
 
 static void

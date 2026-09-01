@@ -646,9 +646,8 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 static void
 clear_queue(struct yt_session *session)
 {
-	session->queue_position = 0;
-	session->queue_length = 0;
-	session->queue[0] = '\0';
+	(void)yt_input_queue_clear(session->queue, sizeof(session->queue),
+	    &session->queue_position, &session->queue_length);
 }
 
 static bool

@@ -9442,6 +9442,120 @@ test_computer_port_report_terminal_presentation(void)
 }
 
 static void
+test_computer_port_report_ab36_state_joins(void)
+{
+	struct yt_present_state current = state(true);
+	struct yt_pager_state pager;
+	struct yt_b05d_key_state key_state;
+	struct yt_input_value selected;
+	struct yt_input_value sampled;
+	char accumulator[32];
+	char response[32];
+	char queue[32];
+	size_t queue_position;
+	size_t queue_length;
+
+	/* Initial command-2 selector: inherit the computer editor's queue. */
+	memset(&pager, 0, sizeof(pager));
+	pager.line_count = 17.0f;
+	pager.nonstop = 1.0f;
+	pager.newline_flag = 0.0f;
+	memcpy(pager.key, "Q", 2U);
+	memcpy(accumulator, "stale", 6U);
+	memcpy(queue, "2\r", 3U);
+	queue_position = 0U;
+	queue_length = 2U;
+	current.foreground = 1.0f;
+	current.bold = 0.0f;
+	current.blink = 0.0f;
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(pager.line_count == 0.0f && pager.nonstop == 0.0f
+	    && pager.newline_flag == 0.0f && pager.key[0] == '\0'
+	    && accumulator[0] == '\0' && queue_position == 0U
+	    && queue_length == 2U && memcmp(queue, "2\r", 2U) == 0
+	    && current.foreground == 1.0f && current.bold == 0.0f
+	    && current.blink == 0.0f);
+	CHECK(yt_input_ab36_queue_pop(queue, sizeof(queue), &queue_position,
+	    &queue_length, &selected)
+	    && selected.length == 1U && selected.bytes[0] == '2'
+	    && queue_position == 1U && queue_length == 2U);
+	CHECK(yt_input_ab36_queue_pop(queue, sizeof(queue), &queue_position,
+	    &queue_length, &selected)
+	    && selected.length == 1U && selected.bytes[0] == '\r'
+	    && queue_position == 0U && queue_length == 0U);
+
+	/* Invalid selection: 02DB discards its semicolon typeahead. */
+	memcpy(response, "2005;99", 8U);
+	queue[0] = '\0';
+	queue_position = 0U;
+	queue_length = 0U;
+	CHECK(yt_input_split_semicolon(response, queue, sizeof(queue),
+	    &queue_position, &queue_length)
+	    && strcmp(response, "2005") == 0
+	    && queue_position == 0U && queue_length == 3U
+	    && memcmp(queue, "99\r", 3U) == 0);
+	current.bold = 0.0f;
+	current.blink = 0.0f;
+	CHECK(yt_input_queue_clear(queue, sizeof(queue), &queue_position,
+	    &queue_length));
+	pager.line_count = 2.0f;
+	pager.nonstop = 1.0f;
+	pager.newline_flag = 0.0f;
+	memcpy(pager.key, "E", 2U);
+	memcpy(accumulator, "2005", 5U);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(pager.line_count == 0.0f && pager.nonstop == 0.0f
+	    && pager.newline_flag == 0.0f && pager.key[0] == '\0'
+	    && accumulator[0] == '\0' && queue[0] == '\0'
+	    && queue_position == 0U && queue_length == 0U
+	    && current.bold == 0.0f && current.blink == 0.0f);
+	CHECK(yt_input_ab36_queue_pop(queue, sizeof(queue), &queue_position,
+	    &queue_length, &selected) && selected.length == 0U);
+
+	/* Fresh 8639 prompt: retain typeahead collected by report B05D calls. */
+	memset(&key_state, 0, sizeof(key_state));
+	key_state.accumulator = accumulator;
+	key_state.accumulator_capacity = sizeof(accumulator);
+	key_state.queue = queue;
+	key_state.queue_capacity = sizeof(queue);
+	key_state.queue_position = &queue_position;
+	key_state.queue_length = &queue_length;
+	key_state.pager_key = pager.key;
+	key_state.pager_key_capacity = sizeof(pager.key);
+	memset(&sampled, 0, sizeof(sampled));
+	sampled.length = 1U;
+	sampled.bytes[0] = '7';
+	CHECK(yt_b05d_process_key(&sampled, &key_state));
+	sampled.bytes[0] = '\r';
+	CHECK(yt_b05d_process_key(&sampled, &key_state)
+	    && queue_position == 0U && queue_length == 2U
+	    && memcmp(queue, "7\r", 2U) == 0);
+	current.foreground = 1.0f;
+	pager.foreground = 1;
+	pager.line_count = 16.0f;
+	pager.nonstop = 1.0f;
+	pager.newline_flag = 0.0f;
+	memcpy(pager.key, "NS", 3U);
+	memcpy(accumulator, "report", 7U);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(pager.line_count == 0.0f && pager.nonstop == 0.0f
+	    && pager.newline_flag == 0.0f && pager.key[0] == '\0'
+	    && pager.foreground == 1 && accumulator[0] == '\0'
+	    && queue_position == 0U && queue_length == 2U
+	    && memcmp(queue, "7\r", 2U) == 0
+	    && current.foreground == 1.0f
+	    && current.bold == 0.0f && current.blink == 0.0f);
+	CHECK(yt_input_ab36_queue_pop(queue, sizeof(queue), &queue_position,
+	    &queue_length, &selected)
+	    && selected.length == 1U && selected.bytes[0] == '7'
+	    && queue_position == 1U && queue_length == 2U);
+	CHECK(yt_input_ab36_queue_pop(queue, sizeof(queue), &queue_position,
+	    &queue_length, &selected)
+	    && selected.length == 1U && selected.bytes[0] == '\r'
+	    && queue_position == 0U && queue_length == 0U);
+}
+
+static void
 test_computer_port_report_earth_cycle_presentation(void)
 {
 	static const uint8_t plain[] =
@@ -21999,6 +22113,7 @@ main(void)
 	test_computer_port_report_short_cycles_presentation();
 	test_computer_port_report_wrapper_b05d_cuts();
 	test_computer_port_report_terminal_presentation();
+	test_computer_port_report_ab36_state_joins();
 	test_computer_port_report_earth_cycle_presentation();
 	test_computer_port_report_ordinary_cycle_presentation();
 	test_computer_port_report_low_time_cycle_presentation();

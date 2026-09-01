@@ -217,6 +217,19 @@ yt_input_ab36_queue_pop(char *queue, size_t capacity, size_t *position,
 }
 
 bool
+yt_input_queue_clear(char *queue, size_t capacity, size_t *position,
+    size_t *length)
+{
+	if (queue == NULL || capacity == 0U || position == NULL
+	    || length == NULL || *position > *length || *length >= capacity)
+		return false;
+	queue[0] = '\0';
+	*position = 0U;
+	*length = 0U;
+	return true;
+}
+
+bool
 yt_input_ab36_repeat_requested(bool queued,
     const struct yt_input_value *selected)
 {
