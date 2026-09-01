@@ -9093,6 +9093,8 @@ test_computer_port_report_wrapper_b05d_cuts(void)
 	static const uint8_t prompt[] =
 	    "Enter sector number port is in -=> ";
 	static const uint8_t unavailable[] = "No information available.";
+	static const uint8_t earth_title[] =
+	    "Commerce report for Earth: 07-25-2026 12:34:56";
 	static const uint8_t prompt_before[] = "\r\n";
 	static const uint8_t prompt_after[] =
 	    "\r\nEnter sector number port is in -=> ";
@@ -9101,6 +9103,11 @@ test_computer_port_report_wrapper_b05d_cuts(void)
 	static const uint8_t unavailable_after[] =
 	    "\r\nEnter sector number port is in -=> 3\r\n\r\n"
 	    "No information available.";
+	static const uint8_t earth_title_before[] =
+	    "\r\nEnter sector number port is in -=> 1\r\n\r\n";
+	static const uint8_t earth_title_after[] =
+	    "\r\nEnter sector number port is in -=> 1\r\n\r\n"
+	    "Commerce report for Earth: 07-25-2026 12:34:56";
 	struct commodity_trade_join join;
 	struct commodity_b05d_cut cut;
 
@@ -9161,10 +9168,50 @@ test_computer_port_report_wrapper_b05d_cuts(void)
 	CHECK(cut.carrier_calls == 2U && cut.sample_calls == 1U
 	    && cut.present_calls == 1U && cut.finish_calls == 0U
 	    && join.pager.line_count == 0.0f);
+
+	commodity_trade_join_init(&join);
+	join.current = state(false);
+	commodity_trade_join_line(&join);
+	commodity_trade_join_b05d(&join, prompt, sizeof(prompt) - 1U, true);
+	commodity_trade_join_input(&join, (const uint8_t *)"1", 1U);
+	join.pager.line_count = 0.0f;
+	join.current.foreground = 3.0f;
+	join.pager.foreground = 3;
+	commodity_trade_join_line(&join);
+	commodity_b05d_cut_init(&cut, &join, 0U);
+	CHECK(!yt_paged_row_run(&join.pager, &join.current, &cut.key_state,
+	    earth_title, sizeof(earth_title) - 1U,
+	    &commodity_b05d_cut_ops, &cut));
+	commodity_trade_join_check(&join, earth_title_before,
+	    sizeof(earth_title_before) - 1U);
+	CHECK(cut.carrier_calls == 1U && cut.sample_calls == 0U
+	    && cut.present_calls == 0U && cut.finish_calls == 0U
+	    && join.pager.line_count == 0.0f);
+
+	commodity_trade_join_init(&join);
+	join.current = state(false);
+	commodity_trade_join_line(&join);
+	commodity_trade_join_b05d(&join, prompt, sizeof(prompt) - 1U, true);
+	commodity_trade_join_input(&join, (const uint8_t *)"1", 1U);
+	join.pager.line_count = 0.0f;
+	join.current.foreground = 3.0f;
+	join.pager.foreground = 3;
+	commodity_trade_join_line(&join);
+	commodity_b05d_cut_init(&cut, &join, 1U);
+	CHECK(!yt_paged_row_run(&join.pager, &join.current, &cut.key_state,
+	    earth_title, sizeof(earth_title) - 1U,
+	    &commodity_b05d_cut_ops, &cut));
+	commodity_trade_join_check(&join, earth_title_after,
+	    sizeof(earth_title_after) - 1U);
+	CHECK(cut.carrier_calls == 2U && cut.sample_calls == 1U
+	    && cut.present_calls == 1U && cut.finish_calls == 0U
+	    && join.pager.line_count == 0.0f);
 	CHECK(sizeof(prompt_before) - 1U == 2U
 	    && sizeof(prompt_after) - 1U == 37U
 	    && sizeof(unavailable_before) - 1U == 42U
-	    && sizeof(unavailable_after) - 1U == 67U);
+	    && sizeof(unavailable_after) - 1U == 67U
+	    && sizeof(earth_title_before) - 1U == 42U
+	    && sizeof(earth_title_after) - 1U == 88U);
 }
 
 struct computer_port_terminal_join {
@@ -9439,11 +9486,13 @@ test_computer_port_report_earth_cycle_presentation(void)
 	    "Time:15:00  Computer command (?=help)? ";
 	static const struct {
 		bool ansi;
+		float mode;
 		const uint8_t *expected;
 		size_t expected_length;
 	} cases[] = {
-		{false, plain, sizeof(plain) - 1U},
-		{true, ansi, sizeof(ansi) - 1U},
+		{false, 0.0f, plain, sizeof(plain) - 1U},
+		{true, 0.0f, ansi, sizeof(ansi) - 1U},
+		{true, 1.0f, NULL, 0U},
 	};
 	struct yt_present_state current;
 	struct yt_present_result result;
@@ -9454,6 +9503,7 @@ test_computer_port_report_earth_cycle_presentation(void)
 
 	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
 		current = state(cases[pass].ansi);
+		current.sound.mode = cases[pass].mode;
 		current.foreground = 1.0f;
 		current.cached_foreground = cases[pass].ansi ? 1.0f : 0.0f;
 		memset(&pager, 0, sizeof(pager));
@@ -9484,10 +9534,12 @@ test_computer_port_report_earth_cycle_presentation(void)
 		pager_fixture_b05d(&pager, &current, computer_prompt,
 		    sizeof(computer_prompt) - 1U, &capture);
 		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
-		CHECK(capture.remote_length == cases[pass].expected_length
-		    && memcmp(capture.remote, cases[pass].expected,
-		    cases[pass].expected_length) == 0
-		    && current.foreground == 1.0f
+		CHECK(capture.remote_length == cases[pass].expected_length);
+		CHECK(cases[pass].expected_length == 0U
+		    || capture.remote_length != cases[pass].expected_length
+		    || memcmp(capture.remote, cases[pass].expected,
+		    cases[pass].expected_length) == 0);
+		CHECK(current.foreground == 1.0f
 		    && current.background == 0.0f
 		    && current.cached_foreground
 		    == (cases[pass].ansi ? 1.0f : 0.0f)

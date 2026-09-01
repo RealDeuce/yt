@@ -8,30 +8,27 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
+None.
+
+## Resolved documentation gaps
+
 ### DOC-GAP-005: command-2 surviving AB36 editor interleavings
 
 Affected coverage:
 
-- ship-computer command-2/alias-23 first selector and retry selectors;
-- the command-2 return into the fresh `YT:8639` computer prompt; and
-- completion claims for all reachable command-2 input/runtime paths.
+- ship-computer command-2/alias-23 first selector and retry selectors; and
+- the command-2 return into the fresh `YT:8639` computer prompt.
 
-`docs/runtime/computer-port-report-output.md` explicitly leaves these outside
-its bounded composition:
-
-- surviving per-poll AB36 time refresh;
-- local/serial typeahead and queue interleavings; and
-- F8 SysOp-time interleavings while the editor remains active.
-
-The shared AB36 components do not by themselves specify which complete
-command-2 caller states, poll sequences, queue residues, visible prefixes,
-and return/terminal outcomes are reachable at the initial selector, an
-invalid-sector retry, and the following fresh computer prompt. The upstream
-documentation needs to provide those caller-composed state/effect vectors
-before the remaining native command-2 editor paths can be implemented or
-claimed. No binary inspection or new reverse engineering was performed.
-
-## Resolved documentation gaps
+Resolved by the user's authoritative clarification. The shared AB36 contract
+already parameterizes per-poll time refresh, local/serial/queue precedence,
+typeahead residue, F8 delivery and resumed polling, and every timeout,
+carrier-loss and terminal outcome. Command 2 does not require a separate
+caller-specific vector for every permutation. It only joins its canonical
+global state into that shared editor at the initial selector, the retry after
+`02DB` clears the queue, and the fresh `8639` computer prompt. The upstream
+`docs/runtime/computer-port-report-output.md:290` disclaimer was therefore a
+documentation scoping defect, not missing behavioral analysis. No binary
+inspection or new reverse engineering was performed.
 
 ### DOC-GAP-004: forced-Bribe surrender join raw/typed output conflict
 
