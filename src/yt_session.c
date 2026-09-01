@@ -12164,148 +12164,161 @@ command_buy_port_cycle(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
+treasury_read_player(void *context, uint32_t physical_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+	struct yt_record record;
+
+	if (!yt_database_read(&session->door->game.database,
+	    (size_t)physical_record, &record, error))
+		return false;
+	yt_player_decode(player, &record);
+	return true;
+}
+
+static bool
+treasury_read_port(void *context, uint32_t physical_record,
+    struct yt_port *port, struct yt_error *error)
+{
+	struct yt_session *session = context;
+	struct yt_record record;
+
+	if (!yt_database_read(&session->door->game.database,
+	    (size_t)physical_record, &record, error))
+		return false;
+	yt_port_decode(port, &record);
+	return true;
+}
+
+static bool
+treasury_write_port(void *context, uint32_t physical_record,
+    struct yt_port *port, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_database_write(&session->door->game.database,
+	    (size_t)physical_record, &port->record, error);
+}
+
+static bool
+treasury_present(void *context, const uint8_t *text, size_t length,
+    enum yt_treasury_output_kind kind, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	switch (kind) {
+	case YT_TREASURY_OPENING_BLANK:
+		return session_present_text(session, NULL, 0U,
+		    SESSION_PRESENT_LINE, "treasury opening blank", error);
+	case YT_TREASURY_NO_PORTS:
+		session->presentation.blink = 1.0f;
+		return session_present_text(session, text, length,
+		    SESSION_PRESENT_BOLD_LINE, "treasury no-owned notice", error);
+	case YT_TREASURY_HEADING_PREFIX:
+		return session_present_text(session, text, length,
+		    SESSION_PRESENT_RAW, "treasury heading prefix", error);
+	case YT_TREASURY_HEADING_SUFFIX:
+		return session_present_text(session, text, length,
+		    SESSION_PRESENT_LINE, "treasury heading suffix", error);
+	case YT_TREASURY_SCAN_BLANK:
+		return session_present_text(session, NULL, 0U,
+		    SESSION_PRESENT_LINE, "treasury scan blank", error);
+	case YT_TREASURY_SECTOR_FIELD:
+		return session_fixed_width_bytes(session, text, length, 14.0f,
+		    "treasury sector field", error);
+	case YT_TREASURY_NAME_FIELD:
+		return session_fixed_width_bytes(session, text, length, 25.0f,
+		    "treasury port-name field", error);
+	case YT_TREASURY_CREDIT_FIELD:
+		return session_fixed_width_bytes(session, text, length, 20.0f,
+		    "treasury credit field", error);
+	case YT_TREASURY_ROW_TOTAL:
+		return session_present_text(session, text, length,
+		    SESSION_PRESENT_LINE, "treasury row total", error);
+	case YT_TREASURY_NONZERO_BLANK:
+		return session_present_text(session, NULL, 0U,
+		    SESSION_PRESENT_LINE, "treasury nonzero-total blank", error);
+	case YT_TREASURY_TOTAL_PORTS:
+		return session_present_text(session, text, length,
+		    SESSION_PRESENT_LINE, "treasury total ports", error);
+	case YT_TREASURY_WITH_CREDITS:
+		return session_present_text(session, text, length,
+		    SESSION_PRESENT_LINE, "treasury credited ports", error);
+	case YT_TREASURY_BARREN_PORTS:
+		return session_present_text(session, text, length,
+		    SESSION_PRESENT_LINE, "treasury barren ports", error);
+	case YT_TREASURY_TOTAL_CREDITS:
+		return session_present_text(session, text, length,
+		    SESSION_PRESENT_LINE, "treasury total credits", error);
+	case YT_TREASURY_SUMMARY_BLANK:
+		return session_present_text(session, NULL, 0U,
+		    SESSION_PRESENT_LINE, "treasury summary blank", error);
+	case YT_TREASURY_REPORT_RESULT:
+		return session_present_text(session, text, length,
+		    SESSION_PRESENT_LINE, "treasury report result", error);
+	case YT_TREASURY_COLLECTION_RESULT:
+		return session_present_text(session, text, length,
+		    SESSION_PRESENT_LINE, "treasury collection result", error);
+	default:
+		return false;
+	}
+}
+
+static bool
+treasury_write_player(void *context, uint32_t physical_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_database_write(&session->door->game.database,
+	    (size_t)physical_record, &player->record, error);
+}
+
+static bool
+treasury_flush_player(void *context, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_database_flush(&session->door->game.database, error);
+}
+
+static bool
+treasury_update_cache(void *context, const struct yt_player *player,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	(void)error;
+	session->player = *player;
+	return true;
+}
+
+static bool
 command_collect(struct yt_session *session, bool collecting,
     struct yt_error *error)
 {
-	static const uint8_t dirty_zero[4] = {0x00, 0x00, 0x20, 0x00};
-	static const uint8_t no_ports[] = "You don't OWN any ports!!!";
-	static const uint8_t collect_prefix[] =
-	    "Sending out armored cargo ships to";
-	static const uint8_t report_prefix[] =
-	    "Checking galactic bank statement for";
-	static const uint8_t heading_suffix[] = " ports with credits...";
-	struct yt_player current;
-	int logical;
-	double collected = 0.0;
-	float owned = 0.0f;
-	float credited = 0.0f;
-	char number_one[64];
-	char number_two[64];
-	char text[160];
+	static const struct yt_treasury_ops ops = {
+		treasury_read_player,
+		treasury_read_port,
+		treasury_write_port,
+		treasury_present,
+		treasury_write_player,
+		treasury_flush_player,
+		treasury_update_cache,
+	};
+	struct yt_treasury_state state = {
+		.current_player_record = (float)session->player_record,
+		.port_offset = session->door->game.config.port_offset,
+		.planet_offset = session->door->game.config.planet_offset,
+		.conversion_mode = session->presentation.sound.conversion_mode,
+	};
+	static const uint8_t true_raw[4] = {0x00, 0x00, 0x00, 0x81};
+	static const uint8_t false_raw[4] = {0x00, 0xae, 0x03, 0x00};
 
-	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "treasury opening blank", error))
-		return false;
-	if (!yt_game_read_player(&session->door->game, session->player_record,
-	    &current, error))
-		return false;
-	if (current.ports_owned < 1.0f) {
-		session->presentation.blink = 1.0f;
-		return session_present_text(session, no_ports,
-		    sizeof(no_ports) - 1U, SESSION_PRESENT_BOLD_LINE,
-		    "treasury no-owned notice", error);
-	}
-	if (!session_present_text(session,
-	    collecting ? collect_prefix : report_prefix,
-	    collecting ? sizeof(collect_prefix) - 1U
-	    : sizeof(report_prefix) - 1U,
-	    SESSION_PRESENT_RAW, "treasury heading prefix", error)
-	    || !session_present_text(session, heading_suffix,
-	    sizeof(heading_suffix) - 1U, SESSION_PRESENT_LINE,
-	    "treasury heading suffix", error)
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "treasury scan blank", error))
-		return false;
-
-	for (logical = 1; logical <= port_count(session); ++logical) {
-		struct yt_port port;
-
-		if (!yt_game_read_port(&session->door->game, logical, &port,
-		    error))
-			return false;
-		if (port.owner != (float)session->player_record)
-			continue;
-		owned = single_add(owned, 1.0f);
-		if (port.record.bytes[YT_F89 + 3U] == 0)
-			continue;
-		credited = single_add(credited, 1.0f);
-		collected += (double)port.treasury;
-		qb_str_single(number_one, sizeof(number_one), port.sector);
-		snprintf(text, sizeof(text), "Sector:%s", number_one);
-		if (!session_fixed_width(session, text, 14.0f,
-		    "treasury sector field", error))
-			return false;
-		{
-			size_t name_length;
-
-			if (!port_report_length(session, port.name_length,
-			    YT_TEXT_FIELD_SIZE, &name_length,
-			    "treasury port-name length", error)
-			    || !session_fixed_width_bytes(session, port.record.bytes,
-			    name_length, 25.0f,
-			    "treasury port-name field", error))
-				return false;
-		}
-		qb_str_single(number_one, sizeof(number_one), port.treasury);
-		snprintf(text, sizeof(text), " Credits:%s", number_one);
-		if (!session_fixed_width(session, text, 20.0f,
-		    "treasury credit field", error))
-			return false;
-		qb_str_double(number_two, sizeof(number_two), collected);
-		snprintf(text, sizeof(text), " Total:%s", number_two);
-		if (!session_present_text(session, (const uint8_t *)text,
-		    strlen(text), SESSION_PRESENT_LINE, "treasury row total",
-		    error))
-			return false;
-		if (collecting) {
-			port.treasury = 0.0f;
-			if (!yt_record_set_raw_number(&port.record, YT_F89,
-			    dirty_zero)
-			    || !yt_game_write_port(&session->door->game, logical,
-			    &port, error))
-				return false;
-		}
-	}
-	if (collected != 0.0
-	    && !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "treasury nonzero-total blank", error))
-		return false;
-	qb_str_single(number_one, sizeof(number_one), owned);
-	snprintf(text, sizeof(text), "Total ports...:%s", number_one);
-	if (!session_present_text(session, (const uint8_t *)text, strlen(text),
-	    SESSION_PRESENT_LINE, "treasury total ports", error))
-		return false;
-	qb_str_single(number_one, sizeof(number_one), credited);
-	snprintf(text, sizeof(text), "With credits..:%s", number_one);
-	if (!session_present_text(session, (const uint8_t *)text, strlen(text),
-	    SESSION_PRESENT_LINE, "treasury credited ports", error))
-		return false;
-	qb_str_single(number_one, sizeof(number_one),
-	    single_sub(owned, credited));
-	snprintf(text, sizeof(text), "Barren ports..:%s", number_one);
-	if (!session_present_text(session, (const uint8_t *)text, strlen(text),
-	    SESSION_PRESENT_LINE, "treasury barren ports", error))
-		return false;
-	qb_str_double(number_two, sizeof(number_two), collected);
-	snprintf(text, sizeof(text), "Total credits.:%s", number_two);
-	if (!session_present_text(session, (const uint8_t *)text, strlen(text),
-	    SESSION_PRESENT_LINE, "treasury total credits", error)
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "treasury summary blank", error))
-		return false;
-	if (!collecting) {
-		snprintf(text, sizeof(text), "You have%s credits in your port "
-		    "accounts.", number_two);
-		return session_present_text(session, (const uint8_t *)text,
-		    strlen(text), SESSION_PRESENT_LINE, "treasury report result",
-		    error);
-	}
-	snprintf(text, sizeof(text), "You collected a total of%s credits.",
-	    number_two);
-	if (!session_present_text(session, (const uint8_t *)text, strlen(text),
-	    SESSION_PRESENT_LINE, "treasury collection result", error))
-		return false;
-	if (!yt_game_read_player(&session->door->game, session->player_record,
-	    &current, error))
-		return false;
-	current.ports_owned = owned;
-	current.credits = (float)((double)current.credits + collected);
-	if (!yt_game_write_player(&session->door->game, session->player_record,
-	    &current, error)
-	    || !yt_database_flush(&session->door->game.database, error))
-		return false;
-	session->player = current;
-	return true;
+	memcpy(state.collecting_raw, collecting ? true_raw : false_raw,
+	    sizeof(state.collecting_raw));
+	return yt_treasury_run(&state, &ops, session, error);
 }
 
 static bool

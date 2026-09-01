@@ -2401,6 +2401,79 @@ struct yt_movement_ops {
 bool yt_movement_run(struct yt_movement_state *state,
 	const struct yt_movement_ops *ops, void *context,
 	struct yt_error *error);
+enum yt_treasury_output_kind {
+	YT_TREASURY_OPENING_BLANK,
+	YT_TREASURY_NO_PORTS,
+	YT_TREASURY_HEADING_PREFIX,
+	YT_TREASURY_HEADING_SUFFIX,
+	YT_TREASURY_SCAN_BLANK,
+	YT_TREASURY_SECTOR_FIELD,
+	YT_TREASURY_NAME_FIELD,
+	YT_TREASURY_CREDIT_FIELD,
+	YT_TREASURY_ROW_TOTAL,
+	YT_TREASURY_NONZERO_BLANK,
+	YT_TREASURY_TOTAL_PORTS,
+	YT_TREASURY_WITH_CREDITS,
+	YT_TREASURY_BARREN_PORTS,
+	YT_TREASURY_TOTAL_CREDITS,
+	YT_TREASURY_SUMMARY_BLANK,
+	YT_TREASURY_REPORT_RESULT,
+	YT_TREASURY_COLLECTION_RESULT,
+};
+enum yt_treasury_route {
+	YT_TREASURY_INCOMPLETE,
+	YT_TREASURY_NO_PORTS_ROUTE,
+	YT_TREASURY_REPORT_ROUTE,
+	YT_TREASURY_COLLECTION_ROUTE,
+};
+struct yt_treasury_state {
+	float current_player_record;
+	uint32_t current_player_physical_record;
+	float port_offset;
+	float planet_offset;
+	uint8_t collecting_raw[4];
+	uint8_t conversion_mode;
+	bool collecting;
+	struct yt_player initial_player;
+	struct yt_player final_player;
+	struct yt_port current_port;
+	float loop_bound;
+	float counter;
+	float owned;
+	float credited;
+	float barren;
+	uint8_t total_raw[8];
+	double total;
+	float current_record_expression;
+	uint32_t current_physical_record;
+	size_t records_read;
+	size_t records_written;
+	bool initial_player_read;
+	bool final_player_read;
+	bool player_written;
+	bool player_flushed;
+	bool cache_updated;
+	bool complete;
+	enum yt_treasury_route route;
+};
+struct yt_treasury_ops {
+	bool (*read_player)(void *context, uint32_t physical_record,
+	    struct yt_player *player, struct yt_error *error);
+	bool (*read_port)(void *context, uint32_t physical_record,
+	    struct yt_port *port, struct yt_error *error);
+	bool (*write_port)(void *context, uint32_t physical_record,
+	    struct yt_port *port, struct yt_error *error);
+	bool (*present)(void *context, const uint8_t *text, size_t length,
+	    enum yt_treasury_output_kind kind, struct yt_error *error);
+	bool (*write_player)(void *context, uint32_t physical_record,
+	    struct yt_player *player, struct yt_error *error);
+	bool (*flush_player)(void *context, struct yt_error *error);
+	bool (*update_cache)(void *context, const struct yt_player *player,
+	    struct yt_error *error);
+};
+bool yt_treasury_run(struct yt_treasury_state *state,
+	const struct yt_treasury_ops *ops, void *context,
+	struct yt_error *error);
 size_t yt_port_trade_schedule(const float factors[3], size_t order[3]);
 int yt_computer_selector_position(const char *command);
 void yt_trade_treasury_overlay(struct yt_port *port, float receipt);

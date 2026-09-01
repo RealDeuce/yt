@@ -22037,6 +22037,353 @@ check_planet_updater_transaction(void)
 	return true;
 }
 
+enum treasury_event {
+	TREASURY_PRESENT = 1,
+	TREASURY_READ_PLAYER_INITIAL,
+	TREASURY_READ_PORT,
+	TREASURY_WRITE_PORT,
+	TREASURY_READ_PLAYER_FINAL,
+	TREASURY_WRITE_PLAYER,
+	TREASURY_FLUSH,
+	TREASURY_CACHE,
+};
+struct treasury_tape {
+	enum treasury_event events[32];
+	size_t calls;
+	size_t fail_at;
+	struct yt_player players[2];
+	size_t player_reads;
+	uint32_t player_record;
+	struct yt_port ports[3];
+	struct yt_port written_port;
+	uint32_t written_port_record;
+	struct yt_player written_player;
+	struct yt_player cached_player;
+	uint8_t rows[17][256];
+	size_t row_lengths[17];
+	bool row_seen[17];
+};
+static bool
+treasury_step(struct treasury_tape *tape, enum treasury_event event,
+    struct yt_error *error)
+{
+	size_t call = tape->calls++;
+
+	if (call < YT_ARRAY_LEN(tape->events))
+		tape->events[call] = event;
+	if (call != tape->fail_at)
+		return true;
+	if (error != NULL)
+		error->status = YT_IO_ERROR;
+	return false;
+}
+static bool
+treasury_read_player_test(void *context, uint32_t physical_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct treasury_tape *tape = context;
+	enum treasury_event event = tape->player_reads == 0U
+	    ? TREASURY_READ_PLAYER_INITIAL : TREASURY_READ_PLAYER_FINAL;
+
+	if (physical_record != tape->player_record || tape->player_reads >= 2U
+	    || !treasury_step(tape, event, error))
+		return false;
+	*player = tape->players[tape->player_reads++];
+	return true;
+}
+static bool
+treasury_read_port_test(void *context, uint32_t physical_record,
+    struct yt_port *port, struct yt_error *error)
+{
+	struct treasury_tape *tape = context;
+
+	if (physical_record < 2056U || physical_record > 2058U
+	    || !treasury_step(tape, TREASURY_READ_PORT, error))
+		return false;
+	*port = tape->ports[physical_record - 2056U];
+	return true;
+}
+static bool
+treasury_write_port_test(void *context, uint32_t physical_record,
+    struct yt_port *port, struct yt_error *error)
+{
+	struct treasury_tape *tape = context;
+
+	if (!treasury_step(tape, TREASURY_WRITE_PORT, error))
+		return false;
+	tape->written_port_record = physical_record;
+	tape->written_port = *port;
+	return true;
+}
+static bool
+treasury_present_test(void *context, const uint8_t *text, size_t length,
+    enum yt_treasury_output_kind kind, struct yt_error *error)
+{
+	struct treasury_tape *tape = context;
+
+	if ((size_t)kind >= YT_ARRAY_LEN(tape->rows)
+	    || length > sizeof(tape->rows[0])
+	    || !treasury_step(tape, TREASURY_PRESENT, error))
+		return false;
+	if (length != 0U)
+		memcpy(tape->rows[kind], text, length);
+	tape->row_lengths[kind] = length;
+	tape->row_seen[kind] = true;
+	return true;
+}
+static bool
+treasury_write_player_test(void *context, uint32_t physical_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct treasury_tape *tape = context;
+
+	if (physical_record != tape->player_record
+	    || !treasury_step(tape, TREASURY_WRITE_PLAYER, error))
+		return false;
+	tape->written_player = *player;
+	return true;
+}
+static bool
+treasury_flush_test(void *context, struct yt_error *error)
+{
+	return treasury_step(context, TREASURY_FLUSH, error);
+}
+static bool
+treasury_cache_test(void *context, const struct yt_player *player,
+    struct yt_error *error)
+{
+	struct treasury_tape *tape = context;
+
+	if (!treasury_step(tape, TREASURY_CACHE, error))
+		return false;
+	tape->cached_player = *player;
+	return true;
+}
+static const struct yt_treasury_ops treasury_test_ops = {
+	treasury_read_player_test,
+	treasury_read_port_test,
+	treasury_write_port_test,
+	treasury_present_test,
+	treasury_write_player_test,
+	treasury_flush_test,
+	treasury_cache_test,
+};
+static void
+treasury_set_port(struct yt_port *port, uint8_t pattern,
+    const uint8_t *name, size_t name_length, float treasury, float sector,
+    float owner)
+{
+	memset(port, 0, sizeof(*port));
+	memset(port->record.bytes, pattern, sizeof(port->record.bytes));
+	memset(port->record.bytes, ' ', YT_TEXT_FIELD_SIZE);
+	if (name_length != 0U)
+		memcpy(port->record.bytes, name, name_length);
+	(void)yt_record_set_number(&port->record, YT_F85,
+	    (float)name_length);
+	(void)yt_record_set_number(&port->record, YT_F89, treasury);
+	(void)yt_record_set_number(&port->record, YT_F93, sector);
+	(void)yt_record_set_number(&port->record, YT_F97, owner);
+	port->name_length = (float)name_length;
+	port->treasury = treasury;
+	port->sector = sector;
+	port->owner = owner;
+}
+static void
+treasury_fixture(struct treasury_tape *tape,
+    struct yt_treasury_state *state, bool collecting)
+{
+	static const uint8_t true_raw[4] = {0, 0, 0, 0x81};
+	static const uint8_t false_raw[4] = {0, 0xae, 3, 0};
+	static const uint8_t dirty_zero[4] = {0, 0, 0x20, 0};
+
+	memset(tape, 0, sizeof(*tape));
+	memset(state, 0, sizeof(*state));
+	tape->fail_at = SIZE_MAX;
+	tape->player_record = 2U;
+	memset(tape->players[0].record.bytes, 0x91,
+	    sizeof(tape->players[0].record.bytes));
+	tape->players[0].ports_owned = 2.0f;
+	tape->players[0].credits = 1.0f;
+	(void)yt_record_set_number(&tape->players[0].record, YT_F117, 2.0f);
+	(void)yt_record_set_number(&tape->players[0].record, YT_F81, 1.0f);
+	memset(tape->players[1].record.bytes, 0xa2,
+	    sizeof(tape->players[1].record.bytes));
+	tape->players[1].ports_owned = 99.0f;
+	tape->players[1].credits = 100.0f;
+	(void)yt_record_set_number(&tape->players[1].record, YT_F117, 99.0f);
+	(void)yt_record_set_number(&tape->players[1].record, YT_F81, 100.0f);
+	treasury_set_port(&tape->ports[0], 0xb3, (const uint8_t *)"Alpha",
+	    5U, 10.0f, 5.0f, 2.75f);
+	treasury_set_port(&tape->ports[1], 0xc4, (const uint8_t *)"Beta",
+	    4U, 0.0f, 6.0f, 2.75f);
+	(void)yt_record_set_raw_number(&tape->ports[1].record, YT_F89,
+	    dirty_zero);
+	treasury_set_port(&tape->ports[2], 0xd5, (const uint8_t *)"Gamma",
+	    5U, 20.0f, 7.0f, 3.0f);
+	*state = (struct yt_treasury_state){
+		.current_player_record = 2.75f,
+		.port_offset = 2055.0f,
+		.planet_offset = 2058.0f,
+		.conversion_mode = 0,
+	};
+	memcpy(state->collecting_raw, collecting ? true_raw : false_raw,
+	    sizeof(state->collecting_raw));
+}
+static bool
+check_treasury_transaction(void)
+{
+	static const enum treasury_event collect_events[] = {
+		TREASURY_PRESENT,
+		TREASURY_READ_PLAYER_INITIAL,
+		TREASURY_PRESENT, TREASURY_PRESENT, TREASURY_PRESENT,
+		TREASURY_READ_PORT,
+		TREASURY_PRESENT, TREASURY_PRESENT, TREASURY_PRESENT,
+		TREASURY_PRESENT,
+		TREASURY_WRITE_PORT,
+		TREASURY_READ_PORT,
+		TREASURY_READ_PORT,
+		TREASURY_PRESENT, TREASURY_PRESENT, TREASURY_PRESENT,
+		TREASURY_PRESENT, TREASURY_PRESENT, TREASURY_PRESENT,
+		TREASURY_PRESENT,
+		TREASURY_READ_PLAYER_FINAL,
+		TREASURY_WRITE_PLAYER,
+		TREASURY_FLUSH,
+		TREASURY_CACHE,
+	};
+	static const enum treasury_event report_events[] = {
+		TREASURY_PRESENT,
+		TREASURY_READ_PLAYER_INITIAL,
+		TREASURY_PRESENT, TREASURY_PRESENT, TREASURY_PRESENT,
+		TREASURY_READ_PORT,
+		TREASURY_PRESENT, TREASURY_PRESENT, TREASURY_PRESENT,
+		TREASURY_PRESENT,
+		TREASURY_READ_PORT,
+		TREASURY_READ_PORT,
+		TREASURY_PRESENT, TREASURY_PRESENT, TREASURY_PRESENT,
+		TREASURY_PRESENT, TREASURY_PRESENT, TREASURY_PRESENT,
+		TREASURY_PRESENT,
+	};
+	static const uint8_t dirty_zero[4] = {0, 0, 0x20, 0};
+	static const uint8_t sector[] = "Sector: 5";
+	static const uint8_t credits[] = " Credits: 10";
+	static const uint8_t total[] = " Total: 10";
+	static const uint8_t collect_result[] =
+	    "You collected a total of 10 credits.";
+	static const uint8_t report_result[] =
+	    "You have 10 credits in your port accounts.";
+	struct treasury_tape tape;
+	struct yt_treasury_state state;
+	struct yt_player expected_player;
+	struct yt_error error;
+	uint8_t expected_total_raw[8];
+	size_t failure;
+
+	treasury_fixture(&tape, &state, true);
+	expected_player = tape.players[1];
+	(void)yt_record_set_number(&expected_player.record, YT_F117, 2.0f);
+	(void)yt_record_set_number(&expected_player.record, YT_F81, 110.0f);
+	if (!yt_treasury_run(&state, &treasury_test_ops, &tape, NULL)
+	    || !state.complete || state.route != YT_TREASURY_COLLECTION_ROUTE
+	    || !state.collecting || !state.initial_player_read
+	    || state.current_player_physical_record != 2U
+	    || state.loop_bound != 3.0f || state.counter != 4.0f
+	    || state.owned != 2.0f || state.credited != 1.0f
+	    || state.barren != 1.0f || state.total != 10.0
+	    || state.records_read != 3U || state.records_written != 1U
+	    || !state.final_player_read || !state.player_written
+	    || !state.player_flushed || !state.cache_updated
+	    || tape.calls != YT_ARRAY_LEN(collect_events)
+	    || memcmp(tape.events, collect_events, sizeof(collect_events)) != 0
+	    || tape.written_port_record != 2056U
+	    || memcmp(tape.written_port.record.bytes + YT_F89, dirty_zero,
+	    sizeof(dirty_zero)) != 0
+	    || memcmp(tape.written_player.record.bytes,
+	    expected_player.record.bytes, sizeof(expected_player.record.bytes))
+	    != 0
+	    || memcmp(tape.cached_player.record.bytes,
+	    expected_player.record.bytes, sizeof(expected_player.record.bytes))
+	    != 0
+	    || tape.row_lengths[YT_TREASURY_SECTOR_FIELD]
+	    != sizeof(sector) - 1U
+	    || memcmp(tape.rows[YT_TREASURY_SECTOR_FIELD], sector,
+	    sizeof(sector) - 1U) != 0
+	    || tape.row_lengths[YT_TREASURY_NAME_FIELD] != 5U
+	    || memcmp(tape.rows[YT_TREASURY_NAME_FIELD], "Alpha", 5U) != 0
+	    || tape.row_lengths[YT_TREASURY_CREDIT_FIELD]
+	    != sizeof(credits) - 1U
+	    || memcmp(tape.rows[YT_TREASURY_CREDIT_FIELD], credits,
+	    sizeof(credits) - 1U) != 0
+	    || tape.row_lengths[YT_TREASURY_ROW_TOTAL] != sizeof(total) - 1U
+	    || memcmp(tape.rows[YT_TREASURY_ROW_TOTAL], total,
+	    sizeof(total) - 1U) != 0
+	    || tape.row_lengths[YT_TREASURY_COLLECTION_RESULT]
+	    != sizeof(collect_result) - 1U
+	    || memcmp(tape.rows[YT_TREASURY_COLLECTION_RESULT], collect_result,
+	    sizeof(collect_result) - 1U) != 0)
+		return false;
+
+	for (failure = 0U; failure < YT_ARRAY_LEN(collect_events); ++failure) {
+		treasury_fixture(&tape, &state, true);
+		tape.fail_at = failure;
+		yt_error_clear(&error);
+		if (yt_treasury_run(&state, &treasury_test_ops, &tape, &error)
+		    || error.status != YT_IO_ERROR || state.complete
+		    || tape.calls != failure + 1U
+		    || memcmp(tape.events, collect_events,
+		    tape.calls * sizeof(collect_events[0])) != 0)
+			return false;
+	}
+
+	treasury_fixture(&tape, &state, false);
+	if (!yt_treasury_run(&state, &treasury_test_ops, &tape, NULL)
+	    || !state.complete || state.route != YT_TREASURY_REPORT_ROUTE
+	    || state.collecting || state.records_written != 0U
+	    || state.final_player_read || state.player_written
+	    || tape.calls != YT_ARRAY_LEN(report_events)
+	    || memcmp(tape.events, report_events, sizeof(report_events)) != 0
+	    || tape.row_lengths[YT_TREASURY_REPORT_RESULT]
+	    != sizeof(report_result) - 1U
+	    || memcmp(tape.rows[YT_TREASURY_REPORT_RESULT], report_result,
+	    sizeof(report_result) - 1U) != 0)
+		return false;
+
+	treasury_fixture(&tape, &state, true);
+	tape.players[0].ports_owned = 0.5f;
+	if (!yt_treasury_run(&state, &treasury_test_ops, &tape, NULL)
+	    || state.route != YT_TREASURY_NO_PORTS_ROUTE || tape.calls != 3U
+	    || !tape.row_seen[YT_TREASURY_NO_PORTS]
+	    || state.records_read != 0U)
+		return false;
+
+	treasury_fixture(&tape, &state, false);
+	treasury_set_port(&tape.ports[0], 0xb3, (const uint8_t *)"Large",
+	    5U, 16777216.0f, 1.0f, 2.75f);
+	treasury_set_port(&tape.ports[1], 0xc4, (const uint8_t *)"Unit",
+	    4U, 1.0f, 2.0f, 2.75f);
+	if (qb_mbf64_encode(16777217.0, expected_total_raw) != QB_MBF_OK
+	    || !yt_treasury_run(&state, &treasury_test_ops, &tape, NULL)
+	    || state.total != 16777217.0
+	    || memcmp(state.total_raw, expected_total_raw,
+	    sizeof(expected_total_raw)) != 0
+	    || tape.row_lengths[YT_TREASURY_ROW_TOTAL] != 16U
+	    || memcmp(tape.rows[YT_TREASURY_ROW_TOTAL],
+	    " Total: 16777217", 16U) != 0)
+		return false;
+
+	treasury_fixture(&tape, &state, true);
+	if (yt_treasury_run(NULL, &treasury_test_ops, &tape, NULL)
+	    || yt_treasury_run(&state, NULL, &tape, NULL))
+		return false;
+
+	treasury_fixture(&tape, &state, true);
+	state.current_player_record = 0.5f;
+	yt_error_clear(&error);
+	return !yt_treasury_run(&state, &treasury_test_ops, &tape, &error)
+	    && error.status == YT_RANGE && tape.calls == 1U
+	    && tape.row_seen[YT_TREASURY_OPENING_BLANK]
+	    && state.current_player_physical_record == 0U;
+}
+
 enum movement_event {
 	MOVEMENT_GATE = 1,
 	MOVEMENT_PRESENT,
@@ -25025,6 +25372,8 @@ main(void)
 		return fail("salvage cargo sampler differs");
 	if (!check_salvage_transaction())
 		return fail("ship salvage transaction differs");
+	if (!check_treasury_transaction())
+		return fail("owned-port treasury transaction differs");
 	if (!check_movement_transaction())
 		return fail("ordinary movement transaction differs");
 	if (!check_main_fighters_transaction())

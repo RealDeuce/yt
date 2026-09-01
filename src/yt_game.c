@@ -7114,6 +7114,319 @@ yt_movement_run(struct yt_movement_state *state,
 	return true;
 }
 
+static float
+treasury_single_add(float left, float right)
+{
+	volatile float result = left + right;
+
+	return result;
+}
+
+static float
+treasury_single_sub(float left, float right)
+{
+	volatile float result = left - right;
+
+	return result;
+}
+
+static bool
+treasury_format_single(const char *prefix, float value, char *text,
+    size_t capacity, struct yt_error *error, const char *operation)
+{
+	char number[64];
+	int number_length = qb_str_single(number, sizeof(number), value);
+	int result;
+
+	if (number_length < 0)
+		return startup_configuration_error(error, YT_RANGE, operation);
+	result = snprintf(text, capacity, "%s%s", prefix, number);
+	if (result < 0 || (size_t)result >= capacity)
+		return startup_configuration_error(error, YT_RANGE, operation);
+	return true;
+}
+
+static bool
+treasury_format_double(const char *prefix, const uint8_t raw[8],
+    const char *suffix, char *text, size_t capacity,
+    struct yt_error *error, const char *operation)
+{
+	char number[96];
+	int number_length = qb_str_mbf64(number, sizeof(number), raw);
+	int result;
+
+	if (number_length < 0)
+		return startup_configuration_error(error, YT_RANGE, operation);
+	result = snprintf(text, capacity, "%s%s%s", prefix, number,
+	    suffix == NULL ? "" : suffix);
+	if (result < 0 || (size_t)result >= capacity)
+		return startup_configuration_error(error, YT_RANGE, operation);
+	return true;
+}
+
+static void
+treasury_promote_single(const uint8_t single[4], uint8_t raw[8])
+{
+	memset(raw, 0, 8U);
+	if (single[3] != 0U)
+		memcpy(raw + 4U, single, 4U);
+}
+
+static bool
+treasury_add_single_to_total(struct yt_treasury_state *state,
+    const uint8_t value_raw[4],
+    struct yt_error *error)
+{
+	uint8_t promoted[8];
+	uint8_t sum[8];
+
+	treasury_promote_single(value_raw, promoted);
+	if (qb_mbf64_add_raw(state->total_raw, promoted, sum) != QB_MBF_OK)
+		return startup_configuration_error(error, YT_RANGE,
+		    "treasury MBF56 accumulation");
+	memcpy(state->total_raw, sum, sizeof(state->total_raw));
+	state->total = qb_mbf64_decode(state->total_raw);
+	return true;
+}
+
+static bool
+treasury_player_overlay(struct yt_player *player, float owned,
+    const uint8_t total_raw[8], struct yt_error *error)
+{
+	uint8_t fresh_credits[8];
+	uint8_t summed_credits[8];
+	uint8_t stored_credits[4];
+	uint8_t stored_owned[4];
+
+	treasury_promote_single(player->record.bytes + YT_F81, fresh_credits);
+	if (qb_mbf64_add_raw(fresh_credits, total_raw, summed_credits)
+	    != QB_MBF_OK
+	    || qb_mbf32_from_mbf64_raw(summed_credits, stored_credits)
+	    == QB_MBF_OVERFLOW
+	    || qb_mbf32_encode(owned, stored_owned) == QB_MBF_OVERFLOW
+	    || !yt_record_set_raw_number(&player->record, YT_F117,
+	    stored_owned)
+	    || !yt_record_set_raw_number(&player->record, YT_F81,
+	    stored_credits))
+		return startup_configuration_error(error, YT_RANGE,
+		    "treasury player overlay");
+	player->ports_owned = qb_mbf32_decode(stored_owned);
+	player->credits = qb_mbf32_decode(stored_credits);
+	return true;
+}
+
+bool
+yt_treasury_run(struct yt_treasury_state *state,
+    const struct yt_treasury_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t dirty_zero[4] = {0x00, 0x00, 0x20, 0x00};
+	static const uint8_t no_ports[] = "You don't OWN any ports!!!";
+	static const uint8_t collect_prefix[] =
+	    "Sending out armored cargo ships to";
+	static const uint8_t report_prefix[] =
+	    "Checking galactic bank statement for";
+	static const uint8_t heading_suffix[] = " ports with credits...";
+	char text[192];
+
+	if (state == NULL || ops == NULL
+	    || ops->read_player == NULL || ops->read_port == NULL
+	    || ops->write_port == NULL || ops->present == NULL
+	    || ops->write_player == NULL || ops->flush_player == NULL
+	    || ops->update_cache == NULL)
+		return false;
+	memset(&state->initial_player, 0, sizeof(state->initial_player));
+	memset(&state->final_player, 0, sizeof(state->final_player));
+	memset(&state->current_port, 0, sizeof(state->current_port));
+	state->collecting = qb_mbf32_truth(state->collecting_raw);
+	state->loop_bound = 0.0f;
+	state->counter = 0.0f;
+	state->owned = 0.0f;
+	state->credited = 0.0f;
+	state->barren = 0.0f;
+	memset(state->total_raw, 0, sizeof(state->total_raw));
+	state->total = 0.0;
+	state->current_record_expression = 0.0f;
+	state->current_player_physical_record = 0U;
+	state->current_physical_record = 0U;
+	state->records_read = 0U;
+	state->records_written = 0U;
+	state->initial_player_read = false;
+	state->final_player_read = false;
+	state->player_written = false;
+	state->player_flushed = false;
+	state->cache_updated = false;
+	state->complete = false;
+	state->route = YT_TREASURY_INCOMPLETE;
+
+	if (!ops->present(context, NULL, 0U, YT_TREASURY_OPENING_BLANK,
+	    error))
+		return false;
+	state->current_player_physical_record = qb_brun_random_record_number(
+	    state->current_player_record);
+	if (state->current_player_physical_record == 0U)
+		return startup_configuration_error(error, YT_RANGE,
+		    "treasury player record conversion");
+	if (!ops->read_player(context, state->current_player_physical_record,
+	    &state->initial_player, error))
+		return false;
+	state->initial_player_read = true;
+	if (state->initial_player.ports_owned < 1.0f) {
+		if (!ops->present(context, no_ports, sizeof(no_ports) - 1U,
+		    YT_TREASURY_NO_PORTS, error))
+			return false;
+		state->route = YT_TREASURY_NO_PORTS_ROUTE;
+		state->complete = true;
+		return true;
+	}
+	if (!ops->present(context,
+	    state->collecting ? collect_prefix : report_prefix,
+	    state->collecting ? sizeof(collect_prefix) - 1U
+	    : sizeof(report_prefix) - 1U,
+	    YT_TREASURY_HEADING_PREFIX, error)
+	    || !ops->present(context, heading_suffix,
+	    sizeof(heading_suffix) - 1U, YT_TREASURY_HEADING_SUFFIX, error)
+	    || !ops->present(context, NULL, 0U, YT_TREASURY_SCAN_BLANK,
+	    error))
+		return false;
+
+	state->loop_bound = treasury_single_sub(state->planet_offset,
+	    state->port_offset);
+	state->counter = 1.0f;
+	while (state->counter <= state->loop_bound) {
+		bool conversion_overflow;
+		int32_t converted_length;
+		size_t name_length;
+
+		state->current_record_expression = treasury_single_add(
+		    state->port_offset, state->counter);
+		state->current_physical_record = qb_brun_random_record_number(
+		    state->current_record_expression);
+		if (state->current_physical_record == 0U)
+			return startup_configuration_error(error, YT_RANGE,
+			    "treasury port record conversion");
+		if (!ops->read_port(context, state->current_physical_record,
+		    &state->current_port, error))
+			return false;
+		++state->records_read;
+		if (state->current_port.owner
+		    == (float)state->current_player_record) {
+			state->owned = treasury_single_add(state->owned, 1.0f);
+			if (qb_mbf32_truth(state->current_port.record.bytes
+			    + YT_F89)) {
+				state->credited = treasury_single_add(
+				    state->credited, 1.0f);
+				if (!treasury_add_single_to_total(state,
+				    state->current_port.record.bytes + YT_F89, error)
+				    || !treasury_format_single("Sector:",
+				    state->current_port.sector, text, sizeof(text), error,
+				    "treasury sector field")
+				    || !ops->present(context, (const uint8_t *)text,
+				    strlen(text), YT_TREASURY_SECTOR_FIELD, error))
+					return false;
+				conversion_overflow = false;
+				converted_length = qb_cint_mode(
+				    (double)state->current_port.name_length,
+				    state->conversion_mode, &conversion_overflow);
+				if (conversion_overflow || converted_length < 0)
+					return startup_configuration_error(error,
+					    YT_RANGE, "treasury port-name length");
+				name_length = (size_t)converted_length;
+				if (name_length > YT_TEXT_FIELD_SIZE)
+					name_length = YT_TEXT_FIELD_SIZE;
+				if (!ops->present(context,
+				    state->current_port.record.bytes, name_length,
+				    YT_TREASURY_NAME_FIELD, error)
+				    || !treasury_format_single(" Credits:",
+				    state->current_port.treasury, text,
+				    sizeof(text), error, "treasury credit field")
+				    || !ops->present(context, (const uint8_t *)text,
+				    strlen(text), YT_TREASURY_CREDIT_FIELD, error)
+				    || !treasury_format_double(" Total:",
+				    state->total_raw, NULL, text, sizeof(text), error,
+				    "treasury row total")
+				    || !ops->present(context, (const uint8_t *)text,
+				    strlen(text), YT_TREASURY_ROW_TOTAL, error))
+					return false;
+				if (qb_mbf32_truth(state->collecting_raw)) {
+					state->current_port.treasury = 0.0f;
+					if (!yt_record_set_raw_number(
+					    &state->current_port.record, YT_F89,
+					    dirty_zero))
+						return false;
+					if (!ops->write_port(context,
+					    state->current_physical_record,
+					    &state->current_port, error))
+						return false;
+					++state->records_written;
+				}
+			}
+		}
+		state->counter = treasury_single_add(state->counter, 1.0f);
+	}
+	if (state->total_raw[7] != 0U
+	    && !ops->present(context, NULL, 0U,
+	    YT_TREASURY_NONZERO_BLANK, error))
+		return false;
+	if (!treasury_format_single("Total ports...:", state->owned, text,
+	    sizeof(text), error, "treasury total ports")
+	    || !ops->present(context, (const uint8_t *)text, strlen(text),
+	    YT_TREASURY_TOTAL_PORTS, error)
+	    || !treasury_format_single("With credits..:", state->credited,
+	    text, sizeof(text), error, "treasury credited ports")
+	    || !ops->present(context, (const uint8_t *)text, strlen(text),
+	    YT_TREASURY_WITH_CREDITS, error))
+		return false;
+	state->barren = treasury_single_sub(state->owned, state->credited);
+	if (!treasury_format_single("Barren ports..:", state->barren, text,
+	    sizeof(text), error, "treasury barren ports")
+	    || !ops->present(context, (const uint8_t *)text, strlen(text),
+	    YT_TREASURY_BARREN_PORTS, error)
+	    || !treasury_format_double("Total credits.:", state->total_raw,
+	    NULL, text, sizeof(text), error, "treasury total credits")
+	    || !ops->present(context, (const uint8_t *)text, strlen(text),
+	    YT_TREASURY_TOTAL_CREDITS, error)
+	    || !ops->present(context, NULL, 0U, YT_TREASURY_SUMMARY_BLANK,
+	    error))
+		return false;
+	if (!qb_mbf32_truth(state->collecting_raw)) {
+		if (!treasury_format_double("You have", state->total_raw,
+		    " credits in your port accounts.", text, sizeof(text), error,
+		    "treasury report result")
+		    || !ops->present(context, (const uint8_t *)text, strlen(text),
+		    YT_TREASURY_REPORT_RESULT, error))
+			return false;
+		state->route = YT_TREASURY_REPORT_ROUTE;
+		state->complete = true;
+		return true;
+	}
+	if (!treasury_format_double("You collected a total of",
+	    state->total_raw, " credits.", text, sizeof(text), error,
+	    "treasury collection result")
+	    || !ops->present(context, (const uint8_t *)text, strlen(text),
+	    YT_TREASURY_COLLECTION_RESULT, error)
+	    || !ops->read_player(context, state->current_player_physical_record,
+	    &state->final_player, error))
+		return false;
+	state->final_player_read = true;
+	if (!treasury_player_overlay(&state->final_player, state->owned,
+	    state->total_raw, error))
+		return false;
+	if (!ops->write_player(context, state->current_player_physical_record,
+	    &state->final_player, error))
+		return false;
+	state->player_written = true;
+	if (!ops->flush_player(context, error))
+		return false;
+	state->player_flushed = true;
+	if (!ops->update_cache(context, &state->final_player, error))
+		return false;
+	state->cache_updated = true;
+	state->route = YT_TREASURY_COLLECTION_ROUTE;
+	state->complete = true;
+	return true;
+}
+
 size_t
 yt_port_trade_schedule(const float factors[3], size_t order[3])
 {
