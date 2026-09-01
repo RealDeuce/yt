@@ -25,6 +25,15 @@
 #define YT_PLAYER_LAST 51
 #define YT_COMMAND_SIZE 4096U
 
+enum navigation_field_kind {
+	NAVIGATION_FIELD_NONE,
+	NAVIGATION_FIELD_ENTRY_PLAYER,
+	NAVIGATION_FIELD_ROUTE_SECTOR,
+	NAVIGATION_FIELD_INNER_PLAYER,
+	NAVIGATION_FIELD_FINAL_SECTOR,
+	NAVIGATION_FIELD_RETURN_PLAYER,
+};
+
 struct yt_session {
 	struct yt_door *door;
 	const char *executable_path;
@@ -88,9 +97,14 @@ struct yt_session {
 	uint8_t computer_path_hops_raw[4];
 	char computer_route_scratch[YT_COMMAND_SIZE];
 	size_t computer_route_scratch_length;
+	bool navigation_field_active;
+	enum navigation_field_kind navigation_field_kind;
+	int navigation_field_record;
+	struct yt_record navigation_field;
 	float current_planet;
 	char planet_name[42];
 	float current_warps[6];
+	uint8_t current_warps_raw[6][4];
 	double planet_quantity[10];
 	float session_deadline;
 	struct yt_present_time_state time;
@@ -470,7 +484,15 @@ apply_player_credit_mutation(void *context, float player_record,
 static bool
 computer_prompt_hydrate(struct yt_session *session, struct yt_error *error)
 {
-	return reload_player(session, error);
+	if (!reload_player(session, error))
+		return false;
+	if (session->navigation_field_active) {
+		session->navigation_field_kind = NAVIGATION_FIELD_RETURN_PLAYER;
+		session->navigation_field_record = session->player_record;
+		session->navigation_field = session->player.record;
+		session->navigation_field_active = false;
+	}
+	return true;
 }
 
 static bool
@@ -9530,6 +9552,10 @@ route_sector_reader(void *context, int logical_sector, float warps[6],
 	if (!yt_game_read_sector(&session->door->game, logical_sector, &sector,
 	    error))
 		return false;
+	session->navigation_field_kind = NAVIGATION_FIELD_ROUTE_SECTOR;
+	session->navigation_field_record = yt_sector_basic_record(
+	    &session->door->game.config, logical_sector);
+	session->navigation_field = sector.record;
 	memcpy(warps, sector.warps, sizeof(sector.warps));
 	return true;
 }
@@ -15181,6 +15207,11 @@ computer_route(struct yt_session *session, bool autopilot,
 	int cursor;
 	float route_status;
 
+	session->navigation_field_active = true;
+	session->navigation_field_kind = NAVIGATION_FIELD_ENTRY_PLAYER;
+	session->navigation_field_record = session->player_record;
+	session->navigation_field = session->player.record;
+
 	if (!autopilot) {
 		session->computer_path_marker = 9999.0f;
 		memcpy(session->computer_path_marker_raw, marker_entry_raw,
@@ -15380,6 +15411,9 @@ computer_route(struct yt_session *session, bool autopilot,
 		free(route);
 		return false;
 	}
+	session->navigation_field_kind = NAVIGATION_FIELD_INNER_PLAYER;
+	session->navigation_field_record = session->player_record;
+	session->navigation_field = session->player.record;
 	if (session->computer_path_hops > session->player.turns) {
 		if (!session_02db(session, insufficient,
 		    sizeof(insufficient) - 1U,
@@ -15429,8 +15463,15 @@ computer_route(struct yt_session *session, bool autopilot,
 			free(route);
 			return false;
 		}
-		for (index = 0; index < 6U; ++index)
+		session->navigation_field_kind = NAVIGATION_FIELD_FINAL_SECTOR;
+		session->navigation_field_record = yt_sector_basic_record(
+		    &session->door->game.config, (int)session->player.sector);
+		session->navigation_field = current_sector.record;
+		for (index = 0; index < 6U; ++index) {
 			session->current_warps[index] = current_sector.warps[index];
+			memcpy(session->current_warps_raw[index],
+			    current_sector.record.bytes + YT_F41 + index * 4U, 4U);
+		}
 	}
 	free(route);
 	return true;
@@ -17220,7 +17261,7 @@ computer_menu(struct yt_session *session, bool *enter_sector,
 			case 8:
 				if (!computer_route(session, true, error))
 					return false;
-				return true;
+				continue;
 			case 9:
 				if (!computer_scoreboard(session, error))
 					return false;
