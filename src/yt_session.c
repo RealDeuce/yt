@@ -79,7 +79,15 @@ struct yt_session {
 	float spy_warp_destination_scratch;
 	float avoid[30];
 	float computer_path_marker;
+	uint8_t computer_path_marker_raw[4];
 	float computer_path_start;
+	uint8_t computer_path_start_raw[4];
+	float computer_path_destination;
+	uint8_t computer_path_destination_raw[4];
+	float computer_path_hops;
+	uint8_t computer_path_hops_raw[4];
+	char computer_route_scratch[YT_COMMAND_SIZE];
+	size_t computer_route_scratch_length;
 	float current_planet;
 	char planet_name[42];
 	float current_warps[6];
@@ -649,29 +657,6 @@ clear_queue(struct yt_session *session)
 {
 	(void)yt_input_queue_clear(session->queue, sizeof(session->queue),
 	    &session->queue_position, &session->queue_length);
-}
-
-static bool
-queue_commands(struct yt_session *session, const char *text)
-{
-	size_t length = strlen(text);
-	size_t pending = session->queue_length - session->queue_position;
-	size_t index;
-	char prior[YT_COMMAND_SIZE];
-
-	if (length + 1U + pending >= sizeof(session->queue))
-		return false;
-	if (pending > 0)
-		memcpy(prior, session->queue + session->queue_position, pending);
-	for (index = 0; index < length; ++index)
-		session->queue[index] = text[index] == ';' ? '\r' : text[index];
-	session->queue[length] = '\r';
-	if (pending > 0)
-		memcpy(session->queue + length + 1U, prior, pending);
-	session->queue[length + 1U + pending] = '\0';
-	session->queue_length = length + 1U + pending;
-	session->queue_position = 0;
-	return true;
 }
 
 static bool
@@ -15164,6 +15149,10 @@ static bool
 computer_route(struct yt_session *session, bool autopilot,
     struct yt_error *error)
 {
+	static const uint8_t marker_entry_raw[4] = {0x00, 0x3c, 0x1c, 0x8e};
+	static const uint8_t marker_success_raw[4] = {0x00, 0x00, 0x1c, 0x00};
+	static const uint8_t status_one_raw[4] = {0x00, 0x00, 0x00, 0x81};
+	static const uint8_t status_zero_raw[4] = {0x00, 0x00, 0x00, 0x00};
 	static const uint8_t start_prompt[] = "Enter start for path search? ";
 	static const uint8_t destination_prompt[] =
 	    "What sector do you want to go to? ";
@@ -15177,11 +15166,9 @@ computer_route(struct yt_session *session, bool autopilot,
 	    "Enter course into autopilot? (Y/[N])";
 	static const uint8_t engaged[] = "Autopilot Engaged.";
 	static const uint8_t stop_notice[] = "Ctrl-X to Stop";
-	struct qb_val_result parsed;
 	enum yt_yes_no_answer answer;
 	char response[160];
-	float maximum = single_sub(session->door->game.config.port_offset,
-	    session->door->game.config.sector_offset);
+	float maximum;
 	float start_value;
 	float destination_value;
 	bool stale_marker = autopilot && session->computer_path_marker == 9999.0f;
@@ -15192,10 +15179,12 @@ computer_route(struct yt_session *session, bool autopilot,
 	bool conversion_overflow;
 	bool found;
 	int cursor;
-	int hops = 0;
+	float route_status;
 
 	if (!autopilot) {
 		session->computer_path_marker = 9999.0f;
+		memcpy(session->computer_path_marker_raw, marker_entry_raw,
+		    sizeof(marker_entry_raw));
 		if (!session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "path start blank", error)
 		    || !session_031f(session, start_prompt,
@@ -15204,20 +15193,17 @@ computer_route(struct yt_session *session, bool autopilot,
 			return false;
 		if (response[0] == '\0')
 			return true;
-		parsed = qb_val(response);
-		if (parsed.overflow) {
-			if (error != NULL) {
-				error->status = YT_RANGE;
-				(void)snprintf(error->operation,
-				    sizeof(error->operation), "%s", "path start VAL");
-			}
+		if (!yt_computer_path_parse(response,
+		    &session->computer_path_start,
+		    session->computer_path_start_raw, error))
 			return false;
-		}
-		session->computer_path_start =
-		    parsed.valid ? (float)qb_int(parsed.value) : 0.0f;
 	}
-	else if (!stale_marker)
+	else if (!stale_marker) {
 		session->computer_path_start = session->player.sector;
+		memcpy(session->computer_path_start_raw,
+		    session->player.record.bytes + YT_F57,
+		    sizeof(session->computer_path_start_raw));
+	}
 	start_value = session->computer_path_start;
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "path destination blank", error)
@@ -15227,16 +15213,14 @@ computer_route(struct yt_session *session, bool autopilot,
 		return false;
 	if (response[0] == '\0')
 		return true;
-	parsed = qb_val(response);
-	if (parsed.overflow) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			(void)snprintf(error->operation,
-			    sizeof(error->operation), "%s", "path destination VAL");
-		}
+	if (!yt_computer_path_parse(response,
+	    &session->computer_path_destination,
+	    session->computer_path_destination_raw, error))
 		return false;
-	}
-	destination_value = parsed.valid ? (float)qb_int(parsed.value) : 0.0f;
+	destination_value = session->computer_path_destination;
+	if (!yt_computer_path_maximum(session->door->game.config.port_offset,
+	    session->door->game.config.sector_offset, &maximum, error))
+		return false;
 	if (destination_value < 1.0f || destination_value > maximum
 	    || start_value < 1.0f || start_value > maximum) {
 		char number[64];
@@ -15275,11 +15259,18 @@ computer_route(struct yt_session *session, bool autopilot,
 		free(route);
 		return false;
 	}
+	session->relationship_scratch = 1.0f;
+	memcpy(session->relationship_scratch_raw, status_one_raw,
+	    sizeof(status_one_raw));
 	if (!build_route(session, start_value, destination_value, route, true,
-	    &found, NULL, NULL, error)) {
+	    &found, NULL, &route_status, error)) {
 		free(route);
 		return false;
 	}
+	session->relationship_scratch = route_status;
+	memcpy(session->relationship_scratch_raw,
+	    found ? status_zero_raw : status_one_raw,
+	    sizeof(session->relationship_scratch_raw));
 	if (!found) {
 		free(route);
 		session->presentation.blink = 1.0f;
@@ -15311,6 +15302,12 @@ computer_route(struct yt_session *session, bool autopilot,
 		}
 	}
 	cursor = start;
+	session->computer_route_scratch[0] = '1';
+	session->computer_route_scratch[1] = '\0';
+	session->computer_route_scratch_length = 1U;
+	session->computer_path_hops = 0.0f;
+	(void)qb_mbf32_encode(session->computer_path_hops,
+	    session->computer_path_hops_raw);
 	{
 		char number[64];
 
@@ -15324,14 +15321,31 @@ computer_route(struct yt_session *session, bool autopilot,
 	while (route[cursor] != 0) {
 		char number[64];
 		char token[80];
+		int column;
+		int ignored_row;
 
 		cursor = route[cursor];
-		++hops;
 		if (qb_str_single(number, sizeof(number), (float)cursor) < 0
 		    || snprintf(token, sizeof(token), "%s%s", number,
 		    cursor == destination ? "" : ",") < 0
 		    || !session_031f(session, (const uint8_t *)token,
 		    strlen(token), "path route token", error)) {
+			free(route);
+			return false;
+		}
+		if (!yt_computer_path_append_hop(
+		    session->computer_route_scratch,
+		    sizeof(session->computer_route_scratch),
+		    &session->computer_route_scratch_length, (float)cursor,
+		    &session->computer_path_hops,
+		    session->computer_path_hops_raw, error)) {
+			free(route);
+			return false;
+		}
+		yt_out_cursor_position(&ignored_row, &column);
+		if (yt_computer_path_wrap_required(column)
+		    && !session_present_text(session, NULL, 0,
+		    SESSION_PRESENT_LINE, "path route wrap", error)) {
 			free(route);
 			return false;
 		}
@@ -15345,7 +15359,8 @@ computer_route(struct yt_session *session, bool autopilot,
 		char hop_text[64];
 		char course[128];
 
-		if (qb_str_single(hop_text, sizeof(hop_text), (float)hops) < 0
+		if (qb_str_single(hop_text, sizeof(hop_text),
+		    session->computer_path_hops) < 0
 		    || snprintf(course, sizeof(course),
 		    "Course will take%s turns.", hop_text) < 0
 		    || !session_0317(session, (const uint8_t *)course,
@@ -15355,6 +15370,8 @@ computer_route(struct yt_session *session, bool autopilot,
 		}
 	}
 	session->computer_path_marker = 0.0f;
+	memcpy(session->computer_path_marker_raw, marker_success_raw,
+	    sizeof(marker_success_raw));
 	if (!autopilot || stale_marker) {
 		free(route);
 		return true;
@@ -15363,7 +15380,7 @@ computer_route(struct yt_session *session, bool autopilot,
 		free(route);
 		return false;
 	}
-	if ((float)hops > session->player.turns) {
+	if (session->computer_path_hops > session->player.turns) {
 		if (!session_02db(session, insufficient,
 		    sizeof(insufficient) - 1U,
 		    "autopilot insufficient turns", error)) {
@@ -15385,9 +15402,6 @@ computer_route(struct yt_session *session, bool autopilot,
 			return false;
 		}
 		if (answer == YT_YES_NO_YES) {
-			char commands[YT_COMMAND_SIZE] = "1";
-			size_t used = 1U;
-
 			if (!session_0317(session, engaged, sizeof(engaged) - 1U,
 			    "autopilot engaged row", error)
 			    || !session_0317(session, stop_notice,
@@ -15396,27 +15410,11 @@ computer_route(struct yt_session *session, bool autopilot,
 				free(route);
 				return false;
 			}
-			cursor = start;
-			while (route[cursor] != 0) {
-				char number[64];
-				int written;
-
-				cursor = route[cursor];
-				if (qb_str_single(number, sizeof(number),
-				    (float)cursor) < 0) {
-					free(route);
-					return false;
-				}
-				written = snprintf(commands + used,
-				    sizeof(commands) - used, ";M;%s", number);
-				if (written < 0 || (size_t)written
-				    >= sizeof(commands) - used) {
-					free(route);
-					return false;
-				}
-				used += (size_t)written;
-			}
-			if (!queue_commands(session, commands)) {
+			if (!yt_input_queue_prepend_program(session->queue,
+			    sizeof(session->queue), &session->queue_position,
+			    &session->queue_length,
+			    session->computer_route_scratch,
+			    session->computer_route_scratch_length)) {
 				free(route);
 				return false;
 			}

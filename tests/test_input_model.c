@@ -1069,6 +1069,29 @@ test_semicolon_queue(void)
 }
 
 static void
+test_queue_program_prepend(void)
+{
+	static const char route[] = "1\rM\r 2";
+	char queue[32] = "XXQ\r";
+	size_t position = 2U;
+	size_t length = 4U;
+
+	CHECK(yt_input_queue_prepend_program(queue, sizeof(queue), &position,
+	    &length, route, sizeof(route) - 1U));
+	CHECK(position == 0U && length == 9U
+	    && memcmp(queue, "1\rM\r 2\rQ\r", 10U) == 0);
+
+	position = 0U;
+	length = 9U;
+	CHECK(!yt_input_queue_prepend_program(queue, 10U, &position, &length,
+	    route, sizeof(route) - 1U)
+	    && position == 0U && length == 9U
+	    && memcmp(queue, "1\rM\r 2\rQ\r", 10U) == 0);
+	CHECK(!yt_input_queue_prepend_program(NULL, sizeof(queue), &position,
+	    &length, route, sizeof(route) - 1U));
+}
+
+static void
 test_timed_wait(void)
 {
 	struct yt_timed_wait_state wait;
@@ -2777,6 +2800,7 @@ main(void)
 	test_b05d_keys();
 	test_repeat_transform();
 	test_semicolon_queue();
+	test_queue_program_prepend();
 	test_timed_wait();
 	test_input_drain();
 	test_yes_no_candidate();

@@ -230,6 +230,31 @@ yt_input_queue_clear(char *queue, size_t capacity, size_t *position,
 }
 
 bool
+yt_input_queue_prepend_program(char *queue, size_t capacity,
+    size_t *position, size_t *length, const char *program,
+    size_t program_length)
+{
+	size_t pending;
+
+	if (queue == NULL || capacity == 0U || position == NULL
+	    || length == NULL || (program == NULL && program_length != 0U)
+	    || *position > *length || *length >= capacity)
+		return false;
+	pending = *length - *position;
+	if (program_length >= capacity
+	    || program_length + 1U >= capacity - pending)
+		return false;
+	memmove(queue + program_length + 1U, queue + *position, pending);
+	if (program_length != 0U)
+		memcpy(queue, program, program_length);
+	queue[program_length] = '\r';
+	queue[program_length + 1U + pending] = '\0';
+	*position = 0U;
+	*length = program_length + 1U + pending;
+	return true;
+}
+
+bool
 yt_input_ab36_repeat_requested(bool queued,
     const struct yt_input_value *selected)
 {

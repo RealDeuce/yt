@@ -3996,6 +3996,96 @@ yt_computer_port_select(const char *response, float maximum,
 	return true;
 }
 
+bool
+yt_computer_path_maximum(float port_offset, float sector_offset,
+    float *maximum, struct yt_error *error)
+{
+	uint8_t raw[4];
+	volatile float difference = port_offset - sector_offset;
+	enum qb_mbf_status status;
+
+	if (maximum == NULL)
+		return startup_configuration_error(error, YT_INVALID,
+		    "computer path maximum arguments");
+	status = qb_mbf32_encode(difference, raw);
+	if (status == QB_MBF_OVERFLOW)
+		return startup_configuration_error(error, YT_RANGE,
+		    "computer path maximum subtraction");
+	*maximum = status == QB_MBF_UNDERFLOW ? 0.0f
+	    : qb_mbf32_decode(raw);
+	return true;
+}
+
+bool
+yt_computer_path_parse(const char *response, float *selected,
+    uint8_t selected_raw[4], struct yt_error *error)
+{
+	struct qb_val_result parsed;
+	uint8_t integer_raw[8];
+	enum qb_mbf_status status;
+
+	if (response == NULL || selected == NULL || selected_raw == NULL)
+		return startup_configuration_error(error, YT_INVALID,
+		    "computer path parse arguments");
+	parsed = qb_val(response);
+	if (parsed.overflow)
+		return startup_configuration_error(error, YT_RANGE,
+		    "computer path sector VAL");
+	status = qb_mbf64_floor_raw(parsed.mbf, integer_raw);
+	if (status != QB_MBF_OK)
+		return startup_configuration_error(error, YT_RANGE,
+		    "computer path sector INT");
+	status = qb_mbf32_from_mbf64_raw(integer_raw, selected_raw);
+	if (status == QB_MBF_OVERFLOW || status == QB_MBF_DOMAIN)
+		return startup_configuration_error(error, YT_RANGE,
+		    "computer path sector CSNG");
+	if (status == QB_MBF_UNDERFLOW)
+		memset(selected_raw, 0, 4U);
+	*selected = qb_mbf32_decode(selected_raw);
+	return true;
+}
+
+bool
+yt_computer_path_append_hop(char *scratch, size_t capacity,
+    size_t *length, float next_sector, float *hop_count,
+    uint8_t hop_count_raw[4], struct yt_error *error)
+{
+	char number[64];
+	int number_length;
+	volatile float incremented;
+	enum qb_mbf_status status;
+
+	if (scratch == NULL || capacity == 0U || length == NULL
+	    || *length >= capacity || scratch[*length] != '\0'
+	    || hop_count == NULL || hop_count_raw == NULL)
+		return startup_configuration_error(error, YT_INVALID,
+		    "computer path scratch arguments");
+	number_length = qb_str_single(number, sizeof(number), next_sector);
+	if (number_length < 0 || (size_t)number_length + 3U
+	    >= capacity - *length)
+		return startup_configuration_error(error, YT_RANGE,
+		    "computer path scratch append");
+	scratch[(*length)++] = '\r';
+	scratch[(*length)++] = 'M';
+	scratch[(*length)++] = '\r';
+	memcpy(scratch + *length, number, (size_t)number_length);
+	*length += (size_t)number_length;
+	scratch[*length] = '\0';
+	incremented = *hop_count + 1.0f;
+	status = qb_mbf32_encode(incremented, hop_count_raw);
+	if (status != QB_MBF_OK)
+		return startup_configuration_error(error, YT_RANGE,
+		    "computer path hop increment");
+	*hop_count = qb_mbf32_decode(hop_count_raw);
+	return true;
+}
+
+bool
+yt_computer_path_wrap_required(int local_column)
+{
+	return local_column > 74;
+}
+
 static bool
 computer_avoid_csng(const struct qb_val_result *parsed, float *selected,
     struct yt_error *error, const char *operation)

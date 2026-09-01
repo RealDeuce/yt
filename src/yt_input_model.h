@@ -209,6 +209,9 @@ bool yt_input_ab36_queue_pop(char *queue, size_t capacity,
     size_t *position, size_t *length, struct yt_input_value *selected);
 bool yt_input_queue_clear(char *queue, size_t capacity,
     size_t *position, size_t *length);
+bool yt_input_queue_prepend_program(char *queue, size_t capacity,
+	size_t *position, size_t *length, const char *program,
+	size_t program_length);
 bool yt_input_ab36_repeat_requested(bool queued,
     const struct yt_input_value *selected);
 bool yt_input_ab36_repeat_run(char *accumulator,
