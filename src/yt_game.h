@@ -2652,6 +2652,27 @@ bool yt_port_ordinary_run(struct yt_port_ordinary_state *state,
 	const struct yt_port_update_ops *update_ops,
 	const struct yt_port_report_ops *report_ops, void *context,
 	struct yt_error *error);
+enum yt_computer_port_earth_field_kind {
+	YT_COMPUTER_PORT_EARTH_FIELD_INHERITED,
+	YT_COMPUTER_PORT_EARTH_FIELD_SECTOR,
+	YT_COMPUTER_PORT_EARTH_FIELD_PORT,
+	YT_COMPUTER_PORT_EARTH_FIELD_PLAYER,
+};
+struct yt_computer_port_earth_state {
+	enum yt_computer_port_earth_field_kind field_kind;
+	uint32_t field_record;
+	struct yt_record field;
+	bool field_valid;
+	uint8_t report_seen_raw[4];
+	size_t report_calls;
+	bool report_returned;
+	bool complete;
+};
+typedef bool (*yt_computer_port_earth_report_fn)(void *context,
+	struct yt_computer_port_earth_state *state, struct yt_error *error);
+bool yt_computer_port_earth_run(struct yt_computer_port_earth_state *state,
+	yt_computer_port_earth_report_fn report, void *context,
+	struct yt_error *error);
 enum yt_commodity_trade_output_kind {
 	YT_COMMODITY_TRADE_STATUS,
 	YT_COMMODITY_TRADE_MARKET,
