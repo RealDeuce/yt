@@ -242,7 +242,7 @@ test_emulated_route(void)
 }
 
 static void
-test_ansi_opening_local_route(void)
+test_ansi_opening_routes(void)
 {
 	static const uint8_t file_data[] = "\x1b[2JX\r\n\x1a";
 	const char *path = "test-output-opening.dat";
@@ -262,6 +262,29 @@ test_ansi_opening_local_route(void)
 	CHECK(yt_out_opening_file(path, 1.0f, 1.0f, poll_never,
 	    poll_never, wait_once, &waits, &error)
 	    && waits == 1U && output_call_count == 0U
+	    && local_call_count == 0U && emulated_call_count == 3U
+	    && strcmp(emulated_calls[0].text, "\x1b[2JX") == 0
+	    && strcmp(emulated_calls[1].text, "\r\n") == 0
+	    && strcmp(emulated_calls[2].text, "\x1b[0m") == 0
+	    && !emulated_calls[0].remote_echo
+	    && !emulated_calls[1].remote_echo
+	    && !emulated_calls[2].remote_echo);
+
+	waits = 0U;
+	reset_calls();
+	yt_error_clear(&error);
+	CHECK(yt_out_opening_file(path, 0.0f, 1.0f, poll_never,
+	    poll_never, wait_once, &waits, &error)
+	    && waits == 1U && output_call_count == 3U
+	    && output_calls[0].length == 5U
+	    && memcmp(output_calls[0].data, "\x1b[2JX", 5U) == 0
+	    && !output_calls[0].local_echo
+	    && output_calls[1].length == 2U
+	    && memcmp(output_calls[1].data, "\n\r", 2U) == 0
+	    && !output_calls[1].local_echo
+	    && output_calls[2].length == 4U
+	    && memcmp(output_calls[2].data, "\x1b[0m", 4U) == 0
+	    && !output_calls[2].local_echo
 	    && local_call_count == 0U && emulated_call_count == 3U
 	    && strcmp(emulated_calls[0].text, "\x1b[2JX") == 0
 	    && strcmp(emulated_calls[1].text, "\r\n") == 0
@@ -415,7 +438,7 @@ main(void)
 {
 	test_counted_routes();
 	test_emulated_route();
-	test_ansi_opening_local_route();
+	test_ansi_opening_routes();
 	test_presentation_adapter();
 	test_sound_adapter();
 	if (failures != 0) {
