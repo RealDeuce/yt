@@ -11878,7 +11878,7 @@ command_buy_port(struct yt_session *session, struct yt_error *error)
 		return false;
 	if (old_owner != 0.0f) {
 		struct yt_player seller;
-		int seller_record = (int)old_owner;
+		int seller_record = yt_port_purchase_seller_record(old_owner);
 		char sector_text[64];
 		char price_text[64];
 		uint8_t message[256];

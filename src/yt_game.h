@@ -1675,6 +1675,7 @@ bool yt_port_purchase_title_overlay(struct yt_port *port,
 	int buyer_record);
 bool yt_port_purchase_buyer_overlay(struct yt_player *buyer,
 	double price);
+int yt_port_purchase_seller_record(float owner);
 bool yt_genesis_confirmation_prompt(const uint8_t *trader,
     size_t trader_length, uint8_t *prompt, size_t capacity, size_t *length);
 bool yt_genesis_insufficient_rows(float required, float owned,

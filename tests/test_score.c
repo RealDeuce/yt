@@ -9137,7 +9137,10 @@ check_port_name_editor_model(void)
 		    || memcmp(buyer.record.bytes, expected.bytes,
 		    YT_RECORD_SIZE) != 0)
 			return false;
-		return !yt_port_purchase_seller_overlay(NULL, 0.0f, 0.0)
+		return yt_port_purchase_seller_record(2.75f) == 2
+		    && yt_port_purchase_seller_record(16777216.0f) == 0
+		    && yt_port_purchase_seller_record(-0.5f) == 16777215
+		    && !yt_port_purchase_seller_overlay(NULL, 0.0f, 0.0)
 		    && !yt_port_purchase_title_overlay(NULL, 2)
 		    && !yt_port_purchase_buyer_overlay(NULL, 0.0);
 	}

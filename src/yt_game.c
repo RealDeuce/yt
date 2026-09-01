@@ -4049,6 +4049,12 @@ yt_port_purchase_buyer_overlay(struct yt_player *buyer, double price)
 	    buyer->ports_owned);
 }
 
+int
+yt_port_purchase_seller_record(float owner)
+{
+	return (int)qb_brun_random_record_number(owner);
+}
+
 bool
 yt_genesis_confirmation_prompt(const uint8_t *trader, size_t trader_length,
     uint8_t *prompt, size_t capacity, size_t *length)

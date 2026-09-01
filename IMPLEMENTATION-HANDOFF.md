@@ -2809,6 +2809,9 @@ not authoritative. Use the corrected goal above in the new workspace.
   equality shortcut that could preserve dirty exponent-zero bytes. Patterned
   native fixtures pin every unrelated byte. The complete provider-driven
   command-B transaction and its ordered partial-failure tape remain next.
+  Seller payment also now uses BRUN's 24-bit random-record conversion instead
+  of a direct host cast, matching owner display for fractional, wrapped, and
+  corrupt nonzero owner values.
 
 ## The task
 
