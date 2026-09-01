@@ -16453,6 +16453,236 @@ test_planet_port_no_port_cycle_presentation(void)
 }
 
 static bool
+planet_port_refusal_cycle_run(struct physical_viewer_join *viewer,
+    bool ansi)
+{
+	static const uint8_t free_holds[] =
+	    "You have 65 free cargo holds.";
+	static const uint8_t planet_prompt[] =
+	    "Time: 14:59  Planet command (?=help) [A]? ";
+	static const uint8_t command[] = "P";
+	static const uint8_t port_label[] = "<Port>";
+	static const uint8_t docking[] = "Docking, ";
+	static const uint8_t turn[] = "One Turn Deducted, 59 left.";
+	static const uint8_t owner[] =
+	    "This port is owned by: YOU, Credits: 1234.5";
+	static const uint8_t title[] =
+	    "Commerce report for Argus: 01-01-1991 00:00:00";
+	static const uint8_t header[] =
+	    " Items         Status      # units    in holds   Cost";
+	static const uint8_t rule[] =
+	    "=======       =========   =========   ========   ====";
+	static const uint8_t item_prefix[3][24] = {
+		"Ore..........  Selling",
+		"Organics.....  Selling",
+		"Equipment....  Selling",
+	};
+	static const uint8_t capacity[3][13] = {
+		"         100", "         200", "         300",
+	};
+	static const uint8_t hold[3][12] = {
+		"         10", "         20", "          5",
+	};
+	static const uint8_t price[3][8] = {
+		" 20    ", " 30    ", " 40    ",
+	};
+	static const uint8_t refusal[] =
+	    "We don't want your goods and you can't buy ours Pat!";
+	static const uint8_t status[] =
+	    "You have 12345 credits and 65 empty cargo holds.";
+	static const uint8_t sector[] = "Sector: 733";
+	static const uint8_t warps[] = "Warps lead to:";
+	static const uint8_t warp_one[] = " 2";
+	static const uint8_t warp_two[] = ", 9";
+	static const uint8_t main_prompt[] =
+	    "Time:10:00  Main Command (?=Help)? ";
+	struct viewer_pager_join *join = &viewer->join;
+	struct yt_present_result result;
+	size_t index;
+
+	join->presentation = state(ansi);
+	join->presentation.foreground = 6.0f;
+	join->presentation.cached_foreground = ansi ? 6.0f : 0.0f;
+	join->pager.foreground = 6;
+	join->pager.line_count = 0.0f;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, free_holds,
+	    sizeof(free_holds) - 1U, 0.0f)
+	    || !normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, planet_prompt,
+	    sizeof(planet_prompt) - 1U, 1.0f))
+		return false;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	memcpy(join->accumulator, command, sizeof(command));
+	if (yt_present_editor_echo(command, sizeof(command) - 1U,
+	    command, sizeof(command) - 1U, &join->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, port_label,
+	    sizeof(port_label) - 1U, 0.0f))
+		return false;
+	join->presentation.foreground = 3.0f;
+	join->pager.foreground = 3;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, docking,
+	    sizeof(docking) - 1U, 1.0f)
+	    || !normal_exit_b05d(join, turn, sizeof(turn) - 1U, 0.0f))
+		return false;
+
+	join->pager.line_count = 0.0f;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_line(join, owner, sizeof(owner) - 1U)
+	    || !normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, title, sizeof(title) - 1U, 0.0f)
+	    || !normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, header, sizeof(header) - 1U, 0.0f))
+		return false;
+	join->presentation.bold = 1.0f;
+	if (!normal_exit_b05d(join, rule, sizeof(rule) - 1U, 0.0f))
+		return false;
+	for (index = 0U; index < 3U; ++index) {
+		join->presentation.foreground = 2.0f;
+		join->pager.foreground = 2;
+		if (yt_present_character(item_prefix[index],
+		    strlen((const char *)item_prefix[index]),
+		    &join->presentation, &result) != YT_PRESENT_OK)
+			return false;
+		viewer_pager_capture_result(join, &result);
+		if (yt_present_character(capacity[index], 12U,
+		    &join->presentation, &result) != YT_PRESENT_OK)
+			return false;
+		viewer_pager_capture_result(join, &result);
+		if (yt_present_character(hold[index], 11U,
+		    &join->presentation, &result) != YT_PRESENT_OK)
+			return false;
+		viewer_pager_capture_result(join, &result);
+		if (!normal_exit_line(join, price[index], 7U))
+			return false;
+	}
+
+	join->presentation.foreground = 6.0f;
+	join->pager.foreground = 6;
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.bold = 1.0f;
+	join->presentation.blink = 1.0f;
+	join->queue[0] = '\0';
+	join->queue_position = 0U;
+	join->queue_length = 0U;
+	if (!normal_exit_b05d(join, refusal, sizeof(refusal) - 1U, 0.0f)
+	    || !normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, status, sizeof(status) - 1U, 0.0f))
+		return false;
+
+	join->presentation.foreground = 1.0f;
+	join->pager.foreground = 1;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_line(join, sector, sizeof(sector) - 1U)
+	    || !sensor_join_present(join, &(const struct sensor_join_output){
+	    SENSOR_JOIN_RAW, (const char *)warps})
+	    || !sensor_join_present(join, &(const struct sensor_join_output){
+	    SENSOR_JOIN_RAW, (const char *)warp_one})
+	    || !sensor_join_present(join, &(const struct sensor_join_output){
+	    SENSOR_JOIN_RAW, (const char *)warp_two})
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	join->pager.line_count = 0.0f;
+	join->presentation.foreground = 2.0f;
+	join->pager.foreground = 2;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, main_prompt,
+	    sizeof(main_prompt) - 1U, 1.0f))
+		return false;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	return true;
+}
+
+static void
+test_planet_port_refusal_cycle_presentation(void)
+{
+	static const uint8_t plain[] =
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? P\r\n"
+	    "<Port>\n\r\r\nDocking, One Turn Deducted, 59 left.\n\r"
+	    "\r\nThis port is owned by: YOU, Credits: 1234.5\r\n"
+	    "\r\nCommerce report for Argus: 01-01-1991 00:00:00\n\r"
+	    "\r\n Items         Status      # units    in holds   Cost\n\r"
+	    "=======       =========   =========   ========   ====\n\r"
+	    "Ore..........  Selling         100         10 20    \r\n"
+	    "Organics.....  Selling         200         20 30    \r\n"
+	    "Equipment....  Selling         300          5 40    \r\n"
+	    "\r\nWe don't want your goods and you can't buy ours Pat!\n\r"
+	    "\r\nYou have 12345 credits and 65 empty cargo holds.\n\r"
+	    "\r\nSector: 733\r\nWarps lead to: 2, 9\r\n"
+	    "\r\nTime:10:00  Main Command (?=Help)? ";
+	static const uint8_t ansi[] =
+	    "\r\nYou have 65 free cargo holds.\n\r"
+	    "\r\nTime: 14:59  Planet command (?=help) [A]? P\r\n"
+	    "<Port>\n\r\x1b[0;33;40m\r\n"
+	    "Docking, One Turn Deducted, 59 left.\n\r"
+	    "\r\nThis port is owned by: YOU, Credits: 1234.5\r\n"
+	    "\r\nCommerce report for Argus: 01-01-1991 00:00:00\n\r"
+	    "\r\n Items         Status      # units    in holds   Cost\n\r"
+	    "\x1b[0;33;40;1m"
+	    "=======       =========   =========   ========   ====\n\r"
+	    "\x1b[0;32;40m"
+	    "Ore..........  Selling         100         10 20    \r\n"
+	    "Organics.....  Selling         200         20 30    \r\n"
+	    "Equipment....  Selling         300          5 40    \r\n"
+	    "\x1b[0;36;40m\r\n\x1b[0;36;40;5;1m"
+	    "We don't want your goods and you can't buy ours Pat!\n\r"
+	    "\x1b[0;36;40m\r\n"
+	    "You have 12345 credits and 65 empty cargo holds.\n\r"
+	    "\x1b[0;31;40m\r\nSector: 733\r\nWarps lead to: 2, 9\r\n"
+	    "\x1b[0;32;40m\r\nTime:10:00  Main Command (?=Help)? ";
+	static const struct {
+		bool ansi;
+		const uint8_t *expected;
+		size_t expected_length;
+	} cases[] = {
+		{false, plain, sizeof(plain) - 1U},
+		{true, ansi, sizeof(ansi) - 1U},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	uint8_t remote[800];
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
+		CHECK(planet_port_refusal_cycle_run(&viewer, cases[pass].ansi));
+		CHECK(viewer.join.remote_length == cases[pass].expected_length
+		    && memcmp(remote, cases[pass].expected,
+		    cases[pass].expected_length) == 0
+		    && viewer.join.presentation.foreground == 2.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold
+		    == (cases[pass].ansi ? 0.0f : 1.0f)
+		    && viewer.join.presentation.blink
+		    == (cases[pass].ansi ? 0.0f : 1.0f)
+		    && viewer.join.presentation.cached_foreground
+		    == (cases[pass].ansi ? 2.0f : 0.0f)
+		    && viewer.join.pager.foreground == 2
+		    && viewer.join.pager.line_count == 0.0f
+		    && viewer.join.pager.nonstop == 0.0f
+		    && viewer.join.accumulator[0] == '\0'
+		    && viewer.join.queue_length == 0U
+		    && !stream.file_open && !viewer.join.file_open
+		    && viewer.input.file == NULL && viewer.close_calls == 0U
+		    && viewer.open_calls == 0U);
+		yt_text_input_destroy(&viewer.input);
+	}
+	CHECK(sizeof(plain) - 1U == 680U && sizeof(ansi) - 1U == 766U);
+}
+
+static bool
 computer_quit_accept_prefix(struct physical_viewer_join *viewer, bool ansi)
 {
 	static const uint8_t prompt[] =
@@ -20256,6 +20486,7 @@ main(void)
 	test_main_attack_mine_warp_cycle_presentation();
 	test_planet_movement_accepted_cycle_presentation();
 	test_planet_port_no_port_cycle_presentation();
+	test_planet_port_refusal_cycle_presentation();
 	test_computer_quit_accept_presentation();
 	test_planet_quit_accept_presentation();
 	test_hostile_quit_accept_presentation();
