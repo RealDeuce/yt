@@ -53,7 +53,7 @@ struct yt_session {
 	bool fatal_wait_complete;
 	struct yt_present_state presentation;
 	bool suppress_self_mines;
-	bool mercenaries_hurt;
+	uint8_t mercenaries_hurt_raw[4];
 	float clearance_holds;
 	float clearance_fighters;
 	float clearance_ground;
@@ -5729,7 +5729,8 @@ hostile_attack_combat_persistence(void *context,
 	if (state->sector_written)
 		*combat->sector = state->sector;
 	if (state->mercenaries_hurt)
-		combat->session->mercenaries_hurt = true;
+		(void)qb_mbf32_encode(-1.0f,
+		    combat->session->mercenaries_hurt_raw);
 	return result;
 }
 
@@ -6054,7 +6055,6 @@ bribe_deployed(struct yt_session *session, struct yt_sector *sector,
 		.ship_fighters = (double)session->player.fighters,
 		.shields = session->player.shields,
 		.credits = (double)session->player.credits,
-		.mercenaries_hurt = session->mercenaries_hurt,
 		.real_first_name =
 		    (const uint8_t *)session->door->identity.real_first,
 		.real_first_name_length =
@@ -6062,6 +6062,8 @@ bribe_deployed(struct yt_session *session, struct yt_sector *sector,
 	};
 	memcpy(state.planet_link_raw, sector->record.bytes + YT_F93,
 	    sizeof(state.planet_link_raw));
+	memcpy(state.mercenaries_hurt_raw, session->mercenaries_hurt_raw,
+	    sizeof(state.mercenaries_hurt_raw));
 	result = yt_hostile_bribe_run(&state, &ops, &context, error);
 	if (state.commitment_stored) {
 		session->attack_commitment = state.commitment;
@@ -6322,7 +6324,6 @@ sector_entry(struct yt_session *session, struct yt_error *error)
 	static const uint8_t hostile_prompt[] =
 	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? ";
 
-	session->mercenaries_hurt = false;
 	for (;;) {
 		struct yt_sector sector;
 		bool friendly;

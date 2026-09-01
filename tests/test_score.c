@@ -18132,6 +18132,8 @@ check_hostile_bribe_transaction(void)
 	    || !state.complete || state.branch != YT_HOSTILE_BRIBE_ACCEPTED
 	    || state.route != YT_HOSTILE_BRIBE_SCANNER
 	    || state.draws_consumed != 3U || tape.draw_index != 3U
+	    || !state.mercenaries_hurt_converted
+	    || state.mercenaries_hurt_cint != 0
 	    || !state.offer_stored || state.offer != 30.0f
 	    || state.threshold != 10.0 || !state.accepted_called
 	    || state.forced_attack || state.commitment_stored
@@ -18185,6 +18187,37 @@ check_hostile_bribe_transaction(void)
 	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
 	    || state.branch != YT_HOSTILE_BRIBE_PLANET_REFUSAL
 	    || state.draws_consumed != 0U || tape.calls != 1U)
+		return false;
+
+	/* Sticky CINT runs after both draws and preserves rounding/faults. */
+	hostile_bribe_fixture(&tape, &state);
+	(void)qb_mbf32_encode(-1.0f, state.mercenaries_hurt_raw);
+	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
+	    || !state.mercenaries_hurt_converted
+	    || state.mercenaries_hurt_cint != -1
+	    || state.branch != YT_HOSTILE_BRIBE_LIFE_DEMAND
+	    || state.draws_consumed != 2U)
+		return false;
+	hostile_bribe_fixture(&tape, &state);
+	(void)qb_mbf32_encode(0.4f, state.mercenaries_hurt_raw);
+	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
+	    || state.mercenaries_hurt_cint != 0
+	    || state.branch != YT_HOSTILE_BRIBE_ACCEPTED)
+		return false;
+	hostile_bribe_fixture(&tape, &state);
+	(void)qb_mbf32_encode(0.6f, state.mercenaries_hurt_raw);
+	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
+	    || state.mercenaries_hurt_cint != 1
+	    || state.branch != YT_HOSTILE_BRIBE_LIFE_DEMAND)
+		return false;
+	hostile_bribe_fixture(&tape, &state);
+	(void)qb_mbf32_encode(40000.0f, state.mercenaries_hurt_raw);
+	yt_error_clear(&error);
+	if (yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, &error)
+	    || error.status != YT_RANGE
+	    || strcmp(error.operation, "bribe:mercenary-sticky-cint") != 0
+	    || state.mercenaries_hurt_converted
+	    || state.draws_consumed != 2U || tape.calls != 2U)
 		return false;
 
 	/* Life demand: combat, fatal and rounded sub-one menu return. */

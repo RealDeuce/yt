@@ -1827,6 +1827,12 @@ not authoritative. Use the corrected goal above in the new workspace.
   accepted tape pins all seven top-level events and every callback cut;
   alternates cover quiet ordinary, raw planet aliases, life-demand combat/
   fatal/sub-one, empty/rejected/above-credit offers, and commitment overflow.
+  The session-sticky Mercenary cell is now retained as raw MBF32, begins at
+  process-zero, receives canonical `-1` after qualifying damage, and is no
+  longer incorrectly cleared on each sector entry. Bribe decodes and CINTs
+  it only after both eager draws, even when an earlier OR term is already
+  true. Native fixtures pin `-1`, `.4 -> 0`, `.6 -> 1`, and overflow after
+  exactly two draws.
   Success emits
   the exact row and selector-one sound through the provider-driven
   `yt_hostile_bribe_accept_run()` transaction, persists sector owner/fighters
@@ -1837,8 +1843,8 @@ not authoritative. Use the corrected goal above in the new workspace.
   adapter deliberately retains all four stale process caches. Native
   presentation fixtures pin the exact 132/188, 35/49, 94/94, and 34/48-byte
   plain/ANSI action bodies and the strict predicate boundaries. The
-  Raw CINT sticky/corrupt process state, physical partials and the complete
-  scanner ANSI/local endpoints remain open.
+  Physical partials and the complete scanner ANSI/local endpoints remain
+  open.
 - Forced Bribe now preserves the distinct post-output commitment and fatal
   seams. The Mercenary life-demand and rejected-offer rows are exact; both
   then store `CSNG(cached ship fighters)` before testing original ship

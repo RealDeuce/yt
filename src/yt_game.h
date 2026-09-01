@@ -2535,7 +2535,9 @@ struct yt_hostile_bribe_state {
 	float shields;
 	double credits;
 	uint8_t planet_link_raw[4];
-	bool mercenaries_hurt;
+	uint8_t mercenaries_hurt_raw[4];
+	int32_t mercenaries_hurt_cint;
+	bool mercenaries_hurt_converted;
 	const uint8_t *real_first_name;
 	size_t real_first_name_length;
 	float draws[3];
