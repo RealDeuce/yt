@@ -8,6 +8,32 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
+### DOC-GAP-011: command-4 asynchronous, failure, and framebuffer residuals
+
+Affected coverage:
+
+- ship-computer command-4 scoreboard selector, generator, and viewer;
+- the joined active-computer entry/body/fresh-prompt cycle; and
+- completion claims for dependency failures or the final local screen.
+
+The completed `docs/runtime/computer-scoreboard-output.md`,
+`docs/runtime/computer-file-cycles-output.md`, and shared viewer contract
+fully specify the ordinary selector/generator/viewer/return cycle, canonical
+first-poll editor terminals, carrier cuts, retained-scoreboard paths, and
+ordinary missing-file recovery.  They explicitly leave arbitrary successful
+later AB36 idle polls and time-row placement, asynchronous F8 and recursive
+pager/F8 joins, physical or partial generator/viewer I/O, dependency-owned
+shared-handler suffixes, the inherited 137-byte FIELD after a command-4 body
+when the return player GET fails before replacement, and arbitrary inherited
+80-by-25 framebuffer reduction outside the bounded composition.
+
+The native implementation may compose every supplied deterministic prefix
+and the documented successful return hydration, but must not invent the
+excluded error-router continuations, pre-transfer FIELD image, asynchronous
+interleavings, or physical screen result.  Upstream documentation must supply
+those dependency results and bounded state joins before exact completion can
+be claimed.  No binary inspection or new reverse engineering was performed.
+
 ### DOC-GAP-010: navigation runtime failures and corrupt workspaces are excluded
 
 Affected coverage:
