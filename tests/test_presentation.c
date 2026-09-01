@@ -8970,6 +8970,8 @@ test_computer_port_report_presentation(void)
 	static const uint8_t expected[] =
 	    "\r\nEnter sector number port is in -=> 3\r\n"
 	    "\r\nNo information available.\n\r";
+	static const uint8_t dependency_prefix[] =
+	    "\r\nEnter sector number port is in -=> 2\r\n";
 	struct yt_present_state current = state(false);
 	struct yt_present_result result;
 	struct yt_pager_state pager;
@@ -8998,6 +9000,30 @@ test_computer_port_report_presentation(void)
 	CHECK(capture.remote_length == sizeof(expected) - 1U
 	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
 	CHECK(pager.line_count == 1.0f);
+
+	/* Shared prefix for sector/current-friend/candidate-friend GET cuts. */
+	current = state(false);
+	current.foreground = 1.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 1;
+	memset(&capture, 0, sizeof(capture));
+	memset(accumulator, 0, sizeof(accumulator));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"2", 1U,
+	    (const uint8_t *)"2", 1U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(dependency_prefix) - 1U
+	    && memcmp(capture.remote, dependency_prefix,
+	    sizeof(dependency_prefix) - 1U) == 0
+	    && pager.line_count == 0.0f);
+	CHECK(sizeof(dependency_prefix) - 1U == 40U);
 }
 
 static void
