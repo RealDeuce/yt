@@ -4761,162 +4761,107 @@ common_fatal_self(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
+salvage_read_victim(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_read_player(&session->door->game, player_record, player,
+	    error);
+}
+
+static bool
+salvage_read_killer(void *context, float player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+	uint32_t physical = qb_brun_random_record_number(player_record);
+	struct yt_record raw;
+
+	if (physical == (uint32_t)session->player_record) {
+		if (!reload_player(session, error))
+			return false;
+		*player = session->player;
+		return true;
+	}
+	if (!yt_database_read(&session->door->game.database, (size_t)physical,
+	    &raw, error))
+		return false;
+	yt_player_decode(player, &raw);
+	return true;
+}
+
+static bool
+salvage_write_killer(void *context, float player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+	uint32_t physical = qb_brun_random_record_number(player_record);
+
+	yt_player_encode(player);
+	if (!yt_database_write(&session->door->game.database, (size_t)physical,
+	    &player->record, error)
+	    || !yt_database_flush(&session->door->game.database, error))
+		return false;
+	if (physical == (uint32_t)session->player_record)
+		session->player = *player;
+	return true;
+}
+
+static bool
+salvage_random(void *context, float *value, struct yt_error *error)
+{
+	return random_value(context, value, error);
+}
+
+static bool
+salvage_wait(void *context, float duration, struct yt_error *error)
+{
+	return session_wait(context, (double)duration, "ship salvage wait",
+	    error);
+}
+
+static bool
+salvage_present(void *context, const uint8_t *text, size_t length,
+    bool bold, struct yt_error *error)
+{
+	return session_present_text(context, text, length,
+	    bold ? SESSION_PRESENT_BOLD_LINE : SESSION_PRESENT_LINE,
+	    bold ? "salvage title" : "salvage result row", error);
+}
+
+static bool
+salvage_news(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	return append_news_bytes(context, text, length, error);
+}
+
+static bool
 salvage_player(struct yt_session *session, int victim_record, float killer,
     struct yt_error *error)
 {
-	static const uint8_t title[] =
-	    "You destroyed the ship and salvaged the following:";
-	static const uint8_t nothing[] = "  -  NOTHING!";
-	struct yt_player victim_storage;
-	const struct yt_player *victim = &victim_storage;
-	float draw[6];
-	float awards[6];
-	float cargo_awards[4] = {0};
-	uint8_t victim_name[YT_TEXT_FIELD_SIZE];
-	uint8_t current_name[YT_TEXT_FIELD_SIZE];
-	uint8_t row[300];
-	size_t victim_name_length;
-	size_t current_name_length;
-	size_t row_length;
-	bool emitted = false;
-	int index;
+	static const struct yt_salvage_ops ops = {
+		salvage_read_victim,
+		salvage_read_killer,
+		salvage_write_killer,
+		salvage_random,
+		session_random_one_based,
+		salvage_wait,
+		salvage_present,
+		salvage_news,
+	};
+	struct yt_salvage_state state = {
+		.victim_record = victim_record,
+		.killer_record = killer,
+		.last_player_record = session->door->game.config.sector_offset,
+		.maximum_holds = session->door->game.config.maximum_holds,
+		.current_name = (const uint8_t *)session->player.name,
+		.current_name_length = strlen(session->player.name),
+	};
 
-	if (!yt_game_read_player(&session->door->game, victim_record,
-	    &victim_storage, error))
-		return false;
-	if (killer < (float)YT_PLAYER_FIRST
-	    || killer > session->door->game.config.sector_offset)
-		return true;
-	if (!yt_player_stored_name(victim, victim_name, &victim_name_length,
-	    error)
-	    || !yt_player_stored_name(&session->player, current_name,
-	    &current_name_length, error)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "salvage opening blank", error)
-	    || !session_present_text(session, title, sizeof(title) - 1U,
-	    SESSION_PRESENT_BOLD_LINE, "salvage title", error)
-	    || !yt_salvage_header_row(current_name, current_name_length,
-	    victim_name, victim_name_length, row, sizeof(row), &row_length)
-	    || !append_news_bytes(session, row, row_length, error)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "salvage post-header blank", error))
-		return false;
-	for (index = 0; index < 6; ++index) {
-		if (!random_value(session, &draw[index], error))
-			return false;
-	}
-	awards[0] = floorf(single_mul(draw[0], victim->holds));
-	awards[1] = floorf(single_mul(draw[1], victim->credits));
-	awards[2] = floorf(single_mul(draw[2], victim->missiles));
-	awards[3] = floorf(single_mul(draw[3], victim->plasma));
-	awards[4] = floorf(single_mul(draw[4], victim->ground_forces));
-	awards[5] = floorf(single_mul(draw[5], victim->mines));
-	if (!session_wait(session, 1.0, "salvage initial wait", error))
-		return false;
-	if (!reload_player(session, error))
-		return false;
-	{
-		float *const fields[5] = {
-			&session->player.credits, &session->player.missiles,
-			&session->player.plasma, &session->player.ground_forces,
-			&session->player.mines
-		};
-
-		for (index = 1; index < 6; ++index) {
-			if (awards[index] == 0.0f)
-				continue;
-			if (!session_wait(session, 0.5,
-			    "salvage simple-award wait", error))
-				return false;
-			emitted = true;
-			if (!yt_salvage_simple_row(
-			    (enum yt_salvage_simple_kind)(index - 1), awards[index],
-			    row, sizeof(row), &row_length)
-			    || !append_news_bytes(session, row, row_length, error)
-			    || !session_present_text(session, row, row_length,
-			    SESSION_PRESENT_LINE, "salvage simple row", error))
-				return false;
-			*fields[index - 1] = single_add(*fields[index - 1],
-			    awards[index]);
-		}
-	}
-	if (!write_player(session, error))
-		return false;
-	if (session->player.holds + awards[0]
-	    > session->door->game.config.maximum_holds)
-		awards[0] = session->door->game.config.maximum_holds
-		    - session->player.holds;
-	/*
-	 * Empty holds are real salvage.  Commodity selection is performed
-	 * without replacement from a working copy of the victim's hold
-	 * population.
-	 */
-	if (awards[0] > 0.0f) {
-		struct yt_salvage_cargo_state cargo = {
-			awards[0],
-			{victim->ore, victim->organics, victim->equipment},
-			victim->holds,
-			{0},
-		};
-
-		emitted = true;
-		if (!yt_salvage_cargo_sample(&cargo, session_random_one_based,
-		    session, error))
-			return false;
-		memcpy(cargo_awards, cargo.awards, sizeof(cargo_awards));
-		if (!reload_player(session, error))
-			return false;
-		for (index = 0; index < 4; ++index)
-			session->player.holds = single_add(session->player.holds,
-			    cargo_awards[index]);
-		session->player.ore = single_add(session->player.ore,
-		    cargo_awards[0]);
-		session->player.organics = single_add(session->player.organics,
-		    cargo_awards[1]);
-		session->player.equipment = single_add(session->player.equipment,
-		    cargo_awards[2]);
-		if (!write_player(session, error))
-			return false;
-		if (!session_wait(session, 0.5,
-		    "salvage post-cargo wait", error))
-			return false;
-		{
-			static const int order[4] = {3, 0, 1, 2};
-			static const enum yt_salvage_cargo_kind row_kind[4] = {
-				YT_SALVAGE_EMPTY_HOLDS, YT_SALVAGE_ORE,
-				YT_SALVAGE_ORGANICS, YT_SALVAGE_EQUIPMENT
-			};
-
-			for (index = 0; index < 4; ++index) {
-				int award_kind = order[index];
-
-				if (cargo_awards[award_kind] <= 0.0f)
-					continue;
-				if (!session_wait(session, 0.5,
-				    "salvage cargo-row wait", error))
-					return false;
-				if (!yt_salvage_cargo_row(row_kind[index],
-				    cargo_awards[award_kind], row, sizeof(row), &row_length)
-				    || !append_news_bytes(session, row, row_length, error)
-				    || !session_present_text(session, row, row_length,
-				    SESSION_PRESENT_LINE, "salvage cargo row", error))
-					return false;
-			}
-		}
-	}
-	if (!emitted) {
-		if (!session_wait(session, 0.5, "salvage nothing wait", error))
-			return false;
-		if (!append_news_bytes(session, nothing, sizeof(nothing) - 1U,
-		    error)
-		    || !session_present_text(session, nothing,
-		    sizeof(nothing) - 1U, SESSION_PRESENT_LINE,
-		    "salvage nothing row", error))
-			return false;
-	}
-	return session_wait(session, 4.0, "salvage final wait", error);
+	return yt_salvage_run(&state, &ops, session, error);
 }
-
 static bool
 combat_attrition(struct yt_session *session, double committed,
     double defenders, float cloak, double *attacker_loss,

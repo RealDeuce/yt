@@ -8414,6 +8414,297 @@ check_salvage_cargo_sampler(void)
 	    row, sizeof(row), &length);
 }
 
+enum salvage_event {
+	SALVAGE_READ_VICTIM = 1,
+	SALVAGE_READ_KILLER,
+	SALVAGE_WRITE_KILLER,
+	SALVAGE_RANDOM,
+	SALVAGE_CARGO_DRAW,
+	SALVAGE_WAIT,
+	SALVAGE_PRESENT,
+	SALVAGE_NEWS,
+};
+
+struct salvage_tape {
+	const enum salvage_event *expected;
+	size_t expected_count;
+	size_t event_count;
+	size_t fail_at;
+	float expected_killer;
+	struct yt_player victim;
+	struct yt_player killer;
+	float draws[6];
+	size_t draw_position;
+	float cargo_results[8];
+	size_t cargo_position;
+	float waits[16];
+	size_t wait_count;
+	size_t present_count;
+	size_t news_count;
+	size_t write_count;
+};
+
+static bool
+salvage_step(struct salvage_tape *tape, enum salvage_event event,
+	struct yt_error *error)
+{
+	if (tape->event_count >= tape->expected_count
+	    || tape->expected[tape->event_count] != event)
+		return false;
+	++tape->event_count;
+	if (tape->event_count != tape->fail_at)
+		return true;
+	if (error != NULL) {
+		error->status = YT_IO_ERROR;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    "salvage injected failure");
+	}
+	return false;
+}
+
+static bool
+salvage_read_victim_test(void *context, int player_record,
+	struct yt_player *player, struct yt_error *error)
+{
+	struct salvage_tape *tape = context;
+
+	if (player_record != 3
+	    || !salvage_step(tape, SALVAGE_READ_VICTIM, error))
+		return false;
+	*player = tape->victim;
+	return true;
+}
+
+static bool
+salvage_read_killer_test(void *context, float player_record,
+	struct yt_player *player, struct yt_error *error)
+{
+	struct salvage_tape *tape = context;
+
+	if (player_record != tape->expected_killer
+	    || !salvage_step(tape, SALVAGE_READ_KILLER, error))
+		return false;
+	*player = tape->killer;
+	return true;
+}
+
+static bool
+salvage_write_killer_test(void *context, float player_record,
+	struct yt_player *player, struct yt_error *error)
+{
+	struct salvage_tape *tape = context;
+
+	if (player_record != tape->expected_killer
+	    || !salvage_step(tape, SALVAGE_WRITE_KILLER, error))
+		return false;
+	tape->killer = *player;
+	++tape->write_count;
+	return true;
+}
+
+static bool
+salvage_random_test(void *context, float *value, struct yt_error *error)
+{
+	struct salvage_tape *tape = context;
+
+	if (tape->draw_position >= YT_ARRAY_LEN(tape->draws)
+	    || !salvage_step(tape, SALVAGE_RANDOM, error))
+		return false;
+	*value = tape->draws[tape->draw_position++];
+	return true;
+}
+
+static bool
+salvage_cargo_draw_test(void *context, float range, float *one_based,
+	struct yt_error *error)
+{
+	struct salvage_tape *tape = context;
+
+	(void)range;
+	if (tape->cargo_position >= YT_ARRAY_LEN(tape->cargo_results)
+	    || !salvage_step(tape, SALVAGE_CARGO_DRAW, error))
+		return false;
+	*one_based = tape->cargo_results[tape->cargo_position++];
+	return true;
+}
+
+static bool
+salvage_wait_test(void *context, float duration, struct yt_error *error)
+{
+	struct salvage_tape *tape = context;
+
+	if (!salvage_step(tape, SALVAGE_WAIT, error))
+		return false;
+	if (tape->wait_count >= YT_ARRAY_LEN(tape->waits))
+		return false;
+	tape->waits[tape->wait_count++] = duration;
+	return true;
+}
+
+static bool
+salvage_present_test(void *context, const uint8_t *text, size_t length,
+	bool bold, struct yt_error *error)
+{
+	struct salvage_tape *tape = context;
+
+	(void)text;
+	(void)length;
+	(void)bold;
+	if (!salvage_step(tape, SALVAGE_PRESENT, error))
+		return false;
+	++tape->present_count;
+	return true;
+}
+
+static bool
+salvage_news_test(void *context, const uint8_t *text, size_t length,
+	struct yt_error *error)
+{
+	struct salvage_tape *tape = context;
+
+	(void)text;
+	(void)length;
+	if (!salvage_step(tape, SALVAGE_NEWS, error))
+		return false;
+	++tape->news_count;
+	return true;
+}
+
+static const struct yt_salvage_ops salvage_ops = {
+	salvage_read_victim_test,
+	salvage_read_killer_test,
+	salvage_write_killer_test,
+	salvage_random_test,
+	salvage_cargo_draw_test,
+	salvage_wait_test,
+	salvage_present_test,
+	salvage_news_test,
+};
+
+static void
+salvage_fixture(struct salvage_tape *tape,
+	const enum salvage_event *expected, size_t expected_count,
+	float killer)
+{
+	struct yt_record raw;
+
+	memset(tape, 0, sizeof(*tape));
+	tape->expected = expected;
+	tape->expected_count = expected_count;
+	tape->expected_killer = killer;
+	yt_record_blank(&raw);
+	memcpy(raw.bytes, "V\0X", 3U);
+	(void)yt_record_set_number(&raw, YT_F85, 3.0f);
+	yt_player_decode(&tape->victim, &raw);
+	yt_record_blank(&raw);
+	yt_player_decode(&tape->killer, &raw);
+}
+
+static bool
+check_salvage_transaction(void)
+{
+	static const enum salvage_event zero_events[] = {
+		SALVAGE_READ_VICTIM,
+		SALVAGE_PRESENT, SALVAGE_PRESENT, SALVAGE_NEWS, SALVAGE_PRESENT,
+		SALVAGE_RANDOM, SALVAGE_RANDOM, SALVAGE_RANDOM,
+		SALVAGE_RANDOM, SALVAGE_RANDOM, SALVAGE_RANDOM,
+		SALVAGE_WAIT, SALVAGE_READ_KILLER, SALVAGE_WRITE_KILLER,
+		SALVAGE_WAIT, SALVAGE_NEWS, SALVAGE_PRESENT, SALVAGE_WAIT,
+	};
+	static const enum salvage_event cargo_events[] = {
+		SALVAGE_READ_VICTIM,
+		SALVAGE_PRESENT, SALVAGE_PRESENT, SALVAGE_NEWS, SALVAGE_PRESENT,
+		SALVAGE_RANDOM, SALVAGE_RANDOM, SALVAGE_RANDOM,
+		SALVAGE_RANDOM, SALVAGE_RANDOM, SALVAGE_RANDOM,
+		SALVAGE_WAIT, SALVAGE_READ_KILLER, SALVAGE_WRITE_KILLER,
+		SALVAGE_READ_VICTIM, SALVAGE_CARGO_DRAW, SALVAGE_CARGO_DRAW,
+		SALVAGE_READ_KILLER, SALVAGE_WRITE_KILLER, SALVAGE_WAIT,
+		SALVAGE_WAIT, SALVAGE_NEWS, SALVAGE_PRESENT,
+		SALVAGE_WAIT, SALVAGE_NEWS, SALVAGE_PRESENT, SALVAGE_WAIT,
+	};
+	static const enum salvage_event invalid_events[] = {
+		SALVAGE_READ_VICTIM,
+	};
+	struct salvage_tape tape;
+	struct yt_salvage_state state;
+	struct yt_error error;
+	size_t failure;
+
+	salvage_fixture(&tape, zero_events, YT_ARRAY_LEN(zero_events), 2.5f);
+	state = (struct yt_salvage_state){
+		.victim_record = 3,
+		.killer_record = 2.5f,
+		.last_player_record = 51.0f,
+		.maximum_holds = 20.0f,
+		.current_name = (const uint8_t *)"KILLER",
+		.current_name_length = 6U,
+	};
+	if (!yt_salvage_run(&state, &salvage_ops, &tape, NULL)
+	    || tape.event_count != YT_ARRAY_LEN(zero_events)
+	    || tape.draw_position != 6U || tape.cargo_position != 0U
+	    || tape.write_count != 1U || tape.wait_count != 3U
+	    || tape.news_count != 2U || tape.present_count != 4U
+	    || tape.waits[0] != 1.0f || tape.waits[1] != 0.5f
+	    || tape.waits[2] != 4.0f || !state.admitted || state.emitted
+	    || !state.complete)
+		return false;
+
+	for (failure = 1U; failure <= YT_ARRAY_LEN(zero_events); ++failure) {
+		salvage_fixture(&tape, zero_events, YT_ARRAY_LEN(zero_events),
+		    2.5f);
+		tape.fail_at = failure;
+		state = (struct yt_salvage_state){
+			.victim_record = 3,
+			.killer_record = 2.5f,
+			.last_player_record = 51.0f,
+			.maximum_holds = 20.0f,
+			.current_name = (const uint8_t *)"KILLER",
+			.current_name_length = 6U,
+		};
+		yt_error_clear(&error);
+		if (yt_salvage_run(&state, &salvage_ops, &tape, &error)
+		    || tape.event_count != failure || state.complete
+		    || error.status != YT_IO_ERROR)
+			return false;
+	}
+
+	salvage_fixture(&tape, cargo_events, YT_ARRAY_LEN(cargo_events), 2.0f);
+	tape.victim.holds = 4.0f;
+	tape.victim.ore = 1.0f;
+	tape.draws[0] = 0.5f;
+	tape.cargo_results[0] = 1.0f;
+	tape.cargo_results[1] = 1.0f;
+	state = (struct yt_salvage_state){
+		.victim_record = 3,
+		.killer_record = 2.0f,
+		.last_player_record = 51.0f,
+		.maximum_holds = 20.0f,
+		.current_name = (const uint8_t *)"KILLER",
+		.current_name_length = 6U,
+	};
+	if (!yt_salvage_run(&state, &salvage_ops, &tape, NULL)
+	    || tape.event_count != YT_ARRAY_LEN(cargo_events)
+	    || tape.write_count != 2U || tape.cargo_position != 2U
+	    || tape.news_count != 3U || tape.present_count != 5U
+	    || tape.wait_count != 5U || state.requested_holds != 2.0f
+	    || state.cargo.awards[0] != 1.0f
+	    || state.cargo.awards[3] != 1.0f
+	    || tape.killer.holds != 2.0f || tape.killer.ore != 1.0f
+	    || !state.emitted || !state.complete)
+		return false;
+
+	salvage_fixture(&tape, invalid_events, YT_ARRAY_LEN(invalid_events),
+	    1.5f);
+	state = (struct yt_salvage_state){
+		.victim_record = 3,
+		.killer_record = 1.5f,
+		.last_player_record = 51.0f,
+		.maximum_holds = 20.0f,
+	};
+	return yt_salvage_run(&state, &salvage_ops, &tape, NULL)
+	    && tape.event_count == 1U && !state.admitted && state.complete;
+}
+
 struct port_name_tape {
 	int events[32];
 	size_t calls;
@@ -18530,6 +18821,8 @@ main(void)
 		return fail("player counterlaunch transaction differs");
 	if (!check_salvage_cargo_sampler())
 		return fail("salvage cargo sampler differs");
+	if (!check_salvage_transaction())
+		return fail("ship salvage transaction differs");
 	if (!check_port_name_editor_model())
 		return fail("port name editor model differs");
 	if (!check_port_name_editor_transaction())

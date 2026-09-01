@@ -1647,6 +1647,17 @@ not authoritative. Use the corrected goal above in the new workspace.
   player-counterattack waits are assigned to their qualified static caller
   edges and now stop on native wait-adapter failure rather than silently
   continuing into later persistence or output.
+- Shared ship salvage now delegates to one provider-driven transaction. It
+  retains the unconditional victim GET before killer admission, binary cached
+  name header, six opening draws, simple-category wait/news/direct/add order,
+  unconditional first killer PUT, SINGLE cargo cap, optional fresh victim and
+  killer GETs, second PUT before cargo rows, `NOTHING!` exclusion and final
+  wait. The live session composes its existing physical RNG, wait,
+  presentation, news and player-store adapters. Focused tapes pin a valid
+  fractional killer, all 18 dependency cuts on the no-award route, and an
+  ore-plus-empty cargo route with two durable killer writes. Rich-path
+  internal failures, raw FIELD/runtime residue and physical partials remain
+  open.
 - The deployed-combat and sector-mine fatal families now use one centralized
   successful common-fatal bridge: foreground-three `YT:02DB` framing,
   current-player reload, selector-three sound, current player as both killer
