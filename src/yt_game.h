@@ -540,6 +540,41 @@ struct yt_main_prompt_ops {
 	    size_t *length, bool *available, struct yt_error *error);
 };
 
+enum yt_computer_prompt_effect {
+	YT_COMPUTER_PROMPT_RESET_SCANNER,
+	YT_COMPUTER_PROMPT_SET_FOREGROUND,
+};
+
+enum yt_computer_prompt_output_kind {
+	YT_COMPUTER_PROMPT_LEADING_BLANK,
+	YT_COMPUTER_PROMPT_TEXT,
+};
+
+struct yt_computer_prompt_state {
+	int current_player_record;
+	const uint8_t *time_text;
+	size_t time_text_length;
+	size_t time_text_capacity;
+	char *response;
+	size_t response_capacity;
+	struct yt_player player;
+	size_t response_length;
+	bool player_hydrated;
+	bool prompt_presented;
+	bool input_available;
+	bool complete;
+};
+
+struct yt_computer_prompt_ops {
+	void (*effect)(void *context, enum yt_computer_prompt_effect effect);
+	bool (*hydrate)(void *context, int player_record,
+	    struct yt_player *player, struct yt_error *error);
+	bool (*present)(void *context, const uint8_t *text, size_t length,
+	    enum yt_computer_prompt_output_kind kind, struct yt_error *error);
+	bool (*edit)(void *context, char *response, size_t capacity,
+	    size_t *length, bool *available, struct yt_error *error);
+};
+
 enum yt_hostile_attack_admission {
 	YT_HOSTILE_ATTACK_NO_FIGHTERS,
 	YT_HOSTILE_ATTACK_TOO_MANY,
@@ -1619,6 +1654,9 @@ enum yt_hostile_menu_route yt_hostile_menu_dispatch(const char *response);
 enum yt_main_shell_route yt_main_shell_dispatch(const char *response);
 bool yt_main_prompt_run(struct yt_main_prompt_state *state,
 	const struct yt_main_prompt_ops *ops, void *context,
+	struct yt_error *error);
+bool yt_computer_prompt_run(struct yt_computer_prompt_state *state,
+	const struct yt_computer_prompt_ops *ops, void *context,
 	struct yt_error *error);
 enum yt_hostile_attack_admission yt_hostile_attack_admit(
     float ship_fighters, float commitment);

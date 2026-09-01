@@ -26502,6 +26502,210 @@ check_main_prompt_transaction(void)
 	    && !yt_main_prompt_run(&state, NULL, &tape, NULL);
 }
 
+enum computer_prompt_event {
+	COMPUTER_PROMPT_HYDRATE = 1,
+	COMPUTER_PROMPT_SCANNER_RESET,
+	COMPUTER_PROMPT_BLANK,
+	COMPUTER_PROMPT_FOREGROUND,
+	COMPUTER_PROMPT_TEXT,
+	COMPUTER_PROMPT_EDIT,
+};
+
+struct computer_prompt_tape {
+	enum computer_prompt_event events[8];
+	size_t calls;
+	size_t fail_at;
+	struct yt_player player;
+	const char *response;
+	bool available;
+	uint8_t rows[2][128];
+	size_t row_lengths[2];
+	enum yt_computer_prompt_output_kind kinds[2];
+	size_t row_count;
+};
+
+static bool
+computer_prompt_step(struct computer_prompt_tape *tape,
+    enum computer_prompt_event event, struct yt_error *error)
+{
+	size_t call = tape->calls++;
+
+	if (call < YT_ARRAY_LEN(tape->events))
+		tape->events[call] = event;
+	if (call != tape->fail_at)
+		return true;
+	if (error != NULL)
+		error->status = YT_IO_ERROR;
+	return false;
+}
+
+static void
+computer_prompt_effect_test(void *context,
+    enum yt_computer_prompt_effect effect)
+{
+	struct computer_prompt_tape *tape = context;
+
+	(void)computer_prompt_step(tape,
+	    effect == YT_COMPUTER_PROMPT_RESET_SCANNER
+	    ? COMPUTER_PROMPT_SCANNER_RESET : COMPUTER_PROMPT_FOREGROUND,
+	    NULL);
+}
+
+static bool
+computer_prompt_hydrate_test(void *context, int record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct computer_prompt_tape *tape = context;
+
+	if (record != 2 || !computer_prompt_step(tape,
+	    COMPUTER_PROMPT_HYDRATE, error))
+		return false;
+	*player = tape->player;
+	return true;
+}
+
+static bool
+computer_prompt_present_test(void *context, const uint8_t *text,
+    size_t length, enum yt_computer_prompt_output_kind kind,
+    struct yt_error *error)
+{
+	struct computer_prompt_tape *tape = context;
+	size_t row = tape->row_count;
+	enum computer_prompt_event event =
+	    kind == YT_COMPUTER_PROMPT_LEADING_BLANK
+	    ? COMPUTER_PROMPT_BLANK : COMPUTER_PROMPT_TEXT;
+
+	if (row >= YT_ARRAY_LEN(tape->rows) || length > sizeof(tape->rows[0])
+	    || !computer_prompt_step(tape, event, error))
+		return false;
+	if (length != 0U)
+		memcpy(tape->rows[row], text, length);
+	tape->row_lengths[row] = length;
+	tape->kinds[row] = kind;
+	tape->row_count++;
+	return true;
+}
+
+static bool
+computer_prompt_edit_test(void *context, char *response, size_t capacity,
+    size_t *length, bool *available, struct yt_error *error)
+{
+	struct computer_prompt_tape *tape = context;
+	size_t response_length = strlen(tape->response);
+
+	if (length == NULL || available == NULL || response_length >= capacity
+	    || !computer_prompt_step(tape, COMPUTER_PROMPT_EDIT, error))
+		return false;
+	memcpy(response, tape->response, response_length + 1U);
+	*length = response_length;
+	*available = tape->available;
+	return true;
+}
+
+static const struct yt_computer_prompt_ops computer_prompt_test_ops = {
+	computer_prompt_effect_test,
+	computer_prompt_hydrate_test,
+	computer_prompt_present_test,
+	computer_prompt_edit_test,
+};
+
+static void
+computer_prompt_fixture(struct computer_prompt_tape *tape,
+    struct yt_computer_prompt_state *state, char response[32])
+{
+	static const uint8_t time_text[] = " 14:59  ";
+
+	memset(tape, 0, sizeof(*tape));
+	memset(state, 0, sizeof(*state));
+	memset(response, 0xa5, 32U);
+	tape->fail_at = SIZE_MAX;
+	tape->player.credits = 456.0f;
+	tape->response = "7JUNK";
+	tape->available = true;
+	*state = (struct yt_computer_prompt_state){
+		.current_player_record = 2,
+		.time_text = time_text,
+		.time_text_length = sizeof(time_text) - 1U,
+		.time_text_capacity = sizeof(time_text) - 1U,
+		.response = response,
+		.response_capacity = 32U,
+	};
+}
+
+static bool
+check_computer_prompt_transaction(void)
+{
+	static const enum computer_prompt_event expected[] = {
+		COMPUTER_PROMPT_HYDRATE,
+		COMPUTER_PROMPT_SCANNER_RESET,
+		COMPUTER_PROMPT_BLANK,
+		COMPUTER_PROMPT_FOREGROUND,
+		COMPUTER_PROMPT_TEXT,
+		COMPUTER_PROMPT_EDIT,
+	};
+	static const size_t failable[] = {0U, 2U, 4U, 5U};
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Computer command (?=help)? ";
+	struct computer_prompt_tape tape;
+	struct yt_computer_prompt_state state;
+	struct yt_error error;
+	char response[32];
+	size_t index;
+
+	computer_prompt_fixture(&tape, &state, response);
+	if (!yt_computer_prompt_run(&state, &computer_prompt_test_ops, &tape,
+	    NULL) || !state.complete || !state.player_hydrated
+	    || !state.prompt_presented || !state.input_available
+	    || state.player.credits != 456.0f || state.response_length != 2U
+	    || strcmp(response, "7J") != 0
+	    || tape.calls != YT_ARRAY_LEN(expected)
+	    || memcmp(tape.events, expected, sizeof(expected)) != 0
+	    || tape.row_count != 2U || tape.row_lengths[0] != 0U
+	    || tape.kinds[0] != YT_COMPUTER_PROMPT_LEADING_BLANK
+	    || tape.row_lengths[1] != sizeof(prompt) - 1U
+	    || tape.kinds[1] != YT_COMPUTER_PROMPT_TEXT
+	    || memcmp(tape.rows[1], prompt, sizeof(prompt) - 1U) != 0)
+		return false;
+	for (index = 0U; index < YT_ARRAY_LEN(failable); ++index) {
+		computer_prompt_fixture(&tape, &state, response);
+		tape.fail_at = failable[index];
+		yt_error_clear(&error);
+		if (yt_computer_prompt_run(&state, &computer_prompt_test_ops,
+		    &tape, &error) || error.status != YT_IO_ERROR
+		    || state.complete || tape.calls != failable[index] + 1U
+		    || memcmp(tape.events, expected,
+		    tape.calls * sizeof(expected[0])) != 0)
+			return false;
+	}
+	computer_prompt_fixture(&tape, &state, response);
+	tape.response = "";
+	if (!yt_computer_prompt_run(&state, &computer_prompt_test_ops, &tape,
+	    NULL) || !state.complete || !state.input_available
+	    || state.response_length != 1U || strcmp(response, "?") != 0)
+		return false;
+	computer_prompt_fixture(&tape, &state, response);
+	tape.available = false;
+	tape.response = "";
+	if (!yt_computer_prompt_run(&state, &computer_prompt_test_ops, &tape,
+	    NULL) || !state.complete || state.input_available
+	    || state.response_length != 0U || response[0] != '\0')
+		return false;
+	computer_prompt_fixture(&tape, &state, response);
+	state.time_text_length++;
+	yt_error_clear(&error);
+	if (yt_computer_prompt_run(&state, &computer_prompt_test_ops, &tape,
+	    &error) || error.status != YT_RANGE || tape.calls != 4U
+	    || strcmp(error.operation, "computer prompt time capacity") != 0)
+		return false;
+	computer_prompt_fixture(&tape, &state, response);
+	state.response_capacity = 2U;
+	return !yt_computer_prompt_run(&state, &computer_prompt_test_ops,
+	    &tape, NULL)
+	    && !yt_computer_prompt_run(NULL, &computer_prompt_test_ops,
+	    &tape, NULL)
+	    && !yt_computer_prompt_run(&state, NULL, &tape, NULL);
+}
+
 enum port_purchase_accept_event {
 	PORT_ACCEPT_PRESENT = 1,
 	PORT_ACCEPT_READ_PORT,
@@ -28103,6 +28307,8 @@ main(void)
 		return fail("port rename scanner cycle differs");
 	if (!check_main_prompt_transaction())
 		return fail("main prompt transaction differs");
+	if (!check_computer_prompt_transaction())
+		return fail("computer prompt transaction differs");
 	if (!check_port_name_editor_model())
 		return fail("port name editor model differs");
 	if (!check_port_purchase_accept_transaction())

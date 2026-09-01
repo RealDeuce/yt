@@ -16995,12 +16995,75 @@ computer_newspaper(struct yt_session *session, struct yt_error *error)
 	    error);
 }
 
+static void
+computer_menu_prompt_effect(void *context,
+    enum yt_computer_prompt_effect effect)
+{
+	static const uint8_t scanner_zero[4] = {0x00, 0x00, 0x03, 0x00};
+	struct yt_session *session = context;
+
+	if (effect == YT_COMPUTER_PROMPT_RESET_SCANNER) {
+		session->relationship_scratch = 0.0f;
+		memcpy(session->relationship_scratch_raw, scanner_zero,
+		    sizeof(scanner_zero));
+	}
+	else if (effect == YT_COMPUTER_PROMPT_SET_FOREGROUND) {
+		session->presentation.foreground = 1.0f;
+		session->pager.foreground = 1;
+	}
+}
+
+static bool
+computer_menu_prompt_hydrate(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	if (player_record != session->player_record
+	    || !computer_prompt_hydrate(session, error))
+		return false;
+	*player = session->player;
+	return true;
+}
+
+static bool
+computer_menu_prompt_present(void *context, const uint8_t *text,
+    size_t length, enum yt_computer_prompt_output_kind kind,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	if (kind == YT_COMPUTER_PROMPT_LEADING_BLANK)
+		return session_present_text(session, NULL, 0U,
+		    SESSION_PRESENT_LINE, "computer prompt leading blank", error);
+	if (kind == YT_COMPUTER_PROMPT_TEXT)
+		return session_031f(session, text, length, "computer prompt",
+		    error);
+	return false;
+}
+
+static bool
+computer_menu_prompt_edit(void *context, char *response, size_t capacity,
+    size_t *length, bool *available, struct yt_error *error)
+{
+	(void)error;
+	if (length == NULL || available == NULL)
+		return false;
+	*available = session_0357(context, response, capacity);
+	*length = *available ? strlen(response) : 0U;
+	return true;
+}
+
 static bool
 computer_menu(struct yt_session *session, bool *enter_sector,
     struct yt_error *error)
 {
-	static const uint8_t prompt_prefix[] = "Time:";
-	static const uint8_t prompt_body[] = "Computer command (?=help)? ";
+	static const struct yt_computer_prompt_ops prompt_ops = {
+		computer_menu_prompt_effect,
+		computer_menu_prompt_hydrate,
+		computer_menu_prompt_present,
+		computer_menu_prompt_edit,
+	};
 
 	if (enter_sector != NULL)
 		*enter_sector = false;
@@ -17008,44 +17071,20 @@ computer_menu(struct yt_session *session, bool *enter_sector,
 		return false;
 	for (;;) {
 		char command[80];
-		uint8_t prompt[sizeof(prompt_prefix) - 1U
-		    + sizeof(session->time.text) + sizeof(prompt_body) - 1U];
-		size_t prompt_length = 0;
+		struct yt_computer_prompt_state prompt = {
+			.current_player_record = session->player_record,
+			.time_text = (const uint8_t *)session->time.text,
+			.time_text_length = session->time.text_length,
+			.time_text_capacity = sizeof(session->time.text),
+			.response = command,
+			.response_capacity = sizeof(command),
+		};
 		int position;
 
-		if (!computer_prompt_hydrate(session, error))
+		if (!yt_computer_prompt_run(&prompt, &prompt_ops, session, error))
 			return false;
-		session->relationship_scratch = 0.0f;
-		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-		    "computer prompt leading blank", error))
+		if (!prompt.input_available)
 			return false;
-		session->presentation.foreground = 1.0f;
-		session->pager.foreground = 1;
-		memcpy(prompt + prompt_length, prompt_prefix,
-		    sizeof(prompt_prefix) - 1U);
-		prompt_length += sizeof(prompt_prefix) - 1U;
-		if (session->time.text_length > sizeof(session->time.text)) {
-			if (error != NULL) {
-				error->status = YT_RANGE;
-				(void)snprintf(error->operation,
-				    sizeof(error->operation), "%s",
-				    "computer prompt time capacity");
-			}
-			return false;
-		}
-		memcpy(prompt + prompt_length, session->time.text,
-		    session->time.text_length);
-		prompt_length += session->time.text_length;
-		memcpy(prompt + prompt_length, prompt_body,
-		    sizeof(prompt_body) - 1U);
-		prompt_length += sizeof(prompt_body) - 1U;
-		if (!session_031f(session, prompt, prompt_length,
-		    "computer prompt", error)
-		    || !session_0357(session, command, sizeof(command)))
-			return false;
-		if (command[0] == '\0')
-			strcpy(command, "?");
-		command[2] = '\0';
 
 		if (strcmp(command, "I") == 0) {
 			if (!show_ship(session, error))
