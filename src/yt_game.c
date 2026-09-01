@@ -4056,6 +4056,20 @@ yt_port_purchase_seller_record(float owner)
 }
 
 static bool
+port_purchase_error(struct yt_error *error, enum yt_status status,
+    const char *operation)
+{
+	if (error != NULL) {
+		error->status = status;
+		error->system_error = 0;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    operation);
+		error->path[0] = '\0';
+	}
+	return false;
+}
+
+static bool
 port_purchase_append(uint8_t *buffer, size_t capacity, size_t *length,
     const uint8_t *text, size_t text_length)
 {
@@ -4223,6 +4237,209 @@ yt_port_purchase_accept_run(struct yt_port_purchase_accept_state *state,
 	    YT_PORT_PURCHASE_ACCEPT_SUCCESS_TAIL, error))
 		return false;
 	state->success_presented = true;
+	state->complete = true;
+	return true;
+}
+
+bool
+yt_port_purchase_run(struct yt_port_purchase_state *state,
+    const struct yt_port_purchase_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t no_port[] = "No port here!";
+	static const uint8_t already_prefix[] = "You already OWN this port ";
+	static const uint8_t unaffordable[] =
+	    "Come back when you can afford it!";
+	static const uint8_t offer_prefix[] = "You may buy it from ";
+	static const uint8_t offer_suffix[] = " if you wish.";
+	static const uint8_t prompt[] = "Do you wish to buy it? [y/N]";
+	static const uint8_t declined[] = "What a shame.. it's a nice port!";
+	static const uint8_t earth_name[] = "Earth";
+	uint8_t row[512];
+	char price_text[64];
+	char credits_text[64];
+	size_t length;
+	int32_t converted_length;
+	bool conversion_overflow;
+	bool accepted;
+
+	if (state == NULL || ops == NULL || state->current_player_record < 1
+	    || ops->hydrate_buyer == NULL || ops->read_sector == NULL
+	    || ops->report == NULL || ops->owner == NULL
+	    || ops->present == NULL || ops->confirm == NULL
+	    || ops->accept == NULL
+	    || (state->first_name_length != 0U && state->first_name == NULL))
+		return false;
+	memset(&state->buyer_entry, 0, sizeof(state->buyer_entry));
+	memset(&state->sector, 0, sizeof(state->sector));
+	memset(&state->early_port, 0, sizeof(state->early_port));
+	memset(&state->terminal_port, 0, sizeof(state->terminal_port));
+	memset(&state->accepted, 0, sizeof(state->accepted));
+	state->logical_port = 0;
+	state->relative_port = 0.0f;
+	state->earth = false;
+	state->cached_buyer_credits = 0.0f;
+	state->cached_buyer_sector = 0.0f;
+	state->cached_trader_length = 0U;
+	state->old_owner = 0.0f;
+	memset(state->purchase_production, 0,
+	    sizeof(state->purchase_production));
+	state->price = 0.0;
+	state->old_name_length = 0U;
+	state->owner_name_length = 0U;
+	state->buyer_hydrated = false;
+	state->sector_read = false;
+	state->report_complete = false;
+	state->owner_displayed = false;
+	state->confirmation_read = false;
+	state->accepted_called = false;
+	state->complete = false;
+	state->route = YT_PORT_PURCHASE_INCOMPLETE;
+
+	if (!ops->hydrate_buyer(context, state->current_player_record,
+	    &state->buyer_entry, error))
+		return false;
+	state->buyer_hydrated = true;
+	state->cached_buyer_credits = state->buyer_entry.credits;
+	state->cached_buyer_sector = state->buyer_entry.sector;
+	if (!yt_player_stored_name(&state->buyer_entry, state->cached_trader,
+	    &state->cached_trader_length, error)
+	    || !ops->read_sector(context, (int)state->cached_buyer_sector,
+	    &state->sector, error))
+		return false;
+	state->sector_read = true;
+	if (!qb_mbf32_truth(state->sector.record.bytes + YT_F65)) {
+		if (!ops->present(context, no_port, sizeof(no_port) - 1U,
+		    YT_PORT_PURCHASE_NO_PORT, error))
+			return false;
+		state->route = YT_PORT_PURCHASE_NO_PORT_ROUTE;
+		state->complete = true;
+		return true;
+	}
+	if (!yt_port_rename_record(state->port_offset, state->sector.port,
+	    &state->logical_port, &state->relative_port))
+		return port_purchase_error(error, YT_RANGE,
+		    "buy port record conversion");
+	state->earth = state->sector.port == 1.0f;
+	if (!ops->report(context, state->logical_port, state->earth,
+	    &state->early_port, &state->terminal_port,
+	    state->purchase_production, error))
+		return false;
+	state->report_complete = true;
+	state->old_owner = state->early_port.owner;
+	if (state->earth) {
+		state->price = 1000000000.0;
+		memcpy(state->old_name, earth_name, sizeof(earth_name) - 1U);
+		state->old_name_length = sizeof(earth_name) - 1U;
+	}
+	else {
+		conversion_overflow = false;
+		converted_length = qb_cint_mode(
+		    (double)state->terminal_port.name_length,
+		    state->conversion_mode, &conversion_overflow);
+		if (conversion_overflow || converted_length < 0)
+			return port_purchase_error(error, YT_RANGE,
+			    "buy old port name length");
+		state->old_name_length = (size_t)converted_length;
+		if (state->old_name_length > YT_TEXT_FIELD_SIZE)
+			state->old_name_length = YT_TEXT_FIELD_SIZE;
+		memcpy(state->old_name, state->terminal_port.record.bytes,
+		    state->old_name_length);
+		state->price = yt_port_purchase_price(
+		    state->purchase_production);
+	}
+	if (state->old_owner == (float)state->current_player_record) {
+		length = 0U;
+		if (!port_purchase_append(row, sizeof(row), &length,
+		    already_prefix, sizeof(already_prefix) - 1U)
+		    || !port_purchase_append(row, sizeof(row), &length,
+		    state->first_name, state->first_name_length)
+		    || !port_purchase_append(row, sizeof(row), &length,
+		    (const uint8_t *)"!", 1U)
+		    || !ops->present(context, row, length,
+		    YT_PORT_PURCHASE_ALREADY_OWNER, error))
+			return false;
+		state->route = YT_PORT_PURCHASE_ALREADY_OWNER_ROUTE;
+		state->complete = true;
+		return true;
+	}
+	if (qb_str_double(price_text, sizeof(price_text), state->price) < 0
+	    || qb_str_double(credits_text, sizeof(credits_text),
+	    (double)state->cached_buyer_credits) < 0)
+		return port_purchase_error(error, YT_RANGE,
+		    "buy price formatting");
+	length = (size_t)snprintf((char *)row, sizeof(row),
+	    "This port is for sale for%s credits. You have%s credits.",
+	    price_text, credits_text);
+	if (length >= sizeof(row)
+	    || !ops->present(context, row, length, YT_PORT_PURCHASE_PRICE,
+	    error))
+		return false;
+	if ((double)state->cached_buyer_credits < state->price) {
+		if (!ops->present(context, unaffordable,
+		    sizeof(unaffordable) - 1U, YT_PORT_PURCHASE_UNAFFORDABLE,
+		    error))
+			return false;
+		state->route = YT_PORT_PURCHASE_UNAFFORDABLE_ROUTE;
+		state->complete = true;
+		return true;
+	}
+	if (state->old_owner != 0.0f) {
+		struct yt_port display_port = state->terminal_port;
+
+		display_port.owner = state->old_owner;
+		if (!ops->owner(context, &display_port, state->owner_name,
+		    sizeof(state->owner_name), &state->owner_name_length, error))
+			return false;
+		state->owner_displayed = true;
+		length = 0U;
+		if (!ops->present(context, NULL, 0U,
+		    YT_PORT_PURCHASE_OFFER_LEADING_BLANK, error)
+		    || !port_purchase_append(row, sizeof(row), &length,
+		    offer_prefix, sizeof(offer_prefix) - 1U)
+		    || !port_purchase_append(row, sizeof(row), &length,
+		    state->owner_name, state->owner_name_length)
+		    || !port_purchase_append(row, sizeof(row), &length,
+		    offer_suffix, sizeof(offer_suffix) - 1U)
+		    || !ops->present(context, row, length,
+		    YT_PORT_PURCHASE_OFFER_ROW, error)
+		    || !ops->present(context, NULL, 0U,
+		    YT_PORT_PURCHASE_OFFER_TRAILING_BLANK, error))
+			return false;
+	}
+	accepted = false;
+	if (!ops->confirm(context, prompt, sizeof(prompt) - 1U, &accepted,
+	    error))
+		return false;
+	state->confirmation_read = true;
+	if (!accepted) {
+		if (!ops->present(context, declined, sizeof(declined) - 1U,
+		    YT_PORT_PURCHASE_DECLINED, error))
+			return false;
+		state->route = YT_PORT_PURCHASE_DECLINED_ROUTE;
+		state->complete = true;
+		return true;
+	}
+	state->accepted = (struct yt_port_purchase_accept_state){
+		.current_player_record = state->current_player_record,
+		.logical_port = state->logical_port,
+		.relative_port = state->relative_port,
+		.old_owner = state->old_owner,
+		.price = state->price,
+		.cached_buyer_sector = state->cached_buyer_sector,
+		.cached_trader = state->cached_trader,
+		.cached_trader_length = state->cached_trader_length,
+		.old_name = state->old_name,
+		.old_name_length = state->old_name_length,
+		.owner_name = state->owner_name,
+		.owner_name_length = state->owner_name_length,
+		.first_name = state->first_name,
+		.first_name_length = state->first_name_length,
+	};
+	state->accepted_called = true;
+	if (!ops->accept(context, &state->accepted, error))
+		return false;
+	state->route = YT_PORT_PURCHASE_ACCEPTED_ROUTE;
 	state->complete = true;
 	return true;
 }

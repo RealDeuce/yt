@@ -1676,6 +1676,24 @@ bool yt_port_purchase_title_overlay(struct yt_port *port,
 bool yt_port_purchase_buyer_overlay(struct yt_player *buyer,
 	double price);
 int yt_port_purchase_seller_record(float owner);
+enum yt_port_purchase_output_kind {
+	YT_PORT_PURCHASE_NO_PORT,
+	YT_PORT_PURCHASE_ALREADY_OWNER,
+	YT_PORT_PURCHASE_PRICE,
+	YT_PORT_PURCHASE_UNAFFORDABLE,
+	YT_PORT_PURCHASE_OFFER_LEADING_BLANK,
+	YT_PORT_PURCHASE_OFFER_ROW,
+	YT_PORT_PURCHASE_OFFER_TRAILING_BLANK,
+	YT_PORT_PURCHASE_DECLINED,
+};
+enum yt_port_purchase_route {
+	YT_PORT_PURCHASE_INCOMPLETE,
+	YT_PORT_PURCHASE_NO_PORT_ROUTE,
+	YT_PORT_PURCHASE_ALREADY_OWNER_ROUTE,
+	YT_PORT_PURCHASE_UNAFFORDABLE_ROUTE,
+	YT_PORT_PURCHASE_DECLINED_ROUTE,
+	YT_PORT_PURCHASE_ACCEPTED_ROUTE,
+};
 enum yt_port_purchase_accept_output_kind {
 	YT_PORT_PURCHASE_ACCEPT_SOLD_BLANK,
 	YT_PORT_PURCHASE_ACCEPT_SOLD_ROW,
@@ -1740,6 +1758,62 @@ struct yt_port_purchase_accept_ops {
 bool yt_port_purchase_accept_run(
 	struct yt_port_purchase_accept_state *state,
 	const struct yt_port_purchase_accept_ops *ops, void *context,
+	struct yt_error *error);
+struct yt_port_purchase_state {
+	int current_player_record;
+	float port_offset;
+	uint8_t conversion_mode;
+	const uint8_t *first_name;
+	size_t first_name_length;
+	struct yt_player buyer_entry;
+	struct yt_sector sector;
+	struct yt_port early_port;
+	struct yt_port terminal_port;
+	int logical_port;
+	float relative_port;
+	bool earth;
+	float cached_buyer_credits;
+	float cached_buyer_sector;
+	uint8_t cached_trader[YT_TEXT_FIELD_SIZE];
+	size_t cached_trader_length;
+	float old_owner;
+	float purchase_production[3];
+	double price;
+	uint8_t old_name[YT_TEXT_FIELD_SIZE];
+	size_t old_name_length;
+	uint8_t owner_name[YT_TEXT_FIELD_SIZE];
+	size_t owner_name_length;
+	struct yt_port_purchase_accept_state accepted;
+	bool buyer_hydrated;
+	bool sector_read;
+	bool report_complete;
+	bool owner_displayed;
+	bool confirmation_read;
+	bool accepted_called;
+	bool complete;
+	enum yt_port_purchase_route route;
+};
+struct yt_port_purchase_ops {
+	bool (*hydrate_buyer)(void *context, int player_record,
+	    struct yt_player *player, struct yt_error *error);
+	bool (*read_sector)(void *context, int sector_number,
+	    struct yt_sector *sector, struct yt_error *error);
+	bool (*report)(void *context, int logical_port, bool earth,
+	    struct yt_port *early_port, struct yt_port *terminal_port,
+	    float production[3], struct yt_error *error);
+	bool (*owner)(void *context, const struct yt_port *port,
+	    uint8_t *name, size_t capacity, size_t *length,
+	    struct yt_error *error);
+	bool (*present)(void *context, const uint8_t *text, size_t length,
+	    enum yt_port_purchase_output_kind kind, struct yt_error *error);
+	bool (*confirm)(void *context, const uint8_t *prompt, size_t length,
+	    bool *accepted, struct yt_error *error);
+	bool (*accept)(void *context,
+	    struct yt_port_purchase_accept_state *state,
+	    struct yt_error *error);
+};
+bool yt_port_purchase_run(struct yt_port_purchase_state *state,
+	const struct yt_port_purchase_ops *ops, void *context,
 	struct yt_error *error);
 bool yt_genesis_confirmation_prompt(const uint8_t *trader,
     size_t trader_length, uint8_t *prompt, size_t capacity, size_t *length);

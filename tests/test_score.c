@@ -22296,6 +22296,353 @@ check_port_purchase_accept_transaction(void)
 	    && !yt_port_purchase_accept_run(&state, NULL, &tape, NULL);
 }
 
+enum port_purchase_event {
+	PORT_PURCHASE_HYDRATE = 1,
+	PORT_PURCHASE_READ_SECTOR,
+	PORT_PURCHASE_REPORT,
+	PORT_PURCHASE_OWNER,
+	PORT_PURCHASE_PRESENT,
+	PORT_PURCHASE_CONFIRM,
+	PORT_PURCHASE_ACCEPT,
+};
+struct port_purchase_tape {
+	enum port_purchase_event events[16];
+	size_t calls;
+	size_t fail_at;
+	struct yt_player buyer;
+	struct yt_sector sector;
+	float early_owner;
+	float terminal_owner;
+	float production[3];
+	float terminal_name_length;
+	bool answer;
+	bool expected_earth;
+	size_t expected_name_length;
+	uint8_t rows[8][256];
+	size_t row_lengths[8];
+	enum yt_port_purchase_output_kind kinds[8];
+	size_t row_count;
+	struct yt_port owner_port;
+	struct yt_port_purchase_accept_state accepted;
+};
+static bool
+port_purchase_step(struct port_purchase_tape *tape,
+    enum port_purchase_event event, struct yt_error *error)
+{
+	size_t call = tape->calls++;
+
+	if (call < YT_ARRAY_LEN(tape->events))
+		tape->events[call] = event;
+	if (call != tape->fail_at)
+		return true;
+	if (error != NULL)
+		error->status = YT_IO_ERROR;
+	return false;
+}
+static bool
+port_purchase_hydrate_test(void *context, int record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct port_purchase_tape *tape = context;
+
+	if (record != 2
+	    || !port_purchase_step(tape, PORT_PURCHASE_HYDRATE, error))
+		return false;
+	*player = tape->buyer;
+	return true;
+}
+static bool
+port_purchase_read_sector_test(void *context, int sector_number,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct port_purchase_tape *tape = context;
+
+	if (sector_number != 42
+	    || !port_purchase_step(tape, PORT_PURCHASE_READ_SECTOR, error))
+		return false;
+	*sector = tape->sector;
+	return true;
+}
+static bool
+port_purchase_report_test(void *context, int logical, bool earth,
+    struct yt_port *early, struct yt_port *terminal, float production[3],
+    struct yt_error *error)
+{
+	static const uint8_t terminal_name[] = {'P', 0, 'N', 'Q'};
+	struct port_purchase_tape *tape = context;
+
+	if (logical != (tape->expected_earth ? 1 : 3)
+	    || earth != tape->expected_earth
+	    || !port_purchase_step(tape, PORT_PURCHASE_REPORT, error))
+		return false;
+	memset(early, 0x5a, sizeof(*early));
+	memset(terminal, 0xa5, sizeof(*terminal));
+	early->owner = tape->early_owner;
+	terminal->owner = tape->terminal_owner;
+	terminal->name_length = tape->terminal_name_length;
+	memcpy(terminal->record.bytes, terminal_name, sizeof(terminal_name));
+	memcpy(production, tape->production, sizeof(tape->production));
+	return true;
+}
+static bool
+port_purchase_owner_test(void *context, const struct yt_port *port,
+    uint8_t *name, size_t capacity, size_t *length, struct yt_error *error)
+{
+	static const uint8_t owner[] = {'O', 0, 'W'};
+	struct port_purchase_tape *tape = context;
+
+	if (capacity < sizeof(owner) || length == NULL || port->owner != 7.0f
+	    || port->record.bytes[0] != 'P'
+	    || !port_purchase_step(tape, PORT_PURCHASE_OWNER, error))
+		return false;
+	tape->owner_port = *port;
+	memcpy(name, owner, sizeof(owner));
+	*length = sizeof(owner);
+	return true;
+}
+static bool
+port_purchase_present_test(void *context, const uint8_t *text,
+    size_t length, enum yt_port_purchase_output_kind kind,
+    struct yt_error *error)
+{
+	struct port_purchase_tape *tape = context;
+	size_t row = tape->row_count;
+
+	if (row >= YT_ARRAY_LEN(tape->rows) || length > sizeof(tape->rows[0])
+	    || !port_purchase_step(tape, PORT_PURCHASE_PRESENT, error))
+		return false;
+	if (length != 0U)
+		memcpy(tape->rows[row], text, length);
+	tape->row_lengths[row] = length;
+	tape->kinds[row] = kind;
+	tape->row_count++;
+	return true;
+}
+static bool
+port_purchase_confirm_test(void *context, const uint8_t *prompt,
+    size_t length, bool *accepted, struct yt_error *error)
+{
+	static const uint8_t expected[] = "Do you wish to buy it? [y/N]";
+	struct port_purchase_tape *tape = context;
+
+	if (accepted == NULL || length != sizeof(expected) - 1U
+	    || memcmp(prompt, expected, sizeof(expected) - 1U) != 0
+	    || !port_purchase_step(tape, PORT_PURCHASE_CONFIRM, error))
+		return false;
+	*accepted = tape->answer;
+	return true;
+}
+static bool
+port_purchase_accept_test(void *context,
+    struct yt_port_purchase_accept_state *state, struct yt_error *error)
+{
+	static const uint8_t trader[] = {'T', 0, 'R'};
+	static const uint8_t ordinary_name[] = {'P', 0, 'N', 'Q'};
+	static const uint8_t owner[] = {'O', 0, 'W'};
+	static const uint8_t first[] = {'F', 0, 'I'};
+	struct port_purchase_tape *tape = context;
+	const uint8_t *expected_name = tape->expected_earth
+	    ? (const uint8_t *)"Earth" : ordinary_name;
+
+	if (state->current_player_record != 2
+	    || state->logical_port != (tape->expected_earth ? 1 : 3)
+	    || state->relative_port != (tape->expected_earth ? 1.0f : 3.0f)
+	    || state->old_owner != tape->early_owner
+	    || state->price != (tape->expected_earth ? 1000000000.0 : 7.0)
+	    || state->cached_buyer_sector != 42.0f
+	    || state->cached_trader_length != sizeof(trader)
+	    || memcmp(state->cached_trader, trader, sizeof(trader)) != 0
+	    || state->old_name_length != tape->expected_name_length
+	    || memcmp(state->old_name, expected_name,
+	    tape->expected_name_length) != 0
+	    || state->owner_name_length != (tape->early_owner == 0.0f
+	    ? 0U : sizeof(owner))
+	    || (state->owner_name_length != 0U
+	    && memcmp(state->owner_name, owner, sizeof(owner)) != 0)
+	    || state->first_name_length != sizeof(first)
+	    || memcmp(state->first_name, first, sizeof(first)) != 0
+	    || !port_purchase_step(tape, PORT_PURCHASE_ACCEPT, error))
+		return false;
+	tape->accepted = *state;
+	state->complete = true;
+	return true;
+}
+static const struct yt_port_purchase_ops port_purchase_test_ops = {
+	port_purchase_hydrate_test,
+	port_purchase_read_sector_test,
+	port_purchase_report_test,
+	port_purchase_owner_test,
+	port_purchase_present_test,
+	port_purchase_confirm_test,
+	port_purchase_accept_test,
+};
+static void
+port_purchase_fixture(struct port_purchase_tape *tape,
+    struct yt_port_purchase_state *state)
+{
+	static const uint8_t trader[] = {'T', 0, 'R'};
+	static const uint8_t first[] = {'F', 0, 'I'};
+
+	memset(tape, 0, sizeof(*tape));
+	memset(state, 0, sizeof(*state));
+	tape->fail_at = SIZE_MAX;
+	tape->buyer.credits = 100.0f;
+	tape->buyer.sector = 42.0f;
+	tape->buyer.name_length = (float)sizeof(trader);
+	memcpy(tape->buyer.record.bytes, trader, sizeof(trader));
+	tape->sector.port = 3.0f;
+	(void)yt_record_set_number(&tape->sector.record, YT_F65, 3.0f);
+	tape->early_owner = 7.0f;
+	tape->terminal_owner = 99.0f;
+	tape->production[0] = 10.0f;
+	tape->production[1] = 20.0f;
+	tape->production[2] = 30.0f;
+	tape->terminal_name_length = 3.6f;
+	tape->answer = true;
+	tape->expected_name_length = 3U;
+	*state = (struct yt_port_purchase_state){
+		.current_player_record = 2,
+		.port_offset = 100.0f,
+		.conversion_mode = 4U,
+		.first_name = first,
+		.first_name_length = sizeof(first),
+	};
+}
+static bool
+check_port_purchase_transaction(void)
+{
+	static const enum port_purchase_event accepted_events[] = {
+		PORT_PURCHASE_HYDRATE, PORT_PURCHASE_READ_SECTOR,
+		PORT_PURCHASE_REPORT, PORT_PURCHASE_PRESENT,
+		PORT_PURCHASE_OWNER, PORT_PURCHASE_PRESENT,
+		PORT_PURCHASE_PRESENT, PORT_PURCHASE_PRESENT,
+		PORT_PURCHASE_CONFIRM, PORT_PURCHASE_ACCEPT,
+	};
+	static const uint8_t price_row[] =
+	    "This port is for sale for 7 credits. You have 100 credits.";
+	static const uint8_t offer_row[] = {
+		'Y','o','u',' ','m','a','y',' ','b','u','y',' ','i','t',' ',
+		'f','r','o','m',' ','O',0,'W',' ','i','f',' ','y','o','u',' ',
+		'w','i','s','h','.'
+	};
+	static const uint8_t already[] = {
+		'Y','o','u',' ','a','l','r','e','a','d','y',' ','O','W','N',' ',
+		't','h','i','s',' ','p','o','r','t',' ','F',0,'I','!'
+	};
+	static const uint8_t unaffordable[] =
+	    "Come back when you can afford it!";
+	static const uint8_t declined[] = "What a shame.. it's a nice port!";
+	struct port_purchase_tape tape;
+	struct yt_port_purchase_state state;
+	struct yt_error error;
+	size_t failure;
+
+	port_purchase_fixture(&tape, &state);
+	if (!yt_port_purchase_run(&state, &port_purchase_test_ops, &tape, NULL)
+	    || !state.complete || state.route != YT_PORT_PURCHASE_ACCEPTED_ROUTE
+	    || !state.buyer_hydrated || !state.sector_read
+	    || !state.report_complete || !state.owner_displayed
+	    || !state.confirmation_read || !state.accepted_called
+	    || state.old_owner != 7.0f || state.terminal_port.owner != 99.0f
+	    || state.price != 7.0 || state.old_name_length != 3U
+	    || tape.owner_port.owner != 7.0f || tape.calls != 10U
+	    || memcmp(tape.events, accepted_events,
+	    sizeof(accepted_events)) != 0
+	    || tape.row_count != 4U
+	    || tape.kinds[0] != YT_PORT_PURCHASE_PRICE
+	    || tape.row_lengths[0] != sizeof(price_row) - 1U
+	    || memcmp(tape.rows[0], price_row, sizeof(price_row) - 1U) != 0
+	    || tape.kinds[1] != YT_PORT_PURCHASE_OFFER_LEADING_BLANK
+	    || tape.row_lengths[1] != 0U
+	    || tape.kinds[2] != YT_PORT_PURCHASE_OFFER_ROW
+	    || tape.row_lengths[2] != sizeof(offer_row)
+	    || memcmp(tape.rows[2], offer_row, sizeof(offer_row)) != 0
+	    || tape.kinds[3] != YT_PORT_PURCHASE_OFFER_TRAILING_BLANK
+	    || tape.row_lengths[3] != 0U)
+		return false;
+	for (failure = 0U; failure < YT_ARRAY_LEN(accepted_events); ++failure) {
+		port_purchase_fixture(&tape, &state);
+		tape.fail_at = failure;
+		yt_error_clear(&error);
+		if (yt_port_purchase_run(&state, &port_purchase_test_ops, &tape,
+		    &error) || error.status != YT_IO_ERROR || state.complete
+		    || tape.calls != failure + 1U
+		    || memcmp(tape.events, accepted_events,
+		    tape.calls * sizeof(accepted_events[0])) != 0)
+			return false;
+	}
+
+	/* Raw exponent zero is the only no-port gate, including dirty
+	 * mantissa bytes. */
+	port_purchase_fixture(&tape, &state);
+	memcpy(tape.sector.record.bytes + YT_F65, "\x01\x02\x03\0", 4U);
+	if (!yt_port_purchase_run(&state, &port_purchase_test_ops, &tape, NULL)
+	    || state.route != YT_PORT_PURCHASE_NO_PORT_ROUTE
+	    || tape.calls != 3U || tape.row_count != 1U
+	    || tape.kinds[0] != YT_PORT_PURCHASE_NO_PORT)
+		return false;
+
+	port_purchase_fixture(&tape, &state);
+	tape.early_owner = 2.0f;
+	if (!yt_port_purchase_run(&state, &port_purchase_test_ops, &tape, NULL)
+	    || state.route != YT_PORT_PURCHASE_ALREADY_OWNER_ROUTE
+	    || tape.calls != 4U || tape.row_count != 1U
+	    || tape.kinds[0] != YT_PORT_PURCHASE_ALREADY_OWNER
+	    || tape.row_lengths[0] != sizeof(already)
+	    || memcmp(tape.rows[0], already, sizeof(already)) != 0)
+		return false;
+
+	port_purchase_fixture(&tape, &state);
+	tape.buyer.credits = 1.0f;
+	if (!yt_port_purchase_run(&state, &port_purchase_test_ops, &tape, NULL)
+	    || state.route != YT_PORT_PURCHASE_UNAFFORDABLE_ROUTE
+	    || tape.calls != 5U || tape.row_count != 2U
+	    || tape.kinds[1] != YT_PORT_PURCHASE_UNAFFORDABLE
+	    || tape.row_lengths[1] != sizeof(unaffordable) - 1U
+	    || memcmp(tape.rows[1], unaffordable,
+	    sizeof(unaffordable) - 1U) != 0)
+		return false;
+
+	port_purchase_fixture(&tape, &state);
+	tape.answer = false;
+	if (!yt_port_purchase_run(&state, &port_purchase_test_ops, &tape, NULL)
+	    || state.route != YT_PORT_PURCHASE_DECLINED_ROUTE
+	    || tape.calls != 10U || tape.row_count != 5U
+	    || tape.events[9] != PORT_PURCHASE_PRESENT
+	    || tape.kinds[4] != YT_PORT_PURCHASE_DECLINED
+	    || tape.row_lengths[4] != sizeof(declined) - 1U
+	    || memcmp(tape.rows[4], declined, sizeof(declined) - 1U) != 0
+	    || state.accepted_called)
+		return false;
+
+	port_purchase_fixture(&tape, &state);
+	tape.expected_earth = true;
+	tape.expected_name_length = 5U;
+	tape.early_owner = 0.0f;
+	tape.buyer.credits = 2000000000.0f;
+	tape.sector.port = 1.0f;
+	(void)yt_record_set_number(&tape.sector.record, YT_F65, 1.0f);
+	if (!yt_port_purchase_run(&state, &port_purchase_test_ops, &tape, NULL)
+	    || !state.earth || state.price != 1000000000.0
+	    || state.route != YT_PORT_PURCHASE_ACCEPTED_ROUTE
+	    || tape.calls != 6U || tape.events[3] != PORT_PURCHASE_PRESENT
+	    || tape.events[4] != PORT_PURCHASE_CONFIRM
+	    || tape.events[5] != PORT_PURCHASE_ACCEPT || state.owner_displayed)
+		return false;
+
+	/* Non-floor CINT retains the fourth byte of the terminal report name. */
+	port_purchase_fixture(&tape, &state);
+	state.conversion_mode = 0U;
+	tape.expected_name_length = 4U;
+	if (!yt_port_purchase_run(&state, &port_purchase_test_ops, &tape, NULL)
+	    || state.old_name_length != 4U || state.old_name[3] != 'Q')
+		return false;
+
+	port_purchase_fixture(&tape, &state);
+	return !yt_port_purchase_run(NULL, &port_purchase_test_ops, &tape, NULL)
+	    && !yt_port_purchase_run(&state, NULL, &tape, NULL);
+}
+
 enum projectile_command_event {
 	PROJECTILE_COMMAND_PRESENT = 1,
 	PROJECTILE_COMMAND_HYDRATE,
@@ -23196,6 +23543,8 @@ main(void)
 		return fail("port name editor model differs");
 	if (!check_port_purchase_accept_transaction())
 		return fail("port purchase accepted transaction differs");
+	if (!check_port_purchase_transaction())
+		return fail("port purchase transaction differs");
 	if (!check_port_name_editor_transaction())
 		return fail("port name editor transaction differs");
 	if (!check_planet_garrison_model())
