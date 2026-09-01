@@ -27256,6 +27256,104 @@ check_computer_newspaper_transaction(void)
 	    && !yt_computer_newspaper_run(&state, NULL, &tape, NULL);
 }
 
+struct computer_newspaper_recovery_persistence {
+	uint8_t row[96];
+	size_t row_length;
+	int events[2];
+	size_t event_count;
+};
+
+static bool
+computer_newspaper_recovery_present(void *context, const uint8_t *text,
+    size_t length, bool paged, struct yt_error *error)
+{
+	struct computer_newspaper_recovery_persistence *tape = context;
+
+	(void)error;
+	if (!paged || length > sizeof(tape->row)
+	    || tape->event_count >= YT_ARRAY_LEN(tape->events))
+		return false;
+	if (length != 0U)
+		memcpy(tape->row, text, length);
+	tape->row_length = length;
+	tape->events[tape->event_count++] = 1;
+	return true;
+}
+
+static bool
+computer_newspaper_recovery_append(void *context, const uint8_t *text,
+    size_t length, struct yt_error *error)
+{
+	struct computer_newspaper_recovery_persistence *tape = context;
+
+	if (tape->event_count >= YT_ARRAY_LEN(tape->events)
+	    || length != tape->row_length
+	    || memcmp(text, tape->row, length) != 0)
+		return false;
+	tape->events[tape->event_count++] = 2;
+	return yt_news_append_bytes(text, length, error);
+}
+
+static bool
+check_computer_newspaper_recovery_persistence(void)
+{
+	static const uint8_t today[] =
+	    "*** GAME FILE [ytnews.dat] NOT FOUND! ***";
+	static const uint8_t yesterday[] =
+	    "*** GAME FILE [YTYNEWS.DAT] NOT FOUND! ***";
+	static const uint8_t created[] =
+	    "*** GAME FILE [ytnews.dat] NOT FOUND! ***\r\n\x1a";
+	static const uint8_t appended[] =
+	    "existing\r\n"
+	    "*** GAME FILE [YTYNEWS.DAT] NOT FOUND! ***\r\n\x1a";
+	struct computer_newspaper_recovery_persistence tape;
+	struct yt_text_file file;
+	struct yt_error error;
+	bool valid = false;
+
+	remove("YTNEWS.DAT");
+	memset(&tape, 0, sizeof(tape));
+	yt_error_clear(&error);
+	if (!yt_file_viewer_missing((const uint8_t *)"ytnews.dat",
+	    strlen("ytnews.dat"), computer_newspaper_recovery_present,
+	    computer_newspaper_recovery_append, &tape, &error)
+	    || tape.event_count != 2U || tape.events[0] != 1
+	    || tape.events[1] != 2 || tape.row_length != sizeof(today) - 1U
+	    || memcmp(tape.row, today, sizeof(today) - 1U) != 0
+	    || !yt_text_read("YTNEWS.DAT", &file, &error))
+		goto done;
+	if (file.length != sizeof(created) - 1U
+	    || memcmp(file.data, created, sizeof(created) - 1U) != 0) {
+		yt_text_free(&file);
+		goto done;
+	}
+	yt_text_free(&file);
+	remove("YTNEWS.DAT");
+	if (!yt_news_append("existing", &error))
+		goto done;
+	memset(&tape, 0, sizeof(tape));
+	if (!yt_file_viewer_missing((const uint8_t *)"YTYNEWS.DAT",
+	    strlen("YTYNEWS.DAT"), computer_newspaper_recovery_present,
+	    computer_newspaper_recovery_append, &tape, &error)
+	    || tape.event_count != 2U || tape.events[0] != 1
+	    || tape.events[1] != 2
+	    || tape.row_length != sizeof(yesterday) - 1U
+	    || memcmp(tape.row, yesterday, sizeof(yesterday) - 1U) != 0
+	    || !yt_text_read("YTNEWS.DAT", &file, &error))
+		goto done;
+	if (file.length != sizeof(appended) - 1U
+	    || memcmp(file.data, appended, sizeof(appended) - 1U) != 0) {
+		yt_text_free(&file);
+		goto done;
+	}
+	yt_text_free(&file);
+	valid = true;
+
+done:
+	remove("YTNEWS.DAT");
+	return valid;
+}
+
 enum port_purchase_accept_event {
 	PORT_ACCEPT_PRESENT = 1,
 	PORT_ACCEPT_READ_PORT,
@@ -28985,6 +29083,8 @@ main(void)
 		return fail("port owner row model differs");
 	if (yt_chdir(directory) != 0)
 		return fail("cannot enter temporary directory");
+	if (!check_computer_newspaper_recovery_persistence())
+		goto done;
 	if (!check_maintenance_headquarters_write())
 		goto done;
 	if (!check_maintenance_protected_mines())

@@ -3,6 +3,7 @@
 #include "qb.h"
 #include "yt_file.h"
 #include "yt_input.h"
+#include "yt_main_error.h"
 #include "yt_maint.h"
 #include "yt_names.h"
 #include "yt_output.h"
@@ -991,6 +992,26 @@ session_present_text(struct yt_session *session, const uint8_t *text,
 }
 
 static bool
+session_forced_local_line(const uint8_t *text, size_t length,
+    const char *operation, struct yt_error *error)
+{
+	struct yt_present_result presentation;
+	enum yt_present_status status;
+
+	status = yt_present_forced_local_line(text, length, &presentation);
+	if (status == YT_PRESENT_OK) {
+		yt_out_present_result(&presentation);
+		return true;
+	}
+	if (error != NULL) {
+		error->status = YT_RANGE;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    operation);
+	}
+	return false;
+}
+
+static bool
 session_02fc(struct yt_session *session, const uint8_t *text, size_t length)
 {
 	session->pager.newline_flag = 0.0f;
@@ -1364,6 +1385,16 @@ display_game_file(struct yt_session *session, const char *path,
 	ok = yt_file_viewer_stream_run(&state, &ops, &context, active_error);
 	yt_text_input_destroy(&context.input);
 	if (!ok && active_error->status == YT_NOT_FOUND) {
+		struct yt_main_error_result handler;
+
+		if (!yt_main_error_compose(53, 40000,
+		    (const uint8_t *)path, strlen(path), NULL, 0U, NULL, 0U,
+		    &handler)
+		    || handler.route != YT_MAIN_ERROR_MISSING_FILE
+		    || !session_forced_local_line(handler.debug,
+		    handler.debug_length, "file viewer missing debug row",
+		    active_error))
+			return false;
 		yt_error_clear(active_error);
 		return yt_file_viewer_missing((const uint8_t *)path, strlen(path),
 		    session_file_viewer_missing_present,
@@ -1718,21 +1749,9 @@ static bool
 registration_forced_local(void *opaque, const uint8_t *text, size_t length,
     struct yt_error *error)
 {
-	struct yt_present_result presentation;
-	enum yt_present_status status;
-
 	(void)opaque;
-	status = yt_present_forced_local_line(text, length, &presentation);
-	if (status == YT_PRESENT_OK) {
-		yt_out_present_result(&presentation);
-		return true;
-	}
-	if (error != NULL) {
-		error->status = YT_RANGE;
-		(void)snprintf(error->operation, sizeof(error->operation), "%s",
-		    "registration forced local row");
-	}
-	return false;
+	return session_forced_local_line(text, length,
+	    "registration forced local row", error);
 }
 
 static void
