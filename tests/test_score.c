@@ -782,6 +782,292 @@ check_team_loader_model(void)
 	return true;
 }
 
+enum death_team_event {
+	DEATH_TEAM_READ_PLAYER = 1,
+	DEATH_TEAM_READ_LOADER,
+	DEATH_TEAM_READ_PARENT,
+	DEATH_TEAM_WRITE_PARENT,
+	DEATH_TEAM_WRITE_PLAYER,
+};
+
+struct death_team_tape {
+	const enum death_team_event *expected;
+	size_t expected_count;
+	size_t event_count;
+	size_t fail_at;
+	uint32_t physical[4];
+	struct yt_player player;
+	struct yt_record overlay;
+	struct yt_record written_overlay;
+	bool overlay_written;
+	bool player_written;
+};
+
+static bool
+death_team_step(struct death_team_tape *tape, enum death_team_event event,
+	struct yt_error *error)
+{
+	if (tape->event_count >= tape->expected_count
+	    || tape->expected[tape->event_count] != event)
+		return false;
+	++tape->event_count;
+	if (tape->event_count != tape->fail_at)
+		return true;
+	if (error != NULL) {
+		error->status = YT_IO_ERROR;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    "death team injected failure");
+	}
+	return false;
+}
+
+static bool
+death_team_read_player_test(void *context, int player_record,
+	struct yt_player *player, struct yt_error *error)
+{
+	struct death_team_tape *tape = context;
+
+	if (player_record != 3
+	    || !death_team_step(tape, DEATH_TEAM_READ_PLAYER, error))
+		return false;
+	*player = tape->player;
+	return true;
+}
+
+static bool
+death_team_write_player_test(void *context, int player_record,
+	struct yt_player *player, struct yt_error *error)
+{
+	struct death_team_tape *tape = context;
+
+	if (player_record != 3
+	    || !death_team_step(tape, DEATH_TEAM_WRITE_PLAYER, error))
+		return false;
+	tape->player = *player;
+	tape->player_written = true;
+	return true;
+}
+
+static bool
+death_team_read_record_test(void *context, uint32_t physical_record,
+	struct yt_record *record, struct yt_error *error)
+{
+	struct death_team_tape *tape = context;
+	enum death_team_event event;
+
+	if (tape->event_count >= tape->expected_count)
+		return false;
+	event = tape->expected[tape->event_count];
+	if (event != DEATH_TEAM_READ_LOADER
+	    && event != DEATH_TEAM_READ_PARENT)
+		return false;
+	if (tape->event_count < YT_ARRAY_LEN(tape->physical))
+		tape->physical[tape->event_count] = physical_record;
+	if (!death_team_step(tape, event, error))
+		return false;
+	*record = tape->overlay;
+	return true;
+}
+
+static bool
+death_team_write_record_test(void *context, uint32_t physical_record,
+	const struct yt_record *record, struct yt_error *error)
+{
+	struct death_team_tape *tape = context;
+
+	if (tape->event_count < YT_ARRAY_LEN(tape->physical))
+		tape->physical[tape->event_count] = physical_record;
+	if (!death_team_step(tape, DEATH_TEAM_WRITE_PARENT, error))
+		return false;
+	tape->written_overlay = *record;
+	tape->overlay = *record;
+	tape->overlay_written = true;
+	return true;
+}
+
+static const struct yt_death_team_remove_ops death_team_ops = {
+	death_team_read_player_test,
+	death_team_write_player_test,
+	death_team_read_record_test,
+	death_team_write_record_test,
+};
+
+static void
+death_team_reset(struct death_team_tape *tape,
+	const enum death_team_event *expected, size_t expected_count,
+	float team_id, size_t fail_at)
+{
+	static const size_t roster_offsets[4] = {
+		YT_F109, YT_F117, YT_F121, YT_F125
+	};
+	struct yt_record raw;
+	size_t index;
+
+	memset(tape, 0, sizeof(*tape));
+	tape->expected = expected;
+	tape->expected_count = expected_count;
+	tape->fail_at = fail_at;
+	for (index = 0U; index < YT_RECORD_SIZE; ++index)
+		raw.bytes[index] = (uint8_t)(index ^ 0x69U);
+	(void)yt_record_set_number(&raw, YT_F89, team_id);
+	yt_player_decode(&tape->player, &raw);
+	for (index = 0U; index < YT_RECORD_SIZE; ++index)
+		tape->overlay.bytes[index] = (uint8_t)(index ^ 0xb4U);
+	(void)yt_record_set_number(&tape->overlay, YT_F73, 4.0f);
+	(void)yt_record_set_number(&tape->overlay, YT_F77, 2.0f);
+	for (index = 0U; index < YT_ARRAY_LEN(roster_offsets); ++index)
+		(void)yt_record_set_number(&tape->overlay,
+		    roster_offsets[index], index == 2U ? 8.0f : 3.0f);
+}
+
+static bool
+check_death_team_remove_transaction(void)
+{
+	static const enum death_team_event live_events[] = {
+		DEATH_TEAM_READ_PLAYER,
+		DEATH_TEAM_READ_LOADER,
+		DEATH_TEAM_READ_PARENT,
+		DEATH_TEAM_WRITE_PARENT,
+		DEATH_TEAM_READ_PLAYER,
+		DEATH_TEAM_WRITE_PLAYER,
+	};
+	static const enum death_team_event rejected_events[] = {
+		DEATH_TEAM_READ_PLAYER,
+		DEATH_TEAM_READ_PARENT,
+		DEATH_TEAM_WRITE_PARENT,
+		DEATH_TEAM_READ_PLAYER,
+		DEATH_TEAM_WRITE_PLAYER,
+	};
+	static const enum death_team_event zero_events[] = {
+		DEATH_TEAM_READ_PLAYER,
+	};
+	static const size_t roster_offsets[4] = {
+		YT_F109, YT_F117, YT_F121, YT_F125
+	};
+	struct death_team_tape tape;
+	struct yt_death_team_remove_state state;
+	struct yt_team_loader_cache cache;
+	struct yt_record original_overlay;
+	struct yt_error error;
+	size_t index;
+
+	memset(&cache, 0, sizeof(cache));
+	memcpy(cache.name, "STALE", 6U);
+	cache.name_length = 5U;
+	death_team_reset(&tape, live_events, YT_ARRAY_LEN(live_events),
+	    1.5f, 0U);
+	original_overlay = tape.overlay;
+	state = (struct yt_death_team_remove_state){
+		.victim_record = 3,
+		.current_player_record = 2.0f,
+		.sector_record_offset = 55.0f,
+		.cache = &cache,
+	};
+	if (!yt_death_team_remove_run(&state, &death_team_ops, &tape, NULL)
+	    || tape.event_count != YT_ARRAY_LEN(live_events)
+	    || !tape.overlay_written || !tape.player_written || !state.complete
+	    || state.raw_team_id != 1.5f
+	    || state.loader_route != YT_TEAM_LOADER_LIVE
+	    || state.overlay_physical_record != 56U
+	    || tape.physical[1] != 56U || tape.physical[2] != 56U
+	    || tape.physical[3] != 56U || tape.player.team != 0.0f
+	    || yt_record_get_number(&tape.player.record, YT_F89) != 0.0f
+	    || cache.roster[0] != 0.0f || cache.roster[1] != 0.0f
+	    || cache.roster[2] != 8.0f || cache.roster[3] != 0.0f)
+		return false;
+	for (index = 0U; index < YT_ARRAY_LEN(roster_offsets); ++index)
+		if (yt_record_get_number(&tape.written_overlay,
+		    roster_offsets[index]) != cache.roster[index])
+			return false;
+	for (index = 0U; index < YT_RECORD_SIZE; ++index) {
+		bool roster_byte = false;
+		size_t roster;
+
+		for (roster = 0U; roster < YT_ARRAY_LEN(roster_offsets); ++roster)
+			if (index >= roster_offsets[roster]
+			    && index < roster_offsets[roster] + 4U)
+				roster_byte = true;
+		if (!roster_byte && tape.written_overlay.bytes[index]
+		    != original_overlay.bytes[index])
+			return false;
+	}
+
+	for (index = 1U; index <= YT_ARRAY_LEN(live_events); ++index) {
+		memset(&cache, 0, sizeof(cache));
+		cache.roster[0] = 41.0f;
+		death_team_reset(&tape, live_events, YT_ARRAY_LEN(live_events),
+		    1.5f, index);
+		state = (struct yt_death_team_remove_state){
+			.victim_record = 3,
+			.current_player_record = 2.0f,
+			.sector_record_offset = 55.0f,
+			.cache = &cache,
+		};
+		yt_error_clear(&error);
+		if (yt_death_team_remove_run(&state, &death_team_ops, &tape,
+		    &error) || tape.event_count != index || state.complete
+		    || error.status != YT_IO_ERROR
+		    || (index == 1U && cache.roster[0] != 41.0f)
+		    || (index > 1U && cache.roster[0] != 0.0f)
+		    || (index <= 4U && tape.overlay_written)
+		    || (index > 4U && !tape.overlay_written)
+		    || tape.player_written)
+			return false;
+	}
+
+	memset(&cache, 0, sizeof(cache));
+	cache.roster[0] = 9.0f;
+	death_team_reset(&tape, rejected_events,
+	    YT_ARRAY_LEN(rejected_events), 50.0001f, 0U);
+	state = (struct yt_death_team_remove_state){
+		.victim_record = 3,
+		.current_player_record = 2.0f,
+		.sector_record_offset = 55.0f,
+		.cache = &cache,
+	};
+	if (!yt_death_team_remove_run(&state, &death_team_ops, &tape, NULL)
+	    || tape.event_count != YT_ARRAY_LEN(rejected_events)
+	    || state.loader_route != YT_TEAM_LOADER_OUT_OF_RANGE
+	    || state.overlay_physical_record != 105U
+	    || tape.physical[1] != 105U || tape.physical[2] != 105U)
+		return false;
+	for (index = 0U; index < YT_ARRAY_LEN(cache.roster); ++index)
+		if (cache.roster[index] != 0.0f)
+			return false;
+
+	memset(&cache, 0, sizeof(cache));
+	cache.roster[0] = 9.0f;
+	death_team_reset(&tape, rejected_events,
+	    YT_ARRAY_LEN(rejected_events), 0.5f, 0U);
+	state = (struct yt_death_team_remove_state){
+		.victim_record = 3,
+		.current_player_record = 2.0f,
+		.sector_record_offset = 55.0f,
+		.cache = &cache,
+	};
+	if (!yt_death_team_remove_run(&state, &death_team_ops, &tape, NULL)
+	    || state.overlay_physical_record != 55U || !tape.overlay_written
+	    || !tape.player_written)
+		return false;
+
+	memset(&cache, 0, sizeof(cache));
+	cache.roster[0] = 9.0f;
+	death_team_reset(&tape, zero_events, YT_ARRAY_LEN(zero_events),
+	    -0.0f, 0U);
+	state = (struct yt_death_team_remove_state){
+		.victim_record = 3,
+		.current_player_record = 2.0f,
+		.sector_record_offset = 55.0f,
+		.cache = &cache,
+	};
+	if (!yt_death_team_remove_run(&state, &death_team_ops, &tape, NULL)
+	    || tape.event_count != 1U || !state.complete
+	    || tape.overlay_written || tape.player_written
+	    || cache.roster[0] != 9.0f)
+		return false;
+	return true;
+}
+
 enum info_team_event {
 	INFO_TEAM_READ_PLAYER = 1,
 	INFO_TEAM_LOAD,
@@ -18084,6 +18370,8 @@ main(void)
 		return fail("friendship model differs");
 	if (!check_team_loader_model())
 		return fail("team-loader model differs");
+	if (!check_death_team_remove_transaction())
+		return fail("death team-removal transaction differs");
 	if (!check_info_team_resolver_transaction())
 		return fail("Info team resolver transaction differs");
 	if (!check_info_panel_transaction())

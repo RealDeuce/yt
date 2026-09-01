@@ -443,6 +443,78 @@ yt_team_loader_finish(const struct yt_record *overlay,
 	return true;
 }
 
+bool
+yt_death_team_remove_run(struct yt_death_team_remove_state *state,
+    const struct yt_death_team_remove_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const size_t roster_offsets[4] = {
+		YT_F109, YT_F117, YT_F121, YT_F125
+	};
+	struct yt_player victim;
+	struct yt_record overlay;
+	bool needs_overlay;
+	float expression;
+	size_t index;
+
+	if (state == NULL || state->cache == NULL || ops == NULL
+	    || ops->read_player == NULL || ops->write_player == NULL
+	    || ops->read_record == NULL || ops->write_record == NULL)
+		return false;
+	state->complete = false;
+	state->loader_route = YT_TEAM_LOADER_OUT_OF_RANGE;
+	if (!ops->read_player(context, state->victim_record, &victim, error))
+		return false;
+	state->raw_team_id = victim.team;
+	if (state->raw_team_id == 0.0f) {
+		state->complete = true;
+		return true;
+	}
+
+	yt_team_loader_begin(state->raw_team_id, state->cache,
+	    &needs_overlay);
+	if (needs_overlay) {
+		expression = startup_single_add(state->sector_record_offset,
+		    state->raw_team_id);
+		state->overlay_physical_record =
+		    qb_brun_random_record_number(expression);
+		if (!ops->read_record(context, state->overlay_physical_record,
+		    &overlay, error)
+		    || !yt_team_loader_finish(&overlay,
+		    state->current_player_record, state->conversion_mode,
+		    state->cache, &state->loader_route, error))
+			return false;
+	}
+	for (index = 0U; index < YT_ARRAY_LEN(state->cache->roster);
+	    ++index) {
+		if (state->cache->roster[index]
+		    == (float)state->victim_record)
+			state->cache->roster[index] = 0.0f;
+	}
+
+	expression = startup_single_add(state->sector_record_offset,
+	    state->raw_team_id);
+	state->overlay_physical_record =
+	    qb_brun_random_record_number(expression);
+	if (!ops->read_record(context, state->overlay_physical_record,
+	    &overlay, error))
+		return false;
+	for (index = 0U; index < YT_ARRAY_LEN(roster_offsets); ++index)
+		(void)yt_record_set_number(&overlay, roster_offsets[index],
+		    state->cache->roster[index]);
+	if (!ops->write_record(context, state->overlay_physical_record,
+	    &overlay, error)
+	    || !ops->read_player(context, state->victim_record, &victim,
+	    error))
+		return false;
+	victim.team = 0.0f;
+	(void)yt_record_set_number(&victim.record, YT_F89, 0.0f);
+	if (!ops->write_player(context, state->victim_record, &victim, error))
+		return false;
+	state->complete = true;
+	return true;
+}
+
 static bool
 info_team_append(uint8_t *row, size_t capacity, size_t *length,
     const void *text, size_t text_length)

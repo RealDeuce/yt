@@ -1531,8 +1531,20 @@ not authoritative. Use the corrected goal above in the new workspace.
   tape pins matching zero-fighter conversion, both port mutations, distinct
   title/credit/two-news behavior, self clearing/one-news behavior, zero RNG,
   and all seventeen fallible caller boundaries. Full configured loop scale,
-  raw dirty active-cache bytes, team-loader internals, corrupt arguments,
-  physical I/O and handler suffixes remain open.
+  raw dirty active-cache bytes, corrupt arguments, physical I/O and handler
+  suffixes remain open. Its team-removal child now also delegates to a
+  provider-driven transaction: numeric zero performs only the first victim
+  GET, while every nonzero raw SINGLE runs the shared loader prefix and then
+  unconditionally converts `SINGLE(sector_offset + raw_team_id)` through the
+  BRUN random-record rule for the parent overlay GET/PUT. In-range fractional
+  IDs retain the loader GET; rejected fractional and out-of-range IDs still
+  clear all four roster caches and write those zeros to the converted physical
+  record. The parent removes every duplicate victim entry, preserves all
+  non-roster overlay bytes, and changes the victim team field only after the
+  overlay PUT. A focused tape pins live `1.5`, rejected `50.0001`, rejected
+  `0.5`, numeric negative zero, both physical reads, duplicate removal and all
+  six injected I/O boundaries. Raw FIELD binding, loader string-allocation
+  failures and physical BRUN adapter residue remain open.
 - The direct fighter destroyed-to-fatal cycle now preserves the mine body's
   nonzero destruction result without inserting output, RNG, I/O or state
   normalization. It inherits the mine background, pager and input state into

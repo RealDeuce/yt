@@ -4468,36 +4468,64 @@ command_move(struct yt_session *session, bool *moved,
 }
 
 static bool
+death_team_read_player(void *context, int player_record,
+	struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_read_player(&session->door->game, player_record, player,
+	    error);
+}
+
+static bool
+death_team_write_player(void *context, int player_record,
+	struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_write_player(&session->door->game, player_record, player,
+	    error);
+}
+
+static bool
+death_team_read_record(void *context, uint32_t physical_record,
+	struct yt_record *record, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_database_read(&session->door->game.database,
+	    (size_t)physical_record, record, error);
+}
+
+static bool
+death_team_write_record(void *context, uint32_t physical_record,
+	const struct yt_record *record, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_database_write(&session->door->game.database,
+	    (size_t)physical_record, record, error);
+}
+
+static bool
 team_remove_player(struct yt_session *session, int victim,
     struct yt_error *error)
 {
-	struct yt_player player;
-	int team_id;
-	struct yt_sector overlay;
+	static const struct yt_death_team_remove_ops ops = {
+		death_team_read_player,
+		death_team_write_player,
+		death_team_read_record,
+		death_team_write_record,
+	};
+	struct yt_death_team_remove_state state = {
+		.victim_record = victim,
+		.current_player_record = (float)session->player_record,
+		.sector_record_offset = session->door->game.config.sector_offset,
+		.conversion_mode = session->presentation.sound.conversion_mode,
+		.cache = &session->team_cache,
+	};
 
-	if (!yt_game_read_player(&session->door->game, victim, &player, error))
-		return false;
-	team_id = (int)player.team;
-	if (team_id == 0)
-		return true;
-	if (team_id < 1 || team_id > YT_DEFAULT_PLAYER_COUNT) {
-		player.team = 0.0f;
-		return yt_game_write_player(&session->door->game, victim,
-		    &player, error);
-	}
-	if (!yt_game_read_sector(&session->door->game, team_id, &overlay,
-	    error))
-		return false;
-	yt_death_team_roster_overlay(&overlay.record, (float)victim);
-	if (!yt_database_write(&session->door->game.database,
-	    (size_t)yt_sector_basic_record(&session->door->game.config,
-	    team_id), &overlay.record, error)
-	    || !yt_game_read_player(&session->door->game, victim, &player,
-	    error))
-		return false;
-	player.team = 0.0f;
-	return yt_game_write_player(&session->door->game, victim, &player,
-	    error);
+	return yt_death_team_remove_run(&state, &ops, session, error);
 }
 
 static bool
