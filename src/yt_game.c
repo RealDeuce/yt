@@ -4055,6 +4055,178 @@ yt_port_purchase_seller_record(float owner)
 	return (int)qb_brun_random_record_number(owner);
 }
 
+static bool
+port_purchase_append(uint8_t *buffer, size_t capacity, size_t *length,
+    const uint8_t *text, size_t text_length)
+{
+	if (length == NULL || text_length > capacity - *length
+	    || (text_length != 0U && (buffer == NULL || text == NULL)))
+		return false;
+	if (text_length != 0U)
+		memcpy(buffer + *length, text, text_length);
+	*length += text_length;
+	return true;
+}
+
+bool
+yt_port_purchase_accept_run(struct yt_port_purchase_accept_state *state,
+    const struct yt_port_purchase_accept_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t sold[] = "Sold!";
+	static const uint8_t transfer_prefix[] = "Credits transferred to ";
+	static const uint8_t transfer_suffix[] = "'s account!";
+	static const uint8_t radio_one[] = " bought your port \"";
+	static const uint8_t radio_two[] = "\" in";
+	static const uint8_t radio_three[] = " for";
+	static const uint8_t radio_four[] = " credits";
+	static const uint8_t success_prefix[] = "Congratulations ";
+	static const uint8_t success_suffix[] =
+	    "! When others trade at your port their CREDITS";
+	static const uint8_t success_tail[] =
+	    "will go into the port treasury for you to take out later!";
+	uint8_t row[512];
+	uint8_t message[512];
+	char sector_text[64];
+	char price_text[64];
+	size_t length;
+
+	if (state == NULL || ops == NULL || state->current_player_record < 1
+	    || state->logical_port < 0 || ops->present == NULL
+	    || ops->read_port == NULL || ops->read_player == NULL
+	    || ops->write_player == NULL || ops->radio == NULL
+	    || ops->rename == NULL || ops->write_port == NULL
+	    || ops->hydrate_buyer == NULL
+	    || (state->cached_trader_length != 0U
+	    && state->cached_trader == NULL)
+	    || (state->old_name_length != 0U && state->old_name == NULL)
+	    || (state->owner_name_length != 0U && state->owner_name == NULL)
+	    || (state->first_name_length != 0U && state->first_name == NULL))
+		return false;
+	memset(&state->port, 0, sizeof(state->port));
+	memset(&state->seller, 0, sizeof(state->seller));
+	memset(&state->buyer, 0, sizeof(state->buyer));
+	state->seller_record = 0;
+	state->sold_presented = false;
+	state->port_read = false;
+	state->seller_read = false;
+	state->seller_written = false;
+	state->radio_written = false;
+	state->port_reloaded_after_radio = false;
+	state->rename_called = false;
+	state->title_port_read = false;
+	state->title_written = false;
+	state->buyer_hydrated = false;
+	state->buyer_written = false;
+	state->success_presented = false;
+	state->complete = false;
+
+	if (!ops->present(context, NULL, 0U,
+	    YT_PORT_PURCHASE_ACCEPT_SOLD_BLANK, error)
+	    || !ops->present(context, sold, sizeof(sold) - 1U,
+	    YT_PORT_PURCHASE_ACCEPT_SOLD_ROW, error))
+		return false;
+	state->sold_presented = true;
+	if (!ops->read_port(context, state->logical_port, &state->port, error))
+		return false;
+	state->port_read = true;
+	if (state->old_owner != 0.0f) {
+		length = 0U;
+		if (!port_purchase_append(row, sizeof(row), &length,
+		    transfer_prefix, sizeof(transfer_prefix) - 1U)
+		    || !port_purchase_append(row, sizeof(row), &length,
+		    state->owner_name, state->owner_name_length)
+		    || !port_purchase_append(row, sizeof(row), &length,
+		    transfer_suffix, sizeof(transfer_suffix) - 1U)
+		    || !ops->present(context, NULL, 0U,
+		    YT_PORT_PURCHASE_ACCEPT_TRANSFER_BLANK, error)
+		    || !ops->present(context, row, length,
+		    YT_PORT_PURCHASE_ACCEPT_TRANSFER_ROW, error))
+			return false;
+		state->seller_record =
+		    yt_port_purchase_seller_record(state->old_owner);
+		if (!ops->read_player(context, state->seller_record,
+		    &state->seller, error))
+			return false;
+		state->seller_read = true;
+		if (!yt_port_purchase_seller_overlay(&state->seller,
+		    state->port.treasury, state->price)
+		    || !ops->write_player(context, state->seller_record,
+		    &state->seller, error))
+			return false;
+		state->seller_written = true;
+		if (qb_str_single(sector_text, sizeof(sector_text),
+		    state->cached_buyer_sector) < 0
+		    || qb_str_double(price_text, sizeof(price_text),
+		    state->price) < 0)
+			return false;
+		length = 0U;
+		if (!port_purchase_append(message, sizeof(message), &length,
+		    state->cached_trader, state->cached_trader_length)
+		    || !port_purchase_append(message, sizeof(message), &length,
+		    radio_one, sizeof(radio_one) - 1U)
+		    || !port_purchase_append(message, sizeof(message), &length,
+		    state->old_name, state->old_name_length)
+		    || !port_purchase_append(message, sizeof(message), &length,
+		    radio_two, sizeof(radio_two) - 1U)
+		    || !port_purchase_append(message, sizeof(message), &length,
+		    (const uint8_t *)sector_text, strlen(sector_text))
+		    || !port_purchase_append(message, sizeof(message), &length,
+		    radio_three, sizeof(radio_three) - 1U)
+		    || !port_purchase_append(message, sizeof(message), &length,
+		    (const uint8_t *)price_text, strlen(price_text))
+		    || !port_purchase_append(message, sizeof(message), &length,
+		    radio_four, sizeof(radio_four) - 1U)
+		    || !ops->radio(context, message, length, -2.0f,
+		    state->old_owner, error))
+			return false;
+		state->radio_written = true;
+		if (!ops->read_port(context, state->logical_port, &state->port,
+		    error))
+			return false;
+		state->port_reloaded_after_radio = true;
+	}
+	if (state->relative_port > 1.0f) {
+		state->rename_called = true;
+		if (!ops->rename(context, state->logical_port, state->old_name,
+		    state->old_name_length, &state->port, error))
+			return false;
+	}
+	if (!ops->read_port(context, state->logical_port, &state->port, error))
+		return false;
+	state->title_port_read = true;
+	if (!yt_port_purchase_title_overlay(&state->port,
+	    state->current_player_record)
+	    || !ops->write_port(context, state->logical_port, &state->port,
+	    error))
+		return false;
+	state->title_written = true;
+	if (!ops->hydrate_buyer(context, state->current_player_record,
+	    &state->buyer, error))
+		return false;
+	state->buyer_hydrated = true;
+	if (!yt_port_purchase_buyer_overlay(&state->buyer, state->price)
+	    || !ops->write_player(context, state->current_player_record,
+	    &state->buyer, error))
+		return false;
+	state->buyer_written = true;
+	length = 0U;
+	if (!port_purchase_append(row, sizeof(row), &length, success_prefix,
+	    sizeof(success_prefix) - 1U)
+	    || !port_purchase_append(row, sizeof(row), &length,
+	    state->first_name, state->first_name_length)
+	    || !port_purchase_append(row, sizeof(row), &length, success_suffix,
+	    sizeof(success_suffix) - 1U)
+	    || !ops->present(context, row, length,
+	    YT_PORT_PURCHASE_ACCEPT_SUCCESS_FIRST, error)
+	    || !ops->present(context, success_tail, sizeof(success_tail) - 1U,
+	    YT_PORT_PURCHASE_ACCEPT_SUCCESS_TAIL, error))
+		return false;
+	state->success_presented = true;
+	state->complete = true;
+	return true;
+}
+
 bool
 yt_genesis_confirmation_prompt(const uint8_t *trader, size_t trader_length,
     uint8_t *prompt, size_t capacity, size_t *length)

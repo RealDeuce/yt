@@ -11737,16 +11737,126 @@ command_rename_port(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
+port_purchase_accept_present(void *context, const uint8_t *text,
+    size_t length, enum yt_port_purchase_accept_output_kind kind,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	switch (kind) {
+	case YT_PORT_PURCHASE_ACCEPT_SOLD_BLANK:
+	case YT_PORT_PURCHASE_ACCEPT_TRANSFER_BLANK:
+		return session_present_text(session, NULL, 0U,
+		    SESSION_PRESENT_LINE, kind ==
+		    YT_PORT_PURCHASE_ACCEPT_SOLD_BLANK
+		    ? "buy sold leading blank"
+		    : "buy seller transfer leading blank", error);
+	case YT_PORT_PURCHASE_ACCEPT_SOLD_ROW:
+		session->presentation.bold = 1.0f;
+		session->presentation.blink = 1.0f;
+		return session_02fc(session, text, length);
+	case YT_PORT_PURCHASE_ACCEPT_TRANSFER_ROW:
+	case YT_PORT_PURCHASE_ACCEPT_SUCCESS_TAIL:
+		return session_02fc(session, text, length);
+	case YT_PORT_PURCHASE_ACCEPT_SUCCESS_FIRST:
+		return session_0317(session, text, length,
+		    "buy congratulations row", error);
+	default:
+		return false;
+	}
+}
+
+static bool
+port_purchase_accept_read_port(void *context, int logical_port,
+    struct yt_port *port, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_read_port(&session->door->game, logical_port, port,
+	    error);
+}
+
+static bool
+port_purchase_accept_read_player(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_read_player(&session->door->game, player_record, player,
+	    error);
+}
+
+static bool
+port_purchase_accept_write_player(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	if (player_record == session->player_record)
+		session->player = *player;
+	return yt_database_write(&session->door->game.database,
+	    (size_t)player_record, &player->record, error);
+}
+
+static bool
+port_purchase_accept_radio(void *context, const uint8_t *text,
+    size_t length, float sender, float recipient, struct yt_error *error)
+{
+	(void)context;
+	return radio_append_bytes(text, length, sender, recipient, error);
+}
+
+static bool
+port_purchase_accept_rename(void *context, int logical_port,
+    const uint8_t *cached, size_t cached_length, struct yt_port *port,
+    struct yt_error *error)
+{
+	return port_rename(context, logical_port, cached, cached_length, port,
+	    error);
+}
+
+static bool
+port_purchase_accept_write_port(void *context, int logical_port,
+    struct yt_port *port, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_database_write(&session->door->game.database,
+	    (size_t)yt_port_basic_record(&session->door->game.config,
+	    logical_port), &port->record, error);
+}
+
+static bool
+port_purchase_accept_hydrate(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	if (player_record != session->player_record
+	    || !reload_player(session, error))
+		return false;
+	*player = session->player;
+	return true;
+}
+
+static bool
 command_buy_port(struct yt_session *session, struct yt_error *error)
 {
+	static const struct yt_port_purchase_accept_ops accept_ops = {
+		port_purchase_accept_present,
+		port_purchase_accept_read_port,
+		port_purchase_accept_read_player,
+		port_purchase_accept_write_player,
+		port_purchase_accept_radio,
+		port_purchase_accept_rename,
+		port_purchase_accept_write_port,
+		port_purchase_accept_hydrate,
+	};
 	static const uint8_t no_port[] = "No port here!";
 	static const uint8_t unaffordable[] =
 	    "Come back when you can afford it!";
 	static const uint8_t prompt[] = "Do you wish to buy it? [y/N]";
 	static const uint8_t declined[] = "What a shame.. it's a nice port!";
-	static const uint8_t sold[] = "Sold!";
-	static const uint8_t success_tail[] =
-	    "will go into the port treasury for you to take out later!";
 	struct yt_sector sector;
 	struct yt_port port;
 	float prices[3];
@@ -11867,98 +11977,29 @@ command_buy_port(struct yt_session *session, struct yt_error *error)
 	if (answer != YT_YES_NO_YES)
 		return session_02db(session, declined, sizeof(declined) - 1U,
 		    "buy declined row", error);
-	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "buy sold leading blank", error))
-		return false;
-	session->presentation.bold = 1.0f;
-	session->presentation.blink = 1.0f;
-	if (!session_02fc(session, sold, sizeof(sold) - 1U)
-	    || !yt_game_read_port(&session->door->game, logical_port, &port,
-	    error))
-		return false;
-	if (old_owner != 0.0f) {
-		struct yt_player seller;
-		int seller_record = yt_port_purchase_seller_record(old_owner);
-		char sector_text[64];
-		char price_text[64];
-		uint8_t message[256];
-		size_t message_length = 0U;
+	{
+		const uint8_t *first =
+		    (const uint8_t *)session->door->identity.real_first;
+		struct yt_port_purchase_accept_state state = {
+			.current_player_record = session->player_record,
+			.logical_port = logical_port,
+			.relative_port = relative_port,
+			.old_owner = old_owner,
+			.price = price,
+			.cached_buyer_sector = cached_buyer_sector,
+			.cached_trader = cached_trader,
+			.cached_trader_length = cached_trader_length,
+			.old_name = old_name,
+			.old_name_length = old_name_length,
+			.owner_name = owner_name,
+			.owner_name_length = owner_name_length,
+			.first_name = first,
+			.first_name_length = strlen((const char *)first),
+		};
 
-		memcpy(row, "Credits transferred to ",
-		    sizeof("Credits transferred to ") - 1U);
-		row_length = sizeof("Credits transferred to ") - 1U;
-		memcpy(row + row_length, owner_name, owner_name_length);
-		row_length += owner_name_length;
-		memcpy(row + row_length, "'s account!",
-		    sizeof("'s account!") - 1U);
-		row_length += sizeof("'s account!") - 1U;
-		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-		    "buy seller transfer leading blank", error)
-		    || !session_02fc(session, row, row_length)
-		    || !yt_game_read_player(&session->door->game, seller_record,
-		    &seller, error))
-			return false;
-		if (!yt_port_purchase_seller_overlay(&seller, port.treasury,
-		    price)
-		    || !yt_database_write(&session->door->game.database,
-		    (size_t)seller_record, &seller.record, error))
-			return false;
-		if (qb_str_single(sector_text, sizeof(sector_text),
-		    cached_buyer_sector) < 0
-		    || qb_str_double(price_text, sizeof(price_text), price) < 0)
-			return port_report_failure(error, "buy radio formatting");
-		memcpy(message + message_length, cached_trader,
-		    cached_trader_length);
-		message_length += cached_trader_length;
-		memcpy(message + message_length, " bought your port \"",
-		    sizeof(" bought your port \"") - 1U);
-		message_length += sizeof(" bought your port \"") - 1U;
-		memcpy(message + message_length, old_name, old_name_length);
-		message_length += old_name_length;
-		memcpy(message + message_length, "\" in",
-		    sizeof("\" in") - 1U);
-		message_length += sizeof("\" in") - 1U;
-		memcpy(message + message_length, sector_text, strlen(sector_text));
-		message_length += strlen(sector_text);
-		memcpy(message + message_length, " for", sizeof(" for") - 1U);
-		message_length += sizeof(" for") - 1U;
-		memcpy(message + message_length, price_text, strlen(price_text));
-		message_length += strlen(price_text);
-		memcpy(message + message_length, " credits",
-		    sizeof(" credits") - 1U);
-		message_length += sizeof(" credits") - 1U;
-		if (!radio_append_bytes(message, message_length, -2.0f,
-		    old_owner, error)
-		    || !yt_game_read_port(&session->door->game, logical_port,
-		    &port, error))
-			return false;
+		return yt_port_purchase_accept_run(&state, &accept_ops, session,
+		    error);
 	}
-	if (relative_port > 1.0f
-	    && !port_rename(session, logical_port, old_name, old_name_length,
-	    &port, error))
-		return false;
-	if (!yt_game_read_port(&session->door->game, logical_port, &port,
-	    error))
-		return false;
-	if (!yt_port_purchase_title_overlay(&port, session->player_record))
-		return port_report_failure(error, "port purchase FIELD overlay");
-	if (!yt_database_write(&session->door->game.database,
-	    (size_t)yt_port_basic_record(&session->door->game.config,
-	    logical_port), &port.record, error))
-		return false;
-	if (!reload_player(session, error))
-		return false;
-	if (!yt_port_purchase_buyer_overlay(&session->player, price)
-	    || !yt_database_write(&session->door->game.database,
-	    (size_t)session->player_record, &session->player.record, error))
-		return false;
-	row_length = (size_t)snprintf((char *)row, sizeof(row),
-	    "Congratulations %s! When others trade at your port their CREDITS",
-	    session->door->identity.real_first);
-	return row_length < sizeof(row)
-	    && session_0317(session, row, row_length,
-	    "buy congratulations row", error)
-	    && session_02fc(session, success_tail, sizeof(success_tail) - 1U);
 }
 
 static bool

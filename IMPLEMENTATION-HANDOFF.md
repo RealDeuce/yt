@@ -2812,6 +2812,15 @@ not authoritative. Use the corrected goal above in the new workspace.
   Seller payment also now uses BRUN's 24-bit random-record conversion instead
   of a direct host cast, matching owner display for fractional, wrapped, and
   corrupt nonzero owner values.
+- The accepted command-B suffix now delegates to
+  `yt_port_purchase_accept_run()`. Its owned-port tape fixes all 16 outer
+  events: Sold output, fresh sale-port GET, transfer output, seller GET/PUT,
+  binary personal radio, port reload, optional editor, final port GET/title
+  PUT, fresh buyer hydration/debit/PUT, and two success rows. Every callback
+  cut retains its exact completed non-rollback prefix. An unowned relative-
+  one tape skips seller, radio, and editor while preserving title-before-buyer
+  order. The remaining work for this root is the provider-driven pre-accept
+  report/owner/confirmation wrapper and its scanner/reentry join.
 
 ## The task
 

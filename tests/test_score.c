@@ -22037,6 +22037,265 @@ check_planet_updater_transaction(void)
 	return true;
 }
 
+enum port_purchase_accept_event {
+	PORT_ACCEPT_PRESENT = 1,
+	PORT_ACCEPT_READ_PORT,
+	PORT_ACCEPT_READ_PLAYER,
+	PORT_ACCEPT_WRITE_PLAYER,
+	PORT_ACCEPT_RADIO,
+	PORT_ACCEPT_RENAME,
+	PORT_ACCEPT_WRITE_PORT,
+	PORT_ACCEPT_HYDRATE,
+};
+struct port_purchase_accept_tape {
+	enum port_purchase_accept_event events[24];
+	size_t calls;
+	size_t fail_at;
+	struct yt_port port;
+	struct yt_player seller;
+	struct yt_player buyer;
+	struct yt_player written_seller;
+	struct yt_player written_buyer;
+	struct yt_port written_port;
+	uint8_t rows[6][256];
+	size_t row_lengths[6];
+	enum yt_port_purchase_accept_output_kind kinds[6];
+	size_t row_count;
+	uint8_t radio[256];
+	size_t radio_length;
+	float sender;
+	float recipient;
+};
+static bool
+port_accept_step(struct port_purchase_accept_tape *tape,
+    enum port_purchase_accept_event event, struct yt_error *error)
+{
+	size_t call = tape->calls++;
+
+	if (call < YT_ARRAY_LEN(tape->events))
+		tape->events[call] = event;
+	if (call != tape->fail_at)
+		return true;
+	if (error != NULL)
+		error->status = YT_IO_ERROR;
+	return false;
+}
+static bool
+port_accept_present(void *context, const uint8_t *text, size_t length,
+    enum yt_port_purchase_accept_output_kind kind, struct yt_error *error)
+{
+	struct port_purchase_accept_tape *tape = context;
+	size_t row = tape->row_count;
+
+	if (row >= YT_ARRAY_LEN(tape->rows) || length > sizeof(tape->rows[0])
+	    || !port_accept_step(tape, PORT_ACCEPT_PRESENT, error))
+		return false;
+	if (length != 0U)
+		memcpy(tape->rows[row], text, length);
+	tape->row_lengths[row] = length;
+	tape->kinds[row] = kind;
+	tape->row_count++;
+	return true;
+}
+static bool
+port_accept_read_port(void *context, int logical, struct yt_port *port,
+    struct yt_error *error)
+{
+	struct port_purchase_accept_tape *tape = context;
+
+	if (logical != 3
+	    || !port_accept_step(tape, PORT_ACCEPT_READ_PORT, error))
+		return false;
+	*port = tape->port;
+	return true;
+}
+static bool
+port_accept_read_player(void *context, int record, struct yt_player *player,
+    struct yt_error *error)
+{
+	struct port_purchase_accept_tape *tape = context;
+
+	if (record != 7
+	    || !port_accept_step(tape, PORT_ACCEPT_READ_PLAYER, error))
+		return false;
+	*player = tape->seller;
+	return true;
+}
+static bool
+port_accept_write_player(void *context, int record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct port_purchase_accept_tape *tape = context;
+
+	if (!port_accept_step(tape, PORT_ACCEPT_WRITE_PLAYER, error))
+		return false;
+	if (record == 7)
+		tape->written_seller = *player;
+	else if (record == 2)
+		tape->written_buyer = *player;
+	else
+		return false;
+	return true;
+}
+static bool
+port_accept_radio(void *context, const uint8_t *text, size_t length,
+    float sender, float recipient, struct yt_error *error)
+{
+	struct port_purchase_accept_tape *tape = context;
+
+	if (length > sizeof(tape->radio)
+	    || !port_accept_step(tape, PORT_ACCEPT_RADIO, error))
+		return false;
+	memcpy(tape->radio, text, length);
+	tape->radio_length = length;
+	tape->sender = sender;
+	tape->recipient = recipient;
+	return true;
+}
+static bool
+port_accept_rename(void *context, int logical, const uint8_t *cached,
+    size_t cached_length, struct yt_port *port, struct yt_error *error)
+{
+	static const uint8_t expected[] = {'P', 0, 'N'};
+
+	(void)port;
+	return logical == 3 && cached_length == sizeof(expected)
+	    && memcmp(cached, expected, sizeof(expected)) == 0
+	    && port_accept_step(context, PORT_ACCEPT_RENAME, error);
+}
+static bool
+port_accept_write_port(void *context, int logical, struct yt_port *port,
+    struct yt_error *error)
+{
+	struct port_purchase_accept_tape *tape = context;
+
+	if (logical != 3
+	    || !port_accept_step(tape, PORT_ACCEPT_WRITE_PORT, error))
+		return false;
+	tape->written_port = *port;
+	return true;
+}
+static bool
+port_accept_hydrate(void *context, int record, struct yt_player *player,
+    struct yt_error *error)
+{
+	struct port_purchase_accept_tape *tape = context;
+
+	if (record != 2 || !port_accept_step(tape, PORT_ACCEPT_HYDRATE, error))
+		return false;
+	*player = tape->buyer;
+	return true;
+}
+static const struct yt_port_purchase_accept_ops port_accept_ops = {
+	port_accept_present, port_accept_read_port, port_accept_read_player,
+	port_accept_write_player, port_accept_radio, port_accept_rename,
+	port_accept_write_port, port_accept_hydrate,
+};
+static void
+port_accept_fixture(struct port_purchase_accept_tape *tape,
+    struct yt_port_purchase_accept_state *state)
+{
+	static const uint8_t trader[] = {'T', 0, 'R'};
+	static const uint8_t old_name[] = {'P', 0, 'N'};
+	static const uint8_t owner[] = {'O', 0, 'W'};
+	static const uint8_t first[] = {'F', 0, 'I'};
+
+	memset(tape, 0, sizeof(*tape));
+	memset(state, 0, sizeof(*state));
+	tape->fail_at = (size_t)-1;
+	memset(tape->port.record.bytes, 0xa5, YT_RECORD_SIZE);
+	tape->port.treasury = 4.0f;
+	(void)yt_record_set_number(&tape->port.record, YT_F89, 4.0f);
+	tape->seller.credits = 10.0f;
+	tape->seller.ports_owned = 3.0f;
+	memset(tape->seller.record.bytes, 0x5a, YT_RECORD_SIZE);
+	(void)yt_record_set_number(&tape->seller.record, YT_F81, 10.0f);
+	(void)yt_record_set_number(&tape->seller.record, YT_F117, 3.0f);
+	tape->buyer.credits = 20.0f;
+	tape->buyer.ports_owned = 1.0f;
+	memset(tape->buyer.record.bytes, 0xc3, YT_RECORD_SIZE);
+	(void)yt_record_set_number(&tape->buyer.record, YT_F81, 20.0f);
+	(void)yt_record_set_number(&tape->buyer.record, YT_F117, 1.0f);
+	*state = (struct yt_port_purchase_accept_state){
+		.current_player_record = 2, .logical_port = 3,
+		.relative_port = 3.0f, .old_owner = 7.0f, .price = 2.0,
+		.cached_buyer_sector = 42.0f,
+		.cached_trader = trader, .cached_trader_length = sizeof(trader),
+		.old_name = old_name, .old_name_length = sizeof(old_name),
+		.owner_name = owner, .owner_name_length = sizeof(owner),
+		.first_name = first, .first_name_length = sizeof(first),
+	};
+}
+static bool
+check_port_purchase_accept_transaction(void)
+{
+	static const enum port_purchase_accept_event expected[] = {
+		PORT_ACCEPT_PRESENT, PORT_ACCEPT_PRESENT, PORT_ACCEPT_READ_PORT,
+		PORT_ACCEPT_PRESENT, PORT_ACCEPT_PRESENT, PORT_ACCEPT_READ_PLAYER,
+		PORT_ACCEPT_WRITE_PLAYER, PORT_ACCEPT_RADIO, PORT_ACCEPT_READ_PORT,
+		PORT_ACCEPT_RENAME, PORT_ACCEPT_READ_PORT, PORT_ACCEPT_WRITE_PORT,
+		PORT_ACCEPT_HYDRATE, PORT_ACCEPT_WRITE_PLAYER,
+		PORT_ACCEPT_PRESENT, PORT_ACCEPT_PRESENT,
+	};
+	static const uint8_t transfer[] =
+	    {'C','r','e','d','i','t','s',' ','t','r','a','n','s','f','e','r','r',
+	     'e','d',' ','t','o',' ','O',0,'W','\'', 's',' ','a','c','c','o','u',
+	     'n','t','!'};
+	static const uint8_t radio[] =
+	    {'T',0,'R',' ','b','o','u','g','h','t',' ','y','o','u','r',' ','p',
+	     'o','r','t',' ','"','P',0,'N','"',' ','i','n',' ','4','2',' ','f',
+	     'o','r',' ','2',' ','c','r','e','d','i','t','s'};
+	struct port_purchase_accept_tape tape;
+	struct yt_port_purchase_accept_state state;
+	struct yt_record expected_port;
+	struct yt_error error;
+	size_t failure;
+
+	port_accept_fixture(&tape, &state);
+	expected_port = tape.port.record;
+	(void)yt_record_set_number(&expected_port, YT_F89, 0.0f);
+	(void)yt_record_set_number(&expected_port, YT_F97, 2.0f);
+	if (!yt_port_purchase_accept_run(&state, &port_accept_ops, &tape, NULL)
+	    || !state.complete || !state.sold_presented || !state.seller_written
+	    || !state.radio_written || !state.rename_called
+	    || !state.title_written || !state.buyer_written
+	    || !state.success_presented || state.seller_record != 7
+	    || tape.calls != YT_ARRAY_LEN(expected)
+	    || memcmp(tape.events, expected, sizeof(expected)) != 0
+	    || tape.written_seller.credits != 16.0f
+	    || tape.written_seller.ports_owned != 2.0f
+	    || tape.written_buyer.credits != 18.0f
+	    || tape.written_buyer.ports_owned != 2.0f
+	    || memcmp(tape.written_port.record.bytes, expected_port.bytes,
+	    YT_RECORD_SIZE) != 0
+	    || tape.row_lengths[3] != sizeof(transfer)
+	    || memcmp(tape.rows[3], transfer, sizeof(transfer)) != 0
+	    || tape.radio_length != sizeof(radio)
+	    || memcmp(tape.radio, radio, sizeof(radio)) != 0
+	    || tape.sender != -2.0f || tape.recipient != 7.0f)
+		return false;
+	for (failure = 0U; failure < YT_ARRAY_LEN(expected); ++failure) {
+		port_accept_fixture(&tape, &state);
+		tape.fail_at = failure;
+		yt_error_clear(&error);
+		if (yt_port_purchase_accept_run(&state, &port_accept_ops, &tape,
+		    &error) || error.status != YT_IO_ERROR || state.complete
+		    || tape.calls != failure + 1U
+		    || memcmp(tape.events, expected,
+		    tape.calls * sizeof(expected[0])) != 0)
+			return false;
+	}
+	port_accept_fixture(&tape, &state);
+	state.old_owner = 0.0f;
+	state.relative_port = 1.0f;
+	if (!yt_port_purchase_accept_run(&state, &port_accept_ops, &tape, NULL)
+	    || tape.calls != 9U || state.seller_read || state.radio_written
+	    || state.rename_called || !state.title_written || !state.buyer_written)
+		return false;
+	return !yt_port_purchase_accept_run(NULL, &port_accept_ops, &tape, NULL)
+	    && !yt_port_purchase_accept_run(&state, NULL, &tape, NULL);
+}
+
 enum projectile_command_event {
 	PROJECTILE_COMMAND_PRESENT = 1,
 	PROJECTILE_COMMAND_HYDRATE,
@@ -22935,6 +23194,8 @@ main(void)
 		return fail("ship salvage transaction differs");
 	if (!check_port_name_editor_model())
 		return fail("port name editor model differs");
+	if (!check_port_purchase_accept_transaction())
+		return fail("port purchase accepted transaction differs");
 	if (!check_port_name_editor_transaction())
 		return fail("port name editor transaction differs");
 	if (!check_planet_garrison_model())
