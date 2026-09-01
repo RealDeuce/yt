@@ -1931,6 +1931,51 @@ bool yt_genesis_confirmation_prompt(const uint8_t *trader,
 bool yt_genesis_insufficient_rows(float required, float owned,
     uint8_t *first, size_t first_capacity, size_t *first_length,
     uint8_t *second, size_t second_capacity, size_t *second_length);
+enum yt_genesis_output_kind {
+	YT_GENESIS_PROPHECY_FIRST,
+	YT_GENESIS_PROPHECY_SECOND,
+	YT_GENESIS_PROMPT_BLANK,
+	YT_GENESIS_DISABLED,
+	YT_GENESIS_DECLINED,
+	YT_GENESIS_INSUFFICIENT_FIRST,
+	YT_GENESIS_INSUFFICIENT_SECOND,
+	YT_GENESIS_SUCCESS_BLANK,
+	YT_GENESIS_SUCCESS_FIRST,
+	YT_GENESIS_SUCCESS_SECOND,
+};
+enum yt_genesis_route {
+	YT_GENESIS_INCOMPLETE,
+	YT_GENESIS_DECLINED_ROUTE,
+	YT_GENESIS_DISABLED_ROUTE,
+	YT_GENESIS_INSUFFICIENT_ROUTE,
+	YT_GENESIS_HANDOFF_ROUTE,
+};
+struct yt_genesis_state {
+	int current_player_record;
+	float required_ports;
+	const uint8_t *cached_trader;
+	size_t cached_trader_length;
+	struct yt_player player;
+	bool answer;
+	bool player_hydrated;
+	bool confirmation_read;
+	bool disabled_presented;
+	bool handoff_called;
+	bool complete;
+	enum yt_genesis_route route;
+};
+struct yt_genesis_ops {
+	bool (*hydrate)(void *context, int player_record,
+	    struct yt_player *player, struct yt_error *error);
+	bool (*present)(void *context, const uint8_t *text, size_t length,
+	    enum yt_genesis_output_kind kind, struct yt_error *error);
+	bool (*confirm)(void *context, const uint8_t *prompt, size_t length,
+	    bool *accepted, struct yt_error *error);
+	bool (*handoff)(void *context, struct yt_error *error);
+};
+bool yt_genesis_run(struct yt_genesis_state *state,
+	const struct yt_genesis_ops *ops, void *context,
+	struct yt_error *error);
 bool yt_planet_garrison_prompt(float player_forces, float planet_forces,
     uint8_t *prompt, size_t capacity, size_t *length);
 float yt_planet_garrison_after(float player_forces, float desired,

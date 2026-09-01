@@ -4719,6 +4719,110 @@ yt_genesis_insufficient_rows(float required, float owned,
 }
 
 bool
+yt_genesis_run(struct yt_genesis_state *state,
+    const struct yt_genesis_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t prophecy_first[] =
+	    "It has been written that one day a Trader Baron will rise up";
+	static const uint8_t prophecy_second[] =
+	    "and wipe the universe clean of the evil that infests it.";
+	static const uint8_t disabled[] = "*FUNCTION DISABLED*";
+	static const uint8_t declined[] =
+	    "Alas, today is not the day that the prophesy will be fullfilled.";
+	static const uint8_t success_first[] =
+	    "...and so it was written, that one day a trader baron would emerge who";
+	static const uint8_t success_second[] =
+	    "would wipe away the all of the evil in the universe.....";
+	uint8_t prompt[512];
+	uint8_t first[256];
+	uint8_t second[256];
+	size_t prompt_length;
+	size_t first_length;
+	size_t second_length;
+
+	if (state == NULL || ops == NULL || state->current_player_record < 1
+	    || (state->cached_trader_length != 0U
+	    && state->cached_trader == NULL)
+	    || ops->hydrate == NULL || ops->present == NULL
+	    || ops->confirm == NULL || ops->handoff == NULL)
+		return false;
+	memset(&state->player, 0, sizeof(state->player));
+	state->answer = false;
+	state->player_hydrated = false;
+	state->confirmation_read = false;
+	state->disabled_presented = false;
+	state->handoff_called = false;
+	state->complete = false;
+	state->route = YT_GENESIS_INCOMPLETE;
+
+	if (!ops->hydrate(context, state->current_player_record,
+	    &state->player, error))
+		return false;
+	state->player_hydrated = true;
+	if (!ops->present(context, prophecy_first, sizeof(prophecy_first) - 1U,
+	    YT_GENESIS_PROPHECY_FIRST, error)
+	    || !ops->present(context, prophecy_second,
+	    sizeof(prophecy_second) - 1U, YT_GENESIS_PROPHECY_SECOND, error)
+	    || !ops->present(context, NULL, 0U, YT_GENESIS_PROMPT_BLANK,
+	    error))
+		return false;
+	if (!yt_genesis_confirmation_prompt(state->cached_trader,
+	    state->cached_trader_length, prompt, sizeof(prompt),
+	    &prompt_length))
+		return startup_configuration_error(error, YT_RANGE,
+		    "Genesis confirmation prompt");
+	if (!ops->confirm(context, prompt, prompt_length, &state->answer,
+	    error))
+		return false;
+	state->confirmation_read = true;
+	if (state->required_ports > 300.0f) {
+		if (!ops->present(context, disabled, sizeof(disabled) - 1U,
+		    YT_GENESIS_DISABLED, error))
+			return false;
+		state->disabled_presented = true;
+		state->answer = false;
+	}
+	if (!state->answer) {
+		if (!ops->present(context, declined, sizeof(declined) - 1U,
+		    YT_GENESIS_DECLINED, error))
+			return false;
+		state->route = state->disabled_presented
+		    ? YT_GENESIS_DISABLED_ROUTE : YT_GENESIS_DECLINED_ROUTE;
+		state->complete = true;
+		return true;
+	}
+	if (state->player.ports_owned < state->required_ports) {
+		if (!yt_genesis_insufficient_rows(state->required_ports,
+		    state->player.ports_owned, first, sizeof(first), &first_length,
+		    second, sizeof(second), &second_length))
+			return startup_configuration_error(error, YT_RANGE,
+			    "Genesis insufficient row composition");
+		if (!ops->present(context, first, first_length,
+		    YT_GENESIS_INSUFFICIENT_FIRST, error)
+		    || !ops->present(context, second, second_length,
+		    YT_GENESIS_INSUFFICIENT_SECOND, error))
+			return false;
+		state->route = YT_GENESIS_INSUFFICIENT_ROUTE;
+		state->complete = true;
+		return true;
+	}
+	if (!ops->present(context, NULL, 0U, YT_GENESIS_SUCCESS_BLANK,
+	    error)
+	    || !ops->present(context, success_first, sizeof(success_first) - 1U,
+	    YT_GENESIS_SUCCESS_FIRST, error)
+	    || !ops->present(context, success_second,
+	    sizeof(success_second) - 1U, YT_GENESIS_SUCCESS_SECOND, error))
+		return false;
+	state->handoff_called = true;
+	if (!ops->handoff(context, error))
+		return false;
+	state->route = YT_GENESIS_HANDOFF_ROUTE;
+	state->complete = true;
+	return true;
+}
+
+bool
 yt_planet_garrison_prompt(float player_forces, float planet_forces,
     uint8_t *prompt, size_t capacity, size_t *length)
 {
