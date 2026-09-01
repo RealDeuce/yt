@@ -427,7 +427,22 @@ struct pager_capture {
 	size_t remote_length;
 	int last_local_foreground;
 	int last_local_background;
+	size_t local_event_count;
+	size_t local_color_count;
+	size_t local_line_count;
+	size_t local_fragment_count;
+	size_t local_byte_count;
+	uint64_t local_fnv;
 };
+
+static void
+pager_capture_local_hash(struct pager_capture *capture, uint8_t byte)
+{
+	if (capture->local_fnv == 0U)
+		capture->local_fnv = UINT64_C(14695981039346656037);
+	capture->local_fnv ^= byte;
+	capture->local_fnv *= UINT64_C(1099511628211);
+}
 
 static void
 pager_capture_result(struct pager_capture *capture,
@@ -444,13 +459,39 @@ pager_capture_result(struct pager_capture *capture,
 		capture->remote_length += result->remote_length;
 	}
 	for (index = 0; index < result->event_count; ++index) {
-		if (result->events[index].operation
-		    == YT_PRESENT_LOCAL_COLOR) {
+		const struct yt_present_event *event = &result->events[index];
+		size_t byte;
+
+		if (event->operation == YT_PRESENT_LOCAL_COLOR) {
+			pager_capture_local_hash(capture, 'C');
+			pager_capture_local_hash(capture,
+			    (uint8_t)event->foreground);
+			pager_capture_local_hash(capture,
+			    (uint8_t)event->background);
+			capture->local_color_count++;
 			capture->last_local_foreground =
-			    result->events[index].foreground;
+			    event->foreground;
 			capture->last_local_background =
-			    result->events[index].background;
+			    event->background;
 		}
+		else if (event->operation == YT_PRESENT_LOCAL_LINE
+		    || event->operation == YT_PRESENT_LOCAL_SEMI) {
+			pager_capture_local_hash(capture,
+			    event->operation == YT_PRESENT_LOCAL_LINE ? 'N' : 'R');
+			pager_capture_local_hash(capture, (uint8_t)event->length);
+			pager_capture_local_hash(capture,
+			    (uint8_t)(event->length >> 8U));
+			for (byte = 0U; byte < event->length; ++byte)
+				pager_capture_local_hash(capture, event->data[byte]);
+			capture->local_byte_count += event->length;
+			if (event->operation == YT_PRESENT_LOCAL_LINE)
+				capture->local_line_count++;
+			else
+				capture->local_fragment_count++;
+		}
+		else
+			continue;
+		capture->local_event_count++;
 	}
 }
 
@@ -9177,6 +9218,12 @@ test_computer_avoid_presentation(void)
 	    && memcmp(capture.remote, accepted_ansi,
 	    sizeof(accepted_ansi) - 1U) == 0);
 	CHECK(pager.line_count == 2.0f && pager.newline_flag == 0.0f);
+	CHECK(capture.local_event_count == 129U
+	    && capture.local_color_count == 65U
+	    && capture.local_line_count == 24U
+	    && capture.local_fragment_count == 40U
+	    && capture.local_byte_count == 836U
+	    && capture.local_fnv == UINT64_C(0x95f5f48462d30f5c));
 	computer_avoid_accepted_cycle_fixture(true, 1.0f, 0.0f, "5",
 	    &capture, &current, &pager);
 	CHECK(capture.remote_length == 0U && pager.line_count == 2.0f
