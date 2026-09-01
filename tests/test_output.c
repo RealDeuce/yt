@@ -352,6 +352,64 @@ test_presentation_adapter(void)
 	CHECK(row == 17 && column == 23);
 }
 
+static void
+test_sound_adapter(void)
+{
+	static const uint8_t selector_one[] =
+	    "\x1b[MBO4L32P32CP64CP64CP64L16EP64L32CP64L12E\x0e";
+	struct yt_present_state current;
+	struct yt_present_result result;
+
+	memset(&current, 0, sizeof(current));
+	current.sound.ansi = 1.0f;
+	current.sound.user_sound = -1.0f;
+	current.sound.snoop = -1.0f;
+	current.sound.local_sound = -1.0f;
+	CHECK(yt_present_sound(1.0f, &current, &result) == YT_PRESENT_OK
+	    && result.remote_length == sizeof(selector_one) - 1U
+	    && memcmp(result.remote, selector_one,
+	    sizeof(selector_one) - 1U) == 0);
+	reset_calls();
+	yt_out_present_result(&result);
+	CHECK(output_call_count == 1U
+	    && output_calls[0].length == sizeof(selector_one) - 1U
+	    && !output_calls[0].local_echo
+	    && memcmp(output_calls[0].data, selector_one,
+	    sizeof(selector_one) - 1U) == 0
+	    && local_call_count == 0U && emulated_call_count == 0U
+	    && attribute_call_count == 0U && cursor_call_count == 0U
+	    && caret_call_count == 0U && clear_call_count == 0U);
+
+	memset(&current, 0, sizeof(current));
+	current.sound.user_sound = -1.0f;
+	current.sound.snoop = -1.0f;
+	current.sound.local_sound = -1.0f;
+	CHECK(yt_present_sound(8.0f, &current, &result) == YT_PRESENT_OK
+	    && result.remote_length == 1U && result.remote[0] == '\a');
+	reset_calls();
+	yt_out_present_result(&result);
+	CHECK(output_call_count == 1U && output_calls[0].length == 1U
+	    && output_calls[0].data[0] == '\a'
+	    && !output_calls[0].local_echo
+	    && local_call_count == 0U && emulated_call_count == 0U);
+
+	memset(&current, 0, sizeof(current));
+	current.sound.ansi = 1.0f;
+	current.sound.mode = 1.0f;
+	current.sound.user_sound = -1.0f;
+	current.sound.snoop = -1.0f;
+	current.sound.local_sound = -1.0f;
+	CHECK(yt_present_sound(1.0f, &current, &result) == YT_PRESENT_OK
+	    && result.remote_length == 0U && result.event_count == 1U
+	    && result.events[0].operation == YT_PRESENT_LOCAL_PLAY);
+	reset_calls();
+	yt_out_present_result(&result);
+	CHECK(output_call_count == 0U && local_call_count == 0U
+	    && emulated_call_count == 0U && attribute_call_count == 0U
+	    && cursor_call_count == 0U && caret_call_count == 0U
+	    && clear_call_count == 0U);
+}
+
 int
 main(void)
 {
@@ -359,6 +417,7 @@ main(void)
 	test_emulated_route();
 	test_ansi_opening_local_route();
 	test_presentation_adapter();
+	test_sound_adapter();
 	if (failures != 0) {
 		fprintf(stderr, "test_output: %d failure(s)\n", failures);
 		return 1;
