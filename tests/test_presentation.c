@@ -21145,6 +21145,149 @@ test_computer_autopilot_presentation(void)
 }
 
 static void
+computer_autopilot_one_hop_prefix(bool ansi,
+    struct pager_capture *capture, struct yt_present_state *current,
+    struct yt_pager_state *pager, char *accumulator,
+    size_t accumulator_capacity)
+{
+	static const uint8_t destination_prompt[] =
+	    "What sector do you want to go to? ";
+	static const uint8_t working[] = "Working. ";
+	static const uint8_t heading[] =
+	    "The shortest path from sector 1 to sector 2 is:";
+	static const uint8_t one[] = " 1";
+	static const uint8_t two[] = " 2";
+	static const uint8_t course[] = "Course will take 1 turns.";
+	struct yt_present_result result;
+
+	*current = state(ansi);
+	current->foreground = 1.0f;
+	if (ansi)
+		current->cached_foreground = 1.0f;
+	memset(pager, 0, sizeof(*pager));
+	pager->foreground = 1;
+	memset(capture, 0, sizeof(*capture));
+	memset(accumulator, 0, accumulator_capacity);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, destination_prompt,
+	    sizeof(destination_prompt) - 1U, capture);
+	yt_pager_editor_enter(pager, accumulator, accumulator_capacity);
+	CHECK(yt_present_editor_echo((const uint8_t *)"2", 1U,
+	    (const uint8_t *)"2", 1U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, working, sizeof(working) - 1U,
+	    capture);
+	pager_fixture_b05d(pager, current, heading, sizeof(heading) - 1U,
+	    capture);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, one, sizeof(one) - 1U, capture);
+	pager->line_count = 0.0f;
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, two, sizeof(two) - 1U, capture);
+	pager->line_count = 0.0f;
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager_fixture_b05d(pager, current, course, sizeof(course) - 1U,
+	    capture);
+}
+
+static void
+test_computer_autopilot_alternate_presentation(void)
+{
+	static const uint8_t turns[] = "You have 1 turns left.";
+	static const uint8_t confirmation[] =
+	    "Enter course into autopilot? (Y/[N])";
+	static const uint8_t insufficient[] =
+	    "Not enough turns left to autopilot this course!";
+	static const uint8_t explicit_n[] =
+	    "\r\nWhat sector do you want to go to? 2\r\n"
+	    "\r\nWorking. The shortest path from sector 1 to sector 2 is:\n\r"
+	    "\r\n 1 2\r\n"
+	    "\r\nCourse will take 1 turns.\n\r"
+	    "You have 1 turns left.\n\r"
+	    "Enter course into autopilot? (Y/[N])N\r\n";
+	static const uint8_t blank[] =
+	    "\r\nWhat sector do you want to go to? 2\r\n"
+	    "\r\nWorking. The shortest path from sector 1 to sector 2 is:\n\r"
+	    "\r\n 1 2\r\n"
+	    "\r\nCourse will take 1 turns.\n\r"
+	    "You have 1 turns left.\n\r"
+	    "Enter course into autopilot? (Y/[N])\r\n";
+	static const uint8_t insufficient_ansi[] =
+	    "\r\nWhat sector do you want to go to? 2\r\n"
+	    "\r\nWorking. The shortest path from sector 1 to sector 2 is:\n\r"
+	    "\r\n 1 2\r\n"
+	    "\r\nCourse will take 1 turns.\n\r"
+	    "\r\n\x1b[0;31;40;5;1m"
+	    "Not enough turns left to autopilot this course!\n\r";
+	struct yt_present_state current;
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80];
+
+	computer_autopilot_one_hop_prefix(false, &capture, &current, &pager,
+	    accumulator, sizeof(accumulator));
+	pager_fixture_b05d(&pager, &current, turns, sizeof(turns) - 1U,
+	    &capture);
+	CHECK(yt_present_character(confirmation, sizeof(confirmation) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"N", 1U,
+	    (const uint8_t *)"N", 1U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(sizeof(explicit_n) - 1U == 199U
+	    && capture.remote_length == sizeof(explicit_n) - 1U
+	    && memcmp(capture.remote, explicit_n, sizeof(explicit_n) - 1U) == 0
+	    && pager.line_count == 0.0f && pager.newline_flag == 0.0f);
+
+	computer_autopilot_one_hop_prefix(false, &capture, &current, &pager,
+	    accumulator, sizeof(accumulator));
+	pager_fixture_b05d(&pager, &current, turns, sizeof(turns) - 1U,
+	    &capture);
+	CHECK(yt_present_character(confirmation, sizeof(confirmation) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(sizeof(blank) - 1U == 198U
+	    && capture.remote_length == sizeof(blank) - 1U
+	    && memcmp(capture.remote, blank, sizeof(blank) - 1U) == 0
+	    && pager.line_count == 0.0f && pager.newline_flag == 0.0f);
+
+	computer_autopilot_one_hop_prefix(true, &capture, &current, &pager,
+	    accumulator, sizeof(accumulator));
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	current.bold = 1.0f;
+	current.blink = 1.0f;
+	pager.newline_flag = 0.0f;
+	pager_fixture_b05d(&pager, &current, insufficient,
+	    sizeof(insufficient) - 1U, &capture);
+	CHECK(sizeof(insufficient_ansi) - 1U == 201U
+	    && capture.remote_length == sizeof(insufficient_ansi) - 1U
+	    && memcmp(capture.remote, insufficient_ansi,
+	    sizeof(insufficient_ansi) - 1U) == 0
+	    && pager.line_count == 2.0f && pager.newline_flag == 0.0f
+	    && current.bold == 0.0f && current.blink == 0.0f);
+}
+
+static void
 test_computer_scoreboard_presentation(void)
 {
 	static const uint8_t prompt[] =
@@ -22930,6 +23073,7 @@ main(void)
 	test_computer_spy_presentation();
 	test_computer_path_presentation();
 	test_computer_autopilot_presentation();
+	test_computer_autopilot_alternate_presentation();
 	test_computer_scoreboard_presentation();
 	test_radio_target_blank_presentation();
 	test_computer_radio_composer_cycle_presentation();
