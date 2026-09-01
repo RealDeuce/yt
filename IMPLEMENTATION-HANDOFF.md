@@ -2788,6 +2788,20 @@ not authoritative. Use the corrected goal above in the new workspace.
   hostile scanner/hazard/menu and main scanner/fresh-prompt endpoints, raw
   BRUN/FIELD/file-registry state, and dependency-internal physical faults
   remain open.
+- The main missile/plasma parent `YT:[2059,2341)` now delegates to
+  `yt_projectile_command_run()`. Its accepted native tape fixes the full
+  14-event parent order from opening blank and two independent hydrations
+  through post-finalizer raw debit/PUT/flush, resolver, counterlaunch and
+  Xannor return. It proves that the command-entry display snapshot survives
+  an invalid-target retry while the live ammunition bound refreshes, and that
+  debit uses the finalizer-returned image rather than either gate snapshot.
+  Patterned records pin the selected offset-only overlay; all outer callback
+  cuts preserve the documented non-rollback boundary. Alternate tapes cover
+  no-turn/no-ammunition precedence, target and quantity cancellation,
+  excessive quantity, finalizer terminal return, numeric overflow and fatal
+  dispatch. All 126 focused upstream parent/missile/plasma launch and joined-
+  cycle tests pass. A physical active-main raw WORLD/FIELD/cache/RNG join,
+  dependency-internal child faults, and final local framebuffer remain open.
 
 ## The task
 

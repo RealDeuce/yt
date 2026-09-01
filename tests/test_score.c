@@ -21976,6 +21976,389 @@ check_planet_updater_transaction(void)
 	return true;
 }
 
+enum projectile_command_event {
+	PROJECTILE_COMMAND_PRESENT = 1,
+	PROJECTILE_COMMAND_HYDRATE,
+	PROJECTILE_COMMAND_INPUT,
+	PROJECTILE_COMMAND_FINALIZE,
+	PROJECTILE_COMMAND_WRITE,
+	PROJECTILE_COMMAND_FLUSH,
+	PROJECTILE_COMMAND_RESOLVE,
+	PROJECTILE_COMMAND_COUNTER,
+	PROJECTILE_COMMAND_XANNOR,
+	PROJECTILE_COMMAND_FATAL,
+};
+
+struct projectile_command_tape {
+	enum projectile_command_event events[40];
+	size_t calls;
+	size_t fail_at;
+	struct yt_player hydrations[4];
+	size_t hydration_index;
+	const char *responses[4];
+	size_t response_index;
+	struct yt_player finalizer_player;
+	struct yt_player written_player;
+	uint8_t rows[12][192];
+	size_t row_lengths[12];
+	enum yt_projectile_command_output_kind kinds[12];
+	size_t row_count;
+	bool finalizer_terminal;
+	bool destroy_after_xannor;
+	bool *destroyed;
+	float resolved_origin;
+	float resolved_target;
+	float resolved_amount;
+	bool resolved_plasma;
+};
+
+static bool
+projectile_command_step(struct projectile_command_tape *tape,
+    enum projectile_command_event event, struct yt_error *error)
+{
+	size_t call = tape->calls++;
+
+	if (call < YT_ARRAY_LEN(tape->events))
+		tape->events[call] = event;
+	if (call != tape->fail_at)
+		return true;
+	if (error != NULL) {
+		error->status = YT_IO_ERROR;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    "projectile command injected failure");
+	}
+	return false;
+}
+
+static bool
+projectile_command_test_hydrate(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct projectile_command_tape *tape = context;
+
+	if (player_record != 2
+	    || tape->hydration_index >= YT_ARRAY_LEN(tape->hydrations)
+	    || !projectile_command_step(tape, PROJECTILE_COMMAND_HYDRATE,
+	    error))
+		return false;
+	*player = tape->hydrations[tape->hydration_index++];
+	return true;
+}
+
+static bool
+projectile_command_test_present(void *context, const uint8_t *text,
+    size_t length, enum yt_projectile_command_output_kind kind,
+    struct yt_error *error)
+{
+	struct projectile_command_tape *tape = context;
+	size_t row = tape->row_count;
+
+	if (row >= YT_ARRAY_LEN(tape->rows) || length > sizeof(tape->rows[0])
+	    || !projectile_command_step(tape, PROJECTILE_COMMAND_PRESENT,
+	    error))
+		return false;
+	if (length != 0U)
+		memcpy(tape->rows[row], text, length);
+	tape->row_lengths[row] = length;
+	tape->kinds[row] = kind;
+	tape->row_count++;
+	return true;
+}
+
+static bool
+projectile_command_test_input(void *context, char *response,
+    size_t capacity, struct yt_error *error)
+{
+	struct projectile_command_tape *tape = context;
+	const char *source;
+	size_t length;
+
+	if (tape->response_index >= YT_ARRAY_LEN(tape->responses)
+	    || tape->responses[tape->response_index] == NULL)
+		return false;
+	source = tape->responses[tape->response_index++];
+	length = strlen(source);
+	if (length + 1U > capacity || !projectile_command_step(tape,
+	    PROJECTILE_COMMAND_INPUT, error))
+		return false;
+	memcpy(response, source, length + 1U);
+	return true;
+}
+
+static bool
+projectile_command_test_finalize(void *context, struct yt_player *player,
+    struct yt_error *error)
+{
+	struct projectile_command_tape *tape = context;
+
+	if (!projectile_command_step(tape, PROJECTILE_COMMAND_FINALIZE, error))
+		return false;
+	if (tape->finalizer_terminal)
+		return false;
+	*player = tape->finalizer_player;
+	return true;
+}
+
+static bool
+projectile_command_test_write(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct projectile_command_tape *tape = context;
+
+	if (player_record != 2 || !projectile_command_step(tape,
+	    PROJECTILE_COMMAND_WRITE, error))
+		return false;
+	tape->written_player = *player;
+	return true;
+}
+
+static bool
+projectile_command_test_flush(void *context, struct yt_error *error)
+{
+	return projectile_command_step(context, PROJECTILE_COMMAND_FLUSH,
+	    error);
+}
+
+static bool
+projectile_command_test_resolve(void *context, float *origin, float target,
+    float amount, bool plasma, int *counterattack, int *xannor_provoker,
+    struct yt_error *error)
+{
+	struct projectile_command_tape *tape = context;
+
+	if (!projectile_command_step(tape, PROJECTILE_COMMAND_RESOLVE, error))
+		return false;
+	tape->resolved_origin = *origin;
+	tape->resolved_target = target;
+	tape->resolved_amount = amount;
+	tape->resolved_plasma = plasma;
+	*origin = 13.0f;
+	*counterattack = 3;
+	*xannor_provoker = 4;
+	return true;
+}
+
+static bool
+projectile_command_test_counter(void *context, int *counterattack,
+    int *xannor_provoker, struct yt_error *error)
+{
+	if (*counterattack != 3 || *xannor_provoker != 4)
+		return false;
+	return projectile_command_step(context, PROJECTILE_COMMAND_COUNTER,
+	    error);
+}
+
+static bool
+projectile_command_test_xannor(void *context, int *xannor_provoker,
+    struct yt_error *error)
+{
+	struct projectile_command_tape *tape = context;
+
+	if (*xannor_provoker != 4 || !projectile_command_step(tape,
+	    PROJECTILE_COMMAND_XANNOR, error))
+		return false;
+	if (tape->destroy_after_xannor)
+		*tape->destroyed = true;
+	return true;
+}
+
+static bool
+projectile_command_test_fatal(void *context, struct yt_error *error)
+{
+	return projectile_command_step(context, PROJECTILE_COMMAND_FATAL,
+	    error);
+}
+
+static const struct yt_projectile_command_ops projectile_command_ops = {
+	projectile_command_test_hydrate,
+	projectile_command_test_present,
+	projectile_command_test_input,
+	projectile_command_test_finalize,
+	projectile_command_test_write,
+	projectile_command_test_flush,
+	projectile_command_test_resolve,
+	projectile_command_test_counter,
+	projectile_command_test_xannor,
+	projectile_command_test_fatal,
+};
+
+static void
+projectile_command_fixture(struct projectile_command_tape *tape,
+    struct yt_projectile_command_state *state, bool *destroyed)
+{
+	size_t index;
+
+	memset(tape, 0, sizeof(*tape));
+	memset(state, 0, sizeof(*state));
+	tape->fail_at = (size_t)-1;
+	for (index = 0U; index < YT_ARRAY_LEN(tape->hydrations); ++index) {
+		tape->hydrations[index].turns = 10.0f;
+		tape->hydrations[index].missiles = 5.0f;
+		tape->hydrations[index].plasma = 6.0f;
+	}
+	memset(tape->finalizer_player.record.bytes, 0xa5,
+	    sizeof(tape->finalizer_player.record.bytes));
+	tape->finalizer_player.sector = 12.0f;
+	tape->finalizer_player.missiles = 9.0f;
+	tape->finalizer_player.plasma = 8.0f;
+	(void)yt_record_set_number(&tape->finalizer_player.record, YT_F57,
+	    12.0f);
+	(void)yt_record_set_number(&tape->finalizer_player.record, YT_F97,
+	    9.0f);
+	(void)yt_record_set_number(&tape->finalizer_player.record, YT_F113,
+	    8.0f);
+	tape->responses[0] = "42";
+	tape->responses[1] = "2.9";
+	*destroyed = true;
+	tape->destroyed = destroyed;
+	state->current_player_record = 2;
+	state->maximum_sector = 2004.0f;
+	state->displayed = 9.0f;
+	state->destroyed = destroyed;
+}
+
+static bool
+check_projectile_command_transaction(void)
+{
+	static const enum projectile_command_event expected[] = {
+		PROJECTILE_COMMAND_PRESENT,
+		PROJECTILE_COMMAND_HYDRATE,
+		PROJECTILE_COMMAND_HYDRATE,
+		PROJECTILE_COMMAND_PRESENT,
+		PROJECTILE_COMMAND_INPUT,
+		PROJECTILE_COMMAND_PRESENT,
+		PROJECTILE_COMMAND_INPUT,
+		PROJECTILE_COMMAND_PRESENT,
+		PROJECTILE_COMMAND_FINALIZE,
+		PROJECTILE_COMMAND_WRITE,
+		PROJECTILE_COMMAND_FLUSH,
+		PROJECTILE_COMMAND_RESOLVE,
+		PROJECTILE_COMMAND_COUNTER,
+		PROJECTILE_COMMAND_XANNOR,
+	};
+	static const uint8_t target_prompt[] =
+	    "You have 9. Send your cruise missile to what sector? "
+	    "[ 1 to 2004 ] ?";
+	struct projectile_command_tape tape;
+	struct yt_projectile_command_state state;
+	struct yt_record expected_record;
+	struct yt_error error;
+	bool destroyed;
+	size_t failure;
+
+	projectile_command_fixture(&tape, &state, &destroyed);
+	expected_record = tape.finalizer_player.record;
+	(void)yt_record_set_number(&expected_record, YT_F97, 7.0f);
+	if (!yt_projectile_command_run(&state, &projectile_command_ops, &tape,
+	    NULL) || !state.complete
+	    || state.route != YT_PROJECTILE_COMMAND_RETURNED
+	    || state.attempts != 1U || state.hydrations != 2U
+	    || state.available != 5.0f || state.target != 42.0f
+	    || state.amount != 2.0f || !state.target_stored
+	    || !state.amount_stored || !state.finalizer_called
+	    || !state.player_written || !state.player_flushed
+	    || !state.destruction_cleared || !state.resolver_called
+	    || !state.counterlaunch_called || !state.xannor_called
+	    || state.fatal_called || destroyed || state.origin != 13.0f
+	    || tape.calls != YT_ARRAY_LEN(expected)
+	    || memcmp(tape.events, expected, sizeof(expected)) != 0
+	    || tape.row_count != 4U
+	    || tape.kinds[0] != YT_PROJECTILE_COMMAND_OPENING_BLANK
+	    || tape.kinds[1] != YT_PROJECTILE_COMMAND_TARGET_PROMPT
+	    || tape.row_lengths[1] != sizeof(target_prompt) - 1U
+	    || memcmp(tape.rows[1], target_prompt,
+	    sizeof(target_prompt) - 1U) != 0
+	    || tape.kinds[2] != YT_PROJECTILE_COMMAND_QUANTITY_PROMPT
+	    || tape.kinds[3] != YT_PROJECTILE_COMMAND_ACCEPTED_BLANK
+	    || tape.resolved_origin != 12.0f || tape.resolved_target != 42.0f
+	    || tape.resolved_amount != 2.0f || tape.resolved_plasma
+	    || memcmp(tape.written_player.record.bytes, expected_record.bytes,
+	    YT_RECORD_SIZE) != 0)
+		return false;
+
+	for (failure = 0U; failure < YT_ARRAY_LEN(expected); ++failure) {
+		projectile_command_fixture(&tape, &state, &destroyed);
+		tape.fail_at = failure;
+		yt_error_clear(&error);
+		if (yt_projectile_command_run(&state, &projectile_command_ops,
+		    &tape, &error) || error.status != YT_IO_ERROR
+		    || state.complete || tape.calls != failure + 1U
+		    || memcmp(tape.events, expected,
+		    tape.calls * sizeof(expected[0])) != 0
+		    || (failure > 10U
+		    && (!state.player_written || !state.player_flushed
+		    || !state.destruction_cleared)))
+			return false;
+	}
+
+	/* Retry retains the displayed snapshot but refreshes the live bound. */
+	projectile_command_fixture(&tape, &state, &destroyed);
+	tape.responses[0] = "9999";
+	tape.responses[1] = "42";
+	tape.responses[2] = "4";
+	tape.hydrations[3].missiles = 3.0f;
+	if (!yt_projectile_command_run(&state, &projectile_command_ops, &tape,
+	    NULL) || state.route != YT_PROJECTILE_COMMAND_TOO_MANY
+	    || state.attempts != 2U || state.hydrations != 4U
+	    || state.available != 3.0f || tape.row_count != 7U
+	    || tape.kinds[4] != YT_PROJECTILE_COMMAND_TARGET_PROMPT
+	    || memcmp(tape.rows[4], target_prompt,
+	    sizeof(target_prompt) - 1U) != 0)
+		return false;
+
+	projectile_command_fixture(&tape, &state, &destroyed);
+	tape.hydrations[1].turns = 0.0f;
+	if (!yt_projectile_command_run(&state, &projectile_command_ops, &tape,
+	    NULL) || state.route != YT_PROJECTILE_COMMAND_NO_TURNS
+	    || tape.calls != 4U)
+		return false;
+	projectile_command_fixture(&tape, &state, &destroyed);
+	tape.hydrations[1].missiles = 0.0f;
+	if (!yt_projectile_command_run(&state, &projectile_command_ops, &tape,
+	    NULL) || state.route != YT_PROJECTILE_COMMAND_NO_AMMUNITION
+	    || tape.calls != 4U)
+		return false;
+	projectile_command_fixture(&tape, &state, &destroyed);
+	tape.responses[0] = "";
+	if (!yt_projectile_command_run(&state, &projectile_command_ops, &tape,
+	    NULL) || state.route != YT_PROJECTILE_COMMAND_TARGET_CANCELLED
+	    || tape.calls != 5U)
+		return false;
+	projectile_command_fixture(&tape, &state, &destroyed);
+	tape.responses[1] = ".9";
+	if (!yt_projectile_command_run(&state, &projectile_command_ops, &tape,
+	    NULL) || state.route != YT_PROJECTILE_COMMAND_QUANTITY_CANCELLED
+	    || state.amount != 0.0f)
+		return false;
+
+	projectile_command_fixture(&tape, &state, &destroyed);
+	tape.finalizer_terminal = true;
+	yt_error_clear(&error);
+	if (!yt_projectile_command_run(&state, &projectile_command_ops, &tape,
+	    &error)
+	    || state.route != YT_PROJECTILE_COMMAND_FINALIZER_TERMINAL
+	    || !state.complete || state.player_written)
+		return false;
+	projectile_command_fixture(&tape, &state, &destroyed);
+	tape.destroy_after_xannor = true;
+	if (!yt_projectile_command_run(&state, &projectile_command_ops, &tape,
+	    NULL) || state.route != YT_PROJECTILE_COMMAND_FATAL
+	    || !state.fatal_called || tape.calls != YT_ARRAY_LEN(expected) + 1U)
+		return false;
+
+	projectile_command_fixture(&tape, &state, &destroyed);
+	tape.responses[0] = "1E400";
+	yt_error_clear(&error);
+	if (yt_projectile_command_run(&state, &projectile_command_ops, &tape,
+	    &error) || error.status != YT_RANGE || state.target_stored)
+		return false;
+
+	projectile_command_fixture(&tape, &state, &destroyed);
+	return !yt_projectile_command_run(NULL, &projectile_command_ops, &tape,
+	    NULL)
+	    && !yt_projectile_command_run(&state, NULL, &tape, NULL);
+}
+
 enum drop_mines_event {
 	DROP_MINES_READ_PLAYER = 1,
 	DROP_MINES_WRITE_PLAYER,
@@ -22433,6 +22816,8 @@ main(void)
 		return fail("active-spy sweep transaction differs");
 	if (!check_projectile_parent_model())
 		return fail("projectile parent model differs");
+	if (!check_projectile_command_transaction())
+		return fail("projectile command transaction differs");
 	if (!check_projectile_cruise_opening_transaction())
 		return fail("projectile cruise-opening transaction differs");
 	if (!check_projectile_plasma_opening_transaction())
