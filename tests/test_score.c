@@ -23460,6 +23460,21 @@ check_port_update_transaction(void)
 	    sizeof(preloaded_expected)) != 0)
 		return false;
 
+	/* A caller-preloaded corrupt link retains SINGLE addition then BRUN GET. */
+	port_update_fixture(&tape, &state);
+	tape.sector.port = 2.75f;
+	state.sector = tape.sector;
+	state.sector_loaded = true;
+	if (!yt_port_update_run(&state, &port_update_test_ops, &tape, NULL)
+	    || state.sector_read || tape.calls != YT_ARRAY_LEN(preloaded_expected)
+	    || memcmp(tape.events, preloaded_expected,
+	    sizeof(preloaded_expected)) != 0
+	    || state.market.logical_port != 2.75f
+	    || state.market.port_record_expression != 2057.75f
+	    || state.market.port_physical_record != 2057U
+	    || tape.read_record != 2057U || tape.written_record != 2057U)
+		return false;
+
 	port_update_fixture(&tape, &state);
 	tape.sector.port = 2.75f;
 	if (!yt_port_update_run(&state, &port_update_test_ops, &tape, NULL)
