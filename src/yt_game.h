@@ -2474,6 +2474,24 @@ struct yt_treasury_ops {
 bool yt_treasury_run(struct yt_treasury_state *state,
 	const struct yt_treasury_ops *ops, void *context,
 	struct yt_error *error);
+struct yt_port_market_state {
+	struct yt_port port;
+	float current_day;
+	float timer_seconds;
+	float base_price[3];
+	float current_minute;
+	float elapsed;
+	uint8_t capacity_raw[3][8];
+	double capacity[3];
+	uint8_t production_raw[3][4];
+	uint8_t price_raw[3][4];
+	float price[3];
+	bool production_raised[3];
+	size_t completed_items;
+	bool complete;
+};
+bool yt_port_market_update(struct yt_port_market_state *state,
+	struct yt_error *error);
 size_t yt_port_trade_schedule(const float factors[3], size_t order[3]);
 int yt_computer_selector_position(const char *command);
 void yt_trade_treasury_overlay(struct yt_port *port, float receipt);

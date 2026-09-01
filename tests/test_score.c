@@ -22037,6 +22037,109 @@ check_planet_updater_transaction(void)
 	return true;
 }
 
+static void
+port_market_fixture(struct yt_port_market_state *state, float stored_day,
+    const float stock[3], const float production[3])
+{
+	struct yt_record record;
+	static const float factors[3] = {-60.0f, 74.0f, -66.0f};
+	size_t index;
+
+	memset(state, 0, sizeof(*state));
+	memset(record.bytes, 0x6d, sizeof(record.bytes));
+	memset(record.bytes, ' ', YT_TEXT_FIELD_SIZE);
+	memcpy(record.bytes, "Argus", 5U);
+	(void)yt_record_set_number(&record, YT_F45, stored_day);
+	for (index = 0U; index < 3U; ++index) {
+		(void)yt_record_set_number(&record, YT_F49 + index * 4U,
+		    stock[index]);
+		(void)yt_record_set_number(&record, YT_F61 + index * 4U,
+		    production[index]);
+		(void)yt_record_set_number(&record, YT_F73 + index * 4U,
+		    factors[index]);
+	}
+	(void)yt_record_set_number(&record, YT_F85, 5.0f);
+	(void)yt_record_set_number(&record, YT_F89, 1234.5f);
+	(void)yt_record_set_number(&record, YT_F93, 7.0f);
+	(void)yt_record_set_number(&record, YT_F97, 2.0f);
+	(void)yt_record_set_number(&record, YT_F101, 600.0f);
+	yt_port_decode(&state->port, &record);
+	state->current_day = 1000.0f;
+	state->timer_seconds = 36000.0f;
+	state->base_price[0] = 20.0f;
+	state->base_price[1] = 30.0f;
+	state->base_price[2] = 40.0f;
+}
+
+static bool
+check_port_market_update(void)
+{
+	static const float stock[3] = {100.0f, 200.0f, 300.0f};
+	static const float production[3] = {5.0f, 10.0f, 15.0f};
+	static const float expected_capacity[3] = {105.0f, 210.0f, 315.0f};
+	static const float expected_production[3] = {10.5f, 21.0f, 31.5f};
+	static const float expected_price[3] = {32.0f, 8.0f, 66.0f};
+	struct yt_port_market_state state;
+	struct yt_record expected;
+	struct yt_error error;
+	uint8_t exact_capacity[8];
+	size_t index;
+
+	port_market_fixture(&state, 999.0f, stock, production);
+	expected = state.port.record;
+	(void)yt_record_set_number(&expected, YT_F45, 1000.0f);
+	(void)yt_record_set_number(&expected, YT_F101, 600.0f);
+	for (index = 0U; index < 3U; ++index) {
+		(void)yt_record_set_number(&expected, YT_F49 + index * 4U,
+		    expected_capacity[index]);
+		(void)yt_record_set_number(&expected, YT_F61 + index * 4U,
+		    expected_production[index]);
+	}
+	if (!yt_port_market_update(&state, NULL) || !state.complete
+	    || state.completed_items != 3U || state.current_minute != 600.0f
+	    || state.elapsed != 1.0f
+	    || memcmp(state.port.record.bytes, expected.bytes,
+	    sizeof(expected.bytes)) != 0)
+		return false;
+	for (index = 0U; index < 3U; ++index) {
+		if (state.capacity[index] != (double)expected_capacity[index]
+		    || state.port.production[index] != expected_production[index]
+		    || state.price[index] != expected_price[index]
+		    || !state.production_raised[index])
+			return false;
+	}
+
+	port_market_fixture(&state, 999.0f, stock, production);
+	expected = state.port.record;
+	(void)yt_record_set_number(&expected, YT_F49, 16777216.0f);
+	(void)yt_record_set_number(&expected, YT_F61, 1.0f);
+	yt_port_decode(&state.port, &expected);
+	if (qb_mbf64_encode(16777217.0, exact_capacity) != QB_MBF_OK
+	    || !yt_port_market_update(&state, NULL)
+	    || memcmp(state.capacity_raw[0], exact_capacity,
+	    sizeof(exact_capacity)) != 0
+	    || state.capacity[0] != 16777217.0)
+		return false;
+
+	port_market_fixture(&state, 999.0f, stock, production);
+	expected = state.port.record;
+	(void)yt_record_set_number(&expected, YT_F49, 0.0f);
+	(void)yt_record_set_number(&expected, YT_F61, 0.0f);
+	yt_port_decode(&state.port, &expected);
+	yt_error_clear(&error);
+	if (yt_port_market_update(&state, &error) || error.status != YT_RANGE
+	    || state.complete || state.completed_items != 0U
+	    || memcmp(state.port.record.bytes, expected.bytes,
+	    sizeof(expected.bytes)) != 0)
+		return false;
+
+	port_market_fixture(&state, 900.0f, stock, production);
+	if (!yt_port_market_update(&state, NULL) || state.elapsed != 10.0f)
+		return false;
+	port_market_fixture(&state, 1001.0f, stock, production);
+	return yt_port_market_update(&state, NULL) && state.elapsed == 10.0f;
+}
+
 enum treasury_event {
 	TREASURY_PRESENT = 1,
 	TREASURY_READ_PLAYER_INITIAL,
@@ -25372,6 +25475,8 @@ main(void)
 		return fail("salvage cargo sampler differs");
 	if (!check_salvage_transaction())
 		return fail("ship salvage transaction differs");
+	if (!check_port_market_update())
+		return fail("ordinary-port market updater differs");
 	if (!check_treasury_transaction())
 		return fail("owned-port treasury transaction differs");
 	if (!check_movement_transaction())

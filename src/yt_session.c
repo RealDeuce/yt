@@ -321,13 +321,6 @@ double_mul(double left, double right)
 	return result;
 }
 
-static double
-double_div(double left, double right)
-{
-	volatile double result = left / right;
-	return result;
-}
-
 static int
 sector_count(const struct yt_session *session)
 {
@@ -2842,8 +2835,7 @@ port_update(struct yt_session *session, int logical_port,
     struct yt_port *port, float prices[3], double quantities[3],
     struct yt_error *error)
 {
-	float minute;
-	float elapsed;
+	struct yt_port_market_state market = {0};
 	int today;
 	int adjusted_year;
 	size_t index;
@@ -2855,52 +2847,19 @@ port_update(struct yt_session *session, int logical_port,
 	session->door->game.adjusted_year = adjusted_year;
 	if (!yt_game_read_port(&session->door->game, logical_port, port, error))
 		return false;
-	minute = current_minute();
-	elapsed = single_add(
-	    single_sub((float)session->door->game.today, port->last_day),
-	    single_div(single_sub(minute, port->last_minute), 1440.0f));
-	if (elapsed > 10.0f || elapsed < 0.0f)
-		elapsed = 10.0f;
-	for (index = 0; index < 3; ++index) {
-		double capacity = double_add((double)port->stock[index],
-		    (double)single_mul(port->production[index], elapsed));
-		double production = (double)port->production[index];
-		double comparison;
-		double numerator;
-		double denominator;
-		double ratio;
-		double scale;
-		double raw;
-
+	market.port = *port;
+	market.current_day = (float)session->door->game.today;
+	market.timer_seconds = (float)yt_platform_timer();
+	memcpy(market.base_price, session->market_base,
+	    sizeof(market.base_price));
+	if (!yt_port_market_update(&market, error))
+		return false;
+	*port = market.port;
+	for (index = 0U; index < 3U; ++index) {
+		prices[index] = market.price[index];
 		if (quantities != NULL)
-			quantities[index] = capacity;
-		comparison = double_div(capacity, 10.0);
-		if (comparison > production) {
-			port->production[index] =
-			    (float)double_div(capacity, 10.0);
-			production = (double)port->production[index];
-		}
-		port->stock[index] = (float)capacity;
-		numerator = double_mul((double)port->factor[index], capacity);
-		denominator = double_mul(production, 1000.0);
-		if (denominator == 0.0) {
-			if (error != NULL) {
-				error->status = YT_RANGE;
-				snprintf(error->operation,
-				    sizeof(error->operation),
-				    "ordinary port price division");
-			}
-			return false;
-		}
-		ratio = double_div(numerator, denominator);
-		scale = double_sub(1.0, ratio);
-		raw = double_mul((double)session->market_base[index], scale);
-		prices[index] = (float)floor(double_add(raw, 0.5));
-		if (prices[index] < 1.0f)
-			prices[index] = 1.0f;
+			quantities[index] = market.capacity[index];
 	}
-	port->last_day = (float)session->door->game.today;
-	port->last_minute = minute;
 	return yt_game_write_port(&session->door->game, logical_port, port,
 	    error) && yt_database_flush(&session->door->game.database, error);
 }
