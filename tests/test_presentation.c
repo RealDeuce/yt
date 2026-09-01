@@ -7347,26 +7347,9 @@ earth_report_row_fixture(struct pager_capture *capture,
 }
 
 static void
-test_earth_report_presentation(void)
+earth_report_fixture(struct pager_capture *capture,
+    struct yt_pager_state *pager, struct yt_present_state *current)
 {
-	static const uint8_t canonical[] =
-	    "\r\nCommerce report for Earth: 07-25-2026 12:34:56\n\r"
-	    "\r\n"
-	    "----------------------*--------*------------\n\r"
-	    "         ITEM         *  COST  * CAN AFFORD\n\r"
-	    "----------------------*--------*------------\n\r"
-	    "[1] Cloak Energy      * 1000   * 12\n\r"
-	    "[2] Cargo Holds       * 250    * 49\n\r"
-	    "[3] Fighters          * 50     * 246\n\r"
-	    "[4] Play Lottery      * 5      * 2469\n\r"
-	    "[5] Danger Scanner    * 500000 * 0\n\r"
-	    "[6] Anti-Cloak Device * 1E+09  * 0\n\r"
-	    "[7] Ground Forces     * 200    * 61\n\r"
-	    "[8] Shield Power      * 50     * 246\n\r"
-	    "[9] Hire Spies (Each) * 1E+09  * 0\n\r"
-	    "----------------------*--------*------------\n\r"
-	    "\r\n[I] Ship Info -=*=- [0] Leave Port\n\r"
-	    "\r\nCredits: 12345 -=*=- Buy Which Item? -=>0\r\n";
 	static const char *const label[9] = {
 		"[1] Cloak Energy", "[2] Cargo Holds", "[3] Fighters",
 		"[4] Play Lottery", "[5] Danger Scanner",
@@ -7387,6 +7370,52 @@ test_earth_report_presentation(void)
 	    "----------------------*--------*------------";
 	static const uint8_t header[] =
 	    "         ITEM         *  COST  * CAN AFFORD";
+	struct yt_present_result result;
+	size_t index;
+
+	pager->line_count = 0.0f;
+	current->foreground = 3.0f;
+	pager->foreground = 3;
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager_fixture_b05d(pager, current, title, sizeof(title) - 1U,
+	    capture);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager_fixture_b05d(pager, current, separator,
+	    sizeof(separator) - 1U, capture);
+	pager_fixture_b05d(pager, current, header, sizeof(header) - 1U,
+	    capture);
+	pager_fixture_b05d(pager, current, separator,
+	    sizeof(separator) - 1U, capture);
+	for (index = 0U; index < 9U; ++index)
+		earth_report_row_fixture(capture, pager, current, label[index],
+		    cost[index], affordable[index]);
+	pager_fixture_b05d(pager, current, separator,
+	    sizeof(separator) - 1U, capture);
+}
+
+static void
+test_earth_report_presentation(void)
+{
+	static const uint8_t canonical[] =
+	    "\r\nCommerce report for Earth: 07-25-2026 12:34:56\n\r"
+	    "\r\n"
+	    "----------------------*--------*------------\n\r"
+	    "         ITEM         *  COST  * CAN AFFORD\n\r"
+	    "----------------------*--------*------------\n\r"
+	    "[1] Cloak Energy      * 1000   * 12\n\r"
+	    "[2] Cargo Holds       * 250    * 49\n\r"
+	    "[3] Fighters          * 50     * 246\n\r"
+	    "[4] Play Lottery      * 5      * 2469\n\r"
+	    "[5] Danger Scanner    * 500000 * 0\n\r"
+	    "[6] Anti-Cloak Device * 1E+09  * 0\n\r"
+	    "[7] Ground Forces     * 200    * 61\n\r"
+	    "[8] Shield Power      * 50     * 246\n\r"
+	    "[9] Hire Spies (Each) * 1E+09  * 0\n\r"
+	    "----------------------*--------*------------\n\r"
+	    "\r\n[I] Ship Info -=*=- [0] Leave Port\n\r"
+	    "\r\nCredits: 12345 -=*=- Buy Which Item? -=>0\r\n";
 	static const uint8_t menu[] =
 	    "[I] Ship Info -=*=- [0] Leave Port";
 	static const uint8_t prompt[] =
@@ -7395,29 +7424,12 @@ test_earth_report_presentation(void)
 	struct yt_present_result result;
 	struct yt_pager_state pager;
 	struct pager_capture capture;
-	size_t index;
 
 	memset(&pager, 0, sizeof(pager));
 	memset(&capture, 0, sizeof(capture));
 	pager.foreground = 3;
 	current.foreground = 3.0f;
-	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
-	pager_capture_result(&capture, &result);
-	pager_fixture_b05d(&pager, &current, title, sizeof(title) - 1U,
-	    &capture);
-	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
-	pager_capture_result(&capture, &result);
-	pager_fixture_b05d(&pager, &current, separator,
-	    sizeof(separator) - 1U, &capture);
-	pager_fixture_b05d(&pager, &current, header, sizeof(header) - 1U,
-	    &capture);
-	pager_fixture_b05d(&pager, &current, separator,
-	    sizeof(separator) - 1U, &capture);
-	for (index = 0; index < 9U; ++index)
-		earth_report_row_fixture(&capture, &pager, &current, label[index],
-		    cost[index], affordable[index]);
-	pager_fixture_b05d(&pager, &current, separator,
-	    sizeof(separator) - 1U, &capture);
+	earth_report_fixture(&capture, &pager, &current);
 	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
 	pager_capture_result(&capture, &result);
 	pager_fixture_b05d(&pager, &current, menu, sizeof(menu) - 1U,
@@ -8986,6 +8998,111 @@ test_computer_port_report_presentation(void)
 	CHECK(capture.remote_length == sizeof(expected) - 1U
 	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
 	CHECK(pager.line_count == 1.0f);
+}
+
+static void
+test_computer_port_report_earth_cycle_presentation(void)
+{
+	static const uint8_t plain[] =
+	    "\r\nEnter sector number port is in -=> 1\r\n"
+	    "\r\nCommerce report for Earth: 07-25-2026 12:34:56\n\r"
+	    "\r\n----------------------*--------*------------\n\r"
+	    "         ITEM         *  COST  * CAN AFFORD\n\r"
+	    "----------------------*--------*------------\n\r"
+	    "[1] Cloak Energy      * 1000   * 12\n\r"
+	    "[2] Cargo Holds       * 250    * 49\n\r"
+	    "[3] Fighters          * 50     * 246\n\r"
+	    "[4] Play Lottery      * 5      * 2469\n\r"
+	    "[5] Danger Scanner    * 500000 * 0\n\r"
+	    "[6] Anti-Cloak Device * 1E+09  * 0\n\r"
+	    "[7] Ground Forces     * 200    * 61\n\r"
+	    "[8] Shield Power      * 50     * 246\n\r"
+	    "[9] Hire Spies (Each) * 1E+09  * 0\n\r"
+	    "----------------------*--------*------------\n\r"
+	    "\r\nTime:15:00  Computer command (?=help)? ";
+	static const uint8_t ansi[] =
+	    "\r\nEnter sector number port is in -=> 1\r\n"
+	    "\x1b[0;33;40m\r\n"
+	    "Commerce report for Earth: 07-25-2026 12:34:56\n\r"
+	    "\r\n----------------------*--------*------------\n\r"
+	    "         ITEM         *  COST  * CAN AFFORD\n\r"
+	    "----------------------*--------*------------\n\r"
+	    "[1] Cloak Energy      * 1000   * 12\n\r"
+	    "[2] Cargo Holds       * 250    * 49\n\r"
+	    "[3] Fighters          * 50     * 246\n\r"
+	    "[4] Play Lottery      * 5      * 2469\n\r"
+	    "[5] Danger Scanner    * 500000 * 0\n\r"
+	    "[6] Anti-Cloak Device * 1E+09  * 0\n\r"
+	    "[7] Ground Forces     * 200    * 61\n\r"
+	    "[8] Shield Power      * 50     * 246\n\r"
+	    "[9] Hire Spies (Each) * 1E+09  * 0\n\r"
+	    "----------------------*--------*------------\n\r"
+	    "\r\n\x1b[0;31;40m"
+	    "Time:15:00  Computer command (?=help)? ";
+	static const uint8_t prompt[] =
+	    "Enter sector number port is in -=> ";
+	static const uint8_t computer_prompt[] =
+	    "Time:15:00  Computer command (?=help)? ";
+	static const struct {
+		bool ansi;
+		const uint8_t *expected;
+		size_t expected_length;
+	} cases[] = {
+		{false, plain, sizeof(plain) - 1U},
+		{true, ansi, sizeof(ansi) - 1U},
+	};
+	struct yt_present_state current;
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80];
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		current = state(cases[pass].ansi);
+		current.foreground = 1.0f;
+		current.cached_foreground = cases[pass].ansi ? 1.0f : 0.0f;
+		memset(&pager, 0, sizeof(pager));
+		pager.foreground = 1;
+		memset(&capture, 0, sizeof(capture));
+		memset(accumulator, 0, sizeof(accumulator));
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager.newline_flag = 1.0f;
+		pager_fixture_b05d(&pager, &current, prompt,
+		    sizeof(prompt) - 1U, &capture);
+		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+		CHECK(yt_present_editor_echo((const uint8_t *)"1", 1U,
+		    (const uint8_t *)"1", 1U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		earth_report_fixture(&capture, &pager, &current);
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		current.foreground = 1.0f;
+		pager.foreground = 1;
+		pager.newline_flag = 1.0f;
+		pager_fixture_b05d(&pager, &current, computer_prompt,
+		    sizeof(computer_prompt) - 1U, &capture);
+		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+		CHECK(capture.remote_length == cases[pass].expected_length
+		    && memcmp(capture.remote, cases[pass].expected,
+		    cases[pass].expected_length) == 0
+		    && current.foreground == 1.0f
+		    && current.background == 0.0f
+		    && current.cached_foreground
+		    == (cases[pass].ansi ? 1.0f : 0.0f)
+		    && pager.foreground == 1
+		    && pager.line_count == 0.0f
+		    && pager.newline_flag == 0.0f
+		    && accumulator[0] == '\0');
+	}
+	CHECK(sizeof(plain) - 1U == 650U && sizeof(ansi) - 1U == 670U);
 }
 
 static void
@@ -20886,6 +21003,7 @@ main(void)
 	test_computer_front_presentation();
 	test_computer_avoid_presentation();
 	test_computer_port_report_presentation();
+	test_computer_port_report_earth_cycle_presentation();
 	test_computer_planet_report_front_presentation();
 	test_computer_planet_inventory_presentation();
 	test_owned_planets_transaction();

@@ -15683,8 +15683,15 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 		return session_0317(session, unavailable,
 		    sizeof(unavailable) - 1U,
 		    "computer port unavailable", error);
-	if (sector.port == 1.0f)
-		return earth_store(session, enter_sector, error);
+	if (sector.port == 1.0f) {
+		struct yt_port earth;
+		float price[4];
+
+		if (!earth_report(session, &earth, price, error))
+			return false;
+		session->earth_report_seen = 0.0f;
+		return true;
+	}
 	{
 		struct yt_port_market_state market;
 		float sector_record_expression = yt_port_selected_expression(
