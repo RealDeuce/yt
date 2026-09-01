@@ -782,6 +782,102 @@ check_team_loader_model(void)
 	return true;
 }
 
+struct team_loader_read_tape {
+	struct yt_record record;
+	uint32_t physical_record;
+	size_t calls;
+	bool fail;
+};
+
+static bool
+team_loader_read_test(void *context, uint32_t physical_record,
+	struct yt_record *record, struct yt_error *error)
+{
+	struct team_loader_read_tape *tape = context;
+
+	++tape->calls;
+	tape->physical_record = physical_record;
+	if (tape->fail) {
+		if (error != NULL) {
+			error->status = YT_IO_ERROR;
+			(void)snprintf(error->operation,
+			    sizeof(error->operation), "%s",
+			    "team loader injected GET failure");
+		}
+		return false;
+	}
+	*record = tape->record;
+	return true;
+}
+
+static bool
+check_team_loader_transaction(void)
+{
+	struct team_loader_read_tape tape;
+	struct yt_team_loader_state state;
+	struct yt_team_loader_cache cache;
+	struct yt_error error;
+
+	memset(&tape, 0, sizeof(tape));
+	yt_record_blank(&tape.record);
+	(void)yt_record_set_number(&tape.record, YT_F73, 3.0f);
+	(void)yt_record_set_number(&tape.record, YT_F77, 2.0f);
+	(void)yt_record_set_number(&tape.record, YT_F109, 3.0f);
+	memcpy(tape.record.bytes, "A\0B", 3U);
+	memset(&cache, 0, sizeof(cache));
+	state = (struct yt_team_loader_state){
+		.team_id = 1.5f,
+		.current_player_record = 2.0f,
+		.sector_record_offset = 55.0f,
+		.cache = &cache,
+	};
+	if (!yt_team_loader_run(&state, team_loader_read_test, &tape, NULL)
+	    || tape.calls != 1U || tape.physical_record != 56U
+	    || state.physical_record != 56U || !state.overlay_loaded
+	    || !state.complete || state.route != YT_TEAM_LOADER_LIVE
+	    || cache.available != 0.0f || cache.counter != 5.0f
+	    || cache.name_length != 3U || memcmp(cache.name, "A\0B", 3U) != 0
+	    || cache.captain != 2.0f || cache.captain_flag != -1.0f
+	    || cache.roster[0] != 3.0f)
+		return false;
+
+	memset(&cache, 0, sizeof(cache));
+	cache.roster[0] = 9.0f;
+	state = (struct yt_team_loader_state){
+		.team_id = 50.0001f,
+		.current_player_record = 2.0f,
+		.sector_record_offset = 55.0f,
+		.cache = &cache,
+		.physical_record = 1234U,
+	};
+	if (!yt_team_loader_run(&state, team_loader_read_test, &tape, NULL)
+	    || tape.calls != 1U || state.physical_record != 1234U
+	    || state.overlay_loaded || !state.complete
+	    || state.route != YT_TEAM_LOADER_OUT_OF_RANGE
+	    || cache.available != -1.0f || cache.counter != 5.0f
+	    || cache.roster[0] != 0.0f)
+		return false;
+
+	memset(&cache, 0, sizeof(cache));
+	cache.roster[0] = 9.0f;
+	tape.fail = true;
+	state = (struct yt_team_loader_state){
+		.team_id = 1.5f,
+		.current_player_record = 2.0f,
+		.sector_record_offset = 55.0f,
+		.cache = &cache,
+	};
+	yt_error_clear(&error);
+	if (yt_team_loader_run(&state, team_loader_read_test, &tape, &error)
+	    || tape.calls != 2U || tape.physical_record != 56U
+	    || state.overlay_loaded || state.complete
+	    || state.route != YT_TEAM_LOADER_OUT_OF_RANGE
+	    || error.status != YT_IO_ERROR || cache.available != -1.0f
+	    || cache.counter != 5.0f || cache.roster[0] != 0.0f)
+		return false;
+	return true;
+}
+
 enum death_team_event {
 	DEATH_TEAM_READ_PLAYER = 1,
 	DEATH_TEAM_READ_LOADER,
@@ -18370,6 +18466,8 @@ main(void)
 		return fail("friendship model differs");
 	if (!check_team_loader_model())
 		return fail("team-loader model differs");
+	if (!check_team_loader_transaction())
+		return fail("team-loader transaction differs");
 	if (!check_death_team_remove_transaction())
 		return fail("death team-removal transaction differs");
 	if (!check_info_team_resolver_transaction())

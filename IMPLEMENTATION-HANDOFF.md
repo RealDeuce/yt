@@ -1543,8 +1543,11 @@ not authoritative. Use the corrected goal above in the new workspace.
   non-roster overlay bytes, and changes the victim team field only after the
   overlay PUT. A focused tape pins live `1.5`, rejected `50.0001`, rejected
   `0.5`, numeric negative zero, both physical reads, duplicate removal and all
-  six injected I/O boundaries. Raw FIELD binding, loader string-allocation
-  failures and physical BRUN adapter residue remain open.
+  six injected I/O boundaries. The shared loader is now its own
+  provider-driven transaction and is composed by Team, Info and death; its
+  focused tape separately pins fractional `1.5`, rejected `50.0001`, and the
+  failed physical-GET prefix after cache clearing. Raw FIELD binding, loader
+  string-allocation failures and physical BRUN adapter residue remain open.
 - The direct fighter destroyed-to-fatal cycle now preserves the mine body's
   nonzero destruction result without inserting output, RNG, I/O or state
   normalization. It inherits the mine background, pager and input state into

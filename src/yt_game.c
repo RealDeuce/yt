@@ -444,6 +444,39 @@ yt_team_loader_finish(const struct yt_record *overlay,
 }
 
 bool
+yt_team_loader_run(struct yt_team_loader_state *state,
+    yt_team_loader_read_record_fn read_record, void *context,
+    struct yt_error *error)
+{
+	bool needs_overlay;
+	float expression;
+
+	if (state == NULL || state->cache == NULL || read_record == NULL)
+		return false;
+	state->route = YT_TEAM_LOADER_OUT_OF_RANGE;
+	state->overlay_loaded = false;
+	state->complete = false;
+	yt_team_loader_begin(state->team_id, state->cache, &needs_overlay);
+	if (!needs_overlay) {
+		state->complete = true;
+		return true;
+	}
+	expression = startup_single_add(state->sector_record_offset,
+	    state->team_id);
+	state->physical_record = qb_brun_random_record_number(expression);
+	if (!read_record(context, state->physical_record, &state->overlay,
+	    error))
+		return false;
+	state->overlay_loaded = true;
+	if (!yt_team_loader_finish(&state->overlay,
+	    state->current_player_record, state->conversion_mode,
+	    state->cache, &state->route, error))
+		return false;
+	state->complete = true;
+	return true;
+}
+
+bool
 yt_death_team_remove_run(struct yt_death_team_remove_state *state,
     const struct yt_death_team_remove_ops *ops, void *context,
     struct yt_error *error)
@@ -453,7 +486,7 @@ yt_death_team_remove_run(struct yt_death_team_remove_state *state,
 	};
 	struct yt_player victim;
 	struct yt_record overlay;
-	bool needs_overlay;
+	struct yt_team_loader_state loader;
 	float expression;
 	size_t index;
 
@@ -471,20 +504,18 @@ yt_death_team_remove_run(struct yt_death_team_remove_state *state,
 		return true;
 	}
 
-	yt_team_loader_begin(state->raw_team_id, state->cache,
-	    &needs_overlay);
-	if (needs_overlay) {
-		expression = startup_single_add(state->sector_record_offset,
-		    state->raw_team_id);
-		state->overlay_physical_record =
-		    qb_brun_random_record_number(expression);
-		if (!ops->read_record(context, state->overlay_physical_record,
-		    &overlay, error)
-		    || !yt_team_loader_finish(&overlay,
-		    state->current_player_record, state->conversion_mode,
-		    state->cache, &state->loader_route, error))
-			return false;
-	}
+	loader = (struct yt_team_loader_state){
+		.team_id = state->raw_team_id,
+		.current_player_record = state->current_player_record,
+		.sector_record_offset = state->sector_record_offset,
+		.conversion_mode = state->conversion_mode,
+		.cache = state->cache,
+	};
+	if (!yt_team_loader_run(&loader, ops->read_record, context, error))
+		return false;
+	state->loader_route = loader.route;
+	if (loader.overlay_loaded)
+		state->overlay_physical_record = loader.physical_record;
 	for (index = 0U; index < YT_ARRAY_LEN(state->cache->roster);
 	    ++index) {
 		if (state->cache->roster[index]

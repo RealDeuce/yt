@@ -4488,7 +4488,7 @@ death_team_write_player(void *context, int player_record,
 }
 
 static bool
-death_team_read_record(void *context, uint32_t physical_record,
+session_read_physical_record(void *context, uint32_t physical_record,
 	struct yt_record *record, struct yt_error *error)
 {
 	struct yt_session *session = context;
@@ -4514,7 +4514,7 @@ team_remove_player(struct yt_session *session, int victim,
 	static const struct yt_death_team_remove_ops ops = {
 		death_team_read_player,
 		death_team_write_player,
-		death_team_read_record,
+		session_read_physical_record,
 		death_team_write_record,
 	};
 	struct yt_death_team_remove_state state = {
@@ -10514,32 +10514,29 @@ static bool
 team_load(struct yt_session *session, int id, struct yt_team *team,
     struct yt_error *error)
 {
-	enum yt_team_loader_route route = YT_TEAM_LOADER_OUT_OF_RANGE;
-	bool needs_overlay;
+	struct yt_team_loader_state loader = {
+		.team_id = (float)id,
+		.current_player_record = (float)session->player_record,
+		.sector_record_offset = session->door->game.config.sector_offset,
+		.conversion_mode = session->presentation.sound.conversion_mode,
+		.cache = &session->team_cache,
+	};
 	size_t index;
 
 	memset(team, 0, sizeof(*team));
 	team->id = id;
-	yt_team_loader_begin((float)id, &session->team_cache, &needs_overlay);
-	if (!needs_overlay)
-		goto loaded;
-	if (!yt_game_read_sector(&session->door->game, id, &team->overlay,
+	if (!yt_team_loader_run(&loader, session_read_physical_record, session,
 	    error))
 		return false;
-	if (!yt_team_loader_finish(&team->overlay.record,
-	    (float)session->player_record,
-	    session->presentation.sound.conversion_mode,
-	    &session->team_cache, &route, error))
-		return false;
-
-loaded:
+	if (loader.overlay_loaded)
+		yt_sector_decode(&team->overlay, &loader.overlay);
 	memcpy(team->name, session->team_cache.name,
 	    sizeof(team->name));
 	team->name_length = session->team_cache.name_length;
 	memcpy(team->password, session->team_cache.password,
 	    sizeof(team->password));
 	team->captain = session->team_cache.captain;
-	team->live = route == YT_TEAM_LOADER_LIVE;
+	team->live = loader.route == YT_TEAM_LOADER_LIVE;
 	team->full = team->live;
 	for (index = 0; index < 4; ++index) {
 		team->roster[index] = session->team_cache.roster[index];
@@ -10729,35 +10726,29 @@ info_team_load_team(void *context, float team_id, float current_record,
     float *captain_flag, struct yt_team *team, struct yt_error *error)
 {
 	struct yt_session *session = context;
-	enum yt_team_loader_route route = YT_TEAM_LOADER_OUT_OF_RANGE;
-	bool needs_overlay;
+	struct yt_team_loader_state loader = {
+		.team_id = team_id,
+		.current_player_record = current_record,
+		.sector_record_offset = session->door->game.config.sector_offset,
+		.conversion_mode = session->presentation.sound.conversion_mode,
+		.cache = &session->team_cache,
+	};
 	size_t index;
 
 	memset(team, 0, sizeof(*team));
 	team->id = (int)team_id;
 	session->team_cache.captain_flag = *captain_flag;
-	yt_team_loader_begin(team_id, &session->team_cache, &needs_overlay);
-	if (needs_overlay) {
-		struct yt_record raw;
-		float expression = single_add(
-		    session->door->game.config.sector_offset, team_id);
-		uint32_t physical = qb_brun_random_record_number(expression);
-
-		if (!yt_database_read(&session->door->game.database,
-		    (size_t)physical, &raw, error))
-			return false;
-		yt_sector_decode(&team->overlay, &raw);
-		if (!yt_team_loader_finish(&team->overlay.record, current_record,
-		    session->presentation.sound.conversion_mode,
-		    &session->team_cache, &route, error))
-			return false;
-	}
+	if (!yt_team_loader_run(&loader, session_read_physical_record, session,
+	    error))
+		return false;
+	if (loader.overlay_loaded)
+		yt_sector_decode(&team->overlay, &loader.overlay);
 	memcpy(team->name, session->team_cache.name, sizeof(team->name));
 	team->name_length = session->team_cache.name_length;
 	memcpy(team->password, session->team_cache.password,
 	    sizeof(team->password));
 	team->captain = session->team_cache.captain;
-	team->live = route == YT_TEAM_LOADER_LIVE;
+	team->live = loader.route == YT_TEAM_LOADER_LIVE;
 	team->full = team->live;
 	for (index = 0; index < YT_ARRAY_LEN(team->roster); ++index) {
 		team->roster[index] = session->team_cache.roster[index];
