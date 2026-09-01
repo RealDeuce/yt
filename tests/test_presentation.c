@@ -16683,6 +16683,250 @@ test_planet_port_refusal_cycle_presentation(void)
 }
 
 static bool
+docking_earth_fixed(struct viewer_pager_join *join, const char *text,
+    float width)
+{
+	struct yt_present_result result;
+	uint8_t field[80];
+	size_t length = strlen(text);
+
+	if (length > sizeof(field))
+		return false;
+	memcpy(field, text, length);
+	if (yt_present_fixed_width(field, &length, sizeof(field), width,
+	    &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	return true;
+}
+
+static bool
+docking_earth_row(struct viewer_pager_join *join, const char *label,
+    const char *cost, const char *affordable)
+{
+	return docking_earth_fixed(join, label, 22.0f)
+	    && docking_earth_fixed(join, cost, 9.0f)
+	    && normal_exit_b05d(join, (const uint8_t *)affordable,
+	    strlen(affordable), 0.0f);
+}
+
+static bool
+docking_earth_leave_cycle_run(struct physical_viewer_join *viewer,
+    bool ansi, size_t ends[3])
+{
+	static const char *const label[9] = {
+		"[1] Cloak Energy", "[2] Cargo Holds", "[3] Fighters",
+		"[4] Play Lottery", "[5] Danger Scanner",
+		"[6] Anti-Cloak Device", "[7] Ground Forces",
+		"[8] Shield Power", "[9] Hire Spies (Each)"
+	};
+	static const char *const cost[9] = {
+		"* 1000 ", "* 250 ", "* 50 ", "* 5", "* 500000 ",
+		"* 1E+09 ", "* 200 ", "* 50 ", "* 1E+09 "
+	};
+	static const char *const affordable[9] = {
+		"* 12", "* 49", "* 246", "* 2469", "* 0", "* 0",
+		"* 61", "* 246", "* 0"
+	};
+	static const uint8_t port_label[] = "<Port>";
+	static const uint8_t docking[] = "Docking, ";
+	static const uint8_t turn[] = "One Turn Deducted, 59 left.";
+	static const uint8_t title[] =
+	    "Commerce report for Earth: 07-25-2026 12:34:56";
+	static const uint8_t separator[] =
+	    "----------------------*--------*------------";
+	static const uint8_t header[] =
+	    "         ITEM         *  COST  * CAN AFFORD";
+	static const uint8_t menu[] =
+	    "[I] Ship Info -=*=- [0] Leave Port";
+	static const uint8_t prompt[] =
+	    "Credits: 12345 -=*=- Buy Which Item? -=>";
+	static const uint8_t response[] = "0";
+	static const uint8_t sector[] = "Sector: 733";
+	static const uint8_t warps[] = "Warps lead to:";
+	static const uint8_t warp_one[] = " 2";
+	static const uint8_t warp_two[] = ", 9";
+	static const uint8_t main_prompt[] =
+	    "Time:10:00  Main Command (?=Help)? ";
+	struct viewer_pager_join *join = &viewer->join;
+	struct yt_present_result result;
+	size_t index;
+
+	if (ends == NULL)
+		return false;
+	join->presentation = state(ansi);
+	join->presentation.foreground = 6.0f;
+	join->pager.foreground = 6;
+	join->pager.line_count = 0.0f;
+	if (!normal_exit_b05d(join, port_label,
+	    sizeof(port_label) - 1U, 0.0f))
+		return false;
+	join->presentation.foreground = 3.0f;
+	join->pager.foreground = 3;
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
+	if (!normal_exit_b05d(join, docking, sizeof(docking) - 1U, 1.0f)
+	    || !normal_exit_b05d(join, turn, sizeof(turn) - 1U, 0.0f))
+		return false;
+	ends[0] = join->remote_length;
+
+	/* YT:6CB3 resets the shared pager before its independent Earth GET. */
+	join->pager.line_count = 0.0f;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, title, sizeof(title) - 1U, 0.0f)
+	    || !normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, separator,
+	    sizeof(separator) - 1U, 0.0f)
+	    || !normal_exit_b05d(join, header, sizeof(header) - 1U, 0.0f)
+	    || !normal_exit_b05d(join, separator,
+	    sizeof(separator) - 1U, 0.0f))
+		return false;
+	for (index = 0U; index < 9U; ++index) {
+		if (!docking_earth_row(join, label[index], cost[index],
+		    affordable[index]))
+			return false;
+	}
+	if (!normal_exit_b05d(join, separator, sizeof(separator) - 1U, 0.0f)
+	    || !normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, menu, sizeof(menu) - 1U, 0.0f)
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	if (!normal_exit_b05d(join, prompt, sizeof(prompt) - 1U, 1.0f))
+		return false;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	memcpy(join->accumulator, response, sizeof(response));
+	if (yt_present_editor_echo(response, sizeof(response) - 1U,
+	    response, sizeof(response) - 1U, &join->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
+	ends[1] = join->remote_length;
+
+	join->presentation.foreground = 1.0f;
+	join->pager.foreground = 1;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_line(join, sector, sizeof(sector) - 1U)
+	    || !sensor_join_present(join, &(const struct sensor_join_output){
+	    SENSOR_JOIN_RAW, (const char *)warps})
+	    || !sensor_join_present(join, &(const struct sensor_join_output){
+	    SENSOR_JOIN_RAW, (const char *)warp_one})
+	    || !sensor_join_present(join, &(const struct sensor_join_output){
+	    SENSOR_JOIN_RAW, (const char *)warp_two})
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	join->pager.line_count = 0.0f;
+	join->presentation.foreground = 2.0f;
+	join->pager.foreground = 2;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, main_prompt,
+	    sizeof(main_prompt) - 1U, 1.0f))
+		return false;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	ends[2] = join->remote_length;
+	return true;
+}
+
+static void
+test_docking_earth_leave_cycle_presentation(void)
+{
+	static const uint8_t plain[] =
+	    "<Port>\n\r\r\nDocking, One Turn Deducted, 59 left.\n\r"
+	    "\r\nCommerce report for Earth: 07-25-2026 12:34:56\n\r"
+	    "\r\n----------------------*--------*------------\n\r"
+	    "         ITEM         *  COST  * CAN AFFORD\n\r"
+	    "----------------------*--------*------------\n\r"
+	    "[1] Cloak Energy      * 1000   * 12\n\r"
+	    "[2] Cargo Holds       * 250    * 49\n\r"
+	    "[3] Fighters          * 50     * 246\n\r"
+	    "[4] Play Lottery      * 5      * 2469\n\r"
+	    "[5] Danger Scanner    * 500000 * 0\n\r"
+	    "[6] Anti-Cloak Device * 1E+09  * 0\n\r"
+	    "[7] Ground Forces     * 200    * 61\n\r"
+	    "[8] Shield Power      * 50     * 246\n\r"
+	    "[9] Hire Spies (Each) * 1E+09  * 0\n\r"
+	    "----------------------*--------*------------\n\r"
+	    "\r\n[I] Ship Info -=*=- [0] Leave Port\n\r"
+	    "\r\nCredits: 12345 -=*=- Buy Which Item? -=>0\r\n"
+	    "\r\nSector: 733\r\nWarps lead to: 2, 9\r\n"
+	    "\r\nTime:10:00  Main Command (?=Help)? ";
+	static const uint8_t ansi[] =
+	    "\x1b[0;36;40m<Port>\n\r\x1b[0;33;40m\r\n"
+	    "Docking, One Turn Deducted, 59 left.\n\r"
+	    "\r\nCommerce report for Earth: 07-25-2026 12:34:56\n\r"
+	    "\r\n----------------------*--------*------------\n\r"
+	    "         ITEM         *  COST  * CAN AFFORD\n\r"
+	    "----------------------*--------*------------\n\r"
+	    "[1] Cloak Energy      * 1000   * 12\n\r"
+	    "[2] Cargo Holds       * 250    * 49\n\r"
+	    "[3] Fighters          * 50     * 246\n\r"
+	    "[4] Play Lottery      * 5      * 2469\n\r"
+	    "[5] Danger Scanner    * 500000 * 0\n\r"
+	    "[6] Anti-Cloak Device * 1E+09  * 0\n\r"
+	    "[7] Ground Forces     * 200    * 61\n\r"
+	    "[8] Shield Power      * 50     * 246\n\r"
+	    "[9] Hire Spies (Each) * 1E+09  * 0\n\r"
+	    "----------------------*--------*------------\n\r"
+	    "\r\n[I] Ship Info -=*=- [0] Leave Port\n\r"
+	    "\r\nCredits: 12345 -=*=- Buy Which Item? -=>0\r\n"
+	    "\x1b[0;31;40m\r\nSector: 733\r\nWarps lead to: 2, 9\r\n"
+	    "\x1b[0;32;40m\r\nTime:10:00  Main Command (?=Help)? ";
+	static const struct {
+		bool ansi;
+		const uint8_t *expected;
+		size_t expected_length;
+		size_t ends[3];
+	} cases[] = {
+		{false, plain, sizeof(plain) - 1U, {48U, 700U, 773U}},
+		{true, ansi, sizeof(ansi) - 1U, {68U, 720U, 813U}},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	uint8_t remote[850];
+	size_t ends[3];
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
+		CHECK(docking_earth_leave_cycle_run(&viewer,
+		    cases[pass].ansi, ends));
+		CHECK(memcmp(ends, cases[pass].ends, sizeof(ends)) == 0);
+		CHECK(viewer.join.remote_length == cases[pass].expected_length);
+		CHECK(viewer.join.remote_length != cases[pass].expected_length
+		    || memcmp(remote, cases[pass].expected,
+		    cases[pass].expected_length) == 0);
+		CHECK(viewer.join.presentation.foreground == 2.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold == 0.0f
+		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.cached_foreground
+		    == (cases[pass].ansi ? 2.0f : 0.0f)
+		    && viewer.join.pager.foreground == 2
+		    && viewer.join.pager.line_count == 0.0f
+		    && viewer.join.pager.nonstop == 0.0f
+		    && viewer.join.local_fragment_length == 35U
+		    && memcmp(viewer.join.local_fragment,
+		    "Time:10:00  Main Command (?=Help)? ", 35U) == 0
+		    && viewer.join.accumulator[0] == '\0'
+		    && viewer.join.queue_length == 0U);
+		CHECK(viewer.join.sample_calls == 20U
+		    && stream.eof_checks == 0U && stream.key_checks == 0U
+		    && stream.read_count == 0U && stream.line_count == 0U
+		    && !stream.file_open && !viewer.join.file_open
+		    && viewer.input.file == NULL && viewer.close_calls == 0U
+		    && viewer.open_calls == 0U);
+		yt_text_input_destroy(&viewer.input);
+	}
+	CHECK(sizeof(plain) - 1U == 773U && sizeof(ansi) - 1U == 813U);
+}
+
+static bool
 computer_quit_accept_prefix(struct physical_viewer_join *viewer, bool ansi)
 {
 	static const uint8_t prompt[] =
@@ -20487,6 +20731,7 @@ main(void)
 	test_planet_movement_accepted_cycle_presentation();
 	test_planet_port_no_port_cycle_presentation();
 	test_planet_port_refusal_cycle_presentation();
+	test_docking_earth_leave_cycle_presentation();
 	test_computer_quit_accept_presentation();
 	test_planet_quit_accept_presentation();
 	test_hostile_quit_accept_presentation();
