@@ -9709,6 +9709,10 @@ test_computer_port_report_earth_failure_presentation(void)
 {
 	static const uint8_t earth_port_get[] =
 	    "\r\nEnter sector number port is in -=> 1\r\n";
+	static const uint8_t owner_player_get[] =
+	    "\r\nEnter sector number port is in -=> 1\r\n"
+	    "\x1b[0;33;40m\r\n"
+	    "Commerce report for Earth: 07-25-2026 12:34:56\n\r";
 	static const uint8_t current_player_get[] =
 	    "\r\nEnter sector number port is in -=> 1\r\n"
 	    "\x1b[0;33;40m\r\n"
@@ -9718,14 +9722,22 @@ test_computer_port_report_earth_failure_presentation(void)
 	    "Enter sector number port is in -=> ";
 	static const uint8_t title[] =
 	    "Commerce report for Earth: 07-25-2026 12:34:56";
+	enum earth_failure_stage {
+		EARTH_FAILURE_PORT_GET,
+		EARTH_FAILURE_OWNER_GET,
+		EARTH_FAILURE_CURRENT_GET,
+	};
 	static const struct {
-		bool current_player_failure;
+		enum earth_failure_stage stage;
 		const uint8_t *expected;
 		size_t expected_length;
 		float expected_line_count;
 	} cases[] = {
-		{false, earth_port_get, sizeof(earth_port_get) - 1U, 0.0f},
-		{true, current_player_get,
+		{EARTH_FAILURE_PORT_GET, earth_port_get,
+		    sizeof(earth_port_get) - 1U, 0.0f},
+		{EARTH_FAILURE_OWNER_GET, owner_player_get,
+		    sizeof(owner_player_get) - 1U, 1.0f},
+		{EARTH_FAILURE_CURRENT_GET, current_player_get,
 		    sizeof(current_player_get) - 1U, 1.0f},
 	};
 	struct yt_present_state current;
@@ -9757,7 +9769,7 @@ test_computer_port_report_earth_failure_presentation(void)
 		CHECK(yt_present_line(NULL, 0U, &current, &result)
 		    == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
-		if (cases[pass].current_player_failure) {
+		if (cases[pass].stage != EARTH_FAILURE_PORT_GET) {
 			pager.line_count = 0.0f;
 			current.foreground = 3.0f;
 			pager.foreground = 3;
@@ -9766,6 +9778,8 @@ test_computer_port_report_earth_failure_presentation(void)
 			pager_capture_result(&capture, &result);
 			pager_fixture_b05d(&pager, &current, title,
 			    sizeof(title) - 1U, &capture);
+		}
+		if (cases[pass].stage == EARTH_FAILURE_CURRENT_GET) {
 			CHECK(yt_present_line(NULL, 0U, &current, &result)
 			    == YT_PRESENT_OK);
 			pager_capture_result(&capture, &result);
@@ -9776,7 +9790,95 @@ test_computer_port_report_earth_failure_presentation(void)
 		    && pager.line_count == cases[pass].expected_line_count);
 	}
 	CHECK(sizeof(earth_port_get) - 1U == 40U
+	    && sizeof(owner_player_get) - 1U == 100U
 	    && sizeof(current_player_get) - 1U == 102U);
+}
+
+static void
+test_computer_port_report_ordinary_failure_presentation(void)
+{
+	static const uint8_t pre_report[] =
+	    "\r\nEnter sector number port is in -=> 2\r\n";
+	static const uint8_t after_owner[] =
+	    "\r\nEnter sector number port is in -=> 2\r\n"
+	    "\r\nThis port is owned by: YOU, Credits: 1234.5\r\n";
+	static const uint8_t prompt[] =
+	    "Enter sector number port is in -=> ";
+	static const uint8_t owner[] =
+	    "This port is owned by: YOU, Credits: 1234.5";
+	enum ordinary_failure_stage {
+		ORDINARY_FAILURE_UPDATE_SECTOR_GET,
+		ORDINARY_FAILURE_UPDATE_PORT_GET,
+		ORDINARY_FAILURE_UPDATE_ARITHMETIC,
+		ORDINARY_FAILURE_UPDATE_PORT_PUT,
+		ORDINARY_FAILURE_OWNER_GET,
+		ORDINARY_FAILURE_CURRENT_GET,
+		ORDINARY_FAILURE_FINAL_PORT_GET,
+	};
+	static const struct {
+		enum ordinary_failure_stage stage;
+		const uint8_t *expected;
+		size_t expected_length;
+	} cases[] = {
+		{ORDINARY_FAILURE_UPDATE_SECTOR_GET, pre_report,
+		    sizeof(pre_report) - 1U},
+		{ORDINARY_FAILURE_UPDATE_PORT_GET, pre_report,
+		    sizeof(pre_report) - 1U},
+		{ORDINARY_FAILURE_UPDATE_ARITHMETIC, pre_report,
+		    sizeof(pre_report) - 1U},
+		{ORDINARY_FAILURE_UPDATE_PORT_PUT, pre_report,
+		    sizeof(pre_report) - 1U},
+		{ORDINARY_FAILURE_OWNER_GET, pre_report,
+		    sizeof(pre_report) - 1U},
+		{ORDINARY_FAILURE_CURRENT_GET, after_owner,
+		    sizeof(after_owner) - 1U},
+		{ORDINARY_FAILURE_FINAL_PORT_GET, after_owner,
+		    sizeof(after_owner) - 1U},
+	};
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		struct yt_present_state current = state(false);
+		struct yt_present_result result;
+		struct yt_pager_state pager;
+		struct pager_capture capture;
+		char accumulator[80] = "";
+
+		current.foreground = 1.0f;
+		memset(&pager, 0, sizeof(pager));
+		pager.foreground = 1;
+		memset(&capture, 0, sizeof(capture));
+		CHECK(yt_present_line(NULL, 0U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager.newline_flag = 1.0f;
+		pager_fixture_b05d(&pager, &current, prompt,
+		    sizeof(prompt) - 1U, &capture);
+		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+		CHECK(yt_present_editor_echo((const uint8_t *)"2", 1U,
+		    (const uint8_t *)"2", 1U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_line(NULL, 0U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+
+		if (cases[pass].stage >= ORDINARY_FAILURE_CURRENT_GET) {
+			pager.line_count = 0.0f;
+			CHECK(yt_present_line(NULL, 0U, &current, &result)
+			    == YT_PRESENT_OK);
+			pager_capture_result(&capture, &result);
+			CHECK(yt_present_line(owner, sizeof(owner) - 1U,
+			    &current, &result) == YT_PRESENT_OK);
+			pager_capture_result(&capture, &result);
+		}
+		CHECK(capture.remote_length == cases[pass].expected_length
+		    && memcmp(capture.remote, cases[pass].expected,
+		    cases[pass].expected_length) == 0
+		    && pager.line_count == 0.0f);
+	}
+	CHECK(sizeof(pre_report) - 1U == 40U
+	    && sizeof(after_owner) - 1U == 87U);
 }
 
 static void
@@ -22230,6 +22332,7 @@ main(void)
 	test_computer_port_report_ab36_state_joins();
 	test_computer_port_report_earth_cycle_presentation();
 	test_computer_port_report_earth_failure_presentation();
+	test_computer_port_report_ordinary_failure_presentation();
 	test_computer_port_report_ordinary_cycle_presentation();
 	test_computer_port_report_low_time_cycle_presentation();
 	test_computer_port_report_low_time_retry_cycle_presentation();
