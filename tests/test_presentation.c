@@ -8874,6 +8874,7 @@ test_computer_front_presentation(void)
 
 static void
 computer_avoid_accepted_cycle_fixture(bool ansi, float mode,
+    float old_value, const char *sector_response,
     struct pager_capture *capture, struct yt_present_state *current,
     struct yt_pager_state *pager)
 {
@@ -8884,12 +8885,20 @@ computer_avoid_accepted_cycle_fixture(bool ansi, float mode,
 	    "Enter the number of the slot to change [1 - 30]: ";
 	static const uint8_t sector_prompt[] =
 	    "Enter the sector you wish to avoid [1 - 2004] (0 to clear): ";
-	static const uint8_t locked[] = "Sector 5 now locked out.";
 	static const uint8_t computer_prompt[] =
 	    "Time: 14:59  Computer command (?=help)? ";
 	struct yt_present_result result;
+	enum yt_computer_avoid_selection_route route;
 	char accumulator[80] = "";
+	float new_value;
+	bool available;
+	bool locked;
 	int row;
+
+	CHECK(yt_computer_avoid_select_sector(sector_response, 2004.0f,
+	    &new_value, &route, NULL));
+	CHECK(route == YT_COMPUTER_AVOID_SELECTION_ACCEPTED);
+	yt_computer_avoid_transition(old_value, new_value, &locked, &available);
 
 	computer_return_prompt_fixture(ansi, mode, capture, current, pager);
 	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
@@ -8916,7 +8925,11 @@ computer_avoid_accepted_cycle_fixture(bool ansi, float mode,
 		uint8_t mutable[256];
 		size_t length;
 
-		(void)snprintf(first, sizeof(first), "[ %2d ]  -=>  0", row);
+		if (row == 1 && old_value == 5.0f)
+			(void)snprintf(first, sizeof(first), "[  1 ]  -=>  5");
+		else
+			(void)snprintf(first, sizeof(first), "[ %2d ]  -=>  0",
+			    row);
 		(void)snprintf(middle, sizeof(middle), "[%3d ]  -=>  0",
 		    row + 10);
 		(void)snprintf(last, sizeof(last), "[%3d ]  -=>  0",
@@ -8953,18 +8966,41 @@ computer_avoid_accepted_cycle_fixture(bool ansi, float mode,
 	pager_fixture_b05d(pager, current, sector_prompt,
 	    sizeof(sector_prompt) - 1U, capture);
 	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
-	CHECK(yt_present_editor_echo((const uint8_t *)"5", 1U,
-	    (const uint8_t *)"5", 1U, current, &result) == YT_PRESENT_OK);
+	CHECK(yt_present_editor_echo((const uint8_t *)sector_response,
+	    strlen(sector_response), (const uint8_t *)sector_response,
+	    strlen(sector_response), current, &result) == YT_PRESENT_OK);
 	pager_capture_result(capture, &result);
 	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
 	pager_capture_result(capture, &result);
 
 	current->foreground = 2.0f;
 	pager->foreground = 2;
-	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
-	pager_capture_result(capture, &result);
-	pager_fixture_b05d(pager, current, locked, sizeof(locked) - 1U,
-	    capture);
+	if (locked) {
+		char number[64];
+		char status[128];
+
+		CHECK(qb_str_single(number, sizeof(number), new_value) >= 0);
+		(void)snprintf(status, sizeof(status),
+		    "Sector%s now locked out.", number);
+		CHECK(yt_present_line(NULL, 0U, current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+		pager_fixture_b05d(pager, current, (const uint8_t *)status,
+		    strlen(status), capture);
+	}
+	if (available) {
+		char number[64];
+		char status[128];
+
+		CHECK(qb_str_single(number, sizeof(number), old_value) >= 0);
+		(void)snprintf(status, sizeof(status),
+		    "Sector%s now available.", number);
+		CHECK(yt_present_line(NULL, 0U, current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+		pager_fixture_b05d(pager, current, (const uint8_t *)status,
+		    strlen(status), capture);
+	}
 	current->foreground = 1.0f;
 	pager->foreground = 1;
 	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
@@ -8977,6 +9013,20 @@ computer_avoid_accepted_cycle_fixture(bool ansi, float mode,
 static void
 test_computer_avoid_presentation(void)
 {
+	static const struct {
+		bool ansi;
+		const char *response;
+		size_t length;
+		uint64_t fnv;
+		float line_count;
+	} transition_cases[] = {
+		{false, "", 882U, UINT64_C(0x2688923ae495571a), 2.0f},
+		{true, "", 912U, UINT64_C(0x3d259754694cb848), 2.0f},
+		{false, "5", 884U, UINT64_C(0x5ae05d03730e91fc), 2.0f},
+		{true, "5", 914U, UINT64_C(0xf2d3c94cf5f44b3a), 2.0f},
+		{false, "7.5", 915U, UINT64_C(0x379b4eadc2c0e0ec), 3.0f},
+		{true, "7.5", 945U, UINT64_C(0xb3c872e5117bb494), 3.0f},
+	};
 	static const uint8_t heading_one[] =
 	    "You may set the autopilot to avoid up to 30 sectors";
 	static const uint8_t heading_two[] = "Current sectors to avoid are:";
@@ -9054,6 +9104,7 @@ test_computer_avoid_presentation(void)
 	struct pager_capture capture;
 	char accumulator[80] = "";
 	int row;
+	size_t transition;
 
 	current.foreground = 1.0f;
 	memset(&pager, 0, sizeof(pager));
@@ -9112,28 +9163,28 @@ test_computer_avoid_presentation(void)
 	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
 	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f);
 
-	computer_avoid_accepted_cycle_fixture(false, 0.0f, &capture, &current,
-	    &pager);
+	computer_avoid_accepted_cycle_fixture(false, 0.0f, 0.0f, "5",
+	    &capture, &current, &pager);
 	CHECK(sizeof(accepted_plain) - 1U == 884U);
 	CHECK(capture.remote_length == sizeof(accepted_plain) - 1U
 	    && memcmp(capture.remote, accepted_plain,
 	    sizeof(accepted_plain) - 1U) == 0);
 	CHECK(pager.line_count == 2.0f && pager.newline_flag == 0.0f);
-	computer_avoid_accepted_cycle_fixture(true, 0.0f, &capture, &current,
-	    &pager);
+	computer_avoid_accepted_cycle_fixture(true, 0.0f, 0.0f, "5",
+	    &capture, &current, &pager);
 	CHECK(sizeof(accepted_ansi) - 1U == 914U);
 	CHECK(capture.remote_length == sizeof(accepted_ansi) - 1U
 	    && memcmp(capture.remote, accepted_ansi,
 	    sizeof(accepted_ansi) - 1U) == 0);
 	CHECK(pager.line_count == 2.0f && pager.newline_flag == 0.0f);
-	computer_avoid_accepted_cycle_fixture(true, 1.0f, &capture, &current,
-	    &pager);
+	computer_avoid_accepted_cycle_fixture(true, 1.0f, 0.0f, "5",
+	    &capture, &current, &pager);
 	CHECK(capture.remote_length == 0U && pager.line_count == 2.0f
 	    && pager.newline_flag == 0.0f
 	    && capture.last_local_foreground == 7
 	    && capture.last_local_background == 0);
-	computer_avoid_accepted_cycle_fixture(true, 2.0f, &capture, &current,
-	    &pager);
+	computer_avoid_accepted_cycle_fixture(true, 2.0f, 0.0f, "5",
+	    &capture, &current, &pager);
 	CHECK(sizeof(accepted_mode_two) - 1U == 422U);
 	CHECK(capture.remote_length == sizeof(accepted_mode_two) - 1U
 	    && memcmp(capture.remote, accepted_mode_two,
@@ -9141,6 +9192,20 @@ test_computer_avoid_presentation(void)
 	CHECK(pager.line_count == 2.0f && pager.newline_flag == 0.0f
 	    && capture.last_local_foreground == 7
 	    && capture.last_local_background == 0);
+	for (transition = 0U; transition < YT_ARRAY_LEN(transition_cases);
+	    ++transition) {
+		computer_avoid_accepted_cycle_fixture(
+		    transition_cases[transition].ansi, 0.0f, 5.0f,
+		    transition_cases[transition].response, &capture, &current,
+		    &pager);
+		CHECK(capture.remote_length == transition_cases[transition].length
+		    && viewer_bytes_fnv1a64(capture.remote,
+		    capture.remote_length) == transition_cases[transition].fnv);
+		CHECK(pager.line_count == transition_cases[transition].line_count
+		    && pager.newline_flag == 0.0f
+		    && capture.last_local_foreground == 7
+		    && capture.last_local_background == 0);
+	}
 }
 
 static void
