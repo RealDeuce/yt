@@ -22519,6 +22519,144 @@ check_commodity_trade_transaction(void)
 		return false;
 
 	commodity_trade_fixture(&tape, &state);
+	tape.responses[0] = "NO";
+	if (!yt_commodity_trade_run(&state, &commodity_trade_test_ops, &tape,
+	    NULL) || state.route != YT_COMMODITY_TRADE_QUANTITY_CANCEL
+	    || state.quantity != 0.0f || tape.fragment_count != 3U
+	    || tape.dependency_calls != 1U)
+		return false;
+
+	commodity_trade_fixture(&tape, &state);
+	tape.responses[0] = "-.1";
+	if (!yt_commodity_trade_run(&state, &commodity_trade_test_ops, &tape,
+	    NULL) || state.route != YT_COMMODITY_TRADE_QUANTITY_CANCEL
+	    || state.quantity != -1.0f || tape.fragment_count != 3U
+	    || tape.dependency_calls != 1U)
+		return false;
+
+	commodity_trade_fixture(&tape, &state);
+	tape.responses[0] = "101";
+	if (!yt_commodity_trade_run(&state, &commodity_trade_test_ops, &tape,
+	    NULL) || state.route != YT_COMMODITY_TRADE_CAPACITY_REJECTED
+	    || tape.fragment_count != 4U
+	    || !commodity_trade_fragment_equal(&tape.fragments[3],
+	    YT_COMMODITY_TRADE_CAPACITY_ERROR,
+	    "We don't have that much!"))
+		return false;
+
+	commodity_trade_fixture(&tape, &state);
+	state.commodity = 1U;
+	tape.responses[0] = "81";
+	if (!yt_commodity_trade_run(&state, &commodity_trade_test_ops, &tape,
+	    NULL) || state.route != YT_COMMODITY_TRADE_CAPACITY_REJECTED
+	    || !commodity_trade_fragment_equal(&tape.fragments[3],
+	    YT_COMMODITY_TRADE_CAPACITY_ERROR,
+	    "We don't need that much!"))
+		return false;
+
+	commodity_trade_fixture(&tape, &state);
+	tape.player_reads[0].credits = 100.0f;
+	(void)yt_record_set_number(&tape.player_reads[0].record,
+	    YT_F81, 100.0f);
+	tape.responses[0] = "6";
+	if (!yt_commodity_trade_run(&state, &commodity_trade_test_ops, &tape,
+	    NULL) || state.maximum != 5.0f
+	    || state.route != YT_COMMODITY_TRADE_MAXIMUM_REJECTED
+	    || !commodity_trade_fragment_equal(&tape.fragments[3],
+	    YT_COMMODITY_TRADE_MAXIMUM_ERROR,
+	    "You can't afford that much!"))
+		return false;
+
+	commodity_trade_fixture(&tape, &state);
+	state.commodity = 1U;
+	tape.responses[0] = "21";
+	if (!yt_commodity_trade_run(&state, &commodity_trade_test_ops, &tape,
+	    NULL) || state.maximum != 20.0f
+	    || state.route != YT_COMMODITY_TRADE_MAXIMUM_REJECTED
+	    || !commodity_trade_fragment_equal(&tape.fragments[3],
+	    YT_COMMODITY_TRADE_MAXIMUM_ERROR,
+	    "You don't have that much!"))
+		return false;
+
+	/* Corrupt negative price raises maximum above free holds: retry. */
+	commodity_trade_fixture(&tape, &state);
+	tape.player_reads[0].credits = -100.0f;
+	(void)yt_record_set_number(&tape.player_reads[0].record,
+	    YT_F81, -100.0f);
+	state.market.price[0] = -1.0f;
+	tape.responses[0] = "66";
+	tape.responses[1] = "2";
+	tape.response_count = 2U;
+	if (!yt_commodity_trade_run(&state, &commodity_trade_test_ops, &tape,
+	    NULL) || state.maximum != 100.0f || state.quantity_attempts != 2U
+	    || state.quantity != 2.0f || tape.fragment_count != 9U
+	    || tape.fragments[3].kind != YT_COMMODITY_TRADE_FREE_HOLDS_ERROR
+	    || tape.fragments[4].kind != YT_COMMODITY_TRADE_FREE_HOLDS_BLANK
+	    || tape.fragments[4].length != 0U
+	    || tape.fragments[5].kind != YT_COMMODITY_TRADE_QUANTITY_PROMPT)
+		return false;
+
+	/* Blank selects buying-port maximum and no treasury mutation occurs. */
+	commodity_trade_fixture(&tape, &state);
+	state.commodity = 1U;
+	tape.responses[0] = "";
+	if (!yt_commodity_trade_run(&state, &commodity_trade_test_ops, &tape,
+	    NULL) || state.quantity != 20.0f || state.total != 600.0f
+	    || state.direction != -1.0f || state.credit_delta != 600.0f
+	    || state.treasury_port_read || state.treasury_port_written
+	    || tape.player_write_count != 2U || tape.port_write_count != 1U
+	    || tape.written_players[1].organics != 0.0f
+	    || tape.written_ports[0].stock[1] != 60.0f
+	    || !commodity_trade_fragment_equal(&tape.fragments[4],
+	    YT_COMMODITY_TRADE_OFFER,
+	    "We'll buy them for 600 credits.")
+	    || !commodity_trade_fragment_equal(&tape.fragments[5],
+	    YT_COMMODITY_TRADE_SUCCESS, "We'll take them!"))
+		return false;
+
+	/* Own-port receipt is INT(S(.01 * 100)) = 1. */
+	commodity_trade_fixture(&tape, &state);
+	state.market.port.owner = 2.0f;
+	(void)yt_record_set_number(&state.market.port.record, YT_F97, 2.0f);
+	tape.responses[0] = "5";
+	if (!yt_commodity_trade_run(&state, &commodity_trade_test_ops, &tape,
+	    NULL) || state.total != 100.0f
+	    || tape.written_ports[0].treasury != 1001.0f)
+		return false;
+
+	/* Unowned selling port skips treasury GET/PUT entirely. */
+	commodity_trade_fixture(&tape, &state);
+	state.market.port.owner = 0.0f;
+	(void)yt_record_set_number(&state.market.port.record, YT_F97, 0.0f);
+	if (!yt_commodity_trade_run(&state, &commodity_trade_test_ops, &tape,
+	    NULL) || state.treasury_port_read || state.treasury_port_written
+	    || tape.port_read_count != 1U || tape.port_write_count != 1U)
+		return false;
+
+	/* SGN zero still runs credit/hold/stock persistence with zero deltas. */
+	commodity_trade_fixture(&tape, &state);
+	state.market.port.factor[0] = 0.0f;
+	(void)yt_record_set_number(&state.market.port.record, YT_F73, 0.0f);
+	tape.responses[0] = "2";
+	if (!yt_commodity_trade_run(&state, &commodity_trade_test_ops, &tape,
+	    NULL) || state.port_sells || state.direction != 0.0f
+	    || state.credit_delta != 0.0f
+	    || tape.written_players[0].credits != 20000.0f
+	    || tape.written_players[1].ore != 40.0f
+	    || tape.written_ports[0].stock[0] != 98.0f)
+		return false;
+
+	commodity_trade_fixture(&tape, &state);
+	(void)qb_mbf64_encode(16777217.0,
+	    state.market.capacity_raw[0]);
+	state.market.capacity[0] = 16777217.0;
+	if (!yt_commodity_trade_run(&state, &commodity_trade_test_ops, &tape,
+	    NULL) || !commodity_trade_fragment_equal(&tape.fragments[1],
+	    YT_COMMODITY_TRADE_MARKET,
+	    "We are selling up to 16777217.  You have 10 in your holds."))
+		return false;
+
+	commodity_trade_fixture(&tape, &state);
 	tape.accepted = false;
 	return yt_commodity_trade_run(&state, &commodity_trade_test_ops, &tape,
 	    NULL) && state.route == YT_COMMODITY_TRADE_DECLINED_ROUTE
