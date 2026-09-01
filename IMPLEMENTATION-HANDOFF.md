@@ -1801,10 +1801,12 @@ not authoritative. Use the corrected goal above in the new workspace.
   every top-level callback cut. Alternate tapes pin accepted forced-Bribe
   surrender with zero combat draws, exposed spill into the fatal persistence
   route with no faction tail, and child failures after surrender, spill,
-  persistence and tail mutations. Each extracted child retains its raw-record
-  fixtures; one joined physical BRUN/WORLD/FIELD/runtime fixture, asynchronous
-  boundaries, scanner continuation and the clearance/Headquarters internals
-  remain open.
+  persistence and tail mutations. A second accepted-surrender tape invokes
+  the real surrender, patterned raw-record persistence and real tail children
+  under the composite, pins their 11/5/2-event partitions and verifies the
+  exact touched fields and route-specific news suppression. One joined
+  physical BRUN/WORLD/runtime fixture, asynchronous boundaries, scanner
+  continuation and the clearance/Headquarters internals remain open.
 - The hostile defenders-cleared tail now has the documented positive-loss
   rehydration/news ordering, ordinary-owner surrender dialogue and default
   acceptance, accepted transfer/sound/row/news sequence, refusal-to-same-
