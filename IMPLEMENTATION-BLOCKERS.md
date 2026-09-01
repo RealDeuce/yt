@@ -8,6 +8,32 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
+### DOC-GAP-012: command-8 dependency and asynchronous residuals
+
+Affected coverage:
+
+- ship-computer command-8 newspaper selector and viewer;
+- its active-computer entry/body/fresh-prompt cycle; and
+- completion claims for physical failures or final local screen state.
+
+The completed `docs/runtime/computer-newspaper-output.md`, joined file-cycle
+contract, and shared viewer/error contracts fully specify ordinary retries,
+first-poll editor terminals, selector/viewer carrier cuts, pagination,
+Ctrl-X, endpoint modes, missing-file recovery, the successful one-shot
+recovery-writer failure witness, and fresh-prompt return.  They explicitly
+leave persistent ERR 24/57 retry sequences, faults after a successful viewer
+open, physical partial recovery-append I/O, dependency-internal runtime-error
+suffixes, arbitrary asynchronous F8 and recursive pager activity,
+fresh-prompt helper-internal failure suffixes, the next fresh editor poll,
+and arbitrary inherited 80-by-25 framebuffer reduction outside the bounded
+composition.
+
+The native implementation may compose the supplied deterministic bodies and
+prefixes but must not infer the excluded physical/error continuations,
+asynchronous interleavings, or framebuffer result.  Upstream documentation
+must provide those bounded dependency outcomes before exact completion can
+be claimed.  No binary inspection or new reverse engineering was performed.
+
 ### DOC-GAP-011: command-4 asynchronous, failure, and framebuffer residuals
 
 Affected coverage:
