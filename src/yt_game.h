@@ -1548,11 +1548,11 @@ bool yt_xannor_attack_reward_rows(const uint8_t *name, size_t name_length,
 float yt_xannor_attack_bonus(double defenders_destroyed, float turns,
     float turns_per_day);
 bool yt_bribe_ordinary_forces(float owner, float defenders,
-    float ship_fighters, float draw);
-bool yt_bribe_mercenary_forces(float defenders, float ship_fighters,
+    double ship_fighters, float draw);
+bool yt_bribe_mercenary_forces(float defenders, double ship_fighters,
     float first, float second, bool sticky);
 double yt_bribe_offer_threshold(float defenders, float draw);
-bool yt_bribe_offer_accepted(float offer, float credits, double threshold);
+bool yt_bribe_offer_accepted(float offer, double credits, double threshold);
 enum yt_bribe_forced_admission yt_bribe_forced_admit(
     double ship_fighters, float shields, bool mercenary_fatal_gate,
     float commitment);
@@ -2497,6 +2497,93 @@ struct yt_hostile_bribe_accept_ops {
 bool yt_hostile_bribe_accept_run(
     struct yt_hostile_bribe_accept_state *state,
     const struct yt_hostile_bribe_accept_ops *ops, void *context,
+    struct yt_error *error);
+
+enum yt_hostile_bribe_route {
+	YT_HOSTILE_BRIBE_INCOMPLETE,
+	YT_HOSTILE_BRIBE_SCANNER,
+	YT_HOSTILE_BRIBE_HOSTILE_MENU,
+	YT_HOSTILE_BRIBE_COMBAT,
+	YT_HOSTILE_BRIBE_FATAL,
+};
+
+enum yt_hostile_bribe_branch {
+	YT_HOSTILE_BRIBE_BRANCH_INCOMPLETE,
+	YT_HOSTILE_BRIBE_ORDINARY_REFUSAL,
+	YT_HOSTILE_BRIBE_PLANET_REFUSAL,
+	YT_HOSTILE_BRIBE_LIFE_DEMAND,
+	YT_HOSTILE_BRIBE_EMPTY_OFFER,
+	YT_HOSTILE_BRIBE_ACCEPTED,
+	YT_HOSTILE_BRIBE_REJECTED,
+};
+
+enum yt_hostile_bribe_output_kind {
+	YT_HOSTILE_BRIBE_ORDINARY_REFUSAL_ROW,
+	YT_HOSTILE_BRIBE_PLANET_REFUSAL_ROW,
+	YT_HOSTILE_BRIBE_LIFE_DEMAND_ROW,
+	YT_HOSTILE_BRIBE_INTRODUCTION_ROW,
+	YT_HOSTILE_BRIBE_OFFER_PROMPT,
+	YT_HOSTILE_BRIBE_REJECTED_ROW,
+};
+
+struct yt_hostile_bribe_state {
+	int current_player_record;
+	int current_sector;
+	float owner;
+	float cached_defenders;
+	double ship_fighters;
+	float shields;
+	double credits;
+	uint8_t planet_link_raw[4];
+	bool mercenaries_hurt;
+	const uint8_t *real_first_name;
+	size_t real_first_name_length;
+	float draws[3];
+	size_t draws_consumed;
+	float offer;
+	uint8_t offer_raw[4];
+	bool offer_stored;
+	bool above_credits;
+	double threshold;
+	float commitment;
+	uint8_t commitment_raw[4];
+	bool commitment_stored;
+	bool forced_attack;
+	bool direct_hostile_menu;
+	bool accepted_called;
+	bool combat_called;
+	bool fatal_called;
+	struct yt_hostile_bribe_accept_state accepted;
+	enum yt_hostile_bribe_branch branch;
+	enum yt_hostile_bribe_route route;
+	bool complete;
+};
+
+typedef bool (*yt_hostile_bribe_present_fn)(void *context,
+    const uint8_t *text, size_t length,
+    enum yt_hostile_bribe_output_kind kind, struct yt_error *error);
+typedef bool (*yt_hostile_bribe_random_fn)(void *context, float *value,
+    struct yt_error *error);
+typedef bool (*yt_hostile_bribe_amount_fn)(void *context, char *response,
+    size_t capacity, struct yt_error *error);
+typedef bool (*yt_hostile_bribe_accept_fn)(void *context,
+    struct yt_hostile_bribe_accept_state *state, struct yt_error *error);
+typedef bool (*yt_hostile_bribe_combat_fn)(void *context,
+    double commitment, struct yt_error *error);
+typedef bool (*yt_hostile_bribe_fatal_fn)(void *context,
+    struct yt_error *error);
+
+struct yt_hostile_bribe_ops {
+	yt_hostile_bribe_present_fn present;
+	yt_hostile_bribe_random_fn random;
+	yt_hostile_bribe_amount_fn amount;
+	yt_hostile_bribe_accept_fn accept;
+	yt_hostile_bribe_combat_fn combat;
+	yt_hostile_bribe_fatal_fn fatal;
+};
+
+bool yt_hostile_bribe_run(struct yt_hostile_bribe_state *state,
+    const struct yt_hostile_bribe_ops *ops, void *context,
     struct yt_error *error);
 bool yt_direct_attack_team_row(const uint8_t *name, size_t name_length,
     uint8_t *row, size_t capacity, size_t *length);

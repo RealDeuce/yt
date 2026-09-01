@@ -17948,6 +17948,305 @@ check_hostile_bribe_accept_transaction(void)
 	    && !yt_hostile_bribe_accept_run(&state, NULL, &tape, NULL);
 }
 
+enum hostile_bribe_event {
+	HOSTILE_BRIBE_EVENT_RANDOM,
+	HOSTILE_BRIBE_EVENT_AMOUNT,
+	HOSTILE_BRIBE_EVENT_ACCEPT,
+	HOSTILE_BRIBE_EVENT_COMBAT,
+	HOSTILE_BRIBE_EVENT_FATAL,
+	HOSTILE_BRIBE_EVENT_ORDINARY,
+	HOSTILE_BRIBE_EVENT_PLANET,
+	HOSTILE_BRIBE_EVENT_LIFE,
+	HOSTILE_BRIBE_EVENT_INTRODUCTION,
+	HOSTILE_BRIBE_EVENT_PROMPT,
+	HOSTILE_BRIBE_EVENT_REJECTED,
+};
+
+struct hostile_bribe_tape {
+	float draws[3];
+	size_t draw_index;
+	const char *response;
+	enum hostile_bribe_event events[16];
+	size_t calls;
+	size_t fail_at;
+	uint8_t rows[6][512];
+	size_t row_lengths[6];
+	double combat_commitment;
+};
+
+static bool
+hostile_bribe_event(struct hostile_bribe_tape *tape,
+    enum hostile_bribe_event event, struct yt_error *error)
+{
+	size_t call = tape->calls++;
+
+	if (call < YT_ARRAY_LEN(tape->events))
+		tape->events[call] = event;
+	if (call != tape->fail_at)
+		return true;
+	if (error != NULL) {
+		error->status = YT_IO_ERROR;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    "hostile Bribe injected failure");
+	}
+	return false;
+}
+
+static bool
+hostile_bribe_present(void *context, const uint8_t *text, size_t length,
+    enum yt_hostile_bribe_output_kind kind, struct yt_error *error)
+{
+	static const enum hostile_bribe_event events[] = {
+		HOSTILE_BRIBE_EVENT_ORDINARY,
+		HOSTILE_BRIBE_EVENT_PLANET,
+		HOSTILE_BRIBE_EVENT_LIFE,
+		HOSTILE_BRIBE_EVENT_INTRODUCTION,
+		HOSTILE_BRIBE_EVENT_PROMPT,
+		HOSTILE_BRIBE_EVENT_REJECTED,
+	};
+	struct hostile_bribe_tape *tape = context;
+
+	if ((size_t)kind >= YT_ARRAY_LEN(events)
+	    || length > sizeof(tape->rows[0])
+	    || !hostile_bribe_event(tape, events[kind], error))
+		return false;
+	memcpy(tape->rows[kind], text, length);
+	tape->row_lengths[kind] = length;
+	return true;
+}
+
+static bool
+hostile_bribe_random(void *context, float *value, struct yt_error *error)
+{
+	struct hostile_bribe_tape *tape = context;
+
+	if (!hostile_bribe_event(tape, HOSTILE_BRIBE_EVENT_RANDOM, error)
+	    || tape->draw_index >= YT_ARRAY_LEN(tape->draws))
+		return false;
+	*value = tape->draws[tape->draw_index++];
+	return true;
+}
+
+static bool
+hostile_bribe_amount(void *context, char *response, size_t capacity,
+    struct yt_error *error)
+{
+	struct hostile_bribe_tape *tape = context;
+	size_t length = strlen(tape->response);
+
+	if (length + 1U > capacity || !hostile_bribe_event(tape,
+	    HOSTILE_BRIBE_EVENT_AMOUNT, error))
+		return false;
+	memcpy(response, tape->response, length + 1U);
+	return true;
+}
+
+static bool
+hostile_bribe_accept_child(void *context,
+    struct yt_hostile_bribe_accept_state *state, struct yt_error *error)
+{
+	if (!hostile_bribe_event(context, HOSTILE_BRIBE_EVENT_ACCEPT, error))
+		return false;
+	state->complete = true;
+	return true;
+}
+
+static bool
+hostile_bribe_combat_child(void *context, double commitment,
+    struct yt_error *error)
+{
+	struct hostile_bribe_tape *tape = context;
+
+	if (!hostile_bribe_event(tape, HOSTILE_BRIBE_EVENT_COMBAT, error))
+		return false;
+	tape->combat_commitment = commitment;
+	return true;
+}
+
+static bool
+hostile_bribe_fatal_child(void *context, struct yt_error *error)
+{
+	return hostile_bribe_event(context, HOSTILE_BRIBE_EVENT_FATAL, error);
+}
+
+static const struct yt_hostile_bribe_ops hostile_bribe_ops = {
+	hostile_bribe_present,
+	hostile_bribe_random,
+	hostile_bribe_amount,
+	hostile_bribe_accept_child,
+	hostile_bribe_combat_child,
+	hostile_bribe_fatal_child,
+};
+
+static void
+hostile_bribe_fixture(struct hostile_bribe_tape *tape,
+    struct yt_hostile_bribe_state *state)
+{
+	static const uint8_t name[] = {'A', 0, 'B'};
+
+	memset(tape, 0, sizeof(*tape));
+	tape->fail_at = (size_t)-1;
+	tape->draws[0] = 0.9f;
+	tape->draws[1] = 0.0f;
+	tape->draws[2] = 0.0f;
+	tape->response = "30";
+	*state = (struct yt_hostile_bribe_state){
+		.current_player_record = 2,
+		.current_sector = 733,
+		.owner = -2.0f,
+		.cached_defenders = 10.0f,
+		.ship_fighters = 20.0,
+		.shields = 5.0f,
+		.credits = 100.0,
+		.real_first_name = name,
+		.real_first_name_length = sizeof(name),
+	};
+}
+
+static bool
+check_hostile_bribe_transaction(void)
+{
+	static const enum hostile_bribe_event accepted_events[] = {
+		HOSTILE_BRIBE_EVENT_RANDOM,
+		HOSTILE_BRIBE_EVENT_RANDOM,
+		HOSTILE_BRIBE_EVENT_INTRODUCTION,
+		HOSTILE_BRIBE_EVENT_PROMPT,
+		HOSTILE_BRIBE_EVENT_AMOUNT,
+		HOSTILE_BRIBE_EVENT_RANDOM,
+		HOSTILE_BRIBE_EVENT_ACCEPT,
+	};
+	static const uint8_t introduction[] = {
+		'W','e',' ','M','A','Y',' ','j','o','i','n',' ','u','p',' ','i','f',
+		' ','y','o','u',' ','p','a','y',' ','u','s',' ','e','n','o','u','g',
+		'h',' ','A',0,'B','!'
+	};
+	static const uint8_t prompt[] =
+	    "You have 100 credits. How much do you offer? -+>";
+	struct hostile_bribe_tape tape;
+	struct yt_hostile_bribe_state state;
+	struct yt_error error;
+	size_t failure;
+
+	hostile_bribe_fixture(&tape, &state);
+	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
+	    || !state.complete || state.branch != YT_HOSTILE_BRIBE_ACCEPTED
+	    || state.route != YT_HOSTILE_BRIBE_SCANNER
+	    || state.draws_consumed != 3U || tape.draw_index != 3U
+	    || !state.offer_stored || state.offer != 30.0f
+	    || state.threshold != 10.0 || !state.accepted_called
+	    || state.forced_attack || state.commitment_stored
+	    || tape.calls != YT_ARRAY_LEN(accepted_events)
+	    || memcmp(tape.events, accepted_events, sizeof(accepted_events)) != 0
+	    || tape.row_lengths[YT_HOSTILE_BRIBE_INTRODUCTION_ROW]
+	    != sizeof(introduction)
+	    || memcmp(tape.rows[YT_HOSTILE_BRIBE_INTRODUCTION_ROW], introduction,
+	    sizeof(introduction)) != 0
+	    || tape.row_lengths[YT_HOSTILE_BRIBE_OFFER_PROMPT]
+	    != sizeof(prompt) - 1U
+	    || memcmp(tape.rows[YT_HOSTILE_BRIBE_OFFER_PROMPT], prompt,
+	    sizeof(prompt) - 1U) != 0)
+		return false;
+
+	for (failure = 0U; failure < YT_ARRAY_LEN(accepted_events); ++failure) {
+		hostile_bribe_fixture(&tape, &state);
+		tape.fail_at = failure;
+		yt_error_clear(&error);
+		if (yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape,
+		    &error) || error.status != YT_IO_ERROR || state.complete
+		    || tape.calls != failure + 1U
+		    || memcmp(tape.events, accepted_events,
+		    (failure + 1U) * sizeof(accepted_events[0])) != 0)
+			return false;
+	}
+
+	/* Ordinary quiet, Xannor force and raw planet truth partitions. */
+	hostile_bribe_fixture(&tape, &state);
+	state.owner = 3.0f;
+	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
+	    || state.route != YT_HOSTILE_BRIBE_SCANNER
+	    || state.draws_consumed != 1U || tape.calls != 2U)
+		return false;
+	hostile_bribe_fixture(&tape, &state);
+	state.owner = -1.0f;
+	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
+	    || state.route != YT_HOSTILE_BRIBE_COMBAT
+	    || !state.forced_attack || !state.commitment_stored
+	    || tape.combat_commitment != 20.0 || tape.calls != 3U)
+		return false;
+	hostile_bribe_fixture(&tape, &state);
+	state.planet_link_raw[0] = 0x12U;
+	state.planet_link_raw[1] = 0x34U;
+	state.planet_link_raw[2] = 0x56U;
+	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
+	    || state.branch != YT_HOSTILE_BRIBE_ACCEPTED)
+		return false;
+	hostile_bribe_fixture(&tape, &state);
+	state.planet_link_raw[3] = 0x80U;
+	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
+	    || state.branch != YT_HOSTILE_BRIBE_PLANET_REFUSAL
+	    || state.draws_consumed != 0U || tape.calls != 1U)
+		return false;
+
+	/* Life demand: combat, fatal and rounded sub-one menu return. */
+	hostile_bribe_fixture(&tape, &state);
+	tape.draws[0] = 0.01f;
+	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
+	    || state.branch != YT_HOSTILE_BRIBE_LIFE_DEMAND
+	    || state.route != YT_HOSTILE_BRIBE_COMBAT
+	    || state.draws_consumed != 2U || tape.calls != 4U)
+		return false;
+	hostile_bribe_fixture(&tape, &state);
+	tape.draws[0] = 0.01f;
+	state.ship_fighters = 0.0;
+	state.shields = 0.0f;
+	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
+	    || state.route != YT_HOSTILE_BRIBE_FATAL || !state.fatal_called)
+		return false;
+	hostile_bribe_fixture(&tape, &state);
+	tape.draws[0] = 0.01f;
+	state.ship_fighters = 0.4;
+	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
+	    || state.route != YT_HOSTILE_BRIBE_HOSTILE_MENU
+	    || !state.direct_hostile_menu || state.combat_called)
+		return false;
+
+	/* Empty and rejected offers preserve their distinct draw counts. */
+	hostile_bribe_fixture(&tape, &state);
+	tape.response = "";
+	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
+	    || state.branch != YT_HOSTILE_BRIBE_EMPTY_OFFER
+	    || state.draws_consumed != 2U || state.offer_stored)
+		return false;
+	hostile_bribe_fixture(&tape, &state);
+	tape.response = "5";
+	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
+	    || state.branch != YT_HOSTILE_BRIBE_REJECTED
+	    || state.route != YT_HOSTILE_BRIBE_COMBAT
+	    || state.draws_consumed != 3U || !state.commitment_stored)
+		return false;
+	hostile_bribe_fixture(&tape, &state);
+	tape.response = "101";
+	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
+	    || !state.above_credits || state.draws_consumed != 3U
+	    || state.branch != YT_HOSTILE_BRIBE_REJECTED)
+		return false;
+
+	/* Commitment conversion failure retains the selected forced branch. */
+	hostile_bribe_fixture(&tape, &state);
+	state.owner = -1.0f;
+	state.ship_fighters = HUGE_VAL;
+	yt_error_clear(&error);
+	if (yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, &error)
+	    || error.status != YT_RANGE || state.commitment_stored
+	    || !state.forced_attack
+	    || strcmp(error.operation, "bribe:commitment-csng") != 0)
+		return false;
+
+	hostile_bribe_fixture(&tape, &state);
+	return !yt_hostile_bribe_run(NULL, &hostile_bribe_ops, &tape, NULL)
+	    && !yt_hostile_bribe_run(&state, NULL, &tape, NULL);
+}
+
 struct direct_attack_attrition_tape {
 	float values[8];
 	size_t calls;
@@ -21841,6 +22140,8 @@ main(void)
 		return fail("hostile Attack composite transaction differs");
 	if (!check_hostile_bribe_accept_transaction())
 		return fail("hostile Bribe acceptance transaction differs");
+	if (!check_hostile_bribe_transaction())
+		return fail("hostile Bribe transaction differs");
 	if (!check_direct_attack_attrition_model())
 		return fail("direct Attack attrition model differs");
 	if (!check_fighter_shield_spill_transaction())

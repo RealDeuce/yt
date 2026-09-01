@@ -1816,14 +1816,18 @@ not authoritative. Use the corrected goal above in the new workspace.
   refused WORLD/FIELD/store/news/RNG fixtures and the scanner's complete
   provenance-aware ANSI/local presentation conversion remain open, so the
   joined cleared cycle remains a candidate rather than verified.
-- The hostile Bribe owner dispatch now represents the exact accepted and
-  quiet-return lanes. Ordinary refusal emits its attention row before its
+- The hostile Bribe decision/editor is now one provider-driven owner rather
+  than a session monolith. Ordinary refusal emits its attention row before its
   one strict force draw; Mercenary planet refusal consumes no draw; and a
   zero-link Mercenary consumes both precheck draws before testing the sticky
   cell. Empty editor output returns before `VAL` or the third draw. A
   nonempty offer uses `VAL` plus MBF32 `CSNG`, always consumes the threshold
   draw after the above-credits comparison, preserves the emitted DOUBLE
-  multiplication/addition association, and accepts equality. Success emits
+  multiplication/addition association, and accepts equality. Its canonical
+  accepted tape pins all seven top-level events and every callback cut;
+  alternates cover quiet ordinary, raw planet aliases, life-demand combat/
+  fatal/sub-one, empty/rejected/above-credit offers, and commitment overflow.
+  Success emits
   the exact row and selector-one sound through the provider-driven
   `yt_hostile_bribe_accept_run()` transaction, persists sector owner/fighters
   first, hydrates the player afresh, then persists fighter/credit changes
@@ -1833,9 +1837,8 @@ not authoritative. Use the corrected goal above in the new workspace.
   adapter deliberately retains all four stale process caches. Native
   presentation fixtures pin the exact 132/188, 35/49, 94/94, and 34/48-byte
   plain/ANSI action bodies and the strict predicate boundaries. The
-  decision/editor's injected RNG/WORLD/cache carrier, corrupt sticky/
-  conversion paths, physical partials, and forced/sub-one/fatal Bribe
-  continuations remain open.
+  Raw CINT sticky/corrupt process state, physical partials and the complete
+  scanner ANSI/local endpoints remain open.
 - Forced Bribe now preserves the distinct post-output commitment and fatal
   seams. The Mercenary life-demand and rejected-offer rows are exact; both
   then store `CSNG(cached ship fighters)` before testing original ship
@@ -1847,8 +1850,8 @@ not authoritative. Use the corrected goal above in the new workspace.
   Mercenary-versus-ordinary fatal distinction and near-one DOUBLE/SINGLE
   split; presentation pins the 41/55-byte life and 134/148-byte rejection
   bodies. Complete injected raw process/FIELD/RNG/two-A41C joins and a full
-  native death/news/normal-exit transcript remain open, as does the forced
-  commitment-at-least-one combat continuation.
+  native death/news/normal-exit transcript remain open. Commitment-at-least-
+  one now delegates directly to the shared hostile-combat transaction.
 - The shared sector-mine body now independently hydrates the player, repairs
   a negative durable mine field without changing the cached negative value,
   applies the exact no-mine and cached-sector Union gates, and uses the

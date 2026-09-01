@@ -5880,42 +5880,6 @@ attack_deployed(struct yt_session *session, struct yt_sector *sector,
 }
 
 static bool
-bribe_forced_attack(struct yt_session *session, struct yt_sector *sector,
-    bool mercenary_fatal_gate, bool *direct_hostile_menu,
-    struct yt_error *error)
-{
-	enum qb_mbf_status conversion;
-	enum yt_bribe_forced_admission admission;
-	double cached_ship_fighters = (double)session->player.fighters;
-
-	*direct_hostile_menu = false;
-	session->attack_commitment = (float)cached_ship_fighters;
-	conversion = qb_mbf32_encode(session->attack_commitment,
-	    session->attack_commitment_raw);
-	if (conversion == QB_MBF_OVERFLOW) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			(void)snprintf(error->operation, sizeof(error->operation),
-			    "%s", "bribe:commitment-csng");
-		}
-		return false;
-	}
-	session->attack_commitment = qb_mbf32_decode(
-	    session->attack_commitment_raw);
-	admission = yt_bribe_forced_admit(cached_ship_fighters,
-	    session->player.shields, mercenary_fatal_gate,
-	    session->attack_commitment);
-	if (admission == YT_BRIBE_FORCED_FATAL)
-		return common_fatal_self(session, error);
-	if (admission == YT_BRIBE_FORCED_LESS_THAN_ONE) {
-		*direct_hostile_menu = true;
-		return true;
-	}
-	return attack_deployed_committed(session, sector,
-	    (double)session->attack_commitment, true, error);
-}
-
-static bool
 hostile_bribe_accept_present(void *context, const uint8_t *text,
     size_t length, struct yt_error *error)
 {
@@ -5974,148 +5938,139 @@ hostile_bribe_accept_write_player(void *context, int player_record,
 	    (size_t)player_record, &player->record, error);
 }
 
+struct hostile_bribe_context {
+	struct yt_session *session;
+	struct yt_sector *sector;
+};
+
+static bool
+hostile_bribe_present(void *context, const uint8_t *text, size_t length,
+    enum yt_hostile_bribe_output_kind kind, struct yt_error *error)
+{
+	struct hostile_bribe_context *bribe = context;
+
+	switch (kind) {
+	case YT_HOSTILE_BRIBE_ORDINARY_REFUSAL_ROW:
+		return session_02db(bribe->session, text, length,
+		    "ordinary Bribe refusal", error);
+	case YT_HOSTILE_BRIBE_PLANET_REFUSAL_ROW:
+		return session_02db(bribe->session, text, length,
+		    "Mercenary planet refusal", error);
+	case YT_HOSTILE_BRIBE_LIFE_DEMAND_ROW:
+		return session_02db(bribe->session, text, length,
+		    "Mercenary life demand", error);
+	case YT_HOSTILE_BRIBE_INTRODUCTION_ROW:
+		return session_0317(bribe->session, text, length,
+		    "Mercenary Bribe introduction", error);
+	case YT_HOSTILE_BRIBE_OFFER_PROMPT:
+		return session_031f(bribe->session, text, length,
+		    "Mercenary Bribe offer prompt", error);
+	case YT_HOSTILE_BRIBE_REJECTED_ROW:
+		return session_02db(bribe->session, text, length,
+		    "Mercenary rejected offer", error);
+	default:
+		return false;
+	}
+}
+
+static bool
+hostile_bribe_random(void *context, float *value, struct yt_error *error)
+{
+	struct hostile_bribe_context *bribe = context;
+
+	return random_value(bribe->session, value, error);
+}
+
+static bool
+hostile_bribe_amount(void *context, char *response, size_t capacity,
+    struct yt_error *error)
+{
+	struct hostile_bribe_context *bribe = context;
+
+	(void)error;
+	return session_036f(bribe->session, response, capacity);
+}
+
+static bool
+hostile_bribe_accept(void *context,
+    struct yt_hostile_bribe_accept_state *state, struct yt_error *error)
+{
+	static const struct yt_hostile_bribe_accept_ops ops = {
+		hostile_bribe_accept_present,
+		hostile_bribe_accept_sound,
+		hostile_bribe_accept_read_sector,
+		hostile_bribe_accept_write_sector,
+		hostile_bribe_accept_read_player,
+		hostile_bribe_accept_write_player,
+	};
+	struct hostile_bribe_context *bribe = context;
+
+	return yt_hostile_bribe_accept_run(state, &ops, bribe->session, error);
+}
+
+static bool
+hostile_bribe_combat(void *context, double commitment,
+    struct yt_error *error)
+{
+	struct hostile_bribe_context *bribe = context;
+
+	return attack_deployed_committed(bribe->session, bribe->sector,
+	    commitment, true, error);
+}
+
+static bool
+hostile_bribe_fatal(void *context, struct yt_error *error)
+{
+	struct hostile_bribe_context *bribe = context;
+
+	return common_fatal_self(bribe->session, error);
+}
+
 static bool
 bribe_deployed(struct yt_session *session, struct yt_sector *sector,
     bool *direct_hostile_menu, bool *forced_attack,
     struct yt_error *error)
 {
-	float owner = sector->fighter_owner;
-	float first;
-	float second;
-	bool force_attack;
-	char row[256];
+	static const struct yt_hostile_bribe_ops ops = {
+		hostile_bribe_present,
+		hostile_bribe_random,
+		hostile_bribe_amount,
+		hostile_bribe_accept,
+		hostile_bribe_combat,
+		hostile_bribe_fatal,
+	};
+	struct hostile_bribe_context context;
+	struct yt_hostile_bribe_state state;
+	bool result;
 
 	if (direct_hostile_menu == NULL || forced_attack == NULL)
 		return false;
-	*direct_hostile_menu = false;
-	*forced_attack = false;
-
-	if (owner != -2.0f) {
-		(void)snprintf(row, sizeof(row),
-		    "We don't accept no Bribes %s!",
-		    session->door->identity.real_first);
-		if (!session_02db(session, (const uint8_t *)row, strlen(row),
-		    "ordinary Bribe refusal", error))
-			return false;
-		if (!random_value(session, &first, error))
-			return false;
-		force_attack = yt_bribe_ordinary_forces(owner, sector->fighters,
-		    session->player.fighters, first);
-		if (!force_attack)
-			return true;
-		*forced_attack = true;
-		return bribe_forced_attack(session, sector, false,
-		    direct_hostile_menu, error);
+	context = (struct hostile_bribe_context){session, sector};
+	state = (struct yt_hostile_bribe_state){
+		.current_player_record = session->player_record,
+		.current_sector = (int)session->player.sector,
+		.owner = sector->fighter_owner,
+		.cached_defenders = sector->fighters,
+		.ship_fighters = (double)session->player.fighters,
+		.shields = session->player.shields,
+		.credits = (double)session->player.credits,
+		.mercenaries_hurt = session->mercenaries_hurt,
+		.real_first_name =
+		    (const uint8_t *)session->door->identity.real_first,
+		.real_first_name_length =
+		    strlen(session->door->identity.real_first),
+	};
+	memcpy(state.planet_link_raw, sector->record.bytes + YT_F93,
+	    sizeof(state.planet_link_raw));
+	result = yt_hostile_bribe_run(&state, &ops, &context, error);
+	if (state.commitment_stored) {
+		session->attack_commitment = state.commitment;
+		memcpy(session->attack_commitment_raw, state.commitment_raw,
+		    sizeof(session->attack_commitment_raw));
 	}
-	if (qb_mbf32_truth(sector->record.bytes + YT_F93)) {
-		(void)snprintf(row, sizeof(row),
-		    "Scram %s, This planet is OURS!",
-		    session->door->identity.real_first);
-		return session_02db(session, (const uint8_t *)row, strlen(row),
-		    "Mercenary planet refusal", error);
-	}
-	if (!random_value(session, &first, error)
-	    || !random_value(session, &second, error))
-		return false;
-	force_attack = yt_bribe_mercenary_forces(sector->fighters,
-	    session->player.fighters, first, second, session->mercenaries_hurt);
-	if (force_attack) {
-		(void)snprintf(row, sizeof(row),
-		    "We just want your miserable life %s!",
-		    session->door->identity.real_first);
-		if (!session_02db(session, (const uint8_t *)row, strlen(row),
-		    "Mercenary life demand", error))
-			return false;
-		*forced_attack = true;
-		return bribe_forced_attack(session, sector, true,
-		    direct_hostile_menu, error);
-	}
-	{
-		static const uint8_t introduction_prefix[] =
-		    "We MAY join up if you pay us enough ";
-		char introduction[256];
-		char prompt[256];
-		char credits[64];
-		char response[160];
-		struct qb_val_result parsed;
-		enum qb_mbf_status conversion;
-		float offer;
-		double threshold;
-		bool above_credits;
-
-		(void)snprintf(introduction, sizeof(introduction), "%s%s!",
-		    introduction_prefix, session->door->identity.real_first);
-		if (qb_str_double(credits, sizeof(credits),
-		    (double)session->player.credits) < 0
-		    || snprintf(prompt, sizeof(prompt),
-		    "You have%s credits. How much do you offer? -+>", credits) < 0
-		    || !session_0317(session, (const uint8_t *)introduction,
-		    strlen(introduction), "Mercenary Bribe introduction", error)
-		    || !session_031f(session, (const uint8_t *)prompt, strlen(prompt),
-		    "Mercenary Bribe offer prompt", error)
-		    || !session_036f(session, response, sizeof(response)))
-			return false;
-		if (response[0] == '\0')
-			return true;
-		parsed = qb_val(response);
-		if (!parsed.valid || parsed.overflow) {
-			if (error != NULL) {
-				error->status = YT_RANGE;
-				(void)snprintf(error->operation,
-				    sizeof(error->operation), "%s", "bribe:VAL");
-			}
-			return false;
-		}
-		offer = (float)parsed.value;
-		{
-			uint8_t raw_offer[4];
-
-			conversion = qb_mbf32_encode(offer, raw_offer);
-			if (conversion == QB_MBF_OVERFLOW) {
-				if (error != NULL) {
-					error->status = YT_RANGE;
-					(void)snprintf(error->operation,
-					    sizeof(error->operation), "%s",
-					    "bribe:offer-csng");
-				}
-				return false;
-			}
-			offer = qb_mbf32_decode(raw_offer);
-		}
-		above_credits = (double)offer > (double)session->player.credits;
-		if (!random_value(session, &first, error))
-			return false;
-		threshold = yt_bribe_offer_threshold(sector->fighters, first);
-		if (!above_credits
-		    && yt_bribe_offer_accepted(offer, session->player.credits,
-		    threshold)) {
-			static const struct yt_hostile_bribe_accept_ops ops = {
-				hostile_bribe_accept_present,
-				hostile_bribe_accept_sound,
-				hostile_bribe_accept_read_sector,
-				hostile_bribe_accept_write_sector,
-				hostile_bribe_accept_read_player,
-				hostile_bribe_accept_write_player,
-			};
-			struct yt_hostile_bribe_accept_state state = {
-				.current_player_record = session->player_record,
-				.current_sector = (int)session->player.sector,
-				.cached_defenders = sector->fighters,
-				.offer = offer,
-			};
-
-			return yt_hostile_bribe_accept_run(&state, &ops, session,
-			    error);
-		}
-	}
-	(void)snprintf(row, sizeof(row), "You insult us %s! Prepare to DIE!",
-	    session->door->identity.real_first);
-	if (!session_02db(session, (const uint8_t *)row, strlen(row),
-	    "Mercenary rejected offer", error))
-		return false;
-	*forced_attack = true;
-	return bribe_forced_attack(session, sector, true,
-	    direct_hostile_menu, error);
+	*direct_hostile_menu = state.direct_hostile_menu;
+	*forced_attack = state.forced_attack;
+	return result;
 }
 
 static bool
