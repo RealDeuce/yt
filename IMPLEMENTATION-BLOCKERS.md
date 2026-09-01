@@ -8,7 +8,28 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
-None.
+### DOC-GAP-005: command-2 surviving AB36 editor interleavings
+
+Affected coverage:
+
+- ship-computer command-2/alias-23 first selector and retry selectors;
+- the command-2 return into the fresh `YT:8639` computer prompt; and
+- completion claims for all reachable command-2 input/runtime paths.
+
+`docs/runtime/computer-port-report-output.md` explicitly leaves these outside
+its bounded composition:
+
+- surviving per-poll AB36 time refresh;
+- local/serial typeahead and queue interleavings; and
+- F8 SysOp-time interleavings while the editor remains active.
+
+The shared AB36 components do not by themselves specify which complete
+command-2 caller states, poll sequences, queue residues, visible prefixes,
+and return/terminal outcomes are reachable at the initial selector, an
+invalid-sector retry, and the following fresh computer prompt. The upstream
+documentation needs to provide those caller-composed state/effect vectors
+before the remaining native command-2 editor paths can be implemented or
+claimed. No binary inspection or new reverse engineering was performed.
 
 ## Resolved documentation gaps
 
