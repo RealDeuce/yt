@@ -575,6 +575,47 @@ struct yt_computer_prompt_ops {
 	    size_t *length, bool *available, struct yt_error *error);
 };
 
+#define YT_COMPUTER_SCOREBOARD_RESPONSE_SIZE 80U
+
+enum yt_computer_scoreboard_output_kind {
+	YT_COMPUTER_SCOREBOARD_LEADING_BLANK,
+	YT_COMPUTER_SCOREBOARD_SELECTOR_PROMPT,
+	YT_COMPUTER_SCOREBOARD_TRAILING_BLANK,
+	YT_COMPUTER_SCOREBOARD_UPDATED_HEADING,
+	YT_COMPUTER_SCOREBOARD_POST_GENERATOR_BLANK,
+};
+
+struct yt_computer_scoreboard_state {
+	const char *pathname;
+	uint8_t raw_response[YT_COMPUTER_SCOREBOARD_RESPONSE_SIZE];
+	uint8_t response[YT_COMPUTER_SCOREBOARD_RESPONSE_SIZE];
+	uint8_t pager_line_count_raw[4];
+	size_t raw_response_length;
+	size_t response_length;
+	bool pager_key_cleared;
+	bool selector_presented;
+	bool input_available;
+	bool pager_reset;
+	bool updated;
+	bool generator_called;
+	bool generator_complete;
+	bool viewer_called;
+	bool complete;
+};
+
+struct yt_computer_scoreboard_ops {
+	void (*clear_pager_key)(void *context);
+	bool (*present)(void *context, const uint8_t *text, size_t length,
+	    enum yt_computer_scoreboard_output_kind kind,
+	    struct yt_error *error);
+	bool (*edit)(void *context, char *response, size_t capacity,
+	    size_t *length, bool *available, struct yt_error *error);
+	void (*reset_pager)(void *context, const uint8_t raw[4]);
+	bool (*generate)(void *context, struct yt_error *error);
+	bool (*view)(void *context, const char *pathname,
+	    struct yt_error *error);
+};
+
 enum yt_hostile_attack_admission {
 	YT_HOSTILE_ATTACK_NO_FIGHTERS,
 	YT_HOSTILE_ATTACK_TOO_MANY,
@@ -1657,6 +1698,9 @@ bool yt_main_prompt_run(struct yt_main_prompt_state *state,
 	struct yt_error *error);
 bool yt_computer_prompt_run(struct yt_computer_prompt_state *state,
 	const struct yt_computer_prompt_ops *ops, void *context,
+	struct yt_error *error);
+bool yt_computer_scoreboard_run(struct yt_computer_scoreboard_state *state,
+	const struct yt_computer_scoreboard_ops *ops, void *context,
 	struct yt_error *error);
 enum yt_hostile_attack_admission yt_hostile_attack_admit(
     float ship_fighters, float commitment);

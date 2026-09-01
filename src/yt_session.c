@@ -153,6 +153,8 @@ static bool build_route(struct yt_session *session, float start,
 static bool session_carrier(struct yt_session *session);
 static bool session_b05d(struct yt_session *session, const uint8_t *text,
     size_t length);
+static bool session_store_output_source(struct yt_session *session,
+    const uint8_t *text, size_t length);
 static bool session_0317(struct yt_session *session, const uint8_t *text,
     size_t length, const char *operation, struct yt_error *error);
 static bool computer_port_friendship(struct yt_session *session, float owner,
@@ -747,7 +749,9 @@ session_line(struct yt_session *session, char *text, size_t size)
 static bool
 session_0345(struct yt_session *session, char *text, size_t size)
 {
-	return session_line(session, text, size);
+	return session_line(session, text, size)
+	    && session_store_output_source(session, (const uint8_t *)text,
+	    strlen(text));
 }
 
 static bool
@@ -756,7 +760,8 @@ session_0357(struct yt_session *session, char *text, size_t size)
 	if (!session_0345(session, text, size))
 		return false;
 	qb_compat_upper(text);
-	return true;
+	return session_store_output_source(session, (const uint8_t *)text,
+	    strlen(text));
 }
 
 static bool
@@ -765,7 +770,8 @@ session_036f(struct yt_session *session, char *text, size_t size)
 	if (!session_0345(session, text, size))
 		return false;
 	yt_input_numeric_response(text);
-	return true;
+	return session_store_output_source(session, (const uint8_t *)text,
+	    strlen(text));
 }
 
 static bool
@@ -836,6 +842,19 @@ session_paged_response(void *context, char *response, size_t capacity)
 }
 
 static bool
+session_store_output_source(struct yt_session *session,
+    const uint8_t *text, size_t length)
+{
+	if ((text == NULL && length != 0U)
+	    || length >= sizeof(session->output_source))
+		return false;
+	if (length != 0U)
+		memmove(session->output_source, text, length);
+	session->output_source[length] = '\0';
+	return true;
+}
+
+static bool
 session_b05d(struct yt_session *session, const uint8_t *text, size_t length)
 {
 	static const struct yt_paged_row_ops ops = {
@@ -856,6 +875,8 @@ session_b05d(struct yt_session *session, const uint8_t *text, size_t length)
 		.pager_key_capacity = sizeof(session->pager.key),
 	};
 
+	if (!session_store_output_source(session, text, length))
+		return false;
 	return yt_paged_row_run(&session->pager, &session->presentation,
 	    &key_state, text, length, &ops, session);
 }
@@ -16980,37 +17001,92 @@ computer_scoreboard_progress(void *context, unsigned phase,
 	    SESSION_PRESENT_RAW, "scoreboard progress dot", error);
 }
 
+static void
+computer_scoreboard_clear_pager(void *context)
+{
+	struct yt_session *session = context;
+
+	session->pager.key[0] = '\0';
+}
+
+static bool
+computer_scoreboard_present(void *context, const uint8_t *text,
+    size_t length, enum yt_computer_scoreboard_output_kind kind,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	if (kind == YT_COMPUTER_SCOREBOARD_SELECTOR_PROMPT)
+		return session_031f(session, text, length,
+		    "scoreboard selector prompt", error);
+	if (kind == YT_COMPUTER_SCOREBOARD_UPDATED_HEADING)
+		return session_031f(session, text, length,
+		    "scoreboard update heading", error);
+	return session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    kind == YT_COMPUTER_SCOREBOARD_LEADING_BLANK
+	    ? "scoreboard selector leading blank"
+	    : kind == YT_COMPUTER_SCOREBOARD_TRAILING_BLANK
+	    ? "scoreboard selector trailing blank"
+	    : "scoreboard post-generator blank", error);
+}
+
+static bool
+computer_scoreboard_edit(void *context, char *response, size_t capacity,
+    size_t *length, bool *available, struct yt_error *error)
+{
+	(void)error;
+	if (length == NULL || available == NULL)
+		return false;
+	*available = session_0345(context, response, capacity);
+	*length = *available ? strlen(response) : 0U;
+	if (*available) {
+		struct yt_session *session = context;
+
+		qb_compat_upper_n((uint8_t *)session->output_source, *length);
+	}
+	return true;
+}
+
+static void
+computer_scoreboard_reset_pager(void *context, const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	session->pager.line_count = qb_mbf32_decode(raw);
+}
+
+static bool
+computer_scoreboard_generate(void *context, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_score_generate_progress(&session->door->game,
+	    computer_scoreboard_progress, session, error);
+}
+
+static bool
+computer_scoreboard_view(void *context, const char *pathname,
+    struct yt_error *error)
+{
+	return display_game_file(context, pathname, error);
+}
+
 static bool
 computer_scoreboard(struct yt_session *session, struct yt_error *error)
 {
-	static const uint8_t prompt[] =
-	    "Enter 'O' to see OLD scoreboard or press [ENTER] for UPDATED one. -=>";
-	static const uint8_t heading[] = "P l a y e r  R a n k i n g s";
-	char response[80];
+	static const struct yt_computer_scoreboard_ops ops = {
+		computer_scoreboard_clear_pager,
+		computer_scoreboard_present,
+		computer_scoreboard_edit,
+		computer_scoreboard_reset_pager,
+		computer_scoreboard_generate,
+		computer_scoreboard_view,
+	};
+	struct yt_computer_scoreboard_state state = {
+		.pathname = session->door->game.config.scoreboard,
+	};
 
-	session->pager.key[0] = '\0';
-	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "scoreboard selector leading blank", error)
-	    || !session_031f(session, prompt, sizeof(prompt) - 1U,
-	    "scoreboard selector prompt", error)
-	    || !session_0357(session, response, sizeof(response)))
-		return false;
-	session->pager.line_count = 0.0f;
-	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "scoreboard selector trailing blank", error))
-		return false;
-	if (strcmp(response, "O") != 0) {
-		if (!session_031f(session, heading, sizeof(heading) - 1U,
-		    "scoreboard update heading", error)
-		    || !yt_score_generate_progress(&session->door->game,
-		    computer_scoreboard_progress, session, error)
-		    || !session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "scoreboard post-generator blank",
-		    error))
-			return false;
-	}
-	return display_game_file(session,
-	    session->door->game.config.scoreboard, error);
+	return yt_computer_scoreboard_run(&state, &ops, session, error);
 }
 
 static bool
