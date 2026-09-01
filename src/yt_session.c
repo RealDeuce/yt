@@ -5491,6 +5491,86 @@ hostile_attack_persistence_fatal(void *context, struct yt_error *error)
 	return common_fatal_self(context, error);
 }
 
+struct hostile_attack_tail_context {
+	struct yt_session *session;
+	const char *cached_player_name;
+};
+
+static bool
+hostile_attack_tail_read_player(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct hostile_attack_tail_context *tail = context;
+
+	if (!direct_attack_combat_read(tail->session, player_record, player,
+	    error))
+		return false;
+	(void)snprintf(tail->session->player.name,
+	    sizeof(tail->session->player.name), "%s", tail->cached_player_name);
+	(void)snprintf(player->name, sizeof(player->name), "%s",
+	    tail->cached_player_name);
+	return true;
+}
+
+static bool
+hostile_attack_tail_write_player(void *context, int player_record,
+    const struct yt_player *player, struct yt_error *error)
+{
+	struct hostile_attack_tail_context *tail = context;
+
+	return direct_attack_combat_write(tail->session, player_record, player,
+	    error);
+}
+
+static bool
+hostile_attack_tail_present(void *context, const uint8_t *text, size_t length,
+    enum yt_hostile_attack_tail_output_kind kind, struct yt_error *error)
+{
+	struct hostile_attack_tail_context *tail = context;
+	struct yt_session *session = tail->session;
+
+	if (kind == YT_HOSTILE_ATTACK_TAIL_REWARD_ROW)
+		session->presentation.bold = 1.0f;
+	else if (kind != YT_HOSTILE_ATTACK_TAIL_DEFEATED_ROW)
+		return false;
+	(void)error;
+	return session_02fc(session, text, length);
+}
+
+static bool
+hostile_attack_tail_news(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	struct hostile_attack_tail_context *tail = context;
+
+	return append_news_bytes(tail->session, text, length, error);
+}
+
+static bool
+hostile_attack_tail_clearance(void *context, struct yt_error *error)
+{
+	struct hostile_attack_tail_context *tail = context;
+
+	return clearance(tail->session, true, error);
+}
+
+static bool
+hostile_attack_tail_random(void *context, float *value,
+    struct yt_error *error)
+{
+	struct hostile_attack_tail_context *tail = context;
+
+	return random_value(tail->session, value, error);
+}
+
+static bool
+hostile_attack_tail_victory(void *context, struct yt_error *error)
+{
+	struct hostile_attack_tail_context *tail = context;
+
+	return xannor_victory(tail->session, error);
+}
+
 static bool
 attack_deployed_committed(struct yt_session *session,
     struct yt_sector *sector, double commitment, bool allow_surrender,
@@ -5669,62 +5749,35 @@ attack_deployed_committed(struct yt_session *session,
 		if (persistence.mercenaries_hurt)
 			session->mercenaries_hurt = true;
 	}
-	if (old_owner == -1.0f && defender_loss > 0.0f) {
-		float bonus;
-		uint8_t display[240];
-		uint8_t news_row[300];
-		size_t display_length;
-		size_t news_length;
-
-		if (!reload_player(session, error))
-			return false;
-		ship_fighters = (double)session->player.fighters;
-		(void)snprintf(session->player.name, sizeof(session->player.name),
-		    "%s", cached_player_name_text);
-		bonus = yt_xannor_attack_bonus(defender_loss,
-		    session->player.turns,
-		    session->door->game.config.turns_per_day);
-		if (bonus >= 1.0f) {
-			session->player.turns =
-			    single_add(session->player.turns, bonus);
-			(void)yt_record_set_number(&session->player.record,
-			    YT_F49, session->player.turns);
-			if (!yt_database_write(&session->door->game.database,
-			    (size_t)session->player_record,
-			    &session->player.record, error))
-				return false;
-			if (!yt_xannor_attack_reward_rows(cached_player_name,
-			    cached_player_name_length, bonus, defender_loss,
-			    display, sizeof(display), &display_length,
-			    news_row, sizeof(news_row), &news_length))
-				return false;
-			session->presentation.bold = 1.0f;
-			if (!session_02fc(session, display, display_length)
-			    || !append_news_bytes(session, news_row, news_length,
-			    error))
-				return false;
-			if (deployed_remaining < 1.0
-			    && !clearance(session, true, error))
-				return false;
-		}
-	}
 	{
-		float dominated_draw;
+		static const struct yt_hostile_attack_tail_ops ops = {
+			hostile_attack_tail_read_player,
+			hostile_attack_tail_write_player,
+			hostile_attack_tail_present,
+			hostile_attack_tail_news,
+			hostile_attack_tail_clearance,
+			hostile_attack_tail_random,
+			hostile_attack_tail_victory,
+		};
+		struct hostile_attack_tail_context context = {
+			session,
+			cached_player_name_text,
+		};
+		struct yt_hostile_attack_tail_state tail = {
+			.current_player_record = session->player_record,
+			.old_owner = old_owner,
+			.defender_loss = defender_loss,
+			.deployed_fighters = deployed_remaining,
+			.ship_fighters = ship_fighters,
+			.turns_per_day =
+			    session->door->game.config.turns_per_day,
+			.headquarters = session->door->game.config.headquarters,
+			.cached_player_name = cached_player_name,
+			.cached_player_name_length = cached_player_name_length,
+			.current = session->player,
+		};
 
-		if (!random_value(session, &dominated_draw, error))
-			return false;
-	}
-	if (deployed_remaining <= 0.0) {
-		uint8_t defeated[160];
-		size_t defeated_length;
-
-		if (!yt_hostile_defeated_row(ship_fighters,
-		    defeated, sizeof(defeated), &defeated_length)
-		    || !session_02fc(session, defeated, defeated_length))
-			return false;
-		if (old_owner == -1.0f && session->player.sector
-		    == session->door->game.config.headquarters
-		    && !xannor_victory(session, error))
+		if (!yt_hostile_attack_tail_run(&tail, &ops, &context, error))
 			return false;
 	}
 	return true;

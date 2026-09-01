@@ -1779,7 +1779,18 @@ not authoritative. Use the corrected goal above in the new workspace.
   raw-record tape, every callback cut, the five-event fatal route, no-loss
   suppression, exact binary news, unrelated-byte preservation and fresh
   post-news fighter cache are pinned. The opening attrition/RNG prefix and
-  later reward/clearance/tail still need composition around this owner.
+  extracted faction tail still need one raw composition around this owner.
+- The following faction/reward tail is now another provider-driven owner.
+  Qualifying Xannor loss performs its independent player hydration, exact
+  SINGLE-clamped bonus, turns-only raw PUT, binary reward row/news, and
+  optional strict-sub-one clearance. Every route then consumes the mandatory
+  late draw before the nonpositive-deployed defeated row and conditional
+  Headquarters victory child. The complete eight-event reward/clearance/
+  draw/defeated/victory tape and every callback cut are pinned, together with
+  exact raw turns-only preservation, zero-bonus behavior, the deployed-one
+  clearance/defeated equality boundaries and the no-faction one-draw route.
+  The clearance and victory children retain their existing native owners;
+  their internals are not duplicated by this tail transaction.
 - The hostile defenders-cleared tail now has the documented positive-loss
   rehydration/news ordering, ordinary-owner surrender dialogue and default
   acceptance, accepted transfer/sound/row/news sequence, refusal-to-same-
