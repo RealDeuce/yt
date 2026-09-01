@@ -6508,113 +6508,118 @@ reenter_sector:
 }
 
 static bool
-command_fighters(struct yt_session *session, struct yt_error *error)
+main_fighters_hydrate(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
 {
-	static const uint8_t title[] = "<Drop/Take Fighters>";
-	static const uint8_t union_refusal[] =
-	    "You can't leave fighters in the Union (sectors 1-7)";
-	static const uint8_t foreign_refusal[] =
-	    "There are already fighters in this sector!";
-	static const uint8_t prompt[] =
-	    "Defend this sector with how many? ";
-	static const uint8_t insufficient[] = "You don't have that many!";
-	struct yt_sector sector;
-	struct qb_val_result parsed;
-	enum qb_mbf_status conversion;
-	uint8_t desired_raw[4];
-	char response[160];
-	char number[64];
-	char row[160];
-	double available;
-	float desired;
-	float delta;
-	float remaining;
+	struct yt_session *session = context;
 
-	if (!session_02fc(session, title, sizeof(title) - 1U)
+	if (player_record != session->player_record
 	    || !reload_player(session, error))
 		return false;
-	if (session->player.sector < 8.0f) {
-		return session_02db(session, union_refusal,
-		    sizeof(union_refusal) - 1U, "fighter Union refusal", error);
-	}
-	if (!yt_game_read_sector(&session->door->game,
-	    (int)session->player.sector, &sector, error))
-		return false;
-	if (sector.fighters > 0.0f
-	    && sector.fighter_owner != (float)session->player_record) {
-		return session_02db(session, foreign_refusal,
-		    sizeof(foreign_refusal) - 1U,
-		    "fighter foreign-force refusal", error);
-	}
-	available = double_add((double)sector.fighters,
-	    (double)session->player.fighters);
-	if (qb_str_double(number, sizeof(number), available) < 0
-	    || snprintf(row, sizeof(row), "You have%s fighters available.",
-	    number) < 0
-	    || !session_02fc(session, (const uint8_t *)row, strlen(row))
-	    || !session_031f(session, prompt, sizeof(prompt) - 1U,
-	    "fighter desired-count prompt", error)
-	    || !session_036f(session, response, sizeof(response)))
-		return false;
-	if (response[0] == '\0')
-		return true;
-	parsed = qb_val(response);
-	if (parsed.overflow) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			(void)snprintf(error->operation, sizeof(error->operation),
-			    "%s", "fighter desired-count VAL");
-		}
-		return false;
-	}
-	desired = (float)floor(parsed.valid ? parsed.value : 0.0);
-	conversion = qb_mbf32_encode(desired, desired_raw);
-	if (conversion == QB_MBF_OVERFLOW) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			(void)snprintf(error->operation, sizeof(error->operation),
-			    "%s", "fighter desired-count CSNG");
-		}
-		return false;
-	}
-	desired = qb_mbf32_decode(desired_raw);
-	if (desired < 0.0f)
-		return true;
-	delta = single_sub(sector.fighters, desired);
-	remaining = (float)double_add((double)session->player.fighters,
-	    (double)delta);
-	if (remaining < 0.0f) {
-		return session_02db(session, insufficient,
-		    sizeof(insufficient) - 1U, "fighter insufficient notice",
-		    error);
-	}
-	{
-		struct yt_sector fresh_sector;
-		struct yt_player fresh_player;
-		int logical_sector = (int)session->player.sector;
+	*player = session->player;
+	return true;
+}
 
-		if (!yt_game_read_sector(&session->door->game, logical_sector,
-		    &fresh_sector, error))
-			return false;
-		fresh_sector.fighters = desired;
-		fresh_sector.fighter_owner = (float)session->player_record;
-		if (!yt_game_write_sector(&session->door->game, logical_sector,
-		    &fresh_sector, error)
-		    || !yt_game_read_player(&session->door->game,
-		    session->player_record, &fresh_player, error))
-			return false;
-		fresh_player.fighters = remaining;
-		if (!yt_game_write_player(&session->door->game,
-		    session->player_record, &fresh_player, error))
-			return false;
-	}
-	if (qb_str_single(number, sizeof(number), remaining) < 0
-	    || snprintf(row, sizeof(row),
-	    "Done.  You have%s fighters left.", number) < 0
-	    || !session_02fc(session, (const uint8_t *)row, strlen(row)))
+static bool
+main_fighters_read_sector(void *context, int sector_number,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_read_sector(&session->door->game, sector_number, sector,
+	    error);
+}
+
+static bool
+main_fighters_write_sector(void *context, int sector_number,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_write_sector(&session->door->game, sector_number, sector,
+	    error);
+}
+
+static bool
+main_fighters_read_player(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_read_player(&session->door->game, player_record, player,
+	    error);
+}
+
+static bool
+main_fighters_write_player(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_write_player(&session->door->game, player_record, player,
+	    error);
+}
+
+static bool
+main_fighters_present(void *context, const uint8_t *text, size_t length,
+    enum yt_main_fighters_output_kind kind, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	switch (kind) {
+	case YT_MAIN_FIGHTERS_TITLE:
+	case YT_MAIN_FIGHTERS_AVAILABLE:
+	case YT_MAIN_FIGHTERS_SUCCESS:
+		return session_02fc(session, text, length);
+	case YT_MAIN_FIGHTERS_UNION_REFUSAL:
+		return session_02db(session, text, length,
+		    "fighter Union refusal", error);
+	case YT_MAIN_FIGHTERS_FOREIGN_REFUSAL:
+		return session_02db(session, text, length,
+		    "fighter foreign-force refusal", error);
+	case YT_MAIN_FIGHTERS_PROMPT:
+		return session_031f(session, text, length,
+		    "fighter desired-count prompt", error);
+	case YT_MAIN_FIGHTERS_INSUFFICIENT:
+		return session_02db(session, text, length,
+		    "fighter insufficient notice", error);
+	default:
 		return false;
-	return session_sound(session, 4.0f,
-	    "sector fighter sound", error);
+	}
+}
+
+static bool
+main_fighters_input(void *context, char *response, size_t capacity,
+    struct yt_error *error)
+{
+	(void)error;
+	return session_036f(context, response, capacity);
+}
+
+static bool
+main_fighters_sound(void *context, float selector, struct yt_error *error)
+{
+	return session_sound(context, selector, "sector fighter sound", error);
+}
+
+static bool
+command_fighters(struct yt_session *session, struct yt_error *error)
+{
+	static const struct yt_main_fighters_ops ops = {
+		main_fighters_hydrate,
+		main_fighters_read_sector,
+		main_fighters_write_sector,
+		main_fighters_read_player,
+		main_fighters_write_player,
+		main_fighters_present,
+		main_fighters_input,
+		main_fighters_sound,
+	};
+	struct yt_main_fighters_state state = {
+		.current_player_record = session->player_record,
+	};
+
+	return yt_main_fighters_run(&state, &ops, session, error);
 }
 
 static bool

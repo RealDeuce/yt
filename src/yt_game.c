@@ -4718,6 +4718,232 @@ yt_genesis_insufficient_rows(float required, float owned,
 	return true;
 }
 
+static float
+main_fighters_single_sub(float left, float right)
+{
+	volatile float result = left - right;
+
+	return result;
+}
+
+static double
+main_fighters_double_add(double left, double right)
+{
+	volatile double result = left + right;
+
+	return result;
+}
+
+bool
+yt_main_fighters_sector_overlay(struct yt_sector *sector,
+    const uint8_t desired_raw[4], int player_record)
+{
+	uint8_t owner_raw[4];
+
+	if (sector == NULL || desired_raw == NULL
+	    || qb_mbf32_encode((float)player_record, owner_raw)
+	    == QB_MBF_OVERFLOW
+	    || !yt_record_set_raw_number(&sector->record, YT_F81, desired_raw)
+	    || !yt_record_set_raw_number(&sector->record, YT_F85, owner_raw))
+		return false;
+	sector->fighters = qb_mbf32_decode(desired_raw);
+	sector->fighter_owner = qb_mbf32_decode(owner_raw);
+	return true;
+}
+
+bool
+yt_main_fighters_player_overlay(struct yt_player *player, float remaining)
+{
+	uint8_t remaining_raw[4];
+
+	if (player == NULL
+	    || qb_mbf32_encode(remaining, remaining_raw) == QB_MBF_OVERFLOW
+	    || !yt_record_set_raw_number(&player->record, YT_F61,
+	    remaining_raw))
+		return false;
+	player->fighters = qb_mbf32_decode(remaining_raw);
+	return true;
+}
+
+bool
+yt_main_fighters_run(struct yt_main_fighters_state *state,
+    const struct yt_main_fighters_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t title[] = "<Drop/Take Fighters>";
+	static const uint8_t union_refusal[] =
+	    "You can't leave fighters in the Union (sectors 1-7)";
+	static const uint8_t foreign_refusal[] =
+	    "There are already fighters in this sector!";
+	static const uint8_t prompt[] =
+	    "Defend this sector with how many? ";
+	static const uint8_t insufficient[] = "You don't have that many!";
+	struct qb_val_result parsed;
+	uint32_t logical_sector;
+	char response[160];
+	char number[64];
+	char row[160];
+	double desired_integer;
+	int amount;
+
+	if (state == NULL || ops == NULL || state->current_player_record < 1
+	    || ops->hydrate == NULL || ops->read_sector == NULL
+	    || ops->write_sector == NULL || ops->read_player == NULL
+	    || ops->write_player == NULL || ops->present == NULL
+	    || ops->input == NULL || ops->sound == NULL)
+		return false;
+	memset(&state->player, 0, sizeof(state->player));
+	memset(&state->first_sector, 0, sizeof(state->first_sector));
+	memset(&state->accepted_sector, 0, sizeof(state->accepted_sector));
+	memset(&state->accepted_player, 0, sizeof(state->accepted_player));
+	state->logical_sector = 0;
+	state->available = 0.0;
+	state->desired = 0.0f;
+	memset(state->desired_raw, 0, sizeof(state->desired_raw));
+	state->delta = 0.0f;
+	state->remaining = 0.0f;
+	state->player_hydrated = false;
+	state->first_sector_read = false;
+	state->input_read = false;
+	state->desired_stored = false;
+	state->accepted_sector_read = false;
+	state->sector_written = false;
+	state->accepted_player_read = false;
+	state->player_written = false;
+	state->sound_called = false;
+	state->complete = false;
+	state->route = YT_MAIN_FIGHTERS_INCOMPLETE;
+
+	if (!ops->present(context, title, sizeof(title) - 1U,
+	    YT_MAIN_FIGHTERS_TITLE, error)
+	    || !ops->hydrate(context, state->current_player_record,
+	    &state->player, error))
+		return false;
+	state->player_hydrated = true;
+	if (state->player.sector < 8.0f) {
+		if (!ops->present(context, union_refusal,
+		    sizeof(union_refusal) - 1U, YT_MAIN_FIGHTERS_UNION_REFUSAL,
+		    error))
+			return false;
+		state->route = YT_MAIN_FIGHTERS_UNION_ROUTE;
+		state->complete = true;
+		return true;
+	}
+	logical_sector = qb_brun_random_record_number(state->player.sector);
+	if (logical_sector > INT_MAX)
+		return startup_configuration_error(error, YT_RANGE,
+		    "fighter sector record conversion");
+	state->logical_sector = (int)logical_sector;
+	if (!ops->read_sector(context, state->logical_sector,
+	    &state->first_sector, error))
+		return false;
+	state->first_sector_read = true;
+	if (state->first_sector.fighters > 0.0f
+	    && state->first_sector.fighter_owner
+	    != (float)state->current_player_record) {
+		if (!ops->present(context, foreign_refusal,
+		    sizeof(foreign_refusal) - 1U,
+		    YT_MAIN_FIGHTERS_FOREIGN_REFUSAL, error))
+			return false;
+		state->route = YT_MAIN_FIGHTERS_FOREIGN_ROUTE;
+		state->complete = true;
+		return true;
+	}
+	state->available = main_fighters_double_add(
+	    (double)state->first_sector.fighters,
+	    (double)state->player.fighters);
+	amount = qb_str_double(number, sizeof(number), state->available);
+	if (amount < 0 || snprintf(row, sizeof(row),
+	    "You have%s fighters available.", number) < 0)
+		return startup_configuration_error(error, YT_RANGE,
+		    "fighter available row composition");
+	if (!ops->present(context, (const uint8_t *)row, strlen(row),
+	    YT_MAIN_FIGHTERS_AVAILABLE, error)
+	    || !ops->present(context, prompt, sizeof(prompt) - 1U,
+	    YT_MAIN_FIGHTERS_PROMPT, error))
+		return false;
+	memset(response, 0, sizeof(response));
+	if (!ops->input(context, response, sizeof(response), error))
+		return false;
+	state->input_read = true;
+	if (memchr(response, '\0', sizeof(response)) == NULL)
+		return startup_configuration_error(error, YT_RANGE,
+		    "fighter desired-count response");
+	if (response[0] == '\0') {
+		state->route = YT_MAIN_FIGHTERS_CANCELLED_ROUTE;
+		state->complete = true;
+		return true;
+	}
+	parsed = qb_val(response);
+	if (parsed.overflow)
+		return startup_configuration_error(error, YT_RANGE,
+		    "fighter desired-count VAL");
+	desired_integer = floor(parsed.valid ? parsed.value : 0.0);
+	state->desired = (float)desired_integer;
+	if (qb_mbf32_encode(state->desired, state->desired_raw)
+	    == QB_MBF_OVERFLOW)
+		return startup_configuration_error(error, YT_RANGE,
+		    "fighter desired-count CSNG");
+	state->desired = qb_mbf32_decode(state->desired_raw);
+	state->desired_stored = true;
+	if (state->desired < 0.0f) {
+		state->route = YT_MAIN_FIGHTERS_CANCELLED_ROUTE;
+		state->complete = true;
+		return true;
+	}
+	state->delta = main_fighters_single_sub(
+	    state->first_sector.fighters, state->desired);
+	state->remaining = (float)main_fighters_double_add(
+	    (double)state->player.fighters, (double)state->delta);
+	if (state->remaining < 0.0f) {
+		if (!ops->present(context, insufficient,
+		    sizeof(insufficient) - 1U, YT_MAIN_FIGHTERS_INSUFFICIENT,
+		    error))
+			return false;
+		state->route = YT_MAIN_FIGHTERS_INSUFFICIENT_ROUTE;
+		state->complete = true;
+		return true;
+	}
+	if (!ops->read_sector(context, state->logical_sector,
+	    &state->accepted_sector, error))
+		return false;
+	state->accepted_sector_read = true;
+	if (!yt_main_fighters_sector_overlay(&state->accepted_sector,
+	    state->desired_raw, state->current_player_record))
+		return startup_configuration_error(error, YT_RANGE,
+		    "fighter sector overlay");
+	if (!ops->write_sector(context, state->logical_sector,
+	    &state->accepted_sector, error))
+		return false;
+	state->sector_written = true;
+	if (!ops->read_player(context, state->current_player_record,
+	    &state->accepted_player, error))
+		return false;
+	state->accepted_player_read = true;
+	if (!yt_main_fighters_player_overlay(&state->accepted_player,
+	    state->remaining))
+		return startup_configuration_error(error, YT_RANGE,
+		    "fighter player overlay");
+	if (!ops->write_player(context, state->current_player_record,
+	    &state->accepted_player, error))
+		return false;
+	state->player_written = true;
+	amount = qb_str_single(number, sizeof(number), state->remaining);
+	if (amount < 0 || snprintf(row, sizeof(row),
+	    "Done.  You have%s fighters left.", number) < 0)
+		return startup_configuration_error(error, YT_RANGE,
+		    "fighter success row composition");
+	if (!ops->present(context, (const uint8_t *)row, strlen(row),
+	    YT_MAIN_FIGHTERS_SUCCESS, error))
+		return false;
+	if (!ops->sound(context, 4.0f, error))
+		return false;
+	state->sound_called = true;
+	state->route = YT_MAIN_FIGHTERS_ACCEPTED_ROUTE;
+	state->complete = true;
+	return true;
+}
+
 bool
 yt_genesis_run(struct yt_genesis_state *state,
     const struct yt_genesis_ops *ops, void *context,

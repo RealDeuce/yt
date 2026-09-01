@@ -22037,6 +22037,336 @@ check_planet_updater_transaction(void)
 	return true;
 }
 
+enum main_fighters_event {
+	MAIN_FIGHTERS_PRESENT = 1,
+	MAIN_FIGHTERS_HYDRATE,
+	MAIN_FIGHTERS_READ_SECTOR_FIRST,
+	MAIN_FIGHTERS_INPUT,
+	MAIN_FIGHTERS_READ_SECTOR_ACCEPTED,
+	MAIN_FIGHTERS_WRITE_SECTOR,
+	MAIN_FIGHTERS_READ_PLAYER,
+	MAIN_FIGHTERS_WRITE_PLAYER,
+	MAIN_FIGHTERS_SOUND,
+};
+struct main_fighters_tape {
+	enum main_fighters_event events[16];
+	size_t calls;
+	size_t fail_at;
+	struct yt_player body_player;
+	struct yt_sector first_sector;
+	struct yt_sector accepted_sector;
+	struct yt_player accepted_player;
+	struct yt_sector written_sector;
+	struct yt_player written_player;
+	size_t sector_reads;
+	const char *response;
+	uint8_t rows[7][192];
+	size_t row_lengths[7];
+	bool row_seen[7];
+};
+static bool
+main_fighters_step(struct main_fighters_tape *tape,
+    enum main_fighters_event event, struct yt_error *error)
+{
+	size_t call = tape->calls++;
+
+	if (call < YT_ARRAY_LEN(tape->events))
+		tape->events[call] = event;
+	if (call != tape->fail_at)
+		return true;
+	if (error != NULL)
+		error->status = YT_IO_ERROR;
+	return false;
+}
+static bool
+main_fighters_hydrate_test(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct main_fighters_tape *tape = context;
+
+	if (player_record != 2 || !main_fighters_step(tape,
+	    MAIN_FIGHTERS_HYDRATE, error))
+		return false;
+	*player = tape->body_player;
+	return true;
+}
+static bool
+main_fighters_read_sector_test(void *context, int sector_number,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct main_fighters_tape *tape = context;
+	enum main_fighters_event event = tape->sector_reads == 0U
+	    ? MAIN_FIGHTERS_READ_SECTOR_FIRST
+	    : MAIN_FIGHTERS_READ_SECTOR_ACCEPTED;
+
+	if (sector_number != 8 || !main_fighters_step(tape, event, error))
+		return false;
+	*sector = tape->sector_reads++ == 0U
+	    ? tape->first_sector : tape->accepted_sector;
+	return true;
+}
+static bool
+main_fighters_write_sector_test(void *context, int sector_number,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct main_fighters_tape *tape = context;
+
+	if (sector_number != 8 || !main_fighters_step(tape,
+	    MAIN_FIGHTERS_WRITE_SECTOR, error))
+		return false;
+	tape->written_sector = *sector;
+	return true;
+}
+static bool
+main_fighters_read_player_test(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct main_fighters_tape *tape = context;
+
+	if (player_record != 2 || !main_fighters_step(tape,
+	    MAIN_FIGHTERS_READ_PLAYER, error))
+		return false;
+	*player = tape->accepted_player;
+	return true;
+}
+static bool
+main_fighters_write_player_test(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct main_fighters_tape *tape = context;
+
+	if (player_record != 2 || !main_fighters_step(tape,
+	    MAIN_FIGHTERS_WRITE_PLAYER, error))
+		return false;
+	tape->written_player = *player;
+	return true;
+}
+static bool
+main_fighters_present_test(void *context, const uint8_t *text, size_t length,
+    enum yt_main_fighters_output_kind kind, struct yt_error *error)
+{
+	struct main_fighters_tape *tape = context;
+
+	if ((size_t)kind >= YT_ARRAY_LEN(tape->rows)
+	    || length > sizeof(tape->rows[0])
+	    || !main_fighters_step(tape, MAIN_FIGHTERS_PRESENT, error))
+		return false;
+	if (length != 0U)
+		memcpy(tape->rows[kind], text, length);
+	tape->row_lengths[kind] = length;
+	tape->row_seen[kind] = true;
+	return true;
+}
+static bool
+main_fighters_input_test(void *context, char *response, size_t capacity,
+    struct yt_error *error)
+{
+	struct main_fighters_tape *tape = context;
+	size_t length = strlen(tape->response);
+
+	if (length + 1U > capacity || !main_fighters_step(tape,
+	    MAIN_FIGHTERS_INPUT, error))
+		return false;
+	memcpy(response, tape->response, length + 1U);
+	return true;
+}
+static bool
+main_fighters_sound_test(void *context, float selector,
+    struct yt_error *error)
+{
+	return selector == 4.0f && main_fighters_step(context,
+	    MAIN_FIGHTERS_SOUND, error);
+}
+static const struct yt_main_fighters_ops main_fighters_test_ops = {
+	main_fighters_hydrate_test,
+	main_fighters_read_sector_test,
+	main_fighters_write_sector_test,
+	main_fighters_read_player_test,
+	main_fighters_write_player_test,
+	main_fighters_present_test,
+	main_fighters_input_test,
+	main_fighters_sound_test,
+};
+static void
+main_fighters_fixture(struct main_fighters_tape *tape,
+    struct yt_main_fighters_state *state)
+{
+	memset(tape, 0, sizeof(*tape));
+	memset(state, 0, sizeof(*state));
+	tape->fail_at = SIZE_MAX;
+	tape->response = "12";
+	memset(tape->body_player.record.bytes, 0xa1,
+	    sizeof(tape->body_player.record.bytes));
+	tape->body_player.sector = 8.5f;
+	tape->body_player.fighters = 8.0f;
+	memset(tape->first_sector.record.bytes, 0xb2,
+	    sizeof(tape->first_sector.record.bytes));
+	tape->first_sector.fighters = 10.0f;
+	tape->first_sector.fighter_owner = 2.0f;
+	memset(tape->accepted_sector.record.bytes, 0xc3,
+	    sizeof(tape->accepted_sector.record.bytes));
+	tape->accepted_sector.fighters = 99.0f;
+	tape->accepted_sector.fighter_owner = -2.0f;
+	memset(tape->accepted_player.record.bytes, 0xd4,
+	    sizeof(tape->accepted_player.record.bytes));
+	tape->accepted_player.fighters = 77.0f;
+	state->current_player_record = 2;
+}
+static bool
+check_main_fighters_transaction(void)
+{
+	static const enum main_fighters_event success_events[] = {
+		MAIN_FIGHTERS_PRESENT,
+		MAIN_FIGHTERS_HYDRATE,
+		MAIN_FIGHTERS_READ_SECTOR_FIRST,
+		MAIN_FIGHTERS_PRESENT,
+		MAIN_FIGHTERS_PRESENT,
+		MAIN_FIGHTERS_INPUT,
+		MAIN_FIGHTERS_READ_SECTOR_ACCEPTED,
+		MAIN_FIGHTERS_WRITE_SECTOR,
+		MAIN_FIGHTERS_READ_PLAYER,
+		MAIN_FIGHTERS_WRITE_PLAYER,
+		MAIN_FIGHTERS_PRESENT,
+		MAIN_FIGHTERS_SOUND,
+	};
+	static const uint8_t title[] = "<Drop/Take Fighters>";
+	static const uint8_t available[] = "You have 18 fighters available.";
+	static const uint8_t prompt[] =
+	    "Defend this sector with how many? ";
+	static const uint8_t success[] = "Done.  You have 6 fighters left.";
+	static const uint8_t union_refusal[] =
+	    "You can't leave fighters in the Union (sectors 1-7)";
+	static const uint8_t foreign_refusal[] =
+	    "There are already fighters in this sector!";
+	static const uint8_t insufficient[] = "You don't have that many!";
+	struct main_fighters_tape tape;
+	struct yt_main_fighters_state state;
+	struct yt_sector expected_sector;
+	struct yt_player expected_player;
+	struct yt_error error;
+	size_t failure;
+
+	main_fighters_fixture(&tape, &state);
+	expected_sector = tape.accepted_sector;
+	expected_player = tape.accepted_player;
+	if (!yt_main_fighters_sector_overlay(&expected_sector,
+	    (const uint8_t[]){0, 0, 0x40, 0x84}, 2)
+	    || !yt_main_fighters_player_overlay(&expected_player, 6.0f)
+	    || !yt_main_fighters_run(&state, &main_fighters_test_ops, &tape,
+	    NULL)
+	    || !state.complete || state.route != YT_MAIN_FIGHTERS_ACCEPTED_ROUTE
+	    || !state.player_hydrated || !state.first_sector_read
+	    || !state.input_read || !state.desired_stored
+	    || !state.accepted_sector_read || !state.sector_written
+	    || !state.accepted_player_read || !state.player_written
+	    || !state.sound_called || state.logical_sector != 8
+	    || state.available != 18.0 || state.desired != 12.0f
+	    || state.delta != -2.0f || state.remaining != 6.0f
+	    || state.player.fighters != 8.0f
+	    || tape.calls != YT_ARRAY_LEN(success_events)
+	    || memcmp(tape.events, success_events, sizeof(success_events)) != 0
+	    || !tape.row_seen[YT_MAIN_FIGHTERS_TITLE]
+	    || tape.row_lengths[YT_MAIN_FIGHTERS_TITLE] != sizeof(title) - 1U
+	    || memcmp(tape.rows[YT_MAIN_FIGHTERS_TITLE], title,
+	    sizeof(title) - 1U) != 0
+	    || tape.row_lengths[YT_MAIN_FIGHTERS_AVAILABLE]
+	    != sizeof(available) - 1U
+	    || memcmp(tape.rows[YT_MAIN_FIGHTERS_AVAILABLE], available,
+	    sizeof(available) - 1U) != 0
+	    || tape.row_lengths[YT_MAIN_FIGHTERS_PROMPT] != sizeof(prompt) - 1U
+	    || memcmp(tape.rows[YT_MAIN_FIGHTERS_PROMPT], prompt,
+	    sizeof(prompt) - 1U) != 0
+	    || tape.row_lengths[YT_MAIN_FIGHTERS_SUCCESS]
+	    != sizeof(success) - 1U
+	    || memcmp(tape.rows[YT_MAIN_FIGHTERS_SUCCESS], success,
+	    sizeof(success) - 1U) != 0
+	    || memcmp(tape.written_sector.record.bytes,
+	    expected_sector.record.bytes, sizeof(expected_sector.record.bytes))
+	    != 0
+	    || memcmp(tape.written_player.record.bytes,
+	    expected_player.record.bytes, sizeof(expected_player.record.bytes))
+	    != 0)
+		return false;
+
+	for (failure = 0U; failure < YT_ARRAY_LEN(success_events); ++failure) {
+		main_fighters_fixture(&tape, &state);
+		tape.fail_at = failure;
+		yt_error_clear(&error);
+		if (yt_main_fighters_run(&state, &main_fighters_test_ops, &tape,
+		    &error) || error.status != YT_IO_ERROR || state.complete
+		    || tape.calls != failure + 1U
+		    || memcmp(tape.events, success_events,
+		    tape.calls * sizeof(success_events[0])) != 0)
+			return false;
+	}
+
+	main_fighters_fixture(&tape, &state);
+	tape.body_player.sector = 7.5f;
+	if (!yt_main_fighters_run(&state, &main_fighters_test_ops, &tape, NULL)
+	    || state.route != YT_MAIN_FIGHTERS_UNION_ROUTE || tape.calls != 3U
+	    || tape.sector_reads != 0U
+	    || tape.row_lengths[YT_MAIN_FIGHTERS_UNION_REFUSAL]
+	    != sizeof(union_refusal) - 1U
+	    || memcmp(tape.rows[YT_MAIN_FIGHTERS_UNION_REFUSAL], union_refusal,
+	    sizeof(union_refusal) - 1U) != 0)
+		return false;
+
+	main_fighters_fixture(&tape, &state);
+	tape.first_sector.fighter_owner = 3.0f;
+	if (!yt_main_fighters_run(&state, &main_fighters_test_ops, &tape, NULL)
+	    || state.route != YT_MAIN_FIGHTERS_FOREIGN_ROUTE || tape.calls != 4U
+	    || tape.row_lengths[YT_MAIN_FIGHTERS_FOREIGN_REFUSAL]
+	    != sizeof(foreign_refusal) - 1U
+	    || memcmp(tape.rows[YT_MAIN_FIGHTERS_FOREIGN_REFUSAL],
+	    foreign_refusal, sizeof(foreign_refusal) - 1U) != 0)
+		return false;
+
+	main_fighters_fixture(&tape, &state);
+	tape.response = "";
+	tape.first_sector.fighters = 0.0f;
+	tape.first_sector.fighter_owner = -2.0f;
+	if (!yt_main_fighters_run(&state, &main_fighters_test_ops, &tape, NULL)
+	    || state.route != YT_MAIN_FIGHTERS_CANCELLED_ROUTE
+	    || tape.calls != 6U || state.desired_stored)
+		return false;
+
+	main_fighters_fixture(&tape, &state);
+	tape.response = "-.1";
+	if (!yt_main_fighters_run(&state, &main_fighters_test_ops, &tape, NULL)
+	    || state.route != YT_MAIN_FIGHTERS_CANCELLED_ROUTE
+	    || state.desired != -1.0f || !state.desired_stored
+	    || tape.calls != 6U)
+		return false;
+
+	main_fighters_fixture(&tape, &state);
+	tape.response = "20";
+	if (!yt_main_fighters_run(&state, &main_fighters_test_ops, &tape, NULL)
+	    || state.route != YT_MAIN_FIGHTERS_INSUFFICIENT_ROUTE
+	    || state.remaining != -2.0f || tape.calls != 7U
+	    || tape.row_lengths[YT_MAIN_FIGHTERS_INSUFFICIENT]
+	    != sizeof(insufficient) - 1U
+	    || memcmp(tape.rows[YT_MAIN_FIGHTERS_INSUFFICIENT], insufficient,
+	    sizeof(insufficient) - 1U) != 0)
+		return false;
+
+	/* Zero is accepted and deliberately leaves a nonzero owner. */
+	main_fighters_fixture(&tape, &state);
+	tape.response = "0";
+	if (!yt_main_fighters_run(&state, &main_fighters_test_ops, &tape, NULL)
+	    || state.route != YT_MAIN_FIGHTERS_ACCEPTED_ROUTE
+	    || state.desired != 0.0f || state.remaining != 18.0f
+	    || yt_record_get_number(&tape.written_sector.record, YT_F81) != 0.0f
+	    || yt_record_get_number(&tape.written_sector.record, YT_F85) != 2.0f
+	    || tape.calls != YT_ARRAY_LEN(success_events))
+		return false;
+
+	main_fighters_fixture(&tape, &state);
+	return !yt_main_fighters_run(NULL, &main_fighters_test_ops, &tape, NULL)
+	    && !yt_main_fighters_run(&state, NULL, &tape, NULL)
+	    && !yt_main_fighters_sector_overlay(NULL, state.desired_raw, 2)
+	    && !yt_main_fighters_player_overlay(NULL, 1.0f);
+}
+
 enum genesis_event {
 	GENESIS_HYDRATE = 1,
 	GENESIS_PRESENT,
@@ -24284,6 +24614,8 @@ main(void)
 		return fail("salvage cargo sampler differs");
 	if (!check_salvage_transaction())
 		return fail("ship salvage transaction differs");
+	if (!check_main_fighters_transaction())
+		return fail("main sector-fighter transaction differs");
 	if (!check_genesis_transaction())
 		return fail("Genesis transaction differs");
 	if (!check_port_rename_transaction())
