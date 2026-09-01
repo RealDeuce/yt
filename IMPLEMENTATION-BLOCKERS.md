@@ -8,7 +8,33 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
-None.
+### DOC-GAP-006: command-2 dependency failures lack error-router identity
+
+Affected coverage:
+
+- ship-computer command-2/alias-23 selected-sector and friendship reads;
+- its ordinary-port updater/report child; and
+- its Earth-report child.
+
+The completed contracts specify each child's exact already-emitted prefix,
+FIELD residue, and persistence state, and the shared main error contract
+specifies routing once BASIC `ERR`, `ERL`, and the retry statement are known.
+They do not connect those two sides for command 2:
+
+- `docs/runtime/computer-port-report-output.md` leaves physical random-file
+  errors and shared runtime-error suffixes outside its bounded composition;
+- `docs/runtime/port-commerce-output.md` lists the ordered failing stages but
+  supplies no caller statement `ERL` or retry address; and
+- `docs/runtime/earth-store-output.md` says the shared handler owns the
+  `ERR`/`ERL`-dependent suffix without supplying that dependency identity.
+
+The native `struct yt_error` consequently cannot be extended or populated at
+these sites from existing evidence: the required BASIC error number, source
+line, saved/retry statement identity, active handler, and the exact distinction
+between retry and terminal routing are unspecified for each cut. The native
+implementation stops at the already-pinned 40/87/100/102-byte pre-router
+prefixes. Do not infer the missing values from host errors or inspect binaries;
+upstream documentation must provide the per-stage error-router projection.
 
 ## Resolved documentation gaps
 
