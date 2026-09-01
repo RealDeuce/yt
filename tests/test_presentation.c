@@ -5187,8 +5187,11 @@ struct commodity_b05d_cut {
 	size_t carrier_calls;
 	size_t fail_carrier_at;
 	size_t sample_calls;
+	struct yt_input_value sampled;
 	size_t present_calls;
 	size_t finish_calls;
+	size_t response_calls;
+	bool accept_response;
 };
 
 static bool
@@ -5206,7 +5209,7 @@ commodity_b05d_cut_sample(void *context, struct yt_input_value *sampled)
 	struct commodity_b05d_cut *cut = context;
 
 	++cut->sample_calls;
-	memset(sampled, 0, sizeof(*sampled));
+	*sampled = cut->sampled;
 	return true;
 }
 
@@ -5241,10 +5244,14 @@ commodity_b05d_cut_finish(void *context, bool newline_flag)
 static bool
 commodity_b05d_cut_response(void *context, char *response, size_t capacity)
 {
-	(void)context;
-	(void)response;
-	(void)capacity;
-	return false;
+	struct commodity_b05d_cut *cut = context;
+
+	++cut->response_calls;
+	if (!cut->accept_response || capacity == 0U)
+		return false;
+	response[0] = '\0';
+	commodity_trade_join_input(cut->join, NULL, 0U);
+	return true;
 }
 
 static const struct yt_paged_row_ops commodity_b05d_cut_ops = {
@@ -5602,6 +5609,69 @@ test_commodity_trade_adapter_cuts(void)
 	    offer, sizeof(offer) - 1U, success, sizeof(success) - 1U);
 	commodity_trade_join_check(&join, low_time, sizeof(low_time) - 1U);
 	CHECK(join.capture.remote_length == 297U);
+}
+
+static void
+test_commodity_trade_recursive_pager(void)
+{
+	static const uint8_t status[] =
+	    "You have 12345 credits and 65 empty cargo holds.";
+	static const uint8_t selling[] =
+	    "We are selling up to 100.  You have 10 in your holds.";
+	static const uint8_t prompt[] =
+	    "How many holds of Ore do you want to buy [ 65 ]? ";
+	static const uint8_t agreed[] = "Agreed, 3 units.";
+	static const uint8_t offer[] =
+	    "We'll sell them for 60 credits.";
+	static const uint8_t success[] = "It's Yours!";
+	static const uint8_t expected[] =
+	    "\r\nYou have 12345 credits and 65 empty cargo holds.\n\r"
+	    "\x1b[0;33;40;1m"
+	    "[ENTER] for more, [E] to end, or [NS] for Non-stop "
+	    "\x1b[0;33;40m\r\n"
+	    "\x1b[0;36;40m\r\n"
+	    "We are selling up to 100.  You have 10 in your holds.\n\r"
+	    "How many holds of Ore do you want to buy [ 65 ]? 3\r\n"
+	    "Agreed, 3 units.\n\r"
+	    "\r\nWe'll sell them for 60 credits.\n\r"
+	    "Do you agree? [Y/n] \r\n"
+	    "It's Yours!\n\r";
+	struct commodity_trade_join join;
+	struct commodity_b05d_cut cut;
+
+	commodity_trade_join_init(&join);
+	join.pager.line_count = 22.0f;
+	commodity_trade_join_line(&join);
+	commodity_b05d_cut_init(&cut, &join, SIZE_MAX);
+	cut.accept_response = true;
+	CHECK(yt_paged_row_run(&join.pager, &join.current, &cut.key_state,
+	    status, sizeof(status) - 1U, &commodity_b05d_cut_ops, &cut));
+	CHECK(cut.carrier_calls == 4U && cut.sample_calls == 2U
+	    && cut.present_calls == 2U && cut.finish_calls == 2U
+	    && cut.response_calls == 1U);
+	commodity_trade_join_0317(&join, selling, sizeof(selling) - 1U);
+	commodity_trade_join_b05d(&join, prompt, sizeof(prompt) - 1U, true);
+	commodity_trade_join_input(&join, (const uint8_t *)"3", 1U);
+	commodity_trade_join_accepted_tail(&join, agreed, sizeof(agreed) - 1U,
+	    offer, sizeof(offer) - 1U, success, sizeof(success) - 1U);
+	commodity_trade_join_check(&join, expected, sizeof(expected) - 1U);
+	CHECK(join.capture.remote_length == 334U
+	    && join.pager.line_count == 1.0f && join.pager.nonstop == 0.0f
+	    && join.pager.key[0] == '\0' && join.current.foreground == 6.0f);
+
+	commodity_trade_join_init(&join);
+	commodity_trade_join_line(&join);
+	commodity_b05d_cut_init(&cut, &join, SIZE_MAX);
+	cut.sampled.bytes[0] = '3';
+	cut.sampled.length = 1U;
+	CHECK(yt_paged_row_run(&join.pager, &join.current, &cut.key_state,
+	    status, sizeof(status) - 1U, &commodity_b05d_cut_ops, &cut));
+	CHECK(cut.carrier_calls == 2U && cut.sample_calls == 1U
+	    && cut.present_calls == 1U && cut.finish_calls == 1U
+	    && cut.response_calls == 0U && cut.queue_position == 0U
+	    && cut.queue_length == 1U && strcmp(cut.queue, "3") == 0
+	    && join.accumulator[0] == '\0' && join.pager.key[0] == '\0'
+	    && join.pager.line_count == 1.0f);
 }
 
 static void
@@ -19979,6 +20049,7 @@ main(void)
 	test_commodity_trade_presentation();
 	test_commodity_trade_branch_presentation();
 	test_commodity_trade_adapter_cuts();
+	test_commodity_trade_recursive_pager();
 	test_computer_return_prompt_presentation();
 	test_computer_quit_cancel_presentation();
 	test_main_quit_cancel_presentation();
