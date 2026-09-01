@@ -22991,6 +22991,7 @@ struct port_docking_tape {
 	uint32_t sector_record_read;
 	uint32_t port_record_read;
 	int ordinary_sector;
+	bool earth_reenter_sector;
 	float foreground;
 };
 
@@ -23095,9 +23096,15 @@ port_docking_test_read_port(void *context, uint32_t physical_record,
 }
 
 static bool
-port_docking_test_earth(void *context, struct yt_error *error)
+port_docking_test_earth(void *context, bool *reenter_sector,
+    struct yt_error *error)
 {
-	return port_docking_step(context, PORT_DOCKING_EARTH, error);
+	struct port_docking_tape *tape = context;
+
+	if (!port_docking_step(tape, PORT_DOCKING_EARTH, error))
+		return false;
+	*reenter_sector = tape->earth_reenter_sector;
+	return true;
 }
 
 static bool
@@ -23138,6 +23145,7 @@ port_docking_fixture(struct port_docking_tape *tape,
 	tape->finalizer_returned = true;
 	tape->post_sector = 733.0f;
 	tape->post_sector_record = 790.0f;
+	tape->earth_reenter_sector = true;
 	state->port_offset = 2055.0f;
 }
 
@@ -23180,6 +23188,7 @@ check_port_docking_transaction(void)
 	    || !state.docking_blank_presented
 	    || !state.docking_prefix_presented || !state.finalizer_complete
 	    || !state.selected_port_read || !state.child_complete
+	    || !state.reenter_sector
 	    || tape.foreground != 3.0f || tape.sector_record_read != 784U
 	    || tape.port_record_read != 2057U || tape.ordinary_sector != 733
 	    || tape.event_count != YT_ARRAY_LEN(ordinary_expected)
@@ -23202,14 +23211,16 @@ check_port_docking_transaction(void)
 	tape.denied = true;
 	if (!yt_port_docking_run(&state, &port_docking_test_ops, &tape, NULL)
 	    || state.route != YT_PORT_DOCKING_GATE_DENIED
-	    || !state.complete || state.sector_read || tape.calls != 2U)
+	    || !state.complete || !state.reenter_sector
+	    || state.sector_read || tape.calls != 2U)
 		return false;
 
 	port_docking_fixture(&tape, &state);
 	tape.sector.port = 0.0f;
 	if (!yt_port_docking_run(&state, &port_docking_test_ops, &tape, NULL)
 	    || state.route != YT_PORT_DOCKING_NO_PORT_ROUTE
-	    || !state.no_port_presented || state.finalizer_complete
+	    || !state.no_port_presented || !state.reenter_sector
+	    || state.finalizer_complete
 	    || tape.event_count != YT_ARRAY_LEN(no_port_expected)
 	    || memcmp(tape.events, no_port_expected,
 	    sizeof(no_port_expected)) != 0)
@@ -23219,14 +23230,23 @@ check_port_docking_transaction(void)
 	tape.finalizer_returned = false;
 	if (!yt_port_docking_run(&state, &port_docking_test_ops, &tape, NULL)
 	    || state.route != YT_PORT_DOCKING_FINALIZER_TERMINAL
-	    || !state.finalizer_complete || state.selected_port_read)
+	    || !state.finalizer_complete || state.reenter_sector
+	    || state.selected_port_read)
 		return false;
 
 	port_docking_fixture(&tape, &state);
 	tape.post_sector = 1.0f;
 	if (!yt_port_docking_run(&state, &port_docking_test_ops, &tape, NULL)
 	    || state.route != YT_PORT_DOCKING_EARTH
+	    || !state.reenter_sector
 	    || tape.events[tape.event_count - 1U] != PORT_DOCKING_EARTH)
+		return false;
+
+	port_docking_fixture(&tape, &state);
+	tape.post_sector = 1.0f;
+	tape.earth_reenter_sector = false;
+	if (!yt_port_docking_run(&state, &port_docking_test_ops, &tape, NULL)
+	    || state.route != YT_PORT_DOCKING_EARTH || state.reenter_sector)
 		return false;
 
 	/* Conversion remains after the finalizer and before selected GET. */

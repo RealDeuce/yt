@@ -8600,6 +8600,7 @@ yt_port_docking_run(struct yt_port_docking_state *state,
 	state->finalizer_complete = false;
 	state->selected_port_read = false;
 	state->child_complete = false;
+	state->reenter_sector = false;
 	state->complete = false;
 	state->route = YT_PORT_DOCKING_INCOMPLETE;
 
@@ -8615,6 +8616,7 @@ yt_port_docking_run(struct yt_port_docking_state *state,
 	state->gate_complete = true;
 	if (state->gate_denied) {
 		state->route = YT_PORT_DOCKING_GATE_DENIED;
+		state->reenter_sector = true;
 		state->complete = true;
 		return true;
 	}
@@ -8636,6 +8638,7 @@ yt_port_docking_run(struct yt_port_docking_state *state,
 			return false;
 		state->no_port_presented = true;
 		state->route = YT_PORT_DOCKING_NO_PORT_ROUTE;
+		state->reenter_sector = true;
 		state->complete = true;
 		return true;
 	}
@@ -8668,7 +8671,7 @@ yt_port_docking_run(struct yt_port_docking_state *state,
 		return false;
 	state->selected_port_read = true;
 	if (state->post_finalizer_sector == 1.0f) {
-		if (!ops->earth(context, error))
+		if (!ops->earth(context, &state->reenter_sector, error))
 			return false;
 		state->route = YT_PORT_DOCKING_EARTH;
 	}
@@ -8678,6 +8681,7 @@ yt_port_docking_run(struct yt_port_docking_state *state,
 		    state->post_finalizer_sector_record_expression, error))
 			return false;
 		state->route = YT_PORT_DOCKING_ORDINARY;
+		state->reenter_sector = true;
 	}
 	state->child_complete = true;
 	state->complete = true;

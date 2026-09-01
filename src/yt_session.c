@@ -108,7 +108,8 @@ static bool command_mines(struct yt_session *session,
     struct yt_error *error);
 static bool command_team(struct yt_session *session,
     struct yt_error *error);
-static bool earth_store(struct yt_session *session, struct yt_error *error);
+static bool earth_store(struct yt_session *session, bool *enter_sector,
+    struct yt_error *error);
 static bool command_move(struct yt_session *session, bool *moved,
     struct yt_error *error);
 static bool command_land(struct yt_session *session, bool *enter_sector,
@@ -7397,9 +7398,10 @@ docking_front_finalize(void *context, bool *returned, float *current_sector,
 }
 
 static bool
-docking_front_earth(void *context, struct yt_error *error)
+docking_front_earth(void *context, bool *reenter_sector,
+    struct yt_error *error)
 {
-	return earth_store(context, error);
+	return earth_store(context, reenter_sector, error);
 }
 
 static bool
@@ -7429,7 +7431,8 @@ docking_front_ordinary(void *context, int sector_number,
 }
 
 static bool
-command_trade(struct yt_session *session, struct yt_error *error)
+command_trade(struct yt_session *session, bool *enter_sector,
+    struct yt_error *error)
 {
 	static const struct yt_port_docking_ops ops = {
 		docking_front_present,
@@ -7445,7 +7448,13 @@ command_trade(struct yt_session *session, struct yt_error *error)
 
 	memset(&state, 0, sizeof(state));
 	state.port_offset = session->door->game.config.port_offset;
-	return yt_port_docking_run(&state, &ops, session, error);
+	if (enter_sector != NULL)
+		*enter_sector = false;
+	if (!yt_port_docking_run(&state, &ops, session, error))
+		return false;
+	if (enter_sector != NULL)
+		*enter_sector = state.reenter_sector;
+	return true;
 }
 
 static bool
@@ -8270,13 +8279,17 @@ earth_report(struct yt_session *session, struct yt_port *earth,
 }
 
 static bool
-earth_store(struct yt_session *session, struct yt_error *error)
+earth_store(struct yt_session *session, bool *enter_sector,
+    struct yt_error *error)
 {
 	static const uint8_t menu[] =
 	    "[I] Ship Info -=*=- [0] Leave Port";
 	static const uint8_t prompt_suffix[] =
 	    " -=*=- Buy Which Item? -=>";
 	static const uint8_t invalid[] = "INAVLID CHOICE!";
+
+	if (enter_sector != NULL)
+		*enter_sector = false;
 	for (;;) {
 		struct yt_port earth;
 		struct qb_val_result parsed;
@@ -8350,21 +8363,35 @@ earth_store(struct yt_session *session, struct yt_error *error)
 			}
 			switch (position) {
 			case 1: {
-				bool enter_sector = false;
+				bool selected = false;
 
-				return command_land(session, &enter_sector, error);
+				if (!command_land(session, &selected, error))
+					return false;
+				if (enter_sector != NULL)
+					*enter_sector = selected;
+				return true;
 			}
 			case 2: {
 				bool moved;
 
-				return command_move(session, &moved, error);
+				if (!command_move(session, &moved, error))
+					return false;
+				if (enter_sector != NULL)
+					*enter_sector = moved;
+				return true;
 			}
 			case 3:
+				if (enter_sector != NULL)
+					*enter_sector = true;
 				return true;
 			case 4: {
-				bool enter_sector = false;
+				bool selected = false;
 
-				return computer_menu(session, &enter_sector, error);
+				if (!computer_menu(session, &selected, error))
+					return false;
+				if (enter_sector != NULL)
+					*enter_sector = selected;
+				return true;
 			}
 			default:
 				return false;
@@ -10090,9 +10117,18 @@ planet_menu(struct yt_session *session, int logical_planet,
 			return true;
 		}
 		case 3:
-			if (!command_trade(session, error))
+		{
+			bool selected = false;
+
+			if (!command_trade(session, &selected, error))
 				return false;
+			if (selected) {
+				if (enter_sector != NULL)
+					*enter_sector = true;
+				return true;
+			}
 			break;
+		}
 		case 4:
 			return computer_menu(session, enter_sector, error);
 		case 5: case 6: case 7: case 8: case 9: case 10:
@@ -15581,7 +15617,8 @@ computer_port_friendship(struct yt_session *session, float owner,
 }
 
 static bool
-computer_port_report(struct yt_session *session, struct yt_error *error)
+computer_port_report(struct yt_session *session, bool *enter_sector,
+    struct yt_error *error)
 {
 	static const uint8_t prompt[] = "Enter sector number port is in -=> ";
 	static const uint8_t unavailable[] = "No information available.";
@@ -15595,6 +15632,8 @@ computer_port_report(struct yt_session *session, struct yt_error *error)
 	bool friendly;
 	bool denied;
 
+	if (enter_sector != NULL)
+		*enter_sector = false;
 	for (;;) {
 		struct qb_val_result parsed;
 
@@ -15647,7 +15686,7 @@ computer_port_report(struct yt_session *session, struct yt_error *error)
 		    sizeof(unavailable) - 1U,
 		    "computer port unavailable", error);
 	if (sector.port == 1.0f)
-		return earth_store(session, error);
+		return earth_store(session, enter_sector, error);
 	{
 		struct yt_port_market_state market;
 		float sector_record_expression = yt_port_selected_expression(
@@ -16951,10 +16990,8 @@ computer_menu(struct yt_session *session, bool *enter_sector,
 				return true;
 			}
 			case 4:
-				if (!command_trade(session, error))
+				if (!command_trade(session, enter_sector, error))
 					return false;
-				if (enter_sector != NULL)
-					*enter_sector = true;
 				return true;
 			case 5:
 				if (!computer_help(session, error))
@@ -16973,9 +17010,18 @@ computer_menu(struct yt_session *session, bool *enter_sector,
 				return true;
 			}
 			case 7:
-				if (!computer_port_report(session, error))
+			{
+				bool selected = false;
+
+				if (!computer_port_report(session, &selected, error))
 					return false;
+				if (selected) {
+					if (enter_sector != NULL)
+						*enter_sector = true;
+					return true;
+				}
 				continue;
+			}
 			case 8:
 				if (!computer_route(session, true, error))
 					return false;
@@ -17349,9 +17395,8 @@ command_shell(struct yt_session *session, struct yt_error *error)
 				return false;
 			break;
 		case YT_MAIN_SHELL_TRADE:
-			if (!command_trade(session, error))
+			if (!command_trade(session, &enter_sector, error))
 				return false;
-			enter_sector = true;
 			break;
 		case YT_MAIN_SHELL_QUIT:
 		{

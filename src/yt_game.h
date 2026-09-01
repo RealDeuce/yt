@@ -2740,6 +2740,7 @@ struct yt_port_docking_state {
 	bool finalizer_complete;
 	bool selected_port_read;
 	bool child_complete;
+	bool reenter_sector;
 	bool complete;
 	enum yt_port_docking_route route;
 };
@@ -2756,7 +2757,8 @@ struct yt_port_docking_ops {
 	    struct yt_error *error);
 	bool (*read_port)(void *context, uint32_t physical_record,
 	    struct yt_port *port, struct yt_error *error);
-	bool (*earth)(void *context, struct yt_error *error);
+	bool (*earth)(void *context, bool *reenter_sector,
+	    struct yt_error *error);
 	bool (*ordinary)(void *context, int sector_number,
 	    float sector_record_expression,
 	    struct yt_error *error);
