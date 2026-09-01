@@ -9087,6 +9087,86 @@ test_computer_port_report_short_cycles_presentation(void)
 	CHECK(sizeof(no_port) - 1U == 110U && sizeof(blank) - 1U == 80U);
 }
 
+static void
+test_computer_port_report_wrapper_b05d_cuts(void)
+{
+	static const uint8_t prompt[] =
+	    "Enter sector number port is in -=> ";
+	static const uint8_t unavailable[] = "No information available.";
+	static const uint8_t prompt_before[] = "\r\n";
+	static const uint8_t prompt_after[] =
+	    "\r\nEnter sector number port is in -=> ";
+	static const uint8_t unavailable_before[] =
+	    "\r\nEnter sector number port is in -=> 3\r\n\r\n";
+	static const uint8_t unavailable_after[] =
+	    "\r\nEnter sector number port is in -=> 3\r\n\r\n"
+	    "No information available.";
+	struct commodity_trade_join join;
+	struct commodity_b05d_cut cut;
+
+	commodity_trade_join_init(&join);
+	join.current = state(false);
+	commodity_trade_join_line(&join);
+	join.pager.newline_flag = 1.0f;
+	commodity_b05d_cut_init(&cut, &join, 0U);
+	CHECK(!yt_paged_row_run(&join.pager, &join.current, &cut.key_state,
+	    prompt, sizeof(prompt) - 1U, &commodity_b05d_cut_ops, &cut));
+	commodity_trade_join_check(&join, prompt_before,
+	    sizeof(prompt_before) - 1U);
+	CHECK(cut.carrier_calls == 1U && cut.sample_calls == 0U
+	    && cut.present_calls == 0U && cut.finish_calls == 0U
+	    && join.pager.line_count == 0.0f);
+
+	commodity_trade_join_init(&join);
+	join.current = state(false);
+	commodity_trade_join_line(&join);
+	join.pager.newline_flag = 1.0f;
+	commodity_b05d_cut_init(&cut, &join, 1U);
+	CHECK(!yt_paged_row_run(&join.pager, &join.current, &cut.key_state,
+	    prompt, sizeof(prompt) - 1U, &commodity_b05d_cut_ops, &cut));
+	commodity_trade_join_check(&join, prompt_after,
+	    sizeof(prompt_after) - 1U);
+	CHECK(cut.carrier_calls == 2U && cut.sample_calls == 1U
+	    && cut.present_calls == 1U && cut.finish_calls == 0U
+	    && join.pager.line_count == 0.0f);
+
+	commodity_trade_join_init(&join);
+	join.current = state(false);
+	commodity_trade_join_line(&join);
+	commodity_trade_join_b05d(&join, prompt, sizeof(prompt) - 1U, true);
+	commodity_trade_join_input(&join, (const uint8_t *)"3", 1U);
+	commodity_trade_join_line(&join);
+	commodity_b05d_cut_init(&cut, &join, 0U);
+	CHECK(!yt_paged_row_run(&join.pager, &join.current, &cut.key_state,
+	    unavailable, sizeof(unavailable) - 1U,
+	    &commodity_b05d_cut_ops, &cut));
+	commodity_trade_join_check(&join, unavailable_before,
+	    sizeof(unavailable_before) - 1U);
+	CHECK(cut.carrier_calls == 1U && cut.sample_calls == 0U
+	    && cut.present_calls == 0U && cut.finish_calls == 0U
+	    && join.pager.line_count == 0.0f);
+
+	commodity_trade_join_init(&join);
+	join.current = state(false);
+	commodity_trade_join_line(&join);
+	commodity_trade_join_b05d(&join, prompt, sizeof(prompt) - 1U, true);
+	commodity_trade_join_input(&join, (const uint8_t *)"3", 1U);
+	commodity_trade_join_line(&join);
+	commodity_b05d_cut_init(&cut, &join, 1U);
+	CHECK(!yt_paged_row_run(&join.pager, &join.current, &cut.key_state,
+	    unavailable, sizeof(unavailable) - 1U,
+	    &commodity_b05d_cut_ops, &cut));
+	commodity_trade_join_check(&join, unavailable_after,
+	    sizeof(unavailable_after) - 1U);
+	CHECK(cut.carrier_calls == 2U && cut.sample_calls == 1U
+	    && cut.present_calls == 1U && cut.finish_calls == 0U
+	    && join.pager.line_count == 0.0f);
+	CHECK(sizeof(prompt_before) - 1U == 2U
+	    && sizeof(prompt_after) - 1U == 37U
+	    && sizeof(unavailable_before) - 1U == 42U
+	    && sizeof(unavailable_after) - 1U == 67U);
+}
+
 struct computer_port_terminal_join {
 	struct yt_present_state *current;
 	struct yt_pager_state *pager;
@@ -21485,6 +21565,7 @@ main(void)
 	test_computer_avoid_presentation();
 	test_computer_port_report_presentation();
 	test_computer_port_report_short_cycles_presentation();
+	test_computer_port_report_wrapper_b05d_cuts();
 	test_computer_port_report_terminal_presentation();
 	test_computer_port_report_earth_cycle_presentation();
 	test_computer_port_report_ordinary_cycle_presentation();
