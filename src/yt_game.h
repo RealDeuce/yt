@@ -1701,6 +1701,21 @@ bool yt_computer_port_maximum(float port_offset, float sector_offset,
 bool yt_computer_port_select(const char *response, float maximum,
 	float *selected, enum yt_computer_port_selection_route *route,
 	struct yt_error *error);
+enum yt_computer_avoid_selection_route {
+	YT_COMPUTER_AVOID_SELECTION_INVALID,
+	YT_COMPUTER_AVOID_SELECTION_ACCEPTED,
+};
+bool yt_computer_avoid_maximum(float port_offset, float sector_offset,
+	float *maximum, struct yt_error *error);
+bool yt_computer_avoid_select_slot(const char *response,
+	uint8_t conversion_mode, float *selected, int *index,
+	enum yt_computer_avoid_selection_route *route,
+	struct yt_error *error);
+bool yt_computer_avoid_select_sector(const char *response, float maximum,
+	float *selected, enum yt_computer_avoid_selection_route *route,
+	struct yt_error *error);
+void yt_computer_avoid_transition(float old_value, float new_value,
+	bool *locked, bool *available);
 enum yt_computer_port_field_kind {
 	YT_COMPUTER_PORT_FIELD_CALLER,
 	YT_COMPUTER_PORT_FIELD_SECTOR,

@@ -23355,6 +23355,102 @@ check_computer_port_selection(void)
 	    && error.status == YT_INVALID;
 }
 
+static bool
+check_computer_avoid_selection(void)
+{
+	static const char witness[] =
+	    "1.000000536441803034026776231257827021181583404541015625";
+	static const struct {
+		float old_value;
+		float new_value;
+		bool locked;
+		bool available;
+	} transitions[] = {
+		{0.0f, 5.0f, true, false},
+		{5.0f, 0.0f, false, true},
+		{5.0f, 5.0f, true, false},
+		{5.0f, 7.0f, true, true},
+		{0.0f, 0.0f, false, false},
+	};
+	struct yt_error error;
+	enum yt_computer_avoid_selection_route route;
+	char formatted[64];
+	float maximum;
+	float selected;
+	bool available;
+	bool locked;
+	int index;
+	size_t transition;
+
+	if (!yt_computer_avoid_maximum(2055.0f, 51.0f, &maximum, NULL)
+	    || maximum != 2004.0f
+	    || !yt_computer_avoid_select_slot("2.5", 0U, &selected, &index,
+	    &route, NULL)
+	    || route != YT_COMPUTER_AVOID_SELECTION_ACCEPTED
+	    || selected != 2.5f || index != 3
+	    || !yt_computer_avoid_select_slot("3.5", 0U, &selected, &index,
+	    &route, NULL)
+	    || route != YT_COMPUTER_AVOID_SELECTION_ACCEPTED || index != 4
+	    || !yt_computer_avoid_select_slot("", 0U, &selected, &index,
+	    &route, NULL)
+	    || route != YT_COMPUTER_AVOID_SELECTION_INVALID
+	    || selected != 0.0f || index != 0
+	    || !yt_computer_avoid_select_sector(witness, maximum, &selected,
+	    &route, NULL)
+	    || route != YT_COMPUTER_AVOID_SELECTION_ACCEPTED
+	    || selected != 0x1.00000ap0f
+	    || qb_str_single(formatted, sizeof(formatted), selected) != 9
+	    || strcmp(formatted, " 1.000001") != 0
+	    || !yt_computer_avoid_select_sector("7.5", maximum, &selected,
+	    &route, NULL)
+	    || route != YT_COMPUTER_AVOID_SELECTION_ACCEPTED
+	    || selected != 7.5f
+	    || !yt_computer_avoid_select_sector("1D-56", maximum, &selected,
+	    &route, NULL)
+	    || route != YT_COMPUTER_AVOID_SELECTION_ACCEPTED
+	    || selected != 0.0f
+	    || !yt_computer_avoid_select_sector("-1", maximum, &selected,
+	    &route, NULL)
+	    || route != YT_COMPUTER_AVOID_SELECTION_INVALID
+	    || !yt_computer_avoid_select_sector("2005", maximum, &selected,
+	    &route, NULL)
+	    || route != YT_COMPUTER_AVOID_SELECTION_INVALID)
+		return false;
+
+	for (transition = 0U; transition < YT_ARRAY_LEN(transitions);
+	    ++transition) {
+		yt_computer_avoid_transition(transitions[transition].old_value,
+		    transitions[transition].new_value, &locked, &available);
+		if (locked != transitions[transition].locked
+		    || available != transitions[transition].available)
+			return false;
+	}
+
+	yt_error_clear(&error);
+	if (yt_computer_avoid_select_slot("0D39", 0U, &selected, &index,
+	    &route, &error) || error.status != YT_RANGE
+	    || strcmp(error.operation, "avoid slot VAL") != 0)
+		return false;
+	yt_error_clear(&error);
+	if (yt_computer_avoid_select_sector("1D39", maximum, &selected,
+	    &route, &error) || error.status != YT_RANGE
+	    || strcmp(error.operation, "avoid sector VAL") != 0)
+		return false;
+	maximum = qb_mbf32_decode(
+	    (const uint8_t[]){0xff, 0xff, 0x7f, 0xff});
+	yt_error_clear(&error);
+	if (yt_computer_avoid_maximum(maximum, -maximum, &selected, &error)
+	    || error.status != YT_RANGE
+	    || strcmp(error.operation, "avoid maximum subtraction") != 0)
+		return false;
+	yt_error_clear(&error);
+	return !yt_computer_avoid_select_slot(NULL, 0U, &selected, &index,
+	    &route, &error) && error.status == YT_INVALID
+	    && !yt_computer_avoid_select_sector(NULL, 1.0f, &selected, &route,
+	    &error)
+	    && !yt_computer_avoid_maximum(1.0f, 1.0f, NULL, &error);
+}
+
 struct computer_port_visibility_tape {
 	uint32_t records[2];
 	float teams[2];
@@ -27989,6 +28085,8 @@ main(void)
 		return fail("port-docking front transaction differs");
 	if (!check_computer_port_selection())
 		return fail("computer port selection differs");
+	if (!check_computer_avoid_selection())
+		return fail("computer avoid selection differs");
 	if (!check_computer_port_visibility())
 		return fail("computer port visibility differs");
 	if (!check_treasury_transaction())

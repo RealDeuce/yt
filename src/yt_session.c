@@ -15899,13 +15899,14 @@ computer_avoid(struct yt_session *session, struct yt_error *error)
 	static const uint8_t heading_two[] = "Current sectors to avoid are:";
 	static const uint8_t slot_prompt[] =
 	    "Enter the number of the slot to change [1 - 30]: ";
-	struct qb_val_result parsed;
 	char response[80];
 	float slot_value;
 	float maximum;
 	float new_value;
 	float old_value;
-	bool overflow;
+	bool available;
+	bool locked;
+	enum yt_computer_avoid_selection_route route;
 	int slot;
 	int row;
 
@@ -15940,30 +15941,16 @@ computer_avoid(struct yt_session *session, struct yt_error *error)
 	    "avoid slot prompt", error)
 	    || !session_036f(session, response, sizeof(response)))
 		return false;
-	parsed = qb_val(response);
-	if (parsed.overflow) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			(void)snprintf(error->operation, sizeof(error->operation),
-			    "%s", "avoid slot VAL");
-		}
+	if (!yt_computer_avoid_select_slot(response,
+	    session->presentation.sound.conversion_mode, &slot_value, &slot,
+	    &route, error))
 		return false;
-	}
-	slot_value = parsed.valid ? (float)parsed.value : 0.0f;
-	if (slot_value < 1.0f || slot_value > 30.0f)
+	if (route != YT_COMPUTER_AVOID_SELECTION_ACCEPTED)
 		return true;
-	slot = (int)qb_cint_mode((double)slot_value,
-	    session->presentation.sound.conversion_mode, &overflow);
-	if (overflow || slot < 1 || slot > 30) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			(void)snprintf(error->operation, sizeof(error->operation),
-			    "%s", "avoid slot CINT");
-		}
+	if (!yt_computer_avoid_maximum(
+	    session->door->game.config.port_offset,
+	    session->door->game.config.sector_offset, &maximum, error))
 		return false;
-	}
-	maximum = single_sub(session->door->game.config.port_offset,
-	    session->door->game.config.sector_offset);
 	{
 		char maximum_text[64];
 		char prompt[160];
@@ -15979,23 +15966,17 @@ computer_avoid(struct yt_session *session, struct yt_error *error)
 		    || !session_036f(session, response, sizeof(response)))
 			return false;
 	}
-	parsed = qb_val(response);
-	if (parsed.overflow) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			(void)snprintf(error->operation, sizeof(error->operation),
-			    "%s", "avoid sector VAL");
-		}
+	if (!yt_computer_avoid_select_sector(response, maximum, &new_value,
+	    &route, error))
 		return false;
-	}
-	new_value = parsed.valid ? (float)parsed.value : 0.0f;
-	if (new_value < 0.0f || new_value > maximum)
+	if (route != YT_COMPUTER_AVOID_SELECTION_ACCEPTED)
 		return true;
 	old_value = session->avoid[slot - 1];
 	session->avoid[slot - 1] = new_value;
+	yt_computer_avoid_transition(old_value, new_value, &locked, &available);
 	session->presentation.foreground = 2.0f;
 	session->pager.foreground = 2;
-	if (new_value != 0.0f) {
+	if (locked) {
 		char number[64];
 		char status[128];
 
@@ -16006,7 +15987,7 @@ computer_avoid(struct yt_session *session, struct yt_error *error)
 		    strlen(status), "avoid locked status", error))
 			return false;
 	}
-	if (old_value != 0.0f && old_value != new_value) {
+	if (available) {
 		char number[64];
 		char status[128];
 

@@ -8873,6 +8873,108 @@ test_computer_front_presentation(void)
 }
 
 static void
+computer_avoid_accepted_cycle_fixture(bool ansi,
+    struct pager_capture *capture, struct yt_present_state *current,
+    struct yt_pager_state *pager)
+{
+	static const uint8_t heading_one[] =
+	    "You may set the autopilot to avoid up to 30 sectors";
+	static const uint8_t heading_two[] = "Current sectors to avoid are:";
+	static const uint8_t slot_prompt[] =
+	    "Enter the number of the slot to change [1 - 30]: ";
+	static const uint8_t sector_prompt[] =
+	    "Enter the sector you wish to avoid [1 - 2004] (0 to clear): ";
+	static const uint8_t locked[] = "Sector 5 now locked out.";
+	static const uint8_t computer_prompt[] =
+	    "Time: 14:59  Computer command (?=help)? ";
+	struct yt_present_result result;
+	char accumulator[80] = "";
+	int row;
+
+	computer_return_prompt_fixture(ansi, 0.0f, capture, current, pager);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"7", 1U,
+	    (const uint8_t *)"7", 1U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager_fixture_b05d(pager, current, heading_one,
+	    sizeof(heading_one) - 1U, capture);
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager_fixture_b05d(pager, current, heading_two,
+	    sizeof(heading_two) - 1U, capture);
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	for (row = 1; row <= 10; ++row) {
+		char first[96];
+		char middle[96];
+		char last[96];
+		uint8_t mutable[256];
+		size_t length;
+
+		(void)snprintf(first, sizeof(first), "[ %2d ]  -=>  0", row);
+		(void)snprintf(middle, sizeof(middle), "[%3d ]  -=>  0",
+		    row + 10);
+		(void)snprintf(last, sizeof(last), "[%3d ]  -=>  0",
+		    row + 20);
+		length = strlen(first);
+		memcpy(mutable, first, length);
+		CHECK(yt_present_fixed_width(mutable, &length, sizeof(mutable),
+		    20.0f, current, &result) == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+		length = strlen(middle);
+		memcpy(mutable, middle, length);
+		CHECK(yt_present_fixed_width(mutable, &length, sizeof(mutable),
+		    20.0f, current, &result) == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+		pager_fixture_b05d(pager, current, (const uint8_t *)last,
+		    strlen(last), capture);
+	}
+
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, slot_prompt,
+	    sizeof(slot_prompt) - 1U, capture);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"1", 1U,
+	    (const uint8_t *)"1", 1U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, sector_prompt,
+	    sizeof(sector_prompt) - 1U, capture);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"5", 1U,
+	    (const uint8_t *)"5", 1U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+
+	current->foreground = 2.0f;
+	pager->foreground = 2;
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager_fixture_b05d(pager, current, locked, sizeof(locked) - 1U,
+	    capture);
+	current->foreground = 1.0f;
+	pager->foreground = 1;
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, computer_prompt,
+	    sizeof(computer_prompt) - 1U, capture);
+}
+
+static void
 test_computer_avoid_presentation(void)
 {
 	static const uint8_t heading_one[] =
@@ -8897,6 +8999,42 @@ test_computer_avoid_presentation(void)
 	    "[ 10 ]  -=>  0      [ 20 ]  -=>  0      [ 30 ]  -=>  0\n\r"
 	    "\r\nEnter the number of the slot to change [1 - 30]: \r\n"
 	    "\r\nTime:10:00  Computer command (?=help)? ";
+	static const uint8_t accepted_plain[] =
+	    "\r\nTime: 14:59  Computer command (?=help)? 7\r\n"
+	    "\r\nYou may set the autopilot to avoid up to 30 sectors\n\r"
+	    "\r\nCurrent sectors to avoid are:\n\r\r\n"
+	    "[  1 ]  -=>  0      [ 11 ]  -=>  0      [ 21 ]  -=>  0\n\r"
+	    "[  2 ]  -=>  0      [ 12 ]  -=>  0      [ 22 ]  -=>  0\n\r"
+	    "[  3 ]  -=>  0      [ 13 ]  -=>  0      [ 23 ]  -=>  0\n\r"
+	    "[  4 ]  -=>  0      [ 14 ]  -=>  0      [ 24 ]  -=>  0\n\r"
+	    "[  5 ]  -=>  0      [ 15 ]  -=>  0      [ 25 ]  -=>  0\n\r"
+	    "[  6 ]  -=>  0      [ 16 ]  -=>  0      [ 26 ]  -=>  0\n\r"
+	    "[  7 ]  -=>  0      [ 17 ]  -=>  0      [ 27 ]  -=>  0\n\r"
+	    "[  8 ]  -=>  0      [ 18 ]  -=>  0      [ 28 ]  -=>  0\n\r"
+	    "[  9 ]  -=>  0      [ 19 ]  -=>  0      [ 29 ]  -=>  0\n\r"
+	    "[ 10 ]  -=>  0      [ 20 ]  -=>  0      [ 30 ]  -=>  0\n\r"
+	    "\r\nEnter the number of the slot to change [1 - 30]: 1\r\n"
+	    "\r\nEnter the sector you wish to avoid [1 - 2004] (0 to clear): "
+	    "5\r\n\r\nSector 5 now locked out.\n\r"
+	    "\r\nTime: 14:59  Computer command (?=help)? ";
+	static const uint8_t accepted_ansi[] =
+	    "\r\n\x1b[0;31;40mTime: 14:59  Computer command (?=help)? 7\r\n"
+	    "\r\nYou may set the autopilot to avoid up to 30 sectors\n\r"
+	    "\r\nCurrent sectors to avoid are:\n\r\r\n"
+	    "[  1 ]  -=>  0      [ 11 ]  -=>  0      [ 21 ]  -=>  0\n\r"
+	    "[  2 ]  -=>  0      [ 12 ]  -=>  0      [ 22 ]  -=>  0\n\r"
+	    "[  3 ]  -=>  0      [ 13 ]  -=>  0      [ 23 ]  -=>  0\n\r"
+	    "[  4 ]  -=>  0      [ 14 ]  -=>  0      [ 24 ]  -=>  0\n\r"
+	    "[  5 ]  -=>  0      [ 15 ]  -=>  0      [ 25 ]  -=>  0\n\r"
+	    "[  6 ]  -=>  0      [ 16 ]  -=>  0      [ 26 ]  -=>  0\n\r"
+	    "[  7 ]  -=>  0      [ 17 ]  -=>  0      [ 27 ]  -=>  0\n\r"
+	    "[  8 ]  -=>  0      [ 18 ]  -=>  0      [ 28 ]  -=>  0\n\r"
+	    "[  9 ]  -=>  0      [ 19 ]  -=>  0      [ 29 ]  -=>  0\n\r"
+	    "[ 10 ]  -=>  0      [ 20 ]  -=>  0      [ 30 ]  -=>  0\n\r"
+	    "\r\nEnter the number of the slot to change [1 - 30]: 1\r\n"
+	    "\r\nEnter the sector you wish to avoid [1 - 2004] (0 to clear): "
+	    "5\r\n\x1b[0;32;40m\r\nSector 5 now locked out.\n\r"
+	    "\x1b[0;31;40m\r\nTime: 14:59  Computer command (?=help)? ";
 	struct yt_present_state current = state(false);
 	struct yt_present_result result;
 	struct yt_pager_state pager;
@@ -8960,6 +9098,21 @@ test_computer_avoid_presentation(void)
 	CHECK(capture.remote_length == sizeof(expected) - 1U
 	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
 	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f);
+
+	computer_avoid_accepted_cycle_fixture(false, &capture, &current,
+	    &pager);
+	CHECK(sizeof(accepted_plain) - 1U == 884U);
+	CHECK(capture.remote_length == sizeof(accepted_plain) - 1U
+	    && memcmp(capture.remote, accepted_plain,
+	    sizeof(accepted_plain) - 1U) == 0);
+	CHECK(pager.line_count == 2.0f && pager.newline_flag == 0.0f);
+	computer_avoid_accepted_cycle_fixture(true, &capture, &current,
+	    &pager);
+	CHECK(sizeof(accepted_ansi) - 1U == 914U);
+	CHECK(capture.remote_length == sizeof(accepted_ansi) - 1U
+	    && memcmp(capture.remote, accepted_ansi,
+	    sizeof(accepted_ansi) - 1U) == 0);
+	CHECK(pager.line_count == 2.0f && pager.newline_flag == 0.0f);
 }
 
 static void

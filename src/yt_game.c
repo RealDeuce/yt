@@ -3923,6 +3923,109 @@ yt_computer_port_select(const char *response, float maximum,
 }
 
 static bool
+computer_avoid_csng(const struct qb_val_result *parsed, float *selected,
+    struct yt_error *error, const char *operation)
+{
+	uint8_t raw[4];
+	enum qb_mbf_status status;
+
+	status = qb_mbf32_from_mbf64_raw(parsed->mbf, raw);
+	if (status == QB_MBF_OVERFLOW || status == QB_MBF_DOMAIN)
+		return startup_configuration_error(error, YT_RANGE, operation);
+	*selected = status == QB_MBF_UNDERFLOW ? 0.0f
+	    : qb_mbf32_decode(raw);
+	return true;
+}
+
+bool
+yt_computer_avoid_maximum(float port_offset, float sector_offset,
+    float *maximum, struct yt_error *error)
+{
+	uint8_t raw[4];
+	volatile float difference = port_offset - sector_offset;
+	enum qb_mbf_status status;
+
+	if (maximum == NULL)
+		return startup_configuration_error(error, YT_INVALID,
+		    "avoid maximum arguments");
+	status = qb_mbf32_encode(difference, raw);
+	if (status == QB_MBF_OVERFLOW)
+		return startup_configuration_error(error, YT_RANGE,
+		    "avoid maximum subtraction");
+	*maximum = status == QB_MBF_UNDERFLOW ? 0.0f
+	    : qb_mbf32_decode(raw);
+	return true;
+}
+
+bool
+yt_computer_avoid_select_slot(const char *response, uint8_t conversion_mode,
+    float *selected, int *index,
+    enum yt_computer_avoid_selection_route *route, struct yt_error *error)
+{
+	struct qb_val_result parsed;
+	bool overflow;
+
+	if (response == NULL || selected == NULL || index == NULL
+	    || route == NULL)
+		return startup_configuration_error(error, YT_INVALID,
+		    "avoid slot arguments");
+	*selected = 0.0f;
+	*index = 0;
+	*route = YT_COMPUTER_AVOID_SELECTION_INVALID;
+	parsed = qb_val(response);
+	if (parsed.overflow)
+		return startup_configuration_error(error, YT_RANGE,
+		    "avoid slot VAL");
+	if (!computer_avoid_csng(&parsed, selected, error,
+	    "avoid slot CSNG"))
+		return false;
+	if (*selected < 1.0f || *selected > 30.0f)
+		return true;
+	*index = (int)qb_cint_mode((double)*selected, conversion_mode,
+	    &overflow);
+	if (overflow || *index < 1 || *index > 30)
+		return startup_configuration_error(error, YT_RANGE,
+		    "avoid slot CINT");
+	*route = YT_COMPUTER_AVOID_SELECTION_ACCEPTED;
+	return true;
+}
+
+bool
+yt_computer_avoid_select_sector(const char *response, float maximum,
+    float *selected, enum yt_computer_avoid_selection_route *route,
+    struct yt_error *error)
+{
+	struct qb_val_result parsed;
+
+	if (response == NULL || selected == NULL || route == NULL)
+		return startup_configuration_error(error, YT_INVALID,
+		    "avoid sector arguments");
+	*selected = 0.0f;
+	*route = YT_COMPUTER_AVOID_SELECTION_INVALID;
+	parsed = qb_val(response);
+	if (parsed.overflow)
+		return startup_configuration_error(error, YT_RANGE,
+		    "avoid sector VAL");
+	if (!computer_avoid_csng(&parsed, selected, error,
+	    "avoid sector CSNG"))
+		return false;
+	if (*selected < 0.0f || *selected > maximum)
+		return true;
+	*route = YT_COMPUTER_AVOID_SELECTION_ACCEPTED;
+	return true;
+}
+
+void
+yt_computer_avoid_transition(float old_value, float new_value,
+    bool *locked, bool *available)
+{
+	if (locked != NULL)
+		*locked = new_value != 0.0f;
+	if (available != NULL)
+		*available = old_value != 0.0f && old_value != new_value;
+}
+
+static bool
 computer_port_record(float value, uint32_t *record, const char *operation,
     struct yt_error *error)
 {
