@@ -16867,6 +16867,340 @@ check_direct_attack_combat_transaction(void)
 	    NULL) && !yt_direct_attack_combat_run(&state, NULL, &tape, NULL);
 }
 
+enum direct_attack_event {
+	DIRECT_ATTACK_PRESENT_TITLE,
+	DIRECT_ATTACK_READ_CURRENT,
+	DIRECT_ATTACK_READ_CANDIDATE,
+	DIRECT_ATTACK_PRESENT_NO_FIGHTERS,
+	DIRECT_ATTACK_PRESENT_TEAM,
+	DIRECT_ATTACK_CONFIRM,
+	DIRECT_ATTACK_PRESENT_COMMITMENT,
+	DIRECT_ATTACK_AMOUNT,
+	DIRECT_ATTACK_COMBAT,
+	DIRECT_ATTACK_PRESENT_NONE_SELECTED,
+	DIRECT_ATTACK_PRESENT_NONE_VISIBLE,
+};
+
+struct direct_attack_tape {
+	struct yt_player player[6];
+	float sector_cache[6];
+	float cloak_cache[6];
+	enum direct_attack_event events[20];
+	size_t event_count;
+	size_t fail_at;
+	int read_records[8];
+	size_t read_count;
+	enum yt_direct_attack_confirmation answers[4];
+	size_t answer_count;
+	size_t answer_position;
+	char amount[64];
+	uint8_t output[6][300];
+	size_t output_length[6];
+	uint8_t prompts[4][300];
+	size_t prompt_length[4];
+	size_t prompt_count;
+	int combat_target;
+	double combat_committed;
+};
+
+static bool
+direct_attack_event(struct direct_attack_tape *tape,
+    enum direct_attack_event event, struct yt_error *error)
+{
+	size_t index = tape->event_count;
+
+	if (index >= YT_ARRAY_LEN(tape->events))
+		return false;
+	tape->events[tape->event_count++] = event;
+	if (index != tape->fail_at)
+		return true;
+	if (error != NULL) {
+		error->status = YT_IO_ERROR;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    "direct Attack selector dependency");
+	}
+	return false;
+}
+
+static bool
+direct_attack_read(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct direct_attack_tape *tape = context;
+	enum direct_attack_event event = player_record == 2
+	    ? DIRECT_ATTACK_READ_CURRENT : DIRECT_ATTACK_READ_CANDIDATE;
+
+	if (player_record < 0
+	    || (size_t)player_record >= YT_ARRAY_LEN(tape->player)
+	    || tape->read_count >= YT_ARRAY_LEN(tape->read_records)
+	    || !direct_attack_event(tape, event, error))
+		return false;
+	tape->read_records[tape->read_count++] = player_record;
+	*player = tape->player[player_record];
+	return true;
+}
+
+static bool
+direct_attack_present(void *context, const uint8_t *text, size_t length,
+    enum yt_direct_attack_output_kind kind, struct yt_error *error)
+{
+	static const enum direct_attack_event events[] = {
+		DIRECT_ATTACK_PRESENT_TITLE,
+		DIRECT_ATTACK_PRESENT_NO_FIGHTERS,
+		DIRECT_ATTACK_PRESENT_TEAM,
+		DIRECT_ATTACK_PRESENT_COMMITMENT,
+		DIRECT_ATTACK_PRESENT_NONE_SELECTED,
+		DIRECT_ATTACK_PRESENT_NONE_VISIBLE,
+	};
+	struct direct_attack_tape *tape = context;
+
+	if ((size_t)kind >= YT_ARRAY_LEN(events) || length > 300U
+	    || !direct_attack_event(tape, events[kind], error))
+		return false;
+	if (length != 0U)
+		memcpy(tape->output[kind], text, length);
+	tape->output_length[kind] = length;
+	return true;
+}
+
+static bool
+direct_attack_confirm(void *context, const uint8_t *prompt, size_t length,
+    enum yt_direct_attack_confirmation *answer, struct yt_error *error)
+{
+	struct direct_attack_tape *tape = context;
+
+	if (length > 300U || tape->prompt_count >= YT_ARRAY_LEN(tape->prompts)
+	    || tape->answer_position >= tape->answer_count
+	    || !direct_attack_event(tape, DIRECT_ATTACK_CONFIRM, error))
+		return false;
+	if (length != 0U)
+		memcpy(tape->prompts[tape->prompt_count], prompt, length);
+	tape->prompt_length[tape->prompt_count++] = length;
+	*answer = tape->answers[tape->answer_position++];
+	return true;
+}
+
+static bool
+direct_attack_amount(void *context, char *response, size_t capacity,
+    struct yt_error *error)
+{
+	struct direct_attack_tape *tape = context;
+	size_t length = strlen(tape->amount);
+
+	if (length >= capacity
+	    || !direct_attack_event(tape, DIRECT_ATTACK_AMOUNT, error))
+		return false;
+	memcpy(response, tape->amount, length + 1U);
+	return true;
+}
+
+static bool
+direct_attack_combat_child(void *context, int target_record,
+    double committed, struct yt_error *error)
+{
+	struct direct_attack_tape *tape = context;
+
+	if (!direct_attack_event(tape, DIRECT_ATTACK_COMBAT, error))
+		return false;
+	tape->combat_target = target_record;
+	tape->combat_committed = committed;
+	return true;
+}
+
+static const struct yt_direct_attack_ops direct_attack_ops = {
+	direct_attack_read,
+	direct_attack_present,
+	direct_attack_confirm,
+	direct_attack_amount,
+	direct_attack_combat_child,
+};
+
+static void
+direct_attack_player_fixture(struct yt_player *player, const char *name,
+    float fighters, float sector, float team)
+{
+	struct yt_record record;
+	size_t index;
+	size_t name_length = strlen(name);
+
+	for (index = 0U; index < YT_RECORD_SIZE; ++index)
+		record.bytes[index] = (uint8_t)(index * 11U + name_length);
+	yt_record_set_text(&record, (const uint8_t *)name, name_length);
+	(void)yt_record_set_number(&record, YT_F57, sector);
+	(void)yt_record_set_number(&record, YT_F61, fighters);
+	(void)yt_record_set_number(&record, YT_F85, (float)name_length);
+	(void)yt_record_set_number(&record, YT_F89, team);
+	yt_player_decode(player, &record);
+}
+
+static void
+direct_attack_fixture(struct direct_attack_tape *tape,
+    struct yt_direct_attack_state *state)
+{
+	size_t index;
+
+	memset(tape, 0, sizeof(*tape));
+	tape->fail_at = (size_t)-1;
+	for (index = 0U; index < YT_ARRAY_LEN(tape->sector_cache); ++index) {
+		tape->sector_cache[index] = 0.0f;
+		tape->cloak_cache[index] = 0.0f;
+	}
+	direct_attack_player_fixture(&tape->player[2], "Ada", 5.0f, 7.0f,
+	    1.0f);
+	direct_attack_player_fixture(&tape->player[3], "Team", 2.0f, 7.0f,
+	    1.0f);
+	direct_attack_player_fixture(&tape->player[4], "Decline", 2.0f, 7.0f,
+	    0.0f);
+	direct_attack_player_fixture(&tape->player[5], "Fight", 2.0f, 7.0f,
+	    0.0f);
+	for (index = 2U; index < YT_ARRAY_LEN(tape->sector_cache); ++index)
+		tape->sector_cache[index] = 7.0f;
+	tape->answers[0] = YT_DIRECT_ATTACK_CONFIRM_NO;
+	tape->answers[1] = YT_DIRECT_ATTACK_CONFIRM_YES;
+	tape->answer_count = 2U;
+	(void)snprintf(tape->amount, sizeof(tape->amount), "%s", "3");
+	*state = (struct yt_direct_attack_state){
+		.current_player_record = 2,
+		.last_player_record = 5.0f,
+		.conversion_mode = 0,
+		.sector_cache = tape->sector_cache,
+		.cloak_cache = tape->cloak_cache,
+		.cache_count = YT_ARRAY_LEN(tape->sector_cache),
+	};
+}
+
+static bool
+check_direct_attack_transaction(void)
+{
+	static const uint8_t title[] = "<Attack>";
+	static const uint8_t team[] = "NOT attacking team member Team!";
+	static const uint8_t first_prompt[] = "Attack Decline (Y/N)[Y]? ";
+	static const uint8_t second_prompt[] = "Attack Fight (Y/N)[Y]? ";
+	static const uint8_t commitment[] =
+	    "You have 5. Use how many fighters? [0] ";
+	static const uint8_t no_fighters[] =
+	    "You don't have any fighters.";
+	static const uint8_t none_visible[] = "There's no one here!";
+	static const uint8_t none_selected[] =
+	    "There are no other ships in this sector.";
+	struct direct_attack_tape tape;
+	struct yt_direct_attack_state state;
+	enum direct_attack_event expected[20];
+	struct yt_error error;
+	size_t expected_count;
+	size_t failure;
+
+	direct_attack_fixture(&tape, &state);
+	if (!yt_direct_attack_run(&state, &direct_attack_ops, &tape, NULL)
+	    || !state.complete || state.route != YT_DIRECT_ATTACK_COMBAT_RETURN
+	    || state.enter_sector || !state.encountered || state.candidate != 5.0f
+	    || state.target_record_cell != 5.0f || state.committed != 3.0
+	    || tape.combat_target != 5 || tape.combat_committed != 3.0
+	    || tape.read_count != 4U || tape.read_records[0] != 2
+	    || tape.read_records[1] != 3 || tape.read_records[2] != 4
+	    || tape.read_records[3] != 5
+	    || tape.output_length[YT_DIRECT_ATTACK_TITLE_ROW]
+	    != sizeof(title) - 1U
+	    || memcmp(tape.output[YT_DIRECT_ATTACK_TITLE_ROW], title,
+	    sizeof(title) - 1U) != 0
+	    || tape.output_length[YT_DIRECT_ATTACK_TEAM_ROW]
+	    != sizeof(team) - 1U
+	    || memcmp(tape.output[YT_DIRECT_ATTACK_TEAM_ROW], team,
+	    sizeof(team) - 1U) != 0
+	    || tape.output_length[YT_DIRECT_ATTACK_COMMITMENT_PROMPT]
+	    != sizeof(commitment) - 1U
+	    || memcmp(tape.output[YT_DIRECT_ATTACK_COMMITMENT_PROMPT],
+	    commitment, sizeof(commitment) - 1U) != 0
+	    || tape.prompt_count != 2U
+	    || tape.prompt_length[0] != sizeof(first_prompt) - 1U
+	    || memcmp(tape.prompts[0], first_prompt,
+	    sizeof(first_prompt) - 1U) != 0
+	    || tape.prompt_length[1] != sizeof(second_prompt) - 1U
+	    || memcmp(tape.prompts[1], second_prompt,
+	    sizeof(second_prompt) - 1U) != 0)
+		return false;
+	expected_count = tape.event_count;
+	if (expected_count != 11U)
+		return false;
+	memcpy(expected, tape.events, expected_count * sizeof(expected[0]));
+	for (failure = 0U; failure < expected_count; ++failure) {
+		direct_attack_fixture(&tape, &state);
+		tape.fail_at = failure;
+		yt_error_clear(&error);
+		if (yt_direct_attack_run(&state, &direct_attack_ops, &tape,
+		    &error) || state.complete
+		    || tape.event_count != failure + 1U
+		    || memcmp(tape.events, expected,
+		    tape.event_count * sizeof(tape.events[0])) != 0
+		    || error.status != YT_IO_ERROR
+		    || state.encountered != (failure >= 4U)
+		    || state.target_record_cell != (failure < 2U ? 0.0f
+		    : failure < 4U ? 3.0f : failure < 6U ? 4.0f : 5.0f))
+			return false;
+	}
+
+	direct_attack_fixture(&tape, &state);
+	tape.player[2].fighters = 0.5f;
+	(void)yt_record_set_number(&tape.player[2].record, YT_F61, 0.5f);
+	if (!yt_direct_attack_run(&state, &direct_attack_ops, &tape, NULL)
+	    || state.route != YT_DIRECT_ATTACK_NO_FIGHTERS || !state.complete
+	    || tape.event_count != 3U
+	    || tape.output_length[YT_DIRECT_ATTACK_NO_FIGHTERS_ROW]
+	    != sizeof(no_fighters) - 1U
+	    || memcmp(tape.output[YT_DIRECT_ATTACK_NO_FIGHTERS_ROW],
+	    no_fighters, sizeof(no_fighters) - 1U) != 0)
+		return false;
+
+	direct_attack_fixture(&tape, &state);
+	tape.sector_cache[3] = 8.0f;
+	tape.sector_cache[4] = 8.0f;
+	tape.sector_cache[5] = 8.0f;
+	if (!yt_direct_attack_run(&state, &direct_attack_ops, &tape, NULL)
+	    || state.route != YT_DIRECT_ATTACK_EXHAUSTED || !state.complete
+	    || !state.enter_sector || state.encountered
+	    || state.target_record_cell != 0.0f
+	    || tape.output_length[YT_DIRECT_ATTACK_NONE_VISIBLE_ROW]
+	    != sizeof(none_visible) - 1U
+	    || memcmp(tape.output[YT_DIRECT_ATTACK_NONE_VISIBLE_ROW],
+	    none_visible, sizeof(none_visible) - 1U) != 0)
+		return false;
+
+	direct_attack_fixture(&tape, &state);
+	state.last_player_record = 3.0f;
+	if (!yt_direct_attack_run(&state, &direct_attack_ops, &tape, NULL)
+	    || state.route != YT_DIRECT_ATTACK_EXHAUSTED || !state.complete
+	    || !state.enter_sector || !state.encountered
+	    || tape.output_length[YT_DIRECT_ATTACK_NONE_SELECTED_ROW]
+	    != sizeof(none_selected) - 1U
+	    || memcmp(tape.output[YT_DIRECT_ATTACK_NONE_SELECTED_ROW],
+	    none_selected, sizeof(none_selected) - 1U) != 0)
+		return false;
+
+	direct_attack_fixture(&tape, &state);
+	tape.player[3].team = 0.0f;
+	(void)yt_record_set_number(&tape.player[3].record, YT_F89, 0.0f);
+	tape.answers[0] = YT_DIRECT_ATTACK_CONFIRM_EMPTY;
+	tape.answer_count = 1U;
+	(void)snprintf(tape.amount, sizeof(tape.amount), "%s", "0");
+	if (!yt_direct_attack_run(&state, &direct_attack_ops, &tape, NULL)
+	    || state.route != YT_DIRECT_ATTACK_CANCELLED || !state.complete
+	    || state.target_record_cell != 3.0f || state.committed != 0.0
+	    || tape.combat_target != 0)
+		return false;
+
+	direct_attack_fixture(&tape, &state);
+	state.last_player_record = 6.0f;
+	tape.sector_cache[3] = 8.0f;
+	tape.sector_cache[4] = 8.0f;
+	tape.sector_cache[5] = 8.0f;
+	yt_error_clear(&error);
+	return !yt_direct_attack_run(&state, &direct_attack_ops, &tape, &error)
+	    && !state.complete && state.candidate == 6.0f
+	    && error.status == YT_RANGE
+	    && !yt_direct_attack_run(NULL, &direct_attack_ops, &tape, NULL)
+	    && !yt_direct_attack_run(&state, NULL, &tape, NULL);
+}
+
 static bool
 check_direct_attack_radio_model(void)
 {
@@ -19770,6 +20104,8 @@ main(void)
 		return fail("direct Attack attrition model differs");
 	if (!check_direct_attack_combat_transaction())
 		return fail("direct Attack combat transaction differs");
+	if (!check_direct_attack_transaction())
+		return fail("direct Attack selector transaction differs");
 	if (!check_direct_attack_radio_model())
 		return fail("direct Attack casualty-radio alias differs");
 	if (!check_planet_rename_model())

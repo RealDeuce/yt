@@ -5242,84 +5242,93 @@ attack_player(struct yt_session *session, int target_record,
 }
 
 static bool
+direct_attack_present(void *context, const uint8_t *text, size_t length,
+    enum yt_direct_attack_output_kind kind, struct yt_error *error)
+{
+	switch (kind) {
+	case YT_DIRECT_ATTACK_TITLE_ROW:
+	case YT_DIRECT_ATTACK_TEAM_ROW:
+	case YT_DIRECT_ATTACK_NONE_SELECTED_ROW:
+		return session_02fc(context, text, length);
+	case YT_DIRECT_ATTACK_NO_FIGHTERS_ROW:
+		return session_02db(context, text, length,
+		    "direct Attack no-fighters row", error);
+	case YT_DIRECT_ATTACK_COMMITMENT_PROMPT:
+		return session_031f(context, text, length,
+		    "direct Attack commitment prompt", error);
+	case YT_DIRECT_ATTACK_NONE_VISIBLE_ROW:
+		return session_02db(context, text, length,
+		    "direct Attack no-visible-target row", error);
+	default:
+		return false;
+	}
+}
+
+static bool
+direct_attack_confirm(void *context, const uint8_t *prompt, size_t length,
+    enum yt_direct_attack_confirmation *answer, struct yt_error *error)
+{
+	enum yt_yes_no_answer selected;
+
+	if (!session_a8d2(context, prompt, length, &selected, error))
+		return false;
+	switch (selected) {
+	case YT_YES_NO_NO:
+		*answer = YT_DIRECT_ATTACK_CONFIRM_NO;
+		return true;
+	case YT_YES_NO_YES:
+		*answer = YT_DIRECT_ATTACK_CONFIRM_YES;
+		return true;
+	case YT_YES_NO_EMPTY:
+		*answer = YT_DIRECT_ATTACK_CONFIRM_EMPTY;
+		return true;
+	default:
+		return false;
+	}
+}
+
+static bool
+direct_attack_amount(void *context, char *response, size_t capacity,
+    struct yt_error *error)
+{
+	(void)error;
+	return session_036f(context, response, capacity);
+}
+
+static bool
+direct_attack_combat(void *context, int target_record, double committed,
+    struct yt_error *error)
+{
+	return attack_player(context, target_record, committed, error);
+}
+
+static bool
 command_attack_player(struct yt_session *session, bool *enter_sector,
     struct yt_error *error)
 {
-	static const uint8_t title[] = "<Attack>";
-	static const uint8_t no_fighters[] =
-	    "You don't have any fighters.";
-	static const uint8_t none_visible[] = "There's no one here!";
-	static const uint8_t none_selected[] =
-	    "There are no other ships in this sector.";
-	int basic;
-	bool encountered = false;
-	uint8_t row[300];
-	size_t row_length;
+	static const struct yt_direct_attack_ops ops = {
+		direct_attack_combat_read,
+		direct_attack_present,
+		direct_attack_confirm,
+		direct_attack_amount,
+		direct_attack_combat,
+	};
+	struct yt_direct_attack_state state = {
+		.current_player_record = session->player_record,
+		.last_player_record = session->door->game.config.sector_offset,
+		.conversion_mode = session->presentation.sound.conversion_mode,
+		.sector_cache = session->sector_cache,
+		.cloak_cache = session->cloak_cache,
+		.cache_count = YT_ARRAY_LEN(session->sector_cache),
+	};
 
 	if (enter_sector == NULL)
 		return false;
 	*enter_sector = false;
-	if (!session_02fc(session, title, sizeof(title) - 1U)
-	    || !reload_player(session, error))
+	if (!yt_direct_attack_run(&state, &ops, session, error))
 		return false;
-	if (session->player.fighters < 1.0f) {
-		return session_02db(session, no_fighters,
-		    sizeof(no_fighters) - 1U, "direct Attack no-fighters row",
-		    error);
-	}
-	for (basic = YT_PLAYER_FIRST;
-	    basic <= (int)session->door->game.config.sector_offset; ++basic) {
-		struct yt_player target;
-		enum yt_yes_no_answer answer;
-		double committed;
-		char response[YT_COMMAND_SIZE];
-		struct qb_val_result parsed;
-		uint8_t target_name[YT_TEXT_FIELD_SIZE];
-		size_t target_name_length;
-
-		if (basic == session->player_record
-		    || session->sector_cache[basic] != session->player.sector
-		    || session->cloak_cache[basic] > 0.0f)
-			continue;
-		if (!yt_game_read_player(&session->door->game, basic, &target,
-		    error)
-		    || !yt_player_stored_name(&target, target_name,
-		    &target_name_length, error))
-			return false;
-		if (target.team > 0.0f && target.team == session->player.team) {
-			if (!yt_direct_attack_team_row(target_name,
-			    target_name_length, row, sizeof(row), &row_length)
-			    || !session_02fc(session, row, row_length))
-				return false;
-			encountered = true;
-			continue;
-		}
-		encountered = true;
-		if (!yt_direct_attack_candidate_prompt(target_name,
-		    target_name_length, row, sizeof(row), &row_length)
-		    || !session_a8d2(session, row, row_length, &answer, error))
-			return false;
-		if (answer == YT_YES_NO_NO)
-			continue;
-		if (!yt_direct_attack_commitment_prompt(
-		    (double)session->player.fighters, row, sizeof(row),
-		    &row_length)
-		    || !session_031f(session, row, row_length,
-		    "direct Attack commitment prompt", error)
-		    || !session_036f(session, response, sizeof(response)))
-			return false;
-		parsed = qb_val(response);
-		committed = parsed.valid ? parsed.value : 0.0;
-		if (committed < 1.0)
-			return true;
-		return attack_player(session, basic, committed, error);
-	}
-	*enter_sector = true;
-	if (encountered)
-		return session_02fc(session, none_selected,
-		    sizeof(none_selected) - 1U);
-	return session_02db(session, none_visible, sizeof(none_visible) - 1U,
-	    "direct Attack no-visible-target row", error);
+	*enter_sector = state.enter_sector;
+	return true;
 }
 
 static bool

@@ -2669,6 +2669,11 @@ not authoritative. Use the corrected goal above in the new workspace.
   dependency failure prefix and durable-write boundary, stale reserve, raw
   record preservation, exact rows/radio and kill arguments; independent tapes
   cover too-many, casualty, positive-shield and spill-failure returns.
+  The preceding selector/commitment layer now delegates to its own provider
+  transaction as well. Its eleven-event teammate/decline/accept tape and all
+  callback cuts preserve target-cell and encountered-latch timing; alternate
+  tapes pin no-fighter, both exhaustion rows, cancellation, default acceptance
+  and the explicit malformed-cache boundary.
   The admitted black-hole witness also carries one live presentation state
   through the 111/145-byte plain/ANSI exhausted-A prefix, 377/527-byte child,
   zero-effect return and following friendly reentry, pinning the exact
