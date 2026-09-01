@@ -61,7 +61,12 @@ struct yt_session {
 	float counterlaunch_count;
 	float current_sector_record;
 	float earth_report_seen;
+	float phase_scratch;
+	uint8_t phase_scratch_raw[4];
 	float relationship_scratch;
+	uint8_t relationship_scratch_raw[4];
+	float shared_loop_scratch;
+	float planet_record_scratch;
 	float attack_commitment;
 	uint8_t attack_commitment_raw[4];
 	bool anti_cloak;
@@ -2317,6 +2322,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 		struct yt_player candidate;
 		bool matches;
 
+		session->shared_loop_scratch = (float)basic;
 		if (!yt_game_read_player(&session->door->game, basic, &candidate,
 		    error)
 		    || !yt_player_name_matches(&candidate, (const uint8_t *)full,
@@ -2332,6 +2338,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 			returning = true;
 			break;
 		}
+		session->shared_loop_scratch = (float)(basic + 1);
 	}
 	if (!returning) {
 		int vacant = 0;
@@ -7325,6 +7332,14 @@ ordinary_commerce_foreground(void *context, float foreground)
 	session->pager.foreground = (int)foreground;
 }
 
+static void
+ordinary_commerce_loop_index(void *context, float index)
+{
+	struct yt_session *session = context;
+
+	session->shared_loop_scratch = index;
+}
+
 static bool
 docking_front_present(void *context, const uint8_t *text, size_t length,
     enum yt_port_docking_output_kind kind, struct yt_error *error)
@@ -7414,6 +7429,7 @@ docking_front_ordinary(void *context, int sector_number,
 		commodity_trade_read_player,
 		ordinary_commerce_present,
 		ordinary_commerce_foreground,
+		ordinary_commerce_loop_index,
 	};
 	struct yt_session *session = context;
 	struct yt_ordinary_commerce_state commerce;
@@ -10448,6 +10464,7 @@ command_land(struct yt_session *session, bool *enter_sector,
 	if (!yt_game_read_sector(&session->door->game,
 	    (int)session->player.sector, &sector, error))
 		return false;
+	session->shared_loop_scratch = sector.planet;
 	if (sector.planet == 0.0f) {
 		bool created = create_planet(session, error);
 
@@ -10462,6 +10479,7 @@ command_land(struct yt_session *session, bool *enter_sector,
 		return false;
 	planet_record_value = session->door->game.config.planet_offset
 	    + sector.planet;
+	session->planet_record_scratch = planet_record_value;
 	memset(&permission_state, 0, sizeof(permission_state));
 	permission_state.planet_record_value = planet_record_value;
 	permission_state.planet_offset =
@@ -15615,6 +15633,24 @@ computer_port_friendship(struct yt_session *session, float owner,
 }
 
 static bool
+computer_port_visibility_read_player(void *context, uint32_t physical_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	if (physical_record > (uint32_t)INT_MAX) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation, sizeof(error->operation), "%s",
+			    "computer port friendship player record");
+		}
+		return false;
+	}
+	return yt_game_read_player(&session->door->game, (int)physical_record,
+	    player, error);
+}
+
+static bool
 computer_port_report(struct yt_session *session, bool *enter_sector,
     struct yt_error *error)
 {
@@ -15626,7 +15662,6 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 	float selected;
 	int sector_number;
 	struct yt_sector sector;
-	bool friendly;
 	bool denied;
 
 	if (enter_sector != NULL)
@@ -15666,13 +15701,40 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 	if (!yt_game_read_sector(&session->door->game, sector_number, &sector,
 	    error))
 		return false;
-	if (!computer_port_friendship(session, sector.fighter_owner,
-	    &friendly, error))
-		return false;
-	denied = sector.port == 0.0f
-	    || (sector.fighters > 0.0f && cached_team > 0.0f && !friendly)
-	    || (sector.fighters > 0.0f && cached_team == 0.0f
-	    && (float)session->player_record != sector.fighter_owner);
+	{
+		struct yt_computer_port_visibility_state visibility;
+		float sector_expression = yt_port_selected_expression(
+		    session->door->game.config.sector_offset, selected);
+		bool visibility_ok;
+
+		memset(&visibility, 0, sizeof(visibility));
+		visibility.port_link = sector.port;
+		visibility.fighter_count = sector.fighters;
+		visibility.fighter_owner = sector.fighter_owner;
+		visibility.cached_current_team = cached_team;
+		visibility.current_player_record = (float)session->player_record;
+		visibility.last_player_record =
+		    session->door->game.config.sector_offset;
+		visibility.planet_record_offset =
+		    session->door->game.config.planet_offset;
+		visibility.inherited_index = session->shared_loop_scratch;
+		visibility.field_kind = YT_COMPUTER_PORT_FIELD_SECTOR;
+		visibility.field_record =
+		    qb_brun_random_record_number(sector_expression);
+		visibility_ok = yt_computer_port_visibility_run(&visibility,
+		    computer_port_visibility_read_player, session, error);
+		session->phase_scratch = visibility.marker_4d62;
+		memcpy(session->phase_scratch_raw, visibility.marker_4d62_raw,
+		    sizeof(session->phase_scratch_raw));
+		session->relationship_scratch = visibility.relation;
+		memcpy(session->relationship_scratch_raw, visibility.relation_raw,
+		    sizeof(session->relationship_scratch_raw));
+		if (visibility.scratch_written)
+			session->planet_record_scratch = visibility.scratch_19c4;
+		if (!visibility_ok)
+			return false;
+		denied = visibility.unavailable;
+	}
 	if (denied)
 		return session_0317(session, unavailable,
 		    sizeof(unavailable) - 1U,

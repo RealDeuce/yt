@@ -22723,6 +22723,8 @@ struct ordinary_commerce_tape {
 	uint8_t rows[2][256];
 	size_t row_lengths[2];
 	float foreground;
+	float loop_index[8];
+	size_t loop_index_count;
 };
 
 static bool
@@ -22827,6 +22829,15 @@ ordinary_commerce_test_foreground(void *context, float foreground)
 	tape->foreground = foreground;
 }
 
+static void
+ordinary_commerce_test_loop_index(void *context, float index)
+{
+	struct ordinary_commerce_tape *tape = context;
+
+	if (tape->loop_index_count < YT_ARRAY_LEN(tape->loop_index))
+		tape->loop_index[tape->loop_index_count++] = index;
+}
+
 static const struct yt_ordinary_commerce_ops ordinary_commerce_test_ops = {
 	ordinary_commerce_test_update,
 	ordinary_commerce_test_report,
@@ -22834,6 +22845,7 @@ static const struct yt_ordinary_commerce_ops ordinary_commerce_test_ops = {
 	ordinary_commerce_test_read_player,
 	ordinary_commerce_test_present,
 	ordinary_commerce_test_foreground,
+	ordinary_commerce_test_loop_index,
 };
 
 static void
@@ -22910,6 +22922,10 @@ check_ordinary_commerce_transaction(void)
 	    || !state.status_presented
 	    || memcmp(state.schedule, (size_t[]){0U, 2U, 1U},
 	    sizeof(state.schedule)) != 0
+	    || tape.loop_index_count != 8U
+	    || memcmp(tape.loop_index,
+	    (float[]){1.0f, 2.0f, 3.0f, 4.0f,
+	    1.0f, 2.0f, 3.0f, 4.0f}, sizeof(tape.loop_index)) != 0
 	    || tape.event_count != YT_ARRAY_LEN(expected)
 	    || memcmp(tape.events, expected, sizeof(expected)) != 0
 	    || !ordinary_commerce_row_equal(&tape,
@@ -23337,6 +23353,179 @@ check_computer_port_selection(void)
 		return false;
 	return !yt_computer_port_maximum(1.0f, 1.0f, NULL, &error)
 	    && error.status == YT_INVALID;
+}
+
+struct computer_port_visibility_tape {
+	uint32_t records[2];
+	float teams[2];
+	size_t calls;
+	size_t fail_at;
+};
+
+static bool
+computer_port_visibility_read(void *context, uint32_t physical_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct computer_port_visibility_tape *tape = context;
+	size_t call = tape->calls++;
+
+	if (call >= YT_ARRAY_LEN(tape->records))
+		return false;
+	tape->records[call] = physical_record;
+	if (call == tape->fail_at) {
+		if (error != NULL) {
+			error->status = YT_IO_ERROR;
+			(void)snprintf(error->operation, sizeof(error->operation), "%s",
+			    "computer port friendship GET");
+		}
+		return false;
+	}
+	memset(player, 0, sizeof(*player));
+	player->team = tape->teams[call];
+	return true;
+}
+
+static void
+computer_port_visibility_fixture(
+    struct yt_computer_port_visibility_state *state,
+    struct computer_port_visibility_tape *tape)
+{
+	memset(state, 0, sizeof(*state));
+	memset(tape, 0, sizeof(*tape));
+	state->port_link = 2.0f;
+	state->fighter_count = 10.0f;
+	state->fighter_owner = 3.0f;
+	state->cached_current_team = 7.0f;
+	state->current_player_record = 2.0f;
+	state->last_player_record = 51.0f;
+	state->planet_record_offset = 3055.0f;
+	state->inherited_index = 52.0f;
+	state->field_kind = YT_COMPUTER_PORT_FIELD_SECTOR;
+	state->field_record = 53U;
+	tape->teams[0] = 7.0f;
+	tape->teams[1] = 7.0f;
+	tape->fail_at = SIZE_MAX;
+}
+
+static bool
+check_computer_port_visibility(void)
+{
+	static const uint8_t marker_false[4] = {0x00, 0x00, 0x03, 0x00};
+	static const uint8_t relation_false[4] = {0x00, 0x00, 0x80, 0x00};
+	static const uint8_t relation_true[4] = {0x00, 0x00, 0x80, 0x81};
+	struct yt_computer_port_visibility_state state;
+	struct computer_port_visibility_tape tape;
+	struct yt_error error;
+	float largest = qb_mbf32_decode(
+	    (const uint8_t[]){0xff, 0xff, 0x7f, 0xff});
+
+	computer_port_visibility_fixture(&state, &tape);
+	if (!yt_computer_port_visibility_run(&state,
+	    computer_port_visibility_read, &tape, NULL)
+	    || !state.complete || state.unavailable || !state.scratch_written
+	    || state.marker_4d62 != 0.0f || state.relation != -1.0f
+	    || state.scratch_19c4 != 3107.0f
+	    || memcmp(state.marker_4d62_raw, marker_false, 4U) != 0
+	    || memcmp(state.relation_raw, relation_true, 4U) != 0
+	    || state.player_read_attempts != 2U || tape.calls != 2U
+	    || tape.records[0] != 2U || tape.records[1] != 3U
+	    || state.field_kind != YT_COMPUTER_PORT_FIELD_PLAYER
+	    || state.field_record != 3U)
+		return false;
+
+	computer_port_visibility_fixture(&state, &tape);
+	tape.teams[1] = 8.0f;
+	if (!yt_computer_port_visibility_run(&state,
+	    computer_port_visibility_read, &tape, NULL)
+	    || !state.unavailable || state.relation != 0.0f
+	    || memcmp(state.relation_raw, relation_false, 4U) != 0)
+		return false;
+
+	/* A negative cached team satisfies neither denial arm. */
+	computer_port_visibility_fixture(&state, &tape);
+	state.cached_current_team = -1.0f;
+	tape.teams[1] = 8.0f;
+	if (!yt_computer_port_visibility_run(&state,
+	    computer_port_visibility_read, &tape, NULL)
+	    || state.unavailable)
+		return false;
+
+	/* Teamless other-owned fighters deny after the one current-player GET. */
+	computer_port_visibility_fixture(&state, &tape);
+	state.cached_current_team = 0.0f;
+	tape.teams[0] = 0.0f;
+	if (!yt_computer_port_visibility_run(&state,
+	    computer_port_visibility_read, &tape, NULL)
+	    || !state.unavailable || tape.calls != 1U
+	    || state.field_record != 2U)
+		return false;
+
+	/* Self ownership raw-copies true and performs no friendship GET. */
+	computer_port_visibility_fixture(&state, &tape);
+	state.fighter_owner = 2.0f;
+	state.cached_current_team = 0.0f;
+	if (!yt_computer_port_visibility_run(&state,
+	    computer_port_visibility_read, &tape, NULL)
+	    || state.unavailable || tape.calls != 0U
+	    || memcmp(state.relation_raw, relation_true, 4U) != 0
+	    || state.field_kind != YT_COMPUTER_PORT_FIELD_SECTOR
+	    || state.field_record != 53U)
+		return false;
+
+	/* Port zero still performs both friendship reads before denial. */
+	computer_port_visibility_fixture(&state, &tape);
+	state.port_link = 0.0f;
+	if (!yt_computer_port_visibility_run(&state,
+	    computer_port_visibility_read, &tape, NULL)
+	    || !state.unavailable || tape.calls != 2U)
+		return false;
+
+	computer_port_visibility_fixture(&state, &tape);
+	tape.fail_at = 0U;
+	yt_error_clear(&error);
+	if (yt_computer_port_visibility_run(&state,
+	    computer_port_visibility_read, &tape, &error)
+	    || error.status != YT_IO_ERROR || state.complete
+	    || state.scratch_written
+	    || state.field_kind != YT_COMPUTER_PORT_FIELD_SECTOR
+	    || state.field_record != 53U
+	    || memcmp(state.marker_4d62_raw, marker_false, 4U) != 0
+	    || memcmp(state.relation_raw, relation_false, 4U) != 0)
+		return false;
+
+	computer_port_visibility_fixture(&state, &tape);
+	tape.fail_at = 1U;
+	yt_error_clear(&error);
+	if (yt_computer_port_visibility_run(&state,
+	    computer_port_visibility_read, &tape, &error)
+	    || error.status != YT_IO_ERROR || state.scratch_written
+	    || state.field_kind != YT_COMPUTER_PORT_FIELD_PLAYER
+	    || state.field_record != 2U)
+		return false;
+
+	/* Fractional explicit owner records stop at the documented boundary. */
+	computer_port_visibility_fixture(&state, &tape);
+	state.fighter_owner = 3.5f;
+	yt_error_clear(&error);
+	if (yt_computer_port_visibility_run(&state,
+	    computer_port_visibility_read, &tape, &error)
+	    || error.status != YT_RANGE
+	    || strcmp(error.operation,
+	    "computer port candidate record coercion") != 0
+	    || tape.calls != 1U || state.field_record != 2U
+	    || state.scratch_written)
+		return false;
+
+	computer_port_visibility_fixture(&state, &tape);
+	state.fighter_owner = 0.0f;
+	state.planet_record_offset = largest;
+	state.inherited_index = largest;
+	yt_error_clear(&error);
+	return !yt_computer_port_visibility_run(&state,
+	    computer_port_visibility_read, &tape, &error)
+	    && error.status == YT_RANGE
+	    && strcmp(error.operation, "computer port scratch addition") == 0
+	    && !state.scratch_written && tape.calls == 0U;
 }
 
 enum port_update_event {
@@ -27313,6 +27502,8 @@ main(void)
 		return fail("port-docking front transaction differs");
 	if (!check_computer_port_selection())
 		return fail("computer port selection differs");
+	if (!check_computer_port_visibility())
+		return fail("computer port visibility differs");
 	if (!check_treasury_transaction())
 		return fail("owned-port treasury transaction differs");
 	if (!check_movement_transaction())

@@ -3922,6 +3922,122 @@ yt_computer_port_select(const char *response, float maximum,
 	return true;
 }
 
+static bool
+computer_port_record(float value, uint32_t *record, const char *operation,
+    struct yt_error *error)
+{
+	if (!isfinite(value) || value < 1.0f || floorf(value) != value
+	    || value > (float)UINT32_MAX)
+		return startup_configuration_error(error, YT_RANGE, operation);
+	*record = (uint32_t)value;
+	return true;
+}
+
+bool
+yt_computer_port_visibility_run(
+    struct yt_computer_port_visibility_state *state,
+    yt_computer_port_read_player_fn read_player, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t marker_false[4] = {0x00, 0x00, 0x03, 0x00};
+	static const uint8_t relation_false[4] = {0x00, 0x00, 0x80, 0x00};
+	static const uint8_t relation_true[4] = {0x00, 0x00, 0x80, 0x81};
+	struct yt_player player;
+	float current_team = 0.0f;
+	uint32_t record;
+	uint8_t scratch_raw[4];
+	volatile float scratch;
+	bool candidate_below;
+	bool candidate_above;
+	bool current_below;
+	bool current_above;
+	bool no_port;
+	bool fighters_positive;
+	bool team_positive;
+	bool not_relation;
+	bool team_zero;
+	bool owner_not_self;
+
+	if (state == NULL || read_player == NULL)
+		return startup_configuration_error(error, YT_INVALID,
+		    "computer port visibility arguments");
+	memcpy(state->marker_4d62_raw, marker_false,
+	    sizeof(state->marker_4d62_raw));
+	memcpy(state->relation_raw, relation_false,
+	    sizeof(state->relation_raw));
+	state->marker_4d62 = qb_mbf32_decode(state->marker_4d62_raw);
+	state->relation = qb_mbf32_decode(state->relation_raw);
+	state->scratch_19c4 = 0.0f;
+	state->player_read_attempts = 0U;
+	state->scratch_written = false;
+	state->unavailable = false;
+	state->complete = false;
+
+	/* The shipped predicate evaluates all four comparisons eagerly. */
+	candidate_below = state->fighter_owner < 2.0f;
+	candidate_above = state->fighter_owner > state->last_player_record;
+	current_below = state->current_player_record < 2.0f;
+	current_above = state->current_player_record > state->last_player_record;
+	if (!(candidate_below | candidate_above | current_below
+	    | current_above)) {
+		if (state->fighter_owner == state->current_player_record) {
+			memcpy(state->relation_raw, relation_true,
+			    sizeof(state->relation_raw));
+			state->relation = qb_mbf32_decode(state->relation_raw);
+		}
+		else {
+			if (!computer_port_record(state->current_player_record,
+			    &record, "computer port current record coercion",
+			    error))
+				return false;
+			++state->player_read_attempts;
+			if (!read_player(context, record, &player, error))
+				return false;
+			state->field_kind = YT_COMPUTER_PORT_FIELD_PLAYER;
+			state->field_record = record;
+			current_team = player.team;
+			if (current_team != 0.0f) {
+				if (!computer_port_record(state->fighter_owner,
+				    &record,
+				    "computer port candidate record coercion",
+				    error))
+					return false;
+				++state->player_read_attempts;
+				if (!read_player(context, record, &player, error))
+					return false;
+				state->field_kind = YT_COMPUTER_PORT_FIELD_PLAYER;
+				state->field_record = record;
+				if (player.team == current_team) {
+					memcpy(state->relation_raw, relation_true,
+					    sizeof(state->relation_raw));
+					state->relation = qb_mbf32_decode(
+					    state->relation_raw);
+				}
+			}
+		}
+	}
+
+	scratch = state->planet_record_offset + state->inherited_index;
+	if (qb_mbf32_encode(scratch, scratch_raw) == QB_MBF_OVERFLOW)
+		return startup_configuration_error(error, YT_RANGE,
+		    "computer port scratch addition");
+	state->scratch_19c4 = qb_mbf32_decode(scratch_raw);
+	state->scratch_written = true;
+
+	/* Preserve all six eager source comparisons before combining them. */
+	no_port = state->port_link == 0.0f;
+	fighters_positive = state->fighter_count > 0.0f;
+	team_positive = state->cached_current_team > 0.0f;
+	not_relation = (~(int16_t)state->relation) != 0;
+	team_zero = state->cached_current_team == 0.0f;
+	owner_not_self = state->current_player_record != state->fighter_owner;
+	state->unavailable = no_port
+	    | (fighters_positive & team_positive & not_relation)
+	    | (fighters_positive & team_zero & owner_not_self);
+	state->complete = true;
+	return true;
+}
+
 bool
 yt_port_name_display_row(const uint8_t *cached, size_t cached_length,
     uint8_t *row, size_t capacity, size_t *length)
@@ -8561,18 +8677,38 @@ yt_ordinary_commerce_run(struct yt_ordinary_commerce_state *state,
 	if (!ops->report(context, &state->market, error))
 		return false;
 	state->report_complete = true;
-	state->scheduled_count = yt_port_trade_schedule(
-	    state->market.port.factor, state->schedule);
-	for (index = 0U; index < state->scheduled_count; ++index) {
+	for (index = 0U; index < 3U; ++index) {
 		bool reached = false;
 
-		if (!ops->trade(context, &state->market,
-		    state->schedule[index], &reached, error))
+		if (ops->set_loop_index != NULL)
+			ops->set_loop_index(context, (float)(index + 1U));
+		if (!(state->market.port.factor[index] < 0.0f))
+			continue;
+		state->schedule[state->scheduled_count++] = index;
+		if (!ops->trade(context, &state->market, index, &reached, error))
 			return false;
 		if (reached)
 			state->prompt_reached = true;
 		++state->completed_trades;
 	}
+	if (ops->set_loop_index != NULL)
+		ops->set_loop_index(context, 4.0f);
+	for (index = 0U; index < 3U; ++index) {
+		bool reached = false;
+
+		if (ops->set_loop_index != NULL)
+			ops->set_loop_index(context, (float)(index + 1U));
+		if (!(state->market.port.factor[index] > 0.0f))
+			continue;
+		state->schedule[state->scheduled_count++] = index;
+		if (!ops->trade(context, &state->market, index, &reached, error))
+			return false;
+		if (reached)
+			state->prompt_reached = true;
+		++state->completed_trades;
+	}
+	if (ops->set_loop_index != NULL)
+		ops->set_loop_index(context, 4.0f);
 	if (!state->prompt_reached) {
 		size_t position = 0U;
 

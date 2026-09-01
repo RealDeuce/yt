@@ -1701,6 +1701,39 @@ bool yt_computer_port_maximum(float port_offset, float sector_offset,
 bool yt_computer_port_select(const char *response, float maximum,
 	float *selected, enum yt_computer_port_selection_route *route,
 	struct yt_error *error);
+enum yt_computer_port_field_kind {
+	YT_COMPUTER_PORT_FIELD_CALLER,
+	YT_COMPUTER_PORT_FIELD_SECTOR,
+	YT_COMPUTER_PORT_FIELD_PLAYER,
+};
+struct yt_computer_port_visibility_state {
+	float port_link;
+	float fighter_count;
+	float fighter_owner;
+	float cached_current_team;
+	float current_player_record;
+	float last_player_record;
+	float planet_record_offset;
+	float inherited_index;
+	uint8_t marker_4d62_raw[4];
+	uint8_t relation_raw[4];
+	float marker_4d62;
+	float relation;
+	float scratch_19c4;
+	enum yt_computer_port_field_kind field_kind;
+	uint32_t field_record;
+	size_t player_read_attempts;
+	bool scratch_written;
+	bool unavailable;
+	bool complete;
+};
+typedef bool (*yt_computer_port_read_player_fn)(void *context,
+	uint32_t physical_record, struct yt_player *player,
+	struct yt_error *error);
+bool yt_computer_port_visibility_run(
+	struct yt_computer_port_visibility_state *state,
+	yt_computer_port_read_player_fn read_player, void *context,
+	struct yt_error *error);
 bool yt_port_name_display_row(const uint8_t *cached, size_t cached_length,
     uint8_t *row, size_t capacity, size_t *length);
 bool yt_port_name_prepare_candidate(const uint8_t *entered,
@@ -2709,6 +2742,7 @@ struct yt_ordinary_commerce_ops {
 	    enum yt_ordinary_commerce_output_kind kind,
 	    struct yt_error *error);
 	void (*set_foreground)(void *context, float foreground);
+	void (*set_loop_index)(void *context, float index);
 };
 bool yt_ordinary_commerce_run(struct yt_ordinary_commerce_state *state,
 	const struct yt_ordinary_commerce_ops *ops, void *context,
