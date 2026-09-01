@@ -7748,7 +7748,16 @@ yt_port_update_run(struct yt_port_update_state *state,
 	memset(&state->market, 0, sizeof(state->market));
 	if (!state->sector_loaded) {
 		memset(&state->sector, 0, sizeof(state->sector));
-		if (!ops->read_sector(context, state->sector_number,
+		if (!state->sector_record_supplied)
+			state->sector_record_expression = market_single_add(
+			    state->sector_record_offset,
+			    (float)state->sector_number);
+		state->sector_physical_record = qb_brun_random_record_number(
+		    state->sector_record_expression);
+		if (state->sector_physical_record == 0U)
+			return startup_configuration_error(error, YT_RANGE,
+			    "ordinary port sector record conversion");
+		if (!ops->read_sector(context, state->sector_physical_record,
 		    &state->sector, error))
 			return false;
 		state->sector_read = true;
@@ -8488,7 +8497,8 @@ yt_ordinary_commerce_run(struct yt_ordinary_commerce_state *state,
 	state->status_presented = false;
 	state->complete = false;
 
-	if (!ops->update(context, state->sector_number, &state->market, error))
+	if (!ops->update(context, state->sector_number,
+	    state->sector_record_expression, &state->market, error))
 		return false;
 	state->update_complete = true;
 	if (!ops->report(context, &state->market, error))
@@ -8578,6 +8588,7 @@ yt_port_docking_run(struct yt_port_docking_state *state,
 	state->selected_port_physical_record = 0U;
 	memset(&state->selected_port, 0, sizeof(state->selected_port));
 	state->post_finalizer_sector = 0.0f;
+	state->post_finalizer_sector_record_expression = 0.0f;
 	state->label_presented = false;
 	state->foreground_selected = false;
 	state->gate_complete = false;
@@ -8638,7 +8649,8 @@ yt_port_docking_run(struct yt_port_docking_state *state,
 	state->docking_prefix_presented = true;
 	returned = false;
 	if (!ops->finalize(context, &returned,
-	    &state->post_finalizer_sector, error))
+	    &state->post_finalizer_sector,
+	    &state->post_finalizer_sector_record_expression, error))
 		return false;
 	state->finalizer_complete = true;
 	if (!returned) {
@@ -8662,7 +8674,8 @@ yt_port_docking_run(struct yt_port_docking_state *state,
 	}
 	else {
 		if (!ops->ordinary(context,
-		    (int)state->post_finalizer_sector, error))
+		    (int)state->post_finalizer_sector,
+		    state->post_finalizer_sector_record_expression, error))
 			return false;
 		state->route = YT_PORT_DOCKING_ORDINARY;
 	}

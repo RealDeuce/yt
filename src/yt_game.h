@@ -2498,11 +2498,15 @@ bool yt_port_market_update(struct yt_port_market_state *state,
 	struct yt_error *error);
 struct yt_port_update_state {
 	int sector_number;
+	float sector_record_offset;
+	float sector_record_expression;
+	uint32_t sector_physical_record;
 	float port_offset;
 	float base_price[3];
 	struct yt_sector sector;
 	struct yt_port_market_state market;
 	bool sector_loaded;
+	bool sector_record_supplied;
 	bool sector_read;
 	bool day_observed;
 	bool port_read;
@@ -2511,7 +2515,7 @@ struct yt_port_update_state {
 	bool complete;
 };
 struct yt_port_update_ops {
-	bool (*read_sector)(void *context, int sector_number,
+	bool (*read_sector)(void *context, uint32_t physical_record,
 	    struct yt_sector *sector, struct yt_error *error);
 	bool (*observe_day)(void *context, float *current_day,
 	    struct yt_error *error);
@@ -2664,6 +2668,7 @@ enum yt_ordinary_commerce_output_kind {
 };
 struct yt_ordinary_commerce_state {
 	int sector_number;
+	float sector_record_expression;
 	uint32_t current_player_record;
 	const uint8_t *first_name;
 	size_t first_name_length;
@@ -2682,6 +2687,7 @@ struct yt_ordinary_commerce_state {
 };
 struct yt_ordinary_commerce_ops {
 	bool (*update)(void *context, int sector_number,
+	    float sector_record_expression,
 	    struct yt_port_market_state *market, struct yt_error *error);
 	bool (*report)(void *context, const struct yt_port_market_state *market,
 	    struct yt_error *error);
@@ -2722,6 +2728,7 @@ struct yt_port_docking_state {
 	uint32_t selected_port_physical_record;
 	struct yt_port selected_port;
 	float post_finalizer_sector;
+	float post_finalizer_sector_record_expression;
 	bool label_presented;
 	bool foreground_selected;
 	bool gate_complete;
@@ -2745,11 +2752,13 @@ struct yt_port_docking_ops {
 	bool (*read_sector)(void *context, uint32_t physical_record,
 	    struct yt_sector *sector, struct yt_error *error);
 	bool (*finalize)(void *context, bool *returned, float *current_sector,
+	    float *sector_record_expression,
 	    struct yt_error *error);
 	bool (*read_port)(void *context, uint32_t physical_record,
 	    struct yt_port *port, struct yt_error *error);
 	bool (*earth)(void *context, struct yt_error *error);
 	bool (*ordinary)(void *context, int sector_number,
+	    float sector_record_expression,
 	    struct yt_error *error);
 };
 bool yt_port_docking_run(struct yt_port_docking_state *state,

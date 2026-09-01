@@ -22568,11 +22568,12 @@ ordinary_commerce_step(struct ordinary_commerce_tape *tape,
 
 static bool
 ordinary_commerce_test_update(void *context, int sector_number,
+    float sector_record_expression,
     struct yt_port_market_state *market, struct yt_error *error)
 {
 	struct ordinary_commerce_tape *tape = context;
 
-	if (sector_number != 733
+	if (sector_number != 733 || sector_record_expression != 784.0f
 	    || !ordinary_commerce_step(tape, ORDINARY_COMMERCE_UPDATE, error))
 		return false;
 	*market = tape->market;
@@ -22685,6 +22686,7 @@ ordinary_commerce_fixture(struct ordinary_commerce_tape *tape,
 	(void)yt_record_set_number(&record, YT_F81, 777.0f);
 	yt_player_decode(&tape->player, &record);
 	state->sector_number = 733;
+	state->sector_record_expression = 784.0f;
 	state->current_player_record = 2U;
 	state->first_name = (const uint8_t *)"Pat";
 	state->first_name_length = 3U;
@@ -22811,6 +22813,7 @@ struct port_docking_tape {
 	struct yt_sector sector;
 	bool finalizer_returned;
 	float post_sector;
+	float post_sector_record;
 	uint32_t sector_record_read;
 	uint32_t port_record_read;
 	int ordinary_sector;
@@ -22891,7 +22894,8 @@ port_docking_test_read_sector(void *context, uint32_t physical_record,
 
 static bool
 port_docking_test_finalize(void *context, bool *returned,
-    float *current_sector, struct yt_error *error)
+    float *current_sector, float *sector_record_expression,
+    struct yt_error *error)
 {
 	struct port_docking_tape *tape = context;
 
@@ -22899,6 +22903,7 @@ port_docking_test_finalize(void *context, bool *returned,
 		return false;
 	*returned = tape->finalizer_returned;
 	*current_sector = tape->post_sector;
+	*sector_record_expression = tape->post_sector_record;
 	return true;
 }
 
@@ -22923,11 +22928,13 @@ port_docking_test_earth(void *context, struct yt_error *error)
 
 static bool
 port_docking_test_ordinary(void *context, int sector_number,
+    float sector_record_expression,
     struct yt_error *error)
 {
 	struct port_docking_tape *tape = context;
 
-	if (!port_docking_step(tape, PORT_DOCKING_ORDINARY, error))
+	if (sector_record_expression != tape->post_sector_record
+	    || !port_docking_step(tape, PORT_DOCKING_ORDINARY, error))
 		return false;
 	tape->ordinary_sector = sector_number;
 	return true;
@@ -22956,6 +22963,7 @@ port_docking_fixture(struct port_docking_tape *tape,
 	tape->sector.port = 2.0f;
 	tape->finalizer_returned = true;
 	tape->post_sector = 733.0f;
+	tape->post_sector_record = 790.0f;
 	state->port_offset = 2055.0f;
 }
 
@@ -22994,6 +23002,7 @@ check_port_docking_transaction(void)
 	    || state.logical_port != 2.0f
 	    || state.selected_port_expression != 2057.0f
 	    || state.selected_port_physical_record != 2057U
+	    || state.post_finalizer_sector_record_expression != 790.0f
 	    || !state.docking_blank_presented
 	    || !state.docking_prefix_presented || !state.finalizer_complete
 	    || !state.selected_port_read || !state.child_complete
@@ -23080,6 +23089,7 @@ struct port_update_tape {
 	struct yt_sector sector;
 	struct yt_port stored_port;
 	struct yt_port written_port;
+	uint32_t sector_record;
 	uint32_t read_record;
 	uint32_t written_record;
 };
@@ -23100,12 +23110,12 @@ port_update_test_step(struct port_update_tape *tape,
 }
 
 static bool
-port_update_test_read_sector(void *context, int sector_number,
+port_update_test_read_sector(void *context, uint32_t physical_record,
     struct yt_sector *sector, struct yt_error *error)
 {
 	struct port_update_tape *tape = context;
 
-	if (sector_number != 7
+	if (physical_record != tape->sector_record
 	    || !port_update_test_step(tape, PORT_UPDATE_READ_SECTOR, error))
 		return false;
 	*sector = tape->sector;
@@ -23181,10 +23191,12 @@ port_update_fixture(struct port_update_tape *tape,
 	memset(tape, 0, sizeof(*tape));
 	memset(state, 0, sizeof(*state));
 	tape->fail_at = SIZE_MAX;
+	tape->sector_record = 58U;
 	tape->sector.port = 2.0f;
 	port_market_fixture(&market, 1000.0f, stock, production);
 	tape->stored_port = market.port;
 	state->sector_number = 7;
+	state->sector_record_offset = 51.0f;
 	state->port_offset = 2055.0f;
 	state->base_price[0] = 20.0f;
 	state->base_price[1] = 30.0f;
@@ -23218,6 +23230,8 @@ check_port_update_transaction(void)
 	    || !state.day_observed || !state.port_read || !state.timer_observed
 	    || !state.port_written || tape.calls != YT_ARRAY_LEN(expected)
 	    || memcmp(tape.events, expected, sizeof(expected)) != 0
+	    || state.sector_record_expression != 58.0f
+	    || state.sector_physical_record != 58U
 	    || state.market.logical_port != 2.0f
 	    || state.market.port_record_expression != 2057.0f
 	    || state.market.port_physical_record != 2057U
@@ -23258,6 +23272,25 @@ check_port_update_transaction(void)
 	    || state.market.logical_port != 2.75f
 	    || state.market.port_record_expression != 2057.75f
 	    || state.market.port_physical_record != 2057U)
+		return false;
+
+	/* Docking supplies the post-finalizer A41C sector scratch directly. */
+	port_update_fixture(&tape, &state);
+	state.sector_record_expression = 784.0f;
+	state.sector_record_supplied = true;
+	tape.sector_record = 784U;
+	if (!yt_port_update_run(&state, &port_update_test_ops, &tape, NULL)
+	    || state.sector_record_expression != 784.0f
+	    || state.sector_physical_record != 784U)
+		return false;
+
+	port_update_fixture(&tape, &state);
+	state.sector_record_expression = 0.5f;
+	state.sector_record_supplied = true;
+	yt_error_clear(&error);
+	if (yt_port_update_run(&state, &port_update_test_ops, &tape, &error)
+	    || error.status != YT_RANGE || tape.calls != 0U
+	    || state.sector_read || state.day_observed)
 		return false;
 
 	port_update_fixture(&tape, &state);

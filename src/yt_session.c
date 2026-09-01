@@ -2831,13 +2831,17 @@ current_minute(void)
 }
 
 static bool
-port_update_read_sector(void *context, int sector_number,
+port_update_read_sector(void *context, uint32_t physical_record,
     struct yt_sector *sector, struct yt_error *error)
 {
 	struct yt_session *session = context;
+	struct yt_record record;
 
-	return yt_game_read_sector(&session->door->game, sector_number, sector,
-	    error);
+	if (!yt_database_read(&session->door->game.database,
+	    (size_t)physical_record, &record, error))
+		return false;
+	yt_sector_decode(sector, &record);
+	return true;
 }
 
 static bool
@@ -2894,7 +2898,7 @@ port_update_write_port(void *context, uint32_t physical_record,
 
 static bool
 port_update(struct yt_session *session, int sector_number,
-    const struct yt_sector *loaded_sector,
+    const float *sector_record_expression, const struct yt_sector *loaded_sector,
     struct yt_port_market_state *market, struct yt_error *error)
 {
 	static const struct yt_port_update_ops ops = {
@@ -2910,6 +2914,11 @@ port_update(struct yt_session *session, int sector_number,
 		return false;
 	memset(&state, 0, sizeof(state));
 	state.sector_number = sector_number;
+	state.sector_record_offset = session->door->game.config.sector_offset;
+	if (sector_record_expression != NULL) {
+		state.sector_record_expression = *sector_record_expression;
+		state.sector_record_supplied = true;
+	}
 	state.port_offset = session->door->game.config.port_offset;
 	memcpy(state.base_price, session->market_base,
 	    sizeof(state.base_price));
@@ -7267,9 +7276,11 @@ trade_commodity(struct yt_session *session,
 
 static bool
 ordinary_commerce_update(void *context, int sector_number,
+    float sector_record_expression,
     struct yt_port_market_state *market, struct yt_error *error)
 {
-	return port_update(context, sector_number, NULL, market, error);
+	return port_update(context, sector_number, &sector_record_expression,
+	    NULL, market, error);
 }
 
 static bool
@@ -7367,12 +7378,13 @@ docking_front_read_sector(void *context, uint32_t physical_record,
 
 static bool
 docking_front_finalize(void *context, bool *returned, float *current_sector,
-    struct yt_error *error)
+    float *sector_record_expression, struct yt_error *error)
 {
 	struct yt_session *session = context;
 	bool ok = finalize_action(session, 1.0f, error);
 
 	*current_sector = session->player.sector;
+	*sector_record_expression = session->current_sector_record;
 	if (ok) {
 		*returned = true;
 		return true;
@@ -7392,6 +7404,7 @@ docking_front_earth(void *context, struct yt_error *error)
 
 static bool
 docking_front_ordinary(void *context, int sector_number,
+    float sector_record_expression,
     struct yt_error *error)
 {
 	static const struct yt_ordinary_commerce_ops ops = {
@@ -7407,6 +7420,7 @@ docking_front_ordinary(void *context, int sector_number,
 
 	memset(&commerce, 0, sizeof(commerce));
 	commerce.sector_number = sector_number;
+	commerce.sector_record_expression = sector_record_expression;
 	commerce.current_player_record = (uint32_t)session->player_record;
 	commerce.first_name =
 	    (const uint8_t *)session->door->identity.real_first;
@@ -12064,7 +12078,8 @@ port_purchase_report(void *context, int logical_port, bool earth,
 		struct yt_sector updater_sector = {0};
 
 		updater_sector.port = (float)logical_port;
-		if (!port_update(session, 0, &updater_sector, &market, error))
+		if (!port_update(session, 0, NULL, &updater_sector, &market,
+		    error))
 			return false;
 		*early_port = market.port;
 		memcpy(production, market.port.production,
@@ -15635,9 +15650,13 @@ computer_port_report(struct yt_session *session, struct yt_error *error)
 		return earth_store(session, error);
 	{
 		struct yt_port_market_state market;
+		float sector_record_expression = yt_port_selected_expression(
+		    session->door->game.config.sector_offset,
+		    (float)sector_number);
 		int logical_port;
 
-		if (!port_update(session, sector_number, NULL, &market, error))
+		if (!port_update(session, sector_number,
+		    &sector_record_expression, NULL, &market, error))
 			return false;
 		logical_port = (int)market.logical_port;
 		return port_report(session, logical_port, &market, error);
