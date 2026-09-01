@@ -8,6 +8,28 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
+### DOC-GAP-008: command-7 physical local framebuffer is excluded
+
+Affected coverage:
+
+- ship-computer command-7 local screen cells and cursor result; and
+- any completion claim that requires the final physical 80-by-25 console
+  image for that joined cycle.
+
+The completed command-7 contracts define the ordered semantic local event
+tape, actual local colors, and inherited cursor state. The joined
+`docs/runtime/computer-avoid-cycle-output.md` contract explicitly excludes an
+arbitrary inherited 80-by-25 framebuffer reduction, while the body contract
+also leaves the local F8 `INPUT` framebuffer open.
+
+The native implementation now matches all 129 documented local events, and
+the OpenDoors adapter separately pins the public local output calls for each
+event kind. That evidence does not determine final cells or cursor position
+for an unspecified initial framebuffer. Upstream documentation must supply a
+canonical initial framebuffer plus final image, or a complete local-screen
+state-transform contract. No binary inspection or new reverse engineering was
+performed.
+
 ### DOC-GAP-007: command-7 later-poll AB36 composition is left open
 
 Affected coverage:
