@@ -2357,6 +2357,100 @@ struct yt_hostile_attack_tail_ops {
 bool yt_hostile_attack_tail_run(struct yt_hostile_attack_tail_state *state,
     const struct yt_hostile_attack_tail_ops *ops, void *context,
     struct yt_error *error);
+
+enum yt_hostile_attack_combat_route {
+	YT_HOSTILE_ATTACK_COMBAT_NORMAL,
+	YT_HOSTILE_ATTACK_COMBAT_FATAL,
+};
+
+enum yt_hostile_attack_combat_output_kind {
+	YT_HOSTILE_ATTACK_COMBAT_RESULT_BLANK,
+	YT_HOSTILE_ATTACK_COMBAT_LOSS_ROW,
+	YT_HOSTILE_ATTACK_COMBAT_DESTROYED_ROW,
+	YT_HOSTILE_ATTACK_COMBAT_EXPOSED_ROW,
+	YT_HOSTILE_ATTACK_COMBAT_SPILL_BLANK,
+};
+
+struct yt_hostile_attack_combat_state {
+	int current_player_record;
+	int current_sector;
+	double commitment;
+	bool allow_surrender;
+	struct yt_sector sector;
+	struct yt_sector opened_sector;
+	struct yt_player current;
+	const uint8_t *cached_player_name;
+	size_t cached_player_name_length;
+	const uint8_t *real_first_name;
+	size_t real_first_name_length;
+	const uint8_t *owner_label;
+	size_t owner_label_length;
+	float turns_per_day;
+	float headquarters;
+	float old_owner;
+	double old_count;
+	double old_ship;
+	double attacker_loss;
+	double defender_loss;
+	double ship_fighters;
+	double deployed_remaining;
+	float quantum;
+	float last_draw;
+	size_t iterations;
+	bool surrender_checked;
+	bool surrendered;
+	bool spill_called;
+	struct yt_hostile_surrender_state surrender;
+	struct yt_hostile_attack_persistence_state persistence;
+	struct yt_hostile_attack_tail_state tail;
+	enum yt_hostile_attack_combat_route route;
+	bool complete;
+};
+
+typedef bool (*yt_hostile_attack_combat_read_sector_fn)(void *context,
+    int sector_number, struct yt_sector *sector, struct yt_error *error);
+typedef bool (*yt_hostile_attack_combat_read_player_fn)(void *context,
+    int player_record, struct yt_player *player, struct yt_error *error);
+typedef bool (*yt_hostile_attack_combat_sound_fn)(void *context,
+    float selector, struct yt_error *error);
+typedef bool (*yt_hostile_attack_combat_random_fn)(void *context,
+    float *value, struct yt_error *error);
+typedef bool (*yt_hostile_attack_combat_surrender_fn)(void *context,
+    struct yt_hostile_surrender_state *state, struct yt_error *error);
+typedef bool (*yt_hostile_attack_combat_present_fn)(void *context,
+    const uint8_t *text, size_t length,
+    enum yt_hostile_attack_combat_output_kind kind,
+    struct yt_error *error);
+typedef void (*yt_hostile_attack_combat_cache_player_fn)(void *context,
+    const struct yt_player *player);
+typedef void (*yt_hostile_attack_combat_cache_sector_fn)(void *context,
+    const struct yt_sector *sector);
+typedef bool (*yt_hostile_attack_combat_spill_fn)(void *context,
+    double *fighters, float *shields, struct yt_error *error);
+typedef bool (*yt_hostile_attack_combat_persistence_fn)(void *context,
+    struct yt_hostile_attack_persistence_state *state,
+    struct yt_error *error);
+typedef bool (*yt_hostile_attack_combat_tail_fn)(void *context,
+    struct yt_hostile_attack_tail_state *state, struct yt_error *error);
+
+struct yt_hostile_attack_combat_ops {
+	yt_hostile_attack_combat_read_sector_fn read_sector;
+	yt_hostile_attack_combat_read_player_fn read_player;
+	yt_hostile_attack_combat_sound_fn sound;
+	yt_hostile_attack_combat_random_fn random;
+	yt_hostile_attack_combat_surrender_fn surrender;
+	yt_hostile_attack_combat_present_fn present;
+	yt_hostile_attack_combat_cache_player_fn cache_player;
+	yt_hostile_attack_combat_cache_sector_fn cache_sector;
+	yt_hostile_attack_combat_spill_fn spill;
+	yt_hostile_attack_combat_persistence_fn persistence;
+	yt_hostile_attack_combat_tail_fn tail;
+};
+
+bool yt_hostile_attack_combat_run(
+    struct yt_hostile_attack_combat_state *state,
+    const struct yt_hostile_attack_combat_ops *ops, void *context,
+    struct yt_error *error);
 bool yt_direct_attack_team_row(const uint8_t *name, size_t name_length,
     uint8_t *row, size_t capacity, size_t *length);
 bool yt_direct_attack_candidate_prompt(const uint8_t *name,

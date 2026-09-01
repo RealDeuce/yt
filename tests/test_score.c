@@ -17214,6 +17214,466 @@ check_hostile_attack_tail_transaction(void)
 	    && !yt_hostile_attack_tail_run(&state, NULL, &tape, NULL);
 }
 
+enum hostile_combat_event {
+	HOSTILE_COMBAT_READ_SECTOR,
+	HOSTILE_COMBAT_READ_PLAYER,
+	HOSTILE_COMBAT_SOUND,
+	HOSTILE_COMBAT_RANDOM,
+	HOSTILE_COMBAT_SURRENDER,
+	HOSTILE_COMBAT_RESULT_BLANK,
+	HOSTILE_COMBAT_LOSS_ROW,
+	HOSTILE_COMBAT_DESTROYED_ROW,
+	HOSTILE_COMBAT_EXPOSED_ROW,
+	HOSTILE_COMBAT_SPILL_BLANK,
+	HOSTILE_COMBAT_SPILL,
+	HOSTILE_COMBAT_PERSISTENCE,
+	HOSTILE_COMBAT_TAIL,
+};
+
+struct hostile_combat_tape {
+	struct yt_player player;
+	struct yt_sector opened_sector;
+	float draws[8];
+	size_t draw_count;
+	size_t draw_index;
+	enum hostile_combat_event events[32];
+	size_t calls;
+	size_t fail_at;
+	bool surrender_accept;
+	bool surrender_fail_after;
+	bool spill_fail_after;
+	bool persistence_fail_after;
+	bool persistence_fatal;
+	bool tail_fail_after;
+	double persistence_ship_output;
+	struct yt_player cached_player;
+	struct yt_sector cached_sector;
+	size_t player_cache_calls;
+	size_t sector_cache_calls;
+	struct yt_hostile_attack_persistence_state persistence_input;
+	struct yt_hostile_attack_tail_state tail_input;
+	uint8_t rows[5][192];
+	size_t row_lengths[5];
+};
+
+static bool
+hostile_combat_event(struct hostile_combat_tape *tape,
+    enum hostile_combat_event event, struct yt_error *error)
+{
+	size_t call = tape->calls++;
+
+	if (call < YT_ARRAY_LEN(tape->events))
+		tape->events[call] = event;
+	if (call != tape->fail_at)
+		return true;
+	if (error != NULL) {
+		error->status = YT_IO_ERROR;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    "hostile combat injected failure");
+	}
+	return false;
+}
+
+static bool
+hostile_combat_fail_after(struct yt_error *error)
+{
+	if (error != NULL) {
+		error->status = YT_IO_ERROR;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    "hostile combat child residue failure");
+	}
+	return false;
+}
+
+static bool
+hostile_combat_read_sector(void *context, int sector_number,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct hostile_combat_tape *tape = context;
+
+	if (sector_number != 733 || !hostile_combat_event(tape,
+	    HOSTILE_COMBAT_READ_SECTOR, error))
+		return false;
+	*sector = tape->opened_sector;
+	return true;
+}
+
+static bool
+hostile_combat_read_player(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct hostile_combat_tape *tape = context;
+
+	if (player_record != 2 || !hostile_combat_event(tape,
+	    HOSTILE_COMBAT_READ_PLAYER, error))
+		return false;
+	*player = tape->player;
+	return true;
+}
+
+static bool
+hostile_combat_sound(void *context, float selector,
+    struct yt_error *error)
+{
+	return selector == 2.0f && hostile_combat_event(context,
+	    HOSTILE_COMBAT_SOUND, error);
+}
+
+static bool
+hostile_combat_random(void *context, float *value,
+    struct yt_error *error)
+{
+	struct hostile_combat_tape *tape = context;
+
+	if (!hostile_combat_event(tape, HOSTILE_COMBAT_RANDOM, error)
+	    || tape->draw_index >= tape->draw_count)
+		return false;
+	*value = tape->draws[tape->draw_index++];
+	return true;
+}
+
+static bool
+hostile_combat_surrender(void *context,
+    struct yt_hostile_surrender_state *state, struct yt_error *error)
+{
+	struct hostile_combat_tape *tape = context;
+
+	if (!hostile_combat_event(tape, HOSTILE_COMBAT_SURRENDER, error))
+		return false;
+	state->checked = true;
+	state->accepted = tape->surrender_accept;
+	state->complete = !tape->surrender_fail_after;
+	state->ship_fighters = (double)state->current.fighters;
+	state->deployed_remaining = state->deployed_fighters;
+	state->fighter_owner = state->old_owner;
+	if (state->accepted) {
+		state->surrendered_fighters = state->deployed_fighters
+		    - state->defender_loss;
+		state->ship_fighters = (double)state->current.fighters
+		    - state->attacker_loss - state->defender_loss
+		    + state->deployed_fighters;
+		state->current.fighters = (float)state->ship_fighters;
+		state->deployed_remaining = 0.0;
+		state->fighter_owner = 0.0f;
+	}
+	if (tape->surrender_fail_after)
+		return hostile_combat_fail_after(error);
+	return true;
+}
+
+static bool
+hostile_combat_present(void *context, const uint8_t *text, size_t length,
+    enum yt_hostile_attack_combat_output_kind kind,
+    struct yt_error *error)
+{
+	static const enum hostile_combat_event events[] = {
+		HOSTILE_COMBAT_RESULT_BLANK,
+		HOSTILE_COMBAT_LOSS_ROW,
+		HOSTILE_COMBAT_DESTROYED_ROW,
+		HOSTILE_COMBAT_EXPOSED_ROW,
+		HOSTILE_COMBAT_SPILL_BLANK,
+	};
+	struct hostile_combat_tape *tape = context;
+
+	if ((size_t)kind >= YT_ARRAY_LEN(events)
+	    || length > sizeof(tape->rows[0])
+	    || !hostile_combat_event(tape, events[kind], error))
+		return false;
+	if (length != 0U)
+		memcpy(tape->rows[kind], text, length);
+	tape->row_lengths[kind] = length;
+	return true;
+}
+
+static void
+hostile_combat_cache_player(void *context, const struct yt_player *player)
+{
+	struct hostile_combat_tape *tape = context;
+
+	tape->cached_player = *player;
+	++tape->player_cache_calls;
+}
+
+static void
+hostile_combat_cache_sector(void *context, const struct yt_sector *sector)
+{
+	struct hostile_combat_tape *tape = context;
+
+	tape->cached_sector = *sector;
+	++tape->sector_cache_calls;
+}
+
+static bool
+hostile_combat_spill(void *context, double *fighters, float *shields,
+    struct yt_error *error)
+{
+	struct hostile_combat_tape *tape = context;
+
+	if (!hostile_combat_event(tape, HOSTILE_COMBAT_SPILL, error))
+		return false;
+	*fighters -= 1.0;
+	*shields = 0.0f;
+	if (tape->spill_fail_after)
+		return hostile_combat_fail_after(error);
+	return true;
+}
+
+static bool
+hostile_combat_persistence(void *context,
+    struct yt_hostile_attack_persistence_state *state,
+    struct yt_error *error)
+{
+	struct hostile_combat_tape *tape = context;
+
+	if (!hostile_combat_event(tape, HOSTILE_COMBAT_PERSISTENCE, error))
+		return false;
+	tape->persistence_input = *state;
+	state->player_written = true;
+	state->sector_written = true;
+	state->sector.fighters = (float)state->deployed_fighters;
+	state->ship_fighters = tape->persistence_ship_output;
+	state->current.fighters = (float)state->ship_fighters;
+	state->route = tape->persistence_fatal
+	    ? YT_HOSTILE_ATTACK_PERSISTENCE_FATAL
+	    : YT_HOSTILE_ATTACK_PERSISTENCE_NORMAL;
+	state->complete = !tape->persistence_fail_after;
+	if (tape->persistence_fail_after)
+		return hostile_combat_fail_after(error);
+	return true;
+}
+
+static bool
+hostile_combat_tail(void *context,
+    struct yt_hostile_attack_tail_state *state, struct yt_error *error)
+{
+	struct hostile_combat_tape *tape = context;
+
+	if (!hostile_combat_event(tape, HOSTILE_COMBAT_TAIL, error))
+		return false;
+	tape->tail_input = *state;
+	state->complete = !tape->tail_fail_after;
+	if (tape->tail_fail_after)
+		return hostile_combat_fail_after(error);
+	return true;
+}
+
+static const struct yt_hostile_attack_combat_ops hostile_combat_ops = {
+	hostile_combat_read_sector,
+	hostile_combat_read_player,
+	hostile_combat_sound,
+	hostile_combat_random,
+	hostile_combat_surrender,
+	hostile_combat_present,
+	hostile_combat_cache_player,
+	hostile_combat_cache_sector,
+	hostile_combat_spill,
+	hostile_combat_persistence,
+	hostile_combat_tail,
+};
+
+static void
+hostile_combat_fixture(struct hostile_combat_tape *tape,
+    struct yt_hostile_attack_combat_state *state)
+{
+	static const uint8_t cached_name[] = {'A', 0, 'B'};
+	static const uint8_t owner_label[] = {'X', 0, 'Y'};
+
+	memset(tape, 0, sizeof(*tape));
+	tape->fail_at = (size_t)-1;
+	tape->persistence_ship_output = 5.5;
+	tape->draws[0] = 0.0f;
+	tape->draws[1] = 1.0f;
+	tape->draws[2] = 1.0f;
+	tape->draw_count = 3U;
+	memset(tape->player.record.bytes, 0xa5,
+	    sizeof(tape->player.record.bytes));
+	tape->player.fighters = 3.0f;
+	tape->player.shields = 5.0f;
+	tape->player.cloak = 0.0f;
+	tape->player.sector = 733.0f;
+	memset(tape->opened_sector.record.bytes, 0x3c,
+	    sizeof(tape->opened_sector.record.bytes));
+	tape->opened_sector.fighter_owner = 3.0f;
+	*state = (struct yt_hostile_attack_combat_state){
+		.current_player_record = 2,
+		.current_sector = 733,
+		.commitment = 3.0,
+		.allow_surrender = true,
+		.sector = {
+			.fighters = 2.0f,
+			.fighter_owner = 3.0f,
+		},
+		.cached_player_name = cached_name,
+		.cached_player_name_length = sizeof(cached_name),
+		.real_first_name = (const uint8_t *)"Sysop",
+		.real_first_name_length = 5U,
+		.owner_label = owner_label,
+		.owner_label_length = sizeof(owner_label),
+		.turns_per_day = 100.0f,
+		.headquarters = 7.0f,
+	};
+}
+
+static bool
+check_hostile_attack_combat_transaction(void)
+{
+	static const enum hostile_combat_event ordinary_events[] = {
+		HOSTILE_COMBAT_READ_SECTOR,
+		HOSTILE_COMBAT_READ_PLAYER,
+		HOSTILE_COMBAT_SOUND,
+		HOSTILE_COMBAT_RANDOM,
+		HOSTILE_COMBAT_RANDOM,
+		HOSTILE_COMBAT_RANDOM,
+		HOSTILE_COMBAT_RESULT_BLANK,
+		HOSTILE_COMBAT_LOSS_ROW,
+		HOSTILE_COMBAT_DESTROYED_ROW,
+		HOSTILE_COMBAT_PERSISTENCE,
+		HOSTILE_COMBAT_TAIL,
+	};
+	static const enum hostile_combat_event surrender_events[] = {
+		HOSTILE_COMBAT_READ_SECTOR,
+		HOSTILE_COMBAT_READ_PLAYER,
+		HOSTILE_COMBAT_SOUND,
+		HOSTILE_COMBAT_SURRENDER,
+		HOSTILE_COMBAT_RESULT_BLANK,
+		HOSTILE_COMBAT_LOSS_ROW,
+		HOSTILE_COMBAT_DESTROYED_ROW,
+		HOSTILE_COMBAT_PERSISTENCE,
+		HOSTILE_COMBAT_TAIL,
+	};
+	static const uint8_t lost_one[] = " You lost 1 fighter(s)";
+	static const uint8_t destroyed_two[] =
+	    " You destroyed 2 enemy fighters.";
+	struct hostile_combat_tape tape;
+	struct yt_hostile_attack_combat_state state;
+	struct yt_error error;
+	size_t failure;
+
+	hostile_combat_fixture(&tape, &state);
+	if (!yt_hostile_attack_combat_run(&state, &hostile_combat_ops,
+	    &tape, NULL) || !state.complete
+	    || state.route != YT_HOSTILE_ATTACK_COMBAT_NORMAL
+	    || state.attacker_loss != 1.0 || state.defender_loss != 2.0
+	    || state.ship_fighters != 5.5 || state.deployed_remaining != 0.0
+	    || state.iterations != 3U || tape.draw_index != 3U
+	    || state.surrender_checked || state.surrendered
+	    || tape.calls != YT_ARRAY_LEN(ordinary_events)
+	    || memcmp(tape.events, ordinary_events, sizeof(ordinary_events)) != 0
+	    || tape.row_lengths[YT_HOSTILE_ATTACK_COMBAT_LOSS_ROW]
+	    != sizeof(lost_one) - 1U
+	    || memcmp(tape.rows[YT_HOSTILE_ATTACK_COMBAT_LOSS_ROW], lost_one,
+	    sizeof(lost_one) - 1U) != 0
+	    || tape.row_lengths[YT_HOSTILE_ATTACK_COMBAT_DESTROYED_ROW]
+	    != sizeof(destroyed_two) - 1U
+	    || memcmp(tape.rows[YT_HOSTILE_ATTACK_COMBAT_DESTROYED_ROW],
+	    destroyed_two, sizeof(destroyed_two) - 1U) != 0
+	    || tape.persistence_input.ship_fighters != 2.0
+	    || tape.persistence_input.deployed_fighters != 0.0
+	    || tape.persistence_input.defender_loss != 2.0
+	    || tape.tail_input.ship_fighters != 5.5
+	    || tape.player_cache_calls != 1U || tape.sector_cache_calls != 2U)
+		return false;
+
+	for (failure = 0U; failure < YT_ARRAY_LEN(ordinary_events); ++failure) {
+		hostile_combat_fixture(&tape, &state);
+		tape.fail_at = failure;
+		yt_error_clear(&error);
+		if (yt_hostile_attack_combat_run(&state, &hostile_combat_ops,
+		    &tape, &error) || error.status != YT_IO_ERROR
+		    || state.complete || tape.calls != failure + 1U
+		    || memcmp(tape.events, ordinary_events,
+		    (failure + 1U) * sizeof(ordinary_events[0])) != 0)
+			return false;
+	}
+
+	hostile_combat_fixture(&tape, &state);
+	tape.player.fighters = 11.0f;
+	tape.opened_sector.fighter_owner = 2.0f;
+	tape.surrender_accept = true;
+	state.commitment = 120.0;
+	state.sector.fighters = 10.0f;
+	if (!yt_hostile_attack_combat_run(&state, &hostile_combat_ops,
+	    &tape, NULL) || !state.surrendered || !state.surrender_checked
+	    || state.iterations != 0U || tape.draw_index != 0U
+	    || tape.calls != YT_ARRAY_LEN(surrender_events)
+	    || memcmp(tape.events, surrender_events,
+	    sizeof(surrender_events)) != 0
+	    || tape.persistence_input.ship_fighters != 21.0
+	    || tape.persistence_input.deployed_fighters != 0.0
+	    || tape.persistence_input.old_owner != 2.0f
+	    || state.sector.fighter_owner != 0.0f)
+		return false;
+
+	hostile_combat_fixture(&tape, &state);
+	tape.player.fighters = 1.0f;
+	tape.player.shields = 5.0f;
+	tape.draws[0] = 0.0f;
+	tape.draw_count = 1U;
+	tape.persistence_fatal = true;
+	state.commitment = 1.0;
+	state.sector.fighters = 2.0f;
+	if (!yt_hostile_attack_combat_run(&state, &hostile_combat_ops,
+	    &tape, NULL) || !state.complete
+	    || state.route != YT_HOSTILE_ATTACK_COMBAT_FATAL
+	    || !state.spill_called || state.current.shields != 0.0f
+	    || state.deployed_remaining != 1.0
+	    || tape.events[tape.calls - 1U] != HOSTILE_COMBAT_PERSISTENCE)
+		return false;
+
+	hostile_combat_fixture(&tape, &state);
+	tape.player.fighters = 11.0f;
+	tape.opened_sector.fighter_owner = 2.0f;
+	tape.surrender_accept = true;
+	tape.surrender_fail_after = true;
+	state.commitment = 120.0;
+	state.sector.fighters = 10.0f;
+	yt_error_clear(&error);
+	if (yt_hostile_attack_combat_run(&state, &hostile_combat_ops,
+	    &tape, &error) || error.status != YT_IO_ERROR
+	    || !state.surrender_checked || !state.surrendered
+	    || state.complete || tape.player_cache_calls != 1U)
+		return false;
+
+	hostile_combat_fixture(&tape, &state);
+	tape.player.fighters = 1.0f;
+	tape.draws[0] = 0.0f;
+	tape.draw_count = 1U;
+	tape.spill_fail_after = true;
+	state.commitment = 1.0;
+	state.sector.fighters = 2.0f;
+	yt_error_clear(&error);
+	if (yt_hostile_attack_combat_run(&state, &hostile_combat_ops,
+	    &tape, &error) || error.status != YT_IO_ERROR
+	    || state.complete || state.current.shields != 0.0f
+	    || state.deployed_remaining != 1.0)
+		return false;
+
+	hostile_combat_fixture(&tape, &state);
+	tape.persistence_fail_after = true;
+	yt_error_clear(&error);
+	if (yt_hostile_attack_combat_run(&state, &hostile_combat_ops,
+	    &tape, &error) || error.status != YT_IO_ERROR || state.complete
+	    || !state.persistence.player_written
+	    || !state.persistence.sector_written
+	    || state.sector.fighters != 0.0f
+	    || tape.sector_cache_calls != 2U)
+		return false;
+
+	hostile_combat_fixture(&tape, &state);
+	tape.tail_fail_after = true;
+	yt_error_clear(&error);
+	if (yt_hostile_attack_combat_run(&state, &hostile_combat_ops,
+	    &tape, &error) || error.status != YT_IO_ERROR || state.complete
+	    || state.tail.complete
+	    || tape.events[tape.calls - 1U] != HOSTILE_COMBAT_TAIL)
+		return false;
+
+	hostile_combat_fixture(&tape, &state);
+	return !yt_hostile_attack_combat_run(NULL, &hostile_combat_ops,
+	    &tape, NULL)
+	    && !yt_hostile_attack_combat_run(&state, NULL, &tape, NULL);
+}
+
 struct direct_attack_attrition_tape {
 	float values[8];
 	size_t calls;
@@ -21103,6 +21563,8 @@ main(void)
 		return fail("hostile Attack persistence transaction differs");
 	if (!check_hostile_attack_tail_transaction())
 		return fail("hostile Attack tail transaction differs");
+	if (!check_hostile_attack_combat_transaction())
+		return fail("hostile Attack composite transaction differs");
 	if (!check_direct_attack_attrition_model())
 		return fail("direct Attack attrition model differs");
 	if (!check_fighter_shield_spill_transaction())

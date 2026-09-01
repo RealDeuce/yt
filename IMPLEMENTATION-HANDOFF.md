@@ -1791,6 +1791,20 @@ not authoritative. Use the corrected goal above in the new workspace.
   clearance/defeated equality boundaries and the no-faction one-draw route.
   The clearance and victory children retain their existing native owners;
   their internals are not duplicated by this tail transaction.
+- The entire admitted hostile combat body now has one provider-driven owner,
+  `yt_hostile_attack_combat_run()`, and the live session delegates to it
+  instead of retaining a parallel monolith. It composes the opening sector
+  and player reads, selector-two sound, post-tested attrition, one-shot
+  surrender, exact result rows, exposed-fighter spill, persistence and the
+  faction tail. The canonical ordinary tape pins eleven top-level events,
+  three draws, attacker loss one, defender loss two, cache mutations and
+  every top-level callback cut. Alternate tapes pin accepted forced-Bribe
+  surrender with zero combat draws, exposed spill into the fatal persistence
+  route with no faction tail, and child failures after surrender, spill,
+  persistence and tail mutations. Each extracted child retains its raw-record
+  fixtures; one joined physical BRUN/WORLD/FIELD/runtime fixture, asynchronous
+  boundaries, scanner continuation and the clearance/Headquarters internals
+  remain open.
 - The hostile defenders-cleared tail now has the documented positive-loss
   rehydration/news ordering, ordinary-owner surrender dialogue and default
   acceptance, accepted transfer/sound/row/news sequence, refusal-to-same-
@@ -2733,10 +2747,10 @@ not authoritative. Use the corrected goal above in the new workspace.
   `cafae7c` adds the shared per-write character-device PRINT reducer with its
   one-byte write-behind state, compatibility drops, device newline classes,
   DOS error mapping and distinct completion residue. Both gaps remain visible
-  as resolved entries in `IMPLEMENTATION-BLOCKERS.md`. `DOC-GAP-004` is now
-  open for the reproducible raw/typed direct-output conflict in the joined
-  forced-Bribe surrender oracle; it does not block the isolated shared spill
-  contract, but that caller composition must remain open.
+  as resolved entries in `IMPLEMENTATION-BLOCKERS.md`. Upstream `35039c3e`
+  also resolved `DOC-GAP-004`: the joined forced-Bribe surrender fixture now
+  carries the real COM1 `FCh` device class, agrees with the typed output state,
+  and explicitly rejects the former erroneous `CR LF LF` prefix.
 - The ANSI opening's local endpoint no longer feeds escape sequences to the
   raw OpenDoors cell writer. Its exact remote bytes remain counted and
   remote-only, while trusted NUL-free local rows and reset use the published
