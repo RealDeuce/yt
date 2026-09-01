@@ -2802,6 +2802,13 @@ not authoritative. Use the corrected goal above in the new workspace.
   dispatch. All 126 focused upstream parent/missile/plasma launch and joined-
   cycle tests pass. A physical active-main raw WORLD/FIELD/cache/RNG join,
   dependency-internal child faults, and final local framebuffer remain open.
+- The command-B accepted suffix now uses explicit raw seller, title, and
+  buyer overlays. Seller and buyer change only credits and owned-port count;
+  title transfer changes only owner and treasury. The title owner always
+  LSETs canonical numeric zero into treasury, fixing the former numeric-
+  equality shortcut that could preserve dirty exponent-zero bytes. Patterned
+  native fixtures pin every unrelated byte. The complete provider-driven
+  command-B transaction and its ordered partial-failure tape remain next.
 
 ## The task
 

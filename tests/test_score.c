@@ -9055,7 +9055,7 @@ check_port_name_editor_model(void)
 		if (port.record.bytes[index] != ' ')
 			return false;
 	}
-	return memcmp(port.record.bytes + YT_TEXT_FIELD_SIZE,
+	if (memcmp(port.record.bytes + YT_TEXT_FIELD_SIZE,
 	    before.bytes + YT_TEXT_FIELD_SIZE,
 	    YT_F85 - YT_TEXT_FIELD_SIZE) == 0
 	    && memcmp(port.record.bytes + YT_F89, before.bytes + YT_F89,
@@ -9083,7 +9083,65 @@ check_port_name_editor_model(void)
 	    && qb_mbf32_encode(yt_port_purchase_buyer_credit(16777218.0f,
 	    1.0), raw_number) == QB_MBF_OK
 	    && memcmp(raw_number, (const uint8_t[]){0x00, 0x00, 0x00, 0x99},
-	    4U) == 0;
+	    4U) == 0) {
+		struct yt_player seller;
+		struct yt_player buyer;
+		struct yt_port purchase_port;
+		struct yt_record expected;
+
+		memset(&seller, 0, sizeof(seller));
+		memset(seller.record.bytes, 0xa5, YT_RECORD_SIZE);
+		seller.credits = 10.0f;
+		seller.ports_owned = 3.0f;
+		(void)yt_record_set_number(&seller.record, YT_F81, 10.0f);
+		(void)yt_record_set_number(&seller.record, YT_F117, 3.0f);
+		expected = seller.record;
+		(void)yt_record_set_number(&expected, YT_F81, 16.0f);
+		(void)yt_record_set_number(&expected, YT_F117, 2.0f);
+		if (!yt_port_purchase_seller_overlay(&seller, 4.0f, 2.0)
+		    || seller.credits != 16.0f || seller.ports_owned != 2.0f
+		    || memcmp(seller.record.bytes, expected.bytes,
+		    YT_RECORD_SIZE) != 0)
+			return false;
+
+		memset(&purchase_port, 0, sizeof(purchase_port));
+		memset(purchase_port.record.bytes, 0x5a, YT_RECORD_SIZE);
+		purchase_port.owner = 7.0f;
+		purchase_port.treasury = 0.0f;
+		memcpy(purchase_port.record.bytes + YT_F89,
+		    (const uint8_t[]){0x12, 0x34, 0x56, 0x00}, 4U);
+		(void)yt_record_set_number(&purchase_port.record, YT_F97, 7.0f);
+		expected = purchase_port.record;
+		(void)yt_record_set_number(&expected, YT_F89, 0.0f);
+		(void)yt_record_set_number(&expected, YT_F97, 2.0f);
+		if (!yt_port_purchase_title_overlay(&purchase_port, 2)
+		    || purchase_port.owner != 2.0f
+		    || purchase_port.treasury != 0.0f
+		    || memcmp(purchase_port.record.bytes, expected.bytes,
+		    YT_RECORD_SIZE) != 0
+		    || memcmp(purchase_port.record.bytes + YT_F89,
+		    "\0\0\0\0", 4U) != 0)
+			return false;
+
+		memset(&buyer, 0, sizeof(buyer));
+		memset(buyer.record.bytes, 0xc3, YT_RECORD_SIZE);
+		buyer.credits = 20.0f;
+		buyer.ports_owned = 1.0f;
+		(void)yt_record_set_number(&buyer.record, YT_F81, 20.0f);
+		(void)yt_record_set_number(&buyer.record, YT_F117, 1.0f);
+		expected = buyer.record;
+		(void)yt_record_set_number(&expected, YT_F81, 18.0f);
+		(void)yt_record_set_number(&expected, YT_F117, 2.0f);
+		if (!yt_port_purchase_buyer_overlay(&buyer, 2.0)
+		    || buyer.credits != 18.0f || buyer.ports_owned != 2.0f
+		    || memcmp(buyer.record.bytes, expected.bytes,
+		    YT_RECORD_SIZE) != 0)
+			return false;
+		return !yt_port_purchase_seller_overlay(NULL, 0.0f, 0.0)
+		    && !yt_port_purchase_title_overlay(NULL, 2)
+		    && !yt_port_purchase_buyer_overlay(NULL, 0.0);
+	}
+	return false;
 }
 
 static bool

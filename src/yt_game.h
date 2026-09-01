@@ -1669,6 +1669,12 @@ double yt_port_purchase_price(const float production[3]);
 float yt_port_purchase_seller_credit(float treasury, float credits,
     double price);
 float yt_port_purchase_buyer_credit(float credits, double price);
+bool yt_port_purchase_seller_overlay(struct yt_player *seller,
+	float treasury, double price);
+bool yt_port_purchase_title_overlay(struct yt_port *port,
+	int buyer_record);
+bool yt_port_purchase_buyer_overlay(struct yt_player *buyer,
+	double price);
 bool yt_genesis_confirmation_prompt(const uint8_t *trader,
     size_t trader_length, uint8_t *prompt, size_t capacity, size_t *length);
 bool yt_genesis_insufficient_rows(float required, float owned,

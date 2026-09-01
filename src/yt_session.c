@@ -11898,13 +11898,8 @@ command_buy_port(struct yt_session *session, struct yt_error *error)
 		    || !yt_game_read_player(&session->door->game, seller_record,
 		    &seller, error))
 			return false;
-		seller.credits = yt_port_purchase_seller_credit(port.treasury,
-		    seller.credits, price);
-		seller.ports_owned = single_sub(seller.ports_owned, 1.0f);
-		if (!yt_record_set_number_if_changed(&seller.record, YT_F81,
-		    seller.credits)
-		    || !yt_record_set_number_if_changed(&seller.record, YT_F117,
-		    seller.ports_owned)
+		if (!yt_port_purchase_seller_overlay(&seller, port.treasury,
+		    price)
 		    || !yt_database_write(&session->door->game.database,
 		    (size_t)seller_record, &seller.record, error))
 			return false;
@@ -11945,12 +11940,7 @@ command_buy_port(struct yt_session *session, struct yt_error *error)
 	if (!yt_game_read_port(&session->door->game, logical_port, &port,
 	    error))
 		return false;
-	port.owner = (float)session->player_record;
-	port.treasury = 0.0f;
-	if (!yt_record_set_number_if_changed(&port.record, YT_F97,
-	    port.owner)
-	    || !yt_record_set_number_if_changed(&port.record, YT_F89,
-	    port.treasury))
+	if (!yt_port_purchase_title_overlay(&port, session->player_record))
 		return port_report_failure(error, "port purchase FIELD overlay");
 	if (!yt_database_write(&session->door->game.database,
 	    (size_t)yt_port_basic_record(&session->door->game.config,
@@ -11958,14 +11948,7 @@ command_buy_port(struct yt_session *session, struct yt_error *error)
 		return false;
 	if (!reload_player(session, error))
 		return false;
-	session->player.credits = yt_port_purchase_buyer_credit(
-	    session->player.credits, price);
-	session->player.ports_owned = single_add(session->player.ports_owned,
-	    1.0f);
-	if (!yt_record_set_number_if_changed(&session->player.record, YT_F81,
-	    session->player.credits)
-	    || !yt_record_set_number_if_changed(&session->player.record,
-	    YT_F117, session->player.ports_owned)
+	if (!yt_port_purchase_buyer_overlay(&session->player, price)
 	    || !yt_database_write(&session->door->game.database,
 	    (size_t)session->player_record, &session->player.record, error))
 		return false;

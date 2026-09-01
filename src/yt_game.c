@@ -4007,6 +4007,49 @@ yt_port_purchase_buyer_credit(float credits, double price)
 }
 
 bool
+yt_port_purchase_seller_overlay(struct yt_player *seller, float treasury,
+    double price)
+{
+	volatile float ports;
+
+	if (seller == NULL)
+		return false;
+	seller->credits = yt_port_purchase_seller_credit(treasury,
+	    seller->credits, price);
+	ports = seller->ports_owned - 1.0f;
+	seller->ports_owned = ports;
+	return yt_record_set_number(&seller->record, YT_F81, seller->credits)
+	    && yt_record_set_number(&seller->record, YT_F117,
+	    seller->ports_owned);
+}
+
+bool
+yt_port_purchase_title_overlay(struct yt_port *port, int buyer_record)
+{
+	if (port == NULL)
+		return false;
+	port->owner = (float)buyer_record;
+	port->treasury = 0.0f;
+	return yt_record_set_number(&port->record, YT_F97, port->owner)
+	    && yt_record_set_number(&port->record, YT_F89, 0.0f);
+}
+
+bool
+yt_port_purchase_buyer_overlay(struct yt_player *buyer, double price)
+{
+	volatile float ports;
+
+	if (buyer == NULL)
+		return false;
+	buyer->credits = yt_port_purchase_buyer_credit(buyer->credits, price);
+	ports = buyer->ports_owned + 1.0f;
+	buyer->ports_owned = ports;
+	return yt_record_set_number(&buyer->record, YT_F81, buyer->credits)
+	    && yt_record_set_number(&buyer->record, YT_F117,
+	    buyer->ports_owned);
+}
+
+bool
 yt_genesis_confirmation_prompt(const uint8_t *trader, size_t trader_length,
     uint8_t *prompt, size_t capacity, size_t *length)
 {
