@@ -27051,7 +27051,8 @@ check_computer_scoreboard_transaction(void)
 }
 
 enum computer_newspaper_event {
-	COMPUTER_NEWSPAPER_LEADING = 1,
+	COMPUTER_NEWSPAPER_CHECKPOINT = 1,
+	COMPUTER_NEWSPAPER_LEADING,
 	COMPUTER_NEWSPAPER_PROMPT,
 	COMPUTER_NEWSPAPER_EDIT,
 	COMPUTER_NEWSPAPER_VIEW,
@@ -27065,6 +27066,7 @@ struct computer_newspaper_tape {
 	size_t response_count;
 	size_t response_position;
 	bool available;
+	bool checkpoint_resume;
 	bool report_capacity_length;
 	const char *viewed_path;
 	size_t leading_rows;
@@ -27084,6 +27086,19 @@ computer_newspaper_step(struct computer_newspaper_tape *tape,
 	if (error != NULL)
 		error->status = YT_IO_ERROR;
 	return false;
+}
+
+static bool
+computer_newspaper_checkpoint_test(void *context, bool *resume,
+    struct yt_error *error)
+{
+	struct computer_newspaper_tape *tape = context;
+
+	if (resume == NULL || !computer_newspaper_step(tape,
+	    COMPUTER_NEWSPAPER_CHECKPOINT, error))
+		return false;
+	*resume = tape->checkpoint_resume;
+	return true;
 }
 
 static bool
@@ -27148,6 +27163,7 @@ computer_newspaper_view_test(void *context, const char *pathname,
 }
 
 static const struct yt_computer_newspaper_ops computer_newspaper_test_ops = {
+	computer_newspaper_checkpoint_test,
 	computer_newspaper_present_test,
 	computer_newspaper_edit_test,
 	computer_newspaper_view_test,
@@ -27161,12 +27177,14 @@ computer_newspaper_fixture(struct computer_newspaper_tape *tape,
 	memset(state, 0xa5, sizeof(*state));
 	tape->fail_at = SIZE_MAX;
 	tape->available = true;
+	tape->checkpoint_resume = true;
 }
 
 static bool
 check_computer_newspaper_transaction(void)
 {
 	static const enum computer_newspaper_event retry_events[] = {
+		COMPUTER_NEWSPAPER_CHECKPOINT,
 		COMPUTER_NEWSPAPER_LEADING,
 		COMPUTER_NEWSPAPER_PROMPT,
 		COMPUTER_NEWSPAPER_EDIT,
@@ -27188,6 +27206,7 @@ check_computer_newspaper_transaction(void)
 	tape.response_count = 2U;
 	if (!yt_computer_newspaper_run(&state, &computer_newspaper_test_ops,
 	    &tape, NULL) || !state.complete
+	    || !state.checkpoint_reached || !state.checkpoint_resumed
 	    || !state.leading_blank_presented || !state.input_available
 	    || state.attempts != 2U
 	    || state.choice != YT_COMPUTER_NEWSPAPER_TODAY
@@ -27216,7 +27235,7 @@ check_computer_newspaper_transaction(void)
 	    || strcmp(tape.viewed_path, "YTYNEWS.DAT") != 0)
 		return false;
 
-	for (index = 0U; index < 4U; ++index) {
+	for (index = 0U; index < 5U; ++index) {
 		computer_newspaper_fixture(&tape, &state);
 		tape.responses[0] = "T";
 		tape.response_count = 1U;
@@ -27230,13 +27249,20 @@ check_computer_newspaper_transaction(void)
 	}
 
 	computer_newspaper_fixture(&tape, &state);
+	tape.checkpoint_resume = false;
+	if (yt_computer_newspaper_run(&state, &computer_newspaper_test_ops,
+	    &tape, NULL) || !state.checkpoint_reached
+	    || state.checkpoint_resumed || state.leading_blank_presented
+	    || state.viewer_called || state.complete || tape.calls != 1U)
+		return false;
+	computer_newspaper_fixture(&tape, &state);
 	tape.responses[0] = "";
 	tape.response_count = 1U;
 	tape.available = false;
 	if (yt_computer_newspaper_run(&state, &computer_newspaper_test_ops,
 	    &tape, NULL) || !state.leading_blank_presented
 	    || state.input_available || state.attempts != 1U
-	    || state.viewer_called || state.complete || tape.calls != 3U)
+	    || state.viewer_called || state.complete || tape.calls != 4U)
 		return false;
 	computer_newspaper_fixture(&tape, &state);
 	tape.responses[0] = "";
@@ -27254,6 +27280,92 @@ check_computer_newspaper_transaction(void)
 	return !yt_computer_newspaper_run(NULL, &computer_newspaper_test_ops,
 	    &tape, NULL)
 	    && !yt_computer_newspaper_run(&state, NULL, &tape, NULL);
+}
+
+static bool
+check_computer_newspaper_field_carrier(void)
+{
+	struct yt_player active;
+	struct hydration_tape hydration;
+	struct yt_current_player_hydration_state hydrate;
+	struct computer_newspaper_tape newspaper;
+	struct yt_computer_newspaper_state state;
+	struct yt_record entry_field;
+	float sector_cache[52];
+	float cloak_cache[52];
+	float current_sector = -1.0f;
+	float entry_sector;
+	float entry_cloak;
+	size_t index;
+
+	memset(&active, 0, sizeof(active));
+	memset(&hydration, 0, sizeof(hydration));
+	memset(sector_cache, 0, sizeof(sector_cache));
+	memset(cloak_cache, 0, sizeof(cloak_cache));
+	memset(hydration.fresh.record.bytes, 0xa5,
+	    sizeof(hydration.fresh.record.bytes));
+	hydration.fresh.sector = 7.25f;
+	hydration.fresh.cloak = 0.75f;
+	hydration.fresh.team = -3.0f;
+	hydration.fresh.turns = 11.0f;
+	hydration.fresh.credits = 1234.5f;
+	yt_player_encode(&hydration.fresh);
+	for (index = YT_RECORD_TAIL_OFFSET; index < YT_RECORD_SIZE; ++index)
+		hydration.fresh.record.bytes[index] = (uint8_t)index;
+	hydration.succeeds = true;
+	hydrate.player = &active;
+	hydrate.player_record = 2;
+	hydrate.last_player_record = 51;
+	hydrate.sector_record_offset = 2004.0f;
+	hydrate.current_sector_record = &current_sector;
+	hydrate.sector_cache = sector_cache;
+	hydrate.cloak_cache = cloak_cache;
+	hydrate.cache_count = YT_ARRAY_LEN(sector_cache);
+	hydrate.anti_cloak = false;
+	if (!yt_current_player_hydrate_run(&hydrate, hydration_read,
+	    &hydration, NULL))
+		return false;
+	entry_field = active.record;
+	entry_sector = sector_cache[2];
+	entry_cloak = cloak_cache[2];
+	computer_newspaper_fixture(&newspaper, &state);
+	newspaper.responses[0] = "T";
+	newspaper.response_count = 1U;
+	if (!yt_computer_newspaper_run(&state, &computer_newspaper_test_ops,
+	    &newspaper, NULL)
+	    || memcmp(&active.record, &entry_field, sizeof(entry_field)) != 0
+	    || sector_cache[2] != entry_sector
+	    || cloak_cache[2] != entry_cloak
+	    || current_sector != 2011.25f)
+		return false;
+
+	hydration.succeeds = false;
+	if (yt_current_player_hydrate_run(&hydrate, hydration_read,
+	    &hydration, NULL)
+	    || memcmp(&active.record, &entry_field, sizeof(entry_field)) != 0
+	    || sector_cache[2] != entry_sector
+	    || cloak_cache[2] != entry_cloak
+	    || current_sector != 2011.25f)
+		return false;
+
+	memset(hydration.fresh.record.bytes, 0x5a,
+	    sizeof(hydration.fresh.record.bytes));
+	hydration.fresh.sector = 9.5f;
+	hydration.fresh.cloak = 0.25f;
+	hydration.fresh.team = 4.0f;
+	hydration.fresh.turns = 12.0f;
+	hydration.fresh.credits = 6789.0f;
+	yt_player_encode(&hydration.fresh);
+	for (index = YT_RECORD_TAIL_OFFSET; index < YT_RECORD_SIZE; ++index)
+		hydration.fresh.record.bytes[index] = (uint8_t)(0xffU - index);
+	hydration.succeeds = true;
+	return yt_current_player_hydrate_run(&hydrate, hydration_read,
+	    &hydration, NULL)
+	    && memcmp(&active.record, &hydration.fresh.record,
+	    sizeof(active.record)) == 0
+	    && memcmp(&active.record, &entry_field, sizeof(entry_field)) != 0
+	    && sector_cache[2] == 9.5f && cloak_cache[2] == 0.25f
+	    && current_sector == 2013.5f;
 }
 
 struct computer_newspaper_recovery_persistence {
@@ -28963,6 +29075,8 @@ main(void)
 		return fail("computer scoreboard transaction differs");
 	if (!check_computer_newspaper_transaction())
 		return fail("computer newspaper transaction differs");
+	if (!check_computer_newspaper_field_carrier())
+		return fail("computer newspaper FIELD carrier differs");
 	if (!check_port_name_editor_model())
 		return fail("port name editor model differs");
 	if (!check_port_purchase_accept_transaction())

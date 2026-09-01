@@ -3404,7 +3404,8 @@ yt_computer_newspaper_run(struct yt_computer_newspaper_state *state,
 	static const char yesterday_path[] = "YTYNEWS.DAT";
 	char edited[YT_COMPUTER_NEWSPAPER_RESPONSE_SIZE];
 
-	if (state == NULL || ops == NULL || ops->present == NULL
+	if (state == NULL || ops == NULL || ops->checkpoint == NULL
+	    || ops->present == NULL
 	    || ops->edit == NULL || ops->view == NULL)
 		return false;
 	memset(state->raw_response, 0, sizeof(state->raw_response));
@@ -3414,11 +3415,21 @@ yt_computer_newspaper_run(struct yt_computer_newspaper_state *state,
 	state->attempts = 0U;
 	state->selected_pathname = NULL;
 	state->choice = YT_COMPUTER_NEWSPAPER_NONE;
+	state->checkpoint_reached = false;
+	state->checkpoint_resumed = false;
 	state->leading_blank_presented = false;
 	state->input_available = false;
 	state->viewer_called = false;
 	state->complete = false;
 
+	{
+		bool resume = false;
+
+		state->checkpoint_reached = true;
+		if (!ops->checkpoint(context, &resume, error) || !resume)
+			return false;
+		state->checkpoint_resumed = true;
+	}
 	if (!ops->present(context, NULL, 0U,
 	    YT_COMPUTER_NEWSPAPER_LEADING_BLANK, error))
 		return false;

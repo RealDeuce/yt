@@ -17131,9 +17131,23 @@ computer_newspaper_view(void *context, const char *pathname,
 }
 
 static bool
+computer_newspaper_checkpoint(void *context, bool *resume,
+    struct yt_error *error)
+{
+	(void)context;
+	(void)error;
+	if (resume == NULL)
+		return false;
+	/* Physical local ON KEY delivery is an explicitly deferred adapter. */
+	*resume = true;
+	return true;
+}
+
+static bool
 computer_newspaper(struct yt_session *session, struct yt_error *error)
 {
 	static const struct yt_computer_newspaper_ops ops = {
+		computer_newspaper_checkpoint,
 		computer_newspaper_present,
 		computer_raw_upper_edit,
 		computer_newspaper_view,

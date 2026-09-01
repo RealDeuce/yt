@@ -637,6 +637,8 @@ struct yt_computer_newspaper_state {
 	size_t attempts;
 	const char *selected_pathname;
 	enum yt_computer_newspaper_choice choice;
+	bool checkpoint_reached;
+	bool checkpoint_resumed;
 	bool leading_blank_presented;
 	bool input_available;
 	bool viewer_called;
@@ -644,6 +646,8 @@ struct yt_computer_newspaper_state {
 };
 
 struct yt_computer_newspaper_ops {
+	bool (*checkpoint)(void *context, bool *resume,
+	    struct yt_error *error);
 	bool (*present)(void *context, const uint8_t *text, size_t length,
 	    enum yt_computer_newspaper_output_kind kind,
 	    struct yt_error *error);
