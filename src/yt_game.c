@@ -3070,6 +3070,48 @@ yt_fighter_shield_spill_rows(double fighters, float shields,
 }
 
 bool
+yt_fighter_shield_spill_run(
+    struct yt_fighter_shield_spill_state *state,
+    const struct yt_fighter_shield_spill_ops *ops, void *context,
+    struct yt_error *error)
+{
+	uint8_t fighter_row[128];
+	uint8_t shield_row[128];
+	size_t fighter_length;
+	size_t shield_length;
+
+	if (state == NULL || ops == NULL || ops->random == NULL
+	    || ops->present == NULL)
+		return false;
+	state->iterations = 0U;
+	state->fighter_row_presented = false;
+	state->shield_row_presented = false;
+	state->complete = false;
+	while (state->fighters > 0.0 && state->shields > 0.0f) {
+		float sampled;
+
+		if (!ops->random(context, &sampled, error)
+		    || !yt_fighter_shield_spill_step(&state->fighters,
+		    &state->shields, sampled))
+			return false;
+		++state->iterations;
+	}
+	if (!yt_fighter_shield_spill_rows(state->fighters, state->shields,
+	    fighter_row, sizeof(fighter_row), &fighter_length,
+	    shield_row, sizeof(shield_row), &shield_length)
+	    || !ops->present(context, fighter_row, fighter_length,
+	    YT_FIGHTER_SHIELD_SPILL_FIGHTER_ROW, error))
+		return false;
+	state->fighter_row_presented = true;
+	if (!ops->present(context, shield_row, shield_length,
+	    YT_FIGHTER_SHIELD_SPILL_SHIELD_ROW, error))
+		return false;
+	state->shield_row_presented = true;
+	state->complete = true;
+	return true;
+}
+
+bool
 yt_hostile_defeated_row(double fighters, uint8_t *row,
     size_t capacity, size_t *length)
 {

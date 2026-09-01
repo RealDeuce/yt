@@ -1743,14 +1743,16 @@ not authoritative. Use the corrected goal above in the new workspace.
   WORLD/FIELD/store fixture and all adjacent surrender/spill/news/reward/
   death/clearance/cleared paths remain open.
 - The shared `YT-SUB:[9C6B,9D3D)` fighter/shield spill child is now a
-  reusable native reducer plus exact row formatter. It preserves the DOUBLE
+  provider-driven transaction around the reusable reducer and exact row
+  formatter. It preserves the DOUBLE
   fighter argument, uses strict positive pretests, selects quantum 100 only
   when both operands exceed 100, sends equality at `.5` to fighter damage,
   does not clamp, and always emits the two direct unpaged result rows. The
   deployed-fighter Attack caller now owns the exact attention, direct blank,
-  spill, and pre-persistence join. Direct-player Attack still needs to be
-  connected to this shared child, and injected-RNG/failure/raw-world caller
-  fixtures remain open.
+  spill, and pre-persistence join, while direct-player Attack reaches the same
+  owner through its extracted combat transaction. The focused provider tape
+  pins 100-then-one mutation, all RNG/row failures, initial nonpositive output
+  and unclamped negative overshoot. Raw-world caller fixtures remain open.
 - The hostile defenders-cleared tail now has the documented positive-loss
   rehydration/news ordering, ordinary-owner surrender dialogue and default
   acceptance, accepted transfer/sound/row/news sequence, refusal-to-same-
@@ -2693,8 +2695,10 @@ not authoritative. Use the corrected goal above in the new workspace.
   `cafae7c` adds the shared per-write character-device PRINT reducer with its
   one-byte write-behind state, compatibility drops, device newline classes,
   DOS error mapping and distinct completion residue. Both gaps remain visible
-  as resolved entries in `IMPLEMENTATION-BLOCKERS.md`; no documentation gap is
-  currently open.
+  as resolved entries in `IMPLEMENTATION-BLOCKERS.md`. `DOC-GAP-004` is now
+  open for the reproducible raw/typed direct-output conflict in the joined
+  forced-Bribe surrender oracle; it does not block the isolated shared spill
+  contract, but that caller composition must remain open.
 - The ANSI opening's local endpoint no longer feeds escape sequences to the
   raw OpenDoors cell writer. Its exact remote bytes remain counted and
   remote-only, while trusted NUL-free local rows and reset use the published

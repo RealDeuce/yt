@@ -5332,36 +5332,33 @@ command_attack_player(struct yt_session *session, bool *enter_sector,
 }
 
 static bool
+fighter_shield_spill_present(void *context, const uint8_t *text,
+    size_t length, enum yt_fighter_shield_spill_output_kind kind,
+    struct yt_error *error)
+{
+	return session_present_text(context, text, length, SESSION_PRESENT_LINE,
+	    kind == YT_FIGHTER_SHIELD_SPILL_FIGHTER_ROW
+	    ? "fighter spill result" : "shield spill result", error);
+}
+
+static bool
 fighter_shield_spill(struct yt_session *session, double *fighters,
     float *shields, struct yt_error *error)
 {
-	uint8_t fighter_row[128];
-	uint8_t shield_row[128];
-	size_t fighter_length;
-	size_t shield_length;
+	static const struct yt_fighter_shield_spill_ops ops = {
+		direct_attack_attrition_draw,
+		fighter_shield_spill_present,
+	};
+	struct yt_fighter_shield_spill_state state = {
+		.fighters = *fighters,
+		.shields = *shields,
+	};
+	bool result = yt_fighter_shield_spill_run(&state, &ops, session,
+	    error);
 
-	while (*fighters > 0.0 && *shields > 0.0f) {
-		float draw;
-
-		if (!random_value(session, &draw, error))
-			return false;
-		if (!yt_fighter_shield_spill_step(fighters, shields, draw))
-			return false;
-	}
-	if (!yt_fighter_shield_spill_rows(*fighters, *shields,
-	    fighter_row, sizeof(fighter_row), &fighter_length,
-	    shield_row, sizeof(shield_row), &shield_length)) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			(void)snprintf(error->operation, sizeof(error->operation),
-			    "%s", "fighter/shield spill rows");
-		}
-		return false;
-	}
-	return session_present_text(session, fighter_row, fighter_length,
-	    SESSION_PRESENT_LINE, "fighter spill result", error)
-	    && session_present_text(session, shield_row, shield_length,
-	    SESSION_PRESENT_LINE, "shield spill result", error);
+	*fighters = state.fighters;
+	*shields = state.shields;
+	return result;
 }
 
 static bool

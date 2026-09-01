@@ -8,7 +8,32 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
-None currently.
+### DOC-GAP-004: forced-Bribe surrender join raw/typed output conflict
+
+Affected coverage:
+
+- hostile Bribe forced-combat continuation;
+- hostile Attack surrender-prefix composition; and
+- any completion claim that depends on the joined forced-Bribe combat oracle.
+
+The completed upstream test
+`tests.test_transducer_join.TransducerJoinTests.test_hostile_bribe_forced_attack_composes_first_combat_region`
+currently fails before the shared fighter/shield spill child is reached.
+`compose_hostile_attack_surrender_prefix_world()` enters the ordinary notice
+and connected direct-blank owner, where
+`compose_direct_output_world_return()` raises:
+
+```text
+ValueError: raw/typed direct-output serial bytes disagree
+```
+
+The failure is reproducible when that test is run alone. The 69 focused
+`test_ytdirect_attack_output` and `test_ytdeployed_fighter_output` cases pass,
+so the isolated documented `YT-SUB:[9C6B,9D3D)` spill contract is not blocked
+and remains suitable for implementation. The conflicting joined
+forced-Bribe/surrender oracle must be corrected or regenerated upstream
+before this repository uses it to close that caller composition. No binary
+inspection or new reverse engineering was performed here.
 
 ## Resolved documentation gaps
 
