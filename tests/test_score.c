@@ -10227,6 +10227,398 @@ check_sector_mine_model(void)
 	return yt_sector_mine_empty_holds(&working) == 3.0f;
 }
 
+enum mine_transaction_event {
+	MINE_TX_PRESENT = 1,
+	MINE_TX_SOUND,
+	MINE_TX_READ_CURRENT,
+	MINE_TX_NEWS,
+	MINE_TX_READ_SECTOR,
+	MINE_TX_WRITE_SECTOR,
+	MINE_TX_RANDOM,
+	MINE_TX_READ_PLAYER,
+	MINE_TX_WRITE_PLAYER,
+	MINE_TX_SHRINK,
+	MINE_TX_WARP,
+};
+
+struct mine_transaction_tape {
+	const enum mine_transaction_event *expected;
+	size_t expected_count;
+	size_t event_count;
+	size_t fail_at;
+	struct yt_player player;
+	struct yt_sector sector;
+	float draws[16];
+	size_t draw_position;
+	float shrink_result;
+	size_t present_count;
+	size_t news_count;
+	size_t sound_count;
+	size_t sector_writes;
+	size_t player_writes;
+	bool warped;
+	float foreground;
+	float background;
+	float blink;
+	int pager_foreground;
+};
+
+static bool
+mine_tx_step(struct mine_transaction_tape *tape,
+	enum mine_transaction_event event, struct yt_error *error)
+{
+	if (tape->event_count >= tape->expected_count
+	    || tape->expected[tape->event_count] != event)
+		return false;
+	++tape->event_count;
+	if (tape->event_count != tape->fail_at)
+		return true;
+	if (error != NULL) {
+		error->status = YT_IO_ERROR;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    "mine transaction injected failure");
+	}
+	return false;
+}
+
+static bool
+mine_tx_read_current(void *context, struct yt_player *player,
+	struct yt_error *error)
+{
+	struct mine_transaction_tape *tape = context;
+
+	if (!mine_tx_step(tape, MINE_TX_READ_CURRENT, error))
+		return false;
+	*player = tape->player;
+	return true;
+}
+
+static bool
+mine_tx_read_player(void *context, int player_record,
+	struct yt_player *player, struct yt_error *error)
+{
+	struct mine_transaction_tape *tape = context;
+
+	if (player_record != 2
+	    || !mine_tx_step(tape, MINE_TX_READ_PLAYER, error))
+		return false;
+	*player = tape->player;
+	return true;
+}
+
+static bool
+mine_tx_write_player(void *context, int player_record,
+	struct yt_player *player, struct yt_error *error)
+{
+	struct mine_transaction_tape *tape = context;
+
+	if (player_record != 2
+	    || !mine_tx_step(tape, MINE_TX_WRITE_PLAYER, error))
+		return false;
+	tape->player = *player;
+	++tape->player_writes;
+	return true;
+}
+
+static bool
+mine_tx_read_sector(void *context, int logical_sector,
+	struct yt_sector *sector, struct yt_error *error)
+{
+	struct mine_transaction_tape *tape = context;
+
+	if (logical_sector != 42
+	    || !mine_tx_step(tape, MINE_TX_READ_SECTOR, error))
+		return false;
+	*sector = tape->sector;
+	return true;
+}
+
+static bool
+mine_tx_write_sector(void *context, int logical_sector,
+	struct yt_sector *sector, struct yt_error *error)
+{
+	struct mine_transaction_tape *tape = context;
+
+	if (logical_sector != 42
+	    || !mine_tx_step(tape, MINE_TX_WRITE_SECTOR, error))
+		return false;
+	tape->sector = *sector;
+	++tape->sector_writes;
+	return true;
+}
+
+static bool
+mine_tx_present(void *context, const uint8_t *text, size_t length,
+	enum yt_sector_mine_output_kind kind, struct yt_error *error)
+{
+	struct mine_transaction_tape *tape = context;
+
+	(void)text;
+	(void)length;
+	(void)kind;
+	if (!mine_tx_step(tape, MINE_TX_PRESENT, error))
+		return false;
+	++tape->present_count;
+	return true;
+}
+
+static bool
+mine_tx_sound(void *context, float selector, struct yt_error *error)
+{
+	struct mine_transaction_tape *tape = context;
+
+	if ((selector != 5.0f && selector != 2.0f)
+	    || !mine_tx_step(tape, MINE_TX_SOUND, error))
+		return false;
+	++tape->sound_count;
+	return true;
+}
+
+static bool
+mine_tx_news(void *context, const uint8_t *text, size_t length,
+	struct yt_error *error)
+{
+	struct mine_transaction_tape *tape = context;
+
+	(void)text;
+	(void)length;
+	if (!mine_tx_step(tape, MINE_TX_NEWS, error))
+		return false;
+	++tape->news_count;
+	return true;
+}
+
+static bool
+mine_tx_random(void *context, float *value, struct yt_error *error)
+{
+	struct mine_transaction_tape *tape = context;
+
+	if (tape->draw_position >= YT_ARRAY_LEN(tape->draws)
+	    || !mine_tx_step(tape, MINE_TX_RANDOM, error))
+		return false;
+	*value = tape->draws[tape->draw_position++];
+	return true;
+}
+
+static bool
+mine_tx_shrink(void *context, float range, float *result,
+	struct yt_error *error)
+{
+	struct mine_transaction_tape *tape = context;
+
+	(void)range;
+	if (!mine_tx_step(tape, MINE_TX_SHRINK, error))
+		return false;
+	*result = tape->shrink_result;
+	return true;
+}
+
+static bool
+mine_tx_warp(void *context, struct yt_error *error)
+{
+	struct mine_transaction_tape *tape = context;
+
+	if (!mine_tx_step(tape, MINE_TX_WARP, error))
+		return false;
+	tape->warped = true;
+	return true;
+}
+
+static void
+mine_tx_set_current(void *context, const struct yt_player *player)
+{
+	struct mine_transaction_tape *tape = context;
+
+	tape->player = *player;
+}
+
+static void
+mine_tx_style(void *context, float foreground, float background,
+	float blink, int pager_foreground)
+{
+	struct mine_transaction_tape *tape = context;
+
+	tape->foreground = foreground;
+	tape->background = background;
+	tape->blink = blink;
+	tape->pager_foreground = pager_foreground;
+}
+
+static const struct yt_sector_mine_ops mine_tx_ops = {
+	mine_tx_read_current,
+	mine_tx_read_player,
+	mine_tx_write_player,
+	mine_tx_read_sector,
+	mine_tx_write_sector,
+	mine_tx_present,
+	mine_tx_sound,
+	mine_tx_news,
+	mine_tx_random,
+	mine_tx_shrink,
+	mine_tx_warp,
+	mine_tx_set_current,
+	mine_tx_style,
+};
+
+static void
+mine_tx_fixture(struct mine_transaction_tape *tape,
+	const enum mine_transaction_event *expected, size_t expected_count,
+	float emergency_draw)
+{
+	struct yt_record raw;
+
+	memset(tape, 0, sizeof(*tape));
+	tape->expected = expected;
+	tape->expected_count = expected_count;
+	yt_record_blank(&raw);
+	memcpy(raw.bytes, "P\0L", 3U);
+	(void)yt_record_set_number(&raw, YT_F53, 10.0f);
+	(void)yt_record_set_number(&raw, YT_F65, 5.0f);
+	(void)yt_record_set_number(&raw, YT_F85, 3.0f);
+	yt_player_decode(&tape->player, &raw);
+	yt_record_blank(&raw);
+	(void)yt_record_set_number(&raw, YT_F129, 1.0f);
+	yt_sector_decode(&tape->sector, &raw);
+	tape->draws[0] = 0.0f;
+	tape->draws[1] = 0.0f;
+	tape->draws[2] = emergency_draw;
+}
+
+static bool
+check_sector_mine_transaction(void)
+{
+	static const enum mine_transaction_event returned[] = {
+		MINE_TX_PRESENT, MINE_TX_PRESENT, MINE_TX_SOUND,
+		MINE_TX_READ_CURRENT, MINE_TX_NEWS, MINE_TX_READ_SECTOR,
+		MINE_TX_WRITE_SECTOR, MINE_TX_PRESENT, MINE_TX_PRESENT,
+		MINE_TX_READ_CURRENT, MINE_TX_RANDOM, MINE_TX_PRESENT,
+		MINE_TX_RANDOM, MINE_TX_READ_PLAYER, MINE_TX_WRITE_PLAYER,
+		MINE_TX_SOUND, MINE_TX_RANDOM, MINE_TX_NEWS,
+		MINE_TX_READ_SECTOR,
+	};
+	static const enum mine_transaction_event warped[] = {
+		MINE_TX_PRESENT, MINE_TX_PRESENT, MINE_TX_SOUND,
+		MINE_TX_READ_CURRENT, MINE_TX_NEWS, MINE_TX_READ_SECTOR,
+		MINE_TX_WRITE_SECTOR, MINE_TX_PRESENT, MINE_TX_PRESENT,
+		MINE_TX_READ_CURRENT, MINE_TX_RANDOM, MINE_TX_PRESENT,
+		MINE_TX_RANDOM, MINE_TX_READ_PLAYER, MINE_TX_WRITE_PLAYER,
+		MINE_TX_SOUND, MINE_TX_RANDOM, MINE_TX_WARP,
+	};
+	static const enum mine_transaction_event repeated[] = {
+		MINE_TX_PRESENT, MINE_TX_PRESENT, MINE_TX_SOUND,
+		MINE_TX_READ_CURRENT, MINE_TX_NEWS,
+		MINE_TX_READ_SECTOR, MINE_TX_WRITE_SECTOR,
+		MINE_TX_PRESENT, MINE_TX_PRESENT, MINE_TX_READ_CURRENT,
+		MINE_TX_RANDOM, MINE_TX_PRESENT, MINE_TX_RANDOM,
+		MINE_TX_READ_PLAYER, MINE_TX_WRITE_PLAYER, MINE_TX_SOUND,
+		MINE_TX_RANDOM,
+		MINE_TX_READ_SECTOR, MINE_TX_WRITE_SECTOR,
+		MINE_TX_PRESENT, MINE_TX_PRESENT, MINE_TX_READ_CURRENT,
+		MINE_TX_RANDOM, MINE_TX_PRESENT, MINE_TX_RANDOM,
+		MINE_TX_READ_PLAYER, MINE_TX_WRITE_PLAYER, MINE_TX_SOUND,
+		MINE_TX_RANDOM, MINE_TX_NEWS, MINE_TX_READ_SECTOR,
+	};
+	static const enum mine_transaction_event fatal[] = {
+		MINE_TX_PRESENT, MINE_TX_PRESENT, MINE_TX_SOUND,
+		MINE_TX_READ_CURRENT, MINE_TX_NEWS, MINE_TX_READ_SECTOR,
+		MINE_TX_WRITE_SECTOR, MINE_TX_PRESENT, MINE_TX_PRESENT,
+		MINE_TX_READ_CURRENT, MINE_TX_SHRINK, MINE_TX_PRESENT,
+		MINE_TX_READ_PLAYER, MINE_TX_WRITE_PLAYER, MINE_TX_SOUND,
+		MINE_TX_RANDOM, MINE_TX_NEWS, MINE_TX_READ_SECTOR,
+	};
+	struct mine_transaction_tape tape;
+	struct yt_sector_mine_state state;
+	struct yt_error error;
+	bool destroyed;
+	size_t failure;
+
+	mine_tx_fixture(&tape, returned, YT_ARRAY_LEN(returned), 0.0f);
+	destroyed = false;
+	state = (struct yt_sector_mine_state){
+		.current_player_record = 2,
+		.current_sector = 42.0f,
+		.foreground = 6.0f,
+		.pager_foreground = 6,
+		.destroyed = &destroyed,
+	};
+	if (!yt_sector_mine_run(&state, &mine_tx_ops, &tape, NULL)
+	    || tape.event_count != YT_ARRAY_LEN(returned)
+	    || tape.draw_position != 3U || tape.sector_writes != 1U
+	    || tape.player_writes != 1U || tape.news_count != 2U
+	    || tape.sound_count != 2U || tape.present_count != 5U
+	    || tape.sector.mines != 0.0f || tape.player.shields != 10.0f
+	    || state.batches != 1U || state.terminal || !state.complete
+	    || destroyed || tape.foreground != 3.0f
+	    || tape.background != 1.0f || tape.blink != 0.0f)
+		return false;
+
+	for (failure = 1U; failure <= YT_ARRAY_LEN(returned); ++failure) {
+		mine_tx_fixture(&tape, returned, YT_ARRAY_LEN(returned), 0.0f);
+		tape.fail_at = failure;
+		destroyed = false;
+		state = (struct yt_sector_mine_state){
+			.current_player_record = 2,
+			.current_sector = 42.0f,
+			.foreground = 6.0f,
+			.pager_foreground = 6,
+			.destroyed = &destroyed,
+		};
+		yt_error_clear(&error);
+		if (yt_sector_mine_run(&state, &mine_tx_ops, &tape, &error)
+		    || tape.event_count != failure || state.complete
+		    || error.status != YT_IO_ERROR)
+			return false;
+	}
+
+	mine_tx_fixture(&tape, repeated, YT_ARRAY_LEN(repeated), 0.0f);
+	tape.sector.mines = 2.0f;
+	destroyed = false;
+	state = (struct yt_sector_mine_state){
+		.current_player_record = 2,
+		.current_sector = 42.0f,
+		.foreground = 6.0f,
+		.pager_foreground = 6,
+		.destroyed = &destroyed,
+	};
+	if (!yt_sector_mine_run(&state, &mine_tx_ops, &tape, NULL)
+	    || tape.event_count != YT_ARRAY_LEN(repeated) || state.batches != 2U
+	    || tape.sector_writes != 2U || tape.player_writes != 2U
+	    || tape.draw_position != 6U || tape.sector.mines != 0.0f
+	    || destroyed || state.terminal || !state.complete)
+		return false;
+
+	mine_tx_fixture(&tape, fatal, YT_ARRAY_LEN(fatal), 0.0f);
+	tape.player.shields = 0.0f;
+	tape.player.holds = 1.0f;
+	tape.shrink_result = 1.0f;
+	destroyed = false;
+	state = (struct yt_sector_mine_state){
+		.current_player_record = 2,
+		.current_sector = 42.0f,
+		.foreground = 6.0f,
+		.pager_foreground = 6,
+		.destroyed = &destroyed,
+	};
+	if (!yt_sector_mine_run(&state, &mine_tx_ops, &tape, NULL)
+	    || tape.event_count != YT_ARRAY_LEN(fatal) || !destroyed
+	    || tape.player.holds != 0.0f || state.terminal || !state.complete
+	    || tape.draw_position != 1U)
+		return false;
+
+	mine_tx_fixture(&tape, warped, YT_ARRAY_LEN(warped), 0.9f);
+	destroyed = false;
+	state = (struct yt_sector_mine_state){
+		.current_player_record = 2,
+		.current_sector = 42.0f,
+		.foreground = 6.0f,
+		.pager_foreground = 6,
+		.destroyed = &destroyed,
+	};
+	return yt_sector_mine_run(&state, &mine_tx_ops, &tape, NULL)
+	    && tape.event_count == YT_ARRAY_LEN(warped) && tape.warped
+	    && state.terminal && state.complete && tape.news_count == 1U;
+}
+
 static bool
 check_direct_fighter_kill_model(void)
 {
@@ -18843,6 +19235,8 @@ main(void)
 		return fail("planet move model differs");
 	if (!check_sector_mine_model())
 		return fail("sector mine model differs");
+	if (!check_sector_mine_transaction())
+		return fail("sector mine transaction differs");
 	if (!check_direct_fighter_kill_model())
 		return fail("direct fighter kill model differs");
 	if (!check_common_fatal_transaction())

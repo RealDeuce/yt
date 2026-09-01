@@ -1518,6 +1518,18 @@ not authoritative. Use the corrected goal above in the new workspace.
   foreground/background/style, color cache and pager state pinned. The
   preceding combat transaction, dependency-internal child failures,
   local/pager/carrier modes and physical failure prefixes remain open.
+- The anonymous sector-mine body now delegates to a provider-driven native
+  transaction instead of owning its database, presentation, RNG and warp
+  dependencies inline. Entry output/news, mine-only sector PUT before the
+  explosion, shielded versus unshielded draw partitions, fresh player
+  overlay/PUT, selector two, unconditional emergency draw, repeat back-edge,
+  final news/sector GET and the distinct warp terminal retain their documented
+  order. A focused tape pins all nineteen fallible cuts on a shielded return,
+  two complete batches, an unshielded empty-hold fatal result and a durable
+  emergency-warp handoff. The user-resolved missile rule remains one direct
+  draw; shrink families still use the existing three-step provider. Raw
+  TIMER/reseed metadata, rich unshielded cuts, FIELD/runtime residues and
+  physical endpoint failures remain open.
 - The shared player-death body now delegates to one provider-driven native
   transaction. It clears the victim's active-sector cache before the first
   victim GET, snapshots the raw fixed-field victim name, writes only the

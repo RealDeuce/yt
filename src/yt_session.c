@@ -6059,306 +6059,171 @@ shrink_three(struct yt_session *session, float initial, float *result,
 }
 
 static bool
-mine_stock_loss(struct yt_session *session, float batch, float *stock,
-    float *lost, struct yt_error *error)
+mine_read_current(void *context, struct yt_player *player,
+    struct yt_error *error)
 {
-	float loss;
+	struct yt_session *session = context;
 
-	if (*stock == 0.0f) {
-		*lost = 0.0f;
-		return true;
-	}
-	if (!shrink_three(session, single_mul(batch, *stock), &loss, error))
+	if (!reload_player(session, error))
 		return false;
-	if (loss > *stock)
-		loss = *stock;
-	*stock = single_sub(*stock, loss);
-	*lost = loss;
+	*player = session->player;
 	return true;
 }
 
 static bool
-mine_missile_draw(void *context, float *value, struct yt_error *error)
+mine_read_player(void *context, int player_record, struct yt_player *player,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_read_player(&session->door->game, player_record, player,
+	    error);
+}
+
+static bool
+mine_write_player(void *context, int player_record, struct yt_player *player,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_database_write(&session->door->game.database,
+	    (size_t)player_record, &player->record, error)
+	    && yt_database_flush(&session->door->game.database, error);
+}
+
+static bool
+mine_read_sector(void *context, int logical_sector, struct yt_sector *sector,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_read_sector(&session->door->game, logical_sector, sector,
+	    error);
+}
+
+static bool
+mine_write_sector(void *context, int logical_sector,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_database_write(&session->door->game.database,
+	    (size_t)yt_sector_basic_record(&session->door->game.config,
+	    logical_sector), &sector->record, error);
+}
+
+static bool
+mine_present(void *context, const uint8_t *text, size_t length,
+    enum yt_sector_mine_output_kind kind, struct yt_error *error)
+{
+	enum session_present_text_kind session_kind;
+
+	switch (kind) {
+	case YT_SECTOR_MINE_OUTPUT_LINE:
+		session_kind = SESSION_PRESENT_LINE;
+		break;
+	case YT_SECTOR_MINE_OUTPUT_BOLD_LINE:
+		session_kind = SESSION_PRESENT_BOLD_LINE;
+		break;
+	case YT_SECTOR_MINE_OUTPUT_BOLD_RAW:
+		session_kind = SESSION_PRESENT_BOLD_RAW;
+		break;
+	default:
+		return false;
+	}
+	return session_present_text(context, text, length, session_kind,
+	    "sector mine output", error);
+}
+
+static bool
+mine_sound(void *context, float selector, struct yt_error *error)
+{
+	return session_sound(context, selector, "sector mine sound", error);
+}
+
+static bool
+mine_news(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	return append_news_bytes(context, text, length, error);
+}
+
+static bool
+mine_random(void *context, float *value, struct yt_error *error)
 {
 	return random_value(context, value, error);
+}
+
+static bool
+mine_shrink(void *context, float range, float *result,
+    struct yt_error *error)
+{
+	return shrink_three(context, range, result, error);
+}
+
+static bool
+mine_warp(void *context, struct yt_error *error)
+{
+	return emergency_warp(context, error);
+}
+
+static void
+mine_set_current(void *context, const struct yt_player *player)
+{
+	struct yt_session *session = context;
+
+	session->player = *player;
+}
+
+static void
+mine_style(void *context, float foreground, float background, float blink,
+    int pager_foreground)
+{
+	struct yt_session *session = context;
+
+	session->presentation.foreground = foreground;
+	session->presentation.background = background;
+	session->presentation.blink = blink;
+	session->pager.foreground = pager_foreground;
 }
 
 static bool
 mine_encounter(struct yt_session *session, bool *terminal,
     struct yt_error *error)
 {
-	float current_sector = session->player.sector;
-	bool overflow;
-	int current = (int)qb_cint_mode((double)current_sector,
-	    session->presentation.sound.conversion_mode, &overflow);
-	struct yt_sector sector;
-	uint8_t row[300];
-	size_t row_length;
-	size_t player_name_length;
-	static const uint8_t warning[] = "** Sector is Mined!! **";
-	static const uint8_t shields_destroyed[] = "Shields disintegrated!";
-	static const uint8_t scanner_destroyed[] =
-	    "Danger scanner destroyed!";
+	static const struct yt_sector_mine_ops ops = {
+		mine_read_current,
+		mine_read_player,
+		mine_write_player,
+		mine_read_sector,
+		mine_write_sector,
+		mine_present,
+		mine_sound,
+		mine_news,
+		mine_random,
+		mine_shrink,
+		mine_warp,
+		mine_set_current,
+		mine_style,
+	};
+	struct yt_sector_mine_state state = {
+		.current_player_record = session->player_record,
+		.current_sector = session->player.sector,
+		.conversion_mode = session->presentation.sound.conversion_mode,
+		.foreground = session->presentation.foreground,
+		.background = session->presentation.background,
+		.blink = session->presentation.blink,
+		.pager_foreground = session->pager.foreground,
+		.destroyed = &session->destroyed,
+	};
 
 	if (terminal == NULL)
 		return false;
-	*terminal = false;
-
-	if (overflow) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			(void)snprintf(error->operation, sizeof(error->operation),
-			    "%s", "sector mine sector record CINT");
-		}
+	if (!yt_sector_mine_run(&state, &ops, session, error))
 		return false;
-	}
-
-	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "sector mine entry blank", error))
-		return false;
-	session->presentation.blink = 1.0f;
-	if (!session_present_text(session, warning, sizeof(warning) - 1U,
-	    SESSION_PRESENT_LINE, "sector mine warning", error))
-		return false;
-	if (!session_sound(session, 5.0f,
-	    "sector mine warning sound", error))
-		return false;
-	if (!reload_player(session, error)
-	    || !port_report_length(session, session->player.name_length,
-	    YT_TEXT_FIELD_SIZE, &player_name_length,
-	    "sector mine player name length", error)
-	    || !yt_sector_mine_entry_news(session->player.record.bytes,
-	    player_name_length, current_sector, row, sizeof(row),
-	    &row_length)
-	    || !append_news_bytes(session, row, row_length, error))
-		return false;
-	for (;;) {
-		struct yt_player working;
-		struct yt_player persisted;
-		unsigned touched = 0U;
-		float saved_foreground;
-		float before;
-		float batch;
-		float draw;
-		float loss;
-		float empty;
-		struct yt_sector_mine_missile_result missile;
-
-		if (!yt_game_read_sector(&session->door->game, current, &sector,
-		    error))
-			return false;
-		before = sector.mines;
-		batch = yt_sector_mine_batch(before);
-		yt_sector_mine_sector_overlay(&sector,
-		    single_sub(before, batch));
-		if (!yt_database_write(&session->door->game.database,
-		    (size_t)yt_sector_basic_record(&session->door->game.config,
-		    current), &sector.record, error))
-			return false;
-		saved_foreground = session->presentation.foreground;
-		session->presentation.foreground = 3.0f;
-		session->presentation.background = 0.0f;
-		session->presentation.blink = 0.0f;
-		session->pager.foreground = 3;
-		if (!yt_sector_mine_explosion_row(before, batch, row,
-		    sizeof(row), &row_length)
-		    || !session_present_text(session, row, row_length,
-		    SESSION_PRESENT_BOLD_RAW, "sector mine explosion", error))
-			return false;
-		session->presentation.background = 1.0f;
-		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-		    "sector mine explosion terminator", error)
-		    || !reload_player(session, error))
-			return false;
-		working = session->player;
-		if (working.shields > 0.0f) {
-			if (!random_value(session, &draw, error))
-				return false;
-			working.shields = yt_sector_mine_shield_result(
-			    working.shields, batch, draw);
-			touched |= YT_SECTOR_MINE_DAMAGE_SHIELDS;
-			if (working.shields == 0.0f) {
-				session->presentation.foreground = 7.0f;
-				session->presentation.blink = 1.0f;
-				session->pager.foreground = 7;
-				if (!session_present_text(session, shields_destroyed,
-				    sizeof(shields_destroyed) - 1U,
-				    SESSION_PRESENT_BOLD_LINE,
-				    "sector mine shields destroyed", error))
-					return false;
-				session->presentation.foreground = saved_foreground;
-				session->pager.foreground = (int)saved_foreground;
-			}
-			else {
-				if (!yt_sector_mine_shields_row(working.shields, row,
-				    sizeof(row), &row_length)
-				    || !session_present_text(session, row, row_length,
-				    SESSION_PRESENT_BOLD_LINE,
-				    "sector mine shields remaining", error)
-				    || !random_value(session, &draw, error))
-					return false;
-				if (working.danger_scanner != 0.0f
-				    && draw > 0.949999988079071f) {
-					working.danger_scanner = 0.0f;
-					touched |= YT_SECTOR_MINE_DAMAGE_SCANNER;
-					session->presentation.foreground = 7.0f;
-					session->presentation.blink = 1.0f;
-					session->pager.foreground = 7;
-					if (!session_present_text(session,
-					    scanner_destroyed,
-					    sizeof(scanner_destroyed) - 1U,
-					    SESSION_PRESENT_BOLD_LINE,
-					    "sector mine scanner destroyed", error))
-						return false;
-					session->presentation.foreground =
-					    saved_foreground;
-					session->pager.foreground =
-					    (int)saved_foreground;
-				}
-			}
-		}
-		else {
-			if (working.fighters != 0.0f) {
-				if (!shrink_three(session, single_mul(40000.0f,
-				    batch), &loss, error))
-					return false;
-				if (loss > working.fighters)
-					loss = working.fighters;
-				working.fighters = single_sub(working.fighters,
-				    loss);
-				touched |= YT_SECTOR_MINE_DAMAGE_FIGHTERS;
-				if (!yt_sector_mine_loss_row(
-				    YT_SECTOR_MINE_LOSS_FIGHTERS, loss, row,
-				    sizeof(row), &row_length)
-				    || !session_present_text(session, row, row_length,
-				    SESSION_PRESENT_LINE, "sector mine fighter loss",
-				    error))
-					return false;
-			}
-			if (working.cloak != 0.0f) {
-				if (!random_value(session, &draw, error))
-					return false;
-				loss = yt_sector_mine_cloak_loss(working.cloak,
-				    batch, draw);
-				working.cloak = single_sub(working.cloak, loss);
-				touched |= YT_SECTOR_MINE_DAMAGE_CLOAK;
-				if (!yt_sector_mine_loss_row(
-				    YT_SECTOR_MINE_LOSS_CLOAK,
-				    single_mul(loss, 100.0f), row, sizeof(row),
-				    &row_length)
-				    || !session_present_text(session, row, row_length,
-				    SESSION_PRESENT_LINE, "sector mine cloak loss",
-				    error))
-					return false;
-			}
-			if (!yt_sector_mine_missile_step(working.missiles, batch,
-			    mine_missile_draw, session, &missile, error))
-				return false;
-			if (missile.applied) {
-				loss = missile.loss;
-				working.missiles = missile.remaining;
-				touched |= YT_SECTOR_MINE_DAMAGE_MISSILES;
-				if (!yt_sector_mine_loss_row(
-				    YT_SECTOR_MINE_LOSS_MISSILES, loss, row,
-				    sizeof(row), &row_length)
-				    || !session_present_text(session, row, row_length,
-				    SESSION_PRESENT_LINE, "sector mine missile loss",
-				    error))
-					return false;
-			}
-			if (working.danger_scanner != 0.0f) {
-				working.danger_scanner = 0.0f;
-				touched |= YT_SECTOR_MINE_DAMAGE_SCANNER;
-				session->presentation.foreground = 7.0f;
-				session->presentation.blink = 1.0f;
-				session->pager.foreground = 7;
-				if (!session_present_text(session, scanner_destroyed,
-				    sizeof(scanner_destroyed) - 1U,
-				    SESSION_PRESENT_BOLD_LINE,
-				    "sector mine scanner destroyed", error))
-					return false;
-				session->presentation.foreground = saved_foreground;
-				session->pager.foreground = (int)saved_foreground;
-			}
-#define MINE_STOCK(field, flag, kind, operation) do { \
-	if (working.field != 0.0f) { \
-		if (!mine_stock_loss(session, batch, &working.field, &loss, \
-		    error)) \
-			return false; \
-		touched |= (flag); \
-		if (!yt_sector_mine_loss_row((kind), loss, row, sizeof(row), \
-		    &row_length) || !session_present_text(session, row, \
-		    row_length, SESSION_PRESENT_LINE, (operation), error)) \
-			return false; \
-	} \
-} while (0)
-			MINE_STOCK(mines, YT_SECTOR_MINE_DAMAGE_CARRIED_MINES,
-			    YT_SECTOR_MINE_LOSS_MINES,
-			    "sector mine carried-mine loss");
-			MINE_STOCK(ore, YT_SECTOR_MINE_DAMAGE_ORE,
-			    YT_SECTOR_MINE_LOSS_ORE, "sector mine ore loss");
-			MINE_STOCK(organics, YT_SECTOR_MINE_DAMAGE_ORGANICS,
-			    YT_SECTOR_MINE_LOSS_ORGANICS,
-			    "sector mine organics loss");
-			MINE_STOCK(equipment, YT_SECTOR_MINE_DAMAGE_EQUIPMENT,
-			    YT_SECTOR_MINE_LOSS_EQUIPMENT,
-			    "sector mine equipment loss");
-#undef MINE_STOCK
-			empty = yt_sector_mine_empty_holds(&working);
-			if (empty > 0.0f) {
-				if (!shrink_three(session, empty, &loss, error))
-					return false;
-				loss = single_mul(loss, batch);
-				if (loss > empty)
-					loss = empty;
-				working.holds = single_sub(working.holds, loss);
-				if (working.holds < 1.0f) {
-					working.holds = 0.0f;
-					session->destroyed = true;
-				}
-				touched |= YT_SECTOR_MINE_DAMAGE_HOLDS;
-				if (!yt_sector_mine_loss_row(
-				    YT_SECTOR_MINE_LOSS_EMPTY_HOLDS, loss, row,
-				    sizeof(row), &row_length)
-				    || !session_present_text(session, row, row_length,
-				    SESSION_PRESENT_LINE,
-				    "sector mine empty-hold loss", error))
-					return false;
-			}
-		}
-		if (!yt_game_read_player(&session->door->game,
-		    session->player_record, &persisted, error))
-			return false;
-		yt_sector_mine_player_overlay(&persisted, &working, touched);
-		if (!yt_database_write(&session->door->game.database,
-		    (size_t)session->player_record, &persisted.record, error)
-		    || !yt_database_flush(&session->door->game.database, error))
-			return false;
-		working.record = persisted.record;
-		session->player = working;
-		if (!session_sound(session, 2.0f,
-		    "sector mine damage sound", error)
-		    || !random_value(session, &draw, error))
-			return false;
-		if (draw > 0.800000011920929f && working.holds < 10.0f) {
-			if (!emergency_warp(session, error))
-				return false;
-			*terminal = true;
-			return true;
-		}
-		if (sector.mines > 0.0f && !session->destroyed)
-			continue;
-		break;
-	}
-	if (!yt_sector_mine_final_news(session->player.shields, row,
-	    sizeof(row), &row_length)
-	    || !append_news_bytes(session, row, row_length, error)
-	    || !yt_game_read_sector(&session->door->game, current, &sector,
-	    error))
-		return false;
+	*terminal = state.terminal;
 	return true;
 }
-
 static bool
 hostile_menu_help(struct yt_session *session, struct yt_error *error)
 {
