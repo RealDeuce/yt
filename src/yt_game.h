@@ -2476,6 +2476,9 @@ bool yt_treasury_run(struct yt_treasury_state *state,
 	struct yt_error *error);
 struct yt_port_market_state {
 	struct yt_port port;
+	float logical_port;
+	float port_record_expression;
+	uint32_t port_physical_record;
 	float current_day;
 	float timer_seconds;
 	float base_price[3];
@@ -2491,6 +2494,35 @@ struct yt_port_market_state {
 	bool complete;
 };
 bool yt_port_market_update(struct yt_port_market_state *state,
+	struct yt_error *error);
+struct yt_port_update_state {
+	int sector_number;
+	float port_offset;
+	float base_price[3];
+	struct yt_sector sector;
+	struct yt_port_market_state market;
+	bool sector_loaded;
+	bool sector_read;
+	bool day_observed;
+	bool port_read;
+	bool timer_observed;
+	bool port_written;
+	bool complete;
+};
+struct yt_port_update_ops {
+	bool (*read_sector)(void *context, int sector_number,
+	    struct yt_sector *sector, struct yt_error *error);
+	bool (*observe_day)(void *context, float *current_day,
+	    struct yt_error *error);
+	bool (*read_port)(void *context, uint32_t physical_record,
+	    struct yt_port *port, struct yt_error *error);
+	bool (*observe_timer)(void *context, float *timer_seconds,
+	    struct yt_error *error);
+	bool (*write_port)(void *context, uint32_t physical_record,
+	    const struct yt_port *port, struct yt_error *error);
+};
+bool yt_port_update_run(struct yt_port_update_state *state,
+	const struct yt_port_update_ops *ops, void *context,
 	struct yt_error *error);
 enum yt_port_report_output_kind {
 	YT_PORT_REPORT_OWNER_BLANK,

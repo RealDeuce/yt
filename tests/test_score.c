@@ -22140,6 +22140,219 @@ check_port_market_update(void)
 	return yt_port_market_update(&state, NULL) && state.elapsed == 10.0f;
 }
 
+enum port_update_event {
+	PORT_UPDATE_READ_SECTOR = 1,
+	PORT_UPDATE_DAY,
+	PORT_UPDATE_READ_PORT,
+	PORT_UPDATE_TIMER,
+	PORT_UPDATE_WRITE_PORT,
+};
+struct port_update_tape {
+	enum port_update_event events[5];
+	size_t calls;
+	size_t fail_at;
+	struct yt_sector sector;
+	struct yt_port stored_port;
+	struct yt_port written_port;
+	uint32_t read_record;
+	uint32_t written_record;
+};
+
+static bool
+port_update_test_step(struct port_update_tape *tape,
+    enum port_update_event event, struct yt_error *error)
+{
+	size_t call = tape->calls++;
+
+	if (call < YT_ARRAY_LEN(tape->events))
+		tape->events[call] = event;
+	if (call != tape->fail_at)
+		return true;
+	if (error != NULL)
+		error->status = YT_IO_ERROR;
+	return false;
+}
+
+static bool
+port_update_test_read_sector(void *context, int sector_number,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct port_update_tape *tape = context;
+
+	if (sector_number != 7
+	    || !port_update_test_step(tape, PORT_UPDATE_READ_SECTOR, error))
+		return false;
+	*sector = tape->sector;
+	return true;
+}
+
+static bool
+port_update_test_day(void *context, float *current_day,
+    struct yt_error *error)
+{
+	struct port_update_tape *tape = context;
+
+	if (!port_update_test_step(tape, PORT_UPDATE_DAY, error))
+		return false;
+	*current_day = 1000.0f;
+	return true;
+}
+
+static bool
+port_update_test_read_port(void *context, uint32_t physical_record,
+    struct yt_port *port, struct yt_error *error)
+{
+	struct port_update_tape *tape = context;
+
+	if (!port_update_test_step(tape, PORT_UPDATE_READ_PORT, error))
+		return false;
+	tape->read_record = physical_record;
+	*port = tape->stored_port;
+	return true;
+}
+
+static bool
+port_update_test_timer(void *context, float *timer_seconds,
+    struct yt_error *error)
+{
+	struct port_update_tape *tape = context;
+
+	if (!port_update_test_step(tape, PORT_UPDATE_TIMER, error))
+		return false;
+	*timer_seconds = 36000.0f;
+	return true;
+}
+
+static bool
+port_update_test_write_port(void *context, uint32_t physical_record,
+    const struct yt_port *port, struct yt_error *error)
+{
+	struct port_update_tape *tape = context;
+
+	if (!port_update_test_step(tape, PORT_UPDATE_WRITE_PORT, error))
+		return false;
+	tape->written_record = physical_record;
+	tape->written_port = *port;
+	return true;
+}
+
+static const struct yt_port_update_ops port_update_test_ops = {
+	port_update_test_read_sector,
+	port_update_test_day,
+	port_update_test_read_port,
+	port_update_test_timer,
+	port_update_test_write_port,
+};
+
+static void
+port_update_fixture(struct port_update_tape *tape,
+    struct yt_port_update_state *state)
+{
+	static const float stock[3] = {100.0f, 200.0f, 300.0f};
+	static const float production[3] = {10.0f, 20.0f, 30.0f};
+	struct yt_port_market_state market;
+
+	memset(tape, 0, sizeof(*tape));
+	memset(state, 0, sizeof(*state));
+	tape->fail_at = SIZE_MAX;
+	tape->sector.port = 2.0f;
+	port_market_fixture(&market, 1000.0f, stock, production);
+	tape->stored_port = market.port;
+	state->sector_number = 7;
+	state->port_offset = 2055.0f;
+	state->base_price[0] = 20.0f;
+	state->base_price[1] = 30.0f;
+	state->base_price[2] = 40.0f;
+}
+
+static bool
+check_port_update_transaction(void)
+{
+	static const enum port_update_event expected[] = {
+		PORT_UPDATE_READ_SECTOR,
+		PORT_UPDATE_DAY,
+		PORT_UPDATE_READ_PORT,
+		PORT_UPDATE_TIMER,
+		PORT_UPDATE_WRITE_PORT,
+	};
+	static const enum port_update_event preloaded_expected[] = {
+		PORT_UPDATE_DAY,
+		PORT_UPDATE_READ_PORT,
+		PORT_UPDATE_TIMER,
+		PORT_UPDATE_WRITE_PORT,
+	};
+	struct port_update_tape tape;
+	struct yt_port_update_state state;
+	struct yt_error error;
+	size_t failure;
+
+	port_update_fixture(&tape, &state);
+	if (!yt_port_update_run(&state, &port_update_test_ops, &tape, NULL)
+	    || !state.complete || !state.sector_loaded || !state.sector_read
+	    || !state.day_observed || !state.port_read || !state.timer_observed
+	    || !state.port_written || tape.calls != YT_ARRAY_LEN(expected)
+	    || memcmp(tape.events, expected, sizeof(expected)) != 0
+	    || state.market.logical_port != 2.0f
+	    || state.market.port_record_expression != 2057.0f
+	    || state.market.port_physical_record != 2057U
+	    || tape.read_record != 2057U || tape.written_record != 2057U
+	    || state.market.price[0] != 32.0f
+	    || state.market.price[1] != 8.0f
+	    || state.market.price[2] != 66.0f
+	    || memcmp(tape.written_port.record.bytes,
+	    state.market.port.record.bytes, sizeof(tape.written_port.record.bytes))
+	    != 0)
+		return false;
+
+	for (failure = 0U; failure < YT_ARRAY_LEN(expected); ++failure) {
+		port_update_fixture(&tape, &state);
+		tape.fail_at = failure;
+		yt_error_clear(&error);
+		if (yt_port_update_run(&state, &port_update_test_ops, &tape,
+		    &error) || error.status != YT_IO_ERROR || state.complete
+		    || tape.calls != failure + 1U
+		    || memcmp(tape.events, expected,
+		    tape.calls * sizeof(expected[0])) != 0
+		    || state.port_written)
+			return false;
+	}
+
+	port_update_fixture(&tape, &state);
+	state.sector = tape.sector;
+	state.sector_loaded = true;
+	if (!yt_port_update_run(&state, &port_update_test_ops, &tape, NULL)
+	    || state.sector_read || tape.calls != YT_ARRAY_LEN(preloaded_expected)
+	    || memcmp(tape.events, preloaded_expected,
+	    sizeof(preloaded_expected)) != 0)
+		return false;
+
+	port_update_fixture(&tape, &state);
+	tape.sector.port = 2.75f;
+	if (!yt_port_update_run(&state, &port_update_test_ops, &tape, NULL)
+	    || state.market.logical_port != 2.75f
+	    || state.market.port_record_expression != 2057.75f
+	    || state.market.port_physical_record != 2057U)
+		return false;
+
+	port_update_fixture(&tape, &state);
+	state.port_offset = -2.25f;
+	tape.sector.port = 2.75f;
+	yt_error_clear(&error);
+	if (yt_port_update_run(&state, &port_update_test_ops, &tape, &error)
+	    || error.status != YT_RANGE || tape.calls != 1U
+	    || state.day_observed || state.port_read || state.port_written)
+		return false;
+
+	port_update_fixture(&tape, &state);
+	(void)yt_record_set_number(&tape.stored_port.record, YT_F49, 0.0f);
+	(void)yt_record_set_number(&tape.stored_port.record, YT_F61, 0.0f);
+	yt_error_clear(&error);
+	return !yt_port_update_run(&state, &port_update_test_ops, &tape, &error)
+	    && error.status == YT_RANGE && tape.calls == 4U
+	    && !state.port_written
+	    && memcmp(tape.written_port.record.bytes, "\0", 1U) == 0;
+}
+
 enum port_report_event {
 	PORT_REPORT_RESET = 1,
 	PORT_REPORT_READ_PLAYER,
@@ -25850,6 +26063,8 @@ main(void)
 		return fail("ship salvage transaction differs");
 	if (!check_port_market_update())
 		return fail("ordinary-port market updater differs");
+	if (!check_port_update_transaction())
+		return fail("ordinary-port updater transaction differs");
 	if (!check_port_report_transaction())
 		return fail("ordinary-port report transaction differs");
 	if (!check_treasury_transaction())

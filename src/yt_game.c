@@ -7717,6 +7717,65 @@ yt_port_market_update(struct yt_port_market_state *state,
 	return true;
 }
 
+bool
+yt_port_update_run(struct yt_port_update_state *state,
+    const struct yt_port_update_ops *ops, void *context,
+    struct yt_error *error)
+{
+	float logical_port;
+	float record_expression;
+	uint32_t physical_record;
+
+	if (state == NULL || ops == NULL || ops->read_sector == NULL
+	    || ops->observe_day == NULL || ops->read_port == NULL
+	    || ops->observe_timer == NULL || ops->write_port == NULL)
+		return false;
+	state->sector_read = false;
+	state->day_observed = false;
+	state->port_read = false;
+	state->timer_observed = false;
+	state->port_written = false;
+	state->complete = false;
+	memset(&state->market, 0, sizeof(state->market));
+	if (!state->sector_loaded) {
+		memset(&state->sector, 0, sizeof(state->sector));
+		if (!ops->read_sector(context, state->sector_number,
+		    &state->sector, error))
+			return false;
+		state->sector_read = true;
+		state->sector_loaded = true;
+	}
+	logical_port = state->sector.port;
+	record_expression = market_single_add(state->port_offset, logical_port);
+	physical_record = qb_brun_random_record_number(record_expression);
+	state->market.logical_port = logical_port;
+	state->market.port_record_expression = record_expression;
+	state->market.port_physical_record = physical_record;
+	if (physical_record == 0U)
+		return startup_configuration_error(error, YT_RANGE,
+		    "ordinary port record conversion");
+	if (!ops->observe_day(context, &state->market.current_day, error))
+		return false;
+	state->day_observed = true;
+	if (!ops->read_port(context, physical_record, &state->market.port,
+	    error))
+		return false;
+	state->port_read = true;
+	if (!ops->observe_timer(context, &state->market.timer_seconds, error))
+		return false;
+	state->timer_observed = true;
+	memcpy(state->market.base_price, state->base_price,
+	    sizeof(state->base_price));
+	if (!yt_port_market_update(&state->market, error))
+		return false;
+	if (!ops->write_port(context, physical_record, &state->market.port,
+	    error))
+		return false;
+	state->port_written = true;
+	state->complete = true;
+	return true;
+}
+
 static bool
 port_report_append(uint8_t *row, size_t capacity, size_t *position,
     const void *text, size_t length)

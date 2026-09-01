@@ -2831,32 +2831,96 @@ current_minute(void)
 }
 
 static bool
-port_update(struct yt_session *session, int logical_port,
-    struct yt_port_market_state *market, struct yt_error *error)
+port_update_read_sector(void *context, int sector_number,
+    struct yt_sector *sector, struct yt_error *error)
 {
+	struct yt_session *session = context;
+
+	return yt_game_read_sector(&session->door->game, sector_number, sector,
+	    error);
+}
+
+static bool
+port_update_observe_day(void *context, float *current_day,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
 	int today;
 	int adjusted_year;
 
-	if (market == NULL)
-		return false;
-	memset(market, 0, sizeof(*market));
 	if (!yt_current_date_serial(session->door->game.config.epoch_year,
 	    &today, &adjusted_year, error))
 		return false;
 	session->door->game.today = today;
 	session->door->game.adjusted_year = adjusted_year;
-	if (!yt_game_read_port(&session->door->game, logical_port,
-	    &market->port, error))
+	*current_day = (float)today;
+	return true;
+}
+
+static bool
+port_update_read_port(void *context, uint32_t physical_record,
+    struct yt_port *port, struct yt_error *error)
+{
+	struct yt_session *session = context;
+	struct yt_record record;
+
+	if (!yt_database_read(&session->door->game.database,
+	    (size_t)physical_record, &record, error))
 		return false;
-	market->current_day = (float)session->door->game.today;
-	market->timer_seconds = (float)yt_platform_timer();
-	memcpy(market->base_price, session->market_base,
-	    sizeof(market->base_price));
-	if (!yt_port_market_update(market, error))
-		return false;
-	return yt_game_write_port(&session->door->game, logical_port,
-	    &market->port, error)
+	yt_port_decode(port, &record);
+	return true;
+}
+
+static bool
+port_update_observe_timer(void *context, float *timer_seconds,
+    struct yt_error *error)
+{
+	(void)context;
+	(void)error;
+	*timer_seconds = (float)yt_platform_timer();
+	return true;
+}
+
+static bool
+port_update_write_port(void *context, uint32_t physical_record,
+    const struct yt_port *port, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_database_write(&session->door->game.database,
+	    (size_t)physical_record, &port->record, error)
 	    && yt_database_flush(&session->door->game.database, error);
+}
+
+static bool
+port_update(struct yt_session *session, int sector_number,
+    const struct yt_sector *loaded_sector,
+    struct yt_port_market_state *market, struct yt_error *error)
+{
+	static const struct yt_port_update_ops ops = {
+		port_update_read_sector,
+		port_update_observe_day,
+		port_update_read_port,
+		port_update_observe_timer,
+		port_update_write_port,
+	};
+	struct yt_port_update_state state;
+
+	if (market == NULL)
+		return false;
+	memset(&state, 0, sizeof(state));
+	state.sector_number = sector_number;
+	state.port_offset = session->door->game.config.port_offset;
+	memcpy(state.base_price, session->market_base,
+	    sizeof(state.base_price));
+	if (loaded_sector != NULL) {
+		state.sector = *loaded_sector;
+		state.sector_loaded = true;
+	}
+	if (!yt_port_update_run(&state, &ops, session, error))
+		return false;
+	*market = state.market;
+	return true;
 }
 
 struct planet_update_cache {
@@ -7022,8 +7086,9 @@ port_report_capture(struct yt_session *session, int logical_port,
 
 	if (market == NULL)
 		return false;
-	physical_record = yt_port_basic_record(&session->door->game.config,
-	    logical_port);
+	physical_record = market->port_physical_record != 0U
+	    ? (int)market->port_physical_record
+	    : yt_port_basic_record(&session->door->game.config, logical_port);
 	if (physical_record < 1)
 		return port_report_failure(error,
 		    "port report record conversion");
@@ -7338,16 +7403,10 @@ command_trade(struct yt_session *session, struct yt_error *error)
 	(void)selected_port;
 	if (session->player.sector == 1.0f)
 		return earth_store(session, error);
-	{
-		struct yt_sector updater_sector;
-
-		if (!yt_game_read_sector(&session->door->game,
-		    (int)session->player.sector, &updater_sector, error))
-			return false;
-		logical_port = (int)updater_sector.port;
-	}
-	if (!port_update(session, logical_port, &market, error))
+	if (!port_update(session, (int)session->player.sector, NULL, &market,
+	    error))
 		return false;
+	logical_port = (int)market.logical_port;
 	if (!port_report(session, logical_port, &market, error))
 		return false;
 	scheduled_count = yt_port_trade_schedule(market.port.factor, schedule);
@@ -12023,8 +12082,10 @@ port_purchase_report(void *context, int logical_port, bool earth,
 	}
 	{
 		struct yt_port_market_state market;
+		struct yt_sector updater_sector = {0};
 
-		if (!port_update(session, logical_port, &market, error))
+		updater_sector.port = (float)logical_port;
+		if (!port_update(session, 0, &updater_sector, &market, error))
 			return false;
 		*early_port = market.port;
 		memcpy(production, market.port.production,
@@ -15594,16 +15655,12 @@ computer_port_report(struct yt_session *session, struct yt_error *error)
 	if (sector.port == 1.0f)
 		return earth_store(session, error);
 	{
-		struct yt_sector updater_sector;
 		struct yt_port_market_state market;
 		int logical_port;
 
-		if (!yt_game_read_sector(&session->door->game, sector_number,
-		    &updater_sector, error))
+		if (!port_update(session, sector_number, NULL, &market, error))
 			return false;
-		logical_port = (int)updater_sector.port;
-		if (!port_update(session, logical_port, &market, error))
-			return false;
+		logical_port = (int)market.logical_port;
 		return port_report(session, logical_port, &market, error);
 	}
 }
