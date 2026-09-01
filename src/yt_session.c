@@ -4862,34 +4862,30 @@ salvage_player(struct yt_session *session, int victim_record, float killer,
 
 	return yt_salvage_run(&state, &ops, session, error);
 }
+
+static bool
+direct_attack_attrition_draw(void *context, float *value,
+    struct yt_error *error)
+{
+	return random_value(context, value, error);
+}
+
 static bool
 combat_attrition(struct yt_session *session, double committed,
     double defenders, float cloak, double *attacker_loss,
     double *defender_loss, struct yt_error *error)
 {
-	double lost_attacker = 0.0;
-	double lost_defender = 0.0;
+	struct yt_direct_attack_attrition_state state = {
+		.committed = committed,
+		.defenders = defenders,
+		.cloak = cloak,
+	};
 
-	while (lost_attacker < committed && lost_defender < defenders) {
-		double remaining_attacker = committed - lost_attacker;
-		double remaining_defender = defenders - lost_defender;
-		double minimum = remaining_attacker < remaining_defender
-		    ? remaining_attacker : remaining_defender;
-		float quantum = (float)floor(minimum / 20.0);
-		float draw;
-
-		if (quantum < 1.0f)
-			quantum = 1.0f;
-		if (!random_value(session, &draw, error))
-			return false;
-		if (single_add(single_div(cloak, 10.0f), draw)
-		    < 0.44999998807907104f)
-			lost_attacker += (double)quantum;
-		else
-			lost_defender += (double)quantum;
-	}
-	*attacker_loss = lost_attacker > committed ? committed : lost_attacker;
-	*defender_loss = lost_defender > defenders ? defenders : lost_defender;
+	if (!yt_direct_attack_attrition_run(&state,
+	    direct_attack_attrition_draw, session, error))
+		return false;
+	*attacker_loss = state.attacker_loss;
+	*defender_loss = state.defender_loss;
 	return true;
 }
 

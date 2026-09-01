@@ -2648,7 +2648,8 @@ not authoritative. Use the corrected goal above in the new workspace.
   every result through sector reentry. The native owner now scans cached
   candidates in ascending order, preserves teammate/decline exhaustion,
   performs the exact target/current validation reads, overlays the reserve
-  before sound and RNG, reproduces the MBF64-low-four-byte SINGLE radio alias,
+  before sound and RNG, delegates the exact pre-tested attrition loop to an
+  injected provider owner, reproduces the MBF64-low-four-byte SINGLE radio alias,
   performs current-before-target casualty writes, emits the DOUBLE result
   rows, persists shield spill through fresh target/current images, and falls
   into the existing fighter-kill/fatal child. Only candidate exhaustion enters
@@ -2660,6 +2661,9 @@ not authoritative. Use the corrected goal above in the new workspace.
   ANSI selector-two PLAY payload. All 29 isolated-body and 34 joined cycle/
   hazard upstream tests and all current native suites pass. All 74 parent
   transfers and the active-cycle presentation family are candidate.
+  Focused native attrition fixtures additionally pin the no-loop zero-draw
+  edge, stored-threshold equality, SINGLE quantum, unclamped fractional-force
+  overshoot, multi-iteration termination and accumulated RNG-failure residue.
   The admitted black-hole witness also carries one live presentation state
   through the 111/145-byte plain/ANSI exhausted-A prefix, 377/527-byte child,
   zero-effect return and following friendly reentry, pinning the exact

@@ -9080,6 +9080,72 @@ yt_direct_attack_result_rows(double attacker_loss,
 	return true;
 }
 
+static float
+direct_attack_single_add(float left, float right)
+{
+	volatile float result = left + right;
+
+	return result;
+}
+
+static float
+direct_attack_single_div(float left, float right)
+{
+	volatile float result = left / right;
+
+	return result;
+}
+
+static double
+direct_attack_double_add(double left, double right)
+{
+	volatile double result = left + right;
+
+	return result;
+}
+
+bool
+yt_direct_attack_attrition_run(
+    struct yt_direct_attack_attrition_state *state,
+    yt_direct_attack_attrition_draw_fn draw, void *context,
+    struct yt_error *error)
+{
+	if (state == NULL || draw == NULL)
+		return false;
+	state->attacker_loss = 0.0;
+	state->defender_loss = 0.0;
+	state->quantum = 0.0f;
+	state->iterations = 0U;
+	state->complete = false;
+	while (state->attacker_loss < state->committed
+	    && state->defender_loss < state->defenders) {
+		double remaining_attacker = state->committed
+		    - state->attacker_loss;
+		double remaining_defender = state->defenders
+		    - state->defender_loss;
+		double minimum = remaining_attacker < remaining_defender
+		    ? remaining_attacker : remaining_defender;
+		volatile double integral = floor(minimum / 20.0);
+		float sampled;
+
+		state->quantum = (float)integral;
+		if (state->quantum < 1.0f)
+			state->quantum = 1.0f;
+		if (!draw(context, &sampled, error))
+			return false;
+		if (direct_attack_single_add(direct_attack_single_div(
+		    state->cloak, 10.0f), sampled) < 0.44999998807907104f)
+			state->attacker_loss = direct_attack_double_add(
+			    state->attacker_loss, (double)state->quantum);
+		else
+			state->defender_loss = direct_attack_double_add(
+			    state->defender_loss, (double)state->quantum);
+		++state->iterations;
+	}
+	state->complete = true;
+	return true;
+}
+
 void
 yt_direct_attack_fighter_overlay(struct yt_player *player, float fighters)
 {

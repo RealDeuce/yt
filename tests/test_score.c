@@ -16384,6 +16384,126 @@ check_player_name_match(void)
 	return true;
 }
 
+struct direct_attack_attrition_tape {
+	float values[8];
+	size_t calls;
+	size_t fail_at;
+};
+
+static bool
+direct_attack_attrition_draw(void *context, float *value,
+    struct yt_error *error)
+{
+	struct direct_attack_attrition_tape *tape = context;
+	size_t call = tape->calls++;
+
+	if (call == tape->fail_at) {
+		if (error != NULL) {
+			error->status = YT_IO_ERROR;
+			(void)snprintf(error->operation,
+			    sizeof(error->operation), "%s",
+			    "direct Attack attrition draw");
+		}
+		return false;
+	}
+	if (call >= YT_ARRAY_LEN(tape->values))
+		return false;
+	*value = tape->values[call];
+	return true;
+}
+
+static bool
+check_direct_attack_attrition_model(void)
+{
+	struct direct_attack_attrition_tape tape;
+	struct yt_direct_attack_attrition_state state;
+	struct yt_error error;
+
+	memset(&tape, 0, sizeof(tape));
+	tape.fail_at = (size_t)-1;
+	state = (struct yt_direct_attack_attrition_state){
+		.committed = 0.0,
+		.defenders = 4.0,
+		.cloak = 0.0f,
+	};
+	if (!yt_direct_attack_attrition_run(&state,
+	    direct_attack_attrition_draw, &tape, NULL)
+	    || !state.complete || state.iterations != 0U || tape.calls != 0U
+	    || state.attacker_loss != 0.0 || state.defender_loss != 0.0
+	    || state.quantum != 0.0f)
+		return false;
+
+	memset(&tape, 0, sizeof(tape));
+	tape.fail_at = (size_t)-1;
+	tape.values[0] = 0.44999998807907104f;
+	state = (struct yt_direct_attack_attrition_state){
+		.committed = 1.0,
+		.defenders = 1.0,
+		.cloak = 0.0f,
+	};
+	if (!yt_direct_attack_attrition_run(&state,
+	    direct_attack_attrition_draw, &tape, NULL)
+	    || state.attacker_loss != 0.0 || state.defender_loss != 1.0
+	    || state.quantum != 1.0f || state.iterations != 1U
+	    || tape.calls != 1U)
+		return false;
+
+	memset(&tape, 0, sizeof(tape));
+	tape.fail_at = (size_t)-1;
+	tape.values[0] = 0.0f;
+	tape.values[1] = 0.0f;
+	state = (struct yt_direct_attack_attrition_state){
+		.committed = 1.5,
+		.defenders = 1.5,
+		.cloak = 0.0f,
+	};
+	if (!yt_direct_attack_attrition_run(&state,
+	    direct_attack_attrition_draw, &tape, NULL)
+	    || state.attacker_loss != 2.0 || state.defender_loss != 0.0
+	    || state.iterations != 2U || tape.calls != 2U)
+		return false;
+
+	memset(&tape, 0, sizeof(tape));
+	tape.values[0] = 0.0f;
+	tape.fail_at = 1U;
+	state = (struct yt_direct_attack_attrition_state){
+		.committed = 100.0,
+		.defenders = 40.0,
+		.cloak = 0.0f,
+	};
+	yt_error_clear(&error);
+	if (yt_direct_attack_attrition_run(&state,
+	    direct_attack_attrition_draw, &tape, &error)
+	    || state.complete || state.attacker_loss != 2.0
+	    || state.defender_loss != 0.0 || state.quantum != 2.0f
+	    || state.iterations != 1U || tape.calls != 2U
+	    || error.status != YT_IO_ERROR)
+		return false;
+
+	memset(&tape, 0, sizeof(tape));
+	tape.fail_at = (size_t)-1;
+	tape.values[0] = 0.0f;
+	tape.values[1] = 1.0f;
+	tape.values[2] = 0.0f;
+	tape.values[3] = 1.0f;
+	tape.values[4] = 0.0f;
+	tape.values[5] = 1.0f;
+	tape.values[6] = 0.0f;
+	state = (struct yt_direct_attack_attrition_state){
+		.committed = 4.0,
+		.defenders = 4.0,
+		.cloak = 0.0f,
+	};
+	return yt_direct_attack_attrition_run(&state,
+	    direct_attack_attrition_draw, &tape, NULL)
+	    && state.complete && state.attacker_loss == 4.0
+	    && state.defender_loss == 3.0 && state.quantum == 1.0f
+	    && state.iterations == 7U && tape.calls == 7U
+	    && !yt_direct_attack_attrition_run(NULL,
+	    direct_attack_attrition_draw, &tape, NULL)
+	    && !yt_direct_attack_attrition_run(&state, NULL, &tape, NULL);
+}
+
 static bool
 check_direct_attack_radio_model(void)
 {
@@ -19283,6 +19403,8 @@ main(void)
 		return fail("maintenance route enqueue helper differs");
 	if (!check_player_name_match())
 		return fail("returning-player fixed-field name match differs");
+	if (!check_direct_attack_attrition_model())
+		return fail("direct Attack attrition model differs");
 	if (!check_direct_attack_radio_model())
 		return fail("direct Attack casualty-radio alias differs");
 	if (!check_planet_rename_model())

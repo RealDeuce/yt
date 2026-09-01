@@ -2167,6 +2167,22 @@ bool yt_direct_attack_result_rows(double attacker_loss,
     uint8_t *attacker_row, size_t attacker_capacity,
     size_t *attacker_length, uint8_t *defender_row,
     size_t defender_capacity, size_t *defender_length);
+struct yt_direct_attack_attrition_state {
+	double committed;
+	double defenders;
+	float cloak;
+	double attacker_loss;
+	double defender_loss;
+	float quantum;
+	size_t iterations;
+	bool complete;
+};
+typedef bool (*yt_direct_attack_attrition_draw_fn)(void *context,
+    float *value, struct yt_error *error);
+bool yt_direct_attack_attrition_run(
+    struct yt_direct_attack_attrition_state *state,
+    yt_direct_attack_attrition_draw_fn draw, void *context,
+    struct yt_error *error);
 void yt_direct_attack_fighter_overlay(struct yt_player *player,
     float fighters);
 void yt_direct_attack_shield_overlay(struct yt_player *player,
