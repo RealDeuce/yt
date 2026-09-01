@@ -8,6 +8,30 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
+### DOC-GAP-007: command-7 later-poll AB36 composition is left open
+
+Affected coverage:
+
+- ship-computer command-7 avoid-list slot editor; and
+- its sector replacement editor.
+
+The completed `docs/runtime/computer-avoid-output.md` contract supplies the
+ordinary successful editor shortcut and retains the five canonical terminal
+outcomes for an explicit terminal poll. It then expressly leaves later
+inactivity/session checks, live per-poll time refresh, post-printable carrier
+loss, asynchronous F8 delivery, and carrier/F8 joins inside Ctrl-R and
+save/repeat helpers as a caller-level gap.
+
+The shared AB36 machinery models those behaviors, but the command-7 contract
+does not yet state that joining the canonical global state at its two real
+editor entries is sufficient, nor does it provide caller-specific state
+vectors for the omitted interleavings. Native work may compose the documented
+ordinary and explicit terminal-poll boundaries, but must not claim all
+command-7 editor paths. Upstream documentation must either define the two
+shared-state joins as the complete caller contract or supply the missing
+caller-specific transitions. No binary inspection or new reverse engineering
+was performed.
+
 ### DOC-GAP-006: command-2 dependency failures lack error-router identity
 
 Affected coverage:
