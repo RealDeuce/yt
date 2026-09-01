@@ -5285,6 +5285,30 @@ struct commodity_editor_cut {
 	size_t fail_carrier_at;
 };
 
+struct commodity_terminal_join {
+	struct commodity_trade_join *join;
+	bool closed;
+};
+
+static bool
+commodity_terminal_notice(void *context, const uint8_t *notice,
+    size_t length)
+{
+	struct commodity_terminal_join *terminal = context;
+
+	commodity_trade_join_0317(terminal->join, notice, length);
+	return true;
+}
+
+static bool
+commodity_terminal_close(void *context)
+{
+	struct commodity_terminal_join *terminal = context;
+
+	terminal->closed = true;
+	return true;
+}
+
 static bool
 commodity_editor_cut_echo(void *context, const uint8_t *local,
     size_t local_length, const uint8_t *remote, size_t remote_length)
@@ -5539,6 +5563,20 @@ test_commodity_trade_adapter_cuts(void)
 	    "\r\nWe'll sell them for 60 credits.\n\r"
 	    "Do you agree? [Y/n] Y";
 	static const uint8_t confirmation[] = "Do you agree? [Y/n] ";
+	static const uint8_t inactivity[] =
+	    "\r\n\aUSER FELL ASLEEP!\n\r";
+	static const uint8_t session_limit[] =
+	    "\r\n\a\a\aTIME LIMIT EXCEEDED!\a\a\a\n\r";
+	static const struct {
+		enum yt_ab36_terminal_kind kind;
+		const uint8_t *suffix;
+		size_t suffix_length;
+	} terminals[] = {
+		{YT_AB36_TERMINAL_INACTIVITY, inactivity,
+		    sizeof(inactivity) - 1U},
+		{YT_AB36_TERMINAL_SESSION_LIMIT, session_limit,
+		    sizeof(session_limit) - 1U},
+	};
 	static const uint8_t low_time[] =
 	    "\r\nYou have 12345 credits and 65 empty cargo holds.\n\r"
 	    "\r\nWe are selling up to 100.  You have 10 in your holds.\n\r"
@@ -5558,6 +5596,7 @@ test_commodity_trade_adapter_cuts(void)
 	float remembered;
 	bool handled;
 	bool warned;
+	size_t terminal_index;
 
 	commodity_trade_join_init(&join);
 	commodity_trade_join_line(&join);
@@ -5596,6 +5635,37 @@ test_commodity_trade_adapter_cuts(void)
 	CHECK(editor.carrier_calls == 1U && join.accumulator[0] == '\0'
 	    && join.pager.line_count == 0.0f && join.pager.nonstop == 0.0f
 	    && join.pager.key[0] == '\0');
+	for (terminal_index = 0U; terminal_index < YT_ARRAY_LEN(terminals);
+	    ++terminal_index) {
+		struct commodity_terminal_join terminal;
+		bool running = true;
+		bool terminated = false;
+
+		commodity_trade_join_init(&join);
+		commodity_trade_join_0317(&join, status, sizeof(status) - 1U);
+		commodity_trade_join_0317(&join, selling,
+		    sizeof(selling) - 1U);
+		commodity_trade_join_b05d(&join, prompt,
+		    sizeof(prompt) - 1U, true);
+		yt_pager_editor_enter(&join.pager, join.accumulator,
+		    sizeof(join.accumulator));
+		terminal.join = &join;
+		terminal.closed = false;
+		CHECK(yt_input_ab36_terminal_run(terminals[terminal_index].kind,
+		    &running, &terminated, commodity_terminal_notice,
+		    commodity_terminal_close, &terminal));
+		CHECK(join.capture.remote_length
+		    == sizeof(editor_loop_head) - 1U
+		    + terminals[terminal_index].suffix_length
+		    && memcmp(join.capture.remote, editor_loop_head,
+		    sizeof(editor_loop_head) - 1U) == 0
+		    && memcmp(join.capture.remote + sizeof(editor_loop_head) - 1U,
+		    terminals[terminal_index].suffix,
+		    terminals[terminal_index].suffix_length) == 0
+		    && !running && terminated && terminal.closed
+		    && join.pager.line_count == 1.0f
+		    && join.pager.newline_flag == 0.0f);
+	}
 
 	commodity_trade_join_init(&join);
 	commodity_trade_join_0317(&join, status, sizeof(status) - 1U);
@@ -5648,6 +5718,42 @@ test_commodity_trade_adapter_cuts(void)
 	CHECK(handled && editor.carrier_calls == 1U
 	    && strcmp(join.accumulator, "Y") == 0
 	    && strcmp(paged_text, "Y") == 0 && newline_flag == 1.0f);
+	for (terminal_index = 0U; terminal_index < YT_ARRAY_LEN(terminals);
+	    ++terminal_index) {
+		struct commodity_terminal_join terminal;
+		bool running = true;
+		bool terminated = false;
+		size_t prefix_length = sizeof(confirmation_after_y) - 2U;
+
+		commodity_trade_join_init(&join);
+		commodity_trade_join_front(&join, status, sizeof(status) - 1U,
+		    selling, sizeof(selling) - 1U, prompt, sizeof(prompt) - 1U,
+		    (const uint8_t *)"3", 1U);
+		commodity_trade_join_b05d(&join, agreed,
+		    sizeof(agreed) - 1U, false);
+		commodity_trade_join_0317(&join, offer, sizeof(offer) - 1U);
+		CHECK(yt_present_character(confirmation,
+		    sizeof(confirmation) - 1U, &join.current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&join.capture, &result);
+		yt_pager_editor_enter(&join.pager, join.accumulator,
+		    sizeof(join.accumulator));
+		terminal.join = &join;
+		terminal.closed = false;
+		CHECK(yt_input_ab36_terminal_run(terminals[terminal_index].kind,
+		    &running, &terminated, commodity_terminal_notice,
+		    commodity_terminal_close, &terminal));
+		CHECK(join.capture.remote_length == prefix_length
+		    + terminals[terminal_index].suffix_length
+		    && memcmp(join.capture.remote, confirmation_after_y,
+		    prefix_length) == 0
+		    && memcmp(join.capture.remote + prefix_length,
+		    terminals[terminal_index].suffix,
+		    terminals[terminal_index].suffix_length) == 0
+		    && !running && terminated && terminal.closed
+		    && join.pager.line_count == 1.0f
+		    && join.pager.newline_flag == 0.0f);
+	}
 
 	commodity_trade_join_init(&join);
 	commodity_trade_join_0317(&join, status, sizeof(status) - 1U);
