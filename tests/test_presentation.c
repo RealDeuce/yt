@@ -21692,6 +21692,72 @@ test_computer_autopilot_confirmation_terminal_presentation(void)
 }
 
 static void
+test_computer_navigation_direct_b05d_carrier_prefixes(void)
+{
+	static const uint8_t start_prompt[] =
+	    "Enter start for path search? ";
+	static const uint8_t start_after[] =
+	    "\r\nEnter start for path search? ";
+	static const uint8_t turns[] = "You have 1 turns left.";
+	static const uint8_t confirmation[] =
+	    "Enter course into autopilot? (Y/[N])";
+	static const uint8_t engaged[] = "Autopilot Engaged.";
+	struct yt_present_state current;
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80];
+
+	current = state(true);
+	current.foreground = 1.0f;
+	current.cached_foreground = 1.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 1;
+	memset(&capture, 0, sizeof(capture));
+	CHECK(yt_present_line(NULL, 0U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == 2U
+	    && memcmp(capture.remote, "\r\n", 2U) == 0
+	    && pager.line_count == 0.0f);
+
+	CHECK(yt_present_paged_text(start_prompt, sizeof(start_prompt) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == sizeof(start_after) - 1U
+	    && memcmp(capture.remote, start_after,
+	    sizeof(start_after) - 1U) == 0
+	    && pager.line_count == 0.0f);
+
+	computer_autopilot_one_hop_prefix(true, &capture, &current, &pager,
+	    accumulator, sizeof(accumulator));
+	pager_fixture_b05d(&pager, &current, turns, sizeof(turns) - 1U,
+	    &capture);
+	CHECK(yt_present_character(confirmation, sizeof(confirmation) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"Y", 1U,
+	    (const uint8_t *)"Y", 1U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == 199U);
+	CHECK(yt_present_line(NULL, 0U, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == 201U
+	    && memcmp(capture.remote + 196U,
+	    "Y\r\n\r\n", 5U) == 0 && pager.line_count == 0.0f);
+
+	CHECK(yt_present_paged_text(engaged, sizeof(engaged) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(capture.remote_length == 219U
+	    && memcmp(capture.remote + 201U, engaged,
+	    sizeof(engaged) - 1U) == 0
+	    && pager.line_count == 0.0f);
+}
+
+static void
 test_computer_scoreboard_presentation(void)
 {
 	static const uint8_t prompt[] =
@@ -23482,6 +23548,7 @@ main(void)
 	test_computer_autopilot_presentation();
 	test_computer_autopilot_alternate_presentation();
 	test_computer_autopilot_confirmation_terminal_presentation();
+	test_computer_navigation_direct_b05d_carrier_prefixes();
 	test_computer_scoreboard_presentation();
 	test_radio_target_blank_presentation();
 	test_computer_radio_composer_cycle_presentation();
