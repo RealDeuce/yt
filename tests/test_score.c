@@ -22527,6 +22527,266 @@ check_commodity_trade_transaction(void)
 	    YT_COMMODITY_TRADE_DECLINED, "Never mind!");
 }
 
+enum ordinary_commerce_event {
+	ORDINARY_COMMERCE_UPDATE = 1,
+	ORDINARY_COMMERCE_REPORT,
+	ORDINARY_COMMERCE_TRADE_ORE,
+	ORDINARY_COMMERCE_TRADE_ORGANICS,
+	ORDINARY_COMMERCE_TRADE_EQUIPMENT,
+	ORDINARY_COMMERCE_READ_PLAYER,
+	ORDINARY_COMMERCE_REFUSAL,
+	ORDINARY_COMMERCE_STATUS,
+	ORDINARY_COMMERCE_FOREGROUND,
+};
+struct ordinary_commerce_tape {
+	enum ordinary_commerce_event events[12];
+	size_t event_count;
+	size_t calls;
+	size_t fail_at;
+	struct yt_port_market_state market;
+	struct yt_player player;
+	bool reached[3];
+	uint8_t rows[2][256];
+	size_t row_lengths[2];
+	float foreground;
+};
+
+static bool
+ordinary_commerce_step(struct ordinary_commerce_tape *tape,
+    enum ordinary_commerce_event event, struct yt_error *error)
+{
+	size_t call = tape->calls++;
+
+	if (tape->event_count < YT_ARRAY_LEN(tape->events))
+		tape->events[tape->event_count++] = event;
+	if (call != tape->fail_at)
+		return true;
+	if (error != NULL)
+		error->status = YT_IO_ERROR;
+	return false;
+}
+
+static bool
+ordinary_commerce_test_update(void *context, int sector_number,
+    struct yt_port_market_state *market, struct yt_error *error)
+{
+	struct ordinary_commerce_tape *tape = context;
+
+	if (sector_number != 733
+	    || !ordinary_commerce_step(tape, ORDINARY_COMMERCE_UPDATE, error))
+		return false;
+	*market = tape->market;
+	return true;
+}
+
+static bool
+ordinary_commerce_test_report(void *context,
+    const struct yt_port_market_state *market, struct yt_error *error)
+{
+	struct ordinary_commerce_tape *tape = context;
+
+	if (market->port_physical_record != 2057U)
+		return false;
+	return ordinary_commerce_step(tape, ORDINARY_COMMERCE_REPORT, error);
+}
+
+static bool
+ordinary_commerce_test_trade(void *context,
+    const struct yt_port_market_state *market, size_t commodity,
+    bool *prompt_reached, struct yt_error *error)
+{
+	struct ordinary_commerce_tape *tape = context;
+	enum ordinary_commerce_event event;
+
+	if (market->port_physical_record != 2057U || commodity >= 3U)
+		return false;
+	event = commodity == 0U ? ORDINARY_COMMERCE_TRADE_ORE
+	    : commodity == 1U ? ORDINARY_COMMERCE_TRADE_ORGANICS
+	    : ORDINARY_COMMERCE_TRADE_EQUIPMENT;
+	if (!ordinary_commerce_step(tape, event, error))
+		return false;
+	*prompt_reached = tape->reached[commodity];
+	return true;
+}
+
+static bool
+ordinary_commerce_test_read_player(void *context, uint32_t physical_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct ordinary_commerce_tape *tape = context;
+
+	if (physical_record != 2U
+	    || !ordinary_commerce_step(tape,
+	    ORDINARY_COMMERCE_READ_PLAYER, error))
+		return false;
+	*player = tape->player;
+	return true;
+}
+
+static bool
+ordinary_commerce_test_present(void *context, const uint8_t *text,
+    size_t length, enum yt_ordinary_commerce_output_kind kind,
+    struct yt_error *error)
+{
+	struct ordinary_commerce_tape *tape = context;
+	enum ordinary_commerce_event event = kind == YT_ORDINARY_COMMERCE_REFUSAL
+	    ? ORDINARY_COMMERCE_REFUSAL : ORDINARY_COMMERCE_STATUS;
+
+	if ((size_t)kind >= YT_ARRAY_LEN(tape->rows)
+	    || length > sizeof(tape->rows[0])
+	    || !ordinary_commerce_step(tape, event, error))
+		return false;
+	if (length != 0U)
+		memcpy(tape->rows[kind], text, length);
+	tape->row_lengths[kind] = length;
+	return true;
+}
+
+static void
+ordinary_commerce_test_foreground(void *context, float foreground)
+{
+	struct ordinary_commerce_tape *tape = context;
+
+	if (tape->event_count < YT_ARRAY_LEN(tape->events))
+		tape->events[tape->event_count++] = ORDINARY_COMMERCE_FOREGROUND;
+	tape->foreground = foreground;
+}
+
+static const struct yt_ordinary_commerce_ops ordinary_commerce_test_ops = {
+	ordinary_commerce_test_update,
+	ordinary_commerce_test_report,
+	ordinary_commerce_test_trade,
+	ordinary_commerce_test_read_player,
+	ordinary_commerce_test_present,
+	ordinary_commerce_test_foreground,
+};
+
+static void
+ordinary_commerce_fixture(struct ordinary_commerce_tape *tape,
+    struct yt_ordinary_commerce_state *state)
+{
+	struct yt_record record;
+
+	memset(tape, 0, sizeof(*tape));
+	memset(state, 0, sizeof(*state));
+	tape->fail_at = SIZE_MAX;
+	tape->market.port_physical_record = 2057U;
+	tape->market.port.factor[0] = -60.0f;
+	tape->market.port.factor[1] = 74.0f;
+	tape->market.port.factor[2] = -66.0f;
+	tape->reached[0] = true;
+	tape->reached[1] = true;
+	tape->reached[2] = true;
+	memset(record.bytes, 0x6b, sizeof(record.bytes));
+	(void)yt_record_set_number(&record, YT_F65, 50.0f);
+	(void)yt_record_set_number(&record, YT_F69, 10.0f);
+	(void)yt_record_set_number(&record, YT_F73, 20.0f);
+	(void)yt_record_set_number(&record, YT_F77, 5.0f);
+	(void)yt_record_set_number(&record, YT_F81, 777.0f);
+	yt_player_decode(&tape->player, &record);
+	state->sector_number = 733;
+	state->current_player_record = 2U;
+	state->first_name = (const uint8_t *)"Pat";
+	state->first_name_length = 3U;
+}
+
+static bool
+ordinary_commerce_row_equal(const struct ordinary_commerce_tape *tape,
+    enum yt_ordinary_commerce_output_kind kind, const char *text)
+{
+	size_t length = strlen(text);
+
+	return tape->row_lengths[kind] == length
+	    && memcmp(tape->rows[kind], text, length) == 0;
+}
+
+static bool
+check_ordinary_commerce_transaction(void)
+{
+	static const enum ordinary_commerce_event expected[] = {
+		ORDINARY_COMMERCE_UPDATE,
+		ORDINARY_COMMERCE_REPORT,
+		ORDINARY_COMMERCE_TRADE_ORE,
+		ORDINARY_COMMERCE_TRADE_EQUIPMENT,
+		ORDINARY_COMMERCE_TRADE_ORGANICS,
+		ORDINARY_COMMERCE_READ_PLAYER,
+		ORDINARY_COMMERCE_STATUS,
+	};
+	static const enum ordinary_commerce_event refusal_expected[] = {
+		ORDINARY_COMMERCE_UPDATE,
+		ORDINARY_COMMERCE_REPORT,
+		ORDINARY_COMMERCE_FOREGROUND,
+		ORDINARY_COMMERCE_REFUSAL,
+		ORDINARY_COMMERCE_READ_PLAYER,
+		ORDINARY_COMMERCE_STATUS,
+	};
+	struct ordinary_commerce_tape tape;
+	struct yt_ordinary_commerce_state state;
+	struct yt_error error;
+	size_t failure;
+
+	ordinary_commerce_fixture(&tape, &state);
+	if (!yt_ordinary_commerce_run(&state, &ordinary_commerce_test_ops,
+	    &tape, NULL) || !state.complete || !state.update_complete
+	    || !state.report_complete || state.scheduled_count != 3U
+	    || state.completed_trades != 3U || !state.prompt_reached
+	    || state.refusal_presented || !state.final_player_read
+	    || !state.status_presented
+	    || memcmp(state.schedule, (size_t[]){0U, 2U, 1U},
+	    sizeof(state.schedule)) != 0
+	    || tape.event_count != YT_ARRAY_LEN(expected)
+	    || memcmp(tape.events, expected, sizeof(expected)) != 0
+	    || !ordinary_commerce_row_equal(&tape,
+	    YT_ORDINARY_COMMERCE_STATUS,
+	    "You have 777 credits and 15 empty cargo holds."))
+		return false;
+
+	for (failure = 0U; failure < YT_ARRAY_LEN(expected); ++failure) {
+		ordinary_commerce_fixture(&tape, &state);
+		tape.fail_at = failure;
+		yt_error_clear(&error);
+		if (yt_ordinary_commerce_run(&state,
+		    &ordinary_commerce_test_ops, &tape, &error)
+		    || error.status != YT_IO_ERROR || state.complete
+		    || tape.calls != failure + 1U)
+			return false;
+	}
+
+	ordinary_commerce_fixture(&tape, &state);
+	memset(tape.market.port.factor, 0,
+	    sizeof(tape.market.port.factor));
+	if (!yt_ordinary_commerce_run(&state, &ordinary_commerce_test_ops,
+	    &tape, NULL) || state.scheduled_count != 0U
+	    || state.completed_trades != 0U || state.prompt_reached
+	    || !state.refusal_presented || tape.foreground != 6.0f
+	    || tape.event_count != YT_ARRAY_LEN(refusal_expected)
+	    || memcmp(tape.events, refusal_expected,
+	    sizeof(refusal_expected)) != 0
+	    || !ordinary_commerce_row_equal(&tape,
+	    YT_ORDINARY_COMMERCE_REFUSAL,
+	    "We don't want your goods and you can't buy ours Pat!"))
+		return false;
+
+	/* Scheduled zero-maximum children still complete but do not set flag. */
+	ordinary_commerce_fixture(&tape, &state);
+	memset(tape.reached, 0, sizeof(tape.reached));
+	if (!yt_ordinary_commerce_run(&state, &ordinary_commerce_test_ops,
+	    &tape, NULL) || state.completed_trades != 3U
+	    || state.prompt_reached || !state.refusal_presented)
+		return false;
+
+	/* The refusal output itself is a fallible boundary before final GET. */
+	ordinary_commerce_fixture(&tape, &state);
+	memset(tape.market.port.factor, 0,
+	    sizeof(tape.market.port.factor));
+	tape.fail_at = 2U;
+	yt_error_clear(&error);
+	return !yt_ordinary_commerce_run(&state, &ordinary_commerce_test_ops,
+	    &tape, &error) && error.status == YT_IO_ERROR
+	    && !state.refusal_presented && !state.final_player_read
+	    && tape.foreground == 6.0f;
+}
+
 enum port_update_event {
 	PORT_UPDATE_READ_SECTOR = 1,
 	PORT_UPDATE_DAY,
@@ -26456,6 +26716,8 @@ main(void)
 		return fail("ordinary-port report transaction differs");
 	if (!check_commodity_trade_transaction())
 		return fail("commodity-trade transaction differs");
+	if (!check_ordinary_commerce_transaction())
+		return fail("ordinary-commerce controller transaction differs");
 	if (!check_treasury_transaction())
 		return fail("owned-port treasury transaction differs");
 	if (!check_movement_transaction())

@@ -8452,6 +8452,106 @@ yt_commodity_trade_run(struct yt_commodity_trade_state *state,
 	return true;
 }
 
+bool
+yt_ordinary_commerce_run(struct yt_ordinary_commerce_state *state,
+    const struct yt_ordinary_commerce_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t refusal_prefix[] =
+	    "We don't want your goods and you can't buy ours ";
+	static const uint8_t refusal_suffix[] = "!";
+	char credits[64];
+	char free_holds[64];
+	uint8_t row[256];
+	double free;
+	int length;
+	size_t index;
+
+	if (state == NULL || ops == NULL || ops->update == NULL
+	    || ops->report == NULL || ops->trade == NULL
+	    || ops->read_player == NULL || ops->present == NULL
+	    || ops->set_foreground == NULL
+	    || state->current_player_record == 0U
+	    || (state->first_name_length != 0U && state->first_name == NULL))
+		return startup_configuration_error(error, YT_INVALID,
+		    "ordinary commerce arguments");
+	memset(&state->market, 0, sizeof(state->market));
+	memset(&state->final_player, 0, sizeof(state->final_player));
+	memset(state->schedule, 0, sizeof(state->schedule));
+	state->scheduled_count = 0U;
+	state->completed_trades = 0U;
+	state->prompt_reached = false;
+	state->update_complete = false;
+	state->report_complete = false;
+	state->refusal_presented = false;
+	state->final_player_read = false;
+	state->status_presented = false;
+	state->complete = false;
+
+	if (!ops->update(context, state->sector_number, &state->market, error))
+		return false;
+	state->update_complete = true;
+	if (!ops->report(context, &state->market, error))
+		return false;
+	state->report_complete = true;
+	state->scheduled_count = yt_port_trade_schedule(
+	    state->market.port.factor, state->schedule);
+	for (index = 0U; index < state->scheduled_count; ++index) {
+		bool reached = false;
+
+		if (!ops->trade(context, &state->market,
+		    state->schedule[index], &reached, error))
+			return false;
+		if (reached)
+			state->prompt_reached = true;
+		++state->completed_trades;
+	}
+	if (!state->prompt_reached) {
+		size_t position = 0U;
+
+		ops->set_foreground(context, 6.0f);
+		if (!port_report_append(row, sizeof(row), &position,
+		    refusal_prefix, sizeof(refusal_prefix) - 1U)
+		    || !port_report_append(row, sizeof(row), &position,
+		    state->first_name, state->first_name_length)
+		    || !port_report_append(row, sizeof(row), &position,
+		    refusal_suffix, sizeof(refusal_suffix) - 1U))
+			return startup_configuration_error(error, YT_RANGE,
+			    "ordinary commerce refusal composition");
+		if (!ops->present(context, row, position,
+		    YT_ORDINARY_COMMERCE_REFUSAL, error))
+			return false;
+		state->refusal_presented = true;
+	}
+	if (!ops->read_player(context, state->current_player_record,
+	    &state->final_player, error))
+		return false;
+	state->final_player_read = true;
+	free = commodity_trade_double_sub((double)state->final_player.holds,
+	    (double)state->final_player.ore);
+	free = commodity_trade_double_sub(free,
+	    (double)state->final_player.organics);
+	free = commodity_trade_double_sub(free,
+	    (double)state->final_player.equipment);
+	if (qb_str_double(credits, sizeof(credits),
+	    (double)state->final_player.credits) < 0
+	    || qb_str_double(free_holds, sizeof(free_holds), free) < 0)
+		return startup_configuration_error(error, YT_RANGE,
+		    "ordinary commerce status formatting");
+	length = snprintf((char *)row, sizeof(row),
+	    "You have%s credits and%s empty cargo holds.",
+	    credits, free_holds);
+	if (length < 0 || (size_t)length >= sizeof(row))
+		return startup_configuration_error(error, YT_RANGE,
+		    "ordinary commerce status composition");
+	if (!ops->present(context, row, (size_t)length,
+	    YT_ORDINARY_COMMERCE_STATUS, error))
+		return false;
+	state->status_presented = true;
+	state->complete = true;
+	return true;
+}
+
 size_t
 yt_port_trade_schedule(const float factors[3], size_t order[3])
 {

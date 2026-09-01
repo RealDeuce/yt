@@ -7264,6 +7264,57 @@ trade_commodity(struct yt_session *session,
 		*prompt_reached = true;
 	return true;
 }
+
+static bool
+ordinary_commerce_update(void *context, int sector_number,
+    struct yt_port_market_state *market, struct yt_error *error)
+{
+	return port_update(context, sector_number, NULL, market, error);
+}
+
+static bool
+ordinary_commerce_report(void *context,
+    const struct yt_port_market_state *market, struct yt_error *error)
+{
+	return port_report(context, (int)market->logical_port, market, error);
+}
+
+static bool
+ordinary_commerce_trade(void *context,
+    const struct yt_port_market_state *market, size_t commodity,
+    bool *prompt_reached, struct yt_error *error)
+{
+	return trade_commodity(context, market, commodity, prompt_reached,
+	    error);
+}
+
+static bool
+ordinary_commerce_present(void *context, const uint8_t *text, size_t length,
+    enum yt_ordinary_commerce_output_kind kind, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	switch (kind) {
+	case YT_ORDINARY_COMMERCE_REFUSAL:
+		return session_02db(session, text, length,
+		    "port docking refusal", error);
+	case YT_ORDINARY_COMMERCE_STATUS:
+		return session_0317(session, text, length,
+		    "port docking cargo status", error);
+	default:
+		return false;
+	}
+}
+
+static void
+ordinary_commerce_foreground(void *context, float foreground)
+{
+	struct yt_session *session = context;
+
+	session->presentation.foreground = foreground;
+	session->pager.foreground = (int)foreground;
+}
+
 static bool
 command_trade(struct yt_session *session, struct yt_error *error)
 {
@@ -7271,17 +7322,11 @@ command_trade(struct yt_session *session, struct yt_error *error)
 	static const uint8_t no_port[] = "No port here!";
 	static const uint8_t docking[] = "Docking, ";
 	struct yt_sector gate_sector;
-	struct yt_port_market_state market;
 	struct yt_port selected_port;
+	struct yt_ordinary_commerce_state commerce;
 	float selected_expression;
 	uint32_t selected_physical_record;
-	int logical_port;
-	size_t commodity;
-	size_t schedule[3];
-	size_t scheduled_count;
-	size_t scheduled_index;
 	bool denied;
-	bool prompt_reached = false;
 
 	if (!session_02fc(session, heading, sizeof(heading) - 1U))
 		return false;
@@ -7317,55 +7362,25 @@ command_trade(struct yt_session *session, struct yt_error *error)
 	(void)selected_port;
 	if (session->player.sector == 1.0f)
 		return earth_store(session, error);
-	if (!port_update(session, (int)session->player.sector, NULL, &market,
-	    error))
-		return false;
-	logical_port = (int)market.logical_port;
-	if (!port_report(session, logical_port, &market, error))
-		return false;
-	scheduled_count = yt_port_trade_schedule(market.port.factor, schedule);
-	for (scheduled_index = 0; scheduled_index < scheduled_count;
-	    ++scheduled_index) {
-		commodity = schedule[scheduled_index];
-		if (!trade_commodity(session, &market, commodity,
-		    &prompt_reached, error))
-			return false;
-	}
-	if (!prompt_reached) {
-		char refusal[256];
-
-		session->presentation.foreground = 6.0f;
-		session->pager.foreground = 6;
-		if (snprintf(refusal, sizeof(refusal),
-		    "We don't want your goods and you can't buy ours %s!",
-		    session->door->identity.real_first) < 0
-		    || !session_02db(session, (const uint8_t *)refusal,
-		    strlen(refusal), "port docking refusal", error))
-			return false;
-	}
-	if (!reload_player(session, error))
-		return false;
 	{
-		char credits[64];
-		char empty[64];
-		char row[192];
-		double free_holds = double_sub(
-		    double_sub(double_sub((double)session->player.holds,
-		    (double)session->player.ore),
-		    (double)session->player.organics),
-		    (double)session->player.equipment);
+		static const struct yt_ordinary_commerce_ops ops = {
+			ordinary_commerce_update,
+			ordinary_commerce_report,
+			ordinary_commerce_trade,
+			commodity_trade_read_player,
+			ordinary_commerce_present,
+			ordinary_commerce_foreground,
+		};
 
-		if (qb_str_double(credits, sizeof(credits),
-		    (double)session->player.credits) < 0
-		    || qb_str_double(empty, sizeof(empty), free_holds) < 0
-		    || snprintf(row, sizeof(row),
-		    "You have%s credits and%s empty cargo holds.",
-		    credits, empty) < 0
-		    || !session_0317(session, (const uint8_t *)row, strlen(row),
-		    "port docking cargo status", error))
-			return false;
+		memset(&commerce, 0, sizeof(commerce));
+		commerce.sector_number = (int)session->player.sector;
+		commerce.current_player_record = (uint32_t)session->player_record;
+		commerce.first_name =
+		    (const uint8_t *)session->door->identity.real_first;
+		commerce.first_name_length = strlen(
+		    session->door->identity.real_first);
+		return yt_ordinary_commerce_run(&commerce, &ops, session, error);
 	}
-	return true;
 }
 
 static bool
