@@ -5178,6 +5178,129 @@ commodity_trade_join_check(const struct commodity_trade_join *join,
 	    && memcmp(join->capture.remote, expected, expected_length) == 0);
 }
 
+struct commodity_b05d_cut {
+	struct commodity_trade_join *join;
+	struct yt_b05d_key_state key_state;
+	char queue[8];
+	size_t queue_position;
+	size_t queue_length;
+	size_t carrier_calls;
+	size_t fail_carrier_at;
+	size_t sample_calls;
+	size_t present_calls;
+	size_t finish_calls;
+};
+
+static bool
+commodity_b05d_cut_carrier(void *context)
+{
+	struct commodity_b05d_cut *cut = context;
+	size_t call = cut->carrier_calls++;
+
+	return call != cut->fail_carrier_at;
+}
+
+static bool
+commodity_b05d_cut_sample(void *context, struct yt_input_value *sampled)
+{
+	struct commodity_b05d_cut *cut = context;
+
+	++cut->sample_calls;
+	memset(sampled, 0, sizeof(*sampled));
+	return true;
+}
+
+static bool
+commodity_b05d_cut_present(void *context, const uint8_t *text, size_t length)
+{
+	struct commodity_b05d_cut *cut = context;
+	struct yt_present_result result;
+
+	++cut->present_calls;
+	if (yt_present_paged_text(text, length, &cut->join->current, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(&cut->join->capture, &result);
+	return true;
+}
+
+static bool
+commodity_b05d_cut_finish(void *context, bool newline_flag)
+{
+	struct commodity_b05d_cut *cut = context;
+	struct yt_present_result result;
+
+	++cut->finish_calls;
+	if (yt_present_paged_finish(newline_flag, &cut->join->current, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(&cut->join->capture, &result);
+	return true;
+}
+
+static bool
+commodity_b05d_cut_response(void *context, char *response, size_t capacity)
+{
+	(void)context;
+	(void)response;
+	(void)capacity;
+	return false;
+}
+
+static const struct yt_paged_row_ops commodity_b05d_cut_ops = {
+	commodity_b05d_cut_carrier,
+	commodity_b05d_cut_sample,
+	commodity_b05d_cut_present,
+	commodity_b05d_cut_finish,
+	commodity_b05d_cut_response,
+};
+
+static void
+commodity_b05d_cut_init(struct commodity_b05d_cut *cut,
+    struct commodity_trade_join *join, size_t fail_carrier_at)
+{
+	memset(cut, 0, sizeof(*cut));
+	cut->join = join;
+	cut->fail_carrier_at = fail_carrier_at;
+	cut->key_state.accumulator = join->accumulator;
+	cut->key_state.accumulator_capacity = sizeof(join->accumulator);
+	cut->key_state.queue = cut->queue;
+	cut->key_state.queue_capacity = sizeof(cut->queue);
+	cut->key_state.queue_position = &cut->queue_position;
+	cut->key_state.queue_length = &cut->queue_length;
+	cut->key_state.pager_key = join->pager.key;
+	cut->key_state.pager_key_capacity = sizeof(join->pager.key);
+}
+
+struct commodity_editor_cut {
+	struct commodity_trade_join *join;
+	size_t carrier_calls;
+	size_t fail_carrier_at;
+};
+
+static bool
+commodity_editor_cut_echo(void *context, const uint8_t *local,
+    size_t local_length, const uint8_t *remote, size_t remote_length)
+{
+	struct commodity_editor_cut *cut = context;
+	struct yt_present_result result;
+
+	if (yt_present_editor_echo(local, local_length, remote, remote_length,
+	    &cut->join->current, &result) != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(&cut->join->capture, &result);
+	return true;
+}
+
+static bool
+commodity_editor_cut_carrier(void *context)
+{
+	struct commodity_editor_cut *cut = context;
+	size_t call = cut->carrier_calls++;
+
+	return call != cut->fail_carrier_at;
+}
+
 static void
 test_commodity_trade_presentation(void)
 {
@@ -5375,6 +5498,110 @@ test_commodity_trade_branch_presentation(void)
 	    take_them, sizeof(take_them) - 1U);
 	commodity_trade_join_check(&join, buying_accepted,
 	    sizeof(buying_accepted) - 1U);
+}
+
+static void
+test_commodity_trade_adapter_cuts(void)
+{
+	static const uint8_t status[] =
+	    "You have 12345 credits and 65 empty cargo holds.";
+	static const uint8_t selling[] =
+	    "We are selling up to 100.  You have 10 in your holds.";
+	static const uint8_t prompt[] =
+	    "How many holds of Ore do you want to buy [ 65 ]? ";
+	static const uint8_t agreed[] = "Agreed, 3 units.";
+	static const uint8_t offer[] =
+	    "We'll sell them for 60 credits.";
+	static const uint8_t success[] = "It's Yours!";
+	static const uint8_t carrier_before[] = "\r\n";
+	static const uint8_t carrier_after[] =
+	    "\r\nYou have 12345 credits and 65 empty cargo holds.";
+	static const uint8_t editor_after_two[] =
+	    "\r\nYou have 12345 credits and 65 empty cargo holds.\n\r"
+	    "\r\nWe are selling up to 100.  You have 10 in your holds.\n\r"
+	    "How many holds of Ore do you want to buy [ 65 ]? 12";
+	static const uint8_t low_time[] =
+	    "\r\nYou have 12345 credits and 65 empty cargo holds.\n\r"
+	    "\r\nWe are selling up to 100.  You have 10 in your holds.\n\r"
+	    "\r\n\x07\x1b[0;35;40;5;1mTime Left: 5:59  \r\n"
+	    "\x1b[0;35;40m\r\n"
+	    "How many holds of Ore do you want to buy [ 65 ]? 3\r\n"
+	    "Agreed, 3 units.\n\r"
+	    "\r\nWe'll sell them for 60 credits.\n\r"
+	    "Do you agree? [Y/n] \r\n"
+	    "It's Yours!\n\r";
+	struct commodity_trade_join join;
+	struct commodity_b05d_cut cut;
+	struct commodity_editor_cut editor;
+	struct yt_present_result result;
+	char paged_text[80];
+	float newline_flag;
+	float remembered;
+	bool handled;
+	bool warned;
+
+	commodity_trade_join_init(&join);
+	commodity_trade_join_line(&join);
+	commodity_b05d_cut_init(&cut, &join, 0U);
+	CHECK(!yt_paged_row_run(&join.pager, &join.current, &cut.key_state,
+	    status, sizeof(status) - 1U, &commodity_b05d_cut_ops, &cut));
+	commodity_trade_join_check(&join, carrier_before,
+	    sizeof(carrier_before) - 1U);
+	CHECK(cut.carrier_calls == 1U && cut.sample_calls == 0U
+	    && cut.present_calls == 0U && cut.finish_calls == 0U
+	    && join.pager.line_count == 0.0f);
+
+	commodity_trade_join_init(&join);
+	commodity_trade_join_line(&join);
+	commodity_b05d_cut_init(&cut, &join, 1U);
+	CHECK(!yt_paged_row_run(&join.pager, &join.current, &cut.key_state,
+	    status, sizeof(status) - 1U, &commodity_b05d_cut_ops, &cut));
+	commodity_trade_join_check(&join, carrier_after,
+	    sizeof(carrier_after) - 1U);
+	CHECK(cut.carrier_calls == 2U && cut.sample_calls == 1U
+	    && cut.present_calls == 1U && cut.finish_calls == 0U
+	    && join.pager.line_count == 0.0f);
+
+	commodity_trade_join_init(&join);
+	commodity_trade_join_0317(&join, status, sizeof(status) - 1U);
+	commodity_trade_join_0317(&join, selling, sizeof(selling) - 1U);
+	commodity_trade_join_b05d(&join, prompt, sizeof(prompt) - 1U, true);
+	yt_pager_editor_enter(&join.pager, join.accumulator,
+	    sizeof(join.accumulator));
+	(void)snprintf(paged_text, sizeof(paged_text), "%s", prompt);
+	newline_flag = 0.0f;
+	editor.join = &join;
+	editor.carrier_calls = 0U;
+	editor.fail_carrier_at = 1U;
+	CHECK(yt_input_ab36_printable_run('1', join.accumulator,
+	    sizeof(join.accumulator), sizeof(join.accumulator), paged_text,
+	    sizeof(paged_text), &newline_flag, &handled,
+	    commodity_editor_cut_echo, commodity_editor_cut_carrier, &editor));
+	CHECK(handled);
+	CHECK(!yt_input_ab36_printable_run('2', join.accumulator,
+	    sizeof(join.accumulator), sizeof(join.accumulator), paged_text,
+	    sizeof(paged_text), &newline_flag, &handled,
+	    commodity_editor_cut_echo, commodity_editor_cut_carrier, &editor));
+	commodity_trade_join_check(&join, editor_after_two,
+	    sizeof(editor_after_two) - 1U);
+	CHECK(handled && editor.carrier_calls == 2U
+	    && strcmp(join.accumulator, "12") == 0
+	    && strcmp(paged_text, "2") == 0 && newline_flag == 1.0f);
+
+	commodity_trade_join_init(&join);
+	commodity_trade_join_0317(&join, status, sizeof(status) - 1U);
+	commodity_trade_join_0317(&join, selling, sizeof(selling) - 1U);
+	remembered = 6.0f;
+	CHECK(yt_present_low_time((const uint8_t *)" 5:59  ", 7U,
+	    &remembered, &join.current, &result, &warned) == YT_PRESENT_OK);
+	pager_capture_result(&join.capture, &result);
+	CHECK(warned && remembered == 5.0f);
+	commodity_trade_join_b05d(&join, prompt, sizeof(prompt) - 1U, true);
+	commodity_trade_join_input(&join, (const uint8_t *)"3", 1U);
+	commodity_trade_join_accepted_tail(&join, agreed, sizeof(agreed) - 1U,
+	    offer, sizeof(offer) - 1U, success, sizeof(success) - 1U);
+	commodity_trade_join_check(&join, low_time, sizeof(low_time) - 1U);
+	CHECK(join.capture.remote_length == 297U);
 }
 
 static void
@@ -19751,6 +19978,7 @@ main(void)
 	test_action_finalizer_presentation();
 	test_commodity_trade_presentation();
 	test_commodity_trade_branch_presentation();
+	test_commodity_trade_adapter_cuts();
 	test_computer_return_prompt_presentation();
 	test_computer_quit_cancel_presentation();
 	test_main_quit_cancel_presentation();

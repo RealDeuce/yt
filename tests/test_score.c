@@ -22163,6 +22163,8 @@ struct commodity_trade_tape {
 	size_t event_count;
 	size_t dependency_calls;
 	size_t fail_at;
+	size_t boundary_calls;
+	size_t boundary_fail_at;
 	struct yt_player player_reads[3];
 	size_t player_read_count;
 	struct yt_port port_reads[2];
@@ -22178,6 +22180,19 @@ struct commodity_trade_tape {
 	size_t response_index;
 	bool accepted;
 };
+
+static bool
+commodity_trade_test_boundary(struct commodity_trade_tape *tape,
+    struct yt_error *error)
+{
+	size_t call = tape->boundary_calls++;
+
+	if (call != tape->boundary_fail_at)
+		return true;
+	if (error != NULL)
+		error->status = YT_IO_ERROR;
+	return false;
+}
 
 static bool
 commodity_trade_test_step(struct commodity_trade_tape *tape,
@@ -22279,9 +22294,9 @@ commodity_trade_test_present(void *context, const uint8_t *text,
 	struct commodity_trade_tape *tape = context;
 	struct commodity_trade_fragment *fragment;
 
-	(void)error;
 	if (tape->fragment_count >= YT_ARRAY_LEN(tape->fragments)
-	    || length > sizeof(tape->fragments[0].text))
+	    || length > sizeof(tape->fragments[0].text)
+	    || !commodity_trade_test_boundary(tape, error))
 		return false;
 	fragment = &tape->fragments[tape->fragment_count++];
 	fragment->kind = kind;
@@ -22298,8 +22313,8 @@ commodity_trade_test_input(void *context, char *response, size_t capacity,
 	struct commodity_trade_tape *tape = context;
 	const char *source;
 
-	(void)error;
-	if (tape->response_index >= tape->response_count)
+	if (tape->response_index >= tape->response_count
+	    || !commodity_trade_test_boundary(tape, error))
 		return false;
 	source = tape->responses[tape->response_index++];
 	if (strlen(source) >= capacity)
@@ -22315,9 +22330,9 @@ commodity_trade_test_confirm(void *context, const uint8_t *prompt,
 	static const uint8_t expected[] = "Do you agree? [Y/n] ";
 	struct commodity_trade_tape *tape = context;
 
-	(void)error;
 	if (length != sizeof(expected) - 1U
-	    || memcmp(prompt, expected, length) != 0)
+	    || memcmp(prompt, expected, length) != 0
+	    || !commodity_trade_test_boundary(tape, error))
 		return false;
 	*accepted = tape->accepted;
 	return true;
@@ -22362,6 +22377,7 @@ commodity_trade_fixture(struct commodity_trade_tape *tape,
 	memset(tape, 0, sizeof(*tape));
 	memset(state, 0, sizeof(*state));
 	tape->fail_at = SIZE_MAX;
+	tape->boundary_fail_at = SIZE_MAX;
 	tape->accepted = true;
 	tape->responses[0] = "3";
 	tape->response_count = 1U;
@@ -22420,6 +22436,10 @@ check_commodity_trade_transaction(void)
 	};
 	static const size_t completed_writes[] = {0U, 0U, 0U, 1U, 1U,
 	    2U, 2U, 3U, 3U};
+	static const size_t boundary_fragments[] = {0U, 1U, 2U, 3U, 3U,
+	    4U, 5U, 5U};
+	static const size_t boundary_responses[] = {0U, 0U, 0U, 0U, 1U,
+	    1U, 1U, 1U};
 	struct commodity_trade_tape tape;
 	struct yt_commodity_trade_state state;
 	struct yt_error error;
@@ -22434,6 +22454,7 @@ check_commodity_trade_transaction(void)
 	    || state.total != 60.0f || state.direction != 1.0f
 	    || state.credit_delta != -60.0f || !state.prompt_reached
 	    || qb_mbf64_decode(state.caller_trade_flag_raw) != 1.0
+	    || tape.boundary_calls != 8U
 	    || tape.event_count != YT_ARRAY_LEN(expected)
 	    || memcmp(tape.events, expected, sizeof(expected)) != 0
 	    || tape.fragment_count != 6U
@@ -22474,6 +22495,21 @@ check_commodity_trade_transaction(void)
 			return false;
 		writes = tape.player_write_count + tape.port_write_count;
 		if (writes != completed_writes[failure])
+			return false;
+	}
+
+	for (failure = 0U; failure < YT_ARRAY_LEN(boundary_fragments);
+	    ++failure) {
+		commodity_trade_fixture(&tape, &state);
+		tape.boundary_fail_at = failure;
+		yt_error_clear(&error);
+		if (yt_commodity_trade_run(&state, &commodity_trade_test_ops,
+		    &tape, &error) || error.status != YT_IO_ERROR || state.complete
+		    || tape.boundary_calls != failure + 1U
+		    || tape.fragment_count != boundary_fragments[failure]
+		    || tape.response_index != boundary_responses[failure]
+		    || tape.dependency_calls != 1U || tape.player_write_count != 0U
+		    || tape.port_write_count != 0U)
 			return false;
 	}
 
