@@ -3393,6 +3393,76 @@ yt_computer_scoreboard_run(struct yt_computer_scoreboard_state *state,
 	return true;
 }
 
+bool
+yt_computer_newspaper_run(struct yt_computer_newspaper_state *state,
+    const struct yt_computer_newspaper_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t prompt[] =
+	    "Do you want to read [T]oday's or [Y]esterday's news? [T/Y] -=> ";
+	static const char today_path[] = "ytnews.dat";
+	static const char yesterday_path[] = "YTYNEWS.DAT";
+	char edited[YT_COMPUTER_NEWSPAPER_RESPONSE_SIZE];
+
+	if (state == NULL || ops == NULL || ops->present == NULL
+	    || ops->edit == NULL || ops->view == NULL)
+		return false;
+	memset(state->raw_response, 0, sizeof(state->raw_response));
+	memset(state->response, 0, sizeof(state->response));
+	state->raw_response_length = 0U;
+	state->response_length = 0U;
+	state->attempts = 0U;
+	state->selected_pathname = NULL;
+	state->choice = YT_COMPUTER_NEWSPAPER_NONE;
+	state->leading_blank_presented = false;
+	state->input_available = false;
+	state->viewer_called = false;
+	state->complete = false;
+
+	if (!ops->present(context, NULL, 0U,
+	    YT_COMPUTER_NEWSPAPER_LEADING_BLANK, error))
+		return false;
+	state->leading_blank_presented = true;
+	for (;;) {
+		size_t length = 0U;
+		bool available = false;
+
+		if (!ops->present(context, prompt, sizeof(prompt) - 1U,
+		    YT_COMPUTER_NEWSPAPER_SELECTOR_PROMPT, error)
+		    || !ops->edit(context, edited, sizeof(edited), &length,
+		    &available, error))
+			return false;
+		++state->attempts;
+		state->input_available = available;
+		if (!available)
+			return false;
+		if (length >= sizeof(edited))
+			return startup_configuration_error(error, YT_RANGE,
+			    "newspaper selector response capacity");
+		edited[length] = '\0';
+		memcpy(state->raw_response, edited, length + 1U);
+		state->raw_response_length = length;
+		qb_compat_upper_n((uint8_t *)edited, length);
+		memcpy(state->response, edited, length + 1U);
+		state->response_length = length;
+		if (length == 1U && edited[0] == 'T') {
+			state->choice = YT_COMPUTER_NEWSPAPER_TODAY;
+			state->selected_pathname = today_path;
+			break;
+		}
+		if (length == 1U && edited[0] == 'Y') {
+			state->choice = YT_COMPUTER_NEWSPAPER_YESTERDAY;
+			state->selected_pathname = yesterday_path;
+			break;
+		}
+	}
+	state->viewer_called = true;
+	if (!ops->view(context, state->selected_pathname, error))
+		return false;
+	state->complete = true;
+	return true;
+}
+
 enum yt_hostile_attack_admission
 yt_hostile_attack_admit(float ship_fighters, float commitment)
 {

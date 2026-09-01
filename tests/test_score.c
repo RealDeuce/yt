@@ -27050,6 +27050,212 @@ check_computer_scoreboard_transaction(void)
 	    && !yt_computer_scoreboard_run(&state, NULL, &tape, NULL);
 }
 
+enum computer_newspaper_event {
+	COMPUTER_NEWSPAPER_LEADING = 1,
+	COMPUTER_NEWSPAPER_PROMPT,
+	COMPUTER_NEWSPAPER_EDIT,
+	COMPUTER_NEWSPAPER_VIEW,
+};
+
+struct computer_newspaper_tape {
+	enum computer_newspaper_event events[32];
+	size_t calls;
+	size_t fail_at;
+	const char *responses[12];
+	size_t response_count;
+	size_t response_position;
+	bool available;
+	bool report_capacity_length;
+	const char *viewed_path;
+	size_t leading_rows;
+	size_t prompts;
+};
+
+static bool
+computer_newspaper_step(struct computer_newspaper_tape *tape,
+    enum computer_newspaper_event event, struct yt_error *error)
+{
+	size_t call = tape->calls++;
+
+	if (call < YT_ARRAY_LEN(tape->events))
+		tape->events[call] = event;
+	if (call != tape->fail_at)
+		return true;
+	if (error != NULL)
+		error->status = YT_IO_ERROR;
+	return false;
+}
+
+static bool
+computer_newspaper_present_test(void *context, const uint8_t *text,
+    size_t length, enum yt_computer_newspaper_output_kind kind,
+    struct yt_error *error)
+{
+	static const uint8_t prompt[] =
+	    "Do you want to read [T]oday's or [Y]esterday's news? [T/Y] -=> ";
+	struct computer_newspaper_tape *tape = context;
+
+	if (kind == YT_COMPUTER_NEWSPAPER_LEADING_BLANK) {
+		if (text != NULL || length != 0U
+		    || !computer_newspaper_step(tape,
+		    COMPUTER_NEWSPAPER_LEADING, error))
+			return false;
+		++tape->leading_rows;
+		return true;
+	}
+	if (kind != YT_COMPUTER_NEWSPAPER_SELECTOR_PROMPT
+	    || length != sizeof(prompt) - 1U
+	    || memcmp(text, prompt, sizeof(prompt) - 1U) != 0
+	    || !computer_newspaper_step(tape, COMPUTER_NEWSPAPER_PROMPT,
+	    error))
+		return false;
+	++tape->prompts;
+	return true;
+}
+
+static bool
+computer_newspaper_edit_test(void *context, char *response,
+    size_t capacity, size_t *length, bool *available,
+    struct yt_error *error)
+{
+	struct computer_newspaper_tape *tape = context;
+	const char *source;
+	size_t source_length;
+
+	if (length == NULL || available == NULL
+	    || tape->response_position >= tape->response_count
+	    || !computer_newspaper_step(tape, COMPUTER_NEWSPAPER_EDIT,
+	    error))
+		return false;
+	source = tape->responses[tape->response_position++];
+	source_length = strlen(source);
+	if (source_length >= capacity)
+		return false;
+	memcpy(response, source, source_length + 1U);
+	*length = tape->report_capacity_length ? capacity : source_length;
+	*available = tape->available;
+	return true;
+}
+
+static bool
+computer_newspaper_view_test(void *context, const char *pathname,
+    struct yt_error *error)
+{
+	struct computer_newspaper_tape *tape = context;
+
+	tape->viewed_path = pathname;
+	return computer_newspaper_step(tape, COMPUTER_NEWSPAPER_VIEW, error);
+}
+
+static const struct yt_computer_newspaper_ops computer_newspaper_test_ops = {
+	computer_newspaper_present_test,
+	computer_newspaper_edit_test,
+	computer_newspaper_view_test,
+};
+
+static void
+computer_newspaper_fixture(struct computer_newspaper_tape *tape,
+    struct yt_computer_newspaper_state *state)
+{
+	memset(tape, 0, sizeof(*tape));
+	memset(state, 0xa5, sizeof(*state));
+	tape->fail_at = SIZE_MAX;
+	tape->available = true;
+}
+
+static bool
+check_computer_newspaper_transaction(void)
+{
+	static const enum computer_newspaper_event retry_events[] = {
+		COMPUTER_NEWSPAPER_LEADING,
+		COMPUTER_NEWSPAPER_PROMPT,
+		COMPUTER_NEWSPAPER_EDIT,
+		COMPUTER_NEWSPAPER_PROMPT,
+		COMPUTER_NEWSPAPER_EDIT,
+		COMPUTER_NEWSPAPER_VIEW,
+	};
+	static const char *const invalid[] = {
+		"", "T ", "Y ", "TY", "TODAY", "other",
+	};
+	struct computer_newspaper_tape tape;
+	struct yt_computer_newspaper_state state;
+	struct yt_error error;
+	size_t index;
+
+	computer_newspaper_fixture(&tape, &state);
+	tape.responses[0] = "X";
+	tape.responses[1] = "t";
+	tape.response_count = 2U;
+	if (!yt_computer_newspaper_run(&state, &computer_newspaper_test_ops,
+	    &tape, NULL) || !state.complete
+	    || !state.leading_blank_presented || !state.input_available
+	    || state.attempts != 2U
+	    || state.choice != YT_COMPUTER_NEWSPAPER_TODAY
+	    || state.raw_response_length != 1U
+	    || memcmp(state.raw_response, "t\0", 2U) != 0
+	    || state.response_length != 1U
+	    || memcmp(state.response, "T\0", 2U) != 0
+	    || strcmp(state.selected_pathname, "ytnews.dat") != 0
+	    || !state.viewer_called || tape.leading_rows != 1U
+	    || tape.prompts != 2U || tape.calls != YT_ARRAY_LEN(retry_events)
+	    || memcmp(tape.events, retry_events, sizeof(retry_events)) != 0
+	    || strcmp(tape.viewed_path, "ytnews.dat") != 0)
+		return false;
+
+	computer_newspaper_fixture(&tape, &state);
+	for (index = 0U; index < YT_ARRAY_LEN(invalid); ++index)
+		tape.responses[index] = invalid[index];
+	tape.responses[YT_ARRAY_LEN(invalid)] = "y";
+	tape.response_count = YT_ARRAY_LEN(invalid) + 1U;
+	if (!yt_computer_newspaper_run(&state, &computer_newspaper_test_ops,
+	    &tape, NULL) || state.attempts != YT_ARRAY_LEN(invalid) + 1U
+	    || state.choice != YT_COMPUTER_NEWSPAPER_YESTERDAY
+	    || memcmp(state.raw_response, "y\0", 2U) != 0
+	    || memcmp(state.response, "Y\0", 2U) != 0
+	    || strcmp(state.selected_pathname, "YTYNEWS.DAT") != 0
+	    || strcmp(tape.viewed_path, "YTYNEWS.DAT") != 0)
+		return false;
+
+	for (index = 0U; index < 4U; ++index) {
+		computer_newspaper_fixture(&tape, &state);
+		tape.responses[0] = "T";
+		tape.response_count = 1U;
+		tape.fail_at = index;
+		yt_error_clear(&error);
+		if (yt_computer_newspaper_run(&state,
+		    &computer_newspaper_test_ops, &tape, &error)
+		    || error.status != YT_IO_ERROR || state.complete
+		    || tape.calls != index + 1U)
+			return false;
+	}
+
+	computer_newspaper_fixture(&tape, &state);
+	tape.responses[0] = "";
+	tape.response_count = 1U;
+	tape.available = false;
+	if (yt_computer_newspaper_run(&state, &computer_newspaper_test_ops,
+	    &tape, NULL) || !state.leading_blank_presented
+	    || state.input_available || state.attempts != 1U
+	    || state.viewer_called || state.complete || tape.calls != 3U)
+		return false;
+	computer_newspaper_fixture(&tape, &state);
+	tape.responses[0] = "";
+	tape.response_count = 1U;
+	tape.report_capacity_length = true;
+	yt_error_clear(&error);
+	if (yt_computer_newspaper_run(&state, &computer_newspaper_test_ops,
+	    &tape, &error) || error.status != YT_RANGE
+	    || strcmp(error.operation,
+	    "newspaper selector response capacity") != 0)
+		return false;
+	computer_newspaper_fixture(&tape, &state);
+	tape.responses[0] = "T";
+	tape.response_count = 1U;
+	return !yt_computer_newspaper_run(NULL, &computer_newspaper_test_ops,
+	    &tape, NULL)
+	    && !yt_computer_newspaper_run(&state, NULL, &tape, NULL);
+}
+
 enum port_purchase_accept_event {
 	PORT_ACCEPT_PRESENT = 1,
 	PORT_ACCEPT_READ_PORT,
@@ -28657,6 +28863,8 @@ main(void)
 		return fail("computer prompt transaction differs");
 	if (!check_computer_scoreboard_transaction())
 		return fail("computer scoreboard transaction differs");
+	if (!check_computer_newspaper_transaction())
+		return fail("computer newspaper transaction differs");
 	if (!check_port_name_editor_model())
 		return fail("port name editor model differs");
 	if (!check_port_purchase_accept_transaction())

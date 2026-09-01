@@ -616,6 +616,43 @@ struct yt_computer_scoreboard_ops {
 	    struct yt_error *error);
 };
 
+#define YT_COMPUTER_NEWSPAPER_RESPONSE_SIZE 80U
+
+enum yt_computer_newspaper_output_kind {
+	YT_COMPUTER_NEWSPAPER_LEADING_BLANK,
+	YT_COMPUTER_NEWSPAPER_SELECTOR_PROMPT,
+};
+
+enum yt_computer_newspaper_choice {
+	YT_COMPUTER_NEWSPAPER_NONE,
+	YT_COMPUTER_NEWSPAPER_TODAY,
+	YT_COMPUTER_NEWSPAPER_YESTERDAY,
+};
+
+struct yt_computer_newspaper_state {
+	uint8_t raw_response[YT_COMPUTER_NEWSPAPER_RESPONSE_SIZE];
+	uint8_t response[YT_COMPUTER_NEWSPAPER_RESPONSE_SIZE];
+	size_t raw_response_length;
+	size_t response_length;
+	size_t attempts;
+	const char *selected_pathname;
+	enum yt_computer_newspaper_choice choice;
+	bool leading_blank_presented;
+	bool input_available;
+	bool viewer_called;
+	bool complete;
+};
+
+struct yt_computer_newspaper_ops {
+	bool (*present)(void *context, const uint8_t *text, size_t length,
+	    enum yt_computer_newspaper_output_kind kind,
+	    struct yt_error *error);
+	bool (*edit)(void *context, char *response, size_t capacity,
+	    size_t *length, bool *available, struct yt_error *error);
+	bool (*view)(void *context, const char *pathname,
+	    struct yt_error *error);
+};
+
 enum yt_hostile_attack_admission {
 	YT_HOSTILE_ATTACK_NO_FIGHTERS,
 	YT_HOSTILE_ATTACK_TOO_MANY,
@@ -1701,6 +1738,9 @@ bool yt_computer_prompt_run(struct yt_computer_prompt_state *state,
 	struct yt_error *error);
 bool yt_computer_scoreboard_run(struct yt_computer_scoreboard_state *state,
 	const struct yt_computer_scoreboard_ops *ops, void *context,
+	struct yt_error *error);
+bool yt_computer_newspaper_run(struct yt_computer_newspaper_state *state,
+	const struct yt_computer_newspaper_ops *ops, void *context,
 	struct yt_error *error);
 enum yt_hostile_attack_admission yt_hostile_attack_admit(
     float ship_fighters, float commitment);

@@ -2314,6 +2314,87 @@ test_newspaper_physical_viewer_join(void)
 	}
 }
 
+static void
+test_newspaper_endpoint_modes(void)
+{
+	static const uint8_t corrupt[] =
+	    "\r\n\r\n\r\n\r\n\r\n";
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	uint8_t remote[32];
+
+	memset(&viewer, 0, sizeof(viewer));
+	fixture_viewer_initialize(&viewer, &stream,
+	    retained_current_news, sizeof(retained_current_news) - 1U,
+	    "ytnews.dat", true, remote, sizeof(remote));
+	viewer.join.presentation.sound.mode = 1.0f;
+	CHECK(newspaper_viewer_run(&viewer, &stream, 'T')
+	    && viewer.join.remote_length == 0U);
+	yt_text_input_destroy(&viewer.input);
+
+	memset(&viewer, 0, sizeof(viewer));
+	fixture_viewer_initialize(&viewer, &stream,
+	    retained_current_news, sizeof(retained_current_news) - 1U,
+	    "ytnews.dat", true, remote, sizeof(remote));
+	viewer.join.presentation.sound.mode = 2.0f;
+	CHECK(newspaper_viewer_run(&viewer, &stream, 'T')
+	    && viewer.join.remote_length == sizeof(corrupt) - 1U
+	    && memcmp(remote, corrupt, sizeof(corrupt) - 1U) == 0);
+	yt_text_input_destroy(&viewer.input);
+}
+
+static void
+test_newspaper_pagination_and_ctrl_x(void)
+{
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	uint8_t long_news[256];
+	uint8_t remote[512];
+	size_t position = 0U;
+	size_t row;
+
+	for (row = 1U; row <= 24U; ++row) {
+		int written = snprintf((char *)long_news + position,
+		    sizeof(long_news) - position, "L%02zu\r\n", row);
+
+		CHECK(written == 5);
+		if (written != 5)
+			return;
+		position += (size_t)written;
+	}
+	long_news[position++] = 0x1aU;
+
+	memset(&viewer, 0, sizeof(viewer));
+	fixture_viewer_initialize(&viewer, &stream, long_news, position,
+	    "ytnews.dat", true, remote, sizeof(remote));
+	(void)snprintf(viewer.join.response, sizeof(viewer.join.response),
+	    "%s", "E");
+	CHECK(newspaper_viewer_run(&viewer, &stream, 'T')
+	    && viewer.join.position == 23U
+	    && stream.read_count == 23U && stream.line_count == 23U
+	    && viewer.join.response_calls == 1U
+	    && strcmp(viewer.join.pager.key, "Q") == 0
+	    && viewer.join.source_length == 1U
+	    && viewer.join.source[0] == '\r');
+	yt_text_input_destroy(&viewer.input);
+
+	memset(&viewer, 0, sizeof(viewer));
+	fixture_viewer_initialize(&viewer, &stream,
+	    retained_current_news, sizeof(retained_current_news) - 1U,
+	    "ytnews.dat", true, remote, sizeof(remote));
+	viewer.join.injected_sample_call = 2U;
+	viewer.join.injected_sample.bytes[0] = 0x18U;
+	viewer.join.injected_sample.length = 1U;
+	CHECK(newspaper_viewer_run(&viewer, &stream, 'T')
+	    && viewer.join.injected_sample_hits == 1U
+	    && viewer.join.position == 0U && stream.read_count == 0U
+	    && strcmp(viewer.join.pager.key, "Q") == 0
+	    && viewer.join.source_length == sizeof("Cntl-X to Stop") - 1U
+	    && memcmp(viewer.join.source, "Cntl-X to Stop",
+	    sizeof("Cntl-X to Stop") - 1U) == 0);
+	yt_text_input_destroy(&viewer.input);
+}
+
 static const uint8_t retained_scoreboard[] =
     "\r\n"
     "Y a n k e e   T r a d e r   S c o r e b o a r d\r\n"
@@ -13482,6 +13563,261 @@ normal_exit_b05d(struct viewer_pager_join *join, const uint8_t *text,
 }
 
 static bool
+computer_newspaper_full_cycle_run(struct physical_viewer_join *viewer,
+    struct yt_file_viewer_stream_state *stream, bool ansi, uint8_t choice)
+{
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Computer command (?=help)? ";
+	static const uint8_t command[] = "8";
+	struct viewer_pager_join *join = &viewer->join;
+	struct yt_present_result result;
+
+	join->presentation = state(ansi);
+	join->presentation.foreground = 6.0f;
+	join->presentation.cached_foreground = ansi ? 6.0f : 0.0f;
+	join->pager.foreground = 6;
+	join->pager.line_count = 0.0f;
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.foreground = 1.0f;
+	join->pager.foreground = 1;
+	if (!normal_exit_b05d(join, prompt, sizeof(prompt) - 1U, 1.0f))
+		return false;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	memcpy(join->accumulator, command, sizeof(command));
+	if (yt_present_editor_echo(command, sizeof(command) - 1U,
+	    command, sizeof(command) - 1U, &join->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !newspaper_viewer_run(viewer, stream, choice)
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.foreground = 1.0f;
+	join->pager.foreground = 1;
+	return normal_exit_b05d(join, prompt, sizeof(prompt) - 1U, 1.0f);
+}
+
+static void
+test_computer_newspaper_full_cycle_presentation(void)
+{
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Computer command (?=help)? ";
+	static const struct {
+		bool ansi;
+		uint8_t choice;
+		const uint8_t *fixture;
+		size_t fixture_length;
+		const char *path;
+		size_t lines;
+		size_t remote_length;
+		uint64_t remote_fnv;
+		float final_bold;
+	} cases[] = {
+		{true, 'T', retained_current_news,
+		    sizeof(retained_current_news) - 1U, "ytnews.dat", 9U,
+		    732U, UINT64_C(0x7dec74d285edb57f), 0.0f},
+		{false, 'T', retained_current_news,
+		    sizeof(retained_current_news) - 1U, "ytnews.dat", 9U,
+		    610U, UINT64_C(0x93efb9289cdb699d), 1.0f},
+		{true, 'Y', retained_yesterday_news,
+		    sizeof(retained_yesterday_news) - 1U, "YTYNEWS.DAT", 7U,
+		    515U, UINT64_C(0x19b0435fd8e224af), 0.0f},
+		{false, 'Y', retained_yesterday_news,
+		    sizeof(retained_yesterday_news) - 1U, "YTYNEWS.DAT", 7U,
+		    485U, UINT64_C(0x45869dac22db0a0f), 0.0f},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	uint8_t remote[800];
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    cases[pass].fixture, cases[pass].fixture_length,
+		    cases[pass].path, cases[pass].ansi, remote, sizeof(remote));
+		CHECK(computer_newspaper_full_cycle_run(&viewer, &stream,
+		    cases[pass].ansi, cases[pass].choice));
+		CHECK(viewer.join.remote_length == cases[pass].remote_length
+		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+		    == cases[pass].remote_fnv
+		    && viewer.join.presentation.foreground == 1.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold == cases[pass].final_bold
+		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.cached_foreground
+		    == (cases[pass].ansi ? 1.0f : 0.0f)
+		    && viewer.join.pager.foreground == 1
+		    && viewer.join.pager.line_count == 1.0f
+		    && viewer.join.pager.nonstop == 0.0f
+		    && viewer.join.pager.key[0] == '\0'
+		    && viewer.join.accumulator[0] == (char)cases[pass].choice
+		    && viewer.join.accumulator[1] == '\0'
+		    && viewer.join.queue_length == 0U
+		    && viewer.join.source_length == sizeof(prompt) - 1U
+		    && memcmp(viewer.join.source, prompt,
+		    sizeof(prompt) - 1U) == 0
+		    && viewer.join.local_fragment_length
+		    == sizeof(prompt) - 1U
+		    && memcmp(viewer.join.local_fragment, prompt,
+		    sizeof(prompt) - 1U) == 0);
+		CHECK(viewer.join.position == cases[pass].lines
+		    && stream.eof_checks == cases[pass].lines + 1U
+		    && stream.key_checks == cases[pass].lines + 1U
+		    && stream.read_count == cases[pass].lines
+		    && stream.line_count == cases[pass].lines
+		    && !stream.file_open && !viewer.join.file_open
+		    && viewer.input.file == NULL && viewer.close_calls == 2U
+		    && viewer.open_calls == 1U);
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
+static void
+test_computer_newspaper_carrier_prefixes(void)
+{
+	static const struct {
+		bool ansi;
+		size_t fail_at;
+		size_t remote_length;
+		uint64_t remote_fnv;
+	} cases[] = {
+		{true, 1U, 2U, UINT64_C(0x083cb407b4f40f36)},
+		{true, 4U, 65U, UINT64_C(0x57e46fef5a7815db)},
+		{true, 14U, 162U, UINT64_C(0xb9b614179171fb96)},
+		{false, 14U, 152U, UINT64_C(0x029ee90b87a0e090)},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	uint8_t remote[200];
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_current_news, sizeof(retained_current_news) - 1U,
+		    "ytnews.dat", cases[pass].ansi, remote, sizeof(remote));
+		viewer.join.fail_at = cases[pass].fail_at;
+		CHECK(!newspaper_viewer_run(&viewer, &stream, 'T')
+		    && viewer.join.remote_length == cases[pass].remote_length
+		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+		    == cases[pass].remote_fnv
+		    && viewer.join.pager.line_count == 0.0f);
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
+static void
+test_computer_newspaper_terminal_presentation(void)
+{
+	static const uint8_t prompt[] =
+	    "Do you want to read [T]oday's or [Y]esterday's news? [T/Y] -=> ";
+	static const uint8_t inactivity[] =
+	    "\r\nDo you want to read [T]oday's or [Y]esterday's news? [T/Y] -=> "
+	    "\r\n\aUSER FELL ASLEEP!\n\r";
+	static const uint8_t inactivity_carrier[] =
+	    "\r\nDo you want to read [T]oday's or [Y]esterday's news? [T/Y] -=> "
+	    "\r\n";
+	static const uint8_t session_limit[] =
+	    "\r\nDo you want to read [T]oday's or [Y]esterday's news? [T/Y] -=> "
+	    "\r\n\a\a\aTIME LIMIT EXCEEDED!\a\a\a\n\r";
+	static const uint8_t session_carrier[] =
+	    "\r\nDo you want to read [T]oday's or [Y]esterday's news? [T/Y] -=> "
+	    "\r\n\a\a\aTIME LIMIT EXCEEDED!\a\a\a";
+	static const uint8_t direct_carrier[] =
+	    "\r\nDo you want to read [T]oday's or [Y]esterday's news? [T/Y] -=> ";
+	static const struct {
+		enum yt_ab36_terminal_kind kind;
+		int carrier_failure;
+		const uint8_t *expected;
+		size_t expected_length;
+		bool succeeds;
+	} cases[] = {
+		{YT_AB36_TERMINAL_INACTIVITY, 0, inactivity,
+		    sizeof(inactivity) - 1U, true},
+		{YT_AB36_TERMINAL_INACTIVITY, 1, inactivity_carrier,
+		    sizeof(inactivity_carrier) - 1U, false},
+		{YT_AB36_TERMINAL_SESSION_LIMIT, 0, session_limit,
+		    sizeof(session_limit) - 1U, true},
+		{YT_AB36_TERMINAL_SESSION_LIMIT, 2, session_carrier,
+		    sizeof(session_carrier) - 1U, false},
+	};
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		struct yt_present_state current = state(true);
+		struct yt_present_result result;
+		struct yt_pager_state pager;
+		struct pager_capture capture;
+		struct computer_port_terminal_join join;
+		char accumulator[80];
+		bool running = true;
+		bool terminated = false;
+		bool result_ok;
+
+		current.foreground = 1.0f;
+		current.cached_foreground = 1.0f;
+		memset(&pager, 0, sizeof(pager));
+		pager.foreground = 1;
+		memset(&capture, 0, sizeof(capture));
+		memset(accumulator, 0, sizeof(accumulator));
+		CHECK(yt_present_line(NULL, 0U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager.newline_flag = 1.0f;
+		pager_fixture_b05d(&pager, &current, prompt,
+		    sizeof(prompt) - 1U, &capture);
+		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+		join.current = &current;
+		join.pager = &pager;
+		join.capture = &capture;
+		join.running = &running;
+		join.terminated = &terminated;
+		join.notice_carrier_failure = cases[pass].carrier_failure;
+		join.closed = false;
+		result_ok = yt_input_ab36_terminal_run(cases[pass].kind,
+		    &running, &terminated, computer_port_terminal_notice,
+		    computer_port_terminal_close, &join);
+		CHECK(result_ok == cases[pass].succeeds
+		    && capture.remote_length == cases[pass].expected_length
+		    && memcmp(capture.remote, cases[pass].expected,
+		    cases[pass].expected_length) == 0
+		    && !running && terminated && join.closed
+		    && pager.line_count == (cases[pass].succeeds ? 1.0f : 0.0f)
+		    && pager.newline_flag == 0.0f && accumulator[0] == '\0');
+	}
+	{
+		struct yt_present_state current = state(true);
+		struct yt_present_result result;
+		struct yt_pager_state pager;
+		struct pager_capture capture;
+		char accumulator[80];
+
+		current.foreground = 1.0f;
+		current.cached_foreground = 1.0f;
+		memset(&pager, 0, sizeof(pager));
+		pager.foreground = 1;
+		memset(&capture, 0, sizeof(capture));
+		memset(accumulator, 0, sizeof(accumulator));
+		CHECK(yt_present_line(NULL, 0U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager.newline_flag = 1.0f;
+		pager_fixture_b05d(&pager, &current, prompt,
+		    sizeof(prompt) - 1U, &capture);
+		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+		CHECK(capture.remote_length == sizeof(direct_carrier) - 1U
+		    && memcmp(capture.remote, direct_carrier,
+		    sizeof(direct_carrier) - 1U) == 0
+		    && pager.line_count == 0.0f
+		    && pager.newline_flag == 0.0f);
+	}
+}
+
+static bool
 computer_scoreboard_full_cycle_run(struct physical_viewer_join *viewer,
     struct yt_file_viewer_stream_state *stream, bool ansi, bool updated)
 {
@@ -23549,6 +23885,8 @@ main(void)
 	test_startup_ascii_physical_join();
 	test_instruction_physical_viewer_join();
 	test_newspaper_physical_viewer_join();
+	test_newspaper_endpoint_modes();
+	test_newspaper_pagination_and_ctrl_x();
 	test_scoreboard_physical_viewer_join();
 	test_scoreboard_endpoint_modes();
 	test_normal_exit_scoreboard_viewer_join();
@@ -23702,6 +24040,9 @@ main(void)
 	test_computer_navigation_direct_b05d_carrier_prefixes();
 	test_computer_scoreboard_presentation();
 	test_computer_scoreboard_full_cycle_presentation();
+	test_computer_newspaper_full_cycle_presentation();
+	test_computer_newspaper_carrier_prefixes();
+	test_computer_newspaper_terminal_presentation();
 	test_radio_target_blank_presentation();
 	test_computer_radio_composer_cycle_presentation();
 	test_radio_body_presentation();

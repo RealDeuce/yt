@@ -17031,7 +17031,7 @@ computer_scoreboard_present(void *context, const uint8_t *text,
 }
 
 static bool
-computer_scoreboard_edit(void *context, char *response, size_t capacity,
+computer_raw_upper_edit(void *context, char *response, size_t capacity,
     size_t *length, bool *available, struct yt_error *error)
 {
 	(void)error;
@@ -17077,7 +17077,7 @@ computer_scoreboard(struct yt_session *session, struct yt_error *error)
 	static const struct yt_computer_scoreboard_ops ops = {
 		computer_scoreboard_clear_pager,
 		computer_scoreboard_present,
-		computer_scoreboard_edit,
+		computer_raw_upper_edit,
 		computer_scoreboard_reset_pager,
 		computer_scoreboard_generate,
 		computer_scoreboard_view,
@@ -17090,24 +17090,38 @@ computer_scoreboard(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
+computer_newspaper_present(void *context, const uint8_t *text,
+    size_t length, enum yt_computer_newspaper_output_kind kind,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	if (kind == YT_COMPUTER_NEWSPAPER_LEADING_BLANK)
+		return session_present_text(session, NULL, 0U,
+		    SESSION_PRESENT_LINE, "newspaper selector leading blank",
+		    error);
+	return session_031f(session, text, length,
+	    "newspaper selector prompt", error);
+}
+
+static bool
+computer_newspaper_view(void *context, const char *pathname,
+    struct yt_error *error)
+{
+	return display_game_file(context, pathname, error);
+}
+
+static bool
 computer_newspaper(struct yt_session *session, struct yt_error *error)
 {
-	static const uint8_t prompt[] =
-	    "Do you want to read [T]oday's or [Y]esterday's news? [T/Y] -=> ";
-	char response[80] = "";
+	static const struct yt_computer_newspaper_ops ops = {
+		computer_newspaper_present,
+		computer_raw_upper_edit,
+		computer_newspaper_view,
+	};
+	struct yt_computer_newspaper_state state;
 
-	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "newspaper selector leading blank", error))
-		return false;
-	while (strcmp(response, "T") != 0 && strcmp(response, "Y") != 0) {
-		if (!session_031f(session, prompt, sizeof(prompt) - 1U,
-		    "newspaper selector prompt", error)
-		    || !session_0357(session, response, sizeof(response)))
-			return false;
-	}
-	return display_game_file(session,
-	    strcmp(response, "T") == 0 ? "ytnews.dat" : "YTYNEWS.DAT",
-	    error);
+	return yt_computer_newspaper_run(&state, &ops, session, error);
 }
 
 static void
