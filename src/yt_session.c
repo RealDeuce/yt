@@ -4871,25 +4871,6 @@ direct_attack_attrition_draw(void *context, float *value,
 }
 
 static bool
-combat_attrition(struct yt_session *session, double committed,
-    double defenders, float cloak, double *attacker_loss,
-    double *defender_loss, struct yt_error *error)
-{
-	struct yt_direct_attack_attrition_state state = {
-		.committed = committed,
-		.defenders = defenders,
-		.cloak = cloak,
-	};
-
-	if (!yt_direct_attack_attrition_run(&state,
-	    direct_attack_attrition_draw, session, error))
-		return false;
-	*attacker_loss = state.attacker_loss;
-	*defender_loss = state.defender_loss;
-	return true;
-}
-
-static bool
 xannor_victory_play_file(void *context, const char *path,
     struct yt_error *error)
 {
@@ -5138,157 +5119,126 @@ direct_fighter_kill_fatal(void *context, struct yt_error *error)
 }
 
 static bool
+direct_attack_combat_read(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	if (player_record != session->player_record)
+		return yt_game_read_player(&session->door->game, player_record,
+		    player, error);
+	if (!reload_player(session, error))
+		return false;
+	*player = session->player;
+	return true;
+}
+
+static bool
+direct_attack_combat_write(void *context, int player_record,
+    const struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	if (player_record == session->player_record)
+		session->player = *player;
+	return yt_database_write(&session->door->game.database,
+	    (size_t)player_record, &player->record, error);
+}
+
+static bool
+direct_attack_combat_present(void *context, const uint8_t *text,
+    size_t length, enum yt_direct_attack_combat_output_kind kind,
+    struct yt_error *error)
+{
+	switch (kind) {
+	case YT_DIRECT_ATTACK_COMBAT_TOO_MANY_ROW:
+		return session_02db(context, text, length,
+		    "direct Attack too-many row", error);
+	case YT_DIRECT_ATTACK_COMBAT_ATTACKER_ROW:
+		return session_0317(context, text, length,
+		    "direct Attack attacker result", error);
+	case YT_DIRECT_ATTACK_COMBAT_DEFENDER_ROW:
+		return session_02fc(context, text, length);
+	case YT_DIRECT_ATTACK_COMBAT_ELIMINATED_ROW:
+		return session_0317(context, text, length,
+		    "direct Attack eliminated row", error);
+	default:
+		return false;
+	}
+}
+
+static bool
+direct_attack_combat_sound(void *context, float selector,
+    struct yt_error *error)
+{
+	return session_sound(context, selector, "player attack opening sound",
+	    error);
+}
+
+static bool
+direct_attack_combat_radio(void *context, const uint8_t *text,
+    size_t length, float recipient, struct yt_error *error)
+{
+	(void)context;
+	return radio_append_bytes(text, length, -2.0f, recipient, error);
+}
+
+static bool
+direct_attack_combat_spill(void *context, double *fighters,
+    float *shields, struct yt_error *error)
+{
+	return fighter_shield_spill(context, fighters, shields, error);
+}
+
+static bool
+direct_attack_combat_kill(void *context, int target_record,
+    int current_player_record, float current_sector, float target_shields,
+    struct yt_error *error)
+{
+	static const struct yt_direct_fighter_kill_ops ops = {
+		direct_fighter_kill_sound,
+		direct_fighter_kill_read_player,
+		direct_fighter_kill_name_length,
+		direct_fighter_kill_death,
+		direct_fighter_kill_salvage,
+		direct_fighter_kill_read_sector,
+		direct_fighter_kill_write_sector,
+		direct_fighter_kill_present,
+		direct_fighter_kill_news,
+		direct_fighter_kill_mine,
+		direct_fighter_kill_fatal,
+	};
+	struct yt_direct_fighter_kill_state state = {
+		.target_shields = target_shields,
+		.target_record = target_record,
+		.current_player_record = current_player_record,
+		.current_sector = current_sector,
+	};
+
+	return yt_direct_fighter_kill_run(&state, &ops, context, error);
+}
+
+static bool
 attack_player(struct yt_session *session, int target_record,
     double committed, struct yt_error *error)
 {
-	struct yt_player target;
-	double attacker_loss;
-	double defender_loss;
-	double attacking;
-	double defenders;
-	double cached_reserve;
-	float current_sector;
-	uint8_t line[300];
-	uint8_t second_line[300];
-	size_t line_length;
-	size_t second_line_length;
+	static const struct yt_direct_attack_combat_ops ops = {
+		direct_attack_combat_read,
+		direct_attack_combat_write,
+		direct_attack_combat_present,
+		direct_attack_combat_sound,
+		direct_attack_combat_radio,
+		direct_attack_attrition_draw,
+		direct_attack_combat_spill,
+		direct_attack_combat_kill,
+	};
+	struct yt_direct_attack_combat_state state = {
+		.current_player_record = session->player_record,
+		.target_record = target_record,
+		.committed = committed,
+	};
 
-	if (!yt_game_read_player(&session->door->game, target_record,
-	    &target, error))
-		return false;
-	defenders = (double)target.fighters;
-	if (!reload_player(session, error))
-		return false;
-	if (committed > (double)session->player.fighters) {
-		if (!yt_direct_attack_too_many_row(
-		    (double)session->player.fighters, line, sizeof(line),
-		    &line_length)) {
-			if (error != NULL) {
-				error->status = YT_RANGE;
-				(void)snprintf(error->operation,
-				    sizeof(error->operation), "%s",
-				    "direct Attack too-many row");
-			}
-			return false;
-		}
-		return session_02db(session, line, line_length,
-		    "direct Attack too-many row", error);
-	}
-	cached_reserve = (double)session->player.fighters - committed;
-	yt_direct_attack_fighter_overlay(&session->player,
-	    (float)cached_reserve);
-	if (!yt_database_write(&session->door->game.database,
-	    (size_t)session->player_record, &session->player.record, error))
-		return false;
-	if (!session_sound(session, 2.0f,
-	    "player attack opening sound", error))
-		return false;
-	if (!combat_attrition(session, committed, defenders,
-	    session->player.cloak, &attacker_loss, &defender_loss, error))
-		return false;
-	if (defender_loss > 0.0) {
-		uint8_t stored_name[YT_TEXT_FIELD_SIZE];
-		uint8_t radio_text[160];
-		size_t name_length;
-		size_t radio_length;
-
-		if (!yt_player_stored_name(&session->player, stored_name,
-		    &name_length, error)
-		    || !yt_direct_attack_radio_text(stored_name, name_length,
-		    (double)defender_loss, radio_text, sizeof(radio_text),
-		    &radio_length)
-		    || !radio_append_bytes(radio_text, radio_length, -2.0f,
-		    (float)target_record, error))
-			return false;
-	}
-	if (!reload_player(session, error))
-		return false;
-	cached_reserve = (double)session->player.fighters;
-	attacking = committed - attacker_loss;
-	defenders -= defender_loss;
-	yt_direct_attack_fighter_overlay(&session->player,
-	    (float)(cached_reserve + attacking));
-	if (!yt_database_write(&session->door->game.database,
-	    (size_t)session->player_record, &session->player.record, error)
-	    || !yt_game_read_player(&session->door->game, target_record,
-	    &target, error))
-		return false;
-	current_sector = session->player.sector;
-	yt_direct_attack_fighter_overlay(&target, (float)defenders);
-	if (!yt_database_write(&session->door->game.database,
-	    (size_t)target_record, &target.record, error))
-		return false;
-	if (!yt_direct_attack_result_rows(attacker_loss, cached_reserve,
-	    defender_loss, defenders, line, sizeof(line), &line_length,
-	    second_line, sizeof(second_line), &second_line_length)) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			(void)snprintf(error->operation, sizeof(error->operation),
-			    "%s", "direct Attack result rows");
-		}
-		return false;
-	}
-	if (!session_0317(session, line, line_length,
-	    "direct Attack attacker result", error)
-	    || !session_02fc(session, second_line, second_line_length))
-		return false;
-	if (defenders > 0.0 || attacking < 1.0)
-		return true;
-	{
-		static const uint8_t eliminated[] =
-		    "Fighters eliminated! Attacking the ship!";
-
-		if (!session_0317(session, eliminated,
-		    sizeof(eliminated) - 1U,
-		    "direct Attack eliminated row", error))
-			return false;
-	}
-	if (target.shields > 0.0f
-	    && !fighter_shield_spill(session, &attacking, &target.shields,
-	    error))
-		return false;
-	{
-		float remaining_shields = target.shields;
-
-		if (!yt_game_read_player(&session->door->game, target_record,
-		    &target, error))
-			return false;
-		yt_direct_attack_shield_overlay(&target, remaining_shields);
-		if (!yt_database_write(&session->door->game.database,
-		    (size_t)target_record, &target.record, error)
-		    || !reload_player(session, error))
-			return false;
-	}
-	yt_direct_attack_fighter_overlay(&session->player,
-	    (float)(cached_reserve + attacking));
-	if (!yt_database_write(&session->door->game.database,
-	    (size_t)session->player_record, &session->player.record, error))
-		return false;
-	if (target.shields > 0.0f)
-		return true;
-	{
-		static const struct yt_direct_fighter_kill_ops ops = {
-			direct_fighter_kill_sound,
-			direct_fighter_kill_read_player,
-			direct_fighter_kill_name_length,
-			direct_fighter_kill_death,
-			direct_fighter_kill_salvage,
-			direct_fighter_kill_read_sector,
-			direct_fighter_kill_write_sector,
-			direct_fighter_kill_present,
-			direct_fighter_kill_news,
-			direct_fighter_kill_mine,
-			direct_fighter_kill_fatal,
-		};
-		struct yt_direct_fighter_kill_state state = {
-			.target_shields = target.shields,
-			.target_record = target_record,
-			.current_player_record = session->player_record,
-			.current_sector = current_sector,
-		};
-
-		return yt_direct_fighter_kill_run(&state, &ops, session, error);
-	}
+	return yt_direct_attack_combat_run(&state, &ops, session, error);
 }
 
 static bool

@@ -2664,6 +2664,11 @@ not authoritative. Use the corrected goal above in the new workspace.
   Focused native attrition fixtures additionally pin the no-loop zero-draw
   edge, stored-threshold equality, SINGLE quantum, unclamped fractional-force
   overshoot, multi-iteration termination and accumulated RNG-failure residue.
+  The complete post-selection validation/combat spine now also delegates to a
+  provider-driven transaction. Its 19-event eliminated-target tape pins every
+  dependency failure prefix and durable-write boundary, stale reserve, raw
+  record preservation, exact rows/radio and kill arguments; independent tapes
+  cover too-many, casualty, positive-shield and spill-failure returns.
   The admitted black-hole witness also carries one live presentation state
   through the 111/145-byte plain/ANSI exhausted-A prefix, 377/527-byte child,
   zero-effect return and following friendly reentry, pinning the exact
