@@ -9001,6 +9001,93 @@ test_computer_port_report_presentation(void)
 }
 
 static void
+test_computer_port_report_short_cycles_presentation(void)
+{
+	static const uint8_t sector_prompt[] =
+	    "Enter sector number port is in -=> ";
+	static const uint8_t unavailable[] = "No information available.";
+	static const uint8_t computer_prompt[] =
+	    "Time:15:00  Computer command (?=help)? ";
+	static const uint8_t no_port[] =
+	    "\r\nEnter sector number port is in -=> 3\r\n"
+	    "\r\nNo information available.\n\r"
+	    "\r\nTime:15:00  Computer command (?=help)? ";
+	static const uint8_t blank[] =
+	    "\r\nEnter sector number port is in -=> \r\n"
+	    "\r\nTime:15:00  Computer command (?=help)? ";
+	static const struct {
+		bool unavailable;
+		float mode;
+		const uint8_t *expected;
+		size_t expected_length;
+	} cases[] = {
+		{true, 0.0f, no_port, sizeof(no_port) - 1U},
+		{false, 0.0f, blank, sizeof(blank) - 1U},
+		{true, 1.0f, NULL, 0U},
+		{false, 1.0f, NULL, 0U},
+		{true, 2.0f, (const uint8_t *)"\r\n\r\n\r\n\r\n", 8U},
+		{false, 2.0f, (const uint8_t *)"\r\n\r\n\r\n", 6U},
+	};
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		struct yt_present_state current = state(true);
+		struct yt_present_result result;
+		struct yt_pager_state pager;
+		struct pager_capture capture;
+		char accumulator[80];
+
+		current.sound.mode = cases[pass].mode;
+		current.foreground = 1.0f;
+		current.cached_foreground = 1.0f;
+		memset(&pager, 0, sizeof(pager));
+		pager.foreground = 1;
+		memset(&capture, 0, sizeof(capture));
+		memset(accumulator, 0, sizeof(accumulator));
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager.newline_flag = 1.0f;
+		pager_fixture_b05d(&pager, &current, sector_prompt,
+		    sizeof(sector_prompt) - 1U, &capture);
+		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+		if (cases[pass].unavailable) {
+			CHECK(yt_present_editor_echo((const uint8_t *)"3", 1U,
+			    (const uint8_t *)"3", 1U, &current, &result)
+			    == YT_PRESENT_OK);
+			pager_capture_result(&capture, &result);
+		}
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		if (cases[pass].unavailable) {
+			CHECK(yt_present_line(NULL, 0, &current, &result)
+			    == YT_PRESENT_OK);
+			pager_capture_result(&capture, &result);
+			pager_fixture_b05d(&pager, &current, unavailable,
+			    sizeof(unavailable) - 1U, &capture);
+		}
+		CHECK(yt_present_line(NULL, 0, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager.foreground = 1;
+		current.foreground = 1.0f;
+		pager.newline_flag = 1.0f;
+		pager_fixture_b05d(&pager, &current, computer_prompt,
+		    sizeof(computer_prompt) - 1U, &capture);
+		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+		CHECK(capture.remote_length == cases[pass].expected_length
+		    && (cases[pass].expected_length == 0U
+		    || memcmp(capture.remote, cases[pass].expected,
+		    cases[pass].expected_length) == 0)
+		    && pager.line_count == 0.0f
+		    && pager.newline_flag == 0.0f
+		    && accumulator[0] == '\0');
+	}
+	CHECK(sizeof(no_port) - 1U == 110U && sizeof(blank) - 1U == 80U);
+}
+
+static void
 test_computer_port_report_earth_cycle_presentation(void)
 {
 	static const uint8_t plain[] =
@@ -21156,6 +21243,7 @@ main(void)
 	test_computer_front_presentation();
 	test_computer_avoid_presentation();
 	test_computer_port_report_presentation();
+	test_computer_port_report_short_cycles_presentation();
 	test_computer_port_report_earth_cycle_presentation();
 	test_computer_port_report_ordinary_cycle_presentation();
 	test_computer_planet_report_front_presentation();
