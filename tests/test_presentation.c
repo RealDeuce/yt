@@ -9667,6 +9667,175 @@ test_computer_port_report_ordinary_cycle_presentation(void)
 }
 
 static void
+test_computer_port_report_low_time_cycle_presentation(void)
+{
+	static const uint8_t plain[] =
+	    "\r\n\r\n\aTime Left:5.9:00\r\n\r\n"
+	    "Enter sector number port is in -=> 2\r\n"
+	    "\r\nThis port is owned by: YOU, Credits: 1234.5\r\n"
+	    "\r\nCommerce report for Argus: 07-25-2026 12:34:56\n\r"
+	    "\r\n Items         Status      # units    in holds   Cost\n\r"
+	    "=======       =========   =========   ========   ====\n\r"
+	    "Ore..........  Buying          100        5.5 32    \r\n"
+	    "Organics.....  Selling         200          6 8    \r\n"
+	    "Equipment....  Buying          300       7.25 66    \r\n"
+	    "\r\n\r\n\aTime Left:5.9:00\r\n\r\n"
+	    "Time:5.9:00Computer command (?=help)? ";
+	static const uint8_t ansi[] =
+	    "\r\n\r\n\a\x1b[0;35;40;5;1mTime Left:5.9:00\r\n"
+	    "\x1b[0;35;40m\r\n"
+	    "Enter sector number port is in -=> 2\r\n"
+	    "\r\nThis port is owned by: YOU, Credits: 1234.5\r\n"
+	    "\r\nCommerce report for Argus: 07-25-2026 12:34:56\n\r"
+	    "\r\n Items         Status      # units    in holds   Cost\n\r"
+	    "\x1b[0;35;40;1m"
+	    "=======       =========   =========   ========   ====\n\r"
+	    "\x1b[0;33;40m"
+	    "Ore..........  Buying          100        5.5 32    \r\n"
+	    "\x1b[0;32;40m"
+	    "Organics.....  Selling         200          6 8    \r\n"
+	    "\x1b[0;33;40m"
+	    "Equipment....  Buying          300       7.25 66    \r\n"
+	    "\r\n\x1b[0;31;40m"
+	    "\r\n\a\x1b[0;35;40;5;1mTime Left:5.9:00\r\n"
+	    "\x1b[0;35;40m\r\n"
+	    "Time:5.9:00Computer command (?=help)? ";
+	static const uint8_t sector_prompt[] =
+	    "Enter sector number port is in -=> ";
+	static const uint8_t owner[] =
+	    "This port is owned by: YOU, Credits: 1234.5";
+	static const uint8_t title[] =
+	    "Commerce report for Argus: 07-25-2026 12:34:56";
+	static const uint8_t header[] =
+	    " Items         Status      # units    in holds   Cost";
+	static const uint8_t rule[] =
+	    "=======       =========   =========   ========   ====";
+	static const uint8_t item_prefix[3][23] = {
+		"Ore..........  Buying ",
+		"Organics.....  Selling",
+		"Equipment....  Buying ",
+	};
+	static const uint8_t capacity[3][13] = {
+		"         100", "         200", "         300",
+	};
+	static const uint8_t hold[3][12] = {
+		"        5.5", "          6", "       7.25",
+	};
+	static const uint8_t price[3][8] = {
+		" 32    ", " 8    ", " 66    ",
+	};
+	static const uint8_t computer_prompt[] =
+	    "Time:5.9:00Computer command (?=help)? ";
+	static const uint8_t time_text[] = "5.9:00";
+	static const struct {
+		bool ansi;
+		const uint8_t *expected;
+		size_t expected_length;
+	} cases[] = {
+		{false, plain, sizeof(plain) - 1U},
+		{true, ansi, sizeof(ansi) - 1U},
+	};
+	struct yt_present_state current;
+	struct yt_present_result result;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80];
+	float remembered;
+	bool warned;
+	size_t index;
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		current = state(cases[pass].ansi);
+		current.foreground = 1.0f;
+		current.cached_foreground = cases[pass].ansi ? 1.0f : 0.0f;
+		memset(&pager, 0, sizeof(pager));
+		pager.foreground = 1;
+		memset(&capture, 0, sizeof(capture));
+		memset(accumulator, 0, sizeof(accumulator));
+		remembered = 6.0f;
+		CHECK(yt_present_line(NULL, 0U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		current.foreground = 1.0f;
+		pager.foreground = 1;
+		CHECK(yt_present_low_time(time_text, sizeof(time_text) - 1U,
+		    &remembered, &current, &result, &warned) == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(warned && remembered == (float)5.9);
+		pager.newline_flag = 1.0f;
+		pager_fixture_b05d(&pager, &current, sector_prompt,
+		    sizeof(sector_prompt) - 1U, &capture);
+		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+		CHECK(yt_present_editor_echo((const uint8_t *)"2", 1U,
+		    (const uint8_t *)"2", 1U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(yt_present_line(NULL, 0U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager.line_count = 0.0f;
+		CHECK(yt_present_line(NULL, 0U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager_capture_line(&capture, &current, owner,
+		    sizeof(owner) - 1U);
+		CHECK(yt_present_line(NULL, 0U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager_fixture_b05d(&pager, &current, title,
+		    sizeof(title) - 1U, &capture);
+		CHECK(yt_present_line(NULL, 0U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		pager_fixture_b05d(&pager, &current, header,
+		    sizeof(header) - 1U, &capture);
+		current.bold = 1.0f;
+		pager_fixture_b05d(&pager, &current, rule,
+		    sizeof(rule) - 1U, &capture);
+		for (index = 0U; index < 3U; ++index) {
+			current.foreground = index == 1U ? 2.0f : 3.0f;
+			pager.foreground = index == 1U ? 2 : 3;
+			CHECK(yt_present_character(item_prefix[index], 22U,
+			    &current, &result) == YT_PRESENT_OK);
+			pager_capture_result(&capture, &result);
+			CHECK(yt_present_character(capacity[index], 12U,
+			    &current, &result) == YT_PRESENT_OK);
+			pager_capture_result(&capture, &result);
+			CHECK(yt_present_character(hold[index], 11U,
+			    &current, &result) == YT_PRESENT_OK);
+			pager_capture_result(&capture, &result);
+			pager_capture_line(&capture, &current, price[index],
+			    strlen((const char *)price[index]));
+		}
+		current.foreground = 3.0f;
+		pager.foreground = 3;
+		CHECK(yt_present_line(NULL, 0U, &current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		current.foreground = 1.0f;
+		pager.foreground = 1;
+		CHECK(yt_present_low_time(time_text, sizeof(time_text) - 1U,
+		    &remembered, &current, &result, &warned) == YT_PRESENT_OK);
+		pager_capture_result(&capture, &result);
+		CHECK(warned && remembered == (float)5.9);
+		pager.newline_flag = 1.0f;
+		pager_fixture_b05d(&pager, &current, computer_prompt,
+		    sizeof(computer_prompt) - 1U, &capture);
+		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+		CHECK(capture.remote_length == cases[pass].expected_length
+		    && memcmp(capture.remote, cases[pass].expected,
+		    cases[pass].expected_length) == 0
+		    && current.foreground == 5.0f
+		    && pager.foreground == 1
+		    && pager.line_count == 0.0f
+		    && pager.newline_flag == 0.0f
+		    && accumulator[0] == '\0');
+	}
+	CHECK(sizeof(plain) - 1U == 496U && sizeof(ansi) - 1U == 596U);
+}
+
+static void
 test_computer_planet_report_front_presentation(void)
 {
 	static const uint8_t prompt[] =
@@ -21569,6 +21738,7 @@ main(void)
 	test_computer_port_report_terminal_presentation();
 	test_computer_port_report_earth_cycle_presentation();
 	test_computer_port_report_ordinary_cycle_presentation();
+	test_computer_port_report_low_time_cycle_presentation();
 	test_computer_planet_report_front_presentation();
 	test_computer_planet_inventory_presentation();
 	test_owned_planets_transaction();
