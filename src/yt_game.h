@@ -1691,6 +1691,16 @@ void yt_team_password_overlay(struct yt_record *record,
     const uint8_t password[4]);
 bool yt_port_link_missing(float link);
 float yt_port_selected_expression(float port_offset, float logical_link);
+enum yt_computer_port_selection_route {
+	YT_COMPUTER_PORT_SELECTION_EMPTY,
+	YT_COMPUTER_PORT_SELECTION_INVALID,
+	YT_COMPUTER_PORT_SELECTION_ACCEPTED,
+};
+bool yt_computer_port_maximum(float port_offset, float sector_offset,
+	float *maximum, struct yt_error *error);
+bool yt_computer_port_select(const char *response, float maximum,
+	float *selected, enum yt_computer_port_selection_route *route,
+	struct yt_error *error);
 bool yt_port_name_display_row(const uint8_t *cached, size_t cached_length,
     uint8_t *row, size_t capacity, size_t *length);
 bool yt_port_name_prepare_candidate(const uint8_t *entered,

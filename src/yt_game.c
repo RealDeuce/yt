@@ -3866,6 +3866,63 @@ yt_port_selected_expression(float port_offset, float logical_link)
 }
 
 bool
+yt_computer_port_maximum(float port_offset, float sector_offset,
+    float *maximum, struct yt_error *error)
+{
+	uint8_t raw[4];
+	volatile float difference = port_offset - sector_offset;
+	enum qb_mbf_status status;
+
+	if (maximum == NULL)
+		return startup_configuration_error(error, YT_INVALID,
+		    "computer port maximum arguments");
+	status = qb_mbf32_encode(difference, raw);
+	if (status == QB_MBF_OVERFLOW)
+		return startup_configuration_error(error, YT_RANGE,
+		    "computer port maximum subtraction");
+	*maximum = status == QB_MBF_UNDERFLOW ? 0.0f : qb_mbf32_decode(raw);
+	return true;
+}
+
+bool
+yt_computer_port_select(const char *response, float maximum,
+    float *selected, enum yt_computer_port_selection_route *route,
+    struct yt_error *error)
+{
+	struct qb_val_result parsed;
+	uint8_t raw[4];
+	volatile float candidate;
+	bool above;
+	bool below;
+	enum qb_mbf_status status;
+
+	if (response == NULL || selected == NULL || route == NULL)
+		return startup_configuration_error(error, YT_INVALID,
+		    "computer port selection arguments");
+	*selected = 0.0f;
+	if (response[0] == '\0') {
+		*route = YT_COMPUTER_PORT_SELECTION_EMPTY;
+		return true;
+	}
+	parsed = qb_val(response);
+	if (parsed.overflow)
+		return startup_configuration_error(error, YT_RANGE,
+		    "computer port sector VAL");
+	candidate = (float)qb_int(parsed.valid ? parsed.value : 0.0);
+	status = qb_mbf32_encode(candidate, raw);
+	if (status == QB_MBF_OVERFLOW)
+		return startup_configuration_error(error, YT_RANGE,
+		    "computer port sector CSNG");
+	*selected = status == QB_MBF_UNDERFLOW ? 0.0f
+	    : qb_mbf32_decode(raw);
+	above = *selected > maximum;
+	below = *selected < 1.0f;
+	*route = (above | below) ? YT_COMPUTER_PORT_SELECTION_INVALID
+	    : YT_COMPUTER_PORT_SELECTION_ACCEPTED;
+	return true;
+}
+
+bool
 yt_port_name_display_row(const uint8_t *cached, size_t cached_length,
     uint8_t *row, size_t capacity, size_t *length)
 {

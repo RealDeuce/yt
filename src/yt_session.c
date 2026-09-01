@@ -15620,8 +15620,7 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 {
 	static const uint8_t prompt[] = "Enter sector number port is in -=> ";
 	static const uint8_t unavailable[] = "No information available.";
-	float maximum = single_sub(session->door->game.config.port_offset,
-	    session->door->game.config.sector_offset);
+	float maximum;
 	float cached_team = session->player.team;
 	char response[80];
 	float selected;
@@ -15632,8 +15631,11 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 
 	if (enter_sector != NULL)
 		*enter_sector = false;
+	if (!yt_computer_port_maximum(session->door->game.config.port_offset,
+	    session->door->game.config.sector_offset, &maximum, error))
+		return false;
 	for (;;) {
-		struct qb_val_result parsed;
+		enum yt_computer_port_selection_route route;
 
 		if (!session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "computer port sector blank", error)
@@ -15641,20 +15643,12 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 		    "computer port sector prompt", error)
 		    || !session_0345(session, response, sizeof(response)))
 			return false;
-		if (response[0] == '\0')
-			return true;
-		parsed = qb_val(response);
-		if (parsed.overflow) {
-			if (error != NULL) {
-				error->status = YT_RANGE;
-				(void)snprintf(error->operation,
-				    sizeof(error->operation), "%s",
-				    "computer port sector VAL");
-			}
+		if (!yt_computer_port_select(response, maximum, &selected,
+		    &route, error))
 			return false;
-		}
-		selected = parsed.valid ? (float)qb_int(parsed.value) : 0.0f;
-		if (selected <= maximum && selected >= 1.0f)
+		if (route == YT_COMPUTER_PORT_SELECTION_EMPTY)
+			return true;
+		if (route == YT_COMPUTER_PORT_SELECTION_ACCEPTED)
 			break;
 		{
 			char number[64];

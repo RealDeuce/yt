@@ -23286,6 +23286,59 @@ check_port_docking_transaction(void)
 	    && tape.events[tape.event_count - 1U] == PORT_DOCKING_GATE;
 }
 
+static bool
+check_computer_port_selection(void)
+{
+	static const struct {
+		const char *response;
+		enum yt_computer_port_selection_route route;
+		float selected;
+	} cases[] = {
+		{"", YT_COMPUTER_PORT_SELECTION_EMPTY, 0.0f},
+		{"2e0", YT_COMPUTER_PORT_SELECTION_ACCEPTED, 2.0f},
+		{"2.9", YT_COMPUTER_PORT_SELECTION_ACCEPTED, 2.0f},
+		{"-0.1", YT_COMPUTER_PORT_SELECTION_INVALID, -1.0f},
+		{"E", YT_COMPUTER_PORT_SELECTION_INVALID, 0.0f},
+		{"2005", YT_COMPUTER_PORT_SELECTION_INVALID, 2005.0f},
+	};
+	struct yt_error error;
+	enum yt_computer_port_selection_route route;
+	float maximum;
+	float selected;
+	float largest = qb_mbf32_decode(
+	    (const uint8_t[]){0xff, 0xff, 0x7f, 0xff});
+	size_t index;
+
+	if (!yt_computer_port_maximum(2055.0f, 51.0f, &maximum, NULL)
+	    || maximum != 2004.0f)
+		return false;
+	for (index = 0U; index < YT_ARRAY_LEN(cases); ++index) {
+		if (!yt_computer_port_select(cases[index].response, maximum,
+		    &selected, &route, NULL)
+		    || route != cases[index].route
+		    || selected != cases[index].selected)
+			return false;
+	}
+	yt_error_clear(&error);
+	if (yt_computer_port_select("1.7014118E+38", maximum, &selected, &route,
+	    &error) || error.status != YT_RANGE
+	    || strcmp(error.operation, "computer port sector CSNG") != 0)
+		return false;
+	yt_error_clear(&error);
+	if (yt_computer_port_select("1E+9999", maximum, &selected, &route,
+	    &error) || error.status != YT_RANGE
+	    || strcmp(error.operation, "computer port sector VAL") != 0)
+		return false;
+	yt_error_clear(&error);
+	if (yt_computer_port_maximum(largest, -largest, &maximum, &error)
+	    || error.status != YT_RANGE
+	    || strcmp(error.operation,
+	    "computer port maximum subtraction") != 0)
+		return false;
+	return !yt_computer_port_maximum(1.0f, 1.0f, NULL, &error)
+	    && error.status == YT_INVALID;
+}
+
 enum port_update_event {
 	PORT_UPDATE_READ_SECTOR = 1,
 	PORT_UPDATE_DAY,
@@ -27258,6 +27311,8 @@ main(void)
 		return fail("ordinary-commerce controller transaction differs");
 	if (!check_port_docking_transaction())
 		return fail("port-docking front transaction differs");
+	if (!check_computer_port_selection())
+		return fail("computer port selection differs");
 	if (!check_treasury_transaction())
 		return fail("owned-port treasury transaction differs");
 	if (!check_movement_transaction())
