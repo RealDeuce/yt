@@ -5067,6 +5067,117 @@ test_action_finalizer_presentation(void)
 	CHECK(pager.line_count == 2.0f && current.foreground == 3.0f);
 }
 
+struct commodity_trade_join {
+	struct yt_present_state current;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	char accumulator[80];
+};
+
+static void
+commodity_trade_join_init(struct commodity_trade_join *join)
+{
+	join->current = state(true);
+	join->current.foreground = 6.0f;
+	join->current.cached_foreground = 6.0f;
+	join->current.cached_background = 0.0f;
+	memset(&join->pager, 0, sizeof(join->pager));
+	join->pager.foreground = 6;
+	memset(&join->capture, 0, sizeof(join->capture));
+	memset(join->accumulator, 0, sizeof(join->accumulator));
+}
+
+static void
+commodity_trade_join_line(struct commodity_trade_join *join)
+{
+	struct yt_present_result result;
+
+	CHECK(yt_present_line(NULL, 0, &join->current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&join->capture, &result);
+}
+
+static void
+commodity_trade_join_b05d(struct commodity_trade_join *join,
+    const uint8_t *text, size_t length, bool prompt)
+{
+	join->pager.newline_flag = prompt ? 1.0f : 0.0f;
+	pager_fixture_b05d(&join->pager, &join->current, text, length,
+	    &join->capture);
+}
+
+static void
+commodity_trade_join_0317(struct commodity_trade_join *join,
+    const uint8_t *text, size_t length)
+{
+	commodity_trade_join_line(join);
+	commodity_trade_join_b05d(join, text, length, false);
+}
+
+static void
+commodity_trade_join_02db(struct commodity_trade_join *join,
+    const uint8_t *text, size_t length)
+{
+	commodity_trade_join_line(join);
+	join->current.bold = 1.0f;
+	join->current.blink = 1.0f;
+	commodity_trade_join_b05d(join, text, length, false);
+}
+
+static void
+commodity_trade_join_input(struct commodity_trade_join *join,
+    const uint8_t *response, size_t length)
+{
+	struct yt_present_result result;
+
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	CHECK(yt_present_editor_echo(response, length, response, length,
+	    &join->current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&join->capture, &result);
+	commodity_trade_join_line(join);
+}
+
+static void
+commodity_trade_join_front(struct commodity_trade_join *join,
+    const uint8_t *player_status, size_t player_status_length,
+    const uint8_t *market_status, size_t market_status_length,
+    const uint8_t *prompt, size_t prompt_length,
+    const uint8_t *response, size_t response_length)
+{
+	commodity_trade_join_0317(join, player_status, player_status_length);
+	commodity_trade_join_0317(join, market_status, market_status_length);
+	commodity_trade_join_b05d(join, prompt, prompt_length, true);
+	commodity_trade_join_input(join, response, response_length);
+}
+
+static void
+commodity_trade_join_accepted_tail(struct commodity_trade_join *join,
+    const uint8_t *agreed, size_t agreed_length, const uint8_t *offer,
+    size_t offer_length, const uint8_t *success, size_t success_length)
+{
+	static const uint8_t confirmation[] = "Do you agree? [Y/n] ";
+	struct yt_present_result result;
+
+	commodity_trade_join_b05d(join, agreed, agreed_length, false);
+	commodity_trade_join_0317(join, offer, offer_length);
+	CHECK(yt_present_character(confirmation, sizeof(confirmation) - 1U,
+	    &join->current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&join->capture, &result);
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	commodity_trade_join_line(join);
+	commodity_trade_join_b05d(join, success, success_length, false);
+}
+
+static void
+commodity_trade_join_check(const struct commodity_trade_join *join,
+    const uint8_t *expected, size_t expected_length)
+{
+	CHECK(join->capture.remote_length == expected_length
+	    && memcmp(join->capture.remote, expected, expected_length) == 0);
+}
+
 static void
 test_commodity_trade_presentation(void)
 {
@@ -5079,7 +5190,6 @@ test_commodity_trade_presentation(void)
 	static const uint8_t three[] = "3";
 	static const uint8_t agreed[] = "Agreed, 3 units.";
 	static const uint8_t offer[] = "We'll sell them for 60 credits.";
-	static const uint8_t confirmation[] = "Do you agree? [Y/n] ";
 	static const uint8_t success[] = "It's Yours!";
 	static const uint8_t expected[] =
 	    "\r\nYou have 12345 credits and 65 empty cargo holds.\n\r"
@@ -5089,50 +5199,182 @@ test_commodity_trade_presentation(void)
 	    "\r\nWe'll sell them for 60 credits.\n\r"
 	    "Do you agree? [Y/n] \r\n"
 	    "It's Yours!\n\r";
-	struct yt_present_state current = state(false);
-	struct yt_present_result result;
-	struct yt_pager_state pager;
-	struct pager_capture capture;
-	char accumulator[80] = "";
+	struct commodity_trade_join join;
 
-	current.foreground = 6.0f;
-	memset(&pager, 0, sizeof(pager));
-	pager.foreground = 6;
-	memset(&capture, 0, sizeof(capture));
-	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
-	pager_capture_result(&capture, &result);
-	pager_fixture_b05d(&pager, &current, player_status,
-	    sizeof(player_status) - 1U, &capture);
-	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
-	pager_capture_result(&capture, &result);
-	pager_fixture_b05d(&pager, &current, market_status,
-	    sizeof(market_status) - 1U, &capture);
-	pager.newline_flag = 1.0f;
-	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
-	    &capture);
-	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
-	CHECK(yt_present_editor_echo(three, sizeof(three) - 1U, three,
-	    sizeof(three) - 1U, &current, &result) == YT_PRESENT_OK);
-	pager_capture_result(&capture, &result);
-	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
-	pager_capture_result(&capture, &result);
-	pager_fixture_b05d(&pager, &current, agreed, sizeof(agreed) - 1U,
-	    &capture);
-	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
-	pager_capture_result(&capture, &result);
-	pager_fixture_b05d(&pager, &current, offer, sizeof(offer) - 1U,
-	    &capture);
-	CHECK(yt_present_character(confirmation, sizeof(confirmation) - 1U,
-	    &current, &result) == YT_PRESENT_OK);
-	pager_capture_result(&capture, &result);
-	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
-	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
-	pager_capture_result(&capture, &result);
-	pager_fixture_b05d(&pager, &current, success,
-	    sizeof(success) - 1U, &capture);
-	CHECK(capture.remote_length == sizeof(expected) - 1U
-	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
-	CHECK(capture.remote_length == 249U && pager.line_count == 1.0f);
+	commodity_trade_join_init(&join);
+	commodity_trade_join_front(&join, player_status,
+	    sizeof(player_status) - 1U, market_status,
+	    sizeof(market_status) - 1U, prompt, sizeof(prompt) - 1U,
+	    three, sizeof(three) - 1U);
+	commodity_trade_join_accepted_tail(&join, agreed, sizeof(agreed) - 1U,
+	    offer, sizeof(offer) - 1U, success, sizeof(success) - 1U);
+	CHECK(join.capture.remote_length == sizeof(expected) - 1U
+	    && memcmp(join.capture.remote, expected,
+	    sizeof(expected) - 1U) == 0);
+	CHECK(join.capture.remote_length == 249U
+	    && join.pager.line_count == 1.0f);
+}
+
+static void
+test_commodity_trade_branch_presentation(void)
+{
+	static const uint8_t status[] =
+	    "You have 12345 credits and 65 empty cargo holds.";
+	static const uint8_t selling[] =
+	    "We are selling up to 100.  You have 10 in your holds.";
+	static const uint8_t buying[] =
+	    "We are buying up to 80.  You have 20 in your holds.";
+	static const uint8_t ore_prompt[] =
+	    "How many holds of Ore do you want to buy [ 65 ]? ";
+	static const uint8_t organics_prompt[] =
+	    "How many holds of Organics do you want to sell [ 20 ]? ";
+	static const uint8_t cancel[] =
+	    "\r\nYou have 12345 credits and 65 empty cargo holds.\n\r"
+	    "\r\nWe are selling up to 100.  You have 10 in your holds.\n\r"
+	    "How many holds of Ore do you want to buy [ 65 ]? NO\r\n";
+	static const uint8_t negative_cancel[] =
+	    "\r\nYou have 12345 credits and 65 empty cargo holds.\n\r"
+	    "\r\nWe are selling up to 100.  You have 10 in your holds.\n\r"
+	    "How many holds of Ore do you want to buy [ 65 ]? -.1\r\n";
+	static const uint8_t selling_capacity[] =
+	    "\r\nYou have 12345 credits and 65 empty cargo holds.\n\r"
+	    "\r\nWe are selling up to 100.  You have 10 in your holds.\n\r"
+	    "How many holds of Ore do you want to buy [ 65 ]? 101\r\n"
+	    "\r\n\x1b[0;36;40;5;1mWe don't have that much!\n\r";
+	static const uint8_t buying_capacity[] =
+	    "\r\nYou have 12345 credits and 65 empty cargo holds.\n\r"
+	    "\r\nWe are buying up to 80.  You have 20 in your holds.\n\r"
+	    "How many holds of Organics do you want to sell [ 20 ]? 81\r\n"
+	    "\r\n\x1b[0;36;40;5;1mWe don't need that much!\n\r";
+	static const uint8_t selling_maximum[] =
+	    "\r\nYou have 100 credits and 65 empty cargo holds.\n\r"
+	    "\r\nWe are selling up to 100.  You have 10 in your holds.\n\r"
+	    "How many holds of Ore do you want to buy [ 5 ]? 6\r\n"
+	    "\r\n\x1b[0;36;40;5;1mYou can't afford that much!\n\r";
+	static const uint8_t buying_maximum[] =
+	    "\r\nYou have 12345 credits and 65 empty cargo holds.\n\r"
+	    "\r\nWe are buying up to 80.  You have 20 in your holds.\n\r"
+	    "How many holds of Organics do you want to sell [ 20 ]? 21\r\n"
+	    "\r\n\x1b[0;36;40;5;1mYou don't have that much!\n\r";
+	static const uint8_t free_retry[] =
+	    "\r\nYou have-100 credits and 65 empty cargo holds.\n\r"
+	    "\r\nWe are selling up to 100.  You have 10 in your holds.\n\r"
+	    "How many holds of Ore do you want to buy [ 100 ]? 66\r\n"
+	    "\r\n\x1b[0;36;40;5;1mYou don't have enough cargo holds.\n\r"
+	    "\x1b[0;36;40m\r\n"
+	    "How many holds of Ore do you want to buy [ 100 ]? 2\r\n"
+	    "Agreed, 2 units.\n\r"
+	    "\r\nWe'll sell them for-2 credits.\n\r"
+	    "Do you agree? [Y/n] \r\n"
+	    "It's Yours!\n\r";
+	static const uint8_t buying_accepted[] =
+	    "\r\nYou have 12345 credits and 65 empty cargo holds.\n\r"
+	    "\r\nWe are buying up to 80.  You have 20 in your holds.\n\r"
+	    "How many holds of Organics do you want to sell [ 20 ]? \r\n"
+	    "Agreed, 20 units.\n\r"
+	    "\r\nWe'll buy them for 600 credits.\n\r"
+	    "Do you agree? [Y/n] \r\n"
+	    "We'll take them!\n\r";
+	static const uint8_t status_100[] =
+	    "You have 100 credits and 65 empty cargo holds.";
+	static const uint8_t status_negative[] =
+	    "You have-100 credits and 65 empty cargo holds.";
+	static const uint8_t prompt_5[] =
+	    "How many holds of Ore do you want to buy [ 5 ]? ";
+	static const uint8_t prompt_100[] =
+	    "How many holds of Ore do you want to buy [ 100 ]? ";
+	static const uint8_t capacity_sell_error[] =
+	    "We don't have that much!";
+	static const uint8_t capacity_buy_error[] =
+	    "We don't need that much!";
+	static const uint8_t maximum_sell_error[] =
+	    "You can't afford that much!";
+	static const uint8_t maximum_buy_error[] =
+	    "You don't have that much!";
+	static const uint8_t free_error[] =
+	    "You don't have enough cargo holds.";
+	static const uint8_t agreed_2[] = "Agreed, 2 units.";
+	static const uint8_t offer_negative[] =
+	    "We'll sell them for-2 credits.";
+	static const uint8_t agreed_20[] = "Agreed, 20 units.";
+	static const uint8_t offer_600[] =
+	    "We'll buy them for 600 credits.";
+	static const uint8_t take_them[] = "We'll take them!";
+	struct commodity_trade_join join;
+
+	commodity_trade_join_init(&join);
+	commodity_trade_join_front(&join, status, sizeof(status) - 1U,
+	    selling, sizeof(selling) - 1U, ore_prompt,
+	    sizeof(ore_prompt) - 1U, (const uint8_t *)"NO", 2U);
+	commodity_trade_join_check(&join, cancel, sizeof(cancel) - 1U);
+
+	commodity_trade_join_init(&join);
+	commodity_trade_join_front(&join, status, sizeof(status) - 1U,
+	    selling, sizeof(selling) - 1U, ore_prompt,
+	    sizeof(ore_prompt) - 1U, (const uint8_t *)"-.1", 3U);
+	commodity_trade_join_check(&join, negative_cancel,
+	    sizeof(negative_cancel) - 1U);
+
+	commodity_trade_join_init(&join);
+	commodity_trade_join_front(&join, status, sizeof(status) - 1U,
+	    selling, sizeof(selling) - 1U, ore_prompt,
+	    sizeof(ore_prompt) - 1U, (const uint8_t *)"101", 3U);
+	commodity_trade_join_02db(&join, capacity_sell_error,
+	    sizeof(capacity_sell_error) - 1U);
+	commodity_trade_join_check(&join, selling_capacity,
+	    sizeof(selling_capacity) - 1U);
+
+	commodity_trade_join_init(&join);
+	commodity_trade_join_front(&join, status, sizeof(status) - 1U,
+	    buying, sizeof(buying) - 1U, organics_prompt,
+	    sizeof(organics_prompt) - 1U, (const uint8_t *)"81", 2U);
+	commodity_trade_join_02db(&join, capacity_buy_error,
+	    sizeof(capacity_buy_error) - 1U);
+	commodity_trade_join_check(&join, buying_capacity,
+	    sizeof(buying_capacity) - 1U);
+
+	commodity_trade_join_init(&join);
+	commodity_trade_join_front(&join, status_100,
+	    sizeof(status_100) - 1U, selling, sizeof(selling) - 1U,
+	    prompt_5, sizeof(prompt_5) - 1U, (const uint8_t *)"6", 1U);
+	commodity_trade_join_02db(&join, maximum_sell_error,
+	    sizeof(maximum_sell_error) - 1U);
+	commodity_trade_join_check(&join, selling_maximum,
+	    sizeof(selling_maximum) - 1U);
+
+	commodity_trade_join_init(&join);
+	commodity_trade_join_front(&join, status, sizeof(status) - 1U,
+	    buying, sizeof(buying) - 1U, organics_prompt,
+	    sizeof(organics_prompt) - 1U, (const uint8_t *)"21", 2U);
+	commodity_trade_join_02db(&join, maximum_buy_error,
+	    sizeof(maximum_buy_error) - 1U);
+	commodity_trade_join_check(&join, buying_maximum,
+	    sizeof(buying_maximum) - 1U);
+
+	commodity_trade_join_init(&join);
+	commodity_trade_join_front(&join, status_negative,
+	    sizeof(status_negative) - 1U, selling, sizeof(selling) - 1U,
+	    prompt_100, sizeof(prompt_100) - 1U, (const uint8_t *)"66", 2U);
+	commodity_trade_join_02db(&join, free_error,
+	    sizeof(free_error) - 1U);
+	commodity_trade_join_line(&join);
+	commodity_trade_join_b05d(&join, prompt_100,
+	    sizeof(prompt_100) - 1U, true);
+	commodity_trade_join_input(&join, (const uint8_t *)"2", 1U);
+	commodity_trade_join_accepted_tail(&join, agreed_2,
+	    sizeof(agreed_2) - 1U, offer_negative,
+	    sizeof(offer_negative) - 1U, (const uint8_t *)"It's Yours!", 11U);
+	commodity_trade_join_check(&join, free_retry, sizeof(free_retry) - 1U);
+
+	commodity_trade_join_init(&join);
+	commodity_trade_join_front(&join, status, sizeof(status) - 1U,
+	    buying, sizeof(buying) - 1U, organics_prompt,
+	    sizeof(organics_prompt) - 1U, NULL, 0U);
+	commodity_trade_join_accepted_tail(&join, agreed_20,
+	    sizeof(agreed_20) - 1U, offer_600, sizeof(offer_600) - 1U,
+	    take_them, sizeof(take_them) - 1U);
+	commodity_trade_join_check(&join, buying_accepted,
+	    sizeof(buying_accepted) - 1U);
 }
 
 static void
@@ -19508,6 +19750,7 @@ main(void)
 	test_port_docking_controller_presentation();
 	test_action_finalizer_presentation();
 	test_commodity_trade_presentation();
+	test_commodity_trade_branch_presentation();
 	test_computer_return_prompt_presentation();
 	test_computer_quit_cancel_presentation();
 	test_main_quit_cancel_presentation();
