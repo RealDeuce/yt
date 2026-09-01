@@ -11697,43 +11697,111 @@ port_rename(struct yt_session *session, int logical_port,
 }
 
 static bool
+port_rename_hydrate(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	if (player_record != session->player_record
+	    || !reload_player(session, error))
+		return false;
+	*player = session->player;
+	return true;
+}
+
+static bool
+port_rename_read_sector(void *context, int sector_number,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_read_sector(&session->door->game, sector_number, sector,
+	    error);
+}
+
+static bool
+port_rename_read_port(void *context, int logical_port,
+    struct yt_port *port, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_game_read_port(&session->door->game, logical_port, port,
+	    error);
+}
+
+static bool
+port_rename_present(void *context, const uint8_t *text, size_t length,
+    enum yt_port_rename_output_kind kind, struct yt_error *error)
+{
+	const char *operation;
+
+	switch (kind) {
+	case YT_PORT_RENAME_NO_PORT:
+		operation = "rename no-port row";
+		break;
+	case YT_PORT_RENAME_NOT_OWNER:
+		operation = "rename ownership row";
+		break;
+	case YT_PORT_RENAME_EARTH:
+		operation = "rename Earth row";
+		break;
+	default:
+		return false;
+	}
+	return session_02db(context, text, length, operation, error);
+}
+
+static bool
+port_rename_edit(void *context, int logical_port, const uint8_t *cached,
+    size_t cached_length, struct yt_port *port, struct yt_error *error)
+{
+	return port_rename(context, logical_port, cached, cached_length, port,
+	    error);
+}
+
+static bool
 command_rename_port(struct yt_session *session, struct yt_error *error)
 {
-	static const uint8_t no_port[] = "No port here!";
-	static const uint8_t not_owner[] = "This isn't your port!";
-	static const uint8_t earth[] = "Can't rename Earth!";
-	struct yt_sector sector;
-	struct yt_port port;
-	uint8_t cached[YT_TEXT_FIELD_SIZE];
-	int logical_port;
-	float relative_port;
-	size_t cached_length;
+	static const struct yt_port_rename_ops ops = {
+		port_rename_hydrate,
+		port_rename_read_sector,
+		port_rename_read_port,
+		port_rename_present,
+		port_rename_edit,
+	};
+	struct yt_port_rename_state state = {
+		.current_player_record = (float)session->player_record,
+		.port_offset = session->door->game.config.port_offset,
+		.conversion_mode =
+		    session->presentation.sound.conversion_mode,
+	};
 
-	if (!reload_player(session, error)
-	    || !yt_game_read_sector(&session->door->game,
-	    (int)session->player.sector, &sector, error))
-		return false;
-	if (!qb_mbf32_truth(sector.record.bytes + YT_F65))
-		return session_02db(session, no_port, sizeof(no_port) - 1U,
-		    "rename no-port row", error);
-	if (!yt_port_rename_record(session->door->game.config.port_offset,
-	    sector.port, &logical_port, &relative_port))
-		return port_report_failure(error, "rename port record conversion");
-	if (!yt_game_read_port(&session->door->game, logical_port, &port,
-	    error))
-		return false;
-	if (port.owner != (float)session->player_record)
-		return session_02db(session, not_owner,
-		    sizeof(not_owner) - 1U, "rename ownership row", error);
-	if (relative_port == 1.0f)
-		return session_02db(session, earth, sizeof(earth) - 1U,
-		    "rename Earth row", error);
-	if (!port_report_length(session, port.name_length,
-	    YT_TEXT_FIELD_SIZE, &cached_length, "port name length", error))
-		return false;
-	memcpy(cached, port.record.bytes, cached_length);
-	return port_rename(session, logical_port, cached, cached_length, &port,
-	    error);
+	return yt_port_rename_run(&state, &ops, session, error);
+}
+
+static bool
+port_rename_cycle_rename(void *context, struct yt_error *error)
+{
+	return command_rename_port(context, error);
+}
+
+static bool
+port_rename_cycle_scanner(void *context, struct yt_error *error)
+{
+	return display_current_sector_cached(context, error);
+}
+
+static bool
+command_rename_port_cycle(struct yt_session *session,
+    struct yt_error *error)
+{
+	static const struct yt_port_rename_cycle_ops ops = {
+		port_rename_cycle_rename,
+		port_rename_cycle_scanner,
+	};
+	struct yt_port_rename_cycle_state state;
+
+	return yt_port_rename_cycle_run(&state, &ops, session, error);
 }
 
 static bool
@@ -17158,9 +17226,7 @@ command_shell(struct yt_session *session, struct yt_error *error)
 				return false;
 			break;
 		case YT_MAIN_SHELL_RENAME_PORT:
-			if (!command_rename_port(session, error))
-				return false;
-			if (!display_current_sector_cached(session, error))
+			if (!command_rename_port_cycle(session, error))
 				return false;
 			break;
 		}

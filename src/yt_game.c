@@ -4037,6 +4037,116 @@ yt_port_rename_record(float port_offset, float sector_link,
 	return true;
 }
 
+bool
+yt_port_rename_run(struct yt_port_rename_state *state,
+    const struct yt_port_rename_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t no_port[] = "No port here!";
+	static const uint8_t not_owner[] = "This isn't your port!";
+	static const uint8_t earth[] = "Can't rename Earth!";
+	bool conversion_overflow;
+	int32_t converted_length;
+
+	if (state == NULL || ops == NULL || ops->hydrate == NULL
+	    || ops->read_sector == NULL || ops->read_port == NULL
+	    || ops->present == NULL || ops->edit == NULL)
+		return false;
+	memset(&state->player, 0, sizeof(state->player));
+	memset(&state->sector, 0, sizeof(state->sector));
+	memset(&state->port, 0, sizeof(state->port));
+	state->hydration_record = (int)qb_brun_random_record_number(
+	    state->current_player_record);
+	state->logical_port = 0;
+	state->relative_port = 0.0f;
+	state->cached_name_length = 0U;
+	state->player_hydrated = false;
+	state->sector_read = false;
+	state->port_read = false;
+	state->editor_called = false;
+	state->complete = false;
+	state->route = YT_PORT_RENAME_INCOMPLETE;
+
+	if (!ops->hydrate(context, state->hydration_record, &state->player,
+	    error))
+		return false;
+	state->player_hydrated = true;
+	if (!ops->read_sector(context, (int)state->player.sector,
+	    &state->sector, error))
+		return false;
+	state->sector_read = true;
+	if (!qb_mbf32_truth(state->sector.record.bytes + YT_F65)) {
+		if (!ops->present(context, no_port, sizeof(no_port) - 1U,
+		    YT_PORT_RENAME_NO_PORT, error))
+			return false;
+		state->route = YT_PORT_RENAME_NO_PORT_ROUTE;
+		state->complete = true;
+		return true;
+	}
+	if (!yt_port_rename_record(state->port_offset, state->sector.port,
+	    &state->logical_port, &state->relative_port))
+		return startup_configuration_error(error, YT_RANGE,
+		    "rename port record conversion");
+	if (!ops->read_port(context, state->logical_port, &state->port, error))
+		return false;
+	state->port_read = true;
+	if (state->port.owner != state->current_player_record) {
+		if (!ops->present(context, not_owner, sizeof(not_owner) - 1U,
+		    YT_PORT_RENAME_NOT_OWNER, error))
+			return false;
+		state->route = YT_PORT_RENAME_NOT_OWNER_ROUTE;
+		state->complete = true;
+		return true;
+	}
+	if (state->relative_port == 1.0f) {
+		if (!ops->present(context, earth, sizeof(earth) - 1U,
+		    YT_PORT_RENAME_EARTH, error))
+			return false;
+		state->route = YT_PORT_RENAME_EARTH_ROUTE;
+		state->complete = true;
+		return true;
+	}
+	conversion_overflow = false;
+	converted_length = qb_cint_mode((double)state->port.name_length,
+	    state->conversion_mode, &conversion_overflow);
+	if (conversion_overflow || converted_length < 0)
+		return startup_configuration_error(error, YT_RANGE,
+		    "port name length");
+	state->cached_name_length = (size_t)converted_length;
+	if (state->cached_name_length > YT_TEXT_FIELD_SIZE)
+		state->cached_name_length = YT_TEXT_FIELD_SIZE;
+	memcpy(state->cached_name, state->port.record.bytes,
+	    state->cached_name_length);
+	state->editor_called = true;
+	if (!ops->edit(context, state->logical_port, state->cached_name,
+	    state->cached_name_length, &state->port, error))
+		return false;
+	state->route = YT_PORT_RENAME_EDITED_ROUTE;
+	state->complete = true;
+	return true;
+}
+
+bool
+yt_port_rename_cycle_run(struct yt_port_rename_cycle_state *state,
+    const struct yt_port_rename_cycle_ops *ops, void *context,
+    struct yt_error *error)
+{
+	if (state == NULL || ops == NULL || ops->rename == NULL
+	    || ops->scanner == NULL)
+		return false;
+	state->rename_complete = false;
+	state->scanner_complete = false;
+	state->complete = false;
+	if (!ops->rename(context, error))
+		return false;
+	state->rename_complete = true;
+	if (!ops->scanner(context, error))
+		return false;
+	state->scanner_complete = true;
+	state->complete = true;
+	return true;
+}
+
 double
 yt_port_purchase_price(const float production[3])
 {

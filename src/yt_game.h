@@ -1705,6 +1705,65 @@ bool yt_port_name_editor_run(struct yt_port_name_editor_state *state,
     struct yt_error *error);
 bool yt_port_rename_record(float port_offset, float sector_link,
     int *logical_port, float *relative_port);
+enum yt_port_rename_output_kind {
+	YT_PORT_RENAME_NO_PORT,
+	YT_PORT_RENAME_NOT_OWNER,
+	YT_PORT_RENAME_EARTH,
+};
+enum yt_port_rename_route {
+	YT_PORT_RENAME_INCOMPLETE,
+	YT_PORT_RENAME_NO_PORT_ROUTE,
+	YT_PORT_RENAME_NOT_OWNER_ROUTE,
+	YT_PORT_RENAME_EARTH_ROUTE,
+	YT_PORT_RENAME_EDITED_ROUTE,
+};
+struct yt_port_rename_state {
+	float current_player_record;
+	float port_offset;
+	uint8_t conversion_mode;
+	int hydration_record;
+	struct yt_player player;
+	struct yt_sector sector;
+	struct yt_port port;
+	int logical_port;
+	float relative_port;
+	uint8_t cached_name[YT_TEXT_FIELD_SIZE];
+	size_t cached_name_length;
+	bool player_hydrated;
+	bool sector_read;
+	bool port_read;
+	bool editor_called;
+	bool complete;
+	enum yt_port_rename_route route;
+};
+struct yt_port_rename_ops {
+	bool (*hydrate)(void *context, int player_record,
+	    struct yt_player *player, struct yt_error *error);
+	bool (*read_sector)(void *context, int sector_number,
+	    struct yt_sector *sector, struct yt_error *error);
+	bool (*read_port)(void *context, int logical_port,
+	    struct yt_port *port, struct yt_error *error);
+	bool (*present)(void *context, const uint8_t *text, size_t length,
+	    enum yt_port_rename_output_kind kind, struct yt_error *error);
+	bool (*edit)(void *context, int logical_port,
+	    const uint8_t *cached, size_t cached_length,
+	    struct yt_port *port, struct yt_error *error);
+};
+bool yt_port_rename_run(struct yt_port_rename_state *state,
+	const struct yt_port_rename_ops *ops, void *context,
+	struct yt_error *error);
+struct yt_port_rename_cycle_state {
+	bool rename_complete;
+	bool scanner_complete;
+	bool complete;
+};
+struct yt_port_rename_cycle_ops {
+	bool (*rename)(void *context, struct yt_error *error);
+	bool (*scanner)(void *context, struct yt_error *error);
+};
+bool yt_port_rename_cycle_run(struct yt_port_rename_cycle_state *state,
+	const struct yt_port_rename_cycle_ops *ops, void *context,
+	struct yt_error *error);
 double yt_port_purchase_price(const float production[3]);
 float yt_port_purchase_seller_credit(float treasury, float credits,
     double price);

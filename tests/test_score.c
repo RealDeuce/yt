@@ -22037,6 +22037,297 @@ check_planet_updater_transaction(void)
 	return true;
 }
 
+enum port_rename_event {
+	PORT_RENAME_HYDRATE = 1,
+	PORT_RENAME_READ_SECTOR,
+	PORT_RENAME_READ_PORT,
+	PORT_RENAME_PRESENT,
+	PORT_RENAME_EDIT,
+};
+struct port_rename_tape {
+	enum port_rename_event events[8];
+	size_t calls;
+	size_t fail_at;
+	struct yt_player player;
+	struct yt_sector sector;
+	struct yt_port port;
+	int expected_logical;
+	uint8_t row[64];
+	size_t row_length;
+	enum yt_port_rename_output_kind kind;
+	uint8_t cached[YT_TEXT_FIELD_SIZE];
+	size_t cached_length;
+	struct yt_port edited_port;
+};
+static bool
+port_rename_step(struct port_rename_tape *tape,
+    enum port_rename_event event, struct yt_error *error)
+{
+	size_t call = tape->calls++;
+
+	if (call < YT_ARRAY_LEN(tape->events))
+		tape->events[call] = event;
+	if (call != tape->fail_at)
+		return true;
+	if (error != NULL)
+		error->status = YT_IO_ERROR;
+	return false;
+}
+static bool
+port_rename_hydrate_test(void *context, int record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct port_rename_tape *tape = context;
+
+	if (record != 2
+	    || !port_rename_step(tape, PORT_RENAME_HYDRATE, error))
+		return false;
+	*player = tape->player;
+	return true;
+}
+static bool
+port_rename_read_sector_test(void *context, int sector_number,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct port_rename_tape *tape = context;
+
+	if (sector_number != 42
+	    || !port_rename_step(tape, PORT_RENAME_READ_SECTOR, error))
+		return false;
+	*sector = tape->sector;
+	return true;
+}
+static bool
+port_rename_read_port_test(void *context, int logical_port,
+    struct yt_port *port, struct yt_error *error)
+{
+	struct port_rename_tape *tape = context;
+
+	if (logical_port != tape->expected_logical
+	    || !port_rename_step(tape, PORT_RENAME_READ_PORT, error))
+		return false;
+	*port = tape->port;
+	return true;
+}
+static bool
+port_rename_present_test(void *context, const uint8_t *text, size_t length,
+    enum yt_port_rename_output_kind kind, struct yt_error *error)
+{
+	struct port_rename_tape *tape = context;
+
+	if (length > sizeof(tape->row)
+	    || !port_rename_step(tape, PORT_RENAME_PRESENT, error))
+		return false;
+	memcpy(tape->row, text, length);
+	tape->row_length = length;
+	tape->kind = kind;
+	return true;
+}
+static bool
+port_rename_edit_test(void *context, int logical_port,
+    const uint8_t *cached, size_t cached_length, struct yt_port *port,
+    struct yt_error *error)
+{
+	struct port_rename_tape *tape = context;
+
+	if (logical_port != tape->expected_logical
+	    || cached_length > sizeof(tape->cached)
+	    || !port_rename_step(tape, PORT_RENAME_EDIT, error))
+		return false;
+	memcpy(tape->cached, cached, cached_length);
+	tape->cached_length = cached_length;
+	tape->edited_port = *port;
+	return true;
+}
+static const struct yt_port_rename_ops port_rename_test_ops = {
+	port_rename_hydrate_test,
+	port_rename_read_sector_test,
+	port_rename_read_port_test,
+	port_rename_present_test,
+	port_rename_edit_test,
+};
+static void
+port_rename_fixture(struct port_rename_tape *tape,
+    struct yt_port_rename_state *state)
+{
+	static const uint8_t name[] = {'O', 0, 'l', 'd'};
+
+	memset(tape, 0, sizeof(*tape));
+	memset(state, 0, sizeof(*state));
+	tape->fail_at = SIZE_MAX;
+	tape->player.sector = 42.0f;
+	tape->sector.port = 3.0f;
+	(void)yt_record_set_number(&tape->sector.record, YT_F65, 3.0f);
+	memset(tape->port.record.bytes, ' ', YT_TEXT_FIELD_SIZE);
+	memcpy(tape->port.record.bytes, name, sizeof(name));
+	tape->port.owner = 2.25f;
+	tape->port.name_length = 3.6f;
+	tape->expected_logical = 3;
+	*state = (struct yt_port_rename_state){
+		.current_player_record = 2.25f,
+		.port_offset = 100.0f,
+		.conversion_mode = 4U,
+	};
+}
+static bool
+check_port_rename_transaction(void)
+{
+	static const enum port_rename_event edited_events[] = {
+		PORT_RENAME_HYDRATE, PORT_RENAME_READ_SECTOR,
+		PORT_RENAME_READ_PORT, PORT_RENAME_EDIT,
+	};
+	static const uint8_t no_port[] = "No port here!";
+	static const uint8_t not_owner[] = "This isn't your port!";
+	static const uint8_t earth[] = "Can't rename Earth!";
+	struct port_rename_tape tape;
+	struct yt_port_rename_state state;
+	struct yt_error error;
+	size_t failure;
+
+	port_rename_fixture(&tape, &state);
+	if (!yt_port_rename_run(&state, &port_rename_test_ops, &tape, NULL)
+	    || !state.complete || state.route != YT_PORT_RENAME_EDITED_ROUTE
+	    || state.hydration_record != 2 || !state.player_hydrated
+	    || !state.sector_read || !state.port_read || !state.editor_called
+	    || state.logical_port != 3 || state.relative_port != 3.0f
+	    || state.cached_name_length != 3U || tape.cached_length != 3U
+	    || memcmp(tape.cached, "O\0l", 3U) != 0
+	    || tape.calls != YT_ARRAY_LEN(edited_events)
+	    || memcmp(tape.events, edited_events, sizeof(edited_events)) != 0)
+		return false;
+	for (failure = 0U; failure < YT_ARRAY_LEN(edited_events); ++failure) {
+		port_rename_fixture(&tape, &state);
+		tape.fail_at = failure;
+		yt_error_clear(&error);
+		if (yt_port_rename_run(&state, &port_rename_test_ops, &tape,
+		    &error) || error.status != YT_IO_ERROR || state.complete
+		    || tape.calls != failure + 1U
+		    || memcmp(tape.events, edited_events,
+		    tape.calls * sizeof(edited_events[0])) != 0)
+			return false;
+	}
+
+	port_rename_fixture(&tape, &state);
+	memcpy(tape.sector.record.bytes + YT_F65, "\x01\x02\x03\0", 4U);
+	if (!yt_port_rename_run(&state, &port_rename_test_ops, &tape, NULL)
+	    || state.route != YT_PORT_RENAME_NO_PORT_ROUTE || tape.calls != 3U
+	    || tape.kind != YT_PORT_RENAME_NO_PORT
+	    || tape.row_length != sizeof(no_port) - 1U
+	    || memcmp(tape.row, no_port, sizeof(no_port) - 1U) != 0)
+		return false;
+
+	/* Ownership is tested against the uncoerced 2.25 cell before Earth. */
+	port_rename_fixture(&tape, &state);
+	tape.sector.port = 1.0f;
+	(void)yt_record_set_number(&tape.sector.record, YT_F65, 1.0f);
+	tape.expected_logical = 1;
+	tape.port.owner = 2.0f;
+	if (!yt_port_rename_run(&state, &port_rename_test_ops, &tape, NULL)
+	    || state.route != YT_PORT_RENAME_NOT_OWNER_ROUTE
+	    || tape.kind != YT_PORT_RENAME_NOT_OWNER
+	    || tape.row_length != sizeof(not_owner) - 1U
+	    || memcmp(tape.row, not_owner, sizeof(not_owner) - 1U) != 0)
+		return false;
+	port_rename_fixture(&tape, &state);
+	tape.sector.port = 1.0f;
+	(void)yt_record_set_number(&tape.sector.record, YT_F65, 1.0f);
+	tape.expected_logical = 1;
+	if (!yt_port_rename_run(&state, &port_rename_test_ops, &tape, NULL)
+	    || state.route != YT_PORT_RENAME_EARTH_ROUTE
+	    || tape.kind != YT_PORT_RENAME_EARTH
+	    || tape.row_length != sizeof(earth) - 1U
+	    || memcmp(tape.row, earth, sizeof(earth) - 1U) != 0)
+		return false;
+
+	port_rename_fixture(&tape, &state);
+	state.conversion_mode = 0U;
+	if (!yt_port_rename_run(&state, &port_rename_test_ops, &tape, NULL)
+	    || state.cached_name_length != 4U || tape.cached_length != 4U
+	    || memcmp(tape.cached, "O\0ld", 4U) != 0)
+		return false;
+	port_rename_fixture(&tape, &state);
+	tape.port.name_length = 32767.0f;
+	if (!yt_port_rename_run(&state, &port_rename_test_ops, &tape, NULL)
+	    || state.cached_name_length != YT_TEXT_FIELD_SIZE
+	    || tape.cached_length != YT_TEXT_FIELD_SIZE)
+		return false;
+	port_rename_fixture(&tape, &state);
+	tape.port.name_length = -1.0f;
+	yt_error_clear(&error);
+	if (yt_port_rename_run(&state, &port_rename_test_ops, &tape, &error)
+	    || error.status != YT_RANGE || tape.calls != 3U
+	    || strcmp(error.operation, "port name length") != 0
+	    || state.editor_called)
+		return false;
+
+	port_rename_fixture(&tape, &state);
+	return !yt_port_rename_run(NULL, &port_rename_test_ops, &tape, NULL)
+	    && !yt_port_rename_run(&state, NULL, &tape, NULL);
+}
+
+struct port_rename_cycle_tape {
+	int events[2];
+	size_t calls;
+	size_t fail_at;
+};
+static bool
+port_rename_cycle_step(void *context, int event, struct yt_error *error)
+{
+	struct port_rename_cycle_tape *tape = context;
+	size_t call = tape->calls++;
+
+	if (call < YT_ARRAY_LEN(tape->events))
+		tape->events[call] = event;
+	if (call != tape->fail_at)
+		return true;
+	if (error != NULL)
+		error->status = YT_IO_ERROR;
+	return false;
+}
+static bool
+port_rename_cycle_rename_test(void *context, struct yt_error *error)
+{
+	return port_rename_cycle_step(context, 1, error);
+}
+static bool
+port_rename_cycle_scanner_test(void *context, struct yt_error *error)
+{
+	return port_rename_cycle_step(context, 2, error);
+}
+static bool
+check_port_rename_cycle_transaction(void)
+{
+	static const struct yt_port_rename_cycle_ops ops = {
+		port_rename_cycle_rename_test,
+		port_rename_cycle_scanner_test,
+	};
+	struct port_rename_cycle_tape tape;
+	struct yt_port_rename_cycle_state state;
+	struct yt_error error;
+	size_t failure;
+
+	memset(&tape, 0, sizeof(tape));
+	tape.fail_at = SIZE_MAX;
+	if (!yt_port_rename_cycle_run(&state, &ops, &tape, NULL)
+	    || !state.complete || !state.rename_complete
+	    || !state.scanner_complete || tape.calls != 2U
+	    || tape.events[0] != 1 || tape.events[1] != 2)
+		return false;
+	for (failure = 0U; failure < 2U; ++failure) {
+		memset(&tape, 0, sizeof(tape));
+		tape.fail_at = failure;
+		yt_error_clear(&error);
+		if (yt_port_rename_cycle_run(&state, &ops, &tape, &error)
+		    || error.status != YT_IO_ERROR || state.complete
+		    || tape.calls != failure + 1U
+		    || state.rename_complete != (failure != 0U)
+		    || state.scanner_complete)
+			return false;
+	}
+	return !yt_port_rename_cycle_run(NULL, &ops, &tape, NULL)
+	    && !yt_port_rename_cycle_run(&state, NULL, &tape, NULL);
+}
+
 enum main_prompt_event {
 	MAIN_PROMPT_RESET = 1,
 	MAIN_PROMPT_HYDRATE,
@@ -23787,6 +24078,10 @@ main(void)
 		return fail("salvage cargo sampler differs");
 	if (!check_salvage_transaction())
 		return fail("ship salvage transaction differs");
+	if (!check_port_rename_transaction())
+		return fail("port rename transaction differs");
+	if (!check_port_rename_cycle_transaction())
+		return fail("port rename scanner cycle differs");
 	if (!check_main_prompt_transaction())
 		return fail("main prompt transaction differs");
 	if (!check_port_name_editor_model())
