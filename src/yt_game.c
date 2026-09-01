@@ -3857,6 +3857,14 @@ yt_port_link_missing(float link)
 	return link == 0.0f;
 }
 
+float
+yt_port_selected_expression(float port_offset, float logical_link)
+{
+	volatile float expression = port_offset + logical_link;
+
+	return expression;
+}
+
 bool
 yt_port_name_display_row(const uint8_t *cached, size_t cached_length,
     uint8_t *row, size_t capacity, size_t *length)

@@ -21151,6 +21151,13 @@ check_hostile_menu_front(void)
 		if (!yt_port_link_missing(0.0f)
 		    || yt_port_link_missing(-1.0f)
 		    || yt_port_link_missing(0.5f)
+		    || yt_port_selected_expression(2055.0f, 2.75f) != 2057.75f
+		    || qb_brun_random_record_number(
+		    yt_port_selected_expression(2055.0f, 2.75f)) != 2057U
+		    || qb_brun_random_record_number(
+		    yt_port_selected_expression(0.0f, 0.5f)) != 0U
+		    || qb_brun_random_record_number(
+		    yt_port_selected_expression(0.0f, 16777216.0f)) != 0U
 		    || yt_port_trade_schedule(factors, order) != 3U
 		    || order[0] != 0U || order[1] != 2U || order[2] != 1U
 		    || yt_port_trade_schedule(zero_factors, order) != 0U

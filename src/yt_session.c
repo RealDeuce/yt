@@ -7273,7 +7273,8 @@ command_trade(struct yt_session *session, struct yt_error *error)
 	struct yt_sector gate_sector;
 	struct yt_port_market_state market;
 	struct yt_port selected_port;
-	volatile float selected_expression;
+	float selected_expression;
+	uint32_t selected_physical_record;
 	int logical_port;
 	size_t commodity;
 	size_t schedule[3];
@@ -7293,9 +7294,8 @@ command_trade(struct yt_session *session, struct yt_error *error)
 	if (!yt_game_read_sector(&session->door->game,
 	    (int)session->player.sector, &gate_sector, error))
 		return false;
-	selected_expression = single_add(
+	selected_expression = yt_port_selected_expression(
 	    session->door->game.config.port_offset, gate_sector.port);
-	(void)selected_expression;
 	if (yt_port_link_missing(gate_sector.port))
 		return session_02db(session, no_port, sizeof(no_port) - 1U,
 		    "port docking no port", error);
@@ -7306,8 +7306,12 @@ command_trade(struct yt_session *session, struct yt_error *error)
 		return false;
 	if (!finalize_action(session, 1.0f, error))
 		return error == NULL || error->status == YT_OK;
-	logical_port = (int)gate_sector.port;
-	if (!yt_game_read_port(&session->door->game, logical_port,
+	selected_physical_record = qb_brun_random_record_number(
+	    selected_expression);
+	if (selected_physical_record == 0U)
+		return port_report_failure(error,
+		    "port docking selected record conversion");
+	if (!commodity_trade_read_port(session, selected_physical_record,
 	    &selected_port, error))
 		return false;
 	(void)selected_port;
