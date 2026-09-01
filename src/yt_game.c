@@ -3169,6 +3169,73 @@ yt_main_shell_dispatch(const char *response)
 	}
 }
 
+bool
+yt_main_prompt_run(struct yt_main_prompt_state *state,
+    const struct yt_main_prompt_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t prefix[] = "Time:";
+	static const uint8_t suffix[] = "Main Command (?=Help)? ";
+	uint8_t prompt[512];
+	size_t prompt_length;
+
+	if (state == NULL || ops == NULL || state->current_player_record < 1
+	    || state->response == NULL || state->response_capacity == 0U
+	    || (state->time_text_length != 0U && state->time_text == NULL)
+	    || ops->effect == NULL || ops->hydrate == NULL
+	    || ops->present == NULL || ops->edit == NULL)
+		return false;
+	memset(&state->player, 0, sizeof(state->player));
+	state->response[0] = '\0';
+	state->response_length = 0U;
+	state->route = YT_MAIN_SHELL_DISPLAY;
+	state->player_hydrated = false;
+	state->prompt_presented = false;
+	state->input_available = false;
+	state->complete = false;
+
+	ops->effect(context, YT_MAIN_PROMPT_RESET_PAGER);
+	if (!ops->hydrate(context, state->current_player_record,
+	    &state->player, error))
+		return false;
+	state->player_hydrated = true;
+	ops->effect(context, YT_MAIN_PROMPT_SET_FOREGROUND);
+	if (!ops->present(context, NULL, 0U, YT_MAIN_PROMPT_LEADING_BLANK,
+	    error))
+		return false;
+	ops->effect(context, YT_MAIN_PROMPT_RESET_SCANNER);
+	if (state->time_text_length > state->time_text_capacity
+	    || state->time_text_length > sizeof(prompt) - (sizeof(prefix) - 1U)
+	    - (sizeof(suffix) - 1U))
+		return startup_configuration_error(error, YT_RANGE,
+		    "main prompt time capacity");
+	prompt_length = 0U;
+	memcpy(prompt + prompt_length, prefix, sizeof(prefix) - 1U);
+	prompt_length += sizeof(prefix) - 1U;
+	if (state->time_text_length != 0U) {
+		memcpy(prompt + prompt_length, state->time_text,
+		    state->time_text_length);
+		prompt_length += state->time_text_length;
+	}
+	memcpy(prompt + prompt_length, suffix, sizeof(suffix) - 1U);
+	prompt_length += sizeof(suffix) - 1U;
+	if (!ops->present(context, prompt, prompt_length, YT_MAIN_PROMPT_TEXT,
+	    error))
+		return false;
+	state->prompt_presented = true;
+	if (!ops->edit(context, state->response, state->response_capacity,
+	    &state->response_length, &state->input_available, error))
+		return false;
+	if (state->response_length >= state->response_capacity)
+		return startup_configuration_error(error, YT_RANGE,
+		    "main prompt response capacity");
+	state->response[state->response_length] = '\0';
+	if (state->input_available)
+		state->route = yt_main_shell_dispatch(state->response);
+	state->complete = true;
+	return true;
+}
+
 enum yt_hostile_attack_admission
 yt_hostile_attack_admit(float ship_fighters, float commitment)
 {
@@ -4440,6 +4507,27 @@ yt_port_purchase_run(struct yt_port_purchase_state *state,
 	if (!ops->accept(context, &state->accepted, error))
 		return false;
 	state->route = YT_PORT_PURCHASE_ACCEPTED_ROUTE;
+	state->complete = true;
+	return true;
+}
+
+bool
+yt_port_purchase_cycle_run(struct yt_port_purchase_cycle_state *state,
+    const struct yt_port_purchase_cycle_ops *ops, void *context,
+    struct yt_error *error)
+{
+	if (state == NULL || ops == NULL || ops->purchase == NULL
+	    || ops->scanner == NULL)
+		return false;
+	state->purchase_complete = false;
+	state->scanner_complete = false;
+	state->complete = false;
+	if (!ops->purchase(context, error))
+		return false;
+	state->purchase_complete = true;
+	if (!ops->scanner(context, error))
+		return false;
+	state->scanner_complete = true;
 	state->complete = true;
 	return true;
 }

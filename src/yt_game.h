@@ -503,6 +503,43 @@ enum yt_main_shell_route {
 	YT_MAIN_SHELL_INVALID,
 };
 
+enum yt_main_prompt_effect {
+	YT_MAIN_PROMPT_RESET_PAGER,
+	YT_MAIN_PROMPT_SET_FOREGROUND,
+	YT_MAIN_PROMPT_RESET_SCANNER,
+};
+
+enum yt_main_prompt_output_kind {
+	YT_MAIN_PROMPT_LEADING_BLANK,
+	YT_MAIN_PROMPT_TEXT,
+};
+
+struct yt_main_prompt_state {
+	int current_player_record;
+	const uint8_t *time_text;
+	size_t time_text_length;
+	size_t time_text_capacity;
+	char *response;
+	size_t response_capacity;
+	struct yt_player player;
+	size_t response_length;
+	enum yt_main_shell_route route;
+	bool player_hydrated;
+	bool prompt_presented;
+	bool input_available;
+	bool complete;
+};
+
+struct yt_main_prompt_ops {
+	void (*effect)(void *context, enum yt_main_prompt_effect effect);
+	bool (*hydrate)(void *context, int player_record,
+	    struct yt_player *player, struct yt_error *error);
+	bool (*present)(void *context, const uint8_t *text, size_t length,
+	    enum yt_main_prompt_output_kind kind, struct yt_error *error);
+	bool (*edit)(void *context, char *response, size_t capacity,
+	    size_t *length, bool *available, struct yt_error *error);
+};
+
 enum yt_hostile_attack_admission {
 	YT_HOSTILE_ATTACK_NO_FIGHTERS,
 	YT_HOSTILE_ATTACK_TOO_MANY,
@@ -1580,6 +1617,9 @@ bool yt_hostile_menu_row(double ship_fighters, double deployed_fighters,
     uint8_t *row, size_t capacity, size_t *length);
 enum yt_hostile_menu_route yt_hostile_menu_dispatch(const char *response);
 enum yt_main_shell_route yt_main_shell_dispatch(const char *response);
+bool yt_main_prompt_run(struct yt_main_prompt_state *state,
+	const struct yt_main_prompt_ops *ops, void *context,
+	struct yt_error *error);
 enum yt_hostile_attack_admission yt_hostile_attack_admit(
     float ship_fighters, float commitment);
 float yt_hostile_attack_quantum(double remaining_attacker,
@@ -1814,6 +1854,18 @@ struct yt_port_purchase_ops {
 };
 bool yt_port_purchase_run(struct yt_port_purchase_state *state,
 	const struct yt_port_purchase_ops *ops, void *context,
+	struct yt_error *error);
+struct yt_port_purchase_cycle_state {
+	bool purchase_complete;
+	bool scanner_complete;
+	bool complete;
+};
+struct yt_port_purchase_cycle_ops {
+	bool (*purchase)(void *context, struct yt_error *error);
+	bool (*scanner)(void *context, struct yt_error *error);
+};
+bool yt_port_purchase_cycle_run(struct yt_port_purchase_cycle_state *state,
+	const struct yt_port_purchase_cycle_ops *ops, void *context,
 	struct yt_error *error);
 bool yt_genesis_confirmation_prompt(const uint8_t *trader,
     size_t trader_length, uint8_t *prompt, size_t capacity, size_t *length);
