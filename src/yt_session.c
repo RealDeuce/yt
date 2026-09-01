@@ -7127,6 +7127,56 @@ port_report(struct yt_session *session, int logical_port,
 }
 
 static bool
+computer_port_ordinary(struct yt_session *session, int sector_number,
+    float sector_record_expression,
+    const struct yt_computer_port_visibility_state *visibility,
+    struct yt_error *error)
+{
+	static const struct yt_port_update_ops update_ops = {
+		port_update_read_sector,
+		port_update_observe_day,
+		port_update_read_port,
+		port_update_observe_timer,
+		port_update_write_port,
+	};
+	static const struct yt_port_report_ops report_ops = {
+		port_report_read_player,
+		port_report_read_port,
+		port_report_observe_date,
+		port_report_observe_time,
+		port_report_present,
+		port_report_reset_pager,
+		port_report_set_bold,
+		port_report_set_foreground,
+	};
+	struct yt_port_ordinary_state state;
+
+	memset(&state, 0, sizeof(state));
+	state.update.sector_number = sector_number;
+	state.update.sector_record_offset =
+	    session->door->game.config.sector_offset;
+	state.update.sector_record_expression = sector_record_expression;
+	state.update.sector_record_supplied = true;
+	state.update.port_offset = session->door->game.config.port_offset;
+	memcpy(state.update.base_price, session->market_base,
+	    sizeof(state.update.base_price));
+	state.report.current_player_record = session->player_record;
+	state.report.conversion_mode =
+	    session->presentation.sound.conversion_mode;
+	if (visibility != NULL) {
+		state.field_record = visibility->field_record;
+		state.field = visibility->field;
+		state.field_valid = visibility->field_valid;
+		state.field_kind = visibility->field_kind
+		    == YT_COMPUTER_PORT_FIELD_PLAYER
+		    ? YT_PORT_ORDINARY_FIELD_PLAYER
+		    : YT_PORT_ORDINARY_FIELD_SECTOR;
+	}
+	return yt_port_ordinary_run(&state, &update_ops, &report_ops,
+	    session, error);
+}
+
+static bool
 commodity_trade_read_player(void *context, uint32_t physical_record,
     struct yt_player *player, struct yt_error *error)
 {
@@ -15662,6 +15712,7 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 	float selected;
 	int sector_number;
 	struct yt_sector sector;
+	struct yt_computer_port_visibility_state visibility;
 	bool denied;
 
 	if (enter_sector != NULL)
@@ -15702,7 +15753,6 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 	    error))
 		return false;
 	{
-		struct yt_computer_port_visibility_state visibility;
 		float sector_expression = yt_port_selected_expression(
 		    session->door->game.config.sector_offset, selected);
 		bool visibility_ok;
@@ -15721,6 +15771,8 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 		visibility.field_kind = YT_COMPUTER_PORT_FIELD_SECTOR;
 		visibility.field_record =
 		    qb_brun_random_record_number(sector_expression);
+		visibility.field = sector.record;
+		visibility.field_valid = true;
 		visibility_ok = yt_computer_port_visibility_run(&visibility,
 		    computer_port_visibility_read_player, session, error);
 		session->phase_scratch = visibility.marker_4d62;
@@ -15749,17 +15801,12 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 		return true;
 	}
 	{
-		struct yt_port_market_state market;
 		float sector_record_expression = yt_port_selected_expression(
 		    session->door->game.config.sector_offset,
 		    (float)sector_number);
-		int logical_port;
 
-		if (!port_update(session, sector_number,
-		    &sector_record_expression, NULL, &market, error))
-			return false;
-		logical_port = (int)market.logical_port;
-		return port_report(session, logical_port, &market, error);
+		return computer_port_ordinary(session, sector_number,
+		    sector_record_expression, &visibility, error);
 	}
 }
 

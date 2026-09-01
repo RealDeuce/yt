@@ -3995,6 +3995,8 @@ yt_computer_port_visibility_run(
 				return false;
 			state->field_kind = YT_COMPUTER_PORT_FIELD_PLAYER;
 			state->field_record = record;
+			state->field = player.record;
+			state->field_valid = true;
 			current_team = player.team;
 			if (current_team != 0.0f) {
 				if (!computer_port_record(state->fighter_owner,
@@ -4007,6 +4009,8 @@ yt_computer_port_visibility_run(
 					return false;
 				state->field_kind = YT_COMPUTER_PORT_FIELD_PLAYER;
 				state->field_record = record;
+				state->field = player.record;
+				state->field_valid = true;
 				if (player.team == current_team) {
 					memcpy(state->relation_raw, relation_true,
 					    sizeof(state->relation_raw));
@@ -7916,6 +7920,7 @@ yt_port_update_run(struct yt_port_update_state *state,
 	state->day_observed = false;
 	state->port_read = false;
 	state->timer_observed = false;
+	state->port_write_attempted = false;
 	state->port_written = false;
 	state->complete = false;
 	memset(&state->market, 0, sizeof(state->market));
@@ -7959,10 +7964,84 @@ yt_port_update_run(struct yt_port_update_state *state,
 	    sizeof(state->base_price));
 	if (!yt_port_market_update(&state->market, error))
 		return false;
+	state->port_write_attempted = true;
 	if (!ops->write_port(context, physical_record, &state->market.port,
 	    error))
 		return false;
 	state->port_written = true;
+	state->complete = true;
+	return true;
+}
+
+static void
+port_ordinary_project_update(struct yt_port_ordinary_state *state)
+{
+	if (state->update.port_read) {
+		state->field_kind = YT_PORT_ORDINARY_FIELD_PORT;
+		state->field_record = state->update.market.port_physical_record;
+		state->field = state->update.market.port.record;
+		state->field_valid = true;
+	}
+	else if (state->update.sector_read) {
+		state->field_kind = YT_PORT_ORDINARY_FIELD_SECTOR;
+		state->field_record = state->update.sector_physical_record;
+		state->field = state->update.sector.record;
+		state->field_valid = true;
+	}
+	state->persistence_attempted = state->update.port_write_attempted;
+	state->persistence_committed = state->update.port_written;
+}
+
+static void
+port_ordinary_project_report(struct yt_port_ordinary_state *state)
+{
+	if (state->report.owner_player_read) {
+		state->field_kind = YT_PORT_ORDINARY_FIELD_PLAYER;
+		state->field_record = (uint32_t)state->report.owner_record;
+		state->field = state->report.owner_player.record;
+		state->field_valid = true;
+	}
+	if (state->report.current_player_read) {
+		state->field_kind = YT_PORT_ORDINARY_FIELD_PLAYER;
+		state->field_record =
+		    (uint32_t)state->report.current_player_record;
+		state->field = state->report.current_player.record;
+		state->field_valid = true;
+	}
+	if (state->report.report_port_read) {
+		state->field_kind = YT_PORT_ORDINARY_FIELD_PORT;
+		state->field_record = state->report.port_physical_record;
+		state->field = state->report.report_port.record;
+		state->field_valid = true;
+	}
+}
+
+bool
+yt_port_ordinary_run(struct yt_port_ordinary_state *state,
+    const struct yt_port_update_ops *update_ops,
+    const struct yt_port_report_ops *report_ops, void *context,
+    struct yt_error *error)
+{
+	if (state == NULL || update_ops == NULL || report_ops == NULL)
+		return false;
+	state->persistence_attempted = false;
+	state->persistence_committed = false;
+	state->report_started = false;
+	state->complete = false;
+	if (!yt_port_update_run(&state->update, update_ops, context, error)) {
+		port_ordinary_project_update(state);
+		return false;
+	}
+	port_ordinary_project_update(state);
+	state->report.port_physical_record =
+	    state->update.market.port_physical_record;
+	state->report.market = state->update.market;
+	state->report_started = true;
+	if (!yt_port_report_run(&state->report, report_ops, context, error)) {
+		port_ordinary_project_report(state);
+		return false;
+	}
+	port_ordinary_project_report(state);
 	state->complete = true;
 	return true;
 }

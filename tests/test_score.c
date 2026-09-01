@@ -23381,6 +23381,8 @@ computer_port_visibility_read(void *context, uint32_t physical_record,
 		return false;
 	}
 	memset(player, 0, sizeof(*player));
+	memset(player->record.bytes, (int)(0x41U + call),
+	    sizeof(player->record.bytes));
 	player->team = tape->teams[call];
 	return true;
 }
@@ -23402,6 +23404,8 @@ computer_port_visibility_fixture(
 	state->inherited_index = 52.0f;
 	state->field_kind = YT_COMPUTER_PORT_FIELD_SECTOR;
 	state->field_record = 53U;
+	memset(state->field.bytes, 0x53, sizeof(state->field.bytes));
+	state->field_valid = true;
 	tape->teams[0] = 7.0f;
 	tape->teams[1] = 7.0f;
 	tape->fail_at = SIZE_MAX;
@@ -23430,7 +23434,8 @@ check_computer_port_visibility(void)
 	    || state.player_read_attempts != 2U || tape.calls != 2U
 	    || tape.records[0] != 2U || tape.records[1] != 3U
 	    || state.field_kind != YT_COMPUTER_PORT_FIELD_PLAYER
-	    || state.field_record != 3U)
+	    || state.field_record != 3U || !state.field_valid
+	    || state.field.bytes[0] != 0x42)
 		return false;
 
 	computer_port_visibility_fixture(&state, &tape);
@@ -23488,7 +23493,8 @@ check_computer_port_visibility(void)
 	    || error.status != YT_IO_ERROR || state.complete
 	    || state.scratch_written
 	    || state.field_kind != YT_COMPUTER_PORT_FIELD_SECTOR
-	    || state.field_record != 53U
+	    || state.field_record != 53U || !state.field_valid
+	    || state.field.bytes[0] != 0x53
 	    || memcmp(state.marker_4d62_raw, marker_false, 4U) != 0
 	    || memcmp(state.relation_raw, relation_false, 4U) != 0)
 		return false;
@@ -23500,7 +23506,7 @@ check_computer_port_visibility(void)
 	    computer_port_visibility_read, &tape, &error)
 	    || error.status != YT_IO_ERROR || state.scratch_written
 	    || state.field_kind != YT_COMPUTER_PORT_FIELD_PLAYER
-	    || state.field_record != 2U)
+	    || state.field_record != 2U || state.field.bytes[0] != 0x41)
 		return false;
 
 	/* Fractional explicit owner records stop at the documented boundary. */
@@ -24151,6 +24157,342 @@ check_port_report_transaction(void)
 	    && yt_port_report_run(&state, &port_report_test_ops, &tape, NULL)
 	    && port_report_fragment_equal(&tape.fragments[8],
 	    YT_PORT_REPORT_ITEM_CAPACITY, 0U, "          -6", 12U);
+}
+
+enum port_ordinary_event {
+	PORT_ORDINARY_UPDATE_SECTOR = 1,
+	PORT_ORDINARY_UPDATE_DAY,
+	PORT_ORDINARY_UPDATE_PORT,
+	PORT_ORDINARY_UPDATE_TIMER,
+	PORT_ORDINARY_UPDATE_PUT,
+	PORT_ORDINARY_REPORT_RESET,
+	PORT_ORDINARY_REPORT_PLAYER,
+	PORT_ORDINARY_REPORT_PORT,
+	PORT_ORDINARY_REPORT_DATE,
+	PORT_ORDINARY_REPORT_TIME,
+	PORT_ORDINARY_REPORT_PRESENT,
+	PORT_ORDINARY_REPORT_BOLD,
+	PORT_ORDINARY_REPORT_FOREGROUND,
+};
+
+struct port_ordinary_tape {
+	enum port_ordinary_event events[64];
+	size_t event_count;
+	size_t bool_calls;
+	size_t fail_at;
+	struct port_update_tape update;
+	struct port_report_tape report;
+};
+
+static bool
+port_ordinary_step(struct port_ordinary_tape *tape,
+    enum port_ordinary_event event, struct yt_error *error)
+{
+	size_t call = tape->bool_calls++;
+
+	if (tape->event_count < YT_ARRAY_LEN(tape->events))
+		tape->events[tape->event_count++] = event;
+	if (call != tape->fail_at)
+		return true;
+	if (error != NULL)
+		error->status = YT_IO_ERROR;
+	return false;
+}
+
+static void
+port_ordinary_event(struct port_ordinary_tape *tape,
+    enum port_ordinary_event event)
+{
+	if (tape->event_count < YT_ARRAY_LEN(tape->events))
+		tape->events[tape->event_count++] = event;
+}
+
+static bool
+port_ordinary_read_sector(void *context, uint32_t physical_record,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct port_ordinary_tape *tape = context;
+
+	if (!port_ordinary_step(tape, PORT_ORDINARY_UPDATE_SECTOR, error))
+		return false;
+	return port_update_test_read_sector(&tape->update, physical_record,
+	    sector, error);
+}
+
+static bool
+port_ordinary_day(void *context, float *current_day, struct yt_error *error)
+{
+	struct port_ordinary_tape *tape = context;
+
+	if (!port_ordinary_step(tape, PORT_ORDINARY_UPDATE_DAY, error))
+		return false;
+	return port_update_test_day(&tape->update, current_day, error);
+}
+
+static bool
+port_ordinary_read_update_port(void *context, uint32_t physical_record,
+    struct yt_port *port, struct yt_error *error)
+{
+	struct port_ordinary_tape *tape = context;
+
+	if (!port_ordinary_step(tape, PORT_ORDINARY_UPDATE_PORT, error))
+		return false;
+	return port_update_test_read_port(&tape->update, physical_record,
+	    port, error);
+}
+
+static bool
+port_ordinary_timer(void *context, float *timer_seconds,
+    struct yt_error *error)
+{
+	struct port_ordinary_tape *tape = context;
+
+	if (!port_ordinary_step(tape, PORT_ORDINARY_UPDATE_TIMER, error))
+		return false;
+	return port_update_test_timer(&tape->update, timer_seconds, error);
+}
+
+static bool
+port_ordinary_write_port(void *context, uint32_t physical_record,
+    const struct yt_port *port, struct yt_error *error)
+{
+	struct port_ordinary_tape *tape = context;
+
+	if (!port_ordinary_step(tape, PORT_ORDINARY_UPDATE_PUT, error))
+		return false;
+	return port_update_test_write_port(&tape->update, physical_record,
+	    port, error);
+}
+
+static bool
+port_ordinary_read_player(void *context, uint32_t physical_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct port_ordinary_tape *tape = context;
+
+	if (!port_ordinary_step(tape, PORT_ORDINARY_REPORT_PLAYER, error))
+		return false;
+	return port_report_test_read_player(&tape->report, physical_record,
+	    player, error);
+}
+
+static bool
+port_ordinary_read_report_port(void *context, uint32_t physical_record,
+    struct yt_port *port, struct yt_error *error)
+{
+	struct port_ordinary_tape *tape = context;
+
+	if (!port_ordinary_step(tape, PORT_ORDINARY_REPORT_PORT, error))
+		return false;
+	return port_report_test_read_port(&tape->report, physical_record,
+	    port, error);
+}
+
+static bool
+port_ordinary_date(void *context, uint8_t date[10], struct yt_error *error)
+{
+	struct port_ordinary_tape *tape = context;
+
+	if (!port_ordinary_step(tape, PORT_ORDINARY_REPORT_DATE, error))
+		return false;
+	return port_report_test_date(&tape->report, date, error);
+}
+
+static bool
+port_ordinary_time(void *context, uint8_t time_text[8],
+    struct yt_error *error)
+{
+	struct port_ordinary_tape *tape = context;
+
+	if (!port_ordinary_step(tape, PORT_ORDINARY_REPORT_TIME, error))
+		return false;
+	return port_report_test_time(&tape->report, time_text, error);
+}
+
+static bool
+port_ordinary_present(void *context, const uint8_t *text, size_t length,
+    enum yt_port_report_output_kind kind, size_t item,
+    struct yt_error *error)
+{
+	struct port_ordinary_tape *tape = context;
+
+	if (!port_ordinary_step(tape, PORT_ORDINARY_REPORT_PRESENT, error))
+		return false;
+	return port_report_test_present(&tape->report, text, length, kind,
+	    item, error);
+}
+
+static void
+port_ordinary_reset(void *context, const uint8_t raw[4])
+{
+	struct port_ordinary_tape *tape = context;
+
+	port_ordinary_event(tape, PORT_ORDINARY_REPORT_RESET);
+	port_report_test_reset(&tape->report, raw);
+}
+
+static void
+port_ordinary_bold(void *context, float bold)
+{
+	struct port_ordinary_tape *tape = context;
+
+	port_ordinary_event(tape, PORT_ORDINARY_REPORT_BOLD);
+	port_report_test_bold(&tape->report, bold);
+}
+
+static void
+port_ordinary_foreground(void *context, float foreground)
+{
+	struct port_ordinary_tape *tape = context;
+
+	port_ordinary_event(tape, PORT_ORDINARY_REPORT_FOREGROUND);
+	port_report_test_foreground(&tape->report, foreground);
+}
+
+static const struct yt_port_update_ops port_ordinary_update_ops = {
+	port_ordinary_read_sector,
+	port_ordinary_day,
+	port_ordinary_read_update_port,
+	port_ordinary_timer,
+	port_ordinary_write_port,
+};
+
+static const struct yt_port_report_ops port_ordinary_report_ops = {
+	port_ordinary_read_player,
+	port_ordinary_read_report_port,
+	port_ordinary_date,
+	port_ordinary_time,
+	port_ordinary_present,
+	port_ordinary_reset,
+	port_ordinary_bold,
+	port_ordinary_foreground,
+};
+
+static void
+port_ordinary_fixture(struct port_ordinary_tape *tape,
+    struct yt_port_ordinary_state *state)
+{
+	struct yt_port_report_state report;
+
+	memset(tape, 0, sizeof(*tape));
+	memset(state, 0, sizeof(*state));
+	port_update_fixture(&tape->update, &state->update);
+	memset(&report, 0, sizeof(report));
+	port_report_fixture(&tape->report, &report);
+	tape->fail_at = SIZE_MAX;
+	tape->update.fail_at = SIZE_MAX;
+	tape->report.fail_bool_at = SIZE_MAX;
+	state->report.current_player_record = report.current_player_record;
+	state->report.conversion_mode = report.conversion_mode;
+	state->field_kind = YT_PORT_ORDINARY_FIELD_INHERITED;
+	state->field_record = 3U;
+	memset(state->field.bytes, 0x77, sizeof(state->field.bytes));
+	state->field_valid = true;
+	memset(tape->update.sector.record.bytes, 0x53,
+	    sizeof(tape->update.sector.record.bytes));
+}
+
+static bool
+check_port_ordinary_transaction(void)
+{
+	static const enum port_ordinary_event update_prefix[] = {
+		PORT_ORDINARY_UPDATE_SECTOR,
+		PORT_ORDINARY_UPDATE_DAY,
+		PORT_ORDINARY_UPDATE_PORT,
+		PORT_ORDINARY_UPDATE_TIMER,
+		PORT_ORDINARY_UPDATE_PUT,
+		PORT_ORDINARY_REPORT_RESET,
+		PORT_ORDINARY_REPORT_PRESENT,
+		PORT_ORDINARY_REPORT_PRESENT,
+		PORT_ORDINARY_REPORT_PLAYER,
+		PORT_ORDINARY_REPORT_PORT,
+		PORT_ORDINARY_REPORT_DATE,
+		PORT_ORDINARY_REPORT_TIME,
+	};
+	struct port_ordinary_tape tape;
+	struct yt_port_ordinary_state state;
+	struct yt_error error;
+	size_t failure;
+
+	port_ordinary_fixture(&tape, &state);
+	if (!yt_port_ordinary_run(&state, &port_ordinary_update_ops,
+	    &port_ordinary_report_ops, &tape, NULL)
+	    || !state.complete || !state.report_started
+	    || !state.persistence_attempted || !state.persistence_committed
+	    || !state.update.complete || !state.report.complete
+	    || state.field_kind != YT_PORT_ORDINARY_FIELD_PORT
+	    || state.field_record != 2057U || !state.field_valid
+	    || memcmp(state.field.bytes, tape.report.report_port.record.bytes,
+	    sizeof(state.field.bytes)) != 0
+	    || tape.event_count != 34U
+	    || memcmp(tape.events, update_prefix, sizeof(update_prefix)) != 0
+	    || memcmp(tape.update.written_port.record.bytes,
+	    state.update.market.port.record.bytes,
+	    sizeof(tape.update.written_port.record.bytes)) != 0)
+		return false;
+
+	/* Every provider cut retains the last successful FIELD and PUT state. */
+	for (failure = 0U; failure < 28U; ++failure) {
+		port_ordinary_fixture(&tape, &state);
+		tape.fail_at = failure;
+		yt_error_clear(&error);
+		if (yt_port_ordinary_run(&state, &port_ordinary_update_ops,
+		    &port_ordinary_report_ops, &tape, &error)
+		    || error.status != YT_IO_ERROR || state.complete
+		    || tape.bool_calls != failure + 1U
+		    || state.report_started != (failure >= 5U)
+		    || state.persistence_attempted != (failure >= 4U)
+		    || state.persistence_committed != (failure >= 5U))
+			return false;
+		if (failure == 0U) {
+			if (state.field_kind != YT_PORT_ORDINARY_FIELD_INHERITED
+			    || state.field_record != 3U
+			    || state.field.bytes[0] != 0x77)
+				return false;
+		}
+		else if (failure < 3U) {
+			if (state.field_kind != YT_PORT_ORDINARY_FIELD_SECTOR
+			    || state.field_record != 58U
+			    || state.field.bytes[0] != 0x53)
+				return false;
+		}
+		else if (failure < 8U) {
+			if (state.field_kind != YT_PORT_ORDINARY_FIELD_PORT
+			    || state.field_record != 2057U)
+				return false;
+		}
+		else if (failure == 8U) {
+			if (state.field_kind != YT_PORT_ORDINARY_FIELD_PLAYER
+			    || state.field_record != 2U
+			    || memcmp(state.field.bytes,
+			    tape.report.current_player.record.bytes,
+			    sizeof(state.field.bytes)) != 0)
+				return false;
+		}
+		else if (state.field_kind != YT_PORT_ORDINARY_FIELD_PORT
+		    || state.field_record != 2057U
+		    || memcmp(state.field.bytes,
+		    tape.report.report_port.record.bytes,
+		    sizeof(state.field.bytes)) != 0)
+			return false;
+	}
+
+	/* A successful other-owner GET survives a later current-player cut. */
+	port_ordinary_fixture(&tape, &state);
+	tape.update.stored_port.owner = 8.0f;
+	(void)yt_record_set_number(&tape.update.stored_port.record,
+	    YT_F97, 8.0f);
+	tape.fail_at = 8U;
+	yt_error_clear(&error);
+	return !yt_port_ordinary_run(&state, &port_ordinary_update_ops,
+	    &port_ordinary_report_ops, &tape, &error)
+	    && error.status == YT_IO_ERROR && state.report.owner_player_read
+	    && !state.report.current_player_read
+	    && state.persistence_committed
+	    && state.field_kind == YT_PORT_ORDINARY_FIELD_PLAYER
+	    && state.field_record == 8U
+	    && memcmp(state.field.bytes, tape.report.owner_player.record.bytes,
+	    sizeof(state.field.bytes)) == 0;
 }
 
 enum treasury_event {
@@ -27494,6 +27836,8 @@ main(void)
 		return fail("ordinary-port updater transaction differs");
 	if (!check_port_report_transaction())
 		return fail("ordinary-port report transaction differs");
+	if (!check_port_ordinary_transaction())
+		return fail("ordinary-port joined transaction differs");
 	if (!check_commodity_trade_transaction())
 		return fail("commodity-trade transaction differs");
 	if (!check_ordinary_commerce_transaction())

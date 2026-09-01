@@ -1722,6 +1722,8 @@ struct yt_computer_port_visibility_state {
 	float scratch_19c4;
 	enum yt_computer_port_field_kind field_kind;
 	uint32_t field_record;
+	struct yt_record field;
+	bool field_valid;
 	size_t player_read_attempts;
 	bool scratch_written;
 	bool unavailable;
@@ -2554,6 +2556,7 @@ struct yt_port_update_state {
 	bool day_observed;
 	bool port_read;
 	bool timer_observed;
+	bool port_write_attempted;
 	bool port_written;
 	bool complete;
 };
@@ -2626,6 +2629,28 @@ struct yt_port_report_ops {
 };
 bool yt_port_report_run(struct yt_port_report_state *state,
 	const struct yt_port_report_ops *ops, void *context,
+	struct yt_error *error);
+enum yt_port_ordinary_field_kind {
+	YT_PORT_ORDINARY_FIELD_INHERITED,
+	YT_PORT_ORDINARY_FIELD_SECTOR,
+	YT_PORT_ORDINARY_FIELD_PORT,
+	YT_PORT_ORDINARY_FIELD_PLAYER,
+};
+struct yt_port_ordinary_state {
+	struct yt_port_update_state update;
+	struct yt_port_report_state report;
+	enum yt_port_ordinary_field_kind field_kind;
+	uint32_t field_record;
+	struct yt_record field;
+	bool field_valid;
+	bool persistence_attempted;
+	bool persistence_committed;
+	bool report_started;
+	bool complete;
+};
+bool yt_port_ordinary_run(struct yt_port_ordinary_state *state,
+	const struct yt_port_update_ops *update_ops,
+	const struct yt_port_report_ops *report_ops, void *context,
 	struct yt_error *error);
 enum yt_commodity_trade_output_kind {
 	YT_COMMODITY_TRADE_STATUS,
