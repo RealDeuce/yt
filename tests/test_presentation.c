@@ -9447,6 +9447,14 @@ test_computer_port_report_ordinary_cycle_presentation(void)
 	    "Equipment....  Buying          300       7.25 66    \r\n"
 	    "\r\n\x1b[0;31;40m"
 	    "Time:15:00  Computer command (?=help)? ";
+	static const uint8_t mode_two[] =
+	    "\r\n\r\n"
+	    "\r\nThis port is owned by: YOU, Credits: 1234.5\r\n"
+	    "\r\n\r\n"
+	    "Ore..........  Buying          100        5.5 32    \r\n"
+	    "Organics.....  Selling         200          6 8    \r\n"
+	    "Equipment....  Buying          300       7.25 66    \r\n"
+	    "\r\n";
 	static const uint8_t sector_prompt[] =
 	    "Enter sector number port is in -=> ";
 	static const uint8_t owner[] =
@@ -9475,11 +9483,14 @@ test_computer_port_report_ordinary_cycle_presentation(void)
 	    "Time:15:00  Computer command (?=help)? ";
 	static const struct {
 		bool ansi;
+		float mode;
 		const uint8_t *expected;
 		size_t expected_length;
 	} cases[] = {
-		{false, plain, sizeof(plain) - 1U},
-		{true, ansi, sizeof(ansi) - 1U},
+		{false, 0.0f, plain, sizeof(plain) - 1U},
+		{true, 0.0f, ansi, sizeof(ansi) - 1U},
+		{true, 1.0f, NULL, 0U},
+		{true, 2.0f, mode_two, sizeof(mode_two) - 1U},
 	};
 	struct yt_present_state current;
 	struct yt_present_result result;
@@ -9491,6 +9502,7 @@ test_computer_port_report_ordinary_cycle_presentation(void)
 
 	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
 		current = state(cases[pass].ansi);
+		current.sound.mode = cases[pass].mode;
 		current.foreground = 1.0f;
 		current.cached_foreground = cases[pass].ansi ? 1.0f : 0.0f;
 		memset(&pager, 0, sizeof(pager));
@@ -9557,7 +9569,8 @@ test_computer_port_report_ordinary_cycle_presentation(void)
 		    sizeof(computer_prompt) - 1U, &capture);
 		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
 		CHECK(capture.remote_length == cases[pass].expected_length);
-		CHECK(capture.remote_length != cases[pass].expected_length
+		CHECK(cases[pass].expected_length == 0U
+		    || capture.remote_length != cases[pass].expected_length
 		    || memcmp(capture.remote, cases[pass].expected,
 		    cases[pass].expected_length) == 0);
 		CHECK(current.foreground == 1.0f
@@ -9569,7 +9582,8 @@ test_computer_port_report_ordinary_cycle_presentation(void)
 		    && pager.newline_flag == 0.0f
 		    && accumulator[0] == '\0');
 	}
-	CHECK(sizeof(plain) - 1U == 451U && sizeof(ansi) - 1U == 503U);
+	CHECK(sizeof(plain) - 1U == 451U && sizeof(ansi) - 1U == 503U
+	    && sizeof(mode_two) - 1U == 218U);
 }
 
 static void
