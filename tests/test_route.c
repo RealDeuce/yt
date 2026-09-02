@@ -119,19 +119,17 @@ test_avoid_semantics(void)
 	status = 1.0f;
 	avoid[0] = 1.4f;
 	yt_error_clear(&error);
-	CHECK(!run_route(&graph, 1.0f, 3.0f, &status, avoid, 0,
+	CHECK(run_route(&graph, 1.0f, 3.0f, &status, avoid, 0,
 	    predecessor, second, &outcome, &error));
-	CHECK(error.status == YT_RANGE
-	    && strcmp(error.operation, "route predecessor cycle") == 0);
+	CHECK(outcome == YT_ROUTE_BACK_EDGE && error.status == YT_OK);
 
 	memset(avoid, 0, sizeof(avoid));
 	status = 1.0f;
 	avoid[0] = 2.6f;
 	yt_error_clear(&error);
-	CHECK(!run_route(&graph, 1.0f, 3.0f, &status, avoid, 0,
+	CHECK(run_route(&graph, 1.0f, 3.0f, &status, avoid, 0,
 	    predecessor, second, &outcome, &error));
-	CHECK(error.status == YT_RANGE
-	    && strcmp(error.operation, "route predecessor cycle") == 0);
+	CHECK(outcome == YT_ROUTE_BACK_EDGE && error.status == YT_OK);
 
 	memset(avoid, 0, sizeof(avoid));
 	status = 0.0f;
@@ -150,19 +148,81 @@ test_avoid_semantics(void)
 	avoid[0] = 3000.6f;
 	status = 1.0f;
 	yt_error_clear(&error);
-	CHECK(!run_route(&graph, 1.0f, 3.0f, &status, avoid, 0,
+	CHECK(run_route(&graph, 1.0f, 3.0f, &status, avoid, 0,
 	    predecessor, second, &outcome, &error));
-	CHECK(error.status == YT_RANGE
-	    && strcmp(error.operation, "route avoid CINT") == 0);
+	CHECK(outcome == YT_ROUTE_FOUND && error.status == YT_OK
+	    && second[0] == 3001);
 
 	memset(avoid, 0, sizeof(avoid));
 	status = 1.0f;
 	avoid[0] = 1.5f;
 	yt_error_clear(&error);
-	CHECK(!run_route(&graph, 1.0f, 3.0f, &status, avoid, 4,
+	CHECK(run_route(&graph, 1.0f, 3.0f, &status, avoid, 4,
 	    predecessor, second, &outcome, &error));
-	CHECK(error.status == YT_RANGE
-	    && strcmp(error.operation, "route predecessor cycle") == 0);
+	CHECK(outcome == YT_ROUTE_BACK_EDGE && error.status == YT_OK);
+}
+
+static void
+test_wrapped_process_writes(void)
+{
+	struct graph graph = {.maximum = 3, .fail_sector = -1};
+	struct yt_route_process process;
+	float avoid[YT_ROUTE_AVOID_COUNT] = {0};
+	enum yt_route_outcome outcome;
+	struct yt_error error;
+	float status;
+
+	graph.rows[1][0] = 2.0f;
+	graph.rows[2][0] = 3.0f;
+	memset(&process, 0xa5, sizeof(process));
+	memset(process.bytes + YT_ROUTE_WORKSPACE_ADDRESS, 0x5a,
+	    YT_ROUTE_WORKSPACE_BYTES);
+	avoid[0] = -1.0f;
+	yt_error_clear(&error);
+	CHECK(yt_route_process_set_avoid(&process, avoid, &error));
+	status = 1.0f;
+	CHECK(yt_route_process_build(1.0f, 3.0f, &status, 0, &process,
+	    read_sector, &graph, &outcome, &error));
+	CHECK(outcome == YT_ROUTE_FOUND && status == 0.0f
+	    && yt_route_process_predecessor(&process, -1) == -1
+	    && process.bytes[YT_ROUTE_WORKSPACE_ADDRESS - 2U] == 0xffU
+	    && process.bytes[YT_ROUTE_WORKSPACE_ADDRESS - 1U] == 0xffU);
+
+	memset(&process, 0, sizeof(process));
+	memset(avoid, 0, sizeof(avoid));
+	avoid[0] = 29130.0f;
+	CHECK(yt_route_process_set_avoid(&process, avoid, &error));
+	status = 1.0f;
+	CHECK(yt_route_process_build(1.0f, 3.0f, &status, 0, &process,
+	    read_sector, &graph, &outcome, &error));
+	CHECK(outcome == YT_ROUTE_FOUND && process.bytes[0] == 0xcaU
+	    && process.bytes[1] == 0x71U);
+
+	memset(&process, 0, sizeof(process));
+	memset(avoid, 0, sizeof(avoid));
+	avoid[0] = 6952.0f;
+	CHECK(yt_route_process_set_avoid(&process, avoid, &error));
+	status = 1.0f;
+	graph.expanded_count = 0U;
+	CHECK(yt_route_process_build(1.0f, 3.0f, &status, 0, &process,
+	    read_sector, &graph, &outcome, &error));
+	CHECK(outcome == YT_ROUTE_NOT_FOUND && status == 1.0f
+	    && graph.expanded_count == 0U && process.bytes[0x52bc] == 0x28U
+	    && process.bytes[0x52bd] == 0x1bU);
+
+	memset(&process, 0, sizeof(process));
+	memset(avoid, 0, sizeof(avoid));
+	CHECK(yt_route_process_set_avoid(&process, avoid, &error));
+	memset(&graph, 0, sizeof(graph));
+	graph.maximum = 3;
+	graph.fail_sector = -1;
+	graph.rows[1][0] = -1.0f;
+	graph.rows[1][1] = 3.0f;
+	status = 0.0f;
+	CHECK(yt_route_process_build(1.0f, 3.0f, &status, 0, &process,
+	    read_sector, &graph, &outcome, &error));
+	CHECK(outcome == YT_ROUTE_FOUND
+	    && yt_route_process_predecessor(&process, -1) == 1);
 }
 
 static void
@@ -214,6 +274,7 @@ main(void)
 {
 	test_fifo_and_failure_residue();
 	test_avoid_semantics();
+	test_wrapped_process_writes();
 	test_same_zero_and_conversion_order();
 	if (failures != 0U)
 		return EXIT_FAILURE;
