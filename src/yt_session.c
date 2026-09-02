@@ -2695,156 +2695,123 @@ capacity_error:
 	return false;
 }
 
+struct radio_read_context {
+	struct yt_session *session;
+	struct yt_radio_file file;
+};
+
+static bool
+radio_read_open(void *context, struct yt_error *error)
+{
+	struct radio_read_context *reader = context;
+
+	yt_radio_file_init(&reader->file);
+	return yt_radio_file_open(&reader->file, "YTRMSG.DAT", error);
+}
+
+static bool
+radio_read_size(void *context, uint64_t *length, struct yt_error *error)
+{
+	struct radio_read_context *reader = context;
+
+	return yt_radio_file_size(&reader->file, length, error);
+}
+
+static bool
+radio_read_get(void *context, uint32_t record,
+    struct yt_radio_record *value, struct yt_error *error)
+{
+	struct radio_read_context *reader = context;
+
+	return yt_radio_file_get(&reader->file, record, value, NULL, error);
+}
+
+static bool
+radio_read_name(void *context, float record, bool sender, uint8_t *dest,
+    size_t capacity, size_t *length, struct yt_error *error)
+{
+	struct radio_read_context *reader = context;
+
+	return radio_name_bytes(reader->session, record, dest, capacity,
+	    length, sender, error);
+}
+
+static bool
+radio_read_present(void *context, const uint8_t *text, size_t length,
+    enum yt_radio_read_output_kind kind, struct yt_error *error)
+{
+	static const char *const operations[] = {
+		"radio opening blank",
+		"radio heading",
+		"radio pair blank",
+		"radio pair header",
+		"radio body",
+		"radio pause",
+		"radio pause blank",
+		"radio none found",
+	};
+	struct radio_read_context *reader = context;
+
+	if ((size_t)kind >= YT_ARRAY_LEN(operations))
+		return false;
+	return session_present_text(reader->session, text, length,
+	    kind == YT_RADIO_READ_PAUSE ? SESSION_PRESENT_RAW
+	    : SESSION_PRESENT_LINE, operations[kind], error);
+}
+
+static bool
+radio_read_wait(void *context, double seconds, struct yt_error *error)
+{
+	struct radio_read_context *reader = context;
+
+	return session_wait(reader->session, seconds,
+	    "radio private-pager wait", error);
+}
+
+static bool
+radio_read_put(void *context, uint32_t record,
+    const struct yt_radio_record *value, struct yt_error *error)
+{
+	struct radio_read_context *reader = context;
+
+	return yt_radio_file_put(&reader->file, record, value, error);
+}
+
+static bool
+radio_read_close(void *context, struct yt_error *error)
+{
+	struct radio_read_context *reader = context;
+
+	return yt_radio_file_close(&reader->file, error);
+}
+
 static bool
 radio_read(struct yt_session *session, float reader_mode,
     struct yt_error *error)
 {
-	static const uint8_t automatic_heading[] =
-	    "Checking for Radio Messages.";
-	static const uint8_t log_heading[] =
-	    "Log of messages sent/recieved.";
-	struct yt_radio_file file;
-	struct yt_radio_record record;
-	struct yt_radio_pager_state private_pager;
-	uint64_t length;
-	uint64_t probe_count;
-	uint32_t basic_record;
-	bool visible = false;
-	float previous_recipient = 0.0f;
-	float previous_sender = 0.0f;
+	static const struct yt_radio_read_ops ops = {
+		radio_read_open,
+		radio_read_size,
+		radio_read_get,
+		radio_read_name,
+		radio_read_present,
+		radio_read_wait,
+		radio_read_put,
+		radio_read_close,
+	};
+	struct radio_read_context context = {.session = session};
+	struct yt_radio_read_state state = {
+		.reader_mode = reader_mode,
+		.current_player = (float)session->player_record,
+	};
+	bool ok;
 
-	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "radio opening blank", error)
-	    || !session_present_text(session,
-	    reader_mode != 0.0f ? log_heading : automatic_heading,
-	    reader_mode != 0.0f ? sizeof(log_heading) - 1U
-	    : sizeof(automatic_heading) - 1U, SESSION_PRESENT_LINE,
-	    "radio heading", error))
-		return false;
-	yt_radio_pager_begin(&private_pager);
-
-	yt_radio_file_init(&file);
-	if (!yt_radio_file_open(&file, "YTRMSG.DAT", error))
-		return false;
-	if (!yt_radio_file_size(&file, &length, error)) {
-		(void)yt_radio_file_close(&file, NULL);
-		return false;
-	}
-	probe_count = length / YT_RADIO_RECORD_SIZE + 1U;
-	if (probe_count > 0xFFFFFFU) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			(void)snprintf(error->operation,
-			    sizeof(error->operation), "%s", "radio scan bound");
-			(void)snprintf(error->path, sizeof(error->path), "%s",
-			    file.random.path);
-		}
-		(void)yt_radio_file_close(&file, NULL);
-		return false;
-	}
-	for (basic_record = 1U; basic_record <= probe_count; ++basic_record) {
-		float counter;
-		float recipient;
-		float sender;
-		struct yt_radio_reader_decision decision;
-
-		if (!yt_radio_file_get(&file, basic_record, &record, NULL,
-		    error)) {
-			(void)yt_radio_file_close(&file, NULL);
-			return false;
-		}
-		counter = yt_radio_get_number(&record, 0);
-		recipient = yt_radio_get_number(&record, 4);
-		sender = yt_radio_get_number(&record, 8);
-		if (!yt_radio_reader_decide(counter, recipient, sender,
-		    (float)session->player_record, reader_mode, &decision, error)) {
-			(void)yt_radio_file_close(&file, NULL);
-			return false;
-		}
-
-		if (decision.visible) {
-			uint8_t from[YT_TEXT_FIELD_SIZE];
-			uint8_t to[YT_TEXT_FIELD_SIZE];
-			uint8_t header[2U * YT_TEXT_FIELD_SIZE + 32U];
-			size_t from_length;
-			size_t to_length;
-			size_t header_length = 0;
-
-			visible = true;
-			if (!radio_name_bytes(session, recipient, to, sizeof(to),
-			    &to_length, false, error)
-			    || !radio_name_bytes(session, sender, from, sizeof(from),
-			    &from_length, true, error)) {
-				(void)yt_radio_file_close(&file, NULL);
-				return false;
-			}
-			if (sender != previous_sender
-			    || recipient != previous_recipient) {
-				if (!yt_radio_reader_header(to, to_length, from,
-				    from_length, header, sizeof(header), &header_length)) {
-					if (error != NULL) {
-						error->status = YT_RANGE;
-						(void)snprintf(error->operation,
-						    sizeof(error->operation), "%s",
-						    "radio pair header capacity");
-					}
-					(void)yt_radio_file_close(&file, NULL);
-					return false;
-				}
-				if (!session_present_text(session, NULL, 0,
-				    SESSION_PRESENT_LINE, "radio pair blank", error)
-				    || !session_present_text(session, header,
-				    header_length, SESSION_PRESENT_LINE,
-				    "radio pair header", error)) {
-					(void)yt_radio_file_close(&file, NULL);
-					return false;
-				}
-				yt_radio_pager_add_pair(&private_pager);
-			}
-			if (!session_present_text(session, record.bytes + 12, 74,
-			    SESSION_PRESENT_LINE, "radio body", error)) {
-				(void)yt_radio_file_close(&file, NULL);
-				return false;
-			}
-			previous_sender = sender;
-			previous_recipient = recipient;
-			if (yt_radio_pager_add_body(&private_pager)) {
-				if (!session_present_text(session,
-				    (const uint8_t *)"[Pause]", strlen("[Pause]"),
-				    SESSION_PRESENT_RAW, "radio pause", error)) {
-					(void)yt_radio_file_close(&file, NULL);
-					return false;
-				}
-				if (!session_wait(session, 99.0,
-				    "radio private-pager wait", error)) {
-					(void)yt_radio_file_close(&file, NULL);
-					return false;
-				}
-				if (!session_present_text(session, NULL, 0,
-				    SESSION_PRESENT_LINE, "radio pause blank", error)) {
-					(void)yt_radio_file_close(&file, NULL);
-					return false;
-				}
-			}
-			if (decision.automatic_write) {
-				if (!yt_radio_reader_mutate(&record, counter)
-				    || !yt_radio_file_put(&file, basic_record, &record,
-				    error)) {
-					(void)yt_radio_file_close(&file, NULL);
-					return false;
-				}
-			}
-		}
-	}
-	if (!visible && !session_present_text(session,
-	    (const uint8_t *)"None Found.", strlen("None Found."),
-	    SESSION_PRESENT_LINE, "radio none found", error)) {
-		(void)yt_radio_file_close(&file, NULL);
-		return false;
-	}
-	if (!yt_radio_file_close(&file, error))
-		return false;
-	return true;
+	ok = yt_radio_read_run(&state, &ops, &context, error);
+	if (!ok && error != NULL
+	    && strcmp(error->operation, "radio scan bound") == 0)
+		(void)snprintf(error->path, sizeof(error->path), "%s",
+		    context.file.random.path);
+	return ok;
 }
 
 static bool

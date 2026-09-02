@@ -27384,6 +27384,318 @@ check_computer_newspaper_field_carrier(void)
 	    && current_sector == 2013.5f;
 }
 
+enum radio_read_event_kind {
+	RADIO_READ_EVENT_OPEN = 1,
+	RADIO_READ_EVENT_SIZE,
+	RADIO_READ_EVENT_GET,
+	RADIO_READ_EVENT_NAME,
+	RADIO_READ_EVENT_PRESENT,
+	RADIO_READ_EVENT_WAIT,
+	RADIO_READ_EVENT_PUT,
+	RADIO_READ_EVENT_CLOSE,
+};
+
+struct radio_read_event {
+	enum radio_read_event_kind kind;
+	enum yt_radio_read_output_kind output_kind;
+	uint32_t record_number;
+	float name_record;
+	bool sender;
+	uint8_t text[128];
+	size_t length;
+};
+
+struct radio_read_tape {
+	struct yt_radio_record records[24];
+	size_t record_count;
+	struct radio_read_event events[256];
+	size_t calls;
+	size_t fail_at;
+	struct yt_radio_record written;
+	uint32_t written_record;
+};
+
+static bool
+radio_read_event(struct radio_read_tape *tape,
+    enum radio_read_event_kind kind, struct yt_error *error)
+{
+	struct radio_read_event *event;
+
+	if (tape->calls >= YT_ARRAY_LEN(tape->events))
+		return false;
+	event = &tape->events[tape->calls++];
+	memset(event, 0, sizeof(*event));
+	event->kind = kind;
+	if (tape->calls != tape->fail_at)
+		return true;
+	if (error != NULL) {
+		error->status = YT_IO_ERROR;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    "injected radio read failure");
+	}
+	return false;
+}
+
+static bool
+radio_read_test_open(void *context, struct yt_error *error)
+{
+	return radio_read_event(context, RADIO_READ_EVENT_OPEN, error);
+}
+
+static bool
+radio_read_test_size(void *context, uint64_t *length,
+    struct yt_error *error)
+{
+	struct radio_read_tape *tape = context;
+
+	if (!radio_read_event(tape, RADIO_READ_EVENT_SIZE, error))
+		return false;
+	*length = tape->record_count * YT_RADIO_RECORD_SIZE;
+	return true;
+}
+
+static bool
+radio_read_test_get(void *context, uint32_t record,
+    struct yt_radio_record *value, struct yt_error *error)
+{
+	struct radio_read_tape *tape = context;
+	struct radio_read_event *event;
+
+	if (!radio_read_event(tape, RADIO_READ_EVENT_GET, error))
+		return false;
+	event = &tape->events[tape->calls - 1U];
+	event->record_number = record;
+	memset(value, 0, sizeof(*value));
+	if (record >= 1U && record <= tape->record_count)
+		*value = tape->records[record - 1U];
+	return true;
+}
+
+static bool
+radio_read_test_name(void *context, float record, bool sender,
+    uint8_t *dest, size_t capacity, size_t *length,
+    struct yt_error *error)
+{
+	static const uint8_t all[] = "All";
+	static const uint8_t xannor[] = "The Xannor";
+	static const uint8_t mercenaries[] = "The Mercenaries";
+	static const uint8_t ada[] = "Ada";
+	static const uint8_t bob[] = "Bob";
+	static const uint8_t cy[] = "Cy";
+	static const uint8_t dee[] = "Dee";
+	struct radio_read_tape *tape = context;
+	struct radio_read_event *event;
+	const uint8_t *name;
+	size_t name_length;
+
+	if (!radio_read_event(tape, RADIO_READ_EVENT_NAME, error))
+		return false;
+	event = &tape->events[tape->calls - 1U];
+	event->name_record = record;
+	event->sender = sender;
+	if (!sender && record <= 0.0f) {
+		name = all;
+		name_length = sizeof(all) - 1U;
+	}
+	else if (sender && record == -1.0f) {
+		name = xannor;
+		name_length = sizeof(xannor) - 1U;
+	}
+	else if (sender && record <= 0.0f) {
+		name = mercenaries;
+		name_length = sizeof(mercenaries) - 1U;
+	}
+	else if (record == 1.0f) {
+		name = ada;
+		name_length = sizeof(ada) - 1U;
+	}
+	else if (record == 2.0f) {
+		name = bob;
+		name_length = sizeof(bob) - 1U;
+	}
+	else if (record == 3.0f) {
+		name = cy;
+		name_length = sizeof(cy) - 1U;
+	}
+	else {
+		name = dee;
+		name_length = sizeof(dee) - 1U;
+	}
+	if (name_length > capacity)
+		return false;
+	memcpy(dest, name, name_length);
+	*length = name_length;
+	return true;
+}
+
+static bool
+radio_read_test_present(void *context, const uint8_t *text, size_t length,
+    enum yt_radio_read_output_kind kind, struct yt_error *error)
+{
+	struct radio_read_tape *tape = context;
+	struct radio_read_event *event;
+
+	if (length > sizeof(tape->events[0].text)
+	    || !radio_read_event(tape, RADIO_READ_EVENT_PRESENT, error))
+		return false;
+	event = &tape->events[tape->calls - 1U];
+	event->output_kind = kind;
+	event->length = length;
+	if (length != 0U)
+		memcpy(event->text, text, length);
+	return true;
+}
+
+static bool
+radio_read_test_wait(void *context, double seconds, struct yt_error *error)
+{
+	struct radio_read_tape *tape = context;
+
+	return seconds == 99.0
+	    && radio_read_event(tape, RADIO_READ_EVENT_WAIT, error);
+}
+
+static bool
+radio_read_test_put(void *context, uint32_t record,
+    const struct yt_radio_record *value, struct yt_error *error)
+{
+	struct radio_read_tape *tape = context;
+	struct radio_read_event *event;
+
+	if (!radio_read_event(tape, RADIO_READ_EVENT_PUT, error))
+		return false;
+	event = &tape->events[tape->calls - 1U];
+	event->record_number = record;
+	tape->written_record = record;
+	tape->written = *value;
+	return true;
+}
+
+static bool
+radio_read_test_close(void *context, struct yt_error *error)
+{
+	return radio_read_event(context, RADIO_READ_EVENT_CLOSE, error);
+}
+
+static const struct yt_radio_read_ops radio_read_test_ops = {
+	radio_read_test_open,
+	radio_read_test_size,
+	radio_read_test_get,
+	radio_read_test_name,
+	radio_read_test_present,
+	radio_read_test_wait,
+	radio_read_test_put,
+	radio_read_test_close,
+};
+
+static void
+radio_read_record(struct yt_radio_record *record, float counter,
+    float recipient, float sender, const char *body)
+{
+	memset(record, 0, sizeof(*record));
+	(void)yt_radio_set_number(record, 0U, counter);
+	(void)yt_radio_set_number(record, 4U, recipient);
+	(void)yt_radio_set_number(record, 8U, sender);
+	memset(record->bytes + 12U, ' ', 74U);
+	memcpy(record->bytes + 12U, body, strlen(body));
+}
+
+static bool
+check_radio_read_transaction(void)
+{
+	struct yt_radio_read_state state;
+	struct radio_read_tape tape;
+	struct yt_error error;
+	size_t index;
+	size_t pair_headers;
+	size_t bodies;
+	size_t waits;
+
+	memset(&tape, 0, sizeof(tape));
+	tape.fail_at = SIZE_MAX;
+	tape.record_count = 3U;
+	radio_read_record(&tape.records[0], 0.0f, 2.0f, 1.0f, "SENT-1");
+	radio_read_record(&tape.records[1], 0.0f, 2.0f, 1.0f, "SENT-2");
+	radio_read_record(&tape.records[2], 2.0f, 3.0f, 4.0f, "GLOBAL");
+	memset(&state, 0, sizeof(state));
+	state.reader_mode = 1.0f;
+	state.current_player = 1.0f;
+	if (!yt_radio_read_run(&state, &radio_read_test_ops, &tape, NULL)
+	    || !state.complete || state.file_open || !state.close_attempted
+	    || state.byte_length != 3U * YT_RADIO_RECORD_SIZE
+	    || state.probe_count != 4U || state.record_number != 4U
+	    || !state.radio_field_valid
+	    || memcmp(&state.radio_field, &(struct yt_radio_record){{0}},
+	    sizeof(state.radio_field)) != 0
+	    || !state.visible || state.visible_records != 3U
+	    || state.name_accesses != 6U || state.positive_name_gets != 6U
+	    || !state.player_field_valid || state.player_field_record != 4.0f
+	    || state.player_field_role != YT_RADIO_READ_NAME_SENDER
+	    || state.private_line_count != 7.0f || state.writes != 0U
+	    || state.waits != 0U)
+		return false;
+	pair_headers = 0U;
+	bodies = 0U;
+	for (index = 0U; index < tape.calls; ++index) {
+		if (tape.events[index].kind == RADIO_READ_EVENT_PRESENT
+		    && tape.events[index].output_kind
+		    == YT_RADIO_READ_PAIR_HEADER)
+			++pair_headers;
+		if (tape.events[index].kind == RADIO_READ_EVENT_PRESENT
+		    && tape.events[index].output_kind == YT_RADIO_READ_BODY)
+			++bodies;
+	}
+	if (pair_headers != 2U || bodies != 3U
+	    || tape.events[tape.calls - 1U].kind != RADIO_READ_EVENT_CLOSE)
+		return false;
+
+	memset(&tape, 0, sizeof(tape));
+	tape.fail_at = SIZE_MAX;
+	tape.record_count = 1U;
+	radio_read_record(&tape.records[0], 2.0f, 1.0f, 2.0f, "AUTO");
+	memset(&state, 0, sizeof(state));
+	state.current_player = 1.0f;
+	if (!yt_radio_read_run(&state, &radio_read_test_ops, &tape, NULL)
+	    || state.writes != 1U || tape.written_record != 1U
+	    || yt_radio_get_number(&tape.written, 0U) != 0.0f)
+		return false;
+
+	memset(&tape, 0, sizeof(tape));
+	tape.fail_at = SIZE_MAX;
+	tape.record_count = 21U;
+	for (index = 0U; index < tape.record_count; ++index)
+		radio_read_record(&tape.records[index], 0.0f, 2.0f, 1.0f,
+		    "ROW");
+	memset(&state, 0, sizeof(state));
+	state.reader_mode = 1.0f;
+	state.current_player = 1.0f;
+	if (!yt_radio_read_run(&state, &radio_read_test_ops, &tape, NULL)
+	    || state.waits != 1U || state.private_line_count != 0.0f)
+		return false;
+	waits = 0U;
+	for (index = 0U; index < tape.calls; ++index) {
+		if (tape.events[index].kind == RADIO_READ_EVENT_WAIT)
+			++waits;
+	}
+	if (waits != 1U)
+		return false;
+
+	memset(&tape, 0, sizeof(tape));
+	tape.fail_at = 6U;
+	tape.record_count = 1U;
+	radio_read_record(&tape.records[0], 0.0f, 2.0f, 1.0f, "FAIL");
+	memset(&state, 0, sizeof(state));
+	state.reader_mode = 1.0f;
+	state.current_player = 1.0f;
+	yt_error_clear(&error);
+	return !yt_radio_read_run(&state, &radio_read_test_ops, &tape, &error)
+	    && error.status == YT_IO_ERROR && !state.complete
+	    && state.close_attempted && !state.file_open
+	    && tape.events[tape.calls - 1U].kind == RADIO_READ_EVENT_CLOSE
+	    && !yt_radio_read_run(NULL, &radio_read_test_ops, &tape, NULL)
+	    && !yt_radio_read_run(&state, NULL, &tape, NULL);
+}
+
 enum radio_send_event_kind {
 	RADIO_SEND_NEWS = 1,
 	RADIO_SEND_RECORD,
@@ -29322,6 +29634,8 @@ main(void)
 		return fail("computer newspaper transaction differs");
 	if (!check_computer_newspaper_field_carrier())
 		return fail("computer newspaper FIELD carrier differs");
+	if (!check_radio_read_transaction())
+		return fail("radio read transaction differs");
 	if (!check_radio_send_transaction())
 		return fail("radio send transaction differs");
 	if (!check_port_name_editor_model())

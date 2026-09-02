@@ -23130,13 +23130,72 @@ test_radio_body_cleanup_presentation(void)
 }
 
 static void
-test_computer_radio_log_presentation(void)
+computer_radio_log_empty_cycle_fixture(bool ansi, float mode,
+    const uint8_t *typed, size_t typed_length,
+    struct yt_present_state *current, struct yt_pager_state *pager,
+    struct pager_capture *capture, char *accumulator,
+    size_t accumulator_capacity, char *queue, size_t queue_capacity,
+    size_t *queue_position, size_t *queue_length)
 {
 	static const uint8_t prompt[] =
 	    "Time: 14:59  Computer command (?=help)? ";
 	static const uint8_t heading[] =
 	    "Log of messages sent/recieved.";
 	static const uint8_t none[] = "None Found.";
+	struct yt_present_result result;
+
+	CHECK(typed != NULL && typed_length < accumulator_capacity);
+	*current = state(ansi);
+	current->sound.mode = mode;
+	current->foreground = 6.0f;
+	current->cached_foreground = ansi ? 6.0f : 0.0f;
+	memset(pager, 0, sizeof(*pager));
+	pager->foreground = 6;
+	memset(capture, 0, sizeof(*capture));
+	memset(accumulator, 0, accumulator_capacity);
+	memset(queue, 0, queue_capacity);
+	*queue_position = 0U;
+	*queue_length = 0U;
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current->foreground = 1.0f;
+	pager->foreground = 1;
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, prompt, sizeof(prompt) - 1U,
+	    capture);
+	yt_pager_editor_enter(pager, accumulator, accumulator_capacity);
+	memcpy(accumulator, typed, typed_length);
+	accumulator[typed_length] = '\0';
+	CHECK(yt_present_editor_echo(typed, typed_length, typed, typed_length,
+	    current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_input_split_semicolon(accumulator, queue, queue_capacity,
+	    queue_position, queue_length));
+	CHECK(strcmp(accumulator, "6") == 0);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(heading, sizeof(heading) - 1U,
+	    current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(none, sizeof(none) - 1U,
+	    current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, prompt, sizeof(prompt) - 1U,
+	    capture);
+}
+
+static void
+test_computer_radio_log_presentation(void)
+{
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Computer command (?=help)? ";
+	static const uint8_t heading[] =
+	    "Log of messages sent/recieved.";
 	static const uint8_t expected[] =
 	    "\r\n"
 	    "Time: 14:59  Computer command (?=help)? 6\r\n"
@@ -23145,6 +23204,18 @@ test_computer_radio_log_presentation(void)
 	    "None Found.\r\n"
 	    "\r\n"
 	    "Time: 14:59  Computer command (?=help)? ";
+	static const uint8_t ansi_expected[] =
+	    "\r\n"
+	    "\x1b[0;31;40mTime: 14:59  Computer command (?=help)? 6\r\n"
+	    "\r\n"
+	    "Log of messages sent/recieved.\r\n"
+	    "None Found.\r\n"
+	    "\r\n"
+	    "Time: 14:59  Computer command (?=help)? ";
+	static const uint8_t corrupt_expected[] =
+	    "\r\n\r\n\r\n"
+	    "Log of messages sent/recieved.\r\n"
+	    "None Found.\r\n\r\n";
 	static const uint8_t message_prefix[] =
 	    "\r\n"
 	    "Time: 14:59  Computer command (?=help)? 6\r\n"
@@ -23165,41 +23236,52 @@ test_computer_radio_log_presentation(void)
 	struct pager_capture capture;
 	uint8_t body[74];
 	uint8_t message_expected[228];
+	char queue[16];
 	char accumulator[80] = "";
 	size_t offset;
+	size_t queue_position;
+	size_t queue_length;
 
-	current.foreground = 1.0f;
-	memset(&pager, 0, sizeof(pager));
-	pager.foreground = 1;
-	memset(&capture, 0, sizeof(capture));
-	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
-	pager_capture_result(&capture, &result);
-	pager.newline_flag = 1.0f;
-	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
-	    &capture);
-	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
-	CHECK(yt_present_editor_echo((const uint8_t *)"6", 1,
-	    (const uint8_t *)"6", 1, &current, &result) == YT_PRESENT_OK);
-	pager_capture_result(&capture, &result);
-	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
-	pager_capture_result(&capture, &result);
-	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
-	pager_capture_result(&capture, &result);
-	CHECK(yt_present_line(heading, sizeof(heading) - 1U,
-	    &current, &result) == YT_PRESENT_OK);
-	pager_capture_result(&capture, &result);
-	CHECK(yt_present_line(none, sizeof(none) - 1U,
-	    &current, &result) == YT_PRESENT_OK);
-	pager_capture_result(&capture, &result);
-	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
-	pager_capture_result(&capture, &result);
-	pager.newline_flag = 1.0f;
-	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
-	    &capture);
+	computer_radio_log_empty_cycle_fixture(false, 0.0f,
+	    (const uint8_t *)"6", 1U, &current, &pager, &capture,
+	    accumulator, sizeof(accumulator), queue, sizeof(queue),
+	    &queue_position, &queue_length);
 	CHECK(sizeof(expected) - 1U == 134U);
 	CHECK(capture.remote_length == sizeof(expected) - 1U
 	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
-	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f);
+	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f
+	    && queue_position == 0U && queue_length == 0U);
+
+	computer_radio_log_empty_cycle_fixture(true, 0.0f,
+	    (const uint8_t *)"6", 1U, &current, &pager, &capture,
+	    accumulator, sizeof(accumulator), queue, sizeof(queue),
+	    &queue_position, &queue_length);
+	CHECK(sizeof(ansi_expected) - 1U == 144U);
+	CHECK(capture.remote_length == sizeof(ansi_expected) - 1U
+	    && memcmp(capture.remote, ansi_expected,
+	    sizeof(ansi_expected) - 1U) == 0);
+
+	computer_radio_log_empty_cycle_fixture(false, 1.0f,
+	    (const uint8_t *)"6", 1U, &current, &pager, &capture,
+	    accumulator, sizeof(accumulator), queue, sizeof(queue),
+	    &queue_position, &queue_length);
+	CHECK(capture.remote_length == 0U && capture.local_event_count != 0U);
+
+	computer_radio_log_empty_cycle_fixture(false, 2.0f,
+	    (const uint8_t *)"6", 1U, &current, &pager, &capture,
+	    accumulator, sizeof(accumulator), queue, sizeof(queue),
+	    &queue_position, &queue_length);
+	CHECK(capture.remote_length == sizeof(corrupt_expected) - 1U
+	    && memcmp(capture.remote, corrupt_expected,
+	    sizeof(corrupt_expected) - 1U) == 0);
+
+	computer_radio_log_empty_cycle_fixture(false, 0.0f,
+	    (const uint8_t *)"6;Q", 3U, &current, &pager, &capture,
+	    accumulator, sizeof(accumulator), queue, sizeof(queue),
+	    &queue_position, &queue_length);
+	CHECK(queue_position == 0U && queue_length == 2U
+	    && memcmp(queue, "Q\r", 2U) == 0
+	    && strcmp(accumulator, "6") == 0);
 
 	offset = 0U;
 	memcpy(message_expected + offset, message_prefix,

@@ -1,6 +1,7 @@
 #include "yt_game.h"
 
 #include "qb.h"
+#include "yt_pager.h"
 
 #include <float.h>
 #include <limits.h>
@@ -3472,6 +3473,171 @@ yt_computer_newspaper_run(struct yt_computer_newspaper_state *state,
 		return false;
 	state->complete = true;
 	return true;
+}
+
+bool
+yt_radio_read_run(struct yt_radio_read_state *state,
+    const struct yt_radio_read_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t automatic_heading[] =
+	    "Checking for Radio Messages.";
+	static const uint8_t log_heading[] =
+	    "Log of messages sent/recieved.";
+	static const uint8_t pause[] = "[Pause]";
+	static const uint8_t none[] = "None Found.";
+	struct yt_radio_pager_state pager;
+	uint32_t record_number;
+
+	if (state == NULL || ops == NULL || ops->open == NULL
+	    || ops->size == NULL || ops->get == NULL || ops->name == NULL
+	    || ops->present == NULL || ops->wait == NULL || ops->put == NULL
+	    || ops->close == NULL)
+		return false;
+	state->byte_length = 0U;
+	state->probe_count = 0U;
+	state->record_number = 0U;
+	memset(&state->radio_field, 0, sizeof(state->radio_field));
+	state->previous_recipient = 0.0f;
+	state->previous_sender = 0.0f;
+	state->player_field_record = 0.0f;
+	state->private_line_count = 0.0f;
+	state->visible_records = 0U;
+	state->name_accesses = 0U;
+	state->positive_name_gets = 0U;
+	state->writes = 0U;
+	state->waits = 0U;
+	state->player_field_role = YT_RADIO_READ_NAME_NONE;
+	state->radio_field_valid = false;
+	state->player_field_valid = false;
+	state->file_open = false;
+	state->close_attempted = false;
+	state->visible = false;
+	state->complete = false;
+
+	if (!ops->present(context, NULL, 0U, YT_RADIO_READ_OPENING_BLANK,
+	    error)
+	    || !ops->present(context,
+	    state->reader_mode != 0.0f ? log_heading : automatic_heading,
+	    state->reader_mode != 0.0f ? sizeof(log_heading) - 1U
+	    : sizeof(automatic_heading) - 1U, YT_RADIO_READ_HEADING, error))
+		return false;
+	yt_radio_pager_begin(&pager);
+	if (!ops->open(context, error))
+		return false;
+	state->file_open = true;
+	if (!ops->size(context, &state->byte_length, error))
+		goto abort;
+	state->probe_count = state->byte_length / YT_RADIO_RECORD_SIZE + 1U;
+	if (state->probe_count > 0xFFFFFFU) {
+		(void)startup_configuration_error(error, YT_RANGE,
+		    "radio scan bound");
+		goto abort;
+	}
+	for (record_number = 1U; record_number <= state->probe_count;
+	    ++record_number) {
+		struct yt_radio_record record;
+		struct yt_radio_reader_decision decision;
+		float counter;
+		float recipient;
+		float sender;
+
+		state->record_number = record_number;
+		if (!ops->get(context, record_number, &record, error))
+			goto abort;
+		state->radio_field = record;
+		state->radio_field_valid = true;
+		counter = yt_radio_get_number(&record, 0U);
+		recipient = yt_radio_get_number(&record, 4U);
+		sender = yt_radio_get_number(&record, 8U);
+		if (!yt_radio_reader_decide(counter, recipient, sender,
+		    state->current_player, state->reader_mode, &decision, error))
+			goto abort;
+		if (decision.visible) {
+			uint8_t from[YT_TEXT_FIELD_SIZE];
+			uint8_t to[YT_TEXT_FIELD_SIZE];
+			uint8_t header[2U * YT_TEXT_FIELD_SIZE + 32U];
+			size_t from_length;
+			size_t to_length;
+			size_t header_length;
+
+			state->visible = true;
+			++state->visible_records;
+			++state->name_accesses;
+			if (!ops->name(context, recipient, false, to, sizeof(to),
+			    &to_length, error))
+				goto abort;
+			if (recipient > 0.0f) {
+				state->player_field_valid = true;
+				state->player_field_record = recipient;
+				state->player_field_role =
+				    YT_RADIO_READ_NAME_RECIPIENT;
+				++state->positive_name_gets;
+			}
+			++state->name_accesses;
+			if (!ops->name(context, sender, true, from, sizeof(from),
+			    &from_length, error))
+				goto abort;
+			if (sender > 0.0f) {
+				state->player_field_valid = true;
+				state->player_field_record = sender;
+				state->player_field_role = YT_RADIO_READ_NAME_SENDER;
+				++state->positive_name_gets;
+			}
+			if (sender != state->previous_sender
+			    || recipient != state->previous_recipient) {
+				if (!yt_radio_reader_header(to, to_length, from,
+				    from_length, header, sizeof(header),
+				    &header_length)
+				    || !ops->present(context, NULL, 0U,
+				    YT_RADIO_READ_PAIR_BLANK, error)
+				    || !ops->present(context, header, header_length,
+				    YT_RADIO_READ_PAIR_HEADER, error))
+					goto abort;
+				yt_radio_pager_add_pair(&pager);
+			}
+			if (!ops->present(context, record.bytes + 12U, 74U,
+			    YT_RADIO_READ_BODY, error))
+				goto abort;
+			state->previous_sender = sender;
+			state->previous_recipient = recipient;
+			if (yt_radio_pager_add_body(&pager)) {
+				if (!ops->present(context, pause, sizeof(pause) - 1U,
+				    YT_RADIO_READ_PAUSE, error)
+				    || !ops->wait(context, 99.0, error))
+					goto abort;
+				++state->waits;
+				if (!ops->present(context, NULL, 0U,
+				    YT_RADIO_READ_PAUSE_BLANK, error))
+					goto abort;
+			}
+			state->private_line_count = pager.line_count;
+			if (decision.automatic_write) {
+				if (!yt_radio_reader_mutate(&record, counter)
+				    || !ops->put(context, record_number, &record,
+				    error))
+					goto abort;
+				++state->writes;
+			}
+		}
+	}
+	if (!state->visible && !ops->present(context, none,
+	    sizeof(none) - 1U, YT_RADIO_READ_NONE, error))
+		goto abort;
+	state->close_attempted = true;
+	if (!ops->close(context, error))
+		return false;
+	state->file_open = false;
+	state->complete = true;
+	return true;
+
+abort:
+	if (state->file_open) {
+		state->close_attempted = true;
+		if (ops->close(context, NULL))
+			state->file_open = false;
+	}
+	return false;
 }
 
 bool

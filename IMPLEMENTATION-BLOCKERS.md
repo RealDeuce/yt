@@ -8,136 +8,75 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
-### DOC-GAP-013: command-5 fractional TEAM target contradicts shared loader
+### DOC-GAP-014: command-6 dependency failure projections
 
 Affected coverage:
 
-- ship-computer command-5/alias-59 TEAM target selection;
-- the target-to-body YTDATA FIELD and four-slot roster carrier; and
-- corrupt/fractional TEAM joined-cycle claims.
-
-The completed command-specific and shared dependency contracts disagree at
-the TEAM loader call.  `docs/runtime/radio-composer-output.md` says that only
-integral IDs 1 through 50 perform a team `GET` and that other values leave the
-four cleared roster slots.  In contrast,
-`docs/runtime/team-loader-world.md` says the loader's inclusive numeric range
-test does not `CINT`: an in-range fractional ID proceeds through MBF32
-addition and the pinned BRUN random-record conversion, with the example
-offset 51 plus team 1.75 selecting physical record 52.  The canonical native
-loader and its existing fixtures currently implement the latter shared
-contract.
-
-The ordinary integral TEAM path remains implementable, as do personal and
-ALL targets.  Native work must not claim the corrupt/fractional TEAM join or
-silently truncate the caller's raw ID until the upstream radio-composer
-contract is reconciled with the shared loader.  No binary inspection or new
-reverse engineering was performed.
-
-### DOC-GAP-012: command-8 dependency failure projections
-
-Affected coverage:
-
-- ship-computer command-8 newspaper selector and viewer;
+- ship-computer command-6 radio-log scan and private wait;
 - its active-computer entry/body/fresh-prompt cycle; and
 - completion claims for physical and shared-handler failures.
 
-The completed `docs/runtime/computer-newspaper-output.md`, joined file-cycle
-contract, and shared viewer/error contracts fully specify ordinary retries,
-first-poll editor terminals, selector/viewer carrier cuts, pagination,
-Ctrl-X, endpoint modes, missing-file recovery, the successful one-shot
-recovery-writer failure witness, and fresh-prompt return. Potentially missing
-facts are limited to dependency failure projections: persistent ERR 24/57
-retry sequences, faults after a successful viewer open, physical partial
-recovery-append I/O, dependency-owned runtime-error suffixes, and
-fresh-prompt helper-internal error state.
+The completed `docs/runtime/computer-radio-log-output.md` and shared radio
+reader, random-file, output, wait, prompt, input, and framebuffer contracts
+fully specify the successful complete-record cycle. They compose command
+typeahead, the private pager, all endpoint predicates, return hydration, the
+fresh prompt, later AB36/F8 activity, and inherited framebuffer state without
+requiring command-specific interleaving vectors or a fixed final image.
 
-Per the user's authoritative correction, asynchronous F8, recursive pager
-activity, later fresh-editor polls, and inherited framebuffer behavior are
-not caller-specific documentation gaps. They compose through the canonical
-shared input/pager and inherited-framebuffer transducers at the real command-8
-state boundaries. The native implementation must add those joins normally;
-it must not demand a separate command-8 vector for every interleaving or one
-fixed final screen image. Upstream documentation is required only for the
-unidentified physical/error-router projections above. No binary inspection
-or new reverse engineering was performed.
+The command-specific document explicitly leaves unidentified the fatal
+`OPEN`/`LOF`/radio-`GET`/name-`GET`/direct-output/private-wait/`CLOSE`
+shared-handler suffixes, persistent `ERR 24` retries, partial random-file
+records and physical device writes, and entry/return `A41C` anti-cloak
+conversion or handler failures. The already-emitted prefix, successful FIELD
+order, and ordinary return remain implementable, but native work must not
+invent the missing BASIC `ERR`, `ERL`, retry statement, active-handler, or
+partial-I/O projection at those cuts. Upstream documentation is required for
+those identities. No binary inspection or new reverse engineering was
+performed.
+
+## Resolved documentation gaps
+
+### DOC-GAP-013: command-5 fractional TEAM target
+
+Resolved upstream by commit `f3025222`. Every raw nonzero current-player team
+ID invokes the shared loader. Its raw inclusive 1..50 comparisons have no
+integrality predicate, so 1.75 reaches BRUN random-record conversion and,
+with sector offset 51, selects physical record 52. The existing canonical
+native loader was correct; the stale radio-composer sentence was not.
+
+### DOC-GAP-012: command-8 dependency failure projections
+
+Resolved upstream by commit `f3025222`. Canonical physical adapter domains
+supply partial I/O, parser/file state and BRUN error mapping; ERR 24/57 retry
+re-enters the statement over that retained state, and other results enter the
+documented shared handler or main ERL-40000 recovery. Command 8 preserves its
+entry FIELD. Shared AB36/F8/framebuffer behavior composes normally.
 
 ### DOC-GAP-011: command-4 FIELD and dependency failure projections
 
-Affected coverage:
+Resolved upstream by commit `f3025222`. The scoreboard generator leaves the
+FIELD image from its last successful cache, player-row or positive-team GET.
+A failed return hydration preserves that image and live file state; a
+successful current-player GET replaces it. Physical failures and retries use
+the canonical adapter and router contracts, while shared input/framebuffer
+state remains ordinary composition.
 
-- ship-computer command-4 scoreboard selector, generator, and viewer;
-- the joined active-computer entry/body/fresh-prompt cycle; and
-- completion claims for dependency failures and failed-return FIELD state.
+### DOC-GAP-010: navigation error-router identities and corrupt state
 
-The completed `docs/runtime/computer-scoreboard-output.md`,
-`docs/runtime/computer-file-cycles-output.md`, and shared viewer contract
-fully specify the ordinary selector/generator/viewer/return cycle, canonical
-first-poll editor terminals, carrier cuts, retained-scoreboard paths, and
-ordinary missing-file recovery. Potentially missing facts are the physical
-or partial generator/viewer I/O projections, dependency-owned shared-handler
-suffixes, and the inherited 137-byte FIELD after a command-4 body when the
-return player GET fails before replacement.
+Resolved upstream by commit `f3025222`. Command-specific saved IP, retry
+address, ERL, installed handler and admitted BRUN error domains are now pinned
+for all route-builder and main navigation failure sites. Corrupt route indices
+perform the documented 16-bit adjacent or wrapped DS write; predecessor
+cycles and FIFO/movement loops retain their real back-edges rather than host
+array bounds or finite-transcript normalization.
 
-Per the user's authoritative correction, later AB36 polls, time refresh,
-asynchronous F8/recursive pager activity, and inherited framebuffer behavior
-compose through their canonical shared transducers at the real command-4
-boundaries. They are implementation obligations, not requests for
-caller-specific combination vectors or a fixed final framebuffer. Native
-work must stop only at the unidentified FIELD/error-state seams above and
-must not invent them. No binary inspection or new reverse engineering was
-performed.
+### DOC-GAP-006: command-2 dependency failure identities
 
-### DOC-GAP-010: navigation error-router identities
-
-Affected coverage:
-
-- ship-computer command-10 path construction;
-- command-3 autopilot construction and engagement; and
-- their physical/dependency failure continuations.
-
-The completed path, autopilot, movement, input, queue, and adapter contracts
-compose the normal loops, FIFO transitions, movement back-edges, corrupt-state
-adapters, and canonical endpoint/framebuffer transformations. Those are
-ordinary implementation work and do not require navigation-specific vectors.
-
-The potentially genuine missing facts are the BASIC `ERR`, `ERL`, active
-handler, retry statement, and resulting shared-handler suffix for each failed
-physical random-record/serial operation and failed conversion, allocation, or
-workspace operation. Native work may retain the documented already-emitted
-prefix and exact state at each cut, but it must not synthesize the omitted
-error route. Upstream documentation must provide those per-stage
-error-router identities. No binary inspection or new reverse engineering was
-performed.
-
-### DOC-GAP-006: command-2 dependency failures lack error-router identity
-
-Affected coverage:
-
-- ship-computer command-2/alias-23 selected-sector and friendship reads;
-- its ordinary-port updater/report child; and
-- its Earth-report child.
-
-The completed contracts specify each child's exact already-emitted prefix,
-FIELD residue, and persistence state, and the shared main error contract
-specifies routing once BASIC `ERR`, `ERL`, and the retry statement are known.
-They do not connect those two sides for command 2:
-
-- `docs/runtime/computer-port-report-output.md` leaves physical random-file
-  errors and shared runtime-error suffixes outside its bounded composition;
-- `docs/runtime/port-commerce-output.md` lists the ordered failing stages but
-  supplies no caller statement `ERL` or retry address; and
-- `docs/runtime/earth-store-output.md` says the shared handler owns the
-  `ERR`/`ERL`-dependent suffix without supplying that dependency identity.
-
-The native `struct yt_error` consequently cannot be extended or populated at
-these sites from existing evidence: the required BASIC error number, source
-line, saved/retry statement identity, active handler, and the exact distinction
-between retry and terminal routing are unspecified for each cut. The native
-implementation stops at the already-pinned 40/87/100/102-byte pre-router
-prefixes. Do not infer the missing values from host errors or inspect binaries;
-upstream documentation must provide the per-stage error-router projection.
-
-## Resolved documentation gaps
+Resolved upstream by commit `f3025222`. The selected-sector, friendship,
+ordinary-port and Earth-report failure sites now have their saved IP, retry
+statement, ERL, active handler and complete admitted error domains connected
+to the existing main/shared routers. Canonical physical adapters supply the
+accepted prefix and retained file/FIELD state at each concrete observation.
 
 ### DOC-GAP-009: navigation shared AB36 and framebuffer composition
 
