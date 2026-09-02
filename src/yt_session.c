@@ -14987,21 +14987,31 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 		all = true;
 	}
 	else if (strcmp(target, "Team") == 0) {
-		struct yt_team team;
+		struct yt_radio_team_target_state team_target;
 		static const uint8_t teamless[] =
 		    "You Don't belong to a team!";
 
 		if (!reload_player(session, error))
 			return false;
-		if (session->player.team == 0.0f) {
+		team_target = (struct yt_radio_team_target_state){
+			.raw_team_id = session->player.team,
+			.current_player_record = (float)session->player_record,
+			.sector_record_offset =
+			    session->door->game.config.sector_offset,
+			.conversion_mode =
+			    session->presentation.sound.conversion_mode,
+			.cache = &session->team_cache,
+		};
+		if (!yt_radio_team_target_run(&team_target,
+		    session_read_physical_record, session, error))
+			return false;
+		if (team_target.teamless) {
 			return session_02db(session, teamless,
 			    sizeof(teamless) - 1U, "radio teamless row", error);
 		}
-		if (!team_load(session, (int)session->player.team, &team, error))
-			return false;
 		for (index = 0; index < 4; ++index)
-			recipients[index] = team.roster[index];
-		recipient_count = 4;
+			recipients[index] = team_target.recipients[index];
+		recipient_count = (int)team_target.recipient_count;
 	}
 	else {
 		int selected;

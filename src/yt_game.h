@@ -691,6 +691,21 @@ struct yt_radio_send_ops {
 	bool (*present_success)(void *context, struct yt_error *error);
 };
 
+struct yt_radio_team_target_state {
+	float raw_team_id;
+	float current_player_record;
+	float sector_record_offset;
+	uint8_t conversion_mode;
+	struct yt_team_loader_cache *cache;
+	float recipients[YT_RADIO_SEND_RECIPIENTS];
+	size_t recipient_count;
+	uint32_t physical_record;
+	enum yt_team_loader_route loader_route;
+	bool teamless;
+	bool overlay_loaded;
+	bool complete;
+};
+
 enum yt_radio_read_output_kind {
 	YT_RADIO_READ_OPENING_BLANK,
 	YT_RADIO_READ_HEADING,
@@ -1842,6 +1857,9 @@ bool yt_radio_read_run(struct yt_radio_read_state *state,
 	struct yt_error *error);
 bool yt_radio_send_run(struct yt_radio_send_state *state,
 	const struct yt_radio_send_ops *ops, void *context,
+	struct yt_error *error);
+bool yt_radio_team_target_run(struct yt_radio_team_target_state *state,
+	yt_team_loader_read_record_fn read_record, void *context,
 	struct yt_error *error);
 enum yt_hostile_attack_admission yt_hostile_attack_admit(
     float ship_fighters, float commitment);

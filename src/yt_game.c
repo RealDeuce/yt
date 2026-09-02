@@ -3721,6 +3721,49 @@ yt_radio_send_run(struct yt_radio_send_state *state,
 	return true;
 }
 
+bool
+yt_radio_team_target_run(struct yt_radio_team_target_state *state,
+    yt_team_loader_read_record_fn read_record, void *context,
+    struct yt_error *error)
+{
+	struct yt_team_loader_state loader;
+	size_t index;
+	bool loaded;
+
+	if (state == NULL || state->cache == NULL || read_record == NULL)
+		return false;
+	memset(state->recipients, 0, sizeof(state->recipients));
+	state->recipient_count = 0U;
+	state->physical_record = 0U;
+	state->loader_route = YT_TEAM_LOADER_OUT_OF_RANGE;
+	state->teamless = state->raw_team_id == 0.0f;
+	state->overlay_loaded = false;
+	state->complete = false;
+	if (state->teamless) {
+		state->complete = true;
+		return true;
+	}
+
+	loader = (struct yt_team_loader_state){
+		.team_id = state->raw_team_id,
+		.current_player_record = state->current_player_record,
+		.sector_record_offset = state->sector_record_offset,
+		.conversion_mode = state->conversion_mode,
+		.cache = state->cache,
+	};
+	loaded = yt_team_loader_run(&loader, read_record, context, error);
+	state->physical_record = loader.physical_record;
+	state->loader_route = loader.route;
+	state->overlay_loaded = loader.overlay_loaded;
+	if (!loaded)
+		return false;
+	for (index = 0U; index < YT_RADIO_SEND_RECIPIENTS; ++index)
+		state->recipients[index] = state->cache->roster[index];
+	state->recipient_count = YT_RADIO_SEND_RECIPIENTS;
+	state->complete = true;
+	return true;
+}
+
 enum yt_hostile_attack_admission
 yt_hostile_attack_admit(float ship_fighters, float commitment)
 {
