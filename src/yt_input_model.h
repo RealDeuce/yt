@@ -15,6 +15,13 @@ enum yt_input_phase {
 	YT_INPUT_PHASE_WAIT,
 };
 
+enum yt_radio_body_key_action {
+	YT_RADIO_BODY_KEY_IGNORE,
+	YT_RADIO_BODY_KEY_COMMIT,
+	YT_RADIO_BODY_KEY_BACKSPACE,
+	YT_RADIO_BODY_KEY_PRINTABLE,
+};
+
 struct yt_input_value {
 	uint8_t bytes[2];
 	size_t length;
@@ -200,6 +207,8 @@ bool yt_input_splitter_push(struct yt_input_splitter *splitter, bool remote,
 struct yt_input_value yt_input_splitter_select(
     struct yt_input_splitter *splitter, float mode,
     enum yt_input_phase phase);
+enum yt_radio_body_key_action yt_input_radio_body_key(uint8_t key,
+    size_t current_length);
 struct yt_input_value yt_input_splitter_select_merged(
     struct yt_input_splitter *splitter);
 struct yt_input_value yt_input_splitter_select_source(

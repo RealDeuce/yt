@@ -3353,6 +3353,8 @@ bool yt_fixed_text_contains(const uint8_t field[YT_TEXT_FIELD_SIZE],
     const uint8_t *needle, size_t needle_length);
 bool yt_radio_player_prompt(const struct yt_player *player, uint8_t *prompt,
     size_t capacity, size_t *length, struct yt_error *error);
+bool yt_radio_tuning_row(const struct yt_player *player, uint8_t *row,
+    size_t capacity, size_t *length, struct yt_error *error);
 bool yt_direct_attack_radio_text(const uint8_t *name, size_t name_length,
     double defender_loss, uint8_t *text, size_t capacity, size_t *length);
 

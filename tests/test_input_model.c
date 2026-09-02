@@ -460,6 +460,39 @@ test_radio_body_live_input(void)
 }
 
 static void
+test_radio_body_key_classification(void)
+{
+	unsigned key;
+
+	for (key = 0U; key <= 0xffU; ++key) {
+		enum yt_radio_body_key_action empty_expected;
+		enum yt_radio_body_key_action nonempty_expected;
+
+		if (key == '\r') {
+			empty_expected = YT_RADIO_BODY_KEY_COMMIT;
+			nonempty_expected = YT_RADIO_BODY_KEY_COMMIT;
+		}
+		else if (key == '\b' || key == 0x7fU) {
+			empty_expected = YT_RADIO_BODY_KEY_IGNORE;
+			nonempty_expected = YT_RADIO_BODY_KEY_BACKSPACE;
+		}
+		else if (key >= 0x20U && key < 0x7fU) {
+			empty_expected = YT_RADIO_BODY_KEY_PRINTABLE;
+			nonempty_expected = YT_RADIO_BODY_KEY_PRINTABLE;
+		}
+		else {
+			empty_expected = YT_RADIO_BODY_KEY_IGNORE;
+			nonempty_expected = YT_RADIO_BODY_KEY_IGNORE;
+		}
+		CHECK(yt_input_radio_body_key((uint8_t)key, 0U)
+		    == empty_expected);
+		CHECK(yt_input_radio_body_key((uint8_t)key, 1U)
+		    == nonempty_expected);
+	}
+	CHECK(yt_input_radio_body_key('\n', 4U) == YT_RADIO_BODY_KEY_IGNORE);
+}
+
+static void
 test_b05d_live_input(void)
 {
 	static const float local_only_modes[] = {1.0f, 2.0f, -1.0f};
@@ -2820,6 +2853,7 @@ main(void)
 	test_ab36_queued_input();
 	test_ab36_live_input();
 	test_radio_body_live_input();
+	test_radio_body_key_classification();
 	test_b05d_live_input();
 	test_ab36_repeat_recognition();
 	test_ab36_repeat_transaction();

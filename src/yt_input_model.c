@@ -160,6 +160,19 @@ yt_input_splitter_select(struct yt_input_splitter *splitter, float mode,
 	return selected;
 }
 
+enum yt_radio_body_key_action
+yt_input_radio_body_key(uint8_t key, size_t current_length)
+{
+	if (key == '\r')
+		return YT_RADIO_BODY_KEY_COMMIT;
+	if (key == '\b' || key == 0x7fU)
+		return current_length != 0U
+		    ? YT_RADIO_BODY_KEY_BACKSPACE : YT_RADIO_BODY_KEY_IGNORE;
+	if (key >= 0x20U && key < 0x7fU)
+		return YT_RADIO_BODY_KEY_PRINTABLE;
+	return YT_RADIO_BODY_KEY_IGNORE;
+}
+
 struct yt_input_value
 yt_input_splitter_select_merged(struct yt_input_splitter *splitter)
 {

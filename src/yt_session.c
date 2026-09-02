@@ -2695,20 +2695,6 @@ capacity_error:
 }
 
 static bool
-radio_name(struct yt_session *session, float record, char *dest,
-    size_t size, bool sender, struct yt_error *error)
-{
-	size_t length;
-
-	if (size == 0
-	    || !radio_name_bytes(session, record, (uint8_t *)dest, size - 1U,
-	    &length, sender, error))
-		return false;
-	dest[length] = '\0';
-	return true;
-}
-
-static bool
 radio_read(struct yt_session *session, float reader_mode,
     struct yt_error *error)
 {
@@ -15063,17 +15049,19 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 	    SESSION_PRESENT_LINE, "radio tuning blank", error))
 		return false;
 	for (index = 0; index < recipient_count; ++index) {
-		char name[80];
-		char row[160];
+		struct yt_player target_player;
+		uint8_t row[sizeof("Tuning in to ") - 1U + YT_TEXT_FIELD_SIZE
+		    + sizeof("'s frequency.") - 1U];
+		size_t row_length;
 
 		if (all || recipients[index] == 0.0f)
 			continue;
-		if (!radio_name(session, recipients[index], name, sizeof(name),
-		    false, error))
+		if (!scanner_read_player(session, recipients[index],
+		    &target_player, error)
+		    || !yt_radio_tuning_row(&target_player, row, sizeof(row),
+		    &row_length, error))
 			return false;
-		if (snprintf(row, sizeof(row), "Tuning in to %s's frequency.",
-		    name) < 0
-		    || !session_02fc(session, (const uint8_t *)row, strlen(row)))
+		if (!session_02fc(session, row, row_length))
 			return false;
 	}
 	if (!session_0317(session, limit, sizeof(limit) - 1U,
@@ -15099,12 +15087,14 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 				return false;
 			while (!menu) {
 				int key = session_radio_body_key(session);
+				enum yt_radio_body_key_action action;
 				size_t length;
 
 				if (key == EOF)
 					return false;
 				length = strlen(lines[line_count]);
-				if (key == '\r' || key == '\n') {
+				action = yt_input_radio_body_key((uint8_t)key, length);
+				if (action == YT_RADIO_BODY_KEY_COMMIT) {
 					if (!session_present_text(session, NULL, 0,
 					    SESSION_PRESENT_LINE, "radio body enter", error))
 						return false;
@@ -15139,16 +15129,15 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 					}
 					continue;
 				}
-				if (key == 8 || key == 127) {
-					if (length != 0) {
-						lines[line_count][length - 1U] = '\0';
-						if (!session_radio_backspace(session,
-						    line_count + 1, length - 1U, error))
-							return false;
-					}
+				if (action == YT_RADIO_BODY_KEY_BACKSPACE) {
+					lines[line_count][length - 1U] = '\0';
+					if (!session_radio_backspace(session,
+					    line_count + 1, length - 1U, error))
+						return false;
 					continue;
 				}
-				if (key < 0x20 || key > 0x7e || length >= 75U)
+				if (action != YT_RADIO_BODY_KEY_PRINTABLE
+				    || length >= 75U)
 					continue;
 				if (key == ' ')
 					wrap_marker = length + 1U;

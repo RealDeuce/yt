@@ -16366,12 +16366,17 @@ check_player_name_match(void)
 	uint8_t full_field[YT_TEXT_FIELD_SIZE];
 	uint8_t stored_name[YT_TEXT_FIELD_SIZE];
 	uint8_t radio_prompt[YT_TEXT_FIELD_SIZE + sizeof(" [Y]? ") - 1U];
+	uint8_t tuning_row[sizeof("Tuning in to ") - 1U + YT_TEXT_FIELD_SIZE
+	    + sizeof("'s frequency.") - 1U];
 	static const uint8_t expected_radio_prompt[] = {
 		'A', 0, 'B', 'O', 'B', ' ', '[', 'Y', ']', '?', ' '
 	};
+	static const uint8_t expected_tuning_row[] =
+	    "Tuning in to A\0BOB's frequency.";
 	uint8_t killer_row[YT_TEXT_FIELD_SIZE + 21U];
 	size_t stored_length;
 	size_t radio_prompt_length;
+	size_t tuning_row_length;
 	size_t killer_length;
 	bool emit;
 	bool matches;
@@ -16398,7 +16403,18 @@ check_player_name_match(void)
 	    sizeof(radio_prompt), &radio_prompt_length, &error)
 	    || radio_prompt_length != sizeof(expected_radio_prompt)
 	    || memcmp(radio_prompt, expected_radio_prompt,
-	    sizeof(expected_radio_prompt)) != 0)
+	    sizeof(expected_radio_prompt)) != 0
+	    || !yt_radio_tuning_row(&player, tuning_row, sizeof(tuning_row),
+	    &tuning_row_length, &error)
+	    || tuning_row_length != sizeof(expected_tuning_row) - 1U
+	    || memcmp(tuning_row, expected_tuning_row,
+	    sizeof(expected_tuning_row) - 1U) != 0)
+		return false;
+	yt_error_clear(&error);
+	if (yt_radio_tuning_row(&player, tuning_row,
+	    sizeof(expected_tuning_row) - 2U, &tuning_row_length, &error)
+	    || tuning_row_length != 0U || error.status != YT_RANGE
+	    || strcmp(error.operation, "radio tuning row capacity") != 0)
 		return false;
 
 	memset(record.bytes, 'A', YT_TEXT_FIELD_SIZE);
