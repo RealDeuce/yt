@@ -27368,6 +27368,235 @@ check_computer_newspaper_field_carrier(void)
 	    && current_sector == 2013.5f;
 }
 
+enum radio_send_event_kind {
+	RADIO_SEND_NEWS = 1,
+	RADIO_SEND_RECORD,
+	RADIO_SEND_SUCCESS,
+};
+
+struct radio_send_event {
+	enum radio_send_event_kind kind;
+	uint8_t text[96];
+	size_t length;
+	float sender;
+	float recipient;
+	struct yt_radio_record record;
+};
+
+struct radio_send_tape {
+	struct radio_send_event events[32];
+	size_t calls;
+	size_t fail_at;
+};
+
+static bool
+radio_send_step(struct radio_send_tape *tape,
+    enum radio_send_event_kind kind, const uint8_t *text, size_t length,
+    float sender, float recipient, struct yt_error *error)
+{
+	struct radio_send_event *event;
+
+	if (tape->calls >= YT_ARRAY_LEN(tape->events)
+	    || length > sizeof(tape->events[0].text))
+		return false;
+	event = &tape->events[tape->calls++];
+	memset(event, 0, sizeof(*event));
+	event->kind = kind;
+	event->length = length;
+	event->sender = sender;
+	event->recipient = recipient;
+	if (length != 0U)
+		memcpy(event->text, text, length);
+	if (kind == RADIO_SEND_RECORD
+	    && !yt_radio_message_record(&event->record, text, length,
+	    sender, recipient))
+		return false;
+	if (tape->calls != tape->fail_at)
+		return true;
+	if (error != NULL) {
+		error->status = YT_IO_ERROR;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    "injected radio send failure");
+	}
+	return false;
+}
+
+static bool
+radio_send_news_test(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	return radio_send_step(context, RADIO_SEND_NEWS, text, length,
+	    0.0f, 0.0f, error);
+}
+
+static bool
+radio_send_record_test(void *context, const uint8_t *text, size_t length,
+    float sender, float recipient, struct yt_error *error)
+{
+	return radio_send_step(context, RADIO_SEND_RECORD, text, length,
+	    sender, recipient, error);
+}
+
+static bool
+radio_send_success_test(void *context, struct yt_error *error)
+{
+	return radio_send_step(context, RADIO_SEND_SUCCESS, NULL, 0U,
+	    0.0f, 0.0f, error);
+}
+
+static const struct yt_radio_send_ops radio_send_test_ops = {
+	radio_send_news_test,
+	radio_send_record_test,
+	radio_send_success_test,
+};
+
+static void
+radio_send_fixture(struct yt_radio_send_state *state,
+    struct radio_send_tape *tape)
+{
+	static const uint8_t sender[] = {'A', 0, 'B'};
+	static const uint8_t line[] = "Hi";
+
+	memset(state, 0, sizeof(*state));
+	memset(tape, 0, sizeof(*tape));
+	state->recipient_count = 1U;
+	state->recipients[0] = 2.0f;
+	state->sender = 3.0f;
+	state->sender_name = sender;
+	state->sender_name_length = sizeof(sender);
+	state->line_count = 1U;
+	state->lines[0].data = line;
+	state->lines[0].length = sizeof(line) - 1U;
+	tape->fail_at = SIZE_MAX;
+}
+
+static bool
+check_radio_send_transaction(void)
+{
+	static const uint8_t header[] = {
+		' ', ' ', '-', ' ', ' ', 'M', 'e', 's', 's', 'a', 'g', 'e',
+		' ', 'f', 'r', 'o', 'm', ':', ' ', 'A', 0, 'B'
+	};
+	static const uint8_t first_news[] = "  -  Hi";
+	static const uint8_t empty_news[] = "  -  ";
+	static const uint8_t team_lines[2] = {'A', 'B'};
+	static const float team_order[6] = {2.0f, 2.0f, 4.0f, 4.0f, 2.0f, 2.0f};
+	static const size_t fail_news[] = {0U, 1U, 2U, 2U, 3U, 3U};
+	static const size_t fail_radio[] = {0U, 0U, 0U, 1U, 1U, 2U};
+	struct yt_radio_send_state state;
+	struct radio_send_tape tape;
+	struct yt_error error;
+	size_t index;
+
+	radio_send_fixture(&state, &tape);
+	if (!yt_radio_send_run(&state, &radio_send_test_ops, &tape, NULL)
+	    || tape.calls != 2U
+	    || tape.events[0].kind != RADIO_SEND_RECORD
+	    || tape.events[0].sender != 3.0f
+	    || tape.events[0].recipient != 2.0f
+	    || tape.events[0].length != 2U
+	    || memcmp(tape.events[0].text, "Hi", 2U) != 0
+	    || yt_radio_get_number(&tape.events[0].record, 0U) != 1.0f
+	    || yt_radio_get_number(&tape.events[0].record, 4U) != 2.0f
+	    || yt_radio_get_number(&tape.events[0].record, 8U) != 3.0f
+	    || tape.events[1].kind != RADIO_SEND_SUCCESS
+	    || state.broadcast || state.news_completed != 0U
+	    || state.radio_completed != 1U || !state.success_presented
+	    || !state.draft_erased || !state.complete)
+		return false;
+
+	radio_send_fixture(&state, &tape);
+	state.recipients[0] = -2.0f;
+	state.line_count = 2U;
+	state.lines[1].data = NULL;
+	state.lines[1].length = 0U;
+	if (!yt_radio_send_run(&state, &radio_send_test_ops, &tape, NULL)
+	    || tape.calls != 6U || !state.broadcast
+	    || state.news_completed != 3U || state.radio_completed != 2U
+	    || !state.success_presented || !state.draft_erased || !state.complete
+	    || tape.events[0].kind != RADIO_SEND_NEWS
+	    || tape.events[0].length != sizeof(header)
+	    || memcmp(tape.events[0].text, header, sizeof(header)) != 0
+	    || tape.events[1].kind != RADIO_SEND_NEWS
+	    || tape.events[1].length != sizeof(first_news) - 1U
+	    || memcmp(tape.events[1].text, first_news,
+	    sizeof(first_news) - 1U) != 0
+	    || tape.events[2].kind != RADIO_SEND_RECORD
+	    || yt_radio_get_number(&tape.events[2].record, 0U) != 30.0f
+	    || tape.events[3].kind != RADIO_SEND_NEWS
+	    || tape.events[3].length != sizeof(empty_news) - 1U
+	    || memcmp(tape.events[3].text, empty_news,
+	    sizeof(empty_news) - 1U) != 0
+	    || tape.events[4].kind != RADIO_SEND_RECORD
+	    || tape.events[4].length != 0U
+	    || tape.events[5].kind != RADIO_SEND_SUCCESS)
+		return false;
+
+	for (index = 1U; index <= 6U; ++index) {
+		radio_send_fixture(&state, &tape);
+		state.recipients[0] = -2.0f;
+		state.line_count = 2U;
+		state.lines[1].data = NULL;
+		state.lines[1].length = 0U;
+		tape.fail_at = index;
+		yt_error_clear(&error);
+		if (yt_radio_send_run(&state, &radio_send_test_ops, &tape,
+		    &error) || tape.calls != index || error.status != YT_IO_ERROR
+		    || state.news_completed != fail_news[index - 1U]
+		    || state.radio_completed != fail_radio[index - 1U]
+		    || state.success_presented || state.draft_erased
+		    || state.complete)
+			return false;
+	}
+
+	radio_send_fixture(&state, &tape);
+	state.recipient_count = 4U;
+	state.recipients[0] = 2.0f;
+	state.recipients[1] = 0.0f;
+	state.recipients[2] = 4.0f;
+	state.recipients[3] = 2.0f;
+	state.line_count = 2U;
+	state.lines[0].data = &team_lines[0];
+	state.lines[0].length = 1U;
+	state.lines[1].data = &team_lines[1];
+	state.lines[1].length = 1U;
+	if (!yt_radio_send_run(&state, &radio_send_test_ops, &tape, NULL)
+	    || tape.calls != 7U || state.broadcast
+	    || state.news_completed != 0U || state.radio_completed != 6U
+	    || !state.complete || tape.events[6].kind != RADIO_SEND_SUCCESS)
+		return false;
+	for (index = 0U; index < YT_ARRAY_LEN(team_order); ++index) {
+		if (tape.events[index].kind != RADIO_SEND_RECORD
+		    || tape.events[index].recipient != team_order[index]
+		    || tape.events[index].length != 1U
+		    || tape.events[index].text[0] != team_lines[index % 2U])
+			return false;
+	}
+
+	radio_send_fixture(&state, &tape);
+	state.recipient_count = 4U;
+	memset(state.recipients, 0, sizeof(state.recipients));
+	if (!yt_radio_send_run(&state, &radio_send_test_ops, &tape, NULL)
+	    || tape.calls != 1U || tape.events[0].kind != RADIO_SEND_SUCCESS
+	    || state.news_completed != 0U || state.radio_completed != 0U
+	    || !state.complete)
+		return false;
+
+	radio_send_fixture(&state, &tape);
+	state.recipient_count = 2U;
+	if (yt_radio_send_run(&state, &radio_send_test_ops, &tape, NULL))
+		return false;
+	radio_send_fixture(&state, &tape);
+	state.line_count = 0U;
+	if (yt_radio_send_run(&state, &radio_send_test_ops, &tape, NULL))
+		return false;
+	radio_send_fixture(&state, &tape);
+	state.lines[0].length = 76U;
+	return !yt_radio_send_run(&state, &radio_send_test_ops, &tape, NULL)
+	    && !yt_radio_send_run(NULL, &radio_send_test_ops, &tape, NULL)
+	    && !yt_radio_send_run(&state, NULL, &tape, NULL);
+}
+
 struct computer_newspaper_recovery_persistence {
 	uint8_t row[96];
 	size_t row_length;
@@ -29077,6 +29306,8 @@ main(void)
 		return fail("computer newspaper transaction differs");
 	if (!check_computer_newspaper_field_carrier())
 		return fail("computer newspaper FIELD carrier differs");
+	if (!check_radio_send_transaction())
+		return fail("radio send transaction differs");
 	if (!check_port_name_editor_model())
 		return fail("port name editor model differs");
 	if (!check_port_purchase_accept_transaction())

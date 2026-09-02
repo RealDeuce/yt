@@ -428,6 +428,38 @@ test_ab36_live_input(void)
 }
 
 static void
+test_radio_body_live_input(void)
+{
+	static const float replacing_modes[] = {0.0f, 2.0f, -1.0f};
+	struct yt_input_splitter splitter;
+	struct yt_input_value local = one('L');
+	struct yt_input_value remote = one('R');
+	struct yt_input_value selected;
+	size_t index;
+
+	for (index = 0U; index < sizeof(replacing_modes)
+	    / sizeof(replacing_modes[0]); ++index) {
+		yt_input_splitter_init(&splitter);
+		CHECK(yt_input_splitter_push(&splitter, false, &local));
+		CHECK(yt_input_splitter_push(&splitter, true, &remote));
+		selected = yt_input_splitter_select(&splitter,
+		    replacing_modes[index], YT_INPUT_PHASE_RADIO_BODY);
+		CHECK(selected.length == 1U && selected.bytes[0] == 'R'
+		    && selected.remote && splitter.local.length == 0U
+		    && splitter.remote.length == 0U);
+	}
+
+	yt_input_splitter_init(&splitter);
+	CHECK(yt_input_splitter_push(&splitter, false, &local));
+	CHECK(yt_input_splitter_push(&splitter, true, &remote));
+	selected = yt_input_splitter_select(&splitter, 1.0f,
+	    YT_INPUT_PHASE_RADIO_BODY);
+	CHECK(selected.length == 1U && selected.bytes[0] == 'L'
+	    && !selected.remote && splitter.local.length == 0U
+	    && splitter.remote.length == 1U);
+}
+
+static void
 test_b05d_live_input(void)
 {
 	static const float local_only_modes[] = {1.0f, 2.0f, -1.0f};
@@ -2787,6 +2819,7 @@ main(void)
 	test_ab36_inactivity_gate();
 	test_ab36_queued_input();
 	test_ab36_live_input();
+	test_radio_body_live_input();
 	test_b05d_live_input();
 	test_ab36_repeat_recognition();
 	test_ab36_repeat_transaction();

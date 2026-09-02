@@ -3474,6 +3474,87 @@ yt_computer_newspaper_run(struct yt_computer_newspaper_state *state,
 	return true;
 }
 
+bool
+yt_radio_send_run(struct yt_radio_send_state *state,
+    const struct yt_radio_send_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t header_prefix[] = "  -  Message from: ";
+	static const uint8_t line_prefix[] = "  -  ";
+	uint8_t news[sizeof(line_prefix) - 1U + 75U];
+	size_t recipient;
+	size_t line;
+
+	if (state == NULL || ops == NULL || ops->append_news == NULL
+	    || ops->append_radio == NULL || ops->present_success == NULL
+	    || (state->recipient_count != 1U
+	    && state->recipient_count != YT_RADIO_SEND_RECIPIENTS)
+	    || state->line_count == 0U || state->line_count > YT_RADIO_SEND_LINES)
+		return false;
+	for (line = 0U; line < state->line_count; ++line) {
+		if ((state->lines[line].data == NULL
+		    && state->lines[line].length != 0U)
+		    || state->lines[line].length > 75U)
+			return false;
+	}
+	state->recipient_index = 0U;
+	state->line_index = 0U;
+	state->news_completed = 0U;
+	state->radio_completed = 0U;
+	state->broadcast = state->recipients[0] == -2.0f;
+	state->success_presented = false;
+	state->draft_erased = false;
+	state->complete = false;
+	if (state->broadcast) {
+		size_t length;
+
+		if ((state->sender_name == NULL
+		    && state->sender_name_length != 0U)
+		    || state->sender_name_length > YT_TEXT_FIELD_SIZE)
+			return false;
+		memcpy(news, header_prefix, sizeof(header_prefix) - 1U);
+		if (state->sender_name_length != 0U)
+			memcpy(news + sizeof(header_prefix) - 1U,
+			    state->sender_name, state->sender_name_length);
+		length = sizeof(header_prefix) - 1U + state->sender_name_length;
+		if (!ops->append_news(context, news, length, error))
+			return false;
+		++state->news_completed;
+	}
+	for (recipient = 0U; recipient < state->recipient_count; ++recipient) {
+		state->recipient_index = recipient;
+		if (state->recipients[recipient] == 0.0f)
+			continue;
+		for (line = 0U; line < state->line_count; ++line) {
+			state->line_index = line;
+			if (state->broadcast) {
+				size_t length = sizeof(line_prefix) - 1U
+				    + state->lines[line].length;
+
+				memcpy(news, line_prefix, sizeof(line_prefix) - 1U);
+				if (state->lines[line].length != 0U)
+					memcpy(news + sizeof(line_prefix) - 1U,
+					    state->lines[line].data,
+					    state->lines[line].length);
+				if (!ops->append_news(context, news, length, error))
+					return false;
+				++state->news_completed;
+			}
+			if (!ops->append_radio(context, state->lines[line].data,
+			    state->lines[line].length, state->sender,
+			    state->recipients[recipient], error))
+				return false;
+			++state->radio_completed;
+		}
+	}
+	if (!ops->present_success(context, error))
+		return false;
+	state->success_presented = true;
+	state->draft_erased = true;
+	state->complete = true;
+	return true;
+}
+
 enum yt_hostile_attack_admission
 yt_hostile_attack_admit(float ship_fighters, float commitment)
 {

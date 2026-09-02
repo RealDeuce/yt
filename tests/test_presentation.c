@@ -23055,6 +23055,81 @@ test_radio_body_presentation(void)
 }
 
 static void
+test_radio_body_cleanup_presentation(void)
+{
+	static const uint8_t backspace[] = {'\b', ' ', '\b'};
+	static const uint8_t wrap[] = {'\b', ' ', '\r'};
+	struct yt_present_state current = state(false);
+	struct yt_present_result result;
+
+	current.sound.snoop = 0.0f;
+	current.sound.mode = 0.0f;
+	CHECK(yt_present_radio_backspace(1, 0U, &current, &result)
+	    == YT_PRESENT_OK);
+	CHECK(result.remote_length == sizeof(backspace)
+	    && memcmp(result.remote, backspace, sizeof(backspace)) == 0);
+	CHECK(result.event_count == 4U
+	    && result.events[0].operation == YT_PRESENT_REMOTE_SEMI
+	    && result.events[1].operation == YT_PRESENT_LOCAL_LOCATE
+	    && result.events[1].row == -1 && result.events[1].column == 4
+	    && result.events[2].operation == YT_PRESENT_LOCAL_SEMI
+	    && result.events[2].length == 1U
+	    && result.events[2].data[0] == ' '
+	    && result.events[3].operation == YT_PRESENT_LOCAL_LOCATE
+	    && result.events[3].row == -1 && result.events[3].column == 4);
+
+	current.sound.mode = 1.0f;
+	CHECK(yt_present_radio_backspace(20, 5U, &current, &result)
+	    == YT_PRESENT_OK);
+	CHECK(result.remote_length == 0U && result.event_count == 3U
+	    && result.events[0].operation == YT_PRESENT_LOCAL_LOCATE
+	    && result.events[0].column == 10
+	    && result.events[1].operation == YT_PRESENT_LOCAL_SEMI
+	    && result.events[2].operation == YT_PRESENT_LOCAL_LOCATE
+	    && result.events[2].column == 10);
+	current.sound.mode = 2.0f;
+	CHECK(yt_present_radio_backspace(1, 0U, &current, &result)
+	    == YT_PRESENT_OK && result.remote_length == 0U);
+
+	current.sound.mode = 0.0f;
+	CHECK(yt_present_radio_wrap_cleanup(1, 74U, &current, &result)
+	    == YT_PRESENT_OK);
+	CHECK(result.remote_length == sizeof(wrap)
+	    && memcmp(result.remote, wrap, sizeof(wrap)) == 0
+	    && result.event_count == 3U
+	    && result.events[0].operation == YT_PRESENT_LOCAL_LOCATE
+	    && result.events[0].row == -1 && result.events[0].column == 77
+	    && result.events[1].operation == YT_PRESENT_LOCAL_SEMI
+	    && result.events[1].length == 1U
+	    && result.events[1].data[0] == ' '
+	    && result.events[2].operation == YT_PRESENT_REMOTE_SEMI);
+	current.sound.mode = 1.0f;
+	CHECK(yt_present_radio_wrap_cleanup(1, 71U, &current, &result)
+	    == YT_PRESENT_OK);
+	CHECK(result.remote_length == 0U && result.event_count == 2U
+	    && result.events[0].operation == YT_PRESENT_LOCAL_LOCATE
+	    && result.events[0].column == 74
+	    && result.events[1].operation == YT_PRESENT_LOCAL_SEMI
+	    && result.events[1].length == 4U
+	    && memcmp(result.events[1].data, "    ", 4U) == 0);
+	current.sound.mode = 2.0f;
+	CHECK(yt_present_radio_wrap_cleanup(1, 75U, &current, &result)
+	    == YT_PRESENT_OK && result.remote_length == 1U
+	    && result.remote[0] == '\r' && result.event_count == 3U
+	    && result.events[1].operation == YT_PRESENT_LOCAL_SEMI
+	    && result.events[1].length == 0U);
+
+	CHECK(yt_present_radio_backspace(0, 0U, &current, &result)
+	    == YT_PRESENT_RANGE);
+	CHECK(yt_present_radio_backspace(1, 75U, &current, &result)
+	    == YT_PRESENT_RANGE);
+	CHECK(yt_present_radio_wrap_cleanup(1, 0U, &current, &result)
+	    == YT_PRESENT_RANGE);
+	CHECK(yt_present_radio_wrap_cleanup(22, 74U, &current, &result)
+	    == YT_PRESENT_RANGE);
+}
+
+static void
 test_computer_radio_log_presentation(void)
 {
 	static const uint8_t prompt[] =
@@ -24616,6 +24691,7 @@ main(void)
 	test_radio_target_blank_presentation();
 	test_computer_radio_composer_cycle_presentation();
 	test_radio_body_presentation();
+	test_radio_body_cleanup_presentation();
 	test_computer_radio_log_presentation();
 	test_computer_newspaper_presentation();
 	test_hostile_attack_admission_presentation();

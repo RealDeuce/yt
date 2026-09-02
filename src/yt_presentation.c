@@ -2,6 +2,7 @@
 
 #include "qb.h"
 
+#include <limits.h>
 #include <math.h>
 #include <string.h>
 
@@ -930,6 +931,90 @@ yt_present_lottery_rewind(int row, int column,
 			return status;
 	}
 	return append_locate(result, row, column, -1, 0, 0);
+}
+
+static enum yt_present_status
+radio_column(int line_number, size_t suffix, int *column)
+{
+	char number[64];
+	int length;
+
+	if (line_number < 1 || line_number > 21 || column == NULL
+	    || suffix > (size_t)INT_MAX)
+		return YT_PRESENT_RANGE;
+	length = qb_str_single(number, sizeof(number), (float)line_number);
+	if (length < 0 || suffix > (size_t)(INT_MAX - length))
+		return YT_PRESENT_RANGE;
+	*column = length + (int)suffix;
+	return YT_PRESENT_OK;
+}
+
+enum yt_present_status
+yt_present_radio_backspace(int line_number, size_t shortened_length,
+    struct yt_present_state *state, struct yt_present_result *result)
+{
+	static const uint8_t remote[] = {'\b', ' ', '\b'};
+	static const uint8_t space = ' ';
+	enum yt_present_status status;
+	int column;
+
+	if (state == NULL || result == NULL || shortened_length > 74U)
+		return YT_PRESENT_RANGE;
+	memset(result, 0, sizeof(*result));
+	status = radio_column(line_number, shortened_length + 2U, &column);
+	if (status != YT_PRESENT_OK)
+		return status;
+	if (state->sound.mode == 0.0f) {
+		status = append_remote(result, YT_PRESENT_REMOTE_SEMI,
+		    remote, sizeof(remote));
+		if (status != YT_PRESENT_OK)
+			return status;
+	}
+	status = append_locate(result, -1, column, -1, 0, 0);
+	if (status != YT_PRESENT_OK)
+		return status;
+	status = append_local(result, YT_PRESENT_LOCAL_SEMI, &space, 1U, 0, 0);
+	if (status != YT_PRESENT_OK)
+		return status;
+	return append_locate(result, -1, column, -1, 0, 0);
+}
+
+enum yt_present_status
+yt_present_radio_wrap_cleanup(int line_number, size_t wrap_marker,
+    struct yt_present_state *state, struct yt_present_result *result)
+{
+	uint8_t remote[149];
+	uint8_t spaces[74];
+	enum yt_present_status status;
+	size_t erased;
+	int column;
+
+	if (state == NULL || result == NULL || wrap_marker < 1U
+	    || wrap_marker > 75U)
+		return YT_PRESENT_RANGE;
+	memset(result, 0, sizeof(*result));
+	erased = 75U - wrap_marker;
+	status = radio_column(line_number, wrap_marker + 1U, &column);
+	if (status != YT_PRESENT_OK)
+		return status;
+	status = append_locate(result, -1, column, -1, 0, 0);
+	if (status != YT_PRESENT_OK)
+		return status;
+	memset(spaces, ' ', erased);
+	status = append_local(result, YT_PRESENT_LOCAL_SEMI,
+	    spaces, erased, 0, 0);
+	if (status != YT_PRESENT_OK)
+		return status;
+	if (state->sound.mode != 1.0f) {
+		memset(remote, '\b', erased);
+		memset(remote + erased, ' ', erased);
+		remote[erased * 2U] = '\r';
+		status = append_remote(result, YT_PRESENT_REMOTE_SEMI,
+		    remote, erased * 2U + 1U);
+		if (status != YT_PRESENT_OK)
+			return status;
+	}
+	return YT_PRESENT_OK;
 }
 
 static enum yt_present_status

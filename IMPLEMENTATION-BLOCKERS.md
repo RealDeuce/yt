@@ -8,152 +8,106 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
-### DOC-GAP-012: command-8 dependency and asynchronous residuals
+### DOC-GAP-013: command-5 fractional TEAM target contradicts shared loader
+
+Affected coverage:
+
+- ship-computer command-5/alias-59 TEAM target selection;
+- the target-to-body YTDATA FIELD and four-slot roster carrier; and
+- corrupt/fractional TEAM joined-cycle claims.
+
+The completed command-specific and shared dependency contracts disagree at
+the TEAM loader call.  `docs/runtime/radio-composer-output.md` says that only
+integral IDs 1 through 50 perform a team `GET` and that other values leave the
+four cleared roster slots.  In contrast,
+`docs/runtime/team-loader-world.md` says the loader's inclusive numeric range
+test does not `CINT`: an in-range fractional ID proceeds through MBF32
+addition and the pinned BRUN random-record conversion, with the example
+offset 51 plus team 1.75 selecting physical record 52.  The canonical native
+loader and its existing fixtures currently implement the latter shared
+contract.
+
+The ordinary integral TEAM path remains implementable, as do personal and
+ALL targets.  Native work must not claim the corrupt/fractional TEAM join or
+silently truncate the caller's raw ID until the upstream radio-composer
+contract is reconciled with the shared loader.  No binary inspection or new
+reverse engineering was performed.
+
+### DOC-GAP-012: command-8 dependency failure projections
 
 Affected coverage:
 
 - ship-computer command-8 newspaper selector and viewer;
 - its active-computer entry/body/fresh-prompt cycle; and
-- completion claims for physical failures or final local screen state.
+- completion claims for physical and shared-handler failures.
 
 The completed `docs/runtime/computer-newspaper-output.md`, joined file-cycle
 contract, and shared viewer/error contracts fully specify ordinary retries,
 first-poll editor terminals, selector/viewer carrier cuts, pagination,
 Ctrl-X, endpoint modes, missing-file recovery, the successful one-shot
-recovery-writer failure witness, and fresh-prompt return.  They explicitly
-leave persistent ERR 24/57 retry sequences, faults after a successful viewer
-open, physical partial recovery-append I/O, dependency-internal runtime-error
-suffixes, arbitrary asynchronous F8 and recursive pager activity,
-fresh-prompt helper-internal failure suffixes, the next fresh editor poll,
-and arbitrary inherited 80-by-25 framebuffer reduction outside the bounded
-composition.
+recovery-writer failure witness, and fresh-prompt return. Potentially missing
+facts are limited to dependency failure projections: persistent ERR 24/57
+retry sequences, faults after a successful viewer open, physical partial
+recovery-append I/O, dependency-owned runtime-error suffixes, and
+fresh-prompt helper-internal error state.
 
-The native implementation may compose the supplied deterministic bodies and
-prefixes but must not infer the excluded physical/error continuations,
-asynchronous interleavings, or framebuffer result.  Upstream documentation
-must provide those bounded dependency outcomes before exact completion can
-be claimed.  No binary inspection or new reverse engineering was performed.
+Per the user's authoritative correction, asynchronous F8, recursive pager
+activity, later fresh-editor polls, and inherited framebuffer behavior are
+not caller-specific documentation gaps. They compose through the canonical
+shared input/pager and inherited-framebuffer transducers at the real command-8
+state boundaries. The native implementation must add those joins normally;
+it must not demand a separate command-8 vector for every interleaving or one
+fixed final screen image. Upstream documentation is required only for the
+unidentified physical/error-router projections above. No binary inspection
+or new reverse engineering was performed.
 
-### DOC-GAP-011: command-4 asynchronous, failure, and framebuffer residuals
+### DOC-GAP-011: command-4 FIELD and dependency failure projections
 
 Affected coverage:
 
 - ship-computer command-4 scoreboard selector, generator, and viewer;
 - the joined active-computer entry/body/fresh-prompt cycle; and
-- completion claims for dependency failures or the final local screen.
+- completion claims for dependency failures and failed-return FIELD state.
 
 The completed `docs/runtime/computer-scoreboard-output.md`,
 `docs/runtime/computer-file-cycles-output.md`, and shared viewer contract
 fully specify the ordinary selector/generator/viewer/return cycle, canonical
 first-poll editor terminals, carrier cuts, retained-scoreboard paths, and
-ordinary missing-file recovery.  They explicitly leave arbitrary successful
-later AB36 idle polls and time-row placement, asynchronous F8 and recursive
-pager/F8 joins, physical or partial generator/viewer I/O, dependency-owned
-shared-handler suffixes, the inherited 137-byte FIELD after a command-4 body
-when the return player GET fails before replacement, and arbitrary inherited
-80-by-25 framebuffer reduction outside the bounded composition.
+ordinary missing-file recovery. Potentially missing facts are the physical
+or partial generator/viewer I/O projections, dependency-owned shared-handler
+suffixes, and the inherited 137-byte FIELD after a command-4 body when the
+return player GET fails before replacement.
 
-The native implementation may compose every supplied deterministic prefix
-and the documented successful return hydration, but must not invent the
-excluded error-router continuations, pre-transfer FIELD image, asynchronous
-interleavings, or physical screen result.  Upstream documentation must supply
-those dependency results and bounded state joins before exact completion can
-be claimed.  No binary inspection or new reverse engineering was performed.
+Per the user's authoritative correction, later AB36 polls, time refresh,
+asynchronous F8/recursive pager activity, and inherited framebuffer behavior
+compose through their canonical shared transducers at the real command-4
+boundaries. They are implementation obligations, not requests for
+caller-specific combination vectors or a fixed final framebuffer. Native
+work must stop only at the unidentified FIELD/error-state seams above and
+must not invent them. No binary inspection or new reverse engineering was
+performed.
 
-### DOC-GAP-010: navigation runtime failures and corrupt workspaces are excluded
+### DOC-GAP-010: navigation error-router identities
 
 Affected coverage:
 
 - ship-computer command-10 path construction;
 - command-3 autopilot construction and engagement; and
-- the post-engagement queued movement continuation.
+- their physical/dependency failure continuations.
 
-The completed path, autopilot, and joined-cycle contracts explicitly leave
-physical or partial random-record and serial I/O, the shared error-handler
-suffix after failed GET/conversion/allocation/workspace operations, corrupt
-fractional record coercion, adjacent-memory route-workspace writes, FIFO
-overflow, cyclic reconstruction, and the unbounded post-engagement movement
-and hazard lifecycle outside their bounded models.
+The completed path, autopilot, movement, input, queue, and adapter contracts
+compose the normal loops, FIFO transitions, movement back-edges, corrupt-state
+adapters, and canonical endpoint/framebuffer transformations. Those are
+ordinary implementation work and do not require navigation-specific vectors.
 
-The native implementation may retain safe failure boundaries for those
-domains and may compose the documented pre-handler prefixes, but it cannot
-claim the omitted BASIC error route, unsafe corrupt-memory behavior, or the
-movement continuation. Upstream documentation must supply the missing
-per-stage error-router identity and bounded corrupt/runtime state vectors, and
-must join the injected command queue to the movement/hazard lifecycle. No
-binary inspection or new reverse engineering was performed.
-
-### DOC-GAP-009: navigation later-poll editors and final framebuffer are excluded
-
-Affected coverage:
-
-- command-10 start and destination editors;
-- command-3 destination and confirmation editors;
-- route-display `POS(0)` behavior without a supplied inherited column; and
-- the final physical 80-by-25 local framebuffer/cursor result.
-
-The completed navigation contracts retain the five modeled first-poll AB36
-terminal reasons and fully specify route wrapping when the initial local
-column is supplied. They explicitly exclude arbitrary later successful AB36
-idle polls and time-row refresh placement, asynchronous F8 at editor/helper
-checkpoints or recursive replay, an arbitrary inherited snoop-zero `POS(0)`
-state without a supplied local column, and the complete inherited framebuffer
-and function-bar reduction.
-
-The shared AB36 machinery remains available, but unlike the resolved
-command-2 contract there is no upstream statement that injecting the canonical
-navigation state at each real editor entry completely defines all omitted
-interleavings. Native work stops at the documented first-poll and
-supplied-column boundaries. Upstream documentation must define those shared
-state joins and provide a canonical local-column/framebuffer carrier or final
-image before exact completion can be claimed. No binary inspection or new
-reverse engineering was performed.
-
-### DOC-GAP-008: command-7 physical local framebuffer is excluded
-
-Affected coverage:
-
-- ship-computer command-7 local screen cells and cursor result; and
-- any completion claim that requires the final physical 80-by-25 console
-  image for that joined cycle.
-
-The completed command-7 contracts define the ordered semantic local event
-tape, actual local colors, and inherited cursor state. The joined
-`docs/runtime/computer-avoid-cycle-output.md` contract explicitly excludes an
-arbitrary inherited 80-by-25 framebuffer reduction, while the body contract
-also leaves the local F8 `INPUT` framebuffer open.
-
-The native implementation now matches all 129 documented local events, and
-the OpenDoors adapter separately pins the public local output calls for each
-event kind. That evidence does not determine final cells or cursor position
-for an unspecified initial framebuffer. Upstream documentation must supply a
-canonical initial framebuffer plus final image, or a complete local-screen
-state-transform contract. No binary inspection or new reverse engineering was
+The potentially genuine missing facts are the BASIC `ERR`, `ERL`, active
+handler, retry statement, and resulting shared-handler suffix for each failed
+physical random-record/serial operation and failed conversion, allocation, or
+workspace operation. Native work may retain the documented already-emitted
+prefix and exact state at each cut, but it must not synthesize the omitted
+error route. Upstream documentation must provide those per-stage
+error-router identities. No binary inspection or new reverse engineering was
 performed.
-
-### DOC-GAP-007: command-7 later-poll AB36 composition is left open
-
-Affected coverage:
-
-- ship-computer command-7 avoid-list slot editor; and
-- its sector replacement editor.
-
-The completed `docs/runtime/computer-avoid-output.md` contract supplies the
-ordinary successful editor shortcut and retains the five canonical terminal
-outcomes for an explicit terminal poll. It then expressly leaves later
-inactivity/session checks, live per-poll time refresh, post-printable carrier
-loss, asynchronous F8 delivery, and carrier/F8 joins inside Ctrl-R and
-save/repeat helpers as a caller-level gap.
-
-The shared AB36 machinery models those behaviors, but the command-7 contract
-does not yet state that joining the canonical global state at its two real
-editor entries is sufficient, nor does it provide caller-specific state
-vectors for the omitted interleavings. Native work may compose the documented
-ordinary and explicit terminal-poll boundaries, but must not claim all
-command-7 editor paths. Upstream documentation must either define the two
-shared-state joins as the complete caller contract or supply the missing
-caller-specific transitions. No binary inspection or new reverse engineering
-was performed.
 
 ### DOC-GAP-006: command-2 dependency failures lack error-router identity
 
@@ -184,6 +138,55 @@ prefixes. Do not infer the missing values from host errors or inspect binaries;
 upstream documentation must provide the per-stage error-router projection.
 
 ## Resolved documentation gaps
+
+### DOC-GAP-009: navigation shared AB36 and framebuffer composition
+
+Affected coverage:
+
+- command-10 start and destination editors;
+- command-3 destination and confirmation editors;
+- route-display `POS(0)` state; and
+- inherited local framebuffer/cursor results.
+
+Resolved by the user's authoritative clarification. Navigation injects its
+canonical global state at each real shared-editor boundary; the existing AB36
+machinery then owns per-poll time refresh, input precedence, queue/typeahead,
+F8 resumption, carrier and terminal outcomes. Route display carries the
+inherited local column into the existing `POS(0)`/wrap model, and local output
+reduces through the canonical inherited-framebuffer transducer. None requires
+a caller-specific vector for every interleaving or one fixed initial/final
+screen image. These joins remain implementation and verification work. No
+binary inspection or new reverse engineering was performed.
+
+### DOC-GAP-008: command-7 inherited framebuffer composition
+
+Affected coverage:
+
+- ship-computer command-7 local screen cells and cursor result; and
+- its local F8/editor presentation effects.
+
+Resolved by the user's authoritative clarification. The documented semantic
+local event tape, inherited cursor/framebuffer carrier, and canonical
+framebuffer transducer define the result compositionally. Exact compatibility
+does not require a single fixed initial framebuffer or a separately supplied
+final screenshot. The native implementation must carry and reduce that state;
+this is not a missing-analysis boundary. No binary inspection or new reverse
+engineering was performed.
+
+### DOC-GAP-007: command-7 shared AB36 editor composition
+
+Affected coverage:
+
+- ship-computer command-7 avoid-list slot editor; and
+- its sector replacement editor.
+
+Resolved by the user's authoritative clarification. As with resolved
+DOC-GAP-005, command 7 supplies canonical global state at its two real AB36
+entries. The shared AB36 contract already owns later time refresh, local/
+serial/queue precedence, typeahead, asynchronous F8 and resumed polling,
+Ctrl-R/save-repeat helper joins, carrier loss, and terminal outcomes. The
+caller does not need bespoke vectors for every permutation. No binary
+inspection or new reverse engineering was performed.
 
 ### DOC-GAP-005: command-2 surviving AB36 editor interleavings
 

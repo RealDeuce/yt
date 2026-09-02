@@ -152,6 +152,7 @@ yt_input_splitter_select(struct yt_input_splitter *splitter, float mode,
 	if (phase == YT_INPUT_PHASE_WAIT && selected.length != 0)
 		return selected;
 	poll_remote = phase == YT_INPUT_PHASE_AB36
+	    || phase == YT_INPUT_PHASE_RADIO_BODY
 	    ? mode != 1.0f : mode == 0.0f;
 
 	if (poll_remote && pending(&splitter->remote) != 0)

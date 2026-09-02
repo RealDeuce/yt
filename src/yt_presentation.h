@@ -163,6 +163,12 @@ enum yt_present_status yt_present_press_cleanup(float saved_foreground,
     struct yt_present_state *state, struct yt_present_result *result);
 enum yt_present_status yt_present_lottery_rewind(int row, int column,
     struct yt_present_state *state, struct yt_present_result *result);
+enum yt_present_status yt_present_radio_backspace(int line_number,
+    size_t shortened_length, struct yt_present_state *state,
+    struct yt_present_result *result);
+enum yt_present_status yt_present_radio_wrap_cleanup(int line_number,
+    size_t wrap_marker, struct yt_present_state *state,
+    struct yt_present_result *result);
 enum yt_present_status yt_present_refresh_time(
     struct yt_present_time_state *time, const float *timer_reads,
     size_t timer_count, size_t *timer_used, int cursor_row, int cursor_column,
