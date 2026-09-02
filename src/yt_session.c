@@ -167,6 +167,8 @@ static bool port_report_length(struct yt_session *session, float raw,
     struct yt_error *error);
 static bool fighter_shield_spill(struct yt_session *session,
     double *fighters, float *shields, struct yt_error *error);
+static bool scanner_read_player(struct yt_session *session,
+    float basic_record, struct yt_player *player, struct yt_error *error);
 
 static bool
 session_poll_merged(struct yt_session *session,
@@ -2655,8 +2657,7 @@ radio_name_bytes(struct yt_session *session, float record, uint8_t *dest,
 		uint8_t stored[YT_TEXT_FIELD_SIZE];
 		size_t stored_length;
 
-		if (!yt_game_read_player(&session->door->game, (int)record,
-		    &player, error)
+		if (!scanner_read_player(session, record, &player, error)
 		    || !yt_player_stored_name(&player, stored, &stored_length,
 		    error))
 			return false;

@@ -23145,11 +23145,28 @@ test_computer_radio_log_presentation(void)
 	    "None Found.\r\n"
 	    "\r\n"
 	    "Time: 14:59  Computer command (?=help)? ";
+	static const uint8_t message_prefix[] =
+	    "\r\n"
+	    "Time: 14:59  Computer command (?=help)? 6\r\n"
+	    "\r\n"
+	    "Log of messages sent/recieved.\r\n"
+	    "\r\n"
+	    "Message to: Bob * From: Ada\r\n"
+	    "SENT";
+	static const uint8_t message_suffix[] =
+	    "\r\n"
+	    "\r\n"
+	    "Time: 14:59  Computer command (?=help)? ";
+	static const uint8_t message_header[] =
+	    "Message to: Bob * From: Ada";
 	struct yt_present_state current = state(false);
 	struct yt_present_result result;
 	struct yt_pager_state pager;
 	struct pager_capture capture;
+	uint8_t body[74];
+	uint8_t message_expected[228];
 	char accumulator[80] = "";
+	size_t offset;
 
 	current.foreground = 1.0f;
 	memset(&pager, 0, sizeof(pager));
@@ -23182,6 +23199,58 @@ test_computer_radio_log_presentation(void)
 	CHECK(sizeof(expected) - 1U == 134U);
 	CHECK(capture.remote_length == sizeof(expected) - 1U
 	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
+	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f);
+
+	offset = 0U;
+	memcpy(message_expected + offset, message_prefix,
+	    sizeof(message_prefix) - 1U);
+	offset += sizeof(message_prefix) - 1U;
+	memset(message_expected + offset, ' ', 70U);
+	offset += 70U;
+	memcpy(message_expected + offset, message_suffix,
+	    sizeof(message_suffix) - 1U);
+	offset += sizeof(message_suffix) - 1U;
+	CHECK(offset == sizeof(message_expected));
+	memset(body, ' ', sizeof(body));
+	memcpy(body, "SENT", 4U);
+	current = state(false);
+	current.foreground = 1.0f;
+	memset(&pager, 0, sizeof(pager));
+	pager.foreground = 1;
+	memset(&capture, 0, sizeof(capture));
+	accumulator[0] = '\0';
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"6", 1,
+	    (const uint8_t *)"6", 1, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(heading, sizeof(heading) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(message_header, sizeof(message_header) - 1U,
+	    &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(body, sizeof(body), &current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	CHECK(yt_present_line(NULL, 0, &current, &result) == YT_PRESENT_OK);
+	pager_capture_result(&capture, &result);
+	pager.newline_flag = 1.0f;
+	pager_fixture_b05d(&pager, &current, prompt, sizeof(prompt) - 1U,
+	    &capture);
+	CHECK(capture.remote_length == sizeof(message_expected)
+	    && memcmp(capture.remote, message_expected,
+	    sizeof(message_expected)) == 0);
 	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f);
 }
 
