@@ -33,6 +33,9 @@ enum navigation_field_kind {
 	NAVIGATION_FIELD_INNER_PLAYER,
 	NAVIGATION_FIELD_FINAL_SECTOR,
 	NAVIGATION_FIELD_RETURN_PLAYER,
+	NAVIGATION_FIELD_SCOREBOARD_PLAYER,
+	NAVIGATION_FIELD_SCOREBOARD_SECTOR,
+	NAVIGATION_FIELD_SCOREBOARD_TEAM,
 };
 
 struct yt_session {
@@ -490,12 +493,10 @@ computer_prompt_hydrate(struct yt_session *session, struct yt_error *error)
 {
 	if (!reload_player(session, error))
 		return false;
-	if (session->navigation_field_active) {
-		session->navigation_field_kind = NAVIGATION_FIELD_RETURN_PLAYER;
-		session->navigation_field_record = session->player_record;
-		session->navigation_field = session->player.record;
-		session->navigation_field_active = false;
-	}
+	session->navigation_field_kind = NAVIGATION_FIELD_RETURN_PLAYER;
+	session->navigation_field_record = session->player_record;
+	session->navigation_field = session->player.record;
+	session->navigation_field_active = false;
 	return true;
 }
 
@@ -17110,9 +17111,34 @@ static bool
 computer_scoreboard_generate(void *context, struct yt_error *error)
 {
 	struct yt_session *session = context;
+	struct yt_score_field_observation field;
+	bool generated;
 
-	return yt_score_generate_progress(&session->door->game,
-	    computer_scoreboard_progress, session, error);
+	generated = yt_score_generate_progress_observed(&session->door->game,
+	    computer_scoreboard_progress, session, &field, error);
+	if (field.valid) {
+		session->navigation_field_active = true;
+		session->navigation_field_record = (int)field.physical_record;
+		session->navigation_field = field.image;
+		switch (field.kind) {
+		case YT_SCORE_FIELD_PLAYER:
+			session->navigation_field_kind =
+			    NAVIGATION_FIELD_SCOREBOARD_PLAYER;
+			break;
+		case YT_SCORE_FIELD_SECTOR:
+			session->navigation_field_kind =
+			    NAVIGATION_FIELD_SCOREBOARD_SECTOR;
+			break;
+		case YT_SCORE_FIELD_TEAM:
+			session->navigation_field_kind =
+			    NAVIGATION_FIELD_SCOREBOARD_TEAM;
+			break;
+		case YT_SCORE_FIELD_NONE:
+		default:
+			break;
+		}
+	}
+	return generated;
 }
 
 static bool

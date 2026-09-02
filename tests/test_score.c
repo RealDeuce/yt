@@ -12819,7 +12819,7 @@ done:
 }
 
 struct score_clock_script {
-	struct yt_clock_value values[8];
+	struct yt_clock_value values[10];
 	size_t position;
 };
 
@@ -29553,9 +29553,12 @@ main(void)
 		{2027, 1, 1, 0, 0, 3, 0},
 		{2027, 1, 1, 0, 0, 4, 0},
 		{2027, 1, 1, 0, 0, 5, 0},
-		{2027, 1, 1, 0, 0, 6, 0}
+		{2027, 1, 1, 0, 0, 6, 0},
+		{2027, 1, 1, 0, 0, 7, 0},
+		{2027, 1, 1, 0, 0, 8, 0}
 	}, 0};
 	struct score_progress_tape progress = {0};
+	struct yt_score_field_observation score_field;
 	struct yt_error error;
 	struct yt_record blank;
 	struct yt_sector sector;
@@ -30033,11 +30036,14 @@ main(void)
 		goto close;
 	strcpy(game.config.scoreboard, "NUL");
 	yt_error_clear(&error);
-	if (!yt_score_generate_progress(&game, score_progress_collect,
-	    &progress, &error)
+	if (!yt_score_generate_progress_observed(&game, score_progress_collect,
+	    &progress, &score_field, &error)
 	    || progress.count != YT_ARRAY_LEN(progress.phases)
 	    || progress.phases[0] != 1U || progress.phases[1] != 2U
-	    || progress.phases[2] != 3U || progress.phases[3] != 4U)
+	    || progress.phases[2] != 3U || progress.phases[3] != 4U
+	    || !score_field.valid || score_field.kind != YT_SCORE_FIELD_PLAYER
+	    || score_field.physical_record != 3U
+	    || yt_record_get_number(&score_field.image, YT_F109) != -1.0f)
 		goto close;
 	score = fopen("yttemp", "rb");
 	if (score == NULL)
@@ -30129,6 +30135,12 @@ main(void)
 	    || player.score != 100.0f
 	    || !yt_game_read_player(&game, 3, &player, &error)
 	    || player.score != 100.0f)
+		goto close;
+	if (!yt_score_generate_progress_observed(&game, NULL, NULL,
+	    &score_field, &error)
+	    || !score_field.valid || score_field.kind != YT_SCORE_FIELD_TEAM
+	    || score_field.physical_record != 5U
+	    || memcmp(score_field.image.bytes, "Team Two", 8U) != 0)
 		goto close;
 	if (clock_script.position != YT_ARRAY_LEN(clock_script.values))
 		goto close;

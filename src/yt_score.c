@@ -225,9 +225,23 @@ sort_teams(struct score_team *teams, size_t count)
 	} while (changed);
 }
 
+static void
+score_field_observe(struct yt_score_field_observation *field,
+    enum yt_score_field_kind kind, uint32_t physical_record,
+    const struct yt_record *image)
+{
+	if (field == NULL || image == NULL)
+		return;
+	field->kind = kind;
+	field->physical_record = physical_record;
+	field->image = *image;
+	field->valid = true;
+}
+
 bool
-yt_score_generate_progress(struct yt_game *game,
-    yt_score_progress_fn progress, void *context, struct yt_error *error)
+yt_score_generate_progress_observed(struct yt_game *game,
+    yt_score_progress_fn progress, void *context,
+    struct yt_score_field_observation *field, struct yt_error *error)
 {
 	struct score_player players[YT_DEFAULT_PLAYER_COUNT];
 	struct score_team teams[YT_DEFAULT_PLAYER_COUNT];
@@ -247,6 +261,12 @@ yt_score_generate_progress(struct yt_game *game,
 	    - game->config.sector_offset);
 	int index;
 
+	if (field != NULL) {
+		field->kind = YT_SCORE_FIELD_NONE;
+		field->physical_record = 0U;
+		field->valid = false;
+	}
+
 	if (player_count < 0 || player_count > YT_DEFAULT_PLAYER_COUNT) {
 		if (error != NULL)
 			error->status = YT_RANGE;
@@ -264,6 +284,8 @@ yt_score_generate_progress(struct yt_game *game,
 		if (!yt_game_read_player(game, index + 2, &players[index].player,
 		    error))
 			return false;
+		score_field_observe(field, YT_SCORE_FIELD_PLAYER,
+		    (uint32_t)(index + 2), &players[index].player.record);
 		players[index].occupied = players[index].player.name_length != 0;
 		if (players[index].occupied)
 			players[index].score = base_score(&players[index].player);
@@ -277,6 +299,9 @@ yt_score_generate_progress(struct yt_game *game,
 
 		if (!yt_game_read_sector(game, index, &sector, error))
 			return false;
+		score_field_observe(field, YT_SCORE_FIELD_SECTOR,
+		    (uint32_t)yt_sector_basic_record(&game->config, index),
+		    &sector.record);
 		contribution = (double)single_mul(sector.fighters, 100.0f);
 		owner = (int)sector.fighter_owner;
 		if (owner == -1)
@@ -287,17 +312,24 @@ yt_score_generate_progress(struct yt_game *game,
 			players[owner - 2].score += contribution;
 	}
 	for (index = 0; index < player_count; ++index) {
-		if (!players[index].occupied) {
-			players[index].player.score = -1.0f;
-			if (!yt_game_write_player(game, players[index].record,
-			    &players[index].player, error))
-				return false;
-			continue;
-		}
-		players[index].player.score = (float)players[index].score;
-		if (!yt_game_write_player(game, players[index].record,
-		    &players[index].player, error))
+		struct yt_player cached;
+
+		if (!yt_game_read_player(game, players[index].record, &cached,
+		    error))
 			return false;
+		score_field_observe(field, YT_SCORE_FIELD_PLAYER,
+		    (uint32_t)players[index].record, &cached.record);
+		cached.score = players[index].occupied
+		    ? (float)players[index].score : -1.0f;
+		yt_player_encode(&cached);
+		score_field_observe(field, YT_SCORE_FIELD_PLAYER,
+		    (uint32_t)players[index].record, &cached.record);
+		if (!yt_game_write_player(game, players[index].record, &cached,
+		    error))
+			return false;
+		players[index].player.score = cached.score;
+		if (!players[index].occupied)
+			continue;
 		if (players[index].player.team >= 1.0f
 		    && players[index].player.team <= 50.0f)
 			teams[(int)players[index].player.team - 1].score
@@ -337,20 +369,26 @@ yt_score_generate_progress(struct yt_game *game,
 	{
 		int rank = 0;
 		for (index = 0; index < player_count; ++index) {
+			struct yt_player row_player;
 			char team_text[32];
 
 			if (!players[index].occupied)
 				continue;
+			if (!yt_game_read_player(game, players[index].record,
+			    &row_player, error))
+				goto failure;
+			score_field_observe(field, YT_SCORE_FIELD_PLAYER,
+			    (uint32_t)players[index].record, &row_player.record);
 			++rank;
 			if (denominator == 0)
 				return scoreboard_division_error(&output, path, error);
-			if (players[index].player.team == 0.0f)
+			if (row_player.team == 0.0f)
 				strcpy(team_text, "None");
 			else {
 				size_t length;
 
 				qb_str_single(team_text, sizeof(team_text),
-				    players[index].player.team);
+				    row_player.team);
 				length = strlen(team_text);
 				if (length + 1U < sizeof(team_text)) {
 					team_text[length] = ' ';
@@ -360,8 +398,7 @@ yt_score_generate_progress(struct yt_game *game,
 			if (!format_player_row(line, sizeof(line), rank,
 			    players[index].score / denominator * 100.0,
 			    players[index].score, team_text,
-			    players[index].player.ports_owned,
-			    players[index].player.name)) {
+			    row_player.ports_owned, row_player.name)) {
 				if (error != NULL)
 					error->status = YT_RANGE;
 				goto failure;
@@ -387,6 +424,9 @@ yt_score_generate_progress(struct yt_game *game,
 			if (!yt_game_read_sector(game, teams[index].id, &overlay, error)) {
 				goto failure;
 			}
+			score_field_observe(field, YT_SCORE_FIELD_TEAM,
+			    (uint32_t)yt_sector_basic_record(&game->config,
+			    teams[index].id), &overlay.record);
 			yt_record_get_text(&overlay.record, team_name, sizeof(team_name));
 			if (!format_team_row(line, sizeof(line), rank,
 			    teams[index].score / team_denominator * 100.0,
@@ -427,6 +467,14 @@ failure:
 	(void)yt_text_output_close_all_method(&output, 0, NULL);
 	yt_text_output_destroy(&output);
 	return false;
+}
+
+bool
+yt_score_generate_progress(struct yt_game *game,
+    yt_score_progress_fn progress, void *context, struct yt_error *error)
+{
+	return yt_score_generate_progress_observed(game, progress, context,
+	    NULL, error);
 }
 
 bool
