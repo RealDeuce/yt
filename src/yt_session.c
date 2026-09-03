@@ -1722,16 +1722,18 @@ session_low_time(struct yt_session *session, const char *operation,
 {
 	struct yt_present_result presentation;
 	enum yt_present_status status;
-	float remembered = yt_route_process_single(&session->route_process,
-	    YT_LOW_TIME_REMEMBERED_ADDRESS);
-	float inherited = remembered;
+	uint8_t remembered[4];
+	uint8_t inherited[4];
 	bool warned;
 
-	status = yt_present_low_time(session->time.text,
-	    session->time.text_length, &remembered,
+	yt_route_process_raw_single(&session->route_process,
+	    YT_LOW_TIME_REMEMBERED_ADDRESS, remembered);
+	memcpy(inherited, remembered, sizeof(inherited));
+	status = yt_present_low_time_process(session->time.text,
+	    session->time.text_length, remembered,
 	    &session->presentation, &presentation, &warned);
-	if (remembered != inherited)
-		session_set_process_single(session,
+	if (memcmp(remembered, inherited, sizeof(remembered)) != 0)
+		yt_route_process_set_raw_single(&session->route_process,
 		    YT_LOW_TIME_REMEMBERED_ADDRESS, remembered);
 	if (status == YT_PRESENT_OK) {
 		yt_out_present_result(&presentation);

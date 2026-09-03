@@ -4502,6 +4502,9 @@ test_time_helpers(void)
 	struct yt_present_time_state time;
 	struct yt_present_result result;
 	uint8_t long_time[YT_PRESENT_EVENT_DATA - 9U];
+	uint8_t raw_remembered[4];
+	uint8_t expected_raw[4];
+	uint8_t before_raw[4];
 	static const float update_reads[] = {100, 100, 100, 100};
 	static const float gated_reads[] = {100, 100};
 	static const float rollover_reads[] = {1, 10, 10};
@@ -4651,6 +4654,48 @@ test_time_helpers(void)
 	    &current, &result, &warned) == YT_PRESENT_OVERFLOW);
 	CHECK(!warned && remembered == 6.0f && current.foreground == 2.0f
 	    && current.blink == 0.0f && result.event_count == 0U
+	    && result.remote_length == 0U);
+
+	current = state(false);
+	CHECK(qb_mbf32_encode(7.0f, raw_remembered) == QB_MBF_OK
+	    && qb_mbf32_encode(6.0f, expected_raw) == QB_MBF_OK);
+	CHECK(yt_present_low_time_process((const uint8_t *)" 6:00  ", 7U,
+	    raw_remembered, &current, &result, &warned) == YT_PRESENT_OK);
+	CHECK(!warned
+	    && memcmp(raw_remembered, expected_raw, sizeof(expected_raw)) == 0
+	    && result.event_count == 0U && result.remote_length == 0U);
+
+	raw_remembered[0] = 0x12U;
+	raw_remembered[1] = 0x34U;
+	raw_remembered[2] = 0x56U;
+	raw_remembered[3] = 0x00U;
+	memcpy(before_raw, raw_remembered, sizeof(before_raw));
+	CHECK(yt_present_low_time_process((const uint8_t *)"0", 1U,
+	    raw_remembered, &current, &result, &warned) == YT_PRESENT_OK);
+	CHECK(!warned
+	    && memcmp(raw_remembered, before_raw, sizeof(before_raw)) == 0
+	    && result.event_count == 0U && result.remote_length == 0U);
+
+	CHECK(qb_mbf32_encode(6.0f, raw_remembered) == QB_MBF_OK);
+	current.sound.snoop = 0.0f;
+	memset(long_time, 'x', sizeof(long_time));
+	long_time[0] = '5';
+	CHECK(yt_present_low_time_process(long_time, sizeof(long_time),
+	    raw_remembered, &current, &result, &warned)
+	    == YT_PRESENT_CAPACITY);
+	CHECK(qb_mbf32_encode(5.0f, expected_raw) == QB_MBF_OK);
+	CHECK(memcmp(raw_remembered, expected_raw, sizeof(expected_raw)) == 0);
+	CHECK(!warned);
+	CHECK(result.event_count == 3U);
+	CHECK(result.remote_length == 3U);
+
+	CHECK(qb_mbf32_encode(6.0f, raw_remembered) == QB_MBF_OK);
+	memcpy(before_raw, raw_remembered, sizeof(before_raw));
+	CHECK(yt_present_low_time_process((const uint8_t *)"2E38", 4U,
+	    raw_remembered, &current, &result, &warned)
+	    == YT_PRESENT_OVERFLOW);
+	CHECK(memcmp(raw_remembered, before_raw, sizeof(before_raw)) == 0
+	    && !warned && result.event_count == 0U
 	    && result.remote_length == 0U);
 }
 

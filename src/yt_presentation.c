@@ -1277,26 +1277,40 @@ yt_present_opening_cleanup(float mode, float snoop,
 	return YT_PRESENT_OK;
 }
 
-enum yt_present_status
-yt_present_low_time(const uint8_t *text, size_t length, float *remembered,
+static enum yt_present_status
+low_time_value(const uint8_t *text, size_t length, double old_value,
+    uint8_t narrowed[4], bool *changed)
+{
+	struct qb_val_result parsed;
+	enum qb_mbf_status status;
+
+	*changed = false;
+	if (length > YT_PRESENT_EVENT_DATA
+	    || (text == NULL && length != 0U))
+		return YT_PRESENT_CAPACITY;
+	parsed = qb_val_n(text, length);
+	if (parsed.overflow)
+		return YT_PRESENT_OVERFLOW;
+	if (old_value == parsed.value)
+		return YT_PRESENT_OK;
+	status = qb_mbf32_from_mbf64_raw(parsed.mbf, narrowed);
+	if (status == QB_MBF_OVERFLOW || status == QB_MBF_DOMAIN)
+		return YT_PRESENT_OVERFLOW;
+	*changed = true;
+	return YT_PRESENT_OK;
+}
+
+static enum yt_present_status
+low_time_warning(const uint8_t *text, size_t length, float remembered,
     struct yt_present_state *state, struct yt_present_result *result,
     bool *warned)
 {
 	static const uint8_t label[] = "Time Left:";
 	static const uint8_t bell = '\a';
 	uint8_t warning[YT_PRESENT_EVENT_DATA];
-	double parsed;
 	enum yt_present_status status;
 
-	memset(result, 0, sizeof(*result));
-	*warned = false;
-	status = parse_value(text, length, &parsed);
-	if (status != YT_PRESENT_OK)
-		return status;
-	if ((double)*remembered == parsed)
-		return YT_PRESENT_OK;
-	*remembered = (float)parsed;
-	if (*remembered >= 6.0f)
+	if (remembered >= 6.0f)
 		return YT_PRESENT_OK;
 	status = emit_line(NULL, 0, state, result);
 	if (status != YT_PRESENT_OK)
@@ -1323,6 +1337,46 @@ yt_present_low_time(const uint8_t *text, size_t length, float *remembered,
 	if (status == YT_PRESENT_OK)
 		*warned = true;
 	return status;
+}
+
+enum yt_present_status
+yt_present_low_time(const uint8_t *text, size_t length, float *remembered,
+    struct yt_present_state *state, struct yt_present_result *result,
+    bool *warned)
+{
+	uint8_t narrowed[4];
+	bool changed;
+	enum yt_present_status status;
+
+	memset(result, 0, sizeof(*result));
+	*warned = false;
+	status = low_time_value(text, length, (double)*remembered, narrowed,
+	    &changed);
+	if (status != YT_PRESENT_OK || !changed)
+		return status;
+	*remembered = qb_mbf32_decode(narrowed);
+	return low_time_warning(text, length, *remembered, state, result,
+	    warned);
+}
+
+enum yt_present_status
+yt_present_low_time_process(const uint8_t *text, size_t length,
+    uint8_t remembered[4], struct yt_present_state *state,
+    struct yt_present_result *result, bool *warned)
+{
+	uint8_t narrowed[4];
+	bool changed;
+	enum yt_present_status status;
+
+	memset(result, 0, sizeof(*result));
+	*warned = false;
+	status = low_time_value(text, length,
+	    (double)qb_mbf32_decode(remembered), narrowed, &changed);
+	if (status != YT_PRESENT_OK || !changed)
+		return status;
+	memcpy(remembered, narrowed, sizeof(narrowed));
+	return low_time_warning(text, length, qb_mbf32_decode(remembered),
+	    state, result, warned);
 }
 
 static enum yt_present_status
