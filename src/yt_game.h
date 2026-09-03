@@ -4095,6 +4095,7 @@ typedef bool (*yt_direct_attack_combat_fn)(void *context, int target_record,
     double committed, struct yt_error *error);
 struct yt_direct_attack_ops {
 	yt_direct_attack_read_fn read_player;
+	yt_player_record_store_fn store_target_record;
 	yt_direct_attack_present_fn present;
 	yt_direct_attack_confirm_fn confirm;
 	yt_direct_attack_amount_fn amount;

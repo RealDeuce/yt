@@ -14887,6 +14887,13 @@ yt_direct_attack_run(struct yt_direct_attack_state *state,
 		}
 
 		state->target_record_cell = state->candidate;
+		if (ops->store_target_record != NULL) {
+			uint8_t target_record_raw[4];
+
+			(void)qb_mbf32_encode(state->candidate,
+			    target_record_raw);
+			ops->store_target_record(context, target_record_raw);
+		}
 		if (!ops->read_player(context, record,
 		    &state->candidate_player, error)
 		    || !yt_player_stored_name(&state->candidate_player,

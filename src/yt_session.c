@@ -92,7 +92,7 @@
 #define YT_STARTUP_DATE_SERIAL_ADDRESS 0x4CCAU
 #define YT_STARTUP_INITIAL_FIVE_ADDRESS 0x4BFAU
 #define YT_CURRENT_PLAYER_RECORD_ADDRESS 0x1C3CU
-#define YT_FATAL_SAVED_PLAYER_ADDRESS 0x1A40U
+#define YT_SHARED_TARGET_RECORD_ADDRESS 0x1A40U
 
 enum navigation_field_kind {
 	NAVIGATION_FIELD_NONE,
@@ -5720,7 +5720,7 @@ common_fatal_store_target(void *context, const uint8_t raw[4])
 
 	(void)raw;
 	yt_route_process_copy_raw_single(&session->route_process,
-	    YT_CURRENT_PLAYER_RECORD_ADDRESS, YT_FATAL_SAVED_PLAYER_ADDRESS);
+	    YT_CURRENT_PLAYER_RECORD_ADDRESS, YT_SHARED_TARGET_RECORD_ADDRESS);
 }
 
 static bool
@@ -6299,6 +6299,15 @@ direct_attack_amount(void *context, char *response, size_t capacity,
 	return session_036f(context, response, capacity);
 }
 
+static void
+direct_attack_store_target(void *context, const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_SHARED_TARGET_RECORD_ADDRESS, raw);
+}
+
 static bool
 direct_attack_combat(void *context, int target_record, double committed,
     struct yt_error *error)
@@ -6312,6 +6321,7 @@ command_attack_player(struct yt_session *session, bool *enter_sector,
 {
 	static const struct yt_direct_attack_ops ops = {
 		direct_attack_combat_read,
+		direct_attack_store_target,
 		direct_attack_present,
 		direct_attack_confirm,
 		direct_attack_amount,

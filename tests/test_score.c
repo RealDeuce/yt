@@ -20266,6 +20266,9 @@ struct direct_attack_tape {
 	size_t fail_at;
 	int read_records[8];
 	size_t read_count;
+	uint8_t stored_target_raw[8][4];
+	size_t stored_target_at[8];
+	size_t stored_target_count;
 	enum yt_direct_attack_confirmation answers[4];
 	size_t answer_count;
 	size_t answer_position;
@@ -20296,6 +20299,19 @@ direct_attack_event(struct direct_attack_tape *tape,
 		    "direct Attack selector dependency");
 	}
 	return false;
+}
+
+static void
+direct_attack_store_target(void *context, const uint8_t raw[4])
+{
+	struct direct_attack_tape *tape = context;
+
+	if (tape->stored_target_count
+	    >= YT_ARRAY_LEN(tape->stored_target_raw))
+		return;
+	memcpy(tape->stored_target_raw[tape->stored_target_count], raw, 4U);
+	tape->stored_target_at[tape->stored_target_count] = tape->event_count;
+	++tape->stored_target_count;
 }
 
 static bool
@@ -20385,6 +20401,7 @@ direct_attack_combat_child(void *context, int target_record,
 
 static const struct yt_direct_attack_ops direct_attack_ops = {
 	direct_attack_read,
+	direct_attack_store_target,
 	direct_attack_present,
 	direct_attack_confirm,
 	direct_attack_amount,
@@ -20446,6 +20463,29 @@ direct_attack_fixture(struct direct_attack_tape *tape,
 }
 
 static bool
+direct_attack_stored_targets(const struct direct_attack_tape *tape,
+    size_t count)
+{
+	static const uint8_t expected[][4] = {
+		{0x00U, 0x00U, 0x40U, 0x82U},
+		{0x00U, 0x00U, 0x00U, 0x83U},
+		{0x00U, 0x00U, 0x20U, 0x83U},
+	};
+	static const size_t positions[] = {2U, 4U, 6U};
+	size_t index;
+
+	if (count > YT_ARRAY_LEN(expected)
+	    || tape->stored_target_count != count)
+		return false;
+	for (index = 0U; index < count; ++index) {
+		if (memcmp(tape->stored_target_raw[index], expected[index], 4U)
+		    != 0 || tape->stored_target_at[index] != positions[index])
+			return false;
+	}
+	return true;
+}
+
+static bool
 check_direct_attack_transaction(void)
 {
 	static const uint8_t title[] = "<Attack>";
@@ -20475,6 +20515,7 @@ check_direct_attack_transaction(void)
 	    || tape.read_count != 4U || tape.read_records[0] != 2
 	    || tape.read_records[1] != 3 || tape.read_records[2] != 4
 	    || tape.read_records[3] != 5
+	    || !direct_attack_stored_targets(&tape, 3U)
 	    || tape.output_length[YT_DIRECT_ATTACK_TITLE_ROW]
 	    != sizeof(title) - 1U
 	    || memcmp(tape.output[YT_DIRECT_ATTACK_TITLE_ROW], title,
@@ -20511,7 +20552,10 @@ check_direct_attack_transaction(void)
 		    || error.status != YT_IO_ERROR
 		    || state.encountered != (failure >= 4U)
 		    || state.target_record_cell != (failure < 2U ? 0.0f
-		    : failure < 4U ? 3.0f : failure < 6U ? 4.0f : 5.0f))
+		    : failure < 4U ? 3.0f : failure < 6U ? 4.0f : 5.0f)
+		    || !direct_attack_stored_targets(&tape,
+		    failure < 2U ? 0U : failure < 4U ? 1U
+		    : failure < 6U ? 2U : 3U))
 			return false;
 	}
 
@@ -20520,6 +20564,7 @@ check_direct_attack_transaction(void)
 	(void)yt_record_set_number(&tape.player[2].record, YT_F61, 0.5f);
 	if (!yt_direct_attack_run(&state, &direct_attack_ops, &tape, NULL)
 	    || state.route != YT_DIRECT_ATTACK_NO_FIGHTERS || !state.complete
+	    || !direct_attack_stored_targets(&tape, 0U)
 	    || tape.event_count != 3U
 	    || tape.output_length[YT_DIRECT_ATTACK_NO_FIGHTERS_ROW]
 	    != sizeof(no_fighters) - 1U
@@ -20535,6 +20580,7 @@ check_direct_attack_transaction(void)
 	    || state.route != YT_DIRECT_ATTACK_EXHAUSTED || !state.complete
 	    || !state.enter_sector || state.encountered
 	    || state.target_record_cell != 0.0f
+	    || !direct_attack_stored_targets(&tape, 0U)
 	    || tape.output_length[YT_DIRECT_ATTACK_NONE_VISIBLE_ROW]
 	    != sizeof(none_visible) - 1U
 	    || memcmp(tape.output[YT_DIRECT_ATTACK_NONE_VISIBLE_ROW],
@@ -20546,6 +20592,7 @@ check_direct_attack_transaction(void)
 	if (!yt_direct_attack_run(&state, &direct_attack_ops, &tape, NULL)
 	    || state.route != YT_DIRECT_ATTACK_EXHAUSTED || !state.complete
 	    || !state.enter_sector || !state.encountered
+	    || !direct_attack_stored_targets(&tape, 1U)
 	    || tape.output_length[YT_DIRECT_ATTACK_NONE_SELECTED_ROW]
 	    != sizeof(none_selected) - 1U
 	    || memcmp(tape.output[YT_DIRECT_ATTACK_NONE_SELECTED_ROW],
@@ -20561,6 +20608,7 @@ check_direct_attack_transaction(void)
 	if (!yt_direct_attack_run(&state, &direct_attack_ops, &tape, NULL)
 	    || state.route != YT_DIRECT_ATTACK_CANCELLED || !state.complete
 	    || state.target_record_cell != 3.0f || state.committed != 0.0
+	    || !direct_attack_stored_targets(&tape, 1U)
 	    || tape.combat_target != 0)
 		return false;
 
@@ -20572,6 +20620,7 @@ check_direct_attack_transaction(void)
 	yt_error_clear(&error);
 	return !yt_direct_attack_run(&state, &direct_attack_ops, &tape, &error)
 	    && !state.complete && state.candidate == 6.0f
+	    && direct_attack_stored_targets(&tape, 0U)
 	    && error.status == YT_RANGE
 	    && !yt_direct_attack_run(NULL, &direct_attack_ops, &tape, NULL)
 	    && !yt_direct_attack_run(&state, NULL, &tape, NULL);
