@@ -69,6 +69,10 @@
 #define YT_FATAL_SOUND_SELECTOR_ADDRESS 0x4CE2U
 #define YT_FATAL_WAIT_ADDRESS 0x4CE6U
 #define YT_ANSI_OPENING_WAIT_ADDRESS 0x539EU
+#define YT_REGISTRATION_EVALUATION_WAIT_ADDRESS 0x530EU
+#define YT_REGISTRATION_REGISTERED_WAIT_ADDRESS 0x5312U
+#define YT_LOCKOUT_WAIT_ADDRESS 0x5B9EU
+#define YT_NORMAL_EXIT_REMINDER_WAIT_ADDRESS 0x4CAAU
 #define YT_COUNTERLAUNCH_COUNT_ADDRESS 0x5BC6U
 #define YT_SPY_DESTINATION_SCRATCH_ADDRESS 0x5FE4U
 #define YT_SPY_FOUND_SCRATCH_ADDRESS 0x5FE8U
@@ -2515,11 +2519,24 @@ registration(struct yt_session *session, struct yt_error *error)
 		}
 	}
 	free(storage);
-	return session_wait(session,
-	    state.outcome == YT_REGISTRATION_REGISTERED ? 2.0 : 10.0,
-	    state.outcome == YT_REGISTRATION_REGISTERED
-	    ? "registration registered wait" : "registration evaluation wait",
-	    error);
+	if (state.outcome == YT_REGISTRATION_REGISTERED) {
+		static const uint8_t duration_two[4] = {
+			0x00U, 0x00U, 0x00U, 0x82U,
+		};
+
+		return session_wait_raw_at(session, duration_two,
+		    YT_REGISTRATION_REGISTERED_WAIT_ADDRESS,
+		    "registration registered wait", error);
+	}
+	else {
+		static const uint8_t duration_ten[4] = {
+			0x00U, 0x00U, 0x20U, 0x84U,
+		};
+
+		return session_wait_raw_at(session, duration_ten,
+		    YT_REGISTRATION_EVALUATION_WAIT_ADDRESS,
+		    "registration evaluation wait", error);
+	}
 }
 
 static bool
@@ -2700,10 +2717,14 @@ lockout_present(void *context, enum yt_startup_lockout_row row,
 static bool
 lockout_wait(void *context, float seconds, struct yt_error *error)
 {
+	static const uint8_t duration_ten[4] = {
+		0x00U, 0x00U, 0x20U, 0x84U,
+	};
 	struct lockout_context *lockout = context;
 
-	return session_wait(lockout->session, seconds, "lockout denial wait",
-	    error);
+	(void)seconds;
+	return session_wait_raw_at(lockout->session, duration_ten,
+	    YT_LOCKOUT_WAIT_ADDRESS, "lockout denial wait", error);
 }
 
 static bool
@@ -18522,9 +18543,14 @@ quit_session(struct yt_session *session, struct yt_error *error)
 		return false;
 	}
 	if (~registered != 0) {
+		static const uint8_t duration_ten[4] = {
+			0x00U, 0x00U, 0x20U, 0x84U,
+		};
+
 		if (!session_attention(session, reminder,
 		    "normal-exit registration reminder", error)
-		    || !session_wait(session, 10.0,
+		    || !session_wait_raw_at(session, duration_ten,
+		    YT_NORMAL_EXIT_REMINDER_WAIT_ADDRESS,
 		    "normal-exit registration wait", error)
 		    || !session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "normal-exit reminder blank", error))
