@@ -85,8 +85,6 @@ struct yt_session {
 	uint8_t earth_report_seen_raw[4];
 	float phase_scratch;
 	uint8_t phase_scratch_raw[4];
-	float relationship_scratch;
-	uint8_t relationship_scratch_raw[4];
 	float shared_loop_scratch;
 	float planet_record_scratch;
 	float attack_commitment;
@@ -189,6 +187,23 @@ session_current_warps(const struct yt_session *session, float warps[6])
 	for (slot = 0U; slot < 6U; ++slot)
 		warps[slot] = yt_route_process_single(&session->route_process,
 		    (uint16_t)(YT_CURRENT_WARPS_ADDRESS + 4U * slot));
+}
+
+static void
+session_set_relationship(struct yt_session *session, float value)
+{
+	uint8_t raw[4];
+
+	if (qb_mbf32_encode(value, raw) == QB_MBF_OK)
+		yt_route_process_set_raw_single(&session->route_process,
+		    YT_COMPUTER_ROUTE_STATUS_ADDRESS, raw);
+}
+
+static float
+session_relationship(const struct yt_session *session)
+{
+	return yt_route_process_single(&session->route_process,
+	    YT_COMPUTER_ROUTE_STATUS_ADDRESS);
 }
 
 static int
@@ -4107,14 +4122,14 @@ dangerous_destination(struct yt_session *session, float target,
 				int team_record;
 				int team_name_length;
 
-				session->relationship_scratch = 0.0f;
+				session_set_relationship(session, 0.0f);
 				if (owner >= 2.0f
 				    && owner <= session->door->game.config.sector_offset
 				    && session->player_record >= YT_PLAYER_FIRST
 				    && (float)session->player_record
 				    <= session->door->game.config.sector_offset) {
 					if (owner == (float)session->player_record)
-						session->relationship_scratch = -1.0f;
+						session_set_relationship(session, -1.0f);
 					else {
 						if (!yt_game_read_player(
 						    &session->door->game,
@@ -4128,8 +4143,8 @@ dangerous_destination(struct yt_session *session, float target,
 							    error))
 								return false;
 							if (candidate.team == current.team)
-								session->relationship_scratch =
-								    -1.0f;
+								session_set_relationship(session,
+								    -1.0f);
 						}
 					}
 				}
@@ -4183,7 +4198,7 @@ dangerous_destination(struct yt_session *session, float target,
 		    || (owner > 1.0f
 		    && owner <= session->door->game.config.sector_offset
 		    && owner != (float)session->player_record
-		    && session->relationship_scratch == 0.0f);
+		    && session_relationship(session) == 0.0f);
 		if (hostile) {
 			if (!danger_first_warning(session, target, *danger, error))
 				return false;
@@ -10040,13 +10055,13 @@ planet_move_friendship(struct yt_session *session, float owner,
 	if (friendly == NULL)
 		return false;
 	*friendly = false;
-	session->relationship_scratch = 0.0f;
+	session_set_relationship(session, 0.0f);
 	if (owner < 2.0f || owner > (float)last_player
 	    || session->player_record < 2 || session->player_record > last_player)
 		return true;
 	if (owner == (float)session->player_record) {
 		*friendly = true;
-		session->relationship_scratch = -1.0f;
+		session_set_relationship(session, -1.0f);
 		return true;
 	}
 	if (!yt_game_read_player(&session->door->game, session->player_record,
@@ -10061,7 +10076,7 @@ planet_move_friendship(struct yt_session *session, float owner,
 		return false;
 	*friendly = other.team == current.team;
 	if (*friendly)
-		session->relationship_scratch = -1.0f;
+		session_set_relationship(session, -1.0f);
 	return true;
 }
 
@@ -15638,7 +15653,6 @@ computer_route(struct yt_session *session, bool autopilot,
 	bool found;
 	int cursor;
 	enum yt_route_outcome route_outcome;
-	float route_status;
 
 	session->navigation_field_active = true;
 	session->navigation_field_kind = NAVIGATION_FIELD_ENTRY_PLAYER;
@@ -15715,9 +15729,6 @@ computer_route(struct yt_session *session, bool autopilot,
 	    || !session_031f(session, working, sizeof(working) - 1U,
 	    "path working prompt", error))
 		return false;
-	session->relationship_scratch = 1.0f;
-	memcpy(session->relationship_scratch_raw, status_one_raw,
-	    sizeof(status_one_raw));
 	yt_route_process_set_raw_single(&session->route_process,
 	    YT_COMPUTER_ROUTE_STATUS_ADDRESS, status_one_raw);
 	if (!yt_route_process_build_at(YT_COMPUTER_ROUTE_START_ADDRESS,
@@ -15730,12 +15741,6 @@ computer_route(struct yt_session *session, bool autopilot,
 	route_require_returned(route_outcome);
 	found = route_outcome == YT_ROUTE_FOUND
 	    || route_outcome == YT_ROUTE_SAME;
-	route_status = yt_route_process_single(&session->route_process,
-	    YT_COMPUTER_ROUTE_STATUS_ADDRESS);
-	session->relationship_scratch = route_status;
-	yt_route_process_raw_single(&session->route_process,
-	    YT_COMPUTER_ROUTE_STATUS_ADDRESS,
-	    session->relationship_scratch_raw);
 	if (!found) {
 		session->presentation.blink = 1.0f;
 		return session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
@@ -16307,9 +16312,8 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 		session->phase_scratch = visibility.marker_4d62;
 		memcpy(session->phase_scratch_raw, visibility.marker_4d62_raw,
 		    sizeof(session->phase_scratch_raw));
-		session->relationship_scratch = visibility.relation;
-		memcpy(session->relationship_scratch_raw, visibility.relation_raw,
-		    sizeof(session->relationship_scratch_raw));
+		yt_route_process_set_raw_single(&session->route_process,
+		    YT_COMPUTER_ROUTE_STATUS_ADDRESS, visibility.relation_raw);
 		if (visibility.scratch_written)
 			session->planet_record_scratch = visibility.scratch_19c4;
 		if (!visibility_ok)
@@ -17588,9 +17592,8 @@ computer_menu_prompt_effect(void *context,
 	struct yt_session *session = context;
 
 	if (effect == YT_COMPUTER_PROMPT_RESET_SCANNER) {
-		session->relationship_scratch = 0.0f;
-		memcpy(session->relationship_scratch_raw, scanner_zero,
-		    sizeof(scanner_zero));
+		yt_route_process_set_raw_single(&session->route_process,
+		    YT_COMPUTER_ROUTE_STATUS_ADDRESS, scanner_zero);
 	}
 	else if (effect == YT_COMPUTER_PROMPT_SET_FOREGROUND) {
 		session->presentation.foreground = 1.0f;
@@ -17990,7 +17993,7 @@ main_prompt_effect(void *context, enum yt_main_prompt_effect effect)
 		session->pager.foreground = 2;
 		break;
 	case YT_MAIN_PROMPT_RESET_SCANNER:
-		session->relationship_scratch = 0.0f;
+		session_set_relationship(session, 0.0f);
 		break;
 	}
 }
