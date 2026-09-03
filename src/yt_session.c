@@ -18184,6 +18184,8 @@ quit_session(struct yt_session *session, struct yt_error *error)
 			error->status = YT_RANGE;
 			(void)snprintf(error->operation, sizeof(error->operation),
 			    "%s", "normal-exit registration CINT");
+			(void)yt_error_attach_basic_fault_number(error,
+			    YT_BASIC_FAULT_NORMAL_EXIT_REGISTERED_CINT, 6U);
 		}
 		return false;
 	}
