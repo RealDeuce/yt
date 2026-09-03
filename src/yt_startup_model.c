@@ -926,6 +926,18 @@ yt_startup_compose_state(const struct yt_startup_dorinfo_result *dorinfo,
 	return true;
 }
 
+bool
+yt_startup_local_mode_raw(bool local, uint8_t raw[4])
+{
+	static const uint8_t remote[4] = {0x00U, 0x00U, 0x00U, 0x00U};
+	static const uint8_t console[4] = {0x00U, 0x00U, 0x00U, 0x81U};
+
+	if (raw == NULL)
+		return false;
+	memcpy(raw, local ? console : remote, 4U);
+	return true;
+}
+
 static bool
 add_event(struct yt_startup_event_result *result,
     enum yt_startup_event_operation operation, uint16_t address,

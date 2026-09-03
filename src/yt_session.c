@@ -66,6 +66,7 @@
 #define YT_SPY_COUNT_ADDRESS 0x50AEU
 #define YT_LOW_TIME_REMEMBERED_ADDRESS 0x59CEU
 #define YT_SESSION_DEADLINE_ADDRESS 0x4BB4U
+#define YT_SESSION_MODE_ADDRESS 0x19C8U
 #define YT_INACTIVITY_DEADLINE_ADDRESS 0x51B4U
 #define YT_NEXT_TIME_REFRESH_ADDRESS 0x19C0U
 #define YT_COMPUTER_ACTIVATION_SELECTOR_ADDRESS 0x50D2U
@@ -196,6 +197,13 @@ session_foreground(const struct yt_session *session)
 {
 	return yt_route_process_single(&session->route_process,
 	    YT_FOREGROUND_ADDRESS);
+}
+
+static float
+session_mode(const struct yt_session *session)
+{
+	return yt_route_process_single(&session->route_process,
+	    YT_SESSION_MODE_ADDRESS);
 }
 
 static int
@@ -502,7 +510,7 @@ session_radio_body_key(struct yt_session *session)
 
 		if (!session_carrier(session)
 		    || !yt_input_poll_legacy(&session->input,
-		    session->presentation.sound.mode,
+		    session_mode(session),
 		    YT_INPUT_PHASE_RADIO_BODY, &selected))
 			return EOF;
 		if (selected.length == 1)
@@ -526,11 +534,11 @@ session_timed_wait(struct yt_session *session, double seconds)
 		if (reason != YT_TIMED_WAIT_CONTINUE)
 			return reason != YT_TIMED_WAIT_ERROR;
 		if (!yt_input_poll_legacy(&session->input,
-		    session->presentation.sound.mode, YT_INPUT_PHASE_WAIT,
+		    session_mode(session), YT_INPUT_PHASE_WAIT,
 		    &selected))
 			return false;
 		reason = yt_timed_wait_input(&session->wait,
-		    session->presentation.sound.mode, &selected);
+		    session_mode(session), &selected);
 		if (reason != YT_TIMED_WAIT_CONTINUE)
 			return reason != YT_TIMED_WAIT_ERROR;
 	}
@@ -556,11 +564,11 @@ session_timed_wait_at(struct yt_session *session, double seconds,
 		if (reason != YT_TIMED_WAIT_CONTINUE)
 			return reason != YT_TIMED_WAIT_ERROR;
 		if (!yt_input_poll_legacy(&session->input,
-		    session->presentation.sound.mode, YT_INPUT_PHASE_WAIT,
+		    session_mode(session), YT_INPUT_PHASE_WAIT,
 		    &selected))
 			return false;
 		reason = yt_timed_wait_input(&session->wait,
-		    session->presentation.sound.mode, &selected);
+		    session_mode(session), &selected);
 		if (reason != YT_TIMED_WAIT_CONTINUE)
 			return reason != YT_TIMED_WAIT_ERROR;
 	}
@@ -1107,7 +1115,7 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 		if (yt_input_ab36_inactivity_expired(
 		    (float)yt_platform_timer(), yt_route_process_single(
 		    &session->route_process, YT_INACTIVITY_DEADLINE_ADDRESS),
-		    session->presentation.sound.mode))
+		    session_mode(session)))
 			return session_editor_end(session,
 			    YT_AB36_TERMINAL_INACTIVITY);
 		if (!session_carrier(session))
@@ -1127,7 +1135,7 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 		}
 		else {
 			if (!yt_input_poll_legacy(&session->input,
-			    session->presentation.sound.mode,
+			    session_mode(session),
 			    YT_INPUT_PHASE_AB36, &selected))
 				return false;
 			if (selected.length == 0) {
@@ -1292,7 +1300,7 @@ session_carrier(struct yt_session *session)
 	bool carrier_detected;
 
 	carrier_detected = od_carrier();
-	if (yt_input_carrier_returns(session->presentation.sound.mode,
+	if (yt_input_carrier_returns(session_mode(session),
 	    carrier_detected))
 		return true;
 	status = yt_present_carrier_drop(&session->presentation, &presentation);
@@ -1316,7 +1324,7 @@ session_paged_sample(void *context, struct yt_input_value *sampled)
 	struct yt_session *session = context;
 
 	return yt_input_poll_legacy(&session->input,
-	    session->presentation.sound.mode, YT_INPUT_PHASE_B05D, sampled);
+	    session_mode(session), YT_INPUT_PHASE_B05D, sampled);
 }
 
 static bool
@@ -1779,11 +1787,11 @@ session_drain_pending_input(struct yt_session *session)
 	for (;;) {
 		struct yt_input_value selected = {{0, 0}, 0, 0, false};
 
-		if (session->presentation.sound.mode == 0.0f
+		if (session_mode(session) == 0.0f
 		    && !yt_input_poll_source(&session->input, true, &selected))
 			return false;
 		reason = yt_input_drain_serial(&drain,
-		    session->presentation.sound.mode, &selected);
+		    session_mode(session), &selected);
 		if (reason == YT_INPUT_DRAIN_ERROR)
 			return false;
 		if (reason == YT_INPUT_DRAIN_COMPLETE)
@@ -2857,7 +2865,7 @@ opening_and_date(struct yt_session *session, struct yt_error *error)
 	}
 	if (session->door->identity.ansi) {
 		if (!yt_out_opening_file("YTOPEN.ANS",
-		    session->presentation.sound.mode,
+		    session_mode(session),
 		    session->presentation.sound.snoop, opening_poll_local,
 		    opening_poll_remote, opening_wait, session, error))
 			return false;
@@ -19129,6 +19137,7 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	struct yt_session session;
 	struct yt_random launch_random;
 	float market_base[3];
+	uint8_t mode_raw[4];
 	char first[128];
 	char last[128];
 
@@ -19154,7 +19163,11 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	/* YT:040A is the ordinary instruction after the handed-off checkpoint. */
 	session_set_pager_nonstop(&session, 1.0f);
 	session.presentation.sound.ansi = door->identity.ansi ? -1.0f : 0.0f;
-	session.presentation.sound.mode = door->identity.local ? 1.0f : 0.0f;
+	if (!yt_startup_local_mode_raw(door->identity.local, mode_raw))
+		return false;
+	yt_route_process_set_raw_single(&session.route_process,
+	    YT_SESSION_MODE_ADDRESS, mode_raw);
+	session.presentation.sound.mode = session_mode(&session);
 	session.presentation.sound.user_sound = -1.0f;
 	session.presentation.sound.local_sound =
 	    door->identity.local ? -1.0f : 0.0f;

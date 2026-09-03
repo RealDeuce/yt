@@ -2736,12 +2736,19 @@ test_startup_dorinfo_state(void)
 	    "0\r\nJane\r\nDoe\r\nCity\r\n0\r\n100\r\n180\r\n";
 	uint8_t storage[1024];
 	uint8_t canonical[128];
+	uint8_t mode_raw[4];
 	struct yt_startup_dorinfo_result dorinfo;
 	struct yt_startup_state_result state_result;
 	struct yt_startup_event_result event_result;
 	const uint8_t *field;
 	size_t field_length;
 	size_t index;
+
+	CHECK(yt_startup_local_mode_raw(false, mode_raw)
+	    && memcmp(mode_raw, "\x00\x00\x00\x00", 4U) == 0);
+	CHECK(yt_startup_local_mode_raw(true, mode_raw)
+	    && memcmp(mode_raw, "\x00\x00\x00\x81", 4U) == 0);
+	CHECK(!yt_startup_local_mode_raw(false, NULL));
 
 	CHECK(yt_startup_parse_dorinfo(remote_raw, sizeof(remote_raw) - 1U,
 	    storage, sizeof(storage), &dorinfo));
