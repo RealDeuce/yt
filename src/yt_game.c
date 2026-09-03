@@ -1470,7 +1470,13 @@ yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
 	}
 	if (!ops->wait(context, duration_four, error))
 		return false;
-	*state->provoker = 0;
+	{
+		static const uint8_t zero[4] = {0x00, 0x00, 0x00, 0x00};
+
+		*state->provoker = 0;
+		if (ops->store_provoker != NULL)
+			ops->store_provoker(context, zero);
+	}
 	return true;
 }
 
@@ -1704,9 +1710,12 @@ yt_projectile_command_run(struct yt_projectile_command_state *state,
 		    &state->xannor_provoker, error))
 			return false;
 	}
-	state->xannor_called = true;
-	if (!ops->xannor(context, &state->xannor_provoker, error))
-		return false;
+	if (ops->xannor_truth != NULL
+	    ? ops->xannor_truth(context) : state->xannor_provoker != 0) {
+		state->xannor_called = true;
+		if (!ops->xannor(context, &state->xannor_provoker, error))
+			return false;
+	}
 	if (ops->destroyed_truth != NULL
 	    ? ops->destroyed_truth(context) : *state->destroyed) {
 		state->route = YT_PROJECTILE_COMMAND_FATAL;
@@ -12537,8 +12546,15 @@ yt_projectile_defense_combat_run(
 		    dirty_zero))
 			return false;
 	}
-	else if (state->owner == -1.0f)
+	else if (state->owner == -1.0f) {
+		uint8_t provoker_raw[4];
+
 		*state->xannor_provoker = state->shooter;
+		if (ops->store_xannor_provoker != NULL
+		    && qb_mbf32_encode((float)state->shooter, provoker_raw)
+		    == QB_MBF_OK)
+			ops->store_xannor_provoker(context, provoker_raw);
+	}
 	if (!ops->write_sector(context, state->sector, &state->persistence,
 	    error))
 		return false;

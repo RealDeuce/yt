@@ -1559,6 +1559,7 @@ struct yt_projectile_defense_combat_ops {
 	yt_projectile_defense_sector_read_fn read_sector;
 	yt_projectile_defense_sector_write_fn write_sector;
 	yt_projectile_defense_victory_fn victory;
+	yt_player_record_store_fn store_xannor_provoker;
 };
 bool yt_projectile_defense_combat_run(
     struct yt_projectile_defense_combat_state *state,
@@ -1628,6 +1629,7 @@ struct yt_xannor_retaliation_ops {
 	yt_xannor_retaliation_wait_fn wait;
 	yt_destroyed_store_fn store_destroyed;
 	yt_player_record_store_fn store_player_record;
+	yt_player_record_store_fn store_provoker;
 };
 
 struct yt_counterlaunch_state {
@@ -4257,6 +4259,7 @@ struct yt_projectile_command_ops {
 	yt_destroyed_store_fn store_destroyed;
 	yt_destroyed_truth_fn destroyed_truth;
 	bool (*counterattack_truth)(void *context);
+	bool (*xannor_truth)(void *context);
 };
 bool yt_projectile_command_run(struct yt_projectile_command_state *state,
 	const struct yt_projectile_command_ops *ops, void *context,

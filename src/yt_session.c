@@ -94,6 +94,7 @@
 #define YT_CURRENT_PLAYER_RECORD_ADDRESS 0x1C3CU
 #define YT_SHARED_TARGET_RECORD_ADDRESS 0x1A40U
 #define YT_COUNTERATTACK_PLAYER_ADDRESS 0x1C10U
+#define YT_XANNOR_PROVOKER_ADDRESS 0x4BDCU
 
 enum navigation_field_kind {
 	NAVIGATION_FIELD_NONE,
@@ -218,6 +219,23 @@ session_load_counterattack_player(struct yt_session *session,
 	if (counterattack != NULL)
 		*counterattack = (int)yt_route_process_single(
 		    &session->route_process, YT_COUNTERATTACK_PLAYER_ADDRESS);
+}
+
+static void
+session_store_xannor_provoker(void *context, const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_XANNOR_PROVOKER_ADDRESS, raw);
+}
+
+static void
+session_load_xannor_provoker(struct yt_session *session, int *provoker)
+{
+	if (provoker != NULL)
+		*provoker = (int)yt_route_process_single(&session->route_process,
+		    YT_XANNOR_PROVOKER_ADDRESS);
 }
 
 static void
@@ -4977,7 +4995,7 @@ static bool
 finalize_action(struct yt_session *session, float amount,
     struct yt_error *error)
 {
-	int xannor_provoker = 0;
+	int xannor_provoker;
 	float quotient;
 	float draw;
 	char number[64];
@@ -5057,6 +5075,7 @@ finalize_action(struct yt_session *session, float amount,
 	if (!random_value(session, &draw, error))
 		return false;
 	if (draw > 0.99000000953674316f) {
+		session_load_xannor_provoker(session, &xannor_provoker);
 		if (!launch_xannor_retaliation(session, &xannor_provoker,
 		    error))
 			return false;
@@ -14388,6 +14407,7 @@ missile_sector(struct yt_session *session, int sector_number,
 		cruise_defense_read_sector,
 		cruise_defense_write_sector,
 		cruise_defense_victory,
+		session_store_xannor_provoker,
 	};
 	static const struct yt_projectile_sector_mine_ops mine_ops = {
 		cruise_mine_read_sector,
@@ -15402,9 +15422,11 @@ session_projectile_resolver(void *context, float *origin, float *target,
 	bool result;
 
 	session_load_counterattack_player(session, counterattack);
+	session_load_xannor_provoker(session, xannor_provoker);
 	result = launch_projectile(session, target, amount, plasma, cells, origin,
 	    NULL, NULL, NULL, counterattack, xannor_provoker, error);
 	session_load_counterattack_player(session, counterattack);
+	session_load_xannor_provoker(session, xannor_provoker);
 	return result;
 }
 
@@ -15418,6 +15440,7 @@ session_projectile_command_resolver(void *context, float *origin,
 	bool result;
 
 	session_load_counterattack_player(session, counterattack);
+	session_load_xannor_provoker(session, xannor_provoker);
 	result = launch_projectile(session, target, amount, plasma,
 	    &projectile_main_cells, origin, origin_raw, target_raw, amount_raw,
 	    counterattack, xannor_provoker, error);
@@ -15432,6 +15455,7 @@ session_projectile_command_resolver(void *context, float *origin,
 	*target = qb_mbf32_decode(target_raw);
 	*amount = qb_mbf32_decode(amount_raw);
 	session_load_counterattack_player(session, counterattack);
+	session_load_xannor_provoker(session, xannor_provoker);
 	return result;
 }
 
@@ -15516,10 +15540,12 @@ launch_xannor_retaliation(struct yt_session *session, int *provoking_player,
 		session_xannor_wait,
 		session_store_destroyed,
 		session_store_current_player_record,
+		session_store_xannor_provoker,
 	};
 	bool destroyed = session_is_destroyed(session);
 	uint8_t current_record_raw[4];
 
+	session_load_xannor_provoker(session, provoking_player);
 	yt_route_process_raw_single(&session->route_process,
 	    YT_CURRENT_PLAYER_RECORD_ADDRESS, current_record_raw);
 	struct yt_xannor_retaliation_state state = {
@@ -15583,10 +15609,12 @@ session_counterlaunch_projectile(void *context, float *origin, float *target,
 	bool result;
 
 	session_load_counterattack_player(session, counterattack);
+	session_load_xannor_provoker(session, xannor_provoker);
 	result = launch_projectile(session, target, amount, plasma,
 	    &projectile_counterlaunch_cells, origin, NULL, NULL, NULL,
 	    counterattack, xannor_provoker, error);
 	session_load_counterattack_player(session, counterattack);
+	session_load_xannor_provoker(session, xannor_provoker);
 	return result;
 }
 
@@ -15777,6 +15805,17 @@ projectile_command_counterattack_truth(void *context)
 }
 
 static bool
+projectile_command_xannor_truth(void *context)
+{
+	struct yt_session *session = context;
+	uint8_t raw[4];
+
+	yt_route_process_raw_single(&session->route_process,
+	    YT_XANNOR_PROVOKER_ADDRESS, raw);
+	return qb_mbf32_truth(raw);
+}
+
+static bool
 command_projectile(struct yt_session *session, bool plasma,
     struct yt_error *error)
 {
@@ -15794,6 +15833,7 @@ command_projectile(struct yt_session *session, bool plasma,
 		session_store_destroyed,
 		projectile_command_destroyed_truth,
 		projectile_command_counterattack_truth,
+		projectile_command_xannor_truth,
 	};
 	bool destroyed = session_is_destroyed(session);
 	struct yt_projectile_command_state state = {

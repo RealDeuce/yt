@@ -6722,6 +6722,9 @@ struct projectile_defense_combat_tape {
 	float sector_at_write;
 	int *provoker;
 	int provoker_at_write;
+	uint8_t provoker_raw[4];
+	size_t provoker_store_count;
+	size_t provoker_store_position;
 };
 
 static bool
@@ -6815,6 +6818,17 @@ projectile_defense_combat_victory(void *context, struct yt_error *error)
 }
 
 static void
+projectile_defense_combat_store_provoker(void *context,
+    const uint8_t raw[4])
+{
+	struct projectile_defense_combat_tape *tape = context;
+
+	memcpy(tape->provoker_raw, raw, sizeof(tape->provoker_raw));
+	tape->provoker_store_position = tape->event_count;
+	++tape->provoker_store_count;
+}
+
+static void
 projectile_defense_combat_fixture(
     struct projectile_defense_combat_tape *tape,
     struct yt_projectile_defense_combat_state *state, float *missiles,
@@ -6860,6 +6874,7 @@ check_projectile_defense_combat_transaction(void)
 		projectile_defense_combat_read,
 		projectile_defense_combat_write,
 		projectile_defense_combat_victory,
+		projectile_defense_combat_store_provoker,
 	};
 	static const int ordinary_events[] = {
 		PROJECTILE_DEFENSE_RANDOM,
@@ -6900,6 +6915,10 @@ check_projectile_defense_combat_transaction(void)
 	    || state.counter != 3.0f || state.remaining_fighters != 75.0
 	    || missiles != 0.5f || provoker != 2
 	    || tape.provoker_at_write != 2
+	    || tape.provoker_store_count != 1U
+	    || tape.provoker_store_position != 5U
+	    || memcmp(tape.provoker_raw,
+	    (const uint8_t[]){0x00, 0x00, 0x00, 0x82}, 4U) != 0
 	    || state.route != YT_PROJECTILE_DEFENSE_RETURN
 	    || state.victory_called || tape.sector_at_read != 7.0f
 	    || tape.sector_at_write != 7.0f
@@ -6910,6 +6929,17 @@ check_projectile_defense_combat_transaction(void)
 	    || tape.written.fighters != 75.0f
 	    || tape.written.fighter_owner != -1.0f
 	    || memcmp(&tape.written.record, &expected, sizeof(expected)) != 0)
+		return false;
+
+	/* The latch producer precedes the physical sector PUT. */
+	projectile_defense_combat_fixture(&tape, &state, &missiles, &provoker);
+	tape.fail_at = YT_ARRAY_LEN(ordinary_events);
+	if (yt_projectile_defense_combat_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != YT_ARRAY_LEN(ordinary_events)
+	    || provoker != 2 || tape.provoker_store_count != 1U
+	    || tape.provoker_store_position != 5U
+	    || memcmp(tape.provoker_raw,
+	    (const uint8_t[]){0x00, 0x00, 0x00, 0x82}, 4U) != 0)
 		return false;
 
 	projectile_defense_combat_fixture(&tape, &state, &missiles, &provoker);
@@ -6963,6 +6993,9 @@ check_projectile_defense_combat_transaction(void)
 	tape.draws[0] = 0.0f;
 	if (!yt_projectile_defense_combat_run(&state, &ops, &tape, NULL)
 	    || provoker != -1 || tape.provoker_at_write != -1
+	    || tape.provoker_store_count != 1U
+	    || memcmp(tape.provoker_raw,
+	    (const uint8_t[]){0x00, 0x00, 0x80, 0x81}, 4U) != 0
 	    || state.route != YT_PROJECTILE_DEFENSE_RETURN)
 		return false;
 
@@ -8542,6 +8575,9 @@ struct xannor_tape {
 	uint8_t player_record_raw[2][4];
 	size_t player_record_store_count;
 	size_t player_record_store_position[2];
+	uint8_t provoker_raw[4];
+	size_t provoker_store_count;
+	size_t provoker_store_position;
 };
 
 static bool
@@ -8685,6 +8721,16 @@ xannor_store_player_record(void *context, const uint8_t raw[4])
 }
 
 static void
+xannor_store_provoker(void *context, const uint8_t raw[4])
+{
+	struct xannor_tape *tape = context;
+
+	memcpy(tape->provoker_raw, raw, sizeof(tape->provoker_raw));
+	tape->provoker_store_position = tape->event_count;
+	++tape->provoker_store_count;
+}
+
+static void
 xannor_fixture(struct xannor_tape *tape,
     struct yt_xannor_retaliation_state *state, struct yt_player *player,
     int *player_record, float sector_cache[6], float cloak_cache[6],
@@ -8741,6 +8787,7 @@ check_xannor_retaliation_model(void)
 		xannor_wait,
 		xannor_store_destroyed,
 		xannor_store_player_record,
+		xannor_store_provoker,
 	};
 	static const int full_events[8] = {
 		XANNOR_READ_SECTOR, XANNOR_NESTED_RANDOM, XANNOR_BLANK,
@@ -8799,6 +8846,10 @@ check_xannor_retaliation_model(void)
 	    || player_record != 2 || strcmp(player.name, "Alice") != 0
 	    || cloak_cache[2] != 0.75f || sector_cache[2] != 733.0f
 	    || destroyed || provoker != 0 || headquarters != 9.0f
+	    || tape.provoker_store_count != 1U
+	    || tape.provoker_store_position != 8U
+	    || memcmp(tape.provoker_raw,
+	    (const uint8_t[]){0x00, 0x00, 0x00, 0x00}, 4U) != 0
 	    || tape.final_player_record != 2 || tape.wait_seconds != 4.0
 	    || memcmp(tape.wait_duration_raw, duration_four,
 	    sizeof(duration_four)) != 0
@@ -8905,6 +8956,7 @@ check_xannor_retaliation_model(void)
 	tape.fail_event = XANNOR_WAIT;
 	return !yt_xannor_retaliation_run(&state, &ops, &tape, NULL)
 	    && tape.event_count == 8U && provoker == 7
+	    && tape.provoker_store_count == 0U
 	    && player_record == 2 && cloak_cache[2] == 0.75f && destroyed
 	    && sector_cache[2] == 0.0f && tape.destroyed_store_count == 1U
 	    && tape.destroyed_store_position == 7U
@@ -30333,6 +30385,7 @@ struct projectile_command_tape {
 	size_t destroyed_store_count;
 	size_t destroyed_store_position;
 	uint8_t counterattack_raw[4];
+	uint8_t xannor_raw[4];
 };
 
 static bool
@@ -30535,6 +30588,14 @@ projectile_command_counterattack_truth(void *context)
 	return qb_mbf32_truth(tape->counterattack_raw);
 }
 
+static bool
+projectile_command_xannor_truth(void *context)
+{
+	struct projectile_command_tape *tape = context;
+
+	return qb_mbf32_truth(tape->xannor_raw);
+}
+
 static const struct yt_projectile_command_ops projectile_command_ops = {
 	projectile_command_test_hydrate,
 	projectile_command_test_present,
@@ -30549,6 +30610,7 @@ static const struct yt_projectile_command_ops projectile_command_ops = {
 	projectile_command_store_destroyed,
 	projectile_command_destroyed_truth,
 	projectile_command_counterattack_truth,
+	projectile_command_xannor_truth,
 };
 
 static void
@@ -30581,6 +30643,7 @@ projectile_command_fixture(struct projectile_command_tape *tape,
 	*destroyed = true;
 	tape->destroyed = destroyed;
 	(void)qb_mbf32_encode(3.0f, tape->counterattack_raw);
+	(void)qb_mbf32_encode(4.0f, tape->xannor_raw);
 	state->current_player_record = 2;
 	state->maximum_sector = 2004.0f;
 	state->displayed = 9.0f;
@@ -30680,6 +30743,20 @@ check_projectile_command_transaction(void)
 	    || tape.calls != YT_ARRAY_LEN(expected) - 1U
 	    || tape.events[YT_ARRAY_LEN(expected) - 2U]
 	    != PROJECTILE_COMMAND_XANNOR)
+		return false;
+
+	/* The pending-Xannor call has the same raw exponent-only gate. */
+	projectile_command_fixture(&tape, &state, &destroyed);
+	memcpy(tape.xannor_raw,
+	    (const uint8_t[]){0xa5, 0x5a, 0x33, 0x00}, 4U);
+	if (!yt_projectile_command_run(&state, &projectile_command_ops, &tape,
+	    NULL) || !state.complete
+	    || state.route != YT_PROJECTILE_COMMAND_RETURNED
+	    || state.xannor_provoker != 4 || !state.counterlaunch_called
+	    || state.xannor_called
+	    || tape.calls != YT_ARRAY_LEN(expected) - 1U
+	    || tape.events[YT_ARRAY_LEN(expected) - 2U]
+	    != PROJECTILE_COMMAND_COUNTER)
 		return false;
 
 	for (failure = 0U; failure < YT_ARRAY_LEN(expected); ++failure) {
