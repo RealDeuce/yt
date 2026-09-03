@@ -93,6 +93,7 @@
 #define YT_STARTUP_INITIAL_FIVE_ADDRESS 0x4BFAU
 #define YT_CURRENT_PLAYER_RECORD_ADDRESS 0x1C3CU
 #define YT_SHARED_TARGET_RECORD_ADDRESS 0x1A40U
+#define YT_COUNTERATTACK_PLAYER_ADDRESS 0x1C10U
 
 enum navigation_field_kind {
 	NAVIGATION_FIELD_NONE,
@@ -15570,6 +15571,15 @@ session_counterlaunch_store_count(void *context, const uint8_t raw[4])
 	    YT_COUNTERLAUNCH_COUNT_ADDRESS, raw);
 }
 
+static void
+session_counterlaunch_store_player(void *context, const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_COUNTERATTACK_PLAYER_ADDRESS, raw);
+}
+
 static bool
 launch_player_counterattack(struct yt_session *session, int *counterattacker,
     int *xannor_provoker, struct yt_error *error)
@@ -15585,6 +15595,7 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 		session_counterlaunch_store_count,
 		session_store_destroyed,
 		session_store_current_player_record,
+		session_counterlaunch_store_player,
 	};
 	bool destroyed = session_is_destroyed(session);
 	float retained_count = yt_route_process_single(&session->route_process,

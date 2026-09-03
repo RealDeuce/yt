@@ -1673,6 +1673,7 @@ struct yt_counterlaunch_ops {
 	yt_counterlaunch_count_store_fn store_count;
 	yt_destroyed_store_fn store_destroyed;
 	yt_player_record_store_fn store_player_record;
+	yt_player_record_store_fn store_counterattacker;
 };
 
 struct yt_salvage_cargo_state {

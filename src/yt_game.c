@@ -2222,7 +2222,11 @@ yt_counterlaunch_run(struct yt_counterlaunch_state *state,
 	available = attacker.missiles;
 	if (qb_mbf32_truth(attacker.record.bytes + YT_F45)
 	    || available < 1.0f) {
+		static const uint8_t zero[4] = {0x00, 0x00, 0x00, 0x00};
+
 		*state->counterattacker = 0;
+		if (ops->store_counterattacker != NULL)
+			ops->store_counterattacker(context, zero);
 		return true;
 	}
 
@@ -2297,7 +2301,13 @@ yt_counterlaunch_run(struct yt_counterlaunch_state *state,
 	    state->xannor_provoker, error))
 		return false;
 
-	*state->counterattacker = 0;
+	{
+		static const uint8_t zero[4] = {0x00, 0x00, 0x00, 0x00};
+
+		*state->counterattacker = 0;
+		if (ops->store_counterattacker != NULL)
+			ops->store_counterattacker(context, zero);
+	}
 	*state->player_record = saved_record;
 	if (ops->store_player_record != NULL)
 		ops->store_player_record(context, saved_record_raw);

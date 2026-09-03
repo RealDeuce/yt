@@ -8951,6 +8951,9 @@ struct counterlaunch_tape {
 	uint8_t player_record_raw[2][4];
 	size_t player_record_store_count;
 	size_t player_record_store_position[2];
+	uint8_t counterattacker_raw[2][4];
+	size_t counterattacker_store_count;
+	size_t counterattacker_store_position[2];
 };
 
 static bool
@@ -9136,6 +9139,37 @@ counterlaunch_store_player_record(void *context, const uint8_t raw[4])
 }
 
 static void
+counterlaunch_store_counterattacker(void *context, const uint8_t raw[4])
+{
+	struct counterlaunch_tape *tape = context;
+	size_t store = tape->counterattacker_store_count;
+
+	if (store >= YT_ARRAY_LEN(tape->counterattacker_raw))
+		return;
+	memcpy(tape->counterattacker_raw[store], raw,
+	    sizeof(tape->counterattacker_raw[store]));
+	tape->counterattacker_store_position[store] = tape->event_count;
+	++tape->counterattacker_store_count;
+}
+
+static bool
+counterlaunch_clear_at(const struct counterlaunch_tape *tape, size_t count,
+    size_t position)
+{
+	size_t index;
+
+	if (tape->counterattacker_store_count != count)
+		return false;
+	for (index = 0U; index < count; ++index) {
+		if (memcmp(tape->counterattacker_raw[index],
+		    (const uint8_t[4]){0, 0, 0, 0}, 4U) != 0
+		    || tape->counterattacker_store_position[index] != position)
+			return false;
+	}
+	return true;
+}
+
+static void
 counterlaunch_fixture(struct counterlaunch_tape *tape,
     struct yt_counterlaunch_state *state, struct yt_player *player,
     int *player_record, float sector_cache[6], float cloak_cache[6],
@@ -9206,6 +9240,7 @@ check_counterlaunch_model(void)
 		counterlaunch_store_count,
 		counterlaunch_store_destroyed,
 		counterlaunch_store_player_record,
+		counterlaunch_store_counterattacker,
 	};
 	static const int full_events[10] = {
 		COUNTERLAUNCH_FIRST_GET, COUNTERLAUNCH_RANDOM,
@@ -9239,6 +9274,7 @@ check_counterlaunch_model(void)
 		counterattacker = gate == 0 ? 1 : gate == 1 ? 52 : 2;
 		if (!yt_counterlaunch_run(&state, &ops, &tape, NULL)
 		    || tape.event_count != 0U
+		    || !counterlaunch_clear_at(&tape, 0U, 0U)
 		    || counterattacker != (gate == 0 ? 1 : gate == 1 ? 52 : 2))
 			return false;
 	}
@@ -9250,6 +9286,7 @@ check_counterlaunch_model(void)
 	yt_player_encode(&tape.first_target);
 	if (!yt_counterlaunch_run(&state, &ops, &tape, NULL)
 	    || tape.event_count != 1U || counterattacker != 0
+	    || !counterlaunch_clear_at(&tape, 1U, 1U)
 	    || player_record != 2 || cloak_cache[2] != 0.75f)
 		return false;
 	counterlaunch_fixture(&tape, &state, &player, &player_record,
@@ -9258,7 +9295,8 @@ check_counterlaunch_model(void)
 	tape.first_target.missiles = 0.5f;
 	yt_player_encode(&tape.first_target);
 	if (!yt_counterlaunch_run(&state, &ops, &tape, NULL)
-	    || tape.event_count != 1U || counterattacker != 0)
+	    || tape.event_count != 1U || counterattacker != 0
+	    || !counterlaunch_clear_at(&tape, 1U, 1U))
 		return false;
 
 	counterlaunch_fixture(&tape, &state, &player, &player_record,
@@ -9287,6 +9325,7 @@ check_counterlaunch_model(void)
 	    || player_record != 2 || memcmp(&player, &original, sizeof(player)) != 0
 	    || cloak_cache[2] != 0.75f || sector_cache[2] != 0.0f
 	    || !destroyed || retained != 4.0f || counterattacker != 0
+	    || !counterlaunch_clear_at(&tape, 1U, 8U)
 	    || xannor != 11 || tape.wait_seconds != 4.0
 	    || memcmp(tape.wait_duration_raw, duration_four,
 	    sizeof(duration_four)) != 0
@@ -9313,6 +9352,7 @@ check_counterlaunch_model(void)
 	    || tape.random_calls != 0U || tape.projectile_amount != -2.5f
 	    || tape.written_player.missiles != 12.5f || retained != -2.5f
 	    || counterattacker != 0 || xannor != 8
+	    || !counterlaunch_clear_at(&tape, 1U, 7U)
 	    || tape.count_store_count != 0U)
 		return false;
 
@@ -9329,7 +9369,9 @@ check_counterlaunch_model(void)
 		}
 		if (yt_counterlaunch_run(&state, &ops, &tape, NULL)
 		    || tape.event_count != (size_t)failure
-		    || tape.events[tape.event_count - 1U] != failure)
+		    || tape.events[tape.event_count - 1U] != failure
+		    || !counterlaunch_clear_at(&tape,
+		    failure > COUNTERLAUNCH_PROJECTILE ? 1U : 0U, 8U))
 			return false;
 		if (tape.player_record_store_count
 		    != (failure == COUNTERLAUNCH_FIRST_GET ? 0U
