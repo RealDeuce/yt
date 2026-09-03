@@ -25,6 +25,7 @@
 #define YT_PLAYER_FIRST 2
 #define YT_PLAYER_LAST 51
 #define YT_COMMAND_SIZE 4096U
+#define YT_CURRENT_WARPS_ADDRESS 0x1898U
 #define YT_COMPUTER_ROUTE_STATUS_ADDRESS 0x4CF2U
 #define YT_COMPUTER_ROUTE_DESTINATION_ADDRESS 0x4E12U
 #define YT_COMPUTER_ROUTE_START_ADDRESS 0x4E1AU
@@ -115,8 +116,6 @@ struct yt_session {
 	struct yt_radio_record radio_field;
 	float current_planet;
 	char planet_name[42];
-	float current_warps[6];
-	uint8_t current_warps_raw[6][4];
 	double planet_quantity[10];
 	float session_deadline;
 	struct yt_present_time_state time;
@@ -186,6 +185,16 @@ session_poll_merged(struct yt_session *session,
     struct yt_input_value *selected)
 {
 	return yt_input_poll_merged(&session->input, selected);
+}
+
+static void
+session_current_warps(const struct yt_session *session, float warps[6])
+{
+	size_t slot;
+
+	for (slot = 0U; slot < 6U; ++slot)
+		warps[slot] = yt_route_process_single(&session->route_process,
+		    (uint16_t)(YT_CURRENT_WARPS_ADDRESS + 4U * slot));
 }
 
 static int
@@ -3883,8 +3892,8 @@ display_sector(struct yt_session *session, bool adjacent,
 {
 	float current;
 	struct yt_sector_pager_state private_pager;
-	float caller_warps[YT_ARRAY_LEN(session->current_warps)];
-	float targets[YT_ARRAY_LEN(session->current_warps)];
+	float caller_warps[6];
+	float targets[6];
 	float saved_foreground = session->presentation.foreground;
 	int saved_pager_foreground = session->pager.foreground;
 	size_t target_count;
@@ -3904,7 +3913,7 @@ display_sector(struct yt_session *session, bool adjacent,
 		session->pager.foreground = saved_pager_foreground;
 		return true;
 	}
-	memcpy(caller_warps, session->current_warps, sizeof(caller_warps));
+	session_current_warps(session, caller_warps);
 	target_count = yt_sector_sensor_targets(caller_warps, targets);
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "adjacent-sector sensor leading blank", error))
@@ -4901,7 +4910,7 @@ command_move(struct yt_session *session, bool *moved,
 		.port_offset = session->door->game.config.port_offset,
 		.sector_offset = session->door->game.config.sector_offset,
 	};
-	memcpy(state.warps, session->current_warps, sizeof(state.warps));
+	session_current_warps(session, state.warps);
 	if (!yt_movement_run(&state, &ops, session, error))
 		return false;
 	*moved = state.route == YT_MOVEMENT_MOVED;
@@ -15886,9 +15895,9 @@ computer_route(struct yt_session *session, bool autopilot,
 		    &session->door->game.config, (int)session->player.sector);
 		session->navigation_field = current_sector.record;
 		for (index = 0; index < 6U; ++index) {
-			session->current_warps[index] = current_sector.warps[index];
-			memcpy(session->current_warps_raw[index],
-			    current_sector.record.bytes + YT_F41 + index * 4U, 4U);
+			yt_route_process_set_raw_single(&session->route_process,
+			    (uint16_t)(YT_CURRENT_WARPS_ADDRESS + index * 4U),
+			    current_sector.record.bytes + YT_F41 + index * 4U);
 		}
 	}
 	return true;
