@@ -95,6 +95,7 @@
 #define YT_SHARED_TARGET_RECORD_ADDRESS 0x1A40U
 #define YT_COUNTERATTACK_PLAYER_ADDRESS 0x1C10U
 #define YT_XANNOR_PROVOKER_ADDRESS 0x4BDCU
+#define YT_FOREGROUND_ADDRESS 0x1934U
 
 enum navigation_field_kind {
 	NAVIGATION_FIELD_NONE,
@@ -183,6 +184,39 @@ session_planet_offset(const struct yt_session *session)
 {
 	return yt_route_process_single(&session->route_process,
 	    YT_PLANET_OFFSET_ADDRESS);
+}
+
+static float
+session_foreground(const struct yt_session *session)
+{
+	return yt_route_process_single(&session->route_process,
+	    YT_FOREGROUND_ADDRESS);
+}
+
+static int
+session_pager_foreground(const struct yt_session *session)
+{
+	return (int)session_foreground(session);
+}
+
+static void
+session_set_foreground_raw(struct yt_session *session, const uint8_t raw[4])
+{
+	float value = qb_mbf32_decode(raw);
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_FOREGROUND_ADDRESS, raw);
+	session->presentation.foreground = value;
+	session->pager.foreground = (int)value;
+}
+
+static void
+session_set_foreground(struct yt_session *session, float value)
+{
+	uint8_t raw[4];
+
+	if (qb_mbf32_encode(value, raw) == QB_MBF_OK)
+		session_set_foreground_raw(session, raw);
 }
 
 static void
@@ -1302,11 +1336,18 @@ session_b05d(struct yt_session *session, const uint8_t *text, size_t length)
 		.pager_key = session->pager.key,
 		.pager_key_capacity = sizeof(session->pager.key),
 	};
+	bool result;
+	uint8_t foreground_raw[4];
 
 	if (!session_store_output_source(session, text, length))
 		return false;
-	return yt_paged_row_run(&session->pager, &session->presentation,
+	yt_route_process_raw_single(&session->route_process,
+	    YT_FOREGROUND_ADDRESS, foreground_raw);
+	session_set_foreground_raw(session, foreground_raw);
+	result = yt_paged_row_run(&session->pager, &session->presentation,
 	    &key_state, text, length, &ops, session);
+	session_set_foreground(session, session->presentation.foreground);
+	return result;
 }
 
 static void
@@ -1314,8 +1355,7 @@ session_set_color(struct yt_session *session, int logical)
 {
 	static const int pc_color[8] = {0, 4, 2, 6, 1, 5, 3, 7};
 
-	session->pager.foreground = logical;
-	session->presentation.foreground = (float)logical;
+	session_set_foreground(session, (float)logical);
 	session->presentation.background = 0.0f;
 	if (logical >= 0 && logical < 8)
 		od_set_color(pc_color[logical], 0);
@@ -1713,7 +1753,6 @@ session_press_any_key(struct yt_session *session, bool drain,
 	enum yt_status failure_status = YT_RANGE;
 	const char *failure_operation = "press any key presentation";
 	float saved_foreground;
-	int saved_session_foreground = session->pager.foreground;
 
 	if (drain && !session_drain_pending_input(session)) {
 		failure_status = YT_IO_ERROR;
@@ -1724,7 +1763,7 @@ session_press_any_key(struct yt_session *session, bool drain,
 	    &presentation, &saved_foreground);
 	if (status != YT_PRESENT_OK)
 		goto failed;
-	session->pager.foreground = 3;
+	session_set_foreground(session, (float)(3));
 	yt_out_present_result(&presentation);
 	if (!session_timed_wait(session, 33.0)) {
 		failure_status = YT_IO_ERROR;
@@ -1736,7 +1775,7 @@ session_press_any_key(struct yt_session *session, bool drain,
 	if (status != YT_PRESENT_OK)
 		goto failed;
 	yt_out_present_result(&presentation);
-	session->pager.foreground = saved_session_foreground;
+	session_set_foreground(session, saved_foreground);
 	return true;
 
 failed:
@@ -1949,12 +1988,14 @@ display_game_file(struct yt_session *session, const char *path,
 	};
 	struct yt_error local_error;
 	struct yt_error *active_error = error == NULL ? &local_error : error;
-	float saved_foreground = session->presentation.foreground;
-	int saved_pager_foreground = session->pager.foreground;
+	float saved_foreground = session_foreground(session);
+	int saved_pager_foreground = session_pager_foreground(session);
+	float foreground_carrier = saved_foreground;
+	int pager_foreground_carrier = saved_pager_foreground;
 	struct yt_file_viewer_stream_state state = {
 		.play = {
-			.foreground = &session->presentation.foreground,
-			.pager_foreground = &session->pager.foreground,
+			.foreground = &foreground_carrier,
+			.pager_foreground = &pager_foreground_carrier,
 			.bold = &session->presentation.bold,
 			.line_count = &session->pager.line_count,
 			.pager_key = session->pager.key,
@@ -1974,6 +2015,7 @@ display_game_file(struct yt_session *session, const char *path,
 	yt_text_input_init(&context.input);
 	ok = yt_file_viewer_stream_run(&state, &ops, &context, active_error);
 	yt_text_input_destroy(&context.input);
+	session_set_foreground(session, foreground_carrier);
 	if (!ok && active_error->status == YT_NOT_FOUND) {
 		struct yt_main_error_result handler;
 
@@ -2925,8 +2967,7 @@ startup_pre_admission(struct yt_session *session, struct yt_error *error)
 	int adjusted_year;
 	int today;
 
-	session->presentation.foreground = 5.0f;
-	session->pager.foreground = 5;
+	session_set_foreground(session, 5.0f);
 	if (!session_0317(session, (const uint8_t *)"Initializing...",
 	    strlen("Initializing..."), "startup initializing row", error))
 		return false;
@@ -2983,8 +3024,7 @@ resolve_alias(struct yt_session *session, char first[128], char last[128],
 		enum yt_alias_key_status alias_status;
 		struct yt_name_row row;
 
-		session->presentation.foreground = 2.0f;
-		session->pager.foreground = 2;
+		session_set_foreground(session, 2.0f);
 		if (!session_0317(session,
 		    (const uint8_t *)"You are a new player.",
 		    strlen("You are a new player."), "new alias notice", error)
@@ -3040,8 +3080,7 @@ resolve_alias(struct yt_session *session, char first[128], char last[128],
 			}
 			continue;
 		}
-		session->presentation.foreground = 3.0f;
-		session->pager.foreground = 3;
+		session_set_foreground(session, 3.0f);
 		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 		    "new alias identity blank", error)) {
 			yt_names_free(&names);
@@ -3061,8 +3100,7 @@ resolve_alias(struct yt_session *session, char first[128], char last[128],
 				return false;
 			}
 		}
-		session->presentation.foreground = 6.0f;
-		session->pager.foreground = 6;
+		session_set_foreground(session, 6.0f);
 		if (!session_031f(session,
 		    (const uint8_t *)"Is this OK (Y/[N])? ",
 		    strlen("Is this OK (Y/[N])? "),
@@ -3195,8 +3233,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 		int vacant = 0;
 		float vacancy_bound;
 
-		session->presentation.foreground = 5.0f;
-		session->pager.foreground = 5;
+		session_set_foreground(session, 5.0f);
 		if (!session_0317(session,
 		    (const uint8_t *)"Entering a new player...",
 		    strlen("Entering a new player..."),
@@ -3285,8 +3322,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 		}
 		return instruction_offer(session, error);
 	}
-	session->presentation.foreground = 2.0f;
-	session->pager.foreground = 2;
+	session_set_foreground(session, 2.0f);
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "returning player blank", error))
 		return false;
@@ -3392,8 +3428,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 				    SESSION_PRESENT_LINE,
 				    "returning self-denial blank", error))
 					return false;
-				session->presentation.foreground = 7.0f;
-				session->pager.foreground = 7;
+				session_set_foreground(session, 7.0f);
 				session->presentation.blink = 1.0f;
 				if (!session_present_text(session,
 				    (const uint8_t *)
@@ -4215,7 +4250,6 @@ display_sector_one(struct yt_session *session, float logical_sector,
 		uint32_t physical_planet =
 		    qb_brun_random_record_number(expression);
 		float saved_foreground;
-		int saved_pager_foreground;
 
 		if (!planet_update_cached_physical(session, physical_planet,
 		    &planet, NULL, error)
@@ -4224,15 +4258,12 @@ display_sector_one(struct yt_session *session, float logical_sector,
 		    || !yt_sector_planet_row(&planet, row, sizeof(row),
 		    &row_length, error))
 			return false;
-		saved_foreground = session->presentation.foreground;
-		saved_pager_foreground = session->pager.foreground;
-		session->presentation.foreground = 3.0f;
-		session->pager.foreground = 3;
+		saved_foreground = session_foreground(session);
+		session_set_foreground(session, 3.0f);
 		if (!session_present_text(session, row, row_length,
 		    SESSION_PRESENT_BOLD_LINE, "sector planet row", error))
 			return false;
-		session->presentation.foreground = saved_foreground;
-		session->pager.foreground = saved_pager_foreground;
+		session_set_foreground(session, saved_foreground);
 		yt_sector_pager_add(private_pager, 1.0f);
 		if (!scanner_read_sector(session, logical_sector, &sector, error))
 			return false;
@@ -4390,8 +4421,7 @@ display_sector_one(struct yt_session *session, float logical_sector,
 		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 		    "sector private-pause blank", error))
 			return false;
-		session->pager.foreground = 7;
-		session->presentation.foreground = 7.0f;
+		session_set_foreground(session, 7.0f);
 		if (!session_present_text(session,
 		    (const uint8_t *)"[ Pause ]", strlen("[ Pause ]"),
 		    SESSION_PRESENT_BOLD_LINE, "sector private-pause prompt",
@@ -4405,8 +4435,7 @@ display_sector_one(struct yt_session *session, float logical_sector,
 			}
 			return false;
 		}
-		session->pager.foreground = 1;
-		session->presentation.foreground = 1.0f;
+		session_set_foreground(session, 1.0f);
 	}
 	return true;
 }
@@ -4419,23 +4448,20 @@ display_sector(struct yt_session *session, bool adjacent,
 	struct yt_sector_pager_state private_pager;
 	float caller_warps[6];
 	float targets[6];
-	float saved_foreground = session->presentation.foreground;
-	int saved_pager_foreground = session->pager.foreground;
+	float saved_foreground = session_foreground(session);
 	size_t target_count;
 	size_t slot;
 
 	yt_sector_pager_begin(&private_pager);
 	if (!adjacent) {
-		session->presentation.foreground = 1.0f;
-		session->pager.foreground = 1;
+		session_set_foreground(session, 1.0f);
 		if (!scanner_read_current_player(session, error))
 			return false;
 		current = session->player.sector;
 		if (!display_sector_one(session, current, &private_pager, error)
 		    || !scanner_read_current_player(session, error))
 			return false;
-		session->presentation.foreground = saved_foreground;
-		session->pager.foreground = saved_pager_foreground;
+		session_set_foreground(session, saved_foreground);
 		return true;
 	}
 	session_current_warps(session, caller_warps);
@@ -4443,8 +4469,7 @@ display_sector(struct yt_session *session, bool adjacent,
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "adjacent-sector sensor leading blank", error))
 		return false;
-	session->presentation.foreground = 7.0f;
-	session->pager.foreground = 7;
+	session_set_foreground(session, 7.0f);
 	if (!session_present_text(session,
 	    (const uint8_t *)"[ Sensors Activated ]",
 	    strlen("[ Sensors Activated ]"), SESSION_PRESENT_BOLD_LINE,
@@ -4453,8 +4478,7 @@ display_sector(struct yt_session *session, bool adjacent,
 	if (!session_sound(session, 4.0f,
 	    "adjacent-sector sensor sound", error))
 		return false;
-	session->presentation.foreground = 1.0f;
-	session->pager.foreground = 1;
+	session_set_foreground(session, 1.0f);
 	for (slot = 0; slot < target_count; ++slot) {
 		if (!display_sector_one(session, targets[slot],
 		    &private_pager, error))
@@ -4463,16 +4487,14 @@ display_sector(struct yt_session *session, bool adjacent,
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "adjacent-sector sensor ending blank", error))
 		return false;
-	session->presentation.foreground = 7.0f;
-	session->pager.foreground = 7;
+	session_set_foreground(session, 7.0f);
 	if (!session_present_text(session,
 	    (const uint8_t *)"[ End Sensor Scan ]",
 	    strlen("[ End Sensor Scan ]"), SESSION_PRESENT_BOLD_LINE,
 	    "adjacent-sector sensor ending", error)
 	    || !scanner_read_current_player(session, error))
 		return false;
-	session->presentation.foreground = saved_foreground;
-	session->pager.foreground = saved_pager_foreground;
+	session_set_foreground(session, saved_foreground);
 	return true;
 }
 
@@ -4481,19 +4503,16 @@ display_current_sector_cached(struct yt_session *session,
     struct yt_error *error)
 {
 	struct yt_sector_pager_state private_pager;
-	float saved_foreground = session->presentation.foreground;
-	int saved_pager_foreground = session->pager.foreground;
+	float saved_foreground = session_foreground(session);
 	float current = session->player.sector;
 	bool ok;
 
 	yt_sector_pager_begin(&private_pager);
-	session->presentation.foreground = 1.0f;
-	session->pager.foreground = 1;
+	session_set_foreground(session, 1.0f);
 	ok = display_sector_one(session, current, &private_pager, error)
 	    && scanner_read_current_player(session, error);
 	if (ok) {
-		session->presentation.foreground = saved_foreground;
-		session->pager.foreground = saved_pager_foreground;
+		session_set_foreground(session, saved_foreground);
 	}
 	return ok;
 }
@@ -4536,7 +4555,6 @@ dangerous_destination(struct yt_session *session, float target,
 {
 	struct yt_sector sector;
 	float saved_foreground;
-	int saved_session_foreground;
 	char number[80];
 	uint8_t row[256];
 	size_t row_length;
@@ -4545,11 +4563,9 @@ dangerous_destination(struct yt_session *session, float target,
 	*danger = false;
 	if (target < 1.0f || target > (float)sector_count(session))
 		return true;
-	saved_foreground = session->presentation.foreground;
-	saved_session_foreground = session->pager.foreground;
-	session->presentation.foreground = 3.0f;
+	saved_foreground = session_foreground(session);
+	session_set_foreground(session, 3.0f);
 	session->presentation.background = 4.0f;
-	session->pager.foreground = 3;
 	if (!yt_game_read_sector(&session->door->game, (int)target, &sector,
 	    error))
 		return false;
@@ -4736,9 +4752,8 @@ dangerous_destination(struct yt_session *session, float target,
 		    SESSION_PRESENT_BOLD_LINE, "danger deactivation row", error))
 			return false;
 	}
-	session->presentation.foreground = saved_foreground;
+	session_set_foreground(session, saved_foreground);
 	session->presentation.background = 0.0f;
-	session->pager.foreground = saved_session_foreground;
 	return true;
 }
 
@@ -4823,18 +4838,17 @@ static void
 spy_import_presentation(struct yt_session *session,
     const struct yt_spy_sweep_state *state)
 {
-	session->presentation.foreground = state->foreground;
+	session_set_foreground(session, state->foreground);
 	session->presentation.background = state->background;
 	session->presentation.bold = state->bold;
 	session->presentation.blink = state->blink;
-	session->pager.foreground = (int)state->foreground;
 }
 
 static void
 spy_export_presentation(struct yt_spy_sweep_state *state,
     const struct yt_session *session)
 {
-	state->foreground = session->presentation.foreground;
+	state->foreground = session_foreground(session);
 	state->background = session->presentation.background;
 	state->bold = session->presentation.bold;
 	state->blink = session->presentation.blink;
@@ -4961,7 +4975,7 @@ spy_sweep(struct yt_session *session, struct yt_error *error)
 		.warp_destination_scratch = yt_route_process_single(
 		    &session->route_process,
 		    YT_SPY_DESTINATION_SCRATCH_ADDRESS),
-		.foreground = session->presentation.foreground,
+		.foreground = session_foreground(session),
 		.background = session->presentation.background,
 		.bold = session->presentation.bold,
 		.blink = session->presentation.blink,
@@ -5020,8 +5034,7 @@ finalize_action(struct yt_session *session, float amount,
 	    && quotient == floorf(quotient)) {
 		static const uint8_t dirty_zero[4] = {0x00, 0x00, 0xa3, 0x00};
 		float display;
-		float saved_foreground = session->presentation.foreground;
-		int saved_pager_foreground = session->pager.foreground;
+		float saved_foreground = session_foreground(session);
 
 		session->player.cloak = single_add(session->player.cloak,
 		    -0.009999999776482582f);
@@ -5039,13 +5052,11 @@ finalize_action(struct yt_session *session, float amount,
 		display = floorf(single_mul(session->player.cloak, 50.0f));
 		qb_str_single(number, sizeof(number), display);
 		snprintf(row, sizeof(row), "Cloak at%s%%", number);
-		session->presentation.foreground = 7.0f;
-		session->pager.foreground = 7;
+		session_set_foreground(session, 7.0f);
 		if (!session_031f(session, (const uint8_t *)row, strlen(row),
 		    "action-finalizer cloak row", error))
 			return false;
-		session->presentation.foreground = saved_foreground;
-		session->pager.foreground = saved_pager_foreground;
+		session_set_foreground(session, saved_foreground);
 		if (session->player.cloak == 0.0f) {
 			if (!session_attention(session,
 			    " WARNING! CLOAK EXPIRED!",
@@ -5072,8 +5083,7 @@ finalize_action(struct yt_session *session, float amount,
 	qb_str_single(number, sizeof(number), session->player.turns);
 	snprintf(row, sizeof(row), "One Turn Deducted,%s left.", number);
 	if (session->player.turns < 51.0f) {
-		session->presentation.foreground = 3.0f;
-		session->pager.foreground = 3;
+		session_set_foreground(session, 3.0f);
 		session->presentation.bold = 1.0f;
 		session->presentation.blink = 1.0f;
 	}
@@ -5149,21 +5159,18 @@ emergency_warp(struct yt_session *session, struct yt_error *error)
 	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "emergency warp pre-temperature blank", error))
 		return false;
-	session->presentation.foreground = 6.0f;
-	session->pager.foreground = 6;
+	session_set_foreground(session, 6.0f);
 	if (!session_present_text(session, temperature,
 	    sizeof(temperature) - 1U, SESSION_PRESENT_BOLD_LINE,
 	    "emergency warp temperature title", error)
 	    || !session_present_text(session, scale, sizeof(scale) - 1U,
 	    SESSION_PRESENT_BOLD_LINE, "emergency warp temperature scale", error))
 		return false;
-	session->presentation.foreground = 2.0f;
-	session->pager.foreground = 2;
+	session_set_foreground(session, 2.0f);
 	if (!session_present_text(session, ruler, sizeof(ruler) - 1U,
 	    SESSION_PRESENT_BOLD_LINE, "emergency warp temperature ruler", error))
 		return false;
-	session->presentation.foreground = 6.0f;
-	session->pager.foreground = 6;
+	session_set_foreground(session, 6.0f);
 	if (!session_present_text(session, gauge_open,
 	    sizeof(gauge_open) - 1U, SESSION_PRESENT_BOLD_RAW,
 	    "emergency warp gauge open", error)
@@ -5179,17 +5186,14 @@ emergency_warp(struct yt_session *session, struct yt_error *error)
 		if (draw > 0.75f)
 			heat = single_add(heat, 1.0f);
 		if (heat < 10.0f) {
-			session->presentation.foreground = 2.0f;
-			session->pager.foreground = 2;
+			session_set_foreground(session, 2.0f);
 		}
 		else if (heat < 20.0f) {
-			session->presentation.foreground = 3.0f;
-			session->pager.foreground = 3;
+			session_set_foreground(session, 3.0f);
 		}
 		else {
-			session->presentation.foreground = 1.0f;
+			session_set_foreground(session, 1.0f);
 			session->presentation.blink = 1.0f;
-			session->pager.foreground = 1;
 		}
 		if (!session_present_text(session, gauge_tick,
 		    sizeof(gauge_tick) - 1U, SESSION_PRESENT_BOLD_RAW,
@@ -5209,8 +5213,7 @@ emergency_warp(struct yt_session *session, struct yt_error *error)
 		if (counter > duration)
 			break;
 	}
-	session->presentation.foreground = 2.0f;
-	session->pager.foreground = 2;
+	session_set_foreground(session, 2.0f);
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "emergency warp post-gauge blank one", error)
 	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
@@ -5231,8 +5234,7 @@ emergency_warp(struct yt_session *session, struct yt_error *error)
 		if (!session_attention(session, "MELT DOWN!",
 		    "meltdown attention", error))
 			return false;
-		session->presentation.foreground = 1.0f;
-		session->pager.foreground = 1;
+		session_set_foreground(session, 1.0f);
 		if (!session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "meltdown leading blank", error)
 		    || !session_present_text(session, engines_disabled,
@@ -5296,8 +5298,7 @@ direct_emergency_warp(struct yt_session *session, struct yt_error *error)
 	    "emergency warp leading blank", error))
 		return false;
 	session->presentation.bold = 1.0f;
-	session->presentation.foreground = 7.0f;
-	session->pager.foreground = 7;
+	session_set_foreground(session, 7.0f);
 	if (!session_02fc(session, warning_one, sizeof(warning_one) - 1U))
 		return false;
 	session->presentation.bold = 1.0f;
@@ -5711,8 +5712,8 @@ common_fatal_set_foreground(void *context, float foreground,
 {
 	struct yt_session *session = context;
 
-	session->presentation.foreground = foreground;
-	session->pager.foreground = pager_foreground;
+	(void)pager_foreground;
+	session_set_foreground(session, foreground);
 }
 
 static bool
@@ -5800,8 +5801,8 @@ common_fatal_self(struct yt_session *session, struct yt_error *error)
 	struct yt_common_fatal_state state = {
 		.current_player_record = session_record(session),
 		.current_player_record_raw = current_record_raw,
-		.foreground = session->presentation.foreground,
-		.pager_foreground = session->pager.foreground,
+		.foreground = session_foreground(session),
+		.pager_foreground = session_pager_foreground(session),
 	};
 
 	return yt_common_fatal_run(&state, &ops, session, error);
@@ -5961,8 +5962,7 @@ xannor_victory_set_foreground(void *context, float foreground)
 {
 	struct yt_session *session = context;
 
-	session->presentation.foreground = foreground;
-	session->pager.foreground = (int)foreground;
+	session_set_foreground(session, foreground);
 }
 
 static void
@@ -6040,8 +6040,8 @@ xannor_victory(struct yt_session *session, struct yt_error *error)
 	};
 	struct yt_xannor_victory_state state = {
 		.current_player = (float)session_record(session),
-		.foreground = session->presentation.foreground,
-		.pager_foreground = (float)session->pager.foreground,
+		.foreground = session_foreground(session),
+		.pager_foreground = (float)session_pager_foreground(session),
 		.blink = session->presentation.blink,
 	};
 
@@ -7283,10 +7283,10 @@ mine_style(void *context, float foreground, float background, float blink,
 {
 	struct yt_session *session = context;
 
-	session->presentation.foreground = foreground;
+	session_set_foreground(session, foreground);
 	session->presentation.background = background;
 	session->presentation.blink = blink;
-	session->pager.foreground = pager_foreground;
+	(void)pager_foreground;
 }
 
 static bool
@@ -7314,10 +7314,10 @@ mine_encounter(struct yt_session *session, bool *terminal,
 		.current_player_record = session_record(session),
 		.current_sector = session->player.sector,
 		.conversion_mode = session->presentation.sound.conversion_mode,
-		.foreground = session->presentation.foreground,
+		.foreground = session_foreground(session),
 		.background = session->presentation.background,
 		.blink = session->presentation.blink,
-		.pager_foreground = session->pager.foreground,
+		.pager_foreground = session_pager_foreground(session),
 		.destroyed = &destroyed,
 	};
 
@@ -7367,8 +7367,7 @@ session_quit_confirm(struct yt_session *session, bool *confirmed,
 	if (confirmed == NULL)
 		return false;
 	*confirmed = false;
-	session->presentation.foreground = 7.0f;
-	session->pager.foreground = 7;
+	session_set_foreground(session, 7.0f);
 	if (!session_02fc(session, heading, sizeof(heading) - 1U))
 		return false;
 	for (;;) {
@@ -7456,8 +7455,7 @@ sector_entry(struct yt_session *session, float scanner_mode,
 
 			if (!reload_player(session, error))
 				return false;
-			session->presentation.foreground = 3.0f;
-			session->pager.foreground = 3;
+			session_set_foreground(session, 3.0f);
 			if (!yt_hostile_menu_row((double)session->player.fighters,
 			    (double)sector.fighters, row, sizeof(row), &row_length)) {
 				if (error != NULL) {
@@ -7513,8 +7511,7 @@ sector_entry(struct yt_session *session, float scanner_mode,
 					if (session_is_destroyed(session))
 						return true;
 					if (sector.fighters <= 0.0f) {
-						session->presentation.foreground = 1.0f;
-						session->pager.foreground = 1;
+						session_set_foreground(session, 1.0f);
 						if (!display_sector(session, false, error))
 							return false;
 						return true;
@@ -7554,8 +7551,7 @@ sector_entry(struct yt_session *session, float scanner_mode,
 					}
 					if (forced_attack) {
 						if (sector.fighters <= 0.0f) {
-							session->presentation.foreground = 1.0f;
-							session->pager.foreground = 1;
+							session_set_foreground(session, 1.0f);
 							if (!display_sector(session, false, error))
 								return false;
 							return true;
@@ -7772,8 +7768,7 @@ drop_mines_present(void *context, const uint8_t *text, size_t length,
 		return session_031f(session, text, length, "sector mine prompt",
 		    error);
 	case YT_DROP_MINES_SUCCESS_BLANK:
-		session->presentation.foreground = 6.0f;
-		session->pager.foreground = 6;
+		session_set_foreground(session, 6.0f);
 		return session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "sector mine success blank", error);
 	case YT_DROP_MINES_SUCCESS_ROW:
@@ -8082,8 +8077,7 @@ port_report_set_foreground(void *context, float foreground)
 {
 	struct yt_session *session = context;
 
-	session->presentation.foreground = foreground;
-	session->pager.foreground = (int)foreground;
+	session_set_foreground(session, foreground);
 }
 
 static bool
@@ -8382,8 +8376,7 @@ ordinary_commerce_foreground(void *context, float foreground)
 {
 	struct yt_session *session = context;
 
-	session->presentation.foreground = foreground;
-	session->pager.foreground = (int)foreground;
+	session_set_foreground(session, foreground);
 }
 
 static void
@@ -8869,7 +8862,7 @@ earth_anti_cloak_present(void *context, const uint8_t *text, size_t length,
 {
 	struct yt_session *session = context;
 
-	if (session->presentation.foreground != foreground)
+	if (session_foreground(session) != foreground)
 		session_set_color(session, (int)foreground);
 	return session_present_text(session, text, length,
 	    bold ? SESSION_PRESENT_BOLD_LINE : SESSION_PRESENT_LINE,
@@ -8901,11 +8894,11 @@ earth_anti_cloak(struct yt_session *session, float price,
 		.conversion_mode = session->presentation.sound.conversion_mode,
 		.cloak_cache = session->cloak_cache,
 		.cloak_cache_count = YT_ARRAY_LEN(session->cloak_cache),
-		.foreground = session->presentation.foreground,
+		.foreground = session_foreground(session),
 	};
 	bool completed = yt_earth_anti_cloak_run(&state, &ops, session, error);
 
-	if (session->presentation.foreground != state.foreground)
+	if (session_foreground(session) != state.foreground)
 		session_set_color(session, (int)state.foreground);
 	if (state.field_record != 0.0f)
 		session->player.record = state.field_player.record;
@@ -9171,7 +9164,7 @@ lottery(struct yt_session *session, const struct yt_port *cached_earth,
 	    SESSION_PRESENT_RAW, "lottery winning prefix", error))
 		return false;
 	{
-		int saved_foreground = session->pager.foreground;
+		int saved_foreground = session_pager_foreground(session);
 
 	for (index = 0; index < 6; ++index) {
 		int row;
@@ -9233,7 +9226,7 @@ lottery(struct yt_session *session, const struct yt_port *cached_earth,
 	{
 		char match_text[64];
 		char award_text[80];
-		int saved_foreground = session->pager.foreground;
+		int saved_foreground = session_pager_foreground(session);
 
 		award = yt_lottery_award(matches);
 		if (qb_str_single(match_text, sizeof(match_text),
@@ -9322,8 +9315,7 @@ earth_report(struct yt_session *session, struct yt_port *earth,
 	    YT_COMPUTER_PORT_EARTH_FIELD_PORT,
 	    (uint32_t)yt_port_basic_record(&session->door->game.config, 1),
 	    &earth->record);
-	session->presentation.foreground = 3.0f;
-	session->pager.foreground = 3;
+	session_set_foreground(session, 3.0f);
 	if (!yt_platform_clock(&date_now, error)
 	    || !yt_platform_clock(&time_now, error))
 		return false;
@@ -9901,8 +9893,7 @@ planet_garrison(struct yt_session *session, int logical_planet,
 	old_garrison = planet.ground_forces;
 	if (!reload_player(session, error))
 		return false;
-	session->presentation.foreground = 6.0f;
-	session->pager.foreground = 6;
+	session_set_foreground(session, 6.0f);
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "planet garrison opening blank", error)
 	    || !yt_planet_garrison_prompt(session->player.ground_forces,
@@ -9973,8 +9964,7 @@ planet_bank(struct yt_session *session, int logical_planet,
 	float old_bank;
 	float credit_argument;
 
-	session->presentation.foreground = 6.0f;
-	session->pager.foreground = 6;
+	session_set_foreground(session, 6.0f);
 	if (!yt_game_read_planet(&session->door->game, logical_planet,
 	    &planet, error))
 		return false;
@@ -10425,7 +10415,7 @@ planet_assault(struct yt_session *session, uint32_t physical_planet,
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "planet assault entry blank", error))
 		return false;
-	saved_foreground = session->presentation.foreground;
+	saved_foreground = session_foreground(session);
 	if (!planet_update_cached_physical(session, physical_planet, &planet,
 	    NULL, error)
 	    || !read_planet_physical(session, physical_planet, &planet, error)
@@ -10466,8 +10456,7 @@ planet_assault(struct yt_session *session, uint32_t physical_planet,
 			return false;
 		yt_planet_assault_round(attacker_damage, amount, &attackers,
 		    &defenders);
-		session->presentation.foreground = attacker_damage ? 3.0f : 4.0f;
-		session->pager.foreground = attacker_damage ? 3 : 4;
+		session_set_foreground(session, attacker_damage ? 3.0f : 4.0f);
 		if (!yt_planet_assault_status_row(attacker_damage,
 		    attacker_damage ? attackers : defenders, row, sizeof(row),
 		    &row_length)
@@ -10479,8 +10468,7 @@ planet_assault(struct yt_session *session, uint32_t physical_planet,
 			    "planet assault defender sound", error))
 			return false;
 	}
-	session->presentation.foreground = saved_foreground;
-	session->pager.foreground = (int)saved_foreground;
+	session_set_foreground(session, saved_foreground);
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "planet assault terminal blank", error))
 		return false;
@@ -11185,8 +11173,7 @@ planet_menu(struct yt_session *session, int logical_planet,
 		    || !session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "planet prompt framing blank", error))
 			return false;
-		session->presentation.foreground = 6.0f;
-		session->pager.foreground = 6;
+		session_set_foreground(session, 6.0f);
 		memcpy(prompt + prompt_length, prompt_prefix,
 		    sizeof(prompt_prefix) - 1U);
 		prompt_length += sizeof(prompt_prefix) - 1U;
@@ -11597,8 +11584,7 @@ planet_permission_set_foreground(void *context, float foreground)
 {
 	struct yt_session *session = context;
 
-	session->pager.foreground = (int)foreground;
-	session->presentation.foreground = foreground;
+	session_set_foreground(session, foreground);
 }
 
 static void
@@ -11658,8 +11644,7 @@ command_land(struct yt_session *session, bool *enter_sector,
 			*enter_sector = true;
 		return created;
 	}
-	session->pager.foreground = 6;
-	session->presentation.foreground = 6.0f;
+	session_set_foreground(session, 6.0f);
 	if (!session_0317(session, landing, sizeof(landing) - 1U,
 	    "planet landing progress", error))
 		return false;
@@ -11673,7 +11658,7 @@ command_land(struct yt_session *session, bool *enter_sector,
 	    session_planet_offset(session);
 	permission_state.current_player_record = session_record(session);
 	permission_state.last_player_record = YT_PLAYER_LAST;
-	permission_state.foreground = session->presentation.foreground;
+	permission_state.foreground = session_foreground(session);
 	permission_state.blink = session->presentation.blink;
 	if (!yt_planet_permission_run(&permission_state, &permission_ops,
 	    session, error))
@@ -12103,10 +12088,9 @@ info_panel_present(void *context, const uint8_t *text, size_t length,
 	struct yt_session *session = context;
 	bool result;
 
-	session->presentation.foreground = state->foreground;
+	session_set_foreground(session, state->foreground);
 	session->presentation.background = state->background;
 	session->presentation.bold = state->bold;
-	session->pager.foreground = (int)state->foreground;
 	if (kind == YT_INFO_PANEL_LINE)
 		result = info_line(session, text, length, error);
 	else if (kind == YT_INFO_PANEL_FIXED)
@@ -12114,7 +12098,7 @@ info_panel_present(void *context, const uint8_t *text, size_t length,
 		    "Info fixed-width presentation", error);
 	else
 		return info_failure(error, "Info presentation kind");
-	state->foreground = session->presentation.foreground;
+	state->foreground = session_foreground(session);
 	state->background = session->presentation.background;
 	state->bold = session->presentation.bold;
 	return result;
@@ -12136,14 +12120,13 @@ show_ship(struct yt_session *session, struct yt_error *error)
 	state.cached_name = session->cached_player_name;
 	state.cached_name_length = session->cached_player_name_length;
 	state.anti_cloak = session_anti_cloak_enabled(session) ? -1.0f : 0.0f;
-	state.foreground = session->presentation.foreground;
+	state.foreground = session_foreground(session);
 	state.background = session->presentation.background;
 	state.bold = session->presentation.bold;
 	result = yt_info_panel_run(&state, &ops, session, error);
-	session->presentation.foreground = state.foreground;
+	session_set_foreground(session, state.foreground);
 	session->presentation.background = state.background;
 	session->presentation.bold = state.bold;
-	session->pager.foreground = (int)state.foreground;
 	return result;
 }
 
@@ -12290,8 +12273,7 @@ team_create(struct yt_session *session, struct yt_error *error)
 	    team.id), &team.overlay.record, error)
 	    || !team_create_password(session, id, password, error))
 		return false;
-	session->presentation.foreground = 3.0f;
-	session->pager.foreground = 3;
+	session_set_foreground(session, 3.0f);
 	if (qb_str_single(number, sizeof(number), selected) < 0
 	    || snprintf(news, sizeof(news), "%s Created Team%s -=- %s",
 	    actor_name, number, name) < 0
@@ -12419,8 +12401,7 @@ team_join(struct yt_session *session, struct yt_error *error)
 		return false;
 	if (!append_news(session, news, error))
 		return false;
-	session->presentation.foreground = 3.0f;
-	session->pager.foreground = 3;
+	session_set_foreground(session, 3.0f);
 	if (!session_02db(session, success, sizeof(success) - 1U,
 	    "team join success row", error))
 		return false;
@@ -12488,8 +12469,7 @@ team_quit(struct yt_session *session, struct yt_team *team,
 		if (!team_store(session, team, error))
 			return false;
 	}
-	session->presentation.foreground = 6.0f;
-	session->pager.foreground = 6;
+	session_set_foreground(session, 6.0f);
 	if (!session_0317(session, success, sizeof(success) - 1U,
 	    "team quit success row", error)
 	    || !team_audit(session, old_team, 2.0f, "", error))
@@ -12825,8 +12805,7 @@ command_team(struct yt_session *session, struct yt_error *error)
 		bool overflow;
 		bool invalid;
 
-		session->presentation.foreground = 6.0f;
-		session->pager.foreground = 6;
+		session_set_foreground(session, 6.0f);
 		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 		    "team front leading blank", error)
 		    || !info_team_lines(session, &team, &captain, error))
@@ -12858,8 +12837,7 @@ command_team(struct yt_session *session, struct yt_error *error)
 					    strlen(captain_rows[index])))
 						return false;
 		}
-		session->presentation.foreground = 6.0f;
-		session->pager.foreground = 6;
+		session_set_foreground(session, 6.0f);
 		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 		    "team prompt blank", error))
 			return false;
@@ -14536,7 +14514,7 @@ missile_mines:
 		    projectile_damage_draw, session, &damage, error))
 			return false;
 		scanner_disabled = damage.scanner_disabled;
-		session->presentation.foreground = 5.0f;
+		session_set_foreground(session, 5.0f);
 		if (!yt_game_read_player(&session->door->game, basic,
 		    &presentation_target, error))
 			return false;
@@ -14566,7 +14544,7 @@ missile_mines:
 		    strlen(row), SESSION_PRESENT_BOLD_LINE,
 		    "cruise missile player attack second row", error))
 			return false;
-		session->presentation.foreground = 0.0f;
+		session_set_foreground(session, 0.0f);
 		if (!yt_projectile_player_survives(target.shields)) {
 			float mines;
 			uint8_t killed_name[YT_TEXT_FIELD_SIZE];
@@ -14817,7 +14795,7 @@ plasma_reload_sector:
 		player.attacker = attacker;
 		player.attacker_length = launch_attacker_length;
 		player.energy = energy;
-		player.foreground = session->presentation.foreground;
+		player.foreground = session_foreground(session);
 		if (!yt_projectile_plasma_player_run(&player, &player_ops, session,
 		    error))
 			return false;
@@ -17236,8 +17214,7 @@ computer_avoid(struct yt_session *session, struct yt_error *error)
 	    (size_t)(slot - 1), new_value, error))
 		return false;
 	yt_computer_avoid_transition(old_value, new_value, &locked, &available);
-	session->presentation.foreground = 2.0f;
-	session->pager.foreground = 2;
+	session_set_foreground(session, 2.0f);
 	if (locked) {
 		char number[64];
 		char status[128];
@@ -17260,8 +17237,7 @@ computer_avoid(struct yt_session *session, struct yt_error *error)
 		    strlen(status), "avoid available status", error))
 			return false;
 	}
-	session->presentation.foreground = 1.0f;
-	session->pager.foreground = 1;
+	session_set_foreground(session, 1.0f);
 	return true;
 }
 
@@ -17414,8 +17390,7 @@ static bool
 nearest_market_cell(struct yt_session *session, const char *cell, bool sold,
     struct yt_error *error)
 {
-	session->pager.foreground = sold ? 7 : 6;
-	session->presentation.foreground = sold ? 7.0f : 6.0f;
+	session_set_foreground(session, sold ? 7.0f : 6.0f);
 	return session_present_text(session, (const uint8_t *)cell,
 	    strlen(cell), SESSION_PRESENT_BOLD_RAW,
 	    "nearest-port market cell", error);
@@ -17429,8 +17404,7 @@ nearest_more(struct yt_session *session, bool *stop, bool *continuous,
 	    "More? [Y]es [N]o [+] Continuous [Y] ";
 
 	*stop = false;
-	session->pager.foreground = 3;
-	session->presentation.foreground = 3.0f;
+	session_set_foreground(session, 3.0f);
 	if (!session_present_text(session, prompt, sizeof(prompt) - 1U,
 	    SESSION_PRESENT_BOLD_RAW, "nearest-port pager prompt", error))
 		return false;
@@ -17533,16 +17507,14 @@ computer_nearest_ports(struct yt_session *session, struct yt_error *error)
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "nearest-port opening blank", error))
 		return false;
-	session->pager.foreground = 3;
-	session->presentation.foreground = 3.0f;
+	session_set_foreground(session, 3.0f);
 	if (!session_present_text(session,
 	    (const uint8_t *)"Scanning Starmap Database...", 28,
 	    SESSION_PRESENT_BOLD_LINE, "nearest-port scanning row", error)
 	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "nearest-port scanning blank", error))
 		return false;
-	session->pager.foreground = 7;
-	session->presentation.foreground = 7.0f;
+	session_set_foreground(session, 7.0f);
 	if (!session_present_text(session, (const uint8_t *)
 	    "Owned ports show the name of the owner preceeded by a \">\".",
 	    sizeof("Owned ports show the name of the owner preceeded by a \">\".")
@@ -17678,8 +17650,7 @@ computer_nearest_ports(struct yt_session *session, struct yt_error *error)
 					    (float)distance);
 					(void)snprintf(source, sizeof(source),
 					    "Distance:%s", number);
-					session->pager.foreground = 1;
-					session->presentation.foreground = 1.0f;
+					session_set_foreground(session, 1.0f);
 					if (!session_present_text(session,
 					    (const uint8_t *)source, strlen(source),
 					    SESSION_PRESENT_BOLD_LINE,
@@ -17745,8 +17716,7 @@ computer_nearest_ports(struct yt_session *session, struct yt_error *error)
 				}
 				if (port.owner != 0.0f)
 					session->presentation.bold = 1.0f;
-				session->pager.foreground = 2;
-				session->presentation.foreground = 2.0f;
+				session_set_foreground(session, 2.0f);
 				if (!session_present_text(session,
 				    (const uint8_t *)sector_cell,
 				    strlen(sector_cell), SESSION_PRESENT_RAW,
@@ -17759,8 +17729,7 @@ computer_nearest_ports(struct yt_session *session, struct yt_error *error)
 				    || !nearest_market_cell(session, equipment_cell,
 				    port.commodity_class == 1.0f, error))
 					goto failure;
-				session->pager.foreground = 2;
-				session->presentation.foreground = 2.0f;
+				session_set_foreground(session, 2.0f);
 				if (!session_present_text(session,
 				    (const uint8_t *)stock_cell,
 				    strlen(stock_cell), SESSION_PRESENT_RAW,
@@ -17769,8 +17738,7 @@ computer_nearest_ports(struct yt_session *session, struct yt_error *error)
 				if (!nearest_cint(session, port.owner, &owner_record,
 				    "nearest-port owner CINT", error))
 					goto failure;
-				session->pager.foreground = 3;
-				session->presentation.foreground = 3.0f;
+				session_set_foreground(session, 3.0f);
 				if (sector_number == 1) {
 					memcpy(name, "** Earth **", 11);
 					name_length = 11;
@@ -17791,8 +17759,7 @@ computer_nearest_ports(struct yt_session *session, struct yt_error *error)
 						name_length = 26U;
 					if (port.owner
 					    == (float)session_record(session)) {
-						session->pager.foreground = 5;
-						session->presentation.foreground = 5.0f;
+						session_set_foreground(session, 5.0f);
 					}
 				}
 				if (!session_present_text(session, name, name_length,
@@ -17886,8 +17853,7 @@ profit_set_pair_color(struct yt_session *session, float source, float target)
 	    || (source == 3.0f && target == 2.0f))
 		logical = 1;
 	if (logical >= 0) {
-		session->presentation.foreground = (float)logical;
-		session->pager.foreground = logical;
+		session_set_foreground(session, (float)logical);
 	}
 }
 
@@ -17973,8 +17939,7 @@ profit_emit_row(struct yt_session *session, float source_number,
 	if (!session_present_text(session, row, length,
 	    SESSION_PRESENT_BOLD_RAW, "global profit row", error))
 		return false;
-	session->presentation.foreground = 6.0f;
-	session->pager.foreground = 6;
+	session_set_foreground(session, 6.0f);
 	if ((*result_count & 1) != 0) {
 		static const uint8_t separator[] = {' ', 0xba, ' '};
 
@@ -18048,8 +18013,7 @@ computer_profit(struct yt_session *session, bool all,
 			return false;
 	}
 	else {
-		session->presentation.foreground = 7.0f;
-		session->pager.foreground = 7;
+		session_set_foreground(session, 7.0f);
 		if (!session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "adjacent profit leading blank", error)
 		    || !session_present_text(session,
@@ -18137,8 +18101,7 @@ computer_profit(struct yt_session *session, bool all,
 		    strlen("No ports you can trade with in adjacent sectors!"),
 		    SESSION_PRESENT_BOLD_LINE, "adjacent profit empty row", error);
 	if (all) {
-		session->presentation.foreground = 7.0f;
-		session->pager.foreground = 7;
+		session_set_foreground(session, 7.0f);
 		return session_present_text(session,
 		    (const uint8_t *)" *-[ End of List ]-*",
 		    strlen(" *-[ End of List ]-*"), SESSION_PRESENT_BOLD_LINE,
@@ -18162,8 +18125,7 @@ computer_activation_effect(void *context,
 	struct yt_session *session = context;
 
 	(void)effect;
-	session->presentation.foreground = 1.0f;
-	session->pager.foreground = 1;
+	session_set_foreground(session, 1.0f);
 }
 
 static void
@@ -18426,8 +18388,7 @@ computer_menu_prompt_effect(void *context,
 		    YT_COMPUTER_ROUTE_STATUS_ADDRESS, scanner_zero);
 	}
 	else if (effect == YT_COMPUTER_PROMPT_SET_FOREGROUND) {
-		session->presentation.foreground = 1.0f;
-		session->pager.foreground = 1;
+		session_set_foreground(session, 1.0f);
 	}
 }
 
@@ -18724,8 +18685,7 @@ show_help(struct yt_session *session, struct yt_error *error)
 	char row[128];
 	size_t index;
 
-	session->presentation.foreground = 6.0f;
-	session->pager.foreground = 6;
+	session_set_foreground(session, 6.0f);
 	if (!session_0317(session, heading, sizeof(heading) - 1U,
 	    "main help heading", error)
 	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
@@ -18774,8 +18734,7 @@ quit_session(struct yt_session *session, struct yt_error *error)
 
 	if (!session->door->game_open)
 		return true;
-	session->presentation.foreground = 1.0f;
-	session->pager.foreground = 1;
+	session_set_foreground(session, 1.0f);
 	if (!show_ship(session, error)
 	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "normal-exit post-Info blank", error)
@@ -18840,8 +18799,7 @@ main_prompt_effect(void *context, enum yt_main_prompt_effect effect)
 		session->pager.line_count = 0.0f;
 		break;
 	case YT_MAIN_PROMPT_SET_FOREGROUND:
-		session->presentation.foreground = 2.0f;
-		session->pager.foreground = 2;
+		session_set_foreground(session, 2.0f);
 		break;
 	case YT_MAIN_PROMPT_RESET_SCANNER:
 		session_set_relationship(session, 0.0f);
@@ -18958,8 +18916,7 @@ command_shell(struct yt_session *session, struct yt_error *error)
 				return false;
 			continue;
 		case YT_MAIN_SHELL_VERSION:
-			session->presentation.foreground = 6.0f;
-			session->pager.foreground = 6;
+			session_set_foreground(session, 6.0f);
 			if (!registration(session, error))
 				return false;
 			if (!session->running)
@@ -19056,8 +19013,7 @@ command_shell(struct yt_session *session, struct yt_error *error)
 		case YT_MAIN_SHELL_MINES:
 			if (!command_mines(session, error))
 				return false;
-			session->presentation.foreground = 1.0f;
-			session->pager.foreground = 1;
+			session_set_foreground(session, 1.0f);
 			if (!display_sector(session, false, error))
 				return false;
 			break;
@@ -19119,8 +19075,7 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	session.presentation.sound.user_sound = -1.0f;
 	session.presentation.sound.local_sound =
 	    door->identity.local ? -1.0f : 0.0f;
-	session.presentation.foreground = 7.0f;
-	session.pager.foreground = 7;
+	session_set_foreground(&session, 7.0f);
 	yt_random_init(&launch_random);
 	if (!yt_random_market_bases(&launch_random, market_base, error))
 		return false;
@@ -19142,8 +19097,7 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	}
 	if (!load_configuration(&session, error))
 		return session.terminated;
-	session.presentation.foreground = 6.0f;
-	session.pager.foreground = 6;
+	session_set_foreground(&session, 6.0f);
 	if (!session_present_text(&session, NULL, 0, SESSION_PRESENT_LINE,
 	    "startup pre-title blank", error)
 	    || !registration(&session, error))
