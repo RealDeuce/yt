@@ -30332,6 +30332,7 @@ struct projectile_command_tape {
 	uint8_t destroyed_raw[4];
 	size_t destroyed_store_count;
 	size_t destroyed_store_position;
+	uint8_t counterattack_raw[4];
 };
 
 static bool
@@ -30526,6 +30527,14 @@ projectile_command_destroyed_truth(void *context)
 	return qb_mbf32_truth(tape->destroyed_raw);
 }
 
+static bool
+projectile_command_counterattack_truth(void *context)
+{
+	struct projectile_command_tape *tape = context;
+
+	return qb_mbf32_truth(tape->counterattack_raw);
+}
+
 static const struct yt_projectile_command_ops projectile_command_ops = {
 	projectile_command_test_hydrate,
 	projectile_command_test_present,
@@ -30539,6 +30548,7 @@ static const struct yt_projectile_command_ops projectile_command_ops = {
 	projectile_command_test_fatal,
 	projectile_command_store_destroyed,
 	projectile_command_destroyed_truth,
+	projectile_command_counterattack_truth,
 };
 
 static void
@@ -30570,6 +30580,7 @@ projectile_command_fixture(struct projectile_command_tape *tape,
 	tape->responses[1] = "2.9";
 	*destroyed = true;
 	tape->destroyed = destroyed;
+	(void)qb_mbf32_encode(3.0f, tape->counterattack_raw);
 	state->current_player_record = 2;
 	state->maximum_sector = 2004.0f;
 	state->displayed = 9.0f;
@@ -30655,6 +30666,20 @@ check_projectile_command_transaction(void)
 	    || memcmp(state.amount_raw, returned_amount_raw, 4U) != 0
 	    || memcmp(tape.written_player.record.bytes, expected_record.bytes,
 	    YT_RECORD_SIZE) != 0)
+		return false;
+
+	/* Parent dispatch uses raw exponent truth, not the decoded carrier. */
+	projectile_command_fixture(&tape, &state, &destroyed);
+	memcpy(tape.counterattack_raw,
+	    (const uint8_t[]){0x1f, 0x4e, 0x46, 0x00}, 4U);
+	if (!yt_projectile_command_run(&state, &projectile_command_ops, &tape,
+	    NULL) || !state.complete
+	    || state.route != YT_PROJECTILE_COMMAND_RETURNED
+	    || state.counterattack != 3 || state.counterlaunch_called
+	    || !state.xannor_called
+	    || tape.calls != YT_ARRAY_LEN(expected) - 1U
+	    || tape.events[YT_ARRAY_LEN(expected) - 2U]
+	    != PROJECTILE_COMMAND_XANNOR)
 		return false;
 
 	for (failure = 0U; failure < YT_ARRAY_LEN(expected); ++failure) {

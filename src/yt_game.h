@@ -4256,6 +4256,7 @@ struct yt_projectile_command_ops {
 	bool (*fatal)(void *context, struct yt_error *error);
 	yt_destroyed_store_fn store_destroyed;
 	yt_destroyed_truth_fn destroyed_truth;
+	bool (*counterattack_truth)(void *context);
 };
 bool yt_projectile_command_run(struct yt_projectile_command_state *state,
 	const struct yt_projectile_command_ops *ops, void *context,

@@ -1697,10 +1697,13 @@ yt_projectile_command_run(struct yt_projectile_command_state *state,
 	    state->amount_raw, state->plasma, &state->counterattack,
 	    &state->xannor_provoker, error))
 		return false;
-	state->counterlaunch_called = true;
-	if (!ops->counterlaunch(context, &state->counterattack,
-	    &state->xannor_provoker, error))
-		return false;
+	if (ops->counterattack_truth != NULL
+	    ? ops->counterattack_truth(context) : state->counterattack != 0) {
+		state->counterlaunch_called = true;
+		if (!ops->counterlaunch(context, &state->counterattack,
+		    &state->xannor_provoker, error))
+			return false;
+	}
 	state->xannor_called = true;
 	if (!ops->xannor(context, &state->xannor_provoker, error))
 		return false;

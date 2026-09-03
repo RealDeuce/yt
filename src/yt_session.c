@@ -212,6 +212,15 @@ session_store_counterattack_player(void *context, const uint8_t raw[4])
 }
 
 static void
+session_load_counterattack_player(struct yt_session *session,
+    int *counterattack)
+{
+	if (counterattack != NULL)
+		*counterattack = (int)yt_route_process_single(
+		    &session->route_process, YT_COUNTERATTACK_PLAYER_ADDRESS);
+}
+
+static void
 session_set_current_player_record(struct yt_session *session, int record)
 {
 	uint8_t raw[4];
@@ -15390,9 +15399,13 @@ session_projectile_resolver(void *context, float *origin, float *target,
 	struct yt_session *session = context;
 	const struct projectile_route_cells *cells = session->player_record == -1
 	    ? &projectile_xannor_cells : &projectile_main_cells;
+	bool result;
 
-	return launch_projectile(session, target, amount, plasma, cells, origin,
+	session_load_counterattack_player(session, counterattack);
+	result = launch_projectile(session, target, amount, plasma, cells, origin,
 	    NULL, NULL, NULL, counterattack, xannor_provoker, error);
+	session_load_counterattack_player(session, counterattack);
+	return result;
 }
 
 static bool
@@ -15402,7 +15415,10 @@ session_projectile_command_resolver(void *context, float *origin,
     int *xannor_provoker, struct yt_error *error)
 {
 	struct yt_session *session = context;
-	bool result = launch_projectile(session, target, amount, plasma,
+	bool result;
+
+	session_load_counterattack_player(session, counterattack);
+	result = launch_projectile(session, target, amount, plasma,
 	    &projectile_main_cells, origin, origin_raw, target_raw, amount_raw,
 	    counterattack, xannor_provoker, error);
 
@@ -15415,6 +15431,7 @@ session_projectile_command_resolver(void *context, float *origin,
 	*origin = qb_mbf32_decode(origin_raw);
 	*target = qb_mbf32_decode(target_raw);
 	*amount = qb_mbf32_decode(amount_raw);
+	session_load_counterattack_player(session, counterattack);
 	return result;
 }
 
@@ -15563,10 +15580,14 @@ session_counterlaunch_projectile(void *context, float *origin, float *target,
     struct yt_error *error)
 {
 	struct yt_session *session = context;
+	bool result;
 
-	return launch_projectile(session, target, amount, plasma,
+	session_load_counterattack_player(session, counterattack);
+	result = launch_projectile(session, target, amount, plasma,
 	    &projectile_counterlaunch_cells, origin, NULL, NULL, NULL,
 	    counterattack, xannor_provoker, error);
+	session_load_counterattack_player(session, counterattack);
+	return result;
 }
 
 static bool
@@ -15608,6 +15629,7 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 	    YT_COUNTERLAUNCH_COUNT_ADDRESS);
 	uint8_t current_record_raw[4];
 
+	session_load_counterattack_player(session, counterattacker);
 	yt_route_process_raw_single(&session->route_process,
 	    YT_CURRENT_PLAYER_RECORD_ADDRESS, current_record_raw);
 	struct yt_counterlaunch_state state = {
@@ -15744,6 +15766,17 @@ projectile_command_destroyed_truth(void *context)
 }
 
 static bool
+projectile_command_counterattack_truth(void *context)
+{
+	struct yt_session *session = context;
+	uint8_t raw[4];
+
+	yt_route_process_raw_single(&session->route_process,
+	    YT_COUNTERATTACK_PLAYER_ADDRESS, raw);
+	return qb_mbf32_truth(raw);
+}
+
+static bool
 command_projectile(struct yt_session *session, bool plasma,
     struct yt_error *error)
 {
@@ -15760,6 +15793,7 @@ command_projectile(struct yt_session *session, bool plasma,
 		projectile_command_fatal,
 		session_store_destroyed,
 		projectile_command_destroyed_truth,
+		projectile_command_counterattack_truth,
 	};
 	bool destroyed = session_is_destroyed(session);
 	struct yt_projectile_command_state state = {
