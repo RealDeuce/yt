@@ -41,6 +41,7 @@
 #define YT_MAXIMUM_HOLDS_ADDRESS 0x19E8U
 #define YT_TOTAL_RECORDS_ADDRESS 0x19D4U
 #define YT_SECTOR_OFFSET_ADDRESS 0x19DCU
+#define YT_PORT_OFFSET_ADDRESS 0x19E0U
 #define YT_CLEARANCE_HOLDS_ADDRESS 0x4B54U
 #define YT_CLEARANCE_FIGHTERS_ADDRESS 0x4B58U
 #define YT_CLEARANCE_GROUND_ADDRESS 0x4B5CU
@@ -137,6 +138,13 @@ session_sector_offset(const struct yt_session *session)
 {
 	return yt_route_process_single(&session->route_process,
 	    YT_SECTOR_OFFSET_ADDRESS);
+}
+
+static float
+session_port_offset(const struct yt_session *session)
+{
+	return yt_route_process_single(&session->route_process,
+	    YT_PORT_OFFSET_ADDRESS);
 }
 
 static void
@@ -491,7 +499,7 @@ double_mul(double left, double right)
 static int
 sector_count(const struct yt_session *session)
 {
-	return (int)(session->door->game.config.port_offset
+	return (int)(session_port_offset(session)
 	    - session_sector_offset(session));
 }
 
@@ -499,7 +507,7 @@ static int
 port_count(const struct yt_session *session)
 {
 	return (int)(session->door->game.config.planet_offset
-	    - session->door->game.config.port_offset);
+	    - session_port_offset(session));
 }
 
 static bool
@@ -2077,6 +2085,16 @@ startup_configuration_store_sector_offset(void *context,
 	    YT_SECTOR_OFFSET_ADDRESS, raw);
 }
 
+static void
+startup_configuration_store_port_offset(void *context,
+    const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_PORT_OFFSET_ADDRESS, raw);
+}
+
 static bool
 load_configuration(struct yt_session *session, struct yt_error *error)
 {
@@ -2097,6 +2115,7 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 		startup_configuration_store_epoch_year,
 		startup_configuration_store_total_records,
 		startup_configuration_store_sector_offset,
+		startup_configuration_store_port_offset,
 	};
 	struct yt_game *game = &session->door->game;
 	struct yt_startup_configuration_state state;
@@ -3502,7 +3521,7 @@ port_update(struct yt_session *session, int sector_number,
 		state.sector_record_expression = *sector_record_expression;
 		state.sector_record_supplied = true;
 	}
-	state.port_offset = session->door->game.config.port_offset;
+	state.port_offset = session_port_offset(session);
 	session_market_bases(session, state.base_price);
 	if (loaded_sector != NULL) {
 		state.sector = *loaded_sector;
@@ -3770,7 +3789,7 @@ scanner_read_port(struct yt_session *session, float logical_port,
     struct yt_port *port, uint32_t *physical_record, struct yt_error *error)
 {
 	struct yt_record record;
-	float expression = single_add(session->door->game.config.port_offset,
+	float expression = single_add(session_port_offset(session),
 	    logical_port);
 	uint32_t physical = qb_brun_random_record_number(expression);
 
@@ -5186,7 +5205,7 @@ command_move(struct yt_session *session, bool *moved,
 	*moved = false;
 	state = (struct yt_movement_state){
 		.current_player_record = session->player_record,
-		.port_offset = session->door->game.config.port_offset,
+		.port_offset = session_port_offset(session),
 		.sector_offset = session_sector_offset(session),
 	};
 	session_current_warps(session, state.warps);
@@ -7832,7 +7851,7 @@ computer_port_ordinary(struct yt_session *session, int sector_number,
 	    session_sector_offset(session);
 	state.update.sector_record_expression = sector_record_expression;
 	state.update.sector_record_supplied = true;
-	state.update.port_offset = session->door->game.config.port_offset;
+	state.update.port_offset = session_port_offset(session);
 	session_market_bases(session, state.update.base_price);
 	state.report.current_player_record = session->player_record;
 	state.report.conversion_mode =
@@ -8188,7 +8207,7 @@ command_trade(struct yt_session *session, bool *enter_sector,
 	struct yt_port_docking_state state;
 
 	memset(&state, 0, sizeof(state));
-	state.port_offset = session->door->game.config.port_offset;
+	state.port_offset = session_port_offset(session);
 	if (enter_sector != NULL)
 		*enter_sector = false;
 	if (!yt_port_docking_run(&state, &ops, session, error))
@@ -10549,7 +10568,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 	}
 	if (moving_planet == 1.0f) {
 		float maximum = single_sub(
-		    session->door->game.config.port_offset,
+		    session_port_offset(session),
 		    session_sector_offset(session));
 
 		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
@@ -10641,7 +10660,7 @@ planet_move(struct yt_session *session, bool *enter_sector,
 	float start = session->player.sector;
 	float destination;
 	float maximum = yt_planet_move_maximum(
-	    session->door->game.config.port_offset,
+	    session_port_offset(session),
 	    session_sector_offset(session));
 	float cost = 0.0f;
 	int start_node;
@@ -12806,7 +12825,7 @@ command_rename_port(struct yt_session *session, struct yt_error *error)
 	};
 	struct yt_port_rename_state state = {
 		.current_player_record = (float)session->player_record,
-		.port_offset = session->door->game.config.port_offset,
+		.port_offset = session_port_offset(session),
 		.conversion_mode =
 		    session->presentation.sound.conversion_mode,
 	};
@@ -13088,7 +13107,7 @@ command_buy_port(struct yt_session *session, struct yt_error *error)
 	    (const uint8_t *)session->door->identity.real_first;
 	struct yt_port_purchase_state state = {
 		.current_player_record = session->player_record,
-		.port_offset = session->door->game.config.port_offset,
+		.port_offset = session_port_offset(session),
 		.conversion_mode =
 		    session->presentation.sound.conversion_mode,
 		.first_name = first,
@@ -13268,7 +13287,7 @@ command_collect(struct yt_session *session, bool collecting,
 	};
 	struct yt_treasury_state state = {
 		.current_player_record = (float)session->player_record,
-		.port_offset = session->door->game.config.port_offset,
+		.port_offset = session_port_offset(session),
 		.planet_offset = session->door->game.config.planet_offset,
 		.conversion_mode = session->presentation.sound.conversion_mode,
 	};
@@ -14943,7 +14962,7 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 			{session_disruption_sector(session, 0U),
 			 session_disruption_sector(session, 1U)},
 			session_sector_offset(session),
-			session->door->game.config.port_offset,
+			session_port_offset(session),
 			NULL,
 			0U,
 			YT_ROUTE_CAPACITY * 4U,
@@ -15009,7 +15028,7 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 				struct yt_projectile_cruise_reroute_state state = {
 					(float)next,
 					session_sector_offset(session),
-					session->door->game.config.port_offset,
+					session_port_offset(session),
 					origin_alias != NULL ? origin_alias : &local_origin,
 					&local_destination,
 				};
@@ -16053,7 +16072,7 @@ computer_route(struct yt_session *session, bool autopilot,
 		return false;
 	yt_route_process_set_raw_single(&session->route_process,
 	    YT_COMPUTER_ROUTE_DESTINATION_ADDRESS, parsed_raw);
-	if (!yt_computer_path_maximum(session->door->game.config.port_offset,
+	if (!yt_computer_path_maximum(session_port_offset(session),
 	    session_sector_offset(session), &maximum, error))
 		return false;
 	if (destination_value < 1.0f || destination_value > maximum
@@ -16265,7 +16284,7 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 	static const uint8_t prompt[] =
 	    "What sector number is the planet in? ";
 	static const uint8_t unavailable[] = "No information available.";
-	float maximum = single_sub(session->door->game.config.port_offset,
+	float maximum = single_sub(session_port_offset(session),
 	    session_sector_offset(session));
 
 	for (;;) {
@@ -16615,7 +16634,7 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 
 	if (enter_sector != NULL)
 		*enter_sector = false;
-	if (!yt_computer_port_maximum(session->door->game.config.port_offset,
+	if (!yt_computer_port_maximum(session_port_offset(session),
 	    session_sector_offset(session), &maximum, error))
 		return false;
 	for (;;) {
@@ -16792,7 +16811,7 @@ computer_avoid(struct yt_session *session, struct yt_error *error)
 	if (route != YT_COMPUTER_AVOID_SELECTION_ACCEPTED)
 		return true;
 	if (!yt_computer_avoid_maximum(
-	    session->door->game.config.port_offset,
+	    session_port_offset(session),
 	    session_sector_offset(session), &maximum, error))
 		return false;
 	{
