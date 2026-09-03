@@ -1692,6 +1692,8 @@ test_main_startup_prefix(void)
 	};
 	static const uint8_t signature[] =
 	    {0x00, 0x00, 0xa8, 0x43, 0x3b, 0x6a, 0x4f, 0xa5};
+	static const uint8_t initial_five[] =
+	    {0x00, 0x00, 0x20, 0x83};
 	uint8_t first[] = "  aDA   loVELACE ";
 	uint8_t last[] = " o'NEIL-jR ";
 	struct yt_startup_main_prefix prefix;
@@ -1720,7 +1722,9 @@ test_main_startup_prefix(void)
 	    && memcmp(prefix.local_erase, "\x1d \x1d", 3U) == 0
 	    && memcmp(prefix.remote_erase, "\x08 \x08", 3U) == 0
 	    && memcmp(prefix.registration_signature, signature,
-	    sizeof(signature)) == 0);
+	    sizeof(signature)) == 0
+	    && memcmp(prefix.initial_five, initial_five,
+	    sizeof(initial_five)) == 0);
 	for (index = 0U; index < YT_ARRAY_LEN(labels); ++index)
 		CHECK(prefix.display_label_length[index] == strlen(labels[index])
 		    && memcmp(prefix.display_label[index], labels[index],

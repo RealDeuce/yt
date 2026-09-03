@@ -173,7 +173,12 @@ returns, then copied byte-for-byte by the process carrier to `DS:4CCA` before
 lockout. New-player construction and the returning-player same-day/update
 gates reread `DS:4CCA` instead of treating the mutable host game-day cache as
 the caller argument. The process-copy fixture pins noncanonical source bytes,
-ordinary destinations and a destination that wraps through offset zero. The raw
+ordinary destinations and a destination that wraps through offset zero. The
+post-event startup handoff also carries exact raw five `00 00 20 83` and
+installs it at startup-only `DS:4BFA` before the configuration call; the native
+session executes the following `YT:040A` pager-nonstop initialization before
+any later presentation. The remaining raw pager-cell binding is kept in the
+recursive-pager migration rather than represented as a second authority. The raw
 BRUN handler slot/frame/ERL/retry residue,
 OPEN/FIELD/GET/PUT/string state, physical partial-I/O, and corrupt
 out-of-native-cache-domain boundaries remain separate prerequisites.

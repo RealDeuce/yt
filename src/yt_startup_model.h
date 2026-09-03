@@ -33,6 +33,7 @@ struct yt_startup_main_prefix {
 	    [YT_STARTUP_DISPLAY_LABEL_SIZE];
 	size_t display_label_length[YT_STARTUP_DISPLAY_LABELS];
 	uint8_t registration_signature[8];
+	uint8_t initial_five[4];
 	uint16_t continuation;
 };
 

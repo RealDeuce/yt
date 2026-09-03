@@ -90,6 +90,7 @@
 #define YT_SPY_DEAD_COUNTER_SCRATCH_ADDRESS 0x6018U
 #define YT_DATE_SERIAL_RESULT_ADDRESS 0x188CU
 #define YT_STARTUP_DATE_SERIAL_ADDRESS 0x4CCAU
+#define YT_STARTUP_INITIAL_FIVE_ADDRESS 0x4BFAU
 
 enum navigation_field_kind {
 	NAVIGATION_FIELD_NONE,
@@ -18944,6 +18945,11 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	session.executable_path = executable_path;
 	session.startup_prefix = *startup_prefix;
 	session.running = true;
+	yt_route_process_set_raw_single(&session.route_process,
+	    YT_STARTUP_INITIAL_FIVE_ADDRESS,
+	    session.startup_prefix.initial_five);
+	/* YT:040A is the ordinary instruction after the handed-off checkpoint. */
+	session.pager.nonstop = 1.0f;
 	session.presentation.sound.ansi = door->identity.ansi ? -1.0f : 0.0f;
 	session.presentation.sound.mode = door->identity.local ? 1.0f : 0.0f;
 	session.presentation.sound.user_sound = -1.0f;
