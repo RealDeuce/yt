@@ -26,6 +26,7 @@
 #define YT_PLAYER_LAST 51
 #define YT_COMMAND_SIZE 4096U
 #define YT_ANTI_CLOAK_ADDRESS 0x1854U
+#define YT_MARKET_BASE_ADDRESS 0x1860U
 #define YT_CURRENT_WARPS_ADDRESS 0x1898U
 #define YT_PLANET_RECORD_SCRATCH_ADDRESS 0x19C4U
 #define YT_CURRENT_SECTOR_RECORD_ADDRESS 0x4B50U
@@ -68,7 +69,6 @@ struct yt_session {
 	float sector_cache[YT_PLAYER_LAST + 1];
 	float cloak_cache[YT_PLAYER_LAST + 1];
 	float black_hole[2];
-	float market_base[3];
 	struct yt_startup_main_prefix startup_prefix;
 	char queue[YT_COMMAND_SIZE];
 	size_t queue_length;
@@ -181,6 +181,16 @@ session_current_warps(const struct yt_session *session, float warps[6])
 	for (slot = 0U; slot < 6U; ++slot)
 		warps[slot] = yt_route_process_single(&session->route_process,
 		    (uint16_t)(YT_CURRENT_WARPS_ADDRESS + 4U * slot));
+}
+
+static void
+session_market_bases(const struct yt_session *session, float bases[3])
+{
+	size_t index;
+
+	for (index = 0U; index < 3U; ++index)
+		bases[index] = yt_route_process_single(&session->route_process,
+		    (uint16_t)(YT_MARKET_BASE_ADDRESS + 4U * index));
 }
 
 static void
@@ -3327,8 +3337,7 @@ port_update(struct yt_session *session, int sector_number,
 		state.sector_record_supplied = true;
 	}
 	state.port_offset = session->door->game.config.port_offset;
-	memcpy(state.base_price, session->market_base,
-	    sizeof(state.base_price));
+	session_market_bases(session, state.base_price);
 	if (loaded_sector != NULL) {
 		state.sector = *loaded_sector;
 		state.sector_loaded = true;
@@ -7609,8 +7618,7 @@ computer_port_ordinary(struct yt_session *session, int sector_number,
 	state.update.sector_record_expression = sector_record_expression;
 	state.update.sector_record_supplied = true;
 	state.update.port_offset = session->door->game.config.port_offset;
-	memcpy(state.update.base_price, session->market_base,
-	    sizeof(state.update.base_price));
+	session_market_bases(session, state.update.base_price);
 	state.report.current_player_record = session->player_record;
 	state.report.conversion_mode =
 	    session->presentation.sound.conversion_mode;
@@ -16649,7 +16657,8 @@ project_port_market(const struct yt_session *session,
 		denominator = single_mul(production, 1000.0f);
 		ratio = single_div(numerator, denominator);
 		scale = single_sub(1.0f, ratio);
-		raw = single_mul(session->market_base[index], scale);
+		raw = single_mul(yt_route_process_single(&session->route_process,
+		    (uint16_t)(YT_MARKET_BASE_ADDRESS + 4U * index)), scale);
 		prices[index + 1U] = floorf(single_add(raw, 0.5f));
 		if (prices[index + 1U] < 1.0f)
 			prices[index + 1U] = 1.0f;
@@ -18342,6 +18351,7 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 {
 	struct yt_session session;
 	struct yt_random launch_random;
+	float market_base[3];
 	char first[128];
 	char last[128];
 
@@ -18368,8 +18378,12 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	session.presentation.foreground = 7.0f;
 	session.pager.foreground = 7;
 	yt_random_init(&launch_random);
-	if (!yt_random_market_bases(&launch_random, session.market_base, error))
+	if (!yt_random_market_bases(&launch_random, market_base, error))
 		return false;
+	for (size_t index = 0U; index < 3U; ++index)
+		session_set_process_single(&session,
+		    (uint16_t)(YT_MARKET_BASE_ADDRESS + 4U * index),
+		    market_base[index]);
 	{
 		float requested = single_add(single_add(
 		    floorf((float)yt_platform_timer()),
