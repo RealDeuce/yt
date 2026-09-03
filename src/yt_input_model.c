@@ -389,6 +389,23 @@ yt_input_command_save_requested(const char *text, size_t capacity,
 }
 
 bool
+yt_input_ab36_inactivity_begin_process(float timer, uint8_t deadline[4])
+{
+	uint8_t raw[4];
+	float rounded_timer;
+	float value;
+
+	if (deadline == NULL)
+		return false;
+	rounded_timer = chat_single(timer);
+	value = chat_single_add(floorf(rounded_timer), 180.0f);
+	if (qb_mbf32_encode(value, raw) == QB_MBF_OVERFLOW)
+		return false;
+	memcpy(deadline, raw, sizeof(raw));
+	return true;
+}
+
+bool
 yt_input_ab36_inactivity_expired(float timer, float deadline, float mode)
 {
 	return timer > deadline && mode != 1.0f;

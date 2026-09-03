@@ -1112,12 +1112,17 @@ radio_append(const char *text, float sender, float recipient,
 static bool
 read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 {
+	uint8_t inactivity_deadline[4];
+
 	if (size == 0)
 		return false;
 	yt_pager_editor_enter(&session->pager, session->command_accumulator,
 	    sizeof(session->command_accumulator));
-	session_set_process_single(session, YT_INACTIVITY_DEADLINE_ADDRESS,
-	    single_add(floorf((float)yt_platform_timer()), 180.0f));
+	if (!yt_input_ab36_inactivity_begin_process(
+	    (float)yt_platform_timer(), inactivity_deadline))
+		return false;
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_INACTIVITY_DEADLINE_ADDRESS, inactivity_deadline);
 	dest[0] = '\0';
 	for (;;) {
 		struct yt_input_value selected = {{0, 0}, 0, 0, false};

@@ -340,6 +340,12 @@ test_arbitration(void)
 static void
 test_ab36_inactivity_gate(void)
 {
+	static const uint8_t raw_280[] = {0x00, 0x00, 0x0c, 0x89};
+	uint8_t deadline[] = {0xa5, 0x5a, 0x80, 0x00};
+
+	CHECK(yt_input_ab36_inactivity_begin_process(100.9f, deadline));
+	CHECK(memcmp(deadline, raw_280, sizeof(deadline)) == 0);
+	CHECK(!yt_input_ab36_inactivity_begin_process(100.9f, NULL));
 	CHECK(!yt_input_ab36_inactivity_expired(280.0f, 280.0f, 0.0f));
 	CHECK(!yt_input_ab36_inactivity_expired(279.0f, 280.0f, 0.0f));
 	CHECK(yt_input_ab36_inactivity_expired(281.0f, 280.0f, 0.0f));
