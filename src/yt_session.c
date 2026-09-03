@@ -39,6 +39,7 @@
 #define YT_LOTTERY_PLAYS_ADDRESS 0x4BB8U
 #define YT_MAXIMUM_PLANETS_ADDRESS 0x4BA8U
 #define YT_MAXIMUM_HOLDS_ADDRESS 0x19E8U
+#define YT_TOTAL_RECORDS_ADDRESS 0x19D4U
 #define YT_CLEARANCE_HOLDS_ADDRESS 0x4B54U
 #define YT_CLEARANCE_FIGHTERS_ADDRESS 0x4B58U
 #define YT_CLEARANCE_GROUND_ADDRESS 0x4B5CU
@@ -2048,6 +2049,16 @@ startup_configuration_store_epoch_year(void *context,
 	    YT_EPOCH_YEAR_ADDRESS, raw);
 }
 
+static void
+startup_configuration_store_total_records(void *context,
+    const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_TOTAL_RECORDS_ADDRESS, raw);
+}
+
 static bool
 load_configuration(struct yt_session *session, struct yt_error *error)
 {
@@ -2066,6 +2077,7 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 		startup_configuration_store_maximum_planets,
 		startup_configuration_store_maximum_holds,
 		startup_configuration_store_epoch_year,
+		startup_configuration_store_total_records,
 	};
 	struct yt_game *game = &session->door->game;
 	struct yt_startup_configuration_state state;
@@ -9707,7 +9719,8 @@ planet_rename(struct yt_session *session, int logical_planet, bool *renamed,
 		    (float)logical_planet);
 		if (yt_planet_rename_protected(current_record,
 		    session->door->game.config.planet_offset,
-		    session->door->game.config.total_records))
+		    yt_route_process_single(&session->route_process,
+		    YT_TOTAL_RECORDS_ADDRESS)))
 			return session_02db(session, protected,
 			    sizeof(protected) - 1U,
 			    "planet Rename protected", error);
@@ -10395,7 +10408,8 @@ planet_move_hop(struct yt_session *session, int source_number,
 	float actual_destination = (float)destination;
 	float draw;
 	float xannor_planet = single_sub(
-	    session->door->game.config.total_records,
+	    yt_route_process_single(&session->route_process,
+	    YT_TOTAL_RECORDS_ADDRESS),
 	    session->door->game.config.planet_offset);
 	uint32_t moving_record;
 	int source_record;
@@ -11066,7 +11080,8 @@ create_planet(struct yt_session *session, struct yt_error *error)
 			selected_physical = physical;
 			break;
 		}
-		if (scan >= session->door->game.config.total_records) {
+		if (scan >= yt_route_process_single(&session->route_process,
+		    YT_TOTAL_RECORDS_ADDRESS)) {
 			if (!session_02db(session, all_taken,
 			    sizeof(all_taken) - 1U,
 			    "planet creation allocation full", error)
@@ -11076,7 +11091,8 @@ create_planet(struct yt_session *session, struct yt_error *error)
 			return true;
 		}
 		scan = single_add(scan, 1.0f);
-		if (scan > session->door->game.config.total_records) {
+		if (scan > yt_route_process_single(&session->route_process,
+		    YT_TOTAL_RECORDS_ADDRESS)) {
 			if (error != NULL) {
 				error->status = YT_RANGE;
 				snprintf(error->operation, sizeof(error->operation), "%s",
@@ -16285,7 +16301,8 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 		last_friendly = fighter_friendly;
 		valid_link = sector.planet > 0.0f
 		    && sector.planet <= single_sub(
-		    session->door->game.config.total_records,
+		    yt_route_process_single(&session->route_process,
+		    YT_TOTAL_RECORDS_ADDRESS),
 		    session->door->game.config.planet_offset);
 		if (valid_link) {
 			size_t name_length;
