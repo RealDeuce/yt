@@ -9707,6 +9707,92 @@ build_route(struct yt_session *session, float start, float destination,
 	return true;
 }
 
+struct projectile_route_cells {
+	uint16_t missiles;
+	uint16_t destination;
+	uint16_t origin;
+};
+
+static const struct projectile_route_cells projectile_main_cells = {
+	0x4e32U,
+	0x4e12U,
+	0x1c44U,
+};
+
+static const struct projectile_route_cells projectile_xannor_cells = {
+	0x5b62U,
+	0x5b82U,
+	0x4bd8U,
+};
+
+static const struct projectile_route_cells projectile_counterlaunch_cells = {
+	0x5bc6U,
+	0x5bc2U,
+	0x5bbeU,
+};
+
+static void
+route_process_store_single(struct yt_route_process *process, uint16_t address,
+    float value)
+{
+	uint8_t raw[4];
+
+	if (qb_mbf32_encode(value, raw) != QB_MBF_OVERFLOW)
+		yt_route_process_set_raw_single(process, address, raw);
+}
+
+static void
+projectile_route_cells_store(struct yt_session *session,
+    const struct projectile_route_cells *cells, float origin,
+    float destination, float missiles)
+{
+	route_process_store_single(&session->route_process, cells->origin,
+	    origin);
+	route_process_store_single(&session->route_process, cells->destination,
+	    destination);
+	route_process_store_single(&session->route_process, cells->missiles,
+	    missiles);
+}
+
+static void
+projectile_route_cells_load(const struct yt_session *session,
+    const struct projectile_route_cells *cells, float *origin,
+    float *destination, float *missiles)
+{
+	*origin = yt_route_process_single(&session->route_process,
+	    cells->origin);
+	*destination = yt_route_process_single(&session->route_process,
+	    cells->destination);
+	*missiles = yt_route_process_single(&session->route_process,
+	    cells->missiles);
+}
+
+static bool
+build_route_cells(struct yt_session *session,
+    const struct projectile_route_cells *cells, bool use_avoid, bool *found,
+    enum yt_route_outcome *route_outcome, float *returned_status,
+    struct yt_error *error)
+{
+	float status = use_avoid ? 1.0f : 0.0f;
+	enum yt_route_outcome outcome;
+	bool success;
+
+	success = yt_route_process_build_cells(cells->origin,
+	    cells->destination, &status,
+	    session->presentation.sound.conversion_mode,
+	    &session->route_process, route_sector_reader, session, &outcome,
+	    error);
+	if (!success)
+		return false;
+	*found = outcome == YT_ROUTE_FOUND || outcome == YT_ROUTE_SAME
+	    || outcome == YT_ROUTE_BACK_EDGE;
+	if (route_outcome != NULL)
+		*route_outcome = outcome;
+	if (returned_status != NULL)
+		*returned_status = status;
+	return true;
+}
+
 static bool
 planet_move_friendship(struct yt_session *session, float owner,
     bool *friendly, struct yt_error *error)
@@ -14157,18 +14243,16 @@ plasma_route_footer(void *context, const uint8_t *text, size_t length,
 }
 
 static bool
-launch_projectile(struct yt_session *session, float target, float amount,
-    bool plasma, float *returned_missiles, float *origin_alias,
-    int *pending_counterattack, int *pending_xannor,
+launch_projectile(struct yt_session *session, float *target, float *amount,
+    bool plasma, const struct projectile_route_cells *cells,
+    float *origin_alias, int *pending_counterattack, int *pending_xannor,
 	struct yt_error *error)
 {
-	float destination = target;
+	float destination = *target;
 	bool overflow;
 	bool found;
 	int cursor;
-	float local_missiles = amount;
-	float *missiles = returned_missiles != NULL
-	    ? returned_missiles : &local_missiles;
+	float *missiles = amount;
 	double energy;
 	float hop_loss;
 	uint8_t attacker[YT_PROJECTILE_ATTACKER_CAPACITY];
@@ -14183,12 +14267,13 @@ launch_projectile(struct yt_session *session, float target, float amount,
 	int start = (int)(origin_alias != NULL
 	    ? *origin_alias : session->player.sector);
 
-	*missiles = amount;
-
-	(void)qb_cint(target, &overflow);
+	if (!plasma)
+		projectile_route_cells_store(session, cells, *origin_alias, *target,
+		    *missiles);
+	(void)qb_cint(*target, &overflow);
 	if (overflow)
 		return true;
-	if (!projectile_opening(session, amount, plasma,
+	if (!projectile_opening(session, *amount, plasma,
 	    &last_mine_news_sector, &energy, &hop_loss, attacker,
 	    sizeof(attacker), &attacker_length, error))
 		return false;
@@ -14246,12 +14331,17 @@ launch_projectile(struct yt_session *session, float target, float amount,
 		float route_status;
 		struct yt_projectile_route_entry_state route_entry;
 
-		if (!build_route(session, (float)start, destination, NULL,
+		bool route_success = build_route_cells(session, cells,
 		    yt_projectile_route_avoid_enabled(plasma, *counterattack,
 		    session->player_record), &found, &route_outcome, &route_status,
-		    error)) {
+		    error);
+
+		projectile_route_cells_load(session, cells, origin_alias, target,
+		    missiles);
+		start = (int)*origin_alias;
+		destination = *target;
+		if (!route_success)
 			return false;
-		}
 		if (route_outcome == YT_ROUTE_NOT_FOUND
 		    && !route_failure_report(session, error)) {
 			return false;
@@ -14293,8 +14383,15 @@ launch_projectile(struct yt_session *session, float target, float amount,
 					&local_destination,
 				};
 
-				if (!yt_projectile_cruise_reroute_run(&state,
-				    &cruise_ops, session, error))
+				bool reroute_success =
+				    yt_projectile_cruise_reroute_run(&state,
+				    &cruise_ops, session, error);
+
+				*origin_alias = *state.origin;
+				*target = *state.destination;
+				projectile_route_cells_store(session, cells,
+				    *origin_alias, *target, *missiles);
+				if (!reroute_success)
 					return false;
 				start = (int)*state.origin;
 				destination = *state.destination;
@@ -14316,9 +14413,13 @@ launch_projectile(struct yt_session *session, float target, float amount,
 				return true;
 			enum missile_sector_route sector_route;
 
-			if (!missile_sector(session, next, missiles,
+			bool sector_success = missile_sector(session, next, missiles,
 			    counterattack, xannor_provoker, &last_mine_news_sector,
-			    &sector_route, error))
+			    &sector_route, error);
+
+			route_process_store_single(&session->route_process,
+			    cells->missiles, *missiles);
+			if (!sector_success)
 				return false;
 			if (sector_route == MISSILE_SECTOR_RETURN)
 				return true;
@@ -14336,13 +14437,15 @@ launch_projectile(struct yt_session *session, float target, float amount,
 }
 
 static bool
-session_projectile_resolver(void *context, float *origin, float target,
-    float amount, bool plasma, int *counterattack, int *xannor_provoker,
+session_projectile_resolver(void *context, float *origin, float *target,
+    float *amount, bool plasma, int *counterattack, int *xannor_provoker,
     struct yt_error *error)
 {
 	struct yt_session *session = context;
+	const struct projectile_route_cells *cells = session->player_record == -1
+	    ? &projectile_xannor_cells : &projectile_main_cells;
 
-	return launch_projectile(session, target, amount, plasma, NULL, origin,
+	return launch_projectile(session, target, amount, plasma, cells, origin,
 	    counterattack, xannor_provoker, error);
 }
 
@@ -14475,14 +14578,15 @@ session_counterlaunch_news(void *context, const uint8_t *text, size_t length,
 }
 
 static bool
-session_counterlaunch_projectile(void *context, float *origin, float target,
+session_counterlaunch_projectile(void *context, float *origin, float *target,
     float *amount, bool plasma, int *counterattack, int *xannor_provoker,
     struct yt_error *error)
 {
 	struct yt_session *session = context;
 
-	return launch_projectile(session, target, *amount, plasma, amount, origin,
-	    counterattack, xannor_provoker, error);
+	return launch_projectile(session, target, amount, plasma,
+	    &projectile_counterlaunch_cells, origin, counterattack,
+	    xannor_provoker, error);
 }
 
 static bool

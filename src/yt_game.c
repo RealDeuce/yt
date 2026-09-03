@@ -1230,6 +1230,7 @@ yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
 	float saved_cloak = 0.0f;
 	int target_candidate;
 	float target;
+	float projectile_amount;
 	int amount;
 	int ignored_counterattack = 0;
 	char amount_text[64];
@@ -1283,10 +1284,11 @@ yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
 	    "The Xannor have launched%s missiles at sector%s!",
 	    amount_text, target_text) < 0)
 		return false;
+	projectile_amount = (float)amount;
 	if (!ops->present(context, (const uint8_t *)row, strlen(row), true,
 	    error)
-	    || !ops->projectile(context, state->headquarters, target,
-	    (float)amount, false, &ignored_counterattack, state->provoker,
+	    || !ops->projectile(context, state->headquarters, &target,
+	    &projectile_amount, false, &ignored_counterattack, state->provoker,
 	    error))
 		return false;
 
@@ -1518,8 +1520,8 @@ yt_projectile_command_run(struct yt_projectile_command_state *state,
 	*state->destroyed = false;
 	state->destruction_cleared = true;
 	state->resolver_called = true;
-	if (!ops->resolve(context, &state->origin, state->target,
-	    state->amount, state->plasma, &state->counterattack,
+	if (!ops->resolve(context, &state->origin, &state->target,
+	    &state->amount, state->plasma, &state->counterattack,
 	    &state->xannor_provoker, error))
 		return false;
 	state->counterlaunch_called = true;
@@ -1866,7 +1868,7 @@ yt_projectile_commit(struct yt_game *game, int player_record,
 		return false;
 	/* YT:22AC clears the fatal result only after the PUT completes. */
 	*destroyed = false;
-	return resolver(resolver_context, origin, target, amount, plasma,
+	return resolver(resolver_context, origin, &target, &amount, plasma,
 	    counterattack, xannor_provoker, error);
 }
 
@@ -2069,7 +2071,7 @@ yt_counterlaunch_run(struct yt_counterlaunch_state *state,
 	    || !ops->append_news(context, news_row, news_length, error))
 		return false;
 	origin = attacker.sector;
-	if (!ops->projectile(context, &origin, target,
+	if (!ops->projectile(context, &origin, &target,
 	    state->retained_count, false, state->counterattacker,
 	    state->xannor_provoker, error))
 		return false;

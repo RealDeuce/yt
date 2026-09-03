@@ -1518,7 +1518,7 @@ typedef bool (*yt_xannor_retaliation_random_fn)(void *context, int count,
 typedef bool (*yt_xannor_retaliation_present_fn)(void *context,
     const uint8_t *text, size_t length, bool bold, struct yt_error *error);
 typedef bool (*yt_xannor_retaliation_projectile_fn)(void *context,
-    float *origin, float target, float amount, bool plasma,
+    float *origin, float *target, float *amount, bool plasma,
     int *counterattack, int *xannor_provoker, struct yt_error *error);
 typedef bool (*yt_xannor_retaliation_read_player_fn)(void *context,
     int player_record, struct yt_player *player, struct yt_error *error);
@@ -1558,7 +1558,7 @@ typedef bool (*yt_counterlaunch_present_fn)(void *context,
 typedef bool (*yt_counterlaunch_news_fn)(void *context, const uint8_t *text,
     size_t length, struct yt_error *error);
 typedef bool (*yt_counterlaunch_projectile_fn)(void *context, float *origin,
-    float target, float *amount, bool plasma, int *counterattack,
+    float *target, float *amount, bool plasma, int *counterattack,
     int *xannor_provoker, struct yt_error *error);
 typedef bool (*yt_counterlaunch_wait_fn)(void *context, double seconds,
     struct yt_error *error);
@@ -4116,8 +4116,8 @@ struct yt_projectile_command_ops {
 	bool (*write_player)(void *context, int player_record,
 	    struct yt_player *player, struct yt_error *error);
 	bool (*flush)(void *context, struct yt_error *error);
-	bool (*resolve)(void *context, float *origin, float target,
-	    float amount, bool plasma, int *counterattack,
+	bool (*resolve)(void *context, float *origin, float *target,
+	    float *amount, bool plasma, int *counterattack,
 	    int *xannor_provoker, struct yt_error *error);
 	bool (*counterlaunch)(void *context, int *counterattack,
 	    int *xannor_provoker, struct yt_error *error);
@@ -4134,7 +4134,7 @@ float yt_projectile_quantity_response(const char *response);
 void yt_projectile_debit_overlay(struct yt_player *player, bool plasma,
     float amount);
 typedef bool (*yt_projectile_resolver_fn)(void *context, float *origin,
-    float target, float amount, bool plasma, int *counterattack,
+    float *target, float *amount, bool plasma, int *counterattack,
     int *xannor_provoker, struct yt_error *error);
 bool yt_projectile_commit(struct yt_game *game, int player_record,
     struct yt_player *player, bool plasma, float *origin, float target,

@@ -7486,8 +7486,8 @@ struct projectile_bridge_capture {
 };
 
 static bool
-capture_projectile_bridge(void *context, float *origin, float target,
-    float amount, bool plasma, int *counterattack, int *xannor_provoker,
+capture_projectile_bridge(void *context, float *origin, float *target,
+    float *amount, bool plasma, int *counterattack, int *xannor_provoker,
     struct yt_error *error)
 {
 	struct projectile_bridge_capture *capture = context;
@@ -7495,8 +7495,8 @@ capture_projectile_bridge(void *context, float *origin, float target,
 
 	++capture->calls;
 	capture->origin = *origin;
-	capture->target = target;
-	capture->amount = amount;
+	capture->target = *target;
+	capture->amount = *amount;
 	capture->plasma = plasma;
 	capture->valid = !*capture->destroyed
 	    && yt_database_read(&capture->game->database,
@@ -7734,15 +7734,15 @@ xannor_present(void *context, const uint8_t *text, size_t length, bool bold,
 }
 
 static bool
-xannor_projectile(void *context, float *origin, float target, float amount,
+xannor_projectile(void *context, float *origin, float *target, float *amount,
     bool plasma, int *counterattack, int *xannor_provoker,
     struct yt_error *error)
 {
 	struct xannor_tape *tape = context;
 
 	(void)error;
-	tape->projectile_target = target;
-	tape->projectile_amount = amount;
+	tape->projectile_target = *target;
+	tape->projectile_amount = *amount;
 	tape->projectile_sector = tape->live_player->sector;
 	tape->projectile_cloak = tape->live_cloak[*tape->live_record == -1
 	    ? 2 : *tape->live_record];
@@ -8127,7 +8127,7 @@ counterlaunch_news(void *context, const uint8_t *text, size_t length,
 }
 
 static bool
-counterlaunch_projectile(void *context, float *origin, float target,
+counterlaunch_projectile(void *context, float *origin, float *target,
     float *amount, bool plasma, int *counterattack, int *xannor_provoker,
     struct yt_error *error)
 {
@@ -8135,7 +8135,7 @@ counterlaunch_projectile(void *context, float *origin, float target,
 
 	(void)error;
 	tape->projectile_origin = *origin;
-	tape->projectile_target = target;
+	tape->projectile_target = *target;
 	tape->projectile_amount = *amount;
 	tape->child_valid = !plasma && origin != NULL && amount != NULL
 	    && counterattack == tape->live_counterattacker
@@ -28901,8 +28901,8 @@ projectile_command_test_flush(void *context, struct yt_error *error)
 }
 
 static bool
-projectile_command_test_resolve(void *context, float *origin, float target,
-    float amount, bool plasma, int *counterattack, int *xannor_provoker,
+projectile_command_test_resolve(void *context, float *origin, float *target,
+    float *amount, bool plasma, int *counterattack, int *xannor_provoker,
     struct yt_error *error)
 {
 	struct projectile_command_tape *tape = context;
@@ -28910,10 +28910,12 @@ projectile_command_test_resolve(void *context, float *origin, float target,
 	if (!projectile_command_step(tape, PROJECTILE_COMMAND_RESOLVE, error))
 		return false;
 	tape->resolved_origin = *origin;
-	tape->resolved_target = target;
-	tape->resolved_amount = amount;
+	tape->resolved_target = *target;
+	tape->resolved_amount = *amount;
 	tape->resolved_plasma = plasma;
 	*origin = 13.0f;
+	*target = 14.0f;
+	*amount = 1.0f;
 	*counterattack = 3;
 	*xannor_provoker = 4;
 	return true;
@@ -29034,8 +29036,8 @@ check_projectile_command_transaction(void)
 	    NULL) || !state.complete
 	    || state.route != YT_PROJECTILE_COMMAND_RETURNED
 	    || state.attempts != 1U || state.hydrations != 2U
-	    || state.available != 5.0f || state.target != 42.0f
-	    || state.amount != 2.0f || !state.target_stored
+	    || state.available != 5.0f || state.target != 14.0f
+	    || state.amount != 1.0f || !state.target_stored
 	    || !state.amount_stored || !state.finalizer_called
 	    || !state.player_written || !state.player_flushed
 	    || !state.destruction_cleared || !state.resolver_called
