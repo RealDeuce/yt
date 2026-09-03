@@ -42,6 +42,7 @@
 #define YT_TOTAL_RECORDS_ADDRESS 0x19D4U
 #define YT_SECTOR_OFFSET_ADDRESS 0x19DCU
 #define YT_PORT_OFFSET_ADDRESS 0x19E0U
+#define YT_PLANET_OFFSET_ADDRESS 0x19E4U
 #define YT_CLEARANCE_HOLDS_ADDRESS 0x4B54U
 #define YT_CLEARANCE_FIGHTERS_ADDRESS 0x4B58U
 #define YT_CLEARANCE_GROUND_ADDRESS 0x4B5CU
@@ -145,6 +146,13 @@ session_port_offset(const struct yt_session *session)
 {
 	return yt_route_process_single(&session->route_process,
 	    YT_PORT_OFFSET_ADDRESS);
+}
+
+static float
+session_planet_offset(const struct yt_session *session)
+{
+	return yt_route_process_single(&session->route_process,
+	    YT_PLANET_OFFSET_ADDRESS);
 }
 
 static void
@@ -506,7 +514,7 @@ sector_count(const struct yt_session *session)
 static int
 port_count(const struct yt_session *session)
 {
-	return (int)(session->door->game.config.planet_offset
+	return (int)(session_planet_offset(session)
 	    - session_port_offset(session));
 }
 
@@ -2095,6 +2103,16 @@ startup_configuration_store_port_offset(void *context,
 	    YT_PORT_OFFSET_ADDRESS, raw);
 }
 
+static void
+startup_configuration_store_planet_offset(void *context,
+    const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_PLANET_OFFSET_ADDRESS, raw);
+}
+
 static bool
 load_configuration(struct yt_session *session, struct yt_error *error)
 {
@@ -2116,6 +2134,7 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 		startup_configuration_store_total_records,
 		startup_configuration_store_sector_offset,
 		startup_configuration_store_port_offset,
+		startup_configuration_store_planet_offset,
 	};
 	struct yt_game *game = &session->door->game;
 	struct yt_startup_configuration_state state;
@@ -3673,13 +3692,13 @@ planet_update_cached_physical(struct yt_session *session,
 	float expression;
 
 	logical = single_sub((float)physical_record,
-	    session->door->game.config.planet_offset);
-	expression = single_add(session->door->game.config.planet_offset,
+	    session_planet_offset(session));
+	expression = single_add(session_planet_offset(session),
 	    logical);
 	if (qb_brun_random_record_number(expression) != physical_record
 	    || qb_mbf32_encode(logical, state.logical_planet_raw)
 	    == QB_MBF_OVERFLOW
-	    || qb_mbf32_encode(session->door->game.config.planet_offset,
+	    || qb_mbf32_encode(session_planet_offset(session),
 	    state.planet_offset_raw) == QB_MBF_OVERFLOW) {
 		if (error != NULL) {
 			error->status = YT_RANGE;
@@ -3937,7 +3956,7 @@ display_sector_one(struct yt_session *session, float logical_sector,
 	if (sector.planet > 0.0f) {
 		struct yt_planet planet;
 		float expression = single_add(
-		    session->door->game.config.planet_offset, sector.planet);
+		    session_planet_offset(session), sector.planet);
 		uint32_t physical_planet =
 		    qb_brun_random_record_number(expression);
 		float saved_foreground;
@@ -4484,7 +4503,7 @@ spy_update_planet(void *context, float link, struct yt_error *error)
 	struct yt_session *session = context;
 	struct yt_planet planet;
 	uint32_t physical = qb_brun_random_record_number(single_add(
-	    session->door->game.config.planet_offset, link));
+	    session_planet_offset(session), link));
 
 	return planet_update_cached_physical(session, physical, &planet, NULL,
 	    error);
@@ -4496,7 +4515,7 @@ spy_read_planet(void *context, float link, struct yt_planet *planet,
 {
 	struct yt_session *session = context;
 	uint32_t physical = qb_brun_random_record_number(single_add(
-	    session->door->game.config.planet_offset, link));
+	    session_planet_offset(session), link));
 
 	return read_planet_physical(session, physical, planet, error);
 }
@@ -9753,10 +9772,10 @@ planet_rename(struct yt_session *session, int logical_planet, bool *renamed,
 		size_t confirmation_length = 0;
 
 		current_record = single_add(
-		    session->door->game.config.planet_offset,
+		    session_planet_offset(session),
 		    (float)logical_planet);
 		if (yt_planet_rename_protected(current_record,
-		    session->door->game.config.planet_offset,
+		    session_planet_offset(session),
 		    yt_route_process_single(&session->route_process,
 		    YT_TOTAL_RECORDS_ADDRESS)))
 			return session_02db(session, protected,
@@ -10448,7 +10467,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 	float xannor_planet = single_sub(
 	    yt_route_process_single(&session->route_process,
 	    YT_TOTAL_RECORDS_ADDRESS),
-	    session->door->game.config.planet_offset);
+	    session_planet_offset(session));
 	uint32_t moving_record;
 	int source_record;
 	int destination_record;
@@ -10498,10 +10517,10 @@ planet_move_hop(struct yt_session *session, int source_number,
 		return false;
 	source_link = source.planet;
 	moving_record = qb_brun_random_record_number(single_add(
-	    session->door->game.config.planet_offset, source_link));
+	    session_planet_offset(session), source_link));
 	moving_planet = single_sub(single_add(
-	    session->door->game.config.planet_offset, source_link),
-	    session->door->game.config.planet_offset);
+	    session_planet_offset(session), source_link),
+	    session_planet_offset(session));
 	yt_planet_move_sector_overlay(&source, 0.0f);
 	source_record = yt_sector_basic_record(&session->door->game.config,
 	    source_number);
@@ -10846,7 +10865,7 @@ planet_menu(struct yt_session *session, int logical_planet,
 	    "Planet command (?=help) [A]? ";
 
 	session_set_process_single(session, YT_PLANET_RECORD_SCRATCH_ADDRESS,
-	    single_add(session->door->game.config.planet_offset,
+	    single_add(session_planet_offset(session),
 	    (float)logical_planet));
 	for (;;) {
 		char upper[80];
@@ -11105,7 +11124,7 @@ create_planet(struct yt_session *session, struct yt_error *error)
 		return false;
 	if (answer != YT_YES_NO_YES)
 		return true;
-	scan = single_add(session->door->game.config.planet_offset, 2.0f);
+	scan = single_add(session_planet_offset(session), 2.0f);
 	for (;;) {
 		uint32_t physical = qb_brun_random_record_number(scan);
 
@@ -11140,7 +11159,7 @@ create_planet(struct yt_session *session, struct yt_error *error)
 		}
 	}
 	selected_logical = single_sub(selected_expression,
-	    session->door->game.config.planet_offset);
+	    session_planet_offset(session));
 	if (selected_physical
 	    != qb_brun_random_record_number(selected_expression)
 	    || selected_logical < (float)INT_MIN
@@ -11203,7 +11222,7 @@ planet_permission_update(void *context, float logical_planet,
     struct yt_error *error)
 {
 	struct yt_session *session = context;
-	volatile float record_value = session->door->game.config.planet_offset
+	volatile float record_value = session_planet_offset(session)
 	    + logical_planet;
 	uint32_t physical = qb_brun_random_record_number(record_value);
 
@@ -11352,14 +11371,14 @@ command_land(struct yt_session *session, bool *enter_sector,
 	if (!session_0317(session, landing, sizeof(landing) - 1U,
 	    "planet landing progress", error))
 		return false;
-	planet_record_value = session->door->game.config.planet_offset
+	planet_record_value = session_planet_offset(session)
 	    + sector.planet;
 	session_set_process_single(session, YT_PLANET_RECORD_SCRATCH_ADDRESS,
 	    planet_record_value);
 	memset(&permission_state, 0, sizeof(permission_state));
 	permission_state.planet_record_value = planet_record_value;
 	permission_state.planet_offset =
-	    session->door->game.config.planet_offset;
+	    session_planet_offset(session);
 	permission_state.current_player_record = session->player_record;
 	permission_state.last_player_record = YT_PLAYER_LAST;
 	permission_state.foreground = session->presentation.foreground;
@@ -11415,13 +11434,13 @@ command_land(struct yt_session *session, bool *enter_sector,
 			return true;
 		}
 	}
-	if ((int64_t)physical - (int)session->door->game.config.planet_offset
+	if ((int64_t)physical - (int)session_planet_offset(session)
 	    < INT_MIN
 	    || (int64_t)physical
-	    - (int)session->door->game.config.planet_offset > INT_MAX)
+	    - (int)session_planet_offset(session) > INT_MAX)
 		return false;
 	logical = (int)((int64_t)physical
-	    - (int)session->door->game.config.planet_offset);
+	    - (int)session_planet_offset(session));
 	if (!planet_inventory(session, logical, error))
 		return false;
 	return planet_menu(session, logical, enter_sector, error);
@@ -13288,7 +13307,7 @@ command_collect(struct yt_session *session, bool collecting,
 	struct yt_treasury_state state = {
 		.current_player_record = (float)session->player_record,
 		.port_offset = session_port_offset(session),
-		.planet_offset = session->door->game.config.planet_offset,
+		.planet_offset = session_planet_offset(session),
 		.conversion_mode = session->presentation.sound.conversion_mode,
 	};
 	static const uint8_t true_raw[4] = {0x00, 0x00, 0x00, 0x81};
@@ -13578,7 +13597,7 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 	if (logical_planet == 0)
 		return true;
 	physical_planet = yt_projectile_physical_record(
-	    session->door->game.config.planet_offset, sector->planet);
+	    session_planet_offset(session), sector->planet);
 	physical_sector = yt_projectile_physical_record(
 	    session_sector_offset(session), (float)sector_number);
 	if (!planet_update_cached_physical(session, physical_planet,
@@ -16341,13 +16360,13 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 		    && sector.planet <= single_sub(
 		    yt_route_process_single(&session->route_process,
 		    YT_TOTAL_RECORDS_ADDRESS),
-		    session->door->game.config.planet_offset);
+		    session_planet_offset(session));
 		if (valid_link) {
 			size_t name_length;
 
 			session_set_process_single(session,
 			    YT_PLANET_RECORD_SCRATCH_ADDRESS,
-			    single_add(session->door->game.config.planet_offset,
+			    single_add(session_planet_offset(session),
 			    sector.planet));
 			if (!yt_game_read_planet(&session->door->game,
 			    (int)sector.planet, &planet, error)
@@ -16412,7 +16431,7 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 		return planet_inventory(session, (int)(valid_link
 		    ? sector.planet : single_sub(yt_route_process_single(
 		    &session->route_process, YT_PLANET_RECORD_SCRATCH_ADDRESS),
-		    session->door->game.config.planet_offset)), error);
+		    session_planet_offset(session))), error);
 	}
 }
 
@@ -16538,7 +16557,7 @@ computer_owned_planets(struct yt_session *session, struct yt_error *error)
 	};
 	struct yt_owned_planets_state state = {
 		.maximum_sector = sector_count(session),
-		.planet_record_base = session->door->game.config.planet_offset,
+		.planet_record_base = session_planet_offset(session),
 		.current_player = (float)session->player_record,
 		.blink = session->presentation.blink,
 	};
@@ -16683,7 +16702,7 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 		visibility.last_player_record =
 		    session_sector_offset(session);
 		visibility.planet_record_offset =
-		    session->door->game.config.planet_offset;
+		    session_planet_offset(session);
 		visibility.inherited_index = yt_route_process_single(
 		    &session->route_process, YT_SHARED_LOOP_SCRATCH_ADDRESS);
 		visibility.field_kind = YT_COMPUTER_PORT_FIELD_SECTOR;
