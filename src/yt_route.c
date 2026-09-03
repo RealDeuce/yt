@@ -227,7 +227,9 @@ yt_route_process_second(const struct yt_route_process *process,
 }
 
 struct route_arguments {
-	bool addressed;
+	bool start_addressed;
+	bool destination_addressed;
+	bool status_addressed;
 	uint16_t start_address;
 	uint16_t destination_address;
 	uint16_t status_address;
@@ -240,7 +242,7 @@ static float
 route_argument_start(const struct route_arguments *arguments,
     const struct yt_route_process *process)
 {
-	return arguments->addressed
+	return arguments->start_addressed
 	    ? route_process_read_single(process, arguments->start_address)
 	    : arguments->start_value;
 }
@@ -249,7 +251,7 @@ static float
 route_argument_destination(const struct route_arguments *arguments,
     const struct yt_route_process *process)
 {
-	return arguments->addressed
+	return arguments->destination_addressed
 	    ? route_process_read_single(process, arguments->destination_address)
 	    : arguments->destination_value;
 }
@@ -258,7 +260,7 @@ static float
 route_argument_status(const struct route_arguments *arguments,
     const struct yt_route_process *process)
 {
-	return arguments->addressed
+	return arguments->status_addressed
 	    ? route_process_read_single(process, arguments->status_address)
 	    : *arguments->status;
 }
@@ -267,7 +269,7 @@ static bool
 route_argument_write_status(struct route_arguments *arguments,
     struct yt_route_process *process, float value, struct yt_error *error)
 {
-	if (arguments->addressed)
+	if (arguments->status_addressed)
 		return route_process_write_single(process,
 		    arguments->status_address, value, error);
 	*arguments->status = value;
@@ -287,7 +289,7 @@ route_process_build(struct route_arguments *arguments,
 	float start_value;
 	float destination_value;
 
-	if (arguments == NULL || (!arguments->addressed
+	if (arguments == NULL || (!arguments->status_addressed
 	    && arguments->status == NULL) || process == NULL || reader == NULL
 	    || outcome == NULL)
 		return route_error(error, "route arguments");
@@ -490,7 +492,9 @@ yt_route_process_build_at(uint16_t start_address,
     enum yt_route_outcome *outcome, struct yt_error *error)
 {
 	struct route_arguments arguments = {
-		.addressed = true,
+		.start_addressed = true,
+		.destination_addressed = true,
+		.status_addressed = true,
 		.start_address = start_address,
 		.destination_address = destination_address,
 		.status_address = status_address,
@@ -505,13 +509,38 @@ yt_route_process_build_at(uint16_t start_address,
 }
 
 bool
+yt_route_process_build_cells(uint16_t start_address,
+    uint16_t destination_address, float *status, uint8_t conversion_mode,
+    struct yt_route_process *process, yt_route_sector_reader reader,
+    void *reader_context, enum yt_route_outcome *outcome,
+    struct yt_error *error)
+{
+	struct route_arguments arguments = {
+		.start_addressed = true,
+		.destination_addressed = true,
+		.status_addressed = false,
+		.start_address = start_address,
+		.destination_address = destination_address,
+		.status = status,
+	};
+
+	if (!route_argument_pointer_valid(start_address)
+	    || !route_argument_pointer_valid(destination_address))
+		return route_error(error, "route argument workspace alias");
+	return route_process_build(&arguments, conversion_mode, process, reader,
+	    reader_context, outcome, error);
+}
+
+bool
 yt_route_process_build(float start_value, float destination_value,
     float *status, uint8_t conversion_mode, struct yt_route_process *process,
     yt_route_sector_reader reader, void *reader_context,
     enum yt_route_outcome *outcome, struct yt_error *error)
 {
 	struct route_arguments arguments = {
-		.addressed = false,
+		.start_addressed = false,
+		.destination_addressed = false,
+		.status_addressed = false,
 		.start_value = start_value,
 		.destination_value = destination_value,
 		.status = status,

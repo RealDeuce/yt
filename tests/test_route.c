@@ -334,6 +334,7 @@ test_addressed_route_arguments(void)
 	struct yt_route_process process;
 	enum yt_route_outcome outcome;
 	struct yt_error error;
+	float status;
 	uint8_t raw[4];
 	uint8_t returned[4];
 
@@ -354,6 +355,24 @@ test_addressed_route_arguments(void)
 	    &error));
 	CHECK(outcome == YT_ROUTE_FOUND
 	    && yt_route_process_single(&process, status_address) == 0.0f
+	    && yt_route_process_second(&process, 1) == 2
+	    && yt_route_process_second(&process, 2) == 3
+	    && process.bytes[destination_address] == 0xd3U
+	    && process.bytes[destination_address + 1U] == 0x18U);
+
+	memset(&process, 0, sizeof(process));
+	CHECK(qb_mbf32_encode(1.0f, raw) == QB_MBF_OK);
+	yt_route_process_set_raw_single(&process, start_address, raw);
+	CHECK(qb_mbf32_encode(3.0f, raw) == QB_MBF_OK);
+	yt_route_process_set_raw_single(&process, destination_address, raw);
+	CHECK(yt_route_process_set_avoid_slot(&process, 0U, 6355.0f,
+	    &error));
+	status = 1.0f;
+	graph.expanded_count = 0U;
+	yt_error_clear(&error);
+	CHECK(yt_route_process_build_cells(start_address, destination_address,
+	    &status, 0, &process, read_sector, &graph, &outcome, &error));
+	CHECK(outcome == YT_ROUTE_FOUND && status == 0.0f
 	    && yt_route_process_second(&process, 1) == 2
 	    && yt_route_process_second(&process, 2) == 3
 	    && process.bytes[destination_address] == 0xd3U

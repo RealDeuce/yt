@@ -65,6 +65,11 @@ bool yt_route_process_build_at(uint16_t start_address,
 	uint8_t conversion_mode, struct yt_route_process *process,
 	yt_route_sector_reader reader, void *reader_context,
 	enum yt_route_outcome *outcome, struct yt_error *error);
+bool yt_route_process_build_cells(uint16_t start_address,
+	uint16_t destination_address, float *status, uint8_t conversion_mode,
+	struct yt_route_process *process, yt_route_sector_reader reader,
+	void *reader_context, enum yt_route_outcome *outcome,
+	struct yt_error *error);
 bool yt_route_process_build(float start_value, float destination_value,
     float *status, uint8_t conversion_mode, struct yt_route_process *process,
     yt_route_sector_reader reader, void *reader_context,
