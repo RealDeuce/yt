@@ -62,6 +62,7 @@
 #define YT_EARTH_REPORT_SEEN_ADDRESS 0x5006U
 #define YT_SPY_COUNT_ADDRESS 0x50AEU
 #define YT_LOW_TIME_REMEMBERED_ADDRESS 0x59CEU
+#define YT_SESSION_DEADLINE_ADDRESS 0x4BB4U
 #define YT_COUNTERLAUNCH_COUNT_ADDRESS 0x5BC6U
 #define YT_SPY_DESTINATION_SCRATCH_ADDRESS 0x5FE4U
 #define YT_SPY_FOUND_SCRATCH_ADDRESS 0x5FE8U
@@ -884,7 +885,8 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 		if (!info_refresh_time(session, NULL))
 			return false;
 		if (yt_input_ab36_session_expired((float)yt_platform_timer(),
-		    session->time.deadline))
+		    yt_route_process_single(&session->route_process,
+		    YT_SESSION_DEADLINE_ADDRESS)))
 			return session_editor_end(session,
 			    YT_AB36_TERMINAL_SESSION_LIMIT);
 		if (queued) {
@@ -11615,7 +11617,8 @@ static bool
 info_refresh_time(struct yt_session *session, struct yt_error *error)
 {
 	float reads[5];
-	float deadline = session->time.deadline;
+	float deadline = yt_route_process_single(&session->route_process,
+	    YT_SESSION_DEADLINE_ADDRESS);
 	float next_refresh = session->time.next_refresh;
 	size_t count = 0;
 	size_t used;
@@ -11625,6 +11628,7 @@ info_refresh_time(struct yt_session *session, struct yt_error *error)
 	struct yt_present_result presentation;
 	enum yt_present_status status;
 
+	session->time.deadline = deadline;
 	reads[count++] = (float)yt_platform_timer();
 	if (single_sub(deadline, reads[0]) > 70000.0f) {
 		deadline = single_sub(deadline, 86400.0f);
@@ -11639,6 +11643,9 @@ info_refresh_time(struct yt_session *session, struct yt_error *error)
 	}
 	status = yt_present_refresh_time(&session->time, reads, count, &used,
 	    row, column, &session->presentation, &presentation, &updated);
+	if (session->time.deadline != deadline)
+		session_set_process_single(session, YT_SESSION_DEADLINE_ADDRESS,
+		    session->time.deadline);
 	if (status != YT_PRESENT_OK)
 		return info_failure(error, "Info time refresh");
 	yt_out_present_result(&presentation);
@@ -18719,6 +18726,8 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 
 		session.time.deadline = requested < maximum
 		    ? requested : maximum;
+		session_set_process_single(&session, YT_SESSION_DEADLINE_ADDRESS,
+		    session.time.deadline);
 	}
 	if (!load_configuration(&session, error))
 		return session.terminated;
