@@ -29,6 +29,10 @@
 #define YT_CURRENT_WARPS_ADDRESS 0x1898U
 #define YT_PLANET_RECORD_SCRATCH_ADDRESS 0x19C4U
 #define YT_CURRENT_SECTOR_RECORD_ADDRESS 0x4B50U
+#define YT_CLEARANCE_HOLDS_ADDRESS 0x4B54U
+#define YT_CLEARANCE_FIGHTERS_ADDRESS 0x4B58U
+#define YT_CLEARANCE_GROUND_ADDRESS 0x4B5CU
+#define YT_CLEARANCE_SHIELDS_ADDRESS 0x4B60U
 #define YT_SHARED_LOOP_SCRATCH_ADDRESS 0x4CD2U
 #define YT_SELF_MINE_SUPPRESSION_ADDRESS 0x4D0AU
 #define YT_COMPUTER_ROUTE_STATUS_ADDRESS 0x4CF2U
@@ -80,10 +84,6 @@ struct yt_session {
 	bool destroyed;
 	bool fatal_wait_complete;
 	struct yt_present_state presentation;
-	float clearance_holds;
-	float clearance_fighters;
-	float clearance_ground;
-	float clearance_shields;
 	float counterlaunch_count;
 	int spies[3];
 	int spy_marker[3];
@@ -8358,11 +8358,17 @@ static bool
 clearance(struct yt_session *session, bool create,
     struct yt_error *error)
 {
-	float *discount[4] = {
-		&session->clearance_holds,
-		&session->clearance_fighters,
-		&session->clearance_shields,
-		&session->clearance_ground
+	static const uint16_t discount_address[4] = {
+		YT_CLEARANCE_HOLDS_ADDRESS,
+		YT_CLEARANCE_FIGHTERS_ADDRESS,
+		YT_CLEARANCE_SHIELDS_ADDRESS,
+		YT_CLEARANCE_GROUND_ADDRESS,
+	};
+	static const uint8_t reset_raw[4][4] = {
+		{0x00U, 0x00U, 0x73U, 0x00U},
+		{0x00U, 0x00U, 0x7aU, 0x00U},
+		{0x00U, 0x00U, 0x4cU, 0x00U},
+		{0x00U, 0x00U, 0x66U, 0x00U},
 	};
 	static const char *name[4] = {
 		"Holds", "Fighters", "Shields", "Ground Forces"
@@ -8374,22 +8380,33 @@ clearance(struct yt_session *session, bool create,
 	    "clearance leading blank", error))
 		return false;
 	for (index = 0; index < 4; ++index) {
+		float discount = yt_route_process_single(&session->route_process,
+		    discount_address[index]);
 		float draw;
+		bool candidate = false;
 
 		if (!random_value(session, &draw, error))
 			return false;
-		if (yt_clearance_candidate_needed(index, draw, *discount[index],
+		if (yt_clearance_candidate_needed(index, draw, discount,
 		    create)) {
 			if (!random_value(session, &draw, error))
 				return false;
-			*discount[index] = draw;
+			discount = draw;
+			candidate = true;
 		}
-		if (yt_clearance_normalize(index, discount[index])) {
+		if (!yt_clearance_normalize(index, &discount)) {
+			yt_route_process_set_raw_single(&session->route_process,
+			    discount_address[index], reset_raw[index]);
+		}
+		else {
 			char percent[64];
 			char row[192];
 
+			if (candidate)
+				session_set_process_single(session,
+				    discount_address[index], discount);
 			if (qb_str_single(percent, sizeof(percent),
-			    yt_clearance_percentage(*discount[index])) < 0
+			    yt_clearance_percentage(discount)) < 0
 			    || snprintf(row, sizeof(row),
 			    "Special clearance sale! The Trader's Guild is selling "
 			    "%s for%s%% off!", name[index], percent) < 0
@@ -8757,10 +8774,14 @@ earth_report(struct yt_session *session, struct yt_port *earth,
 	    strlen(title), "Earth report title", error)
 	    || !port_owner_row(session, earth, earth_state, error))
 		return false;
-	discount[0] = session->clearance_holds;
-	discount[1] = session->clearance_fighters;
-	discount[2] = session->clearance_shields;
-	discount[3] = session->clearance_ground;
+	discount[0] = yt_route_process_single(&session->route_process,
+	    YT_CLEARANCE_HOLDS_ADDRESS);
+	discount[1] = yt_route_process_single(&session->route_process,
+	    YT_CLEARANCE_FIGHTERS_ADDRESS);
+	discount[2] = yt_route_process_single(&session->route_process,
+	    YT_CLEARANCE_SHIELDS_ADDRESS);
+	discount[3] = yt_route_process_single(&session->route_process,
+	    YT_CLEARANCE_GROUND_ADDRESS);
 	yt_earth_prices(discount, price);
 	if (yt_route_process_single(&session->route_process,
 	    YT_EARTH_REPORT_SEEN_ADDRESS) == 0.0f) {
