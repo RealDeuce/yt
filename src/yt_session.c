@@ -11983,10 +11983,10 @@ static bool
 info_refresh_time(struct yt_session *session, struct yt_error *error)
 {
 	float reads[5];
-	float deadline = yt_route_process_single(&session->route_process,
-	    YT_SESSION_DEADLINE_ADDRESS);
-	float next_refresh = yt_route_process_single(&session->route_process,
-	    YT_NEXT_TIME_REFRESH_ADDRESS);
+	uint8_t deadline_raw[4];
+	uint8_t next_refresh_raw[4];
+	float deadline;
+	float next_refresh;
 	size_t count = 0;
 	size_t used;
 	int row = 1;
@@ -11995,8 +11995,12 @@ info_refresh_time(struct yt_session *session, struct yt_error *error)
 	struct yt_present_result presentation;
 	enum yt_present_status status;
 
-	session->time.deadline = deadline;
-	session->time.next_refresh = next_refresh;
+	yt_route_process_raw_single(&session->route_process,
+	    YT_SESSION_DEADLINE_ADDRESS, deadline_raw);
+	yt_route_process_raw_single(&session->route_process,
+	    YT_NEXT_TIME_REFRESH_ADDRESS, next_refresh_raw);
+	deadline = qb_mbf32_decode(deadline_raw);
+	next_refresh = qb_mbf32_decode(next_refresh_raw);
 	reads[count++] = (float)yt_platform_timer();
 	if (single_sub(deadline, reads[0]) > 70000.0f) {
 		deadline = single_sub(deadline, 86400.0f);
@@ -12009,14 +12013,13 @@ info_refresh_time(struct yt_session *session, struct yt_error *error)
 		reads[count++] = (float)yt_platform_timer();
 		yt_out_cursor_position(&row, &column);
 	}
-	status = yt_present_refresh_time(&session->time, reads, count, &used,
-	    row, column, &session->presentation, &presentation, &updated);
-	if (session->time.deadline != deadline)
-		session_set_process_single(session, YT_SESSION_DEADLINE_ADDRESS,
-		    session->time.deadline);
-	if (session->time.next_refresh != next_refresh)
-		session_set_process_single(session, YT_NEXT_TIME_REFRESH_ADDRESS,
-		    session->time.next_refresh);
+	status = yt_present_refresh_time_process(&session->time, deadline_raw,
+	    next_refresh_raw, reads, count, &used, row, column,
+	    &session->presentation, &presentation, &updated);
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_SESSION_DEADLINE_ADDRESS, deadline_raw);
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_NEXT_TIME_REFRESH_ADDRESS, next_refresh_raw);
 	if (status != YT_PRESENT_OK)
 		return info_failure(error, "Info time refresh");
 	yt_out_present_result(&presentation);

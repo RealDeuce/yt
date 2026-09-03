@@ -1277,6 +1277,35 @@ done:
 }
 
 enum yt_present_status
+yt_present_refresh_time_process(struct yt_present_time_state *time,
+    uint8_t deadline[4], uint8_t next_refresh[4], const float *timer_reads,
+    size_t timer_count, size_t *timer_used, int cursor_row, int cursor_column,
+    struct yt_present_state *state, struct yt_present_result *result,
+    bool *updated)
+{
+	uint8_t raw[4];
+	float initial_deadline = qb_mbf32_decode(deadline);
+	float initial_next_refresh = qb_mbf32_decode(next_refresh);
+	enum yt_present_status status;
+
+	time->deadline = initial_deadline;
+	time->next_refresh = initial_next_refresh;
+	status = yt_present_refresh_time(time, timer_reads, timer_count,
+	    timer_used, cursor_row, cursor_column, state, result, updated);
+	if (time->deadline != initial_deadline) {
+		if (qb_mbf32_encode(time->deadline, raw) == QB_MBF_OVERFLOW)
+			return YT_PRESENT_OVERFLOW;
+		memcpy(deadline, raw, sizeof(raw));
+	}
+	if (time->next_refresh != initial_next_refresh) {
+		if (qb_mbf32_encode(time->next_refresh, raw) == QB_MBF_OVERFLOW)
+			return YT_PRESENT_OVERFLOW;
+		memcpy(next_refresh, raw, sizeof(raw));
+	}
+	return status;
+}
+
+enum yt_present_status
 yt_present_opening_row(const uint8_t *text, size_t length, float mode,
     float snoop, struct yt_present_result *result)
 {

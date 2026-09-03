@@ -193,6 +193,12 @@ enum yt_present_status yt_present_refresh_time(
     size_t timer_count, size_t *timer_used, int cursor_row, int cursor_column,
     struct yt_present_state *state, struct yt_present_result *result,
     bool *updated);
+enum yt_present_status yt_present_refresh_time_process(
+    struct yt_present_time_state *time, uint8_t deadline[4],
+    uint8_t next_refresh[4], const float *timer_reads, size_t timer_count,
+    size_t *timer_used, int cursor_row, int cursor_column,
+    struct yt_present_state *state, struct yt_present_result *result,
+    bool *updated);
 enum yt_present_status yt_present_low_time(const uint8_t *text, size_t length,
     float *remembered, struct yt_present_state *state,
     struct yt_present_result *result, bool *warned);

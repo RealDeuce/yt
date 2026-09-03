@@ -4529,6 +4529,8 @@ test_time_helpers(void)
 	struct yt_present_time_state time;
 	struct yt_present_result result;
 	uint8_t long_time[YT_PRESENT_EVENT_DATA - 9U];
+	uint8_t deadline_raw[4];
+	uint8_t next_refresh_raw[4];
 	uint8_t raw_remembered[4];
 	uint8_t expected_raw[4];
 	uint8_t before_raw[4];
@@ -4615,6 +4617,96 @@ test_time_helpers(void)
 	CHECK(result.events[4].operation == YT_PRESENT_LOCAL_COLOR
 	    && result.events[4].foreground == 7
 	    && result.events[4].background == 0);
+
+	{
+		static const uint8_t dirty_zero[] = {0xa5, 0x5a, 0x80, 0x00};
+		static const uint8_t raw_101[] = {0x00, 0x00, 0x4a, 0x87};
+
+		memcpy(deadline_raw, dirty_zero, sizeof(deadline_raw));
+		memcpy(next_refresh_raw, raw_101, sizeof(next_refresh_raw));
+		memset(&time, 0, sizeof(time));
+		CHECK(yt_present_refresh_time_process(&time, deadline_raw,
+		    next_refresh_raw, gated_reads,
+		    sizeof(gated_reads) / sizeof(gated_reads[0]), &used, 2, 3,
+		    &current, &result, &updated) == YT_PRESENT_OK);
+		CHECK(!updated && used == 2 && result.event_count == 0);
+		CHECK(memcmp(deadline_raw, dirty_zero, sizeof(deadline_raw)) == 0
+		    && memcmp(next_refresh_raw, raw_101,
+		    sizeof(next_refresh_raw)) == 0);
+	}
+
+	{
+		static const uint8_t raw_460[] = {0x00, 0x00, 0x66, 0x89};
+		static const uint8_t dirty_zero[] = {0xff, 0xff, 0x80, 0x00};
+		static const uint8_t raw_101[] = {0x00, 0x00, 0x4a, 0x87};
+
+		memcpy(deadline_raw, raw_460, sizeof(deadline_raw));
+		memcpy(next_refresh_raw, dirty_zero, sizeof(next_refresh_raw));
+		memset(&time, 0, sizeof(time));
+		memcpy(time.text, " 6:00  ", 7U);
+		time.text_length = 7U;
+		CHECK(yt_present_refresh_time_process(&time, deadline_raw,
+		    next_refresh_raw, update_reads,
+		    sizeof(update_reads) / sizeof(update_reads[0]), &used, 4, 9,
+		    &current, &result, &updated) == YT_PRESENT_OK);
+		CHECK(updated && used == 4);
+		CHECK(memcmp(deadline_raw, raw_460, sizeof(deadline_raw)) == 0
+		    && memcmp(next_refresh_raw, raw_101,
+		    sizeof(next_refresh_raw)) == 0);
+	}
+
+	{
+		static const uint8_t raw_80000[] = {0x00, 0x40, 0x1c, 0x91};
+		static const uint8_t dirty_zero[] = {0x12, 0x34, 0x80, 0x00};
+		static const uint8_t raw_negative_6400[] = {
+			0x00, 0x00, 0xc8, 0x8d
+		};
+		static const uint8_t raw_11[] = {0x00, 0x00, 0x30, 0x84};
+
+		memcpy(deadline_raw, raw_80000, sizeof(deadline_raw));
+		memcpy(next_refresh_raw, dirty_zero, sizeof(next_refresh_raw));
+		memset(&time, 0, sizeof(time));
+		CHECK(yt_present_refresh_time_process(&time, deadline_raw,
+		    next_refresh_raw, rollover_reads,
+		    sizeof(rollover_reads) / sizeof(rollover_reads[0]), &used, 1,
+		    1, &current, &result, &updated) == YT_PRESENT_OK);
+		CHECK(!updated && used == 3 && result.event_count == 0);
+		CHECK(memcmp(deadline_raw, raw_negative_6400,
+		    sizeof(deadline_raw)) == 0
+		    && memcmp(next_refresh_raw, raw_11,
+		    sizeof(next_refresh_raw)) == 0);
+
+		memcpy(deadline_raw, raw_80000, sizeof(deadline_raw));
+		memcpy(next_refresh_raw, dirty_zero, sizeof(next_refresh_raw));
+		memset(&time, 0, sizeof(time));
+		CHECK(yt_present_refresh_time_process(&time, deadline_raw,
+		    next_refresh_raw, rollover_reads, 1U, &used, 1, 1, &current,
+		    &result, &updated) == YT_PRESENT_TIMER_EXHAUSTED);
+		CHECK(!updated && used == 1);
+		CHECK(memcmp(deadline_raw, raw_negative_6400,
+		    sizeof(deadline_raw)) == 0
+		    && memcmp(next_refresh_raw, dirty_zero,
+		    sizeof(next_refresh_raw)) == 0);
+	}
+
+	{
+		static const uint8_t raw_460[] = {0x00, 0x00, 0x66, 0x89};
+		static const uint8_t dirty_zero[] = {0x7f, 0x55, 0x80, 0x00};
+		static const uint8_t raw_101[] = {0x00, 0x00, 0x4a, 0x87};
+
+		memcpy(deadline_raw, raw_460, sizeof(deadline_raw));
+		memcpy(next_refresh_raw, dirty_zero, sizeof(next_refresh_raw));
+		memset(&time, 0, sizeof(time));
+		memcpy(time.text, " 6:00  ", 7U);
+		time.text_length = 7U;
+		CHECK(yt_present_refresh_time_process(&time, deadline_raw,
+		    next_refresh_raw, update_reads, 3U, &used, 4, 9, &current,
+		    &result, &updated) == YT_PRESENT_TIMER_EXHAUSTED);
+		CHECK(!updated && used == 3 && result.event_count == 2);
+		CHECK(memcmp(deadline_raw, raw_460, sizeof(deadline_raw)) == 0
+		    && memcmp(next_refresh_raw, raw_101,
+		    sizeof(next_refresh_raw)) == 0);
+	}
 
 	current = state(true);
 	CHECK(yt_present_low_time((const uint8_t *)" 5:59  ", 7,
