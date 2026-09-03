@@ -77,6 +77,8 @@
 #define YT_RETURNING_REBUILD_WAIT_ADDRESS 0x534EU
 #define YT_LOCKOUT_WAIT_ADDRESS 0x5B9EU
 #define YT_NORMAL_EXIT_REMINDER_WAIT_ADDRESS 0x4CAAU
+#define YT_RETURNING_SCAN_BOUND_ADDRESS 0x4CCEU
+#define YT_VACANCY_SCAN_BOUND_ADDRESS 0x4CD6U
 #define YT_POST_LOGIN_PRESS_WAIT_ADDRESS 0x64C4U
 #define YT_POST_LOGIN_RADIO_MODE_ADDRESS 0x64C8U
 #define YT_POST_LOGIN_SCANNER_MODE_ADDRESS 0x64CCU
@@ -3070,12 +3072,20 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 {
 	char full[256];
 	struct yt_clock_value now;
+	uint8_t scan_bound_raw[4];
+	float returning_bound;
 	int basic;
 	bool returning = false;
 
 	snprintf(full, sizeof(full), "%s %s", first, last);
+	yt_route_process_raw_single(&session->route_process,
+	    YT_SECTOR_OFFSET_ADDRESS, scan_bound_raw);
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_RETURNING_SCAN_BOUND_ADDRESS, scan_bound_raw);
+	returning_bound = yt_route_process_single(&session->route_process,
+	    YT_RETURNING_SCAN_BOUND_ADDRESS);
 	for (basic = YT_PLAYER_FIRST;
-	    basic <= (int)session_sector_offset(session); ++basic) {
+	    (float)basic <= returning_bound; ++basic) {
 		struct yt_player candidate;
 		bool matches;
 
@@ -3101,6 +3111,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 	}
 	if (!returning) {
 		int vacant = 0;
+		float vacancy_bound;
 
 		session->presentation.foreground = 5.0f;
 		session->pager.foreground = 5;
@@ -3109,8 +3120,14 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 		    strlen("Entering a new player..."),
 		    "new player entering row", error))
 			return false;
+		yt_route_process_raw_single(&session->route_process,
+		    YT_SECTOR_OFFSET_ADDRESS, scan_bound_raw);
+		yt_route_process_set_raw_single(&session->route_process,
+		    YT_VACANCY_SCAN_BOUND_ADDRESS, scan_bound_raw);
+		vacancy_bound = yt_route_process_single(&session->route_process,
+		    YT_VACANCY_SCAN_BOUND_ADDRESS);
 		for (basic = YT_PLAYER_FIRST;
-		    basic <= (int)session_sector_offset(session);
+		    (float)basic <= vacancy_bound;
 		    ++basic) {
 			struct yt_player candidate;
 
