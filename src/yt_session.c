@@ -25,6 +25,7 @@
 #define YT_PLAYER_FIRST 2
 #define YT_PLAYER_LAST 51
 #define YT_COMMAND_SIZE 4096U
+#define YT_ANTI_CLOAK_ADDRESS 0x1854U
 #define YT_CURRENT_WARPS_ADDRESS 0x1898U
 #define YT_CURRENT_SECTOR_RECORD_ADDRESS 0x4B50U
 #define YT_SELF_MINE_SUPPRESSION_ADDRESS 0x4D0AU
@@ -85,7 +86,6 @@ struct yt_session {
 	float counterlaunch_count;
 	float shared_loop_scratch;
 	float planet_record_scratch;
-	bool anti_cloak;
 	int spies[3];
 	int spy_marker[3];
 	int spy_count;
@@ -220,6 +220,22 @@ session_set_current_sector_record(struct yt_session *session, float value)
 	if (qb_mbf32_encode(value, raw) == QB_MBF_OK)
 		yt_route_process_set_raw_single(&session->route_process,
 		    YT_CURRENT_SECTOR_RECORD_ADDRESS, raw);
+}
+
+static bool
+session_anti_cloak_enabled(const struct yt_session *session)
+{
+	return yt_route_process_single(&session->route_process,
+	    YT_ANTI_CLOAK_ADDRESS) != 0.0f;
+}
+
+static void
+session_enable_anti_cloak(struct yt_session *session)
+{
+	static const uint8_t negative_one[4] = {0x00U, 0x00U, 0x80U, 0x81U};
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_ANTI_CLOAK_ADDRESS, negative_one);
 }
 
 static int
@@ -567,7 +583,7 @@ reload_player(struct yt_session *session, struct yt_error *error)
 		session->sector_cache,
 		session->cloak_cache,
 		YT_ARRAY_LEN(session->sector_cache),
-		session->anti_cloak,
+		session_anti_cloak_enabled(session),
 	};
 
 	if (!yt_current_player_hydrate_run(&state,
@@ -611,7 +627,7 @@ mutate_player_credits_observed(struct yt_session *session, float argument,
 	state.hydration.sector_cache = session->sector_cache;
 	state.hydration.cloak_cache = session->cloak_cache;
 	state.hydration.cache_count = YT_ARRAY_LEN(session->sector_cache);
-	state.hydration.anti_cloak = session->anti_cloak;
+	state.hydration.anti_cloak = session_anti_cloak_enabled(session);
 	state.argument = argument;
 	result = yt_credit_mutation_run(&state, &ops, session, error);
 	if (state.hydrated)
@@ -4449,7 +4465,7 @@ fresh_no_turn_gate(struct yt_session *session, bool *denied,
 	if (!reload_player(session, error))
 		return false;
 	session->sector_cache[session->player_record] = session->player.sector;
-	if (!session->anti_cloak)
+	if (!session_anti_cloak_enabled(session))
 		 session->cloak_cache[session->player_record] = session->player.cloak;
 	*denied = yt_no_turn_gate_denied(session->player.turns);
 	if (*denied)
@@ -4476,7 +4492,8 @@ finalize_action(struct yt_session *session, float amount,
 	    session->player.turns))
 		return false;
 	quotient = single_div(session->player.turns, 25.0f);
-	if (!session->anti_cloak && quotient == floorf(quotient)) {
+	if (!session_anti_cloak_enabled(session)
+	    && quotient == floorf(quotient)) {
 		static const uint8_t dirty_zero[4] = {0x00, 0x00, 0xa3, 0x00};
 		float display;
 		float saved_foreground = session->presentation.foreground;
@@ -8940,7 +8957,7 @@ earth_store(struct yt_session *session, bool *enter_sector,
 			    error)
 			    || !earth_anti_cloak(session, 1000000000.0f, error))
 				return false;
-			session->anti_cloak = true;
+			session_enable_anti_cloak(session);
 			if (!session_present_text(session, NULL, 0,
 			    SESSION_PRESENT_LINE, "Earth Anti-Cloak pause blank", error)
 			    || !session_031f(session, pause, sizeof(pause) - 1U,
@@ -11507,7 +11524,7 @@ show_ship(struct yt_session *session, struct yt_error *error)
 	memset(&state, 0, sizeof(state));
 	state.cached_name = session->cached_player_name;
 	state.cached_name_length = session->cached_player_name_length;
-	state.anti_cloak = session->anti_cloak ? -1.0f : 0.0f;
+	state.anti_cloak = session_anti_cloak_enabled(session) ? -1.0f : 0.0f;
 	state.foreground = session->presentation.foreground;
 	state.background = session->presentation.background;
 	state.bold = session->presentation.bold;
