@@ -63,6 +63,8 @@ typedef bool (*yt_startup_configuration_write_player_fn)(void *context,
 	struct yt_error *error);
 typedef bool (*yt_startup_configuration_random_fn)(void *context,
 	float *value, struct yt_error *error);
+typedef void (*yt_startup_configuration_disruption_store_fn)(void *context,
+	size_t index, const uint8_t raw[4]);
 
 struct yt_startup_configuration_ops {
 	yt_startup_configuration_close_fn close_data;
@@ -72,6 +74,7 @@ struct yt_startup_configuration_ops {
 	yt_startup_configuration_read_player_fn read_player;
 	yt_startup_configuration_write_player_fn write_player;
 	yt_startup_configuration_random_fn random;
+	yt_startup_configuration_disruption_store_fn store_disruption;
 };
 
 bool yt_startup_configuration_run(

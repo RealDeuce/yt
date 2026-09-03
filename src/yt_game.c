@@ -357,6 +357,8 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 		float difference;
 		float span;
 		float product;
+		float integral;
+		uint8_t raw[4];
 
 		if (!ops->random(context, &draw, error))
 			return false;
@@ -364,8 +366,21 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 		    config->sector_offset);
 		span = startup_single_subtract(difference, 2.0f);
 		product = startup_single_multiply(draw, span);
-		state->black_hole[index] = startup_single_add(floorf(product),
-		    2.0f);
+		integral = floorf(product);
+		state->black_hole[index] = startup_single_add(integral, 2.0f);
+		if (integral == -2.0f) {
+			static const uint8_t dirty_zero[4] = {
+				0x00U, 0x00U, 0x80U, 0x00U
+			};
+
+			memcpy(raw, dirty_zero, sizeof(raw));
+		} else if (qb_mbf32_encode(state->black_hole[index], raw)
+		    != QB_MBF_OK) {
+			return startup_configuration_error(error, YT_RANGE,
+			    "startup disruption result");
+		}
+		if (ops->store_disruption != NULL)
+			ops->store_disruption(context, index, raw);
 	}
 	return true;
 }

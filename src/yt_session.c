@@ -27,6 +27,7 @@
 #define YT_COMMAND_SIZE 4096U
 #define YT_ANTI_CLOAK_ADDRESS 0x1854U
 #define YT_MARKET_BASE_ADDRESS 0x1860U
+#define YT_DISRUPTION_SECTOR_ADDRESS 0x1878U
 #define YT_CURRENT_WARPS_ADDRESS 0x1898U
 #define YT_PLANET_RECORD_SCRATCH_ADDRESS 0x19C4U
 #define YT_CURRENT_SECTOR_RECORD_ADDRESS 0x4B50U
@@ -75,7 +76,6 @@ struct yt_session {
 	size_t cached_player_name_length;
 	float sector_cache[YT_PLAYER_LAST + 1];
 	float cloak_cache[YT_PLAYER_LAST + 1];
-	float black_hole[2];
 	struct yt_startup_main_prefix startup_prefix;
 	char queue[YT_COMMAND_SIZE];
 	size_t queue_length;
@@ -190,6 +190,27 @@ session_market_bases(const struct yt_session *session, float bases[3])
 	for (index = 0U; index < 3U; ++index)
 		bases[index] = yt_route_process_single(&session->route_process,
 		    (uint16_t)(YT_MARKET_BASE_ADDRESS + 4U * index));
+}
+
+static float
+session_disruption_sector(const struct yt_session *session, size_t index)
+{
+	return yt_route_process_single(&session->route_process,
+	    (uint16_t)(YT_DISRUPTION_SECTOR_ADDRESS + 4U * index));
+}
+
+static void
+session_disruption_sectors(const struct yt_session *session, float sectors[2])
+{
+	for (size_t index = 0U; index < 2U; ++index)
+		sectors[index] = session_disruption_sector(session, index);
+}
+
+static bool
+session_is_disruption_sector(const struct yt_session *session, float sector)
+{
+	return sector == session_disruption_sector(session, 0U)
+	    || sector == session_disruption_sector(session, 1U);
 }
 
 static void
@@ -1933,6 +1954,18 @@ startup_configuration_random(void *context, float *value,
 	return yt_random_next(&session->door->game.random, value, error);
 }
 
+static void
+startup_configuration_store_disruption(void *context, size_t index,
+    const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	if (index >= 2U)
+		return;
+	yt_route_process_set_raw_single(&session->route_process,
+	    (uint16_t)(YT_DISRUPTION_SECTOR_ADDRESS + 4U * index), raw);
+}
+
 static bool
 load_configuration(struct yt_session *session, struct yt_error *error)
 {
@@ -1944,6 +1977,7 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 		startup_configuration_read_player,
 		startup_configuration_write_player,
 		startup_configuration_random,
+		startup_configuration_store_disruption,
 	};
 	struct yt_game *game = &session->door->game;
 	struct yt_startup_configuration_state state;
@@ -1958,12 +1992,9 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 	state.sector_cache = session->sector_cache;
 	state.cloak_cache = session->cloak_cache;
 	state.cache_count = YT_ARRAY_LEN(session->sector_cache);
-	state.black_hole[0] = session->black_hole[0];
-	state.black_hole[1] = session->black_hole[1];
+	session_disruption_sectors(session, state.black_hole);
 	ok = yt_startup_configuration_run(&state, &ops, session, error);
 	session->sector_cache[1] = state.cache_guard;
-	session->black_hole[0] = state.black_hole[0];
-	session->black_hole[1] = state.black_hole[1];
 	return ok;
 }
 
@@ -3712,14 +3743,12 @@ display_sector_one(struct yt_session *session, float logical_sector,
 	    SESSION_PRESENT_LINE, "sector number row", error))
 		return false;
 	yt_sector_pager_add(private_pager, 1.0f);
-	if ((logical_sector == session->black_hole[0]
-	    || logical_sector == session->black_hole[1])
+	if (session_is_disruption_sector(session, logical_sector)
 	    && !session_attention(session,
 	    "** Space-time disruption detected! **",
 	    "sector disruption attention", error))
 		return false;
-	if (logical_sector == session->black_hole[0]
-	    || logical_sector == session->black_hole[1])
+	if (session_is_disruption_sector(session, logical_sector))
 		yt_sector_pager_add(private_pager, 1.0f);
 	if (sector.mines != 0.0f) {
 		if (!yt_sector_mine_warning_row(sector.mines, row,
@@ -4101,8 +4130,7 @@ dangerous_destination(struct yt_session *session, float target,
 	    error))
 		return false;
 
-	if (target == session->black_hole[0]
-	    || target == session->black_hole[1]) {
+	if (session_is_disruption_sector(session, target)) {
 		if (!danger_first_warning(session, target, *danger, error))
 			return false;
 		if (!session_present_text(session,
@@ -4495,7 +4523,8 @@ spy_sweep(struct yt_session *session, struct yt_error *error)
 		.current_player_record = session->player_record,
 		.last_player_record = session->door->game.config.sector_offset,
 		.disruption_sectors = {
-			session->black_hole[0], session->black_hole[1]
+			session_disruption_sector(session, 0U),
+			session_disruption_sector(session, 1U)
 		},
 		.sector_cache = session->sector_cache,
 		.cloak_cache = session->cloak_cache,
@@ -6915,8 +6944,8 @@ sector_entry(struct yt_session *session, struct yt_error *error)
 		if (!display_sector(session, false, error)
 		    || !reload_player(session, error))
 			return false;
-		if (yt_sector_is_black_hole(session->player.sector,
-		    session->black_hole[0], session->black_hole[1])) {
+		if (session_is_disruption_sector(session,
+		    session->player.sector)) {
 			if (!session_present_text(session, NULL, 0,
 			    SESSION_PRESENT_LINE, "black hole leading blank", error)
 			    || !session_attention(session,
@@ -14764,7 +14793,8 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 			target,
 			&energy,
 			hop_loss,
-			{session->black_hole[0], session->black_hole[1]},
+			{session_disruption_sector(session, 0U),
+			 session_disruption_sector(session, 1U)},
 			session->door->game.config.sector_offset,
 			session->door->game.config.port_offset,
 			NULL,
@@ -14820,8 +14850,7 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 
 			if (!yt_projectile_route_has_next((int16_t)next))
 				break;
-			if (yt_projectile_is_black_hole((float)next,
-			    session->black_hole[0], session->black_hole[1])) {
+			if (session_is_disruption_sector(session, (float)next)) {
 				float local_origin = (float)start;
 				float local_destination = destination;
 				static const struct yt_projectile_cruise_reroute_ops

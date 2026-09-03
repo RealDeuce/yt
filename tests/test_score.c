@@ -135,6 +135,8 @@ struct startup_configuration_tape {
 	bool wrote_player[8];
 	float draws[2];
 	size_t draw_position;
+	uint8_t disruption_raw[2][4];
+	size_t disruption_store_count;
 };
 
 static bool
@@ -239,6 +241,19 @@ startup_configuration_random_test(void *context, float *value,
 	return true;
 }
 
+static void
+startup_configuration_disruption_store_test(void *context, size_t index,
+    const uint8_t raw[4])
+{
+	struct startup_configuration_tape *tape = context;
+
+	if (index >= YT_ARRAY_LEN(tape->disruption_raw))
+		return;
+	memcpy(tape->disruption_raw[index], raw,
+	    sizeof(tape->disruption_raw[index]));
+	++tape->disruption_store_count;
+}
+
 static bool
 startup_configuration_fixture(struct startup_configuration_tape *tape,
     struct yt_startup_configuration_state *state, struct yt_config *config,
@@ -303,6 +318,7 @@ check_startup_configuration_transaction(void)
 		startup_configuration_read_test,
 		startup_configuration_write_test,
 		startup_configuration_random_test,
+		startup_configuration_disruption_store_test,
 	};
 	static const int events[] = {
 		STARTUP_CONFIGURATION_CLOSE,
@@ -347,6 +363,9 @@ check_startup_configuration_transaction(void)
 	    || cloak_cache[2] != 1.0f || cloak_cache[3] != 0.5f
 	    || cloak_cache[4] != 1.0f || cloak_cache[1] != -201.0f
 	    || state.black_hole[0] != 3.0f || state.black_hole[1] != 5.0f
+	    || tape.disruption_store_count != 2U
+	    || qb_mbf32_decode(tape.disruption_raw[0]) != 3.0f
+	    || qb_mbf32_decode(tape.disruption_raw[1]) != 5.0f
 	    || tape.draw_position != 2U || !tape.wrote_config
 	    || !tape.wrote_player[2] || tape.wrote_player[3]
 	    || !tape.wrote_player[4])
@@ -483,7 +502,26 @@ check_startup_configuration_transaction(void)
 	tape.fail_at = 11U;
 	if (yt_startup_configuration_run(&state, &ops, &tape, NULL)
 	    || state.cache_guard != 1.0f || state.black_hole[0] != 3.0f
-	    || state.black_hole[1] != 0.0f || tape.draw_position != 1U)
+	    || state.black_hole[1] != 0.0f || tape.draw_position != 1U
+	    || tape.disruption_store_count != 1U
+	    || qb_mbf32_decode(tape.disruption_raw[0]) != 3.0f)
+		return false;
+
+	/* An exponent-zero final addition retains the negative mantissa byte. */
+	if (!startup_configuration_fixture(&tape, &state, &config,
+	    sector_cache, cloak_cache))
+		return false;
+	state.cache_guard = 1.0f;
+	tape.draws[0] = 0.75f;
+	tape.draws[1] = 0.75f;
+	if (!yt_record_set_number(&tape.config_source, YT_F53, 4.0f)
+	    || !yt_record_set_number(&tape.config_source, YT_F57, 4.0f)
+	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
+	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
+	    || state.black_hole[0] != 0.0f || state.black_hole[1] != 0.0f
+	    || tape.disruption_store_count != 2U
+	    || memcmp(tape.disruption_raw[0], "\0\0\x80\0", 4U) != 0
+	    || memcmp(tape.disruption_raw[1], "\0\0\x80\0", 4U) != 0)
 		return false;
 	return !yt_startup_configuration_run(NULL, &ops, &tape, NULL)
 	    && !yt_startup_configuration_run(&state, NULL, &tape, NULL);
