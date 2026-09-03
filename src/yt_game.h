@@ -2665,6 +2665,7 @@ bool yt_direct_fighter_mine_warning(const uint8_t *victim_name,
     size_t *length);
 struct yt_common_fatal_state {
 	int current_player_record;
+	const uint8_t *current_player_record_raw;
 	float foreground;
 	int pager_foreground;
 	float target_record;
@@ -2680,6 +2681,7 @@ struct yt_common_fatal_ops {
 	    struct yt_error *error);
 	bool (*read_player)(void *context, int player_record,
 	    struct yt_player *player, struct yt_error *error);
+	yt_player_record_store_fn store_target_record;
 	bool (*sound)(void *context, const uint8_t selector_raw[4],
 	    struct yt_error *error);
 	bool (*death)(void *context, int victim_record, float killer,

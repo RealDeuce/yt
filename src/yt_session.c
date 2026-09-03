@@ -92,6 +92,7 @@
 #define YT_STARTUP_DATE_SERIAL_ADDRESS 0x4CCAU
 #define YT_STARTUP_INITIAL_FIVE_ADDRESS 0x4BFAU
 #define YT_CURRENT_PLAYER_RECORD_ADDRESS 0x1C3CU
+#define YT_FATAL_SAVED_PLAYER_ADDRESS 0x1A40U
 
 enum navigation_field_kind {
 	NAVIGATION_FIELD_NONE,
@@ -5712,6 +5713,16 @@ common_fatal_death(void *context, int victim_record, float killer,
 	return kill_player_run(context, victim_record, killer, false, error);
 }
 
+static void
+common_fatal_store_target(void *context, const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	(void)raw;
+	yt_route_process_copy_raw_single(&session->route_process,
+	    YT_CURRENT_PLAYER_RECORD_ADDRESS, YT_FATAL_SAVED_PLAYER_ADDRESS);
+}
+
 static bool
 common_fatal_wait(void *context, const uint8_t duration_raw[4],
     struct yt_error *error)
@@ -5732,12 +5743,18 @@ common_fatal_self(struct yt_session *session, struct yt_error *error)
 		common_fatal_set_foreground,
 		common_fatal_present,
 		common_fatal_read_player,
+		common_fatal_store_target,
 		common_fatal_sound,
 		common_fatal_death,
 		common_fatal_wait,
 	};
+	uint8_t current_record_raw[4];
+
+	yt_route_process_raw_single(&session->route_process,
+	    YT_CURRENT_PLAYER_RECORD_ADDRESS, current_record_raw);
 	struct yt_common_fatal_state state = {
 		.current_player_record = session->player_record,
+		.current_player_record_raw = current_record_raw,
 		.foreground = session->presentation.foreground,
 		.pager_foreground = session->pager.foreground,
 	};

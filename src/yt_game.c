@@ -7855,6 +7855,7 @@ yt_common_fatal_run(struct yt_common_fatal_state *state,
 		0x00U, 0x00U, 0x20U, 0x83U,
 	};
 	struct yt_player player;
+	uint8_t current_record_raw[4];
 
 	if (state == NULL || ops == NULL || ops->set_foreground == NULL
 	    || ops->present == NULL || ops->read_player == NULL
@@ -7873,6 +7874,14 @@ yt_common_fatal_run(struct yt_common_fatal_state *state,
 	state->field_player = player;
 	state->field_valid = true;
 	state->target_record = (float)state->current_player_record;
+	if (state->current_player_record_raw != NULL)
+		memcpy(current_record_raw, state->current_player_record_raw,
+		    sizeof(current_record_raw));
+	else
+		(void)qb_mbf32_encode((float)state->current_player_record,
+		    current_record_raw);
+	if (ops->store_target_record != NULL)
+		ops->store_target_record(context, current_record_raw);
 	if (!ops->sound(context, selector_three, error)
 	    || !ops->death(context, state->current_player_record,
 	    state->target_record, error)
