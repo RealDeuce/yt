@@ -34,6 +34,13 @@ struct score_database_read_fault {
 	size_t fail_at;
 };
 
+struct score_database_partial_fault {
+	size_t calls;
+	size_t fail_at;
+	size_t accepted;
+	int64_t terminal_position;
+};
+
 static bool
 score_database_read_with_fault(void *context, FILE *file, uint8_t *data,
     size_t requested, struct yt_database_read_observation *observation)
@@ -57,6 +64,51 @@ score_database_read_with_fault(void *context, FILE *file, uint8_t *data,
 		observation->dos_error = 1U;
 		observation->mapped_error = 57U;
 	}
+	return true;
+}
+
+static bool
+score_database_read_partial_fault(void *context, FILE *file, uint8_t *data,
+    size_t requested, struct yt_database_read_observation *observation)
+{
+	struct score_database_partial_fault *fault = context;
+
+	memset(observation, 0, sizeof(*observation));
+	++fault->calls;
+	if (fault->calls != fault->fail_at) {
+		observation->accepted = fread(data, 1U, requested, file);
+		observation->terminal_position = ftell(file);
+		return true;
+	}
+	if (fault->accepted > requested)
+		return false;
+	observation->accepted = fread(data, 1U, fault->accepted, file);
+	observation->carry = true;
+	observation->dos_error = 6U;
+	observation->terminal_position = fault->terminal_position;
+	return true;
+}
+
+static bool
+score_database_write_partial_fault(void *context, FILE *file,
+    const uint8_t *data, size_t requested,
+    struct yt_database_write_observation *observation)
+{
+	struct score_database_partial_fault *fault = context;
+
+	memset(observation, 0, sizeof(*observation));
+	++fault->calls;
+	if (fault->calls != fault->fail_at) {
+		observation->accepted = fwrite(data, 1U, requested, file);
+		observation->terminal_position = ftell(file);
+		return true;
+	}
+	if (fault->accepted > requested)
+		return false;
+	observation->accepted = fwrite(data, 1U, fault->accepted, file);
+	observation->carry = true;
+	observation->dos_error = 6U;
+	observation->terminal_position = fault->terminal_position;
 	return true;
 }
 
@@ -29745,6 +29797,98 @@ check_drop_mines_transaction(void)
 	    && !yt_drop_mines_run(&state, NULL, &tape, NULL);
 }
 
+static bool
+check_scoreboard_physical_field_residue(void)
+{
+	struct score_database_partial_fault read_fault = {
+		0U, 2U, 17U, 0x11223344
+	};
+	struct score_database_partial_fault write_fault = {
+		0U, 1U, 23U, 0x55667788
+	};
+	struct score_progress_tape progress = {0};
+	struct yt_score_field_observation field;
+	struct yt_record first_image;
+	struct yt_record blank;
+	struct yt_player player;
+	struct yt_game game;
+	struct yt_error error;
+	bool valid = false;
+
+	(void)remove("SCORE-FIELD.DAT");
+	(void)remove("SCORE-FIELD.ASC");
+	memset(&game, 0, sizeof(game));
+	game.config.sector_offset = 3.0f;
+	game.config.port_offset = 3.0f;
+	strcpy(game.config.scoreboard, "SCORE-FIELD.ASC");
+	yt_error_clear(&error);
+	if (!yt_database_open(&game.database, "SCORE-FIELD.DAT",
+	    YT_OPEN_CREATE, &error))
+		goto done;
+	yt_record_blank(&blank);
+	yt_player_decode(&player, &blank);
+	strcpy(player.name, "Alice");
+	player.name_length = 5.0f;
+	player.credits = 100.0f;
+	if (!yt_game_write_player(&game, 2, &player, &error)
+	    || !yt_database_write(&game.database, 3, &blank, &error)
+	    || !yt_database_read(&game.database, 2, &first_image, &error))
+		goto done;
+
+	/* A failed later GET retains the last completed FIELD image. */
+	yt_database_set_read_provider(&game.database,
+	    score_database_read_partial_fault, &read_fault);
+	yt_error_clear(&error);
+	if (yt_score_generate_progress_observed(&game, score_progress_collect,
+	    &progress, &field, &error)
+	    || error.status != YT_IO_ERROR || progress.count != 1U
+	    || progress.phases[0] != 1U || read_fault.calls != 2U
+	    || game.database.last_get.outcome != YT_DATABASE_GET_READ_ERROR
+	    || game.database.last_get.current_record != 3U
+	    || game.database.last_get.accepted != read_fault.accepted
+	    || game.database.last_get.basic_error != 57U
+	    || game.database.last_get.dos_error != 6U
+	    || game.database.last_get.terminal_position
+	    != read_fault.terminal_position
+	    || !field.valid || field.kind != YT_SCORE_FIELD_PLAYER
+	    || field.physical_record != 2U
+	    || memcmp(field.image.bytes, first_image.bytes,
+	    YT_RECORD_SIZE) != 0)
+		goto done;
+	yt_database_set_read_provider(&game.database, NULL, NULL);
+
+	/* The cache overlay becomes FIELD before a partial physical PUT. */
+	memset(&progress, 0, sizeof(progress));
+	yt_database_set_write_provider(&game.database,
+	    score_database_write_partial_fault, &write_fault);
+	yt_error_clear(&error);
+	if (yt_score_generate_progress_observed(&game, score_progress_collect,
+	    &progress, &field, &error)
+	    || error.status != YT_IO_ERROR || progress.count != 2U
+	    || progress.phases[0] != 1U || progress.phases[1] != 2U
+	    || write_fault.calls != 1U
+	    || game.database.last_put.outcome != YT_DATABASE_PUT_WRITE_ERROR
+	    || game.database.last_put.current_record != 2U
+	    || game.database.last_put.accepted != write_fault.accepted
+	    || game.database.last_put.basic_error != 57U
+	    || game.database.last_put.dos_error != 6U
+	    || game.database.last_put.terminal_position
+	    != write_fault.terminal_position
+	    || !field.valid || field.kind != YT_SCORE_FIELD_PLAYER
+	    || field.physical_record != 2U
+	    || yt_record_get_number(&field.image, YT_F109) != 100.0f)
+		goto done;
+	valid = true;
+
+done:
+	yt_database_set_read_provider(&game.database, NULL, NULL);
+	yt_database_set_write_provider(&game.database, NULL, NULL);
+	yt_game_close(&game);
+	(void)remove("SCORE-FIELD.DAT");
+	(void)remove("SCORE-FIELD.ASC");
+	return valid;
+}
+
 int
 main(void)
 {
@@ -30043,6 +30187,8 @@ main(void)
 		return fail("port owner row model differs");
 	if (yt_chdir(directory) != 0)
 		return fail("cannot enter temporary directory");
+	if (!check_scoreboard_physical_field_residue())
+		goto done;
 	if (!check_computer_newspaper_recovery_persistence())
 		goto done;
 	if (!check_maintenance_headquarters_write())
