@@ -13837,15 +13837,6 @@ plasma_reload_sector:
 }
 
 static bool
-plasma_sector(struct yt_session *session, int sector_number,
-    const uint8_t *attacker, size_t attacker_length, double *energy,
-    struct yt_error *error)
-{
-	return plasma_sector_loaded(session, sector_number, NULL, attacker,
-	    attacker_length, energy, error);
-}
-
-static bool
 cruise_opening_sound(void *context, float selector, struct yt_error *error)
 {
 	return session_sound(context, selector, "cruise missile launch sound",
@@ -14005,23 +13996,6 @@ plasma_footer(struct yt_session *session, struct yt_error *error)
 	};
 
 	return yt_projectile_plasma_footer_run(&ops, session, error);
-}
-
-static bool
-plasma_hop_report(struct yt_session *session, int sector_number,
-    double energy, struct yt_error *error)
-{
-	char sector_text[64];
-	char energy_text[64];
-	char row[192];
-
-	qb_str_single(sector_text, sizeof(sector_text), (float)sector_number);
-	qb_str_double(energy_text, sizeof(energy_text), floor(energy));
-	snprintf(row, sizeof(row), "Bolt entering sector%s.%s Megawatts remaining.",
-	    sector_text, energy_text);
-	return session_present_text(session, (const uint8_t *)row, strlen(row),
-	    SESSION_PRESENT_LINE, "plasma hop row", error)
-	    && session_wait(session, 0.5, "plasma hop wait", error);
 }
 
 static bool
@@ -14188,10 +14162,8 @@ launch_projectile(struct yt_session *session, float target, float amount,
     int *pending_counterattack, int *pending_xannor,
 	struct yt_error *error)
 {
-	int count = sector_count(session);
 	float destination = target;
 	bool overflow;
-	int16_t *route;
 	bool found;
 	int cursor;
 	float local_missiles = amount;
@@ -14220,12 +14192,6 @@ launch_projectile(struct yt_session *session, float target, float amount,
 	    &last_mine_news_sector, &energy, &hop_loss, attacker,
 	    sizeof(attacker), &attacker_length, error))
 		return false;
-	route = calloc(YT_ROUTE_CAPACITY, sizeof(*route));
-	if (route == NULL) {
-		if (error != NULL)
-			error->status = YT_NO_MEMORY;
-		return false;
-	}
 	if (plasma) {
 		static const struct yt_projectile_plasma_route_ops ops = {
 			plasma_route_build,
@@ -14238,12 +14204,20 @@ launch_projectile(struct yt_session *session, float target, float amount,
 		};
 		float local_origin = (float)start;
 		float *origin = origin_alias != NULL ? origin_alias : &local_origin;
+		int16_t *route;
 		struct plasma_route_context route_context = {
 			session,
 			xannor_provoker,
 			attacker,
 			attacker_length,
 		};
+
+		route = calloc(YT_ROUTE_CAPACITY, sizeof(*route));
+		if (route == NULL) {
+			if (error != NULL)
+				error->status = YT_NO_MEMORY;
+			return false;
+		}
 		struct yt_projectile_plasma_route_state state = {
 			origin,
 			&destination,
@@ -14266,98 +14240,51 @@ launch_projectile(struct yt_session *session, float target, float amount,
 		free(route);
 		return result;
 	}
-	if ((float)start == destination && plasma) {
-			if (origin_alias != NULL)
-				*origin_alias = 0.0f;
-			if (!plasma_hop_report(session, start, energy, error)) {
-				free(route);
-				return false;
-			}
-			found = plasma_sector(session, start, attacker,
-			    attacker_length, &energy, error);
-			if (found)
-				found = plasma_footer(session, error);
-			free(route);
-			return found;
-	}
 	for (;;) {
 		bool rerouted = false;
 		enum yt_route_outcome route_outcome;
 		float route_status;
 		struct yt_projectile_route_entry_state route_entry;
 
-		if (!build_route(session, (float)start, destination, route,
+		if (!build_route(session, (float)start, destination, NULL,
 		    yt_projectile_route_avoid_enabled(plasma, *counterattack,
 		    session->player_record), &found, &route_outcome, &route_status,
 		    error)) {
-			free(route);
 			return false;
 		}
 		if (route_outcome == YT_ROUTE_NOT_FOUND
 		    && !route_failure_report(session, error)) {
-			free(route);
 			return false;
 		}
 		if (route_status != 0.0f) {
-			if (plasma) {
-				if (!plasma_footer(session, error)) {
-					free(route);
-					return false;
-				}
-			}
-			else {
-				if (!missile_route_failure_suffix(session, error)) {
-					free(route);
-					return false;
-				}
-			}
-			free(route);
+			if (!missile_route_failure_suffix(session, error))
+				return false;
 			return true;
 		}
-		if (!plasma) {
-			route_entry.shooter = session->player_record;
-			route_entry.maximum_player_record =
-			    session->door->game.config.sector_offset;
-			route_entry.start = (float)start;
-			if (!yt_projectile_route_entry_run(&route_entry,
-			    cruise_route_entry_read_player, session, error)) {
-				free(route);
-				return false;
-			}
-			cursor = (int)route_entry.current_hop;
-		}
-		else
-			cursor = start;
-		while (yt_projectile_route_has_next(route[cursor])
-		    && (!plasma || energy >= 1.0)) {
-		int next = route[cursor];
+		route_entry.shooter = session->player_record;
+		route_entry.maximum_player_record =
+		    session->door->game.config.sector_offset;
+		route_entry.start = (float)start;
+		if (!yt_projectile_route_entry_run(&route_entry,
+		    cruise_route_entry_read_player, session, error))
+			return false;
+		cursor = (int)route_entry.current_hop;
+		for (;;) {
+			int next = yt_route_process_second(&session->route_process,
+			    (int16_t)cursor);
 
-		if (plasma) {
-			if (cursor != start)
-				energy -= (double)hop_loss;
-			if (energy < 1.0)
+			if (!yt_projectile_route_has_next((int16_t)next))
 				break;
-			if (!plasma_hop_report(session, next, energy, error)) {
-				free(route);
-				return false;
-			}
-		}
-		if (yt_projectile_is_black_hole((float)next,
-		    session->black_hole[0], session->black_hole[1])) {
-			float draw;
-			char old_text[64];
-			char new_text[64];
-			char row[192];
-			float local_origin = (float)start;
-			float local_destination = destination;
-			static const struct yt_projectile_cruise_reroute_ops
-			    cruise_ops = {
-				cruise_reroute_line,
-				cruise_reroute_attention,
-				cruise_reroute_random,
-			};
-
-			if (!plasma) {
+			if (yt_projectile_is_black_hole((float)next,
+			    session->black_hole[0], session->black_hole[1])) {
+				float local_origin = (float)start;
+				float local_destination = destination;
+				static const struct yt_projectile_cruise_reroute_ops
+				    cruise_ops = {
+					cruise_reroute_line,
+					cruise_reroute_attention,
+					cruise_reroute_random,
+				};
 				struct yt_projectile_cruise_reroute_state state = {
 					(float)next,
 					session->door->game.config.sector_offset,
@@ -14367,45 +14294,13 @@ launch_projectile(struct yt_session *session, float target, float amount,
 				};
 
 				if (!yt_projectile_cruise_reroute_run(&state,
-				    &cruise_ops, session, error)) {
-					free(route);
+				    &cruise_ops, session, error))
 					return false;
-				}
 				start = (int)*state.origin;
 				destination = *state.destination;
 				rerouted = true;
 				break;
 			}
-
-			start = next;
-			if (origin_alias != NULL)
-				*origin_alias = (float)next;
-			if (!random_value(session, &draw, error)) {
-				free(route);
-				return false;
-			}
-			destination = (float)(1
-			    + (int)floorf(single_mul(draw, (float)count)));
-			qb_str_single(old_text, sizeof(old_text), (float)next);
-			qb_str_single(new_text, sizeof(new_text),
-			    (float)destination);
-			if (!session_present_text(session, NULL, 0,
-			    SESSION_PRESENT_LINE, "projectile black-hole blank", error)) {
-				free(route);
-				return false;
-			}
-			snprintf(row, sizeof(row), "The plasma bolt is "
-			    "deflected by a black hole in sector%s to "
-			    "sector%s!", old_text, new_text);
-			if (!session_attention(session, row,
-			    "plasma black-hole attention", error)) {
-				free(route);
-				return false;
-			}
-			rerouted = true;
-			break;
-		}
-		if (!plasma) {
 			struct yt_projectile_union_police_state police = {
 				(float)next,
 				destination,
@@ -14415,50 +14310,27 @@ launch_projectile(struct yt_session *session, float target, float amount,
 			};
 
 			if (!yt_projectile_union_police_run(&police,
-			    cruise_union_police_present, session, error)) {
-				free(route);
+			    cruise_union_police_present, session, error))
 				return false;
-			}
-			if (police.intercepted) {
-				free(route);
+			if (police.intercepted)
 				return true;
-			}
-		}
-		if (plasma) {
-			if (!plasma_sector(session, next, attacker,
-			    attacker_length, &energy, error)) {
-				free(route);
-				return false;
-			}
-		}
-		else {
 			enum missile_sector_route sector_route;
 
 			if (!missile_sector(session, next, missiles,
 			    counterattack, xannor_provoker, &last_mine_news_sector,
-			    &sector_route, error)) {
-				free(route);
+			    &sector_route, error))
 				return false;
-			}
-			if (sector_route == MISSILE_SECTOR_RETURN) {
-				free(route);
+			if (sector_route == MISSILE_SECTOR_RETURN)
 				return true;
-			}
 			if (yt_projectile_post_impact_route(*missiles)
 			    == YT_PROJECTILE_POST_IMPACT_FOOTER)
 				break;
-		}
-		cursor = next;
+			cursor = next;
 		}
 		if (!rerouted)
 			break;
 	}
-	free(route);
-	if (plasma) {
-		if (!plasma_footer(session, error))
-			return false;
-	}
-	else if (!missile_footer(session, error))
+	if (!missile_footer(session, error))
 		return false;
 	return true;
 }
