@@ -29,6 +29,7 @@
 #define YT_EPOCH_YEAR_ADDRESS 0x1850U
 #define YT_MARKET_BASE_ADDRESS 0x1860U
 #define YT_DISRUPTION_SECTOR_ADDRESS 0x1878U
+#define YT_PLAYER_CACHE_GUARD_ADDRESS 0x1A74U
 #define YT_DESTROYED_ADDRESS 0x18B4U
 #define YT_CURRENT_WARPS_ADDRESS 0x1898U
 #define YT_REGISTERED_FLAG_ADDRESS 0x1C60U
@@ -2200,6 +2201,16 @@ startup_configuration_store_local_screen(void *context,
 	    YT_LOCAL_SCREEN_ADDRESS, raw);
 }
 
+static void
+startup_configuration_store_cache_guard(void *context,
+    const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_PLAYER_CACHE_GUARD_ADDRESS, raw);
+}
+
 static bool
 load_configuration(struct yt_session *session, struct yt_error *error)
 {
@@ -2223,6 +2234,7 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 		startup_configuration_store_port_offset,
 		startup_configuration_store_planet_offset,
 		startup_configuration_store_local_screen,
+		startup_configuration_store_cache_guard,
 	};
 	struct yt_game *game = &session->door->game;
 	struct yt_startup_configuration_state state;
@@ -2233,13 +2245,13 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 	memset(&state, 0, sizeof(state));
 	state.config = &game->config;
 	state.local_mode = session->door->identity.local ? -1.0f : 0.0f;
-	state.cache_guard = session->sector_cache[1];
+	state.cache_guard = yt_route_process_single(&session->route_process,
+	    YT_PLAYER_CACHE_GUARD_ADDRESS);
 	state.sector_cache = session->sector_cache;
 	state.cloak_cache = session->cloak_cache;
 	state.cache_count = YT_ARRAY_LEN(session->sector_cache);
 	session_disruption_sectors(session, state.black_hole);
 	ok = yt_startup_configuration_run(&state, &ops, session, error);
-	session->sector_cache[1] = state.cache_guard;
 	return ok;
 }
 

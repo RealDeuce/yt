@@ -186,6 +186,9 @@ struct startup_configuration_tape {
 	uint8_t local_screen_raw[2][4];
 	size_t local_screen_store_count;
 	size_t local_screen_store_position[2];
+	uint8_t cache_guard_raw[4];
+	size_t cache_guard_store_count;
+	size_t cache_guard_store_position;
 };
 
 static void
@@ -486,6 +489,17 @@ startup_configuration_local_screen_store_test(void *context,
 	++tape->local_screen_store_count;
 }
 
+static void
+startup_configuration_cache_guard_store_test(void *context,
+    const uint8_t raw[4])
+{
+	struct startup_configuration_tape *tape = context;
+
+	memcpy(tape->cache_guard_raw, raw, sizeof(tape->cache_guard_raw));
+	tape->cache_guard_store_position = tape->event_count;
+	++tape->cache_guard_store_count;
+}
+
 static bool
 startup_configuration_fixture(struct startup_configuration_tape *tape,
     struct yt_startup_configuration_state *state, struct yt_config *config,
@@ -562,6 +576,7 @@ check_startup_configuration_transaction(void)
 		startup_configuration_port_offset_store_test,
 		startup_configuration_planet_offset_store_test,
 		startup_configuration_local_screen_store_test,
+		startup_configuration_cache_guard_store_test,
 	};
 	static const int events[] = {
 		STARTUP_CONFIGURATION_CLOSE,
@@ -681,6 +696,10 @@ check_startup_configuration_transaction(void)
 	    || config.maximum_planets != 100.0f
 	    || config.maximum_holds != 1000.0f
 	    || config.turns_per_day != 500.0f || state.cache_guard != 1.0f
+	    || tape.cache_guard_store_count != 1U
+	    || tape.cache_guard_store_position != 9U
+	    || memcmp(tape.cache_guard_raw,
+	    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) != 0
 	    || sector_cache[2] != 20.0f || sector_cache[3] != 30.0f
 	    || sector_cache[4] != 40.0f || sector_cache[1] != -101.0f
 	    || cloak_cache[2] != 1.0f || cloak_cache[3] != 0.5f
@@ -732,7 +751,8 @@ check_startup_configuration_transaction(void)
 	    || tape.events[2] != STARTUP_CONFIGURATION_LOAD
 	    || tape.events[3] != STARTUP_CONFIGURATION_RANDOM
 	    || tape.events[4] != STARTUP_CONFIGURATION_RANDOM
-	    || state.cache_guard != -0.25f || tape.draw_position != 2U)
+	    || state.cache_guard != -0.25f || tape.draw_position != 2U
+	    || tape.cache_guard_store_count != 0U)
 		return false;
 
 	/* An admitted requirement retains the exact hydrated FIELD bytes. */
@@ -879,6 +899,8 @@ check_startup_configuration_transaction(void)
 	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
 	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
 	    || tape.event_count != 5U || state.cache_guard != 1.0f
+	    || tape.cache_guard_store_count != 1U
+	    || tape.cache_guard_store_position != 3U
 	    || tape.draw_position != 2U)
 		return false;
 
@@ -998,6 +1020,12 @@ check_startup_configuration_transaction(void)
 		    || (failure > 4U && (tape.store_count != YT_ARRAY_LEN(stores)
 		    || memcmp(tape.stores, stores, sizeof(stores)) != 0)))
 			return false;
+		if ((failure <= 9U && tape.cache_guard_store_count != 0U)
+		    || (failure >= 10U && (tape.cache_guard_store_count != 1U
+		    || tape.cache_guard_store_position != 9U
+		    || memcmp(tape.cache_guard_raw,
+		    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) != 0)))
+			return false;
 	}
 	if (!startup_configuration_fixture(&tape, &state, &config,
 	    sector_cache, cloak_cache))
@@ -1005,7 +1033,8 @@ check_startup_configuration_transaction(void)
 	tape.fail_at = 6U;
 	if (yt_startup_configuration_run(&state, &ops, &tape, NULL)
 	    || sector_cache[2] != 20.0f || cloak_cache[2] != 1.0f
-	    || state.cache_guard != 0.0f || tape.draw_position != 0U)
+	    || state.cache_guard != 0.0f || tape.draw_position != 0U
+	    || tape.cache_guard_store_count != 0U)
 		return false;
 	if (!startup_configuration_fixture(&tape, &state, &config,
 	    sector_cache, cloak_cache))
@@ -1013,6 +1042,7 @@ check_startup_configuration_transaction(void)
 	tape.fail_at = 11U;
 	if (yt_startup_configuration_run(&state, &ops, &tape, NULL)
 	    || state.cache_guard != 1.0f || state.black_hole[0] != 3.0f
+	    || tape.cache_guard_store_count != 1U
 	    || state.black_hole[1] != 0.0f || tape.draw_position != 1U
 	    || tape.disruption_store_count != 1U
 	    || qb_mbf32_decode(tape.disruption_raw[0]) != 3.0f)

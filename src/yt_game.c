@@ -419,6 +419,11 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 			counter = startup_single_add(counter, 1.0f);
 		}
 		state->cache_guard = 1.0f;
+		if (ops->store_cache_guard != NULL) {
+			static const uint8_t one[4] = {0x00, 0x00, 0x00, 0x81};
+
+			ops->store_cache_guard(context, one);
+		}
 	}
 	for (index = 0U; index < 2U; ++index) {
 		float draw;

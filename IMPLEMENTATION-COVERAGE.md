@@ -157,10 +157,13 @@ the six commodity bases with a distinct launch RNG before initializing the
 post-`RANDOMIZE` gameplay source, rather than consuming those six draws in
 the configuration loader. The logical `BCC5` installation of handler `45F7`
 before the first provider operation is now pinned across every injected
-callback failure. Production no longer mirrors the one-shot guard in a
-separate scalar: the guard is the documented sector-cache slot one at
-`DS:1A74`, so a skipped or completed startup scan and every later cache user
-observe one value. The raw BRUN handler slot/frame/ERL/retry residue,
+callback failure. Production no longer smuggles the one-shot guard through
+host `sector_cache[1]`: it reads documented process root `DS:1A74`, preserves
+all four inherited bytes on every nonzero skip, and writes exact canonical
+one `00 00 00 81` only after the cache loop completes. Focused transaction
+tests pin the write after the final player repair, its zero-body position,
+its presence before either disruption draw, and its absence on every earlier
+failure. The raw BRUN handler slot/frame/ERL/retry residue,
 OPEN/FIELD/GET/PUT/string state, physical partial-I/O, and corrupt
 out-of-native-cache-domain boundaries remain separate prerequisites.
 
