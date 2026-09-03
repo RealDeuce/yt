@@ -9637,9 +9637,10 @@ build_route(struct yt_session *session, float start, float destination,
 	    session->presentation.sound.conversion_mode,
 	    &session->route_process, route_sector_reader, session, &outcome,
 	    error);
-	for (index = 0U; index < YT_ROUTE_CAPACITY; ++index)
-		next_hop[index] = yt_route_process_second(
-		    &session->route_process, (int16_t)index);
+	if (next_hop != NULL)
+		for (index = 0U; index < YT_ROUTE_CAPACITY; ++index)
+			next_hop[index] = yt_route_process_second(
+			    &session->route_process, (int16_t)index);
 	if (!success)
 		return false;
 	*found = outcome == YT_ROUTE_FOUND || outcome == YT_ROUTE_SAME
@@ -15271,6 +15272,28 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
+computer_route_cint(struct yt_session *session, float value, int *converted,
+    enum yt_basic_fault_site site, const char *operation,
+    struct yt_error *error)
+{
+	bool overflow;
+	int32_t result = qb_cint_mode((double)value,
+	    session->presentation.sound.conversion_mode, &overflow);
+
+	if (overflow) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation, sizeof(error->operation),
+			    "%s", operation);
+		}
+		(void)yt_error_attach_basic_fault(error, site);
+		return false;
+	}
+	*converted = (int)result;
+	return true;
+}
+
+static bool
 computer_route(struct yt_session *session, bool autopilot,
     struct yt_error *error)
 {
@@ -15300,7 +15323,6 @@ computer_route(struct yt_session *session, bool autopilot,
 	int start;
 	int destination;
 	int count = sector_count(session);
-	int16_t *route;
 	bool conversion_overflow;
 	bool found;
 	int cursor;
@@ -15376,33 +15398,22 @@ computer_route(struct yt_session *session, bool autopilot,
 		return false;
 	if (start < 0 || start > count || destination < 0 || destination > count)
 		return true;
-	route = calloc(YT_ROUTE_CAPACITY, sizeof(*route));
-	if (route == NULL) {
-		if (error != NULL)
-			error->status = YT_NO_MEMORY;
-		return false;
-	}
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "path working blank", error)
 	    || !session_031f(session, working, sizeof(working) - 1U,
-	    "path working prompt", error)) {
-		free(route);
+	    "path working prompt", error))
 		return false;
-	}
 	session->relationship_scratch = 1.0f;
 	memcpy(session->relationship_scratch_raw, status_one_raw,
 	    sizeof(status_one_raw));
-	if (!build_route(session, start_value, destination_value, route, true,
-	    &found, NULL, &route_status, error)) {
-		free(route);
+	if (!build_route(session, start_value, destination_value, NULL, true,
+	    &found, NULL, &route_status, error))
 		return false;
-	}
 	session->relationship_scratch = route_status;
 	memcpy(session->relationship_scratch_raw,
 	    found ? status_zero_raw : status_one_raw,
 	    sizeof(session->relationship_scratch_raw));
 	if (!found) {
-		free(route);
 		session->presentation.blink = 1.0f;
 		return session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 		    "path failure first blank", error)
@@ -15426,10 +15437,8 @@ computer_route(struct yt_session *session, bool autopilot,
 		    || !session_02fc(session, (const uint8_t *)heading,
 		    strlen(heading))
 		    || !session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "path route blank", error)) {
-			free(route);
+		    SESSION_PRESENT_LINE, "path route blank", error))
 			return false;
-		}
 	}
 	cursor = start;
 	session->computer_route_scratch[0] = '1';
@@ -15443,48 +15452,54 @@ computer_route(struct yt_session *session, bool autopilot,
 
 		if (qb_str_single(number, sizeof(number), (float)start) < 0
 		    || !session_031f(session, (const uint8_t *)number,
-		    strlen(number), "path start token", error)) {
-			free(route);
+		    strlen(number), "path start token", error))
 			return false;
-		}
 	}
-	while (route[cursor] != 0) {
+	for (;;) {
 		char number[64];
 		char token[80];
 		int column;
+		int display_index;
 		int ignored_row;
+		int program_vertex;
+		int16_t next;
 
-		cursor = route[cursor];
+		if (!computer_route_cint(session, (float)cursor, &display_index,
+		    YT_BASIC_FAULT_ROUTE_DISPLAY_VERTEX_CINT,
+		    "route display vertex CINT", error))
+			return false;
+		next = yt_route_process_second(&session->route_process,
+		    (int16_t)display_index);
+		if (next == 0)
+			break;
+		cursor = next;
 		if (qb_str_single(number, sizeof(number), (float)cursor) < 0
 		    || snprintf(token, sizeof(token), "%s%s", number,
 		    cursor == destination ? "" : ",") < 0
 		    || !session_031f(session, (const uint8_t *)token,
-		    strlen(token), "path route token", error)) {
-			free(route);
+		    strlen(token), "path route token", error))
 			return false;
-		}
+		if (!computer_route_cint(session, (float)cursor, &program_vertex,
+		    YT_BASIC_FAULT_ROUTE_PROGRAM_VERTEX_CINT,
+		    "course-program vertex CINT", error))
+			return false;
 		if (!yt_computer_path_append_hop(
 		    session->computer_route_scratch,
 		    sizeof(session->computer_route_scratch),
-		    &session->computer_route_scratch_length, (float)cursor,
+		    &session->computer_route_scratch_length,
+		    (float)program_vertex,
 		    &session->computer_path_hops,
-		    session->computer_path_hops_raw, error)) {
-			free(route);
+		    session->computer_path_hops_raw, error))
 			return false;
-		}
 		yt_out_cursor_position(&ignored_row, &column);
 		if (yt_computer_path_wrap_required(column)
 		    && !session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "path route wrap", error)) {
-			free(route);
+		    SESSION_PRESENT_LINE, "path route wrap", error))
 			return false;
-		}
 	}
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "path token terminator", error)) {
-		free(route);
+	    "path token terminator", error))
 		return false;
-	}
 	{
 		char hop_text[64];
 		char course[128];
@@ -15494,32 +15509,24 @@ computer_route(struct yt_session *session, bool autopilot,
 		    || snprintf(course, sizeof(course),
 		    "Course will take%s turns.", hop_text) < 0
 		    || !session_0317(session, (const uint8_t *)course,
-		    strlen(course), "path course row", error)) {
-			free(route);
+		    strlen(course), "path course row", error))
 			return false;
-		}
 	}
 	session->computer_path_marker = 0.0f;
 	memcpy(session->computer_path_marker_raw, marker_success_raw,
 	    sizeof(marker_success_raw));
-	if (!autopilot || stale_marker) {
-		free(route);
+	if (!autopilot || stale_marker)
 		return true;
-	}
-	if (!reload_player(session, error)) {
-		free(route);
+	if (!reload_player(session, error))
 		return false;
-	}
 	session->navigation_field_kind = NAVIGATION_FIELD_INNER_PLAYER;
 	session->navigation_field_record = session->player_record;
 	session->navigation_field = session->player.record;
 	if (session->computer_path_hops > session->player.turns) {
 		if (!session_02db(session, insufficient,
 		    sizeof(insufficient) - 1U,
-		    "autopilot insufficient turns", error)) {
-			free(route);
+		    "autopilot insufficient turns", error))
 			return false;
-		}
 	}
 	else {
 		char turns[64];
@@ -15530,27 +15537,21 @@ computer_route(struct yt_session *session, bool autopilot,
 		    turns) < 0
 		    || !session_02fc(session, (const uint8_t *)row, strlen(row))
 		    || !session_a8d2(session, confirmation,
-		    sizeof(confirmation) - 1U, &answer, error)) {
-			free(route);
+		    sizeof(confirmation) - 1U, &answer, error))
 			return false;
-		}
 		if (answer == YT_YES_NO_YES) {
 			if (!session_0317(session, engaged, sizeof(engaged) - 1U,
 			    "autopilot engaged row", error)
 			    || !session_0317(session, stop_notice,
 			    sizeof(stop_notice) - 1U,
-			    "autopilot stop row", error)) {
-				free(route);
+			    "autopilot stop row", error))
 				return false;
-			}
 			if (!yt_input_queue_prepend_program(session->queue,
 			    sizeof(session->queue), &session->queue_position,
 			    &session->queue_length,
 			    session->computer_route_scratch,
-			    session->computer_route_scratch_length)) {
-				free(route);
+			    session->computer_route_scratch_length))
 				return false;
-			}
 		}
 	}
 	{
@@ -15561,7 +15562,6 @@ computer_route(struct yt_session *session, bool autopilot,
 		    (int)session->player.sector, &current_sector, error)) {
 			(void)yt_error_attach_basic_fault(error,
 			    YT_BASIC_FAULT_ROUTE_FINAL_SECTOR_GET);
-			free(route);
 			return false;
 		}
 		session->navigation_field_kind = NAVIGATION_FIELD_FINAL_SECTOR;
@@ -15574,7 +15574,6 @@ computer_route(struct yt_session *session, bool autopilot,
 			    current_sector.record.bytes + YT_F41 + index * 4U, 4U);
 		}
 	}
-	free(route);
 	return true;
 }
 

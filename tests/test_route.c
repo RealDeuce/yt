@@ -1,4 +1,5 @@
 #include "yt_route.h"
+#include "yt_main_error.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -274,7 +275,52 @@ test_same_zero_and_conversion_order(void)
 	    predecessor, second, &outcome, &error));
 	CHECK(error.status == YT_RANGE
 	    && strcmp(error.operation, "route warp CINT") == 0
-	    && predecessor[2] == 0);
+	    && !error.basic_fault_valid && predecessor[2] == 0);
+}
+
+static void
+test_route_cint_fault_sites(void)
+{
+	struct graph graph = {.maximum = 3, .fail_sector = -1};
+	struct yt_route_process process;
+	float avoid[YT_ROUTE_AVOID_COUNT] = {0};
+	enum yt_route_outcome outcome;
+	struct yt_error error;
+	float status;
+
+	memset(&process, 0xa5, sizeof(process));
+	status = 0.0f;
+	yt_error_clear(&error);
+	CHECK(!yt_route_process_build(40000.0f, 3.0f, &status, 0,
+	    &process, read_sector, &graph, &outcome, &error));
+	CHECK(error.status == YT_RANGE && error.basic_fault_valid
+	    && error.basic_fault_site == YT_BASIC_FAULT_ROUTE_START_FIFO_CINT
+	    && process.bytes[YT_ROUTE_WORKSPACE_ADDRESS] == 0U
+	    && process.bytes[YT_ROUTE_WORKSPACE_ADDRESS
+	    + YT_ROUTE_WORKSPACE_BYTES - 1U] == 0U);
+
+	memset(&process, 0, sizeof(process));
+	status = 0.0f;
+	yt_error_clear(&error);
+	CHECK(!yt_route_process_build(1.0f, 40000.0f, &status, 0,
+	    &process, read_sector, &graph, &outcome, &error));
+	CHECK(error.status == YT_RANGE && error.basic_fault_valid
+	    && error.basic_fault_site
+	    == YT_BASIC_FAULT_ROUTE_DESTINATION_PREDECESSOR_CINT
+	    && yt_route_process_second(&process, 1) == 1
+	    && yt_route_process_predecessor(&process, 1) == -1);
+
+	memset(&process, 0, sizeof(process));
+	avoid[0] = 40000.0f;
+	yt_error_clear(&error);
+	CHECK(yt_route_process_set_avoid(&process, avoid, &error));
+	status = 1.0f;
+	yt_error_clear(&error);
+	CHECK(!yt_route_process_build(1.0f, 3.0f, &status, 0,
+	    &process, read_sector, &graph, &outcome, &error));
+	CHECK(error.status == YT_RANGE && error.basic_fault_valid
+	    && error.basic_fault_site
+	    == YT_BASIC_FAULT_ROUTE_AVOID_PREDECESSOR_CINT);
 }
 
 int
@@ -284,6 +330,7 @@ main(void)
 	test_avoid_semantics();
 	test_wrapped_process_writes();
 	test_same_zero_and_conversion_order();
+	test_route_cint_fault_sites();
 	if (failures != 0U)
 		return EXIT_FAILURE;
 	puts("test_route: ok");
