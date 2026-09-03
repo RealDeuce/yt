@@ -47,6 +47,7 @@
 #define YT_COMPUTER_PATH_HOPS_ADDRESS 0x4E82U
 #define YT_EARTH_REPORT_SEEN_ADDRESS 0x5006U
 #define YT_SPY_COUNT_ADDRESS 0x50AEU
+#define YT_LOW_TIME_REMEMBERED_ADDRESS 0x59CEU
 
 enum navigation_field_kind {
 	NAVIGATION_FIELD_NONE,
@@ -103,9 +104,7 @@ struct yt_session {
 	struct yt_radio_record radio_field;
 	char planet_name[42];
 	double planet_quantity[10];
-	float session_deadline;
 	struct yt_present_time_state time;
-	float low_time_remembered;
 	struct yt_pager_state pager;
 	struct yt_timed_wait_state wait;
 	struct yt_input_value input_residue;
@@ -813,7 +812,7 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 		if (!info_refresh_time(session, NULL))
 			return false;
 		if (yt_input_ab36_session_expired((float)yt_platform_timer(),
-		    session->session_deadline))
+		    session->time.deadline))
 			return session_editor_end(session,
 			    YT_AB36_TERMINAL_SESSION_LIMIT);
 		if (queued) {
@@ -1410,11 +1409,17 @@ session_low_time(struct yt_session *session, const char *operation,
 {
 	struct yt_present_result presentation;
 	enum yt_present_status status;
+	float remembered = yt_route_process_single(&session->route_process,
+	    YT_LOW_TIME_REMEMBERED_ADDRESS);
+	float inherited = remembered;
 	bool warned;
 
 	status = yt_present_low_time(session->time.text,
-	    session->time.text_length, &session->low_time_remembered,
+	    session->time.text_length, &remembered,
 	    &session->presentation, &presentation, &warned);
+	if (remembered != inherited)
+		session_set_process_single(session,
+		    YT_LOW_TIME_REMEMBERED_ADDRESS, remembered);
 	if (status == YT_PRESENT_OK) {
 		yt_out_present_result(&presentation);
 		return true;
@@ -11390,7 +11395,6 @@ info_refresh_time(struct yt_session *session, struct yt_error *error)
 	if (status != YT_PRESENT_OK)
 		return info_failure(error, "Info time refresh");
 	yt_out_present_result(&presentation);
-	session->session_deadline = session->time.deadline;
 	return true;
 }
 
@@ -18420,9 +18424,8 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 		float maximum = single_add(
 		    floorf((float)yt_platform_timer()), 10800.0f);
 
-		session.session_deadline = requested < maximum
+		session.time.deadline = requested < maximum
 		    ? requested : maximum;
-		session.time.deadline = session.session_deadline;
 	}
 	if (!load_configuration(&session, error))
 		return session.terminated;
