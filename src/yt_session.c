@@ -74,6 +74,7 @@
 #define YT_RETURNING_REBUILD_WAIT_ADDRESS 0x534EU
 #define YT_LOCKOUT_WAIT_ADDRESS 0x5B9EU
 #define YT_NORMAL_EXIT_REMINDER_WAIT_ADDRESS 0x4CAAU
+#define YT_POST_LOGIN_PRESS_WAIT_ADDRESS 0x64C4U
 #define YT_XANNOR_RETALIATION_WAIT_ADDRESS 0x5B8AU
 #define YT_COUNTERLAUNCH_COUNT_ADDRESS 0x5BC6U
 #define YT_COUNTERLAUNCH_WAIT_ADDRESS 0x5BDAU
@@ -3498,6 +3499,9 @@ static bool
 post_login(struct yt_session *session, struct yt_error *error)
 {
 	static const uint8_t prompt[] = "[ Press any Key ]";
+	static const uint8_t duration_ninety_nine[4] = {
+		0x00, 0x00, 0x46, 0x87,
+	};
 	char real_name[258];
 	struct yt_present_result presentation;
 	enum yt_present_status status;
@@ -3538,14 +3542,9 @@ post_login(struct yt_session *session, struct yt_error *error)
 		}
 		return false;
 	}
-	if (!session_timed_wait(session, 99.0)) {
-		if (error != NULL) {
-			error->status = YT_IO_ERROR;
-			snprintf(error->operation, sizeof(error->operation),
-			    "post-login press wait");
-		}
+	if (!session_wait_raw_at(session, duration_ninety_nine,
+	    YT_POST_LOGIN_PRESS_WAIT_ADDRESS, "post-login press wait", error))
 		return false;
-	}
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "post-login press trailing blank", error))
 		return false;
