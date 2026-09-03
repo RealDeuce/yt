@@ -299,6 +299,9 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 	if (ops->store_lottery_plays != NULL)
 		ops->store_lottery_plays(context,
 		    config->record.bytes + YT_F101);
+	if (ops->store_maximum_planets != NULL)
+		ops->store_maximum_planets(context,
+		    config->record.bytes + YT_F129);
 	if (ops->store_genesis != NULL)
 		ops->store_genesis(context, config->record.bytes + YT_F105);
 
@@ -339,8 +342,15 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 		if (ops->store_lottery_plays != NULL)
 			ops->store_lottery_plays(context, lottery_default);
 	}
-	if (config->maximum_planets == 0.0f)
+	if (config->maximum_planets == 0.0f) {
+		static const uint8_t planets_default[4] = {
+			0x00, 0x00, 0x48, 0x87
+		};
+
 		config->maximum_planets = 100.0f;
+		if (ops->store_maximum_planets != NULL)
+			ops->store_maximum_planets(context, planets_default);
+	}
 	if (config->maximum_holds < 5.0f || config->maximum_holds > 1000.0f)
 		config->maximum_holds = 1000.0f;
 	if (config->turns_per_day < 100.0f

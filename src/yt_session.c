@@ -36,6 +36,7 @@
 #define YT_CURRENT_SECTOR_RECORD_ADDRESS 0x4B50U
 #define YT_TURNS_PER_DAY_ADDRESS 0x4BD0U
 #define YT_LOTTERY_PLAYS_ADDRESS 0x4BB8U
+#define YT_MAXIMUM_PLANETS_ADDRESS 0x4BA8U
 #define YT_CLEARANCE_HOLDS_ADDRESS 0x4B54U
 #define YT_CLEARANCE_FIGHTERS_ADDRESS 0x4B58U
 #define YT_CLEARANCE_GROUND_ADDRESS 0x4B5CU
@@ -2015,6 +2016,16 @@ startup_configuration_store_lottery(void *context, const uint8_t raw[4])
 	    YT_LOTTERY_PLAYS_ADDRESS, raw);
 }
 
+static void
+startup_configuration_store_maximum_planets(void *context,
+    const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_MAXIMUM_PLANETS_ADDRESS, raw);
+}
+
 static bool
 load_configuration(struct yt_session *session, struct yt_error *error)
 {
@@ -2030,6 +2041,7 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 		startup_configuration_store_genesis,
 		startup_configuration_store_turns,
 		startup_configuration_store_lottery,
+		startup_configuration_store_maximum_planets,
 	};
 	struct yt_game *game = &session->door->game;
 	struct yt_startup_configuration_state state;
