@@ -34,6 +34,7 @@
 #define YT_GENESIS_REQUIRED_PORTS_ADDRESS 0x1C48U
 #define YT_PLANET_RECORD_SCRATCH_ADDRESS 0x19C4U
 #define YT_CURRENT_SECTOR_RECORD_ADDRESS 0x4B50U
+#define YT_TURNS_PER_DAY_ADDRESS 0x4BD0U
 #define YT_CLEARANCE_HOLDS_ADDRESS 0x4B54U
 #define YT_CLEARANCE_FIGHTERS_ADDRESS 0x4B58U
 #define YT_CLEARANCE_GROUND_ADDRESS 0x4B5CU
@@ -1995,6 +1996,15 @@ startup_configuration_store_genesis(void *context, const uint8_t raw[4])
 	    YT_GENESIS_REQUIRED_PORTS_ADDRESS, raw);
 }
 
+static void
+startup_configuration_store_turns(void *context, const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_TURNS_PER_DAY_ADDRESS, raw);
+}
+
 static bool
 load_configuration(struct yt_session *session, struct yt_error *error)
 {
@@ -2008,6 +2018,7 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 		startup_configuration_random,
 		startup_configuration_store_disruption,
 		startup_configuration_store_genesis,
+		startup_configuration_store_turns,
 	};
 	struct yt_game *game = &session->door->game;
 	struct yt_startup_configuration_state state;
@@ -2928,10 +2939,11 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 			return false;
 		session->player.last_active = (float)session->door->game.today;
 		if (previous_day != (float)session->door->game.today) {
-			if (session->player.turns
-			    < session->door->game.config.turns_per_day)
-				session->player.turns =
-				    session->door->game.config.turns_per_day;
+			float turns_per_day = yt_route_process_single(
+			    &session->route_process, YT_TURNS_PER_DAY_ADDRESS);
+
+			if (session->player.turns < turns_per_day)
+				session->player.turns = turns_per_day;
 			session->player.lottery_plays = 0.0f;
 		}
 		if (!write_player(session, error))
@@ -6444,7 +6456,8 @@ attack_deployed_committed(struct yt_session *session,
 		    strlen(session->door->identity.real_first),
 		.owner_label = session->hostile_owner_label,
 		.owner_label_length = session->hostile_owner_label_length,
-		.turns_per_day = session->door->game.config.turns_per_day,
+		.turns_per_day = yt_route_process_single(&session->route_process,
+		    YT_TURNS_PER_DAY_ADDRESS),
 		.headquarters = session->door->game.config.headquarters,
 	};
 	result = yt_hostile_attack_combat_run(&state, &ops, &context, error);

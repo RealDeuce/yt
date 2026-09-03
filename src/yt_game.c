@@ -293,6 +293,9 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 	qb_compat_upper_n((uint8_t *)config->scoreboard,
 	    state->scoreboard_path_length);
 	config->scoreboard[state->scoreboard_path_length] = '\0';
+	if (ops->store_turns_per_day != NULL)
+		ops->store_turns_per_day(context,
+		    config->record.bytes + YT_F49);
 	if (ops->store_genesis != NULL)
 		ops->store_genesis(context, config->record.bytes + YT_F105);
 
@@ -330,8 +333,16 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 		config->maximum_planets = 100.0f;
 	if (config->maximum_holds < 5.0f || config->maximum_holds > 1000.0f)
 		config->maximum_holds = 1000.0f;
-	if (config->turns_per_day < 100.0f || config->turns_per_day > 2500.0f)
+	if (config->turns_per_day < 100.0f
+	    || config->turns_per_day > 2500.0f) {
+		static const uint8_t turns_default[4] = {
+			0x00, 0x00, 0x7a, 0x89
+		};
+
 		config->turns_per_day = 500.0f;
+		if (ops->store_turns_per_day != NULL)
+			ops->store_turns_per_day(context, turns_default);
+	}
 
 	if (state->cache_guard == 0.0f) {
 		counter = 2.0f;
