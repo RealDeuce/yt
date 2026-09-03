@@ -163,7 +163,12 @@ all four inherited bytes on every nonzero skip, and writes exact canonical
 one `00 00 00 81` only after the cache loop completes. Focused transaction
 tests pin the write after the final player repair, its zero-body position,
 its presence before either disruption draw, and its absence on every earlier
-failure. The raw BRUN handler slot/frame/ERL/retry residue,
+failure. Numeric-zero entry also copies the exact hydrated sector-terminal
+bytes to `DS:5DFE`, installs raw two `00 00 00 82` at `DS:5E02`, and writes
+every completed SINGLE increment back to that same counter cell before the
+next comparison. Focused failure prefixes pin counter residue at two through
+five and preserve both procedure-static cells on a nonzero-guard skip. The raw
+BRUN handler slot/frame/ERL/retry residue,
 OPEN/FIELD/GET/PUT/string state, physical partial-I/O, and corrupt
 out-of-native-cache-domain boundaries remain separate prerequisites.
 

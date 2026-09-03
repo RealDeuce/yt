@@ -92,6 +92,10 @@ typedef void (*yt_startup_configuration_local_screen_store_fn)(void *context,
 	const uint8_t raw[4]);
 typedef void (*yt_startup_configuration_cache_guard_store_fn)(void *context,
 	const uint8_t raw[4]);
+typedef void (*yt_startup_configuration_cache_terminal_store_fn)(void *context,
+	const uint8_t raw[4]);
+typedef void (*yt_startup_configuration_cache_counter_store_fn)(void *context,
+	const uint8_t raw[4]);
 
 struct yt_startup_configuration_ops {
 	yt_startup_configuration_close_fn close_data;
@@ -114,6 +118,8 @@ struct yt_startup_configuration_ops {
 	yt_startup_configuration_planet_offset_store_fn store_planet_offset;
 	yt_startup_configuration_local_screen_store_fn store_local_screen;
 	yt_startup_configuration_cache_guard_store_fn store_cache_guard;
+	yt_startup_configuration_cache_terminal_store_fn store_cache_terminal;
+	yt_startup_configuration_cache_counter_store_fn store_cache_counter;
 };
 
 bool yt_startup_configuration_run(

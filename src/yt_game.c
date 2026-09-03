@@ -394,6 +394,13 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 	}
 
 	if (state->cache_guard == 0.0f) {
+		static const uint8_t counter_two[4] = {0x00, 0x00, 0x00, 0x82};
+
+		if (ops->store_cache_terminal != NULL)
+			ops->store_cache_terminal(context,
+			    config->record.bytes + YT_F53);
+		if (ops->store_cache_counter != NULL)
+			ops->store_cache_counter(context, counter_two);
 		counter = 2.0f;
 		while (counter <= config->sector_offset) {
 			struct yt_player player;
@@ -417,6 +424,14 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 					return false;
 			}
 			counter = startup_single_add(counter, 1.0f);
+			if (ops->store_cache_counter != NULL) {
+				uint8_t counter_raw[4];
+
+				if (qb_mbf32_encode(counter, counter_raw) != QB_MBF_OK)
+					return startup_configuration_error(error,
+					    YT_RANGE, "startup player-cache counter");
+				ops->store_cache_counter(context, counter_raw);
+			}
 		}
 		state->cache_guard = 1.0f;
 		if (ops->store_cache_guard != NULL) {

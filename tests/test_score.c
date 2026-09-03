@@ -189,6 +189,10 @@ struct startup_configuration_tape {
 	uint8_t cache_guard_raw[4];
 	size_t cache_guard_store_count;
 	size_t cache_guard_store_position;
+	uint8_t cache_terminal_raw[4];
+	size_t cache_terminal_store_count;
+	uint8_t cache_counter_raw[8][4];
+	size_t cache_counter_store_count;
 };
 
 static void
@@ -500,6 +504,31 @@ startup_configuration_cache_guard_store_test(void *context,
 	++tape->cache_guard_store_count;
 }
 
+static void
+startup_configuration_cache_terminal_store_test(void *context,
+    const uint8_t raw[4])
+{
+	struct startup_configuration_tape *tape = context;
+
+	memcpy(tape->cache_terminal_raw, raw,
+	    sizeof(tape->cache_terminal_raw));
+	++tape->cache_terminal_store_count;
+}
+
+static void
+startup_configuration_cache_counter_store_test(void *context,
+    const uint8_t raw[4])
+{
+	struct startup_configuration_tape *tape = context;
+	size_t store = tape->cache_counter_store_count;
+
+	if (store >= YT_ARRAY_LEN(tape->cache_counter_raw))
+		return;
+	memcpy(tape->cache_counter_raw[store], raw,
+	    sizeof(tape->cache_counter_raw[store]));
+	++tape->cache_counter_store_count;
+}
+
 static bool
 startup_configuration_fixture(struct startup_configuration_tape *tape,
     struct yt_startup_configuration_state *state, struct yt_config *config,
@@ -577,6 +606,8 @@ check_startup_configuration_transaction(void)
 		startup_configuration_planet_offset_store_test,
 		startup_configuration_local_screen_store_test,
 		startup_configuration_cache_guard_store_test,
+		startup_configuration_cache_terminal_store_test,
+		startup_configuration_cache_counter_store_test,
 	};
 	static const int events[] = {
 		STARTUP_CONFIGURATION_CLOSE,
@@ -700,6 +731,14 @@ check_startup_configuration_transaction(void)
 	    || tape.cache_guard_store_position != 9U
 	    || memcmp(tape.cache_guard_raw,
 	    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) != 0
+	    || tape.cache_terminal_store_count != 1U
+	    || memcmp(tape.cache_terminal_raw,
+	    tape.config_source.bytes + YT_F53, 4U) != 0
+	    || tape.cache_counter_store_count != 4U
+	    || qb_mbf32_decode(tape.cache_counter_raw[0]) != 2.0f
+	    || qb_mbf32_decode(tape.cache_counter_raw[1]) != 3.0f
+	    || qb_mbf32_decode(tape.cache_counter_raw[2]) != 4.0f
+	    || qb_mbf32_decode(tape.cache_counter_raw[3]) != 5.0f
 	    || sector_cache[2] != 20.0f || sector_cache[3] != 30.0f
 	    || sector_cache[4] != 40.0f || sector_cache[1] != -101.0f
 	    || cloak_cache[2] != 1.0f || cloak_cache[3] != 0.5f
@@ -752,7 +791,9 @@ check_startup_configuration_transaction(void)
 	    || tape.events[3] != STARTUP_CONFIGURATION_RANDOM
 	    || tape.events[4] != STARTUP_CONFIGURATION_RANDOM
 	    || state.cache_guard != -0.25f || tape.draw_position != 2U
-	    || tape.cache_guard_store_count != 0U)
+	    || tape.cache_guard_store_count != 0U
+	    || tape.cache_terminal_store_count != 0U
+	    || tape.cache_counter_store_count != 0U)
 		return false;
 
 	/* An admitted requirement retains the exact hydrated FIELD bytes. */
@@ -901,6 +942,11 @@ check_startup_configuration_transaction(void)
 	    || tape.event_count != 5U || state.cache_guard != 1.0f
 	    || tape.cache_guard_store_count != 1U
 	    || tape.cache_guard_store_position != 3U
+	    || tape.cache_terminal_store_count != 1U
+	    || memcmp(tape.cache_terminal_raw,
+	    tape.config_source.bytes + YT_F53, 4U) != 0
+	    || tape.cache_counter_store_count != 1U
+	    || qb_mbf32_decode(tape.cache_counter_raw[0]) != 2.0f
 	    || tape.draw_position != 2U)
 		return false;
 
@@ -1026,6 +1072,15 @@ check_startup_configuration_transaction(void)
 		    || memcmp(tape.cache_guard_raw,
 		    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) != 0)))
 			return false;
+		if ((failure <= 4U && tape.cache_terminal_store_count != 0U)
+		    || (failure >= 5U && (tape.cache_terminal_store_count != 1U
+		    || memcmp(tape.cache_terminal_raw,
+		    tape.config_source.bytes + YT_F53, 4U) != 0)))
+			return false;
+		if (tape.cache_counter_store_count != (failure <= 4U ? 0U
+		    : failure <= 6U ? 1U : failure == 7U ? 2U
+		    : failure <= 9U ? 3U : 4U))
+			return false;
 	}
 	if (!startup_configuration_fixture(&tape, &state, &config,
 	    sector_cache, cloak_cache))
@@ -1034,7 +1089,9 @@ check_startup_configuration_transaction(void)
 	if (yt_startup_configuration_run(&state, &ops, &tape, NULL)
 	    || sector_cache[2] != 20.0f || cloak_cache[2] != 1.0f
 	    || state.cache_guard != 0.0f || tape.draw_position != 0U
-	    || tape.cache_guard_store_count != 0U)
+	    || tape.cache_guard_store_count != 0U
+	    || tape.cache_terminal_store_count != 1U
+	    || tape.cache_counter_store_count != 1U)
 		return false;
 	if (!startup_configuration_fixture(&tape, &state, &config,
 	    sector_cache, cloak_cache))
@@ -1043,6 +1100,8 @@ check_startup_configuration_transaction(void)
 	if (yt_startup_configuration_run(&state, &ops, &tape, NULL)
 	    || state.cache_guard != 1.0f || state.black_hole[0] != 3.0f
 	    || tape.cache_guard_store_count != 1U
+	    || tape.cache_terminal_store_count != 1U
+	    || tape.cache_counter_store_count != 4U
 	    || state.black_hole[1] != 0.0f || tape.draw_position != 1U
 	    || tape.disruption_store_count != 1U
 	    || qb_mbf32_decode(tape.disruption_raw[0]) != 3.0f)

@@ -30,6 +30,8 @@
 #define YT_MARKET_BASE_ADDRESS 0x1860U
 #define YT_DISRUPTION_SECTOR_ADDRESS 0x1878U
 #define YT_PLAYER_CACHE_GUARD_ADDRESS 0x1A74U
+#define YT_PLAYER_CACHE_TERMINAL_ADDRESS 0x5DFEU
+#define YT_PLAYER_CACHE_COUNTER_ADDRESS 0x5E02U
 #define YT_DESTROYED_ADDRESS 0x18B4U
 #define YT_CURRENT_WARPS_ADDRESS 0x1898U
 #define YT_REGISTERED_FLAG_ADDRESS 0x1C60U
@@ -2211,6 +2213,26 @@ startup_configuration_store_cache_guard(void *context,
 	    YT_PLAYER_CACHE_GUARD_ADDRESS, raw);
 }
 
+static void
+startup_configuration_store_cache_terminal(void *context,
+    const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_PLAYER_CACHE_TERMINAL_ADDRESS, raw);
+}
+
+static void
+startup_configuration_store_cache_counter(void *context,
+    const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_PLAYER_CACHE_COUNTER_ADDRESS, raw);
+}
+
 static bool
 load_configuration(struct yt_session *session, struct yt_error *error)
 {
@@ -2235,6 +2257,8 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 		startup_configuration_store_planet_offset,
 		startup_configuration_store_local_screen,
 		startup_configuration_store_cache_guard,
+		startup_configuration_store_cache_terminal,
+		startup_configuration_store_cache_counter,
 	};
 	struct yt_game *game = &session->door->game;
 	struct yt_startup_configuration_state state;
