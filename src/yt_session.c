@@ -71,6 +71,7 @@
 #define YT_ANSI_OPENING_WAIT_ADDRESS 0x539EU
 #define YT_REGISTRATION_EVALUATION_WAIT_ADDRESS 0x530EU
 #define YT_REGISTRATION_REGISTERED_WAIT_ADDRESS 0x5312U
+#define YT_RETURNING_REBUILD_WAIT_ADDRESS 0x534EU
 #define YT_LOCKOUT_WAIT_ADDRESS 0x5B9EU
 #define YT_NORMAL_EXIT_REMINDER_WAIT_ADDRESS 0x4CAAU
 #define YT_XANNOR_RETALIATION_WAIT_ADDRESS 0x5B8AU
@@ -443,6 +444,17 @@ session_wait_raw_at(struct yt_session *session, const uint8_t raw[4],
 		    operation);
 	}
 	return false;
+}
+
+static bool
+session_returning_rebuild_wait(struct yt_session *session,
+    struct yt_error *error)
+{
+	static const uint8_t duration_five[4] = {0x00, 0x00, 0x20, 0x83};
+
+	return session_wait_raw_at(session, duration_five,
+	    YT_RETURNING_REBUILD_WAIT_ADDRESS,
+	    "returning-player rebuild wait", error);
 }
 
 static bool
@@ -3255,8 +3267,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 			}
 			if (!construct_player_visible(session, error))
 				return false;
-			if (!session_wait(session, 5.0,
-			    "returning-player rebuild wait", error))
+			if (!session_returning_rebuild_wait(session, error))
 				return false;
 		}
 	}

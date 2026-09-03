@@ -8,6 +8,32 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
+### DOC-GAP-016: Xannor-victory wait destination root
+
+Affected coverage:
+
+- Headquarters-victory `[PAUSE]` suffix at `YT-SUB:A83E..A850`;
+- authoritative process-image binding of its 99-second duration/deadline
+  cell; and
+- exact wait-failure residue in the joined direct, missile and plasma
+  Headquarters-victory callers.
+
+The completed `docs/runtime/xannor-victory-output.md` specifies that `A83E`
+copies MBF32 99 and that `A84B` passes a caller-owned cell by reference to
+the shared `94FD` wait, which replaces that same cell with the absolute
+deadline. Generated `ythq-victory.static.txt` and
+`ythq-victory-output.static.txt` identify `DS:A9D8` as the raw
+`00 00 46 87` source value, but neither source identifies the mutable
+destination root written by the copy and passed to `94FD`. The global-state
+registry also has no Headquarters-victory wait root.
+
+The native implementation can preserve the typed 99-second behavior but
+cannot make the correct process cell authoritative or pin its failure
+residue without inventing that destination address. Upstream documentation,
+the canonical world model, generated evidence and registry must name the
+destination root before this boundary can proceed. No binary inspection or
+new reverse engineering was performed.
+
 ### DOC-GAP-015: zero-Headquarters repair literal conflict
 
 Affected coverage:
