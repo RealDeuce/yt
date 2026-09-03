@@ -1541,16 +1541,19 @@ enum yt_sysop_event_stack_outcome
 yt_sysop_event_deliver_raw(struct yt_sysop_key_scheduler *scheduler,
     const struct yt_sysop_key_delivery *delivery,
     struct yt_sysop_event_stack *stack, uint16_t brun_segment,
-    uint16_t checkpoint_flags)
+    struct yt_sysop_event_registers *registers)
 {
 	struct yt_sysop_key_record *record;
 	size_t index;
+	uint16_t interrupted_cs;
+	uint16_t resume_ip;
 	uint16_t program_sp;
 	uint16_t frame_base;
 	uint16_t frame_top;
 	uint16_t post_push_sp;
 
 	if (scheduler == NULL || scheduler->process == NULL || delivery == NULL
+	    || registers == NULL
 	    || !delivery->delivered || !sysop_event_stack_valid(stack)
 	    || !sysop_key_raw_matches(scheduler)
 	    || scheduler->frame_depth == 0U)
@@ -1566,20 +1569,26 @@ yt_sysop_event_deliver_raw(struct yt_sysop_key_scheduler *scheduler,
 	    || record->target == 0U || record->target_segment == 0U)
 		return YT_SYSOP_EVENT_STACK_INVALID;
 	program_sp = stack->sp;
+	interrupted_cs = stack->cs;
+	resume_ip = (uint16_t)(stack->ip + 1U);
 	sysop_event_stack_set_word(stack, (uint16_t)(program_sp - 2U),
-	    checkpoint_flags);
+	    registers->flags);
 	sysop_event_stack_set_word(stack, (uint16_t)(program_sp - 4U),
-	    stack->cs);
+	    interrupted_cs);
 	sysop_event_stack_set_word(stack, (uint16_t)(program_sp - 6U),
-	    (uint16_t)(stack->ip + 1U));
+	    resume_ip);
 	frame_base = (uint16_t)(program_sp - 2U);
 	frame_top = (uint16_t)(frame_base - SYSOP_EVENT_YT_FRAME_SIZE);
 	sysop_event_stack_set_word(stack, frame_base, stack->bp);
 	sysop_event_stack_set_word(stack, (uint16_t)(frame_top - 2U),
-	    stack->cs);
+	    interrupted_cs);
 	sysop_event_stack_set_word(stack, (uint16_t)(frame_top - 4U),
-	    (uint16_t)(stack->ip + 1U));
+	    resume_ip);
 	post_push_sp = (uint16_t)(frame_top - 4U);
+	registers->bx = record->address;
+	registers->cx = interrupted_cs;
+	registers->dx = resume_ip;
+	registers->si = SYSOP_KEY_FIFO_CONTROL;
 	if (post_push_sp < sysop_key_process_word(scheduler->process,
 	    SYSOP_EVENT_STACK_FLOOR)) {
 		stack->sp = post_push_sp;
@@ -1600,6 +1609,7 @@ yt_sysop_event_deliver_raw(struct yt_sysop_key_scheduler *scheduler,
 	stack->bp = frame_base;
 	stack->cs = record->target_segment;
 	stack->ip = record->target;
+	registers->ax = record->target_segment;
 	sysop_key_process_set_word(scheduler->process,
 	    SYSOP_EVENT_HANDLER_TOP, stack->sp);
 	return YT_SYSOP_EVENT_STACK_OK;
@@ -1608,11 +1618,12 @@ yt_sysop_event_deliver_raw(struct yt_sysop_key_scheduler *scheduler,
 bool
 yt_sysop_event_checkpoint_quiet_raw(
     struct yt_sysop_key_scheduler *scheduler,
-    struct yt_sysop_event_stack *stack, uint16_t checkpoint_flags)
+    struct yt_sysop_event_stack *stack,
+    struct yt_sysop_event_registers *registers)
 {
 	uint16_t sp;
 
-	if (scheduler == NULL || scheduler->process == NULL
+	if (scheduler == NULL || scheduler->process == NULL || registers == NULL
 	    || !sysop_event_stack_valid(stack)
 	    || !sysop_key_raw_matches(scheduler))
 		return false;
@@ -1620,7 +1631,7 @@ yt_sysop_event_checkpoint_quiet_raw(
 		scheduler->process[SYSOP_EVENT_WAKE_FLAG] = 0U;
 	sp = stack->sp;
 	sysop_event_stack_set_word(stack, (uint16_t)(sp - 2U),
-	    checkpoint_flags);
+	    registers->flags);
 	sysop_event_stack_set_word(stack, (uint16_t)(sp - 4U), stack->cs);
 	sysop_event_stack_set_word(stack, (uint16_t)(sp - 6U),
 	    (uint16_t)(stack->ip + 1U));

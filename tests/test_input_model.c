@@ -2483,6 +2483,7 @@ test_sysop_event_stack(void)
 	struct yt_sysop_key_scheduler scheduler;
 	struct yt_sysop_key_delivery delivery;
 	struct yt_sysop_event_stack stack;
+	struct yt_sysop_event_registers registers;
 	enum yt_sysop_key returned;
 	uint16_t frame_base;
 	uint16_t frame_top;
@@ -2500,6 +2501,16 @@ test_sysop_event_stack(void)
 		.bytes = stack_bytes,
 		.size = sizeof(stack_bytes),
 	};
+	registers = (struct yt_sysop_event_registers){
+		.ax = 0x1111U,
+		.bx = 0x2222U,
+		.cx = 0x3333U,
+		.dx = 0x4444U,
+		.si = 0x5555U,
+		.di = 0x6666U,
+		.es = 0x7777U,
+		.flags = 0x0202U,
+	};
 	CHECK(yt_sysop_key_scheduler_bind_process(&scheduler, process,
 	    sizeof(process), 0x4444U)
 	    && yt_sysop_event_stack_init(&scheduler, &stack, 0x7000U)
@@ -2511,7 +2522,7 @@ test_sysop_event_stack(void)
 	    && yt_sysop_key_checkpoint(&scheduler, false, &delivery)
 	    && delivery.key == YT_SYSOP_KEY_F9
 	    && yt_sysop_event_deliver_raw(&scheduler, &delivery, &stack,
-	    0x5555U, 0x0202U) == YT_SYSOP_EVENT_STACK_OK);
+	    0x5555U, &registers) == YT_SYSOP_EVENT_STACK_OK);
 	frame_base = 0x8FFEU;
 	frame_top = 0x8FF6U;
 	CHECK(stack.ip == 0xB66AU && stack.cs == 0x4444U
@@ -2525,17 +2536,26 @@ test_sysop_event_stack(void)
 	    && input_process_word(stack.bytes, frame_top - 8U) == 0U
 	    && input_process_word(stack.bytes, frame_top - 6U) == 0x11C3U
 	    && input_process_word(stack.bytes, frame_top - 4U) == 0xB6D8U
-	    && input_process_word(stack.bytes, frame_top - 2U) == 0x4444U);
+	    && input_process_word(stack.bytes, frame_top - 2U) == 0x4444U
+	    && registers.ax == 0x4444U && registers.bx == 0x11C3U
+	    && registers.cx == 0x4444U && registers.dx == 0xB6D8U
+	    && registers.si == 0x1254U && registers.di == 0x6666U
+	    && registers.es == 0x7777U && registers.flags == 0x0202U);
 
 	process[0x0A6AU] = 0x7FU;
+	registers.flags = 0x0246U;
 	CHECK(yt_sysop_key_checkpoint(&scheduler, false, &delivery)
 	    && !delivery.delivered
-	    && yt_sysop_event_checkpoint_quiet_raw(&scheduler, &stack, 0x0246U)
+	    && yt_sysop_event_checkpoint_quiet_raw(&scheduler, &stack, &registers)
 	    && process[0x0A6AU] == 0U && stack.ip == 0xB66BU
 	    && stack.sp == frame_top - 8U && stack.bp == frame_base
 	    && input_process_word(stack.bytes, frame_top - 10U) == 0x0246U
 	    && input_process_word(stack.bytes, frame_top - 12U) == 0x4444U
-	    && input_process_word(stack.bytes, frame_top - 14U) == 0xB66BU);
+	    && input_process_word(stack.bytes, frame_top - 14U) == 0xB66BU
+	    && registers.ax == 0x4444U && registers.bx == 0x11C3U
+	    && registers.cx == 0x4444U && registers.dx == 0xB6D8U
+	    && registers.si == 0x1254U && registers.di == 0x6666U
+	    && registers.es == 0x7777U && registers.flags == 0x0246U);
 	stack.ip = 0xB679U;
 	CHECK(yt_sysop_event_return_raw(&scheduler, &stack, 0x0202U,
 	    &returned)
@@ -2557,11 +2577,11 @@ test_sysop_event_stack(void)
 	    && yt_sysop_key_checkpoint(&scheduler, false, &delivery)
 	    && delivery.key == YT_SYSOP_KEY_F8
 	    && yt_sysop_event_deliver_raw(&scheduler, &delivery, &stack,
-	    0x5555U, 0x0202U) == YT_SYSOP_EVENT_STACK_OK
+	    0x5555U, &registers) == YT_SYSOP_EVENT_STACK_OK
 	    && yt_sysop_key_latch(&scheduler, YT_SYSOP_KEY_F8)
 	    && yt_sysop_key_checkpoint(&scheduler, false, &delivery)
 	    && !delivery.delivered
-	    && yt_sysop_event_checkpoint_quiet_raw(&scheduler, &stack, 0x0202U)
+	    && yt_sysop_event_checkpoint_quiet_raw(&scheduler, &stack, &registers)
 	    && process[0x11BEU] == 0x07U);
 	stack.ip = 0xB6D4U;
 	CHECK(yt_sysop_event_return_raw(&scheduler, &stack, 0x0202U,
@@ -2589,6 +2609,16 @@ test_sysop_event_stack(void)
 		.bytes = stack_bytes,
 		.size = sizeof(stack_bytes),
 	};
+	registers = (struct yt_sysop_event_registers){
+		.ax = 0x1111U,
+		.bx = 0x2222U,
+		.cx = 0x3333U,
+		.dx = 0x4444U,
+		.si = 0x5555U,
+		.di = 0x6666U,
+		.es = 0x7777U,
+		.flags = 0x0202U,
+	};
 	CHECK(yt_sysop_key_scheduler_bind_process(&scheduler, process,
 	    sizeof(process), 0x4444U)
 	    && yt_sysop_event_stack_init(&scheduler, &stack, 0x8FF3U));
@@ -2596,7 +2626,7 @@ test_sysop_event_stack(void)
 	CHECK(yt_sysop_key_latch(&scheduler, YT_SYSOP_KEY_F9)
 	    && yt_sysop_key_checkpoint(&scheduler, false, &delivery)
 	    && yt_sysop_event_deliver_raw(&scheduler, &delivery, &stack,
-	    0x5555U, 0x0202U) == YT_SYSOP_EVENT_STACK_ERROR_7
+	    0x5555U, &registers) == YT_SYSOP_EVENT_STACK_ERROR_7
 	    && stack.ip == 0x0A1EU && stack.cs == 0x5555U
 	    && stack.sp == 0x8FF2U && stack.bp == 0x8FFEU
 	    && input_process_word(process, 0x0A04U) == 0x9000U
@@ -2604,11 +2634,15 @@ test_sysop_event_stack(void)
 	    && process[0x11C3U] == 0x03U
 	    && input_process_word(stack.bytes, 0x8FFEU) == 0x9500U
 	    && input_process_word(stack.bytes, 0x8FF4U) == 0x4444U
-	    && input_process_word(stack.bytes, 0x8FF2U) == 0xB6D8U);
+	    && input_process_word(stack.bytes, 0x8FF2U) == 0xB6D8U
+	    && registers.ax == 0x1111U && registers.bx == 0x11C3U
+	    && registers.cx == 0x4444U && registers.dx == 0xB6D8U
+	    && registers.si == 0x1254U && registers.di == 0x6666U
+	    && registers.es == 0x7777U && registers.flags == 0x0202U);
 
 	CHECK(yt_sysop_event_deliver_raw(NULL, &delivery, &stack,
-	    0x5555U, 0x0202U) == YT_SYSOP_EVENT_STACK_INVALID
-	    && !yt_sysop_event_checkpoint_quiet_raw(NULL, &stack, 0x0202U)
+	    0x5555U, &registers) == YT_SYSOP_EVENT_STACK_INVALID
+	    && !yt_sysop_event_checkpoint_quiet_raw(NULL, &stack, &registers)
 	    && !yt_sysop_event_return_raw(NULL, &stack, 0x0202U, NULL));
 }
 

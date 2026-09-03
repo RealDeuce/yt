@@ -266,6 +266,17 @@ struct yt_sysop_event_stack {
 	size_t size;
 };
 
+struct yt_sysop_event_registers {
+	uint16_t ax;
+	uint16_t bx;
+	uint16_t cx;
+	uint16_t dx;
+	uint16_t si;
+	uint16_t di;
+	uint16_t es;
+	uint16_t flags;
+};
+
 void yt_input_splitter_init(struct yt_input_splitter *splitter);
 bool yt_input_splitter_can_push(const struct yt_input_splitter *splitter,
     bool remote);
@@ -379,10 +390,11 @@ enum yt_sysop_event_stack_outcome yt_sysop_event_deliver_raw(
 	struct yt_sysop_key_scheduler *scheduler,
 	const struct yt_sysop_key_delivery *delivery,
 	struct yt_sysop_event_stack *stack, uint16_t brun_segment,
-	uint16_t checkpoint_flags);
+	struct yt_sysop_event_registers *registers);
 bool yt_sysop_event_checkpoint_quiet_raw(
 	struct yt_sysop_key_scheduler *scheduler,
-	struct yt_sysop_event_stack *stack, uint16_t checkpoint_flags);
+	struct yt_sysop_event_stack *stack,
+	struct yt_sysop_event_registers *registers);
 bool yt_sysop_event_return_raw(struct yt_sysop_key_scheduler *scheduler,
 	struct yt_sysop_event_stack *stack, uint16_t opcode_flags,
 	enum yt_sysop_key *returned);
