@@ -302,6 +302,9 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 	if (ops->store_maximum_planets != NULL)
 		ops->store_maximum_planets(context,
 		    config->record.bytes + YT_F129);
+	if (ops->store_maximum_holds != NULL)
+		ops->store_maximum_holds(context,
+		    config->record.bytes + YT_F121);
 	if (ops->store_genesis != NULL)
 		ops->store_genesis(context, config->record.bytes + YT_F105);
 
@@ -351,8 +354,15 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 		if (ops->store_maximum_planets != NULL)
 			ops->store_maximum_planets(context, planets_default);
 	}
-	if (config->maximum_holds < 5.0f || config->maximum_holds > 1000.0f)
+	if (config->maximum_holds < 5.0f || config->maximum_holds > 1000.0f) {
+		static const uint8_t holds_default[4] = {
+			0x00, 0x00, 0x7a, 0x8a
+		};
+
 		config->maximum_holds = 1000.0f;
+		if (ops->store_maximum_holds != NULL)
+			ops->store_maximum_holds(context, holds_default);
+	}
 	if (config->turns_per_day < 100.0f
 	    || config->turns_per_day > 2500.0f) {
 		static const uint8_t turns_default[4] = {

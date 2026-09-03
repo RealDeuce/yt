@@ -37,6 +37,7 @@
 #define YT_TURNS_PER_DAY_ADDRESS 0x4BD0U
 #define YT_LOTTERY_PLAYS_ADDRESS 0x4BB8U
 #define YT_MAXIMUM_PLANETS_ADDRESS 0x4BA8U
+#define YT_MAXIMUM_HOLDS_ADDRESS 0x19E8U
 #define YT_CLEARANCE_HOLDS_ADDRESS 0x4B54U
 #define YT_CLEARANCE_FIGHTERS_ADDRESS 0x4B58U
 #define YT_CLEARANCE_GROUND_ADDRESS 0x4B5CU
@@ -2026,6 +2027,16 @@ startup_configuration_store_maximum_planets(void *context,
 	    YT_MAXIMUM_PLANETS_ADDRESS, raw);
 }
 
+static void
+startup_configuration_store_maximum_holds(void *context,
+    const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_MAXIMUM_HOLDS_ADDRESS, raw);
+}
+
 static bool
 load_configuration(struct yt_session *session, struct yt_error *error)
 {
@@ -2042,6 +2053,7 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 		startup_configuration_store_turns,
 		startup_configuration_store_lottery,
 		startup_configuration_store_maximum_planets,
+		startup_configuration_store_maximum_holds,
 	};
 	struct yt_game *game = &session->door->game;
 	struct yt_startup_configuration_state state;
@@ -3302,7 +3314,8 @@ post_login(struct yt_session *session, struct yt_error *error)
 	enum yt_present_status status;
 
 	if (!yt_game_post_login_repairs(&session->door->game,
-	    session->player_record, session->door->game.config.maximum_holds,
+	    session->player_record, yt_route_process_single(
+	    &session->route_process, YT_MAXIMUM_HOLDS_ADDRESS),
 	    &session->player, NULL, error))
 		return false;
 	(void)snprintf(real_name, sizeof(real_name), "%s %s",
@@ -5524,7 +5537,8 @@ salvage_player(struct yt_session *session, int victim_record, float killer,
 		.victim_record = victim_record,
 		.killer_record = killer,
 		.last_player_record = session->door->game.config.sector_offset,
-		.maximum_holds = session->door->game.config.maximum_holds,
+		.maximum_holds = yt_route_process_single(&session->route_process,
+		    YT_MAXIMUM_HOLDS_ADDRESS),
 		.current_name = (const uint8_t *)session->player.name,
 		.current_name_length = strlen(session->player.name),
 	};
@@ -8203,11 +8217,12 @@ earth_purchase_holds(struct yt_session *session,
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "Earth Holds leading blank", error))
 		return false;
-	if (session->player.holds
-	    >= session->door->game.config.maximum_holds)
+	if (session->player.holds >= yt_route_process_single(
+	    &session->route_process, YT_MAXIMUM_HOLDS_ADDRESS))
 		return earth_credit_error(session, "You dont need any holds.", error);
 	if (qb_str_single(amount, sizeof(amount), single_sub(
-	    session->door->game.config.maximum_holds,
+	    yt_route_process_single(&session->route_process,
+	    YT_MAXIMUM_HOLDS_ADDRESS),
 	    session->player.holds)) < 0
 	    || snprintf(row, sizeof(row), "You need%s holds.", amount) < 0)
 		return port_report_failure(error, "Earth Holds needed row");
@@ -8224,7 +8239,8 @@ earth_purchase_holds(struct yt_session *session,
 		return earth_credit_error(session,
 		    "You do not have enough credits!", error);
 	if (single_add(session->player.holds, quantity)
-	    > session->door->game.config.maximum_holds)
+	    > yt_route_process_single(&session->route_process,
+	    YT_MAXIMUM_HOLDS_ADDRESS))
 		return earth_credit_error(session,
 		    "You don't need that many!", error);
 	session->player.holds = single_add(session->player.holds, quantity);
