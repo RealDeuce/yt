@@ -8,6 +8,44 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
+### DOC-GAP-018: plasma wait destination roots
+
+Affected coverage:
+
+- the two one-second plasma prelaunch waits;
+- every half-second per-hop plasma route wait; and
+- their process-image and dependency-failure residue across the plasma
+  resolver.
+
+The completed `docs/runtime/plasma-bolt-output.md` specifies the exact
+SINGLE one and half-second values, call order, and that every `94FD` call
+overwrites its by-reference duration cell with an absolute deadline. Neither
+that document, the generated plasma evidence nor the global-state registry
+names the mutable DS destination used by any of those calls. The native
+implementation therefore retains typed durations at these boundaries but
+cannot bind the correct process roots or claim their failure residue without
+inventing addresses. Upstream documentation and generated evidence must name
+the caller cells and their reuse/aliasing rules. No binary inspection or new
+reverse engineering was performed.
+
+### DOC-GAP-017: radio private-pager wait destination root
+
+Affected coverage:
+
+- the shared radio reader's strictly-greater-than-22 private-pager pause;
+- command-6 and automatic post-login radio scans that reach that pause; and
+- exact process-image residue on wait and later output/file failures.
+
+The completed `docs/runtime/radio-message-output.md` specifies the 99-second
+value, exact `94FD` polling semantics, count reset, and post-wait blank, but
+does not identify the caller-owned mutable duration/deadline cell. The
+global-state registry has no matching radio private-pager wait root. Existing
+`ytradio.static.txt` values describe the separate radio-door 33-second wait,
+not this gameplay reader's 99-second caller cell. The native reader can retain
+its typed wait callback but cannot make the correct process cell authoritative
+without an upstream destination address and alias/lifetime contract. No
+binary inspection or new reverse engineering was performed.
+
 ### DOC-GAP-016: Xannor-victory wait destination root
 
 Affected coverage:

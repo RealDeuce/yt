@@ -75,6 +75,7 @@
 #define YT_LOCKOUT_WAIT_ADDRESS 0x5B9EU
 #define YT_NORMAL_EXIT_REMINDER_WAIT_ADDRESS 0x4CAAU
 #define YT_POST_LOGIN_PRESS_WAIT_ADDRESS 0x64C4U
+#define YT_POST_LOGIN_RADIO_MODE_ADDRESS 0x64C8U
 #define YT_XANNOR_RETALIATION_WAIT_ADDRESS 0x5B8AU
 #define YT_COUNTERLAUNCH_COUNT_ADDRESS 0x5BC6U
 #define YT_COUNTERLAUNCH_WAIT_ADDRESS 0x5BDAU
@@ -3502,6 +3503,7 @@ post_login(struct yt_session *session, struct yt_error *error)
 	static const uint8_t duration_ninety_nine[4] = {
 		0x00, 0x00, 0x46, 0x87,
 	};
+	static const uint8_t radio_mode_zero[4] = {0x1f, 0x4e, 0x46, 0x00};
 	char real_name[258];
 	struct yt_present_result presentation;
 	enum yt_present_status status;
@@ -3548,7 +3550,10 @@ post_login(struct yt_session *session, struct yt_error *error)
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "post-login press trailing blank", error))
 		return false;
-	return radio_read(session, 0.0f, error);
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_POST_LOGIN_RADIO_MODE_ADDRESS, radio_mode_zero);
+	return radio_read(session, yt_route_process_single(&session->route_process,
+	    YT_POST_LOGIN_RADIO_MODE_ADDRESS), error);
 }
 
 static float
