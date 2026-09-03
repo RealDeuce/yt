@@ -66,7 +66,6 @@ struct yt_session {
 	float black_hole[2];
 	float market_base[3];
 	struct yt_startup_main_prefix startup_prefix;
-	float startup_cache_guard;
 	char queue[YT_COMMAND_SIZE];
 	size_t queue_length;
 	size_t queue_position;
@@ -102,7 +101,6 @@ struct yt_session {
 	bool radio_field_valid;
 	uint32_t radio_field_record;
 	struct yt_radio_record radio_field;
-	float current_planet;
 	char planet_name[42];
 	double planet_quantity[10];
 	float session_deadline;
@@ -1941,14 +1939,14 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 	memset(&state, 0, sizeof(state));
 	state.config = &game->config;
 	state.local_mode = session->door->identity.local ? -1.0f : 0.0f;
-	state.cache_guard = session->startup_cache_guard;
+	state.cache_guard = session->sector_cache[1];
 	state.sector_cache = session->sector_cache;
 	state.cloak_cache = session->cloak_cache;
 	state.cache_count = YT_ARRAY_LEN(session->sector_cache);
 	state.black_hole[0] = session->black_hole[0];
 	state.black_hole[1] = session->black_hole[1];
 	ok = yt_startup_configuration_run(&state, &ops, session, error);
-	session->startup_cache_guard = state.cache_guard;
+	session->sector_cache[1] = state.cache_guard;
 	session->black_hole[0] = state.black_hole[0];
 	session->black_hole[1] = state.black_hole[1];
 	return ok;
@@ -9041,7 +9039,6 @@ planet_inventory(struct yt_session *session, int logical_planet,
 	size_t name_length;
 	int index;
 
-	session->current_planet = (float)logical_planet;
 	if (!reload_player(session, error)
 	    || !planet_update_cached(session, logical_planet, &planet, &cache,
 	    error)
@@ -10575,7 +10572,9 @@ planet_menu(struct yt_session *session, int logical_planet,
 	static const uint8_t prompt_body[] =
 	    "Planet command (?=help) [A]? ";
 
-	session->current_planet = (float)logical_planet;
+	session_set_process_single(session, YT_PLANET_RECORD_SCRATCH_ADDRESS,
+	    single_add(session->door->game.config.planet_offset,
+	    (float)logical_planet));
 	for (;;) {
 		char upper[80];
 		char free_text[64];
@@ -16041,7 +16040,10 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 		if (valid_link) {
 			size_t name_length;
 
-			session->current_planet = sector.planet;
+			session_set_process_single(session,
+			    YT_PLANET_RECORD_SCRATCH_ADDRESS,
+			    single_add(session->door->game.config.planet_offset,
+			    sector.planet));
 			if (!yt_game_read_planet(&session->door->game,
 			    (int)sector.planet, &planet, error)
 			    || !port_report_length(session, planet.name_length,
@@ -16097,11 +16099,15 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 			    sizeof(unavailable) - 1U,
 			    "computer planet unavailable", error);
 		}
-		if (!valid_link && session->current_planet < 1.0f)
+		if (!valid_link && yt_route_process_single(
+		    &session->route_process,
+		    YT_PLANET_RECORD_SCRATCH_ADDRESS) < 1.0f)
 			return port_report_failure(error,
 			    "computer planet stale current-planet record");
 		return planet_inventory(session, (int)(valid_link
-		    ? sector.planet : session->current_planet), error);
+		    ? sector.planet : single_sub(yt_route_process_single(
+		    &session->route_process, YT_PLANET_RECORD_SCRATCH_ADDRESS),
+		    session->door->game.config.planet_offset)), error);
 	}
 }
 
