@@ -2827,6 +2827,11 @@ enum yt_treasury_route {
 	YT_TREASURY_REPORT_ROUTE,
 	YT_TREASURY_COLLECTION_ROUTE,
 };
+enum yt_treasury_caller_kind {
+	YT_TREASURY_CALLER_MAIN_COLLECT,
+	YT_TREASURY_CALLER_COMPUTER_COLLECT,
+	YT_TREASURY_CALLER_COMPUTER_REPORT,
+};
 struct yt_treasury_state {
 	float current_player_record;
 	uint32_t current_player_physical_record;
@@ -2872,6 +2877,8 @@ struct yt_treasury_ops {
 	bool (*update_cache)(void *context, const struct yt_player *player,
 	    struct yt_error *error);
 };
+bool yt_treasury_caller_binding(enum yt_treasury_caller_kind caller,
+	uint16_t *address, uint8_t raw[4]);
 bool yt_treasury_run(struct yt_treasury_state *state,
 	const struct yt_treasury_ops *ops, void *context,
 	struct yt_error *error);

@@ -13318,7 +13318,8 @@ treasury_update_cache(void *context, const struct yt_player *player,
 }
 
 static bool
-command_collect(struct yt_session *session, bool collecting,
+command_collect(struct yt_session *session,
+    enum yt_treasury_caller_kind caller,
     struct yt_error *error)
 {
 	static const struct yt_treasury_ops ops = {
@@ -13336,11 +13337,14 @@ command_collect(struct yt_session *session, bool collecting,
 		.planet_offset = session_planet_offset(session),
 		.conversion_mode = session->presentation.sound.conversion_mode,
 	};
-	static const uint8_t true_raw[4] = {0x00, 0x00, 0x00, 0x81};
-	static const uint8_t false_raw[4] = {0x00, 0xae, 0x03, 0x00};
+	uint8_t raw[4];
+	uint16_t address;
 
-	memcpy(state.collecting_raw, collecting ? true_raw : false_raw,
-	    sizeof(state.collecting_raw));
+	if (!yt_treasury_caller_binding(caller, &address, raw))
+		return false;
+	yt_route_process_set_raw_single(&session->route_process, address, raw);
+	yt_route_process_raw_single(&session->route_process, address,
+	    state.collecting_raw);
 	return yt_treasury_run(&state, &ops, session, error);
 }
 
@@ -18164,7 +18168,8 @@ computer_menu(struct yt_session *session, bool *enter_sector,
 			continue;
 		}
 		if (strcmp(command, "!") == 0) {
-			if (!command_collect(session, true, error))
+			if (!command_collect(session,
+			    YT_TREASURY_CALLER_COMPUTER_COLLECT, error))
 				return false;
 			continue;
 		}
@@ -18197,7 +18202,8 @@ computer_menu(struct yt_session *session, bool *enter_sector,
 			continue;
 		}
 		if (strcmp(command, "12") == 0) {
-			if (!command_collect(session, false, error))
+			if (!command_collect(session,
+			    YT_TREASURY_CALLER_COMPUTER_REPORT, error))
 				return false;
 			continue;
 		}
@@ -18704,7 +18710,8 @@ command_shell(struct yt_session *session, struct yt_error *error)
 				return false;
 			break;
 		case YT_MAIN_SHELL_COLLECT:
-			if (!command_collect(session, true, error))
+			if (!command_collect(session,
+			    YT_TREASURY_CALLER_MAIN_COLLECT, error))
 				return false;
 			enter_sector = true;
 			break;

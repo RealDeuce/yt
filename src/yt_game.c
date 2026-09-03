@@ -8344,6 +8344,37 @@ treasury_player_overlay(struct yt_player *player, float owned,
 }
 
 bool
+yt_treasury_caller_binding(enum yt_treasury_caller_kind caller,
+    uint16_t *address, uint8_t raw[4])
+{
+	static const uint8_t true_raw[4] = {
+		0x00U, 0x00U, 0x00U, 0x81U,
+	};
+	static const uint8_t false_raw[4] = {
+		0x00U, 0xaeU, 0x03U, 0x00U,
+	};
+
+	if (address == NULL || raw == NULL)
+		return false;
+	switch (caller) {
+	case YT_TREASURY_CALLER_MAIN_COLLECT:
+		*address = 0x4E5AU;
+		memcpy(raw, true_raw, sizeof(true_raw));
+		return true;
+	case YT_TREASURY_CALLER_COMPUTER_COLLECT:
+		*address = 0x5116U;
+		memcpy(raw, true_raw, sizeof(true_raw));
+		return true;
+	case YT_TREASURY_CALLER_COMPUTER_REPORT:
+		*address = 0x511AU;
+		memcpy(raw, false_raw, sizeof(false_raw));
+		return true;
+	default:
+		return false;
+	}
+}
+
+bool
 yt_treasury_run(struct yt_treasury_state *state,
     const struct yt_treasury_ops *ops, void *context,
     struct yt_error *error)
