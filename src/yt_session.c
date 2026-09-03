@@ -26,8 +26,11 @@
 #define YT_PLAYER_LAST 51
 #define YT_COMMAND_SIZE 4096U
 #define YT_CURRENT_WARPS_ADDRESS 0x1898U
+#define YT_CURRENT_SECTOR_RECORD_ADDRESS 0x4B50U
+#define YT_SELF_MINE_SUPPRESSION_ADDRESS 0x4D0AU
 #define YT_COMPUTER_ROUTE_STATUS_ADDRESS 0x4CF2U
 #define YT_ATTACK_COMMITMENT_ADDRESS 0x4D1AU
+#define YT_MERCENARIES_HURT_ADDRESS 0x4D5EU
 #define YT_COMPUTER_PATH_MARKER_ADDRESS 0x4D62U
 #define YT_COMPUTER_ROUTE_DESTINATION_ADDRESS 0x4E12U
 #define YT_COMPUTER_ROUTE_START_ADDRESS 0x4E1AU
@@ -75,14 +78,11 @@ struct yt_session {
 	bool destroyed;
 	bool fatal_wait_complete;
 	struct yt_present_state presentation;
-	bool suppress_self_mines;
-	uint8_t mercenaries_hurt_raw[4];
 	float clearance_holds;
 	float clearance_fighters;
 	float clearance_ground;
 	float clearance_shields;
 	float counterlaunch_count;
-	float current_sector_record;
 	float shared_loop_scratch;
 	float planet_record_scratch;
 	bool anti_cloak;
@@ -200,6 +200,26 @@ session_relationship(const struct yt_session *session)
 {
 	return yt_route_process_single(&session->route_process,
 	    YT_COMPUTER_ROUTE_STATUS_ADDRESS);
+}
+
+static void
+session_set_self_mine_suppression(struct yt_session *session, bool enabled)
+{
+	static const uint8_t zero[4] = {0x00U, 0x00U, 0x00U, 0x00U};
+	static const uint8_t one[4] = {0x00U, 0x00U, 0x00U, 0x81U};
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_SELF_MINE_SUPPRESSION_ADDRESS, enabled ? one : zero);
+}
+
+static void
+session_set_current_sector_record(struct yt_session *session, float value)
+{
+	uint8_t raw[4];
+
+	if (qb_mbf32_encode(value, raw) == QB_MBF_OK)
+		yt_route_process_set_raw_single(&session->route_process,
+		    YT_CURRENT_SECTOR_RECORD_ADDRESS, raw);
 }
 
 static int
@@ -536,20 +556,25 @@ session_hydration_read_player(void *context, int player_record,
 static bool
 reload_player(struct yt_session *session, struct yt_error *error)
 {
+	float current_sector_record = yt_route_process_single(
+	    &session->route_process, YT_CURRENT_SECTOR_RECORD_ADDRESS);
 	struct yt_current_player_hydration_state state = {
 		&session->player,
 		session->player_record,
 		(int)session->door->game.config.sector_offset,
 		session->door->game.config.sector_offset,
-		&session->current_sector_record,
+		&current_sector_record,
 		session->sector_cache,
 		session->cloak_cache,
 		YT_ARRAY_LEN(session->sector_cache),
 		session->anti_cloak,
 	};
 
-	return yt_current_player_hydrate_run(&state,
-	    session_hydration_read_player, session, error);
+	if (!yt_current_player_hydrate_run(&state,
+	    session_hydration_read_player, session, error))
+		return false;
+	session_set_current_sector_record(session, current_sector_record);
+	return true;
 }
 
 static bool
@@ -571,6 +596,9 @@ mutate_player_credits_observed(struct yt_session *session, float argument,
 		credit_mutation_write_player,
 	};
 	struct yt_credit_mutation_state state;
+	float current_sector_record = yt_route_process_single(
+	    &session->route_process, YT_CURRENT_SECTOR_RECORD_ADDRESS);
+	bool result;
 
 	memset(&state, 0, sizeof(state));
 	state.hydration.player = &session->player;
@@ -579,21 +607,18 @@ mutate_player_credits_observed(struct yt_session *session, float argument,
 	    (int)session->door->game.config.sector_offset;
 	state.hydration.sector_record_offset =
 	    session->door->game.config.sector_offset;
-	state.hydration.current_sector_record =
-	    &session->current_sector_record;
+	state.hydration.current_sector_record = &current_sector_record;
 	state.hydration.sector_cache = session->sector_cache;
 	state.hydration.cloak_cache = session->cloak_cache;
 	state.hydration.cache_count = YT_ARRAY_LEN(session->sector_cache);
 	state.hydration.anti_cloak = session->anti_cloak;
 	state.argument = argument;
-	if (!yt_credit_mutation_run(&state, &ops, session, error)) {
-		if (hydrated != NULL)
-			*hydrated = state.hydrated;
-		return false;
-	}
+	result = yt_credit_mutation_run(&state, &ops, session, error);
+	if (state.hydrated)
+		session_set_current_sector_record(session, current_sector_record);
 	if (hydrated != NULL)
 		*hydrated = state.hydrated;
-	return true;
+	return result;
 }
 
 static bool
@@ -3628,7 +3653,8 @@ display_sector_one(struct yt_session *session, float logical_sector,
 	bool first_visible = true;
 	bool first_warp = true;
 
-	session->current_sector_record = logical_sector;
+	session_set_current_sector_record(session, single_add(
+	    session->door->game.config.sector_offset, logical_sector));
 	if (!scanner_read_sector(session, logical_sector, &sector, error))
 		return false;
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
@@ -4836,7 +4862,7 @@ movement_clear_self_mines(void *context)
 {
 	struct yt_session *session = context;
 
-	session->suppress_self_mines = false;
+	session_set_self_mine_suppression(session, false);
 }
 
 static bool
@@ -6183,9 +6209,13 @@ hostile_attack_combat_persistence(void *context,
 	}
 	if (state->sector_written)
 		*combat->sector = state->sector;
-	if (state->mercenaries_hurt)
-		(void)qb_mbf32_encode(-1.0f,
-		    combat->session->mercenaries_hurt_raw);
+	if (state->mercenaries_hurt) {
+		uint8_t raw[4];
+
+		(void)qb_mbf32_encode(-1.0f, raw);
+		yt_route_process_set_raw_single(&combat->session->route_process,
+		    YT_MERCENARIES_HURT_ADDRESS, raw);
+	}
 	return result;
 }
 
@@ -6533,8 +6563,8 @@ bribe_deployed(struct yt_session *session, struct yt_sector *sector,
 	};
 	memcpy(state.planet_link_raw, sector->record.bytes + YT_F93,
 	    sizeof(state.planet_link_raw));
-	memcpy(state.mercenaries_hurt_raw, session->mercenaries_hurt_raw,
-	    sizeof(state.mercenaries_hurt_raw));
+	yt_route_process_raw_single(&session->route_process,
+	    YT_MERCENARIES_HURT_ADDRESS, state.mercenaries_hurt_raw);
 	result = yt_hostile_bribe_run(&state, &ops, &context, error);
 	*direct_hostile_menu = state.direct_hostile_menu;
 	*forced_attack = state.forced_attack;
@@ -6814,7 +6844,8 @@ sector_entry(struct yt_session *session, struct yt_error *error)
 		    (int)session->player.sector, &sector, error))
 			return false;
 		if (yt_sector_mines_admitted(sector.mines,
-		    session->suppress_self_mines ? -1.0f : 0.0f)) {
+		    yt_route_process_single(&session->route_process,
+		    YT_SELF_MINE_SUPPRESSION_ADDRESS))) {
 			{
 				bool mine_terminal;
 
@@ -7187,7 +7218,7 @@ drop_mines_suppress(void *context)
 {
 	struct yt_session *session = context;
 
-	session->suppress_self_mines = true;
+	session_set_self_mine_suppression(session, true);
 }
 
 static bool
@@ -7814,7 +7845,8 @@ docking_front_gate(void *context, bool *denied, float *current_sector,
 	if (!fresh_no_turn_gate(session, denied, error))
 		return false;
 	*current_sector = session->player.sector;
-	*sector_record_expression = session->current_sector_record;
+	*sector_record_expression = yt_route_process_single(
+	    &session->route_process, YT_CURRENT_SECTOR_RECORD_ADDRESS);
 	return true;
 }
 
@@ -7840,7 +7872,8 @@ docking_front_finalize(void *context, bool *returned, float *current_sector,
 	bool ok = finalize_action(session, 1.0f, error);
 
 	*current_sector = session->player.sector;
-	*sector_record_expression = session->current_sector_record;
+	*sector_record_expression = yt_route_process_single(
+	    &session->route_process, YT_CURRENT_SECTOR_RECORD_ADDRESS);
 	if (ok) {
 		*returned = true;
 		return true;
@@ -17249,7 +17282,10 @@ static bool
 computer_profit(struct yt_session *session, bool all,
     struct yt_error *error)
 {
-	float adjacent_source = session->player.sector;
+	float adjacent_source = all ? 0.0f
+	    : single_sub(yt_route_process_single(&session->route_process,
+	    YT_CURRENT_SECTOR_RECORD_ADDRESS),
+	    session->door->game.config.sector_offset);
 	int source_start = all ? 2 : (int)adjacent_source;
 	int source_end = all ? sector_count(session)
 	    : (int)adjacent_source;
