@@ -3427,6 +3427,8 @@ bool yt_projectile_salvage_admitted(int counterattack, int xannor_provoker);
 enum yt_projectile_death_route yt_projectile_death_continuation(
     float remaining, float saved_mines);
 bool yt_projectile_survivor_sets_counterattack(int shooter);
+bool yt_projectile_survivor_store_counterattack(int shooter,
+    int player_record, int *counterattack, uint8_t raw[4]);
 typedef bool (*yt_projectile_damage_draw_fn)(void *context, float *value,
     struct yt_error *error);
 struct yt_projectile_damage_result {

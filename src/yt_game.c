@@ -11428,6 +11428,19 @@ yt_projectile_survivor_sets_counterattack(int shooter)
 }
 
 bool
+yt_projectile_survivor_store_counterattack(int shooter, int player_record,
+    int *counterattack, uint8_t raw[4])
+{
+	if (counterattack == NULL || raw == NULL
+	    || !yt_projectile_survivor_sets_counterattack(shooter))
+		return false;
+	if (qb_mbf32_encode((float)player_record, raw) != QB_MBF_OK)
+		return false;
+	*counterattack = player_record;
+	return true;
+}
+
+bool
 yt_projectile_damage_iteration(float counter, float saved_missiles)
 {
 	return counter <= saved_missiles;

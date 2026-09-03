@@ -203,6 +203,15 @@ session_store_current_player_record(void *context, const uint8_t raw[4])
 }
 
 static void
+session_store_counterattack_player(void *context, const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_COUNTERATTACK_PLAYER_ADDRESS, raw);
+}
+
+static void
 session_set_current_player_record(struct yt_session *session, int record)
 {
 	uint8_t raw[4];
@@ -14596,9 +14605,15 @@ missile_mines:
 			if (!yt_database_write(&session->door->game.database,
 			    (size_t)basic, &persistence.record, error))
 				return false;
-			if (yt_projectile_survivor_sets_counterattack(
-			    session->player_record))
-				*counterattack = basic;
+			{
+				uint8_t counterattack_raw[4];
+
+				if (yt_projectile_survivor_store_counterattack(
+				    session->player_record, basic, counterattack,
+				    counterattack_raw))
+					session_store_counterattack_player(session,
+					    counterattack_raw);
+			}
 			return true;
 		}
 	}
@@ -15571,15 +15586,6 @@ session_counterlaunch_store_count(void *context, const uint8_t raw[4])
 	    YT_COUNTERLAUNCH_COUNT_ADDRESS, raw);
 }
 
-static void
-session_counterlaunch_store_player(void *context, const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_COUNTERATTACK_PLAYER_ADDRESS, raw);
-}
-
 static bool
 launch_player_counterattack(struct yt_session *session, int *counterattacker,
     int *xannor_provoker, struct yt_error *error)
@@ -15595,7 +15601,7 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 		session_counterlaunch_store_count,
 		session_store_destroyed,
 		session_store_current_player_record,
-		session_counterlaunch_store_player,
+		session_store_counterattack_player,
 	};
 	bool destroyed = session_is_destroyed(session);
 	float retained_count = yt_route_process_single(&session->route_process,

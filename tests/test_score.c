@@ -7643,6 +7643,8 @@ check_projectile_parent_model(void)
 	size_t terminal_length;
 	size_t news_length;
 	size_t defense_length;
+	int counterattack = 77;
+	uint8_t counterattack_raw[4] = {0xdeU, 0xadU, 0xbeU, 0xefU};
 
 	if (!yt_projectile_target_prompt(false, 5.0f, 2004.0f,
 	    prompt, sizeof(prompt), &length)
@@ -7664,6 +7666,21 @@ check_projectile_parent_model(void)
 	    || yt_projectile_target_response("1.5", 2004.0f, &target)
 	    != YT_PROJECTILE_TARGET_ACCEPT
 	    || target != 1.5f)
+		return false;
+	if (yt_projectile_survivor_store_counterattack(-1, 3,
+	    &counterattack, counterattack_raw)
+	    || counterattack != 77
+	    || memcmp(counterattack_raw,
+	    (const uint8_t[]){0xdeU, 0xadU, 0xbeU, 0xefU}, 4U) != 0
+	    || !yt_projectile_survivor_store_counterattack(2, 3,
+	    &counterattack, counterattack_raw)
+	    || counterattack != 3
+	    || memcmp(counterattack_raw,
+	    (const uint8_t[]){0x00U, 0x00U, 0x40U, 0x82U}, 4U) != 0
+	    || yt_projectile_survivor_store_counterattack(2, 3, NULL,
+	    counterattack_raw)
+	    || yt_projectile_survivor_store_counterattack(2, 3,
+	    &counterattack, NULL))
 		return false;
 	memset(&debit, 0, sizeof(debit));
 	memset(debit.record.bytes, 0xa5, sizeof(debit.record.bytes));
