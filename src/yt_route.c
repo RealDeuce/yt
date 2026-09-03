@@ -137,6 +137,25 @@ yt_route_process_set_avoid(struct yt_route_process *process,
 	return true;
 }
 
+bool
+yt_route_process_set_avoid_slot(struct yt_route_process *process,
+    size_t slot, float value, struct yt_error *error)
+{
+	if (process == NULL || slot >= YT_ROUTE_AVOID_COUNT)
+		return route_error(error, "route avoid slot");
+	return route_process_write_single(process,
+	    (uint16_t)(YT_ROUTE_AVOID_ADDRESS + 4U * slot), value, error);
+}
+
+float
+yt_route_process_avoid(const struct yt_route_process *process, size_t slot)
+{
+	if (process == NULL || slot >= YT_ROUTE_AVOID_COUNT)
+		return 0.0f;
+	return route_process_read_single(process,
+	    (uint16_t)(YT_ROUTE_AVOID_ADDRESS + 4U * slot));
+}
+
 int16_t
 yt_route_process_predecessor(const struct yt_route_process *process,
     int16_t index)

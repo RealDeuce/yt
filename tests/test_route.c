@@ -180,6 +180,14 @@ test_wrapped_process_writes(void)
 	avoid[0] = -1.0f;
 	yt_error_clear(&error);
 	CHECK(yt_route_process_set_avoid(&process, avoid, &error));
+	CHECK(yt_route_process_avoid(&process, 0U) == -1.0f
+	    && yt_route_process_set_avoid_slot(&process, 1U, 1.75f, &error)
+	    && yt_route_process_avoid(&process, 1U) == 1.75f
+	    && !yt_route_process_set_avoid_slot(&process,
+	    YT_ROUTE_AVOID_COUNT, 1.0f, &error)
+	    && yt_route_process_avoid(&process, YT_ROUTE_AVOID_COUNT) == 0.0f);
+	yt_error_clear(&error);
+	CHECK(yt_route_process_set_avoid_slot(&process, 1U, 0.0f, &error));
 	status = 1.0f;
 	CHECK(yt_route_process_build(1.0f, 3.0f, &status, 0, &process,
 	    read_sector, &graph, &outcome, &error));

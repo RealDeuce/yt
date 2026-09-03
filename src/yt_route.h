@@ -46,6 +46,10 @@ bool yt_route_build(float start_value, float destination_value, float *status,
 
 bool yt_route_process_set_avoid(struct yt_route_process *process,
     const float avoid[YT_ROUTE_AVOID_COUNT], struct yt_error *error);
+bool yt_route_process_set_avoid_slot(struct yt_route_process *process,
+	size_t slot, float value, struct yt_error *error);
+float yt_route_process_avoid(const struct yt_route_process *process,
+	size_t slot);
 int16_t yt_route_process_predecessor(const struct yt_route_process *process,
     int16_t index);
 int16_t yt_route_process_second(const struct yt_route_process *process,

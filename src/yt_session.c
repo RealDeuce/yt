@@ -90,7 +90,7 @@ struct yt_session {
 	float spy_found_scratch;
 	float spy_dead_counter_scratch;
 	float spy_warp_destination_scratch;
-	float avoid[30];
+	struct yt_route_process route_process;
 	float computer_path_marker;
 	uint8_t computer_path_marker_raw[4];
 	float computer_path_start;
@@ -9628,24 +9628,22 @@ build_route(struct yt_session *session, float start, float destination,
     enum yt_route_outcome *route_outcome, float *returned_status,
     struct yt_error *error)
 {
-	int16_t *predecessor;
 	float status = use_avoid ? 1.0f : 0.0f;
 	enum yt_route_outcome outcome;
 	bool success;
+	size_t index;
 
-	predecessor = calloc(YT_ROUTE_CAPACITY, sizeof(*predecessor));
-	if (predecessor == NULL) {
-		if (error != NULL)
-			error->status = YT_NO_MEMORY;
-		return false;
-	}
-	success = yt_route_build(start, destination, &status, session->avoid,
-	    session->presentation.sound.conversion_mode, predecessor, next_hop,
-	    route_sector_reader, session, &outcome, error);
-	free(predecessor);
+	success = yt_route_process_build(start, destination, &status,
+	    session->presentation.sound.conversion_mode,
+	    &session->route_process, route_sector_reader, session, &outcome,
+	    error);
+	for (index = 0U; index < YT_ROUTE_CAPACITY; ++index)
+		next_hop[index] = yt_route_process_second(
+		    &session->route_process, (int16_t)index);
 	if (!success)
 		return false;
-	*found = outcome != YT_ROUTE_NOT_FOUND;
+	*found = outcome == YT_ROUTE_FOUND || outcome == YT_ROUTE_SAME
+	    || outcome == YT_ROUTE_BACK_EDGE;
 	if (route_outcome != NULL)
 		*route_outcome = outcome;
 	if (returned_status != NULL)
@@ -16091,13 +16089,15 @@ computer_avoid(struct yt_session *session, struct yt_error *error)
 		char last[96];
 
 		if (!computer_avoid_cell(first, sizeof(first), row + 1,
-		    session->avoid[row])
+		    yt_route_process_avoid(&session->route_process, (size_t)row))
 		    || !computer_avoid_cell(last, sizeof(last), row + 21,
-		    session->avoid[row + 20])
+		    yt_route_process_avoid(&session->route_process,
+		    (size_t)row + 20U))
 		    || !session_fixed_width(session, first, 20.0f,
 		    "avoid first cell", error)
 		    || !computer_avoid_cell(middle, sizeof(middle), row + 11,
-		    session->avoid[row + 10])
+		    yt_route_process_avoid(&session->route_process,
+		    (size_t)row + 10U))
 		    || !session_fixed_width(session, middle, 20.0f,
 		    "avoid middle cell", error)
 		    || !session_02fc(session, (const uint8_t *)last, strlen(last)))
@@ -16139,8 +16139,11 @@ computer_avoid(struct yt_session *session, struct yt_error *error)
 		return false;
 	if (route != YT_COMPUTER_AVOID_SELECTION_ACCEPTED)
 		return true;
-	old_value = session->avoid[slot - 1];
-	session->avoid[slot - 1] = new_value;
+	old_value = yt_route_process_avoid(&session->route_process,
+	    (size_t)(slot - 1));
+	if (!yt_route_process_set_avoid_slot(&session->route_process,
+	    (size_t)(slot - 1), new_value, error))
+		return false;
 	yt_computer_avoid_transition(old_value, new_value, &locked, &available);
 	session->presentation.foreground = 2.0f;
 	session->pager.foreground = 2;
