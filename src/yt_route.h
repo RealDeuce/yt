@@ -50,10 +50,21 @@ bool yt_route_process_set_avoid_slot(struct yt_route_process *process,
 	size_t slot, float value, struct yt_error *error);
 float yt_route_process_avoid(const struct yt_route_process *process,
 	size_t slot);
+void yt_route_process_set_raw_single(struct yt_route_process *process,
+	uint16_t address, const uint8_t raw[4]);
+void yt_route_process_raw_single(const struct yt_route_process *process,
+	uint16_t address, uint8_t raw[4]);
+float yt_route_process_single(const struct yt_route_process *process,
+	uint16_t address);
 int16_t yt_route_process_predecessor(const struct yt_route_process *process,
     int16_t index);
 int16_t yt_route_process_second(const struct yt_route_process *process,
     int16_t index);
+bool yt_route_process_build_at(uint16_t start_address,
+	uint16_t destination_address, uint16_t status_address,
+	uint8_t conversion_mode, struct yt_route_process *process,
+	yt_route_sector_reader reader, void *reader_context,
+	enum yt_route_outcome *outcome, struct yt_error *error);
 bool yt_route_process_build(float start_value, float destination_value,
     float *status, uint8_t conversion_mode, struct yt_route_process *process,
     yt_route_sector_reader reader, void *reader_context,

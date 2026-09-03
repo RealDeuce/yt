@@ -1,5 +1,6 @@
 #include "yt_route.h"
 #include "yt_main_error.h"
+#include "qb.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -323,6 +324,63 @@ test_route_cint_fault_sites(void)
 	    == YT_BASIC_FAULT_ROUTE_AVOID_PREDECESSOR_CINT);
 }
 
+static void
+test_addressed_route_arguments(void)
+{
+	static const uint16_t status_address = 0x4cf2U;
+	static const uint16_t destination_address = 0x4e12U;
+	static const uint16_t start_address = 0x4e1aU;
+	struct graph graph = {.maximum = 3, .fail_sector = -1};
+	struct yt_route_process process;
+	enum yt_route_outcome outcome;
+	struct yt_error error;
+	uint8_t raw[4];
+	uint8_t returned[4];
+
+	graph.rows[1][0] = 2.0f;
+	graph.rows[2][0] = 3.0f;
+	memset(&process, 0, sizeof(process));
+	CHECK(qb_mbf32_encode(1.0f, raw) == QB_MBF_OK);
+	yt_route_process_set_raw_single(&process, start_address, raw);
+	CHECK(qb_mbf32_encode(3.0f, raw) == QB_MBF_OK);
+	yt_route_process_set_raw_single(&process, destination_address, raw);
+	CHECK(qb_mbf32_encode(1.0f, raw) == QB_MBF_OK);
+	yt_route_process_set_raw_single(&process, status_address, raw);
+	CHECK(yt_route_process_set_avoid_slot(&process, 0U, 6355.0f,
+	    &error));
+	yt_error_clear(&error);
+	CHECK(yt_route_process_build_at(start_address, destination_address,
+	    status_address, 0, &process, read_sector, &graph, &outcome,
+	    &error));
+	CHECK(outcome == YT_ROUTE_FOUND
+	    && yt_route_process_single(&process, status_address) == 0.0f
+	    && yt_route_process_second(&process, 1) == 2
+	    && yt_route_process_second(&process, 2) == 3
+	    && process.bytes[destination_address] == 0xd3U
+	    && process.bytes[destination_address + 1U] == 0x18U);
+
+	memset(&process, 0, sizeof(process));
+	raw[0] = 0x11U;
+	raw[1] = 0x22U;
+	raw[2] = 0x33U;
+	raw[3] = 0x44U;
+	yt_route_process_set_raw_single(&process, 0xfffeU, raw);
+	memset(returned, 0, sizeof(returned));
+	yt_route_process_raw_single(&process, 0xfffeU, returned);
+	CHECK(memcmp(raw, returned, sizeof(raw)) == 0
+	    && process.bytes[0xfffeU] == 0x11U
+	    && process.bytes[0xffffU] == 0x22U
+	    && process.bytes[0] == 0x33U
+	    && process.bytes[1] == 0x44U);
+
+	yt_error_clear(&error);
+	CHECK(!yt_route_process_build_at(YT_ROUTE_WORKSPACE_ADDRESS,
+	    destination_address, status_address, 0, &process, read_sector,
+	    &graph, &outcome, &error));
+	CHECK(error.status == YT_RANGE
+	    && strcmp(error.operation, "route argument workspace alias") == 0);
+}
+
 int
 main(void)
 {
@@ -331,6 +389,7 @@ main(void)
 	test_wrapped_process_writes();
 	test_same_zero_and_conversion_order();
 	test_route_cint_fault_sites();
+	test_addressed_route_arguments();
 	if (failures != 0U)
 		return EXIT_FAILURE;
 	puts("test_route: ok");

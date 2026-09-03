@@ -25,6 +25,9 @@
 #define YT_PLAYER_FIRST 2
 #define YT_PLAYER_LAST 51
 #define YT_COMMAND_SIZE 4096U
+#define YT_COMPUTER_ROUTE_STATUS_ADDRESS 0x4CF2U
+#define YT_COMPUTER_ROUTE_DESTINATION_ADDRESS 0x4E12U
+#define YT_COMPUTER_ROUTE_START_ADDRESS 0x4E1AU
 
 enum navigation_field_kind {
 	NAVIGATION_FIELD_NONE,
@@ -15300,7 +15303,6 @@ computer_route(struct yt_session *session, bool autopilot,
 	static const uint8_t marker_entry_raw[4] = {0x00, 0x3c, 0x1c, 0x8e};
 	static const uint8_t marker_success_raw[4] = {0x00, 0x00, 0x1c, 0x00};
 	static const uint8_t status_one_raw[4] = {0x00, 0x00, 0x00, 0x81};
-	static const uint8_t status_zero_raw[4] = {0x00, 0x00, 0x00, 0x00};
 	static const uint8_t start_prompt[] = "Enter start for path search? ";
 	static const uint8_t destination_prompt[] =
 	    "What sector do you want to go to? ";
@@ -15326,6 +15328,7 @@ computer_route(struct yt_session *session, bool autopilot,
 	bool conversion_overflow;
 	bool found;
 	int cursor;
+	enum yt_route_outcome route_outcome;
 	float route_status;
 
 	session->navigation_field_active = true;
@@ -15406,13 +15409,29 @@ computer_route(struct yt_session *session, bool autopilot,
 	session->relationship_scratch = 1.0f;
 	memcpy(session->relationship_scratch_raw, status_one_raw,
 	    sizeof(status_one_raw));
-	if (!build_route(session, start_value, destination_value, NULL, true,
-	    &found, NULL, &route_status, error))
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_COMPUTER_ROUTE_START_ADDRESS, session->computer_path_start_raw);
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_COMPUTER_ROUTE_DESTINATION_ADDRESS,
+	    session->computer_path_destination_raw);
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_COMPUTER_ROUTE_STATUS_ADDRESS, status_one_raw);
+	if (!yt_route_process_build_at(YT_COMPUTER_ROUTE_START_ADDRESS,
+	    YT_COMPUTER_ROUTE_DESTINATION_ADDRESS,
+	    YT_COMPUTER_ROUTE_STATUS_ADDRESS,
+	    session->presentation.sound.conversion_mode,
+	    &session->route_process, route_sector_reader, session,
+	    &route_outcome, error))
 		return false;
+	found = route_outcome == YT_ROUTE_FOUND
+	    || route_outcome == YT_ROUTE_SAME
+	    || route_outcome == YT_ROUTE_BACK_EDGE;
+	route_status = yt_route_process_single(&session->route_process,
+	    YT_COMPUTER_ROUTE_STATUS_ADDRESS);
 	session->relationship_scratch = route_status;
-	memcpy(session->relationship_scratch_raw,
-	    found ? status_zero_raw : status_one_raw,
-	    sizeof(session->relationship_scratch_raw));
+	yt_route_process_raw_single(&session->route_process,
+	    YT_COMPUTER_ROUTE_STATUS_ADDRESS,
+	    session->relationship_scratch_raw);
 	if (!found) {
 		session->presentation.blink = 1.0f;
 		return session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
