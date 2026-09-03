@@ -167,6 +167,9 @@ struct startup_configuration_tape {
 	uint8_t planet_offset_raw[1][4];
 	size_t planet_offset_store_count;
 	size_t planet_offset_store_position[1];
+	uint8_t local_screen_raw[2][4];
+	size_t local_screen_store_count;
+	size_t local_screen_store_position[2];
 };
 
 static bool
@@ -433,6 +436,21 @@ startup_configuration_planet_offset_store_test(void *context,
 	++tape->planet_offset_store_count;
 }
 
+static void
+startup_configuration_local_screen_store_test(void *context,
+    const uint8_t raw[4])
+{
+	struct startup_configuration_tape *tape = context;
+	size_t store = tape->local_screen_store_count;
+
+	if (store >= YT_ARRAY_LEN(tape->local_screen_raw))
+		return;
+	memcpy(tape->local_screen_raw[store], raw,
+	    sizeof(tape->local_screen_raw[store]));
+	tape->local_screen_store_position[store] = tape->event_count;
+	++tape->local_screen_store_count;
+}
+
 static bool
 startup_configuration_fixture(struct startup_configuration_tape *tape,
     struct yt_startup_configuration_state *state, struct yt_config *config,
@@ -508,6 +526,7 @@ check_startup_configuration_transaction(void)
 		startup_configuration_sector_offset_store_test,
 		startup_configuration_port_offset_store_test,
 		startup_configuration_planet_offset_store_test,
+		startup_configuration_local_screen_store_test,
 	};
 	static const int events[] = {
 		STARTUP_CONFIGURATION_CLOSE,
@@ -595,6 +614,13 @@ check_startup_configuration_transaction(void)
 	    || tape.planet_offset_store_position[0] != 3U
 	    || memcmp(tape.planet_offset_raw[0],
 	    tape.config_source.bytes + YT_F61, 4U) != 0
+	    || tape.local_screen_store_count != 2U
+	    || tape.local_screen_store_position[0] != 3U
+	    || tape.local_screen_store_position[1] != 4U
+	    || memcmp(tape.local_screen_raw[0],
+	    tape.config_source.bytes + YT_F85, 4U) != 0
+	    || memcmp(tape.local_screen_raw[1],
+	    (const uint8_t[]){0x00, 0x00, 0x80, 0x81}, 4U) != 0
 	    || config.local_screen != -1.0f || config.lottery_plays != 3.0f
 	    || config.maximum_planets != 100.0f
 	    || config.maximum_holds != 1000.0f
@@ -734,6 +760,34 @@ check_startup_configuration_transaction(void)
 	    || config.maximum_holds != 1000.0f)
 		return false;
 
+	/* Both remote local-screen validation bounds are inclusive. */
+	if (!startup_configuration_fixture(&tape, &state, &config,
+	    sector_cache, cloak_cache))
+		return false;
+	state.local_mode = 0.0f;
+	state.cache_guard = 1.0f;
+	if (!yt_record_set_number(&tape.config_source, YT_F85, -1.0f)
+	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
+	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
+	    || tape.local_screen_store_count != 1U
+	    || memcmp(tape.local_screen_raw[0],
+	    tape.config_source.bytes + YT_F85, 4U) != 0
+	    || config.local_screen != -1.0f)
+		return false;
+	if (!startup_configuration_fixture(&tape, &state, &config,
+	    sector_cache, cloak_cache))
+		return false;
+	state.local_mode = 0.0f;
+	state.cache_guard = 1.0f;
+	if (!yt_record_set_number(&tape.config_source, YT_F85, 0.0f)
+	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
+	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
+	    || tape.local_screen_store_count != 1U
+	    || memcmp(tape.local_screen_raw[0],
+	    tape.config_source.bytes + YT_F85, 4U) != 0
+	    || config.local_screen != 0.0f)
+		return false;
+
 	/* Descriptor length, not an embedded NUL byte, controls path emptiness. */
 	if (!startup_configuration_fixture(&tape, &state, &config,
 	    sector_cache, cloak_cache))
@@ -822,7 +876,10 @@ check_startup_configuration_transaction(void)
 	    tape.config_source.bytes + YT_F57, 4U) != 0
 	    || tape.planet_offset_store_count != 1U
 	    || memcmp(tape.planet_offset_raw[0],
-	    tape.config_source.bytes + YT_F61, 4U) != 0)
+	    tape.config_source.bytes + YT_F61, 4U) != 0
+	    || tape.local_screen_store_count != 1U
+	    || memcmp(tape.local_screen_raw[0],
+	    tape.config_source.bytes + YT_F85, 4U) != 0)
 		return false;
 
 	for (failure = 1U; failure <= YT_ARRAY_LEN(events); ++failure) {
@@ -871,6 +928,10 @@ check_startup_configuration_transaction(void)
 			return false;
 		if ((failure <= 3U && tape.planet_offset_store_count != 0U)
 		    || (failure > 3U && tape.planet_offset_store_count != 1U))
+			return false;
+		if ((failure <= 3U && tape.local_screen_store_count != 0U)
+		    || (failure == 4U && tape.local_screen_store_count != 1U)
+		    || (failure > 4U && tape.local_screen_store_count != 2U))
 			return false;
 	}
 	if (!startup_configuration_fixture(&tape, &state, &config,

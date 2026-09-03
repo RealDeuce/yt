@@ -43,6 +43,7 @@
 #define YT_SECTOR_OFFSET_ADDRESS 0x19DCU
 #define YT_PORT_OFFSET_ADDRESS 0x19E0U
 #define YT_PLANET_OFFSET_ADDRESS 0x19E4U
+#define YT_LOCAL_SCREEN_ADDRESS 0x4B6CU
 #define YT_CLEARANCE_HOLDS_ADDRESS 0x4B54U
 #define YT_CLEARANCE_FIGHTERS_ADDRESS 0x4B58U
 #define YT_CLEARANCE_GROUND_ADDRESS 0x4B5CU
@@ -2113,6 +2114,16 @@ startup_configuration_store_planet_offset(void *context,
 	    YT_PLANET_OFFSET_ADDRESS, raw);
 }
 
+static void
+startup_configuration_store_local_screen(void *context,
+    const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_LOCAL_SCREEN_ADDRESS, raw);
+}
+
 static bool
 load_configuration(struct yt_session *session, struct yt_error *error)
 {
@@ -2135,6 +2146,7 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 		startup_configuration_store_sector_offset,
 		startup_configuration_store_port_offset,
 		startup_configuration_store_planet_offset,
+		startup_configuration_store_local_screen,
 	};
 	struct yt_game *game = &session->door->game;
 	struct yt_startup_configuration_state state;
@@ -18719,7 +18731,8 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	if (!session.running)
 		return true;
 	session.presentation.sound.snoop =
-	    session.door->game.config.local_screen;
+	    yt_route_process_single(&session.route_process,
+	    YT_LOCAL_SCREEN_ADDRESS);
 	if (!opening_and_date(&session, error)
 	    || !startup_pre_admission(&session, error))
 		return session.terminated;

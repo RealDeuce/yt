@@ -88,6 +88,8 @@ typedef void (*yt_startup_configuration_port_offset_store_fn)(void *context,
 	const uint8_t raw[4]);
 typedef void (*yt_startup_configuration_planet_offset_store_fn)(void *context,
 	const uint8_t raw[4]);
+typedef void (*yt_startup_configuration_local_screen_store_fn)(void *context,
+	const uint8_t raw[4]);
 
 struct yt_startup_configuration_ops {
 	yt_startup_configuration_close_fn close_data;
@@ -108,6 +110,7 @@ struct yt_startup_configuration_ops {
 	yt_startup_configuration_sector_offset_store_fn store_sector_offset;
 	yt_startup_configuration_port_offset_store_fn store_port_offset;
 	yt_startup_configuration_planet_offset_store_fn store_planet_offset;
+	yt_startup_configuration_local_screen_store_fn store_local_screen;
 };
 
 bool yt_startup_configuration_run(

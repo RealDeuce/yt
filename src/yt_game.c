@@ -303,6 +303,8 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 		ops->store_port_offset(context, config->record.bytes + YT_F57);
 	if (ops->store_planet_offset != NULL)
 		ops->store_planet_offset(context, config->record.bytes + YT_F61);
+	if (ops->store_local_screen != NULL)
+		ops->store_local_screen(context, config->record.bytes + YT_F85);
 	if (ops->store_turns_per_day != NULL)
 		ops->store_turns_per_day(context,
 		    config->record.bytes + YT_F49);
@@ -344,8 +346,15 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 		return startup_configuration_error(error, YT_RANGE,
 		    "startup local-mode CINT");
 	if (config->local_screen < -1.0f || config->local_screen > 0.0f
-	    || local_mode != 0)
+	    || local_mode != 0) {
+		static const uint8_t local_default[4] = {
+			0x00, 0x00, 0x80, 0x81
+		};
+
 		config->local_screen = -1.0f;
+		if (ops->store_local_screen != NULL)
+			ops->store_local_screen(context, local_default);
+	}
 	if (config->lottery_plays < 0.0f || config->lottery_plays > 9.0f) {
 		static const uint8_t lottery_default[4] = {
 			0x00, 0x00, 0x40, 0x82
