@@ -100,6 +100,7 @@
 #define YT_PAGER_NEWLINE_ADDRESS 0x4CB6U
 #define YT_PAGER_LINE_COUNT_ADDRESS 0x4D7EU
 #define YT_PAGER_SAVED_FOREGROUND_ADDRESS 0x51D0U
+#define YT_FILE_VIEWER_SAVED_FOREGROUND_ADDRESS 0x51A8U
 
 enum navigation_field_kind {
 	NAVIGATION_FIELD_NONE,
@@ -1954,6 +1955,25 @@ session_file_viewer_present(void *context, const uint8_t *text,
 	    SESSION_PRESENT_LINE, "file viewer final blank", error);
 }
 
+static float
+session_file_viewer_save_foreground(struct yt_session *session)
+{
+	yt_route_process_copy_raw_single(&session->route_process,
+	    YT_FOREGROUND_ADDRESS, YT_FILE_VIEWER_SAVED_FOREGROUND_ADDRESS);
+	return yt_route_process_single(&session->route_process,
+	    YT_FILE_VIEWER_SAVED_FOREGROUND_ADDRESS);
+}
+
+static void
+session_file_viewer_restore_foreground(struct yt_session *session)
+{
+	uint8_t raw[4];
+
+	yt_route_process_raw_single(&session->route_process,
+	    YT_FILE_VIEWER_SAVED_FOREGROUND_ADDRESS, raw);
+	session_set_foreground_raw(session, raw);
+}
+
 struct session_file_viewer_context {
 	struct yt_session *session;
 	struct yt_text_input input;
@@ -2004,7 +2024,10 @@ session_file_viewer_stream_present(void *context, const uint8_t *text,
 {
 	struct session_file_viewer_context *viewer = context;
 
-	session_set_foreground(viewer->session, *viewer->foreground);
+	if (paged)
+		session_set_foreground(viewer->session, *viewer->foreground);
+	else
+		session_file_viewer_restore_foreground(viewer->session);
 	return session_file_viewer_present(viewer->session, text, length, paged,
 	    error);
 }
@@ -2041,7 +2064,7 @@ display_game_file(struct yt_session *session, const char *path,
 	struct session_file_viewer_context context;
 	struct yt_error local_error;
 	struct yt_error *active_error = error == NULL ? &local_error : error;
-	float saved_foreground = session_foreground(session);
+	float saved_foreground = session_file_viewer_save_foreground(session);
 	int saved_pager_foreground = session_pager_foreground(session);
 	float foreground_carrier = saved_foreground;
 	int pager_foreground_carrier = saved_pager_foreground;
@@ -2073,7 +2096,6 @@ display_game_file(struct yt_session *session, const char *path,
 	yt_text_input_destroy(&context.input);
 	if (ok)
 		session_set_pager_line_count(session, session->pager.line_count);
-	session_set_foreground(session, foreground_carrier);
 	if (!ok && active_error->status == YT_NOT_FOUND) {
 		struct yt_main_error_result handler;
 
