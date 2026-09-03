@@ -1068,6 +1068,14 @@ sysop_key_index(enum yt_sysop_key key)
 #define SYSOP_KEY_FIFO_BASE 0x1260U
 #define SYSOP_KEY_FIFO_END 0x12B0U
 #define SYSOP_KEY_FIFO_CAPACITY 0x0050U
+#define SYSOP_EVENT_STACK_FLOOR 0x0A02U
+#define SYSOP_EVENT_HANDLER_TOP 0x0A04U
+#define SYSOP_EVENT_SAVED_BP 0x0A06U
+#define SYSOP_EVENT_WAKE_FLAG 0x0A6AU
+#define SYSOP_EVENT_ERROR_7 0x0A1EU
+#define SYSOP_EVENT_RETURN_HANDLER 0x94D9U
+#define SYSOP_EVENT_RETURN_AFTER_CALL 0xF875U
+#define SYSOP_EVENT_YT_FRAME_SIZE 0x0008U
 
 static uint16_t
 sysop_key_process_word(const uint8_t *process, uint16_t address)
@@ -1256,6 +1264,7 @@ yt_sysop_key_scheduler_bind_process(struct yt_sysop_key_scheduler *scheduler,
 
 	if (scheduler == NULL || process == NULL
 	    || process_size != YT_SYSOP_KEY_PROCESS_SIZE
+	    || target_segment == 0U
 	    || scheduler->process != NULL || scheduler->fifo_position != 0U
 	    || scheduler->fifo_length != 0U || scheduler->frame_depth != 0U
 	    || scheduler->abandoned_depth != 0U)
@@ -1469,6 +1478,221 @@ yt_sysop_key_resume_abandon(struct yt_sysop_key_scheduler *scheduler)
 		return false;
 	/* RESUME 081F does not run any event RETURN trampoline. */
 	scheduler->abandoned_depth = scheduler->frame_depth;
+	return true;
+}
+
+static bool
+sysop_event_stack_valid(const struct yt_sysop_event_stack *stack)
+{
+	return stack != NULL && stack->bytes != NULL
+	    && stack->size == YT_SYSOP_EVENT_STACK_SIZE;
+}
+
+static uint16_t
+sysop_event_stack_word(const struct yt_sysop_event_stack *stack,
+    uint16_t address)
+{
+	return (uint16_t)(stack->bytes[address]
+	    | (uint16_t)stack->bytes[(uint16_t)(address + 1U)] << 8);
+}
+
+static void
+sysop_event_stack_set_word(struct yt_sysop_event_stack *stack,
+    uint16_t address, uint16_t value)
+{
+	stack->bytes[address] = (uint8_t)value;
+	stack->bytes[(uint16_t)(address + 1U)] = (uint8_t)(value >> 8);
+}
+
+bool
+yt_sysop_event_stack_init(struct yt_sysop_key_scheduler *scheduler,
+    struct yt_sysop_event_stack *stack, uint16_t floor)
+{
+	uint16_t target_segment;
+	size_t index;
+
+	if (scheduler == NULL || scheduler->process == NULL
+	    || !sysop_event_stack_valid(stack)
+	    || !sysop_key_raw_matches(scheduler))
+		return false;
+	target_segment = scheduler->records[0].target_segment;
+	if (target_segment == 0U || stack->cs != target_segment
+	    || stack->ip != 0x0120U
+	    || sysop_key_process_word(scheduler->process,
+	    SYSOP_EVENT_STACK_FLOOR) != 0U
+	    || sysop_key_process_word(scheduler->process,
+	    SYSOP_EVENT_HANDLER_TOP) != 0U
+	    || sysop_key_process_word(scheduler->process,
+	    SYSOP_EVENT_SAVED_BP) != 0U)
+		return false;
+	for (index = 1U; index < YT_SYSOP_KEY_COUNT; ++index)
+		if (scheduler->records[index].target_segment != target_segment)
+			return false;
+	sysop_key_process_set_word(scheduler->process,
+	    SYSOP_EVENT_STACK_FLOOR, floor);
+	sysop_key_process_set_word(scheduler->process,
+	    SYSOP_EVENT_HANDLER_TOP, stack->sp);
+	sysop_key_process_set_word(scheduler->process,
+	    SYSOP_EVENT_SAVED_BP, stack->bp);
+	return true;
+}
+
+enum yt_sysop_event_stack_outcome
+yt_sysop_event_deliver_raw(struct yt_sysop_key_scheduler *scheduler,
+    const struct yt_sysop_key_delivery *delivery,
+    struct yt_sysop_event_stack *stack, uint16_t brun_segment,
+    uint16_t checkpoint_flags)
+{
+	struct yt_sysop_key_record *record;
+	size_t index;
+	uint16_t program_sp;
+	uint16_t frame_base;
+	uint16_t frame_top;
+	uint16_t post_push_sp;
+
+	if (scheduler == NULL || scheduler->process == NULL || delivery == NULL
+	    || !delivery->delivered || !sysop_event_stack_valid(stack)
+	    || !sysop_key_raw_matches(scheduler)
+	    || scheduler->frame_depth == 0U)
+		return YT_SYSOP_EVENT_STACK_INVALID;
+	index = sysop_key_index(delivery->key);
+	if (index == YT_SYSOP_KEY_COUNT
+	    || scheduler->frames[scheduler->frame_depth - 1U] != index)
+		return YT_SYSOP_EVENT_STACK_INVALID;
+	record = &scheduler->records[index];
+	if (record->event_state != 0x03U
+	    || delivery->record_address != record->address
+	    || delivery->target != record->target
+	    || record->target == 0U || record->target_segment == 0U)
+		return YT_SYSOP_EVENT_STACK_INVALID;
+	program_sp = stack->sp;
+	sysop_event_stack_set_word(stack, (uint16_t)(program_sp - 2U),
+	    checkpoint_flags);
+	sysop_event_stack_set_word(stack, (uint16_t)(program_sp - 4U),
+	    stack->cs);
+	sysop_event_stack_set_word(stack, (uint16_t)(program_sp - 6U),
+	    (uint16_t)(stack->ip + 1U));
+	frame_base = (uint16_t)(program_sp - 2U);
+	frame_top = (uint16_t)(frame_base - SYSOP_EVENT_YT_FRAME_SIZE);
+	sysop_event_stack_set_word(stack, frame_base, stack->bp);
+	sysop_event_stack_set_word(stack, (uint16_t)(frame_top - 2U),
+	    stack->cs);
+	sysop_event_stack_set_word(stack, (uint16_t)(frame_top - 4U),
+	    (uint16_t)(stack->ip + 1U));
+	post_push_sp = (uint16_t)(frame_top - 4U);
+	if (post_push_sp < sysop_key_process_word(scheduler->process,
+	    SYSOP_EVENT_STACK_FLOOR)) {
+		stack->sp = post_push_sp;
+		stack->bp = frame_base;
+		stack->cs = brun_segment;
+		stack->ip = SYSOP_EVENT_ERROR_7;
+		return YT_SYSOP_EVENT_STACK_ERROR_7;
+	}
+	sysop_key_process_set_word(scheduler->process,
+	    SYSOP_EVENT_SAVED_BP, frame_base);
+	sysop_event_stack_set_word(stack, (uint16_t)(frame_base - 2U),
+	    record->target_segment);
+	sysop_event_stack_set_word(stack, (uint16_t)(frame_base - 4U), 1U);
+	sysop_event_stack_set_word(stack, (uint16_t)(frame_top - 6U),
+	    record->address);
+	sysop_event_stack_set_word(stack, (uint16_t)(frame_top - 8U), 0U);
+	stack->sp = (uint16_t)(frame_top - 8U);
+	stack->bp = frame_base;
+	stack->cs = record->target_segment;
+	stack->ip = record->target;
+	sysop_key_process_set_word(scheduler->process,
+	    SYSOP_EVENT_HANDLER_TOP, stack->sp);
+	return YT_SYSOP_EVENT_STACK_OK;
+}
+
+bool
+yt_sysop_event_checkpoint_quiet_raw(
+    struct yt_sysop_key_scheduler *scheduler,
+    struct yt_sysop_event_stack *stack, uint16_t checkpoint_flags)
+{
+	uint16_t sp;
+
+	if (scheduler == NULL || scheduler->process == NULL
+	    || !sysop_event_stack_valid(stack)
+	    || !sysop_key_raw_matches(scheduler))
+		return false;
+	if (scheduler->process[SYSOP_EVENT_WAKE_FLAG] != 0U)
+		scheduler->process[SYSOP_EVENT_WAKE_FLAG] = 0U;
+	sp = stack->sp;
+	sysop_event_stack_set_word(stack, (uint16_t)(sp - 2U),
+	    checkpoint_flags);
+	sysop_event_stack_set_word(stack, (uint16_t)(sp - 4U), stack->cs);
+	sysop_event_stack_set_word(stack, (uint16_t)(sp - 6U),
+	    (uint16_t)(stack->ip + 1U));
+	stack->ip = (uint16_t)(stack->ip + 1U);
+	return true;
+}
+
+bool
+yt_sysop_event_return_raw(struct yt_sysop_key_scheduler *scheduler,
+    struct yt_sysop_event_stack *stack, uint16_t opcode_flags,
+    enum yt_sysop_key *returned)
+{
+	struct yt_sysop_key_record *record;
+	size_t index;
+	uint16_t body_sp;
+	uint16_t outer_ip;
+	uint16_t outer_cs;
+	uint16_t frame_top;
+	uint16_t old_bp;
+	uint16_t resumed_sp;
+
+	if (scheduler == NULL || scheduler->process == NULL
+	    || !sysop_event_stack_valid(stack)
+	    || !sysop_key_raw_matches(scheduler)
+	    || scheduler->frame_depth <= scheduler->abandoned_depth)
+		return false;
+	index = scheduler->frames[scheduler->frame_depth - 1U];
+	if (index >= YT_SYSOP_KEY_COUNT)
+		return false;
+	record = &scheduler->records[index];
+	body_sp = stack->sp;
+	if ((record->event_state != 0x03U && record->event_state != 0x07U)
+	    || sysop_event_stack_word(stack, body_sp) != 0U
+	    || sysop_event_stack_word(stack, (uint16_t)(body_sp + 2U))
+	    != record->address
+	    || sysop_event_stack_word(stack, (uint16_t)(stack->bp - 4U))
+	    != 1U)
+		return false;
+	outer_ip = sysop_event_stack_word(stack, (uint16_t)(body_sp + 4U));
+	outer_cs = sysop_event_stack_word(stack, (uint16_t)(body_sp + 6U));
+	old_bp = sysop_event_stack_word(stack, stack->bp);
+	sysop_event_stack_set_word(stack, (uint16_t)(body_sp - 2U),
+	    opcode_flags);
+	sysop_event_stack_set_word(stack, (uint16_t)(body_sp - 4U), stack->cs);
+	sysop_event_stack_set_word(stack, (uint16_t)(body_sp - 6U),
+	    (uint16_t)(stack->ip + 2U));
+	sysop_event_stack_set_word(stack, (uint16_t)(body_sp - 2U), stack->cs);
+	sysop_event_stack_set_word(stack, (uint16_t)(body_sp - 4U),
+	    (uint16_t)(stack->ip + 3U));
+	sysop_event_stack_set_word(stack, (uint16_t)(body_sp - 6U),
+	    SYSOP_EVENT_RETURN_HANDLER);
+	sysop_event_stack_set_word(stack, (uint16_t)(stack->bp - 4U), 0U);
+	frame_top = (uint16_t)(body_sp + 8U);
+	sysop_key_process_set_word(scheduler->process,
+	    SYSOP_EVENT_HANDLER_TOP, frame_top);
+	sysop_event_stack_set_word(stack, (uint16_t)(frame_top - 2U), outer_cs);
+	sysop_event_stack_set_word(stack, (uint16_t)(frame_top - 4U), outer_ip);
+	sysop_event_stack_set_word(stack, (uint16_t)(frame_top - 6U),
+	    SYSOP_EVENT_RETURN_AFTER_CALL);
+	if (!yt_sysop_key_return(scheduler, returned))
+		return false;
+	resumed_sp = (uint16_t)(stack->bp + 2U);
+	sysop_key_process_set_word(scheduler->process,
+	    SYSOP_EVENT_HANDLER_TOP, resumed_sp);
+	sysop_key_process_set_word(scheduler->process,
+	    SYSOP_EVENT_SAVED_BP, old_bp);
+	sysop_event_stack_set_word(stack, (uint16_t)(resumed_sp - 2U), outer_cs);
+	sysop_event_stack_set_word(stack, (uint16_t)(resumed_sp - 4U), outer_ip);
+	stack->sp = resumed_sp;
+	stack->bp = old_bp;
+	stack->cs = outer_cs;
+	stack->ip = outer_ip;
 	return true;
 }
 

@@ -2476,6 +2476,143 @@ test_sysop_key_process(void)
 }
 
 static void
+test_sysop_event_stack(void)
+{
+	uint8_t process[YT_SYSOP_KEY_PROCESS_SIZE];
+	uint8_t stack_bytes[YT_SYSOP_EVENT_STACK_SIZE];
+	struct yt_sysop_key_scheduler scheduler;
+	struct yt_sysop_key_delivery delivery;
+	struct yt_sysop_event_stack stack;
+	enum yt_sysop_key returned;
+	uint16_t frame_base;
+	uint16_t frame_top;
+
+	memset(process, 0, sizeof(process));
+	memset(stack_bytes, 0, sizeof(stack_bytes));
+	yt_sysop_key_scheduler_init(&scheduler);
+	stack = (struct yt_sysop_event_stack){
+		.sp = 0x9000U,
+		.bp = 0x9500U,
+		.cs = 0x4444U,
+		.ip = 0x0120U,
+		.ds = 0x2222U,
+		.ss = 0x3333U,
+		.bytes = stack_bytes,
+		.size = sizeof(stack_bytes),
+	};
+	CHECK(yt_sysop_key_scheduler_bind_process(&scheduler, process,
+	    sizeof(process), 0x4444U)
+	    && yt_sysop_event_stack_init(&scheduler, &stack, 0x7000U)
+	    && input_process_word(process, 0x0A02U) == 0x7000U
+	    && input_process_word(process, 0x0A04U) == 0x9000U
+	    && input_process_word(process, 0x0A06U) == 0x9500U);
+	stack.ip = 0xB6D7U;
+	CHECK(yt_sysop_key_latch(&scheduler, YT_SYSOP_KEY_F9)
+	    && yt_sysop_key_checkpoint(&scheduler, false, &delivery)
+	    && delivery.key == YT_SYSOP_KEY_F9
+	    && yt_sysop_event_deliver_raw(&scheduler, &delivery, &stack,
+	    0x5555U, 0x0202U) == YT_SYSOP_EVENT_STACK_OK);
+	frame_base = 0x8FFEU;
+	frame_top = 0x8FF6U;
+	CHECK(stack.ip == 0xB66AU && stack.cs == 0x4444U
+	    && stack.bp == frame_base && stack.sp == frame_top - 8U
+	    && stack.ds == 0x2222U && stack.ss == 0x3333U
+	    && input_process_word(process, 0x0A04U) == frame_top - 8U
+	    && input_process_word(process, 0x0A06U) == frame_base
+	    && input_process_word(stack.bytes, frame_base) == 0x9500U
+	    && input_process_word(stack.bytes, frame_base - 2U) == 0x4444U
+	    && input_process_word(stack.bytes, frame_base - 4U) == 1U
+	    && input_process_word(stack.bytes, frame_top - 8U) == 0U
+	    && input_process_word(stack.bytes, frame_top - 6U) == 0x11C3U
+	    && input_process_word(stack.bytes, frame_top - 4U) == 0xB6D8U
+	    && input_process_word(stack.bytes, frame_top - 2U) == 0x4444U);
+
+	process[0x0A6AU] = 0x7FU;
+	CHECK(yt_sysop_key_checkpoint(&scheduler, false, &delivery)
+	    && !delivery.delivered
+	    && yt_sysop_event_checkpoint_quiet_raw(&scheduler, &stack, 0x0246U)
+	    && process[0x0A6AU] == 0U && stack.ip == 0xB66BU
+	    && stack.sp == frame_top - 8U && stack.bp == frame_base
+	    && input_process_word(stack.bytes, frame_top - 10U) == 0x0246U
+	    && input_process_word(stack.bytes, frame_top - 12U) == 0x4444U
+	    && input_process_word(stack.bytes, frame_top - 14U) == 0xB66BU);
+	stack.ip = 0xB679U;
+	CHECK(yt_sysop_event_return_raw(&scheduler, &stack, 0x0202U,
+	    &returned)
+	    && returned == YT_SYSOP_KEY_F9
+	    && stack.ip == 0xB6D8U && stack.cs == 0x4444U
+	    && stack.sp == 0x9000U && stack.bp == 0x9500U
+	    && process[0x11C3U] == 0x01U
+	    && input_process_word(process, 0x0A04U) == 0x9000U
+	    && input_process_word(process, 0x0A06U) == 0x9500U
+	    && input_process_word(stack.bytes, frame_base - 4U) == 0U
+	    && input_process_word(stack.bytes, frame_top - 6U) == 0xF875U
+	    && input_process_word(stack.bytes, 0x8FFEU) == 0x4444U
+	    && input_process_word(stack.bytes, 0x8FFCU) == 0xB6D8U
+	    && input_process_word(stack.bytes, 0x8FFAU) == 0U);
+
+	/* A translated same-key hit is enqueued only by the raw RETURN. */
+	stack.ip = 0xB05DU;
+	CHECK(yt_sysop_key_latch(&scheduler, YT_SYSOP_KEY_F8)
+	    && yt_sysop_key_checkpoint(&scheduler, false, &delivery)
+	    && delivery.key == YT_SYSOP_KEY_F8
+	    && yt_sysop_event_deliver_raw(&scheduler, &delivery, &stack,
+	    0x5555U, 0x0202U) == YT_SYSOP_EVENT_STACK_OK
+	    && yt_sysop_key_latch(&scheduler, YT_SYSOP_KEY_F8)
+	    && yt_sysop_key_checkpoint(&scheduler, false, &delivery)
+	    && !delivery.delivered
+	    && yt_sysop_event_checkpoint_quiet_raw(&scheduler, &stack, 0x0202U)
+	    && process[0x11BEU] == 0x07U);
+	stack.ip = 0xB6D4U;
+	CHECK(yt_sysop_event_return_raw(&scheduler, &stack, 0x0202U,
+	    &returned)
+	    && returned == YT_SYSOP_KEY_F8
+	    && stack.ip == 0xB05EU && stack.cs == 0x4444U
+	    && stack.sp == 0x9000U && stack.bp == 0x9500U
+	    && process[0x11BEU] == 0x05U && process[0x118AU] == 1U
+	    && input_process_word(process, 0x1254U) == 0x1266U
+	    && input_process_word(process, 0x1256U) == 0x1264U
+	    && input_process_word(process, 0x125EU) == 2U
+	    && process[0x1264U] == 0x11U && process[0x1265U] == 0xBEU);
+
+	/* The unsigned floor cut retains the selected STOP record and old roots. */
+	memset(process, 0, sizeof(process));
+	memset(stack_bytes, 0, sizeof(stack_bytes));
+	yt_sysop_key_scheduler_init(&scheduler);
+	stack = (struct yt_sysop_event_stack){
+		.sp = 0x9000U,
+		.bp = 0x9500U,
+		.cs = 0x4444U,
+		.ip = 0x0120U,
+		.ds = 0x2222U,
+		.ss = 0x3333U,
+		.bytes = stack_bytes,
+		.size = sizeof(stack_bytes),
+	};
+	CHECK(yt_sysop_key_scheduler_bind_process(&scheduler, process,
+	    sizeof(process), 0x4444U)
+	    && yt_sysop_event_stack_init(&scheduler, &stack, 0x8FF3U));
+	stack.ip = 0xB6D7U;
+	CHECK(yt_sysop_key_latch(&scheduler, YT_SYSOP_KEY_F9)
+	    && yt_sysop_key_checkpoint(&scheduler, false, &delivery)
+	    && yt_sysop_event_deliver_raw(&scheduler, &delivery, &stack,
+	    0x5555U, 0x0202U) == YT_SYSOP_EVENT_STACK_ERROR_7
+	    && stack.ip == 0x0A1EU && stack.cs == 0x5555U
+	    && stack.sp == 0x8FF2U && stack.bp == 0x8FFEU
+	    && input_process_word(process, 0x0A04U) == 0x9000U
+	    && input_process_word(process, 0x0A06U) == 0x9500U
+	    && process[0x11C3U] == 0x03U
+	    && input_process_word(stack.bytes, 0x8FFEU) == 0x9500U
+	    && input_process_word(stack.bytes, 0x8FF4U) == 0x4444U
+	    && input_process_word(stack.bytes, 0x8FF2U) == 0xB6D8U);
+
+	CHECK(yt_sysop_event_deliver_raw(NULL, &delivery, &stack,
+	    0x5555U, 0x0202U) == YT_SYSOP_EVENT_STACK_INVALID
+	    && !yt_sysop_event_checkpoint_quiet_raw(NULL, &stack, 0x0202U)
+	    && !yt_sysop_event_return_raw(NULL, &stack, 0x0202U, NULL));
+}
+
+static void
 test_startup_dorinfo_parser(void)
 {
 	static const uint8_t first[] = "A\0B\r\n";
@@ -3401,6 +3538,7 @@ main(void)
 	test_sysop_f5();
 	test_sysop_key_scheduler();
 	test_sysop_key_process();
+	test_sysop_event_stack();
 	test_startup_dorinfo_parser();
 	test_startup_dorinfo_state();
 	test_startup_lockout_transaction();

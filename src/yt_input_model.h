@@ -10,6 +10,7 @@
 #define YT_SYSOP_KEY_COUNT 5U
 #define YT_SYSOP_KEY_FIFO_BYTES (YT_SYSOP_KEY_COUNT * 2U)
 #define YT_SYSOP_KEY_PROCESS_SIZE 0x10000U
+#define YT_SYSOP_EVENT_STACK_SIZE 0x10000U
 
 enum yt_input_phase {
 	YT_INPUT_PHASE_B05D,
@@ -248,6 +249,23 @@ struct yt_sysop_key_delivery {
 	uint16_t target;
 };
 
+enum yt_sysop_event_stack_outcome {
+	YT_SYSOP_EVENT_STACK_OK,
+	YT_SYSOP_EVENT_STACK_ERROR_7,
+	YT_SYSOP_EVENT_STACK_INVALID,
+};
+
+struct yt_sysop_event_stack {
+	uint16_t sp;
+	uint16_t bp;
+	uint16_t cs;
+	uint16_t ip;
+	uint16_t ds;
+	uint16_t ss;
+	uint8_t *bytes;
+	size_t size;
+};
+
 void yt_input_splitter_init(struct yt_input_splitter *splitter);
 bool yt_input_splitter_can_push(const struct yt_input_splitter *splitter,
     bool remote);
@@ -355,6 +373,19 @@ bool yt_sysop_key_checkpoint(struct yt_sysop_key_scheduler *scheduler,
 bool yt_sysop_key_return(struct yt_sysop_key_scheduler *scheduler,
 	enum yt_sysop_key *returned);
 bool yt_sysop_key_resume_abandon(struct yt_sysop_key_scheduler *scheduler);
+bool yt_sysop_event_stack_init(struct yt_sysop_key_scheduler *scheduler,
+	struct yt_sysop_event_stack *stack, uint16_t floor);
+enum yt_sysop_event_stack_outcome yt_sysop_event_deliver_raw(
+	struct yt_sysop_key_scheduler *scheduler,
+	const struct yt_sysop_key_delivery *delivery,
+	struct yt_sysop_event_stack *stack, uint16_t brun_segment,
+	uint16_t checkpoint_flags);
+bool yt_sysop_event_checkpoint_quiet_raw(
+	struct yt_sysop_key_scheduler *scheduler,
+	struct yt_sysop_event_stack *stack, uint16_t checkpoint_flags);
+bool yt_sysop_event_return_raw(struct yt_sysop_key_scheduler *scheduler,
+	struct yt_sysop_event_stack *stack, uint16_t opcode_flags,
+	enum yt_sysop_key *returned);
 const struct yt_sysop_key_record *yt_sysop_key_record(
 	const struct yt_sysop_key_scheduler *scheduler, enum yt_sysop_key key);
 size_t yt_sysop_key_fifo_bytes(const struct yt_sysop_key_scheduler *scheduler,
