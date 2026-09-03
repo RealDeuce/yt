@@ -63,6 +63,7 @@
 #define YT_SPY_COUNT_ADDRESS 0x50AEU
 #define YT_LOW_TIME_REMEMBERED_ADDRESS 0x59CEU
 #define YT_SESSION_DEADLINE_ADDRESS 0x4BB4U
+#define YT_INACTIVITY_DEADLINE_ADDRESS 0x51B4U
 #define YT_COUNTERLAUNCH_COUNT_ADDRESS 0x5BC6U
 #define YT_SPY_DESTINATION_SCRATCH_ADDRESS 0x5FE4U
 #define YT_SPY_FOUND_SCRATCH_ADDRESS 0x5FE8U
@@ -861,14 +862,12 @@ radio_append(const char *text, float sender, float recipient,
 static bool
 read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 {
-	float inactivity_deadline;
-
 	if (size == 0)
 		return false;
 	yt_pager_editor_enter(&session->pager, session->command_accumulator,
 	    sizeof(session->command_accumulator));
-	inactivity_deadline = single_add(
-	    floorf((float)yt_platform_timer()), 180.0f);
+	session_set_process_single(session, YT_INACTIVITY_DEADLINE_ADDRESS,
+	    single_add(floorf((float)yt_platform_timer()), 180.0f));
 	dest[0] = '\0';
 	for (;;) {
 		struct yt_input_value selected = {{0, 0}, 0, 0, false};
@@ -876,7 +875,8 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 		uint8_t key;
 
 		if (yt_input_ab36_inactivity_expired(
-		    (float)yt_platform_timer(), inactivity_deadline,
+		    (float)yt_platform_timer(), yt_route_process_single(
+		    &session->route_process, YT_INACTIVITY_DEADLINE_ADDRESS),
 		    session->presentation.sound.mode))
 			return session_editor_end(session,
 			    YT_AB36_TERMINAL_INACTIVITY);
