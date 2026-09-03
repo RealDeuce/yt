@@ -107,7 +107,22 @@ yt_error_attach_basic_fault(struct yt_error *error,
 	if (error == NULL || yt_basic_fault_identity(site) == NULL)
 		return false;
 	error->basic_fault_site = (uint16_t)site;
+	error->basic_error = 0U;
 	error->basic_fault_valid = true;
+	error->basic_error_valid = false;
+	return true;
+}
+
+bool
+yt_error_attach_basic_fault_number(struct yt_error *error,
+    enum yt_basic_fault_site site, uint16_t error_number)
+{
+	if (error_number > UINT8_MAX
+	    || !yt_basic_fault_admits(site, (uint8_t)error_number)
+	    || !yt_error_attach_basic_fault(error, site))
+		return false;
+	error->basic_error = error_number;
+	error->basic_error_valid = true;
 	return true;
 }
 
@@ -421,4 +436,59 @@ yt_shared_error_compose(int16_t error_number, int32_t source_line,
 	    "Please record error and circumstances. Also, if the error")
 	    && add_shared_literal(result, YT_SHARED_ERROR_NEWS,
 	    "is Severe, Please inform Alan Davenport!");
+}
+
+bool
+yt_basic_fault_project(const struct yt_error *error,
+    const uint8_t *pathname, size_t pathname_length,
+    const uint8_t *date_text, size_t date_length,
+    const uint8_t *time_text, size_t time_length,
+    struct yt_basic_fault_projection *projection)
+{
+	const struct yt_basic_fault_identity *identity;
+	enum yt_basic_fault_site site;
+
+	if (error == NULL || projection == NULL || !error->basic_fault_valid
+	    || !error->basic_error_valid
+	    || error->basic_fault_site >= YT_BASIC_FAULT_SITE_COUNT
+	    || error->basic_error > UINT8_MAX)
+		return false;
+	site = (enum yt_basic_fault_site)error->basic_fault_site;
+	identity = yt_basic_fault_identity(site);
+	if (identity == NULL
+	    || !yt_basic_fault_admits(site, (uint8_t)error->basic_error))
+		return false;
+	memset(projection, 0, sizeof(*projection));
+	projection->site = site;
+	projection->error_number = error->basic_error;
+	projection->identity = identity;
+	if (identity->module == YT_BASIC_FAULT_MAIN) {
+		if (!yt_main_error_compose((int16_t)error->basic_error,
+		    identity->source_line, pathname, pathname_length,
+		    date_text, date_length, time_text, time_length,
+		    &projection->main))
+			return false;
+		switch (projection->main.route) {
+		case YT_MAIN_ERROR_RETRY_CURRENT:
+			projection->disposition = YT_BASIC_FAULT_RETRY_STATEMENT;
+			break;
+		case YT_MAIN_ERROR_MISSING_FILE:
+			projection->disposition = YT_BASIC_FAULT_RESUME_MISSING_FILE;
+			break;
+		case YT_MAIN_ERROR_GAMEPLAY:
+			projection->disposition = YT_BASIC_FAULT_RESUME_GAMEPLAY;
+			break;
+		case YT_MAIN_ERROR_FATAL:
+			projection->disposition = YT_BASIC_FAULT_END;
+			break;
+		}
+		return true;
+	}
+	if (!yt_shared_error_compose((int16_t)error->basic_error,
+	    identity->source_line, &projection->shared))
+		return false;
+	projection->disposition = projection->shared.route
+	    == YT_SHARED_ERROR_RETRY_CURRENT
+	    ? YT_BASIC_FAULT_RETRY_STATEMENT : YT_BASIC_FAULT_END;
+	return true;
 }

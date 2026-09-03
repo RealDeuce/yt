@@ -59,6 +59,15 @@ bool yt_basic_fault_admits(enum yt_basic_fault_site site,
 	uint8_t error_number);
 bool yt_error_attach_basic_fault(struct yt_error *error,
 	enum yt_basic_fault_site site);
+bool yt_error_attach_basic_fault_number(struct yt_error *error,
+	enum yt_basic_fault_site site, uint16_t error_number);
+
+enum yt_basic_fault_disposition {
+	YT_BASIC_FAULT_RETRY_STATEMENT,
+	YT_BASIC_FAULT_RESUME_MISSING_FILE,
+	YT_BASIC_FAULT_RESUME_GAMEPLAY,
+	YT_BASIC_FAULT_END,
+};
 
 enum yt_main_error_route {
 	YT_MAIN_ERROR_RETRY_CURRENT,
@@ -111,6 +120,21 @@ struct yt_shared_error_result {
 	size_t event_count;
 	bool ends;
 };
+
+struct yt_basic_fault_projection {
+	enum yt_basic_fault_site site;
+	uint16_t error_number;
+	const struct yt_basic_fault_identity *identity;
+	enum yt_basic_fault_disposition disposition;
+	struct yt_main_error_result main;
+	struct yt_shared_error_result shared;
+};
+
+bool yt_basic_fault_project(const struct yt_error *error,
+	const uint8_t *pathname, size_t pathname_length,
+	const uint8_t *date_text, size_t date_length,
+	const uint8_t *time_text, size_t time_length,
+	struct yt_basic_fault_projection *projection);
 
 bool yt_main_error_compose(int16_t error_number, int32_t source_line,
     const uint8_t *pathname, size_t pathname_length,

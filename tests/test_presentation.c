@@ -3875,7 +3875,79 @@ test_basic_fault_registry(void)
 	    YT_BASIC_FAULT_ROUTE_FINAL_SECTOR_GET)
 	    && error.basic_fault_valid
 	    && error.basic_fault_site == YT_BASIC_FAULT_ROUTE_FINAL_SECTOR_GET
+	    && !error.basic_error_valid
 	    && !yt_error_attach_basic_fault(&error, YT_BASIC_FAULT_SITE_COUNT));
+}
+
+static void
+test_basic_fault_projection(void)
+{
+	static const uint8_t date[] = "09-02-2026";
+	static const uint8_t time_text[] = "12:34:56";
+	struct yt_basic_fault_projection projection;
+	struct yt_error error;
+
+	yt_error_clear(&error);
+	CHECK(yt_error_attach_basic_fault_number(&error,
+	    YT_BASIC_FAULT_ROUTE_FINAL_SECTOR_GET, 57U)
+	    && error.basic_fault_valid && error.basic_error_valid
+	    && error.basic_error == 57U
+	    && yt_basic_fault_project(&error, NULL, 0U, date,
+	    sizeof(date) - 1U, time_text, sizeof(time_text) - 1U, &projection)
+	    && projection.disposition == YT_BASIC_FAULT_RETRY_STATEMENT
+	    && projection.identity->saved_ip == 0x92E4U
+	    && projection.identity->retry_statement == 0x92CCU
+	    && projection.main.route == YT_MAIN_ERROR_RETRY_CURRENT);
+
+	yt_error_clear(&error);
+	CHECK(yt_error_attach_basic_fault_number(&error,
+	    YT_BASIC_FAULT_ROUTE_DISPLAY_VERTEX_CINT, 6U)
+	    && yt_basic_fault_project(&error, NULL, 0U, date,
+	    sizeof(date) - 1U, time_text, sizeof(time_text) - 1U, &projection)
+	    && projection.disposition == YT_BASIC_FAULT_RESUME_GAMEPLAY
+	    && projection.identity->source_line == 33880
+	    && projection.main.route == YT_MAIN_ERROR_GAMEPLAY);
+
+	yt_error_clear(&error);
+	CHECK(yt_error_attach_basic_fault_number(&error,
+	    YT_BASIC_FAULT_PORT_SELECTED_SECTOR_GET, 52U)
+	    && yt_basic_fault_project(&error, NULL, 0U, date,
+	    sizeof(date) - 1U, time_text, sizeof(time_text) - 1U, &projection)
+	    && projection.disposition == YT_BASIC_FAULT_END
+	    && projection.main.route == YT_MAIN_ERROR_FATAL
+	    && projection.identity->retry_statement == 0x8DFCU);
+
+	yt_error_clear(&error);
+	CHECK(yt_error_attach_basic_fault_number(&error,
+	    YT_BASIC_FAULT_PORT_FRIENDSHIP_CURRENT_GET, 57U)
+	    && yt_basic_fault_project(&error, NULL, 0U, date,
+	    sizeof(date) - 1U, time_text, sizeof(time_text) - 1U, &projection)
+	    && projection.disposition == YT_BASIC_FAULT_END
+	    && projection.shared.route == YT_SHARED_ERROR_DORINFO_COM
+	    && projection.shared.ends
+	    && projection.identity->retry_statement == 0x97BBU);
+
+	yt_error_clear(&error);
+	CHECK(yt_error_attach_basic_fault_number(&error,
+	    YT_BASIC_FAULT_ROUTE_START_FIFO_CINT, 6U)
+	    && yt_basic_fault_project(&error, NULL, 0U, date,
+	    sizeof(date) - 1U, time_text, sizeof(time_text) - 1U, &projection)
+	    && projection.disposition == YT_BASIC_FAULT_END
+	    && projection.shared.route == YT_SHARED_ERROR_GENERIC
+	    && projection.identity->retry_statement == 0x103CU);
+
+	yt_error_clear(&error);
+	CHECK(!yt_error_attach_basic_fault_number(&error,
+	    YT_BASIC_FAULT_PORT_SELECTED_SECTOR_GET, 61U)
+	    && !error.basic_fault_valid && !error.basic_error_valid
+	    && !yt_basic_fault_project(&error, NULL, 0U, date,
+	    sizeof(date) - 1U, time_text, sizeof(time_text) - 1U, &projection));
+	CHECK(!yt_error_attach_basic_fault_number(&error,
+	    YT_BASIC_FAULT_SITE_COUNT, 6U));
+	CHECK(yt_error_attach_basic_fault(&error,
+	    YT_BASIC_FAULT_ROUTE_FINAL_SECTOR_GET)
+	    && error.basic_fault_valid && !error.basic_error_valid
+	    && error.basic_error == 0U);
 }
 
 static void
@@ -24809,6 +24881,7 @@ main(void)
 	test_sysop_time();
 	test_sysop_chat_header();
 	test_basic_fault_registry();
+	test_basic_fault_projection();
 	test_main_error_model();
 	test_shared_error_model();
 	test_serial_startup_output();

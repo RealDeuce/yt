@@ -24,7 +24,9 @@ struct yt_error {
 	char operation[48];
 	char path[512];
 	uint16_t basic_fault_site;
+	uint16_t basic_error;
 	bool basic_fault_valid;
+	bool basic_error_valid;
 };
 
 static inline void
@@ -36,7 +38,9 @@ yt_error_clear(struct yt_error *error)
 		error->operation[0] = '\0';
 		error->path[0] = '\0';
 		error->basic_fault_site = 0U;
+		error->basic_error = 0U;
 		error->basic_fault_valid = false;
+		error->basic_error_valid = false;
 	}
 }
 

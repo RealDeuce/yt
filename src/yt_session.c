@@ -387,19 +387,136 @@ write_player(struct yt_session *session, struct yt_error *error)
 	    && yt_database_flush(&session->door->game.database, error);
 }
 
+static void
+attach_database_get_fault(struct yt_session *session, struct yt_error *error,
+    enum yt_basic_fault_site site)
+{
+	const struct yt_database_get_result *result =
+	    &session->door->game.database.last_get;
+	bool raised = result->outcome == YT_DATABASE_GET_RECORD_ERROR
+	    || result->outcome == YT_DATABASE_GET_SEEK_ERROR
+	    || result->outcome == YT_DATABASE_GET_READ_ERROR;
+
+	if (!raised || !yt_error_attach_basic_fault_number(error, site,
+	    result->basic_error))
+		(void)yt_error_attach_basic_fault(error, site);
+}
+
+static void
+attach_database_put_fault(struct yt_session *session, struct yt_error *error,
+    enum yt_basic_fault_site site)
+{
+	const struct yt_database_put_result *result =
+	    &session->door->game.database.last_put;
+	bool raised = result->outcome == YT_DATABASE_PUT_RECORD_ERROR
+	    || result->outcome == YT_DATABASE_PUT_SEEK_ERROR
+	    || result->outcome == YT_DATABASE_PUT_WRITE_ERROR
+	    || result->outcome == YT_DATABASE_PUT_REJECTED_SHORT;
+
+	if (raised && !yt_error_attach_basic_fault_number(error, site,
+	    result->basic_error))
+		(void)yt_error_attach_basic_fault(error, site);
+}
+
+static bool
+basic_fault_retries(const struct yt_error *error)
+{
+	struct yt_basic_fault_projection projection;
+
+	return yt_basic_fault_project(error, NULL, 0U, NULL, 0U, NULL, 0U,
+	    &projection)
+	    && projection.disposition == YT_BASIC_FAULT_RETRY_STATEMENT;
+}
+
+static bool
+read_database_record_at_fault(struct yt_session *session,
+    uint32_t physical_record, struct yt_record *record,
+    enum yt_basic_fault_site site, struct yt_error *error)
+{
+	for (;;) {
+		if (yt_database_read(&session->door->game.database,
+		    (size_t)physical_record, record, error))
+			return true;
+		attach_database_get_fault(session, error, site);
+		if (!basic_fault_retries(error))
+			return false;
+		yt_error_clear(error);
+	}
+}
+
+static bool
+read_player_at_fault(struct yt_session *session, int player_record,
+    struct yt_player *player, enum yt_basic_fault_site site,
+    struct yt_error *error)
+{
+	for (;;) {
+		if (yt_game_read_player(&session->door->game, player_record, player,
+		    error))
+			return true;
+		attach_database_get_fault(session, error, site);
+		if (!basic_fault_retries(error))
+			return false;
+		yt_error_clear(error);
+	}
+}
+
+static bool
+read_sector_at_fault(struct yt_session *session, int logical_sector,
+    struct yt_sector *sector, enum yt_basic_fault_site site,
+    struct yt_error *error)
+{
+	for (;;) {
+		if (yt_game_read_sector(&session->door->game, logical_sector, sector,
+		    error))
+			return true;
+		attach_database_get_fault(session, error, site);
+		if (!basic_fault_retries(error))
+			return false;
+		yt_error_clear(error);
+	}
+}
+
+static bool
+read_port_at_fault(struct yt_session *session, int logical_port,
+    struct yt_port *port, enum yt_basic_fault_site site,
+    struct yt_error *error)
+{
+	for (;;) {
+		if (yt_game_read_port(&session->door->game, logical_port, port,
+		    error))
+			return true;
+		attach_database_get_fault(session, error, site);
+		if (!basic_fault_retries(error))
+			return false;
+		yt_error_clear(error);
+	}
+}
+
+static bool
+write_database_record_at_fault(struct yt_session *session,
+    uint32_t physical_record, const struct yt_record *record,
+    enum yt_basic_fault_site site, struct yt_error *error)
+{
+	for (;;) {
+		if (yt_database_write(&session->door->game.database,
+		    (size_t)physical_record, record, error))
+			break;
+		attach_database_put_fault(session, error, site);
+		if (!basic_fault_retries(error))
+			return false;
+		yt_error_clear(error);
+	}
+	return yt_database_flush(&session->door->game.database, error);
+}
+
 static bool
 session_hydration_read_player(void *context, int player_record,
     struct yt_player *player, struct yt_error *error)
 {
 	struct yt_session *session = context;
 
-	if (!yt_game_read_player(&session->door->game, player_record, player,
-	    error)) {
-		(void)yt_error_attach_basic_fault(error,
-		    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_GET);
-		return false;
-	}
-	return true;
+	return read_player_at_fault(session, player_record, player,
+	    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_GET, error);
 }
 
 static bool
@@ -1064,6 +1181,123 @@ session_forced_local_line(const uint8_t *text, size_t length,
 		    operation);
 	}
 	return false;
+}
+
+static bool
+session_local_line(struct yt_session *session, const uint8_t *text,
+    size_t length, const char *operation, struct yt_error *error)
+{
+	struct yt_present_result presentation;
+	enum yt_present_status status = yt_present_local_line(text, length,
+	    &session->presentation, &presentation);
+
+	if (status == YT_PRESENT_OK) {
+		yt_out_present_result(&presentation);
+		return true;
+	}
+	if (error != NULL) {
+		error->status = YT_RANGE;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    operation);
+	}
+	return false;
+}
+
+static bool
+session_main_error_present(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	return session_present_text(context, text, length, SESSION_PRESENT_LINE,
+	    "main error fatal row", error);
+}
+
+enum session_fault_disposition {
+	SESSION_FAULT_UNHANDLED,
+	SESSION_FAULT_RESUME_GAMEPLAY,
+	SESSION_FAULT_ENDED,
+	SESSION_FAULT_HANDLER_FAILED,
+};
+
+static enum session_fault_disposition
+session_route_basic_fault(struct yt_session *session, struct yt_error *error)
+{
+	struct yt_basic_fault_projection projection;
+	const struct yt_basic_fault_identity *identity;
+	struct yt_clock_value date_now;
+	struct yt_clock_value time_now;
+	char date[11];
+	char time_text[9];
+	size_t index;
+
+	if (error == NULL || !error->basic_fault_valid
+	    || !error->basic_error_valid)
+		return SESSION_FAULT_UNHANDLED;
+	identity = yt_basic_fault_identity(
+	    (enum yt_basic_fault_site)error->basic_fault_site);
+	if (identity == NULL)
+		return SESSION_FAULT_UNHANDLED;
+	if (!yt_basic_fault_project(error, (const uint8_t *)error->path,
+	    strlen(error->path), NULL, 0U, NULL, 0U, &projection))
+		return SESSION_FAULT_UNHANDLED;
+	if (projection.disposition == YT_BASIC_FAULT_RETRY_STATEMENT
+	    || projection.disposition == YT_BASIC_FAULT_RESUME_MISSING_FILE)
+		return SESSION_FAULT_UNHANDLED;
+	if (identity->module == YT_BASIC_FAULT_MAIN) {
+		if (!session_forced_local_line(projection.main.debug,
+		    projection.main.debug_length, "main error debug row", error))
+			return SESSION_FAULT_HANDLER_FAILED;
+		if (projection.disposition == YT_BASIC_FAULT_RESUME_GAMEPLAY)
+			return SESSION_FAULT_RESUME_GAMEPLAY;
+		if (!yt_platform_clock(&date_now, error)
+		    || !yt_platform_clock(&time_now, error))
+			return SESSION_FAULT_HANDLER_FAILED;
+		yt_format_date(&date_now, date);
+		yt_format_time(&time_now, time_text);
+		if (!yt_main_error_compose((int16_t)projection.error_number,
+		    identity->source_line, (const uint8_t *)error->path,
+		    strlen(error->path), (const uint8_t *)date, strlen(date),
+		    (const uint8_t *)time_text, strlen(time_text),
+		    &projection.main))
+			return SESSION_FAULT_HANDLER_FAILED;
+		if (!yt_main_error_commit_fatal(&projection.main,
+		    session_main_error_present, session, error))
+			return SESSION_FAULT_HANDLER_FAILED;
+	}
+	else {
+		if (!session_local_line(session, projection.shared.debug,
+		    projection.shared.debug_length, "shared error debug row", error))
+			return SESSION_FAULT_HANDLER_FAILED;
+		for (index = 0U; index < projection.shared.event_count; ++index) {
+			const struct yt_shared_error_event *event =
+			    &projection.shared.events[index];
+
+			switch (event->destination) {
+			case YT_SHARED_ERROR_LOCAL_DIAGNOSTIC:
+				if (!session_local_line(session, event->data,
+				    event->length, "shared error local row", error))
+					return SESSION_FAULT_HANDLER_FAILED;
+				break;
+			case YT_SHARED_ERROR_SESSION_AND_NEWS:
+				if (!session_present_text(session, event->data,
+				    event->length, SESSION_PRESENT_LINE,
+				    "shared error session row", error)
+				    || !append_news_bytes(session, event->data,
+				    event->length, error))
+					return SESSION_FAULT_HANDLER_FAILED;
+				break;
+			case YT_SHARED_ERROR_NEWS:
+				if (!append_news_bytes(session, event->data,
+				    event->length, error))
+					return SESSION_FAULT_HANDLER_FAILED;
+				break;
+			}
+		}
+	}
+	(void)session_editor_close_all(session);
+	session->running = false;
+	session->terminated = true;
+	yt_error_clear(error);
+	return SESSION_FAULT_ENDED;
 }
 
 static bool
@@ -2945,12 +3179,9 @@ port_update_read_sector(void *context, uint32_t physical_record,
 	struct yt_session *session = context;
 	struct yt_record record;
 
-	if (!yt_database_read(&session->door->game.database,
-	    (size_t)physical_record, &record, error)) {
-		(void)yt_error_attach_basic_fault(error,
-		    YT_BASIC_FAULT_PORT_UPDATER_SECTOR_GET);
+	if (!read_database_record_at_fault(session, physical_record, &record,
+	    YT_BASIC_FAULT_PORT_UPDATER_SECTOR_GET, error))
 		return false;
-	}
 	yt_sector_decode(sector, &record);
 	return true;
 }
@@ -2979,12 +3210,9 @@ port_update_read_port(void *context, uint32_t physical_record,
 	struct yt_session *session = context;
 	struct yt_record record;
 
-	if (!yt_database_read(&session->door->game.database,
-	    (size_t)physical_record, &record, error)) {
-		(void)yt_error_attach_basic_fault(error,
-		    YT_BASIC_FAULT_PORT_UPDATER_PORT_GET);
+	if (!read_database_record_at_fault(session, physical_record, &record,
+	    YT_BASIC_FAULT_PORT_UPDATER_PORT_GET, error))
 		return false;
-	}
 	yt_port_decode(port, &record);
 	return true;
 }
@@ -3005,13 +3233,8 @@ port_update_write_port(void *context, uint32_t physical_record,
 {
 	struct yt_session *session = context;
 
-	if (!yt_database_write_durable(&session->door->game.database,
-	    (size_t)physical_record, &port->record, error)) {
-		(void)yt_error_attach_basic_fault(error,
-		    YT_BASIC_FAULT_PORT_UPDATER_PORT_PUT);
-		return false;
-	}
-	return true;
+	return write_database_record_at_fault(session, physical_record,
+	    &port->record, YT_BASIC_FAULT_PORT_UPDATER_PORT_PUT, error);
 }
 
 static bool
@@ -7102,12 +7325,9 @@ port_report_read_player(void *context, uint32_t physical_record,
 		*player = session->player;
 		return true;
 	}
-	if (!yt_database_read(&session->door->game.database,
-	    (size_t)physical_record, &record, error)) {
-		(void)yt_error_attach_basic_fault(error,
-		    YT_BASIC_FAULT_PORT_OWNER_PLAYER_GET);
+	if (!read_database_record_at_fault(session, physical_record, &record,
+	    YT_BASIC_FAULT_PORT_OWNER_PLAYER_GET, error))
 		return false;
-	}
 	yt_player_decode(player, &record);
 	return true;
 }
@@ -7119,12 +7339,9 @@ port_report_read_port(void *context, uint32_t physical_record,
 	struct yt_session *session = context;
 	struct yt_record record;
 
-	if (!yt_database_read(&session->door->game.database,
-	    (size_t)physical_record, &record, error)) {
-		(void)yt_error_attach_basic_fault(error,
-		    YT_BASIC_FAULT_PORT_REPORT_PORT_GET);
+	if (!read_database_record_at_fault(session, physical_record, &record,
+	    YT_BASIC_FAULT_PORT_REPORT_PORT_GET, error))
 		return false;
-	}
 	yt_port_decode(port, &record);
 	return true;
 }
@@ -8434,11 +8651,9 @@ earth_report(struct yt_session *session, struct yt_port *earth,
 	if (earth == NULL || price == NULL)
 		return false;
 	session->pager.line_count = 0.0f;
-	if (!yt_game_read_port(&session->door->game, 1, earth, error)) {
-		(void)yt_error_attach_basic_fault(error,
-		    YT_BASIC_FAULT_PORT_EARTH_GET);
+	if (!read_port_at_fault(session, 1, earth,
+	    YT_BASIC_FAULT_PORT_EARTH_GET, error))
 		return false;
-	}
 	computer_port_earth_field(earth_state,
 	    YT_COMPUTER_PORT_EARTH_FIELD_PORT,
 	    (uint32_t)yt_port_basic_record(&session->door->game.config, 1),
@@ -9663,12 +9878,9 @@ route_sector_reader(void *context, int logical_sector, float warps[6],
 	struct yt_session *session = context;
 	struct yt_sector sector;
 
-	if (!yt_game_read_sector(&session->door->game, logical_sector, &sector,
-	    error)) {
-		(void)yt_error_attach_basic_fault(error,
-		    YT_BASIC_FAULT_ROUTE_SECTOR_GET);
+	if (!read_sector_at_fault(session, logical_sector, &sector,
+	    YT_BASIC_FAULT_ROUTE_SECTOR_GET, error))
 		return false;
-	}
 	session->navigation_field_kind = NAVIGATION_FIELD_ROUTE_SECTOR;
 	session->navigation_field_record = yt_sector_basic_record(
 	    &session->door->game.config, logical_sector);
@@ -15330,7 +15542,7 @@ computer_route_cint(struct yt_session *session, float value, int *converted,
 			(void)snprintf(error->operation, sizeof(error->operation),
 			    "%s", operation);
 		}
-		(void)yt_error_attach_basic_fault(error, site);
+		(void)yt_error_attach_basic_fault_number(error, site, 6U);
 		return false;
 	}
 	*converted = (int)result;
@@ -15618,12 +15830,9 @@ computer_route(struct yt_session *session, bool autopilot,
 		struct yt_sector current_sector;
 		size_t index;
 
-		if (!yt_game_read_sector(&session->door->game,
-		    (int)session->player.sector, &current_sector, error)) {
-			(void)yt_error_attach_basic_fault(error,
-			    YT_BASIC_FAULT_ROUTE_FINAL_SECTOR_GET);
+		if (!read_sector_at_fault(session, (int)session->player.sector,
+		    &current_sector, YT_BASIC_FAULT_ROUTE_FINAL_SECTOR_GET, error))
 			return false;
-		}
 		session->navigation_field_kind = NAVIGATION_FIELD_FINAL_SECTOR;
 		session->navigation_field_record = yt_sector_basic_record(
 		    &session->door->game.config, (int)session->player.sector);
@@ -15915,20 +16124,14 @@ computer_port_friendship(struct yt_session *session, float owner,
 		*friendly = true;
 		return true;
 	}
-	if (!yt_game_read_player(&session->door->game,
-	    session->player_record, &current, error)) {
-		(void)yt_error_attach_basic_fault(error,
-		    YT_BASIC_FAULT_PORT_FRIENDSHIP_CURRENT_GET);
+	if (!read_player_at_fault(session, session->player_record, &current,
+	    YT_BASIC_FAULT_PORT_FRIENDSHIP_CURRENT_GET, error))
 		return false;
-	}
 	if (current.team == 0.0f)
 		return true;
-	if (!yt_game_read_player(&session->door->game, (int)owner,
-	    &other, error)) {
-		(void)yt_error_attach_basic_fault(error,
-		    YT_BASIC_FAULT_PORT_FRIENDSHIP_CANDIDATE_GET);
+	if (!read_player_at_fault(session, (int)owner, &other,
+	    YT_BASIC_FAULT_PORT_FRIENDSHIP_CANDIDATE_GET, error))
 		return false;
-	}
 	*friendly = other.team == current.team;
 	return true;
 }
@@ -15956,12 +16159,8 @@ computer_port_visibility_read_player(void *context, uint32_t physical_record,
 		}
 		return false;
 	}
-	if (!yt_game_read_player(&session->door->game, (int)physical_record,
-	    player, error)) {
-		(void)yt_error_attach_basic_fault(error, site);
-		return false;
-	}
-	return true;
+	return read_player_at_fault(session, (int)physical_record, player, site,
+	    error);
 }
 
 static bool
@@ -16027,12 +16226,9 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 		}
 	}
 	sector_number = (int)selected;
-	if (!yt_game_read_sector(&session->door->game, sector_number, &sector,
-	    error)) {
-		(void)yt_error_attach_basic_fault(error,
-		    YT_BASIC_FAULT_PORT_SELECTED_SECTOR_GET);
+	if (!read_sector_at_fault(session, sector_number, &sector,
+	    YT_BASIC_FAULT_PORT_SELECTED_SECTOR_GET, error))
 		return false;
-	}
 	{
 		float sector_expression = yt_port_selected_expression(
 		    session->door->game.config.sector_offset, selected);
@@ -18056,9 +18252,34 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 		return session.terminated;
 	if (session.terminated)
 		return true;
-	if (!session.destroyed && session.running
-	    && !command_shell(&session, error))
-		return session.terminated;
+	if (!session.destroyed && session.running) {
+		bool resume_gameplay = false;
+
+		for (;;) {
+			bool completed = resume_gameplay
+			    ? sector_entry(&session, error)
+			    : command_shell(&session, error);
+			enum session_fault_disposition disposition;
+
+			if (completed) {
+				if (!resume_gameplay)
+					break;
+				resume_gameplay = false;
+				if (!session.running || session.destroyed)
+					break;
+				continue;
+			}
+			if (session.terminated)
+				return true;
+			disposition = session_route_basic_fault(&session, error);
+			if (disposition == SESSION_FAULT_ENDED)
+				return true;
+			if (disposition != SESSION_FAULT_RESUME_GAMEPLAY)
+				return false;
+			yt_error_clear(error);
+			resume_gameplay = true;
+		}
+	}
 	if (session.destroyed && !session.fatal_wait_complete) {
 		if (!session_wait(&session, 5.0, "common fatal wait", error))
 			return false;

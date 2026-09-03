@@ -296,6 +296,7 @@ test_route_cint_fault_sites(void)
 	    &process, read_sector, &graph, &outcome, &error));
 	CHECK(error.status == YT_RANGE && error.basic_fault_valid
 	    && error.basic_fault_site == YT_BASIC_FAULT_ROUTE_START_FIFO_CINT
+	    && error.basic_error_valid && error.basic_error == 6U
 	    && process.bytes[YT_ROUTE_WORKSPACE_ADDRESS] == 0U
 	    && process.bytes[YT_ROUTE_WORKSPACE_ADDRESS
 	    + YT_ROUTE_WORKSPACE_BYTES - 1U] == 0U);
@@ -308,6 +309,7 @@ test_route_cint_fault_sites(void)
 	CHECK(error.status == YT_RANGE && error.basic_fault_valid
 	    && error.basic_fault_site
 	    == YT_BASIC_FAULT_ROUTE_DESTINATION_PREDECESSOR_CINT
+	    && error.basic_error_valid && error.basic_error == 6U
 	    && yt_route_process_second(&process, 1) == 1
 	    && yt_route_process_predecessor(&process, 1) == -1);
 
@@ -321,7 +323,8 @@ test_route_cint_fault_sites(void)
 	    &process, read_sector, &graph, &outcome, &error));
 	CHECK(error.status == YT_RANGE && error.basic_fault_valid
 	    && error.basic_fault_site
-	    == YT_BASIC_FAULT_ROUTE_AVOID_PREDECESSOR_CINT);
+	    == YT_BASIC_FAULT_ROUTE_AVOID_PREDECESSOR_CINT
+	    && error.basic_error_valid && error.basic_error == 6U);
 }
 
 static void

@@ -103,7 +103,7 @@ route_integer_at(float value, uint8_t conversion_mode, int16_t *index,
 
 	if (overflow) {
 		(void)route_error(error, operation);
-		(void)yt_error_attach_basic_fault(error, site);
+		(void)yt_error_attach_basic_fault_number(error, site, 6U);
 		return false;
 	}
 	*index = (int16_t)converted;
