@@ -8247,6 +8247,8 @@ struct counterlaunch_tape {
 	bool child_valid;
 	bool mutate_child;
 	double wait_seconds;
+	uint8_t count_raw[4][4];
+	size_t count_store_count;
 };
 
 static bool
@@ -8391,6 +8393,18 @@ counterlaunch_wait(void *context, double seconds, struct yt_error *error)
 }
 
 static void
+counterlaunch_store_count(void *context, const uint8_t raw[4])
+{
+	struct counterlaunch_tape *tape = context;
+
+	if (tape->count_store_count >= YT_ARRAY_LEN(tape->count_raw))
+		return;
+	memcpy(tape->count_raw[tape->count_store_count], raw,
+	    sizeof(tape->count_raw[tape->count_store_count]));
+	++tape->count_store_count;
+}
+
+static void
 counterlaunch_fixture(struct counterlaunch_tape *tape,
     struct yt_counterlaunch_state *state, struct yt_player *player,
     int *player_record, float sector_cache[6], float cloak_cache[6],
@@ -8455,6 +8469,7 @@ check_counterlaunch_model(void)
 		counterlaunch_news,
 		counterlaunch_projectile,
 		counterlaunch_wait,
+		counterlaunch_store_count,
 	};
 	static const int full_events[10] = {
 		COUNTERLAUNCH_FIRST_GET, COUNTERLAUNCH_RANDOM,
@@ -8530,6 +8545,9 @@ check_counterlaunch_model(void)
 	    || memcmp(tape.row, expected_row, sizeof(expected_row) - 1U) != 0
 	    || tape.news_length != sizeof(expected_news) - 1U
 	    || memcmp(tape.news, expected_news, sizeof(expected_news) - 1U) != 0
+	    || tape.count_store_count != 2U
+	    || qb_mbf32_decode(tape.count_raw[0]) != 21.0f
+	    || qb_mbf32_decode(tape.count_raw[1]) != 3.0f
 	    || player_record != 2 || memcmp(&player, &original, sizeof(player)) != 0
 	    || cloak_cache[2] != 0.75f || sector_cache[2] != 0.0f
 	    || !destroyed || retained != 4.0f || counterattacker != 0
@@ -8545,7 +8563,8 @@ check_counterlaunch_model(void)
 	if (!yt_counterlaunch_run(&state, &ops, &tape, NULL)
 	    || tape.random_calls != 0U || tape.projectile_amount != -2.5f
 	    || tape.written_player.missiles != 12.5f || retained != -2.5f
-	    || counterattacker != 0 || xannor != 8)
+	    || counterattacker != 0 || xannor != 8
+	    || tape.count_store_count != 0U)
 		return false;
 
 	for (failure = COUNTERLAUNCH_FIRST_GET;
@@ -8561,7 +8580,16 @@ check_counterlaunch_model(void)
 			return false;
 		if (failure == COUNTERLAUNCH_FIRST_GET
 		    && (player_record != 2 || counterattacker != 3
-		    || cloak_cache[2] != 0.75f))
+		    || cloak_cache[2] != 0.75f
+		    || tape.count_store_count != 0U))
+			return false;
+		if (failure == COUNTERLAUNCH_RANDOM
+		    && (tape.count_store_count != 1U
+		    || qb_mbf32_decode(tape.count_raw[0]) != 21.0f))
+			return false;
+		if (failure == COUNTERLAUNCH_SECOND_GET
+		    && (tape.count_store_count != 2U
+		    || qb_mbf32_decode(tape.count_raw[1]) != 3.0f))
 			return false;
 		if (failure == COUNTERLAUNCH_PROJECTILE
 		    && (player_record != 3 || strcmp(player.name, "Bob") != 0

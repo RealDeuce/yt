@@ -49,6 +49,7 @@
 #define YT_EARTH_REPORT_SEEN_ADDRESS 0x5006U
 #define YT_SPY_COUNT_ADDRESS 0x50AEU
 #define YT_LOW_TIME_REMEMBERED_ADDRESS 0x59CEU
+#define YT_COUNTERLAUNCH_COUNT_ADDRESS 0x5BC6U
 #define YT_SPY_DESTINATION_SCRATCH_ADDRESS 0x5FE4U
 #define YT_SPY_FOUND_SCRATCH_ADDRESS 0x5FE8U
 #define YT_SPY_DEAD_COUNTER_SCRATCH_ADDRESS 0x6018U
@@ -91,7 +92,6 @@ struct yt_session {
 	bool destroyed;
 	bool fatal_wait_complete;
 	struct yt_present_state presentation;
-	float counterlaunch_count;
 	struct yt_route_process route_process;
 	char computer_route_scratch[YT_COMMAND_SIZE];
 	size_t computer_route_scratch_length;
@@ -15103,6 +15103,15 @@ session_counterlaunch_wait(void *context, double seconds,
 	return session_wait(context, seconds, "player counterattack wait", error);
 }
 
+static void
+session_counterlaunch_store_count(void *context, const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_COUNTERLAUNCH_COUNT_ADDRESS, raw);
+}
+
 static bool
 launch_player_counterattack(struct yt_session *session, int *counterattacker,
     int *xannor_provoker, struct yt_error *error)
@@ -15115,7 +15124,10 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 		session_counterlaunch_news,
 		session_counterlaunch_projectile,
 		session_counterlaunch_wait,
+		session_counterlaunch_store_count,
 	};
+	float retained_count = yt_route_process_single(&session->route_process,
+	    YT_COUNTERLAUNCH_COUNT_ADDRESS);
 	struct yt_counterlaunch_state state = {
 		&session->player,
 		&session->player_record,
@@ -15123,7 +15135,7 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 		session->cloak_cache,
 		YT_ARRAY_LEN(session->sector_cache),
 		&session->destroyed,
-		&session->counterlaunch_count,
+		&retained_count,
 		counterattacker,
 		xannor_provoker,
 		(int)session->door->game.config.sector_offset,
