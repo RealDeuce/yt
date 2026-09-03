@@ -924,6 +924,43 @@ spy_present(struct yt_spy_sweep_state *state,
 	return ops->present(context, text, length, kind, state, error);
 }
 
+static void
+spy_store_value(struct yt_spy_sweep_state *state,
+    const struct yt_spy_sweep_ops *ops, void *context,
+    enum yt_spy_scratch_kind kind, float value)
+{
+	uint8_t raw[4];
+	float *cell;
+
+	switch (kind) {
+	case YT_SPY_SCRATCH_DESTINATION:
+		cell = &state->warp_destination_scratch;
+		break;
+	case YT_SPY_SCRATCH_FOUND:
+		cell = &state->found_scratch;
+		break;
+	case YT_SPY_SCRATCH_DEAD_COUNTER:
+		cell = &state->dead_counter_scratch;
+		break;
+	default:
+		return;
+	}
+	*cell = value;
+	if (ops->store != NULL && qb_mbf32_encode(value, raw) == QB_MBF_OK)
+		ops->store(context, kind, raw);
+}
+
+static void
+spy_store_found_zero(struct yt_spy_sweep_state *state,
+    const struct yt_spy_sweep_ops *ops, void *context)
+{
+	static const uint8_t raw[4] = {0x00U, 0x00U, 0x60U, 0x00U};
+
+	state->found_scratch = 0.0f;
+	if (ops->store != NULL)
+		ops->store(context, YT_SPY_SCRATCH_FOUND, raw);
+}
+
 static bool
 spy_first_finding(struct yt_spy_sweep_state *state,
     const struct yt_spy_sweep_ops *ops, void *context, size_t spy,
@@ -942,7 +979,7 @@ spy_first_finding(struct yt_spy_sweep_state *state,
 		return false;
 	if (state->found_scratch != 0.0f)
 		return true;
-	state->found_scratch = 1.0f;
+	spy_store_value(state, ops, context, YT_SPY_SCRATCH_FOUND, 1.0f);
 	state->last_reported_sectors[spy] = sector;
 	if (!ops->sound(context, 9.0f, error))
 		return false;
@@ -1010,10 +1047,11 @@ yt_spy_sweep_run(struct yt_spy_sweep_state *state,
 		spy = (size_t)converted_spy - 1U;
 		sector_number = state->spy_sectors[spy];
 		state->foreground = 7.0f;
+		spy_store_value(state, ops, context, YT_SPY_SCRATCH_DESTINATION,
+		    (float)sector_number);
 		if (!(sector_number == state->last_reported_sectors[spy]
 		    && sector_number != 0)) {
-			state->found_scratch = 0.0f;
-			state->warp_destination_scratch = (float)sector_number;
+			spy_store_found_zero(state, ops, context);
 			if (!ops->read_sector(context, sector_number, &sector, error))
 				return false;
 			if ((float)sector_number == state->disruption_sectors[0]
@@ -1105,8 +1143,10 @@ yt_spy_sweep_run(struct yt_spy_sweep_state *state,
 					if (!ops->read_player(context, (float)candidate,
 					    &player, error))
 						return false;
-					state->dead_counter_scratch = startup_single_add(
-					    state->dead_counter_scratch, 1.0f);
+					spy_store_value(state, ops, context,
+					    YT_SPY_SCRATCH_DEAD_COUNTER,
+					    startup_single_add(
+					    state->dead_counter_scratch, 1.0f));
 					if (!yt_sector_player_row(&player, row,
 					    sizeof(row), &length, error))
 						return false;
@@ -1156,9 +1196,10 @@ yt_spy_sweep_run(struct yt_spy_sweep_state *state,
 						return false;
 					owner_pointer = &owner_player;
 					if (owner_player.team != 0.0f) {
-						state->dead_counter_scratch =
+						spy_store_value(state, ops, context,
+						    YT_SPY_SCRATCH_DEAD_COUNTER,
 						    startup_single_add(
-						    state->dead_counter_scratch, 1.0f);
+						    state->dead_counter_scratch, 1.0f));
 						if (!ops->read_team(context,
 						    owner_player.team, &team_overlay, error))
 							return false;
@@ -1183,7 +1224,8 @@ yt_spy_sweep_run(struct yt_spy_sweep_state *state,
 		}
 		if (!ops->read_sector(context, sector_number, &sector, error))
 			return false;
-		state->warp_destination_scratch = 0.0f;
+		spy_store_value(state, ops, context,
+		    YT_SPY_SCRATCH_DESTINATION, 0.0f);
 		{
 			int32_t warps[6];
 			size_t slot;
@@ -1205,8 +1247,9 @@ yt_spy_sweep_run(struct yt_spy_sweep_state *state,
 				if (selected < 0 || selected >= 6)
 					return startup_configuration_error(error,
 					    YT_RANGE, "active spy RND slot");
-				state->warp_destination_scratch =
-				    (float)warps[selected];
+				spy_store_value(state, ops, context,
+				    YT_SPY_SCRATCH_DESTINATION,
+				    (float)warps[selected]);
 				if (warps[selected] != 0) {
 					state->spy_sectors[spy] = warps[selected];
 					break;

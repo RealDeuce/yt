@@ -21860,6 +21860,7 @@ spy_sweep_presentation_fixture(bool ansi)
 		spy_sweep_presentation_sound,
 		spy_sweep_presentation_present,
 		spy_sweep_presentation_pause,
+		NULL,
 	};
 	struct spy_sweep_presentation_context fixture;
 	struct yt_spy_sweep_state sweep;

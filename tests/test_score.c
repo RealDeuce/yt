@@ -1984,6 +1984,9 @@ struct spy_sweep_tape {
 	struct yt_sector team;
 	float draws[8];
 	size_t draw_position;
+	enum yt_spy_scratch_kind stores[16];
+	uint8_t store_raw[16][4];
+	size_t store_count;
 };
 
 static bool
@@ -2151,6 +2154,20 @@ spy_sweep_pause_test(void *context, struct yt_spy_sweep_state *state,
 }
 
 static void
+spy_sweep_store_test(void *context, enum yt_spy_scratch_kind kind,
+    const uint8_t raw[4])
+{
+	struct spy_sweep_tape *tape = context;
+
+	if (tape->store_count >= YT_ARRAY_LEN(tape->stores))
+		return;
+	tape->stores[tape->store_count] = kind;
+	memcpy(tape->store_raw[tape->store_count], raw,
+	    sizeof(tape->store_raw[tape->store_count]));
+	++tape->store_count;
+}
+
+static void
 spy_sweep_fixture(struct spy_sweep_tape *tape,
     struct yt_spy_sweep_state *state, int sectors[3], int markers[3],
     float sector_cache[52], float cloak_cache[52])
@@ -2212,6 +2229,7 @@ check_spy_sweep_transaction(void)
 		spy_sweep_sound_test,
 		spy_sweep_present_test,
 		spy_sweep_pause_test,
+		spy_sweep_store_test,
 	};
 	static const int expected_events[] = {
 		SPY_SWEEP_READ_SECTOR,
@@ -2270,6 +2288,21 @@ check_spy_sweep_transaction(void)
 	    || state.found_scratch != 1.0f
 	    || state.dead_counter_scratch != 2.0f
 	    || state.warp_destination_scratch != 200.0f
+	    || expected.store_count != 7U
+	    || expected.stores[0] != YT_SPY_SCRATCH_DESTINATION
+	    || qb_mbf32_decode(expected.store_raw[0]) != 100.0f
+	    || expected.stores[1] != YT_SPY_SCRATCH_FOUND
+	    || memcmp(expected.store_raw[1], "\0\0\x60\0", 4U) != 0
+	    || expected.stores[2] != YT_SPY_SCRATCH_FOUND
+	    || qb_mbf32_decode(expected.store_raw[2]) != 1.0f
+	    || expected.stores[3] != YT_SPY_SCRATCH_DEAD_COUNTER
+	    || qb_mbf32_decode(expected.store_raw[3]) != 1.0f
+	    || expected.stores[4] != YT_SPY_SCRATCH_DEAD_COUNTER
+	    || qb_mbf32_decode(expected.store_raw[4]) != 2.0f
+	    || expected.stores[5] != YT_SPY_SCRATCH_DESTINATION
+	    || qb_mbf32_decode(expected.store_raw[5]) != 0.0f
+	    || expected.stores[6] != YT_SPY_SCRATCH_DESTINATION
+	    || qb_mbf32_decode(expected.store_raw[6]) != 200.0f
 	    || state.foreground != 0.0f)
 		return false;
 	for (failure = 1U; failure <= expected.event_count; ++failure) {
@@ -2283,6 +2316,19 @@ check_spy_sweep_transaction(void)
 		    || tape.serial_length > expected.serial_length
 		    || memcmp(tape.serial, expected.serial,
 		    tape.serial_length) != 0)
+			return false;
+		if (failure == 1U && (tape.store_count != 2U
+		    || qb_mbf32_decode(tape.store_raw[0]) != 100.0f
+		    || memcmp(tape.store_raw[1], "\0\0\x60\0", 4U) != 0))
+			return false;
+		if (failure == 3U && (tape.store_count != 3U
+		    || qb_mbf32_decode(tape.store_raw[2]) != 1.0f))
+			return false;
+		if (failure == 19U && (tape.store_count != 4U
+		    || qb_mbf32_decode(tape.store_raw[3]) != 1.0f))
+			return false;
+		if (failure == 25U && (tape.store_count != 5U
+		    || qb_mbf32_decode(tape.store_raw[4]) != 2.0f))
 			return false;
 	}
 	spy_sweep_fixture(&tape, &state, sectors, markers,
@@ -2362,13 +2408,21 @@ check_spy_sweep_transaction(void)
 	    || tape.events[3] != SPY_SWEEP_RANDOM
 	    || tape.events[4] != SPY_SWEEP_RANDOM
 	    || tape.serial_length != 42U
-	    || sectors[0] != 200 || state.foreground != 0.0f)
+	    || sectors[0] != 200 || state.foreground != 0.0f
+	    || tape.store_count != 4U
+	    || tape.stores[0] != YT_SPY_SCRATCH_DESTINATION
+	    || qb_mbf32_decode(tape.store_raw[0]) != 100.0f
+	    || tape.stores[1] != YT_SPY_SCRATCH_DESTINATION
+	    || tape.stores[2] != YT_SPY_SCRATCH_DESTINATION
+	    || tape.stores[3] != YT_SPY_SCRATCH_DESTINATION
+	    || qb_mbf32_decode(tape.store_raw[3]) != 200.0f)
 		return false;
 	spy_sweep_fixture(&tape, &state, sectors, markers,
 	    sector_cache, cloak_cache);
 	state.active_spies = 0.0f;
 	return yt_spy_sweep_run(&state, &ops, &tape, NULL)
-	    && tape.event_count == 0U && state.foreground == 5.0f
+	    && tape.event_count == 0U && tape.store_count == 0U
+	    && state.foreground == 5.0f
 	    && !yt_spy_sweep_run(NULL, &ops, &tape, NULL)
 	    && !yt_spy_sweep_run(&state, NULL, &tape, NULL);
 }

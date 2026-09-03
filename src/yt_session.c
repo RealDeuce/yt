@@ -48,6 +48,9 @@
 #define YT_EARTH_REPORT_SEEN_ADDRESS 0x5006U
 #define YT_SPY_COUNT_ADDRESS 0x50AEU
 #define YT_LOW_TIME_REMEMBERED_ADDRESS 0x59CEU
+#define YT_SPY_DESTINATION_SCRATCH_ADDRESS 0x5FE4U
+#define YT_SPY_FOUND_SCRATCH_ADDRESS 0x5FE8U
+#define YT_SPY_DEAD_COUNTER_SCRATCH_ADDRESS 0x6018U
 
 enum navigation_field_kind {
 	NAVIGATION_FIELD_NONE,
@@ -89,9 +92,6 @@ struct yt_session {
 	bool fatal_wait_complete;
 	struct yt_present_state presentation;
 	float counterlaunch_count;
-	float spy_found_scratch;
-	float spy_dead_counter_scratch;
-	float spy_warp_destination_scratch;
 	struct yt_route_process route_process;
 	char computer_route_scratch[YT_COMMAND_SIZE];
 	size_t computer_route_scratch_length;
@@ -4436,6 +4436,29 @@ spy_pause(void *context, struct yt_spy_sweep_state *state,
 	return result;
 }
 
+static void
+spy_store(void *context, enum yt_spy_scratch_kind kind,
+    const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+	uint16_t address;
+
+	switch (kind) {
+	case YT_SPY_SCRATCH_DESTINATION:
+		address = YT_SPY_DESTINATION_SCRATCH_ADDRESS;
+		break;
+	case YT_SPY_SCRATCH_FOUND:
+		address = YT_SPY_FOUND_SCRATCH_ADDRESS;
+		break;
+	case YT_SPY_SCRATCH_DEAD_COUNTER:
+		address = YT_SPY_DEAD_COUNTER_SCRATCH_ADDRESS;
+		break;
+	default:
+		return;
+	}
+	yt_route_process_set_raw_single(&session->route_process, address, raw);
+}
+
 static bool
 spy_sweep(struct yt_session *session, struct yt_error *error)
 {
@@ -4449,6 +4472,7 @@ spy_sweep(struct yt_session *session, struct yt_error *error)
 		spy_sound,
 		spy_present,
 		spy_pause,
+		spy_store,
 	};
 	int spy_sectors[3];
 	int spy_markers[3];
@@ -4476,10 +4500,14 @@ spy_sweep(struct yt_session *session, struct yt_error *error)
 		.sector_cache = session->sector_cache,
 		.cloak_cache = session->cloak_cache,
 		.cache_count = YT_ARRAY_LEN(session->sector_cache),
-		.found_scratch = session->spy_found_scratch,
-		.dead_counter_scratch = session->spy_dead_counter_scratch,
-		.warp_destination_scratch =
-		    session->spy_warp_destination_scratch,
+		.found_scratch = yt_route_process_single(&session->route_process,
+		    YT_SPY_FOUND_SCRATCH_ADDRESS),
+		.dead_counter_scratch = yt_route_process_single(
+		    &session->route_process,
+		    YT_SPY_DEAD_COUNTER_SCRATCH_ADDRESS),
+		.warp_destination_scratch = yt_route_process_single(
+		    &session->route_process,
+		    YT_SPY_DESTINATION_SCRATCH_ADDRESS),
 		.foreground = session->presentation.foreground,
 		.background = session->presentation.background,
 		.bold = session->presentation.bold,
@@ -4495,9 +4523,6 @@ spy_sweep(struct yt_session *session, struct yt_error *error)
 		    (uint16_t)(YT_SPY_MARKERS_ADDRESS + 2U * index),
 		    (int16_t)spy_markers[index]);
 	}
-	session->spy_found_scratch = state.found_scratch;
-	session->spy_dead_counter_scratch = state.dead_counter_scratch;
-	session->spy_warp_destination_scratch = state.warp_destination_scratch;
 	spy_import_presentation(session, &state);
 	return result;
 }
