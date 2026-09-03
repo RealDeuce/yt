@@ -1357,7 +1357,11 @@ yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
 	if (!ops->read_player(context, saved_record, state->player, error))
 		return false;
 	if (qb_mbf32_truth(state->player->record.bytes + YT_F45)) {
+		static const uint8_t one[4] = {0x00, 0x00, 0x00, 0x81};
+
 		*state->destroyed = true;
+		if (ops->store_destroyed != NULL)
+			ops->store_destroyed(context, one);
 		if (saved_record >= 0
 		    && (size_t)saved_record < state->cache_count
 		    && state->sector_cache != NULL)
@@ -1580,6 +1584,11 @@ yt_projectile_command_run(struct yt_projectile_command_state *state,
 		return false;
 	state->player_flushed = true;
 	*state->destroyed = false;
+	if (ops->store_destroyed != NULL) {
+		static const uint8_t zero[4] = {0x00, 0x00, 0x00, 0x00};
+
+		ops->store_destroyed(context, zero);
+	}
 	state->destruction_cleared = true;
 	state->resolver_called = true;
 	if (!ops->resolve(context, &state->origin, state->origin_raw,
@@ -1594,7 +1603,8 @@ yt_projectile_command_run(struct yt_projectile_command_state *state,
 	state->xannor_called = true;
 	if (!ops->xannor(context, &state->xannor_provoker, error))
 		return false;
-	if (*state->destroyed) {
+	if (ops->destroyed_truth != NULL
+	    ? ops->destroyed_truth(context) : *state->destroyed) {
 		state->route = YT_PROJECTILE_COMMAND_FATAL;
 		state->fatal_called = true;
 		if (!ops->fatal(context, error))
@@ -2182,7 +2192,11 @@ yt_counterlaunch_run(struct yt_counterlaunch_state *state,
 	if (!ops->read_player(context, saved_record, &final_player, error))
 		return false;
 	if (qb_mbf32_truth(final_player.record.bytes + YT_F45)) {
+		static const uint8_t one[4] = {0x00, 0x00, 0x00, 0x81};
+
 		*state->destroyed = true;
+		if (ops->store_destroyed != NULL)
+			ops->store_destroyed(context, one);
 		if (saved_record >= 0
 		    && (size_t)saved_record < state->cache_count
 		    && state->sector_cache != NULL)
@@ -7619,8 +7633,15 @@ yt_sector_mine_run(struct yt_sector_mine_state *state,
 				working.holds = projectile_single_sub(working.holds,
 				    loss);
 				if (working.holds < 1.0f) {
+					static const uint8_t basic_true[4] = {
+						0x00, 0x00, 0x80, 0x81
+					};
+
 					working.holds = 0.0f;
 					*state->destroyed = true;
+					if (ops->store_destroyed != NULL)
+						ops->store_destroyed(context,
+						    basic_true);
 				}
 				state->touched |= YT_SECTOR_MINE_DAMAGE_HOLDS;
 				MINE_LOSS_ROW(YT_SECTOR_MINE_LOSS_EMPTY_HOLDS,
@@ -11835,6 +11856,7 @@ yt_projectile_plasma_killed_run(
     struct yt_error *error)
 {
 	static const uint8_t self_row[] = "YOU were destroyed!";
+	static const uint8_t basic_true[4] = {0x00, 0x00, 0x80, 0x81};
 	struct yt_player victim;
 	uint8_t victim_name[YT_TEXT_FIELD_SIZE];
 	uint8_t destroyed_row[128];
@@ -11926,6 +11948,8 @@ yt_projectile_plasma_killed_run(
 			return false;
 		}
 		*state->destroyed = true;
+		if (ops->store_destroyed != NULL)
+			ops->store_destroyed(context, basic_true);
 		state->sector_cache[state->shooter] = 0.0f;
 	}
 	else {
