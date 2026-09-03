@@ -35,6 +35,7 @@
 #define YT_PLANET_RECORD_SCRATCH_ADDRESS 0x19C4U
 #define YT_CURRENT_SECTOR_RECORD_ADDRESS 0x4B50U
 #define YT_TURNS_PER_DAY_ADDRESS 0x4BD0U
+#define YT_LOTTERY_PLAYS_ADDRESS 0x4BB8U
 #define YT_CLEARANCE_HOLDS_ADDRESS 0x4B54U
 #define YT_CLEARANCE_FIGHTERS_ADDRESS 0x4B58U
 #define YT_CLEARANCE_GROUND_ADDRESS 0x4B5CU
@@ -2005,6 +2006,15 @@ startup_configuration_store_turns(void *context, const uint8_t raw[4])
 	    YT_TURNS_PER_DAY_ADDRESS, raw);
 }
 
+static void
+startup_configuration_store_lottery(void *context, const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_LOTTERY_PLAYS_ADDRESS, raw);
+}
+
 static bool
 load_configuration(struct yt_session *session, struct yt_error *error)
 {
@@ -2019,6 +2029,7 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 		startup_configuration_store_disruption,
 		startup_configuration_store_genesis,
 		startup_configuration_store_turns,
+		startup_configuration_store_lottery,
 	};
 	struct yt_game *game = &session->door->game;
 	struct yt_startup_configuration_state state;
@@ -8641,7 +8652,8 @@ lottery(struct yt_session *session, const struct yt_port *cached_earth,
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "lottery limiter leading blank", error))
 		return false;
-	if (session->door->game.config.lottery_plays == 0.0f) {
+	if (yt_route_process_single(&session->route_process,
+	    YT_LOTTERY_PLAYS_ADDRESS) == 0.0f) {
 		if (!session_present_text(session,
 		    (const uint8_t *)
 		    "Sorry, The supreme ruler has banned all gambling!",
@@ -8654,8 +8666,8 @@ lottery(struct yt_session *session, const struct yt_port *cached_earth,
 		char limit[64];
 		char row[128];
 
-		if (qb_str_single(limit, sizeof(limit),
-		    session->door->game.config.lottery_plays) < 0
+		if (qb_str_single(limit, sizeof(limit), yt_route_process_single(
+		    &session->route_process, YT_LOTTERY_PLAYS_ADDRESS)) < 0
 		    || snprintf(row, sizeof(row), "You may play%s times daily.",
 		    limit) < 0
 		    || !session_present_text(session, (const uint8_t *)row,
@@ -8667,8 +8679,8 @@ lottery(struct yt_session *session, const struct yt_port *cached_earth,
 		return false;
 	session->player.lottery_plays =
 	    single_add(session->player.lottery_plays, 1.0f);
-	if (session->player.lottery_plays
-	    > session->door->game.config.lottery_plays) {
+	if (session->player.lottery_plays > yt_route_process_single(
+	    &session->route_process, YT_LOTTERY_PLAYS_ADDRESS)) {
 		if (!session_present_text(session,
 		    (const uint8_t *)
 		    "You will be allowed to play again tomorrow.",

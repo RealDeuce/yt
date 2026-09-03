@@ -72,6 +72,8 @@ typedef void (*yt_startup_configuration_genesis_store_fn)(void *context,
 	const uint8_t raw[4]);
 typedef void (*yt_startup_configuration_turns_store_fn)(void *context,
 	const uint8_t raw[4]);
+typedef void (*yt_startup_configuration_lottery_store_fn)(void *context,
+	const uint8_t raw[4]);
 
 struct yt_startup_configuration_ops {
 	yt_startup_configuration_close_fn close_data;
@@ -84,6 +86,7 @@ struct yt_startup_configuration_ops {
 	yt_startup_configuration_disruption_store_fn store_disruption;
 	yt_startup_configuration_genesis_store_fn store_genesis;
 	yt_startup_configuration_turns_store_fn store_turns_per_day;
+	yt_startup_configuration_lottery_store_fn store_lottery_plays;
 };
 
 bool yt_startup_configuration_run(

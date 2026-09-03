@@ -143,6 +143,9 @@ struct startup_configuration_tape {
 	uint8_t turns_raw[2][4];
 	size_t turns_store_count;
 	size_t turns_store_position[2];
+	uint8_t lottery_raw[2][4];
+	size_t lottery_store_count;
+	size_t lottery_store_position[2];
 };
 
 static bool
@@ -289,6 +292,21 @@ startup_configuration_turns_store_test(void *context,
 	++tape->turns_store_count;
 }
 
+static void
+startup_configuration_lottery_store_test(void *context,
+    const uint8_t raw[4])
+{
+	struct startup_configuration_tape *tape = context;
+	size_t store = tape->lottery_store_count;
+
+	if (store >= YT_ARRAY_LEN(tape->lottery_raw))
+		return;
+	memcpy(tape->lottery_raw[store], raw,
+	    sizeof(tape->lottery_raw[store]));
+	tape->lottery_store_position[store] = tape->event_count;
+	++tape->lottery_store_count;
+}
+
 static bool
 startup_configuration_fixture(struct startup_configuration_tape *tape,
     struct yt_startup_configuration_state *state, struct yt_config *config,
@@ -356,6 +374,7 @@ check_startup_configuration_transaction(void)
 		startup_configuration_disruption_store_test,
 		startup_configuration_genesis_store_test,
 		startup_configuration_turns_store_test,
+		startup_configuration_lottery_store_test,
 	};
 	static const int events[] = {
 		STARTUP_CONFIGURATION_CLOSE,
@@ -403,6 +422,12 @@ check_startup_configuration_transaction(void)
 	    || qb_mbf32_decode(tape.turns_raw[0]) != 99.0f
 	    || memcmp(tape.turns_raw[1],
 	    (const uint8_t[]){0x00, 0x00, 0x7a, 0x89}, 4U) != 0
+	    || tape.lottery_store_count != 2U
+	    || tape.lottery_store_position[0] != 3U
+	    || tape.lottery_store_position[1] != 4U
+	    || qb_mbf32_decode(tape.lottery_raw[0]) != -0.25f
+	    || memcmp(tape.lottery_raw[1],
+	    (const uint8_t[]){0x00, 0x00, 0x40, 0x82}, 4U) != 0
 	    || config.local_screen != -1.0f || config.lottery_plays != 3.0f
 	    || config.maximum_planets != 100.0f
 	    || config.maximum_holds != 1000.0f
@@ -488,6 +513,20 @@ check_startup_configuration_transaction(void)
 	    4U) != 0 || config.turns_per_day != 2500.0f)
 		return false;
 
+	/* Both lottery validation bounds are inclusive. */
+	if (!startup_configuration_fixture(&tape, &state, &config,
+	    sector_cache, cloak_cache))
+		return false;
+	state.cache_guard = 1.0f;
+	if (!yt_record_set_number(&tape.config_source, YT_F101, 9.0f)
+	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
+	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
+	    || tape.lottery_store_count != 1U
+	    || memcmp(tape.lottery_raw[0],
+	    tape.config_source.bytes + YT_F101, 4U) != 0
+	    || config.lottery_plays != 9.0f)
+		return false;
+
 	/* Descriptor length, not an embedded NUL byte, controls path emptiness. */
 	if (!startup_configuration_fixture(&tape, &state, &config,
 	    sector_cache, cloak_cache))
@@ -553,7 +592,9 @@ check_startup_configuration_transaction(void)
 	    || memcmp(tape.genesis_raw[1],
 	    (const uint8_t[]){0x00, 0x00, 0x48, 0x88}, 4U) != 0
 	    || tape.turns_store_count != 1U
-	    || qb_mbf32_decode(tape.turns_raw[0]) != 99.0f)
+	    || qb_mbf32_decode(tape.turns_raw[0]) != 99.0f
+	    || tape.lottery_store_count != 1U
+	    || qb_mbf32_decode(tape.lottery_raw[0]) != -0.25f)
 		return false;
 
 	for (failure = 1U; failure <= YT_ARRAY_LEN(events); ++failure) {
@@ -575,6 +616,10 @@ check_startup_configuration_transaction(void)
 		if ((failure <= 3U && tape.turns_store_count != 0U)
 		    || (failure == 4U && tape.turns_store_count != 1U)
 		    || (failure > 4U && tape.turns_store_count != 2U))
+			return false;
+		if ((failure <= 3U && tape.lottery_store_count != 0U)
+		    || (failure == 4U && tape.lottery_store_count != 1U)
+		    || (failure > 4U && tape.lottery_store_count != 2U))
 			return false;
 	}
 	if (!startup_configuration_fixture(&tape, &state, &config,
