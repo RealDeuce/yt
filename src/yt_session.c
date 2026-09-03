@@ -113,7 +113,7 @@ enum navigation_field_kind {
 struct yt_session {
 	struct yt_door *door;
 	const char *executable_path;
-	int player_record;
+	int player_record_carrier;
 	struct yt_player player;
 	uint8_t cached_player_name[YT_TEXT_FIELD_SIZE];
 	size_t cached_player_name_length;
@@ -203,6 +203,13 @@ session_store_current_player_record(void *context, const uint8_t raw[4])
 	    YT_CURRENT_PLAYER_RECORD_ADDRESS, raw);
 }
 
+static int
+session_record(const struct yt_session *session)
+{
+	return (int)yt_route_process_single(&session->route_process,
+	    YT_CURRENT_PLAYER_RECORD_ADDRESS);
+}
+
 static void
 session_store_counterattack_player(void *context, const uint8_t raw[4])
 {
@@ -245,7 +252,7 @@ session_set_current_player_record(struct yt_session *session, int record)
 
 	if (qb_mbf32_encode((float)record, raw) != QB_MBF_OK)
 		return;
-	session->player_record = record;
+	session->player_record_carrier = record;
 	session_store_current_player_record(session, raw);
 }
 
@@ -666,7 +673,7 @@ static bool
 write_player(struct yt_session *session, struct yt_error *error)
 {
 	return yt_game_write_player(&session->door->game,
-	    session->player_record, &session->player, error)
+	    session_record(session), &session->player, error)
 	    && yt_database_flush(&session->door->game.database, error);
 }
 
@@ -809,7 +816,7 @@ reload_player(struct yt_session *session, struct yt_error *error)
 	    &session->route_process, YT_CURRENT_SECTOR_RECORD_ADDRESS);
 	struct yt_current_player_hydration_state state = {
 		&session->player,
-		session->player_record,
+		session_record(session),
 		(int)session_sector_offset(session),
 		session_sector_offset(session),
 		&current_sector_record,
@@ -851,7 +858,7 @@ mutate_player_credits_observed(struct yt_session *session, float argument,
 
 	memset(&state, 0, sizeof(state));
 	state.hydration.player = &session->player;
-	state.hydration.player_record = session->player_record;
+	state.hydration.player_record = session_record(session);
 	state.hydration.last_player_record =
 	    (int)session_sector_offset(session);
 	state.hydration.sector_record_offset =
@@ -884,7 +891,7 @@ apply_player_credit_mutation(void *context, float player_record,
 {
 	struct yt_session *session = context;
 
-	if (player_record != (float)session->player_record) {
+	if (player_record != (float)session_record(session)) {
 		if (error != NULL) {
 			error->status = YT_RANGE;
 			(void)snprintf(error->operation,
@@ -912,7 +919,7 @@ computer_prompt_hydrate(struct yt_session *session, struct yt_error *error)
 	if (!reload_player(session, error))
 		return false;
 	session->navigation_field_kind = NAVIGATION_FIELD_RETURN_PLAYER;
-	session->navigation_field_record = session->player_record;
+	session->navigation_field_record = session_record(session);
 	session->navigation_field = session->player.record;
 	session->navigation_field_active = false;
 	return true;
@@ -3104,7 +3111,7 @@ construct_player_visible(struct yt_session *session, struct yt_error *error)
 	    "player constructor row", error))
 		return false;
 	return yt_game_construct_player(&session->door->game,
-	    session->player_record, yt_route_process_single(
+	    session_record(session), yt_route_process_single(
 	    &session->route_process, YT_STARTUP_DATE_SERIAL_ADDRESS),
 	    &session->player, error);
 }
@@ -3172,7 +3179,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 			yt_route_process_raw_single(&session->route_process,
 			    YT_SHARED_LOOP_SCRATCH_ADDRESS, scan_bound_raw);
 			session_store_current_player_record(session, scan_bound_raw);
-			session->player_record = basic;
+			session->player_record_carrier = basic;
 			session->player = candidate;
 			if (!yt_player_stored_name(&candidate,
 			    session->cached_player_name,
@@ -3288,7 +3295,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 		float killer = session->player.killed_by;
 		float startup_day = yt_route_process_single(
 		    &session->route_process, YT_STARTUP_DATE_SERIAL_ADDRESS);
-		bool self_kill = killer == (float)session->player_record;
+		bool self_kill = killer == (float)session_record(session);
 
 		if (previous_day == startup_day
 		    && !session_present_text(session,
@@ -3601,7 +3608,7 @@ radio_read(struct yt_session *session, float reader_mode,
 	struct radio_read_context context = {.session = session};
 	struct yt_radio_read_state state = {
 		.reader_mode = reader_mode,
-		.current_player = (float)session->player_record,
+		.current_player = (float)session_record(session),
 	};
 	bool ok;
 
@@ -3642,7 +3649,7 @@ post_login(struct yt_session *session, struct yt_error *error)
 	enum yt_present_status status;
 
 	if (!yt_game_post_login_repairs(&session->door->game,
-	    session->player_record, yt_route_process_single(
+	    session_record(session), yt_route_process_single(
 	    &session->route_process, YT_MAXIMUM_HOLDS_ADDRESS),
 	    &session->player, NULL, error))
 		return false;
@@ -4011,7 +4018,7 @@ same_team(struct yt_session *session, int other_record,
 	bool friendly;
 
 	if (!yt_friendship_resolve((float)other_record,
-	    (float)session->player_record,
+	    (float)session_record(session),
 	    session_sector_offset(session),
 	    friendship_read_player, &session->door->game, &friendly, error))
 		return false;
@@ -4026,7 +4033,7 @@ sector_force_friendly(struct yt_session *session,
 	int owner;
 
 	if (!yt_sector_force_route(sector->fighters, sector->fighter_owner,
-	    session->player_record, &route, &owner, error))
+	    session_record(session), &route, &owner, error))
 		return false;
 	if (route == YT_SECTOR_FORCE_FRIENDLY)
 		return true;
@@ -4109,7 +4116,7 @@ static bool
 scanner_read_current_player(struct yt_session *session,
     struct yt_error *error)
 {
-	return yt_game_read_player(&session->door->game, session->player_record,
+	return yt_game_read_player(&session->door->game, session_record(session),
 	    &session->player, error);
 }
 
@@ -4234,7 +4241,7 @@ display_sector_one(struct yt_session *session, float logical_sector,
 	    basic <= (int)session_sector_offset(session); ++basic) {
 		float random_value;
 
-		if (!yt_sector_candidate_eligible(basic, session->player_record,
+		if (!yt_sector_candidate_eligible(basic, session_record(session),
 		    session->sector_cache[basic], logical_sector))
 			continue;
 		if (!yt_random_next(&session->door->game.random, &random_value,
@@ -4296,7 +4303,7 @@ display_sector_one(struct yt_session *session, float logical_sector,
 			return false;
 		if (sector.fighter_owner != -1.0f
 		    && sector.fighter_owner != -2.0f
-		    && sector.fighter_owner != (float)session->player_record) {
+		    && sector.fighter_owner != (float)session_record(session)) {
 			if (!scanner_read_player(session, sector.fighter_owner,
 			    &owner, error))
 				return false;
@@ -4337,7 +4344,7 @@ display_sector_one(struct yt_session *session, float logical_sector,
 				team_pointer = &team_overlay;
 			}
 		}
-		if (!yt_sector_fighter_row(&sector, session->player_record,
+		if (!yt_sector_fighter_row(&sector, session_record(session),
 		    owner_pointer, team_pointer, row, sizeof(row), &row_length,
 		    session->hostile_owner_label,
 		    sizeof(session->hostile_owner_label), &scratch_length,
@@ -4633,15 +4640,15 @@ dangerous_destination(struct yt_session *session, float target,
 				session_set_relationship(session, 0.0f);
 				if (owner >= 2.0f
 				    && owner <= session_sector_offset(session)
-				    && session->player_record >= YT_PLAYER_FIRST
-				    && (float)session->player_record
+				    && session_record(session) >= YT_PLAYER_FIRST
+				    && (float)session_record(session)
 				    <= session_sector_offset(session)) {
-					if (owner == (float)session->player_record)
+					if (owner == (float)session_record(session))
 						session_set_relationship(session, -1.0f);
 					else {
 						if (!yt_game_read_player(
 						    &session->door->game,
-						    session->player_record, &current,
+						    session_record(session), &current,
 						    error))
 							return false;
 						if (current.team != 0.0f) {
@@ -4705,7 +4712,7 @@ dangerous_destination(struct yt_session *session, float target,
 		hostile = owner < 0.0f
 		    || (owner > 1.0f
 		    && owner <= session_sector_offset(session)
-		    && owner != (float)session->player_record
+		    && owner != (float)session_record(session)
 		    && session_relationship(session) == 0.0f);
 		if (hostile) {
 			if (!danger_first_warning(session, target, *danger, error))
@@ -4937,7 +4944,7 @@ spy_sweep(struct yt_session *session, struct yt_error *error)
 		.spy_sectors = spy_sectors,
 		.last_reported_sectors = spy_markers,
 		.spy_capacity = YT_ARRAY_LEN(spy_sectors),
-		.current_player_record = session->player_record,
+		.current_player_record = session_record(session),
 		.last_player_record = session_sector_offset(session),
 		.disruption_sectors = {
 			session_disruption_sector(session, 0U),
@@ -4981,9 +4988,9 @@ fresh_no_turn_gate(struct yt_session *session, bool *denied,
 
 	if (!reload_player(session, error))
 		return false;
-	session->sector_cache[session->player_record] = session->player.sector;
+	session->sector_cache[session_record(session)] = session->player.sector;
 	if (!session_anti_cloak_enabled(session))
-		 session->cloak_cache[session->player_record] = session->player.cloak;
+		 session->cloak_cache[session_record(session)] = session->player.cloak;
 	*denied = yt_no_turn_gate_denied(session->player.turns);
 	if (*denied)
 		return session_02db(session, notice, sizeof(notice) - 1U,
@@ -5027,7 +5034,7 @@ finalize_action(struct yt_session *session, float amount,
 		else if (!yt_record_set_number(&session->player.record, YT_F125,
 		    session->player.cloak))
 			return false;
-		session->cloak_cache[session->player_record] =
+		session->cloak_cache[session_record(session)] =
 		    session->player.cloak;
 		display = floorf(single_mul(session->player.cloak, 50.0f));
 		qb_str_single(number, sizeof(number), display);
@@ -5060,7 +5067,7 @@ finalize_action(struct yt_session *session, float amount,
 		}
 	}
 	if (!yt_database_write(&session->door->game.database,
-	    (size_t)session->player_record, &session->player.record, error))
+	    (size_t)session_record(session), &session->player.record, error))
 		return false;
 	qb_str_single(number, sizeof(number), session->player.turns);
 	snprintf(row, sizeof(row), "One Turn Deducted,%s left.", number);
@@ -5263,10 +5270,10 @@ emergency_warp(struct yt_session *session, struct yt_error *error)
 	}
 	yt_emergency_warp_player_overlay(&session->player, destination, cost);
 	if (!yt_database_write(&session->door->game.database,
-	    (size_t)session->player_record, &session->player.record, error)
+	    (size_t)session_record(session), &session->player.record, error)
 	    || !yt_database_flush(&session->door->game.database, error))
 		return false;
-	session->sector_cache[session->player_record] = destination;
+	session->sector_cache[session_record(session)] = destination;
 	return true;
 }
 
@@ -5312,7 +5319,7 @@ movement_turn_gate(void *context, int player_record, struct yt_player *player,
 {
 	struct yt_session *session = context;
 
-	if (player_record != session->player_record || player == NULL
+	if (player_record != session_record(session) || player == NULL
 	    || !fresh_no_turn_gate(session, denied, error))
 		return false;
 	*player = session->player;
@@ -5406,7 +5413,7 @@ movement_hydrate(void *context, int player_record, struct yt_player *player,
 {
 	struct yt_session *session = context;
 
-	if (player_record != session->player_record
+	if (player_record != session_record(session)
 	    || !reload_player(session, error))
 		return false;
 	*player = session->player;
@@ -5419,7 +5426,7 @@ movement_write_player(void *context, int player_record,
 {
 	struct yt_session *session = context;
 
-	if (player_record != session->player_record)
+	if (player_record != session_record(session))
 		return false;
 	session->player = *player;
 	return yt_database_write(&session->door->game.database,
@@ -5472,7 +5479,7 @@ command_move(struct yt_session *session, bool *moved,
 		return false;
 	*moved = false;
 	state = (struct yt_movement_state){
-		.current_player_record = session->player_record,
+		.current_player_record = session_record(session),
 		.port_offset = session_port_offset(session),
 		.sector_offset = session_sector_offset(session),
 	};
@@ -5535,7 +5542,7 @@ team_remove_player(struct yt_session *session, int victim,
 	};
 	struct yt_death_team_remove_state state = {
 		.victim_record = victim,
-		.current_player_record = (float)session->player_record,
+		.current_player_record = (float)session_record(session),
 		.sector_record_offset = session_sector_offset(session),
 		.conversion_mode = session->presentation.sound.conversion_mode,
 		.cache = &session->team_cache,
@@ -5672,7 +5679,7 @@ kill_player_run(struct yt_session *session, int victim_record,
 	};
 	struct yt_player_death_state state = {
 		.victim_record = victim_record,
-		.current_player_record = session->player_record,
+		.current_player_record = session_record(session),
 		.killer = killer,
 		.sector_count = sector_count(session),
 		.port_count = port_count(session),
@@ -5683,7 +5690,7 @@ kill_player_run(struct yt_session *session, int victim_record,
 
 	if (!yt_player_death_run(&state, &ops, session, error))
 		return false;
-	if (victim_record == session->player_record && wait_for_current) {
+	if (victim_record == session_record(session) && wait_for_current) {
 		if (!session_wait(session, 5.0, "common fatal wait", error))
 			return false;
 		session->fatal_wait_complete = true;
@@ -5723,7 +5730,7 @@ common_fatal_read_player(void *context, int player_record,
 	char cached_name[sizeof(session->player.name)];
 
 	memcpy(cached_name, session->player.name, sizeof(cached_name));
-	if (player_record != session->player_record
+	if (player_record != session_record(session)
 	    || !reload_player(session, error))
 		return false;
 	memcpy(session->player.name, cached_name, sizeof(cached_name));
@@ -5791,7 +5798,7 @@ common_fatal_self(struct yt_session *session, struct yt_error *error)
 	yt_route_process_raw_single(&session->route_process,
 	    YT_CURRENT_PLAYER_RECORD_ADDRESS, current_record_raw);
 	struct yt_common_fatal_state state = {
-		.current_player_record = session->player_record,
+		.current_player_record = session_record(session),
 		.current_player_record_raw = current_record_raw,
 		.foreground = session->presentation.foreground,
 		.pager_foreground = session->pager.foreground,
@@ -5818,7 +5825,7 @@ salvage_read_killer(void *context, float player_record,
 	uint32_t physical = qb_brun_random_record_number(player_record);
 	struct yt_record raw;
 
-	if (physical == (uint32_t)session->player_record) {
+	if (physical == (uint32_t)session_record(session)) {
 		if (!reload_player(session, error))
 			return false;
 		*player = session->player;
@@ -5843,7 +5850,7 @@ salvage_write_killer(void *context, float player_record,
 	    &player->record, error)
 	    || !yt_database_flush(&session->door->game.database, error))
 		return false;
-	if (physical == (uint32_t)session->player_record)
+	if (physical == (uint32_t)session_record(session))
 		session->player = *player;
 	return true;
 }
@@ -6032,7 +6039,7 @@ xannor_victory(struct yt_session *session, struct yt_error *error)
 		xannor_victory_write_sector,
 	};
 	struct yt_xannor_victory_state state = {
-		.current_player = (float)session->player_record,
+		.current_player = (float)session_record(session),
 		.foreground = session->presentation.foreground,
 		.pager_foreground = (float)session->pager.foreground,
 		.blink = session->presentation.blink,
@@ -6166,7 +6173,7 @@ direct_attack_combat_read(void *context, int player_record,
 {
 	struct yt_session *session = context;
 
-	if (player_record != session->player_record)
+	if (player_record != session_record(session))
 		return yt_game_read_player(&session->door->game, player_record,
 		    player, error);
 	if (!reload_player(session, error))
@@ -6181,7 +6188,7 @@ direct_attack_combat_write(void *context, int player_record,
 {
 	struct yt_session *session = context;
 
-	if (player_record == session->player_record)
+	if (player_record == session_record(session))
 		session->player = *player;
 	return yt_database_write(&session->door->game.database,
 	    (size_t)player_record, &player->record, error);
@@ -6275,7 +6282,7 @@ attack_player(struct yt_session *session, int target_record,
 		direct_attack_combat_kill,
 	};
 	struct yt_direct_attack_combat_state state = {
-		.current_player_record = session->player_record,
+		.current_player_record = session_record(session),
 		.target_record = target_record,
 		.committed = committed,
 	};
@@ -6366,7 +6373,7 @@ command_attack_player(struct yt_session *session, bool *enter_sector,
 		direct_attack_combat,
 	};
 	struct yt_direct_attack_state state = {
-		.current_player_record = session->player_record,
+		.current_player_record = session_record(session),
 		.last_player_record = session_sector_offset(session),
 		.conversion_mode = session->presentation.sound.conversion_mode,
 		.sector_cache = session->sector_cache,
@@ -6848,7 +6855,7 @@ attack_deployed_committed(struct yt_session *session,
 		cached_player_name_text,
 	};
 	state = (struct yt_hostile_attack_combat_state){
-		.current_player_record = session->player_record,
+		.current_player_record = session_record(session),
 		.current_sector = (int)session->player.sector,
 		.commitment = commitment,
 		.allow_surrender = allow_surrender,
@@ -6982,7 +6989,7 @@ hostile_bribe_accept_read_player(void *context, int player_record,
 {
 	struct yt_session *session = context;
 
-	if (player_record != session->player_record
+	if (player_record != session_record(session)
 	    || !reload_player(session, error))
 		return false;
 	*player = session->player;
@@ -7121,7 +7128,7 @@ bribe_deployed(struct yt_session *session, struct yt_sector *sector,
 		return false;
 	context = (struct hostile_bribe_context){session, sector};
 	state = (struct yt_hostile_bribe_state){
-		.current_player_record = session->player_record,
+		.current_player_record = session_record(session),
 		.current_sector = (int)session->player.sector,
 		.owner = sector->fighter_owner,
 		.cached_defenders = sector->fighters,
@@ -7304,7 +7311,7 @@ mine_encounter(struct yt_session *session, bool *terminal,
 	};
 	bool destroyed = session_is_destroyed(session);
 	struct yt_sector_mine_state state = {
-		.current_player_record = session->player_record,
+		.current_player_record = session_record(session),
 		.current_sector = session->player.sector,
 		.conversion_mode = session->presentation.sound.conversion_mode,
 		.foreground = session->presentation.foreground,
@@ -7585,7 +7592,7 @@ main_fighters_hydrate(void *context, int player_record,
 {
 	struct yt_session *session = context;
 
-	if (player_record != session->player_record
+	if (player_record != session_record(session)
 	    || !reload_player(session, error))
 		return false;
 	*player = session->player;
@@ -7688,7 +7695,7 @@ command_fighters(struct yt_session *session, struct yt_error *error)
 		main_fighters_sound,
 	};
 	struct yt_main_fighters_state state = {
-		.current_player_record = session->player_record,
+		.current_player_record = session_record(session),
 	};
 
 	return yt_main_fighters_run(&state, &ops, session, error);
@@ -7700,7 +7707,7 @@ drop_mines_read_player(void *context, int player_record,
 {
 	struct yt_session *session = context;
 
-	if (player_record != session->player_record
+	if (player_record != session_record(session)
 	    || !reload_player(session, error))
 		return false;
 	*player = session->player;
@@ -7819,7 +7826,7 @@ command_mines(struct yt_session *session, struct yt_error *error)
 		drop_mines_sound,
 	};
 	struct yt_drop_mines_state state = {
-		.current_player_record = session->player_record,
+		.current_player_record = session_record(session),
 	};
 
 	return yt_drop_mines_run(&state, &ops, session, error);
@@ -7893,7 +7900,7 @@ port_owner_row_capture(struct yt_session *session, const struct yt_port *port,
 
 	if (captured_length != NULL)
 		*captured_length = 0U;
-	kind = yt_port_owner_classify(port->owner, session->player_record,
+	kind = yt_port_owner_classify(port->owner, session_record(session),
 	    &owner_record);
 	if (kind == YT_PORT_OWNER_INVALID)
 		return port_report_failure(error,
@@ -7949,7 +7956,7 @@ port_report_read_player(void *context, uint32_t physical_record,
 	struct yt_session *session = context;
 	struct yt_record record;
 
-	if (physical_record == (uint32_t)session->player_record) {
+	if (physical_record == (uint32_t)session_record(session)) {
 		if (!reload_player(session, error))
 			return false;
 		*player = session->player;
@@ -8106,7 +8113,7 @@ port_report_capture(struct yt_session *session, int logical_port,
 		return port_report_failure(error,
 		    "port report record conversion");
 	memset(&state, 0, sizeof(state));
-	state.current_player_record = session->player_record;
+	state.current_player_record = session_record(session);
 	state.port_physical_record = (uint32_t)physical_record;
 	state.conversion_mode = session->presentation.sound.conversion_mode;
 	state.market = *market;
@@ -8157,7 +8164,7 @@ computer_port_ordinary(struct yt_session *session, int sector_number,
 	state.update.sector_record_supplied = true;
 	state.update.port_offset = session_port_offset(session);
 	session_market_bases(session, state.update.base_price);
-	state.report.current_player_record = session->player_record;
+	state.report.current_player_record = session_record(session);
 	state.report.conversion_mode =
 	    session->presentation.sound.conversion_mode;
 	if (visibility != NULL) {
@@ -8179,7 +8186,7 @@ commodity_trade_read_player(void *context, uint32_t physical_record,
 {
 	struct yt_session *session = context;
 
-	if (physical_record != (uint32_t)session->player_record)
+	if (physical_record != (uint32_t)session_record(session))
 		return port_report_failure(error,
 		    "commodity trade player record");
 	if (!reload_player(session, error))
@@ -8194,7 +8201,7 @@ commodity_trade_write_player(void *context, uint32_t physical_record,
 {
 	struct yt_session *session = context;
 
-	if (physical_record != (uint32_t)session->player_record)
+	if (physical_record != (uint32_t)session_record(session))
 		return port_report_failure(error,
 		    "commodity trade player record");
 	session->player = *player;
@@ -8316,7 +8323,7 @@ trade_commodity(struct yt_session *session,
 	if (market == NULL)
 		return false;
 	memset(&transaction, 0, sizeof(transaction));
-	transaction.current_player_record = (uint32_t)session->player_record;
+	transaction.current_player_record = (uint32_t)session_record(session);
 	transaction.port_physical_record = market->port_physical_record;
 	transaction.commodity = commodity;
 	transaction.market = *market;
@@ -8487,7 +8494,7 @@ docking_front_ordinary(void *context, int sector_number,
 	memset(&commerce, 0, sizeof(commerce));
 	commerce.sector_number = sector_number;
 	commerce.sector_record_expression = sector_record_expression;
-	commerce.current_player_record = (uint32_t)session->player_record;
+	commerce.current_player_record = (uint32_t)session_record(session);
 	commerce.first_name =
 	    (const uint8_t *)session->door->identity.real_first;
 	commerce.first_name_length = strlen(session->door->identity.real_first);
@@ -8532,7 +8539,7 @@ earth_receipt(struct yt_session *session, const struct yt_port *cached_earth,
 		return false;
 	if (cached_earth->owner != 0.0f) {
 		float receipt = yt_earth_receipt_amount(cached_earth->owner,
-		    session->player_record, cost);
+		    session_record(session), cost);
 
 		if (!yt_game_read_port(&session->door->game, 1, &earth, error))
 			return false;
@@ -8889,7 +8896,7 @@ earth_anti_cloak(struct yt_session *session, float price,
 	};
 	struct yt_earth_anti_cloak_state state = {
 		.price = price,
-		.current_record = (float)session->player_record,
+		.current_record = (float)session_record(session),
 		.player_terminal = session_sector_offset(session),
 		.conversion_mode = session->presentation.sound.conversion_mode,
 		.cloak_cache = session->cloak_cache,
@@ -9353,7 +9360,7 @@ earth_report(struct yt_session *session, struct yt_port *earth,
 		return false;
 	computer_port_earth_field(earth_state,
 	    YT_COMPUTER_PORT_EARTH_FIELD_PLAYER,
-	    (uint32_t)session->player_record, &session->player.record);
+	    (uint32_t)session_record(session), &session->player.record);
 	if (!session_b05d(session, separator, sizeof(separator) - 1U)
 	    || !session_b05d(session, header, sizeof(header) - 1U)
 	    || !session_b05d(session, separator, sizeof(separator) - 1U))
@@ -9927,7 +9934,7 @@ planet_garrison(struct yt_session *session, int logical_planet,
 		session->presentation.blink = 1.0f;
 		if (!session_02fc(session, success, success_length))
 			return false;
-		planet.owner = (float)session->player_record;
+		planet.owner = (float)session_record(session);
 		if (!yt_record_set_number(&planet.record, YT_F73, planet.owner)
 		    || !session_sound(session, 4.0f,
 		    "planet garrison sound", error))
@@ -9940,7 +9947,7 @@ planet_garrison(struct yt_session *session, int logical_planet,
 		return false;
 	yt_planet_garrison_player_overlay(&session->player, after);
 	return yt_database_write(&session->door->game.database,
-	    (size_t)session->player_record, &session->player.record, error);
+	    (size_t)session_record(session), &session->player.record, error);
 }
 
 static bool
@@ -10432,7 +10439,7 @@ planet_assault(struct yt_session *session, uint32_t physical_planet,
 		return false;
 	yt_planet_assault_player_overlay(&session->player, commitment);
 	if (!yt_database_write(&session->door->game.database,
-	    (size_t)session->player_record, &session->player.record, error)
+	    (size_t)session_record(session), &session->player.record, error)
 	    || !yt_database_flush(&session->door->game.database, error)
 	    || !yt_planet_assault_attack_news(player_name, player_name_length,
 	    planet_name, planet_name_length, commitment, row, sizeof(row),
@@ -10489,7 +10496,7 @@ planet_assault(struct yt_session *session, uint32_t physical_planet,
 		    "planet defenses destroyed sound", error))
 			return false;
 		if (attackers > 0.0f) {
-			owner = (float)session->player_record;
+			owner = (float)session_record(session);
 			if (!session_present_text(session, NULL, 0,
 			    SESSION_PRESENT_LINE, "planet assault capture blank", error))
 				return false;
@@ -10701,14 +10708,14 @@ planet_move_friendship(struct yt_session *session, float owner,
 	*friendly = false;
 	session_set_relationship(session, 0.0f);
 	if (owner < 2.0f || owner > (float)last_player
-	    || session->player_record < 2 || session->player_record > last_player)
+	    || session_record(session) < 2 || session_record(session) > last_player)
 		return true;
-	if (owner == (float)session->player_record) {
+	if (owner == (float)session_record(session)) {
 		*friendly = true;
 		session_set_relationship(session, -1.0f);
 		return true;
 	}
-	if (!yt_game_read_player(&session->door->game, session->player_record,
+	if (!yt_game_read_player(&session->door->game, session_record(session),
 	    &current, error))
 		return false;
 	if (current.team == 0.0f)
@@ -10853,7 +10860,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 		}
 		yt_planet_move_fighter_overlay(&session->player, loss);
 		if (!yt_database_write(&session->door->game.database,
-		    (size_t)session->player_record, &session->player.record, error))
+		    (size_t)session_record(session), &session->player.record, error))
 			return false;
 		if (loss > 0.0f) {
 			static const uint8_t you[] = "You";
@@ -10932,9 +10939,9 @@ planet_move_hop(struct yt_session *session, int source_number,
 	    || !reload_player(session, error))
 		return false;
 	yt_planet_move_success_overlay(&session->player, (float)destination);
-	session->sector_cache[session->player_record] = (float)destination;
+	session->sector_cache[session_record(session)] = (float)destination;
 	return yt_database_write(&session->door->game.database,
-	    (size_t)session->player_record, &session->player.record, error);
+	    (size_t)session_record(session), &session->player.record, error);
 }
 
 static bool
@@ -11458,7 +11465,7 @@ create_planet(struct yt_session *session, struct yt_error *error)
 		return true;
 	if (!read_planet_physical(session, selected_physical, &planet, error))
 		return false;
-	yt_planet_creation_overlay(&planet, session->player_record);
+	yt_planet_creation_overlay(&planet, session_record(session));
 	if (!write_planet_physical(session, selected_physical, &planet, false,
 	    error))
 		return false;
@@ -11664,7 +11671,7 @@ command_land(struct yt_session *session, bool *enter_sector,
 	permission_state.planet_record_value = planet_record_value;
 	permission_state.planet_offset =
 	    session_planet_offset(session);
-	permission_state.current_player_record = session->player_record;
+	permission_state.current_player_record = session_record(session);
 	permission_state.last_player_record = YT_PLAYER_LAST;
 	permission_state.foreground = session->presentation.foreground;
 	permission_state.blink = session->presentation.blink;
@@ -11737,7 +11744,7 @@ team_load(struct yt_session *session, int id, struct yt_team *team,
 {
 	struct yt_team_loader_state loader = {
 		.team_id = (float)id,
-		.current_player_record = (float)session->player_record,
+		.current_player_record = (float)session_record(session),
 		.sector_record_offset = session_sector_offset(session),
 		.conversion_mode = session->presentation.sound.conversion_mode,
 		.cache = &session->team_cache,
@@ -11854,7 +11861,7 @@ team_audit(struct yt_session *session, float team_id, float event,
 		int32_t converted = qb_cint((double)team.roster[index],
 		    &overflow);
 		int unequal = team.roster[index]
-		    != (float)session->player_record ? -1 : 0;
+		    != (float)session_record(session) ? -1 : 0;
 
 		if (overflow) {
 			if (error != NULL) {
@@ -12038,7 +12045,7 @@ info_team_lines(struct yt_session *session, struct yt_team *resolved_team,
 		info_team_present,
 	};
 	struct yt_info_team_state state = {
-		.current_record = (float)session->player_record,
+		.current_record = (float)session_record(session),
 		.sector_offset = session_sector_offset(session),
 		.conversion_mode = session->presentation.sound.conversion_mode,
 	};
@@ -12270,8 +12277,8 @@ team_create(struct yt_session *session, struct yt_error *error)
 	    || !team_read_overlay(session, id, &team, error))
 		return false;
 	team.id = id;
-	team.captain = (float)session->player_record;
-	team.roster[0] = (float)session->player_record;
+	team.captain = (float)session_record(session);
+	team.roster[0] = (float)session_record(session);
 	team.roster[1] = 0.0f;
 	team.roster[2] = 0.0f;
 	team.roster[3] = 0.0f;
@@ -12393,7 +12400,7 @@ team_join(struct yt_session *session, struct yt_error *error)
 		return false;
 	for (index = 0; index < 4; ++index) {
 		if (team.roster[index] == 0.0f) {
-			team.roster[index] = (float)session->player_record;
+			team.roster[index] = (float)session_record(session);
 			break;
 		}
 	}
@@ -12445,7 +12452,7 @@ team_quit(struct yt_session *session, struct yt_team *team,
 	old_team = session->player.team;
 	persisted = session->player;
 	persisted.team = 0.0f;
-	if (!yt_game_write_player(&session->door->game, session->player_record,
+	if (!yt_game_write_player(&session->door->game, session_record(session),
 	    &persisted, error))
 		return false;
 	if (old_team != floorf(old_team) || old_team < 1.0f
@@ -12464,7 +12471,7 @@ team_quit(struct yt_session *session, struct yt_team *team,
 	if (!team_load(session, (int)old_team, team, error))
 		return false;
 	for (index = 0; index < 4; ++index) {
-		if (team->roster[index] == (float)session->player_record)
+		if (team->roster[index] == (float)session_record(session))
 			team->roster[index] = 0.0f;
 	}
 	if (!team_store_roster(session, team, error)
@@ -12524,7 +12531,7 @@ team_search(struct yt_session *session, struct yt_error *error)
 		    &player, error))
 			return false;
 		if (player.team != cached_team
-		    || player_record == session->player_record)
+		    || player_record == session_record(session))
 			continue;
 		if (qb_str_single(number, sizeof(number), player.sector) < 0)
 			return false;
@@ -12706,7 +12713,7 @@ team_transfer(struct yt_session *session, struct yt_error *error)
 			return false;
 		yt_team_transfer_apply_player(&session->player, amount);
 		if (!yt_database_write(&session->door->game.database,
-		    (size_t)session->player_record, &session->player.record, error))
+		    (size_t)session_record(session), &session->player.record, error))
 			return false;
 		return session_02db(session, success, sizeof(success) - 1U,
 		    "team transfer success", error);
@@ -12740,7 +12747,7 @@ team_banish(struct yt_session *session, struct yt_team *team,
 		int member_record;
 
 		if (team->roster[index] <= 0.0f
-		    || team->roster[index] == (float)session->player_record)
+		    || team->roster[index] == (float)session_record(session))
 			continue;
 		member_record = (int)team->roster[index];
 		if (!yt_game_read_player(&session->door->game,
@@ -13070,7 +13077,7 @@ port_rename_hydrate(void *context, int player_record,
 {
 	struct yt_session *session = context;
 
-	if (player_record != session->player_record
+	if (player_record != session_record(session)
 	    || !reload_player(session, error))
 		return false;
 	*player = session->player;
@@ -13138,7 +13145,7 @@ command_rename_port(struct yt_session *session, struct yt_error *error)
 		port_rename_edit,
 	};
 	struct yt_port_rename_state state = {
-		.current_player_record = (float)session->player_record,
+		.current_player_record = (float)session_record(session),
 		.port_offset = session_port_offset(session),
 		.conversion_mode =
 		    session->presentation.sound.conversion_mode,
@@ -13228,7 +13235,7 @@ port_purchase_accept_write_player(void *context, int player_record,
 {
 	struct yt_session *session = context;
 
-	if (player_record == session->player_record)
+	if (player_record == session_record(session))
 		session->player = *player;
 	return yt_database_write(&session->door->game.database,
 	    (size_t)player_record, &player->record, error);
@@ -13268,7 +13275,7 @@ port_purchase_accept_hydrate(void *context, int player_record,
 {
 	struct yt_session *session = context;
 
-	if (player_record != session->player_record
+	if (player_record != session_record(session)
 	    || !reload_player(session, error))
 		return false;
 	*player = session->player;
@@ -13281,7 +13288,7 @@ port_purchase_hydrate(void *context, int player_record,
 {
 	struct yt_session *session = context;
 
-	if (player_record != session->player_record
+	if (player_record != session_record(session)
 	    || !reload_player(session, error))
 		return false;
 	*player = session->player;
@@ -13420,7 +13427,7 @@ command_buy_port(struct yt_session *session, struct yt_error *error)
 	const uint8_t *first =
 	    (const uint8_t *)session->door->identity.real_first;
 	struct yt_port_purchase_state state = {
-		.current_player_record = session->player_record,
+		.current_player_record = session_record(session),
 		.port_offset = session_port_offset(session),
 		.conversion_mode =
 		    session->presentation.sound.conversion_mode,
@@ -13601,7 +13608,7 @@ command_collect(struct yt_session *session,
 		treasury_update_cache,
 	};
 	struct yt_treasury_state state = {
-		.current_player_record = (float)session->player_record,
+		.current_player_record = (float)session_record(session),
 		.port_offset = session_port_offset(session),
 		.planet_offset = session_planet_offset(session),
 		.conversion_mode = session->presentation.sound.conversion_mode,
@@ -13623,7 +13630,7 @@ genesis_hydrate(void *context, int player_record, struct yt_player *player,
 {
 	struct yt_session *session = context;
 
-	if (player_record != session->player_record
+	if (player_record != session_record(session)
 	    || !reload_player(session, error))
 		return false;
 	*player = session->player;
@@ -13770,7 +13777,7 @@ command_genesis(struct yt_session *session, struct yt_error *error)
 		return port_report_failure(error, "Genesis cached trader length");
 	memcpy(cached_trader, session->player.name, cached_trader_length);
 	state = (struct yt_genesis_state){
-		.current_player_record = session->player_record,
+		.current_player_record = session_record(session),
 		.required_ports = yt_route_process_single(&session->route_process,
 		    YT_GENESIS_REQUIRED_PORTS_ADDRESS),
 		.cached_trader = cached_trader,
@@ -13909,12 +13916,12 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 	if (!yt_planet_stored_name(&planet, planet_name, &planet_name_length,
 	    error))
 		return false;
-	if (planet.owner == (float)session->player_record)
+	if (planet.owner == (float)session_record(session))
 		friendly = true;
 	else if (planet.owner > 1.0f
 	    && planet.owner <= session_sector_offset(session)) {
 		if (!yt_friendship_resolve(planet.owner,
-		    (float)session->player_record,
+		    (float)session_record(session),
 		    session_sector_offset(session),
 		    friendship_read_player, &session->door->game, &friendly,
 		    error))
@@ -14275,7 +14282,7 @@ cruise_defense_friendship(void *context, float owner, bool *friendly,
 {
 	struct yt_session *session = context;
 
-	return yt_friendship_resolve(owner, (float)session->player_record,
+	return yt_friendship_resolve(owner, (float)session_record(session),
 	    session_sector_offset(session),
 	    friendship_read_player, &session->door->game, friendly, error);
 }
@@ -14445,7 +14452,7 @@ missile_sector(struct yt_session *session, int sector_number,
 	defense.sector = (float)sector_number;
 	defense.fighters = (double)sector.fighters;
 	defense.owner = sector.fighter_owner;
-	defense.shooter = session->player_record;
+	defense.shooter = session_record(session);
 	if (!yt_projectile_defense_front_run(&defense, &defense_ops, session,
 	    error))
 		return false;
@@ -14456,7 +14463,7 @@ missile_sector(struct yt_session *session, int sector_number,
 	combat.sector = (float)sector_number;
 	combat.fighters = (double)sector.fighters;
 	combat.owner = sector.fighter_owner;
-	combat.shooter = session->player_record;
+	combat.shooter = session_record(session);
 	combat.headquarters = session->door->game.config.headquarters;
 	combat.shooter_name = (const uint8_t *)session->player.name;
 	combat.shooter_name_length = strlen(session->player.name);
@@ -14497,7 +14504,7 @@ missile_mines:
 		char row[256];
 
 		enum yt_projectile_candidate_route candidate_route =
-		    yt_projectile_candidate_route(basic, session->player_record,
+		    yt_projectile_candidate_route(basic, session_record(session),
 		    session->sector_cache[basic], (float)sector_number,
 		    *remaining);
 
@@ -14510,7 +14517,7 @@ missile_mines:
 			bool ignored_friendship;
 
 			if (!yt_friendship_resolve((float)basic,
-			    (float)session->player_record,
+			    (float)session_record(session),
 			    session_sector_offset(session),
 			    friendship_read_player, &session->door->game,
 			    &ignored_friendship, error))
@@ -14601,14 +14608,14 @@ missile_mines:
 			    mines, error))
 				return false;
 			if (!kill_player(session, basic,
-			    (float)session->player_record, error))
+			    (float)session_record(session), error))
 				return false;
 			if (yt_projectile_salvage_admitted(*counterattack,
 			    *xannor_provoker)) {
 				if (!session_sound(session, 3.0f,
 				    "cruise missile salvage sound", error)
 				    || !salvage_player(session, basic,
-				    (float)session->player_record, error))
+				    (float)session_record(session), error))
 					return false;
 			}
 			switch (yt_projectile_death_continuation(*remaining,
@@ -14638,7 +14645,7 @@ missile_mines:
 				uint8_t counterattack_raw[4];
 
 				if (yt_projectile_survivor_store_counterattack(
-				    session->player_record, basic, counterattack,
+				    session_record(session), basic, counterattack,
 				    counterattack_raw))
 					session_store_counterattack_player(session,
 					    counterattack_raw);
@@ -14764,7 +14771,7 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
 	fighter.sector = (float)sector_number;
 	fighter.fighters = (double)sector.fighters;
 	fighter.owner = sector.fighter_owner;
-	fighter.shooter = session->player_record;
+	fighter.shooter = session_record(session);
 	fighter.headquarters = session->door->game.config.headquarters;
 	fighter.attacker = attacker;
 	fighter.attacker_length = launch_attacker_length;
@@ -14819,7 +14826,7 @@ plasma_reload_sector:
 
 			memset(&killed, 0, sizeof(killed));
 			killed.victim = basic;
-			killed.shooter = session->player_record;
+			killed.shooter = session_record(session);
 			killed.sector = sector_number;
 			killed.energy = energy;
 			killed.blink = &session->presentation.blink;
@@ -15309,7 +15316,7 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 
 		bool route_success = build_route_cells(session, cells,
 		    yt_projectile_route_avoid_enabled(plasma, *counterattack,
-		    session->player_record), &found, &route_outcome, &route_status,
+		    session_record(session)), &found, &route_outcome, &route_status,
 		    error);
 
 		projectile_route_cells_load(session, cells, origin_alias, target,
@@ -15327,7 +15334,7 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 				return false;
 			return true;
 		}
-		route_entry.shooter = session->player_record;
+		route_entry.shooter = session_record(session);
 		route_entry.maximum_player_record =
 		    session_sector_offset(session);
 		route_entry.start = (float)start;
@@ -15417,7 +15424,7 @@ session_projectile_resolver(void *context, float *origin, float *target,
     struct yt_error *error)
 {
 	struct yt_session *session = context;
-	const struct projectile_route_cells *cells = session->player_record == -1
+	const struct projectile_route_cells *cells = session_record(session) == -1
 	    ? &projectile_xannor_cells : &projectile_main_cells;
 	bool result;
 
@@ -15546,11 +15553,12 @@ launch_xannor_retaliation(struct yt_session *session, int *provoking_player,
 	uint8_t current_record_raw[4];
 
 	session_load_xannor_provoker(session, provoking_player);
+	session->player_record_carrier = session_record(session);
 	yt_route_process_raw_single(&session->route_process,
 	    YT_CURRENT_PLAYER_RECORD_ADDRESS, current_record_raw);
 	struct yt_xannor_retaliation_state state = {
 		&session->player,
-		&session->player_record,
+		&session->player_record_carrier,
 		session->sector_cache,
 		session->cloak_cache,
 		YT_ARRAY_LEN(session->sector_cache),
@@ -15658,11 +15666,12 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 	uint8_t current_record_raw[4];
 
 	session_load_counterattack_player(session, counterattacker);
+	session->player_record_carrier = session_record(session);
 	yt_route_process_raw_single(&session->route_process,
 	    YT_CURRENT_PLAYER_RECORD_ADDRESS, current_record_raw);
 	struct yt_counterlaunch_state state = {
 		&session->player,
-		&session->player_record,
+		&session->player_record_carrier,
 		session->sector_cache,
 		session->cloak_cache,
 		YT_ARRAY_LEN(session->sector_cache),
@@ -15683,7 +15692,7 @@ projectile_command_hydrate(void *context, int player_record,
 {
 	struct yt_session *session = context;
 
-	if (player_record != session->player_record
+	if (player_record != session_record(session)
 	    || !reload_player(session, error))
 		return false;
 	*player = session->player;
@@ -15837,7 +15846,7 @@ command_projectile(struct yt_session *session, bool plasma,
 	};
 	bool destroyed = session_is_destroyed(session);
 	struct yt_projectile_command_state state = {
-		.current_player_record = session->player_record,
+		.current_player_record = session_record(session),
 		.maximum_sector = (float)sector_count(session),
 		.plasma = plasma,
 		.displayed = plasma ? session->player.plasma
@@ -16108,7 +16117,7 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 			return false;
 		team_target = (struct yt_radio_team_target_state){
 			.raw_team_id = session->player.team,
-			.current_player_record = (float)session->player_record,
+			.current_player_record = (float)session_record(session),
 			.sector_record_offset =
 			    session_sector_offset(session),
 			.conversion_mode =
@@ -16339,7 +16348,7 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 	{
 		struct yt_radio_send_state state = {
 			.recipient_count = (size_t)recipient_count,
-			.sender = (float)session->player_record,
+			.sender = (float)session_record(session),
 			.sender_name = session->cached_player_name,
 			.sender_name_length = session->cached_player_name_length,
 			.line_count = (size_t)line_count,
@@ -16419,7 +16428,7 @@ computer_route(struct yt_session *session, bool autopilot,
 
 	session->navigation_field_active = true;
 	session->navigation_field_kind = NAVIGATION_FIELD_ENTRY_PLAYER;
-	session->navigation_field_record = session->player_record;
+	session->navigation_field_record = session_record(session);
 	session->navigation_field = session->player.record;
 
 	if (!autopilot) {
@@ -16611,7 +16620,7 @@ computer_route(struct yt_session *session, bool autopilot,
 	if (!reload_player(session, error))
 		return false;
 	session->navigation_field_kind = NAVIGATION_FIELD_INNER_PLAYER;
-	session->navigation_field_record = session->player_record;
+	session->navigation_field_record = session_record(session);
 	session->navigation_field = session->player.record;
 	if (hop_count > session->player.turns) {
 		if (!session_02db(session, insufficient,
@@ -16742,7 +16751,7 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 			    YT_TEXT_FIELD_SIZE, &name_length,
 			    "computer planet name length", error))
 				return false;
-			if ((float)session->player_record != planet.owner
+			if ((float)session_record(session) != planet.owner
 			    && planet.owner != 0.0f
 			    && planet.ground_forces != 0.0f
 			    && (sector.fighters == 0.0f
@@ -16784,7 +16793,7 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 		    || (sector.fighters > 0.0f && session->player.team > 0.0f
 		    && !last_friendly)
 		    || (sector.fighters > 0.0f && session->player.team == 0.0f
-		    && (float)session->player_record != sector.fighter_owner)) {
+		    && (float)session_record(session) != sector.fighter_owner)) {
 			if (!finalize_action(session, 1.0f, error))
 				return false;
 			return session_0317(session, unavailable,
@@ -16825,7 +16834,7 @@ computer_owned_fighters(struct yt_session *session, struct yt_error *error)
 		    &sector, error))
 			return false;
 		if (sector.fighters > 0.0f
-		    && sector.fighter_owner == (float)session->player_record) {
+		    && sector.fighter_owner == (float)session_record(session)) {
 			char number[64];
 
 			if (!found) {
@@ -16926,7 +16935,7 @@ computer_owned_planets(struct yt_session *session, struct yt_error *error)
 	struct yt_owned_planets_state state = {
 		.maximum_sector = sector_count(session),
 		.planet_record_base = session_planet_offset(session),
-		.current_player = (float)session->player_record,
+		.current_player = (float)session_record(session),
 		.blink = session->presentation.blink,
 	};
 
@@ -16943,15 +16952,15 @@ computer_port_friendship(struct yt_session *session, float owner,
 	*friendly = false;
 	if (owner < 2.0f
 	    || owner > session_sector_offset(session)
-	    || (float)session->player_record < 2.0f
-	    || (float)session->player_record
+	    || (float)session_record(session) < 2.0f
+	    || (float)session_record(session)
 	    > session_sector_offset(session))
 		return true;
-	if (owner == (float)session->player_record) {
+	if (owner == (float)session_record(session)) {
 		*friendly = true;
 		return true;
 	}
-	if (!read_player_at_fault(session, session->player_record, &current,
+	if (!read_player_at_fault(session, session_record(session), &current,
 	    YT_BASIC_FAULT_PORT_FRIENDSHIP_CURRENT_GET, error))
 		return false;
 	if (current.team == 0.0f)
@@ -17066,7 +17075,7 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 		visibility.fighter_count = sector.fighters;
 		visibility.fighter_owner = sector.fighter_owner;
 		visibility.cached_current_team = cached_team;
-		visibility.current_player_record = (float)session->player_record;
+		visibility.current_player_record = (float)session_record(session);
 		visibility.last_player_record =
 		    session_sector_offset(session);
 		visibility.planet_record_offset =
@@ -17629,15 +17638,15 @@ computer_nearest_ports(struct yt_session *session, struct yt_error *error)
 				accepted = true;
 			else if (filter == 5)
 				accepted = port.owner > 0.0f
-				    && port.owner != (float)session->player_record
+				    && port.owner != (float)session_record(session)
 				    && member;
 			else if (filter == 6)
 				accepted = port.owner
-				    == (float)session->player_record;
+				    == (float)session_record(session);
 			else if (filter == 7)
 				accepted = port.owner > 0.0f
 				    && port.owner
-				    != (float)session->player_record
+				    != (float)session_record(session)
 				    && (session->player.team == 0.0f
 				    || (session->player.team > 0.0f && !member));
 			else if (filter == 8)
@@ -17781,7 +17790,7 @@ computer_nearest_ports(struct yt_session *session, struct yt_error *error)
 					if (name_length > 26U)
 						name_length = 26U;
 					if (port.owner
-					    == (float)session->player_record) {
+					    == (float)session_record(session)) {
 						session->pager.foreground = 5;
 						session->presentation.foreground = 5.0f;
 					}
@@ -18428,7 +18437,7 @@ computer_menu_prompt_hydrate(void *context, int player_record,
 {
 	struct yt_session *session = context;
 
-	if (player_record != session->player_record
+	if (player_record != session_record(session)
 	    || !computer_prompt_hydrate(session, error))
 		return false;
 	*player = session->player;
@@ -18481,7 +18490,7 @@ computer_menu(struct yt_session *session, bool *enter_sector,
 	for (;;) {
 		char command[80];
 		struct yt_computer_prompt_state prompt = {
-			.current_player_record = session->player_record,
+			.current_player_record = session_record(session),
 			.time_text = (const uint8_t *)session->time.text,
 			.time_text_length = session->time.text_length,
 			.time_text_capacity = sizeof(session->time.text),
@@ -18846,7 +18855,7 @@ main_prompt_hydrate(void *context, int player_record,
 {
 	struct yt_session *session = context;
 
-	if (player_record != session->player_record
+	if (player_record != session_record(session)
 	    || !reload_player(session, error))
 		return false;
 	*player = session->player;
@@ -18898,7 +18907,7 @@ command_shell(struct yt_session *session, struct yt_error *error)
 	while (session->running && !session_is_destroyed(session)) {
 		char command[YT_COMMAND_SIZE];
 		struct yt_main_prompt_state prompt = {
-			.current_player_record = session->player_record,
+			.current_player_record = session_record(session),
 			.time_text = (const uint8_t *)session->time.text,
 			.time_text_length = session->time.text_length,
 			.time_text_capacity = sizeof(session->time.text),
@@ -19154,8 +19163,8 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 		return session.terminated;
 	if (!session.running)
 		return true;
-	session.sector_cache[session.player_record] = session.player.sector;
-	session.cloak_cache[session.player_record] = session.player.cloak;
+	session.sector_cache[session_record(&session)] = session.player.sector;
+	session.cloak_cache[session_record(&session)] = session.player.cloak;
 	if (!post_login(&session, error)
 	    || !sector_entry(&session, yt_route_process_single(
 	    &session.route_process, YT_POST_LOGIN_SCANNER_MODE_ADDRESS), error))
