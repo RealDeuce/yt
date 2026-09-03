@@ -27,6 +27,7 @@
 #define YT_COMMAND_SIZE 4096U
 #define YT_CURRENT_WARPS_ADDRESS 0x1898U
 #define YT_COMPUTER_ROUTE_STATUS_ADDRESS 0x4CF2U
+#define YT_ATTACK_COMMITMENT_ADDRESS 0x4D1AU
 #define YT_COMPUTER_PATH_MARKER_ADDRESS 0x4D62U
 #define YT_COMPUTER_ROUTE_DESTINATION_ADDRESS 0x4E12U
 #define YT_COMPUTER_ROUTE_START_ADDRESS 0x4E1AU
@@ -84,8 +85,6 @@ struct yt_session {
 	float current_sector_record;
 	float shared_loop_scratch;
 	float planet_record_scratch;
-	float attack_commitment;
-	uint8_t attack_commitment_raw[4];
 	bool anti_cloak;
 	int spies[3];
 	int spy_marker[3];
@@ -6282,6 +6281,8 @@ attack_deployed(struct yt_session *session, struct yt_sector *sector,
 	struct qb_val_result parsed;
 	enum qb_mbf_status status;
 	enum yt_hostile_attack_admission admission;
+	float commitment;
+	uint8_t commitment_raw[4];
 
 	if (!session_02fc(session, heading, sizeof(heading) - 1U))
 		return false;
@@ -6307,9 +6308,8 @@ attack_deployed(struct yt_session *session, struct yt_sector *sector,
 		}
 		return false;
 	}
-	session->attack_commitment = (float)parsed.value;
-	status = qb_mbf32_encode(session->attack_commitment,
-	    session->attack_commitment_raw);
+	commitment = (float)parsed.value;
+	status = qb_mbf32_encode(commitment, commitment_raw);
 	if (status == QB_MBF_OVERFLOW) {
 		if (error != NULL) {
 			error->status = YT_RANGE;
@@ -6318,10 +6318,12 @@ attack_deployed(struct yt_session *session, struct yt_sector *sector,
 		}
 		return false;
 	}
-	session->attack_commitment = qb_mbf32_decode(
-	    session->attack_commitment_raw);
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_ATTACK_COMMITMENT_ADDRESS, commitment_raw);
+	commitment = yt_route_process_single(&session->route_process,
+	    YT_ATTACK_COMMITMENT_ADDRESS);
 	admission = yt_hostile_attack_admit(session->player.fighters,
-	    session->attack_commitment);
+	    commitment);
 	if (admission == YT_HOSTILE_ATTACK_TOO_MANY) {
 		if (qb_str_double(available, sizeof(available),
 		    (double)session->player.fighters) < 0
@@ -6333,7 +6335,7 @@ attack_deployed(struct yt_session *session, struct yt_sector *sector,
 	if (admission == YT_HOSTILE_ATTACK_LESS_THAN_ONE)
 		return true;
 	return attack_deployed_committed(session, sector,
-	    (double)session->attack_commitment, true, error);
+	    (double)commitment, true, error);
 }
 
 static bool
@@ -6521,11 +6523,9 @@ bribe_deployed(struct yt_session *session, struct yt_sector *sector,
 	memcpy(state.mercenaries_hurt_raw, session->mercenaries_hurt_raw,
 	    sizeof(state.mercenaries_hurt_raw));
 	result = yt_hostile_bribe_run(&state, &ops, &context, error);
-	if (state.commitment_stored) {
-		session->attack_commitment = state.commitment;
-		memcpy(session->attack_commitment_raw, state.commitment_raw,
-		    sizeof(session->attack_commitment_raw));
-	}
+	if (state.commitment_stored)
+		yt_route_process_set_raw_single(&session->route_process,
+		    YT_ATTACK_COMMITMENT_ADDRESS, state.commitment_raw);
 	*direct_hostile_menu = state.direct_hostile_menu;
 	*forced_attack = state.forced_attack;
 	return result;
