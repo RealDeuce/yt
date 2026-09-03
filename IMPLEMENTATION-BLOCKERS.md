@@ -8,6 +8,40 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
+### DOC-GAP-015: zero-Headquarters repair literal conflict
+
+Affected coverage:
+
+- startup configuration hydration/validation at `YT-SUB:BE82..BEA0`;
+- authoritative binding of process-global Headquarters cell `DS:4BD8`; and
+- every later main-session consumer of the repaired Headquarters value.
+
+The completed prose and generated raw model disagree about the value copied
+when configuration offset 117 is numeric zero. The following sources say the
+repair value is 85:
+
+- `docs/runtime/startup-config-hydration.md`;
+- `docs/runtime/startup-login.md`;
+- `docs/gameplay/daily-maintenance.md`;
+- `docs/runtime/initialization.md`;
+- `docs/runtime/configuration-editor.md`;
+- traversal row 10 and `ytstartup-config-hydration.static.txt`; and
+- the existing typed C model and fixtures.
+
+However, `tools/ytstartup_config_hydration.py::repair_zero_headquarters_raw`
+installs literal bytes `00 40 37 8A` in both record offset 117 and
+`DS:4BD8`, and `tests/test_ytstartup_config_hydration.py` explicitly asserts
+those bytes. They decode as MBF32 733, not 85. The model's docstring also
+says it is applying the `BE82` repair and stops before the physical PUT, so
+this is not merely an unrelated shipped nonzero fixture value.
+
+Implementation cannot make `DS:4BD8` authoritative without choosing which
+of these mutually exclusive values and failure prefixes are correct. The
+uncommitted Headquarters migration was reverted. Upstream documentation,
+the canonical raw model, generated evidence, and regression test must be
+reconciled before this boundary can proceed. No binary inspection or new
+reverse engineering was performed.
+
 ### DOC-GAP-014: command-6 dependency failure projections
 
 Affected coverage:
