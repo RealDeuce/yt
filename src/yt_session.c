@@ -74,6 +74,7 @@
 #define YT_LOCKOUT_WAIT_ADDRESS 0x5B9EU
 #define YT_NORMAL_EXIT_REMINDER_WAIT_ADDRESS 0x4CAAU
 #define YT_COUNTERLAUNCH_COUNT_ADDRESS 0x5BC6U
+#define YT_COUNTERLAUNCH_WAIT_ADDRESS 0x5BDAU
 #define YT_SPY_DESTINATION_SCRATCH_ADDRESS 0x5FE4U
 #define YT_SPY_FOUND_SCRATCH_ADDRESS 0x5FE8U
 #define YT_SPY_DEAD_COUNTER_SCRATCH_ADDRESS 0x6018U
@@ -15401,10 +15402,11 @@ session_counterlaunch_projectile(void *context, float *origin, float *target,
 }
 
 static bool
-session_counterlaunch_wait(void *context, double seconds,
+session_counterlaunch_wait(void *context, const uint8_t duration_raw[4],
     struct yt_error *error)
 {
-	return session_wait(context, seconds, "player counterattack wait", error);
+	return session_wait_raw_at(context, duration_raw,
+	    YT_COUNTERLAUNCH_WAIT_ADDRESS, "player counterattack wait", error);
 }
 
 static void

@@ -8803,6 +8803,7 @@ struct counterlaunch_tape {
 	bool child_valid;
 	bool mutate_child;
 	double wait_seconds;
+	uint8_t wait_duration_raw[4];
 	uint8_t count_raw[4][4];
 	size_t count_store_count;
 	uint8_t destroyed_raw[4];
@@ -8942,12 +8943,15 @@ counterlaunch_projectile(void *context, float *origin, float *target,
 }
 
 static bool
-counterlaunch_wait(void *context, double seconds, struct yt_error *error)
+counterlaunch_wait(void *context, const uint8_t duration_raw[4],
+    struct yt_error *error)
 {
 	struct counterlaunch_tape *tape = context;
 
 	(void)error;
-	tape->wait_seconds = seconds;
+	memcpy(tape->wait_duration_raw, duration_raw,
+	    sizeof(tape->wait_duration_raw));
+	tape->wait_seconds = qb_mbf32_decode(duration_raw);
 	return counterlaunch_tape_step(tape, COUNTERLAUNCH_WAIT);
 }
 
@@ -9030,6 +9034,7 @@ counterlaunch_fixture(struct counterlaunch_tape *tape,
 static bool
 check_counterlaunch_model(void)
 {
+	static const uint8_t duration_four[4] = {0x00, 0x00, 0x00, 0x83};
 	static const struct yt_counterlaunch_ops ops = {
 		counterlaunch_read_player,
 		counterlaunch_random,
@@ -9122,6 +9127,8 @@ check_counterlaunch_model(void)
 	    || cloak_cache[2] != 0.75f || sector_cache[2] != 0.0f
 	    || !destroyed || retained != 4.0f || counterattacker != 0
 	    || xannor != 11 || tape.wait_seconds != 4.0
+	    || memcmp(tape.wait_duration_raw, duration_four,
+	    sizeof(duration_four)) != 0
 	    || tape.destroyed_store_count != 1U
 	    || tape.destroyed_store_position != 9U
 	    || memcmp(tape.destroyed_raw,
@@ -9155,6 +9162,13 @@ check_counterlaunch_model(void)
 		if (yt_counterlaunch_run(&state, &ops, &tape, NULL)
 		    || tape.event_count != (size_t)failure
 		    || tape.events[tape.event_count - 1U] != failure)
+			return false;
+		if ((failure < COUNTERLAUNCH_WAIT
+		    && memcmp(tape.wait_duration_raw,
+		    (const uint8_t[4]){0, 0, 0, 0}, 4U) != 0)
+		    || (failure == COUNTERLAUNCH_WAIT
+		    && memcmp(tape.wait_duration_raw, duration_four,
+		    sizeof(duration_four)) != 0))
 			return false;
 		if (failure == COUNTERLAUNCH_FIRST_GET
 		    && (player_record != 2 || counterattacker != 3

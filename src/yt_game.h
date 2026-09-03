@@ -1643,8 +1643,8 @@ typedef bool (*yt_counterlaunch_news_fn)(void *context, const uint8_t *text,
 typedef bool (*yt_counterlaunch_projectile_fn)(void *context, float *origin,
     float *target, float *amount, bool plasma, int *counterattack,
     int *xannor_provoker, struct yt_error *error);
-typedef bool (*yt_counterlaunch_wait_fn)(void *context, double seconds,
-    struct yt_error *error);
+typedef bool (*yt_counterlaunch_wait_fn)(void *context,
+    const uint8_t duration_raw[4], struct yt_error *error);
 typedef void (*yt_counterlaunch_count_store_fn)(void *context,
     const uint8_t raw[4]);
 

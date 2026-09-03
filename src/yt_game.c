@@ -2140,6 +2140,7 @@ yt_counterlaunch_run(struct yt_counterlaunch_state *state,
     const struct yt_counterlaunch_ops *ops, void *context,
     struct yt_error *error)
 {
+	static const uint8_t duration_four[4] = {0x00, 0x00, 0x00, 0x83};
 	struct yt_player saved_player;
 	struct yt_player attacker;
 	struct yt_player debit_player;
@@ -2270,7 +2271,7 @@ yt_counterlaunch_run(struct yt_counterlaunch_state *state,
 		    && state->sector_cache != NULL)
 			state->sector_cache[saved_record] = 0.0f;
 	}
-	return ops->wait(context, 4.0, error);
+	return ops->wait(context, duration_four, error);
 }
 
 static float
