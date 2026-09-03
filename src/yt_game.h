@@ -3827,6 +3827,12 @@ typedef bool (*yt_hostile_bribe_combat_fn)(void *context,
     double commitment, struct yt_error *error);
 typedef bool (*yt_hostile_bribe_fatal_fn)(void *context,
     struct yt_error *error);
+enum yt_hostile_bribe_store_kind {
+	YT_HOSTILE_BRIBE_STORE_OFFER,
+	YT_HOSTILE_BRIBE_STORE_COMMITMENT,
+};
+typedef void (*yt_hostile_bribe_store_fn)(void *context,
+	enum yt_hostile_bribe_store_kind kind, const uint8_t raw[4]);
 
 struct yt_hostile_bribe_ops {
 	yt_hostile_bribe_present_fn present;
@@ -3835,6 +3841,7 @@ struct yt_hostile_bribe_ops {
 	yt_hostile_bribe_accept_fn accept;
 	yt_hostile_bribe_combat_fn combat;
 	yt_hostile_bribe_fatal_fn fatal;
+	yt_hostile_bribe_store_fn store;
 };
 
 bool yt_hostile_bribe_run(struct yt_hostile_bribe_state *state,

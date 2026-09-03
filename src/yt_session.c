@@ -6485,6 +6485,18 @@ hostile_bribe_fatal(void *context, struct yt_error *error)
 	return common_fatal_self(bribe->session, error);
 }
 
+static void
+hostile_bribe_store(void *context, enum yt_hostile_bribe_store_kind kind,
+    const uint8_t raw[4])
+{
+	struct hostile_bribe_context *bribe = context;
+	uint16_t address = kind == YT_HOSTILE_BRIBE_STORE_OFFER
+	    ? YT_COMPUTER_PATH_MARKER_ADDRESS : YT_ATTACK_COMMITMENT_ADDRESS;
+
+	yt_route_process_set_raw_single(&bribe->session->route_process, address,
+	    raw);
+}
+
 static bool
 bribe_deployed(struct yt_session *session, struct yt_sector *sector,
     bool *direct_hostile_menu, bool *forced_attack,
@@ -6497,6 +6509,7 @@ bribe_deployed(struct yt_session *session, struct yt_sector *sector,
 		hostile_bribe_accept,
 		hostile_bribe_combat,
 		hostile_bribe_fatal,
+		hostile_bribe_store,
 	};
 	struct hostile_bribe_context context;
 	struct yt_hostile_bribe_state state;
@@ -6523,9 +6536,6 @@ bribe_deployed(struct yt_session *session, struct yt_sector *sector,
 	memcpy(state.mercenaries_hurt_raw, session->mercenaries_hurt_raw,
 	    sizeof(state.mercenaries_hurt_raw));
 	result = yt_hostile_bribe_run(&state, &ops, &context, error);
-	if (state.commitment_stored)
-		yt_route_process_set_raw_single(&session->route_process,
-		    YT_ATTACK_COMMITMENT_ADDRESS, state.commitment_raw);
 	*direct_hostile_menu = state.direct_hostile_menu;
 	*forced_attack = state.forced_attack;
 	return result;

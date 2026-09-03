@@ -14057,6 +14057,9 @@ hostile_bribe_force_run(struct yt_hostile_bribe_state *state,
 	}
 	state->commitment = qb_mbf32_decode(state->commitment_raw);
 	state->commitment_stored = true;
+	if (ops->store != NULL)
+		ops->store(context, YT_HOSTILE_BRIBE_STORE_COMMITMENT,
+		    state->commitment_raw);
 	switch (yt_bribe_forced_admit(state->ship_fighters, state->shields,
 	    mercenary_fatal_gate, state->commitment)) {
 	case YT_BRIBE_FORCED_FATAL:
@@ -14263,6 +14266,9 @@ yt_hostile_bribe_run(struct yt_hostile_bribe_state *state,
 	}
 	state->offer = qb_mbf32_decode(state->offer_raw);
 	state->offer_stored = true;
+	if (ops->store != NULL)
+		ops->store(context, YT_HOSTILE_BRIBE_STORE_OFFER,
+		    state->offer_raw);
 	state->above_credits = (double)state->offer > state->credits;
 	if (!ops->random(context, &state->draws[2], error))
 		return false;
