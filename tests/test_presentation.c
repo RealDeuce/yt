@@ -3968,6 +3968,7 @@ test_basic_fault_registry(void)
 	for (index = 0U; index < YT_ARRAY_LEN(expected); ++index) {
 		const struct yt_basic_fault_identity *identity =
 		    yt_basic_fault_identity((enum yt_basic_fault_site)index);
+		unsigned error_number;
 
 		CHECK(identity != NULL && identity->name != NULL
 		    && identity->module == expected[index].module
@@ -3996,6 +3997,63 @@ test_basic_fault_registry(void)
 			    && (yt_basic_fault_admits(
 			    (enum yt_basic_fault_site)index, 61U)
 			    == (expected[index].domain == 1U)));
+		}
+		for (error_number = 0U; error_number <= UINT8_MAX;
+		    ++error_number) {
+			static const uint8_t get_errors[] = {
+				5U, 52U, 57U, 63U, 70U, 75U,
+			};
+			static const uint8_t put_errors[] = {
+				5U, 52U, 57U, 61U, 63U, 70U, 75U,
+			};
+			struct yt_basic_fault_projection projection;
+			const uint8_t *domain = expected[index].domain == 1U
+			    ? put_errors : expected[index].domain == 2U
+			    ? (const uint8_t[]){6U} : get_errors;
+			size_t domain_length = expected[index].domain == 1U
+			    ? YT_ARRAY_LEN(put_errors) : expected[index].domain == 2U
+			    ? 1U : YT_ARRAY_LEN(get_errors);
+			bool admitted = false;
+			size_t error_index;
+
+			for (error_index = 0U; error_index < domain_length;
+			    ++error_index)
+				if (domain[error_index] == error_number)
+					admitted = true;
+			CHECK(yt_basic_fault_admits(
+			    (enum yt_basic_fault_site)index,
+			    (uint8_t)error_number) == admitted);
+			if (!admitted)
+				continue;
+			yt_error_clear(&error);
+			CHECK(yt_error_attach_basic_fault_number(&error,
+			    (enum yt_basic_fault_site)index,
+			    (uint16_t)error_number));
+			CHECK(yt_basic_fault_project(&error, NULL, 0U, NULL, 0U,
+			    NULL, 0U, &projection));
+			CHECK(projection.identity == identity
+			    && projection.error_number == error_number);
+			if (identity->module == YT_BASIC_FAULT_SHARED) {
+				CHECK(projection.disposition == YT_BASIC_FAULT_END
+				    && projection.shared.ends);
+			}
+			else if (error_number == 57U) {
+				CHECK(projection.disposition
+				    == YT_BASIC_FAULT_RETRY_STATEMENT
+				    && projection.main.route
+				    == YT_MAIN_ERROR_RETRY_CURRENT);
+			}
+			else if (error_number == 5U || error_number == 6U
+			    || error_number == 13U || error_number == 15U) {
+				CHECK(projection.disposition
+				    == YT_BASIC_FAULT_RESUME_GAMEPLAY
+				    && projection.main.route
+				    == YT_MAIN_ERROR_GAMEPLAY);
+			}
+			else {
+				CHECK(projection.disposition == YT_BASIC_FAULT_END
+				    && projection.main.route == YT_MAIN_ERROR_FATAL);
+			}
 		}
 	}
 	CHECK(yt_basic_fault_identity(YT_BASIC_FAULT_SITE_COUNT) == NULL
