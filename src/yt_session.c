@@ -83,8 +83,6 @@ struct yt_session {
 	float current_sector_record;
 	float earth_report_seen;
 	uint8_t earth_report_seen_raw[4];
-	float phase_scratch;
-	uint8_t phase_scratch_raw[4];
 	float shared_loop_scratch;
 	float planet_record_scratch;
 	float attack_commitment;
@@ -16309,9 +16307,8 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 		visibility_ok = yt_computer_port_visibility_run(&visibility,
 		    computer_port_visibility_read_player, &visibility_context,
 		    error);
-		session->phase_scratch = visibility.marker_4d62;
-		memcpy(session->phase_scratch_raw, visibility.marker_4d62_raw,
-		    sizeof(session->phase_scratch_raw));
+		yt_route_process_set_raw_single(&session->route_process,
+		    YT_COMPUTER_PATH_MARKER_ADDRESS, visibility.marker_4d62_raw);
 		yt_route_process_set_raw_single(&session->route_process,
 		    YT_COMPUTER_ROUTE_STATUS_ADDRESS, visibility.relation_raw);
 		if (visibility.scratch_written)
