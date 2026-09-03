@@ -1037,46 +1037,266 @@ yt_sysop_f5_compose(bool same_f5_make, struct yt_sysop_f5_result *result)
 	return true;
 }
 
+static const enum yt_sysop_key sysop_keys[YT_SYSOP_KEY_COUNT] = {
+	YT_SYSOP_KEY_F4, YT_SYSOP_KEY_F5, YT_SYSOP_KEY_F8,
+	YT_SYSOP_KEY_F9, YT_SYSOP_KEY_F10,
+};
+
+static const uint16_t sysop_key_addresses[YT_SYSOP_KEY_COUNT] = {
+	0x11AAU, 0x11AFU, 0x11BEU, 0x11C3U, 0x11C8U,
+};
+
+static const uint16_t sysop_key_targets[YT_SYSOP_KEY_COUNT] = {
+	0xA9E1U, 0xBA00U, 0xB6D7U, 0xB66AU, 0xB3FBU,
+};
+
 static size_t
 sysop_key_index(enum yt_sysop_key key)
 {
-	static const enum yt_sysop_key keys[YT_SYSOP_KEY_COUNT] = {
-		YT_SYSOP_KEY_F4, YT_SYSOP_KEY_F5, YT_SYSOP_KEY_F8,
-		YT_SYSOP_KEY_F9, YT_SYSOP_KEY_F10,
-	};
 	size_t index;
 
-	for (index = 0U; index < YT_ARRAY_LEN(keys); ++index)
-		if (keys[index] == key)
+	for (index = 0U; index < YT_ARRAY_LEN(sysop_keys); ++index)
+		if (sysop_keys[index] == key)
 			return index;
 	return YT_SYSOP_KEY_COUNT;
+}
+
+#define SYSOP_KEYBOARD_TABLE 0x01C6U
+#define SYSOP_KEYBOARD_INSTALLED 0x0E31U
+#define SYSOP_KEY_PENDING_COUNT 0x118AU
+#define SYSOP_KEY_FIFO_CONTROL 0x1254U
+#define SYSOP_KEY_FIFO_BASE 0x1260U
+#define SYSOP_KEY_FIFO_END 0x12B0U
+#define SYSOP_KEY_FIFO_CAPACITY 0x0050U
+
+static uint16_t
+sysop_key_process_word(const uint8_t *process, uint16_t address)
+{
+	return (uint16_t)(process[address]
+	    | (uint16_t)process[(uint16_t)(address + 1U)] << 8);
+}
+
+static void
+sysop_key_process_set_word(uint8_t *process, uint16_t address,
+    uint16_t value)
+{
+	process[address] = (uint8_t)value;
+	process[(uint16_t)(address + 1U)] = (uint8_t)(value >> 8);
+}
+
+static uint16_t
+sysop_key_ring_next(uint16_t cursor)
+{
+	return cursor + 1U == SYSOP_KEY_FIFO_END
+	    ? SYSOP_KEY_FIFO_BASE : (uint16_t)(cursor + 1U);
+}
+
+static bool
+sysop_key_raw_matches(const struct yt_sysop_key_scheduler *scheduler)
+{
+	const uint8_t *process;
+	uint16_t cursor;
+	size_t count;
+	size_t index;
+
+	if (scheduler->fifo_position > scheduler->fifo_length
+	    || scheduler->fifo_length > YT_SYSOP_KEY_COUNT
+	    || scheduler->frame_depth > YT_SYSOP_KEY_COUNT)
+		return false;
+	for (index = 0U; index < YT_SYSOP_KEY_COUNT; ++index)
+		if (scheduler->records[index].key != sysop_keys[index]
+		    || scheduler->records[index].address
+		    != sysop_key_addresses[index]
+		    || scheduler->records[index].target
+		    != sysop_key_targets[index])
+			return false;
+	if (scheduler->process == NULL)
+		return true;
+	process = scheduler->process;
+	if (process[SYSOP_KEYBOARD_INSTALLED] != 1U
+	    || process[SYSOP_KEY_PENDING_COUNT]
+	    != scheduler->fifo_length - scheduler->fifo_position
+	    || sysop_key_process_word(process, SYSOP_KEY_FIFO_CONTROL + 4U)
+	    != SYSOP_KEY_FIFO_BASE
+	    || sysop_key_process_word(process, SYSOP_KEY_FIFO_CONTROL + 6U)
+	    != SYSOP_KEY_FIFO_END
+	    || sysop_key_process_word(process, SYSOP_KEY_FIFO_CONTROL + 8U)
+	    != SYSOP_KEY_FIFO_CAPACITY
+	    || sysop_key_process_word(process, SYSOP_KEY_FIFO_CONTROL + 10U)
+	    != 2U * (scheduler->fifo_length - scheduler->fifo_position))
+		return false;
+	cursor = sysop_key_process_word(process, SYSOP_KEY_FIFO_CONTROL + 2U);
+	if (cursor < SYSOP_KEY_FIFO_BASE || cursor >= SYSOP_KEY_FIFO_END)
+		return false;
+	count = scheduler->fifo_length - scheduler->fifo_position;
+	for (index = 0U; index < count; ++index) {
+		const struct yt_sysop_key_record *record;
+		size_t record_index = scheduler->fifo[
+		    scheduler->fifo_position + index];
+
+		if (record_index >= YT_SYSOP_KEY_COUNT)
+			return false;
+		record = &scheduler->records[record_index];
+		if (process[cursor] != (uint8_t)(record->address >> 8))
+			return false;
+		cursor = sysop_key_ring_next(cursor);
+		if (process[cursor] != (uint8_t)record->address)
+			return false;
+		cursor = sysop_key_ring_next(cursor);
+	}
+	if (cursor != sysop_key_process_word(process,
+	    SYSOP_KEY_FIFO_CONTROL))
+		return false;
+	for (index = 0U; index < YT_SYSOP_KEY_COUNT; ++index) {
+		const struct yt_sysop_key_record *record =
+		    &scheduler->records[index];
+		uint16_t keyboard = (uint16_t)(SYSOP_KEYBOARD_TABLE
+		    + (uint16_t)record->key);
+
+		if (process[keyboard] != record->keyboard_state
+		    || process[record->address] != record->event_state
+		    || sysop_key_process_word(process, record->address + 1U)
+		    != record->target
+		    || sysop_key_process_word(process, record->address + 3U)
+		    != record->target_segment)
+			return false;
+	}
+	return true;
+}
+
+static bool
+sysop_key_raw_append(struct yt_sysop_key_scheduler *scheduler, uint8_t value)
+{
+	uint8_t *process = scheduler->process;
+	uint16_t count;
+	uint16_t cursor;
+	uint16_t next;
+
+	if (process == NULL)
+		return true;
+	cursor = sysop_key_process_word(process, SYSOP_KEY_FIFO_CONTROL);
+	if (cursor < SYSOP_KEY_FIFO_BASE || cursor >= SYSOP_KEY_FIFO_END)
+		return false;
+	process[cursor] = value;
+	next = sysop_key_ring_next(cursor);
+	if (next == sysop_key_process_word(process,
+	    SYSOP_KEY_FIFO_CONTROL + 2U))
+		return false;
+	count = sysop_key_process_word(process, SYSOP_KEY_FIFO_CONTROL + 10U);
+	sysop_key_process_set_word(process, SYSOP_KEY_FIFO_CONTROL, next);
+	sysop_key_process_set_word(process, SYSOP_KEY_FIFO_CONTROL + 10U,
+	    (uint16_t)(count + 1U));
+	return true;
+}
+
+static bool
+sysop_key_raw_enqueue(struct yt_sysop_key_scheduler *scheduler, size_t index)
+{
+	struct yt_sysop_key_record *record = &scheduler->records[index];
+
+	if (scheduler->process == NULL)
+		return true;
+	if (!sysop_key_raw_append(scheduler, (uint8_t)(record->address >> 8)))
+		return false;
+	if (!sysop_key_raw_append(scheduler, (uint8_t)record->address))
+		return false;
+	++scheduler->process[SYSOP_KEY_PENDING_COUNT];
+	return true;
+}
+
+static bool
+sysop_key_raw_dequeue(struct yt_sysop_key_scheduler *scheduler, size_t index)
+{
+	struct yt_sysop_key_record *record = &scheduler->records[index];
+	uint8_t *process = scheduler->process;
+	uint16_t count;
+	uint16_t cursor;
+
+	if (process == NULL)
+		return true;
+	count = sysop_key_process_word(process, SYSOP_KEY_FIFO_CONTROL + 10U);
+	cursor = sysop_key_process_word(process, SYSOP_KEY_FIFO_CONTROL + 2U);
+	if (count < 2U || process[cursor] != (uint8_t)(record->address >> 8))
+		return false;
+	cursor = sysop_key_ring_next(cursor);
+	if (process[cursor] != (uint8_t)record->address)
+		return false;
+	cursor = sysop_key_ring_next(cursor);
+	sysop_key_process_set_word(process, SYSOP_KEY_FIFO_CONTROL + 2U,
+	    cursor);
+	sysop_key_process_set_word(process, SYSOP_KEY_FIFO_CONTROL + 10U,
+	    (uint16_t)(count - 2U));
+	--process[SYSOP_KEY_PENDING_COUNT];
+	return true;
 }
 
 void
 yt_sysop_key_scheduler_init(struct yt_sysop_key_scheduler *scheduler)
 {
-	static const enum yt_sysop_key keys[YT_SYSOP_KEY_COUNT] = {
-		YT_SYSOP_KEY_F4, YT_SYSOP_KEY_F5, YT_SYSOP_KEY_F8,
-		YT_SYSOP_KEY_F9, YT_SYSOP_KEY_F10,
-	};
-	static const uint16_t addresses[YT_SYSOP_KEY_COUNT] = {
-		0x11AAU, 0x11AFU, 0x11BEU, 0x11C3U, 0x11C8U,
-	};
-	static const uint16_t targets[YT_SYSOP_KEY_COUNT] = {
-		0xA9E1U, 0xBA00U, 0xB6D7U, 0xB66AU, 0xB3FBU,
-	};
 	size_t index;
 
 	if (scheduler == NULL)
 		return;
 	memset(scheduler, 0, sizeof(*scheduler));
 	for (index = 0U; index < YT_SYSOP_KEY_COUNT; ++index) {
-		scheduler->records[index].key = keys[index];
-		scheduler->records[index].address = addresses[index];
-		scheduler->records[index].target = targets[index];
+		scheduler->records[index].key = sysop_keys[index];
+		scheduler->records[index].address = sysop_key_addresses[index];
+		scheduler->records[index].target = sysop_key_targets[index];
 		scheduler->records[index].keyboard_state = 0x06U;
 		scheduler->records[index].event_state = 0x01U;
 	}
+}
+
+bool
+yt_sysop_key_scheduler_bind_process(struct yt_sysop_key_scheduler *scheduler,
+    uint8_t *process, size_t process_size, uint16_t target_segment)
+{
+	size_t index;
+
+	if (scheduler == NULL || process == NULL
+	    || process_size != YT_SYSOP_KEY_PROCESS_SIZE
+	    || scheduler->process != NULL || scheduler->fifo_position != 0U
+	    || scheduler->fifo_length != 0U || scheduler->frame_depth != 0U)
+		return false;
+	for (index = 0U; index < YT_SYSOP_KEY_COUNT; ++index) {
+		struct yt_sysop_key_record *record = &scheduler->records[index];
+
+		if (record->key != sysop_keys[index]
+		    || record->address != sysop_key_addresses[index]
+		    || record->target != sysop_key_targets[index]
+		    || record->target_segment != 0U
+		    || record->keyboard_state != 0x06U
+		    || record->event_state != 0x01U)
+			return false;
+	}
+	process[SYSOP_KEYBOARD_INSTALLED] = 1U;
+	process[SYSOP_KEY_PENDING_COUNT] = 0U;
+	sysop_key_process_set_word(process, SYSOP_KEY_FIFO_CONTROL,
+	    SYSOP_KEY_FIFO_BASE);
+	sysop_key_process_set_word(process, SYSOP_KEY_FIFO_CONTROL + 2U,
+	    SYSOP_KEY_FIFO_BASE);
+	sysop_key_process_set_word(process, SYSOP_KEY_FIFO_CONTROL + 4U,
+	    SYSOP_KEY_FIFO_BASE);
+	sysop_key_process_set_word(process, SYSOP_KEY_FIFO_CONTROL + 6U,
+	    SYSOP_KEY_FIFO_END);
+	sysop_key_process_set_word(process, SYSOP_KEY_FIFO_CONTROL + 8U,
+	    SYSOP_KEY_FIFO_CAPACITY);
+	sysop_key_process_set_word(process, SYSOP_KEY_FIFO_CONTROL + 10U, 0U);
+	for (index = 0U; index < YT_SYSOP_KEY_COUNT; ++index) {
+		struct yt_sysop_key_record *record = &scheduler->records[index];
+		uint16_t keyboard = (uint16_t)(SYSOP_KEYBOARD_TABLE
+		    + (uint16_t)record->key);
+
+		record->target_segment = target_segment;
+		process[keyboard] = record->keyboard_state;
+		process[record->address] = record->event_state;
+		sysop_key_process_set_word(process, record->address + 1U,
+		    record->target);
+		sysop_key_process_set_word(process, record->address + 3U,
+		    target_segment);
+	}
+	scheduler->process = process;
+	return true;
 }
 
 const struct yt_sysop_key_record *
@@ -1095,12 +1315,16 @@ yt_sysop_key_latch(struct yt_sysop_key_scheduler *scheduler,
 {
 	size_t index = sysop_key_index(key);
 
-	if (scheduler == NULL || index == YT_SYSOP_KEY_COUNT)
+	if (scheduler == NULL || index == YT_SYSOP_KEY_COUNT
+	    || !sysop_key_raw_matches(scheduler))
 		return false;
 	/* The rooted YT records remain KEY ON, including while STOPped. */
 	if ((scheduler->records[index].event_state & 0x01U) == 0U)
 		return false;
 	scheduler->records[index].keyboard_state |= 0x01U;
+	if (scheduler->process != NULL)
+		scheduler->process[SYSOP_KEYBOARD_TABLE + (uint16_t)key]
+		    = scheduler->records[index].keyboard_state;
 	return true;
 }
 
@@ -1125,6 +1349,8 @@ sysop_key_enqueue(struct yt_sysop_key_scheduler *scheduler, size_t index)
 		sysop_key_compact_fifo(scheduler);
 	if (scheduler->fifo_length == YT_SYSOP_KEY_COUNT)
 		return false;
+	if (!sysop_key_raw_enqueue(scheduler, index))
+		return false;
 	scheduler->fifo[scheduler->fifo_length++] = index;
 	return true;
 }
@@ -1138,7 +1364,8 @@ yt_sysop_key_checkpoint(struct yt_sysop_key_scheduler *scheduler,
 	if (scheduler == NULL || delivery == NULL
 	    || scheduler->fifo_position > scheduler->fifo_length
 	    || scheduler->fifo_length > YT_SYSOP_KEY_COUNT
-	    || scheduler->frame_depth > YT_SYSOP_KEY_COUNT)
+	    || scheduler->frame_depth > YT_SYSOP_KEY_COUNT
+	    || !sysop_key_raw_matches(scheduler))
 		return false;
 	memset(delivery, 0, sizeof(*delivery));
 	/* BRUN drains the low keyboard table in ascending address order. */
@@ -1149,10 +1376,15 @@ yt_sysop_key_checkpoint(struct yt_sysop_key_scheduler *scheduler,
 		if (record->keyboard_state != 0x07U)
 			continue;
 		record->keyboard_state = 0x06U;
+		if (scheduler->process != NULL)
+			scheduler->process[SYSOP_KEYBOARD_TABLE
+			    + (uint16_t)record->key] = 0x06U;
 		if ((record->event_state & 0x01U) == 0U)
 			continue;
 		old_state = record->event_state;
 		record->event_state |= 0x04U;
+		if (scheduler->process != NULL)
+			scheduler->process[record->address] = record->event_state;
 		if ((old_state & (0x02U | 0x04U)) == 0U
 		    && !sysop_key_enqueue(scheduler, index))
 			return false;
@@ -1166,12 +1398,18 @@ yt_sysop_key_checkpoint(struct yt_sysop_key_scheduler *scheduler,
 		if (index >= YT_SYSOP_KEY_COUNT)
 			return false;
 		record = &scheduler->records[index];
+		if (!sysop_key_raw_dequeue(scheduler, index))
+			return false;
 		record->event_state &= (uint8_t)~0x04U;
+		if (scheduler->process != NULL)
+			scheduler->process[record->address] = record->event_state;
 		if ((record->event_state & 0x01U) == 0U)
 			continue;
 		if (scheduler->frame_depth == YT_SYSOP_KEY_COUNT)
 			return false;
 		record->event_state |= 0x02U;
+		if (scheduler->process != NULL)
+			scheduler->process[record->address] = record->event_state;
 		scheduler->frames[scheduler->frame_depth++] = index;
 		delivery->delivered = true;
 		delivery->key = record->key;
@@ -1198,6 +1436,8 @@ yt_sysop_key_return(struct yt_sysop_key_scheduler *scheduler,
 	if (scheduler == NULL || scheduler->frame_depth == 0U
 	    || scheduler->frame_depth > YT_SYSOP_KEY_COUNT)
 		return false;
+	if (!sysop_key_raw_matches(scheduler))
+		return false;
 	index = scheduler->frames[scheduler->frame_depth - 1U];
 	if (index >= YT_SYSOP_KEY_COUNT)
 		return false;
@@ -1206,6 +1446,8 @@ yt_sysop_key_return(struct yt_sysop_key_scheduler *scheduler,
 		return false;
 	--scheduler->frame_depth;
 	record->event_state &= (uint8_t)~0x02U;
+	if (scheduler->process != NULL)
+		scheduler->process[record->address] = record->event_state;
 	if ((record->event_state & 0x04U) != 0U
 	    && !sysop_key_enqueue(scheduler, index))
 		return false;

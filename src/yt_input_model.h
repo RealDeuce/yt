@@ -9,6 +9,7 @@
 #define YT_SYSOP_F5_PHASES 7U
 #define YT_SYSOP_KEY_COUNT 5U
 #define YT_SYSOP_KEY_FIFO_BYTES (YT_SYSOP_KEY_COUNT * 2U)
+#define YT_SYSOP_KEY_PROCESS_SIZE 0x10000U
 
 enum yt_input_phase {
 	YT_INPUT_PHASE_B05D,
@@ -224,6 +225,7 @@ struct yt_sysop_key_record {
 	enum yt_sysop_key key;
 	uint16_t address;
 	uint16_t target;
+	uint16_t target_segment;
 	uint8_t keyboard_state;
 	uint8_t event_state;
 };
@@ -235,6 +237,7 @@ struct yt_sysop_key_scheduler {
 	size_t fifo_length;
 	size_t frames[YT_SYSOP_KEY_COUNT];
 	size_t frame_depth;
+	uint8_t *process;
 };
 
 struct yt_sysop_key_delivery {
@@ -341,6 +344,9 @@ bool yt_sysop_chat_finish(struct yt_sysop_chat_state *state,
 bool yt_sysop_f5_compose(bool same_f5_make,
     struct yt_sysop_f5_result *result);
 void yt_sysop_key_scheduler_init(struct yt_sysop_key_scheduler *scheduler);
+bool yt_sysop_key_scheduler_bind_process(
+	struct yt_sysop_key_scheduler *scheduler, uint8_t *process,
+	size_t process_size, uint16_t target_segment);
 bool yt_sysop_key_latch(struct yt_sysop_key_scheduler *scheduler,
 	enum yt_sysop_key key);
 bool yt_sysop_key_checkpoint(struct yt_sysop_key_scheduler *scheduler,

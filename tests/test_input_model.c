@@ -24,6 +24,13 @@ static unsigned failures;
 	} \
 } while (0)
 
+static uint16_t
+input_process_word(const uint8_t *process, uint16_t address)
+{
+	return (uint16_t)(process[address]
+	    | (uint16_t)process[(uint16_t)(address + 1U)] << 8);
+}
+
 enum registration_event {
 	REG_CLOSE,
 	REG_RANDOM_OPEN,
@@ -2293,6 +2300,125 @@ test_sysop_key_scheduler(void)
 }
 
 static void
+test_sysop_key_process(void)
+{
+	static const enum yt_sysop_key keys[YT_SYSOP_KEY_COUNT] = {
+		YT_SYSOP_KEY_F4, YT_SYSOP_KEY_F5, YT_SYSOP_KEY_F8,
+		YT_SYSOP_KEY_F9, YT_SYSOP_KEY_F10,
+	};
+	static const uint16_t addresses[YT_SYSOP_KEY_COUNT] = {
+		0x11AAU, 0x11AFU, 0x11BEU, 0x11C3U, 0x11C8U,
+	};
+	static const uint16_t targets[YT_SYSOP_KEY_COUNT] = {
+		0xA9E1U, 0xBA00U, 0xB6D7U, 0xB66AU, 0xB3FBU,
+	};
+	static const uint8_t all_fifo[] = {
+		0x11U, 0xAAU, 0x11U, 0xAFU, 0x11U,
+		0xBEU, 0x11U, 0xC3U, 0x11U, 0xC8U,
+	};
+	uint8_t process[YT_SYSOP_KEY_PROCESS_SIZE];
+	uint8_t ring_before[0x50U];
+	struct yt_sysop_key_scheduler scheduler;
+	struct yt_sysop_key_delivery delivery;
+	enum yt_sysop_key returned;
+	size_t index;
+
+	memset(process, 0xA5, sizeof(process));
+	for (index = 0U; index < sizeof(ring_before); ++index)
+		process[0x1260U + index] = (uint8_t)(index * 3U + 1U);
+	memcpy(ring_before, process + 0x1260U, sizeof(ring_before));
+	yt_sysop_key_scheduler_init(&scheduler);
+	CHECK(!yt_sysop_key_scheduler_bind_process(&scheduler, process,
+	    sizeof(process) - 1U, 0x3456U)
+	    && process[0x0E31U] == 0xA5U);
+	CHECK(yt_sysop_key_scheduler_bind_process(&scheduler, process,
+	    sizeof(process), 0x3456U)
+	    && process[0x0E31U] == 1U && process[0x118AU] == 0U
+	    && input_process_word(process, 0x1254U) == 0x1260U
+	    && input_process_word(process, 0x1256U) == 0x1260U
+	    && input_process_word(process, 0x1258U) == 0x1260U
+	    && input_process_word(process, 0x125AU) == 0x12B0U
+	    && input_process_word(process, 0x125CU) == 0x0050U
+	    && input_process_word(process, 0x125EU) == 0U
+	    && memcmp(process + 0x1260U, ring_before, sizeof(ring_before)) == 0
+	    && process[0x0200U] == 0xA5U);
+	for (index = 0U; index < YT_SYSOP_KEY_COUNT; ++index) {
+		const struct yt_sysop_key_record *record =
+		    yt_sysop_key_record(&scheduler, keys[index]);
+		uint16_t keyboard = (uint16_t)(0x01C6U + keys[index]);
+
+		CHECK(record != NULL && record->target_segment == 0x3456U
+		    && process[keyboard] == 0x06U
+		    && process[addresses[index]] == 0x01U
+		    && input_process_word(process, addresses[index] + 1U)
+		    == targets[index]
+		    && input_process_word(process, addresses[index] + 3U)
+		    == 0x3456U
+		    && yt_sysop_key_latch(&scheduler, keys[index]));
+	}
+	CHECK(yt_sysop_key_checkpoint(&scheduler, true, &delivery)
+	    && !delivery.delivered && process[0x118AU] == 5U
+	    && input_process_word(process, 0x1254U) == 0x126AU
+	    && input_process_word(process, 0x1256U) == 0x1260U
+	    && input_process_word(process, 0x125EU) == 10U
+	    && memcmp(process + 0x1260U, all_fifo, sizeof(all_fifo)) == 0);
+	for (index = 0U; index < YT_SYSOP_KEY_COUNT; ++index)
+		CHECK(process[0x01C6U + keys[index]] == 0x06U
+		    && process[addresses[index]] == 0x05U);
+	CHECK(yt_sysop_key_checkpoint(&scheduler, false, &delivery)
+	    && delivery.delivered && delivery.key == YT_SYSOP_KEY_F4
+	    && process[0x118AU] == 4U
+	    && input_process_word(process, 0x1254U) == 0x126AU
+	    && input_process_word(process, 0x1256U) == 0x1262U
+	    && input_process_word(process, 0x125EU) == 8U
+	    && process[0x11AAU] == 0x03U);
+
+	/* A retained same-F8 hit changes 07h to 05h and appends on RETURN. */
+	memset(process, 0x3C, sizeof(process));
+	yt_sysop_key_scheduler_init(&scheduler);
+	CHECK(yt_sysop_key_scheduler_bind_process(&scheduler, process,
+	    sizeof(process), 0x2222U)
+	    && yt_sysop_key_latch(&scheduler, YT_SYSOP_KEY_F8)
+	    && yt_sysop_key_checkpoint(&scheduler, false, &delivery)
+	    && delivery.key == YT_SYSOP_KEY_F8
+	    && yt_sysop_key_latch(&scheduler, YT_SYSOP_KEY_F8)
+	    && yt_sysop_key_checkpoint(&scheduler, false, &delivery)
+	    && !delivery.delivered && process[0x11BEU] == 0x07U
+	    && process[0x118AU] == 0U
+	    && yt_sysop_key_return(&scheduler, &returned)
+	    && returned == YT_SYSOP_KEY_F8 && process[0x11BEU] == 0x05U
+	    && process[0x118AU] == 1U
+	    && process[0x1262U] == 0x11U && process[0x1263U] == 0xBEU
+	    && input_process_word(process, 0x1254U) == 0x1264U
+	    && input_process_word(process, 0x1256U) == 0x1262U
+	    && input_process_word(process, 0x125EU) == 2U);
+
+	/* Empty enqueue/dequeue cycles preserve cursor motion and wrap at 12B0h. */
+	CHECK(yt_sysop_key_checkpoint(&scheduler, false, &delivery)
+	    && delivery.key == YT_SYSOP_KEY_F8
+	    && yt_sysop_key_return(&scheduler, &returned));
+	for (index = 0U; index < 39U; ++index) {
+		CHECK(yt_sysop_key_latch(&scheduler, YT_SYSOP_KEY_F4)
+		    && yt_sysop_key_checkpoint(&scheduler, false, &delivery)
+		    && delivery.key == YT_SYSOP_KEY_F4
+		    && yt_sysop_key_return(&scheduler, &returned));
+	}
+	CHECK(input_process_word(process, 0x1254U) == 0x1262U
+	    && input_process_word(process, 0x1256U) == 0x1262U
+	    && input_process_word(process, 0x125EU) == 0U
+	    && process[0x118AU] == 0U);
+
+	/* Raw/typed predecessor disagreement is rejected without hiding it. */
+	process[0x11AAU] = 0x7FU;
+	CHECK(!yt_sysop_key_latch(&scheduler, YT_SYSOP_KEY_F4)
+	    && process[0x11AAU] == 0x7FU
+	    && yt_sysop_key_record(&scheduler,
+	    YT_SYSOP_KEY_F4)->keyboard_state == 0x06U
+	    && !yt_sysop_key_checkpoint(&scheduler, false, &delivery)
+	    && !yt_sysop_key_return(&scheduler, &returned));
+}
+
+static void
 test_startup_dorinfo_parser(void)
 {
 	static const uint8_t first[] = "A\0B\r\n";
@@ -3217,6 +3343,7 @@ main(void)
 	test_platform_rmt_serial();
 	test_sysop_f5();
 	test_sysop_key_scheduler();
+	test_sysop_key_process();
 	test_startup_dorinfo_parser();
 	test_startup_dorinfo_state();
 	test_startup_lockout_transaction();
