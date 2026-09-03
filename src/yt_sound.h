@@ -38,8 +38,14 @@ enum yt_sound_status yt_sound_dispatch(float selector,
     struct yt_sound_state *state, struct yt_sound_result *result);
 enum yt_sound_status yt_sound_toggle(struct yt_sound_state *state,
     struct yt_sound_result *result);
+enum yt_sound_status yt_sound_toggle_process(struct yt_sound_state *state,
+    const uint8_t mode[4], uint8_t user_sound[4], uint8_t local_sound[4],
+    struct yt_sound_result *result);
 enum yt_sound_status yt_sound_sysop_toggle(struct yt_sound_state *state,
     bool *enabled);
+enum yt_sound_status yt_sound_sysop_toggle_process(
+    struct yt_sound_state *state, const uint8_t mode[4],
+    uint8_t local_sound[4], uint8_t user_sound[4], bool *enabled);
 enum yt_sound_status yt_sound_sysop_snoop_toggle(
     struct yt_sound_state *state, bool *returned_early, bool *enabled);
 

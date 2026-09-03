@@ -611,30 +611,28 @@ yt_present_attention(const uint8_t *text, size_t length,
 	return YT_PRESENT_OK;
 }
 
-enum yt_present_status
-yt_present_sound_toggle(struct yt_present_state *state,
-    struct yt_present_result *result)
+static enum yt_present_status
+present_sound_toggle_result(struct yt_present_state *state,
+    struct yt_present_result *result, enum yt_sound_status sound_status,
+    const struct yt_sound_result *sound)
 {
-	struct yt_sound_result sound;
-	enum yt_sound_status sound_status;
 	enum yt_present_status status;
 
 	memset(result, 0, sizeof(*result));
-	sound_status = yt_sound_toggle(&state->sound, &sound);
-	if (sound.line_length != 0) {
-		status = emit_line(sound.line, sound.line_length, state, result);
+	if (sound->line_length != 0) {
+		status = emit_line(sound->line, sound->line_length, state, result);
 		if (status != YT_PRESENT_OK)
 			return status;
 	}
-	if (sound.remote_length != 0) {
+	if (sound->remote_length != 0) {
 		status = append_remote(result, YT_PRESENT_REMOTE_SEMI,
-		    sound.remote, sound.remote_length);
+		    sound->remote, sound->remote_length);
 		if (status != YT_PRESENT_OK)
 			return status;
 	}
-	if (sound.play_length != 0) {
+	if (sound->play_length != 0) {
 		status = append_local(result, YT_PRESENT_LOCAL_PLAY,
-		    sound.play, sound.play_length, 0, 0);
+		    sound->play, sound->play_length, 0, 0);
 		if (status != YT_PRESENT_OK)
 			return status;
 	}
@@ -643,19 +641,42 @@ yt_present_sound_toggle(struct yt_present_state *state,
 }
 
 enum yt_present_status
-yt_present_sysop_sound_toggle(struct yt_present_state *state,
+yt_present_sound_toggle(struct yt_present_state *state,
     struct yt_present_result *result)
+{
+	struct yt_sound_result sound;
+	enum yt_sound_status sound_status;
+
+	sound_status = yt_sound_toggle(&state->sound, &sound);
+	return present_sound_toggle_result(state, result, sound_status, &sound);
+}
+
+enum yt_present_status
+yt_present_sound_toggle_process(const uint8_t mode[4],
+    uint8_t user_sound[4], uint8_t local_sound[4],
+    struct yt_present_state *state, struct yt_present_result *result)
+{
+	struct yt_sound_result sound;
+	enum yt_sound_status sound_status;
+
+	sound_status = yt_sound_toggle_process(&state->sound, mode, user_sound,
+	    local_sound, &sound);
+	return present_sound_toggle_result(state, result, sound_status, &sound);
+}
+
+static enum yt_present_status
+present_sysop_sound_toggle_result(bool enabled,
+    enum yt_sound_status sound_status, struct yt_present_result *result)
 {
 	static const uint8_t prefix[] = "Sound ";
 	static const uint8_t on[] = "ON";
 	static const uint8_t off[] = "OFF";
 	const uint8_t *suffix;
 	size_t suffix_length;
-	bool enabled;
 	enum yt_present_status status;
 
 	memset(result, 0, sizeof(*result));
-	if (yt_sound_sysop_toggle(&state->sound, &enabled) != YT_SOUND_OK)
+	if (sound_status != YT_SOUND_OK)
 		return YT_PRESENT_SOUND_ERROR;
 	status = append_local(result, YT_PRESENT_LOCAL_LINE, NULL, 0, 0, 0);
 	if (status != YT_PRESENT_OK)
@@ -668,6 +689,30 @@ yt_present_sysop_sound_toggle(struct yt_present_state *state,
 	suffix_length = enabled ? sizeof(on) - 1U : sizeof(off) - 1U;
 	return append_local(result, YT_PRESENT_LOCAL_LINE, suffix,
 	    suffix_length, 0, 0);
+}
+
+enum yt_present_status
+yt_present_sysop_sound_toggle(struct yt_present_state *state,
+    struct yt_present_result *result)
+{
+	bool enabled = false;
+	enum yt_sound_status status;
+
+	status = yt_sound_sysop_toggle(&state->sound, &enabled);
+	return present_sysop_sound_toggle_result(enabled, status, result);
+}
+
+enum yt_present_status
+yt_present_sysop_sound_toggle_process(const uint8_t mode[4],
+    uint8_t local_sound[4], uint8_t user_sound[4],
+    struct yt_present_state *state, struct yt_present_result *result)
+{
+	bool enabled = false;
+	enum yt_sound_status status;
+
+	status = yt_sound_sysop_toggle_process(&state->sound, mode,
+	    local_sound, user_sound, &enabled);
+	return present_sysop_sound_toggle_result(enabled, status, result);
 }
 
 static enum yt_present_status status_row_append(const uint8_t *real_name,

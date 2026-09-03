@@ -25,6 +25,20 @@ static const struct cue cues[] = {
 };
 static const uint8_t ascii_cue[] = "T255L63o4be";
 
+static bool
+sound_integer_raw(int32_t value, uint8_t raw[4])
+{
+	static const uint8_t dirty_zero[4] = {
+		0xffU, 0xffU, 0x00U, 0x00U,
+	};
+
+	if (value == 0) {
+		memcpy(raw, dirty_zero, sizeof(dirty_zero));
+		return true;
+	}
+	return qb_mbf32_encode((float)value, raw) == QB_MBF_OK;
+}
+
 static enum yt_sound_status
 endpoint_gates(const struct yt_sound_state *state,
     const uint8_t *cue, size_t cue_length, bool ansi,
@@ -137,6 +151,75 @@ yt_sound_toggle(struct yt_sound_state *state, struct yt_sound_result *result)
 	}
 	memcpy(result->line, off, sizeof(off) - 1U);
 	result->line_length = sizeof(off) - 1U;
+	return YT_SOUND_OK;
+}
+
+enum yt_sound_status
+yt_sound_toggle_process(struct yt_sound_state *state, const uint8_t mode[4],
+    uint8_t user_sound[4], uint8_t local_sound[4],
+    struct yt_sound_result *result)
+{
+	uint8_t toggled_raw[4];
+	bool overflow;
+	int32_t prior;
+	int32_t toggled;
+	enum yt_sound_status status;
+
+	if (result != NULL)
+		memset(result, 0, sizeof(*result));
+	if (state == NULL || mode == NULL || user_sound == NULL
+	    || local_sound == NULL || result == NULL)
+		return YT_SOUND_INVALID_STATE;
+	state->mode = qb_mbf32_decode(mode);
+	state->user_sound = qb_mbf32_decode(user_sound);
+	state->local_sound = qb_mbf32_decode(local_sound);
+	prior = qb_cint_mode(state->user_sound, state->conversion_mode,
+	    &overflow);
+	if (overflow) {
+		return YT_SOUND_USER_OVERFLOW;
+	}
+	toggled = ~prior;
+	status = yt_sound_toggle(state, result);
+	if (!sound_integer_raw(toggled, toggled_raw))
+		return YT_SOUND_INVALID_STATE;
+	memcpy(user_sound, toggled_raw, sizeof(toggled_raw));
+	if (state->mode != 0.0f)
+		memcpy(local_sound, toggled_raw, sizeof(toggled_raw));
+	state->user_sound = qb_mbf32_decode(user_sound);
+	state->local_sound = qb_mbf32_decode(local_sound);
+	return status;
+}
+
+enum yt_sound_status
+yt_sound_sysop_toggle_process(struct yt_sound_state *state,
+    const uint8_t mode[4], uint8_t local_sound[4], uint8_t user_sound[4],
+    bool *enabled)
+{
+	uint8_t toggled_raw[4];
+	bool overflow;
+	int32_t prior;
+	int32_t toggled;
+
+	if (state == NULL || mode == NULL || local_sound == NULL
+	    || user_sound == NULL)
+		return YT_SOUND_INVALID_STATE;
+	state->mode = qb_mbf32_decode(mode);
+	state->local_sound = qb_mbf32_decode(local_sound);
+	state->user_sound = qb_mbf32_decode(user_sound);
+	prior = qb_cint_mode(state->local_sound, state->conversion_mode,
+	    &overflow);
+	if (overflow)
+		return YT_SOUND_LOCAL_OVERFLOW;
+	toggled = ~prior;
+	if (!sound_integer_raw(toggled, toggled_raw))
+		return YT_SOUND_INVALID_STATE;
+	memcpy(local_sound, toggled_raw, sizeof(toggled_raw));
+	if (state->mode != 0.0f)
+		memcpy(user_sound, toggled_raw, sizeof(toggled_raw));
+	state->local_sound = qb_mbf32_decode(local_sound);
+	state->user_sound = qb_mbf32_decode(user_sound);
+	if (enabled != NULL)
+		*enabled = toggled != 0;
 	return YT_SOUND_OK;
 }
 

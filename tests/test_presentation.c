@@ -3599,6 +3599,9 @@ test_sound_toggle(void)
 	    "MBO4L32P32CP64CP64CP64L16EP64L32CP64L12E";
 	struct yt_present_state current = state(true);
 	struct yt_present_result result;
+	uint8_t mode_raw[4];
+	uint8_t user_raw[4];
+	uint8_t local_raw[4];
 
 	current.color_initialized = 1.0f;
 	current.cached_foreground = current.foreground;
@@ -3690,6 +3693,18 @@ test_sound_toggle(void)
 	CHECK(result.event_count == 0 && result.remote_length == 0);
 
 	current = state(true);
+	CHECK(qb_mbf32_encode(0.0f, mode_raw) == QB_MBF_OK
+	    && qb_mbf32_encode(-1.0f, user_raw) == QB_MBF_OK
+	    && qb_mbf32_encode(77.0f, local_raw) == QB_MBF_OK);
+	CHECK(yt_present_sound_toggle_process(mode_raw, user_raw, local_raw,
+	    &current, &result) == YT_PRESENT_OK);
+	CHECK(memcmp(user_raw, "\xff\xff\x00\x00", 4U) == 0);
+	CHECK(qb_mbf32_decode(local_raw) == 77.0f);
+	CHECK(result.remote_length >= sizeof(off) - 1U);
+	CHECK(memcmp(result.remote + result.remote_length - (sizeof(off) - 1U),
+	    off, sizeof(off) - 1U) == 0);
+
+	current = state(true);
 	CHECK(yt_present_sound(4.0f, &current, &result) == YT_PRESENT_OK);
 	CHECK(result.event_count == 2);
 	CHECK(result.events[0].operation == YT_PRESENT_REMOTE_SEMI);
@@ -3727,6 +3742,18 @@ test_sound_toggle(void)
 	CHECK(current.sound.local_sound == 40000.0f
 	    && current.sound.user_sound == 77.0f
 	    && result.remote_length == 0 && result.event_count == 0);
+
+	current = state(false);
+	CHECK(qb_mbf32_encode(1.0f, mode_raw) == QB_MBF_OK
+	    && qb_mbf32_encode(-1.0f, local_raw) == QB_MBF_OK
+	    && qb_mbf32_encode(77.0f, user_raw) == QB_MBF_OK);
+	CHECK(yt_present_sysop_sound_toggle_process(mode_raw, local_raw,
+	    user_raw, &current, &result) == YT_PRESENT_OK);
+	CHECK(memcmp(local_raw, "\xff\xff\x00\x00", 4U) == 0
+	    && memcmp(user_raw, local_raw, 4U) == 0
+	    && result.event_count == 3U
+	    && result.events[2].length == 3U
+	    && memcmp(result.events[2].data, "OFF", 3U) == 0);
 
 	current = state(false);
 	current.sound.mode = 0.0f;

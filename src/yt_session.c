@@ -67,6 +67,8 @@
 #define YT_LOW_TIME_REMEMBERED_ADDRESS 0x59CEU
 #define YT_SESSION_DEADLINE_ADDRESS 0x4BB4U
 #define YT_SESSION_MODE_ADDRESS 0x19C8U
+#define YT_LOCAL_SOUND_ADDRESS 0x4B70U
+#define YT_GAME_SOUND_ADDRESS 0x4BD4U
 #define YT_INACTIVITY_DEADLINE_ADDRESS 0x51B4U
 #define YT_NEXT_TIME_REFRESH_ADDRESS 0x19C0U
 #define YT_COMPUTER_ACTIVATION_SELECTOR_ADDRESS 0x50D2U
@@ -204,6 +206,16 @@ session_mode(const struct yt_session *session)
 {
 	return yt_route_process_single(&session->route_process,
 	    YT_SESSION_MODE_ADDRESS);
+}
+
+static void
+session_sync_sound_process(struct yt_session *session)
+{
+	session->presentation.sound.mode = session_mode(session);
+	session->presentation.sound.local_sound = yt_route_process_single(
+	    &session->route_process, YT_LOCAL_SOUND_ADDRESS);
+	session->presentation.sound.user_sound = yt_route_process_single(
+	    &session->route_process, YT_GAME_SOUND_ADDRESS);
 }
 
 static int
@@ -1427,6 +1439,7 @@ session_sound(struct yt_session *session, float selector,
 	struct yt_present_result presentation;
 	enum yt_present_status status;
 
+	session_sync_sound_process(session);
 	status = yt_present_sound(selector, &session->presentation,
 	    &presentation);
 	yt_out_present_result(&presentation);
@@ -18984,7 +18997,11 @@ command_shell(struct yt_session *session, struct yt_error *error)
 		case YT_MAIN_SHELL_SOUND:
 		{
 			struct yt_present_result presentation;
-			enum yt_present_status status = yt_present_sound_toggle(
+			enum yt_present_status status =
+			    yt_present_sound_toggle_process(
+			    &session->route_process.bytes[YT_SESSION_MODE_ADDRESS],
+			    &session->route_process.bytes[YT_GAME_SOUND_ADDRESS],
+			    &session->route_process.bytes[YT_LOCAL_SOUND_ADDRESS],
 			    &session->presentation, &presentation);
 
 			yt_out_present_result(&presentation);
@@ -19167,10 +19184,10 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 		return false;
 	yt_route_process_set_raw_single(&session.route_process,
 	    YT_SESSION_MODE_ADDRESS, mode_raw);
-	session.presentation.sound.mode = session_mode(&session);
-	session.presentation.sound.user_sound = -1.0f;
-	session.presentation.sound.local_sound =
-	    door->identity.local ? -1.0f : 0.0f;
+	session_set_process_single(&session, YT_GAME_SOUND_ADDRESS, -1.0f);
+	session_set_process_single(&session, YT_LOCAL_SOUND_ADDRESS,
+	    door->identity.local ? -1.0f : 0.0f);
+	session_sync_sound_process(&session);
 	session_set_foreground(&session, 7.0f);
 	yt_random_init(&launch_random);
 	if (!yt_random_market_bases(&launch_random, market_base, error))

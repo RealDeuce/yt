@@ -1,4 +1,5 @@
 #include "yt_sound.h"
+#include "qb.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -235,12 +236,69 @@ test_toggle(void)
 		CHECK(current.local_sound == 77.0f);
 		CHECK(result.line_length == 0);
 	}
+	{
+		static const uint8_t dirty_zero[4] = {
+			0xffU, 0xffU, 0x00U, 0x00U,
+		};
+		struct yt_sound_state current = state(true);
+		struct yt_sound_result result;
+		uint8_t mode[4];
+		uint8_t user[4];
+		uint8_t local[4];
+		uint8_t before[4];
+
+		CHECK(qb_mbf32_encode(0.0f, mode) == QB_MBF_OK
+		    && qb_mbf32_encode(-1.0f, user) == QB_MBF_OK
+		    && qb_mbf32_encode(77.0f, local) == QB_MBF_OK);
+		memcpy(before, local, sizeof(before));
+		CHECK(yt_sound_toggle_process(&current, mode, user, local,
+		    &result) == YT_SOUND_OK);
+		CHECK(memcmp(user, dirty_zero, sizeof(dirty_zero)) == 0
+		    && memcmp(local, before, sizeof(before)) == 0
+		    && current.user_sound == 0.0f
+		    && current.local_sound == 77.0f
+		    && result.line_length == sizeof("Sound OFF") - 1U);
+
+		CHECK(qb_mbf32_encode(1.0f, mode) == QB_MBF_OK
+		    && qb_mbf32_encode(0.0f, user) == QB_MBF_OK
+		    && qb_mbf32_encode(77.0f, local) == QB_MBF_OK);
+		CHECK(yt_sound_toggle_process(&current, mode, user, local,
+		    &result) == YT_SOUND_OK);
+		CHECK(memcmp(user, "\x00\x00\x80\x81", 4U) == 0
+		    && memcmp(local, user, 4U) == 0
+		    && current.user_sound == -1.0f
+		    && current.local_sound == -1.0f);
+
+		CHECK(qb_mbf32_encode(0.0f, mode) == QB_MBF_OK
+		    && qb_mbf32_encode(0.0f, user) == QB_MBF_OK
+		    && qb_mbf32_encode(40000.0f, local) == QB_MBF_OK);
+		memcpy(before, local, sizeof(before));
+		CHECK(yt_sound_toggle_process(&current, mode, user, local,
+		    &result) == YT_SOUND_LOCAL_OVERFLOW);
+		CHECK(memcmp(user, "\x00\x00\x80\x81", 4U) == 0
+		    && memcmp(local, before, sizeof(before)) == 0
+		    && result.remote_length != 0U);
+
+		CHECK(qb_mbf32_encode(40000.0f, user) == QB_MBF_OK
+		    && qb_mbf32_encode(77.0f, local) == QB_MBF_OK);
+		memcpy(before, user, sizeof(before));
+		CHECK(yt_sound_toggle_process(&current, mode, user, local,
+		    &result) == YT_SOUND_USER_OVERFLOW);
+		CHECK(memcmp(user, before, sizeof(before)) == 0
+		    && result.line_length == 0U && result.remote_length == 0U);
+		CHECK(yt_sound_toggle_process(NULL, mode, user, local, &result)
+		    == YT_SOUND_INVALID_STATE);
+	}
 }
 
 static void
 test_sysop_toggle(void)
 {
 	struct yt_sound_state current = state(true);
+	uint8_t mode[4];
+	uint8_t local[4];
+	uint8_t user[4];
+	uint8_t before[4];
 	bool enabled = false;
 
 	current.mode = 0.0f;
@@ -265,6 +323,32 @@ test_sysop_toggle(void)
 	CHECK(yt_sound_sysop_toggle(&current, &enabled)
 	    == YT_SOUND_LOCAL_OVERFLOW);
 	CHECK(current.local_sound == 40000.0f && current.user_sound == 77.0f);
+
+	current = state(true);
+	CHECK(qb_mbf32_encode(0.0f, mode) == QB_MBF_OK
+	    && qb_mbf32_encode(-1.0f, local) == QB_MBF_OK
+	    && qb_mbf32_encode(77.0f, user) == QB_MBF_OK);
+	memcpy(before, user, sizeof(before));
+	CHECK(yt_sound_sysop_toggle_process(&current, mode, local, user,
+	    &enabled) == YT_SOUND_OK);
+	CHECK(!enabled && memcmp(local, "\xff\xff\x00\x00", 4U) == 0
+	    && memcmp(user, before, sizeof(before)) == 0);
+
+	CHECK(qb_mbf32_encode(2.0f, mode) == QB_MBF_OK
+	    && qb_mbf32_encode(0.0f, local) == QB_MBF_OK
+	    && qb_mbf32_encode(77.0f, user) == QB_MBF_OK);
+	CHECK(yt_sound_sysop_toggle_process(&current, mode, local, user,
+	    &enabled) == YT_SOUND_OK);
+	CHECK(enabled && memcmp(local, "\x00\x00\x80\x81", 4U) == 0
+	    && memcmp(user, local, 4U) == 0);
+
+	CHECK(qb_mbf32_encode(40000.0f, local) == QB_MBF_OK
+	    && qb_mbf32_encode(77.0f, user) == QB_MBF_OK);
+	memcpy(before, local, sizeof(before));
+	CHECK(yt_sound_sysop_toggle_process(&current, mode, local, user,
+	    &enabled) == YT_SOUND_LOCAL_OVERFLOW);
+	CHECK(memcmp(local, before, sizeof(before)) == 0
+	    && qb_mbf32_decode(user) == 77.0f);
 }
 
 static void

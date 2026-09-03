@@ -129,7 +129,13 @@ enum yt_present_status yt_present_attention(const uint8_t *text,
     struct yt_present_result *result);
 enum yt_present_status yt_present_sound_toggle(struct yt_present_state *state,
     struct yt_present_result *result);
+enum yt_present_status yt_present_sound_toggle_process(
+    const uint8_t mode[4], uint8_t user_sound[4], uint8_t local_sound[4],
+    struct yt_present_state *state, struct yt_present_result *result);
 enum yt_present_status yt_present_sysop_sound_toggle(
+    struct yt_present_state *state, struct yt_present_result *result);
+enum yt_present_status yt_present_sysop_sound_toggle_process(
+    const uint8_t mode[4], uint8_t local_sound[4], uint8_t user_sound[4],
     struct yt_present_state *state, struct yt_present_result *result);
 enum yt_present_status yt_present_sysop_snoop_toggle(
     const uint8_t *real_name, size_t real_name_length,
