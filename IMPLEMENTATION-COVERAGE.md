@@ -168,6 +168,12 @@ bytes to `DS:5DFE`, installs raw two `00 00 00 82` at `DS:5E02`, and writes
 every completed SINGLE increment back to that same counter cell before the
 next comparison. Focused failure prefixes pin counter residue at two through
 five and preserve both procedure-static cells on a nonzero-guard skip. The raw
+startup date result is installed at `DS:188C` after the documented helper
+returns, then copied byte-for-byte by the process carrier to `DS:4CCA` before
+lockout. New-player construction and the returning-player same-day/update
+gates reread `DS:4CCA` instead of treating the mutable host game-day cache as
+the caller argument. The process-copy fixture pins noncanonical source bytes,
+ordinary destinations and a destination that wraps through offset zero. The raw
 BRUN handler slot/frame/ERL/retry residue,
 OPEN/FIELD/GET/PUT/string state, physical partial-I/O, and corrupt
 out-of-native-cache-domain boundaries remain separate prerequisites.

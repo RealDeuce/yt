@@ -88,6 +88,8 @@
 #define YT_SPY_DESTINATION_SCRATCH_ADDRESS 0x5FE4U
 #define YT_SPY_FOUND_SCRATCH_ADDRESS 0x5FE8U
 #define YT_SPY_DEAD_COUNTER_SCRATCH_ADDRESS 0x6018U
+#define YT_DATE_SERIAL_RESULT_ADDRESS 0x188CU
+#define YT_STARTUP_DATE_SERIAL_ADDRESS 0x4CCAU
 
 enum navigation_field_kind {
 	NAVIGATION_FIELD_NONE,
@@ -2853,17 +2855,26 @@ static bool
 startup_pre_admission(struct yt_session *session, struct yt_error *error)
 {
 	char welcome[320];
+	int adjusted_year;
+	int today;
 
 	session->presentation.foreground = 5.0f;
 	session->pager.foreground = 5;
 	if (!session_0317(session, (const uint8_t *)"Initializing...",
-	    strlen("Initializing..."), "startup initializing row", error)
-	    || !yt_current_date_serial(
+	    strlen("Initializing..."), "startup initializing row", error))
+		return false;
+	if (!yt_current_date_serial(
 	    yt_route_process_single(&session->route_process,
 	    YT_EPOCH_YEAR_ADDRESS),
-	    &session->door->game.today, &session->door->game.adjusted_year,
-	    error)
-	    || !lockout(session, error))
+	    &today, &adjusted_year, error))
+		return false;
+	session_set_process_single(session, YT_DATE_SERIAL_RESULT_ADDRESS,
+	    (float)today);
+	yt_route_process_copy_raw_single(&session->route_process,
+	    YT_DATE_SERIAL_RESULT_ADDRESS, YT_STARTUP_DATE_SERIAL_ADDRESS);
+	session->door->game.today = today;
+	session->door->game.adjusted_year = adjusted_year;
+	if (!lockout(session, error))
 		return false;
 	snprintf(welcome, sizeof(welcome), "Welcome %s!",
 	    session->door->identity.real_first);
@@ -3033,7 +3044,8 @@ construct_player_visible(struct yt_session *session, struct yt_error *error)
 	    "player constructor row", error))
 		return false;
 	return yt_game_construct_player(&session->door->game,
-	    session->player_record, (float)session->door->game.today,
+	    session->player_record, yt_route_process_single(
+	    &session->route_process, YT_STARTUP_DATE_SERIAL_ADDRESS),
 	    &session->player, error);
 }
 
@@ -3210,16 +3222,18 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 	{
 		float previous_day = session->player.last_active;
 		float killer = session->player.killed_by;
+		float startup_day = yt_route_process_single(
+		    &session->route_process, YT_STARTUP_DATE_SERIAL_ADDRESS);
 		bool self_kill = killer == (float)session->player_record;
 
-		if (previous_day == (float)session->door->game.today
+		if (previous_day == startup_day
 		    && !session_present_text(session,
 		    (const uint8_t *)"You have been on today.",
 		    strlen("You have been on today."), SESSION_PRESENT_LINE,
 		    "returning same-day row", error))
 			return false;
-		session->player.last_active = (float)session->door->game.today;
-		if (previous_day != (float)session->door->game.today) {
+		session->player.last_active = startup_day;
+		if (previous_day != startup_day) {
 			float turns_per_day = yt_route_process_single(
 			    &session->route_process, YT_TURNS_PER_DAY_ADDRESS);
 
@@ -3302,7 +3316,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 					return false;
 			}
 			if (self_kill
-			    && previous_day == (float)session->door->game.today) {
+			    && previous_day == startup_day) {
 				if (!session_present_text(session, NULL, 0,
 				    SESSION_PRESENT_LINE,
 				    "returning self-denial blank", error))

@@ -403,6 +403,19 @@ test_addressed_route_arguments(void)
 	    && process.bytes[0xffffU] == 0x22U
 	    && process.bytes[0] == 0x33U
 	    && process.bytes[1] == 0x44U);
+	memset(returned, 0xa5, sizeof(returned));
+	yt_route_process_set_raw_single(&process, 0x4ccaU, returned);
+	yt_route_process_copy_raw_single(&process, 0xfffeU, 0x4ccaU);
+	yt_route_process_raw_single(&process, 0x4ccaU, returned);
+	CHECK(memcmp(raw, returned, sizeof(raw)) == 0);
+	raw[0] = 0x55U;
+	raw[1] = 0x66U;
+	raw[2] = 0x77U;
+	raw[3] = 0x88U;
+	yt_route_process_set_raw_single(&process, 0x1234U, raw);
+	yt_route_process_copy_raw_single(&process, 0x1234U, 0xffffU);
+	yt_route_process_raw_single(&process, 0xffffU, returned);
+	CHECK(memcmp(raw, returned, sizeof(raw)) == 0);
 	yt_route_process_set_second(&process, -1, 0x1234);
 	CHECK(yt_route_process_second(&process, -1) == 0x1234);
 	yt_route_process_set_word(&process, 0xffffU, -2);

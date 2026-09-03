@@ -205,6 +205,18 @@ yt_route_process_raw_single(const struct yt_route_process *process,
 		raw[offset] = process->bytes[(uint16_t)(address + offset)];
 }
 
+void
+yt_route_process_copy_raw_single(struct yt_route_process *process,
+    uint16_t source, uint16_t destination)
+{
+	uint8_t raw[4];
+
+	if (process == NULL)
+		return;
+	yt_route_process_raw_single(process, source, raw);
+	yt_route_process_set_raw_single(process, destination, raw);
+}
+
 float
 yt_route_process_single(const struct yt_route_process *process,
     uint16_t address)
