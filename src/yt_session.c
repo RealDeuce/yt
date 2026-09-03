@@ -31,6 +31,7 @@
 #define YT_COMPUTER_ROUTE_DESTINATION_ADDRESS 0x4E12U
 #define YT_COMPUTER_ROUTE_START_ADDRESS 0x4E1AU
 #define YT_COMPUTER_PATH_HOPS_ADDRESS 0x4E82U
+#define YT_EARTH_REPORT_SEEN_ADDRESS 0x5006U
 
 enum navigation_field_kind {
 	NAVIGATION_FIELD_NONE,
@@ -81,8 +82,6 @@ struct yt_session {
 	float clearance_shields;
 	float counterlaunch_count;
 	float current_sector_record;
-	float earth_report_seen;
-	uint8_t earth_report_seen_raw[4];
 	float shared_loop_scratch;
 	float planet_record_scratch;
 	float attack_commitment;
@@ -7230,9 +7229,8 @@ static void
 session_set_earth_report_seen(struct yt_session *session,
     const uint8_t raw[4])
 {
-	memcpy(session->earth_report_seen_raw, raw,
-	    sizeof(session->earth_report_seen_raw));
-	session->earth_report_seen = qb_mbf32_decode(raw);
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_EARTH_REPORT_SEEN_ADDRESS, raw);
 }
 
 static void
@@ -8692,7 +8690,8 @@ earth_report(struct yt_session *session, struct yt_port *earth,
 	discount[2] = session->clearance_shields;
 	discount[3] = session->clearance_ground;
 	yt_earth_prices(discount, price);
-	if (session->earth_report_seen == 0.0f) {
+	if (yt_route_process_single(&session->route_process,
+	    YT_EARTH_REPORT_SEEN_ADDRESS) == 0.0f) {
 		if (!clearance(session, false, error))
 			return false;
 	}
@@ -16332,9 +16331,8 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 		earth_state.field_record = visibility.field_record;
 		earth_state.field = visibility.field;
 		earth_state.field_valid = visibility.field_valid;
-		memcpy(earth_state.report_seen_raw,
-		    session->earth_report_seen_raw,
-		    sizeof(earth_state.report_seen_raw));
+		yt_route_process_raw_single(&session->route_process,
+		    YT_EARTH_REPORT_SEEN_ADDRESS, earth_state.report_seen_raw);
 		if (!yt_computer_port_earth_run(&earth_state,
 		    computer_port_earth_report, session, error))
 			return false;
