@@ -297,6 +297,8 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 		ops->store_epoch_year(context, config->record.bytes + YT_F45);
 	if (ops->store_total_records != NULL)
 		ops->store_total_records(context, config->record.bytes + YT_F93);
+	if (ops->store_sector_offset != NULL)
+		ops->store_sector_offset(context, config->record.bytes + YT_F53);
 	if (ops->store_turns_per_day != NULL)
 		ops->store_turns_per_day(context,
 		    config->record.bytes + YT_F49);

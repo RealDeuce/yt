@@ -40,6 +40,7 @@
 #define YT_MAXIMUM_PLANETS_ADDRESS 0x4BA8U
 #define YT_MAXIMUM_HOLDS_ADDRESS 0x19E8U
 #define YT_TOTAL_RECORDS_ADDRESS 0x19D4U
+#define YT_SECTOR_OFFSET_ADDRESS 0x19DCU
 #define YT_CLEARANCE_HOLDS_ADDRESS 0x4B54U
 #define YT_CLEARANCE_FIGHTERS_ADDRESS 0x4B58U
 #define YT_CLEARANCE_GROUND_ADDRESS 0x4B5CU
@@ -129,6 +130,13 @@ session_is_destroyed(const struct yt_session *session)
 	yt_route_process_raw_single(&session->route_process,
 	    YT_DESTROYED_ADDRESS, raw);
 	return qb_mbf32_truth(raw);
+}
+
+static float
+session_sector_offset(const struct yt_session *session)
+{
+	return yt_route_process_single(&session->route_process,
+	    YT_SECTOR_OFFSET_ADDRESS);
 }
 
 static void
@@ -484,7 +492,7 @@ static int
 sector_count(const struct yt_session *session)
 {
 	return (int)(session->door->game.config.port_offset
-	    - session->door->game.config.sector_offset);
+	    - session_sector_offset(session));
 }
 
 static int
@@ -642,8 +650,8 @@ reload_player(struct yt_session *session, struct yt_error *error)
 	struct yt_current_player_hydration_state state = {
 		&session->player,
 		session->player_record,
-		(int)session->door->game.config.sector_offset,
-		session->door->game.config.sector_offset,
+		(int)session_sector_offset(session),
+		session_sector_offset(session),
 		&current_sector_record,
 		session->sector_cache,
 		session->cloak_cache,
@@ -685,9 +693,9 @@ mutate_player_credits_observed(struct yt_session *session, float argument,
 	state.hydration.player = &session->player;
 	state.hydration.player_record = session->player_record;
 	state.hydration.last_player_record =
-	    (int)session->door->game.config.sector_offset;
+	    (int)session_sector_offset(session);
 	state.hydration.sector_record_offset =
-	    session->door->game.config.sector_offset;
+	    session_sector_offset(session);
 	state.hydration.current_sector_record = &current_sector_record;
 	state.hydration.sector_cache = session->sector_cache;
 	state.hydration.cloak_cache = session->cloak_cache;
@@ -2059,6 +2067,16 @@ startup_configuration_store_total_records(void *context,
 	    YT_TOTAL_RECORDS_ADDRESS, raw);
 }
 
+static void
+startup_configuration_store_sector_offset(void *context,
+    const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_SECTOR_OFFSET_ADDRESS, raw);
+}
+
 static bool
 load_configuration(struct yt_session *session, struct yt_error *error)
 {
@@ -2078,6 +2096,7 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 		startup_configuration_store_maximum_holds,
 		startup_configuration_store_epoch_year,
 		startup_configuration_store_total_records,
+		startup_configuration_store_sector_offset,
 	};
 	struct yt_game *game = &session->door->game;
 	struct yt_startup_configuration_state state;
@@ -2871,7 +2890,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 
 	snprintf(full, sizeof(full), "%s %s", first, last);
 	for (basic = YT_PLAYER_FIRST;
-	    basic <= (int)session->door->game.config.sector_offset; ++basic) {
+	    basic <= (int)session_sector_offset(session); ++basic) {
 		struct yt_player candidate;
 		bool matches;
 
@@ -2906,7 +2925,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 		    "new player entering row", error))
 			return false;
 		for (basic = YT_PLAYER_FIRST;
-		    basic <= (int)session->door->game.config.sector_offset;
+		    basic <= (int)session_sector_offset(session);
 		    ++basic) {
 			struct yt_player candidate;
 
@@ -3062,7 +3081,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 					return false;
 			}
 			else if (killer > 1.0f
-			    && killer <= session->door->game.config.sector_offset) {
+			    && killer <= session_sector_offset(session)) {
 				struct yt_player attacker;
 				uint8_t attacker_row[YT_TEXT_FIELD_SIZE
 				    + sizeof(" destroyed your ship!") - 1U];
@@ -3478,7 +3497,7 @@ port_update(struct yt_session *session, int sector_number,
 		return false;
 	memset(&state, 0, sizeof(state));
 	state.sector_number = sector_number;
-	state.sector_record_offset = session->door->game.config.sector_offset;
+	state.sector_record_offset = session_sector_offset(session);
 	if (sector_record_expression != NULL) {
 		state.sector_record_expression = *sector_record_expression;
 		state.sector_record_supplied = true;
@@ -3707,7 +3726,7 @@ same_team(struct yt_session *session, int other_record,
 
 	if (!yt_friendship_resolve((float)other_record,
 	    (float)session->player_record,
-	    session->door->game.config.sector_offset,
+	    session_sector_offset(session),
 	    friendship_read_player, &session->door->game, &friendly, error))
 		return false;
 	return friendly;
@@ -3735,7 +3754,7 @@ scanner_read_sector(struct yt_session *session, float logical_sector,
     struct yt_sector *sector, struct yt_error *error)
 {
 	struct yt_record record;
-	float expression = single_add(session->door->game.config.sector_offset,
+	float expression = single_add(session_sector_offset(session),
 	    logical_sector);
 	uint32_t physical = qb_brun_random_record_number(expression);
 
@@ -3813,7 +3832,7 @@ scanner_read_team_overlay(struct yt_session *session, float team,
     struct yt_sector *overlay, struct yt_error *error)
 {
 	struct yt_record record;
-	float expression = single_add(session->door->game.config.sector_offset,
+	float expression = single_add(session_sector_offset(session),
 	    team);
 	uint32_t physical = qb_brun_random_record_number(expression);
 
@@ -3838,7 +3857,7 @@ display_sector_one(struct yt_session *session, float logical_sector,
 	bool first_warp = true;
 
 	session_set_current_sector_record(session, single_add(
-	    session->door->game.config.sector_offset, logical_sector));
+	    session_sector_offset(session), logical_sector));
 	if (!scanner_read_sector(session, logical_sector, &sector, error))
 		return false;
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
@@ -3926,7 +3945,7 @@ display_sector_one(struct yt_session *session, float logical_sector,
 			return false;
 	}
 	for (basic = YT_PLAYER_FIRST;
-	    basic <= (int)session->door->game.config.sector_offset; ++basic) {
+	    basic <= (int)session_sector_offset(session); ++basic) {
 		float random_value;
 
 		if (!yt_sector_candidate_eligible(basic, session->player_record,
@@ -4327,10 +4346,10 @@ dangerous_destination(struct yt_session *session, float target,
 
 				session_set_relationship(session, 0.0f);
 				if (owner >= 2.0f
-				    && owner <= session->door->game.config.sector_offset
+				    && owner <= session_sector_offset(session)
 				    && session->player_record >= YT_PLAYER_FIRST
 				    && (float)session->player_record
-				    <= session->door->game.config.sector_offset) {
+				    <= session_sector_offset(session)) {
 					if (owner == (float)session->player_record)
 						session_set_relationship(session, -1.0f);
 					else {
@@ -4399,7 +4418,7 @@ dangerous_destination(struct yt_session *session, float target,
 		}
 		hostile = owner < 0.0f
 		    || (owner > 1.0f
-		    && owner <= session->door->game.config.sector_offset
+		    && owner <= session_sector_offset(session)
 		    && owner != (float)session->player_record
 		    && session_relationship(session) == 0.0f);
 		if (hostile) {
@@ -4485,7 +4504,7 @@ spy_read_team(void *context, float team, struct yt_sector *overlay,
 	struct yt_session *session = context;
 	struct yt_record raw;
 	uint32_t physical = qb_brun_random_record_number(single_add(
-	    session->door->game.config.sector_offset, team));
+	    session_sector_offset(session), team));
 
 	if (!yt_database_read(&session->door->game.database, physical, &raw,
 	    error))
@@ -4633,7 +4652,7 @@ spy_sweep(struct yt_session *session, struct yt_error *error)
 		.last_reported_sectors = spy_markers,
 		.spy_capacity = YT_ARRAY_LEN(spy_sectors),
 		.current_player_record = session->player_record,
-		.last_player_record = session->door->game.config.sector_offset,
+		.last_player_record = session_sector_offset(session),
 		.disruption_sectors = {
 			session_disruption_sector(session, 0U),
 			session_disruption_sector(session, 1U)
@@ -5168,7 +5187,7 @@ command_move(struct yt_session *session, bool *moved,
 	state = (struct yt_movement_state){
 		.current_player_record = session->player_record,
 		.port_offset = session->door->game.config.port_offset,
-		.sector_offset = session->door->game.config.sector_offset,
+		.sector_offset = session_sector_offset(session),
 	};
 	session_current_warps(session, state.warps);
 	if (!yt_movement_run(&state, &ops, session, error))
@@ -5230,7 +5249,7 @@ team_remove_player(struct yt_session *session, int victim,
 	struct yt_death_team_remove_state state = {
 		.victim_record = victim,
 		.current_player_record = (float)session->player_record,
-		.sector_record_offset = session->door->game.config.sector_offset,
+		.sector_record_offset = session_sector_offset(session),
 		.conversion_mode = session->presentation.sound.conversion_mode,
 		.cache = &session->team_cache,
 	};
@@ -5370,7 +5389,7 @@ kill_player_run(struct yt_session *session, int victim_record,
 		.killer = killer,
 		.sector_count = sector_count(session),
 		.port_count = port_count(session),
-		.last_player_record = session->door->game.config.sector_offset,
+		.last_player_record = session_sector_offset(session),
 		.current_name = (const uint8_t *)session->player.name,
 		.current_name_length = strlen(session->player.name),
 	};
@@ -5563,7 +5582,7 @@ salvage_player(struct yt_session *session, int victim_record, float killer,
 	struct yt_salvage_state state = {
 		.victim_record = victim_record,
 		.killer_record = killer,
-		.last_player_record = session->door->game.config.sector_offset,
+		.last_player_record = session_sector_offset(session),
 		.maximum_holds = yt_route_process_single(&session->route_process,
 		    YT_MAXIMUM_HOLDS_ADDRESS),
 		.current_name = (const uint8_t *)session->player.name,
@@ -6026,7 +6045,7 @@ command_attack_player(struct yt_session *session, bool *enter_sector,
 	};
 	struct yt_direct_attack_state state = {
 		.current_player_record = session->player_record,
-		.last_player_record = session->door->game.config.sector_offset,
+		.last_player_record = session_sector_offset(session),
 		.conversion_mode = session->presentation.sound.conversion_mode,
 		.sector_cache = session->sector_cache,
 		.cloak_cache = session->cloak_cache,
@@ -7810,7 +7829,7 @@ computer_port_ordinary(struct yt_session *session, int sector_number,
 	memset(&state, 0, sizeof(state));
 	state.update.sector_number = sector_number;
 	state.update.sector_record_offset =
-	    session->door->game.config.sector_offset;
+	    session_sector_offset(session);
 	state.update.sector_record_expression = sector_record_expression;
 	state.update.sector_record_supplied = true;
 	state.update.port_offset = session->door->game.config.port_offset;
@@ -8548,7 +8567,7 @@ earth_anti_cloak(struct yt_session *session, float price,
 	struct yt_earth_anti_cloak_state state = {
 		.price = price,
 		.current_record = (float)session->player_record,
-		.player_terminal = session->door->game.config.sector_offset,
+		.player_terminal = session_sector_offset(session),
 		.conversion_mode = session->presentation.sound.conversion_mode,
 		.cloak_cache = session->cloak_cache,
 		.cloak_cache_count = YT_ARRAY_LEN(session->cloak_cache),
@@ -10352,7 +10371,7 @@ planet_move_friendship(struct yt_session *session, float owner,
 	struct yt_player current;
 	struct yt_player other;
 	uint32_t owner_record;
-	int last_player = (int)session->door->game.config.sector_offset;
+	int last_player = (int)session_sector_offset(session);
 
 	if (friendly == NULL)
 		return false;
@@ -10531,7 +10550,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 	if (moving_planet == 1.0f) {
 		float maximum = single_sub(
 		    session->door->game.config.port_offset,
-		    session->door->game.config.sector_offset);
+		    session_sector_offset(session));
 
 		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 		    "planet move Wanderer blank", error)
@@ -10623,7 +10642,7 @@ planet_move(struct yt_session *session, bool *enter_sector,
 	float destination;
 	float maximum = yt_planet_move_maximum(
 	    session->door->game.config.port_offset,
-	    session->door->game.config.sector_offset);
+	    session_sector_offset(session));
 	float cost = 0.0f;
 	int start_node;
 	int destination_node;
@@ -11121,7 +11140,7 @@ create_planet(struct yt_session *session, struct yt_error *error)
 	    error))
 		return false;
 	sector_physical = qb_brun_random_record_number(single_add(
-	    session->door->game.config.sector_offset, session->player.sector));
+	    session_sector_offset(session), session->player.sector));
 	if (!yt_database_read(&session->door->game.database,
 	    (size_t)sector_physical, &raw, error))
 		return false;
@@ -11396,7 +11415,7 @@ team_load(struct yt_session *session, int id, struct yt_team *team,
 	struct yt_team_loader_state loader = {
 		.team_id = (float)id,
 		.current_player_record = (float)session->player_record,
-		.sector_record_offset = session->door->game.config.sector_offset,
+		.sector_record_offset = session_sector_offset(session),
 		.conversion_mode = session->presentation.sound.conversion_mode,
 		.cache = &session->team_cache,
 	};
@@ -11607,7 +11626,7 @@ info_team_load_team(void *context, float team_id, float current_record,
 	struct yt_team_loader_state loader = {
 		.team_id = team_id,
 		.current_player_record = current_record,
-		.sector_record_offset = session->door->game.config.sector_offset,
+		.sector_record_offset = session_sector_offset(session),
 		.conversion_mode = session->presentation.sound.conversion_mode,
 		.cache = &session->team_cache,
 	};
@@ -11644,7 +11663,7 @@ info_team_read_overlay(void *context, float team_id,
 	struct yt_session *session = context;
 	struct yt_record raw;
 	float expression = single_add(
-	    session->door->game.config.sector_offset, team_id);
+	    session_sector_offset(session), team_id);
 	uint32_t physical = qb_brun_random_record_number(expression);
 
 	if (!yt_database_read(&session->door->game.database, (size_t)physical,
@@ -11660,7 +11679,7 @@ info_team_write_overlay(void *context, float team_id,
 {
 	struct yt_session *session = context;
 	float expression = single_add(
-	    session->door->game.config.sector_offset, team_id);
+	    session_sector_offset(session), team_id);
 	uint32_t physical = qb_brun_random_record_number(expression);
 
 	return yt_database_write(&session->door->game.database,
@@ -11687,7 +11706,7 @@ info_team_lines(struct yt_session *session, struct yt_team *resolved_team,
 	};
 	struct yt_info_team_state state = {
 		.current_record = (float)session->player_record,
-		.sector_offset = session->door->game.config.sector_offset,
+		.sector_offset = session_sector_offset(session),
 		.conversion_mode = session->presentation.sound.conversion_mode,
 	};
 
@@ -12159,7 +12178,7 @@ team_search(struct yt_session *session, struct yt_error *error)
 	    "team resource locating row", error))
 		return false;
 	for (player_record = YT_PLAYER_FIRST;
-	    player_record <= (int)session->door->game.config.sector_offset;
+	    player_record <= (int)session_sector_offset(session);
 	    ++player_record) {
 		struct yt_player player;
 		uint8_t row[YT_TEXT_FIELD_SIZE + 64U];
@@ -13542,7 +13561,7 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 	physical_planet = yt_projectile_physical_record(
 	    session->door->game.config.planet_offset, sector->planet);
 	physical_sector = yt_projectile_physical_record(
-	    session->door->game.config.sector_offset, (float)sector_number);
+	    session_sector_offset(session), (float)sector_number);
 	if (!planet_update_cached_physical(session, physical_planet,
 	    &updater_planet, NULL, error))
 		return false;
@@ -13556,10 +13575,10 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 	if (planet.owner == (float)session->player_record)
 		friendly = true;
 	else if (planet.owner > 1.0f
-	    && planet.owner <= session->door->game.config.sector_offset) {
+	    && planet.owner <= session_sector_offset(session)) {
 		if (!yt_friendship_resolve(planet.owner,
 		    (float)session->player_record,
-		    session->door->game.config.sector_offset,
+		    session_sector_offset(session),
 		    friendship_read_player, &session->door->game, &friendly,
 		    error))
 			return false;
@@ -13920,7 +13939,7 @@ cruise_defense_friendship(void *context, float owner, bool *friendly,
 	struct yt_session *session = context;
 
 	return yt_friendship_resolve(owner, (float)session->player_record,
-	    session->door->game.config.sector_offset,
+	    session_sector_offset(session),
 	    friendship_read_player, &session->door->game, friendly, error);
 }
 
@@ -14074,7 +14093,7 @@ missile_sector(struct yt_session *session, int sector_number,
 		return false;
 	probe.sector = &sector;
 	probe.hop = (float)sector_number;
-	probe.player_terminal = session->door->game.config.sector_offset;
+	probe.player_terminal = session_sector_offset(session);
 	probe.sector_cache = session->sector_cache;
 	probe.cloak_cache = session->cloak_cache;
 	probe.cache_count = YT_ARRAY_LEN(session->sector_cache);
@@ -14122,7 +14141,7 @@ missile_mines:
 	if (mine.route == YT_PROJECTILE_SECTOR_MINE_RETURN)
 		return true;
 	for (basic = YT_PLAYER_FIRST;
-	    basic <= (int)session->door->game.config.sector_offset; ++basic) {
+	    basic <= (int)session_sector_offset(session); ++basic) {
 		struct yt_player target;
 		struct yt_player presentation_target;
 		struct yt_projectile_damage_result damage;
@@ -14154,7 +14173,7 @@ missile_mines:
 
 			if (!yt_friendship_resolve((float)basic,
 			    (float)session->player_record,
-			    session->door->game.config.sector_offset,
+			    session_sector_offset(session),
 			    friendship_read_player, &session->door->game,
 			    &ignored_friendship, error))
 				return false;
@@ -14431,7 +14450,7 @@ plasma_reload_sector:
 	memset(&dispatch, 0, sizeof(dispatch));
 	dispatch.sector = (float)sector_number;
 	dispatch.planet_link = planet_link;
-	dispatch.player_terminal = session->door->game.config.sector_offset;
+	dispatch.player_terminal = session_sector_offset(session);
 	dispatch.sector_cache = session->sector_cache;
 	dispatch.cache_count = YT_ARRAY_LEN(session->sector_cache);
 	for (;;) {
@@ -14821,7 +14840,7 @@ plasma_route_impact(void *context, int hop, double *energy,
 	probe.cloak_cache = session->cloak_cache;
 	probe.cache_count = YT_ARRAY_LEN(session->sector_cache);
 	probe.hop = (float)hop;
-	probe.player_terminal = session->door->game.config.sector_offset;
+	probe.player_terminal = session_sector_offset(session);
 	probe.xannor_provoker = route_context->xannor_provoker != NULL
 	    ? (float)*route_context->xannor_provoker : 0.0f;
 	if (!yt_projectile_sector_probe_run(&probe, error))
@@ -14923,7 +14942,7 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 			hop_loss,
 			{session_disruption_sector(session, 0U),
 			 session_disruption_sector(session, 1U)},
-			session->door->game.config.sector_offset,
+			session_sector_offset(session),
 			session->door->game.config.port_offset,
 			NULL,
 			0U,
@@ -14966,7 +14985,7 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 		}
 		route_entry.shooter = session->player_record;
 		route_entry.maximum_player_record =
-		    session->door->game.config.sector_offset;
+		    session_sector_offset(session);
 		route_entry.start = (float)start;
 		if (!yt_projectile_route_entry_run(&route_entry,
 		    cruise_route_entry_read_player, session, error))
@@ -14989,7 +15008,7 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 				};
 				struct yt_projectile_cruise_reroute_state state = {
 					(float)next,
-					session->door->game.config.sector_offset,
+					session_sector_offset(session),
 					session->door->game.config.port_offset,
 					origin_alias != NULL ? origin_alias : &local_origin,
 					&local_destination,
@@ -15270,7 +15289,7 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 		&retained_count,
 		counterattacker,
 		xannor_provoker,
-		(int)session->door->game.config.sector_offset,
+		(int)session_sector_offset(session),
 	};
 
 	return yt_counterlaunch_run(&state, &ops, session, error);
@@ -15433,7 +15452,7 @@ radio_player_search(struct yt_session *session, const char *query,
 	if (query[0] == '\0')
 		return true;
 	for (basic = YT_PLAYER_FIRST;
-	    basic <= (int)session->door->game.config.sector_offset; ++basic) {
+	    basic <= (int)session_sector_offset(session); ++basic) {
 		struct yt_player player;
 		enum yt_yes_no_answer answer;
 		uint8_t prompt[YT_TEXT_FIELD_SIZE + sizeof(" [Y]? ") - 1U];
@@ -15685,7 +15704,7 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 			.raw_team_id = session->player.team,
 			.current_player_record = (float)session->player_record,
 			.sector_record_offset =
-			    session->door->game.config.sector_offset,
+			    session_sector_offset(session),
 			.conversion_mode =
 			    session->presentation.sound.conversion_mode,
 			.cache = &session->team_cache,
@@ -16035,7 +16054,7 @@ computer_route(struct yt_session *session, bool autopilot,
 	yt_route_process_set_raw_single(&session->route_process,
 	    YT_COMPUTER_ROUTE_DESTINATION_ADDRESS, parsed_raw);
 	if (!yt_computer_path_maximum(session->door->game.config.port_offset,
-	    session->door->game.config.sector_offset, &maximum, error))
+	    session_sector_offset(session), &maximum, error))
 		return false;
 	if (destination_value < 1.0f || destination_value > maximum
 	    || start_value < 1.0f || start_value > maximum) {
@@ -16247,7 +16266,7 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 	    "What sector number is the planet in? ";
 	static const uint8_t unavailable[] = "No information available.";
 	float maximum = single_sub(session->door->game.config.port_offset,
-	    session->door->game.config.sector_offset);
+	    session_sector_offset(session));
 
 	for (;;) {
 		struct qb_val_result parsed;
@@ -16517,10 +16536,10 @@ computer_port_friendship(struct yt_session *session, float owner,
 
 	*friendly = false;
 	if (owner < 2.0f
-	    || owner > session->door->game.config.sector_offset
+	    || owner > session_sector_offset(session)
 	    || (float)session->player_record < 2.0f
 	    || (float)session->player_record
-	    > session->door->game.config.sector_offset)
+	    > session_sector_offset(session))
 		return true;
 	if (owner == (float)session->player_record) {
 		*friendly = true;
@@ -16597,7 +16616,7 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 	if (enter_sector != NULL)
 		*enter_sector = false;
 	if (!yt_computer_port_maximum(session->door->game.config.port_offset,
-	    session->door->game.config.sector_offset, &maximum, error))
+	    session_sector_offset(session), &maximum, error))
 		return false;
 	for (;;) {
 		enum yt_computer_port_selection_route route;
@@ -16633,7 +16652,7 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 		return false;
 	{
 		float sector_expression = yt_port_selected_expression(
-		    session->door->game.config.sector_offset, selected);
+		    session_sector_offset(session), selected);
 		bool visibility_ok;
 
 		memset(&visibility, 0, sizeof(visibility));
@@ -16643,7 +16662,7 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 		visibility.cached_current_team = cached_team;
 		visibility.current_player_record = (float)session->player_record;
 		visibility.last_player_record =
-		    session->door->game.config.sector_offset;
+		    session_sector_offset(session);
 		visibility.planet_record_offset =
 		    session->door->game.config.planet_offset;
 		visibility.inherited_index = yt_route_process_single(
@@ -16694,7 +16713,7 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 	}
 	{
 		float sector_record_expression = yt_port_selected_expression(
-		    session->door->game.config.sector_offset,
+		    session_sector_offset(session),
 		    (float)sector_number);
 
 		return computer_port_ordinary(session, sector_number,
@@ -16774,7 +16793,7 @@ computer_avoid(struct yt_session *session, struct yt_error *error)
 		return true;
 	if (!yt_computer_avoid_maximum(
 	    session->door->game.config.port_offset,
-	    session->door->game.config.sector_offset, &maximum, error))
+	    session_sector_offset(session), &maximum, error))
 		return false;
 	{
 		char maximum_text[64];
@@ -17600,7 +17619,7 @@ computer_profit(struct yt_session *session, bool all,
 	float adjacent_source = all ? 0.0f
 	    : single_sub(yt_route_process_single(&session->route_process,
 	    YT_CURRENT_SECTOR_RECORD_ADDRESS),
-	    session->door->game.config.sector_offset);
+	    session_sector_offset(session));
 	int source_start = all ? 2 : (int)adjacent_source;
 	int source_end = all ? sector_count(session)
 	    : (int)adjacent_source;
