@@ -237,6 +237,7 @@ struct yt_sysop_key_scheduler {
 	size_t fifo_length;
 	size_t frames[YT_SYSOP_KEY_COUNT];
 	size_t frame_depth;
+	size_t abandoned_depth;
 	uint8_t *process;
 };
 
@@ -353,6 +354,7 @@ bool yt_sysop_key_checkpoint(struct yt_sysop_key_scheduler *scheduler,
 	bool error_active, struct yt_sysop_key_delivery *delivery);
 bool yt_sysop_key_return(struct yt_sysop_key_scheduler *scheduler,
 	enum yt_sysop_key *returned);
+bool yt_sysop_key_resume_abandon(struct yt_sysop_key_scheduler *scheduler);
 const struct yt_sysop_key_record *yt_sysop_key_record(
 	const struct yt_sysop_key_scheduler *scheduler, enum yt_sysop_key key);
 size_t yt_sysop_key_fifo_bytes(const struct yt_sysop_key_scheduler *scheduler,

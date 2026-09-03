@@ -1101,7 +1101,8 @@ sysop_key_raw_matches(const struct yt_sysop_key_scheduler *scheduler)
 
 	if (scheduler->fifo_position > scheduler->fifo_length
 	    || scheduler->fifo_length > YT_SYSOP_KEY_COUNT
-	    || scheduler->frame_depth > YT_SYSOP_KEY_COUNT)
+	    || scheduler->frame_depth > YT_SYSOP_KEY_COUNT
+	    || scheduler->abandoned_depth > scheduler->frame_depth)
 		return false;
 	for (index = 0U; index < YT_SYSOP_KEY_COUNT; ++index)
 		if (scheduler->records[index].key != sysop_keys[index]
@@ -1256,7 +1257,8 @@ yt_sysop_key_scheduler_bind_process(struct yt_sysop_key_scheduler *scheduler,
 	if (scheduler == NULL || process == NULL
 	    || process_size != YT_SYSOP_KEY_PROCESS_SIZE
 	    || scheduler->process != NULL || scheduler->fifo_position != 0U
-	    || scheduler->fifo_length != 0U || scheduler->frame_depth != 0U)
+	    || scheduler->fifo_length != 0U || scheduler->frame_depth != 0U
+	    || scheduler->abandoned_depth != 0U)
 		return false;
 	for (index = 0U; index < YT_SYSOP_KEY_COUNT; ++index) {
 		struct yt_sysop_key_record *record = &scheduler->records[index];
@@ -1365,6 +1367,7 @@ yt_sysop_key_checkpoint(struct yt_sysop_key_scheduler *scheduler,
 	    || scheduler->fifo_position > scheduler->fifo_length
 	    || scheduler->fifo_length > YT_SYSOP_KEY_COUNT
 	    || scheduler->frame_depth > YT_SYSOP_KEY_COUNT
+	    || scheduler->abandoned_depth > scheduler->frame_depth
 	    || !sysop_key_raw_matches(scheduler))
 		return false;
 	memset(delivery, 0, sizeof(*delivery));
@@ -1433,7 +1436,8 @@ yt_sysop_key_return(struct yt_sysop_key_scheduler *scheduler,
 	struct yt_sysop_key_record *record;
 	size_t index;
 
-	if (scheduler == NULL || scheduler->frame_depth == 0U
+	if (scheduler == NULL
+	    || scheduler->frame_depth <= scheduler->abandoned_depth
 	    || scheduler->frame_depth > YT_SYSOP_KEY_COUNT)
 		return false;
 	if (!sysop_key_raw_matches(scheduler))
@@ -1453,6 +1457,18 @@ yt_sysop_key_return(struct yt_sysop_key_scheduler *scheduler,
 		return false;
 	if (returned != NULL)
 		*returned = record->key;
+	return true;
+}
+
+bool
+yt_sysop_key_resume_abandon(struct yt_sysop_key_scheduler *scheduler)
+{
+	if (scheduler == NULL
+	    || scheduler->frame_depth <= scheduler->abandoned_depth
+	    || !sysop_key_raw_matches(scheduler))
+		return false;
+	/* RESUME 081F does not run any event RETURN trampoline. */
+	scheduler->abandoned_depth = scheduler->frame_depth;
 	return true;
 }
 

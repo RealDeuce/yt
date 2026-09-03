@@ -2292,9 +2292,54 @@ test_sysop_key_scheduler(void)
 	    == sizeof(f9_then_f8)
 	    && memcmp(fifo, f9_then_f8, sizeof(f9_then_f8)) == 0);
 
+	/* RESUME 081F abandons live frames without clearing their STOP bits. */
+	yt_sysop_key_scheduler_init(&scheduler);
+	CHECK(yt_sysop_key_latch(&scheduler, YT_SYSOP_KEY_F8)
+	    && yt_sysop_key_checkpoint(&scheduler, false, &delivery)
+	    && delivery.key == YT_SYSOP_KEY_F8
+	    && yt_sysop_key_latch(&scheduler, YT_SYSOP_KEY_F8)
+	    && yt_sysop_key_latch(&scheduler, YT_SYSOP_KEY_F9)
+	    && yt_sysop_key_checkpoint(&scheduler, true, &delivery)
+	    && !delivery.delivered
+	    && yt_sysop_key_record(&scheduler,
+	    YT_SYSOP_KEY_F8)->event_state == 0x07U
+	    && yt_sysop_key_record(&scheduler,
+	    YT_SYSOP_KEY_F9)->event_state == 0x05U
+	    && yt_sysop_key_resume_abandon(&scheduler)
+	    && scheduler.frame_depth == 1U && scheduler.abandoned_depth == 1U
+	    && !yt_sysop_key_return(&scheduler, &returned)
+	    && yt_sysop_key_checkpoint(&scheduler, false, &delivery)
+	    && delivery.key == YT_SYSOP_KEY_F9
+	    && scheduler.frame_depth == 2U && scheduler.abandoned_depth == 1U
+	    && yt_sysop_key_return(&scheduler, &returned)
+	    && returned == YT_SYSOP_KEY_F9
+	    && scheduler.frame_depth == 1U && scheduler.abandoned_depth == 1U
+	    && !yt_sysop_key_return(&scheduler, &returned)
+	    && yt_sysop_key_record(&scheduler,
+	    YT_SYSOP_KEY_F8)->event_state == 0x07U
+	    && yt_sysop_key_latch(&scheduler, YT_SYSOP_KEY_F10)
+	    && yt_sysop_key_checkpoint(&scheduler, false, &delivery)
+	    && delivery.key == YT_SYSOP_KEY_F10
+	    && yt_sysop_key_return(&scheduler, &returned)
+	    && returned == YT_SYSOP_KEY_F10
+	    && !yt_sysop_key_resume_abandon(&scheduler));
+
+	/* A nested RESUME abandons the complete older event-frame chain. */
+	yt_sysop_key_scheduler_init(&scheduler);
+	CHECK(yt_sysop_key_latch(&scheduler, YT_SYSOP_KEY_F4)
+	    && yt_sysop_key_checkpoint(&scheduler, false, &delivery)
+	    && delivery.key == YT_SYSOP_KEY_F4
+	    && yt_sysop_key_latch(&scheduler, YT_SYSOP_KEY_F8)
+	    && yt_sysop_key_checkpoint(&scheduler, false, &delivery)
+	    && delivery.key == YT_SYSOP_KEY_F8
+	    && yt_sysop_key_resume_abandon(&scheduler)
+	    && scheduler.frame_depth == 2U && scheduler.abandoned_depth == 2U
+	    && !yt_sysop_key_return(&scheduler, &returned));
+
 	CHECK(yt_sysop_key_record(&scheduler, (enum yt_sysop_key)6) == NULL
 	    && !yt_sysop_key_latch(&scheduler, (enum yt_sysop_key)6)
 	    && !yt_sysop_key_return(NULL, NULL)
+	    && !yt_sysop_key_resume_abandon(NULL)
 	    && !yt_sysop_key_checkpoint(NULL, false, &delivery)
 	    && !yt_sysop_key_checkpoint(&scheduler, false, NULL));
 }
@@ -2407,6 +2452,18 @@ test_sysop_key_process(void)
 	    && input_process_word(process, 0x1256U) == 0x1262U
 	    && input_process_word(process, 0x125EU) == 0U
 	    && process[0x118AU] == 0U);
+	CHECK(yt_sysop_key_latch(&scheduler, YT_SYSOP_KEY_F9)
+	    && yt_sysop_key_checkpoint(&scheduler, false, &delivery)
+	    && delivery.key == YT_SYSOP_KEY_F9
+	    && process[0x11C3U] == 0x03U
+	    && input_process_word(process, 0x1254U) == 0x1264U
+	    && input_process_word(process, 0x1256U) == 0x1264U
+	    && yt_sysop_key_resume_abandon(&scheduler)
+	    && process[0x11C3U] == 0x03U
+	    && process[0x01CFU] == 0x06U && process[0x118AU] == 0U
+	    && input_process_word(process, 0x1254U) == 0x1264U
+	    && input_process_word(process, 0x1256U) == 0x1264U
+	    && input_process_word(process, 0x125EU) == 0U);
 
 	/* Raw/typed predecessor disagreement is rejected without hiding it. */
 	process[0x11AAU] = 0x7FU;
