@@ -7801,6 +7801,12 @@ yt_common_fatal_run(struct yt_common_fatal_state *state,
     struct yt_error *error)
 {
 	static const uint8_t notice[] = "Your ship has been destroyed!";
+	static const uint8_t selector_three[4] = {
+		0x00U, 0x00U, 0x40U, 0x82U,
+	};
+	static const uint8_t duration_five[4] = {
+		0x00U, 0x00U, 0x20U, 0x83U,
+	};
 	struct yt_player player;
 
 	if (state == NULL || ops == NULL || ops->set_foreground == NULL
@@ -7820,10 +7826,10 @@ yt_common_fatal_run(struct yt_common_fatal_state *state,
 	state->field_player = player;
 	state->field_valid = true;
 	state->target_record = (float)state->current_player_record;
-	if (!ops->sound(context, error)
+	if (!ops->sound(context, selector_three, error)
 	    || !ops->death(context, state->current_player_record,
 	    state->target_record, error)
-	    || !ops->wait(context, 5.0f, error))
+	    || !ops->wait(context, duration_five, error))
 		return false;
 	state->wait_complete = true;
 	state->normal_exit = true;

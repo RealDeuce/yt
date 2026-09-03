@@ -66,6 +66,8 @@
 #define YT_INACTIVITY_DEADLINE_ADDRESS 0x51B4U
 #define YT_NEXT_TIME_REFRESH_ADDRESS 0x19C0U
 #define YT_COMPUTER_ACTIVATION_SELECTOR_ADDRESS 0x50D2U
+#define YT_FATAL_SOUND_SELECTOR_ADDRESS 0x4CE2U
+#define YT_FATAL_WAIT_ADDRESS 0x4CE6U
 #define YT_COUNTERLAUNCH_COUNT_ADDRESS 0x5BC6U
 #define YT_SPY_DESTINATION_SCRATCH_ADDRESS 0x5FE4U
 #define YT_SPY_FOUND_SCRATCH_ADDRESS 0x5FE8U
@@ -359,6 +361,36 @@ session_timed_wait(struct yt_session *session, double seconds)
 	for (;;) {
 		struct yt_input_value selected = {{0, 0}, 0, 0, false};
 
+		reason = yt_timed_wait_timer(&session->wait,
+		    (float)yt_platform_timer());
+		if (reason != YT_TIMED_WAIT_CONTINUE)
+			return reason != YT_TIMED_WAIT_ERROR;
+		if (!yt_input_poll_legacy(&session->input,
+		    session->presentation.sound.mode, YT_INPUT_PHASE_WAIT,
+		    &selected))
+			return false;
+		reason = yt_timed_wait_input(&session->wait,
+		    session->presentation.sound.mode, &selected);
+		if (reason != YT_TIMED_WAIT_CONTINUE)
+			return reason != YT_TIMED_WAIT_ERROR;
+	}
+}
+
+static bool
+session_timed_wait_at(struct yt_session *session, double seconds,
+    uint16_t address)
+{
+	enum yt_timed_wait_reason reason;
+
+	if (!yt_timed_wait_begin(&session->wait, (float)seconds,
+	    (float)yt_platform_timer()))
+		return false;
+	session_set_process_single(session, address, session->wait.duration_cell);
+	for (;;) {
+		struct yt_input_value selected = {{0, 0}, 0, 0, false};
+
+		session->wait.duration_cell = yt_route_process_single(
+		    &session->route_process, address);
 		reason = yt_timed_wait_timer(&session->wait,
 		    (float)yt_platform_timer());
 		if (reason != YT_TIMED_WAIT_CONTINUE)
@@ -5499,9 +5531,16 @@ common_fatal_read_player(void *context, int player_record,
 }
 
 static bool
-common_fatal_sound(void *context, struct yt_error *error)
+common_fatal_sound(void *context, const uint8_t selector_raw[4],
+    struct yt_error *error)
 {
-	return session_sound(context, 3.0f, "fatal destruction sound", error);
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_FATAL_SOUND_SELECTOR_ADDRESS, selector_raw);
+	return session_sound(session, yt_route_process_single(
+	    &session->route_process, YT_FATAL_SOUND_SELECTOR_ADDRESS),
+	    "fatal destruction sound", error);
 }
 
 static bool
@@ -5512,12 +5551,25 @@ common_fatal_death(void *context, int victim_record, float killer,
 }
 
 static bool
-common_fatal_wait(void *context, float duration, struct yt_error *error)
+common_fatal_wait(void *context, const uint8_t duration_raw[4],
+    struct yt_error *error)
 {
 	struct yt_session *session = context;
+	float duration;
 
-	if (!session_wait(session, (double)duration, "common fatal wait", error))
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_FATAL_WAIT_ADDRESS, duration_raw);
+	duration = yt_route_process_single(&session->route_process,
+	    YT_FATAL_WAIT_ADDRESS);
+	if (!session_timed_wait_at(session, (double)duration,
+	    YT_FATAL_WAIT_ADDRESS)) {
+		if (error != NULL) {
+			error->status = YT_IO_ERROR;
+			snprintf(error->operation, sizeof(error->operation), "%s",
+			    "common fatal wait");
+		}
 		return false;
+	}
 	session->fatal_wait_complete = true;
 	return true;
 }

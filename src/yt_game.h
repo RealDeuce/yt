@@ -2665,10 +2665,12 @@ struct yt_common_fatal_ops {
 	    struct yt_error *error);
 	bool (*read_player)(void *context, int player_record,
 	    struct yt_player *player, struct yt_error *error);
-	bool (*sound)(void *context, struct yt_error *error);
+	bool (*sound)(void *context, const uint8_t selector_raw[4],
+	    struct yt_error *error);
 	bool (*death)(void *context, int victim_record, float killer,
 	    struct yt_error *error);
-	bool (*wait)(void *context, float duration, struct yt_error *error);
+	bool (*wait)(void *context, const uint8_t duration_raw[4],
+	    struct yt_error *error);
 };
 bool yt_common_fatal_run(struct yt_common_fatal_state *state,
     const struct yt_common_fatal_ops *ops, void *context,
