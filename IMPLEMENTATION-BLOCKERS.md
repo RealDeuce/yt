@@ -8,6 +8,31 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
+### DOC-GAP-020: color-table process addresses and adjacent reads
+
+Affected coverage:
+
+- `YT-SUB:43D0` one-time initialization of the eight-entry logical-to-PC
+  color table;
+- authoritative process-image binding of that mutable table; and
+- corrupt logical-color indices whose direct `CINT(color) * 4 + base`
+  calculation reads adjacent process storage.
+
+The completed `docs/runtime/presentation-helpers.md` names the initialization
+flag at `DS:556A`, both ANSI cache cells at `DS:559E/55A2`, and the eight
+ordinary table values. It also establishes that corrupt indices are not
+bounded and instead read adjacent mutable numeric storage. Neither that
+document nor the global-state registry identifies the table's DS base, its
+eight exact cell addresses, the surrounding aliased cells, or the raw bytes
+read by the documented out-of-range cases. The native `color_memory[8]`
+sidecar can model ordinary colors but cannot be made an authoritative process
+view or reproduce adjacent-memory corruption without inventing this layout.
+
+Upstream documentation, generated evidence, and focused fixtures must name
+the table addresses, initialization bytes, aliasing/adjacency, and reached
+corrupt-index outcomes before the native color table can be process-bound.
+No binary inspection or new reverse engineering was performed.
+
 ### DOC-GAP-019: planet-updater corrupt numeric record behavior
 
 Affected coverage:
