@@ -3769,6 +3769,116 @@ test_sysop_chat_header(void)
 }
 
 static void
+test_basic_fault_registry(void)
+{
+	static const struct {
+		enum yt_basic_fault_module module;
+		uint16_t instruction;
+		uint16_t saved_ip;
+		uint16_t retry_statement;
+		int32_t source_line;
+		uint16_t handler;
+		uint8_t domain;
+	} expected[] = {
+		{YT_BASIC_FAULT_MAIN, 0x8E10U, 0x8E13U, 0x8DFCU, 33780,
+		    0xB2DAU, 0U},
+		{YT_BASIC_FAULT_SHARED, 0x97C6U, 0x97C9U, 0x97BBU, 64006,
+		    0x45F7U, 0U},
+		{YT_BASIC_FAULT_SHARED, 0x97EEU, 0x97F1U, 0x97E3U, 64006,
+		    0x45F7U, 0U},
+		{YT_BASIC_FAULT_MAIN, 0x67D8U, 0x67DBU, 0x67CDU, 33000,
+		    0xB2DAU, 0U},
+		{YT_BASIC_FAULT_MAIN, 0x680BU, 0x680EU, 0x6800U, 33000,
+		    0xB2DAU, 0U},
+		{YT_BASIC_FAULT_MAIN, 0x6AE6U, 0x6AE9U, 0x6ADBU, 33000,
+		    0xB2DAU, 1U},
+		{YT_BASIC_FAULT_MAIN, 0xA9A2U, 0xA9A5U, 0xA997U, 40001,
+		    0xB2DAU, 0U},
+		{YT_BASIC_FAULT_MAIN, 0xA428U, 0xA42BU, 0xA41DU, 33990,
+		    0xB2DAU, 0U},
+		{YT_BASIC_FAULT_MAIN, 0x6B0BU, 0x6B0EU, 0x6B00U, 33100,
+		    0xB2DAU, 0U},
+		{YT_BASIC_FAULT_MAIN, 0x6CDBU, 0x6CDEU, 0x6CC7U, 33150,
+		    0xB2DAU, 0U},
+		{YT_BASIC_FAULT_SHARED, 0x103FU, 0x1042U, 0x103CU, 0,
+		    0x45F7U, 2U},
+		{YT_BASIC_FAULT_SHARED, 0x1050U, 0x1053U, 0x104DU, 0,
+		    0x45F7U, 2U},
+		{YT_BASIC_FAULT_SHARED, 0x1067U, 0x106AU, 0x1064U, 0,
+		    0x45F7U, 2U},
+		{YT_BASIC_FAULT_SHARED, 0x1072U, 0x1075U, 0x106FU, 0,
+		    0x45F7U, 2U},
+		{YT_BASIC_FAULT_SHARED, 0x1099U, 0x109CU, 0x1096U, 0,
+		    0x45F7U, 2U},
+		{YT_BASIC_FAULT_SHARED, 0x10A6U, 0x10A9U, 0x1096U, 0,
+		    0x45F7U, 2U},
+		{YT_BASIC_FAULT_SHARED, 0x10B4U, 0x10B7U, 0x10B1U, 0,
+		    0x45F7U, 2U},
+		{YT_BASIC_FAULT_SHARED, 0x1105U, 0x1108U, 0x1102U, 0,
+		    0x45F7U, 2U},
+		{YT_BASIC_FAULT_SHARED, 0x1156U, 0x1159U, 0x113EU, 0,
+		    0x45F7U, 0U},
+		{YT_BASIC_FAULT_SHARED, 0x134CU, 0x134FU, 0x1349U, 0,
+		    0x45F7U, 2U},
+		{YT_BASIC_FAULT_SHARED, 0x136CU, 0x136FU, 0x1369U, 0,
+		    0x45F7U, 2U},
+		{YT_BASIC_FAULT_SHARED, 0x13ADU, 0x13B0U, 0x13AAU, 0,
+		    0x45F7U, 2U},
+		{YT_BASIC_FAULT_MAIN, 0x90E9U, 0x90ECU, 0x90E1U, 33880,
+		    0xB2DAU, 2U},
+		{YT_BASIC_FAULT_MAIN, 0x9123U, 0x9126U, 0x9120U, 33880,
+		    0xB2DAU, 2U},
+		{YT_BASIC_FAULT_MAIN, 0x92E1U, 0x92E4U, 0x92CCU, 33890,
+		    0xB2DAU, 0U},
+	};
+	struct yt_error error;
+	size_t index;
+
+	CHECK(YT_ARRAY_LEN(expected) == YT_BASIC_FAULT_SITE_COUNT);
+	for (index = 0U; index < YT_ARRAY_LEN(expected); ++index) {
+		const struct yt_basic_fault_identity *identity =
+		    yt_basic_fault_identity((enum yt_basic_fault_site)index);
+
+		CHECK(identity != NULL && identity->name != NULL
+		    && identity->module == expected[index].module
+		    && identity->instruction == expected[index].instruction
+		    && identity->saved_ip == expected[index].saved_ip
+		    && identity->retry_statement
+		    == expected[index].retry_statement
+		    && identity->source_line == expected[index].source_line
+		    && identity->handler == expected[index].handler);
+		if (expected[index].domain == 2U) {
+			CHECK(identity->error_count == 1U
+			    && yt_basic_fault_admits(
+			    (enum yt_basic_fault_site)index, 6U)
+			    && !yt_basic_fault_admits(
+			    (enum yt_basic_fault_site)index, 57U));
+		}
+		else {
+			CHECK(identity->error_count
+			    == (expected[index].domain == 1U ? 7U : 6U)
+			    && yt_basic_fault_admits(
+			    (enum yt_basic_fault_site)index, 5U)
+			    && yt_basic_fault_admits(
+			    (enum yt_basic_fault_site)index, 57U)
+			    && yt_basic_fault_admits(
+			    (enum yt_basic_fault_site)index, 75U)
+			    && (yt_basic_fault_admits(
+			    (enum yt_basic_fault_site)index, 61U)
+			    == (expected[index].domain == 1U)));
+		}
+	}
+	CHECK(yt_basic_fault_identity(YT_BASIC_FAULT_SITE_COUNT) == NULL
+	    && !yt_basic_fault_admits(YT_BASIC_FAULT_SITE_COUNT, 5U));
+	yt_error_clear(&error);
+	CHECK(yt_error_attach_basic_fault(&error,
+	    YT_BASIC_FAULT_ROUTE_FINAL_SECTOR_GET)
+	    && error.basic_fault_valid
+	    && error.basic_fault_site == YT_BASIC_FAULT_ROUTE_FINAL_SECTOR_GET
+	    && !yt_error_attach_basic_fault(&error, YT_BASIC_FAULT_SITE_COUNT));
+}
+
+static void
 test_main_error_model(void)
 {
 	static const uint8_t debug[] =
@@ -24698,6 +24808,7 @@ main(void)
 	test_sound_toggle();
 	test_sysop_time();
 	test_sysop_chat_header();
+	test_basic_fault_registry();
 	test_main_error_model();
 	test_shared_error_model();
 	test_serial_startup_output();

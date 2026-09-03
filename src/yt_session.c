@@ -385,8 +385,13 @@ session_hydration_read_player(void *context, int player_record,
 {
 	struct yt_session *session = context;
 
-	return yt_game_read_player(&session->door->game, player_record, player,
-	    error);
+	if (!yt_game_read_player(&session->door->game, player_record, player,
+	    error)) {
+		(void)yt_error_attach_basic_fault(error,
+		    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_GET);
+		return false;
+	}
+	return true;
 }
 
 static bool
@@ -2886,8 +2891,11 @@ port_update_read_sector(void *context, uint32_t physical_record,
 	struct yt_record record;
 
 	if (!yt_database_read(&session->door->game.database,
-	    (size_t)physical_record, &record, error))
+	    (size_t)physical_record, &record, error)) {
+		(void)yt_error_attach_basic_fault(error,
+		    YT_BASIC_FAULT_PORT_UPDATER_SECTOR_GET);
 		return false;
+	}
 	yt_sector_decode(sector, &record);
 	return true;
 }
@@ -2917,8 +2925,11 @@ port_update_read_port(void *context, uint32_t physical_record,
 	struct yt_record record;
 
 	if (!yt_database_read(&session->door->game.database,
-	    (size_t)physical_record, &record, error))
+	    (size_t)physical_record, &record, error)) {
+		(void)yt_error_attach_basic_fault(error,
+		    YT_BASIC_FAULT_PORT_UPDATER_PORT_GET);
 		return false;
+	}
 	yt_port_decode(port, &record);
 	return true;
 }
@@ -2939,8 +2950,13 @@ port_update_write_port(void *context, uint32_t physical_record,
 {
 	struct yt_session *session = context;
 
-	return yt_database_write_durable(&session->door->game.database,
-	    (size_t)physical_record, &port->record, error);
+	if (!yt_database_write_durable(&session->door->game.database,
+	    (size_t)physical_record, &port->record, error)) {
+		(void)yt_error_attach_basic_fault(error,
+		    YT_BASIC_FAULT_PORT_UPDATER_PORT_PUT);
+		return false;
+	}
+	return true;
 }
 
 static bool
@@ -7032,8 +7048,11 @@ port_report_read_player(void *context, uint32_t physical_record,
 		return true;
 	}
 	if (!yt_database_read(&session->door->game.database,
-	    (size_t)physical_record, &record, error))
+	    (size_t)physical_record, &record, error)) {
+		(void)yt_error_attach_basic_fault(error,
+		    YT_BASIC_FAULT_PORT_OWNER_PLAYER_GET);
 		return false;
+	}
 	yt_player_decode(player, &record);
 	return true;
 }
@@ -7046,8 +7065,11 @@ port_report_read_port(void *context, uint32_t physical_record,
 	struct yt_record record;
 
 	if (!yt_database_read(&session->door->game.database,
-	    (size_t)physical_record, &record, error))
+	    (size_t)physical_record, &record, error)) {
+		(void)yt_error_attach_basic_fault(error,
+		    YT_BASIC_FAULT_PORT_REPORT_PORT_GET);
 		return false;
+	}
 	yt_port_decode(port, &record);
 	return true;
 }
@@ -8357,8 +8379,11 @@ earth_report(struct yt_session *session, struct yt_port *earth,
 	if (earth == NULL || price == NULL)
 		return false;
 	session->pager.line_count = 0.0f;
-	if (!yt_game_read_port(&session->door->game, 1, earth, error))
+	if (!yt_game_read_port(&session->door->game, 1, earth, error)) {
+		(void)yt_error_attach_basic_fault(error,
+		    YT_BASIC_FAULT_PORT_EARTH_GET);
 		return false;
+	}
 	computer_port_earth_field(earth_state,
 	    YT_COMPUTER_PORT_EARTH_FIELD_PORT,
 	    (uint32_t)yt_port_basic_record(&session->door->game.config, 1),
@@ -9584,8 +9609,11 @@ route_sector_reader(void *context, int logical_sector, float warps[6],
 	struct yt_sector sector;
 
 	if (!yt_game_read_sector(&session->door->game, logical_sector, &sector,
-	    error))
+	    error)) {
+		(void)yt_error_attach_basic_fault(error,
+		    YT_BASIC_FAULT_ROUTE_SECTOR_GET);
 		return false;
+	}
 	session->navigation_field_kind = NAVIGATION_FIELD_ROUTE_SECTOR;
 	session->navigation_field_record = yt_sector_basic_record(
 	    &session->door->game.config, logical_sector);
@@ -15533,6 +15561,8 @@ computer_route(struct yt_session *session, bool autopilot,
 
 		if (!yt_game_read_sector(&session->door->game,
 		    (int)session->player.sector, &current_sector, error)) {
+			(void)yt_error_attach_basic_fault(error,
+			    YT_BASIC_FAULT_ROUTE_FINAL_SECTOR_GET);
 			free(route);
 			return false;
 		}
@@ -15829,22 +15859,37 @@ computer_port_friendship(struct yt_session *session, float owner,
 		return true;
 	}
 	if (!yt_game_read_player(&session->door->game,
-	    session->player_record, &current, error))
+	    session->player_record, &current, error)) {
+		(void)yt_error_attach_basic_fault(error,
+		    YT_BASIC_FAULT_PORT_FRIENDSHIP_CURRENT_GET);
 		return false;
+	}
 	if (current.team == 0.0f)
 		return true;
 	if (!yt_game_read_player(&session->door->game, (int)owner,
-	    &other, error))
+	    &other, error)) {
+		(void)yt_error_attach_basic_fault(error,
+		    YT_BASIC_FAULT_PORT_FRIENDSHIP_CANDIDATE_GET);
 		return false;
+	}
 	*friendly = other.team == current.team;
 	return true;
 }
+
+struct computer_port_visibility_context {
+	struct yt_session *session;
+	size_t player_reads;
+};
 
 static bool
 computer_port_visibility_read_player(void *context, uint32_t physical_record,
     struct yt_player *player, struct yt_error *error)
 {
-	struct yt_session *session = context;
+	struct computer_port_visibility_context *visibility_context = context;
+	struct yt_session *session = visibility_context->session;
+	enum yt_basic_fault_site site = visibility_context->player_reads++ == 0U
+	    ? YT_BASIC_FAULT_PORT_FRIENDSHIP_CURRENT_GET
+	    : YT_BASIC_FAULT_PORT_FRIENDSHIP_CANDIDATE_GET;
 
 	if (physical_record > (uint32_t)INT_MAX) {
 		if (error != NULL) {
@@ -15854,8 +15899,12 @@ computer_port_visibility_read_player(void *context, uint32_t physical_record,
 		}
 		return false;
 	}
-	return yt_game_read_player(&session->door->game, (int)physical_record,
-	    player, error);
+	if (!yt_game_read_player(&session->door->game, (int)physical_record,
+	    player, error)) {
+		(void)yt_error_attach_basic_fault(error, site);
+		return false;
+	}
+	return true;
 }
 
 static bool
@@ -15882,6 +15931,9 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 	int sector_number;
 	struct yt_sector sector;
 	struct yt_computer_port_visibility_state visibility;
+	struct computer_port_visibility_context visibility_context = {
+		session, 0U
+	};
 	bool denied;
 
 	if (enter_sector != NULL)
@@ -15919,8 +15971,11 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 	}
 	sector_number = (int)selected;
 	if (!yt_game_read_sector(&session->door->game, sector_number, &sector,
-	    error))
+	    error)) {
+		(void)yt_error_attach_basic_fault(error,
+		    YT_BASIC_FAULT_PORT_SELECTED_SECTOR_GET);
 		return false;
+	}
 	{
 		float sector_expression = yt_port_selected_expression(
 		    session->door->game.config.sector_offset, selected);
@@ -15943,7 +15998,8 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 		visibility.field = sector.record;
 		visibility.field_valid = true;
 		visibility_ok = yt_computer_port_visibility_run(&visibility,
-		    computer_port_visibility_read_player, session, error);
+		    computer_port_visibility_read_player, &visibility_context,
+		    error);
 		session->phase_scratch = visibility.marker_4d62;
 		memcpy(session->phase_scratch_raw, visibility.marker_4d62_raw,
 		    sizeof(session->phase_scratch_raw));

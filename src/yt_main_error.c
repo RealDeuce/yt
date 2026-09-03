@@ -5,6 +5,112 @@
 
 #include <string.h>
 
+#define GET_ERRORS {5U, 52U, 57U, 63U, 70U, 75U}
+#define PUT_ERRORS {5U, 52U, 57U, 61U, 63U, 70U, 75U}
+#define CINT_ERRORS {6U}
+#define MAIN_FAULT(label, op, saved, statement, erl, domain, count) \
+	{label, YT_BASIC_FAULT_MAIN, op, saved, statement, erl, 0xB2DAU, \
+	    domain, count}
+#define SHARED_FAULT(label, op, saved, statement, erl, domain, count) \
+	{label, YT_BASIC_FAULT_SHARED, op, saved, statement, erl, 0x45F7U, \
+	    domain, count}
+
+static const struct yt_basic_fault_identity basic_faults[] = {
+	MAIN_FAULT("selected-sector GET", 0x8E10U, 0x8E13U, 0x8DFCU,
+	    33780, GET_ERRORS, 6U),
+	SHARED_FAULT("friendship current-player GET", 0x97C6U, 0x97C9U,
+	    0x97BBU, 64006, GET_ERRORS, 6U),
+	SHARED_FAULT("friendship candidate-player GET", 0x97EEU, 0x97F1U,
+	    0x97E3U, 64006, GET_ERRORS, 6U),
+	MAIN_FAULT("ordinary updater sector GET", 0x67D8U, 0x67DBU,
+	    0x67CDU, 33000, GET_ERRORS, 6U),
+	MAIN_FAULT("ordinary updater port GET", 0x680BU, 0x680EU,
+	    0x6800U, 33000, GET_ERRORS, 6U),
+	MAIN_FAULT("ordinary updater port PUT", 0x6AE6U, 0x6AE9U,
+	    0x6ADBU, 33000, PUT_ERRORS, 7U),
+	MAIN_FAULT("owner-player GET", 0xA9A2U, 0xA9A5U, 0xA997U,
+	    40001, GET_ERRORS, 6U),
+	MAIN_FAULT("current-player A41C GET", 0xA428U, 0xA42BU, 0xA41DU,
+	    33990, GET_ERRORS, 6U),
+	MAIN_FAULT("ordinary report port GET", 0x6B0BU, 0x6B0EU,
+	    0x6B00U, 33100, GET_ERRORS, 6U),
+	MAIN_FAULT("Earth port GET", 0x6CDBU, 0x6CDEU, 0x6CC7U,
+	    33150, GET_ERRORS, 6U),
+	SHARED_FAULT("route start FIFO index CINT", 0x103FU, 0x1042U,
+	    0x103CU, 0, CINT_ERRORS, 1U),
+	SHARED_FAULT("route start predecessor index CINT", 0x1050U,
+	    0x1053U, 0x104DU, 0, CINT_ERRORS, 1U),
+	SHARED_FAULT("avoid predecessor index CINT", 0x1067U, 0x106AU,
+	    0x1064U, 0, CINT_ERRORS, 1U),
+	SHARED_FAULT("avoid endpoint index CINT", 0x1072U, 0x1075U,
+	    0x106FU, 0, CINT_ERRORS, 1U),
+	SHARED_FAULT("route FIFO head index CINT", 0x1099U, 0x109CU,
+	    0x1096U, 0, CINT_ERRORS, 1U),
+	SHARED_FAULT("route FIFO node CINT", 0x10A6U, 0x10A9U,
+	    0x1096U, 0, CINT_ERRORS, 1U),
+	SHARED_FAULT("route destination predecessor CINT", 0x10B4U,
+	    0x10B7U, 0x10B1U, 0, CINT_ERRORS, 1U),
+	SHARED_FAULT("route expanded-node CINT", 0x1105U, 0x1108U,
+	    0x1102U, 0, CINT_ERRORS, 1U),
+	SHARED_FAULT("route sector GET", 0x1156U, 0x1159U, 0x113EU,
+	    0, GET_ERRORS, 6U),
+	SHARED_FAULT("route reconstruction child CINT", 0x134CU,
+	    0x134FU, 0x1349U, 0, CINT_ERRORS, 1U),
+	SHARED_FAULT("route reconstruction parent CINT", 0x136CU,
+	    0x136FU, 0x1369U, 0, CINT_ERRORS, 1U),
+	SHARED_FAULT("route next-hop index CINT", 0x13ADU, 0x13B0U,
+	    0x13AAU, 0, CINT_ERRORS, 1U),
+	MAIN_FAULT("route display vertex CINT", 0x90E9U, 0x90ECU,
+	    0x90E1U, 33880, CINT_ERRORS, 1U),
+	MAIN_FAULT("course-program vertex CINT", 0x9123U, 0x9126U,
+	    0x9120U, 33880, CINT_ERRORS, 1U),
+	MAIN_FAULT("autopilot final-sector GET", 0x92E1U, 0x92E4U,
+	    0x92CCU, 33890, GET_ERRORS, 6U),
+};
+
+_Static_assert(YT_ARRAY_LEN(basic_faults) == YT_BASIC_FAULT_SITE_COUNT,
+    "basic fault identity table is incomplete");
+
+#undef SHARED_FAULT
+#undef MAIN_FAULT
+#undef CINT_ERRORS
+#undef PUT_ERRORS
+#undef GET_ERRORS
+
+const struct yt_basic_fault_identity *
+yt_basic_fault_identity(enum yt_basic_fault_site site)
+{
+	if ((unsigned)site >= YT_ARRAY_LEN(basic_faults))
+		return NULL;
+	return &basic_faults[(size_t)site];
+}
+
+bool
+yt_basic_fault_admits(enum yt_basic_fault_site site, uint8_t error_number)
+{
+	const struct yt_basic_fault_identity *identity =
+	    yt_basic_fault_identity(site);
+	size_t index;
+
+	if (identity == NULL)
+		return false;
+	for (index = 0U; index < identity->error_count; ++index)
+		if (identity->errors[index] == error_number)
+			return true;
+	return false;
+}
+
+bool
+yt_error_attach_basic_fault(struct yt_error *error,
+    enum yt_basic_fault_site site)
+{
+	if (error == NULL || yt_basic_fault_identity(site) == NULL)
+		return false;
+	error->basic_fault_site = (uint16_t)site;
+	error->basic_fault_valid = true;
+	return true;
+}
+
 struct text_builder {
 	uint8_t *data;
 	size_t capacity;

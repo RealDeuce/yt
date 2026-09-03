@@ -23,6 +23,8 @@ struct yt_error {
 	int system_error;
 	char operation[48];
 	char path[512];
+	uint16_t basic_fault_site;
+	bool basic_fault_valid;
 };
 
 static inline void
@@ -33,10 +35,11 @@ yt_error_clear(struct yt_error *error)
 		error->system_error = 0;
 		error->operation[0] = '\0';
 		error->path[0] = '\0';
+		error->basic_fault_site = 0U;
+		error->basic_fault_valid = false;
 	}
 }
 
 #define YT_ARRAY_LEN(a) (sizeof(a) / sizeof((a)[0]))
 
 #endif
-
