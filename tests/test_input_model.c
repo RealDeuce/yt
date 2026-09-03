@@ -1,4 +1,5 @@
 #include "yt_input_model.h"
+#include "qb.h"
 #include "yt_platform.h"
 #include "yt_startup_model.h"
 #include "yt_text.h"
@@ -1680,6 +1681,121 @@ test_sysop_chat(void)
 }
 
 static void
+test_sysop_chat_process_cells(void)
+{
+	static const uint8_t zero[4] = {0U, 0U, 0U, 0U};
+	static const uint8_t two[4] = {0U, 0U, 0U, 0x82U};
+	static const uint8_t three[4] = {0U, 0U, 0x40U, 0x82U};
+	static const uint8_t six[4] = {0U, 0U, 0x40U, 0x83U};
+	static const uint8_t dirty_zero[4] = {0x11U, 0x22U, 0x33U, 0U};
+	static const uint8_t accumulator[] = "LOOK";
+	static const uint8_t queue[] = ";X";
+	struct yt_sysop_chat_process_cells cells;
+	struct yt_sysop_chat_state chat;
+	struct yt_sysop_chat_output output;
+	struct yt_sysop_chat_poll poll;
+	uint8_t mode[4];
+	uint8_t snoop[4];
+	uint8_t foreground[4];
+	uint8_t deadline[4];
+	uint8_t original_deadline[4];
+	uint8_t inactivity_deadline[4];
+	uint8_t original_inactivity[4];
+	uint8_t before_deadline[4];
+	uint8_t before_inactivity[4];
+	uint8_t saved_remaining[4];
+	uint8_t expected[4];
+	uint8_t newline_flag[4];
+	uint8_t local = 'A';
+	uint8_t remote = 'B';
+
+	CHECK(qb_mbf32_encode(0.0f, mode) == QB_MBF_OK
+	    && qb_mbf32_encode(9.0f, foreground) == QB_MBF_OK
+	    && qb_mbf32_encode(700.0f, deadline) == QB_MBF_OK
+	    && qb_mbf32_encode(280.0f, inactivity_deadline) == QB_MBF_OK
+	    && qb_mbf32_encode(41.0f, saved_remaining) == QB_MBF_OK
+	    && qb_mbf32_encode(1.0f, newline_flag) == QB_MBF_OK);
+	memcpy(snoop, dirty_zero, sizeof(snoop));
+	memcpy(original_deadline, deadline, sizeof(deadline));
+	memcpy(original_inactivity, inactivity_deadline,
+	    sizeof(inactivity_deadline));
+	cells = (struct yt_sysop_chat_process_cells){
+		mode, snoop, foreground, deadline, inactivity_deadline,
+		saved_remaining, newline_flag,
+	};
+	CHECK(yt_sysop_chat_begin_process(&chat, &cells, 100.75f,
+	    accumulator, sizeof(accumulator) - 1U, queue, sizeof(queue) - 1U));
+	CHECK(chat.mode == 0.0f && chat.snoop == 0.0f
+	    && chat.saved_remaining == 600.0f && chat.foreground == 2.0f
+	    && chat.newline_flag == 0.0f
+	    && memcmp(deadline, original_deadline, sizeof(deadline)) == 0
+	    && memcmp(inactivity_deadline, original_inactivity,
+	    sizeof(inactivity_deadline)) == 0
+	    && memcmp(foreground, two, sizeof(foreground)) == 0
+	    && memcmp(newline_flag, zero, sizeof(newline_flag)) == 0
+	    && qb_mbf32_encode(600.0f, expected) == QB_MBF_OK
+	    && memcmp(saved_remaining, expected, sizeof(saved_remaining)) == 0);
+
+	poll = chat_poll(&local, 1U, NULL, 0U, 0x80U, 10);
+	CHECK(yt_sysop_chat_step(&chat, &poll, &output)
+	    == YT_SYSOP_CHAT_CONTINUE
+	    && output.count == 1U
+	    && output.events[0].destination == YT_SYSOP_CHAT_SERIAL
+	    && memcmp(foreground, six, sizeof(foreground)) == 0);
+
+	CHECK(qb_mbf32_encode(-1.0f, snoop) == QB_MBF_OK);
+	poll = chat_poll(&local, 1U, &remote, 1U, 0x80U, 10);
+	CHECK(yt_sysop_chat_step(&chat, &poll, &output)
+	    == YT_SYSOP_CHAT_CONTINUE
+	    && chat.key[0] == 'B' && output.count == 2U
+	    && memcmp(foreground, three, sizeof(foreground)) == 0);
+
+	CHECK(qb_mbf32_encode(2.0f, mode) == QB_MBF_OK);
+	local = 'B';
+	poll = chat_poll(&local, 1U, NULL, 0U, 0x80U, 10);
+	CHECK(yt_sysop_chat_step(&chat, &poll, &output)
+	    == YT_SYSOP_CHAT_CONTINUE
+	    && chat.mode == 2.0f && chat.snoop == -1.0f
+	    && output.count == 2U
+	    && output.events[0].destination == YT_SYSOP_CHAT_LOCAL_GATED
+	    && output.events[1].destination == YT_SYSOP_CHAT_SERIAL);
+
+	local = 0x1bU;
+	poll = chat_poll(&local, 1U, NULL, 0U, 0x80U, 10);
+	CHECK(yt_sysop_chat_step(&chat, &poll, &output)
+	    == YT_SYSOP_CHAT_CONTINUE);
+	CHECK(qb_mbf32_encode(999.0f, deadline) == QB_MBF_OK);
+	local = 'X';
+	poll = chat_poll(&local, 1U, NULL, 0U, 0x80U, 10);
+	CHECK(yt_sysop_chat_step(&chat, &poll, &output)
+	    == YT_SYSOP_CHAT_EXIT
+	    && yt_sysop_chat_finish(&chat, 160.9f, 161.1f));
+	CHECK(qb_mbf32_encode(760.0f, expected) == QB_MBF_OK
+	    && memcmp(deadline, expected, sizeof(deadline)) == 0
+	    && qb_mbf32_encode(401.0f, expected) == QB_MBF_OK
+	    && memcmp(inactivity_deadline, expected,
+	    sizeof(inactivity_deadline)) == 0
+	    && chat.queue_length == 1U && chat.queue[0] == '\r');
+
+	CHECK(yt_sysop_chat_begin_process(&chat, &cells, 100.0f,
+	    NULL, 0U, NULL, 0U)
+	    && qb_mbf32_encode(888.0f, deadline) == QB_MBF_OK
+	    && qb_mbf32_encode(777.0f, inactivity_deadline) == QB_MBF_OK);
+	memcpy(before_deadline, deadline, sizeof(deadline));
+	memcpy(before_inactivity, inactivity_deadline,
+	    sizeof(inactivity_deadline));
+	chat.terminated = true;
+	CHECK(yt_sysop_chat_finish(&chat, 1.0f, 2.0f)
+	    && memcmp(deadline, before_deadline, sizeof(deadline)) == 0
+	    && memcmp(inactivity_deadline, before_inactivity,
+	    sizeof(inactivity_deadline)) == 0);
+
+	cells.newline_flag = NULL;
+	CHECK(!yt_sysop_chat_begin_process(&chat, &cells, 0.0f,
+	    NULL, 0U, NULL, 0U));
+}
+
+static void
 test_main_startup_prefix(void)
 {
 	static const uint16_t keys[] = {4U, 5U, 8U, 9U, 10U};
@@ -2938,6 +3054,7 @@ main(void)
 	test_yes_no_candidate();
 	test_numeric_response();
 	test_sysop_chat();
+	test_sysop_chat_process_cells();
 	test_main_startup_prefix();
 	test_serial_startup_model();
 	test_platform_rmt_serial();

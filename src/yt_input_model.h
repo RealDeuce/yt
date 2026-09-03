@@ -145,6 +145,16 @@ struct yt_sysop_chat_output {
 	size_t count;
 };
 
+struct yt_sysop_chat_process_cells {
+	uint8_t *mode;
+	uint8_t *snoop;
+	uint8_t *foreground;
+	uint8_t *deadline;
+	uint8_t *inactivity_deadline;
+	uint8_t *saved_remaining;
+	uint8_t *newline_flag;
+};
+
 struct yt_sysop_chat_state {
 	float mode;
 	float snoop;
@@ -165,6 +175,7 @@ struct yt_sysop_chat_state {
 	size_t timer_reads;
 	bool exited;
 	bool terminated;
+	struct yt_sysop_chat_process_cells process;
 };
 
 struct yt_sysop_chat_poll {
@@ -282,6 +293,11 @@ bool yt_sysop_chat_begin(struct yt_sysop_chat_state *state, float mode,
     float inactivity_deadline, const uint8_t *command_accumulator,
     size_t command_accumulator_length, const uint8_t *queue,
     size_t queue_length);
+bool yt_sysop_chat_begin_process(struct yt_sysop_chat_state *state,
+	const struct yt_sysop_chat_process_cells *process, float entry_timer,
+	const uint8_t *command_accumulator, size_t command_accumulator_length,
+	const uint8_t *queue, size_t queue_length);
+void yt_sysop_chat_sync_process(struct yt_sysop_chat_state *state);
 enum yt_sysop_chat_step_result yt_sysop_chat_step(
     struct yt_sysop_chat_state *state,
     const struct yt_sysop_chat_poll *poll,

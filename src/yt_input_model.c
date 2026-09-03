@@ -793,6 +793,78 @@ yt_sysop_chat_begin(struct yt_sysop_chat_state *state, float mode,
 	return true;
 }
 
+static bool
+chat_process_bound(const struct yt_sysop_chat_state *state)
+{
+	return state->process.mode != NULL && state->process.snoop != NULL
+	    && state->process.foreground != NULL
+	    && state->process.deadline != NULL
+	    && state->process.inactivity_deadline != NULL
+	    && state->process.saved_remaining != NULL
+	    && state->process.newline_flag != NULL;
+}
+
+static bool
+chat_process_store(float *value, uint8_t cell[4], float next)
+{
+	uint8_t raw[4];
+
+	if (qb_mbf32_encode(next, raw) != QB_MBF_OK)
+		return false;
+	memcpy(cell, raw, sizeof(raw));
+	*value = qb_mbf32_decode(raw);
+	return true;
+}
+
+void
+yt_sysop_chat_sync_process(struct yt_sysop_chat_state *state)
+{
+	if (state == NULL || !chat_process_bound(state))
+		return;
+	state->mode = qb_mbf32_decode(state->process.mode);
+	state->snoop = qb_mbf32_decode(state->process.snoop);
+	state->foreground = qb_mbf32_decode(state->process.foreground);
+	state->deadline = qb_mbf32_decode(state->process.deadline);
+	state->inactivity_deadline = qb_mbf32_decode(
+	    state->process.inactivity_deadline);
+	state->saved_remaining = qb_mbf32_decode(
+	    state->process.saved_remaining);
+	state->newline_flag = qb_mbf32_decode(state->process.newline_flag);
+}
+
+bool
+yt_sysop_chat_begin_process(struct yt_sysop_chat_state *state,
+    const struct yt_sysop_chat_process_cells *process, float entry_timer,
+    const uint8_t *command_accumulator, size_t command_accumulator_length,
+    const uint8_t *queue, size_t queue_length)
+{
+	static const uint8_t zero[4] = {0U, 0U, 0U, 0U};
+	struct yt_sysop_chat_process_cells bound;
+
+	if (state == NULL || process == NULL || process->mode == NULL
+	    || process->snoop == NULL || process->foreground == NULL
+	    || process->deadline == NULL
+	    || process->inactivity_deadline == NULL
+	    || process->saved_remaining == NULL
+	    || process->newline_flag == NULL)
+		return false;
+	bound = *process;
+	if (!yt_sysop_chat_begin(state, qb_mbf32_decode(bound.mode),
+	    qb_mbf32_decode(bound.snoop), qb_mbf32_decode(bound.deadline),
+	    entry_timer, qb_mbf32_decode(bound.inactivity_deadline),
+	    command_accumulator, command_accumulator_length, queue,
+	    queue_length))
+		return false;
+	state->process = bound;
+	if (!chat_process_store(&state->saved_remaining,
+	    state->process.saved_remaining, state->saved_remaining))
+		return false;
+	memcpy(state->process.newline_flag, zero, sizeof(zero));
+	state->newline_flag = 0.0f;
+	return chat_process_store(&state->foreground,
+	    state->process.foreground, 2.0f);
+}
+
 enum yt_sysop_chat_step_result
 yt_sysop_chat_step(struct yt_sysop_chat_state *state,
     const struct yt_sysop_chat_poll *poll,
@@ -813,6 +885,7 @@ yt_sysop_chat_step(struct yt_sysop_chat_state *state,
 	    || poll->remote.length > 1U
 	    || poll->position_after_output < 0)
 		return YT_SYSOP_CHAT_INVALID;
+	yt_sysop_chat_sync_process(state);
 	if (state->terminated)
 		return YT_SYSOP_CHAT_CARRIER_END;
 	if (state->exited)
@@ -825,12 +898,20 @@ yt_sysop_chat_step(struct yt_sysop_chat_state *state,
 	state->key_length = poll->local.length;
 	if (state->key_length != 0U) {
 		memcpy(state->key, poll->local.bytes, state->key_length);
-		state->foreground = 6.0f;
+		if (chat_process_bound(state))
+			(void)chat_process_store(&state->foreground,
+			    state->process.foreground, 6.0f);
+		else
+			state->foreground = 6.0f;
 	}
 	if (state->mode == 0.0f && poll->remote.length != 0U) {
 		state->key[0] = poll->remote.bytes[0];
 		state->key_length = 1U;
-		state->foreground = 3.0f;
+		if (chat_process_bound(state))
+			(void)chat_process_store(&state->foreground,
+			    state->process.foreground, 3.0f);
+		else
+			state->foreground = 3.0f;
 	}
 	++state->polls;
 	++state->carrier_checks;
@@ -901,13 +982,27 @@ yt_sysop_chat_finish(struct yt_sysop_chat_state *state,
 	if (state == NULL || state->command_accumulator_length > YT_INPUT_PENDING
 	    || state->queue_length > YT_INPUT_PENDING)
 		return false;
+	yt_sysop_chat_sync_process(state);
 	if (!state->exited || state->terminated)
 		return true;
 	deadline_sample = chat_single(floorf(chat_single(deadline_timer)));
 	inactivity_sample = chat_single(floorf(chat_single(inactivity_timer)));
-	state->deadline = chat_single_add(deadline_sample,
-	    chat_single(state->saved_remaining));
-	state->inactivity_deadline = chat_single_add(inactivity_sample, 240.0f);
+	if (chat_process_bound(state)) {
+		if (!chat_process_store(&state->deadline, state->process.deadline,
+		    chat_single_add(deadline_sample,
+		    chat_single(state->saved_remaining))))
+			return false;
+		if (!chat_process_store(&state->inactivity_deadline,
+		    state->process.inactivity_deadline,
+		    chat_single_add(inactivity_sample, 240.0f)))
+			return false;
+	}
+	else {
+		state->deadline = chat_single_add(deadline_sample,
+		    chat_single(state->saved_remaining));
+		state->inactivity_deadline = chat_single_add(inactivity_sample,
+		    240.0f);
+	}
 	memset(state->command_accumulator, 0,
 	    sizeof(state->command_accumulator));
 	state->command_accumulator_length = 0U;
