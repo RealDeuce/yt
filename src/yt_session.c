@@ -39,6 +39,8 @@ enum navigation_field_kind {
 	NAVIGATION_FIELD_SCOREBOARD_PLAYER,
 	NAVIGATION_FIELD_SCOREBOARD_SECTOR,
 	NAVIGATION_FIELD_SCOREBOARD_TEAM,
+	NAVIGATION_FIELD_RADIO_RECIPIENT,
+	NAVIGATION_FIELD_RADIO_SENDER,
 };
 
 struct yt_session {
@@ -108,6 +110,9 @@ struct yt_session {
 	enum navigation_field_kind navigation_field_kind;
 	int navigation_field_record;
 	struct yt_record navigation_field;
+	bool radio_field_valid;
+	uint32_t radio_field_record;
+	struct yt_radio_record radio_field;
 	float current_planet;
 	char planet_name[42];
 	float current_warps[6];
@@ -2652,7 +2657,9 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 
 static bool
 radio_name_bytes(struct yt_session *session, float record, uint8_t *dest,
-    size_t capacity, size_t *length, bool sender, struct yt_error *error)
+    size_t capacity, size_t *length, bool sender,
+    struct yt_player *loaded_player, bool *loaded_player_valid,
+    struct yt_error *error)
 {
 	const uint8_t *literal;
 	size_t literal_length;
@@ -2660,14 +2667,20 @@ radio_name_bytes(struct yt_session *session, float record, uint8_t *dest,
 	if (length == NULL)
 		return false;
 	*length = 0;
+	if (loaded_player_valid != NULL)
+		*loaded_player_valid = false;
 	if (record > 0.0f) {
 		struct yt_player player;
 		uint8_t stored[YT_TEXT_FIELD_SIZE];
 		size_t stored_length;
 
-		if (!scanner_read_player(session, record, &player, error)
-		    || !yt_player_stored_name(&player, stored, &stored_length,
-		    error))
+		if (!scanner_read_player(session, record, &player, error))
+			return false;
+		if (loaded_player != NULL)
+			*loaded_player = player;
+		if (loaded_player_valid != NULL)
+			*loaded_player_valid = true;
+		if (!yt_player_stored_name(&player, stored, &stored_length, error))
 			return false;
 		if (stored_length > capacity)
 			goto capacity_error;
@@ -2706,6 +2719,13 @@ capacity_error:
 struct radio_read_context {
 	struct yt_session *session;
 	struct yt_radio_file file;
+	struct yt_radio_record radio_field;
+	uint32_t radio_field_record;
+	struct yt_player player_field;
+	uint32_t player_field_record;
+	enum yt_radio_read_name_role player_field_role;
+	bool radio_field_valid;
+	bool player_field_valid;
 };
 
 static bool
@@ -2730,8 +2750,15 @@ radio_read_get(void *context, uint32_t record,
     struct yt_radio_record *value, struct yt_error *error)
 {
 	struct radio_read_context *reader = context;
+	bool result;
 
-	return yt_radio_file_get(&reader->file, record, value, NULL, error);
+	result = yt_radio_file_get(&reader->file, record, value, NULL, error);
+	if (result) {
+		reader->radio_field = *value;
+		reader->radio_field_record = record;
+		reader->radio_field_valid = true;
+	}
+	return result;
 }
 
 static bool
@@ -2739,9 +2766,20 @@ radio_read_name(void *context, float record, bool sender, uint8_t *dest,
     size_t capacity, size_t *length, struct yt_error *error)
 {
 	struct radio_read_context *reader = context;
+	struct yt_player player;
+	bool player_valid;
+	bool result;
 
-	return radio_name_bytes(reader->session, record, dest, capacity,
-	    length, sender, error);
+	result = radio_name_bytes(reader->session, record, dest, capacity,
+	    length, sender, &player, &player_valid, error);
+	if (player_valid) {
+		reader->player_field = player;
+		reader->player_field_record = qb_brun_random_record_number(record);
+		reader->player_field_role = sender
+		    ? YT_RADIO_READ_NAME_SENDER : YT_RADIO_READ_NAME_RECIPIENT;
+		reader->player_field_valid = true;
+	}
+	return result;
 }
 
 static bool
@@ -2815,6 +2853,21 @@ radio_read(struct yt_session *session, float reader_mode,
 	bool ok;
 
 	ok = yt_radio_read_run(&state, &ops, &context, error);
+	if (context.radio_field_valid) {
+		session->radio_field_valid = true;
+		session->radio_field_record = context.radio_field_record;
+		session->radio_field = context.radio_field;
+	}
+	if (context.player_field_valid) {
+		session->navigation_field_active = true;
+		session->navigation_field_record =
+		    (int)context.player_field_record;
+		session->navigation_field = context.player_field.record;
+		session->navigation_field_kind = context.player_field_role
+		    == YT_RADIO_READ_NAME_SENDER
+		    ? NAVIGATION_FIELD_RADIO_SENDER
+		    : NAVIGATION_FIELD_RADIO_RECIPIENT;
+	}
 	if (!ok && error != NULL
 	    && strcmp(error->operation, "radio scan bound") == 0)
 		(void)snprintf(error->path, sizeof(error->path), "%s",
