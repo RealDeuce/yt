@@ -31,6 +31,7 @@
 #define YT_DESTROYED_ADDRESS 0x18B4U
 #define YT_CURRENT_WARPS_ADDRESS 0x1898U
 #define YT_REGISTERED_FLAG_ADDRESS 0x1C60U
+#define YT_GENESIS_REQUIRED_PORTS_ADDRESS 0x1C48U
 #define YT_PLANET_RECORD_SCRATCH_ADDRESS 0x19C4U
 #define YT_CURRENT_SECTOR_RECORD_ADDRESS 0x4B50U
 #define YT_CLEARANCE_HOLDS_ADDRESS 0x4B54U
@@ -1985,6 +1986,15 @@ startup_configuration_store_disruption(void *context, size_t index,
 	    (uint16_t)(YT_DISRUPTION_SECTOR_ADDRESS + 4U * index), raw);
 }
 
+static void
+startup_configuration_store_genesis(void *context, const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_GENESIS_REQUIRED_PORTS_ADDRESS, raw);
+}
+
 static bool
 load_configuration(struct yt_session *session, struct yt_error *error)
 {
@@ -1997,6 +2007,7 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 		startup_configuration_write_player,
 		startup_configuration_random,
 		startup_configuration_store_disruption,
+		startup_configuration_store_genesis,
 	};
 	struct yt_game *game = &session->door->game;
 	struct yt_startup_configuration_state state;
@@ -13319,7 +13330,8 @@ command_genesis(struct yt_session *session, struct yt_error *error)
 	memcpy(cached_trader, session->player.name, cached_trader_length);
 	state = (struct yt_genesis_state){
 		.current_player_record = session->player_record,
-		.required_ports = session->door->game.config.genesis_ports,
+		.required_ports = yt_route_process_single(&session->route_process,
+		    YT_GENESIS_REQUIRED_PORTS_ADDRESS),
 		.cached_trader = cached_trader,
 		.cached_trader_length = cached_trader_length,
 	};

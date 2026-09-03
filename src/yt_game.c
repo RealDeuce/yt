@@ -281,7 +281,6 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 	    || !ops->open_data(context, error)
 	    || !ops->load_config(context, config, error))
 		return false;
-
 	path_count = qb_cint(config->scoreboard_length, &overflow);
 	if (overflow || path_count < 0)
 		return startup_configuration_error(error, YT_RANGE,
@@ -294,6 +293,8 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 	qb_compat_upper_n((uint8_t *)config->scoreboard,
 	    state->scoreboard_path_length);
 	config->scoreboard[state->scoreboard_path_length] = '\0';
+	if (ops->store_genesis != NULL)
+		ops->store_genesis(context, config->record.bytes + YT_F105);
 
 	if (config->headquarters == 0.0f) {
 		if (!yt_record_set_number(&config->record, YT_F117, 85.0f)
@@ -301,8 +302,15 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 			return false;
 		config->headquarters = 85.0f;
 	}
-	if (config->genesis_ports < 20.0f)
+	if (config->genesis_ports < 20.0f) {
+		static const uint8_t genesis_default[4] = {
+			0x00, 0x00, 0x48, 0x88
+		};
+
 		config->genesis_ports = 200.0f;
+		if (ops->store_genesis != NULL)
+			ops->store_genesis(context, genesis_default);
+	}
 	if (state->scoreboard_path_length == 0U) {
 		static const char default_path[] = "ytscore.asc";
 

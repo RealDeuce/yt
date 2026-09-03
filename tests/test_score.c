@@ -137,6 +137,9 @@ struct startup_configuration_tape {
 	size_t draw_position;
 	uint8_t disruption_raw[2][4];
 	size_t disruption_store_count;
+	uint8_t genesis_raw[2][4];
+	size_t genesis_store_count;
+	size_t genesis_store_position[2];
 };
 
 static bool
@@ -254,6 +257,21 @@ startup_configuration_disruption_store_test(void *context, size_t index,
 	++tape->disruption_store_count;
 }
 
+static void
+startup_configuration_genesis_store_test(void *context,
+    const uint8_t raw[4])
+{
+	struct startup_configuration_tape *tape = context;
+	size_t store = tape->genesis_store_count;
+
+	if (store >= YT_ARRAY_LEN(tape->genesis_raw))
+		return;
+	memcpy(tape->genesis_raw[store], raw,
+	    sizeof(tape->genesis_raw[store]));
+	tape->genesis_store_position[store] = tape->event_count;
+	++tape->genesis_store_count;
+}
+
 static bool
 startup_configuration_fixture(struct startup_configuration_tape *tape,
     struct yt_startup_configuration_state *state, struct yt_config *config,
@@ -319,6 +337,7 @@ check_startup_configuration_transaction(void)
 		startup_configuration_write_test,
 		startup_configuration_random_test,
 		startup_configuration_disruption_store_test,
+		startup_configuration_genesis_store_test,
 	};
 	static const int events[] = {
 		STARTUP_CONFIGURATION_CLOSE,
@@ -354,6 +373,12 @@ check_startup_configuration_transaction(void)
 	    || memcmp(config.scoreboard, "AB[", 3U) != 0
 	    || config.scoreboard[3] != '\0'
 	    || config.headquarters != 85.0f || config.genesis_ports != 200.0f
+	    || tape.genesis_store_count != 2U
+	    || tape.genesis_store_position[0] != 3U
+	    || tape.genesis_store_position[1] != 4U
+	    || qb_mbf32_decode(tape.genesis_raw[0]) != 19.0f
+	    || memcmp(tape.genesis_raw[1],
+	    (const uint8_t[]){0x00, 0x00, 0x48, 0x88}, 4U) != 0
 	    || config.local_screen != -1.0f || config.lottery_plays != 3.0f
 	    || config.maximum_planets != 100.0f
 	    || config.maximum_holds != 1000.0f
@@ -410,6 +435,20 @@ check_startup_configuration_transaction(void)
 	    || tape.events[3] != STARTUP_CONFIGURATION_RANDOM
 	    || tape.events[4] != STARTUP_CONFIGURATION_RANDOM
 	    || state.cache_guard != -0.25f || tape.draw_position != 2U)
+		return false;
+
+	/* An admitted requirement retains the exact hydrated FIELD bytes. */
+	if (!startup_configuration_fixture(&tape, &state, &config,
+	    sector_cache, cloak_cache))
+		return false;
+	state.cache_guard = 1.0f;
+	if (!yt_record_set_number(&tape.config_source, YT_F105, 300.0f)
+	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
+	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
+	    || tape.genesis_store_count != 1U
+	    || memcmp(tape.genesis_raw[0],
+	    tape.config_source.bytes + YT_F105, 4U) != 0
+	    || config.genesis_ports != 300.0f)
 		return false;
 
 	/* Descriptor length, not an embedded NUL byte, controls path emptiness. */
@@ -472,7 +511,10 @@ check_startup_configuration_transaction(void)
 	    || strcmp(error.operation, "startup local-mode CINT") != 0
 	    || tape.event_count != 4U || !tape.wrote_config
 	    || config.headquarters != 85.0f || config.genesis_ports != 200.0f
-	    || config.lottery_plays != -0.25f || tape.draw_position != 0U)
+	    || config.lottery_plays != -0.25f || tape.draw_position != 0U
+	    || tape.genesis_store_count != 2U
+	    || memcmp(tape.genesis_raw[1],
+	    (const uint8_t[]){0x00, 0x00, 0x48, 0x88}, 4U) != 0)
 		return false;
 
 	for (failure = 1U; failure <= YT_ARRAY_LEN(events); ++failure) {
@@ -486,6 +528,10 @@ check_startup_configuration_transaction(void)
 		    || state.installed_handler != 0x45F7U
 		    || memcmp(tape.events, events,
 		    failure * sizeof(events[0])) != 0)
+			return false;
+		if ((failure <= 3U && tape.genesis_store_count != 0U)
+		    || (failure == 4U && tape.genesis_store_count != 1U)
+		    || (failure > 4U && tape.genesis_store_count != 2U))
 			return false;
 	}
 	if (!startup_configuration_fixture(&tape, &state, &config,
