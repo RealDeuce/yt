@@ -1,5 +1,6 @@
 #include "qb.h"
 #include "yt_game.h"
+#include "yt_input_model.h"
 #include "yt_maint.h"
 #include "yt_platform.h"
 #include "yt_score.h"
@@ -25346,11 +25347,40 @@ struct movement_tape {
 	const char *responses[4];
 	size_t response_count;
 	size_t response_index;
+	char *queue;
+	size_t queue_capacity;
+	size_t *queue_position;
+	size_t *queue_length;
 	uint8_t rows[7][256];
 	size_t row_lengths[7];
 	bool row_seen[7];
 	float cached_target;
 };
+static bool
+autopilot_queue_line(char *queue, size_t queue_capacity,
+    size_t *queue_position, size_t *queue_length, char *response,
+    size_t response_capacity)
+{
+	size_t response_length = 0U;
+
+	if (response == NULL || response_capacity == 0U)
+		return false;
+	for (;;) {
+		struct yt_input_value selected;
+
+		if (!yt_input_ab36_queue_pop(queue, queue_capacity,
+		    queue_position, queue_length, &selected)
+		    || selected.length != 1U)
+			return false;
+		if (selected.bytes[0] == '\r') {
+			response[response_length] = '\0';
+			return true;
+		}
+		if (response_length + 1U >= response_capacity)
+			return false;
+		response[response_length++] = (char)selected.bytes[0];
+	}
+}
 static bool
 movement_step(struct movement_tape *tape, enum movement_event event,
     struct yt_error *error)
@@ -25409,6 +25439,12 @@ movement_input_test(void *context, char *response, size_t capacity,
 	const char *source;
 	size_t length;
 
+	if (tape->queue != NULL) {
+		if (!movement_step(tape, MOVEMENT_INPUT, error))
+			return false;
+		return autopilot_queue_line(tape->queue, tape->queue_capacity,
+		    tape->queue_position, tape->queue_length, response, capacity);
+	}
 	if (tape->response_index >= tape->response_count)
 		return false;
 	source = tape->responses[tape->response_index++];
@@ -25434,7 +25470,12 @@ movement_danger_test(void *context, float target, bool *dangerous,
 static void
 movement_clear_queue_test(void *context)
 {
-	movement_record(context, MOVEMENT_CLEAR_QUEUE);
+	struct movement_tape *tape = context;
+
+	movement_record(tape, MOVEMENT_CLEAR_QUEUE);
+	if (tape->queue != NULL)
+		(void)yt_input_queue_clear(tape->queue, tape->queue_capacity,
+		    tape->queue_position, tape->queue_length);
 }
 static bool
 movement_confirm_test(void *context, const uint8_t *prompt, size_t length,
@@ -25727,6 +25768,64 @@ check_movement_transaction(void)
 	movement_fixture(&tape, &state);
 	return !yt_movement_run(NULL, &movement_test_ops, &tape, NULL)
 	    && !yt_movement_run(&state, NULL, &tape, NULL);
+}
+
+static bool
+check_autopilot_queue_movement_join(void)
+{
+	char route[64] = "1";
+	size_t route_length = 1U;
+	float hops = 0.0f;
+	uint8_t hops_raw[4];
+	char queue[64] = "Q\r";
+	size_t queue_position = 0U;
+	size_t queue_length = 2U;
+	char command[16];
+	struct movement_tape tape;
+	struct yt_movement_state state;
+
+	if (!yt_computer_path_append_hop(route, sizeof(route), &route_length,
+	    42.0f, &hops, hops_raw, NULL)
+	    || route_length != 7U || hops != 1.0f
+	    || memcmp(route, "1\rM\r 42", 8U) != 0
+	    || !yt_input_queue_prepend_program(queue, sizeof(queue),
+	    &queue_position, &queue_length, route, route_length)
+	    || queue_position != 0U || queue_length != 10U
+	    || memcmp(queue, "1\rM\r 42\rQ\r", 11U) != 0)
+		return false;
+
+	/* The fresh computer editor consumes command 1 and deactivates. */
+	if (!autopilot_queue_line(queue, sizeof(queue), &queue_position,
+	    &queue_length, command, sizeof(command))
+	    || strcmp(command, "1") != 0
+	    || yt_computer_selector_position(command) != 7
+	    || queue_position != 2U || queue_length != 10U)
+		return false;
+
+	/* Gameplay consumes M, then the movement editor consumes its target. */
+	if (!autopilot_queue_line(queue, sizeof(queue), &queue_position,
+	    &queue_length, command, sizeof(command))
+	    || strcmp(command, "M") != 0
+	    || yt_main_shell_dispatch(command) != YT_MAIN_SHELL_MOVE
+	    || queue_position != 4U || queue_length != 10U)
+		return false;
+	movement_fixture(&tape, &state);
+	tape.queue = queue;
+	tape.queue_capacity = sizeof(queue);
+	tape.queue_position = &queue_position;
+	tape.queue_length = &queue_length;
+	if (!yt_movement_run(&state, &movement_test_ops, &tape, NULL)
+	    || state.route != YT_MOVEMENT_MOVED || state.target != 42.0f
+	    || state.attempts != 1U || queue_position != 8U
+	    || queue_length != 10U)
+		return false;
+
+	/* Pre-existing typeahead follows the injected route unchanged. */
+	return autopilot_queue_line(queue, sizeof(queue), &queue_position,
+	    &queue_length, command, sizeof(command))
+	    && strcmp(command, "Q") == 0
+	    && yt_main_shell_dispatch(command) == YT_MAIN_SHELL_QUIT
+	    && queue_position == 0U && queue_length == 0U && queue[0] == '\0';
 }
 
 enum main_fighters_event {
@@ -29769,6 +29868,8 @@ main(void)
 		return fail("owned-port treasury transaction differs");
 	if (!check_movement_transaction())
 		return fail("ordinary movement transaction differs");
+	if (!check_autopilot_queue_movement_join())
+		return fail("autopilot queue/movement join differs");
 	if (!check_main_fighters_transaction())
 		return fail("main sector-fighter transaction differs");
 	if (!check_genesis_transaction())
