@@ -46,6 +46,8 @@ struct registration_tape {
 	size_t fail_at;
 	uint8_t presented[128];
 	size_t presented_length;
+	uint8_t registered_raw[2][4];
+	size_t registered_store_count;
 };
 
 static bool
@@ -181,6 +183,19 @@ registration_end(void *context)
 	(void)registration_record(tape, REG_END, NULL);
 }
 
+static void
+registration_store_registered(void *context, const uint8_t raw[4])
+{
+	struct registration_tape *tape = context;
+
+	if (tape->registered_store_count
+	    >= YT_ARRAY_LEN(tape->registered_raw))
+		return;
+	memcpy(tape->registered_raw[tape->registered_store_count], raw,
+	    sizeof(tape->registered_raw[tape->registered_store_count]));
+	++tape->registered_store_count;
+}
+
 static const struct yt_registration_ops registration_ops = {
 	registration_close,
 	registration_random_open,
@@ -193,6 +208,7 @@ static const struct yt_registration_ops registration_ops = {
 	registration_forced,
 	registration_close_all,
 	registration_end,
+	registration_store_registered,
 };
 
 static void
@@ -2683,6 +2699,9 @@ test_registration_transaction(void)
 	CHECK(yt_registration_run(&state, &registration_ops, &tape, &error));
 	CHECK(state.outcome == YT_REGISTRATION_REGISTERED && state.nonempty
 	    && state.registered && !state.ended && !state.closed_all);
+	CHECK(tape.registered_store_count == 2U
+	    && memcmp(tape.registered_raw[0], "\0\0\0\0", 4U) == 0
+	    && memcmp(tape.registered_raw[1], "\0\0\x80\x81", 4U) == 0);
 	CHECK(state.line[0].length == 8U
 	    && memcmp(state.line[0].data, "This Bbs", 8U) == 0);
 	CHECK(state.line[1].length == 9U
@@ -2715,6 +2734,8 @@ test_registration_transaction(void)
 		CHECK(tape.event_count == index && error.status == YT_IO_ERROR);
 		CHECK(state.outcome == YT_REGISTRATION_IN_PROGRESS
 		    && !state.registered);
+		CHECK(tape.registered_store_count == 1U
+		    && memcmp(tape.registered_raw[0], "\0\0\0\0", 4U) == 0);
 		CHECK(memcmp(tape.event, registered_events,
 		    index * sizeof(registered_events[0])) == 0);
 		if (index <= 6U)
@@ -2741,7 +2762,8 @@ test_registration_transaction(void)
 	    && state.evaluation_counter[1] == 51.0f);
 	CHECK(state.display[0].length == 29U
 	    && state.display[1].length == 50U
-	    && tape.event_count == 5U && tape.event[4] == REG_DELETE);
+	    && tape.event_count == 5U && tape.event[4] == REG_DELETE
+	    && tape.registered_store_count == 1U);
 	for (index = 1U; index <= 5U; ++index) {
 		registration_state_init(&state, storage);
 		memset(&tape, 0, sizeof(tape));
@@ -2749,8 +2771,47 @@ test_registration_transaction(void)
 		CHECK(!yt_registration_run(&state, &registration_ops, &tape,
 		    NULL));
 		CHECK(tape.event_count == index);
+		CHECK(tape.registered_store_count == 1U);
 		CHECK(state.nonempty == (index < 5U));
 	}
+
+	/* Name copies precede the true flag; prefixing follows it. */
+	registration_state_init(&state, storage);
+	state.display[0].capacity = 7U;
+	memset(&tape, 0, sizeof(tape));
+	tape.file = shipped;
+	tape.file_length = sizeof(shipped) - 1U;
+	CHECK(!yt_registration_run(&state, &registration_ops, &tape, NULL));
+	CHECK(!state.registered && state.display[0].length == 0U
+	    && state.display[1].length == 0U
+	    && tape.registered_store_count == 1U);
+
+	registration_state_init(&state, storage);
+	state.display[0].capacity = 8U;
+	state.display[1].capacity = 9U;
+	memset(&tape, 0, sizeof(tape));
+	tape.file = shipped;
+	tape.file_length = sizeof(shipped) - 1U;
+	CHECK(!yt_registration_run(&state, &registration_ops, &tape, NULL));
+	CHECK(state.registered && state.display[0].length == 8U
+	    && memcmp(state.display[0].data, "This Bbs", 8U) == 0
+	    && state.display[1].length == 9U
+	    && memcmp(state.display[1].data, "The Sysop", 9U) == 0
+	    && tape.registered_store_count == 2U
+	    && memcmp(tape.registered_raw[1], "\0\0\x80\x81", 4U) == 0);
+
+	registration_state_init(&state, storage);
+	state.display[0].capacity = 22U;
+	state.display[1].capacity = 9U;
+	memset(&tape, 0, sizeof(tape));
+	tape.file = shipped;
+	tape.file_length = sizeof(shipped) - 1U;
+	CHECK(!yt_registration_run(&state, &registration_ops, &tape, NULL));
+	CHECK(state.registered && state.display[0].length == 22U
+	    && memcmp(state.display[0].data, "Registered to This Bbs", 22U) == 0
+	    && state.display[1].length == 9U
+	    && memcmp(state.display[1].data, "The Sysop", 9U) == 0
+	    && tape.registered_store_count == 2U);
 
 	/* The beta terminal has no explicit CLOSE ALL. */
 	registration_state_init(&state, storage);

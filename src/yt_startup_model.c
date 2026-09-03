@@ -148,6 +148,25 @@ registration_copy(struct yt_registration_buffer *destination,
 }
 
 static bool
+registration_prepend(struct yt_registration_buffer *destination,
+    const uint8_t *prefix, size_t prefix_length, struct yt_error *error)
+{
+	if (prefix_length > YT_REGISTRATION_STRING_MAX
+	    || destination->length > YT_REGISTRATION_STRING_MAX - prefix_length
+	    || prefix_length > destination->capacity
+	    || destination->length > destination->capacity - prefix_length)
+		return registration_error(error, YT_NO_MEMORY,
+		    "registration string space");
+	if (destination->length != 0U)
+		memmove(destination->data + prefix_length, destination->data,
+		    destination->length);
+	if (prefix_length != 0U)
+		memcpy(destination->data, prefix, prefix_length);
+	destination->length += prefix_length;
+	return true;
+}
+
+static bool
 registration_arithmetic(struct yt_registration_state *state,
     struct yt_error *error)
 {
@@ -316,6 +335,11 @@ yt_registration_run(struct yt_registration_state *state,
 		state->display[line].length = 0U;
 	}
 	state->registered = false;
+	if (ops->store_registered != NULL) {
+		static const uint8_t zero[4] = {0U, 0U, 0U, 0U};
+
+		ops->store_registered(context, zero);
+	}
 	state->nonempty = true;
 	state->outcome = YT_REGISTRATION_IN_PROGRESS;
 	state->closed_all = false;
@@ -364,14 +388,24 @@ yt_registration_run(struct yt_registration_state *state,
 		return false;
 	if (memcmp(state->parsed_key, state->calculated_key, 8U) != 0)
 		return registration_invalid(state, ops, context, error);
-	if (!registration_copy(&state->display[0],
-	    (const uint8_t *)"Registered to ", 14U, state->line[0].data,
-	    state->line[0].length, error)
-	    || !registration_copy(&state->display[1],
-	    (const uint8_t *)"Registered by ", 14U, state->line[1].data,
-	    state->line[1].length, error))
+	if (!registration_copy(&state->display[0], NULL, 0U,
+	    state->line[0].data, state->line[0].length, error)
+	    || !registration_copy(&state->display[1], NULL, 0U,
+	    state->line[1].data, state->line[1].length, error))
 		return false;
 	state->registered = true;
+	if (ops->store_registered != NULL) {
+		static const uint8_t true_value[4] = {
+			0x00U, 0x00U, 0x80U, 0x81U
+		};
+
+		ops->store_registered(context, true_value);
+	}
+	if (!registration_prepend(&state->display[0],
+	    (const uint8_t *)"Registered to ", 14U, error)
+	    || !registration_prepend(&state->display[1],
+	    (const uint8_t *)"Registered by ", 14U, error))
+		return false;
 	state->outcome = YT_REGISTRATION_REGISTERED;
 	return true;
 }

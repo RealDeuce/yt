@@ -29,6 +29,7 @@
 #define YT_MARKET_BASE_ADDRESS 0x1860U
 #define YT_DISRUPTION_SECTOR_ADDRESS 0x1878U
 #define YT_CURRENT_WARPS_ADDRESS 0x1898U
+#define YT_REGISTERED_FLAG_ADDRESS 0x1C60U
 #define YT_PLANET_RECORD_SCRATCH_ADDRESS 0x19C4U
 #define YT_CURRENT_SECTOR_RECORD_ADDRESS 0x4B50U
 #define YT_CLEARANCE_HOLDS_ADDRESS 0x4B54U
@@ -86,7 +87,6 @@ struct yt_session {
 	char output_source[YT_COMMAND_SIZE];
 	struct yt_input_splitter input;
 	char saved_command[YT_COMMAND_SIZE];
-	bool registered;
 	bool running;
 	bool terminated;
 	bool destroyed;
@@ -2174,6 +2174,15 @@ registration_end(void *opaque)
 	context->session->terminated = true;
 }
 
+static void
+registration_store_registered(void *opaque, const uint8_t raw[4])
+{
+	struct registration_context *context = opaque;
+
+	yt_route_process_set_raw_single(&context->session->route_process,
+	    YT_REGISTERED_FLAG_ADDRESS, raw);
+}
+
 static bool
 registration(struct yt_session *session, struct yt_error *error)
 {
@@ -2196,6 +2205,7 @@ registration(struct yt_session *session, struct yt_error *error)
 		registration_forced_local,
 		registration_close_all,
 		registration_end,
+		registration_store_registered,
 	};
 	struct registration_context context = {.session = session};
 	struct yt_registration_state state;
@@ -2249,8 +2259,6 @@ registration(struct yt_session *session, struct yt_error *error)
 	state.beta_only = false;
 	state.expected_evaluation_sum[0] = 2085U;
 	state.expected_evaluation_sum[1] = 3496U;
-	/* A478 clears the live validated flag before the first file operation. */
-	session->registered = false;
 	completed = yt_registration_run(&state, &ops, &context, error);
 	if (context.sequential.file != NULL
 	    || context.sequential.orphaned_file != NULL
@@ -2262,7 +2270,6 @@ registration(struct yt_session *session, struct yt_error *error)
 		free(storage);
 		return false;
 	}
-	session->registered = state.registered;
 	if (state.outcome == YT_REGISTRATION_INVALID_END
 	    || state.outcome == YT_REGISTRATION_BETA_END) {
 		free(storage);
@@ -18148,6 +18155,8 @@ quit_session(struct yt_session *session, struct yt_error *error)
 	static const char reminder[] =
 	    "PLEASE HELP YOUR SYSOP REGISTER THIS GAME.";
 	char returning[sizeof(session->door->identity.system) + 20U];
+	bool overflow;
+	int32_t registered;
 	int length;
 
 	if (!session->door->game_open)
@@ -18168,7 +18177,17 @@ quit_session(struct yt_session *session, struct yt_error *error)
 	if (!display_game_file(session,
 	    session->door->game.config.scoreboard, error))
 		return false;
-	if (!session->registered) {
+	registered = qb_cint(yt_route_process_single(&session->route_process,
+	    YT_REGISTERED_FLAG_ADDRESS), &overflow);
+	if (overflow) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation, sizeof(error->operation),
+			    "%s", "normal-exit registration CINT");
+		}
+		return false;
+	}
+	if (~registered != 0) {
 		if (!session_attention(session, reminder,
 		    "normal-exit registration reminder", error)
 		    || !session_wait(session, 10.0,

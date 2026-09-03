@@ -219,6 +219,8 @@ typedef bool (*yt_registration_read_line_fn)(void *context, uint8_t *data,
 typedef bool (*yt_registration_present_fn)(void *context,
     const uint8_t *text, size_t length, struct yt_error *error);
 typedef void (*yt_registration_terminal_fn)(void *context);
+typedef void (*yt_registration_flag_fn)(void *context,
+    const uint8_t raw[4]);
 
 struct yt_registration_ops {
 	yt_registration_file_fn close_file4;
@@ -232,6 +234,7 @@ struct yt_registration_ops {
 	yt_registration_present_fn forced_local_line;
 	yt_registration_terminal_fn close_all;
 	yt_registration_terminal_fn end;
+	yt_registration_flag_fn store_registered;
 };
 
 bool yt_startup_split_command(const uint8_t *command, size_t length,
