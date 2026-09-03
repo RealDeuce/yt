@@ -8417,6 +8417,7 @@ struct xannor_tape {
 	struct yt_player fresh_player;
 	int final_player_record;
 	double wait_seconds;
+	uint8_t wait_duration_raw[4];
 	struct yt_player *live_player;
 	int *live_record;
 	float *live_cloak;
@@ -8535,12 +8536,15 @@ xannor_read_player(void *context, int player_record,
 }
 
 static bool
-xannor_wait(void *context, double seconds, struct yt_error *error)
+xannor_wait(void *context, const uint8_t duration_raw[4],
+    struct yt_error *error)
 {
 	struct xannor_tape *tape = context;
 
 	(void)error;
-	tape->wait_seconds = seconds;
+	memcpy(tape->wait_duration_raw, duration_raw,
+	    sizeof(tape->wait_duration_raw));
+	tape->wait_seconds = qb_mbf32_decode(duration_raw);
 	return xannor_tape_step(tape, XANNOR_WAIT);
 }
 
@@ -8599,6 +8603,7 @@ xannor_fixture(struct xannor_tape *tape,
 static bool
 check_xannor_retaliation_model(void)
 {
+	static const uint8_t duration_four[4] = {0x00, 0x00, 0x00, 0x83};
 	static const struct yt_xannor_retaliation_ops ops = {
 		xannor_read_sector,
 		xannor_random,
@@ -8665,7 +8670,9 @@ check_xannor_retaliation_model(void)
 	    || player_record != 2 || strcmp(player.name, "Alice") != 0
 	    || cloak_cache[2] != 0.75f || sector_cache[2] != 733.0f
 	    || destroyed || provoker != 0 || headquarters != 9.0f
-	    || tape.final_player_record != 2 || tape.wait_seconds != 4.0)
+	    || tape.final_player_record != 2 || tape.wait_seconds != 4.0
+	    || memcmp(tape.wait_duration_raw, duration_four,
+	    sizeof(duration_four)) != 0)
 		return false;
 
 	xannor_fixture(&tape, &state, &player, &player_record, sector_cache,
@@ -8758,6 +8765,8 @@ check_xannor_retaliation_model(void)
 	    && player_record == 2 && cloak_cache[2] == 0.75f && destroyed
 	    && sector_cache[2] == 0.0f && tape.destroyed_store_count == 1U
 	    && tape.destroyed_store_position == 7U
+	    && memcmp(tape.wait_duration_raw, duration_four,
+	    sizeof(duration_four)) == 0
 	    && memcmp(tape.destroyed_raw,
 	    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) == 0;
 }

@@ -1604,8 +1604,8 @@ typedef bool (*yt_xannor_retaliation_projectile_fn)(void *context,
     int *counterattack, int *xannor_provoker, struct yt_error *error);
 typedef bool (*yt_xannor_retaliation_read_player_fn)(void *context,
     int player_record, struct yt_player *player, struct yt_error *error);
-typedef bool (*yt_xannor_retaliation_wait_fn)(void *context, double seconds,
-    struct yt_error *error);
+typedef bool (*yt_xannor_retaliation_wait_fn)(void *context,
+    const uint8_t duration_raw[4], struct yt_error *error);
 
 struct yt_xannor_retaliation_ops {
 	yt_xannor_retaliation_read_sector_fn read_sector;

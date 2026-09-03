@@ -1350,6 +1350,7 @@ yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
     const struct yt_xannor_retaliation_ops *ops, void *context,
     struct yt_error *error)
 {
+	static const uint8_t duration_four[4] = {0x00, 0x00, 0x00, 0x83};
 	struct yt_player saved_player;
 	struct yt_sector headquarters;
 	int saved_record;
@@ -1435,7 +1436,7 @@ yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
 		    && state->sector_cache != NULL)
 			state->sector_cache[saved_record] = 0.0f;
 	}
-	if (!ops->wait(context, 4.0, error))
+	if (!ops->wait(context, duration_four, error))
 		return false;
 	*state->provoker = 0;
 	return true;

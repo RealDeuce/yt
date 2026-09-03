@@ -73,6 +73,7 @@
 #define YT_REGISTRATION_REGISTERED_WAIT_ADDRESS 0x5312U
 #define YT_LOCKOUT_WAIT_ADDRESS 0x5B9EU
 #define YT_NORMAL_EXIT_REMINDER_WAIT_ADDRESS 0x4CAAU
+#define YT_XANNOR_RETALIATION_WAIT_ADDRESS 0x5B8AU
 #define YT_COUNTERLAUNCH_COUNT_ADDRESS 0x5BC6U
 #define YT_COUNTERLAUNCH_WAIT_ADDRESS 0x5BDAU
 #define YT_SPY_DESTINATION_SCRATCH_ADDRESS 0x5FE4U
@@ -15319,9 +15320,12 @@ session_xannor_read_player(void *context, int player_record,
 }
 
 static bool
-session_xannor_wait(void *context, double seconds, struct yt_error *error)
+session_xannor_wait(void *context, const uint8_t duration_raw[4],
+    struct yt_error *error)
 {
-	return session_wait(context, seconds, "Xannor retaliation wait", error);
+	return session_wait_raw_at(context, duration_raw,
+	    YT_XANNOR_RETALIATION_WAIT_ADDRESS, "Xannor retaliation wait",
+	    error);
 }
 
 static bool
