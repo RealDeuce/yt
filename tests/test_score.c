@@ -23860,15 +23860,19 @@ check_computer_port_visibility(void)
 	struct yt_computer_port_visibility_state state;
 	struct computer_port_visibility_tape tape;
 	struct yt_error error;
+	uint8_t scratch_raw[4];
 	float largest = qb_mbf32_decode(
 	    (const uint8_t[]){0xff, 0xff, 0x7f, 0xff});
 
 	computer_port_visibility_fixture(&state, &tape);
+	(void)qb_mbf32_encode(3107.0f, scratch_raw);
 	if (!yt_computer_port_visibility_run(&state,
 	    computer_port_visibility_read, &tape, NULL)
 	    || !state.complete || state.unavailable || !state.scratch_written
 	    || state.marker_4d62 != 0.0f || state.relation != -1.0f
 	    || state.scratch_19c4 != 3107.0f
+	    || memcmp(state.scratch_19c4_raw, scratch_raw,
+	    sizeof(scratch_raw)) != 0
 	    || memcmp(state.marker_4d62_raw, marker_false, 4U) != 0
 	    || memcmp(state.relation_raw, relation_true, 4U) != 0
 	    || state.player_read_attempts != 2U || tape.calls != 2U

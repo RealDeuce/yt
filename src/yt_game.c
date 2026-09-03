@@ -4722,6 +4722,8 @@ yt_computer_port_visibility_run(
 	state->marker_4d62 = qb_mbf32_decode(state->marker_4d62_raw);
 	state->relation = qb_mbf32_decode(state->relation_raw);
 	state->scratch_19c4 = 0.0f;
+	memset(state->scratch_19c4_raw, 0,
+	    sizeof(state->scratch_19c4_raw));
 	state->player_read_attempts = 0U;
 	state->scratch_written = false;
 	state->unavailable = false;
@@ -4780,6 +4782,8 @@ yt_computer_port_visibility_run(
 		return startup_configuration_error(error, YT_RANGE,
 		    "computer port scratch addition");
 	state->scratch_19c4 = qb_mbf32_decode(scratch_raw);
+	memcpy(state->scratch_19c4_raw, scratch_raw,
+	    sizeof(state->scratch_19c4_raw));
 	state->scratch_written = true;
 
 	/* Preserve all six eager source comparisons before combining them. */

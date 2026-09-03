@@ -1999,6 +1999,7 @@ struct yt_computer_port_visibility_state {
 	float marker_4d62;
 	float relation;
 	float scratch_19c4;
+	uint8_t scratch_19c4_raw[4];
 	enum yt_computer_port_field_kind field_kind;
 	uint32_t field_record;
 	struct yt_record field;

@@ -27,7 +27,9 @@
 #define YT_COMMAND_SIZE 4096U
 #define YT_ANTI_CLOAK_ADDRESS 0x1854U
 #define YT_CURRENT_WARPS_ADDRESS 0x1898U
+#define YT_PLANET_RECORD_SCRATCH_ADDRESS 0x19C4U
 #define YT_CURRENT_SECTOR_RECORD_ADDRESS 0x4B50U
+#define YT_SHARED_LOOP_SCRATCH_ADDRESS 0x4CD2U
 #define YT_SELF_MINE_SUPPRESSION_ADDRESS 0x4D0AU
 #define YT_COMPUTER_ROUTE_STATUS_ADDRESS 0x4CF2U
 #define YT_ATTACK_COMMITMENT_ADDRESS 0x4D1AU
@@ -84,8 +86,6 @@ struct yt_session {
 	float clearance_ground;
 	float clearance_shields;
 	float counterlaunch_count;
-	float shared_loop_scratch;
-	float planet_record_scratch;
 	int spies[3];
 	int spy_marker[3];
 	int spy_count;
@@ -236,6 +236,17 @@ session_enable_anti_cloak(struct yt_session *session)
 
 	yt_route_process_set_raw_single(&session->route_process,
 	    YT_ANTI_CLOAK_ADDRESS, negative_one);
+}
+
+static void
+session_set_process_single(struct yt_session *session, uint16_t address,
+    float value)
+{
+	uint8_t raw[4];
+
+	if (qb_mbf32_encode(value, raw) == QB_MBF_OK)
+		yt_route_process_set_raw_single(&session->route_process, address,
+		    raw);
 }
 
 static int
@@ -2712,7 +2723,8 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 		struct yt_player candidate;
 		bool matches;
 
-		session->shared_loop_scratch = (float)basic;
+		session_set_process_single(session,
+		    YT_SHARED_LOOP_SCRATCH_ADDRESS, (float)basic);
 		if (!yt_game_read_player(&session->door->game, basic, &candidate,
 		    error)
 		    || !yt_player_name_matches(&candidate, (const uint8_t *)full,
@@ -2728,7 +2740,8 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 			returning = true;
 			break;
 		}
-		session->shared_loop_scratch = (float)(basic + 1);
+		session_set_process_single(session,
+		    YT_SHARED_LOOP_SCRATCH_ADDRESS, (float)(basic + 1));
 	}
 	if (!returning) {
 		int vacant = 0;
@@ -7827,7 +7840,8 @@ ordinary_commerce_loop_index(void *context, float index)
 {
 	struct yt_session *session = context;
 
-	session->shared_loop_scratch = index;
+	session_set_process_single(session, YT_SHARED_LOOP_SCRATCH_ADDRESS,
+	    index);
 }
 
 static bool
@@ -11049,7 +11063,8 @@ command_land(struct yt_session *session, bool *enter_sector,
 	if (!yt_game_read_sector(&session->door->game,
 	    (int)session->player.sector, &sector, error))
 		return false;
-	session->shared_loop_scratch = sector.planet;
+	session_set_process_single(session, YT_SHARED_LOOP_SCRATCH_ADDRESS,
+	    sector.planet);
 	if (sector.planet == 0.0f) {
 		bool created = create_planet(session, error);
 
@@ -11064,7 +11079,8 @@ command_land(struct yt_session *session, bool *enter_sector,
 		return false;
 	planet_record_value = session->door->game.config.planet_offset
 	    + sector.planet;
-	session->planet_record_scratch = planet_record_value;
+	session_set_process_single(session, YT_PLANET_RECORD_SCRATCH_ADDRESS,
+	    planet_record_value);
 	memset(&permission_state, 0, sizeof(permission_state));
 	permission_state.planet_record_value = planet_record_value;
 	permission_state.planet_offset =
@@ -16357,7 +16373,8 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 		    session->door->game.config.sector_offset;
 		visibility.planet_record_offset =
 		    session->door->game.config.planet_offset;
-		visibility.inherited_index = session->shared_loop_scratch;
+		visibility.inherited_index = yt_route_process_single(
+		    &session->route_process, YT_SHARED_LOOP_SCRATCH_ADDRESS);
 		visibility.field_kind = YT_COMPUTER_PORT_FIELD_SECTOR;
 		visibility.field_record =
 		    qb_brun_random_record_number(sector_expression);
@@ -16371,7 +16388,9 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 		yt_route_process_set_raw_single(&session->route_process,
 		    YT_COMPUTER_ROUTE_STATUS_ADDRESS, visibility.relation_raw);
 		if (visibility.scratch_written)
-			session->planet_record_scratch = visibility.scratch_19c4;
+			yt_route_process_set_raw_single(&session->route_process,
+			    YT_PLANET_RECORD_SCRATCH_ADDRESS,
+			    visibility.scratch_19c4_raw);
 		if (!visibility_ok)
 			return false;
 		denied = visibility.unavailable;
