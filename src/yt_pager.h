@@ -12,6 +12,11 @@ struct yt_pager_state {
 	float newline_flag;
 	char key[YT_PAGER_KEY_SIZE];
 	int foreground;
+	uint8_t *line_count_cell;
+	uint8_t *nonstop_cell;
+	uint8_t *newline_flag_cell;
+	uint8_t *foreground_cell;
+	uint8_t *saved_foreground_cell;
 };
 
 struct yt_sector_pager_state {
@@ -24,6 +29,19 @@ struct yt_radio_pager_state {
 
 bool yt_pager_advance(struct yt_pager_state *pager,
     struct yt_present_state *presentation, int *saved_foreground);
+void yt_pager_bind_process_cells(struct yt_pager_state *pager,
+	uint8_t line_count[4], uint8_t nonstop[4], uint8_t newline_flag[4],
+	uint8_t foreground[4], uint8_t saved_foreground[4]);
+void yt_pager_sync_process(struct yt_pager_state *pager);
+void yt_pager_set_line_count_raw(struct yt_pager_state *pager,
+	const uint8_t raw[4]);
+void yt_pager_set_line_count(struct yt_pager_state *pager, float value);
+void yt_pager_set_nonstop_raw(struct yt_pager_state *pager,
+	const uint8_t raw[4]);
+void yt_pager_set_nonstop(struct yt_pager_state *pager, float value);
+void yt_pager_set_newline_raw(struct yt_pager_state *pager,
+	const uint8_t raw[4]);
+void yt_pager_set_newline(struct yt_pager_state *pager, float value);
 void yt_pager_editor_enter(struct yt_pager_state *pager,
     char *accumulator, size_t accumulator_capacity);
 bool yt_pager_accept_response(struct yt_pager_state *pager, char *response,

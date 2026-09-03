@@ -96,6 +96,10 @@
 #define YT_COUNTERATTACK_PLAYER_ADDRESS 0x1C10U
 #define YT_XANNOR_PROVOKER_ADDRESS 0x4BDCU
 #define YT_FOREGROUND_ADDRESS 0x1934U
+#define YT_PAGER_NONSTOP_ADDRESS 0x4C9EU
+#define YT_PAGER_NEWLINE_ADDRESS 0x4CB6U
+#define YT_PAGER_LINE_COUNT_ADDRESS 0x4D7EU
+#define YT_PAGER_SAVED_FOREGROUND_ADDRESS 0x51D0U
 
 enum navigation_field_kind {
 	NAVIGATION_FIELD_NONE,
@@ -197,6 +201,42 @@ static int
 session_pager_foreground(const struct yt_session *session)
 {
 	return (int)session_foreground(session);
+}
+
+static void
+session_bind_pager_process(struct yt_session *session)
+{
+	yt_pager_bind_process_cells(&session->pager,
+	    &session->route_process.bytes[YT_PAGER_LINE_COUNT_ADDRESS],
+	    &session->route_process.bytes[YT_PAGER_NONSTOP_ADDRESS],
+	    &session->route_process.bytes[YT_PAGER_NEWLINE_ADDRESS],
+	    &session->route_process.bytes[YT_FOREGROUND_ADDRESS],
+	    &session->route_process.bytes[YT_PAGER_SAVED_FOREGROUND_ADDRESS]);
+}
+
+static void
+session_set_pager_line_count_raw(struct yt_session *session,
+    const uint8_t raw[4])
+{
+	yt_pager_set_line_count_raw(&session->pager, raw);
+}
+
+static void
+session_set_pager_line_count(struct yt_session *session, float value)
+{
+	yt_pager_set_line_count(&session->pager, value);
+}
+
+static void
+session_set_pager_nonstop(struct yt_session *session, float value)
+{
+	yt_pager_set_nonstop(&session->pager, value);
+}
+
+static void
+session_set_pager_newline(struct yt_session *session, float value)
+{
+	yt_pager_set_newline(&session->pager, value);
 }
 
 static void
@@ -600,7 +640,10 @@ session_editor_end(struct yt_session *session,
 static bool
 session_ab36_repeat_emit(void *context, const uint8_t *prefix, size_t length)
 {
-	return session_b05d(context, prefix, length);
+	struct yt_session *session = context;
+
+	session_set_pager_newline(session, 1.0f);
+	return session_b05d(session, prefix, length);
 }
 
 static bool
@@ -610,6 +653,7 @@ session_ab36_submit_line(void *context)
 	struct yt_present_result presentation;
 	enum yt_present_status status;
 
+	session_set_pager_newline(session, 0.0f);
 	status = yt_present_line(NULL, 0, &session->presentation,
 	    &presentation);
 	if (status != YT_PRESENT_OK)
@@ -637,7 +681,10 @@ session_ab36_editor_echo(void *context, const uint8_t *local,
 static bool
 session_ab36_printable_carrier(void *context)
 {
-	return session_carrier(context);
+	struct yt_session *session = context;
+
+	session_set_pager_newline(session, 1.0f);
+	return session_carrier(session);
 }
 
 static float
@@ -1341,12 +1388,15 @@ session_b05d(struct yt_session *session, const uint8_t *text, size_t length)
 
 	if (!session_store_output_source(session, text, length))
 		return false;
+	yt_pager_sync_process(&session->pager);
 	yt_route_process_raw_single(&session->route_process,
 	    YT_FOREGROUND_ADDRESS, foreground_raw);
 	session_set_foreground_raw(session, foreground_raw);
 	result = yt_paged_row_run(&session->pager, &session->presentation,
 	    &key_state, text, length, &ops, session);
-	session_set_foreground(session, session->presentation.foreground);
+	yt_route_process_raw_single(&session->route_process,
+	    YT_FOREGROUND_ADDRESS, foreground_raw);
+	session_set_foreground_raw(session, foreground_raw);
 	return result;
 }
 
@@ -1638,7 +1688,7 @@ session_route_basic_fault(struct yt_session *session, struct yt_error *error)
 static bool
 session_02fc(struct yt_session *session, const uint8_t *text, size_t length)
 {
-	session->pager.newline_flag = 0.0f;
+	session_set_pager_newline(session, 0.0f);
 	return session_b05d(session, text, length);
 }
 
@@ -1700,7 +1750,7 @@ session_031f(struct yt_session *session, const uint8_t *text, size_t length,
 {
 	if (!session_low_time(session, operation, error))
 		return false;
-	session->pager.newline_flag = 1.0f;
+	session_set_pager_newline(session, 1.0f);
 	return session_b05d(session, text, length);
 }
 
@@ -1907,6 +1957,7 @@ session_file_viewer_present(void *context, const uint8_t *text,
 struct session_file_viewer_context {
 	struct yt_session *session;
 	struct yt_text_input input;
+	float *foreground;
 };
 
 static bool
@@ -1923,6 +1974,9 @@ session_file_viewer_open(void *context, const char *path,
 {
 	struct session_file_viewer_context *viewer = context;
 
+	/* A5A9 commits the counter reset before the fallible OPEN. */
+	session_set_pager_line_count(viewer->session,
+	    viewer->session->pager.line_count);
 	return yt_text_input_open(&viewer->input, path, error);
 }
 
@@ -1950,6 +2004,7 @@ session_file_viewer_stream_present(void *context, const uint8_t *text,
 {
 	struct session_file_viewer_context *viewer = context;
 
+	session_set_foreground(viewer->session, *viewer->foreground);
 	return session_file_viewer_present(viewer->session, text, length, paged,
 	    error);
 }
@@ -1983,9 +2038,7 @@ display_game_file(struct yt_session *session, const char *path,
 		session_file_viewer_read,
 		session_file_viewer_stream_present,
 	};
-	struct session_file_viewer_context context = {
-		.session = session,
-	};
+	struct session_file_viewer_context context;
 	struct yt_error local_error;
 	struct yt_error *active_error = error == NULL ? &local_error : error;
 	float saved_foreground = session_foreground(session);
@@ -2006,6 +2059,9 @@ display_game_file(struct yt_session *session, const char *path,
 	};
 	bool ok;
 
+	memset(&context, 0, sizeof(context));
+	context.session = session;
+	context.foreground = &foreground_carrier;
 	if (error == NULL)
 		yt_error_clear(&local_error);
 	if (!yt_file_viewer_entry(session->pager.key,
@@ -2015,6 +2071,8 @@ display_game_file(struct yt_session *session, const char *path,
 	yt_text_input_init(&context.input);
 	ok = yt_file_viewer_stream_run(&state, &ops, &context, active_error);
 	yt_text_input_destroy(&context.input);
+	if (ok)
+		session_set_pager_line_count(session, session->pager.line_count);
 	session_set_foreground(session, foreground_carrier);
 	if (!ok && active_error->status == YT_NOT_FOUND) {
 		struct yt_main_error_result handler;
@@ -2795,7 +2853,7 @@ opening_and_date(struct yt_session *session, struct yt_error *error)
 		return false;
 	}
 	yt_out_present_result(&presentation);
-	session->pager.nonstop = 1.0f;
+	session_set_pager_nonstop(session, 1.0f);
 	return display_game_file(session, "YTOPEN.ASC", error);
 }
 
@@ -8061,7 +8119,7 @@ port_report_reset_pager(void *context, const uint8_t raw[4])
 {
 	struct yt_session *session = context;
 
-	session->pager.line_count = qb_mbf32_decode(raw);
+	session_set_pager_line_count_raw(session, raw);
 }
 
 static void
@@ -9307,7 +9365,7 @@ earth_report(struct yt_session *session, struct yt_port *earth,
 
 	if (earth == NULL || price == NULL)
 		return false;
-	session->pager.line_count = 0.0f;
+	session_set_pager_line_count(session, 0.0f);
 	if (!read_port_at_fault(session, 1, earth,
 	    YT_BASIC_FAULT_PORT_EARTH_GET, error))
 		return false;
@@ -11060,7 +11118,7 @@ planet_move(struct yt_session *session, bool *enter_sector,
 
 		if (next == 0)
 			break;
-		session->pager.line_count = 0.0f;
+		session_set_pager_line_count(session, 0.0f);
 		number_length = qb_str_single(number, sizeof(number), (float)next);
 		if (number_length < 0)
 			return false;
@@ -11077,7 +11135,7 @@ planet_move(struct yt_session *session, bool *enter_sector,
 		cost = yt_planet_move_add_cost(cost);
 		cursor = next;
 	}
-	session->pager.line_count = 0.0f;
+	session_set_pager_line_count(session, 0.0f);
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "planet Thrusters route ending", error)
 	    || !yt_planet_move_summary(cost, row, sizeof(row), &row_length)
@@ -11103,7 +11161,7 @@ planet_move(struct yt_session *session, bool *enter_sector,
 	if (!session_0317(session, engaged, sizeof(engaged) - 1U,
 	    "planet Thrusters engaged", error))
 		return false;
-	session->pager.line_count = 0.0f;
+	session_set_pager_line_count(session, 0.0f);
 	if (!session_031f(session, moving, sizeof(moving) - 1U,
 	    "planet Thrusters moving prefix", error))
 		return false;
@@ -11157,7 +11215,7 @@ planet_menu(struct yt_session *session, int logical_planet,
 		double free_holds;
 		int position;
 
-		session->pager.line_count = 0.0f;
+		session_set_pager_line_count(session, 0.0f);
 		if (!reload_player(session, error))
 			return false;
 		free_holds = double_sub(double_sub(double_sub(
@@ -12810,7 +12868,7 @@ command_team(struct yt_session *session, struct yt_error *error)
 		    "team front leading blank", error)
 		    || !info_team_lines(session, &team, &captain, error))
 			return false;
-		session->pager.line_count = 0.0f;
+		session_set_pager_line_count(session, 0.0f);
 		if (!reload_player(session, error)
 		    || !session_0317(session, exit_row, sizeof(exit_row) - 1U,
 		    "team exit row", error)
@@ -16159,7 +16217,7 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 			menu = true;
 		}
 		else {
-			session->pager.line_count = 0.0f;
+			session_set_pager_line_count(session, 0.0f);
 			if (!radio_line_prompt(session, line_count + 1,
 			    lines[line_count], error))
 				return false;
@@ -16198,7 +16256,7 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 							menu = true;
 						}
 						else {
-							session->pager.line_count = 0.0f;
+							session_set_pager_line_count(session, 0.0f);
 							if (!radio_line_prompt(session,
 							    line_count + 1, lines[line_count],
 							    error))
@@ -16256,7 +16314,7 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 						menu = true;
 					}
 					else {
-						session->pager.line_count = 0.0f;
+						session_set_pager_line_count(session, 0.0f);
 						if (!radio_line_prompt(session,
 						    line_count + 1, lines[line_count],
 						    error))
@@ -18186,7 +18244,7 @@ computer_help(struct yt_session *session, struct yt_error *error)
 	    "17) Check Profits of Adjacent Ports";
 	size_t index;
 
-	session->pager.line_count = 0.0f;
+	session_set_pager_line_count(session, 0.0f);
 	if (!session_0317(session, heading, sizeof(heading) - 1U,
 	    "computer help heading", error)
 	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
@@ -18265,7 +18323,7 @@ computer_scoreboard_reset_pager(void *context, const uint8_t raw[4])
 {
 	struct yt_session *session = context;
 
-	session->pager.line_count = qb_mbf32_decode(raw);
+	session_set_pager_line_count_raw(session, raw);
 }
 
 static bool
@@ -18745,7 +18803,7 @@ quit_session(struct yt_session *session, struct yt_error *error)
 	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "normal-exit post-generator blank", error))
 		return false;
-	session->pager.nonstop = 1.0f;
+	session_set_pager_nonstop(session, 1.0f);
 	if (!display_game_file(session,
 	    session->door->game.config.scoreboard, error))
 		return false;
@@ -18796,7 +18854,7 @@ main_prompt_effect(void *context, enum yt_main_prompt_effect effect)
 
 	switch (effect) {
 	case YT_MAIN_PROMPT_RESET_PAGER:
-		session->pager.line_count = 0.0f;
+		session_set_pager_line_count(session, 0.0f);
 		break;
 	case YT_MAIN_PROMPT_SET_FOREGROUND:
 		session_set_foreground(session, 2.0f);
@@ -19061,6 +19119,7 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 		return false;
 	}
 	memset(&session, 0, sizeof(session));
+	session_bind_pager_process(&session);
 	session.door = door;
 	session.executable_path = executable_path;
 	session.startup_prefix = *startup_prefix;
@@ -19069,7 +19128,7 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	    YT_STARTUP_INITIAL_FIVE_ADDRESS,
 	    session.startup_prefix.initial_five);
 	/* YT:040A is the ordinary instruction after the handed-off checkpoint. */
-	session.pager.nonstop = 1.0f;
+	session_set_pager_nonstop(&session, 1.0f);
 	session.presentation.sound.ansi = door->identity.ansi ? -1.0f : 0.0f;
 	session.presentation.sound.mode = door->identity.local ? 1.0f : 0.0f;
 	session.presentation.sound.user_sound = -1.0f;
