@@ -65,6 +65,7 @@
 #define YT_SESSION_DEADLINE_ADDRESS 0x4BB4U
 #define YT_INACTIVITY_DEADLINE_ADDRESS 0x51B4U
 #define YT_NEXT_TIME_REFRESH_ADDRESS 0x19C0U
+#define YT_COMPUTER_ACTIVATION_SELECTOR_ADDRESS 0x50D2U
 #define YT_COUNTERLAUNCH_COUNT_ADDRESS 0x5BC6U
 #define YT_SPY_DESTINATION_SCRATCH_ADDRESS 0x5FE4U
 #define YT_SPY_FOUND_SCRATCH_ADDRESS 0x5FE8U
@@ -17796,15 +17797,55 @@ computer_profit(struct yt_session *session, bool all,
 }
 
 static bool
-computer_activate(struct yt_session *session, struct yt_error *error)
+computer_activation_present(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
 {
-	static const uint8_t notice[] = "<Computer activated>";
+	return session_0317(context, text, length,
+	    "computer activation notice", error);
+}
 
+static void
+computer_activation_effect(void *context,
+    enum yt_computer_activation_effect effect)
+{
+	struct yt_session *session = context;
+
+	(void)effect;
 	session->presentation.foreground = 1.0f;
 	session->pager.foreground = 1;
-	return session_0317(session, notice, sizeof(notice) - 1U,
-	    "computer activation notice", error)
-	    && session_sound(session, 4.0f, "computer activation sound", error);
+}
+
+static void
+computer_activation_store_selector(void *context, const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_COMPUTER_ACTIVATION_SELECTOR_ADDRESS, raw);
+}
+
+static bool
+computer_activation_sound(void *context, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return session_sound(session, yt_route_process_single(
+	    &session->route_process, YT_COMPUTER_ACTIVATION_SELECTOR_ADDRESS),
+	    "computer activation sound", error);
+}
+
+static bool
+computer_activate(struct yt_session *session, struct yt_error *error)
+{
+	static const struct yt_computer_activation_ops ops = {
+		computer_activation_effect,
+		computer_activation_present,
+		computer_activation_store_selector,
+		computer_activation_sound,
+	};
+	struct yt_computer_activation_state state;
+
+	return yt_computer_activation_run(&state, &ops, session, error);
 }
 
 static bool

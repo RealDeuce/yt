@@ -27893,6 +27893,137 @@ check_computer_prompt_transaction(void)
 	    && !yt_computer_prompt_run(&state, NULL, &tape, NULL);
 }
 
+enum computer_activation_event {
+	COMPUTER_ACTIVATION_FOREGROUND = 1,
+	COMPUTER_ACTIVATION_NOTICE,
+	COMPUTER_ACTIVATION_STORE_SELECTOR,
+	COMPUTER_ACTIVATION_SOUND,
+};
+
+struct computer_activation_tape {
+	enum computer_activation_event events[4];
+	size_t calls;
+	size_t fail_at;
+	uint8_t selector[4];
+};
+
+static bool
+computer_activation_step(struct computer_activation_tape *tape,
+    enum computer_activation_event event, struct yt_error *error)
+{
+	size_t call = tape->calls++;
+
+	if (call < YT_ARRAY_LEN(tape->events))
+		tape->events[call] = event;
+	if (call != tape->fail_at)
+		return true;
+	if (error != NULL)
+		error->status = YT_IO_ERROR;
+	return false;
+}
+
+static void
+computer_activation_effect_test(void *context,
+    enum yt_computer_activation_effect effect)
+{
+	struct computer_activation_tape *tape = context;
+
+	if (effect == YT_COMPUTER_ACTIVATION_SET_FOREGROUND)
+		(void)computer_activation_step(tape,
+		    COMPUTER_ACTIVATION_FOREGROUND, NULL);
+}
+
+static bool
+computer_activation_present_test(void *context, const uint8_t *text,
+    size_t length, struct yt_error *error)
+{
+	static const uint8_t notice[] = "<Computer activated>";
+	struct computer_activation_tape *tape = context;
+
+	if (length != sizeof(notice) - 1U
+	    || memcmp(text, notice, sizeof(notice) - 1U) != 0)
+		return false;
+	return computer_activation_step(tape, COMPUTER_ACTIVATION_NOTICE,
+	    error);
+}
+
+static void
+computer_activation_store_test(void *context, const uint8_t raw[4])
+{
+	struct computer_activation_tape *tape = context;
+
+	memcpy(tape->selector, raw, sizeof(tape->selector));
+	(void)computer_activation_step(tape,
+	    COMPUTER_ACTIVATION_STORE_SELECTOR, NULL);
+}
+
+static bool
+computer_activation_sound_test(void *context, struct yt_error *error)
+{
+	return computer_activation_step(context, COMPUTER_ACTIVATION_SOUND,
+	    error);
+}
+
+static const struct yt_computer_activation_ops computer_activation_test_ops = {
+	computer_activation_effect_test,
+	computer_activation_present_test,
+	computer_activation_store_test,
+	computer_activation_sound_test,
+};
+
+static bool
+check_computer_activation_transaction(void)
+{
+	static const enum computer_activation_event expected[] = {
+		COMPUTER_ACTIVATION_FOREGROUND,
+		COMPUTER_ACTIVATION_NOTICE,
+		COMPUTER_ACTIVATION_STORE_SELECTOR,
+		COMPUTER_ACTIVATION_SOUND,
+	};
+	static const uint8_t selector_four[4] = {
+		0x00U, 0x00U, 0x00U, 0x83U,
+	};
+	static const uint8_t zero[4] = {0};
+	struct yt_computer_activation_state state;
+	struct computer_activation_tape tape;
+	struct yt_error error;
+
+	memset(&tape, 0, sizeof(tape));
+	tape.fail_at = SIZE_MAX;
+	if (!yt_computer_activation_run(&state, &computer_activation_test_ops,
+	    &tape, NULL) || !state.notice_presented || !state.selector_stored
+	    || !state.complete || tape.calls != YT_ARRAY_LEN(expected)
+	    || memcmp(tape.events, expected, sizeof(expected)) != 0
+	    || memcmp(tape.selector, selector_four,
+	    sizeof(selector_four)) != 0)
+		return false;
+
+	memset(&tape, 0, sizeof(tape));
+	tape.fail_at = 1U;
+	yt_error_clear(&error);
+	if (yt_computer_activation_run(&state, &computer_activation_test_ops,
+	    &tape, &error) || error.status != YT_IO_ERROR
+	    || state.notice_presented || state.selector_stored || state.complete
+	    || tape.calls != 2U
+	    || memcmp(tape.selector, zero, sizeof(zero)) != 0)
+		return false;
+
+	memset(&tape, 0, sizeof(tape));
+	tape.fail_at = 3U;
+	yt_error_clear(&error);
+	if (yt_computer_activation_run(&state, &computer_activation_test_ops,
+	    &tape, &error) || error.status != YT_IO_ERROR
+	    || !state.notice_presented || !state.selector_stored || state.complete
+	    || tape.calls != 4U || memcmp(tape.events, expected,
+	    sizeof(expected)) != 0 || memcmp(tape.selector, selector_four,
+	    sizeof(selector_four)) != 0)
+		return false;
+
+	return !yt_computer_activation_run(NULL,
+	    &computer_activation_test_ops, &tape, NULL)
+	    && !yt_computer_activation_run(&state, NULL, &tape, NULL);
+}
+
 enum computer_scoreboard_event {
 	COMPUTER_SCOREBOARD_CLEAR = 1,
 	COMPUTER_SCOREBOARD_LEADING_BLANK,
@@ -30890,6 +31021,8 @@ main(void)
 		return fail("main prompt transaction differs");
 	if (!check_computer_prompt_transaction())
 		return fail("computer prompt transaction differs");
+	if (!check_computer_activation_transaction())
+		return fail("computer activation transaction differs");
 	if (!check_computer_scoreboard_transaction())
 		return fail("computer scoreboard transaction differs");
 	if (!check_computer_newspaper_transaction())
