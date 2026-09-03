@@ -60,6 +60,8 @@ int16_t yt_route_process_predecessor(const struct yt_route_process *process,
     int16_t index);
 int16_t yt_route_process_second(const struct yt_route_process *process,
     int16_t index);
+void yt_route_process_set_second(struct yt_route_process *process,
+	int16_t index, int16_t value);
 bool yt_route_process_build_at(uint16_t start_address,
 	uint16_t destination_address, uint16_t status_address,
 	uint8_t conversion_mode, struct yt_route_process *process,

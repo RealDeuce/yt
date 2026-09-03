@@ -1663,14 +1663,19 @@ yt_projectile_plasma_route_run(
 	uint8_t row[192];
 	size_t steps = 0U;
 	bool rerouted;
+	bool process_route;
 
 	if (state == NULL || ops == NULL || state->origin == NULL
 	    || state->destination == NULL || state->energy == NULL
-	    || state->route == NULL || state->route_capacity == 0U
 	    || state->step_limit == 0U || ops->build_route == NULL
 	    || ops->line == NULL || ops->attention == NULL
 	    || ops->wait == NULL || ops->random == NULL
 	    || ops->impact == NULL || ops->footer == NULL)
+		return false;
+	process_route = ops->read_route != NULL || ops->write_route != NULL;
+	if ((process_route && (ops->read_route == NULL
+	    || ops->write_route == NULL)) || (!process_route
+	    && (state->route == NULL || state->route_capacity == 0U)))
 		return false;
 	state->route_calls = 0U;
 	state->hops = 0U;
@@ -1682,18 +1687,30 @@ yt_projectile_plasma_route_run(
 			return false;
 		if (*state->destination == *state->origin) {
 			destination_index = qb_cint(*state->destination, &overflow);
-			if (overflow || destination_index < 0
-			    || (size_t)destination_index >= state->route_capacity)
+			if (overflow || (!process_route && (destination_index < 0
+			    || (size_t)destination_index >= state->route_capacity)))
 				return false;
 			*state->origin = 0.0f;
-			state->route[0] = (int16_t)destination_index;
-			state->route[destination_index] = 0;
+			if (ops->arguments_changed != NULL)
+				ops->arguments_changed(context, *state->origin,
+				    *state->destination,
+				    YT_PROJECTILE_PLASMA_SAME_ORIGIN_ZERO);
+			if (process_route) {
+				ops->write_route(context, 0,
+				    (int16_t)destination_index);
+				ops->write_route(context,
+				    (int16_t)destination_index, 0);
+			}
+			else {
+				state->route[0] = (int16_t)destination_index;
+				state->route[destination_index] = 0;
+			}
 		}
 		else {
 			state->route_status = 0.0f;
 			++state->route_calls;
-			if (!ops->build_route(context, *state->origin,
-			    *state->destination, state->route,
+			if (!ops->build_route(context, state->origin,
+			    state->destination, state->route,
 			    state->route_capacity, &state->route_status, error))
 				return false;
 		}
@@ -1710,10 +1727,12 @@ yt_projectile_plasma_route_run(
 			if (state->current_hop != *state->origin)
 				*state->energy -= (double)state->hop_loss;
 			current_index = qb_cint(state->current_hop, &overflow);
-			if (overflow || current_index < 0
-			    || (size_t)current_index >= state->route_capacity)
+			if (overflow || (!process_route && (current_index < 0
+			    || (size_t)current_index >= state->route_capacity)))
 				return false;
-			next_hop = state->route[current_index];
+			next_hop = process_route
+			    ? ops->read_route(context, (int16_t)current_index)
+			    : state->route[current_index];
 			state->current_hop = (float)next_hop;
 			if (next_hop == 0 || *state->energy < 1.0)
 				return ops->footer(context, NULL, 0U, error);
@@ -1735,12 +1754,20 @@ yt_projectile_plasma_route_run(
 				float span;
 
 				*state->origin = (float)next_hop;
+				if (ops->arguments_changed != NULL)
+					ops->arguments_changed(context, *state->origin,
+					    *state->destination,
+					    YT_PROJECTILE_PLASMA_BLACK_HOLE_ORIGIN);
 				if (!ops->random(context, &draw, error))
 					return false;
 				span = projectile_single_sub(state->port_record_offset,
 				    state->sector_record_offset);
 				*state->destination = floorf(projectile_single_add(
 				    projectile_single_mul(draw, span), 1.0f));
+				if (ops->arguments_changed != NULL)
+					ops->arguments_changed(context, *state->origin,
+					    *state->destination,
+					    YT_PROJECTILE_PLASMA_BLACK_HOLE_DESTINATION);
 				if (!ops->line(context, NULL, 0U, error)
 				    || qb_str_single(first, sizeof(first),
 				    (float)next_hop) < 0

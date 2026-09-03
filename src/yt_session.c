@@ -14137,13 +14137,14 @@ cruise_union_police_present(void *context, const uint8_t *text, size_t length,
 
 struct plasma_route_context {
 	struct yt_session *session;
+	const struct projectile_route_cells *cells;
 	int *xannor_provoker;
 	const uint8_t *attacker;
 	size_t attacker_length;
 };
 
 static bool
-plasma_route_build(void *context, float origin, float destination,
+plasma_route_build(void *context, float *origin, float *destination,
     int16_t *route, size_t route_capacity, float *status,
     struct yt_error *error)
 {
@@ -14151,11 +14152,55 @@ plasma_route_build(void *context, float origin, float destination,
 	struct yt_session *session = route_context->session;
 	bool found;
 	enum yt_route_outcome outcome;
+	bool success;
 
-	if (route_capacity != YT_ROUTE_CAPACITY)
-		return false;
-	return build_route(session, origin, destination, route, false, &found,
+	(void)route;
+	(void)route_capacity;
+	success = build_route_cells(session, route_context->cells, false, &found,
 	    &outcome, status, error);
+	*origin = yt_route_process_single(&session->route_process,
+	    route_context->cells->origin);
+	*destination = yt_route_process_single(&session->route_process,
+	    route_context->cells->destination);
+	return success;
+}
+
+static int16_t
+plasma_route_read(void *context, int16_t index)
+{
+	struct plasma_route_context *route_context = context;
+
+	return yt_route_process_second(&route_context->session->route_process,
+	    index);
+}
+
+static void
+plasma_route_write(void *context, int16_t index, int16_t value)
+{
+	struct plasma_route_context *route_context = context;
+
+	yt_route_process_set_second(&route_context->session->route_process,
+	    index, value);
+}
+
+static void
+plasma_route_arguments_changed(void *context, float origin,
+    float destination, enum yt_projectile_plasma_argument_change change)
+{
+	static const uint8_t same_origin_zero[4] = {0, 0, 0x60, 0};
+	struct plasma_route_context *route_context = context;
+	struct yt_route_process *process =
+	    &route_context->session->route_process;
+
+	if (change == YT_PROJECTILE_PLASMA_SAME_ORIGIN_ZERO)
+		yt_route_process_set_raw_single(process,
+		    route_context->cells->origin, same_origin_zero);
+	else if (change == YT_PROJECTILE_PLASMA_BLACK_HOLE_ORIGIN)
+		route_process_store_single(process, route_context->cells->origin,
+		    origin);
+	else if (change == YT_PROJECTILE_PLASMA_BLACK_HOLE_DESTINATION)
+		route_process_store_single(process,
+		    route_context->cells->destination, destination);
 }
 
 static bool
@@ -14248,6 +14293,7 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
     float *origin_alias, int *pending_counterattack, int *pending_xannor,
 	struct yt_error *error)
 {
+	static const uint8_t ordinary_plasma_attribution[4] = {2, 0, 0, 0};
 	float destination = *target;
 	bool overflow;
 	bool found;
@@ -14267,9 +14313,11 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 	int start = (int)(origin_alias != NULL
 	    ? *origin_alias : session->player.sector);
 
-	if (!plasma)
-		projectile_route_cells_store(session, cells, *origin_alias, *target,
-		    *missiles);
+	projectile_route_cells_store(session, cells, *origin_alias, *target,
+	    *missiles);
+	if (plasma)
+		yt_route_process_set_raw_single(&session->route_process, 0x72a0U,
+		    ordinary_plasma_attribution);
 	(void)qb_cint(*target, &overflow);
 	if (overflow)
 		return true;
@@ -14286,33 +14334,30 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 			plasma_route_random,
 			plasma_route_impact,
 			plasma_route_footer,
+			plasma_route_read,
+			plasma_route_write,
+			plasma_route_arguments_changed,
 		};
 		float local_origin = (float)start;
 		float *origin = origin_alias != NULL ? origin_alias : &local_origin;
-		int16_t *route;
 		struct plasma_route_context route_context = {
 			session,
+			cells,
 			xannor_provoker,
 			attacker,
 			attacker_length,
 		};
 
-		route = calloc(YT_ROUTE_CAPACITY, sizeof(*route));
-		if (route == NULL) {
-			if (error != NULL)
-				error->status = YT_NO_MEMORY;
-			return false;
-		}
 		struct yt_projectile_plasma_route_state state = {
 			origin,
-			&destination,
+			target,
 			&energy,
 			hop_loss,
 			{session->black_hole[0], session->black_hole[1]},
 			session->door->game.config.sector_offset,
 			session->door->game.config.port_offset,
-			route,
-			YT_ROUTE_CAPACITY,
+			NULL,
+			0U,
 			YT_ROUTE_CAPACITY * 4U,
 			0.0f,
 			0.0f,
@@ -14322,7 +14367,6 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 		bool result = yt_projectile_plasma_route_run(&state, &ops,
 		    &route_context, error);
 
-		free(route);
 		return result;
 	}
 	for (;;) {

@@ -3050,6 +3050,11 @@ struct plasma_route_tape {
 	float draw;
 	float wait_duration;
 	int impact_hop;
+	int16_t process_route[2048];
+	size_t route_reads;
+	size_t route_writes;
+	enum yt_projectile_plasma_argument_change argument_changes[4];
+	size_t argument_change_count;
 };
 
 static bool
@@ -3064,30 +3069,72 @@ plasma_route_step(struct plasma_route_tape *tape, int event)
 }
 
 static bool
-plasma_route_build(void *context, float origin, float destination,
+plasma_route_build(void *context, float *origin, float *destination,
     int16_t *route, size_t route_capacity, float *status,
     struct yt_error *error)
 {
 	struct plasma_route_tape *tape = context;
-	int from = (int)origin;
-	int to = (int)destination;
+	int from = (int)*origin;
+	int to = (int)*destination;
 	bool empty;
 
 	(void)error;
 	++tape->build_count;
 	if (!plasma_route_step(tape, PLASMA_ROUTE_BUILD))
 		return false;
-	if (from < 0 || to < 0 || (size_t)from >= route_capacity
-	    || (size_t)to >= route_capacity)
+	if (from < 0 || to < 0 || (size_t)from >= 2048U
+	    || (size_t)to >= 2048U)
 		return false;
-	memset(route, 0, route_capacity * sizeof(*route));
+	if (route != NULL)
+		memset(route, 0, route_capacity * sizeof(*route));
+	else
+		memset(tape->process_route, 0, sizeof(tape->process_route));
 	empty = tape->empty_route;
 	*status = empty ? 1.0f : 0.0f;
 	if (!empty) {
-		route[from] = (int16_t)to;
-		route[to] = 0;
+		if (route != NULL) {
+			route[from] = (int16_t)to;
+			route[to] = 0;
+		}
+		else {
+			tape->process_route[from] = (int16_t)to;
+			tape->process_route[to] = 0;
+		}
 	}
 	return true;
+}
+
+static int16_t
+plasma_route_process_read(void *context, int16_t index)
+{
+	struct plasma_route_tape *tape = context;
+
+	++tape->route_reads;
+	return index >= 0 && (size_t)index < YT_ARRAY_LEN(tape->process_route)
+	    ? tape->process_route[index] : 0;
+}
+
+static void
+plasma_route_process_write(void *context, int16_t index, int16_t value)
+{
+	struct plasma_route_tape *tape = context;
+
+	++tape->route_writes;
+	if (index >= 0 && (size_t)index < YT_ARRAY_LEN(tape->process_route))
+		tape->process_route[index] = value;
+}
+
+static void
+plasma_route_arguments_changed(void *context, float origin,
+    float destination, enum yt_projectile_plasma_argument_change change)
+{
+	struct plasma_route_tape *tape = context;
+
+	(void)origin;
+	(void)destination;
+	if (tape->argument_change_count
+	    < YT_ARRAY_LEN(tape->argument_changes))
+		tape->argument_changes[tape->argument_change_count++] = change;
 }
 
 static bool
@@ -3205,13 +3252,25 @@ static bool
 check_projectile_plasma_route_transaction(void)
 {
 	static const struct yt_projectile_plasma_route_ops ops = {
-		plasma_route_build,
-		plasma_route_line,
-		plasma_route_attention,
-		plasma_route_wait,
-		plasma_route_random,
-		plasma_route_impact,
-		plasma_route_footer,
+		.build_route = plasma_route_build,
+		.line = plasma_route_line,
+		.attention = plasma_route_attention,
+		.wait = plasma_route_wait,
+		.random = plasma_route_random,
+		.impact = plasma_route_impact,
+		.footer = plasma_route_footer,
+	};
+	static const struct yt_projectile_plasma_route_ops process_ops = {
+		.build_route = plasma_route_build,
+		.line = plasma_route_line,
+		.attention = plasma_route_attention,
+		.wait = plasma_route_wait,
+		.random = plasma_route_random,
+		.impact = plasma_route_impact,
+		.footer = plasma_route_footer,
+		.read_route = plasma_route_process_read,
+		.write_route = plasma_route_process_write,
+		.arguments_changed = plasma_route_arguments_changed,
 	};
 	static const int ordinary_events[] = {
 		PLASMA_ROUTE_BUILD, PLASMA_ROUTE_LINE, PLASMA_ROUTE_WAIT,
@@ -3252,6 +3311,28 @@ check_projectile_plasma_route_transaction(void)
 	    || tape.wait_duration != 0.5f
 	    || tape.line_lengths[0] != sizeof(hop_row) - 1U
 	    || memcmp(tape.lines[0], hop_row, sizeof(hop_row) - 1U) != 0)
+		return false;
+
+	plasma_route_fixture(&state, &tape, route, &origin, &destination,
+	    &energy);
+	state.route = NULL;
+	state.route_capacity = 0U;
+	if (!yt_projectile_plasma_route_run(&state, &process_ops, &tape, NULL)
+	    || memcmp(tape.events, ordinary_events,
+	    sizeof(ordinary_events)) != 0 || tape.route_reads != 2U
+	    || tape.route_writes != 0U || tape.argument_change_count != 0U)
+		return false;
+
+	plasma_route_fixture(&state, &tape, route, &origin, &destination,
+	    &energy);
+	destination = origin;
+	state.route = NULL;
+	state.route_capacity = 0U;
+	if (!yt_projectile_plasma_route_run(&state, &process_ops, &tape, NULL)
+	    || origin != 0.0f || tape.route_writes != 2U
+	    || tape.argument_change_count != 1U
+	    || tape.argument_changes[0]
+	    != YT_PROJECTILE_PLASMA_SAME_ORIGIN_ZERO)
 		return false;
 
 	plasma_route_fixture(&state, &tape, route, &origin, &destination,

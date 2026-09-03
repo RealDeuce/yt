@@ -226,6 +226,15 @@ yt_route_process_second(const struct yt_route_process *process,
 	    YT_ROUTE_SECOND_ADDRESS, index));
 }
 
+void
+yt_route_process_set_second(struct yt_route_process *process, int16_t index,
+    int16_t value)
+{
+	if (process != NULL)
+		route_process_write_word(process, route_index_address(
+		    YT_ROUTE_SECOND_ADDRESS, index), value);
+}
+
 struct route_arguments {
 	bool start_addressed;
 	bool destination_addressed;
