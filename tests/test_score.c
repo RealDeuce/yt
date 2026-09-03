@@ -122,11 +122,27 @@ enum startup_configuration_event {
 	STARTUP_CONFIGURATION_RANDOM,
 };
 
+enum startup_configuration_store {
+	STARTUP_STORE_EPOCH = 1,
+	STARTUP_STORE_TURNS,
+	STARTUP_STORE_SECTOR_OFFSET,
+	STARTUP_STORE_PORT_OFFSET,
+	STARTUP_STORE_PLANET_OFFSET,
+	STARTUP_STORE_LOCAL_SCREEN,
+	STARTUP_STORE_TOTAL_RECORDS,
+	STARTUP_STORE_LOTTERY,
+	STARTUP_STORE_GENESIS,
+	STARTUP_STORE_MAXIMUM_HOLDS,
+	STARTUP_STORE_MAXIMUM_PLANETS,
+};
+
 struct startup_configuration_tape {
 	int events[16];
 	int records[16];
 	size_t event_count;
 	size_t fail_at;
+	int stores[24];
+	size_t store_count;
 	struct yt_record config_source;
 	struct yt_record player_source[8];
 	struct yt_config config_write;
@@ -171,6 +187,14 @@ struct startup_configuration_tape {
 	size_t local_screen_store_count;
 	size_t local_screen_store_position[2];
 };
+
+static void
+startup_configuration_store_step(struct startup_configuration_tape *tape,
+    enum startup_configuration_store store)
+{
+	if (tape->store_count < YT_ARRAY_LEN(tape->stores))
+		tape->stores[tape->store_count++] = (int)store;
+}
 
 static bool
 startup_configuration_step(struct startup_configuration_tape *tape,
@@ -294,6 +318,7 @@ startup_configuration_genesis_store_test(void *context,
 	struct startup_configuration_tape *tape = context;
 	size_t store = tape->genesis_store_count;
 
+	startup_configuration_store_step(tape, STARTUP_STORE_GENESIS);
 	if (store >= YT_ARRAY_LEN(tape->genesis_raw))
 		return;
 	memcpy(tape->genesis_raw[store], raw,
@@ -309,6 +334,7 @@ startup_configuration_turns_store_test(void *context,
 	struct startup_configuration_tape *tape = context;
 	size_t store = tape->turns_store_count;
 
+	startup_configuration_store_step(tape, STARTUP_STORE_TURNS);
 	if (store >= YT_ARRAY_LEN(tape->turns_raw))
 		return;
 	memcpy(tape->turns_raw[store], raw, sizeof(tape->turns_raw[store]));
@@ -323,6 +349,7 @@ startup_configuration_lottery_store_test(void *context,
 	struct startup_configuration_tape *tape = context;
 	size_t store = tape->lottery_store_count;
 
+	startup_configuration_store_step(tape, STARTUP_STORE_LOTTERY);
 	if (store >= YT_ARRAY_LEN(tape->lottery_raw))
 		return;
 	memcpy(tape->lottery_raw[store], raw,
@@ -338,6 +365,7 @@ startup_configuration_planets_store_test(void *context,
 	struct startup_configuration_tape *tape = context;
 	size_t store = tape->planets_store_count;
 
+	startup_configuration_store_step(tape, STARTUP_STORE_MAXIMUM_PLANETS);
 	if (store >= YT_ARRAY_LEN(tape->planets_raw))
 		return;
 	memcpy(tape->planets_raw[store], raw,
@@ -353,6 +381,7 @@ startup_configuration_holds_store_test(void *context,
 	struct startup_configuration_tape *tape = context;
 	size_t store = tape->holds_store_count;
 
+	startup_configuration_store_step(tape, STARTUP_STORE_MAXIMUM_HOLDS);
 	if (store >= YT_ARRAY_LEN(tape->holds_raw))
 		return;
 	memcpy(tape->holds_raw[store], raw,
@@ -368,6 +397,7 @@ startup_configuration_epoch_store_test(void *context,
 	struct startup_configuration_tape *tape = context;
 	size_t store = tape->epoch_store_count;
 
+	startup_configuration_store_step(tape, STARTUP_STORE_EPOCH);
 	if (store >= YT_ARRAY_LEN(tape->epoch_raw))
 		return;
 	memcpy(tape->epoch_raw[store], raw,
@@ -383,6 +413,7 @@ startup_configuration_total_store_test(void *context,
 	struct startup_configuration_tape *tape = context;
 	size_t store = tape->total_store_count;
 
+	startup_configuration_store_step(tape, STARTUP_STORE_TOTAL_RECORDS);
 	if (store >= YT_ARRAY_LEN(tape->total_raw))
 		return;
 	memcpy(tape->total_raw[store], raw,
@@ -398,6 +429,7 @@ startup_configuration_sector_offset_store_test(void *context,
 	struct startup_configuration_tape *tape = context;
 	size_t store = tape->sector_offset_store_count;
 
+	startup_configuration_store_step(tape, STARTUP_STORE_SECTOR_OFFSET);
 	if (store >= YT_ARRAY_LEN(tape->sector_offset_raw))
 		return;
 	memcpy(tape->sector_offset_raw[store], raw,
@@ -413,6 +445,7 @@ startup_configuration_port_offset_store_test(void *context,
 	struct startup_configuration_tape *tape = context;
 	size_t store = tape->port_offset_store_count;
 
+	startup_configuration_store_step(tape, STARTUP_STORE_PORT_OFFSET);
 	if (store >= YT_ARRAY_LEN(tape->port_offset_raw))
 		return;
 	memcpy(tape->port_offset_raw[store], raw,
@@ -428,6 +461,7 @@ startup_configuration_planet_offset_store_test(void *context,
 	struct startup_configuration_tape *tape = context;
 	size_t store = tape->planet_offset_store_count;
 
+	startup_configuration_store_step(tape, STARTUP_STORE_PLANET_OFFSET);
 	if (store >= YT_ARRAY_LEN(tape->planet_offset_raw))
 		return;
 	memcpy(tape->planet_offset_raw[store], raw,
@@ -443,6 +477,7 @@ startup_configuration_local_screen_store_test(void *context,
 	struct startup_configuration_tape *tape = context;
 	size_t store = tape->local_screen_store_count;
 
+	startup_configuration_store_step(tape, STARTUP_STORE_LOCAL_SCREEN);
 	if (store >= YT_ARRAY_LEN(tape->local_screen_raw))
 		return;
 	memcpy(tape->local_screen_raw[store], raw,
@@ -542,6 +577,25 @@ check_startup_configuration_transaction(void)
 		STARTUP_CONFIGURATION_RANDOM,
 	};
 	static const int records[] = {0, 0, 1, 1, 2, 2, 3, 4, 4, 0, 0};
+	static const int stores[] = {
+		STARTUP_STORE_EPOCH,
+		STARTUP_STORE_TURNS,
+		STARTUP_STORE_SECTOR_OFFSET,
+		STARTUP_STORE_PORT_OFFSET,
+		STARTUP_STORE_PLANET_OFFSET,
+		STARTUP_STORE_LOCAL_SCREEN,
+		STARTUP_STORE_TOTAL_RECORDS,
+		STARTUP_STORE_LOTTERY,
+		STARTUP_STORE_GENESIS,
+		STARTUP_STORE_MAXIMUM_HOLDS,
+		STARTUP_STORE_MAXIMUM_PLANETS,
+		STARTUP_STORE_GENESIS,
+		STARTUP_STORE_LOCAL_SCREEN,
+		STARTUP_STORE_LOTTERY,
+		STARTUP_STORE_MAXIMUM_PLANETS,
+		STARTUP_STORE_MAXIMUM_HOLDS,
+		STARTUP_STORE_TURNS,
+	};
 	struct startup_configuration_tape tape;
 	struct yt_startup_configuration_state state;
 	struct yt_config config;
@@ -558,6 +612,8 @@ check_startup_configuration_transaction(void)
 	    || tape.event_count != YT_ARRAY_LEN(events)
 	    || memcmp(tape.events, events, sizeof(events)) != 0
 	    || memcmp(tape.records, records, sizeof(records)) != 0
+	    || tape.store_count != YT_ARRAY_LEN(stores)
+	    || memcmp(tape.stores, stores, sizeof(stores)) != 0
 	    || state.scoreboard_path_length != 3U
 	    || memcmp(config.scoreboard, "AB[", 3U) != 0
 	    || config.scoreboard[3] != '\0'
@@ -879,7 +935,9 @@ check_startup_configuration_transaction(void)
 	    tape.config_source.bytes + YT_F61, 4U) != 0
 	    || tape.local_screen_store_count != 1U
 	    || memcmp(tape.local_screen_raw[0],
-	    tape.config_source.bytes + YT_F85, 4U) != 0)
+	    tape.config_source.bytes + YT_F85, 4U) != 0
+	    || tape.store_count != 12U
+	    || memcmp(tape.stores, stores, 12U * sizeof(stores[0])) != 0)
 		return false;
 
 	for (failure = 1U; failure <= YT_ARRAY_LEN(events); ++failure) {
@@ -932,6 +990,13 @@ check_startup_configuration_transaction(void)
 		if ((failure <= 3U && tape.local_screen_store_count != 0U)
 		    || (failure == 4U && tape.local_screen_store_count != 1U)
 		    || (failure > 4U && tape.local_screen_store_count != 2U))
+			return false;
+		if ((failure <= 3U && tape.store_count != 0U)
+		    || (failure == 4U && (tape.store_count != 11U
+		    || memcmp(tape.stores, stores,
+		    11U * sizeof(stores[0])) != 0))
+		    || (failure > 4U && (tape.store_count != YT_ARRAY_LEN(stores)
+		    || memcmp(tape.stores, stores, sizeof(stores)) != 0)))
 			return false;
 	}
 	if (!startup_configuration_fixture(&tape, &state, &config,

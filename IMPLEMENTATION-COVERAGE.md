@@ -138,9 +138,14 @@ separate runtime obligations.
 `src/yt_game.c::yt_startup_configuration_run` now owns the logical
 `YT-SUB:BCBF..C0DB` startup configuration transaction. It installs handler
 `45F7`, performs the typed missing-entry file-1 CLOSE at `BCCB`, then reaches
-the existing OPEN/FIELD/GET boundary. It compatibility-uppercases the counted binary
-scoreboard path, performs the zero-Headquarters PUT before changing the
-process value, applies all seven process-only validations in compiler order,
+the existing OPEN/FIELD/GET boundary. After the scoreboard CINT/LEFT$/COPY
+prefix, it projects every unblocked numeric FIELD cell in exact record order
+(epoch, turns, sector/port/planet offsets, local screen, total marker,
+lottery, Genesis, maximum holds, dormant maximum planets) before the
+compatibility-uppercase call. The intervening Headquarters projection remains
+isolated behind `DOC-GAP-015`. It then performs the currently modeled
+zero-Headquarters PUT before changing the typed working value, applies all
+seven process-only validations in compiler order,
 executes the one-shot player cache with its initial FOR test and immediate
 one-cell cloak repairs, and consumes the two unconditional disruption draws
 with the recovered SINGLE rounding sequence. The provider fixture pins both

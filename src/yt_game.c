@@ -290,13 +290,11 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 		state->scoreboard_path_length = YT_TEXT_FIELD_SIZE;
 	memcpy(config->scoreboard, config->record.bytes,
 	    state->scoreboard_path_length);
-	qb_compat_upper_n((uint8_t *)config->scoreboard,
-	    state->scoreboard_path_length);
-	config->scoreboard[state->scoreboard_path_length] = '\0';
 	if (ops->store_epoch_year != NULL)
 		ops->store_epoch_year(context, config->record.bytes + YT_F45);
-	if (ops->store_total_records != NULL)
-		ops->store_total_records(context, config->record.bytes + YT_F93);
+	if (ops->store_turns_per_day != NULL)
+		ops->store_turns_per_day(context,
+		    config->record.bytes + YT_F49);
 	if (ops->store_sector_offset != NULL)
 		ops->store_sector_offset(context, config->record.bytes + YT_F53);
 	if (ops->store_port_offset != NULL)
@@ -305,20 +303,22 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 		ops->store_planet_offset(context, config->record.bytes + YT_F61);
 	if (ops->store_local_screen != NULL)
 		ops->store_local_screen(context, config->record.bytes + YT_F85);
-	if (ops->store_turns_per_day != NULL)
-		ops->store_turns_per_day(context,
-		    config->record.bytes + YT_F49);
+	if (ops->store_total_records != NULL)
+		ops->store_total_records(context, config->record.bytes + YT_F93);
 	if (ops->store_lottery_plays != NULL)
 		ops->store_lottery_plays(context,
 		    config->record.bytes + YT_F101);
-	if (ops->store_maximum_planets != NULL)
-		ops->store_maximum_planets(context,
-		    config->record.bytes + YT_F129);
+	if (ops->store_genesis != NULL)
+		ops->store_genesis(context, config->record.bytes + YT_F105);
 	if (ops->store_maximum_holds != NULL)
 		ops->store_maximum_holds(context,
 		    config->record.bytes + YT_F121);
-	if (ops->store_genesis != NULL)
-		ops->store_genesis(context, config->record.bytes + YT_F105);
+	if (ops->store_maximum_planets != NULL)
+		ops->store_maximum_planets(context,
+		    config->record.bytes + YT_F129);
+	qb_compat_upper_n((uint8_t *)config->scoreboard,
+	    state->scoreboard_path_length);
+	config->scoreboard[state->scoreboard_path_length] = '\0';
 
 	if (config->headquarters == 0.0f) {
 		if (!yt_record_set_number(&config->record, YT_F117, 85.0f)
