@@ -9889,6 +9889,21 @@ route_sector_reader(void *context, int logical_sector, float warps[6],
 	return true;
 }
 
+static _Noreturn void
+route_reconstruction_back_edge(void)
+{
+	/* YT-SUB:1374 repeats without an I/O or scheduler boundary. */
+	for (;;) {
+	}
+}
+
+static void
+route_require_returned(enum yt_route_outcome outcome)
+{
+	if (outcome == YT_ROUTE_BACK_EDGE)
+		route_reconstruction_back_edge();
+}
+
 static bool
 build_route(struct yt_session *session, float start, float destination,
     int16_t *next_hop, bool use_avoid, bool *found,
@@ -9910,8 +9925,8 @@ build_route(struct yt_session *session, float start, float destination,
 			    &session->route_process, (int16_t)index);
 	if (!success)
 		return false;
-	*found = outcome == YT_ROUTE_FOUND || outcome == YT_ROUTE_SAME
-	    || outcome == YT_ROUTE_BACK_EDGE;
+	route_require_returned(outcome);
+	*found = outcome == YT_ROUTE_FOUND || outcome == YT_ROUTE_SAME;
 	if (route_outcome != NULL)
 		*route_outcome = outcome;
 	if (returned_status != NULL)
@@ -9996,8 +10011,8 @@ build_route_cells(struct yt_session *session,
 	    error);
 	if (!success)
 		return false;
-	*found = outcome == YT_ROUTE_FOUND || outcome == YT_ROUTE_SAME
-	    || outcome == YT_ROUTE_BACK_EDGE;
+	route_require_returned(outcome);
+	*found = outcome == YT_ROUTE_FOUND || outcome == YT_ROUTE_SAME;
 	if (route_outcome != NULL)
 		*route_outcome = outcome;
 	if (returned_status != NULL)
@@ -15676,9 +15691,9 @@ computer_route(struct yt_session *session, bool autopilot,
 	    &session->route_process, route_sector_reader, session,
 	    &route_outcome, error))
 		return false;
+	route_require_returned(route_outcome);
 	found = route_outcome == YT_ROUTE_FOUND
-	    || route_outcome == YT_ROUTE_SAME
-	    || route_outcome == YT_ROUTE_BACK_EDGE;
+	    || route_outcome == YT_ROUTE_SAME;
 	route_status = yt_route_process_single(&session->route_process,
 	    YT_COMPUTER_ROUTE_STATUS_ADDRESS);
 	session->relationship_scratch = route_status;
