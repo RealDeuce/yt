@@ -68,6 +68,7 @@
 #define YT_COMPUTER_ACTIVATION_SELECTOR_ADDRESS 0x50D2U
 #define YT_FATAL_SOUND_SELECTOR_ADDRESS 0x4CE2U
 #define YT_FATAL_WAIT_ADDRESS 0x4CE6U
+#define YT_ANSI_OPENING_WAIT_ADDRESS 0x539EU
 #define YT_COUNTERLAUNCH_COUNT_ADDRESS 0x5BC6U
 #define YT_SPY_DESTINATION_SCRATCH_ADDRESS 0x5FE4U
 #define YT_SPY_FOUND_SCRATCH_ADDRESS 0x5FE8U
@@ -411,6 +412,24 @@ session_wait(struct yt_session *session, double seconds,
     const char *operation, struct yt_error *error)
 {
 	if (session_timed_wait(session, seconds))
+		return true;
+	if (error != NULL) {
+		error->status = YT_IO_ERROR;
+		snprintf(error->operation, sizeof(error->operation), "%s",
+		    operation);
+	}
+	return false;
+}
+
+static bool
+session_wait_raw_at(struct yt_session *session, const uint8_t raw[4],
+    uint16_t address, const char *operation, struct yt_error *error)
+{
+	float duration;
+
+	yt_route_process_set_raw_single(&session->route_process, address, raw);
+	duration = yt_route_process_single(&session->route_process, address);
+	if (session_timed_wait_at(session, (double)duration, address))
 		return true;
 	if (error != NULL) {
 		error->status = YT_IO_ERROR;
@@ -2535,7 +2554,13 @@ opening_poll_remote(void *context, bool *ready, struct yt_error *error)
 static bool
 opening_wait(void *context, float seconds, struct yt_error *error)
 {
-	return session_wait(context, seconds, "ANSI opening EOF wait", error);
+	static const uint8_t duration_three[4] = {
+		0x00U, 0x00U, 0x40U, 0x82U,
+	};
+
+	(void)seconds;
+	return session_wait_raw_at(context, duration_three,
+	    YT_ANSI_OPENING_WAIT_ADDRESS, "ANSI opening EOF wait", error);
 }
 
 static bool
@@ -5555,21 +5580,10 @@ common_fatal_wait(void *context, const uint8_t duration_raw[4],
     struct yt_error *error)
 {
 	struct yt_session *session = context;
-	float duration;
 
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_FATAL_WAIT_ADDRESS, duration_raw);
-	duration = yt_route_process_single(&session->route_process,
-	    YT_FATAL_WAIT_ADDRESS);
-	if (!session_timed_wait_at(session, (double)duration,
-	    YT_FATAL_WAIT_ADDRESS)) {
-		if (error != NULL) {
-			error->status = YT_IO_ERROR;
-			snprintf(error->operation, sizeof(error->operation), "%s",
-			    "common fatal wait");
-		}
+	if (!session_wait_raw_at(session, duration_raw, YT_FATAL_WAIT_ADDRESS,
+	    "common fatal wait", error))
 		return false;
-	}
 	session->fatal_wait_complete = true;
 	return true;
 }
