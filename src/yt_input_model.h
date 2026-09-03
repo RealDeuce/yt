@@ -7,6 +7,8 @@
 #define YT_WAIT_SCRATCH_SIZE 80U
 #define YT_SYSOP_CHAT_EVENTS 4U
 #define YT_SYSOP_F5_PHASES 7U
+#define YT_SYSOP_KEY_COUNT 5U
+#define YT_SYSOP_KEY_FIFO_BYTES (YT_SYSOP_KEY_COUNT * 2U)
 
 enum yt_input_phase {
 	YT_INPUT_PHASE_B05D,
@@ -210,6 +212,38 @@ struct yt_sysop_f5_result {
 	int exit_status;
 };
 
+enum yt_sysop_key {
+	YT_SYSOP_KEY_F4 = 4,
+	YT_SYSOP_KEY_F5 = 5,
+	YT_SYSOP_KEY_F8 = 8,
+	YT_SYSOP_KEY_F9 = 9,
+	YT_SYSOP_KEY_F10 = 10,
+};
+
+struct yt_sysop_key_record {
+	enum yt_sysop_key key;
+	uint16_t address;
+	uint16_t target;
+	uint8_t keyboard_state;
+	uint8_t event_state;
+};
+
+struct yt_sysop_key_scheduler {
+	struct yt_sysop_key_record records[YT_SYSOP_KEY_COUNT];
+	size_t fifo[YT_SYSOP_KEY_COUNT];
+	size_t fifo_position;
+	size_t fifo_length;
+	size_t frames[YT_SYSOP_KEY_COUNT];
+	size_t frame_depth;
+};
+
+struct yt_sysop_key_delivery {
+	bool delivered;
+	enum yt_sysop_key key;
+	uint16_t record_address;
+	uint16_t target;
+};
+
 void yt_input_splitter_init(struct yt_input_splitter *splitter);
 bool yt_input_splitter_can_push(const struct yt_input_splitter *splitter,
     bool remote);
@@ -306,5 +340,16 @@ bool yt_sysop_chat_finish(struct yt_sysop_chat_state *state,
     float deadline_timer, float inactivity_timer);
 bool yt_sysop_f5_compose(bool same_f5_make,
     struct yt_sysop_f5_result *result);
+void yt_sysop_key_scheduler_init(struct yt_sysop_key_scheduler *scheduler);
+bool yt_sysop_key_latch(struct yt_sysop_key_scheduler *scheduler,
+	enum yt_sysop_key key);
+bool yt_sysop_key_checkpoint(struct yt_sysop_key_scheduler *scheduler,
+	bool error_active, struct yt_sysop_key_delivery *delivery);
+bool yt_sysop_key_return(struct yt_sysop_key_scheduler *scheduler,
+	enum yt_sysop_key *returned);
+const struct yt_sysop_key_record *yt_sysop_key_record(
+	const struct yt_sysop_key_scheduler *scheduler, enum yt_sysop_key key);
+size_t yt_sysop_key_fifo_bytes(const struct yt_sysop_key_scheduler *scheduler,
+	uint8_t *bytes, size_t capacity);
 
 #endif

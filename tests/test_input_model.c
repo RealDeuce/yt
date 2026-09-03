@@ -2136,6 +2136,163 @@ test_sysop_f5(void)
 }
 
 static void
+test_sysop_key_scheduler(void)
+{
+	static const enum yt_sysop_key keys[YT_SYSOP_KEY_COUNT] = {
+		YT_SYSOP_KEY_F4, YT_SYSOP_KEY_F5, YT_SYSOP_KEY_F8,
+		YT_SYSOP_KEY_F9, YT_SYSOP_KEY_F10,
+	};
+	static const uint16_t addresses[YT_SYSOP_KEY_COUNT] = {
+		0x11AAU, 0x11AFU, 0x11BEU, 0x11C3U, 0x11C8U,
+	};
+	static const uint16_t targets[YT_SYSOP_KEY_COUNT] = {
+		0xA9E1U, 0xBA00U, 0xB6D7U, 0xB66AU, 0xB3FBU,
+	};
+	static const uint8_t all_fifo[] = {
+		0x11U, 0xAAU, 0x11U, 0xAFU, 0x11U,
+		0xBEU, 0x11U, 0xC3U, 0x11U, 0xC8U,
+	};
+	static const uint8_t after_f4[] = {
+		0x11U, 0xAFU, 0x11U, 0xBEU,
+		0x11U, 0xC3U, 0x11U, 0xC8U,
+	};
+	static const uint8_t all_at_active_f8[] = {
+		0x11U, 0xAAU, 0x11U, 0xAFU,
+		0x11U, 0xC3U, 0x11U, 0xC8U,
+	};
+	static const uint8_t f10_then_f4[] = {
+		0x11U, 0xC8U, 0x11U, 0xAAU,
+	};
+	static const uint8_t f9_then_f8[] = {
+		0x11U, 0xC3U, 0x11U, 0xBEU,
+	};
+	struct yt_sysop_key_scheduler scheduler;
+	struct yt_sysop_key_delivery delivery;
+	const struct yt_sysop_key_record *record;
+	enum yt_sysop_key returned;
+	uint8_t fifo[YT_SYSOP_KEY_FIFO_BYTES];
+	size_t index;
+
+	yt_sysop_key_scheduler_init(&scheduler);
+	for (index = 0U; index < YT_SYSOP_KEY_COUNT; ++index) {
+		record = yt_sysop_key_record(&scheduler, keys[index]);
+		CHECK(record != NULL && record->key == keys[index]
+		    && record->address == addresses[index]
+		    && record->target == targets[index]
+		    && record->keyboard_state == 0x06U
+		    && record->event_state == 0x01U
+		    && yt_sysop_key_latch(&scheduler, keys[index]));
+	}
+	CHECK(yt_sysop_key_checkpoint(&scheduler, true, &delivery)
+	    && !delivery.delivered
+	    && yt_sysop_key_fifo_bytes(&scheduler, fifo, sizeof(fifo))
+	    == sizeof(all_fifo)
+	    && memcmp(fifo, all_fifo, sizeof(all_fifo)) == 0);
+	for (index = 0U; index < YT_SYSOP_KEY_COUNT; ++index) {
+		record = yt_sysop_key_record(&scheduler, keys[index]);
+		CHECK(record->keyboard_state == 0x06U
+		    && record->event_state == 0x05U);
+	}
+	for (index = 0U; index < YT_SYSOP_KEY_COUNT; ++index) {
+		CHECK(yt_sysop_key_checkpoint(&scheduler, false, &delivery)
+		    && delivery.delivered && delivery.key == keys[index]
+		    && delivery.record_address == addresses[index]
+		    && delivery.target == targets[index]);
+		if (index == 0U)
+			CHECK(yt_sysop_key_fifo_bytes(&scheduler, fifo,
+			    sizeof(fifo)) == sizeof(after_f4)
+			    && memcmp(fifo, after_f4, sizeof(after_f4)) == 0);
+	}
+	CHECK(scheduler.frame_depth == YT_SYSOP_KEY_COUNT
+	    && yt_sysop_key_fifo_bytes(&scheduler, fifo, sizeof(fifo)) == 0U);
+	for (index = YT_SYSOP_KEY_COUNT; index-- > 2U;) {
+		CHECK(yt_sysop_key_return(&scheduler, &returned)
+		    && returned == keys[index]
+		    && yt_sysop_key_record(&scheduler, keys[index])->event_state
+		    == 0x01U);
+	}
+	CHECK(scheduler.frame_depth == 2U
+	    && yt_sysop_key_record(&scheduler, YT_SYSOP_KEY_F4)->event_state
+	    == 0x03U
+	    && yt_sysop_key_record(&scheduler, YT_SYSOP_KEY_F5)->event_state
+	    == 0x03U);
+
+	/* Same-key makes coalesce while STOPped and schedule only on RETURN. */
+	yt_sysop_key_scheduler_init(&scheduler);
+	CHECK(yt_sysop_key_latch(&scheduler, YT_SYSOP_KEY_F8)
+	    && yt_sysop_key_checkpoint(&scheduler, false, &delivery)
+	    && delivery.delivered && delivery.key == YT_SYSOP_KEY_F8
+	    && yt_sysop_key_latch(&scheduler, YT_SYSOP_KEY_F8)
+	    && yt_sysop_key_latch(&scheduler, YT_SYSOP_KEY_F8)
+	    && yt_sysop_key_checkpoint(&scheduler, false, &delivery)
+	    && !delivery.delivered
+	    && yt_sysop_key_record(&scheduler, YT_SYSOP_KEY_F8)->event_state
+	    == 0x07U
+	    && yt_sysop_key_return(&scheduler, &returned)
+	    && returned == YT_SYSOP_KEY_F8
+	    && yt_sysop_key_record(&scheduler, YT_SYSOP_KEY_F8)->event_state
+	    == 0x05U
+	    && yt_sysop_key_fifo_bytes(&scheduler, fifo, sizeof(fifo)) == 2U
+	    && fifo[0] == 0x11U && fifo[1] == 0xBEU
+	    && yt_sysop_key_checkpoint(&scheduler, false, &delivery)
+	    && delivery.delivered && delivery.key == YT_SYSOP_KEY_F8);
+
+	/* The active F8 hit stays 07h while the other four queue in order. */
+	yt_sysop_key_scheduler_init(&scheduler);
+	CHECK(yt_sysop_key_latch(&scheduler, YT_SYSOP_KEY_F8)
+	    && yt_sysop_key_checkpoint(&scheduler, false, &delivery)
+	    && delivery.delivered && delivery.key == YT_SYSOP_KEY_F8);
+	for (index = 0U; index < YT_SYSOP_KEY_COUNT; ++index)
+		CHECK(yt_sysop_key_latch(&scheduler, keys[index]));
+	CHECK(yt_sysop_key_checkpoint(&scheduler, true, &delivery)
+	    && !delivery.delivered
+	    && yt_sysop_key_record(&scheduler, YT_SYSOP_KEY_F8)->event_state
+	    == 0x07U
+	    && yt_sysop_key_fifo_bytes(&scheduler, fifo, sizeof(fifo))
+	    == sizeof(all_at_active_f8)
+	    && memcmp(fifo, all_at_active_f8,
+	    sizeof(all_at_active_f8)) == 0);
+
+	/* Existing FIFO entries stay ahead of newly translated lower keys. */
+	yt_sysop_key_scheduler_init(&scheduler);
+	CHECK(yt_sysop_key_latch(&scheduler, YT_SYSOP_KEY_F10)
+	    && yt_sysop_key_checkpoint(&scheduler, true, &delivery)
+	    && yt_sysop_key_latch(&scheduler, YT_SYSOP_KEY_F4)
+	    && yt_sysop_key_checkpoint(&scheduler, true, &delivery)
+	    && yt_sysop_key_fifo_bytes(&scheduler, fifo, sizeof(fifo))
+	    == sizeof(f10_then_f4)
+	    && memcmp(fifo, f10_then_f4, sizeof(f10_then_f4)) == 0
+	    && yt_sysop_key_checkpoint(&scheduler, false, &delivery)
+	    && delivery.delivered && delivery.key == YT_SYSOP_KEY_F10);
+
+	/* Retained inner hits enqueue before retained outer hits on unwind. */
+	yt_sysop_key_scheduler_init(&scheduler);
+	CHECK(yt_sysop_key_latch(&scheduler, YT_SYSOP_KEY_F8)
+	    && yt_sysop_key_checkpoint(&scheduler, false, &delivery)
+	    && delivery.key == YT_SYSOP_KEY_F8
+	    && yt_sysop_key_latch(&scheduler, YT_SYSOP_KEY_F9)
+	    && yt_sysop_key_checkpoint(&scheduler, false, &delivery)
+	    && delivery.key == YT_SYSOP_KEY_F9
+	    && yt_sysop_key_latch(&scheduler, YT_SYSOP_KEY_F8)
+	    && yt_sysop_key_latch(&scheduler, YT_SYSOP_KEY_F9)
+	    && yt_sysop_key_checkpoint(&scheduler, false, &delivery)
+	    && !delivery.delivered
+	    && yt_sysop_key_return(&scheduler, &returned)
+	    && returned == YT_SYSOP_KEY_F9
+	    && yt_sysop_key_return(&scheduler, &returned)
+	    && returned == YT_SYSOP_KEY_F8
+	    && yt_sysop_key_fifo_bytes(&scheduler, fifo, sizeof(fifo))
+	    == sizeof(f9_then_f8)
+	    && memcmp(fifo, f9_then_f8, sizeof(f9_then_f8)) == 0);
+
+	CHECK(yt_sysop_key_record(&scheduler, (enum yt_sysop_key)6) == NULL
+	    && !yt_sysop_key_latch(&scheduler, (enum yt_sysop_key)6)
+	    && !yt_sysop_key_return(NULL, NULL)
+	    && !yt_sysop_key_checkpoint(NULL, false, &delivery)
+	    && !yt_sysop_key_checkpoint(&scheduler, false, NULL));
+}
+
+static void
 test_startup_dorinfo_parser(void)
 {
 	static const uint8_t first[] = "A\0B\r\n";
@@ -3059,6 +3216,7 @@ main(void)
 	test_serial_startup_model();
 	test_platform_rmt_serial();
 	test_sysop_f5();
+	test_sysop_key_scheduler();
 	test_startup_dorinfo_parser();
 	test_startup_dorinfo_state();
 	test_startup_lockout_transaction();

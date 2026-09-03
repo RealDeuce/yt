@@ -1036,3 +1036,208 @@ yt_sysop_f5_compose(bool same_f5_make, struct yt_sysop_f5_result *result)
 	result->terminated = true;
 	return true;
 }
+
+static size_t
+sysop_key_index(enum yt_sysop_key key)
+{
+	static const enum yt_sysop_key keys[YT_SYSOP_KEY_COUNT] = {
+		YT_SYSOP_KEY_F4, YT_SYSOP_KEY_F5, YT_SYSOP_KEY_F8,
+		YT_SYSOP_KEY_F9, YT_SYSOP_KEY_F10,
+	};
+	size_t index;
+
+	for (index = 0U; index < YT_ARRAY_LEN(keys); ++index)
+		if (keys[index] == key)
+			return index;
+	return YT_SYSOP_KEY_COUNT;
+}
+
+void
+yt_sysop_key_scheduler_init(struct yt_sysop_key_scheduler *scheduler)
+{
+	static const enum yt_sysop_key keys[YT_SYSOP_KEY_COUNT] = {
+		YT_SYSOP_KEY_F4, YT_SYSOP_KEY_F5, YT_SYSOP_KEY_F8,
+		YT_SYSOP_KEY_F9, YT_SYSOP_KEY_F10,
+	};
+	static const uint16_t addresses[YT_SYSOP_KEY_COUNT] = {
+		0x11AAU, 0x11AFU, 0x11BEU, 0x11C3U, 0x11C8U,
+	};
+	static const uint16_t targets[YT_SYSOP_KEY_COUNT] = {
+		0xA9E1U, 0xBA00U, 0xB6D7U, 0xB66AU, 0xB3FBU,
+	};
+	size_t index;
+
+	if (scheduler == NULL)
+		return;
+	memset(scheduler, 0, sizeof(*scheduler));
+	for (index = 0U; index < YT_SYSOP_KEY_COUNT; ++index) {
+		scheduler->records[index].key = keys[index];
+		scheduler->records[index].address = addresses[index];
+		scheduler->records[index].target = targets[index];
+		scheduler->records[index].keyboard_state = 0x06U;
+		scheduler->records[index].event_state = 0x01U;
+	}
+}
+
+const struct yt_sysop_key_record *
+yt_sysop_key_record(const struct yt_sysop_key_scheduler *scheduler,
+    enum yt_sysop_key key)
+{
+	size_t index = sysop_key_index(key);
+
+	return scheduler == NULL || index == YT_SYSOP_KEY_COUNT
+	    ? NULL : &scheduler->records[index];
+}
+
+bool
+yt_sysop_key_latch(struct yt_sysop_key_scheduler *scheduler,
+    enum yt_sysop_key key)
+{
+	size_t index = sysop_key_index(key);
+
+	if (scheduler == NULL || index == YT_SYSOP_KEY_COUNT)
+		return false;
+	/* The rooted YT records remain KEY ON, including while STOPped. */
+	if ((scheduler->records[index].event_state & 0x01U) == 0U)
+		return false;
+	scheduler->records[index].keyboard_state |= 0x01U;
+	return true;
+}
+
+static void
+sysop_key_compact_fifo(struct yt_sysop_key_scheduler *scheduler)
+{
+	if (scheduler->fifo_position == 0U)
+		return;
+	if (scheduler->fifo_position < scheduler->fifo_length)
+		memmove(scheduler->fifo,
+		    scheduler->fifo + scheduler->fifo_position,
+		    (scheduler->fifo_length - scheduler->fifo_position)
+		    * sizeof(scheduler->fifo[0]));
+	scheduler->fifo_length -= scheduler->fifo_position;
+	scheduler->fifo_position = 0U;
+}
+
+static bool
+sysop_key_enqueue(struct yt_sysop_key_scheduler *scheduler, size_t index)
+{
+	if (scheduler->fifo_length == YT_SYSOP_KEY_COUNT)
+		sysop_key_compact_fifo(scheduler);
+	if (scheduler->fifo_length == YT_SYSOP_KEY_COUNT)
+		return false;
+	scheduler->fifo[scheduler->fifo_length++] = index;
+	return true;
+}
+
+bool
+yt_sysop_key_checkpoint(struct yt_sysop_key_scheduler *scheduler,
+    bool error_active, struct yt_sysop_key_delivery *delivery)
+{
+	size_t index;
+
+	if (scheduler == NULL || delivery == NULL
+	    || scheduler->fifo_position > scheduler->fifo_length
+	    || scheduler->fifo_length > YT_SYSOP_KEY_COUNT
+	    || scheduler->frame_depth > YT_SYSOP_KEY_COUNT)
+		return false;
+	memset(delivery, 0, sizeof(*delivery));
+	/* BRUN drains the low keyboard table in ascending address order. */
+	for (index = 0U; index < YT_SYSOP_KEY_COUNT; ++index) {
+		struct yt_sysop_key_record *record = &scheduler->records[index];
+		uint8_t old_state;
+
+		if (record->keyboard_state != 0x07U)
+			continue;
+		record->keyboard_state = 0x06U;
+		if ((record->event_state & 0x01U) == 0U)
+			continue;
+		old_state = record->event_state;
+		record->event_state |= 0x04U;
+		if ((old_state & (0x02U | 0x04U)) == 0U
+		    && !sysop_key_enqueue(scheduler, index))
+			return false;
+	}
+	if (error_active)
+		return true;
+	while (scheduler->fifo_position < scheduler->fifo_length) {
+		struct yt_sysop_key_record *record;
+
+		index = scheduler->fifo[scheduler->fifo_position++];
+		if (index >= YT_SYSOP_KEY_COUNT)
+			return false;
+		record = &scheduler->records[index];
+		record->event_state &= (uint8_t)~0x04U;
+		if ((record->event_state & 0x01U) == 0U)
+			continue;
+		if (scheduler->frame_depth == YT_SYSOP_KEY_COUNT)
+			return false;
+		record->event_state |= 0x02U;
+		scheduler->frames[scheduler->frame_depth++] = index;
+		delivery->delivered = true;
+		delivery->key = record->key;
+		delivery->record_address = record->address;
+		delivery->target = record->target;
+		if (scheduler->fifo_position == scheduler->fifo_length) {
+			scheduler->fifo_position = 0U;
+			scheduler->fifo_length = 0U;
+		}
+		return true;
+	}
+	scheduler->fifo_position = 0U;
+	scheduler->fifo_length = 0U;
+	return true;
+}
+
+bool
+yt_sysop_key_return(struct yt_sysop_key_scheduler *scheduler,
+    enum yt_sysop_key *returned)
+{
+	struct yt_sysop_key_record *record;
+	size_t index;
+
+	if (scheduler == NULL || scheduler->frame_depth == 0U
+	    || scheduler->frame_depth > YT_SYSOP_KEY_COUNT)
+		return false;
+	index = scheduler->frames[scheduler->frame_depth - 1U];
+	if (index >= YT_SYSOP_KEY_COUNT)
+		return false;
+	record = &scheduler->records[index];
+	if ((record->event_state & 0x02U) == 0U)
+		return false;
+	--scheduler->frame_depth;
+	record->event_state &= (uint8_t)~0x02U;
+	if ((record->event_state & 0x04U) != 0U
+	    && !sysop_key_enqueue(scheduler, index))
+		return false;
+	if (returned != NULL)
+		*returned = record->key;
+	return true;
+}
+
+size_t
+yt_sysop_key_fifo_bytes(const struct yt_sysop_key_scheduler *scheduler,
+    uint8_t *bytes, size_t capacity)
+{
+	size_t count;
+	size_t index;
+
+	if (scheduler == NULL || scheduler->fifo_position > scheduler->fifo_length
+	    || scheduler->fifo_length > YT_SYSOP_KEY_COUNT)
+		return 0U;
+	count = scheduler->fifo_length - scheduler->fifo_position;
+	if (count > SIZE_MAX / 2U || count * 2U > capacity
+	    || (bytes == NULL && count != 0U))
+		return 0U;
+	for (index = 0U; index < count; ++index) {
+		const struct yt_sysop_key_record *record;
+		size_t record_index = scheduler->fifo[
+		    scheduler->fifo_position + index];
+
+		if (record_index >= YT_SYSOP_KEY_COUNT)
+			return 0U;
+		record = &scheduler->records[record_index];
+		bytes[index * 2U] = (uint8_t)(record->address >> 8);
+		bytes[index * 2U + 1U] = (uint8_t)record->address;
+	}
+	return count * 2U;
+}
