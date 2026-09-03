@@ -3495,6 +3495,10 @@ test_attention(void)
 		.local_text = capture_text,
 	};
 	uint8_t expected[256];
+	uint8_t background_raw[] = {0xa5, 0x5a, 0x80, 0x00};
+	static const uint8_t raw_zero[] = {0x00, 0x00, 0x00, 0x00};
+	static const uint8_t raw_one[] = {0x00, 0x00, 0x00, 0x81};
+	uint8_t over_capacity[YT_PRESENT_REMOTE_SIZE + 1U];
 	size_t expected_length = 0;
 
 	memcpy(expected + expected_length, first_color,
@@ -3585,6 +3589,31 @@ test_attention(void)
 	    && result.events[4].operation == YT_PRESENT_REMOTE_SEMI);
 	CHECK(current.foreground == 3.0f && current.background == 0.0f
 	    && current.bold == 0.0f && current.blink == 1.0f);
+
+	current = state(true);
+	yt_present_bind_background_process(&current, background_raw);
+	CHECK(yt_present_background(&current) == 0.0f
+	    && memcmp(background_raw, (uint8_t[]){0xa5, 0x5a, 0x80, 0x00},
+	    sizeof(background_raw)) == 0);
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(memcmp(background_raw,
+	    (uint8_t[]){0xa5, 0x5a, 0x80, 0x00},
+	    sizeof(background_raw)) == 0);
+	CHECK(yt_present_attention((const uint8_t *)"ALERT", 5U,
+	    &current, &result) == YT_PRESENT_OK);
+	CHECK(current.background == 0.0f
+	    && yt_present_background(&current) == 0.0f
+	    && memcmp(background_raw, raw_zero, sizeof(background_raw)) == 0);
+
+	memset(over_capacity, 'Q', sizeof(over_capacity));
+	memcpy(background_raw, raw_zero, sizeof(background_raw));
+	current = state(true);
+	yt_present_bind_background_process(&current, background_raw);
+	CHECK(yt_present_attention(over_capacity, sizeof(over_capacity),
+	    &current, &result) == YT_PRESENT_CAPACITY);
+	CHECK(current.background == 1.0f
+	    && yt_present_background(&current) == 1.0f
+	    && memcmp(background_raw, raw_one, sizeof(background_raw)) == 0);
 }
 
 static void
@@ -15186,6 +15215,7 @@ normal_exit_body_run_info(struct physical_viewer_join *viewer,
 		return false;
 	observation->viewer_end = viewer->join.remote_length;
 	if (evaluation) {
+		memset(&wait, 0, sizeof(wait));
 		if (yt_present_attention(reminder, sizeof(reminder) - 1U,
 		    &viewer->join.presentation, &result) != YT_PRESENT_OK)
 			return false;

@@ -6,6 +6,40 @@
 #include <math.h>
 #include <string.h>
 
+void
+yt_present_bind_background_process(struct yt_present_state *state,
+    uint8_t background[4])
+{
+	if (state == NULL)
+		return;
+	state->background_process = background;
+	if (background != NULL)
+		state->background = qb_mbf32_decode(background);
+}
+
+float
+yt_present_background(const struct yt_present_state *state)
+{
+	if (state == NULL)
+		return 0.0f;
+	if (state->background_process != NULL)
+		return qb_mbf32_decode(state->background_process);
+	return state->background;
+}
+
+void
+yt_present_set_background(struct yt_present_state *state, float value)
+{
+	uint8_t raw[4];
+
+	if (state == NULL)
+		return;
+	state->background = value;
+	if (state->background_process != NULL
+	    && qb_mbf32_encode(value, raw) != QB_MBF_OVERFLOW)
+		memcpy(state->background_process, raw, sizeof(raw));
+}
+
 static enum yt_present_status
 append_event(struct yt_present_result *result,
     enum yt_present_operation operation, const void *data, size_t length,
@@ -121,6 +155,7 @@ build_color(struct yt_present_state *state,
 	uint8_t sequence[32];
 	size_t length = 0;
 	float bright = 0.0f;
+	float background = yt_present_background(state);
 	int foreground_index;
 	int background_index;
 	int local_foreground;
@@ -133,9 +168,10 @@ build_color(struct yt_present_state *state,
 		memcpy(state->color_memory, standard, sizeof(standard));
 		state->color_initialized = 1.0f;
 	}
-	if (state->foreground == state->background) {
+	if (state->foreground == background) {
 		state->foreground = 3.0f;
-		state->background = 0.0f;
+		yt_present_set_background(state, 0.0f);
+		background = 0.0f;
 	}
 	if (state->bold == 1.0f)
 		bright = 8.0f;
@@ -144,7 +180,7 @@ build_color(struct yt_present_state *state,
 	status = convert(state, state->foreground, &foreground_index);
 	if (status != YT_PRESENT_OK)
 		return status;
-	status = convert(state, state->background, &background_index);
+	status = convert(state, background, &background_index);
 	if (status != YT_PRESENT_OK)
 		return status;
 	if (foreground_index < 0 || foreground_index >= 8
@@ -171,7 +207,7 @@ build_color(struct yt_present_state *state,
 		return status;
 	memcpy(sequence + length, ";4", 2);
 	length += 2;
-	status = color_digit(state->background, &sequence[length++]);
+	status = color_digit(background, &sequence[length++]);
 	if (status != YT_PRESENT_OK)
 		return status;
 	if (state->blink == 1.0f) {
@@ -197,11 +233,11 @@ build_color(struct yt_present_state *state,
 			state->cached_background = 0.0f;
 		}
 		else if (state->foreground != state->cached_foreground
-		    || state->background != state->cached_background) {
+		    || background != state->cached_background) {
 			status = append_remote(result, YT_PRESENT_REMOTE_SEMI,
 			    sequence, length);
 			state->cached_foreground = state->foreground;
-			state->cached_background = state->background;
+			state->cached_background = background;
 		}
 		else
 			status = YT_PRESENT_OK;
@@ -585,14 +621,14 @@ yt_present_attention(const uint8_t *text, size_t length,
 
 	memset(result, 0, sizeof(*result));
 	state->foreground = 3.0f;
-	state->background = 1.0f;
+	yt_present_set_background(state, 1.0f);
 	state->blink = 1.0f;
 	if (state->sound.ansi != 0.0f)
 		state->bold = 1.0f;
 	status = emit_character(text, length, state, result);
 	if (status != YT_PRESENT_OK)
 		return status;
-	state->background = 0.0f;
+	yt_present_set_background(state, 0.0f);
 	status = emit_line(NULL, 0, state, result);
 	if (status != YT_PRESENT_OK)
 		return status;

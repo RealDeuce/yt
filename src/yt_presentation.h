@@ -70,6 +70,7 @@ struct yt_present_state {
 	struct yt_sound_state sound;
 	float foreground;
 	float background;
+	uint8_t *background_process;
 	float bold;
 	float blink;
 	float color_initialized;
@@ -84,6 +85,11 @@ struct yt_present_result {
 	struct yt_present_event events[YT_PRESENT_EVENTS];
 	size_t event_count;
 };
+
+void yt_present_bind_background_process(struct yt_present_state *state,
+    uint8_t background[4]);
+float yt_present_background(const struct yt_present_state *state);
+void yt_present_set_background(struct yt_present_state *state, float value);
 
 typedef enum yt_present_status (*yt_present_sysop_replay_fn)(void *context);
 

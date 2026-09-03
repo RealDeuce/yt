@@ -27,6 +27,7 @@
 #define YT_COMMAND_SIZE 4096U
 #define YT_ANTI_CLOAK_ADDRESS 0x1854U
 #define YT_EPOCH_YEAR_ADDRESS 0x1850U
+#define YT_BACKGROUND_ADDRESS 0x1870U
 #define YT_MARKET_BASE_ADDRESS 0x1860U
 #define YT_DISRUPTION_SECTOR_ADDRESS 0x1878U
 #define YT_PLAYER_CACHE_GUARD_ADDRESS 0x1A74U
@@ -1432,7 +1433,7 @@ session_set_color(struct yt_session *session, int logical)
 	static const int pc_color[8] = {0, 4, 2, 6, 1, 5, 3, 7};
 
 	session_set_foreground(session, (float)logical);
-	session->presentation.background = 0.0f;
+	yt_present_set_background(&session->presentation, 0.0f);
 	if (logical >= 0 && logical < 8)
 		od_set_color(pc_color[logical], 0);
 }
@@ -4673,7 +4674,7 @@ dangerous_destination(struct yt_session *session, float target,
 		return true;
 	saved_foreground = session_foreground(session);
 	session_set_foreground(session, 3.0f);
-	session->presentation.background = 4.0f;
+	yt_present_set_background(&session->presentation, 4.0f);
 	if (!yt_game_read_sector(&session->door->game, (int)target, &sector,
 	    error))
 		return false;
@@ -4861,7 +4862,7 @@ dangerous_destination(struct yt_session *session, float target,
 			return false;
 	}
 	session_set_foreground(session, saved_foreground);
-	session->presentation.background = 0.0f;
+	yt_present_set_background(&session->presentation, 0.0f);
 	return true;
 }
 
@@ -4947,7 +4948,7 @@ spy_import_presentation(struct yt_session *session,
     const struct yt_spy_sweep_state *state)
 {
 	session_set_foreground(session, state->foreground);
-	session->presentation.background = state->background;
+	yt_present_set_background(&session->presentation, state->background);
 	session->presentation.bold = state->bold;
 	session->presentation.blink = state->blink;
 }
@@ -4957,7 +4958,7 @@ spy_export_presentation(struct yt_spy_sweep_state *state,
     const struct yt_session *session)
 {
 	state->foreground = session_foreground(session);
-	state->background = session->presentation.background;
+	state->background = yt_present_background(&session->presentation);
 	state->bold = session->presentation.bold;
 	state->blink = session->presentation.blink;
 }
@@ -5084,7 +5085,7 @@ spy_sweep(struct yt_session *session, struct yt_error *error)
 		    &session->route_process,
 		    YT_SPY_DESTINATION_SCRATCH_ADDRESS),
 		.foreground = session_foreground(session),
-		.background = session->presentation.background,
+		.background = yt_present_background(&session->presentation),
 		.bold = session->presentation.bold,
 		.blink = session->presentation.blink,
 	};
@@ -7392,7 +7393,7 @@ mine_style(void *context, float foreground, float background, float blink,
 	struct yt_session *session = context;
 
 	session_set_foreground(session, foreground);
-	session->presentation.background = background;
+	yt_present_set_background(&session->presentation, background);
 	session->presentation.blink = blink;
 	(void)pager_foreground;
 }
@@ -7423,7 +7424,7 @@ mine_encounter(struct yt_session *session, bool *terminal,
 		.current_sector = session->player.sector,
 		.conversion_mode = session->presentation.sound.conversion_mode,
 		.foreground = session_foreground(session),
-		.background = session->presentation.background,
+		.background = yt_present_background(&session->presentation),
 		.blink = session->presentation.blink,
 		.pager_foreground = session_pager_foreground(session),
 		.destroyed = &destroyed,
@@ -12200,7 +12201,7 @@ info_panel_present(void *context, const uint8_t *text, size_t length,
 	bool result;
 
 	session_set_foreground(session, state->foreground);
-	session->presentation.background = state->background;
+	yt_present_set_background(&session->presentation, state->background);
 	session->presentation.bold = state->bold;
 	if (kind == YT_INFO_PANEL_LINE)
 		result = info_line(session, text, length, error);
@@ -12210,7 +12211,7 @@ info_panel_present(void *context, const uint8_t *text, size_t length,
 	else
 		return info_failure(error, "Info presentation kind");
 	state->foreground = session_foreground(session);
-	state->background = session->presentation.background;
+	state->background = yt_present_background(&session->presentation);
 	state->bold = session->presentation.bold;
 	return result;
 }
@@ -12232,11 +12233,11 @@ show_ship(struct yt_session *session, struct yt_error *error)
 	state.cached_name_length = session->cached_player_name_length;
 	state.anti_cloak = session_anti_cloak_enabled(session) ? -1.0f : 0.0f;
 	state.foreground = session_foreground(session);
-	state.background = session->presentation.background;
+	state.background = yt_present_background(&session->presentation);
 	state.bold = session->presentation.bold;
 	result = yt_info_panel_run(&state, &ops, session, error);
 	session_set_foreground(session, state.foreground);
-	session->presentation.background = state.background;
+	yt_present_set_background(&session->presentation, state.background);
 	session->presentation.bold = state.bold;
 	return result;
 }
@@ -19177,6 +19178,8 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 		return false;
 	}
 	memset(&session, 0, sizeof(session));
+	yt_present_bind_background_process(&session.presentation,
+	    &session.route_process.bytes[YT_BACKGROUND_ADDRESS]);
 	session_bind_pager_process(&session);
 	session.door = door;
 	session.executable_path = executable_path;
