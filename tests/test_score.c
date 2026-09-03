@@ -28970,6 +28970,9 @@ struct projectile_command_tape {
 	float resolved_origin;
 	float resolved_target;
 	float resolved_amount;
+	uint8_t resolved_origin_raw[4];
+	uint8_t resolved_target_raw[4];
+	uint8_t resolved_amount_raw[4];
 	bool resolved_plasma;
 };
 
@@ -29081,9 +29084,10 @@ projectile_command_test_flush(void *context, struct yt_error *error)
 }
 
 static bool
-projectile_command_test_resolve(void *context, float *origin, float *target,
-    float *amount, bool plasma, int *counterattack, int *xannor_provoker,
-    struct yt_error *error)
+projectile_command_test_resolve(void *context, float *origin,
+    uint8_t origin_raw[4], float *target, uint8_t target_raw[4],
+    float *amount, uint8_t amount_raw[4], bool plasma, int *counterattack,
+    int *xannor_provoker, struct yt_error *error)
 {
 	struct projectile_command_tape *tape = context;
 
@@ -29092,10 +29096,19 @@ projectile_command_test_resolve(void *context, float *origin, float *target,
 	tape->resolved_origin = *origin;
 	tape->resolved_target = *target;
 	tape->resolved_amount = *amount;
+	memcpy(tape->resolved_origin_raw, origin_raw,
+	    sizeof(tape->resolved_origin_raw));
+	memcpy(tape->resolved_target_raw, target_raw,
+	    sizeof(tape->resolved_target_raw));
+	memcpy(tape->resolved_amount_raw, amount_raw,
+	    sizeof(tape->resolved_amount_raw));
 	tape->resolved_plasma = plasma;
 	*origin = 13.0f;
 	*target = 14.0f;
 	*amount = 1.0f;
+	(void)qb_mbf32_encode(*origin, origin_raw);
+	(void)qb_mbf32_encode(*target, target_raw);
+	(void)qb_mbf32_encode(*amount, amount_raw);
 	*counterattack = 3;
 	*xannor_provoker = 4;
 	return true;
@@ -29161,11 +29174,11 @@ projectile_command_fixture(struct projectile_command_tape *tape,
 	}
 	memset(tape->finalizer_player.record.bytes, 0xa5,
 	    sizeof(tape->finalizer_player.record.bytes));
-	tape->finalizer_player.sector = 12.0f;
+	tape->finalizer_player.sector = 0.0f;
 	tape->finalizer_player.missiles = 9.0f;
 	tape->finalizer_player.plasma = 8.0f;
-	(void)yt_record_set_number(&tape->finalizer_player.record, YT_F57,
-	    12.0f);
+	(void)yt_record_set_raw_number(&tape->finalizer_player.record, YT_F57,
+	    (const uint8_t[]){0x11, 0x22, 0x33, 0x00});
 	(void)yt_record_set_number(&tape->finalizer_player.record, YT_F97,
 	    9.0f);
 	(void)yt_record_set_number(&tape->finalizer_player.record, YT_F113,
@@ -29206,10 +29219,21 @@ check_projectile_command_transaction(void)
 	struct yt_projectile_command_state state;
 	struct yt_record expected_record;
 	struct yt_error error;
+	uint8_t target_raw[4];
+	uint8_t amount_raw[4];
+	uint8_t returned_origin_raw[4];
+	uint8_t returned_target_raw[4];
+	uint8_t returned_amount_raw[4];
 	bool destroyed;
 	size_t failure;
 
 	projectile_command_fixture(&tape, &state, &destroyed);
+	if (qb_mbf32_encode(42.0f, target_raw) != QB_MBF_OK
+	    || qb_mbf32_encode(2.0f, amount_raw) != QB_MBF_OK
+	    || qb_mbf32_encode(13.0f, returned_origin_raw) != QB_MBF_OK
+	    || qb_mbf32_encode(14.0f, returned_target_raw) != QB_MBF_OK
+	    || qb_mbf32_encode(1.0f, returned_amount_raw) != QB_MBF_OK)
+		return false;
 	expected_record = tape.finalizer_player.record;
 	(void)yt_record_set_number(&expected_record, YT_F97, 7.0f);
 	if (!yt_projectile_command_run(&state, &projectile_command_ops, &tape,
@@ -29233,8 +29257,15 @@ check_projectile_command_transaction(void)
 	    sizeof(target_prompt) - 1U) != 0
 	    || tape.kinds[2] != YT_PROJECTILE_COMMAND_QUANTITY_PROMPT
 	    || tape.kinds[3] != YT_PROJECTILE_COMMAND_ACCEPTED_BLANK
-	    || tape.resolved_origin != 12.0f || tape.resolved_target != 42.0f
+	    || tape.resolved_origin != 0.0f || tape.resolved_target != 42.0f
 	    || tape.resolved_amount != 2.0f || tape.resolved_plasma
+	    || memcmp(tape.resolved_origin_raw,
+	    (const uint8_t[]){0x11, 0x22, 0x33, 0x00}, 4U) != 0
+	    || memcmp(tape.resolved_target_raw, target_raw, 4U) != 0
+	    || memcmp(tape.resolved_amount_raw, amount_raw, 4U) != 0
+	    || memcmp(state.origin_raw, returned_origin_raw, 4U) != 0
+	    || memcmp(state.target_raw, returned_target_raw, 4U) != 0
+	    || memcmp(state.amount_raw, returned_amount_raw, 4U) != 0
 	    || memcmp(tape.written_player.record.bytes, expected_record.bytes,
 	    YT_RECORD_SIZE) != 0)
 		return false;

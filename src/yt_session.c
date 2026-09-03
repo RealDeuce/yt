@@ -9982,6 +9982,19 @@ projectile_route_cells_store(struct yt_session *session,
 }
 
 static void
+projectile_route_cells_store_raw(struct yt_session *session,
+    const struct projectile_route_cells *cells, const uint8_t origin[4],
+    const uint8_t destination[4], const uint8_t missiles[4])
+{
+	yt_route_process_set_raw_single(&session->route_process, cells->origin,
+	    origin);
+	yt_route_process_set_raw_single(&session->route_process,
+	    cells->destination, destination);
+	yt_route_process_set_raw_single(&session->route_process, cells->missiles,
+	    missiles);
+}
+
+static void
 projectile_route_cells_load(const struct yt_session *session,
     const struct projectile_route_cells *cells, float *origin,
     float *destination, float *missiles)
@@ -14517,8 +14530,9 @@ plasma_route_footer(void *context, const uint8_t *text, size_t length,
 static bool
 launch_projectile(struct yt_session *session, float *target, float *amount,
     bool plasma, const struct projectile_route_cells *cells,
-    float *origin_alias, int *pending_counterattack, int *pending_xannor,
-	struct yt_error *error)
+    float *origin_alias, const uint8_t origin_raw[4],
+    const uint8_t target_raw[4], const uint8_t amount_raw[4],
+    int *pending_counterattack, int *pending_xannor, struct yt_error *error)
 {
 	static const uint8_t ordinary_plasma_attribution[4] = {2, 0, 0, 0};
 	float destination = *target;
@@ -14540,8 +14554,12 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 	int start = (int)(origin_alias != NULL
 	    ? *origin_alias : session->player.sector);
 
-	projectile_route_cells_store(session, cells, *origin_alias, *target,
-	    *missiles);
+	if (origin_raw != NULL && target_raw != NULL && amount_raw != NULL)
+		projectile_route_cells_store_raw(session, cells, origin_raw,
+		    target_raw, amount_raw);
+	else
+		projectile_route_cells_store(session, cells, *origin_alias, *target,
+		    *missiles);
 	if (plasma)
 		yt_route_process_set_raw_single(&session->route_process, 0x72a0U,
 		    ordinary_plasma_attribution);
@@ -14717,7 +14735,30 @@ session_projectile_resolver(void *context, float *origin, float *target,
 	    ? &projectile_xannor_cells : &projectile_main_cells;
 
 	return launch_projectile(session, target, amount, plasma, cells, origin,
+	    NULL, NULL, NULL, counterattack, xannor_provoker, error);
+}
+
+static bool
+session_projectile_command_resolver(void *context, float *origin,
+    uint8_t origin_raw[4], float *target, uint8_t target_raw[4],
+    float *amount, uint8_t amount_raw[4], bool plasma, int *counterattack,
+    int *xannor_provoker, struct yt_error *error)
+{
+	struct yt_session *session = context;
+	bool result = launch_projectile(session, target, amount, plasma,
+	    &projectile_main_cells, origin, origin_raw, target_raw, amount_raw,
 	    counterattack, xannor_provoker, error);
+
+	yt_route_process_raw_single(&session->route_process,
+	    projectile_main_cells.origin, origin_raw);
+	yt_route_process_raw_single(&session->route_process,
+	    projectile_main_cells.destination, target_raw);
+	yt_route_process_raw_single(&session->route_process,
+	    projectile_main_cells.missiles, amount_raw);
+	*origin = qb_mbf32_decode(origin_raw);
+	*target = qb_mbf32_decode(target_raw);
+	*amount = qb_mbf32_decode(amount_raw);
+	return result;
 }
 
 static bool
@@ -14856,8 +14897,8 @@ session_counterlaunch_projectile(void *context, float *origin, float *target,
 	struct yt_session *session = context;
 
 	return launch_projectile(session, target, amount, plasma,
-	    &projectile_counterlaunch_cells, origin, counterattack,
-	    xannor_provoker, error);
+	    &projectile_counterlaunch_cells, origin, NULL, NULL, NULL,
+	    counterattack, xannor_provoker, error);
 }
 
 static bool
@@ -15017,7 +15058,7 @@ command_projectile(struct yt_session *session, bool plasma,
 		projectile_command_finalize,
 		projectile_command_write_player,
 		projectile_command_flush,
-		session_projectile_resolver,
+		session_projectile_command_resolver,
 		projectile_command_counterlaunch,
 		projectile_command_xannor,
 		projectile_command_fatal,

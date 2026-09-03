@@ -4104,6 +4104,7 @@ struct yt_projectile_command_state {
 	uint8_t amount_raw[4];
 	bool amount_stored;
 	float origin;
+	uint8_t origin_raw[4];
 	int counterattack;
 	int xannor_provoker;
 	bool finalizer_called;
@@ -4131,8 +4132,9 @@ struct yt_projectile_command_ops {
 	bool (*write_player)(void *context, int player_record,
 	    struct yt_player *player, struct yt_error *error);
 	bool (*flush)(void *context, struct yt_error *error);
-	bool (*resolve)(void *context, float *origin, float *target,
-	    float *amount, bool plasma, int *counterattack,
+	bool (*resolve)(void *context, float *origin, uint8_t origin_raw[4],
+	    float *target, uint8_t target_raw[4], float *amount,
+	    uint8_t amount_raw[4], bool plasma, int *counterattack,
 	    int *xannor_provoker, struct yt_error *error);
 	bool (*counterlaunch)(void *context, int *counterattack,
 	    int *xannor_provoker, struct yt_error *error);

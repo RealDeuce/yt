@@ -1388,6 +1388,7 @@ yt_projectile_command_run(struct yt_projectile_command_state *state,
 	memset(state->amount_raw, 0, sizeof(state->amount_raw));
 	state->amount_stored = false;
 	state->origin = 0.0f;
+	memset(state->origin_raw, 0, sizeof(state->origin_raw));
 	state->counterattack = 0;
 	state->xannor_provoker = 0;
 	state->finalizer_called = false;
@@ -1508,6 +1509,9 @@ yt_projectile_command_run(struct yt_projectile_command_state *state,
 		return false;
 	}
 	state->origin = state->post_finalizer.sector;
+	memcpy(state->origin_raw,
+	    state->post_finalizer.record.bytes + YT_F57,
+	    sizeof(state->origin_raw));
 	yt_projectile_debit_overlay(&state->post_finalizer, state->plasma,
 	    state->amount);
 	if (!ops->write_player(context, state->current_player_record,
@@ -1520,8 +1524,9 @@ yt_projectile_command_run(struct yt_projectile_command_state *state,
 	*state->destroyed = false;
 	state->destruction_cleared = true;
 	state->resolver_called = true;
-	if (!ops->resolve(context, &state->origin, &state->target,
-	    &state->amount, state->plasma, &state->counterattack,
+	if (!ops->resolve(context, &state->origin, state->origin_raw,
+	    &state->target, state->target_raw, &state->amount,
+	    state->amount_raw, state->plasma, &state->counterattack,
 	    &state->xannor_provoker, error))
 		return false;
 	state->counterlaunch_called = true;
