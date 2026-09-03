@@ -3,6 +3,7 @@
 #include "yt_main_error.h"
 #include "yt_game.h"
 #include "yt_text.h"
+#include "qb.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -3759,10 +3760,55 @@ test_sound_toggle(void)
 	    (const uint8_t *)"A", 1, &current, &result) == YT_PRESENT_OK);
 	CHECK(current.sound.snoop == 40000.0f && result.remote_length == 0
 	    && result.event_count == 0);
+	{
+		static const uint8_t negative_one[4] = {
+			0U, 0U, 0x80U, 0x81U,
+		};
+		static const uint8_t zero[4] = {0U, 0U, 0U, 0U};
+		static const uint8_t dirty_zero[4] = {
+			0x11U, 0x22U, 0x33U, 0U,
+		};
+		uint8_t mode[4];
+		uint8_t snoop[4];
+		uint8_t before[4];
+
+		CHECK(qb_mbf32_encode(0.0f, mode) == QB_MBF_OK);
+		memcpy(snoop, dirty_zero, sizeof(snoop));
+		current = state(false);
+		CHECK(yt_present_sysop_snoop_toggle_process(
+		    (const uint8_t *)"R", 1U, (const uint8_t *)"A", 1U,
+		    mode, snoop, &current, &result) == YT_PRESENT_OK
+		    && current.sound.snoop == -1.0f
+		    && memcmp(snoop, negative_one, sizeof(snoop)) == 0);
+		CHECK(yt_present_sysop_snoop_toggle_process(
+		    (const uint8_t *)"R", 1U, (const uint8_t *)"A", 1U,
+		    mode, snoop, &current, &result) == YT_PRESENT_OK
+		    && current.sound.snoop == 0.0f
+		    && memcmp(snoop, zero, sizeof(snoop)) == 0);
+		CHECK(qb_mbf32_encode(1.0f, mode) == QB_MBF_OK
+		    && qb_mbf32_encode(40000.0f, snoop) == QB_MBF_OK);
+		memcpy(before, snoop, sizeof(before));
+		CHECK(yt_present_sysop_snoop_toggle_process(
+		    (const uint8_t *)"R", 1U, (const uint8_t *)"A", 1U,
+		    mode, snoop, &current, &result) == YT_PRESENT_OK
+		    && memcmp(snoop, before, sizeof(snoop)) == 0);
+		CHECK(qb_mbf32_encode(0.0f, mode) == QB_MBF_OK
+		    && yt_present_sysop_snoop_toggle_process(
+		    (const uint8_t *)"R", 1U, (const uint8_t *)"A", 1U,
+		    mode, snoop, &current, &result) == YT_PRESENT_SOUND_ERROR
+		    && memcmp(snoop, before, sizeof(snoop)) == 0);
+	}
 }
 
 struct sysop_replay_tape {
 	float *deadline;
+	float expected_deadline;
+	size_t calls;
+	bool fail;
+};
+
+struct sysop_process_replay_tape {
+	uint8_t *deadline;
 	float expected_deadline;
 	size_t calls;
 	bool fail;
@@ -3775,6 +3821,16 @@ capture_sysop_replay(void *context)
 
 	++tape->calls;
 	CHECK(*tape->deadline == tape->expected_deadline);
+	return tape->fail ? YT_PRESENT_RANGE : YT_PRESENT_OK;
+}
+
+static enum yt_present_status
+capture_sysop_process_replay(void *context)
+{
+	struct sysop_process_replay_tape *tape = context;
+
+	++tape->calls;
+	CHECK(qb_mbf32_decode(tape->deadline) == tape->expected_deadline);
 	return tape->fail ? YT_PRESENT_RANGE : YT_PRESENT_OK;
 }
 
@@ -3861,6 +3917,37 @@ test_sysop_time(void)
 	    &deadline, &minutes, &changed, &result, capture_sysop_replay,
 	    &tape) == YT_PRESENT_RANGE);
 	CHECK(tape.calls == 1U && !changed && deadline == 9999.0f);
+	{
+		static const uint8_t dirty_zero[4] = {
+			0x11U, 0x22U, 0x33U, 0U,
+		};
+		struct sysop_process_replay_tape process_tape;
+		uint8_t raw_deadline[4];
+		uint8_t before[4];
+
+		memcpy(raw_deadline, dirty_zero, sizeof(raw_deadline));
+		memcpy(before, raw_deadline, sizeof(before));
+		CHECK(yt_present_sysop_time_replace_process(NULL, 0U, 1.0f,
+		    raw_deadline, &minutes, &changed) == YT_PRESENT_OK
+		    && !changed
+		    && memcmp(raw_deadline, before, sizeof(raw_deadline)) == 0);
+		CHECK(qb_mbf32_encode(9999.0f, raw_deadline) == QB_MBF_OK
+		    && yt_present_sysop_time_replace_process(
+		    (const uint8_t *)"30", 2U, 2000.25f, raw_deadline,
+		    &minutes, &changed) == YT_PRESENT_OK
+		    && changed && minutes == 30.0f
+		    && qb_mbf32_decode(raw_deadline) == 3800.0f);
+		CHECK(qb_mbf32_encode(9999.0f, raw_deadline) == QB_MBF_OK);
+		process_tape = (struct sysop_process_replay_tape){
+			raw_deadline, 3800.0f, 0U, true,
+		};
+		CHECK(yt_present_sysop_time_handler_process(1000.75f,
+		    (const uint8_t *)"30", 2U, 2000.25f, raw_deadline,
+		    &minutes, &changed, &result, capture_sysop_process_replay,
+		    &process_tape) == YT_PRESENT_RANGE
+		    && process_tape.calls == 1U && changed
+		    && qb_mbf32_decode(raw_deadline) == 3800.0f);
+	}
 }
 
 static void

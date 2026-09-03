@@ -674,9 +674,10 @@ static enum yt_present_status status_row_append(const uint8_t *real_name,
     size_t real_name_length, const uint8_t *alias, size_t alias_length,
     struct yt_present_state *state, struct yt_present_result *result);
 
-enum yt_present_status
-yt_present_sysop_snoop_toggle(const uint8_t *real_name,
+static enum yt_present_status
+present_sysop_snoop_toggle(const uint8_t *real_name,
     size_t real_name_length, const uint8_t *alias, size_t alias_length,
+    const uint8_t mode[4], uint8_t snoop[4],
     struct yt_present_state *state, struct yt_present_result *result)
 {
 	static const uint8_t notice[] = "SNOOP ON";
@@ -684,12 +685,21 @@ yt_present_sysop_snoop_toggle(const uint8_t *real_name,
 	bool enabled = false;
 	enum yt_present_status status;
 
+	if (state == NULL || result == NULL)
+		return YT_PRESENT_CAPACITY;
+	if (mode != NULL && snoop != NULL) {
+		state->sound.mode = qb_mbf32_decode(mode);
+		state->sound.snoop = qb_mbf32_decode(snoop);
+	}
 	memset(result, 0, sizeof(*result));
 	if (yt_sound_sysop_snoop_toggle(&state->sound, &returned_early,
 	    &enabled) != YT_SOUND_OK)
 		return YT_PRESENT_SOUND_ERROR;
 	if (returned_early)
 		return YT_PRESENT_OK;
+	if (snoop != NULL
+	    && qb_mbf32_encode(state->sound.snoop, snoop) != QB_MBF_OK)
+		return YT_PRESENT_OVERFLOW;
 	if (!enabled) {
 		status = append_locate(result, -1, -1, 0, 0, 0);
 		return status == YT_PRESENT_OK ? append_clear(result) : status;
@@ -702,6 +712,27 @@ yt_present_sysop_snoop_toggle(const uint8_t *real_name,
 	return status == YT_PRESENT_OK
 	    ? append_local(result, YT_PRESENT_LOCAL_LINE, notice,
 	    sizeof(notice) - 1U, 0, 0) : status;
+}
+
+enum yt_present_status
+yt_present_sysop_snoop_toggle(const uint8_t *real_name,
+    size_t real_name_length, const uint8_t *alias, size_t alias_length,
+    struct yt_present_state *state, struct yt_present_result *result)
+{
+	return present_sysop_snoop_toggle(real_name, real_name_length, alias,
+	    alias_length, NULL, NULL, state, result);
+}
+
+enum yt_present_status
+yt_present_sysop_snoop_toggle_process(const uint8_t *real_name,
+    size_t real_name_length, const uint8_t *alias, size_t alias_length,
+    const uint8_t mode[4], uint8_t snoop[4],
+    struct yt_present_state *state, struct yt_present_result *result)
+{
+	if (mode == NULL || snoop == NULL)
+		return YT_PRESENT_CAPACITY;
+	return present_sysop_snoop_toggle(real_name, real_name_length, alias,
+	    alias_length, mode, snoop, state, result);
 }
 
 static enum yt_present_status
@@ -798,6 +829,25 @@ yt_present_sysop_time_replace(const uint8_t *entered, size_t entered_length,
 }
 
 enum yt_present_status
+yt_present_sysop_time_replace_process(const uint8_t *entered,
+    size_t entered_length, float commit_timer, uint8_t deadline[4],
+    float *minutes, bool *changed)
+{
+	float value;
+	enum yt_present_status status;
+
+	if (deadline == NULL)
+		return YT_PRESENT_CAPACITY;
+	value = qb_mbf32_decode(deadline);
+	status = yt_present_sysop_time_replace(entered, entered_length,
+	    commit_timer, &value, minutes, changed);
+	if (status != YT_PRESENT_OK || !*changed)
+		return status;
+	return qb_mbf32_encode(value, deadline) == QB_MBF_OK
+	    ? YT_PRESENT_OK : YT_PRESENT_OVERFLOW;
+}
+
+enum yt_present_status
 yt_present_sysop_time_handler(float prompt_timer, const uint8_t *entered,
     size_t entered_length, float commit_timer, float *deadline,
     float *minutes, bool *changed, struct yt_present_result *prompt,
@@ -811,6 +861,26 @@ yt_present_sysop_time_handler(float prompt_timer, const uint8_t *entered,
 	if (status != YT_PRESENT_OK)
 		return status;
 	status = yt_present_sysop_time_replace(entered, entered_length,
+	    commit_timer, deadline, minutes, changed);
+	return status == YT_PRESENT_OK ? replay(replay_context) : status;
+}
+
+enum yt_present_status
+yt_present_sysop_time_handler_process(float prompt_timer,
+    const uint8_t *entered, size_t entered_length, float commit_timer,
+    uint8_t deadline[4], float *minutes, bool *changed,
+    struct yt_present_result *prompt, yt_present_sysop_replay_fn replay,
+    void *replay_context)
+{
+	enum yt_present_status status;
+
+	if (deadline == NULL || prompt == NULL || replay == NULL)
+		return YT_PRESENT_CAPACITY;
+	status = yt_present_sysop_time_prompt(qb_mbf32_decode(deadline),
+	    prompt_timer, prompt);
+	if (status != YT_PRESENT_OK)
+		return status;
+	status = yt_present_sysop_time_replace_process(entered, entered_length,
 	    commit_timer, deadline, minutes, changed);
 	return status == YT_PRESENT_OK ? replay(replay_context) : status;
 }
