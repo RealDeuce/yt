@@ -26,6 +26,7 @@
 #define YT_PLAYER_LAST 51
 #define YT_COMMAND_SIZE 4096U
 #define YT_ANTI_CLOAK_ADDRESS 0x1854U
+#define YT_EPOCH_YEAR_ADDRESS 0x1850U
 #define YT_MARKET_BASE_ADDRESS 0x1860U
 #define YT_DISRUPTION_SECTOR_ADDRESS 0x1878U
 #define YT_DESTROYED_ADDRESS 0x18B4U
@@ -2037,6 +2038,16 @@ startup_configuration_store_maximum_holds(void *context,
 	    YT_MAXIMUM_HOLDS_ADDRESS, raw);
 }
 
+static void
+startup_configuration_store_epoch_year(void *context,
+    const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_EPOCH_YEAR_ADDRESS, raw);
+}
+
 static bool
 load_configuration(struct yt_session *session, struct yt_error *error)
 {
@@ -2054,6 +2065,7 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 		startup_configuration_store_lottery,
 		startup_configuration_store_maximum_planets,
 		startup_configuration_store_maximum_holds,
+		startup_configuration_store_epoch_year,
 	};
 	struct yt_game *game = &session->door->game;
 	struct yt_startup_configuration_state state;
@@ -2629,7 +2641,8 @@ startup_pre_admission(struct yt_session *session, struct yt_error *error)
 	if (!session_0317(session, (const uint8_t *)"Initializing...",
 	    strlen("Initializing..."), "startup initializing row", error)
 	    || !yt_current_date_serial(
-	    session->door->game.config.epoch_year,
+	    yt_route_process_single(&session->route_process,
+	    YT_EPOCH_YEAR_ADDRESS),
 	    &session->door->game.today, &session->door->game.adjusted_year,
 	    error)
 	    || !lockout(session, error))
@@ -3391,7 +3404,8 @@ port_update_observe_day(void *context, float *current_day,
 	int today;
 	int adjusted_year;
 
-	if (!yt_current_date_serial(session->door->game.config.epoch_year,
+	if (!yt_current_date_serial(yt_route_process_single(
+	    &session->route_process, YT_EPOCH_YEAR_ADDRESS),
 	    &today, &adjusted_year, error))
 		return false;
 	session->door->game.today = today;
@@ -3511,7 +3525,8 @@ planet_updater_date(void *context, uint8_t current_day_raw[4],
 	int today;
 	int adjusted_year;
 
-	if (!yt_current_date_serial(session->door->game.config.epoch_year,
+	if (!yt_current_date_serial(yt_route_process_single(
+	    &session->route_process, YT_EPOCH_YEAR_ADDRESS),
 	    &today, &adjusted_year, error))
 		return false;
 	session->door->game.today = today;
@@ -11099,7 +11114,8 @@ create_planet(struct yt_session *session, struct yt_error *error)
 	(void)yt_record_set_number(&sector.record, YT_F93, selected_logical);
 	if (!yt_database_write(&session->door->game.database,
 	    (size_t)sector_physical, &sector.record, error)
-	    || !yt_current_date_serial(session->door->game.config.epoch_year,
+	    || !yt_current_date_serial(yt_route_process_single(
+	    &session->route_process, YT_EPOCH_YEAR_ADDRESS),
 	    &today, &adjusted_year, error))
 		return false;
 	session->door->game.today = today;
@@ -16880,7 +16896,8 @@ profit_project_port_market(struct yt_session *session,
 	int today;
 	int adjusted_year;
 
-	if (!yt_current_date_serial(session->door->game.config.epoch_year,
+	if (!yt_current_date_serial(yt_route_process_single(
+	    &session->route_process, YT_EPOCH_YEAR_ADDRESS),
 	    &today, &adjusted_year, error))
 		return false;
 	session->door->game.today = today;
@@ -17146,7 +17163,8 @@ computer_nearest_ports(struct yt_session *session, struct yt_error *error)
 			if (sector.port == 0.0f)
 				continue;
 			if (!yt_current_date_serial(
-			    session->door->game.config.epoch_year, &today,
+			    yt_route_process_single(&session->route_process,
+			    YT_EPOCH_YEAR_ADDRESS), &today,
 			    &adjusted_year, error))
 				goto failure;
 			session->door->game.today = today;

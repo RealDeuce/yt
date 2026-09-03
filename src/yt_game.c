@@ -293,6 +293,8 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 	qb_compat_upper_n((uint8_t *)config->scoreboard,
 	    state->scoreboard_path_length);
 	config->scoreboard[state->scoreboard_path_length] = '\0';
+	if (ops->store_epoch_year != NULL)
+		ops->store_epoch_year(context, config->record.bytes + YT_F45);
 	if (ops->store_turns_per_day != NULL)
 		ops->store_turns_per_day(context,
 		    config->record.bytes + YT_F49);

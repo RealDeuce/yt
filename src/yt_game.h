@@ -78,6 +78,8 @@ typedef void (*yt_startup_configuration_planets_store_fn)(void *context,
 	const uint8_t raw[4]);
 typedef void (*yt_startup_configuration_holds_store_fn)(void *context,
 	const uint8_t raw[4]);
+typedef void (*yt_startup_configuration_epoch_store_fn)(void *context,
+	const uint8_t raw[4]);
 
 struct yt_startup_configuration_ops {
 	yt_startup_configuration_close_fn close_data;
@@ -93,6 +95,7 @@ struct yt_startup_configuration_ops {
 	yt_startup_configuration_lottery_store_fn store_lottery_plays;
 	yt_startup_configuration_planets_store_fn store_maximum_planets;
 	yt_startup_configuration_holds_store_fn store_maximum_holds;
+	yt_startup_configuration_epoch_store_fn store_epoch_year;
 };
 
 bool yt_startup_configuration_run(
