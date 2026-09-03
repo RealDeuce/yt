@@ -8,6 +8,31 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
+### DOC-GAP-019: planet-updater corrupt numeric record behavior
+
+Affected coverage:
+
+- `YT-SUB2:0A97..0FD5` planet-production updates over edited or corrupt
+  planet records;
+- exact raw MBF arithmetic, persistence, and failure residue for dirty-zero
+  and negative numeric fields; and
+- every scanner, planet-menu, computer-report, projectile, and maintenance
+  caller that can pass such a record to the shared updater.
+
+The completed `docs/gameplay/planet-economy.md` explicitly leaves overflow
+and error behavior for deliberately corrupt numeric records outside its
+result. The native `updater_validate_record()` currently stops with
+protective `YT_RANGE` results for dirty exponent-zero values in selected
+fields and for every negative nonzero field. Those guards prevent unsafe or
+unsupported host arithmetic, but they are not an evidence-backed claim about
+the shipped BASIC transition, ERR/ERL identity, partial process/FIELD state,
+or whether a write is reached.
+
+Upstream documentation, the canonical raw model, generated evidence, and
+focused fixtures must specify these corrupt domains before the guards can be
+replaced or classified as exact behavior. No binary inspection or new
+reverse engineering was performed.
+
 ### DOC-GAP-018: plasma wait destination roots
 
 Affected coverage:
