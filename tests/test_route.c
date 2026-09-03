@@ -6,6 +6,15 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <signal.h>
+#include <sys/wait.h>
+#include <time.h>
+#include <unistd.h>
+#endif
+
 static unsigned failures;
 
 #define CHECK(expr) do { \
@@ -405,15 +414,118 @@ test_addressed_route_arguments(void)
 	    && strcmp(error.operation, "route argument workspace alias") == 0);
 }
 
-int
-main(void)
+static bool
+reconstruction_back_edge_does_not_return(void)
 {
+#ifdef _WIN32
+	SECURITY_ATTRIBUTES security = {
+		sizeof(security), NULL, TRUE
+	};
+	STARTUPINFOA startup;
+	PROCESS_INFORMATION process;
+	HANDLE ready_read;
+	HANDLE ready_write;
+	char executable[MAX_PATH];
+	char command[MAX_PATH + 64U];
+	char ready = '\0';
+	DWORD transferred = 0U;
+	DWORD waited;
+	bool result;
+
+	if (!CreatePipe(&ready_read, &ready_write, &security, 0)
+	    || !SetHandleInformation(ready_read, HANDLE_FLAG_INHERIT, 0))
+		return false;
+	if (GetModuleFileNameA(NULL, executable, sizeof(executable)) == 0U
+	    || snprintf(command, sizeof(command),
+	    "\"%s\" --route-back-edge", executable) <= 0) {
+		(void)CloseHandle(ready_read);
+		(void)CloseHandle(ready_write);
+		return false;
+	}
+	memset(&startup, 0, sizeof(startup));
+	memset(&process, 0, sizeof(process));
+	startup.cb = sizeof(startup);
+	startup.dwFlags = STARTF_USESTDHANDLES;
+	startup.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+	startup.hStdOutput = ready_write;
+	startup.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+	if (!CreateProcessA(NULL, command, NULL, NULL, TRUE, 0, NULL, NULL,
+	    &startup, &process)) {
+		(void)CloseHandle(ready_read);
+		(void)CloseHandle(ready_write);
+		return false;
+	}
+	(void)CloseHandle(ready_write);
+	result = ReadFile(ready_read, &ready, 1U, &transferred, NULL)
+	    && transferred == 1U && ready == 'R';
+	waited = WaitForSingleObject(process.hProcess, 20U);
+	result = result && waited == WAIT_TIMEOUT;
+	if (waited == WAIT_TIMEOUT)
+		(void)TerminateProcess(process.hProcess, 0U);
+	(void)WaitForSingleObject(process.hProcess, INFINITE);
+	(void)CloseHandle(process.hThread);
+	(void)CloseHandle(process.hProcess);
+	(void)CloseHandle(ready_read);
+	return result;
+#else
+	int ready_pipe[2];
+	pid_t child;
+	pid_t waited;
+	int status;
+	char ready = '\0';
+	struct timespec pause = {0, 20000000L};
+	bool result;
+
+	if (pipe(ready_pipe) != 0)
+		return false;
+	child = fork();
+	if (child == 0) {
+		(void)close(ready_pipe[0]);
+		ready = 'R';
+		(void)write(ready_pipe[1], &ready, 1U);
+		(void)close(ready_pipe[1]);
+		yt_route_reconstruction_back_edge();
+	}
+	if (child < 0) {
+		(void)close(ready_pipe[0]);
+		(void)close(ready_pipe[1]);
+		return false;
+	}
+	(void)close(ready_pipe[1]);
+	result = read(ready_pipe[0], &ready, 1U) == 1 && ready == 'R';
+	(void)close(ready_pipe[0]);
+	(void)nanosleep(&pause, NULL);
+	waited = waitpid(child, &status, WNOHANG);
+	result = result && waited == 0;
+	if (waited == 0) {
+		(void)kill(child, SIGTERM);
+		result = result && waitpid(child, &status, 0) == child
+		    && WIFSIGNALED(status) && WTERMSIG(status) == SIGTERM;
+	}
+	return result;
+#endif
+}
+
+int
+main(int argc, char **argv)
+{
+#ifdef _WIN32
+	if (argc == 2 && strcmp(argv[1], "--route-back-edge") == 0) {
+		(void)fputc('R', stdout);
+		(void)fflush(stdout);
+		yt_route_reconstruction_back_edge();
+	}
+#else
+	(void)argc;
+	(void)argv;
+#endif
 	test_fifo_and_failure_residue();
 	test_avoid_semantics();
 	test_wrapped_process_writes();
 	test_same_zero_and_conversion_order();
 	test_route_cint_fault_sites();
 	test_addressed_route_arguments();
+	CHECK(reconstruction_back_edge_does_not_return());
 	if (failures != 0U)
 		return EXIT_FAILURE;
 	puts("test_route: ok");

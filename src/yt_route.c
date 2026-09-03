@@ -7,6 +7,14 @@
 #include <stdio.h>
 #include <string.h>
 
+_Noreturn void
+yt_route_reconstruction_back_edge(void)
+{
+	/* YT-SUB:1374 repeats without an I/O or scheduler boundary. */
+	for (;;) {
+	}
+}
+
 #define YT_ROUTE_HEAD_ADDRESS 0x52BCU
 #define YT_ROUTE_TAIL_ADDRESS 0x52BEU
 #define YT_ROUTE_AVOID_INDEX_ADDRESS 0x52C0U

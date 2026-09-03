@@ -22,6 +22,8 @@ enum yt_route_outcome {
 	YT_ROUTE_BACK_EDGE,
 };
 
+_Noreturn void yt_route_reconstruction_back_edge(void);
+
 struct yt_route_process {
 	uint8_t bytes[YT_ROUTE_PROCESS_SIZE];
 };

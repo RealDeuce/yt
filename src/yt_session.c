@@ -9889,19 +9889,11 @@ route_sector_reader(void *context, int logical_sector, float warps[6],
 	return true;
 }
 
-static _Noreturn void
-route_reconstruction_back_edge(void)
-{
-	/* YT-SUB:1374 repeats without an I/O or scheduler boundary. */
-	for (;;) {
-	}
-}
-
 static void
 route_require_returned(enum yt_route_outcome outcome)
 {
 	if (outcome == YT_ROUTE_BACK_EDGE)
-		route_reconstruction_back_edge();
+		yt_route_reconstruction_back_edge();
 }
 
 static bool
