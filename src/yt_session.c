@@ -64,6 +64,7 @@
 #define YT_LOW_TIME_REMEMBERED_ADDRESS 0x59CEU
 #define YT_SESSION_DEADLINE_ADDRESS 0x4BB4U
 #define YT_INACTIVITY_DEADLINE_ADDRESS 0x51B4U
+#define YT_NEXT_TIME_REFRESH_ADDRESS 0x19C0U
 #define YT_COUNTERLAUNCH_COUNT_ADDRESS 0x5BC6U
 #define YT_SPY_DESTINATION_SCRATCH_ADDRESS 0x5FE4U
 #define YT_SPY_FOUND_SCRATCH_ADDRESS 0x5FE8U
@@ -11619,7 +11620,8 @@ info_refresh_time(struct yt_session *session, struct yt_error *error)
 	float reads[5];
 	float deadline = yt_route_process_single(&session->route_process,
 	    YT_SESSION_DEADLINE_ADDRESS);
-	float next_refresh = session->time.next_refresh;
+	float next_refresh = yt_route_process_single(&session->route_process,
+	    YT_NEXT_TIME_REFRESH_ADDRESS);
 	size_t count = 0;
 	size_t used;
 	int row = 1;
@@ -11629,6 +11631,7 @@ info_refresh_time(struct yt_session *session, struct yt_error *error)
 	enum yt_present_status status;
 
 	session->time.deadline = deadline;
+	session->time.next_refresh = next_refresh;
 	reads[count++] = (float)yt_platform_timer();
 	if (single_sub(deadline, reads[0]) > 70000.0f) {
 		deadline = single_sub(deadline, 86400.0f);
@@ -11646,6 +11649,9 @@ info_refresh_time(struct yt_session *session, struct yt_error *error)
 	if (session->time.deadline != deadline)
 		session_set_process_single(session, YT_SESSION_DEADLINE_ADDRESS,
 		    session->time.deadline);
+	if (session->time.next_refresh != next_refresh)
+		session_set_process_single(session, YT_NEXT_TIME_REFRESH_ADDRESS,
+		    session->time.next_refresh);
 	if (status != YT_PRESENT_OK)
 		return info_failure(error, "Info time refresh");
 	yt_out_present_result(&presentation);
