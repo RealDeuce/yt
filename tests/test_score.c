@@ -8521,6 +8521,10 @@ struct xannor_tape {
 	uint8_t destroyed_raw[4];
 	size_t destroyed_store_count;
 	size_t destroyed_store_position;
+	uint8_t initial_player_record_raw[4];
+	uint8_t player_record_raw[2][4];
+	size_t player_record_store_count;
+	size_t player_record_store_position[2];
 };
 
 static bool
@@ -8599,6 +8603,8 @@ xannor_projectile(void *context, float *origin, float *target, float *amount,
 	tape->projectile_cloak = tape->live_cloak[*tape->live_record == -1
 	    ? 2 : *tape->live_record];
 	tape->projectile_actor = *tape->live_record == -1
+	    && tape->player_record_store_count == 1U
+	    && qb_mbf32_decode(tape->player_record_raw[0]) == -1.0f
 	    && strcmp(tape->live_player->name, "The Xannor") == 0
 	    && !plasma && *counterattack == 0
 	    && xannor_provoker == tape->live_provoker
@@ -8648,6 +8654,20 @@ xannor_store_destroyed(void *context, const uint8_t raw[4])
 }
 
 static void
+xannor_store_player_record(void *context, const uint8_t raw[4])
+{
+	struct xannor_tape *tape = context;
+	size_t store = tape->player_record_store_count;
+
+	if (store >= YT_ARRAY_LEN(tape->player_record_raw))
+		return;
+	memcpy(tape->player_record_raw[store], raw,
+	    sizeof(tape->player_record_raw[store]));
+	tape->player_record_store_position[store] = tape->event_count;
+	++tape->player_record_store_count;
+}
+
+static void
 xannor_fixture(struct xannor_tape *tape,
     struct yt_xannor_retaliation_state *state, struct yt_player *player,
     int *player_record, float sector_cache[6], float cloak_cache[6],
@@ -8687,6 +8707,8 @@ xannor_fixture(struct xannor_tape *tape,
 	state->provoker = provoker;
 	state->headquarters = headquarters;
 	state->sector_count = 2004;
+	(void)qb_mbf32_encode(2.0f, tape->initial_player_record_raw);
+	state->player_record_raw = tape->initial_player_record_raw;
 }
 
 static bool
@@ -8701,6 +8723,7 @@ check_xannor_retaliation_model(void)
 		xannor_read_player,
 		xannor_wait,
 		xannor_store_destroyed,
+		xannor_store_player_record,
 	};
 	static const int full_events[8] = {
 		XANNOR_READ_SECTOR, XANNOR_NESTED_RANDOM, XANNOR_BLANK,
@@ -8761,7 +8784,14 @@ check_xannor_retaliation_model(void)
 	    || destroyed || provoker != 0 || headquarters != 9.0f
 	    || tape.final_player_record != 2 || tape.wait_seconds != 4.0
 	    || memcmp(tape.wait_duration_raw, duration_four,
-	    sizeof(duration_four)) != 0)
+	    sizeof(duration_four)) != 0
+	    || tape.player_record_store_count != 2U
+	    || tape.player_record_store_position[0] != 3U
+	    || tape.player_record_store_position[1] != 6U
+	    || memcmp(tape.player_record_raw[0],
+	    (const uint8_t[]){0x00, 0x00, 0x80, 0x81}, 4U) != 0
+	    || memcmp(tape.player_record_raw[1],
+	    (const uint8_t[]){0x00, 0x00, 0x00, 0x82}, 4U) != 0)
 		return false;
 
 	xannor_fixture(&tape, &state, &player, &player_record, sector_cache,
@@ -8787,7 +8817,8 @@ check_xannor_retaliation_model(void)
 	if (yt_xannor_retaliation_run(&state, &ops, &tape, NULL)
 	    || tape.event_count != 2U || player_record != 2
 	    || strcmp(player.name, "Alice") != 0
-	    || cloak_cache[2] != 0.75f || provoker != 7)
+	    || cloak_cache[2] != 0.75f || provoker != 7
+	    || tape.player_record_store_count != 0U)
 		return false;
 
 	xannor_fixture(&tape, &state, &player, &player_record, sector_cache,
@@ -8797,7 +8828,8 @@ check_xannor_retaliation_model(void)
 	if (yt_xannor_retaliation_run(&state, &ops, &tape, NULL)
 	    || tape.event_count != 3U || player_record != 2
 	    || strcmp(player.name, "Alice") != 0
-	    || cloak_cache[2] != 0.75f || provoker != 7)
+	    || cloak_cache[2] != 0.75f || provoker != 7
+	    || tape.player_record_store_count != 0U)
 		return false;
 
 	xannor_fixture(&tape, &state, &player, &player_record, sector_cache,
@@ -8808,7 +8840,9 @@ check_xannor_retaliation_model(void)
 	    || tape.event_count != 4U || player_record != -1
 	    || strcmp(player.name, "The Xannor") != 0
 	    || player.sector != 733.0f || cloak_cache[2] != 0.0f
-	    || provoker != 7)
+	    || provoker != 7 || tape.player_record_store_count != 1U
+	    || memcmp(tape.player_record_raw[0],
+	    (const uint8_t[]){0x00, 0x00, 0x80, 0x81}, 4U) != 0)
 		return false;
 
 	xannor_fixture(&tape, &state, &player, &player_record, sector_cache,
@@ -8818,7 +8852,8 @@ check_xannor_retaliation_model(void)
 	if (yt_xannor_retaliation_run(&state, &ops, &tape, NULL)
 	    || tape.event_count != 5U || player_record != -1
 	    || strcmp(player.name, "The Xannor") != 0
-	    || cloak_cache[2] != 0.0f || provoker != 7)
+	    || cloak_cache[2] != 0.0f || provoker != 7
+	    || tape.player_record_store_count != 1U)
 		return false;
 
 	xannor_fixture(&tape, &state, &player, &player_record, sector_cache,
@@ -8830,7 +8865,8 @@ check_xannor_retaliation_model(void)
 	    || player_record != -1 || strcmp(player.name, "The Xannor") != 0
 	    || player.sector != 733.0f || cloak_cache[2] != 0.0f
 	    || provoker != 11 || headquarters != 9.0f
-	    || tape.event_count != 6U)
+	    || tape.event_count != 6U
+	    || tape.player_record_store_count != 1U)
 		return false;
 
 	xannor_fixture(&tape, &state, &player, &player_record, sector_cache,
@@ -8840,7 +8876,8 @@ check_xannor_retaliation_model(void)
 	if (yt_xannor_retaliation_run(&state, &ops, &tape, NULL)
 	    || player_record != 2 || strcmp(player.name, "Alice") != 0
 	    || cloak_cache[2] != 0.75f || provoker != 7
-	    || tape.event_count != 7U)
+	    || tape.event_count != 7U
+	    || tape.player_record_store_count != 2U)
 		return false;
 
 	xannor_fixture(&tape, &state, &player, &player_record, sector_cache,
@@ -8857,7 +8894,10 @@ check_xannor_retaliation_model(void)
 	    && memcmp(tape.wait_duration_raw, duration_four,
 	    sizeof(duration_four)) == 0
 	    && memcmp(tape.destroyed_raw,
-	    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) == 0;
+	    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) == 0
+	    && tape.player_record_store_count == 2U
+	    && memcmp(tape.player_record_raw[1],
+	    (const uint8_t[]){0x00, 0x00, 0x00, 0x82}, 4U) == 0;
 }
 
 enum counterlaunch_tape_event {
@@ -8907,6 +8947,10 @@ struct counterlaunch_tape {
 	uint8_t destroyed_raw[4];
 	size_t destroyed_store_count;
 	size_t destroyed_store_position;
+	uint8_t initial_player_record_raw[4];
+	uint8_t player_record_raw[2][4];
+	size_t player_record_store_count;
+	size_t player_record_store_position[2];
 };
 
 static bool
@@ -9028,6 +9072,8 @@ counterlaunch_projectile(void *context, float *origin, float *target,
 	    && xannor_provoker == tape->live_xannor
 	    && amount == tape->live_retained
 	    && *tape->live_record == 3
+	    && tape->player_record_store_count == 1U
+	    && qb_mbf32_decode(tape->player_record_raw[0]) == 3.0f
 	    && strcmp(tape->live_player->name, "Bob") == 0
 	    && tape->live_player->sector == 733.0f
 	    && tape->live_cloak[2] == 0.0f;
@@ -9073,6 +9119,20 @@ counterlaunch_store_destroyed(void *context, const uint8_t raw[4])
 	memcpy(tape->destroyed_raw, raw, sizeof(tape->destroyed_raw));
 	tape->destroyed_store_position = tape->event_count;
 	++tape->destroyed_store_count;
+}
+
+static void
+counterlaunch_store_player_record(void *context, const uint8_t raw[4])
+{
+	struct counterlaunch_tape *tape = context;
+	size_t store = tape->player_record_store_count;
+
+	if (store >= YT_ARRAY_LEN(tape->player_record_raw))
+		return;
+	memcpy(tape->player_record_raw[store], raw,
+	    sizeof(tape->player_record_raw[store]));
+	tape->player_record_store_position[store] = tape->event_count;
+	++tape->player_record_store_count;
 }
 
 static void
@@ -9127,6 +9187,8 @@ counterlaunch_fixture(struct counterlaunch_tape *tape,
 	state->counterattacker = counterattacker;
 	state->xannor_provoker = xannor;
 	state->last_player_record = 51;
+	(void)qb_mbf32_encode(2.0f, tape->initial_player_record_raw);
+	state->player_record_raw = tape->initial_player_record_raw;
 }
 
 static bool
@@ -9143,6 +9205,7 @@ check_counterlaunch_model(void)
 		counterlaunch_wait,
 		counterlaunch_store_count,
 		counterlaunch_store_destroyed,
+		counterlaunch_store_player_record,
 	};
 	static const int full_events[10] = {
 		COUNTERLAUNCH_FIRST_GET, COUNTERLAUNCH_RANDOM,
@@ -9230,7 +9293,14 @@ check_counterlaunch_model(void)
 	    || tape.destroyed_store_count != 1U
 	    || tape.destroyed_store_position != 9U
 	    || memcmp(tape.destroyed_raw,
-	    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) != 0)
+	    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) != 0
+	    || tape.player_record_store_count != 2U
+	    || tape.player_record_store_position[0] != 1U
+	    || tape.player_record_store_position[1] != 8U
+	    || memcmp(tape.player_record_raw[0],
+	    (const uint8_t[]){0x00, 0x00, 0x40, 0x82}, 4U) != 0
+	    || memcmp(tape.player_record_raw[1],
+	    (const uint8_t[]){0x00, 0x00, 0x00, 0x82}, 4U) != 0)
 		return false;
 
 	counterlaunch_fixture(&tape, &state, &player, &player_record,
@@ -9261,6 +9331,14 @@ check_counterlaunch_model(void)
 		    || tape.event_count != (size_t)failure
 		    || tape.events[tape.event_count - 1U] != failure)
 			return false;
+		if (tape.player_record_store_count
+		    != (failure == COUNTERLAUNCH_FIRST_GET ? 0U
+		    : failure < COUNTERLAUNCH_FINAL_GET ? 1U : 2U)
+		    || (tape.player_record_store_count >= 1U
+		    && qb_mbf32_decode(tape.player_record_raw[0]) != 3.0f)
+		    || (tape.player_record_store_count == 2U
+		    && qb_mbf32_decode(tape.player_record_raw[1]) != 2.0f))
+			return false;
 		if ((failure < COUNTERLAUNCH_WAIT
 		    && memcmp(tape.wait_duration_raw,
 		    (const uint8_t[4]){0, 0, 0, 0}, 4U) != 0)
@@ -9271,11 +9349,13 @@ check_counterlaunch_model(void)
 		if (failure == COUNTERLAUNCH_FIRST_GET
 		    && (player_record != 2 || counterattacker != 3
 		    || cloak_cache[2] != 0.75f
-		    || tape.count_store_count != 0U))
+		    || tape.count_store_count != 0U
+		    || tape.player_record_store_count != 0U))
 			return false;
 		if (failure == COUNTERLAUNCH_RANDOM
 		    && (tape.count_store_count != 1U
-		    || qb_mbf32_decode(tape.count_raw[0]) != 21.0f))
+		    || qb_mbf32_decode(tape.count_raw[0]) != 21.0f
+		    || tape.player_record_store_count != 1U))
 			return false;
 		if (failure == COUNTERLAUNCH_SECOND_GET
 		    && (tape.count_store_count != 2U
@@ -9293,7 +9373,10 @@ check_counterlaunch_model(void)
 		    || tape.destroyed_store_count != 1U
 		    || tape.destroyed_store_position != 9U
 		    || memcmp(tape.destroyed_raw,
-		    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) != 0))
+		    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) != 0
+		    || tape.player_record_store_count != 2U
+		    || memcmp(tape.player_record_raw[1],
+		    (const uint8_t[]){0x00, 0x00, 0x00, 0x82}, 4U) != 0))
 			return false;
 	}
 	return true;

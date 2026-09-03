@@ -36,6 +36,8 @@ typedef bool (*yt_credit_mutation_apply_fn)(void *context,
 	bool *hydrated, struct yt_error *error);
 typedef void (*yt_destroyed_store_fn)(void *context,
 	const uint8_t raw[4]);
+typedef void (*yt_player_record_store_fn)(void *context,
+	const uint8_t raw[4]);
 typedef bool (*yt_destroyed_truth_fn)(void *context);
 
 struct yt_startup_configuration_state {
@@ -1600,6 +1602,7 @@ struct yt_xannor_retaliation_state {
 	int *provoker;
 	float *headquarters;
 	int sector_count;
+	const uint8_t *player_record_raw;
 };
 
 typedef bool (*yt_xannor_retaliation_read_sector_fn)(void *context,
@@ -1624,6 +1627,7 @@ struct yt_xannor_retaliation_ops {
 	yt_xannor_retaliation_read_player_fn read_player;
 	yt_xannor_retaliation_wait_fn wait;
 	yt_destroyed_store_fn store_destroyed;
+	yt_player_record_store_fn store_player_record;
 };
 
 struct yt_counterlaunch_state {
@@ -1637,6 +1641,7 @@ struct yt_counterlaunch_state {
 	int *counterattacker;
 	int *xannor_provoker;
 	int last_player_record;
+	const uint8_t *player_record_raw;
 };
 
 typedef bool (*yt_counterlaunch_read_player_fn)(void *context,
@@ -1667,6 +1672,7 @@ struct yt_counterlaunch_ops {
 	yt_counterlaunch_wait_fn wait;
 	yt_counterlaunch_count_store_fn store_count;
 	yt_destroyed_store_fn store_destroyed;
+	yt_player_record_store_fn store_player_record;
 };
 
 struct yt_salvage_cargo_state {

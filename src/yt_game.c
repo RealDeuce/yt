@@ -1371,8 +1371,11 @@ yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
     struct yt_error *error)
 {
 	static const uint8_t duration_four[4] = {0x00, 0x00, 0x00, 0x83};
+	static const uint8_t xannor_record_raw[4] =
+	    {0x00, 0x00, 0x80, 0x81};
 	struct yt_player saved_player;
 	struct yt_sector headquarters;
+	uint8_t saved_record_raw[4];
 	int saved_record;
 	float saved_cloak = 0.0f;
 	int target_candidate;
@@ -1407,6 +1410,11 @@ yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
 
 	saved_player = *state->player;
 	saved_record = *state->player_record;
+	if (state->player_record_raw != NULL)
+		memcpy(saved_record_raw, state->player_record_raw,
+		    sizeof(saved_record_raw));
+	else
+		(void)qb_mbf32_encode((float)saved_record, saved_record_raw);
 	valid_cache = saved_record >= 0
 	    && (size_t)saved_record < state->cache_count
 	    && state->cloak_cache != NULL;
@@ -1415,9 +1423,11 @@ yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
 		if (*state->provoker != 0)
 			state->cloak_cache[saved_record] = 0.0f;
 	}
-	*state->player_record = -1;
 	(void)snprintf(state->player->name, sizeof(state->player->name), "%s",
 	    "The Xannor");
+	*state->player_record = -1;
+	if (ops->store_player_record != NULL)
+		ops->store_player_record(context, xannor_record_raw);
 
 	if (!ops->random(context, 1, state->sector_count,
 	    &target_candidate, error))
@@ -1440,6 +1450,8 @@ yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
 		return false;
 
 	*state->player_record = saved_record;
+	if (ops->store_player_record != NULL)
+		ops->store_player_record(context, saved_record_raw);
 	*state->player = saved_player;
 	if (valid_cache)
 		state->cloak_cache[saved_record] = saved_cloak;
@@ -2182,6 +2194,8 @@ yt_counterlaunch_run(struct yt_counterlaunch_state *state,
 	char attacker_name[YT_TEXT_FIELD_SIZE + 1U];
 	bool valid_cache;
 	uint8_t count_raw[4];
+	uint8_t installed_record_raw[4];
+	uint8_t saved_record_raw[4];
 
 	if (state == NULL || ops == NULL || state->player == NULL
 	    || state->player_record == NULL || state->destroyed == NULL
@@ -2193,6 +2207,11 @@ yt_counterlaunch_run(struct yt_counterlaunch_state *state,
 		return false;
 
 	saved_record = *state->player_record;
+	if (state->player_record_raw != NULL)
+		memcpy(saved_record_raw, state->player_record_raw,
+		    sizeof(saved_record_raw));
+	else
+		(void)qb_mbf32_encode((float)saved_record, saved_record_raw);
 	if (*state->counterattacker < 2
 	    || *state->counterattacker > state->last_player_record
 	    || *state->counterattacker == saved_record)
@@ -2221,6 +2240,10 @@ yt_counterlaunch_run(struct yt_counterlaunch_state *state,
 		state->cloak_cache[saved_record] = 0.0f;
 	}
 	*state->player_record = *state->counterattacker;
+	(void)qb_mbf32_encode((float)*state->counterattacker,
+	    installed_record_raw);
+	if (ops->store_player_record != NULL)
+		ops->store_player_record(context, installed_record_raw);
 	if (!yt_player_stored_name(&attacker, stored_name,
 	    &stored_name_length, error))
 		return false;
@@ -2276,6 +2299,8 @@ yt_counterlaunch_run(struct yt_counterlaunch_state *state,
 
 	*state->counterattacker = 0;
 	*state->player_record = saved_record;
+	if (ops->store_player_record != NULL)
+		ops->store_player_record(context, saved_record_raw);
 	*state->player = saved_player;
 	if (valid_cache)
 		state->cloak_cache[saved_record] = saved_cloak;

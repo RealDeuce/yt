@@ -91,6 +91,7 @@
 #define YT_DATE_SERIAL_RESULT_ADDRESS 0x188CU
 #define YT_STARTUP_DATE_SERIAL_ADDRESS 0x4CCAU
 #define YT_STARTUP_INITIAL_FIVE_ADDRESS 0x4BFAU
+#define YT_CURRENT_PLAYER_RECORD_ADDRESS 0x1C3CU
 
 enum navigation_field_kind {
 	NAVIGATION_FIELD_NONE,
@@ -188,6 +189,26 @@ session_store_destroyed(void *context, const uint8_t raw[4])
 
 	yt_route_process_set_raw_single(&session->route_process,
 	    YT_DESTROYED_ADDRESS, raw);
+}
+
+static void
+session_store_current_player_record(void *context, const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_CURRENT_PLAYER_RECORD_ADDRESS, raw);
+}
+
+static void
+session_set_current_player_record(struct yt_session *session, int record)
+{
+	uint8_t raw[4];
+
+	if (qb_mbf32_encode((float)record, raw) != QB_MBF_OK)
+		return;
+	session->player_record = record;
+	session_store_current_player_record(session, raw);
 }
 
 static bool random_value(struct yt_session *session, float *value,
@@ -3110,6 +3131,9 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 		    strlen(full), &matches, error))
 			return false;
 		if (matches) {
+			yt_route_process_raw_single(&session->route_process,
+			    YT_SHARED_LOOP_SCRATCH_ADDRESS, scan_bound_raw);
+			session_store_current_player_record(session, scan_bound_raw);
 			session->player_record = basic;
 			session->player = candidate;
 			if (!yt_player_stored_name(&candidate,
@@ -3139,6 +3163,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 		    YT_VACANCY_SCAN_BOUND_ADDRESS, scan_bound_raw);
 		vacancy_bound = yt_route_process_single(&session->route_process,
 		    YT_VACANCY_SCAN_BOUND_ADDRESS);
+		session_set_current_player_record(session, YT_PLAYER_FIRST);
 		for (basic = YT_PLAYER_FIRST;
 		    (float)basic <= vacancy_bound;
 		    ++basic) {
@@ -3151,6 +3176,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 				vacant = basic;
 				break;
 			}
+			session_set_current_player_record(session, basic + 1);
 		}
 
 		if (vacant == 0) {
@@ -3194,7 +3220,6 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 			    SESSION_PRESENT_LINE, "new player retention blank", error))
 				return false;
 		}
-		session->player_record = vacant;
 		if (!construct_player_visible(session, error)
 		    || !yt_game_set_player_identity(&session->door->game, vacant,
 		    (const uint8_t *)full, strlen(full), &session->player, error)
@@ -15430,8 +15455,13 @@ launch_xannor_retaliation(struct yt_session *session, int *provoking_player,
 		session_xannor_read_player,
 		session_xannor_wait,
 		session_store_destroyed,
+		session_store_current_player_record,
 	};
 	bool destroyed = session_is_destroyed(session);
+	uint8_t current_record_raw[4];
+
+	yt_route_process_raw_single(&session->route_process,
+	    YT_CURRENT_PLAYER_RECORD_ADDRESS, current_record_raw);
 	struct yt_xannor_retaliation_state state = {
 		&session->player,
 		&session->player_record,
@@ -15442,6 +15472,7 @@ launch_xannor_retaliation(struct yt_session *session, int *provoking_player,
 		provoking_player,
 		&session->door->game.config.headquarters,
 		sector_count(session),
+		current_record_raw,
 	};
 
 	return yt_xannor_retaliation_run(&state, &ops, session, error);
@@ -15526,10 +15557,15 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 		session_counterlaunch_wait,
 		session_counterlaunch_store_count,
 		session_store_destroyed,
+		session_store_current_player_record,
 	};
 	bool destroyed = session_is_destroyed(session);
 	float retained_count = yt_route_process_single(&session->route_process,
 	    YT_COUNTERLAUNCH_COUNT_ADDRESS);
+	uint8_t current_record_raw[4];
+
+	yt_route_process_raw_single(&session->route_process,
+	    YT_CURRENT_PLAYER_RECORD_ADDRESS, current_record_raw);
 	struct yt_counterlaunch_state state = {
 		&session->player,
 		&session->player_record,
@@ -15541,6 +15577,7 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 		counterattacker,
 		xannor_provoker,
 		(int)session_sector_offset(session),
+		current_record_raw,
 	};
 
 	return yt_counterlaunch_run(&state, &ops, session, error);
