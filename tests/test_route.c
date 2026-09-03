@@ -405,6 +405,10 @@ test_addressed_route_arguments(void)
 	    && process.bytes[1] == 0x44U);
 	yt_route_process_set_second(&process, -1, 0x1234);
 	CHECK(yt_route_process_second(&process, -1) == 0x1234);
+	yt_route_process_set_word(&process, 0xffffU, -2);
+	CHECK(yt_route_process_word(&process, 0xffffU) == -2
+	    && process.bytes[0xffffU] == 0xfeU
+	    && process.bytes[0] == 0xffU);
 
 	yt_error_clear(&error);
 	CHECK(!yt_route_process_build_at(YT_ROUTE_WORKSPACE_ADDRESS,

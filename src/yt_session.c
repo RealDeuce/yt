@@ -34,6 +34,8 @@
 #define YT_CLEARANCE_FIGHTERS_ADDRESS 0x4B58U
 #define YT_CLEARANCE_GROUND_ADDRESS 0x4B5CU
 #define YT_CLEARANCE_SHIELDS_ADDRESS 0x4B60U
+#define YT_SPY_SECTORS_ADDRESS 0x4B76U
+#define YT_SPY_MARKERS_ADDRESS 0x4B7EU
 #define YT_SHARED_LOOP_SCRATCH_ADDRESS 0x4CD2U
 #define YT_SELF_MINE_SUPPRESSION_ADDRESS 0x4D0AU
 #define YT_COMPUTER_ROUTE_STATUS_ADDRESS 0x4CF2U
@@ -44,6 +46,7 @@
 #define YT_COMPUTER_ROUTE_START_ADDRESS 0x4E1AU
 #define YT_COMPUTER_PATH_HOPS_ADDRESS 0x4E82U
 #define YT_EARTH_REPORT_SEEN_ADDRESS 0x5006U
+#define YT_SPY_COUNT_ADDRESS 0x50AEU
 
 enum navigation_field_kind {
 	NAVIGATION_FIELD_NONE,
@@ -85,9 +88,6 @@ struct yt_session {
 	bool fatal_wait_complete;
 	struct yt_present_state presentation;
 	float counterlaunch_count;
-	int spies[3];
-	int spy_marker[3];
-	int spy_count;
 	float spy_found_scratch;
 	float spy_dead_counter_scratch;
 	float spy_warp_destination_scratch;
@@ -4445,11 +4445,24 @@ spy_sweep(struct yt_session *session, struct yt_error *error)
 		spy_present,
 		spy_pause,
 	};
-	struct yt_spy_sweep_state state = {
-		.active_spies = (float)session->spy_count,
-		.spy_sectors = session->spies,
-		.last_reported_sectors = session->spy_marker,
-		.spy_capacity = YT_ARRAY_LEN(session->spies),
+	int spy_sectors[3];
+	int spy_markers[3];
+	struct yt_spy_sweep_state state;
+	size_t index;
+	bool result;
+
+	for (index = 0U; index < YT_ARRAY_LEN(spy_sectors); ++index) {
+		spy_sectors[index] = yt_route_process_word(&session->route_process,
+		    (uint16_t)(YT_SPY_SECTORS_ADDRESS + 2U * index));
+		spy_markers[index] = yt_route_process_word(&session->route_process,
+		    (uint16_t)(YT_SPY_MARKERS_ADDRESS + 2U * index));
+	}
+	state = (struct yt_spy_sweep_state){
+		.active_spies = yt_route_process_single(&session->route_process,
+		    YT_SPY_COUNT_ADDRESS),
+		.spy_sectors = spy_sectors,
+		.last_reported_sectors = spy_markers,
+		.spy_capacity = YT_ARRAY_LEN(spy_sectors),
 		.current_player_record = session->player_record,
 		.last_player_record = session->door->game.config.sector_offset,
 		.disruption_sectors = {
@@ -4467,8 +4480,16 @@ spy_sweep(struct yt_session *session, struct yt_error *error)
 		.bold = session->presentation.bold,
 		.blink = session->presentation.blink,
 	};
-	bool result = yt_spy_sweep_run(&state, &ops, session, error);
+	result = yt_spy_sweep_run(&state, &ops, session, error);
 
+	for (index = 0U; index < YT_ARRAY_LEN(spy_sectors); ++index) {
+		yt_route_process_set_word(&session->route_process,
+		    (uint16_t)(YT_SPY_SECTORS_ADDRESS + 2U * index),
+		    (int16_t)spy_sectors[index]);
+		yt_route_process_set_word(&session->route_process,
+		    (uint16_t)(YT_SPY_MARKERS_ADDRESS + 2U * index),
+		    (int16_t)spy_markers[index]);
+	}
 	session->spy_found_scratch = state.found_scratch;
 	session->spy_dead_counter_scratch = state.dead_counter_scratch;
 	session->spy_warp_destination_scratch = state.warp_destination_scratch;
@@ -8211,15 +8232,17 @@ earth_purchase_spies(struct yt_session *session,
 		float cost;
 		int quantity;
 		int spy_index;
+		int active_count = (int)yt_route_process_single(
+		    &session->route_process, YT_SPY_COUNT_ADDRESS);
 		bool blank;
 
 		if (!session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "Earth Spies leading blank", error))
 			return false;
 		affordable = yt_earth_affordable(session->player.credits, price);
-		if (session->spy_count != 0) {
+		if (active_count != 0) {
 			if (qb_str_single(active_text, sizeof(active_text),
-			    (float)session->spy_count) < 0
+			    (float)active_count) < 0
 			    || snprintf(active_row, sizeof(active_row),
 			    "You have%s spies active already.", active_text) < 0)
 				return port_report_failure(error,
@@ -8231,7 +8254,7 @@ earth_purchase_spies(struct yt_session *session,
 		}
 		if (snprintf(quantity_prompt, sizeof(quantity_prompt),
 		    "Hire how many%s spies? [0]? ",
-		    session->spy_count != 0 ? " more" : "") < 0)
+		    active_count != 0 ? " more" : "") < 0)
 			return port_report_failure(error,
 			    "Earth Spies quantity prompt");
 		if (!earth_quantity_input(session, quantity_prompt, &requested,
@@ -8243,7 +8266,7 @@ earth_purchase_spies(struct yt_session *session,
 		if ((double)quantity_value > affordable)
 			return earth_credit_error(session,
 			    "You do not have enough credits!", error);
-		if ((float)session->spy_count + quantity_value > 3.0f) {
+		if ((float)active_count + quantity_value > 3.0f) {
 			if (!earth_credit_error(session,
 			    "Max spies allowed is 3!", error))
 				return false;
@@ -8265,7 +8288,7 @@ earth_purchase_spies(struct yt_session *session,
 				int32_t selected;
 
 				if (qb_str_single(number, sizeof(number),
-				    (float)(session->spy_count + spy_index + 1)) < 0
+				    (float)(active_count + spy_index + 1)) < 0
 				    || snprintf(prompt, sizeof(prompt),
 				    "Start spy #%s in what sector?", number) < 0)
 					return false;
@@ -8280,12 +8303,15 @@ earth_purchase_spies(struct yt_session *session,
 				if (overflow)
 					return port_report_failure(error,
 					    "Earth Spy sector CINT");
-				session->spies[session->spy_count + spy_index] =
-				    selected;
+				yt_route_process_set_word(&session->route_process,
+				    (uint16_t)(YT_SPY_SECTORS_ADDRESS
+				    + 2U * (size_t)(active_count + spy_index)),
+				    (int16_t)selected);
 				break;
 			}
 		}
-		session->spy_count += quantity;
+		session_set_process_single(session, YT_SPY_COUNT_ADDRESS,
+		    (float)(active_count + quantity));
 		if (!computer_spies(session, error)
 		    || !session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "spy purchase pause blank", error)
@@ -16597,22 +16623,25 @@ static bool
 computer_spies(struct yt_session *session, struct yt_error *error)
 {
 	static const uint8_t none[] = "You do not have any spies!";
+	int spy_count = (int)yt_route_process_single(&session->route_process,
+	    YT_SPY_COUNT_ADDRESS);
 	int index;
 
-	if (session->spy_count == 0)
+	if (spy_count == 0)
 		return session_02db(session, none, sizeof(none) - 1U,
 		    "active-spy none notice", error);
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "active-spy leading blank", error))
 		return false;
-	for (index = 0; index < session->spy_count; ++index) {
+	for (index = 0; index < spy_count; ++index) {
 		char counter[64];
 		char target[64];
 		char row[160];
 
 		if (qb_str_single(counter, sizeof(counter), (float)(index + 1)) < 0
 		    || qb_str_integer(target, sizeof(target),
-		    (int16_t)session->spies[index]) < 0
+		    yt_route_process_word(&session->route_process,
+		    (uint16_t)(YT_SPY_SECTORS_ADDRESS + 2U * (size_t)index))) < 0
 		    || snprintf(row, sizeof(row), "Spy #%s will hunt in sector%s.",
 		    counter, target) < 0)
 			return false;

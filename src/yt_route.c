@@ -215,6 +215,23 @@ yt_route_process_single(const struct yt_route_process *process,
 }
 
 int16_t
+yt_route_process_word(const struct yt_route_process *process,
+    uint16_t address)
+{
+	if (process == NULL)
+		return 0;
+	return route_process_read_word(process, address);
+}
+
+void
+yt_route_process_set_word(struct yt_route_process *process,
+    uint16_t address, int16_t value)
+{
+	if (process != NULL)
+		route_process_write_word(process, address, value);
+}
+
+int16_t
 yt_route_process_predecessor(const struct yt_route_process *process,
     int16_t index)
 {

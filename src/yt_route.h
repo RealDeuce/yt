@@ -58,6 +58,10 @@ void yt_route_process_raw_single(const struct yt_route_process *process,
 	uint16_t address, uint8_t raw[4]);
 float yt_route_process_single(const struct yt_route_process *process,
 	uint16_t address);
+int16_t yt_route_process_word(const struct yt_route_process *process,
+	uint16_t address);
+void yt_route_process_set_word(struct yt_route_process *process,
+	uint16_t address, int16_t value);
 int16_t yt_route_process_predecessor(const struct yt_route_process *process,
     int16_t index);
 int16_t yt_route_process_second(const struct yt_route_process *process,
