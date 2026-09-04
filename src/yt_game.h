@@ -99,13 +99,13 @@ typedef void (*yt_startup_configuration_cache_terminal_store_fn)(void *context,
 typedef void (*yt_startup_configuration_cache_counter_store_fn)(void *context,
 	const uint8_t raw[4]);
 
-enum yt_startup_configuration_cache_kind {
-	YT_STARTUP_CONFIGURATION_CACHE_SECTOR,
-	YT_STARTUP_CONFIGURATION_CACHE_CLOAK,
+enum yt_player_cache_kind {
+	YT_PLAYER_CACHE_SECTOR,
+	YT_PLAYER_CACHE_CLOAK,
 };
 
 typedef void (*yt_startup_configuration_cache_value_store_fn)(void *context,
-	int basic_record, enum yt_startup_configuration_cache_kind kind,
+	int basic_record, enum yt_player_cache_kind kind,
 	const uint8_t raw[4]);
 
 struct yt_startup_configuration_ops {
@@ -501,6 +501,10 @@ enum yt_spy_scratch_kind {
 };
 typedef void (*yt_spy_store_fn)(void *context,
 	enum yt_spy_scratch_kind kind, const uint8_t raw[4]);
+typedef void (*yt_spy_cache_read_fn)(void *context, int player_record,
+	enum yt_player_cache_kind kind, uint8_t raw[4]);
+typedef void (*yt_spy_cache_store_fn)(void *context, int player_record,
+	enum yt_player_cache_kind kind, const uint8_t raw[4]);
 
 struct yt_spy_sweep_ops {
 	yt_spy_read_sector_fn read_sector;
@@ -513,6 +517,8 @@ struct yt_spy_sweep_ops {
 	yt_spy_present_fn present;
 	yt_spy_pause_fn pause;
 	yt_spy_store_fn store;
+	yt_spy_cache_read_fn read_cache;
+	yt_spy_cache_store_fn store_cache;
 };
 
 bool yt_spy_sweep_run(struct yt_spy_sweep_state *state,

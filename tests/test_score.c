@@ -194,7 +194,7 @@ struct startup_configuration_tape {
 	uint8_t cache_counter_raw[8][4];
 	size_t cache_counter_store_count;
 	int cache_value_record[12];
-	enum yt_startup_configuration_cache_kind cache_value_kind[12];
+	enum yt_player_cache_kind cache_value_kind[12];
 	uint8_t cache_value_raw[12][4];
 	size_t cache_value_event_position[12];
 	size_t cache_value_store_count;
@@ -536,7 +536,7 @@ startup_configuration_cache_counter_store_test(void *context,
 
 static void
 startup_configuration_cache_value_store_test(void *context,
-    int basic_record, enum yt_startup_configuration_cache_kind kind,
+    int basic_record, enum yt_player_cache_kind kind,
     const uint8_t raw[4])
 {
 	struct startup_configuration_tape *tape = context;
@@ -766,29 +766,29 @@ check_startup_configuration_transaction(void)
 	    || tape.cache_value_store_count != 8U
 	    || tape.cache_value_record[0] != 2
 	    || tape.cache_value_kind[0]
-	    != YT_STARTUP_CONFIGURATION_CACHE_SECTOR
+	    != YT_PLAYER_CACHE_SECTOR
 	    || memcmp(tape.cache_value_raw[0],
 	    tape.player_source[2].bytes + YT_F57, 4U) != 0
 	    || tape.cache_value_kind[1]
-	    != YT_STARTUP_CONFIGURATION_CACHE_CLOAK
+	    != YT_PLAYER_CACHE_CLOAK
 	    || memcmp(tape.cache_value_raw[1],
 	    tape.player_source[2].bytes + YT_F125, 4U) != 0
 	    || tape.cache_value_kind[2]
-	    != YT_STARTUP_CONFIGURATION_CACHE_CLOAK
+	    != YT_PLAYER_CACHE_CLOAK
 	    || memcmp(tape.cache_value_raw[2],
 	    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) != 0
 	    || tape.cache_value_record[3] != 3
 	    || tape.cache_value_kind[3]
-	    != YT_STARTUP_CONFIGURATION_CACHE_SECTOR
+	    != YT_PLAYER_CACHE_SECTOR
 	    || tape.cache_value_kind[4]
-	    != YT_STARTUP_CONFIGURATION_CACHE_CLOAK
+	    != YT_PLAYER_CACHE_CLOAK
 	    || tape.cache_value_record[5] != 4
 	    || tape.cache_value_kind[5]
-	    != YT_STARTUP_CONFIGURATION_CACHE_SECTOR
+	    != YT_PLAYER_CACHE_SECTOR
 	    || tape.cache_value_kind[6]
-	    != YT_STARTUP_CONFIGURATION_CACHE_CLOAK
+	    != YT_PLAYER_CACHE_CLOAK
 	    || tape.cache_value_kind[7]
-	    != YT_STARTUP_CONFIGURATION_CACHE_CLOAK
+	    != YT_PLAYER_CACHE_CLOAK
 	    || tape.cache_value_event_position[0] != 5U
 	    || tape.cache_value_event_position[2] != 5U
 	    || tape.cache_value_event_position[3] != 7U
@@ -1152,7 +1152,7 @@ check_startup_configuration_transaction(void)
 	    || tape.cache_counter_store_count != 1U
 	    || tape.cache_value_store_count != 3U
 	    || tape.cache_value_kind[2]
-	    != YT_STARTUP_CONFIGURATION_CACHE_CLOAK
+	    != YT_PLAYER_CACHE_CLOAK
 	    || memcmp(tape.cache_value_raw[2],
 	    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) != 0)
 		return false;
@@ -2851,6 +2851,13 @@ struct spy_sweep_tape {
 	enum yt_spy_scratch_kind stores[16];
 	uint8_t store_raw[16][4];
 	size_t store_count;
+	uint8_t cache_raw[2][52][4];
+	size_t cache_read_count[2];
+	int cache_store_record[4];
+	enum yt_player_cache_kind cache_store_kind[4];
+	uint8_t cache_store_raw[4][4];
+	size_t cache_store_event_position[4];
+	size_t cache_store_count;
 };
 
 static bool
@@ -3032,10 +3039,50 @@ spy_sweep_store_test(void *context, enum yt_spy_scratch_kind kind,
 }
 
 static void
+spy_sweep_cache_read_test(void *context, int player_record,
+    enum yt_player_cache_kind kind, uint8_t raw[4])
+{
+	struct spy_sweep_tape *tape = context;
+
+	if ((kind != YT_PLAYER_CACHE_SECTOR
+	    && kind != YT_PLAYER_CACHE_CLOAK)
+	    || player_record < 0
+	    || (size_t)player_record >= YT_ARRAY_LEN(tape->cache_raw[0])) {
+		memset(raw, 0, 4U);
+		return;
+	}
+	memcpy(raw, tape->cache_raw[kind][player_record], 4U);
+	++tape->cache_read_count[kind];
+}
+
+static void
+spy_sweep_cache_store_test(void *context, int player_record,
+    enum yt_player_cache_kind kind, const uint8_t raw[4])
+{
+	struct spy_sweep_tape *tape = context;
+	size_t store = tape->cache_store_count;
+
+	if (store >= YT_ARRAY_LEN(tape->cache_store_raw)
+	    || (kind != YT_PLAYER_CACHE_SECTOR
+	    && kind != YT_PLAYER_CACHE_CLOAK)
+	    || player_record < 0
+	    || (size_t)player_record >= YT_ARRAY_LEN(tape->cache_raw[0]))
+		return;
+	tape->cache_store_record[store] = player_record;
+	tape->cache_store_kind[store] = kind;
+	memcpy(tape->cache_store_raw[store], raw, 4U);
+	tape->cache_store_event_position[store] = tape->event_count;
+	memcpy(tape->cache_raw[kind][player_record], raw, 4U);
+	++tape->cache_store_count;
+}
+
+static void
 spy_sweep_fixture(struct spy_sweep_tape *tape,
     struct yt_spy_sweep_state *state, int sectors[3], int markers[3],
     float sector_cache[52], float cloak_cache[52])
 {
+	size_t record;
+
 	memset(tape, 0, sizeof(*tape));
 	memset(state, 0, sizeof(*state));
 	memset(sectors, 0, 3U * sizeof(*sectors));
@@ -3068,6 +3115,12 @@ spy_sweep_fixture(struct spy_sweep_tape *tape,
 	sectors[0] = 100;
 	sector_cache[3] = 100.0f;
 	cloak_cache[3] = 0.5f;
+	for (record = 0U; record < 52U; ++record) {
+		(void)qb_mbf32_encode(sector_cache[record],
+		    tape->cache_raw[YT_PLAYER_CACHE_SECTOR][record]);
+		(void)qb_mbf32_encode(cloak_cache[record],
+		    tape->cache_raw[YT_PLAYER_CACHE_CLOAK][record]);
+	}
 	state->active_spies = 1.0f;
 	state->spy_sectors = sectors;
 	state->last_reported_sectors = markers;
@@ -3094,6 +3147,8 @@ check_spy_sweep_transaction(void)
 		spy_sweep_present_test,
 		spy_sweep_pause_test,
 		spy_sweep_store_test,
+		spy_sweep_cache_read_test,
+		spy_sweep_cache_store_test,
 	};
 	static const int expected_events[] = {
 		SPY_SWEEP_READ_SECTOR,
@@ -3137,8 +3192,11 @@ check_spy_sweep_transaction(void)
 
 	spy_sweep_fixture(&expected, &state, sectors, markers,
 	    sector_cache, cloak_cache);
-	if (!yt_spy_sweep_run(&state, &ops, &expected, NULL)
-	    || expected.event_count != YT_ARRAY_LEN(expected_events)
+	sector_cache[3] = -100.0f;
+	cloak_cache[3] = -1.0f;
+	if (!yt_spy_sweep_run(&state, &ops, &expected, NULL))
+		return false;
+	if (expected.event_count != YT_ARRAY_LEN(expected_events)
 	    || memcmp(expected.events, expected_events,
 	    sizeof(expected_events)) != 0
 	    || expected.serial_length != sizeof(expected_serial) - 1U
@@ -3167,6 +3225,15 @@ check_spy_sweep_transaction(void)
 	    || qb_mbf32_decode(expected.store_raw[5]) != 0.0f
 	    || expected.stores[6] != YT_SPY_SCRATCH_DESTINATION
 	    || qb_mbf32_decode(expected.store_raw[6]) != 200.0f
+	    || expected.cache_read_count[YT_PLAYER_CACHE_SECTOR] != 50U
+	    || expected.cache_read_count[YT_PLAYER_CACHE_CLOAK] != 2U
+	    || expected.cache_store_count != 1U
+	    || expected.cache_store_record[0] != 3
+	    || expected.cache_store_kind[0] != YT_PLAYER_CACHE_CLOAK
+	    || memcmp(expected.cache_store_raw[0], "\0\0\0\0", 4U) != 0
+	    || expected.cache_store_event_position[0] != 14U
+	    || memcmp(expected.cache_raw[YT_PLAYER_CACHE_CLOAK][3],
+	    "\0\0\0\0", 4U) != 0
 	    || state.foreground != 0.0f)
 		return false;
 	for (failure = 1U; failure <= expected.event_count; ++failure) {
@@ -3193,6 +3260,8 @@ check_spy_sweep_transaction(void)
 			return false;
 		if (failure == 25U && (tape.store_count != 5U
 		    || qb_mbf32_decode(tape.store_raw[4]) != 2.0f))
+			return false;
+		if (tape.cache_store_count != (failure >= 15U ? 1U : 0U))
 			return false;
 	}
 	spy_sweep_fixture(&tape, &state, sectors, markers,

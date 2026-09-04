@@ -236,6 +236,33 @@ struct yt_session {
 	struct yt_team_loader_cache team_cache;
 };
 
+static uint16_t
+session_player_cache_address(int player_record,
+    enum yt_player_cache_kind kind)
+{
+	uint16_t index = (uint16_t)(player_record
+	    + (kind == YT_PLAYER_CACHE_CLOAK
+	    ? YT_CLOAK_CACHE_INDEX_BIAS : 0));
+
+	return (uint16_t)(YT_CLOAK_CACHE_BASE_ADDRESS + 4U * index);
+}
+
+static void
+session_player_cache_raw(const struct yt_session *session, int player_record,
+    enum yt_player_cache_kind kind, uint8_t raw[4])
+{
+	yt_route_process_raw_single(&session->route_process,
+	    session_player_cache_address(player_record, kind), raw);
+}
+
+static void
+session_set_player_cache_raw(struct yt_session *session, int player_record,
+    enum yt_player_cache_kind kind, const uint8_t raw[4])
+{
+	yt_route_process_set_raw_single(&session->route_process,
+	    session_player_cache_address(player_record, kind), raw);
+}
+
 static bool
 session_is_destroyed(const struct yt_session *session)
 {
@@ -1094,12 +1121,8 @@ session_hydration_store(void *context,
 	    || (size_t)kind >= YT_ARRAY_LEN(addresses))
 		return;
 	if (kind == YT_CURRENT_PLAYER_STORE_CLOAK_INDEX) {
-		uint16_t address = (uint16_t)(YT_CLOAK_CACHE_BASE_ADDRESS
-		    + 4U * (uint16_t)(session_record(session)
-		    + YT_CLOAK_CACHE_INDEX_BIAS));
-
-		yt_route_process_set_raw_single(&session->route_process, address,
-		    raw);
+		session_set_player_cache_raw(session, session_record(session),
+		    YT_PLAYER_CACHE_CLOAK, raw);
 		return;
 	}
 	is_double = kind == YT_CURRENT_PLAYER_STORE_FIGHTERS
@@ -2688,21 +2711,16 @@ startup_configuration_store_cache_counter(void *context,
 
 static void
 startup_configuration_store_cache_value(void *context, int basic_record,
-    enum yt_startup_configuration_cache_kind kind, const uint8_t raw[4])
+    enum yt_player_cache_kind kind, const uint8_t raw[4])
 {
 	struct yt_session *session = context;
-	uint16_t address;
 
 	if (basic_record < YT_PLAYER_FIRST || basic_record > YT_PLAYER_LAST)
 		return;
-	if (kind != YT_STARTUP_CONFIGURATION_CACHE_SECTOR
-	    && kind != YT_STARTUP_CONFIGURATION_CACHE_CLOAK)
+	if (kind != YT_PLAYER_CACHE_SECTOR
+	    && kind != YT_PLAYER_CACHE_CLOAK)
 		return;
-	address = (uint16_t)(YT_CLOAK_CACHE_BASE_ADDRESS
-	    + 4U * (unsigned)(basic_record
-	    + (kind == YT_STARTUP_CONFIGURATION_CACHE_CLOAK
-	    ? YT_CLOAK_CACHE_INDEX_BIAS : 0)));
-	yt_route_process_set_raw_single(&session->route_process, address, raw);
+	session_set_player_cache_raw(session, basic_record, kind, raw);
 }
 
 static bool
@@ -5352,6 +5370,29 @@ spy_store(void *context, enum yt_spy_scratch_kind kind,
 	yt_route_process_set_raw_single(&session->route_process, address, raw);
 }
 
+static void
+spy_cache_read(void *context, int player_record,
+    enum yt_player_cache_kind kind, uint8_t raw[4])
+{
+	session_player_cache_raw(context, player_record, kind, raw);
+}
+
+static void
+spy_cache_store(void *context, int player_record,
+    enum yt_player_cache_kind kind, const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	session_set_player_cache_raw(session, player_record, kind, raw);
+	if (player_record < 0
+	    || (size_t)player_record >= YT_ARRAY_LEN(session->sector_cache))
+		return;
+	if (kind == YT_PLAYER_CACHE_SECTOR)
+		session->sector_cache[player_record] = qb_mbf32_decode(raw);
+	else if (kind == YT_PLAYER_CACHE_CLOAK)
+		session->cloak_cache[player_record] = qb_mbf32_decode(raw);
+}
+
 static bool
 spy_sweep(struct yt_session *session, struct yt_error *error)
 {
@@ -5366,6 +5407,8 @@ spy_sweep(struct yt_session *session, struct yt_error *error)
 		spy_present,
 		spy_pause,
 		spy_store,
+		spy_cache_read,
+		spy_cache_store,
 	};
 	int spy_sectors[3];
 	int spy_markers[3];
