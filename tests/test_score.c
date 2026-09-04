@@ -18626,6 +18626,13 @@ check_player_name_match(void)
 	if (yt_player_name_matches(&player, NULL, 0, &matches, &error)
 	    || error.status != YT_RANGE || matches)
 		return false;
+	yt_record_set_number(&record, YT_F85, 40000.0f);
+	yt_player_decode(&player, &record);
+	yt_error_clear(&error);
+	if (yt_player_killer_row(&player, killer_row, sizeof(killer_row),
+	    &killer_length, &emit, &error) || error.status != YT_RANGE
+	    || strcmp(error.operation, "player name CINT") != 0)
+		return false;
 	return true;
 }
 

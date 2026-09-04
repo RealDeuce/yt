@@ -11284,7 +11284,8 @@ yt_player_stored_name(const struct yt_player *player,
 		if (error != NULL) {
 			error->status = YT_RANGE;
 			snprintf(error->operation, sizeof(error->operation),
-			    "player name LEFT$ length");
+			    "%s", overflow ? "player name CINT"
+			    : "player name LEFT$ length");
 		}
 		return false;
 	}

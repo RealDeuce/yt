@@ -3970,8 +3970,20 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 					return false;
 				}
 				if (!yt_player_killer_row(&attacker, attacker_row,
-				    sizeof(attacker_row), &attacker_length, &emit, error))
+				    sizeof(attacker_row), &attacker_length, &emit, error)) {
+					if (error != NULL && strcmp(error->operation,
+					    "player name CINT") == 0)
+						(void)yt_error_attach_basic_fault_number(error,
+						    YT_BASIC_FAULT_RETURNING_KILLER_CINT,
+						    6U);
+					else if (error != NULL && strcmp(error->operation,
+					    "player name LEFT$ length") == 0)
+						(void)yt_error_attach_basic_fault_number(error,
+						    YT_BASIC_FAULT_RETURNING_KILLER_LEFT,
+						    5U);
+					(void)session_route_basic_fault(session, error);
 					return false;
+				}
 				if (emit && !session_present_text(session, attacker_row,
 				    attacker_length, SESSION_PRESENT_BOLD_LINE,
 				    "returning player death row", error))
