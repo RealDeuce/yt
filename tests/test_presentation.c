@@ -14143,6 +14143,13 @@ normal_exit_info_team_read(void *context, float record,
 	return true;
 }
 
+static void
+normal_exit_info_team_store_id(void *context, const uint8_t raw[4])
+{
+	(void)context;
+	(void)raw;
+}
+
 static bool
 normal_exit_info_team_load(void *context, float team_id,
     float current_record, float *captain_flag, struct yt_team *team,
@@ -14215,6 +14222,7 @@ normal_exit_info_team(void *context, struct yt_error *error)
 {
 	static const struct yt_info_team_ops promotion_ops = {
 		normal_exit_info_team_read,
+		normal_exit_info_team_store_id,
 		normal_exit_info_team_load,
 		normal_exit_info_team_read_overlay,
 		normal_exit_info_team_write_overlay,
@@ -14400,6 +14408,8 @@ normal_exit_info_run(struct physical_viewer_join *viewer,
 		static const uint8_t stale_captain_name[] = "Wrong Team";
 
 		fixture.team_current.team = 7.0f;
+		(void)yt_record_set_number(&fixture.team_current.record, YT_F89,
+		    7.0f);
 		fixture.team.id = 7;
 		memcpy(fixture.team.name, team_name, sizeof(team_name) - 1U);
 		fixture.team.name_length = sizeof(team_name) - 1U;

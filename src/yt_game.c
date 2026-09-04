@@ -687,6 +687,7 @@ yt_info_team_resolver_run(struct yt_info_team_state *state,
 	int32_t name_length;
 
 	if (state == NULL || ops == NULL || ops->read_player == NULL
+	    || ops->store_team_id == NULL
 	    || ops->load_team == NULL || ops->read_overlay == NULL
 	    || ops->write_overlay == NULL || ops->present == NULL)
 		return false;
@@ -701,7 +702,10 @@ yt_info_team_resolver_run(struct yt_info_team_state *state,
 	if (!ops->read_player(context, state->current_record,
 	    &state->current_player, error))
 		return false;
-	state->team_id = state->current_player.team;
+	ops->store_team_id(context,
+	    &state->current_player.record.bytes[YT_F89]);
+	state->team_id = qb_mbf32_decode(
+	    &state->current_player.record.bytes[YT_F89]);
 	if (state->team_id == 0.0f)
 		return ops->present(context, none, sizeof(none) - 1U, error)
 		    && ops->present(context, NULL, 0U, error);

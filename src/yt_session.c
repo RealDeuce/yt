@@ -74,6 +74,7 @@
 #define YT_CLEARANCE_ANNOUNCED_ADDRESS 0x55B6U
 #define YT_CLEARANCE_VALUE_ADDRESS 0x55BEU
 #define YT_CLEARANCE_SOUND_SELECTOR_ADDRESS 0x55C6U
+#define YT_INFO_TEAM_ID_ADDRESS 0x599AU
 #define YT_HOSTILE_SURRENDER_RADIO_SELECTOR_ADDRESS 0x4D36U
 #define YT_HOSTILE_SURRENDER_XANNOR_SELECTOR_ADDRESS 0x4D3EU
 #define YT_HOSTILE_SURRENDER_MERCENARY_SELECTOR_ADDRESS 0x4D42U
@@ -12156,6 +12157,15 @@ info_team_read_player(void *context, float record, struct yt_player *player,
 	return true;
 }
 
+static void
+info_team_store_id(void *context, const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_INFO_TEAM_ID_ADDRESS, raw);
+}
+
 static bool
 info_team_load_team(void *context, float team_id, float current_record,
     float *captain_flag, struct yt_team *team, struct yt_error *error)
@@ -12237,6 +12247,7 @@ info_team_lines(struct yt_session *session, struct yt_team *resolved_team,
 {
 	static const struct yt_info_team_ops ops = {
 		info_team_read_player,
+		info_team_store_id,
 		info_team_load_team,
 		info_team_read_overlay,
 		info_team_write_overlay,
