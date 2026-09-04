@@ -19927,8 +19927,6 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 		return session.terminated;
 	if (!session.running)
 		return true;
-	session.sector_cache[session_record(&session)] = session.player.sector;
-	session.cloak_cache[session_record(&session)] = session.player.cloak;
 	if (!post_login(&session, error)
 	    || !sector_entry(&session, yt_route_process_single(
 	    &session.route_process, YT_POST_LOGIN_SCANNER_MODE_ADDRESS), error))
