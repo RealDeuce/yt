@@ -351,6 +351,8 @@ struct yt_returning_daily_state {
 	float killer;
 	bool same_day;
 	bool turn_floor_applied;
+	bool player_hydrated;
+	bool put_attempted;
 	bool complete;
 };
 struct yt_returning_daily_ops {

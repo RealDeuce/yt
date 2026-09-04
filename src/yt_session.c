@@ -3881,8 +3881,17 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 		daily.today_raw = today_raw;
 		daily.turns_per_day_raw = turns_raw;
 		if (!yt_returning_daily_run(&session->door->game, &daily,
-		    &daily_ops, session, error))
+		    &daily_ops, session, error)) {
+			if (!daily.player_hydrated)
+				attach_database_get_fault(session, error,
+				    YT_BASIC_FAULT_RETURNING_DAILY_GET);
+			else if (daily.put_attempted)
+				attach_database_put_fault(session, error,
+				    YT_BASIC_FAULT_RETURNING_DAILY_PUT);
+			if (error != NULL && error->basic_fault_valid)
+				(void)session_route_basic_fault(session, error);
 			return false;
+		}
 		session->player = daily.player;
 		if (!yt_database_flush(&session->door->game.database, error))
 			return false;
@@ -3954,8 +3963,12 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 				bool emit;
 
 				if (!yt_game_read_player(&session->door->game,
-				    (int)killer, &attacker, error))
+				    (int)killer, &attacker, error)) {
+					attach_database_get_fault(session, error,
+					    YT_BASIC_FAULT_RETURNING_KILLER_GET);
+					(void)session_route_basic_fault(session, error);
 					return false;
+				}
 				if (!yt_player_killer_row(&attacker, attacker_row,
 				    sizeof(attacker_row), &attacker_length, &emit, error))
 					return false;

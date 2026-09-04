@@ -4263,6 +4263,12 @@ test_basic_fault_registry(void)
 		    0xB2DAU, 0U},
 		{YT_BASIC_FAULT_MAIN, 0x025CU, 0x025FU, 0x0259U, 60,
 		    0xB2DAU, 2U},
+		{YT_BASIC_FAULT_SHARED, 0x1584U, 0x1587U, 0x1579U, 0,
+		    0x45F7U, 3U},
+		{YT_BASIC_FAULT_SHARED, 0x163CU, 0x163FU, 0x1631U, 0,
+		    0x45F7U, 4U},
+		{YT_BASIC_FAULT_SHARED, 0x17E7U, 0x17EAU, 0x17DFU, 0,
+		    0x45F7U, 3U},
 	};
 	struct yt_error error;
 	size_t index;
@@ -4288,7 +4294,7 @@ test_basic_fault_registry(void)
 			    && !yt_basic_fault_admits(
 			    (enum yt_basic_fault_site)index, 57U));
 		}
-		else {
+		else if (expected[index].domain < 3U) {
 			CHECK(identity->error_count
 			    == (expected[index].domain == 1U ? 7U : 6U)
 			    && yt_basic_fault_admits(
@@ -4301,6 +4307,21 @@ test_basic_fault_registry(void)
 			    (enum yt_basic_fault_site)index, 61U)
 			    == (expected[index].domain == 1U)));
 		}
+		else {
+			CHECK(identity->error_count
+			    == (expected[index].domain == 4U ? 5U : 4U)
+			    && !yt_basic_fault_admits(
+			    (enum yt_basic_fault_site)index, 5U)
+			    && yt_basic_fault_admits(
+			    (enum yt_basic_fault_site)index, 52U)
+			    && yt_basic_fault_admits(
+			    (enum yt_basic_fault_site)index, 57U)
+			    && yt_basic_fault_admits(
+			    (enum yt_basic_fault_site)index, 75U)
+			    && (yt_basic_fault_admits(
+			    (enum yt_basic_fault_site)index, 61U)
+			    == (expected[index].domain == 4U)));
+		}
 		for (error_number = 0U; error_number <= UINT8_MAX;
 		    ++error_number) {
 			static const uint8_t get_errors[] = {
@@ -4309,13 +4330,25 @@ test_basic_fault_registry(void)
 			static const uint8_t put_errors[] = {
 				5U, 52U, 57U, 61U, 63U, 70U, 75U,
 			};
+			static const uint8_t returning_get_errors[] = {
+				52U, 57U, 70U, 75U,
+			};
+			static const uint8_t returning_put_errors[] = {
+				52U, 57U, 61U, 70U, 75U,
+			};
 			struct yt_basic_fault_projection projection;
 			const uint8_t *domain = expected[index].domain == 1U
 			    ? put_errors : expected[index].domain == 2U
-			    ? (const uint8_t[]){6U} : get_errors;
+			    ? (const uint8_t[]){6U} : expected[index].domain == 3U
+			    ? returning_get_errors : expected[index].domain == 4U
+			    ? returning_put_errors : get_errors;
 			size_t domain_length = expected[index].domain == 1U
 			    ? YT_ARRAY_LEN(put_errors) : expected[index].domain == 2U
-			    ? 1U : YT_ARRAY_LEN(get_errors);
+			    ? 1U : expected[index].domain == 3U
+			    ? YT_ARRAY_LEN(returning_get_errors)
+			    : expected[index].domain == 4U
+			    ? YT_ARRAY_LEN(returning_put_errors)
+			    : YT_ARRAY_LEN(get_errors);
 			bool admitted = false;
 			size_t error_index;
 

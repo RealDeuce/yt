@@ -7,6 +7,8 @@
 
 #define GET_ERRORS {5U, 52U, 57U, 63U, 70U, 75U}
 #define PUT_ERRORS {5U, 52U, 57U, 61U, 63U, 70U, 75U}
+#define RETURNING_GET_ERRORS {52U, 57U, 70U, 75U}
+#define RETURNING_PUT_ERRORS {52U, 57U, 61U, 70U, 75U}
 #define CINT_ERRORS {6U}
 #define MAIN_FAULT(label, op, saved, statement, erl, domain, count) \
 	{label, YT_BASIC_FAULT_MAIN, op, saved, statement, erl, 0xB2DAU, \
@@ -68,6 +70,12 @@ static const struct yt_basic_fault_identity basic_faults[] = {
 	    0x92CCU, 33890, GET_ERRORS, 6U),
 	MAIN_FAULT("normal-exit registration CINT", 0x025CU, 0x025FU,
 	    0x0259U, 60, CINT_ERRORS, 1U),
+	SHARED_FAULT("returning daily player GET", 0x1584U, 0x1587U,
+	    0x1579U, 0, RETURNING_GET_ERRORS, 4U),
+	SHARED_FAULT("returning daily player PUT", 0x163CU, 0x163FU,
+	    0x1631U, 0, RETURNING_PUT_ERRORS, 5U),
+	SHARED_FAULT("returning killer player GET", 0x17E7U, 0x17EAU,
+	    0x17DFU, 0, RETURNING_GET_ERRORS, 4U),
 };
 
 _Static_assert(YT_ARRAY_LEN(basic_faults) == YT_BASIC_FAULT_SITE_COUNT,
@@ -76,6 +84,8 @@ _Static_assert(YT_ARRAY_LEN(basic_faults) == YT_BASIC_FAULT_SITE_COUNT,
 #undef SHARED_FAULT
 #undef MAIN_FAULT
 #undef CINT_ERRORS
+#undef RETURNING_PUT_ERRORS
+#undef RETURNING_GET_ERRORS
 #undef PUT_ERRORS
 #undef GET_ERRORS
 

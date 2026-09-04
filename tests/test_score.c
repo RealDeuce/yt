@@ -23339,6 +23339,7 @@ check_returning_daily_transaction(void)
 	struct yt_record durable;
 	struct yt_returning_daily_state state;
 	struct returning_daily_tape tape;
+	struct score_database_read_fault read_fault = {0U, 1U};
 	struct yt_error error;
 	uint8_t old_day_raw[4];
 	uint8_t killer_raw[4];
@@ -23358,6 +23359,19 @@ check_returning_daily_transaction(void)
 	    || !yt_database_open(&game.database, "DAILY.DAT", YT_OPEN_CREATE,
 	    &error))
 		return false;
+	yt_database_set_read_provider(&game.database,
+	    score_database_read_with_fault, &read_fault);
+	memset(&state, 0, sizeof(state));
+	state.player_record = 2;
+	state.today_raw = today_raw;
+	state.turns_per_day_raw = turns_raw;
+	memset(&tape, 0, sizeof(tape));
+	if (yt_returning_daily_run(&game, &state, &ops, &tape, &error)
+	    || state.player_hydrated || state.put_attempted || state.complete
+	    || tape.count != 0U || game.database.last_get.basic_error != 57U)
+		goto close;
+	yt_database_set_read_provider(&game.database, NULL, NULL);
+	yt_error_clear(&error);
 	yt_record_blank(&seed);
 	yt_record_set_text(&seed, (const uint8_t *)"Daily Pilot", 11);
 	(void)yt_record_set_raw_number(&seed, YT_F41, old_day_raw);
@@ -23376,6 +23390,7 @@ check_returning_daily_transaction(void)
 	memset(&tape, 0, sizeof(tape));
 	if (!yt_returning_daily_run(&game, &state, &ops, &tape, &error)
 	    || !state.complete || state.same_day || !state.turn_floor_applied
+	    || !state.player_hydrated || !state.put_attempted
 	    || state.previous_day != 10.0f || state.killer != -2.0f
 	    || tape.count != 4U
 	    || tape.events[0] != YT_RETURNING_DAILY_OLD_DAY
@@ -23406,6 +23421,7 @@ check_returning_daily_transaction(void)
 	memset(&tape, 0, sizeof(tape));
 	if (!yt_returning_daily_run(&game, &state, &ops, &tape, &error)
 	    || !state.complete || !state.same_day || state.turn_floor_applied
+	    || !state.player_hydrated || !state.put_attempted
 	    || tape.count != 4U
 	    || tape.events[0] != YT_RETURNING_DAILY_OLD_DAY
 	    || tape.events[1] != 3
@@ -23426,6 +23442,7 @@ check_returning_daily_transaction(void)
 	yt_error_clear(&error);
 	if (yt_returning_daily_run(&game, &state, &ops, &tape, &error)
 	    || error.status != YT_IO_ERROR || state.complete
+	    || !state.player_hydrated || state.put_attempted
 	    || tape.count != 2U
 	    || tape.events[0] != YT_RETURNING_DAILY_OLD_DAY
 	    || tape.events[1] != 3
@@ -23448,6 +23465,7 @@ check_returning_daily_transaction(void)
 	if (yt_returning_daily_run(&game, &state, &ops, &tape, &error)
 	    || error.status != YT_IO_ERROR
 	    || strcmp(error.operation, "write record") != 0 || state.complete
+	    || !state.player_hydrated || !state.put_attempted
 	    || state.player.last_active != 21.0f
 	    || state.player.lottery_plays != 0.0f
 	    || !yt_database_read(&game.database, 2, &durable, &error)
@@ -23456,6 +23474,7 @@ check_returning_daily_transaction(void)
 	valid = true;
 
 close:
+	yt_database_set_read_provider(&game.database, NULL, NULL);
 	yt_database_close(&game.database);
 done:
 	remove("DAILY.DAT");

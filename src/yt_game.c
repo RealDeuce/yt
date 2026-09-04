@@ -3320,10 +3320,13 @@ yt_returning_daily_run(struct yt_game *game,
 		return false;
 	state->same_day = false;
 	state->turn_floor_applied = false;
+	state->player_hydrated = false;
+	state->put_attempted = false;
 	state->complete = false;
 	if (!yt_game_read_player(game, state->player_record, &state->player,
 	    error))
 		return false;
+	state->player_hydrated = true;
 	state->previous_day = state->player.last_active;
 	ops->store_scratch(context, YT_RETURNING_DAILY_OLD_DAY,
 	    state->player.record.bytes + YT_F41);
@@ -3356,6 +3359,7 @@ yt_returning_daily_run(struct yt_game *game,
 		(void)yt_record_set_raw_number(&daily, YT_F105, zero);
 	}
 	yt_player_decode(&state->player, &daily);
+	state->put_attempted = true;
 	if (!yt_database_write(&game->database, (size_t)state->player_record,
 	    &daily, error))
 		return false;
