@@ -1397,11 +1397,65 @@ news_append_two_values(const char *format, const char *first,
 }
 
 bool
+yt_news_append_login_bytes(const uint8_t *time_text, size_t time_length,
+    const uint8_t *player_name, size_t player_length,
+    struct yt_error *error)
+{
+	static const uint8_t prefix[] = "-=*=- ";
+	static const uint8_t separator[] = " ";
+	static const uint8_t suffix[] = " Logged on -=*=-";
+	uint8_t *row;
+	size_t fixed;
+	size_t length;
+	size_t position = 0U;
+	bool result;
+
+	if ((time_text == NULL && time_length != 0U)
+	    || (player_name == NULL && player_length != 0U)) {
+		set_error(error, YT_INVALID, "format news", "YTNEWS.DAT");
+		return false;
+	}
+	fixed = sizeof(prefix) - 1U + sizeof(separator) - 1U
+	    + sizeof(suffix) - 1U;
+	if (time_length > SIZE_MAX - fixed
+	    || player_length > SIZE_MAX - fixed - time_length) {
+		set_error(error, YT_RANGE, "format news", "YTNEWS.DAT");
+		return false;
+	}
+	length = fixed + time_length + player_length;
+	row = malloc(length == 0U ? 1U : length);
+	if (row == NULL) {
+		set_error(error, YT_NO_MEMORY, "allocate news row", "YTNEWS.DAT");
+		return false;
+	}
+#define COPY_LOGIN_PART(data, part_length) do { \
+	memcpy(row + position, (data), (part_length)); \
+	position += (part_length); \
+} while (0)
+	COPY_LOGIN_PART(prefix, sizeof(prefix) - 1U);
+	if (time_length != 0U)
+		COPY_LOGIN_PART(time_text, time_length);
+	COPY_LOGIN_PART(separator, sizeof(separator) - 1U);
+	if (player_length != 0U)
+		COPY_LOGIN_PART(player_name, player_length);
+	COPY_LOGIN_PART(suffix, sizeof(suffix) - 1U);
+#undef COPY_LOGIN_PART
+	result = yt_news_append_bytes(row, position, error);
+	free(row);
+	return result;
+}
+
+bool
 yt_news_append_login(const char *time_text, const char *player_name,
     struct yt_error *error)
 {
-	return news_append_two_values("-=*=- %s %s Logged on -=*=-",
-	    time_text, player_name, error);
+	if (time_text == NULL || player_name == NULL) {
+		set_error(error, YT_INVALID, "format news", "YTNEWS.DAT");
+		return false;
+	}
+	return yt_news_append_login_bytes((const uint8_t *)time_text,
+	    strlen(time_text), (const uint8_t *)player_name,
+	    strlen(player_name), error);
 }
 
 bool

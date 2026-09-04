@@ -3686,6 +3686,49 @@ returning_daily_store_scratch(void *context,
 }
 
 static bool
+returning_denial_present(void *context, const uint8_t *text, size_t length,
+    enum yt_returning_denial_output_kind kind, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return session_present_text(session, text, length,
+	    kind == YT_RETURNING_DENIAL_ROW ? SESSION_PRESENT_BOLD_LINE
+	    : SESSION_PRESENT_LINE,
+	    kind == YT_RETURNING_DENIAL_ROW ? "returning self-denial row"
+	    : "returning self-denial blank", error);
+}
+
+static void
+returning_denial_set_foreground(void *context, float foreground)
+{
+	session_set_foreground(context, foreground);
+}
+
+static void
+returning_denial_set_blink(void *context, float blink)
+{
+	struct yt_session *session = context;
+
+	yt_present_set_blink(&session->presentation, blink);
+}
+
+static bool
+returning_denial_close_all(void *context, struct yt_error *error)
+{
+	(void)error;
+	return session_editor_close_all(context);
+}
+
+static void
+returning_denial_end(void *context)
+{
+	struct yt_session *session = context;
+
+	session->running = false;
+	session->terminated = true;
+}
+
+static bool
 admit_player(struct yt_session *session, const char *first, const char *last,
     struct yt_error *error)
 {
@@ -3817,7 +3860,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 	    "returning player blank", error))
 		return false;
 	{
-		static const struct yt_returning_daily_ops ops = {
+		static const struct yt_returning_daily_ops daily_ops = {
 			returning_daily_same_day,
 			returning_daily_store_scratch,
 		};
@@ -3837,8 +3880,8 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 		daily.player_record = session_record(session);
 		daily.today_raw = today_raw;
 		daily.turns_per_day_raw = turns_raw;
-		if (!yt_returning_daily_run(&session->door->game, &daily, &ops,
-		    session, error))
+		if (!yt_returning_daily_run(&session->door->game, &daily,
+		    &daily_ops, session, error))
 			return false;
 		session->player = daily.player;
 		if (!yt_database_flush(&session->door->game.database, error))
@@ -3854,8 +3897,10 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 
 			yt_format_time(&now, time_text);
 			if (!session_close_file5(error)
-			    || !yt_news_append_login(time_text,
-			    session->player.name, error))
+			    || !yt_news_append_login_bytes(
+			    (const uint8_t *)time_text, strlen(time_text),
+			    session->cached_player_name,
+			    session->cached_player_name_length, error))
 				return false;
 		}
 		if (killer != 0.0f) {
@@ -3921,21 +3966,18 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 			}
 			if (self_kill
 			    && previous_day == startup_day) {
-				if (!session_present_text(session, NULL, 0,
-				    SESSION_PRESENT_LINE,
-				    "returning self-denial blank", error))
-					return false;
-				session_set_foreground(session, 7.0f);
-				yt_present_set_blink(&session->presentation, 1.0f);
-				if (!session_present_text(session,
-				    (const uint8_t *)
-				    "You will be allowed to play again tomorrow!",
-				    strlen("You will be allowed to play again tomorrow!"),
-				    SESSION_PRESENT_BOLD_LINE,
-				    "returning self-denial row", error))
-					return false;
-				session->running = false;
-				session->terminated = true;
+				static const struct yt_returning_denial_ops denial_ops = {
+					returning_denial_present,
+					returning_denial_set_foreground,
+					returning_denial_set_blink,
+					returning_denial_close_all,
+					returning_denial_end,
+				};
+				struct yt_returning_denial_state denial;
+
+				memset(&denial, 0, sizeof(denial));
+				(void)yt_returning_self_denial_run(&denial,
+				    &denial_ops, session, error);
 				return false;
 			}
 			if (!construct_player_visible(session, error))

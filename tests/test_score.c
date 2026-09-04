@@ -23462,6 +23462,120 @@ done:
 	return valid;
 }
 
+struct returning_denial_tape {
+	int events[8];
+	size_t count;
+	size_t calls;
+	size_t fail_at;
+};
+
+static bool
+returning_denial_test_fallible(struct returning_denial_tape *tape,
+    int event, struct yt_error *error)
+{
+	if (tape->count < YT_ARRAY_LEN(tape->events))
+		tape->events[tape->count++] = event;
+	tape->calls++;
+	if (tape->calls != tape->fail_at)
+		return true;
+	error->status = YT_IO_ERROR;
+	(void)snprintf(error->operation, sizeof(error->operation), "%s",
+	    "returning denial dependency");
+	return false;
+}
+
+static bool
+returning_denial_test_present(void *context, const uint8_t *text,
+    size_t length, enum yt_returning_denial_output_kind kind,
+    struct yt_error *error)
+{
+	static const uint8_t row[] =
+	    "You will be allowed to play again tomorrow!";
+	struct returning_denial_tape *tape = context;
+
+	if (kind == YT_RETURNING_DENIAL_BLANK) {
+		if (text != NULL || length != 0U)
+			return false;
+		return returning_denial_test_fallible(tape, 0, error);
+	}
+	if (kind != YT_RETURNING_DENIAL_ROW || length != sizeof(row) - 1U
+	    || memcmp(text, row, sizeof(row) - 1U) != 0)
+		return false;
+	return returning_denial_test_fallible(tape, 3, error);
+}
+
+static void
+returning_denial_test_foreground(void *context, float foreground)
+{
+	struct returning_denial_tape *tape = context;
+
+	if (foreground == 7.0f && tape->count < YT_ARRAY_LEN(tape->events))
+		tape->events[tape->count++] = 2;
+}
+
+static void
+returning_denial_test_blink(void *context, float blink)
+{
+	struct returning_denial_tape *tape = context;
+
+	if (blink == 1.0f && tape->count < YT_ARRAY_LEN(tape->events))
+		tape->events[tape->count++] = 1;
+}
+
+static bool
+returning_denial_test_close(void *context, struct yt_error *error)
+{
+	return returning_denial_test_fallible(context, 4, error);
+}
+
+static void
+returning_denial_test_end(void *context)
+{
+	struct returning_denial_tape *tape = context;
+
+	if (tape->count < YT_ARRAY_LEN(tape->events))
+		tape->events[tape->count++] = 5;
+}
+
+static bool
+check_returning_self_denial(void)
+{
+	static const struct yt_returning_denial_ops ops = {
+		returning_denial_test_present,
+		returning_denial_test_foreground,
+		returning_denial_test_blink,
+		returning_denial_test_close,
+		returning_denial_test_end,
+	};
+	static const int expected[] = {0, 1, 2, 3, 4, 5};
+	struct yt_returning_denial_state state;
+	struct returning_denial_tape tape;
+	struct yt_error error;
+	size_t fail_at;
+
+	for (fail_at = 1U; fail_at <= 3U; ++fail_at) {
+		memset(&state, 0, sizeof(state));
+		memset(&tape, 0, sizeof(tape));
+		tape.fail_at = fail_at;
+		yt_error_clear(&error);
+		if (yt_returning_self_denial_run(&state, &ops, &tape, &error)
+		    || error.status != YT_IO_ERROR || state.close_completed
+		    || state.terminated
+		    || tape.count != (fail_at == 1U ? 1U
+		    : fail_at == 2U ? 4U : 5U)
+		    || memcmp(tape.events, expected,
+		    tape.count * sizeof(tape.events[0])) != 0)
+			return false;
+	}
+	memset(&state, 0, sizeof(state));
+	memset(&tape, 0, sizeof(tape));
+	yt_error_clear(&error);
+	return yt_returning_self_denial_run(&state, &ops, &tape, &error)
+	    && state.close_completed && state.terminated
+	    && tape.count == YT_ARRAY_LEN(expected)
+	    && memcmp(tape.events, expected, sizeof(expected)) == 0;
+}
+
 static bool
 check_post_login_repairs(void)
 {
@@ -24113,6 +24227,12 @@ check_admission_news(void)
 	    "-=*=- 07-24-2026 Star Lord New Player Entered -=*=-\r\n\x1a";
 	static const uint8_t login_expected[] =
 	    "-=*=- 12:34:56 Star Lord Logged on -=*=-\r\n\x1a";
+	static const uint8_t binary_login_expected[] = {
+		'-', '=', '*', '=', '-', ' ', '1', '2', ':', '3', '4', ':', '5',
+		'6', ' ', 'A', 0, 'B', ' ', 'L', 'o', 'g', 'g', 'e', 'd', ' ',
+		'o', 'n', ' ', '-', '=', '*', '=', '-', '\r', '\n', 0x1a,
+	};
+	static const uint8_t binary_name[] = {'A', 0, 'B'};
 	static const uint8_t long_prefix[] = "-=*=- 07-24-2026 ";
 	static const uint8_t long_suffix[] =
 	    " New Player Entered -=*=-\r\n\x1a";
@@ -24150,6 +24270,18 @@ check_admission_news(void)
 	if (text.length != sizeof(login_expected) - 1U
 	    || memcmp(text.data, login_expected,
 	    sizeof(login_expected) - 1U) != 0) {
+		yt_text_free(&text);
+		goto done;
+	}
+	yt_text_free(&text);
+	remove("YTNEWS.DAT");
+	if (!yt_news_append_login_bytes((const uint8_t *)"12:34:56", 8U,
+	    binary_name, sizeof(binary_name), &error)
+	    || !yt_text_read("YTNEWS.DAT", &text, &error))
+		goto done;
+	if (text.length != sizeof(binary_login_expected)
+	    || memcmp(text.data, binary_login_expected,
+	    sizeof(binary_login_expected)) != 0) {
 		yt_text_free(&text);
 		goto done;
 	}
@@ -33170,6 +33302,8 @@ main(void)
 	if (!check_player_constructor_failures())
 		goto done;
 	if (!check_returning_daily_transaction())
+		goto done;
+	if (!check_returning_self_denial())
 		goto done;
 	if (!check_post_login_repairs())
 		goto done;
