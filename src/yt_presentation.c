@@ -7,6 +7,31 @@
 #include <string.h>
 
 void
+yt_present_bind_time_process_cells(struct yt_present_time_state *time,
+    uint8_t saved_row[4], uint8_t saved_column[4],
+    uint8_t remaining_minutes[4])
+{
+	if (time == NULL)
+		return;
+	time->saved_row_process = saved_row;
+	time->saved_column_process = saved_column;
+	time->remaining_minutes_process = remaining_minutes;
+}
+
+static enum yt_present_status
+time_store_single(uint8_t *process, float value)
+{
+	uint8_t raw[4];
+
+	if (process == NULL)
+		return YT_PRESENT_OK;
+	if (qb_mbf32_encode(value, raw) == QB_MBF_OVERFLOW)
+		return YT_PRESENT_OVERFLOW;
+	memcpy(process, raw, sizeof(raw));
+	return YT_PRESENT_OK;
+}
+
+void
 yt_present_bind_background_process(struct yt_present_state *state,
     uint8_t background[4])
 {
@@ -1420,9 +1445,17 @@ format_remaining(float deadline, float timer,
 	float whole = floorf(remaining);
 	float fraction = (float)(remaining - whole);
 	float seconds_value = floorf((float)(fraction * 60.0f));
-	int minute_length = qb_str_single(minutes, sizeof(minutes), whole);
-	int second_length = qb_str_single(seconds, sizeof(seconds), seconds_value);
+	int minute_length;
+	int second_length;
 	size_t length;
+	enum yt_present_status status;
+
+	time->remaining_minutes = remaining;
+	status = time_store_single(time->remaining_minutes_process, remaining);
+	if (status != YT_PRESENT_OK)
+		return status;
+	minute_length = qb_str_single(minutes, sizeof(minutes), whole);
+	second_length = qb_str_single(seconds, sizeof(seconds), seconds_value);
 
 	if (minute_length < 0 || second_length < 2)
 		return YT_PRESENT_OVERFLOW;
@@ -1446,7 +1479,6 @@ format_remaining(float deadline, float timer,
 	memcpy(time->seconds_text, seconds + 1,
 	    (size_t)second_length - 1U);
 	time->seconds_length = (size_t)second_length - 1U;
-	time->remaining_minutes = remaining;
 	return YT_PRESENT_OK;
 }
 
@@ -1485,7 +1517,14 @@ yt_present_refresh_time(struct yt_present_time_state *time,
 		goto done;
 	time->next_refresh = (float)(timer + 1.0f);
 	time->saved_row = cursor_row;
+	status = time_store_single(time->saved_row_process, (float)cursor_row);
+	if (status != YT_PRESENT_OK)
+		goto done;
 	time->saved_column = cursor_column;
+	status = time_store_single(time->saved_column_process,
+	    (float)cursor_column);
+	if (status != YT_PRESENT_OK)
+		goto done;
 	status = append_locate(result, 25, 71, -1, 0, 0);
 	if (status != YT_PRESENT_OK)
 		goto done;

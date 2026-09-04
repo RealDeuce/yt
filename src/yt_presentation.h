@@ -64,6 +64,9 @@ struct yt_present_time_state {
 	float remaining_minutes;
 	uint8_t seconds_text[16];
 	size_t seconds_length;
+	uint8_t *saved_row_process;
+	uint8_t *saved_column_process;
+	uint8_t *remaining_minutes_process;
 };
 
 struct yt_present_state {
@@ -123,6 +126,9 @@ void yt_present_bind_cached_background_process(
 float yt_present_cached_background(const struct yt_present_state *state);
 void yt_present_set_cached_background(struct yt_present_state *state,
     float value);
+void yt_present_bind_time_process_cells(struct yt_present_time_state *time,
+    uint8_t saved_row[4], uint8_t saved_column[4],
+    uint8_t remaining_minutes[4]);
 
 typedef enum yt_present_status (*yt_present_sysop_replay_fn)(void *context);
 

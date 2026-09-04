@@ -163,6 +163,9 @@
 #define YT_DATE_SERIAL_MONTH_ADDRESS 0x538EU
 #define YT_DATE_SERIAL_YEAR_TERMINAL_ADDRESS 0x5392U
 #define YT_DATE_SERIAL_YEAR_COUNTER_ADDRESS 0x5396U
+#define YT_TIME_SAVED_CURSOR_ROW_ADDRESS 0x5372U
+#define YT_TIME_SAVED_CURSOR_COLUMN_ADDRESS 0x5376U
+#define YT_TIME_REMAINING_MINUTES_ADDRESS 0x537AU
 #define YT_STARTUP_INITIAL_FIVE_ADDRESS 0x4BFAU
 #define YT_CURRENT_PLAYER_RECORD_ADDRESS 0x1C3CU
 #define YT_SHARED_TARGET_RECORD_ADDRESS 0x1A40U
@@ -19764,6 +19767,10 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	yt_present_bind_cached_background_process(&session.presentation,
 	    &session.route_process.bytes[YT_CACHED_BACKGROUND_ADDRESS]);
 	session_bind_pager_process(&session);
+	yt_present_bind_time_process_cells(&session.time,
+	    &session.route_process.bytes[YT_TIME_SAVED_CURSOR_ROW_ADDRESS],
+	    &session.route_process.bytes[YT_TIME_SAVED_CURSOR_COLUMN_ADDRESS],
+	    &session.route_process.bytes[YT_TIME_REMAINING_MINUTES_ADDRESS]);
 	session.door = door;
 	session.executable_path = executable_path;
 	session.startup_prefix = *startup_prefix;
