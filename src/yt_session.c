@@ -144,6 +144,9 @@
 #define YT_REGISTRATION_EVALUATION_WAIT_ADDRESS 0x530EU
 #define YT_REGISTRATION_REGISTERED_WAIT_ADDRESS 0x5312U
 #define YT_RETURNING_REBUILD_WAIT_ADDRESS 0x534EU
+#define YT_RETURNING_OLD_DAY_ADDRESS 0x5316U
+#define YT_RETURNING_KILLER_ADDRESS 0x531EU
+#define YT_RETURNING_TURNS_ADDRESS 0x5322U
 #define YT_LOCKOUT_WAIT_ADDRESS 0x5B9EU
 #define YT_NORMAL_EXIT_REMINDER_WAIT_ADDRESS 0x4CAAU
 #define YT_RETURNING_SCAN_BOUND_ADDRESS 0x4CCEU
@@ -3657,6 +3660,32 @@ startup_retention_present(void *context, const uint8_t *text, size_t length,
 }
 
 static bool
+returning_daily_same_day(void *context, struct yt_error *error)
+{
+	static const uint8_t row[] = "You have been on today.";
+	struct yt_session *session = context;
+
+	return session_present_text(session, row, sizeof(row) - 1U,
+	    SESSION_PRESENT_LINE, "returning same-day row", error);
+}
+
+static void
+returning_daily_store_scratch(void *context,
+    enum yt_returning_daily_scratch_kind kind, const uint8_t raw[4])
+{
+	static const uint16_t addresses[] = {
+		[YT_RETURNING_DAILY_OLD_DAY] = YT_RETURNING_OLD_DAY_ADDRESS,
+		[YT_RETURNING_DAILY_KILLER] = YT_RETURNING_KILLER_ADDRESS,
+		[YT_RETURNING_DAILY_TURNS] = YT_RETURNING_TURNS_ADDRESS,
+	};
+	struct yt_session *session = context;
+
+	if ((size_t)kind < YT_ARRAY_LEN(addresses))
+		yt_route_process_set_raw_single(&session->route_process,
+		    addresses[kind], raw);
+}
+
+static bool
 admit_player(struct yt_session *session, const char *first, const char *last,
     struct yt_error *error)
 {
@@ -3788,29 +3817,36 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 	    "returning player blank", error))
 		return false;
 	{
-		float previous_day = session->player.last_active;
-		float killer = session->player.killed_by;
-		float startup_day = yt_route_process_single(
-		    &session->route_process, YT_STARTUP_DATE_SERIAL_ADDRESS);
-		bool self_kill = killer == (float)session_record(session);
+		static const struct yt_returning_daily_ops ops = {
+			returning_daily_same_day,
+			returning_daily_store_scratch,
+		};
+		struct yt_returning_daily_state daily;
+		uint8_t today_raw[4];
+		uint8_t turns_raw[4];
+		float previous_day;
+		float killer;
+		float startup_day;
+		bool self_kill;
 
-		if (previous_day == startup_day
-		    && !session_present_text(session,
-		    (const uint8_t *)"You have been on today.",
-		    strlen("You have been on today."), SESSION_PRESENT_LINE,
-		    "returning same-day row", error))
+		yt_route_process_raw_single(&session->route_process,
+		    YT_STARTUP_DATE_SERIAL_ADDRESS, today_raw);
+		yt_route_process_raw_single(&session->route_process,
+		    YT_TURNS_PER_DAY_ADDRESS, turns_raw);
+		memset(&daily, 0, sizeof(daily));
+		daily.player_record = session_record(session);
+		daily.today_raw = today_raw;
+		daily.turns_per_day_raw = turns_raw;
+		if (!yt_returning_daily_run(&session->door->game, &daily, &ops,
+		    session, error))
 			return false;
-		session->player.last_active = startup_day;
-		if (previous_day != startup_day) {
-			float turns_per_day = yt_route_process_single(
-			    &session->route_process, YT_TURNS_PER_DAY_ADDRESS);
-
-			if (session->player.turns < turns_per_day)
-				session->player.turns = turns_per_day;
-			session->player.lottery_plays = 0.0f;
-		}
-		if (!write_player(session, error))
+		session->player = daily.player;
+		if (!yt_database_flush(&session->door->game.database, error))
 			return false;
+		previous_day = daily.previous_day;
+		killer = daily.killer;
+		startup_day = qb_mbf32_decode(today_raw);
+		self_kill = killer == (float)session_record(session);
 		if (!yt_platform_clock(&now, error))
 			return false;
 		{

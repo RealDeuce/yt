@@ -4,6 +4,8 @@
 #include "yt_config.h"
 #include "yt_random.h"
 
+struct yt_game;
+
 struct yt_player {
 	struct yt_record record;
 	char name[42];
@@ -330,6 +332,35 @@ struct yt_post_login_repairs {
 	bool holds;
 	unsigned writes;
 };
+
+enum yt_returning_daily_scratch_kind {
+	YT_RETURNING_DAILY_OLD_DAY,
+	YT_RETURNING_DAILY_KILLER,
+	YT_RETURNING_DAILY_TURNS,
+};
+typedef bool (*yt_returning_daily_same_day_fn)(void *context,
+	struct yt_error *error);
+typedef void (*yt_returning_daily_scratch_fn)(void *context,
+	enum yt_returning_daily_scratch_kind kind, const uint8_t raw[4]);
+struct yt_returning_daily_state {
+	int player_record;
+	const uint8_t *today_raw;
+	const uint8_t *turns_per_day_raw;
+	struct yt_player player;
+	float previous_day;
+	float killer;
+	bool same_day;
+	bool turn_floor_applied;
+	bool complete;
+};
+struct yt_returning_daily_ops {
+	yt_returning_daily_same_day_fn present_same_day;
+	yt_returning_daily_scratch_fn store_scratch;
+};
+bool yt_returning_daily_run(struct yt_game *game,
+	struct yt_returning_daily_state *state,
+	const struct yt_returning_daily_ops *ops, void *context,
+	struct yt_error *error);
 
 enum yt_team_loader_route {
 	YT_TEAM_LOADER_OUT_OF_RANGE,

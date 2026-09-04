@@ -3305,6 +3305,65 @@ yt_game_set_player_identity(struct yt_game *game, int basic_record,
 }
 
 bool
+yt_returning_daily_run(struct yt_game *game,
+    struct yt_returning_daily_state *state,
+    const struct yt_returning_daily_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t zero[4] = {0x00, 0x00, 0x00, 0x00};
+	struct yt_record daily;
+	uint8_t turns_scratch[4];
+
+	if (game == NULL || state == NULL || ops == NULL
+	    || state->today_raw == NULL || state->turns_per_day_raw == NULL
+	    || ops->present_same_day == NULL || ops->store_scratch == NULL)
+		return false;
+	state->same_day = false;
+	state->turn_floor_applied = false;
+	state->complete = false;
+	if (!yt_game_read_player(game, state->player_record, &state->player,
+	    error))
+		return false;
+	state->previous_day = state->player.last_active;
+	ops->store_scratch(context, YT_RETURNING_DAILY_OLD_DAY,
+	    state->player.record.bytes + YT_F41);
+	state->same_day = state->previous_day
+	    == qb_mbf32_decode(state->today_raw);
+	if (state->same_day && !ops->present_same_day(context, error))
+		return false;
+	state->killer = state->player.killed_by;
+	ops->store_scratch(context, YT_RETURNING_DAILY_KILLER,
+	    state->player.record.bytes + YT_F45);
+	memcpy(turns_scratch, state->player.record.bytes + YT_F49,
+	    sizeof(turns_scratch));
+	ops->store_scratch(context, YT_RETURNING_DAILY_TURNS, turns_scratch);
+
+	daily = state->player.record;
+	(void)yt_record_set_raw_number(&daily, YT_F41, state->today_raw);
+	if (!state->same_day) {
+		if (qb_mbf32_decode(turns_scratch)
+		    < qb_mbf32_decode(state->turns_per_day_raw)) {
+			memcpy(turns_scratch, state->turns_per_day_raw,
+			    sizeof(turns_scratch));
+			state->turn_floor_applied = true;
+			ops->store_scratch(context, YT_RETURNING_DAILY_TURNS,
+			    turns_scratch);
+		}
+		if (memcmp(turns_scratch, daily.bytes + YT_F49,
+		    sizeof(turns_scratch)) != 0)
+			(void)yt_record_set_raw_number(&daily, YT_F49,
+			    turns_scratch);
+		(void)yt_record_set_raw_number(&daily, YT_F105, zero);
+	}
+	yt_player_decode(&state->player, &daily);
+	if (!yt_database_write(&game->database, (size_t)state->player_record,
+	    &daily, error))
+		return false;
+	state->complete = true;
+	return true;
+}
+
+bool
 yt_game_post_login_repairs(struct yt_game *game, int basic_record,
     float maximum_holds, struct yt_player *player,
     struct yt_post_login_repairs *repairs, struct yt_error *error)

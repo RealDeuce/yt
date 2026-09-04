@@ -23286,6 +23286,182 @@ done:
 	return valid;
 }
 
+struct returning_daily_tape {
+	int events[8];
+	uint8_t raw[8][4];
+	size_t count;
+	bool fail_same_day;
+};
+
+static bool
+returning_daily_same_day(void *context, struct yt_error *error)
+{
+	struct returning_daily_tape *tape = context;
+
+	if (tape->count < YT_ARRAY_LEN(tape->events)) {
+		tape->events[tape->count] = 3;
+		memset(tape->raw[tape->count], 0, 4);
+		tape->count++;
+	}
+	if (tape->fail_same_day) {
+		error->status = YT_IO_ERROR;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    "same-day output");
+		return false;
+	}
+	return true;
+}
+
+static void
+returning_daily_store(void *context,
+    enum yt_returning_daily_scratch_kind kind, const uint8_t raw[4])
+{
+	struct returning_daily_tape *tape = context;
+
+	if (tape->count < YT_ARRAY_LEN(tape->events)) {
+		tape->events[tape->count] = (int)kind;
+		memcpy(tape->raw[tape->count], raw, 4);
+		tape->count++;
+	}
+}
+
+static bool
+check_returning_daily_transaction(void)
+{
+	static const struct yt_returning_daily_ops ops = {
+		returning_daily_same_day,
+		returning_daily_store,
+	};
+	static const uint8_t dirty_zero[4] = {0x11, 0x22, 0x33, 0x00};
+	static const uint8_t canonical_zero[4] = {0x00, 0x00, 0x00, 0x00};
+	struct yt_game game;
+	struct yt_record seed;
+	struct yt_record durable;
+	struct yt_returning_daily_state state;
+	struct returning_daily_tape tape;
+	struct yt_error error;
+	uint8_t old_day_raw[4];
+	uint8_t killer_raw[4];
+	uint8_t old_turns_raw[4];
+	uint8_t today_raw[4];
+	uint8_t turns_raw[4];
+	bool valid = false;
+
+	remove("DAILY.DAT");
+	memset(&game, 0, sizeof(game));
+	yt_error_clear(&error);
+	if (qb_mbf32_encode(10.0f, old_day_raw) != QB_MBF_OK
+	    || qb_mbf32_encode(-2.0f, killer_raw) != QB_MBF_OK
+	    || qb_mbf32_encode(5.0f, old_turns_raw) != QB_MBF_OK
+	    || qb_mbf32_encode(20.0f, today_raw) != QB_MBF_OK
+	    || qb_mbf32_encode(100.0f, turns_raw) != QB_MBF_OK
+	    || !yt_database_open(&game.database, "DAILY.DAT", YT_OPEN_CREATE,
+	    &error))
+		return false;
+	yt_record_blank(&seed);
+	yt_record_set_text(&seed, (const uint8_t *)"Daily Pilot", 11);
+	(void)yt_record_set_raw_number(&seed, YT_F41, old_day_raw);
+	(void)yt_record_set_raw_number(&seed, YT_F45, killer_raw);
+	(void)yt_record_set_raw_number(&seed, YT_F49, old_turns_raw);
+	(void)yt_record_set_raw_number(&seed, YT_F105, dirty_zero);
+	yt_record_set_number(&seed, YT_F109, 77.0f);
+	memcpy(seed.bytes + YT_RECORD_TAIL_OFFSET, "KEEP",
+	    YT_RECORD_TAIL_SIZE);
+	if (!yt_database_write_durable(&game.database, 2, &seed, &error))
+		goto close;
+	memset(&state, 0, sizeof(state));
+	state.player_record = 2;
+	state.today_raw = today_raw;
+	state.turns_per_day_raw = turns_raw;
+	memset(&tape, 0, sizeof(tape));
+	if (!yt_returning_daily_run(&game, &state, &ops, &tape, &error)
+	    || !state.complete || state.same_day || !state.turn_floor_applied
+	    || state.previous_day != 10.0f || state.killer != -2.0f
+	    || tape.count != 4U
+	    || tape.events[0] != YT_RETURNING_DAILY_OLD_DAY
+	    || tape.events[1] != YT_RETURNING_DAILY_KILLER
+	    || tape.events[2] != YT_RETURNING_DAILY_TURNS
+	    || tape.events[3] != YT_RETURNING_DAILY_TURNS
+	    || memcmp(tape.raw[0], old_day_raw, 4) != 0
+	    || memcmp(tape.raw[1], killer_raw, 4) != 0
+	    || memcmp(tape.raw[2], old_turns_raw, 4) != 0
+	    || memcmp(tape.raw[3], turns_raw, 4) != 0
+	    || !yt_database_read(&game.database, 2, &durable, &error)
+	    || memcmp(durable.bytes + YT_F41, today_raw, 4) != 0
+	    || memcmp(durable.bytes + YT_F49, turns_raw, 4) != 0
+	    || memcmp(durable.bytes + YT_F105, canonical_zero, 4) != 0
+	    || qb_mbf32_decode(durable.bytes + YT_F109) != 77.0f
+	    || memcmp(durable.bytes + YT_RECORD_TAIL_OFFSET, "KEEP",
+	    YT_RECORD_TAIL_SIZE) != 0)
+		goto close;
+
+	seed = durable;
+	(void)yt_record_set_raw_number(&seed, YT_F105, dirty_zero);
+	if (!yt_database_write_durable(&game.database, 2, &seed, &error))
+		goto close;
+	memset(&state, 0, sizeof(state));
+	state.player_record = 2;
+	state.today_raw = today_raw;
+	state.turns_per_day_raw = turns_raw;
+	memset(&tape, 0, sizeof(tape));
+	if (!yt_returning_daily_run(&game, &state, &ops, &tape, &error)
+	    || !state.complete || !state.same_day || state.turn_floor_applied
+	    || tape.count != 4U
+	    || tape.events[0] != YT_RETURNING_DAILY_OLD_DAY
+	    || tape.events[1] != 3
+	    || tape.events[2] != YT_RETURNING_DAILY_KILLER
+	    || tape.events[3] != YT_RETURNING_DAILY_TURNS
+	    || !yt_database_read(&game.database, 2, &durable, &error)
+	    || memcmp(durable.bytes + YT_F41, today_raw, 4) != 0
+	    || memcmp(durable.bytes + YT_F49, turns_raw, 4) != 0
+	    || memcmp(durable.bytes + YT_F105, dirty_zero, 4) != 0)
+		goto close;
+
+	memset(&state, 0, sizeof(state));
+	state.player_record = 2;
+	state.today_raw = today_raw;
+	state.turns_per_day_raw = turns_raw;
+	memset(&tape, 0, sizeof(tape));
+	tape.fail_same_day = true;
+	yt_error_clear(&error);
+	if (yt_returning_daily_run(&game, &state, &ops, &tape, &error)
+	    || error.status != YT_IO_ERROR || state.complete
+	    || tape.count != 2U
+	    || tape.events[0] != YT_RETURNING_DAILY_OLD_DAY
+	    || tape.events[1] != 3
+	    || !yt_database_read(&game.database, 2, &durable, &error)
+	    || memcmp(&durable, &seed, sizeof(durable)) != 0)
+		goto close;
+
+	yt_database_close(&game.database);
+	if (!yt_database_open(&game.database, "DAILY.DAT", YT_OPEN_READ,
+	    &error))
+		goto done;
+	if (qb_mbf32_encode(21.0f, today_raw) != QB_MBF_OK)
+		goto close;
+	memset(&state, 0, sizeof(state));
+	state.player_record = 2;
+	state.today_raw = today_raw;
+	state.turns_per_day_raw = turns_raw;
+	memset(&tape, 0, sizeof(tape));
+	yt_error_clear(&error);
+	if (yt_returning_daily_run(&game, &state, &ops, &tape, &error)
+	    || error.status != YT_IO_ERROR
+	    || strcmp(error.operation, "write record") != 0 || state.complete
+	    || state.player.last_active != 21.0f
+	    || state.player.lottery_plays != 0.0f
+	    || !yt_database_read(&game.database, 2, &durable, &error)
+	    || memcmp(&durable, &seed, sizeof(durable)) != 0)
+		goto close;
+	valid = true;
+
+close:
+	yt_database_close(&game.database);
+done:
+	remove("DAILY.DAT");
+	return valid;
+}
+
 static bool
 check_post_login_repairs(void)
 {
@@ -32992,6 +33168,8 @@ main(void)
 	if (!check_maintenance_xannor_candidate_discovery())
 		goto done;
 	if (!check_player_constructor_failures())
+		goto done;
+	if (!check_returning_daily_transaction())
 		goto done;
 	if (!check_post_login_repairs())
 		goto done;
