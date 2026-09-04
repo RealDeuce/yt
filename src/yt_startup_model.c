@@ -867,6 +867,7 @@ yt_startup_compose_state(const struct yt_startup_dorinfo_result *dorinfo,
 {
 	uint8_t *field[YT_STARTUP_DORINFO_FIELDS];
 	size_t length[YT_STARTUP_DORINFO_FIELDS];
+	uint8_t ansi_raw[4];
 	struct qb_val_result numeric;
 	size_t index;
 
@@ -909,10 +910,9 @@ yt_startup_compose_state(const struct yt_startup_dorinfo_result *dorinfo,
 		result->carrier_local_screen = -1.0f;
 		result->local_sound = -1.0f;
 	}
-	numeric = qb_val_n(field[9], length[9]);
-	if (numeric.overflow)
+	if (!yt_startup_ansi_raw(field[9], length[9], ansi_raw))
 		return false;
-	result->ansi_flag = (float)numeric.value;
+	result->ansi_flag = qb_mbf32_decode(ansi_raw);
 	numeric = qb_val_n(field[11], length[11]);
 	if (numeric.overflow)
 		return false;
@@ -936,6 +936,21 @@ yt_startup_local_mode_raw(bool local, uint8_t raw[4])
 		return false;
 	memcpy(raw, local ? console : remote, 4U);
 	return true;
+}
+
+bool
+yt_startup_ansi_raw(const uint8_t *text, size_t length, uint8_t raw[4])
+{
+	struct qb_val_result parsed;
+	enum qb_mbf_status status;
+
+	if ((text == NULL && length != 0U) || raw == NULL)
+		return false;
+	parsed = qb_val_n(text, length);
+	if (parsed.overflow)
+		return false;
+	status = qb_mbf32_from_mbf64_raw(parsed.mbf, raw);
+	return status == QB_MBF_OK || status == QB_MBF_UNDERFLOW;
 }
 
 static bool

@@ -2743,6 +2743,8 @@ test_startup_dorinfo_state(void)
 	uint8_t storage[1024];
 	uint8_t canonical[128];
 	uint8_t mode_raw[4];
+	uint8_t ansi_raw[4];
+	uint8_t expected_ansi[4];
 	struct yt_startup_dorinfo_result dorinfo;
 	struct yt_startup_state_result state_result;
 	struct yt_startup_event_result event_result;
@@ -2755,6 +2757,17 @@ test_startup_dorinfo_state(void)
 	CHECK(yt_startup_local_mode_raw(true, mode_raw)
 	    && memcmp(mode_raw, "\x00\x00\x00\x81", 4U) == 0);
 	CHECK(!yt_startup_local_mode_raw(false, NULL));
+	CHECK(yt_startup_ansi_raw((const uint8_t *)"&H1", 3U, ansi_raw)
+	    && memcmp(ansi_raw, "\x00\x00\x00\x81", 4U) == 0);
+	CHECK(qb_mbf32_encode(1.75f, expected_ansi) == QB_MBF_OK
+	    && yt_startup_ansi_raw((const uint8_t *)"1.75tail", 8U,
+	    ansi_raw)
+	    && memcmp(ansi_raw, expected_ansi, sizeof(ansi_raw)) == 0);
+	CHECK(yt_startup_ansi_raw((const uint8_t *)"1D-56", 5U, ansi_raw)
+	    && qb_mbf32_decode(ansi_raw) == 0.0f);
+	CHECK(!yt_startup_ansi_raw((const uint8_t *)"1D39", 4U, ansi_raw)
+	    && !yt_startup_ansi_raw(NULL, 1U, ansi_raw)
+	    && !yt_startup_ansi_raw(NULL, 0U, NULL));
 
 	CHECK(yt_startup_parse_dorinfo(remote_raw, sizeof(remote_raw) - 1U,
 	    storage, sizeof(storage), &dorinfo));

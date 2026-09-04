@@ -151,6 +151,34 @@ test_stale_and_failures(void)
 }
 
 static void
+test_ansi_process_cell(void)
+{
+	static const uint8_t dirty_zero[] = {0x5a, 0xa5, 0x80, 0x00};
+	static const uint8_t raw_one[] = {0x00, 0x00, 0x00, 0x81};
+	struct yt_sound_state current = state(false);
+	struct yt_sound_result result;
+	uint8_t ansi[4];
+
+	memcpy(ansi, dirty_zero, sizeof(ansi));
+	memcpy(current.scratch, "stale", 5U);
+	current.scratch_length = 5U;
+	yt_sound_bind_ansi_process(&current, ansi);
+	CHECK(yt_sound_ansi(&current) == 0.0f);
+	CHECK(yt_sound_dispatch(2.0f, &current, &result) == YT_SOUND_OK);
+	CHECK(result.remote_length == 0U && result.play_length == 0U
+	    && current.scratch_length == 5U
+	    && memcmp(ansi, dirty_zero, sizeof(ansi)) == 0);
+
+	memcpy(ansi, raw_one, sizeof(ansi));
+	CHECK(yt_sound_ansi(&current) == 1.0f);
+	CHECK(yt_sound_dispatch(2.0f, &current, &result) == YT_SOUND_OK);
+	CHECK(result.remote_length == 33U && result.remote[0] == 0x1b
+	    && result.remote[1] == '[' && result.remote[32] == 0x0e
+	    && result.play_length == 30U && current.scratch_length == 0U
+	    && memcmp(ansi, raw_one, sizeof(ansi)) == 0);
+}
+
+static void
 test_conversion_mode(void)
 {
 	struct yt_sound_state current = state(false);
@@ -385,6 +413,7 @@ main(void)
 	test_known_cues();
 	test_branches_and_gates();
 	test_stale_and_failures();
+	test_ansi_process_cell();
 	test_conversion_mode();
 	test_toggle();
 	test_sysop_toggle();

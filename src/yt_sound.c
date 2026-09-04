@@ -25,6 +25,27 @@ static const struct cue cues[] = {
 };
 static const uint8_t ascii_cue[] = "T255L63o4be";
 
+void
+yt_sound_bind_ansi_process(struct yt_sound_state *state,
+    const uint8_t ansi[4])
+{
+	if (state == NULL)
+		return;
+	state->ansi_process = ansi;
+	if (ansi != NULL)
+		state->ansi = qb_mbf32_decode(ansi);
+}
+
+float
+yt_sound_ansi(const struct yt_sound_state *state)
+{
+	if (state == NULL)
+		return 0.0f;
+	if (state->ansi_process != NULL)
+		return qb_mbf32_decode(state->ansi_process);
+	return state->ansi;
+}
+
 static bool
 sound_integer_raw(int32_t value, uint8_t raw[4])
 {
@@ -94,7 +115,7 @@ yt_sound_dispatch(float selector, struct yt_sound_state *state,
 	memset(result, 0, sizeof(*result));
 	if (selector == 0.0f)
 		return YT_SOUND_OK;
-	if (state->ansi == 0.0f) {
+	if (yt_sound_ansi(state) == 0.0f) {
 		if (selector == 2.0f || selector == 4.0f)
 			return YT_SOUND_OK;
 		return endpoint_gates(state, ascii_cue, sizeof(ascii_cue) - 1U,

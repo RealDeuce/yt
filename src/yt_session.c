@@ -73,6 +73,7 @@
 #define YT_CACHED_BACKGROUND_ADDRESS 0x55A2U
 #define YT_SESSION_DEADLINE_ADDRESS 0x4BB4U
 #define YT_SESSION_MODE_ADDRESS 0x19C8U
+#define YT_ANSI_ADDRESS 0x19A8U
 #define YT_BOLD_ADDRESS 0x19BCU
 #define YT_LOCAL_SOUND_ADDRESS 0x4B70U
 #define YT_GAME_SOUND_ADDRESS 0x4BD4U
@@ -213,6 +214,13 @@ session_mode(const struct yt_session *session)
 {
 	return yt_route_process_single(&session->route_process,
 	    YT_SESSION_MODE_ADDRESS);
+}
+
+static float
+session_ansi(const struct yt_session *session)
+{
+	return yt_route_process_single(&session->route_process,
+	    YT_ANSI_ADDRESS);
 }
 
 static void
@@ -2897,7 +2905,7 @@ opening_and_date(struct yt_session *session, struct yt_error *error)
 		    "startup route failure diagnostic", error))
 			return false;
 	}
-	if (session->door->identity.ansi) {
+	if (session_ansi(session) != 0.0f) {
 		if (!yt_out_opening_file("YTOPEN.ANS",
 		    session_mode(session),
 		    session->presentation.sound.snoop, opening_poll_local,
@@ -19208,6 +19216,8 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	    &session.route_process.bytes[YT_BOLD_ADDRESS]);
 	yt_present_bind_blink_process(&session.presentation,
 	    &session.route_process.bytes[YT_BLINK_ADDRESS]);
+	yt_sound_bind_ansi_process(&session.presentation.sound,
+	    &session.route_process.bytes[YT_ANSI_ADDRESS]);
 	yt_present_bind_color_table_process(&session.presentation,
 	    &session.route_process.bytes[YT_COLOR_INITIALIZED_ADDRESS],
 	    &session.route_process.bytes[YT_COLOR_TABLE_ADDRESS]);
@@ -19225,7 +19235,19 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	    session.startup_prefix.initial_five);
 	/* YT:040A is the ordinary instruction after the handed-off checkpoint. */
 	session_set_pager_nonstop(&session, 1.0f);
-	session.presentation.sound.ansi = door->identity.ansi ? -1.0f : 0.0f;
+	if (door->identity.ansi
+	    && !qb_mbf32_truth(door->identity.ansi_raw)) {
+		uint8_t raw_one[4];
+
+		if (qb_mbf32_encode(1.0f, raw_one) != QB_MBF_OK)
+			return false;
+		yt_route_process_set_raw_single(&session.route_process,
+		    YT_ANSI_ADDRESS, raw_one);
+	}
+	else {
+		yt_route_process_set_raw_single(&session.route_process,
+		    YT_ANSI_ADDRESS, door->identity.ansi_raw);
+	}
 	if (!yt_startup_local_mode_raw(door->identity.local, mode_raw))
 		return false;
 	yt_route_process_set_raw_single(&session.route_process,

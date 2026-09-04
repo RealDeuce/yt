@@ -465,7 +465,7 @@ static enum yt_present_status
 prepare_color(struct yt_present_state *state,
     struct yt_present_result *result)
 {
-	if (state->sound.ansi == 0.0f)
+	if (yt_sound_ansi(&state->sound) == 0.0f)
 		return YT_PRESENT_OK;
 	return build_color(state, result);
 }
@@ -554,7 +554,7 @@ yt_present_bold_character(const uint8_t *text, size_t length,
     struct yt_present_state *state, struct yt_present_result *result)
 {
 	memset(result, 0, sizeof(*result));
-	if (state->sound.ansi != 0.0f)
+	if (yt_sound_ansi(&state->sound) != 0.0f)
 		yt_present_set_bold(state, 1.0f);
 	return emit_character(text, length, state, result);
 }
@@ -835,7 +835,7 @@ yt_present_attention(const uint8_t *text, size_t length,
 	state->foreground = 3.0f;
 	yt_present_set_background(state, 1.0f);
 	yt_present_set_blink(state, 1.0f);
-	if (state->sound.ansi != 0.0f)
+	if (yt_sound_ansi(&state->sound) != 0.0f)
 		yt_present_set_bold(state, 1.0f);
 	status = emit_character(text, length, state, result);
 	if (status != YT_PRESENT_OK)

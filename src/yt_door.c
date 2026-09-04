@@ -3,6 +3,7 @@
 #include "OpenDoor.h"
 #include "qb.h"
 #include "yt_file.h"
+#include "yt_startup_model.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -79,7 +80,10 @@ read_dorinfo(const char *path, struct yt_identity *identity)
 	qb_title_case(identity->sysop_last);
 	qb_title_case(identity->real_first);
 	qb_title_case(identity->real_last);
-	identity->ansi = qb_val(lines[9]).value != 0.0;
+	if (!yt_startup_ansi_raw((const uint8_t *)lines[9],
+	    strlen(lines[9]), identity->ansi_raw))
+		return false;
+	identity->ansi = qb_mbf32_truth(identity->ansi_raw);
 	identity->minutes = (int)qb_val(lines[11]).value;
 	{
 		size_t length = strlen(lines[3]);
@@ -126,6 +130,8 @@ identity_from_open_doors(struct yt_identity *identity)
 	copy_text(identity->location, sizeof(identity->location),
 	    od_control.user_location);
 	identity->ansi = od_control.user_ansi != 0;
+	(void)qb_mbf32_encode(identity->ansi ? 1.0f : 0.0f,
+	    identity->ansi_raw);
 	identity->minutes = od_control.user_timelimit;
 	identity->local = od_control.od_force_local || !od_carrier();
 	qb_title_case(identity->sysop_first);

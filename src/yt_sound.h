@@ -17,6 +17,7 @@ enum yt_sound_status {
 struct yt_sound_state {
 	uint8_t conversion_mode;
 	float ansi;
+	const uint8_t *ansi_process;
 	float mode;
 	float user_sound;
 	float snoop;
@@ -24,6 +25,10 @@ struct yt_sound_state {
 	uint8_t scratch[YT_SOUND_SCRATCH_SIZE];
 	size_t scratch_length;
 };
+
+void yt_sound_bind_ansi_process(struct yt_sound_state *state,
+    const uint8_t ansi[4]);
+float yt_sound_ansi(const struct yt_sound_state *state);
 
 struct yt_sound_result {
 	uint8_t line[10];

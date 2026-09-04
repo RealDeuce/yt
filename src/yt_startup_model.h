@@ -264,6 +264,7 @@ bool yt_startup_restored_divisor(float baud, uint8_t *dll, uint8_t *dlm);
 float yt_startup_session_deadline(float timer, double minutes,
     float cap_timer);
 bool yt_startup_local_mode_raw(bool local, uint8_t raw[4]);
+bool yt_startup_ansi_raw(const uint8_t *text, size_t length, uint8_t raw[4]);
 bool yt_startup_canonical_name(const uint8_t *first, size_t first_length,
     const uint8_t *last, size_t last_length, uint8_t *name,
     size_t capacity, size_t *name_length);

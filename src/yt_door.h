@@ -12,6 +12,7 @@ struct yt_identity {
 	char real_last[128];
 	char location[256];
 	bool ansi;
+	uint8_t ansi_raw[4];
 	bool local;
 	int minutes;
 };
