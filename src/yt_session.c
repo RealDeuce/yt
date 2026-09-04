@@ -5371,14 +5371,14 @@ spy_store(void *context, enum yt_spy_scratch_kind kind,
 }
 
 static void
-spy_cache_read(void *context, int player_record,
+session_player_cache_read(void *context, int player_record,
     enum yt_player_cache_kind kind, uint8_t raw[4])
 {
 	session_player_cache_raw(context, player_record, kind, raw);
 }
 
 static void
-spy_cache_store(void *context, int player_record,
+session_player_cache_store(void *context, int player_record,
     enum yt_player_cache_kind kind, const uint8_t raw[4])
 {
 	struct yt_session *session = context;
@@ -5407,8 +5407,8 @@ spy_sweep(struct yt_session *session, struct yt_error *error)
 		spy_present,
 		spy_pause,
 		spy_store,
-		spy_cache_read,
-		spy_cache_store,
+		session_player_cache_read,
+		session_player_cache_store,
 	};
 	int spy_sectors[3];
 	int spy_markers[3];
@@ -16387,6 +16387,8 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 		session_store_destroyed,
 		session_store_current_player_record,
 		session_store_counterattack_player,
+		session_player_cache_read,
+		session_player_cache_store,
 	};
 	bool destroyed = session_is_destroyed(session);
 	float retained_count = yt_route_process_single(&session->route_process,

@@ -2264,6 +2264,7 @@ yt_counterlaunch_run(struct yt_counterlaunch_state *state,
 	uint8_t count_raw[4];
 	uint8_t installed_record_raw[4];
 	uint8_t saved_record_raw[4];
+	uint8_t saved_cloak_raw[4];
 
 	if (state == NULL || ops == NULL || state->player == NULL
 	    || state->player_record == NULL || state->destroyed == NULL
@@ -2308,8 +2309,21 @@ yt_counterlaunch_run(struct yt_counterlaunch_state *state,
 	    && (size_t)saved_record < state->cache_count
 	    && state->cloak_cache != NULL;
 	if (valid_cache) {
-		saved_cloak = state->cloak_cache[saved_record];
+		static const uint8_t zero[4] = {0};
+
+		if (ops->read_cache != NULL) {
+			ops->read_cache(context, saved_record,
+			    YT_PLAYER_CACHE_CLOAK, saved_cloak_raw);
+			saved_cloak = qb_mbf32_decode(saved_cloak_raw);
+		}
+		else {
+			saved_cloak = state->cloak_cache[saved_record];
+			(void)qb_mbf32_encode(saved_cloak, saved_cloak_raw);
+		}
 		state->cloak_cache[saved_record] = 0.0f;
+		if (ops->store_cache != NULL)
+			ops->store_cache(context, saved_record,
+			    YT_PLAYER_CACHE_CLOAK, zero);
 	}
 	*state->player_record = *state->counterattacker;
 	(void)qb_mbf32_encode((float)*state->counterattacker,
@@ -2380,8 +2394,12 @@ yt_counterlaunch_run(struct yt_counterlaunch_state *state,
 	if (ops->store_player_record != NULL)
 		ops->store_player_record(context, saved_record_raw);
 	*state->player = saved_player;
-	if (valid_cache)
+	if (valid_cache) {
 		state->cloak_cache[saved_record] = saved_cloak;
+		if (ops->store_cache != NULL)
+			ops->store_cache(context, saved_record,
+			    YT_PLAYER_CACHE_CLOAK, saved_cloak_raw);
+	}
 	if (!ops->read_player(context, saved_record, &final_player, error))
 		return false;
 	if (qb_mbf32_truth(final_player.record.bytes + YT_F45)) {

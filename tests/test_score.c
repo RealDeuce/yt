@@ -9399,6 +9399,12 @@ struct counterlaunch_tape {
 	uint8_t counterattacker_raw[2][4];
 	size_t counterattacker_store_count;
 	size_t counterattacker_store_position[2];
+	uint8_t cache_raw[2][6][4];
+	int cache_store_record[2];
+	enum yt_player_cache_kind cache_store_kind[2];
+	uint8_t cache_store_raw[2][4];
+	size_t cache_store_position[2];
+	size_t cache_store_count;
 };
 
 static bool
@@ -9597,6 +9603,43 @@ counterlaunch_store_counterattacker(void *context, const uint8_t raw[4])
 	++tape->counterattacker_store_count;
 }
 
+static void
+counterlaunch_cache_read(void *context, int player_record,
+    enum yt_player_cache_kind kind, uint8_t raw[4])
+{
+	struct counterlaunch_tape *tape = context;
+
+	if ((kind != YT_PLAYER_CACHE_SECTOR
+	    && kind != YT_PLAYER_CACHE_CLOAK)
+	    || player_record < 0
+	    || (size_t)player_record >= YT_ARRAY_LEN(tape->cache_raw[0])) {
+		memset(raw, 0, 4U);
+		return;
+	}
+	memcpy(raw, tape->cache_raw[kind][player_record], 4U);
+}
+
+static void
+counterlaunch_cache_store(void *context, int player_record,
+    enum yt_player_cache_kind kind, const uint8_t raw[4])
+{
+	struct counterlaunch_tape *tape = context;
+	size_t store = tape->cache_store_count;
+
+	if (store >= YT_ARRAY_LEN(tape->cache_store_raw)
+	    || (kind != YT_PLAYER_CACHE_SECTOR
+	    && kind != YT_PLAYER_CACHE_CLOAK)
+	    || player_record < 0
+	    || (size_t)player_record >= YT_ARRAY_LEN(tape->cache_raw[0]))
+		return;
+	tape->cache_store_record[store] = player_record;
+	tape->cache_store_kind[store] = kind;
+	memcpy(tape->cache_store_raw[store], raw, 4U);
+	tape->cache_store_position[store] = tape->event_count;
+	memcpy(tape->cache_raw[kind][player_record], raw, 4U);
+	++tape->cache_store_count;
+}
+
 static bool
 counterlaunch_clear_at(const struct counterlaunch_tape *tape, size_t count,
     size_t position)
@@ -9632,6 +9675,10 @@ counterlaunch_fixture(struct counterlaunch_tape *tape,
 	*player_record = 2;
 	sector_cache[2] = 733.0f;
 	cloak_cache[2] = 0.75f;
+	(void)qb_mbf32_encode(sector_cache[2],
+	    tape->cache_raw[YT_PLAYER_CACHE_SECTOR][2]);
+	(void)qb_mbf32_encode(cloak_cache[2],
+	    tape->cache_raw[YT_PLAYER_CACHE_CLOAK][2]);
 	*destroyed = false;
 	*retained = 9.0f;
 	*counterattacker = 3;
@@ -9686,6 +9733,8 @@ check_counterlaunch_model(void)
 		counterlaunch_store_destroyed,
 		counterlaunch_store_player_record,
 		counterlaunch_store_counterattacker,
+		counterlaunch_cache_read,
+		counterlaunch_cache_store,
 	};
 	static const int full_events[10] = {
 		COUNTERLAUNCH_FIRST_GET, COUNTERLAUNCH_RANDOM,
@@ -9748,6 +9797,7 @@ check_counterlaunch_model(void)
 	    sector_cache, cloak_cache, &destroyed, &retained, &counterattacker,
 	    &xannor);
 	original = player;
+	cloak_cache[2] = 0.25f;
 	tape.final_player.killed_by = -1.0f;
 	yt_player_encode(&tape.final_player);
 	tape.mutate_child = true;
@@ -9784,7 +9834,18 @@ check_counterlaunch_model(void)
 	    || memcmp(tape.player_record_raw[0],
 	    (const uint8_t[]){0x00, 0x00, 0x40, 0x82}, 4U) != 0
 	    || memcmp(tape.player_record_raw[1],
-	    (const uint8_t[]){0x00, 0x00, 0x00, 0x82}, 4U) != 0)
+	    (const uint8_t[]){0x00, 0x00, 0x00, 0x82}, 4U) != 0
+	    || tape.cache_store_count != 2U
+	    || tape.cache_store_record[0] != 2
+	    || tape.cache_store_record[1] != 2
+	    || tape.cache_store_kind[0] != YT_PLAYER_CACHE_CLOAK
+	    || tape.cache_store_kind[1] != YT_PLAYER_CACHE_CLOAK
+	    || memcmp(tape.cache_store_raw[0], "\0\0\0\0", 4U) != 0
+	    || memcmp(tape.cache_store_raw[1], "\0\0\x40\x80", 4U) != 0
+	    || tape.cache_store_position[0] != 1U
+	    || tape.cache_store_position[1] != 8U
+	    || memcmp(tape.cache_raw[YT_PLAYER_CACHE_CLOAK][2],
+	    "\0\0\x40\x80", 4U) != 0)
 		return false;
 
 	counterlaunch_fixture(&tape, &state, &player, &player_record,
@@ -9817,6 +9878,18 @@ check_counterlaunch_model(void)
 		    || tape.events[tape.event_count - 1U] != failure
 		    || !counterlaunch_clear_at(&tape,
 		    failure > COUNTERLAUNCH_PROJECTILE ? 1U : 0U, 8U))
+			return false;
+		if (tape.cache_store_count != (failure >= COUNTERLAUNCH_FINAL_GET
+		    ? 2U : failure >= COUNTERLAUNCH_RANDOM ? 1U : 0U))
+			return false;
+		if (failure >= COUNTERLAUNCH_FINAL_GET) {
+			if (memcmp(tape.cache_raw[YT_PLAYER_CACHE_CLOAK][2],
+			    "\0\0\x40\x80", 4U) != 0)
+				return false;
+		}
+		else if (failure >= COUNTERLAUNCH_RANDOM
+		    && memcmp(tape.cache_raw[YT_PLAYER_CACHE_CLOAK][2],
+		    "\0\0\0\0", 4U) != 0)
 			return false;
 		if (tape.player_record_store_count
 		    != (failure == COUNTERLAUNCH_FIRST_GET ? 0U
