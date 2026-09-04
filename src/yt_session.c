@@ -84,6 +84,10 @@
 #define YT_HOSTILE_PLANET_LINK_ADDRESS 0x4CFAU
 #define YT_HOSTILE_DEPLOYED_FIGHTERS_ADDRESS 0x4CFEU
 #define YT_HOSTILE_ATTACK_OWNER_ADDRESS 0x4D06U
+#define YT_HOSTILE_ATTACKER_LOSSES_ADDRESS 0x4D1EU
+#define YT_HOSTILE_DEFENDER_LOSSES_ADDRESS 0x4D26U
+#define YT_STATIC_DOUBLE_ZERO_ADDRESS 0x66D6U
+#define YT_STATIC_SINGLE_ZERO_ADDRESS 0x62F4U
 #define YT_SESSION_DEADLINE_ADDRESS 0x4BB4U
 #define YT_SESSION_MODE_ADDRESS 0x19C8U
 #define YT_ANSI_ADDRESS 0x19A8U
@@ -6705,6 +6709,13 @@ hostile_surrender_news(void *context, const uint8_t *text, size_t length,
 	return append_news_bytes(context, text, length, error);
 }
 
+static void
+hostile_surrender_mark_checked(void *context)
+{
+	session_set_process_single(context, YT_COMPUTER_ROUTE_STATUS_ADDRESS,
+	    1.0f);
+}
+
 static bool
 hostile_attack_persistence_read_player(void *context, int player_record,
     struct yt_player *player, struct yt_error *error)
@@ -6865,6 +6876,20 @@ hostile_attack_combat_store_owner(void *context, const uint8_t raw[4])
 	    YT_HOSTILE_ATTACK_OWNER_ADDRESS, raw);
 }
 
+static void
+hostile_attack_combat_initialize(void *context)
+{
+	struct hostile_attack_combat_context *combat = context;
+	struct yt_route_process *process = &combat->session->route_process;
+
+	yt_route_process_copy_raw_double(process, YT_STATIC_DOUBLE_ZERO_ADDRESS,
+	    YT_HOSTILE_ATTACKER_LOSSES_ADDRESS);
+	yt_route_process_copy_raw_double(process, YT_STATIC_DOUBLE_ZERO_ADDRESS,
+	    YT_HOSTILE_DEFENDER_LOSSES_ADDRESS);
+	yt_route_process_copy_raw_single(process, YT_STATIC_SINGLE_ZERO_ADDRESS,
+	    YT_COMPUTER_ROUTE_STATUS_ADDRESS);
+}
+
 static bool
 hostile_attack_combat_read_player(void *context, int player_record,
     struct yt_player *player, struct yt_error *error)
@@ -6924,6 +6949,7 @@ hostile_attack_combat_surrender(void *context,
 		hostile_surrender_sound,
 		hostile_surrender_prompt,
 		hostile_surrender_news,
+		hostile_surrender_mark_checked,
 	};
 	struct hostile_attack_combat_context *combat = context;
 	bool result = yt_hostile_attack_surrender_run(state, &ops,
@@ -7061,6 +7087,7 @@ attack_deployed_committed(struct yt_session *session,
 	static const struct yt_hostile_attack_combat_ops ops = {
 		hostile_attack_combat_read_sector,
 		hostile_attack_combat_store_owner,
+		hostile_attack_combat_initialize,
 		hostile_attack_combat_read_player,
 		hostile_attack_combat_sound_selector,
 		hostile_attack_combat_sound,

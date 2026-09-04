@@ -13770,6 +13770,7 @@ yt_hostile_attack_surrender_run(struct yt_hostile_surrender_state *state,
 	    || ops->present == NULL || ops->sound_selector == NULL
 	    || ops->sound == NULL
 	    || ops->prompt == NULL || ops->append_news == NULL
+	    || ops->mark_checked == NULL
 	    || (state->cached_player_name_length != 0U
 	    && state->cached_player_name == NULL)
 	    || (state->real_first_name_length != 0U
@@ -13852,6 +13853,7 @@ yt_hostile_attack_surrender_run(struct yt_hostile_surrender_state *state,
 	case YT_HOSTILE_SURRENDER_QUIET:
 		break;
 	}
+	ops->mark_checked(context);
 	state->checked = true;
 	state->accepted = accepted;
 	if (!accepted) {
@@ -14096,7 +14098,8 @@ yt_hostile_attack_combat_run(struct yt_hostile_attack_combat_state *state,
 	bool child_result;
 
 	if (state == NULL || ops == NULL || ops->read_sector == NULL
-	    || ops->store_owner == NULL || ops->read_player == NULL
+	    || ops->store_owner == NULL || ops->initialize == NULL
+	    || ops->read_player == NULL
 	    || ops->sound_selector == NULL
 	    || ops->sound == NULL
 	    || ops->random == NULL || ops->surrender == NULL
@@ -14133,6 +14136,7 @@ yt_hostile_attack_combat_run(struct yt_hostile_attack_combat_state *state,
 	ops->store_owner(context, &state->opened_sector.record.bytes[YT_F85]);
 	state->old_owner = qb_mbf32_decode(
 	    &state->opened_sector.record.bytes[YT_F85]);
+	ops->initialize(context);
 	if (!ops->read_player(context, state->current_player_record,
 	    &state->current, error))
 		return false;

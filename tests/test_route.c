@@ -432,6 +432,11 @@ test_addressed_route_arguments(void)
 	    && yt_route_process_double(&process, 0xfffcU) == 16777215.5
 	    && process.bytes[0xfffcU] == raw_double[0]
 	    && process.bytes[3] == raw_double[7]);
+	memset(returned_double, 0xa5, sizeof(returned_double));
+	yt_route_process_set_raw_double(&process, 0x2000U, returned_double);
+	yt_route_process_copy_raw_double(&process, 0xfffcU, 0x2000U);
+	yt_route_process_raw_double(&process, 0x2000U, returned_double);
+	CHECK(memcmp(raw_double, returned_double, sizeof(raw_double)) == 0);
 
 	yt_error_clear(&error);
 	CHECK(!yt_route_process_build_at(YT_ROUTE_WORKSPACE_ADDRESS,

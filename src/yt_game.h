@@ -3616,6 +3616,7 @@ typedef bool (*yt_hostile_surrender_prompt_fn)(void *context,
     enum yt_hostile_surrender_answer *answer, struct yt_error *error);
 typedef bool (*yt_hostile_surrender_news_fn)(void *context,
     const uint8_t *text, size_t length, struct yt_error *error);
+typedef void (*yt_hostile_surrender_mark_checked_fn)(void *context);
 
 struct yt_hostile_surrender_ops {
 	yt_hostile_surrender_read_fn read_player;
@@ -3624,6 +3625,7 @@ struct yt_hostile_surrender_ops {
 	yt_hostile_surrender_sound_fn sound;
 	yt_hostile_surrender_prompt_fn prompt;
 	yt_hostile_surrender_news_fn append_news;
+	yt_hostile_surrender_mark_checked_fn mark_checked;
 };
 
 bool yt_hostile_attack_surrender_run(
@@ -3798,6 +3800,7 @@ typedef bool (*yt_hostile_attack_combat_read_sector_fn)(void *context,
     int sector_number, struct yt_sector *sector, struct yt_error *error);
 typedef void (*yt_hostile_attack_combat_store_owner_fn)(void *context,
     const uint8_t raw[4]);
+typedef void (*yt_hostile_attack_combat_initialize_fn)(void *context);
 typedef bool (*yt_hostile_attack_combat_read_player_fn)(void *context,
     int player_record, struct yt_player *player, struct yt_error *error);
 typedef void (*yt_hostile_attack_combat_sound_selector_fn)(void *context,
@@ -3827,6 +3830,7 @@ typedef bool (*yt_hostile_attack_combat_tail_fn)(void *context,
 struct yt_hostile_attack_combat_ops {
 	yt_hostile_attack_combat_read_sector_fn read_sector;
 	yt_hostile_attack_combat_store_owner_fn store_owner;
+	yt_hostile_attack_combat_initialize_fn initialize;
 	yt_hostile_attack_combat_read_player_fn read_player;
 	yt_hostile_attack_combat_sound_selector_fn sound_selector;
 	yt_hostile_attack_combat_sound_fn sound;

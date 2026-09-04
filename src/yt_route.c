@@ -250,6 +250,18 @@ yt_route_process_raw_double(const struct yt_route_process *process,
 		raw[offset] = process->bytes[(uint16_t)(address + offset)];
 }
 
+void
+yt_route_process_copy_raw_double(struct yt_route_process *process,
+    uint16_t source, uint16_t destination)
+{
+	uint8_t raw[8];
+
+	if (process == NULL)
+		return;
+	yt_route_process_raw_double(process, source, raw);
+	yt_route_process_set_raw_double(process, destination, raw);
+}
+
 double
 yt_route_process_double(const struct yt_route_process *process,
     uint16_t address)

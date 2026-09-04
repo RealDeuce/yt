@@ -17911,6 +17911,7 @@ enum hostile_surrender_event {
 	HOSTILE_SURRENDER_WISH,
 	HOSTILE_SURRENDER_BLANK,
 	HOSTILE_SURRENDER_PROMPT,
+	HOSTILE_SURRENDER_STORE_LATCH,
 	HOSTILE_SURRENDER_JOINED,
 	HOSTILE_SURRENDER_STORE_JOINED,
 	HOSTILE_SURRENDER_SOUND_ONE,
@@ -17935,6 +17936,8 @@ struct hostile_surrender_tape {
 	size_t news_length;
 	uint8_t selector_raw[4][4];
 	size_t selector_store_count[4];
+	uint8_t latch_raw[4];
+	size_t latch_store_count;
 };
 
 static bool
@@ -18070,6 +18073,17 @@ hostile_surrender_news(void *context, const uint8_t *text, size_t length,
 	return true;
 }
 
+static void
+hostile_surrender_mark_checked(void *context)
+{
+	struct hostile_surrender_tape *tape = context;
+
+	(void)hostile_surrender_event(tape, HOSTILE_SURRENDER_STORE_LATCH,
+	    NULL);
+	(void)qb_mbf32_encode(1.0f, tape->latch_raw);
+	++tape->latch_store_count;
+}
+
 static const struct yt_hostile_surrender_ops hostile_surrender_ops = {
 	hostile_surrender_read,
 	hostile_surrender_present,
@@ -18077,6 +18091,7 @@ static const struct yt_hostile_surrender_ops hostile_surrender_ops = {
 	hostile_surrender_sound,
 	hostile_surrender_prompt,
 	hostile_surrender_news,
+	hostile_surrender_mark_checked,
 };
 
 static void
@@ -18118,6 +18133,7 @@ check_hostile_surrender_transaction(void)
 		HOSTILE_SURRENDER_WISH,
 		HOSTILE_SURRENDER_BLANK,
 		HOSTILE_SURRENDER_PROMPT,
+		HOSTILE_SURRENDER_STORE_LATCH,
 		HOSTILE_SURRENDER_JOINED,
 		HOSTILE_SURRENDER_STORE_JOINED,
 		HOSTILE_SURRENDER_SOUND_ONE,
@@ -18138,7 +18154,7 @@ check_hostile_surrender_transaction(void)
 	static const uint8_t mercenary[] =
 	    "We'll DIE before joining with a slyme like you Sysop!";
 	static const size_t failure_positions[] = {
-		0U, 1U, 3U, 4U, 5U, 6U, 7U, 8U, 10U, 11U, 12U,
+		0U, 1U, 3U, 4U, 5U, 6U, 7U, 9U, 11U, 12U, 13U,
 	};
 	static const uint8_t selector_four[4] = {0, 0, 0, 0x83U};
 	static const uint8_t selector_five[4] = {0, 0, 0x20U, 0x83U};
@@ -18161,6 +18177,8 @@ check_hostile_surrender_transaction(void)
 	    || memcmp(tape.events, accepted_events, sizeof(accepted_events)) != 0
 	    || tape.selector_store_count[YT_HOSTILE_SURRENDER_RADIO_SOUND] != 1U
 	    || tape.selector_store_count[YT_HOSTILE_SURRENDER_JOINED_SOUND] != 1U
+	    || tape.latch_store_count != 1U
+	    || memcmp(tape.latch_raw, selector_one, sizeof(selector_one)) != 0
 	    || memcmp(tape.selector_raw[YT_HOSTILE_SURRENDER_RADIO_SOUND],
 	    selector_four, sizeof(selector_four)) != 0
 	    || memcmp(tape.selector_raw[YT_HOSTILE_SURRENDER_JOINED_SOUND],
@@ -18196,12 +18214,12 @@ check_hostile_surrender_transaction(void)
 		    || memcmp(tape.events, accepted_events,
 		    (position + 1U) * sizeof(accepted_events[0])) != 0
 		    || state.complete
-		    || (position < 8U && (state.checked || state.accepted))
-		    || (position >= 8U && (!state.checked || !state.accepted))
+		    || (position < 9U && (state.checked || state.accepted))
+		    || (position >= 9U && (!state.checked || !state.accepted))
 		    || (position == 3U
 		    && memcmp(tape.selector_raw[YT_HOSTILE_SURRENDER_RADIO_SOUND],
 		    selector_four, sizeof(selector_four)) != 0)
-		    || (position == 10U
+		    || (position == 11U
 		    && memcmp(tape.selector_raw[YT_HOSTILE_SURRENDER_JOINED_SOUND],
 		    selector_one, sizeof(selector_one)) != 0))
 			return false;
@@ -18211,7 +18229,8 @@ check_hostile_surrender_transaction(void)
 	    YT_HOSTILE_SURRENDER_ANSWER_NO);
 	if (!yt_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
 	    &tape, NULL) || !state.checked || state.accepted || !state.complete
-	    || tape.calls != 8U || tape.news_length != 0U
+	    || tape.calls != 9U || tape.news_length != 0U
+	    || tape.latch_store_count != 1U
 	    || state.ship_fighters != 11.0
 	    || state.deployed_remaining != 10.0 || state.fighter_owner != 2.0f)
 		return false;
@@ -18220,10 +18239,11 @@ check_hostile_surrender_transaction(void)
 	    YT_HOSTILE_SURRENDER_ANSWER_YES);
 	if (!yt_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
 	    &tape, NULL) || state.owner_route != YT_HOSTILE_SURRENDER_XANNOR
-	    || state.accepted || tape.calls != 8U
+	    || state.accepted || tape.calls != 9U
 	    || tape.events[5] != HOSTILE_SURRENDER_XANNOR
 	    || tape.events[6] != HOSTILE_SURRENDER_STORE_XANNOR
 	    || tape.events[7] != HOSTILE_SURRENDER_SOUND_FIVE
+	    || tape.events[8] != HOSTILE_SURRENDER_STORE_LATCH
 	    || memcmp(tape.selector_raw[YT_HOSTILE_SURRENDER_XANNOR_SOUND],
 	    selector_five, sizeof(selector_five)) != 0
 	    || tape.row_lengths[YT_HOSTILE_SURRENDER_XANNOR_REFUSAL_ROW]
@@ -18236,10 +18256,11 @@ check_hostile_surrender_transaction(void)
 	    YT_HOSTILE_SURRENDER_ANSWER_YES);
 	if (!yt_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
 	    &tape, NULL) || state.owner_route != YT_HOSTILE_SURRENDER_MERCENARY
-	    || state.accepted || tape.calls != 8U
+	    || state.accepted || tape.calls != 9U
 	    || tape.events[5] != HOSTILE_SURRENDER_MERCENARY
 	    || tape.events[6] != HOSTILE_SURRENDER_STORE_MERCENARY
 	    || tape.events[7] != HOSTILE_SURRENDER_SOUND_FIVE
+	    || tape.events[8] != HOSTILE_SURRENDER_STORE_LATCH
 	    || memcmp(tape.selector_raw[YT_HOSTILE_SURRENDER_MERCENARY_SOUND],
 	    selector_five, sizeof(selector_five)) != 0
 	    || tape.row_lengths[YT_HOSTILE_SURRENDER_MERCENARY_REFUSAL_ROW]
@@ -18252,7 +18273,8 @@ check_hostile_surrender_transaction(void)
 	    YT_HOSTILE_SURRENDER_ANSWER_YES);
 	if (!yt_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
 	    &tape, NULL) || state.owner_route != YT_HOSTILE_SURRENDER_QUIET
-	    || state.accepted || !state.complete || tape.calls != 5U)
+	    || state.accepted || !state.complete || tape.calls != 6U
+	    || tape.events[5] != HOSTILE_SURRENDER_STORE_LATCH)
 		return false;
 
 	hostile_surrender_fixture(&tape, &state, 2.0f,
@@ -18846,6 +18868,8 @@ struct hostile_combat_tape {
 	uint8_t stored_owner_raw[4];
 	size_t stored_owner_count;
 	size_t stored_owner_at;
+	size_t initialize_count;
+	size_t initialize_at;
 };
 
 static bool
@@ -18898,6 +18922,15 @@ hostile_combat_store_owner(void *context, const uint8_t raw[4])
 	tape->stored_owner_at = tape->calls;
 	memcpy(tape->stored_owner_raw, raw, sizeof(tape->stored_owner_raw));
 	++tape->stored_owner_count;
+}
+
+static void
+hostile_combat_initialize(void *context)
+{
+	struct hostile_combat_tape *tape = context;
+
+	tape->initialize_at = tape->calls;
+	++tape->initialize_count;
 }
 
 static bool
@@ -19083,6 +19116,7 @@ hostile_combat_tail(void *context,
 static const struct yt_hostile_attack_combat_ops hostile_combat_ops = {
 	hostile_combat_read_sector,
 	hostile_combat_store_owner,
+	hostile_combat_initialize,
 	hostile_combat_read_player,
 	hostile_combat_sound_selector,
 	hostile_combat_sound,
@@ -19196,6 +19230,7 @@ check_hostile_attack_combat_transaction(void)
 	    || state.iterations != 3U || tape.draw_index != 3U
 	    || state.surrender_checked || state.surrendered
 	    || tape.stored_owner_count != 1U || tape.stored_owner_at != 1U
+	    || tape.initialize_count != 1U || tape.initialize_at != 1U
 	    || memcmp(tape.stored_owner_raw, owner_three,
 	    sizeof(owner_three)) != 0
 	    || tape.sound_selector_count != 1U || tape.sound_selector_at != 2U
@@ -19231,7 +19266,8 @@ check_hostile_attack_combat_transaction(void)
 		    || (failure == 2U
 		    && memcmp(tape.sound_selector_raw, selector_two,
 		    sizeof(selector_two)) != 0)
-		    || tape.stored_owner_count != (failure > 0U ? 1U : 0U))
+		    || tape.stored_owner_count != (failure > 0U ? 1U : 0U)
+		    || tape.initialize_count != (failure > 0U ? 1U : 0U))
 			return false;
 	}
 
@@ -19289,7 +19325,7 @@ check_hostile_attack_combat_transaction(void)
 	    || state.iterations != 0U || tape.draw_index != 0U
 	    || state.ship_fighters != 21.0 || state.deployed_remaining != 0.0
 	    || state.sector.fighter_owner != 0.0f
-	    || tape.surrender_tape.calls != 13U
+	    || tape.surrender_tape.calls != 14U
 	    || tape.persistence_tape.calls != 5U
 	    || tape.tail_tape.calls != 2U
 	    || tape.tail_tape.events[0] != HOSTILE_TAIL_RANDOM
