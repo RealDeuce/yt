@@ -17798,6 +17798,25 @@ done:
 	return valid;
 }
 
+struct date_serial_store_tape {
+	enum yt_date_serial_store_kind stores[8];
+	uint8_t raw[8][4];
+	size_t count;
+};
+
+static void
+date_serial_store(void *context, enum yt_date_serial_store_kind kind,
+    const uint8_t raw[4])
+{
+	struct date_serial_store_tape *tape = context;
+
+	if (tape->count >= YT_ARRAY_LEN(tape->stores))
+		return;
+	tape->stores[tape->count] = kind;
+	memcpy(tape->raw[tape->count], raw, 4U);
+	++tape->count;
+}
+
 static bool
 check_date_serial(void)
 {
@@ -17806,6 +17825,8 @@ check_date_serial(void)
 	static const int month_starts[] =
 	    {0, 1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335};
 	struct yt_error error;
+	struct date_serial_store_tape stores;
+	uint8_t epoch_raw[4];
 	int adjusted;
 	int serial;
 	int month;
@@ -17856,6 +17877,77 @@ check_date_serial(void)
 	yt_platform_set_clock_provider(score_clock_read, &script);
 	if (!yt_current_date_serial(27.5f, &serial, &adjusted, &error)
 	    || serial != 61 || adjusted != 28 || script.position != 1U) {
+		yt_platform_set_clock_provider(NULL, NULL);
+		return false;
+	}
+	yt_platform_set_clock_provider(NULL, NULL);
+
+	memset(&stores, 0, sizeof(stores));
+	date.year = 2030;
+	date.month = 1;
+	date.day = 1;
+	script.position = 0U;
+	script.values[0] = date;
+	if (qb_mbf32_encode(26.0f, epoch_raw) != QB_MBF_OK)
+		return false;
+	yt_platform_set_clock_provider(score_clock_read, &script);
+	if (!yt_current_date_serial_observed(epoch_raw, &serial, &adjusted,
+	    date_serial_store, &stores, &error)
+	    || serial != 366 || adjusted != 30 || stores.count != 4U
+	    || stores.stores[0] != YT_DATE_SERIAL_STORE_YEAR
+	    || stores.stores[1] != YT_DATE_SERIAL_STORE_MONTH
+	    || stores.stores[2] != YT_DATE_SERIAL_STORE_YEAR_TERMINAL
+	    || stores.stores[3] != YT_DATE_SERIAL_STORE_YEAR_COUNTER
+	    || qb_mbf32_decode(stores.raw[0]) != 30.0f
+	    || qb_mbf32_decode(stores.raw[1]) != 1.0f
+	    || qb_mbf32_decode(stores.raw[2]) != 29.0f
+	    || memcmp(stores.raw[3], epoch_raw, 4U) != 0) {
+		yt_platform_set_clock_provider(NULL, NULL);
+		return false;
+	}
+	yt_platform_set_clock_provider(NULL, NULL);
+
+	memset(&stores, 0, sizeof(stores));
+	date.year = 2100;
+	date.month = 3;
+	date.day = 1;
+	script.position = 0U;
+	script.values[0] = date;
+	if (qb_mbf32_encode(99.0f, epoch_raw) != QB_MBF_OK)
+		return false;
+	yt_platform_set_clock_provider(score_clock_read, &script);
+	if (!yt_current_date_serial_observed(epoch_raw, &serial, &adjusted,
+	    date_serial_store, &stores, &error)
+	    || serial != 426 || adjusted != 100 || stores.count != 5U
+	    || stores.stores[0] != YT_DATE_SERIAL_STORE_YEAR
+	    || stores.stores[1] != YT_DATE_SERIAL_STORE_MONTH
+	    || stores.stores[2] != YT_DATE_SERIAL_STORE_YEAR
+	    || stores.stores[3] != YT_DATE_SERIAL_STORE_YEAR_TERMINAL
+	    || stores.stores[4] != YT_DATE_SERIAL_STORE_YEAR_COUNTER
+	    || qb_mbf32_decode(stores.raw[0]) != 0.0f
+	    || qb_mbf32_decode(stores.raw[1]) != 3.0f
+	    || qb_mbf32_decode(stores.raw[2]) != 100.0f
+	    || qb_mbf32_decode(stores.raw[3]) != 99.0f
+	    || memcmp(stores.raw[4], epoch_raw, 4U) != 0) {
+		yt_platform_set_clock_provider(NULL, NULL);
+		return false;
+	}
+	yt_platform_set_clock_provider(NULL, NULL);
+
+	memset(&stores, 0, sizeof(stores));
+	date.year = 2026;
+	date.month = 7;
+	date.day = 22;
+	script.position = 0U;
+	script.values[0] = date;
+	if (qb_mbf32_encode(26.0f, epoch_raw) != QB_MBF_OK)
+		return false;
+	yt_platform_set_clock_provider(score_clock_read, &script);
+	if (!yt_current_date_serial_observed(epoch_raw, &serial, &adjusted,
+	    date_serial_store, &stores, &error)
+	    || serial != 203 || adjusted != 26 || stores.count != 2U
+	    || stores.stores[0] != YT_DATE_SERIAL_STORE_YEAR
+	    || stores.stores[1] != YT_DATE_SERIAL_STORE_MONTH) {
 		yt_platform_set_clock_provider(NULL, NULL);
 		return false;
 	}

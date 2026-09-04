@@ -150,21 +150,43 @@ yt_config_normalize_maintenance(struct yt_config *config)
 }
 
 static int
-date_serial_epoch(const struct yt_clock_value *date, float epoch,
-    int *adjusted_year)
+date_serial_epoch_observed(const struct yt_clock_value *date, float epoch,
+    const uint8_t epoch_raw[4], int *adjusted_year,
+    yt_date_serial_store_fn store, void *context)
 {
 	static const int days_before[] =
 	    {0, 0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
 	int year = date->year % 100;
 	int serial;
 	float prior;
+	uint8_t raw[4];
 
+#define DATE_STORE(kind, value) do { \
+	if (store != NULL && qb_mbf32_encode((float)(value), raw) != \
+	    QB_MBF_OVERFLOW) \
+		store(context, (kind), raw); \
+} while (0)
+
+	DATE_STORE(YT_DATE_SERIAL_STORE_YEAR, year);
+	DATE_STORE(YT_DATE_SERIAL_STORE_MONTH, date->month);
 	if ((float)year < epoch)
 		year += 100;
+	if (year != date->year % 100)
+		DATE_STORE(YT_DATE_SERIAL_STORE_YEAR, year);
 	serial = date->day + days_before[date->month];
 	if (year % 4 == 0 && date->month > 2)
 		++serial;
 	prior = (float)year - 1.0f;
+	if ((float)year != epoch) {
+		DATE_STORE(YT_DATE_SERIAL_STORE_YEAR_TERMINAL, prior);
+		if (store != NULL) {
+			if (epoch_raw != NULL)
+				store(context, YT_DATE_SERIAL_STORE_YEAR_COUNTER,
+				    epoch_raw);
+			else
+				DATE_STORE(YT_DATE_SERIAL_STORE_YEAR_COUNTER, epoch);
+		}
+	}
 	if ((float)year != epoch && prior >= epoch) {
 		float quarter = epoch * 0.25f;
 
@@ -174,7 +196,16 @@ date_serial_epoch(const struct yt_clock_value *date, float epoch,
 	}
 	if (adjusted_year != NULL)
 		*adjusted_year = year;
+#undef DATE_STORE
 	return serial;
+}
+
+static int
+date_serial_epoch(const struct yt_clock_value *date, float epoch,
+    int *adjusted_year)
+{
+	return date_serial_epoch_observed(date, epoch, NULL, adjusted_year,
+	    NULL, NULL);
 }
 
 int
@@ -193,6 +224,24 @@ yt_current_date_serial(float epoch, int *serial, int *adjusted_year,
 	if (!yt_platform_clock(&current, error))
 		return false;
 	*serial = date_serial_epoch(&current, epoch, adjusted_year);
+	return true;
+}
+
+bool
+yt_current_date_serial_observed(const uint8_t epoch_raw[4], int *serial,
+    int *adjusted_year, yt_date_serial_store_fn store, void *context,
+    struct yt_error *error)
+{
+	struct yt_clock_value current;
+	float epoch;
+
+	if (epoch_raw == NULL || serial == NULL)
+		return false;
+	if (!yt_platform_clock(&current, error))
+		return false;
+	epoch = qb_mbf32_decode(epoch_raw);
+	*serial = date_serial_epoch_observed(&current, epoch, epoch_raw,
+	    adjusted_year, store, context);
 	return true;
 }
 

@@ -40,7 +40,18 @@ void yt_config_normalize_maintenance(struct yt_config *config);
 
 int yt_date_serial(const struct yt_clock_value *date, int epoch_year,
     int *adjusted_year);
+enum yt_date_serial_store_kind {
+	YT_DATE_SERIAL_STORE_YEAR,
+	YT_DATE_SERIAL_STORE_MONTH,
+	YT_DATE_SERIAL_STORE_YEAR_TERMINAL,
+	YT_DATE_SERIAL_STORE_YEAR_COUNTER,
+};
+typedef void (*yt_date_serial_store_fn)(void *context,
+    enum yt_date_serial_store_kind kind, const uint8_t raw[4]);
 bool yt_current_date_serial(float epoch, int *serial, int *adjusted_year,
+    struct yt_error *error);
+bool yt_current_date_serial_observed(const uint8_t epoch_raw[4], int *serial,
+    int *adjusted_year, yt_date_serial_store_fn store, void *context,
     struct yt_error *error);
 void yt_format_date(const struct yt_clock_value *value, char dest[11]);
 void yt_format_time(const struct yt_clock_value *value, char dest[9]);

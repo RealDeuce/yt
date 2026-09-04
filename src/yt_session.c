@@ -148,6 +148,10 @@
 #define YT_SPY_DEAD_COUNTER_SCRATCH_ADDRESS 0x6018U
 #define YT_DATE_SERIAL_RESULT_ADDRESS 0x188CU
 #define YT_STARTUP_DATE_SERIAL_ADDRESS 0x4CCAU
+#define YT_DATE_SERIAL_YEAR_ADDRESS 0x538AU
+#define YT_DATE_SERIAL_MONTH_ADDRESS 0x538EU
+#define YT_DATE_SERIAL_YEAR_TERMINAL_ADDRESS 0x5392U
+#define YT_DATE_SERIAL_YEAR_COUNTER_ADDRESS 0x5396U
 #define YT_STARTUP_INITIAL_FIVE_ADDRESS 0x4BFAU
 #define YT_CURRENT_PLAYER_RECORD_ADDRESS 0x1C3CU
 #define YT_SHARED_TARGET_RECORD_ADDRESS 0x1A40U
@@ -348,6 +352,39 @@ session_store_current_player_record(void *context, const uint8_t raw[4])
 
 	yt_route_process_set_raw_single(&session->route_process,
 	    YT_CURRENT_PLAYER_RECORD_ADDRESS, raw);
+}
+
+static void
+session_date_serial_store(void *context, enum yt_date_serial_store_kind kind,
+    const uint8_t raw[4])
+{
+	static const uint16_t addresses[] = {
+		[YT_DATE_SERIAL_STORE_YEAR] = YT_DATE_SERIAL_YEAR_ADDRESS,
+		[YT_DATE_SERIAL_STORE_MONTH] = YT_DATE_SERIAL_MONTH_ADDRESS,
+		[YT_DATE_SERIAL_STORE_YEAR_TERMINAL] =
+		    YT_DATE_SERIAL_YEAR_TERMINAL_ADDRESS,
+		[YT_DATE_SERIAL_STORE_YEAR_COUNTER] =
+		    YT_DATE_SERIAL_YEAR_COUNTER_ADDRESS,
+	};
+	struct yt_session *session = context;
+
+	if (session == NULL || raw == NULL
+	    || (size_t)kind >= YT_ARRAY_LEN(addresses))
+		return;
+	yt_route_process_set_raw_single(&session->route_process,
+	    addresses[kind], raw);
+}
+
+static bool
+session_current_date_serial(struct yt_session *session, int *serial,
+    int *adjusted_year, struct yt_error *error)
+{
+	uint8_t epoch_raw[4];
+
+	yt_route_process_raw_single(&session->route_process,
+	    YT_EPOCH_YEAR_ADDRESS, epoch_raw);
+	return yt_current_date_serial_observed(epoch_raw, serial, adjusted_year,
+	    session_date_serial_store, session, error);
 }
 
 static int
@@ -3261,10 +3298,8 @@ startup_pre_admission(struct yt_session *session, struct yt_error *error)
 	if (!session_0317(session, (const uint8_t *)"Initializing...",
 	    strlen("Initializing..."), "startup initializing row", error))
 		return false;
-	if (!yt_current_date_serial(
-	    yt_route_process_single(&session->route_process,
-	    YT_EPOCH_YEAR_ADDRESS),
-	    &today, &adjusted_year, error))
+	if (!session_current_date_serial(session, &today, &adjusted_year,
+	    error))
 		return false;
 	session_set_process_single(session, YT_DATE_SERIAL_RESULT_ADDRESS,
 	    (float)today);
@@ -4053,9 +4088,8 @@ port_update_observe_day(void *context, float *current_day,
 	int today;
 	int adjusted_year;
 
-	if (!yt_current_date_serial(yt_route_process_single(
-	    &session->route_process, YT_EPOCH_YEAR_ADDRESS),
-	    &today, &adjusted_year, error))
+	if (!session_current_date_serial(session, &today, &adjusted_year,
+	    error))
 		return false;
 	session->door->game.today = today;
 	session->door->game.adjusted_year = adjusted_year;
@@ -4174,9 +4208,8 @@ planet_updater_date(void *context, uint8_t current_day_raw[4],
 	int today;
 	int adjusted_year;
 
-	if (!yt_current_date_serial(yt_route_process_single(
-	    &session->route_process, YT_EPOCH_YEAR_ADDRESS),
-	    &today, &adjusted_year, error))
+	if (!session_current_date_serial(session, &today, &adjusted_year,
+	    error))
 		return false;
 	session->door->game.today = today;
 	session->door->game.adjusted_year = adjusted_year;
@@ -11976,9 +12009,8 @@ create_planet(struct yt_session *session, struct yt_error *error)
 	(void)yt_record_set_number(&sector.record, YT_F93, selected_logical);
 	if (!yt_database_write(&session->door->game.database,
 	    (size_t)sector_physical, &sector.record, error)
-	    || !yt_current_date_serial(yt_route_process_single(
-	    &session->route_process, YT_EPOCH_YEAR_ADDRESS),
-	    &today, &adjusted_year, error))
+	    || !session_current_date_serial(session, &today, &adjusted_year,
+	    error))
 		return false;
 	session->door->game.today = today;
 	session->door->game.adjusted_year = adjusted_year;
@@ -17906,9 +17938,8 @@ profit_project_port_market(struct yt_session *session,
 	int today;
 	int adjusted_year;
 
-	if (!yt_current_date_serial(yt_route_process_single(
-	    &session->route_process, YT_EPOCH_YEAR_ADDRESS),
-	    &today, &adjusted_year, error))
+	if (!session_current_date_serial(session, &today, &adjusted_year,
+	    error))
 		return false;
 	session->door->game.today = today;
 	session->door->game.adjusted_year = adjusted_year;
@@ -18168,9 +18199,7 @@ computer_nearest_ports(struct yt_session *session, struct yt_error *error)
 			}
 			if (sector.port == 0.0f)
 				continue;
-			if (!yt_current_date_serial(
-			    yt_route_process_single(&session->route_process,
-			    YT_EPOCH_YEAR_ADDRESS), &today,
+			if (!session_current_date_serial(session, &today,
 			    &adjusted_year, error))
 				goto failure;
 			session->door->game.today = today;
