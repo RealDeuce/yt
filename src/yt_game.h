@@ -3790,6 +3790,8 @@ typedef bool (*yt_hostile_attack_combat_read_sector_fn)(void *context,
     int sector_number, struct yt_sector *sector, struct yt_error *error);
 typedef bool (*yt_hostile_attack_combat_read_player_fn)(void *context,
     int player_record, struct yt_player *player, struct yt_error *error);
+typedef void (*yt_hostile_attack_combat_sound_selector_fn)(void *context,
+    float selector);
 typedef bool (*yt_hostile_attack_combat_sound_fn)(void *context,
     float selector, struct yt_error *error);
 typedef bool (*yt_hostile_attack_combat_random_fn)(void *context,
@@ -3815,6 +3817,7 @@ typedef bool (*yt_hostile_attack_combat_tail_fn)(void *context,
 struct yt_hostile_attack_combat_ops {
 	yt_hostile_attack_combat_read_sector_fn read_sector;
 	yt_hostile_attack_combat_read_player_fn read_player;
+	yt_hostile_attack_combat_sound_selector_fn sound_selector;
 	yt_hostile_attack_combat_sound_fn sound;
 	yt_hostile_attack_combat_random_fn random;
 	yt_hostile_attack_combat_surrender_fn surrender;
@@ -3851,6 +3854,8 @@ struct yt_hostile_bribe_accept_state {
 
 typedef bool (*yt_hostile_bribe_accept_present_fn)(void *context,
     const uint8_t *text, size_t length, struct yt_error *error);
+typedef void (*yt_hostile_bribe_accept_sound_selector_fn)(void *context,
+    float selector);
 typedef bool (*yt_hostile_bribe_accept_sound_fn)(void *context,
     float selector, struct yt_error *error);
 typedef bool (*yt_hostile_bribe_accept_read_sector_fn)(void *context,
@@ -3866,6 +3871,7 @@ typedef bool (*yt_hostile_bribe_accept_write_player_fn)(void *context,
 
 struct yt_hostile_bribe_accept_ops {
 	yt_hostile_bribe_accept_present_fn present;
+	yt_hostile_bribe_accept_sound_selector_fn sound_selector;
 	yt_hostile_bribe_accept_sound_fn sound;
 	yt_hostile_bribe_accept_read_sector_fn read_sector;
 	yt_hostile_bribe_accept_write_sector_fn write_sector;

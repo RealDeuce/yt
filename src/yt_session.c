@@ -78,6 +78,8 @@
 #define YT_HOSTILE_SURRENDER_XANNOR_SELECTOR_ADDRESS 0x4D3EU
 #define YT_HOSTILE_SURRENDER_MERCENARY_SELECTOR_ADDRESS 0x4D42U
 #define YT_HOSTILE_SURRENDER_JOINED_SELECTOR_ADDRESS 0x4D46U
+#define YT_HOSTILE_ATTACK_SOUND_SELECTOR_ADDRESS 0x4D2EU
+#define YT_HOSTILE_BRIBE_SOUND_SELECTOR_ADDRESS 0x4D7AU
 #define YT_SESSION_DEADLINE_ADDRESS 0x4BB4U
 #define YT_SESSION_MODE_ADDRESS 0x19C8U
 #define YT_ANSI_ADDRESS 0x19A8U
@@ -6830,13 +6832,25 @@ hostile_attack_combat_read_player(void *context, int player_record,
 	return true;
 }
 
+static void
+hostile_attack_combat_sound_selector(void *context, float selector)
+{
+	struct hostile_attack_combat_context *combat = context;
+
+	session_set_process_single(combat->session,
+	    YT_HOSTILE_ATTACK_SOUND_SELECTOR_ADDRESS, selector);
+}
+
 static bool
 hostile_attack_combat_sound(void *context, float selector,
     struct yt_error *error)
 {
 	struct hostile_attack_combat_context *combat = context;
 
-	return session_sound(combat->session, selector,
+	(void)selector;
+	return session_sound(combat->session, yt_route_process_single(
+	    &combat->session->route_process,
+	    YT_HOSTILE_ATTACK_SOUND_SELECTOR_ADDRESS),
 	    "deployed attack opening sound", error);
 }
 
@@ -6995,6 +7009,7 @@ attack_deployed_committed(struct yt_session *session,
 	static const struct yt_hostile_attack_combat_ops ops = {
 		hostile_attack_combat_read_sector,
 		hostile_attack_combat_read_player,
+		hostile_attack_combat_sound_selector,
 		hostile_attack_combat_sound,
 		hostile_attack_combat_random,
 		hostile_attack_combat_surrender,
@@ -7123,11 +7138,23 @@ hostile_bribe_accept_present(void *context, const uint8_t *text,
 	    "accepted Mercenary Bribe", error);
 }
 
+static void
+hostile_bribe_accept_sound_selector(void *context, float selector)
+{
+	session_set_process_single(context, YT_HOSTILE_BRIBE_SOUND_SELECTOR_ADDRESS,
+	    selector);
+}
+
 static bool
 hostile_bribe_accept_sound(void *context, float selector,
     struct yt_error *error)
 {
-	return session_sound(context, selector, "accepted bribe sound", error);
+	struct yt_session *session = context;
+
+	(void)selector;
+	return session_sound(session, yt_route_process_single(
+	    &session->route_process, YT_HOSTILE_BRIBE_SOUND_SELECTOR_ADDRESS),
+	    "accepted bribe sound", error);
 }
 
 static bool
@@ -7233,6 +7260,7 @@ hostile_bribe_accept(void *context,
 {
 	static const struct yt_hostile_bribe_accept_ops ops = {
 		hostile_bribe_accept_present,
+		hostile_bribe_accept_sound_selector,
 		hostile_bribe_accept_sound,
 		hostile_bribe_accept_read_sector,
 		hostile_bribe_accept_write_sector,

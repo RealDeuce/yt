@@ -18774,6 +18774,9 @@ struct hostile_combat_tape {
 	struct yt_hostile_attack_tail_state tail_input;
 	uint8_t rows[5][192];
 	size_t row_lengths[5];
+	uint8_t sound_selector_raw[4];
+	size_t sound_selector_count;
+	size_t sound_selector_at;
 };
 
 static bool
@@ -18829,6 +18832,16 @@ hostile_combat_read_player(void *context, int player_record,
 		return false;
 	*player = tape->player;
 	return true;
+}
+
+static void
+hostile_combat_sound_selector(void *context, float selector)
+{
+	struct hostile_combat_tape *tape = context;
+
+	tape->sound_selector_at = tape->calls;
+	(void)qb_mbf32_encode(selector, tape->sound_selector_raw);
+	++tape->sound_selector_count;
 }
 
 static bool
@@ -18989,6 +19002,7 @@ hostile_combat_tail(void *context,
 static const struct yt_hostile_attack_combat_ops hostile_combat_ops = {
 	hostile_combat_read_sector,
 	hostile_combat_read_player,
+	hostile_combat_sound_selector,
 	hostile_combat_sound,
 	hostile_combat_random,
 	hostile_combat_surrender,
@@ -19080,6 +19094,7 @@ check_hostile_attack_combat_transaction(void)
 	static const uint8_t lost_one[] = " You lost 1 fighter(s)";
 	static const uint8_t destroyed_two[] =
 	    " You destroyed 2 enemy fighters.";
+	static const uint8_t selector_two[4] = {0, 0, 0, 0x82U};
 	struct hostile_combat_tape tape;
 	struct yt_hostile_attack_combat_state state;
 	struct yt_record joined_player;
@@ -19095,6 +19110,9 @@ check_hostile_attack_combat_transaction(void)
 	    || state.ship_fighters != 5.5 || state.deployed_remaining != 0.0
 	    || state.iterations != 3U || tape.draw_index != 3U
 	    || state.surrender_checked || state.surrendered
+	    || tape.sound_selector_count != 1U || tape.sound_selector_at != 2U
+	    || memcmp(tape.sound_selector_raw, selector_two,
+	    sizeof(selector_two)) != 0
 	    || tape.calls != YT_ARRAY_LEN(ordinary_events)
 	    || memcmp(tape.events, ordinary_events, sizeof(ordinary_events)) != 0
 	    || tape.row_lengths[YT_HOSTILE_ATTACK_COMBAT_LOSS_ROW]
@@ -19120,7 +19138,10 @@ check_hostile_attack_combat_transaction(void)
 		    &tape, &error) || error.status != YT_IO_ERROR
 		    || state.complete || tape.calls != failure + 1U
 		    || memcmp(tape.events, ordinary_events,
-		    (failure + 1U) * sizeof(ordinary_events[0])) != 0)
+		    (failure + 1U) * sizeof(ordinary_events[0])) != 0
+		    || (failure == 2U
+		    && memcmp(tape.sound_selector_raw, selector_two,
+		    sizeof(selector_two)) != 0))
 			return false;
 	}
 
@@ -19266,6 +19287,9 @@ struct hostile_bribe_accept_tape {
 	size_t fail_at;
 	uint8_t deal[64];
 	size_t deal_length;
+	uint8_t sound_selector_raw[4];
+	size_t sound_selector_count;
+	size_t sound_selector_at;
 };
 
 static bool
@@ -19298,6 +19322,16 @@ hostile_bribe_accept_present(void *context, const uint8_t *text,
 	memcpy(tape->deal, text, length);
 	tape->deal_length = length;
 	return true;
+}
+
+static void
+hostile_bribe_accept_sound_selector(void *context, float selector)
+{
+	struct hostile_bribe_accept_tape *tape = context;
+
+	tape->sound_selector_at = tape->calls;
+	(void)qb_mbf32_encode(selector, tape->sound_selector_raw);
+	++tape->sound_selector_count;
 }
 
 static bool
@@ -19362,6 +19396,7 @@ hostile_bribe_accept_write_player(void *context, int player_record,
 
 static const struct yt_hostile_bribe_accept_ops hostile_bribe_accept_ops = {
 	hostile_bribe_accept_present,
+	hostile_bribe_accept_sound_selector,
 	hostile_bribe_accept_sound,
 	hostile_bribe_accept_read_sector,
 	hostile_bribe_accept_write_sector,
@@ -19404,6 +19439,7 @@ check_hostile_bribe_accept_transaction(void)
 	};
 	static const uint8_t expected_deal[] =
 	    "Good Deal! We join up with you!";
+	static const uint8_t selector_one[4] = {0, 0, 0, 0x81U};
 	struct hostile_bribe_accept_tape tape;
 	struct yt_hostile_bribe_accept_state state;
 	struct yt_record expected_sector;
@@ -19426,6 +19462,9 @@ check_hostile_bribe_accept_transaction(void)
 	    || state.persisted_credits != 70.25f
 	    || tape.calls != YT_ARRAY_LEN(expected_events)
 	    || memcmp(tape.events, expected_events, sizeof(expected_events)) != 0
+	    || tape.sound_selector_count != 1U || tape.sound_selector_at != 1U
+	    || memcmp(tape.sound_selector_raw, selector_one,
+	    sizeof(selector_one)) != 0
 	    || tape.deal_length != sizeof(expected_deal) - 1U
 	    || memcmp(tape.deal, expected_deal, sizeof(expected_deal) - 1U) != 0
 	    || memcmp(tape.written_sector.record.bytes, expected_sector.bytes,
@@ -19443,7 +19482,10 @@ check_hostile_bribe_accept_transaction(void)
 		    || error.status != YT_IO_ERROR || state.complete
 		    || tape.calls != failure + 1U
 		    || memcmp(tape.events, expected_events,
-		    (failure + 1U) * sizeof(expected_events[0])) != 0)
+		    (failure + 1U) * sizeof(expected_events[0])) != 0
+		    || (failure == 1U
+		    && memcmp(tape.sound_selector_raw, selector_one,
+		    sizeof(selector_one)) != 0))
 			return false;
 	}
 
