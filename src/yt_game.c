@@ -2687,7 +2687,21 @@ yt_current_player_hydrate_run(
 {
 	struct yt_player fresh;
 	volatile float current_sector;
+	uint8_t current_sector_raw[8] = {0};
+	uint8_t promoted[8];
 	int record;
+
+#define HYDRATE_SINGLE(kind, offset) do { \
+	if (state->store != NULL) \
+		state->store(context, (kind), fresh.record.bytes + (offset)); \
+} while (0)
+#define HYDRATE_DOUBLE(kind, offset) do { \
+	if (state->store != NULL) { \
+		memset(promoted, 0, 4U); \
+		memcpy(promoted + 4U, fresh.record.bytes + (offset), 4U); \
+		state->store(context, (kind), promoted); \
+	} \
+} while (0)
 
 	if (state == NULL || state->player == NULL || read_player == NULL
 	    || state->current_sector_record == NULL)
@@ -2707,31 +2721,62 @@ yt_current_player_hydrate_run(
 
 	state->player->record = fresh.record;
 	state->player->sector = fresh.sector;
+	HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_SECTOR, YT_F57);
 	state->player->fighters = fresh.fighters;
+	HYDRATE_DOUBLE(YT_CURRENT_PLAYER_STORE_FIGHTERS, YT_F61);
 	current_sector = state->sector_record_offset + fresh.sector;
 	*state->current_sector_record = current_sector;
+	if (state->store != NULL
+	    && qb_mbf32_encode(current_sector, current_sector_raw) !=
+	    QB_MBF_OVERFLOW)
+		state->store(context, YT_CURRENT_PLAYER_STORE_CURRENT_SECTOR_RECORD,
+		    current_sector_raw);
 	state->player->turns = fresh.turns;
+	HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_TURNS, YT_F49);
 	state->player->credits = fresh.credits;
+	HYDRATE_DOUBLE(YT_CURRENT_PLAYER_STORE_CREDITS, YT_F81);
 	state->player->danger_scanner = fresh.danger_scanner;
+	HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_DANGER_SCANNER, YT_F93);
 	state->player->missiles = fresh.missiles;
+	HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_MISSILES, YT_F97);
 	state->player->mines = fresh.mines;
+	HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_MINES, YT_F129);
 	state->player->team = fresh.team;
+	HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_TEAM, YT_F89);
 	state->player->holds = fresh.holds;
+	HYDRATE_DOUBLE(YT_CURRENT_PLAYER_STORE_HOLDS, YT_F65);
 	state->player->ore = fresh.ore;
+	HYDRATE_DOUBLE(YT_CURRENT_PLAYER_STORE_ORE, YT_F69);
 	state->player->organics = fresh.organics;
+	HYDRATE_DOUBLE(YT_CURRENT_PLAYER_STORE_ORGANICS, YT_F73);
 	state->player->equipment = fresh.equipment;
+	HYDRATE_DOUBLE(YT_CURRENT_PLAYER_STORE_EQUIPMENT, YT_F77);
+	HYDRATE_DOUBLE(YT_CURRENT_PLAYER_STORE_FIGHTERS_DOUBLE, YT_F61);
+	HYDRATE_DOUBLE(YT_CURRENT_PLAYER_STORE_MISSILES_DOUBLE, YT_F97);
+	HYDRATE_DOUBLE(YT_CURRENT_PLAYER_STORE_MINES_DOUBLE, YT_F129);
+	HYDRATE_DOUBLE(YT_CURRENT_PLAYER_STORE_CREDITS_DOUBLE, YT_F81);
 	state->player->plasma = fresh.plasma;
+	HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_PLASMA, YT_F113);
 	state->player->score = fresh.score;
+	HYDRATE_DOUBLE(YT_CURRENT_PLAYER_STORE_SCORE_DOUBLE, YT_F109);
 	state->player->ports_owned = fresh.ports_owned;
+	HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_PORTS_OWNED, YT_F117);
 	state->player->ground_forces = fresh.ground_forces;
+	HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_GROUND_FORCES, YT_F121);
 	state->player->cloak = fresh.cloak;
+	HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_CLOAK, YT_F125);
 	if (record >= 0 && (size_t)record < state->cache_count) {
-		if (state->sector_cache != NULL)
-			state->sector_cache[record] = fresh.sector;
-		if (!state->anti_cloak && state->cloak_cache != NULL)
-			state->cloak_cache[record] = fresh.cloak;
+		if (!state->anti_cloak) {
+			if (state->cloak_cache != NULL)
+				state->cloak_cache[record] = fresh.cloak;
+			HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_CLOAK_INDEX, YT_F125);
+		}
 	}
 	state->player->shields = fresh.shields;
+	HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_SHIELDS, YT_F53);
+
+#undef HYDRATE_DOUBLE
+#undef HYDRATE_SINGLE
 	return true;
 }
 

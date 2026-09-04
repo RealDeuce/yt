@@ -32,6 +32,8 @@
 #define YT_DISRUPTION_SECTOR_ADDRESS 0x1878U
 #define YT_BLINK_ADDRESS 0x1880U
 #define YT_PLAYER_CACHE_GUARD_ADDRESS 0x1A74U
+#define YT_CLOAK_CACHE_BASE_ADDRESS 0x1A70U
+#define YT_CLOAK_CACHE_INDEX_BIAS 52
 #define YT_PLAYER_CACHE_TERMINAL_ADDRESS 0x5DFEU
 #define YT_PLAYER_CACHE_COUNTER_ADDRESS 0x5E02U
 #define YT_DESTROYED_ADDRESS 0x18B4U
@@ -39,7 +41,29 @@
 #define YT_REGISTERED_FLAG_ADDRESS 0x1C60U
 #define YT_GENESIS_REQUIRED_PORTS_ADDRESS 0x1C48U
 #define YT_PLANET_RECORD_SCRATCH_ADDRESS 0x19C4U
+#define YT_CURRENT_SECTOR_ADDRESS 0x1C44U
 #define YT_CURRENT_SECTOR_RECORD_ADDRESS 0x4B50U
+#define YT_CURRENT_PLAYER_TURNS_ADDRESS 0x4BA4U
+#define YT_CURRENT_PLAYER_SCORE_ADDRESS 0x4B64U
+#define YT_CURRENT_PLAYER_HOLDS_ADDRESS 0x4C46U
+#define YT_CURRENT_PLAYER_ORE_ADDRESS 0x4C4EU
+#define YT_CURRENT_PLAYER_ORGANICS_ADDRESS 0x4C56U
+#define YT_CURRENT_PLAYER_EQUIPMENT_ADDRESS 0x4C5EU
+#define YT_CURRENT_PLAYER_FIGHTERS_DOUBLE_ADDRESS 0x4C66U
+#define YT_CURRENT_PLAYER_MISSILES_DOUBLE_ADDRESS 0x4C6EU
+#define YT_CURRENT_PLAYER_MINES_DOUBLE_ADDRESS 0x4C76U
+#define YT_CURRENT_PLAYER_CREDITS_DOUBLE_ADDRESS 0x4C7EU
+#define YT_CURRENT_PLAYER_TEAM_ADDRESS 0x4D0EU
+#define YT_CURRENT_PLAYER_FIGHTERS_ADDRESS 0x4D12U
+#define YT_CURRENT_PLAYER_CLOAK_ADDRESS 0x4D4EU
+#define YT_CURRENT_PLAYER_SHIELDS_ADDRESS 0x4D52U
+#define YT_CURRENT_PLAYER_CREDITS_ADDRESS 0x4D72U
+#define YT_CURRENT_PLAYER_SCANNER_ADDRESS 0x4E0AU
+#define YT_CURRENT_PLAYER_MISSILES_ADDRESS 0x4E2AU
+#define YT_CURRENT_PLAYER_PLASMA_ADDRESS 0x4E2EU
+#define YT_CURRENT_PLAYER_PORTS_ADDRESS 0x4E5EU
+#define YT_CURRENT_PLAYER_GROUND_ADDRESS 0x4E8AU
+#define YT_CURRENT_PLAYER_MINES_ADDRESS 0x4F32U
 #define YT_TURNS_PER_DAY_ADDRESS 0x4BD0U
 #define YT_LOTTERY_PLAYS_ADDRESS 0x4BB8U
 #define YT_MAXIMUM_PLANETS_ADDRESS 0x4BA8U
@@ -955,21 +979,106 @@ session_hydration_read_player(void *context, int player_record,
 	    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_GET, error);
 }
 
+static void
+session_hydration_store(void *context,
+    enum yt_current_player_store_kind kind, const uint8_t raw[8])
+{
+	static const uint16_t addresses[] = {
+		[YT_CURRENT_PLAYER_STORE_SECTOR] = YT_CURRENT_SECTOR_ADDRESS,
+		[YT_CURRENT_PLAYER_STORE_FIGHTERS] =
+		    YT_CURRENT_PLAYER_FIGHTERS_ADDRESS,
+		[YT_CURRENT_PLAYER_STORE_CURRENT_SECTOR_RECORD] =
+		    YT_CURRENT_SECTOR_RECORD_ADDRESS,
+		[YT_CURRENT_PLAYER_STORE_TURNS] =
+		    YT_CURRENT_PLAYER_TURNS_ADDRESS,
+		[YT_CURRENT_PLAYER_STORE_CREDITS] =
+		    YT_CURRENT_PLAYER_CREDITS_ADDRESS,
+		[YT_CURRENT_PLAYER_STORE_DANGER_SCANNER] =
+		    YT_CURRENT_PLAYER_SCANNER_ADDRESS,
+		[YT_CURRENT_PLAYER_STORE_MISSILES] =
+		    YT_CURRENT_PLAYER_MISSILES_ADDRESS,
+		[YT_CURRENT_PLAYER_STORE_MINES] =
+		    YT_CURRENT_PLAYER_MINES_ADDRESS,
+		[YT_CURRENT_PLAYER_STORE_TEAM] =
+		    YT_CURRENT_PLAYER_TEAM_ADDRESS,
+		[YT_CURRENT_PLAYER_STORE_HOLDS] =
+		    YT_CURRENT_PLAYER_HOLDS_ADDRESS,
+		[YT_CURRENT_PLAYER_STORE_ORE] = YT_CURRENT_PLAYER_ORE_ADDRESS,
+		[YT_CURRENT_PLAYER_STORE_ORGANICS] =
+		    YT_CURRENT_PLAYER_ORGANICS_ADDRESS,
+		[YT_CURRENT_PLAYER_STORE_EQUIPMENT] =
+		    YT_CURRENT_PLAYER_EQUIPMENT_ADDRESS,
+		[YT_CURRENT_PLAYER_STORE_FIGHTERS_DOUBLE] =
+		    YT_CURRENT_PLAYER_FIGHTERS_DOUBLE_ADDRESS,
+		[YT_CURRENT_PLAYER_STORE_MISSILES_DOUBLE] =
+		    YT_CURRENT_PLAYER_MISSILES_DOUBLE_ADDRESS,
+		[YT_CURRENT_PLAYER_STORE_MINES_DOUBLE] =
+		    YT_CURRENT_PLAYER_MINES_DOUBLE_ADDRESS,
+		[YT_CURRENT_PLAYER_STORE_CREDITS_DOUBLE] =
+		    YT_CURRENT_PLAYER_CREDITS_DOUBLE_ADDRESS,
+		[YT_CURRENT_PLAYER_STORE_PLASMA] =
+		    YT_CURRENT_PLAYER_PLASMA_ADDRESS,
+		[YT_CURRENT_PLAYER_STORE_SCORE_DOUBLE] =
+		    YT_CURRENT_PLAYER_SCORE_ADDRESS,
+		[YT_CURRENT_PLAYER_STORE_PORTS_OWNED] =
+		    YT_CURRENT_PLAYER_PORTS_ADDRESS,
+		[YT_CURRENT_PLAYER_STORE_GROUND_FORCES] =
+		    YT_CURRENT_PLAYER_GROUND_ADDRESS,
+		[YT_CURRENT_PLAYER_STORE_CLOAK] =
+		    YT_CURRENT_PLAYER_CLOAK_ADDRESS,
+		[YT_CURRENT_PLAYER_STORE_CLOAK_INDEX] = 0U,
+		[YT_CURRENT_PLAYER_STORE_SHIELDS] =
+		    YT_CURRENT_PLAYER_SHIELDS_ADDRESS,
+	};
+	struct yt_session *session = context;
+	bool is_double;
+
+	if (session == NULL || raw == NULL
+	    || (size_t)kind >= YT_ARRAY_LEN(addresses))
+		return;
+	if (kind == YT_CURRENT_PLAYER_STORE_CLOAK_INDEX) {
+		uint16_t address = (uint16_t)(YT_CLOAK_CACHE_BASE_ADDRESS
+		    + 4U * (uint16_t)(session_record(session)
+		    + YT_CLOAK_CACHE_INDEX_BIAS));
+
+		yt_route_process_set_raw_single(&session->route_process, address,
+		    raw);
+		return;
+	}
+	is_double = kind == YT_CURRENT_PLAYER_STORE_FIGHTERS
+	    || kind == YT_CURRENT_PLAYER_STORE_CREDITS
+	    || kind == YT_CURRENT_PLAYER_STORE_HOLDS
+	    || kind == YT_CURRENT_PLAYER_STORE_ORE
+	    || kind == YT_CURRENT_PLAYER_STORE_ORGANICS
+	    || kind == YT_CURRENT_PLAYER_STORE_EQUIPMENT
+	    || kind == YT_CURRENT_PLAYER_STORE_FIGHTERS_DOUBLE
+	    || kind == YT_CURRENT_PLAYER_STORE_MISSILES_DOUBLE
+	    || kind == YT_CURRENT_PLAYER_STORE_MINES_DOUBLE
+	    || kind == YT_CURRENT_PLAYER_STORE_CREDITS_DOUBLE
+	    || kind == YT_CURRENT_PLAYER_STORE_SCORE_DOUBLE;
+	if (is_double)
+		yt_route_process_set_raw_double(&session->route_process,
+		    addresses[kind], raw);
+	else
+		yt_route_process_set_raw_single(&session->route_process,
+		    addresses[kind], raw);
+}
+
 static bool
 reload_player(struct yt_session *session, struct yt_error *error)
 {
 	float current_sector_record = yt_route_process_single(
 	    &session->route_process, YT_CURRENT_SECTOR_RECORD_ADDRESS);
 	struct yt_current_player_hydration_state state = {
-		&session->player,
-		session_record(session),
-		(int)session_sector_offset(session),
-		session_sector_offset(session),
-		&current_sector_record,
-		session->sector_cache,
-		session->cloak_cache,
-		YT_ARRAY_LEN(session->sector_cache),
-		session_anti_cloak_enabled(session),
+		.player = &session->player,
+		.player_record = session_record(session),
+		.last_player_record = YT_PLAYER_LAST,
+		.sector_record_offset = session_sector_offset(session),
+		.current_sector_record = &current_sector_record,
+		.cloak_cache = session->cloak_cache,
+		.cache_count = YT_ARRAY_LEN(session->sector_cache),
+		.anti_cloak = session_anti_cloak_enabled(session),
+		.store = session_hydration_store,
 	};
 
 	if (!yt_current_player_hydrate_run(&state,
@@ -1005,15 +1114,14 @@ mutate_player_credits_observed(struct yt_session *session, float argument,
 	memset(&state, 0, sizeof(state));
 	state.hydration.player = &session->player;
 	state.hydration.player_record = session_record(session);
-	state.hydration.last_player_record =
-	    (int)session_sector_offset(session);
+	state.hydration.last_player_record = YT_PLAYER_LAST;
 	state.hydration.sector_record_offset =
 	    session_sector_offset(session);
 	state.hydration.current_sector_record = &current_sector_record;
-	state.hydration.sector_cache = session->sector_cache;
 	state.hydration.cloak_cache = session->cloak_cache;
 	state.hydration.cache_count = YT_ARRAY_LEN(session->sector_cache);
 	state.hydration.anti_cloak = session_anti_cloak_enabled(session);
+	state.hydration.store = session_hydration_store;
 	state.argument = argument;
 	result = yt_credit_mutation_run(&state, &ops, session, error);
 	if (state.hydrated)
@@ -6905,6 +7013,13 @@ hostile_attack_combat_read_player(void *context, int player_record,
 	    combat->cached_player_name);
 	(void)snprintf(player->name, sizeof(player->name), "%s",
 	    combat->cached_player_name);
+	player->fighters = (float)yt_route_process_double(
+	    &combat->session->route_process,
+	    YT_CURRENT_PLAYER_FIGHTERS_ADDRESS);
+	player->cloak = yt_route_process_single(&combat->session->route_process,
+	    YT_CURRENT_PLAYER_CLOAK_ADDRESS);
+	player->shields = yt_route_process_single(&combat->session->route_process,
+	    YT_CURRENT_PLAYER_SHIELDS_ADDRESS);
 	return true;
 }
 
@@ -7178,12 +7293,15 @@ attack_deployed(struct yt_session *session, struct yt_sector *sector,
 	struct qb_val_result parsed;
 	enum qb_mbf_status status;
 	enum yt_hostile_attack_admission admission;
+	double cached_ship_fighters;
 	float commitment;
 	uint8_t commitment_raw[4];
 
 	if (!session_02fc(session, heading, sizeof(heading) - 1U))
 		return false;
-	admission = yt_hostile_attack_admit(session->player.fighters, 0.0f);
+	cached_ship_fighters = yt_route_process_double(&session->route_process,
+	    YT_CURRENT_PLAYER_FIGHTERS_ADDRESS);
+	admission = yt_hostile_attack_admit((float)cached_ship_fighters, 0.0f);
 	if (admission == YT_HOSTILE_ATTACK_NO_FIGHTERS)
 		return session_02db(session, none, sizeof(none) - 1U,
 		    "hostile Attack no fighters", error);
@@ -7219,11 +7337,11 @@ attack_deployed(struct yt_session *session, struct yt_sector *sector,
 	    YT_ATTACK_COMMITMENT_ADDRESS, commitment_raw);
 	commitment = yt_route_process_single(&session->route_process,
 	    YT_ATTACK_COMMITMENT_ADDRESS);
-	admission = yt_hostile_attack_admit(session->player.fighters,
+	admission = yt_hostile_attack_admit((float)cached_ship_fighters,
 	    commitment);
 	if (admission == YT_HOSTILE_ATTACK_TOO_MANY) {
 		if (qb_str_double(available, sizeof(available),
-		    (double)session->player.fighters) < 0
+		    cached_ship_fighters) < 0
 		    || snprintf(row, sizeof(row), "You only have%s!", available) < 0)
 			return false;
 		return session_02db(session, (const uint8_t *)row, strlen(row),
@@ -7434,9 +7552,12 @@ bribe_deployed(struct yt_session *session, struct yt_sector *sector,
 		.owner = yt_route_process_single(&session->route_process,
 		    YT_HOSTILE_ATTACK_OWNER_ADDRESS),
 		.cached_defenders = session_hostile_deployed_fighters(session),
-		.ship_fighters = (double)session->player.fighters,
-		.shields = session->player.shields,
-		.credits = (double)session->player.credits,
+		.ship_fighters = yt_route_process_double(&session->route_process,
+		    YT_CURRENT_PLAYER_FIGHTERS_ADDRESS),
+		.shields = yt_route_process_single(&session->route_process,
+		    YT_CURRENT_PLAYER_SHIELDS_ADDRESS),
+		.credits = yt_route_process_double(&session->route_process,
+		    YT_CURRENT_PLAYER_CREDITS_ADDRESS),
 		.real_first_name =
 		    (const uint8_t *)session->door->identity.real_first,
 		.real_first_name_length =
@@ -7758,7 +7879,9 @@ sector_entry(struct yt_session *session, float scanner_mode,
 			if (!reload_player(session, error))
 				return false;
 			session_set_foreground(session, 3.0f);
-			if (!yt_hostile_menu_row((double)session->player.fighters,
+			if (!yt_hostile_menu_row(yt_route_process_double(
+			    &session->route_process,
+			    YT_CURRENT_PLAYER_FIGHTERS_ADDRESS),
 			    session_hostile_deployed_fighters(session), row,
 			    sizeof(row), &row_length)) {
 				if (error != NULL) {
