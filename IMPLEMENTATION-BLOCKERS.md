@@ -8,30 +8,29 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
-### DOC-GAP-020: color-table process addresses and adjacent reads
+### DOC-GAP-020: corrupt color-table adjacent reads
 
 Affected coverage:
 
-- `YT-SUB:43D0` one-time initialization of the eight-entry logical-to-PC
-  color table;
-- authoritative process-image binding of that mutable table; and
 - corrupt logical-color indices whose direct `CINT(color) * 4 + base`
   calculation reads adjacent process storage.
 
-The completed `docs/runtime/presentation-helpers.md` names the initialization
-flag at `DS:556A`, both ANSI cache cells at `DS:559E/55A2`, and the eight
-ordinary table values. It also establishes that corrupt indices are not
-bounded and instead read adjacent mutable numeric storage. Neither that
-document nor the global-state registry identifies the table's DS base, its
-eight exact cell addresses, the surrounding aliased cells, or the raw bytes
-read by the documented out-of-range cases. The native `color_memory[8]`
-sidecar can model ordinary colors but cannot be made an authoritative process
-view or reproduce adjacent-memory corruption without inventing this layout.
+Correction to the original entry: the completed global-state registry already
+names the initialization flag at `DS:556A` and the 32-byte table at
+`DS:556E`; `docs/runtime/presentation-helpers.md` supplies the eight ordinary
+values. The native ordinary table is therefore process-bound and no upstream
+work is needed for indices 0 through 7.
 
-Upstream documentation, generated evidence, and focused fixtures must name
-the table addresses, initialization bytes, aliasing/adjacency, and reached
-corrupt-index outcomes before the native color table can be process-bound.
-No binary inspection or new reverse engineering was performed.
+The remaining gap is the explicitly unbounded corrupt-index domain. The
+registry identifies some following roots (`DS:5596/559A` string descriptors
+and `DS:559E/55A2` caches), but does not identify the intervening cells at
+`DS:558E/5592`, provide a complete wrapped-address/alias contract, or pin the
+raw reads and resulting `CINT`/`COLOR` behavior for the reached corrupt cases.
+The native implementation retains its protective range result outside 0
+through 7 rather than inventing those outcomes. Upstream documentation,
+generated evidence, and focused fixtures must specify that corrupt domain
+before the guard can be removed. No binary inspection or new reverse
+engineering was performed.
 
 ### DOC-GAP-019: planet-updater corrupt numeric record behavior
 

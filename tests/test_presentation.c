@@ -321,6 +321,57 @@ test_color_process_cache(void)
 }
 
 static void
+test_color_process_table(void)
+{
+	static const float standard[] = {0, 4, 2, 6, 1, 5, 3, 7};
+	static const uint8_t dirty_zero[] = {0x91, 0x82, 0x80, 0x00};
+	static const uint8_t raw_one[] = {0x00, 0x00, 0x00, 0x81};
+	static const uint8_t raw_true[] = {0x00, 0x00, 0x80, 0x81};
+	uint8_t initialized_raw[4];
+	uint8_t table_raw[32];
+	uint8_t expected[4];
+	uint8_t preserved[32];
+	struct yt_present_state current;
+	struct yt_present_result result;
+	size_t index;
+
+	memcpy(initialized_raw, dirty_zero, sizeof(initialized_raw));
+	memset(table_raw, 0xa5, sizeof(table_raw));
+	current = state(false);
+	yt_present_bind_color_table_process(&current, initialized_raw,
+	    table_raw);
+	CHECK(yt_present_color_initialized(&current) == 0.0f);
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(memcmp(initialized_raw, raw_one, sizeof(initialized_raw)) == 0);
+	for (index = 0U; index < YT_ARRAY_LEN(standard); ++index) {
+		CHECK(qb_mbf32_encode(standard[index], expected)
+		    == QB_MBF_OK);
+		CHECK(memcmp(table_raw + index * 4U, expected,
+		    sizeof(expected)) == 0);
+		CHECK(yt_present_color_memory(&current, index)
+		    == standard[index]);
+	}
+
+	memcpy(initialized_raw, raw_true, sizeof(initialized_raw));
+	memset(table_raw, 0, sizeof(table_raw));
+	CHECK(qb_mbf32_encode(3.0f, table_raw) == QB_MBF_OK);
+	CHECK(qb_mbf32_encode(5.0f, table_raw + 8U) == QB_MBF_OK);
+	memcpy(preserved, table_raw, sizeof(preserved));
+	current = state(false);
+	current.sound.mode = 2.0f;
+	yt_present_bind_color_table_process(&current, initialized_raw,
+	    table_raw);
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(result.remote_length == 0U && result.event_count == 1U
+	    && result.events[0].operation == YT_PRESENT_LOCAL_COLOR
+	    && result.events[0].foreground == 5
+	    && result.events[0].background == 3
+	    && memcmp(initialized_raw, raw_true,
+	    sizeof(initialized_raw)) == 0
+	    && memcmp(table_raw, preserved, sizeof(table_raw)) == 0);
+}
+
+static void
 test_direct_output(void)
 {
 	struct yt_present_state current = state(false);
@@ -25419,6 +25470,7 @@ main(void)
 	test_xannor_file_playback();
 	test_color();
 	test_color_process_cache();
+	test_color_process_table();
 	test_direct_output();
 	test_paged_output();
 	test_editor_echo();

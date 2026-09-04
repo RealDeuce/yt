@@ -108,6 +108,73 @@ yt_present_set_blink(struct yt_present_state *state, float value)
 }
 
 void
+yt_present_bind_color_table_process(struct yt_present_state *state,
+    uint8_t initialized[4], uint8_t table[32])
+{
+	size_t index;
+
+	if (state == NULL)
+		return;
+	state->color_initialized_process = initialized;
+	state->color_memory_process = table;
+	if (initialized != NULL)
+		state->color_initialized = qb_mbf32_decode(initialized);
+	if (table != NULL) {
+		for (index = 0U; index < 8U; ++index)
+			state->color_memory[index] =
+			    qb_mbf32_decode(table + index * 4U);
+	}
+}
+
+float
+yt_present_color_initialized(const struct yt_present_state *state)
+{
+	if (state == NULL)
+		return 0.0f;
+	if (state->color_initialized_process != NULL)
+		return qb_mbf32_decode(state->color_initialized_process);
+	return state->color_initialized;
+}
+
+void
+yt_present_set_color_initialized(struct yt_present_state *state, float value)
+{
+	uint8_t raw[4];
+
+	if (state == NULL)
+		return;
+	state->color_initialized = value;
+	if (state->color_initialized_process != NULL
+	    && qb_mbf32_encode(value, raw) != QB_MBF_OVERFLOW)
+		memcpy(state->color_initialized_process, raw, sizeof(raw));
+}
+
+float
+yt_present_color_memory(const struct yt_present_state *state, size_t index)
+{
+	if (state == NULL || index >= 8U)
+		return 0.0f;
+	if (state->color_memory_process != NULL)
+		return qb_mbf32_decode(state->color_memory_process + index * 4U);
+	return state->color_memory[index];
+}
+
+void
+yt_present_set_color_memory(struct yt_present_state *state, size_t index,
+    float value)
+{
+	uint8_t raw[4];
+
+	if (state == NULL || index >= 8U)
+		return;
+	state->color_memory[index] = value;
+	if (state->color_memory_process != NULL
+	    && qb_mbf32_encode(value, raw) != QB_MBF_OVERFLOW)
+		memcpy(state->color_memory_process + index * 4U, raw,
+		    sizeof(raw));
+}
+
+void
 yt_present_bind_cached_foreground_process(struct yt_present_state *state,
     uint8_t foreground[4])
 {
@@ -302,10 +369,12 @@ build_color(struct yt_present_state *state,
 	int forced_bold;
 	int forced_blink;
 	enum yt_present_status status;
+	size_t index;
 
-	if (state->color_initialized == 0.0f) {
-		memcpy(state->color_memory, standard, sizeof(standard));
-		state->color_initialized = 1.0f;
+	if (yt_present_color_initialized(state) == 0.0f) {
+		yt_present_set_color_initialized(state, 1.0f);
+		for (index = 0U; index < 8U; ++index)
+			yt_present_set_color_memory(state, index, standard[index]);
 	}
 	if (state->foreground == background) {
 		state->foreground = 3.0f;
@@ -326,11 +395,13 @@ build_color(struct yt_present_state *state,
 	    || background_index < 0 || background_index >= 8)
 		return YT_PRESENT_RANGE;
 	status = convert(state,
-	    (double)(float)(state->color_memory[foreground_index] + bright),
+	    (double)(float)(yt_present_color_memory(state,
+	    (size_t)foreground_index) + bright),
 	    &local_foreground);
 	if (status != YT_PRESENT_OK)
 		return status;
-	status = convert(state, state->color_memory[background_index],
+	status = convert(state, yt_present_color_memory(state,
+	    (size_t)background_index),
 	    &local_background);
 	if (status != YT_PRESENT_OK)
 		return status;
@@ -338,27 +409,26 @@ build_color(struct yt_present_state *state,
 	    local_foreground, local_background);
 	if (status != YT_PRESENT_OK)
 		return status;
-
-	memcpy(sequence + length, "\x1b[0;3", 5);
-	length += 5;
-	status = color_digit(state->foreground, &sequence[length++]);
-	if (status != YT_PRESENT_OK)
-		return status;
-	memcpy(sequence + length, ";4", 2);
-	length += 2;
-	status = color_digit(background, &sequence[length++]);
-	if (status != YT_PRESENT_OK)
-		return status;
-	if (blink == 1.0f) {
-		memcpy(sequence + length, ";5", 2);
-		length += 2;
-	}
-	if (bold == 1.0f) {
-		memcpy(sequence + length, ";1", 2);
-		length += 2;
-	}
-	sequence[length++] = 'm';
 	if (state->sound.mode == 0.0f) {
+		memcpy(sequence + length, "\x1b[0;3", 5);
+		length += 5;
+		status = color_digit(state->foreground, &sequence[length++]);
+		if (status != YT_PRESENT_OK)
+			return status;
+		memcpy(sequence + length, ";4", 2);
+		length += 2;
+		status = color_digit(background, &sequence[length++]);
+		if (status != YT_PRESENT_OK)
+			return status;
+		if (blink == 1.0f) {
+			memcpy(sequence + length, ";5", 2);
+			length += 2;
+		}
+		if (bold == 1.0f) {
+			memcpy(sequence + length, ";1", 2);
+			length += 2;
+		}
+		sequence[length++] = 'm';
 		status = convert(state, bold, &forced_bold);
 		if (status != YT_PRESENT_OK)
 			return status;
