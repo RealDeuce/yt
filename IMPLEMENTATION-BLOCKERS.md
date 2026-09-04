@@ -8,6 +8,37 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
+### DOC-GAP-024: post-login repair raw FIELD sources
+
+Affected coverage:
+
+- exact raw player FIELD mutation at `YT:073F..0767` when turns are below
+  one; and
+- exact raw ore, organics, equipment and capacity overlays at
+  `YT:0768..07BC` when capacity exceeds the validated maximum.
+
+The completed `docs/runtime/post-login-output.md` and
+`docs/runtime/startup-login.md` establish both predicates, the assignment
+order, the intervening fresh A41C hydration, and the independent PUTs. Their
+semantic model normalizes all values to MBF32 but does not identify the exact
+four-byte source read by any of the six assignments. In particular, it does
+not establish whether repaired one/zero values come from already named
+canonical literals or distinct dirty-zero aliases, nor whether the two
+maximum assignments copy the validated process cell byte-for-byte or
+re-encode its numeric value.
+
+That omission is observable when an assigned destination is already
+numerically equal but has different MBF32 bytes. The native
+`yt_game_post_login_repairs()` currently writes through the generic
+encode-if-changed player serializer, so such a destination survives. Changing
+it to any guessed canonical encoding would make an unsupported raw-state
+claim. Upstream documentation, the canonical raw world model, generated
+evidence and focused dirty-equal/failure-prefix fixtures must identify all six
+source cells/bytes and their completed FIELD image before this transaction can
+be made exact. Until then the numeric repair behavior and two-PUT ordering
+remain implemented, while raw overlay fidelity at this boundary is blocked.
+No binary inspection or new reverse engineering was performed.
+
 ### DOC-GAP-023: current-sector scanner cloak-clear raw value
 
 Affected coverage:
