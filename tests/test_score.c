@@ -32513,11 +32513,13 @@ main(void)
 	    {0xde, 0xad, 0xbe, 0xef};
 	static const uint8_t long_identity[] =
 	    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwx";
+	static const uint8_t dirty_zero[4] = {0x11, 0x22, 0x33, 0x00};
 	uint8_t constructor_date_raw[4];
 	uint8_t constructor_turns_raw[4];
 	uint8_t constructor_fighters_raw[4];
 	uint8_t constructor_credits_raw[4];
 	uint8_t constructor_holds_raw[4];
+	uint8_t identity_length_raw[4];
 	FILE *score;
 	unsigned char bytes[1024];
 	unsigned char expected_screen[1024];
@@ -32936,6 +32938,9 @@ main(void)
 	    || memcmp(player.record.bytes + YT_RECORD_TAIL_OFFSET,
 	    player_tail, sizeof(player_tail)) != 0
 	    || sizeof(long_identity) - 1U != 50U
+	    || qb_mbf32_encode(50.0f, identity_length_raw) != QB_MBF_OK
+	    || !yt_record_set_raw_number(&player.record, YT_F89, dirty_zero)
+	    || !yt_database_write(&game.database, 2, &player.record, &error)
 	    || !yt_game_set_player_identity(&game, 2, long_identity,
 	    sizeof(long_identity) - 1U, &player, &error)
 	    || !yt_game_read_player(&game, 2, &player, &error)
@@ -32943,6 +32948,10 @@ main(void)
 	    YT_TEXT_FIELD_SIZE) != 0 || player.name_length != 50.0f
 	    || player.team != 0.0f || player.score != 77.5f
 	    || player.turns != 500.0f || player.fighters != 45.0f
+	    || memcmp(player.record.bytes + YT_F85,
+	    identity_length_raw, 4U) != 0
+	    || memcmp(player.record.bytes + YT_F89,
+	    "\0\0\0\0", 4U) != 0
 	    || memcmp(player.record.bytes + YT_RECORD_TAIL_OFFSET,
 	    player_tail, sizeof(player_tail)) != 0
 	    || !yt_database_write(&game.database, 2, &blank, &error))

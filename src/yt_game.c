@@ -3287,18 +3287,21 @@ yt_game_set_player_identity(struct yt_game *game, int basic_record,
     const uint8_t *name, size_t length, struct yt_player *player,
     struct yt_error *error)
 {
-	size_t copied;
+	static const uint8_t zero[4] = {0x00, 0x00, 0x00, 0x00};
+	struct yt_record identity;
+	uint8_t length_raw[4];
 
 	if ((name == NULL && length != 0)
 	    || !yt_game_read_player(game, basic_record, player, error))
 		return false;
-	copied = length < YT_TEXT_FIELD_SIZE ? length : YT_TEXT_FIELD_SIZE;
-	if (copied > 0)
-		memcpy(player->name, name, copied);
-	player->name[copied] = '\0';
-	player->name_length = (float)length;
-	player->team = 0.0f;
-	return yt_game_write_player(game, basic_record, player, error);
+	identity = player->record;
+	yt_record_set_text(&identity, name, length);
+	(void)qb_mbf32_encode((float)length, length_raw);
+	(void)yt_record_set_raw_number(&identity, YT_F85, length_raw);
+	(void)yt_record_set_raw_number(&identity, YT_F89, zero);
+	yt_player_decode(player, &identity);
+	return yt_database_write(&game->database, (size_t)basic_record,
+	    &identity, error);
 }
 
 bool
