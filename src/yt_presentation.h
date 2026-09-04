@@ -72,7 +72,9 @@ struct yt_present_state {
 	float background;
 	uint8_t *background_process;
 	float bold;
+	uint8_t *bold_process;
 	float blink;
+	uint8_t *blink_process;
 	float color_initialized;
 	float color_memory[8];
 	float cached_foreground;
@@ -90,6 +92,14 @@ void yt_present_bind_background_process(struct yt_present_state *state,
     uint8_t background[4]);
 float yt_present_background(const struct yt_present_state *state);
 void yt_present_set_background(struct yt_present_state *state, float value);
+void yt_present_bind_bold_process(struct yt_present_state *state,
+    uint8_t bold[4]);
+float yt_present_bold(const struct yt_present_state *state);
+void yt_present_set_bold(struct yt_present_state *state, float value);
+void yt_present_bind_blink_process(struct yt_present_state *state,
+    uint8_t blink[4]);
+float yt_present_blink(const struct yt_present_state *state);
+void yt_present_set_blink(struct yt_present_state *state, float value);
 
 typedef enum yt_present_status (*yt_present_sysop_replay_fn)(void *context);
 

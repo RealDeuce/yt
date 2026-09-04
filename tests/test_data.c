@@ -6511,6 +6511,8 @@ struct viewer_play_tape {
 	size_t lengths[4];
 	size_t calls;
 	size_t fail_call;
+	size_t bold_calls;
+	float bold;
 };
 
 struct viewer_entry_tape {
@@ -6585,6 +6587,15 @@ viewer_play_present(void *context, const uint8_t *text, size_t length,
 }
 
 static void
+viewer_play_set_bold(void *context, float value)
+{
+	struct viewer_play_tape *tape = context;
+
+	++tape->bold_calls;
+	tape->bold = value;
+}
+
+static void
 test_file_viewer_play(void)
 {
 	static const uint8_t source[] = "ordinary\r\n  - item\r\n";
@@ -6600,6 +6611,7 @@ test_file_viewer_play(void)
 	state.foreground = &foreground;
 	state.pager_foreground = &pager_foreground;
 	state.bold = &bold;
+	state.set_bold = viewer_play_set_bold;
 	state.line_count = &line_count;
 	state.pager_key = key;
 	state.saved_foreground = 5.0f;
@@ -6609,7 +6621,8 @@ test_file_viewer_play(void)
 	CHECK(tape.calls == 3U && tape.events[0] == 1 && tape.events[1] == 1
 	    && tape.events[2] == 2 && tape.lengths[0] == 8U
 	    && tape.lengths[1] == 8U && foreground == 5.0f
-	    && pager_foreground == 5 && bold == 1.0f && line_count == 0.0f);
+	    && pager_foreground == 5 && bold == 1.0f && line_count == 0.0f
+	    && tape.bold_calls == 1U && tape.bold == 1.0f);
 
 	memset(&tape, 0, sizeof(tape));
 	tape.fail_call = 2U;
@@ -6621,7 +6634,8 @@ test_file_viewer_play(void)
 	    viewer_play_present, &tape, NULL));
 	CHECK(tape.calls == 2U && foreground == 3.0f
 	    && pager_foreground == 3 && bold == 1.0f
-	    && line_count == 17.0f);
+	    && line_count == 17.0f && tape.bold_calls == 1U
+	    && tape.bold == 1.0f);
 }
 
 enum viewer_stream_event {

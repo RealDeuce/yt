@@ -40,6 +40,73 @@ yt_present_set_background(struct yt_present_state *state, float value)
 		memcpy(state->background_process, raw, sizeof(raw));
 }
 
+void
+yt_present_bind_bold_process(struct yt_present_state *state, uint8_t bold[4])
+{
+	if (state == NULL)
+		return;
+	state->bold_process = bold;
+	if (bold != NULL)
+		state->bold = qb_mbf32_decode(bold);
+}
+
+float
+yt_present_bold(const struct yt_present_state *state)
+{
+	if (state == NULL)
+		return 0.0f;
+	if (state->bold_process != NULL)
+		return qb_mbf32_decode(state->bold_process);
+	return state->bold;
+}
+
+void
+yt_present_set_bold(struct yt_present_state *state, float value)
+{
+	uint8_t raw[4];
+
+	if (state == NULL)
+		return;
+	state->bold = value;
+	if (state->bold_process != NULL
+	    && qb_mbf32_encode(value, raw) != QB_MBF_OVERFLOW)
+		memcpy(state->bold_process, raw, sizeof(raw));
+}
+
+void
+yt_present_bind_blink_process(struct yt_present_state *state,
+    uint8_t blink[4])
+{
+	if (state == NULL)
+		return;
+	state->blink_process = blink;
+	if (blink != NULL)
+		state->blink = qb_mbf32_decode(blink);
+}
+
+float
+yt_present_blink(const struct yt_present_state *state)
+{
+	if (state == NULL)
+		return 0.0f;
+	if (state->blink_process != NULL)
+		return qb_mbf32_decode(state->blink_process);
+	return state->blink;
+}
+
+void
+yt_present_set_blink(struct yt_present_state *state, float value)
+{
+	uint8_t raw[4];
+
+	if (state == NULL)
+		return;
+	state->blink = value;
+	if (state->blink_process != NULL
+	    && qb_mbf32_encode(value, raw) != QB_MBF_OVERFLOW)
+		memcpy(state->blink_process, raw, sizeof(raw));
+}
+
 static enum yt_present_status
 append_event(struct yt_present_result *result,
     enum yt_present_operation operation, const void *data, size_t length,
@@ -156,6 +223,8 @@ build_color(struct yt_present_state *state,
 	size_t length = 0;
 	float bright = 0.0f;
 	float background = yt_present_background(state);
+	float bold = yt_present_bold(state);
+	float blink = yt_present_blink(state);
 	int foreground_index;
 	int background_index;
 	int local_foreground;
@@ -173,9 +242,9 @@ build_color(struct yt_present_state *state,
 		yt_present_set_background(state, 0.0f);
 		background = 0.0f;
 	}
-	if (state->bold == 1.0f)
+	if (bold == 1.0f)
 		bright = 8.0f;
-	if (state->blink == 1.0f)
+	if (blink == 1.0f)
 		bright += 16.0f;
 	status = convert(state, state->foreground, &foreground_index);
 	if (status != YT_PRESENT_OK)
@@ -210,20 +279,20 @@ build_color(struct yt_present_state *state,
 	status = color_digit(background, &sequence[length++]);
 	if (status != YT_PRESENT_OK)
 		return status;
-	if (state->blink == 1.0f) {
+	if (blink == 1.0f) {
 		memcpy(sequence + length, ";5", 2);
 		length += 2;
 	}
-	if (state->bold == 1.0f) {
+	if (bold == 1.0f) {
 		memcpy(sequence + length, ";1", 2);
 		length += 2;
 	}
 	sequence[length++] = 'm';
 	if (state->sound.mode == 0.0f) {
-		status = convert(state, state->bold, &forced_bold);
+		status = convert(state, bold, &forced_bold);
 		if (status != YT_PRESENT_OK)
 			return status;
-		status = convert(state, state->blink, &forced_blink);
+		status = convert(state, blink, &forced_blink);
 		if (status != YT_PRESENT_OK)
 			return status;
 		if ((forced_bold | forced_blink) != 0) {
@@ -244,8 +313,8 @@ build_color(struct yt_present_state *state,
 		if (status != YT_PRESENT_OK)
 			return status;
 	}
-	state->bold = 0.0f;
-	state->blink = 0.0f;
+	yt_present_set_bold(state, 0.0f);
+	yt_present_set_blink(state, 0.0f);
 	return YT_PRESENT_OK;
 }
 
@@ -333,7 +402,7 @@ yt_present_bold_line(const uint8_t *text, size_t length,
     struct yt_present_state *state, struct yt_present_result *result)
 {
 	memset(result, 0, sizeof(*result));
-	state->bold = 1.0f;
+	yt_present_set_bold(state, 1.0f);
 	return emit_line(text, length, state, result);
 }
 
@@ -343,7 +412,7 @@ yt_present_bold_character(const uint8_t *text, size_t length,
 {
 	memset(result, 0, sizeof(*result));
 	if (state->sound.ansi != 0.0f)
-		state->bold = 1.0f;
+		yt_present_set_bold(state, 1.0f);
 	return emit_character(text, length, state, result);
 }
 
@@ -622,9 +691,9 @@ yt_present_attention(const uint8_t *text, size_t length,
 	memset(result, 0, sizeof(*result));
 	state->foreground = 3.0f;
 	yt_present_set_background(state, 1.0f);
-	state->blink = 1.0f;
+	yt_present_set_blink(state, 1.0f);
 	if (state->sound.ansi != 0.0f)
-		state->bold = 1.0f;
+		yt_present_set_bold(state, 1.0f);
 	status = emit_character(text, length, state, result);
 	if (status != YT_PRESENT_OK)
 		return status;
@@ -1426,7 +1495,7 @@ low_time_warning(const uint8_t *text, size_t length, float remembered,
 	if (status != YT_PRESENT_OK)
 		return status;
 	state->foreground = 5.0f;
-	state->blink = 1.0f;
+	yt_present_set_blink(state, 1.0f);
 	if (state->sound.mode != 0.0f)
 		status = append_beep(result);
 	else
@@ -1438,7 +1507,7 @@ low_time_warning(const uint8_t *text, size_t length, float remembered,
 	memcpy(warning, label, sizeof(label) - 1U);
 	if (length != 0)
 		memcpy(warning + sizeof(label) - 1U, text, length);
-	state->bold = 1.0f;
+	yt_present_set_bold(state, 1.0f);
 	status = emit_line(warning, sizeof(label) - 1U + length, state,
 	    result);
 	if (status != YT_PRESENT_OK)

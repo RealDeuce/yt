@@ -561,8 +561,11 @@ yt_file_viewer_play(const uint8_t *data, size_t data_length,
 			break;
 		*state->foreground = (float)record.foreground;
 		*state->pager_foreground = record.foreground;
-		if (record.set_bold)
+		if (record.set_bold) {
 			*state->bold = 1.0f;
+			if (state->set_bold != NULL)
+				state->set_bold(context, *state->bold);
+		}
 		if (!present(context, line, record.length, true, error)) {
 			ok = false;
 			break;

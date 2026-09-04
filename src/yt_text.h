@@ -404,6 +404,7 @@ struct yt_file_viewer_play_state {
 	float *foreground;
 	int *pager_foreground;
 	float *bold;
+	void (*set_bold)(void *context, float value);
 	float *line_count;
 	char *pager_key;
 	float saved_foreground;

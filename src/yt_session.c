@@ -30,6 +30,7 @@
 #define YT_BACKGROUND_ADDRESS 0x1870U
 #define YT_MARKET_BASE_ADDRESS 0x1860U
 #define YT_DISRUPTION_SECTOR_ADDRESS 0x1878U
+#define YT_BLINK_ADDRESS 0x1880U
 #define YT_PLAYER_CACHE_GUARD_ADDRESS 0x1A74U
 #define YT_PLAYER_CACHE_TERMINAL_ADDRESS 0x5DFEU
 #define YT_PLAYER_CACHE_COUNTER_ADDRESS 0x5E02U
@@ -68,6 +69,7 @@
 #define YT_LOW_TIME_REMEMBERED_ADDRESS 0x59CEU
 #define YT_SESSION_DEADLINE_ADDRESS 0x4BB4U
 #define YT_SESSION_MODE_ADDRESS 0x19C8U
+#define YT_BOLD_ADDRESS 0x19BCU
 #define YT_LOCAL_SOUND_ADDRESS 0x4B70U
 #define YT_GAME_SOUND_ADDRESS 0x4BD4U
 #define YT_INACTIVITY_DEADLINE_ADDRESS 0x51B4U
@@ -1224,7 +1226,7 @@ session_command_notice(struct yt_session *session, const char *text,
     bool bold)
 {
 	if (bold)
-		session->presentation.bold = 1.0f;
+		yt_present_set_bold(&session->presentation, 1.0f);
 	if (!session_0317(session, (const uint8_t *)text, strlen(text),
 	    "command notice", NULL))
 		return false;
@@ -1737,8 +1739,8 @@ session_02db(struct yt_session *session, const uint8_t *text, size_t length,
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    operation, error))
 		return false;
-	session->presentation.bold = 1.0f;
-	session->presentation.blink = 1.0f;
+	yt_present_set_bold(&session->presentation, 1.0f);
+	yt_present_set_blink(&session->presentation, 1.0f);
 	clear_queue(session);
 	return session_02fc(session, text, length);
 }
@@ -2061,6 +2063,14 @@ session_file_viewer_stream_present(void *context, const uint8_t *text,
 	    error);
 }
 
+static void
+session_file_viewer_set_bold(void *context, float value)
+{
+	struct session_file_viewer_context *viewer = context;
+
+	yt_present_set_bold(&viewer->session->presentation, value);
+}
+
 static bool
 session_file_viewer_missing_present(void *context, const uint8_t *text,
     size_t length, bool paged, struct yt_error *error)
@@ -2102,6 +2112,7 @@ display_game_file(struct yt_session *session, const char *path,
 			.foreground = &foreground_carrier,
 			.pager_foreground = &pager_foreground_carrier,
 			.bold = &session->presentation.bold,
+			.set_bold = session_file_viewer_set_bold,
 			.line_count = &session->pager.line_count,
 			.pager_key = session->pager.key,
 			.saved_foreground = saved_foreground,
@@ -2228,7 +2239,7 @@ session_a8d2(struct yt_session *session, const uint8_t *prompt,
 			return false;
 		if (*answer != YT_YES_NO_INVALID)
 			return true;
-		session->presentation.bold = 1.0f;
+		yt_present_set_bold(&session->presentation, 1.0f);
 		clear_queue(session);
 	}
 }
@@ -2875,8 +2886,8 @@ opening_and_date(struct yt_session *session, struct yt_error *error)
 		    || !session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "startup route failure blank", error))
 			return false;
-		session->presentation.bold = 1.0f;
-		session->presentation.blink = 1.0f;
+		yt_present_set_bold(&session->presentation, 1.0f);
+		yt_present_set_blink(&session->presentation, 1.0f);
 		if (!session_present_text(session, diagnostic,
 		    sizeof(diagnostic) - 1U, SESSION_PRESENT_LINE,
 		    "startup route failure diagnostic", error))
@@ -3195,7 +3206,7 @@ resolve_alias(struct yt_session *session, char first[128], char last[128],
 			yt_names_free(&names);
 			return false;
 		}
-		session->presentation.bold = 1.0f;
+		yt_present_set_bold(&session->presentation, 1.0f);
 		{
 			char identity[560];
 
@@ -3287,7 +3298,7 @@ instruction_offer(struct yt_session *session, struct yt_error *error)
 			return true;
 		if (answer == YT_YES_NO_YES)
 			return display_game_file(session, "YTINSTR.DOC", error);
-		session->presentation.bold = 1.0f;
+		yt_present_set_bold(&session->presentation, 1.0f);
 		clear_queue(session);
 	}
 }
@@ -3475,7 +3486,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 			    SESSION_PRESENT_LINE, "returning death blank", error))
 				return false;
 			if (!self_kill)
-				session->presentation.blink = 1.0f;
+				yt_present_set_blink(&session->presentation, 1.0f);
 			if (killer == -1.0f) {
 				if (!session_present_text(session,
 				    (const uint8_t *)
@@ -3538,7 +3549,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 				    "returning self-denial blank", error))
 					return false;
 				session_set_foreground(session, 7.0f);
-				session->presentation.blink = 1.0f;
+				yt_present_set_blink(&session->presentation, 1.0f);
 				if (!session_present_text(session,
 				    (const uint8_t *)
 				    "You will be allowed to play again tomorrow!",
@@ -4640,7 +4651,7 @@ danger_first_warning(struct yt_session *session, float target,
 	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "danger leading blank", error))
 		return false;
-	session->presentation.blink = 1.0f;
+	yt_present_set_blink(&session->presentation, 1.0f);
 	if (!session_present_text(session,
 	    (const uint8_t *)"*** WARNING! ***", strlen("*** WARNING! ***"),
 	    SESSION_PRESENT_BOLD_RAW, "danger warning header", error))
@@ -4854,7 +4865,7 @@ dangerous_destination(struct yt_session *session, float target,
 		if (!session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "danger final blank", error))
 			return false;
-		session->presentation.blink = 1.0f;
+		yt_present_set_blink(&session->presentation, 1.0f);
 		if (!session_present_text(session,
 		    (const uint8_t *)"*** WARP DRIVE DEACTIVATED ***",
 		    strlen("*** WARP DRIVE DEACTIVATED ***"),
@@ -4949,8 +4960,8 @@ spy_import_presentation(struct yt_session *session,
 {
 	session_set_foreground(session, state->foreground);
 	yt_present_set_background(&session->presentation, state->background);
-	session->presentation.bold = state->bold;
-	session->presentation.blink = state->blink;
+	yt_present_set_bold(&session->presentation, state->bold);
+	yt_present_set_blink(&session->presentation, state->blink);
 }
 
 static void
@@ -4959,8 +4970,8 @@ spy_export_presentation(struct yt_spy_sweep_state *state,
 {
 	state->foreground = session_foreground(session);
 	state->background = yt_present_background(&session->presentation);
-	state->bold = session->presentation.bold;
-	state->blink = session->presentation.blink;
+	state->bold = yt_present_bold(&session->presentation);
+	state->blink = yt_present_blink(&session->presentation);
 }
 
 static bool
@@ -5086,8 +5097,8 @@ spy_sweep(struct yt_session *session, struct yt_error *error)
 		    YT_SPY_DESTINATION_SCRATCH_ADDRESS),
 		.foreground = session_foreground(session),
 		.background = yt_present_background(&session->presentation),
-		.bold = session->presentation.bold,
-		.blink = session->presentation.blink,
+		.bold = yt_present_bold(&session->presentation),
+		.blink = yt_present_blink(&session->presentation),
 	};
 	result = yt_spy_sweep_run(&state, &ops, session, error);
 
@@ -5193,8 +5204,8 @@ finalize_action(struct yt_session *session, float amount,
 	snprintf(row, sizeof(row), "One Turn Deducted,%s left.", number);
 	if (session->player.turns < 51.0f) {
 		session_set_foreground(session, 3.0f);
-		session->presentation.bold = 1.0f;
-		session->presentation.blink = 1.0f;
+		yt_present_set_bold(&session->presentation, 1.0f);
+		yt_present_set_blink(&session->presentation, 1.0f);
 	}
 	if (!session_02fc(session, (const uint8_t *)row, strlen(row)))
 		return false;
@@ -5302,7 +5313,7 @@ emergency_warp(struct yt_session *session, struct yt_error *error)
 		}
 		else {
 			session_set_foreground(session, 1.0f);
-			session->presentation.blink = 1.0f;
+			yt_present_set_blink(&session->presentation, 1.0f);
 		}
 		if (!session_present_text(session, gauge_tick,
 		    sizeof(gauge_tick) - 1U, SESSION_PRESENT_BOLD_RAW,
@@ -5406,16 +5417,16 @@ direct_emergency_warp(struct yt_session *session, struct yt_error *error)
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "emergency warp leading blank", error))
 		return false;
-	session->presentation.bold = 1.0f;
+	yt_present_set_bold(&session->presentation, 1.0f);
 	session_set_foreground(session, 7.0f);
 	if (!session_02fc(session, warning_one, sizeof(warning_one) - 1U))
 		return false;
-	session->presentation.bold = 1.0f;
+	yt_present_set_bold(&session->presentation, 1.0f);
 	if (!session_02fc(session, warning_two, sizeof(warning_two) - 1U)
 	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "emergency warp confirmation blank", error))
 		return false;
-	session->presentation.bold = 1.0f;
+	yt_present_set_bold(&session->presentation, 1.0f);
 	if (!session_a8d2(session, prompt, sizeof(prompt) - 1U, &answer, error))
 		return false;
 	if (answer == YT_YES_NO_YES)
@@ -6079,7 +6090,7 @@ xannor_victory_set_blink(void *context, float blink)
 {
 	struct yt_session *session = context;
 
-	session->presentation.blink = blink;
+	yt_present_set_blink(&session->presentation, blink);
 }
 
 static void
@@ -6151,7 +6162,7 @@ xannor_victory(struct yt_session *session, struct yt_error *error)
 		.current_player = (float)session_record(session),
 		.foreground = session_foreground(session),
 		.pager_foreground = (float)session_pager_foreground(session),
-		.blink = session->presentation.blink,
+		.blink = yt_present_blink(&session->presentation),
 	};
 
 	return yt_xannor_victory_run(&state, &ops, session, error);
@@ -6698,7 +6709,7 @@ hostile_attack_tail_present(void *context, const uint8_t *text, size_t length,
 	struct yt_session *session = tail->session;
 
 	if (kind == YT_HOSTILE_ATTACK_TAIL_REWARD_ROW)
-		session->presentation.bold = 1.0f;
+		yt_present_set_bold(&session->presentation, 1.0f);
 	else if (kind != YT_HOSTILE_ATTACK_TAIL_DEFEATED_ROW)
 		return false;
 	(void)error;
@@ -7394,7 +7405,7 @@ mine_style(void *context, float foreground, float background, float blink,
 
 	session_set_foreground(session, foreground);
 	yt_present_set_background(&session->presentation, background);
-	session->presentation.blink = blink;
+	yt_present_set_blink(&session->presentation, blink);
 	(void)pager_foreground;
 }
 
@@ -7425,7 +7436,7 @@ mine_encounter(struct yt_session *session, bool *terminal,
 		.conversion_mode = session->presentation.sound.conversion_mode,
 		.foreground = session_foreground(session),
 		.background = yt_present_background(&session->presentation),
-		.blink = session->presentation.blink,
+		.blink = yt_present_blink(&session->presentation),
 		.pager_foreground = session_pager_foreground(session),
 		.destroyed = &destroyed,
 	};
@@ -7496,7 +7507,7 @@ session_quit_confirm(struct yt_session *session, bool *confirmed,
 		}
 		if (answer == YT_YES_NO_NO || answer == YT_YES_NO_EMPTY)
 			return true;
-		session->presentation.bold = 1.0f;
+		yt_present_set_bold(&session->presentation, 1.0f);
 		clear_queue(session);
 	}
 }
@@ -7881,8 +7892,8 @@ drop_mines_present(void *context, const uint8_t *text, size_t length,
 		return session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "sector mine success blank", error);
 	case YT_DROP_MINES_SUCCESS_ROW:
-		session->presentation.bold = 1.0f;
-		session->presentation.blink = 1.0f;
+		yt_present_set_bold(&session->presentation, 1.0f);
+		yt_present_set_blink(&session->presentation, 1.0f);
 		return session_02fc(session, text, length);
 	default:
 		return false;
@@ -8178,7 +8189,7 @@ port_report_set_bold(void *context, float bold)
 {
 	struct yt_session *session = context;
 
-	session->presentation.bold = bold;
+	yt_present_set_bold(&session->presentation, bold);
 }
 
 static void
@@ -8837,7 +8848,7 @@ earth_purchase_scanner(struct yt_session *session,
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "Earth Scanner leading blank", error))
 		return false;
-	session->presentation.bold = 1.0f;
+	yt_present_set_bold(&session->presentation, 1.0f);
 	if (!session_b05d(session,
 	    (const uint8_t *)"Danger Scanner installed in your ship!",
 	    strlen("Danger Scanner installed in your ship!"))
@@ -8875,7 +8886,7 @@ earth_purchase_spies(struct yt_session *session,
 			    "You have%s spies active already.", active_text) < 0)
 				return port_report_failure(error,
 				    "Earth Spies active row");
-			session->presentation.bold = 1.0f;
+			yt_present_set_bold(&session->presentation, 1.0f);
 			if (!session_02fc(session, (const uint8_t *)active_row,
 			    strlen(active_row)))
 				return false;
@@ -9215,7 +9226,7 @@ lottery(struct yt_session *session, const struct yt_port *cached_earth,
 	if (!clearance(session, true, error))
 		return false;
 	session_set_color(session, 1);
-	session->presentation.bold = 1.0f;
+	yt_present_set_bold(&session->presentation, 1.0f);
 	if (!session_b05d(session,
 	    (const uint8_t *)"Welcome to the Intergalactic Pick-6 Lottery!",
 	    strlen("Welcome to the Intergalactic Pick-6 Lottery!")))
@@ -9227,7 +9238,7 @@ lottery(struct yt_session *session, const struct yt_port *cached_earth,
 		    SESSION_PRESENT_LINE, "lottery ticket leading blank", error))
 			return false;
 		session_set_color(session, 2);
-		session->presentation.bold = 1.0f;
+		yt_present_set_bold(&session->presentation, 1.0f);
 		if (!session_031f(session,
 		    (const uint8_t *)
 		    "Enter a 6 digit number for the lottery computer -+>",
@@ -10030,8 +10041,8 @@ planet_garrison(struct yt_session *session, int logical_planet,
 		    || !yt_planet_garrison_success_row(desired, success,
 		    sizeof(success), &success_length))
 			return false;
-		session->presentation.bold = 1.0f;
-		session->presentation.blink = 1.0f;
+		yt_present_set_bold(&session->presentation, 1.0f);
+		yt_present_set_blink(&session->presentation, 1.0f);
 		if (!session_02fc(session, success, success_length))
 			return false;
 		planet.owner = (float)session_record(session);
@@ -10337,7 +10348,7 @@ planet_transfer(struct yt_session *session, int logical_planet,
 		    SESSION_PRESENT_LINE, "planet Transfer fighter success blank",
 		    error))
 			return false;
-		session->presentation.blink = 1.0f;
+		yt_present_set_blink(&session->presentation, 1.0f);
 		{
 			static const uint8_t success[] = "Fighters Transferred!";
 
@@ -10371,7 +10382,7 @@ planet_transfer(struct yt_session *session, int logical_planet,
 		    SESSION_PRESENT_LINE, "planet Transfer weapon success blank",
 		    error))
 			return false;
-		session->presentation.blink = 1.0f;
+		yt_present_set_blink(&session->presentation, 1.0f);
 		if (item == 9) {
 			static const uint8_t text[] = "Plasma Bolts Transferred!";
 
@@ -10545,7 +10556,7 @@ planet_assault(struct yt_session *session, uint32_t physical_planet,
 	    &row_length)
 	    || !append_news_bytes(session, row, row_length, error))
 		return false;
-	session->presentation.blink = 1.0f;
+	yt_present_set_blink(&session->presentation, 1.0f);
 	if (!session_present_text(session, engaging, sizeof(engaging) - 1U,
 	    SESSION_PRESENT_BOLD_LINE, "planet assault engagement row", error)
 	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
@@ -10597,7 +10608,7 @@ planet_assault(struct yt_session *session, uint32_t physical_planet,
 			if (!session_present_text(session, NULL, 0,
 			    SESSION_PRESENT_LINE, "planet assault capture blank", error))
 				return false;
-			session->presentation.blink = 1.0f;
+			yt_present_set_blink(&session->presentation, 1.0f);
 			if (!session_present_text(session, captured,
 			    sizeof(captured) - 1U, SESSION_PRESENT_BOLD_LINE,
 			    "planet assault capture row", error)
@@ -10624,7 +10635,7 @@ planet_assault(struct yt_session *session, uint32_t physical_planet,
 	if (!write_planet_physical(session, physical_planet, &planet, false,
 	    error))
 		return false;
-	session->presentation.blink = 1.0f;
+	yt_present_set_blink(&session->presentation, 1.0f);
 	if (!yt_planet_assault_failure_row(defenders, true, row, sizeof(row),
 	    &row_length)
 	    || !append_news_bytes(session, row, row_length, error)
@@ -10934,7 +10945,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 		    || !yt_planet_move_explosion_row(planet_name,
 		    planet_name_length, row, sizeof(row), &row_length))
 			return false;
-		session->presentation.bold = 1.0f;
+		yt_present_set_bold(&session->presentation, 1.0f);
 		if (!session_present_text(session, row, row_length,
 		    SESSION_PRESENT_BOLD_LINE, "planet move explosion row", error)
 		    || !yt_player_stored_name(&session->player, player_name,
@@ -11143,7 +11154,7 @@ planet_move(struct yt_session *session, bool *enter_sector,
 		    && session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "planet Thrusters route second blank", error);
 
-		session->presentation.blink = 1.0f;
+		yt_present_set_blink(&session->presentation, 1.0f);
 		if (ok)
 			ok = session_present_text(session, route_failure,
 			    sizeof(route_failure) - 1U, SESSION_PRESENT_BOLD_LINE,
@@ -11207,8 +11218,8 @@ planet_move(struct yt_session *session, bool *enter_sector,
 		return false;
 	if (answer != YT_YES_NO_YES)
 		return true;
-	session->presentation.bold = 1.0f;
-	session->presentation.blink = 1.0f;
+	yt_present_set_bold(&session->presentation, 1.0f);
+	yt_present_set_blink(&session->presentation, 1.0f);
 	if (!session_0317(session, engaged, sizeof(engaged) - 1U,
 	    "planet Thrusters engaged", error))
 		return false;
@@ -11701,7 +11712,7 @@ planet_permission_set_blink(void *context, float blink)
 {
 	struct yt_session *session = context;
 
-	session->presentation.blink = blink;
+	yt_present_set_blink(&session->presentation, blink);
 }
 
 static bool
@@ -11768,7 +11779,7 @@ command_land(struct yt_session *session, bool *enter_sector,
 	permission_state.current_player_record = session_record(session);
 	permission_state.last_player_record = YT_PLAYER_LAST;
 	permission_state.foreground = session_foreground(session);
-	permission_state.blink = session->presentation.blink;
+	permission_state.blink = yt_present_blink(&session->presentation);
 	if (!yt_planet_permission_run(&permission_state, &permission_ops,
 	    session, error))
 		return false;
@@ -12202,7 +12213,7 @@ info_panel_present(void *context, const uint8_t *text, size_t length,
 
 	session_set_foreground(session, state->foreground);
 	yt_present_set_background(&session->presentation, state->background);
-	session->presentation.bold = state->bold;
+	yt_present_set_bold(&session->presentation, state->bold);
 	if (kind == YT_INFO_PANEL_LINE)
 		result = info_line(session, text, length, error);
 	else if (kind == YT_INFO_PANEL_FIXED)
@@ -12212,7 +12223,7 @@ info_panel_present(void *context, const uint8_t *text, size_t length,
 		return info_failure(error, "Info presentation kind");
 	state->foreground = session_foreground(session);
 	state->background = yt_present_background(&session->presentation);
-	state->bold = session->presentation.bold;
+	state->bold = yt_present_bold(&session->presentation);
 	return result;
 }
 
@@ -12234,11 +12245,11 @@ show_ship(struct yt_session *session, struct yt_error *error)
 	state.anti_cloak = session_anti_cloak_enabled(session) ? -1.0f : 0.0f;
 	state.foreground = session_foreground(session);
 	state.background = yt_present_background(&session->presentation);
-	state.bold = session->presentation.bold;
+	state.bold = yt_present_bold(&session->presentation);
 	result = yt_info_panel_run(&state, &ops, session, error);
 	session_set_foreground(session, state.foreground);
 	yt_present_set_background(&session->presentation, state.background);
-	session->presentation.bold = state.bold;
+	yt_present_set_bold(&session->presentation, state.bold);
 	return result;
 }
 
@@ -13285,8 +13296,8 @@ port_purchase_accept_present(void *context, const uint8_t *text,
 		    ? "buy sold leading blank"
 		    : "buy seller transfer leading blank", error);
 	case YT_PORT_PURCHASE_ACCEPT_SOLD_ROW:
-		session->presentation.bold = 1.0f;
-		session->presentation.blink = 1.0f;
+		yt_present_set_bold(&session->presentation, 1.0f);
+		yt_present_set_blink(&session->presentation, 1.0f);
 		return session_02fc(session, text, length);
 	case YT_PORT_PURCHASE_ACCEPT_TRANSFER_ROW:
 	case YT_PORT_PURCHASE_ACCEPT_SUCCESS_TAIL:
@@ -13601,7 +13612,7 @@ treasury_present(void *context, const uint8_t *text, size_t length,
 		return session_present_text(session, NULL, 0U,
 		    SESSION_PRESENT_LINE, "treasury opening blank", error);
 	case YT_TREASURY_NO_PORTS:
-		session->presentation.blink = 1.0f;
+		yt_present_set_blink(&session->presentation, 1.0f);
 		return session_present_text(session, text, length,
 		    SESSION_PRESENT_BOLD_LINE, "treasury no-owned notice", error);
 	case YT_TREASURY_HEADING_PREFIX:
@@ -13758,7 +13769,7 @@ genesis_present(void *context, const uint8_t *text, size_t length,
 		    SESSION_PRESENT_LINE, "Genesis success leading blank", error);
 	case YT_GENESIS_SUCCESS_FIRST:
 	case YT_GENESIS_SUCCESS_SECOND:
-		session->presentation.bold = 1.0f;
+		yt_present_set_bold(&session->presentation, 1.0f);
 		return session_02fc(session, text, length);
 	default:
 		return false;
@@ -14114,6 +14125,11 @@ plasma_fighter_present(void *context, const uint8_t *text, size_t length,
 static bool
 plasma_fighter_sound(void *context, float selector, struct yt_error *error)
 {
+	struct yt_session *session = context;
+
+	/* The fighter model assigns through its by-reference carrier first. */
+	yt_present_set_bold(&session->presentation,
+	    session->presentation.bold);
 	return session_sound(context, selector,
 	    "plasma fighter-defense sound", error);
 }
@@ -14217,8 +14233,12 @@ plasma_killed_present(void *context, const uint8_t *text, size_t length,
     enum yt_projectile_plasma_killed_output_kind kind,
     struct yt_error *error)
 {
+	struct yt_session *session = context;
 	const char *operation;
 
+	/* The killed-player model assigns through its by-reference carrier. */
+	yt_present_set_blink(&session->presentation,
+	    session->presentation.blink);
 	if (kind == YT_PROJECTILE_PLASMA_KILLED_DESTROYED_ROW)
 		operation = "plasma victim-destruction row";
 	else if (kind == YT_PROJECTILE_PLASMA_KILLED_SELF_DESTROYED_ROW)
@@ -14390,7 +14410,7 @@ cruise_defense_sound(void *context, float selector, struct yt_error *error)
 {
 	struct yt_session *session = context;
 
-	session->presentation.bold = 1.0f;
+	yt_present_set_bold(&session->presentation, 1.0f);
 	return session_sound(session, selector,
 	    "cruise missile fighter-defense sound", error);
 }
@@ -14680,13 +14700,13 @@ missile_mines:
 			    || !yt_database_write(&session->door->game.database,
 			    (size_t)basic, &target.record, error))
 				return false;
-			session->presentation.blink = 1.0f;
+			yt_present_set_blink(&session->presentation, 1.0f);
 			if (!session_present_text(session, destroyed_row,
 			    destroyed_length, SESSION_PRESENT_BOLD_LINE,
 			    "cruise missile destroyed-player row", error))
 				return false;
 			if (mines != 0.0f) {
-				session->presentation.blink = 1.0f;
+				yt_present_set_blink(&session->presentation, 1.0f);
 				if (!session_present_text(session, warning_row,
 				    warning_length,
 				    SESSION_PRESENT_BOLD_LINE,
@@ -15056,7 +15076,7 @@ route_failure_report(struct yt_session *session, struct yt_error *error)
 	    || !yt_projectile_route_failure_row(false, row, sizeof(row),
 	    &length))
 		return false;
-	session->presentation.blink = 1.0f;
+	yt_present_set_blink(&session->presentation, 1.0f);
 	return session_present_text(session, row, length,
 	    SESSION_PRESENT_BOLD_LINE, "projectile route failure row", error);
 }
@@ -15073,7 +15093,7 @@ missile_route_failure_suffix(struct yt_session *session,
 	    || !yt_projectile_route_failure_row(true, row, sizeof(row),
 	    &length))
 		return false;
-	session->presentation.blink = 1.0f;
+	yt_present_set_blink(&session->presentation, 1.0f);
 	return session_present_text(session, row, length,
 	    SESSION_PRESENT_BOLD_LINE, "cruise missile self-destruct row", error);
 }
@@ -16147,8 +16167,8 @@ radio_send_success(void *context, struct yt_error *error)
 	static const uint8_t success[] = "Transmission successful!";
 
 	(void)error;
-	session->presentation.bold = 1.0f;
-	session->presentation.blink = 1.0f;
+	yt_present_set_bold(&session->presentation, 1.0f);
+	yt_present_set_blink(&session->presentation, 1.0f);
 	return session_02fc(session, success, sizeof(success) - 1U);
 }
 
@@ -16604,7 +16624,7 @@ computer_route(struct yt_session *session, bool autopilot,
 	found = route_outcome == YT_ROUTE_FOUND
 	    || route_outcome == YT_ROUTE_SAME;
 	if (!found) {
-		session->presentation.blink = 1.0f;
+		yt_present_set_blink(&session->presentation, 1.0f);
 		return session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 		    "path failure first blank", error)
 		    && session_present_text(session, NULL, 0,
@@ -17009,7 +17029,7 @@ owned_planets_set_blink(void *context, float blink)
 {
 	struct yt_session *session = context;
 
-	session->presentation.blink = blink;
+	yt_present_set_blink(&session->presentation, blink);
 }
 
 static bool
@@ -17026,7 +17046,7 @@ computer_owned_planets(struct yt_session *session, struct yt_error *error)
 		.maximum_sector = sector_count(session),
 		.planet_record_base = session_planet_offset(session),
 		.current_player = (float)session_record(session),
-		.blink = session->presentation.blink,
+		.blink = yt_present_blink(&session->presentation),
 	};
 
 	return yt_owned_planets_run(&state, &ops, session, error);
@@ -17379,7 +17399,7 @@ computer_spies(struct yt_session *session, struct yt_error *error)
 		    || snprintf(row, sizeof(row), "Spy #%s will hunt in sector%s.",
 		    counter, target) < 0)
 			return false;
-		session->presentation.bold = 1.0f;
+		yt_present_set_bold(&session->presentation, 1.0f);
 		if (!session_02fc(session, (const uint8_t *)row, strlen(row)))
 			return false;
 	}
@@ -17827,7 +17847,7 @@ computer_nearest_ports(struct yt_session *session, struct yt_error *error)
 					stock_cell[0] = '\0';
 				}
 				if (port.owner != 0.0f)
-					session->presentation.bold = 1.0f;
+					yt_present_set_bold(&session->presentation, 1.0f);
 				session_set_foreground(session, 2.0f);
 				if (!session_present_text(session,
 				    (const uint8_t *)sector_cell,
@@ -17854,7 +17874,7 @@ computer_nearest_ports(struct yt_session *session, struct yt_error *error)
 				if (sector_number == 1) {
 					memcpy(name, "** Earth **", 11);
 					name_length = 11;
-					session->presentation.blink = 1.0f;
+					yt_present_set_blink(&session->presentation, 1.0f);
 				}
 				else if (owner_record != 0) {
 					struct yt_player owner;
@@ -19180,6 +19200,10 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	memset(&session, 0, sizeof(session));
 	yt_present_bind_background_process(&session.presentation,
 	    &session.route_process.bytes[YT_BACKGROUND_ADDRESS]);
+	yt_present_bind_bold_process(&session.presentation,
+	    &session.route_process.bytes[YT_BOLD_ADDRESS]);
+	yt_present_bind_blink_process(&session.presentation,
+	    &session.route_process.bytes[YT_BLINK_ADDRESS]);
 	session_bind_pager_process(&session);
 	session.door = door;
 	session.executable_path = executable_path;
