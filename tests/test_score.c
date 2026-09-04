@@ -4928,11 +4928,39 @@ check_projectile_union_police_transaction(void)
 	    && tape.calls == 1U && state.intercepted;
 }
 
+struct projectile_cache_tape {
+	uint8_t sector[8][4];
+	uint8_t cloak[8][4];
+	int records[16];
+	enum yt_player_cache_kind kinds[16];
+	size_t count;
+};
+
+static void
+projectile_cache_read(void *context, int player_record,
+    enum yt_player_cache_kind kind, uint8_t raw[4])
+{
+	struct projectile_cache_tape *tape = context;
+
+	if (player_record < 0
+	    || (size_t)player_record >= YT_ARRAY_LEN(tape->sector)
+	    || tape->count >= YT_ARRAY_LEN(tape->records)) {
+		memset(raw, 0, 4U);
+		return;
+	}
+	tape->records[tape->count] = player_record;
+	tape->kinds[tape->count] = kind;
+	++tape->count;
+	memcpy(raw, kind == YT_PLAYER_CACHE_SECTOR
+	    ? tape->sector[player_record] : tape->cloak[player_record], 4U);
+}
+
 static bool
 check_projectile_sector_probe_transaction(void)
 {
 	struct yt_projectile_sector_probe_state state;
 	struct yt_sector sector;
+	struct projectile_cache_tape tape;
 	struct yt_error error;
 	float sector_cache[8] = {0};
 	float cloak_cache[8] = {0};
@@ -5015,6 +5043,28 @@ check_projectile_sector_probe_transaction(void)
 	state.cache_count = 2U;
 	if (yt_projectile_sector_probe_run(&state, NULL)
 	    || state.presence != 1.0f || state.counter != 2.0f)
+		return false;
+
+	memset(&sector, 0, sizeof(sector));
+	memset(&tape, 0, sizeof(tape));
+	memset(sector_cache, 0, sizeof(sector_cache));
+	memset(cloak_cache, 0, sizeof(cloak_cache));
+	(void)qb_mbf32_encode(17.0f, tape.sector[2]);
+	(void)qb_mbf32_encode(0.0f, tape.cloak[2]);
+	state.sector = &sector;
+	state.hop = 17.0f;
+	state.player_terminal = 2.0f;
+	state.sector_cache = sector_cache;
+	state.cloak_cache = cloak_cache;
+	state.cache_count = YT_ARRAY_LEN(sector_cache);
+	state.read_cache = projectile_cache_read;
+	state.cache_context = &tape;
+	state.xannor_provoker = 0.0f;
+	if (!yt_projectile_sector_probe_run(&state, NULL)
+	    || state.matched_player != 2.0f || tape.count != 2U
+	    || tape.records[0] != 2 || tape.records[1] != 2
+	    || tape.kinds[0] != YT_PLAYER_CACHE_SECTOR
+	    || tape.kinds[1] != YT_PLAYER_CACHE_CLOAK)
 		return false;
 	return !yt_projectile_sector_probe_run(NULL, NULL);
 }
@@ -5619,6 +5669,7 @@ check_projectile_plasma_dispatch_transaction(void)
 {
 	float cache[8] = {0.0f};
 	struct yt_projectile_plasma_dispatch_state state;
+	struct projectile_cache_tape tape;
 	struct yt_error error;
 
 	memset(&state, 0, sizeof(state));
@@ -5682,6 +5733,25 @@ check_projectile_plasma_dispatch_transaction(void)
 	yt_error_clear(&error);
 	if (yt_projectile_plasma_dispatch_run(&state, &error)
 	    || error.status != YT_RANGE)
+		return false;
+
+	memset(&state, 0, sizeof(state));
+	memset(&tape, 0, sizeof(tape));
+	memset(cache, 0, sizeof(cache));
+	(void)qb_mbf32_encode(7.0f, tape.sector[3]);
+	state.energy = 1.0;
+	state.sector = 7.0f;
+	state.player_terminal = 3.0f;
+	state.sector_cache = cache;
+	state.cache_count = YT_ARRAY_LEN(cache);
+	state.read_cache = projectile_cache_read;
+	state.cache_context = &tape;
+	if (!yt_projectile_plasma_dispatch_run(&state, NULL)
+	    || state.route != YT_PROJECTILE_PLASMA_DISPATCH_PLAYER
+	    || state.selected_player != 3 || tape.count != 2U
+	    || tape.records[0] != 2 || tape.records[1] != 3
+	    || tape.kinds[0] != YT_PLAYER_CACHE_SECTOR
+	    || tape.kinds[1] != YT_PLAYER_CACHE_SECTOR)
 		return false;
 	return !yt_projectile_plasma_dispatch_run(NULL, NULL);
 }

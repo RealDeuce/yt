@@ -255,6 +255,16 @@ session_player_cache_raw(const struct yt_session *session, int player_record,
 	    session_player_cache_address(player_record, kind), raw);
 }
 
+static float
+session_player_cache_value(const struct yt_session *session, int player_record,
+    enum yt_player_cache_kind kind)
+{
+	uint8_t raw[4];
+
+	session_player_cache_raw(session, player_record, kind, raw);
+	return qb_mbf32_decode(raw);
+}
+
 static void
 session_set_player_cache_raw(struct yt_session *session, int player_record,
     enum yt_player_cache_kind kind, const uint8_t raw[4])
@@ -15194,6 +15204,8 @@ missile_sector(struct yt_session *session, int sector_number,
 	probe.sector_cache = session->sector_cache;
 	probe.cloak_cache = session->cloak_cache;
 	probe.cache_count = YT_ARRAY_LEN(session->sector_cache);
+	probe.read_cache = session_player_cache_read;
+	probe.cache_context = session;
 	probe.xannor_provoker = (float)*xannor_provoker;
 	if (!yt_projectile_sector_probe_run(&probe, error))
 		return false;
@@ -15257,7 +15269,8 @@ missile_mines:
 
 		enum yt_projectile_candidate_route candidate_route =
 		    yt_projectile_candidate_route(basic, session_record(session),
-		    session->sector_cache[basic], (float)sector_number,
+		    session_player_cache_value(session, basic,
+		    YT_PLAYER_CACHE_SECTOR), (float)sector_number,
 		    *remaining);
 
 		if (candidate_route == YT_PROJECTILE_CANDIDATE_TERMINATE)
@@ -15279,7 +15292,8 @@ missile_mines:
 		    error))
 			return false;
 		if (!yt_projectile_candidate_admitted(basic,
-		    session->cloak_cache[basic], *xannor_provoker))
+		    session_player_cache_value(session, basic,
+		    YT_PLAYER_CACHE_CLOAK), *xannor_provoker))
 			continue;
 		if (!session_sound(session, 2.0f,
 		    "cruise missile player-attack sound", error))
@@ -15560,6 +15574,8 @@ plasma_reload_sector:
 	dispatch.player_terminal = session_sector_offset(session);
 	dispatch.sector_cache = session->sector_cache;
 	dispatch.cache_count = YT_ARRAY_LEN(session->sector_cache);
+	dispatch.read_cache = session_player_cache_read;
+	dispatch.cache_context = session;
 	for (;;) {
 		dispatch.energy = *energy;
 		if (!yt_projectile_plasma_dispatch_run(&dispatch, error))
@@ -15946,6 +15962,8 @@ plasma_route_impact(void *context, int hop, double *energy,
 	probe.sector_cache = session->sector_cache;
 	probe.cloak_cache = session->cloak_cache;
 	probe.cache_count = YT_ARRAY_LEN(session->sector_cache);
+	probe.read_cache = session_player_cache_read;
+	probe.cache_context = session;
 	probe.hop = (float)hop;
 	probe.player_terminal = session_sector_offset(session);
 	probe.xannor_provoker = route_context->xannor_provoker != NULL

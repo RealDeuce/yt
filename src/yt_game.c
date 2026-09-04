@@ -11778,9 +11778,12 @@ yt_projectile_sector_probe_run(struct yt_projectile_sector_probe_state *state,
     struct yt_error *error)
 {
 	bool overflow;
+	uint8_t sector_raw[4];
+	uint8_t cloak_raw[4];
 
 	if (state == NULL || state->sector == NULL
-	    || state->sector_cache == NULL || state->cloak_cache == NULL)
+	    || (state->read_cache == NULL
+	    && (state->sector_cache == NULL || state->cloak_cache == NULL)))
 		return false;
 	state->presence = 0.0f;
 	state->matched_player = 0.0f;
@@ -11800,8 +11803,18 @@ yt_projectile_sector_probe_run(struct yt_projectile_sector_probe_state *state,
 			}
 			return false;
 		}
-		if (state->sector_cache[candidate] == state->hop
-		    && (state->cloak_cache[candidate] == 0.0f
+		if (state->read_cache != NULL) {
+			state->read_cache(state->cache_context, candidate,
+			    YT_PLAYER_CACHE_SECTOR, sector_raw);
+			state->read_cache(state->cache_context, candidate,
+			    YT_PLAYER_CACHE_CLOAK, cloak_raw);
+		}
+		if ((state->read_cache != NULL
+		    ? qb_mbf32_decode(sector_raw) : state->sector_cache[candidate])
+		    == state->hop
+		    && ((state->read_cache != NULL
+		    ? qb_mbf32_decode(cloak_raw) : state->cloak_cache[candidate])
+		    == 0.0f
 		    || state->counter == state->xannor_provoker)) {
 			state->presence = 1.0f;
 			state->matched_player = state->counter;
@@ -12091,8 +12104,10 @@ yt_projectile_plasma_dispatch_run(
     struct yt_error *error)
 {
 	bool overflow;
+	uint8_t sector_raw[4];
 
-	if (state == NULL || state->sector_cache == NULL)
+	if (state == NULL
+	    || (state->read_cache == NULL && state->sector_cache == NULL))
 		return false;
 	state->selected_player = 0;
 	if (state->resume_after_player && state->energy < 1.0) {
@@ -12115,7 +12130,12 @@ yt_projectile_plasma_dispatch_run(
 			}
 			return false;
 		}
-		if (state->sector_cache[candidate] == state->sector
+		if (state->read_cache != NULL)
+			state->read_cache(state->cache_context, candidate,
+			    YT_PLAYER_CACHE_SECTOR, sector_raw);
+		if ((state->read_cache != NULL
+		    ? qb_mbf32_decode(sector_raw) : state->sector_cache[candidate])
+		    == state->sector
 		    && state->energy > 0.0) {
 			state->selected_player = candidate;
 			state->route = YT_PROJECTILE_PLASMA_DISPATCH_PLAYER;

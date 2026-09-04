@@ -1255,6 +1255,8 @@ struct yt_projectile_sector_probe_state {
 	const float *sector_cache;
 	const float *cloak_cache;
 	size_t cache_count;
+	yt_player_cache_read_fn read_cache;
+	void *cache_context;
 	float xannor_provoker;
 	float presence;
 	float matched_player;
@@ -1363,6 +1365,8 @@ struct yt_projectile_plasma_dispatch_state {
 	float player_terminal;
 	const float *sector_cache;
 	size_t cache_count;
+	yt_player_cache_read_fn read_cache;
+	void *cache_context;
 	bool resume_after_player;
 	float counter;
 	int selected_player;
