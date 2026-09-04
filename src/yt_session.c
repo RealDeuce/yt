@@ -3612,6 +3612,36 @@ instruction_offer(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
+startup_retention_read_config(void *context, struct yt_record *record,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return yt_database_read(&session->door->game.database, 1U, record,
+	    error);
+}
+
+static bool
+startup_retention_present(void *context, const uint8_t *text, size_t length,
+    enum yt_startup_retention_output_kind kind, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	switch (kind) {
+	case YT_STARTUP_RETENTION_FIRST_ROW:
+		return session_0317(session, text, length,
+		    "new player retention first row", error);
+	case YT_STARTUP_RETENTION_SECOND_ROW:
+		return session_02fc(session, text, length);
+	case YT_STARTUP_RETENTION_FINAL_BLANK:
+		return session_present_text(session, NULL, 0U,
+		    SESSION_PRESENT_LINE, "new player retention final blank",
+		    error);
+	}
+	return false;
+}
+
+static bool
 admit_player(struct yt_session *session, const char *first, const char *last,
     struct yt_error *error)
 {
@@ -3709,25 +3739,13 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 			return false;
 		}
 		{
-			char days[64];
-			char retention[512];
+			static const struct yt_startup_retention_ops ops = {
+				startup_retention_read_config,
+				startup_retention_present,
+			};
+			struct yt_startup_retention_state state;
 
-			if (qb_str_single(days, sizeof(days),
-			    session->door->game.config.retention_days) < 0)
-				return false;
-			snprintf(retention, sizeof(retention),
-			    "Notice: If your ship is dead and you have not played for%s",
-			    days);
-			if (!session_present_text(session, NULL, 0,
-			    SESSION_PRESENT_LINE, "new player retention blank", error)
-			    || !session_02fc(session, (const uint8_t *)retention,
-			    strlen(retention))
-			    || !session_02fc(session,
-			    (const uint8_t *)
-			    "days, it will be deleted to make room for someone else.",
-			    strlen("days, it will be deleted to make room for someone else."))
-			    || !session_present_text(session, NULL, 0,
-			    SESSION_PRESENT_LINE, "new player retention blank", error))
+			if (!yt_startup_retention_run(&state, &ops, session, error))
 				return false;
 		}
 		if (!construct_player_visible(session, error)

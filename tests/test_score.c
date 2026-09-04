@@ -1190,6 +1190,140 @@ check_startup_configuration_transaction(void)
 	    && !yt_startup_configuration_run(&state, NULL, &tape, NULL);
 }
 
+enum startup_retention_event {
+	STARTUP_RETENTION_READ = 1,
+	STARTUP_RETENTION_FIRST,
+	STARTUP_RETENTION_SECOND,
+	STARTUP_RETENTION_FINAL,
+};
+
+struct startup_retention_tape {
+	struct yt_record source;
+	int events[4];
+	size_t event_count;
+	int fail_event;
+	enum yt_startup_retention_output_kind kinds[3];
+	uint8_t rows[3][128];
+	size_t lengths[3];
+};
+
+static bool
+startup_retention_step(struct startup_retention_tape *tape, int event)
+{
+	if (tape->event_count >= YT_ARRAY_LEN(tape->events))
+		return false;
+	tape->events[tape->event_count++] = event;
+	return tape->fail_event != event;
+}
+
+static bool
+startup_retention_read(void *context, struct yt_record *record,
+    struct yt_error *error)
+{
+	struct startup_retention_tape *tape = context;
+
+	(void)error;
+	if (!startup_retention_step(tape, STARTUP_RETENTION_READ))
+		return false;
+	*record = tape->source;
+	return true;
+}
+
+static bool
+startup_retention_present(void *context, const uint8_t *text, size_t length,
+    enum yt_startup_retention_output_kind kind, struct yt_error *error)
+{
+	struct startup_retention_tape *tape = context;
+	size_t index = tape->event_count - 1U;
+	int event = STARTUP_RETENTION_FIRST + (int)kind;
+
+	(void)error;
+	if (index >= YT_ARRAY_LEN(tape->kinds)
+	    || length > sizeof(tape->rows[index]))
+		return false;
+	tape->kinds[index] = kind;
+	tape->lengths[index] = length;
+	if (length != 0U)
+		memcpy(tape->rows[index], text, length);
+	return startup_retention_step(tape, event);
+}
+
+static void
+startup_retention_fixture(struct startup_retention_tape *tape, float days)
+{
+	memset(tape, 0, sizeof(*tape));
+	memset(tape->source.bytes, 0x5a, sizeof(tape->source.bytes));
+	(void)yt_record_set_number(&tape->source, YT_F77, days);
+}
+
+static bool
+check_startup_retention_transaction(void)
+{
+	static const struct yt_startup_retention_ops ops = {
+		startup_retention_read,
+		startup_retention_present,
+	};
+	static const int expected_events[] = {
+		STARTUP_RETENTION_READ,
+		STARTUP_RETENTION_FIRST,
+		STARTUP_RETENTION_SECOND,
+		STARTUP_RETENTION_FINAL,
+	};
+	static const uint8_t first[] =
+	    "Notice: If your ship is dead and you have not played for 14";
+	static const uint8_t negative[] =
+	    "Notice: If your ship is dead and you have not played for-1";
+	static const uint8_t second[] =
+	    "days, it will be deleted to make room for someone else.";
+	struct startup_retention_tape tape;
+	struct yt_startup_retention_state state;
+	int failure;
+
+	startup_retention_fixture(&tape, 14.0f);
+	memset(&state, 0, sizeof(state));
+	if (!yt_startup_retention_run(&state, &ops, &tape, NULL)
+	    || tape.event_count != YT_ARRAY_LEN(expected_events)
+	    || memcmp(tape.events, expected_events, sizeof(expected_events)) != 0
+	    || memcmp(&state.config_record, &tape.source,
+	    sizeof(state.config_record)) != 0
+	    || state.first_row_length != sizeof(first) - 1U
+	    || memcmp(state.first_row, first, sizeof(first) - 1U) != 0
+	    || tape.kinds[0] != YT_STARTUP_RETENTION_FIRST_ROW
+	    || tape.kinds[1] != YT_STARTUP_RETENTION_SECOND_ROW
+	    || tape.kinds[2] != YT_STARTUP_RETENTION_FINAL_BLANK
+	    || tape.lengths[0] != sizeof(first) - 1U
+	    || memcmp(tape.rows[0], first, sizeof(first) - 1U) != 0
+	    || tape.lengths[1] != sizeof(second) - 1U
+	    || memcmp(tape.rows[1], second, sizeof(second) - 1U) != 0
+	    || tape.lengths[2] != 0U)
+		return false;
+
+	startup_retention_fixture(&tape, -1.0f);
+	memset(&state, 0, sizeof(state));
+	if (!yt_startup_retention_run(&state, &ops, &tape, NULL)
+	    || state.first_row_length != sizeof(negative) - 1U
+	    || memcmp(state.first_row, negative, sizeof(negative) - 1U) != 0)
+		return false;
+
+	for (failure = STARTUP_RETENTION_READ;
+	    failure <= STARTUP_RETENTION_FINAL; ++failure) {
+		startup_retention_fixture(&tape, 14.0f);
+		tape.fail_event = failure;
+		memset(&state, 0xa5, sizeof(state));
+		if (yt_startup_retention_run(&state, &ops, &tape, NULL)
+		    || tape.event_count != (size_t)failure
+		    || tape.events[tape.event_count - 1U] != failure
+		    || (failure == STARTUP_RETENTION_READ
+		    && state.first_row_length != 0U)
+		    || (failure > STARTUP_RETENTION_READ
+		    && (state.first_row_length != sizeof(first) - 1U
+		    || memcmp(state.first_row, first, sizeof(first) - 1U) != 0)))
+			return false;
+	}
+	return !yt_startup_retention_run(NULL, &ops, &tape, NULL)
+	    && !yt_startup_retention_run(&state, NULL, &tape, NULL);
+}
+
 struct hydration_tape {
 	struct yt_player fresh;
 	int requested_record;
@@ -32380,6 +32514,8 @@ main(void)
 		return fail("PRINT USING boundary formatting differs");
 	if (!check_startup_configuration_transaction())
 		return fail("startup configuration transaction differs");
+	if (!check_startup_retention_transaction())
+		return fail("startup retention transaction differs");
 	if (!check_current_player_cache_model())
 		return fail("current-player cache model differs");
 	if (!check_friendship_model())
