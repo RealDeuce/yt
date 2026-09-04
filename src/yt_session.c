@@ -71,6 +71,9 @@
 #define YT_COLOR_TABLE_ADDRESS 0x556EU
 #define YT_CACHED_FOREGROUND_ADDRESS 0x559EU
 #define YT_CACHED_BACKGROUND_ADDRESS 0x55A2U
+#define YT_CLEARANCE_ANNOUNCED_ADDRESS 0x55B6U
+#define YT_CLEARANCE_VALUE_ADDRESS 0x55BEU
+#define YT_CLEARANCE_SOUND_SELECTOR_ADDRESS 0x55C6U
 #define YT_SESSION_DEADLINE_ADDRESS 0x4BB4U
 #define YT_SESSION_MODE_ADDRESS 0x19C8U
 #define YT_ANSI_ADDRESS 0x19A8U
@@ -9034,6 +9037,9 @@ static bool
 clearance(struct yt_session *session, bool create,
     struct yt_error *error)
 {
+	static const uint8_t announced_zero[4] = {
+		0x00U, 0x00U, 0x7aU, 0x00U,
+	};
 	static const uint16_t discount_address[4] = {
 		YT_CLEARANCE_HOLDS_ADDRESS,
 		YT_CLEARANCE_FIGHTERS_ADDRESS,
@@ -9049,9 +9055,10 @@ clearance(struct yt_session *session, bool create,
 	static const char *name[4] = {
 		"Holds", "Fighters", "Shields", "Ground Forces"
 	};
-	bool announced = false;
 	size_t index;
 
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_CLEARANCE_ANNOUNCED_ADDRESS, announced_zero);
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "clearance leading blank", error))
 		return false;
@@ -9081,6 +9088,10 @@ clearance(struct yt_session *session, bool create,
 			if (candidate)
 				session_set_process_single(session,
 				    discount_address[index], discount);
+			yt_route_process_copy_raw_single(&session->route_process,
+			    discount_address[index], YT_CLEARANCE_VALUE_ADDRESS);
+			discount = yt_route_process_single(&session->route_process,
+			    YT_CLEARANCE_VALUE_ADDRESS);
 			if (qb_str_single(percent, sizeof(percent),
 			    yt_clearance_percentage(discount)) < 0
 			    || snprintf(row, sizeof(row),
@@ -9090,11 +9101,17 @@ clearance(struct yt_session *session, bool create,
 			    strlen(row), SESSION_PRESENT_LINE,
 			    "clearance announcement", error))
 				return false;
-			announced = true;
+			session_set_process_single(session,
+			    YT_CLEARANCE_ANNOUNCED_ADDRESS, 1.0f);
 		}
 	}
-	if (announced) {
-		if (!session_sound(session, 1.0f,
+	if (yt_route_process_single(&session->route_process,
+	    YT_CLEARANCE_ANNOUNCED_ADDRESS) != 0.0f) {
+		session_set_process_single(session,
+		    YT_CLEARANCE_SOUND_SELECTOR_ADDRESS, 1.0f);
+		if (!session_sound(session, yt_route_process_single(
+		    &session->route_process,
+		    YT_CLEARANCE_SOUND_SELECTOR_ADDRESS),
 		    "clearance sale sound", error))
 			return false;
 		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
