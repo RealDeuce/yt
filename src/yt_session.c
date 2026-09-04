@@ -5748,7 +5748,11 @@ emergency_warp(struct yt_session *session, struct yt_error *error)
 	    (size_t)session_record(session), &session->player.record, error)
 	    || !yt_database_flush(&session->door->game.database, error))
 		return false;
-	session->sector_cache[session_record(session)] = destination;
+	session_set_player_cache_raw(session, session_record(session),
+	    YT_PLAYER_CACHE_SECTOR,
+	    session->player.record.bytes + YT_F57);
+	session->sector_cache[session_record(session)] =
+	    qb_mbf32_decode(session->player.record.bytes + YT_F57);
 	return true;
 }
 
