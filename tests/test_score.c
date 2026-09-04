@@ -23810,9 +23810,13 @@ check_admission_news(void)
 	    "-=*=- 07-24-2026 Star Lord New Player Entered -=*=-\r\n\x1a";
 	static const uint8_t login_expected[] =
 	    "-=*=- 12:34:56 Star Lord Logged on -=*=-\r\n\x1a";
+	static const uint8_t long_prefix[] = "-=*=- 07-24-2026 ";
+	static const uint8_t long_suffix[] =
+	    " New Player Entered -=*=-\r\n\x1a";
 	struct yt_text_file text;
 	struct yt_error error;
 	char long_name[512];
+	size_t expected_length;
 	bool valid = false;
 
 	remove("YTNEWS.DAT");
@@ -23849,11 +23853,24 @@ check_admission_news(void)
 	yt_text_free(&text);
 	memset(long_name, 'X', sizeof(long_name) - 1U);
 	long_name[sizeof(long_name) - 1U] = '\0';
+	remove("YTNEWS.DAT");
 	yt_error_clear(&error);
-	if (yt_news_append_new_player("07-24-2026", long_name, &error)
-	    || error.status != YT_RANGE
-	    || strcmp(error.operation, "format news") != 0)
+	expected_length = sizeof(long_prefix) - 1U + sizeof(long_name) - 1U
+	    + sizeof(long_suffix) - 1U;
+	if (!yt_news_append_new_player("07-24-2026", long_name, &error)
+	    || !yt_text_read("YTNEWS.DAT", &text, &error))
 		goto done;
+	if (text.length != expected_length
+	    || memcmp(text.data, long_prefix, sizeof(long_prefix) - 1U) != 0
+	    || memcmp(text.data + sizeof(long_prefix) - 1U, long_name,
+	    sizeof(long_name) - 1U) != 0
+	    || memcmp(text.data + sizeof(long_prefix) - 1U
+	    + sizeof(long_name) - 1U, long_suffix,
+	    sizeof(long_suffix) - 1U) != 0) {
+		yt_text_free(&text);
+		goto done;
+	}
+	yt_text_free(&text);
 	valid = true;
 
 done:

@@ -1408,8 +1408,48 @@ bool
 yt_news_append_new_player(const char *date_text, const char *player_name,
     struct yt_error *error)
 {
-	return news_append_two_values("-=*=- %s %s New Player Entered -=*=-",
-	    date_text, player_name, error);
+	static const uint8_t prefix[] = "-=*=- ";
+	static const uint8_t separator[] = " ";
+	static const uint8_t suffix[] = " New Player Entered -=*=-";
+	uint8_t *row;
+	size_t date_length;
+	size_t name_length;
+	size_t length;
+	size_t position = 0U;
+	bool result;
+
+	if (date_text == NULL || player_name == NULL) {
+		set_error(error, YT_INVALID, "format news", "YTNEWS.DAT");
+		return false;
+	}
+	date_length = strlen(date_text);
+	name_length = strlen(player_name);
+	length = sizeof(prefix) - 1U + sizeof(separator) - 1U
+	    + sizeof(suffix) - 1U;
+	if (date_length > SIZE_MAX - length
+	    || name_length > SIZE_MAX - length - date_length) {
+		set_error(error, YT_RANGE, "format news", "YTNEWS.DAT");
+		return false;
+	}
+	length += date_length + name_length;
+	row = malloc(length == 0U ? 1U : length);
+	if (row == NULL) {
+		set_error(error, YT_NO_MEMORY, "allocate news row", "YTNEWS.DAT");
+		return false;
+	}
+#define COPY_NEWS_PART(data, part_length) do { \
+	memcpy(row + position, (data), (part_length)); \
+	position += (part_length); \
+} while (0)
+	COPY_NEWS_PART(prefix, sizeof(prefix) - 1U);
+	COPY_NEWS_PART(date_text, date_length);
+	COPY_NEWS_PART(separator, sizeof(separator) - 1U);
+	COPY_NEWS_PART(player_name, name_length);
+	COPY_NEWS_PART(suffix, sizeof(suffix) - 1U);
+#undef COPY_NEWS_PART
+	result = yt_news_append_bytes(row, position, error);
+	free(row);
+	return result;
 }
 
 bool
