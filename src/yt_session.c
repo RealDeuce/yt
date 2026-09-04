@@ -3569,6 +3569,9 @@ resolve_alias(struct yt_session *session, char first[128], char last[128],
 static bool
 construct_player_visible(struct yt_session *session, struct yt_error *error)
 {
+	uint8_t date_raw[4];
+	uint8_t turns_raw[4];
+
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "player constructor blank", error)
 	    || !session_present_text(session,
@@ -3576,10 +3579,12 @@ construct_player_visible(struct yt_session *session, struct yt_error *error)
 	    strlen("Your ship has been built."), SESSION_PRESENT_LINE,
 	    "player constructor row", error))
 		return false;
+	yt_route_process_raw_single(&session->route_process,
+	    YT_STARTUP_DATE_SERIAL_ADDRESS, date_raw);
+	yt_route_process_raw_single(&session->route_process,
+	    YT_TURNS_PER_DAY_ADDRESS, turns_raw);
 	return yt_game_construct_player(&session->door->game,
-	    session_record(session), yt_route_process_single(
-	    &session->route_process, YT_STARTUP_DATE_SERIAL_ADDRESS),
-	    &session->player, error);
+	    session_record(session), date_raw, turns_raw, &session->player, error);
 }
 
 static bool

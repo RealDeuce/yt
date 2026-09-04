@@ -23057,6 +23057,20 @@ check_earth_report_model(void)
 }
 
 static bool
+construct_player_values(struct yt_game *game, int basic_record, float today,
+    float turns, struct yt_player *player, struct yt_error *error)
+{
+	uint8_t today_raw[4];
+	uint8_t turns_raw[4];
+
+	if (qb_mbf32_encode(today, today_raw) != QB_MBF_OK
+	    || qb_mbf32_encode(turns, turns_raw) != QB_MBF_OK)
+		return false;
+	return yt_game_construct_player(game, basic_record, today_raw, turns_raw,
+	    player, error);
+}
+
+static bool
 check_player_constructor_failures(void)
 {
 	struct yt_game game;
@@ -23076,7 +23090,7 @@ check_player_constructor_failures(void)
 		return false;
 	yt_database_set_read_provider(&game.database,
 	    score_database_read_with_fault, &read_fault);
-	if (yt_game_construct_player(&game, 2, 77.0f, &player, &error)
+	if (construct_player_values(&game, 2, 77.0f, 123.0f, &player, &error)
 	    || error.status != YT_IO_ERROR || read_fault.calls != 1U
 	    || game.database.last_get.basic_error != 57U)
 		goto close;
@@ -23093,7 +23107,7 @@ check_player_constructor_failures(void)
 	yt_database_set_read_provider(&game.database,
 	    score_database_read_with_fault, &read_fault);
 	yt_error_clear(&error);
-	if (yt_game_construct_player(&game, 2, 77.0f, &player, &error)
+	if (construct_player_values(&game, 2, 77.0f, 123.0f, &player, &error)
 	    || error.status != YT_IO_ERROR || read_fault.calls != 2U
 	    || game.database.last_get.basic_error != 57U)
 		goto close;
@@ -23114,7 +23128,7 @@ check_player_constructor_failures(void)
 	    &error))
 		goto done;
 	yt_error_clear(&error);
-	if (yt_game_construct_player(&game, 2, 77.0f, &player, &error)
+	if (construct_player_values(&game, 2, 77.0f, 123.0f, &player, &error)
 	    || error.status != YT_IO_ERROR
 	    || strcmp(error.operation, "write record") != 0
 	    || strcmp(player.name, "Keep Name") != 0
@@ -32499,6 +32513,11 @@ main(void)
 	    {0xde, 0xad, 0xbe, 0xef};
 	static const uint8_t long_identity[] =
 	    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwx";
+	uint8_t constructor_date_raw[4];
+	uint8_t constructor_turns_raw[4];
+	uint8_t constructor_fighters_raw[4];
+	uint8_t constructor_credits_raw[4];
+	uint8_t constructor_holds_raw[4];
 	FILE *score;
 	unsigned char bytes[1024];
 	unsigned char expected_screen[1024];
@@ -32868,20 +32887,52 @@ main(void)
 	player.score = 77.5f;
 	memcpy(player.record.bytes + YT_RECORD_TAIL_OFFSET, player_tail,
 	    sizeof(player_tail));
+	memcpy(player.record.bytes + YT_F45, "\x11\x22\x33\0", 4U);
+	memcpy(player.record.bytes + YT_F69, "\x44\x55\x66\0", 4U);
 	if (!yt_game_write_player(&game, 2, &player, &error))
 		goto close;
 	game.config.turns_per_day = 999.0f;
 	game.config.initial_fighters = 999.0f;
 	game.config.initial_credits = 999.0f;
 	game.config.initial_holds = 999.0f;
-	if (!yt_game_construct_player(&game, 2, 321.0f, &player, &error)
+	if (qb_mbf32_encode(321.0f, constructor_date_raw) != QB_MBF_OK
+	    || qb_mbf32_encode(500.0f, constructor_turns_raw) != QB_MBF_OK
+	    || qb_mbf32_encode(45.0f, constructor_fighters_raw) != QB_MBF_OK
+	    || qb_mbf32_encode(678.0f, constructor_credits_raw) != QB_MBF_OK
+	    || qb_mbf32_encode(9.0f, constructor_holds_raw) != QB_MBF_OK
+	    || !yt_game_construct_player(&game, 2, constructor_date_raw,
+	    constructor_turns_raw, &player, &error)
 	    || !yt_game_read_player(&game, 2, &player, &error)
 	    || strcmp(player.name, "Old Trader") != 0
 	    || player.name_length != 10.0f || player.score != 77.5f
 	    || player.last_active != 321.0f || player.killed_by != 0.0f
-	    || player.turns != 123.0f || player.fighters != 45.0f
+	    || player.turns != 500.0f || player.fighters != 45.0f
 	    || player.credits != 678.0f || player.holds != 9.0f
 	    || player.team != 0.0f
+	    || memcmp(player.record.bytes + YT_F41,
+	    constructor_date_raw, 4U) != 0
+	    || memcmp(player.record.bytes + YT_F45,
+	    "\0\0\x0a\0", 4U) != 0
+	    || memcmp(player.record.bytes + YT_F49,
+	    constructor_turns_raw, 4U) != 0
+	    || memcmp(player.record.bytes + YT_F53,
+	    "\0\0\x48\x87", 4U) != 0
+	    || memcmp(player.record.bytes + YT_F57,
+	    "\0\0\0\x81", 4U) != 0
+	    || memcmp(player.record.bytes + YT_F61,
+	    constructor_fighters_raw, 4U) != 0
+	    || memcmp(player.record.bytes + YT_F65,
+	    constructor_holds_raw, 4U) != 0
+	    || memcmp(player.record.bytes + YT_F69,
+	    "\0\0\0\0", 4U) != 0
+	    || memcmp(player.record.bytes + YT_F81,
+	    constructor_credits_raw, 4U) != 0
+	    || memcmp(player.record.bytes + YT_F97,
+	    "\0\0\0\x81", 4U) != 0
+	    || memcmp(player.record.bytes + YT_F101,
+	    "\0\0\0\0", 4U) != 0
+	    || memcmp(player.record.bytes + YT_F125,
+	    "\0\0\0\x81", 4U) != 0
 	    || memcmp(player.record.bytes + YT_RECORD_TAIL_OFFSET,
 	    player_tail, sizeof(player_tail)) != 0
 	    || sizeof(long_identity) - 1U != 50U
@@ -32891,7 +32942,7 @@ main(void)
 	    || memcmp(player.record.bytes, long_identity,
 	    YT_TEXT_FIELD_SIZE) != 0 || player.name_length != 50.0f
 	    || player.team != 0.0f || player.score != 77.5f
-	    || player.turns != 123.0f || player.fighters != 45.0f
+	    || player.turns != 500.0f || player.fighters != 45.0f
 	    || memcmp(player.record.bytes + YT_RECORD_TAIL_OFFSET,
 	    player_tail, sizeof(player_tail)) != 0
 	    || !yt_database_write(&game.database, 2, &blank, &error))
