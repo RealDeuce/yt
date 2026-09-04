@@ -1432,6 +1432,7 @@ yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
 	struct yt_player saved_player;
 	struct yt_sector headquarters;
 	uint8_t saved_record_raw[4];
+	uint8_t saved_cloak_raw[4];
 	int saved_record;
 	float saved_cloak = 0.0f;
 	int target_candidate;
@@ -1443,6 +1444,7 @@ yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
 	char target_text[64];
 	char row[192];
 	bool valid_cache;
+	bool cache_cleared = false;
 
 	if (state == NULL || ops == NULL || state->player == NULL
 	    || state->player_record == NULL || state->destroyed == NULL
@@ -1475,9 +1477,26 @@ yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
 	    && (size_t)saved_record < state->cache_count
 	    && state->cloak_cache != NULL;
 	if (valid_cache) {
-		saved_cloak = state->cloak_cache[saved_record];
-		if (*state->provoker != 0)
+		if (ops->read_cache != NULL) {
+			ops->read_cache(context, saved_record,
+			    YT_PLAYER_CACHE_CLOAK, saved_cloak_raw);
+			saved_cloak = qb_mbf32_decode(saved_cloak_raw);
+		}
+		else {
+			saved_cloak = state->cloak_cache[saved_record];
+			(void)qb_mbf32_encode(saved_cloak, saved_cloak_raw);
+		}
+		if (*state->provoker != 0) {
+			static const uint8_t cloak_zero[4] = {
+				0x00U, 0x00U, 0x40U, 0x00U
+			};
+
 			state->cloak_cache[saved_record] = 0.0f;
+			if (ops->store_cache != NULL)
+				ops->store_cache(context, saved_record,
+				    YT_PLAYER_CACHE_CLOAK, cloak_zero);
+			cache_cleared = true;
+		}
 	}
 	(void)snprintf(state->player->name, sizeof(state->player->name), "%s",
 	    "The Xannor");
@@ -1509,8 +1528,12 @@ yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
 	if (ops->store_player_record != NULL)
 		ops->store_player_record(context, saved_record_raw);
 	*state->player = saved_player;
-	if (valid_cache)
+	if (valid_cache) {
 		state->cloak_cache[saved_record] = saved_cloak;
+		if (cache_cleared && ops->store_cache != NULL)
+			ops->store_cache(context, saved_record,
+			    YT_PLAYER_CACHE_CLOAK, saved_cloak_raw);
+	}
 	if (!ops->read_player(context, saved_record, state->player, error))
 		return false;
 	if (qb_mbf32_truth(state->player->record.bytes + YT_F45)) {

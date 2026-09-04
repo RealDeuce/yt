@@ -1662,6 +1662,8 @@ struct yt_xannor_retaliation_ops {
 	yt_destroyed_store_fn store_destroyed;
 	yt_player_record_store_fn store_player_record;
 	yt_player_record_store_fn store_provoker;
+	yt_player_cache_read_fn read_cache;
+	yt_player_cache_store_fn store_cache;
 };
 
 struct yt_counterlaunch_state {

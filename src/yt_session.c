@@ -16276,6 +16276,8 @@ launch_xannor_retaliation(struct yt_session *session, int *provoking_player,
 		session_store_destroyed,
 		session_store_current_player_record,
 		session_store_xannor_provoker,
+		session_player_cache_read,
+		session_player_cache_store,
 	};
 	bool destroyed = session_is_destroyed(session);
 	uint8_t current_record_raw[4];
