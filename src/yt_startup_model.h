@@ -236,6 +236,7 @@ struct yt_registration_ops {
 	yt_registration_terminal_fn close_all;
 	yt_registration_terminal_fn end;
 	yt_registration_flag_fn store_registered;
+	yt_registration_flag_fn store_nonempty;
 };
 
 bool yt_startup_split_command(const uint8_t *command, size_t length,

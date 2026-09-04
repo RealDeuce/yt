@@ -39,6 +39,8 @@
 #define YT_DESTROYED_ADDRESS 0x18B4U
 #define YT_CURRENT_WARPS_ADDRESS 0x1898U
 #define YT_REGISTERED_FLAG_ADDRESS 0x1C60U
+#define YT_REGISTRATION_BETA_ONLY_ADDRESS 0x1874U
+#define YT_REGISTRATION_PRESENT_ADDRESS 0x5C66U
 #define YT_GENESIS_REQUIRED_PORTS_ADDRESS 0x1C48U
 #define YT_PLANET_RECORD_SCRATCH_ADDRESS 0x19C4U
 #define YT_CURRENT_SECTOR_ADDRESS 0x1C44U
@@ -2903,6 +2905,15 @@ registration_store_registered(void *opaque, const uint8_t raw[4])
 	    YT_REGISTERED_FLAG_ADDRESS, raw);
 }
 
+static void
+registration_store_nonempty(void *opaque, const uint8_t raw[4])
+{
+	struct registration_context *context = opaque;
+
+	yt_route_process_set_raw_single(&context->session->route_process,
+	    YT_REGISTRATION_PRESENT_ADDRESS, raw);
+}
+
 static bool
 registration(struct yt_session *session, struct yt_error *error)
 {
@@ -2926,10 +2937,12 @@ registration(struct yt_session *session, struct yt_error *error)
 		registration_close_all,
 		registration_end,
 		registration_store_registered,
+		registration_store_nonempty,
 	};
 	struct registration_context context = {.session = session};
 	struct yt_registration_state state;
 	uint8_t *storage;
+	uint8_t beta_raw[4];
 	bool completed;
 	size_t index;
 
@@ -2976,7 +2989,9 @@ registration(struct yt_session *session, struct yt_error *error)
 		    + (index + 3U) * YT_REGISTRATION_STRING_MAX;
 		state.display[index].capacity = YT_REGISTRATION_STRING_MAX;
 	}
-	state.beta_only = false;
+	yt_route_process_raw_single(&session->route_process,
+	    YT_REGISTRATION_BETA_ONLY_ADDRESS, beta_raw);
+	state.beta_only = qb_mbf32_truth(beta_raw);
 	state.expected_evaluation_sum[0] = 2085U;
 	state.expected_evaluation_sum[1] = 3496U;
 	completed = yt_registration_run(&state, &ops, &context, error);

@@ -45,6 +45,11 @@ enum registration_event {
 	REG_END,
 };
 
+enum registration_store_kind {
+	REG_STORE_NONEMPTY,
+	REG_STORE_REGISTERED,
+};
+
 struct registration_tape {
 	const uint8_t *file;
 	size_t file_length;
@@ -56,6 +61,10 @@ struct registration_tape {
 	size_t presented_length;
 	uint8_t registered_raw[2][4];
 	size_t registered_store_count;
+	uint8_t nonempty_raw[2][4];
+	size_t nonempty_store_count;
+	enum registration_store_kind store_kind[4];
+	size_t store_count;
 };
 
 static bool
@@ -196,12 +205,33 @@ registration_store_registered(void *context, const uint8_t raw[4])
 {
 	struct registration_tape *tape = context;
 
+	CHECK(tape->store_count < YT_ARRAY_LEN(tape->store_kind));
+	if (tape->store_count < YT_ARRAY_LEN(tape->store_kind))
+		tape->store_kind[tape->store_count] = REG_STORE_REGISTERED;
+	++tape->store_count;
 	if (tape->registered_store_count
 	    >= YT_ARRAY_LEN(tape->registered_raw))
 		return;
 	memcpy(tape->registered_raw[tape->registered_store_count], raw,
 	    sizeof(tape->registered_raw[tape->registered_store_count]));
 	++tape->registered_store_count;
+}
+
+static void
+registration_store_nonempty(void *context, const uint8_t raw[4])
+{
+	struct registration_tape *tape = context;
+
+	CHECK(tape->store_count < YT_ARRAY_LEN(tape->store_kind));
+	if (tape->store_count < YT_ARRAY_LEN(tape->store_kind))
+		tape->store_kind[tape->store_count] = REG_STORE_NONEMPTY;
+	++tape->store_count;
+	if (tape->nonempty_store_count
+	    >= YT_ARRAY_LEN(tape->nonempty_raw))
+		return;
+	memcpy(tape->nonempty_raw[tape->nonempty_store_count], raw,
+	    sizeof(tape->nonempty_raw[tape->nonempty_store_count]));
+	++tape->nonempty_store_count;
 }
 
 static const struct yt_registration_ops registration_ops = {
@@ -217,6 +247,7 @@ static const struct yt_registration_ops registration_ops = {
 	registration_close_all,
 	registration_end,
 	registration_store_registered,
+	registration_store_nonempty,
 };
 
 static void
@@ -3359,6 +3390,12 @@ test_registration_transaction(void)
 	CHECK(tape.registered_store_count == 2U
 	    && memcmp(tape.registered_raw[0], "\0\0\0\0", 4U) == 0
 	    && memcmp(tape.registered_raw[1], "\0\0\x80\x81", 4U) == 0);
+	CHECK(tape.nonempty_store_count == 1U
+	    && memcmp(tape.nonempty_raw[0], "\0\0\0\x81", 4U) == 0);
+	CHECK(tape.store_count == 3U
+	    && tape.store_kind[0] == REG_STORE_NONEMPTY
+	    && tape.store_kind[1] == REG_STORE_REGISTERED
+	    && tape.store_kind[2] == REG_STORE_REGISTERED);
 	CHECK(state.line[0].length == 8U
 	    && memcmp(state.line[0].data, "This Bbs", 8U) == 0);
 	CHECK(state.line[1].length == 9U
@@ -3393,6 +3430,8 @@ test_registration_transaction(void)
 		    && !state.registered);
 		CHECK(tape.registered_store_count == 1U
 		    && memcmp(tape.registered_raw[0], "\0\0\0\0", 4U) == 0);
+		CHECK(tape.nonempty_store_count == 1U
+		    && memcmp(tape.nonempty_raw[0], "\0\0\0\x81", 4U) == 0);
 		CHECK(memcmp(tape.event, registered_events,
 		    index * sizeof(registered_events[0])) == 0);
 		if (index <= 6U)
@@ -3420,7 +3459,14 @@ test_registration_transaction(void)
 	CHECK(state.display[0].length == 29U
 	    && state.display[1].length == 50U
 	    && tape.event_count == 5U && tape.event[4] == REG_DELETE
-	    && tape.registered_store_count == 1U);
+	    && tape.registered_store_count == 1U
+	    && tape.nonempty_store_count == 2U
+	    && memcmp(tape.nonempty_raw[0], "\0\0\0\x81", 4U) == 0
+	    && memcmp(tape.nonempty_raw[1], "\0\0\0\0", 4U) == 0);
+	CHECK(tape.store_count == 3U
+	    && tape.store_kind[0] == REG_STORE_NONEMPTY
+	    && tape.store_kind[1] == REG_STORE_REGISTERED
+	    && tape.store_kind[2] == REG_STORE_NONEMPTY);
 	for (index = 1U; index <= 5U; ++index) {
 		registration_state_init(&state, storage);
 		memset(&tape, 0, sizeof(tape));
@@ -3429,7 +3475,11 @@ test_registration_transaction(void)
 		    NULL));
 		CHECK(tape.event_count == index);
 		CHECK(tape.registered_store_count == 1U);
-		CHECK(state.nonempty == (index < 5U));
+		CHECK(tape.nonempty_store_count == (index < 4U ? 1U : 2U));
+		CHECK(state.nonempty == (index < 4U));
+		if (index >= 4U)
+			CHECK(memcmp(tape.nonempty_raw[1], "\0\0\0\0", 4U)
+			    == 0);
 	}
 
 	/* Name copies precede the true flag; prefixing follows it. */

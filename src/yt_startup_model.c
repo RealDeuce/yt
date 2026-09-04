@@ -314,6 +314,8 @@ yt_registration_run(struct yt_registration_state *state,
     const struct yt_registration_ops *ops, void *context,
     struct yt_error *error)
 {
+	static const uint8_t zero[4] = {0U, 0U, 0U, 0U};
+	static const uint8_t one[4] = {0U, 0U, 0U, 0x81U};
 	uint64_t size;
 	struct qb_val_result parsed;
 	size_t line;
@@ -337,13 +339,12 @@ yt_registration_run(struct yt_registration_state *state,
 			return false;
 		state->display[line].length = 0U;
 	}
-	state->registered = false;
-	if (ops->store_registered != NULL) {
-		static const uint8_t zero[4] = {0U, 0U, 0U, 0U};
-
-		ops->store_registered(context, zero);
-	}
 	state->nonempty = true;
+	if (ops->store_nonempty != NULL)
+		ops->store_nonempty(context, one);
+	state->registered = false;
+	if (ops->store_registered != NULL)
+		ops->store_registered(context, zero);
 	state->outcome = YT_REGISTRATION_IN_PROGRESS;
 	state->closed_all = false;
 	state->ended = false;
@@ -357,11 +358,16 @@ yt_registration_run(struct yt_registration_state *state,
 	memset(state->calculated_key, 0, sizeof(state->calculated_key));
 	if (!ops->close_file4(context, error)
 	    || !ops->random_open(context, error)
-	    || !ops->file_size(context, &size, error)
-	    || !ops->close_file4(context, error))
+	    || !ops->file_size(context, &size, error))
 		return false;
 	if (size == 0U) {
 		state->nonempty = false;
+		if (ops->store_nonempty != NULL)
+			ops->store_nonempty(context, zero);
+	}
+	if (!ops->close_file4(context, error))
+		return false;
+	if (size == 0U) {
 		if (!ops->delete_empty(context, error))
 			return false;
 		return registration_evaluation(state, ops, context, error);
