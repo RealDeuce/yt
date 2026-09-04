@@ -27445,6 +27445,7 @@ struct movement_tape {
 	size_t row_lengths[7];
 	bool row_seen[7];
 	float cached_target;
+	uint8_t cached_target_raw[4];
 };
 static bool
 autopilot_queue_line(char *queue, size_t queue_capacity,
@@ -27625,15 +27626,17 @@ movement_flush_test(void *context, struct yt_error *error)
 	return movement_step(context, MOVEMENT_FLUSH, error);
 }
 static bool
-movement_cache_test(void *context, int player_record, float target,
+movement_cache_test(void *context, int player_record, const uint8_t raw[4],
     struct yt_error *error)
 {
 	struct movement_tape *tape = context;
+	float target = qb_mbf32_decode(raw);
 
 	if (player_record != 2 || target != 42.0f
 	    || !movement_step(tape, MOVEMENT_CACHE, error))
 		return false;
 	tape->cached_target = target;
+	memcpy(tape->cached_target_raw, raw, 4U);
 	return true;
 }
 static const struct yt_movement_ops movement_test_ops = {
@@ -27735,6 +27738,7 @@ check_movement_transaction(void)
 	    || !state.player_hydrated || !state.player_written
 	    || !state.player_flushed || !state.cache_updated
 	    || tape.cached_target != 42.0f
+	    || memcmp(tape.cached_target_raw, "\0\0\x28\x86", 4U) != 0
 	    || tape.calls != YT_ARRAY_LEN(success_events)
 	    || memcmp(tape.events, success_events, sizeof(success_events)) != 0
 	    || tape.row_lengths[YT_MOVEMENT_WARP_ROW] != sizeof(warp) - 1U

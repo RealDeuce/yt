@@ -8423,9 +8423,14 @@ yt_movement_run(struct yt_movement_state *state,
 	if (!ops->flush_player(context, error))
 		return false;
 	state->player_flushed = true;
-	if (!ops->update_cache(context, state->current_player_record,
-	    state->target, error))
-		return false;
+	{
+		uint8_t target_raw[4];
+
+		if (qb_mbf32_encode(state->target, target_raw) != QB_MBF_OK
+		    || !ops->update_cache(context, state->current_player_record,
+		    target_raw, error))
+			return false;
+	}
 	state->cache_updated = true;
 	state->route = YT_MOVEMENT_MOVED;
 	state->complete = true;

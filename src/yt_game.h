@@ -2888,8 +2888,8 @@ struct yt_movement_ops {
 	bool (*write_player)(void *context, int player_record,
 	    struct yt_player *player, struct yt_error *error);
 	bool (*flush_player)(void *context, struct yt_error *error);
-	bool (*update_cache)(void *context, int player_record, float target,
-	    struct yt_error *error);
+	bool (*update_cache)(void *context, int player_record,
+	    const uint8_t raw[4], struct yt_error *error);
 };
 bool yt_movement_run(struct yt_movement_state *state,
 	const struct yt_movement_ops *ops, void *context,

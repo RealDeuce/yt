@@ -5913,7 +5913,7 @@ movement_flush_player(void *context, struct yt_error *error)
 }
 
 static bool
-movement_update_cache(void *context, int player_record, float target,
+movement_update_cache(void *context, int player_record, const uint8_t raw[4],
     struct yt_error *error)
 {
 	struct yt_session *session = context;
@@ -5922,7 +5922,9 @@ movement_update_cache(void *context, int player_record, float target,
 	if (player_record < 0
 	    || (size_t)player_record >= YT_ARRAY_LEN(session->sector_cache))
 		return false;
-	session->sector_cache[player_record] = target;
+	session_set_player_cache_raw(session, player_record,
+	    YT_PLAYER_CACHE_SECTOR, raw);
+	session->sector_cache[player_record] = qb_mbf32_decode(raw);
 	return true;
 }
 
