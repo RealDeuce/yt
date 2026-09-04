@@ -13759,7 +13759,8 @@ yt_hostile_attack_surrender_run(struct yt_hostile_surrender_state *state,
 	bool accepted = false;
 
 	if (state == NULL || ops == NULL || ops->read_player == NULL
-	    || ops->present == NULL || ops->sound == NULL
+	    || ops->present == NULL || ops->sound_selector == NULL
+	    || ops->sound == NULL
 	    || ops->prompt == NULL || ops->append_news == NULL
 	    || (state->cached_player_name_length != 0U
 	    && state->cached_player_name == NULL)
@@ -13777,8 +13778,11 @@ yt_hostile_attack_surrender_run(struct yt_hostile_surrender_state *state,
 	state->ship_fighters = (double)state->current.fighters;
 	state->owner_route = yt_hostile_surrender_route(state->old_owner);
 	if (!ops->present(context, radio, sizeof(radio) - 1U,
-	    YT_HOSTILE_SURRENDER_RADIO_ROW, error)
-	    || !ops->sound(context, 4.0f, error))
+	    YT_HOSTILE_SURRENDER_RADIO_ROW, error))
+		return false;
+	ops->sound_selector(context, YT_HOSTILE_SURRENDER_RADIO_SOUND, 4.0f);
+	if (!ops->sound(context, YT_HOSTILE_SURRENDER_RADIO_SOUND, 4.0f,
+	    error))
 		return false;
 	if (qb_str_single(sector_number, sizeof(sector_number),
 	    state->current.sector) < 0)
@@ -13812,8 +13816,12 @@ yt_hostile_attack_surrender_run(struct yt_hostile_surrender_state *state,
 	case YT_HOSTILE_SURRENDER_XANNOR:
 		if (!ops->present(context, xannor_refusal,
 		    sizeof(xannor_refusal) - 1U,
-		    YT_HOSTILE_SURRENDER_XANNOR_REFUSAL_ROW, error)
-		    || !ops->sound(context, 5.0f, error))
+		    YT_HOSTILE_SURRENDER_XANNOR_REFUSAL_ROW, error))
+			return false;
+		ops->sound_selector(context, YT_HOSTILE_SURRENDER_XANNOR_SOUND,
+		    5.0f);
+		if (!ops->sound(context, YT_HOSTILE_SURRENDER_XANNOR_SOUND, 5.0f,
+		    error))
 			return false;
 		break;
 	case YT_HOSTILE_SURRENDER_MERCENARY:
@@ -13825,8 +13833,12 @@ yt_hostile_attack_surrender_run(struct yt_hostile_surrender_state *state,
 		    || !direct_attack_append(refusal, sizeof(refusal), &position,
 		    mercenary_suffix, sizeof(mercenary_suffix) - 1U)
 		    || !ops->present(context, refusal, position,
-		    YT_HOSTILE_SURRENDER_MERCENARY_REFUSAL_ROW, error)
-		    || !ops->sound(context, 5.0f, error))
+		    YT_HOSTILE_SURRENDER_MERCENARY_REFUSAL_ROW, error))
+			return false;
+		ops->sound_selector(context, YT_HOSTILE_SURRENDER_MERCENARY_SOUND,
+		    5.0f);
+		if (!ops->sound(context, YT_HOSTILE_SURRENDER_MERCENARY_SOUND,
+		    5.0f, error))
 			return false;
 		break;
 	case YT_HOSTILE_SURRENDER_QUIET:
@@ -13839,8 +13851,11 @@ yt_hostile_attack_surrender_run(struct yt_hostile_surrender_state *state,
 		return true;
 	}
 	if (!ops->present(context, joined, sizeof(joined) - 1U,
-	    YT_HOSTILE_SURRENDER_JOINED_ROW, error)
-	    || !ops->sound(context, 1.0f, error))
+	    YT_HOSTILE_SURRENDER_JOINED_ROW, error))
+		return false;
+	ops->sound_selector(context, YT_HOSTILE_SURRENDER_JOINED_SOUND, 1.0f);
+	if (!ops->sound(context, YT_HOSTILE_SURRENDER_JOINED_SOUND, 1.0f,
+	    error))
 		return false;
 	state->surrendered_fighters = direct_attack_double_sub(
 	    state->deployed_fighters, state->defender_loss);

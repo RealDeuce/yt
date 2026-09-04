@@ -3593,7 +3593,16 @@ typedef bool (*yt_hostile_surrender_read_fn)(void *context,
 typedef bool (*yt_hostile_surrender_present_fn)(void *context,
     const uint8_t *text, size_t length,
     enum yt_hostile_surrender_output_kind kind, struct yt_error *error);
-typedef bool (*yt_hostile_surrender_sound_fn)(void *context, float selector,
+enum yt_hostile_surrender_sound_kind {
+	YT_HOSTILE_SURRENDER_RADIO_SOUND,
+	YT_HOSTILE_SURRENDER_XANNOR_SOUND,
+	YT_HOSTILE_SURRENDER_MERCENARY_SOUND,
+	YT_HOSTILE_SURRENDER_JOINED_SOUND,
+};
+typedef void (*yt_hostile_surrender_sound_selector_fn)(void *context,
+    enum yt_hostile_surrender_sound_kind kind, float selector);
+typedef bool (*yt_hostile_surrender_sound_fn)(void *context,
+    enum yt_hostile_surrender_sound_kind kind, float selector,
     struct yt_error *error);
 typedef bool (*yt_hostile_surrender_prompt_fn)(void *context,
     const uint8_t *prompt, size_t length,
@@ -3604,6 +3613,7 @@ typedef bool (*yt_hostile_surrender_news_fn)(void *context,
 struct yt_hostile_surrender_ops {
 	yt_hostile_surrender_read_fn read_player;
 	yt_hostile_surrender_present_fn present;
+	yt_hostile_surrender_sound_selector_fn sound_selector;
 	yt_hostile_surrender_sound_fn sound;
 	yt_hostile_surrender_prompt_fn prompt;
 	yt_hostile_surrender_news_fn append_news;

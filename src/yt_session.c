@@ -74,6 +74,10 @@
 #define YT_CLEARANCE_ANNOUNCED_ADDRESS 0x55B6U
 #define YT_CLEARANCE_VALUE_ADDRESS 0x55BEU
 #define YT_CLEARANCE_SOUND_SELECTOR_ADDRESS 0x55C6U
+#define YT_HOSTILE_SURRENDER_RADIO_SELECTOR_ADDRESS 0x4D36U
+#define YT_HOSTILE_SURRENDER_XANNOR_SELECTOR_ADDRESS 0x4D3EU
+#define YT_HOSTILE_SURRENDER_MERCENARY_SELECTOR_ADDRESS 0x4D42U
+#define YT_HOSTILE_SURRENDER_JOINED_SELECTOR_ADDRESS 0x4D46U
 #define YT_SESSION_DEADLINE_ADDRESS 0x4BB4U
 #define YT_SESSION_MODE_ADDRESS 0x19C8U
 #define YT_ANSI_ADDRESS 0x19A8U
@@ -6586,11 +6590,46 @@ hostile_surrender_present(void *context, const uint8_t *text, size_t length,
 	}
 }
 
+static uint16_t
+hostile_surrender_selector_address(enum yt_hostile_surrender_sound_kind kind)
+{
+	switch (kind) {
+	case YT_HOSTILE_SURRENDER_RADIO_SOUND:
+		return YT_HOSTILE_SURRENDER_RADIO_SELECTOR_ADDRESS;
+	case YT_HOSTILE_SURRENDER_XANNOR_SOUND:
+		return YT_HOSTILE_SURRENDER_XANNOR_SELECTOR_ADDRESS;
+	case YT_HOSTILE_SURRENDER_MERCENARY_SOUND:
+		return YT_HOSTILE_SURRENDER_MERCENARY_SELECTOR_ADDRESS;
+	case YT_HOSTILE_SURRENDER_JOINED_SOUND:
+		return YT_HOSTILE_SURRENDER_JOINED_SELECTOR_ADDRESS;
+	default:
+		return 0U;
+	}
+}
+
+static void
+hostile_surrender_sound_selector(void *context,
+    enum yt_hostile_surrender_sound_kind kind, float selector)
+{
+	uint16_t address = hostile_surrender_selector_address(kind);
+
+	if (address != 0U)
+		session_set_process_single(context, address, selector);
+}
+
 static bool
-hostile_surrender_sound(void *context, float selector,
+hostile_surrender_sound(void *context,
+    enum yt_hostile_surrender_sound_kind kind, float selector,
     struct yt_error *error)
 {
-	return session_sound(context, selector, "hostile surrender sound", error);
+	struct yt_session *session = context;
+	uint16_t address = hostile_surrender_selector_address(kind);
+
+	(void)selector;
+	if (address == 0U)
+		return false;
+	return session_sound(session, yt_route_process_single(
+	    &session->route_process, address), "hostile surrender sound", error);
 }
 
 static bool
@@ -6817,6 +6856,7 @@ hostile_attack_combat_surrender(void *context,
 	static const struct yt_hostile_surrender_ops ops = {
 		hostile_surrender_read,
 		hostile_surrender_present,
+		hostile_surrender_sound_selector,
 		hostile_surrender_sound,
 		hostile_surrender_prompt,
 		hostile_surrender_news,
