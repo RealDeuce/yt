@@ -8,6 +8,32 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
+### DOC-GAP-022: Earth Anti-Cloak cache-clear raw value
+
+Affected coverage:
+
+- authoritative process binding of the global Earth Anti-Cloak sweep's
+  positive-cloak clears at `YT-SUB:932E`; and
+- exact cache residue across its target `GET`, name-conversion, output,
+  sound, fade and credit-debit failure prefixes.
+
+The completed `docs/runtime/earth-purchase-actions-output.md` and
+`docs/gameplay/planet-actions.md` establish that every positive player cloak
+cache entry is cleared before that player's `GET`, while zero and negative
+entries remain unchanged. They identify the process cache mapping as
+`DS:1A70 + 4*(record+52)`, but neither document nor the generated Earth
+purchase model identifies the four raw bytes written by the clear. This
+cannot safely be inferred from the numeric result: other completed cache
+owners use canonical `00 00 00 00`, Xannor retaliation uses
+`00 00 40 00`, player death uses `00 00 7A 00`, and action-finalizer expiry
+uses `00 00 A3 00` for numerically zero values.
+
+Upstream documentation, generated raw evidence and a focused failure-prefix
+fixture must identify the copied source bytes and confirm whether every loop
+iteration uses the same value. Until then the native Anti-Cloak model retains
+its typed cache mutation and is not connected to the authoritative process
+array. No binary inspection or new reverse engineering was performed.
+
 ### DOC-GAP-021: scoreboard team-ID scratch write boundary
 
 Affected coverage:
