@@ -3809,6 +3809,14 @@ typedef bool (*yt_hostile_attack_combat_sound_fn)(void *context,
     float selector, struct yt_error *error);
 typedef bool (*yt_hostile_attack_combat_random_fn)(void *context,
     float *value, struct yt_error *error);
+typedef void (*yt_hostile_attack_combat_store_quantum_fn)(void *context,
+	float quantum);
+enum yt_hostile_attack_loss_kind {
+	YT_HOSTILE_ATTACK_ATTACKER_LOSS,
+	YT_HOSTILE_ATTACK_DEFENDER_LOSS,
+};
+typedef void (*yt_hostile_attack_combat_store_loss_fn)(void *context,
+	enum yt_hostile_attack_loss_kind kind, double loss);
 typedef bool (*yt_hostile_attack_combat_surrender_fn)(void *context,
     struct yt_hostile_surrender_state *state, struct yt_error *error);
 typedef bool (*yt_hostile_attack_combat_present_fn)(void *context,
@@ -3835,6 +3843,8 @@ struct yt_hostile_attack_combat_ops {
 	yt_hostile_attack_combat_sound_selector_fn sound_selector;
 	yt_hostile_attack_combat_sound_fn sound;
 	yt_hostile_attack_combat_random_fn random;
+	yt_hostile_attack_combat_store_quantum_fn store_quantum;
+	yt_hostile_attack_combat_store_loss_fn store_loss;
 	yt_hostile_attack_combat_surrender_fn surrender;
 	yt_hostile_attack_combat_present_fn present;
 	yt_hostile_attack_combat_cache_player_fn cache_player;

@@ -86,6 +86,7 @@
 #define YT_HOSTILE_ATTACK_OWNER_ADDRESS 0x4D06U
 #define YT_HOSTILE_ATTACKER_LOSSES_ADDRESS 0x4D1EU
 #define YT_HOSTILE_DEFENDER_LOSSES_ADDRESS 0x4D26U
+#define YT_HOSTILE_ATTACK_QUANTUM_ADDRESS 0x4D32U
 #define YT_STATIC_DOUBLE_ZERO_ADDRESS 0x66D6U
 #define YT_STATIC_SINGLE_ZERO_ADDRESS 0x62F4U
 #define YT_SESSION_DEADLINE_ADDRESS 0x4BB4U
@@ -6938,6 +6939,27 @@ hostile_attack_combat_random(void *context, float *value,
 	return random_value(combat->session, value, error);
 }
 
+static void
+hostile_attack_combat_store_quantum(void *context, float quantum)
+{
+	struct hostile_attack_combat_context *combat = context;
+
+	session_set_process_single(combat->session,
+	    YT_HOSTILE_ATTACK_QUANTUM_ADDRESS, quantum);
+}
+
+static void
+hostile_attack_combat_store_loss(void *context,
+    enum yt_hostile_attack_loss_kind kind, double loss)
+{
+	struct hostile_attack_combat_context *combat = context;
+	uint16_t address = kind == YT_HOSTILE_ATTACK_ATTACKER_LOSS
+	    ? YT_HOSTILE_ATTACKER_LOSSES_ADDRESS
+	    : YT_HOSTILE_DEFENDER_LOSSES_ADDRESS;
+
+	session_set_process_double(combat->session, address, loss);
+}
+
 static bool
 hostile_attack_combat_surrender(void *context,
     struct yt_hostile_surrender_state *state, struct yt_error *error)
@@ -7092,6 +7114,8 @@ attack_deployed_committed(struct yt_session *session,
 		hostile_attack_combat_sound_selector,
 		hostile_attack_combat_sound,
 		hostile_attack_combat_random,
+		hostile_attack_combat_store_quantum,
+		hostile_attack_combat_store_loss,
 		hostile_attack_combat_surrender,
 		hostile_attack_combat_present,
 		hostile_attack_combat_cache_player,

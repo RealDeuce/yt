@@ -18870,6 +18870,11 @@ struct hostile_combat_tape {
 	size_t stored_owner_at;
 	size_t initialize_count;
 	size_t initialize_at;
+	float stored_quantums[8];
+	size_t quantum_store_count;
+	enum yt_hostile_attack_loss_kind stored_loss_kinds[8];
+	double stored_losses[8];
+	size_t loss_store_count;
 };
 
 static bool
@@ -18975,6 +18980,29 @@ hostile_combat_random(void *context, float *value,
 		return false;
 	*value = tape->draws[tape->draw_index++];
 	return true;
+}
+
+static void
+hostile_combat_store_quantum(void *context, float quantum)
+{
+	struct hostile_combat_tape *tape = context;
+
+	if (tape->quantum_store_count < YT_ARRAY_LEN(tape->stored_quantums))
+		tape->stored_quantums[tape->quantum_store_count] = quantum;
+	++tape->quantum_store_count;
+}
+
+static void
+hostile_combat_store_loss(void *context,
+    enum yt_hostile_attack_loss_kind kind, double loss)
+{
+	struct hostile_combat_tape *tape = context;
+
+	if (tape->loss_store_count < YT_ARRAY_LEN(tape->stored_losses)) {
+		tape->stored_loss_kinds[tape->loss_store_count] = kind;
+		tape->stored_losses[tape->loss_store_count] = loss;
+	}
+	++tape->loss_store_count;
 }
 
 static bool
@@ -19121,6 +19149,8 @@ static const struct yt_hostile_attack_combat_ops hostile_combat_ops = {
 	hostile_combat_sound_selector,
 	hostile_combat_sound,
 	hostile_combat_random,
+	hostile_combat_store_quantum,
+	hostile_combat_store_loss,
 	hostile_combat_surrender,
 	hostile_combat_present,
 	hostile_combat_cache_player,
@@ -19231,6 +19261,17 @@ check_hostile_attack_combat_transaction(void)
 	    || state.surrender_checked || state.surrendered
 	    || tape.stored_owner_count != 1U || tape.stored_owner_at != 1U
 	    || tape.initialize_count != 1U || tape.initialize_at != 1U
+	    || tape.quantum_store_count != 3U
+	    || tape.stored_quantums[0] != 1.0f
+	    || tape.stored_quantums[1] != 1.0f
+	    || tape.stored_quantums[2] != 1.0f
+	    || tape.loss_store_count != 3U
+	    || tape.stored_loss_kinds[0] != YT_HOSTILE_ATTACK_ATTACKER_LOSS
+	    || tape.stored_losses[0] != 1.0
+	    || tape.stored_loss_kinds[1] != YT_HOSTILE_ATTACK_DEFENDER_LOSS
+	    || tape.stored_losses[1] != 1.0
+	    || tape.stored_loss_kinds[2] != YT_HOSTILE_ATTACK_DEFENDER_LOSS
+	    || tape.stored_losses[2] != 2.0
 	    || memcmp(tape.stored_owner_raw, owner_three,
 	    sizeof(owner_three)) != 0
 	    || tape.sound_selector_count != 1U || tape.sound_selector_at != 2U
@@ -19255,6 +19296,11 @@ check_hostile_attack_combat_transaction(void)
 		return false;
 
 	for (failure = 0U; failure < YT_ARRAY_LEN(ordinary_events); ++failure) {
+		size_t expected_quantums = failure < 3U ? 0U
+		    : failure - 2U < 3U ? failure - 2U : 3U;
+		size_t expected_losses = failure < 4U ? 0U
+		    : failure - 3U < 3U ? failure - 3U : 3U;
+
 		hostile_combat_fixture(&tape, &state);
 		tape.fail_at = failure;
 		yt_error_clear(&error);
@@ -19267,9 +19313,25 @@ check_hostile_attack_combat_transaction(void)
 		    && memcmp(tape.sound_selector_raw, selector_two,
 		    sizeof(selector_two)) != 0)
 		    || tape.stored_owner_count != (failure > 0U ? 1U : 0U)
-		    || tape.initialize_count != (failure > 0U ? 1U : 0U))
+		    || tape.initialize_count != (failure > 0U ? 1U : 0U)
+		    || tape.quantum_store_count != expected_quantums
+		    || tape.loss_store_count != expected_losses)
 			return false;
 	}
+
+	/* Overshoot is visible first, then the same loss cell is clamped. */
+	hostile_combat_fixture(&tape, &state);
+	state.cached_defenders = 0.5;
+	state.sector.fighters = 0.5f;
+	tape.draws[0] = 1.0f;
+	tape.draw_count = 1U;
+	if (!yt_hostile_attack_combat_run(&state, &hostile_combat_ops,
+	    &tape, NULL) || tape.loss_store_count != 2U
+	    || tape.stored_loss_kinds[0] != YT_HOSTILE_ATTACK_DEFENDER_LOSS
+	    || tape.stored_losses[0] != 1.0
+	    || tape.stored_loss_kinds[1] != YT_HOSTILE_ATTACK_DEFENDER_LOSS
+	    || tape.stored_losses[1] != 0.5)
+		return false;
 
 	/* The combat source is the inherited MBF64 cache, not the sector FIELD. */
 	hostile_combat_fixture(&tape, &state);
@@ -19293,6 +19355,7 @@ check_hostile_attack_combat_transaction(void)
 	if (!yt_hostile_attack_combat_run(&state, &hostile_combat_ops,
 	    &tape, NULL) || !state.surrendered || !state.surrender_checked
 	    || state.iterations != 0U || tape.draw_index != 0U
+	    || tape.quantum_store_count != 1U || tape.loss_store_count != 0U
 	    || tape.calls != YT_ARRAY_LEN(surrender_events)
 	    || memcmp(tape.events, surrender_events,
 	    sizeof(surrender_events)) != 0
