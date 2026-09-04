@@ -8,6 +8,38 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
+### DOC-GAP-023: current-sector scanner cloak-clear raw value
+
+Affected coverage:
+
+- authoritative process-array reads for the current-sector scanner's
+  player-candidate loop at `YT-SUB:5E8D`; and
+- the exact revealed-cloak cache mutation and residue before selector-four
+  sound, later duplicate sensor slots, visible-player GETs, and dependency
+  failures.
+
+The completed `docs/runtime/current-sector-output.md` and
+`docs/gameplay/command-shell.md` establish that the scanner reads the
+startup-era sector and cloak arrays, emits the shimmer row for an admitted
+reveal, then clears only that candidate's cloak cache before sound and later
+visibility tests. The semantic `tools/ytsector_output.py` model records the
+result only as numeric zero. Neither it, the generated scanner evidence, nor
+the global-state registry identifies the four source bytes copied into
+`DS:1A70 + 4*(candidate+52)` by this clear.
+
+The raw value cannot safely be inferred from its numeric meaning. Completed
+cache owners already use canonical `00 00 00 00`, Xannor retaliation uses
+`00 00 40 00`, player death uses `00 00 7A 00`, and action-finalizer expiry
+uses `00 00 A3 00`. The scanner's process reads and clear must migrate as one
+unit because a duplicate mode-one sensor slot observes the completed clear;
+mixing process reads with the existing typed-only clear would replay stale
+cloak state.
+
+Upstream documentation, generated raw evidence and a focused duplicate-slot
+failure-prefix fixture must identify the copied source bytes. Until then the
+native current-sector scanner retains its typed cache carrier. No binary
+inspection or new reverse engineering was performed.
+
 ### DOC-GAP-022: Earth Anti-Cloak cache-clear raw value
 
 Affected coverage:
