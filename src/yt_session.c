@@ -11612,7 +11612,6 @@ planet_move_hop(struct yt_session *session, int source_number,
 	    || !reload_player(session, error))
 		return false;
 	yt_planet_move_success_overlay(&session->player, (float)destination);
-	session->sector_cache[session_record(session)] = (float)destination;
 	return yt_database_write(&session->door->game.database,
 	    (size_t)session_record(session), &session->player.record, error);
 }
