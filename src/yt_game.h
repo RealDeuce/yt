@@ -4257,7 +4257,8 @@ struct yt_player_death_state {
 	bool complete;
 };
 struct yt_player_death_ops {
-	void (*clear_active_cache)(void *context, int victim_record);
+	void (*clear_active_cache)(void *context, int victim_record,
+	    const uint8_t raw[4]);
 	bool (*read_player)(void *context, int player_record,
 	    struct yt_player *player, struct yt_error *error);
 	bool (*write_player)(void *context, int player_record,

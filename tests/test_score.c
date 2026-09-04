@@ -13010,6 +13010,7 @@ struct player_death_tape {
 	struct yt_sector staged_sector;
 	struct yt_port staged_port;
 	bool cache_cleared;
+	uint8_t cache_clear_raw[4];
 	bool player_written[4];
 	bool sector_written[3];
 	bool port_written[3];
@@ -13041,13 +13042,16 @@ player_death_test_step(struct player_death_tape *tape,
 }
 
 static void
-player_death_test_clear_cache(void *context, int victim_record)
+player_death_test_clear_cache(void *context, int victim_record,
+    const uint8_t raw[4])
 {
 	struct player_death_tape *tape = context;
 
 	if (victim_record == 3
-	    && player_death_test_step(tape, PLAYER_DEATH_CLEAR_CACHE, NULL))
+	    && player_death_test_step(tape, PLAYER_DEATH_CLEAR_CACHE, NULL)) {
+		memcpy(tape->cache_clear_raw, raw, 4U);
 		tape->cache_cleared = true;
+	}
 }
 
 static bool
@@ -13296,6 +13300,7 @@ check_player_death_transaction(void)
 	};
 	if (!yt_player_death_run(&state, &player_death_test_ops, &tape, NULL)
 	    || tape.event_count != tape.expected_count || !tape.cache_cleared
+	    || memcmp(tape.cache_clear_raw, dirty_zero, 4U) != 0
 	    || !tape.player_written[3] || !tape.sector_written[1]
 	    || tape.sector_written[2] || !tape.port_written[1]
 	    || !tape.port_written[2] || !tape.title_visible

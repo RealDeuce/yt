@@ -15375,6 +15375,9 @@ yt_player_death_run(struct yt_player_death_state *state,
     const struct yt_player_death_ops *ops, void *context,
     struct yt_error *error)
 {
+	static const uint8_t active_cache_zero[4] = {
+		0x00U, 0x00U, 0x7aU, 0x00U
+	};
 	struct yt_player player;
 	uint8_t row[300];
 	size_t row_length;
@@ -15394,7 +15397,8 @@ yt_player_death_run(struct yt_player_death_state *state,
 		return false;
 	state->complete = false;
 	state->matched_ports = 0;
-	ops->clear_active_cache(context, state->victim_record);
+	ops->clear_active_cache(context, state->victim_record,
+	    active_cache_zero);
 	if (!ops->read_player(context, state->victim_record, &player, error)
 	    || !yt_player_stored_name(&player, state->victim_name,
 	    &state->victim_name_length, error))

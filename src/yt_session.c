@@ -6104,11 +6104,16 @@ player_death_news(void *context, const uint8_t *text, size_t length,
 }
 
 static void
-player_death_clear_active_cache(void *context, int victim_record)
+player_death_clear_active_cache(void *context, int victim_record,
+    const uint8_t raw[4])
 {
 	struct yt_session *session = context;
 
-	session->sector_cache[victim_record] = 0.0f;
+	session_set_player_cache_raw(session, victim_record,
+	    YT_PLAYER_CACHE_SECTOR, raw);
+	if (victim_record >= 0
+	    && (size_t)victim_record < YT_ARRAY_LEN(session->sector_cache))
+		session->sector_cache[victim_record] = qb_mbf32_decode(raw);
 }
 
 static void
