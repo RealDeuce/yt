@@ -9334,7 +9334,7 @@ check_xannor_retaliation_model(void)
 	if (!yt_xannor_retaliation_run(&state, &ops, &tape, NULL)
 	    || tape.projectile_target != 733.0f
 	    || tape.projectile_cloak != 0.0f || !destroyed
-	    || sector_cache[2] != 0.0f || cloak_cache[2] != 0.75f
+	    || sector_cache[2] != 733.0f || cloak_cache[2] != 0.75f
 	    || provoker != 0 || tape.destroyed_store_count != 1U
 	    || tape.destroyed_store_position != 7U
 	    || memcmp(tape.destroyed_raw,
@@ -9439,7 +9439,7 @@ check_xannor_retaliation_model(void)
 	    && tape.event_count == 8U && provoker == 7
 	    && tape.provoker_store_count == 0U
 	    && player_record == 2 && cloak_cache[2] == 0.75f && destroyed
-	    && sector_cache[2] == 0.0f && tape.destroyed_store_count == 1U
+	    && sector_cache[2] == 733.0f && tape.destroyed_store_count == 1U
 	    && tape.destroyed_store_position == 7U
 	    && memcmp(tape.wait_duration_raw, duration_four,
 	    sizeof(duration_four)) == 0
@@ -9926,7 +9926,7 @@ check_counterlaunch_model(void)
 	    || qb_mbf32_decode(tape.count_raw[0]) != 21.0f
 	    || qb_mbf32_decode(tape.count_raw[1]) != 3.0f
 	    || player_record != 2 || memcmp(&player, &original, sizeof(player)) != 0
-	    || cloak_cache[2] != 0.75f || sector_cache[2] != 0.0f
+	    || cloak_cache[2] != 0.75f || sector_cache[2] != 733.0f
 	    || !destroyed || retained != 4.0f || counterattacker != 0
 	    || !counterlaunch_clear_at(&tape, 1U, 8U)
 	    || xannor != 11 || tape.wait_seconds != 4.0
@@ -10037,7 +10037,7 @@ check_counterlaunch_model(void)
 		if (failure == COUNTERLAUNCH_WAIT
 		    && (player_record != 2 || counterattacker != 0
 		    || cloak_cache[2] != 0.75f || !destroyed
-		    || sector_cache[2] != 0.0f
+		    || sector_cache[2] != 733.0f
 		    || tape.destroyed_store_count != 1U
 		    || tape.destroyed_store_position != 9U
 		    || memcmp(tape.destroyed_raw,

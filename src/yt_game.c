@@ -1542,10 +1542,6 @@ yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
 		*state->destroyed = true;
 		if (ops->store_destroyed != NULL)
 			ops->store_destroyed(context, one);
-		if (saved_record >= 0
-		    && (size_t)saved_record < state->cache_count
-		    && state->sector_cache != NULL)
-			state->sector_cache[saved_record] = 0.0f;
 	}
 	if (!ops->wait(context, duration_four, error))
 		return false;
@@ -2431,10 +2427,6 @@ yt_counterlaunch_run(struct yt_counterlaunch_state *state,
 		*state->destroyed = true;
 		if (ops->store_destroyed != NULL)
 			ops->store_destroyed(context, one);
-		if (saved_record >= 0
-		    && (size_t)saved_record < state->cache_count
-		    && state->sector_cache != NULL)
-			state->sector_cache[saved_record] = 0.0f;
 	}
 	return ops->wait(context, duration_four, error);
 }
