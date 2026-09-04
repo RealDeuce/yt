@@ -93,6 +93,23 @@ yt_sound_local_sound(const struct yt_sound_state *state)
 	return state->local_sound;
 }
 
+void
+yt_sound_bind_toggle_selector_process(struct yt_sound_state *state,
+    uint8_t selector[4])
+{
+	if (state != NULL)
+		state->toggle_selector_process = selector;
+}
+
+static void
+sound_store_toggle_selector_one(struct yt_sound_state *state)
+{
+	static const uint8_t raw_one[4] = {0x00U, 0x00U, 0x00U, 0x81U};
+
+	if (state->toggle_selector_process != NULL)
+		memcpy(state->toggle_selector_process, raw_one, sizeof(raw_one));
+}
+
 static void
 sound_set_user_sound(struct yt_sound_state *state, float value)
 {
@@ -268,6 +285,7 @@ yt_sound_toggle(struct yt_sound_state *state, struct yt_sound_result *result)
 	if (yt_sound_mode(state) != 0.0f)
 		sound_set_local_sound(state, toggled);
 	if (toggled != 0.0f) {
+		sound_store_toggle_selector_one(state);
 		status = yt_sound_dispatch(1.0f, state, result);
 		memcpy(result->line, on, sizeof(on) - 1U);
 		result->line_length = sizeof(on) - 1U;

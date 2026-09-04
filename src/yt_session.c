@@ -77,6 +77,7 @@
 #define YT_BOLD_ADDRESS 0x19BCU
 #define YT_LOCAL_SOUND_ADDRESS 0x4B70U
 #define YT_GAME_SOUND_ADDRESS 0x4BD4U
+#define YT_SOUND_TOGGLE_SELECTOR_ADDRESS 0x5B32U
 #define YT_INACTIVITY_DEADLINE_ADDRESS 0x51B4U
 #define YT_NEXT_TIME_REFRESH_ADDRESS 0x19C0U
 #define YT_COMPUTER_ACTIVATION_SELECTOR_ADDRESS 0x50D2U
@@ -19214,6 +19215,8 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	    &session.route_process.bytes[YT_SESSION_MODE_ADDRESS],
 	    &session.route_process.bytes[YT_GAME_SOUND_ADDRESS],
 	    &session.route_process.bytes[YT_LOCAL_SOUND_ADDRESS]);
+	yt_sound_bind_toggle_selector_process(&session.presentation.sound,
+	    &session.route_process.bytes[YT_SOUND_TOGGLE_SELECTOR_ADDRESS]);
 	yt_present_bind_color_table_process(&session.presentation,
 	    &session.route_process.bytes[YT_COLOR_INITIALIZED_ADDRESS],
 	    &session.route_process.bytes[YT_COLOR_TABLE_ADDRESS]);

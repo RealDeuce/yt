@@ -224,11 +224,14 @@ test_endpoint_process_cells(void)
 	uint8_t mode[4];
 	uint8_t user[4];
 	uint8_t local[4];
+	uint8_t selector[4];
 
 	CHECK(qb_mbf32_encode(0.0f, mode) == QB_MBF_OK
 	    && qb_mbf32_encode(-1.0f, local) == QB_MBF_OK);
 	memcpy(user, dirty_zero, sizeof(user));
+	memcpy(selector, dirty_zero, sizeof(selector));
 	yt_sound_bind_endpoint_process(&current, mode, user, local);
+	yt_sound_bind_toggle_selector_process(&current, selector);
 	CHECK(yt_sound_mode(&current) == 0.0f
 	    && yt_sound_user_sound(&current) == 0.0f
 	    && yt_sound_local_sound(&current) == -1.0f);
@@ -252,8 +255,21 @@ test_endpoint_process_cells(void)
 	CHECK(yt_sound_toggle(&current, &result) == YT_SOUND_OK);
 	CHECK(memcmp(user, raw_true, sizeof(user)) == 0
 	    && memcmp(local, raw_true, sizeof(local)) == 0
+	    && memcmp(selector, (uint8_t[]){0x00U, 0x00U, 0x00U, 0x81U},
+	    sizeof(selector)) == 0
 	    && yt_sound_user_sound(&current) == -1.0f
 	    && yt_sound_local_sound(&current) == -1.0f);
+	CHECK(yt_sound_toggle(&current, &result) == YT_SOUND_OK);
+	CHECK(memcmp(selector, (uint8_t[]){0x00U, 0x00U, 0x00U, 0x81U},
+	    sizeof(selector)) == 0);
+
+	CHECK(qb_mbf32_encode(0.0f, mode) == QB_MBF_OK
+	    && qb_mbf32_encode(0.0f, user) == QB_MBF_OK
+	    && qb_mbf32_encode(40000.0f, local) == QB_MBF_OK);
+	memcpy(selector, dirty_zero, sizeof(selector));
+	CHECK(yt_sound_toggle(&current, &result) == YT_SOUND_LOCAL_OVERFLOW);
+	CHECK(memcmp(selector, (uint8_t[]){0x00U, 0x00U, 0x00U, 0x81U},
+	    sizeof(selector)) == 0);
 }
 
 static void

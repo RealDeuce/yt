@@ -26,6 +26,7 @@ struct yt_sound_state {
 	uint8_t *snoop_process;
 	float local_sound;
 	uint8_t *local_sound_process;
+	uint8_t *toggle_selector_process;
 	uint8_t scratch[YT_SOUND_SCRATCH_SIZE];
 	size_t scratch_length;
 };
@@ -38,6 +39,8 @@ void yt_sound_bind_endpoint_process(struct yt_sound_state *state,
 float yt_sound_mode(const struct yt_sound_state *state);
 float yt_sound_user_sound(const struct yt_sound_state *state);
 float yt_sound_local_sound(const struct yt_sound_state *state);
+void yt_sound_bind_toggle_selector_process(struct yt_sound_state *state,
+    uint8_t selector[4]);
 void yt_sound_bind_snoop_process(struct yt_sound_state *state,
     uint8_t snoop[4]);
 float yt_sound_snoop(const struct yt_sound_state *state);
