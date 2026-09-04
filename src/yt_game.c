@@ -4232,6 +4232,11 @@ yt_fighter_shield_spill_run(
 		    || !yt_fighter_shield_spill_step(&state->fighters,
 		    &state->shields, sampled))
 			return false;
+		if (ops->store != NULL)
+			ops->store(context, sampled >= 0.5f
+			    ? YT_FIGHTER_SHIELD_SPILL_STORE_FIGHTERS
+			    : YT_FIGHTER_SHIELD_SPILL_STORE_SHIELDS,
+			    state->fighters, state->shields);
 		++state->iterations;
 	}
 	if (!yt_fighter_shield_spill_rows(state->fighters, state->shields,
@@ -13815,6 +13820,7 @@ yt_hostile_attack_surrender_run(struct yt_hostile_surrender_state *state,
 	    || ops->present == NULL || ops->sound_selector == NULL
 	    || ops->sound == NULL
 	    || ops->prompt == NULL || ops->append_news == NULL
+	    || ops->cache_forces == NULL
 	    || ops->mark_checked == NULL
 	    || (state->cached_player_name_length != 0U
 	    && state->cached_player_name == NULL)
@@ -13938,6 +13944,8 @@ yt_hostile_attack_surrender_run(struct yt_hostile_surrender_state *state,
 	state->current.fighters = (float)state->ship_fighters;
 	state->deployed_remaining = 0.0;
 	state->fighter_owner = 0.0f;
+	ops->cache_forces(context, state->ship_fighters,
+	    state->deployed_remaining);
 	position = 0U;
 	if (!direct_attack_append(count, sizeof(count), &position,
 	    (const uint8_t *)surrendered_number, surrendered_length)
@@ -14148,7 +14156,8 @@ yt_hostile_attack_combat_run(struct yt_hostile_attack_combat_state *state,
 	    || ops->sound_selector == NULL
 	    || ops->sound == NULL
 	    || ops->random == NULL || ops->store_quantum == NULL
-	    || ops->store_loss == NULL || ops->surrender == NULL
+	    || ops->store_loss == NULL || ops->store_ship == NULL
+	    || ops->surrender == NULL
 	    || ops->present == NULL || ops->cache_player == NULL
 	    || ops->cache_sector == NULL || ops->spill == NULL
 	    || ops->persistence == NULL || ops->tail == NULL
@@ -14282,6 +14291,7 @@ yt_hostile_attack_combat_run(struct yt_hostile_attack_combat_state *state,
 		state->deployed_remaining = direct_attack_double_sub(
 		    state->old_count, state->defender_loss);
 		state->current.fighters = (float)state->ship_fighters;
+		ops->store_ship(context, state->ship_fighters);
 		ops->cache_player(context, &state->current);
 	}
 	attacker_length = qb_str_double(attacker_number,

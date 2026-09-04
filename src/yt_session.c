@@ -448,7 +448,8 @@ static bool port_report_length(struct yt_session *session, float raw,
     size_t maximum, size_t *length, const char *operation,
     struct yt_error *error);
 static bool fighter_shield_spill(struct yt_session *session,
-    double *fighters, float *shields, struct yt_error *error);
+    double *fighters, float *shields, bool bind_hostile_cells,
+    struct yt_error *error);
 static bool scanner_read_player(struct yt_session *session,
     float basic_record, struct yt_player *player, struct yt_error *error);
 
@@ -6524,7 +6525,7 @@ static bool
 direct_attack_combat_spill(void *context, double *fighters,
     float *shields, struct yt_error *error)
 {
-	return fighter_shield_spill(context, fighters, shields, error);
+	return fighter_shield_spill(context, fighters, shields, false, error);
 }
 
 static bool
@@ -6689,12 +6690,35 @@ fighter_shield_spill_present(void *context, const uint8_t *text,
 }
 
 static bool
-fighter_shield_spill(struct yt_session *session, double *fighters,
-    float *shields, struct yt_error *error)
+fighter_shield_spill_random(void *context, float *value,
+    struct yt_error *error)
 {
-	static const struct yt_fighter_shield_spill_ops ops = {
-		direct_attack_attrition_draw,
+	return direct_attack_attrition_draw(context, value, error);
+}
+
+static void
+fighter_shield_spill_store(void *context,
+    enum yt_fighter_shield_spill_store_kind kind, double fighters,
+    float shields)
+{
+	struct yt_session *session = context;
+
+	if (kind == YT_FIGHTER_SHIELD_SPILL_STORE_FIGHTERS)
+		session_set_process_double(session,
+		    YT_HOSTILE_DEPLOYED_FIGHTERS_ADDRESS, fighters);
+	else
+		session_set_process_single(session,
+		    YT_CURRENT_PLAYER_SHIELDS_ADDRESS, shields);
+}
+
+static bool
+fighter_shield_spill(struct yt_session *session, double *fighters,
+    float *shields, bool bind_hostile_cells, struct yt_error *error)
+{
+	const struct yt_fighter_shield_spill_ops ops = {
+		fighter_shield_spill_random,
 		fighter_shield_spill_present,
+		bind_hostile_cells ? fighter_shield_spill_store : NULL,
 	};
 	struct yt_fighter_shield_spill_state state = {
 		.fighters = *fighters,
@@ -6816,6 +6840,18 @@ hostile_surrender_news(void *context, const uint8_t *text, size_t length,
     struct yt_error *error)
 {
 	return append_news_bytes(context, text, length, error);
+}
+
+static void
+hostile_surrender_cache_forces(void *context, double ship_fighters,
+    double deployed_fighters)
+{
+	struct yt_session *session = context;
+
+	session_set_process_double(session, YT_CURRENT_PLAYER_FIGHTERS_ADDRESS,
+	    ship_fighters);
+	session_set_process_double(session, YT_HOSTILE_DEPLOYED_FIGHTERS_ADDRESS,
+	    deployed_fighters);
 }
 
 static void
@@ -7075,6 +7111,15 @@ hostile_attack_combat_store_loss(void *context,
 	session_set_process_double(combat->session, address, loss);
 }
 
+static void
+hostile_attack_combat_store_ship(void *context, double ship_fighters)
+{
+	struct hostile_attack_combat_context *combat = context;
+
+	session_set_process_double(combat->session,
+	    YT_CURRENT_PLAYER_FIGHTERS_ADDRESS, ship_fighters);
+}
+
 static bool
 hostile_attack_combat_surrender(void *context,
     struct yt_hostile_surrender_state *state, struct yt_error *error)
@@ -7086,6 +7131,7 @@ hostile_attack_combat_surrender(void *context,
 		hostile_surrender_sound,
 		hostile_surrender_prompt,
 		hostile_surrender_news,
+		hostile_surrender_cache_forces,
 		hostile_surrender_mark_checked,
 	};
 	struct hostile_attack_combat_context *combat = context;
@@ -7155,7 +7201,8 @@ hostile_attack_combat_spill(void *context, double *fighters,
 {
 	struct hostile_attack_combat_context *combat = context;
 
-	return fighter_shield_spill(combat->session, fighters, shields, error);
+	return fighter_shield_spill(combat->session, fighters, shields, true,
+	    error);
 }
 
 static bool
@@ -7231,6 +7278,7 @@ attack_deployed_committed(struct yt_session *session,
 		hostile_attack_combat_random,
 		hostile_attack_combat_store_quantum,
 		hostile_attack_combat_store_loss,
+		hostile_attack_combat_store_ship,
 		hostile_attack_combat_surrender,
 		hostile_attack_combat_present,
 		hostile_attack_combat_cache_player,

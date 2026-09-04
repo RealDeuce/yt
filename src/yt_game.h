@@ -2044,9 +2044,17 @@ typedef bool (*yt_fighter_shield_spill_present_fn)(void *context,
     const uint8_t *text, size_t length,
     enum yt_fighter_shield_spill_output_kind kind,
     struct yt_error *error);
+enum yt_fighter_shield_spill_store_kind {
+	YT_FIGHTER_SHIELD_SPILL_STORE_FIGHTERS,
+	YT_FIGHTER_SHIELD_SPILL_STORE_SHIELDS,
+};
+typedef void (*yt_fighter_shield_spill_store_fn)(void *context,
+    enum yt_fighter_shield_spill_store_kind kind, double fighters,
+    float shields);
 struct yt_fighter_shield_spill_ops {
 	yt_fighter_shield_spill_draw_fn random;
 	yt_fighter_shield_spill_present_fn present;
+	yt_fighter_shield_spill_store_fn store;
 };
 bool yt_fighter_shield_spill_run(
     struct yt_fighter_shield_spill_state *state,
@@ -3646,6 +3654,8 @@ typedef bool (*yt_hostile_surrender_prompt_fn)(void *context,
     enum yt_hostile_surrender_answer *answer, struct yt_error *error);
 typedef bool (*yt_hostile_surrender_news_fn)(void *context,
     const uint8_t *text, size_t length, struct yt_error *error);
+typedef void (*yt_hostile_surrender_cache_fn)(void *context,
+    double ship_fighters, double deployed_fighters);
 typedef void (*yt_hostile_surrender_mark_checked_fn)(void *context);
 
 struct yt_hostile_surrender_ops {
@@ -3655,6 +3665,7 @@ struct yt_hostile_surrender_ops {
 	yt_hostile_surrender_sound_fn sound;
 	yt_hostile_surrender_prompt_fn prompt;
 	yt_hostile_surrender_news_fn append_news;
+	yt_hostile_surrender_cache_fn cache_forces;
 	yt_hostile_surrender_mark_checked_fn mark_checked;
 };
 
@@ -3847,6 +3858,8 @@ enum yt_hostile_attack_loss_kind {
 };
 typedef void (*yt_hostile_attack_combat_store_loss_fn)(void *context,
 	enum yt_hostile_attack_loss_kind kind, double loss);
+typedef void (*yt_hostile_attack_combat_store_ship_fn)(void *context,
+    double ship_fighters);
 typedef bool (*yt_hostile_attack_combat_surrender_fn)(void *context,
     struct yt_hostile_surrender_state *state, struct yt_error *error);
 typedef bool (*yt_hostile_attack_combat_present_fn)(void *context,
@@ -3875,6 +3888,7 @@ struct yt_hostile_attack_combat_ops {
 	yt_hostile_attack_combat_random_fn random;
 	yt_hostile_attack_combat_store_quantum_fn store_quantum;
 	yt_hostile_attack_combat_store_loss_fn store_loss;
+	yt_hostile_attack_combat_store_ship_fn store_ship;
 	yt_hostile_attack_combat_surrender_fn surrender;
 	yt_hostile_attack_combat_present_fn present;
 	yt_hostile_attack_combat_cache_player_fn cache_player;

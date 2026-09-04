@@ -18014,6 +18014,7 @@ enum hostile_surrender_event {
 	HOSTILE_SURRENDER_STORE_JOINED,
 	HOSTILE_SURRENDER_SOUND_ONE,
 	HOSTILE_SURRENDER_NEWS,
+	HOSTILE_SURRENDER_STORE_FORCES,
 	HOSTILE_SURRENDER_COUNT,
 	HOSTILE_SURRENDER_XANNOR,
 	HOSTILE_SURRENDER_STORE_XANNOR,
@@ -18036,6 +18037,9 @@ struct hostile_surrender_tape {
 	size_t selector_store_count[4];
 	uint8_t latch_raw[4];
 	size_t latch_store_count;
+	double stored_ship_fighters;
+	double stored_deployed_fighters;
+	size_t force_store_count;
 };
 
 static bool
@@ -18182,6 +18186,19 @@ hostile_surrender_mark_checked(void *context)
 	++tape->latch_store_count;
 }
 
+static void
+hostile_surrender_cache_forces(void *context, double ship_fighters,
+    double deployed_fighters)
+{
+	struct hostile_surrender_tape *tape = context;
+
+	(void)hostile_surrender_event(tape, HOSTILE_SURRENDER_STORE_FORCES,
+	    NULL);
+	tape->stored_ship_fighters = ship_fighters;
+	tape->stored_deployed_fighters = deployed_fighters;
+	++tape->force_store_count;
+}
+
 static const struct yt_hostile_surrender_ops hostile_surrender_ops = {
 	hostile_surrender_read,
 	hostile_surrender_present,
@@ -18189,6 +18206,7 @@ static const struct yt_hostile_surrender_ops hostile_surrender_ops = {
 	hostile_surrender_sound,
 	hostile_surrender_prompt,
 	hostile_surrender_news,
+	hostile_surrender_cache_forces,
 	hostile_surrender_mark_checked,
 };
 
@@ -18236,6 +18254,7 @@ check_hostile_surrender_transaction(void)
 		HOSTILE_SURRENDER_STORE_JOINED,
 		HOSTILE_SURRENDER_SOUND_ONE,
 		HOSTILE_SURRENDER_NEWS,
+		HOSTILE_SURRENDER_STORE_FORCES,
 		HOSTILE_SURRENDER_COUNT,
 	};
 	static const uint8_t radio[] = "RADIO MESSAGE COMING IN!";
@@ -18252,7 +18271,7 @@ check_hostile_surrender_transaction(void)
 	static const uint8_t mercenary[] =
 	    "We'll DIE before joining with a slyme like you Sysop!";
 	static const size_t failure_positions[] = {
-		0U, 1U, 3U, 4U, 5U, 6U, 7U, 9U, 11U, 12U, 13U,
+		0U, 1U, 3U, 4U, 5U, 6U, 7U, 9U, 11U, 12U, 14U,
 	};
 	static const uint8_t selector_four[4] = {0, 0, 0, 0x83U};
 	static const uint8_t selector_five[4] = {0, 0, 0x20U, 0x83U};
@@ -18276,6 +18295,9 @@ check_hostile_surrender_transaction(void)
 	    || tape.selector_store_count[YT_HOSTILE_SURRENDER_RADIO_SOUND] != 1U
 	    || tape.selector_store_count[YT_HOSTILE_SURRENDER_JOINED_SOUND] != 1U
 	    || tape.latch_store_count != 1U
+	    || tape.force_store_count != 1U
+	    || tape.stored_ship_fighters != 21.0
+	    || tape.stored_deployed_fighters != 0.0
 	    || memcmp(tape.latch_raw, selector_one, sizeof(selector_one)) != 0
 	    || memcmp(tape.selector_raw[YT_HOSTILE_SURRENDER_RADIO_SOUND],
 	    selector_four, sizeof(selector_four)) != 0
@@ -18973,6 +18995,9 @@ struct hostile_combat_tape {
 	enum yt_hostile_attack_loss_kind stored_loss_kinds[8];
 	double stored_losses[8];
 	size_t loss_store_count;
+	double stored_ship_fighters;
+	size_t ship_store_count;
+	size_t ship_store_at;
 };
 
 static bool
@@ -19101,6 +19126,16 @@ hostile_combat_store_loss(void *context,
 		tape->stored_losses[tape->loss_store_count] = loss;
 	}
 	++tape->loss_store_count;
+}
+
+static void
+hostile_combat_store_ship(void *context, double ship_fighters)
+{
+	struct hostile_combat_tape *tape = context;
+
+	tape->stored_ship_fighters = ship_fighters;
+	tape->ship_store_at = tape->calls;
+	++tape->ship_store_count;
 }
 
 static bool
@@ -19249,6 +19284,7 @@ static const struct yt_hostile_attack_combat_ops hostile_combat_ops = {
 	hostile_combat_random,
 	hostile_combat_store_quantum,
 	hostile_combat_store_loss,
+	hostile_combat_store_ship,
 	hostile_combat_surrender,
 	hostile_combat_present,
 	hostile_combat_cache_player,
@@ -19370,6 +19406,8 @@ check_hostile_attack_combat_transaction(void)
 	    || tape.stored_losses[1] != 1.0
 	    || tape.stored_loss_kinds[2] != YT_HOSTILE_ATTACK_DEFENDER_LOSS
 	    || tape.stored_losses[2] != 2.0
+	    || tape.ship_store_count != 1U
+	    || tape.stored_ship_fighters != 2.0 || tape.ship_store_at != 6U
 	    || memcmp(tape.stored_owner_raw, owner_three,
 	    sizeof(owner_three)) != 0
 	    || tape.sound_selector_count != 1U || tape.sound_selector_at != 2U
@@ -19454,6 +19492,7 @@ check_hostile_attack_combat_transaction(void)
 	    &tape, NULL) || !state.surrendered || !state.surrender_checked
 	    || state.iterations != 0U || tape.draw_index != 0U
 	    || tape.quantum_store_count != 1U || tape.loss_store_count != 0U
+	    || tape.ship_store_count != 0U
 	    || tape.calls != YT_ARRAY_LEN(surrender_events)
 	    || memcmp(tape.events, surrender_events,
 	    sizeof(surrender_events)) != 0
@@ -19486,7 +19525,7 @@ check_hostile_attack_combat_transaction(void)
 	    || state.iterations != 0U || tape.draw_index != 0U
 	    || state.ship_fighters != 21.0 || state.deployed_remaining != 0.0
 	    || state.sector.fighter_owner != 0.0f
-	    || tape.surrender_tape.calls != 14U
+	    || tape.surrender_tape.calls != 15U
 	    || tape.persistence_tape.calls != 5U
 	    || tape.tail_tape.calls != 2U
 	    || tape.tail_tape.events[0] != HOSTILE_TAIL_RANDOM
@@ -20331,6 +20370,10 @@ struct fighter_shield_spill_tape {
 	size_t draw_position;
 	uint8_t rows[2][128];
 	size_t row_length[2];
+	enum yt_fighter_shield_spill_store_kind stores[4];
+	double stored_fighters[4];
+	float stored_shields[4];
+	size_t store_count;
 };
 
 static bool
@@ -20386,9 +20429,26 @@ fighter_shield_spill_present(void *context, const uint8_t *text,
 	return true;
 }
 
+static void
+fighter_shield_spill_store(void *context,
+    enum yt_fighter_shield_spill_store_kind kind, double fighters,
+    float shields)
+{
+	struct fighter_shield_spill_tape *tape = context;
+	size_t index = tape->store_count;
+
+	if (index >= YT_ARRAY_LEN(tape->stores))
+		return;
+	tape->stores[index] = kind;
+	tape->stored_fighters[index] = fighters;
+	tape->stored_shields[index] = shields;
+	++tape->store_count;
+}
+
 static const struct yt_fighter_shield_spill_ops fighter_spill_ops = {
 	fighter_shield_spill_draw,
 	fighter_shield_spill_present,
+	fighter_shield_spill_store,
 };
 
 static bool
@@ -20420,6 +20480,13 @@ check_fighter_shield_spill_transaction(void)
 	    NULL) || !state.complete || state.fighters != 0.0
 	    || state.shields != 101.0f || state.iterations != 2U
 	    || !state.fighter_row_presented || !state.shield_row_presented
+	    || tape.store_count != 2U
+	    || tape.stores[0] != YT_FIGHTER_SHIELD_SPILL_STORE_FIGHTERS
+	    || tape.stores[1] != YT_FIGHTER_SHIELD_SPILL_STORE_FIGHTERS
+	    || tape.stored_fighters[0] != 1.0
+	    || tape.stored_fighters[1] != 0.0
+	    || tape.stored_shields[0] != 101.0f
+	    || tape.stored_shields[1] != 101.0f
 	    || tape.event_count != YT_ARRAY_LEN(expected)
 	    || memcmp(tape.events, expected, sizeof(expected)) != 0
 	    || tape.row_length[YT_FIGHTER_SHIELD_SPILL_FIGHTER_ROW]
@@ -20452,6 +20519,8 @@ check_fighter_shield_spill_transaction(void)
 		    : failure == 1U ? 1U : 2U)
 		    || state.fighters != (failure == 0U ? 101.0
 		    : failure == 1U ? 1.0 : 0.0)
+		    || tape.store_count != (failure == 0U ? 0U
+		    : failure == 1U ? 1U : 2U)
 		    || state.fighter_row_presented != (failure > 2U)
 		    || state.shield_row_presented || error.status != YT_IO_ERROR)
 			return false;
@@ -20465,7 +20534,7 @@ check_fighter_shield_spill_transaction(void)
 	};
 	if (!yt_fighter_shield_spill_run(&state, &fighter_spill_ops, &tape,
 	    NULL) || !state.complete || state.iterations != 0U
-	    || tape.event_count != 2U)
+	    || tape.event_count != 2U || tape.store_count != 0U)
 		return false;
 
 	memset(&tape, 0, sizeof(tape));
@@ -20478,7 +20547,10 @@ check_fighter_shield_spill_transaction(void)
 	};
 	return yt_fighter_shield_spill_run(&state, &fighter_spill_ops, &tape,
 	    NULL) && state.fighters == 1.0 && state.shields == -0.5f
-	    && state.iterations == 1U
+	    && state.iterations == 1U && tape.store_count == 1U
+	    && tape.stores[0] == YT_FIGHTER_SHIELD_SPILL_STORE_SHIELDS
+	    && tape.stored_fighters[0] == 1.0
+	    && tape.stored_shields[0] == -0.5f
 	    && !yt_fighter_shield_spill_run(NULL, &fighter_spill_ops, &tape,
 	    NULL) && !yt_fighter_shield_spill_run(&state, NULL, &tape, NULL);
 }
