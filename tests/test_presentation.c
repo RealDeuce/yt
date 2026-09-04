@@ -270,6 +270,57 @@ test_color(void)
 }
 
 static void
+test_color_process_cache(void)
+{
+	static const uint8_t raw_zero[] = {0x00, 0x00, 0x00, 0x00};
+	static const uint8_t raw_one[] = {0x00, 0x00, 0x00, 0x81};
+	static const uint8_t raw_two[] = {0x00, 0x00, 0x00, 0x82};
+	static const uint8_t dirty_zero[] = {0x5a, 0xa5, 0x80, 0x00};
+	static const uint8_t other_dirty_zero[] = {0x33, 0xcc, 0x80, 0x00};
+	uint8_t foreground_raw[4];
+	uint8_t background_raw[4];
+	struct yt_present_state current;
+	struct yt_present_result result;
+
+	memcpy(foreground_raw, raw_two, sizeof(foreground_raw));
+	memcpy(background_raw, dirty_zero, sizeof(background_raw));
+	current = state(false);
+	yt_present_bind_cached_foreground_process(&current, foreground_raw);
+	yt_present_bind_cached_background_process(&current, background_raw);
+	CHECK(yt_present_cached_foreground(&current) == 2.0f
+	    && yt_present_cached_background(&current) == 0.0f);
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(result.remote_length == 0U && result.event_count == 1U
+	    && memcmp(foreground_raw, raw_two, sizeof(foreground_raw)) == 0
+	    && memcmp(background_raw, dirty_zero,
+	    sizeof(background_raw)) == 0);
+
+	current.bold = 1.0f;
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(memcmp(foreground_raw, raw_zero, sizeof(foreground_raw)) == 0
+	    && memcmp(background_raw, raw_zero, sizeof(background_raw)) == 0);
+
+	memcpy(foreground_raw, dirty_zero, sizeof(foreground_raw));
+	memcpy(background_raw, other_dirty_zero, sizeof(background_raw));
+	current = state(false);
+	yt_present_bind_cached_foreground_process(&current, foreground_raw);
+	yt_present_bind_cached_background_process(&current, background_raw);
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(memcmp(foreground_raw, raw_two, sizeof(foreground_raw)) == 0
+	    && memcmp(background_raw, raw_zero, sizeof(background_raw)) == 0);
+
+	memcpy(foreground_raw, dirty_zero, sizeof(foreground_raw));
+	memcpy(background_raw, raw_one, sizeof(background_raw));
+	current = state(false);
+	current.foreground = 40000.0f;
+	yt_present_bind_cached_foreground_process(&current, foreground_raw);
+	yt_present_bind_cached_background_process(&current, background_raw);
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OVERFLOW);
+	CHECK(memcmp(foreground_raw, dirty_zero, sizeof(foreground_raw)) == 0
+	    && memcmp(background_raw, raw_one, sizeof(background_raw)) == 0);
+}
+
+static void
 test_direct_output(void)
 {
 	struct yt_present_state current = state(false);
@@ -25367,6 +25418,7 @@ main(void)
 {
 	test_xannor_file_playback();
 	test_color();
+	test_color_process_cache();
 	test_direct_output();
 	test_paged_output();
 	test_editor_echo();

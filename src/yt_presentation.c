@@ -107,6 +107,74 @@ yt_present_set_blink(struct yt_present_state *state, float value)
 		memcpy(state->blink_process, raw, sizeof(raw));
 }
 
+void
+yt_present_bind_cached_foreground_process(struct yt_present_state *state,
+    uint8_t foreground[4])
+{
+	if (state == NULL)
+		return;
+	state->cached_foreground_process = foreground;
+	if (foreground != NULL)
+		state->cached_foreground = qb_mbf32_decode(foreground);
+}
+
+float
+yt_present_cached_foreground(const struct yt_present_state *state)
+{
+	if (state == NULL)
+		return 0.0f;
+	if (state->cached_foreground_process != NULL)
+		return qb_mbf32_decode(state->cached_foreground_process);
+	return state->cached_foreground;
+}
+
+void
+yt_present_set_cached_foreground(struct yt_present_state *state, float value)
+{
+	uint8_t raw[4];
+
+	if (state == NULL)
+		return;
+	state->cached_foreground = value;
+	if (state->cached_foreground_process != NULL
+	    && qb_mbf32_encode(value, raw) != QB_MBF_OVERFLOW)
+		memcpy(state->cached_foreground_process, raw, sizeof(raw));
+}
+
+void
+yt_present_bind_cached_background_process(struct yt_present_state *state,
+    uint8_t background[4])
+{
+	if (state == NULL)
+		return;
+	state->cached_background_process = background;
+	if (background != NULL)
+		state->cached_background = qb_mbf32_decode(background);
+}
+
+float
+yt_present_cached_background(const struct yt_present_state *state)
+{
+	if (state == NULL)
+		return 0.0f;
+	if (state->cached_background_process != NULL)
+		return qb_mbf32_decode(state->cached_background_process);
+	return state->cached_background;
+}
+
+void
+yt_present_set_cached_background(struct yt_present_state *state, float value)
+{
+	uint8_t raw[4];
+
+	if (state == NULL)
+		return;
+	state->cached_background = value;
+	if (state->cached_background_process != NULL
+	    && qb_mbf32_encode(value, raw) != QB_MBF_OVERFLOW)
+		memcpy(state->cached_background_process, raw, sizeof(raw));
+}
+
 static enum yt_present_status
 append_event(struct yt_present_result *result,
     enum yt_present_operation operation, const void *data, size_t length,
@@ -225,6 +293,8 @@ build_color(struct yt_present_state *state,
 	float background = yt_present_background(state);
 	float bold = yt_present_bold(state);
 	float blink = yt_present_blink(state);
+	float cached_foreground = yt_present_cached_foreground(state);
+	float cached_background = yt_present_cached_background(state);
 	int foreground_index;
 	int background_index;
 	int local_foreground;
@@ -298,20 +368,23 @@ build_color(struct yt_present_state *state,
 		if ((forced_bold | forced_blink) != 0) {
 			status = append_remote(result, YT_PRESENT_REMOTE_SEMI,
 			    sequence, length);
-			state->cached_foreground = 0.0f;
-			state->cached_background = 0.0f;
+			if (status != YT_PRESENT_OK)
+				return status;
+			yt_present_set_cached_foreground(state, 0.0f);
+			yt_present_set_cached_background(state, 0.0f);
 		}
-		else if (state->foreground != state->cached_foreground
-		    || background != state->cached_background) {
+		else if (state->foreground != cached_foreground
+		    || background != cached_background) {
 			status = append_remote(result, YT_PRESENT_REMOTE_SEMI,
 			    sequence, length);
-			state->cached_foreground = state->foreground;
-			state->cached_background = background;
+			if (status != YT_PRESENT_OK)
+				return status;
+			yt_present_set_cached_foreground(state,
+			    state->foreground);
+			yt_present_set_cached_background(state, background);
 		}
 		else
 			status = YT_PRESENT_OK;
-		if (status != YT_PRESENT_OK)
-			return status;
 	}
 	yt_present_set_bold(state, 0.0f);
 	yt_present_set_blink(state, 0.0f);

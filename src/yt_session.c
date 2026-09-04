@@ -67,6 +67,8 @@
 #define YT_EARTH_REPORT_SEEN_ADDRESS 0x5006U
 #define YT_SPY_COUNT_ADDRESS 0x50AEU
 #define YT_LOW_TIME_REMEMBERED_ADDRESS 0x59CEU
+#define YT_CACHED_FOREGROUND_ADDRESS 0x559EU
+#define YT_CACHED_BACKGROUND_ADDRESS 0x55A2U
 #define YT_SESSION_DEADLINE_ADDRESS 0x4BB4U
 #define YT_SESSION_MODE_ADDRESS 0x19C8U
 #define YT_BOLD_ADDRESS 0x19BCU
@@ -19204,6 +19206,10 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	    &session.route_process.bytes[YT_BOLD_ADDRESS]);
 	yt_present_bind_blink_process(&session.presentation,
 	    &session.route_process.bytes[YT_BLINK_ADDRESS]);
+	yt_present_bind_cached_foreground_process(&session.presentation,
+	    &session.route_process.bytes[YT_CACHED_FOREGROUND_ADDRESS]);
+	yt_present_bind_cached_background_process(&session.presentation,
+	    &session.route_process.bytes[YT_CACHED_BACKGROUND_ADDRESS]);
 	session_bind_pager_process(&session);
 	session.door = door;
 	session.executable_path = executable_path;
