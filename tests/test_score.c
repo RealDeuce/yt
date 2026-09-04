@@ -14308,6 +14308,21 @@ struct score_progress_tape {
 	size_t count;
 };
 
+struct score_owner_tape {
+	uint8_t raw[4][4];
+	size_t count;
+};
+
+static void
+score_owner_collect(void *context, const uint8_t raw[4])
+{
+	struct score_owner_tape *tape = context;
+
+	if (tape->count < YT_ARRAY_LEN(tape->raw))
+		memcpy(tape->raw[tape->count], raw, 4U);
+	++tape->count;
+}
+
 static bool
 score_progress_collect(void *context, unsigned phase,
     struct yt_error *error)
@@ -32018,6 +32033,7 @@ main(void)
 		{2027, 1, 1, 0, 0, 8, 0}
 	}, 0};
 	struct score_progress_tape progress = {0};
+	struct score_owner_tape owner_tape = {0};
 	struct yt_score_field_observation score_field;
 	struct yt_error error;
 	struct yt_record blank;
@@ -32602,11 +32618,14 @@ main(void)
 	    || !yt_game_read_player(&game, 3, &player, &error)
 	    || player.score != 100.0f)
 		goto close;
-	if (!yt_score_generate_progress_observed(&game, NULL, NULL,
-	    &score_field, &error)
+	if (!yt_score_generate_progress_process_observed(&game, NULL, NULL,
+	    &score_field, score_owner_collect, &owner_tape, &error)
 	    || !score_field.valid || score_field.kind != YT_SCORE_FIELD_TEAM
 	    || score_field.physical_record != 5U
-	    || memcmp(score_field.image.bytes, "Team Two", 8U) != 0)
+	    || memcmp(score_field.image.bytes, "Team Two", 8U) != 0
+	    || owner_tape.count != 2U
+	    || memcmp(owner_tape.raw[0], "\0\0\x40\x82", 4U) != 0
+	    || memcmp(owner_tape.raw[1], "\0\0\x80\x81", 4U) != 0)
 		goto close;
 	if (clock_script.position != YT_ARRAY_LEN(clock_script.values))
 		goto close;

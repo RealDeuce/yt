@@ -18945,6 +18945,16 @@ computer_scoreboard_reset_pager(void *context, const uint8_t raw[4])
 	session_set_pager_line_count_raw(session, raw);
 }
 
+static void
+computer_scoreboard_store_defense_owner(void *context,
+    const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_SHARED_TARGET_RECORD_ADDRESS, raw);
+}
+
 static bool
 computer_scoreboard_generate(void *context, struct yt_error *error)
 {
@@ -18952,8 +18962,9 @@ computer_scoreboard_generate(void *context, struct yt_error *error)
 	struct yt_score_field_observation field;
 	bool generated;
 
-	generated = yt_score_generate_progress_observed(&session->door->game,
-	    computer_scoreboard_progress, session, &field, error);
+	generated = yt_score_generate_progress_process_observed(
+	    &session->door->game, computer_scoreboard_progress, session,
+	    &field, computer_scoreboard_store_defense_owner, session, error);
 	if (field.valid) {
 		session->navigation_field_active = true;
 		session->navigation_field_record = (int)field.physical_record;

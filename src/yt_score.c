@@ -239,9 +239,11 @@ score_field_observe(struct yt_score_field_observation *field,
 }
 
 bool
-yt_score_generate_progress_observed(struct yt_game *game,
+yt_score_generate_progress_process_observed(struct yt_game *game,
     yt_score_progress_fn progress, void *context,
-    struct yt_score_field_observation *field, struct yt_error *error)
+    struct yt_score_field_observation *field,
+    yt_score_process_store_fn store_defense_owner, void *process_context,
+    struct yt_error *error)
 {
 	struct score_player players[YT_DEFAULT_PLAYER_COUNT];
 	struct score_team teams[YT_DEFAULT_PLAYER_COUNT];
@@ -302,6 +304,9 @@ yt_score_generate_progress_observed(struct yt_game *game,
 		score_field_observe(field, YT_SCORE_FIELD_SECTOR,
 		    (uint32_t)yt_sector_basic_record(&game->config, index),
 		    &sector.record);
+		if (store_defense_owner != NULL)
+			store_defense_owner(process_context,
+			    sector.record.bytes + YT_F85);
 		contribution = (double)single_mul(sector.fighters, 100.0f);
 		owner = (int)sector.fighter_owner;
 		if (owner == -1)
@@ -467,6 +472,15 @@ failure:
 	(void)yt_text_output_close_all_method(&output, 0, NULL);
 	yt_text_output_destroy(&output);
 	return false;
+}
+
+bool
+yt_score_generate_progress_observed(struct yt_game *game,
+    yt_score_progress_fn progress, void *context,
+    struct yt_score_field_observation *field, struct yt_error *error)
+{
+	return yt_score_generate_progress_process_observed(game, progress,
+	    context, field, NULL, NULL, error);
 }
 
 bool

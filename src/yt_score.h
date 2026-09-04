@@ -20,11 +20,19 @@ struct yt_score_field_observation {
 	bool valid;
 };
 
+typedef void (*yt_score_process_store_fn)(void *context,
+    const uint8_t raw[4]);
+
 bool yt_score_generate(struct yt_game *game, struct yt_error *error);
 bool yt_score_generate_progress(struct yt_game *game,
     yt_score_progress_fn progress, void *context, struct yt_error *error);
 bool yt_score_generate_progress_observed(struct yt_game *game,
 	yt_score_progress_fn progress, void *context,
 	struct yt_score_field_observation *field, struct yt_error *error);
+bool yt_score_generate_progress_process_observed(struct yt_game *game,
+	yt_score_progress_fn progress, void *context,
+	struct yt_score_field_observation *field,
+	yt_score_process_store_fn store_defense_owner, void *process_context,
+	struct yt_error *error);
 
 #endif

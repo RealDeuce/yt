@@ -8,6 +8,30 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
+### DOC-GAP-021: scoreboard team-ID scratch write boundary
+
+Affected coverage:
+
+- authoritative binding of the scoreboard generator's current-player team-ID
+  scratch at `DS:4B8C`; and
+- exact process/FIELD residue when a player score-cache GET or PUT fails.
+
+The completed global-state registry and `docs/file-formats/YTSCORE.md` identify
+`DS:4B8C` as an MBF32 value copied from player FIELD offset 89 during
+`YT-SUB:3AF5..3B46`, and say that a normal return retains the last player team
+ID. They do not place that copy relative to the loop's fresh player GET,
+score-field overlay, and durable cache PUT. That ordering is observable: a
+failed PUT either retains the preceding player's scratch or the current
+player's raw team bytes. The current native generator also decodes the initial
+player sweep into a host object, so choosing that stale value rather than the
+fresh FIELD bytes would create a second undocumented behavior.
+
+Upstream documentation, generated evidence, and a focused failure-prefix
+fixture must identify the exact copy point and raw source before `DS:4B8C` can
+be made authoritative. The separately documented sector-owner reuse of
+`DS:1A40` is not blocked by this gap. No binary inspection or new reverse
+engineering was performed.
+
 ### DOC-GAP-020: corrupt color-table adjacent reads
 
 Affected coverage:
