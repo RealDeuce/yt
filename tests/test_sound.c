@@ -179,6 +179,42 @@ test_ansi_process_cell(void)
 }
 
 static void
+test_snoop_process_cell(void)
+{
+	static const uint8_t dirty_zero[] = {0x3c, 0xc3, 0x80, 0x00};
+	static const uint8_t raw_true[] = {0x00, 0x00, 0x80, 0x81};
+	uint8_t snoop[4];
+	struct yt_sound_state current = state(false);
+	struct yt_sound_result result;
+	bool returned_early = false;
+	bool enabled = false;
+
+	memcpy(snoop, dirty_zero, sizeof(snoop));
+	yt_sound_bind_snoop_process(&current, snoop);
+	current.mode = 1.0f;
+	CHECK(yt_sound_sysop_snoop_toggle(&current, &returned_early, &enabled)
+	    == YT_SOUND_OK);
+	CHECK(returned_early
+	    && memcmp(snoop, dirty_zero, sizeof(snoop)) == 0);
+
+	current.mode = 0.0f;
+	CHECK(yt_sound_sysop_snoop_toggle(&current, &returned_early, &enabled)
+	    == YT_SOUND_OK);
+	CHECK(!returned_early && enabled && yt_sound_snoop(&current) == -1.0f
+	    && memcmp(snoop, raw_true, sizeof(snoop)) == 0);
+
+	CHECK(qb_mbf32_encode(40000.0f, snoop) == QB_MBF_OK);
+	CHECK(yt_sound_sysop_snoop_toggle(&current, &returned_early, &enabled)
+	    == YT_SOUND_SNOOP_OVERFLOW);
+	CHECK(qb_mbf32_decode(snoop) == 40000.0f);
+
+	CHECK(qb_mbf32_encode(1.0f, snoop) == QB_MBF_OK);
+	CHECK(yt_sound_dispatch(1.0f, &current, &result) == YT_SOUND_OK);
+	CHECK(result.remote_length == 1U && result.remote[0] == 0x07
+	    && result.play_length == 11U);
+}
+
+static void
 test_conversion_mode(void)
 {
 	struct yt_sound_state current = state(false);
@@ -414,6 +450,7 @@ main(void)
 	test_branches_and_gates();
 	test_stale_and_failures();
 	test_ansi_process_cell();
+	test_snoop_process_cell();
 	test_conversion_mode();
 	test_toggle();
 	test_sysop_toggle();

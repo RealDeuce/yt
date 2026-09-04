@@ -2908,7 +2908,8 @@ opening_and_date(struct yt_session *session, struct yt_error *error)
 	if (session_ansi(session) != 0.0f) {
 		if (!yt_out_opening_file("YTOPEN.ANS",
 		    session_mode(session),
-		    session->presentation.sound.snoop, opening_poll_local,
+		    yt_sound_snoop(&session->presentation.sound),
+		    opening_poll_local,
 		    opening_poll_remote, opening_wait, session, error))
 			return false;
 	}
@@ -19218,6 +19219,8 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	    &session.route_process.bytes[YT_BLINK_ADDRESS]);
 	yt_sound_bind_ansi_process(&session.presentation.sound,
 	    &session.route_process.bytes[YT_ANSI_ADDRESS]);
+	yt_sound_bind_snoop_process(&session.presentation.sound,
+	    &session.route_process.bytes[YT_LOCAL_SCREEN_ADDRESS]);
 	yt_present_bind_color_table_process(&session.presentation,
 	    &session.route_process.bytes[YT_COLOR_INITIALIZED_ADDRESS],
 	    &session.route_process.bytes[YT_COLOR_TABLE_ADDRESS]);
@@ -19285,9 +19288,6 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 		return session.terminated;
 	if (!session.running)
 		return true;
-	session.presentation.sound.snoop =
-	    yt_route_process_single(&session.route_process,
-	    YT_LOCAL_SCREEN_ADDRESS);
 	if (!opening_and_date(&session, error)
 	    || !startup_pre_admission(&session, error))
 		return session.terminated;

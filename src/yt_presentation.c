@@ -478,7 +478,7 @@ emit_character(const uint8_t *text, size_t length,
 
 	if (status != YT_PRESENT_OK)
 		return status;
-	if (state->sound.snoop != 0.0f) {
+	if (yt_sound_snoop(&state->sound) != 0.0f) {
 		status = append_local(result, YT_PRESENT_LOCAL_SEMI, text,
 		    length, 0, 0);
 		if (status != YT_PRESENT_OK)
@@ -499,7 +499,7 @@ emit_line(const uint8_t *text, size_t length,
 
 	if (status != YT_PRESENT_OK)
 		return status;
-	if (state->sound.snoop != 0.0f) {
+	if (yt_sound_snoop(&state->sound) != 0.0f) {
 		status = append_local(result, YT_PRESENT_LOCAL_LINE, text,
 		    length, 0, 0);
 		if (status != YT_PRESENT_OK)
@@ -569,7 +569,7 @@ yt_present_paged_text(const uint8_t *text, size_t length,
 	status = prepare_color(state, result);
 	if (status != YT_PRESENT_OK)
 		return status;
-	if (state->sound.snoop != 0.0f) {
+	if (yt_sound_snoop(&state->sound) != 0.0f) {
 		status = append_local(result, YT_PRESENT_LOCAL_SEMI, text,
 		    length, 0, 0);
 		if (status != YT_PRESENT_OK)
@@ -596,7 +596,7 @@ yt_present_paged_finish(bool suppress_newline,
 			if (status != YT_PRESENT_OK)
 				return status;
 		}
-		if (state->sound.snoop != 0.0f) {
+		if (yt_sound_snoop(&state->sound) != 0.0f) {
 			status = append_local(result, YT_PRESENT_LOCAL_LINE,
 			    NULL, 0, 0, 0);
 			if (status != YT_PRESENT_OK)
@@ -614,7 +614,7 @@ yt_present_editor_echo(const uint8_t *local, size_t local_length,
 	enum yt_present_status status;
 
 	memset(result, 0, sizeof(*result));
-	if (state->sound.snoop != 0.0f) {
+	if (yt_sound_snoop(&state->sound) != 0.0f) {
 		status = append_local(result, YT_PRESENT_LOCAL_SEMI, local,
 		    local_length, 0, 0);
 		if (status != YT_PRESENT_OK)
@@ -631,7 +631,7 @@ yt_present_local_line(const uint8_t *text, size_t length,
     struct yt_present_state *state, struct yt_present_result *result)
 {
 	memset(result, 0, sizeof(*result));
-	if (state->sound.snoop != 0.0f)
+	if (yt_sound_snoop(&state->sound) != 0.0f)
 		return append_local(result, YT_PRESENT_LOCAL_LINE, text, length,
 		    0, 0);
 	return YT_PRESENT_OK;
@@ -991,7 +991,8 @@ present_sysop_snoop_toggle(const uint8_t *real_name,
 	if (returned_early)
 		return YT_PRESENT_OK;
 	if (snoop != NULL
-	    && qb_mbf32_encode(state->sound.snoop, snoop) != QB_MBF_OK)
+	    && qb_mbf32_encode(yt_sound_snoop(&state->sound), snoop)
+	    != QB_MBF_OK)
 		return YT_PRESENT_OVERFLOW;
 	if (!enabled) {
 		status = append_locate(result, -1, -1, 0, 0, 0);
@@ -1507,7 +1508,7 @@ yt_present_refresh_time(struct yt_present_time_state *time,
 	status = format_remaining(time->deadline, timer, time);
 	if (status != YT_PRESENT_OK)
 		goto done;
-	if (state->sound.snoop != 0.0f) {
+	if (yt_sound_snoop(&state->sound) != 0.0f) {
 		status = append_local(result, YT_PRESENT_LOCAL_SEMI,
 		    time->text, time->text_length, 0, 0);
 		if (status != YT_PRESENT_OK)
@@ -1712,7 +1713,7 @@ status_row_append(const uint8_t *real_name, size_t real_name_length,
 	size_t length = 0;
 	enum yt_present_status status;
 
-	if (state->sound.snoop == 0.0f)
+	if (yt_sound_snoop(&state->sound) == 0.0f)
 		return YT_PRESENT_OK;
 	memset(clear, ' ', sizeof(clear));
 	status = append_locate(result, 25, 1, -1, 0, 0);
