@@ -12166,6 +12166,15 @@ info_team_store_id(void *context, const uint8_t raw[4])
 	    YT_INFO_TEAM_ID_ADDRESS, raw);
 }
 
+static void
+info_team_store_captain(void *context, const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_SHARED_TARGET_RECORD_ADDRESS, raw);
+}
+
 static bool
 info_team_load_team(void *context, float team_id, float current_record,
     float *captain_flag, struct yt_team *team, struct yt_error *error)
@@ -12248,6 +12257,7 @@ info_team_lines(struct yt_session *session, struct yt_team *resolved_team,
 	static const struct yt_info_team_ops ops = {
 		info_team_read_player,
 		info_team_store_id,
+		info_team_store_captain,
 		info_team_load_team,
 		info_team_read_overlay,
 		info_team_write_overlay,
@@ -12258,6 +12268,9 @@ info_team_lines(struct yt_session *session, struct yt_team *resolved_team,
 		.sector_offset = session_sector_offset(session),
 		.conversion_mode = session->presentation.sound.conversion_mode,
 	};
+
+	yt_route_process_raw_single(&session->route_process,
+	    YT_CURRENT_PLAYER_RECORD_ADDRESS, state.current_record_raw);
 
 	if (!yt_info_team_resolver_run(&state, &ops, session, error))
 		return false;

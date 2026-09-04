@@ -14150,6 +14150,13 @@ normal_exit_info_team_store_id(void *context, const uint8_t raw[4])
 	(void)raw;
 }
 
+static void
+normal_exit_info_team_store_captain(void *context, const uint8_t raw[4])
+{
+	(void)context;
+	(void)raw;
+}
+
 static bool
 normal_exit_info_team_load(void *context, float team_id,
     float current_record, float *captain_flag, struct yt_team *team,
@@ -14223,6 +14230,7 @@ normal_exit_info_team(void *context, struct yt_error *error)
 	static const struct yt_info_team_ops promotion_ops = {
 		normal_exit_info_team_read,
 		normal_exit_info_team_store_id,
+		normal_exit_info_team_store_captain,
 		normal_exit_info_team_load,
 		normal_exit_info_team_read_overlay,
 		normal_exit_info_team_write_overlay,
@@ -14239,6 +14247,8 @@ normal_exit_info_team(void *context, struct yt_error *error)
 		memset(&fixture->observation->team, 0,
 		    sizeof(fixture->observation->team));
 		fixture->observation->team.current_record = 2.0f;
+		(void)qb_mbf32_encode(2.0f,
+		    fixture->observation->team.current_record_raw);
 		fixture->observation->team.sector_offset = 52.0f;
 		return yt_info_team_resolver_run(&fixture->observation->team,
 		    &promotion_ops, fixture, error);
@@ -14431,6 +14441,8 @@ normal_exit_info_run(struct physical_viewer_join *viewer,
 		}
 		memset(fixture.overlay.record.bytes, 0xa5,
 		    sizeof(fixture.overlay.record.bytes));
+		(void)yt_record_set_number(&fixture.team.overlay.record, YT_F77,
+		    fixture.team.captain);
 	}
 	panel.foreground = viewer->join.presentation.foreground;
 	panel.background = viewer->join.presentation.background;

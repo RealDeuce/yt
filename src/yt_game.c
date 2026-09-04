@@ -688,6 +688,7 @@ yt_info_team_resolver_run(struct yt_info_team_state *state,
 
 	if (state == NULL || ops == NULL || ops->read_player == NULL
 	    || ops->store_team_id == NULL
+	    || ops->store_captain == NULL
 	    || ops->load_team == NULL || ops->read_overlay == NULL
 	    || ops->write_overlay == NULL || ops->present == NULL)
 		return false;
@@ -740,7 +741,9 @@ yt_info_team_resolver_run(struct yt_info_team_state *state,
 		return ops->present(context, row, row_length, error)
 		    && ops->present(context, NULL, 0U, error);
 	}
-	state->captain_record = state->team.captain;
+	ops->store_captain(context, &state->team.overlay.record.bytes[YT_F77]);
+	state->captain_record = qb_mbf32_decode(
+	    &state->team.overlay.record.bytes[YT_F77]);
 	if (state->captain_record >= 2.0f
 	    && state->captain_record <= state->sector_offset) {
 		struct yt_player captain;
@@ -775,7 +778,8 @@ yt_info_team_resolver_run(struct yt_info_team_state *state,
 	    && state->captain_record <= state->sector_offset)) {
 		struct yt_sector fresh;
 
-		state->captain_record = state->current_record;
+		ops->store_captain(context, state->current_record_raw);
+		state->captain_record = qb_mbf32_decode(state->current_record_raw);
 		state->captain_flag = 1.0f;
 		state->current_is_captain = true;
 		state->route = YT_INFO_TEAM_PROMOTED;

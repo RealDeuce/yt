@@ -358,6 +358,7 @@ enum yt_info_team_route {
 };
 struct yt_info_team_state {
 	float current_record;
+	uint8_t current_record_raw[4];
 	float sector_offset;
 	uint8_t conversion_mode;
 	struct yt_player current_player;
@@ -374,6 +375,8 @@ typedef bool (*yt_info_team_read_player_fn)(void *context, float record,
     struct yt_player *player, struct yt_error *error);
 typedef void (*yt_info_team_store_id_fn)(void *context,
     const uint8_t raw[4]);
+typedef void (*yt_info_team_store_captain_fn)(void *context,
+    const uint8_t raw[4]);
 typedef bool (*yt_info_team_load_team_fn)(void *context, float team_id,
     float current_record, float *captain_flag, struct yt_team *team,
     struct yt_error *error);
@@ -386,6 +389,7 @@ typedef bool (*yt_info_team_present_fn)(void *context, const uint8_t *text,
 struct yt_info_team_ops {
 	yt_info_team_read_player_fn read_player;
 	yt_info_team_store_id_fn store_team_id;
+	yt_info_team_store_captain_fn store_captain;
 	yt_info_team_load_team_fn load_team;
 	yt_info_team_read_overlay_fn read_overlay;
 	yt_info_team_write_overlay_fn write_overlay;
