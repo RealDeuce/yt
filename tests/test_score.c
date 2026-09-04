@@ -21495,6 +21495,11 @@ struct direct_attack_tape {
 	struct yt_player player[6];
 	float sector_cache[6];
 	float cloak_cache[6];
+	uint8_t process_sector_cache[6][4];
+	uint8_t process_cloak_cache[6][4];
+	int cache_read_record[16];
+	enum yt_player_cache_kind cache_read_kind[16];
+	size_t cache_read_count;
 	enum direct_attack_event events[20];
 	size_t event_count;
 	size_t fail_at;
@@ -21633,6 +21638,26 @@ direct_attack_combat_child(void *context, int target_record,
 	return true;
 }
 
+static void
+direct_attack_read_cache(void *context, int player_record,
+    enum yt_player_cache_kind kind, uint8_t raw[4])
+{
+	struct direct_attack_tape *tape = context;
+
+	if (player_record < 0
+	    || (size_t)player_record >= YT_ARRAY_LEN(tape->process_sector_cache)
+	    || tape->cache_read_count >= YT_ARRAY_LEN(tape->cache_read_record)) {
+		memset(raw, 0, 4U);
+		return;
+	}
+	tape->cache_read_record[tape->cache_read_count] = player_record;
+	tape->cache_read_kind[tape->cache_read_count] = kind;
+	++tape->cache_read_count;
+	memcpy(raw, kind == YT_PLAYER_CACHE_SECTOR
+	    ? tape->process_sector_cache[player_record]
+	    : tape->process_cloak_cache[player_record], 4U);
+}
+
 static const struct yt_direct_attack_ops direct_attack_ops = {
 	direct_attack_read,
 	direct_attack_store_target,
@@ -21640,6 +21665,17 @@ static const struct yt_direct_attack_ops direct_attack_ops = {
 	direct_attack_confirm,
 	direct_attack_amount,
 	direct_attack_combat_child,
+	NULL,
+};
+
+static const struct yt_direct_attack_ops direct_attack_process_ops = {
+	direct_attack_read,
+	direct_attack_store_target,
+	direct_attack_present,
+	direct_attack_confirm,
+	direct_attack_amount,
+	direct_attack_combat_child,
+	direct_attack_read_cache,
 };
 
 static void
@@ -21682,6 +21718,12 @@ direct_attack_fixture(struct direct_attack_tape *tape,
 	    0.0f);
 	for (index = 2U; index < YT_ARRAY_LEN(tape->sector_cache); ++index)
 		tape->sector_cache[index] = 7.0f;
+	for (index = 0U; index < YT_ARRAY_LEN(tape->sector_cache); ++index) {
+		(void)qb_mbf32_encode(tape->sector_cache[index],
+		    tape->process_sector_cache[index]);
+		(void)qb_mbf32_encode(tape->cloak_cache[index],
+		    tape->process_cloak_cache[index]);
+	}
 	tape->answers[0] = YT_DIRECT_ATTACK_CONFIRM_NO;
 	tape->answers[1] = YT_DIRECT_ATTACK_CONFIRM_YES;
 	tape->answer_count = 2U;
@@ -21832,6 +21874,21 @@ check_direct_attack_transaction(void)
 	    || memcmp(tape.output[YT_DIRECT_ATTACK_NONE_SELECTED_ROW],
 	    none_selected, sizeof(none_selected) - 1U) != 0)
 		return false;
+
+	direct_attack_fixture(&tape, &state);
+	tape.sector_cache[3] = 8.0f;
+	tape.sector_cache[4] = 8.0f;
+	tape.sector_cache[5] = 8.0f;
+	if (!yt_direct_attack_run(&state, &direct_attack_process_ops, &tape, NULL)
+	    || state.route != YT_DIRECT_ATTACK_COMBAT_RETURN || !state.complete
+	    || tape.combat_target != 5 || tape.cache_read_count != 8U)
+		return false;
+	for (failure = 0U; failure < tape.cache_read_count; ++failure) {
+		if (tape.cache_read_record[failure] != (int)(failure / 2U) + 2
+		    || tape.cache_read_kind[failure] != (failure % 2U == 0U
+		    ? YT_PLAYER_CACHE_SECTOR : YT_PLAYER_CACHE_CLOAK))
+			return false;
+	}
 
 	direct_attack_fixture(&tape, &state);
 	tape.player[3].team = 0.0f;

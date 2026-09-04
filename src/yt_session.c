@@ -6875,6 +6875,7 @@ command_attack_player(struct yt_session *session, bool *enter_sector,
 		direct_attack_confirm,
 		direct_attack_amount,
 		direct_attack_combat,
+		session_player_cache_read,
 	};
 	struct yt_direct_attack_state state = {
 		.current_player_record = session_record(session),

@@ -4248,6 +4248,7 @@ struct yt_direct_attack_ops {
 	yt_direct_attack_confirm_fn confirm;
 	yt_direct_attack_amount_fn amount;
 	yt_direct_attack_combat_fn combat;
+	yt_player_cache_read_fn read_cache;
 };
 bool yt_direct_attack_run(struct yt_direct_attack_state *state,
     const struct yt_direct_attack_ops *ops, void *context,

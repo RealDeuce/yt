@@ -15125,6 +15125,22 @@ direct_attack_candidate_record(struct yt_direct_attack_state *state,
 	return false;
 }
 
+static float
+direct_attack_cache_value(const struct yt_direct_attack_state *state,
+    const struct yt_direct_attack_ops *ops, void *context, int player_record,
+    enum yt_player_cache_kind kind)
+{
+	uint8_t raw[4];
+
+	if (ops->read_cache != NULL) {
+		ops->read_cache(context, player_record, kind, raw);
+		return qb_mbf32_decode(raw);
+	}
+	return kind == YT_PLAYER_CACHE_SECTOR
+	    ? state->sector_cache[player_record]
+	    : state->cloak_cache[player_record];
+}
+
 bool
 yt_direct_attack_run(struct yt_direct_attack_state *state,
     const struct yt_direct_attack_ops *ops, void *context,
@@ -15183,8 +15199,10 @@ yt_direct_attack_run(struct yt_direct_attack_state *state,
 
 		if (!direct_attack_candidate_record(state, &record, error))
 			return false;
-		cached_sector = state->sector_cache[record];
-		cached_cloak = state->cloak_cache[record];
+		cached_sector = direct_attack_cache_value(state, ops, context,
+		    record, YT_PLAYER_CACHE_SECTOR);
+		cached_cloak = direct_attack_cache_value(state, ops, context,
+		    record, YT_PLAYER_CACHE_CLOAK);
 		sector_mismatch = cached_sector != state->current.sector;
 		self = record == state->current_player_record;
 		cloaked = cached_cloak > 0.0f;
