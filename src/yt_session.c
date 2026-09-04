@@ -86,6 +86,8 @@
 #define YT_COMPUTER_ACTIVATION_SELECTOR_ADDRESS 0x50D2U
 #define YT_FATAL_SOUND_SELECTOR_ADDRESS 0x4CE2U
 #define YT_FATAL_WAIT_ADDRESS 0x4CE6U
+#define YT_PLASMA_PLAYER_SAVED_FOREGROUND_ADDRESS 0x5D9EU
+#define YT_PLASMA_PLAYER_SOUND_SELECTOR_ADDRESS 0x5DA2U
 #define YT_ANSI_OPENING_WAIT_ADDRESS 0x539EU
 #define YT_REGISTRATION_EVALUATION_WAIT_ADDRESS 0x530EU
 #define YT_REGISTRATION_REGISTERED_WAIT_ADDRESS 0x5312U
@@ -14224,16 +14226,51 @@ plasma_player_write(void *context, int player_record,
 }
 
 static void
+plasma_player_save_foreground(void *context, float *saved_foreground)
+{
+	struct yt_session *session = context;
+
+	yt_route_process_copy_raw_single(&session->route_process,
+	    YT_FOREGROUND_ADDRESS, YT_PLASMA_PLAYER_SAVED_FOREGROUND_ADDRESS);
+	if (saved_foreground != NULL)
+		*saved_foreground = yt_route_process_single(&session->route_process,
+		    YT_PLASMA_PLAYER_SAVED_FOREGROUND_ADDRESS);
+}
+
+static void
 plasma_player_color(void *context, float foreground)
 {
-	session_set_color(context, (int)foreground);
+	session_set_foreground(context, foreground);
+}
+
+static void
+plasma_player_sound_selector(void *context, float selector)
+{
+	session_set_process_single(context,
+	    YT_PLASMA_PLAYER_SOUND_SELECTOR_ADDRESS, selector);
 }
 
 static bool
 plasma_player_sound(void *context, float selector, struct yt_error *error)
 {
-	return session_sound(context, selector, "plasma player-attack sound",
-	    error);
+	struct yt_session *session = context;
+
+	(void)selector;
+	return session_sound(session, yt_route_process_single(
+	    &session->route_process, YT_PLASMA_PLAYER_SOUND_SELECTOR_ADDRESS),
+	    "plasma player-attack sound", error);
+}
+
+static void
+plasma_player_restore_foreground(void *context, float saved_foreground)
+{
+	struct yt_session *session = context;
+	uint8_t raw[4];
+
+	(void)saved_foreground;
+	yt_route_process_raw_single(&session->route_process,
+	    YT_PLASMA_PLAYER_SAVED_FOREGROUND_ADDRESS, raw);
+	session_set_foreground_raw(session, raw);
 }
 
 static bool
@@ -14866,11 +14903,14 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
 	static const struct yt_projectile_plasma_player_ops player_ops = {
 		plasma_player_read,
 		plasma_player_write,
+		plasma_player_save_foreground,
 		plasma_player_color,
+		plasma_player_sound_selector,
 		plasma_player_sound,
 		projectile_damage_draw,
 		plasma_fighter_news,
 		plasma_player_present,
+		plasma_player_restore_foreground,
 	};
 	static const struct yt_projectile_plasma_killed_ops killed_ops = {
 		plasma_player_read,

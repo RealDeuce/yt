@@ -5259,11 +5259,14 @@ check_projectile_plasma_dispatch_transaction(void)
 
 enum plasma_player_event {
 	PLASMA_PLAYER_READ = 1,
+	PLASMA_PLAYER_SAVE_FOREGROUND,
 	PLASMA_PLAYER_COLOR,
+	PLASMA_PLAYER_SOUND_SELECTOR,
 	PLASMA_PLAYER_SOUND,
 	PLASMA_PLAYER_RANDOM,
 	PLASMA_PLAYER_NEWS,
 	PLASMA_PLAYER_PRESENT,
+	PLASMA_PLAYER_RESTORE_FOREGROUND,
 	PLASMA_PLAYER_WRITE,
 };
 
@@ -5278,7 +5281,15 @@ struct plasma_player_tape {
 	int written_record;
 	float colors[2];
 	size_t color_count;
+	uint8_t foreground_raw[4];
+	uint8_t saved_foreground_raw[4];
+	size_t save_foreground_count;
+	float restored_foreground;
+	size_t restore_foreground_count;
 	float selector;
+	float stored_selector;
+	uint8_t stored_selector_raw[4];
+	size_t sound_selector_count;
 	float draws[8];
 	size_t draw_position;
 	uint8_t news[2][256];
@@ -5330,6 +5341,18 @@ plasma_player_test_write(void *context, int player_record,
 }
 
 static void
+plasma_player_test_save_foreground(void *context, float *saved_foreground)
+{
+	struct plasma_player_tape *tape = context;
+
+	(void)plasma_player_step(tape, PLASMA_PLAYER_SAVE_FOREGROUND);
+	tape->save_foreground_count++;
+	memcpy(tape->saved_foreground_raw, tape->foreground_raw,
+	    sizeof(tape->saved_foreground_raw));
+	*saved_foreground = qb_mbf32_decode(tape->saved_foreground_raw);
+}
+
+static void
 plasma_player_test_color(void *context, float foreground)
 {
 	struct plasma_player_tape *tape = context;
@@ -5337,6 +5360,18 @@ plasma_player_test_color(void *context, float foreground)
 	(void)plasma_player_step(tape, PLASMA_PLAYER_COLOR);
 	if (tape->color_count < YT_ARRAY_LEN(tape->colors))
 		tape->colors[tape->color_count++] = foreground;
+	(void)qb_mbf32_encode(foreground, tape->foreground_raw);
+}
+
+static void
+plasma_player_test_sound_selector(void *context, float selector)
+{
+	struct plasma_player_tape *tape = context;
+
+	(void)plasma_player_step(tape, PLASMA_PLAYER_SOUND_SELECTOR);
+	tape->stored_selector = selector;
+	(void)qb_mbf32_encode(selector, tape->stored_selector_raw);
+	tape->sound_selector_count++;
 }
 
 static bool
@@ -5399,6 +5434,18 @@ plasma_player_test_present(void *context, const uint8_t *text, size_t length,
 }
 
 static void
+plasma_player_test_restore_foreground(void *context, float saved_foreground)
+{
+	struct plasma_player_tape *tape = context;
+
+	(void)plasma_player_step(tape, PLASMA_PLAYER_RESTORE_FOREGROUND);
+	tape->restored_foreground = saved_foreground;
+	tape->restore_foreground_count++;
+	memcpy(tape->foreground_raw, tape->saved_foreground_raw,
+	    sizeof(tape->foreground_raw));
+}
+
+static void
 plasma_player_fixture(struct plasma_player_tape *tape,
     struct yt_projectile_plasma_player_state *state, double *energy)
 {
@@ -5436,6 +5483,7 @@ plasma_player_fixture(struct plasma_player_tape *tape,
 	tape->draws[0] = 0.0f;
 	tape->draws[1] = 0.0f;
 	tape->draws[2] = 0.5f;
+	(void)qb_mbf32_encode(3.0f, tape->foreground_raw);
 	*energy = 2.0;
 	state->target = 3;
 	state->sector = 7.0f;
@@ -5448,18 +5496,26 @@ plasma_player_fixture(struct plasma_player_tape *tape,
 static bool
 check_projectile_plasma_player_transaction(void)
 {
+	static const uint8_t dirty_zero[4] = {
+		0x11U, 0x22U, 0x80U, 0x00U,
+	};
 	static const struct yt_projectile_plasma_player_ops ops = {
 		plasma_player_test_read,
 		plasma_player_test_write,
+		plasma_player_test_save_foreground,
 		plasma_player_test_color,
+		plasma_player_test_sound_selector,
 		plasma_player_test_sound,
 		plasma_player_test_random,
 		plasma_player_test_news,
 		plasma_player_test_present,
+		plasma_player_test_restore_foreground,
 	};
 	static const int ordinary_events[] = {
 		PLASMA_PLAYER_READ,
+		PLASMA_PLAYER_SAVE_FOREGROUND,
 		PLASMA_PLAYER_COLOR,
+		PLASMA_PLAYER_SOUND_SELECTOR,
 		PLASMA_PLAYER_SOUND,
 		PLASMA_PLAYER_RANDOM,
 		PLASMA_PLAYER_RANDOM,
@@ -5469,12 +5525,12 @@ check_projectile_plasma_player_transaction(void)
 		PLASMA_PLAYER_PRESENT,
 		PLASMA_PLAYER_NEWS,
 		PLASMA_PLAYER_PRESENT,
-		PLASMA_PLAYER_COLOR,
+		PLASMA_PLAYER_RESTORE_FOREGROUND,
 		PLASMA_PLAYER_READ,
 		PLASMA_PLAYER_WRITE,
 	};
 	static const size_t failure_positions[] = {
-		1U, 3U, 4U, 5U, 6U, 7U, 8U, 9U, 10U, 11U, 13U, 14U,
+		1U, 5U, 6U, 7U, 8U, 9U, 10U, 11U, 12U, 13U, 15U, 16U,
 	};
 	static const uint8_t first_news[] =
 	    "A\0B's plasma bolts hit C\0D in 7 reducing";
@@ -5497,9 +5553,16 @@ check_projectile_plasma_player_transaction(void)
 	    || memcmp(tape.events, ordinary_events, sizeof(ordinary_events)) != 0
 	    || tape.read_count != 3U || tape.read_records[0] != 3
 	    || tape.read_records[1] != 3 || tape.read_records[2] != 3
-	    || tape.selector != 2.0f || tape.draw_position != 3U
-	    || tape.color_count != 2U || tape.colors[0] != 5.0f
-	    || tape.colors[1] != 3.0f || state.saved_foreground != 3.0f
+	    || tape.selector != 2.0f || tape.stored_selector != 2.0f
+	    || tape.sound_selector_count != 1U || tape.draw_position != 3U
+	    || memcmp(tape.stored_selector_raw,
+	    (uint8_t[]){0x00U, 0x00U, 0x00U, 0x82U}, 4U) != 0
+	    || tape.color_count != 1U || tape.colors[0] != 5.0f
+	    || tape.save_foreground_count != 1U
+	    || tape.restore_foreground_count != 1U
+	    || tape.restored_foreground != 3.0f
+	    || memcmp(tape.foreground_raw, tape.saved_foreground_raw, 4U) != 0
+	    || state.saved_foreground != 3.0f
 	    || state.original_fighters != 1.0 || state.original_shields != 10.0f
 	    || state.destroyed_fighters != 1.0
 	    || state.destroyed_shields != 2.0f
@@ -5521,6 +5584,17 @@ check_projectile_plasma_player_transaction(void)
 	    || tape.written_record != 3 || tape.written.shields != 8.0f
 	    || tape.written.fighters != 0.0f
 	    || memcmp(&tape.written.record, &expected, sizeof(expected)) != 0)
+		return false;
+
+	plasma_player_fixture(&tape, &state, &energy);
+	memcpy(tape.foreground_raw, dirty_zero, sizeof(dirty_zero));
+	state.foreground = 0.0f;
+	if (!yt_projectile_plasma_player_run(&state, &ops, &tape, NULL)
+	    || state.saved_foreground != 0.0f
+	    || tape.restored_foreground != 0.0f
+	    || memcmp(tape.saved_foreground_raw, dirty_zero,
+	    sizeof(dirty_zero)) != 0
+	    || memcmp(tape.foreground_raw, dirty_zero, sizeof(dirty_zero)) != 0)
 		return false;
 
 	plasma_player_fixture(&tape, &state, &energy);
@@ -5548,7 +5622,8 @@ check_projectile_plasma_player_transaction(void)
 	    || state.destroyed_fighters != 0.0
 	    || state.destroyed_shields != 1.0f || state.remaining_shields != 0.0f
 	    || energy != -12499.0 || tape.read_count != 2U
-	    || tape.event_count != 10U || tape.color_count != 2U)
+	    || tape.event_count != 12U || tape.color_count != 1U
+	    || tape.restore_foreground_count != 1U)
 		return false;
 
 	plasma_player_fixture(&tape, &state, &energy);
@@ -5586,12 +5661,18 @@ check_projectile_plasma_player_transaction(void)
 		    || memcmp(tape.events, ordinary_events,
 		    failure_positions[index] * sizeof(ordinary_events[0])) != 0
 		    || (failure_positions[index] == 1U
-		    && tape.color_count != 0U)
-		    || (failure_positions[index] >= 3U
-		    && failure_positions[index] <= 11U
-		    && (tape.color_count != 1U || tape.colors[0] != 5.0f))
-		    || (failure_positions[index] >= 13U
-		    && (tape.color_count != 2U || tape.colors[1] != 3.0f)))
+		    && (tape.save_foreground_count != 0U
+		    || tape.color_count != 0U
+		    || state.saved_foreground != 0.0f
+		    || tape.sound_selector_count != 0U))
+		    || (failure_positions[index] >= 5U
+		    && (tape.save_foreground_count != 1U
+		    || tape.color_count != 1U || tape.colors[0] != 5.0f))
+		    || (failure_positions[index] < 15U
+		    && tape.restore_foreground_count != 0U)
+		    || (failure_positions[index] >= 15U
+		    && (tape.restore_foreground_count != 1U
+		    || tape.restored_foreground != 3.0f)))
 			return false;
 	}
 	return !yt_projectile_plasma_player_run(NULL, &ops, &tape, NULL)

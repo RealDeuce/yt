@@ -11965,11 +11965,12 @@ yt_projectile_plasma_player_run(
 	if (state == NULL || ops == NULL || state->energy == NULL
 	    || (state->attacker == NULL && state->attacker_length != 0U)
 	    || ops->read_player == NULL || ops->write_player == NULL
-	    || ops->color == NULL || ops->sound == NULL || ops->random == NULL
-	    || ops->news == NULL || ops->present == NULL)
+	    || ops->save_foreground == NULL || ops->color == NULL
+	    || ops->sound_selector == NULL || ops->sound == NULL
+	    || ops->random == NULL || ops->news == NULL || ops->present == NULL
+	    || ops->restore_foreground == NULL)
 		return false;
 	memset(&state->persistence, 0, sizeof(state->persistence));
-	state->saved_foreground = state->foreground;
 	state->destroyed_fighters = 0.0;
 	state->destroyed_shields = 0.0f;
 	state->remaining_fighters = 0.0;
@@ -11979,7 +11980,9 @@ yt_projectile_plasma_player_run(
 		return false;
 	state->original_fighters = (double)player.fighters;
 	state->original_shields = player.shields;
+	ops->save_foreground(context, &state->saved_foreground);
 	ops->color(context, 5.0f);
+	ops->sound_selector(context, 2.0f);
 	if (!ops->sound(context, 2.0f, error))
 		return false;
 	while (*state->energy > 0.0
@@ -12051,7 +12054,7 @@ yt_projectile_plasma_player_run(
 	    || !ops->present(context, second_row, second_length,
 	    YT_PROJECTILE_PLASMA_PLAYER_SECOND_ROW, error))
 		return false;
-	ops->color(context, state->saved_foreground);
+	ops->restore_foreground(context, state->saved_foreground);
 
 	if (state->remaining_shields < 1.0f) {
 		state->route = YT_PROJECTILE_PLASMA_PLAYER_KILLED;

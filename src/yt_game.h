@@ -1355,6 +1355,12 @@ typedef bool (*yt_projectile_plasma_player_write_fn)(void *context,
     struct yt_error *error);
 typedef void (*yt_projectile_plasma_player_color_fn)(void *context,
     float foreground);
+typedef void (*yt_projectile_plasma_player_save_foreground_fn)(void *context,
+    float *saved_foreground);
+typedef void (*yt_projectile_plasma_player_sound_selector_fn)(void *context,
+    float selector);
+typedef void (*yt_projectile_plasma_player_restore_foreground_fn)(
+    void *context, float saved_foreground);
 typedef bool (*yt_projectile_plasma_player_present_fn)(void *context,
     const uint8_t *text, size_t length,
     enum yt_projectile_plasma_player_output_kind kind,
@@ -1362,11 +1368,14 @@ typedef bool (*yt_projectile_plasma_player_present_fn)(void *context,
 struct yt_projectile_plasma_player_ops {
 	yt_projectile_plasma_player_read_fn read_player;
 	yt_projectile_plasma_player_write_fn write_player;
+	yt_projectile_plasma_player_save_foreground_fn save_foreground;
 	yt_projectile_plasma_player_color_fn color;
+	yt_projectile_plasma_player_sound_selector_fn sound_selector;
 	yt_projectile_plasma_fighter_sound_fn sound;
 	yt_projectile_plasma_fighter_random_fn random;
 	yt_projectile_plasma_fighter_news_fn news;
 	yt_projectile_plasma_player_present_fn present;
+	yt_projectile_plasma_player_restore_foreground_fn restore_foreground;
 };
 bool yt_projectile_plasma_player_run(
     struct yt_projectile_plasma_player_state *state,
