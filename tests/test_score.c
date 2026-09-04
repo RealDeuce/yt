@@ -6009,6 +6009,14 @@ struct plasma_killed_tape {
 	uint8_t destroyed_raw[4];
 	size_t destroyed_store_count;
 	size_t destroyed_store_position;
+	uint8_t cache_raw[4];
+	int cache_record;
+	enum yt_player_cache_kind cache_kind;
+	size_t cache_store_count;
+	size_t cache_store_position;
+	size_t process_store_count;
+	size_t destroyed_store_ordinal;
+	size_t cache_store_ordinal;
 };
 
 static bool
@@ -6137,7 +6145,22 @@ plasma_killed_store_destroyed(void *context, const uint8_t raw[4])
 
 	memcpy(tape->destroyed_raw, raw, sizeof(tape->destroyed_raw));
 	tape->destroyed_store_position = tape->event_count;
+	tape->destroyed_store_ordinal = ++tape->process_store_count;
 	++tape->destroyed_store_count;
+}
+
+static void
+plasma_killed_store_cache(void *context, int player_record,
+    enum yt_player_cache_kind kind, const uint8_t raw[4])
+{
+	struct plasma_killed_tape *tape = context;
+
+	memcpy(tape->cache_raw, raw, sizeof(tape->cache_raw));
+	tape->cache_record = player_record;
+	tape->cache_kind = kind;
+	tape->cache_store_position = tape->event_count;
+	tape->cache_store_ordinal = ++tape->process_store_count;
+	++tape->cache_store_count;
 }
 
 static void
@@ -6191,6 +6214,7 @@ check_projectile_plasma_killed_transaction(void)
 		plasma_killed_test_sound,
 		plasma_killed_test_salvage,
 		plasma_killed_store_destroyed,
+		plasma_killed_store_cache,
 	};
 	static const int ordinary_events[] = {
 		PLASMA_KILLED_READ_PLAYER,
@@ -6281,8 +6305,14 @@ check_projectile_plasma_killed_transaction(void)
 	    || tape.event_count != 3U || tape.output_count != 1U
 	    || tape.destroyed_store_count != 1U
 	    || tape.destroyed_store_position != 3U
+	    || tape.destroyed_store_ordinal != 1U
 	    || memcmp(tape.destroyed_raw,
 	    (const uint8_t[]){0x00, 0x00, 0x80, 0x81}, 4U) != 0
+	    || tape.cache_store_count != 1U || tape.cache_store_position != 3U
+	    || tape.cache_store_ordinal != 2U || tape.cache_record != 2
+	    || tape.cache_kind != YT_PLAYER_CACHE_SECTOR
+	    || memcmp(tape.cache_raw,
+	    (const uint8_t[]){0x00, 0x00, 0x80, 0x00}, 4U) != 0
 	    || tape.output_lengths[0] != sizeof(self_row) - 1U
 	    || tape.output_kinds[0] !=
 	    YT_PROJECTILE_PLASMA_KILLED_SELF_DESTROYED_ROW
@@ -6298,8 +6328,14 @@ check_projectile_plasma_killed_transaction(void)
 	    || tape.sector_written.mines != 7.0f
 	    || tape.destroyed_store_count != 1U
 	    || tape.destroyed_store_position != 6U
+	    || tape.destroyed_store_ordinal != 1U
 	    || memcmp(tape.destroyed_raw,
-	    (const uint8_t[]){0x00, 0x00, 0x80, 0x81}, 4U) != 0)
+	    (const uint8_t[]){0x00, 0x00, 0x80, 0x81}, 4U) != 0
+	    || tape.cache_store_count != 1U || tape.cache_store_position != 6U
+	    || tape.cache_store_ordinal != 2U || tape.cache_record != 2
+	    || tape.cache_kind != YT_PLAYER_CACHE_SECTOR
+	    || memcmp(tape.cache_raw,
+	    (const uint8_t[]){0x00, 0x00, 0x80, 0x00}, 4U) != 0)
 		return false;
 
 	plasma_killed_fixture(&tape, &state, &energy, &blink, &destroyed, cache);

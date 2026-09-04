@@ -12237,6 +12237,7 @@ yt_projectile_plasma_killed_run(
 {
 	static const uint8_t self_row[] = "YOU were destroyed!";
 	static const uint8_t basic_true[4] = {0x00, 0x00, 0x80, 0x81};
+	static const uint8_t cache_zero[4] = {0x00, 0x00, 0x80, 0x00};
 	struct yt_player victim;
 	uint8_t victim_name[YT_TEXT_FIELD_SIZE];
 	uint8_t destroyed_row[128];
@@ -12331,6 +12332,9 @@ yt_projectile_plasma_killed_run(
 		if (ops->store_destroyed != NULL)
 			ops->store_destroyed(context, basic_true);
 		state->sector_cache[state->shooter] = 0.0f;
+		if (ops->store_cache != NULL)
+			ops->store_cache(context, state->shooter,
+			    YT_PLAYER_CACHE_SECTOR, cache_zero);
 	}
 	else {
 		if (!ops->death(context, state->victim, state->shooter, error)

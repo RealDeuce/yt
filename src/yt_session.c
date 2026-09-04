@@ -15483,6 +15483,7 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
 		plasma_killed_sound,
 		plasma_killed_salvage,
 		session_store_destroyed,
+		session_player_cache_store,
 	};
 	struct yt_sector sector;
 	struct yt_projectile_plasma_fighter_state fighter;
