@@ -215,6 +215,48 @@ test_snoop_process_cell(void)
 }
 
 static void
+test_endpoint_process_cells(void)
+{
+	static const uint8_t dirty_zero[] = {0x5aU, 0xa5U, 0x80U, 0x00U};
+	static const uint8_t raw_true[] = {0x00U, 0x00U, 0x80U, 0x81U};
+	struct yt_sound_state current = state(false);
+	struct yt_sound_result result;
+	uint8_t mode[4];
+	uint8_t user[4];
+	uint8_t local[4];
+
+	CHECK(qb_mbf32_encode(0.0f, mode) == QB_MBF_OK
+	    && qb_mbf32_encode(-1.0f, local) == QB_MBF_OK);
+	memcpy(user, dirty_zero, sizeof(user));
+	yt_sound_bind_endpoint_process(&current, mode, user, local);
+	CHECK(yt_sound_mode(&current) == 0.0f
+	    && yt_sound_user_sound(&current) == 0.0f
+	    && yt_sound_local_sound(&current) == -1.0f);
+	CHECK(yt_sound_dispatch(1.0f, &current, &result) == YT_SOUND_OK);
+	CHECK(result.remote_length == 0U && result.play_length == 11U
+	    && memcmp(user, dirty_zero, sizeof(user)) == 0);
+
+	memcpy(user, raw_true, sizeof(user));
+	CHECK(yt_sound_dispatch(1.0f, &current, &result) == YT_SOUND_OK);
+	CHECK(result.remote_length == 1U && result.remote[0] == 0x07
+	    && result.play_length == 11U);
+
+	CHECK(qb_mbf32_encode(1.0f, mode) == QB_MBF_OK);
+	memcpy(local, dirty_zero, sizeof(local));
+	CHECK(yt_sound_dispatch(1.0f, &current, &result) == YT_SOUND_OK);
+	CHECK(result.remote_length == 0U && result.play_length == 0U);
+
+	CHECK(qb_mbf32_encode(2.0f, mode) == QB_MBF_OK
+	    && qb_mbf32_encode(0.0f, user) == QB_MBF_OK
+	    && qb_mbf32_encode(77.0f, local) == QB_MBF_OK);
+	CHECK(yt_sound_toggle(&current, &result) == YT_SOUND_OK);
+	CHECK(memcmp(user, raw_true, sizeof(user)) == 0
+	    && memcmp(local, raw_true, sizeof(local)) == 0
+	    && yt_sound_user_sound(&current) == -1.0f
+	    && yt_sound_local_sound(&current) == -1.0f);
+}
+
+static void
 test_conversion_mode(void)
 {
 	struct yt_sound_state current = state(false);
@@ -451,6 +493,7 @@ main(void)
 	test_stale_and_failures();
 	test_ansi_process_cell();
 	test_snoop_process_cell();
+	test_endpoint_process_cells();
 	test_conversion_mode();
 	test_toggle();
 	test_sysop_toggle();

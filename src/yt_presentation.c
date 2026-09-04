@@ -409,7 +409,7 @@ build_color(struct yt_present_state *state,
 	    local_foreground, local_background);
 	if (status != YT_PRESENT_OK)
 		return status;
-	if (state->sound.mode == 0.0f) {
+	if (yt_sound_mode(&state->sound) == 0.0f) {
 		memcpy(sequence + length, "\x1b[0;3", 5);
 		length += 5;
 		status = color_digit(state->foreground, &sequence[length++]);
@@ -484,7 +484,7 @@ emit_character(const uint8_t *text, size_t length,
 		if (status != YT_PRESENT_OK)
 			return status;
 	}
-	if (state->sound.mode != 1.0f)
+	if (yt_sound_mode(&state->sound) != 1.0f)
 		return append_remote(result, YT_PRESENT_REMOTE_SEMI, text,
 		    length);
 	return YT_PRESENT_OK;
@@ -505,7 +505,7 @@ emit_line(const uint8_t *text, size_t length,
 		if (status != YT_PRESENT_OK)
 			return status;
 	}
-	if (state->sound.mode != 1.0f) {
+	if (yt_sound_mode(&state->sound) != 1.0f) {
 		status = append_remote(result, YT_PRESENT_REMOTE_LINE, text,
 		    length);
 		if (status != YT_PRESENT_OK)
@@ -575,7 +575,7 @@ yt_present_paged_text(const uint8_t *text, size_t length,
 		if (status != YT_PRESENT_OK)
 			return status;
 	}
-	if (state->sound.mode == 0.0f)
+	if (yt_sound_mode(&state->sound) == 0.0f)
 		return append_remote(result, YT_PRESENT_REMOTE_SEMI, text,
 		    length);
 	return YT_PRESENT_OK;
@@ -590,7 +590,7 @@ yt_present_paged_finish(bool suppress_newline,
 
 	memset(result, 0, sizeof(*result));
 	if (!suppress_newline) {
-		if (state->sound.mode == 0.0f) {
+		if (yt_sound_mode(&state->sound) == 0.0f) {
 			status = append_remote(result, YT_PRESENT_REMOTE_LINE,
 			    &line_feed, 1);
 			if (status != YT_PRESENT_OK)
@@ -620,7 +620,7 @@ yt_present_editor_echo(const uint8_t *local, size_t local_length,
 		if (status != YT_PRESENT_OK)
 			return status;
 	}
-	if (state->sound.mode == 0.0f)
+	if (yt_sound_mode(&state->sound) == 0.0f)
 		return append_remote(result, YT_PRESENT_REMOTE_SEMI, remote,
 		    remote_length);
 	return YT_PRESENT_OK;
@@ -1258,7 +1258,7 @@ yt_present_press_cleanup(float saved_foreground,
 	status = append_locate(result, -1, 1, -1, 0, 0);
 	if (status != YT_PRESENT_OK)
 		return status;
-	if (state->sound.mode == 0.0f) {
+	if (yt_sound_mode(&state->sound) == 0.0f) {
 		status = append_remote(result, YT_PRESENT_REMOTE_SEMI,
 		    &carriage_return, 1);
 		if (status != YT_PRESENT_OK)
@@ -1267,7 +1267,7 @@ yt_present_press_cleanup(float saved_foreground,
 	status = emit_character(spaces, sizeof(spaces) - 1U, state, result);
 	if (status != YT_PRESENT_OK)
 		return status;
-	if (state->sound.mode == 0.0f) {
+	if (yt_sound_mode(&state->sound) == 0.0f) {
 		status = append_remote(result, YT_PRESENT_REMOTE_SEMI,
 		    &carriage_return, 1);
 		if (status != YT_PRESENT_OK)
@@ -1288,7 +1288,7 @@ yt_present_lottery_rewind(int row, int column,
 	enum yt_present_status status;
 
 	memset(result, 0, sizeof(*result));
-	if (state->sound.mode == 0.0f) {
+	if (yt_sound_mode(&state->sound) == 0.0f) {
 		status = append_remote(result, YT_PRESENT_REMOTE_SEMI,
 		    &backspace, 1U);
 		if (status != YT_PRESENT_OK)
@@ -1328,7 +1328,7 @@ yt_present_radio_backspace(int line_number, size_t shortened_length,
 	status = radio_column(line_number, shortened_length + 2U, &column);
 	if (status != YT_PRESENT_OK)
 		return status;
-	if (state->sound.mode == 0.0f) {
+	if (yt_sound_mode(&state->sound) == 0.0f) {
 		status = append_remote(result, YT_PRESENT_REMOTE_SEMI,
 		    remote, sizeof(remote));
 		if (status != YT_PRESENT_OK)
@@ -1369,7 +1369,7 @@ yt_present_radio_wrap_cleanup(int line_number, size_t wrap_marker,
 	    spaces, erased, 0, 0);
 	if (status != YT_PRESENT_OK)
 		return status;
-	if (state->sound.mode != 1.0f) {
+	if (yt_sound_mode(&state->sound) != 1.0f) {
 		memset(remote, '\b', erased);
 		memset(remote + erased, ' ', erased);
 		remote[erased * 2U] = '\r';
@@ -1640,7 +1640,7 @@ low_time_warning(const uint8_t *text, size_t length, float remembered,
 		return status;
 	state->foreground = 5.0f;
 	yt_present_set_blink(state, 1.0f);
-	if (state->sound.mode != 0.0f)
+	if (yt_sound_mode(&state->sound) != 0.0f)
 		status = append_beep(result);
 	else
 		status = append_remote(result, YT_PRESENT_REMOTE_SEMI, &bell, 1);

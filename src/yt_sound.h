@@ -19,10 +19,13 @@ struct yt_sound_state {
 	float ansi;
 	const uint8_t *ansi_process;
 	float mode;
+	const uint8_t *mode_process;
 	float user_sound;
+	uint8_t *user_sound_process;
 	float snoop;
 	uint8_t *snoop_process;
 	float local_sound;
+	uint8_t *local_sound_process;
 	uint8_t scratch[YT_SOUND_SCRATCH_SIZE];
 	size_t scratch_length;
 };
@@ -30,6 +33,11 @@ struct yt_sound_state {
 void yt_sound_bind_ansi_process(struct yt_sound_state *state,
     const uint8_t ansi[4]);
 float yt_sound_ansi(const struct yt_sound_state *state);
+void yt_sound_bind_endpoint_process(struct yt_sound_state *state,
+    const uint8_t mode[4], uint8_t user_sound[4], uint8_t local_sound[4]);
+float yt_sound_mode(const struct yt_sound_state *state);
+float yt_sound_user_sound(const struct yt_sound_state *state);
+float yt_sound_local_sound(const struct yt_sound_state *state);
 void yt_sound_bind_snoop_process(struct yt_sound_state *state,
     uint8_t snoop[4]);
 float yt_sound_snoop(const struct yt_sound_state *state);

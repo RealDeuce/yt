@@ -3600,6 +3600,9 @@ test_attention(void)
 	uint8_t background_raw[] = {0xa5, 0x5a, 0x80, 0x00};
 	uint8_t bold_raw[] = {0x11, 0x22, 0x80, 0x00};
 	uint8_t blink_raw[] = {0x33, 0x44, 0x80, 0x00};
+	uint8_t mode_raw[4];
+	uint8_t user_sound_raw[] = {0x5a, 0xa5, 0x80, 0x00};
+	uint8_t local_sound_raw[4];
 	static const uint8_t raw_zero[] = {0x00, 0x00, 0x00, 0x00};
 	static const uint8_t raw_one[] = {0x00, 0x00, 0x00, 0x81};
 	static const uint8_t dirty_bold[] = {0x11, 0x22, 0x80, 0x00};
@@ -3658,6 +3661,20 @@ test_attention(void)
 	CHECK(result.events[6].length == 11);
 	CHECK(current.foreground == 3.0f && current.background == 0.0f
 	    && current.bold == 0.0f && current.blink == 1.0f);
+
+	current = state(false);
+	CHECK(qb_mbf32_encode(0.0f, mode_raw) == QB_MBF_OK
+	    && qb_mbf32_encode(-1.0f, local_sound_raw) == QB_MBF_OK);
+	yt_sound_bind_endpoint_process(&current.sound, mode_raw,
+	    user_sound_raw, local_sound_raw);
+	CHECK(yt_present_attention((const uint8_t *)"ALERT", 5,
+	    &current, &result) == YT_PRESENT_OK);
+	CHECK(result.remote_length == 7U
+	    && memcmp(result.remote, "ALERT\r\n", 7U) == 0
+	    && result.event_count == 6U
+	    && result.events[5].operation == YT_PRESENT_LOCAL_PLAY
+	    && memcmp(user_sound_raw,
+	    (uint8_t[]){0x5a, 0xa5, 0x80, 0x00}, sizeof(user_sound_raw)) == 0);
 
 	current = state(true);
 	current.sound.mode = 1.0f;

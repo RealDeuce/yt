@@ -223,16 +223,6 @@ session_ansi(const struct yt_session *session)
 	    YT_ANSI_ADDRESS);
 }
 
-static void
-session_sync_sound_process(struct yt_session *session)
-{
-	session->presentation.sound.mode = session_mode(session);
-	session->presentation.sound.local_sound = yt_route_process_single(
-	    &session->route_process, YT_LOCAL_SOUND_ADDRESS);
-	session->presentation.sound.user_sound = yt_route_process_single(
-	    &session->route_process, YT_GAME_SOUND_ADDRESS);
-}
-
 static int
 session_pager_foreground(const struct yt_session *session)
 {
@@ -1459,7 +1449,6 @@ session_sound(struct yt_session *session, float selector,
 	struct yt_present_result presentation;
 	enum yt_present_status status;
 
-	session_sync_sound_process(session);
 	status = yt_present_sound(selector, &session->presentation,
 	    &presentation);
 	yt_out_present_result(&presentation);
@@ -19221,6 +19210,10 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	    &session.route_process.bytes[YT_ANSI_ADDRESS]);
 	yt_sound_bind_snoop_process(&session.presentation.sound,
 	    &session.route_process.bytes[YT_LOCAL_SCREEN_ADDRESS]);
+	yt_sound_bind_endpoint_process(&session.presentation.sound,
+	    &session.route_process.bytes[YT_SESSION_MODE_ADDRESS],
+	    &session.route_process.bytes[YT_GAME_SOUND_ADDRESS],
+	    &session.route_process.bytes[YT_LOCAL_SOUND_ADDRESS]);
 	yt_present_bind_color_table_process(&session.presentation,
 	    &session.route_process.bytes[YT_COLOR_INITIALIZED_ADDRESS],
 	    &session.route_process.bytes[YT_COLOR_TABLE_ADDRESS]);
@@ -19258,7 +19251,6 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	session_set_process_single(&session, YT_GAME_SOUND_ADDRESS, -1.0f);
 	session_set_process_single(&session, YT_LOCAL_SOUND_ADDRESS,
 	    door->identity.local ? -1.0f : 0.0f);
-	session_sync_sound_process(&session);
 	session_set_foreground(&session, 7.0f);
 	yt_random_init(&launch_random);
 	if (!yt_random_market_bases(&launch_random, market_base, error))
