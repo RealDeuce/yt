@@ -41,6 +41,15 @@
 #define YT_REGISTERED_FLAG_ADDRESS 0x1C60U
 #define YT_REGISTRATION_BETA_ONLY_ADDRESS 0x1874U
 #define YT_REGISTRATION_PRESENT_ADDRESS 0x5C66U
+#define YT_REGISTRATION_KEY_VALUE_ADDRESS 0x5C76U
+#define YT_REGISTRATION_WEIGHTED_SUM_ADDRESS 0x5C7EU
+#define YT_REGISTRATION_NAME_ONE_LENGTH_ADDRESS 0x5C86U
+#define YT_REGISTRATION_LOOP_COUNTER_ADDRESS 0x5C8AU
+#define YT_REGISTRATION_NAME_TWO_LENGTH_ADDRESS 0x5C8EU
+#define YT_REGISTRATION_EVALUATION_SUM_ONE_ADDRESS 0x5C96U
+#define YT_REGISTRATION_EVALUATION_SUM_TWO_ADDRESS 0x5C9AU
+#define YT_REGISTRATION_EVALUATION_LENGTH_ONE_ADDRESS 0x5C9EU
+#define YT_REGISTRATION_EVALUATION_LENGTH_TWO_ADDRESS 0x5CA2U
 #define YT_GENESIS_REQUIRED_PORTS_ADDRESS 0x1C48U
 #define YT_PLANET_RECORD_SCRATCH_ADDRESS 0x19C4U
 #define YT_CURRENT_SECTOR_ADDRESS 0x1C44U
@@ -2914,6 +2923,43 @@ registration_store_nonempty(void *opaque, const uint8_t raw[4])
 	    YT_REGISTRATION_PRESENT_ADDRESS, raw);
 }
 
+static void
+registration_store_numeric(void *opaque,
+    enum yt_registration_numeric_kind kind, const uint8_t *raw,
+    size_t length)
+{
+	static const uint16_t address[] = {
+		[YT_REGISTRATION_NUMERIC_KEY_VALUE] =
+		    YT_REGISTRATION_KEY_VALUE_ADDRESS,
+		[YT_REGISTRATION_NUMERIC_WEIGHTED_SUM] =
+		    YT_REGISTRATION_WEIGHTED_SUM_ADDRESS,
+		[YT_REGISTRATION_NUMERIC_NAME_ONE_LENGTH] =
+		    YT_REGISTRATION_NAME_ONE_LENGTH_ADDRESS,
+		[YT_REGISTRATION_NUMERIC_LOOP_COUNTER] =
+		    YT_REGISTRATION_LOOP_COUNTER_ADDRESS,
+		[YT_REGISTRATION_NUMERIC_NAME_TWO_LENGTH] =
+		    YT_REGISTRATION_NAME_TWO_LENGTH_ADDRESS,
+		[YT_REGISTRATION_NUMERIC_EVALUATION_SUM_ONE] =
+		    YT_REGISTRATION_EVALUATION_SUM_ONE_ADDRESS,
+		[YT_REGISTRATION_NUMERIC_EVALUATION_SUM_TWO] =
+		    YT_REGISTRATION_EVALUATION_SUM_TWO_ADDRESS,
+		[YT_REGISTRATION_NUMERIC_EVALUATION_LENGTH_ONE] =
+		    YT_REGISTRATION_EVALUATION_LENGTH_ONE_ADDRESS,
+		[YT_REGISTRATION_NUMERIC_EVALUATION_LENGTH_TWO] =
+		    YT_REGISTRATION_EVALUATION_LENGTH_TWO_ADDRESS,
+	};
+	struct registration_context *context = opaque;
+
+	if ((size_t)kind >= YT_ARRAY_LEN(address))
+		return;
+	if (length == 8U)
+		yt_route_process_set_raw_double(&context->session->route_process,
+		    address[kind], raw);
+	else if (length == 4U)
+		yt_route_process_set_raw_single(&context->session->route_process,
+		    address[kind], raw);
+}
+
 static bool
 registration(struct yt_session *session, struct yt_error *error)
 {
@@ -2938,6 +2984,7 @@ registration(struct yt_session *session, struct yt_error *error)
 		registration_end,
 		registration_store_registered,
 		registration_store_nonempty,
+		registration_store_numeric,
 	};
 	struct registration_context context = {.session = session};
 	struct yt_registration_state state;

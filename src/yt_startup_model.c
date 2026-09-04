@@ -170,7 +170,32 @@ registration_prepend(struct yt_registration_buffer *destination,
 }
 
 static bool
+registration_store_mbf32(const struct yt_registration_ops *ops,
+    void *context, enum yt_registration_numeric_kind kind, float value,
+    struct yt_error *error)
+{
+	uint8_t raw[4];
+
+	if (qb_mbf32_encode(value, raw) != QB_MBF_OK)
+		return registration_error(error, YT_RANGE,
+		    "registration SINGLE store");
+	if (ops->store_numeric != NULL)
+		ops->store_numeric(context, kind, raw, sizeof(raw));
+	return true;
+}
+
+static void
+registration_store_mbf64(const struct yt_registration_ops *ops,
+    void *context, enum yt_registration_numeric_kind kind,
+    const uint8_t raw[8])
+{
+	if (ops->store_numeric != NULL)
+		ops->store_numeric(context, kind, raw, 8U);
+}
+
+static bool
 registration_arithmetic(struct yt_registration_state *state,
+    const struct yt_registration_ops *ops, void *context,
     struct yt_error *error)
 {
 	static const uint8_t signature[8] =
@@ -183,6 +208,18 @@ registration_arithmetic(struct yt_registration_state *state,
 	enum qb_mbf_status status;
 
 	status = qb_mbf64_from_u64(21U, accumulator);
+	if (status == QB_MBF_OK)
+		registration_store_mbf64(ops, context,
+		    YT_REGISTRATION_NUMERIC_WEIGHTED_SUM, accumulator);
+	if (status == QB_MBF_OK
+	    && !registration_store_mbf32(ops, context,
+	    YT_REGISTRATION_NUMERIC_NAME_ONE_LENGTH,
+	    (float)state->line[0].length, error))
+		return false;
+	if (status == QB_MBF_OK
+	    && !registration_store_mbf32(ops, context,
+	    YT_REGISTRATION_NUMERIC_LOOP_COUNTER, 1.0f, error))
+		return false;
 	for (index = 0U; status == QB_MBF_OK
 	    && index < state->line[0].length; ++index) {
 		status = qb_mbf64_from_u64(3U * state->line[0].data[index],
@@ -190,6 +227,14 @@ registration_arithmetic(struct yt_registration_state *state,
 		if (status == QB_MBF_OK)
 			status = qb_mbf64_add_raw(accumulator, contribution,
 			    accumulator);
+		if (status == QB_MBF_OK) {
+			registration_store_mbf64(ops, context,
+			    YT_REGISTRATION_NUMERIC_WEIGHTED_SUM, accumulator);
+			if (!registration_store_mbf32(ops, context,
+			    YT_REGISTRATION_NUMERIC_LOOP_COUNTER,
+			    (float)(index + 2U), error))
+				return false;
+		}
 	}
 	if (status != QB_MBF_OK)
 		return registration_error(error, YT_RANGE,
@@ -204,6 +249,14 @@ registration_arithmetic(struct yt_registration_state *state,
 		return registration_error(error, YT_RANGE,
 		    "registration first square root");
 	memcpy(state->first_root, accumulator, 8U);
+	registration_store_mbf64(ops, context,
+	    YT_REGISTRATION_NUMERIC_WEIGHTED_SUM, accumulator);
+	if (!registration_store_mbf32(ops, context,
+	    YT_REGISTRATION_NUMERIC_NAME_TWO_LENGTH,
+	    (float)state->line[1].length, error)
+	    || !registration_store_mbf32(ops, context,
+	    YT_REGISTRATION_NUMERIC_LOOP_COUNTER, 1.0f, error))
+		return false;
 	for (index = 0U; status == QB_MBF_OK
 	    && index < state->line[1].length; ++index) {
 		status = qb_mbf64_from_u64(5U * state->line[1].data[index],
@@ -211,6 +264,14 @@ registration_arithmetic(struct yt_registration_state *state,
 		if (status == QB_MBF_OK)
 			status = qb_mbf64_add_raw(accumulator, contribution,
 			    accumulator);
+		if (status == QB_MBF_OK) {
+			registration_store_mbf64(ops, context,
+			    YT_REGISTRATION_NUMERIC_WEIGHTED_SUM, accumulator);
+			if (!registration_store_mbf32(ops, context,
+			    YT_REGISTRATION_NUMERIC_LOOP_COUNTER,
+			    (float)(index + 2U), error))
+				return false;
+		}
 	}
 	if (status != QB_MBF_OK)
 		return registration_error(error, YT_RANGE,
@@ -229,6 +290,8 @@ registration_arithmetic(struct yt_registration_state *state,
 	if (status != QB_MBF_OK)
 		return registration_error(error, YT_RANGE,
 		    "registration final square root");
+	registration_store_mbf64(ops, context,
+	    YT_REGISTRATION_NUMERIC_WEIGHTED_SUM, state->calculated_key);
 	return true;
 }
 
@@ -260,6 +323,38 @@ registration_invalid(struct yt_registration_state *state,
 }
 
 static bool
+registration_evaluation_checksum(struct yt_registration_state *state,
+    const struct yt_registration_ops *ops, void *context, size_t row,
+    enum yt_registration_numeric_kind sum_kind,
+    enum yt_registration_numeric_kind length_kind,
+    struct yt_error *error)
+{
+	size_t index;
+	uint16_t sum = 0U;
+
+	state->evaluation_sum[row] = 0U;
+	if (!registration_store_mbf32(ops, context, sum_kind, 0.0f, error)
+	    || !registration_store_mbf32(ops, context, length_kind,
+	    (float)state->display[row].length, error)
+	    || !registration_store_mbf32(ops, context,
+	    YT_REGISTRATION_NUMERIC_LOOP_COUNTER, 1.0f, error))
+		return false;
+	state->evaluation_counter[row] = 1.0f;
+	for (index = 0U; index < state->display[row].length; ++index) {
+		sum = (uint16_t)(sum + state->display[row].data[index]);
+		state->evaluation_sum[row] = sum;
+		state->evaluation_counter[row] += 1.0f;
+		if (!registration_store_mbf32(ops, context, sum_kind,
+		    (float)sum, error)
+		    || !registration_store_mbf32(ops, context,
+		    YT_REGISTRATION_NUMERIC_LOOP_COUNTER,
+		    state->evaluation_counter[row], error))
+			return false;
+	}
+	return true;
+}
+
+static bool
 registration_evaluation(struct yt_registration_state *state,
     const struct yt_registration_ops *ops, void *context,
     struct yt_error *error)
@@ -269,10 +364,6 @@ registration_evaluation(struct yt_registration_state *state,
 	    "PLEASE ENCOURAGE YOUR SYSOP TO REGISTER THIS GAME.";
 	static const uint8_t beta[] =
 	    "ONLY REGISTERED SYSOPS CAN RUN BETA TEST COPIES!";
-	const uint8_t *rows[2] = {first, second};
-	const size_t lengths[2] = {sizeof(first) - 1U, sizeof(second) - 1U};
-	size_t row;
-
 	if (state->beta_only) {
 		if (!ops->centered_line(context, beta, sizeof(beta) - 1U, error)
 		    || !ops->beep(context, error)
@@ -283,20 +374,17 @@ registration_evaluation(struct yt_registration_state *state,
 		state->outcome = YT_REGISTRATION_BETA_END;
 		return true;
 	}
-	for (row = 0U; row < 2U; ++row) {
-		size_t index;
-		uint16_t sum = 0U;
-
-		if (!registration_copy(&state->display[row], NULL, 0U,
-		    rows[row], lengths[row], error))
-			return false;
-		state->evaluation_counter[row] = 1.0f;
-		for (index = 0U; index < lengths[row]; ++index) {
-			sum = (uint16_t)(sum + rows[row][index]);
-			state->evaluation_counter[row] += 1.0f;
-		}
-		state->evaluation_sum[row] = sum;
-	}
+	if (!registration_copy(&state->display[0], NULL, 0U,
+	    first, sizeof(first) - 1U, error)
+	    || !registration_copy(&state->display[1], NULL, 0U,
+	    second, sizeof(second) - 1U, error)
+	    || !registration_evaluation_checksum(state, ops, context, 0U,
+	    YT_REGISTRATION_NUMERIC_EVALUATION_SUM_ONE,
+	    YT_REGISTRATION_NUMERIC_EVALUATION_LENGTH_ONE, error)
+	    || !registration_evaluation_checksum(state, ops, context, 1U,
+	    YT_REGISTRATION_NUMERIC_EVALUATION_SUM_TWO,
+	    YT_REGISTRATION_NUMERIC_EVALUATION_LENGTH_TWO, error))
+		return false;
 	if (state->evaluation_sum[0] != state->expected_evaluation_sum[0]
 	    || state->evaluation_sum[1] != state->expected_evaluation_sum[1]) {
 		ops->close_all(context);
@@ -393,7 +481,9 @@ yt_registration_run(struct yt_registration_state *state,
 		return registration_error(error, YT_RANGE,
 		    "registration key VAL");
 	memcpy(state->parsed_key, parsed.mbf, sizeof(state->parsed_key));
-	if (!registration_arithmetic(state, error))
+	registration_store_mbf64(ops, context,
+	    YT_REGISTRATION_NUMERIC_KEY_VALUE, state->parsed_key);
+	if (!registration_arithmetic(state, ops, context, error))
 		return false;
 	if (memcmp(state->parsed_key, state->calculated_key, 8U) != 0)
 		return registration_invalid(state, ops, context, error);

@@ -223,6 +223,22 @@ typedef void (*yt_registration_terminal_fn)(void *context);
 typedef void (*yt_registration_flag_fn)(void *context,
     const uint8_t raw[4]);
 
+enum yt_registration_numeric_kind {
+	YT_REGISTRATION_NUMERIC_KEY_VALUE,
+	YT_REGISTRATION_NUMERIC_WEIGHTED_SUM,
+	YT_REGISTRATION_NUMERIC_NAME_ONE_LENGTH,
+	YT_REGISTRATION_NUMERIC_LOOP_COUNTER,
+	YT_REGISTRATION_NUMERIC_NAME_TWO_LENGTH,
+	YT_REGISTRATION_NUMERIC_EVALUATION_SUM_ONE,
+	YT_REGISTRATION_NUMERIC_EVALUATION_SUM_TWO,
+	YT_REGISTRATION_NUMERIC_EVALUATION_LENGTH_ONE,
+	YT_REGISTRATION_NUMERIC_EVALUATION_LENGTH_TWO,
+};
+
+typedef void (*yt_registration_numeric_fn)(void *context,
+    enum yt_registration_numeric_kind kind, const uint8_t *raw,
+    size_t length);
+
 struct yt_registration_ops {
 	yt_registration_file_fn close_file4;
 	yt_registration_file_fn random_open;
@@ -237,6 +253,7 @@ struct yt_registration_ops {
 	yt_registration_terminal_fn end;
 	yt_registration_flag_fn store_registered;
 	yt_registration_flag_fn store_nonempty;
+	yt_registration_numeric_fn store_numeric;
 };
 
 bool yt_startup_split_command(const uint8_t *command, size_t length,
