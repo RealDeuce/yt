@@ -5472,9 +5472,6 @@ fresh_no_turn_gate(struct yt_session *session, bool *denied,
 
 	if (!reload_player(session, error))
 		return false;
-	session->sector_cache[session_record(session)] = session->player.sector;
-	if (!session_anti_cloak_enabled(session))
-		 session->cloak_cache[session_record(session)] = session->player.cloak;
 	*denied = yt_no_turn_gate_denied(session->player.turns);
 	if (*denied)
 		return session_02db(session, notice, sizeof(notice) - 1U,
