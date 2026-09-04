@@ -3795,6 +3795,8 @@ struct yt_hostile_attack_combat_state {
 
 typedef bool (*yt_hostile_attack_combat_read_sector_fn)(void *context,
     int sector_number, struct yt_sector *sector, struct yt_error *error);
+typedef void (*yt_hostile_attack_combat_store_owner_fn)(void *context,
+    const uint8_t raw[4]);
 typedef bool (*yt_hostile_attack_combat_read_player_fn)(void *context,
     int player_record, struct yt_player *player, struct yt_error *error);
 typedef void (*yt_hostile_attack_combat_sound_selector_fn)(void *context,
@@ -3823,6 +3825,7 @@ typedef bool (*yt_hostile_attack_combat_tail_fn)(void *context,
 
 struct yt_hostile_attack_combat_ops {
 	yt_hostile_attack_combat_read_sector_fn read_sector;
+	yt_hostile_attack_combat_store_owner_fn store_owner;
 	yt_hostile_attack_combat_read_player_fn read_player;
 	yt_hostile_attack_combat_sound_selector_fn sound_selector;
 	yt_hostile_attack_combat_sound_fn sound;

@@ -81,6 +81,7 @@
 #define YT_HOSTILE_SURRENDER_JOINED_SELECTOR_ADDRESS 0x4D46U
 #define YT_HOSTILE_ATTACK_SOUND_SELECTOR_ADDRESS 0x4D2EU
 #define YT_HOSTILE_BRIBE_SOUND_SELECTOR_ADDRESS 0x4D7AU
+#define YT_HOSTILE_ATTACK_OWNER_ADDRESS 0x4D06U
 #define YT_SESSION_DEADLINE_ADDRESS 0x4BB4U
 #define YT_SESSION_MODE_ADDRESS 0x19C8U
 #define YT_ANSI_ADDRESS 0x19A8U
@@ -6816,6 +6817,15 @@ hostile_attack_combat_read_sector(void *context, int sector_number,
 	    sector, error);
 }
 
+static void
+hostile_attack_combat_store_owner(void *context, const uint8_t raw[4])
+{
+	struct hostile_attack_combat_context *combat = context;
+
+	yt_route_process_set_raw_single(&combat->session->route_process,
+	    YT_HOSTILE_ATTACK_OWNER_ADDRESS, raw);
+}
+
 static bool
 hostile_attack_combat_read_player(void *context, int player_record,
     struct yt_player *player, struct yt_error *error)
@@ -7009,6 +7019,7 @@ attack_deployed_committed(struct yt_session *session,
 {
 	static const struct yt_hostile_attack_combat_ops ops = {
 		hostile_attack_combat_read_sector,
+		hostile_attack_combat_store_owner,
 		hostile_attack_combat_read_player,
 		hostile_attack_combat_sound_selector,
 		hostile_attack_combat_sound,

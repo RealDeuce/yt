@@ -14096,7 +14096,8 @@ yt_hostile_attack_combat_run(struct yt_hostile_attack_combat_state *state,
 	bool child_result;
 
 	if (state == NULL || ops == NULL || ops->read_sector == NULL
-	    || ops->read_player == NULL || ops->sound_selector == NULL
+	    || ops->store_owner == NULL || ops->read_player == NULL
+	    || ops->sound_selector == NULL
 	    || ops->sound == NULL
 	    || ops->random == NULL || ops->surrender == NULL
 	    || ops->present == NULL || ops->cache_player == NULL
@@ -14129,7 +14130,9 @@ yt_hostile_attack_combat_run(struct yt_hostile_attack_combat_state *state,
 	if (!ops->read_sector(context, state->current_sector,
 	    &state->opened_sector, error))
 		return false;
-	state->old_owner = state->opened_sector.fighter_owner;
+	ops->store_owner(context, &state->opened_sector.record.bytes[YT_F85]);
+	state->old_owner = qb_mbf32_decode(
+	    &state->opened_sector.record.bytes[YT_F85]);
 	if (!ops->read_player(context, state->current_player_record,
 	    &state->current, error))
 		return false;

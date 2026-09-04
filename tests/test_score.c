@@ -18842,6 +18842,9 @@ struct hostile_combat_tape {
 	uint8_t sound_selector_raw[4];
 	size_t sound_selector_count;
 	size_t sound_selector_at;
+	uint8_t stored_owner_raw[4];
+	size_t stored_owner_count;
+	size_t stored_owner_at;
 };
 
 static bool
@@ -18884,6 +18887,16 @@ hostile_combat_read_sector(void *context, int sector_number,
 		return false;
 	*sector = tape->opened_sector;
 	return true;
+}
+
+static void
+hostile_combat_store_owner(void *context, const uint8_t raw[4])
+{
+	struct hostile_combat_tape *tape = context;
+
+	tape->stored_owner_at = tape->calls;
+	memcpy(tape->stored_owner_raw, raw, sizeof(tape->stored_owner_raw));
+	++tape->stored_owner_count;
 }
 
 static bool
@@ -19066,6 +19079,7 @@ hostile_combat_tail(void *context,
 
 static const struct yt_hostile_attack_combat_ops hostile_combat_ops = {
 	hostile_combat_read_sector,
+	hostile_combat_store_owner,
 	hostile_combat_read_player,
 	hostile_combat_sound_selector,
 	hostile_combat_sound,
@@ -19109,6 +19123,7 @@ hostile_combat_fixture(struct hostile_combat_tape *tape,
 	memset(tape->opened_sector.record.bytes, 0x3c,
 	    sizeof(tape->opened_sector.record.bytes));
 	tape->opened_sector.fighter_owner = 3.0f;
+	(void)yt_record_set_number(&tape->opened_sector.record, YT_F85, 3.0f);
 	*state = (struct yt_hostile_attack_combat_state){
 		.current_player_record = 2,
 		.current_sector = 733,
@@ -19160,6 +19175,7 @@ check_hostile_attack_combat_transaction(void)
 	static const uint8_t destroyed_two[] =
 	    " You destroyed 2 enemy fighters.";
 	static const uint8_t selector_two[4] = {0, 0, 0, 0x82U};
+	static const uint8_t owner_three[4] = {0, 0, 0x40U, 0x82U};
 	struct hostile_combat_tape tape;
 	struct yt_hostile_attack_combat_state state;
 	struct yt_record joined_player;
@@ -19175,6 +19191,9 @@ check_hostile_attack_combat_transaction(void)
 	    || state.ship_fighters != 5.5 || state.deployed_remaining != 0.0
 	    || state.iterations != 3U || tape.draw_index != 3U
 	    || state.surrender_checked || state.surrendered
+	    || tape.stored_owner_count != 1U || tape.stored_owner_at != 1U
+	    || memcmp(tape.stored_owner_raw, owner_three,
+	    sizeof(owner_three)) != 0
 	    || tape.sound_selector_count != 1U || tape.sound_selector_at != 2U
 	    || memcmp(tape.sound_selector_raw, selector_two,
 	    sizeof(selector_two)) != 0
@@ -19206,13 +19225,15 @@ check_hostile_attack_combat_transaction(void)
 		    (failure + 1U) * sizeof(ordinary_events[0])) != 0
 		    || (failure == 2U
 		    && memcmp(tape.sound_selector_raw, selector_two,
-		    sizeof(selector_two)) != 0))
+		    sizeof(selector_two)) != 0)
+		    || tape.stored_owner_count != (failure > 0U ? 1U : 0U))
 			return false;
 	}
 
 	hostile_combat_fixture(&tape, &state);
 	tape.player.fighters = 11.0f;
 	tape.opened_sector.fighter_owner = 2.0f;
+	(void)yt_record_set_number(&tape.opened_sector.record, YT_F85, 2.0f);
 	tape.surrender_accept = true;
 	state.commitment = 120.0;
 	state.sector.fighters = 10.0f;
@@ -19233,6 +19254,7 @@ check_hostile_attack_combat_transaction(void)
 	tape.real_children = true;
 	tape.player.fighters = 11.0f;
 	tape.opened_sector.fighter_owner = 2.0f;
+	(void)yt_record_set_number(&tape.opened_sector.record, YT_F85, 2.0f);
 	tape.persistence_tape.players[0].fighters = 90.0f;
 	tape.persistence_tape.players[0].shields = 80.0f;
 	joined_player = tape.persistence_tape.players[0].record;
@@ -19282,6 +19304,7 @@ check_hostile_attack_combat_transaction(void)
 	hostile_combat_fixture(&tape, &state);
 	tape.player.fighters = 11.0f;
 	tape.opened_sector.fighter_owner = 2.0f;
+	(void)yt_record_set_number(&tape.opened_sector.record, YT_F85, 2.0f);
 	tape.surrender_accept = true;
 	tape.surrender_fail_after = true;
 	state.commitment = 120.0;
