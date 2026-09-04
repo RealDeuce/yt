@@ -5517,8 +5517,11 @@ finalize_action(struct yt_session *session, float amount,
 		else if (!yt_record_set_number(&session->player.record, YT_F125,
 		    session->player.cloak))
 			return false;
+		session_set_player_cache_raw(session, session_record(session),
+		    YT_PLAYER_CACHE_CLOAK,
+		    session->player.record.bytes + YT_F125);
 		session->cloak_cache[session_record(session)] =
-		    session->player.cloak;
+		    qb_mbf32_decode(session->player.record.bytes + YT_F125);
 		display = floorf(single_mul(session->player.cloak, 50.0f));
 		qb_str_single(number, sizeof(number), display);
 		snprintf(row, sizeof(row), "Cloak at%s%%", number);
