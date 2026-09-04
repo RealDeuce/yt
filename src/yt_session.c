@@ -64,6 +64,8 @@
 #define YT_CURRENT_PLAYER_PORTS_ADDRESS 0x4E5EU
 #define YT_CURRENT_PLAYER_GROUND_ADDRESS 0x4E8AU
 #define YT_CURRENT_PLAYER_MINES_ADDRESS 0x4F32U
+#define YT_NUMERIC_TEMP_DOUBLE_ADDRESS 0x0016U
+#define YT_NUMERIC_TEMP_SINGLE_ADDRESS 0x001AU
 #define YT_TURNS_PER_DAY_ADDRESS 0x4BD0U
 #define YT_LOTTERY_PLAYS_ADDRESS 0x4BB8U
 #define YT_MAXIMUM_PLANETS_ADDRESS 0x4BA8U
@@ -1033,6 +1035,9 @@ session_hydration_store(void *context,
 	};
 	struct yt_session *session = context;
 	bool is_double;
+	bool clears_temp_low;
+	bool writes_temp_high;
+	const uint8_t zero[4] = {0};
 
 	if (session == NULL || raw == NULL
 	    || (size_t)kind >= YT_ARRAY_LEN(addresses))
@@ -1057,6 +1062,21 @@ session_hydration_store(void *context,
 	    || kind == YT_CURRENT_PLAYER_STORE_MINES_DOUBLE
 	    || kind == YT_CURRENT_PLAYER_STORE_CREDITS_DOUBLE
 	    || kind == YT_CURRENT_PLAYER_STORE_SCORE_DOUBLE;
+	clears_temp_low = kind == YT_CURRENT_PLAYER_STORE_FIGHTERS
+	    || kind == YT_CURRENT_PLAYER_STORE_CREDITS
+	    || kind == YT_CURRENT_PLAYER_STORE_HOLDS
+	    || kind == YT_CURRENT_PLAYER_STORE_ORE
+	    || kind == YT_CURRENT_PLAYER_STORE_ORGANICS
+	    || kind == YT_CURRENT_PLAYER_STORE_EQUIPMENT
+	    || kind == YT_CURRENT_PLAYER_STORE_SCORE_DOUBLE;
+	writes_temp_high = kind != YT_CURRENT_PLAYER_STORE_FIGHTERS_DOUBLE
+	    && kind != YT_CURRENT_PLAYER_STORE_CREDITS_DOUBLE;
+	if (clears_temp_low)
+		yt_route_process_set_raw_single(&session->route_process,
+		    YT_NUMERIC_TEMP_DOUBLE_ADDRESS, zero);
+	if (writes_temp_high)
+		yt_route_process_set_raw_single(&session->route_process,
+		    YT_NUMERIC_TEMP_SINGLE_ADDRESS, is_double ? raw + 4U : raw);
 	if (is_double)
 		yt_route_process_set_raw_double(&session->route_process,
 		    addresses[kind], raw);
