@@ -2686,6 +2686,25 @@ startup_configuration_store_cache_counter(void *context,
 	    YT_PLAYER_CACHE_COUNTER_ADDRESS, raw);
 }
 
+static void
+startup_configuration_store_cache_value(void *context, int basic_record,
+    enum yt_startup_configuration_cache_kind kind, const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+	uint16_t address;
+
+	if (basic_record < YT_PLAYER_FIRST || basic_record > YT_PLAYER_LAST)
+		return;
+	if (kind != YT_STARTUP_CONFIGURATION_CACHE_SECTOR
+	    && kind != YT_STARTUP_CONFIGURATION_CACHE_CLOAK)
+		return;
+	address = (uint16_t)(YT_CLOAK_CACHE_BASE_ADDRESS
+	    + 4U * (unsigned)(basic_record
+	    + (kind == YT_STARTUP_CONFIGURATION_CACHE_CLOAK
+	    ? YT_CLOAK_CACHE_INDEX_BIAS : 0)));
+	yt_route_process_set_raw_single(&session->route_process, address, raw);
+}
+
 static bool
 load_configuration(struct yt_session *session, struct yt_error *error)
 {
@@ -2712,6 +2731,7 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 		startup_configuration_store_cache_guard,
 		startup_configuration_store_cache_terminal,
 		startup_configuration_store_cache_counter,
+		startup_configuration_store_cache_value,
 	};
 	struct yt_game *game = &session->door->game;
 	struct yt_startup_configuration_state state;

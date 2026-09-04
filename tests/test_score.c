@@ -193,6 +193,11 @@ struct startup_configuration_tape {
 	size_t cache_terminal_store_count;
 	uint8_t cache_counter_raw[8][4];
 	size_t cache_counter_store_count;
+	int cache_value_record[12];
+	enum yt_startup_configuration_cache_kind cache_value_kind[12];
+	uint8_t cache_value_raw[12][4];
+	size_t cache_value_event_position[12];
+	size_t cache_value_store_count;
 };
 
 static void
@@ -529,6 +534,24 @@ startup_configuration_cache_counter_store_test(void *context,
 	++tape->cache_counter_store_count;
 }
 
+static void
+startup_configuration_cache_value_store_test(void *context,
+    int basic_record, enum yt_startup_configuration_cache_kind kind,
+    const uint8_t raw[4])
+{
+	struct startup_configuration_tape *tape = context;
+	size_t store = tape->cache_value_store_count;
+
+	if (store >= YT_ARRAY_LEN(tape->cache_value_raw))
+		return;
+	tape->cache_value_record[store] = basic_record;
+	tape->cache_value_kind[store] = kind;
+	memcpy(tape->cache_value_raw[store], raw,
+	    sizeof(tape->cache_value_raw[store]));
+	tape->cache_value_event_position[store] = tape->event_count;
+	++tape->cache_value_store_count;
+}
+
 static bool
 startup_configuration_fixture(struct startup_configuration_tape *tape,
     struct yt_startup_configuration_state *state, struct yt_config *config,
@@ -608,6 +631,7 @@ check_startup_configuration_transaction(void)
 		startup_configuration_cache_guard_store_test,
 		startup_configuration_cache_terminal_store_test,
 		startup_configuration_cache_counter_store_test,
+		startup_configuration_cache_value_store_test,
 	};
 	static const int events[] = {
 		STARTUP_CONFIGURATION_CLOSE,
@@ -739,6 +763,37 @@ check_startup_configuration_transaction(void)
 	    || qb_mbf32_decode(tape.cache_counter_raw[1]) != 3.0f
 	    || qb_mbf32_decode(tape.cache_counter_raw[2]) != 4.0f
 	    || qb_mbf32_decode(tape.cache_counter_raw[3]) != 5.0f
+	    || tape.cache_value_store_count != 8U
+	    || tape.cache_value_record[0] != 2
+	    || tape.cache_value_kind[0]
+	    != YT_STARTUP_CONFIGURATION_CACHE_SECTOR
+	    || memcmp(tape.cache_value_raw[0],
+	    tape.player_source[2].bytes + YT_F57, 4U) != 0
+	    || tape.cache_value_kind[1]
+	    != YT_STARTUP_CONFIGURATION_CACHE_CLOAK
+	    || memcmp(tape.cache_value_raw[1],
+	    tape.player_source[2].bytes + YT_F125, 4U) != 0
+	    || tape.cache_value_kind[2]
+	    != YT_STARTUP_CONFIGURATION_CACHE_CLOAK
+	    || memcmp(tape.cache_value_raw[2],
+	    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) != 0
+	    || tape.cache_value_record[3] != 3
+	    || tape.cache_value_kind[3]
+	    != YT_STARTUP_CONFIGURATION_CACHE_SECTOR
+	    || tape.cache_value_kind[4]
+	    != YT_STARTUP_CONFIGURATION_CACHE_CLOAK
+	    || tape.cache_value_record[5] != 4
+	    || tape.cache_value_kind[5]
+	    != YT_STARTUP_CONFIGURATION_CACHE_SECTOR
+	    || tape.cache_value_kind[6]
+	    != YT_STARTUP_CONFIGURATION_CACHE_CLOAK
+	    || tape.cache_value_kind[7]
+	    != YT_STARTUP_CONFIGURATION_CACHE_CLOAK
+	    || tape.cache_value_event_position[0] != 5U
+	    || tape.cache_value_event_position[2] != 5U
+	    || tape.cache_value_event_position[3] != 7U
+	    || tape.cache_value_event_position[5] != 8U
+	    || tape.cache_value_event_position[7] != 8U
 	    || sector_cache[2] != 20.0f || sector_cache[3] != 30.0f
 	    || sector_cache[4] != 40.0f || sector_cache[1] != -101.0f
 	    || cloak_cache[2] != 1.0f || cloak_cache[3] != 0.5f
@@ -1081,6 +1136,9 @@ check_startup_configuration_transaction(void)
 		    : failure <= 6U ? 1U : failure == 7U ? 2U
 		    : failure <= 9U ? 3U : 4U))
 			return false;
+		if (tape.cache_value_store_count != (failure <= 5U ? 0U
+		    : failure <= 7U ? 3U : failure == 8U ? 5U : 8U))
+			return false;
 	}
 	if (!startup_configuration_fixture(&tape, &state, &config,
 	    sector_cache, cloak_cache))
@@ -1091,7 +1149,12 @@ check_startup_configuration_transaction(void)
 	    || state.cache_guard != 0.0f || tape.draw_position != 0U
 	    || tape.cache_guard_store_count != 0U
 	    || tape.cache_terminal_store_count != 1U
-	    || tape.cache_counter_store_count != 1U)
+	    || tape.cache_counter_store_count != 1U
+	    || tape.cache_value_store_count != 3U
+	    || tape.cache_value_kind[2]
+	    != YT_STARTUP_CONFIGURATION_CACHE_CLOAK
+	    || memcmp(tape.cache_value_raw[2],
+	    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) != 0)
 		return false;
 	if (!startup_configuration_fixture(&tape, &state, &config,
 	    sector_cache, cloak_cache))

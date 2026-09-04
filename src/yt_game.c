@@ -413,10 +413,26 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 			if (!ops->read_player(context, basic, &player, error))
 				return false;
 			state->sector_cache[basic] = player.sector;
+			if (ops->store_cache_value != NULL)
+				ops->store_cache_value(context, basic,
+				    YT_STARTUP_CONFIGURATION_CACHE_SECTOR,
+				    player.record.bytes + YT_F57);
 			state->cloak_cache[basic] = player.cloak;
+			if (ops->store_cache_value != NULL)
+				ops->store_cache_value(context, basic,
+				    YT_STARTUP_CONFIGURATION_CACHE_CLOAK,
+				    player.record.bytes + YT_F125);
 			if (player.cloak < 0.0f || player.cloak > 1.0f) {
+				static const uint8_t one[4] = {
+					0x00U, 0x00U, 0x00U, 0x81U
+				};
+
 				player.cloak = 1.0f;
 				state->cloak_cache[basic] = 1.0f;
+				if (ops->store_cache_value != NULL)
+					ops->store_cache_value(context, basic,
+					    YT_STARTUP_CONFIGURATION_CACHE_CLOAK,
+					    one);
 				if (!yt_record_set_number(&player.record, YT_F125,
 				    1.0f)
 				    || !ops->write_player(context, basic, &player,

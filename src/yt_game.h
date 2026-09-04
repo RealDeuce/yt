@@ -99,6 +99,15 @@ typedef void (*yt_startup_configuration_cache_terminal_store_fn)(void *context,
 typedef void (*yt_startup_configuration_cache_counter_store_fn)(void *context,
 	const uint8_t raw[4]);
 
+enum yt_startup_configuration_cache_kind {
+	YT_STARTUP_CONFIGURATION_CACHE_SECTOR,
+	YT_STARTUP_CONFIGURATION_CACHE_CLOAK,
+};
+
+typedef void (*yt_startup_configuration_cache_value_store_fn)(void *context,
+	int basic_record, enum yt_startup_configuration_cache_kind kind,
+	const uint8_t raw[4]);
+
 struct yt_startup_configuration_ops {
 	yt_startup_configuration_close_fn close_data;
 	yt_startup_configuration_open_fn open_data;
@@ -122,6 +131,7 @@ struct yt_startup_configuration_ops {
 	yt_startup_configuration_cache_guard_store_fn store_cache_guard;
 	yt_startup_configuration_cache_terminal_store_fn store_cache_terminal;
 	yt_startup_configuration_cache_counter_store_fn store_cache_counter;
+	yt_startup_configuration_cache_value_store_fn store_cache_value;
 };
 
 bool yt_startup_configuration_run(
