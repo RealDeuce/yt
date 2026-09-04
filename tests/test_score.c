@@ -18833,6 +18833,7 @@ struct hostile_combat_tape {
 	struct hostile_tail_tape tail_tape;
 	struct yt_player cached_player;
 	struct yt_sector cached_sector;
+	double cached_deployed_fighters;
 	size_t player_cache_calls;
 	size_t sector_cache_calls;
 	struct yt_hostile_attack_persistence_state persistence_input;
@@ -19009,11 +19010,13 @@ hostile_combat_cache_player(void *context, const struct yt_player *player)
 }
 
 static void
-hostile_combat_cache_sector(void *context, const struct yt_sector *sector)
+hostile_combat_cache_sector(void *context, const struct yt_sector *sector,
+    double deployed_fighters)
 {
 	struct hostile_combat_tape *tape = context;
 
 	tape->cached_sector = *sector;
+	tape->cached_deployed_fighters = deployed_fighters;
 	++tape->sector_cache_calls;
 }
 
@@ -19129,6 +19132,7 @@ hostile_combat_fixture(struct hostile_combat_tape *tape,
 		.current_sector = 733,
 		.commitment = 3.0,
 		.allow_surrender = true,
+		.cached_defenders = 2.0,
 		.sector = {
 			.fighters = 2.0f,
 			.fighter_owner = 3.0f,
@@ -19211,7 +19215,8 @@ check_hostile_attack_combat_transaction(void)
 	    || tape.persistence_input.deployed_fighters != 0.0
 	    || tape.persistence_input.defender_loss != 2.0
 	    || tape.tail_input.ship_fighters != 5.5
-	    || tape.player_cache_calls != 1U || tape.sector_cache_calls != 2U)
+	    || tape.player_cache_calls != 1U || tape.sector_cache_calls != 2U
+	    || tape.cached_deployed_fighters != 0.0)
 		return false;
 
 	for (failure = 0U; failure < YT_ARRAY_LEN(ordinary_events); ++failure) {
@@ -19230,12 +19235,24 @@ check_hostile_attack_combat_transaction(void)
 			return false;
 	}
 
+	/* The combat source is the inherited MBF64 cache, not the sector FIELD. */
+	hostile_combat_fixture(&tape, &state);
+	state.cached_defenders = 16777215.5;
+	state.sector.fighters = 2.0f;
+	tape.fail_at = 0U;
+	yt_error_clear(&error);
+	if (yt_hostile_attack_combat_run(&state, &hostile_combat_ops,
+	    &tape, &error) || state.old_count != 16777215.5
+	    || state.deployed_remaining != 16777215.5)
+		return false;
+
 	hostile_combat_fixture(&tape, &state);
 	tape.player.fighters = 11.0f;
 	tape.opened_sector.fighter_owner = 2.0f;
 	(void)yt_record_set_number(&tape.opened_sector.record, YT_F85, 2.0f);
 	tape.surrender_accept = true;
 	state.commitment = 120.0;
+	state.cached_defenders = 10.0;
 	state.sector.fighters = 10.0f;
 	if (!yt_hostile_attack_combat_run(&state, &hostile_combat_ops,
 	    &tape, NULL) || !state.surrendered || !state.surrender_checked
@@ -19264,6 +19281,7 @@ check_hostile_attack_combat_transaction(void)
 	(void)yt_record_set_number(&joined_sector, YT_F81, 0.0f);
 	(void)yt_record_set_number(&joined_sector, YT_F85, 0.0f);
 	state.commitment = 120.0;
+	state.cached_defenders = 10.0;
 	state.sector.fighters = 10.0f;
 	if (!yt_hostile_attack_combat_run(&state, &hostile_combat_ops,
 	    &tape, NULL) || !state.complete || !state.surrendered
@@ -19292,6 +19310,7 @@ check_hostile_attack_combat_transaction(void)
 	tape.draw_count = 1U;
 	tape.persistence_fatal = true;
 	state.commitment = 1.0;
+	state.cached_defenders = 2.0;
 	state.sector.fighters = 2.0f;
 	if (!yt_hostile_attack_combat_run(&state, &hostile_combat_ops,
 	    &tape, NULL) || !state.complete
@@ -19308,6 +19327,7 @@ check_hostile_attack_combat_transaction(void)
 	tape.surrender_accept = true;
 	tape.surrender_fail_after = true;
 	state.commitment = 120.0;
+	state.cached_defenders = 10.0;
 	state.sector.fighters = 10.0f;
 	yt_error_clear(&error);
 	if (yt_hostile_attack_combat_run(&state, &hostile_combat_ops,
@@ -19322,6 +19342,7 @@ check_hostile_attack_combat_transaction(void)
 	tape.draw_count = 1U;
 	tape.spill_fail_after = true;
 	state.commitment = 1.0;
+	state.cached_defenders = 2.0;
 	state.sector.fighters = 2.0f;
 	yt_error_clear(&error);
 	if (yt_hostile_attack_combat_run(&state, &hostile_combat_ops,
@@ -22581,8 +22602,14 @@ check_hostile_menu_front(void)
 		return false;
 	{
 		double threshold = yt_bribe_offer_threshold(10.0f, 0.5f);
+		double precise = 16777215.5;
 
 		if (threshold != 20.0
+		    || yt_bribe_offer_threshold(precise, 0.0f) != precise
+		    || !yt_bribe_ordinary_forces(3.0f, precise,
+		    16777215.25, 0.0f)
+		    || !yt_bribe_mercenary_forces(precise, 16777215.25,
+		    1.0f, 1.0f, false)
 		    || !yt_bribe_offer_accepted(20.0f, 20.0f, threshold)
 		    || yt_bribe_offer_accepted(19.0f, 20.0f, threshold)
 		    || !yt_bribe_ordinary_forces(-1.0f, 1.0f, 10.0f, 1.0f)

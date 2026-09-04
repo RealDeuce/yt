@@ -81,6 +81,8 @@
 #define YT_HOSTILE_SURRENDER_JOINED_SELECTOR_ADDRESS 0x4D46U
 #define YT_HOSTILE_ATTACK_SOUND_SELECTOR_ADDRESS 0x4D2EU
 #define YT_HOSTILE_BRIBE_SOUND_SELECTOR_ADDRESS 0x4D7AU
+#define YT_HOSTILE_PLANET_LINK_ADDRESS 0x4CFAU
+#define YT_HOSTILE_DEPLOYED_FIGHTERS_ADDRESS 0x4CFEU
 #define YT_HOSTILE_ATTACK_OWNER_ADDRESS 0x4D06U
 #define YT_SESSION_DEADLINE_ADDRESS 0x4BB4U
 #define YT_SESSION_MODE_ADDRESS 0x19C8U
@@ -531,6 +533,24 @@ session_set_process_single(struct yt_session *session, uint16_t address,
 	if (qb_mbf32_encode(value, raw) == QB_MBF_OK)
 		yt_route_process_set_raw_single(&session->route_process, address,
 		    raw);
+}
+
+static void
+session_set_process_double(struct yt_session *session, uint16_t address,
+    double value)
+{
+	uint8_t raw[8];
+
+	if (qb_mbf64_encode(value, raw) == QB_MBF_OK)
+		yt_route_process_set_raw_double(&session->route_process, address,
+		    raw);
+}
+
+static double
+session_hostile_deployed_fighters(const struct yt_session *session)
+{
+	return yt_route_process_double(&session->route_process,
+	    YT_HOSTILE_DEPLOYED_FIGHTERS_ADDRESS);
 }
 
 static int
@@ -4307,6 +4327,24 @@ scanner_read_team_overlay(struct yt_session *session, float team,
 	return true;
 }
 
+static void
+scanner_cache_hostile_sector(struct yt_session *session,
+    const struct yt_sector *sector)
+{
+	uint8_t fighters_raw[8];
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_HOSTILE_PLANET_LINK_ADDRESS,
+	    &sector->record.bytes[YT_F93]);
+	(void)qb_mbf64_encode((double)qb_mbf32_decode(
+	    &sector->record.bytes[YT_F81]), fighters_raw);
+	yt_route_process_set_raw_double(&session->route_process,
+	    YT_HOSTILE_DEPLOYED_FIGHTERS_ADDRESS, fighters_raw);
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_HOSTILE_ATTACK_OWNER_ADDRESS,
+	    &sector->record.bytes[YT_F85]);
+}
+
 static bool
 display_sector_one(struct yt_session *session, float logical_sector,
     struct yt_sector_pager_state *private_pager, struct yt_error *error)
@@ -4454,6 +4492,7 @@ display_sector_one(struct yt_session *session, float logical_sector,
 	}
 	if (!scanner_read_sector(session, logical_sector, &sector, error))
 		return false;
+	scanner_cache_hostile_sector(session, &sector);
 	if (sector.fighters != 0.0f) {
 		static const uint8_t heading[] = "Fighters in sector:";
 		struct yt_player owner;
@@ -6938,11 +6977,13 @@ hostile_attack_combat_cache_player(void *context,
 
 static void
 hostile_attack_combat_cache_sector(void *context,
-    const struct yt_sector *sector)
+    const struct yt_sector *sector, double deployed_fighters)
 {
 	struct hostile_attack_combat_context *combat = context;
 
 	*combat->sector = *sector;
+	session_set_process_double(combat->session,
+	    YT_HOSTILE_DEPLOYED_FIGHTERS_ADDRESS, deployed_fighters);
 }
 
 static bool
@@ -7054,6 +7095,7 @@ attack_deployed_committed(struct yt_session *session,
 		.current_sector = (int)session->player.sector,
 		.commitment = commitment,
 		.allow_surrender = allow_surrender,
+		.cached_defenders = session_hostile_deployed_fighters(session),
 		.sector = *sector,
 		.cached_player_name = cached_player_name,
 		.cached_player_name_length = cached_player_name_length,
@@ -7338,8 +7380,9 @@ bribe_deployed(struct yt_session *session, struct yt_sector *sector,
 	state = (struct yt_hostile_bribe_state){
 		.current_player_record = session_record(session),
 		.current_sector = (int)session->player.sector,
-		.owner = sector->fighter_owner,
-		.cached_defenders = sector->fighters,
+		.owner = yt_route_process_single(&session->route_process,
+		    YT_HOSTILE_ATTACK_OWNER_ADDRESS),
+		.cached_defenders = session_hostile_deployed_fighters(session),
 		.ship_fighters = (double)session->player.fighters,
 		.shields = session->player.shields,
 		.credits = (double)session->player.credits,
@@ -7348,8 +7391,8 @@ bribe_deployed(struct yt_session *session, struct yt_sector *sector,
 		.real_first_name_length =
 		    strlen(session->door->identity.real_first),
 	};
-	memcpy(state.planet_link_raw, sector->record.bytes + YT_F93,
-	    sizeof(state.planet_link_raw));
+	yt_route_process_raw_single(&session->route_process,
+	    YT_HOSTILE_PLANET_LINK_ADDRESS, state.planet_link_raw);
 	yt_route_process_raw_single(&session->route_process,
 	    YT_MERCENARIES_HURT_ADDRESS, state.mercenaries_hurt_raw);
 	result = yt_hostile_bribe_run(&state, &ops, &context, error);
@@ -7665,7 +7708,8 @@ sector_entry(struct yt_session *session, float scanner_mode,
 				return false;
 			session_set_foreground(session, 3.0f);
 			if (!yt_hostile_menu_row((double)session->player.fighters,
-			    (double)sector.fighters, row, sizeof(row), &row_length)) {
+			    session_hostile_deployed_fighters(session), row,
+			    sizeof(row), &row_length)) {
 				if (error != NULL) {
 					error->status = YT_RANGE;
 					(void)snprintf(error->operation,
@@ -7718,7 +7762,8 @@ sector_entry(struct yt_session *session, float scanner_mode,
 						return false;
 					if (session_is_destroyed(session))
 						return true;
-					if (sector.fighters <= 0.0f) {
+					if (session_hostile_deployed_fighters(session)
+					    <= 0.0) {
 						session_set_foreground(session, 1.0f);
 						if (!display_sector(session, false, error))
 							return false;
@@ -7758,7 +7803,8 @@ sector_entry(struct yt_session *session, float scanner_mode,
 						break;
 					}
 					if (forced_attack) {
-						if (sector.fighters <= 0.0f) {
+						if (session_hostile_deployed_fighters(session)
+						    <= 0.0) {
 							session_set_foreground(session, 1.0f);
 							if (!display_sector(session, false, error))
 								return false;

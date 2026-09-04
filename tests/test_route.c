@@ -349,6 +349,8 @@ test_addressed_route_arguments(void)
 	float status;
 	uint8_t raw[4];
 	uint8_t returned[4];
+	uint8_t raw_double[8];
+	uint8_t returned_double[8];
 
 	graph.rows[1][0] = 2.0f;
 	graph.rows[2][0] = 3.0f;
@@ -422,6 +424,14 @@ test_addressed_route_arguments(void)
 	CHECK(yt_route_process_word(&process, 0xffffU) == -2
 	    && process.bytes[0xffffU] == 0xfeU
 	    && process.bytes[0] == 0xffU);
+	CHECK(qb_mbf64_encode(16777215.5, raw_double) == QB_MBF_OK);
+	yt_route_process_set_raw_double(&process, 0xfffcU, raw_double);
+	memset(returned_double, 0, sizeof(returned_double));
+	yt_route_process_raw_double(&process, 0xfffcU, returned_double);
+	CHECK(memcmp(raw_double, returned_double, sizeof(raw_double)) == 0
+	    && yt_route_process_double(&process, 0xfffcU) == 16777215.5
+	    && process.bytes[0xfffcU] == raw_double[0]
+	    && process.bytes[3] == raw_double[7]);
 
 	yt_error_clear(&error);
 	CHECK(!yt_route_process_build_at(YT_ROUTE_WORKSPACE_ADDRESS,

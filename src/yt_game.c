@@ -4305,7 +4305,7 @@ yt_xannor_attack_bonus(double defenders_destroyed, float turns,
 }
 
 bool
-yt_bribe_ordinary_forces(float owner, float defenders,
+yt_bribe_ordinary_forces(float owner, double defenders,
     double ship_fighters, float draw)
 {
 	return owner == -1.0f || (defenders > ship_fighters
@@ -4313,7 +4313,7 @@ yt_bribe_ordinary_forces(float owner, float defenders,
 }
 
 bool
-yt_bribe_mercenary_forces(float defenders, double ship_fighters,
+yt_bribe_mercenary_forces(double defenders, double ship_fighters,
     float first, float second, bool sticky)
 {
 	return first < 0.05000000074505806f
@@ -4322,11 +4322,11 @@ yt_bribe_mercenary_forces(float defenders, double ship_fighters,
 }
 
 double
-yt_bribe_offer_threshold(float defenders, float draw)
+yt_bribe_offer_threshold(double defenders, float draw)
 {
-	volatile double product = (double)defenders * (double)draw;
+	volatile double product = defenders * (double)draw;
 	volatile double doubled = product * 2.0;
-	volatile double threshold = doubled + (double)defenders;
+	volatile double threshold = doubled + defenders;
 
 	return threshold;
 }
@@ -14112,7 +14112,7 @@ yt_hostile_attack_combat_run(struct yt_hostile_attack_combat_state *state,
 		return false;
 	state->route = YT_HOSTILE_ATTACK_COMBAT_NORMAL;
 	state->complete = false;
-	state->old_count = (double)state->sector.fighters;
+	state->old_count = state->cached_defenders;
 	state->old_ship = 0.0;
 	state->attacker_loss = 0.0;
 	state->defender_loss = 0.0;
@@ -14193,7 +14193,8 @@ yt_hostile_attack_combat_run(struct yt_hostile_attack_combat_state *state,
 				state->current.fighters =
 				    (float)state->ship_fighters;
 				ops->cache_player(context, &state->current);
-				ops->cache_sector(context, &state->sector);
+				ops->cache_sector(context, &state->sector,
+				    state->deployed_remaining);
 				break;
 			}
 		}
@@ -14262,7 +14263,7 @@ yt_hostile_attack_combat_run(struct yt_hostile_attack_combat_state *state,
 		ops->cache_player(context, &state->current);
 	}
 	state->sector.fighters = (float)state->deployed_remaining;
-	ops->cache_sector(context, &state->sector);
+	ops->cache_sector(context, &state->sector, state->deployed_remaining);
 	state->persistence =
 	    (struct yt_hostile_attack_persistence_state){
 		.current_player_record = state->current_player_record,
@@ -14284,7 +14285,8 @@ yt_hostile_attack_combat_run(struct yt_hostile_attack_combat_state *state,
 	state->ship_fighters = state->persistence.ship_fighters;
 	if (state->persistence.sector_written) {
 		state->sector = state->persistence.sector;
-		ops->cache_sector(context, &state->sector);
+		ops->cache_sector(context, &state->sector,
+		    state->deployed_remaining);
 	}
 	if (state->persistence.route == YT_HOSTILE_ATTACK_PERSISTENCE_FATAL)
 		state->route = YT_HOSTILE_ATTACK_COMBAT_FATAL;

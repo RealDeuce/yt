@@ -226,6 +226,42 @@ yt_route_process_single(const struct yt_route_process *process,
 	return route_process_read_single(process, address);
 }
 
+void
+yt_route_process_set_raw_double(struct yt_route_process *process,
+    uint16_t address, const uint8_t raw[8])
+{
+	size_t offset;
+
+	if (process == NULL || raw == NULL)
+		return;
+	for (offset = 0U; offset < 8U; ++offset)
+		process->bytes[(uint16_t)(address + offset)] = raw[offset];
+}
+
+void
+yt_route_process_raw_double(const struct yt_route_process *process,
+    uint16_t address, uint8_t raw[8])
+{
+	size_t offset;
+
+	if (process == NULL || raw == NULL)
+		return;
+	for (offset = 0U; offset < 8U; ++offset)
+		raw[offset] = process->bytes[(uint16_t)(address + offset)];
+}
+
+double
+yt_route_process_double(const struct yt_route_process *process,
+    uint16_t address)
+{
+	uint8_t raw[8];
+
+	if (process == NULL)
+		return 0.0;
+	yt_route_process_raw_double(process, address, raw);
+	return qb_mbf64_decode(raw);
+}
+
 int16_t
 yt_route_process_word(const struct yt_route_process *process,
     uint16_t address)

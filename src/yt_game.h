@@ -2030,11 +2030,11 @@ bool yt_xannor_attack_reward_rows(const uint8_t *name, size_t name_length,
     uint8_t *news, size_t news_capacity, size_t *news_length);
 float yt_xannor_attack_bonus(double defenders_destroyed, float turns,
     float turns_per_day);
-bool yt_bribe_ordinary_forces(float owner, float defenders,
+bool yt_bribe_ordinary_forces(float owner, double defenders,
     double ship_fighters, float draw);
-bool yt_bribe_mercenary_forces(float defenders, double ship_fighters,
+bool yt_bribe_mercenary_forces(double defenders, double ship_fighters,
     float first, float second, bool sticky);
-double yt_bribe_offer_threshold(float defenders, float draw);
+double yt_bribe_offer_threshold(double defenders, float draw);
 bool yt_bribe_offer_accepted(float offer, double credits, double threshold);
 enum yt_bribe_forced_admission yt_bribe_forced_admit(
     double ship_fighters, float shields, bool mercenary_fatal_gate,
@@ -3762,6 +3762,7 @@ struct yt_hostile_attack_combat_state {
 	int current_sector;
 	double commitment;
 	bool allow_surrender;
+	double cached_defenders;
 	struct yt_sector sector;
 	struct yt_sector opened_sector;
 	struct yt_player current;
@@ -3814,7 +3815,7 @@ typedef bool (*yt_hostile_attack_combat_present_fn)(void *context,
 typedef void (*yt_hostile_attack_combat_cache_player_fn)(void *context,
     const struct yt_player *player);
 typedef void (*yt_hostile_attack_combat_cache_sector_fn)(void *context,
-    const struct yt_sector *sector);
+	const struct yt_sector *sector, double deployed_fighters);
 typedef bool (*yt_hostile_attack_combat_spill_fn)(void *context,
     double *fighters, float *shields, struct yt_error *error);
 typedef bool (*yt_hostile_attack_combat_persistence_fn)(void *context,
@@ -3847,7 +3848,7 @@ bool yt_hostile_attack_combat_run(
 struct yt_hostile_bribe_accept_state {
 	int current_player_record;
 	int current_sector;
-	float cached_defenders;
+	double cached_defenders;
 	float offer;
 	struct yt_sector sector;
 	struct yt_player current;
@@ -3925,7 +3926,7 @@ struct yt_hostile_bribe_state {
 	int current_player_record;
 	int current_sector;
 	float owner;
-	float cached_defenders;
+	double cached_defenders;
 	double ship_fighters;
 	float shields;
 	double credits;
