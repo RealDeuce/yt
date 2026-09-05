@@ -1552,7 +1552,6 @@ yt_radio_append_maintenance(const char *text, float sender, float recipient,
 bool
 yt_radio_compact(struct yt_error *error)
 {
-	char source_path[512];
 	struct yt_text_output temporary_output;
 	struct yt_radio_file destination;
 	struct yt_radio_file source;
@@ -1577,10 +1576,7 @@ yt_radio_compact(struct yt_error *error)
 	    || !yt_radio_file_open_text_width(&destination, "temp", 72U,
 	    error))
 		goto done;
-	if (!yt_resolve_case_path("YTRMSG.DAT", true, source_path,
-	    sizeof(source_path), error))
-		goto done;
-	if (!yt_radio_file_open_text_width(&source, source_path, 72U, error)
+	if (!yt_radio_file_open_text_width(&source, "ytRMSG.DAT", 72U, error)
 	    || !yt_radio_file_size(&source, &length, error))
 		goto done;
 	record_count = length / YT_RADIO_RECORD_SIZE;
@@ -1609,7 +1605,7 @@ yt_radio_compact(struct yt_error *error)
 		goto done;
 	if (!yt_radio_file_close(&destination, error))
 		goto done;
-	if (!yt_file_kill("YTRMSG.DAT", NULL, error)
+	if (!yt_file_kill("ytrmsg.dat", NULL, error)
 	    || !yt_file_rename("Temp", "ytrmsg.dat", error))
 		goto done;
 	result = true;

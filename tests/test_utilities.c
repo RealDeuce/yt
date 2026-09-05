@@ -1367,6 +1367,50 @@ test_news_rotation_transaction(void)
 }
 
 static bool
+test_radio_compaction_literal_identity(void)
+{
+#ifdef _WIN32
+	return true;
+#else
+	struct yt_radio_record upper;
+	struct yt_radio_record exact;
+	uint8_t expected[YT_RADIO_RECORD_SIZE];
+	uint8_t *temporary = NULL;
+	size_t length = 0U;
+	struct yt_error error;
+	bool valid = false;
+
+	memset(upper.bytes, 0x11, sizeof(upper.bytes));
+	memset(exact.bytes, 0x22, sizeof(exact.bytes));
+	if (!yt_radio_set_number(&upper, 0U, 1.0f)
+	    || !yt_radio_set_number(&exact, 0U, 1.0f)
+	    || !write_file("YTRMSG.DAT", upper.bytes, sizeof(upper.bytes))
+	    || !write_file("ytRMSG.DAT", exact.bytes, sizeof(exact.bytes)))
+		goto done;
+	memcpy(expected, exact.bytes, 84U);
+	memset(expected + 84U, 0, 2U);
+	yt_error_clear(&error);
+	if (yt_radio_compact(&error) || error.status != YT_NOT_FOUND
+	    || strcmp(error.operation, "KILL") != 0
+	    || strcmp(error.path, "ytrmsg.dat") != 0
+	    || !read_file("temp", &temporary, &length)
+	    || length != sizeof(expected)
+	    || memcmp(temporary, expected, sizeof(expected)) != 0)
+		goto done;
+	valid = true;
+
+done:
+	free(temporary);
+	(void)remove("YTRMSG.DAT");
+	(void)remove("ytRMSG.DAT");
+	(void)remove("ytrmsg.dat");
+	(void)remove("temp");
+	(void)remove("Temp");
+	return valid;
+#endif
+}
+
+static bool
 test_maintenance_message_compaction(void)
 {
 	static const uint8_t raw_zero[4] = {0x44, 0x33, 0x22, 0x00};
@@ -5470,6 +5514,8 @@ main(void)
 		failure = "maintenance alias compaction differs";
 	else if (!test_news_rotation_transaction())
 		failure = "maintenance news rotation transaction differs";
+	else if (!test_radio_compaction_literal_identity())
+		failure = "maintenance radio pathname identity differs";
 	else if (!test_maintenance_message_compaction())
 		failure = "maintenance message/news compaction differs";
 	else if (!test_maintenance_random_helpers())

@@ -2445,10 +2445,16 @@ not authoritative. Use the corrected goal above in the new workspace.
   exact lowercase literals `ytnews.dat` and `ytynews.dat`; fixtures pin every
   OPEN/CLOSE/KILL/NAME failure prefix as well as successful mixed-case source
   resolution and the lowercase replacement identity.
+  The radio source OPEN now likewise receives the shipped mixed-case literal
+  `ytRMSG.DAT` directly, its destructive suffix passes lowercase
+  `ytrmsg.dat` to KILL and retains `Temp` as the NAME source. A POSIX
+  case-collision fixture proves the exact source wins the OPEN, its 84-byte
+  image reaches the closed temporary with a zero tail, and the later
+  lowercase KILL fails without deleting either colliding source.
   The clean-install composition now physically pins the immutable blank and
   `Compressing Message Base's` row before file work; all nine native CTests
   and all 39 focused YTRMSG/maintenance-daily oracle tests pass. Raw
-  RANDOM/FIELD/LOF/GET/file-number state, radio missing-file variants, and
+  RANDOM/FIELD/LOF/GET/file-number state and
   every remaining radio physical OPEN/CLOSE/GET/PUT/KILL/NAME/runtime prefix
   and failure remain open.
 - YTMAINT immediate combat-death root `6924`, its Xannor caller join and all
