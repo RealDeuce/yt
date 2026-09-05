@@ -33629,7 +33629,10 @@ main(void)
 	    || !yt_game_read_player(&game, 3, &player, &error)
 	    || player.score != 100.0f)
 		goto close;
-	if (!yt_score_generate_progress_process_observed(&game, NULL, NULL,
+	game.config.sector_offset = 99.0f;
+	game.config.port_offset = 100.0f;
+	if (!yt_score_generate_progress_process_observed(&game,
+	    3.0f, 5.0f, NULL, NULL,
 	    &score_field, score_owner_collect, &owner_tape, &error)
 	    || !score_field.valid || score_field.kind != YT_SCORE_FIELD_TEAM
 	    || score_field.physical_record != 5U

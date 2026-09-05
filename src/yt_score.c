@@ -164,6 +164,30 @@ single_mul(float left, float right)
 	return result;
 }
 
+static float
+single_sub(float left, float right)
+{
+	volatile float result = left - right;
+	return result;
+}
+
+static bool
+score_read_sector(struct yt_game *game, float sector_record_offset,
+    int logical_sector, struct yt_sector *sector, uint32_t *physical_record,
+    struct yt_error *error)
+{
+	struct yt_record record;
+	uint32_t physical = qb_brun_random_record_number(single_add(
+	    sector_record_offset, (float)logical_sector));
+
+	if (!yt_database_read(&game->database, (size_t)physical, &record, error))
+		return false;
+	yt_sector_decode(sector, &record);
+	if (physical_record != NULL)
+		*physical_record = physical;
+	return true;
+}
+
 static double
 base_score(const struct yt_player *player)
 {
@@ -240,6 +264,7 @@ score_field_observe(struct yt_score_field_observation *field,
 
 bool
 yt_score_generate_progress_process_observed(struct yt_game *game,
+    float sector_record_offset, float port_record_offset,
     yt_score_progress_fn progress, void *context,
     struct yt_score_field_observation *field,
     yt_score_process_store_fn store_defense_owner, void *process_context,
@@ -258,9 +283,9 @@ yt_score_generate_progress_process_observed(struct yt_game *game,
 	char line[256];
 	char path[512];
 	struct yt_text_output output;
-	int player_count = (int)game->config.sector_offset - 1;
-	int sector_count = (int)(game->config.port_offset
-	    - game->config.sector_offset);
+	int player_count = (int)sector_record_offset - 1;
+	int sector_count = (int)single_sub(port_record_offset,
+	    sector_record_offset);
 	int index;
 
 	if (field != NULL) {
@@ -297,13 +322,14 @@ yt_score_generate_progress_process_observed(struct yt_game *game,
 	for (index = 1; index <= sector_count; ++index) {
 		struct yt_sector sector;
 		double contribution;
+		uint32_t physical_record;
 		int owner;
 
-		if (!yt_game_read_sector(game, index, &sector, error))
+		if (!score_read_sector(game, sector_record_offset, index, &sector,
+		    &physical_record, error))
 			return false;
 		score_field_observe(field, YT_SCORE_FIELD_SECTOR,
-		    (uint32_t)yt_sector_basic_record(&game->config, index),
-		    &sector.record);
+		    physical_record, &sector.record);
 		if (store_defense_owner != NULL)
 			store_defense_owner(process_context,
 			    sector.record.bytes + YT_F85);
@@ -422,16 +448,17 @@ yt_score_generate_progress_process_observed(struct yt_game *game,
 		for (index = 0; index < YT_DEFAULT_PLAYER_COUNT; ++index) {
 			struct yt_sector overlay;
 			char team_name[42];
+			uint32_t physical_record;
 
 			if (teams[index].score <= 0)
 				continue;
 			++rank;
-			if (!yt_game_read_sector(game, teams[index].id, &overlay, error)) {
+			if (!score_read_sector(game, sector_record_offset,
+			    teams[index].id, &overlay, &physical_record, error)) {
 				goto failure;
 			}
 			score_field_observe(field, YT_SCORE_FIELD_TEAM,
-			    (uint32_t)yt_sector_basic_record(&game->config,
-			    teams[index].id), &overlay.record);
+			    physical_record, &overlay.record);
 			yt_record_get_text(&overlay.record, team_name, sizeof(team_name));
 			if (!format_team_row(line, sizeof(line), rank,
 			    teams[index].score / team_denominator * 100.0,
@@ -479,7 +506,8 @@ yt_score_generate_progress_observed(struct yt_game *game,
     yt_score_progress_fn progress, void *context,
     struct yt_score_field_observation *field, struct yt_error *error)
 {
-	return yt_score_generate_progress_process_observed(game, progress,
+	return yt_score_generate_progress_process_observed(game,
+	    game->config.sector_offset, game->config.port_offset, progress,
 	    context, field, NULL, NULL, error);
 }
 

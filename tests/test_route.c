@@ -446,6 +446,30 @@ test_addressed_route_arguments(void)
 	    && strcmp(error.operation, "route argument workspace alias") == 0);
 }
 
+static void
+test_process_record_number(void)
+{
+	static const uint16_t base_address = 0x19dcU;
+	struct yt_route_process process;
+	uint8_t raw[4];
+
+	memset(&process, 0, sizeof(process));
+	CHECK(qb_mbf32_encode(52.5f, raw) == QB_MBF_OK);
+	yt_route_process_set_raw_single(&process, base_address, raw);
+	CHECK(yt_route_process_record_number(&process, base_address, 2.75f)
+	    == 55U);
+
+	CHECK(qb_mbf32_encode(100.0f, raw) == QB_MBF_OK);
+	yt_route_process_set_raw_single(&process, base_address, raw);
+	CHECK(yt_route_process_record_number(&process, base_address, 2.75f)
+	    == 102U);
+
+	CHECK(qb_mbf32_encode(-3.5f, raw) == QB_MBF_OK);
+	yt_route_process_set_raw_single(&process, base_address, raw);
+	CHECK(yt_route_process_record_number(&process, base_address, 1.0f)
+	    == 0x00fffffdU);
+}
+
 static bool
 reconstruction_back_edge_does_not_return(void)
 {
@@ -557,6 +581,7 @@ main(int argc, char **argv)
 	test_same_zero_and_conversion_order();
 	test_route_cint_fault_sites();
 	test_addressed_route_arguments();
+	test_process_record_number();
 	CHECK(reconstruction_back_edge_does_not_return());
 	if (failures != 0U)
 		return EXIT_FAILURE;

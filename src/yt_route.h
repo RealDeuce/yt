@@ -60,6 +60,9 @@ void yt_route_process_copy_raw_single(struct yt_route_process *process,
 	uint16_t source, uint16_t destination);
 float yt_route_process_single(const struct yt_route_process *process,
 	uint16_t address);
+uint32_t yt_route_process_record_number(
+	const struct yt_route_process *process, uint16_t base_address,
+	float logical_record);
 void yt_route_process_set_raw_double(struct yt_route_process *process,
 	uint16_t address, const uint8_t raw[8]);
 void yt_route_process_raw_double(const struct yt_route_process *process,

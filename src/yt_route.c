@@ -226,6 +226,16 @@ yt_route_process_single(const struct yt_route_process *process,
 	return route_process_read_single(process, address);
 }
 
+uint32_t
+yt_route_process_record_number(const struct yt_route_process *process,
+    uint16_t base_address, float logical_record)
+{
+	volatile float expression = yt_route_process_single(process,
+	    base_address) + logical_record;
+
+	return qb_brun_random_record_number(expression);
+}
+
 void
 yt_route_process_set_raw_double(struct yt_route_process *process,
     uint16_t address, const uint8_t raw[8])
