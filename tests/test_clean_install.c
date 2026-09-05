@@ -160,7 +160,8 @@ cleanup_files(void)
 {
 	static const char *const paths[] = {
 		"YTDATA.DAT", "YTNAME.DAT", "YTNEWS.DAT", "YTSCORE.ASC",
-		"YTYNEWS.DAT", "YTRMSG.DAT", "ytrmsg.dat", "yttemp",
+		"YTYNEWS.DAT", "ytynews.dat", "YTRMSG.DAT", "ytrmsg.dat",
+		"yttemp",
 		"temp", "Temp", "tempwork", "ytname.dat",
 		"input.txt", "output.txt",
 		"local", "local.freebsd.amd64.opt",
@@ -272,8 +273,8 @@ main(void)
 		failure = "YTSCORE.ASC is absent or not 603 bytes";
 		goto done;
 	}
-	if (!file_size_is("YTYNEWS.DAT", 309L)) {
-		failure = "YTYNEWS.DAT is absent or not 309 bytes";
+	if (!file_size_is("ytynews.dat", 309L)) {
+		failure = "ytynews.dat is absent or not 309 bytes";
 		goto done;
 	}
 	if (!file_size_is("ytrmsg.dat", 0L)) {
@@ -292,8 +293,8 @@ main(void)
 		failure = "YTSCORE.ASC lacks its DOS EOF marker";
 		goto done;
 	}
-	if (!text_has_dos_eof("YTYNEWS.DAT", 309U)) {
-		failure = "YTYNEWS.DAT lacks its DOS EOF marker";
+	if (!text_has_dos_eof("ytynews.dat", 309U)) {
+		failure = "ytynews.dat lacks its DOS EOF marker";
 		goto done;
 	}
 	if (!output_contains(

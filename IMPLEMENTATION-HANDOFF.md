@@ -2441,12 +2441,16 @@ not authoritative. Use the corrected goal above in the new workspace.
   decoded numeric-zero omission, ordered nonzero retention, raw bytes 0..83
   copying with emitted zero bytes 84..85, incomplete-tail omission, TEMP
   replacement, and unconditional whole-current-news rotation over yesterday.
+  The newspaper suffix is now a six-operation injected transaction over the
+  exact lowercase literals `ytnews.dat` and `ytynews.dat`; fixtures pin every
+  OPEN/CLOSE/KILL/NAME failure prefix as well as successful mixed-case source
+  resolution and the lowercase replacement identity.
   The clean-install composition now physically pins the immutable blank and
   `Compressing Message Base's` row before file work; all nine native CTests
   and all 39 focused YTRMSG/maintenance-daily oracle tests pass. Raw
-  RANDOM/FIELD/LOF/GET/file-number state, missing-file variants, and every
-  physical OPEN/CLOSE/GET/PUT/KILL/NAME/runtime prefix and failure remain
-  open.
+  RANDOM/FIELD/LOF/GET/file-number state, radio missing-file variants, and
+  every remaining radio physical OPEN/CLOSE/GET/PUT/KILL/NAME/runtime prefix
+  and failure remain open.
 - YTMAINT immediate combat-death root `6924`, its Xannor caller join and all
   20 body/return transfers are candidate. A real native YTDATA fixture pins
   cache clearing, killer `-1`, sector/ground/team clearing, owned-port and

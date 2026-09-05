@@ -1228,6 +1228,144 @@ done:
 	return valid;
 }
 
+enum news_rotation_test_event {
+	NEWS_ROTATION_TEST_OPEN,
+	NEWS_ROTATION_TEST_CLOSE,
+	NEWS_ROTATION_TEST_KILL,
+	NEWS_ROTATION_TEST_RENAME,
+};
+
+struct news_rotation_test_tape {
+	enum news_rotation_test_event events[6];
+	char first_path[6][32];
+	char second_path[6][32];
+	size_t calls;
+	size_t fail_at;
+};
+
+static bool
+news_rotation_test_step(struct news_rotation_test_tape *tape,
+    enum news_rotation_test_event event, const char *first_path,
+    const char *second_path, struct yt_error *error)
+{
+	size_t call = tape->calls++;
+
+	if (call >= sizeof(tape->events) / sizeof(tape->events[0]))
+		return false;
+	tape->events[call] = event;
+	(void)snprintf(tape->first_path[call], sizeof(tape->first_path[call]),
+	    "%s", first_path != NULL ? first_path : "");
+	(void)snprintf(tape->second_path[call], sizeof(tape->second_path[call]),
+	    "%s", second_path != NULL ? second_path : "");
+	if (call != tape->fail_at)
+		return true;
+	if (error != NULL) {
+		error->status = YT_IO_ERROR;
+		(void)snprintf(error->operation, sizeof(error->operation),
+		    "injected news rotation step");
+	}
+	return false;
+}
+
+static bool
+news_rotation_test_open(void *context, const char *path,
+    struct yt_error *error)
+{
+	return news_rotation_test_step(context, NEWS_ROTATION_TEST_OPEN, path,
+	    NULL, error);
+}
+
+static bool
+news_rotation_test_close(void *context, struct yt_error *error)
+{
+	return news_rotation_test_step(context, NEWS_ROTATION_TEST_CLOSE, NULL,
+	    NULL, error);
+}
+
+static bool
+news_rotation_test_kill(void *context, const char *path,
+    struct yt_error *error)
+{
+	return news_rotation_test_step(context, NEWS_ROTATION_TEST_KILL, path,
+	    NULL, error);
+}
+
+static bool
+news_rotation_test_rename(void *context, const char *old_path,
+    const char *new_path, struct yt_error *error)
+{
+	return news_rotation_test_step(context, NEWS_ROTATION_TEST_RENAME,
+	    old_path, new_path, error);
+}
+
+static bool
+test_news_rotation_transaction(void)
+{
+	static const struct yt_news_rotate_ops ops = {
+		news_rotation_test_open,
+		news_rotation_test_close,
+		news_rotation_test_kill,
+		news_rotation_test_rename,
+	};
+	static const enum news_rotation_test_event expected_events[] = {
+		NEWS_ROTATION_TEST_OPEN,
+		NEWS_ROTATION_TEST_CLOSE,
+		NEWS_ROTATION_TEST_OPEN,
+		NEWS_ROTATION_TEST_CLOSE,
+		NEWS_ROTATION_TEST_KILL,
+		NEWS_ROTATION_TEST_RENAME,
+	};
+	static const enum yt_news_rotate_step expected_steps[] = {
+		YT_NEWS_ROTATE_OPEN_CURRENT,
+		YT_NEWS_ROTATE_CLOSE_CURRENT,
+		YT_NEWS_ROTATE_OPEN_YESTERDAY,
+		YT_NEWS_ROTATE_CLOSE_YESTERDAY,
+		YT_NEWS_ROTATE_KILL_YESTERDAY,
+		YT_NEWS_ROTATE_RENAME_CURRENT,
+	};
+	struct news_rotation_test_tape tape;
+	struct yt_news_rotate_state state;
+	struct yt_news_rotate_ops incomplete = ops;
+	struct yt_error error;
+	size_t index;
+
+	memset(&tape, 0, sizeof(tape));
+	tape.fail_at = SIZE_MAX;
+	memset(&state, 0xa5, sizeof(state));
+	if (!yt_news_rotate_run(&state, &ops, &tape, NULL)
+	    || !state.complete || state.completed_steps != 6U
+	    || state.attempted != YT_NEWS_ROTATE_RENAME_CURRENT
+	    || tape.calls != 6U
+	    || memcmp(tape.events, expected_events, sizeof(expected_events)) != 0
+	    || strcmp(tape.first_path[0], "ytnews.dat") != 0
+	    || tape.first_path[1][0] != '\0'
+	    || strcmp(tape.first_path[2], "ytynews.dat") != 0
+	    || tape.first_path[3][0] != '\0'
+	    || strcmp(tape.first_path[4], "ytynews.dat") != 0
+	    || strcmp(tape.first_path[5], "ytnews.dat") != 0
+	    || strcmp(tape.second_path[5], "ytynews.dat") != 0)
+		return false;
+	for (index = 0U; index < 6U; ++index) {
+		memset(&tape, 0, sizeof(tape));
+		tape.fail_at = index;
+		memset(&state, 0xa5, sizeof(state));
+		yt_error_clear(&error);
+		if (yt_news_rotate_run(&state, &ops, &tape, &error)
+		    || state.complete || state.completed_steps != index
+		    || state.attempted != expected_steps[index]
+		    || tape.calls != index + 1U
+		    || error.status != YT_IO_ERROR)
+			return false;
+	}
+	incomplete.rename = NULL;
+	yt_error_clear(&error);
+	return !yt_news_rotate_run(&state, &incomplete, &tape, &error)
+	    && error.status == YT_INVALID
+	    && strcmp(error.operation, "news rotation transaction") == 0
+	    && !yt_news_rotate_run(NULL, &ops, &tape, NULL)
+	    && !yt_news_rotate_run(&state, NULL, &tape, NULL);
+}
+
 static bool
 test_maintenance_message_compaction(void)
 {
@@ -1291,7 +1429,7 @@ test_maintenance_message_compaction(void)
 	if (!write_file("YTNEWS.DAT", current_news, sizeof(current_news) - 1U)
 	    || !write_file("YTYNEWS.DAT", old_news, sizeof(old_news) - 1U)
 	    || !yt_news_rotate(&error)
-	    || !read_file("YTYNEWS.DAT", &data, &length)
+	    || !read_file("ytynews.dat", &data, &length)
 	    || length != sizeof(current_news) - 1U
 	    || memcmp(data, current_news, sizeof(current_news) - 1U) != 0)
 		goto done;
@@ -1304,7 +1442,7 @@ test_maintenance_message_compaction(void)
 	data = NULL;
 	(void)remove("YTYNEWS.DAT");
 	if (!yt_news_rotate(&error)
-	    || !read_file("YTYNEWS.DAT", &data, &length)
+	    || !read_file("ytynews.dat", &data, &length)
 	    || length != 1U || data[0] != 0x1aU)
 		goto done;
 	free(data);
@@ -1312,7 +1450,7 @@ test_maintenance_message_compaction(void)
 	(void)remove("YTYNEWS.DAT");
 	if (!write_file("YTNEWS.DAT", stale_news, sizeof(stale_news) - 1U)
 	    || !yt_news_rotate(&error)
-	    || !read_file("YTYNEWS.DAT", &data, &length)
+	    || !read_file("ytynews.dat", &data, &length)
 	    || length != sizeof(normalized_news) - 1U
 	    || memcmp(data, normalized_news,
 	    sizeof(normalized_news) - 1U) != 0)
@@ -1327,6 +1465,8 @@ done:
 	(void)remove("Temp");
 	(void)remove("YTNEWS.DAT");
 	(void)remove("YTYNEWS.DAT");
+	(void)remove("ytnews.dat");
+	(void)remove("ytynews.dat");
 	return valid;
 }
 
@@ -5328,6 +5468,8 @@ main(void)
 		failure = "RMT old-configuration normalization differs";
 	else if (!test_maintenance_alias_compaction())
 		failure = "maintenance alias compaction differs";
+	else if (!test_news_rotation_transaction())
+		failure = "maintenance news rotation transaction differs";
 	else if (!test_maintenance_message_compaction())
 		failure = "maintenance message/news compaction differs";
 	else if (!test_maintenance_random_helpers())
