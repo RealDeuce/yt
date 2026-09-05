@@ -1,6 +1,7 @@
 #include "yt_game.h"
 
 #include "qb.h"
+#include "yt_main_error.h"
 #include "yt_pager.h"
 
 #include <float.h>
@@ -2796,6 +2797,47 @@ yt_salvage_run(struct yt_salvage_state *state,
 	return true;
 }
 
+static bool
+current_player_hydration_fault(struct yt_error *error,
+    enum yt_basic_fault_site site, const char *operation)
+{
+	if (error != NULL) {
+		error->status = YT_RANGE;
+		error->system_error = 0;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    operation);
+		error->path[0] = '\0';
+		(void)yt_error_attach_basic_fault_number(error, site, 6U);
+	}
+	return false;
+}
+
+static enum qb_mbf_status
+current_player_add_single_raw(const uint8_t left[4], const uint8_t right[4],
+    const uint8_t dirty_zero_source[4], uint8_t result[4])
+{
+	volatile float sum;
+	enum qb_mbf_status status;
+
+	if (right[3] == 0U) {
+		memcpy(result, left, 4U);
+		return QB_MBF_OK;
+	}
+	if (left[3] == 0U) {
+		memcpy(result, right, 4U);
+		return QB_MBF_OK;
+	}
+	sum = qb_mbf32_decode(left) + qb_mbf32_decode(right);
+	status = qb_mbf32_encode(sum, result);
+	if (status == QB_MBF_OVERFLOW || status == QB_MBF_DOMAIN)
+		return status;
+	if (status == QB_MBF_UNDERFLOW || sum == 0.0f) {
+		memcpy(result, dirty_zero_source, 3U);
+		result[3] = 0U;
+	}
+	return status;
+}
+
 bool
 yt_current_player_hydrate_run(
     struct yt_current_player_hydration_state *state,
@@ -2803,20 +2845,24 @@ yt_current_player_hydrate_run(
     struct yt_error *error)
 {
 	struct yt_player fresh;
-	volatile float current_sector;
 	uint8_t current_sector_raw[8] = {0};
+	uint8_t add_callback_raw[8] = {0x77U, 0xB3U};
 	uint8_t promoted[8];
+	enum qb_mbf_status add_status;
+	bool overflow;
+	int32_t anti_cloak;
+	int32_t cloak_index;
 	int record;
 
 #define HYDRATE_SINGLE(kind, offset) do { \
 	if (state->store != NULL) \
-		state->store(context, (kind), fresh.record.bytes + (offset)); \
+		state->store(context, (kind), 0, fresh.record.bytes + (offset)); \
 } while (0)
 #define HYDRATE_DOUBLE(kind, offset) do { \
 	if (state->store != NULL) { \
 		memset(promoted, 0, 4U); \
 		memcpy(promoted + 4U, fresh.record.bytes + (offset), 4U); \
-		state->store(context, (kind), promoted); \
+		state->store(context, (kind), 0, promoted); \
 	} \
 } while (0)
 
@@ -2824,7 +2870,8 @@ yt_current_player_hydrate_run(
 	    || state->current_sector_record == NULL)
 		return false;
 	record = state->player_record;
-	if (record < 2 || record > state->last_player_record) {
+	if (!state->allow_corrupt_player_record
+	    && (record < 2 || record > state->last_player_record)) {
 		if (error != NULL) {
 			error->status = YT_RANGE;
 			error->system_error = 0;
@@ -2841,12 +2888,21 @@ yt_current_player_hydrate_run(
 	HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_SECTOR, YT_F57);
 	state->player->fighters = fresh.fighters;
 	HYDRATE_DOUBLE(YT_CURRENT_PLAYER_STORE_FIGHTERS, YT_F61);
-	current_sector = state->sector_record_offset + fresh.sector;
-	*state->current_sector_record = current_sector;
-	if (state->store != NULL
-	    && qb_mbf32_encode(current_sector, current_sector_raw) !=
-	    QB_MBF_OVERFLOW)
-		state->store(context, YT_CURRENT_PLAYER_STORE_CURRENT_SECTOR_RECORD,
+	if (state->store != NULL)
+		state->store(context,
+		    YT_CURRENT_PLAYER_STORE_ADD_FLOAT_CALLBACK_RETURN, 0,
+		    add_callback_raw);
+	add_status = current_player_add_single_raw(state->sector_record_offset_raw,
+	    fresh.record.bytes + YT_F57, fresh.record.bytes + YT_F61,
+	    current_sector_raw);
+	if (add_status == QB_MBF_OVERFLOW || add_status == QB_MBF_DOMAIN)
+		return current_player_hydration_fault(error,
+		    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_SECTOR_ADD,
+		    "current-player A41C sector ADD_FLOAT");
+	*state->current_sector_record = qb_mbf32_decode(current_sector_raw);
+	if (state->store != NULL)
+		state->store(context,
+		    YT_CURRENT_PLAYER_STORE_CURRENT_SECTOR_RECORD, 0,
 		    current_sector_raw);
 	state->player->turns = fresh.turns;
 	HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_TURNS, YT_F49);
@@ -2882,12 +2938,26 @@ yt_current_player_hydrate_run(
 	HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_GROUND_FORCES, YT_F121);
 	state->player->cloak = fresh.cloak;
 	HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_CLOAK, YT_F125);
-	if (record >= 0 && (size_t)record < state->cache_count) {
-		if (!state->anti_cloak) {
-			if (state->cloak_cache != NULL)
-				state->cloak_cache[record] = fresh.cloak;
-			HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_CLOAK_INDEX, YT_F125);
-		}
+	anti_cloak = qb_cint_mode(qb_mbf32_decode(state->anti_cloak_raw),
+	    state->conversion_mode, &overflow);
+	if (overflow)
+		return current_player_hydration_fault(error,
+		    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_ANTI_CLOAK_CINT,
+		    "current-player A41C anti-cloak CINT");
+	if ((int16_t)~(int16_t)anti_cloak != 0) {
+		cloak_index = qb_cint_mode(state->player_record_expression,
+		    state->conversion_mode, &overflow);
+		if (overflow)
+			return current_player_hydration_fault(error,
+			    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_PLAYER_INDEX_CINT,
+			    "current-player A41C player-index CINT");
+		if (cloak_index >= 0 && (size_t)cloak_index < state->cache_count
+		    && state->cloak_cache != NULL)
+			state->cloak_cache[cloak_index] = fresh.cloak;
+		if (state->store != NULL)
+			state->store(context,
+			    YT_CURRENT_PLAYER_STORE_CLOAK_INDEX,
+			    (int16_t)cloak_index, fresh.record.bytes + YT_F125);
 	}
 	state->player->shields = fresh.shields;
 	HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_SHIELDS, YT_F53);

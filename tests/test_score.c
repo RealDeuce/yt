@@ -1,6 +1,7 @@
 #include "qb.h"
 #include "yt_game.h"
 #include "yt_input_model.h"
+#include "yt_main_error.h"
 #include "yt_maint.h"
 #include "yt_platform.h"
 #include "yt_score.h"
@@ -1352,11 +1353,12 @@ hydration_store_is_double(enum yt_current_player_store_kind kind)
 
 static void
 hydration_store(void *context, enum yt_current_player_store_kind kind,
-    const uint8_t raw[8])
+    int16_t subscript, const uint8_t raw[8])
 {
 	struct hydration_tape *tape = context;
 	size_t width = hydration_store_is_double(kind) ? 8U : 4U;
 
+	(void)subscript;
 	if (tape->store_count >= YT_ARRAY_LEN(tape->stores))
 		return;
 	tape->stores[tape->store_count] = kind;
@@ -1386,6 +1388,7 @@ check_current_player_cache_model(void)
 	static const enum yt_current_player_store_kind expected_stores[] = {
 		YT_CURRENT_PLAYER_STORE_SECTOR,
 		YT_CURRENT_PLAYER_STORE_FIGHTERS,
+		YT_CURRENT_PLAYER_STORE_ADD_FLOAT_CALLBACK_RETURN,
 		YT_CURRENT_PLAYER_STORE_CURRENT_SECTOR_RECORD,
 		YT_CURRENT_PLAYER_STORE_TURNS,
 		YT_CURRENT_PLAYER_STORE_CREDITS,
@@ -1410,7 +1413,7 @@ check_current_player_cache_model(void)
 		YT_CURRENT_PLAYER_STORE_SHIELDS,
 	};
 	static const size_t expected_offsets[] = {
-		YT_F57, YT_F61, SIZE_MAX, YT_F49, YT_F81, YT_F93,
+		YT_F57, YT_F61, SIZE_MAX - 1U, SIZE_MAX, YT_F49, YT_F81, YT_F93,
 		YT_F97, YT_F129, YT_F89, YT_F65, YT_F69, YT_F73,
 		YT_F77, YT_F61, YT_F97, YT_F129, YT_F81, YT_F113,
 		YT_F109, YT_F117, YT_F121, YT_F125, YT_F125, YT_F53,
@@ -1428,6 +1431,7 @@ check_current_player_cache_model(void)
 
 	memset(&player, 0, sizeof(player));
 	memset(&tape, 0, sizeof(tape));
+	memset(&state, 0, sizeof(state));
 	(void)snprintf(player.name, sizeof(player.name), "%s", "Cached Name");
 	player.name_length = 11.0f;
 	player.last_active = 71.0f;
@@ -1466,11 +1470,13 @@ check_current_player_cache_model(void)
 	state.player = &player;
 	state.player_record = 2;
 	state.last_player_record = 51;
-	state.sector_record_offset = 51.0f;
+	state.player_record_expression = 2.0f;
+	if (qb_mbf32_encode(51.0f, state.sector_record_offset_raw) != QB_MBF_OK
+	    || qb_mbf32_encode(0.0f, state.anti_cloak_raw) != QB_MBF_OK)
+		return false;
 	state.current_sector_record = &current_sector;
 	state.cloak_cache = cloak_cache;
 	state.cache_count = YT_ARRAY_LEN(sector_cache);
-	state.anti_cloak = false;
 	state.store = hydration_store;
 	if (!yt_current_player_hydrate_run(&state, hydration_read, &tape, NULL)
 	    || tape.calls != 1U || tape.requested_record != 2
@@ -1499,6 +1505,12 @@ check_current_player_cache_model(void)
 
 		if (tape.stores[index] != expected_stores[index])
 			return false;
+		if (expected_offsets[index] == SIZE_MAX - 1U) {
+			if (tape.store_raw[index][0] != 0x77U
+			    || tape.store_raw[index][1] != 0xB3U)
+				return false;
+			continue;
+		}
 		if (expected_offsets[index] == SIZE_MAX) {
 			if (memcmp(tape.store_raw[index], expected_current_sector,
 			    4U) != 0)
@@ -1520,7 +1532,8 @@ check_current_player_cache_model(void)
 	tape.fresh.sector = 22.0f;
 	tape.fresh.cloak = 23.0f;
 	yt_player_encode(&tape.fresh);
-	state.anti_cloak = true;
+	if (qb_mbf32_encode(-1.0f, state.anti_cloak_raw) != QB_MBF_OK)
+		return false;
 	tape.store_count = 0U;
 	if (!yt_current_player_hydrate_run(&state, hydration_read, &tape, NULL)
 	    || sector_cache[2] != -3.0f || cloak_cache[2] != 20.0f
@@ -1538,11 +1551,77 @@ check_current_player_cache_model(void)
 		return false;
 	before = player;
 	state.player_record = 52;
+	state.player_record_expression = 52.0f;
 	tape.calls = 0U;
 	yt_error_clear(&error);
-	return !yt_current_player_hydrate_run(&state, hydration_read, &tape,
-	    &error) && error.status == YT_RANGE && tape.calls == 0U
-	    && memcmp(&player, &before, sizeof(player)) == 0;
+	if (yt_current_player_hydrate_run(&state, hydration_read, &tape,
+	    &error) || error.status != YT_RANGE || tape.calls != 0U
+	    || memcmp(&player, &before, sizeof(player)) != 0)
+		return false;
+
+	state.player_record = 2;
+	state.player_record_expression = 2.0f;
+	if (qb_mbf32_encode(1.0e38f, state.sector_record_offset_raw)
+	    != QB_MBF_OK || qb_mbf32_encode(0.0f, state.anti_cloak_raw)
+	    != QB_MBF_OK)
+		return false;
+	tape.fresh.sector = 1.0e38f;
+	tape.fresh.fighters = 7.0f;
+	yt_player_encode(&tape.fresh);
+	tape.succeeds = true;
+	tape.store_count = 0U;
+	current_sector = 77.0f;
+	yt_error_clear(&error);
+	if (yt_current_player_hydrate_run(&state, hydration_read, &tape, &error)
+	    || error.status != YT_RANGE || !error.basic_fault_valid
+	    || !error.basic_error_valid || error.basic_error != 6U
+	    || error.basic_fault_site
+	    != YT_BASIC_FAULT_CURRENT_PLAYER_A41C_SECTOR_ADD
+	    || tape.store_count != 3U || current_sector != 77.0f)
+		return false;
+
+	if (qb_mbf32_encode(51.0f, state.sector_record_offset_raw) != QB_MBF_OK
+	    || qb_mbf32_encode(32768.0f, state.anti_cloak_raw) != QB_MBF_OK)
+		return false;
+	tape.fresh.sector = 6.0f;
+	yt_player_encode(&tape.fresh);
+	tape.store_count = 0U;
+	yt_error_clear(&error);
+	if (yt_current_player_hydrate_run(&state, hydration_read, &tape, &error)
+	    || error.basic_fault_site
+	    != YT_BASIC_FAULT_CURRENT_PLAYER_A41C_ANTI_CLOAK_CINT
+	    || error.basic_error != 6U || tape.store_count != 23U)
+		return false;
+
+	if (qb_mbf32_encode(0.0f, state.anti_cloak_raw) != QB_MBF_OK)
+		return false;
+	state.player_record = 32768;
+	state.player_record_expression = 32768.0f;
+	state.allow_corrupt_player_record = true;
+	tape.store_count = 0U;
+	yt_error_clear(&error);
+	if (yt_current_player_hydrate_run(&state, hydration_read, &tape, &error)
+	    || tape.requested_record != 32768 || error.basic_fault_site
+	    != YT_BASIC_FAULT_CURRENT_PLAYER_A41C_PLAYER_INDEX_CINT
+	    || error.basic_error != 6U || tape.store_count != 23U)
+		return false;
+
+	state.player_record = 2;
+	state.player_record_expression = 2.0f;
+	state.allow_corrupt_player_record = false;
+	if (qb_mbf32_encode(-5.0f, state.sector_record_offset_raw) != QB_MBF_OK)
+		return false;
+	tape.fresh.sector = 5.0f;
+	tape.fresh.fighters = 0.0f;
+	yt_player_encode(&tape.fresh);
+	memcpy(tape.fresh.record.bytes + YT_F61,
+	    (const uint8_t[4]){0xA1U, 0xB2U, 0xC3U, 0x00U}, 4U);
+	tape.store_count = 0U;
+	yt_error_clear(&error);
+	return yt_current_player_hydrate_run(&state, hydration_read, &tape,
+	    &error) && current_sector == 0.0f
+	    && memcmp(tape.store_raw[3],
+	    (const uint8_t[4]){0xA1U, 0xB2U, 0xC3U, 0x00U}, 4U) == 0;
 }
 
 struct friendship_reader_tape {
@@ -22531,7 +22610,10 @@ credit_mutation_initialize(struct yt_credit_mutation_state *state,
 	state->hydration.player = player;
 	state->hydration.player_record = 2;
 	state->hydration.last_player_record = 51;
-	state->hydration.sector_record_offset = 100.0f;
+	state->hydration.player_record_expression = 2.0f;
+	(void)qb_mbf32_encode(100.0f,
+	    state->hydration.sector_record_offset_raw);
+	(void)qb_mbf32_encode(0.0f, state->hydration.anti_cloak_raw);
 	state->hydration.current_sector_record = current_sector;
 	state->hydration.cloak_cache = cloak_cache;
 	state->hydration.cache_count = 52U;
@@ -30604,6 +30686,7 @@ check_computer_newspaper_field_carrier(void)
 
 	memset(&active, 0, sizeof(active));
 	memset(&hydration, 0, sizeof(hydration));
+	memset(&hydrate, 0, sizeof(hydrate));
 	memset(sector_cache, 0, sizeof(sector_cache));
 	memset(cloak_cache, 0, sizeof(cloak_cache));
 	memset(hydration.fresh.record.bytes, 0xa5,
@@ -30620,11 +30703,14 @@ check_computer_newspaper_field_carrier(void)
 	hydrate.player = &active;
 	hydrate.player_record = 2;
 	hydrate.last_player_record = 51;
-	hydrate.sector_record_offset = 2004.0f;
+	hydrate.player_record_expression = 2.0f;
+	if (qb_mbf32_encode(2004.0f, hydrate.sector_record_offset_raw)
+	    != QB_MBF_OK
+	    || qb_mbf32_encode(0.0f, hydrate.anti_cloak_raw) != QB_MBF_OK)
+		return false;
 	hydrate.current_sector_record = &current_sector;
 	hydrate.cloak_cache = cloak_cache;
 	hydrate.cache_count = YT_ARRAY_LEN(sector_cache);
-	hydrate.anti_cloak = false;
 	hydrate.store = NULL;
 	if (!yt_current_player_hydrate_run(&hydrate, hydration_read,
 	    &hydration, NULL))

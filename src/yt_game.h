@@ -1865,6 +1865,7 @@ typedef bool (*yt_salvage_cargo_draw_fn)(void *context, float range,
 enum yt_current_player_store_kind {
 	YT_CURRENT_PLAYER_STORE_SECTOR,
 	YT_CURRENT_PLAYER_STORE_FIGHTERS,
+	YT_CURRENT_PLAYER_STORE_ADD_FLOAT_CALLBACK_RETURN,
 	YT_CURRENT_PLAYER_STORE_CURRENT_SECTOR_RECORD,
 	YT_CURRENT_PLAYER_STORE_TURNS,
 	YT_CURRENT_PLAYER_STORE_CREDITS,
@@ -1890,17 +1891,21 @@ enum yt_current_player_store_kind {
 };
 
 typedef void (*yt_current_player_store_fn)(void *context,
-    enum yt_current_player_store_kind kind, const uint8_t raw[8]);
+	    enum yt_current_player_store_kind kind, int16_t subscript,
+	    const uint8_t raw[8]);
 
 struct yt_current_player_hydration_state {
 	struct yt_player *player;
 	int player_record;
 	int last_player_record;
-	float sector_record_offset;
+	float player_record_expression;
+	uint8_t sector_record_offset_raw[4];
+	uint8_t anti_cloak_raw[4];
+	uint8_t conversion_mode;
+	bool allow_corrupt_player_record;
 	float *current_sector_record;
 	float *cloak_cache;
 	size_t cache_count;
-	bool anti_cloak;
 	yt_current_player_store_fn store;
 };
 

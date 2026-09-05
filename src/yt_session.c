@@ -77,6 +77,7 @@
 #define YT_CURRENT_PLAYER_MINES_ADDRESS 0x4F32U
 #define YT_NUMERIC_TEMP_DOUBLE_ADDRESS 0x0016U
 #define YT_NUMERIC_TEMP_SINGLE_ADDRESS 0x001AU
+#define YT_ADD_FLOAT_CALLBACK_ADDRESS 0x0A60U
 #define YT_TURNS_PER_DAY_ADDRESS 0x4BD0U
 #define YT_LOTTERY_PLAYS_ADDRESS 0x4BB8U
 #define YT_MAXIMUM_PLANETS_ADDRESS 0x4BA8U
@@ -1171,12 +1172,14 @@ session_hydration_read_player(void *context, int player_record,
 
 static void
 session_hydration_store(void *context,
-    enum yt_current_player_store_kind kind, const uint8_t raw[8])
+    enum yt_current_player_store_kind kind, int16_t subscript,
+    const uint8_t raw[8])
 {
 	static const uint16_t addresses[] = {
 		[YT_CURRENT_PLAYER_STORE_SECTOR] = YT_CURRENT_SECTOR_ADDRESS,
 		[YT_CURRENT_PLAYER_STORE_FIGHTERS] =
 		    YT_CURRENT_PLAYER_FIGHTERS_ADDRESS,
+		[YT_CURRENT_PLAYER_STORE_ADD_FLOAT_CALLBACK_RETURN] = 0U,
 		[YT_CURRENT_PLAYER_STORE_CURRENT_SECTOR_RECORD] =
 		    YT_CURRENT_SECTOR_RECORD_ADDRESS,
 		[YT_CURRENT_PLAYER_STORE_TURNS] =
@@ -1229,8 +1232,14 @@ session_hydration_store(void *context,
 	if (session == NULL || raw == NULL
 	    || (size_t)kind >= YT_ARRAY_LEN(addresses))
 		return;
+	if (kind == YT_CURRENT_PLAYER_STORE_ADD_FLOAT_CALLBACK_RETURN) {
+		yt_route_process_set_word(&session->route_process,
+		    YT_ADD_FLOAT_CALLBACK_ADDRESS,
+		    (int16_t)((uint16_t)raw[0] | ((uint16_t)raw[1] << 8)));
+		return;
+	}
 	if (kind == YT_CURRENT_PLAYER_STORE_CLOAK_INDEX) {
-		session_set_player_cache_raw(session, session_record(session),
+		session_set_player_cache_raw(session, subscript,
 		    YT_PLAYER_CACHE_CLOAK, raw);
 		return;
 	}
@@ -1277,14 +1286,19 @@ reload_player(struct yt_session *session, struct yt_error *error)
 		.player = &session->player,
 		.player_record = session_record(session),
 		.last_player_record = YT_PLAYER_LAST,
-		.sector_record_offset = session_sector_offset(session),
+		.player_record_expression = yt_route_process_single(
+		    &session->route_process, YT_CURRENT_PLAYER_RECORD_ADDRESS),
+		.conversion_mode = session->presentation.sound.conversion_mode,
 		.current_sector_record = &current_sector_record,
 		.cloak_cache = session->cloak_cache,
 		.cache_count = YT_ARRAY_LEN(session->sector_cache),
-		.anti_cloak = session_anti_cloak_enabled(session),
 		.store = session_hydration_store,
 	};
 
+	yt_route_process_raw_single(&session->route_process,
+	    YT_SECTOR_OFFSET_ADDRESS, state.sector_record_offset_raw);
+	yt_route_process_raw_single(&session->route_process,
+	    YT_ANTI_CLOAK_ADDRESS, state.anti_cloak_raw);
 	if (!yt_current_player_hydrate_run(&state,
 	    session_hydration_read_player, session, error))
 		return false;
@@ -1319,13 +1333,19 @@ mutate_player_credits_observed(struct yt_session *session, float argument,
 	state.hydration.player = &session->player;
 	state.hydration.player_record = session_record(session);
 	state.hydration.last_player_record = YT_PLAYER_LAST;
-	state.hydration.sector_record_offset =
-	    session_sector_offset(session);
+	state.hydration.player_record_expression = yt_route_process_single(
+	    &session->route_process, YT_CURRENT_PLAYER_RECORD_ADDRESS);
+	state.hydration.conversion_mode =
+	    session->presentation.sound.conversion_mode;
 	state.hydration.current_sector_record = &current_sector_record;
 	state.hydration.cloak_cache = session->cloak_cache;
 	state.hydration.cache_count = YT_ARRAY_LEN(session->sector_cache);
-	state.hydration.anti_cloak = session_anti_cloak_enabled(session);
 	state.hydration.store = session_hydration_store;
+	yt_route_process_raw_single(&session->route_process,
+	    YT_SECTOR_OFFSET_ADDRESS,
+	    state.hydration.sector_record_offset_raw);
+	yt_route_process_raw_single(&session->route_process,
+	    YT_ANTI_CLOAK_ADDRESS, state.hydration.anti_cloak_raw);
 	state.argument = argument;
 	result = yt_credit_mutation_run(&state, &ops, session, error);
 	if (state.hydrated)
