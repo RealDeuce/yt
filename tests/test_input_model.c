@@ -1116,14 +1116,16 @@ test_repeat_transform(void)
 		0x001AU, 0x536AU, 0x536EU,
 		0x001AU, 0x536EU, 0x001AU, 0x536EU,
 		0x001AU, 0x536EU, 0x001AU, 0x536EU,
-		0x51C4U, 0x51C4U, 0x51C8U, 0x4F76U,
+		0x51C4U, 0x0016U, 0x001AU, 0x001AU, 0x51C4U,
+		0x51C8U, 0x4F76U,
 		0x4F76U, 0x4F76U, 0x4F76U,
 	};
 	static const float expected_value[] = {
 		4.0f, 4.0f, 1.0f,
 		2.0f, 2.0f, 3.0f, 3.0f,
 		4.0f, 4.0f, 5.0f, 5.0f,
-		2.0f, 3.0f, 3.0f, 1.0f, 2.0f, 3.0f, 4.0f,
+		2.0f, 0.0f, 3.0f, 3.0f, 3.0f, 3.0f, 1.0f,
+		2.0f, 3.0f, 4.0f,
 	};
 	char text[1024];
 	char saved[1024] = "old";
@@ -1198,14 +1200,20 @@ test_repeat_transform(void)
 	    && result.failure == YT_REPEAT_FAILURE_SINGLE_OVERFLOW);
 	CHECK(strcmp(text, "A/R1.7014118E38") == 0
 	    && strcmp(saved, "old") == 0);
-	CHECK(tape.count == 3U + 2U * strlen(text) + 1U
-	    && tape.address[tape.count - 1U] == 0x51C4U);
+	CHECK(tape.count == 3U + 2U * strlen(text) + 3U
+	    && tape.address[tape.count - 3U] == 0x51C4U
+	    && tape.address[tape.count - 2U] == 0x0016U
+	    && tape.address[tape.count - 1U] == 0x001AU);
 	{
-		uint8_t expected_raw[4];
+		struct qb_val_result parsed = qb_val("1.7014118E38");
+		uint8_t expected_raw[8];
 
-		CHECK(qb_mbf32_encode(2.0f, expected_raw) == QB_MBF_OK);
-		CHECK(memcmp(tape.raw[tape.count - 1U], expected_raw,
-		    sizeof(expected_raw)) == 0);
+		CHECK(parsed.valid && !parsed.overflow
+		    && qb_mbf64_encode(qb_int(parsed.value), expected_raw)
+		    == QB_MBF_OK);
+		CHECK(memcmp(tape.raw[tape.count - 2U], expected_raw, 4U) == 0
+		    && memcmp(tape.raw[tape.count - 1U], expected_raw + 4U,
+		    4U) == 0);
 	}
 
 	snprintf(text, sizeof(text), "A/R-.1");

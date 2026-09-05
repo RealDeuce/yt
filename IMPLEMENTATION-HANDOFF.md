@@ -111,7 +111,11 @@ not authoritative. Use the corrected goal above in the new workspace.
   raw/fault tests pass. The observed native transform now reproduces the exact
   successful `DS:001A`, `DS:536A`, and `DS:536E` MBF32 store sequence and is
   bound across the live session, pager, startup configuration, ADE0 and
-  serial-startup models. Movable-string MID$/CHR$ allocation failures,
+  serial-startup models. ADE0's reached repeat path also carries the documented
+  integral MBF64 result through overlapping `DS:0016..001D`, then the converted
+  MBF32 result at `DS:001A`, before `POP_FLOAT` stores `DS:51C4`; its SINGLE
+  overflow retains the MBF64 temporary and stops before those latter stores.
+  Movable-string MID$/CHR$ allocation failures,
   expression-string residue, caller frames and active ERR-7/14 routing remain
   explicit runtime seams.
 - The adjacent Team name and password helper roots `YT:[64CD,660D)` are also

@@ -527,6 +527,21 @@ input_process_store_single(yt_input_process_store_fn store, void *context,
 	return true;
 }
 
+static bool
+input_process_store_double(yt_input_process_store_fn store, void *context,
+    uint16_t address, double value)
+{
+	uint8_t raw[8];
+
+	if (qb_mbf64_encode(value, raw) != QB_MBF_OK)
+		return false;
+	if (store != NULL) {
+		store(context, address, raw);
+		store(context, (uint16_t)(address + 4U), raw + 4U);
+	}
+	return true;
+}
+
 struct input_upper_store_context {
 	yt_input_process_store_fn store;
 	void *context;
@@ -578,6 +593,7 @@ yt_input_expand_repeat_observed(char *text, size_t text_capacity,
 	char base[YT_INPUT_PENDING];
 	uint8_t upper[YT_INPUT_PENDING];
 	struct qb_val_result parsed;
+	double integer;
 	size_t text_length;
 	size_t prefix;
 	size_t base_length;
@@ -613,7 +629,10 @@ yt_input_expand_repeat_observed(char *text, size_t text_capacity,
 		result->failure = YT_REPEAT_FAILURE_VAL_OVERFLOW;
 		return false;
 	}
-	count = (float)qb_int(parsed.valid ? parsed.value : 0.0);
+	integer = qb_int(parsed.valid ? parsed.value : 0.0);
+	if (!input_process_store_double(store, context, 0x0016U, integer))
+		return false;
+	count = (float)integer;
 	{
 		uint8_t count_raw[4];
 
@@ -622,6 +641,8 @@ yt_input_expand_repeat_observed(char *text, size_t text_capacity,
 			return false;
 		}
 	}
+	if (!input_process_store_single(store, context, 0x001AU, count))
+		return false;
 	if (!input_process_store_single(store, context, 0x51C4U, count))
 		return false;
 	if (count > 10.0f) {
