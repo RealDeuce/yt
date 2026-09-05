@@ -4747,9 +4747,7 @@ scanner_read_sector(struct yt_session *session, float logical_sector,
     struct yt_sector *sector, struct yt_error *error)
 {
 	struct yt_record record;
-	float expression = single_add(session_sector_offset(session),
-	    logical_sector);
-	uint32_t physical = qb_brun_random_record_number(expression);
+	uint32_t physical = session_sector_basic_record(session, logical_sector);
 
 	if (!yt_database_read(&session->door->game.database, (size_t)physical,
 	    &record, error))
@@ -4763,9 +4761,7 @@ scanner_read_port(struct yt_session *session, float logical_port,
     struct yt_port *port, uint32_t *physical_record, struct yt_error *error)
 {
 	struct yt_record record;
-	float expression = single_add(session_port_offset(session),
-	    logical_port);
-	uint32_t physical = qb_brun_random_record_number(expression);
+	uint32_t physical = session_port_basic_record(session, logical_port);
 
 	if (!yt_database_read(&session->door->game.database, (size_t)physical,
 	    &record, error))
@@ -4825,9 +4821,7 @@ scanner_read_team_overlay(struct yt_session *session, float team,
     struct yt_sector *overlay, struct yt_error *error)
 {
 	struct yt_record record;
-	float expression = single_add(session_sector_offset(session),
-	    team);
-	uint32_t physical = qb_brun_random_record_number(expression);
+	uint32_t physical = session_sector_basic_record(session, team);
 
 	if (!yt_database_read(&session->door->game.database, (size_t)physical,
 	    &record, error))
@@ -4928,10 +4922,8 @@ display_sector_one(struct yt_session *session, float logical_sector,
 		return false;
 	if (sector.planet > 0.0f) {
 		struct yt_planet planet;
-		float expression = single_add(
-		    session_planet_offset(session), sector.planet);
-		uint32_t physical_planet =
-		    qb_brun_random_record_number(expression);
+		uint32_t physical_planet = session_planet_basic_record(session,
+		    sector.planet);
 		float saved_foreground;
 
 		if (!planet_update_cached_physical(session, physical_planet,
@@ -5456,8 +5448,7 @@ spy_update_planet(void *context, float link, struct yt_error *error)
 {
 	struct yt_session *session = context;
 	struct yt_planet planet;
-	uint32_t physical = qb_brun_random_record_number(single_add(
-	    session_planet_offset(session), link));
+	uint32_t physical = session_planet_basic_record(session, link);
 
 	return planet_update_cached_physical(session, physical, &planet, NULL,
 	    error);
@@ -5468,8 +5459,7 @@ spy_read_planet(void *context, float link, struct yt_planet *planet,
     struct yt_error *error)
 {
 	struct yt_session *session = context;
-	uint32_t physical = qb_brun_random_record_number(single_add(
-	    session_planet_offset(session), link));
+	uint32_t physical = session_planet_basic_record(session, link);
 
 	return read_planet_physical(session, physical, planet, error);
 }
@@ -5495,8 +5485,7 @@ spy_read_team(void *context, float team, struct yt_sector *overlay,
 {
 	struct yt_session *session = context;
 	struct yt_record raw;
-	uint32_t physical = qb_brun_random_record_number(single_add(
-	    session_sector_offset(session), team));
+	uint32_t physical = session_sector_basic_record(session, team);
 
 	if (!yt_database_read(&session->door->game.database, physical, &raw,
 	    error))
@@ -11718,8 +11707,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 	    error))
 		return false;
 	source_link = source.planet;
-	moving_record = qb_brun_random_record_number(single_add(
-	    session_planet_offset(session), source_link));
+	moving_record = session_planet_basic_record(session, source_link);
 	moving_planet = single_sub(single_add(
 	    session_planet_offset(session), source_link),
 	    session_planet_offset(session));
@@ -12377,8 +12365,8 @@ create_planet(struct yt_session *session, struct yt_error *error)
 	if (!write_planet_physical(session, selected_physical, &planet, false,
 	    error))
 		return false;
-	sector_physical = qb_brun_random_record_number(single_add(
-	    session_sector_offset(session), session->player.sector));
+	sector_physical = session_sector_basic_record(session,
+	    session->player.sector);
 	if (!yt_database_read(&session->door->game.database,
 	    (size_t)sector_physical, &raw, error))
 		return false;
@@ -12421,9 +12409,7 @@ planet_permission_update(void *context, float logical_planet,
     struct yt_error *error)
 {
 	struct yt_session *session = context;
-	volatile float record_value = session_planet_offset(session)
-	    + logical_planet;
-	uint32_t physical = qb_brun_random_record_number(record_value);
+	uint32_t physical = session_planet_basic_record(session, logical_planet);
 
 	return planet_update_cached_physical(session, physical,
 	    &(struct yt_planet){0}, NULL, error);
@@ -12928,9 +12914,7 @@ info_team_read_overlay(void *context, float team_id,
 {
 	struct yt_session *session = context;
 	struct yt_record raw;
-	float expression = single_add(
-	    session_sector_offset(session), team_id);
-	uint32_t physical = qb_brun_random_record_number(expression);
+	uint32_t physical = session_sector_basic_record(session, team_id);
 
 	if (!yt_database_read(&session->door->game.database, (size_t)physical,
 	    &raw, error))
@@ -12944,9 +12928,7 @@ info_team_write_overlay(void *context, float team_id,
     const struct yt_sector *overlay, struct yt_error *error)
 {
 	struct yt_session *session = context;
-	float expression = single_add(
-	    session_sector_offset(session), team_id);
-	uint32_t physical = qb_brun_random_record_number(expression);
+	uint32_t physical = session_sector_basic_record(session, team_id);
 
 	return yt_database_write(&session->door->game.database,
 	    (size_t)physical, &overlay->record, error);
