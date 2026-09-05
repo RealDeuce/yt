@@ -1670,6 +1670,15 @@ session_command_notice(struct yt_session *session, const char *text,
 	    "command notice wait", NULL);
 }
 
+static void
+session_input_process_store(void *context, uint16_t address,
+    const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process, address, raw);
+}
+
 static bool
 expand_repeat(struct yt_session *session, char *text, size_t size)
 {
@@ -1678,8 +1687,9 @@ expand_repeat(struct yt_session *session, char *text, size_t size)
 	char rendered[64];
 	int notice_length;
 
-	if (!yt_input_expand_repeat(text, size, session->saved_command,
-	    sizeof(session->saved_command), &result))
+	if (!yt_input_expand_repeat_observed(text, size,
+	    session->saved_command, sizeof(session->saved_command), &result,
+	    session_input_process_store, session))
 		return false;
 	if (!result.emit_notice)
 		return true;
@@ -1717,9 +1727,10 @@ session_line(struct yt_session *session, char *text, size_t size)
 	}
 	if (!expand_repeat(session, text, size))
 		return false;
-	return yt_input_split_semicolon(text, session->queue,
+	return yt_input_split_semicolon_observed(text, session->queue,
 	    sizeof(session->queue), &session->queue_position,
-	    &session->queue_length);
+	    &session->queue_length,
+	    session_input_process_store, session);
 }
 
 static bool

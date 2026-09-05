@@ -509,6 +509,30 @@ yt_input_expand_repeat(char *text, size_t text_capacity,
     char *saved_command, size_t saved_capacity,
     struct yt_repeat_transform *result)
 {
+	return yt_input_expand_repeat_observed(text, text_capacity,
+	    saved_command, saved_capacity, result, NULL, NULL);
+}
+
+static bool
+input_process_store_single(yt_input_process_store_fn store, void *context,
+    uint16_t address, float value)
+{
+	uint8_t raw[4];
+
+	if (store == NULL)
+		return true;
+	if (qb_mbf32_encode(value, raw) != QB_MBF_OK)
+		return false;
+	store(context, address, raw);
+	return true;
+}
+
+bool
+yt_input_expand_repeat_observed(char *text, size_t text_capacity,
+    char *saved_command, size_t saved_capacity,
+    struct yt_repeat_transform *result, yt_input_process_store_fn store,
+    void *context)
+{
 	char base[YT_INPUT_PENDING];
 	struct qb_val_result parsed;
 	size_t text_length;
@@ -533,14 +557,23 @@ yt_input_expand_repeat(char *text, size_t text_capacity,
 		if (text[prefix] == '/' && next == (uint8_t)'R')
 			break;
 	}
+	if (!input_process_store_single(store, context, 0x51C4U,
+	    prefix + 1U < text_length ? (float)(prefix + 1U) : 0.0f))
+		return false;
 	if (prefix + 1U >= text_length)
 		return true;
 	if (prefix + 2U >= text_capacity || prefix + 1U >= sizeof(base))
 		return false;
 	parsed = qb_val(text + prefix + 2U);
 	count = (float)qb_int(parsed.valid ? parsed.value : 0.0);
-	if (count > 10.0f)
+	if (!input_process_store_single(store, context, 0x51C4U, count))
+		return false;
+	if (count > 10.0f) {
 		count = 20.0f;
+		if (!input_process_store_single(store, context, 0x51C4U,
+		    count))
+			return false;
+	}
 	result->count = count;
 	text[prefix] = ';';
 	text[prefix + 1U] = '\0';
@@ -549,6 +582,9 @@ yt_input_expand_repeat(char *text, size_t text_capacity,
 	base_length = prefix + 1U;
 	memcpy(base, text, base_length);
 	copies = (int)count;
+	if (!input_process_store_single(store, context, 0x51C8U, count)
+	    || !input_process_store_single(store, context, 0x4F76U, 1.0f))
+		return false;
 	for (index = 0; index < copies; ++index) {
 		if (used > 500U)
 			break;
@@ -556,6 +592,9 @@ yt_input_expand_repeat(char *text, size_t text_capacity,
 			return false;
 		memcpy(text + used, base, base_length);
 		used += base_length;
+		if (!input_process_store_single(store, context, 0x4F76U,
+		    (float)(index + 2)))
+			return false;
 	}
 	if (used == 0 || used >= saved_capacity)
 		return false;
@@ -569,6 +608,15 @@ bool
 yt_input_split_semicolon(char *text, char *queue, size_t queue_capacity,
     size_t *queue_position, size_t *queue_length)
 {
+	return yt_input_split_semicolon_observed(text, queue, queue_capacity,
+	    queue_position, queue_length, NULL, NULL);
+}
+
+bool
+yt_input_split_semicolon_observed(char *text, char *queue,
+    size_t queue_capacity, size_t *queue_position, size_t *queue_length,
+    yt_input_process_store_fn store, void *context)
+{
 	char pending_bytes[YT_INPUT_PENDING];
 	char *semicolon;
 	size_t remainder_length;
@@ -579,6 +627,9 @@ yt_input_split_semicolon(char *text, char *queue, size_t queue_capacity,
 	    || queue_length == NULL || *queue_length < *queue_position)
 		return false;
 	semicolon = strchr(text, ';');
+	if (!input_process_store_single(store, context, 0x51C4U,
+	    semicolon == NULL ? 0.0f : (float)(semicolon - text + 1)))
+		return false;
 	if (semicolon == NULL)
 		return true;
 	remainder_length = strlen(semicolon + 1U);

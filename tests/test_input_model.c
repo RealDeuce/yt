@@ -1088,20 +1088,58 @@ test_b05d_keys(void)
 	CHECK(position == 0 && length == 0 && strcmp(pager, "Q") == 0);
 }
 
+struct input_process_tape {
+	uint16_t address[16];
+	uint8_t raw[16][4];
+	size_t count;
+};
+
+static void
+input_process_store(void *context, uint16_t address, const uint8_t raw[4])
+{
+	struct input_process_tape *tape = context;
+	size_t position = tape->count;
+
+	if (position >= YT_ARRAY_LEN(tape->address))
+		return;
+	tape->address[position] = address;
+	memcpy(tape->raw[position], raw, sizeof(tape->raw[position]));
+	++tape->count;
+}
+
 static void
 test_repeat_transform(void)
 {
 	struct yt_repeat_transform result;
+	struct input_process_tape tape;
+	static const uint16_t expected_address[] = {
+		0x51C4U, 0x51C4U, 0x51C8U, 0x4F76U,
+		0x4F76U, 0x4F76U, 0x4F76U,
+	};
+	static const float expected_value[] = {
+		2.0f, 3.0f, 3.0f, 1.0f, 2.0f, 3.0f, 4.0f,
+	};
 	char text[1024];
 	char saved[1024] = "old";
 	size_t index;
 	size_t semicolons;
 
+	memset(&tape, 0, sizeof(tape));
 	snprintf(text, sizeof(text), "A/R3");
-	CHECK(yt_input_expand_repeat(text, sizeof(text), saved, sizeof(saved),
-	    &result));
+	CHECK(yt_input_expand_repeat_observed(text, sizeof(text), saved,
+	    sizeof(saved), &result, input_process_store, &tape));
 	CHECK(result.emit_notice && result.count == 3.0f);
 	CHECK(strcmp(text, "A;A;A") == 0 && strcmp(saved, "A;A;A") == 0);
+	CHECK(tape.count == YT_ARRAY_LEN(expected_address));
+	for (index = 0U; index < tape.count; ++index) {
+		uint8_t expected_raw[4];
+
+		CHECK(qb_mbf32_encode(expected_value[index], expected_raw)
+		    == QB_MBF_OK);
+		CHECK(tape.address[index] == expected_address[index]
+		    && memcmp(tape.raw[index], expected_raw,
+		    sizeof(expected_raw)) == 0);
+	}
 
 	snprintf(saved, sizeof(saved), "old");
 	snprintf(text, sizeof(text), "A/r2/B/R3");
@@ -1168,27 +1206,34 @@ test_repeat_transform(void)
 static void
 test_semicolon_queue(void)
 {
+	struct input_process_tape tape;
 	char text[32];
 	char queue[32];
 	size_t position;
 	size_t length;
 
+	memset(&tape, 0, sizeof(tape));
 	snprintf(text, sizeof(text), "ABC");
 	snprintf(queue, sizeof(queue), "XYZ");
 	position = 1U;
 	length = 3U;
-	CHECK(yt_input_split_semicolon(text, queue, sizeof(queue), &position,
-	    &length));
+	CHECK(yt_input_split_semicolon_observed(text, queue, sizeof(queue),
+	    &position, &length, input_process_store, &tape));
 	CHECK(strcmp(text, "ABC") == 0 && strcmp(queue, "XYZ") == 0
 	    && position == 1U && length == 3U);
+	CHECK(tape.count == 1U && tape.address[0] == 0x51C4U
+	    && qb_mbf32_decode(tape.raw[0]) == 0.0f);
 
+	memset(&tape, 0, sizeof(tape));
 	snprintf(text, sizeof(text), "A;B;C");
 	queue[0] = '\0';
 	position = length = 0;
-	CHECK(yt_input_split_semicolon(text, queue, sizeof(queue), &position,
-	    &length));
+	CHECK(yt_input_split_semicolon_observed(text, queue, sizeof(queue),
+	    &position, &length, input_process_store, &tape));
 	CHECK(strcmp(text, "A") == 0 && position == 0 && length == 4);
 	CHECK(memcmp(queue, "B\rC\r", 5) == 0);
+	CHECK(tape.count == 1U && tape.address[0] == 0x51C4U
+	    && qb_mbf32_decode(tape.raw[0]) == 2.0f);
 
 	snprintf(text, sizeof(text), "M;42");
 	snprintf(queue, sizeof(queue), "X");
