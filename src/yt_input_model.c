@@ -527,6 +527,48 @@ input_process_store_single(yt_input_process_store_fn store, void *context,
 	return true;
 }
 
+struct input_upper_store_context {
+	yt_input_process_store_fn store;
+	void *context;
+};
+
+static void
+input_upper_store(void *context, enum qb_compat_upper_store_kind kind,
+    float value)
+{
+	struct input_upper_store_context *upper = context;
+	uint16_t address;
+
+	switch (kind) {
+	case QB_COMPAT_UPPER_STORE_NUMERIC_TEMP:
+		address = 0x001AU;
+		break;
+	case QB_COMPAT_UPPER_STORE_LENGTH:
+		address = 0x536AU;
+		break;
+	case QB_COMPAT_UPPER_STORE_INDEX:
+		address = 0x536EU;
+		break;
+	default:
+		return;
+	}
+	(void)input_process_store_single(upper->store, upper->context,
+	    address, value);
+}
+
+void
+yt_input_compat_upper_n_observed(uint8_t *text, size_t length,
+    yt_input_process_store_fn store, void *context)
+{
+	struct input_upper_store_context upper = {
+		.store = store,
+		.context = context,
+	};
+
+	qb_compat_upper_n_observed(text, length,
+	    store == NULL ? NULL : input_upper_store, &upper);
+}
+
 bool
 yt_input_expand_repeat_observed(char *text, size_t text_capacity,
     char *saved_command, size_t saved_capacity,
@@ -534,6 +576,7 @@ yt_input_expand_repeat_observed(char *text, size_t text_capacity,
     void *context)
 {
 	char base[YT_INPUT_PENDING];
+	uint8_t upper[YT_INPUT_PENDING];
 	struct qb_val_result parsed;
 	size_t text_length;
 	size_t prefix;
@@ -550,12 +593,12 @@ yt_input_expand_repeat_observed(char *text, size_t text_capacity,
 	result->count = 0.0f;
 	result->failure = YT_REPEAT_FAILURE_NONE;
 	text_length = strlen(text);
+	if (text_length >= sizeof(upper))
+		return false;
+	memcpy(upper, text, text_length + 1U);
+	yt_input_compat_upper_n_observed(upper, text_length, store, context);
 	for (prefix = 0; prefix + 1U < text_length; ++prefix) {
-		uint8_t next = (uint8_t)text[prefix + 1U];
-
-		if (next > (uint8_t)'@')
-			next &= 0xdfU;
-		if (text[prefix] == '/' && next == (uint8_t)'R')
+		if (upper[prefix] == '/' && upper[prefix + 1U] == (uint8_t)'R')
 			break;
 	}
 	if (!input_process_store_single(store, context, 0x51C4U,
@@ -565,7 +608,7 @@ yt_input_expand_repeat_observed(char *text, size_t text_capacity,
 		return true;
 	if (prefix + 2U >= text_capacity || prefix + 1U >= sizeof(base))
 		return false;
-	parsed = qb_val(text + prefix + 2U);
+	parsed = qb_val((const char *)upper + prefix + 2U);
 	if (parsed.overflow) {
 		result->failure = YT_REPEAT_FAILURE_VAL_OVERFLOW;
 		return false;

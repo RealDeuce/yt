@@ -317,8 +317,8 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 	if (ops->store_maximum_planets != NULL)
 		ops->store_maximum_planets(context,
 		    config->record.bytes + YT_F129);
-	qb_compat_upper_n((uint8_t *)config->scoreboard,
-	    state->scoreboard_path_length);
+	qb_compat_upper_n_observed((uint8_t *)config->scoreboard,
+	    state->scoreboard_path_length, ops->store_uppercase, context);
 	config->scoreboard[state->scoreboard_path_length] = '\0';
 
 	if (config->headquarters == 0.0f) {

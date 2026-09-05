@@ -17,6 +17,9 @@ struct yt_pager_state {
 	uint8_t *newline_flag_cell;
 	uint8_t *foreground_cell;
 	uint8_t *saved_foreground_cell;
+	uint8_t *uppercase_numeric_temp_cell;
+	uint8_t *uppercase_length_cell;
+	uint8_t *uppercase_index_cell;
 };
 
 struct yt_sector_pager_state {
@@ -31,7 +34,9 @@ bool yt_pager_advance(struct yt_pager_state *pager,
     struct yt_present_state *presentation, int *saved_foreground);
 void yt_pager_bind_process_cells(struct yt_pager_state *pager,
 	uint8_t line_count[4], uint8_t nonstop[4], uint8_t newline_flag[4],
-	uint8_t foreground[4], uint8_t saved_foreground[4]);
+	uint8_t foreground[4], uint8_t saved_foreground[4],
+	uint8_t uppercase_numeric_temp[4], uint8_t uppercase_length[4],
+	uint8_t uppercase_index[4]);
 void yt_pager_sync_process(struct yt_pager_state *pager);
 void yt_pager_set_line_count_raw(struct yt_pager_state *pager,
 	const uint8_t raw[4]);

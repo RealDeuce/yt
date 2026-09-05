@@ -82,6 +82,8 @@
 #define YT_TEAM_LOADER_COUNTER_ADDRESS 0x5B3AU
 #define YT_NUMERIC_TEMP_DOUBLE_ADDRESS 0x0016U
 #define YT_NUMERIC_TEMP_SINGLE_ADDRESS 0x001AU
+#define YT_UPPERCASE_LENGTH_ADDRESS 0x536AU
+#define YT_UPPERCASE_INDEX_ADDRESS 0x536EU
 #define YT_ADD_FLOAT_CALLBACK_ADDRESS 0x0A60U
 #define YT_TURNS_PER_DAY_ADDRESS 0x4BD0U
 #define YT_LOTTERY_PLAYS_ADDRESS 0x4BB8U
@@ -404,7 +406,10 @@ session_bind_pager_process(struct yt_session *session)
 	    &session->route_process.bytes[YT_PAGER_NONSTOP_ADDRESS],
 	    &session->route_process.bytes[YT_PAGER_NEWLINE_ADDRESS],
 	    &session->route_process.bytes[YT_FOREGROUND_ADDRESS],
-	    &session->route_process.bytes[YT_PAGER_SAVED_FOREGROUND_ADDRESS]);
+	    &session->route_process.bytes[YT_PAGER_SAVED_FOREGROUND_ADDRESS],
+	    &session->route_process.bytes[YT_NUMERIC_TEMP_SINGLE_ADDRESS],
+	    &session->route_process.bytes[YT_UPPERCASE_LENGTH_ADDRESS],
+	    &session->route_process.bytes[YT_UPPERCASE_INDEX_ADDRESS]);
 }
 
 static void
@@ -1679,6 +1684,14 @@ session_input_process_store(void *context, uint16_t address,
 	yt_route_process_set_raw_single(&session->route_process, address, raw);
 }
 
+static void
+session_compat_upper_n(struct yt_session *session, uint8_t *text,
+    size_t length)
+{
+	yt_input_compat_upper_n_observed(text, length,
+	    session_input_process_store, session);
+}
+
 static bool
 expand_repeat(struct yt_session *session, char *text, size_t size)
 {
@@ -1746,7 +1759,7 @@ session_0357(struct yt_session *session, char *text, size_t size)
 {
 	if (!session_0345(session, text, size))
 		return false;
-	qb_compat_upper(text);
+	session_compat_upper_n(session, (uint8_t *)text, strlen(text));
 	return session_store_output_source(session, (const uint8_t *)text,
 	    strlen(text));
 }
@@ -1756,7 +1769,9 @@ session_036f(struct yt_session *session, char *text, size_t size)
 {
 	if (!session_0345(session, text, size))
 		return false;
-	yt_input_numeric_response(text);
+	session_compat_upper_n(session, (uint8_t *)text, strlen(text));
+	if (strchr(text, 'E') != NULL)
+		text[0] = '\0';
 	return session_store_output_source(session, (const uint8_t *)text,
 	    strlen(text));
 }
@@ -2949,6 +2964,29 @@ startup_configuration_store_cache_value(void *context, int basic_record,
 	session_set_player_cache_raw(session, basic_record, kind, raw);
 }
 
+static void
+startup_configuration_store_uppercase(void *context,
+    enum qb_compat_upper_store_kind kind, float value)
+{
+	struct yt_session *session = context;
+	uint16_t address;
+
+	switch (kind) {
+	case QB_COMPAT_UPPER_STORE_NUMERIC_TEMP:
+		address = YT_NUMERIC_TEMP_SINGLE_ADDRESS;
+		break;
+	case QB_COMPAT_UPPER_STORE_LENGTH:
+		address = YT_UPPERCASE_LENGTH_ADDRESS;
+		break;
+	case QB_COMPAT_UPPER_STORE_INDEX:
+		address = YT_UPPERCASE_INDEX_ADDRESS;
+		break;
+	default:
+		return;
+	}
+	session_set_process_single(session, address, value);
+}
+
 static bool
 load_configuration(struct yt_session *session, struct yt_error *error)
 {
@@ -2976,6 +3014,7 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 		startup_configuration_store_cache_terminal,
 		startup_configuration_store_cache_counter,
 		startup_configuration_store_cache_value,
+		startup_configuration_store_uppercase,
 	};
 	struct yt_game *game = &session->door->game;
 	struct yt_startup_configuration_state state;
@@ -18640,7 +18679,7 @@ nearest_more(struct yt_session *session, bool *stop, bool *continuous,
 		response = selected.bytes[0];
 		if (response == '\r')
 			response = 'Y';
-		qb_compat_upper_n(&response, 1);
+		session_compat_upper_n(session, &response, 1U);
 		if (response != 'Y' && response != 'N' && response != '+')
 			continue;
 		if (!session_present_text(session, &response, 1,
@@ -19195,7 +19234,7 @@ profit_more(struct yt_session *session, bool *stop, struct yt_error *error)
 		if (key == '\r' || key == '\n')
 			key = 'Y';
 		response = (uint8_t)key;
-		qb_compat_upper_n(&response, 1);
+		session_compat_upper_n(session, &response, 1U);
 		if (!session_present_text(session, &response, 1,
 		    SESSION_PRESENT_LINE, "profit pager echo", error))
 			return false;
@@ -19471,7 +19510,8 @@ computer_raw_upper_edit(void *context, char *response, size_t capacity,
 	if (*available) {
 		struct yt_session *session = context;
 
-		qb_compat_upper_n((uint8_t *)session->output_source, *length);
+		session_compat_upper_n(session,
+		    (uint8_t *)session->output_source, *length);
 	}
 	return true;
 }

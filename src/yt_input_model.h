@@ -350,6 +350,8 @@ bool yt_b05d_process_key(const struct yt_input_value *value,
 bool yt_input_expand_repeat(char *text, size_t text_capacity,
     char *saved_command, size_t saved_capacity,
     struct yt_repeat_transform *result);
+void yt_input_compat_upper_n_observed(uint8_t *text, size_t length,
+	yt_input_process_store_fn store, void *context);
 bool yt_input_expand_repeat_observed(char *text, size_t text_capacity,
     char *saved_command, size_t saved_capacity,
     struct yt_repeat_transform *result, yt_input_process_store_fn store,

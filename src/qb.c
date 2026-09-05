@@ -284,11 +284,30 @@ qb_ascii_upper_n(uint8_t *text, size_t length)
 void
 qb_compat_upper_n(uint8_t *text, size_t length)
 {
+	qb_compat_upper_n_observed(text, length, NULL, NULL);
+}
+
+void
+qb_compat_upper_n_observed(uint8_t *text, size_t length,
+    qb_compat_upper_store_fn store, void *context)
+{
 	size_t index;
 
+	if (store != NULL) {
+		store(context, QB_COMPAT_UPPER_STORE_NUMERIC_TEMP,
+		    (float)length);
+		store(context, QB_COMPAT_UPPER_STORE_LENGTH, (float)length);
+		store(context, QB_COMPAT_UPPER_STORE_INDEX, 1.0f);
+	}
 	for (index = 0; index < length; ++index) {
 		if (text[index] > '@')
 			text[index] &= 0xdfU;
+		if (store != NULL) {
+			store(context, QB_COMPAT_UPPER_STORE_NUMERIC_TEMP,
+			    (float)(index + 2U));
+			store(context, QB_COMPAT_UPPER_STORE_INDEX,
+			    (float)(index + 2U));
+		}
 	}
 }
 

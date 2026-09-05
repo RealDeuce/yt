@@ -41,7 +41,9 @@ pager_store_single(float *destination, uint8_t *cell, float value)
 void
 yt_pager_bind_process_cells(struct yt_pager_state *pager,
     uint8_t line_count[4], uint8_t nonstop[4], uint8_t newline_flag[4],
-    uint8_t foreground[4], uint8_t saved_foreground[4])
+    uint8_t foreground[4], uint8_t saved_foreground[4],
+    uint8_t uppercase_numeric_temp[4], uint8_t uppercase_length[4],
+    uint8_t uppercase_index[4])
 {
 	if (pager == NULL)
 		return;
@@ -50,7 +52,35 @@ yt_pager_bind_process_cells(struct yt_pager_state *pager,
 	pager->newline_flag_cell = newline_flag;
 	pager->foreground_cell = foreground;
 	pager->saved_foreground_cell = saved_foreground;
+	pager->uppercase_numeric_temp_cell = uppercase_numeric_temp;
+	pager->uppercase_length_cell = uppercase_length;
+	pager->uppercase_index_cell = uppercase_index;
 	yt_pager_sync_process(pager);
+}
+
+static void
+pager_upper_store(void *context, enum qb_compat_upper_store_kind kind,
+    float value)
+{
+	struct yt_pager_state *pager = context;
+	uint8_t *cell;
+	uint8_t raw[4];
+
+	switch (kind) {
+	case QB_COMPAT_UPPER_STORE_NUMERIC_TEMP:
+		cell = pager->uppercase_numeric_temp_cell;
+		break;
+	case QB_COMPAT_UPPER_STORE_LENGTH:
+		cell = pager->uppercase_length_cell;
+		break;
+	case QB_COMPAT_UPPER_STORE_INDEX:
+		cell = pager->uppercase_index_cell;
+		break;
+	default:
+		return;
+	}
+	if (cell != NULL && qb_mbf32_encode(value, raw) == QB_MBF_OK)
+		memcpy(cell, raw, sizeof(raw));
 }
 
 void
@@ -172,7 +202,11 @@ yt_pager_accept_response(struct yt_pager_state *pager, char *response,
     size_t response_capacity)
 {
 	(void)response_capacity;
-	qb_compat_upper(response);
+	qb_compat_upper_n_observed((uint8_t *)response, strlen(response),
+	    pager->uppercase_numeric_temp_cell != NULL
+	    && pager->uppercase_length_cell != NULL
+	    && pager->uppercase_index_cell != NULL ? pager_upper_store : NULL,
+	    pager);
 	snprintf(pager->key, sizeof(pager->key), "%s", response);
 	if (strcmp(response, "NS") != 0)
 		return false;

@@ -60,7 +60,16 @@ size_t qb_rtrim_n(uint8_t *text, size_t length);
 size_t qb_trim_n(uint8_t *text, size_t length);
 size_t qb_collapse_spaces_n(uint8_t *text, size_t length);
 void qb_ascii_upper_n(uint8_t *text, size_t length);
+enum qb_compat_upper_store_kind {
+	QB_COMPAT_UPPER_STORE_NUMERIC_TEMP,
+	QB_COMPAT_UPPER_STORE_LENGTH,
+	QB_COMPAT_UPPER_STORE_INDEX,
+};
+typedef void (*qb_compat_upper_store_fn)(void *context,
+	enum qb_compat_upper_store_kind kind, float value);
 void qb_compat_upper_n(uint8_t *text, size_t length);
+void qb_compat_upper_n_observed(uint8_t *text, size_t length,
+	qb_compat_upper_store_fn store, void *context);
 size_t qb_title_case_n(uint8_t *text, size_t length);
 void qb_ascii_upper(char *text);
 void qb_compat_upper(char *text);

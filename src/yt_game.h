@@ -1,6 +1,7 @@
 #ifndef YT_GAME_H
 #define YT_GAME_H
 
+#include "qb.h"
 #include "yt_config.h"
 #include "yt_random.h"
 
@@ -138,6 +139,7 @@ struct yt_startup_configuration_ops {
 	yt_startup_configuration_cache_terminal_store_fn store_cache_terminal;
 	yt_startup_configuration_cache_counter_store_fn store_cache_counter;
 	yt_startup_configuration_cache_value_store_fn store_cache_value;
+	qb_compat_upper_store_fn store_uppercase;
 };
 
 bool yt_startup_configuration_run(

@@ -1264,6 +1264,7 @@ test_pager_raw_process_cells(void)
 	static const uint8_t one[4] = {0x00, 0x00, 0x00, 0x81};
 	static const uint8_t three[4] = {0x00, 0x00, 0x40, 0x82};
 	static const uint8_t seven[4] = {0x00, 0x00, 0x60, 0x83};
+	static const uint8_t two[4] = {0x00, 0x00, 0x00, 0x82};
 	struct yt_pager_state pager;
 	struct yt_present_state present = state(false);
 	struct yt_b05d_key_state key_state;
@@ -1273,6 +1274,9 @@ test_pager_raw_process_cells(void)
 	uint8_t newline[4];
 	uint8_t foreground[4];
 	uint8_t saved_foreground[4] = {0xde, 0xad, 0xbe, 0xef};
+	uint8_t uppercase_numeric_temp[4] = {0xde, 0xad, 0xbe, 0xef};
+	uint8_t uppercase_length[4] = {0xde, 0xad, 0xbe, 0xef};
+	uint8_t uppercase_index[4] = {0xde, 0xad, 0xbe, 0xef};
 	char accumulator[8] = "x";
 	char queue[8] = "";
 	char pager_key[8] = "";
@@ -1287,7 +1291,8 @@ test_pager_raw_process_cells(void)
 	memcpy(newline, zero, sizeof(newline));
 	memcpy(foreground, seven, sizeof(foreground));
 	yt_pager_bind_process_cells(&pager, line_count, nonstop, newline,
-	    foreground, saved_foreground);
+	    foreground, saved_foreground, uppercase_numeric_temp,
+	    uppercase_length, uppercase_index);
 	CHECK(!yt_pager_advance(&pager, &present, &saved));
 	CHECK(memcmp(line_count, count_23, sizeof(line_count)) == 0);
 
@@ -1304,7 +1309,10 @@ test_pager_raw_process_cells(void)
 	    && memcmp(nonstop, dirty_zero, sizeof(nonstop)) == 0
 	    && memcmp(line_count, dirty_zero, sizeof(line_count)) == 0);
 	CHECK(yt_pager_accept_response(&pager, response, sizeof(response))
-	    && memcmp(nonstop, one, sizeof(nonstop)) == 0);
+	    && memcmp(nonstop, one, sizeof(nonstop)) == 0
+	    && memcmp(uppercase_numeric_temp, three, sizeof(three)) == 0
+	    && memcmp(uppercase_length, two, sizeof(two)) == 0
+	    && memcmp(uppercase_index, three, sizeof(three)) == 0);
 	yt_pager_complete(&pager, &present, saved);
 	CHECK(memcmp(foreground, seven, sizeof(foreground)) == 0
 	    && present.foreground == 7.0f);

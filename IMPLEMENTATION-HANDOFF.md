@@ -108,9 +108,11 @@ not authoritative. Use the corrected goal above in the new workspace.
   strictly above `40h` is replaced in place by byte AND `DFh`. Native tests
   pin the empty loop and exhaust all 256 byte values; all five qualified
   successful loop/return edges are candidate and all 13 focused upstream
-  raw/fault tests pass. The native exact transform does not yet reproduce the
-  legacy procedure-static MBF32 length/index/temp cells or movable-string
-  MID$/CHR$ allocation failures and active ERR-7/14 routing; those remain
+  raw/fault tests pass. The observed native transform now reproduces the exact
+  successful `DS:001A`, `DS:536A`, and `DS:536E` MBF32 store sequence and is
+  bound across the live session, pager, startup configuration, ADE0 and
+  serial-startup models. Movable-string MID$/CHR$ allocation failures,
+  expression-string residue, caller frames and active ERR-7/14 routing remain
   explicit runtime seams.
 - The adjacent Team name and password helper roots `YT:[64CD,660D)` are also
   candidate. The name helper's eight edges preserve raw-length-before-

@@ -1089,8 +1089,8 @@ test_b05d_keys(void)
 }
 
 struct input_process_tape {
-	uint16_t address[16];
-	uint8_t raw[16][4];
+	uint16_t address[64];
+	uint8_t raw[64][4];
 	size_t count;
 };
 
@@ -1113,10 +1113,16 @@ test_repeat_transform(void)
 	struct yt_repeat_transform result;
 	struct input_process_tape tape;
 	static const uint16_t expected_address[] = {
+		0x001AU, 0x536AU, 0x536EU,
+		0x001AU, 0x536EU, 0x001AU, 0x536EU,
+		0x001AU, 0x536EU, 0x001AU, 0x536EU,
 		0x51C4U, 0x51C4U, 0x51C8U, 0x4F76U,
 		0x4F76U, 0x4F76U, 0x4F76U,
 	};
 	static const float expected_value[] = {
+		4.0f, 4.0f, 1.0f,
+		2.0f, 2.0f, 3.0f, 3.0f,
+		4.0f, 4.0f, 5.0f, 5.0f,
 		2.0f, 3.0f, 3.0f, 1.0f, 2.0f, 3.0f, 4.0f,
 	};
 	char text[1024];
@@ -1173,12 +1179,14 @@ test_repeat_transform(void)
 	CHECK(!result.emit_notice && result.count == 0.0f
 	    && result.failure == YT_REPEAT_FAILURE_VAL_OVERFLOW);
 	CHECK(strcmp(text, "A/R1E999") == 0 && strcmp(saved, "old") == 0);
-	CHECK(tape.count == 1U && tape.address[0] == 0x51C4U);
+	CHECK(tape.count == 3U + 2U * strlen(text) + 1U
+	    && tape.address[tape.count - 1U] == 0x51C4U);
 	{
 		uint8_t expected_raw[4];
 
 		CHECK(qb_mbf32_encode(2.0f, expected_raw) == QB_MBF_OK);
-		CHECK(memcmp(tape.raw[0], expected_raw, sizeof(expected_raw)) == 0);
+		CHECK(memcmp(tape.raw[tape.count - 1U], expected_raw,
+		    sizeof(expected_raw)) == 0);
 	}
 
 	memset(&tape, 0, sizeof(tape));
@@ -1190,12 +1198,14 @@ test_repeat_transform(void)
 	    && result.failure == YT_REPEAT_FAILURE_SINGLE_OVERFLOW);
 	CHECK(strcmp(text, "A/R1.7014118E38") == 0
 	    && strcmp(saved, "old") == 0);
-	CHECK(tape.count == 1U && tape.address[0] == 0x51C4U);
+	CHECK(tape.count == 3U + 2U * strlen(text) + 1U
+	    && tape.address[tape.count - 1U] == 0x51C4U);
 	{
 		uint8_t expected_raw[4];
 
 		CHECK(qb_mbf32_encode(2.0f, expected_raw) == QB_MBF_OK);
-		CHECK(memcmp(tape.raw[0], expected_raw, sizeof(expected_raw)) == 0);
+		CHECK(memcmp(tape.raw[tape.count - 1U], expected_raw,
+		    sizeof(expected_raw)) == 0);
 	}
 
 	snprintf(text, sizeof(text), "A/R-.1");
@@ -2949,7 +2959,14 @@ test_startup_dorinfo_state(void)
 	    &field_length);
 	CHECK(field != NULL
 	    && field_length == sizeof("57600 BAUD,O,7,[\xc1") - 1U
-	    && memcmp(field, "57600 BAUD,O,7,[\xc1", field_length) == 0);
+	    && memcmp(field, "57600 BAUD,O,7,[\xc1", field_length) == 0
+	    && state_result.uppercase_called
+	    && qb_mbf32_decode(state_result.uppercase_length_raw)
+	    == (float)field_length
+	    && qb_mbf32_decode(state_result.uppercase_numeric_temp_raw)
+	    == (float)(field_length + 1U)
+	    && qb_mbf32_decode(state_result.uppercase_index_raw)
+	    == (float)(field_length + 1U));
 	for (index = 0U; index < YT_STARTUP_DORINFO_FIELDS; ++index)
 		CHECK(state_result.cleared_fields[index]
 		    == (index == 3U || index == 4U || index == 8U
@@ -3054,7 +3071,8 @@ test_startup_dorinfo_state(void)
 	    && state_result.canonical_name_length == strlen("Jane O'neil")
 	    && !state_result.deadline_set && state_result.open_spec_length == 0U
 	    && state_result.carrier_local_screen == 0.0f
-	    && state_result.game_sound == 0.0f);
+	    && state_result.game_sound == 0.0f
+	    && !state_result.uppercase_called);
 	field = yt_startup_dorinfo_field(&dorinfo, storage, 4U,
 	    &field_length);
 	CHECK(field != NULL
@@ -3079,7 +3097,8 @@ test_startup_dorinfo_state(void)
 	    && state_result.deadline == 10800.0f
 	    && state_result.local_mode == 1.0f
 	    && state_result.local_sound == -1.0f
-	    && state_result.game_sound == -1.0f);
+	    && state_result.game_sound == -1.0f
+	    && !state_result.uppercase_called);
 	CHECK(yt_startup_compose_events(&state_result, 0x03U, 0x00U, 0,
 	    YT_STARTUP_WAIT_TIMER, 0x80U, 0x03U, 0x00U, &event_result));
 	CHECK(event_result.outcome == YT_STARTUP_EVENTS_LOCAL_READY
