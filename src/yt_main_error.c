@@ -81,6 +81,12 @@ static const struct yt_basic_fault_identity basic_faults[] = {
 	    0x1804U, 0, CINT_ERRORS, 1U),
 	SHARED_FAULT("returning killer name LEFT$", 0x1812U, 0x1815U,
 	    0x1804U, 0, LEFT_ERRORS, 3U),
+	SHARED_FAULT("constructor configuration GET", 0x35A2U, 0x35A5U,
+	    0x359CU, 35450, RETURNING_GET_ERRORS, 4U),
+	SHARED_FAULT("constructor player GET", 0x35D4U, 0x35D7U,
+	    0x35C9U, 35450, RETURNING_GET_ERRORS, 4U),
+	SHARED_FAULT("constructor player PUT", 0x36DEU, 0x36E1U,
+	    0x36D3U, 35450, RETURNING_PUT_ERRORS, 5U),
 };
 
 _Static_assert(YT_ARRAY_LEN(basic_faults) == YT_BASIC_FAULT_SITE_COUNT,

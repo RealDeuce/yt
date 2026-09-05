@@ -2061,9 +2061,15 @@ bool yt_game_read_planet(struct yt_game *game, int logical_planet,
     struct yt_planet *planet, struct yt_error *error);
 bool yt_game_write_planet(struct yt_game *game, int logical_planet,
     struct yt_planet *planet, struct yt_error *error);
+struct yt_player_constructor_state {
+	bool config_hydrated;
+	bool player_hydrated;
+	bool put_attempted;
+};
 bool yt_game_construct_player(struct yt_game *game, int basic_record,
     const uint8_t today_raw[4], const uint8_t turns_raw[4],
-    struct yt_player *player, struct yt_error *error);
+    struct yt_player *player, struct yt_player_constructor_state *state,
+    struct yt_error *error);
 bool yt_game_set_player_identity(struct yt_game *game, int basic_record,
     const uint8_t *name, size_t length, struct yt_player *player,
     struct yt_error *error);

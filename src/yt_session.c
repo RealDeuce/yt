@@ -3582,6 +3582,7 @@ resolve_alias(struct yt_session *session, char first[128], char last[128],
 static bool
 construct_player_visible(struct yt_session *session, struct yt_error *error)
 {
+	struct yt_player_constructor_state state;
 	uint8_t date_raw[4];
 	uint8_t turns_raw[4];
 
@@ -3596,8 +3597,22 @@ construct_player_visible(struct yt_session *session, struct yt_error *error)
 	    YT_STARTUP_DATE_SERIAL_ADDRESS, date_raw);
 	yt_route_process_raw_single(&session->route_process,
 	    YT_TURNS_PER_DAY_ADDRESS, turns_raw);
-	return yt_game_construct_player(&session->door->game,
-	    session_record(session), date_raw, turns_raw, &session->player, error);
+	if (yt_game_construct_player(&session->door->game,
+	    session_record(session), date_raw, turns_raw, &session->player,
+	    &state, error))
+		return true;
+	if (!state.config_hydrated)
+		attach_database_get_fault(session, error,
+		    YT_BASIC_FAULT_CONSTRUCTOR_CONFIG_GET);
+	else if (!state.player_hydrated)
+		attach_database_get_fault(session, error,
+		    YT_BASIC_FAULT_CONSTRUCTOR_PLAYER_GET);
+	else if (state.put_attempted)
+		attach_database_put_fault(session, error,
+		    YT_BASIC_FAULT_CONSTRUCTOR_PLAYER_PUT);
+	if (error != NULL && error->basic_fault_valid)
+		(void)session_route_basic_fault(session, error);
+	return false;
 }
 
 static bool

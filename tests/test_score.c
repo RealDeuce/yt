@@ -23192,7 +23192,8 @@ check_earth_report_model(void)
 
 static bool
 construct_player_values(struct yt_game *game, int basic_record, float today,
-    float turns, struct yt_player *player, struct yt_error *error)
+    float turns, struct yt_player *player,
+    struct yt_player_constructor_state *state, struct yt_error *error)
 {
 	uint8_t today_raw[4];
 	uint8_t turns_raw[4];
@@ -23201,7 +23202,7 @@ construct_player_values(struct yt_game *game, int basic_record, float today,
 	    || qb_mbf32_encode(turns, turns_raw) != QB_MBF_OK)
 		return false;
 	return yt_game_construct_player(game, basic_record, today_raw, turns_raw,
-	    player, error);
+	    player, state, error);
 }
 
 static bool
@@ -23212,6 +23213,7 @@ check_player_constructor_failures(void)
 	struct yt_record target;
 	struct yt_record after;
 	struct yt_player player;
+	struct yt_player_constructor_state state;
 	struct yt_error error;
 	struct score_database_read_fault read_fault = {0U, 1U};
 	bool valid = false;
@@ -23224,9 +23226,12 @@ check_player_constructor_failures(void)
 		return false;
 	yt_database_set_read_provider(&game.database,
 	    score_database_read_with_fault, &read_fault);
-	if (construct_player_values(&game, 2, 77.0f, 123.0f, &player, &error)
+	if (construct_player_values(&game, 2, 77.0f, 123.0f, &player, &state,
+	    &error)
 	    || error.status != YT_IO_ERROR || read_fault.calls != 1U
-	    || game.database.last_get.basic_error != 57U)
+	    || game.database.last_get.basic_error != 57U
+	    || state.config_hydrated || state.player_hydrated
+	    || state.put_attempted)
 		goto close;
 	yt_database_set_read_provider(&game.database, NULL, NULL);
 
@@ -23241,9 +23246,12 @@ check_player_constructor_failures(void)
 	yt_database_set_read_provider(&game.database,
 	    score_database_read_with_fault, &read_fault);
 	yt_error_clear(&error);
-	if (construct_player_values(&game, 2, 77.0f, 123.0f, &player, &error)
+	if (construct_player_values(&game, 2, 77.0f, 123.0f, &player, &state,
+	    &error)
 	    || error.status != YT_IO_ERROR || read_fault.calls != 2U
-	    || game.database.last_get.basic_error != 57U)
+	    || game.database.last_get.basic_error != 57U
+	    || !state.config_hydrated || state.player_hydrated
+	    || state.put_attempted)
 		goto close;
 	yt_database_set_read_provider(&game.database, NULL, NULL);
 
@@ -23262,9 +23270,12 @@ check_player_constructor_failures(void)
 	    &error))
 		goto done;
 	yt_error_clear(&error);
-	if (construct_player_values(&game, 2, 77.0f, 123.0f, &player, &error)
+	if (construct_player_values(&game, 2, 77.0f, 123.0f, &player, &state,
+	    &error)
 	    || error.status != YT_IO_ERROR
 	    || strcmp(error.operation, "write record") != 0
+	    || !state.config_hydrated || !state.player_hydrated
+	    || !state.put_attempted
 	    || strcmp(player.name, "Keep Name") != 0
 	    || player.name_length != 9.0f || player.score != 88.0f
 	    || player.team != 0.0f || player.last_active != 77.0f
@@ -33385,7 +33396,7 @@ main(void)
 	    || qb_mbf32_encode(678.0f, constructor_credits_raw) != QB_MBF_OK
 	    || qb_mbf32_encode(9.0f, constructor_holds_raw) != QB_MBF_OK
 	    || !yt_game_construct_player(&game, 2, constructor_date_raw,
-	    constructor_turns_raw, &player, &error)
+	    constructor_turns_raw, &player, NULL, &error)
 	    || !yt_game_read_player(&game, 2, &player, &error)
 	    || strcmp(player.name, "Old Trader") != 0
 	    || player.name_length != 10.0f || player.score != 77.5f
