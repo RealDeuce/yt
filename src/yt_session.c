@@ -1654,14 +1654,20 @@ clear_queue(struct yt_session *session)
 
 static bool
 session_command_notice(struct yt_session *session, const char *text,
-    bool bold)
+    bool bold, enum yt_command_notice_kind kind)
 {
+	uint8_t duration_raw[4];
+	uint16_t duration_address;
+
 	if (bold)
 		yt_present_set_bold(&session->presentation, 1.0f);
 	if (!session_0317(session, (const uint8_t *)text, strlen(text),
 	    "command notice", NULL))
 		return false;
-	return session_timed_wait(session, 1.0);
+	return yt_input_command_notice_wait(kind, &duration_address,
+	    duration_raw)
+	    && session_wait_raw_at(session, duration_raw, duration_address,
+	    "command notice wait", NULL);
 }
 
 static bool
@@ -1684,7 +1690,8 @@ expand_repeat(struct yt_session *session, char *text, size_t size)
 	    "Ctrl-X to cancel.", rendered);
 	if (notice_length < 0 || (size_t)notice_length >= sizeof(notice))
 		return false;
-	return session_command_notice(session, notice, true);
+	return session_command_notice(session, notice, true,
+	    YT_COMMAND_NOTICE_REPEAT);
 }
 
 static bool
@@ -1705,7 +1712,7 @@ session_line(struct yt_session *session, char *text, size_t size)
 		    "%s", text);
 		if (!session_command_notice(session,
 		    "Command Saved -+- Ctrl-R to Re-use -+- Ctrl-X to cancel.",
-		    false))
+		    false, YT_COMMAND_NOTICE_SAVE))
 			return false;
 	}
 	if (!expand_repeat(session, text, size))

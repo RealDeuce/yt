@@ -1243,9 +1243,25 @@ test_queue_program_prepend(void)
 static void
 test_timed_wait(void)
 {
+	static const uint8_t one[4] = {0x00U, 0x00U, 0x00U, 0x81U};
 	struct yt_timed_wait_state wait;
 	struct yt_input_value value = {{0, 0}, 0, 0, false};
 	enum yt_timed_wait_reason reason;
+	uint8_t duration_raw[4];
+	uint16_t address;
+
+	CHECK(yt_input_command_notice_wait(YT_COMMAND_NOTICE_SAVE, &address,
+	    duration_raw) && address == 0x51BCU
+	    && memcmp(duration_raw, one, sizeof(one)) == 0);
+	CHECK(yt_input_command_notice_wait(YT_COMMAND_NOTICE_REPEAT, &address,
+	    duration_raw) && address == 0x51CCU
+	    && memcmp(duration_raw, one, sizeof(one)) == 0);
+	CHECK(!yt_input_command_notice_wait((enum yt_command_notice_kind)99,
+	    &address, duration_raw));
+	CHECK(!yt_input_command_notice_wait(YT_COMMAND_NOTICE_SAVE, NULL,
+	    duration_raw));
+	CHECK(!yt_input_command_notice_wait(YT_COMMAND_NOTICE_SAVE, &address,
+	    NULL));
 
 	memset(&wait, 0, sizeof(wait));
 	memcpy(wait.serial_scratch, "old", 3);
