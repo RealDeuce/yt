@@ -1744,6 +1744,7 @@ check_team_loader_model(void)
 	struct yt_record overlay;
 	struct yt_error error;
 	enum yt_team_loader_route route;
+	uint8_t five_raw[4];
 	bool needs_overlay;
 	size_t index;
 
@@ -1755,15 +1756,22 @@ check_team_loader_model(void)
 	cache.captain_flag = -1.0f;
 	for (index = 0; index < YT_ARRAY_LEN(cache.roster); ++index)
 		cache.roster[index] = (float)(index + 1U);
+	if (qb_mbf32_encode(5.0f, five_raw) != QB_MBF_OK)
+		return false;
 	yt_team_loader_begin(0.0f, &cache, &needs_overlay);
 	if (needs_overlay || cache.available != -1.0f
 	    || cache.counter != 5.0f || cache.name_length != 5U
+	    || memcmp(cache.available_raw,
+	    (const uint8_t[4]){0x00U, 0x00U, 0x80U, 0x81U}, 4U) != 0
+	    || memcmp(cache.counter_raw, five_raw, 4U) != 0
 	    || memcmp(cache.name, "STALE", 6U) != 0
 	    || memcmp(cache.password, "OLD!", 5U) != 0
 	    || cache.captain != 17.0f || cache.captain_flag != -1.0f)
 		return false;
 	for (index = 0; index < YT_ARRAY_LEN(cache.roster); ++index)
-		if (cache.roster[index] != 0.0f)
+		if (cache.roster[index] != 0.0f
+		    || memcmp(cache.roster_raw[index],
+		    (const uint8_t[4]){0}, 4U) != 0)
 			return false;
 
 	yt_record_blank(&overlay);
@@ -1797,13 +1805,20 @@ check_team_loader_model(void)
 	    || !yt_team_loader_finish(&overlay, 7.0f, 0, &cache,
 	    &route, &error)
 	    || route != YT_TEAM_LOADER_LIVE || cache.available != 0.0f
+	    || memcmp(cache.available_raw,
+	    (const uint8_t[4]){0x00U, 0x00U, 0x48U, 0x00U}, 4U) != 0
 	    || cache.name_length != sizeof(live_name)
 	    || memcmp(cache.name, live_name, sizeof(live_name)) != 0
 	    || memcmp(cache.password, "PASS", 4U) != 0
 	    || cache.captain != 7.0f || cache.captain_flag != -1.0f
 	    || cache.roster[0] != 2.0f || cache.roster[1] != 0.0f
-	    || cache.roster[2] != -1.0f || cache.roster[3] != 4.0f)
+	    || cache.roster[2] != -1.0f || cache.roster[3] != 4.0f
+	    || memcmp(cache.captain_raw, overlay.bytes + YT_F77, 4U) != 0)
 		return false;
+	for (index = 0U; index < YT_ARRAY_LEN(cache.roster); ++index)
+		if (memcmp(cache.roster_raw[index],
+		    overlay.bytes + roster_offsets[index], 4U) != 0)
+			return false;
 	(void)yt_record_set_number(&overlay, YT_F77, 8.0f);
 	yt_team_loader_begin(50.0f, &cache, &needs_overlay);
 	if (!yt_team_loader_finish(&overlay, 7.0f, 0, &cache,
@@ -1811,8 +1826,13 @@ check_team_loader_model(void)
 		return false;
 
 	cache.captain_flag = 0.0f;
+	memcpy(cache.captain_flag_raw,
+	    (const uint8_t[4]){0x00U, 0x00U, 0xA0U, 0x00U}, 4U);
+	cache.raw_valid = true;
 	yt_team_loader_begin(50.0001f, &cache, &needs_overlay);
 	if (needs_overlay || cache.captain_flag != 0.0f
+	    || memcmp(cache.captain_flag_raw,
+	    (const uint8_t[4]){0x00U, 0x00U, 0xA0U, 0x00U}, 4U) != 0
 	    || cache.name_length != sizeof(live_name))
 		return false;
 
@@ -1839,6 +1859,8 @@ check_team_loader_model(void)
 	if (yt_team_loader_finish(&overlay, 7.0f, 0, &cache,
 	    &route, &error)
 	    || error.status != YT_RANGE || cache.available != 0.0f
+	    || memcmp(cache.available_raw,
+	    (const uint8_t[4]){0x00U, 0x00U, 0x48U, 0x00U}, 4U) != 0
 	    || cache.name_length != 2U || memcmp(cache.name, "AB", 2U) != 0)
 		return false;
 	for (index = 0; index < YT_ARRAY_LEN(cache.roster); ++index)
@@ -2326,6 +2348,9 @@ struct info_team_tape {
 	uint8_t stored_captain_raw[2][4];
 	size_t stored_captain_count;
 	size_t stored_captain_at[2];
+	uint8_t promoted_captain_raw[4];
+	size_t promoted_cache_count;
+	size_t promoted_cache_at;
 };
 
 static bool
@@ -2377,6 +2402,17 @@ info_team_store_captain(void *context, const uint8_t raw[4])
 	memcpy(tape->stored_captain_raw[position], raw,
 	    sizeof(tape->stored_captain_raw[position]));
 	++tape->stored_captain_count;
+}
+
+static void
+info_team_promote_cache(void *context, const uint8_t raw[4])
+{
+	struct info_team_tape *tape = context;
+
+	tape->promoted_cache_at = tape->event_count;
+	memcpy(tape->promoted_captain_raw, raw,
+	    sizeof(tape->promoted_captain_raw));
+	++tape->promoted_cache_count;
 }
 
 static bool
@@ -2479,6 +2515,7 @@ check_info_team_resolver_transaction(void)
 		info_team_read_player,
 		info_team_store_id,
 		info_team_store_captain,
+		info_team_promote_cache,
 		info_team_load,
 		info_team_read_overlay,
 		info_team_write_overlay,
@@ -2608,6 +2645,10 @@ check_info_team_resolver_transaction(void)
 	    || tape.stored_captain_at[0] != 4U
 	    || tape.stored_captain_at[1] != 4U
 	    || memcmp(tape.stored_captain_raw[1], current_raw,
+	    sizeof(current_raw)) != 0
+	    || tape.promoted_cache_count != 1U
+	    || tape.promoted_cache_at != 4U
+	    || memcmp(tape.promoted_captain_raw, current_raw,
 	    sizeof(current_raw)) != 0
 	    || tape.overlay_read_team != 3.5f
 	    || tape.overlay_write_team != 3.5f

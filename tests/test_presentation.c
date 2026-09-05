@@ -14252,6 +14252,13 @@ normal_exit_info_team_store_captain(void *context, const uint8_t raw[4])
 	(void)raw;
 }
 
+static void
+normal_exit_info_team_promote_cache(void *context, const uint8_t raw[4])
+{
+	(void)context;
+	(void)raw;
+}
+
 static bool
 normal_exit_info_team_load(void *context, float team_id,
     float current_record, float *captain_flag, struct yt_team *team,
@@ -14326,6 +14333,7 @@ normal_exit_info_team(void *context, struct yt_error *error)
 		normal_exit_info_team_read,
 		normal_exit_info_team_store_id,
 		normal_exit_info_team_store_captain,
+		normal_exit_info_team_promote_cache,
 		normal_exit_info_team_load,
 		normal_exit_info_team_read_overlay,
 		normal_exit_info_team_write_overlay,

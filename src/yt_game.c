@@ -530,15 +530,76 @@ static float projectile_single_add(float left, float right);
 static float projectile_single_sub(float left, float right);
 static float projectile_single_mul(float left, float right);
 
+static void
+team_loader_cache_store_raw(float *value, uint8_t destination[4],
+    const uint8_t source[4])
+{
+	memcpy(destination, source, 4U);
+	*value = qb_mbf32_decode(source);
+}
+
+static void
+team_loader_cache_store_value(float *destination,
+    uint8_t destination_raw[4], float value)
+{
+	uint8_t raw[4];
+
+	if (qb_mbf32_encode(value, raw) != QB_MBF_OK)
+		return;
+	team_loader_cache_store_raw(destination, destination_raw, raw);
+}
+
+void
+yt_team_loader_cache_sync_raw(struct yt_team_loader_cache *cache)
+{
+	size_t index;
+
+	if (cache == NULL)
+		return;
+	if (!cache->raw_valid
+	    || qb_mbf32_decode(cache->available_raw) != cache->available)
+		team_loader_cache_store_value(&cache->available,
+		    cache->available_raw, cache->available);
+	for (index = 0U; index < YT_ARRAY_LEN(cache->roster); ++index) {
+		if (!cache->raw_valid
+		    || qb_mbf32_decode(cache->roster_raw[index])
+		    != cache->roster[index])
+			team_loader_cache_store_value(&cache->roster[index],
+			    cache->roster_raw[index], cache->roster[index]);
+	}
+	if (!cache->raw_valid
+	    || qb_mbf32_decode(cache->captain_raw) != cache->captain)
+		team_loader_cache_store_value(&cache->captain,
+		    cache->captain_raw, cache->captain);
+	if (!cache->raw_valid
+	    || qb_mbf32_decode(cache->captain_flag_raw)
+	    != cache->captain_flag)
+		team_loader_cache_store_value(&cache->captain_flag,
+		    cache->captain_flag_raw, cache->captain_flag);
+	if (!cache->raw_valid
+	    || qb_mbf32_decode(cache->counter_raw) != cache->counter)
+		team_loader_cache_store_value(&cache->counter,
+		    cache->counter_raw, cache->counter);
+	cache->raw_valid = true;
+}
+
 void
 yt_team_loader_begin(float team_id, struct yt_team_loader_cache *cache,
     bool *needs_overlay)
 {
+	static const uint8_t zero[4] = {0x00U, 0x00U, 0x00U, 0x00U};
+	static const uint8_t true_raw[4] = {0x00U, 0x00U, 0x80U, 0x81U};
+	size_t index;
+
 	if (cache == NULL)
 		return;
-	cache->available = -1.0f;
-	memset(cache->roster, 0, sizeof(cache->roster));
-	cache->counter = 5.0f;
+	yt_team_loader_cache_sync_raw(cache);
+	team_loader_cache_store_raw(&cache->available, cache->available_raw,
+	    true_raw);
+	for (index = 0U; index < YT_ARRAY_LEN(cache->roster); ++index)
+		team_loader_cache_store_raw(&cache->roster[index],
+		    cache->roster_raw[index], zero);
+	team_loader_cache_store_value(&cache->counter, cache->counter_raw, 5.0f);
 	if (needs_overlay != NULL)
 		*needs_overlay = team_id >= 1.0f && team_id <= 50.0f;
 }
@@ -552,6 +613,8 @@ yt_team_loader_finish(const struct yt_record *overlay,
 	static const size_t roster_offsets[4] = {
 		YT_F109, YT_F117, YT_F121, YT_F125
 	};
+	static const uint8_t live_zero[4] = {0x00U, 0x00U, 0x48U, 0x00U};
+	static const uint8_t true_raw[4] = {0x00U, 0x00U, 0x80U, 0x81U};
 	float roster[4];
 	bool overflow;
 	int32_t converted_length;
@@ -561,6 +624,7 @@ yt_team_loader_finish(const struct yt_record *overlay,
 
 	if (overlay == NULL || cache == NULL || route == NULL)
 		return false;
+	yt_team_loader_cache_sync_raw(cache);
 	for (index = 0; index < YT_ARRAY_LEN(roster); ++index) {
 		roster[index] = yt_record_get_number(overlay,
 		    roster_offsets[index]);
@@ -572,7 +636,8 @@ yt_team_loader_finish(const struct yt_record *overlay,
 		return true;
 	}
 
-	cache->available = 0.0f;
+	team_loader_cache_store_raw(&cache->available, cache->available_raw,
+	    live_zero);
 	converted_length = qb_cint_mode(
 	    yt_record_get_number(overlay, YT_F73), conversion_mode,
 	    &overflow);
@@ -593,10 +658,15 @@ yt_team_loader_finish(const struct yt_record *overlay,
 	cache->name_length = name_length;
 	memcpy(cache->password, overlay->bytes + YT_F113, 4U);
 	cache->password[4] = '\0';
-	cache->captain = yt_record_get_number(overlay, YT_F77);
+	team_loader_cache_store_raw(&cache->captain, cache->captain_raw,
+	    overlay->bytes + YT_F77);
 	if (cache->captain == current_player)
-		cache->captain_flag = -1.0f;
-	memcpy(cache->roster, roster, sizeof(roster));
+		team_loader_cache_store_raw(&cache->captain_flag,
+		    cache->captain_flag_raw, true_raw);
+	for (index = 0U; index < YT_ARRAY_LEN(cache->roster); ++index)
+		team_loader_cache_store_raw(&cache->roster[index],
+		    cache->roster_raw[index],
+		    overlay->bytes + roster_offsets[index]);
 	*route = YT_TEAM_LOADER_LIVE;
 	return true;
 }
@@ -677,8 +747,12 @@ yt_death_team_remove_run(struct yt_death_team_remove_state *state,
 	for (index = 0U; index < YT_ARRAY_LEN(state->cache->roster);
 	    ++index) {
 		if (state->cache->roster[index]
-		    == (float)state->victim_record)
-			state->cache->roster[index] = 0.0f;
+		    == (float)state->victim_record) {
+			static const uint8_t zero[4] = {0};
+
+			team_loader_cache_store_raw(&state->cache->roster[index],
+			    state->cache->roster_raw[index], zero);
+		}
 	}
 
 	expression = startup_single_add(state->sector_record_offset,
@@ -689,8 +763,8 @@ yt_death_team_remove_run(struct yt_death_team_remove_state *state,
 	    &overlay, error))
 		return false;
 	for (index = 0U; index < YT_ARRAY_LEN(roster_offsets); ++index)
-		(void)yt_record_set_number(&overlay, roster_offsets[index],
-		    state->cache->roster[index]);
+		(void)yt_record_set_raw_number(&overlay, roster_offsets[index],
+		    state->cache->roster_raw[index]);
 	if (!ops->write_record(context, state->overlay_physical_record,
 	    &overlay, error)
 	    || !ops->read_player(context, state->victim_record, &victim,
@@ -742,6 +816,7 @@ yt_info_team_resolver_run(struct yt_info_team_state *state,
 	if (state == NULL || ops == NULL || ops->read_player == NULL
 	    || ops->store_team_id == NULL
 	    || ops->store_captain == NULL
+	    || ops->promote_cache == NULL
 	    || ops->load_team == NULL || ops->read_overlay == NULL
 	    || ops->write_overlay == NULL || ops->present == NULL)
 		return false;
@@ -832,6 +907,7 @@ yt_info_team_resolver_run(struct yt_info_team_state *state,
 		struct yt_sector fresh;
 
 		ops->store_captain(context, state->current_record_raw);
+		ops->promote_cache(context, state->current_record_raw);
 		state->captain_record = qb_mbf32_decode(state->current_record_raw);
 		state->captain_flag = 1.0f;
 		state->current_is_captain = true;

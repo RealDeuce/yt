@@ -400,6 +400,12 @@ struct yt_team_loader_cache {
 	size_t name_length;
 	char password[5];
 	float counter;
+	uint8_t available_raw[4];
+	uint8_t roster_raw[4][4];
+	uint8_t captain_raw[4];
+	uint8_t captain_flag_raw[4];
+	uint8_t counter_raw[4];
+	bool raw_valid;
 };
 struct yt_team_loader_state {
 	float team_id;
@@ -472,6 +478,8 @@ typedef void (*yt_info_team_store_id_fn)(void *context,
     const uint8_t raw[4]);
 typedef void (*yt_info_team_store_captain_fn)(void *context,
     const uint8_t raw[4]);
+typedef void (*yt_info_team_promote_cache_fn)(void *context,
+    const uint8_t current_record_raw[4]);
 typedef bool (*yt_info_team_load_team_fn)(void *context, float team_id,
     float current_record, float *captain_flag, struct yt_team *team,
     struct yt_error *error);
@@ -485,6 +493,7 @@ struct yt_info_team_ops {
 	yt_info_team_read_player_fn read_player;
 	yt_info_team_store_id_fn store_team_id;
 	yt_info_team_store_captain_fn store_captain;
+	yt_info_team_promote_cache_fn promote_cache;
 	yt_info_team_load_team_fn load_team;
 	yt_info_team_read_overlay_fn read_overlay;
 	yt_info_team_write_overlay_fn write_overlay;
@@ -2080,6 +2089,7 @@ bool yt_game_set_player_identity(struct yt_game *game, int basic_record,
     struct yt_error *error);
 void yt_team_loader_begin(float team_id, struct yt_team_loader_cache *cache,
     bool *needs_overlay);
+void yt_team_loader_cache_sync_raw(struct yt_team_loader_cache *cache);
 bool yt_team_loader_finish(const struct yt_record *overlay,
     float current_player, uint8_t conversion_mode,
     struct yt_team_loader_cache *cache, enum yt_team_loader_route *route,
