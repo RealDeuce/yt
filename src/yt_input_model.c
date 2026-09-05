@@ -548,6 +548,7 @@ yt_input_expand_repeat_observed(char *text, size_t text_capacity,
 		return false;
 	result->emit_notice = false;
 	result->count = 0.0f;
+	result->failure = YT_REPEAT_FAILURE_NONE;
 	text_length = strlen(text);
 	for (prefix = 0; prefix + 1U < text_length; ++prefix) {
 		uint8_t next = (uint8_t)text[prefix + 1U];
@@ -565,7 +566,19 @@ yt_input_expand_repeat_observed(char *text, size_t text_capacity,
 	if (prefix + 2U >= text_capacity || prefix + 1U >= sizeof(base))
 		return false;
 	parsed = qb_val(text + prefix + 2U);
+	if (parsed.overflow) {
+		result->failure = YT_REPEAT_FAILURE_VAL_OVERFLOW;
+		return false;
+	}
 	count = (float)qb_int(parsed.valid ? parsed.value : 0.0);
+	{
+		uint8_t count_raw[4];
+
+		if (qb_mbf32_encode(count, count_raw) == QB_MBF_OVERFLOW) {
+			result->failure = YT_REPEAT_FAILURE_SINGLE_OVERFLOW;
+			return false;
+		}
+	}
 	if (!input_process_store_single(store, context, 0x51C4U, count))
 		return false;
 	if (count > 10.0f) {

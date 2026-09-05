@@ -1128,7 +1128,8 @@ test_repeat_transform(void)
 	snprintf(text, sizeof(text), "A/R3");
 	CHECK(yt_input_expand_repeat_observed(text, sizeof(text), saved,
 	    sizeof(saved), &result, input_process_store, &tape));
-	CHECK(result.emit_notice && result.count == 3.0f);
+	CHECK(result.emit_notice && result.count == 3.0f
+	    && result.failure == YT_REPEAT_FAILURE_NONE);
 	CHECK(strcmp(text, "A;A;A") == 0 && strcmp(saved, "A;A;A") == 0);
 	CHECK(tape.count == YT_ARRAY_LEN(expected_address));
 	for (index = 0U; index < tape.count; ++index) {
@@ -1153,6 +1154,7 @@ test_repeat_transform(void)
 	CHECK(yt_input_expand_repeat(text, sizeof(text), saved, sizeof(saved),
 	    &result));
 	CHECK(!result.emit_notice && result.count == 0.0f
+	    && result.failure == YT_REPEAT_FAILURE_NONE
 	    && strcmp(text, "ABC") == 0 && strcmp(saved, "old") == 0);
 
 	snprintf(saved, sizeof(saved), "old");
@@ -1160,7 +1162,41 @@ test_repeat_transform(void)
 	CHECK(yt_input_expand_repeat(text, sizeof(text), saved, sizeof(saved),
 	    &result));
 	CHECK(!result.emit_notice && result.count == 0.0f);
+	CHECK(result.failure == YT_REPEAT_FAILURE_NONE);
 	CHECK(strcmp(text, "A;") == 0 && strcmp(saved, "old") == 0);
+
+	memset(&tape, 0, sizeof(tape));
+	snprintf(saved, sizeof(saved), "old");
+	snprintf(text, sizeof(text), "A/R1E999");
+	CHECK(!yt_input_expand_repeat_observed(text, sizeof(text), saved,
+	    sizeof(saved), &result, input_process_store, &tape));
+	CHECK(!result.emit_notice && result.count == 0.0f
+	    && result.failure == YT_REPEAT_FAILURE_VAL_OVERFLOW);
+	CHECK(strcmp(text, "A/R1E999") == 0 && strcmp(saved, "old") == 0);
+	CHECK(tape.count == 1U && tape.address[0] == 0x51C4U);
+	{
+		uint8_t expected_raw[4];
+
+		CHECK(qb_mbf32_encode(2.0f, expected_raw) == QB_MBF_OK);
+		CHECK(memcmp(tape.raw[0], expected_raw, sizeof(expected_raw)) == 0);
+	}
+
+	memset(&tape, 0, sizeof(tape));
+	snprintf(saved, sizeof(saved), "old");
+	snprintf(text, sizeof(text), "A/R1.7014118E38");
+	CHECK(!yt_input_expand_repeat_observed(text, sizeof(text), saved,
+	    sizeof(saved), &result, input_process_store, &tape));
+	CHECK(!result.emit_notice && result.count == 0.0f
+	    && result.failure == YT_REPEAT_FAILURE_SINGLE_OVERFLOW);
+	CHECK(strcmp(text, "A/R1.7014118E38") == 0
+	    && strcmp(saved, "old") == 0);
+	CHECK(tape.count == 1U && tape.address[0] == 0x51C4U);
+	{
+		uint8_t expected_raw[4];
+
+		CHECK(qb_mbf32_encode(2.0f, expected_raw) == QB_MBF_OK);
+		CHECK(memcmp(tape.raw[0], expected_raw, sizeof(expected_raw)) == 0);
+	}
 
 	snprintf(text, sizeof(text), "A/R-.1");
 	CHECK(yt_input_expand_repeat(text, sizeof(text), saved, sizeof(saved),

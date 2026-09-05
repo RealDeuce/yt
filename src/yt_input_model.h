@@ -56,9 +56,16 @@ struct yt_b05d_key_state {
 	size_t pager_key_capacity;
 };
 
+enum yt_repeat_failure {
+	YT_REPEAT_FAILURE_NONE,
+	YT_REPEAT_FAILURE_VAL_OVERFLOW,
+	YT_REPEAT_FAILURE_SINGLE_OVERFLOW,
+};
+
 struct yt_repeat_transform {
 	bool emit_notice;
 	float count;
+	enum yt_repeat_failure failure;
 };
 
 enum yt_yes_no_answer {
