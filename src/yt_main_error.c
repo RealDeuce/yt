@@ -93,6 +93,14 @@ static const struct yt_basic_fault_identity basic_faults[] = {
 	    0x35C9U, 35450, RETURNING_GET_ERRORS, 4U),
 	SHARED_FAULT("constructor player PUT", 0x36DEU, 0x36E1U,
 	    0x36D3U, 35450, RETURNING_PUT_ERRORS, 5U),
+	MAIN_FAULT("new-player identity GET", 0x064BU, 0x064EU, 0x0640U,
+	    11120, RETURNING_GET_ERRORS, 4U),
+	MAIN_FAULT("new-player identity PUT", 0x0683U, 0x0686U, 0x0678U,
+	    11120, RETURNING_PUT_ERRORS, 5U),
+	MAIN_FAULT("post-login sector repair PUT", 0x0764U, 0x0767U,
+	    0x0759U, 19000, RETURNING_PUT_ERRORS, 5U),
+	MAIN_FAULT("post-login cargo repair PUT", 0x07B9U, 0x07BCU,
+	    0x07AEU, 19100, RETURNING_PUT_ERRORS, 5U),
 };
 
 _Static_assert(YT_ARRAY_LEN(basic_faults) == YT_BASIC_FAULT_SITE_COUNT,

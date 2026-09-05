@@ -23700,12 +23700,15 @@ check_post_login_repairs(void)
 {
 	static const uint8_t tail[YT_RECORD_TAIL_SIZE] =
 	    {0x10, 0x32, 0x54, 0x76};
+	static const uint8_t one_raw[4] = {0x00, 0x00, 0x00, 0x81};
+	static const uint8_t zero_raw[4] = {0x00, 0x00, 0x00, 0x00};
 	struct yt_game game;
 	struct yt_record record;
 	struct yt_player player;
 	struct yt_player durable;
 	struct yt_post_login_repairs repairs;
 	struct yt_error error;
+	uint8_t maximum_raw[4];
 	bool valid = false;
 
 	remove("REPAIRS.DAT");
@@ -23717,45 +23720,57 @@ check_post_login_repairs(void)
 	yt_record_blank(&record);
 	yt_record_set_text(&record, (const uint8_t *)"Repair Pilot", 12);
 	yt_record_set_number(&record, YT_F49, 0.0f);
+	yt_record_set_number(&record, YT_F57, 0.0f);
 	yt_record_set_number(&record, YT_F65, 21.0f);
 	yt_record_set_number(&record, YT_F69, 3.0f);
 	yt_record_set_number(&record, YT_F73, 4.0f);
 	yt_record_set_number(&record, YT_F77, 5.0f);
 	yt_record_set_number(&record, YT_F109, 88.0f);
 	memcpy(record.bytes + YT_RECORD_TAIL_OFFSET, tail, sizeof(tail));
-	if (!yt_database_write(&game.database, 2, &record, &error)
+	if (qb_mbf32_encode(20.0f, maximum_raw) != QB_MBF_OK
+	    || !yt_database_write(&game.database, 2, &record, &error)
 	    || !yt_database_flush(&game.database, &error)
-	    || !yt_game_post_login_repairs(&game, 2, 20.0f, &player,
+	    || !yt_game_post_login_repairs(&game, 2, one_raw, zero_raw,
+	    maximum_raw, &player,
 	    &repairs, &error)
-	    || !repairs.turns || !repairs.holds || repairs.writes != 2U
-	    || player.turns != 1.0f || player.holds != 20.0f
+	    || !repairs.sector || !repairs.holds || repairs.writes != 2U
+	    || player.sector != 1.0f || player.turns != 0.0f
+	    || player.holds != 20.0f
 	    || player.ore != 0.0f || player.organics != 0.0f
 	    || player.equipment != 20.0f
 	    || !yt_game_read_player(&game, 2, &durable, &error)
-	    || durable.turns != 1.0f || durable.holds != 20.0f
+	    || durable.sector != 1.0f || durable.turns != 0.0f
+	    || durable.holds != 20.0f
 	    || durable.ore != 0.0f || durable.organics != 0.0f
 	    || durable.equipment != 20.0f || durable.score != 88.0f
+	    || memcmp(durable.record.bytes + YT_F57, one_raw, 4U) != 0
+	    || memcmp(durable.record.bytes + YT_F69, zero_raw, 4U) != 0
+	    || memcmp(durable.record.bytes + YT_F73, zero_raw, 4U) != 0
+	    || memcmp(durable.record.bytes + YT_F77, maximum_raw, 4U) != 0
+	    || memcmp(durable.record.bytes + YT_F65, maximum_raw, 4U) != 0
 	    || strcmp(durable.name, "Repair Pilot") != 0
 	    || memcmp(durable.record.bytes + YT_RECORD_TAIL_OFFSET, tail,
 	    sizeof(tail)) != 0)
 		goto close;
 
-	player.turns = 0.99999999f;
+	player.sector = 0.99999999f;
 	player.holds = 20.0000001f;
 	player.ore = 3.00000001f;
 	player.organics = 4.00000001f;
 	player.equipment = 5.00000001f;
 	if (!yt_game_write_player(&game, 2, &player, &error)
 	    || !yt_database_flush(&game.database, &error)
-	    || !yt_game_post_login_repairs(&game, 2, 20.00000001f, &player,
+	    || qb_mbf32_encode(20.00000001f, maximum_raw) != QB_MBF_OK
+	    || !yt_game_post_login_repairs(&game, 2, one_raw, zero_raw,
+	    maximum_raw, &player,
 	    &repairs, &error)
-	    || repairs.turns || repairs.holds || repairs.writes != 0U
-	    || player.turns != 1.0f || player.holds != 20.0f
+	    || repairs.sector || repairs.holds || repairs.writes != 0U
+	    || player.sector != 1.0f || player.holds != 20.0f
 	    || player.ore != 3.0f || player.organics != 4.0f
 	    || player.equipment != 5.0f)
 		goto close;
 
-	player.turns = 0.0f;
+	player.sector = 0.0f;
 	player.holds = 21.0f;
 	if (!yt_game_write_player(&game, 2, &player, &error)
 	    || !yt_database_flush(&game.database, &error))
@@ -23765,18 +23780,20 @@ check_post_login_repairs(void)
 	    &error))
 		goto done;
 	yt_error_clear(&error);
-	if (yt_game_post_login_repairs(&game, 2, 20.0f, &player, &repairs,
+	if (qb_mbf32_encode(20.0f, maximum_raw) != QB_MBF_OK
+	    || yt_game_post_login_repairs(&game, 2, one_raw, zero_raw,
+	    maximum_raw, &player, &repairs,
 	    &error) || error.status != YT_IO_ERROR
 	    || strcmp(error.operation, "write record") != 0
-	    || !repairs.turns || repairs.holds || repairs.writes != 0U
-	    || player.turns != 1.0f || player.holds != 21.0f)
+	    || !repairs.sector || repairs.holds || repairs.writes != 0U
+	    || player.sector != 1.0f || player.holds != 21.0f)
 		goto close;
 
 	yt_database_close(&game.database);
 	if (!yt_database_open(&game.database, "REPAIRS.DAT", YT_OPEN_UPDATE,
 	    &error) || !yt_game_read_player(&game, 2, &player, &error))
 		goto done;
-	player.turns = 1.0f;
+	player.sector = 1.0f;
 	player.holds = 21.0f;
 	if (!yt_game_write_player(&game, 2, &player, &error)
 	    || !yt_database_flush(&game.database, &error))
@@ -23786,11 +23803,12 @@ check_post_login_repairs(void)
 	    &error))
 		goto done;
 	yt_error_clear(&error);
-	if (yt_game_post_login_repairs(&game, 2, 20.0f, &player, &repairs,
+	if (yt_game_post_login_repairs(&game, 2, one_raw, zero_raw,
+	    maximum_raw, &player, &repairs,
 	    &error) || error.status != YT_IO_ERROR
 	    || strcmp(error.operation, "write record") != 0
-	    || repairs.turns || !repairs.holds || repairs.writes != 0U
-	    || player.turns != 1.0f || player.holds != 20.0f
+	    || repairs.sector || !repairs.holds || repairs.writes != 0U
+	    || player.sector != 1.0f || player.holds != 20.0f
 	    || player.ore != 0.0f || player.organics != 0.0f
 	    || player.equipment != 20.0f
 	    || !yt_game_read_player(&game, 2, &durable, &error)

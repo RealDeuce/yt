@@ -8,66 +8,6 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
-### DOC-GAP-025: new-player identity GET/PUT error projection
-
-Affected coverage:
-
-- the fresh selected-player `GET #1,record` in `YT:063D..0686` after the
-  constructor returns; and
-- the final identity `PUT #1,record` after the name, stored length, and team
-  FIELD overlays.
-
-The completed `docs/runtime/startup-identity-world.md` and generated
-`ytstartup-identity-world.static.txt` pin the successful operation order,
-exact raw FIELD image, physical random-I/O prefixes, and the generic
-`BRUN:A08`/`BRUN:CA62` successors. They do not identify either operation's
-exact instruction and saved IP, current statement, active handler, ERL, or
-the main/shared error-router disposition for each reachable BASIC error.
-Those facts cannot safely be inherited from the preceding constructor: the
-identity writeback executes in the main YT module after the constructor's
-native return, while the constructor executes under its own YT-SUB frame and
-shared `45F7` handler.
-
-The native `yt_game_set_player_identity()` already preserves the fresh GET,
-three unconditional raw overlays, completed pre-PUT image, and physical
-write failure. Its live `admit_player()` caller still returns either file
-failure as an unclassified host error. Upstream documentation, generated
-evidence, and focused router fixtures must supply both identities, admitted
-error domains, retry/resume/terminal behavior, and retained caller state
-before those failures can be connected to the native BASIC error router. No
-binary inspection or new reverse engineering was performed.
-
-### DOC-GAP-024: post-login repair raw FIELD sources
-
-Affected coverage:
-
-- exact raw player FIELD mutation at `YT:073F..0767` when turns are below
-  one; and
-- exact raw ore, organics, equipment and capacity overlays at
-  `YT:0768..07BC` when capacity exceeds the validated maximum.
-
-The completed `docs/runtime/post-login-output.md` and
-`docs/runtime/startup-login.md` establish both predicates, the assignment
-order, the intervening fresh A41C hydration, and the independent PUTs. Their
-semantic model normalizes all values to MBF32 but does not identify the exact
-four-byte source read by any of the six assignments. In particular, it does
-not establish whether repaired one/zero values come from already named
-canonical literals or distinct dirty-zero aliases, nor whether the two
-maximum assignments copy the validated process cell byte-for-byte or
-re-encode its numeric value.
-
-That omission is observable when an assigned destination is already
-numerically equal but has different MBF32 bytes. The native
-`yt_game_post_login_repairs()` currently writes through the generic
-encode-if-changed player serializer, so such a destination survives. Changing
-it to any guessed canonical encoding would make an unsupported raw-state
-claim. Upstream documentation, the canonical raw world model, generated
-evidence and focused dirty-equal/failure-prefix fixtures must identify all six
-source cells/bytes and their completed FIELD image before this transaction can
-be made exact. Until then the numeric repair behavior and two-PUT ordering
-remain implemented, while raw overlay fidelity at this boundary is blocked.
-No binary inspection or new reverse engineering was performed.
-
 ### DOC-GAP-023: current-sector scanner cloak-clear raw value
 
 Affected coverage:
@@ -324,6 +264,26 @@ those identities. No binary inspection or new reverse engineering was
 performed.
 
 ## Resolved documentation gaps
+
+### DOC-GAP-025: new-player identity GET/PUT error projection
+
+Resolved upstream by commit `0c2f8ccf`. The selected-player GET is
+`064B/064E`, retries statement `0640`, and has ERL 11120; the identity PUT is
+`0683/0686`, retries statement `0678`, and has the same ERL. Both run under
+main handler `B2DA`; GET admits ERR 52/57/70/75 and PUT additionally admits
+ERR 61. ERR 57 retries only the named I/O statement, while every other
+admitted error takes the main terminal route over the documented retained
+FIELD and physical-I/O prefix.
+
+### DOC-GAP-024: post-login repair raw FIELD sources
+
+Resolved upstream by commit `0c2f8ccf`. The first predicate is cached current
+sector below raw one—not turns below one—and its sole assignment copies
+`DS:628A` byte-for-byte to player FIELD offset 57. The cargo repair copies
+canonical zero `DS:62F4` to offsets 69 and 73, then independently copies live
+maximum-holds `DS:19E8` to offsets 77 and 65. The two PUT identities,
+ERR domains, retry statements, retained dirty FIELD images, and physical
+failure prefixes are now pinned.
 
 ### DOC-GAP-013: command-5 fractional TEAM target
 

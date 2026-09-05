@@ -4285,6 +4285,14 @@ test_basic_fault_registry(void)
 		    0x45F7U, 3U},
 		{YT_BASIC_FAULT_SHARED, 0x36DEU, 0x36E1U, 0x36D3U, 35450,
 		    0x45F7U, 4U},
+		{YT_BASIC_FAULT_MAIN, 0x064BU, 0x064EU, 0x0640U, 11120,
+		    0xB2DAU, 3U},
+		{YT_BASIC_FAULT_MAIN, 0x0683U, 0x0686U, 0x0678U, 11120,
+		    0xB2DAU, 4U},
+		{YT_BASIC_FAULT_MAIN, 0x0764U, 0x0767U, 0x0759U, 19000,
+		    0xB2DAU, 4U},
+		{YT_BASIC_FAULT_MAIN, 0x07B9U, 0x07BCU, 0x07AEU, 19100,
+		    0xB2DAU, 4U},
 	};
 	struct yt_error error;
 	size_t index;

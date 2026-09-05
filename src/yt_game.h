@@ -328,7 +328,7 @@ bool yt_xannor_victory_run(struct yt_xannor_victory_state *state,
 	struct yt_error *error);
 
 struct yt_post_login_repairs {
-	bool turns;
+	bool sector;
 	bool holds;
 	unsigned writes;
 };
@@ -2085,8 +2085,9 @@ bool yt_team_loader_finish(const struct yt_record *overlay,
     struct yt_team_loader_cache *cache, enum yt_team_loader_route *route,
     struct yt_error *error);
 bool yt_game_post_login_repairs(struct yt_game *game, int basic_record,
-    float maximum_holds, struct yt_player *player,
-    struct yt_post_login_repairs *repairs, struct yt_error *error);
+	const uint8_t one_raw[4], const uint8_t zero_raw[4],
+	const uint8_t maximum_holds_raw[4], struct yt_player *player,
+	struct yt_post_login_repairs *repairs, struct yt_error *error);
 bool yt_sector_force_route(float fighters, float owner,
     int current_player_record, enum yt_sector_force_route *route,
     int *owner_record, struct yt_error *error);

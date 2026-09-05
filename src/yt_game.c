@@ -3476,19 +3476,30 @@ yt_returning_self_denial_run(struct yt_returning_denial_state *state,
 
 bool
 yt_game_post_login_repairs(struct yt_game *game, int basic_record,
-    float maximum_holds, struct yt_player *player,
+    const uint8_t one_raw[4], const uint8_t zero_raw[4],
+    const uint8_t maximum_holds_raw[4], struct yt_player *player,
     struct yt_post_login_repairs *repairs, struct yt_error *error)
 {
 	struct yt_post_login_repairs applied = {false, false, 0};
+	struct yt_record repaired;
+	float maximum_holds;
 
 	if (repairs != NULL)
 		*repairs = applied;
+	if (game == NULL || one_raw == NULL || zero_raw == NULL
+	    || maximum_holds_raw == NULL || player == NULL)
+		return false;
+	maximum_holds = qb_mbf32_decode(maximum_holds_raw);
 	if (!yt_game_read_player(game, basic_record, player, error))
 		return false;
-	if (player->turns < 1.0f) {
-		player->turns = 1.0f;
-		applied.turns = true;
-		if (!yt_game_write_player(game, basic_record, player, error)
+	if (qb_mbf32_decode(player->record.bytes + YT_F57)
+	    < qb_mbf32_decode(one_raw)) {
+		repaired = player->record;
+		(void)yt_record_set_raw_number(&repaired, YT_F57, one_raw);
+		yt_player_decode(player, &repaired);
+		applied.sector = true;
+		if (!yt_database_write(&game->database, (size_t)basic_record,
+		    &repaired, error)
 		    || !yt_database_flush(&game->database, error)) {
 			if (repairs != NULL)
 				*repairs = applied;
@@ -3501,13 +3512,18 @@ yt_game_post_login_repairs(struct yt_game *game, int basic_record,
 			*repairs = applied;
 		return false;
 	}
-	if (player->holds > maximum_holds) {
-		player->ore = 0.0f;
-		player->organics = 0.0f;
-		player->equipment = maximum_holds;
-		player->holds = maximum_holds;
+	if ((double)player->holds > (double)maximum_holds) {
+		repaired = player->record;
+		(void)yt_record_set_raw_number(&repaired, YT_F69, zero_raw);
+		(void)yt_record_set_raw_number(&repaired, YT_F73, zero_raw);
+		(void)yt_record_set_raw_number(&repaired, YT_F77,
+		    maximum_holds_raw);
+		(void)yt_record_set_raw_number(&repaired, YT_F65,
+		    maximum_holds_raw);
+		yt_player_decode(player, &repaired);
 		applied.holds = true;
-		if (!yt_game_write_player(game, basic_record, player, error)
+		if (!yt_database_write(&game->database, (size_t)basic_record,
+		    &repaired, error)
 		    || !yt_database_flush(&game->database, error)) {
 			if (repairs != NULL)
 				*repairs = applied;

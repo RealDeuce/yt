@@ -127,6 +127,7 @@
 #define YT_HOSTILE_ATTACK_QUANTUM_ADDRESS 0x4D32U
 #define YT_STATIC_DOUBLE_ZERO_ADDRESS 0x66D6U
 #define YT_STATIC_SINGLE_ZERO_ADDRESS 0x62F4U
+#define YT_STATIC_SINGLE_ONE_ADDRESS 0x628AU
 #define YT_SESSION_DEADLINE_ADDRESS 0x4BB4U
 #define YT_SESSION_MODE_ADDRESS 0x19C8U
 #define YT_ANSI_ADDRESS 0x19A8U
@@ -1302,7 +1303,6 @@ reload_player(struct yt_session *session, struct yt_error *error)
 	if (!yt_current_player_hydrate_run(&state,
 	    session_hydration_read_player, session, error))
 		return false;
-	session_set_current_sector_record(session, current_sector_record);
 	return true;
 }
 
@@ -1348,8 +1348,6 @@ mutate_player_credits_observed(struct yt_session *session, float argument,
 	    YT_ANTI_CLOAK_ADDRESS, state.hydration.anti_cloak_raw);
 	state.argument = argument;
 	result = yt_credit_mutation_run(&state, &ops, session, error);
-	if (state.hydrated)
-		session_set_current_sector_record(session, current_sector_record);
 	if (hydrated != NULL)
 		*hydrated = state.hydrated;
 	return result;
@@ -2085,6 +2083,27 @@ session_route_basic_fault(struct yt_session *session, struct yt_error *error)
 	session->terminated = true;
 	yt_error_clear(error);
 	return SESSION_FAULT_ENDED;
+}
+
+static bool
+session_handle_gameplay_fault(struct yt_session *session,
+    struct yt_error *error, bool *resume_gameplay)
+{
+	enum session_fault_disposition disposition;
+
+	if (resume_gameplay == NULL)
+		return false;
+	*resume_gameplay = false;
+	if (session->terminated)
+		return true;
+	disposition = session_route_basic_fault(session, error);
+	if (disposition == SESSION_FAULT_ENDED)
+		return true;
+	if (disposition != SESSION_FAULT_RESUME_GAMEPLAY)
+		return false;
+	yt_error_clear(error);
+	*resume_gameplay = true;
+	return true;
 }
 
 static bool
@@ -3732,6 +3751,43 @@ construct_player_visible(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
+set_new_player_identity(struct yt_session *session, int player_record,
+    const uint8_t *name, size_t length, struct yt_error *error)
+{
+	struct yt_player player;
+	struct yt_record identity;
+	uint8_t length_raw[4];
+	uint8_t zero_raw[4];
+
+	if (name == NULL && length != 0U)
+		return false;
+	if (!read_player_at_fault(session, player_record, &player,
+	    YT_BASIC_FAULT_IDENTITY_PLAYER_GET, error)) {
+		if (error != NULL && error->basic_fault_valid)
+			(void)session_route_basic_fault(session, error);
+		return false;
+	}
+	identity = player.record;
+	yt_record_set_text(&identity, name, length);
+	if (qb_mbf32_encode((float)length, length_raw) != QB_MBF_OK)
+		return false;
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_NUMERIC_TEMP_SINGLE_ADDRESS, length_raw);
+	(void)yt_record_set_raw_number(&identity, YT_F85, length_raw);
+	yt_route_process_raw_single(&session->route_process,
+	    YT_STATIC_SINGLE_ZERO_ADDRESS, zero_raw);
+	(void)yt_record_set_raw_number(&identity, YT_F89, zero_raw);
+	yt_player_decode(&session->player, &identity);
+	if (!write_database_record_at_fault(session, (uint32_t)player_record,
+	    &identity, YT_BASIC_FAULT_IDENTITY_PLAYER_PUT, error)) {
+		if (error != NULL && error->basic_fault_valid)
+			(void)session_route_basic_fault(session, error);
+		return false;
+	}
+	return true;
+}
+
+static bool
 instruction_offer(struct yt_session *session, struct yt_error *error)
 {
 	static const uint8_t prompt[] =
@@ -3967,12 +4023,11 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 				return false;
 		}
 		if (!construct_player_visible(session, error)
-		    || !yt_game_set_player_identity(&session->door->game, vacant,
-		    (const uint8_t *)full, strlen(full), &session->player, error)
+		    || !set_new_player_identity(session, vacant,
+		    (const uint8_t *)full, strlen(full), error)
 		    || !yt_player_stored_name(&session->player,
 		    session->cached_player_name,
-		    &session->cached_player_name_length, error)
-		    || !yt_database_flush(&session->door->game.database, error))
+		    &session->cached_player_name_length, error))
 			return false;
 		if (!yt_platform_clock(&now, error))
 			return false;
@@ -4373,16 +4428,53 @@ post_login(struct yt_session *session, struct yt_error *error)
 		0x00, 0x00, 0x46, 0x87,
 	};
 	static const uint8_t radio_mode_zero[4] = {0x1f, 0x4e, 0x46, 0x00};
-	static const uint8_t scanner_mode_zero[4] = {0x00, 0x00, 0x46, 0x00};
 	char real_name[258];
 	struct yt_present_result presentation;
 	enum yt_present_status status;
 
-	if (!yt_game_post_login_repairs(&session->door->game,
-	    session_record(session), yt_route_process_single(
-	    &session->route_process, YT_MAXIMUM_HOLDS_ADDRESS),
-	    &session->player, NULL, error))
-		return false;
+	{
+		struct yt_record repaired;
+		uint8_t one_raw[4];
+		uint8_t zero_raw[4];
+		uint8_t maximum_raw[4];
+
+		if (!reload_player(session, error))
+			return false;
+		yt_route_process_raw_single(&session->route_process,
+		    YT_STATIC_SINGLE_ONE_ADDRESS, one_raw);
+		if (yt_route_process_single(&session->route_process,
+		    YT_CURRENT_SECTOR_ADDRESS) < qb_mbf32_decode(one_raw)) {
+			repaired = session->player.record;
+			(void)yt_record_set_raw_number(&repaired, YT_F57, one_raw);
+			yt_player_decode(&session->player, &repaired);
+			if (!write_database_record_at_fault(session,
+			    (uint32_t)session_record(session), &repaired,
+			    YT_BASIC_FAULT_POST_LOGIN_SECTOR_PUT, error))
+				return false;
+		}
+		if (!reload_player(session, error))
+			return false;
+		yt_route_process_raw_single(&session->route_process,
+		    YT_STATIC_SINGLE_ZERO_ADDRESS, zero_raw);
+		yt_route_process_raw_single(&session->route_process,
+		    YT_MAXIMUM_HOLDS_ADDRESS, maximum_raw);
+		if (yt_route_process_double(&session->route_process,
+		    YT_CURRENT_PLAYER_HOLDS_ADDRESS)
+		    > (double)qb_mbf32_decode(maximum_raw)) {
+			repaired = session->player.record;
+			(void)yt_record_set_raw_number(&repaired, YT_F69, zero_raw);
+			(void)yt_record_set_raw_number(&repaired, YT_F73, zero_raw);
+			(void)yt_record_set_raw_number(&repaired, YT_F77,
+			    maximum_raw);
+			(void)yt_record_set_raw_number(&repaired, YT_F65,
+			    maximum_raw);
+			yt_player_decode(&session->player, &repaired);
+			if (!write_database_record_at_fault(session,
+			    (uint32_t)session_record(session), &repaired,
+			    YT_BASIC_FAULT_POST_LOGIN_CARGO_PUT, error))
+				return false;
+		}
+	}
 	(void)snprintf(real_name, sizeof(real_name), "%s %s",
 	    session->door->identity.real_first,
 	    session->door->identity.real_last);
@@ -4425,8 +4517,6 @@ post_login(struct yt_session *session, struct yt_error *error)
 	if (!radio_read(session, yt_route_process_single(&session->route_process,
 	    YT_POST_LOGIN_RADIO_MODE_ADDRESS), error))
 		return false;
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_POST_LOGIN_SCANNER_MODE_ADDRESS, scanner_mode_zero);
 	return true;
 }
 
@@ -8305,8 +8395,7 @@ session_quit_confirm(struct yt_session *session, bool *confirmed,
 }
 
 static bool
-sector_entry(struct yt_session *session, float scanner_mode,
-    struct yt_error *error)
+sector_entry(struct yt_session *session, struct yt_error *error)
 {
 	static const uint8_t hostile_warning[] =
 	    "You have to defeat the fighters before you can enter this sector.";
@@ -8316,8 +8405,14 @@ sector_entry(struct yt_session *session, float scanner_mode,
 	for (;;) {
 		struct yt_sector sector;
 		bool friendly;
+		uint8_t scanner_mode_raw[4];
 
-		if (!display_sector(session, scanner_mode != 0.0f, error)
+		yt_route_process_raw_single(&session->route_process,
+		    YT_POST_LOGIN_SCANNER_MODE_ADDRESS, scanner_mode_raw);
+		yt_route_process_set_raw_single(&session->route_process,
+		    YT_COMPUTER_ROUTE_STATUS_ADDRESS, scanner_mode_raw);
+		if (!display_sector(session,
+		    qb_mbf32_truth(scanner_mode_raw), error)
 		    || !reload_player(session, error))
 			return false;
 		if (session_is_disruption_sector(session,
@@ -20049,7 +20144,7 @@ command_shell(struct yt_session *session, struct yt_error *error)
 			break;
 		}
 		if (enter_sector && session->running && !session_is_destroyed(session)
-		    && !sector_entry(session, 0.0f, error))
+		    && !sector_entry(session, error))
 			return false;
 	}
 	return true;
@@ -20064,6 +20159,9 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	struct yt_random launch_random;
 	float market_base[3];
 	uint8_t mode_raw[4];
+	static const uint8_t static_one[4] = {0x00, 0x00, 0x00, 0x81};
+	static const uint8_t scanner_mode_zero[4] = {0x00, 0x00, 0x46, 0x00};
+	bool resume_gameplay = false;
 	char first[128];
 	char last[128];
 
@@ -20113,6 +20211,10 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	yt_route_process_set_raw_single(&session.route_process,
 	    YT_STARTUP_INITIAL_FIVE_ADDRESS,
 	    session.startup_prefix.initial_five);
+	yt_route_process_set_raw_single(&session.route_process,
+	    YT_STATIC_SINGLE_ONE_ADDRESS, static_one);
+	yt_route_process_set_raw_single(&session.route_process,
+	    YT_POST_LOGIN_SCANNER_MODE_ADDRESS, scanner_mode_zero);
 	/* YT:040A is the ordinary instruction after the handed-off checkpoint. */
 	session_set_pager_nonstop(&session, 1.0f);
 	if (door->identity.ansi
@@ -20174,21 +20276,23 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 		return session.terminated;
 	if (!session.running)
 		return true;
-	if (!post_login(&session, error)
-	    || !sector_entry(&session, yt_route_process_single(
-	    &session.route_process, YT_POST_LOGIN_SCANNER_MODE_ADDRESS), error))
-		return session.terminated;
+	if (!post_login(&session, error)) {
+		if (!session_handle_gameplay_fault(&session, error,
+		    &resume_gameplay))
+			return false;
+	}
+	else if (!sector_entry(&session, error)) {
+		if (!session_handle_gameplay_fault(&session, error,
+		    &resume_gameplay))
+			return false;
+	}
 	if (session.terminated)
 		return true;
 	if (!session_is_destroyed(&session) && session.running) {
-		bool resume_gameplay = false;
-
 		for (;;) {
 			bool completed = resume_gameplay
-			    ? sector_entry(&session, 0.0f, error)
+			    ? sector_entry(&session, error)
 			    : command_shell(&session, error);
-			enum session_fault_disposition disposition;
-
 			if (completed) {
 				if (!resume_gameplay)
 					break;
@@ -20197,15 +20301,11 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 					break;
 				continue;
 			}
+			if (!session_handle_gameplay_fault(&session, error,
+			    &resume_gameplay))
+				return false;
 			if (session.terminated)
 				return true;
-			disposition = session_route_basic_fault(&session, error);
-			if (disposition == SESSION_FAULT_ENDED)
-				return true;
-			if (disposition != SESSION_FAULT_RESUME_GAMEPLAY)
-				return false;
-			yt_error_clear(error);
-			resume_gameplay = true;
 		}
 	}
 	if (session_is_destroyed(&session) && !session.fatal_wait_complete) {
