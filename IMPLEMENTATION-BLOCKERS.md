@@ -8,6 +8,35 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
+### DOC-GAP-025: new-player identity GET/PUT error projection
+
+Affected coverage:
+
+- the fresh selected-player `GET #1,record` in `YT:063D..0686` after the
+  constructor returns; and
+- the final identity `PUT #1,record` after the name, stored length, and team
+  FIELD overlays.
+
+The completed `docs/runtime/startup-identity-world.md` and generated
+`ytstartup-identity-world.static.txt` pin the successful operation order,
+exact raw FIELD image, physical random-I/O prefixes, and the generic
+`BRUN:A08`/`BRUN:CA62` successors. They do not identify either operation's
+exact instruction and saved IP, current statement, active handler, ERL, or
+the main/shared error-router disposition for each reachable BASIC error.
+Those facts cannot safely be inherited from the preceding constructor: the
+identity writeback executes in the main YT module after the constructor's
+native return, while the constructor executes under its own YT-SUB frame and
+shared `45F7` handler.
+
+The native `yt_game_set_player_identity()` already preserves the fresh GET,
+three unconditional raw overlays, completed pre-PUT image, and physical
+write failure. Its live `admit_player()` caller still returns either file
+failure as an unclassified host error. Upstream documentation, generated
+evidence, and focused router fixtures must supply both identities, admitted
+error domains, retry/resume/terminal behavior, and retained caller state
+before those failures can be connected to the native BASIC error router. No
+binary inspection or new reverse engineering was performed.
+
 ### DOC-GAP-024: post-login repair raw FIELD sources
 
 Affected coverage:
