@@ -8,6 +8,31 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
+### DOC-GAP-026: ADE0 repeat-overflow current-statement identities
+
+Affected coverage:
+
+- the `YT:AEBF` repeat-count `VAL` overflow; and
+- the `YT:AEC8` repeat-count conversion-to-SINGLE overflow.
+
+The completed `docs/runtime/f8-b05d-first-fault.md`, generated
+`ytade0-fault-output.static.txt`, and canonical ADE0 model pin ERR 6 at both
+sites, saved IPs `AEC2` and `AECB`, ERL 36000, active main handler `YT:B2DA`,
+the committed ADE0 scratch/effect prefix, abandonment of suspended F8-family
+frames, and the nonlocal `RESUME 081F` outcome. They do not publish the exact
+current-statement token address for either fault.
+
+That address is part of the native BASIC fault identity and retained runtime
+carrier even though these ERR-6 cases resume gameplay rather than retrying the
+faulting statement. The upstream validation model derives it internally from
+executable statement metadata, but the value is not exposed by the completed
+documentation or generated artifact and therefore cannot be copied into the
+implementation without original analysis. Upstream documentation and
+generated evidence must name both current-statement addresses. Until then the
+native postprocessor preserves its existing typed overflow result and does not
+register these two fault sites. No binary inspection or new reverse
+engineering was performed.
+
 ### DOC-GAP-023: current-sector scanner cloak-clear raw value
 
 Affected coverage:
