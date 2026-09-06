@@ -27468,6 +27468,7 @@ struct direct_warp_attack_combat_join {
 	struct yt_sector cached_sector;
 	struct yt_player attack_player;
 	struct yt_player return_player;
+	struct yt_player post_loss_player;
 	struct yt_player persistence_player;
 	struct yt_player written_player;
 	struct yt_player cached_player;
@@ -27560,10 +27561,11 @@ direct_warp_attack_combat_a41c_source(void *context, int player_record,
 	(void)error;
 	if (player_record != 2 || player == NULL)
 		return false;
-	if (join->a41c_reads > 1U)
+	if (join->a41c_reads > 2U)
 		return false;
-	*player = join->a41c_reads == 0U
-	    ? join->attack_player : join->return_player;
+	*player = join->a41c_reads == 0U ? join->attack_player
+	    : join->a41c_reads == 1U ? join->return_player
+	    : join->post_loss_player;
 	++join->a41c_reads;
 	++join->cycle->fresh_hostile_player_reads;
 	join->cycle->final_field_record = 2;
@@ -28232,7 +28234,8 @@ direct_warp_attack_surrender_join_run(
     struct hostile_mines_hazard_fixture *fixture,
     struct direct_warp_main_cycle_state *cycle,
     struct direct_warp_attack_combat_join *join,
-    struct yt_hostile_attack_combat_state *combat, struct yt_error *error)
+    struct yt_hostile_attack_combat_state *combat,
+    enum yt_hostile_surrender_answer answer, struct yt_error *error)
 {
 	struct yt_record record;
 
@@ -28241,7 +28244,7 @@ direct_warp_attack_surrender_join_run(
 	join->cycle = cycle;
 	join->current_sector_record = 1054.0f;
 	join->sector_record_offset = 51.0f;
-	join->surrender_answer = YT_HOSTILE_SURRENDER_ANSWER_YES;
+	join->surrender_answer = answer;
 	memset(&record, 0x3c, sizeof(record));
 	(void)yt_record_set_number(&record, YT_F81, 1.0f);
 	(void)yt_record_set_number(&record, YT_F85, 2.0f);
@@ -28255,6 +28258,10 @@ direct_warp_attack_surrender_join_run(
 	(void)yt_record_set_number(&record, YT_F125, 0.0f);
 	yt_player_decode(&join->attack_player, &record);
 	join->return_player = join->attack_player;
+	join->post_loss_player = join->attack_player;
+	join->post_loss_player.fighters = 7.0f;
+	(void)yt_record_set_number(&join->post_loss_player.record, YT_F61,
+	    7.0f);
 	memset(&record, 0x5a, sizeof(record));
 	(void)yt_record_set_number(&record, YT_F53, 5.0f);
 	(void)yt_record_set_number(&record, YT_F57, 1003.0f);
@@ -33244,7 +33251,7 @@ test_direct_emergency_warp_hostile_attack_surrender_accepted(void)
 		CHECK(viewer.join.remote_length == joined_start);
 		yt_error_clear(&error);
 		CHECK(direct_warp_attack_surrender_join_run(&fixture, &cycle,
-		    &join, &combat, &error));
+		    &join, &combat, YT_HOSTILE_SURRENDER_ANSWER_YES, &error));
 		suffix_length = viewer.join.remote_length - joined_start;
 		CHECK(suffix_length == (callers[caller].ansi ? 440U : 396U)
 		    && viewer_bytes_fnv1a64(remote + joined_start, suffix_length)
@@ -33281,6 +33288,125 @@ test_direct_emergency_warp_hostile_attack_surrender_accepted(void)
 		    &expected_sector.record, sizeof(expected_sector.record)) == 0
 		    && fixture.draw_position == 8U
 		    && cycle.fresh_hostile_player_reads == 3U
+		    && cycle.final_field_record == 2 && cycle.final_field_player
+		    && cycle.fresh_prompt_wait);
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
+static void
+test_direct_emergency_warp_hostile_attack_surrender_refused(void)
+{
+	static const uint8_t news[] =
+	    "STATIC PILOT destroyed 1 fighters belonging to Ordinary";
+	static const struct {
+		bool main;
+		bool ansi;
+		const uint8_t *command;
+		size_t command_length;
+		size_t total_length;
+	} callers[] = {
+		{true, false, (const uint8_t *)"W", 1U, 918U},
+		{true, true, (const uint8_t *)"W", 1U, 1190U},
+		{false, false, (const uint8_t *)"W", 1U, 940U},
+		{false, false, (const uint8_t *)"WT", 2U, 941U},
+		{false, true, (const uint8_t *)"W", 1U, 1222U},
+		{false, true, (const uint8_t *)"WT", 2U, 1223U},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	struct direct_warp_main_cycle_state cycle;
+	struct direct_warp_attack_combat_join join;
+	struct yt_hostile_attack_combat_state combat;
+	struct yt_player expected_player;
+	struct yt_sector expected_sector;
+	struct yt_record record;
+	struct yt_error error;
+	uint8_t remote[2000];
+	size_t ends[3];
+	size_t caller;
+	size_t joined_start;
+	size_t suffix_length;
+
+	for (caller = 0U; caller < YT_ARRAY_LEN(callers); ++caller) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream, retained_scoreboard,
+		    sizeof(retained_scoreboard) - 1U, "YTSCORE.ASC",
+		    callers[caller].ansi, remote, sizeof(remote));
+		memset(&fixture, 0, sizeof(fixture));
+		fixture.cycle.presentation.viewer = &viewer;
+		fixture.emergency_sector_cache = 733.0f;
+		fixture.draws[0] = 0.0f;
+		fixture.draws[1] = 0.0f;
+		fixture.draws[2] = 0.75f;
+		fixture.draws[3] = 0.5f;
+		fixture.draws[4] = 0.949999988079071f;
+		fixture.draws[5] = 0.999f;
+		fixture.draws[6] = 0.9f;
+		fixture.draws[7] = 7736943.0f / 16777216.0f;
+		fixture.draws[8] = 14348150.0f / 16777216.0f;
+		memset(&record, 0xa5, sizeof(record));
+		(void)yt_record_set_number(&record, YT_F49, 17.0f);
+		(void)yt_record_set_number(&record, YT_F57, 733.0f);
+		yt_player_decode(&fixture.emergency_player, &record);
+		fixture.hazard_player = fixture.emergency_player;
+		if (callers[caller].main) {
+			CHECK(direct_emergency_warp_main_hostile_handoff_run(
+			    &fixture, callers[caller].ansi, &cycle, ends));
+		}
+		else {
+			CHECK(direct_emergency_warp_hostile_cycle_run(
+			    &fixture, callers[caller].ansi,
+			    callers[caller].command, callers[caller].command_length,
+			    DIRECT_WARP_HOSTILE_DEFENSE, &cycle, ends));
+		}
+		CHECK(direct_emergency_warp_fresh_hostile_menu(&fixture, &cycle)
+		    && direct_emergency_warp_fresh_hostile_attack_admission_amount(
+		    &fixture, &cycle, (const uint8_t *)"20", 2U));
+		joined_start = callers[caller].total_length + 1U;
+		CHECK(viewer.join.remote_length == joined_start);
+		yt_error_clear(&error);
+		CHECK(direct_warp_attack_surrender_join_run(&fixture, &cycle,
+		    &join, &combat, YT_HOSTILE_SURRENDER_ANSWER_NO, &error));
+		suffix_length = viewer.join.remote_length - joined_start;
+		CHECK(suffix_length == (callers[caller].ansi ? 388U : 344U)
+		    && viewer_bytes_fnv1a64(remote + joined_start, suffix_length)
+		    == (callers[caller].ansi
+		    ? UINT64_C(0x3e9ea5990065b828)
+		    : UINT64_C(0x528586b01780b58b)));
+		CHECK(combat.complete && combat.surrender_checked
+		    && !combat.surrendered && combat.iterations == 1U
+		    && combat.attacker_loss == 0.0 && combat.defender_loss == 1.0
+		    && combat.ship_fighters == 7.0
+		    && combat.deployed_remaining == 0.0
+		    && combat.tail.draw_consumed && combat.tail.defeated_presented
+		    && !combat.tail.victory_called);
+		CHECK(join.a41c_reads == 3U && join.a41c_stores == 75U
+		    && join.sound_calls == 1U && join.surrender_sound_calls == 1U
+		    && join.surrender_force_stores == 0U
+		    && join.surrender_latch_stores == 1U
+		    && join.random_calls == 2U && join.loss_stores == 1U
+		    && join.ship_stores == 1U
+		    && join.persistence_player_reads == 2U
+		    && join.persistence_player_writes == 1U
+		    && join.persistence_sector_reads == 1U
+		    && join.persistence_sector_writes == 1U
+		    && join.news_length == sizeof(news) - 1U
+		    && memcmp(join.news, news, sizeof(news) - 1U) == 0
+		    && join.defeated_length == 46U
+		    && memcmp(join.defeated,
+		    "You defeated all the fighters and have 7 left.", 46U) == 0);
+		expected_player = join.persistence_player;
+		yt_deployed_attack_player_overlay(&expected_player, 5.0f, 20.0f);
+		expected_sector = join.persistence_sector;
+		yt_deployed_attack_sector_overlay(&expected_sector, 0.0f);
+		CHECK(memcmp(&join.written_player.record,
+		    &expected_player.record, sizeof(expected_player.record)) == 0
+		    && memcmp(&join.written_sector.record,
+		    &expected_sector.record, sizeof(expected_sector.record)) == 0
+		    && fixture.draw_position == 9U
+		    && cycle.fresh_hostile_player_reads == 4U
 		    && cycle.final_field_record == 2 && cycle.final_field_player
 		    && cycle.fresh_prompt_wait);
 		yt_text_input_destroy(&viewer.input);
@@ -42674,6 +42800,7 @@ main(void)
 	test_direct_emergency_warp_hostile_attack_defenders_remain();
 	test_direct_emergency_warp_hostile_attack_defenders_cleared();
 	test_direct_emergency_warp_hostile_attack_surrender_accepted();
+	test_direct_emergency_warp_hostile_attack_surrender_refused();
 	test_direct_emergency_warp_hostile_invalid_retry_cycle();
 	test_direct_emergency_warp_hostile_ordinary_returns();
 	test_direct_emergency_warp_queue_cycles();
