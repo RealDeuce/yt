@@ -17711,26 +17711,34 @@ done:
 static bool
 check_maintenance_xannor_route_arrivals_pass(void)
 {
-	static const uint8_t six_zero_draws[18] = {0};
+	static const uint8_t seven_zero_draws[21] = {0};
 	static const uint8_t expected_news[] =
 	    " *** 10 Xannor hit sector mines in sector 2!\r\n"
 	    " *** Lost a total of 1 fighters!\r\n"
 	    " *** Route: lost 1, dstrd 0 (Plyr ftrs dstrd)\r\n"
 	    " *** 9 Xannor attacked the planet \"Terra\"\r\n"
-	    " *** Planet \"Terra\" destroyed!\r\n\x1a";
+	    " *** Planet \"Terra\" destroyed!\r\n"
+	    " *** Route: lost 1, dstrd 0 (Player Killed)\r\n\x1a";
+	static const char *const expected_radio[] = {
+		"Ha! We kilt 1 of yoor fyterz hoo-man slyme!",
+		"HA! We kilt yoo yoo hoo-man slyme bull!"
+	};
 	struct yt_record before[4];
 	struct yt_record after;
 	struct yt_record player;
 	struct yt_record planet_before;
+	struct yt_player route_player;
 	struct yt_planet planet;
+	struct yt_radio_record radio[2];
 	struct yt_maintenance_route_cache cache = {0};
 	struct yt_maintenance_xannor_route_result route;
 	struct yt_text_file news = {0};
 	struct yt_game game;
 	struct yt_error error;
 	struct score_random_script random_script = {
-		six_zero_draws, sizeof(six_zero_draws), 0U
+		seven_zero_draws, sizeof(seven_zero_draws), 0U
 	};
+	FILE *radio_file = NULL;
 	float player_sector[4] = {0};
 	float player_cloak[4] = {0};
 	float location[21] = {0};
@@ -17741,6 +17749,7 @@ check_maintenance_xannor_route_arrivals_pass(void)
 
 	(void)remove("YTDATA.DAT");
 	(void)remove("YTNEWS.DAT");
+	(void)remove("YTRMSG.DAT");
 	memset(&game, 0, sizeof(game));
 	game.config.sector_offset = 3.0f;
 	game.config.port_offset = 7.0f;
@@ -17752,9 +17761,13 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	    &error))
 		goto done;
 	yt_record_blank(&player);
-	memcpy(player.bytes, "Route", 5U);
-	if (!yt_record_set_number(&player, YT_F85, 5.0f)
-	    || !yt_database_write(&game.database, 2U, &player, &error))
+	yt_player_decode(&route_player, &player);
+	memcpy(route_player.name, "Route", 6U);
+	route_player.name_length = 5.0f;
+	route_player.sector = 2.0f;
+	route_player.fighters = 1.0f;
+	route_player.shields = 0.0f;
+	if (!yt_game_write_player(&game, 2, &route_player, &error))
 		goto done;
 	yt_record_blank(&planet_before);
 	yt_planet_decode(&planet, &planet_before);
@@ -17789,6 +17802,7 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	}
 	location[2] = 1.0f;
 	size[2] = 10.0f;
+	player_sector[2] = 2.0f;
 	if (!yt_maintenance_xannor_target_override(2, 4, 99.0f, 200000.0f,
 	    3, 0, 0, &target, &error) || target != 3
 	    || !yt_maintenance_xannor_route_arrivals(&game, &cache,
@@ -17797,13 +17811,38 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	    || route.hops != 2 || !route.reached_target
 	    || route.route_missing || route.exhausted
 	    || location[2] != 3.0f || size[2] != 9.0f
-	    || game.random.draws != 6U
-	    || random_script.position != sizeof(six_zero_draws)
+	    || game.random.draws != 7U
+	    || random_script.position != sizeof(seven_zero_draws)
 	    || !yt_text_read("YTNEWS.DAT", &news, &error)
 	    || news.length != sizeof(expected_news) - 1U
 	    || memcmp(news.data, expected_news, sizeof(expected_news) - 1U)
 	    != 0)
 		goto done;
+	if (!yt_game_read_player(&game, 2, &route_player, &error)
+	    || route_player.killed_by != -1.0f || route_player.sector != 0.0f
+	    || route_player.fighters != 0.0f || route_player.shields != 0.0f
+	    || player_sector[2] != 0.0f || player_cloak[2] != 0.0f)
+		goto done;
+	radio_file = fopen("YTRMSG.DAT", "rb");
+	if (radio_file == NULL
+	    || fread(radio, 1, sizeof(radio), radio_file) != sizeof(radio)
+	    || fgetc(radio_file) != EOF)
+		goto done;
+	if (fclose(radio_file) != 0) {
+		radio_file = NULL;
+		goto done;
+	}
+	radio_file = NULL;
+	for (size_t index = 0U; index < YT_ARRAY_LEN(radio); ++index) {
+		size_t text_length = strlen(expected_radio[index]);
+
+		if (yt_radio_get_number(&radio[index], 0U) != 1.0f
+		    || yt_radio_get_number(&radio[index], 4U) != 2.0f
+		    || yt_radio_get_number(&radio[index], 8U) != -1.0f
+		    || memcmp(radio[index].bytes + 12U, expected_radio[index],
+		    text_length) != 0)
+			goto done;
+	}
 	for (sector = 1; sector <= 4; ++sector) {
 		if (!yt_database_read(&game.database,
 		    (size_t)yt_sector_basic_record(&game.config, sector),
@@ -17867,11 +17906,14 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	valid = true;
 
 done:
+	if (radio_file != NULL)
+		(void)fclose(radio_file);
 	yt_text_free(&news);
 	yt_maintenance_route_cache_free(&cache);
 	yt_game_close(&game);
 	(void)remove("YTDATA.DAT");
 	(void)remove("YTNEWS.DAT");
+	(void)remove("YTRMSG.DAT");
 	return valid;
 }
 
