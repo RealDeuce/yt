@@ -18004,6 +18004,43 @@ check_maintenance_final_suffix_pass(void)
 		goto done;
 	yt_database_close(&verify);
 	yt_text_free(&bulletin);
+
+	/* Scoreboard generation/cache writes precede its first readback row. */
+	random_script.position = 0U;
+	yt_random_set_provider(&game.random, score_random_fill, &random_script);
+	clock_script.position = 0U;
+	output_fault = (struct maintenance_final_output_fault){
+		.tape = {
+			.screen = {0},
+			.game = &game,
+			.first_closed_line = (size_t)-1
+		},
+		.calls = 0U,
+		.fail_at = 3U
+	};
+	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_UPDATE,
+	    &error))
+		goto done;
+	yt_database_set_close_provider(&game.database, NULL, NULL);
+	yt_error_clear(&error);
+	if (yt_maintenance_finish(&game, maintenance_final_output_fail,
+	    &output_fault, &error)
+	    || error.status != YT_IO_ERROR
+	    || strcmp(error.operation, "maintenance final output") != 0
+	    || output_fault.calls != 4U
+	    || output_fault.tape.first_closed_line != (size_t)-1
+	    || output_fault.tape.screen.lines != 3U
+	    || output_fault.tape.screen.length != sizeof(prefix) - 1U
+	    || memcmp(output_fault.tape.screen.data, prefix,
+	    sizeof(prefix) - 1U) != 0
+	    || game.database.file == NULL || game.random.draws != 1U
+	    || clock_script.position != 3U
+	    || game.config.last_maintenance != 204.0f
+	    || !yt_database_read(&game.database, 2U, &after, &error)
+	    || yt_record_get_number(&after, YT_F109) != 100.0f)
+		goto done;
+	yt_database_close(&game.database);
+
 	yt_random_set_provider(&game.random, score_random_fill, &random_script);
 	random_script.position = 0U;
 	clock_script.position = 0U;
