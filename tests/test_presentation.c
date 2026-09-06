@@ -34668,7 +34668,7 @@ test_hostile_bribe_fatal_prefix_cuts(void)
 		size_t fragment;
 		size_t events;
 		size_t samples;
-	} expected[2][3] = {
+	} expected[3][3] = {
 		{{101U, UINT64_C(0xc6a3b4b024774f47), 3U,
 		 UINT64_C(0x2207a27a6260aaca), 0U, 16U, 3U},
 		 {130U, UINT64_C(0xa6452caa9d483a7a), 3U,
@@ -34681,6 +34681,12 @@ test_hostile_bribe_fatal_prefix_cuts(void)
 		 UINT64_C(0xc24239f1c20735a2), 29U, 19U, 4U},
 		 {180U, UINT64_C(0x8f66998d586a42d7), 12U,
 		 UINT64_C(0xca2ee8d2e302e66d), 0U, 20U, 4U}},
+		{{0U, UINT64_C(0xcbf29ce484222325), 3U,
+		 UINT64_C(0x2207a27a6260aaca), 0U, 16U, 3U},
+		 {0U, UINT64_C(0xcbf29ce484222325), 3U,
+		 UINT64_C(0x2207a27a6260aaca), 29U, 19U, 4U},
+		 {0U, UINT64_C(0xcbf29ce484222325), 4U,
+		 UINT64_C(0x01b4fd96ce8921d5), 0U, 20U, 4U}},
 	};
 	struct physical_viewer_join viewer;
 	struct yt_file_viewer_stream_state stream;
@@ -34693,18 +34699,20 @@ test_hostile_bribe_fatal_prefix_cuts(void)
 	struct yt_error error;
 	uint8_t expected_record[4];
 	uint8_t remote[256];
-	size_t ansi;
+	size_t endpoint;
 	size_t cut;
 	size_t terminal;
 
 	CHECK(qb_mbf32_encode(2.0f, expected_record) == QB_MBF_OK);
-	for (ansi = 0U; ansi < 2U; ++ansi) {
+	for (endpoint = 0U; endpoint < 3U; ++endpoint) {
 		for (cut = 0U; cut < FATAL_CUT_COUNT; ++cut) {
 			terminal = cut < 2U ? cut : 2U;
 			memset(&viewer, 0, sizeof(viewer));
 			fixture_viewer_initialize(&viewer, &stream,
 			    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
-			    "YTSCORE.ASC", ansi != 0U, remote, sizeof(remote));
+			    "YTSCORE.ASC", endpoint == 1U, remote, sizeof(remote));
+			if (endpoint == 2U)
+				viewer.join.presentation.sound.mode = 1.0f;
 			viewer.join.presentation.sound.user_sound = 0.0f;
 			memset(&fixture, 0, sizeof(fixture));
 			fixture.cycle.presentation.viewer = &viewer;
@@ -34786,7 +34794,8 @@ test_hostile_bribe_fatal_prefix_cuts(void)
 			    && joined.random_calls == 2U
 			    && joined.commitment_stores == 1U
 			    && joined.fatal_calls == 1U
-			    && fatal.fatal_start == (ansi != 0U ? 123U : 99U)
+			    && fatal.fatal_start
+			    == (endpoint == 0U ? 99U : endpoint == 1U ? 123U : 0U)
 			    && fatal.fatal.foreground == 3.0f
 			    && fatal.fatal.pager_foreground == 3
 			    && fatal.fatal.field_valid == (cut >= FATAL_CUT_SOUND)
@@ -34842,27 +34851,30 @@ test_hostile_bribe_fatal_prefix_cuts(void)
 			    && (cut <= FATAL_CUT_SECTOR_PUT
 			    || fatal.written_sector.fighter_owner == -2.0f)
 			    && fixture.draw_position == 2U);
-			CHECK(viewer.join.remote_length == expected[ansi][terminal].length
+			CHECK(viewer.join.remote_length
+			    == expected[endpoint][terminal].length
 			    && viewer_bytes_fnv1a64(remote,
-			    viewer.join.remote_length) == expected[ansi][terminal].hash);
+			    viewer.join.remote_length)
+			    == expected[endpoint][terminal].hash);
 			CHECK(viewer.join.local_row_count
 			    == (cut < 2U ? 6U : 7U)
 			    && viewer_rows_fnv1a64(&viewer.join)
 			    == (cut < 2U ? UINT64_C(0xb98806a4c3918dd8)
 			    : UINT64_C(0xf776bd8f05a26c98))
 			    && viewer.join.local_color_count
-			    == expected[ansi][terminal].colors
+			    == expected[endpoint][terminal].colors
 			    && viewer_colors_fnv1a64(&viewer.join)
-			    == expected[ansi][terminal].color_hash
+			    == expected[endpoint][terminal].color_hash
 			    && viewer.join.local_fragment_length
-			    == expected[ansi][terminal].fragment
+			    == expected[endpoint][terminal].fragment
 			    && viewer_bytes_fnv1a64(viewer.join.local_fragment,
 			    viewer.join.local_fragment_length)
 			    == (cut == 1U ? UINT64_C(0xb123cceada0ab000)
 			    : UINT64_C(0xcbf29ce484222325))
-			    && viewer.join.event_count == expected[ansi][terminal].events
+			    && viewer.join.event_count
+			    == expected[endpoint][terminal].events
 			    && viewer.join.sample_calls
-			    == expected[ansi][terminal].samples);
+			    == expected[endpoint][terminal].samples);
 			yt_text_input_destroy(&viewer.input);
 		}
 	}
