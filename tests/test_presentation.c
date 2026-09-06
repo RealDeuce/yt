@@ -22063,6 +22063,12 @@ test_hostile_mines_ordinary_return_cycles_presentation(void)
 	    && sizeof(router_7_ansi) - 1U == 207U);
 }
 
+enum emergency_warp_physical_failure {
+	EMERGENCY_WARP_PHYSICAL_OK,
+	EMERGENCY_WARP_PHYSICAL_GET,
+	EMERGENCY_WARP_PHYSICAL_PUT,
+};
+
 struct hostile_mines_hazard_fixture {
 	struct main_mines_cycle_fixture cycle;
 	struct yt_sector_mine_state hazard;
@@ -22084,10 +22090,13 @@ struct hostile_mines_hazard_fixture {
 	bool shrink_called;
 	bool warp_called;
 	bool enable_emergency_warp;
+	enum emergency_warp_physical_failure emergency_failure;
 	size_t emergency_player_reads;
+	size_t emergency_player_put_attempts;
 	size_t emergency_player_writes;
 	size_t emergency_flushes;
 	size_t emergency_waits;
+	bool emergency_shared_handler;
 	float emergency_destination;
 	float emergency_cost;
 	float emergency_sector_cache;
@@ -22358,6 +22367,10 @@ hostile_emergency_warp_present(struct hostile_mines_hazard_fixture *fixture)
 	    YT_SECTOR_MINE_OUTPUT_LINE, NULL))
 		return false;
 	++fixture->emergency_player_reads;
+	if (fixture->emergency_failure == EMERGENCY_WARP_PHYSICAL_GET) {
+		fixture->emergency_shared_handler = true;
+		return false;
+	}
 	if (!hostile_mine_hazard_random(fixture, &destination_draw, NULL)
 	    || !hostile_mine_hazard_random(fixture, &override_draw, NULL)
 	    || !hostile_mine_hazard_random(fixture, &turn_draw, NULL))
@@ -22380,6 +22393,11 @@ hostile_emergency_warp_present(struct hostile_mines_hazard_fixture *fixture)
 		return false;
 	yt_emergency_warp_player_overlay(&fixture->emergency_player,
 	    fixture->emergency_destination, fixture->emergency_cost);
+	++fixture->emergency_player_put_attempts;
+	if (fixture->emergency_failure == EMERGENCY_WARP_PHYSICAL_PUT) {
+		fixture->emergency_shared_handler = true;
+		return false;
+	}
 	fixture->hazard_player = fixture->emergency_player;
 	++fixture->emergency_player_writes;
 	++fixture->emergency_flushes;
@@ -23224,6 +23242,7 @@ test_direct_emergency_warp_invalid_retry_presentation(void)
 		    cases[pass].expected_length) == 0
 		    && !fixture.warp_called && fixture.draw_position == 0U
 		    && fixture.emergency_player_reads == 0U
+		    && fixture.emergency_player_put_attempts == 0U
 		    && fixture.emergency_player_writes == 0U
 		    && fixture.emergency_flushes == 0U
 		    && fixture.emergency_waits == 0U
@@ -23544,6 +23563,7 @@ test_direct_emergency_warp_accepted_presentation(void)
 		    cases[pass].expected_length) == 0
 		    && fixture.warp_called && fixture.draw_position == 6U
 		    && fixture.emergency_player_reads == 1U
+		    && fixture.emergency_player_put_attempts == 1U
 		    && fixture.emergency_player_writes == 1U
 		    && fixture.emergency_flushes == 1U
 		    && fixture.emergency_waits == 1U
@@ -23551,6 +23571,7 @@ test_direct_emergency_warp_accepted_presentation(void)
 		    && fixture.emergency_destination == 1003.0f
 		    && fixture.emergency_cost == 3.0f
 		    && fixture.emergency_sector_cache == 1003.0f
+		    && !fixture.emergency_shared_handler
 		    && fixture.emergency_player.sector == 1003.0f
 		    && fixture.emergency_player.turns == 14.0f
 		    && strcmp(viewer.join.accumulator, "y") == 0
@@ -23582,6 +23603,126 @@ test_direct_emergency_warp_accepted_presentation(void)
 		yt_text_input_destroy(&viewer.input);
 	}
 	CHECK(sizeof(plain) - 1U == 513U && sizeof(ansi) - 1U == 685U);
+}
+
+static void
+test_direct_emergency_warp_child_failures(void)
+{
+	static const struct {
+		bool ansi;
+		enum emergency_warp_physical_failure failure;
+		size_t expected_length;
+		uint64_t expected_hash;
+		size_t parent_end;
+		size_t draws;
+		size_t rows;
+		size_t colors;
+		uint64_t color_hash;
+	} cases[] = {
+		{false, EMERGENCY_WARP_PHYSICAL_GET, 374U,
+		    UINT64_C(0x0b2b065a35ae110f), 167U, 3U, 15U, 2U,
+		    UINT64_C(0x6d3fa4669b3587bd)},
+		{true, EMERGENCY_WARP_PHYSICAL_GET, 546U,
+		    UINT64_C(0x175d9489f17d69d5), 223U, 3U, 15U, 21U,
+		    UINT64_C(0x936faeccec2c7b6e)},
+		{false, EMERGENCY_WARP_PHYSICAL_PUT, 513U,
+		    UINT64_C(0x325d153b7ea2f4c3), 167U, 6U, 17U, 2U,
+		    UINT64_C(0x6d3fa4669b3587bd)},
+		{true, EMERGENCY_WARP_PHYSICAL_PUT, 685U,
+		    UINT64_C(0x6d90d947714a5f0d), 223U, 6U, 17U, 23U,
+		    UINT64_C(0x6e338d8e4536fe7e)},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	struct yt_record record;
+	struct yt_record before;
+	uint8_t remote[720];
+	size_t parent_end;
+	size_t index;
+	size_t pass;
+	bool completed;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
+		memset(&fixture, 0, sizeof(fixture));
+		fixture.cycle.presentation.viewer = &viewer;
+		fixture.emergency_failure = cases[pass].failure;
+		fixture.emergency_sector_cache = 42.0f;
+		fixture.draws[0] = 0.0f;
+		fixture.draws[1] = 0.0f;
+		fixture.draws[2] = 0.75f;
+		fixture.draws[3] = 0.5f;
+		fixture.draws[4] = 0.949999988079071f;
+		fixture.draws[5] = 0.999f;
+		memset(&record, 0xa5, sizeof(record));
+		(void)yt_record_set_number(&record, YT_F49, 17.0f);
+		(void)yt_record_set_number(&record, YT_F57, 42.0f);
+		before = record;
+		yt_player_decode(&fixture.emergency_player, &record);
+		fixture.hazard_player = fixture.emergency_player;
+		completed = direct_emergency_warp_accepted_run(&fixture,
+		    cases[pass].ansi, &parent_end);
+		CHECK(!completed
+		    && parent_end == cases[pass].parent_end
+		    && viewer.join.remote_length == cases[pass].expected_length
+		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+		    == cases[pass].expected_hash
+		    && fixture.warp_called
+		    && fixture.draw_position == cases[pass].draws
+		    && fixture.emergency_player_reads == 1U
+		    && fixture.emergency_player_put_attempts
+		    == (cases[pass].failure == EMERGENCY_WARP_PHYSICAL_PUT ? 1U : 0U)
+		    && fixture.emergency_player_writes == 0U
+		    && fixture.emergency_flushes == 0U
+		    && fixture.emergency_waits == 1U
+		    && fixture.emergency_ticks == 1U
+		    && fixture.emergency_shared_handler
+		    && fixture.emergency_sector_cache == 42.0f
+		    && memcmp(&fixture.hazard_player.record, &before,
+		    sizeof(before)) == 0
+		    && strcmp(viewer.join.accumulator, "y") == 0
+		    && viewer.join.queue_length == 0U
+		    && viewer.join.local_fragment_length == 0U
+		    && viewer.join.local_row_count == cases[pass].rows
+		    && viewer.join.local_color_count == cases[pass].colors
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == cases[pass].color_hash
+		    && viewer.join.presentation.foreground == 2.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold
+		    == (cases[pass].ansi ? 0.0f : 1.0f)
+		    && viewer.join.presentation.blink
+		    == (cases[pass].ansi ? 0.0f : 1.0f)
+		    && viewer.join.presentation.cached_foreground == 2.0f
+		    && viewer.join.pager.foreground == 2
+		    && viewer.join.pager.line_count == 0.0f);
+		if (cases[pass].failure == EMERGENCY_WARP_PHYSICAL_GET) {
+			CHECK(fixture.emergency_destination == 0.0f
+			    && fixture.emergency_cost == 0.0f
+			    && fixture.emergency_player.turns == 17.0f
+			    && fixture.emergency_player.sector == 42.0f
+			    && memcmp(&fixture.emergency_player.record, &before,
+			    sizeof(before)) == 0);
+		} else {
+			CHECK(fixture.emergency_destination == 1003.0f
+			    && fixture.emergency_cost == 3.0f
+			    && fixture.emergency_player.turns == 14.0f
+			    && fixture.emergency_player.sector == 1003.0f);
+			for (index = 0U; index < YT_RECORD_SIZE; ++index) {
+				if ((index >= YT_F49 && index < YT_F49 + 4U)
+				    || (index >= YT_F57
+				    && index < YT_F57 + 4U))
+					continue;
+				CHECK(fixture.emergency_player.record.bytes[index]
+				    == before.bytes[index]);
+			}
+		}
+		yt_text_input_destroy(&viewer.input);
+	}
 }
 
 struct main_genesis_cycle_fixture {
@@ -30699,6 +30840,7 @@ main(void)
 	test_direct_emergency_warp_invalid_retry_presentation();
 	test_direct_emergency_warp_parent_copy_failures();
 	test_direct_emergency_warp_accepted_presentation();
+	test_direct_emergency_warp_child_failures();
 	test_main_genesis_decline_cycle_presentation();
 	test_main_genesis_alternate_cycles_presentation();
 	test_main_genesis_handoff_cycle_presentation();
