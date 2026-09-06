@@ -2,6 +2,7 @@
 #define YT_INPUT_MODEL_H
 
 #include "yt_common.h"
+#include "yt_main_error.h"
 
 #define YT_INPUT_PENDING 4096U
 #define YT_WAIT_SCRATCH_SIZE 80U
@@ -66,6 +67,8 @@ struct yt_repeat_transform {
 	bool emit_notice;
 	float count;
 	enum yt_repeat_failure failure;
+	enum yt_basic_fault_site fault_site;
+	bool fault_valid;
 };
 
 enum yt_yes_no_answer {

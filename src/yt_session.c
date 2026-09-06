@@ -1704,8 +1704,7 @@ expand_repeat(struct yt_session *session, char *text, size_t size)
 	if (!yt_input_expand_repeat_observed(text, size,
 	    session->saved_command, sizeof(session->saved_command), &result,
 	    session_input_process_store, session)) {
-		if (result.failure != YT_REPEAT_FAILURE_NONE
-		    && session->error != NULL) {
+		if (result.fault_valid && session->error != NULL) {
 			yt_error_clear(session->error);
 			session->error->status = YT_RANGE;
 			(void)snprintf(session->error->operation,
@@ -1714,9 +1713,7 @@ expand_repeat(struct yt_session *session, char *text, size_t size)
 			    ? "ADE0 repeat VAL overflow"
 			    : "ADE0 repeat SINGLE overflow");
 			(void)yt_error_attach_basic_fault_number(session->error,
-			    result.failure == YT_REPEAT_FAILURE_VAL_OVERFLOW
-			    ? YT_BASIC_FAULT_REPEAT_VAL_OVERFLOW
-			    : YT_BASIC_FAULT_REPEAT_SINGLE_OVERFLOW, 6U);
+			    result.fault_site, 6U);
 		}
 		return false;
 	}

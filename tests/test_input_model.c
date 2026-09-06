@@ -1137,7 +1137,9 @@ test_repeat_transform(void)
 	CHECK(yt_input_expand_repeat_observed(text, sizeof(text), saved,
 	    sizeof(saved), &result, input_process_store, &tape));
 	CHECK(result.emit_notice && result.count == 3.0f
-	    && result.failure == YT_REPEAT_FAILURE_NONE);
+	    && result.failure == YT_REPEAT_FAILURE_NONE
+	    && !result.fault_valid
+	    && result.fault_site == YT_BASIC_FAULT_SITE_COUNT);
 	CHECK(strcmp(text, "A;A;A") == 0 && strcmp(saved, "A;A;A") == 0);
 	CHECK(tape.count == YT_ARRAY_LEN(expected_address));
 	for (index = 0U; index < tape.count; ++index) {
@@ -1179,7 +1181,9 @@ test_repeat_transform(void)
 	CHECK(!yt_input_expand_repeat_observed(text, sizeof(text), saved,
 	    sizeof(saved), &result, input_process_store, &tape));
 	CHECK(!result.emit_notice && result.count == 0.0f
-	    && result.failure == YT_REPEAT_FAILURE_VAL_OVERFLOW);
+	    && result.failure == YT_REPEAT_FAILURE_VAL_OVERFLOW
+	    && result.fault_valid
+	    && result.fault_site == YT_BASIC_FAULT_REPEAT_VAL_OVERFLOW);
 	CHECK(strcmp(text, "A/R1E999") == 0 && strcmp(saved, "old") == 0);
 	CHECK(tape.count == 3U + 2U * strlen(text) + 1U
 	    && tape.address[tape.count - 1U] == 0x51C4U);
@@ -1197,7 +1201,9 @@ test_repeat_transform(void)
 	CHECK(!yt_input_expand_repeat_observed(text, sizeof(text), saved,
 	    sizeof(saved), &result, input_process_store, &tape));
 	CHECK(!result.emit_notice && result.count == 0.0f
-	    && result.failure == YT_REPEAT_FAILURE_SINGLE_OVERFLOW);
+	    && result.failure == YT_REPEAT_FAILURE_SINGLE_OVERFLOW
+	    && result.fault_valid
+	    && result.fault_site == YT_BASIC_FAULT_REPEAT_SINGLE_OVERFLOW);
 	CHECK(strcmp(text, "A/R1.7014118E38") == 0
 	    && strcmp(saved, "old") == 0);
 	CHECK(tape.count == 3U + 2U * strlen(text) + 3U

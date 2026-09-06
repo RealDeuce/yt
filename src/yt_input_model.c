@@ -608,6 +608,8 @@ yt_input_expand_repeat_observed(char *text, size_t text_capacity,
 	result->emit_notice = false;
 	result->count = 0.0f;
 	result->failure = YT_REPEAT_FAILURE_NONE;
+	result->fault_site = YT_BASIC_FAULT_SITE_COUNT;
+	result->fault_valid = false;
 	text_length = strlen(text);
 	if (text_length >= sizeof(upper))
 		return false;
@@ -627,6 +629,8 @@ yt_input_expand_repeat_observed(char *text, size_t text_capacity,
 	parsed = qb_val((const char *)upper + prefix + 2U);
 	if (parsed.overflow) {
 		result->failure = YT_REPEAT_FAILURE_VAL_OVERFLOW;
+		result->fault_site = YT_BASIC_FAULT_REPEAT_VAL_OVERFLOW;
+		result->fault_valid = true;
 		return false;
 	}
 	integer = qb_int(parsed.valid ? parsed.value : 0.0);
@@ -638,6 +642,8 @@ yt_input_expand_repeat_observed(char *text, size_t text_capacity,
 
 		if (qb_mbf32_encode(count, count_raw) == QB_MBF_OVERFLOW) {
 			result->failure = YT_REPEAT_FAILURE_SINGLE_OVERFLOW;
+			result->fault_site = YT_BASIC_FAULT_REPEAT_SINGLE_OVERFLOW;
+			result->fault_valid = true;
 			return false;
 		}
 	}
