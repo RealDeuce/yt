@@ -26543,6 +26543,8 @@ struct direct_warp_main_cycle_state {
 	size_t router_player_reads;
 	size_t router_sector_reads;
 	size_t owner_player_reads;
+	size_t fresh_hostile_player_reads;
+	uint8_t fresh_hostile_selected;
 };
 
 static bool
@@ -26841,6 +26843,39 @@ direct_emergency_warp_hostile_reentry(
 		return true;
 	}
 	return normal_exit_b05d(join, warning, sizeof(warning) - 1U, 0.0f);
+}
+
+static bool
+direct_emergency_warp_fresh_hostile_menu(
+    struct hostile_mines_hazard_fixture *fixture,
+    struct direct_warp_main_cycle_state *cycle)
+{
+	static const uint8_t prompt[] =
+	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? ";
+	static const uint8_t command[] = "A";
+	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	uint8_t row[96];
+	size_t row_length;
+
+	++cycle->fresh_hostile_player_reads;
+	cycle->final_field_record = 2;
+	cycle->final_field_player = true;
+	join->presentation.foreground = 3.0f;
+	join->pager.foreground = 3;
+	if (!yt_hostile_menu_row(1000.0, 1250.0, row, sizeof(row), &row_length)
+	    || !normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, row, row_length, 0.0f)
+	    || !normal_exit_b05d(join, prompt, sizeof(prompt) - 1U, 1.0f))
+		return false;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	memcpy(join->accumulator, command, sizeof(command));
+	if (!main_buy_present_echo(&fixture->cycle.presentation, command,
+	    sizeof(command) - 1U) || !normal_exit_line(join, NULL, 0U))
+		return false;
+	cycle->fresh_hostile_selected = command[0];
+	return yt_hostile_menu_dispatch((const char *)command)
+	    == YT_HOSTILE_MENU_ATTACK;
 }
 
 static bool
@@ -29563,6 +29598,186 @@ test_direct_emergency_warp_reentry_warning_second_carrier(void)
 		    && viewer.join.pager.foreground == 3
 		    && viewer.join.pager.line_count == 0.0f
 		    && viewer.join.pager.newline_flag == 0.0f);
+		for (index = 0U; index < YT_RECORD_SIZE; ++index) {
+			if ((index >= YT_F49 && index < YT_F49 + 4U)
+			    || (index >= YT_F57 && index < YT_F57 + 4U))
+				continue;
+			CHECK(fixture.emergency_player.record.bytes[index]
+			    == before.bytes[index]);
+		}
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
+static void
+test_direct_emergency_warp_hostile_menu_join(void)
+{
+	static const struct {
+		bool main;
+		bool ansi;
+		const uint8_t *command;
+		size_t command_length;
+		size_t ends[4];
+		uint64_t partition_hashes[4];
+		size_t rows;
+		uint64_t row_hash;
+		size_t colors;
+		uint64_t color_hash;
+	} callers[] = {
+		{true, false, (const uint8_t *)"W", 1U,
+		    {41U, 554U, 811U, 874U},
+		    {UINT64_C(0x84059a449d6d0449),
+		    UINT64_C(0x325d153b7ea2f4c3),
+		    UINT64_C(0xb74576d2f246b2e0),
+		    UINT64_C(0x91ede6cb99b3ba9b)}, 31U,
+		    UINT64_C(0xd00d0de98dbe176f), 6U,
+		    UINT64_C(0x17798e683d05096d)},
+		{true, true, (const uint8_t *)"W", 1U,
+		    {41U, 726U, 1073U, 1146U},
+		    {UINT64_C(0x84059a449d6d0449),
+		    UINT64_C(0x6d90d947714a5f0d),
+		    UINT64_C(0xae04cf25f066c3f4),
+		    UINT64_C(0x764133c92bd4bdb8)}, 31U,
+		    UINT64_C(0xd00d0de98dbe176f), 47U,
+		    UINT64_C(0x47fdba389f001f62)},
+		{false, false, (const uint8_t *)"W", 1U,
+		    {63U, 576U, 833U, 896U},
+		    {UINT64_C(0x0b6904cbde91e151),
+		    UINT64_C(0x325d153b7ea2f4c3),
+		    UINT64_C(0xb74576d2f246b2e0),
+		    UINT64_C(0x91ede6cb99b3ba9b)}, 32U,
+		    UINT64_C(0x9a49bf944bf445ec), 7U,
+		    UINT64_C(0xc68cf2d74ffb7ffa)},
+		{false, false, (const uint8_t *)"WT", 2U,
+		    {64U, 577U, 834U, 897U},
+		    {UINT64_C(0x4715406bf12b49e1),
+		    UINT64_C(0x325d153b7ea2f4c3),
+		    UINT64_C(0xb74576d2f246b2e0),
+		    UINT64_C(0x91ede6cb99b3ba9b)}, 32U,
+		    UINT64_C(0xe1ea76ab7a072423), 7U,
+		    UINT64_C(0xc68cf2d74ffb7ffa)},
+		{false, true, (const uint8_t *)"W", 1U,
+		    {73U, 758U, 1105U, 1178U},
+		    {UINT64_C(0x1f8739c8faadb88e),
+		    UINT64_C(0x6d90d947714a5f0d),
+		    UINT64_C(0xae04cf25f066c3f4),
+		    UINT64_C(0x764133c92bd4bdb8)}, 32U,
+		    UINT64_C(0x9a49bf944bf445ec), 49U,
+		    UINT64_C(0x140963f48846bbf5)},
+		{false, true, (const uint8_t *)"WT", 2U,
+		    {74U, 759U, 1106U, 1179U},
+		    {UINT64_C(0x2e092d830cad0828),
+		    UINT64_C(0x6d90d947714a5f0d),
+		    UINT64_C(0xae04cf25f066c3f4),
+		    UINT64_C(0x764133c92bd4bdb8)}, 32U,
+		    UINT64_C(0xe1ea76ab7a072423), 49U,
+		    UINT64_C(0x140963f48846bbf5)},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	struct direct_warp_main_cycle_state cycle;
+	struct yt_record record;
+	struct yt_record before;
+	uint8_t remote[1300];
+	size_t parent_ends[3];
+	size_t ends[4];
+	size_t caller;
+	size_t index;
+
+	for (caller = 0U; caller < YT_ARRAY_LEN(callers); ++caller) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", callers[caller].ansi, remote, sizeof(remote));
+		memset(&fixture, 0, sizeof(fixture));
+		fixture.cycle.presentation.viewer = &viewer;
+		fixture.emergency_sector_cache = 733.0f;
+		fixture.draws[0] = 0.0f;
+		fixture.draws[1] = 0.0f;
+		fixture.draws[2] = 0.75f;
+		fixture.draws[3] = 0.5f;
+		fixture.draws[4] = 0.949999988079071f;
+		fixture.draws[5] = 0.999f;
+		fixture.draws[6] = 0.9f;
+		memset(&record, 0xa5, sizeof(record));
+		(void)yt_record_set_number(&record, YT_F49, 17.0f);
+		(void)yt_record_set_number(&record, YT_F57, 733.0f);
+		before = record;
+		yt_player_decode(&fixture.emergency_player, &record);
+		fixture.hazard_player = fixture.emergency_player;
+		if (callers[caller].main) {
+			CHECK(direct_emergency_warp_main_hostile_handoff_run(&fixture,
+			    callers[caller].ansi, &cycle, parent_ends));
+		}
+		else {
+			CHECK(direct_emergency_warp_hostile_cycle_run(&fixture,
+			    callers[caller].ansi, callers[caller].command,
+			    callers[caller].command_length,
+			    DIRECT_WARP_HOSTILE_DEFENSE, &cycle, parent_ends));
+		}
+		memcpy(ends, parent_ends, sizeof(parent_ends));
+		CHECK(direct_emergency_warp_fresh_hostile_menu(&fixture, &cycle));
+		ends[3] = viewer.join.remote_length;
+		CHECK(memcmp(ends, callers[caller].ends, sizeof(ends)) == 0
+		    && viewer.join.remote_length == ends[3]);
+		for (index = 0U; index < YT_ARRAY_LEN(ends); ++index) {
+			size_t start = index == 0U ? 0U : ends[index - 1U];
+
+			CHECK(viewer_bytes_fnv1a64(remote + start,
+			    ends[index] - start)
+			    == callers[caller].partition_hashes[index]);
+		}
+		CHECK(fixture.warp_called && fixture.draw_position == 7U
+		    && fixture.emergency_player_reads == 1U
+		    && fixture.emergency_player_put_attempts == 1U
+		    && fixture.emergency_player_writes == 1U
+		    && fixture.emergency_flushes == 1U
+		    && fixture.emergency_waits == 1U
+		    && fixture.emergency_ticks == 1U
+		    && fixture.emergency_destination == 1003.0f
+		    && fixture.emergency_cost == 3.0f
+		    && fixture.emergency_sector_cache == 1003.0f
+		    && fixture.emergency_player.sector == 1003.0f
+		    && fixture.emergency_player.turns == 14.0f
+		    && cycle.entry_player_reads == 1U
+		    && cycle.gate_player_reads == 1U
+		    && cycle.sector_reads == 1U
+		    && cycle.target_player_reads == 1U
+		    && cycle.scanner_final_player_reads == 1U
+		    && cycle.router_player_reads == 1U
+		    && cycle.router_sector_reads == 1U
+		    && cycle.owner_player_reads == 0U
+		    && cycle.final_player_reads == 0U
+		    && cycle.scanner_sound_calls == 1U
+		    && cycle.target_cloak == 0.0f
+		    && cycle.physical_current_sector == 1054.0f
+		    && cycle.final_field_record == 2 && cycle.final_field_player
+		    && cycle.fresh_hostile_player_reads == 1U
+		    && cycle.fresh_hostile_selected == 'A'
+		    && !cycle.fresh_prompt_wait
+		    && viewer.join.sample_calls
+		    == (callers[caller].main ? 6U : 7U)
+		    && viewer.join.queue_length == 0U
+		    && strcmp(viewer.join.accumulator, "A") == 0
+		    && viewer.join.local_fragment_length == 0U
+		    && viewer.join.local_row_count == callers[caller].rows
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == callers[caller].row_hash
+		    && viewer.join.local_color_count == callers[caller].colors
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == callers[caller].color_hash
+		    && viewer.join.event_count == (callers[caller].main ? 30U : 35U)
+		    && viewer.join.presentation.foreground == 3.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold
+		    == (callers[caller].ansi ? 0.0f : 1.0f)
+		    && viewer.join.presentation.blink
+		    == (callers[caller].ansi ? 0.0f : 1.0f)
+		    && viewer.join.presentation.cached_foreground
+		    == (callers[caller].ansi ? 3.0f : 2.0f)
+		    && viewer.join.pager.foreground == 3
+		    && viewer.join.pager.line_count == 0.0f);
 		for (index = 0U; index < YT_RECORD_SIZE; ++index) {
 			if ((index >= YT_F49 && index < YT_F49 + 4U)
 			    || (index >= YT_F57 && index < YT_F57 + 4U))
@@ -38950,6 +39165,7 @@ main(void)
 	test_direct_emergency_warp_owner_get_failures();
 	test_direct_emergency_warp_reentry_warning_carrier();
 	test_direct_emergency_warp_reentry_warning_second_carrier();
+	test_direct_emergency_warp_hostile_menu_join();
 	test_direct_emergency_warp_hostile_invalid_retry_cycle();
 	test_direct_emergency_warp_hostile_ordinary_returns();
 	test_direct_emergency_warp_queue_cycles();
