@@ -4241,6 +4241,8 @@ test_basic_fault_registry(void)
 		    0xB2DAU, 2U},
 		{YT_BASIC_FAULT_MAIN, 0xA557U, 0xA55AU, 0xA554U, 33990,
 		    0xB2DAU, 2U},
+		{YT_BASIC_FAULT_MAIN, 0x0BC0U, 0x0BC3U, 0x0BB5U, 20430,
+		    0xB2DAU, 3U},
 		{YT_BASIC_FAULT_MAIN, 0x6B0BU, 0x6B0EU, 0x6B00U, 33100,
 		    0xB2DAU, 0U},
 		{YT_BASIC_FAULT_MAIN, 0x6CDBU, 0x6CDEU, 0x6CC7U, 33150,
@@ -26551,6 +26553,7 @@ struct direct_warp_main_cycle_state {
 	bool fresh_hostile_attack_admission_entered;
 	bool fresh_hostile_attack_sector_get_boundary;
 	float fresh_hostile_attack_commitment;
+	size_t fresh_hostile_attack_sector_reads;
 };
 
 enum direct_warp_hostile_menu_carrier_cut {
@@ -27040,6 +27043,66 @@ direct_emergency_warp_fresh_hostile_attack_admission(
 	    != YT_HOSTILE_ATTACK_ADMITTED)
 		return false;
 	cycle->fresh_hostile_attack_sector_get_boundary = true;
+	return true;
+}
+
+static bool
+direct_emergency_warp_fresh_hostile_attack_sector_get_failure(
+    struct direct_warp_main_cycle_state *cycle,
+    enum direct_warp_gate_get_failure failure,
+    struct direct_warp_gate_get_state *gate,
+    struct yt_basic_fault_projection *projection,
+    const struct yt_record *inherited_field)
+{
+	struct yt_record field;
+	struct yt_error error;
+	size_t accepted = 0U;
+	size_t index;
+
+	if (cycle == NULL || gate == NULL || projection == NULL
+	    || inherited_field == NULL
+	    || !cycle->fresh_hostile_attack_sector_get_boundary)
+		return false;
+	memset(gate, 0, sizeof(*gate));
+	gate->database.file = tmpfile();
+	if (gate->database.file == NULL)
+		return false;
+	gate->failure = failure;
+	gate->accepted = failure == DIRECT_WARP_GATE_SEEK_52 ? 0U : 3U;
+	gate->terminal_position = failure == DIRECT_WARP_GATE_SEEK_52
+	    ? INT64_C(0x11223344) : INT64_C(0x55667788);
+	gate->field = *inherited_field;
+	gate->field_record = 2;
+	gate->field_player = true;
+	for (index = 0U; index < YT_RECORD_SIZE; ++index)
+		gate->read_source.bytes[index] = (uint8_t)(index ^ 0x3cU);
+	yt_database_set_seek_provider(&gate->database, direct_warp_gate_seek,
+	    gate);
+	yt_database_set_read_provider(&gate->database, direct_warp_gate_read,
+	    gate);
+	field = gate->field;
+	++cycle->fresh_hostile_attack_sector_reads;
+	yt_error_clear(&error);
+	if (yt_database_random_get(&gate->database, 1054U, &field, &accepted,
+	    &error)) {
+		yt_database_close(&gate->database);
+		return false;
+	}
+	if (gate->database.last_get.outcome == YT_DATABASE_GET_READ_ERROR) {
+		gate->field = field;
+		gate->field_record = 1054;
+		gate->field_player = false;
+		cycle->final_field_record = 1054;
+		cycle->final_field_player = false;
+	}
+	if (!yt_error_attach_basic_fault_number(&error,
+	    YT_BASIC_FAULT_HOSTILE_ATTACK_SECTOR_GET,
+	    gate->database.last_get.basic_error)
+	    || !yt_basic_fault_project(&error, NULL, 0U, NULL, 0U, NULL, 0U,
+	    projection)) {
+		yt_database_close(&gate->database);
+		return false;
+	}
 	return true;
 }
 
@@ -30801,6 +30864,178 @@ test_direct_emergency_warp_hostile_attack_admission(void)
 		    && viewer.join.pager.line_count == 0.0f
 		    && viewer.join.pager.newline_flag == 0.0f);
 		yt_text_input_destroy(&viewer.input);
+	}
+}
+
+static void
+test_direct_emergency_warp_hostile_attack_sector_get_failures(void)
+{
+	static const struct {
+		bool main;
+		bool ansi;
+		const uint8_t *command;
+		size_t command_length;
+		size_t total_length;
+		size_t rows;
+		size_t colors;
+		size_t events;
+		size_t samples;
+	} callers[] = {
+		{true, false, (const uint8_t *)"W", 1U, 918U, 33U, 8U,
+		    40U, 8U},
+		{true, true, (const uint8_t *)"W", 1U, 1190U, 33U, 52U,
+		    40U, 8U},
+		{false, false, (const uint8_t *)"W", 1U, 940U, 34U, 9U,
+		    45U, 9U},
+		{false, false, (const uint8_t *)"WT", 2U, 941U, 34U, 9U,
+		    45U, 9U},
+		{false, true, (const uint8_t *)"W", 1U, 1222U, 34U, 54U,
+		    45U, 9U},
+		{false, true, (const uint8_t *)"WT", 2U, 1223U, 34U, 54U,
+		    45U, 9U},
+	};
+	static const struct {
+		enum direct_warp_gate_get_failure failure;
+		uint16_t error_number;
+		enum yt_basic_fault_disposition disposition;
+		enum yt_main_error_route route;
+	} cuts[] = {
+		{DIRECT_WARP_GATE_SEEK_52, 52U, YT_BASIC_FAULT_END,
+		    YT_MAIN_ERROR_FATAL},
+		{DIRECT_WARP_GATE_READ_57, 57U,
+		    YT_BASIC_FAULT_RETRY_STATEMENT, YT_MAIN_ERROR_RETRY_CURRENT},
+		{DIRECT_WARP_GATE_READ_70, 70U, YT_BASIC_FAULT_END,
+		    YT_MAIN_ERROR_FATAL},
+		{DIRECT_WARP_GATE_READ_75, 75U, YT_BASIC_FAULT_END,
+		    YT_MAIN_ERROR_FATAL},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	struct direct_warp_main_cycle_state cycle;
+	struct direct_warp_gate_get_state gate;
+	struct yt_basic_fault_projection projection;
+	struct yt_record record;
+	struct yt_record inherited_field;
+	uint8_t remote[1400];
+	size_t ends[3];
+	size_t caller;
+	size_t cut;
+	size_t index;
+
+	for (caller = 0U; caller < YT_ARRAY_LEN(callers); ++caller) {
+		for (cut = 0U; cut < YT_ARRAY_LEN(cuts); ++cut) {
+			memset(&viewer, 0, sizeof(viewer));
+			fixture_viewer_initialize(&viewer, &stream,
+			    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+			    "YTSCORE.ASC", callers[caller].ansi, remote,
+			    sizeof(remote));
+			memset(&fixture, 0, sizeof(fixture));
+			fixture.cycle.presentation.viewer = &viewer;
+			fixture.emergency_sector_cache = 733.0f;
+			fixture.draws[0] = 0.0f;
+			fixture.draws[1] = 0.0f;
+			fixture.draws[2] = 0.75f;
+			fixture.draws[3] = 0.5f;
+			fixture.draws[4] = 0.949999988079071f;
+			fixture.draws[5] = 0.999f;
+			fixture.draws[6] = 0.9f;
+			memset(&record, 0xa5, sizeof(record));
+			(void)yt_record_set_number(&record, YT_F49, 17.0f);
+			(void)yt_record_set_number(&record, YT_F57, 733.0f);
+			yt_player_decode(&fixture.emergency_player, &record);
+			fixture.hazard_player = fixture.emergency_player;
+			if (callers[caller].main) {
+				CHECK(direct_emergency_warp_main_hostile_handoff_run(
+				    &fixture, callers[caller].ansi, &cycle, ends));
+			}
+			else {
+				CHECK(direct_emergency_warp_hostile_cycle_run(&fixture,
+				    callers[caller].ansi, callers[caller].command,
+				    callers[caller].command_length,
+				    DIRECT_WARP_HOSTILE_DEFENSE, &cycle, ends));
+			}
+			CHECK(direct_emergency_warp_fresh_hostile_menu(&fixture, &cycle)
+			    && direct_emergency_warp_fresh_hostile_attack_admission(
+			    &fixture, &cycle)
+			    && viewer.join.remote_length == callers[caller].total_length);
+			inherited_field = fixture.emergency_player.record;
+			CHECK(direct_emergency_warp_fresh_hostile_attack_sector_get_failure(
+			    &cycle, cuts[cut].failure, &gate, &projection,
+			    &inherited_field));
+			CHECK(viewer.join.remote_length == callers[caller].total_length
+			    && viewer.join.local_row_count == callers[caller].rows
+			    && viewer.join.local_color_count == callers[caller].colors
+			    && viewer.join.event_count == callers[caller].events
+			    && viewer.join.sample_calls == callers[caller].samples
+			    && gate.seek_calls == 1U
+			    && gate.read_calls == (cuts[cut].failure
+			    == DIRECT_WARP_GATE_SEEK_52 ? 0U : 1U)
+			    && gate.database.last_get.current_record == 1054U
+			    && gate.database.last_get.record_index == 1053U
+			    && gate.database.last_get.desired_offset
+			    == (int64_t)(1053U * YT_RECORD_SIZE)
+			    && gate.database.last_get.basic_error
+			    == cuts[cut].error_number
+			    && gate.database.last_get.terminal_position
+			    == gate.terminal_position
+			    && gate.database.last_get.registered
+			    && gate.database.last_get.handle_open
+			    && gate.store_count == 0U);
+			CHECK(projection.site
+			    == YT_BASIC_FAULT_HOSTILE_ATTACK_SECTOR_GET
+			    && projection.error_number == cuts[cut].error_number
+			    && projection.identity->instruction == 0x0BC0U
+			    && projection.identity->saved_ip == 0x0BC3U
+			    && projection.identity->retry_statement == 0x0BB5U
+			    && projection.identity->source_line == 20430
+			    && projection.identity->handler == 0xB2DAU
+			    && projection.disposition == cuts[cut].disposition
+			    && projection.main.route == cuts[cut].route);
+			CHECK(fixture.warp_called && fixture.draw_position == 7U
+			    && fixture.emergency_player_reads == 1U
+			    && fixture.emergency_player_put_attempts == 1U
+			    && fixture.emergency_player_writes == 1U
+			    && fixture.emergency_flushes == 1U
+			    && fixture.emergency_waits == 1U
+			    && fixture.emergency_ticks == 1U
+			    && fixture.emergency_sector_cache == 1003.0f
+			    && fixture.emergency_player.sector == 1003.0f
+			    && fixture.emergency_player.turns == 14.0f
+			    && cycle.fresh_hostile_player_reads == 1U
+			    && cycle.fresh_hostile_player_get_completed
+			    && cycle.fresh_hostile_selected == 'A'
+			    && cycle.fresh_hostile_attack_admission_entered
+			    && cycle.fresh_hostile_attack_sector_get_boundary
+			    && cycle.fresh_hostile_attack_sector_reads == 1U
+			    && cycle.fresh_hostile_attack_commitment == 1.0f
+			    && viewer.join.queue_length == 0U
+			    && strcmp(viewer.join.accumulator, "1") == 0
+			    && viewer.join.pager.line_count == 0.0f);
+			if (cuts[cut].failure == DIRECT_WARP_GATE_SEEK_52) {
+				CHECK(gate.database.last_get.outcome
+				    == YT_DATABASE_GET_SEEK_ERROR
+				    && gate.field_record == 2 && gate.field_player
+				    && cycle.final_field_record == 2
+				    && cycle.final_field_player
+				    && memcmp(&gate.field, &inherited_field,
+				    sizeof(inherited_field)) == 0);
+			}
+			else {
+				CHECK(gate.database.last_get.outcome
+				    == YT_DATABASE_GET_READ_ERROR
+				    && gate.database.last_get.accepted == 3U
+				    && gate.field_record == 1054 && !gate.field_player
+				    && cycle.final_field_record == 1054
+				    && !cycle.final_field_player
+				    && memcmp(gate.field.bytes,
+				    gate.read_source.bytes, 3U) == 0);
+				for (index = 3U; index < YT_RECORD_SIZE; ++index)
+					CHECK(gate.field.bytes[index] == 0U);
+			}
+			yt_database_close(&gate.database);
+			yt_text_input_destroy(&viewer.input);
+		}
 	}
 }
 
@@ -40185,6 +40420,7 @@ main(void)
 	test_direct_emergency_warp_hostile_menu_carrier_failures();
 	test_direct_emergency_warp_hostile_menu_terminal_exits();
 	test_direct_emergency_warp_hostile_attack_admission();
+	test_direct_emergency_warp_hostile_attack_sector_get_failures();
 	test_direct_emergency_warp_hostile_invalid_retry_cycle();
 	test_direct_emergency_warp_hostile_ordinary_returns();
 	test_direct_emergency_warp_queue_cycles();
