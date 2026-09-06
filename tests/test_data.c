@@ -2822,7 +2822,7 @@ test_text_output_write(void)
 		yt_text_output_destroy(&output);
 	}
 
-	/* Carry exposes no accepted prefix, retries CLOSE, and routes ERR 71. */
+	/* An explicitly unknown carry retries CLOSE and routes ERR 71. */
 	for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
 		memset(&write_script, 0, sizeof(write_script));
 		memset(&close_script, 0, sizeof(close_script));
@@ -2953,6 +2953,7 @@ test_genesis_sequential_handoff_boundaries(void)
 {
 	uint8_t command126[128];
 	uint8_t command127[129];
+	uint8_t command_carry[129];
 	uint8_t first_block[YT_TEXT_OUTPUT_BUFFER_SIZE];
 	struct text_output_write_script write_script;
 	struct text_close_script close_script;
@@ -3016,6 +3017,38 @@ test_genesis_sequential_handoff_boundaries(void)
 	    && output.last_close.outcome == YT_TEXT_CLOSE_RETURNED
 	    && output.last_close.operation_count == 4U
 	    && output.file == NULL && output.pending_count == 0U);
+	yt_text_output_destroy(&output);
+
+	/* A carry can retain an externally observed prefix and cursor. */
+	memset(command_carry, 'C', 127U);
+	command_carry[127] = '\r';
+	command_carry[128] = '\n';
+	memcpy(first_block, command_carry, sizeof(first_block));
+	memset(&write_script, 0, sizeof(write_script));
+	text_output_write_add(&write_script, first_block, 7U, true, 29U, true);
+	write_script.steps[0].observation.terminal_position = 7;
+	memset(&close_script, 0, sizeof(close_script));
+	text_close_add(&close_script, YT_TEXT_CLOSE_CLEANUP_HANDLE, NULL, 0U,
+	    0U, false, 0U, false, true, true);
+	CHECK(text_output_close_fixture(&output, &close_script, NULL, 0U));
+	yt_text_output_set_write_provider(&output, scripted_text_output_write,
+	    &write_script);
+	yt_error_clear(&error);
+	CHECK(!yt_text_output_write(&output, command_carry,
+	    sizeof(command_carry), &error)
+	    && output.last_write.outcome == YT_TEXT_OUTPUT_WRITE_DISK_ERROR
+	    && output.last_write.basic_error == 71U
+	    && output.last_write.dos_error == 29U
+	    && output.last_write.accepted == 128U
+	    && output.last_write.failed_flush_accepted == 7U
+	    && output.last_write.terminal_position == 7
+	    && !output.last_write.physical_unknown
+	    && output.last_write.cleanup_close_attempted
+	    && !output.last_write.registered && !output.last_write.handle_open
+	    && output.pending_count == 0U && output.file == NULL
+	    && output.orphaned_file == NULL
+	    && write_script.position == write_script.length
+	    && close_script.position == close_script.length);
 	yt_text_output_destroy(&output);
 }
 

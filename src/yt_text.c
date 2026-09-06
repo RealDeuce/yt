@@ -2329,10 +2329,10 @@ text_output_write_observation_valid(size_t requested,
 	    || !observation->handle_open)
 		return false;
 	if (observation->carry)
-		return observation->accepted == 0U
-		    && observation->terminal_position == -1
-		    && observation->dos_error >= 1U
-		    && observation->dos_error <= 0xffU;
+		return observation->dos_error >= 1U
+		    && observation->dos_error <= 0xffU
+		    && (observation->terminal_position >= 0
+		    || observation->accepted == 0U);
 	return observation->dos_error == 0U;
 }
 
@@ -2357,7 +2357,7 @@ text_output_write_failure(struct yt_text_output *output,
 
 static bool
 text_output_write_cleanup_after_carry(struct yt_text_output *output,
-    FILE *file, size_t accepted,
+    FILE *file, size_t logical_accepted,
     const struct yt_text_output_write_observation *failure,
     struct yt_error *error)
 {
@@ -2383,8 +2383,8 @@ text_output_write_cleanup_after_carry(struct yt_text_output *output,
 	text_output_write_failure(output, valid
 	    ? YT_TEXT_OUTPUT_WRITE_DISK_ERROR
 	    : YT_TEXT_OUTPUT_WRITE_PROVIDER_ERROR, valid ? 71U : 57U,
-	    failure->dos_error, accepted, 0U, failure->terminal_position,
-	    true, error);
+	    failure->dos_error, logical_accepted, failure->accepted,
+	    failure->terminal_position, failure->terminal_position < 0, error);
 	return false;
 }
 
