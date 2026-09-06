@@ -26899,16 +26899,20 @@ direct_emergency_warp_hostile_reentry(
 }
 
 static bool
-direct_emergency_warp_fresh_hostile_menu(
+direct_emergency_warp_fresh_hostile_menu_command(
     struct hostile_mines_hazard_fixture *fixture,
-    struct direct_warp_main_cycle_state *cycle)
+    struct direct_warp_main_cycle_state *cycle, const uint8_t *command,
+    size_t command_length)
 {
 	static const uint8_t prompt[] =
 	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? ";
-	static const uint8_t command[] = "A";
 	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
 	uint8_t row[96];
 	size_t row_length;
+
+	if (command == NULL || command_length == 0U
+	    || command_length >= sizeof(join->accumulator))
+		return false;
 
 	++cycle->fresh_hostile_player_reads;
 	cycle->fresh_hostile_player_get_completed = true;
@@ -26924,16 +26928,28 @@ direct_emergency_warp_fresh_hostile_menu(
 	cycle->fresh_hostile_editor_entered = true;
 	yt_pager_editor_enter(&join->pager, join->accumulator,
 	    sizeof(join->accumulator));
-	memcpy(join->accumulator, command, sizeof(command));
+	memcpy(join->accumulator, command, command_length);
+	join->accumulator[command_length] = '\0';
 	if (!main_buy_present_echo(&fixture->cycle.presentation, command,
-	    sizeof(command) - 1U) || !normal_exit_line(join, NULL, 0U))
+	    command_length) || !normal_exit_line(join, NULL, 0U))
 		return false;
 	join->source[0] = '\r';
 	join->source[1] = '\0';
 	join->source_length = 1U;
 	cycle->fresh_hostile_selected = command[0];
-	return yt_hostile_menu_dispatch((const char *)command)
+	return yt_hostile_menu_dispatch(join->accumulator)
 	    == YT_HOSTILE_MENU_ATTACK;
+}
+
+static bool
+direct_emergency_warp_fresh_hostile_menu(
+    struct hostile_mines_hazard_fixture *fixture,
+    struct direct_warp_main_cycle_state *cycle)
+{
+	static const uint8_t command[] = "A";
+
+	return direct_emergency_warp_fresh_hostile_menu_command(fixture, cycle,
+	    command, sizeof(command) - 1U);
 }
 
 static bool
@@ -32801,6 +32817,17 @@ test_direct_emergency_warp_hostile_attack_defenders_cleared(void)
 	};
 	static const uint8_t raw_zero_double[8] = {0};
 	static const struct {
+		const uint8_t *text;
+		size_t length;
+	} aliases[] = {
+		{(const uint8_t *)"A", 1U},
+		{(const uint8_t *)"AQ", 2U},
+		{(const uint8_t *)"AQB", 3U},
+		{(const uint8_t *)"AQBD", 4U},
+		{(const uint8_t *)"AQBDW", 5U},
+		{(const uint8_t *)"AQBDWT", 6U},
+	};
+	static const struct {
 		bool main;
 		bool ansi;
 		const uint8_t *command;
@@ -32828,105 +32855,112 @@ test_direct_emergency_warp_hostile_attack_defenders_cleared(void)
 	size_t return_length;
 	uint8_t remote[1800];
 	size_t ends[3];
+	size_t alias;
 	size_t caller;
+	size_t joined_start;
 
 	for (caller = 0U; caller < YT_ARRAY_LEN(callers); ++caller) {
-		memset(&viewer, 0, sizeof(viewer));
-		fixture_viewer_initialize(&viewer, &stream, retained_scoreboard,
-		    sizeof(retained_scoreboard) - 1U, "YTSCORE.ASC",
-		    callers[caller].ansi, remote, sizeof(remote));
-		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
-		fixture.emergency_sector_cache = 733.0f;
-		fixture.draws[0] = 0.0f;
-		fixture.draws[1] = 0.0f;
-		fixture.draws[2] = 0.75f;
-		fixture.draws[3] = 0.5f;
-		fixture.draws[4] = 0.949999988079071f;
-		fixture.draws[5] = 0.999f;
-		fixture.draws[6] = 0.9f;
-		fixture.draws[7] = 7736943.0f / 16777216.0f;
-		fixture.draws[8] = 14348150.0f / 16777216.0f;
-		memset(&record, 0xa5, sizeof(record));
-		(void)yt_record_set_number(&record, YT_F49, 17.0f);
-		(void)yt_record_set_number(&record, YT_F57, 733.0f);
-		yt_player_decode(&fixture.emergency_player, &record);
-		fixture.hazard_player = fixture.emergency_player;
-		if (callers[caller].main) {
-			CHECK(direct_emergency_warp_main_hostile_handoff_run(
-			    &fixture, callers[caller].ansi, &cycle, ends));
+		for (alias = 0U; alias < YT_ARRAY_LEN(aliases); ++alias) {
+			memset(&viewer, 0, sizeof(viewer));
+			fixture_viewer_initialize(&viewer, &stream, retained_scoreboard,
+			    sizeof(retained_scoreboard) - 1U, "YTSCORE.ASC",
+			    callers[caller].ansi, remote, sizeof(remote));
+			memset(&fixture, 0, sizeof(fixture));
+			fixture.cycle.presentation.viewer = &viewer;
+			fixture.emergency_sector_cache = 733.0f;
+			fixture.draws[0] = 0.0f;
+			fixture.draws[1] = 0.0f;
+			fixture.draws[2] = 0.75f;
+			fixture.draws[3] = 0.5f;
+			fixture.draws[4] = 0.949999988079071f;
+			fixture.draws[5] = 0.999f;
+			fixture.draws[6] = 0.9f;
+			fixture.draws[7] = 7736943.0f / 16777216.0f;
+			fixture.draws[8] = 14348150.0f / 16777216.0f;
+			memset(&record, 0xa5, sizeof(record));
+			(void)yt_record_set_number(&record, YT_F49, 17.0f);
+			(void)yt_record_set_number(&record, YT_F57, 733.0f);
+			yt_player_decode(&fixture.emergency_player, &record);
+			fixture.hazard_player = fixture.emergency_player;
+			if (callers[caller].main) {
+				CHECK(direct_emergency_warp_main_hostile_handoff_run(
+				    &fixture, callers[caller].ansi, &cycle, ends));
+			}
+			else {
+				CHECK(direct_emergency_warp_hostile_cycle_run(
+				    &fixture, callers[caller].ansi,
+				    callers[caller].command, callers[caller].command_length,
+				    DIRECT_WARP_HOSTILE_DEFENSE, &cycle, ends));
+			}
+			CHECK(direct_emergency_warp_fresh_hostile_menu_command(&fixture,
+			    &cycle, aliases[alias].text, aliases[alias].length)
+			    && direct_emergency_warp_fresh_hostile_attack_admission(
+			    &fixture, &cycle));
+			joined_start = callers[caller].total_length
+			    + aliases[alias].length - 1U;
+			CHECK(viewer.join.remote_length == joined_start);
+			yt_error_clear(&error);
+			CHECK(direct_warp_attack_cleared_join_run(&fixture, &cycle,
+			    &join, &combat, &error));
+			return_bytes = callers[caller].ansi ? ansi_return : plain_return;
+			return_length = callers[caller].ansi
+			    ? sizeof(ansi_return) - 1U : sizeof(plain_return) - 1U;
+			CHECK(viewer.join.remote_length == joined_start
+			    + sizeof(body) - 1U + return_length
+			    && memcmp(remote + joined_start, body,
+			    sizeof(body) - 1U) == 0
+			    && memcmp(remote + joined_start
+			    + sizeof(body) - 1U, return_bytes, return_length) == 0);
+			CHECK(combat.complete
+			    && combat.route == YT_HOSTILE_ATTACK_COMBAT_NORMAL
+			    && combat.old_owner == 2.0f && combat.old_count == 1.0
+			    && combat.old_ship == 3.0 && combat.attacker_loss == 0.0
+			    && combat.defender_loss == 1.0
+			    && combat.ship_fighters == 3.0
+			    && combat.deployed_remaining == 0.0
+			    && combat.quantum == 1.0f && combat.iterations == 1U
+			    && !combat.surrender_checked && !combat.surrendered
+			    && !combat.spill_called);
+			CHECK(join.sector_reads == 1U && join.a41c_reads == 2U
+			    && join.a41c_stores == 50U && join.sound_calls == 1U
+			    && join.random_calls == 2U && join.quantum_stores == 1U
+			    && join.loss_stores == 1U && join.ship_stores == 1U
+			    && join.persistence_player_reads == 2U
+			    && join.persistence_player_writes == 1U
+			    && join.persistence_sector_reads == 1U
+			    && join.persistence_sector_writes == 1U
+			    && join.persistence_blanks == 1U
+			    && !join.unexpected_surrender && !join.unexpected_spill
+			    && !join.unexpected_news && !join.unexpected_fatal
+			    && !join.unexpected_tail_effect);
+			CHECK(memcmp(join.attacker_loss_raw, raw_zero_double, 8U) == 0
+			    && memcmp(join.defender_loss_raw, raw_one_double, 8U) == 0
+			    && join.news_length == sizeof(news) - 1U
+			    && memcmp(join.news, news, sizeof(news) - 1U) == 0
+			    && join.defeated_length == 46U
+			    && memcmp(join.defeated,
+			    "You defeated all the fighters and have 3 left.", 46U) == 0);
+			expected_player = join.persistence_player;
+			yt_deployed_attack_player_overlay(&expected_player, 5.0f, 3.0f);
+			expected_sector = join.persistence_sector;
+			yt_deployed_attack_sector_overlay(&expected_sector, 0.0f);
+			CHECK(memcmp(&join.written_player.record,
+			    &expected_player.record, sizeof(expected_player.record)) == 0
+			    && memcmp(&join.written_sector.record,
+			    &expected_sector.record, sizeof(expected_sector.record)) == 0
+			    && join.written_sector.fighters == 0.0f
+			    && join.written_sector.fighter_owner == 0.0f);
+			CHECK(fixture.draw_position == 9U
+			    && cycle.fresh_hostile_attack_sector_reads == 1U
+			    && cycle.fresh_hostile_player_reads == 3U
+			    && cycle.sector_reads == 2U && cycle.final_player_reads == 1U
+			    && cycle.physical_current_sector == 1054.0f
+			    && cycle.final_field_record == 2 && cycle.final_field_player
+			    && cycle.fresh_prompt_wait
+			    && viewer.join.accumulator[0] == '\0'
+			    && viewer.join.pager.line_count == 0.0f);
+			yt_text_input_destroy(&viewer.input);
 		}
-		else {
-			CHECK(direct_emergency_warp_hostile_cycle_run(
-			    &fixture, callers[caller].ansi,
-			    callers[caller].command, callers[caller].command_length,
-			    DIRECT_WARP_HOSTILE_DEFENSE, &cycle, ends));
-		}
-		CHECK(direct_emergency_warp_fresh_hostile_menu(&fixture, &cycle)
-		    && direct_emergency_warp_fresh_hostile_attack_admission(
-		    &fixture, &cycle)
-		    && viewer.join.remote_length == callers[caller].total_length);
-		yt_error_clear(&error);
-		CHECK(direct_warp_attack_cleared_join_run(&fixture, &cycle,
-		    &join, &combat, &error));
-		return_bytes = callers[caller].ansi ? ansi_return : plain_return;
-		return_length = callers[caller].ansi
-		    ? sizeof(ansi_return) - 1U : sizeof(plain_return) - 1U;
-		CHECK(viewer.join.remote_length == callers[caller].total_length
-		    + sizeof(body) - 1U + return_length
-		    && memcmp(remote + callers[caller].total_length, body,
-		    sizeof(body) - 1U) == 0
-		    && memcmp(remote + callers[caller].total_length
-		    + sizeof(body) - 1U, return_bytes, return_length) == 0);
-		CHECK(combat.complete
-		    && combat.route == YT_HOSTILE_ATTACK_COMBAT_NORMAL
-		    && combat.old_owner == 2.0f && combat.old_count == 1.0
-		    && combat.old_ship == 3.0 && combat.attacker_loss == 0.0
-		    && combat.defender_loss == 1.0
-		    && combat.ship_fighters == 3.0
-		    && combat.deployed_remaining == 0.0
-		    && combat.quantum == 1.0f && combat.iterations == 1U
-		    && !combat.surrender_checked && !combat.surrendered
-		    && !combat.spill_called);
-		CHECK(join.sector_reads == 1U && join.a41c_reads == 2U
-		    && join.a41c_stores == 50U && join.sound_calls == 1U
-		    && join.random_calls == 2U && join.quantum_stores == 1U
-		    && join.loss_stores == 1U && join.ship_stores == 1U
-		    && join.persistence_player_reads == 2U
-		    && join.persistence_player_writes == 1U
-		    && join.persistence_sector_reads == 1U
-		    && join.persistence_sector_writes == 1U
-		    && join.persistence_blanks == 1U
-		    && !join.unexpected_surrender && !join.unexpected_spill
-		    && !join.unexpected_news && !join.unexpected_fatal
-		    && !join.unexpected_tail_effect);
-		CHECK(memcmp(join.attacker_loss_raw, raw_zero_double, 8U) == 0
-		    && memcmp(join.defender_loss_raw, raw_one_double, 8U) == 0
-		    && join.news_length == sizeof(news) - 1U
-		    && memcmp(join.news, news, sizeof(news) - 1U) == 0
-		    && join.defeated_length == 46U
-		    && memcmp(join.defeated,
-		    "You defeated all the fighters and have 3 left.", 46U) == 0);
-		expected_player = join.persistence_player;
-		yt_deployed_attack_player_overlay(&expected_player, 5.0f, 3.0f);
-		expected_sector = join.persistence_sector;
-		yt_deployed_attack_sector_overlay(&expected_sector, 0.0f);
-		CHECK(memcmp(&join.written_player.record,
-		    &expected_player.record, sizeof(expected_player.record)) == 0
-		    && memcmp(&join.written_sector.record,
-		    &expected_sector.record, sizeof(expected_sector.record)) == 0
-		    && join.written_sector.fighters == 0.0f
-		    && join.written_sector.fighter_owner == 0.0f);
-		CHECK(fixture.draw_position == 9U
-		    && cycle.fresh_hostile_attack_sector_reads == 1U
-		    && cycle.fresh_hostile_player_reads == 3U
-		    && cycle.sector_reads == 2U && cycle.final_player_reads == 1U
-		    && cycle.physical_current_sector == 1054.0f
-		    && cycle.final_field_record == 2 && cycle.final_field_player
-		    && cycle.fresh_prompt_wait
-		    && viewer.join.accumulator[0] == '\0'
-		    && viewer.join.pager.line_count == 0.0f);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
