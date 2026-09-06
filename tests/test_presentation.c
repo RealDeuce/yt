@@ -22367,7 +22367,7 @@ struct hostile_mines_hazard_fixture {
 	struct yt_sector hazard_sector;
 	int hazard_logical_sector;
 	struct yt_player emergency_player;
-	float draws[16];
+	float draws[512];
 	size_t draw_position;
 	enum sector_mine_physical_failure mine_failure;
 	unsigned mine_error_number;
@@ -27766,6 +27766,9 @@ struct direct_warp_attack_combat_join {
 	uint8_t spill_shields_raw[4];
 	uint8_t news[300];
 	size_t news_length;
+	uint8_t secondary_news[300];
+	size_t secondary_news_length;
+	size_t news_calls;
 	uint8_t defeated[160];
 	size_t defeated_length;
 	uint8_t reward[240];
@@ -27777,6 +27780,7 @@ struct direct_warp_attack_combat_join {
 	struct yt_clearance_state clearance;
 	struct yt_xannor_victory_state victory;
 	struct yt_credit_mutation_state victory_credit;
+	struct yt_player victory_player_source;
 	struct yt_player victory_player_written;
 	struct yt_sector victory_sector_source;
 	struct yt_sector victory_sector_written;
@@ -28392,12 +28396,18 @@ direct_warp_attack_news(void *context, const uint8_t *text,
 
 	(void)error;
 	if (text == NULL || length > sizeof(join->news)
-	    || join->news_length != 0U) {
+	    || join->news_calls >= 2U) {
 		join->unexpected_news = true;
 		return false;
 	}
-	memcpy(join->news, text, length);
-	join->news_length = length;
+	if (join->news_calls == 0U) {
+		memcpy(join->news, text, length);
+		join->news_length = length;
+	} else {
+		memcpy(join->secondary_news, text, length);
+		join->secondary_news_length = length;
+	}
+	++join->news_calls;
 	return true;
 }
 
@@ -28459,6 +28469,7 @@ direct_warp_attack_tail_write_player(void *context, int player_record,
 		return false;
 	}
 	join->written_player = *player;
+	join->victory_player_source = *player;
 	++join->tail_player_writes;
 	return true;
 }
@@ -28784,8 +28795,14 @@ direct_warp_attack_victory_read_credit(void *context, int player_record,
 
 	if (!direct_warp_attack_victory_step(join, "victory player GET", error))
 		return false;
-	return direct_warp_attack_combat_a41c_source(context, player_record,
-	    player, error);
+	if (player_record != 2 || player == NULL)
+		return false;
+	*player = join->victory_player_source;
+	++join->a41c_reads;
+	++join->cycle->fresh_hostile_player_reads;
+	join->cycle->final_field_record = 2;
+	join->cycle->final_field_player = true;
+	return true;
 }
 
 static bool
@@ -28803,7 +28820,7 @@ direct_warp_attack_victory_mutate_credits(void *context,
 
 	if (player == NULL || hydrated == NULL || player_record != 2.0f)
 		return false;
-	*player = join->return_player;
+	*player = join->victory_player_source;
 	*credit = (struct yt_credit_mutation_state){
 		.hydration = {
 			.player = player,
@@ -36656,11 +36673,13 @@ test_xannor_attack_tail_victory_join(void)
 		join.allow_victory = true;
 		memcpy(join.clearance_discount_raw[0], holds_zero, 4U);
 		memset(&record, 0xa5, sizeof(record));
-		yt_record_set_text(&record, (const uint8_t *)"FRESH XANNOR", 12U);
+		yt_record_set_text(&record, cached_name, sizeof(cached_name));
 		(void)yt_record_set_number(&record, YT_F49, 98.0f);
 		(void)yt_record_set_number(&record, YT_F53, 5.0f);
 		(void)yt_record_set_number(&record, YT_F57, 7.0f);
 		(void)yt_record_set_number(&record, YT_F61, 21.0f);
+		(void)yt_record_set_number(&record, YT_F81, 16000001.0f);
+		(void)yt_record_set_number(&record, YT_F85, 3.0f);
 		(void)yt_record_set_number(&record, YT_F125, 0.0f);
 		yt_player_decode(&join.attack_player, &record);
 		fixture.emergency_player = join.attack_player;
@@ -36894,12 +36913,14 @@ test_xannor_attack_tail_victory_failure_prefixes(void)
 			join.victory_fail_at = cut;
 			memcpy(join.clearance_discount_raw[0], holds_zero, 4U);
 			memset(&record, 0xa5, sizeof(record));
-			yt_record_set_text(&record,
-			    (const uint8_t *)"FRESH XANNOR", 12U);
+			yt_record_set_text(&record, cached_name,
+			    sizeof(cached_name));
 			(void)yt_record_set_number(&record, YT_F49, 98.0f);
 			(void)yt_record_set_number(&record, YT_F53, 5.0f);
 			(void)yt_record_set_number(&record, YT_F57, 7.0f);
 			(void)yt_record_set_number(&record, YT_F61, 21.0f);
+			(void)yt_record_set_number(&record, YT_F81, 16000001.0f);
+			(void)yt_record_set_number(&record, YT_F85, 3.0f);
 			(void)yt_record_set_number(&record, YT_F125, 0.0f);
 			yt_player_decode(&join.attack_player, &record);
 			fixture.emergency_player = join.attack_player;
@@ -36976,6 +36997,290 @@ test_xannor_attack_tail_victory_failure_prefixes(void)
 			    && !join.unexpected_tail_effect);
 			yt_text_input_destroy(&viewer.input);
 		}
+	}
+}
+
+static void
+test_xannor_attack_combat_victory_join(void)
+{
+	static const uint8_t player_name[] = {'A', 0, 'B'};
+	static const uint8_t owner_label[] = "Xannor";
+	static const uint8_t expected_combat_news[] =
+	    "A\0B destroyed 256000 fighters belonging to Xannor";
+	static const uint8_t expected_reward[] =
+	    "Collect 1 turns bonus for destroying 256000 Xannor!!";
+	static const uint8_t expected_reward_news[] =
+	    "A\0B collected 1 turns bonus for destroying 256000 Xannor!!";
+	static const uint8_t expected_defeated[] =
+	    "You defeated all the fighters and have 256021 left.";
+	static const uint8_t expected_winner[] =
+	    "Congratulations go to A\0B who defeated the Xannor HQ!!!";
+	static const uint8_t stars[] =
+	    "*******************************************************************************";
+	static const uint8_t holds_zero[4] = {0x00U, 0x00U, 0x73U, 0x00U};
+	static const uint8_t reset_shields[4] = {
+		0x00U, 0x00U, 0x4cU, 0x00U,
+	};
+	static const uint8_t one[4] = {0x00U, 0x00U, 0x00U, 0x81U};
+	static const struct {
+		size_t length;
+		uint64_t hash;
+		size_t colors;
+		uint64_t color_hash;
+	} expected[] = {
+		{685U, UINT64_C(0x0a4e782b5a26ff10), 4U,
+		    UINT64_C(0x01b4fd96ce8921d5)},
+		{905U, UINT64_C(0xb4ab786b9cdec428), 23U,
+		    UINT64_C(0xfbf7c458d3fdcac1)},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	struct direct_warp_main_cycle_state cycle;
+	struct direct_warp_attack_combat_join join;
+	struct yt_hostile_attack_combat_state combat;
+	struct yt_record record;
+	struct yt_player expected_player;
+	struct yt_sector expected_sector;
+	struct yt_sector expected_victory_sector;
+	struct yt_error error;
+	uint8_t ninety_percent[4];
+	uint8_t remote[2048];
+	size_t index;
+	size_t pass;
+
+	CHECK(qb_mbf32_encode(0.9f, ninety_percent) == QB_MBF_OK);
+
+	for (pass = 0U; pass < 2U; ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream, retained_scoreboard,
+		    sizeof(retained_scoreboard) - 1U, "YTSCORE.ASC", pass != 0U,
+		    remote, sizeof(remote));
+		memset(&fixture, 0, sizeof(fixture));
+		fixture.cycle.presentation.viewer = &viewer;
+		for (index = 0U; index < YT_ARRAY_LEN(fixture.draws); ++index)
+			fixture.draws[index] = 0.9f;
+		memset(&cycle, 0, sizeof(cycle));
+		memset(&join, 0, sizeof(join));
+		join.fixture = &fixture;
+		join.cycle = &cycle;
+		join.current_sector_record = 1054.0f;
+		join.sector_record_offset = 51.0f;
+		join.allow_tail_player = true;
+		join.allow_clearance = true;
+		join.allow_victory = true;
+		memcpy(join.clearance_discount_raw[0], holds_zero, 4U);
+		memset(&record, 0x3c, sizeof(record));
+		(void)yt_record_set_number(&record, YT_F81, 256000.0f);
+		(void)yt_record_set_number(&record, YT_F85, -1.0f);
+		yt_sector_decode(&join.entry_sector, &record);
+		memset(&record, 0xa5, sizeof(record));
+		yt_record_set_text(&record, player_name, sizeof(player_name));
+		(void)yt_record_set_number(&record, YT_F49, 98.0f);
+		(void)yt_record_set_number(&record, YT_F53, 5.0f);
+		(void)yt_record_set_number(&record, YT_F57, 1003.0f);
+		(void)yt_record_set_number(&record, YT_F61, 256021.0f);
+		(void)yt_record_set_number(&record, YT_F81, 16000001.0f);
+		(void)yt_record_set_number(&record, YT_F85, 3.0f);
+		(void)yt_record_set_number(&record, YT_F125, 0.0f);
+		yt_player_decode(&join.attack_player, &record);
+		fixture.emergency_player = join.attack_player;
+		memset(&record, 0x5a, sizeof(record));
+		yt_record_set_text(&record, player_name, sizeof(player_name));
+		(void)yt_record_set_number(&record, YT_F49, 98.0f);
+		(void)yt_record_set_number(&record, YT_F53, 5.0f);
+		(void)yt_record_set_number(&record, YT_F57, 1003.0f);
+		(void)yt_record_set_number(&record, YT_F61, 256021.0f);
+		(void)yt_record_set_number(&record, YT_F81, 16000001.0f);
+		(void)yt_record_set_number(&record, YT_F85, 3.0f);
+		yt_player_decode(&join.persistence_player, &record);
+		memset(&record, 0x69, sizeof(record));
+		yt_record_set_text(&record, player_name, sizeof(player_name));
+		(void)yt_record_set_number(&record, YT_F49, 98.0f);
+		(void)yt_record_set_number(&record, YT_F53, 5.0f);
+		(void)yt_record_set_number(&record, YT_F57, 1003.0f);
+		(void)yt_record_set_number(&record, YT_F61, 256021.0f);
+		(void)yt_record_set_number(&record, YT_F81, 16000001.0f);
+		(void)yt_record_set_number(&record, YT_F85, 3.0f);
+		yt_player_decode(&join.return_player, &record);
+		memset(&record, 0x96, sizeof(record));
+		yt_record_set_text(&record, player_name, sizeof(player_name));
+		(void)yt_record_set_number(&record, YT_F49, 98.0f);
+		(void)yt_record_set_number(&record, YT_F53, 5.0f);
+		(void)yt_record_set_number(&record, YT_F57, 1003.0f);
+		(void)yt_record_set_number(&record, YT_F61, 256021.0f);
+		(void)yt_record_set_number(&record, YT_F81, 16000001.0f);
+		(void)yt_record_set_number(&record, YT_F85, 3.0f);
+		yt_player_decode(&join.post_loss_player, &record);
+		memset(&record, 0x7a, sizeof(record));
+		(void)yt_record_set_number(&record, YT_F81, 256000.0f);
+		(void)yt_record_set_number(&record, YT_F85, -1.0f);
+		yt_sector_decode(&join.persistence_sector, &record);
+		memset(&join.victory_sector_source, 0x4c,
+		    sizeof(join.victory_sector_source));
+		join.victory_sector_source.metadata = -9.0f;
+		combat = (struct yt_hostile_attack_combat_state){
+			.current_player_record = 2,
+			.current_sector = 1003,
+			.commitment = 256000.0,
+			.allow_surrender = false,
+			.cached_defenders = 256000.0,
+			.sector = join.entry_sector,
+			.cached_player_name = player_name,
+			.cached_player_name_length = sizeof(player_name),
+			.real_first_name = (const uint8_t *)"Sysop",
+			.real_first_name_length = 5U,
+			.owner_label = owner_label,
+			.owner_label_length = sizeof(owner_label) - 1U,
+			.turns_per_day = 100.0f,
+			.headquarters = 1003.0f,
+		};
+		yt_error_clear(&error);
+		CHECK(yt_hostile_attack_combat_run(&combat,
+		    &direct_warp_attack_combat_ops, &join, &error));
+		CHECK(viewer.join.remote_length == expected[pass].length
+		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+		    == expected[pass].hash
+		    && viewer.join.local_row_count == 18U
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == UINT64_C(0x3e8180587229a453)
+		    && viewer.join.local_color_count == expected[pass].colors
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == expected[pass].color_hash
+		    && viewer.join.local_fragment_length == 0U);
+		CHECK(combat.complete
+		    && combat.route == YT_HOSTILE_ATTACK_COMBAT_NORMAL
+		    && combat.old_owner == -1.0f && combat.old_count == 256000.0
+		    && combat.old_ship == 256021.0 && combat.attacker_loss == 0.0
+		    && combat.defender_loss == 256000.0
+		    && combat.ship_fighters == 256021.0
+		    && combat.deployed_remaining == 0.0
+		    && combat.quantum == 1.0f && combat.last_draw == 0.9f
+		    && combat.iterations == 215U && !combat.surrender_checked
+		    && !combat.surrendered && !combat.spill_called);
+		CHECK(combat.persistence.complete
+		    && combat.persistence.route == YT_HOSTILE_ATTACK_PERSISTENCE_NORMAL
+		    && combat.persistence.player_written
+		    && combat.persistence.sector_written
+		    && combat.persistence.post_loss_read
+		    && combat.persistence.news_written
+		    && !combat.persistence.mercenaries_hurt
+		    && combat.tail.complete && combat.tail.player_read
+		    && combat.tail.player_written && combat.tail.reward_presented
+		    && combat.tail.reward_news_written
+		    && combat.tail.clearance_called && combat.tail.draw_consumed
+		    && combat.tail.defeated_presented && combat.tail.victory_called
+		    && combat.tail.bonus == 1.0f
+		    && combat.tail.dominated_draw == 0.9f
+		    && combat.tail.current.turns == 99.0f);
+		CHECK(join.sector_reads == 1U && join.a41c_reads == 4U
+		    && join.a41c_stores == 100U && join.sound_calls == 1U
+		    && join.random_calls == 224U && fixture.draw_position == 224U
+		    && join.quantum_stores == 215U && join.loss_stores == 215U
+		    && join.ship_stores == 1U && join.player_cache_calls == 1U
+		    && join.sector_cache_calls == 2U
+		    && join.persistence_player_reads == 2U
+		    && join.persistence_player_writes == 1U
+		    && join.persistence_sector_reads == 1U
+		    && join.persistence_sector_writes == 1U
+		    && join.persistence_blanks == 1U
+		    && join.tail_player_reads == 1U
+		    && join.tail_player_writes == 1U);
+		CHECK(join.clearance_calls == 1U && join.clearance.complete
+		    && join.clearance.items_completed == 4U
+		    && join.clearance.draws_consumed == 8U
+		    && join.clearance.announcements == 3U
+		    && join.clearance.leading_blank_presented
+		    && join.clearance.sound_called
+		    && join.clearance.trailing_blank_presented
+		    && join.clearance_read_calls == 5U
+		    && join.clearance_store_calls == 13U
+		    && join.clearance_present_calls == 5U
+		    && join.clearance_sound_attempts == 1U
+		    && join.clearance_sound_calls == 1U
+		    && memcmp(join.clearance_discount_raw[0], ninety_percent, 4U)
+		    == 0 && memcmp(join.clearance_discount_raw[1],
+		    ninety_percent, 4U) == 0
+		    && memcmp(join.clearance_discount_raw[2], reset_shields, 4U)
+		    == 0 && memcmp(join.clearance_discount_raw[3],
+		    ninety_percent, 4U) == 0
+		    && memcmp(join.clearance_value_raw, ninety_percent, 4U) == 0
+		    && memcmp(join.clearance_announced_raw, one, 4U) == 0
+		    && memcmp(join.clearance_sound_selector_raw, one, 4U) == 0);
+		CHECK(join.reward_length == sizeof(expected_reward) - 1U
+		    && memcmp(join.reward, expected_reward,
+		    sizeof(expected_reward) - 1U) == 0
+		    && join.defeated_length == sizeof(expected_defeated) - 1U
+		    && memcmp(join.defeated, expected_defeated,
+		    sizeof(expected_defeated) - 1U) == 0
+		    && join.news_calls == 2U
+		    && join.news_length == sizeof(expected_combat_news) - 1U
+		    && memcmp(join.news, expected_combat_news,
+		    sizeof(expected_combat_news) - 1U) == 0
+		    && join.secondary_news_length == sizeof(expected_reward_news) - 1U
+		    && memcmp(join.secondary_news, expected_reward_news,
+		    sizeof(expected_reward_news) - 1U) == 0);
+		expected_sector = join.persistence_sector;
+		yt_deployed_attack_sector_overlay(&expected_sector, 0.0f);
+		expected_player = join.post_loss_player;
+		expected_player.turns = 99.0f;
+		(void)yt_record_set_number(&expected_player.record, YT_F49, 99.0f);
+		CHECK(memcmp(&join.written_sector.record, &expected_sector.record,
+		    sizeof(expected_sector.record)) == 0
+		    && join.written_sector.fighters == 0.0f
+		    && join.written_sector.fighter_owner == 0.0f
+		    && memcmp(&join.written_player.record, &expected_player.record,
+		    sizeof(expected_player.record)) == 0
+		    && memcmp(&join.victory_player_source.record,
+		    &expected_player.record, sizeof(expected_player.record)) == 0);
+		CHECK(join.victory_calls == 1U && join.victory_file_reads == 6U
+		    && join.victory_file_rows == 5U
+		    && join.victory_wait_calls == 1U
+		    && join.victory_wait_seconds == 99.0
+		    && join.victory_queue_clears == 1U
+		    && join.victory_player_writes == 1U
+		    && join.victory_sound_calls == 3U
+		    && join.victory_news_count == 3U
+		    && join.victory_radio_count == 3U
+		    && join.victory_sector_reads == 1U
+		    && join.victory_sector_writes == 1U
+		    && join.victory_fallible_calls == 18U
+		    && join.victory.sounds_completed == 3U
+		    && join.victory.news_completed == 3U
+		    && join.victory.radio_completed == 3U
+		    && join.victory.awarded_credits == 32000000.0f
+		    && join.victory.winner_length == sizeof(expected_winner) - 1U
+		    && memcmp(join.victory.winner, expected_winner,
+		    sizeof(expected_winner) - 1U) == 0
+		    && join.victory_credit.hydrated
+		    && join.victory_credit.overlay_applied
+		    && join.victory_credit.written
+		    && join.victory_player_written.credits == 32000000.0f
+		    && join.victory_player_written.turns == 99.0f);
+		expected_victory_sector = join.victory_sector_source;
+		expected_victory_sector.metadata = 2.0f;
+		CHECK(memcmp(&join.victory_sector_written,
+		    &expected_victory_sector, sizeof(expected_victory_sector)) == 0);
+		for (index = 0U; index < 3U; ++index) {
+			const uint8_t *entry = index == 1U ? expected_winner : stars;
+			size_t length = index == 1U ? sizeof(expected_winner) - 1U
+			    : sizeof(stars) - 1U;
+
+			CHECK(join.victory_news_length[index] == length
+			    && memcmp(join.victory_news[index], entry, length) == 0
+			    && join.victory_radio_length[index] == length
+			    && memcmp(join.victory_radio[index], entry, length) == 0
+			    && join.victory_radio_sender[index] == -2.0f
+			    && join.victory_radio_recipient[index] == -2.0f);
+		}
+		CHECK(cycle.fresh_hostile_attack_sector_reads == 1U
+		    && cycle.fresh_hostile_player_reads == 4U
+		    && cycle.final_field_record == 2 && cycle.final_field_player
+		    && join.current_sector_record == 1054.0f
+		    && !join.unexpected_surrender && !join.unexpected_spill
+		    && !join.unexpected_news && !join.unexpected_fatal
+		    && !join.unexpected_tail_effect);
+		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -46378,6 +46683,7 @@ main(void)
 	test_xannor_attack_tail_clearance_failure_prefixes();
 	test_xannor_attack_tail_victory_join();
 	test_xannor_attack_tail_victory_failure_prefixes();
+	test_xannor_attack_combat_victory_join();
 	test_direct_emergency_warp_hostile_invalid_retry_cycle();
 	test_direct_emergency_warp_hostile_ordinary_returns();
 	test_direct_emergency_warp_queue_cycles();
