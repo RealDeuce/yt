@@ -23841,6 +23841,102 @@ test_direct_emergency_warp_parent_copy_failures(void)
 	}
 }
 
+struct direct_warp_carrier_state {
+	uint8_t output_scratch[80];
+	size_t output_length;
+	uint8_t prompt_scratch[80];
+	size_t prompt_length;
+	bool carrier_ended;
+};
+
+static bool
+direct_emergency_warp_warning_carrier_run(
+    struct hostile_mines_hazard_fixture *fixture, bool ansi,
+    struct direct_warp_carrier_state *carrier)
+{
+	static const uint8_t warning_one[] =
+	    "This is a desperate move! Your engines will be drained and will take time";
+	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct yt_present_result result;
+
+	if (carrier == NULL)
+		return false;
+	memset(carrier, 0, sizeof(*carrier));
+	memcpy(carrier->output_scratch, warning_one, sizeof(warning_one) - 1U);
+	carrier->output_length = sizeof(warning_one) - 1U;
+	memcpy(carrier->prompt_scratch, "old-prompt", 10U);
+	carrier->prompt_length = 10U;
+	join->presentation = state(ansi);
+	if (yt_present_color(&join->presentation, &result) != YT_PRESENT_OK
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.bold = 1.0f;
+	join->presentation.foreground = 7.0f;
+	join->pager.foreground = 7;
+	if (normal_exit_b05d(join, warning_one, sizeof(warning_one) - 1U, 0.0f))
+		return false;
+	carrier->carrier_ended = true;
+	return true;
+}
+
+static void
+test_direct_emergency_warp_warning_carrier(void)
+{
+	static const uint8_t warning_one[] =
+	    "This is a desperate move! Your engines will be drained and will take time";
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	struct direct_warp_carrier_state carrier;
+	uint8_t remote[16];
+	size_t pass;
+
+	for (pass = 0U; pass < 2U; ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", pass != 0U, remote, sizeof(remote));
+		viewer.join.fail_at = 1U;
+		memset(&fixture, 0, sizeof(fixture));
+		fixture.cycle.presentation.viewer = &viewer;
+		CHECK(direct_emergency_warp_warning_carrier_run(&fixture,
+		    pass != 0U, &carrier));
+		CHECK(viewer.join.remote_length == 2U
+		    && memcmp(remote, "\r\n", 2U) == 0
+		    && carrier.output_length == sizeof(warning_one) - 1U
+		    && memcmp(carrier.output_scratch, warning_one,
+		    sizeof(warning_one) - 1U) == 0
+		    && carrier.prompt_length == 10U
+		    && memcmp(carrier.prompt_scratch, "old-prompt", 10U) == 0
+		    && carrier.carrier_ended
+		    && viewer.join.sample_calls == 0U
+		    && viewer.join.response_calls == 0U
+		    && viewer.join.event_count == 1U
+		    && viewer.join.local_fragment_length == 0U
+		    && viewer.join.local_row_count == 1U
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == UINT64_C(0x08328807b4eb6fed)
+		    && viewer.join.local_color_count == (pass != 0U ? 1U : 0U)
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == (pass != 0U ? UINT64_C(0x08395407b4f1363f)
+		    : UINT64_C(0xcbf29ce484222325))
+		    && viewer.join.presentation.foreground == 7.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold == 1.0f
+		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.cached_foreground == 2.0f
+		    && viewer.join.pager.foreground == 7
+		    && viewer.join.pager.line_count == 0.0f
+		    && !fixture.warp_called && fixture.draw_position == 0U
+		    && fixture.emergency_player_reads == 0U
+		    && fixture.emergency_player_put_attempts == 0U
+		    && fixture.emergency_player_writes == 0U
+		    && fixture.emergency_flushes == 0U
+		    && fixture.emergency_waits == 0U);
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
 static bool
 direct_emergency_warp_accepted_run(
     struct hostile_mines_hazard_fixture *fixture, bool ansi,
@@ -31256,6 +31352,7 @@ main(void)
 	test_direct_emergency_warp_inherited_pager();
 	test_direct_emergency_warp_invalid_boundaries();
 	test_direct_emergency_warp_parent_copy_failures();
+	test_direct_emergency_warp_warning_carrier();
 	test_direct_emergency_warp_accepted_presentation();
 	test_direct_emergency_warp_child_failures();
 	test_main_genesis_decline_cycle_presentation();
