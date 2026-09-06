@@ -15030,6 +15030,77 @@ check_maintenance_xannor_regeneration_model(void)
 	    NULL);
 }
 
+struct default_headquarters_test_tape {
+	float value;
+	size_t calls;
+	bool fail;
+};
+
+static bool
+default_headquarters_test_store(void *context, float headquarters,
+    struct yt_error *error)
+{
+	struct default_headquarters_test_tape *tape = context;
+
+	tape->value = headquarters;
+	++tape->calls;
+	if (!tape->fail)
+		return true;
+	if (error != NULL)
+		error->status = YT_IO_ERROR;
+	return false;
+}
+
+static bool
+check_maintenance_default_headquarters_transaction(void)
+{
+	static const struct yt_maintenance_default_headquarters_ops ops = {
+		default_headquarters_test_store,
+	};
+	struct yt_maintenance_default_headquarters_state state;
+	struct yt_maintenance_default_headquarters_ops incomplete = ops;
+	struct default_headquarters_test_tape tape;
+	struct yt_error error;
+	float headquarters;
+
+	memset(&tape, 0, sizeof(tape));
+	headquarters = -0.0f;
+	if (!yt_maintenance_default_headquarters_run(&state, &headquarters,
+	    &ops, &tape, NULL) || !state.complete || !state.defaulted
+	    || !state.persisted || state.before != 0.0f || state.after != 85.0f
+	    || headquarters != 85.0f || tape.calls != 1U || tape.value != 85.0f)
+		return false;
+	memset(&tape, 0, sizeof(tape));
+	headquarters = 9.5f;
+	if (!yt_maintenance_default_headquarters_run(&state, &headquarters,
+	    &ops, &tape, NULL) || !state.complete || state.defaulted
+	    || state.persisted || state.before != 9.5f || state.after != 9.5f
+	    || headquarters != 9.5f || tape.calls != 0U)
+		return false;
+	memset(&tape, 0, sizeof(tape));
+	tape.fail = true;
+	headquarters = 0.0f;
+	yt_error_clear(&error);
+	if (yt_maintenance_default_headquarters_run(&state, &headquarters,
+	    &ops, &tape, &error) || state.complete || !state.defaulted
+	    || state.persisted || state.before != 0.0f || state.after != 85.0f
+	    || headquarters != 85.0f || tape.calls != 1U || tape.value != 85.0f
+	    || error.status != YT_IO_ERROR)
+		return false;
+	incomplete.store = NULL;
+	yt_error_clear(&error);
+	return !yt_maintenance_default_headquarters_run(&state, &headquarters,
+	    &incomplete, &tape, &error)
+	    && error.status == YT_INVALID
+	    && strcmp(error.operation, "default headquarters transaction") == 0
+	    && !yt_maintenance_default_headquarters_run(NULL, &headquarters,
+	    &ops, &tape, NULL)
+	    && !yt_maintenance_default_headquarters_run(&state, NULL, &ops,
+	    &tape, NULL)
+	    && !yt_maintenance_default_headquarters_run(&state, &headquarters,
+	    NULL, &tape, NULL);
+}
+
 static bool
 check_maintenance_config_defaults(void)
 {
@@ -15037,6 +15108,8 @@ check_maintenance_config_defaults(void)
 	struct yt_config before;
 	float headquarters;
 
+	if (!check_maintenance_default_headquarters_transaction())
+		return false;
 	memset(&config, 0, sizeof(config));
 	memset(config.scoreboard, 0xa5, sizeof(config.scoreboard));
 	config.scoreboard[0] = '\0';

@@ -33,6 +33,8 @@ static bool maintenance_emit_output_row(
     const struct yt_maintenance_output_result *output, uint16_t address,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_error *error);
+static void set_error(struct yt_error *error, enum yt_status status,
+    const char *operation, const char *path);
 
 bool
 yt_maintenance_default_headquarters(float *headquarters)
@@ -40,6 +42,34 @@ yt_maintenance_default_headquarters(float *headquarters)
 	if (headquarters == NULL || *headquarters != 0.0f)
 		return false;
 	*headquarters = 85.0f;
+	return true;
+}
+
+bool
+yt_maintenance_default_headquarters_run(
+    struct yt_maintenance_default_headquarters_state *state,
+    float *headquarters,
+    const struct yt_maintenance_default_headquarters_ops *ops,
+    void *context, struct yt_error *error)
+{
+	if (state == NULL || headquarters == NULL || ops == NULL
+	    || ops->store == NULL) {
+		set_error(error, YT_INVALID, "default headquarters transaction", "");
+		return false;
+	}
+	memset(state, 0, sizeof(*state));
+	state->before = *headquarters;
+	state->after = *headquarters;
+	if (!yt_maintenance_default_headquarters(headquarters)) {
+		state->complete = true;
+		return true;
+	}
+	state->defaulted = true;
+	state->after = *headquarters;
+	if (!ops->store(context, *headquarters, error))
+		return false;
+	state->persisted = true;
+	state->complete = true;
 	return true;
 }
 
@@ -3248,6 +3278,13 @@ store_config_field(struct maint_state *state, size_t offset, float value,
 	    &state->game.config.record, error);
 }
 
+static bool
+store_default_headquarters(void *context, float headquarters,
+    struct yt_error *error)
+{
+	return store_config_field(context, YT_F117, headquarters, error);
+}
+
 bool
 yt_maintenance_store_final_marker(struct yt_game *game, float serial,
     struct yt_error *error)
@@ -3358,7 +3395,10 @@ maintenance_close_all(struct yt_game *game, struct yt_error *error)
 bool
 yt_maintenance_run(struct yt_error *error)
 {
+	static const struct yt_maintenance_default_headquarters_ops
+	    headquarters_ops = {store_default_headquarters};
 	struct maint_state state;
+	struct yt_maintenance_default_headquarters_state headquarters_state;
 	struct yt_maintenance_output_result entry_output;
 	struct yt_maintenance_output_result compaction_output;
 	bool same_day;
@@ -3368,10 +3408,8 @@ yt_maintenance_run(struct yt_error *error)
 	if (!yt_game_open(&state.game, YT_OPEN_UPDATE, error))
 		return false;
 	/* The shipped 0244..0270 branch persists this before later defaults. */
-	if (yt_maintenance_default_headquarters(
-	    &state.game.config.headquarters)
-	    && !store_config_field(&state, YT_F117,
-	    state.game.config.headquarters, error))
+	if (!yt_maintenance_default_headquarters_run(&headquarters_state,
+	    &state.game.config.headquarters, &headquarters_ops, &state, error))
 		goto done;
 	yt_config_normalize_maintenance(&state.game.config);
 	state.player_count = (int)state.game.config.sector_offset - 1;
