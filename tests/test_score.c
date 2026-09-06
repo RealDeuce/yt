@@ -14371,6 +14371,12 @@ struct score_line_tape {
 	unsigned lines;
 };
 
+struct score_line_fault_tape {
+	struct score_line_tape tape;
+	size_t calls;
+	size_t fail_at;
+};
+
 static bool score_line_collect(void *context, const uint8_t *line,
     size_t length, struct yt_error *error);
 
@@ -15348,6 +15354,22 @@ score_line_collect(void *context, const uint8_t *line, size_t length,
 	tape->data[tape->length++] = '\r';
 	++tape->lines;
 	return true;
+}
+
+static bool
+score_line_fail(void *context, const uint8_t *line, size_t length,
+    struct yt_error *error)
+{
+	struct score_line_fault_tape *fault = context;
+
+	if (fault == NULL)
+		return false;
+	if (fault->calls++ == fault->fail_at) {
+		if (error != NULL)
+			error->status = YT_IO_ERROR;
+		return false;
+	}
+	return score_line_collect(&fault->tape, line, length, error);
 }
 
 static bool
@@ -17284,6 +17306,8 @@ check_maintenance_super_lottery_pass(void)
 	static const uint8_t expected_failure[] =
 	    "\rRunning Super Planet Lottery\r"
 	    "No one won a planet today.\r";
+	static const uint8_t phase_prefix[] =
+	    "\rRunning Super Planet Lottery\r";
 	static const uint8_t expected_news[] =
 	    " *** A\0da won a PLANET in the SUPER LOTTERY!!!!!\a\r\n\x1a";
 	static const uint8_t expected_radio[] =
@@ -17295,6 +17319,7 @@ check_maintenance_super_lottery_pass(void)
 		success_draws, sizeof(success_draws), 0U
 	};
 	struct score_line_tape screen = {0};
+	struct score_line_fault_tape line_fault;
 	struct yt_maintenance_lottery_result result;
 	struct yt_record player;
 	struct yt_record planet_before;
@@ -17475,6 +17500,50 @@ check_maintenance_super_lottery_pass(void)
 	    || yt_maintenance_super_lottery(&game, 0, 1, 1,
 	    (const uint8_t *)"", 0U, score_line_collect, &screen, &result,
 	    &error))
+		goto done;
+
+	/* Each logical output cut retains only its accepted complete rows. */
+	for (index = 0U; index < 3U; ++index) {
+		line_fault = (struct score_line_fault_tape){
+			.tape = {0},
+			.calls = 0U,
+			.fail_at = index
+		};
+		script = (struct score_random_script){coin_draw,
+		    sizeof(coin_draw), 0U};
+		yt_random_init(&game.random);
+		yt_random_set_provider(&game.random, score_random_fill, &script);
+		yt_error_clear(&error);
+		if (yt_maintenance_super_lottery(&game, 1, 1, 1,
+		    NULL, 0U, score_line_fail, &line_fault, &result, &error)
+		    || error.status != YT_IO_ERROR
+		    || line_fault.calls != index + 1U
+		    || line_fault.tape.lines != index
+		    || game.random.draws != (index == 2U ? 1U : 0U)
+		    || script.position != (index == 2U ? sizeof(coin_draw) : 0U))
+			goto done;
+		if ((index == 0U && line_fault.tape.length != 0U)
+		    || (index == 1U && (line_fault.tape.length != 1U
+		    || line_fault.tape.data[0] != '\r'))
+		    || (index == 2U
+		    && (line_fault.tape.length != sizeof(phase_prefix) - 1U
+		    || memcmp(line_fault.tape.data, phase_prefix,
+		    sizeof(phase_prefix) - 1U) != 0)))
+			goto done;
+	}
+
+	/* Gate RNG failure follows both heading rows and precedes no-winner. */
+	memset(&screen, 0, sizeof(screen));
+	script = (struct score_random_script){NULL, 0U, 0U};
+	yt_random_init(&game.random);
+	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_error_clear(&error);
+	if (yt_maintenance_super_lottery(&game, 1, 1, 1,
+	    NULL, 0U, score_line_collect, &screen, &result, &error)
+	    || error.status != YT_RANDOM_ERROR || game.random.draws != 0U
+	    || script.position != 0U || screen.lines != 2U
+	    || screen.length != sizeof(phase_prefix) - 1U
+	    || memcmp(screen.data, phase_prefix, sizeof(phase_prefix) - 1U) != 0)
 		goto done;
 	valid = true;
 
