@@ -17715,10 +17715,14 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	static const uint8_t expected_news[] =
 	    " *** 10 Xannor hit sector mines in sector 2!\r\n"
 	    " *** Lost a total of 1 fighters!\r\n"
-	    " *** Route: lost 1, dstrd 0 (Plyr ftrs dstrd)\r\n\x1a";
+	    " *** Route: lost 1, dstrd 0 (Plyr ftrs dstrd)\r\n"
+	    " *** 9 Xannor attacked the planet \"Terra\"\r\n"
+	    " *** Planet \"Terra\" destroyed!\r\n\x1a";
 	struct yt_record before[4];
 	struct yt_record after;
 	struct yt_record player;
+	struct yt_record planet_before;
+	struct yt_planet planet;
 	struct yt_maintenance_route_cache cache = {0};
 	struct yt_maintenance_xannor_route_result route;
 	struct yt_text_file news = {0};
@@ -17740,6 +17744,7 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	memset(&game, 0, sizeof(game));
 	game.config.sector_offset = 3.0f;
 	game.config.port_offset = 7.0f;
+	game.config.planet_offset = 10.0f;
 	yt_random_init(&game.random);
 	yt_random_set_provider(&game.random, score_random_fill, &random_script);
 	yt_error_clear(&error);
@@ -17751,6 +17756,14 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	if (!yt_record_set_number(&player, YT_F85, 5.0f)
 	    || !yt_database_write(&game.database, 2U, &player, &error))
 		goto done;
+	yt_record_blank(&planet_before);
+	yt_planet_decode(&planet, &planet_before);
+	memcpy(planet.name, "Terra", 6U);
+	planet.name_length = 5.0f;
+	planet.owner = 7.0f;
+	if (!yt_game_write_planet(&game, 1, &planet, &error))
+		goto done;
+	planet_before = planet.record;
 	for (sector = 1; sector <= 4; ++sector) {
 		memset(before[sector - 1].bytes, 0x30 + sector,
 		    YT_RECORD_SIZE);
@@ -17765,7 +17778,8 @@ check_maintenance_xannor_route_arrivals_pass(void)
 		    sector == 2 ? 1.0f : 0.0f);
 		yt_record_set_number(&before[sector - 1], YT_F85,
 		    sector == 2 ? 2.0f : 0.0f);
-		yt_record_set_number(&before[sector - 1], YT_F93, 0.0f);
+		yt_record_set_number(&before[sector - 1], YT_F93,
+		    sector == 2 ? 1.0f : 0.0f);
 		yt_record_set_number(&before[sector - 1], YT_F129,
 		    sector == 2 ? 1.0f : 0.0f);
 		if (!yt_database_write(&game.database,
@@ -17801,6 +17815,8 @@ check_maintenance_xannor_route_arrivals_pass(void)
 			    || (offset >= YT_F85 && offset < YT_F85 + 4U));
 			arrival_lane = arrival_lane || (sector == 2
 			    && offset >= YT_F129 && offset < YT_F129 + 4U);
+			arrival_lane = arrival_lane || (sector == 2
+			    && offset >= YT_F93 && offset < YT_F93 + 4U);
 
 			if (!arrival_lane && after.bytes[offset]
 			    != before[sector - 1].bytes[offset])
@@ -17808,7 +17824,19 @@ check_maintenance_xannor_route_arrivals_pass(void)
 		}
 		if (sector == 2 && (yt_record_get_number(&after, YT_F81) != 0.0f
 		    || yt_record_get_number(&after, YT_F85) != 0.0f
+		    || yt_record_get_number(&after, YT_F93) != 0.0f
 		    || yt_record_get_number(&after, YT_F129) != 0.0f))
+			goto done;
+	}
+	if (!yt_game_read_planet(&game, 1, &planet, &error)
+	    || planet.name_length != 0.0f || planet.owner != 0.0f)
+		goto done;
+	for (size_t offset = 0U; offset < YT_RECORD_SIZE; ++offset) {
+		bool changed_lane = (offset >= YT_F73 && offset < YT_F73 + 4U)
+		    || (offset >= YT_F85 && offset < YT_F85 + 4U);
+
+		if (!changed_lane
+		    && planet.record.bytes[offset] != planet_before.bytes[offset])
 			goto done;
 	}
 	if (!yt_maintenance_xannor_route_arrivals(&game, &cache,
