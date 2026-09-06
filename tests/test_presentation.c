@@ -24880,6 +24880,326 @@ test_direct_emergency_warp_ade0_prefix_failures(void)
 	}
 }
 
+struct direct_warp_ade0_late_state {
+	char saved[80];
+	char output[80];
+	enum yt_basic_fault_site fault_site;
+	uint8_t error_number;
+};
+
+static bool
+direct_emergency_warp_ade0_late_failure_continue(
+    struct hostile_mines_hazard_fixture *fixture, const uint8_t *submitted,
+    size_t submitted_length, enum yt_basic_fault_site target,
+    size_t occurrence, struct direct_warp_ade0_late_state *fault,
+    struct yt_basic_fault_projection *projection)
+{
+	static const uint8_t warning_one[] =
+	    "This is a desperate move! Your engines will be drained and will take time";
+	static const uint8_t warning_two[] =
+	    "to recharge! You also risk a melt down! Are you sure you wish to do this?";
+	static const uint8_t prompt[] = "[y/N] -=> ";
+	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct yt_present_result result;
+	struct yt_command_save_transform save;
+	struct yt_repeat_prefix_transform prefix;
+	struct yt_repeat_parse_transform parse;
+	struct yt_repeat_build_transform build;
+	struct yt_semicolon_transform semicolon;
+	struct yt_error error;
+	uint8_t upper[80] = "inherited";
+	uint8_t build_scratch[80] = "";
+	enum yt_basic_fault_site selected;
+	float count = 0.0f;
+
+	if (fault == NULL || projection == NULL || submitted == NULL
+	    || submitted_length >= sizeof(join->accumulator)
+	    || yt_present_color(&join->presentation, &result) != YT_PRESENT_OK
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	memset(fault, 0, sizeof(*fault));
+	memcpy(fault->saved, "SAVED", 6U);
+	memcpy(fault->output, "warning-two", 12U);
+	join->presentation.bold = 1.0f;
+	join->presentation.foreground = 7.0f;
+	join->pager.foreground = 7;
+	if (!normal_exit_b05d(join, warning_one, sizeof(warning_one) - 1U, 0.0f))
+		return false;
+	join->presentation.bold = 1.0f;
+	if (!normal_exit_b05d(join, warning_two, sizeof(warning_two) - 1U, 0.0f)
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.bold = 1.0f;
+	if (yt_present_character(prompt, sizeof(prompt) - 1U,
+	    &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	memcpy(join->accumulator, submitted, submitted_length);
+	join->accumulator[submitted_length] = '\0';
+	if (yt_present_editor_echo(submitted, submitted_length, submitted,
+	    submitted_length, &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
+
+	selected = target >= YT_BASIC_FAULT_ADE0_SAVE_STRIP_LEFT_SPACE
+	    && target <= YT_BASIC_FAULT_ADE0_SAVE_NOTICE_GOSUB_STACK
+	    ? target : YT_BASIC_FAULT_SITE_COUNT;
+	if (!yt_input_command_save_staged(join->accumulator,
+	    sizeof(join->accumulator), join->queue, sizeof(join->queue),
+	    &join->queue_position, &join->queue_length, fault->saved,
+	    sizeof(fault->saved), fault->output, sizeof(fault->output),
+	    selected, &save)) {
+		if (!save.fault_valid || save.fault_site != target)
+			return false;
+		goto routed;
+	}
+	selected = target >= YT_BASIC_FAULT_ADE0_REPEAT_PREFIX_LEFT_SPACE
+	    && target <= YT_BASIC_FAULT_ADE0_REPEAT_SUFFIX_RIGHT_SPACE
+	    ? target : YT_BASIC_FAULT_SITE_COUNT;
+	if (!yt_input_repeat_prefix_staged(
+	    (const uint8_t *)join->accumulator, strlen(join->accumulator),
+	    upper, sizeof(upper), YT_BASIC_FAULT_SITE_COUNT, 1U, &prefix,
+	    NULL, NULL))
+		return false;
+	if (prefix.repeat_position != 0U) {
+		if (target == YT_BASIC_FAULT_REPEAT_VAL_OVERFLOW
+		    || target == YT_BASIC_FAULT_REPEAT_SINGLE_OVERFLOW)
+			selected = target;
+		if (!yt_input_repeat_parse_staged(join->accumulator,
+		    sizeof(join->accumulator), upper, sizeof(upper),
+		    prefix.repeat_position, selected, &parse, NULL, NULL)) {
+			if (!parse.fault_valid || parse.fault_site != target)
+				return false;
+			goto routed;
+		}
+		count = parse.count;
+	}
+	selected = target >= YT_BASIC_FAULT_ADE0_REPEAT_BUILD_CONCAT_SPACE
+	    && target <= YT_BASIC_FAULT_ADE0_REPEAT_NOTICE_GOSUB_STACK
+	    ? target : YT_BASIC_FAULT_SITE_COUNT;
+	if (count > 0.0f && !yt_input_repeat_build_staged(join->accumulator,
+	    sizeof(join->accumulator), build_scratch, sizeof(build_scratch),
+	    fault->saved, sizeof(fault->saved), fault->output,
+	    sizeof(fault->output), count, selected, occurrence, &build,
+	    NULL, NULL)) {
+		if (!build.fault_valid || build.fault_site != target)
+			return false;
+		goto routed;
+	}
+	selected = target >= YT_BASIC_FAULT_ADE0_SEMICOLON_TAIL_MID_SPACE
+	    && target <= YT_BASIC_FAULT_ADE0_SEMICOLON_FINAL_CONCAT_SPACE
+	    ? target : YT_BASIC_FAULT_SITE_COUNT;
+	if (!yt_input_split_semicolon_staged(join->accumulator,
+	    sizeof(join->accumulator), join->queue, sizeof(join->queue),
+	    &join->queue_position, &join->queue_length, selected, occurrence,
+	    &semicolon, NULL, NULL)) {
+		if (!semicolon.fault_valid || semicolon.fault_site != target)
+			return false;
+		goto routed;
+	}
+	return false;
+
+routed:
+	fault->fault_site = target;
+	fault->error_number = target == YT_BASIC_FAULT_REPEAT_VAL_OVERFLOW
+	    || target == YT_BASIC_FAULT_REPEAT_SINGLE_OVERFLOW ? 6U
+	    : target == YT_BASIC_FAULT_ADE0_SAVE_NOTICE_GOSUB_STACK
+	    || target == YT_BASIC_FAULT_ADE0_REPEAT_NOTICE_GOSUB_STACK ? 7U
+	    : 14U;
+	yt_error_clear(&error);
+	error.status = YT_RANGE;
+	return yt_error_attach_basic_fault_number(&error, target,
+	    fault->error_number)
+	    && yt_basic_fault_project(&error, NULL, 0U,
+	    (const uint8_t *)"01/01/30", 8U,
+	    (const uint8_t *)"12:34:56", 8U, projection);
+}
+
+static void
+test_direct_emergency_warp_ade0_late_failures(void)
+{
+	static const char save_notice[] =
+	    "Command Saved -+- Ctrl-R to Re-use -+- Ctrl-X to cancel.";
+	static const char repeat_notice[] =
+	    "Command Repeated 3 times -+- Ctrl-R to Re-use -+- Ctrl-X to cancel.";
+	static const struct {
+		enum yt_basic_fault_site site;
+		const char *submitted;
+		size_t occurrence;
+		const char *text;
+		const char *queue;
+		const char *saved;
+		const char *output;
+	} cuts[] = {
+		{YT_BASIC_FAULT_ADE0_SAVE_STRIP_LEFT_SPACE,
+		    "A/", 1U, "A/", "", "SAVED", "warning-two"},
+		{YT_BASIC_FAULT_ADE0_SAVE_COMMAND_CLONE_SPACE,
+		    "A/", 1U, "A", "", "SAVED", "warning-two"},
+		{YT_BASIC_FAULT_ADE0_SAVE_NOTICE_CLONE_SPACE,
+		    "A/", 1U, "A", "", "A", "warning-two"},
+		{YT_BASIC_FAULT_ADE0_SAVE_NOTICE_GOSUB_STACK,
+		    "A/", 1U, "A", "", "A", save_notice},
+		{YT_BASIC_FAULT_ADE0_REPEAT_PREFIX_LEFT_SPACE,
+		    "A/R3", 1U, "A/R3", "", "SAVED", "warning-two"},
+		{YT_BASIC_FAULT_ADE0_REPEAT_SEMICOLON_CONCAT_SPACE,
+		    "A/R3", 1U, "A/R3", "", "SAVED", "warning-two"},
+		{YT_BASIC_FAULT_ADE0_REPEAT_SUFFIX_RIGHT_SPACE,
+		    "A/R3", 1U, "A;", "", "SAVED", "warning-two"},
+		{YT_BASIC_FAULT_REPEAT_VAL_OVERFLOW,
+		    "A/R1E999", 1U, "A;", "", "SAVED", "warning-two"},
+		{YT_BASIC_FAULT_REPEAT_SINGLE_OVERFLOW,
+		    "A/R1.7014118E38", 1U, "A;", "", "SAVED", "warning-two"},
+		{YT_BASIC_FAULT_ADE0_REPEAT_BUILD_CONCAT_SPACE,
+		    "A/R3", 2U, "A;", "", "SAVED", "warning-two"},
+		{YT_BASIC_FAULT_ADE0_REPEAT_FINAL_LEFT_SPACE,
+		    "A/R3", 1U, "A;", "", "SAVED", "warning-two"},
+		{YT_BASIC_FAULT_ADE0_REPEAT_SAVE_CLONE_SPACE,
+		    "A/R3", 1U, "A;A;A", "", "SAVED", "warning-two"},
+		{YT_BASIC_FAULT_ADE0_REPEAT_COUNT_STR_SPACE,
+		    "A/R3", 1U, "A;A;A", "", "A;A;A", "warning-two"},
+		{YT_BASIC_FAULT_ADE0_REPEAT_PREFIX_CONCAT_SPACE,
+		    "A/R3", 1U, "A;A;A", "", "A;A;A", "warning-two"},
+		{YT_BASIC_FAULT_ADE0_REPEAT_NOTICE_CONCAT_SPACE,
+		    "A/R3", 1U, "A;A;A", "", "A;A;A", "warning-two"},
+		{YT_BASIC_FAULT_ADE0_REPEAT_NOTICE_GOSUB_STACK,
+		    "A/R3", 1U, "A;A;A", "", "A;A;A", repeat_notice},
+		{YT_BASIC_FAULT_ADE0_SEMICOLON_TAIL_MID_SPACE,
+		    "A;B;C;D", 1U, "A;B;C;D", "", "SAVED", "warning-two"},
+		{YT_BASIC_FAULT_ADE0_SEMICOLON_QUEUE_CONCAT_SPACE,
+		    "A;B;C;D", 1U, "A;B;C;D", "", "SAVED", "warning-two"},
+		{YT_BASIC_FAULT_ADE0_SEMICOLON_PREFIX_LEFT_SPACE,
+		    "A;B;C;D", 1U, "A;B;C;D", "B;C;D", "SAVED", "warning-two"},
+		{YT_BASIC_FAULT_ADE0_SEMICOLON_REPLACEMENT_CHR_SPACE,
+		    "A;B;C;D", 2U, "A", "B\rC;D", "SAVED", "warning-two"},
+		{YT_BASIC_FAULT_ADE0_SEMICOLON_FINAL_CR_SPACE,
+		    "A;B;C;D", 1U, "A", "B\rC\rD", "SAVED", "warning-two"},
+		{YT_BASIC_FAULT_ADE0_SEMICOLON_FINAL_CONCAT_SPACE,
+		    "A;B;C;D", 1U, "A", "B\rC\rD", "SAVED", "warning-two"},
+	};
+	static const struct {
+		const char *submitted;
+		uint64_t plain_hash;
+		uint64_t ansi_hash;
+	} parent_partitions[] = {
+		{"A/", UINT64_C(0xce5c3e1e8bed9272),
+		    UINT64_C(0xc646892364ea2e61)},
+		{"A/R3", UINT64_C(0xc413b8a856f52c51),
+		    UINT64_C(0xd06c415b58266da2)},
+		{"A/R1E999", UINT64_C(0xe054b3b5fabd842f),
+		    UINT64_C(0x8c4db5dfb0331044)},
+		{"A/R1.7014118E38", UINT64_C(0x7a8a4b308043d529),
+		    UINT64_C(0x3b168019e0e67e46)},
+		{"A;B;C;D", UINT64_C(0x048c0b083dacbe1b),
+		    UINT64_C(0x5ee7f81621c49a68)},
+	};
+	static const struct {
+		bool hostile;
+		bool ansi;
+		const uint8_t *command;
+		size_t command_length;
+		size_t caller_end;
+		uint64_t caller_hash;
+	} modes[] = {
+		{true, false, (const uint8_t *)"W", 1U, 63U,
+		    UINT64_C(0x0b6904cbde91e151)},
+		{true, false, (const uint8_t *)"WT", 2U, 64U,
+		    UINT64_C(0x4715406bf12b49e1)},
+		{true, true, (const uint8_t *)"W", 1U, 73U,
+		    UINT64_C(0x1f8739c8faadb88e)},
+		{true, true, (const uint8_t *)"WT", 2U, 74U,
+		    UINT64_C(0x2e092d830cad0828)},
+		{false, false, (const uint8_t *)"W", 1U, 41U,
+		    UINT64_C(0x84059a449d6d0449)},
+		{false, true, (const uint8_t *)"W", 1U, 41U,
+		    UINT64_C(0x84059a449d6d0449)},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	struct direct_warp_ade0_late_state fault;
+	struct yt_basic_fault_projection projection;
+	struct yt_record record;
+	uint8_t remote[400];
+	size_t caller_end;
+	size_t cut;
+	size_t family;
+	size_t mode;
+
+	for (mode = 0U; mode < YT_ARRAY_LEN(modes); ++mode) {
+		for (cut = 0U; cut < YT_ARRAY_LEN(cuts); ++cut) {
+			memset(&viewer, 0, sizeof(viewer));
+			fixture_viewer_initialize(&viewer, &stream,
+			    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+			    "YTSCORE.ASC", modes[mode].ansi, remote, sizeof(remote));
+			memset(&fixture, 0, sizeof(fixture));
+			fixture.cycle.presentation.viewer = &viewer;
+			memset(&record, 0xa5, sizeof(record));
+			(void)yt_record_set_number(&record, YT_F49, 17.0f);
+			(void)yt_record_set_number(&record, YT_F57, 733.0f);
+			yt_player_decode(&fixture.emergency_player, &record);
+			fixture.hazard_player = fixture.emergency_player;
+			CHECK((modes[mode].hostile
+			    && direct_emergency_warp_hostile_menu_prefix(&fixture,
+			    modes[mode].ansi, modes[mode].command,
+			    modes[mode].command_length, &caller_end))
+			    || (!modes[mode].hostile
+			    && direct_emergency_warp_main_command_prefix(&fixture,
+			    modes[mode].ansi, &caller_end)));
+			CHECK(direct_emergency_warp_ade0_late_failure_continue(
+			    &fixture, (const uint8_t *)cuts[cut].submitted,
+			    strlen(cuts[cut].submitted), cuts[cut].site,
+			    cuts[cut].occurrence, &fault, &projection));
+			for (family = 0U;
+			    family < YT_ARRAY_LEN(parent_partitions); ++family)
+				if (strcmp(parent_partitions[family].submitted,
+				    cuts[cut].submitted) == 0)
+					break;
+			CHECK(caller_end == modes[mode].caller_end
+			    && viewer_bytes_fnv1a64(remote, caller_end)
+			    == modes[mode].caller_hash
+			    && family < YT_ARRAY_LEN(parent_partitions)
+			    && viewer.join.remote_length == caller_end
+			    + strlen(cuts[cut].submitted)
+			    + (modes[mode].ansi ? 222U : 166U)
+			    && viewer_bytes_fnv1a64(remote + caller_end,
+			    viewer.join.remote_length - caller_end)
+			    == (modes[mode].ansi
+			    ? parent_partitions[family].ansi_hash
+			    : parent_partitions[family].plain_hash)
+			    && fault.fault_site == cuts[cut].site
+			    && projection.site == cuts[cut].site
+			    && projection.error_number == fault.error_number
+			    && projection.identity->module == YT_BASIC_FAULT_MAIN
+			    && projection.identity->source_line == 36000
+			    && projection.identity->handler == 0xB2DAU
+			    && (fault.error_number == 6U
+			    ? projection.disposition
+			    == YT_BASIC_FAULT_RESUME_GAMEPLAY
+			    && projection.main.route == YT_MAIN_ERROR_GAMEPLAY
+			    : projection.disposition == YT_BASIC_FAULT_END
+			    && projection.main.route == YT_MAIN_ERROR_FATAL));
+			CHECK(strcmp(viewer.join.accumulator, cuts[cut].text) == 0
+			    && viewer.join.queue_position == 0U
+			    && viewer.join.queue_length == strlen(cuts[cut].queue)
+			    && memcmp(viewer.join.queue, cuts[cut].queue,
+			    viewer.join.queue_length + 1U) == 0
+			    && strcmp(fault.saved, cuts[cut].saved) == 0
+			    && strcmp(fault.output, cuts[cut].output) == 0
+			    && !fixture.warp_called && fixture.draw_position == 0U
+			    && fixture.emergency_player_reads == 0U
+			    && fixture.emergency_player_put_attempts == 0U
+			    && fixture.emergency_player_writes == 0U
+			    && fixture.emergency_flushes == 0U
+			    && fixture.emergency_waits == 0U);
+			yt_text_input_destroy(&viewer.input);
+		}
+	}
+}
+
 struct direct_warp_hostile_parent_copy_cycle_state {
 	size_t entry_player_reads;
 	size_t gate_player_reads;
@@ -36346,6 +36666,7 @@ main(void)
 	test_direct_emergency_warp_gate_get_failures();
 	test_direct_emergency_warp_gate_runtime_failures();
 	test_direct_emergency_warp_ade0_prefix_failures();
+	test_direct_emergency_warp_ade0_late_failures();
 	test_direct_emergency_warp_parent_copy_failures();
 	test_direct_emergency_warp_hostile_parent_copy_failures();
 	test_direct_emergency_warp_warning_carrier();
