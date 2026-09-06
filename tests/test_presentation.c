@@ -24176,11 +24176,13 @@ struct direct_warp_gate_get_state {
 	int field_record;
 	bool field_player;
 	enum direct_warp_gate_get_failure failure;
+	bool read_success;
 	size_t accepted;
 	size_t seek_calls;
 	size_t read_calls;
 	size_t store_count;
 	int64_t terminal_position;
+	int64_t last_seek_offset;
 };
 
 static bool
@@ -24191,9 +24193,11 @@ direct_warp_gate_seek(void *context, FILE *file, int64_t absolute_offset,
 
 	(void)file;
 	++state->seek_calls;
+	state->last_seek_offset = absolute_offset;
 	memset(observation, 0, sizeof(*observation));
 	observation->terminal_position = state->terminal_position;
-	if (state->failure == DIRECT_WARP_GATE_SEEK_52) {
+	if (!state->read_success
+	    && state->failure == DIRECT_WARP_GATE_SEEK_52) {
 		observation->carry = true;
 		observation->dos_error = 6U;
 	}
@@ -24215,6 +24219,11 @@ direct_warp_gate_read(void *context, FILE *file, uint8_t *data,
 		return false;
 	memcpy(data, state->read_source.bytes, state->accepted);
 	observation->accepted = state->accepted;
+	if (state->read_success) {
+		observation->terminal_position = state->last_seek_offset
+		    + (int64_t)state->accepted;
+		return true;
+	}
 	observation->carry = true;
 	observation->dos_error = state->failure == DIRECT_WARP_GATE_READ_57
 	    ? 6U : 5U;
@@ -26554,6 +26563,12 @@ struct direct_warp_main_cycle_state {
 	bool fresh_hostile_attack_sector_get_boundary;
 	float fresh_hostile_attack_commitment;
 	size_t fresh_hostile_attack_sector_reads;
+	bool fresh_hostile_attack_post_sector_initialized;
+	uint8_t fresh_hostile_attack_owner_cvs_raw[4];
+	uint8_t fresh_hostile_attack_owner_raw[4];
+	uint8_t fresh_hostile_attack_attacker_loss_raw[8];
+	uint8_t fresh_hostile_attack_defender_loss_raw[8];
+	uint8_t fresh_hostile_attack_surrender_latch_raw[4];
 };
 
 enum direct_warp_hostile_menu_carrier_cut {
@@ -26561,6 +26576,12 @@ enum direct_warp_hostile_menu_carrier_cut {
 	DIRECT_WARP_HOSTILE_MENU_FIGHTER_AFTER,
 	DIRECT_WARP_HOSTILE_MENU_PROMPT_BEFORE,
 	DIRECT_WARP_HOSTILE_MENU_PROMPT_AFTER,
+};
+
+enum direct_warp_attack_sector_success {
+	DIRECT_WARP_ATTACK_SECTOR_FULL,
+	DIRECT_WARP_ATTACK_SECTOR_SHORT,
+	DIRECT_WARP_ATTACK_SECTOR_EMPTY,
 };
 
 static bool
@@ -27103,6 +27124,120 @@ direct_emergency_warp_fresh_hostile_attack_sector_get_failure(
 		yt_database_close(&gate->database);
 		return false;
 	}
+	return true;
+}
+
+struct direct_warp_attack_entry_a41c_failure_state {
+	struct direct_warp_gate_get_state io;
+	struct yt_database_get_result sector_get;
+	struct yt_record sector_source;
+	struct yt_record sector_field;
+};
+
+static bool
+direct_emergency_warp_fresh_hostile_attack_entry_a41c_failure(
+    struct hostile_mines_hazard_fixture *fixture,
+    struct direct_warp_main_cycle_state *cycle,
+    enum direct_warp_attack_sector_success sector_success,
+    enum direct_warp_gate_get_failure player_failure,
+    struct direct_warp_attack_entry_a41c_failure_state *entry,
+    struct yt_basic_fault_projection *projection)
+{
+	struct direct_warp_gate_get_state *io;
+	struct yt_current_player_hydration_state hydration;
+	struct yt_player before;
+	struct yt_record field;
+	struct yt_error error;
+	float current_sector = 1054.0f;
+	float cloak_cache[4] = {-1.0f, -2.0f, 0.0f, -4.0f};
+	size_t accepted = 0U;
+	size_t index;
+
+	if (fixture == NULL || cycle == NULL || entry == NULL
+	    || projection == NULL
+	    || !cycle->fresh_hostile_attack_sector_get_boundary)
+		return false;
+	memset(entry, 0, sizeof(*entry));
+	io = &entry->io;
+	io->database.file = tmpfile();
+	if (io->database.file == NULL)
+		return false;
+	io->read_success = true;
+	io->accepted = sector_success == DIRECT_WARP_ATTACK_SECTOR_FULL
+	    ? YT_RECORD_SIZE : sector_success == DIRECT_WARP_ATTACK_SECTOR_SHORT
+	    ? 3U : 0U;
+	io->field = fixture->emergency_player.record;
+	io->field_record = 2;
+	io->field_player = true;
+	for (index = 0U; index < YT_RECORD_SIZE; ++index)
+		io->read_source.bytes[index] = (uint8_t)(index ^ 0x3cU);
+	entry->sector_source = io->read_source;
+	yt_database_set_seek_provider(&io->database, direct_warp_gate_seek, io);
+	yt_database_set_read_provider(&io->database, direct_warp_gate_read, io);
+	field = io->field;
+	++cycle->fresh_hostile_attack_sector_reads;
+	yt_error_clear(&error);
+	if (!yt_database_random_get(&io->database, 1054U, &field, &accepted,
+	    &error)) {
+		yt_database_close(&io->database);
+		return false;
+	}
+	entry->sector_get = io->database.last_get;
+	entry->sector_field = field;
+	io->field = field;
+	io->field_record = 1054;
+	io->field_player = false;
+	cycle->final_field_record = 1054;
+	cycle->final_field_player = false;
+	memcpy(cycle->fresh_hostile_attack_owner_cvs_raw,
+	    &field.bytes[YT_F85], 4U);
+	memcpy(cycle->fresh_hostile_attack_owner_raw,
+	    cycle->fresh_hostile_attack_owner_cvs_raw, 4U);
+	memset(cycle->fresh_hostile_attack_attacker_loss_raw, 0,
+	    sizeof(cycle->fresh_hostile_attack_attacker_loss_raw));
+	memset(cycle->fresh_hostile_attack_defender_loss_raw, 0,
+	    sizeof(cycle->fresh_hostile_attack_defender_loss_raw));
+	memset(cycle->fresh_hostile_attack_surrender_latch_raw, 0,
+	    sizeof(cycle->fresh_hostile_attack_surrender_latch_raw));
+	cycle->fresh_hostile_attack_post_sector_initialized = true;
+
+	io->read_success = false;
+	io->failure = player_failure;
+	io->accepted = player_failure == DIRECT_WARP_GATE_SEEK_52 ? 0U : 3U;
+	io->terminal_position = player_failure == DIRECT_WARP_GATE_SEEK_52
+	    ? INT64_C(0x11223344) : INT64_C(0x55667788);
+	for (index = 0U; index < YT_RECORD_SIZE; ++index)
+		io->read_source.bytes[index] = (uint8_t)(index ^ 0x5aU);
+	before = fixture->emergency_player;
+	memset(&hydration, 0, sizeof(hydration));
+	hydration.player = &fixture->emergency_player;
+	hydration.player_record = 2;
+	hydration.last_player_record = 51;
+	hydration.player_record_expression = 2.0f;
+	hydration.current_sector_record = &current_sector;
+	hydration.cloak_cache = cloak_cache;
+	hydration.cache_count = YT_ARRAY_LEN(cloak_cache);
+	hydration.store = direct_warp_gate_store;
+	if (qb_mbf32_encode(51.0f, hydration.sector_record_offset_raw)
+	    != QB_MBF_OK
+	    || qb_mbf32_encode(0.0f, hydration.anti_cloak_raw) != QB_MBF_OK) {
+		yt_database_close(&io->database);
+		return false;
+	}
+	yt_error_clear(&error);
+	if (yt_current_player_hydrate_run(&hydration,
+	    direct_warp_gate_read_player, io, &error)
+	    || !yt_basic_fault_project(&error, NULL, 0U, NULL, 0U, NULL, 0U,
+	    projection) || memcmp(&fixture->emergency_player, &before,
+	    sizeof(before)) != 0 || current_sector != 1054.0f
+	    || memcmp(cloak_cache,
+	    (const float[4]){-1.0f, -2.0f, 0.0f, -4.0f},
+	    sizeof(cloak_cache)) != 0) {
+		yt_database_close(&io->database);
+		return false;
+	}
+	cycle->final_field_record = io->field_record;
+	cycle->final_field_player = io->field_player;
 	return true;
 }
 
@@ -31035,6 +31170,214 @@ test_direct_emergency_warp_hostile_attack_sector_get_failures(void)
 			}
 			yt_database_close(&gate.database);
 			yt_text_input_destroy(&viewer.input);
+		}
+	}
+}
+
+static void
+test_direct_emergency_warp_hostile_attack_entry_a41c_failures(void)
+{
+	static const uint8_t zero_double[8] = {0};
+	static const uint8_t zero_single[4] = {0};
+	static const struct {
+		bool main;
+		bool ansi;
+		const uint8_t *command;
+		size_t command_length;
+		size_t total_length;
+		size_t rows;
+		size_t colors;
+		size_t events;
+		size_t samples;
+	} callers[] = {
+		{true, false, (const uint8_t *)"W", 1U, 918U, 33U, 8U,
+		    40U, 8U},
+		{true, true, (const uint8_t *)"W", 1U, 1190U, 33U, 52U,
+		    40U, 8U},
+		{false, false, (const uint8_t *)"W", 1U, 940U, 34U, 9U,
+		    45U, 9U},
+		{false, false, (const uint8_t *)"WT", 2U, 941U, 34U, 9U,
+		    45U, 9U},
+		{false, true, (const uint8_t *)"W", 1U, 1222U, 34U, 54U,
+		    45U, 9U},
+		{false, true, (const uint8_t *)"WT", 2U, 1223U, 34U, 54U,
+		    45U, 9U},
+	};
+	static const struct {
+		enum direct_warp_attack_sector_success success;
+		size_t accepted;
+	} successes[] = {
+		{DIRECT_WARP_ATTACK_SECTOR_FULL, YT_RECORD_SIZE},
+		{DIRECT_WARP_ATTACK_SECTOR_SHORT, 3U},
+		{DIRECT_WARP_ATTACK_SECTOR_EMPTY, 0U},
+	};
+	static const struct {
+		enum direct_warp_gate_get_failure failure;
+		uint16_t error_number;
+		enum yt_basic_fault_disposition disposition;
+		enum yt_main_error_route route;
+	} cuts[] = {
+		{DIRECT_WARP_GATE_SEEK_52, 52U, YT_BASIC_FAULT_END,
+		    YT_MAIN_ERROR_FATAL},
+		{DIRECT_WARP_GATE_READ_57, 57U,
+		    YT_BASIC_FAULT_RETRY_STATEMENT, YT_MAIN_ERROR_RETRY_CURRENT},
+		{DIRECT_WARP_GATE_READ_70, 70U, YT_BASIC_FAULT_END,
+		    YT_MAIN_ERROR_FATAL},
+		{DIRECT_WARP_GATE_READ_75, 75U, YT_BASIC_FAULT_END,
+		    YT_MAIN_ERROR_FATAL},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	struct direct_warp_main_cycle_state cycle;
+	struct direct_warp_attack_entry_a41c_failure_state entry;
+	struct yt_basic_fault_projection projection;
+	struct yt_record record;
+	uint8_t remote[1400];
+	size_t ends[3];
+	size_t caller;
+	size_t success;
+	size_t cut;
+	size_t index;
+
+	for (caller = 0U; caller < YT_ARRAY_LEN(callers); ++caller) {
+		for (success = 0U; success < YT_ARRAY_LEN(successes); ++success) {
+			for (cut = 0U; cut < YT_ARRAY_LEN(cuts); ++cut) {
+				memset(&viewer, 0, sizeof(viewer));
+				fixture_viewer_initialize(&viewer, &stream,
+				    retained_scoreboard,
+				    sizeof(retained_scoreboard) - 1U, "YTSCORE.ASC",
+				    callers[caller].ansi, remote, sizeof(remote));
+				memset(&fixture, 0, sizeof(fixture));
+				fixture.cycle.presentation.viewer = &viewer;
+				fixture.emergency_sector_cache = 733.0f;
+				fixture.draws[0] = 0.0f;
+				fixture.draws[1] = 0.0f;
+				fixture.draws[2] = 0.75f;
+				fixture.draws[3] = 0.5f;
+				fixture.draws[4] = 0.949999988079071f;
+				fixture.draws[5] = 0.999f;
+				fixture.draws[6] = 0.9f;
+				memset(&record, 0xa5, sizeof(record));
+				(void)yt_record_set_number(&record, YT_F49, 17.0f);
+				(void)yt_record_set_number(&record, YT_F57, 733.0f);
+				yt_player_decode(&fixture.emergency_player, &record);
+				fixture.hazard_player = fixture.emergency_player;
+				if (callers[caller].main) {
+					CHECK(direct_emergency_warp_main_hostile_handoff_run(
+					    &fixture, callers[caller].ansi, &cycle, ends));
+				}
+				else {
+					CHECK(direct_emergency_warp_hostile_cycle_run(
+					    &fixture, callers[caller].ansi,
+					    callers[caller].command,
+					    callers[caller].command_length,
+					    DIRECT_WARP_HOSTILE_DEFENSE, &cycle, ends));
+				}
+				CHECK(direct_emergency_warp_fresh_hostile_menu(
+				    &fixture, &cycle)
+				    && direct_emergency_warp_fresh_hostile_attack_admission(
+				    &fixture, &cycle)
+				    && viewer.join.remote_length
+				    == callers[caller].total_length
+				    && direct_emergency_warp_fresh_hostile_attack_entry_a41c_failure(
+				    &fixture, &cycle, successes[success].success,
+				    cuts[cut].failure, &entry, &projection));
+				CHECK(viewer.join.remote_length
+				    == callers[caller].total_length
+				    && viewer.join.local_row_count == callers[caller].rows
+				    && viewer.join.local_color_count == callers[caller].colors
+				    && viewer.join.event_count == callers[caller].events
+				    && viewer.join.sample_calls == callers[caller].samples
+				    && entry.io.seek_calls == 2U
+				    && entry.io.read_calls == (cuts[cut].failure
+				    == DIRECT_WARP_GATE_SEEK_52 ? 1U : 2U)
+				    && entry.io.store_count == 0U);
+				CHECK(entry.sector_get.outcome == YT_DATABASE_GET_RETURNED
+				    && entry.sector_get.current_record == 1054U
+				    && entry.sector_get.record_index == 1053U
+				    && entry.sector_get.desired_offset
+				    == (int64_t)(1053U * YT_RECORD_SIZE)
+				    && entry.sector_get.accepted == successes[success].accepted
+				    && entry.sector_get.full_record
+				    == (successes[success].accepted == YT_RECORD_SIZE)
+				    && entry.sector_get.terminal_position
+				    == entry.sector_get.desired_offset
+				    + (int64_t)successes[success].accepted
+				    && entry.sector_get.registered
+				    && entry.sector_get.handle_open);
+				for (index = 0U; index < successes[success].accepted;
+				    ++index) {
+					CHECK(entry.sector_field.bytes[index]
+					    == entry.sector_source.bytes[index]);
+				}
+				for (index = successes[success].accepted;
+				    index < YT_RECORD_SIZE; ++index)
+					CHECK(entry.sector_field.bytes[index] == 0U);
+				CHECK(cycle.fresh_hostile_attack_post_sector_initialized
+				    && memcmp(cycle.fresh_hostile_attack_owner_cvs_raw,
+				    &entry.sector_field.bytes[YT_F85], 4U) == 0
+				    && memcmp(cycle.fresh_hostile_attack_owner_raw,
+				    cycle.fresh_hostile_attack_owner_cvs_raw, 4U) == 0
+				    && memcmp(cycle.fresh_hostile_attack_attacker_loss_raw,
+				    zero_double, sizeof(zero_double)) == 0
+				    && memcmp(cycle.fresh_hostile_attack_defender_loss_raw,
+				    zero_double, sizeof(zero_double)) == 0
+				    && memcmp(cycle.fresh_hostile_attack_surrender_latch_raw,
+				    zero_single, sizeof(zero_single)) == 0);
+				CHECK(entry.io.database.last_get.current_record == 2U
+				    && entry.io.database.last_get.record_index == 1U
+				    && entry.io.database.last_get.desired_offset
+				    == YT_RECORD_SIZE
+				    && entry.io.database.last_get.basic_error
+				    == cuts[cut].error_number
+				    && entry.io.database.last_get.terminal_position
+				    == entry.io.terminal_position
+				    && entry.io.database.last_get.registered
+				    && entry.io.database.last_get.handle_open);
+				CHECK(projection.site
+				    == YT_BASIC_FAULT_CURRENT_PLAYER_A41C_GET
+				    && projection.error_number == cuts[cut].error_number
+				    && projection.identity->instruction == 0xA428U
+				    && projection.identity->saved_ip == 0xA42BU
+				    && projection.identity->retry_statement == 0xA41DU
+				    && projection.identity->source_line == 33990
+				    && projection.identity->handler == 0xB2DAU
+				    && projection.disposition == cuts[cut].disposition
+				    && projection.main.route == cuts[cut].route);
+				CHECK(fixture.warp_called && fixture.draw_position == 7U
+				    && cycle.fresh_hostile_attack_sector_reads == 1U
+				    && cycle.fresh_hostile_attack_commitment == 1.0f
+				    && viewer.join.queue_length == 0U
+				    && strcmp(viewer.join.accumulator, "1") == 0
+				    && viewer.join.pager.line_count == 0.0f);
+				if (cuts[cut].failure == DIRECT_WARP_GATE_SEEK_52) {
+					CHECK(entry.io.database.last_get.outcome
+					    == YT_DATABASE_GET_SEEK_ERROR
+					    && entry.io.field_record == 1054
+					    && !entry.io.field_player
+					    && cycle.final_field_record == 1054
+					    && !cycle.final_field_player
+					    && memcmp(&entry.io.field,
+					    &entry.sector_field,
+					    sizeof(entry.sector_field)) == 0);
+				}
+				else {
+					CHECK(entry.io.database.last_get.outcome
+					    == YT_DATABASE_GET_READ_ERROR
+					    && entry.io.database.last_get.accepted == 3U
+					    && entry.io.field_record == 2
+					    && entry.io.field_player
+					    && cycle.final_field_record == 2
+					    && cycle.final_field_player
+					    && memcmp(entry.io.field.bytes,
+					    entry.io.read_source.bytes, 3U) == 0);
+					for (index = 3U; index < YT_RECORD_SIZE; ++index)
+						CHECK(entry.io.field.bytes[index] == 0U);
+				}
+				yt_database_close(&entry.io.database);
+				yt_text_input_destroy(&viewer.input);
+			}
 		}
 	}
 }
@@ -40421,6 +40764,7 @@ main(void)
 	test_direct_emergency_warp_hostile_menu_terminal_exits();
 	test_direct_emergency_warp_hostile_attack_admission();
 	test_direct_emergency_warp_hostile_attack_sector_get_failures();
+	test_direct_emergency_warp_hostile_attack_entry_a41c_failures();
 	test_direct_emergency_warp_hostile_invalid_retry_cycle();
 	test_direct_emergency_warp_hostile_ordinary_returns();
 	test_direct_emergency_warp_queue_cycles();
