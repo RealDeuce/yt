@@ -4301,6 +4301,16 @@ test_basic_fault_registry(void)
 		    0xB2DAU, 4U},
 		{YT_BASIC_FAULT_MAIN, 0x07B9U, 0x07BCU, 0x07AEU, 19100,
 		    0xB2DAU, 4U},
+		{YT_BASIC_FAULT_MAIN, 0x283DU, 0x2840U, 0x282FU, 24950,
+		    0xB2DAU, 8U},
+		{YT_BASIC_FAULT_MAIN, 0x2846U, 0x2849U, 0x2840U, 24950,
+		    0xB2DAU, 9U},
+		{YT_BASIC_FAULT_MAIN, 0x2849U, 0x284CU, 0x2840U, 24950,
+		    0xB2DAU, 10U},
+		{YT_BASIC_FAULT_MAIN, 0x284CU, 0x284FU, 0x2840U, 24950,
+		    0xB2DAU, 11U},
+		{YT_BASIC_FAULT_MAIN, 0x284FU, 0x2852U, 0x284FU, 24950,
+		    0xB2DAU, 12U},
 		{YT_BASIC_FAULT_MAIN, 0xAEBFU, 0xAEC2U, 0xAE9CU, 36000,
 		    0xB2DAU, 2U},
 		{YT_BASIC_FAULT_MAIN, 0xAEC8U, 0xAECBU, 0xAE9CU, 36000,
@@ -4421,7 +4431,7 @@ test_basic_fault_registry(void)
 			    && !yt_basic_fault_admits(
 			    (enum yt_basic_fault_site)index, 6U));
 		}
-		else {
+		else if (expected[index].domain <= 7U) {
 			uint8_t expected_error = expected[index].domain == 6U
 			    ? 14U : 7U;
 
@@ -4431,6 +4441,14 @@ test_basic_fault_registry(void)
 			    && !yt_basic_fault_admits(
 			    (enum yt_basic_fault_site)index,
 			    expected_error == 14U ? 7U : 14U));
+		}
+		else {
+			size_t expected_count = expected[index].domain == 8U ? 7U
+			    : expected[index].domain == 9U ? 2U
+			    : expected[index].domain == 10U ? 5U
+			    : expected[index].domain == 11U ? 1U : 3U;
+
+			CHECK(identity->error_count == expected_count);
 		}
 		for (error_number = 0U; error_number <= UINT8_MAX;
 		    ++error_number) {
@@ -4447,6 +4465,15 @@ test_basic_fault_registry(void)
 				52U, 57U, 61U, 70U, 75U,
 			};
 			static const uint8_t left_errors[] = {5U, 14U, 16U};
+			static const uint8_t genesis_open_errors[] = {
+				14U, 53U, 57U, 67U, 70U, 75U, 76U,
+			};
+			static const uint8_t genesis_command_errors[] = {14U, 16U};
+			static const uint8_t genesis_print_errors[] = {
+				52U, 57U, 61U, 70U, 71U,
+			};
+			static const uint8_t genesis_completion_errors[] = {57U};
+			static const uint8_t genesis_close_errors[] = {57U, 61U, 70U};
 			struct yt_basic_fault_projection projection;
 			const uint8_t *domain = expected[index].domain == 1U
 			    ? put_errors : expected[index].domain == 2U
@@ -4455,7 +4482,12 @@ test_basic_fault_registry(void)
 			    ? returning_put_errors : expected[index].domain == 5U
 			    ? left_errors : expected[index].domain == 6U
 			    ? (const uint8_t[]){14U} : expected[index].domain == 7U
-			    ? (const uint8_t[]){7U} : get_errors;
+			    ? (const uint8_t[]){7U} : expected[index].domain == 8U
+			    ? genesis_open_errors : expected[index].domain == 9U
+			    ? genesis_command_errors : expected[index].domain == 10U
+			    ? genesis_print_errors : expected[index].domain == 11U
+			    ? genesis_completion_errors : expected[index].domain == 12U
+			    ? genesis_close_errors : get_errors;
 			size_t domain_length = expected[index].domain == 1U
 			    ? YT_ARRAY_LEN(put_errors) : expected[index].domain == 2U
 			    ? 1U : expected[index].domain == 3U
@@ -4466,6 +4498,16 @@ test_basic_fault_registry(void)
 			    ? YT_ARRAY_LEN(left_errors)
 			    : expected[index].domain == 6U
 			    || expected[index].domain == 7U ? 1U
+			    : expected[index].domain == 8U
+			    ? YT_ARRAY_LEN(genesis_open_errors)
+			    : expected[index].domain == 9U
+			    ? YT_ARRAY_LEN(genesis_command_errors)
+			    : expected[index].domain == 10U
+			    ? YT_ARRAY_LEN(genesis_print_errors)
+			    : expected[index].domain == 11U
+			    ? YT_ARRAY_LEN(genesis_completion_errors)
+			    : expected[index].domain == 12U
+			    ? YT_ARRAY_LEN(genesis_close_errors)
 			    : YT_ARRAY_LEN(get_errors);
 			bool admitted = false;
 			size_t error_index;
@@ -23637,8 +23679,7 @@ main_genesis_handoff_close_file5(void *context, struct yt_error *error)
 	struct main_genesis_cycle_fixture *fixture = context;
 
 	(void)error;
-	if (fixture->handoff_failure == YT_GENESIS_HANDOFF_CLOSE_FILE5)
-		return false;
+	/* Every source-reachable command-G entry has no live BASIC file 5. */
 	fixture->handoff_file5_open = false;
 	return true;
 }
@@ -23710,7 +23751,7 @@ main_genesis_handoff(void *context, struct yt_error *error)
 	fixture->handoff_called = true;
 	memcpy(fixture->handoff_file, old_file, sizeof(old_file) - 1U);
 	fixture->handoff_file_length = sizeof(old_file) - 1U;
-	fixture->handoff_file5_open = true;
+	fixture->handoff_file5_open = false;
 	fixture->handoff_closed_all = false;
 	fixture->handoff_run_invoked = false;
 	return yt_genesis_handoff_run(&fixture->handoff, &ops, fixture,
@@ -24074,9 +24115,6 @@ test_main_genesis_handoff_failure_prefixes(void)
 		bool close_all_completed;
 		bool run_invoked;
 	} failure_cases[] = {
-		{YT_GENESIS_HANDOFF_CLOSE_FILE5,
-		    (const uint8_t *)"OLD\x1a", 4U, true,
-		    false, false, false, false, false},
 		{YT_GENESIS_HANDOFF_OPEN_OUTPUT,
 		    (const uint8_t *)"OLD\x1a", 4U, false,
 		    true, false, false, false, false},

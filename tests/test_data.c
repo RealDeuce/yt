@@ -2949,6 +2949,77 @@ test_text_output_write(void)
 }
 
 static void
+test_genesis_sequential_handoff_boundaries(void)
+{
+	uint8_t command126[128];
+	uint8_t command127[129];
+	uint8_t first_block[YT_TEXT_OUTPUT_BUFFER_SIZE];
+	struct text_output_write_script write_script;
+	struct text_close_script close_script;
+	struct yt_text_output output;
+	struct yt_error error;
+	unsigned operation;
+
+	memset(command126, 'A', 126U);
+	command126[126] = '\r';
+	command126[127] = '\n';
+	memset(&write_script, 0, sizeof(write_script));
+	memset(&close_script, 0, sizeof(close_script));
+	for (operation = YT_TEXT_CLOSE_PENDING_WRITE;
+	    operation <= YT_TEXT_CLOSE_HANDLE; ++operation)
+		text_output_add_success(&close_script,
+		    (enum yt_text_close_operation)operation,
+		    command126, sizeof(command126));
+	CHECK(text_output_close_fixture(&output, &close_script, NULL, 0U));
+	yt_text_output_set_write_provider(&output, scripted_text_output_write,
+	    &write_script);
+	yt_error_clear(&error);
+	CHECK(yt_text_output_write(&output, command126, sizeof(command126),
+	    &error)
+	    && output.last_write.outcome == YT_TEXT_OUTPUT_WRITE_RETURNED
+	    && output.last_write.flush_count == 0U
+	    && output.pending_count == sizeof(command126)
+	    && write_script.position == 0U
+	    && yt_text_output_close_all_method(&output, 0, &error)
+	    && close_script.position == close_script.length
+	    && output.last_close.outcome == YT_TEXT_CLOSE_RETURNED
+	    && output.last_close.operation_count == 4U
+	    && output.file == NULL && output.pending_count == 0U);
+	yt_text_output_destroy(&output);
+
+	memset(command127, 'B', 127U);
+	command127[127] = '\r';
+	command127[128] = '\n';
+	memcpy(first_block, command127, sizeof(first_block));
+	memset(&write_script, 0, sizeof(write_script));
+	text_output_write_add(&write_script, first_block,
+	    sizeof(first_block), false, 0U, true);
+	memset(&close_script, 0, sizeof(close_script));
+	for (operation = YT_TEXT_CLOSE_PENDING_WRITE;
+	    operation <= YT_TEXT_CLOSE_HANDLE; ++operation)
+		text_output_add_success(&close_script,
+		    (enum yt_text_close_operation)operation,
+		    command127 + 128U, 1U);
+	CHECK(text_output_close_fixture(&output, &close_script, NULL, 0U));
+	yt_text_output_set_write_provider(&output, scripted_text_output_write,
+	    &write_script);
+	yt_error_clear(&error);
+	CHECK(yt_text_output_write(&output, command127, sizeof(command127),
+	    &error)
+	    && output.last_write.outcome == YT_TEXT_OUTPUT_WRITE_RETURNED
+	    && output.last_write.flush_count == 1U
+	    && output.last_write.accepted == sizeof(command127)
+	    && write_script.position == write_script.length
+	    && output.pending_count == 1U && output.pending[0] == '\n'
+	    && yt_text_output_close_all_method(&output, 0, &error)
+	    && close_script.position == close_script.length
+	    && output.last_close.outcome == YT_TEXT_CLOSE_RETURNED
+	    && output.last_close.operation_count == 4U
+	    && output.file == NULL && output.pending_count == 0U);
+	yt_text_output_destroy(&output);
+}
+
+static void
 test_text_device_print(void)
 {
 	static const uint8_t values[] = {'A', '\r', 'B'};
@@ -7853,6 +7924,7 @@ main(void)
 	test_close_all_registry();
 	test_database_random_close();
 	test_text_output_write();
+	test_genesis_sequential_handoff_boundaries();
 	test_text_device_print();
 	test_text_output_close();
 	test_database_random_lof();

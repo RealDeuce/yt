@@ -14884,17 +14884,29 @@ static bool
 genesis_handoff_open_output(void *context, struct yt_error *error)
 {
 	struct genesis_handoff_context *handoff = context;
+	bool opened;
 
-	return yt_text_output_open(&handoff->output, "RMTINIT.TMP", error);
+	opened = yt_text_output_open(&handoff->output, "RMTINIT.TMP", error);
+	if (!opened && handoff->output.last_output_open.basic_error != 0U)
+		(void)yt_error_attach_basic_fault_number(error,
+		    YT_BASIC_FAULT_GENESIS_OPEN_OUTPUT,
+		    handoff->output.last_output_open.basic_error);
+	return opened;
 }
 
 static bool
 genesis_handoff_print_command(void *context, struct yt_error *error)
 {
 	struct genesis_handoff_context *handoff = context;
+	bool printed;
 
-	return yt_text_output_write(&handoff->output, handoff->line,
+	printed = yt_text_output_write(&handoff->output, handoff->line,
 	    handoff->line_length, error);
+	if (!printed && handoff->output.last_write.basic_error != 0U)
+		(void)yt_error_attach_basic_fault_number(error,
+		    YT_BASIC_FAULT_GENESIS_PRINT_VALUE,
+		    handoff->output.last_write.basic_error);
+	return printed;
 }
 
 static bool
@@ -14905,6 +14917,10 @@ genesis_handoff_close_all(void *context, struct yt_error *error)
 	struct yt_close_all_control controls[2];
 	struct yt_close_all_result close_all;
 	size_t control_count = 0U;
+	size_t game_index = SIZE_MAX;
+	size_t output_index;
+	uint16_t basic_error = 0U;
+	bool closed;
 
 	/*
 	 * The database file-1 control predates the new sequential file-5
@@ -14912,15 +14928,27 @@ genesis_handoff_close_all(void *context, struct yt_error *error)
 	 * appending its DOS EOF, and then closes file 1 before RUN.
 	 */
 	if (session->door->game_open) {
+		game_index = control_count;
 		controls[control_count++] = (struct yt_close_all_control){
 			YT_CLOSE_ALL_HEAP_FILE, 0,
 			session_close_game_all, session->door};
 	}
+	output_index = control_count;
 	controls[control_count++] = (struct yt_close_all_control){
 		YT_CLOSE_ALL_HEAP_FILE, 0,
 		yt_text_output_close_all_method, &handoff->output};
-	return yt_close_all_run(controls, control_count, NULL, &close_all,
+	closed = yt_close_all_run(controls, control_count, NULL, &close_all,
 	    error);
+	if (closed)
+		return true;
+	if (close_all.failed_index == output_index)
+		basic_error = handoff->output.last_close.basic_error;
+	else if (close_all.failed_index == game_index)
+		basic_error = session->door->game.database.last_close.basic_error;
+	if (basic_error != 0U)
+		(void)yt_error_attach_basic_fault_number(error,
+		    YT_BASIC_FAULT_GENESIS_CLOSE_ALL, basic_error);
+	return false;
 }
 
 static bool

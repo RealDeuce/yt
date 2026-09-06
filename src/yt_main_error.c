@@ -13,6 +13,11 @@
 #define CINT_ERRORS {6U}
 #define SPACE_ERRORS {14U}
 #define STACK_ERRORS {7U}
+#define GENESIS_OPEN_ERRORS {14U, 53U, 57U, 67U, 70U, 75U, 76U}
+#define GENESIS_COMMAND_ERRORS {14U, 16U}
+#define GENESIS_PRINT_ERRORS {52U, 57U, 61U, 70U, 71U}
+#define GENESIS_COMPLETION_ERRORS {57U}
+#define GENESIS_CLOSE_ERRORS {57U, 61U, 70U}
 #define MAIN_FAULT(label, op, saved, statement, erl, domain, count) \
 	{label, YT_BASIC_FAULT_MAIN, op, saved, statement, erl, 0xB2DAU, \
 	    domain, count}
@@ -103,6 +108,16 @@ static const struct yt_basic_fault_identity basic_faults[] = {
 	    0x0759U, 19000, RETURNING_PUT_ERRORS, 5U),
 	MAIN_FAULT("post-login cargo repair PUT", 0x07B9U, 0x07BCU,
 	    0x07AEU, 19100, RETURNING_PUT_ERRORS, 5U),
+	MAIN_FAULT("Genesis OUTPUT open", 0x283DU, 0x2840U, 0x282FU,
+	    24950, GENESIS_OPEN_ERRORS, 7U),
+	MAIN_FAULT("Genesis COMMAND$ materialization", 0x2846U, 0x2849U,
+	    0x2840U, 24950, GENESIS_COMMAND_ERRORS, 2U),
+	MAIN_FAULT("Genesis PRINT value", 0x2849U, 0x284CU, 0x2840U,
+	    24950, GENESIS_PRINT_ERRORS, 5U),
+	MAIN_FAULT("Genesis PRINT completion", 0x284CU, 0x284FU, 0x2840U,
+	    24950, GENESIS_COMPLETION_ERRORS, 1U),
+	MAIN_FAULT("Genesis CLOSE all", 0x284FU, 0x2852U, 0x284FU,
+	    24950, GENESIS_CLOSE_ERRORS, 3U),
 	MAIN_FAULT("ADE0 repeat VAL overflow", 0xAEBFU, 0xAEC2U,
 	    0xAE9CU, 36000, CINT_ERRORS, 1U),
 	MAIN_FAULT("ADE0 repeat SINGLE overflow", 0xAEC8U, 0xAECBU,
@@ -170,6 +185,11 @@ _Static_assert(YT_ARRAY_LEN(basic_faults) == YT_BASIC_FAULT_SITE_COUNT,
 #undef CINT_ERRORS
 #undef SPACE_ERRORS
 #undef STACK_ERRORS
+#undef GENESIS_CLOSE_ERRORS
+#undef GENESIS_COMPLETION_ERRORS
+#undef GENESIS_PRINT_ERRORS
+#undef GENESIS_COMMAND_ERRORS
+#undef GENESIS_OPEN_ERRORS
 #undef RETURNING_PUT_ERRORS
 #undef RETURNING_GET_ERRORS
 #undef PUT_ERRORS
