@@ -1697,12 +1697,10 @@ static bool
 expand_repeat(struct yt_session *session, char *text, size_t size)
 {
 	struct yt_repeat_transform result;
-	char notice[128];
-	char rendered[64];
-	int notice_length;
 
 	if (!yt_input_expand_repeat_observed(text, size,
-	    session->saved_command, sizeof(session->saved_command), &result,
+	    session->saved_command, sizeof(session->saved_command),
+	    session->output_source, sizeof(session->output_source), &result,
 	    session_input_process_store, session)) {
 		if (result.fault_valid && session->error != NULL) {
 			yt_error_clear(session->error);
@@ -1719,14 +1717,9 @@ expand_repeat(struct yt_session *session, char *text, size_t size)
 	}
 	if (!result.emit_notice)
 		return true;
-	if (qb_str_double(rendered, sizeof(rendered), (double)result.count) < 0)
-		return false;
-	notice_length = snprintf(notice, sizeof(notice),
-	    "Command Repeated%s times -+- Ctrl-R to Re-use -+- "
-	    "Ctrl-X to cancel.", rendered);
-	if (notice_length < 0 || (size_t)notice_length >= sizeof(notice))
-		return false;
-	return session_command_notice(session, notice, true,
+	if (result.bold_committed)
+		yt_present_set_bold(&session->presentation, 1.0f);
+	return session_command_notice(session, session->output_source, false,
 	    YT_COMMAND_NOTICE_REPEAT);
 }
 

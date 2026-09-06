@@ -590,8 +590,12 @@ yt_input_expand_repeat(char *text, size_t text_capacity,
     char *saved_command, size_t saved_capacity,
     struct yt_repeat_transform *result)
 {
+	char output_source[128];
+
+	output_source[0] = '\0';
 	return yt_input_expand_repeat_observed(text, text_capacity,
-	    saved_command, saved_capacity, result, NULL, NULL);
+	    saved_command, saved_capacity, output_source, sizeof(output_source),
+	    result, NULL, NULL);
 }
 
 static bool
@@ -921,28 +925,179 @@ yt_input_repeat_parse_staged(char *text, size_t text_capacity,
 	return target == YT_BASIC_FAULT_SITE_COUNT;
 }
 
-bool
-yt_input_expand_repeat_observed(char *text, size_t text_capacity,
-    char *saved_command, size_t saved_capacity,
-    struct yt_repeat_transform *result, yt_input_process_store_fn store,
-    void *context)
+static bool
+repeat_build_target(enum yt_basic_fault_site target)
 {
-	char base[YT_INPUT_PENDING];
-	uint8_t upper[YT_INPUT_PENDING];
-	struct yt_repeat_prefix_transform repeat_prefix;
-	struct yt_repeat_parse_transform repeat_parse;
+	return target == YT_BASIC_FAULT_ADE0_REPEAT_BUILD_CONCAT_SPACE
+	    || target == YT_BASIC_FAULT_ADE0_REPEAT_FINAL_LEFT_SPACE
+	    || target == YT_BASIC_FAULT_ADE0_REPEAT_SAVE_CLONE_SPACE
+	    || target == YT_BASIC_FAULT_ADE0_REPEAT_COUNT_STR_SPACE
+	    || target == YT_BASIC_FAULT_ADE0_REPEAT_PREFIX_CONCAT_SPACE
+	    || target == YT_BASIC_FAULT_ADE0_REPEAT_NOTICE_CONCAT_SPACE
+	    || target == YT_BASIC_FAULT_ADE0_REPEAT_NOTICE_GOSUB_STACK;
+}
+
+static bool
+repeat_build_fault(struct yt_repeat_build_transform *result,
+    enum yt_basic_fault_site site)
+{
+	result->fault_site = site;
+	result->fault_valid = true;
+	return false;
+}
+
+bool
+yt_input_repeat_build_staged(char *text, size_t text_capacity,
+    uint8_t *build_scratch, size_t scratch_capacity,
+    char *saved_command, size_t saved_capacity,
+    char *output_source, size_t output_capacity, float count,
+    enum yt_basic_fault_site target, size_t occurrence,
+    struct yt_repeat_build_transform *result,
+    yt_input_process_store_fn store, void *context)
+{
+	static const char notice_prefix[] = "Command Repeated";
+	static const char notice_suffix[] =
+	    " times -+- Ctrl-R to Re-use -+- Ctrl-X to cancel.";
+	char count_text[64];
 	size_t text_length;
-	size_t prefix;
-	size_t base_length;
-	size_t used = 0;
-	float count;
+	size_t scratch_length;
+	size_t used = 0U;
+	size_t expanded_length;
+	size_t count_length;
+	size_t prefix_length;
+	size_t notice_length;
 	int copies;
 	int index;
 
-	if (text == NULL || saved_command == NULL || result == NULL
-	    || text_capacity == 0 || saved_capacity == 0)
+	if (text == NULL || text_capacity == 0U || build_scratch == NULL
+	    || scratch_capacity == 0U || saved_command == NULL
+	    || saved_capacity == 0U || output_source == NULL
+	    || output_capacity == 0U || result == NULL || occurrence == 0U
+	    || (target != YT_BASIC_FAULT_SITE_COUNT
+	    && !repeat_build_target(target))
+	    || (target != YT_BASIC_FAULT_SITE_COUNT
+	    && target != YT_BASIC_FAULT_ADE0_REPEAT_BUILD_CONCAT_SPACE
+	    && occurrence != 1U)
+	    || !bounded_string_length(text, text_capacity, &text_length)
+	    || !bounded_string_length((const char *)build_scratch,
+	    scratch_capacity, &scratch_length)
+	    || scratch_length != 0U || text_length == 0U
+	    || text[text_length - 1U] != ';' || !isfinite(count)
+	    || count <= 0.0f || floorf(count) != count
+	    || (count > 10.0f && count != 20.0f))
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->fault_site = YT_BASIC_FAULT_SITE_COUNT;
+	copies = (int)count;
+	if (!input_process_store_single(store, context, 0x51C8U, count)
+	    || !input_process_store_single(store, context, 0x4F76U, 1.0f))
+		return false;
+	for (index = 0; index < copies; ++index) {
+		if (used > 500U)
+			break;
+		if (target == YT_BASIC_FAULT_ADE0_REPEAT_BUILD_CONCAT_SPACE
+		    && occurrence == (size_t)index + 1U)
+			return repeat_build_fault(result, target);
+		if (used + text_length >= scratch_capacity)
+			return false;
+		memcpy(build_scratch + used, text, text_length);
+		used += text_length;
+		build_scratch[used] = '\0';
+		result->completed_iterations = (size_t)index + 1U;
+		if (!input_process_store_single(store, context, 0x4F76U,
+		    (float)(index + 2)))
+			return false;
+	}
+	if (target == YT_BASIC_FAULT_ADE0_REPEAT_BUILD_CONCAT_SPACE)
+		return false;
+	if (used == 0U)
+		return false;
+	expanded_length = used - 1U;
+	if (expanded_length >= sizeof(result->pending_string))
+		return false;
+	memcpy(result->pending_string, build_scratch, expanded_length);
+	result->pending_string[expanded_length] = '\0';
+	result->pending_length = expanded_length;
+	result->pending_role = YT_REPEAT_PENDING_EXPANDED;
+	if (target == YT_BASIC_FAULT_ADE0_REPEAT_FINAL_LEFT_SPACE) {
+		if (expanded_length == 0U)
+			return false;
+		return repeat_build_fault(result, target);
+	}
+	if (expanded_length >= text_capacity)
+		return false;
+	memcpy(text, result->pending_string, expanded_length + 1U);
+	build_scratch[0] = '\0';
+	result->pending_string[0] = '\0';
+	result->pending_length = 0U;
+	result->pending_role = YT_REPEAT_PENDING_NONE;
+	if (target == YT_BASIC_FAULT_ADE0_REPEAT_SAVE_CLONE_SPACE) {
+		if (expanded_length == 0U)
+			return false;
+		return repeat_build_fault(result, target);
+	}
+	if (expanded_length >= saved_capacity)
+		return false;
+	memcpy(saved_command, text, expanded_length + 1U);
+	result->bold_committed = true;
+	if (target == YT_BASIC_FAULT_ADE0_REPEAT_COUNT_STR_SPACE)
+		return repeat_build_fault(result, target);
+	if (qb_str_double(count_text, sizeof(count_text), (double)count) < 0)
+		return false;
+	count_length = strlen(count_text);
+	if (count_length >= sizeof(result->pending_string))
+		return false;
+	memcpy(result->pending_string, count_text, count_length + 1U);
+	result->pending_length = count_length;
+	result->pending_role = YT_REPEAT_PENDING_COUNT_TEXT;
+	if (target == YT_BASIC_FAULT_ADE0_REPEAT_PREFIX_CONCAT_SPACE)
+		return repeat_build_fault(result, target);
+	prefix_length = sizeof(notice_prefix) - 1U + count_length;
+	if (prefix_length >= sizeof(result->pending_string))
+		return false;
+	memmove(result->pending_string + sizeof(notice_prefix) - 1U,
+	    result->pending_string, count_length + 1U);
+	memcpy(result->pending_string, notice_prefix,
+	    sizeof(notice_prefix) - 1U);
+	result->pending_length = prefix_length;
+	result->pending_role = YT_REPEAT_PENDING_NOTICE_PREFIX;
+	if (target == YT_BASIC_FAULT_ADE0_REPEAT_NOTICE_CONCAT_SPACE)
+		return repeat_build_fault(result, target);
+	notice_length = prefix_length + sizeof(notice_suffix) - 1U;
+	if (notice_length >= output_capacity)
+		return false;
+	memcpy(output_source, result->pending_string, prefix_length);
+	memcpy(output_source + prefix_length, notice_suffix,
+	    sizeof(notice_suffix));
+	result->pending_string[0] = '\0';
+	result->pending_length = 0U;
+	result->pending_role = YT_REPEAT_PENDING_NONE;
+	result->notice_ready = true;
+	if (target == YT_BASIC_FAULT_ADE0_REPEAT_NOTICE_GOSUB_STACK)
+		return repeat_build_fault(result, target);
+	return target == YT_BASIC_FAULT_SITE_COUNT;
+}
+
+bool
+yt_input_expand_repeat_observed(char *text, size_t text_capacity,
+    char *saved_command, size_t saved_capacity,
+    char *output_source, size_t output_capacity,
+    struct yt_repeat_transform *result, yt_input_process_store_fn store,
+    void *context)
+{
+	uint8_t upper[YT_INPUT_PENDING];
+	struct yt_repeat_prefix_transform repeat_prefix;
+	struct yt_repeat_parse_transform repeat_parse;
+	struct yt_repeat_build_transform repeat_build;
+	size_t text_length;
+	float count;
+
+	if (text == NULL || saved_command == NULL || output_source == NULL
+	    || result == NULL || text_capacity == 0 || saved_capacity == 0
+	    || output_capacity == 0)
 		return false;
 	result->emit_notice = false;
+	result->bold_committed = false;
 	result->count = 0.0f;
 	result->failure = YT_REPEAT_FAILURE_NONE;
 	result->fault_site = YT_BASIC_FAULT_SITE_COUNT;
@@ -956,7 +1111,6 @@ yt_input_expand_repeat_observed(char *text, size_t text_capacity,
 		return false;
 	if (repeat_prefix.repeat_position == 0U)
 		return true;
-	prefix = repeat_prefix.repeat_position - 1U;
 	if (!yt_input_repeat_parse_staged(text, text_capacity, upper,
 	    sizeof(upper), repeat_prefix.repeat_position,
 	    YT_BASIC_FAULT_SITE_COUNT, &repeat_parse, store, context)) {
@@ -969,28 +1123,16 @@ yt_input_expand_repeat_observed(char *text, size_t text_capacity,
 	result->count = count;
 	if (count <= 0.0f)
 		return true;
-	base_length = prefix + 1U;
-	memcpy(base, text, base_length);
-	copies = (int)count;
-	if (!input_process_store_single(store, context, 0x51C8U, count)
-	    || !input_process_store_single(store, context, 0x4F76U, 1.0f))
+	if (!yt_input_repeat_build_staged(text, text_capacity, upper,
+	    sizeof(upper), saved_command, saved_capacity, output_source,
+	    output_capacity, count, YT_BASIC_FAULT_SITE_COUNT, 1U,
+	    &repeat_build, store, context)) {
+		result->fault_site = repeat_build.fault_site;
+		result->fault_valid = repeat_build.fault_valid;
 		return false;
-	for (index = 0; index < copies; ++index) {
-		if (used > 500U)
-			break;
-		if (used + base_length >= text_capacity)
-			return false;
-		memcpy(text + used, base, base_length);
-		used += base_length;
-		if (!input_process_store_single(store, context, 0x4F76U,
-		    (float)(index + 2)))
-			return false;
 	}
-	if (used == 0 || used >= saved_capacity)
-		return false;
-	text[--used] = '\0';
-	memcpy(saved_command, text, used + 1U);
-	result->emit_notice = true;
+	result->bold_committed = repeat_build.bold_committed;
+	result->emit_notice = repeat_build.notice_ready;
 	return true;
 }
 

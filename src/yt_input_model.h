@@ -65,6 +65,7 @@ enum yt_repeat_failure {
 
 struct yt_repeat_transform {
 	bool emit_notice;
+	bool bold_committed;
 	float count;
 	enum yt_repeat_failure failure;
 	enum yt_basic_fault_site fault_site;
@@ -103,6 +104,9 @@ enum yt_repeat_pending_role {
 	YT_REPEAT_PENDING_PREFIX,
 	YT_REPEAT_PENDING_SUFFIX,
 	YT_REPEAT_PENDING_INTEGER,
+	YT_REPEAT_PENDING_EXPANDED,
+	YT_REPEAT_PENDING_COUNT_TEXT,
+	YT_REPEAT_PENDING_NOTICE_PREFIX,
 };
 
 struct yt_repeat_parse_transform {
@@ -116,6 +120,17 @@ struct yt_repeat_parse_transform {
 	enum yt_basic_fault_site fault_site;
 	bool repeat_reached;
 	bool pending_double_valid;
+	bool fault_valid;
+};
+
+struct yt_repeat_build_transform {
+	char pending_string[YT_INPUT_PENDING];
+	size_t pending_length;
+	size_t completed_iterations;
+	enum yt_repeat_pending_role pending_role;
+	enum yt_basic_fault_site fault_site;
+	bool bold_committed;
+	bool notice_ready;
 	bool fault_valid;
 };
 
@@ -423,8 +438,16 @@ bool yt_input_repeat_parse_staged(char *text, size_t text_capacity,
 	size_t repeat_position, enum yt_basic_fault_site target,
 	struct yt_repeat_parse_transform *result,
 	yt_input_process_store_fn store, void *context);
+bool yt_input_repeat_build_staged(char *text, size_t text_capacity,
+	uint8_t *build_scratch, size_t scratch_capacity,
+	char *saved_command, size_t saved_capacity,
+	char *output_source, size_t output_capacity, float count,
+	enum yt_basic_fault_site target, size_t occurrence,
+	struct yt_repeat_build_transform *result,
+	yt_input_process_store_fn store, void *context);
 bool yt_input_expand_repeat_observed(char *text, size_t text_capacity,
-    char *saved_command, size_t saved_capacity,
+	char *saved_command, size_t saved_capacity,
+	char *output_source, size_t output_capacity,
     struct yt_repeat_transform *result, yt_input_process_store_fn store,
     void *context);
 bool yt_input_split_semicolon(char *text, char *queue, size_t queue_capacity,
