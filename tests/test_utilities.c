@@ -3548,14 +3548,20 @@ test_xannor_player_arrival(struct yt_error *error)
 	struct utility_line_tape tape = {{{0}}, 0};
 	struct yt_game game;
 	struct yt_player player;
+	struct yt_sector sector_before;
+	struct yt_sector sector_after;
 	struct yt_text_file news = {0};
 	float sector_cache[52] = {0};
 	float cloak_cache[52] = {0};
 	float xannor = 1.0f;
+	float location = 42.0f;
+	float exhausted_location = 42.0f;
+	float exhausted_size = 0.0f;
 	uint8_t *radio = NULL;
 	size_t radio_length = 0;
 	bool valid = false;
 	size_t index;
+	size_t offset;
 
 	memset(&game, 0, sizeof(game));
 	(void)remove("YTNEWS.DAT");
@@ -3577,19 +3583,37 @@ test_xannor_player_arrival(struct yt_error *error)
 	sector_cache[2] = 42.0f;
 	cloak_cache[2] = 0.25f;
 	yt_random_set_provider(&game.random, utility_random_fill, &script);
-	if (!yt_maintenance_xannor_player_arrival(&game, sector_cache,
-	    cloak_cache, YT_ARRAY_LEN(sector_cache), 2, &xannor,
-	    utility_capture_line, &tape, error)
+	if (!yt_game_read_sector(&game, 42, &sector_before, error)
+	    || !yt_maintenance_xannor_target_finish(&game, sector_cache,
+	    cloak_cache, YT_ARRAY_LEN(sector_cache), true, 20, 0,
+	    &exhausted_location, &exhausted_size, utility_capture_line, &tape,
+	    error)
+	    || !yt_maintenance_xannor_target_finish(&game, sector_cache,
+	    cloak_cache, YT_ARRAY_LEN(sector_cache), false, 20, 2,
+	    &location, &xannor, utility_capture_line, &tape, error)
+	    || !yt_maintenance_xannor_target_finish(&game, sector_cache,
+	    cloak_cache, YT_ARRAY_LEN(sector_cache), true, 19, 2,
+	    &location, &xannor, utility_capture_line, &tape, error)
+	    || !yt_maintenance_xannor_target_finish(&game, sector_cache,
+	    cloak_cache, YT_ARRAY_LEN(sector_cache), true, 20, 0,
+	    &location, &xannor, utility_capture_line, &tape, error)
+	    || !yt_maintenance_xannor_target_finish(&game, sector_cache,
+	    cloak_cache, YT_ARRAY_LEN(sector_cache), true, 20, 2,
+	    &location, &xannor, utility_capture_line, &tape, error)
 	    || !yt_game_read_player(&game, 2, &player, error)
+	    || !yt_game_read_sector(&game, 42, &sector_after, error)
 	    || !yt_text_read("YTNEWS.DAT", &news, error)
 	    || !read_file("YTRMSG.DAT", &radio, &radio_length))
 		goto done;
-	valid = xannor == 1.0f && game.random.draws == 2U
+	valid = exhausted_location == 0.0f && exhausted_size == 0.0f
+	    && location == 42.0f && xannor == 1.0f
+	    && game.random.draws == 2U
 	    && script.position == sizeof(draws)
 	    && tape.calls == 1U && strcmp(tape.line[0], expected_line) == 0
 	    && player.killed_by == -1.0f && player.fighters == 0.0f
 	    && player.shields == 0.0f && player.sector == 0.0f
 	    && sector_cache[2] == 0.0f && cloak_cache[2] == 0.0f
+	    && sector_after.fighters == sector_before.fighters + 2.0f
 	    && news.length == sizeof(expected_line) - 1U + 3U
 	    && memcmp(news.data, expected_line, sizeof(expected_line) - 1U) == 0
 	    && memcmp(news.data + sizeof(expected_line) - 1U, "\r\n\x1a", 3U) == 0
@@ -3604,6 +3628,11 @@ test_xannor_player_arrival(struct yt_error *error)
 		    && yt_radio_get_number(record, 4) == 2.0f
 		    && yt_radio_get_number(record, 8) == -1.0f
 		    && memcmp(record->bytes + 12U, expected_radio[index], length) == 0;
+	}
+	for (offset = 0U; valid && offset < YT_RECORD_SIZE; ++offset) {
+		if (offset < YT_F81 || offset >= YT_F81 + 4U)
+			valid = sector_after.record.bytes[offset]
+			    == sector_before.record.bytes[offset];
 	}
 
 done:

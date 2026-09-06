@@ -4504,6 +4504,34 @@ yt_maintenance_xannor_group_twenty_finish(struct yt_game *game,
 	return yt_game_write_sector(game, logical, &sector, error);
 }
 
+bool
+yt_maintenance_xannor_target_finish(struct yt_game *game,
+    float *player_sector, float *player_cloak, size_t cache_count,
+    bool reached_target, int group_number, int hunt_player,
+    float *group_location, float *group_size,
+    yt_maintenance_score_line_fn line_output, void *line_context,
+    struct yt_error *error)
+{
+	if (game == NULL || player_sector == NULL || player_cloak == NULL
+	    || group_location == NULL || group_size == NULL
+	    || line_output == NULL || group_number < 2 || group_number > 20) {
+		set_error(error, YT_INVALID, "Xannor target finish", "YTDATA.DAT");
+		return false;
+	}
+	if (!reached_target)
+		return true;
+	if (yt_maintenance_xannor_should_attack_hunt_player(group_number,
+	    hunt_player)
+	    && !yt_maintenance_xannor_player_arrival(game, player_sector,
+	    player_cloak, cache_count, hunt_player, group_size, line_output,
+	    line_context, error))
+		return false;
+	if (*group_size <= 0.0f)
+		*group_location = 0.0f;
+	return yt_maintenance_xannor_group_twenty_finish(game, group_number,
+	    *group_location, *group_size, error);
+}
+
 static bool
 maintain_xannor(struct maint_state *state, struct yt_error *error)
 {
@@ -4601,23 +4629,12 @@ maintain_xannor(struct maint_state *state, struct yt_error *error)
 				    target, (float)top_target, location, size,
 				    &route_result, error))
 					return false;
-				if (route_result.reached_target
-				    && yt_maintenance_xannor_should_attack_hunt_player(
-				    group, hunt_player)
-				    && !yt_maintenance_xannor_player_arrival(
-				    &state->game, state->player_sector,
-				    state->player_cloak,
-				    (size_t)state->player_count + 2U, hunt_player,
-				    &size[group], maintenance_stdout_line, NULL,
-				    error))
-					return false;
-				if (route_result.reached_target
-				    && size[group] <= 0.0f)
-					location[group] = 0.0f;
-				if (route_result.reached_target
-				    && !yt_maintenance_xannor_group_twenty_finish(
-				    &state->game, group, location[group],
-				    size[group], error))
+				if (!yt_maintenance_xannor_target_finish(&state->game,
+				    state->player_sector, state->player_cloak,
+				    (size_t)state->player_count + 2U,
+				    route_result.reached_target, group, hunt_player,
+				    &location[group], &size[group],
+				    maintenance_stdout_line, NULL, error))
 					return false;
 				retarget = yt_maintenance_xannor_should_retarget(
 				    location[group], size[group]);

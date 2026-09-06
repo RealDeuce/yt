@@ -470,6 +470,12 @@ bool yt_maintenance_xannor_player_arrival(struct yt_game *game,
     int player_record, float *xannor_fighters,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_error *error);
+bool yt_maintenance_xannor_target_finish(struct yt_game *game,
+    float *player_sector, float *player_cloak, size_t cache_count,
+    bool reached_target, int group_number, int hunt_player,
+    float *group_location, float *group_size,
+    yt_maintenance_score_line_fn line_output, void *line_context,
+    struct yt_error *error);
 bool yt_maintenance_xannor_planet_arrival(struct yt_game *game,
     float *group_location, float *group_size, struct yt_sector *sector,
     yt_maintenance_score_line_fn line_output, void *line_context,
