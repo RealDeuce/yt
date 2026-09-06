@@ -8,6 +8,35 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
+### DOC-GAP-028: ADE0 allocation/GOSUB current-statement identities
+
+Affected coverage:
+
+- the 22 remaining main-owned ADE0 allocation and GOSUB failures at
+  `YT:ADE7`, `AE04`, `AE1B`, `AE24`, `AE27`, `AE4A`, `AE8C`, `AE94`,
+  `AEBC`, `AF2B`, `AF56`, `AF6E`, `AF7D`, `AF83`, `AF8B`, `AF94`,
+  `AFE5`, `AFEB`, `B006`, `B021`, `B041` and `B047`; and
+- the four delegated uppercase-helper failures at `YT-SUB:1D99`, `1DC2`,
+  `1DE0` and `1DEA` reached by the same ADE0 continuation.
+
+The completed `docs/runtime/f8-b05d-first-fault.md`, generated
+`ytab36-fault-inventory.static.txt` and generated
+`ytade0-fault-output.static.txt` pin each reached instruction, saved IP,
+ERR 7 or 14, ERL, installed handler, retained scratch/effect prefix and fatal
+output. They do not identify the current statement for any of these 26
+sites. The ADE0 artifact publishes a `statement` field only for the two
+ERR 6 overflow sites resolved by DOC-GAP-026.
+
+That missing token is part of the BASIC active-error carrier and is required
+to add exact `yt_basic_fault_identity` entries without inferring a statement
+start from nearby instruction addresses. This is the same identity field
+that the upstream correction supplied for the two overflow sites; operation
+addresses and saved IPs are not substitutes for it. Upstream documentation
+and generated evidence must publish the current statement for all 22
+main-owned sites and all four shared-helper sites before their fault
+identities can be connected to the native ADE0 continuation. No binary
+inspection or new reverse engineering was performed.
+
 ### DOC-GAP-023: current-sector scanner cloak-clear raw value
 
 Affected coverage:
