@@ -982,6 +982,23 @@ test_command_save_stages(void)
 		    && strcmp(output, cases[index].output) == 0);
 	}
 
+	memcpy(text, "A", 2U);
+	memcpy(queue, "XYZ", 4U);
+	memcpy(saved, "OLD", 4U);
+	memcpy(output, "OUT", 4U);
+	position = 1U;
+	length = 3U;
+	CHECK(!yt_input_command_save_staged(text, sizeof(text), queue,
+	    sizeof(queue), &position, &length, saved, sizeof(saved),
+	    output, sizeof(output),
+	    YT_BASIC_FAULT_ADE0_SLASH_TEST_RIGHT_SPACE, &result));
+	CHECK(result.fault_valid
+	    && result.fault_site == YT_BASIC_FAULT_ADE0_SLASH_TEST_RIGHT_SPACE
+	    && !result.save_requested && !result.notice_ready
+	    && strcmp(text, "A") == 0 && strcmp(queue, "XYZ") == 0
+	    && position == 1U && length == 3U
+	    && strcmp(saved, "OLD") == 0 && strcmp(output, "OUT") == 0);
+
 	memcpy(text, "A/", 3U);
 	memcpy(queue, "XYZ", 4U);
 	memcpy(saved, "OLD", 4U);

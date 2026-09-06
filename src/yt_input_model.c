@@ -433,7 +433,9 @@ yt_input_command_save_staged(char *text, size_t text_capacity,
 	memset(result, 0, sizeof(*result));
 	result->fault_site = YT_BASIC_FAULT_SITE_COUNT;
 	if (target != YT_BASIC_FAULT_SITE_COUNT) {
-		if (length == 0U || text[length - 1U] != '/')
+		if (length == 0U
+		    || (target != YT_BASIC_FAULT_ADE0_SLASH_TEST_RIGHT_SPACE
+		    && text[length - 1U] != '/'))
 			return false;
 		stripped_length = length - 1U;
 		if ((target == YT_BASIC_FAULT_ADE0_SAVE_STRIP_LEFT_SPACE
