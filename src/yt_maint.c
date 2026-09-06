@@ -4136,12 +4136,24 @@ yt_maintenance_xannor_planet_arrival(struct yt_game *game,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_error *error)
 {
+	static const uint8_t attack_prefix[] = " ***";
+	static const uint8_t attack_middle[] =
+	    " Xannor attacked the planet \"";
+	static const uint8_t quote[] = "\"";
+	static const uint8_t fighters_destroyed[] =
+	    " *** Xannor fighters destroyed!";
+	static const uint8_t planet_prefix[] = " *** Planet \"";
+	static const uint8_t planet_suffix[] = "\" destroyed!";
 	struct yt_planet planet;
+	uint8_t stored_name[YT_TEXT_FIELD_SIZE];
+	uint8_t line[YT_MAINTENANCE_OUTPUT_ROW_SIZE];
+	size_t stored_name_length;
+	size_t line_length;
 	bool destroyed = false;
 	int planet_number;
 	int index;
 	char number[64];
-	char line[420];
+	int number_length;
 
 	if (game == NULL || group_location == NULL || group_size == NULL
 	    || sector == NULL || line_output == NULL) {
@@ -4155,12 +4167,24 @@ yt_maintenance_xannor_planet_arrival(struct yt_game *game,
 		return false;
 	if (planet.name_length <= 0.0f || planet.owner == -1.0f)
 		return true;
-	qb_str_single(number, sizeof(number), *group_size);
-	snprintf(line, sizeof(line),
-	    " ***%s Xannor attacked the planet \"%s\"", number, planet.name);
-	if (!yt_news_append(line, error)
-	    || !line_output(line_context, (const uint8_t *)line,
-	    strlen(line), error))
+	if (!yt_planet_stored_name(&planet, stored_name,
+	    &stored_name_length, error))
+		return false;
+	number_length = qb_str_single(number, sizeof(number), *group_size);
+	line_length = 0U;
+	if (number_length < 0
+	    || !maintenance_copy_part(line, sizeof(line), &line_length,
+	    attack_prefix, sizeof(attack_prefix) - 1U)
+	    || !maintenance_copy_part(line, sizeof(line), &line_length,
+	    (const uint8_t *)number, (size_t)number_length)
+	    || !maintenance_copy_part(line, sizeof(line), &line_length,
+	    attack_middle, sizeof(attack_middle) - 1U)
+	    || !maintenance_copy_part(line, sizeof(line), &line_length,
+	    stored_name, stored_name_length)
+	    || !maintenance_copy_part(line, sizeof(line), &line_length,
+	    quote, sizeof(quote) - 1U)
+	    || !xannor_arrival_emit(line_output, line_context, line,
+	    line_length, error))
 		return false;
 	while (planet.ground_forces > 0.0f && *group_size > 0.0f) {
 		float sample;
@@ -4221,17 +4245,43 @@ yt_maintenance_xannor_planet_arrival(struct yt_game *game,
 		*group_location = 0.0f;
 	}
 	if (*group_size <= 0.0f) {
-		snprintf(line, sizeof(line), " *** Xannor fighters destroyed!");
+		if (!xannor_arrival_emit(line_output, line_context,
+		    fighters_destroyed, sizeof(fighters_destroyed) - 1U, error))
+			return false;
 	}
 	else {
-		snprintf(line, sizeof(line), " *** Planet \"%s\" destroyed!",
-		    planet.name);
+		line_length = 0U;
+		if (!maintenance_copy_part(line, sizeof(line), &line_length,
+		    planet_prefix, sizeof(planet_prefix) - 1U)
+		    || !maintenance_copy_part(line, sizeof(line), &line_length,
+		    stored_name, stored_name_length)
+		    || !maintenance_copy_part(line, sizeof(line), &line_length,
+		    planet_suffix, sizeof(planet_suffix) - 1U)
+		    || !xannor_arrival_emit(line_output, line_context, line,
+		    line_length, error))
+			return false;
 	}
-	if (!yt_news_append(line, error)
-	    || !line_output(line_context, (const uint8_t *)line,
-	    strlen(line), error))
-		return false;
-	return yt_game_write_planet(game, planet_number, &planet, error);
+	for (index = 0; index < 3; ++index) {
+		if (!yt_record_set_number(&planet.record,
+		    YT_F45 + (size_t)index * 4U, planet.production[index])
+		    || !yt_record_set_number(&planet.record,
+		    YT_F57 + (size_t)index * 4U, planet.stock[index]))
+			goto encode_error;
+	}
+	if (!yt_record_set_number(&planet.record, YT_F73, planet.owner)
+	    || !yt_record_set_number(&planet.record, YT_F77,
+	    planet.ground_forces)
+	    || !yt_record_set_number(&planet.record, YT_F85,
+	    planet.name_length))
+		goto encode_error;
+	return yt_database_write(&game->database,
+	    (size_t)yt_planet_basic_record(&game->config, planet_number),
+	    &planet.record, error);
+
+encode_error:
+	set_error(error, YT_RANGE, "encode Xannor planet arrival",
+	    "YTDATA.DAT");
+	return false;
 }
 
 static bool

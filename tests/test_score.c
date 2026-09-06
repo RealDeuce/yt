@@ -17716,8 +17716,8 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	    " *** 10 Xannor hit sector mines in sector 2!\r\n"
 	    " *** Lost a total of 1 fighters!\r\n"
 	    " *** Route: lost 1, dstrd 0 (Plyr ftrs dstrd)\r\n"
-	    " *** 9 Xannor attacked the planet \"Terra\"\r\n"
-	    " *** Planet \"Terra\" destroyed!\r\n"
+	    " *** 9 Xannor attacked the planet \"T\0ra\"\r\n"
+	    " *** Planet \"T\0ra\" destroyed!\r\n"
 	    " *** Route: lost 1, dstrd 0 (Player Killed)\r\n\x1a";
 	static const char *const expected_radio[] = {
 		"Ha! We kilt 1 of yoor fyterz hoo-man slyme!",
@@ -17770,13 +17770,16 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	if (!yt_game_write_player(&game, 2, &route_player, &error))
 		goto done;
 	yt_record_blank(&planet_before);
-	yt_planet_decode(&planet, &planet_before);
-	memcpy(planet.name, "Terra", 6U);
-	planet.name_length = 5.0f;
-	planet.owner = 7.0f;
-	if (!yt_game_write_planet(&game, 1, &planet, &error))
+	planet_before.bytes[0] = 'T';
+	planet_before.bytes[1] = 0;
+	planet_before.bytes[2] = 'r';
+	planet_before.bytes[3] = 'a';
+	if (!yt_record_set_number(&planet_before, YT_F73, 7.0f)
+	    || !yt_record_set_number(&planet_before, YT_F85, 4.0f)
+	    || !yt_database_write(&game.database,
+	    (size_t)yt_planet_basic_record(&game.config, 1),
+	    &planet_before, &error))
 		goto done;
-	planet_before = planet.record;
 	for (sector = 1; sector <= 4; ++sector) {
 		memset(before[sector - 1].bytes, 0x30 + sector,
 		    YT_RECORD_SIZE);
