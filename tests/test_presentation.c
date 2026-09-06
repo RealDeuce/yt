@@ -22069,6 +22069,19 @@ enum emergency_warp_physical_failure {
 	EMERGENCY_WARP_PHYSICAL_PUT,
 };
 
+enum sector_mine_physical_failure {
+	SECTOR_MINE_PHYSICAL_OK,
+	SECTOR_MINE_PHYSICAL_ENTRY_PLAYER_GET,
+	SECTOR_MINE_PHYSICAL_ENTRY_NEWS,
+	SECTOR_MINE_PHYSICAL_BATCH_SECTOR_GET,
+	SECTOR_MINE_PHYSICAL_BATCH_SECTOR_PUT,
+	SECTOR_MINE_PHYSICAL_BATCH_PLAYER_GET,
+	SECTOR_MINE_PHYSICAL_PRE_PUT_PLAYER_GET,
+	SECTOR_MINE_PHYSICAL_PLAYER_PUT,
+	SECTOR_MINE_PHYSICAL_FINAL_NEWS,
+	SECTOR_MINE_PHYSICAL_FINAL_SECTOR_GET,
+};
+
 struct hostile_mines_hazard_fixture {
 	struct main_mines_cycle_fixture cycle;
 	struct yt_sector_mine_state hazard;
@@ -22078,15 +22091,27 @@ struct hostile_mines_hazard_fixture {
 	struct yt_player emergency_player;
 	float draws[16];
 	size_t draw_position;
+	enum sector_mine_physical_failure mine_failure;
+	unsigned mine_error_number;
+	unsigned mine_saved_ip;
+	bool mine_error_requested;
+	struct yt_gameplay_hazard_error_request mine_error_request;
+	size_t mine_start;
+	size_t current_read_attempts;
 	size_t current_reads;
+	size_t player_read_attempts;
 	size_t player_reads;
+	size_t player_write_attempts;
 	size_t player_writes;
+	size_t sector_read_attempts;
 	size_t sector_reads;
+	size_t sector_write_attempts;
 	size_t sector_writes;
 	float sounds[2];
 	size_t sound_count;
 	uint8_t news[2][96];
 	size_t news_lengths[2];
+	size_t news_attempts;
 	size_t news_count;
 	bool shrink_called;
 	bool warp_called;
@@ -22115,13 +22140,33 @@ struct hostile_mines_hazard_fixture {
 };
 
 static bool
+hostile_mine_hazard_fail(struct hostile_mines_hazard_fixture *fixture,
+    enum sector_mine_physical_failure failure)
+{
+	if (fixture->mine_failure != failure)
+		return false;
+	if (!yt_gameplay_hazard_error_project(fixture->mine_error_number,
+	    fixture->mine_saved_ip, &fixture->mine_error_request))
+		return true;
+	fixture->mine_error_requested = true;
+	return true;
+}
+
+static bool
 hostile_mine_hazard_read_current(void *context, struct yt_player *player,
     struct yt_error *error)
 {
 	struct hostile_mines_hazard_fixture *fixture = context;
+	enum sector_mine_physical_failure failure;
 
 	(void)error;
 	if (player == NULL)
+		return false;
+	++fixture->current_read_attempts;
+	failure = fixture->current_read_attempts == 1U
+	    ? SECTOR_MINE_PHYSICAL_ENTRY_PLAYER_GET
+	    : SECTOR_MINE_PHYSICAL_BATCH_PLAYER_GET;
+	if (hostile_mine_hazard_fail(fixture, failure))
 		return false;
 	*player = fixture->hazard_player;
 	++fixture->current_reads;
@@ -22137,6 +22182,10 @@ hostile_mine_hazard_read_player(void *context, int player_record,
 	(void)error;
 	if (player_record != 2 || player == NULL)
 		return false;
+	++fixture->player_read_attempts;
+	if (hostile_mine_hazard_fail(fixture,
+	    SECTOR_MINE_PHYSICAL_PRE_PUT_PLAYER_GET))
+		return false;
 	*player = fixture->hazard_player;
 	++fixture->player_reads;
 	return true;
@@ -22151,6 +22200,10 @@ hostile_mine_hazard_write_player(void *context, int player_record,
 	(void)error;
 	if (player_record != 2 || player == NULL)
 		return false;
+	++fixture->player_write_attempts;
+	if (hostile_mine_hazard_fail(fixture,
+	    SECTOR_MINE_PHYSICAL_PLAYER_PUT))
+		return false;
 	fixture->hazard_player = *player;
 	++fixture->player_writes;
 	return true;
@@ -22161,9 +22214,16 @@ hostile_mine_hazard_read_sector(void *context, int logical_sector,
     struct yt_sector *sector, struct yt_error *error)
 {
 	struct hostile_mines_hazard_fixture *fixture = context;
+	enum sector_mine_physical_failure failure;
 
 	(void)error;
 	if (logical_sector != fixture->hazard_logical_sector || sector == NULL)
+		return false;
+	++fixture->sector_read_attempts;
+	failure = fixture->sector_read_attempts == 1U
+	    ? SECTOR_MINE_PHYSICAL_BATCH_SECTOR_GET
+	    : SECTOR_MINE_PHYSICAL_FINAL_SECTOR_GET;
+	if (hostile_mine_hazard_fail(fixture, failure))
 		return false;
 	*sector = fixture->hazard_sector;
 	++fixture->sector_reads;
@@ -22178,6 +22238,10 @@ hostile_mine_hazard_write_sector(void *context, int logical_sector,
 
 	(void)error;
 	if (logical_sector != fixture->hazard_logical_sector || sector == NULL)
+		return false;
+	++fixture->sector_write_attempts;
+	if (hostile_mine_hazard_fail(fixture,
+	    SECTOR_MINE_PHYSICAL_BATCH_SECTOR_PUT))
 		return false;
 	fixture->hazard_sector = *sector;
 	++fixture->sector_writes;
@@ -22243,10 +22307,17 @@ hostile_mine_hazard_news(void *context, const uint8_t *text, size_t length,
     struct yt_error *error)
 {
 	struct hostile_mines_hazard_fixture *fixture = context;
+	enum sector_mine_physical_failure failure;
 
 	(void)error;
 	if (fixture->news_count >= YT_ARRAY_LEN(fixture->news)
 	    || length > sizeof(fixture->news[0]))
+		return false;
+	++fixture->news_attempts;
+	failure = fixture->news_attempts == 1U
+	    ? SECTOR_MINE_PHYSICAL_ENTRY_NEWS
+	    : SECTOR_MINE_PHYSICAL_FINAL_NEWS;
+	if (hostile_mine_hazard_fail(fixture, failure))
 		return false;
 	memcpy(fixture->news[fixture->news_count], text, length);
 	fixture->news_lengths[fixture->news_count] = length;
@@ -22529,6 +22600,7 @@ hostile_mines_hazard_cycle_run(struct hostile_mines_hazard_fixture *fixture,
 	fixture->hazard.blink = join->presentation.blink;
 	fixture->hazard.pager_foreground = join->pager.foreground;
 	fixture->hazard.destroyed = &fixture->destroyed;
+	fixture->mine_start = join->remote_length;
 	if (!yt_sector_mine_run(&fixture->hazard, &hostile_mine_hazard_ops,
 	    fixture, NULL))
 		return false;
@@ -28951,6 +29023,7 @@ direct_emergency_warp_main_mine_cycle_run(
 	fixture->hazard.blink = join->presentation.blink;
 	fixture->hazard.pager_foreground = join->pager.foreground;
 	fixture->hazard.destroyed = &fixture->destroyed;
+	fixture->mine_start = join->remote_length;
 	if (!yt_sector_mine_run(&fixture->hazard, &hostile_mine_hazard_ops,
 	    fixture, NULL))
 		return false;
@@ -29141,6 +29214,7 @@ direct_emergency_warp_hostile_mine_cycle_run(
 	fixture->hazard.blink = join->presentation.blink;
 	fixture->hazard.pager_foreground = join->pager.foreground;
 	fixture->hazard.destroyed = &fixture->destroyed;
+	fixture->mine_start = join->remote_length;
 	if (!yt_sector_mine_run(&fixture->hazard, &hostile_mine_hazard_ops,
 	    fixture, NULL))
 		return false;
@@ -29820,6 +29894,246 @@ test_direct_emergency_warp_mine_warp_failures(void)
 				CHECK(fixture.emergency_player.turns == 11.0f
 				    && fixture.emergency_player.sector == 1003.0f);
 			}
+			yt_text_input_destroy(&viewer.input);
+		}
+	}
+}
+
+static bool
+direct_emergency_warp_mine_failure_run(
+    struct hostile_mines_hazard_fixture *fixture, bool hostile, bool ansi,
+    const uint8_t *command, size_t command_length,
+    struct direct_warp_main_cycle_state *cycle)
+{
+	size_t ends[5];
+	bool completed;
+
+	if (hostile)
+		completed = direct_emergency_warp_hostile_mine_cycle_run(fixture,
+		    ansi, command, command_length, cycle, ends);
+	else
+		completed = direct_emergency_warp_main_mine_cycle_run(fixture,
+		    ansi, cycle, ends);
+	return !completed && fixture->mine_error_requested;
+}
+
+static void
+test_direct_emergency_warp_mine_dependency_failures(void)
+{
+	static const uint8_t entry_news[] =
+	    "STATIC PILOT hit sector mines in sector 1003!";
+	static const uint8_t final_news[] = "Shields reduced to 5 units!";
+	static const struct {
+		bool hostile;
+		bool ansi;
+		const uint8_t *command;
+		size_t command_length;
+		size_t mine_start;
+		uint64_t row_hashes[3];
+		size_t color_counts[3];
+		uint64_t color_hashes[3];
+		size_t events;
+	} cases[] = {
+		{false, false, (const uint8_t *)"W", 1U, 731U,
+		    {UINT64_C(0x83eada290d02dba4),
+		    UINT64_C(0x077d96db540c9031),
+		    UINT64_C(0x847e770e32be771f)},
+		    {3U, 3U, 3U},
+		    {UINT64_C(0x2207a27a6260aaca),
+		    UINT64_C(0x2207a27a6260aaca),
+		    UINT64_C(0x2207a27a6260aaca)}, 15U},
+		{false, true, (const uint8_t *)"W", 1U, 971U,
+		    {UINT64_C(0x83eada290d02dba4),
+		    UINT64_C(0x077d96db540c9031),
+		    UINT64_C(0x847e770e32be771f)},
+		    {40U, 42U, 43U},
+		    {UINT64_C(0x83085d7458719873),
+		    UINT64_C(0x6e36d080142e6b47),
+		    UINT64_C(0xa34338c53b22f07d)}, 15U},
+		{true, false, (const uint8_t *)"W", 1U, 753U,
+		    {UINT64_C(0xf9965f1b0e71ee97),
+		    UINT64_C(0xcb9cffcca9a9997a),
+		    UINT64_C(0xdaa675d86eb52cc8)},
+		    {4U, 4U, 4U},
+		    {UINT64_C(0x01b4fd96ce8921d5),
+		    UINT64_C(0x01b4fd96ce8921d5),
+		    UINT64_C(0x01b4fd96ce8921d5)}, 20U},
+		{true, false, (const uint8_t *)"WT", 2U, 754U,
+		    {UINT64_C(0xab5a1230ab77dc20),
+		    UINT64_C(0x8c45ca93b98cef6d),
+		    UINT64_C(0x08d7eb0a395b4783)},
+		    {4U, 4U, 4U},
+		    {UINT64_C(0x01b4fd96ce8921d5),
+		    UINT64_C(0x01b4fd96ce8921d5),
+		    UINT64_C(0x01b4fd96ce8921d5)}, 20U},
+		{true, true, (const uint8_t *)"W", 1U, 1003U,
+		    {UINT64_C(0xf9965f1b0e71ee97),
+		    UINT64_C(0xcb9cffcca9a9997a),
+		    UINT64_C(0xdaa675d86eb52cc8)},
+		    {42U, 44U, 45U},
+		    {UINT64_C(0xf0e155584471fadc),
+		    UINT64_C(0x53c255adf2410878),
+		    UINT64_C(0x6a35e32d87d703b2)}, 20U},
+		{true, true, (const uint8_t *)"WT", 2U, 1004U,
+		    {UINT64_C(0xab5a1230ab77dc20),
+		    UINT64_C(0x8c45ca93b98cef6d),
+		    UINT64_C(0x08d7eb0a395b4783)},
+		    {42U, 44U, 45U},
+		    {UINT64_C(0xf0e155584471fadc),
+		    UINT64_C(0x53c255adf2410878),
+		    UINT64_C(0x6a35e32d87d703b2)}, 20U},
+	};
+	static const enum sector_mine_physical_failure failure_modes[] = {
+		SECTOR_MINE_PHYSICAL_ENTRY_PLAYER_GET,
+		SECTOR_MINE_PHYSICAL_ENTRY_NEWS,
+		SECTOR_MINE_PHYSICAL_BATCH_SECTOR_GET,
+		SECTOR_MINE_PHYSICAL_BATCH_SECTOR_PUT,
+		SECTOR_MINE_PHYSICAL_BATCH_PLAYER_GET,
+		SECTOR_MINE_PHYSICAL_PRE_PUT_PLAYER_GET,
+		SECTOR_MINE_PHYSICAL_PLAYER_PUT,
+		SECTOR_MINE_PHYSICAL_FINAL_NEWS,
+		SECTOR_MINE_PHYSICAL_FINAL_SECTOR_GET,
+	};
+	static const size_t body_lengths[2][9] = {
+		{27U, 27U, 27U, 27U, 63U, 89U, 89U, 89U, 89U},
+		{39U, 39U, 39U, 39U, 97U, 135U, 135U, 135U, 135U},
+	};
+	static const uint64_t body_hashes[2][9] = {
+		{UINT64_C(0xa9d6ddd383cd808e),
+		UINT64_C(0xa9d6ddd383cd808e),
+		UINT64_C(0xa9d6ddd383cd808e),
+		UINT64_C(0xa9d6ddd383cd808e),
+		UINT64_C(0xc476f55e616aad52),
+		UINT64_C(0xd195f0a1f1da6def),
+		UINT64_C(0xd195f0a1f1da6def),
+		UINT64_C(0xd195f0a1f1da6def),
+		UINT64_C(0xd195f0a1f1da6def)},
+		{UINT64_C(0x113b0acfbbbbc369),
+		UINT64_C(0x113b0acfbbbbc369),
+		UINT64_C(0x113b0acfbbbbc369),
+		UINT64_C(0x113b0acfbbbbc369),
+		UINT64_C(0x8f5b93dfb3ce2ad8),
+		UINT64_C(0xbbda494d4f03f3e5),
+		UINT64_C(0xbbda494d4f03f3e5),
+		UINT64_C(0xbbda494d4f03f3e5),
+		UINT64_C(0xbbda494d4f03f3e5)},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	struct direct_warp_main_cycle_state cycle;
+	uint8_t remote[1300];
+	size_t failure_index;
+	size_t output_group;
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		for (failure_index = 0U;
+		    failure_index < YT_ARRAY_LEN(failure_modes); ++failure_index) {
+			direct_emergency_warp_mine_warp_fixture_init(&viewer,
+			    &stream, &fixture, cases[pass].ansi, remote,
+			    sizeof(remote));
+			fixture.draws[7] = 0.005f;
+			fixture.draws[9] = 0.0f;
+			fixture.mine_failure = failure_modes[failure_index];
+			fixture.mine_error_number =
+			    71U + (unsigned)(pass * 9U + failure_index);
+			fixture.mine_saved_ip =
+			    0x4100U + (unsigned)(pass * 9U + failure_index);
+			CHECK(direct_emergency_warp_mine_failure_run(&fixture,
+			    cases[pass].hostile, cases[pass].ansi,
+			    cases[pass].command, cases[pass].command_length, &cycle));
+			output_group = failure_index < 4U ? 0U
+			    : failure_index == 4U ? 1U : 2U;
+			CHECK(fixture.mine_start == cases[pass].mine_start
+			    && viewer.join.remote_length - fixture.mine_start
+			    == body_lengths[cases[pass].ansi ? 1U : 0U][failure_index]
+			    && viewer_bytes_fnv1a64(remote + fixture.mine_start,
+			    viewer.join.remote_length - fixture.mine_start)
+			    == body_hashes[cases[pass].ansi ? 1U : 0U][failure_index]
+			    && viewer.join.local_row_count
+			    == (cases[pass].hostile ? 29U : 28U) + output_group
+			    && viewer_rows_fnv1a64(&viewer.join)
+			    == cases[pass].row_hashes[output_group]
+			    && viewer.join.local_color_count
+			    == cases[pass].color_counts[output_group]
+			    && viewer_colors_fnv1a64(&viewer.join)
+			    == cases[pass].color_hashes[output_group]
+			    && viewer.join.event_count == cases[pass].events
+			    && fixture.mine_error_request.error_number
+			    == fixture.mine_error_number
+			    && fixture.mine_error_request.saved_ip
+			    == fixture.mine_saved_ip
+			    && fixture.mine_error_request.handler == 0x45F7U
+			    && fixture.warp_calls == 1U
+			    && fixture.emergency_player_writes == 1U
+			    && fixture.emergency_flushes == 1U
+			    && !fixture.hazard.complete && !fixture.hazard.terminal
+			    && fixture.draw_position
+			    == (failure_index < 5U ? 7U
+			    : failure_index < 7U ? 9U : 10U)
+			    && fixture.current_read_attempts
+			    == (failure_index == 0U ? 1U
+			    : failure_index < 4U ? 1U : 2U)
+			    && fixture.current_reads
+			    == (failure_index == 0U ? 0U
+			    : failure_index < 5U ? 1U : 2U)
+			    && fixture.player_read_attempts
+			    == (failure_index < 5U ? 0U : 1U)
+			    && fixture.player_reads
+			    == (failure_index < 6U ? 0U : 1U)
+			    && fixture.player_write_attempts
+			    == (failure_index < 6U ? 0U : 1U)
+			    && fixture.player_writes
+			    == (failure_index < 7U ? 0U : 1U)
+			    && fixture.sector_read_attempts
+			    == (failure_index < 2U ? 0U
+			    : failure_index < 8U ? 1U : 2U)
+			    && fixture.sector_reads
+			    == (failure_index < 3U ? 0U : 1U)
+			    && fixture.sector_write_attempts
+			    == (failure_index < 3U ? 0U : 1U)
+			    && fixture.sector_writes
+			    == (failure_index < 4U ? 0U : 1U)
+			    && fixture.news_attempts
+			    == (failure_index == 0U ? 0U
+			    : failure_index < 7U ? 1U : 2U)
+			    && fixture.news_count
+			    == (failure_index < 2U ? 0U
+			    : failure_index < 8U ? 1U : 2U)
+			    && (fixture.news_count < 1U
+			    || (fixture.news_lengths[0] == sizeof(entry_news) - 1U
+			    && memcmp(fixture.news[0], entry_news,
+			    sizeof(entry_news) - 1U) == 0))
+			    && (fixture.news_count < 2U
+			    || (fixture.news_lengths[1] == sizeof(final_news) - 1U
+			    && memcmp(fixture.news[1], final_news,
+			    sizeof(final_news) - 1U) == 0))
+			    && fixture.hazard_player.shields
+			    == (failure_index < 7U ? 10.0f : 5.0f)
+			    && fixture.hazard_player.holds == 9.0f
+			    && fixture.hazard_player.turns == 14.0f
+			    && fixture.hazard_sector.mines
+			    == (failure_index < 4U ? 1.0f : 0.0f)
+			    && fixture.hazard.batches
+			    == (failure_index < 4U ? 0U : 1U)
+			    && fixture.hazard.touched
+			    == (failure_index < 5U ? 0U
+			    : YT_SECTOR_MINE_DAMAGE_SHIELDS)
+			    && fixture.sound_count
+			    == (failure_index < 7U ? 1U : 2U)
+			    && fixture.sounds[0] == 5.0f
+			    && (failure_index < 7U || fixture.sounds[1] == 2.0f)
+			    && viewer.join.local_fragment_length == 0U
+			    && viewer.join.queue_length == 0U
+			    && strcmp(viewer.join.accumulator, "y") == 0
+			    && cycle.entry_player_reads == 1U
+			    && cycle.gate_player_reads == 1U
+			    && cycle.sector_reads == 1U
+			    && cycle.target_player_reads == 1U
+			    && cycle.final_player_reads == 0U
+			    && cycle.scanner_sound_calls == 2U
+			    && !cycle.fresh_prompt_wait);
 			yt_text_input_destroy(&viewer.input);
 		}
 	}
@@ -37195,6 +37509,7 @@ main(void)
 	test_direct_emergency_warp_hostile_mine_cycle();
 	test_direct_emergency_warp_mine_warp_cycles();
 	test_direct_emergency_warp_mine_warp_failures();
+	test_direct_emergency_warp_mine_dependency_failures();
 	test_main_genesis_decline_cycle_presentation();
 	test_main_genesis_alternate_cycles_presentation();
 	test_main_genesis_handoff_cycle_presentation();
