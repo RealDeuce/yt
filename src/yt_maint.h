@@ -304,6 +304,28 @@ struct yt_maintenance_header_ops {
 	    struct yt_error *error);
 };
 
+enum yt_maintenance_protected_mines_step {
+	YT_MAINTENANCE_PROTECTED_MINES_NONE,
+	YT_MAINTENANCE_PROTECTED_MINES_READ,
+	YT_MAINTENANCE_PROTECTED_MINES_WRITE,
+};
+
+struct yt_maintenance_protected_mines_state {
+	enum yt_maintenance_protected_mines_step attempted;
+	int sector;
+	int completed_reads;
+	int completed_writes;
+	struct yt_sector current;
+	bool complete;
+};
+
+struct yt_maintenance_protected_mines_ops {
+	bool (*read)(void *context, int sector, struct yt_sector *value,
+	    struct yt_error *error);
+	bool (*write)(void *context, int sector, struct yt_sector *value,
+	    struct yt_error *error);
+};
+
 bool yt_maintenance_xannor_should_retarget(float group_location,
     float group_size);
 bool yt_maintenance_xannor_route_complete(float group_location,
@@ -351,6 +373,10 @@ typedef bool (*yt_maintenance_score_line_fn)(void *context,
 
 bool yt_maintenance_run(struct yt_error *error);
 bool yt_maintenance_default_headquarters(float *headquarters);
+bool yt_maintenance_clear_protected_mines_run(
+	struct yt_maintenance_protected_mines_state *state,
+	const struct yt_maintenance_protected_mines_ops *ops, void *context,
+	struct yt_error *error);
 bool yt_maintenance_clear_protected_mines(struct yt_game *game,
     struct yt_error *error);
 bool yt_maintenance_write_header_run(struct yt_maintenance_header_state *state,
