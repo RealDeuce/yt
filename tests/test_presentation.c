@@ -37347,6 +37347,41 @@ test_direct_emergency_warp_xannor_attack_victory_join(void)
 		    UINT64_C(0xe08c3132b0cc42bf), 86U,
 		    UINT64_C(0x8a4e9db764596dda)},
 	};
+	static const struct {
+		size_t total;
+		uint64_t hash;
+		size_t suffix;
+		uint64_t suffix_hash;
+		size_t rows;
+		uint64_t row_hash;
+		size_t colors;
+		uint64_t color_hash;
+	} reentry_failure[] = {
+		{1611U, UINT64_C(0x5aba16ea20a01151), 684U,
+		    UINT64_C(0x61187d26ba741bd5), 51U,
+		    UINT64_C(0x2de555ef9a7f709f), 12U,
+		    UINT64_C(0x5218ab7752360135)},
+		{1929U, UINT64_C(0xb0649e5ffc5b53ac), 730U,
+		    UINT64_C(0xc2eb0dc81d4233ff), 51U,
+		    UINT64_C(0x2de555ef9a7f709f), 75U,
+		    UINT64_C(0xa953dcef4a7abe5a)},
+		{1633U, UINT64_C(0xa7639c8f60104879), 684U,
+		    UINT64_C(0x61187d26ba741bd5), 52U,
+		    UINT64_C(0xe7f24d58ef316806), 13U,
+		    UINT64_C(0xe4fcd46e10198702)},
+		{1634U, UINT64_C(0xbfb7da9b8aa742e9), 684U,
+		    UINT64_C(0x61187d26ba741bd5), 52U,
+		    UINT64_C(0x1cab942ec21b2083), 13U,
+		    UINT64_C(0xe4fcd46e10198702)},
+		{1961U, UINT64_C(0x6857f9dd726fdce3), 730U,
+		    UINT64_C(0xc2eb0dc81d4233ff), 52U,
+		    UINT64_C(0xe7f24d58ef316806), 77U,
+		    UINT64_C(0xf038e55eea339f1d)},
+		{1962U, UINT64_C(0x4f7ee1e39fdb8ce9), 730U,
+		    UINT64_C(0xc2eb0dc81d4233ff), 52U,
+		    UINT64_C(0x1cab942ec21b2083), 77U,
+		    UINT64_C(0xf038e55eea339f1d)},
+	};
 	struct physical_viewer_join viewer;
 	struct yt_file_viewer_stream_state stream;
 	struct hostile_mines_hazard_fixture fixture;
@@ -37361,7 +37396,9 @@ test_direct_emergency_warp_xannor_attack_victory_join(void)
 	size_t index;
 	size_t joined_start;
 	size_t joined_length;
+	size_t terminal;
 
+	for (terminal = 0U; terminal < 2U; ++terminal) {
 	for (caller = 0U; caller < YT_ARRAY_LEN(callers); ++caller) {
 		memset(&viewer, 0, sizeof(viewer));
 		fixture_viewer_initialize(&viewer, &stream, retained_scoreboard,
@@ -37481,22 +37518,40 @@ test_direct_emergency_warp_xannor_attack_victory_join(void)
 		yt_error_clear(&error);
 		CHECK(yt_hostile_attack_combat_run(&combat,
 		    &direct_warp_attack_combat_ops, &join, &error));
-		CHECK(direct_emergency_warp_quiet_reentry(&fixture, &cycle, true));
+		if (terminal == 0U) {
+			CHECK(direct_emergency_warp_quiet_reentry(&fixture, &cycle,
+			    true));
+		} else {
+			cycle.reentry_failure = DIRECT_WARP_REENTRY_SECTOR_GET;
+			cycle.reentry_error_number = 57U;
+			cycle.reentry_saved_ip = 0x1234U;
+			CHECK(direct_emergency_warp_reentry_failure_run(&fixture,
+			    &cycle));
+		}
 		joined_length = viewer.join.remote_length - joined_start;
-		CHECK(viewer.join.remote_length == callers[caller].total
+		CHECK(viewer.join.remote_length == (terminal == 0U
+		    ? callers[caller].total : reentry_failure[caller].total)
 		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
-		    == callers[caller].hash
-		    && joined_length == callers[caller].suffix
+		    == (terminal == 0U ? callers[caller].hash
+		    : reentry_failure[caller].hash)
+		    && joined_length == (terminal == 0U ? callers[caller].suffix
+		    : reentry_failure[caller].suffix)
 		    && viewer_bytes_fnv1a64(remote + joined_start, joined_length)
-		    == callers[caller].suffix_hash
-		    && viewer.join.local_row_count == callers[caller].rows
-		    && viewer_rows_fnv1a64(&viewer.join) == callers[caller].row_hash
-		    && viewer.join.local_color_count == callers[caller].colors
+		    == (terminal == 0U ? callers[caller].suffix_hash
+		    : reentry_failure[caller].suffix_hash)
+		    && viewer.join.local_row_count == (terminal == 0U
+		    ? callers[caller].rows : reentry_failure[caller].rows)
+		    && viewer_rows_fnv1a64(&viewer.join) == (terminal == 0U
+		    ? callers[caller].row_hash : reentry_failure[caller].row_hash)
+		    && viewer.join.local_color_count == (terminal == 0U
+		    ? callers[caller].colors : reentry_failure[caller].colors)
 		    && viewer_colors_fnv1a64(&viewer.join)
-		    == callers[caller].color_hash
-		    && viewer.join.local_fragment_length == sizeof(main_prompt) - 1U
-		    && memcmp(viewer.join.local_fragment, main_prompt,
-		    sizeof(main_prompt) - 1U) == 0);
+		    == (terminal == 0U ? callers[caller].color_hash
+		    : reentry_failure[caller].color_hash)
+		    && viewer.join.local_fragment_length == (terminal == 0U
+		    ? sizeof(main_prompt) - 1U : 0U)
+		    && (terminal != 0U || memcmp(viewer.join.local_fragment,
+		    main_prompt, sizeof(main_prompt) - 1U) == 0));
 		CHECK(combat.complete
 		    && combat.route == YT_HOSTILE_ATTACK_COMBAT_NORMAL
 		    && combat.old_owner == -1.0f
@@ -37526,17 +37581,24 @@ test_direct_emergency_warp_xannor_attack_victory_join(void)
 		    && join.victory_news_count == 3U
 		    && join.victory_radio_count == 3U
 		    && join.victory_sector_writes == 1U
-		    && cycle.sector_reads == 2U
-		    && cycle.final_player_reads == 1U
+		    && cycle.sector_reads == (terminal == 0U ? 2U : 1U)
+		    && cycle.final_player_reads == (terminal == 0U ? 1U : 0U)
 		    && cycle.physical_current_sector == 1054.0f
 		    && cycle.final_field_record == 2 && cycle.final_field_player
-		    && cycle.fresh_prompt_wait
-		    && viewer.join.pager.line_count == 0.0f
-		    && viewer.join.accumulator[0] == '\0'
+		    && cycle.fresh_prompt_wait == (terminal == 0U)
+		    && cycle.reentry_error_requested == (terminal != 0U)
+		    && cycle.scanner_shared_handler == (terminal != 0U)
+		    && cycle.scanner_player_reads == (terminal != 0U ? 1U : 0U)
+		    && (terminal == 0U
+		    || (cycle.reentry_error_request.error_number == 57U
+		    && cycle.reentry_error_request.saved_ip == 0x1234U))
+		    && (terminal != 0U || (viewer.join.pager.line_count == 0.0f
+		    && viewer.join.accumulator[0] == '\0'))
 		    && !join.unexpected_surrender && !join.unexpected_spill
 		    && !join.unexpected_news && !join.unexpected_fatal
 		    && !join.unexpected_tail_effect);
 		yt_text_input_destroy(&viewer.input);
+	}
 	}
 }
 
