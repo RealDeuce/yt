@@ -1028,15 +1028,20 @@ test_rmt_remote_serial(void)
 static bool
 test_rmt_remote_identity(void)
 {
-	struct yt_name_row rows[3] = {
+	enum { LONG_UNRELATED_LENGTH = 300 };
+	char long_unrelated[LONG_UNRELATED_LENGTH + 1U];
+	struct yt_name_row rows[4] = {
+		{long_unrelated, "Player", "Ignored", "Alias"},
 		{"Jane", "Doe", "First", "Alias"},
 		{"Other", "Player", "Wrong", "Person"},
 		{"Jane", "Doe", "Last", "Winner"}
 	};
-	struct yt_name_file names = {rows, 3U};
+	struct yt_name_file names = {rows, 4U};
 	char credited[90];
 	char short_credit[5];
 
+	memset(long_unrelated, 'Q', LONG_UNRELATED_LENGTH);
+	long_unrelated[LONG_UNRELATED_LENGTH] = '\0';
 	return yt_rmt_credited_name("  jANE ", " DOE  ", &names, credited,
 	    sizeof(credited)) && strcmp(credited, "Last Winner") == 0
 	    && yt_rmt_credited_name("Nobody", "Here", &names, credited,

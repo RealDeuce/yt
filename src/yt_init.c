@@ -841,6 +841,7 @@ yt_rmt_credited_name(const char *first, const char *last,
 {
 	char normalized[256];
 	size_t index;
+	size_t normalized_length;
 	int written;
 
 	if (first == NULL || last == NULL || names == NULL || credited == NULL
@@ -851,16 +852,19 @@ yt_rmt_credited_name(const char *first, const char *last,
 	if (written < 0 || (size_t)written >= sizeof(normalized))
 		return false;
 	qb_title_case(normalized);
+	normalized_length = strlen(normalized);
 	credited[0] = '\0';
 	for (index = 0U; index < names->count; ++index) {
 		const struct yt_name_row *row = &names->rows[index];
-		char real[257];
+		size_t first_length = strlen(row->real_first);
+		size_t last_length = strlen(row->real_last);
 
-		written = snprintf(real, sizeof(real), "%s %s", row->real_first,
-		    row->real_last);
-		if (written < 0 || (size_t)written >= sizeof(real))
-			return false;
-		if (strcmp(real, normalized) != 0)
+		if (first_length >= normalized_length
+		    || last_length != normalized_length - first_length - 1U
+		    || memcmp(row->real_first, normalized, first_length) != 0
+		    || normalized[first_length] != ' '
+		    || memcmp(row->real_last, normalized + first_length + 1U,
+		    last_length) != 0)
 			continue;
 		written = snprintf(credited, credited_size, "%s %s",
 		    row->alias_first, row->alias_last);
