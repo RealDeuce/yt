@@ -1407,6 +1407,8 @@ database_reject_short(struct yt_database *database, struct yt_error *error)
 	database->last_put.registered = false;
 	database->last_put.close_attempted = true;
 	database->last_put.close_succeeded = database->short_close_succeeded;
+	database->last_put.close_dos_error = delivered
+	    ? observation.dos_error : 0U;
 	database->last_put.handle_open = database->orphaned_file != NULL;
 	set_error(error, YT_IO_ERROR, "random PUT rejected short", database->path);
 }

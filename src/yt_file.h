@@ -231,6 +231,7 @@ struct yt_database_put_result {
 	uint32_t record_index;
 	uint16_t dos_error;
 	uint16_t basic_error;
+	uint16_t close_dos_error;
 	int64_t desired_offset;
 	int64_t terminal_position;
 	bool registered;

@@ -3653,6 +3653,7 @@ test_files(void)
 	struct database_write_script write_script;
 	struct database_seek_script seek_script;
 	struct database_close_script close_script;
+	struct database_public_close_script short_close_script;
 	struct database_flush_script flush_script;
 	struct yt_database observer;
 	struct yt_text_file text;
@@ -3949,6 +3950,7 @@ test_files(void)
 	CHECK(database.last_put.outcome == YT_DATABASE_PUT_REJECTED_SHORT
 	    && database.last_put.accepted == 136U
 	    && database.last_put.basic_error == 61U
+	    && database.last_put.close_dos_error == 0U
 	    && database.last_put.terminal_position == 136
 	    && !database.last_put.registered
 	    && database.last_put.close_attempted
@@ -4003,6 +4005,7 @@ test_files(void)
 	    && !database.short_close_succeeded);
 	CHECK(database.last_put.outcome == YT_DATABASE_PUT_REJECTED_SHORT
 	    && database.last_put.basic_error == 61U
+	    && database.last_put.close_dos_error == 6U
 	    && !database.last_put.registered
 	    && database.last_put.close_attempted
 	    && !database.last_put.close_succeeded
@@ -4017,6 +4020,28 @@ test_files(void)
 	yt_database_close(&observer);
 	yt_database_close(&database);
 	CHECK(yt_database_open(&database, database_path, YT_OPEN_UPDATE, &error));
+	for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
+		write_script = (struct database_write_script){.accepted = 3U};
+		memset(&short_close_script, 0, sizeof(short_close_script));
+		database_close_add(&short_close_script, true,
+		    (uint16_t)dos_error, false, true, true);
+		yt_database_set_write_provider(&database,
+		    scripted_database_write, &write_script);
+		yt_database_set_close_provider(&database,
+		    scripted_database_public_close, &short_close_script);
+		CHECK(!yt_database_random_put(&database, 1U, &replacement,
+		    false, &accepted, &error)
+		    && short_close_script.position == short_close_script.length
+		    && database.last_put.outcome
+		    == YT_DATABASE_PUT_REJECTED_SHORT
+		    && database.last_put.close_dos_error == dos_error
+		    && !database.last_put.registered
+		    && database.last_put.close_attempted
+		    && !database.last_put.close_succeeded
+		    && !database.last_put.handle_open);
+		CHECK(yt_database_open(&database, database_path,
+		    YT_OPEN_UPDATE, &error));
+	}
 	seek_script = (struct database_seek_script){0};
 	write_script = (struct database_write_script){.accepted = 137U};
 	yt_database_set_seek_provider(&database, scripted_database_seek,
