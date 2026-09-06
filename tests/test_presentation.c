@@ -20600,6 +20600,10 @@ main_genesis_cycle_run(struct main_genesis_cycle_fixture *fixture, bool ansi,
 	    NULL))
 		return false;
 	ends[1] = join->remote_length;
+	if (fixture->genesis.route == YT_GENESIS_HANDOFF_ROUTE) {
+		ends[2] = ends[1];
+		return true;
+	}
 	if (!normal_exit_line(join, NULL, 0U)
 	    || !normal_exit_b05d(join, main_prompt,
 	    sizeof(main_prompt) - 1U, 1.0f))
@@ -20791,6 +20795,85 @@ test_main_genesis_alternate_cycles_presentation(void)
 		    == cases[pass].color_hash);
 		yt_text_input_destroy(&viewer.input);
 	}
+}
+
+static void
+test_main_genesis_handoff_cycle_presentation(void)
+{
+	static const uint8_t plain[] =
+	    "\r\nTime: 14:59  Main Command (?=Help)? gTrailing\r\n"
+	    "\r\nIt has been written that one day a Trader Baron will rise up\n\r"
+	    "and wipe the universe clean of the evil that infests it.\n\r"
+	    "\r\nAre you that Trader Captain Byte [y/N]Y\r\n"
+	    "\r\n...and so it was written, that one day a trader baron would emerge who\n\r"
+	    "would wipe away the all of the evil in the universe.....\n\r";
+	static const uint8_t ansi[] =
+	    "\r\nTime: 14:59  Main Command (?=Help)? gTrailing\r\n"
+	    "\r\nIt has been written that one day a Trader Baron will rise up\n\r"
+	    "and wipe the universe clean of the evil that infests it.\n\r"
+	    "\r\nAre you that Trader Captain Byte [y/N]Y\r\n"
+	    "\r\n\x1b[0;32;40;1m"
+	    "...and so it was written, that one day a trader baron would emerge who\n\r"
+	    "\x1b[0;32;40;1m"
+	    "would wipe away the all of the evil in the universe.....\n\r";
+	static const struct {
+		bool ansi;
+		const uint8_t *expected;
+		size_t expected_length;
+	} cases[] = {
+		{false, plain, sizeof(plain) - 1U},
+		{true, ansi, sizeof(ansi) - 1U},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct main_genesis_cycle_fixture fixture;
+	uint8_t remote[400];
+	size_t ends[3];
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
+		memset(&fixture, 0, sizeof(fixture));
+		fixture.presentation.viewer = &viewer;
+		fixture.player.ports_owned = 300.0f;
+		fixture.answer = (const uint8_t *)"Y";
+		fixture.answer_length = 1U;
+		fixture.required_ports = 1.0f;
+		fixture.accepted = true;
+		CHECK(main_genesis_cycle_run(&fixture, cases[pass].ansi, ends));
+		CHECK(ends[0] == 49U && ends[1] == cases[pass].expected_length
+		    && ends[2] == ends[1]
+		    && viewer.join.remote_length == cases[pass].expected_length
+		    && memcmp(remote, cases[pass].expected,
+		    cases[pass].expected_length) == 0);
+		CHECK(fixture.genesis.complete
+		    && fixture.genesis.route == YT_GENESIS_HANDOFF_ROUTE
+		    && fixture.genesis.player_hydrated
+		    && fixture.genesis.confirmation_read
+		    && fixture.genesis.answer
+		    && fixture.genesis.handoff_called
+		    && fixture.handoff_called
+		    && viewer.join.remote_length
+		    - ends[0] == (cases[pass].ansi ? 321U : 297U)
+		    && viewer.join.local_fragment_length == 0U);
+		CHECK(viewer.join.local_row_count == 10U
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == UINT64_C(0xc45eee8d9440e448)
+		    && viewer.join.local_color_count == (pass == 0U ? 5U : 17U)
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == (pass == 0U ? UINT64_C(0xc6f69f5cf097a0a2)
+		    : UINT64_C(0x8e42467da08d5992))
+		    && viewer.join.presentation.bold
+		    == (pass == 0U ? 1.0f : 0.0f)
+		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.cached_foreground
+		    == (pass == 0U ? 2.0f : 0.0f));
+		yt_text_input_destroy(&viewer.input);
+	}
+	CHECK(sizeof(plain) - 1U == 346U && sizeof(ansi) - 1U == 370U);
 }
 
 static bool
@@ -27286,6 +27369,7 @@ main(void)
 	test_main_rename_refusal_cycles_presentation();
 	test_main_genesis_decline_cycle_presentation();
 	test_main_genesis_alternate_cycles_presentation();
+	test_main_genesis_handoff_cycle_presentation();
 	test_main_movement_accepted_cycle_presentation();
 	test_main_attack_survivor_cycle_presentation();
 	test_main_attack_black_hole_cycle_presentation();
