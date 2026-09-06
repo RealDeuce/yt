@@ -23379,6 +23379,113 @@ test_direct_emergency_warp_modes(void)
 	}
 }
 
+static bool direct_emergency_warp_accepted_mode_run(
+    struct hostile_mines_hazard_fixture *fixture, float mode,
+    size_t *parent_end);
+
+static void
+test_direct_emergency_warp_accepted_modes(void)
+{
+	static const uint8_t mode_two[] =
+	    "\r\n\r\n[y/N] -=> \r\n"
+	    "\r\n * EMERGENCY WARP ENGAGED! * \r\n"
+	    "\r\nYou enter a wormhole as your engines build up to emergency power!\r\n"
+	    "\r\n     * Engine Temperature *\r\n"
+	    "[ Normal ][ Danger ][ Overheat ]\r\n"
+	    "================================\r\n"
+	    "[*\r\n\r\n"
+	    "You sigh in relief as you look at your scanner and find yourself in\r\n"
+	    "sector 1003. However, it takes you 3 turns to recharge your engines!\r\n";
+	static const struct {
+		float mode;
+		const uint8_t *expected;
+		size_t expected_length;
+		size_t parent_end;
+		uint64_t expected_hash;
+	} cases[] = {
+		{1.0f, (const uint8_t *)"", 0U, 0U,
+		    UINT64_C(0xcbf29ce484222325)},
+		{2.0f, mode_two, sizeof(mode_two) - 1U, 16U,
+		    UINT64_C(0xd5ce3279a180b4e6)},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	struct yt_record record;
+	struct yt_record before;
+	uint8_t remote[400];
+	size_t parent_end;
+	size_t index;
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", true, remote, sizeof(remote));
+		memset(&fixture, 0, sizeof(fixture));
+		fixture.cycle.presentation.viewer = &viewer;
+		fixture.draws[0] = 0.0f;
+		fixture.draws[1] = 0.0f;
+		fixture.draws[2] = 0.75f;
+		fixture.draws[3] = 0.5f;
+		fixture.draws[4] = 0.949999988079071f;
+		fixture.draws[5] = 0.999f;
+		memset(&record, 0xa5, sizeof(record));
+		(void)yt_record_set_number(&record, YT_F49, 17.0f);
+		(void)yt_record_set_number(&record, YT_F57, 42.0f);
+		before = record;
+		yt_player_decode(&fixture.emergency_player, &record);
+		CHECK(direct_emergency_warp_accepted_mode_run(&fixture,
+		    cases[pass].mode, &parent_end));
+		CHECK(parent_end == cases[pass].parent_end
+		    && viewer.join.remote_length == cases[pass].expected_length
+		    && memcmp(remote, cases[pass].expected,
+		    cases[pass].expected_length) == 0
+		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+		    == cases[pass].expected_hash
+		    && fixture.warp_called && fixture.draw_position == 6U
+		    && fixture.emergency_player_reads == 1U
+		    && fixture.emergency_player_put_attempts == 1U
+		    && fixture.emergency_player_writes == 1U
+		    && fixture.emergency_flushes == 1U
+		    && fixture.emergency_waits == 1U
+		    && fixture.emergency_ticks == 1U
+		    && fixture.emergency_destination == 1003.0f
+		    && fixture.emergency_cost == 3.0f
+		    && fixture.emergency_sector_cache == 1003.0f
+		    && fixture.emergency_player.sector == 1003.0f
+		    && fixture.emergency_player.turns == 14.0f
+		    && strcmp(viewer.join.accumulator, "y") == 0
+		    && viewer.join.queue_length == 0U
+		    && viewer.join.local_fragment_length == 0U
+		    && viewer.join.local_row_count == 17U
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == UINT64_C(0xc8a3c863b4b5c8b1)
+		    && viewer.join.local_color_count == 23U
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == UINT64_C(0x6e338d8e4536fe7e)
+		    && viewer.join.presentation.sound.mode == cases[pass].mode
+		    && viewer.join.presentation.foreground == 2.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold == 0.0f
+		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.cached_foreground == 2.0f
+		    && viewer.join.pager.foreground == 2
+		    && viewer.join.pager.line_count == 0.0f
+		    && viewer.join.event_count == 10U);
+		for (index = 0U; index < YT_RECORD_SIZE; ++index) {
+			if ((index >= YT_F49 && index < YT_F49 + 4U)
+			    || (index >= YT_F57 && index < YT_F57 + 4U))
+				continue;
+			CHECK(fixture.emergency_player.record.bytes[index]
+			    == before.bytes[index]);
+		}
+		yt_text_input_destroy(&viewer.input);
+	}
+	CHECK(sizeof(mode_two) - 1U == 362U);
+}
+
 static void
 test_direct_emergency_warp_inherited_pager(void)
 {
@@ -23940,7 +24047,8 @@ test_direct_emergency_warp_warning_carrier(void)
 static bool
 direct_emergency_warp_accepted_answer_run(
     struct hostile_mines_hazard_fixture *fixture, bool ansi,
-    size_t *parent_end, bool queued_answer)
+    size_t *parent_end, bool queued_answer, float mode,
+    float cached_foreground)
 {
 	static const uint8_t warning_one[] =
 	    "This is a desperate move! Your engines will be drained and will take time";
@@ -23956,6 +24064,8 @@ direct_emergency_warp_accepted_answer_run(
 	    ? queued_answer_text : typed_answer;
 
 	join->presentation = state(ansi);
+	join->presentation.sound.mode = mode;
+	join->presentation.cached_foreground = cached_foreground;
 	if (yt_present_color(&join->presentation, &result) != YT_PRESENT_OK
 	    || !normal_exit_line(join, NULL, 0U))
 		return false;
@@ -24008,7 +24118,7 @@ direct_emergency_warp_accepted_run(
     size_t *parent_end)
 {
 	return direct_emergency_warp_accepted_answer_run(fixture, ansi,
-	    parent_end, false);
+	    parent_end, false, 0.0f, 0.0f);
 }
 
 static bool
@@ -24017,7 +24127,16 @@ direct_emergency_warp_accepted_queued_run(
     size_t *parent_end)
 {
 	return direct_emergency_warp_accepted_answer_run(fixture, ansi,
-	    parent_end, true);
+	    parent_end, true, 0.0f, 0.0f);
+}
+
+static bool
+direct_emergency_warp_accepted_mode_run(
+    struct hostile_mines_hazard_fixture *fixture, float mode,
+    size_t *parent_end)
+{
+	return direct_emergency_warp_accepted_answer_run(fixture, true,
+	    parent_end, false, mode, 2.0f);
 }
 
 static void
@@ -32079,6 +32198,7 @@ main(void)
 	test_hostile_mines_black_hole_cycle_presentation();
 	test_direct_emergency_warp_invalid_retry_presentation();
 	test_direct_emergency_warp_modes();
+	test_direct_emergency_warp_accepted_modes();
 	test_direct_emergency_warp_inherited_pager();
 	test_direct_emergency_warp_invalid_boundaries();
 	test_direct_emergency_warp_parent_copy_failures();
