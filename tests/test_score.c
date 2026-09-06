@@ -17526,6 +17526,155 @@ done:
 	return valid;
 }
 
+struct maintenance_final_suffix_tape {
+	struct score_line_tape screen;
+	struct yt_game *game;
+	size_t first_closed_line;
+};
+
+static bool
+maintenance_final_suffix_collect(void *context, const uint8_t *line,
+    size_t length, struct yt_error *error)
+{
+	struct maintenance_final_suffix_tape *tape = context;
+
+	if (tape == NULL || tape->game == NULL)
+		return false;
+	if (tape->game->database.file == NULL
+	    && tape->first_closed_line == (size_t)-1)
+		tape->first_closed_line = tape->screen.lines;
+	return score_line_collect(&tape->screen, line, length, error);
+}
+
+static bool
+check_maintenance_final_suffix_pass(void)
+{
+	static const uint8_t coin_draw[] = {0x00, 0x00, 0x00};
+	static const uint8_t prefix[] =
+	    "\rRunning Super Planet Lottery\r"
+	    "No one won a planet today.\r";
+	static const uint8_t suffix[] =
+	    "\rDaily Maintenance Completed OK\r";
+	struct score_random_script random_script = {
+		coin_draw, sizeof(coin_draw), 0U
+	};
+	struct score_clock_script clock_script = {{
+		{2026, 7, 23, 1, 2, 3, 0},
+		{2031, 8, 23, 4, 5, 6, 0},
+		{2032, 9, 24, 22, 47, 29, 0}
+	}, 0U};
+	struct yt_game game;
+	struct maintenance_final_suffix_tape tape = {
+		.screen = {0},
+		.game = &game,
+		.first_closed_line = (size_t)-1
+	};
+	struct yt_text_file bulletin = {0};
+	struct yt_database verify = {0};
+	struct yt_record before;
+	struct yt_record expected;
+	struct yt_record after;
+	struct yt_record blank;
+	struct yt_player player;
+	struct yt_error error;
+	uint8_t expected_screen[2048];
+	size_t expected_length = 0U;
+	size_t bulletin_lines = 0U;
+	size_t index;
+	bool valid = false;
+
+	(void)remove("YTDATA.DAT");
+	(void)remove("YTTEMP");
+	(void)remove("YTNEWS.DAT");
+	(void)remove("YTRMSG.DAT");
+	memset(&game, 0, sizeof(game));
+	yt_record_blank(&game.config.record);
+	strcpy(game.config.scoreboard, "NUL");
+	game.config.epoch_year = 26.0f;
+	game.config.sector_offset = 2.0f;
+	game.config.port_offset = 3.0f;
+	game.config.planet_offset = 4.0f;
+	game.config.total_records = 5.0f;
+	game.config.last_maintenance = 17.0f;
+	yt_config_encode(&game.config);
+	before = game.config.record;
+	expected = before;
+	if (!yt_record_set_number(&expected, YT_F81, 204.0f))
+		goto done;
+	yt_random_init(&game.random);
+	yt_random_set_provider(&game.random, score_random_fill, &random_script);
+	yt_platform_set_clock_provider(score_clock_read, &clock_script);
+	yt_error_clear(&error);
+	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
+	    &error)
+	    || !yt_database_write(&game.database, 1U, &before, &error))
+		goto done;
+	yt_record_blank(&blank);
+	yt_player_decode(&player, &blank);
+	memcpy(player.name, "A", 2U);
+	player.name_length = 1.0f;
+	player.credits = 100.0f;
+	yt_player_encode(&player);
+	if (!yt_database_write(&game.database, 2U, &player.record, &error)
+	    || !yt_database_write(&game.database, 3U, &blank, &error)
+	    || !yt_database_write(&game.database, 4U, &blank, &error)
+	    || !yt_database_write(&game.database, 5U, &blank, &error)
+	    || !yt_maintenance_finish(&game, maintenance_final_suffix_collect,
+	    &tape,
+	    &error)
+	    || game.database.file != NULL || game.random.draws != 1U
+	    || random_script.position != sizeof(coin_draw)
+	    || clock_script.position != 3U
+	    || game.config.last_maintenance != 204.0f
+	    || memcmp(game.config.record.bytes, expected.bytes,
+	    YT_RECORD_SIZE) != 0
+	    || !yt_text_read("YTTEMP", &bulletin, &error))
+		goto done;
+	memcpy(expected_screen + expected_length, prefix, sizeof(prefix) - 1U);
+	expected_length += sizeof(prefix) - 1U;
+	for (index = 0U; index < bulletin.length
+	    && bulletin.data[index] != 0x1a; ++index) {
+		if (bulletin.data[index] == '\r' && index + 1U < bulletin.length
+		    && bulletin.data[index + 1U] == '\n') {
+			expected_screen[expected_length++] = '\r';
+			++bulletin_lines;
+			++index;
+		}
+		else
+			expected_screen[expected_length++] = bulletin.data[index];
+	}
+	memcpy(expected_screen + expected_length, suffix, sizeof(suffix) - 1U);
+	expected_length += sizeof(suffix) - 1U;
+	if (bulletin.length == 0U
+	    || bulletin.data[bulletin.length - 1U] != 0x1a
+	    || strstr((const char *)bulletin.data,
+	    "Last updated at: 08-23-2031 22:47:29\r\n") == NULL
+	    || strstr((const char *)bulletin.data, "A\r\n") == NULL
+	    || tape.first_closed_line != bulletin_lines + 3U
+	    || tape.screen.lines != bulletin_lines + 5U
+	    || tape.screen.length != expected_length
+	    || memcmp(tape.screen.data, expected_screen, expected_length) != 0)
+		goto done;
+	if (!yt_database_open(&verify, "YTDATA.DAT", YT_OPEN_UPDATE, &error)
+	    || !yt_database_read(&verify, 1U, &after, &error)
+	    || memcmp(after.bytes, expected.bytes, YT_RECORD_SIZE) != 0
+	    || !yt_database_read(&verify, 2U, &after, &error)
+	    || yt_record_get_number(&after, YT_F109) != 100.0f)
+		goto done;
+	valid = true;
+
+done:
+	yt_database_close(&verify);
+	yt_text_free(&bulletin);
+	yt_game_close(&game);
+	yt_platform_set_clock_provider(NULL, NULL);
+	(void)remove("YTDATA.DAT");
+	(void)remove("YTTEMP");
+	(void)remove("YTNEWS.DAT");
+	(void)remove("YTRMSG.DAT");
+	return valid;
+}
+
 static bool
 planet_maintenance_owned_byte(size_t offset)
 {
@@ -34826,6 +34975,8 @@ main(void)
 	if (!check_maintenance_super_lottery_pass())
 		goto done;
 	if (!check_maintenance_final_marker_pass())
+		goto done;
+	if (!check_maintenance_final_suffix_pass())
 		goto done;
 	if (!check_maintenance_planet_pass())
 		goto done;

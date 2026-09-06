@@ -329,6 +329,9 @@ bool yt_maintenance_super_lottery(struct yt_game *game, int player_count,
     size_t blank_length, yt_maintenance_score_line_fn line_output,
     void *line_context, struct yt_maintenance_lottery_result *result,
     struct yt_error *error);
+bool yt_maintenance_finish(struct yt_game *game,
+    yt_maintenance_score_line_fn line_output, void *line_context,
+    struct yt_error *error);
 bool yt_maintenance_store_final_marker(struct yt_game *game, float serial,
     struct yt_error *error);
 bool yt_maintenance_age_player(float cloak, float last_active,

@@ -3014,7 +3014,6 @@ done:
  * local to the phase that owns them.
  */
 static bool maintain_factions(struct maint_state *, struct yt_error *);
-static bool super_lottery(struct maint_state *, struct yt_error *);
 
 static bool
 store_config_field(struct maint_state *state, size_t offset, float value,
@@ -3052,15 +3051,70 @@ yt_maintenance_store_final_marker(struct yt_game *game, float serial,
 }
 
 static bool
-store_final_marker(struct maint_state *state, struct yt_error *error)
+store_final_marker(struct yt_game *game, struct yt_error *error)
 {
 	int serial;
 
-	if (!yt_current_date_serial(state->game.config.epoch_year, &serial,
+	if (!yt_current_date_serial(game->config.epoch_year, &serial,
 	    NULL, error))
 		return false;
-	return yt_maintenance_store_final_marker(&state->game, (float)serial,
+	return yt_maintenance_store_final_marker(game, (float)serial,
 	    error);
+}
+
+static bool maintenance_close_all(struct yt_game *, struct yt_error *);
+
+static bool
+maintenance_finish_impl(struct yt_game *game, int player_count,
+    int planet_count, int sector_count,
+    yt_maintenance_score_line_fn line_output, void *line_context,
+    struct yt_error *error)
+{
+	struct yt_maintenance_lottery_result lottery_result;
+	struct yt_maintenance_output_result wrapper_output;
+
+	if (game == NULL || line_output == NULL) {
+		set_error(error, YT_INVALID, "maintenance finish", "YTDATA.DAT");
+		return false;
+	}
+	if (!yt_maintenance_super_lottery(game, player_count, planet_count,
+	    sector_count, NULL, 0U, line_output, line_context,
+	    &lottery_result, error))
+		return false;
+	if (!store_final_marker(game, error))
+		return false;
+	if (!yt_maintenance_scoreboard(game, line_output, line_context, error)
+	    || !maintenance_close_all(game, error))
+		return false;
+	if (!yt_maintenance_compose_wrapper(&wrapper_output)
+	    || !maintenance_emit_output_row(&wrapper_output, 0x004FU,
+	    line_output, line_context, error)
+	    || !maintenance_emit_output_row(&wrapper_output, 0x0061U,
+	    line_output, line_context, error))
+		return false;
+	return true;
+}
+
+bool
+yt_maintenance_finish(struct yt_game *game,
+    yt_maintenance_score_line_fn line_output, void *line_context,
+    struct yt_error *error)
+{
+	int player_count;
+	int planet_count;
+	int sector_count;
+
+	if (game == NULL) {
+		set_error(error, YT_INVALID, "maintenance finish", "YTDATA.DAT");
+		return false;
+	}
+	player_count = (int)game->config.sector_offset - 1;
+	sector_count = (int)(game->config.port_offset
+	    - game->config.sector_offset);
+	planet_count = (int)(game->config.total_records
+	    - game->config.planet_offset);
+	return maintenance_finish_impl(game, player_count, planet_count,
+	    sector_count, line_output, line_context, error);
 }
 
 static bool
@@ -3084,7 +3138,6 @@ yt_maintenance_run(struct yt_error *error)
 	struct maint_state state;
 	struct yt_maintenance_output_result entry_output;
 	struct yt_maintenance_output_result compaction_output;
-	struct yt_maintenance_output_result wrapper_output;
 	bool same_day;
 	bool result = false;
 
@@ -3170,19 +3223,9 @@ yt_maintenance_run(struct yt_error *error)
 	    NULL, 0U,
 	    maintenance_stdout_line, NULL, NULL, error)
 	    || !maintain_factions(&state, error)
-	    || !super_lottery(&state, error)
-	    || !store_final_marker(&state, error)
-	    || !yt_maintenance_scoreboard(&state.game,
-	    maintenance_stdout_line, NULL, error))
-		goto done;
-	/* 57C1 CLOSE-all precedes the 57C6 return into the wrapper rows. */
-	if (!maintenance_close_all(&state.game, error))
-		goto done;
-	if (!yt_maintenance_compose_wrapper(&wrapper_output)
-	    || !maintenance_emit_output_row(&wrapper_output, 0x004FU,
-	    maintenance_stdout_line, NULL, error)
-	    || !maintenance_emit_output_row(&wrapper_output, 0x0061U,
-	    maintenance_stdout_line, NULL, error))
+	    || !maintenance_finish_impl(&state.game, state.player_count,
+	    state.planet_count, state.sector_count, maintenance_stdout_line,
+	    NULL, error))
 		goto done;
 	result = true;
 
@@ -6314,15 +6357,4 @@ yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 	local.draws_consumed = game->random.draws - starting_draws;
 	*result = local;
 	return true;
-}
-
-static bool
-super_lottery(struct maint_state *state, struct yt_error *error)
-{
-	struct yt_maintenance_lottery_result result;
-
-	return yt_maintenance_super_lottery(&state->game, state->player_count,
-	    state->planet_count, state->sector_count,
-	    NULL, 0U,
-	    maintenance_stdout_line, NULL, &result, error);
 }
