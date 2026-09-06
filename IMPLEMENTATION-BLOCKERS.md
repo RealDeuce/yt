@@ -8,6 +8,39 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
+### DOC-GAP-029: shared A8D2 local string-allocation failure contract
+
+Affected coverage:
+
+- the direct emergency-warp confirmation after its now-joined ADE0 and
+  delegated compatibility-uppercase prefixes;
+- all other callers of the shared `YT:[A8D2,A949)` Y/N/blank reader; and
+- exact main/shared error routing and retained input state before answer
+  selection or invalid-answer retry.
+
+The completed caller documents and global-state registry establish A8D2's
+ordinary semantic order: raw-emit mutable prompt `DS:4D3A`, run AB36/ADE0,
+compatibility-uppercase the complete response, retain
+`LEFT$(response,1)` in `DS:4C9A`, clear the prompt on valid return, or set
+bold, clear typeahead and retry for another first byte. The direct-warp
+implementation now joins the documented nonempty `ADE7` and `AE4A` cuts and
+all four delegated uppercase-helper cuts through their exact main/shared
+handler identities.
+
+The documentation does not identify A8D2's own post-uppercase `LEFT$` and
+destination-assignment/COPY call instructions, saved IPs, current statements,
+ERLs, admitted ERR values, or installed handler projections. It also does not
+pin the movable-string heap/descriptor prefix for `DS:4C9A` and `DS:4D3A`,
+the returned-answer scratch, or the queue state at those failures. The direct
+emergency-warp and other caller documents explicitly list these A8D2
+allocation failures as remaining work. The generic BRUN string contract is
+not enough to choose the missing caller sites and starting descriptors.
+
+Upstream documentation, the canonical A8D2 world model, generated evidence,
+and focused failure-prefix fixtures must publish those identities and raw
+states before this boundary can proceed. No binary inspection or new reverse
+engineering was performed.
+
 ### DOC-GAP-023: current-sector scanner cloak-clear raw value
 
 Affected coverage:
