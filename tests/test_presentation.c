@@ -26545,7 +26545,15 @@ struct direct_warp_main_cycle_state {
 	size_t owner_player_reads;
 	size_t fresh_hostile_player_reads;
 	bool fresh_hostile_player_get_completed;
+	bool fresh_hostile_carrier_ended;
 	uint8_t fresh_hostile_selected;
+};
+
+enum direct_warp_hostile_menu_carrier_cut {
+	DIRECT_WARP_HOSTILE_MENU_FIGHTER_BEFORE,
+	DIRECT_WARP_HOSTILE_MENU_FIGHTER_AFTER,
+	DIRECT_WARP_HOSTILE_MENU_PROMPT_BEFORE,
+	DIRECT_WARP_HOSTILE_MENU_PROMPT_AFTER,
 };
 
 static bool
@@ -26878,6 +26886,47 @@ direct_emergency_warp_fresh_hostile_menu(
 	cycle->fresh_hostile_selected = command[0];
 	return yt_hostile_menu_dispatch((const char *)command)
 	    == YT_HOSTILE_MENU_ATTACK;
+}
+
+static bool
+direct_emergency_warp_fresh_hostile_menu_carrier_failure(
+    struct hostile_mines_hazard_fixture *fixture,
+    struct direct_warp_main_cycle_state *cycle,
+    enum direct_warp_hostile_menu_carrier_cut cut)
+{
+	static const uint8_t prompt[] =
+	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? ";
+	struct viewer_pager_join *join;
+	uint8_t row[96];
+	size_t row_length;
+	bool fighter_cut;
+	bool before;
+
+	if (fixture == NULL || cycle == NULL)
+		return false;
+	join = &fixture->cycle.presentation.viewer->join;
+	fighter_cut = cut == DIRECT_WARP_HOSTILE_MENU_FIGHTER_BEFORE
+	    || cut == DIRECT_WARP_HOSTILE_MENU_FIGHTER_AFTER;
+	before = cut == DIRECT_WARP_HOSTILE_MENU_FIGHTER_BEFORE
+	    || cut == DIRECT_WARP_HOSTILE_MENU_PROMPT_BEFORE;
+	++cycle->fresh_hostile_player_reads;
+	cycle->fresh_hostile_player_get_completed = true;
+	cycle->final_field_record = 2;
+	cycle->final_field_player = true;
+	join->presentation.foreground = 3.0f;
+	join->pager.foreground = 3;
+	if (!yt_hostile_menu_row(1000.0, 1250.0, row, sizeof(row),
+	    &row_length) || !normal_exit_line(join, NULL, 0U))
+		return false;
+	if (!fighter_cut && !normal_exit_b05d(join, row, row_length, 0.0f))
+		return false;
+	join->fail_at = join->event_count + (before ? 1U : 4U);
+	if (normal_exit_b05d(join, fighter_cut ? row : prompt,
+	    fighter_cut ? row_length : sizeof(prompt) - 1U,
+	    fighter_cut ? 0.0f : 1.0f))
+		return false;
+	cycle->fresh_hostile_carrier_ended = true;
+	return true;
 }
 
 static bool
@@ -30090,6 +30139,217 @@ test_direct_emergency_warp_hostile_menu_get_failures(void)
 					CHECK(gate.field.bytes[index] == 0U);
 			}
 			yt_database_close(&gate.database);
+			yt_text_input_destroy(&viewer.input);
+		}
+	}
+}
+
+static void
+test_direct_emergency_warp_hostile_menu_carrier_failures(void)
+{
+	static const uint8_t fighter[] = "Fighters: 1000 / 1250";
+	static const uint8_t prompt[] =
+	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? ";
+	static const uint8_t plain_fighter_before[] = "\r\n";
+	static const uint8_t plain_fighter_after[] =
+	    "\r\nFighters: 1000 / 1250";
+	static const uint8_t plain_prompt_before[] =
+	    "\r\nFighters: 1000 / 1250\n\r";
+	static const uint8_t plain_prompt_after[] =
+	    "\r\nFighters: 1000 / 1250\n\r"
+	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? ";
+	static const uint8_t ansi_fighter_before[] =
+	    "\x1b[0;33;40m\r\n";
+	static const uint8_t ansi_fighter_after[] =
+	    "\x1b[0;33;40m\r\nFighters: 1000 / 1250";
+	static const uint8_t ansi_prompt_before[] =
+	    "\x1b[0;33;40m\r\nFighters: 1000 / 1250\n\r";
+	static const uint8_t ansi_prompt_after[] =
+	    "\x1b[0;33;40m\r\nFighters: 1000 / 1250\n\r"
+	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? ";
+	static const struct {
+		bool main;
+		bool ansi;
+		const uint8_t *command;
+		size_t command_length;
+		size_t parent_length;
+		size_t parent_rows;
+		size_t parent_colors;
+		size_t parent_events;
+		size_t parent_samples;
+	} callers[] = {
+		{true, false, (const uint8_t *)"W", 1U, 811U, 28U, 4U,
+		    20U, 4U},
+		{true, true, (const uint8_t *)"W", 1U, 1073U, 28U, 41U,
+		    20U, 4U},
+		{false, false, (const uint8_t *)"W", 1U, 833U, 29U, 5U,
+		    25U, 5U},
+		{false, false, (const uint8_t *)"WT", 2U, 834U, 29U, 5U,
+		    25U, 5U},
+		{false, true, (const uint8_t *)"W", 1U, 1105U, 29U, 43U,
+		    25U, 5U},
+		{false, true, (const uint8_t *)"WT", 2U, 1106U, 29U, 43U,
+		    25U, 5U},
+	};
+	static const struct {
+		enum direct_warp_hostile_menu_carrier_cut cut;
+		const uint8_t *plain;
+		size_t plain_length;
+		const uint8_t *ansi;
+		size_t ansi_length;
+		size_t event_delta;
+		size_t sample_delta;
+		size_t row_delta;
+		const uint8_t *fragment;
+		size_t fragment_length;
+		size_t plain_color_delta;
+		size_t ansi_color_delta;
+		float newline_flag;
+	} cuts[] = {
+		{DIRECT_WARP_HOSTILE_MENU_FIGHTER_BEFORE,
+		    plain_fighter_before, sizeof(plain_fighter_before) - 1U,
+		    ansi_fighter_before, sizeof(ansi_fighter_before) - 1U,
+		    1U, 0U, 1U, NULL, 0U, 0U, 1U, 0.0f},
+		{DIRECT_WARP_HOSTILE_MENU_FIGHTER_AFTER,
+		    plain_fighter_after, sizeof(plain_fighter_after) - 1U,
+		    ansi_fighter_after, sizeof(ansi_fighter_after) - 1U,
+		    4U, 1U, 1U, fighter, sizeof(fighter) - 1U, 0U, 2U, 0.0f},
+		{DIRECT_WARP_HOSTILE_MENU_PROMPT_BEFORE,
+		    plain_prompt_before, sizeof(plain_prompt_before) - 1U,
+		    ansi_prompt_before, sizeof(ansi_prompt_before) - 1U,
+		    6U, 1U, 2U, NULL, 0U, 1U, 3U, 1.0f},
+		{DIRECT_WARP_HOSTILE_MENU_PROMPT_AFTER,
+		    plain_prompt_after, sizeof(plain_prompt_after) - 1U,
+		    ansi_prompt_after, sizeof(ansi_prompt_after) - 1U,
+		    9U, 2U, 2U, prompt, sizeof(prompt) - 1U, 1U, 4U, 1.0f},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	struct direct_warp_main_cycle_state cycle;
+	struct yt_record record;
+	uint8_t remote[1300];
+	size_t ends[3];
+	size_t caller;
+	size_t cut;
+	size_t index;
+
+	for (caller = 0U; caller < YT_ARRAY_LEN(callers); ++caller) {
+		for (cut = 0U; cut < YT_ARRAY_LEN(cuts); ++cut) {
+			const uint8_t *suffix = callers[caller].ansi
+			    ? cuts[cut].ansi : cuts[cut].plain;
+			size_t suffix_length = callers[caller].ansi
+			    ? cuts[cut].ansi_length : cuts[cut].plain_length;
+			size_t color_delta = callers[caller].ansi
+			    ? cuts[cut].ansi_color_delta
+			    : cuts[cut].plain_color_delta;
+
+			memset(&viewer, 0, sizeof(viewer));
+			fixture_viewer_initialize(&viewer, &stream,
+			    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+			    "YTSCORE.ASC", callers[caller].ansi, remote,
+			    sizeof(remote));
+			memset(&fixture, 0, sizeof(fixture));
+			fixture.cycle.presentation.viewer = &viewer;
+			fixture.emergency_sector_cache = 733.0f;
+			fixture.draws[0] = 0.0f;
+			fixture.draws[1] = 0.0f;
+			fixture.draws[2] = 0.75f;
+			fixture.draws[3] = 0.5f;
+			fixture.draws[4] = 0.949999988079071f;
+			fixture.draws[5] = 0.999f;
+			fixture.draws[6] = 0.9f;
+			memset(&record, 0xa5, sizeof(record));
+			(void)yt_record_set_number(&record, YT_F49, 17.0f);
+			(void)yt_record_set_number(&record, YT_F57, 733.0f);
+			yt_player_decode(&fixture.emergency_player, &record);
+			fixture.hazard_player = fixture.emergency_player;
+			if (callers[caller].main) {
+				CHECK(direct_emergency_warp_main_hostile_handoff_run(
+				    &fixture, callers[caller].ansi, &cycle, ends));
+			}
+			else {
+				CHECK(direct_emergency_warp_hostile_cycle_run(&fixture,
+				    callers[caller].ansi, callers[caller].command,
+				    callers[caller].command_length,
+				    DIRECT_WARP_HOSTILE_DEFENSE, &cycle, ends));
+			}
+			CHECK(viewer.join.remote_length == callers[caller].parent_length
+			    && viewer.join.local_row_count == callers[caller].parent_rows
+			    && viewer.join.local_color_count
+			    == callers[caller].parent_colors
+			    && viewer.join.event_count == callers[caller].parent_events
+			    && viewer.join.sample_calls == callers[caller].parent_samples);
+			CHECK(direct_emergency_warp_fresh_hostile_menu_carrier_failure(
+			    &fixture, &cycle, cuts[cut].cut));
+			CHECK(viewer.join.remote_length
+			    == callers[caller].parent_length + suffix_length
+			    && memcmp(remote + callers[caller].parent_length, suffix,
+			    suffix_length) == 0
+			    && viewer.join.event_count
+			    == callers[caller].parent_events + cuts[cut].event_delta
+			    && viewer.join.fail_at == viewer.join.event_count
+			    && viewer.join.sample_calls
+			    == callers[caller].parent_samples + cuts[cut].sample_delta
+			    && viewer.join.local_row_count
+			    == callers[caller].parent_rows + cuts[cut].row_delta
+			    && viewer.join.local_fragment_length
+			    == cuts[cut].fragment_length
+			    && (cuts[cut].fragment_length == 0U
+			    || memcmp(viewer.join.local_fragment, cuts[cut].fragment,
+			    cuts[cut].fragment_length) == 0)
+			    && viewer.join.local_color_count
+			    == callers[caller].parent_colors + color_delta);
+			CHECK(viewer.join.local_lengths[callers[caller].parent_rows]
+			    == 0U);
+			if (cuts[cut].row_delta == 2U) {
+				CHECK(viewer.join.local_lengths[
+				    callers[caller].parent_rows + 1U]
+				    == sizeof(fighter) - 1U
+				    && memcmp(viewer.join.local_rows[
+				    callers[caller].parent_rows + 1U], fighter,
+				    sizeof(fighter) - 1U) == 0);
+			}
+			for (index = callers[caller].parent_colors;
+			    index < viewer.join.local_color_count; ++index) {
+				size_t child = index - callers[caller].parent_colors;
+
+				CHECK(viewer.join.local_backgrounds[index] == 0
+				    && viewer.join.local_foregrounds[index]
+				    == (callers[caller].ansi && child != 2U
+				    ? 6 : 7));
+			}
+			CHECK(fixture.warp_called && fixture.draw_position == 7U
+			    && fixture.emergency_player_reads == 1U
+			    && fixture.emergency_player_put_attempts == 1U
+			    && fixture.emergency_player_writes == 1U
+			    && fixture.emergency_flushes == 1U
+			    && fixture.emergency_waits == 1U
+			    && fixture.emergency_ticks == 1U
+			    && fixture.emergency_sector_cache == 1003.0f
+			    && fixture.emergency_player.sector == 1003.0f
+			    && fixture.emergency_player.turns == 14.0f
+			    && cycle.fresh_hostile_player_reads == 1U
+			    && cycle.fresh_hostile_player_get_completed
+			    && cycle.fresh_hostile_carrier_ended
+			    && cycle.fresh_hostile_selected == 0U
+			    && cycle.final_field_record == 2
+			    && cycle.final_field_player
+			    && !cycle.fresh_prompt_wait
+			    && viewer.join.queue_length == 0U
+			    && strcmp(viewer.join.accumulator, "y") == 0
+			    && viewer.join.presentation.foreground == 3.0f
+			    && viewer.join.presentation.background == 0.0f
+			    && viewer.join.presentation.bold
+			    == (callers[caller].ansi ? 0.0f : 1.0f)
+			    && viewer.join.presentation.blink
+			    == (callers[caller].ansi ? 0.0f : 1.0f)
+			    && viewer.join.presentation.cached_foreground
+			    == (callers[caller].ansi ? 3.0f : 2.0f)
+			    && viewer.join.pager.foreground == 3
+			    && viewer.join.pager.line_count
+			    == (cuts[cut].row_delta == 1U ? 1.0f : 2.0f)
+			    && viewer.join.pager.newline_flag == cuts[cut].newline_flag);
 			yt_text_input_destroy(&viewer.input);
 		}
 	}
@@ -39473,6 +39733,7 @@ main(void)
 	test_direct_emergency_warp_reentry_warning_second_carrier();
 	test_direct_emergency_warp_hostile_menu_join();
 	test_direct_emergency_warp_hostile_menu_get_failures();
+	test_direct_emergency_warp_hostile_menu_carrier_failures();
 	test_direct_emergency_warp_hostile_invalid_retry_cycle();
 	test_direct_emergency_warp_hostile_ordinary_returns();
 	test_direct_emergency_warp_queue_cycles();
