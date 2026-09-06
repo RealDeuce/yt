@@ -10041,92 +10041,127 @@ earth_anti_cloak(struct yt_session *session, float price,
 	return completed;
 }
 
-static bool
-clearance(struct yt_session *session, bool create,
-    struct yt_error *error)
+static void
+clearance_read(void *context, enum yt_clearance_store_kind kind, size_t item,
+    uint8_t raw[4])
 {
-	static const uint8_t announced_zero[4] = {
-		0x00U, 0x00U, 0x7aU, 0x00U,
-	};
 	static const uint16_t discount_address[4] = {
 		YT_CLEARANCE_HOLDS_ADDRESS,
 		YT_CLEARANCE_FIGHTERS_ADDRESS,
 		YT_CLEARANCE_SHIELDS_ADDRESS,
 		YT_CLEARANCE_GROUND_ADDRESS,
 	};
-	static const uint8_t reset_raw[4][4] = {
-		{0x00U, 0x00U, 0x73U, 0x00U},
-		{0x00U, 0x00U, 0x7aU, 0x00U},
-		{0x00U, 0x00U, 0x4cU, 0x00U},
-		{0x00U, 0x00U, 0x66U, 0x00U},
-	};
-	static const char *name[4] = {
-		"Holds", "Fighters", "Shields", "Ground Forces"
-	};
-	size_t index;
+	struct yt_session *session = context;
+	uint16_t address;
 
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_CLEARANCE_ANNOUNCED_ADDRESS, announced_zero);
-	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "clearance leading blank", error))
+	if (raw == NULL)
+		return;
+	switch (kind) {
+	case YT_CLEARANCE_STORE_DISCOUNT:
+		if (item >= YT_ARRAY_LEN(discount_address))
+			return;
+		address = discount_address[item];
+		break;
+	case YT_CLEARANCE_STORE_ANNOUNCED:
+		address = YT_CLEARANCE_ANNOUNCED_ADDRESS;
+		break;
+	case YT_CLEARANCE_STORE_VALUE:
+		address = YT_CLEARANCE_VALUE_ADDRESS;
+		break;
+	case YT_CLEARANCE_STORE_SOUND_SELECTOR:
+		address = YT_CLEARANCE_SOUND_SELECTOR_ADDRESS;
+		break;
+	default:
+		return;
+	}
+	yt_route_process_raw_single(&session->route_process, address, raw);
+}
+
+static void
+clearance_store(void *context, enum yt_clearance_store_kind kind, size_t item,
+    const uint8_t raw[4])
+{
+	static const uint16_t discount_address[4] = {
+		YT_CLEARANCE_HOLDS_ADDRESS,
+		YT_CLEARANCE_FIGHTERS_ADDRESS,
+		YT_CLEARANCE_SHIELDS_ADDRESS,
+		YT_CLEARANCE_GROUND_ADDRESS,
+	};
+	struct yt_session *session = context;
+	uint16_t address;
+
+	if (raw == NULL)
+		return;
+	switch (kind) {
+	case YT_CLEARANCE_STORE_DISCOUNT:
+		if (item >= YT_ARRAY_LEN(discount_address))
+			return;
+		address = discount_address[item];
+		break;
+	case YT_CLEARANCE_STORE_ANNOUNCED:
+		address = YT_CLEARANCE_ANNOUNCED_ADDRESS;
+		break;
+	case YT_CLEARANCE_STORE_VALUE:
+		address = YT_CLEARANCE_VALUE_ADDRESS;
+		break;
+	case YT_CLEARANCE_STORE_SOUND_SELECTOR:
+		address = YT_CLEARANCE_SOUND_SELECTOR_ADDRESS;
+		break;
+	default:
+		return;
+	}
+	yt_route_process_set_raw_single(&session->route_process, address, raw);
+}
+
+static bool
+clearance_random(void *context, float *value, struct yt_error *error)
+{
+	return random_value(context, value, error);
+}
+
+static bool
+clearance_present(void *context, const uint8_t *text, size_t length,
+    enum yt_clearance_output_kind kind, struct yt_error *error)
+{
+	const char *operation;
+
+	switch (kind) {
+	case YT_CLEARANCE_LEADING_BLANK:
+		operation = "clearance leading blank";
+		break;
+	case YT_CLEARANCE_ANNOUNCEMENT:
+		operation = "clearance announcement";
+		break;
+	case YT_CLEARANCE_TRAILING_BLANK:
+		operation = "clearance trailing blank";
+		break;
+	default:
 		return false;
-	for (index = 0; index < 4; ++index) {
-		float discount = yt_route_process_single(&session->route_process,
-		    discount_address[index]);
-		float draw;
-		bool candidate = false;
-
-		if (!random_value(session, &draw, error))
-			return false;
-		if (yt_clearance_candidate_needed(index, draw, discount,
-		    create)) {
-			if (!random_value(session, &draw, error))
-				return false;
-			discount = draw;
-			candidate = true;
-		}
-		if (!yt_clearance_normalize(index, &discount)) {
-			yt_route_process_set_raw_single(&session->route_process,
-			    discount_address[index], reset_raw[index]);
-		}
-		else {
-			char percent[64];
-			char row[192];
-
-			if (candidate)
-				session_set_process_single(session,
-				    discount_address[index], discount);
-			yt_route_process_copy_raw_single(&session->route_process,
-			    discount_address[index], YT_CLEARANCE_VALUE_ADDRESS);
-			discount = yt_route_process_single(&session->route_process,
-			    YT_CLEARANCE_VALUE_ADDRESS);
-			if (qb_str_single(percent, sizeof(percent),
-			    yt_clearance_percentage(discount)) < 0
-			    || snprintf(row, sizeof(row),
-			    "Special clearance sale! The Trader's Guild is selling "
-			    "%s for%s%% off!", name[index], percent) < 0
-			    || !session_present_text(session, (const uint8_t *)row,
-			    strlen(row), SESSION_PRESENT_LINE,
-			    "clearance announcement", error))
-				return false;
-			session_set_process_single(session,
-			    YT_CLEARANCE_ANNOUNCED_ADDRESS, 1.0f);
-		}
 	}
-	if (yt_route_process_single(&session->route_process,
-	    YT_CLEARANCE_ANNOUNCED_ADDRESS) != 0.0f) {
-		session_set_process_single(session,
-		    YT_CLEARANCE_SOUND_SELECTOR_ADDRESS, 1.0f);
-		if (!session_sound(session, yt_route_process_single(
-		    &session->route_process,
-		    YT_CLEARANCE_SOUND_SELECTOR_ADDRESS),
-		    "clearance sale sound", error))
-			return false;
-		if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-		    "clearance trailing blank", error))
-			return false;
-	}
-	return true;
+	return session_present_text(context, text, length, SESSION_PRESENT_LINE,
+	    operation, error);
+}
+
+static bool
+clearance_sound(void *context, float selector, struct yt_error *error)
+{
+	return session_sound(context, selector, "clearance sale sound", error);
+}
+
+static bool
+clearance(struct yt_session *session, bool create,
+    struct yt_error *error)
+{
+	static const struct yt_clearance_ops ops = {
+		clearance_read,
+		clearance_store,
+		clearance_random,
+		clearance_present,
+		clearance_sound,
+	};
+	struct yt_clearance_state state = {.create = create};
+
+	return yt_clearance_run(&state, &ops, session, error);
 }
 
 static bool

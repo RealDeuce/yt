@@ -11245,6 +11245,118 @@ yt_clearance_percentage(float discount)
 	return floorf(take_all_single_mul(100.0f, discount));
 }
 
+bool
+yt_clearance_run(struct yt_clearance_state *state,
+    const struct yt_clearance_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t announced_zero[4] = {
+		0x00U, 0x00U, 0x7aU, 0x00U,
+	};
+	static const uint8_t reset_raw[4][4] = {
+		{0x00U, 0x00U, 0x73U, 0x00U},
+		{0x00U, 0x00U, 0x7aU, 0x00U},
+		{0x00U, 0x00U, 0x4cU, 0x00U},
+		{0x00U, 0x00U, 0x66U, 0x00U},
+	};
+	static const char *const name[4] = {
+		"Holds", "Fighters", "Shields", "Ground Forces"
+	};
+	static const uint8_t one[4] = {0x00U, 0x00U, 0x00U, 0x81U};
+	size_t index;
+
+	if (state == NULL || ops == NULL || ops->read == NULL
+	    || ops->store == NULL || ops->random == NULL
+	    || ops->present == NULL || ops->sound == NULL)
+		return false;
+	memset(state->discount_raw, 0, sizeof(state->discount_raw));
+	memcpy(state->announced_raw, announced_zero,
+	    sizeof(state->announced_raw));
+	memset(state->value_raw, 0, sizeof(state->value_raw));
+	memset(state->sound_selector_raw, 0,
+	    sizeof(state->sound_selector_raw));
+	state->current_item = 0U;
+	state->items_completed = 0U;
+	state->draws_consumed = 0U;
+	state->announcements = 0U;
+	state->leading_blank_presented = false;
+	state->sound_called = false;
+	state->trailing_blank_presented = false;
+	state->complete = false;
+	ops->store(context, YT_CLEARANCE_STORE_ANNOUNCED, 0U,
+	    announced_zero);
+	if (!ops->present(context, NULL, 0U, YT_CLEARANCE_LEADING_BLANK,
+	    error))
+		return false;
+	state->leading_blank_presented = true;
+	for (index = 0U; index < 4U; ++index) {
+		float discount;
+		float draw;
+		char percent[64];
+		char row[192];
+		int row_length;
+
+		state->current_item = index;
+		ops->read(context, YT_CLEARANCE_STORE_DISCOUNT, index,
+		    state->discount_raw[index]);
+		if (!ops->random(context, &draw, error))
+			return false;
+		++state->draws_consumed;
+		discount = qb_mbf32_decode(state->discount_raw[index]);
+		if (yt_clearance_candidate_needed(index, draw, discount,
+		    state->create)) {
+			if (!ops->random(context, &draw, error))
+				return false;
+			++state->draws_consumed;
+			discount = draw;
+			if (qb_mbf32_encode(discount,
+			    state->discount_raw[index]) != QB_MBF_OK)
+				return false;
+			ops->store(context, YT_CLEARANCE_STORE_DISCOUNT, index,
+			    state->discount_raw[index]);
+		}
+		if (!yt_clearance_normalize(index, &discount)) {
+			memcpy(state->discount_raw[index], reset_raw[index], 4U);
+			ops->store(context, YT_CLEARANCE_STORE_DISCOUNT, index,
+			    reset_raw[index]);
+		} else {
+			memcpy(state->value_raw, state->discount_raw[index], 4U);
+			ops->store(context, YT_CLEARANCE_STORE_VALUE, index,
+			    state->value_raw);
+			if (qb_str_single(percent, sizeof(percent),
+			    yt_clearance_percentage(discount)) < 0)
+				return false;
+			row_length = snprintf(row, sizeof(row),
+			    "Special clearance sale! The Trader's Guild is selling "
+			    "%s for%s%% off!", name[index], percent);
+			if (row_length < 0 || (size_t)row_length >= sizeof(row)
+			    || !ops->present(context, (const uint8_t *)row,
+			    (size_t)row_length, YT_CLEARANCE_ANNOUNCEMENT, error))
+				return false;
+			memcpy(state->announced_raw, one, 4U);
+			ops->store(context, YT_CLEARANCE_STORE_ANNOUNCED, index,
+			    one);
+			++state->announcements;
+		}
+		state->items_completed = index + 1U;
+	}
+	ops->read(context, YT_CLEARANCE_STORE_ANNOUNCED, 0U,
+	    state->announced_raw);
+	if (qb_mbf32_decode(state->announced_raw) != 0.0f) {
+		memcpy(state->sound_selector_raw, one, 4U);
+		ops->store(context, YT_CLEARANCE_STORE_SOUND_SELECTOR, 0U, one);
+		if (!ops->sound(context, 1.0f, error))
+			return false;
+		state->sound_called = true;
+		if (!ops->present(context, NULL, 0U,
+		    YT_CLEARANCE_TRAILING_BLANK, error))
+			return false;
+		state->trailing_blank_presented = true;
+	}
+	state->complete = true;
+	return true;
+}
+
 void
 yt_earth_prices(const float discount[4], float price[4])
 {

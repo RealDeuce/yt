@@ -8595,6 +8595,282 @@ test_clearance_presentation(void)
 	}
 }
 
+struct clearance_failure_fixture {
+	uint8_t discount_raw[4][4];
+	uint8_t announced_raw[4];
+	uint8_t value_raw[4];
+	uint8_t sound_selector_raw[4];
+	float draws[8];
+	size_t draw_position;
+	size_t read_calls;
+	size_t random_calls;
+	size_t present_calls;
+	size_t sound_calls;
+	size_t store_calls;
+	size_t fail_random_at;
+	size_t fail_present_at;
+	size_t fail_sound_at;
+	struct yt_present_state presentation;
+	uint8_t remote[512];
+	size_t remote_length;
+};
+
+static void
+clearance_failure_read(void *context, enum yt_clearance_store_kind kind,
+    size_t item, uint8_t raw[4])
+{
+	struct clearance_failure_fixture *fixture = context;
+
+	++fixture->read_calls;
+	if (raw == NULL)
+		return;
+	switch (kind) {
+	case YT_CLEARANCE_STORE_DISCOUNT:
+		if (item >= YT_ARRAY_LEN(fixture->discount_raw))
+			return;
+		memcpy(raw, fixture->discount_raw[item], 4U);
+		return;
+	case YT_CLEARANCE_STORE_ANNOUNCED:
+		memcpy(raw, fixture->announced_raw, 4U);
+		return;
+	default:
+		return;
+	}
+}
+
+static void
+clearance_failure_store(void *context, enum yt_clearance_store_kind kind,
+    size_t item, const uint8_t raw[4])
+{
+	struct clearance_failure_fixture *fixture = context;
+
+	++fixture->store_calls;
+	switch (kind) {
+	case YT_CLEARANCE_STORE_DISCOUNT:
+		if (item < YT_ARRAY_LEN(fixture->discount_raw))
+			memcpy(fixture->discount_raw[item], raw, 4U);
+		break;
+	case YT_CLEARANCE_STORE_ANNOUNCED:
+		memcpy(fixture->announced_raw, raw, 4U);
+		break;
+	case YT_CLEARANCE_STORE_VALUE:
+		memcpy(fixture->value_raw, raw, 4U);
+		break;
+	case YT_CLEARANCE_STORE_SOUND_SELECTOR:
+		memcpy(fixture->sound_selector_raw, raw, 4U);
+		break;
+	}
+}
+
+static bool
+clearance_failure_random(void *context, float *value,
+    struct yt_error *error)
+{
+	struct clearance_failure_fixture *fixture = context;
+
+	(void)error;
+	++fixture->random_calls;
+	if (fixture->random_calls == fixture->fail_random_at
+	    || value == NULL
+	    || fixture->draw_position >= YT_ARRAY_LEN(fixture->draws))
+		return false;
+	*value = fixture->draws[fixture->draw_position++];
+	return true;
+}
+
+static bool
+clearance_failure_capture(struct clearance_failure_fixture *fixture,
+    const struct yt_present_result *result)
+{
+	if (result->remote_length > sizeof(fixture->remote)
+	    - fixture->remote_length)
+		return false;
+	memcpy(fixture->remote + fixture->remote_length, result->remote,
+	    result->remote_length);
+	fixture->remote_length += result->remote_length;
+	return true;
+}
+
+static bool
+clearance_failure_present(void *context, const uint8_t *text, size_t length,
+    enum yt_clearance_output_kind kind, struct yt_error *error)
+{
+	struct clearance_failure_fixture *fixture = context;
+	struct yt_present_result result;
+
+	(void)kind;
+	(void)error;
+	++fixture->present_calls;
+	if (fixture->present_calls == fixture->fail_present_at)
+		return false;
+	return yt_present_line(text, length, &fixture->presentation, &result)
+	    == YT_PRESENT_OK && clearance_failure_capture(fixture, &result);
+}
+
+static bool
+clearance_failure_sound(void *context, float selector,
+    struct yt_error *error)
+{
+	struct clearance_failure_fixture *fixture = context;
+	struct yt_present_result result;
+
+	(void)error;
+	++fixture->sound_calls;
+	if (fixture->sound_calls == fixture->fail_sound_at)
+		return false;
+	return yt_present_sound(selector, &fixture->presentation, &result)
+	    == YT_PRESENT_OK && clearance_failure_capture(fixture, &result);
+}
+
+static void
+test_clearance_failure_prefixes(void)
+{
+	static const struct yt_clearance_ops ops = {
+		clearance_failure_read,
+		clearance_failure_store,
+		clearance_failure_random,
+		clearance_failure_present,
+		clearance_failure_sound,
+	};
+	static const uint8_t row[] =
+	    "Special clearance sale! The Trader's Guild is selling Holds "
+	    "for 10% off!";
+	static const uint8_t announced_zero[4] = {0x00U, 0x00U, 0x7aU, 0x00U};
+	static const uint8_t one[4] = {0x00U, 0x00U, 0x00U, 0x81U};
+	static const uint8_t tenth[4] = {0xcdU, 0xccU, 0x4cU, 0x7dU};
+	static const uint8_t holds_zero[4] = {0x00U, 0x00U, 0x73U, 0x00U};
+	static const uint8_t reset[3][4] = {
+		{0x00U, 0x00U, 0x7aU, 0x00U},
+		{0x00U, 0x00U, 0x4cU, 0x00U},
+		{0x00U, 0x00U, 0x66U, 0x00U},
+	};
+	static const struct {
+		size_t fail_random_at;
+		size_t fail_present_at;
+		size_t fail_sound_at;
+		size_t prefix_kind;
+		size_t draws;
+		size_t items;
+		size_t announcements;
+		bool sound_called;
+		bool complete;
+	} cases[] = {
+		{0U, 1U, 0U, 0U, 0U, 0U, 0U, false, false},
+		{1U, 0U, 0U, 1U, 0U, 0U, 0U, false, false},
+		{2U, 0U, 0U, 1U, 1U, 0U, 0U, false, false},
+		{0U, 2U, 0U, 1U, 2U, 0U, 0U, false, false},
+		{3U, 0U, 0U, 2U, 2U, 1U, 1U, false, false},
+		{0U, 0U, 1U, 2U, 5U, 4U, 1U, false, false},
+		{0U, 3U, 0U, 3U, 5U, 4U, 1U, true, false},
+		{0U, 0U, 0U, 4U, 5U, 4U, 1U, true, true},
+	};
+	static const size_t expected_reads[] = {0U, 1U, 1U, 1U, 2U, 5U, 5U, 5U};
+	static const size_t expected_random_calls[] = {
+		0U, 1U, 2U, 2U, 3U, 5U, 5U, 5U,
+	};
+	static const size_t expected_present_calls[] = {
+		1U, 1U, 1U, 2U, 2U, 2U, 3U, 3U,
+	};
+	static const size_t expected_store_calls[] = {
+		1U, 1U, 1U, 3U, 4U, 8U, 8U, 8U,
+	};
+	struct clearance_failure_fixture fixture;
+	struct yt_clearance_state clearance;
+	struct yt_error error;
+	uint8_t expected[256];
+	size_t expected_length;
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&fixture, 0, sizeof(fixture));
+		memset(fixture.announced_raw, 0x96,
+		    sizeof(fixture.announced_raw));
+		memset(fixture.value_raw, 0x69, sizeof(fixture.value_raw));
+		memset(fixture.sound_selector_raw, 0x3c,
+		    sizeof(fixture.sound_selector_raw));
+		memset(fixture.discount_raw, 0, sizeof(fixture.discount_raw));
+		memcpy(fixture.discount_raw[0], holds_zero, 4U);
+		fixture.draws[0] = 0.9f;
+		fixture.draws[1] = 0.1f;
+		fixture.draws[2] = 0.0f;
+		fixture.draws[3] = 0.0f;
+		fixture.draws[4] = 0.0f;
+		fixture.fail_random_at = cases[pass].fail_random_at;
+		fixture.fail_present_at = cases[pass].fail_present_at;
+		fixture.fail_sound_at = cases[pass].fail_sound_at;
+		fixture.presentation = state(false);
+		clearance = (struct yt_clearance_state){.create = true};
+		yt_error_clear(&error);
+		CHECK(yt_clearance_run(&clearance, &ops, &fixture, &error)
+		    == cases[pass].complete);
+		expected_length = 0U;
+		if (cases[pass].prefix_kind >= 1U) {
+			expected[expected_length++] = '\r';
+			expected[expected_length++] = '\n';
+		}
+		if (cases[pass].prefix_kind >= 2U) {
+			memcpy(expected + expected_length, row, sizeof(row) - 1U);
+			expected_length += sizeof(row) - 1U;
+			expected[expected_length++] = '\r';
+			expected[expected_length++] = '\n';
+		}
+		if (cases[pass].prefix_kind >= 3U)
+			expected[expected_length++] = '\a';
+		if (cases[pass].prefix_kind >= 4U) {
+			expected[expected_length++] = '\r';
+			expected[expected_length++] = '\n';
+		}
+		CHECK(fixture.remote_length == expected_length
+		    && memcmp(fixture.remote, expected, expected_length) == 0
+		    && clearance.draws_consumed == cases[pass].draws
+		    && fixture.draw_position == cases[pass].draws
+		    && clearance.items_completed == cases[pass].items
+		    && clearance.announcements == cases[pass].announcements
+		    && clearance.sound_called == cases[pass].sound_called
+		    && clearance.complete == cases[pass].complete
+		    && clearance.leading_blank_presented == (pass != 0U)
+		    && clearance.trailing_blank_presented
+		    == cases[pass].complete
+		    && fixture.read_calls == expected_reads[pass]
+		    && fixture.random_calls == expected_random_calls[pass]
+		    && fixture.present_calls == expected_present_calls[pass]
+		    && fixture.sound_calls == (pass >= 5U ? 1U : 0U)
+		    && fixture.store_calls == expected_store_calls[pass]);
+		CHECK(memcmp(fixture.announced_raw,
+		    cases[pass].announcements == 0U ? announced_zero : one, 4U)
+		    == 0 && memcmp(clearance.announced_raw,
+		    fixture.announced_raw, 4U) == 0);
+		if (pass >= 3U) {
+			CHECK(memcmp(fixture.discount_raw[0], tenth, 4U) == 0
+			    && memcmp(fixture.value_raw, tenth, 4U) == 0);
+		} else
+			CHECK(memcmp(fixture.discount_raw[0], holds_zero, 4U) == 0);
+		if (pass >= 5U) {
+			CHECK(memcmp(fixture.discount_raw[1], reset[0], 4U) == 0
+			    && memcmp(fixture.discount_raw[2], reset[1], 4U) == 0
+			    && memcmp(fixture.discount_raw[3], reset[2], 4U) == 0);
+		}
+		CHECK(memcmp(fixture.sound_selector_raw,
+		    pass >= 5U ? one : (const uint8_t[]){0x3cU, 0x3cU, 0x3cU,
+		    0x3cU}, 4U) == 0
+		    && (pass < 5U || memcmp(clearance.sound_selector_raw,
+		    fixture.sound_selector_raw, 4U) == 0));
+	}
+
+	memset(&fixture, 0, sizeof(fixture));
+	memcpy(fixture.discount_raw[0], tenth, 4U);
+	fixture.presentation = state(false);
+	clearance = (struct yt_clearance_state){.create = false};
+	yt_error_clear(&error);
+	CHECK(yt_clearance_run(&clearance, &ops, &fixture, &error)
+	    && clearance.complete && clearance.draws_consumed == 4U
+	    && fixture.random_calls == 4U && fixture.draw_position == 4U
+	    && clearance.announcements == 1U
+	    && memcmp(fixture.discount_raw[0], tenth, 4U) == 0
+	    && fixture.remote_length == expected_length
+	    && memcmp(fixture.remote, expected, expected_length) == 0);
+}
+
 static void
 earth_report_fixed(struct pager_capture *capture,
     struct yt_present_state *current, const char *text, float width)
@@ -44743,6 +45019,7 @@ main(void)
 	test_planet_bank_presentation();
 	test_planet_productivity_presentation();
 	test_clearance_presentation();
+	test_clearance_failure_prefixes();
 	test_earth_report_presentation();
 	test_earth_purchase_presentation();
 	test_earth_anti_cloak_presentation();
