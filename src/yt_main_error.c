@@ -432,7 +432,7 @@ yt_shared_error_compose(int16_t error_number, int32_t source_line,
 		result->route = YT_SHARED_ERROR_DATA_OPEN;
 		return add_shared_literal(result,
 		    YT_SHARED_ERROR_LOCAL_DIAGNOSTIC,
-		    "Error opening ytDATA.DAT");
+		    "Error opening YTDATA.DAT");
 	}
 	if (source_line == 2710) {
 		result->route = YT_SHARED_ERROR_ANSI_OPEN;

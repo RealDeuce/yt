@@ -33,14 +33,14 @@ int
 main(void)
 {
 	static const struct expected_asset expected[] = {
-		{"ytopen.ans", 2629U, UINT64_C(0xaf58a719e3ae805e)},
-		{"ytopen.asc", 505U, UINT64_C(0x204289c490c71819)},
-		{"ytinstr.doc", 24736U, UINT64_C(0x8a7d8d1e8a02653e)},
-		{"ytsysop.doc", 21005U, UINT64_C(0x060746de6459df39)},
-		{"xannorhq.txt", 230U, UINT64_C(0xed2a08a3c74c3305)},
-		{"ytecho.txt", 715U, UINT64_C(0x27042307973877de)},
-		{"lockout.dat", 14U, UINT64_C(0xb0cf20ea24271bac)},
-		{"yt.reg", 33U, UINT64_C(0x4166ec80b52f4a97)}
+		{"YTOPEN.ANS", 2629U, UINT64_C(0xaf58a719e3ae805e)},
+		{"YTOPEN.ASC", 505U, UINT64_C(0x204289c490c71819)},
+		{"YTINSTR.DOC", 24736U, UINT64_C(0x8a7d8d1e8a02653e)},
+		{"YTSYSOP.DOC", 21005U, UINT64_C(0x060746de6459df39)},
+		{"XANNORHQ.TXT", 230U, UINT64_C(0xed2a08a3c74c3305)},
+		{"YTECHO.TXT", 715U, UINT64_C(0x27042307973877de)},
+		{"LOCKOUT.DAT", 14U, UINT64_C(0xb0cf20ea24271bac)},
+		{"YT.REG", 33U, UINT64_C(0x4166ec80b52f4a97)}
 	};
 	size_t index;
 

@@ -33,7 +33,7 @@ open_scoreboard(const struct yt_game *game, struct yt_text_output *output,
     struct yt_error *error)
 {
 	const char *requested = strcmp(game->config.scoreboard, "NUL") == 0
-	    ? "yttemp" : game->config.scoreboard;
+	    ? "YTTEMP" : game->config.scoreboard;
 
 	if (!yt_resolve_case_path(requested, true, path, 512, error))
 		return false;

@@ -3625,8 +3625,8 @@ lockout(struct yt_session *session, struct yt_error *error)
 		.session = session,
 	};
 	struct yt_startup_lockout_state state = {
-		.random_path = "lockout.dat",
-		.input_path = "Lockout.dat",
+		.random_path = "LOCKOUT.DAT",
+		.input_path = "LOCKOUT.DAT",
 	};
 	uint8_t live[300];
 	size_t live_length;

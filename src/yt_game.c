@@ -195,7 +195,7 @@ yt_xannor_victory_run(struct yt_xannor_victory_state *state,
 	state->foreground = 7.0f;
 	state->pager_foreground = 7.0f;
 	ops->set_foreground(context, 7.0f);
-	if (!ops->play_file(context, "XannorHQ.TXT", error)
+	if (!ops->play_file(context, "XANNORHQ.TXT", error)
 	    || !ops->present(context, pause, sizeof(pause) - 1U,
 	    YT_XANNOR_VICTORY_RAW, "Xannor victory pause", error)
 	    || !ops->wait(context, 99.0, "Xannor victory wait", error)
@@ -337,7 +337,7 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 			ops->store_genesis(context, genesis_default);
 	}
 	if (state->scoreboard_path_length == 0U) {
-		static const char default_path[] = "ytscore.asc";
+		static const char default_path[] = "YTSCORE.ASC";
 
 		memcpy(config->scoreboard, default_path, sizeof(default_path));
 		state->scoreboard_path_length = sizeof(default_path) - 1U;
@@ -4146,7 +4146,7 @@ yt_computer_newspaper_run(struct yt_computer_newspaper_state *state,
 {
 	static const uint8_t prompt[] =
 	    "Do you want to read [T]oday's or [Y]esterday's news? [T/Y] -=> ";
-	static const char today_path[] = "ytnews.dat";
+	static const char today_path[] = "YTNEWS.DAT";
 	static const char yesterday_path[] = "YTYNEWS.DAT";
 	char edited[YT_COMPUTER_NEWSPAPER_RESPONSE_SIZE];
 

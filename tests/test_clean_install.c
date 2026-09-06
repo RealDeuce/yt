@@ -129,8 +129,8 @@ populate_package_directory(void)
 		"yt-init", "yt-init.freebsd.amd64.opt",
 		"ytconfig", "ytconfig.freebsd.amd64.opt",
 		"ytmaint", "ytmaint.freebsd.amd64.opt",
-		"lockout.dat", "xannorhq.txt", "yt.reg", "ytecho.txt",
-		"ytinstr.doc", "ytopen.ans", "ytopen.asc", "ytsysop.doc"
+		"LOCKOUT.DAT", "XANNORHQ.TXT", "YT.REG", "YTECHO.TXT",
+		"YTINSTR.DOC", "YTOPEN.ANS", "YTOPEN.ASC", "YTSYSOP.DOC"
 	};
 	size_t index;
 	unsigned filler;
@@ -160,9 +160,9 @@ cleanup_files(void)
 {
 	static const char *const paths[] = {
 		"YTDATA.DAT", "YTNAME.DAT", "YTNEWS.DAT", "YTSCORE.ASC",
-		"YTYNEWS.DAT", "ytynews.dat", "YTRMSG.DAT", "ytrmsg.dat",
-		"yttemp",
-		"temp", "Temp", "tempwork", "ytname.dat",
+		"YTYNEWS.DAT", "YTRMSG.DAT",
+		"YTTEMP",
+		"TEMP", "TEMPWORK",
 		"input.txt", "output.txt",
 		"local", "local.freebsd.amd64.opt",
 		"portname", "portname.freebsd.amd64.opt",
@@ -171,8 +171,8 @@ cleanup_files(void)
 		"yt-init", "yt-init.freebsd.amd64.opt",
 		"ytconfig", "ytconfig.freebsd.amd64.opt",
 		"ytmaint", "ytmaint.freebsd.amd64.opt",
-		"lockout.dat", "xannorhq.txt", "yt.reg", "ytecho.txt",
-		"ytinstr.doc", "ytopen.ans", "ytopen.asc", "ytsysop.doc"
+		"LOCKOUT.DAT", "XANNORHQ.TXT", "YT.REG", "YTECHO.TXT",
+		"YTINSTR.DOC", "YTOPEN.ANS", "YTOPEN.ASC", "YTSYSOP.DOC"
 	};
 	size_t index;
 	unsigned filler;
@@ -273,12 +273,12 @@ main(void)
 		failure = "YTSCORE.ASC is absent or not 603 bytes";
 		goto done;
 	}
-	if (!file_size_is("ytynews.dat", 309L)) {
-		failure = "ytynews.dat is absent or not 309 bytes";
+	if (!file_size_is("YTYNEWS.DAT", 309L)) {
+		failure = "YTYNEWS.DAT is absent or not 309 bytes";
 		goto done;
 	}
-	if (!file_size_is("ytrmsg.dat", 0L)) {
-		failure = "ytrmsg.dat is absent or not empty";
+	if (!file_size_is("YTRMSG.DAT", 0L)) {
+		failure = "YTRMSG.DAT is absent or not empty";
 		goto done;
 	}
 	if (!text_has_dos_eof("YTNAME.DAT", 26U)) {
@@ -293,8 +293,8 @@ main(void)
 		failure = "YTSCORE.ASC lacks its DOS EOF marker";
 		goto done;
 	}
-	if (!text_has_dos_eof("ytynews.dat", 309U)) {
-		failure = "ytynews.dat lacks its DOS EOF marker";
+	if (!text_has_dos_eof("YTYNEWS.DAT", 309U)) {
+		failure = "YTYNEWS.DAT lacks its DOS EOF marker";
 		goto done;
 	}
 	if (!output_contains(

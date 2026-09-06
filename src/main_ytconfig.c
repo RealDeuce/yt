@@ -927,7 +927,7 @@ main(void)
 			goto failure;
 		if (!ytconfig_close_all(&game, &error))
 			goto failure;
-		if (!yt_file_kill("ytdata.dat", NULL, &error))
+		if (!yt_file_kill("YTDATA.DAT", NULL, &error))
 			goto failure_closed;
 		return EXIT_SUCCESS;
 	}

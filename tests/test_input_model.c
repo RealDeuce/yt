@@ -3306,8 +3306,8 @@ static void
 lockout_state_init(struct yt_startup_lockout_state *state)
 {
 	memset(state, 0, sizeof(*state));
-	state->random_path = "lockout.dat";
-	state->input_path = "Lockout.dat";
+	state->random_path = "LOCKOUT.DAT";
+	state->input_path = "LOCKOUT.DAT";
 	state->identity = lockout_identity;
 	state->identity_length = sizeof(lockout_identity) - 1U;
 	state->contact = lockout_contact;
@@ -3363,8 +3363,8 @@ test_startup_lockout_transaction(void)
 	CHECK(yt_startup_lockout_run(&state, &lockout_ops, &tape, &error));
 	CHECK(tape.event_count == YT_ARRAY_LEN(denied_events)
 	    && memcmp(tape.events, denied_events, sizeof(denied_events)) == 0
-	    && strcmp(tape.random_path, "lockout.dat") == 0
-	    && strcmp(tape.input_path, "Lockout.dat") == 0
+	    && strcmp(tape.random_path, "LOCKOUT.DAT") == 0
+	    && strcmp(tape.input_path, "LOCKOUT.DAT") == 0
 	    && !tape.open && tape.ended && tape.wait_seconds == 10.0f);
 	CHECK(state.denied && state.terminated && !state.file_open
 	    && state.lines_read == 2U);

@@ -1210,9 +1210,9 @@ test_maintenance_alias_compaction(void)
 	if (!yt_text_write("YTNAME.DAT", input, sizeof(input) - 1U, true,
 	    &error)
 	    || !yt_maintenance_remove_alias("Same Alias", &error)
-	    || !yt_text_read("ytname.dat", &result, &error))
+	    || !yt_text_read("YTNAME.DAT", &result, &error))
 		goto done;
-	temporary = fopen("tempwork", "rb");
+	temporary = fopen("TEMPWORK", "rb");
 	if (temporary != NULL) {
 		(void)fclose(temporary);
 		goto done;
@@ -1223,8 +1223,7 @@ test_maintenance_alias_compaction(void)
 done:
 	yt_text_free(&result);
 	(void)remove("YTNAME.DAT");
-	(void)remove("ytname.dat");
-	(void)remove("tempwork");
+	(void)remove("TEMPWORK");
 	return valid;
 }
 
@@ -1337,13 +1336,13 @@ test_news_rotation_transaction(void)
 	    || state.attempted != YT_NEWS_ROTATE_RENAME_CURRENT
 	    || tape.calls != 6U
 	    || memcmp(tape.events, expected_events, sizeof(expected_events)) != 0
-	    || strcmp(tape.first_path[0], "ytnews.dat") != 0
+	    || strcmp(tape.first_path[0], "YTNEWS.DAT") != 0
 	    || tape.first_path[1][0] != '\0'
-	    || strcmp(tape.first_path[2], "ytynews.dat") != 0
+	    || strcmp(tape.first_path[2], "YTYNEWS.DAT") != 0
 	    || tape.first_path[3][0] != '\0'
-	    || strcmp(tape.first_path[4], "ytynews.dat") != 0
-	    || strcmp(tape.first_path[5], "ytnews.dat") != 0
-	    || strcmp(tape.second_path[5], "ytynews.dat") != 0)
+	    || strcmp(tape.first_path[4], "YTYNEWS.DAT") != 0
+	    || strcmp(tape.first_path[5], "YTNEWS.DAT") != 0
+	    || strcmp(tape.second_path[5], "YTYNEWS.DAT") != 0)
 		return false;
 	for (index = 0U; index < 6U; ++index) {
 		memset(&tape, 0, sizeof(tape));
@@ -1364,50 +1363,6 @@ test_news_rotation_transaction(void)
 	    && strcmp(error.operation, "news rotation transaction") == 0
 	    && !yt_news_rotate_run(NULL, &ops, &tape, NULL)
 	    && !yt_news_rotate_run(&state, NULL, &tape, NULL);
-}
-
-static bool
-test_radio_compaction_literal_identity(void)
-{
-#ifdef _WIN32
-	return true;
-#else
-	struct yt_radio_record upper;
-	struct yt_radio_record exact;
-	uint8_t expected[YT_RADIO_RECORD_SIZE];
-	uint8_t *temporary = NULL;
-	size_t length = 0U;
-	struct yt_error error;
-	bool valid = false;
-
-	memset(upper.bytes, 0x11, sizeof(upper.bytes));
-	memset(exact.bytes, 0x22, sizeof(exact.bytes));
-	if (!yt_radio_set_number(&upper, 0U, 1.0f)
-	    || !yt_radio_set_number(&exact, 0U, 1.0f)
-	    || !write_file("YTRMSG.DAT", upper.bytes, sizeof(upper.bytes))
-	    || !write_file("ytRMSG.DAT", exact.bytes, sizeof(exact.bytes)))
-		goto done;
-	memcpy(expected, exact.bytes, 84U);
-	memset(expected + 84U, 0, 2U);
-	yt_error_clear(&error);
-	if (yt_radio_compact(&error) || error.status != YT_NOT_FOUND
-	    || strcmp(error.operation, "KILL") != 0
-	    || strcmp(error.path, "ytrmsg.dat") != 0
-	    || !read_file("temp", &temporary, &length)
-	    || length != sizeof(expected)
-	    || memcmp(temporary, expected, sizeof(expected)) != 0)
-		goto done;
-	valid = true;
-
-done:
-	free(temporary);
-	(void)remove("YTRMSG.DAT");
-	(void)remove("ytRMSG.DAT");
-	(void)remove("ytrmsg.dat");
-	(void)remove("temp");
-	(void)remove("Temp");
-	return valid;
-#endif
 }
 
 static bool
@@ -1457,15 +1412,15 @@ test_maintenance_message_compaction(void)
 	memset(expected + sizeof(first) + 84U, 0, 2U);
 	yt_error_clear(&error);
 	if (!write_file("YTRMSG.DAT", input, sizeof(input))
-	    || !write_file("temp", stale_temp, sizeof(stale_temp))
+	    || !write_file("TEMP", stale_temp, sizeof(stale_temp))
 	    || !yt_radio_compact(&error)
-	    || !read_file("ytrmsg.dat", &data, &length)
+	    || !read_file("YTRMSG.DAT", &data, &length)
 	    || length != sizeof(expected)
 	    || memcmp(data, expected, sizeof(expected)) != 0)
 		goto done;
 	free(data);
 	data = NULL;
-	file = fopen("temp", "rb");
+	file = fopen("TEMP", "rb");
 	if (file != NULL) {
 		(void)fclose(file);
 		goto done;
@@ -1473,7 +1428,7 @@ test_maintenance_message_compaction(void)
 	if (!write_file("YTNEWS.DAT", current_news, sizeof(current_news) - 1U)
 	    || !write_file("YTYNEWS.DAT", old_news, sizeof(old_news) - 1U)
 	    || !yt_news_rotate(&error)
-	    || !read_file("ytynews.dat", &data, &length)
+	    || !read_file("YTYNEWS.DAT", &data, &length)
 	    || length != sizeof(current_news) - 1U
 	    || memcmp(data, current_news, sizeof(current_news) - 1U) != 0)
 		goto done;
@@ -1486,7 +1441,7 @@ test_maintenance_message_compaction(void)
 	data = NULL;
 	(void)remove("YTYNEWS.DAT");
 	if (!yt_news_rotate(&error)
-	    || !read_file("ytynews.dat", &data, &length)
+	    || !read_file("YTYNEWS.DAT", &data, &length)
 	    || length != 1U || data[0] != 0x1aU)
 		goto done;
 	free(data);
@@ -1494,7 +1449,7 @@ test_maintenance_message_compaction(void)
 	(void)remove("YTYNEWS.DAT");
 	if (!write_file("YTNEWS.DAT", stale_news, sizeof(stale_news) - 1U)
 	    || !yt_news_rotate(&error)
-	    || !read_file("ytynews.dat", &data, &length)
+	    || !read_file("YTYNEWS.DAT", &data, &length)
 	    || length != sizeof(normalized_news) - 1U
 	    || memcmp(data, normalized_news,
 	    sizeof(normalized_news) - 1U) != 0)
@@ -1504,13 +1459,9 @@ test_maintenance_message_compaction(void)
 done:
 	free(data);
 	(void)remove("YTRMSG.DAT");
-	(void)remove("ytrmsg.dat");
-	(void)remove("temp");
-	(void)remove("Temp");
+	(void)remove("TEMP");
 	(void)remove("YTNEWS.DAT");
 	(void)remove("YTYNEWS.DAT");
-	(void)remove("ytnews.dat");
-	(void)remove("ytynews.dat");
 	return valid;
 }
 
@@ -3363,7 +3314,7 @@ test_expired_player_cleanup(struct yt_error *error)
 	    || !read_file("YTRMSG.DAT", &radio_bytes, &radio_length)
 	    || !yt_text_read("YTNAME.DAT", &result_names, error))
 		goto done;
-	temporary = fopen("tempwork", "rb");
+	temporary = fopen("TEMPWORK", "rb");
 	if (temporary != NULL) {
 		(void)fclose(temporary);
 		goto done;
@@ -3401,8 +3352,8 @@ done:
 	free(radio_bytes);
 	yt_text_free(&result_names);
 	yt_game_close(&game);
-	(void)remove("ytname.dat");
-	(void)remove("tempwork");
+	(void)remove("YTNAME.DAT");
+	(void)remove("TEMPWORK");
 	return valid;
 }
 
@@ -5514,8 +5465,6 @@ main(void)
 		failure = "maintenance alias compaction differs";
 	else if (!test_news_rotation_transaction())
 		failure = "maintenance news rotation transaction differs";
-	else if (!test_radio_compaction_literal_identity())
-		failure = "maintenance radio pathname identity differs";
 	else if (!test_maintenance_message_compaction())
 		failure = "maintenance message/news compaction differs";
 	else if (!test_maintenance_random_helpers())

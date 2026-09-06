@@ -1280,7 +1280,7 @@ not authoritative. Use the corrected goal above in the new workspace.
   staged string/runtime failures remain open.
 - The Xannor Headquarters victory body at `YT-SUB:[A7DE,A9B5)` now has a
   bounded native owner rather than the earlier generic text viewer and
-  C-string append approximation. `XannorHQ.TXT` records use the recovered
+  C-string append approximation. `XANNORHQ.TXT` records use the recovered
   `LINE INPUT` grammar: NUL bytes are discarded, CR terminates and consumes an
   immediately following LF, bare LF is retained, DOS EOF ends only at record
   entry, and an unterminated final record is returned. The continuation emits
@@ -2442,15 +2442,14 @@ not authoritative. Use the corrected goal above in the new workspace.
   copying with emitted zero bytes 84..85, incomplete-tail omission, TEMP
   replacement, and unconditional whole-current-news rotation over yesterday.
   The newspaper suffix is now a six-operation injected transaction over the
-  exact lowercase literals `ytnews.dat` and `ytynews.dat`; fixtures pin every
-  OPEN/CLOSE/KILL/NAME failure prefix as well as successful mixed-case source
-  resolution and the lowercase replacement identity.
-  The radio source OPEN now likewise receives the shipped mixed-case literal
-  `ytRMSG.DAT` directly, its destructive suffix passes lowercase
-  `ytrmsg.dat` to KILL and retains `Temp` as the NAME source. A POSIX
-  case-collision fixture proves the exact source wins the OPEN, its 84-byte
-  image reaches the closed temporary with a zero tail, and the later
-  lowercase KILL fails without deleting either colliding source.
+  canonical uppercase names `YTNEWS.DAT` and `YTYNEWS.DAT`; fixtures pin every
+  OPEN/CLOSE/KILL/NAME failure prefix and successful replacement. All built-in
+  DOS resource names are represented in uppercase; the host adapter still
+  resolves existing names case-insensitively, without treating capitalization
+  as a DOS-visible file identity.
+  Radio compaction likewise uses `YTRMSG.DAT` and `TEMP` throughout. Its
+  fixture pins the 84-byte copied image, zero tail, deletion, and replacement
+  without inventing a POSIX-only case-collision path.
   The clean-install composition now physically pins the immutable blank and
   `Compressing Message Base's` row before file work; all nine native CTests
   and all 39 focused YTRMSG/maintenance-daily oracle tests pass. Raw
@@ -2487,7 +2486,7 @@ not authoritative. Use the corrected goal above in the new workspace.
   the stable player name retained across the preceding length clear, removes
   every exact case-sensitive fields-three/four alias match, preserves
   real-name-only and case-mismatched rows in their original order, writes one
-  DOS EOF, and consumes `tempwork` through the successful delete/rename.
+  DOS EOF, and consumes `TEMPWORK` through the successful delete/rename.
   All nine native CTests and all 45 focused YTNAME/maintenance-daily oracle
   tests pass. Raw INPUT#/EOF/parser/movable-string/file-number state,
   malformed/incomplete/quoted-row execution, and every physical
@@ -2521,7 +2520,7 @@ not authoritative. Use the corrected goal above in the new workspace.
   body/return transfers are candidate. The maintenance owner now completes
   the shipped close-reopen readback after the existing score/cache/file
   generator. Deterministic native fixtures pin empty/Xannor and all-zero
-  failure prefixes, exact `NUL` to retained `yttemp`, full CRLF/DOS-EOF
+  failure prefixes, exact `NUL` to retained `YTTEMP`, full CRLF/DOS-EOF
   grammar, alive/dead players, deployed-defense scoring, durable score-cache
   writes, player/team reorder and names, and exact 19/23-row logical screen
   replay. All nine native CTests and all 45 focused scoreboard/lottery/output
@@ -2568,7 +2567,7 @@ not authoritative. Use the corrected goal above in the new workspace.
   local framebuffer remain open.
 - Computer command 8 at `YT:[8CA4,8D2F)` now owns its one leading blank,
   exact 63-byte `031F` prompt, whole-response `0357` T/Y retry loop, lowercase
-  current `ytnews.dat` versus uppercase `YTYNEWS.DAT` selection, shared viewer
+  current `YTNEWS.DAT` versus `YTYNEWS.DAT` selection, shared viewer
   call and controller return. A native fixture pins the canonical 90-byte
   successfully empty current-news body, and all 31 upstream newspaper/shared
   file-cycle cases pass. Retained 523/398-byte newspaper bodies and joined
@@ -3198,11 +3197,11 @@ at the outer function.
   rewrite them. Numeric equality is not always byte equality.
 - Preserve text CRLF, DOS EOF, padding, truncation, append positioning, and
   per-line durability exactly.
-- Preserve each executable's literal filename spelling and operation order.
-  The native filesystem compatibility layer must provide DOS-style
-  case-insensitive lookup on case-sensitive hosts without casually treating
-  distinct host directory entries as interchangeable. Audit ambiguous
-  case-colliding files explicitly.
+- Preserve each executable's filename operation order, while representing all
+  built-in DOS filenames canonically in uppercase. The native filesystem
+  compatibility layer must provide DOS-style case-insensitive lookup on
+  case-sensitive hosts. Distinct host entries that differ only by case are an
+  invalid DOS namespace, not separate compatibility identities.
 - The native and original binaries must be able to alternate over the same
   files. Test both directions with documented fixtures: original-created
   files mutated natively, and native-created files consumed and mutated by

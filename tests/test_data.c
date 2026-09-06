@@ -6317,13 +6317,13 @@ test_sequential_text_playback(void)
 
 	sequential_play_fixture(&success);
 	memset(&state, 0, sizeof(state));
-	state.path = "XannorHQ.TXT";
+	state.path = "XANNORHQ.TXT";
 	yt_error_clear(&error);
 	CHECK(yt_text_sequential_play_run(&state, &ops, &success, &error));
 	CHECK(success.calls == YT_ARRAY_LEN(expected)
 	    && success.event_count == YT_ARRAY_LEN(expected)
 	    && memcmp(success.events, expected, sizeof(expected)) == 0
-	    && strcmp(success.path, "XannorHQ.TXT") == 0
+	    && strcmp(success.path, "XANNORHQ.TXT") == 0
 	    && !success.open && !state.file_open
 	    && state.read_count == 6U && state.line_count == 5U
 	    && success.presented_count == 5U);
@@ -6337,7 +6337,7 @@ test_sequential_text_playback(void)
 		sequential_play_fixture(&tape);
 		tape.fail_at = failure;
 		memset(&state, 0, sizeof(state));
-		state.path = "XannorHQ.TXT";
+		state.path = "XANNORHQ.TXT";
 		yt_error_clear(&error);
 		CHECK(!yt_text_sequential_play_run(&state, &ops, &tape, &error));
 		CHECK(error.status == YT_IO_ERROR && tape.calls == failure
@@ -6352,7 +6352,7 @@ test_sequential_text_playback(void)
 	sequential_play_fixture(&tape);
 	tape.line_count = 0U;
 	memset(&state, 0, sizeof(state));
-	state.path = "XannorHQ.TXT";
+	state.path = "XANNORHQ.TXT";
 	yt_error_clear(&error);
 	CHECK(yt_text_sequential_play_run(&state, &ops, &tape, &error));
 	CHECK(tape.event_count == YT_ARRAY_LEN(empty_expected)

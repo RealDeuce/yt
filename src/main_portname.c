@@ -101,7 +101,7 @@ main(void)
 		yt_cli_error("PORTNAME", &error);
 		return EXIT_FAILURE;
 	}
-	if (!yt_database_open(&game.database, "ytdata.dat",
+	if (!yt_database_open(&game.database, "YTDATA.DAT",
 	    YT_OPEN_UPDATE_CREATE, &error)) {
 		yt_cli_error("PORTNAME", &error);
 		return EXIT_FAILURE;
@@ -167,7 +167,7 @@ main(void)
 		yt_cli_error("PORTNAME", &error);
 		return EXIT_FAILURE;
 	}
-	if (!yt_database_open(&game.database, "ytdata.dat",
+	if (!yt_database_open(&game.database, "YTDATA.DAT",
 	    YT_OPEN_UPDATE_CREATE,
 	    &error)) {
 		yt_cli_error("PORTNAME", &error);

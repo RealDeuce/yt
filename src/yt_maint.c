@@ -1567,16 +1567,16 @@ yt_radio_compact(struct yt_error *error)
 	yt_text_output_init(&temporary_output);
 	yt_radio_file_init(&destination);
 	yt_radio_file_init(&source);
-	if (!yt_text_output_open(&temporary_output, "temp", error)
+	if (!yt_text_output_open(&temporary_output, "TEMP", error)
 	    || !yt_text_output_close(&temporary_output, error))
 		goto done;
 	yt_text_output_destroy(&temporary_output);
 	yt_text_output_init(&temporary_output);
-	if (!yt_file_kill("temp", NULL, error)
-	    || !yt_radio_file_open_text_width(&destination, "temp", 72U,
+	if (!yt_file_kill("TEMP", NULL, error)
+	    || !yt_radio_file_open_text_width(&destination, "TEMP", 72U,
 	    error))
 		goto done;
-	if (!yt_radio_file_open_text_width(&source, "ytRMSG.DAT", 72U, error)
+	if (!yt_radio_file_open_text_width(&source, "YTRMSG.DAT", 72U, error)
 	    || !yt_radio_file_size(&source, &length, error))
 		goto done;
 	record_count = length / YT_RADIO_RECORD_SIZE;
@@ -1605,8 +1605,8 @@ yt_radio_compact(struct yt_error *error)
 		goto done;
 	if (!yt_radio_file_close(&destination, error))
 		goto done;
-	if (!yt_file_kill("ytrmsg.dat", NULL, error)
-	    || !yt_file_rename("Temp", "ytrmsg.dat", error))
+	if (!yt_file_kill("YTRMSG.DAT", NULL, error)
+	    || !yt_file_rename("TEMP", "YTRMSG.DAT", error))
 		goto done;
 	result = true;
 
@@ -1622,8 +1622,8 @@ yt_news_rotate_run(struct yt_news_rotate_state *state,
     const struct yt_news_rotate_ops *ops, void *context,
     struct yt_error *error)
 {
-	static const char current[] = "ytnews.dat";
-	static const char yesterday[] = "ytynews.dat";
+	static const char current[] = "YTNEWS.DAT";
+	static const char yesterday[] = "YTYNEWS.DAT";
 
 	if (state == NULL || ops == NULL || ops->open_append == NULL
 	    || ops->close == NULL || ops->kill == NULL || ops->rename == NULL) {
@@ -1853,13 +1853,13 @@ yt_maintenance_remove_alias(const char *player_name, struct yt_error *error)
 		++write_index;
 	}
 	names.count = write_index;
-	if (!yt_names_write("tempwork", &names, error)) {
+	if (!yt_names_write("TEMPWORK", &names, error)) {
 		yt_names_free(&names);
 		return false;
 	}
 	yt_names_free(&names);
 	if (!yt_file_kill("YTNAME.DAT", NULL, error)
-	    || !yt_file_rename("tempwork", "ytname.dat", error))
+	    || !yt_file_rename("TEMPWORK", "YTNAME.DAT", error))
 		return false;
 	return true;
 }
@@ -2758,7 +2758,7 @@ yt_maintenance_scoreboard(struct yt_game *game,
 	if (!yt_score_generate(game, error))
 		return false;
 	path = strcmp(game->config.scoreboard, "NUL") == 0
-	    ? "yttemp" : game->config.scoreboard;
+	    ? "YTTEMP" : game->config.scoreboard;
 	if (!yt_text_read(path, &bulletin, error))
 		return false;
 	while (cursor < bulletin.length && bulletin.data[cursor] != 0x1a) {

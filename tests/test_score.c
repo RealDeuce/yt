@@ -1016,7 +1016,7 @@ check_startup_configuration_transaction(void)
 	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
 	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
 	    || state.scoreboard_path_length != 11U
-	    || memcmp(config.scoreboard, "ytscore.asc", 12U) != 0)
+	    || memcmp(config.scoreboard, "YTSCORE.ASC", 12U) != 0)
 		return false;
 
 	/* The initial FOR test admits no GET when the raw terminal is below two. */
@@ -9036,7 +9036,7 @@ check_xannor_victory_transaction(void)
 	    || success.event_count != YT_ARRAY_LEN(expected_events)
 	    || memcmp(success.events, expected_events,
 	    sizeof(expected_events)) != 0 || success.calls != 18U
-	    || strcmp(success.file, "XannorHQ.TXT") != 0
+	    || strcmp(success.file, "XANNORHQ.TXT") != 0
 	    || success.foreground != 7.0f || success.blink != 1.0f
 	    || success.clear_count != 1U || success.wait_seconds != 99.0
 	    || success.presented_count != 3U
@@ -30690,11 +30690,11 @@ check_computer_newspaper_transaction(void)
 	    || memcmp(state.raw_response, "t\0", 2U) != 0
 	    || state.response_length != 1U
 	    || memcmp(state.response, "T\0", 2U) != 0
-	    || strcmp(state.selected_pathname, "ytnews.dat") != 0
+	    || strcmp(state.selected_pathname, "YTNEWS.DAT") != 0
 	    || !state.viewer_called || tape.leading_rows != 1U
 	    || tape.prompts != 2U || tape.calls != YT_ARRAY_LEN(retry_events)
 	    || memcmp(tape.events, retry_events, sizeof(retry_events)) != 0
-	    || strcmp(tape.viewed_path, "ytnews.dat") != 0)
+	    || strcmp(tape.viewed_path, "YTNEWS.DAT") != 0)
 		return false;
 
 	computer_newspaper_fixture(&tape, &state);
@@ -31431,11 +31431,11 @@ static bool
 check_computer_newspaper_recovery_persistence(void)
 {
 	static const uint8_t today[] =
-	    "*** GAME FILE [ytnews.dat] NOT FOUND! ***";
+	    "*** GAME FILE [YTNEWS.DAT] NOT FOUND! ***";
 	static const uint8_t yesterday[] =
 	    "*** GAME FILE [YTYNEWS.DAT] NOT FOUND! ***";
 	static const uint8_t created[] =
-	    "*** GAME FILE [ytnews.dat] NOT FOUND! ***\r\n\x1a";
+	    "*** GAME FILE [YTNEWS.DAT] NOT FOUND! ***\r\n\x1a";
 	static const uint8_t appended[] =
 	    "existing\r\n"
 	    "*** GAME FILE [YTYNEWS.DAT] NOT FOUND! ***\r\n\x1a";
@@ -31447,8 +31447,8 @@ check_computer_newspaper_recovery_persistence(void)
 	remove("YTNEWS.DAT");
 	memset(&tape, 0, sizeof(tape));
 	yt_error_clear(&error);
-	if (!yt_file_viewer_missing((const uint8_t *)"ytnews.dat",
-	    strlen("ytnews.dat"), computer_newspaper_recovery_present,
+	if (!yt_file_viewer_missing((const uint8_t *)"YTNEWS.DAT",
+	    strlen("YTNEWS.DAT"), computer_newspaper_recovery_present,
 	    computer_newspaper_recovery_append, &tape, &error)
 	    || tape.event_count != 2U || tape.events[0] != 1
 	    || tape.events[1] != 2 || tape.row_length != sizeof(today) - 1U
@@ -33714,7 +33714,7 @@ main(void)
 	    || score_field.physical_record != 3U
 	    || yt_record_get_number(&score_field.image, YT_F109) != -1.0f)
 		goto close;
-	score = fopen("yttemp", "rb");
+	score = fopen("YTTEMP", "rb");
 	if (score == NULL)
 		goto close;
 	if (fseek(score, 0, SEEK_END) != 0 || ftell(score) != 603L) {
@@ -33827,7 +33827,7 @@ done:
 	yt_platform_set_clock_provider(NULL, NULL);
 	remove("YTSCORE.ASC");
 	remove("ZERO.ASC");
-	remove("yttemp");
+	remove("YTTEMP");
 	remove("NUL");
 	remove("RICH.ASC");
 	remove("YTDATA.DAT");

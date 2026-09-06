@@ -127,14 +127,14 @@ add_executable(yt-assetgen EXCLUDE_FROM_ALL src/main_assetgen.c)
 yt_configure_target(yt-assetgen)
 
 set(YT_DATA_NAMES
-    ytopen.ans
-    ytopen.asc
-    ytinstr.doc
-    ytsysop.doc
-    xannorhq.txt
-    ytecho.txt
-    lockout.dat
-    yt.reg)
+    YTOPEN.ANS
+    YTOPEN.ASC
+    YTINSTR.DOC
+    YTSYSOP.DOC
+    XANNORHQ.TXT
+    YTECHO.TXT
+    LOCKOUT.DAT
+    YT.REG)
 set(YT_GENERATED_DATA_DIR "${CMAKE_CURRENT_BINARY_DIR}/data")
 set(YT_DATA_FILES)
 foreach(name IN LISTS YT_DATA_NAMES)

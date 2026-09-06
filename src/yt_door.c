@@ -175,11 +175,11 @@ read_effective_dorinfo(const char *requested_path,
 	if (!directory_path(directory))
 		return false;
 	if (node > 35)
-		strcpy(filename, "dorinfo1.def");
+		strcpy(filename, "DORINFO1.DEF");
 	else if (node > 9)
-		snprintf(filename, sizeof(filename), "dorinfo%c.def", node + 55);
+		snprintf(filename, sizeof(filename), "DORINFO%c.DEF", node + 55);
 	else
-		snprintf(filename, sizeof(filename), "dorinfo%d.def", node);
+		snprintf(filename, sizeof(filename), "DORINFO%d.DEF", node);
 	written = snprintf(candidate, sizeof(candidate), "%s%s%s", directory,
 	    directory[strlen(directory) - 1U] == '/'
 #ifdef _WIN32
@@ -189,7 +189,7 @@ read_effective_dorinfo(const char *requested_path,
 	if (written >= 0 && (size_t)written < sizeof(candidate)
 	    && read_dorinfo(candidate, identity))
 		return true;
-	written = snprintf(candidate, sizeof(candidate), "%s%sdorinfo1.def",
+	written = snprintf(candidate, sizeof(candidate), "%s%sDORINFO1.DEF",
 	    directory, directory[strlen(directory) - 1U] == '/'
 #ifdef _WIN32
 	    || directory[strlen(directory) - 1U] == '\\'

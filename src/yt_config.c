@@ -121,7 +121,7 @@ yt_config_normalize_game(struct yt_config *config, bool local_mode)
 	if (config->genesis_ports < 20.0f)
 		config->genesis_ports = 200.0f;
 	if (config->scoreboard[0] == '\0')
-		strcpy(config->scoreboard, "ytscore.asc");
+		strcpy(config->scoreboard, "YTSCORE.ASC");
 	if (config->local_screen < -1.0f || config->local_screen > 0.0f)
 		config->local_screen = -1.0f;
 	if (local_mode)

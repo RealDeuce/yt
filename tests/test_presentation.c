@@ -2532,14 +2532,14 @@ test_newspaper_physical_viewer_join(void)
 	} cases[] = {
 		{'T', true, retained_current_news,
 		    sizeof(retained_current_news) - 1U,
-		    UINT64_C(0xfb0c273ced751bf2), "ytnews.dat", 9U,
+		    UINT64_C(0xfb0c273ced751bf2), "YTNEWS.DAT", 9U,
 		    635U, UINT64_C(0xac361e7754a450cb), 15U,
 		    UINT64_C(0xcad0a9fb8ef9163e), 27U, 3U, 7U, 11U,
 		    6U, 4, 1.0f, 0.0f, today_final,
 		    sizeof(today_final) - 1U},
 		{'T', false, retained_current_news,
 		    sizeof(retained_current_news) - 1U,
-		    UINT64_C(0xfb0c273ced751bf2), "ytnews.dat", 9U,
+		    UINT64_C(0xfb0c273ced751bf2), "YTNEWS.DAT", 9U,
 		    523U, UINT64_C(0x94346bf3d8d4e0de), 15U,
 		    UINT64_C(0xcad0a9fb8ef9163e), 11U, 0U, 0U, 11U,
 		    0U, 7, 0.0f, 1.0f, today_final,
@@ -2637,7 +2637,7 @@ test_newspaper_endpoint_modes(void)
 	memset(&viewer, 0, sizeof(viewer));
 	fixture_viewer_initialize(&viewer, &stream,
 	    retained_current_news, sizeof(retained_current_news) - 1U,
-	    "ytnews.dat", true, remote, sizeof(remote));
+	    "YTNEWS.DAT", true, remote, sizeof(remote));
 	viewer.join.presentation.sound.mode = 1.0f;
 	CHECK(newspaper_viewer_run(&viewer, &stream, 'T')
 	    && viewer.join.remote_length == 0U);
@@ -2646,7 +2646,7 @@ test_newspaper_endpoint_modes(void)
 	memset(&viewer, 0, sizeof(viewer));
 	fixture_viewer_initialize(&viewer, &stream,
 	    retained_current_news, sizeof(retained_current_news) - 1U,
-	    "ytnews.dat", true, remote, sizeof(remote));
+	    "YTNEWS.DAT", true, remote, sizeof(remote));
 	viewer.join.presentation.sound.mode = 2.0f;
 	CHECK(newspaper_viewer_run(&viewer, &stream, 'T')
 	    && viewer.join.remote_length == sizeof(corrupt) - 1U
@@ -2677,7 +2677,7 @@ test_newspaper_pagination_and_ctrl_x(void)
 
 	memset(&viewer, 0, sizeof(viewer));
 	fixture_viewer_initialize(&viewer, &stream, long_news, position,
-	    "ytnews.dat", true, remote, sizeof(remote));
+	    "YTNEWS.DAT", true, remote, sizeof(remote));
 	(void)snprintf(viewer.join.response, sizeof(viewer.join.response),
 	    "%s", "E");
 	CHECK(newspaper_viewer_run(&viewer, &stream, 'T')
@@ -2692,7 +2692,7 @@ test_newspaper_pagination_and_ctrl_x(void)
 	memset(&viewer, 0, sizeof(viewer));
 	fixture_viewer_initialize(&viewer, &stream,
 	    retained_current_news, sizeof(retained_current_news) - 1U,
-	    "ytnews.dat", true, remote, sizeof(remote));
+	    "YTNEWS.DAT", true, remote, sizeof(remote));
 	viewer.join.injected_sample_call = 2U;
 	viewer.join.injected_sample.bytes[0] = 0x18U;
 	viewer.join.injected_sample.length = 1U;
@@ -4619,7 +4619,7 @@ test_shared_error_model(void)
 		const char *message;
 	} diagnostics[] = {
 		{630, YT_SHARED_ERROR_DATA_OPEN,
-		    "Error opening ytDATA.DAT"},
+		    "Error opening YTDATA.DAT"},
 		{2710, YT_SHARED_ERROR_ANSI_OPEN,
 		    "Please Create YTOPEN.ANS for ANSI graphics users!"},
 		{64001, YT_SHARED_ERROR_RANKINGS_FILESPEC,
@@ -14643,10 +14643,10 @@ test_computer_newspaper_full_cycle_presentation(void)
 		float final_bold;
 	} cases[] = {
 		{true, 'T', retained_current_news,
-		    sizeof(retained_current_news) - 1U, "ytnews.dat", 9U,
+		    sizeof(retained_current_news) - 1U, "YTNEWS.DAT", 9U,
 		    732U, UINT64_C(0x7dec74d285edb57f), 0.0f},
 		{false, 'T', retained_current_news,
-		    sizeof(retained_current_news) - 1U, "ytnews.dat", 9U,
+		    sizeof(retained_current_news) - 1U, "YTNEWS.DAT", 9U,
 		    610U, UINT64_C(0x93efb9289cdb699d), 1.0f},
 		{true, 'Y', retained_yesterday_news,
 		    sizeof(retained_yesterday_news) - 1U, "YTYNEWS.DAT", 7U,
@@ -14808,7 +14808,7 @@ test_computer_newspaper_low_time_cycles(void)
 		memset(&viewer, 0, sizeof(viewer));
 		fixture_viewer_initialize(&viewer, &stream,
 		    retained_current_news, sizeof(retained_current_news) - 1U,
-		    "ytnews.dat", cases[pass].ansi, remote, sizeof(remote));
+		    "YTNEWS.DAT", cases[pass].ansi, remote, sizeof(remote));
 		CHECK(computer_newspaper_low_time_cycle_run(&viewer, &stream,
 		    cases[pass].ansi, cases[pass].invalid_first, &warnings));
 		CHECK(viewer.join.remote_length == cases[pass].remote_length
@@ -14962,7 +14962,7 @@ test_computer_newspaper_queue_cycles(void)
 
 	memset(&viewer, 0, sizeof(viewer));
 	fixture_viewer_initialize(&viewer, &stream, retained_current_news,
-	    sizeof(retained_current_news) - 1U, "ytnews.dat", true,
+	    sizeof(retained_current_news) - 1U, "YTNEWS.DAT", true,
 	    remote, sizeof(remote));
 	CHECK(computer_newspaper_command_queue_cycle_run(&viewer, &stream,
 	    true));
@@ -14979,7 +14979,7 @@ test_computer_newspaper_queue_cycles(void)
 
 	memset(&viewer, 0, sizeof(viewer));
 	fixture_viewer_initialize(&viewer, &stream, retained_current_news,
-	    sizeof(retained_current_news) - 1U, "ytnews.dat", true,
+	    sizeof(retained_current_news) - 1U, "YTNEWS.DAT", true,
 	    remote, sizeof(remote));
 	CHECK(computer_newspaper_selector_queue_cycle_run(&viewer, &stream,
 	    short_typed, sizeof(short_typed) - 1U));
@@ -15001,7 +15001,7 @@ test_computer_newspaper_queue_cycles(void)
 		CHECK(long_length != 0U);
 		memset(&viewer, 0, sizeof(viewer));
 		fixture_viewer_initialize(&viewer, &stream, long_news,
-		    long_length, "ytnews.dat", true, remote, sizeof(remote));
+		    long_length, "YTNEWS.DAT", true, remote, sizeof(remote));
 		CHECK(computer_newspaper_selector_queue_cycle_run(&viewer,
 		    &stream, page_cases[pass].typed,
 		    page_cases[pass].typed_length));
@@ -15068,7 +15068,7 @@ computer_newspaper_missing_cycle_run(struct physical_viewer_join *viewer,
 {
 	static const uint8_t computer_prompt[] =
 	    "Time:15:00  Computer command (?=help)? ";
-	const char *path = choice == 'T' ? "ytnews.dat" : "YTYNEWS.DAT";
+	const char *path = choice == 'T' ? "YTNEWS.DAT" : "YTYNEWS.DAT";
 	struct viewer_pager_join *join = &viewer->join;
 	struct yt_main_error_result handler;
 	struct yt_present_result result;
@@ -15112,7 +15112,7 @@ test_computer_newspaper_missing_recovery_cycles(void)
 	static const uint8_t debug[] =
 	    "YT DEBUG Error Trap Entry ERL=  40000   ERR=  53 ";
 	static const uint8_t today_row[] =
-	    "*** GAME FILE [ytnews.dat] NOT FOUND! ***";
+	    "*** GAME FILE [YTNEWS.DAT] NOT FOUND! ***";
 	static const uint8_t yesterday_row[] =
 	    "*** GAME FILE [YTYNEWS.DAT] NOT FOUND! ***";
 	static const uint8_t return_prompt[] =
@@ -15127,9 +15127,9 @@ test_computer_newspaper_missing_recovery_cycles(void)
 		size_t cycle_length;
 		uint64_t cycle_fnv;
 	} cases[] = {
-		{'T', "ytnews.dat", today_row, sizeof(today_row) - 1U,
-		    133U, UINT64_C(0xf1bafa4d6fa6dc81),
-		    174U, UINT64_C(0xfa4827066307bbfa)},
+		{'T', "YTNEWS.DAT", today_row, sizeof(today_row) - 1U,
+		    133U, UINT64_C(0x4a22afa1bc1c31a1),
+		    174U, UINT64_C(0xefdf769011eb9c9a)},
 		{'Y', "YTYNEWS.DAT", yesterday_row,
 		    sizeof(yesterday_row) - 1U,
 		    134U, UINT64_C(0xdec6c0c37ee7543b),
@@ -15220,7 +15220,7 @@ test_computer_newspaper_carrier_prefixes(void)
 		memset(&viewer, 0, sizeof(viewer));
 		fixture_viewer_initialize(&viewer, &stream,
 		    retained_current_news, sizeof(retained_current_news) - 1U,
-		    "ytnews.dat", cases[pass].ansi, remote, sizeof(remote));
+		    "YTNEWS.DAT", cases[pass].ansi, remote, sizeof(remote));
 		viewer.join.fail_at = cases[pass].fail_at;
 		CHECK(!newspaper_viewer_run(&viewer, &stream, 'T')
 		    && viewer.join.remote_length == cases[pass].remote_length
