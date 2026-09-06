@@ -16079,6 +16079,125 @@ done:
 }
 
 static bool
+check_maintenance_mercenary_mine_planet_phase_pass(void)
+{
+	static const uint8_t random_bytes[] = {
+		0x00, 0x00, 0x80,
+		0x00, 0x00, 0x80,
+		0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00
+	};
+	static const uint8_t expected_screen[] =
+	    "\r\r\rMercenary Maintenance...\r\r"
+	    "Checking for Mercenary Planet.. Rebuild if missing\r"
+	    "  -  10 Mercenaries moving from sector 2 \r"
+	    " *** 10 mercenaries hit sector mines in sector 1!\r"
+	    " *** Lost a total of 1 fighters!\r"
+	    "  -  9 Mercenaries taking 3 fighters from planet "
+	    "Mercenary Base!\r";
+	static const uint8_t expected_news[] =
+	    "  -  Mercenary Report:\r\n"
+	    " *** 10 mercenaries hit sector mines in sector 1!\r\n"
+	    " *** Lost a total of 1 fighters!\r\n"
+	    "  -  9 Mercenaries taking 3 fighters from planet "
+	    "Mercenary Base!\r\n\x1a";
+	struct score_random_script script = {
+		random_bytes, sizeof(random_bytes), 0U
+	};
+	struct score_line_tape screen = {0};
+	struct yt_maintenance_route_cache cache = {0};
+	struct yt_text_file news = {0};
+	struct yt_sector sector;
+	struct yt_planet planet;
+	struct yt_record record;
+	struct yt_game game;
+	struct yt_error error;
+	FILE *radio_file = NULL;
+	bool valid = false;
+
+	(void)remove("YTDATA.DAT");
+	(void)remove("YTNEWS.DAT");
+	(void)remove("YTRMSG.DAT");
+	memset(&game, 0, sizeof(game));
+	game.config.sector_offset = 2.0f;
+	game.config.port_offset = 4.0f;
+	game.config.planet_offset = 5.0f;
+	game.config.total_records = 7.0f;
+	yt_random_init(&game.random);
+	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_error_clear(&error);
+	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
+	    &error))
+		goto done;
+	yt_record_blank(&record);
+	if (!yt_database_write(&game.database, 2U, &record, &error))
+		goto done;
+	yt_record_blank(&record);
+	if (!yt_record_set_number(&record, YT_F41, 2.0f)
+	    || !yt_record_set_number(&record, YT_F93, 1.0f)
+	    || !yt_record_set_number(&record, YT_F129, 1.0f)
+	    || !yt_database_write(&game.database,
+	    (size_t)yt_sector_basic_record(&game.config, 1), &record, &error))
+		goto done;
+	yt_record_blank(&record);
+	if (!yt_record_set_number(&record, YT_F41, 1.0f)
+	    || !yt_record_set_number(&record, YT_F81, 10.0f)
+	    || !yt_record_set_number(&record, YT_F85, -2.0f)
+	    || !yt_database_write(&game.database,
+	    (size_t)yt_sector_basic_record(&game.config, 2), &record, &error))
+		goto done;
+	yt_record_blank(&record);
+	if (!yt_database_write(&game.database,
+	    (size_t)yt_port_basic_record(&game.config, 1), &record, &error))
+		goto done;
+	yt_record_set_text(&record, (const uint8_t *)"Mercenary Base", 14U);
+	if (!yt_record_set_number(&record, YT_F73, -2.0f)
+	    || !yt_record_set_number(&record, YT_F77, 1.0f)
+	    || !yt_record_set_number(&record, YT_F85, 14.0f)
+	    || !yt_record_set_number(&record, YT_F117, 1.0f)
+	    || !yt_record_set_number(&record, YT_F129, 3.4f)
+	    || !yt_database_write(&game.database,
+	    (size_t)yt_planet_basic_record(&game.config, 1), &record, &error))
+		goto done;
+	if (!yt_maintenance_maintain_mercenaries(&game, &cache,
+	    score_line_collect, &screen, &error)
+	    || game.random.draws != 6U
+	    || script.position != sizeof(random_bytes)
+	    || cache.warps == NULL || cache.successors == NULL
+	    || cache.sector_count != 2 || screen.lines != 10U
+	    || screen.length != sizeof(expected_screen) - 1U
+	    || memcmp(screen.data, expected_screen,
+	    sizeof(expected_screen) - 1U) != 0
+	    || !yt_text_read("YTNEWS.DAT", &news, &error)
+	    || news.length != sizeof(expected_news) - 1U
+	    || memcmp(news.data, expected_news, sizeof(expected_news) - 1U)
+	    != 0
+	    || !yt_game_read_sector(&game, 1, &sector, &error)
+	    || sector.fighters != 12.0f || sector.fighter_owner != -2.0f
+	    || sector.planet != 1.0f || sector.mines != 0.0f
+	    || !yt_game_read_sector(&game, 2, &sector, &error)
+	    || sector.fighters != 0.0f || sector.fighter_owner != 0.0f
+	    || !yt_game_read_planet(&game, 1, &planet, &error)
+	    || planet.fighters != 0.0f || planet.owner != -2.0f)
+		goto done;
+	radio_file = fopen("YTRMSG.DAT", "rb");
+	valid = radio_file == NULL;
+
+done:
+	if (radio_file != NULL)
+		(void)fclose(radio_file);
+	yt_text_free(&news);
+	yt_maintenance_route_cache_free(&cache);
+	yt_game_close(&game);
+	(void)remove("YTDATA.DAT");
+	(void)remove("YTNEWS.DAT");
+	(void)remove("YTRMSG.DAT");
+	return valid;
+}
+
+static bool
 check_maintenance_mercenary_base_pass(void)
 {
 	static const uint8_t random_bytes[] = {
@@ -34578,6 +34697,8 @@ main(void)
 	if (!check_maintenance_mercenary_funding_phase_pass())
 		goto done;
 	if (!check_maintenance_mercenary_attack_phase_pass())
+		goto done;
+	if (!check_maintenance_mercenary_mine_planet_phase_pass())
 		goto done;
 	if (!check_maintenance_mercenary_base_pass())
 		goto done;
