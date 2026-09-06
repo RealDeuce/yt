@@ -339,6 +339,37 @@ struct yt_maintenance_default_headquarters_ops {
 	    struct yt_error *error);
 };
 
+enum yt_maintenance_scoreboard_readback_step {
+	YT_MAINTENANCE_SCOREBOARD_READBACK_NONE,
+	YT_MAINTENANCE_SCOREBOARD_READBACK_CLOSE_GENERATED,
+	YT_MAINTENANCE_SCOREBOARD_READBACK_OPEN_INPUT,
+	YT_MAINTENANCE_SCOREBOARD_READBACK_CHECK_EOF,
+	YT_MAINTENANCE_SCOREBOARD_READBACK_LINE_INPUT,
+	YT_MAINTENANCE_SCOREBOARD_READBACK_PRESENT,
+	YT_MAINTENANCE_SCOREBOARD_READBACK_CLOSE_INPUT,
+};
+
+struct yt_maintenance_scoreboard_readback_state {
+	enum yt_maintenance_scoreboard_readback_step attempted;
+	size_t completed_steps;
+	size_t eof_checks;
+	size_t read_count;
+	size_t line_count;
+	bool eof;
+	bool file_open;
+	bool complete;
+};
+
+struct yt_maintenance_scoreboard_readback_ops {
+	bool (*close)(void *context, struct yt_error *error);
+	bool (*open)(void *context, const char *path, struct yt_error *error);
+	bool (*eof)(void *context, bool *eof, struct yt_error *error);
+	bool (*read)(void *context, const uint8_t **line, size_t *length,
+	    bool *available, struct yt_error *error);
+	bool (*present)(void *context, const uint8_t *line, size_t length,
+	    struct yt_error *error);
+};
+
 bool yt_maintenance_xannor_should_retarget(float group_location,
     float group_size);
 bool yt_maintenance_xannor_route_complete(float group_location,
@@ -651,6 +682,11 @@ bool yt_maintenance_maintain_mercenaries(struct yt_game *game,
     struct yt_maintenance_route_cache *cache,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_error *error);
+bool yt_maintenance_scoreboard_readback_run(
+	struct yt_maintenance_scoreboard_readback_state *state,
+	const char *path,
+	const struct yt_maintenance_scoreboard_readback_ops *ops,
+	void *context, struct yt_error *error);
 bool yt_maintenance_scoreboard(struct yt_game *game,
     yt_maintenance_score_line_fn line_output, void *context,
     struct yt_error *error);

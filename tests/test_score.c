@@ -15591,6 +15591,196 @@ score_line_fail(void *context, const uint8_t *line, size_t length,
 	return score_line_collect(&fault->tape, line, length, error);
 }
 
+struct scoreboard_readback_test_tape {
+	struct score_line_tape screen;
+	enum yt_maintenance_scoreboard_readback_step steps[10];
+	size_t calls;
+	size_t fail_at;
+	size_t position;
+	size_t close_calls;
+	size_t open_calls;
+	size_t eof_calls;
+	size_t read_calls;
+	size_t present_calls;
+	char path[32];
+};
+
+static bool
+scoreboard_readback_test_step(struct scoreboard_readback_test_tape *tape,
+    enum yt_maintenance_scoreboard_readback_step step,
+    struct yt_error *error)
+{
+	size_t call = tape->calls++;
+
+	if (call < YT_ARRAY_LEN(tape->steps))
+		tape->steps[call] = step;
+	if (call != tape->fail_at)
+		return true;
+	if (error != NULL)
+		error->status = YT_IO_ERROR;
+	return false;
+}
+
+static bool
+scoreboard_readback_test_close(void *context, struct yt_error *error)
+{
+	struct scoreboard_readback_test_tape *tape = context;
+
+	++tape->close_calls;
+	return scoreboard_readback_test_step(tape,
+	    tape->close_calls == 1U
+	    ? YT_MAINTENANCE_SCOREBOARD_READBACK_CLOSE_GENERATED
+	    : YT_MAINTENANCE_SCOREBOARD_READBACK_CLOSE_INPUT, error);
+}
+
+static bool
+scoreboard_readback_test_open(void *context, const char *path,
+    struct yt_error *error)
+{
+	struct scoreboard_readback_test_tape *tape = context;
+
+	++tape->open_calls;
+	(void)snprintf(tape->path, sizeof(tape->path), "%s", path);
+	return scoreboard_readback_test_step(tape,
+	    YT_MAINTENANCE_SCOREBOARD_READBACK_OPEN_INPUT, error);
+}
+
+static bool
+scoreboard_readback_test_eof(void *context, bool *eof,
+    struct yt_error *error)
+{
+	struct scoreboard_readback_test_tape *tape = context;
+
+	++tape->eof_calls;
+	*eof = tape->position >= 2U;
+	return scoreboard_readback_test_step(tape,
+	    YT_MAINTENANCE_SCOREBOARD_READBACK_CHECK_EOF, error);
+}
+
+static bool
+scoreboard_readback_test_read(void *context, const uint8_t **line,
+    size_t *length, bool *available, struct yt_error *error)
+{
+	static const uint8_t first[] = "alpha";
+	static const uint8_t second[] = "";
+	static const uint8_t *const lines[] = {first, second};
+	static const size_t lengths[] = {sizeof(first) - 1U, 0U};
+	struct scoreboard_readback_test_tape *tape = context;
+	size_t position = tape->position;
+
+	++tape->read_calls;
+	if (position >= YT_ARRAY_LEN(lines)) {
+		*line = NULL;
+		*length = 0U;
+		*available = false;
+	} else {
+		*line = lines[position];
+		*length = lengths[position];
+		*available = true;
+		++tape->position;
+	}
+	return scoreboard_readback_test_step(tape,
+	    YT_MAINTENANCE_SCOREBOARD_READBACK_LINE_INPUT, error);
+}
+
+static bool
+scoreboard_readback_test_present(void *context, const uint8_t *line,
+    size_t length, struct yt_error *error)
+{
+	struct scoreboard_readback_test_tape *tape = context;
+
+	++tape->present_calls;
+	if (!scoreboard_readback_test_step(tape,
+	    YT_MAINTENANCE_SCOREBOARD_READBACK_PRESENT, error))
+		return false;
+	return score_line_collect(&tape->screen, line, length, error);
+}
+
+static void
+scoreboard_readback_test_prepare(struct scoreboard_readback_test_tape *tape)
+{
+	memset(tape, 0, sizeof(*tape));
+	tape->fail_at = SIZE_MAX;
+}
+
+static bool
+check_maintenance_scoreboard_readback_transaction(void)
+{
+	static const struct yt_maintenance_scoreboard_readback_ops ops = {
+		scoreboard_readback_test_close,
+		scoreboard_readback_test_open,
+		scoreboard_readback_test_eof,
+		scoreboard_readback_test_read,
+		scoreboard_readback_test_present,
+	};
+	static const enum yt_maintenance_scoreboard_readback_step steps[] = {
+		YT_MAINTENANCE_SCOREBOARD_READBACK_CLOSE_GENERATED,
+		YT_MAINTENANCE_SCOREBOARD_READBACK_OPEN_INPUT,
+		YT_MAINTENANCE_SCOREBOARD_READBACK_CHECK_EOF,
+		YT_MAINTENANCE_SCOREBOARD_READBACK_LINE_INPUT,
+		YT_MAINTENANCE_SCOREBOARD_READBACK_PRESENT,
+		YT_MAINTENANCE_SCOREBOARD_READBACK_CHECK_EOF,
+		YT_MAINTENANCE_SCOREBOARD_READBACK_LINE_INPUT,
+		YT_MAINTENANCE_SCOREBOARD_READBACK_PRESENT,
+		YT_MAINTENANCE_SCOREBOARD_READBACK_CHECK_EOF,
+		YT_MAINTENANCE_SCOREBOARD_READBACK_CLOSE_INPUT,
+	};
+	struct yt_maintenance_scoreboard_readback_ops incomplete = ops;
+	struct yt_maintenance_scoreboard_readback_state state;
+	struct scoreboard_readback_test_tape tape;
+	struct yt_error error;
+	size_t index;
+
+	scoreboard_readback_test_prepare(&tape);
+	if (!yt_maintenance_scoreboard_readback_run(&state, "YTSCORE.ASC",
+	    &ops, &tape, NULL) || !state.complete || state.file_open
+	    || !state.eof || state.completed_steps != YT_ARRAY_LEN(steps)
+	    || state.eof_checks != 3U || state.read_count != 2U
+	    || state.line_count != 2U || tape.calls != YT_ARRAY_LEN(steps)
+	    || tape.close_calls != 2U || tape.open_calls != 1U
+	    || tape.eof_calls != 3U || tape.read_calls != 2U
+	    || tape.present_calls != 2U
+	    || strcmp(tape.path, "YTSCORE.ASC") != 0
+	    || tape.screen.lines != 2U || tape.screen.length != 7U
+	    || memcmp(tape.screen.data, "alpha\r\r", 7U) != 0
+	    || memcmp(tape.steps, steps, sizeof(steps)) != 0)
+		return false;
+	for (index = 0U; index < YT_ARRAY_LEN(steps); ++index) {
+		size_t expected_lines = index <= 4U ? 0U
+		    : index <= 7U ? 1U : 2U;
+
+		scoreboard_readback_test_prepare(&tape);
+		tape.fail_at = index;
+		memset(&state, 0xa5, sizeof(state));
+		yt_error_clear(&error);
+		if (yt_maintenance_scoreboard_readback_run(&state,
+		    "YTSCORE.ASC", &ops, &tape, &error) || state.complete
+		    || state.completed_steps != index
+		    || state.attempted != steps[index]
+		    || state.file_open != (index >= 2U)
+		    || state.line_count != expected_lines
+		    || tape.screen.lines != expected_lines
+		    || tape.calls != index + 1U
+		    || memcmp(tape.steps, steps,
+		    (index + 1U) * sizeof(steps[0])) != 0
+		    || error.status != YT_IO_ERROR)
+			return false;
+	}
+	incomplete.eof = NULL;
+	yt_error_clear(&error);
+	return !yt_maintenance_scoreboard_readback_run(&state, "YTSCORE.ASC",
+	    &incomplete, &tape, &error)
+	    && error.status == YT_INVALID
+	    && strcmp(error.operation,
+	    "maintenance scoreboard readback") == 0
+	    && !yt_maintenance_scoreboard_readback_run(NULL, "YTSCORE.ASC",
+	    &ops, &tape, NULL)
+	    && !yt_maintenance_scoreboard_readback_run(&state, NULL, &ops,
+	    &tape, NULL)
+	    && !yt_maintenance_scoreboard_readback_run(&state, "YTSCORE.ASC",
+	    NULL, &tape, NULL);
+}
+
 static bool
 score_clock_read(void *context, struct yt_clock_value *value,
     struct yt_error *error)
@@ -35784,6 +35974,8 @@ main(void)
 		return fail("maintenance entry output differs");
 	if (!check_maintenance_config_defaults())
 		return fail("maintenance configuration defaults differ");
+	if (!check_maintenance_scoreboard_readback_transaction())
+		return fail("maintenance scoreboard readback transaction differs");
 	if (!check_maintenance_player_aging())
 		return fail("maintenance player aging differs");
 	if (!check_maintenance_port_model())
