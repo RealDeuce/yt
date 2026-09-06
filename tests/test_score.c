@@ -16,10 +16,13 @@
 #ifdef _WIN32
 #include <direct.h>
 #define yt_chdir _chdir
+#define yt_mkdir(path) _mkdir(path)
 #define yt_rmdir _rmdir
 #else
+#include <sys/stat.h>
 #include <unistd.h>
 #define yt_chdir chdir
+#define yt_mkdir(path) mkdir((path), 0700)
 #define yt_rmdir rmdir
 #endif
 
@@ -17340,6 +17343,7 @@ check_maintenance_super_lottery_pass(void)
 	struct yt_error error;
 	FILE *file = NULL;
 	size_t index;
+	bool lottery_call;
 	bool valid = false;
 
 	(void)remove("YTDATA.DAT");
@@ -17649,6 +17653,61 @@ check_maintenance_super_lottery_pass(void)
 			goto done;
 	}
 
+	/* Durable construction precedes winner output, news and personal radio. */
+	yt_database_set_write_provider(&game.database, NULL, NULL);
+	if (!yt_database_write(&game.database, 2U, &player, &error)
+	    || !yt_database_write(&game.database, 31U, &planet_before, &error)
+	    || !yt_database_write(&game.database, 11U, &sector_before, &error))
+		goto done;
+	line_fault = (struct score_line_fault_tape){
+		.tape = {0},
+		.calls = 0U,
+		.fail_at = 2U
+	};
+	script = (struct score_random_script){success_draws,
+	    sizeof(success_draws), 0U};
+	yt_random_init(&game.random);
+	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_error_clear(&error);
+	if (yt_maintenance_super_lottery(&game, 1, 1, 1,
+	    NULL, 0U, score_line_fail, &line_fault, &result, &error)
+	    || error.status != YT_IO_ERROR || line_fault.calls != 3U
+	    || line_fault.tape.lines != 2U || game.random.draws != 12U
+	    || line_fault.tape.length != sizeof(phase_prefix) - 1U
+	    || memcmp(line_fault.tape.data, phase_prefix,
+	    sizeof(phase_prefix) - 1U) != 0
+	    || !yt_database_read(&game.database, 31U, &after, &error)
+	    || memcmp(after.bytes, planet_success.bytes, YT_RECORD_SIZE) != 0
+	    || !yt_database_read(&game.database, 11U, &after, &error)
+	    || memcmp(after.bytes, sector_success.bytes, YT_RECORD_SIZE) != 0)
+		goto done;
+
+	/* A news OPEN failure follows the complete winner row and both PUTs. */
+	if (!yt_database_write(&game.database, 31U, &planet_before, &error)
+	    || !yt_database_write(&game.database, 11U, &sector_before, &error)
+	    || yt_mkdir("YTNEWS.DAT") != 0)
+		goto done;
+	memset(&screen, 0, sizeof(screen));
+	script = (struct score_random_script){success_draws,
+	    sizeof(success_draws), 0U};
+	yt_random_init(&game.random);
+	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_error_clear(&error);
+	lottery_call = yt_maintenance_super_lottery(&game, 1, 1, 1,
+	    NULL, 0U, score_line_collect, &screen, &result, &error);
+	if (lottery_call
+	    || error.status != YT_IO_ERROR || screen.lines != 3U
+	    || screen.length != sizeof(expected_screen) - 1U
+	    || memcmp(screen.data, expected_screen,
+	    sizeof(expected_screen) - 1U) != 0
+	    || !yt_database_read(&game.database, 31U, &after, &error)
+	    || memcmp(after.bytes, planet_success.bytes, YT_RECORD_SIZE) != 0
+	    || !yt_database_read(&game.database, 11U, &after, &error)
+	    || memcmp(after.bytes, sector_success.bytes, YT_RECORD_SIZE) != 0)
+		goto done;
+	if (yt_rmdir("YTNEWS.DAT") != 0)
+		goto done;
+
 	/* Each logical output cut retains only its accepted complete rows. */
 	for (index = 0U; index < 3U; ++index) {
 		line_fault = (struct score_line_fault_tape){
@@ -17704,6 +17763,7 @@ done:
 	(void)remove("YTDATA.DAT");
 	(void)remove("YTNEWS.DAT");
 	(void)remove("YTRMSG.DAT");
+	(void)yt_rmdir("YTNEWS.DAT");
 	return valid;
 }
 
