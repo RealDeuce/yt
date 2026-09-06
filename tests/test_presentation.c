@@ -27337,10 +27337,10 @@ direct_emergency_warp_fresh_hostile_menu_terminal(
 }
 
 static bool
-direct_emergency_warp_fresh_hostile_attack_admission_amount(
+direct_emergency_warp_fresh_hostile_attack_admission_amount_with_ship(
     struct hostile_mines_hazard_fixture *fixture,
     struct direct_warp_main_cycle_state *cycle, const uint8_t *response,
-    size_t response_length)
+    size_t response_length, float ship_fighters)
 {
 	static const uint8_t heading[] = "<Attack>";
 	static const uint8_t prompt[] = "Attack with how many fighters? ";
@@ -27373,12 +27373,22 @@ direct_emergency_warp_fresh_hostile_attack_admission_amount(
 	    || qb_mbf32_encode((float)parsed.value, raw) != QB_MBF_OK)
 		return false;
 	cycle->fresh_hostile_attack_commitment = qb_mbf32_decode(raw);
-	if (yt_hostile_attack_admit(1000.0f,
+	if (yt_hostile_attack_admit(ship_fighters,
 	    cycle->fresh_hostile_attack_commitment)
 	    != YT_HOSTILE_ATTACK_ADMITTED)
 		return false;
 	cycle->fresh_hostile_attack_sector_get_boundary = true;
 	return true;
+}
+
+static bool
+direct_emergency_warp_fresh_hostile_attack_admission_amount(
+    struct hostile_mines_hazard_fixture *fixture,
+    struct direct_warp_main_cycle_state *cycle, const uint8_t *response,
+    size_t response_length)
+{
+	return direct_emergency_warp_fresh_hostile_attack_admission_amount_with_ship(
+	    fixture, cycle, response, response_length, 1000.0f);
 }
 
 static bool
@@ -27388,8 +27398,8 @@ direct_emergency_warp_fresh_hostile_attack_admission(
 {
 	static const uint8_t response[] = "1";
 
-	return direct_emergency_warp_fresh_hostile_attack_admission_amount(
-	    fixture, cycle, response, sizeof(response) - 1U);
+	return direct_emergency_warp_fresh_hostile_attack_admission_amount_with_ship(
+	    fixture, cycle, response, sizeof(response) - 1U, 1000.0f);
 }
 
 static bool
@@ -37285,6 +37295,240 @@ test_xannor_attack_combat_victory_join(void)
 }
 
 static void
+test_direct_emergency_warp_xannor_attack_victory_join(void)
+{
+	static const uint8_t player_name[] = {'A', 0, 'B'};
+	static const uint8_t response[] = "256000";
+	static const struct {
+		bool main;
+		bool ansi;
+		const uint8_t *command;
+		size_t command_length;
+		size_t start;
+		size_t total;
+		uint64_t hash;
+		size_t suffix;
+		uint64_t suffix_hash;
+		size_t rows;
+		uint64_t row_hash;
+		size_t colors;
+		uint64_t color_hash;
+	} callers[] = {
+		{true, false, (const uint8_t *)"W", 1U, 927U, 1611U,
+		    UINT64_C(0x5aba16ea20a01151), 684U,
+		    UINT64_C(0x61187d26ba741bd5), 51U,
+		    UINT64_C(0x2de555ef9a7f709f), 12U,
+		    UINT64_C(0x5218ab7752360135)},
+		{true, true, (const uint8_t *)"W", 1U, 1199U, 1929U,
+		    UINT64_C(0xb0649e5ffc5b53ac), 730U,
+		    UINT64_C(0xc2eb0dc81d4233ff), 51U,
+		    UINT64_C(0x2de555ef9a7f709f), 75U,
+		    UINT64_C(0xa953dcef4a7abe5a)},
+		{false, false, (const uint8_t *)"W", 1U, 949U, 1633U,
+		    UINT64_C(0xa7639c8f60104879), 684U,
+		    UINT64_C(0x61187d26ba741bd5), 52U,
+		    UINT64_C(0xe7f24d58ef316806), 13U,
+		    UINT64_C(0xe4fcd46e10198702)},
+		{false, false, (const uint8_t *)"WT", 2U, 950U, 1634U,
+		    UINT64_C(0xbfb7da9b8aa742e9), 684U,
+		    UINT64_C(0x61187d26ba741bd5), 52U,
+		    UINT64_C(0x1cab942ec21b2083), 13U,
+		    UINT64_C(0xe4fcd46e10198702)},
+		{false, true, (const uint8_t *)"W", 1U, 1231U, 1961U,
+		    UINT64_C(0x6857f9dd726fdce3), 730U,
+		    UINT64_C(0xc2eb0dc81d4233ff), 52U,
+		    UINT64_C(0xe7f24d58ef316806), 77U,
+		    UINT64_C(0xf038e55eea339f1d)},
+		{false, true, (const uint8_t *)"WT", 2U, 1232U, 1962U,
+		    UINT64_C(0x4f7ee1e39fdb8ce9), 730U,
+		    UINT64_C(0xc2eb0dc81d4233ff), 52U,
+		    UINT64_C(0x1cab942ec21b2083), 77U,
+		    UINT64_C(0xf038e55eea339f1d)},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	struct direct_warp_main_cycle_state cycle;
+	struct direct_warp_attack_combat_join join;
+	struct yt_hostile_attack_combat_state combat;
+	struct yt_record record;
+	struct yt_error error;
+	uint8_t remote[3000];
+	size_t ends[3];
+	size_t caller;
+	size_t index;
+	size_t joined_start;
+	size_t joined_length;
+
+	for (caller = 0U; caller < YT_ARRAY_LEN(callers); ++caller) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream, retained_scoreboard,
+		    sizeof(retained_scoreboard) - 1U, "YTSCORE.ASC",
+		    callers[caller].ansi, remote, sizeof(remote));
+		memset(&fixture, 0, sizeof(fixture));
+		fixture.cycle.presentation.viewer = &viewer;
+		fixture.emergency_sector_cache = 733.0f;
+		fixture.draws[0] = 0.0f;
+		fixture.draws[1] = 0.0f;
+		fixture.draws[2] = 0.75f;
+		fixture.draws[3] = 0.5f;
+		fixture.draws[4] = 0.949999988079071f;
+		fixture.draws[5] = 0.999f;
+		fixture.draws[6] = 0.9f;
+		for (index = 7U; index < YT_ARRAY_LEN(fixture.draws); ++index)
+			fixture.draws[index] = 0.9f;
+		memset(&record, 0xa5, sizeof(record));
+		(void)yt_record_set_number(&record, YT_F49, 17.0f);
+		(void)yt_record_set_number(&record, YT_F57, 733.0f);
+		yt_player_decode(&fixture.emergency_player, &record);
+		fixture.hazard_player = fixture.emergency_player;
+		if (callers[caller].main) {
+			CHECK(direct_emergency_warp_main_hostile_handoff_run(&fixture,
+			    callers[caller].ansi, &cycle, ends));
+		} else {
+			CHECK(direct_emergency_warp_hostile_cycle_run(&fixture,
+			    callers[caller].ansi, callers[caller].command,
+			    callers[caller].command_length, DIRECT_WARP_HOSTILE_DEFENSE,
+			    &cycle, ends));
+		}
+		CHECK(direct_emergency_warp_fresh_hostile_menu_command(&fixture,
+		    &cycle, (const uint8_t *)"A", 1U, YT_HOSTILE_MENU_ATTACK,
+		    256021.0, 256000.0)
+		    && direct_emergency_warp_fresh_hostile_attack_admission_amount_with_ship(
+		    &fixture, &cycle, response, sizeof(response) - 1U, 256021.0f));
+		joined_start = viewer.join.remote_length;
+		CHECK(joined_start == callers[caller].start
+		    && cycle.fresh_hostile_attack_admission_entered
+		    && cycle.fresh_hostile_attack_sector_get_boundary
+		    && cycle.fresh_hostile_attack_commitment == 256000.0f
+		    && fixture.draw_position == 7U);
+
+		memset(&join, 0, sizeof(join));
+		join.fixture = &fixture;
+		join.cycle = &cycle;
+		join.current_sector_record = 1054.0f;
+		join.sector_record_offset = 51.0f;
+		join.allow_tail_player = true;
+		join.allow_clearance = true;
+		join.allow_victory = true;
+		memset(&record, 0x3c, sizeof(record));
+		(void)yt_record_set_number(&record, YT_F81, 256000.0f);
+		(void)yt_record_set_number(&record, YT_F85, -1.0f);
+		yt_sector_decode(&join.entry_sector, &record);
+		memset(&record, 0xa5, sizeof(record));
+		yt_record_set_text(&record, player_name, sizeof(player_name));
+		(void)yt_record_set_number(&record, YT_F49, 98.0f);
+		(void)yt_record_set_number(&record, YT_F53, 5.0f);
+		(void)yt_record_set_number(&record, YT_F57, 1003.0f);
+		(void)yt_record_set_number(&record, YT_F61, 256021.0f);
+		(void)yt_record_set_number(&record, YT_F81, 16000001.0f);
+		(void)yt_record_set_number(&record, YT_F85, 3.0f);
+		(void)yt_record_set_number(&record, YT_F125, 0.0f);
+		yt_player_decode(&join.attack_player, &record);
+		fixture.emergency_player = join.attack_player;
+		memset(&record, 0x5a, sizeof(record));
+		yt_record_set_text(&record, player_name, sizeof(player_name));
+		(void)yt_record_set_number(&record, YT_F49, 98.0f);
+		(void)yt_record_set_number(&record, YT_F53, 5.0f);
+		(void)yt_record_set_number(&record, YT_F57, 1003.0f);
+		(void)yt_record_set_number(&record, YT_F61, 256021.0f);
+		(void)yt_record_set_number(&record, YT_F81, 16000001.0f);
+		(void)yt_record_set_number(&record, YT_F85, 3.0f);
+		yt_player_decode(&join.persistence_player, &record);
+		memset(&record, 0x69, sizeof(record));
+		yt_record_set_text(&record, player_name, sizeof(player_name));
+		(void)yt_record_set_number(&record, YT_F49, 98.0f);
+		(void)yt_record_set_number(&record, YT_F53, 5.0f);
+		(void)yt_record_set_number(&record, YT_F57, 1003.0f);
+		(void)yt_record_set_number(&record, YT_F61, 256021.0f);
+		(void)yt_record_set_number(&record, YT_F81, 16000001.0f);
+		(void)yt_record_set_number(&record, YT_F85, 3.0f);
+		yt_player_decode(&join.return_player, &record);
+		memset(&record, 0x96, sizeof(record));
+		yt_record_set_text(&record, player_name, sizeof(player_name));
+		(void)yt_record_set_number(&record, YT_F49, 98.0f);
+		(void)yt_record_set_number(&record, YT_F53, 5.0f);
+		(void)yt_record_set_number(&record, YT_F57, 1003.0f);
+		(void)yt_record_set_number(&record, YT_F61, 256021.0f);
+		(void)yt_record_set_number(&record, YT_F81, 16000001.0f);
+		(void)yt_record_set_number(&record, YT_F85, 3.0f);
+		yt_player_decode(&join.post_loss_player, &record);
+		memset(&record, 0x7a, sizeof(record));
+		(void)yt_record_set_number(&record, YT_F81, 256000.0f);
+		(void)yt_record_set_number(&record, YT_F85, -1.0f);
+		yt_sector_decode(&join.persistence_sector, &record);
+		memset(&join.victory_sector_source, 0x4c,
+		    sizeof(join.victory_sector_source));
+		join.victory_sector_source.metadata = -9.0f;
+		combat = (struct yt_hostile_attack_combat_state){
+			.current_player_record = 2,
+			.current_sector = 1003,
+			.commitment = 256000.0,
+			.allow_surrender = false,
+			.cached_defenders = 256000.0,
+			.sector = join.entry_sector,
+			.cached_player_name = player_name,
+			.cached_player_name_length = sizeof(player_name),
+			.real_first_name = (const uint8_t *)"Sysop",
+			.real_first_name_length = 5U,
+			.owner_label = (const uint8_t *)"Xannor",
+			.owner_label_length = 6U,
+			.turns_per_day = 100.0f,
+			.headquarters = 1003.0f,
+		};
+		yt_error_clear(&error);
+		CHECK(yt_hostile_attack_combat_run(&combat,
+		    &direct_warp_attack_combat_ops, &join, &error));
+		joined_length = viewer.join.remote_length - joined_start;
+		CHECK(viewer.join.remote_length == callers[caller].total
+		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+		    == callers[caller].hash
+		    && joined_length == callers[caller].suffix
+		    && viewer_bytes_fnv1a64(remote + joined_start, joined_length)
+		    == callers[caller].suffix_hash
+		    && viewer.join.local_row_count == callers[caller].rows
+		    && viewer_rows_fnv1a64(&viewer.join) == callers[caller].row_hash
+		    && viewer.join.local_color_count == callers[caller].colors
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == callers[caller].color_hash
+		    && viewer.join.local_fragment_length == 0U);
+		CHECK(combat.complete
+		    && combat.route == YT_HOSTILE_ATTACK_COMBAT_NORMAL
+		    && combat.old_owner == -1.0f
+		    && combat.attacker_loss == 0.0
+		    && combat.defender_loss == 256000.0
+		    && combat.deployed_remaining == 0.0
+		    && combat.iterations == 215U
+		    && combat.persistence.complete
+		    && combat.persistence.player_written
+		    && combat.persistence.sector_written
+		    && combat.persistence.news_written
+		    && combat.tail.complete && combat.tail.player_written
+		    && combat.tail.reward_news_written
+		    && combat.tail.clearance_called
+		    && combat.tail.defeated_presented
+		    && combat.tail.victory_called);
+		CHECK(join.a41c_reads == 4U && join.a41c_stores == 100U
+		    && join.random_calls == 224U && fixture.draw_position == 231U
+		    && join.news_calls == 2U && join.clearance.complete
+		    && join.clearance.draws_consumed == 8U
+		    && join.clearance.announcements == 3U
+		    && join.written_sector.fighters == 0.0f
+		    && join.written_sector.fighter_owner == 0.0f
+		    && join.written_player.turns == 99.0f
+		    && join.victory_calls == 1U
+		    && join.victory_player_written.credits == 32000000.0f
+		    && join.victory_news_count == 3U
+		    && join.victory_radio_count == 3U
+		    && join.victory_sector_writes == 1U
+		    && !join.unexpected_surrender && !join.unexpected_spill
+		    && !join.unexpected_news && !join.unexpected_fatal
+		    && !join.unexpected_tail_effect);
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
+static void
 test_direct_emergency_warp_hostile_ordinary_returns(void)
 {
 	static const uint8_t main_prompt[] =
@@ -46684,6 +46928,7 @@ main(void)
 	test_xannor_attack_tail_victory_join();
 	test_xannor_attack_tail_victory_failure_prefixes();
 	test_xannor_attack_combat_victory_join();
+	test_direct_emergency_warp_xannor_attack_victory_join();
 	test_direct_emergency_warp_hostile_invalid_retry_cycle();
 	test_direct_emergency_warp_hostile_ordinary_returns();
 	test_direct_emergency_warp_queue_cycles();
