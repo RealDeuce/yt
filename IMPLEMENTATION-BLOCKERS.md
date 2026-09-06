@@ -8,6 +8,37 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
+### DOC-GAP-027: sequential disk-read carry prefix and cursor conflict
+
+Affected coverage:
+
+- the shared regular-file `CBFD..CC52` read-ahead refill used by `EOF` and
+  `LINE INPUT #`;
+- the retained 128-byte buffer image after a carry-set DOS read; and
+- the physical cursor and accepted-count state passed to the BASIC error
+  router and any current-statement retry.
+
+The completed documents disagree about the same shared refill. The
+`docs/runtime/brun-line-input-string.md` DOS-refill section says that a
+failing DOS observation accepts no bytes, does not move the external cursor,
+and leaves a completely cleared buffer. The alias caller contract in
+`docs/runtime/startup-existing-alias-world.md` repeats that a carry-set read
+commits no byte or cursor movement. In contrast,
+`docs/runtime/brun-eof.md` says the external adapter may return an accepted
+prefix of up to 128 bytes on carry and that this prefix remains in the cleared
+buffer; its result retains the live DOS cursor. `IMPLEMENTATION-COVERAGE.md`
+and the current native typed adapter follow the latter contract by retaining
+an arbitrary accepted prefix and supplied terminal cursor.
+
+`EOF` and regular-file `LINE INPUT #` both call this one provider, so these
+cannot be treated as caller-specific policies. Upstream documentation and the
+canonical models must choose one carry-set physical contract and apply it
+consistently to `brun-eof.md`, `brun-line-input-string.md`, the alias-world
+join, generated evidence, and focused fixtures. Until then the native
+adapter remains unchanged and no further sequential-refill implementation
+work proceeds. No binary inspection or new reverse engineering was
+performed.
+
 ### DOC-GAP-026: ADE0 repeat-overflow current-statement identities
 
 Affected coverage:
