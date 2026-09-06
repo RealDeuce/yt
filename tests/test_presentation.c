@@ -27775,6 +27775,17 @@ struct direct_warp_attack_combat_join {
 	uint8_t clearance_value_raw[4];
 	uint8_t clearance_sound_selector_raw[4];
 	struct yt_clearance_state clearance;
+	struct yt_xannor_victory_state victory;
+	struct yt_credit_mutation_state victory_credit;
+	struct yt_player victory_player_written;
+	struct yt_sector victory_sector_source;
+	struct yt_sector victory_sector_written;
+	uint8_t victory_news[3][128];
+	size_t victory_news_length[3];
+	uint8_t victory_radio[3][128];
+	size_t victory_radio_length[3];
+	float victory_radio_sender[3];
+	float victory_radio_recipient[3];
 	enum yt_hostile_surrender_answer surrender_answer;
 	double surrendered_ship;
 	double surrendered_deployed;
@@ -27800,6 +27811,18 @@ struct direct_warp_attack_combat_join {
 	size_t tail_player_writes;
 	size_t clearance_calls;
 	size_t clearance_sound_calls;
+	size_t victory_calls;
+	size_t victory_file_reads;
+	size_t victory_file_rows;
+	size_t victory_wait_calls;
+	double victory_wait_seconds;
+	size_t victory_queue_clears;
+	size_t victory_player_writes;
+	size_t victory_sound_calls;
+	size_t victory_news_count;
+	size_t victory_radio_count;
+	size_t victory_sector_reads;
+	size_t victory_sector_writes;
 	size_t spill_calls;
 	size_t spill_stores;
 	size_t spill_present_calls;
@@ -27813,6 +27836,7 @@ struct direct_warp_attack_combat_join {
 	void *fatal_handler_context;
 	bool allow_tail_player;
 	bool allow_clearance;
+	bool allow_victory;
 	bool allow_spill;
 	bool unexpected_surrender;
 	bool unexpected_spill;
@@ -28557,15 +28581,319 @@ direct_warp_attack_tail_clearance(void *context, struct yt_error *error)
 	return yt_clearance_run(&join->clearance, &ops, join, error);
 }
 
+struct direct_warp_attack_victory_file {
+	struct direct_warp_attack_combat_join *join;
+	struct yt_text_input input;
+};
+
 static bool
-direct_warp_attack_tail_unexpected_action(void *context,
+direct_warp_attack_victory_file_close(void *context, struct yt_error *error)
+{
+	struct direct_warp_attack_victory_file *file = context;
+
+	return yt_text_input_close(&file->input, error);
+}
+
+static bool
+direct_warp_attack_victory_file_open(void *context, const char *path,
     struct yt_error *error)
+{
+	struct direct_warp_attack_victory_file *file = context;
+
+	return yt_text_input_open(&file->input, path, error);
+}
+
+static bool
+direct_warp_attack_victory_file_read(void *context, const uint8_t **line,
+    size_t *length, bool *available, struct yt_error *error)
+{
+	struct direct_warp_attack_victory_file *file = context;
+	bool result = yt_text_input_read_line(&file->input, line, length,
+	    available, error);
+
+	if (result)
+		++file->join->victory_file_reads;
+	return result;
+}
+
+static bool
+direct_warp_attack_victory_file_present(void *context, const uint8_t *line,
+    size_t length, struct yt_error *error)
+{
+	struct direct_warp_attack_victory_file *file = context;
+	struct viewer_pager_join *viewer =
+	    &file->join->fixture->cycle.presentation.viewer->join;
+
+	(void)error;
+	++file->join->victory_file_rows;
+	return normal_exit_line(viewer, line, length);
+}
+
+static bool
+direct_warp_attack_victory_play_file(void *context, const char *path,
+    struct yt_error *error)
+{
+	static const struct yt_text_sequential_play_ops ops = {
+		direct_warp_attack_victory_file_close,
+		direct_warp_attack_victory_file_open,
+		direct_warp_attack_victory_file_read,
+		direct_warp_attack_victory_file_present,
+	};
+	struct direct_warp_attack_combat_join *join = context;
+	struct direct_warp_attack_victory_file file = {.join = join};
+	struct yt_text_sequential_play_state playback = {
+		.path = YT_DATA_DIR "XANNORHQ.TXT",
+	};
+	bool result;
+
+	if (strcmp(path, "XANNORHQ.TXT") != 0)
+		return false;
+	yt_text_input_init(&file.input);
+	result = yt_text_sequential_play_run(&playback, &ops, &file, error);
+	yt_text_input_destroy(&file.input);
+	return result;
+}
+
+static bool
+direct_warp_attack_victory_present(void *context, const uint8_t *text,
+    size_t length, enum yt_xannor_victory_output_kind kind,
+    const char *operation, struct yt_error *error)
+{
+	struct direct_warp_attack_combat_join *join = context;
+	struct viewer_pager_join *viewer =
+	    &join->fixture->cycle.presentation.viewer->join;
+	struct yt_present_result result;
+	enum yt_present_status status;
+
+	(void)operation;
+	(void)error;
+	if (kind == YT_XANNOR_VICTORY_RAW)
+		status = yt_present_character(text, length,
+		    &viewer->presentation, &result);
+	else if (kind == YT_XANNOR_VICTORY_LINE)
+		status = yt_present_line(text, length, &viewer->presentation,
+		    &result);
+	else if (kind == YT_XANNOR_VICTORY_BOLD_LINE)
+		status = yt_present_bold_line(text, length,
+		    &viewer->presentation, &result);
+	else
+		return false;
+	if (status != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(viewer, &result);
+	return true;
+}
+
+static bool
+direct_warp_attack_victory_wait(void *context, double seconds,
+    const char *operation, struct yt_error *error)
+{
+	struct direct_warp_attack_combat_join *join = context;
+
+	(void)operation;
+	(void)error;
+	++join->victory_wait_calls;
+	join->victory_wait_seconds = seconds;
+	return true;
+}
+
+static void
+direct_warp_attack_victory_foreground(void *context, float foreground)
+{
+	struct direct_warp_attack_combat_join *join = context;
+	struct viewer_pager_join *viewer =
+	    &join->fixture->cycle.presentation.viewer->join;
+
+	viewer->presentation.foreground = foreground;
+	viewer->pager.foreground = (int)foreground;
+}
+
+static void
+direct_warp_attack_victory_blink(void *context, float blink)
+{
+	struct direct_warp_attack_combat_join *join = context;
+	struct viewer_pager_join *viewer =
+	    &join->fixture->cycle.presentation.viewer->join;
+
+	yt_present_set_blink(&viewer->presentation, blink);
+}
+
+static void
+direct_warp_attack_victory_clear_queue(void *context)
+{
+	struct direct_warp_attack_combat_join *join = context;
+	struct viewer_pager_join *viewer =
+	    &join->fixture->cycle.presentation.viewer->join;
+
+	viewer->queue_position = 0U;
+	viewer->queue_length = 0U;
+	++join->victory_queue_clears;
+}
+
+static bool
+direct_warp_attack_victory_write_credit(void *context, int player_record,
+    const struct yt_record *record, struct yt_error *error)
 {
 	struct direct_warp_attack_combat_join *join = context;
 
 	(void)error;
-	join->unexpected_tail_effect = true;
-	return false;
+	if (player_record != 2 || record == NULL)
+		return false;
+	yt_player_decode(&join->victory_player_written, record);
+	++join->victory_player_writes;
+	return true;
+}
+
+static bool
+direct_warp_attack_victory_mutate_credits(void *context,
+    float player_record, float argument, struct yt_player *player,
+    bool *hydrated, struct yt_error *error)
+{
+	static const struct yt_credit_mutation_ops ops = {
+		direct_warp_attack_combat_a41c_source,
+		direct_warp_attack_victory_write_credit,
+	};
+	struct direct_warp_attack_combat_join *join = context;
+	struct yt_credit_mutation_state *credit = &join->victory_credit;
+	bool result;
+
+	if (player == NULL || hydrated == NULL || player_record != 2.0f)
+		return false;
+	*player = join->return_player;
+	*credit = (struct yt_credit_mutation_state){
+		.hydration = {
+			.player = player,
+			.player_record = 2,
+			.last_player_record = 51,
+			.player_record_expression = player_record,
+			.current_sector_record = &join->current_sector_record,
+			.cloak_cache = join->cloak_cache,
+			.cache_count = YT_ARRAY_LEN(join->cloak_cache),
+			.store = direct_warp_attack_combat_a41c_store,
+		},
+		.argument = argument,
+	};
+	if (qb_mbf32_encode(join->sector_record_offset,
+	    credit->hydration.sector_record_offset_raw) != QB_MBF_OK
+	    || qb_mbf32_encode(0.0f, credit->hydration.anti_cloak_raw)
+	    != QB_MBF_OK)
+		return false;
+	result = yt_credit_mutation_run(credit, &ops, join, error);
+	*hydrated = credit->hydrated;
+	return result;
+}
+
+static bool
+direct_warp_attack_victory_sound(void *context, float selector,
+    const char *operation, struct yt_error *error)
+{
+	struct direct_warp_attack_combat_join *join = context;
+	struct viewer_pager_join *viewer =
+	    &join->fixture->cycle.presentation.viewer->join;
+	struct yt_present_result result;
+
+	(void)operation;
+	(void)error;
+	if (selector != 2.0f
+	    || yt_present_sound(selector, &viewer->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(viewer, &result);
+	++join->victory_sound_calls;
+	return true;
+}
+
+static bool
+direct_warp_attack_victory_news(void *context, const uint8_t *text,
+    size_t length, struct yt_error *error)
+{
+	struct direct_warp_attack_combat_join *join = context;
+
+	(void)error;
+	if (join->victory_news_count >= YT_ARRAY_LEN(join->victory_news)
+	    || length > sizeof(join->victory_news[0]))
+		return false;
+	memcpy(join->victory_news[join->victory_news_count], text, length);
+	join->victory_news_length[join->victory_news_count] = length;
+	++join->victory_news_count;
+	return true;
+}
+
+static bool
+direct_warp_attack_victory_radio(void *context, const uint8_t *text,
+    size_t length, float sender, float recipient, struct yt_error *error)
+{
+	struct direct_warp_attack_combat_join *join = context;
+	size_t index = join->victory_radio_count;
+
+	(void)error;
+	if (index >= YT_ARRAY_LEN(join->victory_radio)
+	    || length > sizeof(join->victory_radio[0]))
+		return false;
+	memcpy(join->victory_radio[index], text, length);
+	join->victory_radio_length[index] = length;
+	join->victory_radio_sender[index] = sender;
+	join->victory_radio_recipient[index] = recipient;
+	++join->victory_radio_count;
+	return true;
+}
+
+static bool
+direct_warp_attack_victory_read_sector(void *context, int logical_sector,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct direct_warp_attack_combat_join *join = context;
+
+	(void)error;
+	if (logical_sector != 21 || sector == NULL)
+		return false;
+	*sector = join->victory_sector_source;
+	++join->victory_sector_reads;
+	return true;
+}
+
+static bool
+direct_warp_attack_victory_write_sector(void *context, int logical_sector,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct direct_warp_attack_combat_join *join = context;
+
+	(void)error;
+	if (logical_sector != 21 || sector == NULL)
+		return false;
+	join->victory_sector_written = *sector;
+	++join->victory_sector_writes;
+	return true;
+}
+
+static bool
+direct_warp_attack_tail_victory(void *context, struct yt_error *error)
+{
+	static const struct yt_xannor_victory_ops ops = {
+		direct_warp_attack_victory_play_file,
+		direct_warp_attack_victory_present,
+		direct_warp_attack_victory_wait,
+		direct_warp_attack_victory_foreground,
+		direct_warp_attack_victory_blink,
+		direct_warp_attack_victory_clear_queue,
+		direct_warp_attack_victory_mutate_credits,
+		direct_warp_attack_victory_sound,
+		direct_warp_attack_victory_news,
+		direct_warp_attack_victory_radio,
+		direct_warp_attack_victory_read_sector,
+		direct_warp_attack_victory_write_sector,
+	};
+	struct direct_warp_attack_combat_join *join = context;
+
+	if (!join->allow_victory) {
+		join->unexpected_tail_effect = true;
+		return false;
+	}
+	++join->victory_calls;
+	join->victory = (struct yt_xannor_victory_state){
+		.current_player = 2.0f,
+	};
+	return yt_xannor_victory_run(&join->victory, &ops, join, error);
 }
 
 static const struct yt_hostile_attack_tail_ops direct_warp_attack_tail_ops = {
@@ -28575,7 +28903,7 @@ static const struct yt_hostile_attack_tail_ops direct_warp_attack_tail_ops = {
 	direct_warp_attack_news,
 	direct_warp_attack_tail_clearance,
 	direct_warp_attack_combat_random,
-	direct_warp_attack_tail_unexpected_action,
+	direct_warp_attack_tail_victory,
 };
 
 static bool
@@ -36001,6 +36329,152 @@ test_xannor_attack_tail_clearance_join(void)
 		    && memcmp(join.clearance_value_raw, tenth, 4U) == 0
 		    && memcmp(join.clearance_announced_raw, one, 4U) == 0
 		    && memcmp(join.clearance_sound_selector_raw, one, 4U) == 0);
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
+static void
+test_xannor_attack_tail_victory_join(void)
+{
+	static const uint8_t cached_name[] = {'A', 0, 'B'};
+	static const uint8_t expected_winner[] =
+	    "Congratulations go to A\0B who defeated the Xannor HQ!!!";
+	static const uint8_t stars[] =
+	    "*******************************************************************************";
+	static const uint8_t holds_zero[4] = {0x00U, 0x00U, 0x73U, 0x00U};
+	static const struct {
+		size_t length;
+		uint64_t hash;
+		size_t colors;
+		uint64_t color_hash;
+	} expected[] = {
+		{455U, UINT64_C(0x3c09acde188019c5), 2U,
+		    UINT64_C(0x6d3fa4669b3587bd)},
+		{642U, UINT64_C(0x92ab2c2822b9f2f6), 15U,
+		    UINT64_C(0xdfb6d767025461e1)},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	struct direct_warp_main_cycle_state cycle;
+	struct direct_warp_attack_combat_join join;
+	struct yt_hostile_attack_tail_state tail;
+	struct yt_record record;
+	struct yt_sector expected_sector;
+	struct yt_error error;
+	uint8_t remote[1024];
+	size_t index;
+	size_t pass;
+
+	for (pass = 0U; pass < 2U; ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream, retained_scoreboard,
+		    sizeof(retained_scoreboard) - 1U, "YTSCORE.ASC", pass != 0U,
+		    remote, sizeof(remote));
+		memset(&fixture, 0, sizeof(fixture));
+		fixture.cycle.presentation.viewer = &viewer;
+		memset(&cycle, 0, sizeof(cycle));
+		fixture.draws[0] = 0.9f;
+		fixture.draws[1] = 0.1f;
+		fixture.draws[2] = 0.0f;
+		fixture.draws[3] = 0.0f;
+		fixture.draws[4] = 0.0f;
+		fixture.draws[5] = 0.75f;
+		memset(&join, 0, sizeof(join));
+		join.fixture = &fixture;
+		join.cycle = &cycle;
+		join.current_sector_record = 1054.0f;
+		join.sector_record_offset = 51.0f;
+		join.allow_tail_player = true;
+		join.allow_clearance = true;
+		join.allow_victory = true;
+		memcpy(join.clearance_discount_raw[0], holds_zero, 4U);
+		memset(&record, 0xa5, sizeof(record));
+		yt_record_set_text(&record, (const uint8_t *)"FRESH XANNOR", 12U);
+		(void)yt_record_set_number(&record, YT_F49, 98.0f);
+		(void)yt_record_set_number(&record, YT_F53, 5.0f);
+		(void)yt_record_set_number(&record, YT_F57, 7.0f);
+		(void)yt_record_set_number(&record, YT_F61, 21.0f);
+		(void)yt_record_set_number(&record, YT_F125, 0.0f);
+		yt_player_decode(&join.attack_player, &record);
+		fixture.emergency_player = join.attack_player;
+		memset(&record, 0x5a, sizeof(record));
+		yt_record_set_text(&record, cached_name, sizeof(cached_name));
+		(void)yt_record_set_number(&record, YT_F85, 3.0f);
+		(void)yt_record_set_number(&record, YT_F57, 7.0f);
+		(void)yt_record_set_number(&record, YT_F81, 16000001.0f);
+		yt_player_decode(&join.return_player, &record);
+		memset(&join.victory_sector_source, 0x5a,
+		    sizeof(join.victory_sector_source));
+		join.victory_sector_source.metadata = -9.0f;
+		expected_sector = join.victory_sector_source;
+		expected_sector.metadata = 2.0f;
+		tail = (struct yt_hostile_attack_tail_state){
+			.current_player_record = 2,
+			.old_owner = -1.0f,
+			.defender_loss = 512000.0,
+			.deployed_fighters = 0.0,
+			.ship_fighters = 19.0,
+			.turns_per_day = 100.0f,
+			.headquarters = 7.0f,
+			.cached_player_name = cached_name,
+			.cached_player_name_length = sizeof(cached_name),
+			.current = join.attack_player,
+		};
+		yt_error_clear(&error);
+		CHECK(yt_hostile_attack_tail_run(&tail,
+		    &direct_warp_attack_tail_ops, &join, &error));
+		CHECK(viewer.join.remote_length == expected[pass].length
+		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+		    == expected[pass].hash
+		    && viewer.join.local_row_count == 12U
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == UINT64_C(0x4fee860a08e39cd2)
+		    && viewer.join.local_color_count == expected[pass].colors
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == expected[pass].color_hash
+		    && viewer.join.local_fragment_length == 0U);
+		CHECK(tail.complete && tail.victory_called
+		    && join.victory_calls == 1U && join.victory_file_reads == 6U
+		    && join.victory_file_rows == 5U
+		    && join.victory_wait_calls == 1U
+		    && join.victory_wait_seconds == 99.0
+		    && join.victory_queue_clears == 1U
+		    && join.victory_player_writes == 1U
+		    && join.victory_sound_calls == 3U
+		    && join.victory_news_count == 3U
+		    && join.victory_radio_count == 3U
+		    && join.victory_sector_reads == 1U
+		    && join.victory_sector_writes == 1U
+		    && join.victory.sounds_completed == 3U
+		    && join.victory.news_completed == 3U
+		    && join.victory.radio_completed == 3U
+		    && join.victory.awarded_credits == 32000000.0f
+		    && join.victory.winner_length == sizeof(expected_winner) - 1U
+		    && memcmp(join.victory.winner, expected_winner,
+		    sizeof(expected_winner) - 1U) == 0
+		    && join.victory_credit.hydrated
+		    && join.victory_credit.overlay_applied
+		    && join.victory_credit.written
+		    && join.victory_player_written.credits == 32000000.0f
+		    && memcmp(&join.victory_sector_written, &expected_sector,
+		    sizeof(expected_sector)) == 0
+		    && join.a41c_reads == 2U && join.a41c_stores == 50U
+		    && join.random_calls == 6U && fixture.draw_position == 6U
+		    && !join.unexpected_tail_effect);
+		for (index = 0U; index < 3U; ++index) {
+			const uint8_t *entry = index == 1U
+			    ? expected_winner : stars;
+			size_t length = index == 1U
+			    ? sizeof(expected_winner) - 1U : sizeof(stars) - 1U;
+
+			CHECK(join.victory_news_length[index] == length
+			    && memcmp(join.victory_news[index], entry, length) == 0
+			    && join.victory_radio_length[index] == length
+			    && memcmp(join.victory_radio[index], entry, length) == 0
+			    && join.victory_radio_sender[index] == -2.0f
+			    && join.victory_radio_recipient[index] == -2.0f);
+		}
 		yt_text_input_destroy(&viewer.input);
 	}
 }
@@ -45401,6 +45875,7 @@ main(void)
 	test_direct_emergency_warp_hostile_attack_fatal_cycle();
 	test_direct_emergency_warp_hostile_attack_fatal_prefixes();
 	test_xannor_attack_tail_clearance_join();
+	test_xannor_attack_tail_victory_join();
 	test_direct_emergency_warp_hostile_invalid_retry_cycle();
 	test_direct_emergency_warp_hostile_ordinary_returns();
 	test_direct_emergency_warp_queue_cycles();
