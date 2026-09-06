@@ -24418,6 +24418,264 @@ test_direct_emergency_warp_gate_get_failures(void)
 	}
 }
 
+enum direct_warp_gate_runtime_failure {
+	DIRECT_WARP_GATE_SECTOR_ADD,
+	DIRECT_WARP_GATE_ANTI_CLOAK_CINT,
+};
+
+struct direct_warp_gate_runtime_state {
+	struct yt_player fresh;
+	size_t read_count;
+	enum yt_current_player_store_kind stores[24];
+	int16_t subscripts[24];
+	uint8_t raw[24][8];
+	size_t store_count;
+};
+
+static bool
+direct_warp_gate_runtime_read(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct direct_warp_gate_runtime_state *state = context;
+
+	(void)error;
+	++state->read_count;
+	if (player_record != 2)
+		return false;
+	*player = state->fresh;
+	return true;
+}
+
+static void
+direct_warp_gate_runtime_store(void *context,
+    enum yt_current_player_store_kind kind, int16_t subscript,
+    const uint8_t raw[8])
+{
+	struct direct_warp_gate_runtime_state *state = context;
+
+	if (state->store_count >= YT_ARRAY_LEN(state->stores))
+		return;
+	state->stores[state->store_count] = kind;
+	state->subscripts[state->store_count] = subscript;
+	memcpy(state->raw[state->store_count], raw, 8U);
+	++state->store_count;
+}
+
+static bool
+direct_emergency_warp_gate_runtime_failure_run(
+    struct hostile_mines_hazard_fixture *fixture, bool hostile, bool ansi,
+    const uint8_t *command, size_t command_length,
+    enum direct_warp_gate_runtime_failure failure,
+    struct direct_warp_gate_runtime_state *gate,
+    struct yt_basic_fault_projection *projection, size_t ends[2])
+{
+	static const uint8_t scanner_gate_raw[4] = {0x00U, 0x00U, 0x60U, 0x00U};
+	static const uint8_t main_gate_raw[4] = {0x00U, 0x00U, 0x00U, 0x00U};
+	const uint8_t *expected_gate_raw = hostile
+	    ? scanner_gate_raw : main_gate_raw;
+	struct yt_current_player_hydration_state hydration;
+	struct yt_player before;
+	struct yt_player expected;
+	struct yt_record fresh_record;
+	struct yt_error error;
+	float current_sector = 784.0f;
+	float cloak_cache[4] = {-1.0f, -2.0f, 0.5f, -4.0f};
+	uint8_t gate_raw[4];
+
+	if (gate == NULL || projection == NULL || ends == NULL)
+		return false;
+	memset(gate, 0, sizeof(*gate));
+	memcpy(gate_raw, expected_gate_raw, sizeof(gate_raw));
+	if ((hostile && !direct_emergency_warp_hostile_menu_prefix(fixture,
+	    ansi, command, command_length, &ends[0]))
+	    || (!hostile && (command_length != 1U || command[0] != 'W'
+	    || !direct_emergency_warp_main_command_prefix(fixture, ansi,
+	    &ends[0]))))
+		return false;
+	ends[1] = ends[0];
+	before = fixture->emergency_player;
+	fresh_record = before.record;
+	(void)yt_record_set_number(&fresh_record, YT_F49, 104.0f);
+	(void)yt_record_set_number(&fresh_record, YT_F53, 105.0f);
+	(void)yt_record_set_number(&fresh_record, YT_F57,
+	    failure == DIRECT_WARP_GATE_SECTOR_ADD ? 1.0e38f : 6.0f);
+	(void)yt_record_set_number(&fresh_record, YT_F61, 107.0f);
+	(void)yt_record_set_number(&fresh_record, YT_F65, 108.0f);
+	(void)yt_record_set_number(&fresh_record, YT_F69, 109.0f);
+	(void)yt_record_set_number(&fresh_record, YT_F73, 110.0f);
+	(void)yt_record_set_number(&fresh_record, YT_F77, 111.0f);
+	(void)yt_record_set_number(&fresh_record, YT_F81, 112.0f);
+	(void)yt_record_set_number(&fresh_record, YT_F89, 113.0f);
+	(void)yt_record_set_number(&fresh_record, YT_F93, 114.0f);
+	(void)yt_record_set_number(&fresh_record, YT_F97, 115.0f);
+	(void)yt_record_set_number(&fresh_record, YT_F109, 116.0f);
+	(void)yt_record_set_number(&fresh_record, YT_F113, 117.0f);
+	(void)yt_record_set_number(&fresh_record, YT_F117, 118.0f);
+	(void)yt_record_set_number(&fresh_record, YT_F121, 119.0f);
+	(void)yt_record_set_number(&fresh_record, YT_F125, 120.0f);
+	(void)yt_record_set_number(&fresh_record, YT_F129, 121.0f);
+	yt_player_decode(&gate->fresh, &fresh_record);
+	memset(&hydration, 0, sizeof(hydration));
+	hydration.player = &fixture->emergency_player;
+	hydration.player_record = 2;
+	hydration.last_player_record = 51;
+	hydration.player_record_expression = 2.0f;
+	hydration.current_sector_record = &current_sector;
+	hydration.cloak_cache = cloak_cache;
+	hydration.cache_count = YT_ARRAY_LEN(cloak_cache);
+	hydration.store = direct_warp_gate_runtime_store;
+	if (qb_mbf32_encode(
+	    failure == DIRECT_WARP_GATE_SECTOR_ADD ? 1.0e38f : 51.0f,
+	    hydration.sector_record_offset_raw) != QB_MBF_OK
+	    || qb_mbf32_encode(
+	    failure == DIRECT_WARP_GATE_ANTI_CLOAK_CINT ? 32768.0f : 0.0f,
+	    hydration.anti_cloak_raw) != QB_MBF_OK)
+		return false;
+	yt_error_clear(&error);
+	if (yt_current_player_hydrate_run(&hydration,
+	    direct_warp_gate_runtime_read, gate, &error)
+	    || !yt_basic_fault_project(&error, NULL, 0U, NULL, 0U, NULL, 0U,
+	    projection)
+	    || gate->read_count != 1U
+	    || memcmp(gate_raw, expected_gate_raw, sizeof(gate_raw)) != 0)
+		return false;
+	expected = before;
+	expected.record = gate->fresh.record;
+	expected.sector = gate->fresh.sector;
+	expected.fighters = gate->fresh.fighters;
+	if (failure == DIRECT_WARP_GATE_SECTOR_ADD) {
+		return gate->store_count == 3U
+		    && gate->stores[0] == YT_CURRENT_PLAYER_STORE_SECTOR
+		    && gate->stores[1] == YT_CURRENT_PLAYER_STORE_FIGHTERS
+		    && gate->stores[2]
+		    == YT_CURRENT_PLAYER_STORE_ADD_FLOAT_CALLBACK_RETURN
+		    && current_sector == 784.0f
+		    && memcmp(cloak_cache,
+		    (const float[4]){-1.0f, -2.0f, 0.5f, -4.0f},
+		    sizeof(cloak_cache)) == 0
+		    && memcmp(&fixture->emergency_player, &expected,
+		    sizeof(expected)) == 0;
+	}
+	expected.turns = gate->fresh.turns;
+	expected.credits = gate->fresh.credits;
+	expected.danger_scanner = gate->fresh.danger_scanner;
+	expected.missiles = gate->fresh.missiles;
+	expected.mines = gate->fresh.mines;
+	expected.team = gate->fresh.team;
+	expected.holds = gate->fresh.holds;
+	expected.ore = gate->fresh.ore;
+	expected.organics = gate->fresh.organics;
+	expected.equipment = gate->fresh.equipment;
+	expected.plasma = gate->fresh.plasma;
+	expected.score = gate->fresh.score;
+	expected.ports_owned = gate->fresh.ports_owned;
+	expected.ground_forces = gate->fresh.ground_forces;
+	expected.cloak = gate->fresh.cloak;
+	return gate->store_count == 23U
+	    && gate->stores[22] == YT_CURRENT_PLAYER_STORE_CLOAK
+	    && current_sector == 57.0f
+	    && memcmp(cloak_cache,
+	    (const float[4]){-1.0f, -2.0f, 0.5f, -4.0f},
+	    sizeof(cloak_cache)) == 0
+	    && memcmp(&fixture->emergency_player, &expected,
+	    sizeof(expected)) == 0;
+}
+
+static void
+test_direct_emergency_warp_gate_runtime_failures(void)
+{
+	static const struct {
+		bool hostile;
+		bool ansi;
+		const uint8_t *command;
+		size_t command_length;
+		size_t expected_length;
+		uint64_t expected_hash;
+	} modes[] = {
+		{true, false, (const uint8_t *)"W", 1U, 63U,
+		    UINT64_C(0x0b6904cbde91e151)},
+		{true, false, (const uint8_t *)"WT", 2U, 64U,
+		    UINT64_C(0x4715406bf12b49e1)},
+		{true, true, (const uint8_t *)"W", 1U, 73U,
+		    UINT64_C(0x1f8739c8faadb88e)},
+		{true, true, (const uint8_t *)"WT", 2U, 74U,
+		    UINT64_C(0x2e092d830cad0828)},
+		{false, false, (const uint8_t *)"W", 1U, 41U,
+		    UINT64_C(0x84059a449d6d0449)},
+		{false, true, (const uint8_t *)"W", 1U, 41U,
+		    UINT64_C(0x84059a449d6d0449)},
+	};
+	static const struct {
+		enum direct_warp_gate_runtime_failure failure;
+		enum yt_basic_fault_site site;
+		uint16_t instruction;
+		uint16_t saved_ip;
+		uint16_t statement;
+	} cuts[] = {
+		{DIRECT_WARP_GATE_SECTOR_ADD,
+		    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_SECTOR_ADD,
+		    0xA44CU, 0xA44FU, 0xA446U},
+		{DIRECT_WARP_GATE_ANTI_CLOAK_CINT,
+		    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_ANTI_CLOAK_CINT,
+		    0xA548U, 0xA54BU, 0xA545U},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	struct direct_warp_gate_runtime_state gate;
+	struct yt_basic_fault_projection projection;
+	struct yt_record record;
+	uint8_t remote[96];
+	size_t ends[2];
+	size_t cut;
+	size_t mode;
+
+	for (mode = 0U; mode < YT_ARRAY_LEN(modes); ++mode) {
+		for (cut = 0U; cut < YT_ARRAY_LEN(cuts); ++cut) {
+			memset(&viewer, 0, sizeof(viewer));
+			fixture_viewer_initialize(&viewer, &stream,
+			    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+			    "YTSCORE.ASC", modes[mode].ansi, remote, sizeof(remote));
+			memset(&fixture, 0, sizeof(fixture));
+			fixture.cycle.presentation.viewer = &viewer;
+			memset(&record, 0xa5, sizeof(record));
+			(void)yt_record_set_number(&record, YT_F49, 17.0f);
+			(void)yt_record_set_number(&record, YT_F57, 733.0f);
+			(void)yt_record_set_number(&record, YT_F61, 1000.0f);
+			yt_player_decode(&fixture.emergency_player, &record);
+			fixture.hazard_player = fixture.emergency_player;
+			CHECK(direct_emergency_warp_gate_runtime_failure_run(
+			    &fixture, modes[mode].hostile, modes[mode].ansi,
+			    modes[mode].command, modes[mode].command_length,
+			    cuts[cut].failure, &gate, &projection, ends));
+			CHECK(ends[0] == modes[mode].expected_length
+			    && ends[1] == ends[0]
+			    && viewer.join.remote_length == modes[mode].expected_length
+			    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+			    == modes[mode].expected_hash
+			    && projection.site == cuts[cut].site
+			    && projection.error_number == 6U
+			    && projection.identity->instruction
+			    == cuts[cut].instruction
+			    && projection.identity->saved_ip == cuts[cut].saved_ip
+			    && projection.identity->retry_statement
+			    == cuts[cut].statement
+			    && projection.identity->source_line == 33990
+			    && projection.identity->handler == 0xB2DAU
+			    && projection.disposition
+			    == YT_BASIC_FAULT_RESUME_GAMEPLAY
+			    && projection.main.route == YT_MAIN_ERROR_GAMEPLAY);
+			CHECK(!fixture.warp_called && fixture.draw_position == 0U
+			    && fixture.emergency_player_reads == 0U
+			    && fixture.emergency_player_put_attempts == 0U
+			    && fixture.emergency_player_writes == 0U
+			    && fixture.emergency_flushes == 0U
+			    && fixture.emergency_waits == 0U);
+			yt_text_input_destroy(&viewer.input);
+		}
+	}
+}
+
 struct direct_warp_hostile_parent_copy_cycle_state {
 	size_t entry_player_reads;
 	size_t gate_player_reads;
@@ -35556,6 +35814,7 @@ main(void)
 	test_direct_emergency_warp_invalid_boundaries();
 	test_direct_emergency_warp_hostile_invalid_boundaries();
 	test_direct_emergency_warp_gate_get_failures();
+	test_direct_emergency_warp_gate_runtime_failures();
 	test_direct_emergency_warp_parent_copy_failures();
 	test_direct_emergency_warp_hostile_parent_copy_failures();
 	test_direct_emergency_warp_warning_carrier();
