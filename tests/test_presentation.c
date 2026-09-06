@@ -30218,6 +30218,7 @@ direct_emergency_warp_main_black_hole_cycle_run(
 	join->queue[0] = '\0';
 	join->queue_position = 0U;
 	join->queue_length = 0U;
+	++fixture->warp_calls;
 	if (!hostile_emergency_warp_present(fixture))
 		return false;
 	ends[3] = join->remote_length;
@@ -30352,6 +30353,203 @@ test_direct_emergency_warp_main_black_hole_cycle(void)
 		    && viewer.join.pager.foreground == 1
 		    && viewer.join.pager.line_count == 0.0f
 		    && viewer.join.event_count == 15U);
+		for (index = 0U; index < YT_RECORD_SIZE; ++index) {
+			if ((index >= YT_F49 && index < YT_F49 + 4U)
+			    || (index >= YT_F57 && index < YT_F57 + 4U))
+				continue;
+			CHECK(fixture.emergency_player.record.bytes[index]
+			    == before.bytes[index]);
+		}
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
+static bool
+direct_emergency_warp_hostile_black_hole_cycle_run(
+    struct hostile_mines_hazard_fixture *fixture, bool ansi,
+    const uint8_t *command, size_t command_length,
+    struct direct_warp_main_cycle_state *cycle, size_t ends[5])
+{
+	static const uint8_t black_hole[] = "A *-BLACK HOLE-* grabs you!";
+	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+
+	if (!direct_emergency_warp_hostile_cycle_run(fixture, ansi, command,
+	    command_length, DIRECT_WARP_HOSTILE_BLACK_HOLE, cycle, ends))
+		return false;
+	join->presentation.foreground = 2.0f;
+	join->pager.foreground = 2;
+	if (!hostile_mine_hazard_present(fixture, NULL, 0U,
+	    YT_SECTOR_MINE_OUTPUT_LINE, NULL)
+	    || !hostile_mine_emergency_attention(fixture, black_hole,
+	    sizeof(black_hole) - 1U))
+		return false;
+	join->queue[0] = '\0';
+	join->queue_position = 0U;
+	join->queue_length = 0U;
+	++fixture->warp_calls;
+	if (!hostile_emergency_warp_present(fixture))
+		return false;
+	ends[3] = join->remote_length;
+	if (!direct_emergency_warp_minimal_reentry_scanner(fixture, cycle))
+		return false;
+	++cycle->black_hole_player_reads;
+	++cycle->black_hole_handoffs;
+	ends[4] = join->remote_length;
+	return true;
+}
+
+static void
+test_direct_emergency_warp_hostile_black_hole_cycles(void)
+{
+	static const struct {
+		bool ansi;
+		const uint8_t *command;
+		size_t command_length;
+		size_t expected_length;
+		uint64_t expected_hash;
+		size_t ends[5];
+		uint64_t partition_hashes[5];
+		uint64_t row_hash;
+		size_t colors;
+		uint64_t color_hash;
+		float cached_foreground;
+	} cases[] = {
+		{false, (const uint8_t *)"W", 1U, 1132U,
+		    UINT64_C(0xc79d4857d6044778),
+		    {63U, 576U, 717U, 1094U, 1132U},
+		    {UINT64_C(0x0b6904cbde91e151),
+		    UINT64_C(0x325d153b7ea2f4c3),
+		    UINT64_C(0xebf4b56b4d761b75),
+		    UINT64_C(0xed39f8f43e4915fe),
+		    UINT64_C(0xf7c3a452e74ea995)},
+		    UINT64_C(0x396707c93a1dde2b), 4U,
+		    UINT64_C(0x01b4fd96ce8921d5), 2.0f},
+		{false, (const uint8_t *)"WT", 2U, 1133U,
+		    UINT64_C(0x9d937fa379c739c8),
+		    {64U, 577U, 718U, 1095U, 1133U},
+		    {UINT64_C(0x4715406bf12b49e1),
+		    UINT64_C(0x325d153b7ea2f4c3),
+		    UINT64_C(0xebf4b56b4d761b75),
+		    UINT64_C(0xed39f8f43e4915fe),
+		    UINT64_C(0xf7c3a452e74ea995)},
+		    UINT64_C(0x37ae5098b926bc58), 4U,
+		    UINT64_C(0x01b4fd96ce8921d5), 2.0f},
+		{true, (const uint8_t *)"W", 1U, 1518U,
+		    UINT64_C(0x9aeeece3fa8bfb18),
+		    {73U, 758U, 943U, 1470U, 1518U},
+		    {UINT64_C(0x1f8739c8faadb88e),
+		    UINT64_C(0x6d90d947714a5f0d),
+		    UINT64_C(0xffc3953ca76da3f3),
+		    UINT64_C(0x0cf315717b20f868),
+		    UINT64_C(0xc705b2f87ad21f42)},
+		    UINT64_C(0x396707c93a1dde2b), 62U,
+		    UINT64_C(0xde93a38eedc4452b), 1.0f},
+		{true, (const uint8_t *)"WT", 2U, 1519U,
+		    UINT64_C(0xc15f016086e058ba),
+		    {74U, 759U, 944U, 1471U, 1519U},
+		    {UINT64_C(0x2e092d830cad0828),
+		    UINT64_C(0x6d90d947714a5f0d),
+		    UINT64_C(0xffc3953ca76da3f3),
+		    UINT64_C(0x0cf315717b20f868),
+		    UINT64_C(0xc705b2f87ad21f42)},
+		    UINT64_C(0x37ae5098b926bc58), 62U,
+		    UINT64_C(0xde93a38eedc4452b), 1.0f},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	struct direct_warp_main_cycle_state cycle;
+	struct yt_record record;
+	struct yt_record before;
+	uint8_t remote[1600];
+	size_t ends[5];
+	size_t index;
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
+		memset(&fixture, 0, sizeof(fixture));
+		fixture.cycle.presentation.viewer = &viewer;
+		fixture.emergency_sector_cache = 733.0f;
+		fixture.draws[0] = 0.0f;
+		fixture.draws[1] = 0.0f;
+		fixture.draws[2] = 0.75f;
+		fixture.draws[3] = 0.5f;
+		fixture.draws[4] = 0.949999988079071f;
+		fixture.draws[5] = 0.999f;
+		fixture.draws[6] = 0.9f;
+		fixture.draws[7] = 0.0f;
+		fixture.draws[8] = 0.0f;
+		fixture.draws[9] = 0.75f;
+		fixture.draws[10] = 0.5f;
+		fixture.draws[11] = 0.949999988079071f;
+		fixture.draws[12] = 0.999f;
+		memset(&record, 0xa5, sizeof(record));
+		(void)yt_record_set_number(&record, YT_F49, 17.0f);
+		(void)yt_record_set_number(&record, YT_F57, 733.0f);
+		before = record;
+		yt_player_decode(&fixture.emergency_player, &record);
+		fixture.hazard_player = fixture.emergency_player;
+		CHECK(direct_emergency_warp_hostile_black_hole_cycle_run(&fixture,
+		    cases[pass].ansi, cases[pass].command,
+		    cases[pass].command_length, &cycle, ends));
+		CHECK(memcmp(ends, cases[pass].ends, sizeof(ends)) == 0
+		    && viewer.join.remote_length == cases[pass].expected_length
+		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+		    == cases[pass].expected_hash);
+		for (index = 0U; index < YT_ARRAY_LEN(ends); ++index) {
+			size_t start = index == 0U ? 0U : ends[index - 1U];
+
+			CHECK(viewer_bytes_fnv1a64(remote + start,
+			    ends[index] - start)
+			    == cases[pass].partition_hashes[index]);
+		}
+		CHECK(fixture.warp_called && fixture.warp_calls == 2U
+		    && fixture.draw_position == 13U
+		    && fixture.emergency_player_reads == 2U
+		    && fixture.emergency_player_put_attempts == 2U
+		    && fixture.emergency_player_writes == 2U
+		    && fixture.emergency_flushes == 2U
+		    && fixture.emergency_waits == 2U
+		    && fixture.emergency_ticks == 2U
+		    && fixture.emergency_destination == 1003.0f
+		    && fixture.emergency_cost == 3.0f
+		    && fixture.emergency_sector_cache == 1003.0f
+		    && fixture.emergency_player.sector == 1003.0f
+		    && fixture.emergency_player.turns == 11.0f
+		    && cycle.entry_player_reads == 1U
+		    && cycle.gate_player_reads == 1U
+		    && cycle.sector_reads == 2U
+		    && cycle.target_player_reads == 1U
+		    && cycle.final_player_reads == 0U
+		    && cycle.scanner_sound_calls == 1U
+		    && cycle.target_cloak == 0.0f
+		    && cycle.physical_current_sector == 1054.0f
+		    && cycle.black_hole_player_reads == 2U
+		    && cycle.black_hole_handoffs == 2U
+		    && viewer.join.queue_length == 0U
+		    && strcmp(viewer.join.accumulator, "y") == 0
+		    && viewer.join.local_fragment_length == 0U
+		    && viewer.join.local_row_count == 43U
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == cases[pass].row_hash
+		    && viewer.join.local_color_count == cases[pass].colors
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == cases[pass].color_hash
+		    && viewer.join.event_count == 20U
+		    && viewer.join.presentation.foreground == 1.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold
+		    == (cases[pass].ansi ? 0.0f : 1.0f)
+		    && viewer.join.presentation.blink
+		    == (cases[pass].ansi ? 0.0f : 1.0f)
+		    && viewer.join.presentation.cached_foreground
+		    == cases[pass].cached_foreground
+		    && viewer.join.pager.foreground == 1
+		    && viewer.join.pager.line_count == 0.0f);
 		for (index = 0U; index < YT_RECORD_SIZE; ++index) {
 			if ((index >= YT_F49 && index < YT_F49 + 4U)
 			    || (index >= YT_F57 && index < YT_F57 + 4U))
@@ -37496,6 +37694,7 @@ main(void)
 	test_direct_emergency_warp_main_cycle();
 	test_direct_emergency_warp_main_scanner_get_failure();
 	test_direct_emergency_warp_main_black_hole_cycle();
+	test_direct_emergency_warp_hostile_black_hole_cycles();
 	test_direct_emergency_warp_main_hostile_handoff();
 	test_direct_emergency_warp_hostile_cycles();
 	test_direct_emergency_warp_hostile_child_failures();
