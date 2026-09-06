@@ -22048,6 +22048,7 @@ struct hostile_mines_hazard_fixture {
 	size_t emergency_waits;
 	float emergency_destination;
 	float emergency_cost;
+	float emergency_sector_cache;
 	float emergency_heat;
 	size_t emergency_ticks;
 	bool destroyed;
@@ -22340,6 +22341,7 @@ hostile_emergency_warp_present(struct hostile_mines_hazard_fixture *fixture)
 	fixture->hazard_player = fixture->emergency_player;
 	++fixture->emergency_player_writes;
 	++fixture->emergency_flushes;
+	fixture->emergency_sector_cache = fixture->emergency_destination;
 	return true;
 }
 
@@ -22793,6 +22795,7 @@ test_hostile_mines_emergency_warp_cycle_presentation(void)
 		    && fixture.emergency_heat == 0.0f
 		    && fixture.emergency_destination == 1003.0f
 		    && fixture.emergency_cost == 3.0f
+		    && fixture.emergency_sector_cache == 1003.0f
 		    && fixture.emergency_player.sector == 1003.0f
 		    && fixture.emergency_player.turns == 14.0f
 		    && !fixture.destroyed && fixture.destroyed_stores == 0U
@@ -23022,6 +23025,7 @@ test_hostile_mines_black_hole_cycle_presentation(void)
 		    && fixture.emergency_heat == 0.0f
 		    && fixture.emergency_destination == 1003.0f
 		    && fixture.emergency_cost == 3.0f
+		    && fixture.emergency_sector_cache == 1003.0f
 		    && fixture.emergency_player.sector == 1003.0f
 		    && fixture.emergency_player.turns == 14.0f
 		    && !fixture.destroyed && fixture.destroyed_stores == 0U
@@ -23048,6 +23052,182 @@ test_hostile_mines_black_hole_cycle_presentation(void)
 		yt_text_input_destroy(&viewer.input);
 	}
 	CHECK(sizeof(plain) - 1U == 842U && sizeof(ansi) - 1U == 1289U);
+}
+
+static bool
+direct_emergency_warp_accepted_run(
+    struct hostile_mines_hazard_fixture *fixture, bool ansi,
+    size_t *parent_end)
+{
+	static const uint8_t warning_one[] =
+	    "This is a desperate move! Your engines will be drained and will take time";
+	static const uint8_t warning_two[] =
+	    "to recharge! You also risk a melt down! Are you sure you wish to do this?";
+	static const uint8_t prompt[] = "[y/N] -=> ";
+	static const uint8_t answer[] = "y";
+	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct yt_present_result result;
+
+	join->presentation = state(ansi);
+	if (yt_present_color(&join->presentation, &result) != YT_PRESENT_OK
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.bold = 1.0f;
+	join->presentation.foreground = 7.0f;
+	join->pager.foreground = 7;
+	if (!normal_exit_b05d(join, warning_one, sizeof(warning_one) - 1U, 0.0f))
+		return false;
+	join->presentation.bold = 1.0f;
+	if (!normal_exit_b05d(join, warning_two, sizeof(warning_two) - 1U, 0.0f)
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.bold = 1.0f;
+	if (yt_present_character(prompt, sizeof(prompt) - 1U,
+	    &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	join->accumulator[0] = 'y';
+	join->accumulator[1] = '\0';
+	if (yt_present_editor_echo(answer, sizeof(answer) - 1U,
+	    answer, sizeof(answer) - 1U, &join->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
+	*parent_end = join->remote_length;
+	join->presentation.sound.user_sound = 0.0f;
+	join->presentation.sound.local_sound = 0.0f;
+	fixture->warp_called = true;
+	return hostile_emergency_warp_present(fixture);
+}
+
+static void
+test_direct_emergency_warp_accepted_presentation(void)
+{
+	static const uint8_t plain[] =
+	    "\r\n"
+	    "This is a desperate move! Your engines will be drained and will take time\n\r"
+	    "to recharge! You also risk a melt down! Are you sure you wish to do this?\n\r"
+	    "\r\n[y/N] -=> y\r\n"
+	    "\r\n * EMERGENCY WARP ENGAGED! * \r\n"
+	    "\r\nYou enter a wormhole as your engines build up to emergency power!\r\n"
+	    "\r\n     * Engine Temperature *\r\n"
+	    "[ Normal ][ Danger ][ Overheat ]\r\n"
+	    "================================\r\n"
+	    "[*\r\n\r\n"
+	    "You sigh in relief as you look at your scanner and find yourself in\r\n"
+	    "sector 1003. However, it takes you 3 turns to recharge your engines!\r\n";
+	static const uint8_t ansi[] =
+	    "\r\n"
+	    "\x1b[0;37;40;1m"
+	    "This is a desperate move! Your engines will be drained and will take time\n\r"
+	    "\x1b[0;37;40;1m"
+	    "to recharge! You also risk a melt down! Are you sure you wish to do this?\n\r"
+	    "\x1b[0;37;40m\r\n"
+	    "\x1b[0;37;40;1m[y/N] -=> y"
+	    "\x1b[0;37;40m\r\n"
+	    "\r\n\x1b[0;33;41;5;1m * EMERGENCY WARP ENGAGED! * "
+	    "\x1b[0;33;40m\r\n\r\n"
+	    "\x1b[0;33;40;1m"
+	    "You enter a wormhole as your engines build up to emergency power!\r\n"
+	    "\x1b[0;33;40m\r\n"
+	    "\x1b[0;36;40;1m     * Engine Temperature *\r\n"
+	    "\x1b[0;36;40;1m[ Normal ][ Danger ][ Overheat ]\r\n"
+	    "\x1b[0;32;40;1m================================\r\n"
+	    "\x1b[0;36;40;1m[\x1b[0;32;40;1m*"
+	    "\x1b[0;32;40m\r\n\r\n"
+	    "You sigh in relief as you look at your scanner and find yourself in\r\n"
+	    "sector 1003. However, it takes you 3 turns to recharge your engines!\r\n";
+	static const struct {
+		bool ansi;
+		const uint8_t *expected;
+		size_t expected_length;
+		size_t parent_end;
+		size_t local_colors;
+		uint64_t color_hash;
+	} cases[] = {
+		{false, plain, sizeof(plain) - 1U, 167U,
+		    2U, UINT64_C(0x6d3fa4669b3587bd)},
+		{true, ansi, sizeof(ansi) - 1U, 223U,
+		    23U, UINT64_C(0x6e338d8e4536fe7e)},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	struct yt_record record;
+	struct yt_record before;
+	uint8_t remote[720];
+	size_t parent_end;
+	size_t index;
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
+		memset(&fixture, 0, sizeof(fixture));
+		fixture.cycle.presentation.viewer = &viewer;
+		fixture.draws[0] = 0.0f;
+		fixture.draws[1] = 0.0f;
+		fixture.draws[2] = 0.75f;
+		fixture.draws[3] = 0.5f;
+		fixture.draws[4] = 0.949999988079071f;
+		fixture.draws[5] = 0.999f;
+		memset(&record, 0xa5, sizeof(record));
+		(void)yt_record_set_number(&record, YT_F49, 17.0f);
+		(void)yt_record_set_number(&record, YT_F57, 42.0f);
+		before = record;
+		yt_player_decode(&fixture.emergency_player, &record);
+		CHECK(direct_emergency_warp_accepted_run(&fixture,
+		    cases[pass].ansi, &parent_end));
+		CHECK(parent_end == cases[pass].parent_end
+		    && viewer.join.remote_length == cases[pass].expected_length
+		    && memcmp(remote, cases[pass].expected,
+		    cases[pass].expected_length) == 0
+		    && fixture.warp_called && fixture.draw_position == 6U
+		    && fixture.emergency_player_reads == 1U
+		    && fixture.emergency_player_writes == 1U
+		    && fixture.emergency_flushes == 1U
+		    && fixture.emergency_waits == 1U
+		    && fixture.emergency_ticks == 1U
+		    && fixture.emergency_destination == 1003.0f
+		    && fixture.emergency_cost == 3.0f
+		    && fixture.emergency_sector_cache == 1003.0f
+		    && fixture.emergency_player.sector == 1003.0f
+		    && fixture.emergency_player.turns == 14.0f
+		    && strcmp(viewer.join.accumulator, "y") == 0
+		    && viewer.join.queue_length == 0U
+		    && viewer.join.local_fragment_length == 0U
+		    && viewer.join.local_row_count == 17U
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == UINT64_C(0xc8a3c863b4b5c8b1)
+		    && viewer.join.local_color_count == cases[pass].local_colors
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == cases[pass].color_hash
+		    && viewer.join.presentation.foreground == 2.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold
+		    == (cases[pass].ansi ? 0.0f : 1.0f)
+		    && viewer.join.presentation.blink
+		    == (cases[pass].ansi ? 0.0f : 1.0f)
+		    && viewer.join.presentation.cached_foreground == 2.0f
+		    && viewer.join.pager.foreground == 2
+		    && viewer.join.pager.line_count == 0.0f
+		    && viewer.join.event_count == 10U);
+		for (index = 0U; index < YT_RECORD_SIZE; ++index) {
+			if ((index >= YT_F49 && index < YT_F49 + 4U)
+			    || (index >= YT_F57 && index < YT_F57 + 4U))
+				continue;
+			CHECK(fixture.emergency_player.record.bytes[index]
+			    == before.bytes[index]);
+		}
+		yt_text_input_destroy(&viewer.input);
+	}
+	CHECK(sizeof(plain) - 1U == 513U && sizeof(ansi) - 1U == 685U);
 }
 
 struct main_genesis_cycle_fixture {
@@ -30166,6 +30346,7 @@ main(void)
 	test_hostile_mines_admitted_hazard_cycle_presentation();
 	test_hostile_mines_emergency_warp_cycle_presentation();
 	test_hostile_mines_black_hole_cycle_presentation();
+	test_direct_emergency_warp_accepted_presentation();
 	test_main_genesis_decline_cycle_presentation();
 	test_main_genesis_alternate_cycles_presentation();
 	test_main_genesis_handoff_cycle_presentation();
