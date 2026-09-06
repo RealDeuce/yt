@@ -1876,8 +1876,10 @@ yt_file_kill_observed(const char *path, yt_file_kill_provider provider,
 			active->deleted = true;
 			active->deleted_count = 1U;
 		}
-		else
+		else {
 			active->find_next_attempted = true;
+			active->find_next_dos_error = observation.dos_error;
+		}
 	}
 	active->outcome = YT_FILE_KILL_RETURNED;
 	return true;

@@ -1916,6 +1916,7 @@ test_file_kill(void)
 	    && result.found && result.checked_open && result.deleted
 	    && result.find_next_attempted
 	    && strcmp(result.selected_path, "yt.reg") == 0
+	    && result.find_next_dos_error == 18U
 	    && result.dos_error == 0U && result.basic_error == 0U
 	    && script.position == script.length);
 
@@ -1967,6 +1968,7 @@ test_file_kill(void)
 		    && result.outcome == YT_FILE_KILL_RETURNED
 		    && result.operation_count == 4U && result.deleted_count == 1U
 		    && result.deleted && result.find_next_attempted
+		    && result.find_next_dos_error == dos_error
 		    && result.dos_error == 0U && result.basic_error == 0U
 		    && script.position == script.length);
 	}

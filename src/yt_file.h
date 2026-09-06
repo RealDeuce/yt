@@ -326,6 +326,7 @@ struct yt_file_kill_result {
 	size_t operation_count;
 	size_t deleted_count;
 	uint16_t dos_error;
+	uint16_t find_next_dos_error;
 	uint16_t basic_error;
 	char selected_path[512];
 	bool found;
