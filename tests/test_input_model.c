@@ -1882,6 +1882,19 @@ test_semicolon_stages(void)
 	    && strcmp(queue, "B;CY") == 0 && position == 0U && length == 4U);
 
 	memset(&tape, 0, sizeof(tape));
+	memcpy(text, "A;B;C;D", 8U);
+	queue[0] = '\0';
+	position = 0U;
+	length = 0U;
+	CHECK(!yt_input_split_semicolon_staged(text, sizeof(text), queue,
+	    sizeof(queue), &position, &length,
+	    YT_BASIC_FAULT_ADE0_SEMICOLON_REPLACEMENT_CHR_SPACE, 2U, &result,
+	    input_process_store, &tape));
+	CHECK(result.fault_valid && result.replacements == 1U
+	    && strcmp(text, "A") == 0 && memcmp(queue, "B\rC;D", 6U) == 0
+	    && length == 5U);
+
+	memset(&tape, 0, sizeof(tape));
 	memcpy(text, "A;B;C", 6U);
 	memcpy(queue, "XY", 3U);
 	position = 1U;

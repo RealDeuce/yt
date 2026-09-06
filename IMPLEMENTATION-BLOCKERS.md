@@ -271,8 +271,11 @@ Resolved upstream by commit `98f69fcd`. The 22 remaining main-owned ADE0
 allocation/GOSUB sites and all four delegated uppercase-helper sites now
 have exact instruction, saved-IP, current-statement, ERL, ERR and installed-
 handler identities. The native fault registry contains all 26 mappings and
-projects their exact main or shared terminal routes. Attaching those
-identities to selectable staged BRUN heap/GOSUB failures remains
+projects their exact main or shared terminal routes. The staged save,
+uppercase, repeat-parse, repeat-build/notice, and semicolon/queue owners now
+attach those identities at all 26 selectable BRUN heap/GOSUB cuts, including
+arbitrary build and replacement-loop occurrences. Raw heap, descriptor,
+frame, asynchronous continuation, and physical handler effects remain
 implementation work rather than a documentation gap.
 
 ### DOC-GAP-027: sequential disk-read carry prefix and cursor conflict
