@@ -33189,13 +33189,46 @@ test_direct_emergency_warp_hostile_attack_surrender_accepted(void)
 		const uint8_t *command;
 		size_t command_length;
 		size_t total_length;
+		enum yt_hostile_surrender_answer answer;
+		size_t suffix_length;
+		uint64_t suffix_hash;
 	} callers[] = {
-		{true, false, (const uint8_t *)"W", 1U, 918U},
-		{true, true, (const uint8_t *)"W", 1U, 1190U},
-		{false, false, (const uint8_t *)"W", 1U, 940U},
-		{false, false, (const uint8_t *)"WT", 2U, 941U},
-		{false, true, (const uint8_t *)"W", 1U, 1222U},
-		{false, true, (const uint8_t *)"WT", 2U, 1223U},
+		{true, false, (const uint8_t *)"W", 1U, 918U,
+		    YT_HOSTILE_SURRENDER_ANSWER_YES, 396U,
+		    UINT64_C(0xdcdc47d59406f81f)},
+		{true, true, (const uint8_t *)"W", 1U, 1190U,
+		    YT_HOSTILE_SURRENDER_ANSWER_YES, 440U,
+		    UINT64_C(0xfe74a692586fcd9c)},
+		{false, false, (const uint8_t *)"W", 1U, 940U,
+		    YT_HOSTILE_SURRENDER_ANSWER_YES, 396U,
+		    UINT64_C(0xdcdc47d59406f81f)},
+		{false, false, (const uint8_t *)"WT", 2U, 941U,
+		    YT_HOSTILE_SURRENDER_ANSWER_YES, 396U,
+		    UINT64_C(0xdcdc47d59406f81f)},
+		{false, true, (const uint8_t *)"W", 1U, 1222U,
+		    YT_HOSTILE_SURRENDER_ANSWER_YES, 440U,
+		    UINT64_C(0xfe74a692586fcd9c)},
+		{false, true, (const uint8_t *)"WT", 2U, 1223U,
+		    YT_HOSTILE_SURRENDER_ANSWER_YES, 440U,
+		    UINT64_C(0xfe74a692586fcd9c)},
+		{true, false, (const uint8_t *)"W", 1U, 918U,
+		    YT_HOSTILE_SURRENDER_ANSWER_EMPTY, 395U,
+		    UINT64_C(0x766bd34db1af58ca)},
+		{true, true, (const uint8_t *)"W", 1U, 1190U,
+		    YT_HOSTILE_SURRENDER_ANSWER_EMPTY, 439U,
+		    UINT64_C(0xfd0ba0ff9e529181)},
+		{false, false, (const uint8_t *)"W", 1U, 940U,
+		    YT_HOSTILE_SURRENDER_ANSWER_EMPTY, 395U,
+		    UINT64_C(0x766bd34db1af58ca)},
+		{false, false, (const uint8_t *)"WT", 2U, 941U,
+		    YT_HOSTILE_SURRENDER_ANSWER_EMPTY, 395U,
+		    UINT64_C(0x766bd34db1af58ca)},
+		{false, true, (const uint8_t *)"W", 1U, 1222U,
+		    YT_HOSTILE_SURRENDER_ANSWER_EMPTY, 439U,
+		    UINT64_C(0xfd0ba0ff9e529181)},
+		{false, true, (const uint8_t *)"WT", 2U, 1223U,
+		    YT_HOSTILE_SURRENDER_ANSWER_EMPTY, 439U,
+		    UINT64_C(0xfd0ba0ff9e529181)},
 	};
 	struct physical_viewer_join viewer;
 	struct yt_file_viewer_stream_state stream;
@@ -33251,13 +33284,11 @@ test_direct_emergency_warp_hostile_attack_surrender_accepted(void)
 		CHECK(viewer.join.remote_length == joined_start);
 		yt_error_clear(&error);
 		CHECK(direct_warp_attack_surrender_join_run(&fixture, &cycle,
-		    &join, &combat, YT_HOSTILE_SURRENDER_ANSWER_YES, &error));
+		    &join, &combat, callers[caller].answer, &error));
 		suffix_length = viewer.join.remote_length - joined_start;
-		CHECK(suffix_length == (callers[caller].ansi ? 440U : 396U)
+		CHECK(suffix_length == callers[caller].suffix_length
 		    && viewer_bytes_fnv1a64(remote + joined_start, suffix_length)
-		    == (callers[caller].ansi
-		    ? UINT64_C(0xfe74a692586fcd9c)
-		    : UINT64_C(0xdcdc47d59406f81f)));
+		    == callers[caller].suffix_hash);
 		CHECK(combat.complete && combat.surrender_checked
 		    && combat.surrendered && combat.iterations == 0U
 		    && combat.attacker_loss == 0.0 && combat.defender_loss == 0.0
