@@ -32302,6 +32302,21 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 	static const uint8_t raw_one_double[8] = {0, 0, 0, 0, 0, 0, 0, 0x81U};
 	static const uint8_t raw_zero_double[8] = {0};
 	static const struct {
+		enum direct_warp_gate_get_failure failure;
+		uint16_t error_number;
+		enum yt_basic_fault_disposition disposition;
+		enum yt_main_error_route route;
+	} return_cuts[] = {
+		{DIRECT_WARP_GATE_SEEK_52, 52U, YT_BASIC_FAULT_END,
+		    YT_MAIN_ERROR_FATAL},
+		{DIRECT_WARP_GATE_READ_57, 57U,
+		    YT_BASIC_FAULT_RETRY_STATEMENT, YT_MAIN_ERROR_RETRY_CURRENT},
+		{DIRECT_WARP_GATE_READ_70, 70U, YT_BASIC_FAULT_END,
+		    YT_MAIN_ERROR_FATAL},
+		{DIRECT_WARP_GATE_READ_75, 75U, YT_BASIC_FAULT_END,
+		    YT_MAIN_ERROR_FATAL},
+	};
+	static const struct {
 		bool main;
 		bool ansi;
 		const uint8_t *command;
@@ -32331,13 +32346,18 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 	struct direct_warp_main_cycle_state cycle;
 	struct direct_warp_attack_combat_join join;
 	struct yt_hostile_attack_combat_state combat;
+	struct direct_warp_main_cycle_state cycle_before_return;
+	struct direct_warp_gate_get_state gate;
+	struct yt_basic_fault_projection projection;
 	struct yt_player expected_player;
 	struct yt_sector expected_sector;
+	struct yt_player player_before_return;
 	struct yt_record record;
 	struct yt_error error;
 	uint8_t remote[1600];
 	size_t ends[3];
 	size_t caller;
+	size_t cut;
 	size_t index;
 
 	for (caller = 0U; caller < YT_ARRAY_LEN(callers); ++caller) {
@@ -32525,6 +32545,69 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 			CHECK(join.written_sector.record.bytes[index]
 			    == join.persistence_sector.record.bytes[index]);
 		}
+		fixture.hazard_sector.record = join.written_sector.record;
+		cycle_before_return = cycle;
+		player_before_return = fixture.emergency_player;
+		for (cut = 0U; cut < YT_ARRAY_LEN(return_cuts); ++cut) {
+			cycle = cycle_before_return;
+			fixture.emergency_player = player_before_return;
+			CHECK(direct_emergency_warp_fresh_hostile_menu_get_failure(
+			    &fixture, &cycle, return_cuts[cut].failure, &gate,
+			    &projection));
+			CHECK(gate.seek_calls == 1U
+			    && gate.read_calls == (return_cuts[cut].failure
+			    == DIRECT_WARP_GATE_SEEK_52 ? 0U : 1U)
+			    && gate.database.last_get.current_record == 2U
+			    && gate.database.last_get.record_index == 1U
+			    && gate.database.last_get.desired_offset == YT_RECORD_SIZE
+			    && gate.database.last_get.basic_error
+			    == return_cuts[cut].error_number
+			    && gate.database.last_get.terminal_position
+			    == gate.terminal_position
+			    && gate.database.last_get.registered
+			    && gate.database.last_get.handle_open
+			    && gate.store_count == 0U);
+			CHECK(projection.site
+			    == YT_BASIC_FAULT_CURRENT_PLAYER_A41C_GET
+			    && projection.error_number
+			    == return_cuts[cut].error_number
+			    && projection.identity->instruction == 0xA428U
+			    && projection.identity->saved_ip == 0xA42BU
+			    && projection.identity->retry_statement == 0xA41DU
+			    && projection.identity->source_line == 33990
+			    && projection.identity->handler == 0xB2DAU
+			    && projection.disposition
+			    == return_cuts[cut].disposition
+			    && projection.main.route == return_cuts[cut].route);
+			CHECK(fixture.draw_position == 9U
+			    && cycle.fresh_hostile_player_reads == 3U
+			    && memcmp(&fixture.emergency_player,
+			    &player_before_return, sizeof(player_before_return)) == 0
+			    && viewer.join.remote_length
+			    == callers[caller].total_length + sizeof(body) - 1U);
+			if (return_cuts[cut].failure
+			    == DIRECT_WARP_GATE_SEEK_52) {
+				CHECK(gate.field_record == 1054
+				    && !gate.field_player
+				    && cycle.final_field_record == 1054
+				    && !cycle.final_field_player
+				    && memcmp(&gate.field,
+				    &join.written_sector.record,
+				    sizeof(gate.field)) == 0);
+			}
+			else {
+				CHECK(gate.field_record == 2 && gate.field_player
+				    && cycle.final_field_record == 2
+				    && cycle.final_field_player
+				    && memcmp(gate.field.bytes,
+				    gate.read_source.bytes, 3U) == 0);
+				for (index = 3U; index < YT_RECORD_SIZE; ++index)
+					CHECK(gate.field.bytes[index] == 0U);
+			}
+			yt_database_close(&gate.database);
+		}
+		cycle = cycle_before_return;
+		fixture.emergency_player = player_before_return;
 		CHECK(direct_warp_attack_return_hostile_menu(&join,
 		    combat.deployed_remaining));
 		CHECK(viewer.join.remote_length == callers[caller].total_length
