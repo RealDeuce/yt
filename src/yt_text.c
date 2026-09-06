@@ -1179,6 +1179,7 @@ text_input_close_execute(struct yt_text_input *input, struct yt_error *error)
 	delivered = text_input_close_observe(input, provider,
 	    first_handle_open ? file : NULL,
 	    YT_TEXT_CLOSE_CLEANUP_HANDLE, &cleanup);
+	input->last_close.cleanup_dos_error = cleanup.dos_error;
 	valid = delivered && text_close_observation_valid(
 	    YT_TEXT_CLOSE_CLEANUP_HANDLE, 0U, &cleanup);
 	if ((!valid && first_handle_open) || (valid && cleanup.handle_open))
@@ -2374,6 +2375,7 @@ text_output_write_cleanup_after_carry(struct yt_text_output *output,
 	cleanup.terminal_position = -1;
 	delivered = provider(output->close_context, file,
 	    YT_TEXT_CLOSE_CLEANUP_HANDLE, NULL, 0U, &cleanup);
+	output->last_write.cleanup_dos_error = cleanup.dos_error;
 	valid = delivered && text_close_observation_valid(
 	    YT_TEXT_CLOSE_CLEANUP_HANDLE, 0U, &cleanup);
 	if (!valid || cleanup.handle_open)
@@ -2505,6 +2507,7 @@ text_output_cleanup_after_carry(struct yt_text_output *output,
 	delivered = text_output_close_observe(output, provider,
 	    handle_open ? file : NULL, YT_TEXT_CLOSE_CLEANUP_HANDLE,
 	    NULL, 0U, &cleanup);
+	output->last_close.cleanup_dos_error = cleanup.dos_error;
 	valid = delivered && text_close_observation_valid(
 	    YT_TEXT_CLOSE_CLEANUP_HANDLE, 0U, &cleanup);
 	if ((!valid && handle_open) || (valid && cleanup.handle_open))

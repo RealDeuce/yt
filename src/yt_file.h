@@ -74,6 +74,7 @@ struct yt_database_close_result {
 	enum yt_database_close_outcome outcome;
 	uint16_t dos_error;
 	uint16_t basic_error;
+	uint16_t retry_dos_error;
 	size_t attempt_count;
 	bool missing;
 	bool retry_attempted;

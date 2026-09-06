@@ -142,6 +142,7 @@ struct yt_text_close_result {
 	size_t accepted;
 	uint16_t dos_error;
 	uint16_t basic_error;
+	uint16_t cleanup_dos_error;
 	int64_t terminal_position;
 	bool close_all;
 	bool missing;
@@ -259,6 +260,7 @@ struct yt_text_output_write_result {
 	size_t failed_flush_accepted;
 	uint16_t dos_error;
 	uint16_t basic_error;
+	uint16_t cleanup_dos_error;
 	int64_t terminal_position;
 	bool physical_unknown;
 	bool cleanup_close_attempted;

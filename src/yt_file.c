@@ -1095,6 +1095,7 @@ database_close_execute(struct yt_database *database, bool close_all,
 	retry_active = handle_open;
 	delivered = database_close_observe(database, provider,
 	    retry_active ? file : NULL, 2U, &observation);
+	database->last_close.retry_dos_error = observation.dos_error;
 	if (!delivered || !database_close_observation_valid(&observation,
 	    retry_active)) {
 		if ((delivered && observation.handle_open)

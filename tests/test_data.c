@@ -2568,6 +2568,7 @@ test_database_random_close(void)
 			    && database.last_close.basic_error
 			    == (device != 0U ? 57U : 70U)
 			    && database.last_close.dos_error == dos_error
+			    && database.last_close.retry_dos_error == 0U
 			    && database.last_close.attempt_count == 2U
 			    && database.last_close.retry_attempted
 			    && !database.last_close.registered
@@ -2591,6 +2592,7 @@ test_database_random_close(void)
 			    ? YT_DATABASE_CLOSE_DEVICE_ERROR
 			    : YT_DATABASE_CLOSE_DISK_ERROR)
 			    && database.last_close.dos_error == 1U
+			    && database.last_close.retry_dos_error == dos_error
 			    && database.last_close.basic_error
 			    == (device != 0U ? 57U : 70U)
 			    && !database.last_close.registered
@@ -2865,6 +2867,7 @@ test_text_output_write(void)
 	    && output.last_write.outcome == YT_TEXT_OUTPUT_WRITE_DISK_ERROR
 	    && output.last_write.basic_error == 71U
 	    && output.last_write.dos_error == 5U
+	    && output.last_write.cleanup_dos_error == 6U
 	    && output.last_write.physical_unknown
 	    && output.last_write.cleanup_close_attempted
 	    && !output.last_write.registered && output.last_write.handle_open
@@ -3386,6 +3389,7 @@ test_text_output_close(void)
 	CHECK(!yt_text_output_close(&output, &error)
 	    && output.last_close.outcome == YT_TEXT_CLOSE_DISK_ERROR
 	    && output.last_close.dos_error == 5U
+	    && output.last_close.cleanup_dos_error == 6U
 	    && output.last_close.handle_open
 	    && output.file == NULL && output.orphaned_file != NULL);
 	yt_text_output_destroy(&output);
@@ -3407,6 +3411,7 @@ test_text_output_close(void)
 	    && script.position == script.length
 	    && output.last_close.outcome == YT_TEXT_CLOSE_DISK_ERROR
 	    && output.last_close.dos_error == 5U
+	    && output.last_close.cleanup_dos_error == 6U
 	    && output.last_close.cleanup_close_attempted
 	    && !output.last_close.handle_open
 	    && output.file == NULL && output.orphaned_file == NULL);
@@ -5251,6 +5256,7 @@ test_input_close_model(void)
 		    && input.last_close.outcome == YT_TEXT_CLOSE_DISK_ERROR
 		    && input.last_close.basic_error == 70U
 		    && input.last_close.dos_error == 5U
+		    && input.last_close.cleanup_dos_error == retry_error
 		    && !input.last_close.registered
 		    && input.last_close.handle_open == (retry_error != 0U)
 		    && (input.orphaned_file != NULL) == (retry_error != 0U));
@@ -5270,6 +5276,7 @@ test_input_close_model(void)
 	    && input.last_close.operation_count == 2U
 	    && input.last_close.basic_error == 70U
 	    && input.last_close.dos_error == 5U
+	    && input.last_close.cleanup_dos_error == 6U
 	    && !input.last_close.registered
 	    && !input.last_close.handle_open);
 	yt_text_input_destroy(&input);
