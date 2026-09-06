@@ -37299,6 +37299,8 @@ test_direct_emergency_warp_xannor_attack_victory_join(void)
 {
 	static const uint8_t player_name[] = {'A', 0, 'B'};
 	static const uint8_t response[] = "256000";
+	static const uint8_t main_prompt[] =
+	    "Time: 14:59  Main Command (?=Help)? ";
 	static const struct {
 		bool main;
 		bool ansi;
@@ -37314,36 +37316,36 @@ test_direct_emergency_warp_xannor_attack_victory_join(void)
 		size_t colors;
 		uint64_t color_hash;
 	} callers[] = {
-		{true, false, (const uint8_t *)"W", 1U, 927U, 1611U,
-		    UINT64_C(0x5aba16ea20a01151), 684U,
-		    UINT64_C(0x61187d26ba741bd5), 51U,
-		    UINT64_C(0x2de555ef9a7f709f), 12U,
-		    UINT64_C(0x5218ab7752360135)},
-		{true, true, (const uint8_t *)"W", 1U, 1199U, 1929U,
-		    UINT64_C(0xb0649e5ffc5b53ac), 730U,
-		    UINT64_C(0xc2eb0dc81d4233ff), 51U,
-		    UINT64_C(0x2de555ef9a7f709f), 75U,
-		    UINT64_C(0xa953dcef4a7abe5a)},
-		{false, false, (const uint8_t *)"W", 1U, 949U, 1633U,
-		    UINT64_C(0xa7639c8f60104879), 684U,
-		    UINT64_C(0x61187d26ba741bd5), 52U,
-		    UINT64_C(0xe7f24d58ef316806), 13U,
+		{true, false, (const uint8_t *)"W", 1U, 927U, 1686U,
+		    UINT64_C(0x5057f2895f3d9a7f), 759U,
+		    UINT64_C(0x4819e41f30dab483), 55U,
+		    UINT64_C(0x561a10e17b24583b), 13U,
 		    UINT64_C(0xe4fcd46e10198702)},
-		{false, false, (const uint8_t *)"WT", 2U, 950U, 1634U,
-		    UINT64_C(0xbfb7da9b8aa742e9), 684U,
-		    UINT64_C(0x61187d26ba741bd5), 52U,
-		    UINT64_C(0x1cab942ec21b2083), 13U,
-		    UINT64_C(0xe4fcd46e10198702)},
-		{false, true, (const uint8_t *)"W", 1U, 1231U, 1961U,
-		    UINT64_C(0x6857f9dd726fdce3), 730U,
-		    UINT64_C(0xc2eb0dc81d4233ff), 52U,
-		    UINT64_C(0xe7f24d58ef316806), 77U,
-		    UINT64_C(0xf038e55eea339f1d)},
-		{false, true, (const uint8_t *)"WT", 2U, 1232U, 1962U,
-		    UINT64_C(0x4f7ee1e39fdb8ce9), 730U,
-		    UINT64_C(0xc2eb0dc81d4233ff), 52U,
-		    UINT64_C(0x1cab942ec21b2083), 77U,
-		    UINT64_C(0xf038e55eea339f1d)},
+		{true, true, (const uint8_t *)"W", 1U, 1199U, 2024U,
+		    UINT64_C(0x7118e349b5edadc7), 825U,
+		    UINT64_C(0xe1ccc830b90e6b92), 55U,
+		    UINT64_C(0x561a10e17b24583b), 84U,
+		    UINT64_C(0x1325f96f4535baf5)},
+		{false, false, (const uint8_t *)"W", 1U, 949U, 1708U,
+		    UINT64_C(0x8c563ed4000fb4b7), 759U,
+		    UINT64_C(0x4819e41f30dab483), 56U,
+		    UINT64_C(0xd9184ee254cd6ed8), 14U,
+		    UINT64_C(0x4692bc1a44da0ecd)},
+		{false, false, (const uint8_t *)"WT", 2U, 950U, 1709U,
+		    UINT64_C(0xadf285428fee5527), 759U,
+		    UINT64_C(0x4819e41f30dab483), 56U,
+		    UINT64_C(0xe08c3132b0cc42bf), 14U,
+		    UINT64_C(0x4692bc1a44da0ecd)},
+		{false, true, (const uint8_t *)"W", 1U, 1231U, 2056U,
+		    UINT64_C(0x2464975743c114c6), 825U,
+		    UINT64_C(0xe1ccc830b90e6b92), 56U,
+		    UINT64_C(0xd9184ee254cd6ed8), 86U,
+		    UINT64_C(0x8a4e9db764596dda)},
+		{false, true, (const uint8_t *)"WT", 2U, 1232U, 2057U,
+		    UINT64_C(0x4b1ae732b4ad7a8c), 825U,
+		    UINT64_C(0xe1ccc830b90e6b92), 56U,
+		    UINT64_C(0xe08c3132b0cc42bf), 86U,
+		    UINT64_C(0x8a4e9db764596dda)},
 	};
 	struct physical_viewer_join viewer;
 	struct yt_file_viewer_stream_state stream;
@@ -37479,6 +37481,7 @@ test_direct_emergency_warp_xannor_attack_victory_join(void)
 		yt_error_clear(&error);
 		CHECK(yt_hostile_attack_combat_run(&combat,
 		    &direct_warp_attack_combat_ops, &join, &error));
+		CHECK(direct_emergency_warp_quiet_reentry(&fixture, &cycle, true));
 		joined_length = viewer.join.remote_length - joined_start;
 		CHECK(viewer.join.remote_length == callers[caller].total
 		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
@@ -37491,7 +37494,9 @@ test_direct_emergency_warp_xannor_attack_victory_join(void)
 		    && viewer.join.local_color_count == callers[caller].colors
 		    && viewer_colors_fnv1a64(&viewer.join)
 		    == callers[caller].color_hash
-		    && viewer.join.local_fragment_length == 0U);
+		    && viewer.join.local_fragment_length == sizeof(main_prompt) - 1U
+		    && memcmp(viewer.join.local_fragment, main_prompt,
+		    sizeof(main_prompt) - 1U) == 0);
 		CHECK(combat.complete
 		    && combat.route == YT_HOSTILE_ATTACK_COMBAT_NORMAL
 		    && combat.old_owner == -1.0f
@@ -37521,6 +37526,13 @@ test_direct_emergency_warp_xannor_attack_victory_join(void)
 		    && join.victory_news_count == 3U
 		    && join.victory_radio_count == 3U
 		    && join.victory_sector_writes == 1U
+		    && cycle.sector_reads == 2U
+		    && cycle.final_player_reads == 1U
+		    && cycle.physical_current_sector == 1054.0f
+		    && cycle.final_field_record == 2 && cycle.final_field_player
+		    && cycle.fresh_prompt_wait
+		    && viewer.join.pager.line_count == 0.0f
+		    && viewer.join.accumulator[0] == '\0'
 		    && !join.unexpected_surrender && !join.unexpected_spill
 		    && !join.unexpected_news && !join.unexpected_fatal
 		    && !join.unexpected_tail_effect);
