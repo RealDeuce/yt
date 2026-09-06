@@ -17626,6 +17626,7 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	float player_cloak[4] = {0};
 	float location[21] = {0};
 	float size[21] = {0};
+	int target;
 	int sector;
 	bool valid = false;
 
@@ -17661,8 +17662,10 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	}
 	location[2] = 1.0f;
 	size[2] = 10.0f;
-	if (!yt_maintenance_xannor_route_arrivals(&game, &cache,
-	    player_sector, player_cloak, YT_ARRAY_LEN(player_sector), 2, 3,
+	if (!yt_maintenance_xannor_target_override(2, 4, 99.0f, 200000.0f,
+	    3, 0, 0, &target, &error) || target != 3
+	    || !yt_maintenance_xannor_route_arrivals(&game, &cache,
+	    player_sector, player_cloak, YT_ARRAY_LEN(player_sector), 2, target,
 	    location, size, &route, &error)
 	    || route.hops != 2 || !route.reached_target
 	    || route.route_missing || route.exhausted
