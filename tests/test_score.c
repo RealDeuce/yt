@@ -17625,6 +17625,12 @@ check_maintenance_final_suffix_pass(void)
 	};
 	struct maintenance_final_close_fault close_fault = {0};
 	struct maintenance_final_output_fault output_fault;
+	struct score_database_partial_fault marker_read_fault = {
+		0U, 1U, 17U, 0x11223344
+	};
+	struct score_database_partial_fault marker_write_fault = {
+		0U, 1U, 85U, 0x55667788
+	};
 	struct yt_text_file bulletin = {0};
 	struct yt_database verify = {0};
 	struct yt_record before;
@@ -17816,6 +17822,80 @@ check_maintenance_final_suffix_pass(void)
 	    || memcmp(tape.screen.data, prefix, sizeof(prefix) - 1U) != 0
 	    || !yt_database_read(&game.database, 1U, &after, &error)
 	    || yt_record_get_number(&after, YT_F81) != 17.0f)
+		goto done;
+
+	/* Marker GET failure retains its physical prefix and old typed marker. */
+	game.config.record = after;
+	game.config.last_maintenance = 17.0f;
+	random_script.position = 0U;
+	yt_random_set_provider(&game.random, score_random_fill, &random_script);
+	clock_script.position = 0U;
+	tape = (struct maintenance_final_suffix_tape){
+		.screen = {0},
+		.game = &game,
+		.first_closed_line = (size_t)-1
+	};
+	yt_database_set_read_provider(&game.database,
+	    score_database_read_partial_fault, &marker_read_fault);
+	yt_error_clear(&error);
+	if (yt_maintenance_finish(&game, maintenance_final_suffix_collect,
+	    &tape, &error)
+	    || error.status != YT_IO_ERROR
+	    || marker_read_fault.calls != 1U
+	    || game.database.last_get.outcome != YT_DATABASE_GET_READ_ERROR
+	    || game.database.last_get.current_record != 1U
+	    || game.database.last_get.accepted != marker_read_fault.accepted
+	    || game.database.last_get.dos_error != 6U
+	    || game.database.last_get.basic_error != 57U
+	    || game.database.last_get.terminal_position
+	    != marker_read_fault.terminal_position
+	    || game.database.file == NULL || game.random.draws != 1U
+	    || clock_script.position != 1U
+	    || game.config.last_maintenance != 17.0f
+	    || yt_record_get_number(&game.config.record, YT_F81) != 17.0f
+	    || tape.screen.lines != 3U
+	    || tape.screen.length != sizeof(prefix) - 1U
+	    || memcmp(tape.screen.data, prefix, sizeof(prefix) - 1U) != 0)
+		goto done;
+	yt_database_set_read_provider(&game.database, NULL, NULL);
+
+	/* A carrying marker PUT can commit its prefix without typed success. */
+	expected = after;
+	if (!yt_record_set_number(&expected, YT_F81, 204.0f))
+		goto done;
+	random_script.position = 0U;
+	yt_random_set_provider(&game.random, score_random_fill, &random_script);
+	clock_script.position = 0U;
+	tape = (struct maintenance_final_suffix_tape){
+		.screen = {0},
+		.game = &game,
+		.first_closed_line = (size_t)-1
+	};
+	yt_database_set_write_provider(&game.database,
+	    score_database_write_partial_fault, &marker_write_fault);
+	yt_error_clear(&error);
+	if (yt_maintenance_finish(&game, maintenance_final_suffix_collect,
+	    &tape, &error)
+	    || error.status != YT_IO_ERROR
+	    || marker_write_fault.calls != 1U
+	    || game.database.last_put.outcome != YT_DATABASE_PUT_WRITE_ERROR
+	    || game.database.last_put.current_record != 1U
+	    || game.database.last_put.accepted != marker_write_fault.accepted
+	    || game.database.last_put.dos_error != 6U
+	    || game.database.last_put.basic_error != 57U
+	    || game.database.last_put.terminal_position
+	    != marker_write_fault.terminal_position
+	    || game.database.file == NULL || game.random.draws != 1U
+	    || clock_script.position != 1U
+	    || game.config.last_maintenance != 17.0f
+	    || yt_record_get_number(&game.config.record, YT_F81) != 17.0f
+	    || tape.screen.lines != 3U
+	    || tape.screen.length != sizeof(prefix) - 1U
+	    || memcmp(tape.screen.data, prefix, sizeof(prefix) - 1U) != 0)
+		goto done;
+	yt_database_set_write_provider(&game.database, NULL, NULL);
+	if (!yt_database_read(&game.database, 1U, &after, &error)
+	    || memcmp(after.bytes, expected.bytes, YT_RECORD_SIZE) != 0)
 		goto done;
 	valid = true;
 
