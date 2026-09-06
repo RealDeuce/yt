@@ -44,6 +44,7 @@ struct yt_database_open_result {
 	enum yt_database_open_outcome outcome;
 	uint16_t dos_error;
 	uint16_t basic_error;
+	uint16_t temporary_close_retry_dos_error;
 	uint8_t access_attempts[6];
 	size_t access_attempt_count;
 	size_t operation_count;

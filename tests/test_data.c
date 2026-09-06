@@ -1714,12 +1714,35 @@ test_database_random_open(void)
 		    == YT_DATABASE_OPEN_TEMP_CLOSE_ERROR
 		    && database.last_open.basic_error == 70U
 		    && database.last_open.dos_error == 5U
+		    && database.last_open.temporary_close_retry_dos_error
+		    == (index == 1U ? 0U : 6U)
 		    && database.last_open.created
 		    && database.last_open.temporary_close_attempted
 		    && database.last_open.temporary_close_retried
 		    && database.last_open.operation_count == 4U
 		    && !database.last_open.registered
 		    && database.last_open.handle_open == (index == 0U));
+		yt_database_close(&database);
+	}
+	/* The ignored retry's complete DOS-error domain remains observable. */
+	for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
+		memset(&script, 0, sizeof(script));
+		database_open_add_missing_prefix(&script);
+		database_open_add_failure(&script,
+		    YT_DATABASE_OPEN_TEMP_CLOSE, 0U, 0U, 5U, true);
+		database_open_add(&script, YT_DATABASE_OPEN_TEMP_CLOSE, 0U,
+		    5U, true, (uint16_t)dos_error, 0U, false, false, false,
+		    true, 0U);
+		CHECK(!yt_database_open_observed(&database, path,
+		    YT_OPEN_UPDATE_CREATE, scripted_database_open, &script,
+		    &error));
+		database_open_check_consumed(&script);
+		CHECK(database.last_open.outcome
+		    == YT_DATABASE_OPEN_TEMP_CLOSE_ERROR
+		    && database.last_open.dos_error == 5U
+		    && database.last_open.temporary_close_retry_dos_error
+		    == dos_error
+		    && !database.last_open.handle_open);
 		yt_database_close(&database);
 	}
 

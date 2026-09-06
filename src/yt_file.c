@@ -559,6 +559,8 @@ create_missing:
 
 			if (observed)
 				temporary_open = observation.handle_open;
+			database->last_open.temporary_close_retry_dos_error
+			    = observation.dos_error;
 			if (!observed || !database_open_observation_valid(
 			    YT_DATABASE_OPEN_TEMP_CLOSE, &observation)) {
 				if (temporary_open)
