@@ -23823,8 +23823,8 @@ struct direct_warp_parent_copy_state {
 };
 
 static bool
-direct_emergency_warp_parent_copy_failure_run(
-    struct hostile_mines_hazard_fixture *fixture, bool ansi,
+direct_emergency_warp_parent_copy_failure_continue(
+    struct hostile_mines_hazard_fixture *fixture,
     enum direct_warp_parent_copy_failure failure,
     struct direct_warp_parent_copy_state *copy)
 {
@@ -23837,13 +23837,8 @@ direct_emergency_warp_parent_copy_failure_run(
 
 	if (copy == NULL)
 		return false;
-	memcpy(copy->output_scratch, "old-output", 10U);
-	copy->output_length = 10U;
-	memcpy(copy->prompt_scratch, "old-prompt", 10U);
-	copy->prompt_length = 10U;
 	copy->failure = failure;
 	copy->routed_main_handler = false;
-	join->presentation = state(ansi);
 	if (yt_present_color(&join->presentation, &result) != YT_PRESENT_OK
 	    || !normal_exit_line(join, NULL, 0U))
 		return false;
@@ -23870,6 +23865,25 @@ direct_emergency_warp_parent_copy_failure_run(
 		return false;
 	copy->routed_main_handler = true;
 	return true;
+}
+
+static bool
+direct_emergency_warp_parent_copy_failure_run(
+    struct hostile_mines_hazard_fixture *fixture, bool ansi,
+    enum direct_warp_parent_copy_failure failure,
+    struct direct_warp_parent_copy_state *copy)
+{
+	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+
+	if (copy == NULL)
+		return false;
+	memcpy(copy->output_scratch, "old-output", 10U);
+	copy->output_length = 10U;
+	memcpy(copy->prompt_scratch, "old-prompt", 10U);
+	copy->prompt_length = 10U;
+	join->presentation = state(ansi);
+	return direct_emergency_warp_parent_copy_failure_continue(fixture,
+	    failure, copy);
 }
 
 static void
@@ -23957,6 +23971,268 @@ test_direct_emergency_warp_parent_copy_failures(void)
 		    && fixture.emergency_player_writes == 0U
 		    && fixture.emergency_flushes == 0U
 		    && fixture.emergency_waits == 0U);
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
+struct direct_warp_hostile_parent_copy_cycle_state {
+	size_t entry_player_reads;
+	size_t gate_player_reads;
+	float physical_current_sector;
+};
+
+static bool
+direct_emergency_warp_hostile_parent_copy_failure_run(
+    struct hostile_mines_hazard_fixture *fixture, bool ansi,
+    const uint8_t *command, size_t command_length,
+    enum direct_warp_parent_copy_failure failure,
+    struct direct_warp_parent_copy_state *copy,
+    struct direct_warp_hostile_parent_copy_cycle_state *cycle,
+    size_t ends[2])
+{
+	static const uint8_t prompt[] =
+	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? ";
+	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	uint8_t row[96];
+	size_t row_length;
+	char transformed[4];
+
+	if (command == NULL || command_length == 0U
+	    || command_length >= sizeof(transformed) || copy == NULL
+	    || cycle == NULL || ends == NULL)
+		return false;
+	memset(copy, 0, sizeof(*copy));
+	memset(cycle, 0, sizeof(*cycle));
+	cycle->physical_current_sector = 784.0f;
+	join->presentation = state(ansi);
+	join->presentation.foreground = 3.0f;
+	join->pager.foreground = 3;
+	if (!yt_hostile_menu_row(1000.0, 1250.0, row, sizeof(row), &row_length)
+	    || !normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, row, row_length, 0.0f)
+	    || !normal_exit_b05d(join, prompt, sizeof(prompt) - 1U, 1.0f))
+		return false;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	memcpy(join->accumulator, command, command_length);
+	join->accumulator[command_length] = '\0';
+	if (!main_buy_present_echo(&fixture->cycle.presentation, command,
+	    command_length) || !normal_exit_line(join, NULL, 0U))
+		return false;
+	ends[0] = join->remote_length;
+	memcpy(transformed, command, command_length);
+	transformed[command_length] = '\0';
+	yt_input_compat_upper_n_observed((uint8_t *)transformed,
+	    command_length, NULL, NULL);
+	if (yt_hostile_menu_dispatch(transformed) != YT_HOSTILE_MENU_WARP)
+		return false;
+	++cycle->entry_player_reads;
+	++cycle->gate_player_reads;
+	if (yt_no_turn_gate_denied(fixture->emergency_player.turns))
+		return false;
+	memcpy(copy->output_scratch, command, command_length);
+	copy->output_length = command_length;
+	if (!direct_emergency_warp_parent_copy_failure_continue(fixture,
+	    failure, copy))
+		return false;
+	ends[1] = join->remote_length;
+	return true;
+}
+
+static void
+test_direct_emergency_warp_hostile_parent_copy_failures(void)
+{
+	static const uint8_t warning_one[] =
+	    "This is a desperate move! Your engines will be drained and will take time";
+	static const uint8_t warning_two[] =
+	    "to recharge! You also risk a melt down! Are you sure you wish to do this?";
+	static const struct {
+		bool ansi;
+		const uint8_t *command;
+		size_t command_length;
+		enum direct_warp_parent_copy_failure failure;
+		size_t expected_length;
+		uint64_t expected_hash;
+		size_t ends[2];
+		uint64_t partition_hashes[2];
+	} cases[] = {
+		{false, (const uint8_t *)"W", 1U, DIRECT_WARP_FAIL_WARNING_ONE,
+		    65U, UINT64_C(0xc088fa25c2e9bcba), {63U, 65U},
+		    {UINT64_C(0x0b6904cbde91e151),
+		    UINT64_C(0x083cb407b4f40f36)}},
+		{false, (const uint8_t *)"WT", 2U, DIRECT_WARP_FAIL_WARNING_ONE,
+		    66U, UINT64_C(0xd896fc7996532bca), {64U, 66U},
+		    {UINT64_C(0x4715406bf12b49e1),
+		    UINT64_C(0x083cb407b4f40f36)}},
+		{true, (const uint8_t *)"W", 1U, DIRECT_WARP_FAIL_WARNING_ONE,
+		    75U, UINT64_C(0xc98498d3a174abc9), {73U, 75U},
+		    {UINT64_C(0x1f8739c8faadb88e),
+		    UINT64_C(0x083cb407b4f40f36)}},
+		{true, (const uint8_t *)"WT", 2U, DIRECT_WARP_FAIL_WARNING_ONE,
+		    76U, UINT64_C(0xe7874b9486390bef), {74U, 76U},
+		    {UINT64_C(0x2e092d830cad0828),
+		    UINT64_C(0x083cb407b4f40f36)}},
+		{false, (const uint8_t *)"W", 1U, DIRECT_WARP_FAIL_WARNING_TWO,
+		    140U, UINT64_C(0x28c31f0a94b38db0), {63U, 140U},
+		    {UINT64_C(0x0b6904cbde91e151),
+		    UINT64_C(0xbc1f7c2454eb9d44)}},
+		{false, (const uint8_t *)"WT", 2U, DIRECT_WARP_FAIL_WARNING_TWO,
+		    141U, UINT64_C(0x0fcb5acef0f9cd80), {64U, 141U},
+		    {UINT64_C(0x4715406bf12b49e1),
+		    UINT64_C(0xbc1f7c2454eb9d44)}},
+		{true, (const uint8_t *)"W", 1U, DIRECT_WARP_FAIL_WARNING_TWO,
+		    162U, UINT64_C(0x32bfb624e88333c2), {73U, 162U},
+		    {UINT64_C(0x1f8739c8faadb88e),
+		    UINT64_C(0x9dd80ee7f84ed07b)}},
+		{true, (const uint8_t *)"WT", 2U, DIRECT_WARP_FAIL_WARNING_TWO,
+		    163U, UINT64_C(0x65355d50e22c7498), {74U, 163U},
+		    {UINT64_C(0x2e092d830cad0828),
+		    UINT64_C(0x9dd80ee7f84ed07b)}},
+		{false, (const uint8_t *)"W", 1U, DIRECT_WARP_FAIL_PROMPT,
+		    217U, UINT64_C(0xf813edb7bffced39), {63U, 217U},
+		    {UINT64_C(0x0b6904cbde91e151),
+		    UINT64_C(0xc0f190857f42538d)}},
+		{false, (const uint8_t *)"WT", 2U, DIRECT_WARP_FAIL_PROMPT,
+		    218U, UINT64_C(0x675d8a89d17cd829), {64U, 218U},
+		    {UINT64_C(0x4715406bf12b49e1),
+		    UINT64_C(0xc0f190857f42538d)}},
+		{true, (const uint8_t *)"W", 1U, DIRECT_WARP_FAIL_PROMPT,
+		    261U, UINT64_C(0xd2f24e09483322ed), {73U, 261U},
+		    {UINT64_C(0x1f8739c8faadb88e),
+		    UINT64_C(0xcf84d57aae2d41f2)}},
+		{true, (const uint8_t *)"WT", 2U, DIRECT_WARP_FAIL_PROMPT,
+		    262U, UINT64_C(0x378d2c6ba3fcf97f), {74U, 262U},
+		    {UINT64_C(0x2e092d830cad0828),
+		    UINT64_C(0xcf84d57aae2d41f2)}},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	struct direct_warp_parent_copy_state copy;
+	struct direct_warp_hostile_parent_copy_cycle_state cycle;
+	struct yt_record record;
+	struct yt_record before;
+	uint8_t remote[300];
+	size_t ends[2];
+	size_t index;
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		const uint8_t *expected_output = cases[pass].command;
+		size_t expected_output_length = cases[pass].command_length;
+
+		if (cases[pass].failure == DIRECT_WARP_FAIL_WARNING_TWO) {
+			expected_output = warning_one;
+			expected_output_length = sizeof(warning_one) - 1U;
+		}
+		else if (cases[pass].failure == DIRECT_WARP_FAIL_PROMPT) {
+			expected_output = warning_two;
+			expected_output_length = sizeof(warning_two) - 1U;
+		}
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
+		memset(&fixture, 0, sizeof(fixture));
+		fixture.cycle.presentation.viewer = &viewer;
+		memset(&record, 0xa5, sizeof(record));
+		(void)yt_record_set_number(&record, YT_F49, 17.0f);
+		(void)yt_record_set_number(&record, YT_F57, 733.0f);
+		before = record;
+		yt_player_decode(&fixture.emergency_player, &record);
+		fixture.hazard_player = fixture.emergency_player;
+		CHECK(direct_emergency_warp_hostile_parent_copy_failure_run(
+		    &fixture, cases[pass].ansi, cases[pass].command,
+		    cases[pass].command_length, cases[pass].failure,
+		    &copy, &cycle, ends));
+		CHECK(memcmp(ends, cases[pass].ends, sizeof(ends)) == 0
+		    && viewer.join.remote_length == cases[pass].expected_length
+		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+		    == cases[pass].expected_hash);
+		for (index = 0U; index < YT_ARRAY_LEN(ends); ++index) {
+			size_t start = index == 0U ? 0U : ends[index - 1U];
+
+			CHECK(viewer_bytes_fnv1a64(remote + start,
+			    ends[index] - start)
+			    == cases[pass].partition_hashes[index]);
+		}
+		CHECK(copy.failure == cases[pass].failure
+		    && copy.routed_main_handler
+		    && copy.output_length == expected_output_length
+		    && memcmp(copy.output_scratch, expected_output,
+		    expected_output_length) == 0
+		    && copy.prompt_length == 0U
+		    && cycle.entry_player_reads == 1U
+		    && cycle.gate_player_reads == 1U
+		    && cycle.physical_current_sector == 784.0f
+		    && !fixture.warp_called && fixture.draw_position == 0U
+		    && fixture.emergency_player_reads == 0U
+		    && fixture.emergency_player_put_attempts == 0U
+		    && fixture.emergency_player_writes == 0U
+		    && fixture.emergency_flushes == 0U
+		    && fixture.emergency_waits == 0U
+		    && memcmp(&fixture.emergency_player.record, &before,
+		    sizeof(before)) == 0
+		    && viewer.join.queue_length == 0U
+		    && memcmp(viewer.join.accumulator, cases[pass].command,
+		    cases[pass].command_length) == 0
+		    && viewer.join.local_fragment_length == 0U
+		    && viewer.join.local_row_count
+		    == (cases[pass].failure == DIRECT_WARP_FAIL_WARNING_ONE ? 4U
+		    : cases[pass].failure == DIRECT_WARP_FAIL_WARNING_TWO ? 5U : 7U)
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == (cases[pass].command_length == 1U
+		    ? (cases[pass].failure == DIRECT_WARP_FAIL_WARNING_ONE
+		    ? UINT64_C(0x4db6b30abaf7950d)
+		    : cases[pass].failure == DIRECT_WARP_FAIL_WARNING_TWO
+		    ? UINT64_C(0xc0aa96bceb2150a7)
+		    : UINT64_C(0xc741a53d80bbeff5))
+		    : (cases[pass].failure == DIRECT_WARP_FAIL_WARNING_ONE
+		    ? UINT64_C(0x33e0bf85c6373004)
+		    : cases[pass].failure == DIRECT_WARP_FAIL_WARNING_TWO
+		    ? UINT64_C(0x920187604e4a399c)
+		    : UINT64_C(0x6cba611bf4babb34)))
+		    && viewer.join.local_color_count
+		    == (cases[pass].ansi
+		    ? (cases[pass].failure == DIRECT_WARP_FAIL_WARNING_ONE ? 7U
+		    : cases[pass].failure == DIRECT_WARP_FAIL_WARNING_TWO ? 9U : 12U)
+		    : (cases[pass].failure == DIRECT_WARP_FAIL_WARNING_ONE ? 2U
+		    : cases[pass].failure == DIRECT_WARP_FAIL_WARNING_TWO ? 3U : 4U))
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == (cases[pass].ansi
+		    ? (cases[pass].failure == DIRECT_WARP_FAIL_WARNING_ONE
+		    ? UINT64_C(0xccf5ab5b489cb78b)
+		    : cases[pass].failure == DIRECT_WARP_FAIL_WARNING_TWO
+		    ? UINT64_C(0x685ecc3f8dd9fe9b)
+		    : UINT64_C(0x44023fa487914d8c))
+		    : (cases[pass].failure == DIRECT_WARP_FAIL_WARNING_ONE
+		    ? UINT64_C(0x6d3fa4669b3587bd)
+		    : cases[pass].failure == DIRECT_WARP_FAIL_WARNING_TWO
+		    ? UINT64_C(0x2207a27a6260aaca)
+		    : UINT64_C(0x01b4fd96ce8921d5)))
+		    && viewer.join.event_count
+		    == (cases[pass].failure == DIRECT_WARP_FAIL_WARNING_ONE ? 10U
+		    : cases[pass].failure == DIRECT_WARP_FAIL_WARNING_TWO ? 15U : 20U)
+		    && viewer.join.presentation.foreground
+		    == (cases[pass].failure == DIRECT_WARP_FAIL_WARNING_ONE
+		    ? 3.0f : 7.0f)
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold
+		    == (!cases[pass].ansi
+		    && cases[pass].failure != DIRECT_WARP_FAIL_WARNING_ONE
+		    ? 1.0f : 0.0f)
+		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.cached_foreground
+		    == (!cases[pass].ansi ? 3.0f
+		    : cases[pass].failure == DIRECT_WARP_FAIL_WARNING_ONE ? 3.0f
+		    : cases[pass].failure == DIRECT_WARP_FAIL_WARNING_TWO ? 0.0f
+		    : 7.0f)
+		    && viewer.join.pager.foreground
+		    == (cases[pass].failure == DIRECT_WARP_FAIL_WARNING_ONE ? 3 : 7)
+		    && viewer.join.pager.line_count
+		    == (cases[pass].failure == DIRECT_WARP_FAIL_WARNING_ONE ? 0.0f
+		    : cases[pass].failure == DIRECT_WARP_FAIL_WARNING_TWO
+		    ? 1.0f : 2.0f));
 		yt_text_input_destroy(&viewer.input);
 	}
 }
@@ -34302,6 +34578,7 @@ main(void)
 	test_direct_emergency_warp_inherited_pager();
 	test_direct_emergency_warp_invalid_boundaries();
 	test_direct_emergency_warp_parent_copy_failures();
+	test_direct_emergency_warp_hostile_parent_copy_failures();
 	test_direct_emergency_warp_warning_carrier();
 	test_direct_emergency_warp_accepted_presentation();
 	test_direct_emergency_warp_child_failures();
