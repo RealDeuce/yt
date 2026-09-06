@@ -3971,29 +3971,32 @@ yt_maintenance_xannor_hunt(struct yt_game *game,
 
 static bool
 xannor_reclaim_and_relocate(struct maint_state *state, float location[21],
-    float size[21], float regeneration, struct yt_error *error)
+    float size[21], float regeneration,
+    yt_maintenance_score_line_fn line_output, void *line_context,
+    struct yt_error *error)
 {
 	struct yt_maintenance_xannor_reclaim_result reclaim;
 
 	if (!yt_maintenance_xannor_headquarters_reclaim(&state->game,
-	    location, size, maintenance_stdout_line, NULL, &reclaim, error))
+	    location, size, line_output, line_context, &reclaim, error))
 		return false;
 	return yt_maintenance_xannor_headquarters_relocate(&state->game,
 	    location, reclaim.original_hostile, size[1], (double)regeneration,
 	    NULL, 0U,
-	    maintenance_stdout_line, NULL, NULL, error);
+	    line_output, line_context, NULL, error);
 }
 
 static bool
 consume_revenge_slot(struct maint_state *state, int *live_sector,
-    int *cached_target, struct yt_error *error)
+    int *cached_target, yt_maintenance_score_line_fn line_output,
+    void *line_context, struct yt_error *error)
 {
 	struct yt_maintenance_xannor_revenge_result revenge;
 
 	if (!yt_maintenance_xannor_revenge_slot(&state->game,
 	    state->player_sector, (size_t)state->player_count + 2U,
 	    NULL, 0U,
-	    maintenance_stdout_line, NULL, &revenge, error))
+	    line_output, line_context, &revenge, error))
 		return false;
 	*live_sector = revenge.live_sector;
 	*cached_target = revenge.cached_target;
@@ -4854,7 +4857,9 @@ yt_maintenance_xannor_roaming_groups(struct yt_game *game,
 }
 
 static bool
-maintain_xannor(struct maint_state *state, struct yt_error *error)
+maintain_xannor_impl(struct maint_state *state,
+    yt_maintenance_score_line_fn line_output, void *line_context,
+    struct yt_error *error)
 {
 	struct yt_maintenance_xannor_hunt_result hunt;
 	struct yt_maintenance_xannor_target_result target_result;
@@ -4872,11 +4877,11 @@ maintain_xannor(struct maint_state *state, struct yt_error *error)
 
 	if (!yt_maintenance_maintain_xannor_home(&state->game,
 	    NULL, 0U,
-	    maintenance_stdout_line, NULL, NULL, error)
+	    line_output, line_context, NULL, error)
 	    || !yt_maintenance_xannor_hunt(&state->game, state->player_sector,
 	    state->player_cloak, (size_t)state->player_count + 2U,
 	    NULL, 0U,
-	    maintenance_stdout_line, NULL, &hunt, error))
+	    line_output, line_context, &hunt, error))
 		return false;
 	score = hunt.top_score;
 	if (!yt_maintenance_xannor_target(&state->game.random,
@@ -4891,34 +4896,81 @@ maintain_xannor(struct maint_state *state, struct yt_error *error)
 	    || !yt_maintenance_compose_xannor_regeneration(
 	    NULL, 0U,
 	    regen_result.regeneration, &regen_output)
-	    || !maintenance_stdout_line(NULL, regen_output.rows[0].data,
+	    || !line_output(line_context, regen_output.rows[0].data,
 	    regen_output.rows[0].length, error)
-	    || !maintenance_stdout_line(NULL, regen_output.rows[1].data,
+	    || !line_output(line_context, regen_output.rows[1].data,
 	    regen_output.rows[1].length, error)
 	    || !yt_news_append_bytes(regen_output.rows[1].data,
 	    regen_output.rows[1].length, error)
-	    || !maintenance_stdout_line(NULL, regen_output.rows[2].data,
+	    || !line_output(line_context, regen_output.rows[2].data,
 	    regen_output.rows[2].length, error))
 		return false;
 	regeneration = (float)regen_result.regeneration;
 	size[1] = regen_result.group_one_after;
 	location[1] = state->game.config.headquarters;
 	if (!xannor_reclaim_and_relocate(state, location, size,
-	    regeneration, error)
+	    regeneration, line_output, line_context, error)
 	    || !consume_revenge_slot(state, &revenge_live, &revenge_cached,
-	    error)
+	    line_output, line_context, error)
 	    || !yt_maintenance_compose_xannor_roaming(
 	    NULL, 0U,
 	    &roaming_output)
-	    || !maintenance_stdout_line(NULL, roaming_output.rows[0].data,
+	    || !line_output(line_context, roaming_output.rows[0].data,
 	    roaming_output.rows[0].length, error)
-	    || !maintenance_stdout_line(NULL, roaming_output.rows[1].data,
+	    || !line_output(line_context, roaming_output.rows[1].data,
 	    roaming_output.rows[1].length, error))
 		return false;
 
 	return xannor_roaming_groups_impl(state, score, top_target, hunt_player,
 	    revenge_live, revenge_cached, location, size,
-	    maintenance_stdout_line, NULL, error);
+	    line_output, line_context, error);
+}
+
+bool
+yt_maintenance_maintain_xannor(struct yt_game *game,
+    struct yt_maintenance_route_cache *cache, float *player_sector,
+    float *player_cloak, size_t cache_count,
+    yt_maintenance_score_line_fn line_output, void *line_context,
+    struct yt_error *error)
+{
+	struct maint_state state;
+	int player_count;
+	bool success;
+
+	if (game == NULL || cache == NULL || player_sector == NULL
+	    || player_cloak == NULL || line_output == NULL) {
+		set_error(error, YT_INVALID, "Xannor maintenance", "YTDATA.DAT");
+		return false;
+	}
+	player_count = (int)game->config.sector_offset - 1;
+	if (player_count < 1 || cache_count < (size_t)player_count + 2U) {
+		set_error(error, YT_RANGE, "Xannor maintenance player cache",
+		    "YTDATA.DAT");
+		return false;
+	}
+	memset(&state, 0, sizeof(state));
+	state.game = *game;
+	state.route_cache = *cache;
+	state.player_sector = player_sector;
+	state.player_cloak = player_cloak;
+	state.player_count = player_count;
+	state.sector_count = (int)(game->config.port_offset
+	    - game->config.sector_offset);
+	state.port_count = (int)(game->config.planet_offset
+	    - game->config.port_offset);
+	state.planet_count = (int)(game->config.total_records
+	    - game->config.planet_offset);
+	success = maintain_xannor_impl(&state, line_output, line_context, error);
+	game->random = state.game.random;
+	game->config = state.game.config;
+	*cache = state.route_cache;
+	return success;
+}
+
+static bool
+maintain_xannor(struct maint_state *state, struct yt_error *error)
+{
+	return maintain_xannor_impl(state, maintenance_stdout_line, NULL, error);
 }
 
 static const struct yt_maintenance_output_row *

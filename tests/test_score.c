@@ -17711,6 +17711,147 @@ done:
 }
 
 static bool
+check_maintenance_xannor_phase_pass(void)
+{
+	static const uint8_t prefix[] =
+	    "\r"
+	    "Checking for Planet Xannor, create it if missing.\r"
+	    "\r"
+	    "Processing the Xannor.....\r"
+	    "\r"
+	    "Locating Top Player... (For Groups 16 - 20 to Pick on!)\r"
+	    "\r"
+	    "Calculated Dynamic Xannor Regeneration is 0 fighters.\r"
+	    "\r"
+	    "The Xannor are on the prowl...\r"
+	    "\r";
+	static const uint8_t expected_news[] =
+	    "  -  Xannor report:\r\n"
+	    "Calculated Dynamic Xannor Regeneration is 0 fighters.\r\n\x1a";
+	uint8_t zero_draws[60U * 3U] = {0};
+	uint8_t expected[2048];
+	struct score_random_script script = {
+		zero_draws, sizeof(zero_draws), 0U
+	};
+	struct score_line_tape screen = {0};
+	struct yt_maintenance_route_cache cache = {0};
+	struct yt_text_file news = {0};
+	struct yt_record record;
+	struct yt_sector sector;
+	struct yt_planet planet;
+	struct yt_game game;
+	struct yt_error error;
+	float player_sector[3] = {0};
+	float player_cloak[3] = {0};
+	size_t expected_length = sizeof(prefix) - 1U;
+	int group;
+	int logical;
+	bool valid = false;
+
+	(void)remove("YTDATA.DAT");
+	(void)remove("YTNEWS.DAT");
+	memset(&game, 0, sizeof(game));
+	game.config.sector_offset = 2.0f;
+	game.config.port_offset = 42.0f;
+	game.config.planet_offset = 43.0f;
+	game.config.total_records = 143.0f;
+	game.config.headquarters = 40.0f;
+	yt_random_init(&game.random);
+	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_error_clear(&error);
+	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
+	    &error))
+		goto done;
+	yt_record_blank(&record);
+	record.bytes[0] = 'P';
+	if (!yt_record_set_number(&record, YT_F85, 1.0f)
+	    || !yt_record_set_number(&record, YT_F109, 1000.0f)
+	    || !yt_database_write(&game.database, 2U, &record, &error))
+		goto done;
+	for (logical = 1; logical <= 40; ++logical) {
+		yt_record_blank(&record);
+		if (logical <= 20
+		    && !yt_record_set_number(&record, YT_F105,
+		    logical == 1 ? 40.0f : (float)(logical + 19)))
+			goto done;
+		if (logical == 1
+		    && (!yt_record_set_number(&record, YT_F81, 2.0f)
+		    || !yt_record_set_number(&record, YT_F85, 0.0f)))
+			goto done;
+		if (logical >= 21 && logical <= 39
+		    && (!yt_record_set_number(&record, YT_F41, 40.0f)
+		    || !yt_record_set_number(&record, YT_F81, 1.0f)
+		    || !yt_record_set_number(&record, YT_F85, -1.0f)))
+			goto done;
+		if (logical == 40
+		    && (!yt_record_set_number(&record, YT_F81, 1.0f)
+		    || !yt_record_set_number(&record, YT_F85, 0.0f)
+		    || !yt_record_set_number(&record, YT_F93, 100.0f)))
+			goto done;
+		if (!yt_database_write(&game.database,
+		    (size_t)yt_sector_basic_record(&game.config, logical),
+		    &record, &error))
+			goto done;
+	}
+	yt_record_blank(&record);
+	memcpy(record.bytes, "Xannoron", 8U);
+	if (!yt_record_set_number(&record, YT_F73, -1.0f)
+	    || !yt_record_set_number(&record, YT_F85, 8.0f)
+	    || !yt_record_set_number(&record, YT_F117, 1.0f)
+	    || !yt_database_write(&game.database,
+	    (size_t)yt_planet_basic_record(&game.config, 100),
+	    &record, &error))
+		goto done;
+	memcpy(expected, prefix, sizeof(prefix) - 1U);
+	for (group = 2; group <= 20; ++group) {
+		int written = snprintf((char *)expected + expected_length,
+		    sizeof(expected) - expected_length, "  -  Group: %d ", group);
+
+		if (written < 0)
+			goto done;
+		expected_length += (size_t)written;
+		while ((expected_length - (sizeof(prefix) - 1U)) % 37U < 28U)
+			expected[expected_length++] = ' ';
+		memcpy(expected + expected_length, "Size: 1 \r", 9U);
+		expected_length += 9U;
+	}
+	if (!yt_maintenance_maintain_xannor(&game, &cache, player_sector,
+	    player_cloak, YT_ARRAY_LEN(player_sector), score_line_collect,
+	    &screen, &error)
+	    || game.random.draws != 60U
+	    || script.position != sizeof(zero_draws)
+	    || screen.lines != 30U || screen.length != expected_length
+	    || memcmp(screen.data, expected, expected_length) != 0
+	    || !yt_text_read("YTNEWS.DAT", &news, &error)
+	    || news.length != sizeof(expected_news) - 1U
+	    || memcmp(news.data, expected_news, sizeof(expected_news) - 1U)
+	    != 0)
+		goto done;
+	for (group = 1; group <= 20; ++group) {
+		if (!yt_game_read_sector(&game, group, &sector, &error)
+		    || yt_record_get_number(&sector.record, YT_F105) != 40.0f)
+			goto done;
+	}
+	if (!yt_game_read_sector(&game, 40, &sector, &error)
+	    || sector.fighters != 21.0f || sector.fighter_owner != -1.0f
+	    || sector.planet != 100.0f
+	    || !yt_game_read_planet(&game, 100, &planet, &error)
+	    || planet.owner != -1.0f || planet.ground_forces != 0.0f
+	    || planet.bank != 1.0f || cache.warps == NULL
+	    || cache.sector_count != 40)
+		goto done;
+	valid = true;
+
+done:
+	yt_text_free(&news);
+	yt_maintenance_route_cache_free(&cache);
+	yt_game_close(&game);
+	(void)remove("YTDATA.DAT");
+	(void)remove("YTNEWS.DAT");
+	return valid;
+}
+
+static bool
 check_maintenance_xannor_sector_arrival_pass(void)
 {
 	static const uint8_t zero_draws[6] = {0};
@@ -33812,6 +33953,8 @@ main(void)
 	if (!check_maintenance_xannor_group_persistence_pass())
 		goto done;
 	if (!check_maintenance_xannor_roaming_groups_pass())
+		goto done;
+	if (!check_maintenance_xannor_phase_pass())
 		goto done;
 	if (!check_maintenance_xannor_sector_arrival_pass())
 		goto done;

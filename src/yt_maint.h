@@ -510,6 +510,11 @@ bool yt_maintenance_xannor_roaming_groups(struct yt_game *game,
     float location[21], float size[21],
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_error *error);
+bool yt_maintenance_maintain_xannor(struct yt_game *game,
+    struct yt_maintenance_route_cache *cache, float *player_sector,
+    float *player_cloak, size_t cache_count,
+    yt_maintenance_score_line_fn line_output, void *line_context,
+    struct yt_error *error);
 bool yt_maintenance_scoreboard(struct yt_game *game,
     yt_maintenance_score_line_fn line_output, void *context,
     struct yt_error *error);
