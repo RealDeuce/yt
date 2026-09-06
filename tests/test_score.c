@@ -17536,6 +17536,15 @@ struct maintenance_final_close_fault {
 	size_t calls;
 };
 
+struct maintenance_final_output_fault {
+	struct maintenance_final_suffix_tape tape;
+	size_t calls;
+	size_t fail_at;
+};
+
+static bool maintenance_final_suffix_collect(void *context,
+    const uint8_t *line, size_t length, struct yt_error *error);
+
 static bool
 maintenance_final_close_fail(void *context, FILE *active_file,
     size_t attempt, struct yt_database_close_observation *observation)
@@ -17555,6 +17564,26 @@ maintenance_final_close_fail(void *context, FILE *active_file,
 	else if (fclose(active_file) != 0)
 		return false;
 	return true;
+}
+
+static bool
+maintenance_final_output_fail(void *context, const uint8_t *line,
+    size_t length, struct yt_error *error)
+{
+	struct maintenance_final_output_fault *fault = context;
+
+	if (fault == NULL)
+		return false;
+	if (fault->calls++ == fault->fail_at) {
+		if (error != NULL) {
+			error->status = YT_IO_ERROR;
+			(void)snprintf(error->operation, sizeof(error->operation),
+			    "%s", "maintenance final output");
+		}
+		return false;
+	}
+	return maintenance_final_suffix_collect(&fault->tape, line, length,
+	    error);
 }
 
 static bool
@@ -17595,6 +17624,7 @@ check_maintenance_final_suffix_pass(void)
 		.first_closed_line = (size_t)-1
 	};
 	struct maintenance_final_close_fault close_fault = {0};
+	struct maintenance_final_output_fault output_fault;
 	struct yt_text_file bulletin = {0};
 	struct yt_database verify = {0};
 	struct yt_record before;
@@ -17726,6 +17756,66 @@ check_maintenance_final_suffix_pass(void)
 	    || tape.screen.lines != 23U
 	    || tape.screen.length < sizeof(prefix) - 1U
 	    || memcmp(tape.screen.data, prefix, sizeof(prefix) - 1U) != 0)
+		goto done;
+
+	/* The completion-row failure occurs after CLOSE-all and the blank row. */
+	random_script.position = 0U;
+	yt_random_set_provider(&game.random, score_random_fill, &random_script);
+	clock_script.position = 0U;
+	output_fault = (struct maintenance_final_output_fault){
+		.tape = {
+			.screen = {0},
+			.game = &game,
+			.first_closed_line = (size_t)-1
+		},
+		.calls = 0U,
+		.fail_at = 24U
+	};
+	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_UPDATE,
+	    &error))
+		goto done;
+	yt_database_set_close_provider(&game.database, NULL, NULL);
+	yt_error_clear(&error);
+	if (yt_maintenance_finish(&game, maintenance_final_output_fail,
+	    &output_fault, &error)
+	    || error.status != YT_IO_ERROR
+	    || strcmp(error.operation, "maintenance final output") != 0
+	    || output_fault.calls != 25U
+	    || output_fault.tape.first_closed_line != 23U
+	    || output_fault.tape.screen.lines != 24U
+	    || game.database.file != NULL
+	    || info_panel_contains(output_fault.tape.screen.data,
+	    output_fault.tape.screen.length,
+	    (const uint8_t *)"Daily Maintenance Completed OK", 30U))
+		goto done;
+
+	/* A failed first clock sample retains the marker and open database. */
+	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_UPDATE,
+	    &error)
+	    || !yt_database_read(&game.database, 1U, &after, &error)
+	    || !yt_record_set_number(&after, YT_F81, 17.0f)
+	    || !yt_database_write(&game.database, 1U, &after, &error))
+		goto done;
+	random_script.position = 0U;
+	yt_random_set_provider(&game.random, score_random_fill, &random_script);
+	clock_script.position = YT_ARRAY_LEN(clock_script.values);
+	tape = (struct maintenance_final_suffix_tape){
+		.screen = {0},
+		.game = &game,
+		.first_closed_line = (size_t)-1
+	};
+	yt_error_clear(&error);
+	if (yt_maintenance_finish(&game, maintenance_final_suffix_collect,
+	    &tape, &error)
+	    || error.status != YT_IO_ERROR
+	    || game.database.file == NULL || game.random.draws != 1U
+	    || random_script.position != sizeof(coin_draw)
+	    || tape.first_closed_line != (size_t)-1
+	    || tape.screen.lines != 3U
+	    || tape.screen.length != sizeof(prefix) - 1U
+	    || memcmp(tape.screen.data, prefix, sizeof(prefix) - 1U) != 0
+	    || !yt_database_read(&game.database, 1U, &after, &error)
+	    || yt_record_get_number(&after, YT_F81) != 17.0f)
 		goto done;
 	valid = true;
 
