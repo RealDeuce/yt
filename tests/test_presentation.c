@@ -27811,6 +27811,10 @@ struct direct_warp_attack_combat_join {
 	size_t tail_player_writes;
 	size_t clearance_calls;
 	size_t clearance_sound_calls;
+	size_t clearance_sound_attempts;
+	size_t clearance_present_calls;
+	size_t clearance_read_calls;
+	size_t clearance_store_calls;
 	size_t victory_calls;
 	size_t victory_file_reads;
 	size_t victory_file_rows;
@@ -27830,6 +27834,8 @@ struct direct_warp_attack_combat_join {
 	size_t spill_present_calls;
 	size_t fail_random_at;
 	size_t fail_spill_present_at;
+	size_t fail_clearance_present_at;
+	size_t fail_clearance_sound_at;
 	size_t fail_persistence_player_read_at;
 	size_t fail_persistence_player_write_at;
 	size_t fail_persistence_sector_read_at;
@@ -28501,6 +28507,7 @@ direct_warp_attack_clearance_read(void *context,
 {
 	struct direct_warp_attack_combat_join *join = context;
 
+	++join->clearance_read_calls;
 	if (kind == YT_CLEARANCE_STORE_DISCOUNT && item < 4U)
 		memcpy(raw, join->clearance_discount_raw[item], 4U);
 	else if (kind == YT_CLEARANCE_STORE_ANNOUNCED)
@@ -28513,6 +28520,7 @@ direct_warp_attack_clearance_store(void *context,
 {
 	struct direct_warp_attack_combat_join *join = context;
 
+	++join->clearance_store_calls;
 	switch (kind) {
 	case YT_CLEARANCE_STORE_DISCOUNT:
 		if (item < 4U)
@@ -28541,6 +28549,9 @@ direct_warp_attack_clearance_present(void *context, const uint8_t *text,
 
 	(void)kind;
 	(void)error;
+	++join->clearance_present_calls;
+	if (join->clearance_present_calls == join->fail_clearance_present_at)
+		return false;
 	return normal_exit_line(viewer, text, length);
 }
 
@@ -28554,7 +28565,9 @@ direct_warp_attack_clearance_sound(void *context, float selector,
 	struct yt_present_result result;
 
 	(void)error;
-	if (yt_present_sound(selector, &viewer->presentation, &result)
+	++join->clearance_sound_attempts;
+	if (join->clearance_sound_attempts == join->fail_clearance_sound_at
+	    || yt_present_sound(selector, &viewer->presentation, &result)
 	    != YT_PRESENT_OK)
 		return false;
 	viewer_pager_capture_result(viewer, &result);
@@ -36341,6 +36354,10 @@ test_xannor_attack_tail_clearance_join(void)
 		    && join.tail_player_writes == 1U
 		    && join.clearance_calls == 1U
 		    && join.clearance_sound_calls == 1U
+		    && join.clearance_sound_attempts == 1U
+		    && join.clearance_present_calls == 3U
+		    && join.clearance_read_calls == 5U
+		    && join.clearance_store_calls == 8U
 		    && join.random_calls == 6U && fixture.draw_position == 6U
 		    && join.clearance.complete
 		    && join.clearance.draws_consumed == 5U
@@ -36360,6 +36377,225 @@ test_xannor_attack_tail_clearance_join(void)
 		    && memcmp(join.clearance_announced_raw, one, 4U) == 0
 		    && memcmp(join.clearance_sound_selector_raw, one, 4U) == 0);
 		yt_text_input_destroy(&viewer.input);
+	}
+}
+
+static void
+test_xannor_attack_tail_clearance_failure_prefixes(void)
+{
+	static const uint8_t cached_name[] = {'A', 0, 'B'};
+	static const uint8_t holds_zero[4] = {0x00U, 0x00U, 0x73U, 0x00U};
+	static const uint8_t announced_zero[4] = {
+		0x00U, 0x00U, 0x7aU, 0x00U,
+	};
+	static const uint8_t tenth[4] = {0xcdU, 0xccU, 0x4cU, 0x7dU};
+	static const uint8_t one[4] = {0x00U, 0x00U, 0x00U, 0x81U};
+	static const uint8_t reset[3][4] = {
+		{0x00U, 0x00U, 0x7aU, 0x00U},
+		{0x00U, 0x00U, 0x4cU, 0x00U},
+		{0x00U, 0x00U, 0x66U, 0x00U},
+	};
+	static const size_t expected_lengths[2][7] = {
+		{54U, 56U, 56U, 56U, 130U, 130U, 131U},
+		{66U, 78U, 78U, 78U, 152U, 152U, 195U},
+	};
+	static const uint64_t expected_hashes[2][7] = {
+		{
+			UINT64_C(0x1e76ee80f59eda02),
+			UINT64_C(0x0c996bb0e5ea2f35),
+			UINT64_C(0x0c996bb0e5ea2f35),
+			UINT64_C(0x0c996bb0e5ea2f35),
+			UINT64_C(0x40d781d30c148714),
+			UINT64_C(0x40d781d30c148714),
+			UINT64_C(0x42b8ac9d86e18549),
+		},
+		{
+			UINT64_C(0xb7ef91354dfe2151),
+			UINT64_C(0x7cd7a3807a4a6935),
+			UINT64_C(0x7cd7a3807a4a6935),
+			UINT64_C(0x7cd7a3807a4a6935),
+			UINT64_C(0xbd72804b87431114),
+			UINT64_C(0xbd72804b87431114),
+			UINT64_C(0x5aaecbb5b7787173),
+		},
+	};
+	static const size_t expected_rows[7] = {
+		1U, 2U, 2U, 2U, 3U, 3U, 3U,
+	};
+	static const uint64_t expected_row_hashes[7] = {
+		UINT64_C(0xc5f4b83617324b7f),
+		UINT64_C(0x10873f9fe6fdb457),
+		UINT64_C(0x10873f9fe6fdb457),
+		UINT64_C(0x10873f9fe6fdb457),
+		UINT64_C(0x2547576e7b40bcb1),
+		UINT64_C(0x2547576e7b40bcb1),
+		UINT64_C(0x2547576e7b40bcb1),
+	};
+	static const size_t expected_colors[2][7] = {
+		{1U, 1U, 1U, 1U, 1U, 1U, 1U},
+		{2U, 3U, 3U, 3U, 4U, 4U, 4U},
+	};
+	static const uint64_t expected_color_hashes[2][7] = {
+		{
+			UINT64_C(0x08285607b4e2c672),
+			UINT64_C(0x08285607b4e2c672),
+			UINT64_C(0x08285607b4e2c672),
+			UINT64_C(0x08285607b4e2c672),
+			UINT64_C(0x08285607b4e2c672),
+			UINT64_C(0x08285607b4e2c672),
+			UINT64_C(0x08285607b4e2c672),
+		},
+		{
+			UINT64_C(0xcd2124a0f6b37606),
+			UINT64_C(0x6a1651ef9065ac52),
+			UINT64_C(0x6a1651ef9065ac52),
+			UINT64_C(0x6a1651ef9065ac52),
+			UINT64_C(0xf3c5f133a0c4dbc6),
+			UINT64_C(0xf3c5f133a0c4dbc6),
+			UINT64_C(0xf3c5f133a0c4dbc6),
+		},
+	};
+	static const size_t expected_reads[7] = {
+		0U, 1U, 1U, 1U, 2U, 5U, 5U,
+	};
+	static const size_t expected_stores[7] = {
+		1U, 1U, 1U, 3U, 4U, 8U, 8U,
+	};
+	static const struct {
+		size_t fail_random_at;
+		size_t fail_present_at;
+		size_t fail_sound_at;
+		size_t draws;
+		size_t random_calls;
+		size_t present_calls;
+		size_t items;
+		size_t announcements;
+		bool sound_called;
+	} cases[] = {
+		{0U, 1U, 0U, 0U, 0U, 1U, 0U, 0U, false},
+		{1U, 0U, 0U, 0U, 1U, 1U, 0U, 0U, false},
+		{2U, 0U, 0U, 1U, 2U, 1U, 0U, 0U, false},
+		{0U, 2U, 0U, 2U, 2U, 2U, 0U, 0U, false},
+		{3U, 0U, 0U, 2U, 3U, 2U, 1U, 1U, false},
+		{0U, 0U, 1U, 5U, 5U, 2U, 4U, 1U, false},
+		{0U, 3U, 0U, 5U, 5U, 3U, 4U, 1U, true},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	struct direct_warp_main_cycle_state cycle;
+	struct direct_warp_attack_combat_join join;
+	struct yt_hostile_attack_tail_state tail;
+	struct yt_record record;
+	struct yt_error error;
+	uint8_t remote[512];
+	size_t cut;
+	size_t pass;
+
+	for (pass = 0U; pass < 2U; ++pass) {
+		for (cut = 0U; cut < YT_ARRAY_LEN(cases); ++cut) {
+			memset(&viewer, 0, sizeof(viewer));
+			fixture_viewer_initialize(&viewer, &stream,
+			    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+			    "YTSCORE.ASC", pass != 0U, remote, sizeof(remote));
+			memset(&fixture, 0, sizeof(fixture));
+			fixture.cycle.presentation.viewer = &viewer;
+			fixture.draws[0] = 0.9f;
+			fixture.draws[1] = 0.1f;
+			fixture.draws[2] = 0.0f;
+			fixture.draws[3] = 0.0f;
+			fixture.draws[4] = 0.0f;
+			memset(&cycle, 0, sizeof(cycle));
+			memset(&join, 0, sizeof(join));
+			join.fixture = &fixture;
+			join.cycle = &cycle;
+			join.current_sector_record = 1054.0f;
+			join.sector_record_offset = 51.0f;
+			join.allow_tail_player = true;
+			join.allow_clearance = true;
+			join.fail_random_at = cases[cut].fail_random_at;
+			join.fail_clearance_present_at =
+			    cases[cut].fail_present_at;
+			join.fail_clearance_sound_at = cases[cut].fail_sound_at;
+			memcpy(join.clearance_discount_raw[0], holds_zero, 4U);
+			memset(&record, 0xa5, sizeof(record));
+			yt_record_set_text(&record,
+			    (const uint8_t *)"FRESH XANNOR", 12U);
+			(void)yt_record_set_number(&record, YT_F49, 98.0f);
+			(void)yt_record_set_number(&record, YT_F53, 5.0f);
+			(void)yt_record_set_number(&record, YT_F57, 8.0f);
+			(void)yt_record_set_number(&record, YT_F61, 21.0f);
+			(void)yt_record_set_number(&record, YT_F125, 0.0f);
+			yt_player_decode(&join.attack_player, &record);
+			fixture.emergency_player = join.attack_player;
+			tail = (struct yt_hostile_attack_tail_state){
+				.current_player_record = 2,
+				.old_owner = -1.0f,
+				.defender_loss = 512000.0,
+				.deployed_fighters = 0.0,
+				.ship_fighters = 19.0,
+				.turns_per_day = 100.0f,
+				.headquarters = 7.0f,
+				.cached_player_name = cached_name,
+				.cached_player_name_length = sizeof(cached_name),
+				.current = join.attack_player,
+			};
+			yt_error_clear(&error);
+			CHECK(!yt_hostile_attack_tail_run(&tail,
+			    &direct_warp_attack_tail_ops, &join, &error));
+			CHECK(viewer.join.remote_length
+			    == expected_lengths[pass][cut]
+			    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+			    == expected_hashes[pass][cut]
+			    && viewer.join.local_row_count == expected_rows[cut]
+			    && viewer_rows_fnv1a64(&viewer.join)
+			    == expected_row_hashes[cut]
+			    && viewer.join.local_color_count
+			    == expected_colors[pass][cut]
+			    && viewer_colors_fnv1a64(&viewer.join)
+			    == expected_color_hashes[pass][cut]
+			    && viewer.join.local_fragment_length == 0U);
+			CHECK(!tail.complete && tail.player_read && tail.player_written
+			    && tail.reward_presented && tail.reward_news_written
+			    && !tail.clearance_called && !tail.draw_consumed
+			    && !tail.defeated_presented && !tail.victory_called
+			    && join.clearance_calls == 1U
+			    && join.clearance.draws_consumed == cases[cut].draws
+			    && fixture.draw_position == cases[cut].draws
+			    && join.random_calls == cases[cut].random_calls
+			    && join.clearance.items_completed == cases[cut].items
+			    && join.clearance.announcements
+			    == cases[cut].announcements
+			    && join.clearance.sound_called == cases[cut].sound_called
+			    && !join.clearance.complete
+			    && join.clearance_present_calls
+			    == cases[cut].present_calls
+			    && join.clearance_read_calls == expected_reads[cut]
+			    && join.clearance_store_calls == expected_stores[cut]
+			    && join.clearance_sound_attempts
+			    == (cut >= 5U ? 1U : 0U)
+			    && join.clearance_sound_calls == (cut >= 6U ? 1U : 0U)
+			    && join.a41c_reads == 1U && join.a41c_stores == 25U
+			    && join.tail_player_reads == 1U
+			    && join.tail_player_writes == 1U
+			    && !join.unexpected_tail_effect);
+			CHECK(memcmp(join.clearance_announced_raw,
+			    cut >= 4U ? one : announced_zero, 4U) == 0
+			    && memcmp(join.clearance_discount_raw[0],
+			    cut >= 3U ? tenth : holds_zero, 4U) == 0);
+			if (cut >= 3U)
+				CHECK(memcmp(join.clearance_value_raw, tenth, 4U) == 0);
+			if (cut >= 5U) {
+				CHECK(memcmp(join.clearance_discount_raw[1], reset[0], 4U)
+				    == 0 && memcmp(join.clearance_discount_raw[2],
+				    reset[1], 4U) == 0
+				    && memcmp(join.clearance_discount_raw[3], reset[2],
+				    4U) == 0
+				    && memcmp(join.clearance_sound_selector_raw, one, 4U)
+				    == 0);
+			}
+			yt_text_input_destroy(&viewer.input);
+		}
 	}
 }
 
@@ -46139,6 +46375,7 @@ main(void)
 	test_direct_emergency_warp_hostile_attack_fatal_cycle();
 	test_direct_emergency_warp_hostile_attack_fatal_prefixes();
 	test_xannor_attack_tail_clearance_join();
+	test_xannor_attack_tail_clearance_failure_prefixes();
 	test_xannor_attack_tail_victory_join();
 	test_xannor_attack_tail_victory_failure_prefixes();
 	test_direct_emergency_warp_hostile_invalid_retry_cycle();
