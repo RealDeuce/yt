@@ -23212,6 +23212,160 @@ test_direct_emergency_warp_invalid_retry_presentation(void)
 	CHECK(sizeof(plain) - 1U == 182U && sizeof(ansi) - 1U == 260U);
 }
 
+enum direct_warp_parent_copy_failure {
+	DIRECT_WARP_FAIL_WARNING_ONE,
+	DIRECT_WARP_FAIL_WARNING_TWO,
+	DIRECT_WARP_FAIL_PROMPT,
+};
+
+struct direct_warp_parent_copy_state {
+	uint8_t output_scratch[80];
+	size_t output_length;
+	uint8_t prompt_scratch[80];
+	size_t prompt_length;
+	enum direct_warp_parent_copy_failure failure;
+	bool routed_main_handler;
+};
+
+static bool
+direct_emergency_warp_parent_copy_failure_run(
+    struct hostile_mines_hazard_fixture *fixture, bool ansi,
+    enum direct_warp_parent_copy_failure failure,
+    struct direct_warp_parent_copy_state *copy)
+{
+	static const uint8_t warning_one[] =
+	    "This is a desperate move! Your engines will be drained and will take time";
+	static const uint8_t warning_two[] =
+	    "to recharge! You also risk a melt down! Are you sure you wish to do this?";
+	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct yt_present_result result;
+
+	if (copy == NULL)
+		return false;
+	memcpy(copy->output_scratch, "old-output", 10U);
+	copy->output_length = 10U;
+	memcpy(copy->prompt_scratch, "old-prompt", 10U);
+	copy->prompt_length = 10U;
+	copy->failure = failure;
+	copy->routed_main_handler = false;
+	join->presentation = state(ansi);
+	if (yt_present_color(&join->presentation, &result) != YT_PRESENT_OK
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	if (failure == DIRECT_WARP_FAIL_WARNING_ONE) {
+		copy->routed_main_handler = true;
+		return true;
+	}
+	memcpy(copy->output_scratch, warning_one, sizeof(warning_one) - 1U);
+	copy->output_length = sizeof(warning_one) - 1U;
+	join->presentation.bold = 1.0f;
+	join->presentation.foreground = 7.0f;
+	join->pager.foreground = 7;
+	if (!normal_exit_b05d(join, warning_one, sizeof(warning_one) - 1U, 0.0f))
+		return false;
+	if (failure == DIRECT_WARP_FAIL_WARNING_TWO) {
+		copy->routed_main_handler = true;
+		return true;
+	}
+	memcpy(copy->output_scratch, warning_two, sizeof(warning_two) - 1U);
+	copy->output_length = sizeof(warning_two) - 1U;
+	join->presentation.bold = 1.0f;
+	if (!normal_exit_b05d(join, warning_two, sizeof(warning_two) - 1U, 0.0f)
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	copy->routed_main_handler = true;
+	return true;
+}
+
+static void
+test_direct_emergency_warp_parent_copy_failures(void)
+{
+	static const uint8_t warning_one[] =
+	    "This is a desperate move! Your engines will be drained and will take time";
+	static const uint8_t warning_two[] =
+	    "to recharge! You also risk a melt down! Are you sure you wish to do this?";
+	static const uint8_t plain_warning_two[] =
+	    "\r\n"
+	    "This is a desperate move! Your engines will be drained and will take time\n\r";
+	static const uint8_t plain_prompt[] =
+	    "\r\n"
+	    "This is a desperate move! Your engines will be drained and will take time\n\r"
+	    "to recharge! You also risk a melt down! Are you sure you wish to do this?\n\r"
+	    "\r\n";
+	static const uint8_t ansi_warning_two[] =
+	    "\r\n"
+	    "\x1b[0;37;40;1m"
+	    "This is a desperate move! Your engines will be drained and will take time\n\r";
+	static const uint8_t ansi_prompt[] =
+	    "\r\n"
+	    "\x1b[0;37;40;1m"
+	    "This is a desperate move! Your engines will be drained and will take time\n\r"
+	    "\x1b[0;37;40;1m"
+	    "to recharge! You also risk a melt down! Are you sure you wish to do this?\n\r"
+	    "\x1b[0;37;40m\r\n";
+	static const struct {
+		bool ansi;
+		enum direct_warp_parent_copy_failure failure;
+		const uint8_t *expected;
+		size_t expected_length;
+		const uint8_t *output;
+		size_t output_length;
+	} cases[] = {
+		{false, DIRECT_WARP_FAIL_WARNING_ONE,
+		    (const uint8_t *)"\r\n", 2U,
+		    (const uint8_t *)"old-output", 10U},
+		{true, DIRECT_WARP_FAIL_WARNING_ONE,
+		    (const uint8_t *)"\r\n", 2U,
+		    (const uint8_t *)"old-output", 10U},
+		{false, DIRECT_WARP_FAIL_WARNING_TWO,
+		    plain_warning_two, sizeof(plain_warning_two) - 1U,
+		    warning_one, sizeof(warning_one) - 1U},
+		{true, DIRECT_WARP_FAIL_WARNING_TWO,
+		    ansi_warning_two, sizeof(ansi_warning_two) - 1U,
+		    warning_one, sizeof(warning_one) - 1U},
+		{false, DIRECT_WARP_FAIL_PROMPT,
+		    plain_prompt, sizeof(plain_prompt) - 1U,
+		    warning_two, sizeof(warning_two) - 1U},
+		{true, DIRECT_WARP_FAIL_PROMPT,
+		    ansi_prompt, sizeof(ansi_prompt) - 1U,
+		    warning_two, sizeof(warning_two) - 1U},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	struct direct_warp_parent_copy_state copy;
+	uint8_t remote[256];
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
+		memset(&fixture, 0, sizeof(fixture));
+		fixture.cycle.presentation.viewer = &viewer;
+		memset(&copy, 0, sizeof(copy));
+		CHECK(direct_emergency_warp_parent_copy_failure_run(&fixture,
+		    cases[pass].ansi, cases[pass].failure, &copy));
+		CHECK(viewer.join.remote_length == cases[pass].expected_length
+		    && memcmp(remote, cases[pass].expected,
+		    cases[pass].expected_length) == 0
+		    && copy.failure == cases[pass].failure
+		    && copy.routed_main_handler
+		    && copy.output_length == cases[pass].output_length
+		    && memcmp(copy.output_scratch, cases[pass].output,
+		    cases[pass].output_length) == 0
+		    && copy.prompt_length == 10U
+		    && memcmp(copy.prompt_scratch, "old-prompt", 10U) == 0
+		    && !fixture.warp_called && fixture.draw_position == 0U
+		    && fixture.emergency_player_reads == 0U
+		    && fixture.emergency_player_writes == 0U
+		    && fixture.emergency_flushes == 0U
+		    && fixture.emergency_waits == 0U);
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
 static bool
 direct_emergency_warp_accepted_run(
     struct hostile_mines_hazard_fixture *fixture, bool ansi,
@@ -30505,6 +30659,7 @@ main(void)
 	test_hostile_mines_emergency_warp_cycle_presentation();
 	test_hostile_mines_black_hole_cycle_presentation();
 	test_direct_emergency_warp_invalid_retry_presentation();
+	test_direct_emergency_warp_parent_copy_failures();
 	test_direct_emergency_warp_accepted_presentation();
 	test_main_genesis_decline_cycle_presentation();
 	test_main_genesis_alternate_cycles_presentation();
