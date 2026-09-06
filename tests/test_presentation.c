@@ -21315,6 +21315,197 @@ test_main_mines_accepted_cycle_presentation(void)
 	CHECK(sizeof(plain) - 1U == 228U && sizeof(ansi) - 1U == 437U);
 }
 
+static void
+test_main_mines_ordinary_return_cycles_presentation(void)
+{
+	static const uint8_t shell[] =
+	    "\r\nTime: 14:59  Main Command (?=Help)? dTrailing\r\n";
+	static const uint8_t cancelled_blank[] =
+	    "\r\nYou have 5 mines. Drop how many? [0] -=>\r\n";
+	static const uint8_t cancelled_zero[] =
+	    "\r\nYou have 5 mines. Drop how many? [0] -=>0\r\n";
+	static const uint8_t cancelled_below[] =
+	    "\r\nYou have 5 mines. Drop how many? [0] -=>.5\r\n";
+	static const uint8_t cancelled_above[] =
+	    "\r\nYou have 5 mines. Drop how many? [0] -=>6\r\n";
+	static const uint8_t union_plain[] =
+	    "\r\nThe Union doesnt like the home 7 sectors mined!\n\r";
+	static const uint8_t union_ansi[] =
+	    "\r\n\x1b[0;32;40;5;1m"
+	    "The Union doesnt like the home 7 sectors mined!\n\r";
+	static const uint8_t none_plain[] =
+	    "\r\nYou don't HAVE any!\n\r";
+	static const uint8_t none_ansi[] =
+	    "\r\n\x1b[0;32;40;5;1mYou don't HAVE any!\n\r";
+	static const uint8_t scanner_plain[] =
+	    "\r\nSector: 42\r\n"
+	    "** WARNING! SECTOR HAS 5 MINES! **\r\n"
+	    "\x07Warps lead to: 1\r\n";
+	static const uint8_t scanner_ansi[] =
+	    "\x1b[0;31;40m\r\nSector: 42\r\n"
+	    "\x1b[0;33;41;5;1m** WARNING! SECTOR HAS 5 MINES! **"
+	    "\x1b[0;33;40m\r\n"
+	    "\x1b[MBO2T200L64FBEAP8FBEAP8FBEAP4FBEAP8FBEAP8FBEAP4T128\x0e"
+	    "\x1b[MBT128O5L48P64CP64C\x0e"
+	    "\x1b[MBT128O5L48P64CP64C\x0e"
+	    "\x1b[MBT128O5L48P64CP64C\x0e"
+	    "Warps lead to: 1\r\n";
+	static const uint8_t reentry_plain[] =
+	    "\r\nTime: 14:59  Main Command (?=Help)? ";
+	static const uint8_t reentry_ansi[] =
+	    "\x1b[0;32;40m\r\nTime: 14:59  Main Command (?=Help)? ";
+	static const struct {
+		const uint8_t *response;
+		size_t response_length;
+		float player_mines;
+		float player_sector;
+		enum yt_drop_mines_route route;
+		bool amount_stored;
+		float amount;
+		const uint8_t *body[2];
+		size_t body_length[2];
+		size_t total[2];
+		uint64_t row_hash;
+		size_t local_colors[2];
+		uint64_t color_hash[2];
+		float plain_bold;
+	} cases[] = {
+		{(const uint8_t *)"", 0U, 5.0f, 42.0f,
+		    YT_DROP_MINES_CANCELLED, true, 0.0f,
+		    {cancelled_blank, cancelled_blank},
+		    {sizeof(cancelled_blank) - 1U, sizeof(cancelled_blank) - 1U},
+		    {200U, 363U}, UINT64_C(0x3e1e866dbf31b0d0),
+		    {3U, 18U}, {UINT64_C(0x2207a27a6260aaca),
+		    UINT64_C(0x802ef546f7ece092)}, 0.0f},
+		{(const uint8_t *)"0", 1U, 5.0f, 42.0f,
+		    YT_DROP_MINES_CANCELLED, true, 0.0f,
+		    {cancelled_zero, cancelled_zero},
+		    {sizeof(cancelled_zero) - 1U, sizeof(cancelled_zero) - 1U},
+		    {201U, 364U}, UINT64_C(0x27a5036c497b4c9f),
+		    {3U, 18U}, {UINT64_C(0x2207a27a6260aaca),
+		    UINT64_C(0x802ef546f7ece092)}, 0.0f},
+		{(const uint8_t *)".5", 2U, 5.0f, 42.0f,
+		    YT_DROP_MINES_CANCELLED, true, 0.5f,
+		    {cancelled_below, cancelled_below},
+		    {sizeof(cancelled_below) - 1U, sizeof(cancelled_below) - 1U},
+		    {202U, 365U}, UINT64_C(0x7a6200467aeb9ac7),
+		    {3U, 18U}, {UINT64_C(0x2207a27a6260aaca),
+		    UINT64_C(0x802ef546f7ece092)}, 0.0f},
+		{(const uint8_t *)"6", 1U, 5.0f, 42.0f,
+		    YT_DROP_MINES_CANCELLED, true, 6.0f,
+		    {cancelled_above, cancelled_above},
+		    {sizeof(cancelled_above) - 1U, sizeof(cancelled_above) - 1U},
+		    {201U, 364U}, UINT64_C(0x699ecaacd4a0be39),
+		    {3U, 18U}, {UINT64_C(0x2207a27a6260aaca),
+		    UINT64_C(0x802ef546f7ece092)}, 0.0f},
+		{(const uint8_t *)"", 0U, 5.0f, 7.0f,
+		    YT_DROP_MINES_UNION_REFUSAL, false, 0.0f,
+		    {union_plain, union_ansi},
+		    {sizeof(union_plain) - 1U, sizeof(union_ansi) - 1U},
+		    {207U, 384U}, UINT64_C(0xa89e35dc63aac91e),
+		    {3U, 17U}, {UINT64_C(0x2207a27a6260aaca),
+		    UINT64_C(0x785a401833a5a0c2)}, 1.0f},
+		{(const uint8_t *)"", 0U, 0.0f, 42.0f,
+		    YT_DROP_MINES_NO_MINES, false, 0.0f,
+		    {none_plain, none_ansi},
+		    {sizeof(none_plain) - 1U, sizeof(none_ansi) - 1U},
+		    {179U, 356U}, UINT64_C(0x4e4661a6b8e4d886),
+		    {3U, 17U}, {UINT64_C(0x2207a27a6260aaca),
+		    UINT64_C(0x785a401833a5a0c2)}, 1.0f},
+	};
+	const uint8_t *scanner[2] = {scanner_plain, scanner_ansi};
+	const size_t scanner_length[2] = {
+		sizeof(scanner_plain) - 1U, sizeof(scanner_ansi) - 1U,
+	};
+	const uint8_t *reentry[2] = {reentry_plain, reentry_ansi};
+	const size_t reentry_length[2] = {
+		sizeof(reentry_plain) - 1U, sizeof(reentry_ansi) - 1U,
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct main_mines_cycle_fixture fixture;
+	struct yt_record record;
+	uint8_t remote[420];
+	size_t ends[4];
+	size_t variant;
+	size_t pass;
+
+	for (variant = 0U; variant < YT_ARRAY_LEN(cases); ++variant) {
+		for (pass = 0U; pass < 2U; ++pass) {
+			memset(&viewer, 0, sizeof(viewer));
+			fixture_viewer_initialize(&viewer, &stream,
+			    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+			    "YTSCORE.ASC", pass != 0U, remote, sizeof(remote));
+			memset(&fixture, 0, sizeof(fixture));
+			fixture.presentation.viewer = &viewer;
+			fixture.response = cases[variant].response;
+			fixture.response_length = cases[variant].response_length;
+			memset(&record, 0xa5, sizeof(record));
+			(void)yt_record_set_number(&record, YT_F57,
+			    cases[variant].player_sector);
+			(void)yt_record_set_number(&record, YT_F129,
+			    cases[variant].player_mines);
+			yt_player_decode(&fixture.player, &record);
+			memset(&record, 0xb6, sizeof(record));
+			(void)yt_record_set_number(&record, YT_F129, 5.0f);
+			yt_sector_decode(&fixture.sector, &record);
+			CHECK(main_mines_full_cycle_run(&fixture, pass != 0U,
+			    ends));
+			CHECK(ends[0] == sizeof(shell) - 1U
+			    && ends[1] - ends[0] == cases[variant].body_length[pass]
+			    && ends[2] - ends[1] == scanner_length[pass]
+			    && ends[3] - ends[2] == reentry_length[pass]
+			    && ends[3] == cases[variant].total[pass]
+			    && viewer.join.remote_length == ends[3]
+			    && memcmp(remote, shell, sizeof(shell) - 1U) == 0
+			    && memcmp(remote + ends[0], cases[variant].body[pass],
+			    cases[variant].body_length[pass]) == 0
+			    && memcmp(remote + ends[1], scanner[pass],
+			    scanner_length[pass]) == 0
+			    && memcmp(remote + ends[2], reentry[pass],
+			    reentry_length[pass]) == 0
+			    && fixture.mines.complete
+			    && fixture.mines.route == cases[variant].route
+			    && fixture.mines.amount_stored
+			    == cases[variant].amount_stored
+			    && fixture.mines.amount == cases[variant].amount
+			    && fixture.mines.player_read
+			    && !fixture.mines.suppression_set && !fixture.suppressed
+			    && !fixture.mines.player_written && !fixture.player_written
+			    && !fixture.mines.player_flushed
+			    && !fixture.mines.sector_read
+			    && !fixture.mines.sector_written && !fixture.sector_written
+			    && !fixture.mines.sector_flushed && fixture.flush_count == 0U
+			    && !fixture.sound_called
+			    && viewer.join.local_row_count == 9U
+			    && viewer_rows_fnv1a64(&viewer.join)
+			    == cases[variant].row_hash
+			    && viewer.join.local_color_count
+			    == cases[variant].local_colors[pass]
+			    && viewer_colors_fnv1a64(&viewer.join)
+			    == cases[variant].color_hash[pass]
+			    && viewer.join.presentation.foreground == 2.0f
+			    && viewer.join.presentation.background == 0.0f
+			    && viewer.join.presentation.bold
+			    == (pass != 0U ? 0.0f : cases[variant].plain_bold)
+			    && viewer.join.presentation.blink
+			    == (pass != 0U ? 0.0f : 1.0f)
+			    && viewer.join.presentation.cached_foreground == 2.0f
+			    && viewer.join.pager.foreground == 2
+			    && viewer.join.pager.line_count == 0.0f
+			    && viewer.join.local_fragment_length == 36U
+			    && memcmp(viewer.join.local_fragment,
+			    "Time: 14:59  Main Command (?=Help)? ", 36U) == 0
+			    && viewer.join.accumulator[0] == '\0');
+			yt_text_input_destroy(&viewer.input);
+		}
+	}
+	CHECK(sizeof(scanner_plain) - 1U == 69U
+	    && sizeof(scanner_ansi) - 1U == 222U
+	    && sizeof(reentry_plain) - 1U == 38U
+	    && sizeof(reentry_ansi) - 1U == 48U);
+}
+
 struct main_genesis_cycle_fixture {
 	struct main_buy_cycle_fixture presentation;
 	struct yt_player player;
@@ -28425,6 +28616,7 @@ main(void)
 	test_main_rename_refusal_cycles_presentation();
 	test_main_fighters_joined_cycles_presentation();
 	test_main_mines_accepted_cycle_presentation();
+	test_main_mines_ordinary_return_cycles_presentation();
 	test_main_genesis_decline_cycle_presentation();
 	test_main_genesis_alternate_cycles_presentation();
 	test_main_genesis_handoff_cycle_presentation();
