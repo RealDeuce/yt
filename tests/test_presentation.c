@@ -27442,6 +27442,7 @@ struct direct_warp_attack_combat_join {
 	struct yt_player written_player;
 	struct yt_player cached_player;
 	float current_sector_record;
+	float sector_record_offset;
 	float cloak_cache[4];
 	uint8_t owner_raw[4];
 	uint8_t selector_raw[4];
@@ -27449,6 +27450,7 @@ struct direct_warp_attack_combat_join {
 	uint8_t attacker_loss_raw[8];
 	uint8_t defender_loss_raw[8];
 	uint8_t ship_raw[8];
+	uint8_t shield_raw[4];
 	size_t sector_reads;
 	size_t a41c_reads;
 	size_t a41c_stores;
@@ -27523,6 +27525,9 @@ direct_warp_attack_combat_a41c_source(void *context, int player_record,
 	*player = join->a41c_reads == 0U
 	    ? join->attack_player : join->return_player;
 	++join->a41c_reads;
+	++join->cycle->fresh_hostile_player_reads;
+	join->cycle->final_field_record = 2;
+	join->cycle->final_field_player = true;
 	return true;
 }
 
@@ -27533,9 +27538,11 @@ direct_warp_attack_combat_a41c_store(void *context,
 {
 	struct direct_warp_attack_combat_join *join = context;
 
-	(void)kind;
 	(void)subscript;
-	(void)raw;
+	if (kind == YT_CURRENT_PLAYER_STORE_FIGHTERS)
+		memcpy(join->ship_raw, raw, sizeof(join->ship_raw));
+	else if (kind == YT_CURRENT_PLAYER_STORE_SHIELDS)
+		memcpy(join->shield_raw, raw, sizeof(join->shield_raw));
 	++join->a41c_stores;
 }
 
@@ -27555,16 +27562,14 @@ direct_warp_attack_combat_read_player(void *context, int player_record,
 	hydration.cloak_cache = join->cloak_cache;
 	hydration.cache_count = YT_ARRAY_LEN(join->cloak_cache);
 	hydration.store = direct_warp_attack_combat_a41c_store;
-	if (qb_mbf32_encode(51.0f, hydration.sector_record_offset_raw)
+	if (qb_mbf32_encode(join->sector_record_offset,
+	    hydration.sector_record_offset_raw)
 	    != QB_MBF_OK
 	    || qb_mbf32_encode(0.0f, hydration.anti_cloak_raw) != QB_MBF_OK
 	    || !yt_current_player_hydrate_run(&hydration,
 	    direct_warp_attack_combat_a41c_source, join, error))
 		return false;
-	++join->cycle->fresh_hostile_player_reads;
 	*player = join->fixture->emergency_player;
-	join->cycle->final_field_record = player_record;
-	join->cycle->final_field_player = true;
 	return true;
 }
 
@@ -32347,12 +32352,15 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 	struct direct_warp_attack_combat_join join;
 	struct yt_hostile_attack_combat_state combat;
 	struct direct_warp_main_cycle_state cycle_before_return;
+	struct direct_warp_attack_combat_join join_before_return;
 	struct direct_warp_gate_get_state gate;
 	struct yt_basic_fault_projection projection;
 	struct yt_player expected_player;
 	struct yt_sector expected_sector;
+	struct yt_player failed_player;
 	struct yt_player player_before_return;
 	struct yt_record record;
+	struct yt_record corrupt_return;
 	struct yt_error error;
 	uint8_t remote[1600];
 	size_t ends[3];
@@ -32401,6 +32409,7 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 		join.fixture = &fixture;
 		join.cycle = &cycle;
 		join.current_sector_record = 1054.0f;
+		join.sector_record_offset = 51.0f;
 		join.cloak_cache[0] = -1.0f;
 		join.cloak_cache[1] = -2.0f;
 		join.cloak_cache[2] = -3.0f;
@@ -32608,6 +32617,45 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 		}
 		cycle = cycle_before_return;
 		fixture.emergency_player = player_before_return;
+		join_before_return = join;
+		corrupt_return = join.return_player.record;
+		(void)yt_record_set_number(&corrupt_return, YT_F57, 1.0e38f);
+		yt_player_decode(&join.return_player, &corrupt_return);
+		join.sector_record_offset = 1.0e38f;
+		yt_error_clear(&error);
+		CHECK(!direct_warp_attack_combat_read_player(&join, 2,
+		    &failed_player, &error)
+		    && yt_basic_fault_project(&error, NULL, 0U, NULL, 0U, NULL,
+		    0U, &projection));
+		CHECK(projection.site
+		    == YT_BASIC_FAULT_CURRENT_PLAYER_A41C_SECTOR_ADD
+		    && projection.error_number == 6U
+		    && projection.identity->instruction == 0xA44CU
+		    && projection.identity->saved_ip == 0xA44FU
+		    && projection.identity->retry_statement == 0xA446U
+		    && projection.identity->source_line == 33990
+		    && projection.identity->handler == 0xB2DAU
+		    && projection.disposition == YT_BASIC_FAULT_RESUME_GAMEPLAY
+		    && projection.main.route == YT_MAIN_ERROR_GAMEPLAY);
+		CHECK(join.a41c_reads == 2U && join.a41c_stores == 28U
+		    && cycle.fresh_hostile_player_reads == 3U
+		    && cycle.final_field_record == 2 && cycle.final_field_player
+		    && memcmp(&fixture.emergency_player.record, &corrupt_return,
+		    sizeof(corrupt_return)) == 0
+		    && fixture.emergency_player.sector == 1.0e38f
+		    && fixture.emergency_player.fighters == 7.0f
+		    && fixture.emergency_player.shields == 5.0f
+		    && join.current_sector_record == 1054.0f
+		    && memcmp(join.ship_raw, raw_zero_double, 4U) == 0
+		    && memcmp(join.ship_raw + 4U,
+		    corrupt_return.bytes + YT_F61, 4U) == 0
+		    && memcmp(join.shield_raw,
+		    join.attack_player.record.bytes + YT_F53, 4U) == 0
+		    && viewer.join.remote_length
+		    == callers[caller].total_length + sizeof(body) - 1U);
+		join = join_before_return;
+		cycle = cycle_before_return;
+		fixture.emergency_player = player_before_return;
 		CHECK(direct_warp_attack_return_hostile_menu(&join,
 		    combat.deployed_remaining));
 		CHECK(viewer.join.remote_length == callers[caller].total_length
@@ -32625,6 +32673,11 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 		    && cycle.final_field_record == 2 && cycle.final_field_player
 		    && fixture.emergency_player.fighters == 7.0f
 		    && fixture.emergency_player.shields == 9.0f
+		    && memcmp(join.ship_raw, raw_zero_double, 4U) == 0
+		    && memcmp(join.ship_raw + 4U,
+		    join.return_player.record.bytes + YT_F61, 4U) == 0
+		    && memcmp(join.shield_raw,
+		    join.return_player.record.bytes + YT_F53, 4U) == 0
 		    && join.current_sector_record == 1054.0f
 		    && join.cloak_cache[2] == 13.0f
 		    && cycle.fresh_hostile_selected == 'B'
