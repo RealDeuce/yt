@@ -25615,6 +25615,114 @@ test_direct_emergency_warp_hostile_warning_carrier(void)
 }
 
 static bool
+direct_emergency_warp_warning_two_carrier_continue(
+    struct hostile_mines_hazard_fixture *fixture,
+    struct direct_warp_carrier_state *carrier)
+{
+	static const uint8_t warning_one[] =
+	    "This is a desperate move! Your engines will be drained and will take time";
+	static const uint8_t warning_two[] =
+	    "to recharge! You also risk a melt down! Are you sure you wish to do this?";
+	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct yt_present_result result;
+
+	if (carrier == NULL
+	    || yt_present_color(&join->presentation, &result) != YT_PRESENT_OK
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.bold = 1.0f;
+	join->presentation.foreground = 7.0f;
+	join->pager.foreground = 7;
+	if (!normal_exit_b05d(join, warning_one, sizeof(warning_one) - 1U, 0.0f))
+		return false;
+	memcpy(carrier->output_scratch, warning_two, sizeof(warning_two) - 1U);
+	carrier->output_length = sizeof(warning_two) - 1U;
+	join->presentation.bold = 1.0f;
+	join->fail_at = join->event_count + 1U;
+	if (normal_exit_b05d(join, warning_two, sizeof(warning_two) - 1U, 0.0f))
+		return false;
+	carrier->carrier_ended = true;
+	return true;
+}
+
+static void
+test_direct_emergency_warp_warning_two_carrier(void)
+{
+	enum { DIRECT_CALLER, MAIN_CALLER, HOSTILE_CALLER };
+	static const uint8_t warning_two[] =
+	    "to recharge! You also risk a melt down! Are you sure you wish to do this?";
+	static const struct {
+		int caller;
+		bool ansi;
+		const uint8_t *command;
+		size_t command_length;
+		size_t caller_end;
+		size_t expected_length;
+		uint64_t expected_hash;
+	} cases[] = {
+		{DIRECT_CALLER, false, NULL, 0U, 0U, 77U,
+		    UINT64_C(0xbc1f7c2454eb9d44)},
+		{DIRECT_CALLER, true, NULL, 0U, 0U, 89U,
+		    UINT64_C(0x9dd80ee7f84ed07b)},
+		{MAIN_CALLER, false, (const uint8_t *)"W", 1U, 41U, 118U,
+		    UINT64_C(0x5870cd7148dffbd8)},
+		{MAIN_CALLER, true, (const uint8_t *)"W", 1U, 41U, 130U,
+		    UINT64_C(0x90f9ffd3dbaa5257)},
+		{HOSTILE_CALLER, false, (const uint8_t *)"W", 1U, 63U, 140U,
+		    UINT64_C(0x28c31f0a94b38db0)},
+		{HOSTILE_CALLER, false, (const uint8_t *)"WT", 2U, 64U, 141U,
+		    UINT64_C(0x0fcb5acef0f9cd80)},
+		{HOSTILE_CALLER, true, (const uint8_t *)"W", 1U, 73U, 162U,
+		    UINT64_C(0x32bfb624e88333c2)},
+		{HOSTILE_CALLER, true, (const uint8_t *)"WT", 2U, 74U, 163U,
+		    UINT64_C(0x65355d50e22c7498)},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	struct direct_warp_carrier_state carrier;
+	uint8_t remote[192];
+	size_t caller_end;
+	size_t index;
+
+	for (index = 0U; index < YT_ARRAY_LEN(cases); ++index) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", cases[index].ansi, remote, sizeof(remote));
+		memset(&fixture, 0, sizeof(fixture));
+		fixture.cycle.presentation.viewer = &viewer;
+		memset(&carrier, 0, sizeof(carrier));
+		caller_end = 0U;
+		if (cases[index].caller == DIRECT_CALLER)
+			viewer.join.presentation = state(cases[index].ansi);
+		else if (cases[index].caller == MAIN_CALLER)
+			CHECK(direct_emergency_warp_main_command_prefix(&fixture,
+			    cases[index].ansi, &caller_end));
+		else
+			CHECK(direct_emergency_warp_hostile_menu_prefix(&fixture,
+			    cases[index].ansi, cases[index].command,
+			    cases[index].command_length, &caller_end));
+		CHECK(direct_emergency_warp_warning_two_carrier_continue(
+		    &fixture, &carrier));
+		CHECK(caller_end == cases[index].caller_end
+		    && viewer.join.remote_length == cases[index].expected_length
+		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+		    == cases[index].expected_hash
+		    && carrier.output_length == sizeof(warning_two) - 1U
+		    && memcmp(carrier.output_scratch, warning_two,
+		    sizeof(warning_two) - 1U) == 0
+		    && carrier.carrier_ended
+		    && !fixture.warp_called && fixture.draw_position == 0U
+		    && fixture.emergency_player_reads == 0U
+		    && fixture.emergency_player_writes == 0U
+		    && fixture.emergency_flushes == 0U
+		    && fixture.emergency_waits == 0U);
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
+static bool
 direct_emergency_warp_accepted_answer_run(
     struct hostile_mines_hazard_fixture *fixture, bool ansi,
     size_t *parent_end, bool queued_answer, float mode,
@@ -36024,6 +36132,7 @@ main(void)
 	test_direct_emergency_warp_hostile_parent_copy_failures();
 	test_direct_emergency_warp_warning_carrier();
 	test_direct_emergency_warp_hostile_warning_carrier();
+	test_direct_emergency_warp_warning_two_carrier();
 	test_direct_emergency_warp_accepted_presentation();
 	test_direct_emergency_warp_child_failures();
 	test_direct_emergency_warp_main_ordinary_returns();
