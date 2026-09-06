@@ -3535,10 +3535,13 @@ test_xannor_player_arrival(struct yt_error *error)
 {
 	static const uint8_t draws[] = {
 		0x00, 0x00, 0x80,
-		0x00, 0x00, 0x80
+		0x00, 0x00, 0x80,
+		0xff, 0xff, 0xff
 	};
 	static const char expected_line[] =
 	    " *** Alice: lost 1, dstrd 0 (Player Killed)";
+	static const char expected_survivor_line[] =
+	    " *** Bob: lost 0, dstrd 1 (Xannor Lost) - Shields: 10";
 	static const char *const expected_radio[] = {
 		"Ha! We kilt 1 of yoor fyterz hoo-man slyme!",
 		"Peh! Whee maik yoor wheak sheeldz 1 unitz!",
@@ -3548,13 +3551,19 @@ test_xannor_player_arrival(struct yt_error *error)
 	struct utility_line_tape tape = {{{0}}, 0};
 	struct yt_game game;
 	struct yt_player player;
+	struct yt_player survivor;
+	struct yt_record survivor_before;
 	struct yt_sector sector_before;
 	struct yt_sector sector_after;
+	struct yt_sector survivor_sector_before;
+	struct yt_sector survivor_sector_after;
 	struct yt_text_file news = {0};
 	float sector_cache[52] = {0};
 	float cloak_cache[52] = {0};
 	float xannor = 1.0f;
 	float location = 42.0f;
+	float survivor_xannor = 1.0f;
+	float survivor_location = 43.0f;
 	float exhausted_location = 42.0f;
 	float exhausted_size = 0.0f;
 	uint8_t *radio = NULL;
@@ -3580,10 +3589,28 @@ test_xannor_player_arrival(struct yt_error *error)
 	player.ground_forces = 0.0f;
 	if (!yt_game_write_player(&game, 2, &player, error))
 		goto done;
+	if (!yt_game_read_player(&game, 3, &survivor, error))
+		goto done;
+	strcpy(survivor.name, "Bob");
+	survivor.name_length = 3.0f;
+	survivor.fighters = 1.0f;
+	survivor.shields = 10.0f;
+	survivor.sector = 43.0f;
+	survivor.cloak = 0.75f;
+	survivor.killed_by = 0.0f;
+	survivor.team = 0.0f;
+	survivor.ground_forces = 0.0f;
+	if (!yt_game_write_player(&game, 3, &survivor, error)
+	    || !yt_game_read_player(&game, 3, &survivor, error))
+		goto done;
+	survivor_before = survivor.record;
 	sector_cache[2] = 42.0f;
 	cloak_cache[2] = 0.25f;
+	sector_cache[3] = 43.0f;
+	cloak_cache[3] = 0.75f;
 	yt_random_set_provider(&game.random, utility_random_fill, &script);
 	if (!yt_game_read_sector(&game, 42, &sector_before, error)
+	    || !yt_game_read_sector(&game, 43, &survivor_sector_before, error)
 	    || !yt_maintenance_xannor_target_finish(&game, sector_cache,
 	    cloak_cache, YT_ARRAY_LEN(sector_cache), true, 20, 0,
 	    &exhausted_location, &exhausted_size, utility_capture_line, &tape,
@@ -3600,23 +3627,43 @@ test_xannor_player_arrival(struct yt_error *error)
 	    || !yt_maintenance_xannor_target_finish(&game, sector_cache,
 	    cloak_cache, YT_ARRAY_LEN(sector_cache), true, 20, 2,
 	    &location, &xannor, utility_capture_line, &tape, error)
+	    || !yt_maintenance_xannor_target_finish(&game, sector_cache,
+	    cloak_cache, YT_ARRAY_LEN(sector_cache), true, 20, 3,
+	    &survivor_location, &survivor_xannor, utility_capture_line, &tape,
+	    error)
 	    || !yt_game_read_player(&game, 2, &player, error)
+	    || !yt_game_read_player(&game, 3, &survivor, error)
 	    || !yt_game_read_sector(&game, 42, &sector_after, error)
+	    || !yt_game_read_sector(&game, 43, &survivor_sector_after, error)
 	    || !yt_text_read("YTNEWS.DAT", &news, error)
 	    || !read_file("YTRMSG.DAT", &radio, &radio_length))
 		goto done;
 	valid = exhausted_location == 0.0f && exhausted_size == 0.0f
 	    && location == 42.0f && xannor == 1.0f
-	    && game.random.draws == 2U
+	    && survivor_location == 0.0f && survivor_xannor == 0.0f
+	    && game.random.draws == 3U
 	    && script.position == sizeof(draws)
-	    && tape.calls == 1U && strcmp(tape.line[0], expected_line) == 0
+	    && tape.calls == 2U && strcmp(tape.line[0], expected_line) == 0
+	    && strcmp(tape.line[1], expected_survivor_line) == 0
 	    && player.killed_by == -1.0f && player.fighters == 0.0f
 	    && player.shields == 0.0f && player.sector == 0.0f
 	    && sector_cache[2] == 0.0f && cloak_cache[2] == 0.0f
+	    && survivor.killed_by == 0.0f && survivor.fighters == 1.0f
+	    && survivor.shields == 10.0f && survivor.sector == 43.0f
+	    && sector_cache[3] == 43.0f && cloak_cache[3] == 0.75f
+	    && memcmp(survivor.record.bytes, survivor_before.bytes,
+	    YT_RECORD_SIZE) == 0
+	    && memcmp(survivor_sector_after.record.bytes,
+	    survivor_sector_before.record.bytes, YT_RECORD_SIZE) == 0
 	    && sector_after.fighters == sector_before.fighters + 2.0f
-	    && news.length == sizeof(expected_line) - 1U + 3U
+	    && news.length == sizeof(expected_line) - 1U
+	    + sizeof(expected_survivor_line) - 1U + 5U
 	    && memcmp(news.data, expected_line, sizeof(expected_line) - 1U) == 0
-	    && memcmp(news.data + sizeof(expected_line) - 1U, "\r\n\x1a", 3U) == 0
+	    && memcmp(news.data + sizeof(expected_line) - 1U, "\r\n", 2U) == 0
+	    && memcmp(news.data + sizeof(expected_line) + 1U,
+	    expected_survivor_line, sizeof(expected_survivor_line) - 1U) == 0
+	    && memcmp(news.data + sizeof(expected_line)
+	    + sizeof(expected_survivor_line), "\r\n\x1a", 3U) == 0
 	    && radio_length == 3U * sizeof(struct yt_radio_record);
 	for (index = 0; valid && index < 3U; ++index) {
 		const struct yt_radio_record *record =
