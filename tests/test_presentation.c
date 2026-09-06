@@ -27768,6 +27768,13 @@ struct direct_warp_attack_combat_join {
 	size_t news_length;
 	uint8_t defeated[160];
 	size_t defeated_length;
+	uint8_t reward[240];
+	size_t reward_length;
+	uint8_t clearance_discount_raw[4][4];
+	uint8_t clearance_announced_raw[4];
+	uint8_t clearance_value_raw[4];
+	uint8_t clearance_sound_selector_raw[4];
+	struct yt_clearance_state clearance;
 	enum yt_hostile_surrender_answer surrender_answer;
 	double surrendered_ship;
 	double surrendered_deployed;
@@ -27790,6 +27797,9 @@ struct direct_warp_attack_combat_join {
 	size_t persistence_sector_writes;
 	size_t persistence_blanks;
 	size_t tail_player_reads;
+	size_t tail_player_writes;
+	size_t clearance_calls;
+	size_t clearance_sound_calls;
 	size_t spill_calls;
 	size_t spill_stores;
 	size_t spill_present_calls;
@@ -27802,6 +27812,7 @@ struct direct_warp_attack_combat_join {
 	bool (*fatal_handler)(void *context, struct yt_error *error);
 	void *fatal_handler_context;
 	bool allow_tail_player;
+	bool allow_clearance;
 	bool allow_spill;
 	bool unexpected_surrender;
 	bool unexpected_spill;
@@ -28390,7 +28401,7 @@ direct_warp_attack_combat_persistence(void *context,
 }
 
 static bool
-direct_warp_attack_tail_unexpected_player(void *context, int player_record,
+direct_warp_attack_tail_read_player(void *context, int player_record,
     struct yt_player *player, struct yt_error *error)
 {
 	struct direct_warp_attack_combat_join *join = context;
@@ -28405,16 +28416,19 @@ direct_warp_attack_tail_unexpected_player(void *context, int player_record,
 }
 
 static bool
-direct_warp_attack_tail_unexpected_write(void *context, int player_record,
+direct_warp_attack_tail_write_player(void *context, int player_record,
     const struct yt_player *player, struct yt_error *error)
 {
 	struct direct_warp_attack_combat_join *join = context;
 
-	(void)player_record;
-	(void)player;
 	(void)error;
-	join->unexpected_tail_effect = true;
-	return false;
+	if (!join->allow_tail_player || player_record != 2 || player == NULL) {
+		join->unexpected_tail_effect = true;
+		return false;
+	}
+	join->written_player = *player;
+	++join->tail_player_writes;
+	return true;
 }
 
 static bool
@@ -28427,15 +28441,120 @@ direct_warp_attack_tail_present(void *context,
 	    &join->fixture->cycle.presentation.viewer->join;
 
 	(void)error;
-	if (kind != YT_HOSTILE_ATTACK_TAIL_DEFEATED_ROW || text == NULL
-	    || length > sizeof(join->defeated)
-	    || join->defeated_length != 0U) {
+	if (text == NULL) {
 		join->unexpected_tail_effect = true;
 		return false;
 	}
-	memcpy(join->defeated, text, length);
-	join->defeated_length = length;
+	if (kind == YT_HOSTILE_ATTACK_TAIL_REWARD_ROW) {
+		if (!join->allow_clearance || length > sizeof(join->reward)
+		    || join->reward_length != 0U) {
+			join->unexpected_tail_effect = true;
+			return false;
+		}
+		memcpy(join->reward, text, length);
+		join->reward_length = length;
+		viewer->presentation.bold = 1.0f;
+	} else if (kind == YT_HOSTILE_ATTACK_TAIL_DEFEATED_ROW) {
+		if (length > sizeof(join->defeated)
+		    || join->defeated_length != 0U) {
+			join->unexpected_tail_effect = true;
+			return false;
+		}
+		memcpy(join->defeated, text, length);
+		join->defeated_length = length;
+	} else {
+		join->unexpected_tail_effect = true;
+		return false;
+	}
 	return normal_exit_b05d(viewer, text, length, 0.0f);
+}
+
+static void
+direct_warp_attack_clearance_read(void *context,
+    enum yt_clearance_store_kind kind, size_t item, uint8_t raw[4])
+{
+	struct direct_warp_attack_combat_join *join = context;
+
+	if (kind == YT_CLEARANCE_STORE_DISCOUNT && item < 4U)
+		memcpy(raw, join->clearance_discount_raw[item], 4U);
+	else if (kind == YT_CLEARANCE_STORE_ANNOUNCED)
+		memcpy(raw, join->clearance_announced_raw, 4U);
+}
+
+static void
+direct_warp_attack_clearance_store(void *context,
+    enum yt_clearance_store_kind kind, size_t item, const uint8_t raw[4])
+{
+	struct direct_warp_attack_combat_join *join = context;
+
+	switch (kind) {
+	case YT_CLEARANCE_STORE_DISCOUNT:
+		if (item < 4U)
+			memcpy(join->clearance_discount_raw[item], raw, 4U);
+		break;
+	case YT_CLEARANCE_STORE_ANNOUNCED:
+		memcpy(join->clearance_announced_raw, raw, 4U);
+		break;
+	case YT_CLEARANCE_STORE_VALUE:
+		memcpy(join->clearance_value_raw, raw, 4U);
+		break;
+	case YT_CLEARANCE_STORE_SOUND_SELECTOR:
+		memcpy(join->clearance_sound_selector_raw, raw, 4U);
+		break;
+	}
+}
+
+static bool
+direct_warp_attack_clearance_present(void *context, const uint8_t *text,
+    size_t length, enum yt_clearance_output_kind kind,
+    struct yt_error *error)
+{
+	struct direct_warp_attack_combat_join *join = context;
+	struct viewer_pager_join *viewer =
+	    &join->fixture->cycle.presentation.viewer->join;
+
+	(void)kind;
+	(void)error;
+	return normal_exit_line(viewer, text, length);
+}
+
+static bool
+direct_warp_attack_clearance_sound(void *context, float selector,
+    struct yt_error *error)
+{
+	struct direct_warp_attack_combat_join *join = context;
+	struct viewer_pager_join *viewer =
+	    &join->fixture->cycle.presentation.viewer->join;
+	struct yt_present_result result;
+
+	(void)error;
+	if (yt_present_sound(selector, &viewer->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(viewer, &result);
+	++join->clearance_sound_calls;
+	return true;
+}
+
+static bool
+direct_warp_attack_tail_clearance(void *context, struct yt_error *error)
+{
+	static const struct yt_clearance_ops ops = {
+		direct_warp_attack_clearance_read,
+		direct_warp_attack_clearance_store,
+		direct_warp_attack_combat_random,
+		direct_warp_attack_clearance_present,
+		direct_warp_attack_clearance_sound,
+	};
+	struct direct_warp_attack_combat_join *join = context;
+
+	if (!join->allow_clearance) {
+		join->unexpected_tail_effect = true;
+		return false;
+	}
+	++join->clearance_calls;
+	join->clearance = (struct yt_clearance_state){.create = true};
+	return yt_clearance_run(&join->clearance, &ops, join, error);
 }
 
 static bool
@@ -28450,11 +28569,11 @@ direct_warp_attack_tail_unexpected_action(void *context,
 }
 
 static const struct yt_hostile_attack_tail_ops direct_warp_attack_tail_ops = {
-	direct_warp_attack_tail_unexpected_player,
-	direct_warp_attack_tail_unexpected_write,
+	direct_warp_attack_tail_read_player,
+	direct_warp_attack_tail_write_player,
 	direct_warp_attack_tail_present,
 	direct_warp_attack_news,
-	direct_warp_attack_tail_unexpected_action,
+	direct_warp_attack_tail_clearance,
 	direct_warp_attack_combat_random,
 	direct_warp_attack_tail_unexpected_action,
 };
@@ -35754,6 +35873,135 @@ test_direct_emergency_warp_hostile_attack_fatal_prefixes(void)
 			}
 			yt_text_input_destroy(&viewer.input);
 		}
+	}
+}
+
+static void
+test_xannor_attack_tail_clearance_join(void)
+{
+	static const uint8_t cached_name[] = {'A', 0, 'B'};
+	static const uint8_t expected_reward[] =
+	    "Collect 2 turns bonus for destroying 512000 Xannor!!";
+	static const uint8_t expected_news[] = {
+		'A', 0, 'B', ' ', 'c', 'o', 'l', 'l', 'e', 'c', 't', 'e', 'd',
+		' ', '2', ' ', 't', 'u', 'r', 'n', 's', ' ', 'b', 'o', 'n', 'u',
+		's', ' ', 'f', 'o', 'r', ' ', 'd', 'e', 's', 't', 'r', 'o', 'y',
+		'i', 'n', 'g', ' ', '5', '1', '2', '0', '0', '0', ' ', 'X', 'a',
+		'n', 'n', 'o', 'r', '!', '!'
+	};
+	static const uint8_t expected_defeated[] =
+	    "You defeated all the fighters and have 21 left.";
+	static const uint8_t holds_zero[4] = {0x00U, 0x00U, 0x73U, 0x00U};
+	static const uint8_t tenth[4] = {0xcdU, 0xccU, 0x4cU, 0x7dU};
+	static const uint8_t one[4] = {0x00U, 0x00U, 0x00U, 0x81U};
+	static const struct {
+		size_t length;
+		uint64_t hash;
+		size_t colors;
+		uint64_t color_hash;
+	} expected[] = {
+		{182U, UINT64_C(0x8767362678d291cb), 2U,
+		    UINT64_C(0x6d3fa4669b3587bd)},
+		{246U, UINT64_C(0xf928103636550d6d), 7U,
+		    UINT64_C(0x84e1a1a1e2377ca9)},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	struct direct_warp_main_cycle_state cycle;
+	struct direct_warp_attack_combat_join join;
+	struct yt_hostile_attack_tail_state tail;
+	struct yt_record record;
+	struct yt_error error;
+	uint8_t remote[1024];
+	size_t pass;
+
+	for (pass = 0U; pass < 2U; ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream, retained_scoreboard,
+		    sizeof(retained_scoreboard) - 1U, "YTSCORE.ASC", pass != 0U,
+		    remote, sizeof(remote));
+		memset(&fixture, 0, sizeof(fixture));
+		fixture.cycle.presentation.viewer = &viewer;
+		memset(&cycle, 0, sizeof(cycle));
+		fixture.draws[0] = 0.9f;
+		fixture.draws[1] = 0.1f;
+		fixture.draws[2] = 0.0f;
+		fixture.draws[3] = 0.0f;
+		fixture.draws[4] = 0.0f;
+		fixture.draws[5] = 0.75f;
+		memset(&join, 0, sizeof(join));
+		join.fixture = &fixture;
+		join.cycle = &cycle;
+		join.current_sector_record = 1054.0f;
+		join.sector_record_offset = 51.0f;
+		join.allow_tail_player = true;
+		join.allow_clearance = true;
+		memcpy(join.clearance_discount_raw[0], holds_zero, 4U);
+		memset(&record, 0xa5, sizeof(record));
+		yt_record_set_text(&record, (const uint8_t *)"FRESH XANNOR", 12U);
+		(void)yt_record_set_number(&record, YT_F49, 98.0f);
+		(void)yt_record_set_number(&record, YT_F53, 5.0f);
+		(void)yt_record_set_number(&record, YT_F57, 8.0f);
+		(void)yt_record_set_number(&record, YT_F61, 21.0f);
+		(void)yt_record_set_number(&record, YT_F125, 0.0f);
+		yt_player_decode(&join.attack_player, &record);
+		fixture.emergency_player = join.attack_player;
+		tail = (struct yt_hostile_attack_tail_state){
+			.current_player_record = 2,
+			.old_owner = -1.0f,
+			.defender_loss = 512000.0,
+			.deployed_fighters = 0.0,
+			.ship_fighters = 19.0,
+			.turns_per_day = 100.0f,
+			.headquarters = 7.0f,
+			.cached_player_name = cached_name,
+			.cached_player_name_length = sizeof(cached_name),
+			.current = join.attack_player,
+		};
+		yt_error_clear(&error);
+		CHECK(yt_hostile_attack_tail_run(&tail,
+		    &direct_warp_attack_tail_ops, &join, &error));
+		CHECK(viewer.join.remote_length == expected[pass].length
+		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+		    == expected[pass].hash
+		    && viewer.join.local_row_count == 5U
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == UINT64_C(0x61661dea9d94a082)
+		    && viewer.join.local_color_count == expected[pass].colors
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == expected[pass].color_hash
+		    && viewer.join.local_fragment_length == 0U);
+		CHECK(tail.complete && tail.player_read && tail.player_written
+		    && tail.reward_presented && tail.reward_news_written
+		    && tail.clearance_called && tail.draw_consumed
+		    && tail.defeated_presented && !tail.victory_called
+		    && tail.bonus == 2.0f && tail.dominated_draw == 0.75f
+		    && tail.ship_fighters == 21.0 && tail.current.turns == 100.0f
+		    && join.a41c_reads == 1U && join.a41c_stores == 25U
+		    && join.tail_player_reads == 1U
+		    && join.tail_player_writes == 1U
+		    && join.clearance_calls == 1U
+		    && join.clearance_sound_calls == 1U
+		    && join.random_calls == 6U && fixture.draw_position == 6U
+		    && join.clearance.complete
+		    && join.clearance.draws_consumed == 5U
+		    && join.clearance.announcements == 1U
+		    && !join.unexpected_tail_effect);
+		CHECK(join.reward_length == sizeof(expected_reward) - 1U
+		    && memcmp(join.reward, expected_reward,
+		    sizeof(expected_reward) - 1U) == 0
+		    && join.news_length == sizeof(expected_news)
+		    && memcmp(join.news, expected_news, sizeof(expected_news)) == 0
+		    && join.defeated_length == sizeof(expected_defeated) - 1U
+		    && memcmp(join.defeated, expected_defeated,
+		    sizeof(expected_defeated) - 1U) == 0
+		    && join.written_player.turns == 100.0f
+		    && memcmp(join.clearance_discount_raw[0], tenth, 4U) == 0
+		    && memcmp(join.clearance_value_raw, tenth, 4U) == 0
+		    && memcmp(join.clearance_announced_raw, one, 4U) == 0
+		    && memcmp(join.clearance_sound_selector_raw, one, 4U) == 0);
+		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -45152,6 +45400,7 @@ main(void)
 	test_hostile_bribe_fatal_prefix_cuts();
 	test_direct_emergency_warp_hostile_attack_fatal_cycle();
 	test_direct_emergency_warp_hostile_attack_fatal_prefixes();
+	test_xannor_attack_tail_clearance_join();
 	test_direct_emergency_warp_hostile_invalid_retry_cycle();
 	test_direct_emergency_warp_hostile_ordinary_returns();
 	test_direct_emergency_warp_queue_cycles();
