@@ -24036,6 +24036,35 @@ direct_emergency_warp_hostile_menu_prefix(
 	return yt_hostile_menu_dispatch(transformed) == YT_HOSTILE_MENU_WARP;
 }
 
+static bool
+direct_emergency_warp_main_command_prefix(
+    struct hostile_mines_hazard_fixture *fixture, bool ansi, size_t *end)
+{
+	static const uint8_t main_prompt[] =
+	    "Time: 14:59  Main Command (?=Help)? ";
+	static const uint8_t command[] = "W";
+	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+
+	if (end == NULL)
+		return false;
+	join->presentation = state(ansi);
+	join->presentation.color_initialized = 1.0f;
+	join->presentation.cached_foreground = 2.0f;
+	join->pager.foreground = 2;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, main_prompt,
+	    sizeof(main_prompt) - 1U, 1.0f))
+		return false;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	memcpy(join->accumulator, command, sizeof(command));
+	if (!main_buy_present_echo(&fixture->cycle.presentation, command,
+	    sizeof(command) - 1U) || !normal_exit_line(join, NULL, 0U))
+		return false;
+	*end = join->remote_length;
+	return true;
+}
+
 enum direct_warp_gate_get_failure {
 	DIRECT_WARP_GATE_SEEK_52,
 	DIRECT_WARP_GATE_READ_57,
@@ -24139,14 +24168,17 @@ direct_warp_gate_store(void *context,
 }
 
 static bool
-direct_emergency_warp_hostile_gate_get_failure_run(
-    struct hostile_mines_hazard_fixture *fixture, bool ansi,
+direct_emergency_warp_gate_get_failure_run(
+    struct hostile_mines_hazard_fixture *fixture, bool hostile, bool ansi,
     const uint8_t *command, size_t command_length,
     enum direct_warp_gate_get_failure failure,
     struct direct_warp_gate_get_state *gate,
     struct yt_basic_fault_projection *projection, size_t ends[2])
 {
 	static const uint8_t scanner_gate_raw[4] = {0x00U, 0x00U, 0x60U, 0x00U};
+	static const uint8_t main_gate_raw[4] = {0x00U, 0x00U, 0x00U, 0x00U};
+	const uint8_t *expected_gate_raw = hostile
+	    ? scanner_gate_raw : main_gate_raw;
 	struct yt_current_player_hydration_state hydration;
 	struct yt_player before;
 	struct yt_error error;
@@ -24174,9 +24206,12 @@ direct_emergency_warp_hostile_gate_get_failure_run(
 	    gate);
 	yt_database_set_read_provider(&gate->database, direct_warp_gate_read,
 	    gate);
-	memcpy(gate_raw, scanner_gate_raw, sizeof(gate_raw));
-	if (!direct_emergency_warp_hostile_menu_prefix(fixture, ansi, command,
-	    command_length, &ends[0])) {
+	memcpy(gate_raw, expected_gate_raw, sizeof(gate_raw));
+	if ((hostile && !direct_emergency_warp_hostile_menu_prefix(fixture,
+	    ansi, command, command_length, &ends[0]))
+	    || (!hostile && (command_length != 1U || command[0] != 'W'
+	    || !direct_emergency_warp_main_command_prefix(fixture, ansi,
+	    &ends[0])))) {
 		yt_database_close(&gate->database);
 		return false;
 	}
@@ -24207,7 +24242,7 @@ direct_emergency_warp_hostile_gate_get_failure_run(
 	    || memcmp(cloak_cache,
 	    (const float[4]){-1.0f, -2.0f, 0.5f, -4.0f},
 	    sizeof(cloak_cache)) != 0
-	    || memcmp(gate_raw, scanner_gate_raw, sizeof(gate_raw)) != 0) {
+	    || memcmp(gate_raw, expected_gate_raw, sizeof(gate_raw)) != 0) {
 		yt_database_close(&gate->database);
 		return false;
 	}
@@ -24215,9 +24250,10 @@ direct_emergency_warp_hostile_gate_get_failure_run(
 }
 
 static void
-test_direct_emergency_warp_hostile_gate_get_failures(void)
+test_direct_emergency_warp_gate_get_failures(void)
 {
 	static const struct {
+		bool hostile;
 		bool ansi;
 		const uint8_t *command;
 		size_t command_length;
@@ -24227,23 +24263,34 @@ test_direct_emergency_warp_hostile_gate_get_failures(void)
 		uint64_t color_hash;
 		size_t colors;
 		float cached_foreground;
+		int foreground;
+		size_t rows;
+		size_t events;
 	} modes[] = {
-		{false, (const uint8_t *)"W", 1U, 63U,
+		{true, false, (const uint8_t *)"W", 1U, 63U,
 		    UINT64_C(0x0b6904cbde91e151),
 		    UINT64_C(0x95505d5a280be345),
-		    UINT64_C(0x6d3fa4669b3587bd), 2U, 0.0f},
-		{false, (const uint8_t *)"WT", 2U, 64U,
+		    UINT64_C(0x6d3fa4669b3587bd), 2U, 0.0f, 3, 3U, 10U},
+		{true, false, (const uint8_t *)"WT", 2U, 64U,
 		    UINT64_C(0x4715406bf12b49e1),
 		    UINT64_C(0xfd4d421064c55464),
-		    UINT64_C(0x6d3fa4669b3587bd), 2U, 0.0f},
-		{true, (const uint8_t *)"W", 1U, 73U,
+		    UINT64_C(0x6d3fa4669b3587bd), 2U, 0.0f, 3, 3U, 10U},
+		{true, true, (const uint8_t *)"W", 1U, 73U,
 		    UINT64_C(0x1f8739c8faadb88e),
 		    UINT64_C(0x95505d5a280be345),
-		    UINT64_C(0x57737ee2d2f9ef95), 6U, 3.0f},
-		{true, (const uint8_t *)"WT", 2U, 74U,
+		    UINT64_C(0x57737ee2d2f9ef95), 6U, 3.0f, 3, 3U, 10U},
+		{true, true, (const uint8_t *)"WT", 2U, 74U,
 		    UINT64_C(0x2e092d830cad0828),
 		    UINT64_C(0xfd4d421064c55464),
-		    UINT64_C(0x57737ee2d2f9ef95), 6U, 3.0f},
+		    UINT64_C(0x57737ee2d2f9ef95), 6U, 3.0f, 3, 3U, 10U},
+		{false, false, (const uint8_t *)"W", 1U, 41U,
+		    UINT64_C(0x84059a449d6d0449),
+		    UINT64_C(0xe805819b4f811410),
+		    UINT64_C(0x08285607b4e2c672), 1U, 2.0f, 2, 2U, 5U},
+		{false, true, (const uint8_t *)"W", 1U, 41U,
+		    UINT64_C(0x84059a449d6d0449),
+		    UINT64_C(0xe805819b4f811410),
+		    UINT64_C(0xc8d7f41925790412), 4U, 2.0f, 2, 2U, 5U},
 	};
 	static const struct {
 		enum direct_warp_gate_get_failure failure;
@@ -24287,8 +24334,9 @@ test_direct_emergency_warp_hostile_gate_get_failures(void)
 			inherited = record;
 			yt_player_decode(&fixture.emergency_player, &record);
 			fixture.hazard_player = fixture.emergency_player;
-			CHECK(direct_emergency_warp_hostile_gate_get_failure_run(
-			    &fixture, modes[mode].ansi, modes[mode].command,
+			CHECK(direct_emergency_warp_gate_get_failure_run(
+			    &fixture, modes[mode].hostile, modes[mode].ansi,
+			    modes[mode].command,
 			    modes[mode].command_length, cuts[cut].failure,
 			    &gate, &projection, ends));
 			CHECK(ends[0] == modes[mode].expected_length
@@ -24331,20 +24379,21 @@ test_direct_emergency_warp_hostile_gate_get_failures(void)
 			    && memcmp(viewer.join.accumulator, modes[mode].command,
 			    modes[mode].command_length) == 0
 			    && viewer.join.local_fragment_length == 0U
-			    && viewer.join.local_row_count == 3U
+			    && viewer.join.local_row_count == modes[mode].rows
 			    && viewer_rows_fnv1a64(&viewer.join)
 			    == modes[mode].row_hash
 			    && viewer.join.local_color_count == modes[mode].colors
 			    && viewer_colors_fnv1a64(&viewer.join)
 			    == modes[mode].color_hash
-			    && viewer.join.event_count == 10U
-			    && viewer.join.presentation.foreground == 3.0f
+			    && viewer.join.event_count == modes[mode].events
+			    && viewer.join.presentation.foreground
+			    == (float)modes[mode].foreground
 			    && viewer.join.presentation.background == 0.0f
 			    && viewer.join.presentation.bold == 0.0f
 			    && viewer.join.presentation.blink == 0.0f
 			    && viewer.join.presentation.cached_foreground
 			    == modes[mode].cached_foreground
-			    && viewer.join.pager.foreground == 3
+			    && viewer.join.pager.foreground == modes[mode].foreground
 			    && viewer.join.pager.line_count == 0.0f);
 			if (cuts[cut].failure
 			    == DIRECT_WARP_GATE_SEEK_52) {
@@ -35506,7 +35555,7 @@ main(void)
 	test_direct_emergency_warp_inherited_pager();
 	test_direct_emergency_warp_invalid_boundaries();
 	test_direct_emergency_warp_hostile_invalid_boundaries();
-	test_direct_emergency_warp_hostile_gate_get_failures();
+	test_direct_emergency_warp_gate_get_failures();
 	test_direct_emergency_warp_parent_copy_failures();
 	test_direct_emergency_warp_hostile_parent_copy_failures();
 	test_direct_emergency_warp_warning_carrier();
