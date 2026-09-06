@@ -8,6 +8,35 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
+### DOC-GAP-029: Genesis handoff physical fault projections
+
+Affected coverage:
+
+- the initial file-number-5 `CLOSE`, `OPEN OUTPUT #5`, the three `PRINT #5`
+  operations, and the file-5/file-1 `CLOSE`-all walk in main command G; and
+- each operation's exact transfer into the installed main error handler,
+  including any retry or terminal continuation.
+
+The completed `docs/runtime/main-genesis-output.md` and generated Genesis
+artifact establish the five ordered logical cuts and their canonical
+fail-before-effect state. The shared `PRINT`, sequential-file, random-file,
+`CLOSE`-all, and error-router contracts establish how a fully identified
+caller composes. The Genesis document, however, explicitly leaves the
+physical `PRINT` prefix and `CLOSE` durability state implementation-dependent
+and does not supply the caller compiler state needed to join those shared
+owners: the complete instruction/saved-IP/current-statement/ERL/error-domain
+mapping, the live file-5 control identity at the initial close, and the exact
+registered/buffer/handle/FIELD residue at each physical failure.
+
+The later RUN preflight failure is not part of this gap:
+`docs/runtime/brun-run.md` already pins saved IP `2858`, statement `2852`,
+ERL 24950, and the `YT:B2DA` transfer. The native implementation now owns and
+tests the five documented logical handoff stages, including their exact
+completed presentation prefix and canonical file state. It stops short of
+inventing finer physical file failures or main-handler suffixes. Upstream
+documentation and focused caller projections are required to close those
+cuts. No binary inspection or new reverse engineering was performed.
+
 ### DOC-GAP-023: current-sector scanner cloak-clear raw value
 
 Affected coverage:

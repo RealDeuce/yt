@@ -20470,11 +20470,18 @@ struct main_genesis_cycle_fixture {
 	struct main_buy_cycle_fixture presentation;
 	struct yt_player player;
 	struct yt_genesis_state genesis;
+	struct yt_genesis_handoff_state handoff;
 	const uint8_t *answer;
 	size_t answer_length;
 	float required_ports;
 	bool accepted;
 	bool handoff_called;
+	enum yt_genesis_handoff_operation handoff_failure;
+	uint8_t handoff_file[64];
+	size_t handoff_file_length;
+	bool handoff_file5_open;
+	bool handoff_closed_all;
+	bool handoff_run_invoked;
 };
 
 static bool
@@ -20549,13 +20556,89 @@ main_genesis_confirm(void *context, const uint8_t *prompt, size_t length,
 }
 
 static bool
-main_genesis_handoff(void *context, struct yt_error *error)
+main_genesis_handoff_close_file5(void *context, struct yt_error *error)
 {
 	struct main_genesis_cycle_fixture *fixture = context;
 
 	(void)error;
-	fixture->handoff_called = true;
+	if (fixture->handoff_failure == YT_GENESIS_HANDOFF_CLOSE_FILE5)
+		return false;
+	fixture->handoff_file5_open = false;
 	return true;
+}
+
+static bool
+main_genesis_handoff_open_output(void *context, struct yt_error *error)
+{
+	struct main_genesis_cycle_fixture *fixture = context;
+
+	(void)error;
+	if (fixture->handoff_failure == YT_GENESIS_HANDOFF_OPEN_OUTPUT)
+		return false;
+	fixture->handoff_file_length = 0U;
+	fixture->handoff_file5_open = true;
+	return true;
+}
+
+static bool
+main_genesis_handoff_print_command(void *context, struct yt_error *error)
+{
+	static const uint8_t command[] = "/BBS NODE1\r\n";
+	struct main_genesis_cycle_fixture *fixture = context;
+
+	(void)error;
+	if (fixture->handoff_failure == YT_GENESIS_HANDOFF_PRINT_COMMAND)
+		return false;
+	memcpy(fixture->handoff_file, command, sizeof(command) - 1U);
+	fixture->handoff_file_length = sizeof(command) - 1U;
+	return true;
+}
+
+static bool
+main_genesis_handoff_close_all(void *context, struct yt_error *error)
+{
+	struct main_genesis_cycle_fixture *fixture = context;
+
+	(void)error;
+	if (fixture->handoff_failure == YT_GENESIS_HANDOFF_CLOSE_ALL)
+		return false;
+	fixture->handoff_file[fixture->handoff_file_length++] = 0x1aU;
+	fixture->handoff_file5_open = false;
+	fixture->handoff_closed_all = true;
+	return true;
+}
+
+static bool
+main_genesis_handoff_run_program(void *context, struct yt_error *error)
+{
+	struct main_genesis_cycle_fixture *fixture = context;
+
+	(void)error;
+	fixture->handoff_run_invoked = true;
+	return fixture->handoff_failure != YT_GENESIS_HANDOFF_RUN;
+}
+
+static bool
+main_genesis_handoff(void *context, struct yt_error *error)
+{
+	static const struct yt_genesis_handoff_ops ops = {
+		main_genesis_handoff_close_file5,
+		main_genesis_handoff_open_output,
+		main_genesis_handoff_print_command,
+		main_genesis_handoff_close_all,
+		main_genesis_handoff_run_program,
+	};
+	struct main_genesis_cycle_fixture *fixture = context;
+	static const uint8_t old_file[] = "OLD\x1a";
+
+	fixture->handoff_called = true;
+	memcpy(fixture->handoff_file, old_file, sizeof(old_file) - 1U);
+	fixture->handoff_file_length = sizeof(old_file) - 1U;
+	fixture->handoff_file5_open = true;
+	fixture->handoff_closed_all = false;
+	fixture->handoff_run_invoked = false;
+	return yt_genesis_handoff_run(&fixture->handoff, &ops, fixture,
+	    error);
 }
 
 static const struct yt_genesis_ops main_genesis_ops = {
@@ -20597,8 +20680,15 @@ main_genesis_cycle_run(struct main_genesis_cycle_fixture *fixture, bool ansi,
 		.cached_trader_length = 12U,
 	};
 	if (!yt_genesis_run(&fixture->genesis, &main_genesis_ops, fixture,
-	    NULL))
-		return false;
+	    NULL)) {
+		if (fixture->handoff_failure == YT_GENESIS_HANDOFF_NONE
+		    || fixture->handoff.failed_operation
+		    != fixture->handoff_failure)
+			return false;
+		ends[1] = join->remote_length;
+		ends[2] = ends[1];
+		return true;
+	}
 	ends[1] = join->remote_length;
 	if (fixture->genesis.route == YT_GENESIS_HANDOFF_ROUTE) {
 		ends[2] = ends[1];
@@ -20797,32 +20887,35 @@ test_main_genesis_alternate_cycles_presentation(void)
 	}
 }
 
+static const uint8_t main_genesis_handoff_plain[] =
+    "\r\nTime: 14:59  Main Command (?=Help)? gTrailing\r\n"
+    "\r\nIt has been written that one day a Trader Baron will rise up\n\r"
+    "and wipe the universe clean of the evil that infests it.\n\r"
+    "\r\nAre you that Trader Captain Byte [y/N]Y\r\n"
+    "\r\n...and so it was written, that one day a trader baron would emerge who\n\r"
+    "would wipe away the all of the evil in the universe.....\n\r";
+static const uint8_t main_genesis_handoff_ansi[] =
+    "\r\nTime: 14:59  Main Command (?=Help)? gTrailing\r\n"
+    "\r\nIt has been written that one day a Trader Baron will rise up\n\r"
+    "and wipe the universe clean of the evil that infests it.\n\r"
+    "\r\nAre you that Trader Captain Byte [y/N]Y\r\n"
+    "\r\n\x1b[0;32;40;1m"
+    "...and so it was written, that one day a trader baron would emerge who\n\r"
+    "\x1b[0;32;40;1m"
+    "would wipe away the all of the evil in the universe.....\n\r";
+
 static void
 test_main_genesis_handoff_cycle_presentation(void)
 {
-	static const uint8_t plain[] =
-	    "\r\nTime: 14:59  Main Command (?=Help)? gTrailing\r\n"
-	    "\r\nIt has been written that one day a Trader Baron will rise up\n\r"
-	    "and wipe the universe clean of the evil that infests it.\n\r"
-	    "\r\nAre you that Trader Captain Byte [y/N]Y\r\n"
-	    "\r\n...and so it was written, that one day a trader baron would emerge who\n\r"
-	    "would wipe away the all of the evil in the universe.....\n\r";
-	static const uint8_t ansi[] =
-	    "\r\nTime: 14:59  Main Command (?=Help)? gTrailing\r\n"
-	    "\r\nIt has been written that one day a Trader Baron will rise up\n\r"
-	    "and wipe the universe clean of the evil that infests it.\n\r"
-	    "\r\nAre you that Trader Captain Byte [y/N]Y\r\n"
-	    "\r\n\x1b[0;32;40;1m"
-	    "...and so it was written, that one day a trader baron would emerge who\n\r"
-	    "\x1b[0;32;40;1m"
-	    "would wipe away the all of the evil in the universe.....\n\r";
 	static const struct {
 		bool ansi;
 		const uint8_t *expected;
 		size_t expected_length;
 	} cases[] = {
-		{false, plain, sizeof(plain) - 1U},
-		{true, ansi, sizeof(ansi) - 1U},
+		{false, main_genesis_handoff_plain,
+		    sizeof(main_genesis_handoff_plain) - 1U},
+		{true, main_genesis_handoff_ansi,
+		    sizeof(main_genesis_handoff_ansi) - 1U},
 	};
 	struct physical_viewer_join viewer;
 	struct yt_file_viewer_stream_state stream;
@@ -20856,6 +20949,20 @@ test_main_genesis_handoff_cycle_presentation(void)
 		    && fixture.genesis.answer
 		    && fixture.genesis.handoff_called
 		    && fixture.handoff_called
+		    && fixture.handoff.complete
+		    && fixture.handoff.failed_operation
+		    == YT_GENESIS_HANDOFF_NONE
+		    && fixture.handoff.file5_closed
+		    && fixture.handoff.output_opened
+		    && fixture.handoff.command_printed
+		    && fixture.handoff.close_all_completed
+		    && fixture.handoff.run_invoked
+		    && fixture.handoff_file_length == 13U
+		    && memcmp(fixture.handoff_file,
+		    "/BBS NODE1\r\n\x1a", 13U) == 0
+		    && !fixture.handoff_file5_open
+		    && fixture.handoff_closed_all
+		    && fixture.handoff_run_invoked
 		    && viewer.join.remote_length
 		    - ends[0] == (cases[pass].ansi ? 321U : 297U)
 		    && viewer.join.local_fragment_length == 0U);
@@ -20873,7 +20980,107 @@ test_main_genesis_handoff_cycle_presentation(void)
 		    == (pass == 0U ? 2.0f : 0.0f));
 		yt_text_input_destroy(&viewer.input);
 	}
-	CHECK(sizeof(plain) - 1U == 346U && sizeof(ansi) - 1U == 370U);
+	CHECK(sizeof(main_genesis_handoff_plain) - 1U == 346U
+	    && sizeof(main_genesis_handoff_ansi) - 1U == 370U);
+}
+
+static void
+test_main_genesis_handoff_failure_prefixes(void)
+{
+	static const struct {
+		enum yt_genesis_handoff_operation operation;
+		const uint8_t *file;
+		size_t file_length;
+		bool file5_open;
+		bool file5_closed;
+		bool output_opened;
+		bool command_printed;
+		bool close_all_completed;
+		bool run_invoked;
+	} failure_cases[] = {
+		{YT_GENESIS_HANDOFF_CLOSE_FILE5,
+		    (const uint8_t *)"OLD\x1a", 4U, true,
+		    false, false, false, false, false},
+		{YT_GENESIS_HANDOFF_OPEN_OUTPUT,
+		    (const uint8_t *)"OLD\x1a", 4U, false,
+		    true, false, false, false, false},
+		{YT_GENESIS_HANDOFF_PRINT_COMMAND,
+		    (const uint8_t *)"", 0U, true,
+		    true, true, false, false, false},
+		{YT_GENESIS_HANDOFF_CLOSE_ALL,
+		    (const uint8_t *)"/BBS NODE1\r\n", 12U, true,
+		    true, true, true, false, false},
+		{YT_GENESIS_HANDOFF_RUN,
+		    (const uint8_t *)"/BBS NODE1\r\n\x1a", 13U, false,
+		    true, true, true, true, true},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct main_genesis_cycle_fixture fixture;
+	uint8_t remote[400];
+	size_t ends[3];
+	size_t mode;
+	size_t failure_index;
+
+	for (mode = 0U; mode < 2U; ++mode) {
+		const uint8_t *expected = mode == 0U
+		    ? main_genesis_handoff_plain : main_genesis_handoff_ansi;
+		size_t expected_length = mode == 0U
+		    ? sizeof(main_genesis_handoff_plain) - 1U
+		    : sizeof(main_genesis_handoff_ansi) - 1U;
+
+		for (failure_index = 0U;
+		    failure_index < YT_ARRAY_LEN(failure_cases); ++failure_index) {
+			memset(&viewer, 0, sizeof(viewer));
+			fixture_viewer_initialize(&viewer, &stream,
+			    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+			    "YTSCORE.ASC", mode != 0U, remote, sizeof(remote));
+			memset(&fixture, 0, sizeof(fixture));
+			fixture.presentation.viewer = &viewer;
+			fixture.player.ports_owned = 300.0f;
+			fixture.answer = (const uint8_t *)"Y";
+			fixture.answer_length = 1U;
+			fixture.required_ports = 1.0f;
+			fixture.accepted = true;
+			fixture.handoff_failure =
+			    failure_cases[failure_index].operation;
+			CHECK(main_genesis_cycle_run(&fixture, mode != 0U, ends));
+			CHECK(ends[0] == 49U && ends[1] == expected_length
+			    && ends[2] == ends[1]
+			    && viewer.join.remote_length == expected_length
+			    && memcmp(remote, expected, expected_length) == 0
+			    && fixture.genesis.handoff_called
+			    && !fixture.genesis.complete
+			    && fixture.genesis.route == YT_GENESIS_INCOMPLETE
+			    && fixture.handoff_called
+			    && !fixture.handoff.complete
+			    && fixture.handoff.failed_operation
+			    == failure_cases[failure_index].operation
+			    && fixture.handoff.file5_closed
+			    == failure_cases[failure_index].file5_closed
+			    && fixture.handoff.output_opened
+			    == failure_cases[failure_index].output_opened
+			    && fixture.handoff.command_printed
+			    == failure_cases[failure_index].command_printed
+			    && fixture.handoff.close_all_completed
+			    == failure_cases[failure_index].close_all_completed
+			    && fixture.handoff.run_invoked
+			    == failure_cases[failure_index].run_invoked
+			    && fixture.handoff_file_length
+			    == failure_cases[failure_index].file_length
+			    && memcmp(fixture.handoff_file,
+			    failure_cases[failure_index].file,
+			    failure_cases[failure_index].file_length) == 0
+			    && fixture.handoff_file5_open
+			    == failure_cases[failure_index].file5_open
+			    && fixture.handoff_closed_all
+			    == failure_cases[failure_index].close_all_completed
+			    && fixture.handoff_run_invoked
+			    == failure_cases[failure_index].run_invoked
+			    && viewer.join.local_fragment_length == 0U);
+			yt_text_input_destroy(&viewer.input);
+		}
+	}
 }
 
 static bool
@@ -27370,6 +27577,7 @@ main(void)
 	test_main_genesis_decline_cycle_presentation();
 	test_main_genesis_alternate_cycles_presentation();
 	test_main_genesis_handoff_cycle_presentation();
+	test_main_genesis_handoff_failure_prefixes();
 	test_main_movement_accepted_cycle_presentation();
 	test_main_attack_survivor_cycle_presentation();
 	test_main_attack_black_hole_cycle_presentation();
