@@ -27859,6 +27859,7 @@ struct direct_warp_attack_combat_join {
 	bool allow_tail_player;
 	bool allow_clearance;
 	bool allow_victory;
+	bool allow_secondary_news;
 	bool allow_spill;
 	bool unexpected_surrender;
 	bool unexpected_spill;
@@ -28406,7 +28407,7 @@ direct_warp_attack_news(void *context, const uint8_t *text,
 
 	(void)error;
 	if (text == NULL || length > sizeof(join->news)
-	    || join->news_calls >= 2U) {
+	    || join->news_calls >= (join->allow_secondary_news ? 2U : 1U)) {
 		join->unexpected_news = true;
 		return false;
 	}
@@ -29872,9 +29873,10 @@ direct_emergency_warp_owner_get_failure(
 }
 
 static bool
-direct_emergency_warp_quiet_reentry(
+direct_emergency_warp_quiet_reentry_run(
     struct hostile_mines_hazard_fixture *fixture,
-    struct direct_warp_main_cycle_state *cycle, bool sector_1003)
+    struct direct_warp_main_cycle_state *cycle, bool sector_1003,
+    bool inject_failure)
 {
 	static const uint8_t main_prompt[] =
 	    "Time: 14:59  Main Command (?=Help)? ";
@@ -29901,16 +29903,45 @@ direct_emergency_warp_quiet_reentry(
 
 	join->presentation.foreground = 1.0f;
 	join->pager.foreground = 1;
+	++cycle->scanner_player_reads;
+	cycle->final_field_record = 2;
+	cycle->final_field_player = true;
+	if (inject_failure
+	    && cycle->reentry_failure == DIRECT_WARP_REENTRY_SECTOR_GET)
+		return direct_emergency_warp_reentry_request_error(cycle);
 	++cycle->sector_reads;
 	cycle->physical_current_sector = sector_1003 ? 1054.0f : 784.0f;
+	cycle->final_field_record = sector_1003 ? 1054 : 784;
+	cycle->final_field_player = false;
 	for (index = 0U; index < YT_ARRAY_LEN(scanner_733); ++index)
 		if (!sensor_join_present(join, &scanner[index]))
 			return false;
-	++cycle->final_player_reads;
+	++cycle->scanner_final_player_reads;
+	if (inject_failure
+	    && cycle->reentry_failure == DIRECT_WARP_REENTRY_FINAL_PLAYER_GET)
+		return direct_emergency_warp_reentry_request_error(cycle);
 	cycle->final_field_record = 2;
 	cycle->final_field_player = true;
+	++cycle->router_player_reads;
+	if (inject_failure
+	    && cycle->reentry_failure == DIRECT_WARP_REENTRY_ROUTER_PLAYER_GET)
+		return direct_emergency_warp_reentry_request_error(cycle);
+	join->presentation.foreground = 3.0f;
+	join->pager.foreground = 3;
+	++cycle->router_sector_reads;
+	if (inject_failure
+	    && cycle->reentry_failure == DIRECT_WARP_REENTRY_ROUTER_SECTOR_GET)
+		return direct_emergency_warp_reentry_request_error(cycle);
+	cycle->final_field_record = sector_1003 ? 1054 : 784;
+	cycle->final_field_player = false;
 	join->presentation.foreground = 2.0f;
 	join->pager.foreground = 2;
+	++cycle->final_player_reads;
+	if (inject_failure
+	    && cycle->reentry_failure == DIRECT_WARP_REENTRY_MAIN_PLAYER_GET)
+		return direct_emergency_warp_reentry_request_error(cycle);
+	cycle->final_field_record = 2;
+	cycle->final_field_player = true;
 	join->pager.line_count = 0.0f;
 	if (!normal_exit_line(join, NULL, 0U)
 	    || !normal_exit_b05d(join, main_prompt,
@@ -29920,6 +29951,15 @@ direct_emergency_warp_quiet_reentry(
 	    sizeof(join->accumulator));
 	cycle->fresh_prompt_wait = true;
 	return true;
+}
+
+static bool
+direct_emergency_warp_quiet_reentry(
+    struct hostile_mines_hazard_fixture *fixture,
+    struct direct_warp_main_cycle_state *cycle, bool sector_1003)
+{
+	return direct_emergency_warp_quiet_reentry_run(fixture, cycle,
+	    sector_1003, false);
 }
 
 static bool
@@ -37079,6 +37119,7 @@ test_xannor_attack_combat_victory_join(void)
 		join.allow_tail_player = true;
 		join.allow_clearance = true;
 		join.allow_victory = true;
+		join.allow_secondary_news = true;
 		memcpy(join.clearance_discount_raw[0], holds_zero, 4U);
 		memset(&record, 0x3c, sizeof(record));
 		(void)yt_record_set_number(&record, YT_F81, 256000.0f);
@@ -37382,6 +37423,45 @@ test_direct_emergency_warp_xannor_attack_victory_join(void)
 		    UINT64_C(0x1cab942ec21b2083), 77U,
 		    UINT64_C(0xf038e55eea339f1d)},
 	};
+	static const struct {
+		size_t total;
+		uint64_t hash;
+		size_t suffix;
+		uint64_t suffix_hash;
+		size_t rows;
+		uint64_t row_hash;
+		size_t colors;
+		uint64_t color_hash;
+	} post_scanner_failure[] = {
+		{1648U, UINT64_C(0x9573c18e57178833), 721U,
+		    UINT64_C(0x66aeaaf45e80c947), 54U,
+		    UINT64_C(0x3e52e8918960d0c3), 12U,
+		    UINT64_C(0x5218ab7752360135)},
+		{1976U, UINT64_C(0xf05b0dd013f6a1e9), 777U,
+		    UINT64_C(0xcbd9aae186a2e9f0), 54U,
+		    UINT64_C(0x3e52e8918960d0c3), 81U,
+		    UINT64_C(0x9fa2639b53a71b1a)},
+		{1670U, UINT64_C(0x6c84ff7d59fe551b), 721U,
+		    UINT64_C(0x66aeaaf45e80c947), 55U,
+		    UINT64_C(0x0300f8b89ba66b18), 13U,
+		    UINT64_C(0xe4fcd46e10198702)},
+		{1671U, UINT64_C(0x7f93246e1f3632ab), 721U,
+		    UINT64_C(0x66aeaaf45e80c947), 55U,
+		    UINT64_C(0x31b78ce0daa6dba7), 13U,
+		    UINT64_C(0xe4fcd46e10198702)},
+		{2008U, UINT64_C(0x982810333b3e3824), 777U,
+		    UINT64_C(0xcbd9aae186a2e9f0), 55U,
+		    UINT64_C(0x0300f8b89ba66b18), 83U,
+		    UINT64_C(0xae981088491b8c2d)},
+		{2009U, UINT64_C(0xbdb5604aba2b833e), 777U,
+		    UINT64_C(0xcbd9aae186a2e9f0), 55U,
+		    UINT64_C(0x31b78ce0daa6dba7), 83U,
+		    UINT64_C(0xae981088491b8c2d)},
+	};
+	static const int terminal_field_records[] = {2, 2, 1054, 2, 2, 1054};
+	static const bool terminal_field_players[] = {
+		true, true, false, true, true, false,
+	};
 	struct physical_viewer_join viewer;
 	struct yt_file_viewer_stream_state stream;
 	struct hostile_mines_hazard_fixture fixture;
@@ -37397,8 +37477,16 @@ test_direct_emergency_warp_xannor_attack_victory_join(void)
 	size_t joined_start;
 	size_t joined_length;
 	size_t terminal;
+	size_t expected_total;
+	uint64_t expected_hash;
+	size_t expected_suffix;
+	uint64_t expected_suffix_hash;
+	size_t expected_rows;
+	uint64_t expected_row_hash;
+	size_t expected_colors;
+	uint64_t expected_color_hash;
 
-	for (terminal = 0U; terminal < 2U; ++terminal) {
+	for (terminal = 0U; terminal < 6U; ++terminal) {
 	for (caller = 0U; caller < YT_ARRAY_LEN(callers); ++caller) {
 		memset(&viewer, 0, sizeof(viewer));
 		fixture_viewer_initialize(&viewer, &stream, retained_scoreboard,
@@ -37450,6 +37538,7 @@ test_direct_emergency_warp_xannor_attack_victory_join(void)
 		join.allow_tail_player = true;
 		join.allow_clearance = true;
 		join.allow_victory = true;
+		join.allow_secondary_news = true;
 		memset(&record, 0x3c, sizeof(record));
 		(void)yt_record_set_number(&record, YT_F81, 256000.0f);
 		(void)yt_record_set_number(&record, YT_F85, -1.0f);
@@ -37522,32 +37611,59 @@ test_direct_emergency_warp_xannor_attack_victory_join(void)
 			CHECK(direct_emergency_warp_quiet_reentry(&fixture, &cycle,
 			    true));
 		} else {
-			cycle.reentry_failure = DIRECT_WARP_REENTRY_SECTOR_GET;
-			cycle.reentry_error_number = 57U;
-			cycle.reentry_saved_ip = 0x1234U;
-			CHECK(direct_emergency_warp_reentry_failure_run(&fixture,
-			    &cycle));
+			static const enum direct_warp_reentry_failure reentry_failures[] = {
+				DIRECT_WARP_REENTRY_SECTOR_GET,
+				DIRECT_WARP_REENTRY_FINAL_PLAYER_GET,
+				DIRECT_WARP_REENTRY_ROUTER_PLAYER_GET,
+				DIRECT_WARP_REENTRY_ROUTER_SECTOR_GET,
+				DIRECT_WARP_REENTRY_MAIN_PLAYER_GET,
+			};
+
+			cycle.reentry_failure = reentry_failures[terminal - 1U];
+			cycle.reentry_error_number = 56U + (unsigned)terminal;
+			cycle.reentry_saved_ip = 0x1233U + (unsigned)terminal;
+			CHECK(direct_emergency_warp_quiet_reentry_run(&fixture,
+			    &cycle, true, true));
 		}
 		joined_length = viewer.join.remote_length - joined_start;
-		CHECK(viewer.join.remote_length == (terminal == 0U
-		    ? callers[caller].total : reentry_failure[caller].total)
+		if (terminal == 0U) {
+			expected_total = callers[caller].total;
+			expected_hash = callers[caller].hash;
+			expected_suffix = callers[caller].suffix;
+			expected_suffix_hash = callers[caller].suffix_hash;
+			expected_rows = callers[caller].rows;
+			expected_row_hash = callers[caller].row_hash;
+			expected_colors = callers[caller].colors;
+			expected_color_hash = callers[caller].color_hash;
+		} else if (terminal == 1U) {
+			expected_total = reentry_failure[caller].total;
+			expected_hash = reentry_failure[caller].hash;
+			expected_suffix = reentry_failure[caller].suffix;
+			expected_suffix_hash = reentry_failure[caller].suffix_hash;
+			expected_rows = reentry_failure[caller].rows;
+			expected_row_hash = reentry_failure[caller].row_hash;
+			expected_colors = reentry_failure[caller].colors;
+			expected_color_hash = reentry_failure[caller].color_hash;
+		} else {
+			expected_total = post_scanner_failure[caller].total;
+			expected_hash = post_scanner_failure[caller].hash;
+			expected_suffix = post_scanner_failure[caller].suffix;
+			expected_suffix_hash = post_scanner_failure[caller].suffix_hash;
+			expected_rows = post_scanner_failure[caller].rows;
+			expected_row_hash = post_scanner_failure[caller].row_hash;
+			expected_colors = post_scanner_failure[caller].colors;
+			expected_color_hash = post_scanner_failure[caller].color_hash;
+		}
+		CHECK(viewer.join.remote_length == expected_total
 		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
-		    == (terminal == 0U ? callers[caller].hash
-		    : reentry_failure[caller].hash)
-		    && joined_length == (terminal == 0U ? callers[caller].suffix
-		    : reentry_failure[caller].suffix)
+		    == expected_hash
+		    && joined_length == expected_suffix
 		    && viewer_bytes_fnv1a64(remote + joined_start, joined_length)
-		    == (terminal == 0U ? callers[caller].suffix_hash
-		    : reentry_failure[caller].suffix_hash)
-		    && viewer.join.local_row_count == (terminal == 0U
-		    ? callers[caller].rows : reentry_failure[caller].rows)
-		    && viewer_rows_fnv1a64(&viewer.join) == (terminal == 0U
-		    ? callers[caller].row_hash : reentry_failure[caller].row_hash)
-		    && viewer.join.local_color_count == (terminal == 0U
-		    ? callers[caller].colors : reentry_failure[caller].colors)
-		    && viewer_colors_fnv1a64(&viewer.join)
-		    == (terminal == 0U ? callers[caller].color_hash
-		    : reentry_failure[caller].color_hash)
+		    == expected_suffix_hash
+		    && viewer.join.local_row_count == expected_rows
+		    && viewer_rows_fnv1a64(&viewer.join) == expected_row_hash
+		    && viewer.join.local_color_count == expected_colors
+		    && viewer_colors_fnv1a64(&viewer.join) == expected_color_hash
 		    && viewer.join.local_fragment_length == (terminal == 0U
 		    ? sizeof(main_prompt) - 1U : 0U)
 		    && (terminal != 0U || memcmp(viewer.join.local_fragment,
@@ -37581,17 +37697,28 @@ test_direct_emergency_warp_xannor_attack_victory_join(void)
 		    && join.victory_news_count == 3U
 		    && join.victory_radio_count == 3U
 		    && join.victory_sector_writes == 1U
-		    && cycle.sector_reads == (terminal == 0U ? 2U : 1U)
-		    && cycle.final_player_reads == (terminal == 0U ? 1U : 0U)
+		    && cycle.sector_reads == (terminal == 1U ? 1U : 2U)
+		    && cycle.scanner_player_reads == 1U
+		    && cycle.scanner_final_player_reads
+		    == (terminal >= 2U || terminal == 0U ? 2U : 1U)
+		    && cycle.router_player_reads
+		    == (terminal >= 3U || terminal == 0U ? 2U : 1U)
+		    && cycle.router_sector_reads
+		    == (terminal >= 4U || terminal == 0U ? 2U : 1U)
+		    && cycle.final_player_reads
+		    == (terminal >= 5U || terminal == 0U ? 1U : 0U)
 		    && cycle.physical_current_sector == 1054.0f
-		    && cycle.final_field_record == 2 && cycle.final_field_player
+		    && cycle.final_field_record == terminal_field_records[terminal]
+		    && cycle.final_field_player == terminal_field_players[terminal]
 		    && cycle.fresh_prompt_wait == (terminal == 0U)
 		    && cycle.reentry_error_requested == (terminal != 0U)
 		    && cycle.scanner_shared_handler == (terminal != 0U)
-		    && cycle.scanner_player_reads == (terminal != 0U ? 1U : 0U)
 		    && (terminal == 0U
-		    || (cycle.reentry_error_request.error_number == 57U
-		    && cycle.reentry_error_request.saved_ip == 0x1234U))
+		    || (cycle.reentry_error_request.error_number
+		    == 56U + (unsigned)terminal
+		    && cycle.reentry_error_request.saved_ip
+		    == 0x1233U + (unsigned)terminal
+		    && cycle.reentry_error_request.handler == 0x45F7U))
 		    && (terminal != 0U || (viewer.join.pager.line_count == 0.0f
 		    && viewer.join.accumulator[0] == '\0'))
 		    && !join.unexpected_surrender && !join.unexpected_spill
