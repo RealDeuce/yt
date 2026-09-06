@@ -8,6 +8,40 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
+### DOC-GAP-030: destroyed-mine caller projection into `FatalWorld`
+
+Affected coverage:
+
+- every admitted sector-mine result whose `DS:18B4` destroyed predicate
+  transfers from `YT:0913` to common fatal entry `YT:06C4`;
+- the direct emergency-warp main W and hostile W/WT continuations when mine
+  damage destroys the player without a second warp; and
+- the corresponding post-emergency-warp fatal continuation when the mine
+  child returns through `YT-SUB:6C2E` with destroyed still nonzero.
+
+The completed sector-mine contract says that a destroyed handoff carries the
+canonical `FatalWorld`, but the published caller composition explicitly does
+not claim the caller-state join into the common-fatal child. The supplied
+`project_mine_fatal_entry()` adapter only checks that an independently
+provided `FatalWorld.state` equals the pager state; it does not construct that
+world from the inherited gameplay carrier and `RawMineResult`. The graph
+likewise retains `fatal-world` as an external continuation input.
+
+That missing projection is observable and cannot be synthesized from the
+typed mine result. It must specify the exact record store, FIELD layout/record
+and raw image, process cells (including raw destroyed and current-player
+roots), team cache, news bytes/open-handle state, and pager/runtime state at
+both fatal seams. In particular, ordinary destroyed return has completed the
+final news append and final sector GET, whereas a mine-triggered emergency
+warp returns without those operations and leaves the warp child's player
+FIELD/persistence state.
+
+Upstream documentation, a canonical constructor from the inherited raw world
+plus the mine/warp terminal carriers, graph wiring, generated evidence, and
+focused fatal-join fixtures must publish this contract before the native
+caller can enter the already implemented common-fatal child. No binary
+inspection or new reverse engineering was performed.
+
 ### DOC-GAP-029: shared A8D2 local string-allocation failure contract
 
 Affected coverage:
