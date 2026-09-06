@@ -5403,8 +5403,11 @@ test_output_open_error_model(void)
 		    (uint16_t)dos_error, 0U);
 		step = text_open_add(&script,
 		    YT_TEXT_OPEN_TEMP_CLOSE, 0U, (uint16_t)dos_error);
-		if (step != NULL)
+		if (step != NULL) {
+			step->observation.carry = true;
+			step->observation.dos_error = (uint16_t)dos_error;
 			step->close_active = true;
+		}
 		text_open_use(&output, &script);
 		CHECK(!yt_text_output_open(&output, "output-script.dat", &error)
 		    && output.last_output_open.outcome
@@ -5694,8 +5697,11 @@ test_append_open_error_model(void)
 		    (uint16_t)dos_error, 0U);
 		step = text_open_add(&script,
 		    YT_TEXT_OPEN_TEMP_CLOSE, 0U, (uint16_t)dos_error);
-		if (step != NULL)
+		if (step != NULL) {
+			step->observation.carry = true;
+			step->observation.dos_error = (uint16_t)dos_error;
 			step->close_active = true;
+		}
 		text_open_use(&output, &script);
 		CHECK(!yt_text_output_open_append(&output, "append-script.dat",
 		    &error)
