@@ -24677,9 +24677,9 @@ test_direct_emergency_warp_gate_runtime_failures(void)
 }
 
 static bool
-direct_emergency_warp_ade0_slash_failure_continue(
+direct_emergency_warp_ade0_prefix_failure_continue(
     struct hostile_mines_hazard_fixture *fixture,
-    struct yt_command_save_transform *transform,
+    enum yt_basic_fault_site target,
     struct yt_basic_fault_projection *projection)
 {
 	static const uint8_t warning_one[] =
@@ -24690,15 +24690,18 @@ direct_emergency_warp_ade0_slash_failure_continue(
 	static const uint8_t submitted[] = "A";
 	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
 	struct yt_present_result result;
+	struct yt_command_save_transform save;
+	struct yt_repeat_prefix_transform prefix;
 	struct yt_error error;
 	char text[80] = "A";
+	uint8_t upper[80] = "inherited";
 	char queue[80] = "";
 	char saved[80] = "SAVED";
 	char output[80] = "warning-two";
 	size_t queue_position = 0U;
 	size_t queue_length = 0U;
 
-	if (transform == NULL || projection == NULL
+	if (projection == NULL
 	    || yt_present_color(&join->presentation, &result) != YT_PRESENT_OK
 	    || !normal_exit_line(join, NULL, 0U))
 		return false;
@@ -24724,15 +24727,27 @@ direct_emergency_warp_ade0_slash_failure_continue(
 	    != YT_PRESENT_OK)
 		return false;
 	viewer_pager_capture_result(join, &result);
-	if (!normal_exit_line(join, NULL, 0U)
-	    || yt_input_command_save_staged(text, sizeof(text), queue,
-	    sizeof(queue), &queue_position, &queue_length, saved,
-	    sizeof(saved), output, sizeof(output),
-	    YT_BASIC_FAULT_ADE0_SLASH_TEST_RIGHT_SPACE, transform)
-	    || !transform->fault_valid
-	    || transform->fault_site
-	    != YT_BASIC_FAULT_ADE0_SLASH_TEST_RIGHT_SPACE
-	    || strcmp(text, "A") != 0 || strcmp(queue, "") != 0
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
+	if (target == YT_BASIC_FAULT_ADE0_SLASH_TEST_RIGHT_SPACE) {
+		if (yt_input_command_save_staged(text, sizeof(text), queue,
+		    sizeof(queue), &queue_position, &queue_length, saved,
+		    sizeof(saved), output, sizeof(output), target, &save)
+		    || !save.fault_valid || save.fault_site != target)
+			return false;
+	}
+	else {
+		if (!yt_input_command_save_staged(text, sizeof(text), queue,
+		    sizeof(queue), &queue_position, &queue_length, saved,
+		    sizeof(saved), output, sizeof(output),
+		    YT_BASIC_FAULT_SITE_COUNT, &save)
+		    || yt_input_repeat_prefix_staged((const uint8_t *)text,
+		    strlen(text), upper, sizeof(upper), target, 1U, &prefix,
+		    NULL, NULL) || !prefix.fault_valid
+		    || prefix.fault_site != target)
+			return false;
+	}
+	if (strcmp(text, "A") != 0 || strcmp(queue, "") != 0
 	    || queue_position != 0U || queue_length != 0U
 	    || strcmp(saved, "SAVED") != 0
 	    || strcmp(output, "warning-two") != 0)
@@ -24740,7 +24755,7 @@ direct_emergency_warp_ade0_slash_failure_continue(
 	yt_error_clear(&error);
 	error.status = YT_RANGE;
 	if (!yt_error_attach_basic_fault_number(&error,
-	    transform->fault_site, 14U)
+	    target, target == YT_BASIC_FAULT_UPPER_FRAME_STACK ? 7U : 14U)
 	    || !yt_basic_fault_project(&error, NULL, 0U,
 	    (const uint8_t *)"01/01/30", 8U,
 	    (const uint8_t *)"12:34:56", 8U, projection))
@@ -24749,7 +24764,7 @@ direct_emergency_warp_ade0_slash_failure_continue(
 }
 
 static void
-test_direct_emergency_warp_ade0_slash_failures(void)
+test_direct_emergency_warp_ade0_prefix_failures(void)
 {
 	static const struct {
 		bool hostile;
@@ -24773,17 +24788,46 @@ test_direct_emergency_warp_ade0_slash_failures(void)
 		{false, true, (const uint8_t *)"W", 1U, 41U, 264U,
 		    UINT64_C(0x889c68ed6b015e98)},
 	};
+	static const struct {
+		enum yt_basic_fault_site site;
+		uint16_t instruction;
+		uint16_t saved_ip;
+		uint16_t statement;
+		uint16_t erl;
+		uint16_t handler;
+		enum yt_basic_fault_module module;
+	} cuts[] = {
+		{YT_BASIC_FAULT_ADE0_SLASH_TEST_RIGHT_SPACE,
+		    0xADE7U, 0xADEAU, 0xADE1U, 36000U, 0xB2DAU,
+		    YT_BASIC_FAULT_MAIN},
+		{YT_BASIC_FAULT_ADE0_UPPER_SCRATCH_CLONE_SPACE,
+		    0xAE4AU, 0xAE4DU, 0xAE44U, 36000U, 0xB2DAU,
+		    YT_BASIC_FAULT_MAIN},
+		{YT_BASIC_FAULT_UPPER_FRAME_STACK,
+		    0x1D99U, 0x1D9CU, 0x1D96U, 610U, 0x45F7U,
+		    YT_BASIC_FAULT_SHARED},
+		{YT_BASIC_FAULT_UPPER_MID_COMPARE_STRING_SPACE,
+		    0x1DC2U, 0x1DC5U, 0x1DB4U, 610U, 0x45F7U,
+		    YT_BASIC_FAULT_SHARED},
+		{YT_BASIC_FAULT_UPPER_MID_VALUE_STRING_SPACE,
+		    0x1DE0U, 0x1DE3U, 0x1DD2U, 610U, 0x45F7U,
+		    YT_BASIC_FAULT_SHARED},
+		{YT_BASIC_FAULT_UPPER_CHR_STRING_SPACE,
+		    0x1DEAU, 0x1DEDU, 0x1DD2U, 610U, 0x45F7U,
+		    YT_BASIC_FAULT_SHARED},
+	};
 	struct physical_viewer_join viewer;
 	struct yt_file_viewer_stream_state stream;
 	struct hostile_mines_hazard_fixture fixture;
-	struct yt_command_save_transform transform;
 	struct yt_basic_fault_projection projection;
 	struct yt_record record;
 	uint8_t remote[320];
 	size_t caller_end;
+	size_t cut;
 	size_t index;
 
 	for (index = 0U; index < YT_ARRAY_LEN(cases); ++index) {
+		for (cut = 0U; cut < YT_ARRAY_LEN(cuts); ++cut) {
 		memset(&viewer, 0, sizeof(viewer));
 		fixture_viewer_initialize(&viewer, &stream,
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
@@ -24802,22 +24846,27 @@ test_direct_emergency_warp_ade0_slash_failures(void)
 		    || (!cases[index].hostile
 		    && direct_emergency_warp_main_command_prefix(&fixture,
 		    cases[index].ansi, &caller_end)));
-		CHECK(direct_emergency_warp_ade0_slash_failure_continue(
-		    &fixture, &transform, &projection));
+		CHECK(direct_emergency_warp_ade0_prefix_failure_continue(
+		    &fixture, cuts[cut].site, &projection));
 		CHECK(caller_end == cases[index].caller_end
 		    && viewer.join.remote_length == cases[index].expected_length
 		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
 		    == cases[index].expected_hash
 		    && projection.site
-		    == YT_BASIC_FAULT_ADE0_SLASH_TEST_RIGHT_SPACE
-		    && projection.error_number == 14U
-		    && projection.identity->instruction == 0xADE7U
-		    && projection.identity->saved_ip == 0xADEAU
-		    && projection.identity->retry_statement == 0xADE1U
-		    && projection.identity->source_line == 36000
-		    && projection.identity->handler == 0xB2DAU
+		    == cuts[cut].site
+		    && projection.error_number
+		    == (cuts[cut].site == YT_BASIC_FAULT_UPPER_FRAME_STACK
+		    ? 7U : 14U)
+		    && projection.identity->instruction == cuts[cut].instruction
+		    && projection.identity->saved_ip == cuts[cut].saved_ip
+		    && projection.identity->retry_statement == cuts[cut].statement
+		    && projection.identity->source_line == cuts[cut].erl
+		    && projection.identity->handler == cuts[cut].handler
+		    && projection.identity->module == cuts[cut].module
 		    && projection.disposition == YT_BASIC_FAULT_END
-		    && projection.main.route == YT_MAIN_ERROR_FATAL);
+		    && (cuts[cut].module == YT_BASIC_FAULT_MAIN
+		    ? projection.main.route == YT_MAIN_ERROR_FATAL
+		    : projection.shared.route == YT_SHARED_ERROR_GENERIC));
 		CHECK(strcmp(viewer.join.accumulator, "A") == 0
 		    && viewer.join.queue_position == 0U
 		    && viewer.join.queue_length == 0U
@@ -24827,6 +24876,7 @@ test_direct_emergency_warp_ade0_slash_failures(void)
 		    && fixture.emergency_flushes == 0U
 		    && fixture.emergency_waits == 0U);
 		yt_text_input_destroy(&viewer.input);
+		}
 	}
 }
 
@@ -35969,7 +36019,7 @@ main(void)
 	test_direct_emergency_warp_hostile_invalid_boundaries();
 	test_direct_emergency_warp_gate_get_failures();
 	test_direct_emergency_warp_gate_runtime_failures();
-	test_direct_emergency_warp_ade0_slash_failures();
+	test_direct_emergency_warp_ade0_prefix_failures();
 	test_direct_emergency_warp_parent_copy_failures();
 	test_direct_emergency_warp_hostile_parent_copy_failures();
 	test_direct_emergency_warp_warning_carrier();
