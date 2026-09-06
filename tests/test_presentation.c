@@ -20470,6 +20470,10 @@ struct main_genesis_cycle_fixture {
 	struct main_buy_cycle_fixture presentation;
 	struct yt_player player;
 	struct yt_genesis_state genesis;
+	const uint8_t *answer;
+	size_t answer_length;
+	float required_ports;
+	bool accepted;
 	bool handoff_called;
 };
 
@@ -20528,7 +20532,6 @@ static bool
 main_genesis_confirm(void *context, const uint8_t *prompt, size_t length,
     bool *accepted, struct yt_error *error)
 {
-	static const uint8_t no[] = "N";
 	struct main_genesis_cycle_fixture *fixture = context;
 	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	struct yt_present_result result;
@@ -20538,10 +20541,10 @@ main_genesis_confirm(void *context, const uint8_t *prompt, size_t length,
 	    &join->presentation, &result) != YT_PRESENT_OK)
 		return false;
 	viewer_pager_capture_result(join, &result);
-	if (!main_buy_present_answer(&fixture->presentation, no,
-	    sizeof(no) - 1U))
+	if (!main_buy_present_answer(&fixture->presentation, fixture->answer,
+	    fixture->answer_length))
 		return false;
-	*accepted = false;
+	*accepted = fixture->accepted;
 	return true;
 }
 
@@ -20589,7 +20592,7 @@ main_genesis_cycle_run(struct main_genesis_cycle_fixture *fixture, bool ansi,
 	ends[0] = join->remote_length;
 	fixture->genesis = (struct yt_genesis_state){
 		.current_player_record = 2,
-		.required_ports = 300.0f,
+		.required_ports = fixture->required_ports,
 		.cached_trader = (const uint8_t *)"Captain Byte",
 		.cached_trader_length = 12U,
 	};
@@ -20633,6 +20636,9 @@ test_main_genesis_decline_cycle_presentation(void)
 		memset(&fixture, 0, sizeof(fixture));
 		fixture.presentation.viewer = &viewer;
 		fixture.player.ports_owned = 300.0f;
+		fixture.answer = (const uint8_t *)"N";
+		fixture.answer_length = 1U;
+		fixture.required_ports = 300.0f;
 		CHECK(main_genesis_cycle_run(&fixture, pass != 0U, ends));
 		CHECK(memcmp(ends, expected_ends, sizeof(ends)) == 0
 		    && viewer.join.remote_length == sizeof(expected) - 1U
@@ -20668,6 +20674,123 @@ test_main_genesis_decline_cycle_presentation(void)
 		yt_text_input_destroy(&viewer.input);
 	}
 	CHECK(sizeof(expected) - 1U == 320U);
+}
+
+static void
+test_main_genesis_alternate_cycles_presentation(void)
+{
+	static const uint8_t opening[] =
+	    "\r\nTime: 14:59  Main Command (?=Help)? gTrailing\r\n"
+	    "\r\nIt has been written that one day a Trader Baron will rise up\n\r"
+	    "and wipe the universe clean of the evil that infests it.\n\r"
+	    "\r\nAre you that Trader Captain Byte [y/N]Y\r\n";
+	static const uint8_t disabled_plain_tail[] =
+	    "\r\n*FUNCTION DISABLED*\n\r"
+	    "\r\nAlas, today is not the day that the prophesy will be fullfilled.\n\r"
+	    "\r\nTime: 14:59  Main Command (?=Help)? ";
+	static const uint8_t disabled_ansi_tail[] =
+	    "\r\n\x1b[0;32;40;5;1m*FUNCTION DISABLED*\n\r"
+	    "\x1b[0;32;40m\r\n"
+	    "Alas, today is not the day that the prophesy will be fullfilled.\n\r"
+	    "\r\nTime: 14:59  Main Command (?=Help)? ";
+	static const uint8_t insufficient_tail[] =
+	    "\r\nYou are not up to the challenge. You must own 300 ports before you are powerful\n\r"
+	    "enough to initiate Genesis. You are 1 short of fulfilling the prophesy.\n\r"
+	    "\r\nTime: 14:59  Main Command (?=Help)? ";
+	static const struct {
+		bool disabled;
+		bool ansi;
+		const uint8_t *tail;
+		size_t tail_length;
+		size_t total_length;
+		enum yt_genesis_route route;
+		size_t local_rows;
+		uint64_t row_hash;
+		size_t local_colors;
+		uint64_t color_hash;
+	} cases[] = {
+		{true, false, disabled_plain_tail,
+		    sizeof(disabled_plain_tail) - 1U, 343U,
+		    YT_GENESIS_DISABLED_ROUTE, 12U,
+		    UINT64_C(0x59c48b28fd5fbfd2), 6U,
+		    UINT64_C(0x17798e683d05096d)},
+		{true, true, disabled_ansi_tail,
+		    sizeof(disabled_ansi_tail) - 1U, 367U,
+		    YT_GENESIS_DISABLED_ROUTE, 12U,
+		    UINT64_C(0x59c48b28fd5fbfd2), 21U,
+		    UINT64_C(0xa3b23a9e42d2a82d)},
+		{false, false, insufficient_tail,
+		    sizeof(insufficient_tail) - 1U, 408U,
+		    YT_GENESIS_INSUFFICIENT_ROUTE, 11U,
+		    UINT64_C(0xbe08d08cd7e850d0), 6U,
+		    UINT64_C(0x17798e683d05096d)},
+		{false, true, insufficient_tail,
+		    sizeof(insufficient_tail) - 1U, 408U,
+		    YT_GENESIS_INSUFFICIENT_ROUTE, 11U,
+		    UINT64_C(0xbe08d08cd7e850d0), 20U,
+		    UINT64_C(0x4ea7870caf4939ed)},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct main_genesis_cycle_fixture fixture;
+	uint8_t expected[450];
+	uint8_t remote[450];
+	size_t ends[3];
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memcpy(expected, opening, sizeof(opening) - 1U);
+		memcpy(expected + sizeof(opening) - 1U, cases[pass].tail,
+		    cases[pass].tail_length);
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
+		memset(&fixture, 0, sizeof(fixture));
+		fixture.presentation.viewer = &viewer;
+		fixture.player.ports_owned = cases[pass].disabled
+		    ? 300.0f : 299.0f;
+		fixture.answer = (const uint8_t *)"Y";
+		fixture.answer_length = 1U;
+		fixture.required_ports = cases[pass].disabled ? 301.0f : 300.0f;
+		fixture.accepted = true;
+		CHECK(main_genesis_cycle_run(&fixture, cases[pass].ansi, ends));
+		CHECK(sizeof(opening) - 1U + cases[pass].tail_length
+		    == cases[pass].total_length
+		    && viewer.join.remote_length == cases[pass].total_length
+		    && memcmp(remote, expected, cases[pass].total_length) == 0
+		    && ends[0] == 49U
+		    && ends[1] == cases[pass].total_length - 38U
+		    && ends[2] == cases[pass].total_length);
+		CHECK(fixture.genesis.complete
+		    && fixture.genesis.route == cases[pass].route
+		    && fixture.genesis.player_hydrated
+		    && fixture.genesis.confirmation_read
+		    && !fixture.genesis.handoff_called
+		    && !fixture.handoff_called
+		    && fixture.genesis.disabled_presented == cases[pass].disabled
+		    && fixture.genesis.answer == !cases[pass].disabled);
+		CHECK(viewer.join.presentation.foreground == 2.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold
+		    == (cases[pass].disabled && !cases[pass].ansi ? 1.0f : 0.0f)
+		    && viewer.join.presentation.blink
+		    == (cases[pass].disabled && !cases[pass].ansi ? 1.0f : 0.0f)
+		    && viewer.join.presentation.cached_foreground == 2.0f
+		    && viewer.join.pager.foreground == 2
+		    && viewer.join.pager.line_count == 0.0f
+		    && viewer.join.pager.nonstop == 0.0f
+		    && viewer.join.local_fragment_length == 36U
+		    && memcmp(viewer.join.local_fragment,
+		    "Time: 14:59  Main Command (?=Help)? ", 36U) == 0
+		    && viewer.join.accumulator[0] == '\0');
+		CHECK(viewer.join.local_row_count == cases[pass].local_rows
+		    && viewer_rows_fnv1a64(&viewer.join) == cases[pass].row_hash
+		    && viewer.join.local_color_count == cases[pass].local_colors
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == cases[pass].color_hash);
+		yt_text_input_destroy(&viewer.input);
+	}
 }
 
 static bool
@@ -27162,6 +27285,7 @@ main(void)
 	test_main_rename_cycle_presentation();
 	test_main_rename_refusal_cycles_presentation();
 	test_main_genesis_decline_cycle_presentation();
+	test_main_genesis_alternate_cycles_presentation();
 	test_main_movement_accepted_cycle_presentation();
 	test_main_attack_survivor_cycle_presentation();
 	test_main_attack_black_hole_cycle_presentation();
