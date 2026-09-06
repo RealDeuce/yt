@@ -1747,6 +1747,8 @@ create_missing:
 		    YT_TEXT_OPEN_TEMP_CLOSE, 0U,
 		    temporary_open ? temporary : NULL, first_close_error,
 		    &observation);
+		output->last_output_open.temporary_close_retry_dos_error
+		    = observation.dos_error;
 		valid = delivered && text_open_observation_valid(
 		    YT_TEXT_OPEN_TEMP_CLOSE, 0U, &observation);
 		if (!valid || observation.handle_open)
@@ -1965,6 +1967,8 @@ create_missing:
 		    YT_TEXT_OPEN_TEMP_CLOSE, 0U,
 		    temporary_open ? temporary : NULL, 0, NULL, 0U,
 		    first_close_error, &observation);
+		output->last_append_open.temporary_close_retry_dos_error
+		    = observation.dos_error;
 		valid = delivered && text_open_observation_valid(
 		    YT_TEXT_OPEN_TEMP_CLOSE, 0U, &observation);
 		if (!valid || observation.handle_open)

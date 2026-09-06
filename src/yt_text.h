@@ -89,6 +89,7 @@ struct yt_text_open_result {
 	enum yt_text_open_operation failed_operation;
 	uint16_t dos_error;
 	uint16_t basic_error;
+	uint16_t temporary_close_retry_dos_error;
 	uint8_t access_attempts[4];
 	size_t access_attempt_count;
 	size_t operation_count;

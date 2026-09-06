@@ -5404,6 +5404,8 @@ test_output_open_error_model(void)
 		    == YT_TEXT_OPEN_TEMP_CLOSE_ERROR
 		    && output.last_output_open.basic_error == 70U
 		    && output.last_output_open.dos_error == dos_error
+		    && output.last_output_open.temporary_close_retry_dos_error
+		    == dos_error
 		    && output.last_output_open.temporary_close_retried
 		    && !output.last_output_open.handle_open);
 		text_open_check_consumed(&script);
@@ -5694,6 +5696,8 @@ test_append_open_error_model(void)
 		    == YT_TEXT_OPEN_TEMP_CLOSE_ERROR
 		    && output.last_append_open.basic_error == 70U
 		    && output.last_append_open.dos_error == dos_error
+		    && output.last_append_open.temporary_close_retry_dos_error
+		    == dos_error
 		    && output.last_append_open.created
 		    && output.last_append_open.temporary_close_retried
 		    && !output.last_append_open.registered
@@ -5716,6 +5720,7 @@ test_append_open_error_model(void)
 	    == YT_TEXT_OPEN_TEMP_CLOSE_ERROR
 	    && output.last_append_open.basic_error == 70U
 	    && output.last_append_open.dos_error == 5U
+	    && output.last_append_open.temporary_close_retry_dos_error == 6U
 	    && output.last_append_open.handle_open
 	    && output.orphaned_file != NULL);
 	text_open_check_consumed(&script);
