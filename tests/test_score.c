@@ -18417,6 +18417,37 @@ check_maintenance_final_suffix_pass(void)
 	    || memcmp(tape.screen.data, prefix, sizeof(prefix) - 1U) != 0)
 		goto done;
 
+	/* The wrapper blank-row failure occurs immediately after CLOSE-all. */
+	random_script.position = 0U;
+	yt_random_set_provider(&game.random, score_random_fill, &random_script);
+	clock_script.position = 0U;
+	output_fault = (struct maintenance_final_output_fault){
+		.tape = {
+			.screen = {0},
+			.game = &game,
+			.first_closed_line = (size_t)-1
+		},
+		.calls = 0U,
+		.fail_at = 23U
+	};
+	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_UPDATE,
+	    &error))
+		goto done;
+	yt_database_set_close_provider(&game.database, NULL, NULL);
+	yt_error_clear(&error);
+	if (yt_maintenance_finish(&game, maintenance_final_output_fail,
+	    &output_fault, &error)
+	    || error.status != YT_IO_ERROR
+	    || strcmp(error.operation, "maintenance final output") != 0
+	    || output_fault.calls != 24U
+	    || output_fault.tape.first_closed_line != (size_t)-1
+	    || output_fault.tape.screen.lines != 23U
+	    || game.database.file != NULL
+	    || info_panel_contains(output_fault.tape.screen.data,
+	    output_fault.tape.screen.length,
+	    (const uint8_t *)"Daily Maintenance Completed OK", 30U))
+		goto done;
+
 	/* The completion-row failure occurs after CLOSE-all and the blank row. */
 	random_script.position = 0U;
 	yt_random_set_provider(&game.random, score_random_fill, &random_script);
