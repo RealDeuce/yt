@@ -27823,6 +27823,8 @@ struct direct_warp_attack_combat_join {
 	size_t victory_radio_count;
 	size_t victory_sector_reads;
 	size_t victory_sector_writes;
+	size_t victory_fallible_calls;
+	size_t victory_fail_at;
 	size_t spill_calls;
 	size_t spill_stores;
 	size_t spill_present_calls;
@@ -28587,6 +28589,21 @@ struct direct_warp_attack_victory_file {
 };
 
 static bool
+direct_warp_attack_victory_step(struct direct_warp_attack_combat_join *join,
+    const char *operation, struct yt_error *error)
+{
+	++join->victory_fallible_calls;
+	if (join->victory_fallible_calls != join->victory_fail_at)
+		return true;
+	if (error != NULL) {
+		error->status = YT_IO_ERROR;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    operation);
+	}
+	return false;
+}
+
+static bool
 direct_warp_attack_victory_file_close(void *context, struct yt_error *error)
 {
 	struct direct_warp_attack_victory_file *file = context;
@@ -28646,7 +28663,8 @@ direct_warp_attack_victory_play_file(void *context, const char *path,
 	};
 	bool result;
 
-	if (strcmp(path, "XANNORHQ.TXT") != 0)
+	if (!direct_warp_attack_victory_step(join, "victory file", error)
+	    || strcmp(path, "XANNORHQ.TXT") != 0)
 		return false;
 	yt_text_input_init(&file.input);
 	result = yt_text_sequential_play_run(&playback, &ops, &file, error);
@@ -28666,7 +28684,8 @@ direct_warp_attack_victory_present(void *context, const uint8_t *text,
 	enum yt_present_status status;
 
 	(void)operation;
-	(void)error;
+	if (!direct_warp_attack_victory_step(join, operation, error))
+		return false;
 	if (kind == YT_XANNOR_VICTORY_RAW)
 		status = yt_present_character(text, length,
 		    &viewer->presentation, &result);
@@ -28690,8 +28709,8 @@ direct_warp_attack_victory_wait(void *context, double seconds,
 {
 	struct direct_warp_attack_combat_join *join = context;
 
-	(void)operation;
-	(void)error;
+	if (!direct_warp_attack_victory_step(join, operation, error))
+		return false;
 	++join->victory_wait_calls;
 	join->victory_wait_seconds = seconds;
 	return true;
@@ -28736,12 +28755,24 @@ direct_warp_attack_victory_write_credit(void *context, int player_record,
 {
 	struct direct_warp_attack_combat_join *join = context;
 
-	(void)error;
-	if (player_record != 2 || record == NULL)
+	if (!direct_warp_attack_victory_step(join, "victory player PUT", error)
+	    || player_record != 2 || record == NULL)
 		return false;
 	yt_player_decode(&join->victory_player_written, record);
 	++join->victory_player_writes;
 	return true;
+}
+
+static bool
+direct_warp_attack_victory_read_credit(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct direct_warp_attack_combat_join *join = context;
+
+	if (!direct_warp_attack_victory_step(join, "victory player GET", error))
+		return false;
+	return direct_warp_attack_combat_a41c_source(context, player_record,
+	    player, error);
 }
 
 static bool
@@ -28750,7 +28781,7 @@ direct_warp_attack_victory_mutate_credits(void *context,
     bool *hydrated, struct yt_error *error)
 {
 	static const struct yt_credit_mutation_ops ops = {
-		direct_warp_attack_combat_a41c_source,
+		direct_warp_attack_victory_read_credit,
 		direct_warp_attack_victory_write_credit,
 	};
 	struct direct_warp_attack_combat_join *join = context;
@@ -28792,9 +28823,8 @@ direct_warp_attack_victory_sound(void *context, float selector,
 	    &join->fixture->cycle.presentation.viewer->join;
 	struct yt_present_result result;
 
-	(void)operation;
-	(void)error;
-	if (selector != 2.0f
+	if (!direct_warp_attack_victory_step(join, operation, error)
+	    || selector != 2.0f
 	    || yt_present_sound(selector, &viewer->presentation, &result)
 	    != YT_PRESENT_OK)
 		return false;
@@ -28809,8 +28839,8 @@ direct_warp_attack_victory_news(void *context, const uint8_t *text,
 {
 	struct direct_warp_attack_combat_join *join = context;
 
-	(void)error;
-	if (join->victory_news_count >= YT_ARRAY_LEN(join->victory_news)
+	if (!direct_warp_attack_victory_step(join, "victory news", error)
+	    || join->victory_news_count >= YT_ARRAY_LEN(join->victory_news)
 	    || length > sizeof(join->victory_news[0]))
 		return false;
 	memcpy(join->victory_news[join->victory_news_count], text, length);
@@ -28826,8 +28856,8 @@ direct_warp_attack_victory_radio(void *context, const uint8_t *text,
 	struct direct_warp_attack_combat_join *join = context;
 	size_t index = join->victory_radio_count;
 
-	(void)error;
-	if (index >= YT_ARRAY_LEN(join->victory_radio)
+	if (!direct_warp_attack_victory_step(join, "victory radio", error)
+	    || index >= YT_ARRAY_LEN(join->victory_radio)
 	    || length > sizeof(join->victory_radio[0]))
 		return false;
 	memcpy(join->victory_radio[index], text, length);
@@ -28844,8 +28874,8 @@ direct_warp_attack_victory_read_sector(void *context, int logical_sector,
 {
 	struct direct_warp_attack_combat_join *join = context;
 
-	(void)error;
-	if (logical_sector != 21 || sector == NULL)
+	if (!direct_warp_attack_victory_step(join, "victory sector GET", error)
+	    || logical_sector != 21 || sector == NULL)
 		return false;
 	*sector = join->victory_sector_source;
 	++join->victory_sector_reads;
@@ -28858,8 +28888,8 @@ direct_warp_attack_victory_write_sector(void *context, int logical_sector,
 {
 	struct direct_warp_attack_combat_join *join = context;
 
-	(void)error;
-	if (logical_sector != 21 || sector == NULL)
+	if (!direct_warp_attack_victory_step(join, "victory sector PUT", error)
+	    || logical_sector != 21 || sector == NULL)
 		return false;
 	join->victory_sector_written = *sector;
 	++join->victory_sector_writes;
@@ -36446,6 +36476,7 @@ test_xannor_attack_tail_victory_join(void)
 		    && join.victory_radio_count == 3U
 		    && join.victory_sector_reads == 1U
 		    && join.victory_sector_writes == 1U
+		    && join.victory_fallible_calls == 18U
 		    && join.victory.sounds_completed == 3U
 		    && join.victory.news_completed == 3U
 		    && join.victory.radio_completed == 3U
@@ -36476,6 +36507,239 @@ test_xannor_attack_tail_victory_join(void)
 			    && join.victory_radio_recipient[index] == -2.0f);
 		}
 		yt_text_input_destroy(&viewer.input);
+	}
+}
+
+static void
+test_xannor_attack_tail_victory_failure_prefixes(void)
+{
+	static const uint8_t cached_name[] = {'A', 0, 'B'};
+	static const uint8_t holds_zero[4] = {0x00U, 0x00U, 0x73U, 0x00U};
+	static const size_t expected_lengths[2][18] = {
+		{182U, 412U, 419U, 419U, 421U, 455U, 455U, 455U, 455U,
+		    455U, 455U, 455U, 455U, 455U, 455U, 455U, 455U, 455U},
+		{246U, 486U, 493U, 493U, 495U, 543U, 543U, 543U, 576U,
+		    609U, 642U, 642U, 642U, 642U, 642U, 642U, 642U, 642U},
+	};
+	static const uint64_t expected_hashes[2][18] = {
+		{
+			UINT64_C(0x8767362678d291cb),
+			UINT64_C(0xb5b475c8f4950f47),
+			UINT64_C(0xcc5069d7b0e75139),
+			UINT64_C(0xcc5069d7b0e75139),
+			UINT64_C(0xf861493714751322),
+			UINT64_C(0x3c09acde188019c5),
+			UINT64_C(0x3c09acde188019c5),
+			UINT64_C(0x3c09acde188019c5),
+			UINT64_C(0x3c09acde188019c5),
+			UINT64_C(0x3c09acde188019c5),
+			UINT64_C(0x3c09acde188019c5),
+			UINT64_C(0x3c09acde188019c5),
+			UINT64_C(0x3c09acde188019c5),
+			UINT64_C(0x3c09acde188019c5),
+			UINT64_C(0x3c09acde188019c5),
+			UINT64_C(0x3c09acde188019c5),
+			UINT64_C(0x3c09acde188019c5),
+			UINT64_C(0x3c09acde188019c5),
+		},
+		{
+			UINT64_C(0xf928103636550d6d),
+			UINT64_C(0xad594d7d77dacd1c),
+			UINT64_C(0xd4a4e8f34aa28290),
+			UINT64_C(0xd4a4e8f34aa28290),
+			UINT64_C(0x62c1336a13122c57),
+			UINT64_C(0x84d2ee969ace9909),
+			UINT64_C(0x84d2ee969ace9909),
+			UINT64_C(0x84d2ee969ace9909),
+			UINT64_C(0xcf8f461385765e7c),
+			UINT64_C(0x17d43d8db1212563),
+			UINT64_C(0x92ab2c2822b9f2f6),
+			UINT64_C(0x92ab2c2822b9f2f6),
+			UINT64_C(0x92ab2c2822b9f2f6),
+			UINT64_C(0x92ab2c2822b9f2f6),
+			UINT64_C(0x92ab2c2822b9f2f6),
+			UINT64_C(0x92ab2c2822b9f2f6),
+			UINT64_C(0x92ab2c2822b9f2f6),
+			UINT64_C(0x92ab2c2822b9f2f6),
+		},
+	};
+	static const size_t expected_rows[18] = {
+		5U, 10U, 10U, 10U, 11U, 12U, 12U, 12U, 12U,
+		12U, 12U, 12U, 12U, 12U, 12U, 12U, 12U, 12U,
+	};
+	static const uint64_t expected_row_hashes[18] = {
+		UINT64_C(0x61661dea9d94a082),
+		UINT64_C(0x5ce0bf558ce2d1ed),
+		UINT64_C(0x5ce0bf558ce2d1ed),
+		UINT64_C(0x5ce0bf558ce2d1ed),
+		UINT64_C(0x22ccf9cfdcd6dd32),
+		UINT64_C(0x4fee860a08e39cd2),
+		UINT64_C(0x4fee860a08e39cd2),
+		UINT64_C(0x4fee860a08e39cd2),
+		UINT64_C(0x4fee860a08e39cd2),
+		UINT64_C(0x4fee860a08e39cd2),
+		UINT64_C(0x4fee860a08e39cd2),
+		UINT64_C(0x4fee860a08e39cd2),
+		UINT64_C(0x4fee860a08e39cd2),
+		UINT64_C(0x4fee860a08e39cd2),
+		UINT64_C(0x4fee860a08e39cd2),
+		UINT64_C(0x4fee860a08e39cd2),
+		UINT64_C(0x4fee860a08e39cd2),
+		UINT64_C(0x4fee860a08e39cd2),
+	};
+	static const size_t expected_ansi_colors[18] = {
+		7U, 12U, 13U, 13U, 14U, 15U, 15U, 15U, 15U,
+		15U, 15U, 15U, 15U, 15U, 15U, 15U, 15U, 15U,
+	};
+	static const uint64_t expected_ansi_color_hashes[18] = {
+		UINT64_C(0x84e1a1a1e2377ca9),
+		UINT64_C(0x433c450aa0cfd70e),
+		UINT64_C(0x14bd52ebbb086b71),
+		UINT64_C(0x14bd52ebbb086b71),
+		UINT64_C(0x75e3c8aa428ed7e6),
+		UINT64_C(0xdfb6d767025461e1),
+		UINT64_C(0xdfb6d767025461e1),
+		UINT64_C(0xdfb6d767025461e1),
+		UINT64_C(0xdfb6d767025461e1),
+		UINT64_C(0xdfb6d767025461e1),
+		UINT64_C(0xdfb6d767025461e1),
+		UINT64_C(0xdfb6d767025461e1),
+		UINT64_C(0xdfb6d767025461e1),
+		UINT64_C(0xdfb6d767025461e1),
+		UINT64_C(0xdfb6d767025461e1),
+		UINT64_C(0xdfb6d767025461e1),
+		UINT64_C(0xdfb6d767025461e1),
+		UINT64_C(0xdfb6d767025461e1),
+	};
+	static const char *const expected_operations[18] = {
+		"victory file", "Xannor victory pause", "Xannor victory wait",
+		"Xannor victory post-wait blank", "Xannor victory bonus",
+		"victory player GET", "victory player PUT",
+		"Xannor victory sound", "Xannor victory sound",
+		"Xannor victory sound", "victory news", "victory news",
+		"victory news", "victory radio", "victory radio",
+		"victory radio", "victory sector GET", "victory sector PUT",
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	struct direct_warp_main_cycle_state cycle;
+	struct direct_warp_attack_combat_join join;
+	struct yt_hostile_attack_tail_state tail;
+	struct yt_record record;
+	struct yt_error error;
+	uint8_t remote[1024];
+	size_t cut;
+	size_t pass;
+
+	for (pass = 0U; pass < 2U; ++pass) {
+		for (cut = 1U; cut <= 18U; ++cut) {
+			memset(&viewer, 0, sizeof(viewer));
+			fixture_viewer_initialize(&viewer, &stream,
+			    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+			    "YTSCORE.ASC", pass != 0U, remote, sizeof(remote));
+			memset(&fixture, 0, sizeof(fixture));
+			fixture.cycle.presentation.viewer = &viewer;
+			memset(&cycle, 0, sizeof(cycle));
+			fixture.draws[0] = 0.9f;
+			fixture.draws[1] = 0.1f;
+			fixture.draws[2] = 0.0f;
+			fixture.draws[3] = 0.0f;
+			fixture.draws[4] = 0.0f;
+			fixture.draws[5] = 0.75f;
+			memset(&join, 0, sizeof(join));
+			join.fixture = &fixture;
+			join.cycle = &cycle;
+			join.current_sector_record = 1054.0f;
+			join.sector_record_offset = 51.0f;
+			join.allow_tail_player = true;
+			join.allow_clearance = true;
+			join.allow_victory = true;
+			join.victory_fail_at = cut;
+			memcpy(join.clearance_discount_raw[0], holds_zero, 4U);
+			memset(&record, 0xa5, sizeof(record));
+			yt_record_set_text(&record,
+			    (const uint8_t *)"FRESH XANNOR", 12U);
+			(void)yt_record_set_number(&record, YT_F49, 98.0f);
+			(void)yt_record_set_number(&record, YT_F53, 5.0f);
+			(void)yt_record_set_number(&record, YT_F57, 7.0f);
+			(void)yt_record_set_number(&record, YT_F61, 21.0f);
+			(void)yt_record_set_number(&record, YT_F125, 0.0f);
+			yt_player_decode(&join.attack_player, &record);
+			fixture.emergency_player = join.attack_player;
+			memset(&record, 0x5a, sizeof(record));
+			yt_record_set_text(&record, cached_name,
+			    sizeof(cached_name));
+			(void)yt_record_set_number(&record, YT_F53, 5.0f);
+			(void)yt_record_set_number(&record, YT_F57, 7.0f);
+			(void)yt_record_set_number(&record, YT_F81, 16000001.0f);
+			(void)yt_record_set_number(&record, YT_F85, 3.0f);
+			yt_player_decode(&join.return_player, &record);
+			memset(&join.victory_sector_source, 0x5a,
+			    sizeof(join.victory_sector_source));
+			join.victory_sector_source.metadata = -9.0f;
+			tail = (struct yt_hostile_attack_tail_state){
+				.current_player_record = 2,
+				.old_owner = -1.0f,
+				.defender_loss = 512000.0,
+				.deployed_fighters = 0.0,
+				.ship_fighters = 19.0,
+				.turns_per_day = 100.0f,
+				.headquarters = 7.0f,
+				.cached_player_name = cached_name,
+				.cached_player_name_length = sizeof(cached_name),
+				.current = join.attack_player,
+			};
+			yt_error_clear(&error);
+			CHECK(!yt_hostile_attack_tail_run(&tail,
+			    &direct_warp_attack_tail_ops, &join, &error));
+			CHECK(error.status == YT_IO_ERROR
+			    && strcmp(error.operation,
+			    expected_operations[cut - 1U]) == 0
+			    && join.victory_fallible_calls == cut
+			    && !tail.complete && !tail.victory_called);
+			CHECK(viewer.join.remote_length
+			    == expected_lengths[pass][cut - 1U]
+			    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+			    == expected_hashes[pass][cut - 1U]
+			    && viewer.join.local_row_count == expected_rows[cut - 1U]
+			    && viewer_rows_fnv1a64(&viewer.join)
+			    == expected_row_hashes[cut - 1U]
+			    && viewer.join.local_color_count == (pass == 0U ? 2U
+			    : expected_ansi_colors[cut - 1U])
+			    && viewer_colors_fnv1a64(&viewer.join)
+			    == (pass == 0U ? UINT64_C(0x6d3fa4669b3587bd)
+			    : expected_ansi_color_hashes[cut - 1U])
+			    && viewer.join.local_fragment_length
+			    == (cut == 3U || cut == 4U ? 7U : 0U));
+			CHECK(join.victory_file_reads == (cut > 1U ? 6U : 0U)
+			    && join.victory_file_rows == (cut > 1U ? 5U : 0U)
+			    && join.victory_wait_calls == (cut > 3U ? 1U : 0U)
+			    && join.victory_queue_clears == (cut >= 6U ? 1U : 0U)
+			    && join.a41c_reads == (cut > 6U ? 2U : 1U)
+			    && join.a41c_stores == (cut > 6U ? 50U : 25U)
+			    && join.victory_player_writes == (cut > 7U ? 1U : 0U)
+			    && join.victory_credit.hydrated == (cut > 6U)
+			    && join.victory_credit.overlay_applied == (cut >= 7U)
+			    && join.victory_credit.written == (cut > 7U)
+			    && join.victory.awarded_credits
+			    == (cut > 7U ? 32000000.0f : 0.0f));
+			CHECK(join.victory_sound_calls == (cut <= 8U ? 0U
+			    : cut <= 11U ? cut - 8U : 3U)
+			    && join.victory.sounds_completed
+			    == join.victory_sound_calls
+			    && join.victory_news_count == (cut <= 11U ? 0U
+			    : cut <= 14U ? cut - 11U : 3U)
+			    && join.victory.news_completed == join.victory_news_count
+			    && join.victory_radio_count == (cut <= 14U ? 0U
+			    : cut <= 17U ? cut - 14U : 3U)
+			    && join.victory.radio_completed == join.victory_radio_count
+			    && join.victory_sector_reads == (cut > 17U ? 1U : 0U)
+			    && join.victory_sector_writes == 0U
+			    && join.random_calls == 6U && fixture.draw_position == 6U
+			    && !join.unexpected_tail_effect);
+			yt_text_input_destroy(&viewer.input);
+		}
 	}
 }
 
@@ -45876,6 +46140,7 @@ main(void)
 	test_direct_emergency_warp_hostile_attack_fatal_prefixes();
 	test_xannor_attack_tail_clearance_join();
 	test_xannor_attack_tail_victory_join();
+	test_xannor_attack_tail_victory_failure_prefixes();
 	test_direct_emergency_warp_hostile_invalid_retry_cycle();
 	test_direct_emergency_warp_hostile_ordinary_returns();
 	test_direct_emergency_warp_queue_cycles();
