@@ -22246,7 +22246,7 @@ hostile_mine_emergency_set_foreground(
 }
 
 static bool
-hostile_mine_hazard_warp(void *context, struct yt_error *error)
+hostile_emergency_warp_present(struct hostile_mines_hazard_fixture *fixture)
 {
 	static const uint8_t title[] = " * EMERGENCY WARP ENGAGED! * ";
 	static const uint8_t wormhole[] =
@@ -22258,7 +22258,6 @@ hostile_mine_hazard_warp(void *context, struct yt_error *error)
 	static const uint8_t gauge_tick[] = "*";
 	static const uint8_t relief[] =
 	    "You sigh in relief as you look at your scanner and find yourself in";
-	struct hostile_mines_hazard_fixture *fixture = context;
 	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
 	struct yt_present_result result;
 	float first;
@@ -22271,10 +22270,7 @@ hostile_mine_hazard_warp(void *context, struct yt_error *error)
 	uint8_t row[160];
 	size_t row_length;
 
-	(void)error;
-	fixture->warp_called = true;
-	if (!fixture->enable_emergency_warp
-	    || !hostile_mine_hazard_present(fixture, NULL, 0U,
+	if (!hostile_mine_hazard_present(fixture, NULL, 0U,
 	    YT_SECTOR_MINE_OUTPUT_LINE, NULL)
 	    || !hostile_mine_emergency_attention(fixture, title,
 	    sizeof(title) - 1U)
@@ -22345,6 +22341,17 @@ hostile_mine_hazard_warp(void *context, struct yt_error *error)
 	++fixture->emergency_player_writes;
 	++fixture->emergency_flushes;
 	return true;
+}
+
+static bool
+hostile_mine_hazard_warp(void *context, struct yt_error *error)
+{
+	struct hostile_mines_hazard_fixture *fixture = context;
+
+	(void)error;
+	fixture->warp_called = true;
+	return fixture->enable_emergency_warp
+	    && hostile_emergency_warp_present(fixture);
 }
 
 static void
@@ -22812,6 +22819,235 @@ test_hostile_mines_emergency_warp_cycle_presentation(void)
 		yt_text_input_destroy(&viewer.input);
 	}
 	CHECK(sizeof(plain) - 1U == 872U && sizeof(ansi) - 1U == 1295U);
+}
+
+static bool
+hostile_mines_black_hole_cycle_run(
+    struct hostile_mines_hazard_fixture *fixture, bool ansi, size_t ends[4])
+{
+	static const uint8_t first_command[] = "D";
+	static const uint8_t second_command[] = "A";
+	static const uint8_t black_hole[] = "A *-BLACK HOLE-* grabs you!";
+	static const uint8_t warning[] =
+	    "You have to defeat the fighters before you can enter this sector.";
+	struct main_mines_cycle_fixture *cycle = &fixture->cycle;
+	struct viewer_pager_join *join = &cycle->presentation.viewer->join;
+
+	join->presentation = state(ansi);
+	if (!hostile_mines_menu_present(cycle, 10.0, first_command,
+	    sizeof(first_command) - 1U))
+		return false;
+	ends[0] = join->remote_length;
+	cycle->mines.current_player_record = 2;
+	if (yt_hostile_menu_dispatch("D") != YT_HOSTILE_MENU_MINE
+	    || !yt_drop_mines_run(&cycle->mines, &main_mines_ops, cycle, NULL))
+		return false;
+	ends[1] = join->remote_length;
+	if (!hostile_mines_scanner_present(cycle, 733.0f, 5.0f, 10.0, 1.0f,
+	    " 2", ", 9")
+	    || !yt_sector_is_black_hole(733.0f, 733.0f, 1444.0f))
+		return false;
+	join->presentation.sound.user_sound = 0.0f;
+	join->presentation.sound.local_sound = 0.0f;
+	if (!hostile_mine_emergency_set_foreground(fixture, 6.0f)
+	    || !hostile_mine_hazard_present(fixture, NULL, 0U,
+	    YT_SECTOR_MINE_OUTPUT_LINE, NULL)
+	    || !hostile_mine_emergency_attention(fixture, black_hole,
+	    sizeof(black_hole) - 1U))
+		return false;
+	join->queue[0] = '\0';
+	join->queue_position = 0U;
+	join->queue_length = 0U;
+	if (!hostile_emergency_warp_present(fixture)
+	    || !hostile_mines_scanner_present(cycle, 1003.0f, 0.0f, 7.0,
+	    1.0f, " 1", ", 42"))
+		return false;
+	join->queue[0] = '\0';
+	join->queue_position = 0U;
+	join->queue_length = 0U;
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.bold = 1.0f;
+	join->presentation.blink = 1.0f;
+	if (!normal_exit_b05d(join, warning, sizeof(warning) - 1U, 0.0f))
+		return false;
+	ends[2] = join->remote_length;
+	if (!hostile_mines_menu_present(cycle, 7.0, second_command,
+	    sizeof(second_command) - 1U)
+	    || yt_hostile_menu_dispatch("A") != YT_HOSTILE_MENU_ATTACK)
+		return false;
+	ends[3] = join->remote_length;
+	return true;
+}
+
+static void
+test_hostile_mines_black_hole_cycle_presentation(void)
+{
+	static const uint8_t plain[] =
+	    "\r\nFighters: 20 / 10\n\r"
+	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? D\r\n"
+	    "\r\nYou have 5 mines. Drop how many? [0] -=>2\r\n"
+	    "\r\nSector 733 is now mined!\n\r"
+	    "\r\nSector: 733\r\n"
+	    "** WARNING! SECTOR HAS 5 MINES! **\r\n"
+	    "\x07" "Fighters in sector: 10 (Belong to Mercenaries)\r\n"
+	    "Warps lead to: 2, 9\r\n"
+	    "\r\nA *-BLACK HOLE-* grabs you!\r\n"
+	    "\r\n * EMERGENCY WARP ENGAGED! * \r\n"
+	    "\r\nYou enter a wormhole as your engines build up to emergency power!\r\n"
+	    "\r\n     * Engine Temperature *\r\n"
+	    "[ Normal ][ Danger ][ Overheat ]\r\n"
+	    "================================\r\n"
+	    "[*\r\n\r\n"
+	    "You sigh in relief as you look at your scanner and find yourself in\r\n"
+	    "sector 1003. However, it takes you 3 turns to recharge your engines!\r\n"
+	    "\r\nSector: 1003\r\n"
+	    "Fighters in sector: 7 (Belong to Mercenaries)\r\n"
+	    "Warps lead to: 1, 42\r\n"
+	    "\r\nYou have to defeat the fighters before you can enter this sector.\n\r"
+	    "\r\nFighters: 20 / 7\n\r"
+	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? A\r\n";
+	static const uint8_t ansi[] =
+	    "\x1b[0;33;40m\r\nFighters: 20 / 10\n\r"
+	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? D\r\n"
+	    "\r\nYou have 5 mines. Drop how many? [0] -=>2\r\n"
+	    "\x1b[0;36;40m\r\n"
+	    "\x1b[0;36;40;5;1mSector 733 is now mined!\n\r"
+	    "\x1b[MBT128O5L48P64CP64C\x0e"
+	    "\x1b[0;31;40m\r\nSector: 733\r\n"
+	    "\x1b[0;33;41;5;1m** WARNING! SECTOR HAS 5 MINES! **"
+	    "\x1b[0;33;40m\r\n"
+	    "\x1b[MBO2T200L64FBEAP8FBEAP8FBEAP4FBEAP8FBEAP8FBEAP4T128\x0e"
+	    "\x1b[MBT128O5L48P64CP64C\x0e"
+	    "\x1b[MBT128O5L48P64CP64C\x0e"
+	    "\x1b[MBT128O5L48P64CP64C\x0e"
+	    "\x1b[0;33;40;1mFighters in sector:"
+	    "\x1b[0;33;40m 10 (Belong to Mercenaries)\r\n"
+	    "Warps lead to: 2, 9\r\n"
+	    "\x1b[0;36;40m\r\n"
+	    "\x1b[0;33;41;5;1mA *-BLACK HOLE-* grabs you!"
+	    "\x1b[0;33;40m\r\n\r\n"
+	    "\x1b[0;33;41;5;1m * EMERGENCY WARP ENGAGED! * "
+	    "\x1b[0;33;40m\r\n\r\n"
+	    "\x1b[0;33;40;1m"
+	    "You enter a wormhole as your engines build up to emergency power!\r\n"
+	    "\x1b[0;33;40m\r\n"
+	    "\x1b[0;36;40;1m     * Engine Temperature *\r\n"
+	    "\x1b[0;36;40;1m[ Normal ][ Danger ][ Overheat ]\r\n"
+	    "\x1b[0;32;40;1m================================\r\n"
+	    "\x1b[0;36;40;1m[\x1b[0;32;40;1m*"
+	    "\x1b[0;32;40m\r\n\r\n"
+	    "You sigh in relief as you look at your scanner and find yourself in\r\n"
+	    "sector 1003. However, it takes you 3 turns to recharge your engines!\r\n"
+	    "\x1b[0;31;40m\r\nSector: 1003\r\n"
+	    "\x1b[0;31;40;1mFighters in sector:"
+	    "\x1b[0;31;40m 7 (Belong to Mercenaries)\r\n"
+	    "Warps lead to: 1, 42\r\n"
+	    "\x1b[0;33;40m\r\n"
+	    "\x1b[0;33;40;5;1m"
+	    "You have to defeat the fighters before you can enter this sector.\n\r"
+	    "\x1b[0;33;40m\r\nFighters: 20 / 7\n\r"
+	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? A\r\n";
+	static const struct {
+		bool ansi;
+		const uint8_t *expected;
+		size_t expected_length;
+		size_t ends[4];
+		size_t local_colors;
+		uint64_t color_hash;
+	} cases[] = {
+		{false, plain, sizeof(plain) - 1U, {59U, 132U, 784U, 842U},
+		    7U, UINT64_C(0xc68cf2d74ffb7ffa)},
+		{true, ansi, sizeof(ansi) - 1U, {69U, 188U, 1221U, 1289U},
+		    58U, UINT64_C(0xae9e4defbd379270)},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	struct yt_record record;
+	uint8_t remote[1320];
+	size_t ends[4];
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
+		hostile_mines_hazard_fixture_initialize(&fixture, &viewer, false);
+		fixture.cycle.response = (const uint8_t *)"2";
+		fixture.cycle.response_length = 1U;
+		yt_sector_mine_sector_overlay(&fixture.cycle.sector, 3.0f);
+		fixture.draws[0] = 0.0f;
+		fixture.draws[1] = 0.0f;
+		fixture.draws[2] = 0.75f;
+		fixture.draws[3] = 0.5f;
+		fixture.draws[4] = 0.949999988079071f;
+		fixture.draws[5] = 0.999f;
+		yt_record_blank(&record);
+		(void)yt_record_set_number(&record, YT_F49, 17.0f);
+		(void)yt_record_set_number(&record, YT_F57, 733.0f);
+		yt_player_decode(&fixture.emergency_player, &record);
+		CHECK(hostile_mines_black_hole_cycle_run(&fixture,
+		    cases[pass].ansi, ends));
+		CHECK(memcmp(ends, cases[pass].ends, sizeof(ends)) == 0
+		    && viewer.join.remote_length == cases[pass].expected_length
+		    && memcmp(remote, cases[pass].expected,
+		    cases[pass].expected_length) == 0
+		    && fixture.cycle.mines.complete
+		    && fixture.cycle.mines.route == YT_DROP_MINES_ACCEPTED
+		    && fixture.cycle.mines.suppression_set
+		    && fixture.cycle.suppressed
+		    && fixture.cycle.suppression_calls == 1U
+		    && fixture.cycle.player_written
+		    && fixture.cycle.sector_written
+		    && fixture.cycle.flush_count == 2U
+		    && fixture.cycle.written_player.mines == 3.0f
+		    && fixture.cycle.written_sector.mines == 5.0f
+		    && fixture.cycle.sound_calls == 1U
+		    && fixture.draw_position == 6U
+		    && fixture.current_reads == 0U
+		    && fixture.player_reads == 0U
+		    && fixture.player_writes == 0U
+		    && fixture.sector_reads == 0U
+		    && fixture.sector_writes == 0U
+		    && fixture.sound_count == 0U
+		    && fixture.news_count == 0U
+		    && !fixture.shrink_called && !fixture.warp_called
+		    && fixture.emergency_player_reads == 1U
+		    && fixture.emergency_player_writes == 1U
+		    && fixture.emergency_flushes == 1U
+		    && fixture.emergency_waits == 1U
+		    && fixture.emergency_ticks == 1U
+		    && fixture.emergency_heat == 0.0f
+		    && fixture.emergency_destination == 1003.0f
+		    && fixture.emergency_cost == 3.0f
+		    && fixture.emergency_player.sector == 1003.0f
+		    && fixture.emergency_player.turns == 14.0f
+		    && !fixture.destroyed && fixture.destroyed_stores == 0U
+		    && strcmp(viewer.join.accumulator, "A") == 0
+		    && viewer.join.queue_length == 0U
+		    && viewer.join.local_fragment_length == 0U
+		    && viewer.join.local_row_count == 35U
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == UINT64_C(0x27a7ee15e38ad468)
+		    && viewer.join.local_color_count == cases[pass].local_colors
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == cases[pass].color_hash
+		    && viewer.join.presentation.foreground == 3.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold
+		    == (cases[pass].ansi ? 0.0f : 1.0f)
+		    && viewer.join.presentation.blink
+		    == (cases[pass].ansi ? 0.0f : 1.0f)
+		    && viewer.join.presentation.cached_foreground
+		    == (cases[pass].ansi ? 3.0f : 0.0f)
+		    && viewer.join.pager.foreground == 3
+		    && viewer.join.pager.line_count == 0.0f
+		    && viewer.join.event_count == 35U);
+		yt_text_input_destroy(&viewer.input);
+	}
+	CHECK(sizeof(plain) - 1U == 842U && sizeof(ansi) - 1U == 1289U);
 }
 
 struct main_genesis_cycle_fixture {
@@ -29929,6 +30165,7 @@ main(void)
 	test_hostile_mines_ordinary_return_cycles_presentation();
 	test_hostile_mines_admitted_hazard_cycle_presentation();
 	test_hostile_mines_emergency_warp_cycle_presentation();
+	test_hostile_mines_black_hole_cycle_presentation();
 	test_main_genesis_decline_cycle_presentation();
 	test_main_genesis_alternate_cycles_presentation();
 	test_main_genesis_handoff_cycle_presentation();
