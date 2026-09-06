@@ -151,42 +151,55 @@ duplicate_string(const char *source)
 }
 
 bool
-yt_names_load(const char *path, struct yt_name_file *names,
+yt_names_parse_input_groups(const uint8_t *data, size_t length,
+    struct yt_name_file *names, struct yt_name_input_observation *observation,
     struct yt_error *error)
 {
-	struct yt_text_file text;
 	size_t position = 0;
 
 	memset(names, 0, sizeof(*names));
-	if (!yt_text_read(path, &text, error))
+	if (observation != NULL)
+		memset(observation, 0, sizeof(*observation));
+	if (data == NULL && length != 0U) {
+		if (error != NULL)
+			error->status = YT_INVALID;
 		return false;
-	while (position < text.length) {
+	}
+	while (position < length) {
 		struct yt_name_row staged = {0};
 		struct yt_name_row *grown;
 		char **fields[4] = {&staged.real_first, &staged.real_last,
 		    &staged.alias_first, &staged.alias_last};
 		size_t field;
 
-		if (text.data[position] == 0x1a)
+		if (data[position] == 0x1a)
 			break;
 		for (field = 0; field < 4; ++field) {
 			size_t logical_length = position;
 
-			while (logical_length < text.length
-			    && text.data[logical_length] != 0x1a)
+			while (logical_length < length
+			    && data[logical_length] != 0x1a)
 				++logical_length;
-			if (!input_token(text.data, logical_length, &position,
+			if (!input_token(data, logical_length, &position,
 			    fields[field], error)) {
-				free_row(&staged);
-				yt_names_free(names);
-				yt_text_free(&text);
+				if (observation != NULL) {
+					observation->staged = staged;
+					observation->staged_count = field;
+					observation->cursor = position;
+				}
+				else
+					free_row(&staged);
 				return false;
 			}
 		}
 		if (names->count == SIZE_MAX / sizeof(*names->rows)) {
-			free_row(&staged);
-			yt_names_free(names);
-			yt_text_free(&text);
+			if (observation != NULL) {
+				observation->staged = staged;
+				observation->staged_count = 4U;
+				observation->cursor = position;
+			}
+			else
+				free_row(&staged);
 			if (error != NULL)
 				error->status = YT_NO_MEMORY;
 			return false;
@@ -194,9 +207,13 @@ yt_names_load(const char *path, struct yt_name_file *names,
 		grown = realloc(names->rows,
 		    (names->count + 1U) * sizeof(*names->rows));
 		if (grown == NULL) {
-			free_row(&staged);
-			yt_names_free(names);
-			yt_text_free(&text);
+			if (observation != NULL) {
+				observation->staged = staged;
+				observation->staged_count = 4U;
+				observation->cursor = position;
+			}
+			else
+				free_row(&staged);
 			if (error != NULL)
 				error->status = YT_NO_MEMORY;
 			return false;
@@ -205,8 +222,40 @@ yt_names_load(const char *path, struct yt_name_file *names,
 		names->rows[names->count] = staged;
 		++names->count;
 	}
-	yt_text_free(&text);
+	if (observation != NULL)
+		observation->cursor = position;
 	return true;
+}
+
+void
+yt_names_input_observation_free(
+    struct yt_name_input_observation *observation)
+{
+	if (observation == NULL)
+		return;
+	free_row(&observation->staged);
+	observation->staged_count = 0U;
+	observation->cursor = 0U;
+}
+
+bool
+yt_names_load(const char *path, struct yt_name_file *names,
+    struct yt_error *error)
+{
+	struct yt_text_file text;
+	struct yt_name_input_observation observation;
+	bool result;
+
+	memset(names, 0, sizeof(*names));
+	if (!yt_text_read(path, &text, error))
+		return false;
+	result = yt_names_parse_input_groups(text.data, text.length, names,
+	    &observation, error);
+	yt_text_free(&text);
+	yt_names_input_observation_free(&observation);
+	if (!result)
+		yt_names_free(names);
+	return result;
 }
 
 void
