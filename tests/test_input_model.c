@@ -1806,6 +1806,129 @@ test_repeat_transform(void)
 }
 
 static void
+test_semicolon_stages(void)
+{
+	struct yt_semicolon_transform result;
+	struct input_process_tape tape;
+	char text[32];
+	char queue[32];
+	size_t position;
+	size_t length;
+
+	memset(&tape, 0, sizeof(tape));
+	memcpy(text, "A;B;C", 6U);
+	memcpy(queue, "XY", 3U);
+	position = 1U;
+	length = 2U;
+	CHECK(!yt_input_split_semicolon_staged(text, sizeof(text), queue,
+	    sizeof(queue), &position, &length,
+	    YT_BASIC_FAULT_ADE0_SEMICOLON_TAIL_MID_SPACE, 1U, &result,
+	    input_process_store, &tape));
+	CHECK(result.fault_valid
+	    && result.fault_site == YT_BASIC_FAULT_ADE0_SEMICOLON_TAIL_MID_SPACE
+	    && result.semicolon_position == 2U
+	    && result.pending_role == YT_SEMICOLON_PENDING_NONE
+	    && strcmp(text, "A;B;C") == 0 && strcmp(queue, "XY") == 0
+	    && position == 1U && length == 2U && tape.count == 1U
+	    && tape.address[0] == 0x51C4U);
+
+	memset(&tape, 0, sizeof(tape));
+	memcpy(text, "A;B;C", 6U);
+	memcpy(queue, "XY", 3U);
+	position = 1U;
+	length = 2U;
+	CHECK(!yt_input_split_semicolon_staged(text, sizeof(text), queue,
+	    sizeof(queue), &position, &length,
+	    YT_BASIC_FAULT_ADE0_SEMICOLON_QUEUE_CONCAT_SPACE, 1U, &result,
+	    input_process_store, &tape));
+	CHECK(result.fault_valid
+	    && result.fault_site
+	    == YT_BASIC_FAULT_ADE0_SEMICOLON_QUEUE_CONCAT_SPACE
+	    && result.pending_role == YT_SEMICOLON_PENDING_TAIL
+	    && result.pending_length == 3U
+	    && strcmp(result.pending_string, "B;C") == 0
+	    && strcmp(text, "A;B;C") == 0 && strcmp(queue, "XY") == 0
+	    && position == 1U && length == 2U);
+
+	memset(&tape, 0, sizeof(tape));
+	memcpy(text, "A;B;C", 6U);
+	memcpy(queue, "XY", 3U);
+	position = 1U;
+	length = 2U;
+	CHECK(!yt_input_split_semicolon_staged(text, sizeof(text), queue,
+	    sizeof(queue), &position, &length,
+	    YT_BASIC_FAULT_ADE0_SEMICOLON_PREFIX_LEFT_SPACE, 1U, &result,
+	    input_process_store, &tape));
+	CHECK(result.fault_valid
+	    && result.fault_site
+	    == YT_BASIC_FAULT_ADE0_SEMICOLON_PREFIX_LEFT_SPACE
+	    && result.pending_role == YT_SEMICOLON_PENDING_NONE
+	    && strcmp(text, "A;B;C") == 0 && strcmp(queue, "B;CY") == 0
+	    && position == 0U && length == 4U);
+
+	memset(&tape, 0, sizeof(tape));
+	memcpy(text, "A;B;C", 6U);
+	memcpy(queue, "XY", 3U);
+	position = 1U;
+	length = 2U;
+	CHECK(!yt_input_split_semicolon_staged(text, sizeof(text), queue,
+	    sizeof(queue), &position, &length,
+	    YT_BASIC_FAULT_ADE0_SEMICOLON_REPLACEMENT_CHR_SPACE, 1U, &result,
+	    input_process_store, &tape));
+	CHECK(result.fault_valid
+	    && result.fault_site
+	    == YT_BASIC_FAULT_ADE0_SEMICOLON_REPLACEMENT_CHR_SPACE
+	    && result.replacements == 0U && strcmp(text, "A") == 0
+	    && strcmp(queue, "B;CY") == 0 && position == 0U && length == 4U);
+
+	memset(&tape, 0, sizeof(tape));
+	memcpy(text, "A;B;C", 6U);
+	memcpy(queue, "XY", 3U);
+	position = 1U;
+	length = 2U;
+	CHECK(!yt_input_split_semicolon_staged(text, sizeof(text), queue,
+	    sizeof(queue), &position, &length,
+	    YT_BASIC_FAULT_ADE0_SEMICOLON_FINAL_CR_SPACE, 1U, &result,
+	    input_process_store, &tape));
+	CHECK(result.fault_valid
+	    && result.fault_site == YT_BASIC_FAULT_ADE0_SEMICOLON_FINAL_CR_SPACE
+	    && result.replacements == 1U && strcmp(text, "A") == 0
+	    && memcmp(queue, "B\rCY", 5U) == 0 && length == 4U
+	    && result.pending_role == YT_SEMICOLON_PENDING_NONE);
+
+	memset(&tape, 0, sizeof(tape));
+	memcpy(text, "A;B;C", 6U);
+	memcpy(queue, "XY", 3U);
+	position = 1U;
+	length = 2U;
+	CHECK(!yt_input_split_semicolon_staged(text, sizeof(text), queue,
+	    sizeof(queue), &position, &length,
+	    YT_BASIC_FAULT_ADE0_SEMICOLON_FINAL_CONCAT_SPACE, 1U, &result,
+	    input_process_store, &tape));
+	CHECK(result.fault_valid
+	    && result.fault_site
+	    == YT_BASIC_FAULT_ADE0_SEMICOLON_FINAL_CONCAT_SPACE
+	    && result.replacements == 1U && strcmp(text, "A") == 0
+	    && memcmp(queue, "B\rCY", 5U) == 0 && length == 4U
+	    && result.pending_role == YT_SEMICOLON_PENDING_FINAL_CR
+	    && result.pending_length == 1U && result.pending_string[0] == '\r');
+
+	memset(&tape, 0, sizeof(tape));
+	memcpy(text, "A;B;C", 6U);
+	memcpy(queue, "XY", 3U);
+	position = 1U;
+	length = 2U;
+	CHECK(yt_input_split_semicolon_staged(text, sizeof(text), queue,
+	    sizeof(queue), &position, &length, YT_BASIC_FAULT_SITE_COUNT, 1U,
+	    &result, input_process_store, &tape));
+	CHECK(!result.fault_valid && result.fault_site == YT_BASIC_FAULT_SITE_COUNT
+	    && result.replacements == 1U && strcmp(text, "A") == 0
+	    && memcmp(queue, "B\rCY\r", 6U) == 0
+	    && position == 0U && length == 5U
+	    && result.pending_role == YT_SEMICOLON_PENDING_NONE);
+}
+
+static void
 test_semicolon_queue(void)
 {
 	struct input_process_tape tape;
@@ -4381,6 +4504,7 @@ main(void)
 	test_repeat_parse_stages();
 	test_repeat_build_stages();
 	test_repeat_transform();
+	test_semicolon_stages();
 	test_semicolon_queue();
 	test_queue_program_prepend();
 	test_timed_wait();

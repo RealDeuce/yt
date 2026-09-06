@@ -1149,41 +1149,143 @@ yt_input_split_semicolon_observed(char *text, char *queue,
     size_t queue_capacity, size_t *queue_position, size_t *queue_length,
     yt_input_process_store_fn store, void *context)
 {
-	char pending_bytes[YT_INPUT_PENDING];
-	char *semicolon;
-	size_t remainder_length;
-	size_t pending_length;
-	size_t index;
+	struct yt_semicolon_transform result;
+	size_t text_length;
 
-	if (text == NULL || queue == NULL || queue_position == NULL
-	    || queue_length == NULL || *queue_length < *queue_position)
+	if (text == NULL)
 		return false;
-	semicolon = strchr(text, ';');
+	text_length = strlen(text);
+	return yt_input_split_semicolon_staged(text, text_length + 1U,
+	    queue, queue_capacity, queue_position, queue_length,
+	    YT_BASIC_FAULT_SITE_COUNT, 1U, &result, store, context);
+}
+
+static bool
+semicolon_target(enum yt_basic_fault_site target)
+{
+	return target == YT_BASIC_FAULT_ADE0_SEMICOLON_TAIL_MID_SPACE
+	    || target == YT_BASIC_FAULT_ADE0_SEMICOLON_QUEUE_CONCAT_SPACE
+	    || target == YT_BASIC_FAULT_ADE0_SEMICOLON_PREFIX_LEFT_SPACE
+	    || target == YT_BASIC_FAULT_ADE0_SEMICOLON_REPLACEMENT_CHR_SPACE
+	    || target == YT_BASIC_FAULT_ADE0_SEMICOLON_FINAL_CR_SPACE
+	    || target == YT_BASIC_FAULT_ADE0_SEMICOLON_FINAL_CONCAT_SPACE;
+}
+
+static bool
+semicolon_fault(struct yt_semicolon_transform *result,
+    enum yt_basic_fault_site site)
+{
+	result->fault_site = site;
+	result->fault_valid = true;
+	return false;
+}
+
+bool
+yt_input_split_semicolon_staged(char *text, size_t text_capacity,
+    char *queue, size_t queue_capacity, size_t *queue_position,
+    size_t *queue_length, enum yt_basic_fault_site target,
+    size_t occurrence, struct yt_semicolon_transform *result,
+    yt_input_process_store_fn store, void *context)
+{
+	char old_queue[YT_INPUT_PENDING];
+	char *semicolon;
+	char *replacement;
+	size_t text_length;
+	size_t tail_length;
+	size_t old_length;
+	size_t combined_length;
+	size_t prefix_length;
+
+	if (text == NULL || text_capacity == 0U || queue == NULL
+	    || queue_capacity == 0U || queue_position == NULL
+	    || queue_length == NULL || result == NULL || occurrence == 0U
+	    || *queue_length < *queue_position
+	    || *queue_length >= queue_capacity
+	    || (target != YT_BASIC_FAULT_SITE_COUNT && !semicolon_target(target))
+	    || (target != YT_BASIC_FAULT_SITE_COUNT
+	    && target != YT_BASIC_FAULT_ADE0_SEMICOLON_REPLACEMENT_CHR_SPACE
+	    && occurrence != 1U)
+	    || !bounded_string_length(text, text_capacity, &text_length))
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->fault_site = YT_BASIC_FAULT_SITE_COUNT;
+	semicolon = memchr(text, ';', text_length);
+	result->semicolon_position = semicolon == NULL ? 0U
+	    : (size_t)(semicolon - text) + 1U;
 	if (!input_process_store_single(store, context, 0x51C4U,
-	    semicolon == NULL ? 0.0f : (float)(semicolon - text + 1)))
+	    (float)result->semicolon_position))
 		return false;
 	if (semicolon == NULL)
-		return true;
-	remainder_length = strlen(semicolon + 1U);
-	pending_length = *queue_length - *queue_position;
-	if (pending_length > sizeof(pending_bytes)
-	    || remainder_length + pending_length + 1U >= queue_capacity)
-		return false;
-	if (pending_length != 0)
-		memcpy(pending_bytes, queue + *queue_position, pending_length);
-	for (index = 0; index < remainder_length; ++index) {
-		char byte = semicolon[index + 1U];
-
-		queue[index] = byte == ';' ? '\r' : byte;
+		return target == YT_BASIC_FAULT_SITE_COUNT;
+	tail_length = text_length - result->semicolon_position;
+	old_length = *queue_length - *queue_position;
+	if (target == YT_BASIC_FAULT_ADE0_SEMICOLON_TAIL_MID_SPACE) {
+		if (tail_length == 0U)
+			return false;
+		return semicolon_fault(result, target);
 	}
-	if (pending_length != 0)
-		memcpy(queue + remainder_length, pending_bytes, pending_length);
-	queue[remainder_length + pending_length] = '\r';
-	queue[remainder_length + pending_length + 1U] = '\0';
-	*queue_position = 0;
-	*queue_length = remainder_length + pending_length + 1U;
-	*semicolon = '\0';
-	return true;
+	if (tail_length >= sizeof(result->pending_string))
+		return false;
+	memcpy(result->pending_string, semicolon + 1U, tail_length);
+	result->pending_string[tail_length] = '\0';
+	result->pending_length = tail_length;
+	result->pending_role = YT_SEMICOLON_PENDING_TAIL;
+	combined_length = tail_length + old_length;
+	if (target == YT_BASIC_FAULT_ADE0_SEMICOLON_QUEUE_CONCAT_SPACE) {
+		if (combined_length == 0U)
+			return false;
+		return semicolon_fault(result, target);
+	}
+	if (old_length > sizeof(old_queue) || combined_length >= queue_capacity)
+		return false;
+	if (old_length != 0U)
+		memcpy(old_queue, queue + *queue_position, old_length);
+	if (tail_length != 0U)
+		memcpy(queue, result->pending_string, tail_length);
+	if (old_length != 0U)
+		memcpy(queue + tail_length, old_queue, old_length);
+	queue[combined_length] = '\0';
+	*queue_position = 0U;
+	*queue_length = combined_length;
+	result->pending_string[0] = '\0';
+	result->pending_length = 0U;
+	result->pending_role = YT_SEMICOLON_PENDING_NONE;
+	prefix_length = result->semicolon_position - 1U;
+	if (target == YT_BASIC_FAULT_ADE0_SEMICOLON_PREFIX_LEFT_SPACE) {
+		if (prefix_length == 0U)
+			return false;
+		return semicolon_fault(result, target);
+	}
+	text[prefix_length] = '\0';
+	for (;;) {
+		replacement = memchr(queue, ';', *queue_length);
+		if (replacement == NULL)
+			break;
+		if (target == YT_BASIC_FAULT_ADE0_SEMICOLON_REPLACEMENT_CHR_SPACE
+		    && occurrence == result->replacements + 1U)
+			return semicolon_fault(result, target);
+		*replacement = '\r';
+		++result->replacements;
+	}
+	if (target == YT_BASIC_FAULT_ADE0_SEMICOLON_REPLACEMENT_CHR_SPACE)
+		return false;
+	if (target == YT_BASIC_FAULT_ADE0_SEMICOLON_FINAL_CR_SPACE)
+		return semicolon_fault(result, target);
+	result->pending_string[0] = '\r';
+	result->pending_string[1] = '\0';
+	result->pending_length = 1U;
+	result->pending_role = YT_SEMICOLON_PENDING_FINAL_CR;
+	if (target == YT_BASIC_FAULT_ADE0_SEMICOLON_FINAL_CONCAT_SPACE)
+		return semicolon_fault(result, target);
+	if (*queue_length + 1U >= queue_capacity)
+		return false;
+	queue[*queue_length] = '\r';
+	++*queue_length;
+	queue[*queue_length] = '\0';
+	result->pending_string[0] = '\0';
+	result->pending_length = 0U;
+	result->pending_role = YT_SEMICOLON_PENDING_NONE;
+	return target == YT_BASIC_FAULT_SITE_COUNT;
 }
 
 bool

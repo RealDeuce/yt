@@ -134,6 +134,22 @@ struct yt_repeat_build_transform {
 	bool fault_valid;
 };
 
+enum yt_semicolon_pending_role {
+	YT_SEMICOLON_PENDING_NONE,
+	YT_SEMICOLON_PENDING_TAIL,
+	YT_SEMICOLON_PENDING_FINAL_CR,
+};
+
+struct yt_semicolon_transform {
+	char pending_string[YT_INPUT_PENDING];
+	size_t pending_length;
+	size_t semicolon_position;
+	size_t replacements;
+	enum yt_semicolon_pending_role pending_role;
+	enum yt_basic_fault_site fault_site;
+	bool fault_valid;
+};
+
 enum yt_yes_no_answer {
 	YT_YES_NO_EMPTY,
 	YT_YES_NO_YES,
@@ -455,6 +471,11 @@ bool yt_input_split_semicolon(char *text, char *queue, size_t queue_capacity,
 bool yt_input_split_semicolon_observed(char *text, char *queue,
     size_t queue_capacity, size_t *queue_position, size_t *queue_length,
     yt_input_process_store_fn store, void *context);
+bool yt_input_split_semicolon_staged(char *text, size_t text_capacity,
+	char *queue, size_t queue_capacity, size_t *queue_position,
+	size_t *queue_length, enum yt_basic_fault_site target,
+	size_t occurrence, struct yt_semicolon_transform *result,
+	yt_input_process_store_fn store, void *context);
 bool yt_input_yes_no_candidate(const char *command_accumulator,
     char *output_source, size_t output_source_capacity,
     enum yt_yes_no_answer *answer);
