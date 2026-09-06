@@ -19353,6 +19353,13 @@ test_planet_thrusters_accepted_cycle_presentation(void)
 
 struct main_buy_cycle_fixture {
 	struct physical_viewer_join *viewer;
+	const uint8_t *entered_name;
+	size_t entered_name_length;
+	const uint8_t *confirmation;
+	size_t confirmation_length;
+	size_t name_write_count;
+	struct yt_record written_name_record;
+	bool name_write_is_accept_event;
 	struct yt_player buyer_entry;
 	struct yt_player fresh_buyer;
 	struct yt_player seller;
@@ -19426,16 +19433,15 @@ static bool
 main_buy_name_edit(void *context, uint8_t *response, size_t capacity,
     size_t *length, struct yt_error *error)
 {
-	static const uint8_t entered[] = "Nova";
 	struct main_buy_cycle_fixture *fixture = context;
 
 	(void)error;
-	if (capacity < sizeof(entered) || length == NULL
-	    || !main_buy_present_answer(fixture, entered,
-	    sizeof(entered) - 1U))
+	if (capacity < fixture->entered_name_length || length == NULL
+	    || !main_buy_present_answer(fixture, fixture->entered_name,
+	    fixture->entered_name_length))
 		return false;
-	memcpy(response, entered, sizeof(entered) - 1U);
-	*length = sizeof(entered) - 1U;
+	memcpy(response, fixture->entered_name, fixture->entered_name_length);
+	*length = fixture->entered_name_length;
 	return true;
 }
 
@@ -19452,7 +19458,6 @@ static bool
 main_buy_name_confirm(void *context, const uint8_t *prompt, size_t length,
     bool *accepted, struct yt_error *error)
 {
-	static const uint8_t yes[] = "Y";
 	struct main_buy_cycle_fixture *fixture = context;
 	struct viewer_pager_join *join = &fixture->viewer->join;
 	struct yt_present_result result;
@@ -19462,7 +19467,8 @@ main_buy_name_confirm(void *context, const uint8_t *prompt, size_t length,
 	    &join->presentation, &result) != YT_PRESENT_OK)
 		return false;
 	viewer_pager_capture_result(join, &result);
-	if (!main_buy_present_answer(fixture, yes, sizeof(yes) - 1U))
+	if (!main_buy_present_answer(fixture, fixture->confirmation,
+	    fixture->confirmation_length))
 		return false;
 	*accepted = true;
 	return true;
@@ -19477,7 +19483,10 @@ main_buy_name_write(void *context, int logical_port,
 	(void)error;
 	if (logical_port != 3 || record == NULL)
 		return false;
-	fixture->accept_events[fixture->accept_event_count++] = 6U;
+	fixture->written_name_record = *record;
+	++fixture->name_write_count;
+	if (fixture->name_write_is_accept_event)
+		fixture->accept_events[fixture->accept_event_count++] = 6U;
 	return true;
 }
 
@@ -19899,8 +19908,16 @@ static void
 main_buy_cycle_fixture_initialize(struct main_buy_cycle_fixture *fixture,
     struct physical_viewer_join *viewer)
 {
+	static const uint8_t entered[] = "Nova";
+	static const uint8_t confirmation[] = "Y";
+
 	memset(fixture, 0, sizeof(*fixture));
 	fixture->viewer = viewer;
+	fixture->entered_name = entered;
+	fixture->entered_name_length = sizeof(entered) - 1U;
+	fixture->confirmation = confirmation;
+	fixture->confirmation_length = sizeof(confirmation) - 1U;
+	fixture->name_write_is_accept_event = true;
 	memcpy(fixture->buyer_entry.record.bytes, "Pat", 3U);
 	fixture->buyer_entry.name_length = 3.0f;
 	fixture->buyer_entry.credits = 1000.0f;
@@ -20020,7 +20037,8 @@ test_main_buy_cycle_presentation(void)
 		    && fixture.purchase.accepted.complete);
 		CHECK(fixture.accept_event_count == YT_ARRAY_LEN(accept_events)
 		    && memcmp(fixture.accept_events, accept_events,
-		    sizeof(accept_events)) == 0);
+		    sizeof(accept_events)) == 0
+		    && fixture.name_write_count == 1U);
 		CHECK(fixture.written_seller.credits == 24.0f
 		    && fixture.written_seller.ports_owned == 2.0f
 		    && fixture.written_buyer.credits == 990.0f
@@ -20054,6 +20072,293 @@ test_main_buy_cycle_presentation(void)
 		yt_text_input_destroy(&viewer.input);
 	}
 	CHECK(sizeof(plain) - 1U == 983U && sizeof(ansi) - 1U == 1091U);
+}
+
+struct main_rename_cycle_fixture {
+	struct main_buy_cycle_fixture presentation;
+	struct yt_player player;
+	struct yt_sector sector;
+	struct yt_port port;
+	struct yt_port_rename_state rename;
+	struct yt_port_rename_cycle_state cycle;
+};
+
+static bool
+main_rename_hydrate(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct main_rename_cycle_fixture *fixture = context;
+
+	(void)error;
+	if (player_record != 2 || player == NULL)
+		return false;
+	*player = fixture->player;
+	return true;
+}
+
+static bool
+main_rename_read_sector(void *context, int sector_number,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct main_rename_cycle_fixture *fixture = context;
+
+	(void)error;
+	if (sector_number != 9 || sector == NULL)
+		return false;
+	*sector = fixture->sector;
+	return true;
+}
+
+static bool
+main_rename_read_port(void *context, int logical_port,
+    struct yt_port *port, struct yt_error *error)
+{
+	struct main_rename_cycle_fixture *fixture = context;
+
+	(void)error;
+	if (logical_port != 3 || port == NULL)
+		return false;
+	*port = fixture->port;
+	return true;
+}
+
+static bool
+main_rename_present(void *context, const uint8_t *text, size_t length,
+    enum yt_port_rename_output_kind kind, struct yt_error *error)
+{
+	struct main_rename_cycle_fixture *fixture = context;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
+
+	(void)error;
+	if (kind != YT_PORT_RENAME_NO_PORT
+	    && kind != YT_PORT_RENAME_NOT_OWNER
+	    && kind != YT_PORT_RENAME_EARTH)
+		return false;
+	join->presentation.bold = 1.0f;
+	join->presentation.blink = 1.0f;
+	return normal_exit_line(join, NULL, 0U)
+	    && normal_exit_b05d(join, text, length, 0.0f);
+}
+
+static bool
+main_rename_edit(void *context, int logical_port, const uint8_t *cached,
+    size_t cached_length, struct yt_port *port, struct yt_error *error)
+{
+	static const uint8_t old_name[] = "Old Port";
+	struct main_rename_cycle_fixture *fixture = context;
+	struct yt_port_name_editor_state state = {
+		.cached = cached,
+		.cached_length = cached_length,
+		.logical_port = logical_port,
+		.port = port,
+	};
+
+	if (logical_port != 3 || cached_length != sizeof(old_name) - 1U
+	    || memcmp(cached, old_name, sizeof(old_name) - 1U) != 0
+	    || !yt_port_name_editor_run(&state, &main_buy_name_ops,
+	    &fixture->presentation, error))
+		return false;
+	fixture->port = *port;
+	return true;
+}
+
+static const struct yt_port_rename_ops main_rename_ops = {
+	main_rename_hydrate,
+	main_rename_read_sector,
+	main_rename_read_port,
+	main_rename_present,
+	main_rename_edit,
+};
+
+static bool
+main_rename_cycle_rename(void *context, struct yt_error *error)
+{
+	static const uint8_t main_prompt[] =
+	    "Time: 14:59  Main Command (?=Help)? ";
+	static const uint8_t command[] = "nTrailing";
+	struct main_rename_cycle_fixture *fixture = context;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
+
+	join->presentation.foreground = 2.0f;
+	join->pager.foreground = 2;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, main_prompt,
+	    sizeof(main_prompt) - 1U, 1.0f))
+		return false;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	if (!main_buy_present_echo(&fixture->presentation, command,
+	    sizeof(command) - 1U) || !normal_exit_line(join, NULL, 0U))
+		return false;
+	fixture->rename = (struct yt_port_rename_state){
+		.current_player_record = 2.0f,
+		.port_offset = 2055.0f,
+		.conversion_mode = 4U,
+	};
+	return yt_port_rename_run(&fixture->rename, &main_rename_ops, fixture,
+	    error);
+}
+
+static bool
+main_rename_cycle_scanner(void *context, struct yt_error *error)
+{
+	struct main_rename_cycle_fixture *fixture = context;
+
+	return main_buy_cycle_scanner(&fixture->presentation, error);
+}
+
+static const struct yt_port_rename_cycle_ops main_rename_cycle_ops = {
+	main_rename_cycle_rename,
+	main_rename_cycle_scanner,
+};
+
+static void
+main_rename_cycle_fixture_initialize(struct main_rename_cycle_fixture *fixture,
+    struct physical_viewer_join *viewer)
+{
+	static const uint8_t entered[] = "nova";
+	static const uint8_t confirmation[] = "y";
+
+	memset(fixture, 0, sizeof(*fixture));
+	fixture->presentation.viewer = viewer;
+	fixture->presentation.entered_name = entered;
+	fixture->presentation.entered_name_length = sizeof(entered) - 1U;
+	fixture->presentation.confirmation = confirmation;
+	fixture->presentation.confirmation_length =
+	    sizeof(confirmation) - 1U;
+	fixture->player.sector = 9.0f;
+	fixture->sector.port = 3.0f;
+	(void)yt_record_set_number(&fixture->sector.record, YT_F65, 3.0f);
+	memcpy(fixture->port.record.bytes, "Old Port", 8U);
+	fixture->port.owner = 2.0f;
+	fixture->port.name_length = 8.0f;
+	(void)yt_record_set_number(&fixture->port.record, YT_F85, 8.0f);
+	(void)yt_record_set_number(&fixture->port.record, YT_F97, 2.0f);
+}
+
+static bool
+main_rename_cycle_run(struct main_rename_cycle_fixture *fixture, bool ansi,
+    size_t ends[5])
+{
+	static const uint8_t main_prompt[] =
+	    "Time: 14:59  Main Command (?=Help)? ";
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
+
+	join->presentation = state(ansi);
+	join->presentation.foreground = 6.0f;
+	join->presentation.color_initialized = 1.0f;
+	join->presentation.cached_foreground = 6.0f;
+	join->pager.foreground = 6;
+	join->pager.line_count = 8.0f;
+	if (!yt_port_rename_cycle_run(&fixture->cycle, &main_rename_cycle_ops,
+	    fixture, NULL))
+		return false;
+	ends[0] = ansi ? 59U : 49U;
+	ends[1] = ends[0];
+	ends[2] = join->remote_length - 41U;
+	ends[3] = join->remote_length;
+	join->presentation.foreground = 2.0f;
+	join->pager.foreground = 2;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, main_prompt,
+	    sizeof(main_prompt) - 1U, 1.0f))
+		return false;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	ends[4] = join->remote_length;
+	return true;
+}
+
+static void
+test_main_rename_cycle_presentation(void)
+{
+	static const uint8_t plain[] =
+	    "\r\nTime: 14:59  Main Command (?=Help)? nTrailing\r\n"
+	    "\r\nThis port is called: \"Old Port\".\n\r"
+	    "\r\nPress [ENTER] to keep same name.\n\r"
+	    "\r\nPlease enter a NAME for your port.\n\r"
+	    "\r\n-=> nova\r\n"
+	    "\r\n\"Nova\" Is this OK? [y/N]y\r\n"
+	    "\r\nSector: 9\r\nWarps lead to: 1\r\n"
+	    "\r\nTime: 14:59  Main Command (?=Help)? ";
+	static const uint8_t ansi[] =
+	    "\x1b[0;32;40m\r\n"
+	    "Time: 14:59  Main Command (?=Help)? nTrailing\r\n"
+	    "\r\nThis port is called: \"Old Port\".\n\r"
+	    "\r\nPress [ENTER] to keep same name.\n\r"
+	    "\r\nPlease enter a NAME for your port.\n\r"
+	    "\r\n-=> nova\r\n"
+	    "\r\n\"Nova\" Is this OK? [y/N]y\r\n"
+	    "\x1b[0;31;40m\r\nSector: 9\r\nWarps lead to: 1\r\n"
+	    "\x1b[0;32;40m\r\nTime: 14:59  Main Command (?=Help)? ";
+	static const struct {
+		bool ansi;
+		const uint8_t *expected;
+		size_t expected_length;
+		size_t ends[5];
+		size_t local_colors;
+		uint64_t color_hash;
+	} cases[] = {
+		{false, plain, sizeof(plain) - 1U,
+		    {49U, 49U, 190U, 231U, 269U}, 6U,
+		    UINT64_C(0x17798e683d05096d)},
+		{true, ansi, sizeof(ansi) - 1U,
+		    {59U, 59U, 210U, 251U, 299U}, 26U,
+		    UINT64_C(0x6c9fcce24acbbd3d)},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct main_rename_cycle_fixture fixture;
+	uint8_t remote[350];
+	size_t ends[5];
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
+		main_rename_cycle_fixture_initialize(&fixture, &viewer);
+		CHECK(main_rename_cycle_run(&fixture, cases[pass].ansi, ends));
+		CHECK(memcmp(ends, cases[pass].ends, sizeof(ends)) == 0
+		    && viewer.join.remote_length == cases[pass].expected_length
+		    && memcmp(remote, cases[pass].expected,
+		    cases[pass].expected_length) == 0);
+		CHECK(fixture.cycle.complete && fixture.cycle.rename_complete
+		    && fixture.cycle.scanner_complete && fixture.rename.complete
+		    && fixture.rename.route == YT_PORT_RENAME_EDITED_ROUTE
+		    && fixture.rename.logical_port == 3
+		    && fixture.rename.relative_port == 3.0f
+		    && fixture.rename.cached_name_length == 8U
+		    && memcmp(fixture.rename.cached_name, "Old Port", 8U) == 0);
+		CHECK(fixture.presentation.name_write_count == 1U
+		    && fixture.port.name_length == 4.0f
+		    && memcmp(fixture.port.record.bytes, "Nova", 4U) == 0
+		    && memcmp(fixture.presentation.written_name_record.bytes,
+		    fixture.port.record.bytes, YT_RECORD_SIZE) == 0);
+		CHECK(viewer.join.presentation.foreground == 2.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold == 0.0f
+		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.cached_foreground
+		    == (cases[pass].ansi ? 2.0f : 6.0f)
+		    && viewer.join.pager.foreground == 2
+		    && viewer.join.pager.line_count == 0.0f
+		    && viewer.join.pager.nonstop == 0.0f);
+		CHECK(viewer.join.local_fragment_length == 36U
+		    && memcmp(viewer.join.local_fragment,
+		    "Time: 14:59  Main Command (?=Help)? ", 36U) == 0
+		    && viewer.join.accumulator[0] == '\0'
+		    && viewer.join.queue_length == 0U);
+		CHECK(viewer.join.local_row_count == 16U
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == UINT64_C(0x9531ef8973cdc8e4)
+		    && viewer.join.local_color_count == cases[pass].local_colors
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == cases[pass].color_hash);
+		yt_text_input_destroy(&viewer.input);
+	}
+	CHECK(sizeof(plain) - 1U == 269U && sizeof(ansi) - 1U == 299U);
 }
 
 static bool
@@ -26545,6 +26850,7 @@ main(void)
 	test_planet_leave_cycle_presentation();
 	test_planet_thrusters_accepted_cycle_presentation();
 	test_main_buy_cycle_presentation();
+	test_main_rename_cycle_presentation();
 	test_main_movement_accepted_cycle_presentation();
 	test_main_attack_survivor_cycle_presentation();
 	test_main_attack_black_hole_cycle_presentation();
