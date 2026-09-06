@@ -27516,6 +27516,13 @@ struct direct_warp_attack_combat_join {
 	size_t tail_player_reads;
 	size_t spill_calls;
 	size_t spill_stores;
+	size_t spill_present_calls;
+	size_t fail_random_at;
+	size_t fail_spill_present_at;
+	size_t fail_persistence_player_read_at;
+	size_t fail_persistence_player_write_at;
+	size_t fail_persistence_sector_read_at;
+	size_t fail_persistence_sector_write_at;
 	bool (*fatal_handler)(void *context, struct yt_error *error);
 	void *fatal_handler_context;
 	bool allow_tail_player;
@@ -27666,6 +27673,8 @@ direct_warp_attack_combat_random(void *context, float *value,
 	struct direct_warp_attack_combat_join *join = context;
 
 	++join->random_calls;
+	if (join->random_calls == join->fail_random_at)
+		return false;
 	return hostile_mine_hazard_random(join->fixture, value, error);
 }
 
@@ -27919,6 +27928,9 @@ direct_warp_attack_spill_present(void *context, const uint8_t *text,
 
 	(void)kind;
 	(void)error;
+	++join->spill_present_calls;
+	if (join->spill_present_calls == join->fail_spill_present_at)
+		return false;
 	return normal_exit_line(viewer, text, length);
 }
 
@@ -27973,6 +27985,9 @@ direct_warp_attack_persistence_read_player(void *context, int player_record,
 	if (player_record != 2 || player == NULL)
 		return false;
 	++join->persistence_player_reads;
+	if (join->persistence_player_reads
+	    == join->fail_persistence_player_read_at)
+		return false;
 	if (join->persistence_player_reads == 1U)
 		*player = join->persistence_player;
 	else if (join->persistence_player_reads == 2U)
@@ -27995,6 +28010,9 @@ direct_warp_attack_persistence_write_player(void *context, int player_record,
 	if (player_record != 2 || player == NULL)
 		return false;
 	++join->persistence_player_writes;
+	if (join->persistence_player_writes
+	    == join->fail_persistence_player_write_at)
+		return false;
 	join->written_player = *player;
 	return true;
 }
@@ -28009,6 +28027,9 @@ direct_warp_attack_persistence_read_sector(void *context, int sector_number,
 	if (sector_number != 1003 || sector == NULL)
 		return false;
 	++join->persistence_sector_reads;
+	if (join->persistence_sector_reads
+	    == join->fail_persistence_sector_read_at)
+		return false;
 	*sector = join->persistence_sector;
 	join->cycle->final_field_record = 1054;
 	join->cycle->final_field_player = false;
@@ -28025,6 +28046,9 @@ direct_warp_attack_persistence_write_sector(void *context, int sector_number,
 	if (sector_number != 1003 || sector == NULL)
 		return false;
 	++join->persistence_sector_writes;
+	if (join->persistence_sector_writes
+	    == join->fail_persistence_sector_write_at)
+		return false;
 	join->written_sector = *sector;
 	return true;
 }
@@ -35190,6 +35214,270 @@ test_direct_emergency_warp_hostile_attack_fatal_cycle(void)
 		    == callers[caller].local_color_hash
 		    && viewer.join.local_fragment_length == 0U);
 		yt_text_input_destroy(&viewer.input);
+	}
+}
+
+enum direct_warp_attack_fatal_prefix_cut {
+	DIRECT_WARP_ATTACK_FATAL_SPILL_RANDOM = 0,
+	DIRECT_WARP_ATTACK_FATAL_SPILL_FIGHTER_ROW,
+	DIRECT_WARP_ATTACK_FATAL_SPILL_SHIELD_ROW,
+	DIRECT_WARP_ATTACK_FATAL_PLAYER_GET,
+	DIRECT_WARP_ATTACK_FATAL_PLAYER_PUT,
+	DIRECT_WARP_ATTACK_FATAL_SECTOR_GET,
+	DIRECT_WARP_ATTACK_FATAL_SECTOR_PUT,
+};
+
+static bool
+direct_warp_attack_fatal_prefix_setup(struct physical_viewer_join *viewer,
+    struct yt_file_viewer_stream_state *stream,
+    struct hostile_mines_hazard_fixture *fixture,
+    struct direct_warp_main_cycle_state *cycle,
+    struct direct_warp_attack_combat_join *attack,
+    struct yt_hostile_attack_combat_state *combat, bool main, bool ansi,
+    const uint8_t *command, size_t command_length, uint8_t *remote,
+    size_t remote_capacity, size_t ends[3])
+{
+	static const uint8_t current_name[] = "STATIC PILOT";
+	struct yt_record record;
+
+	memset(viewer, 0, sizeof(*viewer));
+	fixture_viewer_initialize(viewer, stream, retained_scoreboard,
+	    sizeof(retained_scoreboard) - 1U, "YTSCORE.ASC", ansi, remote,
+	    remote_capacity);
+	viewer->join.presentation.sound.user_sound = 0.0f;
+	memset(fixture, 0, sizeof(*fixture));
+	fixture->cycle.presentation.viewer = viewer;
+	fixture->emergency_sector_cache = 733.0f;
+	fixture->draws[0] = 0.0f;
+	fixture->draws[1] = 0.0f;
+	fixture->draws[2] = 0.75f;
+	fixture->draws[3] = 0.5f;
+	fixture->draws[4] = 0.949999988079071f;
+	fixture->draws[5] = 0.999f;
+	fixture->draws[6] = 0.9f;
+	fixture->draws[7] = 0.0f;
+	fixture->draws[8] = 0.0f;
+	memset(&record, 0xa5, sizeof(record));
+	(void)yt_record_set_number(&record, YT_F49, 17.0f);
+	(void)yt_record_set_number(&record, YT_F57, 733.0f);
+	yt_player_decode(&fixture->emergency_player, &record);
+	fixture->hazard_player = fixture->emergency_player;
+	if (main) {
+		if (!direct_emergency_warp_main_hostile_handoff_run(fixture,
+		    ansi, cycle, ends))
+			return false;
+	} else if (!direct_emergency_warp_hostile_cycle_run(fixture, ansi,
+	    command, command_length, DIRECT_WARP_HOSTILE_DEFENSE, cycle, ends))
+		return false;
+	if (!direct_emergency_warp_fresh_hostile_menu_command(fixture, cycle,
+	    (const uint8_t *)"A", 1U, YT_HOSTILE_MENU_ATTACK, 1.0, 2.0)
+	    || !direct_emergency_warp_fresh_hostile_attack_admission(fixture,
+	    cycle))
+		return false;
+
+	memset(attack, 0, sizeof(*attack));
+	attack->fixture = fixture;
+	attack->cycle = cycle;
+	attack->current_sector_record = 1054.0f;
+	attack->sector_record_offset = 51.0f;
+	attack->allow_spill = true;
+	memset(&record, 0x3c, sizeof(record));
+	(void)yt_record_set_number(&record, YT_F81, 2.0f);
+	(void)yt_record_set_number(&record, YT_F85, 2.0f);
+	yt_sector_decode(&attack->entry_sector, &record);
+	memset(&record, 0xa5, sizeof(record));
+	yt_record_set_text(&record, current_name, sizeof(current_name) - 1U);
+	(void)yt_record_set_number(&record, YT_F49, 17.0f);
+	(void)yt_record_set_number(&record, YT_F53, 1.0f);
+	(void)yt_record_set_number(&record, YT_F57, 1003.0f);
+	(void)yt_record_set_number(&record, YT_F61, 1.0f);
+	(void)yt_record_set_number(&record, YT_F125, 0.0f);
+	yt_player_decode(&attack->attack_player, &record);
+	memset(&record, 0x5a, sizeof(record));
+	yt_record_set_text(&record, (const uint8_t *)"FRESH PLAYER", 12U);
+	(void)yt_record_set_number(&record, YT_F49, 17.0f);
+	(void)yt_record_set_number(&record, YT_F53, 9.0f);
+	(void)yt_record_set_number(&record, YT_F57, 1003.0f);
+	(void)yt_record_set_number(&record, YT_F61, 9.0f);
+	(void)yt_record_set_number(&record, YT_F117, 0.0f);
+	yt_player_decode(&attack->persistence_player, &record);
+	memset(&record, 0x96, sizeof(record));
+	(void)yt_record_set_number(&record, YT_F81, 2.0f);
+	(void)yt_record_set_number(&record, YT_F85, 2.0f);
+	yt_sector_decode(&attack->persistence_sector, &record);
+	*combat = (struct yt_hostile_attack_combat_state){
+		.current_player_record = 2,
+		.current_sector = 1003,
+		.commitment = 1.0,
+		.allow_surrender = false,
+		.cached_defenders = 2.0,
+		.sector = attack->entry_sector,
+		.cached_player_name = current_name,
+		.cached_player_name_length = sizeof(current_name) - 1U,
+		.real_first_name = (const uint8_t *)"Sysop",
+		.real_first_name_length = 5U,
+		.owner_label = (const uint8_t *)"Ordinary",
+		.owner_label_length = 8U,
+		.turns_per_day = 500.0f,
+		.headquarters = 1.0f,
+	};
+	return true;
+}
+
+static void
+test_direct_emergency_warp_hostile_attack_fatal_prefixes(void)
+{
+	static const struct {
+		bool main;
+		bool ansi;
+		const uint8_t *command;
+		size_t command_length;
+		size_t prefix_length;
+		size_t failure_rows;
+		size_t failure_colors;
+	} callers[] = {
+		{true, false, (const uint8_t *)"W", 1U, 912U, 39U, 11U},
+		{true, true, (const uint8_t *)"W", 1U, 1184U, 39U, 61U},
+		{false, false, (const uint8_t *)"W", 1U, 934U, 40U, 12U},
+		{false, false, (const uint8_t *)"WT", 2U, 935U, 40U, 12U},
+		{false, true, (const uint8_t *)"W", 1U, 1216U, 40U, 63U},
+		{false, true, (const uint8_t *)"WT", 2U, 1217U, 40U, 63U},
+	};
+	static const struct {
+		size_t length[2];
+		uint64_t hash[2];
+	} expected[] = {
+		{{107U, 131U}, {UINT64_C(0x2da512af1d09868e),
+		    UINT64_C(0x713c79d05e034b0c)}},
+		{{107U, 131U}, {UINT64_C(0x2da512af1d09868e),
+		    UINT64_C(0x713c79d05e034b0c)}},
+		{{130U, 154U}, {UINT64_C(0xa705852c4b3966d7),
+		    UINT64_C(0x7e96bb8d7e06b695)}},
+		{{153U, 177U}, {UINT64_C(0xa1b2a9d76fa1766b),
+		    UINT64_C(0x2a571177a3c3e6d9)}},
+		{{153U, 177U}, {UINT64_C(0xa1b2a9d76fa1766b),
+		    UINT64_C(0x2a571177a3c3e6d9)}},
+		{{153U, 177U}, {UINT64_C(0xa1b2a9d76fa1766b),
+		    UINT64_C(0x2a571177a3c3e6d9)}},
+		{{153U, 177U}, {UINT64_C(0xa1b2a9d76fa1766b),
+		    UINT64_C(0x2a571177a3c3e6d9)}},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	struct direct_warp_main_cycle_state cycle;
+	struct direct_warp_attack_combat_join attack;
+	struct yt_hostile_attack_combat_state combat;
+	struct yt_error error;
+	uint8_t remote[1800];
+	size_t ends[3];
+	size_t caller;
+	size_t cut;
+	size_t suffix_length;
+
+	for (caller = 0U; caller < YT_ARRAY_LEN(callers); ++caller) {
+		for (cut = DIRECT_WARP_ATTACK_FATAL_SPILL_RANDOM;
+		    cut <= DIRECT_WARP_ATTACK_FATAL_SECTOR_PUT; ++cut) {
+			CHECK(direct_warp_attack_fatal_prefix_setup(&viewer,
+			    &stream, &fixture, &cycle, &attack, &combat,
+			    callers[caller].main, callers[caller].ansi,
+			    callers[caller].command, callers[caller].command_length,
+			    remote, sizeof(remote), ends));
+			CHECK(viewer.join.remote_length
+			    == callers[caller].prefix_length);
+			switch ((enum direct_warp_attack_fatal_prefix_cut)cut) {
+			case DIRECT_WARP_ATTACK_FATAL_SPILL_RANDOM:
+				attack.fail_random_at = 2U;
+				break;
+			case DIRECT_WARP_ATTACK_FATAL_SPILL_FIGHTER_ROW:
+				attack.fail_spill_present_at = 1U;
+				break;
+			case DIRECT_WARP_ATTACK_FATAL_SPILL_SHIELD_ROW:
+				attack.fail_spill_present_at = 2U;
+				break;
+			case DIRECT_WARP_ATTACK_FATAL_PLAYER_GET:
+				attack.fail_persistence_player_read_at = 1U;
+				break;
+			case DIRECT_WARP_ATTACK_FATAL_PLAYER_PUT:
+				attack.fail_persistence_player_write_at = 1U;
+				break;
+			case DIRECT_WARP_ATTACK_FATAL_SECTOR_GET:
+				attack.fail_persistence_sector_read_at = 1U;
+				break;
+			case DIRECT_WARP_ATTACK_FATAL_SECTOR_PUT:
+				attack.fail_persistence_sector_write_at = 1U;
+				break;
+			}
+			yt_error_clear(&error);
+			CHECK(!yt_hostile_attack_combat_run(&combat,
+			    &direct_warp_attack_combat_ops, &attack, &error));
+			suffix_length = viewer.join.remote_length
+			    - callers[caller].prefix_length;
+			CHECK(suffix_length
+			    == expected[cut].length[callers[caller].ansi]
+			    && viewer_bytes_fnv1a64(
+			    remote + callers[caller].prefix_length, suffix_length)
+			    == expected[cut].hash[callers[caller].ansi]
+			    && viewer.join.local_row_count
+			    == callers[caller].failure_rows
+			    + (cut >= DIRECT_WARP_ATTACK_FATAL_SPILL_SHIELD_ROW ? 1U : 0U)
+			    + (cut >= DIRECT_WARP_ATTACK_FATAL_PLAYER_GET ? 1U : 0U)
+			    && viewer.join.local_color_count
+			    == callers[caller].failure_colors
+			    + (callers[caller].ansi
+			    && cut >= DIRECT_WARP_ATTACK_FATAL_SPILL_SHIELD_ROW ? 1U : 0U)
+			    + (callers[caller].ansi
+			    && cut >= DIRECT_WARP_ATTACK_FATAL_PLAYER_GET ? 1U : 0U));
+			CHECK(!combat.complete
+			    && combat.route == YT_HOSTILE_ATTACK_COMBAT_NORMAL
+			    && combat.attacker_loss == 1.0
+			    && combat.defender_loss == 0.0
+			    && combat.ship_fighters == 0.0
+			    && combat.deployed_remaining == 2.0
+			    && attack.spill_calls == 1U
+			    && !attack.unexpected_fatal
+			    && !attack.unexpected_tail_effect);
+			CHECK(attack.random_calls == 2U
+			    && attack.spill_stores
+			    == (cut == DIRECT_WARP_ATTACK_FATAL_SPILL_RANDOM
+			    ? 0U : 1U)
+			    && attack.spill_present_calls
+			    == (cut == DIRECT_WARP_ATTACK_FATAL_SPILL_RANDOM ? 0U
+			    : cut == DIRECT_WARP_ATTACK_FATAL_SPILL_FIGHTER_ROW
+			    ? 1U : 2U)
+			    && attack.spill.iterations
+			    == (cut == DIRECT_WARP_ATTACK_FATAL_SPILL_RANDOM ? 0U : 1U)
+			    && attack.spill.fighter_row_presented
+			    == (cut >= DIRECT_WARP_ATTACK_FATAL_SPILL_SHIELD_ROW)
+			    && attack.spill.shield_row_presented
+			    == (cut >= DIRECT_WARP_ATTACK_FATAL_PLAYER_GET)
+			    && attack.spill.complete
+			    == (cut >= DIRECT_WARP_ATTACK_FATAL_PLAYER_GET)
+			    && combat.spill_called
+			    == (cut >= DIRECT_WARP_ATTACK_FATAL_PLAYER_GET)
+			    && combat.current.shields
+			    == (cut == DIRECT_WARP_ATTACK_FATAL_SPILL_RANDOM ? 1.0f
+			    : 0.0f)
+			    && fixture.draw_position
+			    == (cut == DIRECT_WARP_ATTACK_FATAL_SPILL_RANDOM
+			    ? 8U : 9U));
+			CHECK(attack.persistence_player_reads
+			    == (cut >= DIRECT_WARP_ATTACK_FATAL_PLAYER_GET ? 1U : 0U)
+			    && attack.persistence_player_writes
+			    == (cut >= DIRECT_WARP_ATTACK_FATAL_PLAYER_PUT ? 1U : 0U)
+			    && attack.persistence_sector_reads
+			    == (cut >= DIRECT_WARP_ATTACK_FATAL_SECTOR_GET ? 1U : 0U)
+			    && attack.persistence_sector_writes
+			    == (cut >= DIRECT_WARP_ATTACK_FATAL_SECTOR_PUT ? 1U : 0U)
+			    && combat.persistence.player_written
+			    == (cut > DIRECT_WARP_ATTACK_FATAL_PLAYER_PUT)
+			    && !combat.persistence.sector_written);
+			if (cut >= DIRECT_WARP_ATTACK_FATAL_SECTOR_GET) {
+				CHECK(attack.written_player.fighters == 0.0f
+				    && attack.written_player.shields == 0.0f);
+			}
+			yt_text_input_destroy(&viewer.input);
+		}
 	}
 }
 
@@ -44586,6 +44874,7 @@ main(void)
 	test_hostile_bribe_immediate_fatal_cycle();
 	test_hostile_bribe_fatal_prefix_cuts();
 	test_direct_emergency_warp_hostile_attack_fatal_cycle();
+	test_direct_emergency_warp_hostile_attack_fatal_prefixes();
 	test_direct_emergency_warp_hostile_invalid_retry_cycle();
 	test_direct_emergency_warp_hostile_ordinary_returns();
 	test_direct_emergency_warp_queue_cycles();
