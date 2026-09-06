@@ -1599,70 +1599,213 @@ yt_radio_append_maintenance(const char *text, float sender, float recipient,
 }
 
 bool
-yt_radio_compact(struct yt_error *error)
+yt_radio_compact_run(struct yt_radio_compact_state *state,
+    const struct yt_radio_compact_ops *ops, void *context,
+    struct yt_error *error)
 {
-	struct yt_text_output temporary_output;
-	struct yt_radio_file destination;
-	struct yt_radio_file source;
 	struct yt_radio_record input;
 	struct yt_radio_record output;
-	uint64_t length;
-	uint64_t record_count;
 	uint32_t basic_record;
-	uint32_t retained_record = 0U;
-	size_t accepted;
-	bool result = false;
 
-	yt_text_output_init(&temporary_output);
-	yt_radio_file_init(&destination);
-	yt_radio_file_init(&source);
-	if (!yt_text_output_open(&temporary_output, "TEMP", error)
-	    || !yt_text_output_close(&temporary_output, error))
-		goto done;
-	yt_text_output_destroy(&temporary_output);
-	yt_text_output_init(&temporary_output);
-	if (!yt_file_kill("TEMP", NULL, error)
-	    || !yt_radio_file_open_text_width(&destination, "TEMP", 72U,
-	    error))
-		goto done;
-	if (!yt_radio_file_open_text_width(&source, "YTRMSG.DAT", 72U, error)
-	    || !yt_radio_file_size(&source, &length, error))
-		goto done;
-	record_count = length / YT_RADIO_RECORD_SIZE;
-	if (record_count > 0xFFFFFFU) {
-		set_error(error, YT_RANGE, "radio compaction bound",
-		    source.random.path);
-		goto done;
+	if (state == NULL || ops == NULL || ops->output_open == NULL
+	    || ops->output_close == NULL || ops->kill == NULL
+	    || ops->random_open == NULL || ops->size == NULL
+	    || ops->get == NULL || ops->put == NULL
+	    || ops->random_close == NULL || ops->rename == NULL) {
+		set_error(error, YT_INVALID, "radio compaction transaction", "");
+		return false;
 	}
-	for (basic_record = 1U; basic_record <= record_count; ++basic_record) {
-		if (!yt_radio_file_get(&source, basic_record, &input, &accepted,
-		    error))
-			goto done;
-		if (accepted != sizeof(input.bytes))
+	memset(state, 0, sizeof(*state));
+	state->attempted = YT_RADIO_COMPACT_OPEN_TEMP_OUTPUT;
+	if (!ops->output_open(context, "TEMP", error))
+		return false;
+	++state->completed_steps;
+	state->attempted = YT_RADIO_COMPACT_CLOSE_TEMP_OUTPUT;
+	if (!ops->output_close(context, error))
+		return false;
+	++state->completed_steps;
+	state->attempted = YT_RADIO_COMPACT_KILL_TEMP;
+	if (!ops->kill(context, "TEMP", error))
+		return false;
+	++state->completed_steps;
+	state->attempted = YT_RADIO_COMPACT_OPEN_TEMP_RANDOM;
+	if (!ops->random_open(context, YT_RADIO_COMPACT_DESTINATION, "TEMP",
+	    72U, error))
+		return false;
+	++state->completed_steps;
+	state->attempted = YT_RADIO_COMPACT_OPEN_SOURCE_RANDOM;
+	if (!ops->random_open(context, YT_RADIO_COMPACT_SOURCE,
+	    "YTRMSG.DAT", 72U, error))
+		return false;
+	++state->completed_steps;
+	state->attempted = YT_RADIO_COMPACT_SOURCE_LOF;
+	if (!ops->size(context, YT_RADIO_COMPACT_SOURCE,
+	    &state->source_length, error))
+		return false;
+	++state->completed_steps;
+	state->record_count = state->source_length / YT_RADIO_RECORD_SIZE;
+	if (state->record_count > 0xFFFFFFU) {
+		set_error(error, YT_RANGE, "radio compaction bound",
+		    "YTRMSG.DAT");
+		return false;
+	}
+	for (basic_record = 1U; basic_record <= state->record_count;
+	    ++basic_record) {
+		state->source_record = basic_record;
+		state->accepted = 0U;
+		state->attempted = YT_RADIO_COMPACT_SOURCE_GET;
+		if (!ops->get(context, YT_RADIO_COMPACT_SOURCE, basic_record,
+		    &input, &state->accepted, error))
+			return false;
+		++state->completed_steps;
+		++state->completed_gets;
+		if (state->accepted != sizeof(input.bytes))
 			break;
 		if (yt_radio_get_number(&input, 0) == 0.0f)
 			continue;
 		memset(&output, 0, sizeof(output));
 		memcpy(output.bytes, input.bytes, 12);
 		memcpy(output.bytes + 12, input.bytes + 12, 72);
-		++retained_record;
-		if (!yt_radio_file_put(&destination, retained_record, &output,
-		    error))
-			goto done;
+		++state->retained_record;
+		state->attempted = YT_RADIO_COMPACT_DESTINATION_PUT;
+		if (!ops->put(context, YT_RADIO_COMPACT_DESTINATION,
+		    state->retained_record, &output, error))
+			return false;
+		++state->completed_steps;
+		++state->completed_puts;
 	}
-	if (!yt_radio_file_close(&source, error))
-		goto done;
-	if (!yt_radio_file_close(&destination, error))
-		goto done;
-	if (!yt_file_kill("YTRMSG.DAT", NULL, error)
-	    || !yt_file_rename("TEMP", "YTRMSG.DAT", error))
-		goto done;
-	result = true;
+	state->attempted = YT_RADIO_COMPACT_CLOSE_SOURCE;
+	if (!ops->random_close(context, YT_RADIO_COMPACT_SOURCE, error))
+		return false;
+	++state->completed_steps;
+	state->attempted = YT_RADIO_COMPACT_CLOSE_DESTINATION;
+	if (!ops->random_close(context, YT_RADIO_COMPACT_DESTINATION, error))
+		return false;
+	++state->completed_steps;
+	state->attempted = YT_RADIO_COMPACT_KILL_SOURCE;
+	if (!ops->kill(context, "YTRMSG.DAT", error))
+		return false;
+	++state->completed_steps;
+	state->attempted = YT_RADIO_COMPACT_RENAME_TEMP;
+	if (!ops->rename(context, "TEMP", "YTRMSG.DAT", error))
+		return false;
+	++state->completed_steps;
+	state->complete = true;
+	return true;
+}
 
-done:
-	(void)yt_radio_file_close(&source, NULL);
-	(void)yt_radio_file_close(&destination, NULL);
-	yt_text_output_destroy(&temporary_output);
+struct radio_compact_context {
+	struct yt_text_output output;
+	struct yt_radio_file destination;
+	struct yt_radio_file source;
+};
+
+static struct yt_radio_file *
+radio_compact_file(struct radio_compact_context *compaction,
+    enum yt_radio_compact_file file)
+{
+	return file == YT_RADIO_COMPACT_SOURCE ? &compaction->source
+	    : &compaction->destination;
+}
+
+static bool
+radio_compact_output_open(void *context, const char *path,
+    struct yt_error *error)
+{
+	struct radio_compact_context *compaction = context;
+
+	return yt_text_output_open(&compaction->output, path, error);
+}
+
+static bool
+radio_compact_output_close(void *context, struct yt_error *error)
+{
+	struct radio_compact_context *compaction = context;
+
+	return yt_text_output_close(&compaction->output, error);
+}
+
+static bool
+radio_compact_kill(void *context, const char *path, struct yt_error *error)
+{
+	(void)context;
+	return yt_file_kill(path, NULL, error);
+}
+
+static bool
+radio_compact_random_open(void *context, enum yt_radio_compact_file file,
+    const char *path, size_t text_width, struct yt_error *error)
+{
+	return yt_radio_file_open_text_width(radio_compact_file(context, file),
+	    path, text_width, error);
+}
+
+static bool
+radio_compact_size(void *context, enum yt_radio_compact_file file,
+    uint64_t *length, struct yt_error *error)
+{
+	return yt_radio_file_size(radio_compact_file(context, file), length,
+	    error);
+}
+
+static bool
+radio_compact_get(void *context, enum yt_radio_compact_file file,
+    uint32_t basic_record, struct yt_radio_record *record, size_t *accepted,
+    struct yt_error *error)
+{
+	return yt_radio_file_get(radio_compact_file(context, file), basic_record,
+	    record, accepted, error);
+}
+
+static bool
+radio_compact_put(void *context, enum yt_radio_compact_file file,
+    uint32_t basic_record, const struct yt_radio_record *record,
+    struct yt_error *error)
+{
+	return yt_radio_file_put(radio_compact_file(context, file), basic_record,
+	    record, error);
+}
+
+static bool
+radio_compact_random_close(void *context, enum yt_radio_compact_file file,
+    struct yt_error *error)
+{
+	return yt_radio_file_close(radio_compact_file(context, file), error);
+}
+
+static bool
+radio_compact_rename(void *context, const char *old_path,
+    const char *new_path, struct yt_error *error)
+{
+	(void)context;
+	return yt_file_rename(old_path, new_path, error);
+}
+
+bool
+yt_radio_compact(struct yt_error *error)
+{
+	static const struct yt_radio_compact_ops ops = {
+		radio_compact_output_open,
+		radio_compact_output_close,
+		radio_compact_kill,
+		radio_compact_random_open,
+		radio_compact_size,
+		radio_compact_get,
+		radio_compact_put,
+		radio_compact_random_close,
+		radio_compact_rename,
+	};
+	struct radio_compact_context context;
+	struct yt_radio_compact_state state;
+	bool result;
+
+	yt_text_output_init(&context.output);
+	yt_radio_file_init(&context.destination);
+	yt_radio_file_init(&context.source);
+	result = yt_radio_compact_run(&state, &ops, &context, error);
+	(void)yt_radio_file_close(&context.source, NULL);
+	(void)yt_radio_file_close(&context.destination, NULL);
+	yt_text_output_destroy(&context.output);
 	return result;
 }
 

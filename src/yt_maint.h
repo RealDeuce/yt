@@ -222,6 +222,62 @@ struct yt_news_rotate_ops {
 	    const char *new_path, struct yt_error *error);
 };
 
+enum yt_radio_compact_file {
+	YT_RADIO_COMPACT_DESTINATION,
+	YT_RADIO_COMPACT_SOURCE,
+};
+
+enum yt_radio_compact_step {
+	YT_RADIO_COMPACT_NONE,
+	YT_RADIO_COMPACT_OPEN_TEMP_OUTPUT,
+	YT_RADIO_COMPACT_CLOSE_TEMP_OUTPUT,
+	YT_RADIO_COMPACT_KILL_TEMP,
+	YT_RADIO_COMPACT_OPEN_TEMP_RANDOM,
+	YT_RADIO_COMPACT_OPEN_SOURCE_RANDOM,
+	YT_RADIO_COMPACT_SOURCE_LOF,
+	YT_RADIO_COMPACT_SOURCE_GET,
+	YT_RADIO_COMPACT_DESTINATION_PUT,
+	YT_RADIO_COMPACT_CLOSE_SOURCE,
+	YT_RADIO_COMPACT_CLOSE_DESTINATION,
+	YT_RADIO_COMPACT_KILL_SOURCE,
+	YT_RADIO_COMPACT_RENAME_TEMP,
+};
+
+struct yt_radio_compact_state {
+	enum yt_radio_compact_step attempted;
+	size_t completed_steps;
+	uint64_t source_length;
+	uint64_t record_count;
+	uint32_t source_record;
+	uint32_t retained_record;
+	size_t accepted;
+	size_t completed_gets;
+	size_t completed_puts;
+	bool complete;
+};
+
+struct yt_radio_compact_ops {
+	bool (*output_open)(void *context, const char *path,
+	    struct yt_error *error);
+	bool (*output_close)(void *context, struct yt_error *error);
+	bool (*kill)(void *context, const char *path,
+	    struct yt_error *error);
+	bool (*random_open)(void *context, enum yt_radio_compact_file file,
+	    const char *path, size_t text_width, struct yt_error *error);
+	bool (*size)(void *context, enum yt_radio_compact_file file,
+	    uint64_t *length, struct yt_error *error);
+	bool (*get)(void *context, enum yt_radio_compact_file file,
+	    uint32_t basic_record, struct yt_radio_record *record,
+	    size_t *accepted, struct yt_error *error);
+	bool (*put)(void *context, enum yt_radio_compact_file file,
+	    uint32_t basic_record, const struct yt_radio_record *record,
+	    struct yt_error *error);
+	bool (*random_close)(void *context, enum yt_radio_compact_file file,
+	    struct yt_error *error);
+	bool (*rename)(void *context, const char *old_path,
+	    const char *new_path, struct yt_error *error);
+};
+
 bool yt_maintenance_xannor_should_retarget(float group_location,
     float group_size);
 bool yt_maintenance_xannor_route_complete(float group_location,
@@ -536,6 +592,9 @@ bool yt_maintenance_immediate_death(struct yt_game *game,
     struct yt_error *error);
 bool yt_radio_append_maintenance(const char *text, float sender,
     float recipient, struct yt_error *error);
+bool yt_radio_compact_run(struct yt_radio_compact_state *state,
+	const struct yt_radio_compact_ops *ops, void *context,
+	struct yt_error *error);
 bool yt_radio_compact(struct yt_error *error);
 bool yt_news_rotate_run(struct yt_news_rotate_state *state,
 	const struct yt_news_rotate_ops *ops, void *context,

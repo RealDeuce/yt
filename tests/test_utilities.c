@@ -1370,6 +1370,307 @@ test_news_rotation_transaction(void)
 	    && !yt_news_rotate_run(&state, NULL, &tape, NULL);
 }
 
+enum radio_compaction_test_event {
+	RADIO_COMPACTION_TEST_OUTPUT_OPEN,
+	RADIO_COMPACTION_TEST_OUTPUT_CLOSE,
+	RADIO_COMPACTION_TEST_KILL,
+	RADIO_COMPACTION_TEST_RANDOM_OPEN,
+	RADIO_COMPACTION_TEST_SIZE,
+	RADIO_COMPACTION_TEST_GET,
+	RADIO_COMPACTION_TEST_PUT,
+	RADIO_COMPACTION_TEST_RANDOM_CLOSE,
+	RADIO_COMPACTION_TEST_RENAME,
+};
+
+#define RADIO_COMPACTION_TEST_EVENTS 16U
+
+struct radio_compaction_test_tape {
+	enum radio_compaction_test_event events[RADIO_COMPACTION_TEST_EVENTS];
+	int files[RADIO_COMPACTION_TEST_EVENTS];
+	char first_path[RADIO_COMPACTION_TEST_EVENTS][32];
+	char second_path[RADIO_COMPACTION_TEST_EVENTS][32];
+	size_t widths[RADIO_COMPACTION_TEST_EVENTS];
+	uint32_t records[RADIO_COMPACTION_TEST_EVENTS];
+	struct yt_radio_record input[4];
+	size_t input_accepted[4];
+	struct yt_radio_record output[2];
+	size_t output_count;
+	uint64_t source_length;
+	size_t calls;
+	size_t fail_at;
+};
+
+static bool
+radio_compaction_test_step(struct radio_compaction_test_tape *tape,
+    enum radio_compaction_test_event event, int file, const char *first_path,
+    const char *second_path, size_t width, uint32_t record,
+    struct yt_error *error)
+{
+	size_t call = tape->calls++;
+
+	if (call >= RADIO_COMPACTION_TEST_EVENTS)
+		return false;
+	tape->events[call] = event;
+	tape->files[call] = file;
+	tape->widths[call] = width;
+	tape->records[call] = record;
+	(void)snprintf(tape->first_path[call], sizeof(tape->first_path[call]),
+	    "%s", first_path != NULL ? first_path : "");
+	(void)snprintf(tape->second_path[call], sizeof(tape->second_path[call]),
+	    "%s", second_path != NULL ? second_path : "");
+	if (call != tape->fail_at)
+		return true;
+	if (error != NULL) {
+		error->status = YT_IO_ERROR;
+		(void)snprintf(error->operation, sizeof(error->operation),
+		    "injected radio compaction step");
+	}
+	return false;
+}
+
+static bool
+radio_compaction_test_output_open(void *context, const char *path,
+    struct yt_error *error)
+{
+	return radio_compaction_test_step(context,
+	    RADIO_COMPACTION_TEST_OUTPUT_OPEN, -1, path, NULL, 0U, 0U, error);
+}
+
+static bool
+radio_compaction_test_output_close(void *context, struct yt_error *error)
+{
+	return radio_compaction_test_step(context,
+	    RADIO_COMPACTION_TEST_OUTPUT_CLOSE, -1, NULL, NULL, 0U, 0U,
+	    error);
+}
+
+static bool
+radio_compaction_test_kill(void *context, const char *path,
+    struct yt_error *error)
+{
+	return radio_compaction_test_step(context, RADIO_COMPACTION_TEST_KILL,
+	    -1, path, NULL, 0U, 0U, error);
+}
+
+static bool
+radio_compaction_test_random_open(void *context,
+    enum yt_radio_compact_file file, const char *path, size_t text_width,
+    struct yt_error *error)
+{
+	return radio_compaction_test_step(context,
+	    RADIO_COMPACTION_TEST_RANDOM_OPEN, (int)file, path, NULL,
+	    text_width, 0U, error);
+}
+
+static bool
+radio_compaction_test_size(void *context, enum yt_radio_compact_file file,
+    uint64_t *length, struct yt_error *error)
+{
+	struct radio_compaction_test_tape *tape = context;
+
+	if (!radio_compaction_test_step(tape, RADIO_COMPACTION_TEST_SIZE,
+	    (int)file, NULL, NULL, 0U, 0U, error))
+		return false;
+	*length = tape->source_length;
+	return true;
+}
+
+static bool
+radio_compaction_test_get(void *context, enum yt_radio_compact_file file,
+    uint32_t basic_record, struct yt_radio_record *record, size_t *accepted,
+    struct yt_error *error)
+{
+	struct radio_compaction_test_tape *tape = context;
+	size_t index = basic_record - 1U;
+
+	if (index >= sizeof(tape->input) / sizeof(tape->input[0]))
+		return false;
+	*record = tape->input[index];
+	*accepted = tape->input_accepted[index];
+	if (tape->calls == tape->fail_at)
+		*accepted = 17U;
+	return radio_compaction_test_step(tape, RADIO_COMPACTION_TEST_GET,
+	    (int)file, NULL, NULL, 0U, basic_record, error);
+}
+
+static bool
+radio_compaction_test_put(void *context, enum yt_radio_compact_file file,
+    uint32_t basic_record, const struct yt_radio_record *record,
+    struct yt_error *error)
+{
+	struct radio_compaction_test_tape *tape = context;
+
+	if (tape->output_count >= sizeof(tape->output) / sizeof(tape->output[0]))
+		return false;
+	tape->output[tape->output_count++] = *record;
+	return radio_compaction_test_step(tape, RADIO_COMPACTION_TEST_PUT,
+	    (int)file, NULL, NULL, 0U, basic_record, error);
+}
+
+static bool
+radio_compaction_test_random_close(void *context,
+    enum yt_radio_compact_file file, struct yt_error *error)
+{
+	return radio_compaction_test_step(context,
+	    RADIO_COMPACTION_TEST_RANDOM_CLOSE, (int)file, NULL, NULL, 0U, 0U,
+	    error);
+}
+
+static bool
+radio_compaction_test_rename(void *context, const char *old_path,
+    const char *new_path, struct yt_error *error)
+{
+	return radio_compaction_test_step(context, RADIO_COMPACTION_TEST_RENAME,
+	    -1, old_path, new_path, 0U, 0U, error);
+}
+
+static bool
+radio_compaction_test_prepare(struct radio_compaction_test_tape *tape)
+{
+	static const uint8_t raw_zero[4] = {0x44, 0x33, 0x22, 0x00};
+
+	memset(tape, 0, sizeof(*tape));
+	tape->fail_at = SIZE_MAX;
+	tape->source_length = YT_RADIO_RECORD_SIZE * 4U + 7U;
+	memset(tape->input[0].bytes, 0x31, YT_RADIO_RECORD_SIZE);
+	memcpy(tape->input[0].bytes, raw_zero, sizeof(raw_zero));
+	memset(tape->input[1].bytes, 0xa5, YT_RADIO_RECORD_SIZE);
+	memset(tape->input[2].bytes, 0x5a, YT_RADIO_RECORD_SIZE);
+	memset(tape->input[3].bytes, 0xcc, YT_RADIO_RECORD_SIZE);
+	tape->input_accepted[0] = YT_RADIO_RECORD_SIZE;
+	tape->input_accepted[1] = YT_RADIO_RECORD_SIZE;
+	tape->input_accepted[2] = YT_RADIO_RECORD_SIZE;
+	tape->input_accepted[3] = 7U;
+	return yt_radio_set_number(&tape->input[1], 0, 1.5f)
+	    && yt_radio_set_number(&tape->input[2], 0, -0.5f);
+}
+
+static bool
+test_radio_compaction_transaction(void)
+{
+	static const struct yt_radio_compact_ops ops = {
+		radio_compaction_test_output_open,
+		radio_compaction_test_output_close,
+		radio_compaction_test_kill,
+		radio_compaction_test_random_open,
+		radio_compaction_test_size,
+		radio_compaction_test_get,
+		radio_compaction_test_put,
+		radio_compaction_test_random_close,
+		radio_compaction_test_rename,
+	};
+	static const enum radio_compaction_test_event expected_events[] = {
+		RADIO_COMPACTION_TEST_OUTPUT_OPEN,
+		RADIO_COMPACTION_TEST_OUTPUT_CLOSE,
+		RADIO_COMPACTION_TEST_KILL,
+		RADIO_COMPACTION_TEST_RANDOM_OPEN,
+		RADIO_COMPACTION_TEST_RANDOM_OPEN,
+		RADIO_COMPACTION_TEST_SIZE,
+		RADIO_COMPACTION_TEST_GET,
+		RADIO_COMPACTION_TEST_GET,
+		RADIO_COMPACTION_TEST_PUT,
+		RADIO_COMPACTION_TEST_GET,
+		RADIO_COMPACTION_TEST_PUT,
+		RADIO_COMPACTION_TEST_GET,
+		RADIO_COMPACTION_TEST_RANDOM_CLOSE,
+		RADIO_COMPACTION_TEST_RANDOM_CLOSE,
+		RADIO_COMPACTION_TEST_KILL,
+		RADIO_COMPACTION_TEST_RENAME,
+	};
+	static const enum yt_radio_compact_step expected_steps[] = {
+		YT_RADIO_COMPACT_OPEN_TEMP_OUTPUT,
+		YT_RADIO_COMPACT_CLOSE_TEMP_OUTPUT,
+		YT_RADIO_COMPACT_KILL_TEMP,
+		YT_RADIO_COMPACT_OPEN_TEMP_RANDOM,
+		YT_RADIO_COMPACT_OPEN_SOURCE_RANDOM,
+		YT_RADIO_COMPACT_SOURCE_LOF,
+		YT_RADIO_COMPACT_SOURCE_GET,
+		YT_RADIO_COMPACT_SOURCE_GET,
+		YT_RADIO_COMPACT_DESTINATION_PUT,
+		YT_RADIO_COMPACT_SOURCE_GET,
+		YT_RADIO_COMPACT_DESTINATION_PUT,
+		YT_RADIO_COMPACT_SOURCE_GET,
+		YT_RADIO_COMPACT_CLOSE_SOURCE,
+		YT_RADIO_COMPACT_CLOSE_DESTINATION,
+		YT_RADIO_COMPACT_KILL_SOURCE,
+		YT_RADIO_COMPACT_RENAME_TEMP,
+	};
+	struct radio_compaction_test_tape tape;
+	struct yt_radio_compact_state state;
+	struct yt_radio_compact_ops incomplete = ops;
+	struct yt_error error;
+	size_t index;
+
+	if (!radio_compaction_test_prepare(&tape)
+	    || !yt_radio_compact_run(&state, &ops, &tape, NULL)
+	    || !state.complete
+	    || state.completed_steps != RADIO_COMPACTION_TEST_EVENTS
+	    || state.source_length != YT_RADIO_RECORD_SIZE * 4U + 7U
+	    || state.record_count != 4U || state.source_record != 4U
+	    || state.retained_record != 2U || state.accepted != 7U
+	    || state.completed_gets != 4U || state.completed_puts != 2U
+	    || tape.calls != RADIO_COMPACTION_TEST_EVENTS
+	    || tape.output_count != 2U
+	    || memcmp(tape.events, expected_events, sizeof(expected_events)) != 0
+	    || strcmp(tape.first_path[0], "TEMP") != 0
+	    || strcmp(tape.first_path[2], "TEMP") != 0
+	    || strcmp(tape.first_path[3], "TEMP") != 0
+	    || strcmp(tape.first_path[4], "YTRMSG.DAT") != 0
+	    || tape.files[3] != YT_RADIO_COMPACT_DESTINATION
+	    || tape.files[4] != YT_RADIO_COMPACT_SOURCE
+	    || tape.widths[3] != 72U || tape.widths[4] != 72U
+	    || tape.records[6] != 1U || tape.records[7] != 2U
+	    || tape.records[8] != 1U || tape.records[9] != 3U
+	    || tape.records[10] != 2U || tape.records[11] != 4U
+	    || tape.files[12] != YT_RADIO_COMPACT_SOURCE
+	    || tape.files[13] != YT_RADIO_COMPACT_DESTINATION
+	    || strcmp(tape.first_path[14], "YTRMSG.DAT") != 0
+	    || strcmp(tape.first_path[15], "TEMP") != 0
+	    || strcmp(tape.second_path[15], "YTRMSG.DAT") != 0
+	    || memcmp(tape.output[0].bytes, tape.input[1].bytes, 84U) != 0
+	    || tape.output[0].bytes[84] != 0U
+	    || tape.output[0].bytes[85] != 0U
+	    || memcmp(tape.output[1].bytes, tape.input[2].bytes, 84U) != 0
+	    || tape.output[1].bytes[84] != 0U
+	    || tape.output[1].bytes[85] != 0U)
+		return false;
+	for (index = 0U; index < RADIO_COMPACTION_TEST_EVENTS; ++index) {
+		if (!radio_compaction_test_prepare(&tape))
+			return false;
+		tape.fail_at = index;
+		memset(&state, 0xa5, sizeof(state));
+		yt_error_clear(&error);
+		if (yt_radio_compact_run(&state, &ops, &tape, &error)
+		    || state.complete || state.completed_steps != index
+		    || state.attempted != expected_steps[index]
+		    || tape.calls != index + 1U || error.status != YT_IO_ERROR)
+			return false;
+		if (index == 6U && (state.source_record != 1U
+		    || state.retained_record != 0U || state.accepted != 17U
+		    || state.completed_gets != 0U || state.completed_puts != 0U))
+			return false;
+		if (index == 8U && (state.source_record != 2U
+		    || state.retained_record != 1U || state.accepted != 86U
+		    || state.completed_gets != 2U || state.completed_puts != 0U))
+			return false;
+		if (index == 10U && (state.source_record != 3U
+		    || state.retained_record != 2U || state.completed_gets != 3U
+		    || state.completed_puts != 1U))
+			return false;
+		if (index == 12U && (state.source_record != 4U
+		    || state.accepted != 7U || state.completed_gets != 4U
+		    || state.completed_puts != 2U))
+			return false;
+	}
+	incomplete.rename = NULL;
+	yt_error_clear(&error);
+	return !yt_radio_compact_run(&state, &incomplete, &tape, &error)
+	    && error.status == YT_INVALID
+	    && strcmp(error.operation, "radio compaction transaction") == 0
+	    && !yt_radio_compact_run(NULL, &ops, &tape, NULL)
+	    && !yt_radio_compact_run(&state, NULL, &tape, NULL);
+}
+
 static bool
 test_maintenance_message_compaction(void)
 {
@@ -5649,6 +5950,8 @@ main(void)
 		failure = "maintenance alias compaction differs";
 	else if (!test_news_rotation_transaction())
 		failure = "maintenance news rotation transaction differs";
+	else if (!test_radio_compaction_transaction())
+		failure = "maintenance radio compaction transaction differs";
 	else if (!test_maintenance_message_compaction())
 		failure = "maintenance message/news compaction differs";
 	else if (!test_maintenance_random_helpers())
