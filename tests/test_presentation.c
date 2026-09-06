@@ -22141,6 +22141,7 @@ struct hostile_mines_hazard_fixture {
 	unsigned reentry_error_number;
 	unsigned reentry_saved_ip;
 	bool reentry_warning_carrier_failure;
+	bool reentry_warning_second_carrier_failure;
 	bool reentry_warning_carrier_ended;
 };
 
@@ -26829,8 +26830,10 @@ direct_emergency_warp_hostile_reentry(
 		return false;
 	join->presentation.bold = 1.0f;
 	join->presentation.blink = 1.0f;
-	if (fixture->reentry_warning_carrier_failure) {
-		join->fail_at = join->event_count + 1U;
+	if (fixture->reentry_warning_carrier_failure
+	    || fixture->reentry_warning_second_carrier_failure) {
+		join->fail_at = join->event_count
+		    + (fixture->reentry_warning_carrier_failure ? 1U : 4U);
 		if (normal_exit_b05d(join, warning, sizeof(warning) - 1U,
 		    0.0f))
 			return false;
@@ -29391,6 +29394,175 @@ test_direct_emergency_warp_reentry_warning_carrier(void)
 		    == (callers[caller].ansi ? 3.0f : 2.0f)
 		    && viewer.join.pager.foreground == 3
 		    && viewer.join.pager.line_count == 0.0f);
+		for (index = 0U; index < YT_RECORD_SIZE; ++index) {
+			if ((index >= YT_F49 && index < YT_F49 + 4U)
+			    || (index >= YT_F57 && index < YT_F57 + 4U))
+				continue;
+			CHECK(fixture.emergency_player.record.bytes[index]
+			    == before.bytes[index]);
+		}
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
+static void
+test_direct_emergency_warp_reentry_warning_second_carrier(void)
+{
+	static const uint8_t warning[] =
+	    "You have to defeat the fighters before you can enter this sector.";
+	static const struct {
+		bool main;
+		bool ansi;
+		const uint8_t *command;
+		size_t command_length;
+		size_t ends[3];
+		uint64_t partition_hashes[3];
+		size_t rows;
+		uint64_t row_hash;
+		size_t colors;
+		uint64_t color_hash;
+	} callers[] = {
+		{true, false, (const uint8_t *)"W", 1U,
+		    {41U, 554U, 809U}, {UINT64_C(0x84059a449d6d0449),
+		    UINT64_C(0x325d153b7ea2f4c3),
+		    UINT64_C(0x4ac78ffea64aef15)}, 27U,
+		    UINT64_C(0xad6ba5a06500a63c), 3U,
+		    UINT64_C(0x2207a27a6260aaca)},
+		{true, true, (const uint8_t *)"W", 1U,
+		    {41U, 726U, 1071U}, {UINT64_C(0x84059a449d6d0449),
+		    UINT64_C(0x6d90d947714a5f0d),
+		    UINT64_C(0x33915dac4cbfca81)}, 27U,
+		    UINT64_C(0xad6ba5a06500a63c), 40U,
+		    UINT64_C(0xd0753a5191f1b335)},
+		{false, false, (const uint8_t *)"W", 1U,
+		    {63U, 576U, 831U}, {UINT64_C(0x0b6904cbde91e151),
+		    UINT64_C(0x325d153b7ea2f4c3),
+		    UINT64_C(0x4ac78ffea64aef15)}, 28U,
+		    UINT64_C(0x6b17079cfbed779f), 4U,
+		    UINT64_C(0x01b4fd96ce8921d5)},
+		{false, false, (const uint8_t *)"WT", 2U,
+		    {64U, 577U, 832U}, {UINT64_C(0x4715406bf12b49e1),
+		    UINT64_C(0x325d153b7ea2f4c3),
+		    UINT64_C(0x4ac78ffea64aef15)}, 28U,
+		    UINT64_C(0x929e2d0d2b9d3f80), 4U,
+		    UINT64_C(0x01b4fd96ce8921d5)},
+		{false, true, (const uint8_t *)"W", 1U,
+		    {73U, 758U, 1103U}, {UINT64_C(0x1f8739c8faadb88e),
+		    UINT64_C(0x6d90d947714a5f0d),
+		    UINT64_C(0x33915dac4cbfca81)}, 28U,
+		    UINT64_C(0x6b17079cfbed779f), 42U,
+		    UINT64_C(0xa2c07a8a40af9efa)},
+		{false, true, (const uint8_t *)"WT", 2U,
+		    {74U, 759U, 1104U}, {UINT64_C(0x2e092d830cad0828),
+		    UINT64_C(0x6d90d947714a5f0d),
+		    UINT64_C(0x33915dac4cbfca81)}, 28U,
+		    UINT64_C(0x929e2d0d2b9d3f80), 42U,
+		    UINT64_C(0xa2c07a8a40af9efa)},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	struct direct_warp_main_cycle_state cycle;
+	struct yt_record record;
+	struct yt_record before;
+	uint8_t remote[1200];
+	size_t ends[3];
+	size_t caller;
+	size_t index;
+
+	for (caller = 0U; caller < YT_ARRAY_LEN(callers); ++caller) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", callers[caller].ansi, remote, sizeof(remote));
+		memset(&fixture, 0, sizeof(fixture));
+		fixture.cycle.presentation.viewer = &viewer;
+		fixture.emergency_sector_cache = 733.0f;
+		fixture.reentry_warning_second_carrier_failure = true;
+		fixture.draws[0] = 0.0f;
+		fixture.draws[1] = 0.0f;
+		fixture.draws[2] = 0.75f;
+		fixture.draws[3] = 0.5f;
+		fixture.draws[4] = 0.949999988079071f;
+		fixture.draws[5] = 0.999f;
+		fixture.draws[6] = 0.9f;
+		memset(&record, 0xa5, sizeof(record));
+		(void)yt_record_set_number(&record, YT_F49, 17.0f);
+		(void)yt_record_set_number(&record, YT_F57, 733.0f);
+		before = record;
+		yt_player_decode(&fixture.emergency_player, &record);
+		fixture.hazard_player = fixture.emergency_player;
+		if (callers[caller].main) {
+			CHECK(direct_emergency_warp_main_hostile_handoff_run(&fixture,
+			    callers[caller].ansi, &cycle, ends));
+		}
+		else {
+			CHECK(direct_emergency_warp_hostile_cycle_run(&fixture,
+			    callers[caller].ansi, callers[caller].command,
+			    callers[caller].command_length,
+			    DIRECT_WARP_HOSTILE_DEFENSE, &cycle, ends));
+		}
+		CHECK(memcmp(ends, callers[caller].ends, sizeof(ends)) == 0
+		    && viewer.join.remote_length == ends[2]);
+		for (index = 0U; index < YT_ARRAY_LEN(ends); ++index) {
+			size_t start = index == 0U ? 0U : ends[index - 1U];
+
+			CHECK(viewer_bytes_fnv1a64(remote + start,
+			    ends[index] - start)
+			    == callers[caller].partition_hashes[index]);
+		}
+		CHECK(fixture.reentry_warning_carrier_ended
+		    && fixture.warp_called && fixture.draw_position == 7U
+		    && fixture.emergency_player_reads == 1U
+		    && fixture.emergency_player_put_attempts == 1U
+		    && fixture.emergency_player_writes == 1U
+		    && fixture.emergency_flushes == 1U
+		    && fixture.emergency_waits == 1U
+		    && fixture.emergency_ticks == 1U
+		    && fixture.emergency_destination == 1003.0f
+		    && fixture.emergency_cost == 3.0f
+		    && fixture.emergency_sector_cache == 1003.0f
+		    && fixture.emergency_player.sector == 1003.0f
+		    && fixture.emergency_player.turns == 14.0f
+		    && cycle.entry_player_reads == 1U
+		    && cycle.gate_player_reads == 1U
+		    && cycle.sector_reads == 1U
+		    && cycle.target_player_reads == 1U
+		    && cycle.scanner_final_player_reads == 1U
+		    && cycle.router_player_reads == 1U
+		    && cycle.router_sector_reads == 1U
+		    && cycle.owner_player_reads == 0U
+		    && cycle.final_player_reads == 0U
+		    && cycle.scanner_sound_calls == 1U
+		    && cycle.target_cloak == 0.0f
+		    && cycle.physical_current_sector == 1054.0f
+		    && cycle.final_field_record == 1054
+		    && !cycle.final_field_player && !cycle.fresh_prompt_wait
+		    && viewer.join.sample_calls
+		    == (callers[caller].main ? 4U : 5U)
+		    && viewer.join.queue_length == 0U
+		    && strcmp(viewer.join.accumulator, "y") == 0
+		    && viewer.join.local_fragment_length == sizeof(warning) - 1U
+		    && memcmp(viewer.join.local_fragment, warning,
+		    sizeof(warning) - 1U) == 0
+		    && viewer.join.local_row_count == callers[caller].rows
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == callers[caller].row_hash
+		    && viewer.join.local_color_count == callers[caller].colors
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == callers[caller].color_hash
+		    && viewer.join.event_count == (callers[caller].main ? 19U : 24U)
+		    && viewer.join.presentation.foreground == 3.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold
+		    == (callers[caller].ansi ? 0.0f : 1.0f)
+		    && viewer.join.presentation.blink
+		    == (callers[caller].ansi ? 0.0f : 1.0f)
+		    && viewer.join.presentation.cached_foreground
+		    == (callers[caller].ansi ? 0.0f : 2.0f)
+		    && viewer.join.pager.foreground == 3
+		    && viewer.join.pager.line_count == 0.0f
+		    && viewer.join.pager.newline_flag == 0.0f);
 		for (index = 0U; index < YT_RECORD_SIZE; ++index) {
 			if ((index >= YT_F49 && index < YT_F49 + 4U)
 			    || (index >= YT_F57 && index < YT_F57 + 4U))
@@ -38777,6 +38949,7 @@ main(void)
 	test_direct_emergency_warp_reentry_failures();
 	test_direct_emergency_warp_owner_get_failures();
 	test_direct_emergency_warp_reentry_warning_carrier();
+	test_direct_emergency_warp_reentry_warning_second_carrier();
 	test_direct_emergency_warp_hostile_invalid_retry_cycle();
 	test_direct_emergency_warp_hostile_ordinary_returns();
 	test_direct_emergency_warp_queue_cycles();
