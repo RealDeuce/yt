@@ -1910,23 +1910,63 @@ yt_news_rotate(struct yt_error *error)
 }
 
 bool
+yt_maintenance_write_header_run(struct yt_maintenance_header_state *state,
+    const struct yt_maintenance_header_ops *ops, void *context,
+    struct yt_error *error)
+{
+	if (state == NULL || ops == NULL || ops->clock == NULL
+	    || ops->append == NULL) {
+		set_error(error, YT_INVALID, "maintenance header transaction", "");
+		return false;
+	}
+	memset(state, 0, sizeof(*state));
+	state->attempted = YT_MAINTENANCE_HEADER_TIME;
+	if (!ops->clock(context, &state->time_value, error))
+		return false;
+	yt_format_time(&state->time_value, state->time_text);
+	++state->completed_steps;
+	state->attempted = YT_MAINTENANCE_HEADER_DATE;
+	if (!ops->clock(context, &state->date_value, error))
+		return false;
+	yt_format_date(&state->date_value, state->date_text);
+	++state->completed_steps;
+	(void)snprintf(state->line, sizeof(state->line),
+	    "%s %s: Maintenance Program Ran (Revision 03/14/94)",
+	    state->time_text, state->date_text);
+	state->attempted = YT_MAINTENANCE_HEADER_APPEND;
+	if (!ops->append(context, state->line, error))
+		return false;
+	++state->completed_steps;
+	state->complete = true;
+	return true;
+}
+
+static bool
+maintenance_header_clock(void *context, struct yt_clock_value *value,
+    struct yt_error *error)
+{
+	(void)context;
+	return yt_platform_clock(value, error);
+}
+
+static bool
+maintenance_header_append(void *context, const char *line,
+    struct yt_error *error)
+{
+	(void)context;
+	return yt_news_append(line, error);
+}
+
+bool
 yt_maintenance_write_header(struct yt_error *error)
 {
-	struct yt_clock_value time_now;
-	struct yt_clock_value date_now;
-	char date[11];
-	char time_text[9];
-	char line[160];
+	static const struct yt_maintenance_header_ops ops = {
+		maintenance_header_clock,
+		maintenance_header_append,
+	};
+	struct yt_maintenance_header_state state;
 
-	if (!yt_platform_clock(&time_now, error)
-	    || !yt_platform_clock(&date_now, error))
-		return false;
-	yt_format_time(&time_now, time_text);
-	yt_format_date(&date_now, date);
-	snprintf(line, sizeof(line),
-	    "%s %s: Maintenance Program Ran (Revision 03/14/94)",
-	    time_text, date);
-	return yt_news_append(line, error);
+	return yt_maintenance_write_header_run(&state, &ops, NULL, error);
 }
 
 bool
