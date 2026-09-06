@@ -1846,10 +1846,20 @@ yt_maintenance_remove_alias(const char *player_name, struct yt_error *error)
 	yt_names_split(player_name, first, sizeof(first), last, sizeof(last));
 	for (read_index = 0; read_index < names.count; ++read_index) {
 		if (strcmp(names.rows[read_index].alias_first, first) == 0
-		    && strcmp(names.rows[read_index].alias_last, last) == 0)
+		    && strcmp(names.rows[read_index].alias_last, last) == 0) {
+			free(names.rows[read_index].real_first);
+			free(names.rows[read_index].real_last);
+			free(names.rows[read_index].alias_first);
+			free(names.rows[read_index].alias_last);
+			memset(&names.rows[read_index], 0,
+			    sizeof(names.rows[read_index]));
 			continue;
-		if (write_index != read_index)
+		}
+		if (write_index != read_index) {
 			names.rows[write_index] = names.rows[read_index];
+			memset(&names.rows[read_index], 0,
+			    sizeof(names.rows[read_index]));
+		}
 		++write_index;
 	}
 	names.count = write_index;

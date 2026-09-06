@@ -4,10 +4,10 @@
 #include "yt_common.h"
 
 struct yt_name_row {
-	char real_first[128];
-	char real_last[128];
-	char alias_first[128];
-	char alias_last[128];
+	char *real_first;
+	char *real_last;
+	char *alias_first;
+	char *alias_last;
 };
 
 struct yt_name_file {
@@ -29,6 +29,8 @@ bool yt_names_write(const char *path, const struct yt_name_file *names,
     struct yt_error *error);
 bool yt_names_append(const char *path, const struct yt_name_row *row,
     struct yt_error *error);
+bool yt_names_set_alias(struct yt_name_file *names, size_t index,
+    const char *first, const char *last, struct yt_error *error);
 const struct yt_name_row *yt_names_find_real_last(
     const struct yt_name_file *names, const char *first, const char *last);
 bool yt_names_alias_exists(const struct yt_name_file *names,

@@ -3804,13 +3804,10 @@ resolve_alias(struct yt_session *session, char first[128], char last[128],
 		}
 		if (strcmp(confirmation, "Y") != 0)
 			continue;
-		memset(&row, 0, sizeof(row));
-		snprintf(row.real_first, sizeof(row.real_first), "%s", first);
-		snprintf(row.real_last, sizeof(row.real_last), "%s", last);
-		snprintf(row.alias_first, sizeof(row.alias_first), "%s",
-		    alias_first);
-		snprintf(row.alias_last, sizeof(row.alias_last), "%s",
-		    alias_last);
+		row.real_first = first;
+		row.real_last = last;
+		row.alias_first = alias_first;
+		row.alias_last = alias_last;
 		if (!yt_names_append("YTNAME.DAT", &row, error)) {
 			yt_names_free(&names);
 			return false;

@@ -2,14 +2,16 @@
 #include "qb.h"
 #include "yt_text.h"
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
 static bool
-input_token(const uint8_t *data, size_t length, size_t *cursor, char *dest,
-    size_t size, struct yt_error *error)
+input_token(const uint8_t *data, size_t length, size_t *cursor, char **dest,
+    struct yt_error *error)
 {
 	uint8_t *buffer;
+	char *value;
 	size_t buffered = 0;
 	size_t position = *cursor;
 	size_t start;
@@ -25,6 +27,11 @@ input_token(const uint8_t *data, size_t length, size_t *cursor, char *dest,
 			snprintf(error->operation, sizeof(error->operation),
 			    "YTNAME INPUT past end");
 		}
+		return false;
+	}
+	if (length - position > SIZE_MAX - 2U) {
+		if (error != NULL)
+			error->status = YT_NO_MEMORY;
 		return false;
 	}
 	buffer = malloc(length - position + 2U);
@@ -104,20 +111,43 @@ input_token(const uint8_t *data, size_t length, size_t *cursor, char *dest,
 		while (output > start && buffer[output - 1U] == ' ')
 			--output;
 	}
-	if (output - start >= size) {
+	value = malloc(output - start + 1U);
+	if (value == NULL) {
 		free(buffer);
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			snprintf(error->operation, sizeof(error->operation),
-			    "YTNAME string length");
-		}
+		if (error != NULL)
+			error->status = YT_NO_MEMORY;
 		return false;
 	}
-	memcpy(dest, buffer + start, output - start);
-	dest[output - start] = '\0';
+	memcpy(value, buffer + start, output - start);
+	value[output - start] = '\0';
 	free(buffer);
+	*dest = value;
 	*cursor = position;
 	return true;
+}
+
+static void
+free_row(struct yt_name_row *row)
+{
+	free(row->real_first);
+	free(row->real_last);
+	free(row->alias_first);
+	free(row->alias_last);
+	memset(row, 0, sizeof(*row));
+}
+
+static char *
+duplicate_string(const char *source)
+{
+	size_t length = strlen(source);
+	char *copy;
+
+	if (length == SIZE_MAX)
+		return NULL;
+	copy = malloc(length + 1U);
+	if (copy != NULL)
+		memcpy(copy, source, length + 1U);
+	return copy;
 }
 
 bool
@@ -131,13 +161,10 @@ yt_names_load(const char *path, struct yt_name_file *names,
 	if (!yt_text_read(path, &text, error))
 		return false;
 	while (position < text.length) {
-		struct yt_name_row staged;
+		struct yt_name_row staged = {0};
 		struct yt_name_row *grown;
-		char *fields[4] = {staged.real_first, staged.real_last,
-		    staged.alias_first, staged.alias_last};
-		size_t sizes[4] = {sizeof(staged.real_first),
-		    sizeof(staged.real_last), sizeof(staged.alias_first),
-		    sizeof(staged.alias_last)};
+		char **fields[4] = {&staged.real_first, &staged.real_last,
+		    &staged.alias_first, &staged.alias_last};
 		size_t field;
 
 		if (text.data[position] == 0x1a)
@@ -149,15 +176,25 @@ yt_names_load(const char *path, struct yt_name_file *names,
 			    && text.data[logical_length] != 0x1a)
 				++logical_length;
 			if (!input_token(text.data, logical_length, &position,
-			    fields[field], sizes[field], error)) {
+			    fields[field], error)) {
+				free_row(&staged);
 				yt_names_free(names);
 				yt_text_free(&text);
 				return false;
 			}
 		}
+		if (names->count == SIZE_MAX / sizeof(*names->rows)) {
+			free_row(&staged);
+			yt_names_free(names);
+			yt_text_free(&text);
+			if (error != NULL)
+				error->status = YT_NO_MEMORY;
+			return false;
+		}
 		grown = realloc(names->rows,
 		    (names->count + 1U) * sizeof(*names->rows));
 		if (grown == NULL) {
+			free_row(&staged);
 			yt_names_free(names);
 			yt_text_free(&text);
 			if (error != NULL)
@@ -175,6 +212,10 @@ yt_names_load(const char *path, struct yt_name_file *names,
 void
 yt_names_free(struct yt_name_file *names)
 {
+	size_t index;
+
+	for (index = 0; index < names->count; ++index)
+		free_row(&names->rows[index]);
 	free(names->rows);
 	names->rows = NULL;
 	names->count = 0;
@@ -191,10 +232,41 @@ yt_names_write(const char *path, const struct yt_name_file *names,
 
 	for (row = 0; row < names->count; ++row) {
 		const struct yt_name_row *item = &names->rows[row];
-		size_t row_length = strlen(item->real_first) + strlen(item->real_last)
-		    + strlen(item->alias_first) + strlen(item->alias_last) + 5U;
-		uint8_t *grown = realloc(data, length + row_length + 1U);
-		int written;
+		const char *fields[4];
+		size_t field_lengths[4];
+		size_t row_length = 5U;
+		uint8_t *grown;
+		size_t field;
+		size_t offset;
+
+		if (item->real_first == NULL || item->real_last == NULL
+		    || item->alias_first == NULL || item->alias_last == NULL) {
+			free(data);
+			if (error != NULL)
+				error->status = YT_INVALID;
+			return false;
+		}
+		fields[0] = item->real_first;
+		fields[1] = item->real_last;
+		fields[2] = item->alias_first;
+		fields[3] = item->alias_last;
+		for (field = 0; field < 4U; ++field) {
+			field_lengths[field] = strlen(fields[field]);
+			if (field_lengths[field] > SIZE_MAX - row_length) {
+				free(data);
+				if (error != NULL)
+					error->status = YT_NO_MEMORY;
+				return false;
+			}
+			row_length += field_lengths[field];
+		}
+		if (row_length > SIZE_MAX - length) {
+			free(data);
+			if (error != NULL)
+				error->status = YT_NO_MEMORY;
+			return false;
+		}
+		grown = realloc(data, length + row_length);
 
 		if (grown == NULL) {
 			free(data);
@@ -203,15 +275,15 @@ yt_names_write(const char *path, const struct yt_name_file *names,
 			return false;
 		}
 		data = grown;
-		written = snprintf((char *)data + length, row_length + 1U,
-		    "%s,%s,%s,%s\r\n", item->real_first, item->real_last,
-		    item->alias_first, item->alias_last);
-		if (written < 0 || (size_t)written != row_length) {
-			free(data);
-			if (error != NULL)
-				error->status = YT_INVALID;
-			return false;
+		offset = length;
+		for (field = 0U; field < 4U; ++field) {
+			memcpy(data + offset, fields[field], field_lengths[field]);
+			offset += field_lengths[field];
+			if (field != 3U)
+				data[offset++] = ',';
 		}
+		data[offset++] = '\r';
+		data[offset++] = '\n';
 		length += row_length;
 	}
 	result = yt_text_write(path, data, length, true, error);
@@ -223,17 +295,81 @@ bool
 yt_names_append(const char *path, const struct yt_name_row *row,
     struct yt_error *error)
 {
-	char line[180];
-	int length = snprintf(line, sizeof(line), "%s,%s,%s,%s",
-	    row->real_first, row->real_last, row->alias_first, row->alias_last);
+	const char *fields[4];
+	size_t lengths[4];
+	size_t length = 3U;
+	size_t field;
+	size_t offset = 0U;
+	uint8_t *line;
+	bool result;
 
-	if (length < 0 || (size_t)length >= sizeof(line)) {
+	if (row == NULL || row->real_first == NULL || row->real_last == NULL
+	    || row->alias_first == NULL || row->alias_last == NULL) {
 		if (error != NULL)
-			error->status = YT_RANGE;
+			error->status = YT_INVALID;
 		return false;
 	}
-	return yt_text_append_line(path, (const uint8_t *)line, (size_t)length,
-	    error);
+	fields[0] = row->real_first;
+	fields[1] = row->real_last;
+	fields[2] = row->alias_first;
+	fields[3] = row->alias_last;
+	for (field = 0U; field < 4U; ++field) {
+		lengths[field] = strlen(fields[field]);
+		if (lengths[field] > SIZE_MAX - length) {
+			if (error != NULL)
+				error->status = YT_NO_MEMORY;
+			return false;
+		}
+		length += lengths[field];
+	}
+	line = malloc(length == 0U ? 1U : length);
+	if (line == NULL) {
+		if (error != NULL)
+			error->status = YT_NO_MEMORY;
+		return false;
+	}
+	for (field = 0U; field < 4U; ++field) {
+		memcpy(line + offset, fields[field], lengths[field]);
+		offset += lengths[field];
+		if (field != 3U)
+			line[offset++] = ',';
+	}
+	result = yt_text_append_line(path, line, length, error);
+	free(line);
+	return result;
+}
+
+bool
+yt_names_set_alias(struct yt_name_file *names, size_t index,
+    const char *first, const char *last, struct yt_error *error)
+{
+	char *new_first;
+	char *new_last;
+
+	if (names == NULL || index >= names->count || first == NULL
+	    || last == NULL) {
+		if (error != NULL)
+			error->status = YT_INVALID;
+		return false;
+	}
+	new_first = duplicate_string(first);
+	if (new_first == NULL) {
+		if (error != NULL)
+			error->status = YT_NO_MEMORY;
+		return false;
+	}
+	new_last = duplicate_string(last);
+	if (new_last == NULL) {
+		free(new_first);
+		if (error != NULL)
+			error->status = YT_NO_MEMORY;
+		return false;
+	}
+	free(names->rows[index].alias_first);
+	free(names->rows[index].alias_last);
+	names->rows[index].alias_first = new_first;
+	names->rows[index].alias_last = new_last;
+	return true;
 }
 
 static bool

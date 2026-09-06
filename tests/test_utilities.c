@@ -2956,6 +2956,7 @@ file_size_is(const char *path, long expected)
 static bool
 test_name_input_grammar(struct yt_error *error)
 {
+	enum { LONG_FIELD_LENGTH = 300 };
 	static const uint8_t stream[] =
 	    "A,B,C\r\nD,E,F,G,H\r\n\x1a";
 	static const uint8_t duplicates[] =
@@ -2976,6 +2977,8 @@ test_name_input_grammar(struct yt_error *error)
 	static const uint8_t closed_eof[] = "A,B,C,\"D\"\x1a";
 	static const uint8_t lf_eof[] = "A,B,C,\n\x1a";
 	static const uint8_t incomplete[] = "A,B,C\x1a";
+	static const uint8_t long_suffix[] = ",B,C,D\r\n\x1a";
+	uint8_t long_stream[LONG_FIELD_LENGTH + sizeof(long_suffix) - 1U];
 	struct yt_name_file names;
 	bool ok = true;
 
@@ -3060,6 +3063,29 @@ test_name_input_grammar(struct yt_error *error)
 	yt_error_clear(error);
 	ok = !yt_names_load("names.in", &names, error)
 	    && error->status == YT_EOF && names.rows == NULL && names.count == 0;
+	REQUIRE_NAMES(ok, "incomplete group");
+	memset(long_stream, 'A', LONG_FIELD_LENGTH);
+	memcpy(long_stream + LONG_FIELD_LENGTH, long_suffix,
+	    sizeof(long_suffix) - 1U);
+	REQUIRE_NAMES(write_file("names.in", long_stream,
+	    sizeof(long_stream)) && yt_names_load("names.in", &names, error),
+	    "dynamic-field load");
+	ok = names.count == 1U
+	    && strlen(names.rows[0].real_first) == LONG_FIELD_LENGTH
+	    && memcmp(names.rows[0].real_first, long_stream,
+	    LONG_FIELD_LENGTH) == 0
+	    && strcmp(names.rows[0].real_last, "B") == 0
+	    && yt_names_write("names.out", &names, error);
+	yt_names_free(&names);
+	REQUIRE_NAMES(ok, "dynamic-field value/write");
+	{
+		struct yt_text_file written = {0};
+
+		ok = yt_text_read("names.out", &written, error)
+		    && written.length == sizeof(long_stream)
+		    && memcmp(written.data, long_stream, sizeof(long_stream)) == 0;
+		yt_text_free(&written);
+	}
 #undef LOAD_NAMES
 #undef REQUIRE_NAMES
 	return ok;
@@ -3134,6 +3160,7 @@ test_alias_key_preparation(void)
 static bool
 test_name_append(struct yt_error *error)
 {
+	enum { LONG_ALIAS_LENGTH = 300 };
 	static const struct yt_name_row first =
 	    {"John", "Doe", "Star", "Lord"};
 	static const struct yt_name_row second =
@@ -3142,6 +3169,9 @@ test_name_append(struct yt_error *error)
 	    "John,Doe,Star,Lord\r\n"
 	    "Jane,Roe,Void,Walker\r\n\x1a";
 	struct yt_text_file text = {0};
+	struct yt_name_file names;
+	char long_alias[LONG_ALIAS_LENGTH + 1U];
+	struct yt_name_row third = {"Long", "Alias", long_alias, "Tail"};
 	bool valid;
 
 	(void)remove("names.append");
@@ -3155,7 +3185,20 @@ test_name_append(struct yt_error *error)
 	valid = text.length == sizeof(expected) - 1U
 	    && memcmp(text.data, expected, sizeof(expected) - 1U) == 0;
 	yt_text_free(&text);
+	memset(long_alias, 'Z', LONG_ALIAS_LENGTH);
+	long_alias[LONG_ALIAS_LENGTH] = '\0';
+	valid = valid && yt_names_append("names.append", &third, error)
+	    && yt_names_load("names.append", &names, error);
+	if (valid) {
+		valid = names.count == 3U
+		    && strlen(names.rows[2].alias_first) == LONG_ALIAS_LENGTH
+		    && memcmp(names.rows[2].alias_first, long_alias,
+		    LONG_ALIAS_LENGTH) == 0
+		    && strcmp(names.rows[2].alias_last, "Tail") == 0;
+		yt_names_free(&names);
+	}
 	(void)remove("names.append");
+	(void)remove("names.out");
 	return valid;
 }
 

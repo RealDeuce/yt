@@ -3197,6 +3197,10 @@ at the outer function.
   rewrite them. Numeric equality is not always byte equality.
 - Preserve text CRLF, DOS EOF, padding, truncation, append positioning, and
   per-line durability exactly.
+- Loaded `YTNAME.DAT` rows own four dynamic C strings; do not restore a fixed
+  host-side field cap. Stack rows supplied to the append-only API are borrowed
+  for the duration of that call, while `yt_names_free()` releases fields
+  returned by `yt_names_load()`.
 - Preserve each executable's filename operation order, while representing all
   built-in DOS filenames canonically in uppercase. The native filesystem
   compatibility layer must provide DOS-style case-insensitive lookup on

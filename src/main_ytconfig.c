@@ -858,10 +858,11 @@ save_alias:
 			qb_title_case(old_alias);
 			yt_names_split(entered, first, sizeof(first), last,
 			    sizeof(last));
-			snprintf(names.rows[selected].alias_first,
-			    sizeof(names.rows[selected].alias_first), "%s", first);
-			snprintf(names.rows[selected].alias_last,
-			    sizeof(names.rows[selected].alias_last), "%s", last);
+			if (!yt_names_set_alias(&names, (size_t)selected, first, last,
+			    error)) {
+				yt_names_free(&names);
+				return false;
+			}
 			if (!yt_names_write("YTNAME.DAT", &names, error)) {
 				yt_names_free(&names);
 				return false;
