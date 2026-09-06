@@ -1291,6 +1291,82 @@ test_upper_fault_stages(void)
 }
 
 static void
+test_repeat_prefix_stages(void)
+{
+	struct yt_repeat_prefix_transform result;
+	struct input_process_tape tape;
+	uint8_t scratch[32];
+	uint8_t expected_raw[4];
+
+	memset(&tape, 0, sizeof(tape));
+	memcpy(scratch, "OLD", 4U);
+	CHECK(!yt_input_repeat_prefix_staged((const uint8_t *)"a/R2", 4U,
+	    scratch, sizeof(scratch),
+	    YT_BASIC_FAULT_ADE0_UPPER_SCRATCH_CLONE_SPACE, 1U, &result,
+	    input_process_store, &tape));
+	CHECK(result.fault_valid
+	    && result.fault_site
+	    == YT_BASIC_FAULT_ADE0_UPPER_SCRATCH_CLONE_SPACE
+	    && strcmp((const char *)scratch, "OLD") == 0 && tape.count == 0U);
+
+	memset(&tape, 0, sizeof(tape));
+	memcpy(scratch, "OLD", 4U);
+	CHECK(!yt_input_repeat_prefix_staged((const uint8_t *)"a/R2", 4U,
+	    scratch, sizeof(scratch), YT_BASIC_FAULT_UPPER_CHR_STRING_SPACE,
+	    1U, &result, input_process_store, &tape));
+	CHECK(result.fault_valid
+	    && result.fault_site == YT_BASIC_FAULT_UPPER_CHR_STRING_SPACE
+	    && result.upper.fault_valid && result.upper.index == 1U
+	    && result.upper.extracted_valid
+	    && result.upper.extracted == (uint8_t)'a'
+	    && result.upper.mapped_valid && result.upper.mapped == (uint8_t)'A'
+	    && strcmp((const char *)scratch, "a/R2") == 0
+	    && tape.count == 3U);
+
+	memset(&tape, 0, sizeof(tape));
+	memcpy(scratch, "OLD", 4U);
+	CHECK(!yt_input_repeat_prefix_staged((const uint8_t *)"a/R2", 4U,
+	    scratch, sizeof(scratch),
+	    YT_BASIC_FAULT_UPPER_MID_COMPARE_STRING_SPACE, 3U, &result,
+	    input_process_store, &tape));
+	CHECK(result.fault_valid
+	    && result.fault_site
+	    == YT_BASIC_FAULT_UPPER_MID_COMPARE_STRING_SPACE
+	    && result.upper.index == 3U
+	    && strcmp((const char *)scratch, "A/R2") == 0
+	    && tape.count == 7U);
+
+	memset(&tape, 0, sizeof(tape));
+	memcpy(scratch, "OLD", 4U);
+	CHECK(yt_input_repeat_prefix_staged((const uint8_t *)"a/r2", 4U,
+	    scratch, sizeof(scratch), YT_BASIC_FAULT_SITE_COUNT, 1U, &result,
+	    input_process_store, &tape));
+	CHECK(!result.fault_valid && !result.upper.fault_valid
+	    && result.repeat_position == 2U
+	    && strcmp((const char *)scratch, "A/R2") == 0
+	    && tape.count == 12U && tape.address[11] == 0x51C4U
+	    && qb_mbf32_encode(2.0f, expected_raw) == QB_MBF_OK
+	    && memcmp(result.work_raw, expected_raw, sizeof(expected_raw)) == 0
+	    && memcmp(tape.raw[11], expected_raw, sizeof(expected_raw)) == 0);
+
+	memset(&tape, 0, sizeof(tape));
+	CHECK(yt_input_repeat_prefix_staged((const uint8_t *)"abc", 3U,
+	    scratch, sizeof(scratch), YT_BASIC_FAULT_SITE_COUNT, 1U, &result,
+	    input_process_store, &tape));
+	CHECK(!result.fault_valid && result.repeat_position == 0U
+	    && strcmp((const char *)scratch, "ABC") == 0
+	    && qb_mbf32_encode(0.0f, expected_raw) == QB_MBF_OK
+	    && memcmp(result.work_raw, expected_raw, sizeof(expected_raw)) == 0);
+
+	memcpy(scratch, "OLD", 4U);
+	CHECK(!yt_input_repeat_prefix_staged((const uint8_t *)"", 0U,
+	    scratch, sizeof(scratch),
+	    YT_BASIC_FAULT_ADE0_UPPER_SCRATCH_CLONE_SPACE, 1U, &result,
+	    input_process_store, &tape));
+	CHECK(!result.fault_valid && strcmp((const char *)scratch, "OLD") == 0);
+}
+
+static void
 test_repeat_transform(void)
 {
 	struct yt_repeat_transform result;
@@ -4018,6 +4094,7 @@ main(void)
 	test_merged_fifo();
 	test_b05d_keys();
 	test_upper_fault_stages();
+	test_repeat_prefix_stages();
 	test_repeat_transform();
 	test_semicolon_queue();
 	test_queue_program_prepend();

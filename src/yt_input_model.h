@@ -90,6 +90,14 @@ struct yt_command_save_transform {
 	bool fault_valid;
 };
 
+struct yt_repeat_prefix_transform {
+	struct yt_upper_transform upper;
+	uint8_t work_raw[4];
+	size_t repeat_position;
+	enum yt_basic_fault_site fault_site;
+	bool fault_valid;
+};
+
 enum yt_yes_no_answer {
 	YT_YES_NO_EMPTY,
 	YT_YES_NO_YES,
@@ -384,6 +392,11 @@ bool yt_input_compat_upper_n_staged(uint8_t *text, size_t length,
 	enum yt_basic_fault_site target, size_t occurrence,
 	struct yt_upper_transform *result, yt_input_process_store_fn store,
 	void *context);
+bool yt_input_repeat_prefix_staged(const uint8_t *text, size_t length,
+	uint8_t *upper_scratch, size_t scratch_capacity,
+	enum yt_basic_fault_site target, size_t occurrence,
+	struct yt_repeat_prefix_transform *result,
+	yt_input_process_store_fn store, void *context);
 bool yt_input_expand_repeat_observed(char *text, size_t text_capacity,
     char *saved_command, size_t saved_capacity,
     struct yt_repeat_transform *result, yt_input_process_store_fn store,

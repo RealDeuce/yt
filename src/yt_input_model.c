@@ -730,6 +730,62 @@ yt_input_compat_upper_n_observed(uint8_t *text, size_t length,
 }
 
 bool
+yt_input_repeat_prefix_staged(const uint8_t *text, size_t length,
+    uint8_t *upper_scratch, size_t scratch_capacity,
+    enum yt_basic_fault_site target, size_t occurrence,
+    struct yt_repeat_prefix_transform *result,
+    yt_input_process_store_fn store, void *context)
+{
+	struct yt_upper_transform upper;
+	size_t index;
+	size_t repeat_position = 0U;
+
+	if (text == NULL || upper_scratch == NULL || scratch_capacity == 0U
+	    || result == NULL || occurrence == 0U || length >= scratch_capacity
+	    || (target != YT_BASIC_FAULT_SITE_COUNT
+	    && target != YT_BASIC_FAULT_ADE0_UPPER_SCRATCH_CLONE_SPACE
+	    && !upper_fault_target(target)))
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->fault_site = YT_BASIC_FAULT_SITE_COUNT;
+	result->upper.fault_site = YT_BASIC_FAULT_SITE_COUNT;
+	if (target == YT_BASIC_FAULT_ADE0_UPPER_SCRATCH_CLONE_SPACE) {
+		if (occurrence != 1U || length == 0U)
+			return false;
+		result->fault_site = target;
+		result->fault_valid = true;
+		return false;
+	}
+	memcpy(upper_scratch, text, length);
+	upper_scratch[length] = '\0';
+	if (!yt_input_compat_upper_n_staged(upper_scratch, length,
+	    upper_fault_target(target) ? target : YT_BASIC_FAULT_SITE_COUNT,
+	    occurrence, &upper, store, context)) {
+		result->upper = upper;
+		if (upper.fault_valid) {
+			result->fault_site = upper.fault_site;
+			result->fault_valid = true;
+		}
+		return false;
+	}
+	result->upper = upper;
+	for (index = 0U; index + 1U < length; ++index) {
+		if (upper_scratch[index] == (uint8_t)'/'
+		    && upper_scratch[index + 1U] == (uint8_t)'R') {
+			repeat_position = index + 1U;
+			break;
+		}
+	}
+	if (!input_process_store_single(store, context, 0x51C4U,
+	    (float)repeat_position)
+	    || qb_mbf32_encode((float)repeat_position, result->work_raw)
+	    != QB_MBF_OK)
+		return false;
+	result->repeat_position = repeat_position;
+	return target == YT_BASIC_FAULT_SITE_COUNT;
+}
+
+bool
 yt_input_expand_repeat_observed(char *text, size_t text_capacity,
     char *saved_command, size_t saved_capacity,
     struct yt_repeat_transform *result, yt_input_process_store_fn store,
@@ -737,6 +793,7 @@ yt_input_expand_repeat_observed(char *text, size_t text_capacity,
 {
 	char base[YT_INPUT_PENDING];
 	uint8_t upper[YT_INPUT_PENDING];
+	struct yt_repeat_prefix_transform repeat_prefix;
 	struct qb_val_result parsed;
 	double integer;
 	size_t text_length;
@@ -758,17 +815,13 @@ yt_input_expand_repeat_observed(char *text, size_t text_capacity,
 	text_length = strlen(text);
 	if (text_length >= sizeof(upper))
 		return false;
-	memcpy(upper, text, text_length + 1U);
-	yt_input_compat_upper_n_observed(upper, text_length, store, context);
-	for (prefix = 0; prefix + 1U < text_length; ++prefix) {
-		if (upper[prefix] == '/' && upper[prefix + 1U] == (uint8_t)'R')
-			break;
-	}
-	if (!input_process_store_single(store, context, 0x51C4U,
-	    prefix + 1U < text_length ? (float)(prefix + 1U) : 0.0f))
+	if (!yt_input_repeat_prefix_staged((const uint8_t *)text, text_length,
+	    upper, sizeof(upper), YT_BASIC_FAULT_SITE_COUNT, 1U,
+	    &repeat_prefix, store, context))
 		return false;
-	if (prefix + 1U >= text_length)
+	if (repeat_prefix.repeat_position == 0U)
 		return true;
+	prefix = repeat_prefix.repeat_position - 1U;
 	if (prefix + 2U >= text_capacity || prefix + 1U >= sizeof(base))
 		return false;
 	parsed = qb_val((const char *)upper + prefix + 2U);
