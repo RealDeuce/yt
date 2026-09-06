@@ -34367,14 +34367,18 @@ test_hostile_bribe_immediate_fatal_cycle(void)
 		enum yt_hostile_bribe_branch branch;
 		float draws[3];
 		size_t draw_count;
-		size_t body_length[2];
-		size_t total_length[2];
-		uint64_t total_hash[2][4];
+		size_t body_length[3];
+		size_t total_length[3];
+		uint64_t total_hash[3][4];
+		size_t local_rows;
+		uint64_t local_row_hash[4];
+		size_t local_colors;
+		uint64_t local_color_hash;
 	} origins[] = {
 		{NULL, 0U, YT_HOSTILE_BRIBE_LIFE_DEMAND,
 		    {81143.0f / 8388608.0f,
 		    4221177.0f / 16777216.0f, 0.0f}, 2U,
-		    {41U, 55U}, {1414U, 1502U},
+		    {41U, 55U, 0U}, {1414U, 1502U, 0U},
 		    {{UINT64_C(0x85c43d91b9691908),
 		    UINT64_C(0x9ccae724cbc1b342),
 		    UINT64_C(0xa74b1e38fb9e94f9),
@@ -34382,12 +34386,21 @@ test_hostile_bribe_immediate_fatal_cycle(void)
 		    {UINT64_C(0xf2e74196dc0f9762),
 		    UINT64_C(0x3c4f454bb9c5befe),
 		    UINT64_C(0xf610355b79747f8f),
-		    UINT64_C(0xb135d7b79bec5b21)}}},
+		    UINT64_C(0xb135d7b79bec5b21)},
+		    {UINT64_C(0xcbf29ce484222325),
+		    UINT64_C(0xcbf29ce484222325),
+		    UINT64_C(0xcbf29ce484222325),
+		    UINT64_C(0xcbf29ce484222325)}}, 50U,
+		    {UINT64_C(0x74360fce25b1188c),
+		    UINT64_C(0x8366556a8b7d7329),
+		    UINT64_C(0x334d394c411e10e3),
+		    UINT64_C(0x0f02ae34e70035e4)}, 26U,
+		    UINT64_C(0x212cad202535dbdd)},
 		{offer, sizeof(offer) - 1U, YT_HOSTILE_BRIBE_REJECTED,
 		    {7736943.0f / 16777216.0f,
 		    7174075.0f / 8388608.0f,
 		    8857697.0f / 16777216.0f}, 3U,
-		    {134U, 148U}, {1507U, 1595U},
+		    {134U, 148U, 0U}, {1507U, 1595U, 0U},
 		    {{UINT64_C(0x6cc7f31c07764297),
 		    UINT64_C(0xa0731b4a491d5721),
 		    UINT64_C(0x9b0810349f0f861c),
@@ -34395,7 +34408,16 @@ test_hostile_bribe_immediate_fatal_cycle(void)
 		    {UINT64_C(0xda5d3cc91fbe5405),
 		    UINT64_C(0x47307961f9cf77b1),
 		    UINT64_C(0x46595947bfb51a9e),
-		    UINT64_C(0x0be53cc4a19fb810)}}},
+		    UINT64_C(0x0be53cc4a19fb810)},
+		    {UINT64_C(0xcbf29ce484222325),
+		    UINT64_C(0xcbf29ce484222325),
+		    UINT64_C(0xcbf29ce484222325),
+		    UINT64_C(0xcbf29ce484222325)}}, 53U,
+		    {UINT64_C(0x1e0b45d2841fb049),
+		    UINT64_C(0x2221167589327b96),
+		    UINT64_C(0x8f146b5aa8b6d72c),
+		    UINT64_C(0xd2c6e48a0de1e021)}, 28U,
+		    UINT64_C(0xafecff5a612047f5)},
 	};
 	struct physical_viewer_join viewer;
 	struct yt_file_viewer_stream_state stream;
@@ -34413,20 +34435,22 @@ test_hostile_bribe_immediate_fatal_cycle(void)
 	uint8_t expected_record[4];
 	uint8_t remote[1800];
 	size_t alias;
-	size_t ansi;
+	size_t endpoint;
 	size_t menu_end;
 	size_t origin;
 
 	CHECK(qb_mbf32_encode(2.0f, expected_record) == QB_MBF_OK);
 	for (origin = 0U; origin < YT_ARRAY_LEN(origins); ++origin) {
-		for (ansi = 0U; ansi < 2U; ++ansi) {
+		for (endpoint = 0U; endpoint < 3U; ++endpoint) {
 			for (alias = 0U; alias < YT_ARRAY_LEN(aliases); ++alias) {
 				memset(&viewer, 0, sizeof(viewer));
 				fixture_viewer_initialize(&viewer, &stream,
 				    retained_scoreboard,
 				    sizeof(retained_scoreboard) - 1U,
-				    "YTSCORE.ASC", ansi != 0U, remote,
+				    "YTSCORE.ASC", endpoint == 1U, remote,
 				    sizeof(remote));
+				if (endpoint == 2U)
+					viewer.join.presentation.sound.mode = 1.0f;
 				viewer.join.presentation.sound.user_sound = 0.0f;
 				memset(&fixture, 0, sizeof(fixture));
 				fixture.cycle.presentation.viewer = &viewer;
@@ -34439,8 +34463,9 @@ test_hostile_bribe_immediate_fatal_cycle(void)
 				    aliases[alias].length, YT_HOSTILE_MENU_BRIBE,
 				    0.0, 10.0));
 				menu_end = viewer.join.remote_length;
-				CHECK(menu_end == (ansi != 0U ? 68U : 58U)
-				    + aliases[alias].length - 1U);
+				CHECK(menu_end == (endpoint == 2U ? 0U
+				    : (endpoint == 1U ? 68U : 58U)
+				    + aliases[alias].length - 1U));
 
 				memset(&fatal, 0, sizeof(fatal));
 				fatal.viewer = &viewer;
@@ -34491,7 +34516,7 @@ test_hostile_bribe_immediate_fatal_cycle(void)
 				CHECK(yt_hostile_bribe_run(&bribe,
 				    &direct_warp_bribe_attack_ops, &joined, &error));
 				CHECK(fatal.fatal_start == menu_end
-				    + origins[origin].body_length[ansi]);
+				    + origins[origin].body_length[endpoint]);
 				memset(&info, 0, sizeof(info));
 				info.player = fatal.player;
 				info.cached_name = name;
@@ -34558,13 +34583,25 @@ test_hostile_bribe_immediate_fatal_cycle(void)
 				    && fixture.draw_position
 				    == origins[origin].draw_count
 				    && fatal.fatal_end - fatal.fatal_start
-				    == (ansi != 0U ? 57U : 33U)
+				    == (endpoint == 2U ? 0U
+				    : (endpoint == 1U ? 57U : 33U))
 				    && viewer.join.remote_length
-				    == origins[origin].total_length[ansi]
-				    + aliases[alias].length - 1U
+				    == origins[origin].total_length[endpoint]
+				    + (endpoint == 2U ? 0U
+				    : aliases[alias].length - 1U)
 				    && viewer_bytes_fnv1a64(remote,
 				    viewer.join.remote_length)
-				    == origins[origin].total_hash[ansi][alias]);
+				    == origins[origin].total_hash[endpoint][alias]);
+				if (endpoint == 2U)
+					CHECK(viewer.join.local_row_count
+					    == origins[origin].local_rows
+					    && viewer_rows_fnv1a64(&viewer.join)
+					    == origins[origin].local_row_hash[alias]
+					    && viewer.join.local_color_count
+					    == origins[origin].local_colors
+					    && viewer_colors_fnv1a64(&viewer.join)
+					    == origins[origin].local_color_hash
+					    && viewer.join.local_fragment_length == 0U);
 				yt_text_input_destroy(&viewer.input);
 			}
 		}
