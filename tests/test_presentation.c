@@ -20116,7 +20116,8 @@ main_rename_read_port(void *context, int logical_port,
 	struct main_rename_cycle_fixture *fixture = context;
 
 	(void)error;
-	if (logical_port != 3 || port == NULL)
+	if (logical_port != (fixture->sector.port == 1.0f ? 1 : 3)
+	    || port == NULL)
 		return false;
 	*port = fixture->port;
 	return true;
@@ -20134,10 +20135,14 @@ main_rename_present(void *context, const uint8_t *text, size_t length,
 	    && kind != YT_PORT_RENAME_NOT_OWNER
 	    && kind != YT_PORT_RENAME_EARTH)
 		return false;
+	if (!normal_exit_line(join, NULL, 0U))
+		return false;
 	join->presentation.bold = 1.0f;
 	join->presentation.blink = 1.0f;
-	return normal_exit_line(join, NULL, 0U)
-	    && normal_exit_b05d(join, text, length, 0.0f);
+	join->queue[0] = '\0';
+	join->queue_position = 0U;
+	join->queue_length = 0U;
+	return normal_exit_b05d(join, text, length, 0.0f);
 }
 
 static bool
@@ -20359,6 +20364,106 @@ test_main_rename_cycle_presentation(void)
 		yt_text_input_destroy(&viewer.input);
 	}
 	CHECK(sizeof(plain) - 1U == 269U && sizeof(ansi) - 1U == 299U);
+}
+
+static void
+test_main_rename_refusal_cycles_presentation(void)
+{
+	static const uint8_t ansi_prefix[] =
+	    "\x1b[0;32;40m\r\n"
+	    "Time: 14:59  Main Command (?=Help)? nTrailing\r\n"
+	    "\r\n\x1b[0;32;40;5;1m";
+	static const uint8_t ansi_suffix[] =
+	    "\x1b[0;31;40m\r\nSector: 9\r\nWarps lead to: 1\r\n"
+	    "\x1b[0;32;40m\r\nTime: 14:59  Main Command (?=Help)? ";
+	static const uint8_t plain_prefix[] =
+	    "\r\nTime: 14:59  Main Command (?=Help)? nTrailing\r\n\r\n";
+	static const uint8_t plain_suffix[] =
+	    "\r\nSector: 9\r\nWarps lead to: 1\r\n"
+	    "\r\nTime: 14:59  Main Command (?=Help)? ";
+	static const struct {
+		const uint8_t *row;
+		size_t row_length;
+		enum yt_port_rename_route route;
+	} outcomes[] = {
+		{(const uint8_t *)"No port here!\n\r", 15U,
+		    YT_PORT_RENAME_NO_PORT_ROUTE},
+		{(const uint8_t *)"This isn't your port!\n\r", 23U,
+		    YT_PORT_RENAME_NOT_OWNER_ROUTE},
+		{(const uint8_t *)"Can't rename Earth!\n\r", 21U,
+		    YT_PORT_RENAME_EARTH_ROUTE},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct main_rename_cycle_fixture fixture;
+	uint8_t expected[220];
+	uint8_t remote[220];
+	size_t ends[5];
+	size_t outcome;
+	size_t pass;
+
+	for (outcome = 0U; outcome < YT_ARRAY_LEN(outcomes); ++outcome) {
+		for (pass = 0U; pass < 2U; ++pass) {
+			const bool ansi = pass != 0U;
+			const uint8_t *prefix = ansi ? ansi_prefix : plain_prefix;
+			const size_t prefix_length = ansi
+			    ? sizeof(ansi_prefix) - 1U : sizeof(plain_prefix) - 1U;
+			const uint8_t *suffix = ansi ? ansi_suffix : plain_suffix;
+			const size_t suffix_length = ansi
+			    ? sizeof(ansi_suffix) - 1U : sizeof(plain_suffix) - 1U;
+			size_t expected_length = 0U;
+
+			memcpy(expected + expected_length, prefix, prefix_length);
+			expected_length += prefix_length;
+			memcpy(expected + expected_length, outcomes[outcome].row,
+			    outcomes[outcome].row_length);
+			expected_length += outcomes[outcome].row_length;
+			memcpy(expected + expected_length, suffix, suffix_length);
+			expected_length += suffix_length;
+
+			memset(&viewer, 0, sizeof(viewer));
+			fixture_viewer_initialize(&viewer, &stream,
+			    retained_scoreboard,
+			    sizeof(retained_scoreboard) - 1U, "YTSCORE.ASC",
+			    ansi, remote, sizeof(remote));
+			main_rename_cycle_fixture_initialize(&fixture, &viewer);
+			memcpy(viewer.join.queue, "TAIL\r", 6U);
+			viewer.join.queue_length = 5U;
+			if (outcome == 0U) {
+				fixture.sector.port = 0.0f;
+				memset(fixture.sector.record.bytes + YT_F65, 0, 4U);
+			}
+			else if (outcome == 1U)
+				fixture.port.owner = 7.0f;
+			else {
+				fixture.sector.port = 1.0f;
+				(void)yt_record_set_number(&fixture.sector.record,
+				    YT_F65, 1.0f);
+			}
+			CHECK(main_rename_cycle_run(&fixture, ansi, ends));
+			CHECK(viewer.join.remote_length == expected_length
+			    && memcmp(remote, expected, expected_length) == 0
+			    && fixture.cycle.complete
+			    && fixture.cycle.rename_complete
+			    && fixture.cycle.scanner_complete
+			    && fixture.rename.complete
+			    && fixture.rename.route == outcomes[outcome].route
+			    && !fixture.rename.editor_called
+			    && fixture.presentation.name_write_count == 0U
+			    && viewer.join.queue_length == 0U
+			    && viewer.join.accumulator[0] == '\0'
+			    && viewer.join.local_fragment_length == 36U
+			    && memcmp(viewer.join.local_fragment,
+			    "Time: 14:59  Main Command (?=Help)? ", 36U) == 0);
+			yt_text_input_destroy(&viewer.input);
+		}
+	}
+	CHECK(sizeof(ansi_prefix) - 1U + outcomes[0].row_length
+	    + sizeof(ansi_suffix) - 1U == 179U);
+	CHECK(sizeof(ansi_prefix) - 1U + outcomes[1].row_length
+	    + sizeof(ansi_suffix) - 1U == 187U);
+	CHECK(sizeof(ansi_prefix) - 1U + outcomes[2].row_length
+	    + sizeof(ansi_suffix) - 1U == 185U);
 }
 
 static bool
@@ -26851,6 +26956,7 @@ main(void)
 	test_planet_thrusters_accepted_cycle_presentation();
 	test_main_buy_cycle_presentation();
 	test_main_rename_cycle_presentation();
+	test_main_rename_refusal_cycles_presentation();
 	test_main_movement_accepted_cycle_presentation();
 	test_main_attack_survivor_cycle_presentation();
 	test_main_attack_black_hole_cycle_presentation();
