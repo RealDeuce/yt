@@ -17315,15 +17315,23 @@ check_maintenance_super_lottery_pass(void)
 	static const uint8_t dirty_zero[4] = {0x00, 0x00, 0x3b, 0x00};
 	static const size_t production_offsets[] = {YT_F45, YT_F49, YT_F53};
 	static const size_t dirty_offsets[] = {YT_F57, YT_F61, YT_F65, YT_F69};
+	static const uint64_t get_failure_draws[] = {2U, 3U, 4U, 4U, 12U};
+	static const uint32_t get_failure_records[] = {2U, 31U, 11U, 31U, 11U};
+	static const size_t put_failure_accepted[] = {85U, 97U};
+	static const uint32_t put_failure_records[] = {31U, 11U};
 	struct score_random_script script = {
 		success_draws, sizeof(success_draws), 0U
 	};
+	struct score_database_read_fault read_fault;
+	struct score_database_partial_fault write_fault;
 	struct score_line_tape screen = {0};
 	struct score_line_fault_tape line_fault;
 	struct yt_maintenance_lottery_result result;
 	struct yt_record player;
 	struct yt_record planet_before;
+	struct yt_record planet_success;
 	struct yt_record sector_before;
+	struct yt_record sector_success;
 	struct yt_record expected;
 	struct yt_record after;
 	struct yt_radio_record radio;
@@ -17403,13 +17411,17 @@ check_maintenance_super_lottery_pass(void)
 	if (!yt_record_set_number(&expected, YT_F73, 2.0f)
 	    || !yt_record_set_number(&expected, YT_F77, 51.0f)
 	    || !yt_record_set_number(&expected, YT_F117, 8000000.0f)
-	    || !yt_record_set_number(&expected, YT_F125, 0.0f)
-	    || !yt_database_read(&game.database, 31U, &after, &error)
+	    || !yt_record_set_number(&expected, YT_F125, 0.0f))
+		goto done;
+	planet_success = expected;
+	if (!yt_database_read(&game.database, 31U, &after, &error)
 	    || memcmp(after.bytes, expected.bytes, YT_RECORD_SIZE) != 0)
 		goto done;
 	expected = sector_before;
-	if (!yt_record_set_number(&expected, YT_F93, 1.0f)
-	    || !yt_database_read(&game.database, 11U, &after, &error)
+	if (!yt_record_set_number(&expected, YT_F93, 1.0f))
+		goto done;
+	sector_success = expected;
+	if (!yt_database_read(&game.database, 11U, &after, &error)
 	    || memcmp(after.bytes, expected.bytes, YT_RECORD_SIZE) != 0
 	    || !yt_text_read("YTNEWS.DAT", &news, &error)
 	    || news.length != sizeof(expected_news) - 1U
@@ -17502,6 +17514,141 @@ check_maintenance_super_lottery_pass(void)
 	    &error))
 		goto done;
 
+	/* Draws 2..12 all precede the first durable constructor write. */
+	if (!yt_record_set_number(&player, YT_F85, 4.0f)
+	    || !yt_database_write(&game.database, 2U, &player, &error)
+	    || !yt_record_set_number(&planet_before, YT_F85, 0.0f)
+	    || !yt_database_write(&game.database, 31U, &planet_before, &error)
+	    || !yt_record_set_number(&sector_before, YT_F93, -1.0f)
+	    || !yt_database_write(&game.database, 11U, &sector_before, &error))
+		goto done;
+	for (index = 1U; index < 12U; ++index) {
+		memset(&screen, 0, sizeof(screen));
+		script = (struct score_random_script){success_draws, index * 3U,
+		    0U};
+		yt_random_init(&game.random);
+		yt_random_set_provider(&game.random, score_random_fill, &script);
+		yt_error_clear(&error);
+		if (yt_maintenance_super_lottery(&game, 1, 1, 1,
+		    NULL, 0U, score_line_collect, &screen, &result, &error)
+		    || error.status != YT_RANDOM_ERROR
+		    || game.random.draws != index || script.position != index * 3U
+		    || screen.lines != 2U
+		    || screen.length != sizeof(phase_prefix) - 1U
+		    || memcmp(screen.data, phase_prefix,
+		    sizeof(phase_prefix) - 1U) != 0
+		    || !yt_database_read(&game.database, 31U, &after, &error)
+		    || memcmp(after.bytes, planet_before.bytes,
+		    YT_RECORD_SIZE) != 0
+		    || !yt_database_read(&game.database, 11U, &after, &error)
+		    || memcmp(after.bytes, sector_before.bytes,
+		    YT_RECORD_SIZE) != 0)
+			goto done;
+	}
+
+	/* Each fresh constructor GET has its own retained draw/write prefix. */
+	for (index = 0U; index < YT_ARRAY_LEN(get_failure_draws); ++index) {
+		yt_database_set_read_provider(&game.database, NULL, NULL);
+		if (!yt_database_write(&game.database, 2U, &player, &error)
+		    || !yt_database_write(&game.database, 31U, &planet_before,
+		    &error)
+		    || !yt_database_write(&game.database, 11U, &sector_before,
+		    &error))
+			goto done;
+		memset(&screen, 0, sizeof(screen));
+		read_fault = (struct score_database_read_fault){0U, index + 1U};
+		script = (struct score_random_script){success_draws,
+		    sizeof(success_draws), 0U};
+		yt_random_init(&game.random);
+		yt_random_set_provider(&game.random, score_random_fill, &script);
+		yt_database_set_read_provider(&game.database,
+		    score_database_read_with_fault, &read_fault);
+		yt_error_clear(&error);
+		if (yt_maintenance_super_lottery(&game, 1, 1, 1,
+		    NULL, 0U, score_line_collect, &screen, &result, &error)
+		    || error.status != YT_IO_ERROR || read_fault.calls != index + 1U
+		    || game.random.draws != get_failure_draws[index]
+		    || game.database.last_get.outcome != YT_DATABASE_GET_READ_ERROR
+		    || game.database.last_get.current_record
+		    != get_failure_records[index]
+		    || game.database.last_get.accepted != 0U
+		    || game.database.last_get.dos_error != 6U
+		    || game.database.last_get.basic_error != 57U
+		    || game.database.last_get.terminal_position != 0x55667788
+		    || screen.lines != 2U
+		    || screen.length != sizeof(phase_prefix) - 1U
+		    || memcmp(screen.data, phase_prefix,
+		    sizeof(phase_prefix) - 1U) != 0)
+			goto done;
+		yt_database_set_read_provider(&game.database, NULL, NULL);
+		if (!yt_database_read(&game.database, 31U, &after, &error)
+		    || memcmp(after.bytes, index == 4U ? planet_success.bytes
+		    : planet_before.bytes, YT_RECORD_SIZE) != 0
+		    || !yt_database_read(&game.database, 11U, &after, &error)
+		    || memcmp(after.bytes, sector_before.bytes,
+		    YT_RECORD_SIZE) != 0)
+			goto done;
+	}
+
+	/* Both constructor PUTs retain their accepted physical prefixes. */
+	for (index = 0U; index < YT_ARRAY_LEN(put_failure_accepted); ++index) {
+		struct yt_record expected_planet = planet_before;
+		struct yt_record expected_sector = sector_before;
+
+		yt_database_set_write_provider(&game.database, NULL, NULL);
+		if (!yt_database_write(&game.database, 2U, &player, &error)
+		    || !yt_database_write(&game.database, 31U, &planet_before,
+		    &error)
+		    || !yt_database_write(&game.database, 11U, &sector_before,
+		    &error))
+			goto done;
+		memset(&screen, 0, sizeof(screen));
+		write_fault = (struct score_database_partial_fault){
+			0U, index + 1U, put_failure_accepted[index], 0x66778899
+		};
+		script = (struct score_random_script){success_draws,
+		    sizeof(success_draws), 0U};
+		yt_random_init(&game.random);
+		yt_random_set_provider(&game.random, score_random_fill, &script);
+		yt_database_set_write_provider(&game.database,
+		    score_database_write_partial_fault, &write_fault);
+		yt_error_clear(&error);
+		if (yt_maintenance_super_lottery(&game, 1, 1, 1,
+		    NULL, 0U, score_line_collect, &screen, &result, &error)
+		    || error.status != YT_IO_ERROR
+		    || write_fault.calls != index + 1U
+		    || game.random.draws != 12U
+		    || game.database.last_put.outcome != YT_DATABASE_PUT_WRITE_ERROR
+		    || game.database.last_put.current_record
+		    != put_failure_records[index]
+		    || game.database.last_put.accepted
+		    != put_failure_accepted[index]
+		    || game.database.last_put.dos_error != 6U
+		    || game.database.last_put.basic_error != 57U
+		    || game.database.last_put.terminal_position != 0x66778899
+		    || screen.lines != 2U
+		    || screen.length != sizeof(phase_prefix) - 1U
+		    || memcmp(screen.data, phase_prefix,
+		    sizeof(phase_prefix) - 1U) != 0)
+			goto done;
+		yt_database_set_write_provider(&game.database, NULL, NULL);
+		if (index == 0U)
+			memcpy(expected_planet.bytes, planet_success.bytes,
+			    put_failure_accepted[index]);
+		else {
+			expected_planet = planet_success;
+			memcpy(expected_sector.bytes, sector_success.bytes,
+			    put_failure_accepted[index]);
+		}
+		if (!yt_database_read(&game.database, 31U, &after, &error)
+		    || memcmp(after.bytes, expected_planet.bytes,
+		    YT_RECORD_SIZE) != 0
+		    || !yt_database_read(&game.database, 11U, &after, &error)
+		    || memcmp(after.bytes, expected_sector.bytes,
+		    YT_RECORD_SIZE) != 0)
+			goto done;
+	}
+
 	/* Each logical output cut retains only its accepted complete rows. */
 	for (index = 0U; index < 3U; ++index) {
 		line_fault = (struct score_line_fault_tape){
@@ -17548,6 +17695,8 @@ check_maintenance_super_lottery_pass(void)
 	valid = true;
 
 done:
+	yt_database_set_read_provider(&game.database, NULL, NULL);
+	yt_database_set_write_provider(&game.database, NULL, NULL);
 	if (file != NULL)
 		(void)fclose(file);
 	yt_text_free(&news);
