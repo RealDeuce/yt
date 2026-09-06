@@ -23055,6 +23055,164 @@ test_hostile_mines_black_hole_cycle_presentation(void)
 }
 
 static bool
+direct_emergency_warp_invalid_retry_run(
+    struct hostile_mines_hazard_fixture *fixture, bool ansi)
+{
+	static const uint8_t warning_one[] =
+	    "This is a desperate move! Your engines will be drained and will take time";
+	static const uint8_t warning_two[] =
+	    "to recharge! You also risk a melt down! Are you sure you wish to do this?";
+	static const uint8_t prompt[] = "[y/N] -=> ";
+	static const uint8_t first[] = "X;Y";
+	static const uint8_t second[] = "n";
+	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct yt_present_result result;
+	enum yt_yes_no_answer answer;
+	char output[80];
+
+	join->presentation = state(ansi);
+	if (yt_present_color(&join->presentation, &result) != YT_PRESENT_OK
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.bold = 1.0f;
+	join->presentation.foreground = 7.0f;
+	join->pager.foreground = 7;
+	if (!normal_exit_b05d(join, warning_one, sizeof(warning_one) - 1U, 0.0f))
+		return false;
+	join->presentation.bold = 1.0f;
+	if (!normal_exit_b05d(join, warning_two, sizeof(warning_two) - 1U, 0.0f)
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.bold = 1.0f;
+	if (yt_present_character(prompt, sizeof(prompt) - 1U,
+	    &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	memcpy(join->accumulator, first, sizeof(first));
+	if (!yt_input_split_semicolon(join->accumulator, join->queue,
+	    sizeof(join->queue), &join->queue_position, &join->queue_length)
+	    || strcmp(join->accumulator, "X") != 0
+	    || join->queue_position != 0U || join->queue_length != 2U
+	    || memcmp(join->queue, "Y\r", 2U) != 0
+	    || yt_present_editor_echo(first, sizeof(first) - 1U, first,
+	    sizeof(first) - 1U, &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !yt_input_yes_no_candidate(join->accumulator, output,
+	    sizeof(output), &answer) || answer != YT_YES_NO_INVALID
+	    || strcmp(output, "X") != 0)
+		return false;
+	join->presentation.bold = 1.0f;
+	if (!yt_input_queue_clear(join->queue, sizeof(join->queue),
+	    &join->queue_position, &join->queue_length)
+	    || yt_present_character(prompt, sizeof(prompt) - 1U,
+	    &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	memcpy(join->accumulator, second, sizeof(second));
+	if (yt_present_editor_echo(second, sizeof(second) - 1U, second,
+	    sizeof(second) - 1U, &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !yt_input_yes_no_candidate(join->accumulator, output,
+	    sizeof(output), &answer) || answer != YT_YES_NO_NO
+	    || strcmp(output, "N") != 0)
+		return false;
+	memcpy(join->source, output, 2U);
+	join->source_length = 1U;
+	return true;
+}
+
+static void
+test_direct_emergency_warp_invalid_retry_presentation(void)
+{
+	static const uint8_t plain[] =
+	    "\r\n"
+	    "This is a desperate move! Your engines will be drained and will take time\n\r"
+	    "to recharge! You also risk a melt down! Are you sure you wish to do this?\n\r"
+	    "\r\n[y/N] -=> X;Y\r\n[y/N] -=> n\r\n";
+	static const uint8_t ansi[] =
+	    "\r\n"
+	    "\x1b[0;37;40;1m"
+	    "This is a desperate move! Your engines will be drained and will take time\n\r"
+	    "\x1b[0;37;40;1m"
+	    "to recharge! You also risk a melt down! Are you sure you wish to do this?\n\r"
+	    "\x1b[0;37;40m\r\n"
+	    "\x1b[0;37;40;1m[y/N] -=> X;Y"
+	    "\x1b[0;37;40m\r\n"
+	    "\x1b[0;37;40;1m[y/N] -=> n"
+	    "\x1b[0;37;40m\r\n";
+	static const struct {
+		bool ansi;
+		const uint8_t *expected;
+		size_t expected_length;
+		size_t local_colors;
+		uint64_t color_hash;
+		float final_bold;
+		float cached_foreground;
+	} cases[] = {
+		{false, plain, sizeof(plain) - 1U, 2U,
+		    UINT64_C(0x6d3fa4669b3587bd), 1.0f, 2.0f},
+		{true, ansi, sizeof(ansi) - 1U, 10U,
+		    UINT64_C(0xd76606f217d459b8), 0.0f, 7.0f},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	uint8_t remote[300];
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
+		memset(&fixture, 0, sizeof(fixture));
+		fixture.cycle.presentation.viewer = &viewer;
+		CHECK(direct_emergency_warp_invalid_retry_run(&fixture,
+		    cases[pass].ansi));
+		CHECK(viewer.join.remote_length == cases[pass].expected_length
+		    && memcmp(remote, cases[pass].expected,
+		    cases[pass].expected_length) == 0
+		    && !fixture.warp_called && fixture.draw_position == 0U
+		    && fixture.emergency_player_reads == 0U
+		    && fixture.emergency_player_writes == 0U
+		    && fixture.emergency_flushes == 0U
+		    && fixture.emergency_waits == 0U
+		    && strcmp(viewer.join.accumulator, "n") == 0
+		    && viewer.join.source_length == 1U
+		    && viewer.join.source[0] == 'N'
+		    && viewer.join.queue_position == 0U
+		    && viewer.join.queue_length == 0U
+		    && viewer.join.queue[0] == '\0'
+		    && viewer.join.local_fragment_length == 0U
+		    && viewer.join.local_row_count == 6U
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == UINT64_C(0xc197d8555a6b46d3)
+		    && viewer.join.local_color_count == cases[pass].local_colors
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == cases[pass].color_hash
+		    && viewer.join.presentation.foreground == 7.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold == cases[pass].final_bold
+		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.cached_foreground
+		    == cases[pass].cached_foreground
+		    && viewer.join.pager.foreground == 7
+		    && viewer.join.pager.line_count == 0.0f
+		    && viewer.join.event_count == 10U);
+		yt_text_input_destroy(&viewer.input);
+	}
+	CHECK(sizeof(plain) - 1U == 182U && sizeof(ansi) - 1U == 260U);
+}
+
+static bool
 direct_emergency_warp_accepted_run(
     struct hostile_mines_hazard_fixture *fixture, bool ansi,
     size_t *parent_end)
@@ -30346,6 +30504,7 @@ main(void)
 	test_hostile_mines_admitted_hazard_cycle_presentation();
 	test_hostile_mines_emergency_warp_cycle_presentation();
 	test_hostile_mines_black_hole_cycle_presentation();
+	test_direct_emergency_warp_invalid_retry_presentation();
 	test_direct_emergency_warp_accepted_presentation();
 	test_main_genesis_decline_cycle_presentation();
 	test_main_genesis_alternate_cycles_presentation();
