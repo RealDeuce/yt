@@ -19351,6 +19351,711 @@ test_planet_thrusters_accepted_cycle_presentation(void)
 	CHECK(sizeof(plain) - 1U == 580U && sizeof(ansi) - 1U == 710U);
 }
 
+struct main_buy_cycle_fixture {
+	struct physical_viewer_join *viewer;
+	struct yt_player buyer_entry;
+	struct yt_player fresh_buyer;
+	struct yt_player seller;
+	struct yt_sector sector;
+	struct yt_port port;
+	struct yt_player written_buyer;
+	struct yt_player written_seller;
+	struct yt_port written_port;
+	struct yt_port_purchase_state purchase;
+	struct yt_port_purchase_cycle_state cycle;
+	size_t accept_events[16];
+	size_t accept_event_count;
+};
+
+static bool
+main_buy_present_echo(struct main_buy_cycle_fixture *fixture,
+    const uint8_t *text, size_t length)
+{
+	struct viewer_pager_join *join = &fixture->viewer->join;
+	struct yt_present_result result;
+
+	if (yt_present_editor_echo(text, length, text, length,
+	    &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	return true;
+}
+
+static bool
+main_buy_present_answer(struct main_buy_cycle_fixture *fixture,
+    const uint8_t *answer, size_t length)
+{
+	struct viewer_pager_join *join = &fixture->viewer->join;
+
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	if (length >= sizeof(join->accumulator))
+		return false;
+	memcpy(join->accumulator, answer, length);
+	join->accumulator[length] = '\0';
+	return main_buy_present_echo(fixture, answer, length)
+	    && normal_exit_line(join, NULL, 0U);
+}
+
+static bool
+main_buy_name_row(void *context, enum yt_port_name_row_kind kind,
+    const uint8_t *text, size_t length, struct yt_error *error)
+{
+	struct main_buy_cycle_fixture *fixture = context;
+
+	(void)error;
+	if (kind != YT_PORT_NAME_CURRENT_ROW && kind != YT_PORT_NAME_KEEP_ROW
+	    && kind != YT_PORT_NAME_INSTRUCTION_ROW)
+		return false;
+	return normal_exit_line(&fixture->viewer->join, NULL, 0U)
+	    && normal_exit_b05d(&fixture->viewer->join, text, length, 0.0f);
+}
+
+static bool
+main_buy_name_prompt(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	struct main_buy_cycle_fixture *fixture = context;
+
+	(void)error;
+	return normal_exit_line(&fixture->viewer->join, NULL, 0U)
+	    && normal_exit_b05d(&fixture->viewer->join, text, length, 1.0f);
+}
+
+static bool
+main_buy_name_edit(void *context, uint8_t *response, size_t capacity,
+    size_t *length, struct yt_error *error)
+{
+	static const uint8_t entered[] = "Nova";
+	struct main_buy_cycle_fixture *fixture = context;
+
+	(void)error;
+	if (capacity < sizeof(entered) || length == NULL
+	    || !main_buy_present_answer(fixture, entered,
+	    sizeof(entered) - 1U))
+		return false;
+	memcpy(response, entered, sizeof(entered) - 1U);
+	*length = sizeof(entered) - 1U;
+	return true;
+}
+
+static bool
+main_buy_name_blank(void *context, struct yt_error *error)
+{
+	struct main_buy_cycle_fixture *fixture = context;
+
+	(void)error;
+	return normal_exit_line(&fixture->viewer->join, NULL, 0U);
+}
+
+static bool
+main_buy_name_confirm(void *context, const uint8_t *prompt, size_t length,
+    bool *accepted, struct yt_error *error)
+{
+	static const uint8_t yes[] = "Y";
+	struct main_buy_cycle_fixture *fixture = context;
+	struct viewer_pager_join *join = &fixture->viewer->join;
+	struct yt_present_result result;
+
+	(void)error;
+	if (accepted == NULL || yt_present_character(prompt, length,
+	    &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!main_buy_present_answer(fixture, yes, sizeof(yes) - 1U))
+		return false;
+	*accepted = true;
+	return true;
+}
+
+static bool
+main_buy_name_write(void *context, int logical_port,
+    const struct yt_record *record, struct yt_error *error)
+{
+	struct main_buy_cycle_fixture *fixture = context;
+
+	(void)error;
+	if (logical_port != 3 || record == NULL)
+		return false;
+	fixture->accept_events[fixture->accept_event_count++] = 6U;
+	return true;
+}
+
+static const struct yt_port_name_editor_ops main_buy_name_ops = {
+	main_buy_name_row,
+	main_buy_name_prompt,
+	main_buy_name_edit,
+	main_buy_name_blank,
+	main_buy_name_confirm,
+	main_buy_name_write,
+};
+
+static bool
+main_buy_accept_present(void *context, const uint8_t *text, size_t length,
+    enum yt_port_purchase_accept_output_kind kind, struct yt_error *error)
+{
+	struct main_buy_cycle_fixture *fixture = context;
+	struct viewer_pager_join *join = &fixture->viewer->join;
+
+	(void)error;
+	switch (kind) {
+	case YT_PORT_PURCHASE_ACCEPT_SOLD_BLANK:
+	case YT_PORT_PURCHASE_ACCEPT_TRANSFER_BLANK:
+		return normal_exit_line(join, NULL, 0U);
+	case YT_PORT_PURCHASE_ACCEPT_SOLD_ROW:
+		join->presentation.bold = 1.0f;
+		join->presentation.blink = 1.0f;
+		return normal_exit_b05d(join, text, length, 0.0f);
+	case YT_PORT_PURCHASE_ACCEPT_TRANSFER_ROW:
+	case YT_PORT_PURCHASE_ACCEPT_SUCCESS_TAIL:
+		return normal_exit_b05d(join, text, length, 0.0f);
+	case YT_PORT_PURCHASE_ACCEPT_SUCCESS_FIRST:
+		return normal_exit_line(join, NULL, 0U)
+		    && normal_exit_b05d(join, text, length, 0.0f);
+	default:
+		return false;
+	}
+}
+
+static bool
+main_buy_accept_read_port(void *context, int logical_port,
+    struct yt_port *port, struct yt_error *error)
+{
+	struct main_buy_cycle_fixture *fixture = context;
+
+	(void)error;
+	if (logical_port != 3 || port == NULL)
+		return false;
+	fixture->accept_events[fixture->accept_event_count++] = 1U;
+	*port = fixture->port;
+	return true;
+}
+
+static bool
+main_buy_accept_read_player(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct main_buy_cycle_fixture *fixture = context;
+
+	(void)error;
+	if (player_record != 7 || player == NULL)
+		return false;
+	fixture->accept_events[fixture->accept_event_count++] = 2U;
+	*player = fixture->seller;
+	return true;
+}
+
+static bool
+main_buy_accept_write_player(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct main_buy_cycle_fixture *fixture = context;
+
+	(void)error;
+	if (player == NULL)
+		return false;
+	if (player_record == 7) {
+		fixture->accept_events[fixture->accept_event_count++] = 3U;
+		fixture->written_seller = *player;
+		return true;
+	}
+	if (player_record == 2) {
+		fixture->accept_events[fixture->accept_event_count++] = 10U;
+		fixture->written_buyer = *player;
+		return true;
+	}
+	return false;
+}
+
+static bool
+main_buy_accept_radio(void *context, const uint8_t *text, size_t length,
+    float sender, float recipient, struct yt_error *error)
+{
+	static const uint8_t expected[] =
+	    "Pat bought your port \"Old Port\" in 9 for 10 credits";
+	struct main_buy_cycle_fixture *fixture = context;
+
+	(void)error;
+	if (length != sizeof(expected) - 1U
+	    || memcmp(text, expected, sizeof(expected) - 1U) != 0
+	    || sender != -2.0f || recipient != 7.0f)
+		return false;
+	fixture->accept_events[fixture->accept_event_count++] = 4U;
+	return true;
+}
+
+static bool
+main_buy_accept_rename(void *context, int logical_port,
+    const uint8_t *cached, size_t cached_length, struct yt_port *port,
+    struct yt_error *error)
+{
+	static const uint8_t old_name[] = "Old Port";
+	struct main_buy_cycle_fixture *fixture = context;
+	struct yt_port_name_editor_state state = {
+		.cached = cached,
+		.cached_length = cached_length,
+		.logical_port = logical_port,
+		.port = port,
+	};
+
+	if (logical_port != 3 || cached_length != sizeof(old_name) - 1U
+	    || memcmp(cached, old_name, sizeof(old_name) - 1U) != 0
+	    || !yt_port_name_editor_run(&state, &main_buy_name_ops, context,
+	    error))
+		return false;
+	fixture->port = *port;
+	return true;
+}
+
+static bool
+main_buy_accept_write_port(void *context, int logical_port,
+    struct yt_port *port, struct yt_error *error)
+{
+	struct main_buy_cycle_fixture *fixture = context;
+
+	(void)error;
+	if (logical_port != 3 || port == NULL)
+		return false;
+	fixture->accept_events[fixture->accept_event_count++] = 7U;
+	fixture->written_port = *port;
+	fixture->port = *port;
+	return true;
+}
+
+static bool
+main_buy_accept_hydrate(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct main_buy_cycle_fixture *fixture = context;
+
+	(void)error;
+	if (player_record != 2 || player == NULL)
+		return false;
+	fixture->accept_events[fixture->accept_event_count++] = 9U;
+	*player = fixture->fresh_buyer;
+	return true;
+}
+
+static const struct yt_port_purchase_accept_ops main_buy_accept_ops = {
+	main_buy_accept_present,
+	main_buy_accept_read_port,
+	main_buy_accept_read_player,
+	main_buy_accept_write_player,
+	main_buy_accept_radio,
+	main_buy_accept_rename,
+	main_buy_accept_write_port,
+	main_buy_accept_hydrate,
+};
+
+static bool
+main_buy_hydrate(void *context, int player_record, struct yt_player *player,
+    struct yt_error *error)
+{
+	struct main_buy_cycle_fixture *fixture = context;
+
+	(void)error;
+	if (player_record != 2 || player == NULL)
+		return false;
+	*player = fixture->buyer_entry;
+	return true;
+}
+
+static bool
+main_buy_read_sector(void *context, int sector_number,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct main_buy_cycle_fixture *fixture = context;
+
+	(void)error;
+	if (sector_number != 9 || sector == NULL)
+		return false;
+	*sector = fixture->sector;
+	return true;
+}
+
+static bool
+main_buy_report(void *context, int logical_port, bool earth,
+    struct yt_port *early_port, struct yt_port *terminal_port,
+    float production[3], struct yt_error *error)
+{
+	static const uint8_t owner[] = "This port is owned by: Seller";
+	static const uint8_t title[] =
+	    "Commerce report for Old Port: 01-01-1991 00:00:00";
+	static const uint8_t header[] =
+	    " Items         Status      # units    in holds   Cost";
+	static const uint8_t rule[] =
+	    "=======       =========   =========   ========   ====";
+	static const uint8_t rows[3][62] = {
+		"Ore..........  Selling         142         10 20    ",
+		"Organics.....  Buying          242         20 30    ",
+		"Equipment....  Buying          342          5 40    ",
+	};
+	struct main_buy_cycle_fixture *fixture = context;
+	struct viewer_pager_join *join = &fixture->viewer->join;
+	size_t index;
+
+	(void)error;
+	if (logical_port != 3 || earth || early_port == NULL
+	    || terminal_port == NULL || production == NULL
+	    || !normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_line(join, owner, sizeof(owner) - 1U)
+	    || !normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, title, sizeof(title) - 1U, 0.0f)
+	    || !normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, header, sizeof(header) - 1U, 0.0f))
+		return false;
+	join->presentation.bold = 1.0f;
+	if (!normal_exit_b05d(join, rule, sizeof(rule) - 1U, 0.0f))
+		return false;
+	for (index = 0U; index < 3U; ++index) {
+		join->presentation.foreground = index == 0U ? 2.0f : 3.0f;
+		join->pager.foreground = index == 0U ? 2 : 3;
+		if (!normal_exit_line(join, rows[index], strlen((const char *)rows[index])))
+			return false;
+	}
+	memset(early_port, 0, sizeof(*early_port));
+	memset(terminal_port, 0, sizeof(*terminal_port));
+	early_port->owner = 7.0f;
+	terminal_port->owner = 99.0f;
+	terminal_port->name_length = 8.0f;
+	memcpy(terminal_port->record.bytes, "Old Port", 8U);
+	production[0] = 20.0f;
+	production[1] = 30.0f;
+	production[2] = 40.0f;
+	return true;
+}
+
+static bool
+main_buy_owner(void *context, const struct yt_port *port, uint8_t *name,
+    size_t capacity, size_t *length, struct yt_error *error)
+{
+	static const uint8_t owner_name[] = "Seller";
+	static const uint8_t owner_row[] = "This port is owned by: Seller";
+	struct main_buy_cycle_fixture *fixture = context;
+
+	(void)error;
+	if (port == NULL || port->owner != 7.0f || name == NULL
+	    || capacity < sizeof(owner_name) - 1U || length == NULL
+	    || !normal_exit_line(&fixture->viewer->join, NULL, 0U)
+	    || !normal_exit_line(&fixture->viewer->join, owner_row,
+	    sizeof(owner_row) - 1U))
+		return false;
+	memcpy(name, owner_name, sizeof(owner_name) - 1U);
+	*length = sizeof(owner_name) - 1U;
+	return true;
+}
+
+static bool
+main_buy_present(void *context, const uint8_t *text, size_t length,
+    enum yt_port_purchase_output_kind kind, struct yt_error *error)
+{
+	struct main_buy_cycle_fixture *fixture = context;
+	struct viewer_pager_join *join = &fixture->viewer->join;
+
+	(void)error;
+	switch (kind) {
+	case YT_PORT_PURCHASE_PRICE:
+		return normal_exit_line(join, NULL, 0U)
+		    && normal_exit_b05d(join, text, length, 0.0f);
+	case YT_PORT_PURCHASE_OFFER_LEADING_BLANK:
+	case YT_PORT_PURCHASE_OFFER_TRAILING_BLANK:
+		return normal_exit_line(join, NULL, 0U);
+	case YT_PORT_PURCHASE_OFFER_ROW:
+		join->presentation.bold = 1.0f;
+		return normal_exit_b05d(join, text, length, 0.0f);
+	case YT_PORT_PURCHASE_NO_PORT:
+	case YT_PORT_PURCHASE_ALREADY_OWNER:
+	case YT_PORT_PURCHASE_UNAFFORDABLE:
+	case YT_PORT_PURCHASE_DECLINED:
+		return normal_exit_line(join, text, length);
+	default:
+		return false;
+	}
+}
+
+static bool
+main_buy_confirm(void *context, const uint8_t *prompt, size_t length,
+    bool *accepted, struct yt_error *error)
+{
+	static const uint8_t yes[] = "Y";
+	struct main_buy_cycle_fixture *fixture = context;
+	struct viewer_pager_join *join = &fixture->viewer->join;
+	struct yt_present_result result;
+
+	(void)error;
+	if (accepted == NULL || yt_present_character(prompt, length,
+	    &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!main_buy_present_answer(fixture, yes, sizeof(yes) - 1U))
+		return false;
+	*accepted = true;
+	return true;
+}
+
+static bool
+main_buy_accept(void *context, struct yt_port_purchase_accept_state *state,
+    struct yt_error *error)
+{
+	return yt_port_purchase_accept_run(state, &main_buy_accept_ops, context,
+	    error);
+}
+
+static const struct yt_port_purchase_ops main_buy_ops = {
+	main_buy_hydrate,
+	main_buy_read_sector,
+	main_buy_report,
+	main_buy_owner,
+	main_buy_present,
+	main_buy_confirm,
+	main_buy_accept,
+};
+
+static bool
+main_buy_cycle_purchase(void *context, struct yt_error *error)
+{
+	static const uint8_t main_prompt[] =
+	    "Time: 14:59  Main Command (?=Help)? ";
+	static const uint8_t command[] = "bTrailing";
+	struct main_buy_cycle_fixture *fixture = context;
+	struct viewer_pager_join *join = &fixture->viewer->join;
+
+	join->presentation.foreground = 2.0f;
+	join->pager.foreground = 2;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, main_prompt,
+	    sizeof(main_prompt) - 1U, 1.0f))
+		return false;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	if (!main_buy_present_echo(fixture, command, sizeof(command) - 1U)
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	fixture->purchase = (struct yt_port_purchase_state){
+		.current_player_record = 2,
+		.port_offset = 100.0f,
+		.conversion_mode = 4U,
+		.first_name = (const uint8_t *)"Pat",
+		.first_name_length = 3U,
+	};
+	return yt_port_purchase_run(&fixture->purchase, &main_buy_ops, fixture,
+	    error);
+}
+
+static bool
+main_buy_cycle_scanner(void *context, struct yt_error *error)
+{
+	static const uint8_t sector[] = "Sector: 9";
+	static const uint8_t warps[] = "Warps lead to: 1";
+	struct main_buy_cycle_fixture *fixture = context;
+	struct viewer_pager_join *join = &fixture->viewer->join;
+
+	(void)error;
+	join->presentation.foreground = 1.0f;
+	join->pager.foreground = 1;
+	return normal_exit_line(join, NULL, 0U)
+	    && normal_exit_line(join, sector, sizeof(sector) - 1U)
+	    && normal_exit_line(join, warps, sizeof(warps) - 1U);
+}
+
+static const struct yt_port_purchase_cycle_ops main_buy_cycle_ops = {
+	main_buy_cycle_purchase,
+	main_buy_cycle_scanner,
+};
+
+static bool
+main_buy_cycle_run(struct main_buy_cycle_fixture *fixture, bool ansi,
+    size_t ends[4])
+{
+	static const uint8_t main_prompt[] =
+	    "Time: 14:59  Main Command (?=Help)? ";
+	struct viewer_pager_join *join = &fixture->viewer->join;
+
+	join->presentation = state(ansi);
+	join->presentation.foreground = 6.0f;
+	join->presentation.color_initialized = 1.0f;
+	join->presentation.cached_foreground = 6.0f;
+	join->pager.foreground = 6;
+	join->pager.line_count = 8.0f;
+	if (!yt_port_purchase_cycle_run(&fixture->cycle, &main_buy_cycle_ops,
+	    fixture, NULL))
+		return false;
+	ends[0] = ansi ? 59U : 49U;
+	ends[1] = join->remote_length - 41U;
+	ends[2] = join->remote_length;
+	join->presentation.foreground = 2.0f;
+	join->pager.foreground = 2;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, main_prompt,
+	    sizeof(main_prompt) - 1U, 1.0f))
+		return false;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	ends[3] = join->remote_length;
+	return true;
+}
+
+static void
+main_buy_cycle_fixture_initialize(struct main_buy_cycle_fixture *fixture,
+    struct physical_viewer_join *viewer)
+{
+	memset(fixture, 0, sizeof(*fixture));
+	fixture->viewer = viewer;
+	memcpy(fixture->buyer_entry.record.bytes, "Pat", 3U);
+	fixture->buyer_entry.name_length = 3.0f;
+	fixture->buyer_entry.credits = 1000.0f;
+	fixture->buyer_entry.sector = 9.0f;
+	fixture->fresh_buyer = fixture->buyer_entry;
+	fixture->fresh_buyer.ports_owned = 1.0f;
+	(void)yt_record_set_number(&fixture->fresh_buyer.record, YT_F81,
+	    1000.0f);
+	(void)yt_record_set_number(&fixture->fresh_buyer.record, YT_F117, 1.0f);
+	fixture->seller.credits = 10.0f;
+	fixture->seller.ports_owned = 3.0f;
+	(void)yt_record_set_number(&fixture->seller.record, YT_F81, 10.0f);
+	(void)yt_record_set_number(&fixture->seller.record, YT_F117, 3.0f);
+	fixture->sector.port = 3.0f;
+	(void)yt_record_set_number(&fixture->sector.record, YT_F65, 3.0f);
+	memcpy(fixture->port.record.bytes, "Old Port", 8U);
+	fixture->port.name_length = 8.0f;
+	fixture->port.treasury = 4.0f;
+	fixture->port.owner = 7.0f;
+	(void)yt_record_set_number(&fixture->port.record, YT_F85, 8.0f);
+	(void)yt_record_set_number(&fixture->port.record, YT_F89, 4.0f);
+	(void)yt_record_set_number(&fixture->port.record, YT_F97, 7.0f);
+}
+
+static void
+test_main_buy_cycle_presentation(void)
+{
+	static const uint8_t plain[] =
+	    "\r\nTime: 14:59  Main Command (?=Help)? bTrailing\r\n"
+	    "\r\nThis port is owned by: Seller\r\n"
+	    "\r\nCommerce report for Old Port: 01-01-1991 00:00:00\n\r"
+	    "\r\n Items         Status      # units    in holds   Cost\n\r"
+	    "=======       =========   =========   ========   ====\n\r"
+	    "Ore..........  Selling         142         10 20    \r\n"
+	    "Organics.....  Buying          242         20 30    \r\n"
+	    "Equipment....  Buying          342          5 40    \r\n"
+	    "\r\nThis port is for sale for 10 credits. You have 1000 credits.\n\r"
+	    "\r\nThis port is owned by: Seller\r\n"
+	    "\r\nYou may buy it from Seller if you wish.\n\r"
+	    "\r\nDo you wish to buy it? [y/N]Y\r\n"
+	    "\r\nSold!\n\r"
+	    "\r\nCredits transferred to Seller's account!\n\r"
+	    "\r\nThis port is called: \"Old Port\".\n\r"
+	    "\r\nPress [ENTER] to keep same name.\n\r"
+	    "\r\nPlease enter a NAME for your port.\n\r"
+	    "\r\n-=> Nova\r\n"
+	    "\r\n\"Nova\" Is this OK? [y/N]Y\r\n"
+	    "\r\nCongratulations Pat! When others trade at your port their CREDITS\n\r"
+	    "will go into the port treasury for you to take out later!\n\r"
+	    "\r\nSector: 9\r\nWarps lead to: 1\r\n"
+	    "\r\nTime: 14:59  Main Command (?=Help)? ";
+	static const uint8_t ansi[] =
+	    "\x1b[0;32;40m\r\nTime: 14:59  Main Command (?=Help)? bTrailing\r\n"
+	    "\r\nThis port is owned by: Seller\r\n"
+	    "\r\nCommerce report for Old Port: 01-01-1991 00:00:00\n\r"
+	    "\r\n Items         Status      # units    in holds   Cost\n\r"
+	    "\x1b[0;32;40;1m=======       =========   =========   ========   ====\n\r"
+	    "\x1b[0;32;40mOre..........  Selling         142         10 20    \r\n"
+	    "\x1b[0;33;40mOrganics.....  Buying          242         20 30    \r\n"
+	    "Equipment....  Buying          342          5 40    \r\n"
+	    "\r\nThis port is for sale for 10 credits. You have 1000 credits.\n\r"
+	    "\r\nThis port is owned by: Seller\r\n"
+	    "\r\n\x1b[0;33;40;1mYou may buy it from Seller if you wish.\n\r"
+	    "\x1b[0;33;40m\r\nDo you wish to buy it? [y/N]Y\r\n"
+	    "\r\n\x1b[0;33;40;5;1mSold!\n\r"
+	    "\x1b[0;33;40m\r\nCredits transferred to Seller's account!\n\r"
+	    "\r\nThis port is called: \"Old Port\".\n\r"
+	    "\r\nPress [ENTER] to keep same name.\n\r"
+	    "\r\nPlease enter a NAME for your port.\n\r"
+	    "\r\n-=> Nova\r\n"
+	    "\r\n\"Nova\" Is this OK? [y/N]Y\r\n"
+	    "\r\nCongratulations Pat! When others trade at your port their CREDITS\n\r"
+	    "will go into the port treasury for you to take out later!\n\r"
+	    "\x1b[0;31;40m\r\nSector: 9\r\nWarps lead to: 1\r\n"
+	    "\x1b[0;32;40m\r\nTime: 14:59  Main Command (?=Help)? ";
+	static const size_t accept_events[] = {
+		1U, 2U, 3U, 4U, 1U, 6U, 1U, 7U, 9U, 10U,
+	};
+	static const struct {
+		bool ansi;
+		const uint8_t *expected;
+		size_t expected_length;
+		size_t ends[4];
+		size_t local_colors;
+		uint64_t color_hash;
+	} cases[] = {
+		{false, plain, sizeof(plain) - 1U,
+		    {49U, 904U, 945U, 983U}, 15U,
+		    UINT64_C(0xf0c270f67f9d7c5a)},
+		{true, ansi, sizeof(ansi) - 1U,
+		    {59U, 1002U, 1043U, 1091U}, 61U,
+		    UINT64_C(0xee8aca2f6b1fb48a)},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct main_buy_cycle_fixture fixture;
+	uint8_t remote[1200];
+	size_t ends[4];
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
+		main_buy_cycle_fixture_initialize(&fixture, &viewer);
+		CHECK(main_buy_cycle_run(&fixture, cases[pass].ansi, ends));
+		CHECK(memcmp(ends, cases[pass].ends, sizeof(ends)) == 0
+		    && viewer.join.remote_length == cases[pass].expected_length
+		    && memcmp(remote, cases[pass].expected,
+		    cases[pass].expected_length) == 0);
+		CHECK(fixture.cycle.complete && fixture.cycle.purchase_complete
+		    && fixture.cycle.scanner_complete
+		    && fixture.purchase.complete
+		    && fixture.purchase.route == YT_PORT_PURCHASE_ACCEPTED_ROUTE
+		    && fixture.purchase.price == 10.0
+		    && fixture.purchase.accepted.complete);
+		CHECK(fixture.accept_event_count == YT_ARRAY_LEN(accept_events)
+		    && memcmp(fixture.accept_events, accept_events,
+		    sizeof(accept_events)) == 0);
+		CHECK(fixture.written_seller.credits == 24.0f
+		    && fixture.written_seller.ports_owned == 2.0f
+		    && fixture.written_buyer.credits == 990.0f
+		    && fixture.written_buyer.ports_owned == 2.0f
+		    && fixture.written_port.owner == 2.0f
+		    && fixture.written_port.treasury == 0.0f
+		    && fixture.written_port.name_length == 4.0f
+		    && memcmp(fixture.written_port.record.bytes, "Nova", 4U) == 0);
+		CHECK(viewer.join.presentation.foreground == 2.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold
+		    == (cases[pass].ansi ? 0.0f : 1.0f)
+		    && viewer.join.presentation.blink
+		    == (cases[pass].ansi ? 0.0f : 1.0f)
+		    && viewer.join.presentation.cached_foreground
+		    == (cases[pass].ansi ? 2.0f : 6.0f)
+		    && viewer.join.pager.foreground == 2
+		    && viewer.join.pager.line_count == 0.0f
+		    && viewer.join.pager.nonstop == 0.0f);
+		CHECK(viewer.join.local_fragment_length == 36U
+		    && memcmp(viewer.join.local_fragment,
+		    "Time: 14:59  Main Command (?=Help)? ", 36U) == 0
+		    && viewer.join.accumulator[0] == '\0'
+		    && viewer.join.queue_length == 0U);
+		CHECK(viewer.join.local_row_count == 41U
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == UINT64_C(0x60667e7a4d450c2b)
+		    && viewer.join.local_color_count == cases[pass].local_colors
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == cases[pass].color_hash);
+		yt_text_input_destroy(&viewer.input);
+	}
+	CHECK(sizeof(plain) - 1U == 983U && sizeof(ansi) - 1U == 1091U);
+}
+
 static bool
 main_movement_accepted_cycle_run(struct physical_viewer_join *viewer,
     bool ansi, size_t ends[3])
@@ -25839,6 +26544,7 @@ main(void)
 	test_planet_take_one_negative_error_cycle_presentation();
 	test_planet_leave_cycle_presentation();
 	test_planet_thrusters_accepted_cycle_presentation();
+	test_main_buy_cycle_presentation();
 	test_main_movement_accepted_cycle_presentation();
 	test_main_attack_survivor_cycle_presentation();
 	test_main_attack_black_hole_cycle_presentation();
