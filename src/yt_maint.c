@@ -1337,30 +1337,79 @@ yt_maintenance_xannor_player_combat(struct yt_random *random,
 }
 
 bool
+yt_maintenance_xannor_player_line_bytes(const uint8_t *player_name,
+    size_t player_name_length,
+    const struct yt_maintenance_xannor_player_result *result,
+    float xannor_fighters, float player_shields, bool player_killed,
+    uint8_t *line, size_t line_size, size_t *line_length)
+{
+	static const uint8_t prefix[] = " *** ";
+	static const uint8_t lost[] = ": lost";
+	static const uint8_t destroyed[] = ", dstrd";
+	static const uint8_t xannor_lost[] = " (Xannor Lost) - Shields:";
+	static const uint8_t player_lost[] = " (Player Killed)";
+	char player_losses[48];
+	char xannor_losses[48];
+	char shields[48];
+	size_t length = 0U;
+	int player_length;
+	int xannor_length;
+	int shields_length;
+
+	if ((player_name == NULL && player_name_length != 0U)
+	    || result == NULL || line == NULL || line_length == NULL)
+		return false;
+	*line_length = 0U;
+	player_length = qb_str_double(player_losses, sizeof(player_losses),
+	    (double)result->player_fighter_losses);
+	xannor_length = qb_str_double(xannor_losses, sizeof(xannor_losses),
+	    (double)result->xannor_losses);
+	shields_length = qb_str_double(shields, sizeof(shields),
+	    (double)player_shields);
+	if (player_length < 0 || xannor_length < 0 || shields_length < 0
+	    || !maintenance_copy_part(line, line_size, &length,
+	    prefix, sizeof(prefix) - 1U)
+	    || !maintenance_copy_part(line, line_size, &length,
+	    player_name, player_name_length)
+	    || !maintenance_copy_part(line, line_size, &length,
+	    lost, sizeof(lost) - 1U)
+	    || !maintenance_copy_part(line, line_size, &length,
+	    (const uint8_t *)player_losses, (size_t)player_length)
+	    || !maintenance_copy_part(line, line_size, &length,
+	    destroyed, sizeof(destroyed) - 1U)
+	    || !maintenance_copy_part(line, line_size, &length,
+	    (const uint8_t *)xannor_losses, (size_t)xannor_length))
+		return false;
+	if (xannor_fighters < 1.0f) {
+		if (!maintenance_copy_part(line, line_size, &length,
+		    xannor_lost, sizeof(xannor_lost) - 1U)
+		    || !maintenance_copy_part(line, line_size, &length,
+		    (const uint8_t *)shields, (size_t)shields_length))
+			return false;
+	}
+	else if (player_killed && !maintenance_copy_part(line, line_size,
+	    &length, player_lost, sizeof(player_lost) - 1U))
+		return false;
+	*line_length = length;
+	return true;
+}
+
+bool
 yt_maintenance_xannor_player_line(const char *player_name,
     const struct yt_maintenance_xannor_player_result *result,
     float xannor_fighters, float player_shields, bool player_killed,
     char *line, size_t line_size)
 {
-	char player_losses[48];
-	char xannor_losses[48];
-	char shields[48];
-	int written;
+	size_t length;
 
-	if (player_name == NULL || result == NULL || line == NULL
-	    || line_size == 0U)
+	if (player_name == NULL || line == NULL || line_size == 0U
+	    || !yt_maintenance_xannor_player_line_bytes(
+	    (const uint8_t *)player_name, strlen(player_name), result,
+	    xannor_fighters, player_shields, player_killed, (uint8_t *)line,
+	    line_size - 1U, &length))
 		return false;
-	qb_str_double(player_losses, sizeof(player_losses),
-	    (double)result->player_fighter_losses);
-	qb_str_double(xannor_losses, sizeof(xannor_losses),
-	    (double)result->xannor_losses);
-	qb_str_double(shields, sizeof(shields), (double)player_shields);
-	written = snprintf(line, line_size, " *** %s: lost%s, dstrd%s%s%s",
-	    player_name, player_losses, xannor_losses,
-	    xannor_fighters < 1.0f ? " (Xannor Lost) - Shields:" :
-	    player_killed ? " (Player Killed)" : "",
-	    xannor_fighters < 1.0f ? shields : "");
-	return written >= 0 && (size_t)written < line_size;
+	line[length] = '\0';
+	return true;
 }
 
 bool
@@ -3184,7 +3233,18 @@ immediate_death_cleanup_impl(struct maint_state *state, int victim_record,
 	if (!remove_from_teams(state, victim_record, error))
 		return false;
 	victim->team = 0.0f;
-	return yt_game_write_player(&state->game, victim_record, victim, error);
+	if (!yt_record_set_number(&victim->record, YT_F45,
+	    victim->killed_by)
+	    || !yt_record_set_number(&victim->record, YT_F57, victim->sector)
+	    || !yt_record_set_number(&victim->record, YT_F89, victim->team)
+	    || !yt_record_set_number(&victim->record, YT_F121,
+	    victim->ground_forces)) {
+		set_error(error, YT_RANGE, "encode immediate death player",
+		    "YTDATA.DAT");
+		return false;
+	}
+	return yt_database_write(&state->game.database,
+	    (size_t)victim_record, &victim->record, error);
 }
 
 bool
@@ -4307,9 +4367,13 @@ yt_maintenance_xannor_player_arrival(struct yt_game *game,
 	float remaining_fighters;
 	float remaining_shields;
 	struct yt_maintenance_xannor_player_result combat = {0};
+	uint8_t stored_name[YT_TEXT_FIELD_SIZE];
+	uint8_t line[420];
+	char radio_line[420];
+	size_t stored_name_length;
+	size_t line_length;
 	bool killed;
 	int player_count;
-	char line[420];
 
 	if (game == NULL || player_sector == NULL || player_cloak == NULL
 	    || xannor_fighters == NULL || line_output == NULL) {
@@ -4340,16 +4404,18 @@ yt_maintenance_xannor_player_arrival(struct yt_game *game,
 
 		qb_str_double(losses, sizeof(losses),
 		    (double)combat.player_fighter_losses);
-		snprintf(line, sizeof(line),
+		snprintf(radio_line, sizeof(radio_line),
 		    "Ha! We kilt%s of yoor fyterz hoo-man slyme!", losses);
-		if (!yt_radio_append_maintenance(line, -1.0f,
+		if (!yt_radio_append_maintenance(radio_line, -1.0f,
 		    (float)player_record, error))
 			return false;
 	}
 	if (!yt_game_read_player(game, player_record, &player, error))
 		return false;
 	player.fighters = remaining_fighters;
-	if (!yt_game_write_player(game, player_record, &player, error)
+	if (!yt_record_set_number(&player.record, YT_F61, player.fighters)
+	    || !yt_database_write(&game->database, (size_t)player_record,
+	    &player.record, error)
 	    || !xannor_player_shield_phase(&game->random, player.fighters,
 	    &remaining_shields, original_xannor, &combat, error))
 		return false;
@@ -4358,16 +4424,18 @@ yt_maintenance_xannor_player_arrival(struct yt_game *game,
 
 		qb_str_double(losses, sizeof(losses),
 		    (double)(original_shields - remaining_shields));
-		snprintf(line, sizeof(line),
+		snprintf(radio_line, sizeof(radio_line),
 		    "Peh! Whee maik yoor wheak sheeldz%s unitz!", losses);
-		if (!yt_radio_append_maintenance(line, -1.0f,
+		if (!yt_radio_append_maintenance(radio_line, -1.0f,
 		    (float)player_record, error))
 			return false;
 	}
 	if (!yt_game_read_player(game, player_record, &player, error))
 		return false;
 	player.shields = remaining_shields;
-	if (!yt_game_write_player(game, player_record, &player, error))
+	if (!yt_record_set_number(&player.record, YT_F53, player.shields)
+	    || !yt_database_write(&game->database, (size_t)player_record,
+	    &player.record, error))
 		return false;
 	*xannor_fighters = ssub(original_xannor, combat.xannor_losses);
 	killed = player.shields < 1.0f;
@@ -4381,11 +4449,13 @@ yt_maintenance_xannor_player_arrival(struct yt_game *game,
 	if (*xannor_fighters <= 0.0f)
 		*xannor_fighters = 0.0f;
 	if (!yt_game_read_player(game, player_record, &player, error)
-	    || !yt_maintenance_xannor_player_line(player.name, &combat,
-	    *xannor_fighters, player.shields, killed, line, sizeof(line))
-	    || !yt_news_append(line, error)
-	    || !line_output(line_context, (const uint8_t *)line,
-	    strlen(line), error))
+	    || !yt_player_stored_name(&player, stored_name,
+	    &stored_name_length, error)
+	    || !yt_maintenance_xannor_player_line_bytes(stored_name,
+	    stored_name_length, &combat, *xannor_fighters, player.shields,
+	    killed, line, sizeof(line), &line_length)
+	    || !yt_news_append_bytes(line, line_length, error)
+	    || !line_output(line_context, line, line_length, error))
 		return false;
 	if (killed) {
 		if (!yt_game_read_player(game, player_record, &player, error)

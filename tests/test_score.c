@@ -17715,10 +17715,10 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	static const uint8_t expected_news[] =
 	    " *** 10 Xannor hit sector mines in sector 2!\r\n"
 	    " *** Lost a total of 1 fighters!\r\n"
-	    " *** Route: lost 1, dstrd 0 (Plyr ftrs dstrd)\r\n"
+	    " *** R\0ute: lost 1, dstrd 0 (Plyr ftrs dstrd)\r\n"
 	    " *** 9 Xannor attacked the planet \"T\0ra\"\r\n"
 	    " *** Planet \"T\0ra\" destroyed!\r\n"
-	    " *** Route: lost 1, dstrd 0 (Player Killed)\r\n\x1a";
+	    " *** R\0ute: lost 1, dstrd 0 (Player Killed)\r\n\x1a";
 	static const char *const expected_radio[] = {
 		"Ha! We kilt 1 of yoor fyterz hoo-man slyme!",
 		"HA! We kilt yoo yoo hoo-man slyme bull!"
@@ -17761,13 +17761,15 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	    &error))
 		goto done;
 	yt_record_blank(&player);
-	yt_player_decode(&route_player, &player);
-	memcpy(route_player.name, "Route", 6U);
-	route_player.name_length = 5.0f;
-	route_player.sector = 2.0f;
-	route_player.fighters = 1.0f;
-	route_player.shields = 0.0f;
-	if (!yt_game_write_player(&game, 2, &route_player, &error))
+	player.bytes[0] = 'R';
+	player.bytes[1] = 0;
+	player.bytes[2] = 'u';
+	player.bytes[3] = 't';
+	player.bytes[4] = 'e';
+	if (!yt_record_set_number(&player, YT_F57, 2.0f)
+	    || !yt_record_set_number(&player, YT_F61, 1.0f)
+	    || !yt_record_set_number(&player, YT_F85, 5.0f)
+	    || !yt_database_write(&game.database, 2U, &player, &error))
 		goto done;
 	yt_record_blank(&planet_before);
 	planet_before.bytes[0] = 'T';
@@ -17824,7 +17826,8 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	if (!yt_game_read_player(&game, 2, &route_player, &error)
 	    || route_player.killed_by != -1.0f || route_player.sector != 0.0f
 	    || route_player.fighters != 0.0f || route_player.shields != 0.0f
-	    || player_sector[2] != 0.0f || player_cloak[2] != 0.0f)
+	    || player_sector[2] != 0.0f || player_cloak[2] != 0.0f
+	    || memcmp(route_player.record.bytes, "R\0ute", 5U) != 0)
 		goto done;
 	radio_file = fopen("YTRMSG.DAT", "rb");
 	if (radio_file == NULL

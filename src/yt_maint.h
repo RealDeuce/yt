@@ -469,6 +469,11 @@ bool yt_maintenance_xannor_player_line(const char *player_name,
     const struct yt_maintenance_xannor_player_result *result,
     float xannor_fighters, float player_shields, bool player_killed,
     char *line, size_t line_size);
+bool yt_maintenance_xannor_player_line_bytes(const uint8_t *player_name,
+    size_t player_name_length,
+    const struct yt_maintenance_xannor_player_result *result,
+    float xannor_fighters, float player_shields, bool player_killed,
+    uint8_t *line, size_t line_size, size_t *line_length);
 bool yt_maintenance_xannor_player_arrival(struct yt_game *game,
     float *player_sector, float *player_cloak, size_t cache_count,
     int player_record, float *xannor_fighters,
