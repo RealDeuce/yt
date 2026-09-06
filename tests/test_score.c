@@ -17612,7 +17612,7 @@ done:
 static bool
 check_maintenance_xannor_route_arrivals_pass(void)
 {
-	static const uint8_t four_zero_draws[12] = {0};
+	static const uint8_t five_zero_draws[15] = {0};
 	struct yt_record before[4];
 	struct yt_record after;
 	struct yt_maintenance_route_cache cache = {0};
@@ -17620,7 +17620,7 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	struct yt_game game;
 	struct yt_error error;
 	struct score_random_script random_script = {
-		four_zero_draws, sizeof(four_zero_draws), 0U
+		five_zero_draws, sizeof(five_zero_draws), 0U
 	};
 	float player_sector[4] = {0};
 	float player_cloak[4] = {0};
@@ -17651,8 +17651,10 @@ check_maintenance_xannor_route_arrivals_pass(void)
 		yt_record_set_number(&before[sector - 1], YT_F53, 0.0f);
 		yt_record_set_number(&before[sector - 1], YT_F57, 0.0f);
 		yt_record_set_number(&before[sector - 1], YT_F61, 0.0f);
-		yt_record_set_number(&before[sector - 1], YT_F81, 0.0f);
-		yt_record_set_number(&before[sector - 1], YT_F85, 0.0f);
+		yt_record_set_number(&before[sector - 1], YT_F81,
+		    sector == 2 ? 1.0f : 0.0f);
+		yt_record_set_number(&before[sector - 1], YT_F85,
+		    sector == 2 ? 2.0f : 0.0f);
 		yt_record_set_number(&before[sector - 1], YT_F93, 0.0f);
 		yt_record_set_number(&before[sector - 1], YT_F129, 0.0f);
 		if (!yt_database_write(&game.database,
@@ -17670,15 +17672,25 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	    || route.hops != 2 || !route.reached_target
 	    || route.route_missing || route.exhausted
 	    || location[2] != 3.0f || size[2] != 10.0f
-	    || game.random.draws != 4U
-	    || random_script.position != sizeof(four_zero_draws))
+	    || game.random.draws != 5U
+	    || random_script.position != sizeof(five_zero_draws))
 		goto done;
 	for (sector = 1; sector <= 4; ++sector) {
 		if (!yt_database_read(&game.database,
 		    (size_t)yt_sector_basic_record(&game.config, sector),
-		    &after, &error)
-		    || memcmp(after.bytes, before[sector - 1].bytes,
-		    YT_RECORD_SIZE) != 0)
+		    &after, &error))
+			goto done;
+		for (size_t offset = 0U; offset < YT_RECORD_SIZE; ++offset) {
+			bool defense_lane = sector == 2
+			    && ((offset >= YT_F81 && offset < YT_F81 + 4U)
+			    || (offset >= YT_F85 && offset < YT_F85 + 4U));
+
+			if (!defense_lane && after.bytes[offset]
+			    != before[sector - 1].bytes[offset])
+				goto done;
+		}
+		if (sector == 2 && (yt_record_get_number(&after, YT_F81) != 0.0f
+		    || yt_record_get_number(&after, YT_F85) != 0.0f))
 			goto done;
 	}
 	if (!yt_maintenance_xannor_route_arrivals(&game, &cache,
