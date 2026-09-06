@@ -24527,10 +24527,12 @@ test_direct_emergency_warp_gate_get_failures(void)
 enum direct_warp_gate_runtime_failure {
 	DIRECT_WARP_GATE_SECTOR_ADD,
 	DIRECT_WARP_GATE_ANTI_CLOAK_CINT,
+	DIRECT_WARP_GATE_PLAYER_INDEX_CINT,
 };
 
 struct direct_warp_gate_runtime_state {
 	struct yt_player fresh;
+	enum direct_warp_gate_runtime_failure failure;
 	size_t read_count;
 	enum yt_current_player_store_kind stores[24];
 	int16_t subscripts[24];
@@ -24546,7 +24548,8 @@ direct_warp_gate_runtime_read(void *context, int player_record,
 
 	(void)error;
 	++state->read_count;
-	if (player_record != 2)
+	if (player_record != (state->failure
+	    == DIRECT_WARP_GATE_PLAYER_INDEX_CINT ? 32768 : 2))
 		return false;
 	*player = state->fresh;
 	return true;
@@ -24591,6 +24594,7 @@ direct_emergency_warp_gate_runtime_failure_run(
 	if (gate == NULL || projection == NULL || ends == NULL)
 		return false;
 	memset(gate, 0, sizeof(*gate));
+	gate->failure = failure;
 	memcpy(gate_raw, expected_gate_raw, sizeof(gate_raw));
 	if ((hostile && !direct_emergency_warp_hostile_menu_prefix(fixture,
 	    ansi, command, command_length, &ends[0]))
@@ -24623,9 +24627,13 @@ direct_emergency_warp_gate_runtime_failure_run(
 	yt_player_decode(&gate->fresh, &fresh_record);
 	memset(&hydration, 0, sizeof(hydration));
 	hydration.player = &fixture->emergency_player;
-	hydration.player_record = 2;
+	hydration.player_record = failure == DIRECT_WARP_GATE_PLAYER_INDEX_CINT
+	    ? 32768 : 2;
 	hydration.last_player_record = 51;
-	hydration.player_record_expression = 2.0f;
+	hydration.player_record_expression = failure
+	    == DIRECT_WARP_GATE_PLAYER_INDEX_CINT ? 32768.0f : 2.0f;
+	hydration.allow_corrupt_player_record = failure
+	    == DIRECT_WARP_GATE_PLAYER_INDEX_CINT;
 	hydration.current_sector_record = &current_sector;
 	hydration.cloak_cache = cloak_cache;
 	hydration.cache_count = YT_ARRAY_LEN(cloak_cache);
@@ -24724,6 +24732,9 @@ test_direct_emergency_warp_gate_runtime_failures(void)
 		{DIRECT_WARP_GATE_ANTI_CLOAK_CINT,
 		    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_ANTI_CLOAK_CINT,
 		    0xA548U, 0xA54BU, 0xA545U},
+		{DIRECT_WARP_GATE_PLAYER_INDEX_CINT,
+		    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_PLAYER_INDEX_CINT,
+		    0xA557U, 0xA55AU, 0xA554U},
 	};
 	struct physical_viewer_join viewer;
 	struct yt_file_viewer_stream_state stream;
