@@ -20466,6 +20466,210 @@ test_main_rename_refusal_cycles_presentation(void)
 	    + sizeof(ansi_suffix) - 1U == 185U);
 }
 
+struct main_genesis_cycle_fixture {
+	struct main_buy_cycle_fixture presentation;
+	struct yt_player player;
+	struct yt_genesis_state genesis;
+	bool handoff_called;
+};
+
+static bool
+main_genesis_hydrate(void *context, int player_record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct main_genesis_cycle_fixture *fixture = context;
+
+	(void)error;
+	if (player_record != 2 || player == NULL)
+		return false;
+	*player = fixture->player;
+	return true;
+}
+
+static bool
+main_genesis_present(void *context, const uint8_t *text, size_t length,
+    enum yt_genesis_output_kind kind, struct yt_error *error)
+{
+	struct main_genesis_cycle_fixture *fixture = context;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
+
+	(void)error;
+	switch (kind) {
+	case YT_GENESIS_PROPHECY_FIRST:
+	case YT_GENESIS_DECLINED:
+	case YT_GENESIS_INSUFFICIENT_FIRST:
+		return normal_exit_line(join, NULL, 0U)
+		    && normal_exit_b05d(join, text, length, 0.0f);
+	case YT_GENESIS_PROPHECY_SECOND:
+	case YT_GENESIS_INSUFFICIENT_SECOND:
+		return normal_exit_b05d(join, text, length, 0.0f);
+	case YT_GENESIS_PROMPT_BLANK:
+	case YT_GENESIS_SUCCESS_BLANK:
+		return normal_exit_line(join, NULL, 0U);
+	case YT_GENESIS_DISABLED:
+		if (!normal_exit_line(join, NULL, 0U))
+			return false;
+		join->presentation.bold = 1.0f;
+		join->presentation.blink = 1.0f;
+		join->queue[0] = '\0';
+		join->queue_position = 0U;
+		join->queue_length = 0U;
+		return normal_exit_b05d(join, text, length, 0.0f);
+	case YT_GENESIS_SUCCESS_FIRST:
+	case YT_GENESIS_SUCCESS_SECOND:
+		join->presentation.bold = 1.0f;
+		return normal_exit_b05d(join, text, length, 0.0f);
+	default:
+		return false;
+	}
+}
+
+static bool
+main_genesis_confirm(void *context, const uint8_t *prompt, size_t length,
+    bool *accepted, struct yt_error *error)
+{
+	static const uint8_t no[] = "N";
+	struct main_genesis_cycle_fixture *fixture = context;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
+	struct yt_present_result result;
+
+	(void)error;
+	if (accepted == NULL || yt_present_character(prompt, length,
+	    &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!main_buy_present_answer(&fixture->presentation, no,
+	    sizeof(no) - 1U))
+		return false;
+	*accepted = false;
+	return true;
+}
+
+static bool
+main_genesis_handoff(void *context, struct yt_error *error)
+{
+	struct main_genesis_cycle_fixture *fixture = context;
+
+	(void)error;
+	fixture->handoff_called = true;
+	return true;
+}
+
+static const struct yt_genesis_ops main_genesis_ops = {
+	main_genesis_hydrate,
+	main_genesis_present,
+	main_genesis_confirm,
+	main_genesis_handoff,
+};
+
+static bool
+main_genesis_cycle_run(struct main_genesis_cycle_fixture *fixture, bool ansi,
+    size_t ends[3])
+{
+	static const uint8_t main_prompt[] =
+	    "Time: 14:59  Main Command (?=Help)? ";
+	static const uint8_t command[] = "gTrailing";
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
+
+	join->presentation = state(ansi);
+	join->presentation.foreground = 2.0f;
+	join->presentation.color_initialized = 1.0f;
+	join->presentation.cached_foreground = 2.0f;
+	join->pager.foreground = 2;
+	join->pager.line_count = 8.0f;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, main_prompt,
+	    sizeof(main_prompt) - 1U, 1.0f))
+		return false;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	if (!main_buy_present_echo(&fixture->presentation, command,
+	    sizeof(command) - 1U) || !normal_exit_line(join, NULL, 0U))
+		return false;
+	ends[0] = join->remote_length;
+	fixture->genesis = (struct yt_genesis_state){
+		.current_player_record = 2,
+		.required_ports = 300.0f,
+		.cached_trader = (const uint8_t *)"Captain Byte",
+		.cached_trader_length = 12U,
+	};
+	if (!yt_genesis_run(&fixture->genesis, &main_genesis_ops, fixture,
+	    NULL))
+		return false;
+	ends[1] = join->remote_length;
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !normal_exit_b05d(join, main_prompt,
+	    sizeof(main_prompt) - 1U, 1.0f))
+		return false;
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	ends[2] = join->remote_length;
+	return true;
+}
+
+static void
+test_main_genesis_decline_cycle_presentation(void)
+{
+	static const uint8_t expected[] =
+	    "\r\nTime: 14:59  Main Command (?=Help)? gTrailing\r\n"
+	    "\r\nIt has been written that one day a Trader Baron will rise up\n\r"
+	    "and wipe the universe clean of the evil that infests it.\n\r"
+	    "\r\nAre you that Trader Captain Byte [y/N]N\r\n"
+	    "\r\nAlas, today is not the day that the prophesy will be fullfilled.\n\r"
+	    "\r\nTime: 14:59  Main Command (?=Help)? ";
+	static const size_t expected_ends[] = {49U, 282U, 320U};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct main_genesis_cycle_fixture fixture;
+	uint8_t remote[350];
+	size_t ends[3];
+	size_t pass;
+
+	for (pass = 0U; pass < 2U; ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", pass != 0U, remote, sizeof(remote));
+		memset(&fixture, 0, sizeof(fixture));
+		fixture.presentation.viewer = &viewer;
+		fixture.player.ports_owned = 300.0f;
+		CHECK(main_genesis_cycle_run(&fixture, pass != 0U, ends));
+		CHECK(memcmp(ends, expected_ends, sizeof(ends)) == 0
+		    && viewer.join.remote_length == sizeof(expected) - 1U
+		    && memcmp(remote, expected, sizeof(expected) - 1U) == 0);
+		CHECK(fixture.genesis.complete
+		    && fixture.genesis.route == YT_GENESIS_DECLINED_ROUTE
+		    && fixture.genesis.player_hydrated
+		    && fixture.genesis.confirmation_read
+		    && !fixture.genesis.answer
+		    && !fixture.genesis.disabled_presented
+		    && !fixture.genesis.handoff_called
+		    && !fixture.handoff_called);
+		CHECK(viewer.join.presentation.foreground == 2.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold == 0.0f
+		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.cached_foreground == 2.0f
+		    && viewer.join.pager.foreground == 2
+		    && viewer.join.pager.line_count == 0.0f
+		    && viewer.join.pager.nonstop == 0.0f
+		    && viewer.join.local_fragment_length == 36U
+		    && memcmp(viewer.join.local_fragment,
+		    "Time: 14:59  Main Command (?=Help)? ", 36U) == 0
+		    && viewer.join.accumulator[0] == '\0'
+		    && viewer.join.queue_length == 0U);
+		CHECK(viewer.join.local_row_count == 10U
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == UINT64_C(0xef88a21a14c77c44)
+		    && viewer.join.local_color_count == (pass == 0U ? 5U : 18U)
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == (pass == 0U ? UINT64_C(0xc6f69f5cf097a0a2)
+		    : UINT64_C(0xae89c4fc38bd168a)));
+		yt_text_input_destroy(&viewer.input);
+	}
+	CHECK(sizeof(expected) - 1U == 320U);
+}
+
 static bool
 main_movement_accepted_cycle_run(struct physical_viewer_join *viewer,
     bool ansi, size_t ends[3])
@@ -26957,6 +27161,7 @@ main(void)
 	test_main_buy_cycle_presentation();
 	test_main_rename_cycle_presentation();
 	test_main_rename_refusal_cycles_presentation();
+	test_main_genesis_decline_cycle_presentation();
 	test_main_movement_accepted_cycle_presentation();
 	test_main_attack_survivor_cycle_presentation();
 	test_main_attack_black_hole_cycle_presentation();
