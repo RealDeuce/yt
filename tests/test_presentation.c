@@ -26902,7 +26902,7 @@ static bool
 direct_emergency_warp_fresh_hostile_menu_command(
     struct hostile_mines_hazard_fixture *fixture,
     struct direct_warp_main_cycle_state *cycle, const uint8_t *command,
-    size_t command_length)
+    size_t command_length, enum yt_hostile_menu_route expected_route)
 {
 	static const uint8_t prompt[] =
 	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? ";
@@ -26938,7 +26938,7 @@ direct_emergency_warp_fresh_hostile_menu_command(
 	join->source_length = 1U;
 	cycle->fresh_hostile_selected = command[0];
 	return yt_hostile_menu_dispatch(join->accumulator)
-	    == YT_HOSTILE_MENU_ATTACK;
+	    == expected_route;
 }
 
 static bool
@@ -26949,7 +26949,7 @@ direct_emergency_warp_fresh_hostile_menu(
 	static const uint8_t command[] = "A";
 
 	return direct_emergency_warp_fresh_hostile_menu_command(fixture, cycle,
-	    command, sizeof(command) - 1U);
+	    command, sizeof(command) - 1U, YT_HOSTILE_MENU_ATTACK);
 }
 
 static bool
@@ -27723,12 +27723,13 @@ direct_warp_attack_surrender_present(void *context, const uint8_t *text,
 		return normal_exit_line(viewer, NULL, 0U)
 		    && normal_exit_b05d(viewer, text, length, 0.0f);
 	case YT_HOSTILE_SURRENDER_WISH_ROW:
+		if (!normal_exit_line(viewer, NULL, 0U))
+			return false;
 		viewer->presentation.bold = 1.0f;
 		viewer->presentation.blink = 1.0f;
 		viewer->queue_length = 0U;
 		viewer->queue_position = 0U;
-		return normal_exit_line(viewer, NULL, 0U)
-		    && normal_exit_b05d(viewer, text, length, 0.0f);
+		return normal_exit_b05d(viewer, text, length, 0.0f);
 	case YT_HOSTILE_SURRENDER_PROMPT_BLANK:
 		return normal_exit_line(viewer, NULL, 0U);
 	case YT_HOSTILE_SURRENDER_COUNT_ROW:
@@ -28235,7 +28236,9 @@ direct_warp_attack_surrender_join_run(
     struct direct_warp_main_cycle_state *cycle,
     struct direct_warp_attack_combat_join *join,
     struct yt_hostile_attack_combat_state *combat,
-    enum yt_hostile_surrender_answer answer, struct yt_error *error)
+    enum yt_hostile_surrender_answer answer, float owner,
+    const uint8_t *owner_label, size_t owner_label_length,
+    struct yt_error *error)
 {
 	struct yt_record record;
 
@@ -28247,7 +28250,7 @@ direct_warp_attack_surrender_join_run(
 	join->surrender_answer = answer;
 	memset(&record, 0x3c, sizeof(record));
 	(void)yt_record_set_number(&record, YT_F81, 1.0f);
-	(void)yt_record_set_number(&record, YT_F85, 2.0f);
+	(void)yt_record_set_number(&record, YT_F85, owner);
 	yt_sector_decode(&join->entry_sector, &record);
 	memset(&record, 0xa5, sizeof(record));
 	yt_record_set_text(&record, (const uint8_t *)"STATIC PILOT", 12U);
@@ -28269,7 +28272,7 @@ direct_warp_attack_surrender_join_run(
 	yt_player_decode(&join->persistence_player, &record);
 	memset(&record, 0x96, sizeof(record));
 	(void)yt_record_set_number(&record, YT_F81, 1.0f);
-	(void)yt_record_set_number(&record, YT_F85, 2.0f);
+	(void)yt_record_set_number(&record, YT_F85, owner);
 	yt_sector_decode(&join->persistence_sector, &record);
 	*combat = (struct yt_hostile_attack_combat_state){
 		.current_player_record = 2,
@@ -28282,8 +28285,8 @@ direct_warp_attack_surrender_join_run(
 		.cached_player_name_length = 12U,
 		.real_first_name = (const uint8_t *)"Sysop",
 		.real_first_name_length = 5U,
-		.owner_label = (const uint8_t *)"Ordinary",
-		.owner_label_length = 8U,
+		.owner_label = owner_label,
+		.owner_label_length = owner_label_length,
 		.turns_per_day = 500.0f,
 		.headquarters = 1.0f,
 	};
@@ -28291,6 +28294,127 @@ direct_warp_attack_surrender_join_run(
 	    &direct_warp_attack_combat_ops, join, error)
 	    && direct_emergency_warp_quiet_reentry(fixture, cycle, true);
 }
+
+struct direct_warp_bribe_attack_join {
+	struct hostile_mines_hazard_fixture *fixture;
+	struct direct_warp_main_cycle_state *cycle;
+	struct direct_warp_attack_combat_join *attack;
+	struct yt_hostile_attack_combat_state *combat;
+	uint8_t commitment_raw[4];
+	size_t present_calls;
+	size_t random_calls;
+	size_t amount_calls;
+	size_t accept_calls;
+	size_t combat_calls;
+	size_t fatal_calls;
+	size_t offer_stores;
+	size_t commitment_stores;
+};
+
+static bool
+direct_warp_bribe_attack_present(void *context, const uint8_t *text,
+    size_t length, enum yt_hostile_bribe_output_kind kind,
+    struct yt_error *error)
+{
+	struct direct_warp_bribe_attack_join *join = context;
+	struct viewer_pager_join *viewer =
+	    &join->fixture->cycle.presentation.viewer->join;
+
+	(void)error;
+	if (kind != YT_HOSTILE_BRIBE_LIFE_DEMAND_ROW
+	    || !normal_exit_line(viewer, NULL, 0U))
+		return false;
+	viewer->presentation.bold = 1.0f;
+	viewer->presentation.blink = 1.0f;
+	viewer->queue_length = 0U;
+	viewer->queue_position = 0U;
+	++join->present_calls;
+	return normal_exit_b05d(viewer, text, length, 0.0f);
+}
+
+static bool
+direct_warp_bribe_attack_random(void *context, float *value,
+    struct yt_error *error)
+{
+	struct direct_warp_bribe_attack_join *join = context;
+
+	++join->random_calls;
+	return hostile_mine_hazard_random(join->fixture, value, error);
+}
+
+static bool
+direct_warp_bribe_attack_amount(void *context, char *response,
+    size_t capacity, struct yt_error *error)
+{
+	struct direct_warp_bribe_attack_join *join = context;
+
+	(void)response;
+	(void)capacity;
+	(void)error;
+	++join->amount_calls;
+	return false;
+}
+
+static bool
+direct_warp_bribe_attack_accept(void *context,
+    struct yt_hostile_bribe_accept_state *state, struct yt_error *error)
+{
+	struct direct_warp_bribe_attack_join *join = context;
+
+	(void)state;
+	(void)error;
+	++join->accept_calls;
+	return false;
+}
+
+static bool
+direct_warp_bribe_attack_combat(void *context, double commitment,
+    struct yt_error *error)
+{
+	static const uint8_t owner_label[] = "Mercenaries";
+	struct direct_warp_bribe_attack_join *join = context;
+
+	++join->combat_calls;
+	if (commitment != 20.0)
+		return false;
+	return direct_warp_attack_surrender_join_run(join->fixture, join->cycle,
+	    join->attack, join->combat, YT_HOSTILE_SURRENDER_ANSWER_NO, -2.0f,
+	    owner_label, sizeof(owner_label) - 1U, error);
+}
+
+static bool
+direct_warp_bribe_attack_fatal(void *context, struct yt_error *error)
+{
+	struct direct_warp_bribe_attack_join *join = context;
+
+	(void)error;
+	++join->fatal_calls;
+	return false;
+}
+
+static void
+direct_warp_bribe_attack_store(void *context,
+    enum yt_hostile_bribe_store_kind kind, const uint8_t raw[4])
+{
+	struct direct_warp_bribe_attack_join *join = context;
+
+	if (kind == YT_HOSTILE_BRIBE_STORE_OFFER)
+		++join->offer_stores;
+	else {
+		memcpy(join->commitment_raw, raw, sizeof(join->commitment_raw));
+		++join->commitment_stores;
+	}
+}
+
+static const struct yt_hostile_bribe_ops direct_warp_bribe_attack_ops = {
+	direct_warp_bribe_attack_present,
+	direct_warp_bribe_attack_random,
+	direct_warp_bribe_attack_amount,
+	direct_warp_bribe_attack_accept,
+	direct_warp_bribe_attack_combat,
+	direct_warp_bribe_attack_fatal,
+	direct_warp_bribe_attack_store,
+};
 
 static bool
 direct_emergency_warp_fresh_hostile_menu_get_failure(
@@ -33107,7 +33231,8 @@ test_direct_emergency_warp_hostile_attack_defenders_cleared(void)
 				    DIRECT_WARP_HOSTILE_DEFENSE, &cycle, ends));
 			}
 			CHECK(direct_emergency_warp_fresh_hostile_menu_command(&fixture,
-			    &cycle, aliases[alias].text, aliases[alias].length)
+			    &cycle, aliases[alias].text, aliases[alias].length,
+			    YT_HOSTILE_MENU_ATTACK)
 			    && direct_emergency_warp_fresh_hostile_attack_admission(
 			    &fixture, &cycle));
 			joined_start = callers[caller].total_length
@@ -33198,7 +33323,7 @@ test_direct_emergency_warp_hostile_attack_surrender_accepted(void)
 		    UINT64_C(0xdcdc47d59406f81f)},
 		{true, true, (const uint8_t *)"W", 1U, 1190U,
 		    YT_HOSTILE_SURRENDER_ANSWER_YES, 440U,
-		    UINT64_C(0xfe74a692586fcd9c)},
+		    UINT64_C(0x4b99756f2724fb1e)},
 		{false, false, (const uint8_t *)"W", 1U, 940U,
 		    YT_HOSTILE_SURRENDER_ANSWER_YES, 396U,
 		    UINT64_C(0xdcdc47d59406f81f)},
@@ -33207,16 +33332,16 @@ test_direct_emergency_warp_hostile_attack_surrender_accepted(void)
 		    UINT64_C(0xdcdc47d59406f81f)},
 		{false, true, (const uint8_t *)"W", 1U, 1222U,
 		    YT_HOSTILE_SURRENDER_ANSWER_YES, 440U,
-		    UINT64_C(0xfe74a692586fcd9c)},
+		    UINT64_C(0x4b99756f2724fb1e)},
 		{false, true, (const uint8_t *)"WT", 2U, 1223U,
 		    YT_HOSTILE_SURRENDER_ANSWER_YES, 440U,
-		    UINT64_C(0xfe74a692586fcd9c)},
+		    UINT64_C(0x4b99756f2724fb1e)},
 		{true, false, (const uint8_t *)"W", 1U, 918U,
 		    YT_HOSTILE_SURRENDER_ANSWER_EMPTY, 395U,
 		    UINT64_C(0x766bd34db1af58ca)},
 		{true, true, (const uint8_t *)"W", 1U, 1190U,
 		    YT_HOSTILE_SURRENDER_ANSWER_EMPTY, 439U,
-		    UINT64_C(0xfd0ba0ff9e529181)},
+		    UINT64_C(0xf729ca9cc7f18cbf)},
 		{false, false, (const uint8_t *)"W", 1U, 940U,
 		    YT_HOSTILE_SURRENDER_ANSWER_EMPTY, 395U,
 		    UINT64_C(0x766bd34db1af58ca)},
@@ -33225,10 +33350,10 @@ test_direct_emergency_warp_hostile_attack_surrender_accepted(void)
 		    UINT64_C(0x766bd34db1af58ca)},
 		{false, true, (const uint8_t *)"W", 1U, 1222U,
 		    YT_HOSTILE_SURRENDER_ANSWER_EMPTY, 439U,
-		    UINT64_C(0xfd0ba0ff9e529181)},
+		    UINT64_C(0xf729ca9cc7f18cbf)},
 		{false, true, (const uint8_t *)"WT", 2U, 1223U,
 		    YT_HOSTILE_SURRENDER_ANSWER_EMPTY, 439U,
-		    UINT64_C(0xfd0ba0ff9e529181)},
+		    UINT64_C(0xf729ca9cc7f18cbf)},
 	};
 	struct physical_viewer_join viewer;
 	struct yt_file_viewer_stream_state stream;
@@ -33284,7 +33409,8 @@ test_direct_emergency_warp_hostile_attack_surrender_accepted(void)
 		CHECK(viewer.join.remote_length == joined_start);
 		yt_error_clear(&error);
 		CHECK(direct_warp_attack_surrender_join_run(&fixture, &cycle,
-		    &join, &combat, callers[caller].answer, &error));
+		    &join, &combat, callers[caller].answer, 2.0f,
+		    (const uint8_t *)"Ordinary", 8U, &error));
 		suffix_length = viewer.join.remote_length - joined_start;
 		CHECK(suffix_length == callers[caller].suffix_length
 		    && viewer_bytes_fnv1a64(remote + joined_start, suffix_length)
@@ -33399,12 +33525,13 @@ test_direct_emergency_warp_hostile_attack_surrender_refused(void)
 		CHECK(viewer.join.remote_length == joined_start);
 		yt_error_clear(&error);
 		CHECK(direct_warp_attack_surrender_join_run(&fixture, &cycle,
-		    &join, &combat, YT_HOSTILE_SURRENDER_ANSWER_NO, &error));
+		    &join, &combat, YT_HOSTILE_SURRENDER_ANSWER_NO, 2.0f,
+		    (const uint8_t *)"Ordinary", 8U, &error));
 		suffix_length = viewer.join.remote_length - joined_start;
 		CHECK(suffix_length == (callers[caller].ansi ? 388U : 344U)
 		    && viewer_bytes_fnv1a64(remote + joined_start, suffix_length)
 		    == (callers[caller].ansi
-		    ? UINT64_C(0x3e9ea5990065b828)
+		    ? UINT64_C(0x6835101958d51f7a)
 		    : UINT64_C(0x528586b01780b58b)));
 		CHECK(combat.complete && combat.surrender_checked
 		    && !combat.surrendered && combat.iterations == 1U
@@ -33437,6 +33564,173 @@ test_direct_emergency_warp_hostile_attack_surrender_refused(void)
 		    && memcmp(&join.written_sector.record,
 		    &expected_sector.record, sizeof(expected_sector.record)) == 0
 		    && fixture.draw_position == 9U
+		    && cycle.fresh_hostile_player_reads == 4U
+		    && cycle.final_field_record == 2 && cycle.final_field_player
+		    && cycle.fresh_prompt_wait);
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
+static void
+test_direct_emergency_warp_hostile_forced_bribe_attack(void)
+{
+	static const uint8_t news[] =
+	    "STATIC PILOT destroyed 1 fighters belonging to Mercenaries";
+	static const struct {
+		bool main;
+		bool ansi;
+		const uint8_t *command;
+		size_t command_length;
+		size_t total_length;
+		size_t suffix_length;
+		uint64_t suffix_hash;
+	} callers[] = {
+		{true, false, (const uint8_t *)"W", 1U, 918U, 370U,
+		    UINT64_C(0x8cf7dd269da1ab89)},
+		{true, true, (const uint8_t *)"W", 1U, 1190U, 414U,
+		    UINT64_C(0x20e53130d3a10e38)},
+		{false, false, (const uint8_t *)"W", 1U, 940U, 370U,
+		    UINT64_C(0x8cf7dd269da1ab89)},
+		{false, false, (const uint8_t *)"WT", 2U, 941U, 370U,
+		    UINT64_C(0x8cf7dd269da1ab89)},
+		{false, true, (const uint8_t *)"W", 1U, 1222U, 414U,
+		    UINT64_C(0x20e53130d3a10e38)},
+		{false, true, (const uint8_t *)"WT", 2U, 1223U, 414U,
+		    UINT64_C(0x20e53130d3a10e38)},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	struct direct_warp_main_cycle_state cycle;
+	struct direct_warp_attack_combat_join attack;
+	struct direct_warp_bribe_attack_join joined;
+	struct yt_hostile_attack_combat_state combat;
+	struct yt_hostile_bribe_state bribe;
+	struct yt_player expected_player;
+	struct yt_sector expected_sector;
+	struct yt_record record;
+	struct yt_error error;
+	uint8_t expected_commitment[4];
+	uint8_t remote[2200];
+	size_t ends[3];
+	size_t caller;
+	size_t joined_start;
+	size_t suffix_length;
+
+	CHECK(qb_mbf32_encode(20.0f, expected_commitment) == QB_MBF_OK);
+	for (caller = 0U; caller < YT_ARRAY_LEN(callers); ++caller) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream, retained_scoreboard,
+		    sizeof(retained_scoreboard) - 1U, "YTSCORE.ASC",
+		    callers[caller].ansi, remote, sizeof(remote));
+		memset(&fixture, 0, sizeof(fixture));
+		fixture.cycle.presentation.viewer = &viewer;
+		fixture.emergency_sector_cache = 733.0f;
+		fixture.draws[0] = 0.0f;
+		fixture.draws[1] = 0.0f;
+		fixture.draws[2] = 0.75f;
+		fixture.draws[3] = 0.5f;
+		fixture.draws[4] = 0.949999988079071f;
+		fixture.draws[5] = 0.999f;
+		fixture.draws[6] = 0.9f;
+		fixture.draws[7] = 0.9f;
+		fixture.draws[8] = 0.9f;
+		fixture.draws[9] = 0.9f;
+		fixture.draws[10] = 0.5f;
+		memset(&record, 0xa5, sizeof(record));
+		(void)yt_record_set_number(&record, YT_F49, 17.0f);
+		(void)yt_record_set_number(&record, YT_F57, 733.0f);
+		yt_player_decode(&fixture.emergency_player, &record);
+		fixture.hazard_player = fixture.emergency_player;
+		if (callers[caller].main) {
+			CHECK(direct_emergency_warp_main_hostile_handoff_run(
+			    &fixture, callers[caller].ansi, &cycle, ends));
+		}
+		else {
+			CHECK(direct_emergency_warp_hostile_cycle_run(
+			    &fixture, callers[caller].ansi,
+			    callers[caller].command, callers[caller].command_length,
+			    DIRECT_WARP_HOSTILE_DEFENSE, &cycle, ends));
+		}
+		CHECK(direct_emergency_warp_fresh_hostile_menu_command(&fixture,
+		    &cycle, (const uint8_t *)"B", 1U,
+		    YT_HOSTILE_MENU_BRIBE));
+		joined_start = viewer.join.remote_length;
+		CHECK(joined_start == callers[caller].total_length - 44U);
+
+		memset(&joined, 0, sizeof(joined));
+		joined.fixture = &fixture;
+		joined.cycle = &cycle;
+		joined.attack = &attack;
+		joined.combat = &combat;
+		memset(&bribe, 0, sizeof(bribe));
+		bribe.current_player_record = 2;
+		bribe.current_sector = 1003;
+		bribe.owner = -2.0f;
+		bribe.cached_defenders = 1.0;
+		bribe.ship_fighters = 20.0;
+		bribe.shields = 5.0f;
+		bribe.credits = 100.0;
+		bribe.real_first_name = (const uint8_t *)"Sysop";
+		bribe.real_first_name_length = 5U;
+		CHECK(qb_mbf32_encode(-1.0f, bribe.mercenaries_hurt_raw)
+		    == QB_MBF_OK);
+		yt_error_clear(&error);
+		CHECK(yt_hostile_bribe_run(&bribe, &direct_warp_bribe_attack_ops,
+		    &joined, &error));
+		suffix_length = viewer.join.remote_length - joined_start;
+		CHECK(suffix_length == callers[caller].suffix_length
+		    && viewer_bytes_fnv1a64(remote + joined_start, suffix_length)
+		    == callers[caller].suffix_hash);
+
+		CHECK(bribe.complete
+		    && bribe.branch == YT_HOSTILE_BRIBE_LIFE_DEMAND
+		    && bribe.route == YT_HOSTILE_BRIBE_COMBAT
+		    && bribe.draws_consumed == 2U
+		    && bribe.mercenaries_hurt_converted
+		    && bribe.mercenaries_hurt_cint == -1
+		    && bribe.commitment == 20.0f && bribe.commitment_stored
+		    && bribe.forced_attack && bribe.combat_called
+		    && !bribe.direct_hostile_menu && !bribe.accepted_called
+		    && !bribe.fatal_called);
+		CHECK(joined.present_calls == 1U && joined.random_calls == 2U
+		    && joined.amount_calls == 0U && joined.accept_calls == 0U
+		    && joined.combat_calls == 1U && joined.fatal_calls == 0U
+		    && joined.offer_stores == 0U && joined.commitment_stores == 1U
+		    && memcmp(joined.commitment_raw, expected_commitment,
+		    sizeof(expected_commitment)) == 0);
+		CHECK(combat.complete && combat.surrender_checked
+		    && !combat.surrendered && combat.iterations == 1U
+		    && combat.attacker_loss == 0.0 && combat.defender_loss == 1.0
+		    && combat.ship_fighters == 7.0
+		    && combat.deployed_remaining == 0.0
+		    && combat.tail.draw_consumed && combat.tail.defeated_presented
+		    && !combat.tail.victory_called);
+		CHECK(attack.a41c_reads == 3U && attack.a41c_stores == 75U
+		    && attack.sound_calls == 1U
+		    && attack.surrender_sound_calls == 2U
+		    && attack.surrender_force_stores == 0U
+		    && attack.surrender_latch_stores == 1U
+		    && attack.random_calls == 2U && attack.loss_stores == 1U
+		    && attack.ship_stores == 1U
+		    && attack.persistence_player_reads == 2U
+		    && attack.persistence_player_writes == 1U
+		    && attack.persistence_sector_reads == 1U
+		    && attack.persistence_sector_writes == 1U
+		    && attack.news_length == sizeof(news) - 1U
+		    && memcmp(attack.news, news, sizeof(news) - 1U) == 0
+		    && attack.defeated_length == 46U
+		    && memcmp(attack.defeated,
+		    "You defeated all the fighters and have 7 left.", 46U) == 0);
+		expected_player = attack.persistence_player;
+		yt_deployed_attack_player_overlay(&expected_player, 5.0f, 20.0f);
+		expected_sector = attack.persistence_sector;
+		yt_deployed_attack_sector_overlay(&expected_sector, 0.0f);
+		CHECK(memcmp(&attack.written_player.record,
+		    &expected_player.record, sizeof(expected_player.record)) == 0
+		    && memcmp(&attack.written_sector.record,
+		    &expected_sector.record, sizeof(expected_sector.record)) == 0
+		    && fixture.draw_position == 11U
 		    && cycle.fresh_hostile_player_reads == 4U
 		    && cycle.final_field_record == 2 && cycle.final_field_player
 		    && cycle.fresh_prompt_wait);
@@ -42832,6 +43126,7 @@ main(void)
 	test_direct_emergency_warp_hostile_attack_defenders_cleared();
 	test_direct_emergency_warp_hostile_attack_surrender_accepted();
 	test_direct_emergency_warp_hostile_attack_surrender_refused();
+	test_direct_emergency_warp_hostile_forced_bribe_attack();
 	test_direct_emergency_warp_hostile_invalid_retry_cycle();
 	test_direct_emergency_warp_hostile_ordinary_returns();
 	test_direct_emergency_warp_queue_cycles();
