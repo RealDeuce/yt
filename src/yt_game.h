@@ -2958,6 +2958,13 @@ float yt_emergency_warp_cost(float heat, float draw, float turns,
     bool meltdown);
 void yt_emergency_warp_player_overlay(struct yt_player *player,
     float destination, float cost);
+struct yt_gameplay_hazard_error_request {
+	uint8_t error_number;
+	uint16_t saved_ip;
+	uint16_t handler;
+};
+bool yt_gameplay_hazard_error_project(unsigned error_number,
+    unsigned saved_ip, struct yt_gameplay_hazard_error_request *request);
 bool yt_emergency_warp_result_row(float destination, float cost,
     uint8_t *row, size_t capacity, size_t *length);
 bool yt_emergency_warp_stranded_row(float destination, uint8_t *row,

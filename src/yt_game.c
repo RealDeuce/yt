@@ -8548,6 +8548,19 @@ yt_emergency_warp_player_overlay(struct yt_player *player,
 }
 
 bool
+yt_gameplay_hazard_error_project(unsigned error_number, unsigned saved_ip,
+    struct yt_gameplay_hazard_error_request *request)
+{
+	if (request == NULL || error_number == 0U || error_number > UINT8_MAX
+	    || saved_ip > UINT16_MAX)
+		return false;
+	request->error_number = (uint8_t)error_number;
+	request->saved_ip = (uint16_t)saved_ip;
+	request->handler = 0x45F7U;
+	return true;
+}
+
+bool
 yt_emergency_warp_result_row(float destination, float cost,
     uint8_t *row, size_t capacity, size_t *length)
 {

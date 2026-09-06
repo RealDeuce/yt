@@ -22096,7 +22096,10 @@ struct hostile_mines_hazard_fixture {
 	size_t emergency_player_writes;
 	size_t emergency_flushes;
 	size_t emergency_waits;
-	bool emergency_shared_handler;
+	unsigned emergency_error_number;
+	unsigned emergency_saved_ip;
+	bool emergency_error_requested;
+	struct yt_gameplay_hazard_error_request emergency_error_request;
 	float emergency_destination;
 	float emergency_cost;
 	float emergency_sector_cache;
@@ -22368,7 +22371,11 @@ hostile_emergency_warp_present(struct hostile_mines_hazard_fixture *fixture)
 		return false;
 	++fixture->emergency_player_reads;
 	if (fixture->emergency_failure == EMERGENCY_WARP_PHYSICAL_GET) {
-		fixture->emergency_shared_handler = true;
+		if (!yt_gameplay_hazard_error_project(
+		    fixture->emergency_error_number, fixture->emergency_saved_ip,
+		    &fixture->emergency_error_request))
+			return false;
+		fixture->emergency_error_requested = true;
 		return false;
 	}
 	if (!hostile_mine_hazard_random(fixture, &destination_draw, NULL)
@@ -22395,7 +22402,11 @@ hostile_emergency_warp_present(struct hostile_mines_hazard_fixture *fixture)
 	    fixture->emergency_destination, fixture->emergency_cost);
 	++fixture->emergency_player_put_attempts;
 	if (fixture->emergency_failure == EMERGENCY_WARP_PHYSICAL_PUT) {
-		fixture->emergency_shared_handler = true;
+		if (!yt_gameplay_hazard_error_project(
+		    fixture->emergency_error_number, fixture->emergency_saved_ip,
+		    &fixture->emergency_error_request))
+			return false;
+		fixture->emergency_error_requested = true;
 		return false;
 	}
 	fixture->hazard_player = fixture->emergency_player;
@@ -24233,7 +24244,7 @@ test_direct_emergency_warp_accepted_presentation(void)
 		    && fixture.emergency_destination == 1003.0f
 		    && fixture.emergency_cost == 3.0f
 		    && fixture.emergency_sector_cache == 1003.0f
-		    && !fixture.emergency_shared_handler
+		    && !fixture.emergency_error_requested
 		    && fixture.emergency_player.sector == 1003.0f
 		    && fixture.emergency_player.turns == 14.0f
 		    && strcmp(viewer.join.accumulator, "y") == 0
@@ -24273,6 +24284,8 @@ test_direct_emergency_warp_child_failures(void)
 	static const struct {
 		bool ansi;
 		enum emergency_warp_physical_failure failure;
+		unsigned error_number;
+		unsigned saved_ip;
 		size_t expected_length;
 		uint64_t expected_hash;
 		size_t parent_end;
@@ -24281,16 +24294,16 @@ test_direct_emergency_warp_child_failures(void)
 		size_t colors;
 		uint64_t color_hash;
 	} cases[] = {
-		{false, EMERGENCY_WARP_PHYSICAL_GET, 374U,
+		{false, EMERGENCY_WARP_PHYSICAL_GET, 1U, 0x0000U, 374U,
 		    UINT64_C(0x0b2b065a35ae110f), 167U, 3U, 15U, 2U,
 		    UINT64_C(0x6d3fa4669b3587bd)},
-		{true, EMERGENCY_WARP_PHYSICAL_GET, 546U,
+		{true, EMERGENCY_WARP_PHYSICAL_GET, 255U, 0xFFFFU, 546U,
 		    UINT64_C(0x175d9489f17d69d5), 223U, 3U, 15U, 21U,
 		    UINT64_C(0x936faeccec2c7b6e)},
-		{false, EMERGENCY_WARP_PHYSICAL_PUT, 513U,
+		{false, EMERGENCY_WARP_PHYSICAL_PUT, 57U, 0x1234U, 513U,
 		    UINT64_C(0x325d153b7ea2f4c3), 167U, 6U, 17U, 2U,
 		    UINT64_C(0x6d3fa4669b3587bd)},
-		{true, EMERGENCY_WARP_PHYSICAL_PUT, 685U,
+		{true, EMERGENCY_WARP_PHYSICAL_PUT, 70U, 0xABCDU, 685U,
 		    UINT64_C(0x6d90d947714a5f0d), 223U, 6U, 17U, 23U,
 		    UINT64_C(0x6e338d8e4536fe7e)},
 	};
@@ -24303,8 +24316,23 @@ test_direct_emergency_warp_child_failures(void)
 	size_t parent_end;
 	size_t index;
 	size_t pass;
+	unsigned error_number;
+	struct yt_gameplay_hazard_error_request request;
 	bool completed;
 
+	CHECK(!yt_gameplay_hazard_error_project(0U, 0U, &request)
+	    && !yt_gameplay_hazard_error_project(256U, 0U, &request)
+	    && !yt_gameplay_hazard_error_project(1U, 0x10000U, &request)
+	    && !yt_gameplay_hazard_error_project(1U, 0U, NULL));
+	for (error_number = 1U; error_number <= UINT8_MAX; ++error_number) {
+		unsigned saved_ip = error_number * 257U;
+
+		CHECK(yt_gameplay_hazard_error_project(error_number, saved_ip,
+		    &request)
+		    && request.error_number == error_number
+		    && request.saved_ip == saved_ip
+		    && request.handler == 0x45F7U);
+	}
 	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
 		memset(&viewer, 0, sizeof(viewer));
 		fixture_viewer_initialize(&viewer, &stream,
@@ -24313,6 +24341,8 @@ test_direct_emergency_warp_child_failures(void)
 		memset(&fixture, 0, sizeof(fixture));
 		fixture.cycle.presentation.viewer = &viewer;
 		fixture.emergency_failure = cases[pass].failure;
+		fixture.emergency_error_number = cases[pass].error_number;
+		fixture.emergency_saved_ip = cases[pass].saved_ip;
 		fixture.emergency_sector_cache = 42.0f;
 		fixture.draws[0] = 0.0f;
 		fixture.draws[1] = 0.0f;
@@ -24342,7 +24372,12 @@ test_direct_emergency_warp_child_failures(void)
 		    && fixture.emergency_flushes == 0U
 		    && fixture.emergency_waits == 1U
 		    && fixture.emergency_ticks == 1U
-		    && fixture.emergency_shared_handler
+		    && fixture.emergency_error_requested
+		    && fixture.emergency_error_request.error_number
+		    == cases[pass].error_number
+		    && fixture.emergency_error_request.saved_ip
+		    == cases[pass].saved_ip
+		    && fixture.emergency_error_request.handler == 0x45F7U
 		    && fixture.emergency_sector_cache == 42.0f
 		    && memcmp(&fixture.hazard_player.record, &before,
 		    sizeof(before)) == 0
