@@ -542,46 +542,110 @@ input_process_store_double(yt_input_process_store_fn store, void *context,
 	return true;
 }
 
-struct input_upper_store_context {
-	yt_input_process_store_fn store;
-	void *context;
-};
-
-static void
-input_upper_store(void *context, enum qb_compat_upper_store_kind kind,
-    float value)
+static bool
+upper_fault_target(enum yt_basic_fault_site target)
 {
-	struct input_upper_store_context *upper = context;
-	uint16_t address;
+	return target == YT_BASIC_FAULT_UPPER_FRAME_STACK
+	    || target == YT_BASIC_FAULT_UPPER_MID_COMPARE_STRING_SPACE
+	    || target == YT_BASIC_FAULT_UPPER_MID_VALUE_STRING_SPACE
+	    || target == YT_BASIC_FAULT_UPPER_CHR_STRING_SPACE;
+}
 
-	switch (kind) {
-	case QB_COMPAT_UPPER_STORE_NUMERIC_TEMP:
-		address = 0x001AU;
-		break;
-	case QB_COMPAT_UPPER_STORE_LENGTH:
-		address = 0x536AU;
-		break;
-	case QB_COMPAT_UPPER_STORE_INDEX:
-		address = 0x536EU;
-		break;
-	default:
-		return;
+static bool
+upper_fail(struct yt_upper_transform *result,
+    enum yt_basic_fault_site site, size_t length, size_t index,
+    bool initialized, bool extracted, uint8_t byte, bool mapped,
+    uint8_t code)
+{
+	result->length = length;
+	result->index = index;
+	result->extracted = byte;
+	result->mapped = code;
+	result->fault_site = site;
+	result->scratch_initialized = initialized;
+	result->extracted_valid = extracted;
+	result->mapped_valid = mapped;
+	result->fault_valid = true;
+	return false;
+}
+
+bool
+yt_input_compat_upper_n_staged(uint8_t *text, size_t length,
+    enum yt_basic_fault_site target, size_t occurrence,
+    struct yt_upper_transform *result, yt_input_process_store_fn store,
+    void *context)
+{
+	size_t index;
+
+	if (text == NULL || result == NULL || occurrence == 0U
+	    || (target != YT_BASIC_FAULT_SITE_COUNT
+	    && !upper_fault_target(target)))
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->fault_site = YT_BASIC_FAULT_SITE_COUNT;
+	if (target == YT_BASIC_FAULT_UPPER_FRAME_STACK) {
+		if (occurrence != 1U)
+			return false;
+		return upper_fail(result, target, 0U, 0U, false, false, 0U,
+		    false, 0U);
 	}
-	(void)input_process_store_single(upper->store, upper->context,
-	    address, value);
+	if (target != YT_BASIC_FAULT_SITE_COUNT) {
+		if (occurrence > length)
+			return false;
+		if ((target == YT_BASIC_FAULT_UPPER_MID_VALUE_STRING_SPACE
+		    || target == YT_BASIC_FAULT_UPPER_CHR_STRING_SPACE)
+		    && text[occurrence - 1U] <= (uint8_t)'@')
+			return false;
+	}
+	result->length = length;
+	result->index = 1U;
+	result->scratch_initialized = true;
+	if (!input_process_store_single(store, context, 0x001AU,
+	    (float)length)
+	    || !input_process_store_single(store, context, 0x536AU,
+	    (float)length)
+	    || !input_process_store_single(store, context, 0x536EU, 1.0f))
+		return false;
+	for (index = 0U; index < length; ++index) {
+		uint8_t current;
+		uint8_t mapped;
+
+		result->index = index + 1U;
+		if (target == YT_BASIC_FAULT_UPPER_MID_COMPARE_STRING_SPACE
+		    && occurrence == index + 1U)
+			return upper_fail(result, target, length, index + 1U, true,
+			    false, 0U, false, 0U);
+		current = text[index];
+		if (current > (uint8_t)'@') {
+			if (target == YT_BASIC_FAULT_UPPER_MID_VALUE_STRING_SPACE
+			    && occurrence == index + 1U)
+				return upper_fail(result, target, length, index + 1U,
+				    true, false, 0U, false, 0U);
+			mapped = current & 0xdfU;
+			if (target == YT_BASIC_FAULT_UPPER_CHR_STRING_SPACE
+			    && occurrence == index + 1U)
+				return upper_fail(result, target, length, index + 1U,
+				    true, true, current, true, mapped);
+			text[index] = mapped;
+		}
+		result->index = index + 2U;
+		if (!input_process_store_single(store, context, 0x001AU,
+		    (float)(index + 2U))
+		    || !input_process_store_single(store, context, 0x536EU,
+		    (float)(index + 2U)))
+			return false;
+	}
+	return true;
 }
 
 void
 yt_input_compat_upper_n_observed(uint8_t *text, size_t length,
     yt_input_process_store_fn store, void *context)
 {
-	struct input_upper_store_context upper = {
-		.store = store,
-		.context = context,
-	};
+	struct yt_upper_transform result;
 
-	qb_compat_upper_n_observed(text, length,
-	    store == NULL ? NULL : input_upper_store, &upper);
+	(void)yt_input_compat_upper_n_staged(text, length,
+	    YT_BASIC_FAULT_SITE_COUNT, 1U, &result, store, context);
 }
 
 bool

@@ -71,6 +71,18 @@ struct yt_repeat_transform {
 	bool fault_valid;
 };
 
+struct yt_upper_transform {
+	size_t length;
+	size_t index;
+	uint8_t extracted;
+	uint8_t mapped;
+	enum yt_basic_fault_site fault_site;
+	bool scratch_initialized;
+	bool extracted_valid;
+	bool mapped_valid;
+	bool fault_valid;
+};
+
 enum yt_yes_no_answer {
 	YT_YES_NO_EMPTY,
 	YT_YES_NO_YES,
@@ -355,6 +367,10 @@ bool yt_input_expand_repeat(char *text, size_t text_capacity,
     struct yt_repeat_transform *result);
 void yt_input_compat_upper_n_observed(uint8_t *text, size_t length,
 	yt_input_process_store_fn store, void *context);
+bool yt_input_compat_upper_n_staged(uint8_t *text, size_t length,
+	enum yt_basic_fault_site target, size_t occurrence,
+	struct yt_upper_transform *result, yt_input_process_store_fn store,
+	void *context);
 bool yt_input_expand_repeat_observed(char *text, size_t text_capacity,
     char *saved_command, size_t saved_capacity,
     struct yt_repeat_transform *result, yt_input_process_store_fn store,

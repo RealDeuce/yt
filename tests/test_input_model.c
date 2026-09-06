@@ -1108,6 +1108,75 @@ input_process_store(void *context, uint16_t address, const uint8_t raw[4])
 }
 
 static void
+test_upper_fault_stages(void)
+{
+	static const enum yt_basic_fault_site body_sites[] = {
+		YT_BASIC_FAULT_UPPER_MID_COMPARE_STRING_SPACE,
+		YT_BASIC_FAULT_UPPER_MID_VALUE_STRING_SPACE,
+		YT_BASIC_FAULT_UPPER_CHR_STRING_SPACE,
+	};
+	struct yt_upper_transform result;
+	struct input_process_tape tape;
+	char text[8];
+	size_t index;
+
+	memset(&tape, 0, sizeof(tape));
+	memcpy(text, "a!b", 4U);
+	CHECK(!yt_input_compat_upper_n_staged((uint8_t *)text, 3U,
+	    YT_BASIC_FAULT_UPPER_FRAME_STACK, 1U, &result,
+	    input_process_store, &tape));
+	CHECK(result.fault_valid
+	    && result.fault_site == YT_BASIC_FAULT_UPPER_FRAME_STACK
+	    && !result.scratch_initialized && !result.extracted_valid
+	    && !result.mapped_valid && tape.count == 0U
+	    && strcmp(text, "a!b") == 0);
+
+	for (index = 0U; index < YT_ARRAY_LEN(body_sites); ++index) {
+		uint8_t expected_index[4];
+
+		memset(&tape, 0, sizeof(tape));
+		memcpy(text, "a!b", 4U);
+		CHECK(!yt_input_compat_upper_n_staged((uint8_t *)text, 3U,
+		    body_sites[index], 3U, &result, input_process_store, &tape));
+		CHECK(result.fault_valid && result.fault_site == body_sites[index]
+		    && result.scratch_initialized && result.length == 3U
+		    && result.index == 3U && strcmp(text, "A!b") == 0
+		    && tape.count == 7U && tape.address[6] == 0x536EU);
+		CHECK(qb_mbf32_encode(3.0f, expected_index) == QB_MBF_OK
+		    && memcmp(tape.raw[6], expected_index,
+		    sizeof(expected_index)) == 0);
+		if (body_sites[index] == YT_BASIC_FAULT_UPPER_CHR_STRING_SPACE) {
+			CHECK(result.extracted_valid && result.extracted == (uint8_t)'b'
+			    && result.mapped_valid && result.mapped == (uint8_t)'B');
+		}
+		else {
+			CHECK(!result.extracted_valid && !result.mapped_valid);
+		}
+	}
+
+	memset(&tape, 0, sizeof(tape));
+	memcpy(text, "a!b", 4U);
+	CHECK(yt_input_compat_upper_n_staged((uint8_t *)text, 3U,
+	    YT_BASIC_FAULT_SITE_COUNT, 1U, &result, input_process_store, &tape));
+	CHECK(!result.fault_valid && result.scratch_initialized
+	    && result.fault_site == YT_BASIC_FAULT_SITE_COUNT
+	    && result.length == 3U && result.index == 4U
+	    && !result.extracted_valid && !result.mapped_valid
+	    && strcmp(text, "A!B") == 0 && tape.count == 9U);
+
+	memcpy(text, "a!b", 4U);
+	CHECK(!yt_input_compat_upper_n_staged((uint8_t *)text, 3U,
+	    YT_BASIC_FAULT_UPPER_MID_COMPARE_STRING_SPACE, 4U, &result,
+	    input_process_store, &tape));
+	CHECK(!result.fault_valid && strcmp(text, "a!b") == 0);
+	memcpy(text, "a!b", 4U);
+	CHECK(!yt_input_compat_upper_n_staged((uint8_t *)text, 3U,
+	    YT_BASIC_FAULT_UPPER_CHR_STRING_SPACE, 2U, &result,
+	    input_process_store, &tape));
+	CHECK(!result.fault_valid && strcmp(text, "a!b") == 0);
+}
+
+static void
 test_repeat_transform(void)
 {
 	struct yt_repeat_transform result;
@@ -3833,6 +3902,7 @@ main(void)
 	test_source_fifo();
 	test_merged_fifo();
 	test_b05d_keys();
+	test_upper_fault_stages();
 	test_repeat_transform();
 	test_semicolon_queue();
 	test_queue_program_prepend();
