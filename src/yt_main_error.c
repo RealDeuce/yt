@@ -11,6 +11,8 @@
 #define RETURNING_PUT_ERRORS {52U, 57U, 61U, 70U, 75U}
 #define LEFT_ERRORS {5U, 14U, 16U}
 #define CINT_ERRORS {6U}
+#define SPACE_ERRORS {14U}
+#define STACK_ERRORS {7U}
 #define MAIN_FAULT(label, op, saved, statement, erl, domain, count) \
 	{label, YT_BASIC_FAULT_MAIN, op, saved, statement, erl, 0xB2DAU, \
 	    domain, count}
@@ -105,6 +107,58 @@ static const struct yt_basic_fault_identity basic_faults[] = {
 	    0xAE9CU, 36000, CINT_ERRORS, 1U),
 	MAIN_FAULT("ADE0 repeat SINGLE overflow", 0xAEC8U, 0xAECBU,
 	    0xAE9CU, 36000, CINT_ERRORS, 1U),
+	MAIN_FAULT("ADE0 slash-test RIGHT$ space", 0xADE7U, 0xADEAU,
+	    0xADE1U, 36000, SPACE_ERRORS, 1U),
+	MAIN_FAULT("ADE0 save-strip LEFT$ space", 0xAE04U, 0xAE07U,
+	    0xADF7U, 36000, SPACE_ERRORS, 1U),
+	MAIN_FAULT("ADE0 save-command clone space", 0xAE1BU, 0xAE1EU,
+	    0xAE15U, 36000, SPACE_ERRORS, 1U),
+	MAIN_FAULT("ADE0 save-notice clone space", 0xAE24U, 0xAE27U,
+	    0xAE1EU, 36000, SPACE_ERRORS, 1U),
+	MAIN_FAULT("ADE0 save-notice GOSUB stack", 0xAE27U, 0xAE2AU,
+	    0xAE27U, 36000, STACK_ERRORS, 1U),
+	MAIN_FAULT("ADE0 uppercase-scratch clone space", 0xAE4AU, 0xAE4DU,
+	    0xAE44U, 36000, SPACE_ERRORS, 1U),
+	MAIN_FAULT("ADE0 repeat-prefix LEFT$ space", 0xAE8CU, 0xAE8FU,
+	    0xAE79U, 36000, SPACE_ERRORS, 1U),
+	MAIN_FAULT("ADE0 repeat-semicolon CONCAT space", 0xAE94U, 0xAE97U,
+	    0xAE79U, 36000, SPACE_ERRORS, 1U),
+	MAIN_FAULT("ADE0 repeat-suffix RIGHT$ space", 0xAEBCU, 0xAEBFU,
+	    0xAE9CU, 36000, SPACE_ERRORS, 1U),
+	MAIN_FAULT("ADE0 repeat-build CONCAT space", 0xAF2BU, 0xAF2EU,
+	    0xAF23U, 36000, SPACE_ERRORS, 1U),
+	MAIN_FAULT("ADE0 repeat-final LEFT$ space", 0xAF56U, 0xAF59U,
+	    0xAF4BU, 36000, SPACE_ERRORS, 1U),
+	MAIN_FAULT("ADE0 repeat-save clone space", 0xAF6EU, 0xAF71U,
+	    0xAF68U, 36000, SPACE_ERRORS, 1U),
+	MAIN_FAULT("ADE0 repeat-count STR$ space", 0xAF7DU, 0xAF80U,
+	    0xAF7AU, 36000, SPACE_ERRORS, 1U),
+	MAIN_FAULT("ADE0 repeat-prefix CONCAT space", 0xAF83U, 0xAF86U,
+	    0xAF7AU, 36000, SPACE_ERRORS, 1U),
+	MAIN_FAULT("ADE0 repeat-notice CONCAT space", 0xAF8BU, 0xAF8EU,
+	    0xAF7AU, 36000, SPACE_ERRORS, 1U),
+	MAIN_FAULT("ADE0 repeat-notice GOSUB stack", 0xAF94U, 0xAF97U,
+	    0xAF94U, 36000, STACK_ERRORS, 1U),
+	MAIN_FAULT("ADE0 semicolon-tail MID$ space", 0xAFE5U, 0xAFE8U,
+	    0xAFD1U, 36000, SPACE_ERRORS, 1U),
+	MAIN_FAULT("ADE0 semicolon-queue CONCAT space", 0xAFEBU, 0xAFEEU,
+	    0xAFD1U, 36000, SPACE_ERRORS, 1U),
+	MAIN_FAULT("ADE0 semicolon-prefix LEFT$ space", 0xB006U, 0xB009U,
+	    0xAFF3U, 36000, SPACE_ERRORS, 1U),
+	MAIN_FAULT("ADE0 semicolon-replacement CHR$ space", 0xB021U,
+	    0xB024U, 0xB01EU, 36000, SPACE_ERRORS, 1U),
+	MAIN_FAULT("ADE0 semicolon-final CR CHR$ space", 0xB041U,
+	    0xB044U, 0xB03EU, 36000, SPACE_ERRORS, 1U),
+	MAIN_FAULT("ADE0 semicolon-final CONCAT space", 0xB047U, 0xB04AU,
+	    0xB03EU, 36000, SPACE_ERRORS, 1U),
+	SHARED_FAULT("uppercase helper frame stack", 0x1D99U, 0x1D9CU,
+	    0x1D96U, 610, STACK_ERRORS, 1U),
+	SHARED_FAULT("uppercase helper compare MID$ space", 0x1DC2U,
+	    0x1DC5U, 0x1DB4U, 610, SPACE_ERRORS, 1U),
+	SHARED_FAULT("uppercase helper value MID$ space", 0x1DE0U,
+	    0x1DE3U, 0x1DD2U, 610, SPACE_ERRORS, 1U),
+	SHARED_FAULT("uppercase helper CHR$ space", 0x1DEAU, 0x1DEDU,
+	    0x1DD2U, 610, SPACE_ERRORS, 1U),
 };
 
 _Static_assert(YT_ARRAY_LEN(basic_faults) == YT_BASIC_FAULT_SITE_COUNT,
@@ -114,6 +168,8 @@ _Static_assert(YT_ARRAY_LEN(basic_faults) == YT_BASIC_FAULT_SITE_COUNT,
 #undef MAIN_FAULT
 #undef LEFT_ERRORS
 #undef CINT_ERRORS
+#undef SPACE_ERRORS
+#undef STACK_ERRORS
 #undef RETURNING_PUT_ERRORS
 #undef RETURNING_GET_ERRORS
 #undef PUT_ERRORS

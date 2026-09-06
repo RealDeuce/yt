@@ -4305,6 +4305,58 @@ test_basic_fault_registry(void)
 		    0xB2DAU, 2U},
 		{YT_BASIC_FAULT_MAIN, 0xAEC8U, 0xAECBU, 0xAE9CU, 36000,
 		    0xB2DAU, 2U},
+		{YT_BASIC_FAULT_MAIN, 0xADE7U, 0xADEAU, 0xADE1U, 36000,
+		    0xB2DAU, 6U},
+		{YT_BASIC_FAULT_MAIN, 0xAE04U, 0xAE07U, 0xADF7U, 36000,
+		    0xB2DAU, 6U},
+		{YT_BASIC_FAULT_MAIN, 0xAE1BU, 0xAE1EU, 0xAE15U, 36000,
+		    0xB2DAU, 6U},
+		{YT_BASIC_FAULT_MAIN, 0xAE24U, 0xAE27U, 0xAE1EU, 36000,
+		    0xB2DAU, 6U},
+		{YT_BASIC_FAULT_MAIN, 0xAE27U, 0xAE2AU, 0xAE27U, 36000,
+		    0xB2DAU, 7U},
+		{YT_BASIC_FAULT_MAIN, 0xAE4AU, 0xAE4DU, 0xAE44U, 36000,
+		    0xB2DAU, 6U},
+		{YT_BASIC_FAULT_MAIN, 0xAE8CU, 0xAE8FU, 0xAE79U, 36000,
+		    0xB2DAU, 6U},
+		{YT_BASIC_FAULT_MAIN, 0xAE94U, 0xAE97U, 0xAE79U, 36000,
+		    0xB2DAU, 6U},
+		{YT_BASIC_FAULT_MAIN, 0xAEBCU, 0xAEBFU, 0xAE9CU, 36000,
+		    0xB2DAU, 6U},
+		{YT_BASIC_FAULT_MAIN, 0xAF2BU, 0xAF2EU, 0xAF23U, 36000,
+		    0xB2DAU, 6U},
+		{YT_BASIC_FAULT_MAIN, 0xAF56U, 0xAF59U, 0xAF4BU, 36000,
+		    0xB2DAU, 6U},
+		{YT_BASIC_FAULT_MAIN, 0xAF6EU, 0xAF71U, 0xAF68U, 36000,
+		    0xB2DAU, 6U},
+		{YT_BASIC_FAULT_MAIN, 0xAF7DU, 0xAF80U, 0xAF7AU, 36000,
+		    0xB2DAU, 6U},
+		{YT_BASIC_FAULT_MAIN, 0xAF83U, 0xAF86U, 0xAF7AU, 36000,
+		    0xB2DAU, 6U},
+		{YT_BASIC_FAULT_MAIN, 0xAF8BU, 0xAF8EU, 0xAF7AU, 36000,
+		    0xB2DAU, 6U},
+		{YT_BASIC_FAULT_MAIN, 0xAF94U, 0xAF97U, 0xAF94U, 36000,
+		    0xB2DAU, 7U},
+		{YT_BASIC_FAULT_MAIN, 0xAFE5U, 0xAFE8U, 0xAFD1U, 36000,
+		    0xB2DAU, 6U},
+		{YT_BASIC_FAULT_MAIN, 0xAFEBU, 0xAFEEU, 0xAFD1U, 36000,
+		    0xB2DAU, 6U},
+		{YT_BASIC_FAULT_MAIN, 0xB006U, 0xB009U, 0xAFF3U, 36000,
+		    0xB2DAU, 6U},
+		{YT_BASIC_FAULT_MAIN, 0xB021U, 0xB024U, 0xB01EU, 36000,
+		    0xB2DAU, 6U},
+		{YT_BASIC_FAULT_MAIN, 0xB041U, 0xB044U, 0xB03EU, 36000,
+		    0xB2DAU, 6U},
+		{YT_BASIC_FAULT_MAIN, 0xB047U, 0xB04AU, 0xB03EU, 36000,
+		    0xB2DAU, 6U},
+		{YT_BASIC_FAULT_SHARED, 0x1D99U, 0x1D9CU, 0x1D96U, 610,
+		    0x45F7U, 7U},
+		{YT_BASIC_FAULT_SHARED, 0x1DC2U, 0x1DC5U, 0x1DB4U, 610,
+		    0x45F7U, 6U},
+		{YT_BASIC_FAULT_SHARED, 0x1DE0U, 0x1DE3U, 0x1DD2U, 610,
+		    0x45F7U, 6U},
+		{YT_BASIC_FAULT_SHARED, 0x1DEAU, 0x1DEDU, 0x1DD2U, 610,
+		    0x45F7U, 6U},
 	};
 	struct yt_error error;
 	size_t index;
@@ -4358,7 +4410,7 @@ test_basic_fault_registry(void)
 			    (enum yt_basic_fault_site)index, 61U)
 			    == (expected[index].domain == 4U)));
 		}
-		else {
+		else if (expected[index].domain == 5U) {
 			CHECK(identity->error_count == 3U
 			    && yt_basic_fault_admits(
 			    (enum yt_basic_fault_site)index, 5U)
@@ -4368,6 +4420,17 @@ test_basic_fault_registry(void)
 			    (enum yt_basic_fault_site)index, 16U)
 			    && !yt_basic_fault_admits(
 			    (enum yt_basic_fault_site)index, 6U));
+		}
+		else {
+			uint8_t expected_error = expected[index].domain == 6U
+			    ? 14U : 7U;
+
+			CHECK(identity->error_count == 1U
+			    && yt_basic_fault_admits(
+			    (enum yt_basic_fault_site)index, expected_error)
+			    && !yt_basic_fault_admits(
+			    (enum yt_basic_fault_site)index,
+			    expected_error == 14U ? 7U : 14U));
 		}
 		for (error_number = 0U; error_number <= UINT8_MAX;
 		    ++error_number) {
@@ -4390,7 +4453,9 @@ test_basic_fault_registry(void)
 			    ? (const uint8_t[]){6U} : expected[index].domain == 3U
 			    ? returning_get_errors : expected[index].domain == 4U
 			    ? returning_put_errors : expected[index].domain == 5U
-			    ? left_errors : get_errors;
+			    ? left_errors : expected[index].domain == 6U
+			    ? (const uint8_t[]){14U} : expected[index].domain == 7U
+			    ? (const uint8_t[]){7U} : get_errors;
 			size_t domain_length = expected[index].domain == 1U
 			    ? YT_ARRAY_LEN(put_errors) : expected[index].domain == 2U
 			    ? 1U : expected[index].domain == 3U
@@ -4399,6 +4464,8 @@ test_basic_fault_registry(void)
 			    ? YT_ARRAY_LEN(returning_put_errors)
 			    : expected[index].domain == 5U
 			    ? YT_ARRAY_LEN(left_errors)
+			    : expected[index].domain == 6U
+			    || expected[index].domain == 7U ? 1U
 			    : YT_ARRAY_LEN(get_errors);
 			bool admitted = false;
 			size_t error_index;
