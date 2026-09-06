@@ -3146,33 +3146,6 @@ done:
 }
 
 static bool
-news_number_line(const char *prefix, double first, const char *middle,
-    double second, const char *suffix, struct yt_error *error)
-{
-	char a[64];
-	char b[64];
-	char line[420];
-
-	qb_str_double(a, sizeof(a), first);
-	qb_str_double(b, sizeof(b), second);
-	snprintf(line, sizeof(line), "%s%s%s%s%s", prefix, a, middle, b,
-	    suffix);
-	return yt_news_append(line, error);
-}
-
-static bool
-news_one_number_line(const char *prefix, double value, const char *suffix,
-    struct yt_error *error)
-{
-	char number[64];
-	char line[420];
-
-	qb_str_double(number, sizeof(number), value);
-	snprintf(line, sizeof(line), "%s%s%s", prefix, number, suffix);
-	return yt_news_append(line, error);
-}
-
-static bool
 immediate_death_cleanup_impl(struct maint_state *state, int victim_record,
     float killer, struct yt_player *victim, struct yt_error *error)
 {
@@ -4002,40 +3975,159 @@ xannor_quantum(float first, float second)
 }
 
 static bool
-xannor_mines_and_defense(struct maint_state *state, int group,
-    int sector_number, float size[21], struct yt_sector *sector,
+xannor_arrival_emit(yt_maintenance_score_line_fn line_output,
+    void *line_context, const uint8_t *line, size_t length,
     struct yt_error *error)
 {
-	float original = size[group];
+	return yt_news_append_bytes(line, length, error)
+	    && line_output(line_context, line, length, error);
+}
 
-	while (sector->mines > 0.0f && size[group] > 0.0f) {
+bool
+yt_maintenance_xannor_sector_arrival(struct yt_game *game,
+    int sector_number, float *group_size, struct yt_sector *sector,
+    yt_maintenance_score_line_fn line_output, void *line_context,
+    struct yt_error *error)
+{
+	static const uint8_t mercenaries[] = "Mercenaries";
+	static const uint8_t hit_prefix[] = " ***";
+	static const uint8_t hit_middle[] =
+	    " Xannor hit sector mines in sector";
+	static const uint8_t killed[] = " *** The Xannor were killed!";
+	static const uint8_t loss_prefix[] = " *** Lost a total of";
+	static const uint8_t loss_suffix[] = " fighters!";
+	static const uint8_t defense_prefix[] = " *** ";
+	static const uint8_t defense_lost[] = ": lost";
+	static const uint8_t defense_destroyed[] = ", dstrd";
+	static const uint8_t player_destroyed[] = " (Plyr ftrs dstrd)";
+	static const uint8_t xannor_destroyed[] = " (Xannor ftrs dstrd)";
+	struct yt_maintenance_text defender = {
+		mercenaries, sizeof(mercenaries) - 1U
+	};
+	struct yt_player player;
+	uint8_t defender_name[YT_TEXT_FIELD_SIZE];
+	uint8_t line[YT_MAINTENANCE_OUTPUT_ROW_SIZE];
+	char first[64];
+	char second[64];
+	float initial_group;
+	float initial_defenders;
+	float initial_owner;
+	float defense_group;
+	size_t length;
+	int first_length;
+	int second_length;
+	bool overflow;
+
+	if (game == NULL || group_size == NULL || sector == NULL
+	    || line_output == NULL || sector_number < 0) {
+		set_error(error, YT_INVALID, "Xannor sector arrival",
+		    "YTDATA.DAT");
+		return false;
+	}
+	initial_group = *group_size;
+	initial_defenders = sector->fighters;
+	initial_owner = sector->fighter_owner;
+
+	while (sector->mines > 0.0f && *group_size > 0.0f) {
 		int damage;
 
-		if (!yt_maintenance_random_integer(&state->game.random, 1000,
+		if (!yt_maintenance_random_integer(&game->random, 1000,
 		    &damage, error))
 			return false;
-		if ((float)damage > size[group])
-			damage = (int)size[group];
-		size[group] = ssub(size[group], (float)damage);
+		if ((float)damage > *group_size)
+			damage = (int)*group_size;
+		*group_size = ssub(*group_size, (float)damage);
 		sector->mines = ssub(sector->mines, 1.0f);
 	}
-	if (original != size[group]) {
-		if (!news_number_line(" ***", original,
-		    " Xannor hit sector mines in sector", sector_number, "!",
-		    error))
+	if (initial_group != *group_size) {
+		length = 0U;
+		first_length = qb_str_single(first, sizeof(first), initial_group);
+		second_length = qb_str_single(second, sizeof(second),
+		    (float)sector_number);
+		if (first_length < 0 || second_length < 0
+		    || !maintenance_copy_part(line, sizeof(line), &length,
+		    hit_prefix, sizeof(hit_prefix) - 1U)
+		    || !maintenance_copy_part(line, sizeof(line), &length,
+		    (const uint8_t *)first, (size_t)first_length)
+		    || !maintenance_copy_part(line, sizeof(line), &length,
+		    hit_middle, sizeof(hit_middle) - 1U)
+		    || !maintenance_copy_part(line, sizeof(line), &length,
+		    (const uint8_t *)second, (size_t)second_length)
+		    || !maintenance_copy_part(line, sizeof(line), &length,
+		    (const uint8_t *)"!", 1U)
+		    || !xannor_arrival_emit(line_output, line_context, line,
+		    length, error))
 			return false;
-		if (size[group] <= 0.0f) {
-			if (!yt_news_append(" *** The Xannor were killed!", error))
+		if (*group_size <= 0.0f) {
+			if (!xannor_arrival_emit(line_output, line_context, killed,
+			    sizeof(killed) - 1U, error))
 				return false;
 		}
-		else if (!news_one_number_line(" *** Lost a total of",
-		    original - size[group], " fighters!", error))
-			return false;
+		else {
+			length = 0U;
+			first_length = qb_str_single(first, sizeof(first),
+			    ssub(initial_group, *group_size));
+			if (first_length < 0
+			    || !maintenance_copy_part(line, sizeof(line), &length,
+			    loss_prefix, sizeof(loss_prefix) - 1U)
+			    || !maintenance_copy_part(line, sizeof(line), &length,
+			    (const uint8_t *)first, (size_t)first_length)
+			    || !maintenance_copy_part(line, sizeof(line), &length,
+			    loss_suffix, sizeof(loss_suffix) - 1U)
+			    || !xannor_arrival_emit(line_output, line_context, line,
+			    length, error))
+				return false;
+		}
 	}
-	if (size[group] <= 0.0f)
-		size[group] = 0.0f;
-	return yt_maintenance_xannor_defense(&state->game.random,
-	    &size[group], &sector->fighters, &sector->fighter_owner, error);
+	if (*group_size <= 0.0f)
+		*group_size = 0.0f;
+	defense_group = *group_size;
+	if (!yt_maintenance_xannor_defense(&game->random, group_size,
+	    &sector->fighters, &sector->fighter_owner, error))
+		return false;
+	if (initial_defenders == sector->fighters
+	    && defense_group == *group_size)
+		return true;
+	if (initial_owner > 0.0f) {
+		int32_t record = qb_cint(initial_owner, &overflow);
+
+		if (overflow || record < 1
+		    || !yt_game_read_player(game, record, &player, error)
+		    || !yt_player_stored_name(&player, defender_name,
+		    &defender.length, error)) {
+			if (error != NULL && error->status == YT_OK)
+				set_error(error, YT_RANGE,
+				    "Xannor defense owner", "YTDATA.DAT");
+			return false;
+		}
+		defender.data = defender_name;
+	}
+	length = 0U;
+	first_length = qb_str_single(first, sizeof(first),
+	    ssub(initial_defenders, sector->fighters));
+	second_length = qb_str_single(second, sizeof(second),
+	    ssub(defense_group, *group_size));
+	if (first_length < 0 || second_length < 0
+	    || !maintenance_copy_part(line, sizeof(line), &length,
+	    defense_prefix, sizeof(defense_prefix) - 1U)
+	    || !maintenance_copy_part(line, sizeof(line), &length,
+	    defender.data, defender.length)
+	    || !maintenance_copy_part(line, sizeof(line), &length,
+	    defense_lost, sizeof(defense_lost) - 1U)
+	    || !maintenance_copy_part(line, sizeof(line), &length,
+	    (const uint8_t *)first, (size_t)first_length)
+	    || !maintenance_copy_part(line, sizeof(line), &length,
+	    defense_destroyed, sizeof(defense_destroyed) - 1U)
+	    || !maintenance_copy_part(line, sizeof(line), &length,
+	    (const uint8_t *)second, (size_t)second_length)
+	    || !maintenance_copy_part(line, sizeof(line), &length,
+	    sector->fighters < 1.0f ? player_destroyed : xannor_destroyed,
+	    sector->fighters < 1.0f ? sizeof(player_destroyed) - 1U
+	    : sizeof(xannor_destroyed) - 1U)
+	    || !xannor_arrival_emit(line_output, line_context, line, length,
+	    error))
+		return false;
+	return true;
 }
 
 bool
@@ -4347,8 +4439,9 @@ xannor_route_arrivals_impl(struct maint_state *state, int group,
 		    error))
 			return false;
 		location[group] = (float)next;
-		if (!xannor_mines_and_defense(state, group, next, size,
-		    &destination, error))
+		if (!yt_maintenance_xannor_sector_arrival(&state->game, next,
+		    &size[group], &destination, maintenance_stdout_line, NULL,
+		    error))
 			return false;
 		if (!xannor_attack_planet(state, group, location, size,
 		    &destination, error))

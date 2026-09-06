@@ -453,6 +453,10 @@ bool yt_maintenance_nested_integer(struct yt_random *random, int count,
 bool yt_maintenance_xannor_defense(struct yt_random *random,
     float *group_size, float *defense_fighters, float *defense_owner,
     struct yt_error *error);
+bool yt_maintenance_xannor_sector_arrival(struct yt_game *game,
+    int sector_number, float *group_size, struct yt_sector *sector,
+    yt_maintenance_score_line_fn line_output, void *line_context,
+    struct yt_error *error);
 
 bool yt_maintenance_mercenary_stays(float planet_link, float draw);
 

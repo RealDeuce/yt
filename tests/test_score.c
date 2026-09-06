@@ -17610,17 +17610,122 @@ done:
 }
 
 static bool
+check_maintenance_xannor_sector_arrival_pass(void)
+{
+	static const uint8_t zero_draws[6] = {0};
+	static const uint8_t high_draw[3] = {0xff, 0xff, 0xff};
+	static const uint8_t player_screen[] =
+	    " *** 10 Xannor hit sector mines in sector 42!\r"
+	    " *** Lost a total of 1 fighters!\r"
+	    " *** A\0B: lost 1, dstrd 0 (Plyr ftrs dstrd)\r";
+	static const uint8_t player_news[] =
+	    " *** 10 Xannor hit sector mines in sector 42!\r\n"
+	    " *** Lost a total of 1 fighters!\r\n"
+	    " *** A\0B: lost 1, dstrd 0 (Plyr ftrs dstrd)\r\n\x1a";
+	static const uint8_t mercenary_screen[] =
+	    " *** Mercenaries: lost 0, dstrd 1 (Xannor ftrs dstrd)\r";
+	static const uint8_t mercenary_news[] =
+	    " *** Mercenaries: lost 0, dstrd 1 (Xannor ftrs dstrd)\r\n\x1a";
+	struct score_random_script script = {
+		zero_draws, sizeof(zero_draws), 0U
+	};
+	struct score_line_tape screen = {0};
+	struct yt_text_file news = {0};
+	struct yt_record owner;
+	struct yt_sector sector = {0};
+	struct yt_game game;
+	struct yt_error error;
+	float group_size;
+	bool valid = false;
+
+	(void)remove("YTDATA.DAT");
+	(void)remove("YTNEWS.DAT");
+	memset(&game, 0, sizeof(game));
+	yt_random_init(&game.random);
+	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_error_clear(&error);
+	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
+	    &error))
+		goto done;
+	yt_record_blank(&owner);
+	owner.bytes[0] = 'A';
+	owner.bytes[1] = 0;
+	owner.bytes[2] = 'B';
+	if (!yt_record_set_number(&owner, YT_F85, 3.0f)
+	    || !yt_database_write(&game.database, 2U, &owner, &error))
+		goto done;
+	yt_record_blank(&sector.record);
+	sector.mines = 1.0f;
+	sector.fighters = 1.0f;
+	sector.fighter_owner = 2.0f;
+	group_size = 10.0f;
+	if (!yt_maintenance_xannor_sector_arrival(&game, 42, &group_size,
+	    &sector, score_line_collect, &screen, &error)
+	    || group_size != 9.0f || sector.mines != 0.0f
+	    || sector.fighters != 0.0f || sector.fighter_owner != 0.0f
+	    || game.random.draws != 2U
+	    || script.position != sizeof(zero_draws)
+	    || screen.lines != 3U
+	    || screen.length != sizeof(player_screen) - 1U
+	    || memcmp(screen.data, player_screen,
+	    sizeof(player_screen) - 1U) != 0
+	    || !yt_text_read("YTNEWS.DAT", &news, &error)
+	    || news.length != sizeof(player_news) - 1U
+	    || memcmp(news.data, player_news, sizeof(player_news) - 1U) != 0)
+		goto done;
+	yt_text_free(&news);
+	(void)remove("YTNEWS.DAT");
+	memset(&screen, 0, sizeof(screen));
+	script = (struct score_random_script){
+		high_draw, sizeof(high_draw), 0U
+	};
+	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_record_blank(&sector.record);
+	sector.mines = 0.0f;
+	sector.fighters = 1.0f;
+	sector.fighter_owner = -2.0f;
+	group_size = 1.0f;
+	if (!yt_maintenance_xannor_sector_arrival(&game, 42, &group_size,
+	    &sector, score_line_collect, &screen, &error)
+	    || group_size != 0.0f || sector.fighters != 1.0f
+	    || sector.fighter_owner != -2.0f || game.random.draws != 1U
+	    || script.position != sizeof(high_draw) || screen.lines != 1U
+	    || screen.length != sizeof(mercenary_screen) - 1U
+	    || memcmp(screen.data, mercenary_screen,
+	    sizeof(mercenary_screen) - 1U) != 0
+	    || !yt_text_read("YTNEWS.DAT", &news, &error)
+	    || news.length != sizeof(mercenary_news) - 1U
+	    || memcmp(news.data, mercenary_news,
+	    sizeof(mercenary_news) - 1U) != 0)
+		goto done;
+	valid = true;
+
+done:
+	yt_text_free(&news);
+	yt_game_close(&game);
+	(void)remove("YTDATA.DAT");
+	(void)remove("YTNEWS.DAT");
+	return valid;
+}
+
+static bool
 check_maintenance_xannor_route_arrivals_pass(void)
 {
-	static const uint8_t five_zero_draws[15] = {0};
+	static const uint8_t six_zero_draws[18] = {0};
+	static const uint8_t expected_news[] =
+	    " *** 10 Xannor hit sector mines in sector 2!\r\n"
+	    " *** Lost a total of 1 fighters!\r\n"
+	    " *** Route: lost 1, dstrd 0 (Plyr ftrs dstrd)\r\n\x1a";
 	struct yt_record before[4];
 	struct yt_record after;
+	struct yt_record player;
 	struct yt_maintenance_route_cache cache = {0};
 	struct yt_maintenance_xannor_route_result route;
+	struct yt_text_file news = {0};
 	struct yt_game game;
 	struct yt_error error;
 	struct score_random_script random_script = {
-		five_zero_draws, sizeof(five_zero_draws), 0U
+		six_zero_draws, sizeof(six_zero_draws), 0U
 	};
 	float player_sector[4] = {0};
 	float player_cloak[4] = {0};
@@ -17641,6 +17746,11 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_CREATE,
 	    &error))
 		goto done;
+	yt_record_blank(&player);
+	memcpy(player.bytes, "Route", 5U);
+	if (!yt_record_set_number(&player, YT_F85, 5.0f)
+	    || !yt_database_write(&game.database, 2U, &player, &error))
+		goto done;
 	for (sector = 1; sector <= 4; ++sector) {
 		memset(before[sector - 1].bytes, 0x30 + sector,
 		    YT_RECORD_SIZE);
@@ -17656,7 +17766,8 @@ check_maintenance_xannor_route_arrivals_pass(void)
 		yt_record_set_number(&before[sector - 1], YT_F85,
 		    sector == 2 ? 2.0f : 0.0f);
 		yt_record_set_number(&before[sector - 1], YT_F93, 0.0f);
-		yt_record_set_number(&before[sector - 1], YT_F129, 0.0f);
+		yt_record_set_number(&before[sector - 1], YT_F129,
+		    sector == 2 ? 1.0f : 0.0f);
 		if (!yt_database_write(&game.database,
 		    (size_t)yt_sector_basic_record(&game.config, sector),
 		    &before[sector - 1], &error))
@@ -17671,9 +17782,13 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	    location, size, &route, &error)
 	    || route.hops != 2 || !route.reached_target
 	    || route.route_missing || route.exhausted
-	    || location[2] != 3.0f || size[2] != 10.0f
-	    || game.random.draws != 5U
-	    || random_script.position != sizeof(five_zero_draws))
+	    || location[2] != 3.0f || size[2] != 9.0f
+	    || game.random.draws != 6U
+	    || random_script.position != sizeof(six_zero_draws)
+	    || !yt_text_read("YTNEWS.DAT", &news, &error)
+	    || news.length != sizeof(expected_news) - 1U
+	    || memcmp(news.data, expected_news, sizeof(expected_news) - 1U)
+	    != 0)
 		goto done;
 	for (sector = 1; sector <= 4; ++sector) {
 		if (!yt_database_read(&game.database,
@@ -17681,16 +17796,19 @@ check_maintenance_xannor_route_arrivals_pass(void)
 		    &after, &error))
 			goto done;
 		for (size_t offset = 0U; offset < YT_RECORD_SIZE; ++offset) {
-			bool defense_lane = sector == 2
+			bool arrival_lane = sector == 2
 			    && ((offset >= YT_F81 && offset < YT_F81 + 4U)
 			    || (offset >= YT_F85 && offset < YT_F85 + 4U));
+			arrival_lane = arrival_lane || (sector == 2
+			    && offset >= YT_F129 && offset < YT_F129 + 4U);
 
-			if (!defense_lane && after.bytes[offset]
+			if (!arrival_lane && after.bytes[offset]
 			    != before[sector - 1].bytes[offset])
 				goto done;
 		}
 		if (sector == 2 && (yt_record_get_number(&after, YT_F81) != 0.0f
-		    || yt_record_get_number(&after, YT_F85) != 0.0f))
+		    || yt_record_get_number(&after, YT_F85) != 0.0f
+		    || yt_record_get_number(&after, YT_F129) != 0.0f))
 			goto done;
 	}
 	if (!yt_maintenance_xannor_route_arrivals(&game, &cache,
@@ -17698,7 +17816,7 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	    location, size, &route, &error)
 	    || route.hops != 0 || route.reached_target
 	    || !route.route_missing || route.exhausted
-	    || location[2] != 3.0f || size[2] != 10.0f)
+	    || location[2] != 3.0f || size[2] != 9.0f)
 		goto done;
 	location[2] = 1.0f;
 	size[2] = 0.0f;
@@ -17721,6 +17839,7 @@ check_maintenance_xannor_route_arrivals_pass(void)
 	valid = true;
 
 done:
+	yt_text_free(&news);
 	yt_maintenance_route_cache_free(&cache);
 	yt_game_close(&game);
 	(void)remove("YTDATA.DAT");
@@ -33514,6 +33633,8 @@ main(void)
 	if (!check_maintenance_xannor_group_extraction_pass())
 		goto done;
 	if (!check_maintenance_xannor_group_persistence_pass())
+		goto done;
+	if (!check_maintenance_xannor_sector_arrival_pass())
 		goto done;
 	if (!check_maintenance_xannor_route_arrivals_pass())
 		goto done;
