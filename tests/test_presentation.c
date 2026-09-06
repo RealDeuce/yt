@@ -4301,6 +4301,10 @@ test_basic_fault_registry(void)
 		    0xB2DAU, 4U},
 		{YT_BASIC_FAULT_MAIN, 0x07B9U, 0x07BCU, 0x07AEU, 19100,
 		    0xB2DAU, 4U},
+		{YT_BASIC_FAULT_MAIN, 0xAEBFU, 0xAEC2U, 0xAE9CU, 36000,
+		    0xB2DAU, 2U},
+		{YT_BASIC_FAULT_MAIN, 0xAEC8U, 0xAECBU, 0xAE9CU, 36000,
+		    0xB2DAU, 2U},
 	};
 	struct yt_error error;
 	size_t index;

@@ -206,6 +206,7 @@ enum navigation_field_kind {
 
 struct yt_session {
 	struct yt_door *door;
+	struct yt_error *error;
 	const char *executable_path;
 	int player_record_carrier;
 	struct yt_player player;
@@ -1702,8 +1703,23 @@ expand_repeat(struct yt_session *session, char *text, size_t size)
 
 	if (!yt_input_expand_repeat_observed(text, size,
 	    session->saved_command, sizeof(session->saved_command), &result,
-	    session_input_process_store, session))
+	    session_input_process_store, session)) {
+		if (result.failure != YT_REPEAT_FAILURE_NONE
+		    && session->error != NULL) {
+			yt_error_clear(session->error);
+			session->error->status = YT_RANGE;
+			(void)snprintf(session->error->operation,
+			    sizeof(session->error->operation), "%s",
+			    result.failure == YT_REPEAT_FAILURE_VAL_OVERFLOW
+			    ? "ADE0 repeat VAL overflow"
+			    : "ADE0 repeat SINGLE overflow");
+			(void)yt_error_attach_basic_fault_number(session->error,
+			    result.failure == YT_REPEAT_FAILURE_VAL_OVERFLOW
+			    ? YT_BASIC_FAULT_REPEAT_VAL_OVERFLOW
+			    : YT_BASIC_FAULT_REPEAT_SINGLE_OVERFLOW, 6U);
+		}
 		return false;
+	}
 	if (!result.emit_notice)
 		return true;
 	if (qb_str_double(rendered, sizeof(rendered), (double)result.count) < 0)
@@ -20336,6 +20352,7 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 		return false;
 	}
 	memset(&session, 0, sizeof(session));
+	session.error = error;
 	yt_present_bind_background_process(&session.presentation,
 	    &session.route_process.bytes[YT_BACKGROUND_ADDRESS]);
 	yt_present_bind_bold_process(&session.presentation,

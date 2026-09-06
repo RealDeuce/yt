@@ -115,6 +115,9 @@ not authoritative. Use the corrected goal above in the new workspace.
   integral MBF64 result through overlapping `DS:0016..001D`, then the converted
   MBF32 result at `DS:001A`, before `POP_FLOAT` stores `DS:51C4`; its SINGLE
   overflow retains the MBF64 temporary and stops before those latter stores.
+  The two overflow cuts now carry their documented `AEBF/AEC2` and
+  `AEC8/AECB` identities, shared current statement `AE9C`, ERL 36000, ERR 6,
+  and main-handler nonlocal gameplay resume through the live session.
   Movable-string MID$/CHR$ allocation failures,
   expression-string residue, caller frames and active ERR-7/14 routing remain
   explicit runtime seams.

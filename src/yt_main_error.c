@@ -101,6 +101,10 @@ static const struct yt_basic_fault_identity basic_faults[] = {
 	    0x0759U, 19000, RETURNING_PUT_ERRORS, 5U),
 	MAIN_FAULT("post-login cargo repair PUT", 0x07B9U, 0x07BCU,
 	    0x07AEU, 19100, RETURNING_PUT_ERRORS, 5U),
+	MAIN_FAULT("ADE0 repeat VAL overflow", 0xAEBFU, 0xAEC2U,
+	    0xAE9CU, 36000, CINT_ERRORS, 1U),
+	MAIN_FAULT("ADE0 repeat SINGLE overflow", 0xAEC8U, 0xAECBU,
+	    0xAE9CU, 36000, CINT_ERRORS, 1U),
 };
 
 _Static_assert(YT_ARRAY_LEN(basic_faults) == YT_BASIC_FAULT_SITE_COUNT,
