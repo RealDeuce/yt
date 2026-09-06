@@ -23273,6 +23273,112 @@ test_direct_emergency_warp_invalid_retry_presentation(void)
 	CHECK(sizeof(plain) - 1U == 182U && sizeof(ansi) - 1U == 260U);
 }
 
+static bool
+direct_emergency_warp_mode_decline_run(
+    struct hostile_mines_hazard_fixture *fixture, float mode)
+{
+	static const uint8_t warning_one[] =
+	    "This is a desperate move! Your engines will be drained and will take time";
+	static const uint8_t warning_two[] =
+	    "to recharge! You also risk a melt down! Are you sure you wish to do this?";
+	static const uint8_t prompt[] = "[y/N] -=> ";
+	static const uint8_t answer_text[] = "N";
+	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct yt_present_result result;
+	enum yt_yes_no_answer answer;
+	char output[80];
+
+	join->presentation = state(true);
+	join->presentation.sound.mode = mode;
+	if (yt_present_color(&join->presentation, &result) != YT_PRESENT_OK
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.bold = 1.0f;
+	join->presentation.foreground = 7.0f;
+	join->pager.foreground = 7;
+	if (!normal_exit_b05d(join, warning_one, sizeof(warning_one) - 1U, 0.0f))
+		return false;
+	join->presentation.bold = 1.0f;
+	if (!normal_exit_b05d(join, warning_two, sizeof(warning_two) - 1U, 0.0f)
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.bold = 1.0f;
+	if (yt_present_character(prompt, sizeof(prompt) - 1U,
+	    &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	memcpy(join->accumulator, answer_text, sizeof(answer_text));
+	if (yt_present_editor_echo(answer_text, sizeof(answer_text) - 1U,
+	    answer_text, sizeof(answer_text) - 1U, &join->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !yt_input_yes_no_candidate(join->accumulator, output,
+	    sizeof(output), &answer) || answer != YT_YES_NO_NO)
+		return false;
+	memcpy(join->source, output, 2U);
+	join->source_length = 1U;
+	return true;
+}
+
+static void
+test_direct_emergency_warp_modes(void)
+{
+	static const uint8_t mode_two[] = "\r\n\r\n[y/N] -=> \r\n";
+	static const struct {
+		float mode;
+		const uint8_t *expected;
+		size_t expected_length;
+	} cases[] = {
+		{1.0f, (const uint8_t *)"", 0U},
+		{2.0f, mode_two, sizeof(mode_two) - 1U},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	uint8_t remote[64];
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", true, remote, sizeof(remote));
+		memset(&fixture, 0, sizeof(fixture));
+		fixture.cycle.presentation.viewer = &viewer;
+		CHECK(direct_emergency_warp_mode_decline_run(&fixture,
+		    cases[pass].mode));
+		CHECK(viewer.join.remote_length == cases[pass].expected_length
+		    && memcmp(remote, cases[pass].expected,
+		    cases[pass].expected_length) == 0
+		    && viewer.join.local_fragment_length == 0U
+		    && viewer.join.local_row_count == 5U
+		    && viewer_rows_fnv1a64(&viewer.join)
+		    == UINT64_C(0x2beacfb4c359313c)
+		    && viewer.join.local_color_count == 8U
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == UINT64_C(0x844da71c138d59e8)
+		    && strcmp(viewer.join.accumulator, "N") == 0
+		    && viewer.join.source_length == 1U
+		    && viewer.join.source[0] == 'N'
+		    && viewer.join.queue_length == 0U
+		    && viewer.join.presentation.sound.mode == cases[pass].mode
+		    && viewer.join.presentation.foreground == 7.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold == 0.0f
+		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.cached_foreground == 0.0f
+		    && viewer.join.pager.foreground == 7
+		    && viewer.join.pager.line_count == 0.0f
+		    && viewer.join.event_count == 10U
+		    && !fixture.warp_called && fixture.draw_position == 0U);
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
 enum direct_warp_parent_copy_failure {
 	DIRECT_WARP_FAIL_WARNING_ONE,
 	DIRECT_WARP_FAIL_WARNING_TWO,
@@ -30838,6 +30944,7 @@ main(void)
 	test_hostile_mines_emergency_warp_cycle_presentation();
 	test_hostile_mines_black_hole_cycle_presentation();
 	test_direct_emergency_warp_invalid_retry_presentation();
+	test_direct_emergency_warp_modes();
 	test_direct_emergency_warp_parent_copy_failures();
 	test_direct_emergency_warp_accepted_presentation();
 	test_direct_emergency_warp_child_failures();
