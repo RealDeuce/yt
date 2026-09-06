@@ -785,6 +785,142 @@ yt_input_repeat_prefix_staged(const uint8_t *text, size_t length,
 	return target == YT_BASIC_FAULT_SITE_COUNT;
 }
 
+static bool
+repeat_parse_target(enum yt_basic_fault_site target)
+{
+	return target == YT_BASIC_FAULT_ADE0_REPEAT_PREFIX_LEFT_SPACE
+	    || target == YT_BASIC_FAULT_ADE0_REPEAT_SEMICOLON_CONCAT_SPACE
+	    || target == YT_BASIC_FAULT_ADE0_REPEAT_SUFFIX_RIGHT_SPACE
+	    || target == YT_BASIC_FAULT_REPEAT_VAL_OVERFLOW
+	    || target == YT_BASIC_FAULT_REPEAT_SINGLE_OVERFLOW;
+}
+
+static bool
+repeat_parse_fault(struct yt_repeat_parse_transform *result,
+    enum yt_basic_fault_site site, enum yt_repeat_failure failure)
+{
+	result->fault_site = site;
+	result->failure = failure;
+	result->fault_valid = true;
+	return false;
+}
+
+bool
+yt_input_repeat_parse_staged(char *text, size_t text_capacity,
+    uint8_t *upper_scratch, size_t scratch_capacity,
+    size_t repeat_position, enum yt_basic_fault_site target,
+    struct yt_repeat_parse_transform *result,
+    yt_input_process_store_fn store, void *context)
+{
+	struct qb_val_result parsed;
+	double integer;
+	size_t text_length;
+	size_t upper_length;
+	size_t prefix_length;
+	size_t suffix_offset;
+	size_t suffix_length;
+	float count;
+
+	if (text == NULL || text_capacity == 0U || upper_scratch == NULL
+	    || scratch_capacity == 0U || result == NULL
+	    || (target != YT_BASIC_FAULT_SITE_COUNT
+	    && !repeat_parse_target(target))
+	    || !bounded_string_length(text, text_capacity, &text_length)
+	    || !bounded_string_length((const char *)upper_scratch,
+	    scratch_capacity, &upper_length))
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->failure = YT_REPEAT_FAILURE_NONE;
+	result->fault_site = YT_BASIC_FAULT_SITE_COUNT;
+	if (repeat_position == 0U)
+		return target == YT_BASIC_FAULT_SITE_COUNT;
+	if (repeat_position >= upper_length
+	    || upper_scratch[repeat_position - 1U] != (uint8_t)'/'
+	    || upper_scratch[repeat_position] != (uint8_t)'R')
+		return false;
+	result->repeat_reached = true;
+	prefix_length = repeat_position - 1U;
+	suffix_offset = repeat_position + 1U;
+	suffix_length = upper_length - suffix_offset;
+	if (target == YT_BASIC_FAULT_ADE0_REPEAT_PREFIX_LEFT_SPACE) {
+		if (prefix_length == 0U)
+			return false;
+		return repeat_parse_fault(result, target,
+		    YT_REPEAT_FAILURE_NONE);
+	}
+	if (target == YT_BASIC_FAULT_ADE0_REPEAT_SUFFIX_RIGHT_SPACE
+	    && suffix_length == 0U)
+		return false;
+	if (prefix_length >= sizeof(result->pending_string))
+		return false;
+	memcpy(result->pending_string, text, prefix_length);
+	result->pending_string[prefix_length] = '\0';
+	result->pending_length = prefix_length;
+	result->pending_role = YT_REPEAT_PENDING_PREFIX;
+	if (target == YT_BASIC_FAULT_ADE0_REPEAT_SEMICOLON_CONCAT_SPACE)
+		return repeat_parse_fault(result, target,
+		    YT_REPEAT_FAILURE_NONE);
+	if (prefix_length + 2U > text_capacity)
+		return false;
+	memcpy(text, result->pending_string, prefix_length);
+	text[prefix_length] = ';';
+	text[prefix_length + 1U] = '\0';
+	result->pending_string[0] = '\0';
+	result->pending_length = 0U;
+	result->pending_role = YT_REPEAT_PENDING_NONE;
+	if (target == YT_BASIC_FAULT_ADE0_REPEAT_SUFFIX_RIGHT_SPACE) {
+		return repeat_parse_fault(result, target,
+		    YT_REPEAT_FAILURE_NONE);
+	}
+	if (suffix_length >= sizeof(result->pending_string))
+		return false;
+	memcpy(result->pending_string, upper_scratch + suffix_offset,
+	    suffix_length);
+	result->pending_string[suffix_length] = '\0';
+	result->pending_length = suffix_length;
+	result->pending_role = YT_REPEAT_PENDING_SUFFIX;
+	parsed = qb_val(result->pending_string);
+	if (parsed.overflow) {
+		if (target != YT_BASIC_FAULT_SITE_COUNT
+		    && target != YT_BASIC_FAULT_REPEAT_VAL_OVERFLOW)
+			return false;
+		return repeat_parse_fault(result,
+		    YT_BASIC_FAULT_REPEAT_VAL_OVERFLOW,
+		    YT_REPEAT_FAILURE_VAL_OVERFLOW);
+	}
+	integer = qb_int(parsed.valid ? parsed.value : 0.0);
+	if (!input_process_store_double(store, context, 0x0016U, integer)
+	    || qb_mbf64_encode(integer, result->pending_double_raw) != QB_MBF_OK)
+		return false;
+	result->pending_string[0] = '\0';
+	result->pending_length = 0U;
+	result->pending_role = YT_REPEAT_PENDING_INTEGER;
+	result->pending_double_valid = true;
+	count = (float)integer;
+	if (qb_mbf32_encode(count, result->count_raw) == QB_MBF_OVERFLOW) {
+		if (target != YT_BASIC_FAULT_SITE_COUNT
+		    && target != YT_BASIC_FAULT_REPEAT_SINGLE_OVERFLOW)
+			return false;
+		return repeat_parse_fault(result,
+		    YT_BASIC_FAULT_REPEAT_SINGLE_OVERFLOW,
+		    YT_REPEAT_FAILURE_SINGLE_OVERFLOW);
+	}
+	if (!input_process_store_single(store, context, 0x001AU, count)
+	    || !input_process_store_single(store, context, 0x51C4U, count))
+		return false;
+	upper_scratch[0] = '\0';
+	result->pending_role = YT_REPEAT_PENDING_NONE;
+	result->pending_double_valid = false;
+	if (count > 10.0f) {
+		count = 20.0f;
+		if (!input_process_store_single(store, context, 0x51C4U, count)
+		    || qb_mbf32_encode(count, result->count_raw) != QB_MBF_OK)
+			return false;
+	}
+	result->count = count;
+	return target == YT_BASIC_FAULT_SITE_COUNT;
+}
+
 bool
 yt_input_expand_repeat_observed(char *text, size_t text_capacity,
     char *saved_command, size_t saved_capacity,
@@ -794,8 +930,7 @@ yt_input_expand_repeat_observed(char *text, size_t text_capacity,
 	char base[YT_INPUT_PENDING];
 	uint8_t upper[YT_INPUT_PENDING];
 	struct yt_repeat_prefix_transform repeat_prefix;
-	struct qb_val_result parsed;
-	double integer;
+	struct yt_repeat_parse_transform repeat_parse;
 	size_t text_length;
 	size_t prefix;
 	size_t base_length;
@@ -822,42 +957,16 @@ yt_input_expand_repeat_observed(char *text, size_t text_capacity,
 	if (repeat_prefix.repeat_position == 0U)
 		return true;
 	prefix = repeat_prefix.repeat_position - 1U;
-	if (prefix + 2U >= text_capacity || prefix + 1U >= sizeof(base))
-		return false;
-	parsed = qb_val((const char *)upper + prefix + 2U);
-	if (parsed.overflow) {
-		result->failure = YT_REPEAT_FAILURE_VAL_OVERFLOW;
-		result->fault_site = YT_BASIC_FAULT_REPEAT_VAL_OVERFLOW;
-		result->fault_valid = true;
+	if (!yt_input_repeat_parse_staged(text, text_capacity, upper,
+	    sizeof(upper), repeat_prefix.repeat_position,
+	    YT_BASIC_FAULT_SITE_COUNT, &repeat_parse, store, context)) {
+		result->failure = repeat_parse.failure;
+		result->fault_site = repeat_parse.fault_site;
+		result->fault_valid = repeat_parse.fault_valid;
 		return false;
 	}
-	integer = qb_int(parsed.valid ? parsed.value : 0.0);
-	if (!input_process_store_double(store, context, 0x0016U, integer))
-		return false;
-	count = (float)integer;
-	{
-		uint8_t count_raw[4];
-
-		if (qb_mbf32_encode(count, count_raw) == QB_MBF_OVERFLOW) {
-			result->failure = YT_REPEAT_FAILURE_SINGLE_OVERFLOW;
-			result->fault_site = YT_BASIC_FAULT_REPEAT_SINGLE_OVERFLOW;
-			result->fault_valid = true;
-			return false;
-		}
-	}
-	if (!input_process_store_single(store, context, 0x001AU, count))
-		return false;
-	if (!input_process_store_single(store, context, 0x51C4U, count))
-		return false;
-	if (count > 10.0f) {
-		count = 20.0f;
-		if (!input_process_store_single(store, context, 0x51C4U,
-		    count))
-			return false;
-	}
+	count = repeat_parse.count;
 	result->count = count;
-	text[prefix] = ';';
-	text[prefix + 1U] = '\0';
 	if (count <= 0.0f)
 		return true;
 	base_length = prefix + 1U;

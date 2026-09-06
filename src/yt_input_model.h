@@ -98,6 +98,27 @@ struct yt_repeat_prefix_transform {
 	bool fault_valid;
 };
 
+enum yt_repeat_pending_role {
+	YT_REPEAT_PENDING_NONE,
+	YT_REPEAT_PENDING_PREFIX,
+	YT_REPEAT_PENDING_SUFFIX,
+	YT_REPEAT_PENDING_INTEGER,
+};
+
+struct yt_repeat_parse_transform {
+	char pending_string[YT_INPUT_PENDING];
+	size_t pending_length;
+	uint8_t pending_double_raw[8];
+	uint8_t count_raw[4];
+	float count;
+	enum yt_repeat_pending_role pending_role;
+	enum yt_repeat_failure failure;
+	enum yt_basic_fault_site fault_site;
+	bool repeat_reached;
+	bool pending_double_valid;
+	bool fault_valid;
+};
+
 enum yt_yes_no_answer {
 	YT_YES_NO_EMPTY,
 	YT_YES_NO_YES,
@@ -396,6 +417,11 @@ bool yt_input_repeat_prefix_staged(const uint8_t *text, size_t length,
 	uint8_t *upper_scratch, size_t scratch_capacity,
 	enum yt_basic_fault_site target, size_t occurrence,
 	struct yt_repeat_prefix_transform *result,
+	yt_input_process_store_fn store, void *context);
+bool yt_input_repeat_parse_staged(char *text, size_t text_capacity,
+	uint8_t *upper_scratch, size_t scratch_capacity,
+	size_t repeat_position, enum yt_basic_fault_site target,
+	struct yt_repeat_parse_transform *result,
 	yt_input_process_store_fn store, void *context);
 bool yt_input_expand_repeat_observed(char *text, size_t text_capacity,
     char *saved_command, size_t saved_capacity,
