@@ -5999,14 +5999,18 @@ yt_maintenance_move_mercenaries(struct yt_game *game, int sector_count,
 }
 
 static bool
-move_mercenaries(struct maint_state *state, struct yt_error *error)
+move_mercenaries(struct maint_state *state,
+    yt_maintenance_score_line_fn line_output, void *line_context,
+    struct yt_error *error)
 {
 	return move_mercenaries_impl(&state->game, state->sector_count,
-	    &state->route_cache, maintenance_stdout_line, NULL, error);
+	    &state->route_cache, line_output, line_context, error);
 }
 
 static bool
-maintain_factions(struct maint_state *state, struct yt_error *error)
+maintain_mercenaries_impl(struct maint_state *state,
+    yt_maintenance_score_line_fn line_output, void *line_context,
+    struct yt_error *error)
 {
 	static const char report[] = "  -  Mercenary Report:";
 	struct yt_maintenance_mercenary_tax_result tax;
@@ -6015,14 +6019,13 @@ maintain_factions(struct maint_state *state, struct yt_error *error)
 	bool rebuilt;
 	float hired;
 
-	if (!maintain_xannor(state, error)
-	    || !yt_maintenance_compose_mercenary_phase(
+	if (!yt_maintenance_compose_mercenary_phase(
 	    NULL, 0U,
 	    0.0f, false, 0.0f, &output)
 	    || !maintenance_emit_output_row(&output, 0x3F86U,
-	    maintenance_stdout_line, NULL, error)
+	    line_output, line_context, error)
 	    || !maintenance_emit_output_row(&output, 0x3F95U,
-	    maintenance_stdout_line, NULL, error)
+	    line_output, line_context, error)
 	    || !yt_maintenance_collect_mercenary_tax(&state->game,
 	    state->port_count, &tax, error)
 	    || !yt_maintenance_compose_mercenary_phase(
@@ -6031,18 +6034,18 @@ maintain_factions(struct maint_state *state, struct yt_error *error)
 		return false;
 	if (tax.tax_pool != 0.0f
 	    && (!maintenance_emit_output_row(&output, 0x40BCU,
-	    maintenance_stdout_line, NULL, error)
+	    line_output, line_context, error)
 	    || !maintenance_news_output_row(&output, 0x40BCU, error)))
 		return false;
 	if (!maintenance_emit_output_row(&output, 0x40DEU,
-	    maintenance_stdout_line, NULL, error)
+	    line_output, line_context, error)
 	    || !maintenance_emit_output_row(&output, 0x40F2U,
-	    maintenance_stdout_line, NULL, error)
+	    line_output, line_context, error)
 	    || !maintenance_emit_output_row(&output, 0x4103U,
-	    maintenance_stdout_line, NULL, error)
+	    line_output, line_context, error)
 	    || !yt_news_append(report, error)
 	    || !maintenance_emit_output_row(&output, 0x4130U,
-	    maintenance_stdout_line, NULL, error)
+	    line_output, line_context, error)
 	    || !yt_maintenance_maintain_mercenary_base(&state->game,
 	    state->sector_count, state->planet_count - 1, &rebuilt, error))
 		return false;
@@ -6051,9 +6054,9 @@ maintain_factions(struct maint_state *state, struct yt_error *error)
 		    NULL, 0U, tax.tax_pool, true, 0.0f,
 		    &output)
 		    || !maintenance_emit_output_row(&output, 0x41DEU,
-		    maintenance_stdout_line, NULL, error)
+		    line_output, line_context, error)
 		    || !maintenance_emit_output_row(&output, 0x41FAU,
-		    maintenance_stdout_line, NULL, error)
+		    line_output, line_context, error)
 		    || !maintenance_news_output_row(&output, 0x41FAU, error))
 			return false;
 	}
@@ -6065,15 +6068,59 @@ maintain_factions(struct maint_state *state, struct yt_error *error)
 	    NULL, 0U,
 	    tax.tax_pool, rebuilt, hired, &output)
 	    || !maintenance_emit_output_row(&output, 0x4631U,
-	    maintenance_stdout_line, NULL, error)
+	    line_output, line_context, error)
 	    || !maintenance_news_output_row(&output, 0x4631U, error)))
 		return false;
 	if (!yt_maintenance_mercenary_defections(&state->game,
-	    state->sector_count, maintenance_stdout_line, NULL, &defections,
+	    state->sector_count, line_output, line_context, &defections,
 	    error)
-	    || !move_mercenaries(state, error))
+	    || !move_mercenaries(state, line_output, line_context, error))
 		return false;
 	return true;
+}
+
+bool
+yt_maintenance_maintain_mercenaries(struct yt_game *game,
+    struct yt_maintenance_route_cache *cache,
+    yt_maintenance_score_line_fn line_output, void *line_context,
+    struct yt_error *error)
+{
+	struct maint_state state;
+	bool success;
+
+	if (game == NULL || cache == NULL || line_output == NULL) {
+		set_error(error, YT_INVALID, "Mercenary maintenance",
+		    "YTDATA.DAT");
+		return false;
+	}
+	memset(&state, 0, sizeof(state));
+	state.game = *game;
+	state.route_cache = *cache;
+	state.sector_count = (int)(game->config.port_offset
+	    - game->config.sector_offset);
+	state.port_count = (int)(game->config.planet_offset
+	    - game->config.port_offset);
+	state.planet_count = (int)(game->config.total_records
+	    - game->config.planet_offset);
+	if (state.sector_count < 2 || state.port_count < 0
+	    || state.planet_count < 2) {
+		set_error(error, YT_RANGE, "Mercenary maintenance layout",
+		    "YTDATA.DAT");
+		return false;
+	}
+	success = maintain_mercenaries_impl(&state, line_output, line_context,
+	    error);
+	game->random = state.game.random;
+	*cache = state.route_cache;
+	return success;
+}
+
+static bool
+maintain_factions(struct maint_state *state, struct yt_error *error)
+{
+	return maintain_xannor(state, error)
+	    && maintain_mercenaries_impl(state, maintenance_stdout_line, NULL,
+	    error);
 }
 
 static bool

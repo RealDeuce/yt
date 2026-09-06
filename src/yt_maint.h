@@ -515,6 +515,10 @@ bool yt_maintenance_maintain_xannor(struct yt_game *game,
     float *player_cloak, size_t cache_count,
     yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_error *error);
+bool yt_maintenance_maintain_mercenaries(struct yt_game *game,
+    struct yt_maintenance_route_cache *cache,
+    yt_maintenance_score_line_fn line_output, void *line_context,
+    struct yt_error *error);
 bool yt_maintenance_scoreboard(struct yt_game *game,
     yt_maintenance_score_line_fn line_output, void *context,
     struct yt_error *error);
