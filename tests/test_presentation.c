@@ -28493,9 +28493,16 @@ struct hostile_bribe_fatal_cycle_join {
 	size_t death_calls;
 	size_t wait_calls;
 	size_t flushes;
+	size_t news_calls;
 	size_t fail_player_read_at;
+	size_t fail_player_write_at;
+	size_t fail_sector_read_at;
+	size_t fail_sector_write_at;
 	int attention_carrier_cut;
 	bool fail_sound;
+	bool fail_team_removal;
+	bool fail_news;
+	bool fail_flush;
 	bool fail_wait;
 	bool current_player_set;
 };
@@ -28537,6 +28544,8 @@ hostile_bribe_fatal_write_player(void *context, int player_record,
 	if (player_record != 2 || player == NULL)
 		return false;
 	++join->player_writes;
+	if (join->player_writes == join->fail_player_write_at)
+		return false;
 	join->player = *player;
 	join->written_player = *player;
 	return true;
@@ -28552,6 +28561,8 @@ hostile_bribe_fatal_read_sector(void *context, int logical_sector,
 	if (logical_sector < 1 || logical_sector > 2004 || sector == NULL)
 		return false;
 	++join->sector_reads;
+	if (join->sector_reads == join->fail_sector_read_at)
+		return false;
 	if (logical_sector == 733)
 		*sector = join->sector;
 	else
@@ -28569,6 +28580,8 @@ hostile_bribe_fatal_write_sector(void *context, int logical_sector,
 	if (logical_sector != 733 || sector == NULL)
 		return false;
 	++join->sector_writes;
+	if (join->sector_writes == join->fail_sector_write_at)
+		return false;
 	join->sector = *sector;
 	join->written_sector = *sector;
 	return true;
@@ -28584,7 +28597,7 @@ hostile_bribe_fatal_remove_team(void *context, int victim_record,
 	if (victim_record != 2)
 		return false;
 	++join->team_removals;
-	return true;
+	return !join->fail_team_removal;
 }
 
 static bool
@@ -28627,6 +28640,9 @@ hostile_bribe_fatal_news(void *context, const uint8_t *text,
 	struct hostile_bribe_fatal_cycle_join *join = context;
 
 	(void)error;
+	++join->news_calls;
+	if (join->fail_news)
+		return false;
 	if (text == NULL || length + 2U > sizeof(join->news)
 	    || join->news_length != 0U)
 		return false;
@@ -28655,7 +28671,7 @@ hostile_bribe_fatal_flush(void *context, struct yt_error *error)
 
 	(void)error;
 	++join->flushes;
-	return true;
+	return !join->fail_flush;
 }
 
 static const struct yt_player_death_ops hostile_bribe_fatal_death_ops = {
@@ -34626,6 +34642,22 @@ test_hostile_bribe_immediate_fatal_cycle(void)
 static void
 test_hostile_bribe_fatal_prefix_cuts(void)
 {
+	enum fatal_cut {
+		FATAL_CUT_FIRST_CARRIER,
+		FATAL_CUT_SECOND_CARRIER,
+		FATAL_CUT_COMMON_PLAYER_GET,
+		FATAL_CUT_SOUND,
+		FATAL_CUT_DEATH_PLAYER_GET,
+		FATAL_CUT_DEATH_PLAYER_PUT,
+		FATAL_CUT_FIRST_SECTOR_GET,
+		FATAL_CUT_SECTOR_PUT,
+		FATAL_CUT_POST_PUT_SECTOR_GET,
+		FATAL_CUT_TEAM_REMOVE,
+		FATAL_CUT_NEWS,
+		FATAL_CUT_FLUSH,
+		FATAL_CUT_WAIT,
+		FATAL_CUT_COUNT,
+	};
 	static const uint8_t name[] = "Ada";
 	static const uint8_t expected_news[] = "  -  Ada was killed!\r\n";
 	static const struct {
@@ -34636,29 +34668,17 @@ test_hostile_bribe_fatal_prefix_cuts(void)
 		size_t fragment;
 		size_t events;
 		size_t samples;
-	} expected[2][6] = {
+	} expected[2][3] = {
 		{{101U, UINT64_C(0xc6a3b4b024774f47), 3U,
 		 UINT64_C(0x2207a27a6260aaca), 0U, 16U, 3U},
 		 {130U, UINT64_C(0xa6452caa9d483a7a), 3U,
 		 UINT64_C(0x2207a27a6260aaca), 29U, 19U, 4U},
-		 {132U, UINT64_C(0xc79d585ab142c207), 4U,
-		 UINT64_C(0x01b4fd96ce8921d5), 0U, 20U, 4U},
-		 {132U, UINT64_C(0xc79d585ab142c207), 4U,
-		 UINT64_C(0x01b4fd96ce8921d5), 0U, 20U, 4U},
-		 {132U, UINT64_C(0xc79d585ab142c207), 4U,
-		 UINT64_C(0x01b4fd96ce8921d5), 0U, 20U, 4U},
 		 {132U, UINT64_C(0xc79d585ab142c207), 4U,
 		 UINT64_C(0x01b4fd96ce8921d5), 0U, 20U, 4U}},
 		{{135U, UINT64_C(0x595b51c018d9c386), 10U,
 		 UINT64_C(0x9c1b09fb228baecc), 0U, 16U, 3U},
 		 {178U, UINT64_C(0x046937c9ffb91eca), 11U,
 		 UINT64_C(0xc24239f1c20735a2), 29U, 19U, 4U},
-		 {180U, UINT64_C(0x8f66998d586a42d7), 12U,
-		 UINT64_C(0xca2ee8d2e302e66d), 0U, 20U, 4U},
-		 {180U, UINT64_C(0x8f66998d586a42d7), 12U,
-		 UINT64_C(0xca2ee8d2e302e66d), 0U, 20U, 4U},
-		 {180U, UINT64_C(0x8f66998d586a42d7), 12U,
-		 UINT64_C(0xca2ee8d2e302e66d), 0U, 20U, 4U},
 		 {180U, UINT64_C(0x8f66998d586a42d7), 12U,
 		 UINT64_C(0xca2ee8d2e302e66d), 0U, 20U, 4U}},
 	};
@@ -34675,10 +34695,12 @@ test_hostile_bribe_fatal_prefix_cuts(void)
 	uint8_t remote[256];
 	size_t ansi;
 	size_t cut;
+	size_t terminal;
 
 	CHECK(qb_mbf32_encode(2.0f, expected_record) == QB_MBF_OK);
 	for (ansi = 0U; ansi < 2U; ++ansi) {
-		for (cut = 0U; cut < 6U; ++cut) {
+		for (cut = 0U; cut < FATAL_CUT_COUNT; ++cut) {
+			terminal = cut < 2U ? cut : 2U;
 			memset(&viewer, 0, sizeof(viewer));
 			fixture_viewer_initialize(&viewer, &stream,
 			    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
@@ -34696,13 +34718,29 @@ test_hostile_bribe_fatal_prefix_cuts(void)
 			memset(&fatal, 0, sizeof(fatal));
 			fatal.viewer = &viewer;
 			fatal.stream = &stream;
-			if (cut < 2U)
+			if (cut < FATAL_CUT_COMMON_PLAYER_GET)
 				fatal.attention_carrier_cut = (int)cut + 1;
-			else if (cut < 4U)
-				fatal.fail_player_read_at = cut - 1U;
-			else if (cut == 4U)
+			else if (cut == FATAL_CUT_COMMON_PLAYER_GET)
+				fatal.fail_player_read_at = 1U;
+			else if (cut == FATAL_CUT_SOUND)
 				fatal.fail_sound = true;
-			else
+			else if (cut == FATAL_CUT_DEATH_PLAYER_GET)
+				fatal.fail_player_read_at = 2U;
+			else if (cut == FATAL_CUT_DEATH_PLAYER_PUT)
+				fatal.fail_player_write_at = 1U;
+			else if (cut == FATAL_CUT_FIRST_SECTOR_GET)
+				fatal.fail_sector_read_at = 1U;
+			else if (cut == FATAL_CUT_SECTOR_PUT)
+				fatal.fail_sector_write_at = 1U;
+			else if (cut == FATAL_CUT_POST_PUT_SECTOR_GET)
+				fatal.fail_sector_read_at = 734U;
+			else if (cut == FATAL_CUT_TEAM_REMOVE)
+				fatal.fail_team_removal = true;
+			else if (cut == FATAL_CUT_NEWS)
+				fatal.fail_news = true;
+			else if (cut == FATAL_CUT_FLUSH)
+				fatal.fail_flush = true;
+			else if (cut == FATAL_CUT_WAIT)
 				fatal.fail_wait = true;
 			memcpy(fatal.current_record_raw, expected_record,
 			    sizeof(expected_record));
@@ -34716,6 +34754,10 @@ test_hostile_bribe_fatal_prefix_cuts(void)
 			(void)yt_record_set_number(&record, YT_F93, 1.0f);
 			(void)yt_record_set_number(&record, YT_F125, 0.5f);
 			yt_player_decode(&fatal.player, &record);
+			yt_record_blank(&record);
+			(void)yt_record_set_number(&record, YT_F81, 10.0f);
+			(void)yt_record_set_number(&record, YT_F85, 2.0f);
+			yt_sector_decode(&fatal.sector, &record);
 
 			memset(&joined, 0, sizeof(joined));
 			joined.fixture = &fixture;
@@ -34747,59 +34789,80 @@ test_hostile_bribe_fatal_prefix_cuts(void)
 			    && fatal.fatal_start == (ansi != 0U ? 123U : 99U)
 			    && fatal.fatal.foreground == 3.0f
 			    && fatal.fatal.pager_foreground == 3
-			    && fatal.fatal.field_valid == (cut >= 3U)
+			    && fatal.fatal.field_valid == (cut >= FATAL_CUT_SOUND)
 			    && !fatal.fatal.wait_complete
 			    && !fatal.fatal.normal_exit
 			    && fatal.player_reads == (cut < 2U ? 0U
-			    : cut == 2U || cut == 4U ? 1U : 2U)
-			    && fatal.player_writes == (cut == 5U ? 1U : 0U)
-			    && fatal.sector_reads == (cut == 5U ? 2004U : 0U)
-			    && fatal.sector_writes == 0U
-			    && fatal.sound_calls == (cut >= 3U ? 1U : 0U)
+			    : cut <= FATAL_CUT_SOUND ? 1U : 2U)
+			    && fatal.player_writes
+			    == (cut >= FATAL_CUT_DEATH_PLAYER_PUT ? 1U : 0U)
+			    && fatal.sector_reads
+			    == (cut < FATAL_CUT_FIRST_SECTOR_GET ? 0U
+			    : cut == FATAL_CUT_FIRST_SECTOR_GET ? 1U
+			    : cut == FATAL_CUT_SECTOR_PUT ? 733U
+			    : cut == FATAL_CUT_POST_PUT_SECTOR_GET ? 734U : 2004U)
+			    && fatal.sector_writes
+			    == (cut >= FATAL_CUT_SECTOR_PUT ? 1U : 0U)
+			    && fatal.sound_calls == (cut >= FATAL_CUT_SOUND ? 1U : 0U)
 			    && fatal.death_calls
-			    == (cut == 3U || cut == 5U ? 1U : 0U)
-			    && fatal.wait_calls == (cut == 5U ? 1U : 0U)
-			    && fatal.team_removals == (cut == 5U ? 1U : 0U)
-			    && fatal.flushes == (cut == 5U ? 1U : 0U)
-			    && fatal.current_player_set == (cut == 5U)
-			    && fatal.death.complete == (cut == 5U)
+			    == (cut >= FATAL_CUT_DEATH_PLAYER_GET ? 1U : 0U)
+			    && fatal.wait_calls == (cut == FATAL_CUT_WAIT ? 1U : 0U)
+			    && fatal.team_removals
+			    == (cut >= FATAL_CUT_TEAM_REMOVE ? 1U : 0U)
+			    && fatal.news_calls == (cut >= FATAL_CUT_NEWS ? 1U : 0U)
+			    && fatal.flushes == (cut >= FATAL_CUT_FLUSH ? 1U : 0U)
+			    && fatal.current_player_set == (cut >= FATAL_CUT_FLUSH)
+			    && fatal.death.complete == (cut == FATAL_CUT_WAIT)
 			    && fatal.news_length
-			    == (cut == 5U ? sizeof(expected_news) - 1U : 0U)
-			    && (cut != 5U || memcmp(fatal.news, expected_news,
+			    == (cut >= FATAL_CUT_FLUSH
+			    ? sizeof(expected_news) - 1U : 0U)
+			    && (cut < FATAL_CUT_FLUSH || memcmp(fatal.news, expected_news,
 			    sizeof(expected_news) - 1U) == 0)
-			    && (cut < 3U || memcmp(fatal.target_raw,
+			    && (cut < FATAL_CUT_SOUND || memcmp(fatal.target_raw,
 			    expected_record, sizeof(expected_record)) == 0)
-			    && (cut < 3U || memcmp(fatal.selector_raw,
+			    && (cut < FATAL_CUT_SOUND || memcmp(fatal.selector_raw,
 			    (const uint8_t[]){0x00U, 0x00U, 0x40U, 0x82U}, 4U)
 			    == 0)
-			    && (cut != 3U && cut != 5U
+			    && (cut < FATAL_CUT_DEATH_PLAYER_GET
 			    || memcmp(fatal.active_cache_raw,
 			    (const uint8_t[]){0x00U, 0x00U, 0x7aU, 0x00U}, 4U)
 			    == 0)
-			    && (cut != 5U || memcmp(fatal.duration_raw,
+			    && (cut != FATAL_CUT_WAIT || memcmp(fatal.duration_raw,
 			    (const uint8_t[]){0x00U, 0x00U, 0x20U, 0x83U}, 4U)
 			    == 0)
+			    && fatal.player.killed_by
+			    == (cut > FATAL_CUT_DEATH_PLAYER_PUT ? 2.0f : 0.0f)
+			    && fatal.player.sector
+			    == (cut > FATAL_CUT_DEATH_PLAYER_PUT ? 0.0f : 733.0f)
+			    && fatal.sector.fighter_owner
+			    == (cut > FATAL_CUT_SECTOR_PUT ? -2.0f : 2.0f)
+			    && fatal.sector.fighters == 10.0f
+			    && (cut <= FATAL_CUT_DEATH_PLAYER_PUT
+			    || fatal.written_player.killed_by == 2.0f)
+			    && (cut <= FATAL_CUT_SECTOR_PUT
+			    || fatal.written_sector.fighter_owner == -2.0f)
 			    && fixture.draw_position == 2U);
-			CHECK(viewer.join.remote_length == expected[ansi][cut].length
+			CHECK(viewer.join.remote_length == expected[ansi][terminal].length
 			    && viewer_bytes_fnv1a64(remote,
-			    viewer.join.remote_length) == expected[ansi][cut].hash);
+			    viewer.join.remote_length) == expected[ansi][terminal].hash);
 			CHECK(viewer.join.local_row_count
 			    == (cut < 2U ? 6U : 7U)
 			    && viewer_rows_fnv1a64(&viewer.join)
 			    == (cut < 2U ? UINT64_C(0xb98806a4c3918dd8)
 			    : UINT64_C(0xf776bd8f05a26c98))
 			    && viewer.join.local_color_count
-			    == expected[ansi][cut].colors
+			    == expected[ansi][terminal].colors
 			    && viewer_colors_fnv1a64(&viewer.join)
-			    == expected[ansi][cut].color_hash
+			    == expected[ansi][terminal].color_hash
 			    && viewer.join.local_fragment_length
-			    == expected[ansi][cut].fragment
+			    == expected[ansi][terminal].fragment
 			    && viewer_bytes_fnv1a64(viewer.join.local_fragment,
 			    viewer.join.local_fragment_length)
 			    == (cut == 1U ? UINT64_C(0xb123cceada0ab000)
 			    : UINT64_C(0xcbf29ce484222325))
-			    && viewer.join.event_count == expected[ansi][cut].events
-			    && viewer.join.sample_calls == expected[ansi][cut].samples);
+			    && viewer.join.event_count == expected[ansi][terminal].events
+			    && viewer.join.sample_calls
+			    == expected[ansi][terminal].samples);
 			yt_text_input_destroy(&viewer.input);
 		}
 	}
