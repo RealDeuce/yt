@@ -388,6 +388,87 @@ yt_input_command_save_requested(const char *text, size_t capacity,
 	return true;
 }
 
+static bool
+command_save_fault_target(enum yt_basic_fault_site target)
+{
+	return target == YT_BASIC_FAULT_ADE0_SLASH_TEST_RIGHT_SPACE
+	    || target == YT_BASIC_FAULT_ADE0_SAVE_STRIP_LEFT_SPACE
+	    || target == YT_BASIC_FAULT_ADE0_SAVE_COMMAND_CLONE_SPACE
+	    || target == YT_BASIC_FAULT_ADE0_SAVE_NOTICE_CLONE_SPACE
+	    || target == YT_BASIC_FAULT_ADE0_SAVE_NOTICE_GOSUB_STACK;
+}
+
+static bool
+command_save_fail(struct yt_command_save_transform *result,
+    enum yt_basic_fault_site site)
+{
+	result->fault_site = site;
+	result->fault_valid = true;
+	return false;
+}
+
+bool
+yt_input_command_save_staged(char *text, size_t text_capacity,
+    char *queue, size_t queue_capacity, size_t *queue_position,
+    size_t *queue_length, char *saved_command, size_t saved_capacity,
+    char *output_source, size_t output_capacity,
+    enum yt_basic_fault_site target,
+    struct yt_command_save_transform *result)
+{
+	static const char notice[] =
+	    "Command Saved -+- Ctrl-R to Re-use -+- Ctrl-X to cancel.";
+	size_t length;
+	size_t stripped_length;
+
+	if (text == NULL || text_capacity == 0U || queue == NULL
+	    || queue_capacity == 0U || queue_position == NULL
+	    || queue_length == NULL || *queue_position > *queue_length
+	    || *queue_length >= queue_capacity || saved_command == NULL
+	    || saved_capacity == 0U || output_source == NULL
+	    || output_capacity == 0U || result == NULL
+	    || (target != YT_BASIC_FAULT_SITE_COUNT
+	    && !command_save_fault_target(target))
+	    || !bounded_string_length(text, text_capacity, &length))
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->fault_site = YT_BASIC_FAULT_SITE_COUNT;
+	if (target != YT_BASIC_FAULT_SITE_COUNT) {
+		if (length == 0U || text[length - 1U] != '/')
+			return false;
+		stripped_length = length - 1U;
+		if ((target == YT_BASIC_FAULT_ADE0_SAVE_STRIP_LEFT_SPACE
+		    || target == YT_BASIC_FAULT_ADE0_SAVE_COMMAND_CLONE_SPACE)
+		    && stripped_length == 0U)
+			return false;
+	}
+	if (target == YT_BASIC_FAULT_ADE0_SLASH_TEST_RIGHT_SPACE)
+		return command_save_fail(result, target);
+	if (length == 0U || text[length - 1U] != '/')
+		return target == YT_BASIC_FAULT_SITE_COUNT;
+	result->save_requested = true;
+	stripped_length = length - 1U;
+	if (target == YT_BASIC_FAULT_ADE0_SAVE_STRIP_LEFT_SPACE)
+		return command_save_fail(result, target);
+	text[stripped_length] = '\0';
+	queue[0] = '\0';
+	*queue_position = 0U;
+	*queue_length = 0U;
+	if (target == YT_BASIC_FAULT_ADE0_SAVE_COMMAND_CLONE_SPACE)
+		return command_save_fail(result, target);
+	if (stripped_length >= saved_capacity)
+		return false;
+	memcpy(saved_command, text, stripped_length + 1U);
+	if (target == YT_BASIC_FAULT_ADE0_SAVE_NOTICE_CLONE_SPACE)
+		return command_save_fail(result, target);
+	if (sizeof(notice) > output_capacity)
+		return false;
+	memcpy(output_source, notice, sizeof(notice));
+	result->notice_ready = true;
+	if (target == YT_BASIC_FAULT_ADE0_SAVE_NOTICE_GOSUB_STACK)
+		return command_save_fail(result, target);
+	return true;
+}
+
 bool
 yt_input_ab36_inactivity_begin_process(float timer, uint8_t deadline[4])
 {

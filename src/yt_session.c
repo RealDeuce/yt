@@ -1733,22 +1733,19 @@ expand_repeat(struct yt_session *session, char *text, size_t size)
 static bool
 session_line(struct yt_session *session, char *text, size_t size)
 {
-	bool save_requested;
-	size_t length;
+	struct yt_command_save_transform save;
 
 	if (!read_keyboard_line(session, text, size))
 		return false;
-	if (!yt_input_command_save_requested(text, size, &save_requested))
+	if (!yt_input_command_save_staged(text, size, session->queue,
+	    sizeof(session->queue), &session->queue_position,
+	    &session->queue_length, session->saved_command,
+	    sizeof(session->saved_command), session->output_source,
+	    sizeof(session->output_source), YT_BASIC_FAULT_SITE_COUNT, &save))
 		return false;
-	length = strlen(text);
-	if (save_requested) {
-		text[--length] = '\0';
-		clear_queue(session);
-		snprintf(session->saved_command, sizeof(session->saved_command),
-		    "%s", text);
-		if (!session_command_notice(session,
-		    "Command Saved -+- Ctrl-R to Re-use -+- Ctrl-X to cancel.",
-		    false, YT_COMMAND_NOTICE_SAVE))
+	if (save.notice_ready) {
+		if (!session_command_notice(session, session->output_source, false,
+		    YT_COMMAND_NOTICE_SAVE))
 			return false;
 	}
 	if (!expand_repeat(session, text, size))

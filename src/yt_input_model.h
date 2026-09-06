@@ -83,6 +83,13 @@ struct yt_upper_transform {
 	bool fault_valid;
 };
 
+struct yt_command_save_transform {
+	enum yt_basic_fault_site fault_site;
+	bool save_requested;
+	bool notice_ready;
+	bool fault_valid;
+};
+
 enum yt_yes_no_answer {
 	YT_YES_NO_EMPTY,
 	YT_YES_NO_YES,
@@ -348,7 +355,13 @@ bool yt_input_ab36_printable_run(uint8_t selected_key, char *accumulator,
     bool *handled, yt_ab36_echo_fn echo, yt_ab36_carrier_fn carrier,
     void *context);
 bool yt_input_command_save_requested(const char *text, size_t capacity,
-    bool *requested);
+	bool *requested);
+bool yt_input_command_save_staged(char *text, size_t text_capacity,
+	char *queue, size_t queue_capacity, size_t *queue_position,
+	size_t *queue_length, char *saved_command, size_t saved_capacity,
+	char *output_source, size_t output_capacity,
+	enum yt_basic_fault_site target,
+	struct yt_command_save_transform *result);
 bool yt_input_ab36_inactivity_begin_process(float timer,
     uint8_t deadline[4]);
 bool yt_input_ab36_inactivity_expired(float timer, float deadline,

@@ -925,6 +925,120 @@ test_command_save_gate(void)
 	CHECK(!yt_input_command_save_requested("A", 2U, NULL));
 }
 
+static void
+test_command_save_stages(void)
+{
+	static const char notice[] =
+	    "Command Saved -+- Ctrl-R to Re-use -+- Ctrl-X to cancel.";
+	static const struct {
+		enum yt_basic_fault_site site;
+		const char *text;
+		const char *queue;
+		size_t queue_position;
+		size_t queue_length;
+		const char *saved;
+		const char *output;
+		bool requested;
+		bool ready;
+	} cases[] = {
+		{YT_BASIC_FAULT_ADE0_SLASH_TEST_RIGHT_SPACE,
+		    "A/", "XYZ", 1U, 3U, "OLD", "OUT", false, false},
+		{YT_BASIC_FAULT_ADE0_SAVE_STRIP_LEFT_SPACE,
+		    "A/", "XYZ", 1U, 3U, "OLD", "OUT", true, false},
+		{YT_BASIC_FAULT_ADE0_SAVE_COMMAND_CLONE_SPACE,
+		    "A", "", 0U, 0U, "OLD", "OUT", true, false},
+		{YT_BASIC_FAULT_ADE0_SAVE_NOTICE_CLONE_SPACE,
+		    "A", "", 0U, 0U, "A", "OUT", true, false},
+		{YT_BASIC_FAULT_ADE0_SAVE_NOTICE_GOSUB_STACK,
+		    "A", "", 0U, 0U, "A", notice, true, true},
+	};
+	struct yt_command_save_transform result;
+	char text[16];
+	char queue[16];
+	char saved[64];
+	char output[128];
+	size_t position;
+	size_t length;
+	size_t index;
+
+	for (index = 0U; index < YT_ARRAY_LEN(cases); ++index) {
+		memcpy(text, "A/", 3U);
+		memcpy(queue, "XYZ", 4U);
+		memcpy(saved, "OLD", 4U);
+		memcpy(output, "OUT", 4U);
+		position = 1U;
+		length = 3U;
+		CHECK(!yt_input_command_save_staged(text, sizeof(text), queue,
+		    sizeof(queue), &position, &length, saved, sizeof(saved),
+		    output, sizeof(output), cases[index].site, &result));
+		CHECK(result.fault_valid && result.fault_site == cases[index].site
+		    && result.save_requested == cases[index].requested
+		    && result.notice_ready == cases[index].ready
+		    && strcmp(text, cases[index].text) == 0
+		    && strcmp(queue, cases[index].queue) == 0
+		    && position == cases[index].queue_position
+		    && length == cases[index].queue_length
+		    && strcmp(saved, cases[index].saved) == 0
+		    && strcmp(output, cases[index].output) == 0);
+	}
+
+	memcpy(text, "A/", 3U);
+	memcpy(queue, "XYZ", 4U);
+	memcpy(saved, "OLD", 4U);
+	memcpy(output, "OUT", 4U);
+	position = 1U;
+	length = 3U;
+	CHECK(yt_input_command_save_staged(text, sizeof(text), queue,
+	    sizeof(queue), &position, &length, saved, sizeof(saved), output,
+	    sizeof(output), YT_BASIC_FAULT_SITE_COUNT, &result));
+	CHECK(!result.fault_valid && result.save_requested && result.notice_ready
+	    && strcmp(text, "A") == 0 && queue[0] == '\0'
+	    && position == 0U && length == 0U && strcmp(saved, "A") == 0
+	    && strcmp(output, notice) == 0);
+
+	memcpy(text, "ABC", 4U);
+	memcpy(queue, "XYZ", 4U);
+	memcpy(saved, "OLD", 4U);
+	memcpy(output, "OUT", 4U);
+	position = 1U;
+	length = 3U;
+	CHECK(yt_input_command_save_staged(text, sizeof(text), queue,
+	    sizeof(queue), &position, &length, saved, sizeof(saved), output,
+	    sizeof(output), YT_BASIC_FAULT_SITE_COUNT, &result));
+	CHECK(!result.fault_valid && !result.save_requested
+	    && !result.notice_ready && strcmp(text, "ABC") == 0
+	    && strcmp(queue, "XYZ") == 0 && position == 1U && length == 3U
+	    && strcmp(saved, "OLD") == 0 && strcmp(output, "OUT") == 0);
+
+	memcpy(text, "/", 2U);
+	memcpy(queue, "XYZ", 4U);
+	memcpy(saved, "OLD", 4U);
+	memcpy(output, "OUT", 4U);
+	position = 1U;
+	length = 3U;
+	CHECK(!yt_input_command_save_staged(text, sizeof(text), queue,
+	    sizeof(queue), &position, &length, saved, sizeof(saved), output,
+	    sizeof(output), YT_BASIC_FAULT_ADE0_SAVE_STRIP_LEFT_SPACE,
+	    &result));
+	CHECK(!result.fault_valid && strcmp(text, "/") == 0
+	    && strcmp(queue, "XYZ") == 0 && strcmp(saved, "OLD") == 0
+	    && strcmp(output, "OUT") == 0);
+
+	memcpy(text, "A/", 3U);
+	memcpy(queue, "XYZ", 4U);
+	memcpy(saved, "OLD", 4U);
+	memcpy(output, "OUT", 4U);
+	position = 1U;
+	length = 3U;
+	CHECK(!yt_input_command_save_staged(text, sizeof(text), queue,
+	    sizeof(queue), &position, &length, saved, sizeof(saved), output, 4U,
+	    YT_BASIC_FAULT_SITE_COUNT, &result));
+	CHECK(!result.fault_valid && result.save_requested
+	    && !result.notice_ready && strcmp(text, "A") == 0
+	    && queue[0] == '\0' && strcmp(saved, "A") == 0
+	    && strcmp(output, "OUT") == 0);
+}
+
 struct ab36_terminal_tape {
 	uint8_t notice[64];
 	size_t notice_length;
@@ -3898,6 +4012,7 @@ main(void)
 	test_ab36_backspace_transaction();
 	test_ab36_printable_transaction();
 	test_command_save_gate();
+	test_command_save_stages();
 	test_ab36_terminal_transaction();
 	test_source_fifo();
 	test_merged_fifo();
