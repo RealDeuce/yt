@@ -4347,11 +4347,12 @@ encode_error:
 static bool
 xannor_attack_planet(struct maint_state *state, int group,
     float location[21], float size[21], struct yt_sector *sector,
+    yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_error *error)
 {
 	return yt_maintenance_xannor_planet_arrival(&state->game,
-	    &location[group], &size[group], sector, maintenance_stdout_line,
-	    NULL, error);
+	    &location[group], &size[group], sector, line_output, line_context,
+	    error);
 }
 
 bool
@@ -4469,7 +4470,9 @@ yt_maintenance_xannor_player_arrival(struct yt_game *game,
 
 static bool
 xannor_attack_players(struct maint_state *state, int group,
-    float location[21], float size[21], struct yt_error *error)
+    float location[21], float size[21],
+    yt_maintenance_score_line_fn line_output, void *line_context,
+    struct yt_error *error)
 {
 	int record = 2;
 
@@ -4488,7 +4491,7 @@ xannor_attack_players(struct maint_state *state, int group,
 		if (!yt_maintenance_xannor_player_arrival(&state->game,
 		    state->player_sector, state->player_cloak,
 		    (size_t)state->player_count + 2U, record, &size[group],
-		    maintenance_stdout_line, NULL, error))
+		    line_output, line_context, error))
 			return false;
 		if (size[group] <= 0.0f)
 			location[group] = 0.0f;
@@ -4500,6 +4503,7 @@ xannor_attack_players(struct maint_state *state, int group,
 static bool
 xannor_route_arrivals_impl(struct maint_state *state, int group,
     int target, float top_player_target, float location[21], float size[21],
+    yt_maintenance_score_line_fn line_output, void *line_context,
     struct yt_maintenance_xannor_route_result *result,
     struct yt_error *error)
 {
@@ -4529,7 +4533,7 @@ xannor_route_arrivals_impl(struct maint_state *state, int group,
 				if (!yt_maintenance_compose_xannor_path_error(
 				    (float)source, (float)target, &output)
 				    || !maintenance_emit_output_row(&output, 0x38A8U,
-				    maintenance_stdout_line, NULL, error))
+				    line_output, line_context, error))
 					return false;
 			}
 			break;
@@ -4560,11 +4564,10 @@ xannor_route_arrivals_impl(struct maint_state *state, int group,
 			return false;
 		location[group] = (float)next;
 		if (!yt_maintenance_xannor_sector_arrival(&state->game, next,
-		    &size[group], &destination, maintenance_stdout_line, NULL,
-		    error))
+		    &size[group], &destination, line_output, line_context, error))
 			return false;
 		if (!xannor_attack_planet(state, group, location, size,
-		    &destination, error))
+		    &destination, line_output, line_context, error))
 			return false;
 		if (yt_maintenance_xannor_post_planet_exhausted(
 		    location[group], size[group])) {
@@ -4572,7 +4575,7 @@ xannor_route_arrivals_impl(struct maint_state *state, int group,
 			size[group] = 0.0f;
 		}
 		else if (!xannor_attack_players(state, group, location, size,
-		    error))
+		    line_output, line_context, error))
 			return false;
 		if (!yt_game_write_sector(&state->game, next, &destination,
 		    error))
@@ -4623,7 +4626,8 @@ yt_maintenance_xannor_route_arrivals(struct yt_game *game,
 	state.sector_count = (int)(game->config.port_offset
 	    - game->config.sector_offset);
 	success = xannor_route_arrivals_impl(&state, group_number,
-	    target_sector, (float)target_sector, location, size, result, error);
+	    target_sector, (float)target_sector, location, size,
+	    maintenance_stdout_line, NULL, result, error);
 	game->random = state.game.random;
 	*cache = state.route_cache;
 	return success;
@@ -4746,6 +4750,110 @@ yt_maintenance_xannor_target_finish(struct yt_game *game,
 }
 
 static bool
+xannor_roaming_groups_impl(struct maint_state *state, float score,
+    int top_target, int hunt_player, int revenge_live, int revenge_cached,
+    float location[21], float size[21],
+    yt_maintenance_score_line_fn line_output, void *line_context,
+    struct yt_error *error)
+{
+	int group = 2;
+
+	for (;;) {
+		struct yt_maintenance_xannor_split_result split_result;
+		bool retarget;
+
+		if (!yt_maintenance_xannor_roaming_split(
+		    &state->game.random, group, &size[1], &size[group],
+		    &location[group], score, state->game.config.headquarters,
+		    &split_result, error))
+			return false;
+		if (!split_result.skip_group) {
+			do {
+				int target;
+				struct yt_maintenance_output_result group_output;
+				struct yt_maintenance_xannor_route_result route_result;
+
+				if (!xannor_candidate_target(state,
+				    location[group], revenge_live, revenge_cached,
+				    &target, error)
+				    || !yt_maintenance_xannor_target_override(group,
+				    target, size[1], score,
+				    (int)state->game.config.headquarters,
+				    revenge_live, top_target, &target, error)
+				    || !yt_maintenance_compose_xannor_group(group,
+				    size[group], &group_output)
+				    || !maintenance_emit_output_row(&group_output,
+				    0x34B2U, line_output, line_context, error))
+					return false;
+				if (!xannor_route_arrivals_impl(state, group,
+				    target, (float)top_target, location, size,
+				    line_output, line_context, &route_result, error))
+					return false;
+				if (!yt_maintenance_xannor_target_finish(&state->game,
+				    state->player_sector, state->player_cloak,
+				    (size_t)state->player_count + 2U,
+				    route_result.reached_target, group, hunt_player,
+				    &location[group], &size[group], line_output,
+				    line_context, error))
+					return false;
+				retarget = yt_maintenance_xannor_should_retarget(
+				    location[group], size[group]);
+			} while (retarget);
+		}
+		if (!yt_maintenance_xannor_advance_group(group, &group))
+			break;
+	}
+	return yt_maintenance_xannor_groups_persist(&state->game, location,
+	    size, error);
+}
+
+bool
+yt_maintenance_xannor_roaming_groups(struct yt_game *game,
+    struct yt_maintenance_route_cache *cache, float *player_sector,
+    float *player_cloak, size_t cache_count, float top_score,
+    int top_target, int hunt_player, int revenge_live, int revenge_cached,
+    float location[21], float size[21],
+    yt_maintenance_score_line_fn line_output, void *line_context,
+    struct yt_error *error)
+{
+	struct maint_state state;
+	int player_count;
+	bool success;
+
+	if (game == NULL || cache == NULL || player_sector == NULL
+	    || player_cloak == NULL || location == NULL || size == NULL
+	    || line_output == NULL) {
+		set_error(error, YT_INVALID, "Xannor roaming groups",
+		    "YTDATA.DAT");
+		return false;
+	}
+	player_count = (int)game->config.sector_offset - 1;
+	if (player_count < 1 || cache_count < (size_t)player_count + 2U) {
+		set_error(error, YT_RANGE, "Xannor roaming player cache",
+		    "YTDATA.DAT");
+		return false;
+	}
+	memset(&state, 0, sizeof(state));
+	state.game = *game;
+	state.route_cache = *cache;
+	state.player_sector = player_sector;
+	state.player_cloak = player_cloak;
+	state.player_count = player_count;
+	state.sector_count = (int)(game->config.port_offset
+	    - game->config.sector_offset);
+	state.port_count = (int)(game->config.planet_offset
+	    - game->config.port_offset);
+	state.planet_count = (int)(game->config.total_records
+	    - game->config.planet_offset);
+	success = xannor_roaming_groups_impl(&state, top_score, top_target,
+	    hunt_player, revenge_live, revenge_cached, location, size,
+	    line_output, line_context, error);
+	game->random = state.game.random;
+	*cache = state.route_cache;
+	return success;
+}
+
+static bool
 maintain_xannor(struct maint_state *state, struct yt_error *error)
 {
 	struct yt_maintenance_xannor_hunt_result hunt;
@@ -4761,7 +4869,6 @@ maintain_xannor(struct maint_state *state, struct yt_error *error)
 	int hunt_player;
 	int revenge_live;
 	int revenge_cached;
-	int group;
 
 	if (!yt_maintenance_maintain_xannor_home(&state->game,
 	    NULL, 0U,
@@ -4809,55 +4916,9 @@ maintain_xannor(struct maint_state *state, struct yt_error *error)
 	    roaming_output.rows[1].length, error))
 		return false;
 
-	group = 2;
-	for (;;) {
-		struct yt_maintenance_xannor_split_result split_result;
-		bool retarget;
-
-		if (!yt_maintenance_xannor_roaming_split(
-		    &state->game.random, group, &size[1], &size[group],
-		    &location[group], score, state->game.config.headquarters,
-		    &split_result, error))
-			return false;
-		if (!split_result.skip_group) {
-			do {
-				int target;
-				struct yt_maintenance_output_result group_output;
-				struct yt_maintenance_xannor_route_result route_result;
-
-				if (!xannor_candidate_target(state,
-				    location[group], revenge_live, revenge_cached,
-				    &target, error)
-				    || !yt_maintenance_xannor_target_override(group,
-				    target, size[1], score,
-				    (int)state->game.config.headquarters,
-				    revenge_live, top_target, &target, error)
-				    || !yt_maintenance_compose_xannor_group(group,
-				    size[group], &group_output)
-				    || !maintenance_stdout_line(NULL,
-				    group_output.rows[0].data,
-				    group_output.rows[0].length, error))
-					return false;
-				if (!xannor_route_arrivals_impl(state, group,
-				    target, (float)top_target, location, size,
-				    &route_result, error))
-					return false;
-				if (!yt_maintenance_xannor_target_finish(&state->game,
-				    state->player_sector, state->player_cloak,
-				    (size_t)state->player_count + 2U,
-				    route_result.reached_target, group, hunt_player,
-				    &location[group], &size[group],
-				    maintenance_stdout_line, NULL, error))
-					return false;
-				retarget = yt_maintenance_xannor_should_retarget(
-				    location[group], size[group]);
-			} while (retarget);
-		}
-		if (!yt_maintenance_xannor_advance_group(group, &group))
-			break;
-	}
-	return yt_maintenance_xannor_groups_persist(&state->game, location,
-	    size, error);
+	return xannor_roaming_groups_impl(state, score, top_target, hunt_player,
+	    revenge_live, revenge_cached, location, size,
+	    maintenance_stdout_line, NULL, error);
 }
 
 static const struct yt_maintenance_output_row *

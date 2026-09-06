@@ -8,6 +8,41 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
+### DOC-GAP-031: Xannor sector-arrival physical transaction sequencing
+
+Affected coverage:
+
+- the address-owned `YTMAINT:71AF` sector-mine and deployed-defense arrival
+  transaction;
+- its `7280`, `7390`, `73C4`, `76D2`, `775B`, and `78C8` physical sites; and
+- removal of the native route owner's synthetic single sector write after
+  the sector, planet, and player arrival children return.
+
+The completed semantic model pins mine-before-defense RNG and mutations, all
+result rows, the positive-owner versus Mercenary label, and the final values.
+The address-owned physical catalog separately names the initial sector GET,
+post-mine sector reload/PUT, positive-owner player GET, and pre-defense sector
+reload/PUT. It does not state the branch conditions under which the two reload/
+PUT pairs are reached, which live values are copied over each freshly loaded
+FIELD image, or the exact process/FIELD/output residue when any one of those
+calls fails. The presentation model records news-call prefixes but does not
+include these physical calls in its call tape.
+
+Those details are observable and cannot be reconstructed from the final typed
+`XannorSectorArrival` result. In particular, the native implementation
+currently retains one opening sector image and performs one write only after
+the later planet and player children. Replacing that with the catalogued
+transaction requires knowing whether mine and defense writes are conditional,
+whether a fresh reload preserves intervening fields, and exactly where the
+planet child's sector-unlink write composes relative to the sector-arrival
+writes. Guessing would change partial-I/O behavior and could reintroduce stale
+record bytes.
+
+Upstream documentation, a canonical ordered physical-call carrier, generated
+evidence, and focused success/failure-prefix fixtures must publish those
+conditions and overlays before the native transaction can be converted. No
+binary inspection or new reverse engineering was performed.
+
 ### DOC-GAP-030: destroyed-mine caller projection into `FatalWorld`
 
 Affected coverage:
