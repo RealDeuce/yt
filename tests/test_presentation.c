@@ -23379,6 +23379,249 @@ test_direct_emergency_warp_modes(void)
 	}
 }
 
+enum direct_warp_invalid_boundary_kind {
+	DIRECT_WARP_INVALID_EXHAUSTED,
+	DIRECT_WARP_INVALID_INACTIVITY,
+	DIRECT_WARP_INVALID_SESSION_LIMIT,
+};
+
+struct direct_warp_invalid_boundary_state {
+	struct hostile_mines_hazard_fixture *fixture;
+	uint8_t output_scratch[80];
+	size_t output_length;
+	uint8_t prompt_scratch[80];
+	size_t prompt_length;
+	bool boundary_required;
+	bool running;
+	bool terminated;
+	bool closed_all;
+};
+
+static bool
+direct_warp_invalid_terminal_notice(void *context, const uint8_t *notice,
+    size_t length)
+{
+	struct direct_warp_invalid_boundary_state *state = context;
+	struct viewer_pager_join *join =
+	    &state->fixture->cycle.presentation.viewer->join;
+
+	if (length > sizeof(state->output_scratch)
+	    || length > sizeof(join->source))
+		return false;
+	memcpy(state->output_scratch, notice, length);
+	state->output_length = length;
+	memcpy(join->source, notice, length);
+	join->source_length = length;
+	return normal_exit_line(join, NULL, 0U)
+	    && normal_exit_b05d(join, notice, length, 0.0f);
+}
+
+static bool
+direct_warp_invalid_terminal_close(void *context)
+{
+	struct direct_warp_invalid_boundary_state *state = context;
+
+	state->closed_all = true;
+	return true;
+}
+
+static bool
+direct_emergency_warp_invalid_boundary_run(
+    struct hostile_mines_hazard_fixture *fixture, bool ansi,
+    enum direct_warp_invalid_boundary_kind kind,
+    struct direct_warp_invalid_boundary_state *boundary)
+{
+	static const uint8_t warning_one[] =
+	    "This is a desperate move! Your engines will be drained and will take time";
+	static const uint8_t warning_two[] =
+	    "to recharge! You also risk a melt down! Are you sure you wish to do this?";
+	static const uint8_t prompt[] = "[y/N] -=> ";
+	static const uint8_t invalid[] = "X";
+	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct yt_present_result result;
+	enum yt_yes_no_answer answer;
+	char output[80];
+	enum yt_ab36_terminal_kind terminal;
+
+	if (boundary == NULL)
+		return false;
+	memset(boundary, 0, sizeof(*boundary));
+	boundary->fixture = fixture;
+	boundary->running = true;
+	join->presentation = state(ansi);
+	if (yt_present_color(&join->presentation, &result) != YT_PRESENT_OK
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.bold = 1.0f;
+	join->presentation.foreground = 7.0f;
+	join->pager.foreground = 7;
+	if (!normal_exit_b05d(join, warning_one, sizeof(warning_one) - 1U, 0.0f))
+		return false;
+	join->presentation.bold = 1.0f;
+	if (!normal_exit_b05d(join, warning_two, sizeof(warning_two) - 1U, 0.0f)
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	memcpy(boundary->prompt_scratch, prompt, sizeof(prompt) - 1U);
+	boundary->prompt_length = sizeof(prompt) - 1U;
+	join->presentation.bold = 1.0f;
+	if (yt_present_character(prompt, sizeof(prompt) - 1U,
+	    &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	memcpy(join->accumulator, invalid, sizeof(invalid));
+	if (yt_present_editor_echo(invalid, sizeof(invalid) - 1U,
+	    invalid, sizeof(invalid) - 1U, &join->presentation, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !yt_input_yes_no_candidate(join->accumulator, output,
+	    sizeof(output), &answer) || answer != YT_YES_NO_INVALID)
+		return false;
+	memcpy(boundary->output_scratch, output, 2U);
+	boundary->output_length = 1U;
+	memcpy(join->source, output, 2U);
+	join->source_length = 1U;
+	join->presentation.bold = 1.0f;
+	if (!yt_input_queue_clear(join->queue, sizeof(join->queue),
+	    &join->queue_position, &join->queue_length))
+		return false;
+	if (kind == DIRECT_WARP_INVALID_EXHAUSTED) {
+		boundary->boundary_required = true;
+		return true;
+	}
+	if (yt_present_character(prompt, sizeof(prompt) - 1U,
+	    &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	terminal = kind == DIRECT_WARP_INVALID_INACTIVITY
+	    ? YT_AB36_TERMINAL_INACTIVITY : YT_AB36_TERMINAL_SESSION_LIMIT;
+	return yt_input_ab36_terminal_run(terminal, &boundary->running,
+	    &boundary->terminated, direct_warp_invalid_terminal_notice,
+	    direct_warp_invalid_terminal_close, boundary);
+}
+
+static void
+test_direct_emergency_warp_invalid_boundaries(void)
+{
+	static const uint8_t invalid[] = "X";
+	static const uint8_t prompt[] = "[y/N] -=> ";
+	static const uint8_t inactivity[] = "\aUSER FELL ASLEEP!";
+	static const uint8_t session_limit[] =
+	    "\a\a\aTIME LIMIT EXCEEDED!\a\a\a";
+	static const struct {
+		bool ansi;
+		enum direct_warp_invalid_boundary_kind kind;
+		size_t expected_length;
+		uint64_t expected_hash;
+		const uint8_t *output;
+		size_t output_length;
+		size_t rows;
+		uint64_t row_hash;
+		size_t colors;
+		uint64_t color_hash;
+		float bold;
+		float cached_foreground;
+		size_t events;
+	} cases[] = {
+		{false, DIRECT_WARP_INVALID_EXHAUSTED, 167U,
+		    UINT64_C(0x83bb08430714c2ac), invalid, sizeof(invalid) - 1U,
+		    5U, UINT64_C(0x2beabdb4c35912a6), 2U,
+		    UINT64_C(0x6d3fa4669b3587bd), 1.0f, 2.0f, 10U},
+		{true, DIRECT_WARP_INVALID_EXHAUSTED, 223U,
+		    UINT64_C(0x0084a4372833a813), invalid, sizeof(invalid) - 1U,
+		    5U, UINT64_C(0x2beabdb4c35912a6), 8U,
+		    UINT64_C(0x844da71c138d59e8), 1.0f, 7.0f, 10U},
+		{false, DIRECT_WARP_INVALID_INACTIVITY, 199U,
+		    UINT64_C(0x39915733cce99840), inactivity,
+		    sizeof(inactivity) - 1U, 7U, UINT64_C(0xc7c22a1456128ac0),
+		    3U, UINT64_C(0x2207a27a6260aaca), 1.0f, 2.0f, 15U},
+		{true, DIRECT_WARP_INVALID_INACTIVITY, 277U,
+		    UINT64_C(0xdb3deea4a03ffba7), inactivity,
+		    sizeof(inactivity) - 1U, 7U, UINT64_C(0xc7c22a1456128ac0),
+		    12U, UINT64_C(0x626155b42fa5e310), 0.0f, 7.0f, 15U},
+		{false, DIRECT_WARP_INVALID_SESSION_LIMIT, 207U,
+		    UINT64_C(0xf53cee7d0b46b832), session_limit,
+		    sizeof(session_limit) - 1U, 7U, UINT64_C(0x9911d7488e9b1826),
+		    3U, UINT64_C(0x2207a27a6260aaca), 1.0f, 2.0f, 15U},
+		{true, DIRECT_WARP_INVALID_SESSION_LIMIT, 285U,
+		    UINT64_C(0xc69e1ae5a22cbdb9), session_limit,
+		    sizeof(session_limit) - 1U, 7U, UINT64_C(0x9911d7488e9b1826),
+		    12U, UINT64_C(0x626155b42fa5e310), 0.0f, 7.0f, 15U},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	struct direct_warp_invalid_boundary_state boundary;
+	uint8_t remote[320];
+	size_t pass;
+
+	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
+		memset(&fixture, 0, sizeof(fixture));
+		fixture.cycle.presentation.viewer = &viewer;
+		CHECK(direct_emergency_warp_invalid_boundary_run(&fixture,
+		    cases[pass].ansi, cases[pass].kind, &boundary));
+		CHECK(viewer.join.remote_length == cases[pass].expected_length
+		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
+		    == cases[pass].expected_hash
+		    && boundary.output_length == cases[pass].output_length
+		    && memcmp(boundary.output_scratch, cases[pass].output,
+		    cases[pass].output_length) == 0
+		    && boundary.prompt_length == sizeof(prompt) - 1U
+		    && memcmp(boundary.prompt_scratch, prompt,
+		    sizeof(prompt) - 1U) == 0
+		    && boundary.boundary_required
+		    == (cases[pass].kind == DIRECT_WARP_INVALID_EXHAUSTED)
+		    && boundary.running
+		    == (cases[pass].kind == DIRECT_WARP_INVALID_EXHAUSTED)
+		    && boundary.terminated
+		    == (cases[pass].kind != DIRECT_WARP_INVALID_EXHAUSTED)
+		    && boundary.closed_all
+		    == (cases[pass].kind != DIRECT_WARP_INVALID_EXHAUSTED)
+		    && viewer.join.source_length == cases[pass].output_length
+		    && memcmp(viewer.join.source, cases[pass].output,
+		    cases[pass].output_length) == 0
+		    && viewer.join.queue_position == 0U
+		    && viewer.join.queue_length == 0U
+		    && viewer.join.local_fragment_length == 0U
+		    && viewer.join.local_row_count == cases[pass].rows
+		    && viewer_rows_fnv1a64(&viewer.join) == cases[pass].row_hash
+		    && viewer.join.local_color_count == cases[pass].colors
+		    && viewer_colors_fnv1a64(&viewer.join)
+		    == cases[pass].color_hash
+		    && viewer.join.presentation.foreground == 7.0f
+		    && viewer.join.presentation.background == 0.0f
+		    && viewer.join.presentation.bold == cases[pass].bold
+		    && viewer.join.presentation.blink == 0.0f
+		    && viewer.join.presentation.cached_foreground
+		    == cases[pass].cached_foreground
+		    && viewer.join.pager.foreground == 7
+		    && viewer.join.pager.line_count
+		    == (cases[pass].kind == DIRECT_WARP_INVALID_EXHAUSTED
+		    ? 0.0f : 1.0f)
+		    && !fixture.warp_called && fixture.draw_position == 0U
+		    && fixture.emergency_player_reads == 0U
+		    && fixture.emergency_player_put_attempts == 0U
+		    && fixture.emergency_player_writes == 0U
+		    && fixture.emergency_flushes == 0U
+		    && fixture.emergency_waits == 0U
+		    && viewer.join.event_count == cases[pass].events);
+		if (cases[pass].kind == DIRECT_WARP_INVALID_EXHAUSTED)
+			CHECK(strcmp(viewer.join.accumulator, "X") == 0);
+		else
+			CHECK(viewer.join.accumulator[0] == '\0');
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
 enum direct_warp_parent_copy_failure {
 	DIRECT_WARP_FAIL_WARNING_ONE,
 	DIRECT_WARP_FAIL_WARNING_TWO,
@@ -30945,6 +31188,7 @@ main(void)
 	test_hostile_mines_black_hole_cycle_presentation();
 	test_direct_emergency_warp_invalid_retry_presentation();
 	test_direct_emergency_warp_modes();
+	test_direct_emergency_warp_invalid_boundaries();
 	test_direct_emergency_warp_parent_copy_failures();
 	test_direct_emergency_warp_accepted_presentation();
 	test_direct_emergency_warp_child_failures();
