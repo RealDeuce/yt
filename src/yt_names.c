@@ -434,73 +434,105 @@ yt_names_free(struct yt_name_file *names)
 	names->count = 0;
 }
 
+static bool
+names_output_value(struct yt_text_output *output,
+    struct yt_names_output_state *state,
+    enum yt_names_output_operation operation, const uint8_t *data,
+    size_t length, bool newline, struct yt_error *error)
+{
+	static const uint8_t row_end[] = {'\r', '\n'};
+
+	state->attempted = operation;
+	if (!yt_text_output_write(output, data, length, error)
+	    || (newline && !yt_text_output_write(output, row_end,
+	    sizeof(row_end), error)))
+		return false;
+	++state->values_completed;
+	return true;
+}
+
 bool
-yt_names_write(const char *path, const struct yt_name_file *names,
+yt_names_write_sequential(struct yt_text_output *output, const char *path,
+    const struct yt_name_file *names, struct yt_names_output_state *state,
     struct yt_error *error)
 {
-	uint8_t *data = NULL;
-	size_t length = 0;
+	static const uint8_t comma[] = ",";
 	size_t row;
-	bool result;
 
-	for (row = 0; row < names->count; ++row) {
+	if (state != NULL)
+		memset(state, 0, sizeof(*state));
+	if (output == NULL || path == NULL || names == NULL || state == NULL
+	    || (names->rows == NULL && names->count != 0U)) {
+		if (error != NULL)
+			error->status = YT_INVALID;
+		return false;
+	}
+	state->attempted = YT_NAMES_OUTPUT_OPEN;
+	if (!yt_text_output_open(output, path, error))
+		return false;
+	state->file_opened = true;
+	for (row = 0U; row < names->count; ++row) {
 		const struct yt_name_row *item = &names->rows[row];
-		const char *fields[4];
-		size_t field_lengths[4];
-		size_t row_length = 5U;
-		uint8_t *grown;
-		size_t field;
-		size_t offset;
 
-		if (item->real_first == NULL || item->real_last == NULL
-		    || item->alias_first == NULL || item->alias_last == NULL) {
-			free(data);
+		state->row_index = row;
+		state->attempted = YT_NAMES_OUTPUT_SELECT;
+		if (output->file == NULL || item->real_first == NULL
+		    || item->real_last == NULL || item->alias_first == NULL
+		    || item->alias_last == NULL) {
 			if (error != NULL)
 				error->status = YT_INVALID;
 			return false;
 		}
-		fields[0] = item->real_first;
-		fields[1] = item->real_last;
-		fields[2] = item->alias_first;
-		fields[3] = item->alias_last;
-		for (field = 0; field < 4U; ++field) {
-			field_lengths[field] = strlen(fields[field]);
-			if (field_lengths[field] > SIZE_MAX - row_length) {
-				free(data);
-				if (error != NULL)
-					error->status = YT_NO_MEMORY;
-				return false;
-			}
-			row_length += field_lengths[field];
-		}
-		if (row_length > SIZE_MAX - length) {
-			free(data);
-			if (error != NULL)
-				error->status = YT_NO_MEMORY;
+		if (!names_output_value(output, state,
+		    YT_NAMES_OUTPUT_REAL_FIRST,
+		    (const uint8_t *)item->real_first,
+		    strlen(item->real_first), false, error)
+		    || !names_output_value(output, state,
+		    YT_NAMES_OUTPUT_COMMA_1, comma, sizeof(comma) - 1U, false,
+		    error)
+		    || !names_output_value(output, state,
+		    YT_NAMES_OUTPUT_REAL_LAST,
+		    (const uint8_t *)item->real_last,
+		    strlen(item->real_last), false, error)
+		    || !names_output_value(output, state,
+		    YT_NAMES_OUTPUT_COMMA_2, comma, sizeof(comma) - 1U, false,
+		    error)
+		    || !names_output_value(output, state,
+		    YT_NAMES_OUTPUT_ALIAS_FIRST,
+		    (const uint8_t *)item->alias_first,
+		    strlen(item->alias_first), false, error)
+		    || !names_output_value(output, state,
+		    YT_NAMES_OUTPUT_COMMA_3, comma, sizeof(comma) - 1U, false,
+		    error)
+		    || !names_output_value(output, state,
+		    YT_NAMES_OUTPUT_ALIAS_LAST_LINE,
+		    (const uint8_t *)item->alias_last,
+		    strlen(item->alias_last), true, error))
 			return false;
-		}
-		grown = realloc(data, length + row_length);
-
-		if (grown == NULL) {
-			free(data);
-			if (error != NULL)
-				error->status = YT_NO_MEMORY;
-			return false;
-		}
-		data = grown;
-		offset = length;
-		for (field = 0U; field < 4U; ++field) {
-			memcpy(data + offset, fields[field], field_lengths[field]);
-			offset += field_lengths[field];
-			if (field != 3U)
-				data[offset++] = ',';
-		}
-		data[offset++] = '\r';
-		data[offset++] = '\n';
-		length += row_length;
+		++state->rows_completed;
 	}
-	result = yt_text_write(path, data, length, true, error);
-	free(data);
+	state->row_index = names->count;
+	state->attempted = YT_NAMES_OUTPUT_CLOSE;
+	state->close_attempted = true;
+	if (!yt_text_output_close(output, error))
+		return false;
+	state->file_closed = true;
+	state->attempted = YT_NAMES_OUTPUT_NONE;
+	state->complete = true;
+	return true;
+}
+
+bool
+yt_names_write(const char *path, const struct yt_name_file *names,
+    struct yt_error *error)
+{
+	struct yt_names_output_state state;
+	struct yt_text_output output;
+	bool result;
+
+	yt_text_output_init(&output);
+	result = yt_names_write_sequential(&output, path, names, &state, error);
+	yt_text_output_destroy(&output);
 	return result;
 }
 

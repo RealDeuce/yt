@@ -4354,6 +4354,146 @@ test_name_sequential_transaction(struct yt_error *error)
 }
 
 static bool
+names_output_write_failure_provider(void *context, FILE *file,
+    const uint8_t *data, size_t requested,
+    struct yt_text_output_write_observation *observation)
+{
+	(void)context;
+	(void)file;
+	(void)data;
+	memset(observation, 0, sizeof(*observation));
+	observation->carry = true;
+	observation->handle_open = true;
+	observation->dos_error = 5U;
+	observation->terminal_position = requested == 0U ? 0 : 3;
+	return true;
+}
+
+static bool
+names_output_close_failure_provider(void *context, FILE *file,
+    enum yt_text_close_operation operation, const uint8_t *data,
+    size_t requested, struct yt_text_close_observation *observation)
+{
+	(void)context;
+	(void)data;
+	memset(observation, 0, sizeof(*observation));
+	observation->accepted = requested;
+	observation->handle_open = true;
+	observation->terminal_position = 0;
+	if (operation == YT_TEXT_CLOSE_HANDLE) {
+		observation->carry = true;
+		observation->dos_error = 5U;
+	}
+	else if (operation == YT_TEXT_CLOSE_CLEANUP_HANDLE) {
+		if (file == NULL || fclose(file) != 0)
+			return false;
+		observation->handle_open = false;
+	}
+	return true;
+}
+
+static bool
+test_name_sequential_output_transaction(struct yt_error *error)
+{
+	static const struct yt_name_row rows[] = {
+		{.real_first = "A", .real_last = "B", .alias_first = "C",
+		    .alias_last = "D"},
+		{.real_first = "E", .real_last = "F", .alias_first = "G",
+		    .alias_last = "H"},
+	};
+	static const uint8_t expected[] =
+	    "A,B,C,D\r\nE,F,G,H\r\n\x1a";
+	static const uint8_t stale[] =
+	    "A STALE OUTPUT TAIL THAT MUST BE TRUNCATED\r\n\x1a";
+	struct yt_names_output_state state;
+	struct yt_text_output output;
+	struct yt_text_file text = {0};
+	struct yt_name_file names = {
+		.rows = (struct yt_name_row *)rows,
+		.count = YT_ARRAY_LEN(rows),
+	};
+	struct yt_name_row long_row = {
+		.real_last = "B",
+		.alias_first = "C",
+		.alias_last = "D",
+	};
+	struct yt_name_file long_names = {.rows = &long_row, .count = 1U};
+	char long_first[129];
+	bool result;
+
+	if (!write_file("names.out", stale, sizeof(stale) - 1U))
+		return false;
+	yt_text_output_init(&output);
+	result = yt_names_write_sequential(&output, "names.out", &names,
+	    &state, error);
+	if (!result || !state.complete
+	    || state.attempted != YT_NAMES_OUTPUT_NONE
+	    || !state.file_opened || !state.close_attempted || !state.file_closed
+	    || state.row_index != 2U || state.rows_completed != 2U
+	    || state.values_completed != 14U || output.file != NULL
+	    || !yt_text_read("names.out", &text, error)
+	    || text.length != sizeof(expected) - 1U
+	    || memcmp(text.data, expected, sizeof(expected) - 1U) != 0) {
+		yt_text_free(&text);
+		yt_text_output_destroy(&output);
+		return false;
+	}
+	yt_text_free(&text);
+	yt_text_output_destroy(&output);
+
+	memset(long_first, 'X', sizeof(long_first) - 1U);
+	long_first[sizeof(long_first) - 1U] = '\0';
+	long_row.real_first = long_first;
+	yt_text_output_init(&output);
+	yt_text_output_set_write_provider(&output,
+	    names_output_write_failure_provider, NULL);
+	result = yt_names_write_sequential(&output, "names.out", &long_names,
+	    &state, error);
+	if (result || state.attempted != YT_NAMES_OUTPUT_COMMA_1
+	    || !state.file_opened || state.close_attempted || state.complete
+	    || state.row_index != 0U || state.rows_completed != 0U
+	    || state.values_completed != 1U
+	    || output.last_write.outcome != YT_TEXT_OUTPUT_WRITE_DISK_ERROR
+	    || output.last_write.dos_error != 5U
+	    || !output.last_write.cleanup_close_attempted) {
+		yt_text_output_destroy(&output);
+		return false;
+	}
+	yt_text_output_destroy(&output);
+
+	yt_text_output_init(&output);
+	yt_text_output_set_close_provider(&output,
+	    names_output_close_failure_provider, NULL);
+	result = yt_names_write_sequential(&output, "names.out", &long_names,
+	    &state, error);
+	if (result || state.attempted != YT_NAMES_OUTPUT_CLOSE
+	    || state.rows_completed != 1U || state.values_completed != 7U
+	    || !state.close_attempted || state.file_closed || state.complete
+	    || output.last_close.outcome != YT_TEXT_CLOSE_DISK_ERROR
+	    || output.last_close.failed_operation != YT_TEXT_CLOSE_HANDLE
+	    || output.last_close.basic_error != 70U
+	    || !output.last_close.cleanup_close_attempted) {
+		yt_text_output_destroy(&output);
+		return false;
+	}
+	yt_text_output_destroy(&output);
+
+	yt_text_output_init(&output);
+	result = yt_names_write_sequential(&output, "missing/NAME.DAT", &names,
+	    &state, error);
+	yt_text_output_destroy(&output);
+	return !result && state.attempted == YT_NAMES_OUTPUT_OPEN
+	    && !state.file_opened
+	    && !yt_names_write_sequential(NULL, "names.out", &names, &state,
+	    error)
+	    && !yt_names_write_sequential(&output, NULL, &names, &state, error)
+	    && !yt_names_write_sequential(&output, "names.out", NULL, &state,
+	    error)
+	    && !yt_names_write_sequential(&output, "names.out", &names, NULL,
+	    error);
+}
+
+static bool
 test_alias_key_preparation(void)
 {
 	char alias[256];
@@ -7121,6 +7261,8 @@ main(void)
 		failure = "YTNAME INPUT# grammar differs";
 	else if (!test_name_sequential_transaction(&error))
 		failure = "YTNAME sequential transaction differs";
+	else if (!test_name_sequential_output_transaction(&error))
+		failure = "YTNAME sequential output transaction differs";
 	else if (!test_name_append(&error))
 		failure = "YTNAME append bytes differ";
 	else if (!test_alias_key_preparation())

@@ -22,6 +22,7 @@ struct yt_name_input_observation {
 };
 
 struct yt_text_input;
+struct yt_text_output;
 
 enum yt_names_sequential_operation {
 	YT_NAMES_SEQUENTIAL_NONE,
@@ -38,6 +39,31 @@ struct yt_names_sequential_state {
 	size_t eof_checks;
 	size_t token_reads;
 	size_t rows_committed;
+	bool file_opened;
+	bool close_attempted;
+	bool file_closed;
+	bool complete;
+};
+
+enum yt_names_output_operation {
+	YT_NAMES_OUTPUT_NONE,
+	YT_NAMES_OUTPUT_OPEN,
+	YT_NAMES_OUTPUT_SELECT,
+	YT_NAMES_OUTPUT_REAL_FIRST,
+	YT_NAMES_OUTPUT_COMMA_1,
+	YT_NAMES_OUTPUT_REAL_LAST,
+	YT_NAMES_OUTPUT_COMMA_2,
+	YT_NAMES_OUTPUT_ALIAS_FIRST,
+	YT_NAMES_OUTPUT_COMMA_3,
+	YT_NAMES_OUTPUT_ALIAS_LAST_LINE,
+	YT_NAMES_OUTPUT_CLOSE,
+};
+
+struct yt_names_output_state {
+	enum yt_names_output_operation attempted;
+	size_t row_index;
+	size_t rows_completed;
+	size_t values_completed;
 	bool file_opened;
 	bool close_attempted;
 	bool file_closed;
@@ -79,6 +105,9 @@ void yt_names_input_observation_free(
 void yt_names_free(struct yt_name_file *names);
 bool yt_names_write(const char *path, const struct yt_name_file *names,
     struct yt_error *error);
+bool yt_names_write_sequential(struct yt_text_output *output,
+	const char *path, const struct yt_name_file *names,
+	struct yt_names_output_state *state, struct yt_error *error);
 bool yt_names_append(const char *path, const struct yt_name_row *row,
     struct yt_error *error);
 bool yt_names_set_alias(struct yt_name_file *names, size_t index,
