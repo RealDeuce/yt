@@ -5,6 +5,7 @@
 
 #define YT_BRUN_FATAL_TEXT 256U
 #define YT_BRUN_FATAL_DRAIN_WORDS 16U
+#define YT_BRUN_FATAL_DESCRIPTION 64U
 
 enum yt_brun_internal_fatal_entry {
 	YT_BRUN_INTERNAL_FATAL_GC = 0x0AC9,
@@ -57,6 +58,14 @@ struct yt_brun_internal_fatal_ops {
 	yt_brun_fatal_end_fn end;
 };
 
+struct yt_brun_runtime_fatal_state {
+	uint8_t error_number;
+	uint8_t error_description[YT_BRUN_FATAL_DESCRIPTION];
+	size_t error_description_length;
+	/* Common diagnostic, input, cleanup and terminal carrier. */
+	struct yt_brun_internal_fatal_state terminal;
+};
+
 /*
  * Runs the shared BRUN 0AC9/0ACC terminal in its documented order.  The
  * caller supplies the relocated module segment and the physical cleanup
@@ -69,5 +78,19 @@ bool yt_brun_internal_fatal_run(enum yt_brun_internal_fatal_entry entry,
 	uint16_t process_entry_cursor_shape,
 	const struct yt_brun_internal_fatal_ops *ops, void *context,
 	struct yt_brun_internal_fatal_state *state);
+
+/*
+ * Runs BRUN's shared 0AC4 no-handler/active-handler fatal terminal.  Error
+ * table selection is a separate runtime prerequisite; the caller supplies
+ * the already selected exact CP437 description bytes.
+ */
+bool yt_brun_runtime_fatal_run(uint8_t error_number,
+	const uint8_t *error_description, size_t error_description_length,
+	const char module[8], bool has_source_line, int32_t source_line,
+	uint16_t module_segment, uint16_t saved_ip, bool redirected_stdin,
+	bool function_bar, bool cursor_shape_known,
+	uint16_t process_entry_cursor_shape,
+	const struct yt_brun_internal_fatal_ops *ops, void *context,
+	struct yt_brun_runtime_fatal_state *state);
 
 #endif

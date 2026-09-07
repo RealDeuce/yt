@@ -44,8 +44,8 @@ append_hex_word(uint8_t *output, size_t capacity, size_t *length,
 	    && append_bytes(output, capacity, length, text, 4U);
 }
 
-bool
-yt_brun_internal_fatal_run(enum yt_brun_internal_fatal_entry entry,
+static bool
+run_fatal_description(const uint8_t *description, size_t description_length,
     const char module[8], bool has_source_line, int32_t source_line,
     uint16_t module_segment, uint16_t saved_ip, bool redirected_stdin,
     bool function_bar, bool cursor_shape_known,
@@ -57,11 +57,11 @@ yt_brun_internal_fatal_run(enum yt_brun_internal_fatal_entry entry,
 	    "\rHit any key to return to system";
 	size_t module_length = 8U;
 
-	if (module == NULL || ops == NULL || ops->local == NULL
+	if ((description == NULL && description_length != 0U)
+	    || description_length == 0U || module == NULL
+	    || ops == NULL || ops->local == NULL
 	    || ops->close_all == NULL || ops->restore_terminal == NULL
 	    || ops->end == NULL || state == NULL
-	    || (entry != YT_BRUN_INTERNAL_FATAL_GC
-	    && entry != YT_BRUN_INTERNAL_FATAL_OWNER)
 	    || (!redirected_stdin && ops->drain == NULL)
 	    || (function_bar && ops->clear_function_bar == NULL))
 		return false;
@@ -71,7 +71,6 @@ yt_brun_internal_fatal_run(enum yt_brun_internal_fatal_entry entry,
 		return false;
 
 	memset(state, 0, sizeof(*state));
-	state->entry = entry;
 	memcpy(state->module, module, 8U);
 	state->module[8] = '\0';
 	state->module_segment = module_segment;
@@ -84,10 +83,9 @@ yt_brun_internal_fatal_run(enum yt_brun_internal_fatal_entry entry,
 	state->cursor_shape_known = cursor_shape_known;
 	state->process_entry_cursor_shape = process_entry_cursor_shape;
 	if (!append_literal(state->diagnostic, sizeof(state->diagnostic),
-	    &state->diagnostic_length, "\rString Space Corrupt")
-	    || (entry == YT_BRUN_INTERNAL_FATAL_GC
-	    && !append_literal(state->diagnostic, sizeof(state->diagnostic),
-	    &state->diagnostic_length, " during G.C."))
+	    &state->diagnostic_length, "\r")
+	    || !append_bytes(state->diagnostic, sizeof(state->diagnostic),
+	    &state->diagnostic_length, description, description_length)
 	    || !append_literal(state->diagnostic, sizeof(state->diagnostic),
 	    &state->diagnostic_length, " in ")
 	    || (has_source_line
@@ -150,4 +148,62 @@ yt_brun_internal_fatal_run(enum yt_brun_internal_fatal_entry entry,
 	state->ended = true;
 	state->exit_status = 0U;
 	return true;
+}
+
+bool
+yt_brun_internal_fatal_run(enum yt_brun_internal_fatal_entry entry,
+    const char module[8], bool has_source_line, int32_t source_line,
+    uint16_t module_segment, uint16_t saved_ip, bool redirected_stdin,
+    bool function_bar, bool cursor_shape_known,
+    uint16_t process_entry_cursor_shape,
+    const struct yt_brun_internal_fatal_ops *ops, void *context,
+    struct yt_brun_internal_fatal_state *state)
+{
+	static const uint8_t gc[] = "String Space Corrupt during G.C.";
+	static const uint8_t owner[] = "String Space Corrupt";
+	const uint8_t *description;
+	size_t description_length;
+
+	if (entry == YT_BRUN_INTERNAL_FATAL_GC) {
+		description = gc;
+		description_length = sizeof(gc) - 1U;
+	}
+	else if (entry == YT_BRUN_INTERNAL_FATAL_OWNER) {
+		description = owner;
+		description_length = sizeof(owner) - 1U;
+	}
+	else
+		return false;
+	if (!run_fatal_description(description, description_length, module,
+	    has_source_line, source_line, module_segment, saved_ip,
+	    redirected_stdin, function_bar, cursor_shape_known,
+	    process_entry_cursor_shape, ops, context, state))
+		return false;
+	state->entry = entry;
+	return true;
+}
+
+bool
+yt_brun_runtime_fatal_run(uint8_t error_number,
+    const uint8_t *error_description, size_t error_description_length,
+    const char module[8], bool has_source_line, int32_t source_line,
+    uint16_t module_segment, uint16_t saved_ip, bool redirected_stdin,
+    bool function_bar, bool cursor_shape_known,
+    uint16_t process_entry_cursor_shape,
+    const struct yt_brun_internal_fatal_ops *ops, void *context,
+    struct yt_brun_runtime_fatal_state *state)
+{
+	if (state == NULL || error_number == 0U
+	    || error_description == NULL || error_description_length == 0U
+	    || error_description_length > sizeof(state->error_description))
+		return false;
+	memset(state, 0, sizeof(*state));
+	state->error_number = error_number;
+	memcpy(state->error_description, error_description,
+	    error_description_length);
+	state->error_description_length = error_description_length;
+	return run_fatal_description(error_description, error_description_length,
+	    module, has_source_line, source_line, module_segment, saved_ip,
+	    redirected_stdin, function_bar, cursor_shape_known,
+	    process_entry_cursor_shape, ops, context, &state->terminal);
 }

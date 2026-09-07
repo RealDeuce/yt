@@ -4493,12 +4493,19 @@ test_brun_internal_fatal(void)
 	static const uint8_t run_expected[] =
 	    "\rString Space Corrupt in module YT-INIT  at address "
 	    "4444:23DF\r\rHit any key to return to system";
+	static const uint8_t run_err67_expected[] =
+	    "\rToo many files in module YT-INIT  at address "
+	    "4444:23DF\r\rHit any key to return to system";
+	static const uint8_t active_err53_expected[] =
+	    "\rFile not found in line 610 of module YT-SUB   at address "
+	    "1F42:1ABB\r\rHit any key to return to system\r";
 	static const enum fatal_test_event expected_events[] = {
 		FATAL_TEST_LOCAL, FATAL_TEST_CLOSE_ALL, FATAL_TEST_LOCAL,
 		FATAL_TEST_DRAIN, FATAL_TEST_CLEAR_FUNCTION_BAR,
 		FATAL_TEST_RESTORE, FATAL_TEST_END,
 	};
 	struct yt_brun_internal_fatal_state state;
+	struct yt_brun_runtime_fatal_state runtime_state;
 	struct fatal_test_tape tape = {0};
 
 	if (!yt_brun_internal_fatal_run(YT_BRUN_INTERNAL_FATAL_OWNER,
@@ -4566,6 +4573,55 @@ test_brun_internal_fatal(void)
 	    || tape.events[5] != FATAL_TEST_END
 	    || state.drained_word_count != 2U || !state.input_drained
 	    || !tape.restored_shape_known || tape.restored_shape != 0x0506U)
+		return false;
+
+	memset(&tape, 0, sizeof(tape));
+	if (!yt_init_run_preflight_err67_fatal_run(0x4444U, false, true,
+	    true, 0x0708U, &ops, &tape, &runtime_state)
+	    || runtime_state.error_number != 67U
+	    || runtime_state.error_description_length != 14U
+	    || memcmp(runtime_state.error_description, "Too many files", 14U)
+	    != 0
+	    || runtime_state.terminal.has_source_line
+	    || runtime_state.terminal.module_segment != 0x4444U
+	    || runtime_state.terminal.saved_ip != 0x23DFU
+	    || runtime_state.terminal.local_length
+	    != sizeof(run_err67_expected) - 1U
+	    || memcmp(runtime_state.terminal.local_bytes, run_err67_expected,
+	    sizeof(run_err67_expected) - 1U) != 0
+	    || tape.local_length != sizeof(run_err67_expected) - 1U
+	    || memcmp(tape.local, run_err67_expected,
+	    sizeof(run_err67_expected) - 1U) != 0
+	    || tape.event_count != YT_ARRAY_LEN(expected_events)
+	    || memcmp(tape.events, expected_events, sizeof(expected_events)) != 0
+	    || !runtime_state.terminal.function_bar_before
+	    || runtime_state.terminal.function_bar_after
+	    || runtime_state.terminal.drained_word_count != 2U
+	    || !runtime_state.terminal.terminal_restored
+	    || !runtime_state.terminal.ended || tape.exit_status != 0U)
+		return false;
+
+	memset(&tape, 0, sizeof(tape));
+	if (!yt_brun_runtime_fatal_run(53U,
+	    (const uint8_t *)"File not found", 14U, "YT-SUB  ", true, 610,
+	    0x1F42U, 0x1ABBU, true, false, false, 0U, &ops, &tape,
+	    &runtime_state)
+	    || runtime_state.terminal.local_length
+	    != sizeof(active_err53_expected) - 1U
+	    || memcmp(runtime_state.terminal.local_bytes, active_err53_expected,
+	    sizeof(active_err53_expected) - 1U) != 0
+	    || tape.local_length != sizeof(active_err53_expected) - 1U
+	    || memcmp(tape.local, active_err53_expected,
+	    sizeof(active_err53_expected) - 1U) != 0
+	    || runtime_state.terminal.input_drained
+	    || runtime_state.terminal.drained_word_count != 0U
+	    || tape.event_count != 6U
+	    || tape.events[0] != FATAL_TEST_LOCAL
+	    || tape.events[1] != FATAL_TEST_CLOSE_ALL
+	    || tape.events[2] != FATAL_TEST_LOCAL
+	    || tape.events[3] != FATAL_TEST_LOCAL
+	    || tape.events[4] != FATAL_TEST_RESTORE
+	    || tape.events[5] != FATAL_TEST_END)
 		return false;
 	return !yt_brun_internal_fatal_run(YT_BRUN_INTERNAL_FATAL_OWNER,
 	    "        ", false, 0, 0U, 0U, false, false, false, 0U,

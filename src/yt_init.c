@@ -2799,3 +2799,18 @@ yt_init_run_internal_fatal_run(enum yt_brun_internal_fatal_entry entry,
 	    module_segment, 0x23DFU, redirected_stdin, function_bar,
 	    cursor_shape_known, process_entry_cursor_shape, ops, context, state);
 }
+
+bool
+yt_init_run_preflight_err67_fatal_run(uint16_t module_segment,
+    bool redirected_stdin, bool function_bar, bool cursor_shape_known,
+    uint16_t process_entry_cursor_shape,
+    const struct yt_brun_internal_fatal_ops *ops, void *context,
+    struct yt_brun_runtime_fatal_state *state)
+{
+	static const uint8_t description[] = "Too many files";
+
+	return yt_brun_runtime_fatal_run(67U, description,
+	    sizeof(description) - 1U, "YT-INIT ", false, 0, module_segment,
+	    0x23DFU, redirected_stdin, function_bar, cursor_shape_known,
+	    process_entry_cursor_shape, ops, context, state);
+}
