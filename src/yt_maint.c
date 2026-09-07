@@ -4707,6 +4707,7 @@ yt_maintenance_xannor_sector_arrival(struct yt_game *game,
 	float initial_defenders;
 	float initial_owner;
 	float defense_group;
+	float remaining_defenders;
 	size_t length;
 	int first_length;
 	int second_length;
@@ -4718,9 +4719,9 @@ yt_maintenance_xannor_sector_arrival(struct yt_game *game,
 		    "YTDATA.DAT");
 		return false;
 	}
+	if (!yt_game_read_sector(game, sector_number, sector, error))
+		return false;
 	initial_group = *group_size;
-	initial_defenders = sector->fighters;
-	initial_owner = sector->fighter_owner;
 
 	while (sector->mines > 0.0f && *group_size > 0.0f) {
 		int damage;
@@ -4734,6 +4735,19 @@ yt_maintenance_xannor_sector_arrival(struct yt_game *game,
 		sector->mines = ssub(sector->mines, 1.0f);
 	}
 	if (initial_group != *group_size) {
+		float remaining_mines = sector->mines;
+
+		if (!yt_game_read_sector(game, sector_number, sector, error))
+			return false;
+		sector->mines = remaining_mines;
+		if (!yt_record_set_number(&sector->record, YT_F129,
+		    remaining_mines)) {
+			set_error(error, YT_RANGE, "encode Xannor sector mines",
+			    "YTDATA.DAT");
+			return false;
+		}
+		if (!yt_game_write_sector(game, sector_number, sector, error))
+			return false;
 		length = 0U;
 		first_length = qb_str_single(first, sizeof(first), initial_group);
 		second_length = qb_str_single(second, sizeof(second),
@@ -4775,6 +4789,8 @@ yt_maintenance_xannor_sector_arrival(struct yt_game *game,
 	}
 	if (*group_size <= 0.0f)
 		*group_size = 0.0f;
+	initial_defenders = sector->fighters;
+	initial_owner = sector->fighter_owner;
 	defense_group = *group_size;
 	if (!yt_maintenance_xannor_defense(&game->random, group_size,
 	    &sector->fighters, &sector->fighter_owner, error))
@@ -4782,6 +4798,7 @@ yt_maintenance_xannor_sector_arrival(struct yt_game *game,
 	if (initial_defenders == sector->fighters
 	    && defense_group == *group_size)
 		return true;
+	remaining_defenders = sector->fighters;
 	if (initial_owner > 0.0f) {
 		int32_t record = qb_cint(initial_owner, &overflow);
 
@@ -4796,9 +4813,28 @@ yt_maintenance_xannor_sector_arrival(struct yt_game *game,
 		}
 		defender.data = defender_name;
 	}
+	if (!yt_game_read_sector(game, sector_number, sector, error))
+		return false;
+	sector->fighters = remaining_defenders;
+	if (!yt_record_set_number(&sector->record, YT_F81,
+	    remaining_defenders)) {
+		set_error(error, YT_RANGE, "encode Xannor sector defense",
+		    "YTDATA.DAT");
+		return false;
+	}
+	if (remaining_defenders < 1.0f) {
+		sector->fighter_owner = 0.0f;
+		if (!yt_record_set_number(&sector->record, YT_F85, 0.0f)) {
+			set_error(error, YT_RANGE, "encode Xannor sector owner",
+			    "YTDATA.DAT");
+			return false;
+		}
+	}
+	if (!yt_game_write_sector(game, sector_number, sector, error))
+		return false;
 	length = 0U;
 	first_length = qb_str_single(first, sizeof(first),
-	    ssub(initial_defenders, sector->fighters));
+	    ssub(initial_defenders, remaining_defenders));
 	second_length = qb_str_single(second, sizeof(second),
 	    ssub(defense_group, *group_size));
 	if (first_length < 0 || second_length < 0
@@ -4815,8 +4851,8 @@ yt_maintenance_xannor_sector_arrival(struct yt_game *game,
 	    || !maintenance_copy_part(line, sizeof(line), &length,
 	    (const uint8_t *)second, (size_t)second_length)
 	    || !maintenance_copy_part(line, sizeof(line), &length,
-	    sector->fighters < 1.0f ? player_destroyed : xannor_destroyed,
-	    sector->fighters < 1.0f ? sizeof(player_destroyed) - 1U
+	    remaining_defenders < 1.0f ? player_destroyed : xannor_destroyed,
+	    remaining_defenders < 1.0f ? sizeof(player_destroyed) - 1U
 	    : sizeof(xannor_destroyed) - 1U)
 	    || !xannor_arrival_emit(line_output, line_context, line, length,
 	    error))
@@ -4839,11 +4875,13 @@ yt_maintenance_xannor_planet_arrival(struct yt_game *game,
 	static const uint8_t planet_prefix[] = " *** Planet \"";
 	static const uint8_t planet_suffix[] = "\" destroyed!";
 	struct yt_planet planet;
+	struct yt_planet mutated;
 	uint8_t stored_name[YT_TEXT_FIELD_SIZE];
 	uint8_t line[YT_MAINTENANCE_OUTPUT_ROW_SIZE];
 	size_t stored_name_length;
 	size_t line_length;
 	bool destroyed = false;
+	int arrival_sector_number;
 	int planet_number;
 	int index;
 	char number[64];
@@ -4856,11 +4894,14 @@ yt_maintenance_xannor_planet_arrival(struct yt_game *game,
 	}
 	if (sector->planet <= 0.0f)
 		return true;
+	arrival_sector_number = (int)*group_location;
 	planet_number = (int)sector->planet;
 	if (!yt_game_read_planet(game, planet_number, &planet, error))
 		return false;
 	if (planet.name_length <= 0.0f || planet.owner == -1.0f)
 		return true;
+	if (!yt_game_read_planet(game, planet_number, &planet, error))
+		return false;
 	if (!yt_planet_stored_name(&planet, stored_name,
 	    &stored_name_length, error))
 		return false;
@@ -4938,6 +4979,53 @@ yt_maintenance_xannor_planet_arrival(struct yt_game *game,
 		*group_size = 0.0f;
 		*group_location = 0.0f;
 	}
+	mutated = planet;
+	if (!yt_game_read_planet(game, planet_number, &planet, error))
+		return false;
+	for (index = 0; index < 3; ++index) {
+		planet.production[index] = mutated.production[index];
+		planet.stock[index] = mutated.stock[index];
+		if (!yt_record_set_number(&planet.record,
+		    YT_F45 + (size_t)index * 4U, planet.production[index])
+		    || !yt_record_set_number(&planet.record,
+		    YT_F57 + (size_t)index * 4U, planet.stock[index]))
+			goto encode_error;
+	}
+	planet.owner = mutated.owner;
+	planet.ground_forces = mutated.ground_forces;
+	if (!yt_record_set_number(&planet.record, YT_F73, planet.owner)
+	    || !yt_record_set_number(&planet.record, YT_F77,
+	    planet.ground_forces))
+		goto encode_error;
+	if (!yt_database_write(&game->database,
+	    (size_t)yt_planet_basic_record(&game->config, planet_number),
+	    &planet.record, error))
+		return false;
+	if (destroyed) {
+		if (!yt_game_read_sector(game, arrival_sector_number, sector,
+		    error))
+			return false;
+		sector->planet = 0.0f;
+		if (!yt_record_set_number(&sector->record, YT_F93, 0.0f)) {
+			set_error(error, YT_RANGE, "encode destroyed Xannor link",
+			    "YTDATA.DAT");
+			return false;
+		}
+		if (!yt_game_write_sector(game, arrival_sector_number, sector,
+		    error)
+		    || !yt_game_read_planet(game, planet_number, &planet, error))
+			return false;
+		planet.name_length = 0.0f;
+		if (!yt_record_set_number(&planet.record, YT_F85, 0.0f)) {
+			set_error(error, YT_RANGE,
+			    "encode destroyed Xannor planet", "YTDATA.DAT");
+			return false;
+		}
+		if (!yt_database_write(&game->database,
+		    (size_t)yt_planet_basic_record(&game->config, planet_number),
+		    &planet.record, error))
+			return false;
+	}
 	if (*group_size <= 0.0f) {
 		if (!xannor_arrival_emit(line_output, line_context,
 		    fighters_destroyed, sizeof(fighters_destroyed) - 1U, error))
@@ -4955,22 +5043,7 @@ yt_maintenance_xannor_planet_arrival(struct yt_game *game,
 		    line_length, error))
 			return false;
 	}
-	for (index = 0; index < 3; ++index) {
-		if (!yt_record_set_number(&planet.record,
-		    YT_F45 + (size_t)index * 4U, planet.production[index])
-		    || !yt_record_set_number(&planet.record,
-		    YT_F57 + (size_t)index * 4U, planet.stock[index]))
-			goto encode_error;
-	}
-	if (!yt_record_set_number(&planet.record, YT_F73, planet.owner)
-	    || !yt_record_set_number(&planet.record, YT_F77,
-	    planet.ground_forces)
-	    || !yt_record_set_number(&planet.record, YT_F85,
-	    planet.name_length))
-		goto encode_error;
-	return yt_database_write(&game->database,
-	    (size_t)yt_planet_basic_record(&game->config, planet_number),
-	    &planet.record, error);
+	return true;
 
 encode_error:
 	set_error(error, YT_RANGE, "encode Xannor planet arrival",
@@ -5193,9 +5266,6 @@ xannor_route_arrivals_impl(struct maint_state *state, int group,
 			local.reached_target = true;
 			break;
 		}
-		if (!yt_game_read_sector(&state->game, next, &destination,
-		    error))
-			return false;
 		location[group] = (float)next;
 		if (!yt_maintenance_xannor_sector_arrival(&state->game, next,
 		    &size[group], &destination, line_output, line_context, error))
@@ -5210,9 +5280,6 @@ xannor_route_arrivals_impl(struct maint_state *state, int group,
 		}
 		else if (!xannor_attack_players(state, group, location, size,
 		    line_output, line_context, error))
-			return false;
-		if (!yt_game_write_sector(&state->game, next, &destination,
-		    error))
 			return false;
 		++local.hops;
 		local.reached_target = yt_maintenance_xannor_route_complete(

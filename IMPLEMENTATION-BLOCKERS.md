@@ -6,9 +6,16 @@ gap by disassembling binaries or performing new reverse engineering in this
 repository. Implementation stops at the affected boundary until the upstream
 documentation supplies the missing contract.
 
-## Open documentation gaps
+## Resolved documentation gaps
 
 ### DOC-GAP-032: YTCONFIG 52nd YTNAME row overflow destinations
+
+Resolved upstream by commit `aa5675db`. The four wrapped destinations are
+`DS:19B2`, `1A7E`, `1B4A`, and `1C16`; the first three stores transfer their
+temporary owners into the next arrays' element zero, while the fourth treats
+loaded code bytes `62 00 BE B6` as a descriptor and reaches the shared
+nonreturning `BRUN:0ACC` internal fatal. No BASIC ERR/ERL route or rollback is
+involved.
 
 Affected coverage:
 
@@ -35,6 +42,11 @@ must publish that carrier before the guard can be replaced. No binary
 inspection or new reverse engineering was performed.
 
 ### DOC-GAP-031: Xannor sector-arrival physical transaction sequencing
+
+Resolved upstream by commit `aa5675db`. The new physical-step carrier pins
+the unconditional opening GET, the mine-loss-only reload/offset-129 PUT, the
+owner-label GET, the defense-gated reload and offset-81/85 PUT, every retained
+failure prefix, and the later planet unlink outside the sector-arrival child.
 
 Affected coverage:
 
@@ -71,6 +83,12 @@ binary inspection or new reverse engineering was performed.
 
 ### DOC-GAP-030: destroyed-mine caller projection into `FatalWorld`
 
+Resolved upstream by commit `aa5675db`. The canonical projection now builds
+`FatalWorld` directly from the inherited projectile carrier, raw mine result,
+team cache, and optional returned warp result. It distinguishes the ordinary
+post-news/post-sector-GET seam from the emergency-warp seam and preserves the
+documented FIELD, persistence, process, pager, and news carriers.
+
 Affected coverage:
 
 - every admitted sector-mine result whose `DS:18B4` destroyed predicate
@@ -105,6 +123,11 @@ inspection or new reverse engineering was performed.
 
 ### DOC-GAP-029: shared A8D2 local string-allocation failure contract
 
+Resolved upstream by commit `aa5675db`. The four A8D2-owned sites are now
+pinned at `A8EF`, `A8F4`, `A938`, and `A943`, with their exact saved IP,
+statement/ERL, admitted allocation or owner-corruption outcomes, retained raw
+world, and main-handler versus shared internal-fatal projections.
+
 Affected coverage:
 
 - the direct emergency-warp confirmation after its now-joined ADE0 and
@@ -134,6 +157,38 @@ not enough to choose the missing caller sites and starting descriptors.
 Upstream documentation, the canonical A8D2 world model, generated evidence,
 and focused failure-prefix fixtures must publish those identities and raw
 states before this boundary can proceed. No binary inspection or new reverse
+engineering was performed.
+
+## Open documentation gaps
+
+### DOC-GAP-033: YTCONFIG row-52 `BRUN:0ACC` fatal projection
+
+Affected coverage:
+
+- the fourth physical-group-52 alias store at `YTCONFIG:0EE2`, whose saved
+  return IP is `0EE5`;
+- the shared `BRUN:0ACC` internal-fatal diagnostic and cleanup; and
+- replacement of the native editor's remaining live `count > 51` guard.
+
+Commit `aa5675db` now completely specifies the four wrapped destinations,
+the first three committed owner transfers, the unchanged corrupt descriptor
+bytes at `DS:1C16`, and the fourth store's nonreturning `BRUN:0ACC` successor.
+The native transaction therefore models that exact prefix and stops at the
+shared-fatal boundary.
+
+The published shared fatal model does not accept `YTCONFIG` as a module: its
+module-name and statement-table registry covers only `YT-INIT`, `YT`,
+`YT-SUB`, and `YT-SUB2`. No YTCONFIG artifact supplies the greatest statement
+at saved IP `0EE5`, its source line (if any), the exact eight-byte module
+label, or a YTCONFIG caller fixture through the local-only `String Space
+Corrupt` location renderer, input drain, CLOSE-all, terminal restoration, and
+DOS-zero exit. The traversal's phrase "module segment relation" does not
+publish those missing values or a composable result.
+
+Without that projection, the live C utility can only invent a generic host
+error, omit documented local bytes, or terminate with the wrong status and
+cleanup. Upstream must extend the canonical internal-fatal model and provide
+a focused YTCONFIG `0EE5` fixture. No binary inspection or new reverse
 engineering was performed.
 
 ### DOC-GAP-023: current-sector scanner cloak-clear raw value
@@ -391,7 +446,7 @@ partial-I/O projection at those cuts. Upstream documentation is required for
 those identities. No binary inspection or new reverse engineering was
 performed.
 
-## Resolved documentation gaps
+## Previously resolved documentation gaps
 
 ### DOC-GAP-028: ADE0 allocation/GOSUB current-statement identities
 

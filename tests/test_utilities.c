@@ -60,6 +60,43 @@ struct utility_random_script {
 	size_t position;
 };
 
+struct utility_database_tape {
+	size_t reads;
+	size_t writes;
+};
+
+static bool
+utility_database_read(void *context, FILE *file, uint8_t *data,
+    size_t requested, struct yt_database_read_observation *observation)
+{
+	struct utility_database_tape *tape = context;
+	long position;
+
+	memset(observation, 0, sizeof(*observation));
+	++tape->reads;
+	observation->accepted = fread(data, 1U, requested, file);
+	observation->carry = ferror(file) != 0;
+	position = ftell(file);
+	observation->terminal_position = position >= 0 ? position : 0;
+	return true;
+}
+
+static bool
+utility_database_write(void *context, FILE *file, const uint8_t *data,
+    size_t requested, struct yt_database_write_observation *observation)
+{
+	struct utility_database_tape *tape = context;
+	long position;
+
+	memset(observation, 0, sizeof(*observation));
+	++tape->writes;
+	observation->accepted = fwrite(data, 1U, requested, file);
+	observation->carry = ferror(file) != 0;
+	position = ftell(file);
+	observation->terminal_position = position >= 0 ? position : 0;
+	return true;
+}
+
 static bool read_file(const char *path, uint8_t **data, size_t *length);
 static bool write_file(const char *path, const void *data, size_t length);
 
@@ -4354,6 +4391,91 @@ test_name_sequential_transaction(struct yt_error *error)
 }
 
 static bool
+test_ytconfig_name_overflow_transaction(struct yt_error *error)
+{
+	static const uint8_t ordinary[] = "A,B,C,D\r\n";
+	static const uint8_t overflow[] = "RF,RL,AF,AL\r\n";
+	uint8_t stream[51U * (sizeof(ordinary) - 1U)
+	    + sizeof(overflow)];
+	struct yt_names_ytconfig_store_site site;
+	struct yt_names_ytconfig_state state;
+	struct yt_name_input_observation observation;
+	struct yt_text_input input;
+	struct yt_name_file names;
+	size_t cursor = 0U;
+	size_t row;
+	bool result;
+	bool ok;
+
+	for (row = 0U; row < 51U; ++row) {
+		memcpy(stream + cursor, ordinary, sizeof(ordinary) - 1U);
+		cursor += sizeof(ordinary) - 1U;
+	}
+	memcpy(stream + cursor, overflow, sizeof(overflow) - 1U);
+	cursor += sizeof(overflow) - 1U;
+	stream[cursor++] = 0x1aU;
+	if (cursor != sizeof(stream)
+	    || !write_file("names.in", stream, sizeof(stream)))
+		return false;
+	if (!yt_names_ytconfig_store_site(51, 1U, &site)
+	    || site.instruction != 0x0E84U || site.saved_ip != 0x0E87U
+	    || site.destination != 0x19B2U
+	    || !yt_names_ytconfig_store_site(51, 2U, &site)
+	    || site.destination != 0x1A7EU
+	    || !yt_names_ytconfig_store_site(51, 3U, &site)
+	    || site.destination != 0x1B4AU
+	    || !yt_names_ytconfig_store_site(51, 4U, &site)
+	    || site.instruction != 0x0EE2U || site.saved_ip != 0x0EE5U
+	    || site.destination != 0x1C16U
+	    || !yt_names_ytconfig_store_site(52, 1U, &site)
+	    || site.destination != 0x19B6U
+	    || yt_names_ytconfig_store_site(51, 0U, &site)
+	    || yt_names_ytconfig_store_site(51, 5U, &site)
+	    || yt_names_ytconfig_store_site(51, 1U, NULL))
+		return false;
+
+	yt_error_clear(error);
+	yt_text_input_init(&input);
+	result = yt_names_load_ytconfig_sequential(&input, "names.in", &names,
+	    &observation, &state, error);
+	ok = result && error->status == YT_OK
+	    && state.outcome == YT_NAMES_YTCONFIG_INTERNAL_FATAL_0ACC
+	    && state.counter == 51
+	    && state.sequential.failed_operation
+	    == YT_NAMES_SEQUENTIAL_INTERNAL_FATAL
+	    && state.sequential.file_opened
+	    && !state.sequential.close_attempted
+	    && !state.sequential.file_closed && !state.sequential.complete
+	    && state.sequential.eof_checks == 52U
+	    && state.sequential.token_reads == 208U
+	    && state.sequential.rows_committed == 51U
+	    && state.stores_attempted == 208U
+	    && state.stores_committed == 207U
+	    && state.current_group_stores_committed == 3U
+	    && state.overflow_stores_committed == 3U
+	    && state.attempted_site.instruction == 0x0EE2U
+	    && state.attempted_site.saved_ip == 0x0EE5U
+	    && state.attempted_site.destination == 0x1C16U
+	    && memcmp(state.fourth_destination, "\x62\x00\xbe\xb6", 4U) == 0
+	    && input.file != NULL && names.count == 51U
+	    && strcmp(names.rows[0].real_first, "A") == 0
+	    && strcmp(names.rows[0].real_last, "RF") == 0
+	    && strcmp(names.rows[0].alias_first, "RL") == 0
+	    && strcmp(names.rows[0].alias_last, "AF") == 0
+	    && observation.staged_count == 4U
+	    && observation.staged.real_first == NULL
+	    && observation.staged.real_last == NULL
+	    && observation.staged.alias_first == NULL
+	    && observation.staged.alias_last != NULL
+	    && strcmp(observation.staged.alias_last, "AL") == 0
+	    && observation.cursor == sizeof(stream) - 1U;
+	yt_names_input_observation_free(&observation);
+	yt_names_free(&names);
+	yt_text_input_destroy(&input);
+	return ok;
+}
+
+static bool
 names_output_write_failure_provider(void *context, FILE *file,
     const uint8_t *data, size_t requested,
     struct yt_text_output_write_observation *observation)
@@ -5304,6 +5426,7 @@ test_xannor_planet_arrival(struct yt_error *error)
 	    " *** 2 Xannor attacked the planet \"Terra\"\r\n"
 	    " *** Planet \"Terra\" destroyed!\r\n\x1a";
 	struct utility_random_script script = {NULL, 0, 0};
+	struct utility_database_tape database_tape = {0};
 	struct utility_line_tape tape = {{{0}}, 0};
 	struct yt_game game;
 	struct yt_planet planet;
@@ -5330,12 +5453,19 @@ test_xannor_planet_arrival(struct yt_error *error)
 	if (!yt_game_write_planet(&game, 1, &planet, error))
 		goto done;
 	yt_random_set_provider(&game.random, utility_random_fill, &script);
+	yt_database_set_read_provider(&game.database, utility_database_read,
+	    &database_tape);
+	yt_database_set_write_provider(&game.database, utility_database_write,
+	    &database_tape);
 	if (!yt_maintenance_xannor_planet_arrival(&game, &location,
 	    &group_size, &sector, utility_capture_line, &tape, error)
 	    || location != 733.0f || group_size != 2.0f
 	    || sector.planet != 1.0f || game.random.draws != 0U
-	    || script.position != 0U || tape.calls != 0U)
+	    || script.position != 0U || tape.calls != 0U
+	    || database_tape.reads != 1U || database_tape.writes != 0U)
 		goto done;
+	yt_database_set_read_provider(&game.database, NULL, NULL);
+	yt_database_set_write_provider(&game.database, NULL, NULL);
 
 	planet.owner = 7.0f;
 	planet.ground_forces = 1.0f;
@@ -5350,9 +5480,18 @@ test_xannor_planet_arrival(struct yt_error *error)
 	script = (struct utility_random_script){high_draws,
 	    sizeof(high_draws), 0};
 	yt_random_set_provider(&game.random, utility_random_fill, &script);
+	database_tape = (struct utility_database_tape){0};
+	yt_database_set_read_provider(&game.database, utility_database_read,
+	    &database_tape);
+	yt_database_set_write_provider(&game.database, utility_database_write,
+	    &database_tape);
 	if (!yt_maintenance_xannor_planet_arrival(&game, &location,
 	    &group_size, &sector, utility_capture_line, &tape, error)
-	    || !yt_game_read_planet(&game, 1, &planet, error)
+	    || database_tape.reads != 3U || database_tape.writes != 1U)
+		goto done;
+	yt_database_set_read_provider(&game.database, NULL, NULL);
+	yt_database_set_write_provider(&game.database, NULL, NULL);
+	if (!yt_game_read_planet(&game, 1, &planet, error)
 	    || !yt_text_read("YTNEWS.DAT", &news, error)
 	    || location != 0.0f || group_size != 0.0f
 	    || sector.planet != 1.0f || planet.owner != 0.0f
@@ -5380,14 +5519,29 @@ test_xannor_planet_arrival(struct yt_error *error)
 	planet.production[2] = 0.0f;
 	planet.stock[0] = 10.0f;
 	sector.planet = 1.0f;
+	yt_record_blank(&sector.record);
+	if (!yt_record_set_number(&sector.record, YT_F93, 1.0f)
+	    || !yt_game_write_sector(&game, 733, &sector, error))
+		goto done;
 	location = 733.0f;
 	group_size = 2.0f;
 	script = (struct utility_random_script){NULL, 0, 0};
 	yt_random_set_provider(&game.random, utility_random_fill, &script);
-	if (!yt_game_write_planet(&game, 1, &planet, error)
-	    || !yt_maintenance_xannor_planet_arrival(&game, &location,
+	database_tape = (struct utility_database_tape){0};
+	if (!yt_game_write_planet(&game, 1, &planet, error))
+		goto done;
+	yt_database_set_read_provider(&game.database, utility_database_read,
+	    &database_tape);
+	yt_database_set_write_provider(&game.database, utility_database_write,
+	    &database_tape);
+	if (!yt_maintenance_xannor_planet_arrival(&game, &location,
 	    &group_size, &sector, utility_capture_line, &tape, error)
-	    || !yt_game_read_planet(&game, 1, &planet, error)
+	    || database_tape.reads != 5U || database_tape.writes != 3U)
+		goto done;
+	yt_database_set_read_provider(&game.database, NULL, NULL);
+	yt_database_set_write_provider(&game.database, NULL, NULL);
+	if (!yt_game_read_planet(&game, 1, &planet, error)
+	    || !yt_game_read_sector(&game, 733, &sector, error)
 	    || !yt_text_read("YTNEWS.DAT", &news, error))
 		goto done;
 	valid = location == 733.0f && group_size == 2.0f
@@ -5402,6 +5556,8 @@ test_xannor_planet_arrival(struct yt_error *error)
 	    sizeof(expected_planet_news) - 1U) == 0;
 
 done:
+	yt_database_set_read_provider(&game.database, NULL, NULL);
+	yt_database_set_write_provider(&game.database, NULL, NULL);
 	yt_text_free(&news);
 	yt_game_close(&game);
 	(void)remove("YTNEWS.DAT");
@@ -8081,6 +8237,8 @@ main(void)
 		failure = "YTNAME INPUT# grammar differs";
 	else if (!test_name_sequential_transaction(&error))
 		failure = "YTNAME sequential transaction differs";
+	else if (!test_ytconfig_name_overflow_transaction(&error))
+		failure = "YTCONFIG YTNAME overflow transaction differs";
 	else if (!test_name_sequential_output_transaction(&error))
 		failure = "YTNAME sequential output transaction differs";
 	else if (!test_alias_propagation_transaction())

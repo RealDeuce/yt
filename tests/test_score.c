@@ -19996,6 +19996,7 @@ done:
 static bool
 check_maintenance_xannor_sector_arrival_pass(void)
 {
+	static const uint8_t no_draws[1] = {0};
 	static const uint8_t zero_draws[6] = {0};
 	static const uint8_t high_draw[3] = {0xff, 0xff, 0xff};
 	static const uint8_t player_screen[] =
@@ -20014,6 +20015,10 @@ check_maintenance_xannor_sector_arrival_pass(void)
 		zero_draws, sizeof(zero_draws), 0U
 	};
 	struct score_line_tape screen = {0};
+	struct score_database_read_fault read_tape = {0U, SIZE_MAX};
+	struct score_database_partial_fault write_tape = {
+		0U, SIZE_MAX, 0U, 0
+	};
 	struct yt_text_file news = {0};
 	struct yt_record owner;
 	struct yt_sector sector = {0};
@@ -20042,11 +20047,22 @@ check_maintenance_xannor_sector_arrival_pass(void)
 	sector.mines = 1.0f;
 	sector.fighters = 1.0f;
 	sector.fighter_owner = 2.0f;
+	if (!yt_record_set_number(&sector.record, YT_F81, sector.fighters)
+	    || !yt_record_set_number(&sector.record, YT_F85,
+	    sector.fighter_owner)
+	    || !yt_record_set_number(&sector.record, YT_F129, sector.mines)
+	    || !yt_game_write_sector(&game, 42, &sector, &error))
+		goto done;
+	yt_database_set_read_provider(&game.database,
+	    score_database_read_with_fault, &read_tape);
+	yt_database_set_write_provider(&game.database,
+	    score_database_write_partial_fault, &write_tape);
 	group_size = 10.0f;
 	if (!yt_maintenance_xannor_sector_arrival(&game, 42, &group_size,
 	    &sector, score_line_collect, &screen, &error)
 	    || group_size != 9.0f || sector.mines != 0.0f
 	    || sector.fighters != 0.0f || sector.fighter_owner != 0.0f
+	    || read_tape.calls != 4U || write_tape.calls != 2U
 	    || game.random.draws != 2U
 	    || script.position != sizeof(zero_draws)
 	    || screen.lines != 3U
@@ -20060,6 +20076,8 @@ check_maintenance_xannor_sector_arrival_pass(void)
 	yt_text_free(&news);
 	(void)remove("YTNEWS.DAT");
 	memset(&screen, 0, sizeof(screen));
+	yt_database_set_read_provider(&game.database, NULL, NULL);
+	yt_database_set_write_provider(&game.database, NULL, NULL);
 	script = (struct score_random_script){
 		high_draw, sizeof(high_draw), 0U
 	};
@@ -20068,11 +20086,26 @@ check_maintenance_xannor_sector_arrival_pass(void)
 	sector.mines = 0.0f;
 	sector.fighters = 1.0f;
 	sector.fighter_owner = -2.0f;
+	if (!yt_record_set_number(&sector.record, YT_F81, sector.fighters)
+	    || !yt_record_set_number(&sector.record, YT_F85,
+	    sector.fighter_owner)
+	    || !yt_record_set_number(&sector.record, YT_F129, sector.mines)
+	    || !yt_game_write_sector(&game, 42, &sector, &error))
+		goto done;
+	read_tape = (struct score_database_read_fault){0U, SIZE_MAX};
+	write_tape = (struct score_database_partial_fault){
+		0U, SIZE_MAX, 0U, 0
+	};
+	yt_database_set_read_provider(&game.database,
+	    score_database_read_with_fault, &read_tape);
+	yt_database_set_write_provider(&game.database,
+	    score_database_write_partial_fault, &write_tape);
 	group_size = 1.0f;
 	if (!yt_maintenance_xannor_sector_arrival(&game, 42, &group_size,
 	    &sector, score_line_collect, &screen, &error)
 	    || group_size != 0.0f || sector.fighters != 1.0f
 	    || sector.fighter_owner != -2.0f || game.random.draws != 1U
+	    || read_tape.calls != 2U || write_tape.calls != 1U
 	    || script.position != sizeof(high_draw) || screen.lines != 1U
 	    || screen.length != sizeof(mercenary_screen) - 1U
 	    || memcmp(screen.data, mercenary_screen,
@@ -20082,9 +20115,45 @@ check_maintenance_xannor_sector_arrival_pass(void)
 	    || memcmp(news.data, mercenary_news,
 	    sizeof(mercenary_news) - 1U) != 0)
 		goto done;
+	yt_text_free(&news);
+	(void)remove("YTNEWS.DAT");
+	memset(&screen, 0, sizeof(screen));
+	yt_database_set_read_provider(&game.database, NULL, NULL);
+	yt_database_set_write_provider(&game.database, NULL, NULL);
+	script = (struct score_random_script){no_draws, 0U, 0U};
+	yt_random_set_provider(&game.random, score_random_fill, &script);
+	yt_record_blank(&sector.record);
+	sector.mines = 0.0f;
+	sector.fighters = 7.0f;
+	sector.fighter_owner = 0.0f;
+	if (!yt_record_set_number(&sector.record, YT_F81, sector.fighters)
+	    || !yt_record_set_number(&sector.record, YT_F85,
+	    sector.fighter_owner)
+	    || !yt_record_set_number(&sector.record, YT_F129, sector.mines)
+	    || !yt_game_write_sector(&game, 42, &sector, &error))
+		goto done;
+	read_tape = (struct score_database_read_fault){0U, SIZE_MAX};
+	write_tape = (struct score_database_partial_fault){
+		0U, SIZE_MAX, 0U, 0
+	};
+	yt_database_set_read_provider(&game.database,
+	    score_database_read_with_fault, &read_tape);
+	yt_database_set_write_provider(&game.database,
+	    score_database_write_partial_fault, &write_tape);
+	group_size = 4.0f;
+	if (!yt_maintenance_xannor_sector_arrival(&game, 42, &group_size,
+	    &sector, score_line_collect, &screen, &error)
+	    || group_size != 4.0f || sector.mines != 0.0f
+	    || sector.fighters != 7.0f || sector.fighter_owner != 0.0f
+	    || game.random.draws != 0U || script.position != 0U
+	    || read_tape.calls != 1U || write_tape.calls != 0U
+	    || screen.lines != 0U || screen.length != 0U)
+		goto done;
 	valid = true;
 
 done:
+	yt_database_set_read_provider(&game.database, NULL, NULL);
+	yt_database_set_write_provider(&game.database, NULL, NULL);
 	yt_text_free(&news);
 	yt_game_close(&game);
 	(void)remove("YTDATA.DAT");
