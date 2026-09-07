@@ -529,6 +529,8 @@ test_editor_echo(void)
 struct pager_capture {
 	uint8_t remote[4096];
 	size_t remote_length;
+	struct yt_framebuffer_state framebuffer;
+	bool framebuffer_initialized;
 	int last_local_foreground;
 	int last_local_background;
 	size_t local_event_count;
@@ -553,6 +555,13 @@ pager_capture_result(struct pager_capture *capture,
     const struct yt_present_result *result)
 {
 	size_t index;
+
+	if (!capture->framebuffer_initialized) {
+		yt_framebuffer_init(&capture->framebuffer, false, 0U);
+		capture->framebuffer_initialized = true;
+	}
+	CHECK(yt_framebuffer_apply_present_result(&capture->framebuffer, result)
+	    == YT_FRAMEBUFFER_OK);
 
 	CHECK(result->remote_length <= sizeof(capture->remote)
 	    - capture->remote_length);
@@ -11210,7 +11219,18 @@ test_computer_avoid_presentation(void)
 	    && capture.local_line_count == 24U
 	    && capture.local_fragment_count == 40U
 	    && capture.local_byte_count == 836U
-	    && capture.local_fnv == UINT64_C(0x95f5f48462d30f5c));
+	    && capture.local_fnv == UINT64_C(0x95f5f48462d30f5c)
+	    && capture.framebuffer_initialized
+	    && capture.framebuffer.bios_row == 24U
+	    && capture.framebuffer.bios_column == 41U
+	    && capture.framebuffer.qb_row == 24U
+	    && capture.framebuffer.qb_column == 41U
+	    && capture.framebuffer.brun_bios_cache_row == 24U
+	    && capture.framebuffer.brun_bios_cache_column == 41U
+	    && capture.framebuffer.qb_attribute == 0x07U
+	    && capture.framebuffer.qb_scrolls == 1U
+	    && startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
+	    == UINT64_C(0x6d9c1cb34ba7a1d9));
 	computer_avoid_accepted_cycle_fixture(true, 1.0f, 0.0f, "5",
 	    COMPUTER_AVOID_FIXTURE_COMPLETE, NULL, &capture, &current, &pager);
 	CHECK(capture.remote_length == 0U && pager.line_count == 2.0f
