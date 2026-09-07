@@ -10568,13 +10568,39 @@ test_computer_sensor_all_zero_cycle_presentation(void)
 	CHECK(capture.remote_length == sizeof(ansi) - 1U
 	    && memcmp(capture.remote, ansi, sizeof(ansi) - 1U) == 0);
 	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f);
+	CHECK(capture.local_event_count == 21U);
+	CHECK(capture.framebuffer_initialized);
+	CHECK(capture.framebuffer.bios_row == 8U
+	    && capture.framebuffer.bios_column == 41U
+	    && capture.framebuffer.qb_row == 8U
+	    && capture.framebuffer.qb_column == 41U
+	    && capture.framebuffer.brun_bios_cache_row == 8U
+	    && capture.framebuffer.brun_bios_cache_column == 41U);
+	CHECK(capture.framebuffer.qb_attribute == 0x07U
+	    && capture.framebuffer.qb_scrolls == 0U
+	    && capture.framebuffer.con_scrolls == 0U);
+	CHECK(startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
+	    == UINT64_C(0xbde6763a891a2a78));
 
 	computer_sensor_all_zero_cycle_fixture(false, &capture, &current,
 	    &pager);
 	CHECK(sizeof(plain) - 1U == 135U);
 	CHECK(capture.remote_length == sizeof(plain) - 1U
 	    && memcmp(capture.remote, plain, sizeof(plain) - 1U) == 0);
-	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f);
+	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f
+	    && capture.local_event_count == 12U
+	    && capture.framebuffer_initialized
+	    && capture.framebuffer.bios_row == 8U
+	    && capture.framebuffer.bios_column == 41U
+	    && capture.framebuffer.qb_row == 8U
+	    && capture.framebuffer.qb_column == 41U
+	    && capture.framebuffer.brun_bios_cache_row == 8U
+	    && capture.framebuffer.brun_bios_cache_column == 41U
+	    && capture.framebuffer.qb_attribute == 0x07U
+	    && capture.framebuffer.qb_scrolls == 0U
+	    && capture.framebuffer.con_scrolls == 0U
+	    && startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
+	    == UINT64_C(0x4afb91f32b6cffc8));
 }
 
 static void
