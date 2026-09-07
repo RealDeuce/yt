@@ -13465,6 +13465,145 @@ test_owned_planets_transaction(void)
 }
 
 static void
+computer_fighter_finder_cycle_fixture(bool ansi,
+    struct pager_capture *capture, struct yt_present_state *current,
+    struct yt_pager_state *pager)
+{
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Computer command (?=help)? ";
+	static const uint8_t searching[] = "Searching;";
+	static const uint8_t amount[] = "Amount";
+	static const uint8_t rule[] = "--------*--------";
+	static const char *const sectors[2] = {" 3", " 9"};
+	static const char *const fighters[2] = {" 20", " 4"};
+	struct yt_present_result result;
+	char accumulator[80] = "";
+	uint8_t mutable[64];
+	size_t length;
+	int index;
+
+	*current = state(false);
+	current->foreground = 1.0f;
+	memset(pager, 0, sizeof(*pager));
+	pager->foreground = 1;
+	memset(capture, 0, sizeof(*capture));
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current->sound.ansi = ansi ? -1.0f : 0.0f;
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, prompt, sizeof(prompt) - 1U,
+	    capture);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"11", 2U,
+	    (const uint8_t *)"11", 2U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, searching,
+	    sizeof(searching) - 1U, capture);
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	memcpy(mutable, " Sector", 7U);
+	length = 7U;
+	CHECK(yt_present_fixed_width(mutable, &length, sizeof(mutable), 10.0f,
+	    current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager_fixture_b05d(pager, current, amount, sizeof(amount) - 1U,
+	    capture);
+	pager_fixture_b05d(pager, current, rule, sizeof(rule) - 1U, capture);
+	for (index = 0; index < 2; ++index) {
+		length = strlen(sectors[index]);
+		memcpy(mutable, sectors[index], length);
+		CHECK(yt_present_fixed_width(mutable, &length, sizeof(mutable),
+		    9.0f, current, &result) == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+		pager_fixture_b05d(pager, current,
+		    (const uint8_t *)fighters[index], strlen(fighters[index]),
+		    capture);
+	}
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, prompt, sizeof(prompt) - 1U,
+	    capture);
+}
+
+static void
+computer_planet_finder_cycle_fixture(bool ansi,
+    struct pager_capture *capture, struct yt_present_state *current,
+    struct yt_pager_state *pager)
+{
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Computer command (?=help)? ";
+	static const uint8_t scanning[] = "Scanning...";
+	static const uint8_t prefix[] = "Planet: ";
+	static const uint8_t infix[] = " Sector:";
+	struct yt_present_result result;
+	char accumulator[80] = "";
+	uint8_t name[41];
+	uint8_t row[80];
+	size_t length;
+	int index;
+
+	*current = state(false);
+	current->foreground = 1.0f;
+	memset(pager, 0, sizeof(*pager));
+	pager->foreground = 1;
+	memset(capture, 0, sizeof(*capture));
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current->sound.ansi = ansi ? -1.0f : 0.0f;
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, prompt, sizeof(prompt) - 1U,
+	    capture);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"13", 2U,
+	    (const uint8_t *)"13", 2U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current->foreground = 2.0f;
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(scanning, sizeof(scanning) - 1U, current,
+	    &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current->foreground = 3.0f;
+	memset(name, ' ', sizeof(name));
+	memcpy(name, "Home", 4U);
+	for (index = 0; index < 2; ++index) {
+		length = 0U;
+		memcpy(row + length, prefix, sizeof(prefix) - 1U);
+		length += sizeof(prefix) - 1U;
+		memcpy(row + length, name, sizeof(name));
+		length += sizeof(name);
+		memcpy(row + length, infix, sizeof(infix) - 1U);
+		length += sizeof(infix) - 1U;
+		row[length++] = ' ';
+		row[length++] = (uint8_t)(index == 0 ? '2' : '5');
+		CHECK(yt_present_bold_line(row, length, current, &result)
+		    == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+	}
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current->foreground = 1.0f;
+	pager->foreground = 1;
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, prompt, sizeof(prompt) - 1U,
+	    capture);
+}
+
+static void
 test_computer_finders_presentation(void)
 {
 	static const uint8_t computer_prompt[] =
@@ -13548,6 +13687,36 @@ test_computer_finders_presentation(void)
 	CHECK(capture.remote_length == sizeof(fighter_expected) - 1U
 	    && memcmp(capture.remote, fighter_expected,
 	    sizeof(fighter_expected) - 1U) == 0);
+	CHECK(capture.local_event_count == 29U
+	    && capture.framebuffer_initialized
+	    && capture.framebuffer.bios_row == 12U
+	    && capture.framebuffer.bios_column == 41U
+	    && capture.framebuffer.qb_row == 12U
+	    && capture.framebuffer.qb_column == 41U
+	    && capture.framebuffer.brun_bios_cache_row == 12U
+	    && capture.framebuffer.brun_bios_cache_column == 41U
+	    && capture.framebuffer.qb_attribute == 0x07U
+	    && capture.framebuffer.qb_scrolls == 0U
+	    && capture.framebuffer.con_scrolls == 0U
+	    && startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
+	    == UINT64_C(0x720a4f456c76ccda));
+	computer_fighter_finder_cycle_fixture(true, &capture, &current,
+	    &pager);
+	CHECK(capture.remote_length == 180U
+	    && capture.local_event_count == 45U);
+	CHECK(viewer_bytes_fnv1a64(capture.remote, capture.remote_length)
+	    == UINT64_C(0x3698910d233b5cde));
+	CHECK(capture.framebuffer.bios_row == 12U
+	    && capture.framebuffer.bios_column == 41U
+	    && capture.framebuffer.qb_row == 12U
+	    && capture.framebuffer.qb_column == 41U
+	    && capture.framebuffer.brun_bios_cache_row == 12U
+	    && capture.framebuffer.brun_bios_cache_column == 41U);
+	CHECK(capture.framebuffer.qb_attribute == 0x07U
+	    && capture.framebuffer.qb_scrolls == 0U
+	    && capture.framebuffer.con_scrolls == 0U);
+	CHECK(startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
+	    == UINT64_C(0x13c08181a428bdde));
 
 	{
 		static const uint8_t scanning[] = "Scanning...";
@@ -13607,6 +13776,8 @@ test_computer_finders_presentation(void)
 		CHECK(yt_present_line(NULL, 0, &current, &result)
 		    == YT_PRESENT_OK);
 		pager_capture_result(&capture, &result);
+		current.foreground = 1.0f;
+		pager.foreground = 1;
 		pager.newline_flag = 1.0f;
 		pager_fixture_b05d(&pager, &current, computer_prompt,
 		    sizeof(computer_prompt) - 1U, &capture);
@@ -13635,7 +13806,36 @@ test_computer_finders_presentation(void)
 		CHECK(expected_length == sizeof(expected));
 		CHECK(capture.remote_length == sizeof(expected)
 		    && memcmp(capture.remote, expected, sizeof(expected)) == 0);
-		CHECK(pager.line_count == 1.0f);
+		CHECK(pager.line_count == 1.0f
+		    && capture.local_event_count == 13U
+		    && capture.framebuffer.bios_row == 9U
+		    && capture.framebuffer.bios_column == 41U
+		    && capture.framebuffer.qb_row == 9U
+		    && capture.framebuffer.qb_column == 41U
+		    && capture.framebuffer.brun_bios_cache_row == 9U
+		    && capture.framebuffer.brun_bios_cache_column == 41U
+		    && capture.framebuffer.qb_attribute == 0x07U
+		    && capture.framebuffer.qb_scrolls == 0U
+		    && capture.framebuffer.con_scrolls == 0U
+		    && startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
+		    == UINT64_C(0x23cb244d6d7ff7fe));
+		computer_planet_finder_cycle_fixture(true, &capture, &current,
+		    &pager);
+		CHECK(capture.remote_length == 291U
+		    && capture.local_event_count == 22U);
+		CHECK(viewer_bytes_fnv1a64(capture.remote,
+		    capture.remote_length) == UINT64_C(0x1999b763de2a42ca));
+		CHECK(capture.framebuffer.bios_row == 9U
+		    && capture.framebuffer.bios_column == 41U
+		    && capture.framebuffer.qb_row == 9U
+		    && capture.framebuffer.qb_column == 41U
+		    && capture.framebuffer.brun_bios_cache_row == 9U
+		    && capture.framebuffer.brun_bios_cache_column == 41U);
+		CHECK(capture.framebuffer.qb_attribute == 0x07U
+		    && capture.framebuffer.qb_scrolls == 0U
+		    && capture.framebuffer.con_scrolls == 0U);
+		CHECK(startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
+		    == UINT64_C(0xc5affea5052198a5));
 	}
 }
 
