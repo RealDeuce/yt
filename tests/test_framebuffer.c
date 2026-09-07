@@ -707,6 +707,77 @@ test_time_refresh_component_join(void)
 	    == 0);
 }
 
+static void
+test_opening_row_component_join(void)
+{
+	static const uint8_t row[] = { 'A', 0U, 'B' };
+	struct yt_present_result result;
+	struct yt_framebuffer_state state;
+	uint8_t raw[YT_FRAMEBUFFER_STATE_BYTES];
+	char digest[65];
+
+	yt_framebuffer_init(&state, false, 0U);
+	CHECK(yt_present_opening_row(row, sizeof(row), 0.0f, -1.0f,
+	    &result) == YT_PRESENT_OK);
+	CHECK(yt_framebuffer_apply_present_result(&state, &result)
+	    == YT_FRAMEBUFFER_OK);
+	CHECK(yt_present_opening_cleanup(0.0f, -1.0f, &result)
+	    == YT_PRESENT_OK);
+	CHECK(yt_framebuffer_apply_present_result(&state, &result)
+	    == YT_FRAMEBUFFER_OK);
+	CHECK(state.characters[0] == 'A' && state.characters[1] == 'B'
+	    && memcmp(state.characters + 80U, "[0m", 3U) == 0
+	    && state.qb_row == 2U && state.qb_column == 4U);
+	CHECK(yt_framebuffer_serialize(&state, raw, sizeof(raw), NULL)
+	    == YT_FRAMEBUFFER_OK);
+	digest_hex(raw, sizeof(raw), digest);
+	CHECK(strcmp(digest,
+	    "e28c9315e62d69409aea1923ad663292a1d0f5f95904b30d918f0dca5a23961d")
+	    == 0);
+}
+
+static void
+test_press_any_key_component_join(void)
+{
+	struct yt_present_state presentation;
+	struct yt_present_result result;
+	struct yt_framebuffer_state state;
+	struct yt_framebuffer_event locate = locate_event(7U, 9U);
+	uint8_t raw[YT_FRAMEBUFFER_STATE_BYTES];
+	char digest[65];
+	float saved = 0.0f;
+
+	memset(&presentation, 0, sizeof(presentation));
+	presentation.sound.ansi = -1.0f;
+	presentation.sound.snoop = -1.0f;
+	presentation.sound.user_sound = -1.0f;
+	presentation.sound.local_sound = -1.0f;
+	presentation.foreground = 7.0f;
+	yt_framebuffer_init(&state, false, 0U);
+	CHECK(yt_framebuffer_apply(&state, &locate) == YT_FRAMEBUFFER_OK);
+	CHECK(yt_present_press_prompt(&presentation, &result, &saved)
+	    == YT_PRESENT_OK);
+	CHECK(saved == 7.0f);
+	CHECK(yt_framebuffer_apply_present_result(&state, &result)
+	    == YT_FRAMEBUFFER_OK);
+	CHECK(yt_present_press_cleanup(saved, &presentation, &result)
+	    == YT_PRESENT_OK);
+	CHECK(yt_framebuffer_apply_present_result(&state, &result)
+	    == YT_FRAMEBUFFER_OK);
+	CHECK(state.qb_row == 7U && state.qb_column == 1U
+	    && state.bios_row == 7U && state.bios_column == 1U
+	    && state.qb_attribute == 0x06U
+	    && presentation.foreground == 7.0f);
+	CHECK(yt_framebuffer_serialize(&state, raw, sizeof(raw), NULL)
+	    == YT_FRAMEBUFFER_OK);
+	digest_hex(raw, sizeof(raw), digest);
+	CHECK(strcmp(digest,
+	    "3086cc0720d4c0ccf2ebaf60b00c4e5d8bf28e31007f90760b277a100661992c")
+	    == 0);
+}
+
+
+
 
 
 int
@@ -722,6 +793,8 @@ main(void)
 	test_end_cleanup();
 	test_status_row_component_join();
 	test_time_refresh_component_join();
+	test_opening_row_component_join();
+	test_press_any_key_component_join();
 	if (failures != 0U)
 		fprintf(stderr, "%u framebuffer test(s) failed\n", failures);
 	return failures == 0U ? 0 : 1;
