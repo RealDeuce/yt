@@ -597,6 +597,19 @@ yt_shared_error_compose(int16_t error_number, int32_t source_line,
 }
 
 bool
+yt_shared_error_active_writer_fatal_run(uint8_t error_number,
+    uint16_t module_segment, bool redirected_stdin, bool function_bar,
+    bool cursor_shape_known, uint16_t process_entry_cursor_shape,
+    const struct yt_brun_internal_fatal_ops *ops, void *context,
+    struct yt_brun_runtime_fatal_state *state)
+{
+	return yt_brun_runtime_error_fatal_run(error_number, "YT-SUB  ",
+	    true, 610, module_segment, 0x1ABBU, redirected_stdin,
+	    function_bar, cursor_shape_known, process_entry_cursor_shape,
+	    ops, context, state);
+}
+
+bool
 yt_basic_fault_project(const struct yt_error *error,
     const uint8_t *pathname, size_t pathname_length,
     const uint8_t *date_text, size_t date_length,

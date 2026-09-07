@@ -6,6 +6,7 @@
 #include "yt_game.h"
 #include "yt_init.h"
 #include "yt_maint.h"
+#include "yt_main_error.h"
 #include "yt_names.h"
 #include "yt_platform.h"
 #include "yt_portname.h"
@@ -4575,9 +4576,9 @@ test_brun_internal_fatal(void)
 		memset(&tape, 0, sizeof(tape));
 		if (!yt_brun_runtime_error_description((uint8_t)error_number,
 		    &description, &description_length)
-		    || !yt_brun_runtime_error_fatal_run((uint8_t)error_number,
-		    "YT-SUB  ", true, 610, 0x1F42U, 0x1ABBU, false, false,
-		    false, 0U, &ops, &tape, &runtime_state)
+		    || !yt_shared_error_active_writer_fatal_run(
+		    (uint8_t)error_number, 0x1F42U, false, false, false, 0U,
+		    &ops, &tape, &runtime_state)
 		    || runtime_state.error_number != error_number
 		    || runtime_state.error_description_length != description_length
 		    || memcmp(runtime_state.error_description, description,
