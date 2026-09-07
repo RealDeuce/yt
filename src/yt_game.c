@@ -256,6 +256,19 @@ yt_xannor_victory_run(struct yt_xannor_victory_state *state,
 }
 
 bool
+yt_xannor_victory_mks_internal_fatal_run(uint16_t module_segment,
+    bool redirected_stdin, bool function_bar, bool cursor_shape_known,
+    uint16_t process_entry_cursor_shape,
+    const struct yt_brun_internal_fatal_ops *ops, void *context,
+    struct yt_brun_internal_fatal_state *state)
+{
+	return yt_brun_internal_fatal_run(YT_BRUN_INTERNAL_FATAL_GC,
+	    "YT-SUB  ", true, 64006, module_segment, 0xA995U,
+	    redirected_stdin, function_bar, cursor_shape_known,
+	    process_entry_cursor_shape, ops, context, state);
+}
+
+bool
 yt_startup_configuration_run(struct yt_startup_configuration_state *state,
     const struct yt_startup_configuration_ops *ops, void *context,
     struct yt_error *error)

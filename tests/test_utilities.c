@@ -4522,9 +4522,12 @@ test_brun_internal_fatal(void)
 		return false;
 
 	memset(&tape, 0, sizeof(tape));
-	if (!yt_brun_internal_fatal_run(YT_BRUN_INTERNAL_FATAL_GC,
-	    "YT-SUB  ", true, 64006, 0x1F42U, 0xA995U, true, false,
-	    false, 0U, &ops, &tape, &state)
+	if (!yt_xannor_victory_mks_internal_fatal_run(0x1F42U, true,
+	    false, false, 0U, &ops, &tape, &state)
+	    || state.entry != YT_BRUN_INTERNAL_FATAL_GC
+	    || strcmp(state.module, "YT-SUB  ") != 0
+	    || !state.has_source_line || state.source_line != 64006
+	    || state.module_segment != 0x1F42U || state.saved_ip != 0xA995U
 	    || state.local_length != sizeof(gc_expected) - 1U
 	    || memcmp(state.local_bytes, gc_expected,
 	    sizeof(gc_expected) - 1U) != 0
