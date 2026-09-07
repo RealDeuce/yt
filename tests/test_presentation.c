@@ -44103,6 +44103,319 @@ test_movement_presentation(void)
 	CHECK(capture.remote_length == 89U && pager.line_count == 1.0f);
 }
 
+struct danger_scan_presentation_context {
+	struct yt_present_state current;
+	struct pager_capture capture;
+	struct yt_sector target;
+	struct yt_sector team;
+	struct yt_player players[3];
+	float sector_reads[4];
+	float player_reads[4];
+	size_t sector_read_count;
+	size_t player_read_count;
+	size_t restore_count;
+	uint8_t relationship_raw[4];
+};
+
+static bool
+danger_scan_presentation_read_sector(void *context, float logical_sector,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct danger_scan_presentation_context *fixture = context;
+
+	(void)error;
+	if (fixture->sector_read_count >= YT_ARRAY_LEN(fixture->sector_reads))
+		return false;
+	fixture->sector_reads[fixture->sector_read_count++] = logical_sector;
+	*sector = fixture->sector_read_count == 1U
+	    ? fixture->target : fixture->team;
+	return true;
+}
+
+static bool
+danger_scan_presentation_read_player(void *context, float record,
+    struct yt_player *player, struct yt_error *error)
+{
+	struct danger_scan_presentation_context *fixture = context;
+
+	(void)error;
+	if (fixture->player_read_count >= YT_ARRAY_LEN(fixture->player_reads))
+		return false;
+	fixture->player_reads[fixture->player_read_count] = record;
+	*player = fixture->players[fixture->player_read_count];
+	++fixture->player_read_count;
+	return true;
+}
+
+static bool
+danger_scan_presentation_restore(void *context, struct yt_error *error)
+{
+	struct danger_scan_presentation_context *fixture = context;
+
+	(void)error;
+	++fixture->restore_count;
+	return true;
+}
+
+static bool
+danger_scan_presentation_sound(void *context, float selector,
+    struct yt_error *error)
+{
+	struct danger_scan_presentation_context *fixture = context;
+	struct yt_present_result result;
+
+	(void)error;
+	if (selector != 8.0f
+	    || yt_present_sound(selector, &fixture->current, &result)
+	    != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(&fixture->capture, &result);
+	return true;
+}
+
+static bool
+danger_scan_presentation_present(void *context, const uint8_t *text,
+    size_t length, enum yt_danger_scan_output_kind kind,
+    struct yt_error *error)
+{
+	struct danger_scan_presentation_context *fixture = context;
+	struct yt_present_result result;
+	enum yt_present_status status;
+
+	(void)error;
+	if (kind == YT_DANGER_SCAN_WARNING_RAW)
+		status = yt_present_bold_character(text, length,
+		    &fixture->current, &result);
+	else if (kind == YT_DANGER_SCAN_LEADING_BLANK
+	    || kind == YT_DANGER_SCAN_WARNING_BLANK
+	    || kind == YT_DANGER_SCAN_FINAL_BLANK)
+		status = yt_present_line(text, length, &fixture->current, &result);
+	else
+		status = yt_present_bold_line(text, length,
+		    &fixture->current, &result);
+	if (status != YT_PRESENT_OK)
+		return false;
+	pager_capture_result(&fixture->capture, &result);
+	return true;
+}
+
+static float
+danger_scan_presentation_foreground(void *context)
+{
+	struct danger_scan_presentation_context *fixture = context;
+
+	return fixture->current.foreground;
+}
+
+static void
+danger_scan_presentation_set_foreground(void *context, float value)
+{
+	struct danger_scan_presentation_context *fixture = context;
+
+	fixture->current.foreground = value;
+}
+
+static void
+danger_scan_presentation_set_background(void *context, float value)
+{
+	struct danger_scan_presentation_context *fixture = context;
+
+	yt_present_set_background(&fixture->current, value);
+}
+
+static void
+danger_scan_presentation_set_blink(void *context, float value)
+{
+	struct danger_scan_presentation_context *fixture = context;
+
+	yt_present_set_blink(&fixture->current, value);
+}
+
+static void
+danger_scan_presentation_store_relationship(void *context,
+    const uint8_t raw[4])
+{
+	struct danger_scan_presentation_context *fixture = context;
+
+	memcpy(fixture->relationship_raw, raw, 4U);
+}
+
+static struct danger_scan_presentation_context
+danger_scan_presentation_fixture(bool ansi)
+{
+	static const struct yt_danger_scan_ops ops = {
+		danger_scan_presentation_read_sector,
+		danger_scan_presentation_read_player,
+		danger_scan_presentation_restore,
+		danger_scan_presentation_sound,
+		danger_scan_presentation_present,
+		danger_scan_presentation_foreground,
+		danger_scan_presentation_set_foreground,
+		danger_scan_presentation_set_background,
+		danger_scan_presentation_set_blink,
+		danger_scan_presentation_store_relationship,
+	};
+	struct danger_scan_presentation_context fixture;
+	struct yt_danger_scan_state scan;
+
+	memset(&fixture, 0, sizeof(fixture));
+	memset(&scan, 0, sizeof(scan));
+	fixture.current = state(ansi);
+	fixture.current.foreground = 7.0f;
+	fixture.target.mines = -2.0f;
+	fixture.target.fighters = 5.0f;
+	fixture.target.fighter_owner = -1.0f;
+	scan.target = 12.0f;
+	scan.sector_count = 2004.0f;
+	scan.sector_offset = 51.0f;
+	scan.current_player_record = 2.0f;
+	scan.disruption_sectors[0] = 12.0f;
+	CHECK(yt_danger_scan_run(&scan, &ops, &fixture, NULL));
+	CHECK(scan.complete && scan.target_read && scan.current_player_restored
+	    && !scan.owner_read && !scan.team_read
+	    && scan.finding_flag == 1.0f
+	    && memcmp(scan.finding_flag_raw, "\0\0\0\x81", 4U) == 0
+	    && scan.output_count == 9U
+	    && fixture.sector_read_count == 1U
+	    && fixture.sector_reads[0] == 12.0f
+	    && fixture.player_read_count == 0U
+	    && fixture.restore_count == 1U);
+	return fixture;
+}
+
+static void
+test_danger_scan_presentation(void)
+{
+	static const uint8_t plain[] =
+	    "\x07\r\n"
+	    "*** WARNING! *** 12 Danger Scanner has detected the following in sector!\r\n"
+	    "\r\n"
+	    "** Space-time disruption! **\r\n"
+	    "**-2 SECTOR MINES! **\r\n"
+	    "*** 5 Fighters Belonging to The Xannor\r\n"
+	    "\r\n"
+	    "*** WARP DRIVE DEACTIVATED ***\r\n";
+	static const uint8_t ansi[] =
+	    "\x1b[MBO4T128L64CGCGCGP16CGCGCGP16CGCGCGP16\x0e"
+	    "\x1b[0;33;44m\r\n"
+	    "\x1b[0;33;44;5;1m*** WARNING! ***"
+	    "\x1b[0;33;44;1m 12 Danger Scanner has detected the following in sector!\r\n"
+	    "\x1b[0;33;44m\r\n"
+	    "\x1b[0;33;44;1m** Space-time disruption! **\r\n"
+	    "\x1b[0;33;44;1m**-2 SECTOR MINES! **\r\n"
+	    "\x1b[0;33;44;1m*** 5 Fighters Belonging to The Xannor\r\n"
+	    "\x1b[0;33;44m\r\n"
+	    "\x1b[0;33;44;5;1m*** WARP DRIVE DEACTIVATED ***\r\n";
+	struct danger_scan_presentation_context fixture;
+
+	fixture = danger_scan_presentation_fixture(false);
+	CHECK(sizeof(plain) - 1U == 206U
+	    && fixture.capture.remote_length == sizeof(plain) - 1U
+	    && memcmp(fixture.capture.remote, plain, sizeof(plain) - 1U) == 0
+	    && fixture.current.foreground == 7.0f
+	    && fixture.current.background == 0.0f
+	    && fixture.current.bold == 1.0f
+	    && fixture.current.blink == 1.0f);
+	fixture = danger_scan_presentation_fixture(true);
+	CHECK(sizeof(ansi) - 1U == 352U
+	    && fixture.capture.remote_length == sizeof(ansi) - 1U
+	    && memcmp(fixture.capture.remote, ansi, sizeof(ansi) - 1U) == 0
+	    && fixture.current.foreground == 7.0f
+	    && fixture.current.background == 0.0f
+	    && fixture.current.bold == 0.0f
+	    && fixture.current.blink == 0.0f
+	    && fixture.current.cached_foreground == 0.0f
+	    && fixture.current.cached_background == 0.0f);
+}
+
+static void
+test_danger_scan_relationship_contract(void)
+{
+	static const struct yt_danger_scan_ops ops = {
+		danger_scan_presentation_read_sector,
+		danger_scan_presentation_read_player,
+		danger_scan_presentation_restore,
+		danger_scan_presentation_sound,
+		danger_scan_presentation_present,
+		danger_scan_presentation_foreground,
+		danger_scan_presentation_set_foreground,
+		danger_scan_presentation_set_background,
+		danger_scan_presentation_set_blink,
+		danger_scan_presentation_store_relationship,
+	};
+	struct danger_scan_presentation_context fixture;
+	struct yt_danger_scan_state scan;
+	uint8_t stale_fraction[4];
+
+	memset(&fixture, 0, sizeof(fixture));
+	memset(&scan, 0, sizeof(scan));
+	fixture.current = state(false);
+	fixture.target.fighters = 5.0f;
+	fixture.target.fighter_owner = 8.25f;
+	memcpy(fixture.players[0].record.bytes, "RAIDER", 6U);
+	fixture.players[0].name_length = 6.0f;
+	fixture.players[0].team = 3.75f;
+	fixture.players[1].team = 0.0f;
+	memcpy(fixture.team.record.bytes, "TEAM", 4U);
+	CHECK(yt_record_set_number(&fixture.team.record, YT_F73, 4.0f));
+	scan.target = 12.0f;
+	scan.sector_count = 2004.0f;
+	scan.sector_offset = 51.0f;
+	scan.current_player_record = 2.0f;
+	CHECK(yt_danger_scan_run(&scan, &ops, &fixture, NULL));
+	CHECK(scan.complete && scan.finding_flag == 1.0f
+	    && scan.owner_read && scan.friendship_current_read
+	    && !scan.friendship_owner_read && scan.team_read
+	    && fixture.player_read_count == 2U
+	    && fixture.player_reads[0] == 8.25f
+	    && fixture.player_reads[1] == 2.0f
+	    && fixture.sector_read_count == 2U
+	    && fixture.sector_reads[0] == 12.0f
+	    && fixture.sector_reads[1] == 3.75f
+	    && memcmp(scan.relationship_raw, "\0\0\x80\0", 4U) == 0
+	    && memcmp(fixture.relationship_raw, "\0\0\x80\0", 4U) == 0
+	    && fixture.capture.remote_length != 0U);
+
+	memset(&fixture, 0, sizeof(fixture));
+	memset(&scan, 0, sizeof(scan));
+	fixture.current = state(false);
+	fixture.target.fighters = 1.0f;
+	fixture.target.fighter_owner = 8.25f;
+	memcpy(fixture.players[0].record.bytes, "SOLO", 4U);
+	fixture.players[0].name_length = 4.0f;
+	CHECK(qb_mbf32_encode(0.4f, stale_fraction) == QB_MBF_OK);
+	scan.target = 12.0f;
+	scan.sector_count = 2004.0f;
+	scan.sector_offset = 51.0f;
+	scan.current_player_record = 2.0f;
+	memcpy(scan.relationship_raw, stale_fraction, 4U);
+	CHECK(yt_danger_scan_run(&scan, &ops, &fixture, NULL));
+	CHECK(scan.finding_flag == 1.0f && scan.owner_read && !scan.team_read
+	    && fixture.player_read_count == 1U
+	    && fixture.player_reads[0] == 8.25f
+	    && memcmp(scan.relationship_raw, stale_fraction, 4U) == 0);
+
+	memset(&fixture, 0, sizeof(fixture));
+	memset(&scan, 0, sizeof(scan));
+	fixture.current = state(false);
+	fixture.target.fighters = 1.0f;
+	fixture.target.fighter_owner = 8.0f;
+	memcpy(fixture.players[0].record.bytes, "FRIEND", 6U);
+	fixture.players[0].name_length = 6.0f;
+	scan.target = 12.0f;
+	scan.sector_count = 2004.0f;
+	scan.sector_offset = 51.0f;
+	scan.current_player_record = 2.0f;
+	memcpy(scan.relationship_raw, "\0\0\x80\x81", 4U);
+	CHECK(yt_danger_scan_run(&scan, &ops, &fixture, NULL));
+	CHECK(scan.complete && scan.finding_flag == 0.0f
+	    && memcmp(scan.finding_flag_raw, "\0\0\x80\0", 4U) == 0
+	    && fixture.capture.remote_length == 0U
+	    && fixture.restore_count == 1U
+	    && fixture.current.foreground == 2.0f
+	    && fixture.current.background == 0.0f);
+}
+
 static void
 test_direct_attack_presentation(void)
 {
@@ -47161,6 +47474,8 @@ main(void)
 	test_spy_sweep_presentation();
 	test_black_hole_presentation();
 	test_movement_presentation();
+	test_danger_scan_presentation();
+	test_danger_scan_relationship_contract();
 	test_direct_attack_presentation();
 	test_computer_spy_presentation();
 	test_computer_path_presentation();

@@ -8658,6 +8658,338 @@ yt_movement_player_overlay(struct yt_player *player, float target)
 	(void)yt_record_set_number(&player->record, YT_F57, target);
 }
 
+static bool
+danger_scan_append(uint8_t *row, size_t capacity, size_t *length,
+    const void *data, size_t data_length)
+{
+	if (*length > capacity || data_length > capacity - *length)
+		return false;
+	if (data_length != 0U)
+		memcpy(row + *length, data, data_length);
+	*length += data_length;
+	return true;
+}
+
+static bool
+danger_scan_present(struct yt_danger_scan_state *state,
+    const struct yt_danger_scan_ops *ops, void *context,
+    const uint8_t *text, size_t length,
+    enum yt_danger_scan_output_kind kind, struct yt_error *error)
+{
+	state->attempted = YT_DANGER_SCAN_PRESENT;
+	state->attempted_output = kind;
+	if (!ops->present(context, text, length, kind, error))
+		return false;
+	++state->output_count;
+	return true;
+}
+
+static void
+danger_scan_store_relationship(struct yt_danger_scan_state *state,
+    const struct yt_danger_scan_ops *ops, void *context,
+    const uint8_t raw[4])
+{
+	memcpy(state->relationship_raw, raw, 4U);
+	state->relationship = qb_mbf32_decode(raw);
+	ops->store_relationship(context, raw);
+}
+
+static void
+danger_scan_set_finding(struct yt_danger_scan_state *state)
+{
+	static const uint8_t one[4] = {0x00U, 0x00U, 0x00U, 0x81U};
+
+	memcpy(state->finding_flag_raw, one, sizeof(one));
+	state->finding_flag = 1.0f;
+}
+
+static bool
+danger_scan_first_warning(struct yt_danger_scan_state *state,
+    const struct yt_danger_scan_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t warning[] = "*** WARNING! ***";
+	static const uint8_t suffix[] =
+	    " Danger Scanner has detected the following in sector!";
+	uint8_t row[160];
+	char number[64];
+	int number_length;
+	size_t length = 0U;
+
+	if (state->finding_flag != 0.0f)
+		return true;
+	state->attempted = YT_DANGER_SCAN_MUSIC;
+	if (!ops->sound(context, 8.0f, error)
+	    || !danger_scan_present(state, ops, context, NULL, 0U,
+	    YT_DANGER_SCAN_LEADING_BLANK, error))
+		return false;
+	ops->set_blink(context, 1.0f);
+	if (!danger_scan_present(state, ops, context, warning,
+	    sizeof(warning) - 1U, YT_DANGER_SCAN_WARNING_RAW, error))
+		return false;
+	number_length = qb_str_single(number, sizeof(number), state->target);
+	if (number_length < 0
+	    || !danger_scan_append(row, sizeof(row), &length, number,
+	    (size_t)number_length)
+	    || !danger_scan_append(row, sizeof(row), &length, suffix,
+	    sizeof(suffix) - 1U))
+		return startup_configuration_error(error, YT_RANGE,
+		    "danger warning target row");
+	return danger_scan_present(state, ops, context, row, length,
+	    YT_DANGER_SCAN_WARNING_TARGET, error)
+	    && danger_scan_present(state, ops, context, NULL, 0U,
+	    YT_DANGER_SCAN_WARNING_BLANK, error);
+}
+
+bool
+yt_danger_scan_run(struct yt_danger_scan_state *state,
+    const struct yt_danger_scan_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t dirty_false[4] = {0x00U, 0x00U, 0x80U, 0x00U};
+	static const uint8_t relationship_true[4] =
+	    {0x00U, 0x00U, 0x80U, 0x81U};
+	static const uint8_t disruption[] = "** Space-time disruption! **";
+	static const uint8_t mine_prefix[] = "**";
+	static const uint8_t mine_suffix[] = " SECTOR MINES! **";
+	static const uint8_t fighter_prefix[] = "***";
+	static const uint8_t fighter_middle[] = " Fighters Belonging to ";
+	static const uint8_t xannor[] = "The Xannor";
+	static const uint8_t mercenaries[] = "Mercenaries";
+	static const uint8_t team_prefix[] = " * Team [";
+	static const uint8_t team_name_prefix[] = " [";
+	static const uint8_t closing_bracket[] = "]";
+	static const uint8_t deactivated[] =
+	    "*** WARP DRIVE DEACTIVATED ***";
+	uint8_t row[256];
+	char number[80];
+	size_t row_length;
+	bool overflow;
+
+	if (state == NULL || ops == NULL || ops->read_sector == NULL
+	    || ops->read_player == NULL || ops->restore_current == NULL
+	    || ops->sound == NULL || ops->present == NULL
+	    || ops->foreground == NULL || ops->set_foreground == NULL
+	    || ops->set_background == NULL || ops->set_blink == NULL
+	    || ops->store_relationship == NULL)
+		return startup_configuration_error(error, YT_INVALID,
+		    "danger scanner transaction");
+	memcpy(state->finding_flag_raw, dirty_false, sizeof(dirty_false));
+	state->finding_flag = 0.0f;
+	state->relationship = qb_mbf32_decode(state->relationship_raw);
+	state->saved_foreground = 0.0f;
+	memset(&state->target_sector, 0, sizeof(state->target_sector));
+	memset(&state->owner_player, 0, sizeof(state->owner_player));
+	memset(&state->team_overlay, 0, sizeof(state->team_overlay));
+	state->attempted = YT_DANGER_SCAN_NONE;
+	state->attempted_output = YT_DANGER_SCAN_LEADING_BLANK;
+	state->output_count = 0U;
+	state->target_read = false;
+	state->owner_read = false;
+	state->friendship_current_read = false;
+	state->friendship_owner_read = false;
+	state->team_read = false;
+	state->current_player_restored = false;
+	state->complete = false;
+	if (state->target < 1.0f || state->target > state->sector_count) {
+		state->complete = true;
+		return true;
+	}
+	state->saved_foreground = ops->foreground(context);
+	ops->set_foreground(context, 3.0f);
+	ops->set_background(context, 4.0f);
+	state->attempted = YT_DANGER_SCAN_TARGET_GET;
+	if (!ops->read_sector(context, state->target,
+	    &state->target_sector, error))
+		return false;
+	state->target_read = true;
+	if (state->target == state->disruption_sectors[0]
+	    || state->target == state->disruption_sectors[1]) {
+		if (!danger_scan_first_warning(state, ops, context, error)
+		    || !danger_scan_present(state, ops, context, disruption,
+		    sizeof(disruption) - 1U, YT_DANGER_SCAN_DISRUPTION, error))
+			return false;
+		danger_scan_set_finding(state);
+	}
+	if (state->target_sector.mines != 0.0f) {
+		int number_length;
+
+		if (!danger_scan_first_warning(state, ops, context, error))
+			return false;
+		number_length = qb_str_single(number, sizeof(number),
+		    state->target_sector.mines);
+		row_length = 0U;
+		if (number_length < 0
+		    || !danger_scan_append(row, sizeof(row), &row_length,
+		    mine_prefix, sizeof(mine_prefix) - 1U)
+		    || !danger_scan_append(row, sizeof(row), &row_length, number,
+		    (size_t)number_length)
+		    || !danger_scan_append(row, sizeof(row), &row_length,
+		    mine_suffix, sizeof(mine_suffix) - 1U))
+			return startup_configuration_error(error, YT_RANGE,
+			    "danger mines row");
+		if (!danger_scan_present(state, ops, context, row, row_length,
+		    YT_DANGER_SCAN_MINES, error))
+			return false;
+		danger_scan_set_finding(state);
+	}
+	if (state->target_sector.fighters > 0.0f) {
+		float owner = state->target_sector.fighter_owner;
+		bool hostile;
+		int number_length = qb_str_double(number, sizeof(number),
+		    (double)state->target_sector.fighters);
+
+		row_length = 0U;
+		if (number_length < 0
+		    || !danger_scan_append(row, sizeof(row), &row_length,
+		    fighter_prefix, sizeof(fighter_prefix) - 1U)
+		    || !danger_scan_append(row, sizeof(row), &row_length, number,
+		    (size_t)number_length)
+		    || !danger_scan_append(row, sizeof(row), &row_length,
+		    fighter_middle, sizeof(fighter_middle) - 1U))
+			return startup_configuration_error(error, YT_RANGE,
+			    "danger fighters row");
+		if (owner == -1.0f) {
+			if (!danger_scan_append(row, sizeof(row), &row_length,
+			    xannor, sizeof(xannor) - 1U))
+				return false;
+		}
+		else if (owner == -2.0f) {
+			if (!danger_scan_append(row, sizeof(row), &row_length,
+			    mercenaries, sizeof(mercenaries) - 1U))
+				return false;
+		}
+		else {
+			int name_length;
+
+			state->attempted = YT_DANGER_SCAN_OWNER_GET;
+			if (!ops->read_player(context, owner,
+			    &state->owner_player, error))
+				return false;
+			state->owner_read = true;
+			name_length = qb_cint((double)state->owner_player.name_length,
+			    &overflow);
+			if (overflow || name_length < 0)
+				return startup_configuration_error(error, YT_RANGE,
+				    "danger owner name length");
+			if ((size_t)name_length > YT_TEXT_FIELD_SIZE)
+				name_length = (int)YT_TEXT_FIELD_SIZE;
+			if (!danger_scan_append(row, sizeof(row), &row_length,
+			    state->owner_player.record.bytes, (size_t)name_length))
+				return startup_configuration_error(error, YT_RANGE,
+				    "danger owner name row");
+			if (state->owner_player.team != 0.0f) {
+				struct yt_player current;
+				struct yt_player candidate;
+				int team_name_length;
+
+				danger_scan_store_relationship(state, ops, context,
+				    dirty_false);
+				if (owner >= 2.0f && owner <= state->sector_offset
+				    && state->current_player_record >= 2.0f
+				    && state->current_player_record <= state->sector_offset) {
+					if (owner == state->current_player_record)
+						danger_scan_store_relationship(state, ops,
+						    context, relationship_true);
+					else {
+						state->attempted =
+						    YT_DANGER_SCAN_FRIEND_CURRENT_GET;
+						if (!ops->read_player(context,
+						    state->current_player_record, &current,
+						    error))
+							return false;
+						state->friendship_current_read = true;
+						if (current.team != 0.0f) {
+							state->attempted =
+							    YT_DANGER_SCAN_FRIEND_OWNER_GET;
+							if (!ops->read_player(context, owner,
+							    &candidate, error))
+								return false;
+							state->friendship_owner_read = true;
+							if (candidate.team == current.team)
+								danger_scan_store_relationship(state,
+								    ops, context, relationship_true);
+						}
+					}
+				}
+				number_length = qb_str_single(number, sizeof(number),
+				    state->owner_player.team);
+				if (number_length < 1
+				    || !danger_scan_append(row, sizeof(row), &row_length,
+				    team_prefix, sizeof(team_prefix) - 1U)
+				    || !danger_scan_append(row, sizeof(row), &row_length,
+				    number + 1, (size_t)number_length - 1U)
+				    || !danger_scan_append(row, sizeof(row), &row_length,
+				    closing_bracket, sizeof(closing_bracket) - 1U))
+					return startup_configuration_error(error, YT_RANGE,
+					    "danger team number row");
+				state->attempted = YT_DANGER_SCAN_TEAM_GET;
+				if (!ops->read_sector(context, state->owner_player.team,
+				    &state->team_overlay, error))
+					return false;
+				state->team_read = true;
+				team_name_length = qb_cint((double)yt_record_get_number(
+				    &state->team_overlay.record, YT_F73), &overflow);
+				if (overflow || team_name_length < 0)
+					return startup_configuration_error(error, YT_RANGE,
+					    "danger team name length");
+				if (team_name_length > 0) {
+					size_t amount = (size_t)team_name_length;
+
+					if (amount > YT_TEXT_FIELD_SIZE)
+						amount = YT_TEXT_FIELD_SIZE;
+					if (!danger_scan_append(row, sizeof(row), &row_length,
+					    team_name_prefix,
+					    sizeof(team_name_prefix) - 1U)
+					    || !danger_scan_append(row, sizeof(row), &row_length,
+					    state->team_overlay.record.bytes, amount)
+					    || !danger_scan_append(row, sizeof(row), &row_length,
+					    closing_bracket,
+					    sizeof(closing_bracket) - 1U))
+						return startup_configuration_error(error,
+						    YT_RANGE, "danger team name row");
+				}
+			}
+		}
+		hostile = owner < 0.0f;
+		if (!hostile && owner > 1.0f && owner <= state->sector_offset
+		    && owner != state->current_player_record) {
+			int relationship = qb_cint((double)state->relationship,
+			    &overflow);
+
+			if (overflow)
+				return startup_configuration_error(error, YT_RANGE,
+				    "danger relationship CINT");
+			hostile = ~relationship != 0;
+		}
+		if (hostile) {
+			if (!danger_scan_first_warning(state, ops, context, error))
+				return false;
+			danger_scan_set_finding(state);
+			if (!danger_scan_present(state, ops, context, row, row_length,
+			    YT_DANGER_SCAN_FIGHTERS, error))
+				return false;
+		}
+	}
+	state->attempted = YT_DANGER_SCAN_RESTORE_CURRENT;
+	if (!ops->restore_current(context, error))
+		return false;
+	state->current_player_restored = true;
+	if (state->finding_flag != 0.0f) {
+		if (!danger_scan_present(state, ops, context, NULL, 0U,
+		    YT_DANGER_SCAN_FINAL_BLANK, error))
+			return false;
+		ops->set_blink(context, 1.0f);
+		if (!danger_scan_present(state, ops, context, deactivated,
+		    sizeof(deactivated) - 1U, YT_DANGER_SCAN_DEACTIVATED, error))
+			return false;
+	}
+	ops->set_foreground(context, state->saved_foreground);
+	ops->set_background(context, 0.0f);
+	state->complete = true;
+	return true;
+}
+
 static float
 movement_single_sub(float left, float right)
 {

@@ -672,13 +672,6 @@ session_set_relationship(struct yt_session *session, float value)
 		    YT_COMPUTER_ROUTE_STATUS_ADDRESS, raw);
 }
 
-static float
-session_relationship(const struct yt_session *session)
-{
-	return yt_route_process_single(&session->route_process,
-	    YT_COMPUTER_ROUTE_STATUS_ADDRESS);
-}
-
 static void
 session_set_self_mine_suppression(struct yt_session *session, bool enabled)
 {
@@ -5421,243 +5414,144 @@ display_current_sector_cached(struct yt_session *session,
 }
 
 static bool
-danger_first_warning(struct yt_session *session, float target,
-    bool already_visible, struct yt_error *error)
+danger_scan_read_sector(void *context, float logical_sector,
+    struct yt_sector *sector, struct yt_error *error)
 {
-	char number[40];
-	char row[160];
-	int length;
+	struct yt_session *session = context;
+	struct yt_record record;
+	uint32_t physical = session_sector_basic_record(session, logical_sector);
 
-	if (already_visible)
-		return true;
-	if (!session_sound(session, 8.0f, "danger warning sound", error)
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "danger leading blank", error))
+	if (!yt_database_read(&session->door->game.database, physical, &record,
+	    error))
 		return false;
-	yt_present_set_blink(&session->presentation, 1.0f);
-	if (!session_present_text(session,
-	    (const uint8_t *)"*** WARNING! ***", strlen("*** WARNING! ***"),
-	    SESSION_PRESENT_BOLD_RAW, "danger warning header", error))
-		return false;
-	qb_str_single(number, sizeof(number), target);
-	length = snprintf(row, sizeof(row),
-	    "%s Danger Scanner has detected the following in sector!", number);
-	if (length < 0 || (size_t)length >= sizeof(row)
-	    || !session_present_text(session, (const uint8_t *)row,
-	    (size_t)length, SESSION_PRESENT_BOLD_LINE,
-	    "danger warning target", error)
-	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "danger warning blank", error))
-		return false;
+	yt_sector_decode(sector, &record);
 	return true;
+}
+
+static bool
+danger_scan_read_player(void *context, float record,
+    struct yt_player *player, struct yt_error *error)
+{
+	return scanner_read_player(context, record, player, error);
+}
+
+static bool
+danger_scan_restore_current(void *context, struct yt_error *error)
+{
+	return reload_player(context, error);
+}
+
+static bool
+danger_scan_sound(void *context, float selector, struct yt_error *error)
+{
+	return session_sound(context, selector, "danger warning sound", error);
+}
+
+static bool
+danger_scan_present(void *context, const uint8_t *text, size_t length,
+    enum yt_danger_scan_output_kind kind, struct yt_error *error)
+{
+	static const enum session_present_text_kind kinds[] = {
+		[YT_DANGER_SCAN_LEADING_BLANK] = SESSION_PRESENT_LINE,
+		[YT_DANGER_SCAN_WARNING_RAW] = SESSION_PRESENT_BOLD_RAW,
+		[YT_DANGER_SCAN_WARNING_TARGET] = SESSION_PRESENT_BOLD_LINE,
+		[YT_DANGER_SCAN_WARNING_BLANK] = SESSION_PRESENT_LINE,
+		[YT_DANGER_SCAN_DISRUPTION] = SESSION_PRESENT_BOLD_LINE,
+		[YT_DANGER_SCAN_MINES] = SESSION_PRESENT_BOLD_LINE,
+		[YT_DANGER_SCAN_FIGHTERS] = SESSION_PRESENT_BOLD_LINE,
+		[YT_DANGER_SCAN_FINAL_BLANK] = SESSION_PRESENT_LINE,
+		[YT_DANGER_SCAN_DEACTIVATED] = SESSION_PRESENT_BOLD_LINE,
+	};
+	static const char *const operations[] = {
+		[YT_DANGER_SCAN_LEADING_BLANK] = "danger leading blank",
+		[YT_DANGER_SCAN_WARNING_RAW] = "danger warning header",
+		[YT_DANGER_SCAN_WARNING_TARGET] = "danger warning target",
+		[YT_DANGER_SCAN_WARNING_BLANK] = "danger warning blank",
+		[YT_DANGER_SCAN_DISRUPTION] = "danger disruption row",
+		[YT_DANGER_SCAN_MINES] = "danger mines row",
+		[YT_DANGER_SCAN_FIGHTERS] = "danger fighters row",
+		[YT_DANGER_SCAN_FINAL_BLANK] = "danger final blank",
+		[YT_DANGER_SCAN_DEACTIVATED] = "danger deactivation row",
+	};
+
+	if ((size_t)kind >= YT_ARRAY_LEN(kinds))
+		return false;
+	return session_present_text(context, text, length, kinds[kind],
+	    operations[kind], error);
+}
+
+static float
+danger_scan_foreground(void *context)
+{
+	return session_foreground(context);
+}
+
+static void
+danger_scan_set_foreground(void *context, float value)
+{
+	session_set_foreground(context, value);
+}
+
+static void
+danger_scan_set_background(void *context, float value)
+{
+	struct yt_session *session = context;
+
+	yt_present_set_background(&session->presentation, value);
+}
+
+static void
+danger_scan_set_blink(void *context, float value)
+{
+	struct yt_session *session = context;
+
+	yt_present_set_blink(&session->presentation, value);
+}
+
+static void
+danger_scan_store_relationship(void *context, const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_COMPUTER_ROUTE_STATUS_ADDRESS, raw);
 }
 
 static bool
 dangerous_destination(struct yt_session *session, float target,
     bool *danger, struct yt_error *error)
 {
-	struct yt_sector sector;
-	float saved_foreground;
-	char number[80];
-	uint8_t row[256];
-	size_t row_length;
-	bool overflow;
+	static const struct yt_danger_scan_ops ops = {
+		danger_scan_read_sector,
+		danger_scan_read_player,
+		danger_scan_restore_current,
+		danger_scan_sound,
+		danger_scan_present,
+		danger_scan_foreground,
+		danger_scan_set_foreground,
+		danger_scan_set_background,
+		danger_scan_set_blink,
+		danger_scan_store_relationship,
+	};
+	struct yt_danger_scan_state state = {
+		.target = target,
+		.sector_count = (float)sector_count(session),
+		.sector_offset = session_sector_offset(session),
+		.current_player_record = (float)session_record(session),
+		.disruption_sectors = {
+			session_disruption_sector(session, 0U),
+			session_disruption_sector(session, 1U),
+		},
+	};
+	bool result;
 
-	*danger = false;
-	if (target < 1.0f || target > (float)sector_count(session))
-		return true;
-	saved_foreground = session_foreground(session);
-	session_set_foreground(session, 3.0f);
-	yt_present_set_background(&session->presentation, 4.0f);
-	if (!session_read_sector(session, (int)target, &sector,
-	    error))
+	if (danger == NULL)
 		return false;
-
-	if (session_is_disruption_sector(session, target)) {
-		if (!danger_first_warning(session, target, *danger, error))
-			return false;
-		if (!session_present_text(session,
-		    (const uint8_t *)"** Space-time disruption! **",
-		    strlen("** Space-time disruption! **"),
-		    SESSION_PRESENT_BOLD_LINE, "danger disruption row", error))
-			return false;
-		*danger = true;
-	}
-	if (sector.mines != 0.0f) {
-		if (!danger_first_warning(session, target, *danger, error))
-			return false;
-		qb_str_single(number, sizeof(number), sector.mines);
-		row_length = (size_t)snprintf((char *)row, sizeof(row),
-		    "**%s SECTOR MINES! **", number);
-		if (row_length >= sizeof(row)
-		    || !session_present_text(session, row, row_length,
-		    SESSION_PRESENT_BOLD_LINE, "danger mines row", error))
-			return false;
-		*danger = true;
-	}
-	if (sector.fighters > 0.0f) {
-		float owner = sector.fighter_owner;
-		bool hostile;
-
-		qb_str_double(number, sizeof(number), (double)sector.fighters);
-		row_length = (size_t)snprintf((char *)row, sizeof(row),
-		    "***%s Fighters Belonging to ", number);
-		if (row_length >= sizeof(row))
-			return false;
-		if (owner == -1.0f) {
-			memcpy(row + row_length, "The Xannor",
-			    strlen("The Xannor"));
-			row_length += strlen("The Xannor");
-		}
-		else if (owner == -2.0f) {
-			memcpy(row + row_length, "Mercenaries",
-			    strlen("Mercenaries"));
-			row_length += strlen("Mercenaries");
-		}
-		else {
-			struct yt_player owner_player;
-			int owner_record = (int)qb_cint((double)owner, &overflow);
-			int name_length;
-
-			if (overflow) {
-				if (error != NULL) {
-					error->status = YT_RANGE;
-					snprintf(error->operation,
-					    sizeof(error->operation),
-					    "danger owner record");
-				}
-				return false;
-			}
-			if (!yt_game_read_player(&session->door->game, owner_record,
-			    &owner_player, error))
-				return false;
-			name_length = (int)qb_cint((double)owner_player.name_length,
-			    &overflow);
-			if (overflow || name_length < 0) {
-				if (error != NULL) {
-					error->status = YT_RANGE;
-					snprintf(error->operation,
-					    sizeof(error->operation),
-					    "danger owner name length");
-				}
-				return false;
-			}
-			if ((size_t)name_length > YT_TEXT_FIELD_SIZE)
-				name_length = (int)YT_TEXT_FIELD_SIZE;
-			if ((size_t)name_length > sizeof(row) - row_length)
-				return false;
-			memcpy(row + row_length, owner_player.record.bytes,
-			    (size_t)name_length);
-			row_length += (size_t)name_length;
-			if (owner_player.team != 0.0f) {
-				struct yt_player current;
-				struct yt_player candidate;
-				struct yt_sector team_overlay;
-				int team_record;
-				int team_name_length;
-
-				session_set_relationship(session, 0.0f);
-				if (owner >= 2.0f
-				    && owner <= session_sector_offset(session)
-				    && session_record(session) >= YT_PLAYER_FIRST
-				    && (float)session_record(session)
-				    <= session_sector_offset(session)) {
-					if (owner == (float)session_record(session))
-						session_set_relationship(session, -1.0f);
-					else {
-						if (!yt_game_read_player(
-						    &session->door->game,
-						    session_record(session), &current,
-						    error))
-							return false;
-						if (current.team != 0.0f) {
-							if (!yt_game_read_player(
-							    &session->door->game,
-							    owner_record, &candidate,
-							    error))
-								return false;
-							if (candidate.team == current.team)
-								session_set_relationship(session,
-								    -1.0f);
-						}
-					}
-				}
-				qb_str_single(number, sizeof(number),
-				    owner_player.team);
-				{
-					int amount = snprintf((char *)row + row_length,
-					    sizeof(row) - row_length, " * Team [%s]",
-					    number[0] == '\0' ? number : number + 1);
-
-					if (amount < 0 || (size_t)amount
-					    >= sizeof(row) - row_length)
-						return false;
-					row_length += (size_t)amount;
-				}
-				team_record = (int)qb_cint((double)owner_player.team,
-				    &overflow);
-				if (overflow
-				    || !session_read_sector(session,
-				    team_record, &team_overlay, error))
-					return false;
-				team_name_length = (int)qb_cint((double)
-				    yt_record_get_number(&team_overlay.record, YT_F73),
-				    &overflow);
-				if (overflow || team_name_length < 0) {
-					if (error != NULL) {
-						error->status = YT_RANGE;
-						snprintf(error->operation,
-						    sizeof(error->operation),
-						    "danger team name length");
-					}
-					return false;
-				}
-				if (team_name_length > 0) {
-					size_t amount = (size_t)team_name_length;
-
-					if (amount > YT_TEXT_FIELD_SIZE)
-						amount = YT_TEXT_FIELD_SIZE;
-					if (amount + 3U > sizeof(row) - row_length)
-						return false;
-					row[row_length++] = ' ';
-					row[row_length++] = '[';
-					memcpy(row + row_length,
-					    team_overlay.record.bytes, amount);
-					row_length += amount;
-					row[row_length++] = ']';
-				}
-			}
-		}
-		hostile = owner < 0.0f
-		    || (owner > 1.0f
-		    && owner <= session_sector_offset(session)
-		    && owner != (float)session_record(session)
-		    && session_relationship(session) == 0.0f);
-		if (hostile) {
-			if (!danger_first_warning(session, target, *danger, error))
-				return false;
-			*danger = true;
-			if (!session_present_text(session, row, row_length,
-			    SESSION_PRESENT_BOLD_LINE, "danger fighters row", error))
-				return false;
-		}
-	}
-	if (!reload_player(session, error))
-		return false;
-	if (*danger) {
-		if (!session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "danger final blank", error))
-			return false;
-		yt_present_set_blink(&session->presentation, 1.0f);
-		if (!session_present_text(session,
-		    (const uint8_t *)"*** WARP DRIVE DEACTIVATED ***",
-		    strlen("*** WARP DRIVE DEACTIVATED ***"),
-		    SESSION_PRESENT_BOLD_LINE, "danger deactivation row", error))
-			return false;
-	}
-	session_set_foreground(session, saved_foreground);
-	yt_present_set_background(&session->presentation, 0.0f);
-	return true;
+	yt_route_process_raw_single(&session->route_process,
+	    YT_COMPUTER_ROUTE_STATUS_ADDRESS, state.relationship_raw);
+	result = yt_danger_scan_run(&state, &ops, session, error);
+	*danger = state.finding_flag != 0.0f;
+	return result;
 }
 
 static bool

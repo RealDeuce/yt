@@ -2974,6 +2974,71 @@ bool yt_movement_warp_row(const float warps[6], uint8_t *row,
 bool yt_movement_confirmation_prompt(float target, uint8_t *row,
     size_t capacity, size_t *length);
 void yt_movement_player_overlay(struct yt_player *player, float target);
+enum yt_danger_scan_output_kind {
+	YT_DANGER_SCAN_LEADING_BLANK,
+	YT_DANGER_SCAN_WARNING_RAW,
+	YT_DANGER_SCAN_WARNING_TARGET,
+	YT_DANGER_SCAN_WARNING_BLANK,
+	YT_DANGER_SCAN_DISRUPTION,
+	YT_DANGER_SCAN_MINES,
+	YT_DANGER_SCAN_FIGHTERS,
+	YT_DANGER_SCAN_FINAL_BLANK,
+	YT_DANGER_SCAN_DEACTIVATED,
+};
+enum yt_danger_scan_step {
+	YT_DANGER_SCAN_NONE,
+	YT_DANGER_SCAN_TARGET_GET,
+	YT_DANGER_SCAN_OWNER_GET,
+	YT_DANGER_SCAN_FRIEND_CURRENT_GET,
+	YT_DANGER_SCAN_FRIEND_OWNER_GET,
+	YT_DANGER_SCAN_TEAM_GET,
+	YT_DANGER_SCAN_MUSIC,
+	YT_DANGER_SCAN_PRESENT,
+	YT_DANGER_SCAN_RESTORE_CURRENT,
+};
+struct yt_danger_scan_state {
+	float target;
+	float sector_count;
+	float sector_offset;
+	float current_player_record;
+	float disruption_sectors[2];
+	uint8_t relationship_raw[4];
+	float relationship;
+	uint8_t finding_flag_raw[4];
+	float finding_flag;
+	float saved_foreground;
+	struct yt_sector target_sector;
+	struct yt_player owner_player;
+	struct yt_sector team_overlay;
+	enum yt_danger_scan_step attempted;
+	enum yt_danger_scan_output_kind attempted_output;
+	size_t output_count;
+	bool target_read;
+	bool owner_read;
+	bool friendship_current_read;
+	bool friendship_owner_read;
+	bool team_read;
+	bool current_player_restored;
+	bool complete;
+};
+struct yt_danger_scan_ops {
+	bool (*read_sector)(void *context, float logical_sector,
+	    struct yt_sector *sector, struct yt_error *error);
+	bool (*read_player)(void *context, float record,
+	    struct yt_player *player, struct yt_error *error);
+	bool (*restore_current)(void *context, struct yt_error *error);
+	bool (*sound)(void *context, float selector, struct yt_error *error);
+	bool (*present)(void *context, const uint8_t *text, size_t length,
+	    enum yt_danger_scan_output_kind kind, struct yt_error *error);
+	float (*foreground)(void *context);
+	void (*set_foreground)(void *context, float value);
+	void (*set_background)(void *context, float value);
+	void (*set_blink)(void *context, float value);
+	void (*store_relationship)(void *context, const uint8_t raw[4]);
+};
+bool yt_danger_scan_run(struct yt_danger_scan_state *state,
+	const struct yt_danger_scan_ops *ops, void *context,
+	struct yt_error *error);
 enum yt_movement_output_kind {
 	YT_MOVEMENT_WARP_ROW,
 	YT_MOVEMENT_POST_WARP_BLANK,
