@@ -2706,21 +2706,35 @@ session_a8d2(struct yt_session *session, const uint8_t *prompt,
     size_t prompt_length, enum yt_yes_no_answer *answer,
     struct yt_error *error)
 {
-	if (answer == NULL)
+	uint8_t prompt_scratch[YT_COMMAND_SIZE];
+	size_t prompt_scratch_length = prompt_length;
+
+	if (answer == NULL || (prompt == NULL && prompt_length != 0U)
+	    || prompt_length > sizeof(prompt_scratch))
 		return false;
+	if (prompt_length != 0U)
+		memcpy(prompt_scratch, prompt, prompt_length);
 	for (;;) {
 		char response[YT_COMMAND_SIZE];
+		struct yt_a8d2_transform transform;
 
-		if (!session_present_text(session, prompt, prompt_length,
+		if (!session_present_text(session, prompt_scratch,
+		    prompt_scratch_length,
 		    SESSION_PRESENT_RAW, "yes/no prompt", error)
 		    || !session_0357(session, response, sizeof(response))
-		    || !yt_input_yes_no_candidate(response, session->output_source,
-		    sizeof(session->output_source), answer))
+		    || !yt_input_a8d2_staged(response, session->output_source,
+		    sizeof(session->output_source), prompt_scratch,
+		    sizeof(prompt_scratch), &prompt_scratch_length, session->queue,
+		    sizeof(session->queue), &session->queue_position,
+		    &session->queue_length, &session->presentation.bold,
+		    YT_A8D2_FAULT_NONE, 0U, &transform)
+		    || !transform.answer_valid)
 			return false;
-		if (*answer != YT_YES_NO_INVALID)
+		*answer = transform.answer;
+		if (transform.outcome == YT_A8D2_RETURNED)
 			return true;
-		yt_present_set_bold(&session->presentation, 1.0f);
-		clear_queue(session);
+		if (transform.outcome != YT_A8D2_RETRY)
+			return false;
 	}
 }
 

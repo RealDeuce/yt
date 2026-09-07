@@ -4369,6 +4369,8 @@ test_basic_fault_registry(void)
 		    0x45F7U, 6U},
 		{YT_BASIC_FAULT_SHARED, 0x1DEAU, 0x1DEDU, 0x1DD2U, 610,
 		    0x45F7U, 6U},
+		{YT_BASIC_FAULT_MAIN, 0xA8EFU, 0xA8F2U, 0xA8E7U, 40001,
+		    0xB2DAU, 13U},
 	};
 	struct yt_error error;
 	size_t index;
@@ -4444,6 +4446,15 @@ test_basic_fault_registry(void)
 			    (enum yt_basic_fault_site)index,
 			    expected_error == 14U ? 7U : 14U));
 		}
+		else if (expected[index].domain == 13U) {
+			CHECK(identity->error_count == 2U
+			    && yt_basic_fault_admits(
+			    (enum yt_basic_fault_site)index, 14U)
+			    && yt_basic_fault_admits(
+			    (enum yt_basic_fault_site)index, 16U)
+			    && !yt_basic_fault_admits(
+			    (enum yt_basic_fault_site)index, 5U));
+		}
 		else {
 			size_t expected_count = expected[index].domain == 8U ? 7U
 			    : expected[index].domain == 9U ? 2U
@@ -4476,6 +4487,7 @@ test_basic_fault_registry(void)
 			};
 			static const uint8_t genesis_completion_errors[] = {57U};
 			static const uint8_t genesis_close_errors[] = {57U, 61U, 70U};
+			static const uint8_t a8d2_left_errors[] = {14U, 16U};
 			struct yt_basic_fault_projection projection;
 			const uint8_t *domain = expected[index].domain == 1U
 			    ? put_errors : expected[index].domain == 2U
@@ -4489,7 +4501,8 @@ test_basic_fault_registry(void)
 			    ? genesis_command_errors : expected[index].domain == 10U
 			    ? genesis_print_errors : expected[index].domain == 11U
 			    ? genesis_completion_errors : expected[index].domain == 12U
-			    ? genesis_close_errors : get_errors;
+			    ? genesis_close_errors : expected[index].domain == 13U
+			    ? a8d2_left_errors : get_errors;
 			size_t domain_length = expected[index].domain == 1U
 			    ? YT_ARRAY_LEN(put_errors) : expected[index].domain == 2U
 			    ? 1U : expected[index].domain == 3U
@@ -4510,6 +4523,8 @@ test_basic_fault_registry(void)
 			    ? YT_ARRAY_LEN(genesis_completion_errors)
 			    : expected[index].domain == 12U
 			    ? YT_ARRAY_LEN(genesis_close_errors)
+			    : expected[index].domain == 13U
+			    ? YT_ARRAY_LEN(a8d2_left_errors)
 			    : YT_ARRAY_LEN(get_errors);
 			bool admitted = false;
 			size_t error_index;
@@ -25273,6 +25288,256 @@ test_direct_emergency_warp_ade0_prefix_failures(void)
 		    && fixture.emergency_flushes == 0U
 		    && fixture.emergency_waits == 0U);
 		yt_text_input_destroy(&viewer.input);
+		}
+	}
+}
+
+struct direct_warp_a8d2_failure_state {
+	struct yt_a8d2_transform transform;
+	struct yt_basic_fault_projection projection;
+	char prompt[32];
+	char output[80];
+	bool projected;
+};
+
+static bool
+direct_emergency_warp_a8d2_failure_continue(
+    struct hostile_mines_hazard_fixture *fixture, const uint8_t *submitted,
+    size_t submitted_length, enum yt_a8d2_fault_site target,
+    uint16_t error_number, struct direct_warp_a8d2_failure_state *fault)
+{
+	static const uint8_t warning_one[] =
+	    "This is a desperate move! Your engines will be drained and will take time";
+	static const uint8_t warning_two[] =
+	    "to recharge! You also risk a melt down! Are you sure you wish to do this?";
+	static const char prompt[] = "[y/N] -=> ";
+	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct yt_present_result result;
+	struct yt_error error;
+	size_t prompt_length = sizeof(prompt) - 1U;
+
+	if (fault == NULL || submitted == NULL || submitted_length == 0U
+	    || submitted_length >= sizeof(join->accumulator)
+	    || yt_present_color(&join->presentation, &result) != YT_PRESENT_OK
+	    || !normal_exit_line(join, NULL, 0U))
+		return false;
+	memset(fault, 0, sizeof(*fault));
+	memcpy(fault->prompt, prompt, sizeof(prompt));
+	join->presentation.bold = 1.0f;
+	join->presentation.foreground = 7.0f;
+	join->pager.foreground = 7;
+	if (!normal_exit_b05d(join, warning_one, sizeof(warning_one) - 1U,
+	    0.0f))
+		return false;
+	join->presentation.bold = 1.0f;
+	if (!normal_exit_b05d(join, warning_two, sizeof(warning_two) - 1U,
+	    0.0f) || !normal_exit_line(join, NULL, 0U))
+		return false;
+	join->presentation.bold = 1.0f;
+	if (yt_present_character((const uint8_t *)prompt, sizeof(prompt) - 1U,
+	    &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	yt_pager_editor_enter(&join->pager, join->accumulator,
+	    sizeof(join->accumulator));
+	memcpy(join->accumulator, submitted, submitted_length);
+	join->accumulator[submitted_length] = '\0';
+	if (!yt_input_split_semicolon(join->accumulator, join->queue,
+	    sizeof(join->queue), &join->queue_position, &join->queue_length)
+	    || yt_present_editor_echo(submitted, submitted_length, submitted,
+	    submitted_length, &join->presentation, &result) != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	if (!normal_exit_line(join, NULL, 0U)
+	    || !yt_input_a8d2_staged(join->accumulator, fault->output,
+	    sizeof(fault->output), (uint8_t *)fault->prompt,
+	    sizeof(fault->prompt), &prompt_length, join->queue,
+	    sizeof(join->queue), &join->queue_position,
+	    &join->queue_length, &join->presentation.bold, target,
+	    error_number, &fault->transform))
+		return false;
+	memcpy(join->source, fault->output, strlen(fault->output) + 1U);
+	join->source_length = strlen(fault->output);
+	if (fault->transform.outcome != YT_A8D2_BASIC_ERROR)
+		return fault->transform.outcome == YT_A8D2_INTERNAL_FATAL;
+	yt_error_clear(&error);
+	error.status = YT_RANGE;
+	fault->projected = yt_error_attach_basic_fault_number(&error,
+	    YT_BASIC_FAULT_A8D2_LEFT_ONE, error_number)
+	    && yt_basic_fault_project(&error, NULL, 0U,
+	    (const uint8_t *)"01/01/30", 8U,
+	    (const uint8_t *)"12:34:56", 8U, &fault->projection);
+	return fault->projected;
+}
+
+static void
+test_direct_emergency_warp_a8d2_failures(void)
+{
+	static const uint8_t plain_a[] =
+	    "\r\n"
+	    "This is a desperate move! Your engines will be drained and will take time\n\r"
+	    "to recharge! You also risk a melt down! Are you sure you wish to do this?\n\r"
+	    "\r\n[y/N] -=> A;Q\r\n";
+	static const uint8_t plain_x[] =
+	    "\r\n"
+	    "This is a desperate move! Your engines will be drained and will take time\n\r"
+	    "to recharge! You also risk a melt down! Are you sure you wish to do this?\n\r"
+	    "\r\n[y/N] -=> X;Q\r\n";
+	static const uint8_t plain_n[] =
+	    "\r\n"
+	    "This is a desperate move! Your engines will be drained and will take time\n\r"
+	    "to recharge! You also risk a melt down! Are you sure you wish to do this?\n\r"
+	    "\r\n[y/N] -=> N;Q\r\n";
+	static const uint8_t ansi_a[] =
+	    "\r\n\x1b[0;37;40;1m"
+	    "This is a desperate move! Your engines will be drained and will take time\n\r"
+	    "\x1b[0;37;40;1m"
+	    "to recharge! You also risk a melt down! Are you sure you wish to do this?\n\r"
+	    "\x1b[0;37;40m\r\n\x1b[0;37;40;1m[y/N] -=> A;Q"
+	    "\x1b[0;37;40m\r\n";
+	static const uint8_t ansi_x[] =
+	    "\r\n\x1b[0;37;40;1m"
+	    "This is a desperate move! Your engines will be drained and will take time\n\r"
+	    "\x1b[0;37;40;1m"
+	    "to recharge! You also risk a melt down! Are you sure you wish to do this?\n\r"
+	    "\x1b[0;37;40m\r\n\x1b[0;37;40;1m[y/N] -=> X;Q"
+	    "\x1b[0;37;40m\r\n";
+	static const uint8_t ansi_n[] =
+	    "\r\n\x1b[0;37;40;1m"
+	    "This is a desperate move! Your engines will be drained and will take time\n\r"
+	    "\x1b[0;37;40;1m"
+	    "to recharge! You also risk a melt down! Are you sure you wish to do this?\n\r"
+	    "\x1b[0;37;40m\r\n\x1b[0;37;40;1m[y/N] -=> N;Q"
+	    "\x1b[0;37;40m\r\n";
+	static const struct {
+		enum yt_a8d2_fault_site site;
+		uint16_t error_number;
+		const uint8_t *submitted;
+		size_t submitted_length;
+		const uint8_t *plain;
+		size_t plain_length;
+		const uint8_t *ansi;
+		size_t ansi_length;
+		char retained;
+	} cuts[] = {
+		{YT_A8D2_FAULT_LEFT_ONE, 14U, (const uint8_t *)"A;Q", 3U,
+		    plain_a, sizeof(plain_a) - 1U, ansi_a, sizeof(ansi_a) - 1U, 'A'},
+		{YT_A8D2_FAULT_LEFT_ONE, 16U, (const uint8_t *)"A;Q", 3U,
+		    plain_a, sizeof(plain_a) - 1U, ansi_a, sizeof(ansi_a) - 1U, 'A'},
+		{YT_A8D2_FAULT_LEFT_ONE, 0x0AC9U, (const uint8_t *)"A;Q", 3U,
+		    plain_a, sizeof(plain_a) - 1U, ansi_a, sizeof(ansi_a) - 1U, 'A'},
+		{YT_A8D2_FAULT_FIRST_COPY, 0x0ACCU, (const uint8_t *)"A;Q", 3U,
+		    plain_a, sizeof(plain_a) - 1U, ansi_a, sizeof(ansi_a) - 1U, 'A'},
+		{YT_A8D2_FAULT_INVALID_QUEUE_CLEAR, 0x0ACCU,
+		    (const uint8_t *)"X;Q", 3U, plain_x, sizeof(plain_x) - 1U,
+		    ansi_x, sizeof(ansi_x) - 1U, 'X'},
+		{YT_A8D2_FAULT_PROMPT_CLEAR, 0x0ACCU,
+		    (const uint8_t *)"N;Q", 3U, plain_n, sizeof(plain_n) - 1U,
+		    ansi_n, sizeof(ansi_n) - 1U, 'N'},
+	};
+	static const struct {
+		bool hostile;
+		bool ansi;
+		const uint8_t *command;
+		size_t command_length;
+		size_t caller_end;
+		uint64_t caller_hash;
+	} modes[] = {
+		{true, false, (const uint8_t *)"W", 1U, 63U,
+		    UINT64_C(0x0b6904cbde91e151)},
+		{true, false, (const uint8_t *)"WT", 2U, 64U,
+		    UINT64_C(0x4715406bf12b49e1)},
+		{true, true, (const uint8_t *)"W", 1U, 73U,
+		    UINT64_C(0x1f8739c8faadb88e)},
+		{true, true, (const uint8_t *)"WT", 2U, 74U,
+		    UINT64_C(0x2e092d830cad0828)},
+		{false, false, (const uint8_t *)"W", 1U, 41U,
+		    UINT64_C(0x84059a449d6d0449)},
+		{false, true, (const uint8_t *)"W", 1U, 41U,
+		    UINT64_C(0x84059a449d6d0449)},
+	};
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	struct direct_warp_a8d2_failure_state fault;
+	struct yt_record record;
+	uint8_t remote[400];
+	size_t caller_end;
+	size_t cut;
+	size_t mode;
+
+	for (mode = 0U; mode < YT_ARRAY_LEN(modes); ++mode) {
+		for (cut = 0U; cut < YT_ARRAY_LEN(cuts); ++cut) {
+			const uint8_t *direct = modes[mode].ansi
+			    ? cuts[cut].ansi : cuts[cut].plain;
+			size_t direct_length = modes[mode].ansi
+			    ? cuts[cut].ansi_length : cuts[cut].plain_length;
+			const struct yt_a8d2_fault_identity *identity;
+
+			memset(&viewer, 0, sizeof(viewer));
+			fixture_viewer_initialize(&viewer, &stream,
+			    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+			    "YTSCORE.ASC", modes[mode].ansi, remote, sizeof(remote));
+			memset(&fixture, 0, sizeof(fixture));
+			fixture.cycle.presentation.viewer = &viewer;
+			memset(&record, 0xa5, sizeof(record));
+			(void)yt_record_set_number(&record, YT_F49, 17.0f);
+			(void)yt_record_set_number(&record, YT_F57, 733.0f);
+			yt_player_decode(&fixture.emergency_player, &record);
+			fixture.hazard_player = fixture.emergency_player;
+			CHECK((modes[mode].hostile
+			    && direct_emergency_warp_hostile_menu_prefix(&fixture,
+			    modes[mode].ansi, modes[mode].command,
+			    modes[mode].command_length, &caller_end))
+			    || (!modes[mode].hostile
+			    && direct_emergency_warp_main_command_prefix(&fixture,
+			    modes[mode].ansi, &caller_end)));
+			CHECK(direct_emergency_warp_a8d2_failure_continue(&fixture,
+			    cuts[cut].submitted, cuts[cut].submitted_length,
+			    cuts[cut].site, cuts[cut].error_number, &fault));
+			identity = yt_input_a8d2_fault_identity(cuts[cut].site);
+			CHECK(caller_end == modes[mode].caller_end
+			    && viewer_bytes_fnv1a64(remote, caller_end)
+			    == modes[mode].caller_hash
+			    && viewer.join.remote_length == caller_end + direct_length
+			    && memcmp(remote + caller_end, direct, direct_length) == 0
+			    && identity != NULL
+			    && fault.transform.fault_site == cuts[cut].site
+			    && fault.transform.error_number == cuts[cut].error_number
+			    && fault.transform.outcome
+			    == (cuts[cut].error_number == 14U
+			    || cuts[cut].error_number == 16U
+			    ? YT_A8D2_BASIC_ERROR : YT_A8D2_INTERNAL_FATAL)
+			    && fault.projected
+			    == (fault.transform.outcome == YT_A8D2_BASIC_ERROR)
+			    && strcmp(fault.prompt, "[y/N] -=> ") == 0
+			    && fault.output[0] == cuts[cut].retained
+			    && fault.output[1] == '\0'
+			    && strcmp(viewer.join.accumulator,
+			    (const char[]){cuts[cut].retained, '\0'}) == 0
+			    && viewer.join.source_length == 1U
+			    && viewer.join.source[0] == cuts[cut].retained
+			    && viewer.join.queue_position == 0U
+			    && viewer.join.queue_length == 2U
+			    && memcmp(viewer.join.queue, "Q\r", 2U) == 0
+			    && !fixture.warp_called && fixture.draw_position == 0U
+			    && fixture.emergency_player_reads == 0U
+			    && fixture.emergency_player_put_attempts == 0U
+			    && fixture.emergency_player_writes == 0U
+			    && fixture.emergency_flushes == 0U
+			    && fixture.emergency_waits == 0U);
+			if (fault.projected) {
+				CHECK(fault.projection.site
+				    == YT_BASIC_FAULT_A8D2_LEFT_ONE
+				    && fault.projection.identity->instruction == 0xA8EFU
+				    && fault.projection.identity->saved_ip == 0xA8F2U
+				    && fault.projection.identity->retry_statement == 0xA8E7U
+				    && fault.projection.identity->source_line == 40001
+				    && fault.projection.identity->handler == 0xB2DAU
+				    && fault.projection.disposition == YT_BASIC_FAULT_END
+				    && fault.projection.main.route == YT_MAIN_ERROR_FATAL);
+			}
+			yt_text_input_destroy(&viewer.input);
 		}
 	}
 }
@@ -47758,6 +48023,7 @@ main(void)
 	test_direct_emergency_warp_gate_get_failures();
 	test_direct_emergency_warp_gate_runtime_failures();
 	test_direct_emergency_warp_ade0_prefix_failures();
+	test_direct_emergency_warp_a8d2_failures();
 	test_direct_emergency_warp_ade0_late_failures();
 	test_direct_emergency_warp_parent_copy_failures();
 	test_direct_emergency_warp_hostile_parent_copy_failures();

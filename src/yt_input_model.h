@@ -157,6 +157,49 @@ enum yt_yes_no_answer {
 	YT_YES_NO_INVALID,
 };
 
+enum yt_a8d2_fault_site {
+	YT_A8D2_FAULT_NONE,
+	YT_A8D2_FAULT_LEFT_ONE,
+	YT_A8D2_FAULT_FIRST_COPY,
+	YT_A8D2_FAULT_INVALID_QUEUE_CLEAR,
+	YT_A8D2_FAULT_PROMPT_CLEAR,
+	YT_A8D2_FAULT_SITE_COUNT,
+};
+
+enum yt_a8d2_outcome {
+	YT_A8D2_RETURNED,
+	YT_A8D2_RETRY,
+	YT_A8D2_BASIC_ERROR,
+	YT_A8D2_INTERNAL_FATAL,
+};
+
+#define YT_A8D2_FAULT_ERRORS 3U
+
+struct yt_a8d2_fault_identity {
+	const char *name;
+	uint16_t instruction;
+	uint16_t saved_ip;
+	uint16_t statement;
+	int32_t source_line;
+	uint16_t destination;
+	uint16_t errors[YT_A8D2_FAULT_ERRORS];
+	size_t error_count;
+};
+
+struct yt_a8d2_transform {
+	enum yt_a8d2_outcome outcome;
+	enum yt_a8d2_fault_site fault_site;
+	enum yt_yes_no_answer answer;
+	uint16_t error_number;
+	bool answer_valid;
+	bool uppercase_complete;
+	bool left_complete;
+	bool first_copy_complete;
+	bool bold_committed;
+	bool queue_cleared;
+	bool prompt_cleared;
+};
+
 enum yt_ab36_terminal_kind {
 	YT_AB36_TERMINAL_INACTIVITY,
 	YT_AB36_TERMINAL_SESSION_LIMIT,
@@ -479,6 +522,15 @@ bool yt_input_split_semicolon_staged(char *text, size_t text_capacity,
 bool yt_input_yes_no_candidate(const char *command_accumulator,
     char *output_source, size_t output_source_capacity,
     enum yt_yes_no_answer *answer);
+const struct yt_a8d2_fault_identity *yt_input_a8d2_fault_identity(
+	enum yt_a8d2_fault_site site);
+bool yt_input_a8d2_staged(const char *command_accumulator,
+	char *output_source, size_t output_source_capacity,
+	uint8_t *prompt, size_t prompt_capacity, size_t *prompt_length,
+	char *queue, size_t queue_capacity, size_t *queue_position,
+	size_t *queue_length, float *bold,
+	enum yt_a8d2_fault_site target, uint16_t error_number,
+	struct yt_a8d2_transform *result);
 void yt_input_numeric_response(char *text);
 bool yt_input_command_notice_wait(enum yt_command_notice_kind kind,
     uint16_t *address, uint8_t duration_raw[4]);

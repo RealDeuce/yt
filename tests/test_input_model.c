@@ -2304,6 +2304,140 @@ test_yes_no_candidate(void)
 	    &answer));
 }
 
+static bool
+a8d2_case(const char *response, enum yt_a8d2_fault_site target,
+    uint16_t error_number, struct yt_a8d2_transform *result,
+	char output[32], char prompt[32], char queue[32],
+	size_t *queue_position, size_t *queue_length, float *bold)
+{
+	size_t prompt_length;
+
+	snprintf(output, 32U, "%s", "old output");
+	snprintf(prompt, 32U, "%s", "[y/N] -=> ");
+	snprintf(queue, 32U, "%s", "Q\r");
+	*queue_position = 0U;
+	*queue_length = 2U;
+	*bold = 0.0f;
+	prompt_length = strlen(prompt);
+	return yt_input_a8d2_staged(response, output, 32U,
+	    (uint8_t *)prompt, 32U, &prompt_length, queue, 32U,
+	    queue_position, queue_length, bold, target,
+	    error_number, result);
+}
+
+static void
+test_a8d2_fault_stages(void)
+{
+	static const struct {
+		enum yt_a8d2_fault_site site;
+		uint16_t instruction;
+		uint16_t saved_ip;
+		uint16_t statement;
+		uint16_t destination;
+		size_t errors;
+	} identities[] = {
+		{YT_A8D2_FAULT_LEFT_ONE, 0xA8EFU, 0xA8F2U, 0xA8E7U,
+		    0x4C9AU, 3U},
+		{YT_A8D2_FAULT_FIRST_COPY, 0xA8F4U, 0xA8F7U, 0xA8E7U,
+		    0x4C9AU, 1U},
+		{YT_A8D2_FAULT_INVALID_QUEUE_CLEAR, 0xA938U, 0xA93BU,
+		    0xA932U, 0x4BE0U, 1U},
+		{YT_A8D2_FAULT_PROMPT_CLEAR, 0xA943U, 0xA946U, 0xA93DU,
+		    0x4D3AU, 1U},
+	};
+	struct yt_a8d2_transform result;
+	char output[32];
+	char prompt[32];
+	char queue[32];
+	size_t queue_position;
+	size_t queue_length;
+	float bold;
+	size_t index;
+
+	for (index = 0U; index < YT_ARRAY_LEN(identities); ++index) {
+		const struct yt_a8d2_fault_identity *identity =
+		    yt_input_a8d2_fault_identity(identities[index].site);
+
+		CHECK(identity != NULL
+		    && identity->instruction == identities[index].instruction
+		    && identity->saved_ip == identities[index].saved_ip
+		    && identity->statement == identities[index].statement
+		    && identity->source_line == 40001
+		    && identity->destination == identities[index].destination
+		    && identity->error_count == identities[index].errors);
+	}
+	CHECK(yt_input_a8d2_fault_identity(YT_A8D2_FAULT_NONE) == NULL
+	    && yt_input_a8d2_fault_identity(YT_A8D2_FAULT_SITE_COUNT) == NULL);
+
+	CHECK(a8d2_case("ab", YT_A8D2_FAULT_LEFT_ONE, 14U, &result,
+	    output, prompt, queue, &queue_position, &queue_length, &bold));
+	CHECK(result.outcome == YT_A8D2_BASIC_ERROR
+	    && result.fault_site == YT_A8D2_FAULT_LEFT_ONE
+	    && result.error_number == 14U && result.uppercase_complete
+	    && !result.left_complete && !result.answer_valid
+	    && strcmp(output, "AB") == 0
+	    && strcmp(prompt, "[y/N] -=> ") == 0
+	    && strcmp(queue, "Q\r") == 0 && queue_length == 2U
+	    && bold == 0.0f);
+	CHECK(a8d2_case("ab", YT_A8D2_FAULT_LEFT_ONE, 16U, &result,
+	    output, prompt, queue, &queue_position, &queue_length, &bold)
+	    && result.outcome == YT_A8D2_BASIC_ERROR
+	    && result.error_number == 16U && strcmp(output, "AB") == 0);
+	CHECK(a8d2_case("ab", YT_A8D2_FAULT_LEFT_ONE, 0x0AC9U, &result,
+	    output, prompt, queue, &queue_position, &queue_length, &bold)
+	    && result.outcome == YT_A8D2_INTERNAL_FATAL
+	    && result.error_number == 0x0AC9U && strcmp(output, "AB") == 0);
+
+	CHECK(a8d2_case("ab", YT_A8D2_FAULT_FIRST_COPY, 0x0ACCU,
+	    &result, output, prompt, queue, &queue_position, &queue_length,
+	    &bold));
+	CHECK(result.outcome == YT_A8D2_INTERNAL_FATAL
+	    && result.left_complete && !result.first_copy_complete
+	    && !result.answer_valid && strcmp(output, "AB") == 0
+	    && strcmp(prompt, "[y/N] -=> ") == 0
+	    && queue_length == 2U && bold == 0.0f);
+
+	CHECK(a8d2_case("x", YT_A8D2_FAULT_INVALID_QUEUE_CLEAR, 0x0ACCU,
+	    &result, output, prompt, queue, &queue_position, &queue_length,
+	    &bold));
+	CHECK(result.outcome == YT_A8D2_INTERNAL_FATAL
+	    && result.answer_valid && result.answer == YT_YES_NO_INVALID
+	    && result.first_copy_complete && result.bold_committed
+	    && !result.queue_cleared && strcmp(output, "X") == 0
+	    && strcmp(queue, "Q\r") == 0 && queue_length == 2U
+	    && strcmp(prompt, "[y/N] -=> ") == 0 && bold == 1.0f);
+
+	CHECK(a8d2_case("n", YT_A8D2_FAULT_PROMPT_CLEAR, 0x0ACCU,
+	    &result, output, prompt, queue, &queue_position, &queue_length,
+	    &bold));
+	CHECK(result.outcome == YT_A8D2_INTERNAL_FATAL
+	    && result.answer_valid && result.answer == YT_YES_NO_NO
+	    && !result.prompt_cleared && strcmp(output, "N") == 0
+	    && strcmp(prompt, "[y/N] -=> ") == 0
+	    && strcmp(queue, "Q\r") == 0 && queue_length == 2U
+	    && bold == 0.0f);
+
+	CHECK(a8d2_case("x", YT_A8D2_FAULT_NONE, 0U, &result,
+	    output, prompt, queue, &queue_position, &queue_length, &bold)
+	    && result.outcome == YT_A8D2_RETRY && result.queue_cleared
+	    && queue_length == 0U && queue[0] == '\0' && bold == 1.0f
+	    && strcmp(prompt, "[y/N] -=> ") == 0);
+	CHECK(a8d2_case("n", YT_A8D2_FAULT_NONE, 0U, &result,
+	    output, prompt, queue, &queue_position, &queue_length, &bold)
+	    && result.outcome == YT_A8D2_RETURNED && result.prompt_cleared
+	    && prompt[0] == '\0' && strcmp(queue, "Q\r") == 0
+	    && queue_length == 2U && strcmp(output, "N") == 0);
+
+	CHECK(!a8d2_case("", YT_A8D2_FAULT_LEFT_ONE, 14U, &result,
+	    output, prompt, queue, &queue_position, &queue_length, &bold)
+	    && !a8d2_case("n", YT_A8D2_FAULT_INVALID_QUEUE_CLEAR, 0x0ACCU,
+	    &result, output, prompt, queue, &queue_position, &queue_length,
+	    &bold)
+	    && !a8d2_case("x", YT_A8D2_FAULT_PROMPT_CLEAR, 0x0ACCU,
+	    &result, output, prompt, queue, &queue_position, &queue_length,
+	    &bold));
+}
+
 static void
 test_numeric_response(void)
 {
@@ -4540,6 +4674,7 @@ main(void)
 	test_timed_wait();
 	test_input_drain();
 	test_yes_no_candidate();
+	test_a8d2_fault_stages();
 	test_numeric_response();
 	test_sysop_chat();
 	test_sysop_chat_process_cells();
