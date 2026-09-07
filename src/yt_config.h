@@ -87,6 +87,29 @@ struct yt_config_local_screen_state {
 	bool complete;
 };
 
+enum yt_config_overlay_operation {
+	YT_CONFIG_OVERLAY_NONE,
+	YT_CONFIG_OVERLAY_READ,
+	YT_CONFIG_OVERLAY_COPY,
+	YT_CONFIG_OVERLAY_WRITE,
+};
+
+struct yt_config_overlay {
+	size_t offset;
+	const uint8_t *data;
+	size_t length;
+};
+
+struct yt_config_overlay_state {
+	enum yt_config_overlay_operation attempted;
+	struct yt_record field;
+	size_t overlay_index;
+	size_t overlays_completed;
+	bool field_loaded;
+	bool write_complete;
+	bool complete;
+};
+
 bool yt_config_decode(struct yt_config *config,
     const struct yt_record *record, struct yt_error *error);
 bool yt_config_load(struct yt_database *database, struct yt_config *config,
@@ -102,6 +125,10 @@ bool yt_config_headquarters_relocate(struct yt_config_hq_state *state,
 	struct yt_error *error);
 bool yt_config_toggle_local_screen(
 	struct yt_config_local_screen_state *state,
+	const struct yt_config_record_ops *ops, void *context,
+	struct yt_error *error);
+bool yt_config_apply_overlays(struct yt_config_overlay_state *state,
+	const struct yt_config_overlay *overlays, size_t overlay_count,
 	const struct yt_config_record_ops *ops, void *context,
 	struct yt_error *error);
 

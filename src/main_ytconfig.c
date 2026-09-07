@@ -35,6 +35,11 @@ config_write_record(void *context, size_t basic_record,
 	    || yt_database_flush(&game->database, error));
 }
 
+static const struct yt_config_record_ops config_record_ops = {
+	config_read_record,
+	config_write_record,
+};
+
 static bool
 ytconfig_close_all(struct yt_game *game, struct yt_error *error)
 {
@@ -165,8 +170,11 @@ static bool
 edit_genesis(struct yt_game *game, struct yt_error *error)
 {
 	struct yt_config_output_result output;
+	struct yt_config_overlay_state state;
 	struct qb_val_result parsed;
+	struct yt_config_overlay overlay;
 	char line[160];
+	uint8_t raw[4];
 	float threshold;
 
 	if (!yt_config_compose_genesis_prompt(NULL, 0U, 0U, &output)
@@ -182,8 +190,18 @@ edit_genesis(struct yt_game *game, struct yt_error *error)
 			return false;
 		return true;
 	}
+	if (qb_mbf32_encode(threshold, raw) == QB_MBF_OVERFLOW) {
+		if (error != NULL)
+			error->status = YT_RANGE;
+		return false;
+	}
+	overlay = (struct yt_config_overlay){YT_F105, raw, sizeof(raw)};
+	if (!yt_config_apply_overlays(&state, &overlay, 1U,
+	    &config_record_ops, game, error))
+		return false;
+	game->config.record = state.field;
 	game->config.genesis_ports = threshold;
-	return store_config(game, error);
+	return true;
 }
 
 static bool
@@ -253,10 +271,6 @@ edit_scoreboard(struct yt_game *game, uint8_t working_path[41],
 static bool
 edit_headquarters(struct yt_game *game, struct yt_error *error)
 {
-	static const struct yt_config_record_ops ops = {
-		config_read_record,
-		config_write_record,
-	};
 	struct yt_config_output_result output;
 	struct yt_config_hq_state state;
 	struct qb_val_result parsed;
@@ -278,8 +292,8 @@ edit_headquarters(struct yt_game *game, struct yt_error *error)
 			return false;
 		return true;
 	}
-	if (!yt_config_headquarters_relocate(&state, &game->config, raw, &ops,
-	    game, error))
+	if (!yt_config_headquarters_relocate(&state, &game->config, raw,
+	    &config_record_ops, game, error))
 		return false;
 	if (state.route == YT_CONFIG_HQ_ROUTE_OCCUPIED) {
 		if (!yt_config_compose_hq_diagnostic(YT_CONFIG_HQ_OCCUPIED,
@@ -970,14 +984,10 @@ main(void)
 				goto failure;
 		}
 		else if (key == 'J') {
-			static const struct yt_config_record_ops ops = {
-				config_read_record,
-				config_write_record,
-			};
 			struct yt_config_local_screen_state state;
 
-			if (!yt_config_toggle_local_screen(&state, &ops, &game,
-			    &error))
+			if (!yt_config_toggle_local_screen(&state,
+			    &config_record_ops, &game, &error))
 				goto failure;
 			game.config.record = state.field;
 			game.config.local_screen = state.toggled;

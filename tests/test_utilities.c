@@ -5964,6 +5964,76 @@ config_local_screen_test_write(void *context, size_t basic_record,
 }
 
 static bool
+test_ytconfig_overlay_transaction(void)
+{
+	static const struct yt_config_record_ops ops = {
+		config_local_screen_test_read,
+		config_local_screen_test_write,
+	};
+	struct config_local_screen_test_tape tape;
+	struct yt_config_overlay_state state;
+	struct yt_error error;
+	uint8_t raw[4];
+	uint8_t second[] = {0xaa, 0xbb};
+	struct yt_config_overlay overlays[2];
+	unsigned byte;
+
+	for (byte = 0U; byte < YT_RECORD_SIZE; ++byte)
+		tape.durable.bytes[byte] = (uint8_t)(byte * 13U + 7U);
+	if (qb_mbf32_encode(123.5f, raw) == QB_MBF_OVERFLOW)
+		return false;
+	overlays[0] = (struct yt_config_overlay){YT_F105, raw, sizeof(raw)};
+	overlays[1] = (struct yt_config_overlay){YT_F105 + 2U, second,
+	    sizeof(second)};
+	tape.reads = 0U;
+	tape.writes = 0U;
+	tape.fail_at = 0U;
+	yt_error_clear(&error);
+	if (!yt_config_apply_overlays(&state, overlays, 2U, &ops, &tape,
+	    &error) || !state.complete
+	    || state.attempted != YT_CONFIG_OVERLAY_NONE
+	    || !state.field_loaded || !state.write_complete
+	    || state.overlay_index != 2U || state.overlays_completed != 2U
+	    || tape.reads != 1U || tape.writes != 1U
+	    || memcmp(tape.durable.bytes + YT_F105, raw, 2U) != 0
+	    || memcmp(tape.durable.bytes + YT_F105 + 2U, second,
+	    sizeof(second)) != 0)
+		return false;
+	for (byte = 0U; byte < YT_RECORD_SIZE; ++byte)
+		tape.durable.bytes[byte] = (uint8_t)(byte * 13U + 7U);
+	tape.reads = 0U;
+	tape.writes = 0U;
+	tape.fail_at = 1U;
+	yt_error_clear(&error);
+	if (yt_config_apply_overlays(&state, overlays, 1U, &ops, &tape,
+	    &error) || error.status != YT_IO_ERROR
+	    || state.attempted != YT_CONFIG_OVERLAY_READ
+	    || state.field_loaded || state.overlays_completed != 0U
+	    || state.write_complete)
+		return false;
+	tape.reads = 0U;
+	tape.writes = 0U;
+	tape.fail_at = 2U;
+	yt_error_clear(&error);
+	if (yt_config_apply_overlays(&state, overlays, 1U, &ops, &tape,
+	    &error) || error.status != YT_IO_ERROR
+	    || state.attempted != YT_CONFIG_OVERLAY_WRITE
+	    || !state.field_loaded || state.overlays_completed != 1U
+	    || state.write_complete
+	    || memcmp(state.field.bytes + YT_F105, raw, sizeof(raw)) != 0)
+		return false;
+	return !yt_config_apply_overlays(NULL, overlays, 1U, &ops, &tape,
+	    &error)
+	    && !yt_config_apply_overlays(&state, NULL, 1U, &ops, &tape,
+	    &error)
+	    && !yt_config_apply_overlays(&state, overlays, 1U, NULL, &tape,
+	    &error)
+	    && !yt_config_apply_overlays(&state,
+	    &(struct yt_config_overlay){YT_RECORD_SIZE, raw, 1U}, 1U,
+	    &ops, &tape, &error);
+}
+
+static bool
 test_ytconfig_local_screen_transaction(void)
 {
 	static const struct yt_config_record_ops ops = {
@@ -7736,6 +7806,8 @@ main(void)
 		failure = "YTCONFIG Genesis editor differs";
 	else if (!test_ytconfig_headquarters_transaction())
 		failure = "YTCONFIG Headquarters transaction differs";
+	else if (!test_ytconfig_overlay_transaction())
+		failure = "YTCONFIG raw overlay transaction differs";
 	else if (!test_ytconfig_local_screen_transaction())
 		failure = "YTCONFIG local-screen transaction differs";
 	else if (!test_ytconfig_headquarters(&error))
