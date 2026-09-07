@@ -10761,6 +10761,19 @@ test_computer_profit_cycle_presentation(void)
 	    && memcmp(capture.remote, adjacent_plain,
 	    sizeof(adjacent_plain) - 1U) == 0);
 	CHECK(pager.line_count == 1.0f);
+	CHECK(capture.local_event_count == 13U);
+	CHECK(capture.framebuffer_initialized);
+	CHECK(capture.framebuffer.bios_row == 9U
+	    && capture.framebuffer.bios_column == 41U
+	    && capture.framebuffer.qb_row == 9U
+	    && capture.framebuffer.qb_column == 41U
+	    && capture.framebuffer.brun_bios_cache_row == 9U
+	    && capture.framebuffer.brun_bios_cache_column == 41U);
+	CHECK(capture.framebuffer.qb_attribute == 0x07U
+	    && capture.framebuffer.qb_scrolls == 0U
+	    && capture.framebuffer.con_scrolls == 0U);
+	CHECK(startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
+	    == UINT64_C(0x09401818eea74c3d));
 
 	computer_profit_cycle_fixture(true, false, &capture, &current,
 	    &pager);
@@ -10768,6 +10781,19 @@ test_computer_profit_cycle_presentation(void)
 	CHECK(capture.remote_length == sizeof(adjacent_ansi) - 1U
 	    && memcmp(capture.remote, adjacent_ansi,
 	    sizeof(adjacent_ansi) - 1U) == 0);
+	CHECK(capture.local_event_count == 23U
+	    && capture.framebuffer_initialized
+	    && capture.framebuffer.bios_row == 9U
+	    && capture.framebuffer.bios_column == 41U
+	    && capture.framebuffer.qb_row == 9U
+	    && capture.framebuffer.qb_column == 41U
+	    && capture.framebuffer.brun_bios_cache_row == 9U
+	    && capture.framebuffer.brun_bios_cache_column == 41U
+	    && capture.framebuffer.qb_attribute == 0x07U
+	    && capture.framebuffer.qb_scrolls == 0U
+	    && capture.framebuffer.con_scrolls == 0U
+	    && startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
+	    == UINT64_C(0xe5da20466efe4b55));
 
 	computer_profit_cycle_fixture(false, true, &capture, &current,
 	    &pager);
@@ -10775,6 +10801,19 @@ test_computer_profit_cycle_presentation(void)
 	CHECK(capture.remote_length == sizeof(all_plain) - 1U
 	    && memcmp(capture.remote, all_plain,
 	    sizeof(all_plain) - 1U) == 0);
+	CHECK(capture.local_event_count == 16U
+	    && capture.framebuffer_initialized
+	    && capture.framebuffer.bios_row == 7U
+	    && capture.framebuffer.bios_column == 41U
+	    && capture.framebuffer.qb_row == 7U
+	    && capture.framebuffer.qb_column == 41U
+	    && capture.framebuffer.brun_bios_cache_row == 7U
+	    && capture.framebuffer.brun_bios_cache_column == 41U
+	    && capture.framebuffer.qb_attribute == 0x07U
+	    && capture.framebuffer.qb_scrolls == 0U
+	    && capture.framebuffer.con_scrolls == 0U
+	    && startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
+	    == UINT64_C(0x0d2597beb01341e6));
 
 	computer_profit_cycle_fixture(true, true, &capture, &current,
 	    &pager);
@@ -10782,7 +10821,20 @@ test_computer_profit_cycle_presentation(void)
 	CHECK(capture.remote_length == sizeof(all_ansi) - 1U
 	    && memcmp(capture.remote, all_ansi,
 	    sizeof(all_ansi) - 1U) == 0);
-	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f);
+	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f
+	    && capture.local_event_count == 29U
+	    && capture.framebuffer_initialized
+	    && capture.framebuffer.bios_row == 7U
+	    && capture.framebuffer.bios_column == 41U
+	    && capture.framebuffer.qb_row == 7U
+	    && capture.framebuffer.qb_column == 41U
+	    && capture.framebuffer.brun_bios_cache_row == 7U
+	    && capture.framebuffer.brun_bios_cache_column == 41U
+	    && capture.framebuffer.qb_attribute == 0x07U
+	    && capture.framebuffer.qb_scrolls == 0U
+	    && capture.framebuffer.con_scrolls == 0U
+	    && startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
+	    == UINT64_C(0x056122d71c354862));
 }
 
 static void
