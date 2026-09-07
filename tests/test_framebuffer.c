@@ -1,4 +1,5 @@
 #include "yt_framebuffer.h"
+#include "yt_brun_fatal.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -776,6 +777,131 @@ test_press_any_key_component_join(void)
 	    == 0);
 }
 
+static void
+fatal_local(void *context, const uint8_t *data, size_t length)
+{
+	(void)context;
+	(void)data;
+	(void)length;
+}
+
+static void
+fatal_close_all(void *context)
+{
+	(void)context;
+}
+
+static size_t
+fatal_drain(void *context, uint16_t *words, size_t capacity)
+{
+	(void)context;
+	(void)words;
+	(void)capacity;
+	return 0U;
+}
+
+static void
+fatal_clear_function_bar(void *context)
+{
+	(void)context;
+}
+
+static void
+fatal_restore(void *context, bool known, uint16_t shape)
+{
+	(void)context;
+	(void)known;
+	(void)shape;
+}
+
+static void
+fatal_end(void *context, unsigned status)
+{
+	(void)context;
+	(void)status;
+}
+
+static void
+test_brun_fatal_component_join(void)
+{
+	static const struct yt_brun_internal_fatal_ops ops = {
+		fatal_local,
+		fatal_close_all,
+		fatal_drain,
+		fatal_clear_function_bar,
+		fatal_restore,
+		fatal_end
+	};
+	struct yt_brun_runtime_fatal_state fatal;
+	struct yt_framebuffer_state state;
+	struct yt_framebuffer_state before;
+	struct yt_framebuffer_event event;
+	uint8_t function_row[YT_FRAMEBUFFER_WIDTH];
+	uint8_t raw[YT_FRAMEBUFFER_STATE_BYTES];
+	char digest[65];
+	size_t index;
+
+	for (index = 0U; index < 10U; ++index) {
+		size_t base = index * 8U;
+		unsigned number = (unsigned)index + 1U;
+
+		function_row[base] = number == 10U ? '1' : ' ';
+		function_row[base + 1U] = number == 10U
+		    ? '0' : (uint8_t)('0' + number);
+		memset(function_row + base + 2U, ' ', 6U);
+	}
+	yt_framebuffer_init(&state, true, 0x0708U);
+	event = color_event(14U, 3U);
+	CHECK(yt_framebuffer_apply(&state, &event) == YT_FRAMEBUFFER_OK);
+	event = locate_event(25U, 1U);
+	CHECK(yt_framebuffer_apply(&state, &event) == YT_FRAMEBUFFER_OK);
+	event = data_event(YT_FRAMEBUFFER_FUNCTION_BAR_SET,
+	    function_row, sizeof(function_row));
+	event.has_function_bar = true;
+	event.function_bar = true;
+	CHECK(yt_framebuffer_apply(&state, &event) == YT_FRAMEBUFFER_OK);
+	event = locate_event(10U, 20U);
+	CHECK(yt_framebuffer_apply(&state, &event) == YT_FRAMEBUFFER_OK);
+	CHECK(yt_brun_runtime_error_fatal_run(53U, "YT-SUB  ", true, 610,
+	    0x1f42U, 0x1abbU, false, true, true, 0x0708U,
+	    &ops, NULL, &fatal));
+	CHECK(yt_framebuffer_apply_brun_fatal(&state, &fatal.terminal)
+	    == YT_FRAMEBUFFER_OK);
+	CHECK(!state.function_bar && state.qb_row == 13U
+	    && state.qb_column == 32U && state.bios_row == 14U
+	    && state.bios_column == 1U
+	    && state.brun_bios_cache_row == 14U
+	    && state.brun_bios_cache_column == 1U);
+	CHECK(yt_framebuffer_serialize(&state, raw, sizeof(raw), NULL)
+	    == YT_FRAMEBUFFER_OK);
+	digest_hex(raw, sizeof(raw), digest);
+	CHECK(strcmp(digest,
+	    "e6146405a4b5e6f5425588bf63e8863db415e37248439ac344d16e6ee98f1a4e")
+	    == 0);
+
+	before = state;
+	fatal.terminal.function_bar_before = true;
+	CHECK(yt_framebuffer_apply_brun_fatal(&state, &fatal.terminal)
+	    == YT_FRAMEBUFFER_INVALID_ARGUMENT);
+	CHECK(memcmp(&state, &before, sizeof(state)) == 0);
+
+	yt_framebuffer_init(&state, false, 0U);
+	CHECK(yt_brun_runtime_error_fatal_run(75U, "YT-INIT ", false, 0,
+	    0x4444U, 0x23dfU, true, false, false, 0U,
+	    &ops, NULL, &fatal));
+	CHECK(yt_framebuffer_apply_brun_fatal(&state, &fatal.terminal)
+	    == YT_FRAMEBUFFER_OK);
+	CHECK(state.qb_row == 5U && state.qb_column == 1U
+	    && state.bios_row == 6U && state.bios_column == 1U);
+	CHECK(yt_framebuffer_serialize(&state, raw, sizeof(raw), NULL)
+	    == YT_FRAMEBUFFER_OK);
+	digest_hex(raw, sizeof(raw), digest);
+	CHECK(strcmp(digest,
+	    "ab4ea34a4f2f4b03361d35af3f695a3dd63aced54777142ef78ef2562468f2c8")
+	    == 0);
+}
+
+
 
 
 
@@ -795,6 +921,7 @@ main(void)
 	test_time_refresh_component_join();
 	test_opening_row_component_join();
 	test_press_any_key_component_join();
+	test_brun_fatal_component_join();
 	if (failures != 0U)
 		fprintf(stderr, "%u framebuffer test(s) failed\n", failures);
 	return failures == 0U ? 0 : 1;

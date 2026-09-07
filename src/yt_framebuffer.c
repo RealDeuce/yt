@@ -1,5 +1,7 @@
 #include "yt_framebuffer.h"
 
+#include "yt_brun_fatal.h"
+
 #include <limits.h>
 #include <string.h>
 
@@ -882,6 +884,66 @@ yt_framebuffer_apply_con_observation(struct yt_framebuffer_state *state,
 	event.data = accepted;
 	event.length = accepted_length;
 	return yt_framebuffer_apply(state, &event);
+}
+
+enum yt_framebuffer_status
+yt_framebuffer_apply_brun_fatal(struct yt_framebuffer_state *state,
+    const struct yt_brun_internal_fatal_state *terminal)
+{
+	struct yt_framebuffer_event events[5];
+	uint8_t blank_row[YT_FRAMEBUFFER_WIDTH];
+	size_t count = 0U;
+	size_t expected_length;
+
+	if (!yt_framebuffer_validate(state) || terminal == NULL
+	    || terminal->diagnostic_length > sizeof(terminal->diagnostic)
+	    || terminal->prompt_length > sizeof(terminal->prompt)
+	    || terminal->local_length > sizeof(terminal->local_bytes)
+	    || !terminal->close_all_completed || !terminal->terminal_restored
+	    || !terminal->ended || terminal->exit_status != 0U
+	    || terminal->function_bar_after
+	    || terminal->function_bar_before != state->function_bar
+	    || terminal->cursor_shape_known
+	    != state->process_entry_cursor_shape_present
+	    || (terminal->cursor_shape_known
+	    && terminal->process_entry_cursor_shape
+	    != state->process_entry_cursor_shape)
+	    || (!terminal->redirected_stdin && !terminal->input_drained))
+		return YT_FRAMEBUFFER_INVALID_ARGUMENT;
+	expected_length = terminal->diagnostic_length + terminal->prompt_length
+	    + (terminal->redirected_stdin ? 1U : 0U);
+	if (expected_length > sizeof(terminal->local_bytes)
+	    || terminal->local_length != expected_length
+	    || memcmp(terminal->local_bytes, terminal->diagnostic,
+	    terminal->diagnostic_length) != 0
+	    || memcmp(terminal->local_bytes + terminal->diagnostic_length,
+	    terminal->prompt, terminal->prompt_length) != 0
+	    || (terminal->redirected_stdin
+	    && terminal->local_bytes[expected_length - 1U] != '\r'))
+		return YT_FRAMEBUFFER_INVALID_ARGUMENT;
+	memset(events, 0, sizeof(events));
+	events[count].operation = YT_FRAMEBUFFER_PRINT_RAW;
+	events[count].data = terminal->diagnostic;
+	events[count++].length = terminal->diagnostic_length;
+	events[count].operation = YT_FRAMEBUFFER_PRINT_RAW;
+	events[count].data = terminal->prompt;
+	events[count++].length = terminal->prompt_length;
+	if (terminal->redirected_stdin) {
+		events[count].operation = YT_FRAMEBUFFER_PRINT_RAW;
+		events[count].data = terminal->local_bytes
+		    + terminal->local_length - 1U;
+		events[count++].length = 1U;
+	}
+	if (terminal->function_bar_before) {
+		memset(blank_row, SPACE, sizeof(blank_row));
+		events[count].operation = YT_FRAMEBUFFER_FUNCTION_BAR_SET;
+		events[count].data = blank_row;
+		events[count].length = sizeof(blank_row);
+		events[count].has_function_bar = true;
+		events[count++].function_bar = false;
+	}
+	events[count++].operation = YT_FRAMEBUFFER_END_CLEANUP;
+	return yt_framebuffer_apply_all(state, events, count);
 }
 
 enum yt_framebuffer_status

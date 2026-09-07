@@ -15,6 +15,8 @@
 	"dosbox-0.74-3/text-80x25/page-0/cp437"
 #define YT_FRAMEBUFFER_STATE_BYTES 4092U
 
+struct yt_brun_internal_fatal_state;
+
 enum yt_framebuffer_status {
 	YT_FRAMEBUFFER_OK,
 	YT_FRAMEBUFFER_INVALID_ARGUMENT,
@@ -105,6 +107,9 @@ enum yt_framebuffer_status yt_framebuffer_apply_con_observation(
     struct yt_framebuffer_state *state, const uint8_t *requested,
     size_t requested_length, const uint8_t *accepted,
     size_t accepted_length, bool completed, uint8_t error);
+enum yt_framebuffer_status yt_framebuffer_apply_brun_fatal(
+    struct yt_framebuffer_state *state,
+    const struct yt_brun_internal_fatal_state *terminal);
 enum yt_framebuffer_status yt_framebuffer_serialize(
     const struct yt_framebuffer_state *state, uint8_t *output,
     size_t capacity, size_t *written);
@@ -113,4 +118,3 @@ enum yt_framebuffer_status yt_framebuffer_deserialize(
     size_t length);
 
 #endif
-
