@@ -709,6 +709,81 @@ test_fractional_start_and_owner_gate(void)
 	return EXIT_SUCCESS;
 }
 
+static int
+test_record_conversion_boundaries(void)
+{
+	static const float no_warps[6] = {0};
+	static const float stock[3] = {100.0f, 200.0f, 300.0f};
+	static const float owners[2] = {0.5f, -0.6f};
+	static const uint32_t owner_records[2] = {0U, UINT32_C(0x00ffffff)};
+	struct yt_error error = {0};
+	struct nearest_tape zero = {0};
+	struct yt_nearest_state zero_state = base_state();
+	struct nearest_tape fractional = {0};
+	struct yt_nearest_state fractional_state = base_state();
+	struct nearest_tape overflow = {0};
+	struct yt_nearest_state overflow_state = base_state();
+	const struct tape_event *event;
+	uint8_t raw[4];
+	float expected_expression;
+	size_t index;
+
+	add_record(&zero, 2U, player_record("PILOT", 0.0f, 0.0f));
+	CHECK(yt_nearest_run(&zero_state, &nearest_ops, &zero, &error));
+	CHECK(zero_state.rows == 0U && zero_state.reads == 1U);
+	CHECK(zero_state.field_kind == YT_NEAREST_FIELD_PLAYER);
+	CHECK(nth_event(&zero, TAPE_READ, 1U) == NULL);
+	CHECK(find_output(&zero, YT_NEAREST_FINAL_BLANK, 0U) != NULL);
+
+	add_record(&fractional, 2U, player_record("PILOT", 2.0f, 0.0f));
+	add_record(&fractional, 53U, sector_record(no_warps, 1.6f));
+	add_record(&fractional, 2056U,
+	    port_record("TRUNCATED", 1.0f, 0.0f, stock));
+	fractional.days[fractional.day_count++] = 0.0f;
+	fractional.timers[fractional.timer_count++] = 0.0f;
+	CHECK(yt_nearest_run(&fractional_state, &nearest_ops, &fractional,
+	    &error));
+	event = nth_event(&fractional, TAPE_READ, 2U);
+	CHECK(event != NULL && event->physical == 2056U);
+	CHECK(qb_mbf32_encode(2056.6f, raw) == QB_MBF_OK);
+	expected_expression = qb_mbf32_decode(raw);
+	CHECK(event->expression == expected_expression);
+	CHECK(fractional_state.field_record == 2056U);
+
+	for (index = 0U; index < ARRAY_SIZE(owners); ++index) {
+		struct nearest_tape tape = {0};
+		struct yt_nearest_state state = base_state();
+
+		add_record(&tape, 2U, player_record("PILOT", 2.0f, 0.0f));
+		add_record(&tape, 53U, sector_record(no_warps, 1.0f));
+		add_record(&tape, 2056U,
+		    port_record("PORT", 1.0f, owners[index], stock));
+		tape.days[tape.day_count++] = 0.0f;
+		tape.timers[tape.timer_count++] = 0.0f;
+		memset(&error, 0, sizeof(error));
+		CHECK(!yt_nearest_run(&state, &nearest_ops, &tape, &error));
+		event = nth_event(&tape, TAPE_READ, 3U);
+		CHECK(event != NULL && event->field_kind == YT_NEAREST_FIELD_OWNER);
+		CHECK(event->physical == owner_records[index]);
+		CHECK(event->expression == yt_record_get_number(
+		    &tape.records[2].record, YT_F97));
+		CHECK(state.field_kind == YT_NEAREST_FIELD_PORT);
+		CHECK(state.field_record == 2056U && state.rows == 0U);
+		CHECK(find_output(&tape, YT_NEAREST_STOCK, 0U) != NULL);
+		CHECK(find_output(&tape, YT_NEAREST_NAME, 0U) == NULL);
+	}
+
+	add_record(&overflow, 2U, player_record("PILOT", 40000.0f, 0.0f));
+	memset(&error, 0, sizeof(error));
+	CHECK(!yt_nearest_run(&overflow_state, &nearest_ops, &overflow,
+	    &error));
+	CHECK(overflow_state.reads == 1U && overflow_state.outputs == 5U);
+	CHECK(overflow_state.field_kind == YT_NEAREST_FIELD_PLAYER);
+	CHECK(nth_event(&overflow, TAPE_READ, 1U) == NULL);
+	CHECK(strcmp(error.operation, "nearest start-sector CINT") == 0);
+	return EXIT_SUCCESS;
+}
+
 static void build_earth(struct nearest_tape *tape);
 
 static int
@@ -951,6 +1026,7 @@ main(void)
 	result |= test_pager_n_stops_before_next_sector();
 	result |= test_owner_failure_retains_partial_row_and_port_field();
 	result |= test_fractional_start_and_owner_gate();
+	result |= test_record_conversion_boundaries();
 	result |= test_market_projection_and_stock_rounding();
 	result |= test_team_owned_enemy_and_unowned_filters();
 	result |= test_pager_input_failure_and_continuous_mode();
