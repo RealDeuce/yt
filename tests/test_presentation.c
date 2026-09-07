@@ -11207,6 +11207,19 @@ test_computer_avoid_presentation(void)
 	    && memcmp(capture.remote, accepted_plain,
 	    sizeof(accepted_plain) - 1U) == 0);
 	CHECK(pager.line_count == 2.0f && pager.newline_flag == 0.0f);
+	CHECK(capture.local_event_count == 81U);
+	CHECK(capture.framebuffer_initialized);
+	CHECK(capture.framebuffer.bios_row == 24U
+	    && capture.framebuffer.bios_column == 41U
+	    && capture.framebuffer.qb_row == 24U
+	    && capture.framebuffer.qb_column == 41U
+	    && capture.framebuffer.brun_bios_cache_row == 24U
+	    && capture.framebuffer.brun_bios_cache_column == 41U);
+	CHECK(capture.framebuffer.qb_attribute == 0x07U
+	    && capture.framebuffer.qb_scrolls == 1U
+	    && capture.framebuffer.con_scrolls == 0U);
+	CHECK(startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
+	    == UINT64_C(0xf6463cba711d1ef0));
 	computer_avoid_accepted_cycle_fixture(true, 0.0f, 0.0f, "5",
 	    COMPUTER_AVOID_FIXTURE_COMPLETE, NULL, &capture, &current, &pager);
 	CHECK(sizeof(accepted_ansi) - 1U == 914U);
