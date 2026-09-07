@@ -31016,6 +31016,7 @@ struct movement_tape {
 	struct yt_player written_player;
 	bool denied;
 	bool dangerous;
+	bool compose_danger_scan;
 	bool confirmed;
 	bool finalizer_result;
 	const char *responses[4];
@@ -31030,6 +31031,15 @@ struct movement_tape {
 	bool row_seen[7];
 	float cached_target;
 	uint8_t cached_target_raw[4];
+	struct yt_danger_scan_state danger_scan;
+	struct yt_sector danger_sector;
+	enum yt_danger_scan_output_kind danger_outputs[9];
+	size_t danger_output_count;
+	float danger_foreground;
+	float danger_background;
+	bool danger_sound;
+	bool danger_restored;
+	uint8_t danger_relationship_raw[4];
 };
 static bool
 autopilot_queue_line(char *queue, size_t queue_capacity,
@@ -31131,15 +31141,135 @@ movement_input_test(void *context, char *response, size_t capacity,
 	return true;
 }
 static bool
+movement_danger_read_sector(void *context, float logical_sector,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct movement_tape *tape = context;
+
+	(void)error;
+	if (logical_sector != 42.0f)
+		return false;
+	*sector = tape->danger_sector;
+	return true;
+}
+static bool
+movement_danger_read_player(void *context, float record,
+    struct yt_player *player, struct yt_error *error)
+{
+	(void)context;
+	(void)record;
+	(void)player;
+	(void)error;
+	return false;
+}
+static bool
+movement_danger_restore(void *context, struct yt_error *error)
+{
+	struct movement_tape *tape = context;
+
+	(void)error;
+	tape->danger_restored = true;
+	return true;
+}
+static bool
+movement_danger_checkpoint(void *context,
+    enum yt_danger_scan_checkpoint checkpoint, struct yt_error *error)
+{
+	(void)context;
+	(void)checkpoint;
+	(void)error;
+	return true;
+}
+static bool
+movement_danger_sound(void *context, float selector, struct yt_error *error)
+{
+	struct movement_tape *tape = context;
+
+	(void)error;
+	if (selector != 8.0f)
+		return false;
+	tape->danger_sound = true;
+	return true;
+}
+static bool
+movement_danger_present(void *context, const uint8_t *text, size_t length,
+    enum yt_danger_scan_output_kind kind, struct yt_error *error)
+{
+	struct movement_tape *tape = context;
+
+	(void)text;
+	(void)length;
+	(void)error;
+	if (tape->danger_output_count >= YT_ARRAY_LEN(tape->danger_outputs))
+		return false;
+	tape->danger_outputs[tape->danger_output_count++] = kind;
+	return true;
+}
+static float
+movement_danger_foreground(void *context)
+{
+	struct movement_tape *tape = context;
+
+	return tape->danger_foreground;
+}
+static void
+movement_danger_set_foreground(void *context, float value)
+{
+	struct movement_tape *tape = context;
+
+	tape->danger_foreground = value;
+}
+static void
+movement_danger_set_background(void *context, float value)
+{
+	struct movement_tape *tape = context;
+
+	tape->danger_background = value;
+}
+static void
+movement_danger_set_blink(void *context, float value)
+{
+	(void)context;
+	(void)value;
+}
+static void
+movement_danger_store_relationship(void *context, const uint8_t raw[4])
+{
+	struct movement_tape *tape = context;
+
+	memcpy(tape->danger_relationship_raw, raw, 4U);
+}
+static bool
 movement_danger_test(void *context, float target, bool *dangerous,
     struct yt_error *error)
 {
+	static const struct yt_danger_scan_ops danger_ops = {
+		movement_danger_read_sector,
+		movement_danger_read_player,
+		movement_danger_restore,
+		movement_danger_checkpoint,
+		movement_danger_sound,
+		movement_danger_present,
+		movement_danger_foreground,
+		movement_danger_set_foreground,
+		movement_danger_set_background,
+		movement_danger_set_blink,
+		movement_danger_store_relationship,
+	};
 	struct movement_tape *tape = context;
 
 	if (target != 42.0f || dangerous == NULL
 	    || !movement_step(tape, MOVEMENT_DANGER, error))
 		return false;
-	*dangerous = tape->dangerous;
+	if (tape->compose_danger_scan) {
+		tape->danger_scan.target = target;
+		if (!yt_danger_scan_run(&tape->danger_scan, &danger_ops,
+		    tape, error))
+			return false;
+		*dangerous = tape->danger_scan.finding_flag != 0.0f;
+	}
+	else
+		*dangerous = tape->dangerous;
 	return true;
 }
 static void
@@ -31261,6 +31391,11 @@ movement_fixture(struct movement_tape *tape,
 		.sector_offset = 51.0f,
 		.warps = {7.0f, 42.0f, 12.5f, 42.0f, 0.0f, 0.0f},
 	};
+	tape->danger_foreground = 7.0f;
+	tape->danger_scan.sector_count = 2004.0f;
+	tape->danger_scan.sector_offset = 51.0f;
+	tape->danger_scan.current_player_record = 2.0f;
+	tape->danger_scan.disruption_sectors[0] = 42.0f;
 }
 static bool
 check_movement_transaction(void)
@@ -31296,6 +31431,15 @@ check_movement_transaction(void)
 		MOVEMENT_WRITE_PLAYER,
 		MOVEMENT_FLUSH,
 		MOVEMENT_CACHE,
+	};
+	static const enum yt_danger_scan_output_kind danger_outputs[] = {
+		YT_DANGER_SCAN_LEADING_BLANK,
+		YT_DANGER_SCAN_WARNING_RAW,
+		YT_DANGER_SCAN_WARNING_TARGET,
+		YT_DANGER_SCAN_WARNING_BLANK,
+		YT_DANGER_SCAN_DISRUPTION,
+		YT_DANGER_SCAN_FINAL_BLANK,
+		YT_DANGER_SCAN_DEACTIVATED,
 	};
 	static const uint8_t warp[] =
 	    "Warps lead to, 7, 42, 12.5, 42";
@@ -31416,6 +31560,25 @@ check_movement_transaction(void)
 	    || state.route != YT_MOVEMENT_MOVED
 	    || tape.calls != YT_ARRAY_LEN(danger_events)
 	    || memcmp(tape.events, danger_events, sizeof(danger_events)) != 0)
+		return false;
+
+	movement_fixture(&tape, &state);
+	tape.gate_player.danger_scanner = 1.0f;
+	tape.compose_danger_scan = true;
+	if (!yt_movement_run(&state, &movement_test_ops, &tape, NULL)
+	    || state.route != YT_MOVEMENT_MOVED || !state.dangerous
+	    || !state.confirmation_read
+	    || tape.calls != YT_ARRAY_LEN(danger_events)
+	    || memcmp(tape.events, danger_events, sizeof(danger_events)) != 0
+	    || !tape.danger_scan.complete
+	    || tape.danger_scan.finding_flag != 1.0f
+	    || memcmp(tape.danger_scan.finding_flag_raw, "\0\0\0\x81", 4U)
+	    != 0 || !tape.danger_sound || !tape.danger_restored
+	    || tape.danger_output_count != YT_ARRAY_LEN(danger_outputs)
+	    || memcmp(tape.danger_outputs, danger_outputs,
+	    sizeof(danger_outputs)) != 0
+	    || tape.danger_foreground != 7.0f
+	    || tape.danger_background != 0.0f)
 		return false;
 	for (failure = 0U; failure < YT_ARRAY_LEN(danger_events); ++failure) {
 		if (danger_events[failure] == MOVEMENT_CLEAR_QUEUE
