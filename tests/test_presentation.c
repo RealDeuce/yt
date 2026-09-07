@@ -22392,6 +22392,8 @@ struct hostile_mines_hazard_fixture {
 	size_t news_attempts;
 	size_t news_count;
 	bool shrink_called;
+	bool shrink_enabled;
+	float shrink_result;
 	bool warp_called;
 	size_t warp_calls;
 	size_t emergency_warp_start;
@@ -22629,10 +22631,12 @@ hostile_mine_hazard_shrink(void *context, float range, float *result,
 	struct hostile_mines_hazard_fixture *fixture = context;
 
 	(void)range;
-	(void)result;
 	(void)error;
 	fixture->shrink_called = true;
-	return false;
+	if (!fixture->shrink_enabled || result == NULL)
+		return false;
+	*result = fixture->shrink_result;
+	return true;
 }
 
 static bool
@@ -38651,6 +38655,121 @@ direct_emergency_warp_mine_warp_fixture_init(
 }
 
 static void
+test_destroyed_mine_fatal_projections(void)
+{
+	static const uint8_t name[] = "Ada";
+	static const uint8_t entry_news[] =
+	    "Ada hit sector mines in sector 733!";
+	static const uint8_t final_news[] =
+	    "Shields reduced to 0 units!";
+	static const uint8_t death_news[] = "  -  Ada was killed!\r\n";
+	struct physical_viewer_join viewer;
+	struct yt_file_viewer_stream_state stream;
+	struct hostile_mines_hazard_fixture fixture;
+	struct hostile_bribe_fatal_cycle_join fatal;
+	struct yt_player fatal_entry_player;
+	struct yt_record record;
+	struct yt_error error;
+	uint8_t current_record_raw[4];
+	uint8_t remote[4096];
+	size_t mine_end;
+	size_t pass;
+
+	CHECK(qb_mbf32_encode(2.0f, current_record_raw) == QB_MBF_OK);
+	for (pass = 0U; pass < 2U; ++pass) {
+		bool emergency = pass != 0U;
+
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
+		    "YTSCORE.ASC", false, remote, sizeof(remote));
+		viewer.join.presentation.sound.user_sound = 0.0f;
+		memset(&fixture, 0, sizeof(fixture));
+		fixture.cycle.presentation.viewer = &viewer;
+		fixture.hazard_logical_sector = 733;
+		fixture.shrink_enabled = true;
+		fixture.shrink_result = 1.0f;
+		fixture.enable_emergency_warp = emergency;
+		fixture.compose_emergency_player_from_hazard = emergency;
+		fixture.draws[0] = emergency ? 0.9f : 0.0f;
+		fixture.emergency_sector_cache = 733.0f;
+
+		yt_record_blank(&record);
+		yt_record_set_text(&record, name, sizeof(name) - 1U);
+		(void)yt_record_set_number(&record, YT_F49, 10.0f);
+		(void)yt_record_set_number(&record, YT_F53, 0.0f);
+		(void)yt_record_set_number(&record, YT_F57, 733.0f);
+		(void)yt_record_set_number(&record, YT_F61, 0.0f);
+		(void)yt_record_set_number(&record, YT_F65, 1.0f);
+		(void)yt_record_set_number(&record, YT_F81, 100.0f);
+		(void)yt_record_set_number(&record, YT_F85,
+		    (float)(sizeof(name) - 1U));
+		yt_player_decode(&fixture.hazard_player, &record);
+		fixture.emergency_player = fixture.hazard_player;
+		yt_record_blank(&record);
+		(void)yt_record_set_number(&record, YT_F129, 1.0f);
+		yt_sector_decode(&fixture.hazard_sector, &record);
+		fixture.hazard.current_player_record = 2;
+		fixture.hazard.current_sector = 733.0f;
+		fixture.hazard.foreground = viewer.join.presentation.foreground;
+		fixture.hazard.background = viewer.join.presentation.background;
+		fixture.hazard.blink = viewer.join.presentation.blink;
+		fixture.hazard.pager_foreground = viewer.join.pager.foreground;
+		fixture.hazard.destroyed = &fixture.destroyed;
+		yt_error_clear(&error);
+		CHECK(yt_sector_mine_run(&fixture.hazard,
+		    &hostile_mine_hazard_ops, &fixture, &error));
+		mine_end = viewer.join.remote_length;
+		fatal_entry_player = fixture.hazard_player;
+
+		memset(&fatal, 0, sizeof(fatal));
+		fatal.viewer = &viewer;
+		fatal.stream = &stream;
+		fatal.player = fatal_entry_player;
+		fatal.current_name = name;
+		fatal.current_name_length = sizeof(name) - 1U;
+		fatal.owned_sector = (int)fatal_entry_player.sector;
+		memcpy(fatal.current_record_raw, current_record_raw,
+		    sizeof(current_record_raw));
+		CHECK(hostile_bribe_fatal_run(&fatal, &error));
+
+		CHECK(fixture.hazard.complete && fixture.destroyed
+		    && fixture.destroyed_stores == 1U
+		    && fixture.hazard.terminal == emergency
+		    && fixture.shrink_called && fixture.hazard_player.holds == 0.0f
+		    && fixture.sector_writes == 1U
+		    && fixture.player_writes == 1U
+		    && fixture.news_count == (emergency ? 1U : 2U)
+		    && fixture.sector_reads == (emergency ? 1U : 2U)
+		    && fixture.warp_called == emergency
+		    && fixture.emergency_player_writes == (emergency ? 1U : 0U)
+		    && fixture.news_lengths[0] == sizeof(entry_news) - 1U
+		    && memcmp(fixture.news[0], entry_news,
+		    sizeof(entry_news) - 1U) == 0
+		    && (emergency || (fixture.news_lengths[1]
+		    == sizeof(final_news) - 1U
+		    && memcmp(fixture.news[1], final_news,
+		    sizeof(final_news) - 1U) == 0)));
+		CHECK(fatal.fatal_start == mine_end
+		    && fatal.fatal.normal_exit && fatal.fatal.wait_complete
+		    && fatal.fatal.field_valid
+		    && memcmp(&fatal.fatal.field_player.record,
+		    &fatal_entry_player.record,
+		    sizeof(fatal_entry_player.record)) == 0
+		    && fatal.sound_calls == 1U && fatal.death_calls == 1U
+		    && fatal.wait_calls == 1U && fatal.player_reads == 2U
+		    && fatal.player_writes == 1U && fatal.sector_reads == 2004U
+		    && fatal.sector_writes == 0U && fatal.team_removals == 1U
+		    && fatal.news_calls == 1U && fatal.flushes == 1U
+		    && fatal.news_length == sizeof(death_news) - 1U
+		    && memcmp(fatal.news, death_news, sizeof(death_news) - 1U) == 0
+		    && memcmp(fatal.target_raw, current_record_raw,
+		    sizeof(current_record_raw)) == 0);
+		yt_text_input_destroy(&viewer.input);
+	}
+}
+
+static void
 test_direct_emergency_warp_mine_warp_cycles(void)
 {
 	static const uint8_t entry_news[] =
@@ -47692,6 +47811,7 @@ main(void)
 	test_direct_emergency_warp_queue_cycles();
 	test_direct_emergency_warp_main_mine_cycle();
 	test_direct_emergency_warp_hostile_mine_cycle();
+	test_destroyed_mine_fatal_projections();
 	test_direct_emergency_warp_mine_warp_cycles();
 	test_direct_emergency_warp_mine_warp_failures();
 	test_direct_emergency_warp_mine_dependency_failures();

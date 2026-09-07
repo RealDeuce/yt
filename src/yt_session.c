@@ -8466,8 +8466,14 @@ sector_entry(struct yt_session *session, struct yt_error *error)
 
 				if (!mine_encounter(session, &mine_terminal, error))
 					return false;
-				if (mine_terminal)
-					continue;
+				/*
+				 * Both ordinary return and the zero-effect post-warp
+				 * return test the same raw destruction cell before the
+				 * scanner back-edge.  The mine and warp children have
+				 * already installed their respective durable/FIELD state.
+				 */
+				if (mine_terminal && session_is_destroyed(session))
+					return common_fatal_self(session, error);
 			}
 			if (session_is_destroyed(session))
 				return common_fatal_self(session, error);
