@@ -656,6 +656,31 @@ yt_rmt_handoff_read_run(struct yt_rmt_handoff_read_state *state,
 }
 
 bool
+yt_rmt_handoff_cleanup_run(struct yt_rmt_handoff_cleanup_state *state,
+    const struct yt_rmt_handoff_cleanup_ops *ops, void *context,
+    struct yt_error *error)
+{
+	if (state == NULL || ops == NULL || ops->close == NULL
+	    || ops->kill == NULL)
+		return false;
+	memset(state, 0, sizeof(*state));
+	state->close_attempted = true;
+	if (!ops->close(context, error)) {
+		state->failed_operation = YT_RMT_HANDOFF_CLEANUP_CLOSE;
+		return false;
+	}
+	state->close_completed = true;
+	state->kill_attempted = true;
+	if (!ops->kill(context, error)) {
+		state->failed_operation = YT_RMT_HANDOFF_CLEANUP_KILL;
+		return false;
+	}
+	state->kill_completed = true;
+	state->complete = true;
+	return true;
+}
+
+bool
 yt_rmt_dorinfo_parse(const uint8_t *raw, size_t raw_length,
     uint8_t *storage, size_t storage_capacity,
     struct yt_rmt_dorinfo_result *result)

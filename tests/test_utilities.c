@@ -980,6 +980,79 @@ test_rmt_handoff_read_transaction(void)
 	    && !yt_rmt_handoff_read_run(&state, NULL, &script, NULL);
 }
 
+struct rmt_handoff_cleanup_script {
+	size_t fail_at;
+	size_t call_count;
+	enum yt_rmt_handoff_cleanup_operation calls[2];
+};
+
+static bool
+rmt_handoff_cleanup_record(struct rmt_handoff_cleanup_script *script,
+    enum yt_rmt_handoff_cleanup_operation operation)
+{
+	if (script->call_count >= sizeof(script->calls) / sizeof(script->calls[0]))
+		return false;
+	script->calls[script->call_count] = operation;
+	return script->call_count++ != script->fail_at;
+}
+
+static bool
+rmt_handoff_cleanup_close(void *context, struct yt_error *error)
+{
+	(void)error;
+	return rmt_handoff_cleanup_record(context,
+	    YT_RMT_HANDOFF_CLEANUP_CLOSE);
+}
+
+static bool
+rmt_handoff_cleanup_kill(void *context, struct yt_error *error)
+{
+	(void)error;
+	return rmt_handoff_cleanup_record(context,
+	    YT_RMT_HANDOFF_CLEANUP_KILL);
+}
+
+static bool
+test_rmt_handoff_cleanup_transaction(void)
+{
+	static const struct yt_rmt_handoff_cleanup_ops ops = {
+		rmt_handoff_cleanup_close,
+		rmt_handoff_cleanup_kill,
+	};
+	static const enum yt_rmt_handoff_cleanup_operation expected_calls[] = {
+		YT_RMT_HANDOFF_CLEANUP_CLOSE,
+		YT_RMT_HANDOFF_CLEANUP_KILL,
+	};
+	struct yt_rmt_handoff_cleanup_ops incomplete = ops;
+	struct rmt_handoff_cleanup_script script;
+	struct yt_rmt_handoff_cleanup_state state;
+	size_t failed;
+
+	script = (struct rmt_handoff_cleanup_script){.fail_at = SIZE_MAX};
+	if (!yt_rmt_handoff_cleanup_run(&state, &ops, &script, NULL)
+	    || script.call_count != 2U
+	    || memcmp(script.calls, expected_calls, sizeof(expected_calls)) != 0
+	    || state.failed_operation != YT_RMT_HANDOFF_CLEANUP_NONE
+	    || !state.close_attempted || !state.close_completed
+	    || !state.kill_attempted || !state.kill_completed || !state.complete)
+		return false;
+	for (failed = 0U; failed < 2U; ++failed) {
+		script = (struct rmt_handoff_cleanup_script){.fail_at = failed};
+		if (yt_rmt_handoff_cleanup_run(&state, &ops, &script, NULL)
+		    || state.failed_operation != expected_calls[failed]
+		    || script.call_count != failed + 1U
+		    || !state.close_attempted
+		    || state.close_completed != (failed > 0U)
+		    || state.kill_attempted != (failed > 0U)
+		    || state.kill_completed || state.complete)
+			return false;
+	}
+	incomplete.kill = NULL;
+	return !yt_rmt_handoff_cleanup_run(&state, &incomplete, &script, NULL)
+	    && !yt_rmt_handoff_cleanup_run(NULL, &ops, &script, NULL)
+	    && !yt_rmt_handoff_cleanup_run(&state, NULL, &script, NULL);
+}
+
 static bool
 test_rmt_dorinfo_parser(void)
 {
@@ -6252,6 +6325,8 @@ main(void)
 		failure = "RMT handoff parser vectors differ";
 	else if (!test_rmt_handoff_read_transaction())
 		failure = "RMT handoff read transaction differs";
+	else if (!test_rmt_handoff_cleanup_transaction())
+		failure = "RMT handoff cleanup transaction differs";
 	else if (!test_rmt_dorinfo_parser())
 		failure = "RMT DORINFO parser vectors differ";
 	else if (!test_rmt_remote_status())
