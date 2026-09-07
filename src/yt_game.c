@@ -8,6 +8,7 @@
 #include <limits.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static bool
@@ -2896,6 +2897,709 @@ yt_salvage_run(struct yt_salvage_state *state,
 	if (!ops->wait(context, 4.0f, error))
 		return false;
 	state->complete = true;
+	return true;
+}
+
+static bool
+nearest_error(struct yt_error *error, const char *operation)
+{
+	if (error != NULL) {
+		error->status = YT_RANGE;
+		error->system_error = 0;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    operation);
+		error->path[0] = '\0';
+	}
+	return false;
+}
+
+static bool
+nearest_single(float value, float *result, struct yt_error *error,
+    const char *operation)
+{
+	uint8_t raw[4];
+	enum qb_mbf_status status;
+
+	status = qb_mbf32_encode(value, raw);
+	if (!isfinite(value) || status == QB_MBF_OVERFLOW
+	    || status == QB_MBF_DOMAIN)
+		return nearest_error(error, operation);
+	*result = qb_mbf32_decode(raw);
+	return true;
+}
+
+static bool
+nearest_add(float left, float right, float *result, struct yt_error *error,
+    const char *operation)
+{
+	volatile float value = left + right;
+
+	return nearest_single(value, result, error, operation);
+}
+
+static bool
+nearest_sub(float left, float right, float *result, struct yt_error *error,
+    const char *operation)
+{
+	volatile float value = left - right;
+
+	return nearest_single(value, result, error, operation);
+}
+
+static bool
+nearest_mul(float left, float right, float *result, struct yt_error *error,
+    const char *operation)
+{
+	volatile float value = left * right;
+
+	return nearest_single(value, result, error, operation);
+}
+
+static bool
+nearest_div(float left, float right, float *result, struct yt_error *error,
+    const char *operation)
+{
+	volatile float value;
+
+	if (right == 0.0f)
+		return nearest_error(error, operation);
+	value = left / right;
+	return nearest_single(value, result, error, operation);
+}
+
+static void
+nearest_market_copy(struct yt_nearest_market *market,
+    const struct yt_port *port)
+{
+	size_t index;
+
+	memset(market, 0, sizeof(*market));
+	market->stored_day = port->last_day;
+	market->stored_minute = port->last_minute;
+	for (index = 0U; index < 3U; ++index) {
+		market->stock[index] = port->stock[index];
+		market->production[index] = port->production[index];
+		market->factor[index] = port->factor[index];
+	}
+}
+
+bool
+yt_nearest_market_project(struct yt_nearest_market *market,
+    const struct yt_port *port, const float base_price[3],
+    float current_day, float timer_seconds, struct yt_error *error)
+{
+	float day_delta;
+	float minute_delta;
+	size_t index;
+
+	if (market == NULL || port == NULL || base_price == NULL)
+		return startup_configuration_error(error, YT_INVALID,
+		    "nearest market arguments");
+	nearest_market_copy(market, port);
+	if (!nearest_div(timer_seconds, 60.0f, &market->minute, error,
+	    "nearest market minute")
+	    || !nearest_sub(current_day, market->stored_day, &day_delta, error,
+	    "nearest market day delta")
+	    || !nearest_sub(market->minute, market->stored_minute, &minute_delta,
+	    error, "nearest market minute delta")
+	    || !nearest_div(minute_delta, 1440.0f, &minute_delta, error,
+	    "nearest market minute fraction")
+	    || !nearest_add(day_delta, minute_delta, &market->elapsed, error,
+	    "nearest market elapsed"))
+		return false;
+	if (market->elapsed > 10.0f || market->elapsed < 0.0f)
+		market->elapsed = 10.0f;
+
+	for (index = 0U; index < 3U; ++index) {
+		float growth;
+		float candidate;
+		float numerator;
+		float denominator;
+		float ratio;
+		float scale;
+		float raw;
+		float rounded;
+
+		if (!nearest_mul(market->production[index], market->elapsed,
+		    &growth, error, "nearest market growth")
+		    || !nearest_add(port->stock[index], growth,
+		    &market->stock[index], error, "nearest market stock")
+		    || !nearest_div(market->stock[index], 10.0f, &candidate,
+		    error, "nearest market production comparison"))
+			return false;
+		if (candidate > market->production[index]
+		    && !nearest_div(market->stock[index], 10.0f,
+		    &market->production[index], error,
+		    "nearest market production replacement"))
+			return false;
+		if (!nearest_mul(market->factor[index], market->stock[index],
+		    &numerator, error, "nearest market numerator")
+		    || !nearest_mul(market->production[index], 1000.0f,
+		    &denominator, error, "nearest market denominator")
+		    || !nearest_div(numerator, denominator, &ratio, error,
+		    "nearest market ratio")
+		    || !nearest_sub(1.0f, ratio, &scale, error,
+		    "nearest market scale")
+		    || !nearest_mul(base_price[index], scale, &raw, error,
+		    "nearest market raw price")
+		    || !nearest_add(raw, 0.5f, &rounded, error,
+		    "nearest market price rounding"))
+			return false;
+		rounded = floorf(rounded);
+		if (!nearest_single(rounded, &market->price[index], error,
+		    "nearest market price INT"))
+			return false;
+		if (market->price[index] < 1.0f)
+			market->price[index] = 1.0f;
+	}
+	return true;
+}
+
+static bool
+nearest_cint(const struct yt_nearest_state *state, float value, int *result,
+    struct yt_error *error, const char *operation)
+{
+	bool overflow;
+	int32_t converted = qb_cint_mode((double)value,
+	    state->conversion_mode, &overflow);
+
+	if (overflow)
+		return nearest_error(error, operation);
+	*result = (int)converted;
+	return true;
+}
+
+static bool
+nearest_present(struct yt_nearest_state *state,
+    const struct yt_nearest_ops *ops, void *context,
+    enum yt_nearest_output_kind kind, enum yt_nearest_present_mode mode,
+    const uint8_t *text, size_t length, struct yt_error *error)
+{
+	if (mode == YT_NEAREST_PRESENT_BOLD_LINE
+	    || mode == YT_NEAREST_PRESENT_BOLD_RAW)
+		state->style.bold = 1.0f;
+	if (!ops->present(context, kind, mode, text, length, &state->style,
+	    error))
+		return false;
+	++state->outputs;
+	return true;
+}
+
+static bool
+nearest_read(struct yt_nearest_state *state,
+    const struct yt_nearest_ops *ops, void *context,
+    enum yt_nearest_field_kind kind, float expression,
+    struct yt_record *record, struct yt_error *error)
+{
+	uint32_t physical;
+
+	if (!nearest_single(expression, &state->current_record_expression,
+	    error, "nearest record expression"))
+		return false;
+	physical = qb_brun_random_record_number(
+	    state->current_record_expression);
+	if (!ops->read_record(context, kind, state->current_record_expression,
+	    physical, record, error))
+		return false;
+	state->field = *record;
+	state->field_kind = kind;
+	state->field_record = physical;
+	state->field_valid = true;
+	++state->reads;
+	return true;
+}
+
+static int
+nearest_descending_compare(const void *left, const void *right)
+{
+	int a = *(const int *)left;
+	int b = *(const int *)right;
+
+	return a < b ? 1 : a > b ? -1 : 0;
+}
+
+static bool
+nearest_filter(const struct yt_nearest_state *state, bool member)
+{
+	float klass = state->port.commodity_class;
+	float owner = state->port.owner;
+	bool accepted = false;
+
+	if (state->selector >= 1 && state->selector <= 3) {
+		accepted = state->direction == 'S'
+		    ? klass == (float)state->selector
+		    : state->direction == 'B'
+		    && klass != (float)state->selector;
+	}
+	else if (state->selector == 4)
+		accepted = true;
+	else if (state->selector == 5)
+		accepted = owner > 0.0f && owner != state->actor_number
+		    && member;
+	else if (state->selector == 6)
+		accepted = owner == state->actor_number;
+	else if (state->selector == 7)
+		accepted = owner > 0.0f && owner != state->actor_number
+		    && (state->current_team == 0.0f
+		    || (state->current_team > 0.0f && !member));
+	else if (state->selector == 8)
+		accepted = owner == 0.0f;
+	return accepted && klass != 0.0f;
+}
+
+static bool
+nearest_price_cell(float price, char result[4])
+{
+	char number[64];
+	char source[65];
+	size_t length;
+	size_t amount;
+	size_t padding;
+	int rendered = qb_str_single(number, sizeof(number), price);
+
+	if (rendered < 0)
+		return false;
+	source[0] = ' ';
+	memcpy(source + 1, number, (size_t)rendered);
+	length = (size_t)rendered + 1U;
+	amount = length < 3U ? length : 3U;
+	padding = 3U - amount;
+	memset(result, ' ', padding);
+	memcpy(result + padding, source + length - amount, amount);
+	result[3] = '\0';
+	return true;
+}
+
+static bool
+nearest_stock_cell(const struct yt_nearest_market *market, uint8_t result[7],
+    struct yt_error *error)
+{
+	char number[64];
+	char source[96];
+	float total;
+	float scaled;
+	float rounded;
+	int length;
+	size_t source_length;
+
+	if (!nearest_add(market->stock[0], market->stock[1], &total, error,
+	    "nearest stock total one")
+	    || !nearest_add(total, market->stock[2], &total, error,
+	    "nearest stock total two")
+	    || !nearest_div(total, 10000.0f, &scaled, error,
+	    "nearest stock scale")
+	    || !nearest_add(scaled, 0.5f, &rounded, error,
+	    "nearest stock rounding"))
+		return false;
+	rounded = floorf(rounded);
+	if (!nearest_single(rounded, &rounded, error, "nearest stock INT"))
+		return false;
+	length = qb_str_double(number, sizeof(number), (double)rounded);
+	if (length < 0 || snprintf(source, sizeof(source), "      %sK  ",
+	    number) < 0)
+		return nearest_error(error, "nearest stock formatting");
+	source_length = strlen(source);
+	if (source_length < 7U)
+		return nearest_error(error, "nearest stock width");
+	memcpy(result, source + source_length - 7U, 7U);
+	return true;
+}
+
+static bool
+nearest_page_count(struct yt_nearest_state *state, float amount,
+    struct yt_error *error)
+{
+	if (!nearest_add(state->page_count, amount, &state->page_count, error,
+	    "nearest pager count"))
+		return false;
+	if (qb_mbf32_encode(state->page_count, state->page_count_raw)
+	    == QB_MBF_OVERFLOW)
+		return nearest_error(error, "nearest pager count raw");
+	return true;
+}
+
+static bool
+nearest_page(struct yt_nearest_state *state,
+    const struct yt_nearest_ops *ops, void *context, bool *stop,
+    struct yt_error *error)
+{
+	static const uint8_t prompt[] =
+	    "More? [Y]es [N]o [+] Continuous [Y] ";
+	uint8_t key;
+	bool available;
+
+	*stop = false;
+	state->page_count = 0.0f;
+	memcpy(state->page_count_raw, "\x00\x00\x30\x00", 4U);
+	state->style.foreground = 3.0f;
+	if (!nearest_present(state, ops, context, YT_NEAREST_PAGER_PROMPT,
+	    YT_NEAREST_PRESENT_BOLD_RAW, prompt, sizeof(prompt) - 1U, error))
+		return false;
+	for (;;) {
+		available = false;
+		key = 0U;
+		if (!ops->input(context, &key, &available, error))
+			return false;
+		if (!available)
+			continue;
+		if (key == '\r')
+			key = 'Y';
+		ops->uppercase(context, &key, 1U);
+		if (key != 'Y' && key != 'N' && key != '+')
+			continue;
+		if (!nearest_present(state, ops, context, YT_NEAREST_PAGER_ECHO,
+		    YT_NEAREST_PRESENT_LINE, &key, 1U, error))
+			return false;
+		if (key == '+')
+			state->continuous = true;
+		*stop = key == 'N';
+		return true;
+	}
+}
+
+bool
+yt_nearest_run(struct yt_nearest_state *state,
+    const struct yt_nearest_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t scanning[] = "Scanning Starmap Database...";
+	static const uint8_t instruction[] =
+	    "Owned ports show the name of the owner preceeded by a \">\".";
+	static const uint8_t earth[] = "** Earth **";
+	bool visited[3001] = {false};
+	int current_layer[3001];
+	int next_layer[3001];
+	size_t current_count = 0U;
+	struct yt_record raw;
+	bool first_sector = true;
+
+	if (state == NULL || ops == NULL || ops->read_record == NULL
+	    || ops->observe_day == NULL || ops->observe_timer == NULL
+	    || ops->present == NULL || ops->input == NULL
+	    || ops->uppercase == NULL
+	    || state->selector < 1 || state->selector > 8
+	    || (state->selector <= 3 && state->direction != 'B'
+	    && state->direction != 'S'))
+		return startup_configuration_error(error, YT_INVALID,
+		    "nearest arguments");
+	state->current_record_expression = 0.0f;
+	state->current_team = 0.0f;
+	state->start_sector_raw = 0.0f;
+	state->display_sector = 0.0f;
+	state->current_day = 0.0f;
+	state->timer_seconds = 0.0f;
+	state->page_count = 4.0f;
+	if (qb_mbf32_encode(4.0f, state->page_count_raw) == QB_MBF_OVERFLOW)
+		return nearest_error(error, "nearest initial pager count");
+	state->current_sector = 0;
+	state->distance = 0;
+	state->rows = 0U;
+	state->outputs = 0U;
+	state->reads = 0U;
+	state->day_observations = 0U;
+	state->timer_observations = 0U;
+	state->roster_comparisons = 0U;
+	state->continuous = false;
+	state->stopped = false;
+	state->complete = false;
+	state->result = YT_NEAREST_INCOMPLETE;
+
+	if (!nearest_single(state->actor_number, &state->actor_number, error,
+	    "nearest actor number")
+	    || !nearest_present(state, ops, context, YT_NEAREST_ENTRY_BLANK,
+	    YT_NEAREST_PRESENT_LINE, NULL, 0U, error))
+		return false;
+	state->style.foreground = 3.0f;
+	if (!nearest_present(state, ops, context, YT_NEAREST_SCANNING,
+	    YT_NEAREST_PRESENT_BOLD_LINE, scanning, sizeof(scanning) - 1U,
+	    error)
+	    || !nearest_present(state, ops, context, YT_NEAREST_SCAN_BLANK,
+	    YT_NEAREST_PRESENT_LINE, NULL, 0U, error))
+		return false;
+	state->style.foreground = 7.0f;
+	if (!nearest_present(state, ops, context, YT_NEAREST_OWNER_INSTRUCTION,
+	    YT_NEAREST_PRESENT_BOLD_LINE, instruction,
+	    sizeof(instruction) - 1U, error)
+	    || !nearest_present(state, ops, context, YT_NEAREST_OWNER_BLANK,
+	    YT_NEAREST_PRESENT_LINE, NULL, 0U, error))
+		return false;
+
+	if (!nearest_read(state, ops, context, YT_NEAREST_FIELD_PLAYER,
+	    state->actor_number, &raw, error))
+		return false;
+	yt_player_decode(&state->player, &raw);
+	state->current_team = state->player.team;
+	state->start_sector_raw = state->player.sector;
+	if (!nearest_cint(state, state->start_sector_raw,
+	    &state->current_sector, error, "nearest start-sector CINT"))
+		return false;
+	if (state->current_sector < 0 || state->current_sector > 3000)
+		return nearest_error(error, "nearest start workspace");
+	if (state->start_sector_raw != 0.0f) {
+		visited[state->current_sector] = true;
+		current_layer[current_count++] = state->current_sector;
+	}
+
+	while (current_count != 0U) {
+		size_t layer_index;
+		size_t next_count = 0U;
+		bool heading_emitted = false;
+
+		for (layer_index = 0U; layer_index < current_count; ++layer_index) {
+			int sector_number = current_layer[layer_index];
+			float sector_operand = first_sector
+			    ? state->start_sector_raw : (float)sector_number;
+			float expression;
+			float raw_port;
+			size_t slot;
+
+			first_sector = false;
+			state->current_sector = sector_number;
+			state->display_sector = sector_operand;
+			if (!nearest_add(state->sector_record_offset, sector_operand,
+			    &expression, error, "nearest sector record expression")
+			    || !nearest_read(state, ops, context,
+			    YT_NEAREST_FIELD_SECTOR, expression, &raw, error))
+				return false;
+			yt_sector_decode(&state->sector, &raw);
+			for (slot = 0U; slot < 6U; ++slot) {
+				int target;
+				float warp = state->sector.warps[slot];
+
+				if (warp == 0.0f)
+					continue;
+				if (!nearest_cint(state, warp, &target, error,
+				    "nearest warp CINT"))
+					return false;
+				if (target < 0 || target > 3000)
+					return nearest_error(error,
+					    "nearest warp workspace");
+				if (visited[target])
+					continue;
+				visited[target] = true;
+				next_layer[next_count++] = target;
+			}
+			raw_port = state->sector.port;
+			if (raw_port == 0.0f)
+				continue;
+			if (!ops->observe_day(context, &state->current_day, error))
+				return false;
+			++state->day_observations;
+			if (!nearest_single(state->current_day, &state->current_day,
+			    error, "nearest current day")
+			    || !nearest_add(state->port_record_offset, raw_port,
+			    &expression, error, "nearest port record expression")
+			    || !nearest_read(state, ops, context,
+			    YT_NEAREST_FIELD_PORT, expression, &raw, error))
+				return false;
+			yt_port_decode(&state->port, &raw);
+			{
+				bool member = false;
+
+				if (state->current_team != 0.0f) {
+					for (slot = 0U; slot < 4U; ++slot) {
+						++state->roster_comparisons;
+						if (state->cached_roster[slot]
+						    == state->port.owner)
+							member = true;
+					}
+				}
+				if (!nearest_filter(state, member))
+					continue;
+			}
+			nearest_market_copy(&state->market, &state->port);
+			if (!ops->observe_timer(context, &state->timer_seconds, error))
+				return false;
+			++state->timer_observations;
+			if (!nearest_single(state->timer_seconds,
+			    &state->timer_seconds, error, "nearest TIMER")
+			    || !yt_nearest_market_project(&state->market, &state->port,
+			    state->base_price, state->current_day,
+			    state->timer_seconds, error))
+				return false;
+
+			if (!heading_emitted) {
+				char number[64];
+				uint8_t heading[96];
+				int length = qb_str_single(number, sizeof(number),
+				    (float)state->distance);
+
+				if (length < 0 || 9U + (size_t)length > sizeof(heading))
+					return nearest_error(error,
+					    "nearest distance formatting");
+				memcpy(heading, "Distance:", 9U);
+				memcpy(heading + 9U, number, (size_t)length);
+				state->style.foreground = 1.0f;
+				if (!nearest_present(state, ops, context,
+				    YT_NEAREST_DISTANCE, YT_NEAREST_PRESENT_BOLD_LINE,
+				    heading, 9U + (size_t)length, error)
+				    || !nearest_page_count(state, 1.0f, error))
+					return false;
+				heading_emitted = true;
+			}
+			{
+				uint8_t name[43];
+				uint8_t sector_cell[13];
+				uint8_t ore[13];
+				uint8_t organics[13];
+				uint8_t equipment[11];
+				uint8_t stock[7];
+				char number[64];
+				char price[4];
+				size_t name_length;
+				int rendered;
+				int owner_record;
+				bool stop;
+
+				rendered = qb_str_single(number, sizeof(number),
+				    state->display_sector);
+				if (rendered < 0)
+					return nearest_error(error,
+					    "nearest sector formatting");
+				memcpy(sector_cell, "Sector:", 7U);
+				memset(sector_cell + 7U, ' ', 6U);
+				memcpy(sector_cell + 7U, number,
+				    (size_t)rendered < 6U ? (size_t)rendered : 6U);
+				if (!nearest_price_cell(state->market.price[0], price))
+					return nearest_error(error,
+					    "nearest ore formatting");
+				(void)snprintf((char *)ore, sizeof(ore),
+				    " Ore @%c%s  ", state->port.commodity_class
+				    == 3.0f ? 'S' : 'B', price);
+				if (!nearest_price_cell(state->market.price[1], price))
+					return nearest_error(error,
+					    "nearest organics formatting");
+				(void)snprintf((char *)organics,
+				    sizeof(organics), " Org @%c%s  ",
+				    state->port.commodity_class == 2.0f ? 'S' : 'B',
+				    price);
+				if (!nearest_price_cell(state->market.price[2], price))
+					return nearest_error(error,
+					    "nearest equipment formatting");
+				(void)snprintf((char *)equipment,
+				    sizeof(equipment), " Equ @%c%s",
+				    state->port.commodity_class == 1.0f ? 'S' : 'B',
+				    price);
+				if (!nearest_stock_cell(&state->market, stock, error)
+				    || !nearest_cint(state, state->port.name_length,
+				    &rendered, error, "nearest name-length CINT"))
+					return false;
+				if (rendered < 0)
+					return nearest_error(error,
+					    "nearest name LEFT$ length");
+				name_length = (size_t)rendered;
+				if (name_length > YT_TEXT_FIELD_SIZE)
+					name_length = YT_TEXT_FIELD_SIZE;
+				memcpy(name, state->port.record.bytes, name_length);
+				if (state->display_sector == 1.0f) {
+					name_length = sizeof(earth) - 1U;
+					memcpy(name, earth, name_length);
+					memset(ore, 0, sizeof(ore));
+					memset(organics, 0, sizeof(organics));
+					memset(equipment, 0, sizeof(equipment));
+					memset(stock, 0, sizeof(stock));
+				}
+				if (state->port.owner != 0.0f)
+					state->style.bold = 1.0f;
+				state->style.foreground = 2.0f;
+				if (!nearest_present(state, ops, context,
+				    YT_NEAREST_SECTOR, YT_NEAREST_PRESENT_RAW,
+				    sector_cell, sizeof(sector_cell), error))
+					return false;
+				state->style.foreground =
+				    state->port.commodity_class == 3.0f ? 7.0f : 6.0f;
+				if (!nearest_present(state, ops, context, YT_NEAREST_ORE,
+				    YT_NEAREST_PRESENT_BOLD_RAW, ore,
+				    state->display_sector == 1.0f
+				    ? 0U : sizeof(ore) - 1U,
+				    error))
+					return false;
+				state->style.foreground =
+				    state->port.commodity_class == 2.0f ? 7.0f : 6.0f;
+				if (!nearest_present(state, ops, context,
+				    YT_NEAREST_ORGANICS, YT_NEAREST_PRESENT_BOLD_RAW,
+				    organics, state->display_sector == 1.0f
+				    ? 0U : sizeof(organics) - 1U, error))
+					return false;
+				state->style.foreground =
+				    state->port.commodity_class == 1.0f ? 7.0f : 6.0f;
+				if (!nearest_present(state, ops, context,
+				    YT_NEAREST_EQUIPMENT, YT_NEAREST_PRESENT_BOLD_RAW,
+				    equipment, state->display_sector == 1.0f
+				    ? 0U : sizeof(equipment) - 1U, error))
+					return false;
+				state->style.foreground = 2.0f;
+				if (!nearest_present(state, ops, context, YT_NEAREST_STOCK,
+				    YT_NEAREST_PRESENT_RAW, stock,
+				    state->display_sector == 1.0f ? 0U : sizeof(stock),
+				    error))
+					return false;
+				state->style.foreground = 3.0f;
+				if (!nearest_cint(state, state->port.owner, &owner_record,
+				    error, "nearest owner CINT"))
+					return false;
+				if (state->display_sector != 1.0f
+				    && owner_record != 0) {
+					if (!nearest_read(state, ops, context,
+					    YT_NEAREST_FIELD_OWNER, state->port.owner,
+					    &raw, error))
+						return false;
+					yt_player_decode(&state->owner, &raw);
+					memmove(name + 2U, state->owner.record.bytes,
+					    YT_TEXT_FIELD_SIZE);
+					memcpy(name, "> ", 2U);
+					name_length = qb_title_case_n(name,
+					    YT_TEXT_FIELD_SIZE + 2U);
+					if (name_length > 26U)
+						name_length = 26U;
+					if (state->port.owner == state->actor_number)
+						state->style.foreground = 5.0f;
+				}
+				if (state->display_sector == 1.0f) {
+					state->style.foreground = 3.0f;
+					state->style.blink = 1.0f;
+				}
+				if (!nearest_present(state, ops, context, YT_NEAREST_NAME,
+				    YT_NEAREST_PRESENT_BOLD_LINE, name, name_length,
+				    error))
+					return false;
+				++state->rows;
+				if (!nearest_page_count(state, 1.0f, error))
+					return false;
+				if (state->continuous) {
+					state->page_count = 0.0f;
+					memset(state->page_count_raw, 0, 4U);
+				}
+				if (state->page_count > 22.0f) {
+					if (!nearest_page(state, ops, context, &stop,
+					    error))
+						return false;
+					if (stop) {
+						if (!nearest_present(state, ops, context,
+						    YT_NEAREST_FINAL_BLANK,
+						    YT_NEAREST_PRESENT_LINE, NULL, 0U,
+						    error))
+							return false;
+						state->stopped = true;
+						state->complete = true;
+						state->result = YT_NEAREST_PAGE_STOP;
+						return true;
+					}
+				}
+			}
+		}
+		qsort(next_layer, next_count, sizeof(next_layer[0]),
+		    nearest_descending_compare);
+		memcpy(current_layer, next_layer,
+		    next_count * sizeof(current_layer[0]));
+		current_count = next_count;
+		++state->distance;
+	}
+	if (!nearest_present(state, ops, context, YT_NEAREST_FINAL_BLANK,
+	    YT_NEAREST_PRESENT_LINE, NULL, 0U, error))
+		return false;
+	state->complete = true;
+	state->result = YT_NEAREST_COMPLETE;
 	return true;
 }
 

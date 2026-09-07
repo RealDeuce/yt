@@ -185,6 +185,7 @@ if(BUILD_TESTING)
     target_link_libraries(test_output PRIVATE yt_game OpenDoors::Static)
     add_test(NAME test_output COMMAND test_output)
     yt_add_test(test_ytconfig_output tests/test_ytconfig_output.c yt_game)
+    yt_add_test(test_nearest tests/test_nearest.c yt_game)
     yt_add_test(test_score tests/test_score.c yt_game)
     yt_add_test(test_route tests/test_route.c yt_core)
 
