@@ -13465,6 +13465,193 @@ test_owned_planets_transaction(void)
 }
 
 static void
+computer_nearest_cycle_fixture(bool ansi,
+    struct pager_capture *capture, struct yt_present_state *current,
+    struct yt_pager_state *pager)
+{
+	static const uint8_t prompt[] =
+	    "Time: 14:59  Computer command (?=help)? ";
+	static const uint8_t first_filter[] =
+	    "Show buying/selling [1] Equ, [2] Org, [3] Ore,";
+	static const uint8_t second_filter[] =
+	    "[Y] Your Ports, [T] Team's Ports, [E] Enemy Ports";
+	static const uint8_t filter_prompt[] =
+	    "[U] Un-owned Ports OR [A] All Ports ? -=> [A] ";
+	static const uint8_t scanning[] = "Scanning Starmap Database...";
+	static const uint8_t ownership[] =
+	    "Owned ports show the name of the owner preceeded by a \">\".";
+	static const uint8_t distance[] = "Distance: 0";
+	static const uint8_t sector[] = "Sector: 1    ";
+	static const uint8_t earth[] = "** Earth **";
+	struct yt_present_result result;
+	char accumulator[80] = "";
+	float saved_mode;
+
+	*current = state(ansi);
+	current->foreground = 6.0f;
+	memset(pager, 0, sizeof(*pager));
+	pager->foreground = 6;
+	memset(capture, 0, sizeof(*capture));
+	if (ansi) {
+		/* A43D changes the local color before 02BF's direct blank. */
+		saved_mode = current->sound.mode;
+		current->sound.mode = 1.0f;
+		CHECK(yt_present_color(current, &result) == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+		current->sound.mode = saved_mode;
+		current->sound.ansi = 0.0f;
+	}
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current->sound.ansi = ansi ? -1.0f : 0.0f;
+	current->foreground = 1.0f;
+	pager->foreground = 1;
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, prompt, sizeof(prompt) - 1U,
+	    capture);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_editor_echo((const uint8_t *)"1", 1U,
+	    (const uint8_t *)"1", 1U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_editor_echo((const uint8_t *)"4", 1U,
+	    (const uint8_t *)"4", 1U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	pager_fixture_b05d(pager, current, first_filter,
+	    sizeof(first_filter) - 1U, capture);
+	pager_fixture_b05d(pager, current, second_filter,
+	    sizeof(second_filter) - 1U, capture);
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, filter_prompt,
+	    sizeof(filter_prompt) - 1U, capture);
+	yt_pager_editor_enter(pager, accumulator, sizeof(accumulator));
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current->foreground = 3.0f;
+	CHECK(yt_present_bold_line(scanning, sizeof(scanning) - 1U,
+	    current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current->foreground = 7.0f;
+	CHECK(yt_present_bold_line(ownership, sizeof(ownership) - 1U,
+	    current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current->foreground = 1.0f;
+	CHECK(yt_present_bold_line(distance, sizeof(distance) - 1U,
+	    current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current->foreground = 2.0f;
+	CHECK(yt_present_character(sector, sizeof(sector) - 1U,
+	    current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current->foreground = 6.0f;
+	CHECK(yt_present_bold_character(NULL, 0U, current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_bold_character(NULL, 0U, current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current->foreground = 7.0f;
+	CHECK(yt_present_bold_character(NULL, 0U, current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current->foreground = 2.0f;
+	CHECK(yt_present_character(NULL, 0U, current, &result)
+	    == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current->foreground = 3.0f;
+	yt_present_set_blink(current, 1.0f);
+	CHECK(yt_present_bold_line(earth, sizeof(earth) - 1U,
+	    current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+
+	/* The return hydration's A43D precedes its direct blank locally. */
+	pager->line_count = 0.0f;
+	if (ansi) {
+		saved_mode = current->sound.mode;
+		current->sound.mode = 1.0f;
+		CHECK(yt_present_color(current, &result) == YT_PRESENT_OK);
+		pager_capture_result(capture, &result);
+		current->sound.mode = saved_mode;
+		current->sound.ansi = 0.0f;
+	}
+	CHECK(yt_present_line(NULL, 0U, current, &result) == YT_PRESENT_OK);
+	pager_capture_result(capture, &result);
+	current->sound.ansi = ansi ? -1.0f : 0.0f;
+	current->foreground = 1.0f;
+	pager->foreground = 1;
+	pager->newline_flag = 1.0f;
+	pager_fixture_b05d(pager, current, prompt, sizeof(prompt) - 1U,
+	    capture);
+}
+
+static void
+test_computer_nearest_cycle_presentation(void)
+{
+	struct yt_present_state current;
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+
+	computer_nearest_cycle_fixture(true, &capture, &current, &pager);
+	CHECK(capture.remote_length == 530U
+	    && viewer_bytes_fnv1a64(capture.remote, capture.remote_length)
+	    == UINT64_C(0x439c75b897c31831));
+	CHECK(capture.local_event_count == 55U
+	    && capture.local_fnv == UINT64_C(0x87bdb2f2c8e1cedd)
+	    && capture.framebuffer_initialized
+	    && capture.framebuffer.bios_row == 16U
+	    && capture.framebuffer.bios_column == 41U
+	    && capture.framebuffer.qb_row == 16U
+	    && capture.framebuffer.qb_column == 41U
+	    && capture.framebuffer.brun_bios_cache_row == 16U
+	    && capture.framebuffer.brun_bios_cache_column == 41U
+	    && capture.framebuffer.qb_attribute == 0x07U
+	    && capture.framebuffer.qb_scrolls == 0U
+	    && capture.framebuffer.con_scrolls == 0U
+	    && startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
+	    == UINT64_C(0x5d7540780ad6646c));
+	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f
+	    && current.foreground == 1.0f
+	    && current.cached_foreground == 1.0f
+	    && current.bold == 0.0f && current.blink == 0.0f);
+
+	computer_nearest_cycle_fixture(false, &capture, &current, &pager);
+	CHECK(capture.remote_length == 374U
+	    && viewer_bytes_fnv1a64(capture.remote, capture.remote_length)
+	    == UINT64_C(0xe20bb30d7b3265c1));
+	CHECK(capture.local_event_count == 32U
+	    && capture.local_fnv == UINT64_C(0x8449e0939b93bbc6)
+	    && capture.framebuffer_initialized
+	    && capture.framebuffer.bios_row == 16U
+	    && capture.framebuffer.bios_column == 41U
+	    && capture.framebuffer.qb_row == 16U
+	    && capture.framebuffer.qb_column == 41U
+	    && capture.framebuffer.brun_bios_cache_row == 16U
+	    && capture.framebuffer.brun_bios_cache_column == 41U
+	    && capture.framebuffer.qb_attribute == 0x07U
+	    && capture.framebuffer.qb_scrolls == 0U
+	    && capture.framebuffer.con_scrolls == 0U
+	    && startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
+	    == UINT64_C(0x2608fcbb2e9af720));
+	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f
+	    && current.foreground == 1.0f
+	    && current.cached_foreground == 0.0f
+	    && current.bold == 1.0f && current.blink == 1.0f);
+}
+
+static void
 computer_fighter_finder_cycle_fixture(bool ansi,
     struct pager_capture *capture, struct yt_present_state *current,
     struct yt_pager_state *pager)
@@ -48765,6 +48952,7 @@ main(void)
 	test_computer_planet_report_front_presentation();
 	test_computer_planet_inventory_presentation();
 	test_owned_planets_transaction();
+	test_computer_nearest_cycle_presentation();
 	test_computer_finders_presentation();
 	test_computer_treasury_presentation();
 	test_main_fighters_presentation();
