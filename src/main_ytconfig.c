@@ -16,7 +16,7 @@ store_config(struct yt_game *game, struct yt_error *error)
 }
 
 static bool
-headquarters_read_record(void *context, size_t basic_record,
+config_read_record(void *context, size_t basic_record,
     struct yt_record *record, struct yt_error *error)
 {
 	struct yt_game *game = context;
@@ -25,7 +25,7 @@ headquarters_read_record(void *context, size_t basic_record,
 }
 
 static bool
-headquarters_write_record(void *context, size_t basic_record,
+config_write_record(void *context, size_t basic_record,
     const struct yt_record *record, struct yt_error *error)
 {
 	struct yt_game *game = context;
@@ -253,9 +253,9 @@ edit_scoreboard(struct yt_game *game, uint8_t working_path[41],
 static bool
 edit_headquarters(struct yt_game *game, struct yt_error *error)
 {
-	static const struct yt_config_hq_ops ops = {
-		headquarters_read_record,
-		headquarters_write_record,
+	static const struct yt_config_record_ops ops = {
+		config_read_record,
+		config_write_record,
 	};
 	struct yt_config_output_result output;
 	struct yt_config_hq_state state;
@@ -970,16 +970,18 @@ main(void)
 				goto failure;
 		}
 		else if (key == 'J') {
-			bool overflow;
-			int value = (int)qb_cint(working.local_screen,
-			    &overflow);
+			static const struct yt_config_record_ops ops = {
+				config_read_record,
+				config_write_record,
+			};
+			struct yt_config_local_screen_state state;
 
-			if (!overflow) {
-				working.local_screen = (float)(~value);
-				game.config.local_screen = working.local_screen;
-				if (!store_config(&game, &error))
-					goto failure;
-			}
+			if (!yt_config_toggle_local_screen(&state, &ops, &game,
+			    &error))
+				goto failure;
+			game.config.record = state.field;
+			game.config.local_screen = state.toggled;
+			working.local_screen = state.toggled;
 		}
 		else if (key == 'L') {
 			if (!edit_genesis(&game, &error))

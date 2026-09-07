@@ -63,11 +63,28 @@ struct yt_config_hq_state {
 	bool complete;
 };
 
-struct yt_config_hq_ops {
+struct yt_config_record_ops {
 	bool (*read_record)(void *context, size_t basic_record,
 	    struct yt_record *record, struct yt_error *error);
 	bool (*write_record)(void *context, size_t basic_record,
 	    const struct yt_record *record, struct yt_error *error);
+};
+
+enum yt_config_local_screen_operation {
+	YT_CONFIG_LOCAL_SCREEN_NONE,
+	YT_CONFIG_LOCAL_SCREEN_READ,
+	YT_CONFIG_LOCAL_SCREEN_WRITE,
+};
+
+struct yt_config_local_screen_state {
+	enum yt_config_local_screen_operation attempted;
+	struct yt_record field;
+	float stored;
+	float toggled;
+	bool field_loaded;
+	bool overlay_complete;
+	bool write_complete;
+	bool complete;
 };
 
 bool yt_config_decode(struct yt_config *config,
@@ -81,7 +98,11 @@ void yt_config_normalize_game(struct yt_config *config, bool local_mode);
 void yt_config_normalize_maintenance(struct yt_config *config);
 bool yt_config_headquarters_relocate(struct yt_config_hq_state *state,
 	const struct yt_config *config, float candidate,
-	const struct yt_config_hq_ops *ops, void *context,
+	const struct yt_config_record_ops *ops, void *context,
+	struct yt_error *error);
+bool yt_config_toggle_local_screen(
+	struct yt_config_local_screen_state *state,
+	const struct yt_config_record_ops *ops, void *context,
 	struct yt_error *error);
 
 int yt_date_serial(const struct yt_clock_value *date, int epoch_year,

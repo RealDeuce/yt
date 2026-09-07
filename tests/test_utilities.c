@@ -5535,8 +5535,8 @@ test_ytconfig(struct yt_error *error)
 	    output.final_column, &folded, &output) || folded != (uint8_t)'J')
 		goto done;
 	APPEND_CONFIG_OUTPUT();
-	working.local_screen = 0.0f;
-	game.config.local_screen = 0.0f;
+	working.local_screen = 1.0f;
+	game.config.local_screen = 1.0f;
 	if (!yt_config_compose_menu_prompt(&game.config, &working, today, 0U,
 	    &output))
 		goto done;
@@ -5559,7 +5559,7 @@ test_ytconfig(struct yt_error *error)
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_READ,
 	    error) || !yt_config_load(&game.database, &game.config, error))
 		goto done;
-	valid = game.config.local_screen == 0.0f;
+	valid = game.config.local_screen == 1.0f;
 
 done:
 	yt_game_close(&game);
@@ -5822,7 +5822,7 @@ config_hq_test_write(void *context, size_t basic_record,
 static bool
 test_ytconfig_headquarters_transaction(void)
 {
-	static const struct yt_config_hq_ops ops = {
+	static const struct yt_config_record_ops ops = {
 		config_hq_test_read,
 		config_hq_test_write,
 	};
@@ -5918,6 +5918,120 @@ test_ytconfig_headquarters_transaction(void)
 	    &success, &error)
 	    && !yt_config_headquarters_relocate(&state, &config, 8.6f, NULL,
 	    &success, &error);
+}
+
+struct config_local_screen_test_tape {
+	struct yt_record durable;
+	unsigned reads;
+	unsigned writes;
+	unsigned fail_at;
+};
+
+static bool
+config_local_screen_test_read(void *context, size_t basic_record,
+    struct yt_record *record, struct yt_error *error)
+{
+	struct config_local_screen_test_tape *tape = context;
+
+	if (basic_record != 1U)
+		return false;
+	++tape->reads;
+	if (tape->fail_at == tape->reads + tape->writes) {
+		if (error != NULL)
+			error->status = YT_IO_ERROR;
+		return false;
+	}
+	*record = tape->durable;
+	return true;
+}
+
+static bool
+config_local_screen_test_write(void *context, size_t basic_record,
+    const struct yt_record *record, struct yt_error *error)
+{
+	struct config_local_screen_test_tape *tape = context;
+
+	if (basic_record != 1U)
+		return false;
+	++tape->writes;
+	if (tape->fail_at == tape->reads + tape->writes) {
+		if (error != NULL)
+			error->status = YT_IO_ERROR;
+		return false;
+	}
+	tape->durable = *record;
+	return true;
+}
+
+static bool
+test_ytconfig_local_screen_transaction(void)
+{
+	static const struct yt_config_record_ops ops = {
+		config_local_screen_test_read,
+		config_local_screen_test_write,
+	};
+	struct config_local_screen_test_tape tape;
+	struct yt_config_local_screen_state state;
+	struct yt_record original;
+	struct yt_error error;
+	unsigned byte;
+
+	for (byte = 0U; byte < YT_RECORD_SIZE; ++byte)
+		original.bytes[byte] = (uint8_t)(byte * 11U + 3U);
+	(void)yt_record_set_number(&original, YT_F85, 0.6f);
+	tape = (struct config_local_screen_test_tape){.durable = original};
+	yt_error_clear(&error);
+	if (!yt_config_toggle_local_screen(&state, &ops, &tape, &error)
+	    || !state.complete
+	    || state.attempted != YT_CONFIG_LOCAL_SCREEN_NONE
+	    || !state.field_loaded || !state.overlay_complete
+	    || !state.write_complete || state.stored != 0.6f
+	    || state.toggled != -2.0f || tape.reads != 1U || tape.writes != 1U
+	    || yt_record_get_number(&tape.durable, YT_F85) != -2.0f
+	    || memcmp(tape.durable.bytes, original.bytes, YT_F85) != 0
+	    || memcmp(tape.durable.bytes + YT_F89, original.bytes + YT_F89,
+	    YT_RECORD_SIZE - YT_F89) != 0)
+		return false;
+	tape = (struct config_local_screen_test_tape){
+		.durable = original,
+		.fail_at = 1U,
+	};
+	yt_error_clear(&error);
+	if (yt_config_toggle_local_screen(&state, &ops, &tape, &error)
+	    || error.status != YT_IO_ERROR
+	    || state.attempted != YT_CONFIG_LOCAL_SCREEN_READ
+	    || state.field_loaded || state.overlay_complete || state.write_complete
+	    || memcmp(&tape.durable, &original, sizeof(original)) != 0)
+		return false;
+	tape = (struct config_local_screen_test_tape){
+		.durable = original,
+		.fail_at = 2U,
+	};
+	yt_error_clear(&error);
+	if (yt_config_toggle_local_screen(&state, &ops, &tape, &error)
+	    || error.status != YT_IO_ERROR
+	    || state.attempted != YT_CONFIG_LOCAL_SCREEN_WRITE
+	    || !state.field_loaded || !state.overlay_complete
+	    || state.write_complete || state.toggled != -2.0f
+	    || yt_record_get_number(&state.field, YT_F85) != -2.0f
+	    || memcmp(&tape.durable, &original, sizeof(original)) != 0)
+		return false;
+	(void)yt_record_set_number(&tape.durable, YT_F85, 0.0f);
+	tape.fail_at = 0U;
+	tape.reads = 0U;
+	tape.writes = 0U;
+	yt_error_clear(&error);
+	if (!yt_config_toggle_local_screen(&state, &ops, &tape, &error)
+	    || state.toggled != -1.0f)
+		return false;
+	(void)yt_record_set_number(&tape.durable, YT_F85, -1.0f);
+	tape.reads = 0U;
+	tape.writes = 0U;
+	yt_error_clear(&error);
+	return yt_config_toggle_local_screen(&state, &ops, &tape, &error)
+	    && state.toggled == 0.0f
+	    && !yt_config_toggle_local_screen(NULL, &ops, &tape, &error)
+	    && !yt_config_toggle_local_screen(&state, NULL, &tape, &error);
 }
 
 static bool
@@ -7622,6 +7736,8 @@ main(void)
 		failure = "YTCONFIG Genesis editor differs";
 	else if (!test_ytconfig_headquarters_transaction())
 		failure = "YTCONFIG Headquarters transaction differs";
+	else if (!test_ytconfig_local_screen_transaction())
+		failure = "YTCONFIG local-screen transaction differs";
 	else if (!test_ytconfig_headquarters(&error))
 		failure = "YTCONFIG Headquarters relocation differs";
 	else if (!test_ytconfig_scalar_options(&error))

@@ -148,7 +148,7 @@ config_single_sub(float left, float right)
 bool
 yt_config_headquarters_relocate(struct yt_config_hq_state *state,
     const struct yt_config *config, float candidate,
-    const struct yt_config_hq_ops *ops, void *context,
+    const struct yt_config_record_ops *ops, void *context,
     struct yt_error *error)
 {
 	static const uint8_t raw_clear[4] = {0x00, 0x00, 0x80, 0x00};
@@ -262,6 +262,43 @@ yt_config_headquarters_relocate(struct yt_config_hq_state *state,
 #undef HQ_READ
 	state->route = YT_CONFIG_HQ_ROUTE_RELOCATED;
 	state->attempted = YT_CONFIG_HQ_NONE;
+	state->complete = true;
+	return true;
+}
+
+bool
+yt_config_toggle_local_screen(struct yt_config_local_screen_state *state,
+    const struct yt_config_record_ops *ops, void *context,
+    struct yt_error *error)
+{
+	bool overflow;
+	int32_t converted;
+
+	if (state != NULL)
+		memset(state, 0, sizeof(*state));
+	if (state == NULL || ops == NULL || ops->read_record == NULL
+	    || ops->write_record == NULL)
+		return config_hq_error(error, YT_INVALID,
+		    "YTCONFIG local-screen transaction");
+	state->attempted = YT_CONFIG_LOCAL_SCREEN_READ;
+	if (!ops->read_record(context, 1U, &state->field, error))
+		return false;
+	state->field_loaded = true;
+	state->stored = yt_record_get_number(&state->field, YT_F85);
+	converted = qb_cint(state->stored, &overflow);
+	if (overflow)
+		return config_hq_error(error, YT_RANGE,
+		    "YTCONFIG local-screen CINT");
+	state->toggled = (float)(~converted);
+	if (!yt_record_set_number(&state->field, YT_F85, state->toggled))
+		return config_hq_error(error, YT_RANGE,
+		    "YTCONFIG local-screen overlay");
+	state->overlay_complete = true;
+	state->attempted = YT_CONFIG_LOCAL_SCREEN_WRITE;
+	if (!ops->write_record(context, 1U, &state->field, error))
+		return false;
+	state->write_complete = true;
+	state->attempted = YT_CONFIG_LOCAL_SCREEN_NONE;
 	state->complete = true;
 	return true;
 }
