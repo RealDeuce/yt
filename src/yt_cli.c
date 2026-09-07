@@ -7,6 +7,7 @@
 
 #ifdef _WIN32
 #include <conio.h>
+#include <io.h>
 #else
 #include <termios.h>
 #include <unistd.h>
@@ -88,6 +89,46 @@ yt_cli_key(void)
 	(void)tcsetattr(STDIN_FILENO, TCSANOW, &saved);
 	return key;
 #endif
+}
+
+bool
+yt_cli_stdin_redirected(void)
+{
+#ifdef _WIN32
+	return _isatty(_fileno(stdin)) == 0;
+#else
+	return isatty(STDIN_FILENO) == 0;
+#endif
+}
+
+size_t
+yt_cli_drain_pending_keys(uint16_t *words, size_t capacity)
+{
+#ifdef _WIN32
+	size_t count = 0U;
+
+	while (_kbhit()) {
+		int key = _getch();
+
+		if (count < capacity && words != NULL)
+			words[count] = (uint16_t)(unsigned char)key;
+		++count;
+	}
+	return count > capacity ? capacity : count;
+#else
+	(void)words;
+	(void)capacity;
+	(void)tcflush(STDIN_FILENO, TCIFLUSH);
+	return 0U;
+#endif
+}
+
+void
+yt_cli_restore_terminal(bool cursor_shape_known, uint16_t cursor_shape)
+{
+	/* Each native raw-key read restores its saved host terminal immediately. */
+	(void)cursor_shape_known;
+	(void)cursor_shape;
 }
 
 bool

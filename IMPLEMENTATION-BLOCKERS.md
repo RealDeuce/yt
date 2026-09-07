@@ -159,37 +159,31 @@ and focused failure-prefix fixtures must publish those identities and raw
 states before this boundary can proceed. No binary inspection or new reverse
 engineering was performed.
 
-## Open documentation gaps
-
 ### DOC-GAP-033: YTCONFIG row-52 `BRUN:0ACC` fatal projection
 
-Affected coverage:
+Resolved upstream by commit `7454cc90`. YTCONFIG has the exact eight-byte
+module label `YTCONFIG`, no statement table and therefore no source-line
+clause, and saved IP `0EE5`. The shared fatal owner now composes the exact
+local-only diagnostic, prompt, normal-input drain or redirected-input CR,
+CLOSE-all, function-row/cursor restoration, and DOS-zero terminal while
+retaining the three committed owner transfers and corrupt fourth descriptor.
+The native editor uses the physical 51-descriptor-array loader directly and
+reaches that terminal instead of applying its former protective row-count
+guard.
+
+Formerly affected coverage:
 
 - the fourth physical-group-52 alias store at `YTCONFIG:0EE2`, whose saved
   return IP is `0EE5`;
 - the shared `BRUN:0ACC` internal-fatal diagnostic and cleanup; and
 - replacement of the native editor's remaining live `count > 51` guard.
 
-Commit `aa5675db` now completely specifies the four wrapped destinations,
-the first three committed owner transfers, the unchanged corrupt descriptor
-bytes at `DS:1C16`, and the fourth store's nonreturning `BRUN:0ACC` successor.
-The native transaction therefore models that exact prefix and stops at the
-shared-fatal boundary.
+Commit `aa5675db` supplied the four wrapped destinations and retained mutation
+prefix. Commit `7454cc90` then supplied the canonical YTCONFIG `0EE5` fixture,
+extended shared-fatal model, exact output bytes, and terminal cleanup carrier.
+No binary inspection or new reverse engineering was performed.
 
-The published shared fatal model does not accept `YTCONFIG` as a module: its
-module-name and statement-table registry covers only `YT-INIT`, `YT`,
-`YT-SUB`, and `YT-SUB2`. No YTCONFIG artifact supplies the greatest statement
-at saved IP `0EE5`, its source line (if any), the exact eight-byte module
-label, or a YTCONFIG caller fixture through the local-only `String Space
-Corrupt` location renderer, input drain, CLOSE-all, terminal restoration, and
-DOS-zero exit. The traversal's phrase "module segment relation" does not
-publish those missing values or a composable result.
-
-Without that projection, the live C utility can only invent a generic host
-error, omit documented local bytes, or terminate with the wrong status and
-cleanup. Upstream must extend the canonical internal-fatal model and provide
-a focused YTCONFIG `0EE5` fixture. No binary inspection or new reverse
-engineering was performed.
+## Open documentation gaps
 
 ### DOC-GAP-023: current-sector scanner cloak-clear raw value
 

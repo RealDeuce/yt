@@ -1,4 +1,5 @@
 #include "qb.h"
+#include "yt_brun_fatal.h"
 #include "yt_config.h"
 #include "yt_config_output.h"
 #include "yt_file.h"
@@ -99,6 +100,9 @@ utility_database_write(void *context, FILE *file, const uint8_t *data,
 
 static bool read_file(const char *path, uint8_t **data, size_t *length);
 static bool write_file(const char *path, const void *data, size_t length);
+static bool run_redirected(const char *program, const char *input,
+	const char *output);
+static bool initialize_direct(struct yt_error *error);
 
 static bool
 bytes_contain(const uint8_t *data, size_t length, const uint8_t *needle,
@@ -4390,6 +4394,158 @@ test_name_sequential_transaction(struct yt_error *error)
 	    &observation, NULL, error);
 }
 
+enum fatal_test_event {
+	FATAL_TEST_LOCAL,
+	FATAL_TEST_CLOSE_ALL,
+	FATAL_TEST_DRAIN,
+	FATAL_TEST_CLEAR_FUNCTION_BAR,
+	FATAL_TEST_RESTORE,
+	FATAL_TEST_END,
+};
+
+struct fatal_test_tape {
+	enum fatal_test_event events[12];
+	size_t event_count;
+	uint8_t local[YT_BRUN_FATAL_TEXT];
+	size_t local_length;
+	bool restored_shape_known;
+	uint16_t restored_shape;
+	unsigned exit_status;
+};
+
+static void
+fatal_test_local(void *context, const uint8_t *data, size_t length)
+{
+	struct fatal_test_tape *tape = context;
+
+	tape->events[tape->event_count++] = FATAL_TEST_LOCAL;
+	if (length <= sizeof(tape->local) - tape->local_length) {
+		memcpy(tape->local + tape->local_length, data, length);
+		tape->local_length += length;
+	}
+}
+
+static void
+fatal_test_close_all(void *context)
+{
+	struct fatal_test_tape *tape = context;
+
+	tape->events[tape->event_count++] = FATAL_TEST_CLOSE_ALL;
+}
+
+static size_t
+fatal_test_drain(void *context, uint16_t *words, size_t capacity)
+{
+	struct fatal_test_tape *tape = context;
+
+	tape->events[tape->event_count++] = FATAL_TEST_DRAIN;
+	if (capacity < 2U)
+		return capacity + 1U;
+	words[0] = 0x1E61U;
+	words[1] = 0x3062U;
+	return 2U;
+}
+
+static void
+fatal_test_clear_function_bar(void *context)
+{
+	struct fatal_test_tape *tape = context;
+
+	tape->events[tape->event_count++] = FATAL_TEST_CLEAR_FUNCTION_BAR;
+}
+
+static void
+fatal_test_restore(void *context, bool known, uint16_t shape)
+{
+	struct fatal_test_tape *tape = context;
+
+	tape->events[tape->event_count++] = FATAL_TEST_RESTORE;
+	tape->restored_shape_known = known;
+	tape->restored_shape = shape;
+}
+
+static void
+fatal_test_end(void *context, unsigned status)
+{
+	struct fatal_test_tape *tape = context;
+
+	tape->events[tape->event_count++] = FATAL_TEST_END;
+	tape->exit_status = status;
+}
+
+static bool
+test_brun_internal_fatal(void)
+{
+	static const struct yt_brun_internal_fatal_ops ops = {
+		fatal_test_local,
+		fatal_test_close_all,
+		fatal_test_drain,
+		fatal_test_clear_function_bar,
+		fatal_test_restore,
+		fatal_test_end,
+	};
+	static const uint8_t expected[] =
+	    "\rString Space Corrupt in module YTCONFIG at address "
+	    "2222:0EE5\r\rHit any key to return to system";
+	static const uint8_t gc_expected[] =
+	    "\rString Space Corrupt during G.C. in line 64006 of module "
+	    "YT-SUB   at address 1F42:A995\r\rHit any key to return to system\r";
+	static const enum fatal_test_event expected_events[] = {
+		FATAL_TEST_LOCAL, FATAL_TEST_CLOSE_ALL, FATAL_TEST_LOCAL,
+		FATAL_TEST_DRAIN, FATAL_TEST_CLEAR_FUNCTION_BAR,
+		FATAL_TEST_RESTORE, FATAL_TEST_END,
+	};
+	struct yt_brun_internal_fatal_state state;
+	struct fatal_test_tape tape = {0};
+
+	if (!yt_brun_internal_fatal_run(YT_BRUN_INTERNAL_FATAL_OWNER,
+	    "YTCONFIG", false, 0, 0x2222U, 0x0EE5U, false, true, true,
+	    0x0607U, &ops, &tape, &state)
+	    || state.entry != YT_BRUN_INTERNAL_FATAL_OWNER
+	    || strcmp(state.module, "YTCONFIG") != 0
+	    || state.module_segment != 0x2222U || state.saved_ip != 0x0EE5U
+	    || state.has_source_line || state.source_line != 0
+	    || state.local_length != sizeof(expected) - 1U
+	    || memcmp(state.local_bytes, expected, sizeof(expected) - 1U) != 0
+	    || tape.local_length != sizeof(expected) - 1U
+	    || memcmp(tape.local, expected, sizeof(expected) - 1U) != 0
+	    || tape.event_count != YT_ARRAY_LEN(expected_events)
+	    || memcmp(tape.events, expected_events, sizeof(expected_events)) != 0
+	    || state.drained_word_count != 2U
+	    || state.drained_words[0] != 0x1E61U
+	    || state.drained_words[1] != 0x3062U
+	    || !state.input_drained || !state.close_all_completed
+	    || !state.function_bar_before || state.function_bar_after
+	    || !state.terminal_restored || !state.ended
+	    || state.exit_status != 0U || tape.exit_status != 0U
+	    || !tape.restored_shape_known || tape.restored_shape != 0x0607U)
+		return false;
+
+	memset(&tape, 0, sizeof(tape));
+	if (!yt_brun_internal_fatal_run(YT_BRUN_INTERNAL_FATAL_GC,
+	    "YT-SUB  ", true, 64006, 0x1F42U, 0xA995U, true, false,
+	    false, 0U, &ops, &tape, &state)
+	    || state.local_length != sizeof(gc_expected) - 1U
+	    || memcmp(state.local_bytes, gc_expected,
+	    sizeof(gc_expected) - 1U) != 0
+	    || state.input_drained || state.drained_word_count != 0U
+	    || state.function_bar_before || state.function_bar_after
+	    || tape.event_count != 6U
+	    || tape.events[0] != FATAL_TEST_LOCAL
+	    || tape.events[1] != FATAL_TEST_CLOSE_ALL
+	    || tape.events[2] != FATAL_TEST_LOCAL
+	    || tape.events[3] != FATAL_TEST_LOCAL
+	    || tape.events[4] != FATAL_TEST_RESTORE
+	    || tape.events[5] != FATAL_TEST_END)
+		return false;
+	return !yt_brun_internal_fatal_run(YT_BRUN_INTERNAL_FATAL_OWNER,
+	    "        ", false, 0, 0U, 0U, false, false, false, 0U,
+	    &ops, &tape, &state)
+	    && !yt_brun_internal_fatal_run(YT_BRUN_INTERNAL_FATAL_OWNER,
+	    "YTCONFIG", false, 0, 0U, 0U, false, false, false, 0U,
+	    NULL, &tape, &state);
+}
+
 static bool
 test_ytconfig_name_overflow_transaction(struct yt_error *error)
 {
@@ -4473,6 +4629,53 @@ test_ytconfig_name_overflow_transaction(struct yt_error *error)
 	yt_names_free(&names);
 	yt_text_input_destroy(&input);
 	return ok;
+}
+
+static bool
+test_ytconfig_name_overflow_process(struct yt_error *error)
+{
+	static const uint8_t ordinary[] = "A,B,C,D\r\n";
+	static const uint8_t overflow[] = "RF,RL,AF,AL\r\n";
+	static const uint8_t fatal[] =
+	    "\rString Space Corrupt in module YTCONFIG at address "
+	    "0000:0EE5\r\rHit any key to return to system\r";
+	uint8_t stream[51U * (sizeof(ordinary) - 1U) + sizeof(overflow)];
+	uint8_t *output = NULL;
+	size_t output_length = 0U;
+	size_t cursor = 0U;
+	size_t row;
+	struct yt_database database = {0};
+	bool valid = false;
+
+	for (row = 0U; row < 51U; ++row) {
+		memcpy(stream + cursor, ordinary, sizeof(ordinary) - 1U);
+		cursor += sizeof(ordinary) - 1U;
+	}
+	memcpy(stream + cursor, overflow, sizeof(overflow) - 1U);
+	cursor += sizeof(overflow) - 1U;
+	stream[cursor++] = 0x1aU;
+	if (cursor != sizeof(stream) || !initialize_direct(error)
+	    || !write_file("YTNAME.DAT", stream, sizeof(stream))
+	    || !write_file("config.in", "N", 1U))
+		goto done;
+	if (!run_redirected(YT_CONFIG_EXE, "config.in", "config.out"))
+		goto done;
+	if (!read_file("config.out", &output, &output_length))
+		goto done;
+	if (output_length < sizeof(fatal) - 1U
+	    || memcmp(output + output_length - (sizeof(fatal) - 1U), fatal,
+	    sizeof(fatal) - 1U) != 0
+	    || bytes_contain(output, output_length, (const uint8_t *)"YTCONFIG:",
+	    sizeof("YTCONFIG:") - 1U))
+		goto done;
+	/* The fatal CLOSE-all must release YTDATA before the zero-status END. */
+	valid = yt_database_open(&database, "YTDATA.DAT", YT_OPEN_UPDATE,
+	    error);
+	yt_database_close(&database);
+
+done:
+	free(output);
+	return valid;
 }
 
 static bool
@@ -8237,8 +8440,12 @@ main(void)
 		failure = "YTNAME INPUT# grammar differs";
 	else if (!test_name_sequential_transaction(&error))
 		failure = "YTNAME sequential transaction differs";
+	else if (!test_brun_internal_fatal())
+		failure = "BRUN internal-fatal transaction differs";
 	else if (!test_ytconfig_name_overflow_transaction(&error))
 		failure = "YTCONFIG YTNAME overflow transaction differs";
+	else if (!test_ytconfig_name_overflow_process(&error))
+		failure = "YTCONFIG YTNAME fatal process differs";
 	else if (!test_name_sequential_output_transaction(&error))
 		failure = "YTNAME sequential output transaction differs";
 	else if (!test_alias_propagation_transaction())

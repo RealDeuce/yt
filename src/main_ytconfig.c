@@ -1,8 +1,10 @@
 #include "qb.h"
+#include "yt_brun_fatal.h"
 #include "yt_cli.h"
 #include "yt_config_output.h"
 #include "yt_game.h"
 #include "yt_names.h"
+#include "yt_text.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,6 +34,84 @@ static const struct yt_config_record_ops config_record_ops = {
 	config_read_record,
 	config_write_record,
 };
+
+struct ytconfig_fatal_context {
+	struct yt_game *game;
+	struct yt_text_input *names_input;
+};
+
+static void
+ytconfig_fatal_local(void *context, const uint8_t *data, size_t length)
+{
+	(void)context;
+	if (length != 0U)
+		(void)fwrite(data, 1U, length, stdout);
+}
+
+static void
+ytconfig_fatal_close_all(void *context)
+{
+	struct ytconfig_fatal_context *fatal = context;
+	struct yt_error ignored;
+
+	yt_error_clear(&ignored);
+	(void)yt_text_input_close(fatal->names_input, &ignored);
+	yt_error_clear(&ignored);
+	(void)yt_database_close_all_method(&fatal->game->database, 0, &ignored);
+	/* Physical adapters may report errors; BRUN still completes the walk. */
+	yt_text_input_destroy(fatal->names_input);
+	yt_game_close(fatal->game);
+}
+
+static size_t
+ytconfig_fatal_drain(void *context, uint16_t *words, size_t capacity)
+{
+	(void)context;
+	return yt_cli_drain_pending_keys(words, capacity);
+}
+
+static void
+ytconfig_fatal_clear_function_bar(void *context)
+{
+	(void)context;
+}
+
+static void
+ytconfig_fatal_restore(void *context, bool cursor_shape_known,
+    uint16_t cursor_shape)
+{
+	(void)context;
+	yt_cli_restore_terminal(cursor_shape_known, cursor_shape);
+}
+
+static void
+ytconfig_fatal_end(void *context, unsigned status)
+{
+	(void)context;
+	(void)status;
+}
+
+static bool
+ytconfig_complete_alias_fatal(struct yt_game *game,
+    struct yt_text_input *names_input,
+    struct yt_brun_internal_fatal_state *state)
+{
+	static const struct yt_brun_internal_fatal_ops ops = {
+		ytconfig_fatal_local,
+		ytconfig_fatal_close_all,
+		ytconfig_fatal_drain,
+		ytconfig_fatal_clear_function_bar,
+		ytconfig_fatal_restore,
+		ytconfig_fatal_end,
+	};
+	struct ytconfig_fatal_context context = {game, names_input};
+
+	/* The native host gives the exact renderer a logical zero load segment. */
+	return yt_brun_internal_fatal_run(YT_BRUN_INTERNAL_FATAL_OWNER,
+	    "YTCONFIG", false, 0, 0U, 0x0EE5U,
+	    yt_cli_stdin_redirected(), true, false, 0U,
+	    &ops, &context, state);
+}
 
 static bool
 ytconfig_close_all(struct yt_game *game, struct yt_error *error)
@@ -717,15 +797,43 @@ alias_propagate_write(void *context, int basic_record,
 }
 
 static bool
-edit_aliases(struct yt_game *game, struct yt_error *error)
+edit_aliases(struct yt_game *game, bool *fatal_ended,
+    struct yt_error *error)
 {
 	struct yt_name_file names;
+	struct yt_name_input_observation observation;
+	struct yt_names_ytconfig_state load;
+	struct yt_text_input input;
 	struct yt_config_output_result output;
 	unsigned player_count;
 
-	if (!yt_names_load("YTNAME.DAT", &names, error))
+	if (fatal_ended == NULL)
 		return false;
-	if (names.count == 0U || names.count > 51U) {
+	*fatal_ended = false;
+	yt_text_input_init(&input);
+	if (!yt_names_load_ytconfig_sequential(&input, "YTNAME.DAT", &names,
+	    &observation, &load, error)) {
+		yt_names_input_observation_free(&observation);
+		yt_names_free(&names);
+		yt_text_input_destroy(&input);
+		return false;
+	}
+	if (load.outcome == YT_NAMES_YTCONFIG_INTERNAL_FATAL_0ACC) {
+		struct yt_brun_internal_fatal_state fatal;
+		bool completed = ytconfig_complete_alias_fatal(game, &input,
+		    &fatal);
+
+		yt_names_input_observation_free(&observation);
+		yt_names_free(&names);
+		yt_text_input_destroy(&input);
+		*fatal_ended = completed && fatal.ended
+		    && fatal.close_all_completed && fatal.terminal_restored
+		    && fatal.exit_status == 0U;
+		return completed;
+	}
+	yt_names_input_observation_free(&observation);
+	yt_text_input_destroy(&input);
+	if (names.count == 0U) {
 		if (error != NULL) {
 			error->status = YT_RANGE;
 			snprintf(error->operation, sizeof(error->operation),
@@ -1072,8 +1180,12 @@ main(void)
 				goto failure;
 		}
 		else if (key == 'N') {
-			if (!edit_aliases(&game, &error))
+			bool fatal_ended;
+
+			if (!edit_aliases(&game, &fatal_ended, &error))
 				goto failure;
+			if (fatal_ended)
+				return EXIT_SUCCESS;
 		}
 		else if (key == 'O') {
 			if (!edit_ports(&game, &error))
