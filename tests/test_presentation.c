@@ -12431,6 +12431,11 @@ test_computer_port_report_ordinary_cycle_presentation(void)
 		{true, 1.0f, NULL, 0U},
 		{true, 2.0f, mode_two, sizeof(mode_two) - 1U},
 	};
+	static const size_t framebuffer_events[] = {33U, 57U};
+	static const uint64_t framebuffer_fnv[] = {
+		UINT64_C(0xd4cb90caed8c91db),
+		UINT64_C(0x35ccf2c9e004e57d),
+	};
 	struct yt_present_state current;
 	struct yt_present_result result;
 	struct yt_pager_state pager;
@@ -12520,6 +12525,21 @@ test_computer_port_report_ordinary_cycle_presentation(void)
 		    && pager.line_count == 0.0f
 		    && pager.newline_flag == 0.0f
 		    && accumulator[0] == '\0');
+		if (pass < YT_ARRAY_LEN(framebuffer_events)) {
+			CHECK(capture.local_event_count
+			    == framebuffer_events[pass]
+			    && capture.framebuffer.bios_row == 14U
+			    && capture.framebuffer.bios_column == 40U
+			    && capture.framebuffer.qb_row == 14U
+			    && capture.framebuffer.qb_column == 40U
+			    && capture.framebuffer.brun_bios_cache_row == 14U
+			    && capture.framebuffer.brun_bios_cache_column == 40U
+			    && capture.framebuffer.qb_attribute == 0x07U
+			    && capture.framebuffer.qb_scrolls == 0U
+			    && capture.framebuffer.con_scrolls == 0U
+			    && startup_ascii_framebuffer_fnv1a64(
+			    &capture.framebuffer) == framebuffer_fnv[pass]);
+		}
 	}
 	CHECK(sizeof(plain) - 1U == 451U && sizeof(ansi) - 1U == 503U
 	    && sizeof(mode_two) - 1U == 218U);
