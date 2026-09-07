@@ -110,6 +110,25 @@ struct yt_config_overlay_state {
 	bool complete;
 };
 
+enum yt_config_redraw_repair_operation {
+	YT_CONFIG_REDRAW_REPAIR_NONE,
+	YT_CONFIG_REDRAW_REPAIR_WRITE_HOLDS,
+	YT_CONFIG_REDRAW_REPAIR_READ_MENU,
+	YT_CONFIG_REDRAW_REPAIR_WRITE_HEADQUARTERS,
+	YT_CONFIG_REDRAW_REPAIR_READ_HEADQUARTERS,
+};
+
+struct yt_config_redraw_repair_state {
+	enum yt_config_redraw_repair_operation attempted;
+	struct yt_record field;
+	unsigned reads_completed;
+	unsigned writes_completed;
+	bool holds_repaired;
+	bool headquarters_repaired;
+	bool field_loaded;
+	bool complete;
+};
+
 bool yt_config_decode(struct yt_config *config,
     const struct yt_record *record, struct yt_error *error);
 bool yt_config_load(struct yt_database *database, struct yt_config *config,
@@ -134,6 +153,10 @@ bool yt_config_apply_overlays(struct yt_config_overlay_state *state,
 bool yt_config_apply_loaded_overlays(struct yt_config_overlay_state *state,
 	const struct yt_record *field,
 	const struct yt_config_overlay *overlays, size_t overlay_count,
+	const struct yt_config_record_ops *ops, void *context,
+	struct yt_error *error);
+bool yt_config_redraw_repairs(struct yt_config_redraw_repair_state *state,
+	const struct yt_record *field, float working_maximum_holds,
 	const struct yt_config_record_ops *ops, void *context,
 	struct yt_error *error);
 

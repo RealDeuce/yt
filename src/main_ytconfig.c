@@ -59,19 +59,11 @@ static bool
 redraw_repairs(struct yt_game *game, float maximum,
     struct yt_error *error)
 {
-	if (game->config.initial_holds > maximum) {
-		game->config.initial_holds = maximum;
-		if (!store_config(game, error))
-			return false;
-	}
-	if (!yt_config_load(&game->database, &game->config, error))
-		return false;
-	if (game->config.headquarters == 0.0f) {
-		game->config.headquarters = 85.0f;
-		if (!store_config(game, error))
-			return false;
-	}
-	return true;
+	struct yt_config_redraw_repair_state state;
+
+	return yt_config_redraw_repairs(&state, &game->config.record, maximum,
+	    &config_record_ops, game, error)
+	    && yt_config_decode(&game->config, &state.field, error);
 }
 
 static bool

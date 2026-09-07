@@ -392,6 +392,65 @@ yt_config_apply_loaded_overlays(struct yt_config_overlay_state *state,
 	return true;
 }
 
+bool
+yt_config_redraw_repairs(struct yt_config_redraw_repair_state *state,
+    const struct yt_record *field, float working_maximum_holds,
+    const struct yt_config_record_ops *ops, void *context,
+    struct yt_error *error)
+{
+	uint8_t raw[4];
+
+	if (state != NULL)
+		memset(state, 0, sizeof(*state));
+	if (state == NULL || field == NULL || ops == NULL
+	    || ops->read_record == NULL || ops->write_record == NULL)
+		return config_hq_error(error, YT_INVALID,
+		    "YTCONFIG redraw-repair transaction");
+	state->field = *field;
+	state->field_loaded = true;
+	if (yt_record_get_number(&state->field, YT_F73)
+	    > working_maximum_holds) {
+		if (qb_mbf32_encode(working_maximum_holds, raw)
+		    == QB_MBF_OVERFLOW)
+			return config_hq_error(error, YT_RANGE,
+			    "YTCONFIG redraw holds repair");
+		(void)yt_record_set_raw_number(&state->field, YT_F73, raw);
+		state->attempted = YT_CONFIG_REDRAW_REPAIR_WRITE_HOLDS;
+		if (!ops->write_record(context, 1U, &state->field, error))
+			return false;
+		++state->writes_completed;
+		state->holds_repaired = true;
+	}
+	state->attempted = YT_CONFIG_REDRAW_REPAIR_READ_MENU;
+	state->field_loaded = false;
+	if (!ops->read_record(context, 1U, &state->field, error))
+		return false;
+	++state->reads_completed;
+	state->field_loaded = true;
+	if (yt_record_get_number(&state->field, YT_F117) == 0.0f) {
+		if (qb_mbf32_encode(85.0f, raw) == QB_MBF_OVERFLOW)
+			return config_hq_error(error, YT_RANGE,
+			    "YTCONFIG redraw Headquarters repair");
+		(void)yt_record_set_raw_number(&state->field, YT_F117, raw);
+		state->attempted =
+		    YT_CONFIG_REDRAW_REPAIR_WRITE_HEADQUARTERS;
+		if (!ops->write_record(context, 1U, &state->field, error))
+			return false;
+		++state->writes_completed;
+		state->headquarters_repaired = true;
+		state->attempted =
+		    YT_CONFIG_REDRAW_REPAIR_READ_HEADQUARTERS;
+		state->field_loaded = false;
+		if (!ops->read_record(context, 1U, &state->field, error))
+			return false;
+		++state->reads_completed;
+		state->field_loaded = true;
+	}
+	state->attempted = YT_CONFIG_REDRAW_REPAIR_NONE;
+	state->complete = true;
+	return true;
+}
+
 void
 yt_config_normalize_game(struct yt_config *config, bool local_mode)
 {

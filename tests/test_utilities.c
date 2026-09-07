@@ -6162,6 +6162,114 @@ test_ytconfig_local_screen_transaction(void)
 }
 
 static bool
+test_ytconfig_redraw_repair_transaction(void)
+{
+	static const struct yt_config_record_ops ops = {
+		config_local_screen_test_read,
+		config_local_screen_test_write,
+	};
+	struct config_local_screen_test_tape tape;
+	struct yt_config_redraw_repair_state state;
+	struct yt_record original;
+	struct yt_record holds;
+	struct yt_record repaired;
+	struct yt_error error;
+	unsigned byte;
+
+	for (byte = 0U; byte < YT_RECORD_SIZE; ++byte)
+		original.bytes[byte] = (uint8_t)(byte * 17U + 9U);
+	if (!yt_record_set_number(&original, YT_F73, 50.0f)
+	    || !yt_record_set_number(&original, YT_F117, 0.0f))
+		return false;
+	holds = original;
+	repaired = original;
+	if (!yt_record_set_number(&holds, YT_F73, 20.0f)
+	    || !yt_record_set_number(&repaired, YT_F73, 20.0f)
+	    || !yt_record_set_number(&repaired, YT_F117, 85.0f))
+		return false;
+	tape = (struct config_local_screen_test_tape){.durable = original};
+	yt_error_clear(&error);
+	if (!yt_config_redraw_repairs(&state, &original, 20.0f, &ops, &tape,
+	    &error) || !state.complete
+	    || state.attempted != YT_CONFIG_REDRAW_REPAIR_NONE
+	    || !state.holds_repaired || !state.headquarters_repaired
+	    || !state.field_loaded || state.reads_completed != 2U
+	    || state.writes_completed != 2U || tape.reads != 2U
+	    || tape.writes != 2U
+	    || memcmp(&state.field, &repaired, sizeof(repaired)) != 0
+	    || memcmp(&tape.durable, &repaired, sizeof(repaired)) != 0)
+		return false;
+	tape = (struct config_local_screen_test_tape){
+		.durable = original,
+		.fail_at = 1U,
+	};
+	yt_error_clear(&error);
+	if (yt_config_redraw_repairs(&state, &original, 20.0f, &ops, &tape,
+	    &error) || error.status != YT_IO_ERROR
+	    || state.attempted != YT_CONFIG_REDRAW_REPAIR_WRITE_HOLDS
+	    || state.holds_repaired || state.writes_completed != 0U
+	    || memcmp(&tape.durable, &original, sizeof(original)) != 0)
+		return false;
+	tape = (struct config_local_screen_test_tape){
+		.durable = original,
+		.fail_at = 2U,
+	};
+	yt_error_clear(&error);
+	if (yt_config_redraw_repairs(&state, &original, 20.0f, &ops, &tape,
+	    &error) || error.status != YT_IO_ERROR
+	    || state.attempted != YT_CONFIG_REDRAW_REPAIR_READ_MENU
+	    || !state.holds_repaired || state.field_loaded
+	    || state.reads_completed != 0U || state.writes_completed != 1U
+	    || memcmp(&tape.durable, &holds, sizeof(holds)) != 0)
+		return false;
+	tape = (struct config_local_screen_test_tape){
+		.durable = original,
+		.fail_at = 3U,
+	};
+	yt_error_clear(&error);
+	if (yt_config_redraw_repairs(&state, &original, 20.0f, &ops, &tape,
+	    &error) || error.status != YT_IO_ERROR
+	    || state.attempted !=
+	    YT_CONFIG_REDRAW_REPAIR_WRITE_HEADQUARTERS
+	    || !state.holds_repaired || state.headquarters_repaired
+	    || !state.field_loaded || state.reads_completed != 1U
+	    || state.writes_completed != 1U
+	    || memcmp(&state.field, &repaired, sizeof(repaired)) != 0
+	    || memcmp(&tape.durable, &holds, sizeof(holds)) != 0)
+		return false;
+	tape = (struct config_local_screen_test_tape){
+		.durable = original,
+		.fail_at = 4U,
+	};
+	yt_error_clear(&error);
+	if (yt_config_redraw_repairs(&state, &original, 20.0f, &ops, &tape,
+	    &error) || error.status != YT_IO_ERROR
+	    || state.attempted !=
+	    YT_CONFIG_REDRAW_REPAIR_READ_HEADQUARTERS
+	    || !state.holds_repaired || !state.headquarters_repaired
+	    || state.field_loaded || state.reads_completed != 1U
+	    || state.writes_completed != 2U
+	    || memcmp(&tape.durable, &repaired, sizeof(repaired)) != 0)
+		return false;
+	if (!yt_record_set_number(&original, YT_F73, 10.0f)
+	    || !yt_record_set_number(&original, YT_F117, 85.0f))
+		return false;
+	tape = (struct config_local_screen_test_tape){.durable = original};
+	yt_error_clear(&error);
+	return yt_config_redraw_repairs(&state, &original, 20.0f, &ops, &tape,
+	    &error) && state.complete && !state.holds_repaired
+	    && !state.headquarters_repaired && state.reads_completed == 1U
+	    && state.writes_completed == 0U && tape.reads == 1U
+	    && tape.writes == 0U
+	    && !yt_config_redraw_repairs(NULL, &original, 20.0f, &ops, &tape,
+	    &error)
+	    && !yt_config_redraw_repairs(&state, NULL, 20.0f, &ops, &tape,
+	    &error)
+	    && !yt_config_redraw_repairs(&state, &original, 20.0f, NULL, &tape,
+	    &error);
+}
+
+static bool
 test_ytconfig_headquarters(struct yt_error *error)
 {
 	static const uint8_t raw_clear[4] = {0x00, 0x00, 0x80, 0x00};
@@ -7867,6 +7975,8 @@ main(void)
 		failure = "YTCONFIG raw overlay transaction differs";
 	else if (!test_ytconfig_local_screen_transaction())
 		failure = "YTCONFIG local-screen transaction differs";
+	else if (!test_ytconfig_redraw_repair_transaction())
+		failure = "YTCONFIG redraw-repair transaction differs";
 	else if (!test_ytconfig_headquarters(&error))
 		failure = "YTCONFIG Headquarters relocation differs";
 	else if (!test_ytconfig_scalar_options(&error))
