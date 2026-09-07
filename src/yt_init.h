@@ -412,4 +412,12 @@ bool yt_initialize_rmt_presented(const struct yt_config *config,
     const char *credited_name, struct yt_random *random,
     const struct yt_rmt_presenter *presenter, struct yt_error *error);
 
+/* Shared terminal reached when RUN's preflight cleanup finds heap damage. */
+bool yt_init_run_internal_fatal_run(
+	enum yt_brun_internal_fatal_entry entry, uint16_t module_segment,
+	bool redirected_stdin, bool function_bar, bool cursor_shape_known,
+	uint16_t process_entry_cursor_shape,
+	const struct yt_brun_internal_fatal_ops *ops, void *context,
+	struct yt_brun_internal_fatal_state *state);
+
 #endif

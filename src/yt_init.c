@@ -24,6 +24,7 @@ static const uint8_t raw_zero_residue[4] = {0x00, 0x00, 0xa0, 0x00};
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Woverlength-strings"
 #endif
+
 static const char port_name_blob[] =
 #include "yt_portnames.inc"
 ;
@@ -2785,4 +2786,16 @@ yt_initialize_rmt_presented(const struct yt_config *config,
 	};
 
 	return yt_initialize_world(&options, random, error);
+}
+
+bool
+yt_init_run_internal_fatal_run(enum yt_brun_internal_fatal_entry entry,
+    uint16_t module_segment, bool redirected_stdin, bool function_bar,
+    bool cursor_shape_known, uint16_t process_entry_cursor_shape,
+    const struct yt_brun_internal_fatal_ops *ops, void *context,
+    struct yt_brun_internal_fatal_state *state)
+{
+	return yt_brun_internal_fatal_run(entry, "YT-INIT ", false, 0,
+	    module_segment, 0x23DFU, redirected_stdin, function_bar,
+	    cursor_shape_known, process_entry_cursor_shape, ops, context, state);
 }

@@ -4490,6 +4490,9 @@ test_brun_internal_fatal(void)
 	static const uint8_t gc_expected[] =
 	    "\rString Space Corrupt during G.C. in line 64006 of module "
 	    "YT-SUB   at address 1F42:A995\r\rHit any key to return to system\r";
+	static const uint8_t run_expected[] =
+	    "\rString Space Corrupt in module YT-INIT  at address "
+	    "4444:23DF\r\rHit any key to return to system";
 	static const enum fatal_test_event expected_events[] = {
 		FATAL_TEST_LOCAL, FATAL_TEST_CLOSE_ALL, FATAL_TEST_LOCAL,
 		FATAL_TEST_DRAIN, FATAL_TEST_CLEAR_FUNCTION_BAR,
@@ -4540,6 +4543,29 @@ test_brun_internal_fatal(void)
 	    || tape.events[3] != FATAL_TEST_LOCAL
 	    || tape.events[4] != FATAL_TEST_RESTORE
 	    || tape.events[5] != FATAL_TEST_END)
+		return false;
+
+	memset(&tape, 0, sizeof(tape));
+	if (!yt_init_run_internal_fatal_run(YT_BRUN_INTERNAL_FATAL_OWNER,
+	    0x4444U, false, false, true, 0x0506U, &ops, &tape, &state)
+	    || state.entry != YT_BRUN_INTERNAL_FATAL_OWNER
+	    || strcmp(state.module, "YT-INIT ") != 0
+	    || state.has_source_line || state.source_line != 0
+	    || state.module_segment != 0x4444U || state.saved_ip != 0x23DFU
+	    || state.local_length != sizeof(run_expected) - 1U
+	    || memcmp(state.local_bytes, run_expected,
+	    sizeof(run_expected) - 1U) != 0
+	    || tape.local_length != sizeof(run_expected) - 1U
+	    || memcmp(tape.local, run_expected, sizeof(run_expected) - 1U) != 0
+	    || tape.event_count != 6U
+	    || tape.events[0] != FATAL_TEST_LOCAL
+	    || tape.events[1] != FATAL_TEST_CLOSE_ALL
+	    || tape.events[2] != FATAL_TEST_LOCAL
+	    || tape.events[3] != FATAL_TEST_DRAIN
+	    || tape.events[4] != FATAL_TEST_RESTORE
+	    || tape.events[5] != FATAL_TEST_END
+	    || state.drained_word_count != 2U || !state.input_drained
+	    || !tape.restored_shape_known || tape.restored_shape != 0x0506U)
 		return false;
 	return !yt_brun_internal_fatal_run(YT_BRUN_INTERNAL_FATAL_OWNER,
 	    "        ", false, 0, 0U, 0U, false, false, false, 0U,
