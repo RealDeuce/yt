@@ -5701,6 +5701,225 @@ done_closed:
 	return valid;
 }
 
+struct config_hq_test_event {
+	enum yt_config_hq_operation operation;
+	size_t basic_record;
+};
+
+struct config_hq_test_tape {
+	struct yt_record initial[256];
+	struct yt_record durable[256];
+	struct config_hq_test_event events[9];
+	size_t event_count;
+	size_t fail_at;
+};
+
+static void
+config_hq_test_init(struct config_hq_test_tape *tape,
+    struct yt_config *config)
+{
+	size_t record;
+
+	memset(tape, 0, sizeof(*tape));
+	memset(config, 0, sizeof(*config));
+	config->sector_offset = 100.0f;
+	config->planet_offset = 3055.0f;
+	config->total_records = 3155.0f;
+	config->headquarters = 85.0f;
+	for (record = 0U; record < YT_ARRAY_LEN(tape->initial); ++record) {
+		size_t byte;
+
+		for (byte = 0U; byte < YT_RECORD_SIZE; ++byte)
+			tape->initial[record].bytes[byte] =
+			    (uint8_t)(record * 3U + byte);
+	}
+	(void)yt_record_set_number(&tape->initial[109], YT_F93, 0.0f);
+	(void)yt_record_set_number(&tape->initial[109], YT_F81, 2.0f);
+	(void)yt_record_set_number(&tape->initial[109], YT_F85, -1.0f);
+	(void)yt_record_set_number(&tape->initial[185], YT_F81, 3.0f);
+	config->record = tape->initial[1];
+	tape->initial[1].bytes[YT_RECORD_TAIL_OFFSET] ^= 0x5aU;
+	memcpy(tape->durable, tape->initial, sizeof(tape->durable));
+}
+
+static bool
+config_hq_test_event(struct config_hq_test_tape *tape,
+    enum yt_config_hq_operation operation, size_t basic_record,
+    struct yt_error *error)
+{
+	if (tape->event_count >= YT_ARRAY_LEN(tape->events))
+		return false;
+	tape->events[tape->event_count++] =
+	    (struct config_hq_test_event){operation, basic_record};
+	if (tape->fail_at != 0U && tape->event_count == tape->fail_at) {
+		if (error != NULL)
+			error->status = YT_IO_ERROR;
+		return false;
+	}
+	return true;
+}
+
+static bool
+config_hq_test_read(void *context, size_t basic_record,
+    struct yt_record *record, struct yt_error *error)
+{
+	struct config_hq_test_tape *tape = context;
+	static const enum yt_config_hq_operation reads[] = {
+		YT_CONFIG_HQ_READ_CANDIDATE_INITIAL,
+		YT_CONFIG_HQ_READ_OLD,
+		YT_CONFIG_HQ_READ_CANDIDATE_FRESH,
+		YT_CONFIG_HQ_READ_SECTOR_ONE,
+		YT_CONFIG_HQ_READ_CONFIG,
+	};
+	size_t read_index = 0U;
+	size_t event;
+
+	for (event = 0U; event < tape->event_count; ++event) {
+		if (tape->events[event].operation == YT_CONFIG_HQ_READ_CANDIDATE_INITIAL
+		    || tape->events[event].operation == YT_CONFIG_HQ_READ_OLD
+		    || tape->events[event].operation == YT_CONFIG_HQ_READ_CANDIDATE_FRESH
+		    || tape->events[event].operation == YT_CONFIG_HQ_READ_SECTOR_ONE
+		    || tape->events[event].operation == YT_CONFIG_HQ_READ_CONFIG)
+			++read_index;
+	}
+	if (read_index >= YT_ARRAY_LEN(reads)
+	    || !config_hq_test_event(tape, reads[read_index], basic_record,
+	    error))
+		return false;
+	*record = tape->durable[basic_record];
+	return true;
+}
+
+static bool
+config_hq_test_write(void *context, size_t basic_record,
+    const struct yt_record *record, struct yt_error *error)
+{
+	struct config_hq_test_tape *tape = context;
+	static const enum yt_config_hq_operation writes[] = {
+		YT_CONFIG_HQ_WRITE_OLD,
+		YT_CONFIG_HQ_WRITE_CANDIDATE,
+		YT_CONFIG_HQ_WRITE_SECTOR_ONE,
+		YT_CONFIG_HQ_WRITE_CONFIG,
+	};
+	size_t write_index = 0U;
+	size_t event;
+
+	for (event = 0U; event < tape->event_count; ++event) {
+		if (tape->events[event].operation == YT_CONFIG_HQ_WRITE_OLD
+		    || tape->events[event].operation == YT_CONFIG_HQ_WRITE_CANDIDATE
+		    || tape->events[event].operation == YT_CONFIG_HQ_WRITE_SECTOR_ONE
+		    || tape->events[event].operation == YT_CONFIG_HQ_WRITE_CONFIG)
+			++write_index;
+	}
+	if (write_index >= YT_ARRAY_LEN(writes)
+	    || !config_hq_test_event(tape, writes[write_index], basic_record,
+	    error))
+		return false;
+	tape->durable[basic_record] = *record;
+	return true;
+}
+
+static bool
+test_ytconfig_headquarters_transaction(void)
+{
+	static const struct yt_config_hq_ops ops = {
+		config_hq_test_read,
+		config_hq_test_write,
+	};
+	static const uint8_t raw_clear[4] = {0x00, 0x00, 0x80, 0x00};
+	struct config_hq_test_tape success;
+	struct yt_config_hq_state state;
+	struct yt_config config;
+	struct yt_error error;
+	uint8_t candidate_raw[4];
+	size_t failure;
+	bool result;
+
+	config_hq_test_init(&success, &config);
+	yt_error_clear(&error);
+	result = yt_config_headquarters_relocate(&state, &config, 8.6f, &ops,
+	    &success, &error);
+	if (qb_mbf32_encode(8.6f, candidate_raw) == QB_MBF_OVERFLOW
+	    || !result || !state.complete
+	    || state.route != YT_CONFIG_HQ_ROUTE_RELOCATED
+	    || state.attempted != YT_CONFIG_HQ_NONE
+	    || state.candidate_logical != 9 || state.old_logical != 85
+	    || state.reads_completed != 5U || state.writes_completed != 4U
+	    || state.captured_candidate_fighters != 2.0f
+	    || state.merged_fighters != 5.0f || success.event_count != 9U
+	    || memcmp(success.durable[185].bytes + YT_F81, raw_clear, 4U) != 0
+	    || memcmp(success.durable[185].bytes + YT_F85, raw_clear, 4U) != 0
+	    || memcmp(success.durable[185].bytes + YT_F93, raw_clear, 4U) != 0
+	    || yt_record_get_number(&success.durable[109], YT_F81) != 5.0f
+	    || yt_record_get_number(&success.durable[109], YT_F85) != -1.0f
+	    || yt_record_get_number(&success.durable[109], YT_F93) != 100.0f
+	    || memcmp(success.durable[101].bytes + YT_F105, candidate_raw,
+	    4U) != 0
+	    || memcmp(success.durable[1].bytes + YT_F117, candidate_raw, 4U) != 0
+	    || memcmp(&state.field, &success.durable[1], sizeof(state.field)) != 0)
+		return false;
+	for (failure = 1U; failure <= success.event_count; ++failure) {
+		struct config_hq_test_tape tape;
+		bool written[256] = {false};
+		unsigned reads = 0U;
+		unsigned writes = 0U;
+		size_t event;
+		size_t record;
+
+		config_hq_test_init(&tape, &config);
+		tape.fail_at = failure;
+		yt_error_clear(&error);
+		result = yt_config_headquarters_relocate(&state, &config, 8.6f,
+		    &ops, &tape, &error);
+		for (event = 0U; event + 1U < failure; ++event) {
+			if (success.events[event].operation == YT_CONFIG_HQ_WRITE_OLD
+			    || success.events[event].operation ==
+			    YT_CONFIG_HQ_WRITE_CANDIDATE
+			    || success.events[event].operation ==
+			    YT_CONFIG_HQ_WRITE_SECTOR_ONE
+			    || success.events[event].operation ==
+			    YT_CONFIG_HQ_WRITE_CONFIG) {
+				++writes;
+				written[success.events[event].basic_record] = true;
+			}
+			else
+				++reads;
+		}
+		if (result || error.status != YT_IO_ERROR || state.complete
+		    || state.attempted != success.events[failure - 1U].operation
+		    || state.current_basic_record !=
+		    success.events[failure - 1U].basic_record
+		    || state.reads_completed != reads
+		    || state.writes_completed != writes
+		    || tape.event_count != failure
+		    || memcmp(tape.events, success.events,
+		    failure * sizeof(tape.events[0])) != 0)
+			return false;
+		for (record = 0U; record < YT_ARRAY_LEN(tape.durable); ++record) {
+			const struct yt_record *expected = written[record]
+			    ? &success.durable[record] : &tape.initial[record];
+
+			if (memcmp(&tape.durable[record], expected,
+			    sizeof(*expected)) != 0)
+				return false;
+		}
+	}
+	config_hq_test_init(&success, &config);
+	(void)yt_record_set_number(&success.durable[109], YT_F85, 2.0f);
+	yt_error_clear(&error);
+	return yt_config_headquarters_relocate(&state, &config, 8.6f, &ops,
+	    &success, &error)
+	    && state.complete && state.route == YT_CONFIG_HQ_ROUTE_OCCUPIED
+	    && state.reads_completed == 1U && state.writes_completed == 0U
+	    && success.event_count == 1U
+	    && !yt_config_headquarters_relocate(NULL, &config, 8.6f, &ops,
+	    &success, &error)
+	    && !yt_config_headquarters_relocate(&state, NULL, 8.6f, &ops,
+	    &success, &error)
+	    && !yt_config_headquarters_relocate(&state, &config, 8.6f, NULL,
+	    &success, &error);
+}
+
 static bool
 test_ytconfig_headquarters(struct yt_error *error)
 {
@@ -7401,6 +7620,8 @@ main(void)
 		failure = "YTCONFIG missing-data terminal differs";
 	else if (!test_ytconfig_genesis(&error))
 		failure = "YTCONFIG Genesis editor differs";
+	else if (!test_ytconfig_headquarters_transaction())
+		failure = "YTCONFIG Headquarters transaction differs";
 	else if (!test_ytconfig_headquarters(&error))
 		failure = "YTCONFIG Headquarters relocation differs";
 	else if (!test_ytconfig_scalar_options(&error))

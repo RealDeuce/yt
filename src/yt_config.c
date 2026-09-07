@@ -115,6 +115,157 @@ yt_config_store(struct yt_database *database, const struct yt_config *config,
 	return yt_database_write(database, 1, &encoded.record, error);
 }
 
+static bool
+config_hq_error(struct yt_error *error, enum yt_status status,
+    const char *operation)
+{
+	if (error != NULL) {
+		error->status = status;
+		error->system_error = 0;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    operation);
+		error->path[0] = '\0';
+	}
+	return false;
+}
+
+static float
+config_single_add(float left, float right)
+{
+	volatile float result = left + right;
+
+	return result;
+}
+
+static float
+config_single_sub(float left, float right)
+{
+	volatile float result = left - right;
+
+	return result;
+}
+
+bool
+yt_config_headquarters_relocate(struct yt_config_hq_state *state,
+    const struct yt_config *config, float candidate,
+    const struct yt_config_hq_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t raw_clear[4] = {0x00, 0x00, 0x80, 0x00};
+	uint8_t candidate_raw[4];
+	bool overflow;
+	int32_t converted;
+	float planet_link;
+
+	if (state != NULL)
+		memset(state, 0, sizeof(*state));
+	if (state == NULL || config == NULL || ops == NULL
+	    || ops->read_record == NULL || ops->write_record == NULL)
+		return config_hq_error(error, YT_INVALID,
+		    "YTCONFIG Headquarters transaction");
+	if (qb_mbf32_encode(candidate, candidate_raw) == QB_MBF_OVERFLOW)
+		return config_hq_error(error, YT_RANGE,
+		    "YTCONFIG Headquarters candidate");
+	converted = qb_cint(candidate, &overflow);
+	if (overflow)
+		return config_hq_error(error, YT_RANGE,
+		    "YTCONFIG Headquarters candidate");
+	state->candidate_logical = (int)converted;
+
+#define HQ_READ(stage, record_number, destination) do { \
+	state->attempted = (stage); \
+	state->current_basic_record = (record_number); \
+	state->field_loaded = false; \
+	if (!ops->read_record(context, state->current_basic_record, \
+	    (destination), error)) \
+		return false; \
+	state->field_loaded = true; \
+	++state->reads_completed; \
+} while (0)
+#define HQ_WRITE(stage, record_number) do { \
+	state->attempted = (stage); \
+	state->current_basic_record = (record_number); \
+	if (!ops->write_record(context, state->current_basic_record, \
+	    &state->field, error)) \
+		return false; \
+	++state->writes_completed; \
+} while (0)
+
+	HQ_READ(YT_CONFIG_HQ_READ_CANDIDATE_INITIAL,
+	    (size_t)yt_sector_basic_record(config, state->candidate_logical),
+	    &state->field);
+	state->candidate_initial = state->field;
+	converted = qb_cint(yt_record_get_number(&state->candidate_initial,
+	    YT_F93), &overflow);
+	if (overflow)
+		return config_hq_error(error, YT_RANGE,
+		    "YTCONFIG Headquarters planet link");
+	if (converted != 0) {
+		state->route = YT_CONFIG_HQ_ROUTE_OCCUPIED;
+		state->attempted = YT_CONFIG_HQ_NONE;
+		state->complete = true;
+		return true;
+	}
+	converted = qb_cint(yt_record_get_number(&state->candidate_initial,
+	    YT_F81), &overflow);
+	if (overflow)
+		return config_hq_error(error, YT_RANGE,
+		    "YTCONFIG Headquarters fighters");
+	if (converted != 0 && yt_record_get_number(&state->candidate_initial,
+	    YT_F85) != -1.0f) {
+		state->route = YT_CONFIG_HQ_ROUTE_OCCUPIED;
+		state->attempted = YT_CONFIG_HQ_NONE;
+		state->complete = true;
+		return true;
+	}
+	state->captured_candidate_fighters = yt_record_get_number(
+	    &state->candidate_initial, YT_F81);
+	converted = qb_cint(config->headquarters, &overflow);
+	if (overflow)
+		return config_hq_error(error, YT_RANGE,
+		    "YTCONFIG old Headquarters");
+	state->old_logical = (int)converted;
+	HQ_READ(YT_CONFIG_HQ_READ_OLD,
+	    (size_t)yt_sector_basic_record(config, state->old_logical),
+	    &state->field);
+	state->merged_fighters = config_single_add(
+	    state->captured_candidate_fighters,
+	    yt_record_get_number(&state->field, YT_F81));
+	(void)yt_record_set_raw_number(&state->field, YT_F93, raw_clear);
+	(void)yt_record_set_raw_number(&state->field, YT_F85, raw_clear);
+	(void)yt_record_set_raw_number(&state->field, YT_F81, raw_clear);
+	HQ_WRITE(YT_CONFIG_HQ_WRITE_OLD,
+	    (size_t)yt_sector_basic_record(config, state->old_logical));
+	HQ_READ(YT_CONFIG_HQ_READ_CANDIDATE_FRESH,
+	    (size_t)yt_sector_basic_record(config, state->candidate_logical),
+	    &state->field);
+	planet_link = config_single_sub(config->total_records,
+	    config->planet_offset);
+	if (!yt_record_set_number(&state->field, YT_F85, -1.0f)
+	    || !yt_record_set_number(&state->field, YT_F81,
+	    state->merged_fighters)
+	    || !yt_record_set_number(&state->field, YT_F93, planet_link))
+		return config_hq_error(error, YT_RANGE,
+		    "YTCONFIG Headquarters candidate overlay");
+	HQ_WRITE(YT_CONFIG_HQ_WRITE_CANDIDATE,
+	    (size_t)yt_sector_basic_record(config, state->candidate_logical));
+	HQ_READ(YT_CONFIG_HQ_READ_SECTOR_ONE,
+	    (size_t)yt_sector_basic_record(config, 1), &state->field);
+	(void)yt_record_set_raw_number(&state->field, YT_F105, candidate_raw);
+	HQ_WRITE(YT_CONFIG_HQ_WRITE_SECTOR_ONE,
+	    (size_t)yt_sector_basic_record(config, 1));
+	HQ_READ(YT_CONFIG_HQ_READ_CONFIG, 1U, &state->field);
+	(void)yt_record_set_raw_number(&state->field, YT_F117, candidate_raw);
+	HQ_WRITE(YT_CONFIG_HQ_WRITE_CONFIG, 1U);
+
+#undef HQ_WRITE
+#undef HQ_READ
+	state->route = YT_CONFIG_HQ_ROUTE_RELOCATED;
+	state->attempted = YT_CONFIG_HQ_NONE;
+	state->complete = true;
+	return true;
+}
+
 void
 yt_config_normalize_game(struct yt_config *config, bool local_mode)
 {

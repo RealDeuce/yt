@@ -16,6 +16,26 @@ store_config(struct yt_game *game, struct yt_error *error)
 }
 
 static bool
+headquarters_read_record(void *context, size_t basic_record,
+    struct yt_record *record, struct yt_error *error)
+{
+	struct yt_game *game = context;
+
+	return yt_database_read(&game->database, basic_record, record, error);
+}
+
+static bool
+headquarters_write_record(void *context, size_t basic_record,
+    const struct yt_record *record, struct yt_error *error)
+{
+	struct yt_game *game = context;
+
+	return yt_database_write(&game->database, basic_record, record, error)
+	    && (basic_record != 1U
+	    || yt_database_flush(&game->database, error));
+}
+
+static bool
 ytconfig_close_all(struct yt_game *game, struct yt_error *error)
 {
 	struct yt_close_all_control control = {
@@ -233,20 +253,17 @@ edit_scoreboard(struct yt_game *game, uint8_t working_path[41],
 static bool
 edit_headquarters(struct yt_game *game, struct yt_error *error)
 {
-	static const uint8_t raw_clear[4] = {0x00, 0x00, 0x80, 0x00};
+	static const struct yt_config_hq_ops ops = {
+		headquarters_read_record,
+		headquarters_write_record,
+	};
 	struct yt_config_output_result output;
+	struct yt_config_hq_state state;
 	struct qb_val_result parsed;
 	char line[160];
 	float raw;
-	bool overflow;
-	int candidate_number;
-	int old_number;
 	float upper = game->config.port_offset
 	    - game->config.sector_offset;
-	struct yt_sector candidate;
-	struct yt_sector old;
-	struct yt_sector sector_one;
-	float merged;
 
 	if (!yt_config_compose_hq_prompt(game->config.headquarters, upper, 0U,
 	    &output) || !write_output(&output, error))
@@ -261,43 +278,18 @@ edit_headquarters(struct yt_game *game, struct yt_error *error)
 			return false;
 		return true;
 	}
-	candidate_number = (int)qb_cint(raw, &overflow);
-	if (overflow)
-		return true;
-	if (!yt_game_read_sector(game, candidate_number, &candidate, error))
+	if (!yt_config_headquarters_relocate(&state, &game->config, raw, &ops,
+	    game, error))
 		return false;
-	if (qb_cint(candidate.planet, &overflow) != 0
-	    || (qb_cint(candidate.fighters, &overflow) != 0
-	    && candidate.fighter_owner != -1.0f)) {
+	if (state.route == YT_CONFIG_HQ_ROUTE_OCCUPIED) {
 		if (!yt_config_compose_hq_diagnostic(YT_CONFIG_HQ_OCCUPIED,
 		    output.final_column, &output) || !write_output(&output, error))
 			return false;
 		return true;
 	}
-	old_number = (int)qb_cint(game->config.headquarters, &overflow);
-	if (overflow || !yt_game_read_sector(game, old_number, &old, error))
-		return false;
-	merged = old.fighters + candidate.fighters;
-	yt_record_set_raw_number(&old.record, YT_F93, raw_clear);
-	yt_record_set_raw_number(&old.record, YT_F85, raw_clear);
-	yt_record_set_raw_number(&old.record, YT_F81, raw_clear);
-	if (!yt_database_write(&game->database,
-	    (size_t)yt_sector_basic_record(&game->config, old_number),
-	    &old.record, error)
-	    || !yt_game_read_sector(game, candidate_number, &candidate, error))
-		return false;
-	candidate.fighter_owner = -1.0f;
-	candidate.fighters = merged;
-	candidate.planet = game->config.total_records
-	    - game->config.planet_offset;
-	if (!yt_game_write_sector(game, candidate_number, &candidate, error)
-	    || !yt_game_read_sector(game, 1, &sector_one, error))
-		return false;
-	sector_one.metadata = raw;
-	if (!yt_game_write_sector(game, 1, &sector_one, error))
-		return false;
+	game->config.record = state.field;
 	game->config.headquarters = raw;
-	return store_config(game, error);
+	return true;
 }
 
 static bool

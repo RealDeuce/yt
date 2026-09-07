@@ -28,6 +28,48 @@ struct yt_config {
 	float maximum_planets;
 };
 
+enum yt_config_hq_operation {
+	YT_CONFIG_HQ_NONE,
+	YT_CONFIG_HQ_READ_CANDIDATE_INITIAL,
+	YT_CONFIG_HQ_READ_OLD,
+	YT_CONFIG_HQ_WRITE_OLD,
+	YT_CONFIG_HQ_READ_CANDIDATE_FRESH,
+	YT_CONFIG_HQ_WRITE_CANDIDATE,
+	YT_CONFIG_HQ_READ_SECTOR_ONE,
+	YT_CONFIG_HQ_WRITE_SECTOR_ONE,
+	YT_CONFIG_HQ_READ_CONFIG,
+	YT_CONFIG_HQ_WRITE_CONFIG,
+};
+
+enum yt_config_hq_route {
+	YT_CONFIG_HQ_ROUTE_INCOMPLETE,
+	YT_CONFIG_HQ_ROUTE_OCCUPIED,
+	YT_CONFIG_HQ_ROUTE_RELOCATED,
+};
+
+struct yt_config_hq_state {
+	enum yt_config_hq_operation attempted;
+	enum yt_config_hq_route route;
+	int candidate_logical;
+	int old_logical;
+	size_t current_basic_record;
+	unsigned reads_completed;
+	unsigned writes_completed;
+	float captured_candidate_fighters;
+	float merged_fighters;
+	struct yt_record candidate_initial;
+	struct yt_record field;
+	bool field_loaded;
+	bool complete;
+};
+
+struct yt_config_hq_ops {
+	bool (*read_record)(void *context, size_t basic_record,
+	    struct yt_record *record, struct yt_error *error);
+	bool (*write_record)(void *context, size_t basic_record,
+	    const struct yt_record *record, struct yt_error *error);
+};
+
 bool yt_config_decode(struct yt_config *config,
     const struct yt_record *record, struct yt_error *error);
 bool yt_config_load(struct yt_database *database, struct yt_config *config,
@@ -37,6 +79,10 @@ bool yt_config_store(struct yt_database *database,
 void yt_config_encode(struct yt_config *config);
 void yt_config_normalize_game(struct yt_config *config, bool local_mode);
 void yt_config_normalize_maintenance(struct yt_config *config);
+bool yt_config_headquarters_relocate(struct yt_config_hq_state *state,
+	const struct yt_config *config, float candidate,
+	const struct yt_config_hq_ops *ops, void *context,
+	struct yt_error *error);
 
 int yt_date_serial(const struct yt_clock_value *date, int epoch_year,
     int *adjusted_year);
