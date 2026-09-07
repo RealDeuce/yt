@@ -542,11 +542,29 @@ save_planet_name:
 }
 
 static bool
+byte_string_contains(const uint8_t *haystack, size_t haystack_length,
+    const uint8_t *needle, size_t needle_length)
+{
+	size_t offset;
+
+	if (needle_length == 0U)
+		return true;
+	if (needle_length > haystack_length)
+		return false;
+	for (offset = 0U; offset + needle_length <= haystack_length; ++offset) {
+		if (memcmp(haystack + offset, needle, needle_length) == 0)
+			return true;
+	}
+	return false;
+}
+
+static bool
 edit_ports(struct yt_game *game, struct yt_error *error)
 {
 	struct yt_config_output_result output;
 	char search[160];
-	char upper[160];
+	uint8_t upper[160];
+	size_t search_length;
 	int logical;
 	bool matched = false;
 
@@ -561,23 +579,26 @@ edit_ports(struct yt_game *game, struct yt_error *error)
 		return false;
 	if (search[0] == '\0')
 		return true;
-	snprintf(upper, sizeof(upper), "%s", search);
-	qb_ascii_upper(upper);
+	search_length = strlen(search);
+	memcpy(upper, search, search_length);
+	qb_ascii_upper_n(upper, search_length);
 	for (logical = 2; logical <= 300; ++logical) {
 		struct yt_port port;
-		char candidate[42];
+		uint8_t candidate[YT_TEXT_FIELD_SIZE];
 		bool overflow;
 		int name_length;
 
 		if (!yt_game_read_port(game, logical, &port, error))
 			return false;
 		name_length = (int)qb_cint(port.name_length, &overflow);
-		if (overflow || name_length < 0 || name_length > 41)
+		if (overflow || name_length < 0)
 			return false;
-		memcpy(candidate, port.name, (size_t)name_length);
-		candidate[name_length] = '\0';
-		qb_ascii_upper(candidate);
-		if (strstr(candidate, upper) == NULL)
+		if (name_length > (int)sizeof(candidate))
+			name_length = (int)sizeof(candidate);
+		memcpy(candidate, port.record.bytes, (size_t)name_length);
+		qb_ascii_upper_n(candidate, (size_t)name_length);
+		if (!byte_string_contains(candidate, (size_t)name_length, upper,
+		    search_length))
 			continue;
 		matched = true;
 		for (;;) {
@@ -585,7 +606,7 @@ edit_ports(struct yt_game *game, struct yt_error *error)
 			uint8_t folded;
 
 			if (!yt_config_compose_port_match_prompt(
-			    (const uint8_t *)port.name, (size_t)name_length,
+			    port.record.bytes, (size_t)name_length,
 			    output.final_column, &output)
 			    || !write_output(&output, error))
 				return false;

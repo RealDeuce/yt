@@ -6759,6 +6759,9 @@ test_ytconfig_port_editor(struct yt_error *error)
 {
 	static const char blank_input[] = "O\nX";
 	static const char missing_input[] = "Omissing\nX";
+	static const char hidden_input[] = "Ohidden\nX";
+	static const char binary_input[] = "Ocd\nn\nX";
+	static const char overlength_input[] = "Ocap\nn\nX";
 	static const char end_input[] = "Oalpha\nnn\nX";
 	static const char cancel_input[] = "Oalpha\nynew name\nxn\nX";
 	static const char empty_input[] = "Oalpha\ny\nX";
@@ -6770,6 +6773,13 @@ test_ytconfig_port_editor(struct yt_error *error)
 	    "O\r\rPress enter to quit.\r\r"
 	    "Enter port name to change (Search String) -+> missing\r"
 	    "Not Found\r";
+	static const uint8_t hidden[] =
+	    "Enter port name to change (Search String) -+> hidden\r"
+	    "Not Found\r";
+	static const uint8_t binary[] =
+	    "Change \"AB\0" "CD\" [Y/N]? N\r\r"
+	    "-= End of List =-\rPress Enter";
+	static const uint8_t overlength[] = "Change \"Capacity";
 	static const uint8_t end[] =
 	    "Change \"Alpha\" [Y/N]? N\r\r"
 	    "Change \"Alphabet\" [Y/N]? N\r\r"
@@ -6822,12 +6832,25 @@ test_ytconfig_port_editor(struct yt_error *error)
 	}
 	yt_record_set_text(&forced[0], (const uint8_t *)"Alpha", 5U);
 	yt_record_set_text(&forced[1], (const uint8_t *)"Alphabet", 8U);
+	yt_record_set_text(&forced[2],
+	    (const uint8_t *)"VisibleHidden", 13U);
+	yt_record_set_text(&forced[3], (const uint8_t *)"AB\0" "CD", 5U);
+	yt_record_set_text(&forced[4], (const uint8_t *)"Capacity", 8U);
 	if (!yt_record_set_number(&forced[0], YT_F85, 5.0f)
 	    || !yt_record_set_number(&forced[1], YT_F85, 8.0f)
+	    || !yt_record_set_number(&forced[2], YT_F85, 7.0f)
+	    || !yt_record_set_number(&forced[3], YT_F85, 5.0f)
+	    || !yt_record_set_number(&forced[4], YT_F85, 42.0f)
 	    || !yt_database_write(&game.database,
 		(size_t)yt_port_basic_record(&game.config, 2), &forced[0], error)
 	    || !yt_database_write(&game.database,
 		(size_t)yt_port_basic_record(&game.config, 3), &forced[1], error)
+	    || !yt_database_write(&game.database,
+		(size_t)yt_port_basic_record(&game.config, 4), &forced[2], error)
+	    || !yt_database_write(&game.database,
+		(size_t)yt_port_basic_record(&game.config, 5), &forced[3], error)
+	    || !yt_database_write(&game.database,
+		(size_t)yt_port_basic_record(&game.config, 6), &forced[4], error)
 	    || !yt_database_flush(&game.database, error))
 		goto done;
 	yt_game_close(&game);
@@ -6844,6 +6867,9 @@ test_ytconfig_port_editor(struct yt_error *error)
 } while (0)
 	RUN_PORT_CASE(blank_input, blank);
 	RUN_PORT_CASE(missing_input, missing);
+	RUN_PORT_CASE(hidden_input, hidden);
+	RUN_PORT_CASE(binary_input, binary);
+	RUN_PORT_CASE(overlength_input, overlength);
 	RUN_PORT_CASE(end_input, end);
 	RUN_PORT_CASE(cancel_input, cancel);
 	RUN_PORT_CASE(empty_input, empty);
