@@ -16269,6 +16269,20 @@ test_computer_scoreboard_full_cycle_presentation(void)
 		    && !stream.file_open && !viewer.join.file_open
 		    && viewer.input.file == NULL && viewer.close_calls == 2U
 		    && viewer.open_calls == 1U);
+		if (pass == 0U) {
+			CHECK(viewer.join.framebuffer.bios_row == 24U
+			    && viewer.join.framebuffer.bios_column == 41U
+			    && viewer.join.framebuffer.qb_row == 24U
+			    && viewer.join.framebuffer.qb_column == 41U
+			    && viewer.join.framebuffer.brun_bios_cache_row == 24U
+			    && viewer.join.framebuffer.brun_bios_cache_column == 41U
+			    && viewer.join.framebuffer.qb_attribute == 0x07U
+			    && viewer.join.framebuffer.qb_scrolls == 6U
+			    && viewer.join.framebuffer.con_scrolls == 0U
+			    && startup_ascii_framebuffer_fnv1a64(
+			    &viewer.join.framebuffer)
+			    == UINT64_C(0xf8df420c32033bae));
+		}
 		yt_text_input_destroy(&viewer.input);
 	}
 }
