@@ -16261,6 +16261,10 @@ test_computer_scoreboard_full_cycle_presentation(void)
 		{true, true, 850U, UINT64_C(0x264fdc7e79d2bd67), 0.0f},
 		{false, true, 820U, UINT64_C(0xc7fe339c3f4d74f5), 0.0f},
 	};
+	static const uint64_t old_framebuffer_fnv[] = {
+		UINT64_C(0xf8df420c32033bae),
+		UINT64_C(0x9ce57a52b72d9c22),
+	};
 	struct physical_viewer_join viewer;
 	struct yt_file_viewer_stream_state stream;
 	uint8_t remote[900];
@@ -16303,7 +16307,7 @@ test_computer_scoreboard_full_cycle_presentation(void)
 		    && !stream.file_open && !viewer.join.file_open
 		    && viewer.input.file == NULL && viewer.close_calls == 2U
 		    && viewer.open_calls == 1U);
-		if (pass == 0U) {
+		if (pass < YT_ARRAY_LEN(old_framebuffer_fnv)) {
 			CHECK(viewer.join.framebuffer.bios_row == 24U
 			    && viewer.join.framebuffer.bios_column == 41U
 			    && viewer.join.framebuffer.qb_row == 24U
@@ -16315,7 +16319,7 @@ test_computer_scoreboard_full_cycle_presentation(void)
 			    && viewer.join.framebuffer.con_scrolls == 0U
 			    && startup_ascii_framebuffer_fnv1a64(
 			    &viewer.join.framebuffer)
-			    == UINT64_C(0xf8df420c32033bae));
+			    == old_framebuffer_fnv[pass]);
 		}
 		yt_text_input_destroy(&viewer.input);
 	}
