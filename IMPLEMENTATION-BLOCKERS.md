@@ -185,6 +185,31 @@ No binary inspection or new reverse engineering was performed.
 
 ## Open documentation gaps
 
+### DOC-GAP-034: main startup `YT:0133` internal-fatal location
+
+Affected coverage:
+
+- the rooted post-event startup initialization at `YT:[0121,0206)`;
+- the corrupt destination-owner result at the `YT:0133` control-CR copy; and
+- the caller projection from that retained string-heap state into the shared
+  `BRUN:0ACC` internal-fatal terminal.
+
+The published startup model and generated evidence identify the reached
+result as `YT:0133 / 0ACC`, retain its complete prior scalar/heap/descriptor
+prefix, and correctly keep it outside the installed main BASIC error handler.
+The shared fatal documentation requires the saved BASIC IP and the statement
+table's greatest-offset result in order to render the exact module location
+and optional source-line clause. Neither the startup document, its generated
+artifact, nor its focused corrupt-owner fixture publishes those two caller
+values for this cut.
+
+The native shared fatal owner therefore cannot attach an exact `YT` caller
+identity without guessing an instruction-return width and statement-table
+mapping. Upstream documentation and a focused fatal-composition fixture must
+publish the saved IP, resolved line/no-line result, exact diagnostic bytes,
+and cleanup join for this retained `YT:0133` world. No binary inspection or
+new reverse engineering was performed.
+
 ### DOC-GAP-023: current-sector scanner cloak-clear raw value
 
 Affected coverage:
