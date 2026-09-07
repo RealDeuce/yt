@@ -6099,7 +6099,10 @@ test_genesis_rmt_producer_consumer(struct yt_error *error)
 	    ' ','j','A','N','E',' ','\r','\n',
 	    ' ','D','O','E',' ','\x1a',
 	};
-	static const uint8_t names[] = "Jane,Doe,Alias,Person\r\n\x1a";
+	static const uint8_t names[] =
+	    "Jane,Doe,First,Alias\r\n"
+	    "Other,Player,Wrong,Person\r\n"
+	    "Jane,Doe,Last,Winner\r\n\x1a";
 	static const uint8_t expected_output[] =
 	    "Local Console Mode\r"
 	    "\r\r\aERROR! OLD DATA FILES NOT FOUND!!!!!!!!!!!!!!!!!!!!!!!!\a\r";
@@ -6327,7 +6330,10 @@ test_rmt_remote_opendoors_completion(struct yt_error *error)
 	static const uint8_t dorinfo[] =
 	    "System\r\nSysop\r\nName\r\nCOM1:\r\n"
 	    "38400 BAUD,E,7,1\r\nunused\r\nJane\r\nDoe\x1a";
-	static const uint8_t names[] = "Jane,Doe,Alias,Person\r\n\x1a";
+	static const uint8_t names[] =
+	    "Jane,Doe,First,Alias\r\n"
+	    "Other,Player,Wrong,Person\r\n"
+	    "Jane,Doe,Last,Winner\r\n\x1a";
 	static const uint8_t expected_prefix[] =
 	    "\n\r"
 	    "\n          Yankee Trader Remote Initialization Program v2.2\r"
@@ -6336,12 +6342,15 @@ test_rmt_remote_opendoors_completion(struct yt_error *error)
 	    "\n\r"
 	    "\n\aInitialization completed sucessfully!\a\r"
 	    "\n\r"
-	    "\nCongratulations Alias Person! You have fulfilled the prophesy!!\r"
-	    "\nCongratulations Alias Person! You have fulfilled the prophesy!!\r"
-	    "\nCongratulations Alias Person! You have fulfilled the prophesy!!\r"
+	    "\nCongratulations Last Winner! You have fulfilled the prophesy!!\r"
+	    "\nCongratulations Last Winner! You have fulfilled the prophesy!!\r"
+	    "\nCongratulations Last Winner! You have fulfilled the prophesy!!\r"
 	    "\n\r"
 	    "\nReturning you to the BBS...\r";
+	static const uint8_t expected_prophecy[] =
+	    "** The Prophesy has been fulfilled by Last Winner!! **";
 	struct termios terminal;
+	struct yt_text_file news = {0};
 	uint8_t *output = NULL;
 	size_t output_length = 0U;
 	bool valid;
@@ -6350,8 +6359,10 @@ test_rmt_remote_opendoors_completion(struct yt_error *error)
 	    || !write_file("RMTINIT.TMP", handoff, sizeof(handoff) - 1U)
 	    || !write_file("DORINFO1.DEF", dorinfo, sizeof(dorinfo) - 1U)
 	    || !write_file("YTNAME.DAT", names, sizeof(names) - 1U)
-	    || !run_rmt_pty(&output, &output_length, &terminal)) {
+	    || !run_rmt_pty(&output, &output_length, &terminal)
+	    || !yt_text_read("YTNEWS.DAT", &news, error)) {
 		free(output);
+		yt_text_free(&news);
 		return false;
 	}
 	valid = output_length >= sizeof(expected_prefix) - 1U
@@ -6365,7 +6376,9 @@ test_rmt_remote_opendoors_completion(struct yt_error *error)
 	    && (terminal.c_cflag & CSIZE) == CS7
 	    && (terminal.c_cflag & PARENB) != 0
 	    && file_size_is("YTDATA.DAT", 432235L)
-	    && !file_size_is("RMTINIT.TMP", (long)(sizeof(handoff) - 1U));
+	    && !file_size_is("RMTINIT.TMP", (long)(sizeof(handoff) - 1U))
+	    && bytes_contain(news.data, news.length, expected_prophecy,
+	    sizeof(expected_prophecy) - 1U);
 	if (!valid) {
 		fprintf(stderr, "RMT PTY completion: got=%zu prefix=%zu tail=%zu ispeed=%lu ospeed=%lu cflag=%lx\n",
 		    output_length, sizeof(expected_prefix) - 1U,
@@ -6375,6 +6388,7 @@ test_rmt_remote_opendoors_completion(struct yt_error *error)
 		    (unsigned long)terminal.c_cflag);
 	}
 	free(output);
+	yt_text_free(&news);
 	(void)remove("DORINFO1.DEF");
 	return valid;
 }
