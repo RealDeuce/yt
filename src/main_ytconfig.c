@@ -273,7 +273,11 @@ edit_scoreboard(struct yt_game *game, uint8_t working_path[41],
     size_t *working_path_length, struct yt_error *error)
 {
 	struct yt_config_output_result output;
+	struct yt_config_overlay_state state;
+	struct yt_config_overlay overlays[2];
 	char line[160];
+	uint8_t fixed[41];
+	uint8_t raw_length[4];
 	const char *stored;
 	size_t length;
 
@@ -290,10 +294,23 @@ edit_scoreboard(struct yt_game *game, uint8_t working_path[41],
 	}
 	stored = line[0] == '\0' ? "YTSCORE.ASC" : line;
 	length = strlen(stored);
+	memset(fixed, ' ', sizeof(fixed));
+	memcpy(fixed, stored, length);
+	if (qb_mbf32_encode((float)length, raw_length) == QB_MBF_OVERFLOW) {
+		if (error != NULL)
+			error->status = YT_RANGE;
+		return false;
+	}
+	overlays[0] = (struct yt_config_overlay){0U, fixed, sizeof(fixed)};
+	overlays[1] = (struct yt_config_overlay){YT_F41, raw_length,
+	    sizeof(raw_length)};
+	if (!yt_config_apply_overlays(&state, overlays, YT_ARRAY_LEN(overlays),
+	    &config_record_ops, game, error))
+		return false;
+	game->config.record = state.field;
 	snprintf(game->config.scoreboard, sizeof(game->config.scoreboard), "%s",
 	    stored);
-	if (!store_config(game, error))
-		return false;
+	game->config.scoreboard_length = (float)length;
 	memcpy(working_path, stored, length);
 	*working_path_length = length;
 	return true;

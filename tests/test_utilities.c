@@ -5973,9 +5973,11 @@ test_ytconfig_overlay_transaction(void)
 	struct config_local_screen_test_tape tape;
 	struct yt_config_overlay_state state;
 	struct yt_record loaded;
+	struct yt_record expected;
 	struct yt_error error;
 	uint8_t raw[4];
 	uint8_t second[] = {0xaa, 0xbb};
+	uint8_t scoreboard[41];
 	struct yt_config_overlay overlays[2];
 	unsigned byte;
 
@@ -6001,6 +6003,33 @@ test_ytconfig_overlay_transaction(void)
 	    || memcmp(tape.durable.bytes + YT_F105 + 2U, second,
 	    sizeof(second)) != 0)
 		return false;
+	for (byte = 0U; byte < YT_RECORD_SIZE; ++byte)
+		tape.durable.bytes[byte] = (uint8_t)(byte * 13U + 7U);
+	loaded = tape.durable;
+	expected = loaded;
+	memset(scoreboard, ' ', sizeof(scoreboard));
+	memcpy(scoreboard, "YTSCORE.ASC", 11U);
+	if (qb_mbf32_encode(11.0f, raw) == QB_MBF_OVERFLOW)
+		return false;
+	memcpy(expected.bytes, scoreboard, sizeof(scoreboard));
+	memcpy(expected.bytes + YT_F41, raw, sizeof(raw));
+	overlays[0] = (struct yt_config_overlay){0U, scoreboard,
+	    sizeof(scoreboard)};
+	overlays[1] = (struct yt_config_overlay){YT_F41, raw, sizeof(raw)};
+	tape.reads = 0U;
+	tape.writes = 0U;
+	tape.fail_at = 0U;
+	yt_error_clear(&error);
+	if (!yt_config_apply_overlays(&state, overlays, 2U, &ops, &tape,
+	    &error) || !state.complete || tape.reads != 1U
+	    || tape.writes != 1U || state.overlays_completed != 2U
+	    || memcmp(&tape.durable, &expected, sizeof(expected)) != 0)
+		return false;
+	if (qb_mbf32_encode(123.5f, raw) == QB_MBF_OVERFLOW)
+		return false;
+	overlays[0] = (struct yt_config_overlay){YT_F105, raw, sizeof(raw)};
+	overlays[1] = (struct yt_config_overlay){YT_F105 + 2U, second,
+	    sizeof(second)};
 	for (byte = 0U; byte < YT_RECORD_SIZE; ++byte)
 		tape.durable.bytes[byte] = (uint8_t)(byte * 13U + 7U);
 	tape.reads = 0U;
