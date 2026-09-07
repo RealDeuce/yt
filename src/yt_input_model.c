@@ -1419,6 +1419,32 @@ yt_input_a8d2_staged(const char *command_accumulator,
 }
 
 bool
+yt_input_a8d2_internal_fatal_run(
+    const struct yt_a8d2_transform *transform, uint16_t module_segment,
+    bool redirected_stdin, bool function_bar, bool cursor_shape_known,
+    uint16_t process_entry_cursor_shape,
+    const struct yt_brun_internal_fatal_ops *ops, void *context,
+    struct yt_brun_internal_fatal_state *state)
+{
+	const struct yt_a8d2_fault_identity *identity;
+	enum yt_brun_internal_fatal_entry entry;
+
+	if (transform == NULL
+	    || transform->outcome != YT_A8D2_INTERNAL_FATAL)
+		return false;
+	identity = yt_input_a8d2_fault_identity(transform->fault_site);
+	if (identity == NULL
+	    || (transform->error_number != YT_BRUN_INTERNAL_FATAL_GC
+	    && transform->error_number != YT_BRUN_INTERNAL_FATAL_OWNER))
+		return false;
+	entry = (enum yt_brun_internal_fatal_entry)transform->error_number;
+	return yt_brun_internal_fatal_run(entry, "YT      ", true,
+	    identity->source_line, module_segment, identity->saved_ip,
+	    redirected_stdin, function_bar, cursor_shape_known,
+	    process_entry_cursor_shape, ops, context, state);
+}
+
+bool
 yt_input_yes_no_candidate(const char *command_accumulator,
     char *output_source, size_t output_source_capacity,
     enum yt_yes_no_answer *answer)

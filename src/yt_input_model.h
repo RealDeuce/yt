@@ -2,6 +2,7 @@
 #define YT_INPUT_MODEL_H
 
 #include "yt_common.h"
+#include "yt_brun_fatal.h"
 #include "yt_main_error.h"
 
 #define YT_INPUT_PENDING 4096U
@@ -531,6 +532,12 @@ bool yt_input_a8d2_staged(const char *command_accumulator,
 	size_t *queue_length, float *bold,
 	enum yt_a8d2_fault_site target, uint16_t error_number,
 	struct yt_a8d2_transform *result);
+bool yt_input_a8d2_internal_fatal_run(
+	const struct yt_a8d2_transform *transform, uint16_t module_segment,
+	bool redirected_stdin, bool function_bar, bool cursor_shape_known,
+	uint16_t process_entry_cursor_shape,
+	const struct yt_brun_internal_fatal_ops *ops, void *context,
+	struct yt_brun_internal_fatal_state *state);
 void yt_input_numeric_response(char *text);
 bool yt_input_command_notice_wait(enum yt_command_notice_kind kind,
     uint16_t *address, uint8_t duration_raw[4]);
