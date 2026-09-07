@@ -5442,6 +5442,16 @@ danger_scan_restore_current(void *context, struct yt_error *error)
 }
 
 static bool
+danger_scan_checkpoint(void *context,
+    enum yt_danger_scan_checkpoint checkpoint, struct yt_error *error)
+{
+	(void)context;
+	(void)checkpoint;
+	(void)error;
+	return true;
+}
+
+static bool
 danger_scan_sound(void *context, float selector, struct yt_error *error)
 {
 	return session_sound(context, selector, "danger warning sound", error);
@@ -5525,6 +5535,7 @@ dangerous_destination(struct yt_session *session, float target,
 		danger_scan_read_sector,
 		danger_scan_read_player,
 		danger_scan_restore_current,
+		danger_scan_checkpoint,
 		danger_scan_sound,
 		danger_scan_present,
 		danger_scan_foreground,

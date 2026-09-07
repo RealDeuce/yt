@@ -8704,6 +8704,16 @@ danger_scan_set_finding(struct yt_danger_scan_state *state)
 }
 
 static bool
+danger_scan_checkpoint(struct yt_danger_scan_state *state,
+    const struct yt_danger_scan_ops *ops, void *context,
+    enum yt_danger_scan_checkpoint checkpoint,
+    enum yt_danger_scan_step step, struct yt_error *error)
+{
+	state->attempted = step;
+	return ops->checkpoint(context, checkpoint, error);
+}
+
+static bool
 danger_scan_first_warning(struct yt_danger_scan_state *state,
     const struct yt_danger_scan_ops *ops, void *context,
     struct yt_error *error)
@@ -8768,6 +8778,7 @@ yt_danger_scan_run(struct yt_danger_scan_state *state,
 
 	if (state == NULL || ops == NULL || ops->read_sector == NULL
 	    || ops->read_player == NULL || ops->restore_current == NULL
+	    || ops->checkpoint == NULL
 	    || ops->sound == NULL || ops->present == NULL
 	    || ops->foreground == NULL || ops->set_foreground == NULL
 	    || ops->set_background == NULL || ops->set_blink == NULL
@@ -8867,6 +8878,10 @@ yt_danger_scan_run(struct yt_danger_scan_state *state,
 			    &state->owner_player, error))
 				return false;
 			state->owner_read = true;
+			if (!danger_scan_checkpoint(state, ops, context,
+			    YT_DANGER_CHECK_OWNER_NAME_LEFT,
+			    YT_DANGER_SCAN_OWNER_NAME_LEFT, error))
+				return false;
 			name_length = qb_cint((double)state->owner_player.name_length,
 			    &overflow);
 			if (overflow || name_length < 0)
@@ -8883,6 +8898,10 @@ yt_danger_scan_run(struct yt_danger_scan_state *state,
 				struct yt_player candidate;
 				int team_name_length;
 
+				if (!danger_scan_checkpoint(state, ops, context,
+				    YT_DANGER_CHECK_FRIENDSHIP_HELPER,
+				    YT_DANGER_SCAN_FRIENDSHIP_HELPER, error))
+					return false;
 				danger_scan_store_relationship(state, ops, context,
 				    dirty_false);
 				if (owner >= 2.0f && owner <= state->sector_offset
@@ -8936,6 +8955,10 @@ yt_danger_scan_run(struct yt_danger_scan_state *state,
 				if (team_name_length > 0) {
 					size_t amount = (size_t)team_name_length;
 
+					if (!danger_scan_checkpoint(state, ops, context,
+					    YT_DANGER_CHECK_TEAM_NAME_LEFT,
+					    YT_DANGER_SCAN_TEAM_NAME_LEFT, error))
+						return false;
 					if (amount > YT_TEXT_FIELD_SIZE)
 						amount = YT_TEXT_FIELD_SIZE;
 					if (!danger_scan_append(row, sizeof(row), &row_length,
@@ -8954,9 +8977,14 @@ yt_danger_scan_run(struct yt_danger_scan_state *state,
 		hostile = owner < 0.0f;
 		if (!hostile && owner > 1.0f && owner <= state->sector_offset
 		    && owner != state->current_player_record) {
-			int relationship = qb_cint((double)state->relationship,
-			    &overflow);
+			int relationship;
 
+			if (!danger_scan_checkpoint(state, ops, context,
+			    YT_DANGER_CHECK_RELATIONSHIP_CINT,
+			    YT_DANGER_SCAN_RELATIONSHIP_CINT, error))
+				return false;
+			relationship = qb_cint((double)state->relationship,
+			    &overflow);
 			if (overflow)
 				return startup_configuration_error(error, YT_RANGE,
 				    "danger relationship CINT");

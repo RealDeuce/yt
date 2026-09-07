@@ -2989,12 +2989,22 @@ enum yt_danger_scan_step {
 	YT_DANGER_SCAN_NONE,
 	YT_DANGER_SCAN_TARGET_GET,
 	YT_DANGER_SCAN_OWNER_GET,
+	YT_DANGER_SCAN_OWNER_NAME_LEFT,
+	YT_DANGER_SCAN_FRIENDSHIP_HELPER,
 	YT_DANGER_SCAN_FRIEND_CURRENT_GET,
 	YT_DANGER_SCAN_FRIEND_OWNER_GET,
 	YT_DANGER_SCAN_TEAM_GET,
+	YT_DANGER_SCAN_TEAM_NAME_LEFT,
+	YT_DANGER_SCAN_RELATIONSHIP_CINT,
 	YT_DANGER_SCAN_MUSIC,
 	YT_DANGER_SCAN_PRESENT,
 	YT_DANGER_SCAN_RESTORE_CURRENT,
+};
+enum yt_danger_scan_checkpoint {
+	YT_DANGER_CHECK_OWNER_NAME_LEFT,
+	YT_DANGER_CHECK_FRIENDSHIP_HELPER,
+	YT_DANGER_CHECK_TEAM_NAME_LEFT,
+	YT_DANGER_CHECK_RELATIONSHIP_CINT,
 };
 struct yt_danger_scan_state {
 	float target;
@@ -3027,6 +3037,9 @@ struct yt_danger_scan_ops {
 	bool (*read_player)(void *context, float record,
 	    struct yt_player *player, struct yt_error *error);
 	bool (*restore_current)(void *context, struct yt_error *error);
+	bool (*checkpoint)(void *context,
+	    enum yt_danger_scan_checkpoint checkpoint,
+	    struct yt_error *error);
 	bool (*sound)(void *context, float selector, struct yt_error *error);
 	bool (*present)(void *context, const uint8_t *text, size_t length,
 	    enum yt_danger_scan_output_kind kind, struct yt_error *error);

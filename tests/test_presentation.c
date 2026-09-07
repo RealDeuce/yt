@@ -44103,6 +44103,30 @@ test_movement_presentation(void)
 	CHECK(capture.remote_length == 89U && pager.line_count == 1.0f);
 }
 
+enum danger_scan_presentation_event {
+	DANGER_EVENT_TARGET_GET,
+	DANGER_EVENT_MUSIC,
+	DANGER_EVENT_LEADING_BLANK,
+	DANGER_EVENT_WARNING_RAW,
+	DANGER_EVENT_WARNING_TARGET,
+	DANGER_EVENT_WARNING_BLANK,
+	DANGER_EVENT_DISRUPTION,
+	DANGER_EVENT_MINES,
+	DANGER_EVENT_OWNER_GET,
+	DANGER_EVENT_OWNER_NAME_LEFT,
+	DANGER_EVENT_FRIENDSHIP_HELPER,
+	DANGER_EVENT_FRIEND_CURRENT_GET,
+	DANGER_EVENT_FRIEND_OWNER_GET,
+	DANGER_EVENT_TEAM_GET,
+	DANGER_EVENT_TEAM_NAME_LEFT,
+	DANGER_EVENT_RELATIONSHIP_CINT,
+	DANGER_EVENT_FIGHTERS,
+	DANGER_EVENT_RESTORE_CURRENT,
+	DANGER_EVENT_FINAL_BLANK,
+	DANGER_EVENT_DEACTIVATED,
+	DANGER_EVENT_COUNT,
+};
+
 struct danger_scan_presentation_context {
 	struct yt_present_state current;
 	struct pager_capture capture;
@@ -44115,15 +44139,35 @@ struct danger_scan_presentation_context {
 	size_t player_read_count;
 	size_t restore_count;
 	uint8_t relationship_raw[4];
+	enum danger_scan_presentation_event fail_event;
+	enum danger_scan_presentation_event events[DANGER_EVENT_COUNT];
+	size_t prefix_before[DANGER_EVENT_COUNT];
+	size_t event_count;
 };
+
+static bool
+danger_scan_presentation_event(struct danger_scan_presentation_context *fixture,
+    enum danger_scan_presentation_event event)
+{
+	if (fixture->event_count >= YT_ARRAY_LEN(fixture->events))
+		return false;
+	fixture->events[fixture->event_count++] = event;
+	fixture->prefix_before[event] = fixture->capture.remote_length;
+	return event != fixture->fail_event;
+}
 
 static bool
 danger_scan_presentation_read_sector(void *context, float logical_sector,
     struct yt_sector *sector, struct yt_error *error)
 {
 	struct danger_scan_presentation_context *fixture = context;
+	enum danger_scan_presentation_event event =
+	    fixture->sector_read_count == 0U
+	    ? DANGER_EVENT_TARGET_GET : DANGER_EVENT_TEAM_GET;
 
 	(void)error;
+	if (!danger_scan_presentation_event(fixture, event))
+		return false;
 	if (fixture->sector_read_count >= YT_ARRAY_LEN(fixture->sector_reads))
 		return false;
 	fixture->sector_reads[fixture->sector_read_count++] = logical_sector;
@@ -44137,9 +44181,17 @@ danger_scan_presentation_read_player(void *context, float record,
     struct yt_player *player, struct yt_error *error)
 {
 	struct danger_scan_presentation_context *fixture = context;
+	static const enum danger_scan_presentation_event events[] = {
+		DANGER_EVENT_OWNER_GET,
+		DANGER_EVENT_FRIEND_CURRENT_GET,
+		DANGER_EVENT_FRIEND_OWNER_GET,
+	};
 
 	(void)error;
 	if (fixture->player_read_count >= YT_ARRAY_LEN(fixture->player_reads))
+		return false;
+	if (!danger_scan_presentation_event(fixture,
+	    events[fixture->player_read_count]))
 		return false;
 	fixture->player_reads[fixture->player_read_count] = record;
 	*player = fixture->players[fixture->player_read_count];
@@ -44153,8 +44205,31 @@ danger_scan_presentation_restore(void *context, struct yt_error *error)
 	struct danger_scan_presentation_context *fixture = context;
 
 	(void)error;
+	if (!danger_scan_presentation_event(fixture,
+	    DANGER_EVENT_RESTORE_CURRENT))
+		return false;
 	++fixture->restore_count;
 	return true;
+}
+
+static bool
+danger_scan_presentation_checkpoint(void *context,
+    enum yt_danger_scan_checkpoint checkpoint, struct yt_error *error)
+{
+	static const enum danger_scan_presentation_event events[] = {
+		[YT_DANGER_CHECK_OWNER_NAME_LEFT] = DANGER_EVENT_OWNER_NAME_LEFT,
+		[YT_DANGER_CHECK_FRIENDSHIP_HELPER] =
+		    DANGER_EVENT_FRIENDSHIP_HELPER,
+		[YT_DANGER_CHECK_TEAM_NAME_LEFT] = DANGER_EVENT_TEAM_NAME_LEFT,
+		[YT_DANGER_CHECK_RELATIONSHIP_CINT] =
+		    DANGER_EVENT_RELATIONSHIP_CINT,
+	};
+	struct danger_scan_presentation_context *fixture = context;
+
+	(void)error;
+	if ((size_t)checkpoint >= YT_ARRAY_LEN(events))
+		return false;
+	return danger_scan_presentation_event(fixture, events[checkpoint]);
 }
 
 static bool
@@ -44165,6 +44240,8 @@ danger_scan_presentation_sound(void *context, float selector,
 	struct yt_present_result result;
 
 	(void)error;
+	if (!danger_scan_presentation_event(fixture, DANGER_EVENT_MUSIC))
+		return false;
 	if (selector != 8.0f
 	    || yt_present_sound(selector, &fixture->current, &result)
 	    != YT_PRESENT_OK)
@@ -44181,8 +44258,22 @@ danger_scan_presentation_present(void *context, const uint8_t *text,
 	struct danger_scan_presentation_context *fixture = context;
 	struct yt_present_result result;
 	enum yt_present_status status;
+	static const enum danger_scan_presentation_event events[] = {
+		[YT_DANGER_SCAN_LEADING_BLANK] = DANGER_EVENT_LEADING_BLANK,
+		[YT_DANGER_SCAN_WARNING_RAW] = DANGER_EVENT_WARNING_RAW,
+		[YT_DANGER_SCAN_WARNING_TARGET] = DANGER_EVENT_WARNING_TARGET,
+		[YT_DANGER_SCAN_WARNING_BLANK] = DANGER_EVENT_WARNING_BLANK,
+		[YT_DANGER_SCAN_DISRUPTION] = DANGER_EVENT_DISRUPTION,
+		[YT_DANGER_SCAN_MINES] = DANGER_EVENT_MINES,
+		[YT_DANGER_SCAN_FIGHTERS] = DANGER_EVENT_FIGHTERS,
+		[YT_DANGER_SCAN_FINAL_BLANK] = DANGER_EVENT_FINAL_BLANK,
+		[YT_DANGER_SCAN_DEACTIVATED] = DANGER_EVENT_DEACTIVATED,
+	};
 
 	(void)error;
+	if ((size_t)kind >= YT_ARRAY_LEN(events)
+	    || !danger_scan_presentation_event(fixture, events[kind]))
+		return false;
 	if (kind == YT_DANGER_SCAN_WARNING_RAW)
 		status = yt_present_bold_character(text, length,
 		    &fixture->current, &result);
@@ -44247,6 +44338,7 @@ danger_scan_presentation_fixture(bool ansi)
 		danger_scan_presentation_read_sector,
 		danger_scan_presentation_read_player,
 		danger_scan_presentation_restore,
+		danger_scan_presentation_checkpoint,
 		danger_scan_presentation_sound,
 		danger_scan_presentation_present,
 		danger_scan_presentation_foreground,
@@ -44259,6 +44351,7 @@ danger_scan_presentation_fixture(bool ansi)
 	struct yt_danger_scan_state scan;
 
 	memset(&fixture, 0, sizeof(fixture));
+	fixture.fail_event = DANGER_EVENT_COUNT;
 	memset(&scan, 0, sizeof(scan));
 	fixture.current = state(ansi);
 	fixture.current.foreground = 7.0f;
@@ -44335,6 +44428,7 @@ test_danger_scan_relationship_contract(void)
 		danger_scan_presentation_read_sector,
 		danger_scan_presentation_read_player,
 		danger_scan_presentation_restore,
+		danger_scan_presentation_checkpoint,
 		danger_scan_presentation_sound,
 		danger_scan_presentation_present,
 		danger_scan_presentation_foreground,
@@ -44348,6 +44442,7 @@ test_danger_scan_relationship_contract(void)
 	uint8_t stale_fraction[4];
 
 	memset(&fixture, 0, sizeof(fixture));
+	fixture.fail_event = DANGER_EVENT_COUNT;
 	memset(&scan, 0, sizeof(scan));
 	fixture.current = state(false);
 	fixture.target.fighters = 5.0f;
@@ -44377,6 +44472,7 @@ test_danger_scan_relationship_contract(void)
 	    && fixture.capture.remote_length != 0U);
 
 	memset(&fixture, 0, sizeof(fixture));
+	fixture.fail_event = DANGER_EVENT_COUNT;
 	memset(&scan, 0, sizeof(scan));
 	fixture.current = state(false);
 	fixture.target.fighters = 1.0f;
@@ -44396,6 +44492,7 @@ test_danger_scan_relationship_contract(void)
 	    && memcmp(scan.relationship_raw, stale_fraction, 4U) == 0);
 
 	memset(&fixture, 0, sizeof(fixture));
+	fixture.fail_event = DANGER_EVENT_COUNT;
 	memset(&scan, 0, sizeof(scan));
 	fixture.current = state(false);
 	fixture.target.fighters = 1.0f;
@@ -44414,6 +44511,153 @@ test_danger_scan_relationship_contract(void)
 	    && fixture.restore_count == 1U
 	    && fixture.current.foreground == 2.0f
 	    && fixture.current.background == 0.0f);
+}
+
+static void
+danger_scan_failure_setup(struct danger_scan_presentation_context *fixture,
+    struct yt_danger_scan_state *scan)
+{
+	memset(fixture, 0, sizeof(*fixture));
+	memset(scan, 0, sizeof(*scan));
+	fixture->fail_event = DANGER_EVENT_COUNT;
+	fixture->current = state(false);
+	fixture->current.foreground = 7.0f;
+	fixture->target.mines = -2.0f;
+	fixture->target.fighters = 5.0f;
+	fixture->target.fighter_owner = 8.25f;
+	memcpy(fixture->players[0].record.bytes, "RAIDER", 6U);
+	fixture->players[0].name_length = 6.0f;
+	fixture->players[0].team = 3.75f;
+	fixture->players[1].team = 9.0f;
+	fixture->players[2].team = 3.75f;
+	memcpy(fixture->team.record.bytes, "TEAM", 4U);
+	CHECK(yt_record_set_number(&fixture->team.record, YT_F73, 4.0f));
+	scan->target = 12.0f;
+	scan->sector_count = 2004.0f;
+	scan->sector_offset = 51.0f;
+	scan->current_player_record = 2.0f;
+	scan->disruption_sectors[0] = 12.0f;
+	memcpy(scan->relationship_raw, "\0\0\x80\x81", 4U);
+}
+
+static void
+test_danger_scan_failure_prefixes(void)
+{
+	static const struct yt_danger_scan_ops ops = {
+		danger_scan_presentation_read_sector,
+		danger_scan_presentation_read_player,
+		danger_scan_presentation_restore,
+		danger_scan_presentation_checkpoint,
+		danger_scan_presentation_sound,
+		danger_scan_presentation_present,
+		danger_scan_presentation_foreground,
+		danger_scan_presentation_set_foreground,
+		danger_scan_presentation_set_background,
+		danger_scan_presentation_set_blink,
+		danger_scan_presentation_store_relationship,
+	};
+	static const enum yt_danger_scan_step attempted[] = {
+		[DANGER_EVENT_TARGET_GET] = YT_DANGER_SCAN_TARGET_GET,
+		[DANGER_EVENT_MUSIC] = YT_DANGER_SCAN_MUSIC,
+		[DANGER_EVENT_LEADING_BLANK] = YT_DANGER_SCAN_PRESENT,
+		[DANGER_EVENT_WARNING_RAW] = YT_DANGER_SCAN_PRESENT,
+		[DANGER_EVENT_WARNING_TARGET] = YT_DANGER_SCAN_PRESENT,
+		[DANGER_EVENT_WARNING_BLANK] = YT_DANGER_SCAN_PRESENT,
+		[DANGER_EVENT_DISRUPTION] = YT_DANGER_SCAN_PRESENT,
+		[DANGER_EVENT_MINES] = YT_DANGER_SCAN_PRESENT,
+		[DANGER_EVENT_OWNER_GET] = YT_DANGER_SCAN_OWNER_GET,
+		[DANGER_EVENT_OWNER_NAME_LEFT] =
+		    YT_DANGER_SCAN_OWNER_NAME_LEFT,
+		[DANGER_EVENT_FRIENDSHIP_HELPER] =
+		    YT_DANGER_SCAN_FRIENDSHIP_HELPER,
+		[DANGER_EVENT_FRIEND_CURRENT_GET] =
+		    YT_DANGER_SCAN_FRIEND_CURRENT_GET,
+		[DANGER_EVENT_FRIEND_OWNER_GET] =
+		    YT_DANGER_SCAN_FRIEND_OWNER_GET,
+		[DANGER_EVENT_TEAM_GET] = YT_DANGER_SCAN_TEAM_GET,
+		[DANGER_EVENT_TEAM_NAME_LEFT] =
+		    YT_DANGER_SCAN_TEAM_NAME_LEFT,
+		[DANGER_EVENT_RELATIONSHIP_CINT] =
+		    YT_DANGER_SCAN_RELATIONSHIP_CINT,
+		[DANGER_EVENT_FIGHTERS] = YT_DANGER_SCAN_PRESENT,
+		[DANGER_EVENT_RESTORE_CURRENT] =
+		    YT_DANGER_SCAN_RESTORE_CURRENT,
+		[DANGER_EVENT_FINAL_BLANK] = YT_DANGER_SCAN_PRESENT,
+		[DANGER_EVENT_DEACTIVATED] = YT_DANGER_SCAN_PRESENT,
+	};
+	static const enum yt_danger_scan_output_kind output_kind[] = {
+		[DANGER_EVENT_LEADING_BLANK] = YT_DANGER_SCAN_LEADING_BLANK,
+		[DANGER_EVENT_WARNING_RAW] = YT_DANGER_SCAN_WARNING_RAW,
+		[DANGER_EVENT_WARNING_TARGET] = YT_DANGER_SCAN_WARNING_TARGET,
+		[DANGER_EVENT_WARNING_BLANK] = YT_DANGER_SCAN_WARNING_BLANK,
+		[DANGER_EVENT_DISRUPTION] = YT_DANGER_SCAN_DISRUPTION,
+		[DANGER_EVENT_MINES] = YT_DANGER_SCAN_MINES,
+		[DANGER_EVENT_FIGHTERS] = YT_DANGER_SCAN_FIGHTERS,
+		[DANGER_EVENT_FINAL_BLANK] = YT_DANGER_SCAN_FINAL_BLANK,
+		[DANGER_EVENT_DEACTIVATED] = YT_DANGER_SCAN_DEACTIVATED,
+	};
+	struct danger_scan_presentation_context baseline;
+	struct danger_scan_presentation_context fixture;
+	struct yt_danger_scan_state scan;
+	size_t event;
+
+	danger_scan_failure_setup(&baseline, &scan);
+	CHECK(yt_danger_scan_run(&scan, &ops, &baseline, NULL));
+	CHECK(scan.complete && baseline.event_count == DANGER_EVENT_COUNT);
+	for (event = 0U; event < DANGER_EVENT_COUNT; ++event)
+		CHECK(baseline.events[event] == (enum danger_scan_presentation_event)event);
+	for (event = 0U; event < DANGER_EVENT_COUNT; ++event) {
+		size_t prefix = baseline.prefix_before[event];
+
+		danger_scan_failure_setup(&fixture, &scan);
+		fixture.fail_event = (enum danger_scan_presentation_event)event;
+		CHECK(!yt_danger_scan_run(&scan, &ops, &fixture, NULL));
+		CHECK(!scan.complete && scan.attempted == attempted[event]
+		    && fixture.event_count == event + 1U
+		    && fixture.capture.remote_length == prefix
+		    && memcmp(fixture.capture.remote, baseline.capture.remote,
+		    prefix) == 0
+		    && fixture.current.foreground == 3.0f
+		    && fixture.current.background == 4.0f
+		    && scan.current_player_restored
+		    == (event > DANGER_EVENT_RESTORE_CURRENT));
+		if (attempted[event] == YT_DANGER_SCAN_PRESENT)
+			CHECK(scan.attempted_output == output_kind[event]);
+		if (event <= DANGER_EVENT_DISRUPTION)
+			CHECK(memcmp(scan.finding_flag_raw, "\0\0\x80\0", 4U)
+			    == 0);
+		else
+			CHECK(memcmp(scan.finding_flag_raw, "\0\0\0\x81", 4U)
+			    == 0);
+		if (event <= DANGER_EVENT_FRIENDSHIP_HELPER)
+			CHECK(memcmp(scan.relationship_raw, "\0\0\x80\x81", 4U)
+			    == 0);
+		else
+			CHECK(memcmp(scan.relationship_raw, "\0\0\x80\0", 4U)
+			    == 0);
+	}
+
+	danger_scan_failure_setup(&fixture, &scan);
+	scan.disruption_sectors[0] = 0.0f;
+	fixture.target.fighters = 0.0f;
+	fixture.fail_event = DANGER_EVENT_MINES;
+	CHECK(!yt_danger_scan_run(&scan, &ops, &fixture, NULL));
+	CHECK(memcmp(scan.finding_flag_raw, "\0\0\x80\0", 4U) == 0);
+
+	danger_scan_failure_setup(&fixture, &scan);
+	scan.disruption_sectors[0] = 0.0f;
+	fixture.target.mines = 0.0f;
+	fixture.target.fighter_owner = -1.0f;
+	fixture.fail_event = DANGER_EVENT_FIGHTERS;
+	CHECK(!yt_danger_scan_run(&scan, &ops, &fixture, NULL));
+	CHECK(memcmp(scan.finding_flag_raw, "\0\0\0\x81", 4U) == 0);
+
+	danger_scan_failure_setup(&fixture, &scan);
+	scan.target = 0.0f;
+	CHECK(yt_danger_scan_run(&scan, &ops, &fixture, NULL));
+	CHECK(scan.complete && fixture.event_count == 0U
+	    && fixture.capture.remote_length == 0U
+	    && memcmp(scan.finding_flag_raw, "\0\0\x80\0", 4U) == 0);
 }
 
 static void
@@ -47476,6 +47720,7 @@ main(void)
 	test_movement_presentation();
 	test_danger_scan_presentation();
 	test_danger_scan_relationship_contract();
+	test_danger_scan_failure_prefixes();
 	test_direct_attack_presentation();
 	test_computer_spy_presentation();
 	test_computer_path_presentation();
