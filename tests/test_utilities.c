@@ -6566,6 +6566,10 @@ done_closed:
 static bool
 test_ytconfig_planet_editor(struct yt_error *error)
 {
+#define PLANET_PAD_10 "          "
+#define PLANET_PAD_9 "         "
+#define PLANET_PAD_6 "      "
+#define PLANET_PAD_5 "     "
 	static const char empty_input[] = "PX";
 	static const char input[] =
 	    "P"
@@ -6589,11 +6593,14 @@ test_ytconfig_planet_editor(struct yt_error *error)
 	    "L\r\r"
 	    "  #   Name"
 	    "-------------------------------------------------------------------------------\r"
-	    "  1 : The Wanderer\r"
-	    "  2 : Earth\r"
-	    " 20 : Twenty\r"
+	    "  1 : The Wanderer" PLANET_PAD_10 PLANET_PAD_10 PLANET_PAD_9 "\r"
+	    "  2 : Earth" PLANET_PAD_10 PLANET_PAD_10 PLANET_PAD_10
+	    PLANET_PAD_6 "\r"
+	    " 20 : Tw\0" "nty" PLANET_PAD_10 PLANET_PAD_10 PLANET_PAD_10
+	    PLANET_PAD_5 "\r"
 	    "[ Pause ]\r"
-	    " 75 : Legacy Slot\r\r";
+	    " 75 : Legacy Slot" PLANET_PAD_10 PLANET_PAD_10 PLANET_PAD_10
+	    "\r\r";
 	static const uint8_t range_invalid[] =
 	    "C\r\rEdit which planet number? "
 	    "\rINVALID PLANET NUMBER!!\r76\r\a";
@@ -6606,19 +6613,23 @@ test_ytconfig_planet_editor(struct yt_error *error)
 	    "cannot be re-named!\r\r\a";
 	static const uint8_t bypass[] =
 	    "C\r\rEdit which planet number? "
-	    "Editing: The Wanderer\r\r"
+	    "Editing: The Wanderer" PLANET_PAD_10 PLANET_PAD_10 PLANET_PAD_9
+	    "\r\r"
 	    "Press enter to quit.\r"
-	    "The Wanderer\r"
+	    "The Wanderer" PLANET_PAD_10 PLANET_PAD_10 PLANET_PAD_9 "\r"
 	    "Please enter new name. -=> \r";
 	static const uint8_t canceled[] =
-	    "Editing: Earth\r\r"
+	    "Editing: Earth" PLANET_PAD_10 PLANET_PAD_10 PLANET_PAD_10
+	    PLANET_PAD_6 "\r\r"
 	    "Press enter to quit.\r"
-	    "Earth\r"
+	    "Earth" PLANET_PAD_10 PLANET_PAD_10 PLANET_PAD_10 PLANET_PAD_6
+	    "\r"
 	    "Please enter new name. -=> "
 	    "\rChange name to Mars Base? [Y/N] -=> X\r"
 	    "\rChange name to Mars Base? [Y/N] -=> N\r"
 	    "\rCanceled!\rMars Base\r"
-	    "Editing: Earth\r\r";
+	    "Editing: Earth" PLANET_PAD_10 PLANET_PAD_10 PLANET_PAD_10
+	    PLANET_PAD_6 "\r\r";
 	static const uint8_t saved[] =
 	    "\rChange name to New World? [Y/N] -=> Y\r"
 	    "New name saved! Press any key.\r";
@@ -6685,6 +6696,16 @@ test_ytconfig_planet_editor(struct yt_error *error)
 	SET_ACTIVE_PLANET(20, "Twenty");
 	SET_ACTIVE_PLANET(75, "Legacy Slot");
 #undef SET_ACTIVE_PLANET
+	{
+		static const uint8_t binary_name[] = {'T', 'w', 0, 'n', 't', 'y'};
+
+		yt_record_set_text(&forced[19], binary_name, sizeof(binary_name));
+		if (!yt_record_set_number(&forced[19], YT_F85, 1.0f)
+		    || !yt_database_write(&game.database,
+			(size_t)yt_planet_basic_record(&game.config, 20),
+			&forced[19], error))
+			goto done;
+	}
 	if (!yt_database_flush(&game.database, error))
 		goto done;
 	yt_game_close(&game);
@@ -6751,6 +6772,10 @@ done_closed:
 		yt_game_close(&restore);
 	}
 	free(screen);
+#undef PLANET_PAD_5
+#undef PLANET_PAD_6
+#undef PLANET_PAD_9
+#undef PLANET_PAD_10
 	return valid;
 }
 

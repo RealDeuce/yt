@@ -363,7 +363,7 @@ edit_headquarters(struct yt_game *game, struct yt_error *error)
 static bool
 edit_planets(struct yt_game *game, struct yt_error *error)
 {
-	char names[76][42];
+	uint8_t names[76][YT_TEXT_FIELD_SIZE];
 	bool active[76] = {false};
 	unsigned active_count = 0U;
 	struct yt_config_output_result output;
@@ -379,7 +379,7 @@ edit_planets(struct yt_game *game, struct yt_error *error)
 			continue;
 		active[logical] = true;
 		++active_count;
-		snprintf(names[logical], sizeof(names[logical]), "%s", planet.name);
+		memcpy(names[logical], planet.record.bytes, YT_TEXT_FIELD_SIZE);
 	}
 	if (!yt_config_compose_planet_entry(active_count, 0U, &output)
 	    || !write_output(&output, error))
@@ -412,8 +412,7 @@ edit_planets(struct yt_game *game, struct yt_error *error)
 				if (!active[logical])
 					continue;
 				if (!yt_config_compose_planet_list_row(logical,
-				    (const uint8_t *)names[logical],
-				    strlen(names[logical]), 0U, &output)
+				    names[logical], YT_TEXT_FIELD_SIZE, 0U, &output)
 				    || !write_output(&output, error))
 					return false;
 				if (yt_config_planet_pause_after(logical,
@@ -479,8 +478,7 @@ edit_planets(struct yt_game *game, struct yt_error *error)
 			}
 			for (;;) {
 				if (!yt_config_compose_planet_edit(
-				    (const uint8_t *)names[selected],
-				    strlen(names[selected]), 0U, &output)
+				    names[selected], YT_TEXT_FIELD_SIZE, 0U, &output)
 				    || !write_output(&output, error))
 					return false;
 				if (!yt_cli_line(name, sizeof(name)))
@@ -531,7 +529,8 @@ save_planet_name:
 				if (!yt_game_write_planet(game, selected, &planet, error))
 					return false;
 			}
-			snprintf(names[selected], sizeof(names[selected]), "%s", name);
+			memset(names[selected], ' ', YT_TEXT_FIELD_SIZE);
+			memcpy(names[selected], name, strlen(name));
 			if (!yt_config_compose_planet_saved(output.final_column, &output)
 			    || !write_output(&output, error))
 				return false;
