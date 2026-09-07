@@ -5972,6 +5972,7 @@ test_ytconfig_overlay_transaction(void)
 	};
 	struct config_local_screen_test_tape tape;
 	struct yt_config_overlay_state state;
+	struct yt_record loaded;
 	struct yt_error error;
 	uint8_t raw[4];
 	uint8_t second[] = {0xaa, 0xbb};
@@ -5980,6 +5981,7 @@ test_ytconfig_overlay_transaction(void)
 
 	for (byte = 0U; byte < YT_RECORD_SIZE; ++byte)
 		tape.durable.bytes[byte] = (uint8_t)(byte * 13U + 7U);
+	loaded = tape.durable;
 	if (qb_mbf32_encode(123.5f, raw) == QB_MBF_OVERFLOW)
 		return false;
 	overlays[0] = (struct yt_config_overlay){YT_F105, raw, sizeof(raw)};
@@ -6022,6 +6024,28 @@ test_ytconfig_overlay_transaction(void)
 	    || state.write_complete
 	    || memcmp(state.field.bytes + YT_F105, raw, sizeof(raw)) != 0)
 		return false;
+	tape.durable = loaded;
+	tape.reads = 0U;
+	tape.writes = 0U;
+	tape.fail_at = 0U;
+	yt_error_clear(&error);
+	if (!yt_config_apply_loaded_overlays(&state, &loaded, overlays, 1U,
+	    &ops, &tape, &error) || !state.complete || tape.reads != 0U
+	    || tape.writes != 1U || state.overlays_completed != 1U
+	    || memcmp(tape.durable.bytes + YT_F105, raw, sizeof(raw)) != 0)
+		return false;
+	tape.durable = loaded;
+	tape.reads = 0U;
+	tape.writes = 0U;
+	tape.fail_at = 1U;
+	yt_error_clear(&error);
+	if (yt_config_apply_loaded_overlays(&state, &loaded, overlays, 1U,
+	    &ops, &tape, &error) || error.status != YT_IO_ERROR
+	    || state.attempted != YT_CONFIG_OVERLAY_WRITE
+	    || !state.field_loaded || state.overlays_completed != 1U
+	    || state.write_complete || tape.reads != 0U || tape.writes != 1U
+	    || memcmp(&tape.durable, &loaded, sizeof(loaded)) != 0)
+		return false;
 	return !yt_config_apply_overlays(NULL, overlays, 1U, &ops, &tape,
 	    &error)
 	    && !yt_config_apply_overlays(&state, NULL, 1U, &ops, &tape,
@@ -6030,6 +6054,10 @@ test_ytconfig_overlay_transaction(void)
 	    &error)
 	    && !yt_config_apply_overlays(&state,
 	    &(struct yt_config_overlay){YT_RECORD_SIZE, raw, 1U}, 1U,
+	    &ops, &tape, &error)
+	    && !yt_config_apply_loaded_overlays(NULL, &loaded, overlays, 1U,
+	    &ops, &tape, &error)
+	    && !yt_config_apply_loaded_overlays(&state, NULL, overlays, 1U,
 	    &ops, &tape, &error);
 }
 

@@ -110,37 +110,58 @@ numeric_edit(struct yt_game *game, char key, float *maximum, float *lottery,
     struct yt_error *error)
 {
 	struct yt_config_output_result output;
+	struct yt_config_overlay_state state;
 	struct qb_val_result parsed;
+	struct yt_config_overlay overlay;
+	struct yt_record fresh;
 	char line[160];
+	uint8_t raw[4];
 	float value;
+	size_t offset = 0U;
 	bool blank;
+	bool fresh_before_prompt = false;
 	float *field = NULL;
 	enum yt_config_scalar_key scalar = (enum yt_config_scalar_key)key;
 
 	switch (key) {
 	case 'A':
 		field = &game->config.maximum_holds;
+		offset = YT_F121;
+		fresh_before_prompt = true;
 		break;
 	case 'B':
 		field = &game->config.turns_per_day;
+		offset = YT_F49;
 		break;
 	case 'C':
 		field = &game->config.initial_fighters;
+		offset = YT_F65;
 		break;
 	case 'D':
 		field = &game->config.initial_credits;
+		offset = YT_F69;
 		break;
 	case 'E':
 		field = &game->config.initial_holds;
+		offset = YT_F73;
 		break;
 	case 'F':
 		field = &game->config.retention_days;
+		offset = YT_F77;
 		break;
 	case 'K':
 		field = &game->config.lottery_plays;
+		offset = YT_F101;
+		fresh_before_prompt = true;
 		break;
 	default:
 		return true;
+	}
+	if (fresh_before_prompt) {
+		if (!config_read_record(game, 1U, &fresh, error))
+			return false;
+		game->config.record = fresh;
+		*field = yt_record_get_number(&fresh, offset);
 	}
 	if (!yt_config_compose_scalar_prompt(scalar, *maximum, 0U, &output)
 	    || !write_output(&output, error))
@@ -158,12 +179,22 @@ numeric_edit(struct yt_game *game, char key, float *maximum, float *lottery,
 			return false;
 		return true;
 	}
+	if (qb_mbf32_encode(value, raw) == QB_MBF_OVERFLOW) {
+		if (error != NULL)
+			error->status = YT_RANGE;
+		return false;
+	}
+	overlay = (struct yt_config_overlay){offset, raw, sizeof(raw)};
+	if (!yt_config_apply_loaded_overlays(&state, &game->config.record,
+	    &overlay, 1U, &config_record_ops, game, error))
+		return false;
+	game->config.record = state.field;
 	*field = value;
 	if (key == 'A')
 		*maximum = value;
 	else if (key == 'K')
 		*lottery = value;
-	return store_config(game, error);
+	return true;
 }
 
 static bool

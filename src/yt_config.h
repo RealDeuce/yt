@@ -131,6 +131,11 @@ bool yt_config_apply_overlays(struct yt_config_overlay_state *state,
 	const struct yt_config_overlay *overlays, size_t overlay_count,
 	const struct yt_config_record_ops *ops, void *context,
 	struct yt_error *error);
+bool yt_config_apply_loaded_overlays(struct yt_config_overlay_state *state,
+	const struct yt_record *field,
+	const struct yt_config_overlay *overlays, size_t overlay_count,
+	const struct yt_config_record_ops *ops, void *context,
+	struct yt_error *error);
 
 int yt_date_serial(const struct yt_clock_value *date, int epoch_year,
     int *adjusted_year);

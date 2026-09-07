@@ -348,6 +348,50 @@ yt_config_apply_overlays(struct yt_config_overlay_state *state,
 	return true;
 }
 
+bool
+yt_config_apply_loaded_overlays(struct yt_config_overlay_state *state,
+    const struct yt_record *field,
+    const struct yt_config_overlay *overlays, size_t overlay_count,
+    const struct yt_config_record_ops *ops, void *context,
+    struct yt_error *error)
+{
+	size_t index;
+
+	if (state != NULL)
+		memset(state, 0, sizeof(*state));
+	if (state == NULL || field == NULL
+	    || (overlays == NULL && overlay_count != 0U) || ops == NULL
+	    || ops->write_record == NULL)
+		return config_hq_error(error, YT_INVALID,
+		    "YTCONFIG loaded overlay transaction");
+	for (index = 0U; index < overlay_count; ++index) {
+		if ((overlays[index].data == NULL && overlays[index].length != 0U)
+		    || overlays[index].offset > YT_RECORD_SIZE
+		    || overlays[index].length >
+		    YT_RECORD_SIZE - overlays[index].offset)
+			return config_hq_error(error, YT_INVALID,
+			    "YTCONFIG loaded overlay range");
+	}
+	state->field = *field;
+	state->field_loaded = true;
+	for (index = 0U; index < overlay_count; ++index) {
+		state->attempted = YT_CONFIG_OVERLAY_COPY;
+		state->overlay_index = index;
+		if (overlays[index].length != 0U)
+			memcpy(state->field.bytes + overlays[index].offset,
+			    overlays[index].data, overlays[index].length);
+		++state->overlays_completed;
+	}
+	state->overlay_index = overlay_count;
+	state->attempted = YT_CONFIG_OVERLAY_WRITE;
+	if (!ops->write_record(context, 1U, &state->field, error))
+		return false;
+	state->write_complete = true;
+	state->attempted = YT_CONFIG_OVERLAY_NONE;
+	state->complete = true;
+	return true;
+}
+
 void
 yt_config_normalize_game(struct yt_config *config, bool local_mode)
 {
