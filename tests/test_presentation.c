@@ -45715,7 +45715,20 @@ test_computer_path_presentation(void)
 	CHECK(sizeof(expected) - 1U == 170U);
 	CHECK(capture.remote_length == sizeof(expected) - 1U
 	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
-	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f);
+	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f
+	    && capture.local_event_count == 26U
+	    && capture.framebuffer_initialized
+	    && capture.framebuffer.bios_row == 11U
+	    && capture.framebuffer.bios_column == 1U
+	    && capture.framebuffer.qb_row == 11U
+	    && capture.framebuffer.qb_column == 1U
+	    && capture.framebuffer.brun_bios_cache_row == 11U
+	    && capture.framebuffer.brun_bios_cache_column == 1U
+	    && capture.framebuffer.qb_attribute == 0x07U
+	    && capture.framebuffer.qb_scrolls == 0U
+	    && capture.framebuffer.con_scrolls == 0U
+	    && startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
+	    == UINT64_C(0x42ec2e4f09d1e5fc));
 }
 
 static void
