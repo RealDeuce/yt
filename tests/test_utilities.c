@@ -4576,8 +4576,8 @@ test_brun_internal_fatal(void)
 		return false;
 
 	memset(&tape, 0, sizeof(tape));
-	if (!yt_init_run_preflight_err67_fatal_run(0x4444U, false, true,
-	    true, 0x0708U, &ops, &tape, &runtime_state)
+	if (!yt_init_run_preflight_fatal_run(67U, 0x4444U, false, true, true,
+	    0x0708U, &ops, &tape, &runtime_state)
 	    || runtime_state.error_number != 67U
 	    || runtime_state.error_description_length != 14U
 	    || memcmp(runtime_state.error_description, "Too many files", 14U)
@@ -4599,6 +4599,21 @@ test_brun_internal_fatal(void)
 	    || runtime_state.terminal.drained_word_count != 2U
 	    || !runtime_state.terminal.terminal_restored
 	    || !runtime_state.terminal.ended || tape.exit_status != 0U)
+		return false;
+
+	memset(&tape, 0, sizeof(tape));
+	if (!yt_init_run_preflight_fatal_run(53U, 0x4444U, true, false,
+	    false, 0U, &ops, &tape, &runtime_state)
+	    || runtime_state.error_number != 53U
+	    || runtime_state.error_description_length != 14U
+	    || runtime_state.terminal.local_length != 89U
+	    || memcmp(runtime_state.terminal.local_bytes,
+	    "\rFile not found in module YT-INIT  at address 4444:23DF\r"
+	    "\rHit any key to return to system\r", 89U) != 0
+	    || tape.event_count != 6U || runtime_state.terminal.input_drained
+	    || runtime_state.terminal.local_bytes[88] != '\r'
+	    || yt_init_run_preflight_fatal_run(75U, 0x4444U, false, false,
+	    false, 0U, &ops, &tape, &runtime_state))
 		return false;
 
 	memset(&tape, 0, sizeof(tape));
