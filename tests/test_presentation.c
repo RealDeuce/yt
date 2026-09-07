@@ -2120,6 +2120,252 @@ startup_ascii_framebuffer_fnv1a64(
 	return value;
 }
 
+struct startup_join_ansi {
+	struct yt_text_input input;
+	struct yt_framebuffer_state *framebuffer;
+	size_t local_rows;
+	size_t local_polls;
+	size_t remote_rows;
+	size_t remote_polls;
+	bool local_open;
+	bool waited;
+};
+
+static bool
+startup_join_ansi_open_input(void *context, const char *path,
+    struct yt_error *error)
+{
+	struct startup_join_ansi *ansi = context;
+
+	return yt_text_input_open(&ansi->input, path, error);
+}
+
+static bool
+startup_join_ansi_open_local(void *context, struct yt_error *error)
+{
+	struct startup_join_ansi *ansi = context;
+
+	(void)error;
+	ansi->local_open = true;
+	return true;
+}
+
+static bool
+startup_join_ansi_eof(void *context, bool *eof, struct yt_error *error)
+{
+	struct startup_join_ansi *ansi = context;
+
+	return yt_text_input_eof(&ansi->input, eof, error);
+}
+
+static bool
+startup_join_ansi_read(void *context, const uint8_t **line,
+    size_t *length, bool *available, struct yt_error *error)
+{
+	struct startup_join_ansi *ansi = context;
+
+	return yt_text_input_read_line(&ansi->input, line, length, available,
+	    error);
+}
+
+static bool
+startup_join_ansi_apply(struct startup_join_ansi *ansi,
+    const uint8_t *data, size_t length)
+{
+	return yt_framebuffer_apply_con_observation(ansi->framebuffer,
+	    data, length, data, length, true, 0U) == YT_FRAMEBUFFER_OK;
+}
+
+static bool
+startup_join_ansi_local(void *context, const uint8_t *line,
+    size_t length, struct yt_error *error)
+{
+	static const uint8_t newline[] = { '\r', '\n' };
+	struct startup_join_ansi *ansi = context;
+
+	(void)error;
+	++ansi->local_rows;
+	return startup_join_ansi_apply(ansi, line, length)
+	    && startup_join_ansi_apply(ansi, newline, sizeof(newline));
+}
+
+static bool
+startup_join_ansi_poll_local(void *context, bool *ready,
+    struct yt_error *error)
+{
+	struct startup_join_ansi *ansi = context;
+
+	(void)error;
+	++ansi->local_polls;
+	*ready = false;
+	return true;
+}
+
+static bool
+startup_join_ansi_remote(void *context, const uint8_t *line,
+    size_t length, struct yt_error *error)
+{
+	struct startup_join_ansi *ansi = context;
+
+	(void)line;
+	(void)length;
+	(void)error;
+	++ansi->remote_rows;
+	return true;
+}
+
+static bool
+startup_join_ansi_poll_remote(void *context, bool *ready,
+    struct yt_error *error)
+{
+	struct startup_join_ansi *ansi = context;
+
+	(void)error;
+	++ansi->remote_polls;
+	*ready = false;
+	return true;
+}
+
+static bool
+startup_join_ansi_wait(void *context, float seconds,
+    struct yt_error *error)
+{
+	struct startup_join_ansi *ansi = context;
+
+	(void)error;
+	CHECK(seconds == 3.0f);
+	ansi->waited = true;
+	return true;
+}
+
+static bool
+startup_join_ansi_reset_remote(void *context, struct yt_error *error)
+{
+	(void)context;
+	(void)error;
+	return true;
+}
+
+static bool
+startup_join_ansi_reset_local(void *context, struct yt_error *error)
+{
+	static const uint8_t reset[] = "\x1b[0m";
+	struct startup_join_ansi *ansi = context;
+
+	(void)error;
+	return startup_join_ansi_apply(ansi, reset, sizeof(reset) - 1U);
+}
+
+static bool
+startup_join_ansi_close_input(void *context, struct yt_error *error)
+{
+	struct startup_join_ansi *ansi = context;
+
+	return yt_text_input_close(&ansi->input, error);
+}
+
+static bool
+startup_join_ansi_close_local(void *context, struct yt_error *error)
+{
+	struct startup_join_ansi *ansi = context;
+
+	(void)error;
+	ansi->local_open = false;
+	return true;
+}
+
+static bool
+startup_join_run_ansi(struct yt_framebuffer_state *framebuffer,
+    struct yt_error *error)
+{
+	static const struct yt_opening_stream_ops ops = {
+		startup_join_ansi_open_input,
+		startup_join_ansi_open_local,
+		startup_join_ansi_eof,
+		startup_join_ansi_read,
+		startup_join_ansi_local,
+		startup_join_ansi_poll_local,
+		startup_join_ansi_remote,
+		startup_join_ansi_poll_remote,
+		startup_join_ansi_wait,
+		startup_join_ansi_reset_remote,
+		startup_join_ansi_reset_local,
+		startup_join_ansi_close_input,
+		startup_join_ansi_close_local,
+	};
+	struct yt_opening_stream_state stream = {
+		.path = YT_DATA_DIR "YTOPEN.ANS",
+		.mode = 0.0f,
+		.snoop = -1.0f,
+	};
+	struct startup_join_ansi ansi;
+	bool ok;
+
+	memset(&ansi, 0, sizeof(ansi));
+	yt_text_input_init(&ansi.input);
+	ansi.framebuffer = framebuffer;
+	ok = yt_opening_stream_run(&stream, &ops, &ansi, error);
+	CHECK(ok && stream.exit_reason == YT_OPENING_EXIT_EOF
+	    && stream.eof_checks == 68U && stream.read_count == 67U
+	    && ansi.local_rows == 67U && ansi.local_polls == 67U
+	    && ansi.remote_rows == 67U && ansi.remote_polls == 67U
+	    && ansi.waited && !ansi.local_open && !stream.input_open
+	    && !stream.local_open);
+	yt_text_input_destroy(&ansi.input);
+	return ok;
+}
+
+static bool
+startup_join_present(struct viewer_pager_join *join, const char *text,
+    bool centered)
+{
+	struct yt_present_result result;
+	enum yt_present_status status;
+	size_t length = strlen(text);
+
+	status = centered
+	    ? yt_present_centered_line((const uint8_t *)text, length,
+	    &join->presentation, &result)
+	    : yt_present_line(length == 0U ? NULL : (const uint8_t *)text,
+	    length, &join->presentation, &result);
+	if (status != YT_PRESENT_OK)
+		return false;
+	viewer_pager_capture_result(join, &result);
+	return true;
+}
+
+static bool
+startup_join_present_title(struct viewer_pager_join *join)
+{
+	static const struct {
+		const char *text;
+		bool centered;
+	} rows[] = {
+		{"", false}, {"", false}, {"", false}, {"", false},
+		{"Yankee Trader", true},
+		{"(c)Alan Davenport", true},
+		{"Prices & Xannor fix, Anticloak, Spies, Missiles disabled  ",
+		    true},
+		{"", false},
+		{"Strategy Guide: www.starflt.com/yt.html      ", true},
+		{"", false},
+		{"Version 3.6g * YT * Mod 02/09/2024  ", true},
+		{"", false},
+		{"Registered to This Bbs", true},
+		{"", false},
+		{"Registered by The Sysop", true},
+		{"", false},
+	};
+	size_t index;
+
+	for (index = 0U; index < YT_ARRAY_LEN(rows); ++index) {
+		if (!startup_join_present(join, rows[index].text,
+		    rows[index].centered))
+			return false;
+	}
+	return true;
+}
+
 static void
 test_startup_ascii_physical_join(void)
 {
@@ -2228,6 +2474,61 @@ test_startup_ascii_physical_join(void)
 	    && startup.join.accumulator[0] == '\0'
 	    && startup.join.queue_length == 0U);
 	startup_ascii_check_rows(&startup.join, 2U);
+	yt_text_input_destroy(&startup.input);
+}
+
+static void
+test_startup_opening_framebuffer_join(void)
+{
+	static const uint8_t real_name[] = "John Doe";
+	struct physical_viewer_join startup;
+	struct yt_file_viewer_stream_state stream;
+	struct yt_present_result status_row;
+	struct yt_error error;
+	size_t row25 = 24U * YT_FRAMEBUFFER_WIDTH;
+	size_t index;
+
+	memset(&startup, 0, sizeof(startup));
+	startup_ascii_initialize(&startup, &stream, true, 0.0f, -1.0f, 0U);
+	startup.join.presentation.cached_foreground = 0.0f;
+	startup.join.presentation.cached_background = 0.0f;
+	startup.join.presentation.color_initialized = 0.0f;
+	yt_error_clear(&error);
+	CHECK(startup_join_present_title(&startup.join));
+	CHECK(startup.join.presentation.foreground == 6.0f
+	    && startup.join.presentation.cached_foreground == 6.0f
+	    && startup.join.presentation.cached_background == 0.0f);
+	CHECK(startup_join_run_ansi(&startup.join.framebuffer, &error));
+	CHECK(yt_present_status_row(real_name, sizeof(real_name) - 1U,
+	    NULL, 0U, &startup.join.presentation, &status_row)
+	    == YT_PRESENT_OK);
+	CHECK(yt_framebuffer_apply_present_result(&startup.join.framebuffer,
+	    &status_row) == YT_FRAMEBUFFER_OK);
+	CHECK(physical_viewer_run(&startup, &stream, &error));
+	CHECK(startup.join.framebuffer.bios_row == 24U
+	    && startup.join.framebuffer.bios_column == 1U
+	    && startup.join.framebuffer.qb_row == 24U
+	    && startup.join.framebuffer.qb_column == 1U
+	    && startup.join.framebuffer.brun_bios_cache_row == 24U
+	    && startup.join.framebuffer.brun_bios_cache_column == 1U
+	    && startup.join.framebuffer.qb_attribute == 0x03U
+	    && startup.join.framebuffer.cursor_shape == 0x2000U
+	    && !startup.join.framebuffer.cursor_visible
+	    && startup.join.framebuffer.ansi_attribute == 0x07U
+	    && !startup.join.framebuffer.ansi_enabled
+	    && startup.join.framebuffer.qb_scrolls == 21U
+	    && startup.join.framebuffer.con_scrolls == 0U
+	    && !startup.join.framebuffer.function_bar
+	    && startup_ascii_framebuffer_fnv1a64(&startup.join.framebuffer)
+	    == UINT64_C(0xd1ee333895c3f5b0));
+	CHECK(memcmp(startup.join.framebuffer.characters + row25,
+	    " Yankee Trader   | John Doe | ",
+	    strlen(" Yankee Trader   | John Doe | ")) == 0);
+	for (index = 0U; index < 15U; ++index)
+		CHECK(startup.join.framebuffer.attributes[row25 + index] == 0x3eU);
+	for (; index < 79U; ++index)
+		CHECK(startup.join.framebuffer.attributes[row25 + index] == 0x1bU);
+	CHECK(startup.join.framebuffer.attributes[row25 + 79U] == 0x07U);
 	yt_text_input_destroy(&startup.input);
 }
 
@@ -47973,6 +48274,7 @@ main(void)
 	test_pager_raw_process_cells();
 	test_file_viewer_pager_join();
 	test_startup_ascii_physical_join();
+	test_startup_opening_framebuffer_join();
 	test_instruction_physical_viewer_join();
 	test_newspaper_physical_viewer_join();
 	test_newspaper_endpoint_modes();
