@@ -15490,19 +15490,25 @@ test_computer_newspaper_full_cycle_presentation(void)
 		size_t remote_length;
 		uint64_t remote_fnv;
 		float final_bold;
+		uint16_t framebuffer_row;
+		uint64_t framebuffer_fnv;
 	} cases[] = {
 		{true, 'T', retained_current_news,
 		    sizeof(retained_current_news) - 1U, "YTNEWS.DAT", 9U,
-		    732U, UINT64_C(0x7dec74d285edb57f), 0.0f},
+		    732U, UINT64_C(0x7dec74d285edb57f), 0.0f, 19U,
+		    UINT64_C(0xf10231462b9e7e1c)},
 		{false, 'T', retained_current_news,
 		    sizeof(retained_current_news) - 1U, "YTNEWS.DAT", 9U,
-		    610U, UINT64_C(0x93efb9289cdb699d), 1.0f},
+		    610U, UINT64_C(0x93efb9289cdb699d), 1.0f, 19U,
+		    UINT64_C(0xa991568dfb6cb76e)},
 		{true, 'Y', retained_yesterday_news,
 		    sizeof(retained_yesterday_news) - 1U, "YTYNEWS.DAT", 7U,
-		    515U, UINT64_C(0x19b0435fd8e224af), 0.0f},
+		    515U, UINT64_C(0x19b0435fd8e224af), 0.0f, 17U,
+		    UINT64_C(0xb63fa5fbe639f08b)},
 		{false, 'Y', retained_yesterday_news,
 		    sizeof(retained_yesterday_news) - 1U, "YTYNEWS.DAT", 7U,
-		    485U, UINT64_C(0x45869dac22db0a0f), 0.0f},
+		    485U, UINT64_C(0x45869dac22db0a0f), 0.0f, 17U,
+		    UINT64_C(0xaeed26117a3ecf2e)},
 	};
 	struct physical_viewer_join viewer;
 	struct yt_file_viewer_stream_state stream;
@@ -15547,20 +15553,21 @@ test_computer_newspaper_full_cycle_presentation(void)
 		    && !stream.file_open && !viewer.join.file_open
 		    && viewer.input.file == NULL && viewer.close_calls == 2U
 		    && viewer.open_calls == 1U);
-		if (pass == 0U) {
-			CHECK(viewer.join.framebuffer.bios_row == 19U
+		CHECK(viewer.join.framebuffer.bios_row
+		    == cases[pass].framebuffer_row
 			    && viewer.join.framebuffer.bios_column == 41U
-			    && viewer.join.framebuffer.qb_row == 19U
+			    && viewer.join.framebuffer.qb_row
+			    == cases[pass].framebuffer_row
 			    && viewer.join.framebuffer.qb_column == 41U
-			    && viewer.join.framebuffer.brun_bios_cache_row == 19U
+			    && viewer.join.framebuffer.brun_bios_cache_row
+			    == cases[pass].framebuffer_row
 			    && viewer.join.framebuffer.brun_bios_cache_column == 41U
 			    && viewer.join.framebuffer.qb_attribute == 0x07U
 			    && viewer.join.framebuffer.qb_scrolls == 0U
 			    && viewer.join.framebuffer.con_scrolls == 0U
 			    && startup_ascii_framebuffer_fnv1a64(
 			    &viewer.join.framebuffer)
-			    == UINT64_C(0xf10231462b9e7e1c));
-		}
+			    == cases[pass].framebuffer_fnv);
 		yt_text_input_destroy(&viewer.input);
 	}
 }
