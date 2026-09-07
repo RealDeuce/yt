@@ -185,6 +185,34 @@ No binary inspection or new reverse engineering was performed.
 
 ## Open documentation gaps
 
+### DOC-GAP-035: complete BRUN runtime error-name table
+
+Affected coverage:
+
+- the shared `BRUN:0AC4` no-handler/active-handler fatal renderer;
+- every reached default fatal whose error byte is not one of the few names
+  printed explicitly in the completed prose or focused fixtures; and
+- YT-INIT RUN's documented ERR 53/67/75 preflight family, particularly the
+  ERR 75 diagnostic.
+
+The completed error-handler documentation specifies the byte-keyed lookup,
+the `Unprintable error` fallback, and exact fatal rendering/cleanup. It
+publishes a few individual names such as ERR 53 `File not found`, ERR 64
+`Bad file name`, ERR 67 `Too many files`, and ERR 24 `Device timeout` through
+prose or canonical fixtures. However, the complete byte-to-description table
+is not present in a generated artifact or documentation contract.
+`tools/errortrap.py::extract_runtime_error_names()` instead reconstructs that
+table directly from `BRUN30.EXE`, and the fatal-output model calls that helper
+at composition time.
+
+The native renderer now accepts an already selected exact CP437 description,
+so documented caller witnesses can compose without guessing. Implementing
+the runtime lookup for all reached error bytes would still require inspecting
+the external binary or relying on remembered QuickBASIC wording. Upstream
+must publish the complete canonical mapping, including explicit absent-byte
+fallback behavior, in generated evidence with focused assertions. No binary
+inspection or new reverse engineering was performed.
+
 ### DOC-GAP-034: main startup `YT:0133` internal-fatal location
 
 Affected coverage:
