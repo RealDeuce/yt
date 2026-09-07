@@ -1649,6 +1649,269 @@ test_rmt_config_normalization(void)
 	    && defaults.maximum_holds == 50.0f;
 }
 
+struct alias_compact_test_tape {
+	enum yt_alias_compact_step events[40];
+	size_t event_count;
+	size_t fail_at;
+	size_t input_closes;
+	size_t output_closes;
+	size_t row_index;
+	size_t write_index;
+	uint8_t output[256];
+	size_t output_length;
+};
+
+static bool
+alias_compact_test_record(struct alias_compact_test_tape *tape,
+    enum yt_alias_compact_step step, struct yt_error *error)
+{
+	if (tape->event_count >= YT_ARRAY_LEN(tape->events))
+		return false;
+	tape->events[tape->event_count++] = step;
+	if (tape->fail_at != 0U && tape->event_count == tape->fail_at) {
+		if (error != NULL)
+			error->status = YT_IO_ERROR;
+		return false;
+	}
+	return true;
+}
+
+static bool
+alias_compact_test_close_input(void *context, struct yt_error *error)
+{
+	struct alias_compact_test_tape *tape = context;
+	enum yt_alias_compact_step step = tape->input_closes++ == 0U
+	    ? YT_ALIAS_COMPACT_CLOSE_INPUT_INITIAL
+	    : YT_ALIAS_COMPACT_CLOSE_INPUT_FINAL;
+
+	return alias_compact_test_record(tape, step, error);
+}
+
+static bool
+alias_compact_test_close_output(void *context, struct yt_error *error)
+{
+	struct alias_compact_test_tape *tape = context;
+	enum yt_alias_compact_step step = tape->output_closes++ == 0U
+	    ? YT_ALIAS_COMPACT_CLOSE_OUTPUT_INITIAL
+	    : YT_ALIAS_COMPACT_CLOSE_OUTPUT_FINAL;
+
+	return alias_compact_test_record(tape, step, error);
+}
+
+static bool
+alias_compact_test_output_mode(void *context, struct yt_error *error)
+{
+	return alias_compact_test_record(context,
+	    YT_ALIAS_COMPACT_SET_OUTPUT_MODE, error);
+}
+
+static bool
+alias_compact_test_input_mode(void *context, struct yt_error *error)
+{
+	return alias_compact_test_record(context,
+	    YT_ALIAS_COMPACT_SET_INPUT_MODE, error);
+}
+
+static bool
+alias_compact_test_open_output(void *context, const char *path,
+    struct yt_error *error)
+{
+	return strcmp(path, "TEMPWORK") == 0
+	    && alias_compact_test_record(context, YT_ALIAS_COMPACT_OPEN_OUTPUT,
+	    error);
+}
+
+static bool
+alias_compact_test_open_input(void *context, const char *path,
+    struct yt_error *error)
+{
+	return strcmp(path, "YTNAME.DAT") == 0
+	    && alias_compact_test_record(context, YT_ALIAS_COMPACT_OPEN_INPUT,
+	    error);
+}
+
+static bool
+alias_compact_test_eof(void *context, bool *eof, struct yt_error *error)
+{
+	struct alias_compact_test_tape *tape = context;
+
+	if (!alias_compact_test_record(tape, YT_ALIAS_COMPACT_EOF, error))
+		return false;
+	*eof = tape->row_index == 4U;
+	return true;
+}
+
+static char *
+alias_compact_test_string(const char *value)
+{
+	size_t length = strlen(value);
+	char *copy = malloc(length + 1U);
+
+	if (copy != NULL)
+		memcpy(copy, value, length + 1U);
+	return copy;
+}
+
+static bool
+alias_compact_test_read_row(void *context, struct yt_name_row *row,
+    size_t *staged_count, struct yt_error *error)
+{
+	static const char *const rows[4][4] = {
+		{"Real", "One", "Same", "Alias"},
+		{"Other", "Person", "Other", "Person"},
+		{"Real", "Two", "Same", "Alias"},
+		{"Real", "Three", "same", "Alias"},
+	};
+	struct alias_compact_test_tape *tape = context;
+	char **fields[4] = {&row->real_first, &row->real_last,
+	    &row->alias_first, &row->alias_last};
+	size_t field;
+
+	memset(row, 0, sizeof(*row));
+	*staged_count = 0U;
+	if (!alias_compact_test_record(tape, YT_ALIAS_COMPACT_READ_ROW,
+	    error))
+		return false;
+	if (tape->row_index >= YT_ARRAY_LEN(rows))
+		return false;
+	for (field = 0U; field < 4U; ++field) {
+		*fields[field] = alias_compact_test_string(
+		    rows[tape->row_index][field]);
+		if (*fields[field] == NULL)
+			return false;
+		*staged_count = field + 1U;
+	}
+	++tape->row_index;
+	return true;
+}
+
+static bool
+alias_compact_test_select_output(void *context, struct yt_error *error)
+{
+	return alias_compact_test_record(context, YT_ALIAS_COMPACT_SELECT_OUTPUT,
+	    error);
+}
+
+static bool
+alias_compact_test_write(void *context, const uint8_t *data, size_t length,
+    bool newline, struct yt_error *error)
+{
+	static const enum yt_alias_compact_step steps[7] = {
+		YT_ALIAS_COMPACT_WRITE_REAL_FIRST,
+		YT_ALIAS_COMPACT_WRITE_COMMA_1,
+		YT_ALIAS_COMPACT_WRITE_REAL_LAST,
+		YT_ALIAS_COMPACT_WRITE_COMMA_2,
+		YT_ALIAS_COMPACT_WRITE_ALIAS_FIRST,
+		YT_ALIAS_COMPACT_WRITE_COMMA_3,
+		YT_ALIAS_COMPACT_WRITE_ALIAS_LAST_LINE,
+	};
+	struct alias_compact_test_tape *tape = context;
+	size_t part = tape->write_index++ % YT_ARRAY_LEN(steps);
+
+	if (newline != (part == YT_ARRAY_LEN(steps) - 1U)
+	    || !alias_compact_test_record(tape, steps[part], error))
+		return false;
+	if (length > sizeof(tape->output) - tape->output_length
+	    || (newline && sizeof(tape->output) - tape->output_length - length
+	    < 2U))
+		return false;
+	if (length != 0U)
+		memcpy(tape->output + tape->output_length, data, length);
+	tape->output_length += length;
+	if (newline) {
+		tape->output[tape->output_length++] = '\r';
+		tape->output[tape->output_length++] = '\n';
+	}
+	return true;
+}
+
+static bool
+alias_compact_test_kill(void *context, const char *path,
+    struct yt_error *error)
+{
+	return strcmp(path, "YTNAME.DAT") == 0
+	    && alias_compact_test_record(context, YT_ALIAS_COMPACT_KILL_SOURCE,
+	    error);
+}
+
+static bool
+alias_compact_test_rename(void *context, const char *old_path,
+    const char *new_path, struct yt_error *error)
+{
+	return strcmp(old_path, "TEMPWORK") == 0
+	    && strcmp(new_path, "YTNAME.DAT") == 0
+	    && alias_compact_test_record(context, YT_ALIAS_COMPACT_RENAME_TEMP,
+	    error);
+}
+
+static bool
+test_maintenance_alias_compaction_transaction(void)
+{
+	static const struct yt_alias_compact_ops ops = {
+		alias_compact_test_close_input,
+		alias_compact_test_close_output,
+		alias_compact_test_output_mode,
+		alias_compact_test_open_output,
+		alias_compact_test_input_mode,
+		alias_compact_test_open_input,
+		alias_compact_test_eof,
+		alias_compact_test_read_row,
+		alias_compact_test_select_output,
+		alias_compact_test_write,
+		alias_compact_test_kill,
+		alias_compact_test_rename,
+	};
+	static const uint8_t expected_output[] =
+	    "Other,Person,Other,Person\r\n"
+	    "Real,Three,same,Alias\r\n";
+	struct alias_compact_test_tape success = {0};
+	struct yt_alias_compact_state state;
+	struct yt_error error;
+	size_t failure;
+	bool result;
+
+	yt_error_clear(&error);
+	result = yt_maintenance_alias_compact_run(&state, "Same", "Alias",
+	    &ops, &success, &error);
+	if (!result || !state.complete || state.attempted != YT_ALIAS_COMPACT_NONE
+	    || state.completed_steps != 35U || state.eof_checks != 5U
+	    || state.rows_read != 4U || state.rows_removed != 2U
+	    || state.rows_written != 2U || state.write_values_completed != 14U
+	    || state.staged_count != 0U || success.event_count != 35U
+	    || success.output_length != sizeof(expected_output) - 1U
+	    || memcmp(success.output, expected_output,
+	    sizeof(expected_output) - 1U) != 0) {
+		yt_maintenance_alias_compact_state_free(&state);
+		return false;
+	}
+	for (failure = 1U; failure <= success.event_count; ++failure) {
+		struct alias_compact_test_tape tape = {.fail_at = failure};
+
+		yt_error_clear(&error);
+		result = yt_maintenance_alias_compact_run(&state, "Same", "Alias",
+		    &ops, &tape, &error);
+		if (result || error.status != YT_IO_ERROR || state.complete
+		    || state.attempted != success.events[failure - 1U]
+		    || state.completed_steps != failure - 1U
+		    || tape.event_count != failure
+		    || tape.output_length > success.output_length
+		    || memcmp(tape.output, success.output,
+		    tape.output_length) != 0) {
+			yt_maintenance_alias_compact_state_free(&state);
+			return false;
+		}
+		yt_maintenance_alias_compact_state_free(&state);
+	}
+	return !yt_maintenance_alias_compact_run(NULL, "Same", "Alias", &ops,
+	    &success, &error)
+	    && !yt_maintenance_alias_compact_run(&state, NULL, "Alias", &ops,
+	    &success, &error)
+	    && !yt_maintenance_alias_compact_run(&state, "Same", NULL, &ops,
+	    &success, &error)
+	    && !yt_maintenance_alias_compact_run(&state, "Same", "Alias", NULL,
+	    &success, &error);
+}
+
 static bool
 test_maintenance_alias_compaction(void)
 {
@@ -1661,6 +1924,8 @@ test_maintenance_alias_compaction(void)
 	    "Same,Alias,Other,Person\r\n"
 	    "Real,Three,same,Alias\r\n"
 	    "\x1a";
+	static const uint8_t stale_temp[] =
+	    "THIS OLD TEMPWORK TAIL MUST NOT SURVIVE THE FINAL CLOSE\r\n\x1a";
 	struct yt_text_file result = {0};
 	struct yt_error error;
 	FILE *temporary;
@@ -1669,6 +1934,7 @@ test_maintenance_alias_compaction(void)
 	yt_error_clear(&error);
 	if (!yt_text_write("YTNAME.DAT", input, sizeof(input) - 1U, true,
 	    &error)
+	    || !write_file("TEMPWORK", stale_temp, sizeof(stale_temp) - 1U)
 	    || !yt_maintenance_remove_alias("Same Alias", &error)
 	    || !yt_text_read("YTNAME.DAT", &result, &error))
 		goto done;
@@ -6755,6 +7021,8 @@ main(void)
 		failure = "RMT old-database prepass differs";
 	else if (!test_rmt_config_normalization())
 		failure = "RMT old-configuration normalization differs";
+	else if (!test_maintenance_alias_compaction_transaction())
+		failure = "maintenance alias transaction differs";
 	else if (!test_maintenance_alias_compaction())
 		failure = "maintenance alias compaction differs";
 	else if (!test_news_rotation_transaction())

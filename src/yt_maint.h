@@ -2,6 +2,7 @@
 #define YT_MAINT_H
 
 #include "yt_game.h"
+#include "yt_names.h"
 #include "yt_platform.h"
 
 #define YT_MAINTENANCE_OUTPUT_ROWS 13U
@@ -195,6 +196,64 @@ struct yt_maintenance_lottery_result {
 	int planet_number;
 	int sector_number;
 	uint64_t draws_consumed;
+};
+
+enum yt_alias_compact_step {
+	YT_ALIAS_COMPACT_NONE,
+	YT_ALIAS_COMPACT_CLOSE_INPUT_INITIAL,
+	YT_ALIAS_COMPACT_CLOSE_OUTPUT_INITIAL,
+	YT_ALIAS_COMPACT_SET_OUTPUT_MODE,
+	YT_ALIAS_COMPACT_OPEN_OUTPUT,
+	YT_ALIAS_COMPACT_SET_INPUT_MODE,
+	YT_ALIAS_COMPACT_OPEN_INPUT,
+	YT_ALIAS_COMPACT_EOF,
+	YT_ALIAS_COMPACT_READ_ROW,
+	YT_ALIAS_COMPACT_SELECT_OUTPUT,
+	YT_ALIAS_COMPACT_WRITE_REAL_FIRST,
+	YT_ALIAS_COMPACT_WRITE_COMMA_1,
+	YT_ALIAS_COMPACT_WRITE_REAL_LAST,
+	YT_ALIAS_COMPACT_WRITE_COMMA_2,
+	YT_ALIAS_COMPACT_WRITE_ALIAS_FIRST,
+	YT_ALIAS_COMPACT_WRITE_COMMA_3,
+	YT_ALIAS_COMPACT_WRITE_ALIAS_LAST_LINE,
+	YT_ALIAS_COMPACT_CLOSE_INPUT_FINAL,
+	YT_ALIAS_COMPACT_CLOSE_OUTPUT_FINAL,
+	YT_ALIAS_COMPACT_KILL_SOURCE,
+	YT_ALIAS_COMPACT_RENAME_TEMP,
+};
+
+struct yt_alias_compact_state {
+	enum yt_alias_compact_step attempted;
+	size_t completed_steps;
+	size_t eof_checks;
+	size_t rows_read;
+	size_t rows_removed;
+	size_t rows_written;
+	size_t write_values_completed;
+	struct yt_name_row staged;
+	size_t staged_count;
+	bool complete;
+};
+
+struct yt_alias_compact_ops {
+	bool (*close_input)(void *context, struct yt_error *error);
+	bool (*close_output)(void *context, struct yt_error *error);
+	bool (*set_output_mode)(void *context, struct yt_error *error);
+	bool (*open_output)(void *context, const char *path,
+	    struct yt_error *error);
+	bool (*set_input_mode)(void *context, struct yt_error *error);
+	bool (*open_input)(void *context, const char *path,
+	    struct yt_error *error);
+	bool (*eof)(void *context, bool *eof, struct yt_error *error);
+	bool (*read_row)(void *context, struct yt_name_row *row,
+	    size_t *staged_count, struct yt_error *error);
+	bool (*select_output)(void *context, struct yt_error *error);
+	bool (*write_value)(void *context, const uint8_t *data, size_t length,
+	    bool newline, struct yt_error *error);
+	bool (*kill)(void *context, const char *path,
+	    struct yt_error *error);
+	bool (*rename)(void *context, const char *old_path,
+	    const char *new_path, struct yt_error *error);
 };
 
 enum yt_news_rotate_step {
@@ -692,6 +751,12 @@ bool yt_maintenance_scoreboard(struct yt_game *game,
     struct yt_error *error);
 bool yt_maintenance_remove_alias(const char *player_name,
     struct yt_error *error);
+bool yt_maintenance_alias_compact_run(struct yt_alias_compact_state *state,
+	const char *alias_first, const char *alias_last,
+	const struct yt_alias_compact_ops *ops, void *context,
+	struct yt_error *error);
+void yt_maintenance_alias_compact_state_free(
+	struct yt_alias_compact_state *state);
 bool yt_maintenance_expire_player(struct yt_game *game,
     float *player_sector, float *player_cloak, size_t cache_count,
     int player_record, struct yt_player *player, struct yt_error *error);

@@ -2135,45 +2135,268 @@ invalidate_radio(int player_record, struct yt_error *error)
 }
 
 bool
-yt_maintenance_remove_alias(const char *player_name, struct yt_error *error)
+yt_maintenance_alias_compact_run(struct yt_alias_compact_state *state,
+    const char *alias_first, const char *alias_last,
+    const struct yt_alias_compact_ops *ops, void *context,
+    struct yt_error *error)
 {
-	struct yt_name_file names;
-	char first[128];
-	char last[128];
-	size_t read_index;
-	size_t write_index = 0;
+	static const uint8_t comma[] = ",";
+	bool eof;
 
-	if (!yt_names_load("YTNAME.DAT", &names, error))
+	if (state != NULL)
+		memset(state, 0, sizeof(*state));
+	if (state == NULL || alias_first == NULL || alias_last == NULL
+	    || ops == NULL || ops->close_input == NULL
+	    || ops->close_output == NULL || ops->set_output_mode == NULL
+	    || ops->open_output == NULL || ops->set_input_mode == NULL
+	    || ops->open_input == NULL || ops->eof == NULL
+	    || ops->read_row == NULL || ops->select_output == NULL
+	    || ops->write_value == NULL || ops->kill == NULL
+	    || ops->rename == NULL) {
+		if (error != NULL)
+			error->status = YT_INVALID;
 		return false;
-	yt_names_split(player_name, first, sizeof(first), last, sizeof(last));
-	for (read_index = 0; read_index < names.count; ++read_index) {
-		if (strcmp(names.rows[read_index].alias_first, first) == 0
-		    && strcmp(names.rows[read_index].alias_last, last) == 0) {
-			free(names.rows[read_index].real_first);
-			free(names.rows[read_index].real_last);
-			free(names.rows[read_index].alias_first);
-			free(names.rows[read_index].alias_last);
-			memset(&names.rows[read_index], 0,
-			    sizeof(names.rows[read_index]));
+	}
+#define ALIAS_STEP(step, expression) do { \
+	state->attempted = (step); \
+	if (!(expression)) \
+		return false; \
+	++state->completed_steps; \
+} while (0)
+	ALIAS_STEP(YT_ALIAS_COMPACT_CLOSE_INPUT_INITIAL,
+	    ops->close_input(context, error));
+	ALIAS_STEP(YT_ALIAS_COMPACT_CLOSE_OUTPUT_INITIAL,
+	    ops->close_output(context, error));
+	ALIAS_STEP(YT_ALIAS_COMPACT_SET_OUTPUT_MODE,
+	    ops->set_output_mode(context, error));
+	ALIAS_STEP(YT_ALIAS_COMPACT_OPEN_OUTPUT,
+	    ops->open_output(context, "TEMPWORK", error));
+	ALIAS_STEP(YT_ALIAS_COMPACT_SET_INPUT_MODE,
+	    ops->set_input_mode(context, error));
+	ALIAS_STEP(YT_ALIAS_COMPACT_OPEN_INPUT,
+	    ops->open_input(context, "YTNAME.DAT", error));
+	for (;;) {
+		state->attempted = YT_ALIAS_COMPACT_EOF;
+		++state->eof_checks;
+		if (!ops->eof(context, &eof, error))
+			return false;
+		++state->completed_steps;
+		if (eof)
+			break;
+		state->attempted = YT_ALIAS_COMPACT_READ_ROW;
+		if (!ops->read_row(context, &state->staged,
+		    &state->staged_count, error))
+			return false;
+		++state->completed_steps;
+		++state->rows_read;
+		if (strcmp(state->staged.alias_first, alias_first) == 0
+		    && strcmp(state->staged.alias_last, alias_last) == 0) {
+			++state->rows_removed;
+			yt_name_row_free(&state->staged);
+			state->staged_count = 0U;
 			continue;
 		}
-		if (write_index != read_index) {
-			names.rows[write_index] = names.rows[read_index];
-			memset(&names.rows[read_index], 0,
-			    sizeof(names.rows[read_index]));
-		}
-		++write_index;
+		ALIAS_STEP(YT_ALIAS_COMPACT_SELECT_OUTPUT,
+		    ops->select_output(context, error));
+		ALIAS_STEP(YT_ALIAS_COMPACT_WRITE_REAL_FIRST,
+		    ops->write_value(context,
+		    (const uint8_t *)state->staged.real_first,
+		    strlen(state->staged.real_first), false, error));
+		++state->write_values_completed;
+		ALIAS_STEP(YT_ALIAS_COMPACT_WRITE_COMMA_1,
+		    ops->write_value(context, comma, sizeof(comma) - 1U, false,
+		    error));
+		++state->write_values_completed;
+		ALIAS_STEP(YT_ALIAS_COMPACT_WRITE_REAL_LAST,
+		    ops->write_value(context,
+		    (const uint8_t *)state->staged.real_last,
+		    strlen(state->staged.real_last), false, error));
+		++state->write_values_completed;
+		ALIAS_STEP(YT_ALIAS_COMPACT_WRITE_COMMA_2,
+		    ops->write_value(context, comma, sizeof(comma) - 1U, false,
+		    error));
+		++state->write_values_completed;
+		ALIAS_STEP(YT_ALIAS_COMPACT_WRITE_ALIAS_FIRST,
+		    ops->write_value(context,
+		    (const uint8_t *)state->staged.alias_first,
+		    strlen(state->staged.alias_first), false, error));
+		++state->write_values_completed;
+		ALIAS_STEP(YT_ALIAS_COMPACT_WRITE_COMMA_3,
+		    ops->write_value(context, comma, sizeof(comma) - 1U, false,
+		    error));
+		++state->write_values_completed;
+		ALIAS_STEP(YT_ALIAS_COMPACT_WRITE_ALIAS_LAST_LINE,
+		    ops->write_value(context,
+		    (const uint8_t *)state->staged.alias_last,
+		    strlen(state->staged.alias_last), true, error));
+		++state->write_values_completed;
+		++state->rows_written;
+		yt_name_row_free(&state->staged);
+		state->staged_count = 0U;
 	}
-	names.count = write_index;
-	if (!yt_names_write("TEMPWORK", &names, error)) {
-		yt_names_free(&names);
-		return false;
-	}
-	yt_names_free(&names);
-	if (!yt_file_kill("YTNAME.DAT", NULL, error)
-	    || !yt_file_rename("TEMPWORK", "YTNAME.DAT", error))
-		return false;
+	ALIAS_STEP(YT_ALIAS_COMPACT_CLOSE_INPUT_FINAL,
+	    ops->close_input(context, error));
+	ALIAS_STEP(YT_ALIAS_COMPACT_CLOSE_OUTPUT_FINAL,
+	    ops->close_output(context, error));
+	ALIAS_STEP(YT_ALIAS_COMPACT_KILL_SOURCE,
+	    ops->kill(context, "YTNAME.DAT", error));
+	ALIAS_STEP(YT_ALIAS_COMPACT_RENAME_TEMP,
+	    ops->rename(context, "TEMPWORK", "YTNAME.DAT", error));
+#undef ALIAS_STEP
+	state->attempted = YT_ALIAS_COMPACT_NONE;
+	state->complete = true;
 	return true;
+}
+
+void
+yt_maintenance_alias_compact_state_free(struct yt_alias_compact_state *state)
+{
+	if (state == NULL)
+		return;
+	yt_name_row_free(&state->staged);
+	state->staged_count = 0U;
+}
+
+struct alias_compact_file_context {
+	struct yt_text_input input;
+	struct yt_text_output output;
+};
+
+static bool
+alias_compact_close_input(void *context, struct yt_error *error)
+{
+	struct alias_compact_file_context *file = context;
+
+	return yt_text_input_close(&file->input, error);
+}
+
+static bool
+alias_compact_close_output(void *context, struct yt_error *error)
+{
+	struct alias_compact_file_context *file = context;
+
+	return yt_text_output_close(&file->output, error);
+}
+
+static bool
+alias_compact_mode(void *context, struct yt_error *error)
+{
+	(void)context;
+	(void)error;
+	return true;
+}
+
+static bool
+alias_compact_open_output(void *context, const char *path,
+    struct yt_error *error)
+{
+	struct alias_compact_file_context *file = context;
+
+	return yt_text_output_open(&file->output, path, error);
+}
+
+static bool
+alias_compact_open_input(void *context, const char *path,
+    struct yt_error *error)
+{
+	struct alias_compact_file_context *file = context;
+
+	return yt_text_input_open(&file->input, path, error);
+}
+
+static bool
+alias_compact_eof(void *context, bool *eof, struct yt_error *error)
+{
+	struct alias_compact_file_context *file = context;
+
+	return yt_text_input_eof(&file->input, eof, error);
+}
+
+static bool
+alias_compact_read_row(void *context, struct yt_name_row *row,
+    size_t *staged_count, struct yt_error *error)
+{
+	struct alias_compact_file_context *file = context;
+
+	return yt_names_read_sequential_group(&file->input, row, staged_count,
+	    error);
+}
+
+static bool
+alias_compact_select_output(void *context, struct yt_error *error)
+{
+	struct alias_compact_file_context *file = context;
+
+	if (file->output.file != NULL)
+		return true;
+	set_error(error, YT_INVALID, "select TEMPWORK output", "TEMPWORK");
+	return false;
+}
+
+static bool
+alias_compact_write_value(void *context, const uint8_t *data, size_t length,
+    bool newline, struct yt_error *error)
+{
+	static const uint8_t row_end[] = {'\r', '\n'};
+	struct alias_compact_file_context *file = context;
+
+	return yt_text_output_write(&file->output, data, length, error)
+	    && (!newline || yt_text_output_write(&file->output, row_end,
+	    sizeof(row_end), error));
+}
+
+static bool
+alias_compact_kill(void *context, const char *path, struct yt_error *error)
+{
+	(void)context;
+	return yt_file_kill(path, NULL, error);
+}
+
+static bool
+alias_compact_rename(void *context, const char *old_path,
+    const char *new_path, struct yt_error *error)
+{
+	(void)context;
+	return yt_file_rename(old_path, new_path, error);
+}
+
+bool
+yt_maintenance_remove_alias(const char *player_name, struct yt_error *error)
+{
+	static const struct yt_alias_compact_ops ops = {
+		alias_compact_close_input,
+		alias_compact_close_output,
+		alias_compact_mode,
+		alias_compact_open_output,
+		alias_compact_mode,
+		alias_compact_open_input,
+		alias_compact_eof,
+		alias_compact_read_row,
+		alias_compact_select_output,
+		alias_compact_write_value,
+		alias_compact_kill,
+		alias_compact_rename,
+	};
+	struct alias_compact_file_context file;
+	struct yt_alias_compact_state state;
+	char first[128];
+	char last[128];
+	bool result;
+
+	if (player_name == NULL) {
+		if (error != NULL)
+			error->status = YT_INVALID;
+		return false;
+	}
+	yt_names_split(player_name, first, sizeof(first), last, sizeof(last));
+	yt_text_input_init(&file.input);
+	yt_text_output_init(&file.output);
+	result = yt_maintenance_alias_compact_run(&state, first, last, &ops,
+	    &file, error);
+	yt_maintenance_alias_compact_state_free(&state);
+	yt_text_input_destroy(&file.input);
+	yt_text_output_destroy(&file.output);
+	return result;
 }
 
 static bool

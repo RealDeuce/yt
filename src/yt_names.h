@@ -53,6 +53,10 @@ enum yt_alias_key_status {
 
 bool yt_names_load(const char *path, struct yt_name_file *names,
     struct yt_error *error);
+bool yt_names_read_sequential_group(struct yt_text_input *input,
+	struct yt_name_row *row, size_t *staged_count,
+	struct yt_error *error);
+void yt_name_row_free(struct yt_name_row *row);
 /*
  * Executes the sequential OPEN/EOF/four-token/CLOSE transaction.  On a
  * failure, names retains completed rows and observation retains the staged

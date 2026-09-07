@@ -126,8 +126,8 @@ input_token(const uint8_t *data, size_t length, size_t *cursor, char **dest,
 	return true;
 }
 
-static void
-free_row(struct yt_name_row *row)
+void
+yt_name_row_free(struct yt_name_row *row)
 {
 	free(row->real_first);
 	free(row->real_last);
@@ -166,12 +166,59 @@ duplicate_bytes(const uint8_t *source, size_t length)
 	return copy;
 }
 
+bool
+yt_names_read_sequential_group(struct yt_text_input *input,
+    struct yt_name_row *row, size_t *staged_count, struct yt_error *error)
+{
+	char **fields[4];
+	size_t field;
+
+	if (row != NULL)
+		memset(row, 0, sizeof(*row));
+	if (staged_count != NULL)
+		*staged_count = 0U;
+	if (input == NULL || row == NULL || staged_count == NULL) {
+		if (error != NULL)
+			error->status = YT_INVALID;
+		return false;
+	}
+	fields[0] = &row->real_first;
+	fields[1] = &row->real_last;
+	fields[2] = &row->alias_first;
+	fields[3] = &row->alias_last;
+	for (field = 0U; field < 4U; ++field) {
+		const uint8_t *value;
+		size_t length;
+		bool available;
+
+		if (!yt_text_input_read_string_token(input, &value, &length,
+		    &available, error))
+			return false;
+		if (!available) {
+			if (error != NULL) {
+				error->status = YT_EOF;
+				snprintf(error->operation, sizeof(error->operation),
+				    "YTNAME INPUT past end");
+			}
+			return false;
+		}
+		*fields[field] = duplicate_bytes(value, length);
+		if (*fields[field] == NULL) {
+			if (error != NULL)
+				error->status = YT_NO_MEMORY;
+			return false;
+		}
+		*staged_count = field + 1U;
+	}
+	return true;
+}
+
 static void
 retain_staged_row(struct yt_name_input_observation *observation,
     struct yt_name_row *staged, size_t staged_count, size_t cursor)
 {
 	if (observation == NULL) {
-		free_row(staged);
+		yt_name_row_free(staged);
 		return;
 	}
 	observation->staged = *staged;
@@ -205,10 +252,8 @@ yt_names_load_sequential(struct yt_text_input *input, const char *path,
 	for (;;) {
 		struct yt_name_row staged = {0};
 		struct yt_name_row *grown;
-		char **fields[4] = {&staged.real_first, &staged.real_last,
-		    &staged.alias_first, &staged.alias_last};
 		bool eof;
-		size_t field;
+		size_t staged_count;
 
 		++state->eof_checks;
 		if (!yt_text_input_eof(input, &eof, error)) {
@@ -219,42 +264,18 @@ yt_names_load_sequential(struct yt_text_input *input, const char *path,
 		}
 		if (eof)
 			break;
-		for (field = 0U; field < 4U; ++field) {
-			const uint8_t *value;
-			size_t length;
-			bool available;
-
-			++state->token_reads;
-			if (!yt_text_input_read_string_token(input, &value, &length,
-			    &available, error)) {
-				state->failed_operation = YT_NAMES_SEQUENTIAL_TOKEN;
-				retain_staged_row(observation, &staged, field,
-				    (size_t)input->logical_position);
-				return false;
-			}
-			if (!available) {
-				state->failed_operation = YT_NAMES_SEQUENTIAL_TOKEN;
-				if (error != NULL) {
-					error->status = YT_EOF;
-					snprintf(error->operation,
-					    sizeof(error->operation),
-					    "YTNAME INPUT past end");
-				}
-				retain_staged_row(observation, &staged, field,
-				    (size_t)input->logical_position);
-				return false;
-			}
-			*fields[field] = duplicate_bytes(value, length);
-			if (*fields[field] == NULL) {
-				state->failed_operation =
-				    YT_NAMES_SEQUENTIAL_STORE_TOKEN;
-				if (error != NULL)
-					error->status = YT_NO_MEMORY;
-				retain_staged_row(observation, &staged, field,
-				    (size_t)input->logical_position);
-				return false;
-			}
+		if (!yt_names_read_sequential_group(input, &staged, &staged_count,
+		    error)) {
+			state->token_reads += staged_count + 1U;
+			state->failed_operation = error != NULL
+			    && error->status == YT_NO_MEMORY
+			    ? YT_NAMES_SEQUENTIAL_STORE_TOKEN
+			    : YT_NAMES_SEQUENTIAL_TOKEN;
+			retain_staged_row(observation, &staged, staged_count,
+			    (size_t)input->logical_position);
+			return false;
 		}
+		state->token_reads += 4U;
 		if (names->count == SIZE_MAX / sizeof(*names->rows)) {
 			state->failed_operation = YT_NAMES_SEQUENTIAL_STORE_ROW;
 			if (error != NULL)
@@ -327,7 +348,7 @@ yt_names_parse_input_groups(const uint8_t *data, size_t length,
 					observation->cursor = position;
 				}
 				else
-					free_row(&staged);
+					yt_name_row_free(&staged);
 				return false;
 			}
 		}
@@ -338,7 +359,7 @@ yt_names_parse_input_groups(const uint8_t *data, size_t length,
 				observation->cursor = position;
 			}
 			else
-				free_row(&staged);
+				yt_name_row_free(&staged);
 			if (error != NULL)
 				error->status = YT_NO_MEMORY;
 			return false;
@@ -352,7 +373,7 @@ yt_names_parse_input_groups(const uint8_t *data, size_t length,
 				observation->cursor = position;
 			}
 			else
-				free_row(&staged);
+				yt_name_row_free(&staged);
 			if (error != NULL)
 				error->status = YT_NO_MEMORY;
 			return false;
@@ -372,7 +393,7 @@ yt_names_input_observation_free(
 {
 	if (observation == NULL)
 		return;
-	free_row(&observation->staged);
+	yt_name_row_free(&observation->staged);
 	observation->staged_count = 0U;
 	observation->cursor = 0U;
 }
@@ -407,7 +428,7 @@ yt_names_free(struct yt_name_file *names)
 	size_t index;
 
 	for (index = 0; index < names->count; ++index)
-		free_row(&names->rows[index]);
+		yt_name_row_free(&names->rows[index]);
 	free(names->rows);
 	names->rows = NULL;
 	names->count = 0;
