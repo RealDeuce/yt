@@ -72,7 +72,7 @@ read_handoff(struct rmt_handoff_file *handoff, char path[512],
 	bool available;
 
 	path[0] = '\0';
-	if (!yt_database_open(&handoff->random, "rmtinit.tmp",
+	if (!yt_database_open(&handoff->random, "RMTINIT.TMP",
 	    YT_OPEN_UPDATE_CREATE, error)
 	    || !yt_database_random_lof(&handoff->random, &size, error))
 		return false;
@@ -83,7 +83,7 @@ read_handoff(struct rmt_handoff_file *handoff, char path[512],
 		return true;
 	}
 	if (!yt_database_random_close(&handoff->random, error)
-	    || !yt_text_input_open(&handoff->sequential, "rmtinit.tmp", error)
+	    || !yt_text_input_open(&handoff->sequential, "RMTINIT.TMP", error)
 	    || !yt_text_input_read_line(&handoff->sequential, &line, &length,
 	    &available, error))
 		return false;
@@ -496,7 +496,7 @@ main(void)
 		credited[0] = '\0';
 	}
 	if (!rmt_handoff_close(&handoff_file, &error)
-	    || !yt_file_kill("rmtinit.tmp", NULL, &error)) {
+	    || !yt_file_kill("RMTINIT.TMP", NULL, &error)) {
 		yt_cli_error("RMT-INIT", &error);
 		return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
 	}

@@ -5447,7 +5447,8 @@ test_rmt_standalone_decline(struct yt_error *error)
 		return false;
 	result = output.length == sizeof(expected) - 1U
 	    && memcmp(output.data, expected, sizeof(expected) - 1U) == 0
-	    && file_size_is("rmtinit.tmp", 0L)
+	    && file_size_is("RMTINIT.TMP", 0L)
+	    && !file_size_is("rmtinit.tmp", 0L)
 	    && file_size_is("YTDATA.DAT", 432235L);
 	yt_text_free(&output);
 	return result;
