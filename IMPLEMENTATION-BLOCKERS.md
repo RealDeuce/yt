@@ -183,60 +183,26 @@ prefix. Commit `7454cc90` then supplied the canonical YTCONFIG `0EE5` fixture,
 extended shared-fatal model, exact output bytes, and terminal cleanup carrier.
 No binary inspection or new reverse engineering was performed.
 
-## Open documentation gaps
-
 ### DOC-GAP-035: complete BRUN runtime error-name table
 
-Affected coverage:
-
-- the shared `BRUN:0AC4` no-handler/active-handler fatal renderer;
-- every reached default fatal whose error byte is not one of the few names
-  printed explicitly in the completed prose or focused fixtures; and
-- YT-INIT RUN's documented ERR 53/67/75 preflight family, particularly the
-  ERR 75 diagnostic.
-
-The completed error-handler documentation specifies the byte-keyed lookup,
-the `Unprintable error` fallback, and exact fatal rendering/cleanup. It
-publishes a few individual names such as ERR 53 `File not found`, ERR 64
-`Bad file name`, ERR 67 `Too many files`, and ERR 24 `Device timeout` through
-prose or canonical fixtures. However, the complete byte-to-description table
-is not present in a generated artifact or documentation contract.
-`tools/errortrap.py::extract_runtime_error_names()` instead reconstructs that
-table directly from `BRUN30.EXE`, and the fatal-output model calls that helper
-at composition time.
-
-The native renderer now accepts an already selected exact CP437 description,
-so documented caller witnesses can compose without guessing. Implementing
-the runtime lookup for all reached error bytes would still require inspecting
-the external binary or relying on remembered QuickBASIC wording. Upstream
-must publish the complete canonical mapping, including explicit absent-byte
-fallback behavior, in generated evidence with focused assertions. No binary
-inspection or new reverse engineering was performed.
+Resolved upstream by commit `59501f98` and traversal row 327. The canonical
+generated `ytsub-error-output.static.txt` now publishes all 39 named error
+bytes and the exact `Unprintable error` fallback for every other byte in
+`00..FF`.
+ERR 75 is `Path/file access error`. The native shared lookup and exhaustive
+256-byte fixture consume that published table directly; YT-INIT's RUN
+preflight now admits its complete ERR 53/67/75 family.
 
 ### DOC-GAP-034: main startup `YT:0133` internal-fatal location
 
-Affected coverage:
+Resolved upstream by commit `59501f98` and the completed main-startup
+initialization contract. The
+compact COPY frame saves IP `0136`; the statement table selects statement
+`012A`, ERL 3; and the exact padded module label is `YT      `. The native
+caller adapter now carries that identity into the shared `BRUN:0ACC` owner
+and its focused fixture pins the complete local diagnostic and cleanup suffix.
 
-- the rooted post-event startup initialization at `YT:[0121,0206)`;
-- the corrupt destination-owner result at the `YT:0133` control-CR copy; and
-- the caller projection from that retained string-heap state into the shared
-  `BRUN:0ACC` internal-fatal terminal.
-
-The published startup model and generated evidence identify the reached
-result as `YT:0133 / 0ACC`, retain its complete prior scalar/heap/descriptor
-prefix, and correctly keep it outside the installed main BASIC error handler.
-The shared fatal documentation requires the saved BASIC IP and the statement
-table's greatest-offset result in order to render the exact module location
-and optional source-line clause. Neither the startup document, its generated
-artifact, nor its focused corrupt-owner fixture publishes those two caller
-values for this cut.
-
-The native shared fatal owner therefore cannot attach an exact `YT` caller
-identity without guessing an instruction-return width and statement-table
-mapping. Upstream documentation and a focused fatal-composition fixture must
-publish the saved IP, resolved line/no-line result, exact diagnostic bytes,
-and cleanup join for this retained `YT:0133` world. No binary inspection or
-new reverse engineering was performed.
+## Open documentation gaps
 
 ### DOC-GAP-023: current-sector scanner cloak-clear raw value
 

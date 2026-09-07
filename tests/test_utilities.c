@@ -4476,6 +4476,37 @@ fatal_test_end(void *context, unsigned status)
 static bool
 test_brun_internal_fatal(void)
 {
+	static const struct {
+		uint8_t number;
+		const char *name;
+	} error_names[] = {
+		{0x02U, "Syntax error"}, {0x03U, "RETURN without GOSUB"},
+		{0x04U, "Out of data"}, {0x05U, "Illegal function call"},
+		{0x06U, "Overflow"}, {0x07U, "Out of memory"},
+		{0x09U, "Subscript out of range"},
+		{0x0AU, "Redimensioned array"},
+		{0x0BU, "Division by zero"}, {0x0DU, "Type mismatch"},
+		{0x0EU, "Out of string space"},
+		{0x10U, "String formula too complex"},
+		{0x14U, "RESUME without error"},
+		{0x18U, "Device timeout"}, {0x19U, "Device fault"},
+		{0x1BU, "Out of paper"}, {0x27U, "CASE ELSE expected"},
+		{0x32U, "FIELD overflow"}, {0x33U, "Internal error"},
+		{0x34U, "Bad file number"}, {0x35U, "File not found"},
+		{0x36U, "Bad file mode"}, {0x37U, "File already open"},
+		{0x39U, "Device I/O error"},
+		{0x3AU, "File already exists"}, {0x3DU, "Disk full"},
+		{0x3EU, "Input past end"}, {0x3FU, "Bad record number"},
+		{0x40U, "Bad file name"}, {0x43U, "Too many files"},
+		{0x44U, "Device unavailable"},
+		{0x45U, "Communication buffer overflow"},
+		{0x46U, "Permission denied"}, {0x47U, "Disk not ready"},
+		{0x48U, "Disk media error"},
+		{0x49U, "Advanced feature error"},
+		{0x4AU, "Rename across disks"},
+		{0x4BU, "Path/file access error"},
+		{0x4CU, "Path not found"},
+	};
 	static const struct yt_brun_internal_fatal_ops ops = {
 		fatal_test_local,
 		fatal_test_close_all,
@@ -4496,6 +4527,12 @@ test_brun_internal_fatal(void)
 	static const uint8_t run_err67_expected[] =
 	    "\rToo many files in module YT-INIT  at address "
 	    "4444:23DF\r\rHit any key to return to system";
+	static const uint8_t run_err75_expected[] =
+	    "\rPath/file access error in module YT-INIT  at address "
+	    "4444:23DF\r\rHit any key to return to system";
+	static const uint8_t startup_expected[] =
+	    "\rString Space Corrupt in line 3 of module YT       at address "
+	    "2222:0136\r\rHit any key to return to system";
 	static const uint8_t active_err53_expected[] =
 	    "\rFile not found in line 610 of module YT-SUB   at address "
 	    "1F42:1ABB\r\rHit any key to return to system\r";
@@ -4507,6 +4544,33 @@ test_brun_internal_fatal(void)
 	struct yt_brun_internal_fatal_state state;
 	struct yt_brun_runtime_fatal_state runtime_state;
 	struct fatal_test_tape tape = {0};
+	const uint8_t *description;
+	size_t description_length;
+	size_t name_index;
+	unsigned error_number;
+	bool named;
+
+	for (error_number = 0U; error_number <= 0xFFU; ++error_number) {
+		named = false;
+		for (name_index = 0U; name_index < YT_ARRAY_LEN(error_names);
+		    ++name_index) {
+			if (error_names[name_index].number == error_number) {
+				named = true;
+				break;
+			}
+		}
+		if (!yt_brun_runtime_error_description((uint8_t)error_number,
+		    &description, &description_length)
+		    || description_length != strlen(named
+		    ? error_names[name_index].name : "Unprintable error")
+		    || memcmp(description, named ? error_names[name_index].name
+		    : "Unprintable error", description_length) != 0)
+			return false;
+	}
+	if (yt_brun_runtime_error_description(1U, NULL,
+	    &description_length)
+	    || yt_brun_runtime_error_description(1U, &description, NULL))
+		return false;
 
 	if (!yt_brun_internal_fatal_run(YT_BRUN_INTERNAL_FATAL_OWNER,
 	    "YTCONFIG", false, 0, 0x2222U, 0x0EE5U, false, true, true,
@@ -4576,6 +4640,28 @@ test_brun_internal_fatal(void)
 		return false;
 
 	memset(&tape, 0, sizeof(tape));
+	if (!yt_main_startup_internal_fatal_run(0x2222U, false, false, false,
+	    0U, &ops, &tape, &state)
+	    || state.entry != YT_BRUN_INTERNAL_FATAL_OWNER
+	    || strcmp(state.module, "YT      ") != 0
+	    || !state.has_source_line || state.source_line != 3
+	    || state.module_segment != 0x2222U || state.saved_ip != 0x0136U
+	    || state.local_length != sizeof(startup_expected) - 1U
+	    || memcmp(state.local_bytes, startup_expected,
+	    sizeof(startup_expected) - 1U) != 0
+	    || tape.local_length != sizeof(startup_expected) - 1U
+	    || memcmp(tape.local, startup_expected,
+	    sizeof(startup_expected) - 1U) != 0
+	    || tape.event_count != 6U
+	    || tape.events[0] != FATAL_TEST_LOCAL
+	    || tape.events[1] != FATAL_TEST_CLOSE_ALL
+	    || tape.events[2] != FATAL_TEST_LOCAL
+	    || tape.events[3] != FATAL_TEST_DRAIN
+	    || tape.events[4] != FATAL_TEST_RESTORE
+	    || tape.events[5] != FATAL_TEST_END)
+		return false;
+
+	memset(&tape, 0, sizeof(tape));
 	if (!yt_init_run_preflight_fatal_run(67U, 0x4444U, false, true, true,
 	    0x0708U, &ops, &tape, &runtime_state)
 	    || runtime_state.error_number != 67U
@@ -4611,9 +4697,20 @@ test_brun_internal_fatal(void)
 	    "\rFile not found in module YT-INIT  at address 4444:23DF\r"
 	    "\rHit any key to return to system\r", 89U) != 0
 	    || tape.event_count != 6U || runtime_state.terminal.input_drained
-	    || runtime_state.terminal.local_bytes[88] != '\r'
-	    || yt_init_run_preflight_fatal_run(75U, 0x4444U, false, false,
-	    false, 0U, &ops, &tape, &runtime_state))
+	    || runtime_state.terminal.local_bytes[88] != '\r')
+		return false;
+
+	memset(&tape, 0, sizeof(tape));
+	if (!yt_init_run_preflight_fatal_run(75U, 0x4444U, false, false,
+	    false, 0U, &ops, &tape, &runtime_state)
+	    || runtime_state.error_number != 75U
+	    || runtime_state.error_description_length != 22U
+	    || memcmp(runtime_state.error_description,
+	    "Path/file access error", 22U) != 0
+	    || runtime_state.terminal.local_length
+	    != sizeof(run_err75_expected) - 1U
+	    || memcmp(runtime_state.terminal.local_bytes, run_err75_expected,
+	    sizeof(run_err75_expected) - 1U) != 0)
 		return false;
 
 	memset(&tape, 0, sizeof(tape));

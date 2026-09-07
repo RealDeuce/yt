@@ -2807,20 +2807,13 @@ yt_init_run_preflight_fatal_run(uint8_t error_number,
     const struct yt_brun_internal_fatal_ops *ops, void *context,
     struct yt_brun_runtime_fatal_state *state)
 {
-	static const uint8_t file_not_found[] = "File not found";
-	static const uint8_t too_many_files[] = "Too many files";
 	const uint8_t *description;
 	size_t description_length;
 
-	if (error_number == 53U) {
-		description = file_not_found;
-		description_length = sizeof(file_not_found) - 1U;
-	}
-	else if (error_number == 67U) {
-		description = too_many_files;
-		description_length = sizeof(too_many_files) - 1U;
-	}
-	else
+	if (error_number != 53U && error_number != 67U && error_number != 75U)
+		return false;
+	if (!yt_brun_runtime_error_description(error_number, &description,
+	    &description_length))
 		return false;
 
 	return yt_brun_runtime_fatal_run(error_number, description,

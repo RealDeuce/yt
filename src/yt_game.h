@@ -340,6 +340,11 @@ bool yt_xannor_victory_mks_internal_fatal_run(uint16_t module_segment,
 	uint16_t process_entry_cursor_shape,
 	const struct yt_brun_internal_fatal_ops *ops, void *context,
 	struct yt_brun_internal_fatal_state *state);
+bool yt_main_startup_internal_fatal_run(uint16_t module_segment,
+	bool redirected_stdin, bool function_bar, bool cursor_shape_known,
+	uint16_t process_entry_cursor_shape,
+	const struct yt_brun_internal_fatal_ops *ops, void *context,
+	struct yt_brun_internal_fatal_state *state);
 
 struct yt_post_login_repairs {
 	bool sector;

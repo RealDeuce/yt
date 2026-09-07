@@ -66,6 +66,10 @@ struct yt_brun_runtime_fatal_state {
 	struct yt_brun_internal_fatal_state terminal;
 };
 
+/* Selects the canonical BRUN description for every byte in 00h..FFh. */
+bool yt_brun_runtime_error_description(uint8_t error_number,
+	const uint8_t **description, size_t *description_length);
+
 /*
  * Runs the shared BRUN 0AC9/0ACC terminal in its documented order.  The
  * caller supplies the relocated module segment and the physical cleanup
@@ -80,9 +84,8 @@ bool yt_brun_internal_fatal_run(enum yt_brun_internal_fatal_entry entry,
 	struct yt_brun_internal_fatal_state *state);
 
 /*
- * Runs BRUN's shared 0AC4 no-handler/active-handler fatal terminal.  Error
- * table selection is a separate runtime prerequisite; the caller supplies
- * the already selected exact CP437 description bytes.
+ * Runs BRUN's shared 0AC4 no-handler/active-handler fatal terminal with an
+ * already selected exact CP437 description.
  */
 bool yt_brun_runtime_fatal_run(uint8_t error_number,
 	const uint8_t *error_description, size_t error_description_length,
