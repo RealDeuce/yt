@@ -221,6 +221,9 @@ bool yt_text_input_open(struct yt_text_input *input, const char *path,
 bool yt_text_input_read_line(struct yt_text_input *input,
 	const uint8_t **line, size_t *length, bool *available,
 	struct yt_error *error);
+bool yt_text_input_read_string_token(struct yt_text_input *input,
+	const uint8_t **value, size_t *length, bool *available,
+	struct yt_error *error);
 bool yt_text_input_eof(struct yt_text_input *input, bool *eof,
 	struct yt_error *error);
 bool yt_text_input_close(struct yt_text_input *input,

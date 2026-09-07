@@ -3880,6 +3880,213 @@ test_name_input_grammar(struct yt_error *error)
 	return ok;
 }
 
+struct names_read_failure_script {
+	size_t calls;
+	bool fail_after_one_byte;
+};
+
+static bool
+names_read_failure_provider(void *context, FILE *file, uint8_t *data,
+    size_t requested, struct yt_text_input_read_observation *observation)
+{
+	struct names_read_failure_script *script = context;
+	size_t call = script->calls++;
+
+	(void)file;
+	memset(observation, 0, sizeof(*observation));
+	observation->terminal_position = 1;
+	if (script->fail_after_one_byte && call == 0U) {
+		if (requested == 0U)
+			return false;
+		data[0] = 'A';
+		observation->accepted = 1U;
+		return true;
+	}
+	observation->carry = true;
+	observation->dos_error = 5U;
+	observation->basic_error = 70U;
+	return true;
+}
+
+static bool
+names_close_failure_provider(void *context, FILE *file,
+    enum yt_text_close_operation operation, const uint8_t *data,
+    size_t requested, struct yt_text_close_observation *observation)
+{
+	(void)context;
+	(void)file;
+	(void)data;
+	(void)requested;
+	memset(observation, 0, sizeof(*observation));
+	observation->terminal_position = 0;
+	if (operation == YT_TEXT_CLOSE_HANDLE) {
+		observation->carry = true;
+		observation->dos_error = 5U;
+		observation->handle_open = true;
+		return true;
+	}
+	return operation == YT_TEXT_CLOSE_CLEANUP_HANDLE;
+}
+
+static bool
+test_name_sequential_transaction(struct yt_error *error)
+{
+	static const uint8_t rows[] =
+	    "A,B,C,D\r\nE,F,G,H\r\n\x1a";
+	static const uint8_t empty_row[] = ",,,\r\n\x1a";
+	static const uint8_t incomplete[] =
+	    "A,B,C,D\r\nE,F\x1a";
+	struct yt_names_sequential_state state;
+	struct yt_name_input_observation observation;
+	struct names_read_failure_script read_script;
+	struct yt_text_input input;
+	struct yt_name_file names;
+	bool result;
+
+	if (!write_file("names.in", rows, sizeof(rows) - 1U))
+		return false;
+	yt_text_input_init(&input);
+	result = yt_names_load_sequential(&input, "names.in", &names,
+	    &observation, &state, error);
+	if (!result || state.failed_operation != YT_NAMES_SEQUENTIAL_NONE
+	    || !state.file_opened || state.eof_checks != 3U
+	    || state.token_reads != 8U || state.rows_committed != 2U
+	    || !state.close_attempted || !state.file_closed || !state.complete
+	    || input.file != NULL || names.count != 2U
+	    || observation.staged_count != 0U || observation.cursor != 18U
+	    || strcmp(names.rows[1].alias_last, "H") != 0) {
+		yt_names_input_observation_free(&observation);
+		yt_names_free(&names);
+		yt_text_input_destroy(&input);
+		return false;
+	}
+	yt_names_input_observation_free(&observation);
+	yt_names_free(&names);
+	yt_text_input_destroy(&input);
+
+	if (!write_file("names.in", empty_row, sizeof(empty_row) - 1U))
+		return false;
+	yt_text_input_init(&input);
+	result = yt_names_load_sequential(&input, "names.in", &names,
+	    &observation, &state, error);
+	if (!result || state.eof_checks != 2U || state.token_reads != 4U
+	    || state.rows_committed != 1U || !state.complete
+	    || observation.cursor != 5U || names.count != 1U
+	    || names.rows[0].real_first == NULL
+	    || names.rows[0].real_first[0] != '\0'
+	    || names.rows[0].real_last[0] != '\0'
+	    || names.rows[0].alias_first[0] != '\0'
+	    || names.rows[0].alias_last[0] != '\0') {
+		yt_names_input_observation_free(&observation);
+		yt_names_free(&names);
+		yt_text_input_destroy(&input);
+		return false;
+	}
+	yt_names_input_observation_free(&observation);
+	yt_names_free(&names);
+	yt_text_input_destroy(&input);
+
+	if (!write_file("names.in", incomplete, sizeof(incomplete) - 1U))
+		return false;
+	yt_error_clear(error);
+	yt_text_input_init(&input);
+	result = yt_names_load_sequential(&input, "names.in", &names,
+	    &observation, &state, error);
+	if (result || error->status != YT_EOF
+	    || state.failed_operation != YT_NAMES_SEQUENTIAL_TOKEN
+	    || !state.file_opened || state.eof_checks != 2U
+	    || state.token_reads != 7U || state.rows_committed != 1U
+	    || state.close_attempted || state.complete || input.file == NULL
+	    || names.count != 1U || observation.staged_count != 2U
+	    || strcmp(observation.staged.real_first, "E") != 0
+	    || strcmp(observation.staged.real_last, "F") != 0
+	    || observation.staged.alias_first != NULL
+	    || observation.cursor != 12U) {
+		yt_names_input_observation_free(&observation);
+		yt_names_free(&names);
+		yt_text_input_destroy(&input);
+		return false;
+	}
+	yt_names_input_observation_free(&observation);
+	yt_names_free(&names);
+	yt_text_input_destroy(&input);
+
+	read_script = (struct names_read_failure_script){0};
+	yt_text_input_init(&input);
+	yt_text_input_set_read_provider(&input, names_read_failure_provider,
+	    &read_script);
+	result = yt_names_load_sequential(&input, "names.in", &names,
+	    &observation, &state, error);
+	if (result || state.failed_operation != YT_NAMES_SEQUENTIAL_EOF
+	    || state.eof_checks != 1U || state.token_reads != 0U
+	    || state.rows_committed != 0U || input.last_read.dos_error != 5U) {
+		yt_names_input_observation_free(&observation);
+		yt_names_free(&names);
+		yt_text_input_destroy(&input);
+		return false;
+	}
+	yt_names_input_observation_free(&observation);
+	yt_names_free(&names);
+	yt_text_input_destroy(&input);
+
+	read_script = (struct names_read_failure_script){
+		.fail_after_one_byte = true,
+	};
+	yt_text_input_init(&input);
+	yt_text_input_set_read_provider(&input, names_read_failure_provider,
+	    &read_script);
+	result = yt_names_load_sequential(&input, "names.in", &names,
+	    &observation, &state, error);
+	if (result || state.failed_operation != YT_NAMES_SEQUENTIAL_TOKEN
+	    || state.eof_checks != 1U || state.token_reads != 1U
+	    || state.rows_committed != 0U || observation.staged_count != 0U
+	    || input.logical_position != 1U || input.last_read.dos_error != 5U) {
+		yt_names_input_observation_free(&observation);
+		yt_names_free(&names);
+		yt_text_input_destroy(&input);
+		return false;
+	}
+	yt_names_input_observation_free(&observation);
+	yt_names_free(&names);
+	yt_text_input_destroy(&input);
+
+	if (!write_file("names.in", rows, sizeof(rows) - 1U))
+		return false;
+	yt_text_input_init(&input);
+	yt_text_input_set_close_provider(&input, names_close_failure_provider,
+	    NULL);
+	result = yt_names_load_sequential(&input, "names.in", &names,
+	    &observation, &state, error);
+	if (result || state.failed_operation != YT_NAMES_SEQUENTIAL_CLOSE
+	    || state.rows_committed != 2U || !state.close_attempted
+	    || state.file_closed || state.complete || names.count != 2U
+	    || input.last_close.basic_error != 70U
+	    || !input.last_close.cleanup_close_attempted) {
+		yt_names_input_observation_free(&observation);
+		yt_names_free(&names);
+		yt_text_input_destroy(&input);
+		return false;
+	}
+	yt_names_input_observation_free(&observation);
+	yt_names_free(&names);
+	yt_text_input_destroy(&input);
+
+	yt_text_input_init(&input);
+	result = yt_names_load_sequential(&input, "missing/NAME.DAT", &names,
+	    &observation, &state, error);
+	yt_text_input_destroy(&input);
+	return !result && state.failed_operation == YT_NAMES_SEQUENTIAL_OPEN
+	    && !state.file_opened && state.eof_checks == 0U
+	    && !yt_names_load_sequential(NULL, "names.in", &names,
+	    &observation, &state, error)
+	    && !yt_names_load_sequential(&input, NULL, &names,
+	    &observation, &state, error)
+	    && !yt_names_load_sequential(&input, "names.in", NULL,
+	    &observation, &state, error)
+	    && !yt_names_load_sequential(&input, "names.in", &names,
+	    &observation, NULL, error);
+}
+
 static bool
 test_alias_key_preparation(void)
 {
@@ -6644,6 +6851,8 @@ main(void)
 		failure = "RMT-INIT missing-old-data branch differs";
 	else if (!test_name_input_grammar(&error))
 		failure = "YTNAME INPUT# grammar differs";
+	else if (!test_name_sequential_transaction(&error))
+		failure = "YTNAME sequential transaction differs";
 	else if (!test_name_append(&error))
 		failure = "YTNAME append bytes differ";
 	else if (!test_alias_key_preparation())

@@ -150,6 +150,145 @@ duplicate_string(const char *source)
 	return copy;
 }
 
+static char *
+duplicate_bytes(const uint8_t *source, size_t length)
+{
+	char *copy;
+
+	if ((source == NULL && length != 0U) || length == SIZE_MAX)
+		return NULL;
+	copy = malloc(length + 1U);
+	if (copy == NULL)
+		return NULL;
+	if (length != 0U)
+		memcpy(copy, source, length);
+	copy[length] = '\0';
+	return copy;
+}
+
+static void
+retain_staged_row(struct yt_name_input_observation *observation,
+    struct yt_name_row *staged, size_t staged_count, size_t cursor)
+{
+	if (observation == NULL) {
+		free_row(staged);
+		return;
+	}
+	observation->staged = *staged;
+	observation->staged_count = staged_count;
+	observation->cursor = cursor;
+	memset(staged, 0, sizeof(*staged));
+}
+
+bool
+yt_names_load_sequential(struct yt_text_input *input, const char *path,
+    struct yt_name_file *names,
+    struct yt_name_input_observation *observation,
+    struct yt_names_sequential_state *state, struct yt_error *error)
+{
+	if (names != NULL)
+		memset(names, 0, sizeof(*names));
+	if (observation != NULL)
+		memset(observation, 0, sizeof(*observation));
+	if (state != NULL)
+		memset(state, 0, sizeof(*state));
+	if (input == NULL || path == NULL || names == NULL || state == NULL) {
+		if (error != NULL)
+			error->status = YT_INVALID;
+		return false;
+	}
+	if (!yt_text_input_open(input, path, error)) {
+		state->failed_operation = YT_NAMES_SEQUENTIAL_OPEN;
+		return false;
+	}
+	state->file_opened = true;
+	for (;;) {
+		struct yt_name_row staged = {0};
+		struct yt_name_row *grown;
+		char **fields[4] = {&staged.real_first, &staged.real_last,
+		    &staged.alias_first, &staged.alias_last};
+		bool eof;
+		size_t field;
+
+		++state->eof_checks;
+		if (!yt_text_input_eof(input, &eof, error)) {
+			state->failed_operation = YT_NAMES_SEQUENTIAL_EOF;
+			if (observation != NULL)
+				observation->cursor = (size_t)input->logical_position;
+			return false;
+		}
+		if (eof)
+			break;
+		for (field = 0U; field < 4U; ++field) {
+			const uint8_t *value;
+			size_t length;
+			bool available;
+
+			++state->token_reads;
+			if (!yt_text_input_read_string_token(input, &value, &length,
+			    &available, error)) {
+				state->failed_operation = YT_NAMES_SEQUENTIAL_TOKEN;
+				retain_staged_row(observation, &staged, field,
+				    (size_t)input->logical_position);
+				return false;
+			}
+			if (!available) {
+				state->failed_operation = YT_NAMES_SEQUENTIAL_TOKEN;
+				if (error != NULL) {
+					error->status = YT_EOF;
+					snprintf(error->operation,
+					    sizeof(error->operation),
+					    "YTNAME INPUT past end");
+				}
+				retain_staged_row(observation, &staged, field,
+				    (size_t)input->logical_position);
+				return false;
+			}
+			*fields[field] = duplicate_bytes(value, length);
+			if (*fields[field] == NULL) {
+				state->failed_operation =
+				    YT_NAMES_SEQUENTIAL_STORE_TOKEN;
+				if (error != NULL)
+					error->status = YT_NO_MEMORY;
+				retain_staged_row(observation, &staged, field,
+				    (size_t)input->logical_position);
+				return false;
+			}
+		}
+		if (names->count == SIZE_MAX / sizeof(*names->rows)) {
+			state->failed_operation = YT_NAMES_SEQUENTIAL_STORE_ROW;
+			if (error != NULL)
+				error->status = YT_NO_MEMORY;
+			retain_staged_row(observation, &staged, 4U,
+			    (size_t)input->logical_position);
+			return false;
+		}
+		grown = realloc(names->rows,
+		    (names->count + 1U) * sizeof(*names->rows));
+		if (grown == NULL) {
+			state->failed_operation = YT_NAMES_SEQUENTIAL_STORE_ROW;
+			if (error != NULL)
+				error->status = YT_NO_MEMORY;
+			retain_staged_row(observation, &staged, 4U,
+			    (size_t)input->logical_position);
+			return false;
+		}
+		names->rows = grown;
+		names->rows[names->count++] = staged;
+		state->rows_committed = names->count;
+	}
+	if (observation != NULL)
+		observation->cursor = (size_t)input->logical_position;
+	state->close_attempted = true;
+	if (!yt_text_input_close(input, error)) {
+		state->failed_operation = YT_NAMES_SEQUENTIAL_CLOSE;
+		return false;
+	}
+	state->file_closed = true;
+	state->complete = true;
+	return true;
+}
+
 bool
 yt_names_parse_input_groups(const uint8_t *data, size_t length,
     struct yt_name_file *names, struct yt_name_input_observation *observation,
@@ -242,16 +381,20 @@ bool
 yt_names_load(const char *path, struct yt_name_file *names,
     struct yt_error *error)
 {
-	struct yt_text_file text;
+	struct yt_text_input input;
 	struct yt_name_input_observation observation;
+	struct yt_names_sequential_state state;
 	bool result;
 
-	memset(names, 0, sizeof(*names));
-	if (!yt_text_read(path, &text, error))
+	if (names == NULL) {
+		if (error != NULL)
+			error->status = YT_INVALID;
 		return false;
-	result = yt_names_parse_input_groups(text.data, text.length, names,
-	    &observation, error);
-	yt_text_free(&text);
+	}
+	yt_text_input_init(&input);
+	result = yt_names_load_sequential(&input, path, names, &observation,
+	    &state, error);
+	yt_text_input_destroy(&input);
 	yt_names_input_observation_free(&observation);
 	if (!result)
 		yt_names_free(names);

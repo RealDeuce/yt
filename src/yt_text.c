@@ -389,6 +389,204 @@ yt_text_input_read_line(struct yt_text_input *input, const uint8_t **line,
 	return true;
 }
 
+static bool
+text_input_consume_byte(struct yt_text_input *input, uint8_t *value,
+    bool *eof, struct yt_error *error)
+{
+	if (!text_input_get_byte(input, value, eof, error))
+		return false;
+	if (!*eof)
+		++input->logical_position;
+	return true;
+}
+
+static void
+text_input_unread_byte(struct yt_text_input *input)
+{
+	++input->read_remaining;
+	--input->logical_position;
+}
+
+static bool
+text_input_token_append(struct yt_text_input *input, size_t *used,
+    uint8_t value, struct yt_error *error)
+{
+	if (!text_input_reserve(input, *used + 1U, error)) {
+		input->last_read.outcome = YT_TEXT_INPUT_READ_MEMORY_ERROR;
+		return false;
+	}
+	input->line[(*used)++] = value;
+	return true;
+}
+
+bool
+yt_text_input_read_string_token(struct yt_text_input *input,
+    const uint8_t **value, size_t *length, bool *available,
+    struct yt_error *error)
+{
+	size_t used = 0U;
+	size_t start;
+	size_t output;
+	uint64_t entry_position;
+	uint8_t byte;
+	bool eof;
+	bool reached_eof = false;
+	bool provider_quote;
+
+	if (value != NULL)
+		*value = NULL;
+	if (length != NULL)
+		*length = 0U;
+	if (available != NULL)
+		*available = false;
+	if (input == NULL || input->file == NULL || value == NULL
+	    || length == NULL || available == NULL) {
+		errno = 0;
+		set_error(error, YT_INVALID, "INPUT string token", input == NULL
+		    ? NULL : input->path);
+		return false;
+	}
+	memset(&input->last_read, 0, sizeof(input->last_read));
+	entry_position = input->logical_position;
+	input->last_read.terminal_position = input->physical_position;
+	input->last_read.registered = true;
+	input->last_read.handle_open = true;
+	do {
+		if (!text_input_consume_byte(input, &byte, &eof, error))
+			goto failed;
+		if (eof) {
+			reached_eof = true;
+			goto returned;
+		}
+	} while (byte == ' ');
+	provider_quote = byte == '"';
+	if (provider_quote) {
+		if (!text_input_token_append(input, &used, byte, error))
+			goto failed;
+		for (;;) {
+			if (!text_input_consume_byte(input, &byte, &eof, error))
+				goto failed;
+			if (eof) {
+				reached_eof = true;
+				break;
+			}
+			if (byte == 0U)
+				continue;
+			if (byte != '"') {
+				if (!text_input_token_append(input, &used, byte, error))
+					goto failed;
+				continue;
+			}
+			do {
+				if (!text_input_consume_byte(input, &byte, &eof,
+				    error))
+					goto failed;
+				if (eof) {
+					reached_eof = true;
+					break;
+				}
+			} while (byte == ' ');
+			if (!eof && byte == '\r') {
+				if (!text_input_consume_byte(input, &byte, &eof,
+				    error))
+					goto failed;
+				if (eof)
+					reached_eof = true;
+				else if (byte != '\n')
+					text_input_unread_byte(input);
+			}
+			else if (!eof && byte != ',')
+				text_input_unread_byte(input);
+			break;
+		}
+	}
+	else {
+		for (;;) {
+			if (byte == '\r') {
+				if (!text_input_consume_byte(input, &byte, &eof,
+				    error))
+					goto failed;
+				if (eof)
+					reached_eof = true;
+				else if (byte != '\n')
+					text_input_unread_byte(input);
+				break;
+			}
+			if (byte == '\n') {
+				do {
+					if (!text_input_consume_byte(input, &byte,
+					    &eof, error))
+						goto failed;
+					if (eof) {
+						reached_eof = true;
+						if (!text_input_token_append(input,
+						    &used, 0x1aU, error))
+							goto failed;
+						goto convert;
+					}
+				} while (byte == '\n');
+				if (byte == '\r') {
+					if (!text_input_consume_byte(input, &byte,
+					    &eof, error))
+						goto failed;
+					if (eof) {
+						reached_eof = true;
+						break;
+					}
+				}
+				continue;
+			}
+			if (byte == ',')
+				break;
+			if (byte != 0U
+			    && !text_input_token_append(input, &used, byte, error))
+				goto failed;
+			if (!text_input_consume_byte(input, &byte, &eof, error))
+				goto failed;
+			if (eof) {
+				reached_eof = true;
+				break;
+			}
+		}
+	}
+
+convert:
+	start = 0U;
+	while (start < used && (input->line[start] == ' '
+	    || input->line[start] == '\t' || input->line[start] == '\n'))
+		++start;
+	if (start < used && input->line[start] == '"') {
+		++start;
+		output = start;
+		while (output < used && input->line[output] != '"')
+			++output;
+	}
+	else {
+		output = used;
+		while (output > start && input->line[output - 1U] == ' ')
+			--output;
+	}
+	*value = input->line == NULL ? NULL : input->line + start;
+	*length = output - start;
+	*available = true;
+
+returned:
+	input->last_read.outcome = YT_TEXT_INPUT_READ_RETURNED;
+	input->last_read.consumed = (size_t)(input->logical_position
+	    - entry_position);
+	input->last_read.returned = *length;
+	input->last_read.eof = reached_eof;
+	text_input_read_snapshot(input);
+	return true;
+
+failed:
+	input->last_read.consumed = (size_t)(input->logical_position
+	    - entry_position);
+	input->last_read.returned = 0U;
+	text_input_read_snapshot(input);
+	return false;
+}
+
 bool
 yt_text_input_eof(struct yt_text_input *input, bool *eof,
     struct yt_error *error)

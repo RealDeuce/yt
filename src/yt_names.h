@@ -21,6 +21,29 @@ struct yt_name_input_observation {
 	size_t cursor;
 };
 
+struct yt_text_input;
+
+enum yt_names_sequential_operation {
+	YT_NAMES_SEQUENTIAL_NONE,
+	YT_NAMES_SEQUENTIAL_OPEN,
+	YT_NAMES_SEQUENTIAL_EOF,
+	YT_NAMES_SEQUENTIAL_TOKEN,
+	YT_NAMES_SEQUENTIAL_STORE_TOKEN,
+	YT_NAMES_SEQUENTIAL_STORE_ROW,
+	YT_NAMES_SEQUENTIAL_CLOSE,
+};
+
+struct yt_names_sequential_state {
+	enum yt_names_sequential_operation failed_operation;
+	size_t eof_checks;
+	size_t token_reads;
+	size_t rows_committed;
+	bool file_opened;
+	bool close_attempted;
+	bool file_closed;
+	bool complete;
+};
+
 enum yt_alias_key_status {
 	YT_ALIAS_KEY_READY,
 	YT_ALIAS_KEY_EMPTY,
@@ -30,6 +53,15 @@ enum yt_alias_key_status {
 
 bool yt_names_load(const char *path, struct yt_name_file *names,
     struct yt_error *error);
+/*
+ * Executes the sequential OPEN/EOF/four-token/CLOSE transaction.  On a
+ * failure, names retains completed rows and observation retains the staged
+ * row prefix; the input object retains the physical carrier state.
+ */
+bool yt_names_load_sequential(struct yt_text_input *input, const char *path,
+	struct yt_name_file *names,
+	struct yt_name_input_observation *observation,
+	struct yt_names_sequential_state *state, struct yt_error *error);
 /*
  * On incomplete input, names retains every completed group and observation
  * owns the successfully staged fields from the interrupted group.  Release
