@@ -175,6 +175,9 @@ if(BUILD_TESTING)
         YT_DATA_DIR="${YT_GENERATED_DATA_DIR}/")
     add_dependencies(test_presentation yt-data)
     yt_add_test(test_framebuffer tests/test_framebuffer.c yt_core)
+    target_compile_definitions(test_framebuffer PRIVATE
+        YT_DATA_DIR="${YT_GENERATED_DATA_DIR}/")
+    add_dependencies(test_framebuffer yt-data)
 
     add_executable(test_output tests/test_output.c src/yt_output.c)
     yt_configure_target(test_output)

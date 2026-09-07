@@ -1,5 +1,6 @@
 #include "yt_framebuffer.h"
 #include "yt_brun_fatal.h"
+#include "yt_text.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -901,6 +902,193 @@ test_brun_fatal_component_join(void)
 	    == 0);
 }
 
+struct opening_framebuffer {
+	struct yt_text_input input;
+	struct yt_framebuffer_state framebuffer;
+	bool local_open;
+	bool waited;
+	float wait_seconds;
+};
+
+static bool
+opening_fb_open_input(void *context, const char *path,
+    struct yt_error *error)
+{
+	struct opening_framebuffer *opening = context;
+
+	return yt_text_input_open(&opening->input, path, error);
+}
+
+static bool
+opening_fb_open_local(void *context, struct yt_error *error)
+{
+	struct opening_framebuffer *opening = context;
+
+	(void)error;
+	opening->local_open = true;
+	return true;
+}
+
+static bool
+opening_fb_eof(void *context, bool *eof, struct yt_error *error)
+{
+	struct opening_framebuffer *opening = context;
+
+	return yt_text_input_eof(&opening->input, eof, error);
+}
+
+static bool
+opening_fb_read(void *context, const uint8_t **line, size_t *length,
+    bool *available, struct yt_error *error)
+{
+	struct opening_framebuffer *opening = context;
+
+	return yt_text_input_read_line(&opening->input, line, length,
+	    available, error);
+}
+
+static bool
+opening_fb_con(struct opening_framebuffer *opening, const uint8_t *data,
+    size_t length)
+{
+	return yt_framebuffer_apply_con_observation(&opening->framebuffer,
+	    data, length, data, length, true, 0U) == YT_FRAMEBUFFER_OK;
+}
+
+static bool
+opening_fb_present_local(void *context, const uint8_t *line,
+    size_t length, struct yt_error *error)
+{
+	static const uint8_t newline[] = { '\r', '\n' };
+	struct opening_framebuffer *opening = context;
+
+	(void)error;
+	return opening_fb_con(opening, line, length)
+	    && opening_fb_con(opening, newline, sizeof(newline));
+}
+
+static bool
+opening_fb_poll(void *context, bool *ready, struct yt_error *error)
+{
+	(void)context;
+	(void)error;
+	*ready = false;
+	return true;
+}
+
+static bool
+opening_fb_present_remote(void *context, const uint8_t *line,
+    size_t length, struct yt_error *error)
+{
+	(void)context;
+	(void)line;
+	(void)length;
+	(void)error;
+	return true;
+}
+
+static bool
+opening_fb_wait(void *context, float seconds, struct yt_error *error)
+{
+	struct opening_framebuffer *opening = context;
+
+	(void)error;
+	opening->waited = true;
+	opening->wait_seconds = seconds;
+	return true;
+}
+
+static bool
+opening_fb_reset_remote(void *context, struct yt_error *error)
+{
+	(void)context;
+	(void)error;
+	return true;
+}
+
+static bool
+opening_fb_reset_local(void *context, struct yt_error *error)
+{
+	static const uint8_t reset[] = "\x1b[0m";
+	struct opening_framebuffer *opening = context;
+
+	(void)error;
+	return opening_fb_con(opening, reset, sizeof(reset) - 1U);
+}
+
+static bool
+opening_fb_close_input(void *context, struct yt_error *error)
+{
+	struct opening_framebuffer *opening = context;
+
+	return yt_text_input_close(&opening->input, error);
+}
+
+static bool
+opening_fb_close_local(void *context, struct yt_error *error)
+{
+	struct opening_framebuffer *opening = context;
+
+	(void)error;
+	opening->local_open = false;
+	return true;
+}
+
+static void
+test_shipped_ansi_stream_join(void)
+{
+	static const struct yt_opening_stream_ops ops = {
+		opening_fb_open_input,
+		opening_fb_open_local,
+		opening_fb_eof,
+		opening_fb_read,
+		opening_fb_present_local,
+		opening_fb_poll,
+		opening_fb_present_remote,
+		opening_fb_poll,
+		opening_fb_wait,
+		opening_fb_reset_remote,
+		opening_fb_reset_local,
+		opening_fb_close_input,
+		opening_fb_close_local
+	};
+	struct opening_framebuffer opening;
+	struct yt_opening_stream_state stream = {
+		.path = YT_DATA_DIR "YTOPEN.ANS",
+		.mode = 0.0f,
+		.snoop = -1.0f
+	};
+	struct yt_error error;
+	uint8_t raw[YT_FRAMEBUFFER_STATE_BYTES];
+	char digest[65];
+
+	memset(&opening, 0, sizeof(opening));
+	yt_text_input_init(&opening.input);
+	yt_framebuffer_init(&opening.framebuffer, false, 0U);
+	yt_error_clear(&error);
+	CHECK(yt_opening_stream_run(&stream, &ops, &opening, &error));
+	CHECK(stream.exit_reason == YT_OPENING_EXIT_EOF
+	    && stream.eof_checks == 68U && stream.read_count == 67U
+	    && stream.local_lines == 67U && stream.local_polls == 67U
+	    && stream.remote_lines == 67U && stream.remote_polls == 67U
+	    && !stream.input_open && !stream.local_open
+	    && opening.waited && opening.wait_seconds == 3.0f);
+	CHECK(opening.framebuffer.bios_row == 19U
+	    && opening.framebuffer.bios_column == 1U
+	    && opening.framebuffer.qb_row == 1U
+	    && opening.framebuffer.qb_column == 1U
+	    && opening.framebuffer.brun_bios_cache_row == 1U
+	    && opening.framebuffer.brun_bios_cache_column == 1U);
+	CHECK(yt_framebuffer_serialize(&opening.framebuffer, raw,
+	    sizeof(raw), NULL) == YT_FRAMEBUFFER_OK);
+	digest_hex(raw, sizeof(raw), digest);
+	CHECK(strcmp(digest,
+	    "3c81af6790d85b93994bf046c6f21868e1e0fa19f87cb0b19380315f024280cb")
+	    == 0);
+	yt_text_input_destroy(&opening.input);
+}
+
+
 
 
 
@@ -922,6 +1110,7 @@ main(void)
 	test_opening_row_component_join();
 	test_press_any_key_component_join();
 	test_brun_fatal_component_join();
+	test_shipped_ansi_stream_join();
 	if (failures != 0U)
 		fprintf(stderr, "%u framebuffer test(s) failed\n", failures);
 	return failures == 0U ? 0 : 1;

@@ -2,6 +2,7 @@
 #include "yt_pager.h"
 #include "yt_main_error.h"
 #include "yt_game.h"
+#include "yt_framebuffer.h"
 #include "yt_text.h"
 #include "qb.h"
 
@@ -1345,6 +1346,7 @@ enum viewer_pager_event {
 struct viewer_pager_join {
 	struct yt_pager_state pager;
 	struct yt_present_state presentation;
+	struct yt_framebuffer_state framebuffer;
 	struct yt_b05d_key_state key_state;
 	struct pager_capture capture;
 	enum viewer_pager_event events[4096];
@@ -1413,6 +1415,9 @@ viewer_pager_capture_result(struct viewer_pager_join *join,
     const struct yt_present_result *result)
 {
 	size_t index;
+
+	CHECK(yt_framebuffer_apply_present_result(&join->framebuffer, result)
+	    == YT_FRAMEBUFFER_OK);
 
 	if (join->remote_output == NULL)
 		pager_capture_result(&join->capture, result);
@@ -1722,6 +1727,7 @@ viewer_pager_initialize(struct viewer_pager_join *join,
     float initial_count, const char *response, size_t ctrl_x_row)
 {
 	memset(join, 0, sizeof(*join));
+	yt_framebuffer_init(&join->framebuffer, false, 0U);
 	join->presentation = state(false);
 	join->presentation.foreground = 6.0f;
 	join->pager.foreground = 6;
@@ -2097,6 +2103,23 @@ viewer_local_color_count(const struct viewer_pager_join *join,
 	return count;
 }
 
+static uint64_t
+startup_ascii_framebuffer_fnv1a64(
+    const struct yt_framebuffer_state *framebuffer)
+{
+	uint8_t raw[YT_FRAMEBUFFER_STATE_BYTES];
+	uint64_t value = UINT64_C(14695981039346656037);
+	size_t index;
+
+	CHECK(yt_framebuffer_serialize(framebuffer, raw, sizeof(raw), NULL)
+	    == YT_FRAMEBUFFER_OK);
+	for (index = 0U; index < sizeof(raw); ++index) {
+		value ^= raw[index];
+		value *= UINT64_C(1099511628211);
+	}
+	return value;
+}
+
 static void
 test_startup_ascii_physical_join(void)
 {
@@ -2140,7 +2163,12 @@ test_startup_ascii_physical_join(void)
 	    && startup.join.source_length
 	    == strlen(startup_ascii_lines[16])
 	    && memcmp(startup.join.source, startup_ascii_lines[16],
-	    startup.join.source_length) == 0);
+	    startup.join.source_length) == 0
+	    && startup.join.framebuffer.qb_row == 22U
+	    && startup.join.framebuffer.qb_column == 1U
+	    && startup.join.framebuffer.qb_attribute == 0x03U
+	    && startup_ascii_framebuffer_fnv1a64(&startup.join.framebuffer)
+	    == UINT64_C(0xa9d6bc8a87101834));
 	yt_text_input_destroy(&startup.input);
 
 	memset(&startup, 0, sizeof(startup));
