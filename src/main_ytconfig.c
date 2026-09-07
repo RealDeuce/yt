@@ -9,13 +9,6 @@
 #include <string.h>
 
 static bool
-store_config(struct yt_game *game, struct yt_error *error)
-{
-	return yt_config_store(&game->database, &game->config, error)
-	    && yt_database_flush(&game->database, error);
-}
-
-static bool
 config_read_record(void *context, size_t basic_record,
     struct yt_record *record, struct yt_error *error)
 {
@@ -230,8 +223,13 @@ edit_genesis(struct yt_game *game, struct yt_error *error)
 static bool
 edit_maintenance(struct yt_game *game, struct yt_error *error)
 {
+	static const uint8_t raw_allow[4] = {0x00, 0x00, 0x7d, 0x00};
 	struct yt_config_output_result output;
+	struct yt_config_overlay_state state;
+	struct yt_config_overlay overlays[2];
 	char line[80];
+	uint8_t raw_marker[4];
+	uint8_t raw_epoch[4];
 	int adjusted;
 	int serial;
 
@@ -248,16 +246,32 @@ edit_maintenance(struct yt_game *game, struct yt_error *error)
 	if (!yt_current_date_serial(game->config.epoch_year, &serial,
 	    &adjusted, error))
 		return false;
-	game->config.epoch_year = (float)adjusted;
 	if (((unsigned char)line[0] & 0xdfU) == 'Y') {
-		static const uint8_t raw_allow[4] = {0x00, 0x00, 0x7d, 0x00};
-
-		game->config.last_maintenance = 0.0f;
-		yt_record_set_raw_number(&game->config.record, YT_F81, raw_allow);
+		memcpy(raw_marker, raw_allow, sizeof(raw_marker));
 	}
-	else
-		game->config.last_maintenance = (float)serial;
-	return store_config(game, error);
+	else if (qb_mbf32_encode((float)serial, raw_marker)
+	    == QB_MBF_OVERFLOW) {
+		if (error != NULL)
+			error->status = YT_RANGE;
+		return false;
+	}
+	if (qb_mbf32_encode((float)adjusted, raw_epoch) == QB_MBF_OVERFLOW) {
+		if (error != NULL)
+			error->status = YT_RANGE;
+		return false;
+	}
+	overlays[0] = (struct yt_config_overlay){YT_F81, raw_marker,
+	    sizeof(raw_marker)};
+	overlays[1] = (struct yt_config_overlay){YT_F45, raw_epoch,
+	    sizeof(raw_epoch)};
+	if (!yt_config_apply_loaded_overlays(&state, &game->config.record,
+	    overlays, YT_ARRAY_LEN(overlays), &config_record_ops, game, error))
+		return false;
+	game->config.record = state.field;
+	game->config.epoch_year = (float)adjusted;
+	game->config.last_maintenance =
+	    ((unsigned char)line[0] & 0xdfU) == 'Y' ? 0.0f : (float)serial;
+	return true;
 }
 
 static bool

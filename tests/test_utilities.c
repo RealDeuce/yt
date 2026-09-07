@@ -5966,6 +5966,7 @@ config_local_screen_test_write(void *context, size_t basic_record,
 static bool
 test_ytconfig_overlay_transaction(void)
 {
+	static const uint8_t raw_allow[4] = {0x00, 0x00, 0x7d, 0x00};
 	static const struct yt_config_record_ops ops = {
 		config_local_screen_test_read,
 		config_local_screen_test_write,
@@ -5976,6 +5977,7 @@ test_ytconfig_overlay_transaction(void)
 	struct yt_record expected;
 	struct yt_error error;
 	uint8_t raw[4];
+	uint8_t raw_epoch[4];
 	uint8_t second[] = {0xaa, 0xbb};
 	uint8_t scoreboard[41];
 	struct yt_config_overlay overlays[2];
@@ -6022,6 +6024,27 @@ test_ytconfig_overlay_transaction(void)
 	yt_error_clear(&error);
 	if (!yt_config_apply_overlays(&state, overlays, 2U, &ops, &tape,
 	    &error) || !state.complete || tape.reads != 1U
+	    || tape.writes != 1U || state.overlays_completed != 2U
+	    || memcmp(&tape.durable, &expected, sizeof(expected)) != 0)
+		return false;
+	for (byte = 0U; byte < YT_RECORD_SIZE; ++byte)
+		tape.durable.bytes[byte] = (uint8_t)(byte * 13U + 7U);
+	loaded = tape.durable;
+	expected = loaded;
+	if (qb_mbf32_encode(26.0f, raw_epoch) == QB_MBF_OVERFLOW)
+		return false;
+	memcpy(expected.bytes + YT_F81, raw_allow, sizeof(raw_allow));
+	memcpy(expected.bytes + YT_F45, raw_epoch, sizeof(raw_epoch));
+	overlays[0] = (struct yt_config_overlay){YT_F81, raw_allow,
+	    sizeof(raw_allow)};
+	overlays[1] = (struct yt_config_overlay){YT_F45, raw_epoch,
+	    sizeof(raw_epoch)};
+	tape.reads = 0U;
+	tape.writes = 0U;
+	tape.fail_at = 0U;
+	yt_error_clear(&error);
+	if (!yt_config_apply_loaded_overlays(&state, &loaded, overlays, 2U,
+	    &ops, &tape, &error) || !state.complete || tape.reads != 0U
 	    || tape.writes != 1U || state.overlays_completed != 2U
 	    || memcmp(&tape.durable, &expected, sizeof(expected)) != 0)
 		return false;
