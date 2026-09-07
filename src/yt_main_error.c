@@ -250,6 +250,40 @@ yt_error_attach_basic_fault_number(struct yt_error *error,
 	return true;
 }
 
+bool
+yt_normal_exit_registration_evaluate(const uint8_t registered_raw[4],
+    uint8_t conversion_mode,
+    struct yt_normal_exit_registration_result *result,
+    struct yt_error *error)
+{
+	bool overflow;
+
+	if (registered_raw == NULL || result == NULL)
+		return false;
+	memset(result, 0, sizeof(*result));
+	memcpy(result->registered_raw, registered_raw,
+	    sizeof(result->registered_raw));
+	result->registered = qb_mbf32_decode(registered_raw);
+	result->conversion_mode = conversion_mode;
+	result->converted = qb_cint_mode((double)result->registered,
+	    conversion_mode, &overflow);
+	if (!overflow) {
+		result->route = result->converted == -1
+		    ? YT_NORMAL_EXIT_REGISTRATION_SKIP_REMINDER
+		    : YT_NORMAL_EXIT_REGISTRATION_REMINDER;
+		return true;
+	}
+	result->route = YT_NORMAL_EXIT_REGISTRATION_OVERFLOW;
+	if (error != NULL) {
+		error->status = YT_RANGE;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    "normal-exit registration CINT");
+		(void)yt_error_attach_basic_fault_number(error,
+		    YT_BASIC_FAULT_NORMAL_EXIT_REGISTERED_CINT, 6U);
+	}
+	return false;
+}
+
 struct text_builder {
 	uint8_t *data;
 	size_t capacity;

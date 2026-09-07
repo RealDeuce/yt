@@ -181,6 +181,25 @@ struct yt_basic_fault_projection {
 	struct yt_shared_error_result shared;
 };
 
+enum yt_normal_exit_registration_route {
+	YT_NORMAL_EXIT_REGISTRATION_SKIP_REMINDER,
+	YT_NORMAL_EXIT_REGISTRATION_REMINDER,
+	YT_NORMAL_EXIT_REGISTRATION_OVERFLOW,
+};
+
+struct yt_normal_exit_registration_result {
+	uint8_t registered_raw[4];
+	float registered;
+	int32_t converted;
+	uint8_t conversion_mode;
+	enum yt_normal_exit_registration_route route;
+};
+
+bool yt_normal_exit_registration_evaluate(const uint8_t registered_raw[4],
+	uint8_t conversion_mode,
+	struct yt_normal_exit_registration_result *result,
+	struct yt_error *error);
+
 bool yt_basic_fault_project(const struct yt_error *error,
 	const uint8_t *pathname, size_t pathname_length,
 	const uint8_t *date_text, size_t date_length,

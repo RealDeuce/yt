@@ -4663,6 +4663,80 @@ test_basic_fault_projection(void)
 }
 
 static void
+test_normal_exit_registration_predicate(void)
+{
+	static const struct {
+		float value;
+		uint8_t mode;
+		enum yt_normal_exit_registration_route route;
+		int32_t converted;
+	} cases[] = {
+		{-1.0f, 0U, YT_NORMAL_EXIT_REGISTRATION_SKIP_REMINDER, -1},
+		{-1.4f, 0U, YT_NORMAL_EXIT_REGISTRATION_SKIP_REMINDER, -1},
+		{-1.4f, 4U, YT_NORMAL_EXIT_REGISTRATION_REMINDER, -2},
+		{-1.5f, 0U, YT_NORMAL_EXIT_REGISTRATION_REMINDER, -2},
+		{0.0f, 0U, YT_NORMAL_EXIT_REGISTRATION_REMINDER, 0},
+		{1.0f, 0U, YT_NORMAL_EXIT_REGISTRATION_REMINDER, 1},
+	};
+	static const uint8_t dirty_zero[4] = {0xA5U, 0x5AU, 0x33U, 0x00U};
+	struct yt_normal_exit_registration_result result;
+	struct yt_basic_fault_projection projection;
+	struct yt_error error;
+	uint8_t raw[4];
+	size_t index;
+
+	for (index = 0U; index < YT_ARRAY_LEN(cases); ++index) {
+		CHECK(qb_mbf32_encode(cases[index].value, raw) == QB_MBF_OK);
+		yt_error_clear(&error);
+		CHECK(yt_normal_exit_registration_evaluate(raw,
+		    cases[index].mode, &result, &error)
+		    && result.route == cases[index].route
+		    && result.converted == cases[index].converted
+		    && result.conversion_mode == cases[index].mode
+		    && memcmp(result.registered_raw, raw, sizeof(raw)) == 0
+		    && result.registered == qb_mbf32_decode(raw)
+		    && error.status == YT_OK && !error.basic_fault_valid);
+	}
+	yt_error_clear(&error);
+	CHECK(yt_normal_exit_registration_evaluate(dirty_zero, 0U, &result,
+	    &error) && result.route == YT_NORMAL_EXIT_REGISTRATION_REMINDER
+	    && result.converted == 0
+	    && memcmp(result.registered_raw, dirty_zero, sizeof(dirty_zero)) == 0);
+
+	CHECK(qb_mbf32_encode(32768.0f, raw) == QB_MBF_OK);
+	yt_error_clear(&error);
+	CHECK(!yt_normal_exit_registration_evaluate(raw, 0U, &result, &error)
+	    && result.route == YT_NORMAL_EXIT_REGISTRATION_OVERFLOW
+	    && result.converted == 0 && error.status == YT_RANGE
+	    && strcmp(error.operation, "normal-exit registration CINT") == 0
+	    && error.basic_fault_valid && error.basic_error_valid
+	    && error.basic_fault_site
+	    == YT_BASIC_FAULT_NORMAL_EXIT_REGISTERED_CINT
+	    && error.basic_error == 6U
+	    && yt_basic_fault_project(&error, NULL, 0U, NULL, 0U, NULL, 0U,
+	    &projection)
+	    && projection.disposition == YT_BASIC_FAULT_RESUME_GAMEPLAY
+	    && projection.main.route == YT_MAIN_ERROR_GAMEPLAY
+	    && projection.identity->instruction == 0x025CU
+	    && projection.identity->saved_ip == 0x025FU
+	    && projection.identity->retry_statement == 0x0259U
+	    && projection.identity->source_line == 60
+	    && projection.identity->handler == 0xB2DAU);
+
+	CHECK(qb_mbf32_encode(32767.4995f, raw) == QB_MBF_OK);
+	yt_error_clear(&error);
+	CHECK(!yt_normal_exit_registration_evaluate(raw, 0U, &result, &error)
+	    && result.route == YT_NORMAL_EXIT_REGISTRATION_OVERFLOW);
+	yt_error_clear(&error);
+	CHECK(yt_normal_exit_registration_evaluate(raw, 4U, &result, &error)
+	    && result.route == YT_NORMAL_EXIT_REGISTRATION_REMINDER
+	    && result.converted == 32767);
+
+	CHECK(!yt_normal_exit_registration_evaluate(NULL, 0U, &result, &error)
+	    && !yt_normal_exit_registration_evaluate(raw, 0U, NULL, &error));
+}
+
+static void
 test_main_error_model(void)
 {
 	static const uint8_t debug[] =
@@ -47895,6 +47969,7 @@ main(void)
 	test_sysop_chat_header();
 	test_basic_fault_registry();
 	test_basic_fault_projection();
+	test_normal_exit_registration_predicate();
 	test_main_error_model();
 	test_shared_error_model();
 	test_serial_startup_output();

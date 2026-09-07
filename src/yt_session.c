@@ -20024,9 +20024,9 @@ quit_session(struct yt_session *session, struct yt_error *error)
 	static const uint8_t generating[] = "Generating ScoreBoard";
 	static const char reminder[] =
 	    "PLEASE HELP YOUR SYSOP REGISTER THIS GAME.";
+	struct yt_normal_exit_registration_result registration;
+	uint8_t registered_raw[4];
 	char returning[sizeof(session->door->identity.system) + 20U];
-	bool overflow;
-	int32_t registered;
 	int length;
 
 	if (!session->door->game_open)
@@ -20048,19 +20048,12 @@ quit_session(struct yt_session *session, struct yt_error *error)
 	if (!display_game_file(session,
 	    session->door->game.config.scoreboard, error))
 		return false;
-	registered = qb_cint(yt_route_process_single(&session->route_process,
-	    YT_REGISTERED_FLAG_ADDRESS), &overflow);
-	if (overflow) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			(void)snprintf(error->operation, sizeof(error->operation),
-			    "%s", "normal-exit registration CINT");
-			(void)yt_error_attach_basic_fault_number(error,
-			    YT_BASIC_FAULT_NORMAL_EXIT_REGISTERED_CINT, 6U);
-		}
+	yt_route_process_raw_single(&session->route_process,
+	    YT_REGISTERED_FLAG_ADDRESS, registered_raw);
+	if (!yt_normal_exit_registration_evaluate(registered_raw,
+	    session->presentation.sound.conversion_mode, &registration, error))
 		return false;
-	}
-	if (~registered != 0) {
+	if (registration.route == YT_NORMAL_EXIT_REGISTRATION_REMINDER) {
 		static const uint8_t duration_ten[4] = {
 			0x00U, 0x00U, 0x20U, 0x84U,
 		};
