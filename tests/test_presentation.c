@@ -46131,7 +46131,20 @@ test_computer_autopilot_presentation(void)
 	CHECK(sizeof(expected) - 1U == 239U);
 	CHECK(capture.remote_length == sizeof(expected) - 1U
 	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
-	CHECK(pager.line_count == 2.0f && pager.newline_flag == 0.0f);
+	CHECK(pager.line_count == 2.0f && pager.newline_flag == 0.0f
+	    && capture.local_event_count == 35U
+	    && capture.framebuffer_initialized
+	    && capture.framebuffer.bios_row == 15U
+	    && capture.framebuffer.bios_column == 1U
+	    && capture.framebuffer.qb_row == 15U
+	    && capture.framebuffer.qb_column == 1U
+	    && capture.framebuffer.brun_bios_cache_row == 15U
+	    && capture.framebuffer.brun_bios_cache_column == 1U
+	    && capture.framebuffer.qb_attribute == 0x07U
+	    && capture.framebuffer.qb_scrolls == 0U
+	    && capture.framebuffer.con_scrolls == 0U
+	    && startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
+	    == UINT64_C(0xe645a9ad376c5373));
 }
 
 static void
