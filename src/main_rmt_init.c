@@ -33,6 +33,11 @@ struct rmt_handoff_file {
 	struct yt_text_input sequential;
 };
 
+struct rmt_dorinfo_file {
+	const char *path;
+	struct yt_text_input input;
+};
+
 static void
 rmt_handoff_init(struct rmt_handoff_file *handoff)
 {
@@ -147,11 +152,45 @@ read_handoff(struct rmt_handoff_file *handoff, char path[512],
 }
 
 static bool
+read_dorinfo_open(void *context, struct yt_error *error)
+{
+	struct rmt_dorinfo_file *file = context;
+
+	return yt_text_input_open(&file->input, file->path, error);
+}
+
+static bool
+read_dorinfo_line(void *context, const uint8_t **line, size_t *length,
+    bool *available, size_t *cursor, struct yt_error *error)
+{
+	struct rmt_dorinfo_file *file = context;
+	bool result;
+
+	result = yt_text_input_read_line(&file->input, line, length, available,
+	    error);
+	*cursor = (size_t)file->input.logical_position;
+	return result;
+}
+
+static bool
+read_dorinfo_close(void *context, struct yt_error *error)
+{
+	struct rmt_dorinfo_file *file = context;
+
+	return yt_text_input_close(&file->input, error);
+}
+
+static bool
 read_dorinfo_name(const char *path, struct rmt_remote_info *info,
     struct yt_error *error)
 {
-	struct yt_rmt_dorinfo_result parsed;
-	struct yt_text_file text;
+	static const struct yt_rmt_dorinfo_read_ops ops = {
+		read_dorinfo_open,
+		read_dorinfo_line,
+		read_dorinfo_close,
+	};
+	struct yt_rmt_dorinfo_read_state read_state;
+	struct rmt_dorinfo_file file;
 	struct qb_val_result port_value;
 	uint8_t storage[2048];
 	const uint8_t *identifier;
@@ -167,32 +206,19 @@ read_dorinfo_name(const char *path, struct rmt_remote_info *info,
 	if (info == NULL)
 		return false;
 	memset(info, 0, sizeof(*info));
-	if (!yt_text_read(path, &text, error))
-		return false;
-	if (!yt_rmt_dorinfo_parse(text.data, text.length, storage,
-	    sizeof(storage), &parsed)) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			snprintf(error->operation, sizeof(error->operation),
-			    "parse RMT DORINFO");
-		}
+	file.path = path;
+	yt_text_input_init(&file.input);
+	if (!yt_rmt_dorinfo_read_run(&read_state, &ops, &file, storage,
+	    sizeof(storage), error))
 		goto done;
-	}
-	if (parsed.outcome != YT_RMT_DORINFO_SUCCESS) {
-		if (error != NULL) {
-			error->status = YT_EOF;
-			snprintf(error->operation, sizeof(error->operation),
-			    "read RMT DORINFO field %zu", parsed.failed_field);
-		}
-		goto done;
-	}
-	identifier = yt_rmt_dorinfo_field(&parsed, storage, 3U,
+	identifier = yt_rmt_dorinfo_field(&read_state.result, storage, 3U,
 	    &identifier_length);
-	description = yt_rmt_dorinfo_field(&parsed, storage, 4U,
+	description = yt_rmt_dorinfo_field(&read_state.result, storage, 4U,
 	    &description_length);
-	first_value = yt_rmt_dorinfo_field(&parsed, storage, 6U,
+	first_value = yt_rmt_dorinfo_field(&read_state.result, storage, 6U,
 	    &first_length);
-	last_value = yt_rmt_dorinfo_field(&parsed, storage, 7U, &last_length);
+	last_value = yt_rmt_dorinfo_field(&read_state.result, storage, 7U,
+	    &last_length);
 	if (identifier == NULL || description == NULL || first_value == NULL
 	    || last_value == NULL || first_length >= 128U
 	    || last_length >= 128U
@@ -228,7 +254,7 @@ read_dorinfo_name(const char *path, struct rmt_remote_info *info,
 	valid = true;
 
 done:
-	yt_text_free(&text);
+	yt_text_input_destroy(&file.input);
 	return valid;
 }
 

@@ -1136,6 +1136,199 @@ test_rmt_dorinfo_parser(void)
 	return true;
 }
 
+struct rmt_dorinfo_read_script {
+	bool fail_open;
+	bool fail_close;
+	size_t fail_read;
+	size_t eof_read;
+	size_t read_index;
+	size_t call_count;
+	enum yt_rmt_dorinfo_read_operation calls[10];
+	const uint8_t *lines[YT_RMT_DORINFO_FIELDS];
+	size_t lengths[YT_RMT_DORINFO_FIELDS];
+};
+
+static void
+rmt_dorinfo_read_script_init(struct rmt_dorinfo_read_script *script)
+{
+	static const uint8_t values[YT_RMT_DORINFO_FIELDS][9] = {
+		"A", "BB", "CCC", "DDDD", "EEEEE", "FFFFFF", "GGGGGGG",
+		"HHHHHHHH",
+	};
+	size_t field;
+
+	memset(script, 0, sizeof(*script));
+	script->fail_read = SIZE_MAX;
+	script->eof_read = SIZE_MAX;
+	for (field = 0U; field < YT_RMT_DORINFO_FIELDS; ++field) {
+		script->lines[field] = values[field];
+		script->lengths[field] = field + 1U;
+	}
+}
+
+static bool
+rmt_dorinfo_read_record(struct rmt_dorinfo_read_script *script,
+    enum yt_rmt_dorinfo_read_operation operation)
+{
+	if (script->call_count >= sizeof(script->calls) / sizeof(script->calls[0]))
+		return false;
+	script->calls[script->call_count++] = operation;
+	return true;
+}
+
+static bool
+rmt_dorinfo_read_open(void *context, struct yt_error *error)
+{
+	struct rmt_dorinfo_read_script *script = context;
+
+	(void)error;
+	return rmt_dorinfo_read_record(script, YT_RMT_DORINFO_READ_OPEN)
+	    && !script->fail_open;
+}
+
+static bool
+rmt_dorinfo_read_line(void *context, const uint8_t **line, size_t *length,
+    bool *available, size_t *cursor, struct yt_error *error)
+{
+	struct rmt_dorinfo_read_script *script = context;
+	size_t field = script->read_index++;
+
+	(void)error;
+	if (!rmt_dorinfo_read_record(script, YT_RMT_DORINFO_READ_FIELD)
+	    || field >= YT_RMT_DORINFO_FIELDS)
+		return false;
+	*cursor = 100U + field;
+	if (field == script->fail_read)
+		return false;
+	*line = script->lines[field];
+	*length = script->lengths[field];
+	*available = field != script->eof_read;
+	return true;
+}
+
+static bool
+rmt_dorinfo_read_close(void *context, struct yt_error *error)
+{
+	struct rmt_dorinfo_read_script *script = context;
+
+	(void)error;
+	return rmt_dorinfo_read_record(script, YT_RMT_DORINFO_READ_CLOSE)
+	    && !script->fail_close;
+}
+
+static bool
+test_rmt_dorinfo_read_transaction(void)
+{
+	static const struct yt_rmt_dorinfo_read_ops ops = {
+		rmt_dorinfo_read_open,
+		rmt_dorinfo_read_line,
+		rmt_dorinfo_read_close,
+	};
+	struct yt_rmt_dorinfo_read_ops incomplete = ops;
+	struct rmt_dorinfo_read_script script;
+	struct yt_rmt_dorinfo_read_state state;
+	struct yt_error error;
+	uint8_t storage[64];
+	size_t field;
+	size_t offset;
+
+	rmt_dorinfo_read_script_init(&script);
+	if (!yt_rmt_dorinfo_read_run(&state, &ops, &script, storage,
+	    sizeof(storage), NULL)
+	    || state.failed_operation != YT_RMT_DORINFO_READ_NONE
+	    || !state.file_opened || state.read_attempts != 8U
+	    || state.result.outcome != YT_RMT_DORINFO_SUCCESS
+	    || state.result.fields_assigned != 8U || state.storage_used != 36U
+	    || state.result.cursor != 107U
+	    || !state.close_attempted || !state.file_closed || !state.complete
+	    || script.call_count != 10U || script.read_index != 8U
+	    || script.calls[0] != YT_RMT_DORINFO_READ_OPEN
+	    || script.calls[9] != YT_RMT_DORINFO_READ_CLOSE)
+		return false;
+	offset = 0U;
+	for (field = 0U; field < YT_RMT_DORINFO_FIELDS; ++field) {
+		if (script.calls[field + 1U] != YT_RMT_DORINFO_READ_FIELD
+		    || state.result.fields[field].offset != offset
+		    || state.result.fields[field].length != field + 1U
+		    || memcmp(storage + offset, script.lines[field], field + 1U)
+		    != 0)
+			return false;
+		offset += field + 1U;
+	}
+
+	rmt_dorinfo_read_script_init(&script);
+	script.fail_open = true;
+	if (yt_rmt_dorinfo_read_run(&state, &ops, &script, storage,
+	    sizeof(storage), NULL)
+	    || state.failed_operation != YT_RMT_DORINFO_READ_OPEN
+	    || state.file_opened || state.read_attempts != 0U
+	    || state.close_attempted || script.call_count != 1U)
+		return false;
+
+	for (field = 0U; field < YT_RMT_DORINFO_FIELDS; ++field) {
+		rmt_dorinfo_read_script_init(&script);
+		script.fail_read = field;
+		if (yt_rmt_dorinfo_read_run(&state, &ops, &script, storage,
+		    sizeof(storage), NULL)
+		    || state.failed_operation != YT_RMT_DORINFO_READ_FIELD
+		    || !state.file_opened || state.read_attempts != field + 1U
+		    || state.result.fields_assigned != field
+		    || state.result.failed_field != field + 1U
+		    || state.result.cursor != 100U + field
+		    || state.close_attempted || state.complete
+		    || script.call_count != field + 2U)
+			return false;
+
+		rmt_dorinfo_read_script_init(&script);
+		script.eof_read = field;
+		yt_error_clear(&error);
+		if (yt_rmt_dorinfo_read_run(&state, &ops, &script, storage,
+		    sizeof(storage), &error)
+		    || state.failed_operation != YT_RMT_DORINFO_READ_FIELD
+		    || state.result.outcome != YT_RMT_DORINFO_INPUT_PAST_END
+		    || state.result.fields_assigned != field
+		    || state.result.failed_field != field + 1U
+		    || state.result.cursor != 100U + field
+		    || state.result.error_number != 62 || error.status != YT_EOF
+		    || state.close_attempted || state.complete)
+			return false;
+	}
+
+	rmt_dorinfo_read_script_init(&script);
+	if (yt_rmt_dorinfo_read_run(&state, &ops, &script, storage, 1U, NULL)
+	    || state.failed_operation != YT_RMT_DORINFO_READ_COPY_FIELD
+	    || state.result.fields_assigned != 1U
+	    || state.result.failed_field != 2U || state.storage_used != 1U
+	    || state.close_attempted || state.complete)
+		return false;
+
+	rmt_dorinfo_read_script_init(&script);
+	script.lines[0] = NULL;
+	if (yt_rmt_dorinfo_read_run(&state, &ops, &script, storage,
+	    sizeof(storage), NULL)
+	    || state.failed_operation != YT_RMT_DORINFO_READ_COPY_FIELD
+	    || state.result.failed_field != 1U || state.storage_used != 0U)
+		return false;
+
+	rmt_dorinfo_read_script_init(&script);
+	script.fail_close = true;
+	if (yt_rmt_dorinfo_read_run(&state, &ops, &script, storage,
+	    sizeof(storage), NULL)
+	    || state.failed_operation != YT_RMT_DORINFO_READ_CLOSE
+	    || state.result.fields_assigned != 8U || !state.close_attempted
+	    || state.file_closed || state.complete || script.call_count != 10U)
+		return false;
+
+	incomplete.close = NULL;
+	return !yt_rmt_dorinfo_read_run(&state, &incomplete, &script, storage,
+	    sizeof(storage), NULL)
+	    && !yt_rmt_dorinfo_read_run(NULL, &ops, &script, storage,
+	    sizeof(storage), NULL)
+	    && !yt_rmt_dorinfo_read_run(&state, NULL, &script, storage,
+	    sizeof(storage), NULL)
+	    && !yt_rmt_dorinfo_read_run(&state, &ops, &script, NULL, 1U, NULL);
+}
+
 static bool
 test_rmt_remote_status(void)
 {
@@ -6329,6 +6522,8 @@ main(void)
 		failure = "RMT handoff cleanup transaction differs";
 	else if (!test_rmt_dorinfo_parser())
 		failure = "RMT DORINFO parser vectors differ";
+	else if (!test_rmt_dorinfo_read_transaction())
+		failure = "RMT DORINFO read transaction differs";
 	else if (!test_rmt_remote_status())
 		failure = "RMT remote status vectors differ";
 	else if (!test_rmt_remote_serial())

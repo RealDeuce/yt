@@ -727,6 +727,78 @@ yt_rmt_dorinfo_parse(const uint8_t *raw, size_t raw_length,
 	return true;
 }
 
+bool
+yt_rmt_dorinfo_read_run(struct yt_rmt_dorinfo_read_state *state,
+    const struct yt_rmt_dorinfo_read_ops *ops, void *context,
+    uint8_t *storage, size_t storage_capacity, struct yt_error *error)
+{
+	size_t field;
+
+	if (state == NULL || ops == NULL || ops->open == NULL
+	    || ops->read_line == NULL || ops->close == NULL
+	    || (storage == NULL && storage_capacity != 0U))
+		return false;
+	memset(state, 0, sizeof(*state));
+	state->result.outcome = YT_RMT_DORINFO_SUCCESS;
+	if (!ops->open(context, error)) {
+		state->failed_operation = YT_RMT_DORINFO_READ_OPEN;
+		return false;
+	}
+	state->file_opened = true;
+	for (field = 0U; field < YT_RMT_DORINFO_FIELDS; ++field) {
+		struct yt_rmt_dorinfo_field *destination =
+		    &state->result.fields[field];
+		const uint8_t *line = NULL;
+		size_t length = 0U;
+		size_t cursor = 0U;
+		bool available = false;
+
+		++state->read_attempts;
+		if (!ops->read_line(context, &line, &length, &available,
+		    &cursor, error)) {
+			state->failed_operation = YT_RMT_DORINFO_READ_FIELD;
+			state->result.failed_field = field + 1U;
+			state->result.cursor = cursor;
+			return false;
+		}
+		if (!available) {
+			state->failed_operation = YT_RMT_DORINFO_READ_FIELD;
+			state->result.outcome = YT_RMT_DORINFO_INPUT_PAST_END;
+			state->result.failed_field = field + 1U;
+			state->result.cursor = cursor;
+			state->result.error_number = 62;
+			set_error(error, YT_EOF, "read RMT DORINFO field", NULL);
+			if (error != NULL)
+				snprintf(error->operation, sizeof(error->operation),
+				    "read RMT DORINFO field %zu", field + 1U);
+			return false;
+		}
+		if ((line == NULL && length != 0U)
+		    || length > storage_capacity - state->storage_used) {
+			state->failed_operation = YT_RMT_DORINFO_READ_COPY_FIELD;
+			state->result.failed_field = field + 1U;
+			state->result.cursor = cursor;
+			set_error(error, YT_RANGE, "copy RMT DORINFO field", NULL);
+			return false;
+		}
+		destination->offset = state->storage_used;
+		destination->length = length;
+		if (length != 0U)
+			memcpy(storage + state->storage_used, line, length);
+		state->storage_used += length;
+		state->result.cursor = cursor;
+		++state->result.fields_assigned;
+	}
+	state->close_attempted = true;
+	if (!ops->close(context, error)) {
+		state->failed_operation = YT_RMT_DORINFO_READ_CLOSE;
+		return false;
+	}
+	state->file_closed = true;
+	state->complete = true;
+	return true;
+}
+
 const uint8_t *
 yt_rmt_dorinfo_field(const struct yt_rmt_dorinfo_result *result,
     const uint8_t *storage, size_t field, size_t *length)
