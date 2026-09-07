@@ -8,6 +8,32 @@ documentation supplies the missing contract.
 
 ## Open documentation gaps
 
+### DOC-GAP-032: YTCONFIG 52nd YTNAME row overflow destinations
+
+Affected coverage:
+
+- the YTCONFIG alias-table scan at `YTCONFIG:0E4E..0EE5`;
+- a 52nd physical four-token `YTNAME.DAT` group after array index 50; and
+- the exact default-fatal or continued state produced by each of its four
+  sequential string stores.
+
+The completed configuration-editor document states that the four parallel
+arrays are indexed 0 through 50, that the counter is incremented before each
+group, and that physical row 52 attempts out-of-bounds writes into adjacent
+state. The semantic model consequently raises an abstract `OverflowError`.
+Neither source identifies the four wrapped/calculated destination addresses,
+the adjacent descriptors or numeric cells they alias, the order and retained
+heap ownership of successful stores before a later store fails, or the exact
+ERR/ERL/default-handler projection.
+
+Those effects are observable and the native editor's current `count > 51`
+guard is only a protective boundary, not a compatibility claim. The generic
+BRUN dynamic-string-array contract cannot choose caller-specific destination
+addresses or adjacent ownership without the missing YTCONFIG layout. Upstream
+documentation, generated evidence, and focused row-52/store-failure fixtures
+must publish that carrier before the guard can be replaced. No binary
+inspection or new reverse engineering was performed.
+
 ### DOC-GAP-031: Xannor sector-arrival physical transaction sequencing
 
 Affected coverage:
