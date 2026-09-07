@@ -536,6 +536,77 @@ yt_names_write(const char *path, const struct yt_name_file *names,
 	return result;
 }
 
+static bool
+fixed_field_contains(const uint8_t field[YT_TEXT_FIELD_SIZE],
+    const uint8_t *needle, size_t length)
+{
+	size_t index;
+
+	if (length == 0U)
+		return true;
+	if (length > YT_TEXT_FIELD_SIZE)
+		return false;
+	for (index = 0U; index + length <= YT_TEXT_FIELD_SIZE; ++index) {
+		if (memcmp(field + index, needle, length) == 0)
+			return true;
+	}
+	return false;
+}
+
+bool
+yt_names_propagate_alias(struct yt_alias_propagate_state *state,
+    const uint8_t *old_alias, size_t old_alias_length,
+    const uint8_t *new_alias, size_t new_alias_length,
+    const struct yt_alias_propagate_ops *ops, void *context,
+    struct yt_error *error)
+{
+	int basic;
+
+	if (state != NULL)
+		memset(state, 0, sizeof(*state));
+	if (state == NULL || (old_alias == NULL && old_alias_length != 0U)
+	    || (new_alias == NULL && new_alias_length != 0U)
+	    || new_alias_length > YT_TEXT_FIELD_SIZE || ops == NULL
+	    || ops->read_player == NULL || ops->write_player == NULL) {
+		if (error != NULL)
+			error->status = YT_INVALID;
+		return false;
+	}
+	for (basic = 2; basic <= 51; ++basic) {
+		state->basic_record = basic;
+		state->field_loaded = false;
+		state->name_overlaid = false;
+		state->length_overlaid = false;
+		state->attempted = YT_ALIAS_PROPAGATE_READ_PLAYER;
+		if (!ops->read_player(context, basic, &state->field, error))
+			return false;
+		state->field_loaded = true;
+		++state->records_read;
+		if (!fixed_field_contains(state->field.bytes, old_alias,
+		    old_alias_length))
+			continue;
+		++state->matches;
+		state->attempted = YT_ALIAS_PROPAGATE_OVERLAY_NAME;
+		yt_record_set_text(&state->field, new_alias, new_alias_length);
+		state->name_overlaid = true;
+		state->attempted = YT_ALIAS_PROPAGATE_OVERLAY_LENGTH;
+		if (!yt_record_set_number(&state->field, YT_F85,
+		    (float)new_alias_length)) {
+			if (error != NULL)
+				error->status = YT_RANGE;
+			return false;
+		}
+		state->length_overlaid = true;
+		state->attempted = YT_ALIAS_PROPAGATE_WRITE_PLAYER;
+		if (!ops->write_player(context, basic, &state->field, error))
+			return false;
+		++state->records_written;
+	}
+	state->attempted = YT_ALIAS_PROPAGATE_NONE;
+	state->complete = true;
+	return true;
+}
+
 bool
 yt_names_append(const char *path, const struct yt_name_row *row,
     struct yt_error *error)

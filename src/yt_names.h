@@ -2,6 +2,7 @@
 #define YT_NAMES_H
 
 #include "yt_common.h"
+#include "yt_data.h"
 
 struct yt_name_row {
 	char *real_first;
@@ -70,6 +71,34 @@ struct yt_names_output_state {
 	bool complete;
 };
 
+enum yt_alias_propagate_operation {
+	YT_ALIAS_PROPAGATE_NONE,
+	YT_ALIAS_PROPAGATE_READ_PLAYER,
+	YT_ALIAS_PROPAGATE_OVERLAY_NAME,
+	YT_ALIAS_PROPAGATE_OVERLAY_LENGTH,
+	YT_ALIAS_PROPAGATE_WRITE_PLAYER,
+};
+
+struct yt_alias_propagate_state {
+	enum yt_alias_propagate_operation attempted;
+	int basic_record;
+	size_t records_read;
+	size_t matches;
+	size_t records_written;
+	struct yt_record field;
+	bool field_loaded;
+	bool name_overlaid;
+	bool length_overlaid;
+	bool complete;
+};
+
+struct yt_alias_propagate_ops {
+	bool (*read_player)(void *context, int basic_record,
+	    struct yt_record *record, struct yt_error *error);
+	bool (*write_player)(void *context, int basic_record,
+	    const struct yt_record *record, struct yt_error *error);
+};
+
 enum yt_alias_key_status {
 	YT_ALIAS_KEY_READY,
 	YT_ALIAS_KEY_EMPTY,
@@ -108,6 +137,11 @@ bool yt_names_write(const char *path, const struct yt_name_file *names,
 bool yt_names_write_sequential(struct yt_text_output *output,
 	const char *path, const struct yt_name_file *names,
 	struct yt_names_output_state *state, struct yt_error *error);
+bool yt_names_propagate_alias(struct yt_alias_propagate_state *state,
+	const uint8_t *old_alias, size_t old_alias_length,
+	const uint8_t *new_alias, size_t new_alias_length,
+	const struct yt_alias_propagate_ops *ops, void *context,
+	struct yt_error *error);
 bool yt_names_append(const char *path, const struct yt_name_row *row,
     struct yt_error *error);
 bool yt_names_set_alias(struct yt_name_file *names, size_t index,

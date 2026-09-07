@@ -4493,6 +4493,176 @@ test_name_sequential_output_transaction(struct yt_error *error)
 	    error);
 }
 
+struct alias_propagate_test_event {
+	enum yt_alias_propagate_operation operation;
+	int basic_record;
+};
+
+struct alias_propagate_test_tape {
+	struct yt_record source[52];
+	struct yt_record durable[52];
+	struct alias_propagate_test_event events[104];
+	size_t event_count;
+	size_t fail_at;
+};
+
+static void
+alias_propagate_test_init(struct alias_propagate_test_tape *tape)
+{
+	int basic;
+
+	memset(tape, 0, sizeof(*tape));
+	for (basic = 2; basic <= 51; ++basic) {
+		size_t byte;
+
+		for (byte = 0U; byte < YT_RECORD_SIZE; ++byte)
+			tape->source[basic].bytes[byte] =
+			    (uint8_t)(basic * 7 + (int)byte);
+		memset(tape->source[basic].bytes, ' ', YT_TEXT_FIELD_SIZE);
+	}
+	memcpy(tape->source[2].bytes, "Old Alias", 9U);
+	memcpy(tape->source[4].bytes + 7U, "Old Alias", 9U);
+	memcpy(tape->source[5].bytes, "old Alias", 9U);
+	memcpy(tape->source[51].bytes, "Last Record", 11U);
+	memcpy(tape->durable, tape->source, sizeof(tape->durable));
+}
+
+static bool
+alias_propagate_test_event(struct alias_propagate_test_tape *tape,
+    enum yt_alias_propagate_operation operation, int basic_record,
+    struct yt_error *error)
+{
+	if (tape->event_count >= YT_ARRAY_LEN(tape->events))
+		return false;
+	tape->events[tape->event_count++] =
+	    (struct alias_propagate_test_event){operation, basic_record};
+	if (tape->fail_at != 0U && tape->event_count == tape->fail_at) {
+		if (error != NULL)
+			error->status = YT_IO_ERROR;
+		return false;
+	}
+	return true;
+}
+
+static bool
+alias_propagate_test_read(void *context, int basic_record,
+    struct yt_record *record, struct yt_error *error)
+{
+	struct alias_propagate_test_tape *tape = context;
+
+	if (!alias_propagate_test_event(tape, YT_ALIAS_PROPAGATE_READ_PLAYER,
+	    basic_record, error))
+		return false;
+	*record = tape->source[basic_record];
+	return true;
+}
+
+static bool
+alias_propagate_test_write(void *context, int basic_record,
+    const struct yt_record *record, struct yt_error *error)
+{
+	struct alias_propagate_test_tape *tape = context;
+
+	if (!alias_propagate_test_event(tape, YT_ALIAS_PROPAGATE_WRITE_PLAYER,
+	    basic_record, error))
+		return false;
+	tape->durable[basic_record] = *record;
+	return true;
+}
+
+static bool
+test_alias_propagation_transaction(void)
+{
+	static const struct yt_alias_propagate_ops ops = {
+		alias_propagate_test_read,
+		alias_propagate_test_write,
+	};
+	static const uint8_t old_alias[] = "Old Alias";
+	static const uint8_t new_alias[] = "New Name";
+	struct alias_propagate_test_tape success;
+	struct yt_alias_propagate_state state;
+	struct yt_error error;
+	uint8_t expected_name[YT_TEXT_FIELD_SIZE];
+	uint8_t expected_length[4];
+	size_t failure;
+	bool result;
+
+	alias_propagate_test_init(&success);
+	yt_error_clear(&error);
+	result = yt_names_propagate_alias(&state, old_alias,
+	    sizeof(old_alias) - 1U, new_alias, sizeof(new_alias) - 1U,
+	    &ops, &success, &error);
+	memset(expected_name, ' ', sizeof(expected_name));
+	memcpy(expected_name, new_alias, sizeof(new_alias) - 1U);
+	if (qb_mbf32_encode((float)(sizeof(new_alias) - 1U), expected_length)
+	    == QB_MBF_OVERFLOW
+	    || !result || !state.complete
+	    || state.attempted != YT_ALIAS_PROPAGATE_NONE
+	    || state.basic_record != 51 || state.records_read != 50U
+	    || state.matches != 2U || state.records_written != 2U
+	    || !state.field_loaded || state.name_overlaid
+	    || state.length_overlaid || success.event_count != 52U
+	    || memcmp(&state.field, &success.source[51], sizeof(state.field)) != 0
+	    || memcmp(success.durable[2].bytes, expected_name,
+	    sizeof(expected_name)) != 0
+	    || memcmp(success.durable[4].bytes, expected_name,
+	    sizeof(expected_name)) != 0
+	    || memcmp(success.durable[2].bytes + YT_F85, expected_length, 4U) != 0
+	    || memcmp(success.durable[4].bytes + YT_F85, expected_length, 4U) != 0
+	    || memcmp(success.durable[5].bytes, success.source[5].bytes,
+	    YT_RECORD_SIZE) != 0)
+		return false;
+	for (failure = 1U; failure <= success.event_count; ++failure) {
+		struct alias_propagate_test_tape tape;
+		bool written[52] = {false};
+		size_t event;
+		size_t writes = 0U;
+		int basic;
+
+		alias_propagate_test_init(&tape);
+		tape.fail_at = failure;
+		yt_error_clear(&error);
+		result = yt_names_propagate_alias(&state, old_alias,
+		    sizeof(old_alias) - 1U, new_alias, sizeof(new_alias) - 1U,
+		    &ops, &tape, &error);
+		for (event = 0U; event + 1U < failure; ++event) {
+			if (success.events[event].operation ==
+			    YT_ALIAS_PROPAGATE_WRITE_PLAYER) {
+				++writes;
+				written[success.events[event].basic_record] = true;
+			}
+		}
+		if (result || error.status != YT_IO_ERROR || state.complete
+		    || tape.event_count != failure || state.records_written != writes
+		    || state.attempted != success.events[failure - 1U].operation
+		    || state.basic_record != success.events[failure - 1U].basic_record
+		    || memcmp(tape.events, success.events,
+		    failure * sizeof(tape.events[0])) != 0)
+			return false;
+		for (basic = 2; basic <= 51; ++basic) {
+			const struct yt_record *expected = written[basic]
+			    ? &success.durable[basic] : &success.source[basic];
+
+			if (memcmp(&tape.durable[basic], expected,
+			    sizeof(*expected)) != 0)
+				return false;
+		}
+	}
+	return !yt_names_propagate_alias(NULL, old_alias,
+	    sizeof(old_alias) - 1U, new_alias, sizeof(new_alias) - 1U,
+	    &ops, &success, &error)
+	    && !yt_names_propagate_alias(&state, NULL, 1U, new_alias,
+	    sizeof(new_alias) - 1U, &ops, &success, &error)
+	    && !yt_names_propagate_alias(&state, old_alias,
+	    sizeof(old_alias) - 1U, NULL, 1U, &ops, &success, &error)
+	    && !yt_names_propagate_alias(&state, old_alias,
+	    sizeof(old_alias) - 1U, new_alias, YT_TEXT_FIELD_SIZE + 1U,
+	    &ops, &success, &error)
+	    && !yt_names_propagate_alias(&state, old_alias,
+	    sizeof(old_alias) - 1U, new_alias, sizeof(new_alias) - 1U,
+	    NULL, &success, &error);
+}
+
 static bool
 test_alias_key_preparation(void)
 {
@@ -7263,6 +7433,8 @@ main(void)
 		failure = "YTNAME sequential transaction differs";
 	else if (!test_name_sequential_output_transaction(&error))
 		failure = "YTNAME sequential output transaction differs";
+	else if (!test_alias_propagation_transaction())
+		failure = "YTCONFIG alias propagation transaction differs";
 	else if (!test_name_append(&error))
 		failure = "YTNAME append bytes differ";
 	else if (!test_alias_key_preparation())

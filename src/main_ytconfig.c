@@ -617,18 +617,23 @@ replace_port_name:
 }
 
 static bool
-fixed_contains(const uint8_t field[41], const char *needle)
+alias_propagate_read(void *context, int basic_record,
+    struct yt_record *record, struct yt_error *error)
 {
-	size_t length = strlen(needle);
-	size_t index;
+	struct yt_game *game = context;
 
-	if (length == 0 || length > 41U)
-		return false;
-	for (index = 0; index + length <= 41U; ++index) {
-		if (memcmp(field + index, needle, length) == 0)
-			return true;
-	}
-	return false;
+	return yt_database_read(&game->database, (size_t)basic_record, record,
+	    error);
+}
+
+static bool
+alias_propagate_write(void *context, int basic_record,
+    const struct yt_record *record, struct yt_error *error)
+{
+	struct yt_game *game = context;
+
+	return yt_database_write(&game->database, (size_t)basic_record, record,
+	    error);
 }
 
 static bool
@@ -742,7 +747,11 @@ edit_aliases(struct yt_game *game, struct yt_error *error)
 			char old_alias[90];
 			char first[90];
 			char last[90];
-			int basic;
+			struct yt_alias_propagate_state propagation;
+			static const struct yt_alias_propagate_ops propagation_ops = {
+				alias_propagate_read,
+				alias_propagate_write,
+			};
 
 			if (!yt_config_compose_alias_number_prompt(0U, &output)
 			    || !write_output(&output, error)) {
@@ -867,23 +876,12 @@ save_alias:
 				yt_names_free(&names);
 				return false;
 			}
-			for (basic = 2; basic <= 51; ++basic) {
-				struct yt_player player;
-
-				if (!yt_game_read_player(game, basic, &player, error)) {
-					yt_names_free(&names);
-					return false;
-				}
-				if (fixed_contains(player.record.bytes, old_alias)) {
-					snprintf(player.name, sizeof(player.name), "%s",
-					    entered);
-					player.name_length = (float)strlen(entered);
-					if (!yt_game_write_player(game, basic, &player,
-					    error)) {
-						yt_names_free(&names);
-						return false;
-					}
-				}
+			if (!yt_names_propagate_alias(&propagation,
+			    (const uint8_t *)old_alias, strlen(old_alias),
+			    (const uint8_t *)entered, strlen(entered),
+			    &propagation_ops, game, error)) {
+				yt_names_free(&names);
+				return false;
 			}
 			if (!yt_config_compose_alias_saved(0U, &output)
 			    || !write_output(&output, error)) {
