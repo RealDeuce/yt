@@ -791,6 +791,195 @@ test_rmt_handoff_parser(void)
 	return !yt_rmt_handoff_parse(too_long, sizeof(too_long), &result);
 }
 
+struct rmt_handoff_read_script {
+	size_t fail_at;
+	size_t call_count;
+	enum yt_rmt_handoff_read_operation calls[6];
+	uint32_t size;
+	const uint8_t *line;
+	size_t line_length;
+	bool line_available;
+};
+
+static bool
+rmt_handoff_read_record(struct rmt_handoff_read_script *script,
+    enum yt_rmt_handoff_read_operation operation)
+{
+	if (script->call_count >= sizeof(script->calls) / sizeof(script->calls[0]))
+		return false;
+	script->calls[script->call_count] = operation;
+	return script->call_count++ != script->fail_at;
+}
+
+static bool
+rmt_handoff_read_open_random(void *context, struct yt_error *error)
+{
+	(void)error;
+	return rmt_handoff_read_record(context,
+	    YT_RMT_HANDOFF_READ_OPEN_RANDOM);
+}
+
+static bool
+rmt_handoff_read_lof(void *context, uint32_t *size,
+    struct yt_error *error)
+{
+	struct rmt_handoff_read_script *script = context;
+
+	(void)error;
+	if (!rmt_handoff_read_record(script, YT_RMT_HANDOFF_READ_LOF))
+		return false;
+	*size = script->size;
+	return true;
+}
+
+static bool
+rmt_handoff_read_close_random(void *context, struct yt_error *error)
+{
+	(void)error;
+	return rmt_handoff_read_record(context,
+	    YT_RMT_HANDOFF_READ_CLOSE_RANDOM);
+}
+
+static bool
+rmt_handoff_read_open_sequential(void *context, struct yt_error *error)
+{
+	(void)error;
+	return rmt_handoff_read_record(context,
+	    YT_RMT_HANDOFF_READ_OPEN_SEQUENTIAL);
+}
+
+static bool
+rmt_handoff_read_line(void *context, const uint8_t **line, size_t *length,
+    bool *available, struct yt_error *error)
+{
+	struct rmt_handoff_read_script *script = context;
+
+	(void)error;
+	if (!rmt_handoff_read_record(script, YT_RMT_HANDOFF_READ_LINE))
+		return false;
+	*line = script->line;
+	*length = script->line_length;
+	*available = script->line_available;
+	return true;
+}
+
+static bool
+rmt_handoff_read_close_sequential(void *context, struct yt_error *error)
+{
+	(void)error;
+	return rmt_handoff_read_record(context,
+	    YT_RMT_HANDOFF_READ_CLOSE_SEQUENTIAL);
+}
+
+static bool
+test_rmt_handoff_read_transaction(void)
+{
+	static const struct yt_rmt_handoff_read_ops ops = {
+		rmt_handoff_read_open_random,
+		rmt_handoff_read_lof,
+		rmt_handoff_read_close_random,
+		rmt_handoff_read_open_sequential,
+		rmt_handoff_read_line,
+		rmt_handoff_read_close_sequential,
+	};
+	static const enum yt_rmt_handoff_read_operation expected_calls[] = {
+		YT_RMT_HANDOFF_READ_OPEN_RANDOM,
+		YT_RMT_HANDOFF_READ_LOF,
+		YT_RMT_HANDOFF_READ_CLOSE_RANDOM,
+		YT_RMT_HANDOFF_READ_OPEN_SEQUENTIAL,
+		YT_RMT_HANDOFF_READ_LINE,
+		YT_RMT_HANDOFF_READ_CLOSE_SEQUENTIAL,
+	};
+	static const uint8_t line[] = "DORINFO1.DEF";
+	struct yt_rmt_handoff_read_ops incomplete = ops;
+	struct rmt_handoff_read_script script;
+	struct yt_rmt_handoff_read_state state;
+	uint8_t too_long[512];
+	size_t failed;
+
+	script = (struct rmt_handoff_read_script){
+		.fail_at = SIZE_MAX,
+		.size = 15U,
+		.line = line,
+		.line_length = sizeof(line) - 1U,
+		.line_available = true,
+	};
+	if (!yt_rmt_handoff_read_run(&state, &ops, &script, NULL)
+	    || script.call_count != 6U
+	    || memcmp(script.calls, expected_calls, sizeof(expected_calls)) != 0
+	    || state.failed_operation != YT_RMT_HANDOFF_READ_NONE
+	    || state.size != 15U || !state.random_opened || !state.lof_read
+	    || !state.random_closed || !state.sequential_opened
+	    || !state.line_read || !state.line_available
+	    || state.empty_line_substituted || !state.line_parsed
+	    || !state.sequential_closed || !state.complete
+	    || state.result.standalone
+	    || state.result.path_length != sizeof(line) - 1U
+	    || memcmp(state.result.path, line, sizeof(line) - 1U) != 0)
+		return false;
+
+	memset(&script, 0, sizeof(script));
+	script.fail_at = SIZE_MAX;
+	if (!yt_rmt_handoff_read_run(&state, &ops, &script, NULL)
+	    || script.call_count != 2U
+	    || script.calls[0] != YT_RMT_HANDOFF_READ_OPEN_RANDOM
+	    || script.calls[1] != YT_RMT_HANDOFF_READ_LOF
+	    || !state.random_opened || !state.lof_read || state.random_closed
+	    || state.sequential_opened || !state.line_parsed || !state.complete
+	    || !state.result.standalone || state.result.path_length != 0U)
+		return false;
+
+	script = (struct rmt_handoff_read_script){
+		.fail_at = SIZE_MAX,
+		.size = 1U,
+	};
+	if (!yt_rmt_handoff_read_run(&state, &ops, &script, NULL)
+	    || !state.empty_line_substituted || state.line_available
+	    || state.result.standalone || state.result.path_length != 0U
+	    || script.call_count != 6U)
+		return false;
+
+	for (failed = 0U; failed < 6U; ++failed) {
+		script = (struct rmt_handoff_read_script){
+			.fail_at = failed,
+			.size = 15U,
+			.line = line,
+			.line_length = sizeof(line) - 1U,
+			.line_available = true,
+		};
+		if (yt_rmt_handoff_read_run(&state, &ops, &script, NULL)
+		    || state.failed_operation != expected_calls[failed]
+		    || script.call_count != failed + 1U
+		    || state.random_opened != (failed > 0U)
+		    || state.lof_read != (failed > 1U)
+		    || state.random_closed != (failed > 2U)
+		    || state.sequential_opened != (failed > 3U)
+		    || state.line_read != (failed > 4U)
+		    || state.line_parsed != (failed > 4U)
+		    || state.sequential_closed || state.complete)
+			return false;
+	}
+
+	memset(too_long, 'X', sizeof(too_long));
+	script = (struct rmt_handoff_read_script){
+		.fail_at = SIZE_MAX,
+		.size = 512U,
+		.line = too_long,
+		.line_length = sizeof(too_long),
+		.line_available = true,
+	};
+	if (yt_rmt_handoff_read_run(&state, &ops, &script, NULL)
+	    || state.failed_operation != YT_RMT_HANDOFF_READ_PARSE_LINE
+	    || script.call_count != 5U || !state.line_read || state.line_parsed
+	    || state.sequential_closed || state.complete)
+		return false;
+
+	incomplete.close_sequential = NULL;
+	return !yt_rmt_handoff_read_run(&state, &incomplete, &script, NULL)
+	    && !yt_rmt_handoff_read_run(NULL, &ops, &script, NULL)
+	    && !yt_rmt_handoff_read_run(&state, NULL, &script, NULL);
+}
+
 static bool
 test_rmt_dorinfo_parser(void)
 {
@@ -6061,6 +6250,8 @@ main(void)
 		failure = "RMT standalone entry vectors differ";
 	else if (!test_rmt_handoff_parser())
 		failure = "RMT handoff parser vectors differ";
+	else if (!test_rmt_handoff_read_transaction())
+		failure = "RMT handoff read transaction differs";
 	else if (!test_rmt_dorinfo_parser())
 		failure = "RMT DORINFO parser vectors differ";
 	else if (!test_rmt_remote_status())

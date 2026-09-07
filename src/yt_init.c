@@ -581,6 +581,81 @@ yt_rmt_handoff_parse(const uint8_t *data, size_t length,
 }
 
 bool
+yt_rmt_handoff_read_run(struct yt_rmt_handoff_read_state *state,
+    const struct yt_rmt_handoff_read_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t empty_line[] = "\r";
+	const uint8_t *line;
+	size_t length;
+	bool available;
+
+	if (state == NULL || ops == NULL || ops->open_random == NULL
+	    || ops->lof == NULL || ops->close_random == NULL
+	    || ops->open_sequential == NULL || ops->read_line == NULL
+	    || ops->close_sequential == NULL)
+		return false;
+	memset(state, 0, sizeof(*state));
+	if (!ops->open_random(context, error)) {
+		state->failed_operation = YT_RMT_HANDOFF_READ_OPEN_RANDOM;
+		return false;
+	}
+	state->random_opened = true;
+	if (!ops->lof(context, &state->size, error)) {
+		state->failed_operation = YT_RMT_HANDOFF_READ_LOF;
+		return false;
+	}
+	state->lof_read = true;
+	if (state->size == 0U) {
+		if (!yt_rmt_handoff_parse(NULL, 0U, &state->result)) {
+			state->failed_operation = YT_RMT_HANDOFF_READ_PARSE_LINE;
+			return false;
+		}
+		state->line_parsed = true;
+		state->complete = true;
+		return true;
+	}
+	if (!ops->close_random(context, error)) {
+		state->failed_operation = YT_RMT_HANDOFF_READ_CLOSE_RANDOM;
+		return false;
+	}
+	state->random_closed = true;
+	if (!ops->open_sequential(context, error)) {
+		state->failed_operation = YT_RMT_HANDOFF_READ_OPEN_SEQUENTIAL;
+		return false;
+	}
+	state->sequential_opened = true;
+	line = NULL;
+	length = 0U;
+	available = false;
+	if (!ops->read_line(context, &line, &length, &available, error)) {
+		state->failed_operation = YT_RMT_HANDOFF_READ_LINE;
+		return false;
+	}
+	state->line_read = true;
+	state->line_available = available;
+	/* A physical nonempty file remains remote even for an empty line. */
+	if (length == 0U) {
+		line = empty_line;
+		length = sizeof(empty_line) - 1U;
+		state->empty_line_substituted = true;
+	}
+	if (!yt_rmt_handoff_parse(line, length, &state->result)) {
+		state->failed_operation = YT_RMT_HANDOFF_READ_PARSE_LINE;
+		set_error(error, YT_RANGE, "parse RMT handoff", "RMTINIT.TMP");
+		return false;
+	}
+	state->line_parsed = true;
+	if (!ops->close_sequential(context, error)) {
+		state->failed_operation = YT_RMT_HANDOFF_READ_CLOSE_SEQUENTIAL;
+		return false;
+	}
+	state->sequential_closed = true;
+	state->complete = true;
+	return true;
+}
+
+bool
 yt_rmt_dorinfo_parse(const uint8_t *raw, size_t raw_length,
     uint8_t *storage, size_t storage_capacity,
     struct yt_rmt_dorinfo_result *result)
