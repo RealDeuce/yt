@@ -4571,7 +4571,31 @@ test_brun_internal_fatal(void)
 	    &description_length)
 	    || yt_brun_runtime_error_description(1U, &description, NULL))
 		return false;
+	for (error_number = 1U; error_number <= 0xFFU; ++error_number) {
+		memset(&tape, 0, sizeof(tape));
+		if (!yt_brun_runtime_error_description((uint8_t)error_number,
+		    &description, &description_length)
+		    || !yt_brun_runtime_error_fatal_run((uint8_t)error_number,
+		    "YT-SUB  ", true, 610, 0x1F42U, 0x1ABBU, false, false,
+		    false, 0U, &ops, &tape, &runtime_state)
+		    || runtime_state.error_number != error_number
+		    || runtime_state.error_description_length != description_length
+		    || memcmp(runtime_state.error_description, description,
+		    description_length) != 0
+		    || runtime_state.terminal.local_length <= description_length
+		    || runtime_state.terminal.local_bytes[0] != '\r'
+		    || memcmp(runtime_state.terminal.local_bytes + 1U,
+		    description, description_length) != 0
+		    || tape.event_count != 6U
+		    || !runtime_state.terminal.ended)
+			return false;
+	}
+	if (yt_brun_runtime_error_fatal_run(0U, "YT-SUB  ", true, 610,
+	    0x1F42U, 0x1ABBU, false, false, false, 0U, &ops, &tape,
+	    &runtime_state))
+		return false;
 
+	memset(&tape, 0, sizeof(tape));
 	if (!yt_brun_internal_fatal_run(YT_BRUN_INTERNAL_FATAL_OWNER,
 	    "YTCONFIG", false, 0, 0x2222U, 0x0EE5U, false, true, true,
 	    0x0607U, &ops, &tape, &state)

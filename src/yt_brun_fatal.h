@@ -96,4 +96,13 @@ bool yt_brun_runtime_fatal_run(uint8_t error_number,
 	const struct yt_brun_internal_fatal_ops *ops, void *context,
 	struct yt_brun_runtime_fatal_state *state);
 
+/* Selects the canonical description and runs the same shared terminal. */
+bool yt_brun_runtime_error_fatal_run(uint8_t error_number,
+	const char module[8], bool has_source_line, int32_t source_line,
+	uint16_t module_segment, uint16_t saved_ip, bool redirected_stdin,
+	bool function_bar, bool cursor_shape_known,
+	uint16_t process_entry_cursor_shape,
+	const struct yt_brun_internal_fatal_ops *ops, void *context,
+	struct yt_brun_runtime_fatal_state *state);
+
 #endif

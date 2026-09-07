@@ -275,3 +275,24 @@ yt_brun_runtime_fatal_run(uint8_t error_number,
 	    redirected_stdin, function_bar, cursor_shape_known,
 	    process_entry_cursor_shape, ops, context, &state->terminal);
 }
+
+bool
+yt_brun_runtime_error_fatal_run(uint8_t error_number,
+    const char module[8], bool has_source_line, int32_t source_line,
+    uint16_t module_segment, uint16_t saved_ip, bool redirected_stdin,
+    bool function_bar, bool cursor_shape_known,
+    uint16_t process_entry_cursor_shape,
+    const struct yt_brun_internal_fatal_ops *ops, void *context,
+    struct yt_brun_runtime_fatal_state *state)
+{
+	const uint8_t *description;
+	size_t description_length;
+
+	if (!yt_brun_runtime_error_description(error_number, &description,
+	    &description_length))
+		return false;
+	return yt_brun_runtime_fatal_run(error_number, description,
+	    description_length, module, has_source_line, source_line,
+	    module_segment, saved_ip, redirected_stdin, function_bar,
+	    cursor_shape_known, process_entry_cursor_shape, ops, context, state);
+}
