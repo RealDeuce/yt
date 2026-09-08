@@ -206,6 +206,9 @@ enum navigation_field_kind {
 	NAVIGATION_FIELD_NEAREST_SECTOR,
 	NAVIGATION_FIELD_NEAREST_PORT,
 	NAVIGATION_FIELD_NEAREST_OWNER,
+	NAVIGATION_FIELD_PROFIT_PLAYER,
+	NAVIGATION_FIELD_PROFIT_SECTOR,
+	NAVIGATION_FIELD_PROFIT_PORT,
 };
 
 struct yt_session {
@@ -617,13 +620,6 @@ static bool fighter_shield_spill(struct yt_session *session,
     struct yt_error *error);
 static bool scanner_read_player(struct yt_session *session,
     float basic_record, struct yt_player *player, struct yt_error *error);
-
-static bool
-session_poll_merged(struct yt_session *session,
-    struct yt_input_value *selected)
-{
-	return yt_input_poll_merged(&session->input, selected);
-}
 
 static void
 session_current_warps(const struct yt_session *session, float warps[6])
@@ -18581,64 +18577,6 @@ computer_spies(struct yt_session *session, struct yt_error *error)
 	return yt_computer_spy_run(&state, &ops, session, error);
 }
 
-static void
-project_port_market(const struct yt_session *session,
-    const struct yt_port *port, float prices[4], float projected_stock[3])
-{
-	float minute = current_minute();
-	float elapsed;
-	size_t index;
-
-	memset(prices, 0, 4U * sizeof(*prices));
-	elapsed = single_add(
-	    single_sub((float)session->door->game.today, port->last_day),
-	    single_div(single_sub(minute, port->last_minute), 1440.0f));
-	if (elapsed > 10.0f || elapsed < 0.0f)
-		elapsed = 10.0f;
-	for (index = 0; index < 3; ++index) {
-		float production = port->production[index];
-		float stock = single_add(port->stock[index],
-		    single_mul(production, elapsed));
-		float candidate = single_div(stock, 10.0f);
-		float numerator;
-		float denominator;
-		float ratio;
-		float scale;
-		float raw;
-
-		if (projected_stock != NULL)
-			projected_stock[index] = stock;
-
-		if (candidate > production)
-			production = candidate;
-		numerator = single_mul(port->factor[index], stock);
-		denominator = single_mul(production, 1000.0f);
-		ratio = single_div(numerator, denominator);
-		scale = single_sub(1.0f, ratio);
-		raw = single_mul(yt_route_process_single(&session->route_process,
-		    (uint16_t)(YT_MARKET_BASE_ADDRESS + 4U * index)), scale);
-		prices[index + 1U] = floorf(single_add(raw, 0.5f));
-		if (prices[index + 1U] < 1.0f)
-			prices[index + 1U] = 1.0f;
-	}
-}
-
-static bool
-profit_project_port_market(struct yt_session *session,
-    const struct yt_port *port, float prices[4], struct yt_error *error)
-{
-	int today;
-	int adjusted_year;
-
-	if (!session_current_date_serial(session, &today, &adjusted_year,
-	    error))
-		return false;
-	session->door->game.today = today;
-	session->door->game.adjusted_year = adjusted_year;
-	project_port_market(session, port, prices, NULL);
-	return true;
-}
-
 static bool
 nearest_session_read(void *context, enum yt_nearest_field_kind kind,
     float expression, uint32_t physical_record, struct yt_record *record,
@@ -18920,300 +18858,203 @@ computer_nearest_ports(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
-profit_range_error(struct yt_error *error, const char *operation)
+profit_session_read(void *context, enum yt_profit_field_kind kind,
+    float expression, uint32_t physical_record, struct yt_record *record,
+    struct yt_error *error)
 {
-	if (error != NULL) {
-		error->status = YT_RANGE;
-		snprintf(error->operation, sizeof(error->operation), "%s",
-		    operation);
-	}
-	return false;
+	struct yt_session *session = context;
+
+	(void)kind;
+	(void)expression;
+	return yt_database_read(&session->door->game.database,
+	    (size_t)physical_record, record, error);
 }
 
 static bool
-profit_cint(struct yt_session *session, float value, int *result,
-    const char *operation, struct yt_error *error)
+profit_session_day(void *context, float *day, struct yt_error *error)
 {
-	bool overflow;
-	int32_t converted = qb_cint_mode((double)value,
-	    session->presentation.sound.conversion_mode, &overflow);
+	struct yt_session *session = context;
+	int today;
+	int adjusted_year;
 
-	if (overflow)
-		return profit_range_error(error, operation);
-	*result = (int)converted;
+	if (!session_current_date_serial(session, &today, &adjusted_year, error))
+		return false;
+	session->door->game.today = today;
+	session->door->game.adjusted_year = adjusted_year;
+	*day = (float)today;
+	return true;
+}
+
+static bool
+profit_session_timer(void *context, float *seconds, struct yt_error *error)
+{
+	(void)context;
+	(void)error;
+	*seconds = (float)yt_platform_timer();
+	return true;
+}
+
+static const char *
+profit_session_operation(enum yt_profit_output_kind kind)
+{
+	static const char *const operations[] = {
+		[YT_PROFIT_LEADING_BLANK] = "profit leading blank",
+		[YT_PROFIT_TITLE] = "adjacent profit title",
+		[YT_PROFIT_TITLE_BLANK] = "adjacent profit title blank",
+		[YT_PROFIT_NO_CURRENT_PORT] = "adjacent profit no-port row",
+		[YT_PROFIT_ROW] = "profit row",
+		[YT_PROFIT_COLUMN_SEPARATOR] = "global profit separator",
+		[YT_PROFIT_ROW_END] = "global profit row ending",
+		[YT_PROFIT_NO_RESULTS] = "adjacent profit empty row",
+		[YT_PROFIT_PAGER_PROMPT] = "profit pager prompt",
+		[YT_PROFIT_PAGER_ECHO] = "profit pager echo",
+		[YT_PROFIT_END_BANNER] = "global profit end row",
+	};
+
+	if ((size_t)kind >= YT_ARRAY_LEN(operations)
+	    || operations[kind] == NULL)
+		return "profit presentation";
+	return operations[kind];
+}
+
+static bool
+profit_session_present(void *context, enum yt_profit_output_kind kind,
+    enum yt_profit_present_mode mode, const uint8_t *text, size_t length,
+    struct yt_nearest_style *style, struct yt_error *error)
+{
+	struct yt_session *session = context;
+	enum session_present_text_kind present_kind;
+	bool ok;
+
+	switch (mode) {
+	case YT_PROFIT_PRESENT_LINE:
+		present_kind = SESSION_PRESENT_LINE;
+		break;
+	case YT_PROFIT_PRESENT_RAW:
+		present_kind = SESSION_PRESENT_RAW;
+		break;
+	case YT_PROFIT_PRESENT_BOLD_LINE:
+		present_kind = SESSION_PRESENT_BOLD_LINE;
+		break;
+	case YT_PROFIT_PRESENT_BOLD_RAW:
+		present_kind = SESSION_PRESENT_BOLD_RAW;
+		break;
+	default:
+		if (error != NULL)
+			error->status = YT_INVALID;
+		return false;
+	}
+	session_set_foreground(session, style->foreground);
+	yt_present_set_bold(&session->presentation, style->bold);
+	yt_present_set_blink(&session->presentation, style->blink);
+	ok = session_present_text(session, text, length, present_kind,
+	    profit_session_operation(kind), error);
+	style->foreground = session_foreground(session);
+	style->bold = yt_present_bold(&session->presentation);
+	style->blink = yt_present_blink(&session->presentation);
+	return ok;
+}
+
+static bool
+profit_session_input(void *context, uint8_t *text, size_t capacity,
+    size_t *length, bool *available, struct yt_error *error)
+{
+	struct yt_session *session = context;
+	struct yt_input_value selected;
+
+	(void)error;
+	*length = 0U;
+	*available = false;
+	if (!session_carrier(session)
+	    || !yt_input_poll_legacy(&session->input, session_mode(session),
+	    YT_INPUT_PHASE_B05D, &selected))
+		return false;
+	if (selected.length == 0U)
+		return true;
+	if (selected.length > capacity)
+		return false;
+	memcpy(text, selected.bytes, selected.length);
+	*length = selected.length;
+	*available = true;
 	return true;
 }
 
 static void
-profit_set_pair_color(struct yt_session *session, float source, float target)
+profit_session_uppercase(void *context, uint8_t *text, size_t length)
 {
-	int logical = -1;
-
-	if ((source == 1.0f && target == 2.0f)
-	    || (source == 2.0f && target == 1.0f))
-		logical = 3;
-	else if ((source == 1.0f && target == 3.0f)
-	    || (source == 3.0f && target == 1.0f))
-		logical = 2;
-	else if ((source == 2.0f && target == 3.0f)
-	    || (source == 3.0f && target == 2.0f))
-		logical = 1;
-	if (logical >= 0) {
-		session_set_foreground(session, (float)logical);
-	}
-}
-
-static size_t
-profit_right_four(uint8_t dest[4], const char *number)
-{
-	char joined[80];
-	size_t length;
-
-	snprintf(joined, sizeof(joined), "  %s", number);
-	length = strlen(joined);
-	if (length > 4U) {
-		memcpy(dest, joined + length - 4U, 4U);
-		return 4U;
-	}
-	memcpy(dest, joined, length);
-	return length;
+	session_compat_upper_n(context, text, length);
 }
 
 static bool
-profit_emit_row(struct yt_session *session, float source_number,
-    int target_number, const struct yt_port *source_port,
-    const struct yt_port *target_port, const float source_price[4],
-    const float target_price[4], bool all, int *result_count,
-    struct yt_error *error)
+profit_session_checkpoint(void *context,
+    enum yt_profit_checkpoint checkpoint, struct yt_error *error)
 {
-	static const char *arrows[3] = {"Equ -> ", "Org -> ", "Ore -> "};
-	static const char *labels[3] = {"Equ", "Org", "Ore"};
-	uint8_t row[64];
-	char number[80];
-	char profit_text[80];
-	size_t length = 0;
-	int source_index;
-	int target_index;
-	float profit;
-	const char *arrow = source_port->commodity_class == 1.0f
-	    ? arrows[0] : source_port->commodity_class == 2.0f
-	    ? arrows[1] : arrows[2];
-	const char *label = target_port->commodity_class == 1.0f
-	    ? labels[0] : target_port->commodity_class == 2.0f
-	    ? labels[1] : labels[2];
-
-	if (all)
-		++*result_count;
-	if (!profit_cint(session,
-	    single_sub(4.0f, source_port->commodity_class), &source_index,
-	    "profit source class index", error)
-	    || !profit_cint(session,
-	    single_sub(4.0f, target_port->commodity_class), &target_index,
-	    "profit target class index", error))
-		return false;
-	if (source_index < 0 || source_index > 3
-	    || target_index < 0 || target_index > 3)
-		return profit_range_error(error, "profit raw price-array index");
-	profit = single_add(fabsf(single_sub(source_price[source_index],
-	    target_price[source_index])), fabsf(single_sub(
-	    target_price[target_index], source_price[target_index])));
-	profit_set_pair_color(session, source_port->commodity_class,
-	    target_port->commodity_class);
-	qb_str_single(number, sizeof(number), source_number);
-	length += profit_right_four(row + length, number);
-	row[length++] = ',';
-	qb_str_integer(number, sizeof(number), (int16_t)target_number);
-	length += profit_right_four(row + length, number);
-	row[length++] = ' ';
-	memcpy(row + length, arrow, strlen(arrow));
-	length += strlen(arrow);
-	memcpy(row + length, label, strlen(label));
-	length += strlen(label);
-	memcpy(row + length, " @ Profit of", strlen(" @ Profit of"));
-	length += strlen(" @ Profit of");
-	qb_str_single(profit_text, sizeof(profit_text), profit);
-	{
-		char field[96];
-
-		snprintf(field, sizeof(field), "%s   ", profit_text);
-		memcpy(row + length, field, 4U);
-		length += 4U;
-	}
-	if (!all)
-		return session_present_text(session, row, length,
-		    SESSION_PRESENT_BOLD_LINE, "adjacent profit row", error);
-	if (!session_present_text(session, row, length,
-	    SESSION_PRESENT_BOLD_RAW, "global profit row", error))
-		return false;
-	session_set_foreground(session, 6.0f);
-	if ((*result_count & 1) != 0) {
-		static const uint8_t separator[] = {' ', 0xba, ' '};
-
-		if (!session_present_text(session, separator, sizeof(separator),
-		    SESSION_PRESENT_BOLD_RAW, "global profit separator", error))
-			return false;
-	}
-	else if (!session_present_text(session, NULL, 0,
-	    SESSION_PRESENT_LINE, "global profit row ending", error))
-		return false;
+	(void)context;
+	(void)checkpoint;
+	(void)error;
 	return true;
 }
 
-static bool
-profit_more(struct yt_session *session, bool *stop, struct yt_error *error)
+static enum navigation_field_kind
+profit_navigation_field(enum yt_profit_field_kind kind)
 {
-	static const uint8_t prompt[] = "More? [Y/n] ";
-
-	*stop = false;
-	for (;;) {
-		struct yt_input_value selected;
-		int key;
-		uint8_t response;
-
-		if (!session_present_text(session, prompt, sizeof(prompt) - 1U,
-		    SESSION_PRESENT_RAW, "profit pager prompt", error))
-			return false;
-		do {
-			if (!session_carrier(session))
-				return false;
-			if (!session_poll_merged(session, &selected))
-				return false;
-			key = selected.length == 1 ? selected.bytes[0] : 0;
-			if (key == 0)
-				od_sleep(10);
-		} while (key == 0);
-		if (key == '\r' || key == '\n')
-			key = 'Y';
-		response = (uint8_t)key;
-		session_compat_upper_n(session, &response, 1U);
-		if (!session_present_text(session, &response, 1,
-		    SESSION_PRESENT_LINE, "profit pager echo", error))
-			return false;
-		if (response == 'Y')
-			return true;
-		if (response == 'N') {
-			*stop = true;
-			return true;
-		}
+	switch (kind) {
+	case YT_PROFIT_FIELD_PLAYER:
+		return NAVIGATION_FIELD_PROFIT_PLAYER;
+	case YT_PROFIT_FIELD_SECTOR:
+		return NAVIGATION_FIELD_PROFIT_SECTOR;
+	case YT_PROFIT_FIELD_PORT:
+		return NAVIGATION_FIELD_PROFIT_PORT;
+	case YT_PROFIT_FIELD_NONE:
+	default:
+		return NAVIGATION_FIELD_NONE;
 	}
 }
 
 static bool
-computer_profit(struct yt_session *session, bool all,
+computer_profit_exact(struct yt_session *session, bool all,
     struct yt_error *error)
 {
-	float adjacent_source = all ? 0.0f
-	    : single_sub(yt_route_process_single(&session->route_process,
-	    YT_CURRENT_SECTOR_RECORD_ADDRESS),
-	    session_sector_offset(session));
-	int source_start = all ? 2 : (int)adjacent_source;
-	int source_end = all ? sector_count(session)
-	    : (int)adjacent_source;
-	int source_number;
-	int result_count = 0;
-	bool found = false;
+	static const struct yt_profit_ops ops = {
+		profit_session_read,
+		profit_session_day,
+		profit_session_timer,
+		profit_session_present,
+		profit_session_input,
+		profit_session_uppercase,
+		profit_session_checkpoint,
+	};
+	struct yt_profit_state state;
+	bool ok;
 
-	if (all) {
-		if (!session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "global profit leading blank", error))
-			return false;
-	}
-	else {
-		session_set_foreground(session, 7.0f);
-		if (!session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "adjacent profit leading blank", error)
-		    || !session_present_text(session,
-		    (const uint8_t *)
-		    "Profits of a two way trade to ports in adjacent sectors.",
-		    strlen("Profits of a two way trade to ports in adjacent sectors."),
-		    SESSION_PRESENT_BOLD_LINE, "adjacent profit title", error)
-		    || !session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "adjacent profit title blank", error))
-			return false;
-	}
-	for (source_number = source_start; source_number <= source_end;
-	    ++source_number) {
-		struct yt_sector source_sector;
-		struct yt_port source_port;
-		float source_price[4];
-		size_t slot;
+	memset(&state, 0, sizeof(state));
+	state.global = all;
+	state.conversion_mode = session->presentation.sound.conversion_mode;
+	state.current_sector_record = yt_route_process_single(
+	    &session->route_process, YT_CURRENT_SECTOR_RECORD_ADDRESS);
+	state.sector_record_offset = session_sector_offset(session);
+	state.port_record_offset = session_port_offset(session);
+	session_market_bases(session, state.base_price);
+	state.current_day = (float)session->door->game.today;
+	state.style.foreground = session_foreground(session);
+	state.style.bold = yt_present_bold(&session->presentation);
+	state.style.blink = yt_present_blink(&session->presentation);
+	/* The immediately preceding A41C prompt hydration owns the live FIELD. */
+	state.field = session->player.record;
+	state.field_record = (uint32_t)session_record(session);
+	state.field_kind = YT_PROFIT_FIELD_PLAYER;
+	state.field_valid = true;
 
-		if (!session_read_sector(session, source_number,
-		    &source_sector, error))
-			return false;
-		if ((!all && (source_sector.port == 0.0f
-		    || source_sector.port == 1.0f))
-		    || (all && source_sector.port <= 0.0f)) {
-			if (!all)
-				return session_present_text(session,
-				    (const uint8_t *)
-				    "NO trading port in your sector!",
-				    strlen("NO trading port in your sector!"),
-				    SESSION_PRESENT_BOLD_LINE,
-				    "adjacent profit no-port row", error);
-			continue;
-		}
-		if (!session_read_port(session,
-		    (int)source_sector.port, &source_port, error))
-			return false;
-		if (!profit_project_port_market(session, &source_port,
-		    source_price, error))
-			return false;
-		for (slot = 0; slot < 6; ++slot) {
-			int target_number;
-			struct yt_sector target_sector;
-			struct yt_port target_port;
-			float target_price[4];
-			bool stop;
-
-			if (!profit_cint(session, source_sector.warps[slot],
-			    &target_number, "profit warp target CINT", error))
-				return false;
-			if (target_number <= 1)
-				continue;
-			if (!session_read_sector(session,
-			    target_number, &target_sector, error))
-				return false;
-			if (target_sector.port == 0.0f
-			    || (all && target_number <= source_number))
-				continue;
-			if (!session_read_port(session,
-			    (int)target_sector.port, &target_port, error))
-				return false;
-			if (target_port.commodity_class
-			    == source_port.commodity_class)
-				continue;
-			if (!profit_project_port_market(session, &target_port,
-			    target_price, error)
-			    || !profit_emit_row(session,
-			    all ? (float)source_number : adjacent_source,
-			    target_number,
-			    &source_port, &target_port, source_price, target_price,
-			    all, &result_count, error))
-				return false;
-			found = true;
-			if (all && result_count % 44 == 0) {
-				if (!profit_more(session, &stop, error))
-					return false;
-				if (stop)
-					return true;
-			}
-		}
+	ok = yt_profit_run(&state, &ops, session, error);
+	session_set_foreground(session, state.style.foreground);
+	if (state.field_valid) {
+		session->navigation_field_active = true;
+		session->navigation_field_kind =
+		    profit_navigation_field(state.field_kind);
+		session->navigation_field_record = (int)state.field_record;
+		session->navigation_field = state.field;
 	}
-	if (!all && !found)
-		return session_present_text(session,
-		    (const uint8_t *)
-		    "No ports you can trade with in adjacent sectors!",
-		    strlen("No ports you can trade with in adjacent sectors!"),
-		    SESSION_PRESENT_BOLD_LINE, "adjacent profit empty row", error);
-	if (all) {
-		session_set_foreground(session, 7.0f);
-		return session_present_text(session,
-		    (const uint8_t *)" *-[ End of List ]-*",
-		    strlen(" *-[ End of List ]-*"), SESSION_PRESENT_BOLD_LINE,
-		    "global profit end row", error);
-	}
-	return true;
+	return ok;
 }
 
 static bool
@@ -19590,7 +19431,7 @@ computer_menu(struct yt_session *session, bool *enter_sector,
 			continue;
 		}
 		if (strcmp(command, "17") == 0) {
-			if (!computer_profit(session, false, error))
+			if (!computer_profit_exact(session, false, error))
 				return false;
 			continue;
 		}
@@ -19645,7 +19486,7 @@ computer_menu(struct yt_session *session, bool *enter_sector,
 			continue;
 		}
 		if (strcmp(command, "16") == 0) {
-			if (!computer_profit(session, true, error))
+			if (!computer_profit_exact(session, true, error))
 				return false;
 			continue;
 		}

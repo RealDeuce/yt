@@ -3437,7 +3437,6 @@ yt_nearest_run(struct yt_nearest_state *state,
 	state->current_team = 0.0f;
 	state->start_sector_raw = 0.0f;
 	state->display_sector = 0.0f;
-	state->current_day = 0.0f;
 	state->timer_seconds = 0.0f;
 	state->page_count = 4.0f;
 	if (qb_mbf32_encode(4.0f, state->page_count_raw) == QB_MBF_OVERFLOW)
@@ -3751,6 +3750,571 @@ yt_nearest_run(struct yt_nearest_state *state,
 		return false;
 	state->complete = true;
 	state->result = YT_NEAREST_COMPLETE;
+	return true;
+}
+
+static bool
+profit_present(struct yt_profit_state *state, const struct yt_profit_ops *ops,
+    void *context, enum yt_profit_output_kind kind,
+    enum yt_profit_present_mode mode, const uint8_t *text, size_t length,
+    struct yt_error *error)
+{
+	if (!ops->present(context, kind, mode, text, length, &state->style,
+	    error))
+		return false;
+	++state->outputs;
+	return true;
+}
+
+static bool
+profit_checkpoint(const struct yt_profit_ops *ops, void *context,
+    enum yt_profit_checkpoint checkpoint, struct yt_error *error)
+{
+	return ops->checkpoint(context, checkpoint, error);
+}
+
+static bool
+profit_read(struct yt_profit_state *state, const struct yt_profit_ops *ops,
+    void *context, enum yt_profit_field_kind kind, float expression,
+    struct yt_record *record, struct yt_error *error)
+{
+	uint32_t physical;
+
+	if (!nearest_single(expression, &state->current_record_expression,
+	    error, "profit record expression"))
+		return false;
+	physical = qb_brun_random_record_number(state->current_record_expression);
+	if (!ops->read_record(context, kind, state->current_record_expression,
+	    physical, record, error))
+		return false;
+	state->field = *record;
+	state->field_kind = kind;
+	state->field_record = physical;
+	state->field_valid = true;
+	++state->reads;
+	return true;
+}
+
+static bool
+profit_cint(const struct yt_profit_state *state, float value, int *result,
+    struct yt_error *error, const char *operation)
+{
+	bool overflow;
+	int32_t converted = qb_cint_mode((double)value,
+	    state->conversion_mode, &overflow);
+
+	if (overflow)
+		return nearest_error(error, operation);
+	*result = (int)converted;
+	return true;
+}
+
+static bool
+profit_raw_memory_boundary(struct yt_profit_state *state,
+    struct yt_error *error)
+{
+	state->result = YT_PROFIT_UNRESOLVED_RAW_MEMORY;
+	if (error != NULL) {
+		error->status = YT_INVALID;
+		error->system_error = 0;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    "profit unresolved price-array index");
+		error->path[0] = '\0';
+	}
+	return false;
+}
+
+static bool
+profit_coerce_warps(const struct yt_profit_state *state,
+    const struct yt_sector *sector, int warps[6], struct yt_error *error)
+{
+	size_t slot;
+
+	for (slot = 0U; slot < 6U; ++slot) {
+		if (!profit_cint(state, sector->warps[slot], &warps[slot], error,
+		    "profit warp target CINT"))
+			return false;
+	}
+	return true;
+}
+
+static bool
+profit_project(struct yt_profit_state *state, const struct yt_profit_ops *ops,
+    void *context, const struct yt_port *port,
+    struct yt_nearest_market *market, float prices[4],
+    struct yt_error *error)
+{
+	if (!ops->observe_day(context, &state->current_day, error))
+		return false;
+	++state->day_observations;
+	if (!nearest_single(state->current_day, &state->current_day, error,
+	    "profit current day")
+	    || !ops->observe_timer(context, &state->timer_seconds, error))
+		return false;
+	++state->timer_observations;
+	if (!nearest_single(state->timer_seconds, &state->timer_seconds, error,
+	    "profit TIMER")
+	    || !yt_nearest_market_project(market, port, state->base_price,
+	    state->current_day, state->timer_seconds, error))
+		return false;
+	prices[0] = 0.0f;
+	prices[1] = market->price[0];
+	prices[2] = market->price[1];
+	prices[3] = market->price[2];
+	return true;
+}
+
+static void
+profit_pair_color(struct yt_profit_state *state, float source, float target)
+{
+	if ((source == 1.0f && target == 2.0f)
+	    || (source == 2.0f && target == 1.0f))
+		state->style.foreground = 3.0f;
+	else if ((source == 1.0f && target == 3.0f)
+	    || (source == 3.0f && target == 1.0f))
+		state->style.foreground = 2.0f;
+	else if ((source == 2.0f && target == 3.0f)
+	    || (source == 3.0f && target == 2.0f))
+		state->style.foreground = 1.0f;
+}
+
+static bool
+profit_right_four(uint8_t result[4], float value, bool integer)
+{
+	char number[64];
+	uint8_t source[68];
+	int rendered = integer
+	    ? qb_str_integer(number, sizeof(number), (int16_t)(int)value)
+	    : qb_str_single(number, sizeof(number), value);
+	size_t length;
+	size_t amount;
+
+	if (rendered < 0)
+		return false;
+	source[0] = ' ';
+	source[1] = ' ';
+	memcpy(source + 2U, number, (size_t)rendered);
+	length = 2U + (size_t)rendered;
+	amount = length < 4U ? length : 4U;
+	memset(result, ' ', 4U - amount);
+	memcpy(result + 4U - amount, source + length - amount, amount);
+	return true;
+}
+
+static bool
+profit_compose_row(struct yt_profit_state *state,
+    const struct yt_profit_ops *ops, void *context, float source_number,
+    int target_number, const struct yt_port *source_port,
+    const struct yt_port *target_port, const float source_price[4],
+    const float target_price[4], uint8_t row[36],
+    struct yt_error *error)
+{
+	static const uint8_t arrows[3][7] = {
+		{'E', 'q', 'u', ' ', '-', '>', ' '},
+		{'O', 'r', 'g', ' ', '-', '>', ' '},
+		{'O', 'r', 'e', ' ', '-', '>', ' '},
+	};
+	static const uint8_t labels[3][3] = {
+		{'E', 'q', 'u'}, {'O', 'r', 'g'}, {'O', 'r', 'e'},
+	};
+	float source_subscript;
+	float target_subscript;
+	float source_leg;
+	float target_leg;
+	float profit;
+	int source_index;
+	int target_index;
+	int source_text = source_port->commodity_class == 1.0f ? 0
+	    : source_port->commodity_class == 2.0f ? 1 : 2;
+	int target_text = target_port->commodity_class == 1.0f ? 0
+	    : target_port->commodity_class == 2.0f ? 1 : 2;
+	char number[64];
+	uint8_t field[68];
+	int rendered;
+	size_t length = 0U;
+
+	if (!nearest_sub(4.0f, source_port->commodity_class,
+	    &source_subscript, error, "profit source class subtraction")
+	    || !profit_cint(state, source_subscript, &source_index, error,
+	    "profit source class CINT")
+	    || !nearest_sub(4.0f, target_port->commodity_class,
+	    &target_subscript, error, "profit target class subtraction")
+	    || !profit_cint(state, target_subscript, &target_index, error,
+	    "profit target class CINT"))
+		return false;
+	if (source_index < 0 || source_index > 3
+	    || target_index < 0 || target_index > 3)
+		return profit_raw_memory_boundary(state, error);
+	if (!nearest_sub(source_price[source_index],
+	    target_price[source_index], &source_leg, error,
+	    "profit source leg")
+	    || !nearest_single(fabsf(source_leg), &source_leg, error,
+	    "profit source ABS")
+	    || !nearest_sub(target_price[target_index],
+	    source_price[target_index], &target_leg, error,
+	    "profit target leg")
+	    || !nearest_single(fabsf(target_leg), &target_leg, error,
+	    "profit target ABS")
+	    || !nearest_add(source_leg, target_leg, &profit, error,
+	    "profit spread"))
+		return false;
+	profit_pair_color(state, source_port->commodity_class,
+	    target_port->commodity_class);
+	if (!profit_checkpoint(ops, context, YT_PROFIT_ROW_CONSTRUCTION, error)
+	    || !profit_right_four(row + length, source_number, false))
+		return false;
+	length += 4U;
+	row[length++] = ',';
+	if (!profit_right_four(row + length, (float)target_number, true))
+		return nearest_error(error, "profit target formatting");
+	length += 4U;
+	row[length++] = ' ';
+	memcpy(row + length, arrows[source_text], 7U);
+	length += 7U;
+	memcpy(row + length, labels[target_text], 3U);
+	length += 3U;
+	memcpy(row + length, " @ Profit of", 12U);
+	length += 12U;
+	rendered = qb_str_single(number, sizeof(number), profit);
+	if (rendered < 0 || (size_t)rendered + 3U > sizeof(field))
+		return nearest_error(error, "profit value formatting");
+	memcpy(field, number, (size_t)rendered);
+	memset(field + (size_t)rendered, ' ', 3U);
+	memcpy(row + length, field, 4U);
+	length += 4U;
+	if (length != 36U)
+		return nearest_error(error, "profit row width");
+	return true;
+}
+
+static bool
+profit_page(struct yt_profit_state *state, const struct yt_profit_ops *ops,
+    void *context, bool *keep_going, struct yt_error *error)
+{
+	static const uint8_t prompt[] = "More? [Y/n] ";
+	uint8_t response[8];
+	size_t length;
+	bool available;
+
+	for (;;) {
+		if (!profit_present(state, ops, context, YT_PROFIT_PAGER_PROMPT,
+		    YT_PROFIT_PRESENT_RAW, prompt, sizeof(prompt) - 1U, error))
+			return false;
+		++state->pager_prompts;
+		for (;;) {
+			length = 0U;
+			available = false;
+			if (!ops->input(context, response, sizeof(response), &length,
+			    &available, error))
+				return false;
+			if (available)
+				break;
+		}
+		if (length == 1U && response[0] == '\r')
+			response[0] = 'Y';
+		ops->uppercase(context, response, length);
+		if (!profit_present(state, ops, context, YT_PROFIT_PAGER_ECHO,
+		    YT_PROFIT_PRESENT_LINE, response, length, error))
+			return false;
+		if (length == 1U && (response[0] == 'Y' || response[0] == 'N')) {
+			*keep_going = response[0] == 'Y';
+			return true;
+		}
+	}
+}
+
+static bool
+profit_emit_pair(struct yt_profit_state *state,
+    const struct yt_profit_ops *ops, void *context, float source_number,
+    int target_number, const struct yt_port *source_port,
+    const struct yt_port *target_port, const float source_price[4],
+    const float target_price[4], bool *keep_going, struct yt_error *error)
+{
+	static const uint8_t separator[] = {' ', 0xba, ' '};
+	uint8_t row[36];
+	int count;
+
+	*keep_going = true;
+	if (state->global) {
+		if (!nearest_add(state->result_count, 1.0f,
+		    &state->result_count, error, "profit result counter")
+		    || qb_mbf32_encode(state->result_count,
+		    state->result_count_raw) == QB_MBF_OVERFLOW)
+			return nearest_error(error, "profit result counter raw");
+	}
+	if (!profit_compose_row(state, ops, context, source_number,
+	    target_number, source_port, target_port, source_price, target_price,
+	    row, error))
+		return false;
+	if (!state->global) {
+		if (!profit_present(state, ops, context, YT_PROFIT_ROW,
+		    YT_PROFIT_PRESENT_BOLD_LINE, row, sizeof(row), error))
+			return false;
+		++state->rows;
+		return true;
+	}
+	if (!profit_present(state, ops, context, YT_PROFIT_ROW,
+	    YT_PROFIT_PRESENT_BOLD_RAW, row, sizeof(row), error))
+		return false;
+	++state->rows;
+	state->style.foreground = 6.0f;
+	if (!profit_cint(state, state->result_count, &count, error,
+	    "profit parity CINT"))
+		return false;
+	if ((count & 1) != 0) {
+		if (!profit_present(state, ops, context,
+		    YT_PROFIT_COLUMN_SEPARATOR, YT_PROFIT_PRESENT_BOLD_RAW,
+		    separator, sizeof(separator), error))
+			return false;
+	}
+	else if (!profit_present(state, ops, context, YT_PROFIT_ROW_END,
+	    YT_PROFIT_PRESENT_LINE, NULL, 0U, error))
+		return false;
+	if (!profit_cint(state, state->result_count, &count, error,
+	    "profit pager CINT"))
+		return false;
+	if (count % 44 == 0 && !profit_page(state, ops, context,
+	    keep_going, error))
+		return false;
+	return true;
+}
+
+bool
+yt_profit_run(struct yt_profit_state *state, const struct yt_profit_ops *ops,
+    void *context, struct yt_error *error)
+{
+	static const uint8_t title[] =
+	    "Profits of a two way trade to ports in adjacent sectors.";
+	static const uint8_t no_port[] = "NO trading port in your sector!";
+	static const uint8_t no_results[] =
+	    "No ports you can trade with in adjacent sectors!";
+	static const uint8_t end_banner[] = " *-[ End of List ]-*";
+	float source;
+
+	if (state == NULL || ops == NULL || ops->read_record == NULL
+	    || ops->observe_day == NULL || ops->observe_timer == NULL
+	    || ops->present == NULL || ops->input == NULL
+	    || ops->uppercase == NULL || ops->checkpoint == NULL)
+		return startup_configuration_error(error, YT_INVALID,
+		    "profit arguments");
+	state->current_record_expression = 0.0f;
+	state->timer_seconds = 0.0f;
+	state->maximum_sector = 0.0f;
+	state->result_count = 0.0f;
+	memcpy(state->initial_result_raw,
+	    state->global ? "\x00\x00\x04\x00" : "\x00\x00\x20\x00", 4U);
+	memset(state->result_count_raw, 0, sizeof(state->result_count_raw));
+	if (state->global)
+		memcpy(state->result_count_raw, state->initial_result_raw,
+		    sizeof(state->result_count_raw));
+	state->rows = 0U;
+	state->outputs = 0U;
+	state->reads = 0U;
+	state->day_observations = 0U;
+	state->timer_observations = 0U;
+	state->pager_prompts = 0U;
+	state->stopped = false;
+	state->complete = false;
+	state->result = YT_PROFIT_INCOMPLETE;
+
+	if (!state->global)
+		state->style.foreground = 7.0f;
+	if (!profit_present(state, ops, context, YT_PROFIT_LEADING_BLANK,
+	    YT_PROFIT_PRESENT_LINE, NULL, 0U, error))
+		return false;
+	if (!state->global
+	    && (!profit_present(state, ops, context, YT_PROFIT_TITLE,
+	    YT_PROFIT_PRESENT_BOLD_LINE, title, sizeof(title) - 1U, error)
+	    || !profit_present(state, ops, context, YT_PROFIT_TITLE_BLANK,
+	    YT_PROFIT_PRESENT_LINE, NULL, 0U, error)))
+		return false;
+
+	if (state->global) {
+		if (!nearest_sub(state->port_record_offset,
+		    state->sector_record_offset, &state->maximum_sector, error,
+		    "profit maximum sector")
+		    || !profit_checkpoint(ops, context,
+		    YT_PROFIT_MAXIMUM_READY, error))
+			return false;
+		source = 2.0f;
+	}
+	else {
+		struct yt_record raw;
+		struct yt_sector sector;
+		struct yt_port source_port;
+		struct yt_nearest_market source_market;
+		float source_prices[4];
+		float display_source;
+		int warps[6];
+		size_t slot;
+
+		if (!nearest_single(state->current_sector_record,
+		    &state->current_sector_record, error,
+		    "profit current sector record")
+		    || !profit_read(state, ops, context, YT_PROFIT_FIELD_SECTOR,
+		    state->current_sector_record, &raw, error))
+			return false;
+		yt_sector_decode(&sector, &raw);
+		if (sector.port == 0.0f || sector.port == 1.0f) {
+			if (!profit_present(state, ops, context,
+			    YT_PROFIT_NO_CURRENT_PORT,
+			    YT_PROFIT_PRESENT_BOLD_LINE, no_port,
+			    sizeof(no_port) - 1U, error))
+				return false;
+			state->complete = true;
+			state->result = YT_PROFIT_NO_CURRENT_PORT_RESULT;
+			return true;
+		}
+		if (!profit_coerce_warps(state, &sector, warps, error)
+		    || !nearest_add(state->port_record_offset, sector.port,
+		    &source, error, "profit current port record")
+		    || !profit_read(state, ops, context, YT_PROFIT_FIELD_PORT,
+		    source, &raw, error))
+			return false;
+		yt_port_decode(&source_port, &raw);
+		if (!profit_project(state, ops, context, &source_port,
+		    &source_market, source_prices, error)
+		    || !profit_checkpoint(ops, context,
+		    YT_PROFIT_SOURCE_ARROW_READY, error))
+			return false;
+		for (slot = 0U; slot < 6U; ++slot) {
+			struct yt_sector target_sector;
+			struct yt_port target_port;
+			struct yt_nearest_market target_market;
+			float target_prices[4];
+			int target;
+			bool keep_going;
+
+			target = warps[slot];
+			if (target <= 1)
+				continue;
+			if (!nearest_add(state->sector_record_offset, (float)target,
+			    &source, error, "profit target sector record")
+			    || !profit_read(state, ops, context,
+			    YT_PROFIT_FIELD_SECTOR, source, &raw, error))
+				return false;
+			yt_sector_decode(&target_sector, &raw);
+			if (target_sector.port == 0.0f)
+				continue;
+			if (!nearest_add(state->port_record_offset,
+			    target_sector.port, &source, error,
+			    "profit target port record")
+			    || !profit_read(state, ops, context,
+			    YT_PROFIT_FIELD_PORT, source, &raw, error))
+				return false;
+			yt_port_decode(&target_port, &raw);
+			if (target_port.commodity_class
+			    == source_port.commodity_class)
+				continue;
+			if (!profit_project(state, ops, context, &target_port,
+			    &target_market, target_prices, error)
+			    || !nearest_sub(state->current_sector_record,
+			    state->sector_record_offset, &display_source, error,
+			    "profit display sector")
+			    || !profit_emit_pair(state, ops, context, display_source,
+			    target, &source_port, &target_port, source_prices,
+			    target_prices, &keep_going, error))
+				return false;
+		}
+		if (state->rows == 0U) {
+			if (!profit_present(state, ops, context, YT_PROFIT_NO_RESULTS,
+			    YT_PROFIT_PRESENT_BOLD_LINE, no_results,
+			    sizeof(no_results) - 1U, error))
+				return false;
+			state->result = YT_PROFIT_NO_RESULTS_RESULT;
+		}
+		else
+			state->result = YT_PROFIT_COMPLETE;
+		state->complete = true;
+		return true;
+	}
+
+	while (source <= state->maximum_sector) {
+		struct yt_record raw;
+		struct yt_sector sector;
+		struct yt_port source_port;
+		struct yt_nearest_market source_market;
+		float source_prices[4];
+		float expression;
+		int warps[6];
+		size_t slot;
+
+		if (!nearest_add(state->sector_record_offset, source,
+		    &expression, error, "profit source sector record")
+		    || !profit_read(state, ops, context, YT_PROFIT_FIELD_SECTOR,
+		    expression, &raw, error))
+			return false;
+		yt_sector_decode(&sector, &raw);
+		if (!profit_coerce_warps(state, &sector, warps, error))
+			return false;
+		if (sector.port > 0.0f) {
+			if (!nearest_add(state->port_record_offset, sector.port,
+			    &expression, error, "profit source port record")
+			    || !profit_read(state, ops, context,
+			    YT_PROFIT_FIELD_PORT, expression, &raw, error))
+				return false;
+			yt_port_decode(&source_port, &raw);
+			if (!profit_project(state, ops, context, &source_port,
+			    &source_market, source_prices, error)
+			    || !profit_checkpoint(ops, context,
+			    YT_PROFIT_SOURCE_ARROW_READY, error))
+				return false;
+			for (slot = 0U; slot < 6U; ++slot) {
+				struct yt_sector target_sector;
+				struct yt_port target_port;
+				struct yt_nearest_market target_market;
+				float target_prices[4];
+				int target;
+				bool keep_going;
+
+				target = warps[slot];
+				if (target <= 1)
+					continue;
+				if (!nearest_add(state->sector_record_offset,
+				    (float)target, &expression, error,
+				    "profit target sector record")
+				    || !profit_read(state, ops, context,
+				    YT_PROFIT_FIELD_SECTOR, expression, &raw, error))
+					return false;
+				yt_sector_decode(&target_sector, &raw);
+				if (target_sector.port == 0.0f
+				    || (float)target <= source)
+					continue;
+				if (!nearest_add(state->port_record_offset,
+				    target_sector.port, &expression, error,
+				    "profit target port record")
+				    || !profit_read(state, ops, context,
+				    YT_PROFIT_FIELD_PORT, expression, &raw, error))
+					return false;
+				yt_port_decode(&target_port, &raw);
+				if (target_port.commodity_class
+				    == source_port.commodity_class)
+					continue;
+				if (!profit_project(state, ops, context, &target_port,
+				    &target_market, target_prices, error)
+				    || !profit_emit_pair(state, ops, context, source,
+				    target, &source_port, &target_port, source_prices,
+				    target_prices, &keep_going, error))
+					return false;
+				if (!keep_going) {
+					state->stopped = true;
+					state->complete = true;
+					state->result = YT_PROFIT_STOPPED_BY_N;
+					return true;
+				}
+			}
+		}
+		if (!nearest_add(source, 1.0f, &source, error,
+		    "profit source increment"))
+			return false;
+	}
+	state->style.foreground = 7.0f;
+	if (!profit_present(state, ops, context, YT_PROFIT_END_BANNER,
+	    YT_PROFIT_PRESENT_BOLD_LINE, end_banner,
+	    sizeof(end_banner) - 1U, error))
+		return false;
+	state->complete = true;
+	state->result = YT_PROFIT_COMPLETE;
 	return true;
 }
 
