@@ -2403,6 +2403,54 @@ text_device_print_failure(struct yt_text_device_state *state,
 	return false;
 }
 
+static void
+text_device_control_release(struct yt_text_device_control_state *control)
+{
+	if (control == NULL)
+		return;
+	control->allocated = false;
+	control->registered = false;
+	control->field_binding_count = 0U;
+}
+
+static void
+text_device_value_error_cleanup(struct yt_text_device_runtime_state *runtime)
+{
+	if (runtime != NULL && (runtime->error_status & 0x01U) != 0U)
+		text_device_control_release(runtime->selected_control);
+}
+
+static void
+text_device_completion_error_cleanup(
+    struct yt_text_device_runtime_state *runtime)
+{
+	struct yt_text_device_close_observation observation;
+	bool observed = false;
+
+	if (runtime == NULL || runtime->active_close_control == NULL)
+		return;
+	memset(&observation, 0, sizeof(observation));
+	++runtime->cleanup_close_count;
+	if (runtime->close_provider != NULL)
+		observed = runtime->close_provider(runtime->close_context,
+		    &observation);
+	if (observed && ((observation.carry
+	    && observation.dos_error >= 1U
+	    && observation.dos_error <= 0xffU)
+	    || (!observation.carry && observation.dos_error == 0U))) {
+		runtime->cleanup_close_observed = true;
+		runtime->cleanup_close_carry = observation.carry;
+		runtime->cleanup_close_dos_error = observation.dos_error;
+	}
+	else {
+		runtime->cleanup_close_observed = false;
+		runtime->cleanup_close_carry = false;
+		runtime->cleanup_close_dos_error = 0U;
+	}
+	text_device_control_release(runtime->active_close_control);
+	runtime->active_close_control = NULL;
+}
+
 static bool
 text_device_print_observe(struct yt_text_device_state *state,
     yt_text_device_write_provider provider, void *context,
@@ -2435,6 +2483,19 @@ yt_text_device_print(struct yt_text_device_state *state,
     const uint8_t *data, size_t length, bool newline, uint8_t device_code,
     uint8_t status, uint8_t dos_major,
     yt_text_device_write_provider provider, void *context,
+    struct yt_text_device_print_result *result, struct yt_error *error)
+{
+	return yt_text_device_print_runtime(state, data, length, newline,
+	    device_code, status, dos_major, provider, context, NULL, result,
+	    error);
+}
+
+bool
+yt_text_device_print_runtime(struct yt_text_device_state *state,
+    const uint8_t *data, size_t length, bool newline, uint8_t device_code,
+    uint8_t status, uint8_t dos_major,
+    yt_text_device_write_provider provider, void *context,
+    struct yt_text_device_runtime_state *runtime,
     struct yt_text_device_print_result *result, struct yt_error *error)
 {
 	struct yt_text_device_write_observation observation;
@@ -2476,6 +2537,7 @@ yt_text_device_print(struct yt_text_device_state *state,
 				    : observation.extended_ax == 0x0021U
 				    ? 70U : 52U;
 
+				text_device_value_error_cleanup(runtime);
 				return text_device_print_failure(state, result,
 				    YT_TEXT_DEVICE_PRINT_VALUE_DISK_ERROR,
 				    mapped, observation.dos_error, error);
@@ -2506,10 +2568,12 @@ yt_text_device_print(struct yt_text_device_state *state,
 		return false;
 	if (observation.carry
 	    || (completion_requested != 0U && observation.accepted == 0U
-	    && !(status & 0x02U)))
+	    && !(status & 0x02U))) {
+		text_device_completion_error_cleanup(runtime);
 		return text_device_print_failure(state, result,
 		    YT_TEXT_DEVICE_PRINT_COMPLETION_ERROR, 57U,
 		    observation.carry ? observation.dos_error : 0U, error);
+	}
 	state->selected = false;
 	result->outcome = YT_TEXT_DEVICE_PRINT_RETURNED;
 	result->physical_unknown = state->physical_unknown;

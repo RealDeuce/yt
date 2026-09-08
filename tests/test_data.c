@@ -593,6 +593,12 @@ struct text_device_write_script {
 	size_t physical_length;
 };
 
+struct text_device_close_script {
+	struct yt_text_device_close_observation observation;
+	size_t calls;
+	bool provider_ok;
+};
+
 struct text_input_read_step {
 	uint8_t data[YT_TEXT_INPUT_BUFFER_SIZE];
 	struct yt_text_input_read_observation observation;
@@ -1224,6 +1230,19 @@ scripted_text_device_write(void *context,
 		    && observation->accepted != 0U)
 			script->physical[script->physical_length++] = data[0];
 	}
+	return true;
+}
+
+static bool
+scripted_text_device_close(void *context,
+    struct yt_text_device_close_observation *observation)
+{
+	struct text_device_close_script *script = context;
+
+	++script->calls;
+	if (!script->provider_ok)
+		return false;
+	*observation = script->observation;
 	return true;
 }
 
@@ -3061,6 +3080,10 @@ test_text_device_print(void)
 	static const uint8_t one[] = {'X'};
 	struct text_device_write_script script;
 	struct yt_text_device_state state;
+	struct yt_text_device_control_state selected_control;
+	struct yt_text_device_control_state active_close_control;
+	struct yt_text_device_runtime_state runtime;
+	struct text_device_close_script close_script;
 	struct yt_text_device_print_result result;
 	struct yt_error error;
 
@@ -3205,6 +3228,94 @@ test_text_device_print(void)
 	CHECK(!yt_text_device_print(&state, one, sizeof(one), false,
 	    YT_TEXT_DEVICE_COM1, 0x02U, 5U, scripted_text_device_write,
 	    &script, &result, &error) && error.status == YT_INVALID);
+
+	/* Value carry conditionally frees the selected control before routing. */
+	memset(&script, 0, sizeof(script));
+	text_device_write_add(&script, YT_TEXT_DEVICE_WRITE_VALUE, 'A',
+	    1U, 0U, true, false, 5U, 0x0021U);
+	state = (struct yt_text_device_state){.selected = true};
+	selected_control = (struct yt_text_device_control_state){true, true, 3U};
+	runtime = (struct yt_text_device_runtime_state){
+		.error_status = 1U,
+		.selected_control = &selected_control,
+	};
+	CHECK(!yt_text_device_print_runtime(&state, pair, sizeof(pair), false,
+	    YT_TEXT_DEVICE_COM1, 0x82U, 5U, scripted_text_device_write,
+	    &script, &runtime, &result, &error)
+	    && result.outcome == YT_TEXT_DEVICE_PRINT_VALUE_DISK_ERROR
+	    && result.basic_error == 70U
+	    && !selected_control.allocated && !selected_control.registered
+	    && selected_control.field_binding_count == 0U
+	    && runtime.selected_control == &selected_control
+	    && state.selected && state.pending && state.buffer == 'A');
+	memset(&script, 0, sizeof(script));
+	text_device_write_add(&script, YT_TEXT_DEVICE_WRITE_VALUE, 'A',
+	    1U, 0U, true, false, 6U, 0U);
+	state = (struct yt_text_device_state){.selected = true};
+	selected_control = (struct yt_text_device_control_state){true, true, 4U};
+	runtime = (struct yt_text_device_runtime_state){
+		.selected_control = &selected_control,
+	};
+	CHECK(!yt_text_device_print_runtime(&state, pair, sizeof(pair), false,
+	    YT_TEXT_DEVICE_COM1, 0x82U, 2U, scripted_text_device_write,
+	    &script, &runtime, &result, &error)
+	    && result.basic_error == 52U && selected_control.allocated
+	    && selected_control.registered
+	    && selected_control.field_binding_count == 4U);
+
+	/* Completion failure closes and frees only a nonzero active-CLOSE root. */
+	memset(&script, 0, sizeof(script));
+	text_device_write_add(&script, YT_TEXT_DEVICE_WRITE_COMPLETION, 'X',
+	    1U, 0U, true, false, 5U, 0U);
+	memset(&close_script, 0, sizeof(close_script));
+	close_script.provider_ok = true;
+	close_script.observation.carry = true;
+	close_script.observation.dos_error = 9U;
+	state = (struct yt_text_device_state){.selected = true};
+	selected_control = (struct yt_text_device_control_state){true, true, 2U};
+	active_close_control = (struct yt_text_device_control_state){
+		true, true, 5U};
+	runtime = (struct yt_text_device_runtime_state){
+		.selected_control = &selected_control,
+		.active_close_control = &active_close_control,
+		.close_provider = scripted_text_device_close,
+		.close_context = &close_script,
+	};
+	CHECK(!yt_text_device_print_runtime(&state, one, sizeof(one), false,
+	    YT_TEXT_DEVICE_COM1, 0x82U, 5U, scripted_text_device_write,
+	    &script, &runtime, &result, &error)
+	    && result.outcome == YT_TEXT_DEVICE_PRINT_COMPLETION_ERROR
+	    && close_script.calls == 1U && runtime.cleanup_close_count == 1U
+	    && runtime.cleanup_close_observed && runtime.cleanup_close_carry
+	    && runtime.cleanup_close_dos_error == 9U
+	    && runtime.active_close_control == NULL
+	    && !active_close_control.allocated
+	    && !active_close_control.registered
+	    && active_close_control.field_binding_count == 0U
+	    && selected_control.allocated && selected_control.registered
+	    && selected_control.field_binding_count == 2U
+	    && state.selected && !state.pending && state.buffer == 'X');
+
+	/* Alias identity and an unavailable ignored-result adapter remain exact. */
+	memset(&script, 0, sizeof(script));
+	text_device_write_add(&script, YT_TEXT_DEVICE_WRITE_COMPLETION, 'X',
+	    1U, 0U, false, false, 0U, 0U);
+	state = (struct yt_text_device_state){.selected = true};
+	selected_control = (struct yt_text_device_control_state){true, true, 7U};
+	runtime = (struct yt_text_device_runtime_state){
+		.selected_control = &selected_control,
+		.active_close_control = &selected_control,
+	};
+	CHECK(!yt_text_device_print_runtime(&state, one, sizeof(one), false,
+	    YT_TEXT_DEVICE_CONS, 0x80U, 5U, scripted_text_device_write,
+	    &script, &runtime, &result, &error)
+	    && result.outcome == YT_TEXT_DEVICE_PRINT_COMPLETION_ERROR
+	    && runtime.cleanup_close_count == 1U
+	    && !runtime.cleanup_close_observed
+	    && runtime.active_close_control == NULL
+	    && runtime.selected_control == &selected_control
+	    && !selected_control.allocated && !selected_control.registered
+	    && selected_control.field_binding_count == 0U);
 }
 
 static void

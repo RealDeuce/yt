@@ -289,6 +289,37 @@ typedef bool (*yt_text_device_write_provider)(void *context,
 	enum yt_text_device_write_phase phase, const uint8_t *data,
 	size_t requested, struct yt_text_device_write_observation *observation);
 
+struct yt_text_device_close_observation {
+	bool carry;
+	uint16_t dos_error;
+};
+
+typedef bool (*yt_text_device_close_provider)(void *context,
+	struct yt_text_device_close_observation *observation);
+
+/*
+ * The raw PRINT error suffix keeps its selected-file pointer even when A43D
+ * releases the pointed-to control.  Pointers in this carrier therefore name
+ * controls independently of their current allocator/registration state.
+ */
+struct yt_text_device_control_state {
+	bool allocated;
+	bool registered;
+	size_t field_binding_count;
+};
+
+struct yt_text_device_runtime_state {
+	uint8_t error_status;
+	struct yt_text_device_control_state *selected_control;
+	struct yt_text_device_control_state *active_close_control;
+	yt_text_device_close_provider close_provider;
+	void *close_context;
+	size_t cleanup_close_count;
+	bool cleanup_close_observed;
+	bool cleanup_close_carry;
+	uint16_t cleanup_close_dos_error;
+};
+
 enum yt_text_device_print_outcome {
 	YT_TEXT_DEVICE_PRINT_NONE,
 	YT_TEXT_DEVICE_PRINT_RETURNED,
@@ -351,6 +382,12 @@ bool yt_text_device_print(struct yt_text_device_state *state,
 	const uint8_t *data, size_t length, bool newline, uint8_t device_code,
 	uint8_t status, uint8_t dos_major,
 	yt_text_device_write_provider provider, void *context,
+	struct yt_text_device_print_result *result, struct yt_error *error);
+bool yt_text_device_print_runtime(struct yt_text_device_state *state,
+	const uint8_t *data, size_t length, bool newline, uint8_t device_code,
+	uint8_t status, uint8_t dos_major,
+	yt_text_device_write_provider provider, void *context,
+	struct yt_text_device_runtime_state *runtime,
 	struct yt_text_device_print_result *result, struct yt_error *error);
 bool yt_text_output_close(struct yt_text_output *output,
 	struct yt_error *error);
