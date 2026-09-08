@@ -2043,6 +2043,7 @@ yt_projectile_command_run(struct yt_projectile_command_state *state,
 	memset(&state->first_hydration, 0, sizeof(state->first_hydration));
 	memset(&state->live_hydration, 0, sizeof(state->live_hydration));
 	memset(&state->post_finalizer, 0, sizeof(state->post_finalizer));
+	state->turn_gate_result_stores = 0U;
 	state->attempts = 0U;
 	state->hydrations = 0U;
 	state->available = 0.0f;
@@ -2079,7 +2080,17 @@ yt_projectile_command_run(struct yt_projectile_command_state *state,
 		    &state->live_hydration, error))
 			return false;
 		state->hydrations++;
+		yt_no_turn_gate_result_raw(false, state->turn_gate_result_raw);
+		state->turn_gate_result_stores++;
+		if (ops->store_turn_gate_result != NULL)
+			ops->store_turn_gate_result(context,
+			    state->turn_gate_result_raw);
 		if (state->live_hydration.turns <= 0.0f) {
+			yt_no_turn_gate_result_raw(true, state->turn_gate_result_raw);
+			state->turn_gate_result_stores++;
+			if (ops->store_turn_gate_result != NULL)
+				ops->store_turn_gate_result(context,
+				    state->turn_gate_result_raw);
 			state->route = YT_PROJECTILE_COMMAND_NO_TURNS;
 			if (!ops->present(context, no_turns,
 			    sizeof(no_turns) - 1U,
@@ -6833,6 +6844,16 @@ bool
 yt_no_turn_gate_denied(float turns)
 {
 	return turns <= 0.0f;
+}
+
+void
+yt_no_turn_gate_result_raw(bool denied, uint8_t raw[4])
+{
+	static const uint8_t false_value[4] = {0x00, 0x00, 0x7d, 0x00};
+	static const uint8_t true_value[4] = {0x00, 0x00, 0x00, 0x81};
+
+	if (raw != NULL)
+		memcpy(raw, denied ? true_value : false_value, 4U);
 }
 
 bool

@@ -27014,8 +27014,16 @@ check_hostile_menu_front(void)
 	{
 		double threshold = yt_bribe_offer_threshold(10.0f, 0.5f);
 		double precise = 16777215.5;
+		uint8_t gate_raw[4];
 
-		if (threshold != 20.0
+		yt_no_turn_gate_result_raw(false, gate_raw);
+		if (memcmp(gate_raw,
+		    (const uint8_t[]){0x00, 0x00, 0x7d, 0x00}, 4U) != 0)
+			return false;
+		yt_no_turn_gate_result_raw(true, gate_raw);
+		if (memcmp(gate_raw,
+		    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) != 0
+		    || threshold != 20.0
 		    || yt_bribe_offer_threshold(precise, 0.0f) != precise
 		    || !yt_bribe_ordinary_forces(3.0f, precise,
 		    16777215.25, 0.0f)
@@ -35304,6 +35312,9 @@ struct projectile_command_tape {
 	size_t destroyed_store_position;
 	uint8_t counterattack_raw[4];
 	uint8_t xannor_raw[4];
+	uint8_t turn_gate_results[8][4];
+	size_t turn_gate_result_positions[8];
+	size_t turn_gate_result_count;
 };
 
 static bool
@@ -35514,6 +35525,20 @@ projectile_command_xannor_truth(void *context)
 	return qb_mbf32_truth(tape->xannor_raw);
 }
 
+static void
+projectile_command_store_turn_gate_result(void *context,
+    const uint8_t raw[4])
+{
+	struct projectile_command_tape *tape = context;
+	size_t index = tape->turn_gate_result_count++;
+
+	if (index >= YT_ARRAY_LEN(tape->turn_gate_results))
+		return;
+	memcpy(tape->turn_gate_results[index], raw,
+	    sizeof(tape->turn_gate_results[index]));
+	tape->turn_gate_result_positions[index] = tape->calls;
+}
+
 static const struct yt_projectile_command_ops projectile_command_ops = {
 	projectile_command_test_hydrate,
 	projectile_command_test_present,
@@ -35529,6 +35554,7 @@ static const struct yt_projectile_command_ops projectile_command_ops = {
 	projectile_command_destroyed_truth,
 	projectile_command_counterattack_truth,
 	projectile_command_xannor_truth,
+	projectile_command_store_turn_gate_result,
 };
 
 static void
@@ -35540,6 +35566,8 @@ projectile_command_fixture(struct projectile_command_tape *tape,
 	memset(tape, 0, sizeof(*tape));
 	memset(state, 0, sizeof(*state));
 	tape->fail_at = (size_t)-1;
+	memcpy(state->turn_gate_result_raw,
+	    (const uint8_t[]){0xa5, 0x5a, 0x33, 0x00}, 4U);
 	for (index = 0U; index < YT_ARRAY_LEN(tape->hydrations); ++index) {
 		tape->hydrations[index].turns = 10.0f;
 		tape->hydrations[index].missiles = 5.0f;
@@ -35615,6 +35643,13 @@ check_projectile_command_transaction(void)
 	    NULL) || !state.complete
 	    || state.route != YT_PROJECTILE_COMMAND_RETURNED
 	    || state.attempts != 1U || state.hydrations != 2U
+	    || state.turn_gate_result_stores != 1U
+	    || memcmp(state.turn_gate_result_raw,
+	    (const uint8_t[]){0x00, 0x00, 0x7d, 0x00}, 4U) != 0
+	    || tape.turn_gate_result_count != 1U
+	    || tape.turn_gate_result_positions[0] != 3U
+	    || memcmp(tape.turn_gate_results[0],
+	    (const uint8_t[]){0x00, 0x00, 0x7d, 0x00}, 4U) != 0
 	    || state.available != 5.0f || state.target != 14.0f
 	    || state.amount != 1.0f || !state.target_stored
 	    || !state.amount_stored || !state.finalizer_called
@@ -35686,6 +35721,17 @@ check_projectile_command_transaction(void)
 		    || state.complete || tape.calls != failure + 1U
 		    || memcmp(tape.events, expected,
 		    tape.calls * sizeof(expected[0])) != 0
+		    || (failure <= 2U
+		    && (state.turn_gate_result_stores != 0U
+		    || tape.turn_gate_result_count != 0U
+		    || memcmp(state.turn_gate_result_raw,
+		    (const uint8_t[]){0xa5, 0x5a, 0x33, 0x00}, 4U) != 0))
+		    || (failure > 2U
+		    && (state.turn_gate_result_stores != 1U
+		    || tape.turn_gate_result_count != 1U
+		    || tape.turn_gate_result_positions[0] != 3U
+		    || memcmp(state.turn_gate_result_raw,
+		    (const uint8_t[]){0x00, 0x00, 0x7d, 0x00}, 4U) != 0))
 		    || (failure > 10U
 		    && (!state.player_written || !state.player_flushed
 		    || !state.destruction_cleared
@@ -35705,6 +35751,10 @@ check_projectile_command_transaction(void)
 	if (!yt_projectile_command_run(&state, &projectile_command_ops, &tape,
 	    NULL) || state.route != YT_PROJECTILE_COMMAND_TOO_MANY
 	    || state.attempts != 2U || state.hydrations != 4U
+	    || state.turn_gate_result_stores != 2U
+	    || tape.turn_gate_result_count != 2U
+	    || tape.turn_gate_result_positions[0] != 3U
+	    || tape.turn_gate_result_positions[1] != 9U
 	    || state.available != 3.0f || tape.row_count != 7U
 	    || tape.kinds[4] != YT_PROJECTILE_COMMAND_TARGET_PROMPT
 	    || memcmp(tape.rows[4], target_prompt,
@@ -35715,7 +35765,16 @@ check_projectile_command_transaction(void)
 	tape.hydrations[1].turns = 0.0f;
 	if (!yt_projectile_command_run(&state, &projectile_command_ops, &tape,
 	    NULL) || state.route != YT_PROJECTILE_COMMAND_NO_TURNS
-	    || tape.calls != 4U)
+	    || tape.calls != 4U || state.turn_gate_result_stores != 2U
+	    || memcmp(state.turn_gate_result_raw,
+	    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) != 0
+	    || tape.turn_gate_result_count != 2U
+	    || tape.turn_gate_result_positions[0] != 3U
+	    || tape.turn_gate_result_positions[1] != 3U
+	    || memcmp(tape.turn_gate_results[0],
+	    (const uint8_t[]){0x00, 0x00, 0x7d, 0x00}, 4U) != 0
+	    || memcmp(tape.turn_gate_results[1],
+	    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) != 0)
 		return false;
 	projectile_command_fixture(&tape, &state, &destroyed);
 	tape.hydrations[1].missiles = 0.0f;

@@ -5869,13 +5869,21 @@ fresh_no_turn_gate(struct yt_session *session, bool *denied,
     struct yt_error *error)
 {
 	static const uint8_t notice[] = "Sorry but you have no turns left.";
+	uint8_t result_raw[4];
 
 	if (!reload_player(session, error))
 		return false;
+	yt_no_turn_gate_result_raw(false, result_raw);
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_COMPUTER_ROUTE_STATUS_ADDRESS, result_raw);
 	*denied = yt_no_turn_gate_denied(session->player.turns);
-	if (*denied)
+	if (*denied) {
+		yt_no_turn_gate_result_raw(true, result_raw);
+		yt_route_process_set_raw_single(&session->route_process,
+		    YT_COMPUTER_ROUTE_STATUS_ADDRESS, result_raw);
 		return session_02db(session, notice, sizeof(notice) - 1U,
 		    "no-turn gate notice", error);
+	}
 	return true;
 }
 
@@ -17156,6 +17164,16 @@ projectile_command_xannor_truth(void *context)
 	return qb_mbf32_truth(raw);
 }
 
+static void
+projectile_command_store_turn_gate_result(void *context,
+    const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_COMPUTER_ROUTE_STATUS_ADDRESS, raw);
+}
+
 static bool
 command_projectile(struct yt_session *session, bool plasma,
     struct yt_error *error)
@@ -17175,6 +17193,7 @@ command_projectile(struct yt_session *session, bool plasma,
 		projectile_command_destroyed_truth,
 		projectile_command_counterattack_truth,
 		projectile_command_xannor_truth,
+		projectile_command_store_turn_gate_result,
 	};
 	bool destroyed = session_is_destroyed(session);
 	struct yt_projectile_command_state state = {
@@ -17185,6 +17204,9 @@ command_projectile(struct yt_session *session, bool plasma,
 		    : session->player.missiles,
 		.destroyed = &destroyed,
 	};
+
+	yt_route_process_raw_single(&session->route_process,
+	    YT_COMPUTER_ROUTE_STATUS_ADDRESS, state.turn_gate_result_raw);
 
 	return yt_projectile_command_run(&state, &ops, session, error);
 }

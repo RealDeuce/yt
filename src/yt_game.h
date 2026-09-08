@@ -2344,6 +2344,7 @@ enum yt_bribe_forced_admission yt_bribe_forced_admit(
 enum yt_sector_mine_admission yt_sector_mine_admit(
     float carried, float amount);
 bool yt_no_turn_gate_denied(float turns);
+void yt_no_turn_gate_result_raw(bool denied, uint8_t raw[4]);
 bool yt_team_choice_rejected(float choice, float raw_team,
     int32_t captain_cint, int32_t team_cint);
 void yt_team_transfer_apply_sector(struct yt_sector *sector,
@@ -4737,6 +4738,8 @@ struct yt_projectile_command_state {
 	struct yt_player first_hydration;
 	struct yt_player live_hydration;
 	struct yt_player post_finalizer;
+	uint8_t turn_gate_result_raw[4];
+	size_t turn_gate_result_stores;
 	size_t attempts;
 	size_t hydrations;
 	float available;
@@ -4788,6 +4791,7 @@ struct yt_projectile_command_ops {
 	yt_destroyed_truth_fn destroyed_truth;
 	bool (*counterattack_truth)(void *context);
 	bool (*xannor_truth)(void *context);
+	void (*store_turn_gate_result)(void *context, const uint8_t raw[4]);
 };
 bool yt_projectile_command_run(struct yt_projectile_command_state *state,
 	const struct yt_projectile_command_ops *ops, void *context,
