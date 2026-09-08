@@ -18735,7 +18735,8 @@ nearest_session_input(void *context, uint8_t *key, bool *available,
 	*available = false;
 	*key = 0U;
 	if (!session_carrier(session)
-	    || !session_poll_merged(session, &selected))
+	    || !yt_input_poll_legacy(&session->input, session_mode(session),
+	    YT_INPUT_PHASE_B05D, &selected))
 		return false;
 	if (selected.length != 1U) {
 		od_sleep(10);
