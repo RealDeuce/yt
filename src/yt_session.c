@@ -18823,64 +18823,83 @@ nearest_session_body(struct yt_session *session, int selector,
 }
 
 static bool
+nearest_front_hydrate(void *context, float *current_team,
+    float *ports_owned, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	if (!reload_player(session, error))
+		return false;
+	*current_team = session->player.team;
+	*ports_owned = session->player.ports_owned;
+	return true;
+}
+
+static bool
+nearest_front_present(void *context,
+    enum yt_nearest_front_output_kind kind, const uint8_t *text,
+    size_t length, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	switch (kind) {
+	case YT_NEAREST_FRONT_FILTER_FIRST:
+		return session_0317(session, text, length,
+		    "nearest-port first filter row", error);
+	case YT_NEAREST_FRONT_FILTER_SECOND:
+		return session_02fc(session, text, length);
+	case YT_NEAREST_FRONT_FILTER_PROMPT:
+		return session_031f(session, text, length,
+		    "nearest-port filter prompt", error);
+	case YT_NEAREST_FRONT_NO_TEAM:
+		return session_02db(session, text, length,
+		    "nearest-port team rejection", error);
+	case YT_NEAREST_FRONT_NO_PORTS:
+		return session_02db(session, text, length,
+		    "nearest-port ownership rejection", error);
+	case YT_NEAREST_FRONT_DIRECTION_BLANK:
+		return session_present_text(session, text, length,
+		    SESSION_PRESENT_LINE, "nearest-port direction blank", error);
+	case YT_NEAREST_FRONT_DIRECTION_PROMPT:
+		return session_031f(session, text, length,
+		    "nearest-port direction prompt", error);
+	default:
+		if (error != NULL)
+			error->status = YT_INVALID;
+		return false;
+	}
+}
+
+static bool
+nearest_front_input(void *context, uint8_t *text, size_t capacity,
+    size_t *length, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	(void)error;
+	if (capacity == 0U || !session_0357(session, (char *)text, capacity))
+		return false;
+	*length = strlen((const char *)text);
+	return true;
+}
+
+static bool
 computer_nearest_ports(struct yt_session *session, struct yt_error *error)
 {
-	static const uint8_t first_line[] =
-	    "Show buying/selling [1] Equ, [2] Org, [3] Ore,";
-	static const uint8_t second_line[] =
-	    "[Y] Your Ports, [T] Team's Ports, [E] Enemy Ports";
-	static const uint8_t filter_prompt[] =
-	    "[U] Un-owned Ports OR [A] All Ports ? -=> [A] ";
-	static const char *const commodities[3] = {
-		"Equipment", "Organics", "Ore"
+	static const struct yt_nearest_front_ops ops = {
+		nearest_front_hydrate,
+		nearest_front_present,
+		nearest_front_input,
 	};
-	const char *alphabet = "123ATYEU";
-	char response[80];
-	const char *match;
-	int selector;
-	uint8_t direction = 0U;
+	struct yt_nearest_front_state state;
 
-	if (!reload_player(session, error)
-	    || !session_0317(session, first_line, sizeof(first_line) - 1U,
-	    "nearest-port first filter row", error)
-	    || !session_02fc(session, second_line, sizeof(second_line) - 1U)
-	    || !session_031f(session, filter_prompt,
-	    sizeof(filter_prompt) - 1U, "nearest-port filter prompt", error)
-	    || !session_0357(session, response, sizeof(response)))
+	memset(&state, 0, sizeof(state));
+	if (!yt_nearest_front_run(&state, &ops, session, error))
 		return false;
-	match = response[0] == '\0' ? alphabet + 3 : strstr(alphabet, response);
-	if (match == NULL)
+	if (state.result == YT_NEAREST_FRONT_REPROMPT)
 		return true;
-	selector = (int)(match - alphabet) + 1;
-	if (selector == 5 && session->player.team == 0.0f) {
-		static const uint8_t no_team[] = "You dont belong to a team!";
-
-		return session_02db(session, no_team, sizeof(no_team) - 1U,
-		    "nearest-port team rejection", error);
-	}
-	if (selector == 6 && session->player.ports_owned == 0.0f) {
-		static const uint8_t none_owned[] = "You dont own any!";
-
-		return session_02db(session, none_owned, sizeof(none_owned) - 1U,
-		    "nearest-port ownership rejection", error);
-	}
-	if (selector >= 1 && selector <= 3) {
-		char prompt[128];
-
-		if (!session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "nearest-port direction blank", error)
-		    || snprintf(prompt, sizeof(prompt),
-		    "Find ports [B] Buying or [S] Selling %s -=> ",
-		    commodities[selector - 1]) < 0
-		    || !session_031f(session, (const uint8_t *)prompt,
-		    strlen(prompt), "nearest-port direction prompt", error)
-		    || !session_0357(session, response, sizeof(response)))
-			return false;
-		if (strcmp(response, "B") != 0 && strcmp(response, "S") != 0)
-			return true;
-		direction = (uint8_t)response[0];
-	}
-	return nearest_session_body(session, selector, direction, error);
+	return nearest_session_body(session, state.selector, state.direction,
+	    error);
 }
 
 static bool
