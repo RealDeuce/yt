@@ -46157,14 +46157,40 @@ test_computer_spy_presentation(void)
 	CHECK(capture.remote_length == sizeof(active_ansi) - 1U
 	    && memcmp(capture.remote, active_ansi,
 	    sizeof(active_ansi) - 1U) == 0);
-	CHECK(pager.line_count == 3.0f && pager.newline_flag == 0.0f);
+	CHECK(pager.line_count == 3.0f && pager.newline_flag == 0.0f
+	    && capture.local_event_count == 23U
+	    && capture.framebuffer_initialized
+	    && capture.framebuffer.bios_row == 7U
+	    && capture.framebuffer.bios_column == 41U
+	    && capture.framebuffer.qb_row == 7U
+	    && capture.framebuffer.qb_column == 41U
+	    && capture.framebuffer.brun_bios_cache_row == 7U
+	    && capture.framebuffer.brun_bios_cache_column == 41U
+	    && capture.framebuffer.qb_attribute == 0x07U
+	    && capture.framebuffer.qb_scrolls == 0U
+	    && capture.framebuffer.con_scrolls == 0U
+	    && startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
+	    == UINT64_C(0x084356214c3fd5f8));
 
 	spy_cycle_fixture(false, 2, &capture, &current, &pager);
 	CHECK(sizeof(active_plain) - 1U == 155U);
 	CHECK(capture.remote_length == sizeof(active_plain) - 1U
 	    && memcmp(capture.remote, active_plain,
 	    sizeof(active_plain) - 1U) == 0);
-	CHECK(pager.line_count == 3.0f && current.bold == 1.0f);
+	CHECK(pager.line_count == 3.0f && current.bold == 1.0f
+	    && capture.local_event_count == 15U
+	    && capture.framebuffer_initialized
+	    && capture.framebuffer.bios_row == 7U
+	    && capture.framebuffer.bios_column == 41U
+	    && capture.framebuffer.qb_row == 7U
+	    && capture.framebuffer.qb_column == 41U
+	    && capture.framebuffer.brun_bios_cache_row == 7U
+	    && capture.framebuffer.brun_bios_cache_column == 41U
+	    && capture.framebuffer.qb_attribute == 0x07U
+	    && capture.framebuffer.qb_scrolls == 0U
+	    && capture.framebuffer.con_scrolls == 0U
+	    && startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
+	    == UINT64_C(0xbd897b297371cc0d));
 
 	spy_cycle_fixture(true, 0, &capture, &current, &pager);
 	CHECK(sizeof(zero_ansi) - 1U == 152U);
@@ -46172,7 +46198,20 @@ test_computer_spy_presentation(void)
 	    && memcmp(capture.remote, zero_ansi,
 	    sizeof(zero_ansi) - 1U) == 0);
 	CHECK(pager.line_count == 2.0f && current.bold == 0.0f
-	    && current.blink == 0.0f);
+	    && current.blink == 0.0f
+	    && capture.local_event_count == 19U
+	    && capture.framebuffer_initialized
+	    && capture.framebuffer.bios_row == 6U
+	    && capture.framebuffer.bios_column == 41U
+	    && capture.framebuffer.qb_row == 6U
+	    && capture.framebuffer.qb_column == 41U
+	    && capture.framebuffer.brun_bios_cache_row == 6U
+	    && capture.framebuffer.brun_bios_cache_column == 41U
+	    && capture.framebuffer.qb_attribute == 0x07U
+	    && capture.framebuffer.qb_scrolls == 0U
+	    && capture.framebuffer.con_scrolls == 0U
+	    && startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
+	    == UINT64_C(0x41dc83486190ad47));
 }
 
 static void

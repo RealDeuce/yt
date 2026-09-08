@@ -2,9 +2,11 @@
 """Regenerate the finite Yankee Trader native implementation ledger.
 
 The reverse-engineering repository owns the legacy denominators.  This tool
-copies their stable identities into this implementation tree and deliberately
-starts unmapped native obligations as ``missing``.  A test merely existing for
-an executable is not enough to mark one legacy root or transfer verified.
+copies their stable identities into this implementation tree and preserves the
+native mapping, fixture, status, and prerequisite annotations already recorded
+against those identities.  Newly introduced obligations start as ``missing``;
+existing implementation evidence is never discarded merely because the
+upstream catalogs were regenerated.
 """
 
 from __future__ import annotations
@@ -40,6 +42,49 @@ def write_tsv(path: Path, fields: list[str], rows: list[dict[str, Any]]) -> None
         )
         writer.writeheader()
         writer.writerows(rows)
+
+
+NATIVE_FIELDS = (
+    "native_function",
+    "native_test_or_fixture",
+    "status",
+    "prerequisites",
+)
+
+
+def load_native_annotations(path: Path, key: str) -> dict[str, dict[str, str]]:
+    if not path.exists():
+        return {}
+    with path.open("r", encoding="utf-8", newline="") as source:
+        reader = csv.DictReader(source, dialect="excel-tab")
+        if reader.fieldnames is None or key not in reader.fieldnames:
+            raise SystemExit(f"invalid existing ledger schema: {path}")
+        rows: dict[str, dict[str, str]] = {}
+        for row in reader:
+            identity = row[key]
+            if identity in rows:
+                raise SystemExit(f"duplicate existing ledger identity: {identity}")
+            rows[identity] = row
+        return rows
+
+
+def retain_native_annotations(
+    rows: list[dict[str, Any]],
+    existing: dict[str, dict[str, str]],
+    key: str,
+) -> None:
+    generated_keys = {str(row[key]) for row in rows}
+    stale = set(existing) - generated_keys
+    if stale:
+        raise SystemExit(
+            f"existing ledger identities disappeared: {', '.join(sorted(stale))}"
+        )
+    for row in rows:
+        prior = existing.get(str(row[key]))
+        if prior is None:
+            continue
+        for field in NATIVE_FIELDS:
+            row[field] = prior[field]
 
 
 PROGRAM_CANDIDATES = {
@@ -177,6 +222,22 @@ def main() -> int:
     roots = root_rows(loaded["roots"])
     transfers = transfer_rows(loaded["transfers"])
     presentation = presentation_rows(loaded["presentation"])
+
+    retain_native_annotations(
+        roots,
+        load_native_annotations(arguments.output / "roots.tsv", "legacy_root"),
+        "legacy_root",
+    )
+    retain_native_annotations(
+        transfers,
+        load_native_annotations(arguments.output / "transfers.tsv", "edge_id"),
+        "edge_id",
+    )
+    retain_native_annotations(
+        presentation,
+        load_native_annotations(arguments.output / "presentation.tsv", "component"),
+        "component",
+    )
 
     expected = {
         "roots": 168,
