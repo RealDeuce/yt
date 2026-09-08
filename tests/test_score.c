@@ -27074,6 +27074,66 @@ check_hostile_menu_front(void)
 			return false;
 	}
 	{
+		static const uint8_t turn_41_raw[4] = {
+		    0x00, 0x00, 0x24, 0x86
+		};
+		static const uint8_t turn_40_raw[4] = {
+		    0x00, 0x00, 0x20, 0x86
+		};
+		static const uint8_t cloak_005_raw[4] = {
+		    0x0a, 0xd7, 0x23, 0x79
+		};
+		static const uint8_t cloak_negative_raw[4] = {
+		    0x0a, 0xd7, 0xa3, 0x79
+		};
+		static const uint8_t cloak_dirty_zero[4] = {
+		    0x00, 0x00, 0xa3, 0x00
+		};
+		static const uint8_t cloak_02_raw[4] = {
+		    0x0a, 0xd7, 0x23, 0x7b
+		};
+		static const uint8_t cloak_01_raw[4] = {
+		    0x0a, 0xd7, 0x23, 0x7a
+		};
+		uint8_t turn_raw[4];
+		uint8_t arithmetic_raw[4];
+		uint8_t result_raw[4];
+		bool clamped;
+		bool allows;
+
+		memcpy(turn_raw, turn_41_raw, sizeof(turn_raw));
+		if (!yt_action_finalizer_turn_raw(turn_raw, turn_raw)
+		    || memcmp(turn_raw, turn_40_raw, sizeof(turn_raw)) != 0
+		    || yt_action_finalizer_turn_raw(NULL, turn_raw)
+		    || yt_action_finalizer_turn_raw(turn_raw, NULL)
+		    || !yt_action_finalizer_cloak_raw(cloak_005_raw,
+		    arithmetic_raw, result_raw, &clamped)
+		    || !clamped
+		    || memcmp(arithmetic_raw, cloak_negative_raw,
+		    sizeof(arithmetic_raw)) != 0
+		    || memcmp(result_raw, cloak_dirty_zero,
+		    sizeof(result_raw)) != 0
+		    || !yt_action_finalizer_cloak_raw(cloak_02_raw,
+		    arithmetic_raw, result_raw, &clamped)
+		    || clamped
+		    || memcmp(arithmetic_raw, cloak_01_raw,
+		    sizeof(arithmetic_raw)) != 0
+		    || memcmp(result_raw, cloak_01_raw,
+		    sizeof(result_raw)) != 0
+		    || yt_action_finalizer_cloak_raw(NULL, arithmetic_raw,
+		    result_raw, &clamped)
+		    || !yt_action_finalizer_anti_cloak_allows(0.0f, 0U, &allows)
+		    || !allows
+		    || !yt_action_finalizer_anti_cloak_allows(0.4f, 0U, &allows)
+		    || !allows
+		    || !yt_action_finalizer_anti_cloak_allows(-1.0f, 0U, &allows)
+		    || allows
+		    || yt_action_finalizer_anti_cloak_allows(40000.0f, 0U,
+		    &allows)
+		    || yt_action_finalizer_anti_cloak_allows(0.0f, 0U, NULL))
+			return false;
+	}
+	{
 		static const uint8_t binary_name[] = {'A', 0, 'B'};
 		static const uint8_t expected_display[] =
 		    "Collect 2 turns bonus for destroying 512000 Xannor!!";

@@ -177,6 +177,10 @@
 #define YT_DATE_SERIAL_YEAR_COUNTER_ADDRESS 0x5396U
 #define YT_TIME_SAVED_CURSOR_ROW_ADDRESS 0x5372U
 #define YT_TIME_SAVED_CURSOR_COLUMN_ADDRESS 0x5376U
+#define YT_ACTION_FOREGROUND_SAVE_ADDRESS 0x51A8U
+#define YT_ACTION_CLOAK_DISPLAY_SCALE_ADDRESS 0x8C36U
+#define YT_ACTION_TURN_DIVISOR_ADDRESS 0x9E68U
+#define YT_ACTION_XANNOR_THRESHOLD_ADDRESS 0x9EBCU
 #define YT_TIME_REMAINING_MINUTES_ADDRESS 0x537AU
 #define YT_STARTUP_INITIAL_FIVE_ADDRESS 0x4BFAU
 #define YT_CURRENT_PLAYER_RECORD_ADDRESS 0x1C3CU
@@ -5896,45 +5900,96 @@ finalize_action(struct yt_session *session, float amount,
 	float draw;
 	char number[64];
 	char row[128];
+	uint8_t turn_raw[4];
+	bool anti_cloak_allows;
 
 	(void)amount;
 	if (!spy_sweep(session, error) || !reload_player(session, error))
 		return false;
-	session->player.turns = single_sub(session->player.turns, 1.0f);
-	if (!yt_record_set_number(&session->player.record, YT_F49,
-	    session->player.turns))
+	yt_route_process_raw_single(&session->route_process,
+	    YT_CURRENT_PLAYER_TURNS_ADDRESS, turn_raw);
+	if (!yt_action_finalizer_turn_raw(turn_raw, turn_raw))
 		return false;
-	quotient = single_div(session->player.turns, 25.0f);
-	if (!session_anti_cloak_enabled(session)
-	    && quotient == floorf(quotient)) {
-		static const uint8_t dirty_zero[4] = {0x00, 0x00, 0xa3, 0x00};
-		float display;
-		float saved_foreground = session_foreground(session);
-
-		session->player.cloak = single_add(session->player.cloak,
-		    -0.009999999776482582f);
-		if (session->player.cloak < 0.0f) {
-			session->player.cloak = 0.0f;
-			if (!yt_record_set_raw_number(&session->player.record,
-			    YT_F125, dirty_zero))
-				return false;
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_CURRENT_PLAYER_TURNS_ADDRESS, turn_raw);
+	session->player.turns = qb_mbf32_decode(turn_raw);
+	if (!yt_record_set_raw_number(&session->player.record, YT_F49, turn_raw))
+		return false;
+	quotient = single_div(session->player.turns,
+	    yt_route_process_single(&session->route_process,
+	    YT_ACTION_TURN_DIVISOR_ADDRESS));
+	if (!yt_action_finalizer_anti_cloak_allows(
+	    yt_route_process_single(&session->route_process,
+	    YT_ANTI_CLOAK_ADDRESS),
+	    session->presentation.sound.conversion_mode, &anti_cloak_allows)) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			error->system_error = 0;
+			(void)snprintf(error->operation, sizeof(error->operation), "%s",
+			    "action-finalizer anti-cloak CINT");
 		}
-		else if (!yt_record_set_number(&session->player.record, YT_F125,
-		    session->player.cloak))
+		return false;
+	}
+	if (quotient == floorf(quotient) && anti_cloak_allows) {
+		float display;
+		uint8_t cloak_arithmetic[4];
+		uint8_t cloak_result[4];
+		uint8_t foreground_raw[4];
+		bool cache_index_overflow;
+		bool cloak_clamped;
+		int cache_record;
+
+		yt_route_process_raw_single(&session->route_process,
+		    YT_CURRENT_PLAYER_CLOAK_ADDRESS, cloak_result);
+		if (!yt_action_finalizer_cloak_raw(cloak_result,
+		    cloak_arithmetic, cloak_result, &cloak_clamped))
 			return false;
-		session_set_player_cache_raw(session, session_record(session),
+		yt_route_process_set_raw_single(&session->route_process,
+		    YT_CURRENT_PLAYER_CLOAK_ADDRESS, cloak_arithmetic);
+		if (cloak_clamped)
+			yt_route_process_set_raw_single(&session->route_process,
+			    YT_CURRENT_PLAYER_CLOAK_ADDRESS, cloak_result);
+		session->player.cloak = qb_mbf32_decode(cloak_result);
+		if (!yt_record_set_raw_number(&session->player.record, YT_F125,
+		    cloak_result))
+			return false;
+		cache_record = (int)qb_cint_mode((double)yt_route_process_single(
+		    &session->route_process, YT_CURRENT_PLAYER_RECORD_ADDRESS),
+		    session->presentation.sound.conversion_mode,
+		    &cache_index_overflow);
+		if (cache_index_overflow) {
+			if (error != NULL) {
+				error->status = YT_RANGE;
+				error->system_error = 0;
+				(void)snprintf(error->operation,
+				    sizeof(error->operation), "%s",
+				    "action-finalizer player-index CINT");
+			}
+			return false;
+		}
+		session_set_player_cache_raw(session, cache_record,
 		    YT_PLAYER_CACHE_CLOAK,
 		    session->player.record.bytes + YT_F125);
-		session->cloak_cache[session_record(session)] =
-		    qb_mbf32_decode(session->player.record.bytes + YT_F125);
-		display = floorf(single_mul(session->player.cloak, 50.0f));
+		if (cache_record >= 0
+		    && (size_t)cache_record < YT_ARRAY_LEN(session->cloak_cache))
+			session->cloak_cache[cache_record] = qb_mbf32_decode(
+			    session->player.record.bytes + YT_F125);
+		display = floorf(single_mul(session->player.cloak,
+		    yt_route_process_single(&session->route_process,
+		    YT_ACTION_CLOAK_DISPLAY_SCALE_ADDRESS)));
 		qb_str_single(number, sizeof(number), display);
 		snprintf(row, sizeof(row), "Cloak at%s%%", number);
+		yt_route_process_raw_single(&session->route_process,
+		    YT_FOREGROUND_ADDRESS, foreground_raw);
+		yt_route_process_set_raw_single(&session->route_process,
+		    YT_ACTION_FOREGROUND_SAVE_ADDRESS, foreground_raw);
 		session_set_foreground(session, 7.0f);
 		if (!session_031f(session, (const uint8_t *)row, strlen(row),
 		    "action-finalizer cloak row", error))
 			return false;
-		session_set_foreground(session, saved_foreground);
+		yt_route_process_raw_single(&session->route_process,
+		    YT_ACTION_FOREGROUND_SAVE_ADDRESS, foreground_raw);
+		session_set_foreground_raw(session, foreground_raw);
 		if (session->player.cloak == 0.0f) {
 			if (!session_attention(session,
 			    " WARNING! CLOAK EXPIRED!",
@@ -5969,7 +6024,8 @@ finalize_action(struct yt_session *session, float amount,
 		return false;
 	if (!random_value(session, &draw, error))
 		return false;
-	if (draw > 0.99000000953674316f) {
+	if (draw > yt_route_process_single(&session->route_process,
+	    YT_ACTION_XANNOR_THRESHOLD_ADDRESS)) {
 		session_load_xannor_provoker(session, &xannor_provoker);
 		if (!launch_xannor_retaliation(session, &xannor_provoker,
 		    error))
@@ -20127,6 +20183,15 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	uint8_t mode_raw[4];
 	static const uint8_t static_one[4] = {0x00, 0x00, 0x00, 0x81};
 	static const uint8_t scanner_mode_zero[4] = {0x00, 0x00, 0x46, 0x00};
+	static const uint8_t action_cloak_display_scale[4] = {
+	    0x00, 0x00, 0x48, 0x86
+	};
+	static const uint8_t action_turn_divisor[4] = {
+	    0x00, 0x00, 0x48, 0x85
+	};
+	static const uint8_t action_xannor_threshold[4] = {
+	    0xa4, 0x70, 0x7d, 0x80
+	};
 	bool resume_gameplay = false;
 	char first[128];
 	char last[128];
@@ -20182,6 +20247,14 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	    YT_STATIC_SINGLE_ONE_ADDRESS, static_one);
 	yt_route_process_set_raw_single(&session.route_process,
 	    YT_POST_LOGIN_SCANNER_MODE_ADDRESS, scanner_mode_zero);
+	yt_route_process_set_raw_single(&session.route_process,
+	    YT_ACTION_CLOAK_DISPLAY_SCALE_ADDRESS,
+	    action_cloak_display_scale);
+	yt_route_process_set_raw_single(&session.route_process,
+	    YT_ACTION_TURN_DIVISOR_ADDRESS, action_turn_divisor);
+	yt_route_process_set_raw_single(&session.route_process,
+	    YT_ACTION_XANNOR_THRESHOLD_ADDRESS,
+	    action_xannor_threshold);
 	/* YT:040A is the ordinary instruction after the handed-off checkpoint. */
 	session_set_pager_nonstop(&session, 1.0f);
 	if (door->identity.ansi

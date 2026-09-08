@@ -219,6 +219,33 @@ seam without treasury-specific copies of their internal behavior.
 
 ## Open documentation gaps
 
+### DOC-GAP-037: action-finalizer CINT failure identities
+
+Affected coverage:
+
+- the unconditional Anti-Cloak `CINT` in the shared `YT:A6E3` action
+  finalizer after turn offset 49 has been staged; and
+- the selected-cloak current-player `CINT` after cloak offset 125 has been
+  staged but before the unchecked process-cache write.
+
+`docs/runtime/action-finalizer-output.md` specifies the non-short-circuit
+Anti-Cloak conversion, the separate current-player conversion, their exact
+normal ordering, unchecked cache-address calculation, and retained FIELD
+prefixes. The native finalizer now implements those documented normal paths,
+including fractional Anti-Cloak values and wrapped process-cache addresses.
+
+The document's failure table names the two conversion boundaries only as
+`cadence CINT/cache-address error`. It does not publish either call
+instruction/saved IP, current statement, ERL, admitted ERR values, installed
+handler, retry identity, or main/shared error-router projection. Returning a
+protective `YT_RANGE` at overflow is therefore not an exact BASIC failure
+claim and cannot verify those two edges.
+
+Upstream documentation, generated evidence, canonical error-router carriers,
+and focused projections must publish both identities before these failure
+paths can be completed. The already documented non-overflow finalizer behavior
+is unaffected. No binary inspection or new reverse engineering was performed.
+
 ### DOC-GAP-023: current-sector scanner cloak-clear raw value
 
 Affected coverage:

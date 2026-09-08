@@ -6857,6 +6857,57 @@ yt_no_turn_gate_result_raw(bool denied, uint8_t raw[4])
 }
 
 bool
+yt_action_finalizer_turn_raw(const uint8_t before[4], uint8_t after[4])
+{
+	volatile float updated;
+
+	if (before == NULL || after == NULL)
+		return false;
+	updated = qb_mbf32_decode(before) - 1.0f;
+	return qb_mbf32_encode(updated, after) != QB_MBF_OVERFLOW;
+}
+
+bool
+yt_action_finalizer_cloak_raw(const uint8_t before[4],
+    uint8_t arithmetic[4], uint8_t result[4], bool *clamped)
+{
+	static const uint8_t dirty_zero[4] = {0x00, 0x00, 0xa3, 0x00};
+	volatile float updated;
+
+	if (before == NULL || arithmetic == NULL || result == NULL
+	    || clamped == NULL)
+		return false;
+	updated = qb_mbf32_decode(before) - 0.009999999776482582f;
+	if (qb_mbf32_encode(updated, arithmetic) == QB_MBF_OVERFLOW)
+		return false;
+	if (updated < 0.0f) {
+		memcpy(result, dirty_zero, sizeof(dirty_zero));
+		*clamped = true;
+	}
+	else {
+		memcpy(result, arithmetic, 4U);
+		*clamped = false;
+	}
+	return true;
+}
+
+bool
+yt_action_finalizer_anti_cloak_allows(float anti_cloak,
+    uint8_t conversion_mode, bool *allows)
+{
+	bool overflow;
+	int32_t converted;
+
+	if (allows == NULL)
+		return false;
+	converted = qb_cint_mode((double)anti_cloak, conversion_mode, &overflow);
+	if (overflow)
+		return false;
+	*allows = (int16_t)~(int16_t)converted != 0;
+	return true;
+}
+
+bool
 yt_team_choice_rejected(float choice, float raw_team,
     int32_t captain_cint, int32_t team_cint)
 {
