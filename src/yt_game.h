@@ -482,6 +482,58 @@ bool yt_team_loader_run(struct yt_team_loader_state *state,
     yt_team_loader_read_record_fn read_record, void *context,
     struct yt_error *error);
 
+#define YT_TEAM_AUDIT_MESSAGE_MAX 32767U
+
+enum yt_team_audit_clock_kind {
+	YT_TEAM_AUDIT_DATE,
+	YT_TEAM_AUDIT_TIME,
+};
+
+enum yt_team_audit_store_kind {
+	YT_TEAM_AUDIT_STORE_LOOP_COUNTER,
+	YT_TEAM_AUDIT_STORE_SENDER,
+};
+
+struct yt_team_audit_state {
+	float team_id;
+	float event_type;
+	float current_player_record;
+	uint8_t conversion_mode;
+	const uint8_t *current_player_name;
+	size_t current_player_name_length;
+	const uint8_t *attempted_password;
+	size_t attempted_password_length;
+	uint8_t *message;
+	size_t message_capacity;
+	size_t message_length;
+	struct yt_team_loader_cache *cache;
+	uint8_t loop_counter_raw[4];
+	uint8_t sender_raw[4];
+	bool complete;
+};
+
+typedef bool (*yt_team_audit_clock_fn)(void *context,
+	enum yt_team_audit_clock_kind kind, uint8_t *text, size_t capacity,
+	size_t *length, struct yt_error *error);
+typedef bool (*yt_team_audit_load_fn)(void *context, float team_id,
+	struct yt_error *error);
+typedef bool (*yt_team_audit_write_fn)(void *context, const uint8_t *text,
+	size_t length, const uint8_t sender_raw[4],
+	const uint8_t recipient_raw[4], struct yt_error *error);
+typedef void (*yt_team_audit_store_fn)(void *context,
+	enum yt_team_audit_store_kind kind, const uint8_t raw[4]);
+
+struct yt_team_audit_ops {
+	yt_team_audit_clock_fn clock;
+	yt_team_audit_load_fn load_team;
+	yt_team_audit_write_fn write_radio;
+	yt_team_audit_store_fn store;
+};
+
+bool yt_team_audit_run(struct yt_team_audit_state *state,
+	const struct yt_team_audit_ops *ops, void *context,
+	struct yt_error *error);
+
 struct yt_death_team_remove_state {
 	int victim_record;
 	float current_player_record;

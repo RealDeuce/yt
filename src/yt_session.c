@@ -180,6 +180,8 @@
 #define YT_TIME_REMAINING_MINUTES_ADDRESS 0x537AU
 #define YT_STARTUP_INITIAL_FIVE_ADDRESS 0x4BFAU
 #define YT_CURRENT_PLAYER_RECORD_ADDRESS 0x1C3CU
+#define YT_TEAM_AUDIT_LOOP_ADDRESS 0x5F94U
+#define YT_TEAM_AUDIT_SENDER_ADDRESS 0x5F98U
 #define YT_SHARED_TARGET_RECORD_ADDRESS 0x1A40U
 #define YT_COUNTERATTACK_PLAYER_ADDRESS 0x1C10U
 #define YT_XANNOR_PROVOKER_ADDRESS 0x4BDCU
@@ -250,7 +252,8 @@ struct yt_session {
 	struct yt_pager_state pager;
 	struct yt_timed_wait_state wait;
 	struct yt_input_value input_residue;
-	char team_audit_message[YT_COMMAND_SIZE];
+	uint8_t team_audit_message[YT_TEAM_AUDIT_MESSAGE_MAX];
+	size_t team_audit_message_length;
 	uint8_t hostile_owner_label[160];
 	size_t hostile_owner_label_length;
 	struct yt_team_loader_cache team_cache;
@@ -1500,14 +1503,17 @@ append_news_bytes(struct yt_session *session, const uint8_t *text,
 }
 
 static bool
-radio_append_bytes(const uint8_t *text, size_t length, float sender,
-    float recipient,
+radio_append_raw_bytes(const uint8_t *text, size_t length,
+    const uint8_t sender_raw[4], const uint8_t recipient_raw[4],
     struct yt_error *error)
 {
+	static const uint8_t personal_counter[4] = {0x00, 0x00, 0x00, 0x81};
+	static const uint8_t broadcast_counter[4] = {0x00, 0x00, 0x70, 0x85};
 	struct yt_radio_file file;
 	struct yt_radio_record record;
 	struct yt_error close_error;
 	uint32_t basic_record;
+	const uint8_t *counter_raw;
 
 	yt_radio_file_init(&file);
 	if (!yt_radio_file_open(&file, "YTRMSG.DAT", error)
@@ -1515,7 +1521,13 @@ radio_append_bytes(const uint8_t *text, size_t length, float sender,
 	    || !yt_radio_file_get(&file, basic_record, &record, NULL,
 	    error))
 		goto failed;
-	if (!yt_radio_message_record(&record, text, length, sender, recipient)) {
+	memset(&record, 0, sizeof(record));
+	counter_raw = qb_mbf32_decode(recipient_raw) == -2.0f
+	    ? broadcast_counter : personal_counter;
+	if ((text == NULL && length != 0U)
+	    || !yt_radio_set_raw_number(&record, 0U, counter_raw)
+	    || !yt_radio_set_raw_number(&record, 4U, recipient_raw)
+	    || !yt_radio_set_raw_number(&record, 8U, sender_raw)) {
 		if (error != NULL) {
 			error->status = YT_RANGE;
 			snprintf(error->operation, sizeof(error->operation),
@@ -1523,6 +1535,7 @@ radio_append_bytes(const uint8_t *text, size_t length, float sender,
 		}
 		goto failed;
 	}
+	yt_radio_set_text(&record, text, length, 74U);
 	if (!yt_radio_file_put(&file, basic_record, &record, error)
 	    || !yt_radio_file_close(&file, error))
 		return false;
@@ -1535,11 +1548,24 @@ failed:
 }
 
 static bool
-radio_append(const char *text, float sender, float recipient,
-    struct yt_error *error)
+radio_append_bytes(const uint8_t *text, size_t length, float sender,
+    float recipient, struct yt_error *error)
 {
-	return radio_append_bytes((const uint8_t *)text, strlen(text), sender,
-	    recipient, error);
+	uint8_t sender_raw[4];
+	uint8_t recipient_raw[4];
+
+	if (qb_mbf32_encode(sender, sender_raw) != QB_MBF_OK
+	    || qb_mbf32_encode(recipient, recipient_raw) != QB_MBF_OK) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation,
+			    sizeof(error->operation), "%s",
+			    "construct radio record");
+		}
+		return false;
+	}
+	return radio_append_raw_bytes(text, length, sender_raw, recipient_raw,
+	    error);
 }
 
 static bool
@@ -12827,20 +12853,23 @@ command_land(struct yt_session *session, bool *enter_sector,
 }
 
 static bool
-team_load(struct yt_session *session, int id, struct yt_team *team,
+team_load_raw(struct yt_session *session, float id, struct yt_team *team,
     struct yt_error *error)
 {
 	struct yt_team_loader_state loader = {
-		.team_id = (float)id,
-		.current_player_record = (float)session_record(session),
+		.team_id = id,
+		.current_player_record = yt_route_process_single(
+		    &session->route_process, YT_CURRENT_PLAYER_RECORD_ADDRESS),
 		.sector_record_offset = session_sector_offset(session),
 		.conversion_mode = session->presentation.sound.conversion_mode,
 		.cache = &session->team_cache,
 	};
 	size_t index;
 
-	memset(team, 0, sizeof(*team));
-	team->id = id;
+	if (team != NULL) {
+		memset(team, 0, sizeof(*team));
+		team->id = (int)id;
+	}
 	session_team_cache_import(session);
 	if (!yt_team_loader_run(&loader, session_read_physical_record, session,
 	    error)) {
@@ -12848,6 +12877,8 @@ team_load(struct yt_session *session, int id, struct yt_team *team,
 		return false;
 	}
 	session_team_cache_export(session);
+	if (team == NULL)
+		return true;
 	if (loader.overlay_loaded)
 		yt_sector_decode(&team->overlay, &loader.overlay);
 	memcpy(team->name, session->team_cache.name,
@@ -12864,6 +12895,13 @@ team_load(struct yt_session *session, int id, struct yt_team *team,
 			team->full = false;
 	}
 	return true;
+}
+
+static bool
+team_load(struct yt_session *session, int id, struct yt_team *team,
+    struct yt_error *error)
+{
+	return team_load_raw(session, (float)id, team, error);
 }
 
 static bool
@@ -12913,63 +12951,98 @@ team_store_roster(struct yt_session *session, struct yt_team *team,
 }
 
 static bool
+team_audit_clock_adapter(void *context, enum yt_team_audit_clock_kind kind,
+    uint8_t *text, size_t capacity, size_t *length, struct yt_error *error)
+{
+	struct yt_clock_value now;
+	char date[11];
+	char time_text[9];
+	const char *source;
+	size_t source_length;
+
+	(void)context;
+	if (text == NULL || length == NULL || !yt_platform_clock(&now, error))
+		return false;
+	if (kind == YT_TEAM_AUDIT_DATE) {
+		yt_format_date(&now, date);
+		source = date;
+		source_length = sizeof(date) - 1U;
+	} else {
+		yt_format_time(&now, time_text);
+		source = time_text;
+		source_length = sizeof(time_text) - 1U;
+	}
+	if (source_length > capacity)
+		return false;
+	memcpy(text, source, source_length);
+	*length = source_length;
+	return true;
+}
+
+static bool
+team_audit_load_adapter(void *context, float team_id,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	return team_load_raw(session, team_id, NULL, error);
+}
+
+static bool
+team_audit_write_adapter(void *context, const uint8_t *text, size_t length,
+    const uint8_t sender_raw[4], const uint8_t recipient_raw[4],
+    struct yt_error *error)
+{
+	(void)context;
+	return radio_append_raw_bytes(text, length, sender_raw, recipient_raw,
+	    error);
+}
+
+static void
+team_audit_store_adapter(void *context, enum yt_team_audit_store_kind kind,
+    const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+	uint16_t address = kind == YT_TEAM_AUDIT_STORE_LOOP_COUNTER
+	    ? YT_TEAM_AUDIT_LOOP_ADDRESS : YT_TEAM_AUDIT_SENDER_ADDRESS;
+
+	yt_route_process_set_raw_single(&session->route_process, address, raw);
+}
+
+static bool
 team_audit(struct yt_session *session, float team_id, float event,
     const char *attempt, struct yt_error *error)
 {
-	struct yt_clock_value date_now;
-	struct yt_clock_value time_now;
-	struct yt_team team;
-	char date[11];
-	char time_text[9];
-	size_t index;
+	static const struct yt_team_audit_ops ops = {
+		.clock = team_audit_clock_adapter,
+		.load_team = team_audit_load_adapter,
+		.write_radio = team_audit_write_adapter,
+		.store = team_audit_store_adapter,
+	};
+	struct yt_team_audit_state state = {
+		.team_id = team_id,
+		.event_type = event,
+		.current_player_record = yt_route_process_single(
+		    &session->route_process, YT_CURRENT_PLAYER_RECORD_ADDRESS),
+		.conversion_mode = session->presentation.sound.conversion_mode,
+		.current_player_name = (const uint8_t *)session->player.name,
+		.current_player_name_length = strlen(session->player.name),
+		.attempted_password = (const uint8_t *)attempt,
+		.attempted_password_length = strlen(attempt),
+		.message = session->team_audit_message,
+		.message_capacity = sizeof(session->team_audit_message),
+		.message_length = session->team_audit_message_length,
+		.cache = &session->team_cache,
+	};
+	bool result;
 
-	if (event == 2.0f || event == 1.0f) {
-		if (!yt_platform_clock(&date_now, error))
-			return false;
-		yt_format_date(&date_now, date);
-		if (!yt_platform_clock(&time_now, error))
-			return false;
-		yt_format_time(&time_now, time_text);
-	}
-	if (event == 2.0f)
-		snprintf(session->team_audit_message,
-		    sizeof(session->team_audit_message),
-		    "%s ***  QUIT your team on %s at %s!",
-		    session->player.name, date, time_text);
-	else if (event == 1.0f)
-		snprintf(session->team_audit_message,
-		    sizeof(session->team_audit_message),
-		    "%s ***  joined your team on %s at %s!",
-		    session->player.name, date, time_text);
-	else if (event == 0.0f)
-		snprintf(session->team_audit_message,
-		    sizeof(session->team_audit_message),
-		    "%s ***  entered invalid password for your team: %s!",
-		    session->player.name, attempt);
-	if (!team_load(session, (int)team_id, &team, error))
-		return false;
-	for (index = 0; index < 4; ++index) {
-		bool overflow;
-		int32_t converted = qb_cint((double)team.roster[index],
-		    &overflow);
-		int unequal = team.roster[index]
-		    != (float)session_record(session) ? -1 : 0;
-
-		if (overflow) {
-			if (error != NULL) {
-				error->status = YT_RANGE;
-				snprintf(error->operation,
-				    sizeof(error->operation),
-				    "team audit recipient CINT");
-			}
-			return false;
-		}
-		if ((((int)converted) & unequal) != 0
-		    && !radio_append(session->team_audit_message, -2.0f,
-		    team.roster[index], error))
-			return false;
-	}
-	return true;
+	yt_route_process_raw_single(&session->route_process,
+	    YT_TEAM_AUDIT_LOOP_ADDRESS, state.loop_counter_raw);
+	yt_route_process_raw_single(&session->route_process,
+	    YT_TEAM_AUDIT_SENDER_ADDRESS, state.sender_raw);
+	result = yt_team_audit_run(&state, &ops, session, error);
+	session->team_audit_message_length = state.message_length;
+	return result;
 }
 
 static bool

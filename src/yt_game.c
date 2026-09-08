@@ -852,6 +852,166 @@ yt_team_loader_run(struct yt_team_loader_state *state,
 	return true;
 }
 
+static bool
+team_audit_error(struct yt_error *error, const char *operation)
+{
+	if (error != NULL) {
+		error->status = YT_RANGE;
+		error->system_error = 0;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    operation);
+		error->path[0] = '\0';
+	}
+	return false;
+}
+
+static bool
+team_audit_append(uint8_t *destination, size_t capacity, size_t *length,
+    const uint8_t *source, size_t source_length, struct yt_error *error)
+{
+	if (source_length > capacity - *length)
+		return team_audit_error(error, "team audit message length");
+	if (source_length != 0U)
+		memcpy(destination + *length, source, source_length);
+	*length += source_length;
+	return true;
+}
+
+bool
+yt_team_audit_run(struct yt_team_audit_state *state,
+    const struct yt_team_audit_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t separator[] = " *** ";
+	static const uint8_t quit_text[] = " QUIT your team on ";
+	static const uint8_t join_text[] = " joined your team on ";
+	static const uint8_t invalid_text[] =
+	    " entered invalid password for your team: ";
+	static const uint8_t at_text[] = " at ";
+	static const uint8_t suffix[] = "!";
+	uint8_t replacement[YT_TEAM_AUDIT_MESSAGE_MAX];
+	uint8_t clock_text[32];
+	uint8_t raw[4];
+	size_t replacement_length = 0U;
+	size_t clock_length;
+	size_t index;
+	bool construct;
+	bool overflow;
+
+	if (state == NULL || ops == NULL || ops->load_team == NULL
+	    || ops->write_radio == NULL || state->cache == NULL
+	    || state->message == NULL
+	    || state->message_length > state->message_capacity
+	    || state->message_capacity > YT_TEAM_AUDIT_MESSAGE_MAX
+	    || (state->current_player_name == NULL
+	    && state->current_player_name_length != 0U)
+	    || (state->attempted_password == NULL
+	    && state->attempted_password_length != 0U))
+		return team_audit_error(error, "team audit state");
+	state->complete = false;
+	construct = state->event_type == 0.0f || state->event_type == 1.0f
+	    || state->event_type == 2.0f;
+	if (construct) {
+		if (!team_audit_append(replacement, sizeof(replacement),
+		    &replacement_length, state->current_player_name,
+		    state->current_player_name_length, error)
+		    || !team_audit_append(replacement, sizeof(replacement),
+		    &replacement_length, separator, sizeof(separator) - 1U,
+		    error))
+			return false;
+		if (state->event_type == 2.0f) {
+			if (!team_audit_append(replacement, sizeof(replacement),
+			    &replacement_length, quit_text,
+			    sizeof(quit_text) - 1U, error))
+				return false;
+		} else if (state->event_type == 1.0f) {
+			if (!team_audit_append(replacement, sizeof(replacement),
+			    &replacement_length, join_text,
+			    sizeof(join_text) - 1U, error))
+				return false;
+		} else if (!team_audit_append(replacement,
+		    sizeof(replacement), &replacement_length, invalid_text,
+		    sizeof(invalid_text) - 1U, error))
+			return false;
+		if (state->event_type == 1.0f || state->event_type == 2.0f) {
+			if (ops->clock == NULL)
+				return team_audit_error(error,
+				    "team audit clock adapter");
+			clock_length = 0U;
+			if (!ops->clock(context, YT_TEAM_AUDIT_DATE, clock_text,
+			    sizeof(clock_text), &clock_length, error)
+			    || clock_length > sizeof(clock_text)
+			    || !team_audit_append(replacement,
+			    sizeof(replacement), &replacement_length, clock_text,
+			    clock_length, error)
+			    || !team_audit_append(replacement,
+			    sizeof(replacement), &replacement_length, at_text,
+			    sizeof(at_text) - 1U, error))
+				return false;
+			clock_length = 0U;
+			if (!ops->clock(context, YT_TEAM_AUDIT_TIME, clock_text,
+			    sizeof(clock_text), &clock_length, error)
+			    || clock_length > sizeof(clock_text)
+			    || !team_audit_append(replacement,
+			    sizeof(replacement), &replacement_length, clock_text,
+			    clock_length, error))
+				return false;
+		} else if (!team_audit_append(replacement,
+		    sizeof(replacement), &replacement_length,
+		    state->attempted_password,
+		    state->attempted_password_length, error))
+			return false;
+		if (!team_audit_append(replacement, sizeof(replacement),
+		    &replacement_length, suffix, sizeof(suffix) - 1U, error)
+		    || replacement_length > state->message_capacity)
+			return team_audit_error(error,
+			    "team audit message capacity");
+		memcpy(state->message, replacement, replacement_length);
+		state->message_length = replacement_length;
+	}
+	if (!ops->load_team(context, state->team_id, error))
+		return false;
+	if (qb_mbf32_encode(1.0f, state->loop_counter_raw) != QB_MBF_OK)
+		return team_audit_error(error, "team audit loop counter");
+	if (ops->store != NULL)
+		ops->store(context, YT_TEAM_AUDIT_STORE_LOOP_COUNTER,
+		    state->loop_counter_raw);
+	for (index = 0U; index < YT_ARRAY_LEN(state->cache->roster_raw);
+	    ++index) {
+		float recipient = qb_mbf32_decode(state->cache->roster_raw[index]);
+		int32_t converted = qb_cint_mode((double)recipient,
+		    state->conversion_mode, &overflow);
+		int32_t unequal = recipient != state->current_player_record
+		    ? -1 : 0;
+
+		if (overflow)
+			return team_audit_error(error,
+			    "team audit recipient CINT");
+		if ((converted & unequal) != 0) {
+			if (qb_mbf32_encode(-2.0f, state->sender_raw)
+			    != QB_MBF_OK)
+				return team_audit_error(error,
+				    "team audit sender");
+			if (ops->store != NULL)
+				ops->store(context, YT_TEAM_AUDIT_STORE_SENDER,
+				    state->sender_raw);
+			if (!ops->write_radio(context, state->message,
+			    state->message_length, state->sender_raw,
+			    state->cache->roster_raw[index], error))
+				return false;
+		}
+		if (qb_mbf32_encode((float)(index + 2U), raw) != QB_MBF_OK)
+			return team_audit_error(error,
+			    "team audit loop counter");
+		memcpy(state->loop_counter_raw, raw, sizeof(raw));
+		if (ops->store != NULL)
+			ops->store(context, YT_TEAM_AUDIT_STORE_LOOP_COUNTER,
+			    state->loop_counter_raw);
+	}
+	state->complete = true;
+	return true;
+}
+
 bool
 yt_death_team_remove_run(struct yt_death_team_remove_state *state,
     const struct yt_death_team_remove_ops *ops, void *context,
