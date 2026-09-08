@@ -1793,9 +1793,8 @@ session_0357(struct yt_session *session, char *text, size_t size)
 static bool
 session_036f(struct yt_session *session, char *text, size_t size)
 {
-	if (!session_0345(session, text, size))
+	if (!session_0357(session, text, size))
 		return false;
-	session_compat_upper_n(session, (uint8_t *)text, strlen(text));
 	if (strchr(text, 'E') != NULL)
 		text[0] = '\0';
 	return session_store_output_source(session, (const uint8_t *)text,
