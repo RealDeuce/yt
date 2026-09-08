@@ -19,15 +19,25 @@ def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("ledger", choices=LEDGERS)
     parser.add_argument("identity", nargs="+")
-    parser.add_argument("--native-function", required=True)
-    parser.add_argument("--native-test", required=True)
+    parser.add_argument("--native-function")
+    parser.add_argument("--native-test")
     parser.add_argument(
         "--status",
-        required=True,
         choices=("missing", "candidate", "verified", "explicitly deferred"),
     )
-    parser.add_argument("--prerequisites", required=True)
-    return parser.parse_args()
+    parser.add_argument("--prerequisites")
+    arguments = parser.parse_args()
+    if all(
+        value is None
+        for value in (
+            arguments.native_function,
+            arguments.native_test,
+            arguments.status,
+            arguments.prerequisites,
+        )
+    ):
+        parser.error("at least one native annotation must be supplied")
+    return arguments
 
 
 def main() -> int:
@@ -49,10 +59,14 @@ def main() -> int:
         if identity in found:
             raise SystemExit(f"duplicate ledger identity: {identity}")
         found.add(identity)
-        row["native_function"] = arguments.native_function
-        row["native_test_or_fixture"] = arguments.native_test
-        row["status"] = arguments.status
-        row["prerequisites"] = arguments.prerequisites
+        if arguments.native_function is not None:
+            row["native_function"] = arguments.native_function
+        if arguments.native_test is not None:
+            row["native_test_or_fixture"] = arguments.native_test
+        if arguments.status is not None:
+            row["status"] = arguments.status
+        if arguments.prerequisites is not None:
+            row["prerequisites"] = arguments.prerequisites
 
     missing = requested - found
     if missing:
