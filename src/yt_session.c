@@ -18532,36 +18532,53 @@ computer_avoid(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
+computer_spy_read_target(void *context, size_t index, int16_t *target,
+    struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	(void)error;
+	if (index >= 3U)
+		return false;
+	*target = yt_route_process_word(&session->route_process,
+	    (uint16_t)(YT_SPY_SECTORS_ADDRESS + 2U * index));
+	return true;
+}
+
+static bool
+computer_spy_present(void *context, const uint8_t *text, size_t length,
+    enum yt_computer_spy_output_kind kind, struct yt_error *error)
+{
+	struct yt_session *session = context;
+
+	if (kind == YT_COMPUTER_SPY_NONE)
+		return session_02db(session, text, length,
+		    "active-spy none notice", error);
+	if (kind == YT_COMPUTER_SPY_LEADING_BLANK)
+		return session_present_text(session, NULL, 0U,
+		    SESSION_PRESENT_LINE, "active-spy leading blank", error);
+	if (kind == YT_COMPUTER_SPY_ROW) {
+		yt_present_set_bold(&session->presentation, 1.0f);
+		return session_02fc(session, text, length);
+	}
+	if (error != NULL)
+		error->status = YT_INVALID;
+	return false;
+}
+
+static bool
 computer_spies(struct yt_session *session, struct yt_error *error)
 {
-	static const uint8_t none[] = "You do not have any spies!";
-	int spy_count = (int)yt_route_process_single(&session->route_process,
-	    YT_SPY_COUNT_ADDRESS);
-	int index;
+	static const struct yt_computer_spy_ops ops = {
+		computer_spy_read_target,
+		computer_spy_present,
+	};
+	struct yt_computer_spy_state state = {
+		.count = yt_route_process_single(&session->route_process,
+		    YT_SPY_COUNT_ADDRESS),
+	};
 
-	if (spy_count == 0)
-		return session_02db(session, none, sizeof(none) - 1U,
-		    "active-spy none notice", error);
-	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "active-spy leading blank", error))
-		return false;
-	for (index = 0; index < spy_count; ++index) {
-		char counter[64];
-		char target[64];
-		char row[160];
-
-		if (qb_str_single(counter, sizeof(counter), (float)(index + 1)) < 0
-		    || qb_str_integer(target, sizeof(target),
-		    yt_route_process_word(&session->route_process,
-		    (uint16_t)(YT_SPY_SECTORS_ADDRESS + 2U * (size_t)index))) < 0
-		    || snprintf(row, sizeof(row), "Spy #%s will hunt in sector%s.",
-		    counter, target) < 0)
-			return false;
-		yt_present_set_bold(&session->presentation, 1.0f);
-		if (!session_02fc(session, (const uint8_t *)row, strlen(row)))
-			return false;
-	}
-	return true;
+	return yt_computer_spy_run(&state, &ops, session, error);
 }
 
 static void

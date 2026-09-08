@@ -4939,6 +4939,80 @@ yt_computer_activation_run(struct yt_computer_activation_state *state,
 }
 
 bool
+yt_computer_spy_run(struct yt_computer_spy_state *state,
+    const struct yt_computer_spy_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t none[] = "You do not have any spies!";
+	size_t index;
+
+	if (state == NULL || ops == NULL || ops->read_target == NULL
+	    || ops->present == NULL)
+		return startup_configuration_error(error, YT_INVALID,
+		    "active-spy arguments");
+	state->counter = 0.0f;
+	state->current_target = 0;
+	state->target_reads = 0U;
+	state->outputs = 0U;
+	state->rows = 0U;
+	state->target_valid = false;
+	state->complete = false;
+	if (state->count != 0.0f && state->count != 1.0f
+	    && state->count != 2.0f && state->count != 3.0f)
+		return startup_configuration_error(error, YT_RANGE,
+		    "active-spy count");
+	if (state->count == 0.0f) {
+		if (!ops->present(context, none, sizeof(none) - 1U,
+		    YT_COMPUTER_SPY_NONE, error))
+			return false;
+		state->outputs = 1U;
+		state->complete = true;
+		return true;
+	}
+	if (!ops->present(context, NULL, 0U,
+	    YT_COMPUTER_SPY_LEADING_BLANK, error))
+		return false;
+	state->outputs = 1U;
+	for (index = 0U; index < (size_t)state->count; ++index) {
+		char counter[64];
+		char target[64];
+		uint8_t row[160];
+		int counter_length;
+		int target_length;
+		int row_length;
+
+		state->counter = (float)(index + 1U);
+		state->target_valid = false;
+		if (!ops->read_target(context, index, &state->current_target,
+		    error))
+			return false;
+		++state->target_reads;
+		state->target_valid = true;
+		counter_length = qb_str_single(counter, sizeof(counter),
+		    state->counter);
+		target_length = qb_str_integer(target, sizeof(target),
+		    state->current_target);
+		if (counter_length < 0 || target_length < 0)
+			return startup_configuration_error(error, YT_RANGE,
+			    "active-spy numeric row");
+		row_length = snprintf((char *)row, sizeof(row),
+		    "Spy #%.*s will hunt in sector%.*s.", counter_length,
+		    counter, target_length, target);
+		if (row_length < 0 || (size_t)row_length >= sizeof(row))
+			return startup_configuration_error(error, YT_RANGE,
+			    "active-spy row");
+		if (!ops->present(context, row, (size_t)row_length,
+		    YT_COMPUTER_SPY_ROW, error))
+			return false;
+		++state->outputs;
+		++state->rows;
+	}
+	state->counter = state->count + 1.0f;
+	state->complete = true;
+	return true;
+}
+
+bool
 yt_computer_scoreboard_run(struct yt_computer_scoreboard_state *state,
     const struct yt_computer_scoreboard_ops *ops, void *context,
     struct yt_error *error)
