@@ -3876,6 +3876,9 @@ test_formatting_wrappers(void)
 	    &current, &result) == YT_PRESENT_OK);
 	CHECK(result.remote_length == 3
 	    && memcmp(result.remote, "abc", 3) == 0);
+	CHECK(yt_present_right_aligned((const uint8_t *)"abc", 3, 0.0f,
+	    &current, &result) == YT_PRESENT_OK);
+	CHECK(result.remote_length == 0U);
 
 	current.sound.conversion_mode = 0;
 	CHECK(yt_present_fixed_width(mutable, &mutable_length,
@@ -3883,6 +3886,28 @@ test_formatting_wrappers(void)
 	CHECK(mutable_length == 4 && memcmp(mutable, "ab  ", 4) == 0);
 	CHECK(result.remote_length == 4
 	    && memcmp(result.remote, "ab  ", 4) == 0);
+	{
+		uint8_t truncated[8] = {'a', 'b', 'c', 'd'};
+		size_t truncated_length = 4U;
+
+		CHECK(yt_present_fixed_width(truncated, &truncated_length,
+		    sizeof(truncated), 2.5f, &current, &result)
+		    == YT_PRESENT_OK);
+		CHECK(truncated_length == 3U
+		    && memcmp(truncated, "abc", 3U) == 0
+		    && result.remote_length == 3U
+		    && memcmp(result.remote, "abc", 3U) == 0);
+		memcpy(truncated, "abcd", 4U);
+		truncated_length = 4U;
+		current.sound.conversion_mode = 4;
+		CHECK(yt_present_fixed_width(truncated, &truncated_length,
+		    sizeof(truncated), 2.5f, &current, &result)
+		    == YT_PRESENT_OK);
+		CHECK(truncated_length == 2U
+		    && memcmp(truncated, "ab", 2U) == 0
+		    && result.remote_length == 2U
+		    && memcmp(result.remote, "ab", 2U) == 0);
+	}
 
 	current.bold = 0.0f;
 	CHECK(yt_present_bold_line((const uint8_t *)"x", 1,
