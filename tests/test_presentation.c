@@ -13652,6 +13652,288 @@ test_computer_nearest_cycle_presentation(void)
 }
 
 static void
+owned_fighters_fixture_error(struct yt_error *error, const char *operation)
+{
+	if (error != NULL) {
+		error->status = YT_IO_ERROR;
+		error->system_error = 0;
+		snprintf(error->operation, sizeof(error->operation), "%s",
+		    operation);
+		error->path[0] = '\0';
+	}
+}
+
+struct owned_fighters_fixture {
+	struct yt_sector sectors[10];
+	uint8_t output[1024];
+	size_t output_length;
+	size_t prefix_length[32];
+	uint8_t scratch_before[32][4];
+	uint8_t scratch[4];
+	int step;
+	int fail_step;
+	int reads;
+	int b05d_calls;
+	int pager_tests;
+	size_t scratch_writes;
+	bool quit;
+};
+
+static void
+owned_fighters_fixture_init(struct owned_fighters_fixture *fixture)
+{
+	static const uint8_t inherited[4] = {0x00, 0x00, 0x03, 0x00};
+
+	memset(fixture, 0, sizeof(*fixture));
+	memcpy(fixture->scratch, inherited, sizeof(inherited));
+	fixture->sectors[3].fighters = 20.0f;
+	fixture->sectors[3].fighter_owner = 2.0f;
+	fixture->sectors[9].fighters = 4.0f;
+	fixture->sectors[9].fighter_owner = 2.0f;
+}
+
+static struct yt_owned_fighters_state
+owned_fighters_fixture_state(const struct owned_fighters_fixture *fixture,
+    int maximum_sector)
+{
+	struct yt_owned_fighters_state state;
+
+	memset(&state, 0, sizeof(state));
+	state.maximum_sector = maximum_sector;
+	state.current_player = 2.0f;
+	memcpy(state.scanner_scratch_raw, fixture->scratch,
+	    sizeof(state.scanner_scratch_raw));
+	return state;
+}
+
+static bool
+owned_fighters_fixture_step(struct owned_fighters_fixture *fixture,
+    struct yt_error *error, const char *operation)
+{
+	++fixture->step;
+	CHECK(fixture->step < (int)(sizeof(fixture->prefix_length)
+	    / sizeof(fixture->prefix_length[0])));
+	fixture->prefix_length[fixture->step] = fixture->output_length;
+	memcpy(fixture->scratch_before[fixture->step], fixture->scratch,
+	    sizeof(fixture->scratch));
+	if (fixture->step != fixture->fail_step)
+		return true;
+	owned_fighters_fixture_error(error, operation);
+	return false;
+}
+
+static bool
+owned_fighters_fixture_append(struct owned_fighters_fixture *fixture,
+    const uint8_t *text, size_t length, struct yt_error *error,
+    const char *operation)
+{
+	if (fixture->output_length + length > sizeof(fixture->output)) {
+		owned_fighters_fixture_error(error, operation);
+		return false;
+	}
+	if (length != 0U)
+		memcpy(fixture->output + fixture->output_length, text, length);
+	fixture->output_length += length;
+	return true;
+}
+
+static bool
+owned_fighters_fixture_read(void *context, int logical_sector,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	struct owned_fighters_fixture *fixture = context;
+
+	++fixture->reads;
+	if (!owned_fighters_fixture_step(fixture, error,
+	    "fixture owned-fighter sector GET"))
+		return false;
+	if (logical_sector < 0
+	    || logical_sector >= (int)(sizeof(fixture->sectors)
+	    / sizeof(fixture->sectors[0]))) {
+		owned_fighters_fixture_error(error,
+		    "fixture owned-fighter sector range");
+		return false;
+	}
+	*sector = fixture->sectors[logical_sector];
+	return true;
+}
+
+static bool
+owned_fighters_fixture_line(void *context, const uint8_t *text,
+    size_t length, const char *operation, struct yt_error *error)
+{
+	static const uint8_t newline[2] = {'\r', '\n'};
+	struct owned_fighters_fixture *fixture = context;
+
+	if (!owned_fighters_fixture_step(fixture, error, operation))
+		return false;
+	return owned_fighters_fixture_append(fixture, text, length, error,
+	    operation)
+	    && owned_fighters_fixture_append(fixture, newline, sizeof(newline),
+	    error, operation);
+}
+
+static bool
+owned_fighters_fixture_searching(void *context, const uint8_t *text,
+    size_t length, const char *operation, struct yt_error *error)
+{
+	struct owned_fighters_fixture *fixture = context;
+
+	if (!owned_fighters_fixture_step(fixture, error, operation))
+		return false;
+	++fixture->b05d_calls;
+	return owned_fighters_fixture_append(fixture, text, length, error,
+	    operation);
+}
+
+static bool
+owned_fighters_fixture_b05d(void *context, const uint8_t *text,
+    size_t length, const char *operation, struct yt_error *error)
+{
+	static const uint8_t newline[2] = {'\n', '\r'};
+	struct owned_fighters_fixture *fixture = context;
+
+	if (!owned_fighters_fixture_step(fixture, error, operation))
+		return false;
+	++fixture->b05d_calls;
+	return owned_fighters_fixture_append(fixture, text, length, error,
+	    operation)
+	    && owned_fighters_fixture_append(fixture, newline, sizeof(newline),
+	    error, operation);
+}
+
+static bool
+owned_fighters_fixture_fixed(void *context, const uint8_t *text,
+    size_t length, float width, const char *operation, struct yt_error *error)
+{
+	struct owned_fighters_fixture *fixture = context;
+	size_t fixed_width = (size_t)width;
+	size_t copied = length < fixed_width ? length : fixed_width;
+	static const uint8_t spaces[10] = {
+		' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '
+	};
+
+	if (!owned_fighters_fixture_step(fixture, error, operation))
+		return false;
+	return owned_fighters_fixture_append(fixture, text, copied, error,
+	    operation)
+	    && owned_fighters_fixture_append(fixture, spaces,
+	    fixed_width - copied, error, operation);
+}
+
+static void
+owned_fighters_fixture_store(void *context, const uint8_t raw[4])
+{
+	struct owned_fighters_fixture *fixture = context;
+
+	memcpy(fixture->scratch, raw, sizeof(fixture->scratch));
+	++fixture->scratch_writes;
+}
+
+static bool
+owned_fighters_fixture_quit(void *context)
+{
+	struct owned_fighters_fixture *fixture = context;
+
+	++fixture->pager_tests;
+	return fixture->quit;
+}
+
+static void
+test_owned_fighters_transaction(void)
+{
+	static const struct yt_owned_fighters_ops ops = {
+		owned_fighters_fixture_read,
+		owned_fighters_fixture_line,
+		owned_fighters_fixture_searching,
+		owned_fighters_fixture_b05d,
+		owned_fighters_fixture_fixed,
+		owned_fighters_fixture_store,
+		owned_fighters_fixture_quit,
+	};
+	static const uint8_t expected[] =
+	    "\r\nSearching;\r\n\r\n"
+	    " Sector   Amount\n\r"
+	    "--------*--------\n\r"
+	    " 3        20\n\r"
+	    " 9        4\n\r"
+	    "\r\n";
+	static const uint8_t none[] = "\r\nSearching; NONE found!\r\n";
+	static const uint8_t early_q[] =
+	    "\r\nSearching;\r\n\r\n"
+	    " Sector   Amount\n\r"
+	    "--------*--------\n\r"
+	    " 3        20\n\r"
+	    "\r\n";
+	static const uint8_t true_raw[4] = {0x00, 0x00, 0x00, 0x81};
+	static const uint8_t dirty_zero_raw[4] = {0x00, 0x00, 0x20, 0x00};
+	struct owned_fighters_fixture success;
+	struct owned_fighters_fixture fixture;
+	struct yt_owned_fighters_state state;
+	struct yt_error error;
+	int fail_step;
+
+	owned_fighters_fixture_init(&success);
+	state = owned_fighters_fixture_state(&success, 9);
+	yt_error_clear(&error);
+	CHECK(yt_owned_fighters_run(&state, &ops, &success, &error));
+	CHECK(success.output_length == sizeof(expected) - 1U
+	    && memcmp(success.output, expected, sizeof(expected) - 1U) == 0);
+	CHECK(success.step == 21 && success.reads == 9
+	    && success.b05d_calls == 5 && success.pager_tests == 2
+	    && success.scratch_writes == 2U);
+	CHECK(state.found && !state.stopped_by_q && state.current_sector == 9
+	    && state.current_fighters == 4.0f && state.current_owner == 2.0f
+	    && memcmp(state.scanner_scratch_raw, dirty_zero_raw, 4U) == 0
+	    && memcmp(success.scratch, dirty_zero_raw, 4U) == 0);
+
+	for (fail_step = 1; fail_step <= success.step; ++fail_step) {
+		owned_fighters_fixture_init(&fixture);
+		fixture.fail_step = fail_step;
+		state = owned_fighters_fixture_state(&fixture, 9);
+		yt_error_clear(&error);
+		CHECK(!yt_owned_fighters_run(&state, &ops, &fixture, &error));
+		CHECK(fixture.output_length == success.prefix_length[fail_step]
+		    && memcmp(fixture.output, success.output,
+		    fixture.output_length) == 0);
+		CHECK(memcmp(fixture.scratch,
+		    success.scratch_before[fail_step], 4U) == 0
+		    && memcmp(state.scanner_scratch_raw,
+		    success.scratch_before[fail_step], 4U) == 0);
+		CHECK(error.status == YT_IO_ERROR);
+	}
+
+	owned_fighters_fixture_init(&fixture);
+	fixture.sectors[3].fighters = 0.0f;
+	fixture.sectors[9].fighters = 0.0f;
+	fixture.sectors[1].fighters = -1.0f;
+	fixture.sectors[1].fighter_owner = 2.0f;
+	fixture.sectors[2].fighters = 8.0f;
+	fixture.sectors[2].fighter_owner = 3.0f;
+	state = owned_fighters_fixture_state(&fixture, 3);
+	yt_error_clear(&error);
+	CHECK(yt_owned_fighters_run(&state, &ops, &fixture, &error));
+	CHECK(fixture.output_length == sizeof(none) - 1U
+	    && memcmp(fixture.output, none, sizeof(none) - 1U) == 0
+	    && !state.found && !state.stopped_by_q
+	    && state.current_sector == 3 && fixture.reads == 3
+	    && fixture.scratch_writes == 1U
+	    && memcmp(state.scanner_scratch_raw, true_raw, 4U) == 0);
+
+	owned_fighters_fixture_init(&fixture);
+	fixture.quit = true;
+	state = owned_fighters_fixture_state(&fixture, 9);
+	yt_error_clear(&error);
+	CHECK(yt_owned_fighters_run(&state, &ops, &fixture, &error));
+	CHECK(fixture.output_length == sizeof(early_q) - 1U
+	    && memcmp(fixture.output, early_q, sizeof(early_q) - 1U) == 0
+	    && state.found && state.stopped_by_q
+	    && state.current_sector == 3 && fixture.reads == 3
+	    && fixture.pager_tests == 1
+	    && memcmp(state.scanner_scratch_raw, dirty_zero_raw, 4U) == 0);
+}
+
+static void
 computer_fighter_finder_cycle_fixture(bool ansi,
     struct pager_capture *capture, struct yt_present_state *current,
     struct yt_pager_state *pager)
@@ -48991,6 +49273,7 @@ main(void)
 	test_computer_planet_report_front_presentation();
 	test_computer_planet_inventory_presentation();
 	test_owned_planets_transaction();
+	test_owned_fighters_transaction();
 	test_computer_nearest_cycle_presentation();
 	test_computer_finders_presentation();
 	test_computer_treasury_presentation();

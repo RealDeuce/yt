@@ -230,6 +230,43 @@ struct yt_planet {
 	float fighters;
 };
 
+struct yt_owned_fighters_state {
+	int maximum_sector;
+	float current_player;
+	int current_sector;
+	float current_fighters;
+	float current_owner;
+	uint8_t scanner_scratch_raw[4];
+	bool found;
+	bool stopped_by_q;
+};
+
+typedef bool (*yt_owned_fighters_read_sector_fn)(void *context,
+    int logical_sector, struct yt_sector *sector, struct yt_error *error);
+typedef bool (*yt_owned_fighters_present_fn)(void *context,
+    const uint8_t *text, size_t length, const char *operation,
+    struct yt_error *error);
+typedef bool (*yt_owned_fighters_fixed_fn)(void *context,
+    const uint8_t *text, size_t length, float width, const char *operation,
+    struct yt_error *error);
+typedef void (*yt_owned_fighters_store_scanner_fn)(void *context,
+    const uint8_t raw[4]);
+typedef bool (*yt_owned_fighters_pager_quit_fn)(void *context);
+
+struct yt_owned_fighters_ops {
+	yt_owned_fighters_read_sector_fn read_sector;
+	yt_owned_fighters_present_fn direct_line;
+	yt_owned_fighters_present_fn searching;
+	yt_owned_fighters_present_fn b05d;
+	yt_owned_fighters_fixed_fn fixed;
+	yt_owned_fighters_store_scanner_fn store_scanner;
+	yt_owned_fighters_pager_quit_fn pager_quit;
+};
+
+bool yt_owned_fighters_run(struct yt_owned_fighters_state *state,
+    const struct yt_owned_fighters_ops *ops, void *context,
+    struct yt_error *error);
+
 struct yt_owned_planets_state {
 	int maximum_sector;
 	float planet_record_base;

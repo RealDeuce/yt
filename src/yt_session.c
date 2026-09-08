@@ -18077,64 +18077,81 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
+owned_fighters_read_sector(void *context, int logical_sector,
+    struct yt_sector *sector, struct yt_error *error)
+{
+	return session_read_sector(context, logical_sector, sector, error);
+}
+
+static bool
+owned_fighters_direct_line(void *context, const uint8_t *text, size_t length,
+    const char *operation, struct yt_error *error)
+{
+	return session_present_text(context, text, length, SESSION_PRESENT_LINE,
+	    operation, error);
+}
+
+static bool
+owned_fighters_searching(void *context, const uint8_t *text, size_t length,
+    const char *operation, struct yt_error *error)
+{
+	return session_031f(context, text, length, operation, error);
+}
+
+static bool
+owned_fighters_b05d(void *context, const uint8_t *text, size_t length,
+    const char *operation, struct yt_error *error)
+{
+	(void)operation;
+	(void)error;
+	return session_02fc(context, text, length);
+}
+
+static bool
+owned_fighters_fixed(void *context, const uint8_t *text, size_t length,
+    float width, const char *operation, struct yt_error *error)
+{
+	return session_fixed_width_bytes(context, text, length, width, operation,
+	    error);
+}
+
+static void
+owned_fighters_store_scanner(void *context, const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_COMPUTER_ROUTE_STATUS_ADDRESS, raw);
+}
+
+static bool
+owned_fighters_pager_quit(void *context)
+{
+	struct yt_session *session = context;
+
+	return strcmp(session->pager.key, "Q") == 0;
+}
+
+static bool
 computer_owned_fighters(struct yt_session *session, struct yt_error *error)
 {
-	static const uint8_t searching[] = "Searching;";
-	static const uint8_t amount[] = "Amount";
-	static const uint8_t rule[] = "--------*--------";
-	int sector_number;
-	bool found = false;
+	static const struct yt_owned_fighters_ops ops = {
+		owned_fighters_read_sector,
+		owned_fighters_direct_line,
+		owned_fighters_searching,
+		owned_fighters_b05d,
+		owned_fighters_fixed,
+		owned_fighters_store_scanner,
+		owned_fighters_pager_quit,
+	};
+	struct yt_owned_fighters_state state = {
+		.maximum_sector = sector_count(session),
+		.current_player = (float)session_record(session),
+	};
 
-	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "owned-fighter opening blank", error)
-	    || !session_031f(session, searching, sizeof(searching) - 1U,
-	    "owned-fighter searching row", error))
-		return false;
-	for (sector_number = 1; sector_number <= sector_count(session);
-	    ++sector_number) {
-		struct yt_sector sector;
-
-		if (!session_read_sector(session, sector_number,
-		    &sector, error))
-			return false;
-		if (sector.fighters > 0.0f
-		    && sector.fighter_owner == (float)session_record(session)) {
-			char number[64];
-
-			if (!found) {
-				if (!session_present_text(session, NULL, 0,
-				    SESSION_PRESENT_LINE,
-				    "owned-fighter searching ending", error)
-				    || !session_present_text(session, NULL, 0,
-				    SESSION_PRESENT_LINE,
-				    "owned-fighter heading blank", error)
-				    || !session_fixed_width(session, " Sector", 10.0f,
-				    "owned-fighter heading sector", error)
-				    || !session_02fc(session, amount,
-				    sizeof(amount) - 1U)
-				    || !session_02fc(session, rule, sizeof(rule) - 1U))
-					return false;
-			}
-			if (qb_str_single(number, sizeof(number),
-			    (float)sector_number) < 0
-			    || !session_fixed_width(session, number, 9.0f,
-			    "owned-fighter sector field", error)
-			    || qb_str_single(number, sizeof(number),
-			    sector.fighters) < 0
-			    || !session_02fc(session, (const uint8_t *)number,
-			    strlen(number)))
-				return false;
-			found = true;
-			if (strcmp(session->pager.key, "Q") == 0)
-				break;
-		}
-	}
-	if (!found)
-		return session_present_text(session,
-		    (const uint8_t *)" NONE found!", strlen(" NONE found!"),
-		    SESSION_PRESENT_LINE, "owned-fighter none row", error);
-	return session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
-	    "owned-fighter trailing blank", error);
+	yt_route_process_raw_single(&session->route_process,
+	    YT_COMPUTER_ROUTE_STATUS_ADDRESS, state.scanner_scratch_raw);
+	return yt_owned_fighters_run(&state, &ops, session, error);
 }
 
 static bool

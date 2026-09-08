@@ -63,6 +63,127 @@ owned_planets_error(struct yt_error *error, enum yt_status status,
 	return false;
 }
 
+static bool
+owned_fighters_error(struct yt_error *error, enum yt_status status,
+    const char *operation)
+{
+	if (error != NULL) {
+		error->status = status;
+		error->system_error = 0;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    operation);
+		error->path[0] = '\0';
+	}
+	return false;
+}
+
+static void
+owned_fighters_store_scanner(struct yt_owned_fighters_state *state,
+    const struct yt_owned_fighters_ops *ops, void *context,
+    const uint8_t raw[4])
+{
+	memcpy(state->scanner_scratch_raw, raw,
+	    sizeof(state->scanner_scratch_raw));
+	ops->store_scanner(context, raw);
+}
+
+bool
+yt_owned_fighters_run(struct yt_owned_fighters_state *state,
+    const struct yt_owned_fighters_ops *ops, void *context,
+    struct yt_error *error)
+{
+	static const uint8_t searching[] = "Searching;";
+	static const uint8_t sector_heading[] = " Sector";
+	static const uint8_t amount_heading[] = "Amount";
+	static const uint8_t rule[] = "--------*--------";
+	static const uint8_t none[] = " NONE found!";
+	static const uint8_t true_raw[4] = {0x00, 0x00, 0x00, 0x81};
+	static const uint8_t dirty_zero_raw[4] = {0x00, 0x00, 0x20, 0x00};
+	int sector_number;
+
+	if (state == NULL || ops == NULL || ops->read_sector == NULL
+	    || ops->direct_line == NULL || ops->searching == NULL
+	    || ops->b05d == NULL || ops->fixed == NULL
+	    || ops->store_scanner == NULL || ops->pager_quit == NULL
+	    || state->maximum_sector < 0)
+		return owned_fighters_error(error, YT_INVALID,
+		    "owned-fighter state");
+	state->current_sector = 0;
+	state->current_fighters = 0.0f;
+	state->current_owner = 0.0f;
+	state->found = false;
+	state->stopped_by_q = false;
+	if (!ops->direct_line(context, NULL, 0U,
+	    "owned-fighter opening blank", error)
+	    || !ops->searching(context, searching, sizeof(searching) - 1U,
+	    "owned-fighter searching row", error))
+		return false;
+	owned_fighters_store_scanner(state, ops, context, true_raw);
+
+	for (sector_number = 1; sector_number <= state->maximum_sector;
+	    ++sector_number) {
+		struct yt_sector sector;
+		char number[64];
+		int number_length;
+
+		state->current_sector = sector_number;
+		if (!ops->read_sector(context, sector_number, &sector, error))
+			return false;
+		state->current_fighters = sector.fighters;
+		state->current_owner = sector.fighter_owner;
+		if (sector.fighters <= 0.0f
+		    || sector.fighter_owner != state->current_player)
+			continue;
+
+		if (!state->found) {
+			state->found = true;
+			if (!ops->direct_line(context, NULL, 0U,
+			    "owned-fighter searching ending", error)
+			    || !ops->direct_line(context, NULL, 0U,
+			    "owned-fighter heading blank", error)
+			    || !ops->fixed(context, sector_heading,
+			    sizeof(sector_heading) - 1U, 10.0f,
+			    "owned-fighter heading sector", error)
+			    || !ops->b05d(context, amount_heading,
+			    sizeof(amount_heading) - 1U,
+			    "owned-fighter heading amount", error)
+			    || !ops->b05d(context, rule, sizeof(rule) - 1U,
+			    "owned-fighter heading rule", error))
+				return false;
+			owned_fighters_store_scanner(state, ops, context,
+			    dirty_zero_raw);
+		}
+
+		number_length = qb_str_single(number, sizeof(number),
+		    (float)sector_number);
+		if (number_length < 0)
+			return owned_fighters_error(error, YT_RANGE,
+			    "owned-fighter sector format");
+		if (!ops->fixed(context, (const uint8_t *)number,
+		    (size_t)number_length, 9.0f,
+		    "owned-fighter sector field", error))
+			return false;
+		number_length = qb_str_single(number, sizeof(number),
+		    sector.fighters);
+		if (number_length < 0)
+			return owned_fighters_error(error, YT_RANGE,
+			    "owned-fighter amount format");
+		if (!ops->b05d(context, (const uint8_t *)number,
+		    (size_t)number_length, "owned-fighter amount row", error))
+			return false;
+		if (ops->pager_quit(context)) {
+			state->stopped_by_q = true;
+			break;
+		}
+	}
+
+	if (!state->found)
+		return ops->direct_line(context, none, sizeof(none) - 1U,
+		    "owned-fighter none row", error);
+	return ops->direct_line(context, NULL, 0U,
+	    "owned-fighter trailing blank", error);
+}
+
 bool
 yt_owned_planets_run(struct yt_owned_planets_state *state,
     const struct yt_owned_planets_ops *ops, void *context,
