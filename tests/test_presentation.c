@@ -47629,6 +47629,39 @@ test_radio_body_cleanup_presentation(void)
 }
 
 static void
+test_radio_body_list_pager_reset(void)
+{
+	static const uint8_t list_dirty_zero[4] = {
+		0x00U, 0x00U, 0x80U, 0x00U,
+	};
+	static const uint8_t canonical_one[4] = {
+		0x00U, 0x00U, 0x00U, 0x81U,
+	};
+	static const uint8_t row[] = " 1:Hi";
+	struct yt_present_state current = state(false);
+	struct yt_pager_state pager;
+	struct pager_capture capture;
+	uint8_t line_count_raw[4] = {0};
+
+	memset(&pager, 0, sizeof(pager));
+	memset(&capture, 0, sizeof(capture));
+	pager.foreground = 1;
+	pager.line_count_cell = line_count_raw;
+	yt_pager_set_line_count(&pager, 17.0f);
+	yt_pager_set_line_count_raw(&pager, list_dirty_zero);
+	CHECK(pager.line_count == 0.0f
+	    && memcmp(line_count_raw, list_dirty_zero,
+	    sizeof(line_count_raw)) == 0);
+	pager_fixture_b05d(&pager, &current, row, sizeof(row) - 1U,
+	    &capture);
+	CHECK(capture.remote_length == sizeof(row) + 1U
+	    && memcmp(capture.remote, " 1:Hi\n\r", sizeof(row) + 1U) == 0
+	    && pager.line_count == 1.0f
+	    && memcmp(line_count_raw, canonical_one,
+	    sizeof(line_count_raw)) == 0);
+}
+
+static void
 computer_radio_log_empty_cycle_fixture(bool ansi, float mode,
     const uint8_t *typed, size_t typed_length,
     struct yt_present_state *current, struct yt_pager_state *pager,
@@ -49437,6 +49470,7 @@ main(void)
 	test_computer_radio_composer_cycle_presentation();
 	test_radio_body_presentation();
 	test_radio_body_cleanup_presentation();
+	test_radio_body_list_pager_reset();
 	test_computer_radio_log_presentation();
 	test_computer_newspaper_presentation();
 	test_hostile_attack_admission_presentation();
