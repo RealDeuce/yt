@@ -8,6 +8,8 @@
 void yt_out_plain(const char *text);
 void yt_out_plain_bytes(const void *data, size_t length);
 void yt_out_remote_bytes(const void *data, size_t length);
+void yt_out_remote_device_reset(void);
+void yt_out_remote_device_state(struct yt_text_device_state *state);
 bool yt_out_local_emulated_bytes(const void *data, size_t length,
 	struct yt_error *error);
 void yt_out_present_result(const struct yt_present_result *result);

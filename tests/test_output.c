@@ -66,6 +66,7 @@ reset_calls(void)
 	cursor_call_count = 0U;
 	caret_call_count = 0U;
 	clear_call_count = 0U;
+	yt_out_remote_device_reset();
 }
 
 void ODCALL
@@ -247,6 +248,7 @@ test_ansi_opening_routes(void)
 	static const uint8_t file_data[] = "\x1b[2JX\r\n\x1a";
 	const char *path = "test-output-opening.dat";
 	struct yt_error error;
+	struct yt_text_device_state device;
 	FILE *file;
 	size_t waits = 0U;
 
@@ -292,6 +294,9 @@ test_ansi_opening_routes(void)
 	    && !emulated_calls[0].remote_echo
 	    && !emulated_calls[1].remote_echo
 	    && !emulated_calls[2].remote_echo);
+	yt_out_remote_device_state(&device);
+	CHECK(device.index == 11U && device.column == 3U
+	    && device.buffer == 'm' && !device.pending && !device.selected);
 	CHECK(remove(path) == 0);
 }
 
@@ -312,6 +317,7 @@ test_presentation_adapter(void)
 	static const uint8_t remote_semi[] = {'A', 0U, 'B'};
 	static const uint8_t local_semi[] = {'L', 0U};
 	struct yt_present_result result;
+	struct yt_text_device_state device;
 	int row;
 	int column;
 
@@ -353,6 +359,10 @@ test_presentation_adapter(void)
 	    && output_calls[2].length == 1U
 	    && output_calls[2].data[0] == '\r'
 	    && !output_calls[2].local_echo);
+	yt_out_remote_device_state(&device);
+	CHECK(device.index == 5U && device.column == 0U
+	    && device.buffer == '\r' && !device.pending && !device.selected
+	    && !device.physical_unknown);
 	CHECK(local_call_count == 4U
 	    && local_calls[0].length == sizeof(local_semi)
 	    && memcmp(local_calls[0].data, local_semi,
@@ -373,6 +383,22 @@ test_presentation_adapter(void)
 	screen_info.cury = 17U;
 	yt_out_cursor_position(&row, &column);
 	CHECK(row == 17 && column == 23);
+}
+
+static void
+test_remote_device_empty_completion(void)
+{
+	struct yt_present_result result;
+	struct yt_text_device_state device;
+
+	memset(&result, 0, sizeof(result));
+	set_event(&result.events[result.event_count++],
+	    YT_PRESENT_REMOTE_SEMI, NULL, 0U);
+	reset_calls();
+	yt_out_present_result(&result);
+	yt_out_remote_device_state(&device);
+	CHECK(output_call_count == 0U && device.index == 0U
+	    && device.column == 0U && !device.pending && !device.selected);
 }
 
 static void
@@ -440,6 +466,7 @@ main(void)
 	test_emulated_route();
 	test_ansi_opening_routes();
 	test_presentation_adapter();
+	test_remote_device_empty_completion();
 	test_sound_adapter();
 	if (failures != 0) {
 		fprintf(stderr, "test_output: %d failure(s)\n", failures);

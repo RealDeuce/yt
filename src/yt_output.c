@@ -7,6 +7,21 @@
 #include <stdlib.h>
 #include <string.h>
 
+static struct yt_text_device_state remote_device;
+
+void
+yt_out_remote_device_reset(void)
+{
+	memset(&remote_device, 0, sizeof(remote_device));
+}
+
+void
+yt_out_remote_device_state(struct yt_text_device_state *state)
+{
+	if (state != NULL)
+		*state = remote_device;
+}
+
 void
 yt_out_plain(const char *text)
 {
@@ -39,6 +54,33 @@ yt_out_remote_bytes(const void *data, size_t length)
 		cursor += (size_t)amount;
 		length -= (size_t)amount;
 	}
+}
+
+static bool
+remote_device_write(void *context, enum yt_text_device_write_phase phase,
+    const uint8_t *data, size_t requested,
+    struct yt_text_device_write_observation *observation)
+{
+	(void)context;
+	(void)phase;
+	(void)data;
+	memset(observation, 0, sizeof(*observation));
+	observation->terminal_position = -1;
+	observation->accepted = requested;
+	return true;
+}
+
+static bool
+remote_device_apply(const uint8_t *data, size_t length, bool line)
+{
+	struct yt_text_device_print_result result;
+	struct yt_error error;
+
+	remote_device.selected = true;
+	yt_error_clear(&error);
+	return yt_text_device_print(&remote_device, data, length, line,
+	    YT_TEXT_DEVICE_COM1, 0x82U, 5U, remote_device_write, NULL,
+	    &result, &error);
 }
 
 bool
@@ -88,9 +130,11 @@ present_remote(void *context, const uint8_t *data, size_t length, bool line)
 	static const uint8_t carriage_return = '\r';
 
 	(void)context;
+	if (!remote_device_apply(data, length, line))
+		return;
 	yt_out_remote_bytes(data, length);
 	if (line)
-		yt_out_remote_bytes(&carriage_return, 1);
+		yt_out_remote_bytes(&carriage_return, 1U);
 }
 
 static void
@@ -273,7 +317,17 @@ out_opening_present_remote(void *context, const uint8_t *line, size_t length,
 	static const uint8_t newline[] = {'\n', '\r'};
 
 	(void)context;
-	(void)error;
+	if (!remote_device_apply(line, length, false)
+	    || !remote_device_apply(newline, 1U, true)) {
+		if (error != NULL) {
+			error->status = YT_INVALID;
+			error->system_error = 0;
+			(void)snprintf(error->operation, sizeof(error->operation),
+			    "%s", "remote opening device state");
+			error->path[0] = '\0';
+		}
+		return false;
+	}
 	yt_out_remote_bytes(line, length);
 	yt_out_remote_bytes(newline, sizeof(newline));
 	return true;
@@ -301,7 +355,16 @@ out_opening_reset_remote(void *context, struct yt_error *error)
 	static const uint8_t reset[] = "\x1b[0m";
 
 	(void)context;
-	(void)error;
+	if (!remote_device_apply(reset, sizeof(reset) - 1U, false)) {
+		if (error != NULL) {
+			error->status = YT_INVALID;
+			error->system_error = 0;
+			(void)snprintf(error->operation, sizeof(error->operation),
+			    "%s", "remote reset device state");
+			error->path[0] = '\0';
+		}
+		return false;
+	}
 	yt_out_remote_bytes(reset, sizeof(reset) - 1U);
 	return true;
 }
