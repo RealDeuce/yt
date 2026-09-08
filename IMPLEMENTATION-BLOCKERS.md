@@ -202,30 +202,22 @@ compact COPY frame saves IP `0136`; the statement table selects statement
 caller adapter now carries that identity into the shared `BRUN:0ACC` owner
 and its focused fixture pins the complete local diagnostic and cleanup suffix.
 
-## Open documentation gaps
-
 ### DOC-GAP-036: ship-computer treasury return-carrier contradiction
 
-Affected coverage:
+Resolved upstream by commit `c37a31c0`. The scalar transcript remains a
+bounded fixture ending at `YT:8672`, but it is not the state authority there.
+The canonical post-body world is now explicitly carried through the real
+wrapper, the fresh `YT:863A` A41C hydration and prompt, the shared AB36 entry,
+and the `YT:AB70` loop head for collection, report, and no-owned returns.
 
-- the joined hidden-`!` and command-12 treasury cycles after the shared
-  `YT-SUB:8901` body returns; and
-- the fresh `YT:8639` A41C/prompt/AB36 boundary in those two cycles.
+The native `computer_menu()` already preserves that same complete session and
+database world: both computer treasury dispatches call `command_collect()` and
+then continue directly to the shared fresh-prompt owner; its hydration reloads
+the current player before `session_0357()` enters the shared AB36 editor. The
+verified treasury, A41C, prompt, and AB36 blocks therefore close this caller
+seam without treasury-specific copies of their internal behavior.
 
-`docs/runtime/computer-treasury-cycle-output.md` gives mutually exclusive
-contracts for the same boundary. Its wrapper-return section says the complete
-raw carrier is threaded through A41C, the fresh prompt, and the AB36 loop head.
-Its final failure-boundaries paragraph instead says the oracle stops at a
-scalar return-prompt result, lacks that raw carrier, and therefore does not
-claim the edge closed.
-
-The shared treasury body, both raw caller-mode bindings, and the two direct
-call/return seams are independently documented and implemented; this
-contradiction does not hold those bounded components open. The broader joined
-ship-computer cycle remains unverified until the upstream document identifies
-which of its two statements is authoritative and updates its generated
-evidence/tests consistently. No binary inspection or new reverse engineering
-was performed.
+## Open documentation gaps
 
 ### DOC-GAP-023: current-sector scanner cloak-clear raw value
 
