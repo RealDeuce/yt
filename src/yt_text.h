@@ -317,6 +317,7 @@ struct yt_text_device_control_state {
 
 struct yt_text_device_runtime_state {
 	uint8_t error_status;
+	bool defer_release;
 	struct yt_text_device_control_state *selected_control;
 	struct yt_text_device_control_state *active_close_control;
 	yt_text_device_close_provider close_provider;
@@ -333,6 +334,7 @@ enum yt_text_device_print_outcome {
 	YT_TEXT_DEVICE_PRINT_VALUE_SHORT_ERROR,
 	YT_TEXT_DEVICE_PRINT_VALUE_DISK_ERROR,
 	YT_TEXT_DEVICE_PRINT_COMPLETION_ERROR,
+	YT_TEXT_DEVICE_PRINT_RAW_INTERNAL_ERROR,
 	YT_TEXT_DEVICE_PRINT_PROVIDER_ERROR,
 };
 
@@ -356,6 +358,9 @@ struct yt_text_device_print_result {
 	int64_t terminal_position;
 	bool physical_unknown;
 	bool selected;
+	bool raw_release_attempted;
+	uint16_t released_control;
+	uint16_t internal_entry;
 };
 
 struct yt_text_output {

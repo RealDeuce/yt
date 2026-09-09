@@ -3394,6 +3394,11 @@ test_text_device_print(void)
 
 	/* Value failure retains selection, pending byte, and raw index/column. */
 	memset(process, 0, sizeof(process));
+	process[control - 1U] = 0x01U;
+	process[0x20fbU] = 0x01U;
+	process[0x20fcU] = 3U;
+	process[0x20fdU] = 3U;
+	process[0x10f0U] = 1U;
 	process[0x0a3aU] = (uint8_t)control;
 	process[0x0a3bU] = (uint8_t)(control >> 8U);
 	process[0x0020U] = 5U;
@@ -3404,13 +3409,22 @@ test_text_device_print(void)
 	process[control + 0x31U] = 0x82U;
 	process[control + 0x32U] = 9U;
 	process_state.physical_unknown = false;
+	selected_control = (struct yt_text_device_control_state){true, true, 2U};
+	runtime = (struct yt_text_device_runtime_state){
+		.selected_control = &selected_control,
+	};
 	memset(&script, 0, sizeof(script));
 	text_device_write_add(&script, YT_TEXT_DEVICE_WRITE_VALUE, 'A',
 	    1U, 0U, true, true, 5U, 0x0021U);
 	CHECK(!yt_text_device_print_process(&process_state, pair, sizeof(pair),
-	    false, scripted_text_device_write, &script, NULL, &result, &error)
+	    false, scripted_text_device_write, &script, &runtime, &result, &error)
 	    && result.outcome == YT_TEXT_DEVICE_PRINT_VALUE_DISK_ERROR
 	    && result.basic_error == 70U && process_state.physical_unknown
+	    && result.raw_release_attempted
+	    && result.released_control == control
+	    && result.internal_entry == 0U && process[0x20fdU] == 1U
+	    && !selected_control.allocated && !selected_control.registered
+	    && selected_control.field_binding_count == 0U
 	    && process[0x0a3aU] == (uint8_t)control
 	    && process[0x0a3bU] == (uint8_t)(control >> 8U)
 	    && process[control + 0x27U] == 0U
@@ -3420,27 +3434,109 @@ test_text_device_print(void)
 	    && process[control + 0x32U] == 10U
 	    && process[control + 0x33U] == 'A');
 
+	/* Clear error-status bit retains both raw and typed selected controls. */
+	memset(process, 0, sizeof(process));
+	process[control - 1U] = 0x01U;
+	process[0x20fbU] = 0x01U;
+	process[0x20fcU] = 3U;
+	process[0x20fdU] = 3U;
+	process[0x0a3aU] = (uint8_t)control;
+	process[0x0a3bU] = (uint8_t)(control >> 8U);
+	process[0x0020U] = 5U;
+	process[control + 0x2eU] = YT_TEXT_DEVICE_COM1;
+	process[control + 0x31U] = 0x82U;
+	selected_control = (struct yt_text_device_control_state){true, true, 5U};
+	runtime = (struct yt_text_device_runtime_state){
+		.selected_control = &selected_control,
+	};
+	memset(&script, 0, sizeof(script));
+	text_device_write_add(&script, YT_TEXT_DEVICE_WRITE_VALUE, 'A',
+	    1U, 0U, true, false, 5U, 0x0021U);
+	CHECK(!yt_text_device_print_process(&process_state, pair, sizeof(pair),
+	    false, scripted_text_device_write, &script, &runtime, &result, &error)
+	    && result.outcome == YT_TEXT_DEVICE_PRINT_VALUE_DISK_ERROR
+	    && !result.raw_release_attempted && result.released_control == 0U
+	    && process[0x20fdU] == 3U
+	    && selected_control.allocated && selected_control.registered
+	    && selected_control.field_binding_count == 5U);
+
 	/* Completion failure has distinct zero-pending stale-byte residue. */
 	memset(process, 0, sizeof(process));
+	process[control - 1U] = 0x01U;
+	process[0x20fbU] = 0x01U;
+	process[0x20fcU] = 3U;
+	process[0x20fdU] = 3U;
+	process[0x0bd4U] = (uint8_t)control;
+	process[0x0bd5U] = (uint8_t)(control >> 8U);
 	process[0x0a3aU] = (uint8_t)control;
 	process[0x0a3bU] = (uint8_t)(control >> 8U);
 	process[0x0020U] = 5U;
 	process[control + 0x2eU] = YT_TEXT_DEVICE_COM1;
 	process[control + 0x31U] = 0x82U;
 	process_state.physical_unknown = false;
+	memset(&close_script, 0, sizeof(close_script));
+	close_script.provider_ok = true;
+	active_close_control = (struct yt_text_device_control_state){
+		true, true, 3U};
+	runtime = (struct yt_text_device_runtime_state){
+		.active_close_control = &active_close_control,
+		.close_provider = scripted_text_device_close,
+		.close_context = &close_script,
+	};
 	memset(&script, 0, sizeof(script));
 	text_device_write_add(&script, YT_TEXT_DEVICE_WRITE_COMPLETION, 'X',
 	    1U, 0U, true, false, 5U, 0U);
 	CHECK(!yt_text_device_print_process(&process_state, one, sizeof(one),
-	    false, scripted_text_device_write, &script, NULL, &result, &error)
+	    false, scripted_text_device_write, &script, &runtime, &result, &error)
 	    && result.outcome == YT_TEXT_DEVICE_PRINT_COMPLETION_ERROR
 	    && process[0x0a3aU] == (uint8_t)control
+	    && result.raw_release_attempted
+	    && result.released_control == control
+	    && process[0x0bd4U] == 0U && process[0x0bd5U] == 0U
+	    && process[0x20fdU] == 1U
+	    && close_script.calls == 1U && runtime.cleanup_close_observed
+	    && runtime.active_close_control == NULL
+	    && !active_close_control.allocated
+	    && !active_close_control.registered
+	    && active_close_control.field_binding_count == 0U
 	    && process[control + 0x27U] == 1U
 	    && process[control + 0x28U] == 0U
 	    && process[control + 0x2dU] == 0U
 	    && process[control + 0x2aU] == 0U
 	    && process[control + 0x32U] == 1U
 	    && process[control + 0x33U] == 'X');
+
+	/* Corrupt release state supersedes the mapped BASIC error with 0ACC. */
+	memset(process, 0, sizeof(process));
+	process[control - 1U] = 0x01U;
+	process[0x20faU] = 0x80U;
+	process[0x20fcU] = 3U;
+	process[0x20fdU] = 3U;
+	process[0x0a3aU] = (uint8_t)control;
+	process[0x0a3bU] = (uint8_t)(control >> 8U);
+	process[0x0020U] = 5U;
+	process[0x10f0U] = 1U;
+	process[control + 0x2eU] = YT_TEXT_DEVICE_COM1;
+	process[control + 0x31U] = 0x82U;
+	process_state.physical_unknown = false;
+	selected_control = (struct yt_text_device_control_state){true, true, 4U};
+	runtime = (struct yt_text_device_runtime_state){
+		.selected_control = &selected_control,
+	};
+	memset(&script, 0, sizeof(script));
+	text_device_write_add(&script, YT_TEXT_DEVICE_WRITE_VALUE, 'A',
+	    1U, 0U, true, false, 5U, 0x0021U);
+	yt_error_clear(&error);
+	CHECK(!yt_text_device_print_process(&process_state, pair, sizeof(pair),
+	    false, scripted_text_device_write, &script, &runtime, &result, &error)
+	    && result.outcome == YT_TEXT_DEVICE_PRINT_RAW_INTERNAL_ERROR
+	    && result.basic_error == 0U && result.internal_entry == 0x0accU
+	    && result.raw_release_attempted
+	    && result.released_control == control
+	    && selected_control.allocated && selected_control.registered
+	    && selected_control.field_binding_count == 4U
+	    && process[0x0a3aU] == (uint8_t)control
+	    && process[0x20fdU] == 3U && error.status == YT_INVALID);
 
 	/* An impossible pending count is rejected before provider or DS writes. */
 	process[control + 0x2aU] = 2U;

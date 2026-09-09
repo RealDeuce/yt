@@ -2430,7 +2430,8 @@ text_device_control_release(struct yt_text_device_control_state *control)
 static void
 text_device_value_error_cleanup(struct yt_text_device_runtime_state *runtime)
 {
-	if (runtime != NULL && (runtime->error_status & 0x01U) != 0U)
+	if (runtime != NULL && !runtime->defer_release
+	    && (runtime->error_status & 0x01U) != 0U)
 		text_device_control_release(runtime->selected_control);
 }
 
@@ -2461,7 +2462,8 @@ text_device_completion_error_cleanup(
 		runtime->cleanup_close_carry = false;
 		runtime->cleanup_close_dos_error = 0U;
 	}
-	text_device_control_release(runtime->active_close_control);
+	if (!runtime->defer_release)
+		text_device_control_release(runtime->active_close_control);
 	runtime->active_close_control = NULL;
 }
 
@@ -2603,6 +2605,8 @@ yt_text_device_print_runtime(struct yt_text_device_state *state,
 #define YT_TEXT_DEVICE_HOOKS_ADDRESS 0x0EBAU
 #define YT_TEXT_DEVICE_VALUE_TYPE_ADDRESS 0x10D8U
 #define YT_TEXT_DEVICE_DOS_MAJOR_ADDRESS 0x0020U
+#define YT_TEXT_DEVICE_ACTIVE_CLOSE_ADDRESS 0x0BD4U
+#define YT_TEXT_DEVICE_ERROR_STATUS_ADDRESS 0x10F0U
 #define YT_TEXT_DEVICE_INDEX_LOW_OFFSET 0x27U
 #define YT_TEXT_DEVICE_PENDING_OFFSET 0x2AU
 #define YT_TEXT_DEVICE_INDEX_HIGH_OFFSET 0x2DU
@@ -2698,6 +2702,10 @@ yt_text_device_print_process(
 	uint16_t buffer_address;
 	uint8_t pending;
 	bool returned;
+	uint16_t active_close_control;
+	struct yt_text_device_control_state *deferred_selected = NULL;
+	struct yt_text_device_control_state *deferred_active = NULL;
+	bool prior_defer_release = false;
 
 	if (!text_device_process_valid(process_state)) {
 		if (result != NULL)
@@ -2709,6 +2717,8 @@ yt_text_device_print_process(
 	process = process_state->process;
 	control = text_device_process_word(process,
 	    YT_TEXT_DEVICE_SELECTED_ADDRESS);
+	active_close_control = text_device_process_word(process,
+	    YT_TEXT_DEVICE_ACTIVE_CLOSE_ADDRESS);
 	if (control == 0U) {
 		if (result != NULL)
 			memset(result, 0, sizeof(*result));
@@ -2748,10 +2758,20 @@ yt_text_device_print_process(
 		.selected = true,
 		.physical_unknown = process_state->physical_unknown,
 	};
+	if (runtime != NULL) {
+		prior_defer_release = runtime->defer_release;
+		deferred_selected = runtime->selected_control;
+		deferred_active = runtime->active_close_control;
+		runtime->error_status =
+		    process[YT_TEXT_DEVICE_ERROR_STATUS_ADDRESS];
+		runtime->defer_release = true;
+	}
 	returned = yt_text_device_print_runtime(&state, data, length, newline,
 	    process[code_address], process[status_address],
 	    process[YT_TEXT_DEVICE_DOS_MAJOR_ADDRESS], provider, context, runtime,
 	    result, error);
+	if (runtime != NULL)
+		runtime->defer_release = prior_defer_release;
 	text_device_process_set_word(process, index_low_address,
 	    (uint16_t)state.index);
 	process[index_high_address] = (uint8_t)(state.index >> 16U);
@@ -2759,6 +2779,37 @@ yt_text_device_print_process(
 	process[column_address] = state.column;
 	process[buffer_address] = state.buffer;
 	process_state->physical_unknown = state.physical_unknown;
+	if (!returned && result != NULL
+	    && ((result->outcome == YT_TEXT_DEVICE_PRINT_VALUE_DISK_ERROR
+	    && (process[YT_TEXT_DEVICE_ERROR_STATUS_ADDRESS] & 0x01U) != 0U)
+	    || (result->outcome == YT_TEXT_DEVICE_PRINT_COMPLETION_ERROR
+	    && active_close_control != 0U))) {
+		struct yt_brun_type3_release_result release;
+		uint16_t released = result->outcome
+		    == YT_TEXT_DEVICE_PRINT_VALUE_DISK_ERROR
+		    ? control : active_close_control;
+
+		result->raw_release_attempted = true;
+		result->released_control = released;
+		if (result->outcome == YT_TEXT_DEVICE_PRINT_COMPLETION_ERROR)
+			text_device_process_set_word(process,
+			    YT_TEXT_DEVICE_ACTIVE_CLOSE_ADDRESS, 0U);
+		if (!yt_brun_type3_release(process, process_state->process_size,
+		    released, &release, error))
+			return false;
+		if (release.outcome == YT_BRUN_TYPE3_RELEASE_INTERNAL_ERROR) {
+			result->outcome = YT_TEXT_DEVICE_PRINT_RAW_INTERNAL_ERROR;
+			result->basic_error = 0U;
+			result->internal_entry = release.internal_entry;
+			set_error(error, YT_INVALID,
+			    "character-device PRINT raw release", NULL);
+		}
+		else if (result->outcome
+		    == YT_TEXT_DEVICE_PRINT_VALUE_DISK_ERROR)
+			text_device_control_release(deferred_selected);
+		else
+			text_device_control_release(deferred_active);
+	}
 	if (returned)
 		text_device_process_set_word(process,
 		    YT_TEXT_DEVICE_SELECTED_ADDRESS, 0U);
