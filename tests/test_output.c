@@ -247,8 +247,10 @@ test_ansi_opening_routes(void)
 {
 	static const uint8_t file_data[] = "\x1b[2JX\r\n\x1a";
 	const char *path = "test-output-opening.dat";
+	const char *missing_path = "TEST-OUTPUT-MISSING-53.ANS";
 	struct yt_error error;
 	struct yt_text_device_state device;
+	uint16_t open_basic_error = 0U;
 	FILE *file;
 	size_t waits = 0U;
 
@@ -298,6 +300,12 @@ test_ansi_opening_routes(void)
 	CHECK(device.index == 11U && device.column == 3U
 	    && device.buffer == 'm' && !device.pending && !device.selected);
 	CHECK(remove(path) == 0);
+
+	yt_error_clear(&error);
+	CHECK(!yt_out_opening_file_observed(missing_path, 0.0f, 1.0f,
+	    poll_never, poll_never, wait_once, &waits, &open_basic_error,
+	    &error)
+	    && open_basic_error == 53U && error.status == YT_NOT_FOUND);
 }
 
 static void

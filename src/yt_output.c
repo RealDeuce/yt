@@ -396,10 +396,10 @@ out_opening_close_local(void *context, struct yt_error *error)
 }
 
 bool
-yt_out_opening_file(const char *path, float mode, float snoop,
+yt_out_opening_file_observed(const char *path, float mode, float snoop,
     yt_out_opening_poll_fn poll_local,
     yt_out_opening_poll_fn poll_remote, yt_out_opening_wait_fn wait,
-    void *poll_context, struct yt_error *error)
+    void *poll_context, uint16_t *open_basic_error, struct yt_error *error)
 {
 	static const struct yt_opening_stream_ops ops = {
 		out_opening_open_input,
@@ -429,6 +429,8 @@ yt_out_opening_file(const char *path, float mode, float snoop,
 	};
 	bool ok;
 
+	if (open_basic_error != NULL)
+		*open_basic_error = 0U;
 	if (poll_local == NULL || poll_remote == NULL || wait == NULL) {
 		if (error != NULL) {
 			error->status = YT_INVALID;
@@ -439,6 +441,18 @@ yt_out_opening_file(const char *path, float mode, float snoop,
 	}
 	yt_text_input_init(&context.input);
 	ok = yt_opening_stream_run(&state, &ops, &context, error);
+	if (open_basic_error != NULL)
+		*open_basic_error = context.input.last_open.basic_error;
 	yt_text_input_destroy(&context.input);
 	return ok;
+}
+
+bool
+yt_out_opening_file(const char *path, float mode, float snoop,
+    yt_out_opening_poll_fn poll_local,
+    yt_out_opening_poll_fn poll_remote, yt_out_opening_wait_fn wait,
+    void *poll_context, struct yt_error *error)
+{
+	return yt_out_opening_file_observed(path, mode, snoop, poll_local,
+	    poll_remote, wait, poll_context, NULL, error);
 }

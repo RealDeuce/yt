@@ -2154,6 +2154,46 @@ enum session_fault_disposition {
 	SESSION_FAULT_HANDLER_FAILED,
 };
 
+static bool
+session_commit_shared_terminal(struct yt_session *session,
+    const struct yt_shared_error_result *result, struct yt_error *error)
+{
+	size_t index;
+
+	if (!session_local_line(session, result->debug, result->debug_length,
+	    "shared error debug row", error))
+		return false;
+	for (index = 0U; index < result->event_count; ++index) {
+		const struct yt_shared_error_event *event = &result->events[index];
+
+		switch (event->destination) {
+		case YT_SHARED_ERROR_LOCAL_DIAGNOSTIC:
+			if (!session_local_line(session, event->data,
+			    event->length, "shared error local row", error))
+				return false;
+			break;
+		case YT_SHARED_ERROR_SESSION_AND_NEWS:
+			if (!session_present_text(session, event->data,
+			    event->length, SESSION_PRESENT_LINE,
+			    "shared error session row", error)
+			    || !append_news_bytes(session, event->data,
+			    event->length, error))
+				return false;
+			break;
+		case YT_SHARED_ERROR_NEWS:
+			if (!append_news_bytes(session, event->data,
+			    event->length, error))
+				return false;
+			break;
+		}
+	}
+	(void)session_editor_close_all(session);
+	session->running = false;
+	session->terminated = true;
+	yt_error_clear(error);
+	return true;
+}
+
 static enum session_fault_disposition
 session_route_basic_fault(struct yt_session *session, struct yt_error *error)
 {
@@ -2163,7 +2203,6 @@ session_route_basic_fault(struct yt_session *session, struct yt_error *error)
 	struct yt_clock_value time_now;
 	char date[11];
 	char time_text[9];
-	size_t index;
 
 	if (error == NULL || !error->basic_fault_valid
 	    || !error->basic_error_valid)
@@ -2200,34 +2239,10 @@ session_route_basic_fault(struct yt_session *session, struct yt_error *error)
 			return SESSION_FAULT_HANDLER_FAILED;
 	}
 	else {
-		if (!session_local_line(session, projection.shared.debug,
-		    projection.shared.debug_length, "shared error debug row", error))
+		if (!session_commit_shared_terminal(session, &projection.shared,
+		    error))
 			return SESSION_FAULT_HANDLER_FAILED;
-		for (index = 0U; index < projection.shared.event_count; ++index) {
-			const struct yt_shared_error_event *event =
-			    &projection.shared.events[index];
-
-			switch (event->destination) {
-			case YT_SHARED_ERROR_LOCAL_DIAGNOSTIC:
-				if (!session_local_line(session, event->data,
-				    event->length, "shared error local row", error))
-					return SESSION_FAULT_HANDLER_FAILED;
-				break;
-			case YT_SHARED_ERROR_SESSION_AND_NEWS:
-				if (!session_present_text(session, event->data,
-				    event->length, SESSION_PRESENT_LINE,
-				    "shared error session row", error)
-				    || !append_news_bytes(session, event->data,
-				    event->length, error))
-					return SESSION_FAULT_HANDLER_FAILED;
-				break;
-			case YT_SHARED_ERROR_NEWS:
-				if (!append_news_bytes(session, event->data,
-				    event->length, error))
-					return SESSION_FAULT_HANDLER_FAILED;
-				break;
-			}
-		}
+		return SESSION_FAULT_ENDED;
 	}
 	(void)session_editor_close_all(session);
 	session->running = false;
@@ -3516,6 +3531,8 @@ opening_wait(void *context, float seconds, struct yt_error *error)
 static bool
 opening_and_date(struct yt_session *session, struct yt_error *error)
 {
+	struct yt_shared_error_result shared_error;
+	uint16_t open_basic_error;
 	bool found;
 	char real_name[258];
 	struct yt_present_result presentation;
@@ -3541,12 +3558,20 @@ opening_and_date(struct yt_session *session, struct yt_error *error)
 			return false;
 	}
 	if (session_ansi(session) != 0.0f) {
-		if (!yt_out_opening_file("YTOPEN.ANS",
+		if (!yt_out_opening_file_observed("YTOPEN.ANS",
 		    session_mode(session),
 		    yt_sound_snoop(&session->presentation.sound),
 		    opening_poll_local,
-		    opening_poll_remote, opening_wait, session, error))
+		    opening_poll_remote, opening_wait, session,
+		    &open_basic_error, error)) {
+			if (open_basic_error == 53U) {
+				if (!yt_shared_error_compose(53, 2710, &shared_error)
+				    || !session_commit_shared_terminal(session,
+				    &shared_error, error))
+					return false;
+			}
 			return false;
+		}
 	}
 	snprintf(real_name, sizeof(real_name), "%s %s",
 	    session->door->identity.real_first,
