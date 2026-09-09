@@ -5933,6 +5933,8 @@ finalize_action(struct yt_session *session, float amount,
 	char number[64];
 	char row[128];
 	uint8_t turn_raw[4];
+	uint8_t anti_cloak_raw[4];
+	uint8_t player_record_raw[4];
 	bool anti_cloak_allows;
 
 	(void)amount;
@@ -5950,9 +5952,9 @@ finalize_action(struct yt_session *session, float amount,
 	quotient = single_div(session->player.turns,
 	    yt_route_process_single(&session->route_process,
 	    YT_ACTION_TURN_DIVISOR_ADDRESS));
-	if (!yt_action_finalizer_anti_cloak_allows(
-	    yt_route_process_single(&session->route_process,
-	    YT_ANTI_CLOAK_ADDRESS),
+	yt_route_process_raw_single(&session->route_process,
+	    YT_ANTI_CLOAK_ADDRESS, anti_cloak_raw);
+	if (!yt_action_finalizer_anti_cloak_raw_allows(anti_cloak_raw,
 	    session->presentation.sound.conversion_mode, &anti_cloak_allows)) {
 		if (error != NULL) {
 			error->status = YT_RANGE;
@@ -5985,8 +5987,9 @@ finalize_action(struct yt_session *session, float amount,
 		if (!yt_record_set_raw_number(&session->player.record, YT_F125,
 		    cloak_result))
 			return false;
-		cache_record = (int)qb_cint_mode((double)yt_route_process_single(
-		    &session->route_process, YT_CURRENT_PLAYER_RECORD_ADDRESS),
+		yt_route_process_raw_single(&session->route_process,
+		    YT_CURRENT_PLAYER_RECORD_ADDRESS, player_record_raw);
+		cache_record = (int)qb_cint_mbf32(player_record_raw,
 		    session->presentation.sound.conversion_mode,
 		    &cache_index_overflow);
 		if (cache_index_overflow) {

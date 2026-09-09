@@ -2875,9 +2875,11 @@ info_team_fixture(struct info_team_tape *tape,
 	(void)yt_record_set_number(&tape->players[0].record, YT_F89, 3.5f);
 	memcpy(tape->players[1].name, captain_name, sizeof(captain_name));
 	tape->players[1].name_length = 3.0f;
+	(void)yt_record_set_number(&tape->players[1].record, YT_F85, 3.0f);
 	tape->players[1].team = 3.5f;
 	memcpy(tape->players[2].name, "SECOND", 6U);
 	tape->players[2].name_length = 6.0f;
+	(void)yt_record_set_number(&tape->players[2].record, YT_F85, 6.0f);
 	tape->players[2].team = 3.5f;
 	tape->team.id = 3;
 	memcpy(tape->team.name, team_name, sizeof(team_name));
@@ -3059,6 +3061,7 @@ check_info_team_resolver_transaction(void)
 		return false;
 	info_team_fixture(&tape, &state);
 	tape.players[1].name_length = 99.0f;
+	(void)yt_record_set_number(&tape.players[1].record, YT_F85, 99.0f);
 	memset(tape.players[1].name, 'Q', YT_TEXT_FIELD_SIZE);
 	if (!yt_info_team_resolver_run(&state, &ops, &tape, NULL)
 	    || state.route != YT_INFO_TEAM_OTHER_CAPTAIN
@@ -27188,6 +27191,8 @@ check_hostile_menu_front(void)
 		uint8_t arithmetic_raw[4];
 		uint8_t result_raw[4];
 		bool clamped;
+		static const uint8_t anti_dirty_zero[4] = {0x12, 0x34, 0xd6, 0};
+		static const uint8_t anti_true[4] = {0, 0, 0x80, 0x81};
 		bool allows;
 
 		memcpy(turn_raw, turn_41_raw, sizeof(turn_raw));
@@ -27211,6 +27216,12 @@ check_hostile_menu_front(void)
 		    sizeof(result_raw)) != 0
 		    || yt_action_finalizer_cloak_raw(NULL, arithmetic_raw,
 		    result_raw, &clamped)
+		    || !yt_action_finalizer_anti_cloak_raw_allows(anti_dirty_zero,
+		    4U, &allows)
+		    || !allows
+		    || !yt_action_finalizer_anti_cloak_raw_allows(anti_true,
+		    0xa5U, &allows)
+		    || allows
 		    || !yt_action_finalizer_anti_cloak_allows(0.0f, 0U, &allows)
 		    || !allows
 		    || !yt_action_finalizer_anti_cloak_allows(0.4f, 0U, &allows)

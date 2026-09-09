@@ -2363,6 +2363,8 @@ void yt_no_turn_gate_result_raw(bool denied, uint8_t raw[4]);
 bool yt_action_finalizer_turn_raw(const uint8_t before[4], uint8_t after[4]);
 bool yt_action_finalizer_cloak_raw(const uint8_t before[4],
     uint8_t arithmetic[4], uint8_t result[4], bool *clamped);
+bool yt_action_finalizer_anti_cloak_raw_allows(const uint8_t anti_cloak[4],
+    uint8_t conversion_mode, bool *allows);
 bool yt_action_finalizer_anti_cloak_allows(float anti_cloak,
     uint8_t conversion_mode, bool *allows);
 bool yt_team_choice_rejected(float choice, float raw_team,

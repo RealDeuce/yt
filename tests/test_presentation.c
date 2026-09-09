@@ -16228,6 +16228,8 @@ normal_exit_info_run(struct physical_viewer_join *viewer,
 			    (float)(sizeof(stale_captain_name) - 1U);
 			fixture.team_captain.team = 8.0f;
 		}
+		(void)yt_record_set_number(&fixture.team_captain.record, YT_F85,
+		    fixture.team_captain.name_length);
 		memset(fixture.overlay.record.bytes, 0xa5,
 		    sizeof(fixture.overlay.record.bytes));
 		(void)yt_record_set_number(&fixture.team.overlay.record, YT_F77,

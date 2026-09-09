@@ -1029,8 +1029,9 @@ yt_team_audit_run(struct yt_team_audit_state *state,
 	for (index = 0U; index < YT_ARRAY_LEN(state->cache->roster_raw);
 	    ++index) {
 		float recipient = qb_mbf32_decode(state->cache->roster_raw[index]);
-		int32_t converted = qb_cint_mode((double)recipient,
-		    state->conversion_mode, &overflow);
+		int32_t converted = qb_cint_mbf32(
+		    state->cache->roster_raw[index], state->conversion_mode,
+		    &overflow);
 		int32_t unequal = recipient != state->current_player_record
 		    ? -1 : 0;
 
@@ -1243,7 +1244,7 @@ yt_info_team_resolver_run(struct yt_info_team_state *state,
 		    error))
 			return false;
 		if (captain.name_length > 0.0f) {
-			name_length = qb_cint_mode((double)captain.name_length,
+			name_length = qb_cint_mbf32(captain.record.bytes + YT_F85,
 			    state->conversion_mode, &overflow);
 			if (overflow || name_length < 0) {
 				if (error != NULL) {
@@ -6948,19 +6949,31 @@ yt_action_finalizer_cloak_raw(const uint8_t before[4],
 }
 
 bool
-yt_action_finalizer_anti_cloak_allows(float anti_cloak,
+yt_action_finalizer_anti_cloak_raw_allows(const uint8_t anti_cloak[4],
     uint8_t conversion_mode, bool *allows)
 {
 	bool overflow;
 	int32_t converted;
 
-	if (allows == NULL)
+	if (anti_cloak == NULL || allows == NULL)
 		return false;
-	converted = qb_cint_mode((double)anti_cloak, conversion_mode, &overflow);
+	converted = qb_cint_mbf32(anti_cloak, conversion_mode, &overflow);
 	if (overflow)
 		return false;
 	*allows = (int16_t)~(int16_t)converted != 0;
 	return true;
+}
+
+bool
+yt_action_finalizer_anti_cloak_allows(float anti_cloak,
+    uint8_t conversion_mode, bool *allows)
+{
+	uint8_t raw[4];
+
+	if (qb_mbf32_encode(anti_cloak, raw) == QB_MBF_OVERFLOW)
+		return false;
+	return yt_action_finalizer_anti_cloak_raw_allows(raw, conversion_mode,
+	    allows);
 }
 
 bool
@@ -11405,8 +11418,8 @@ yt_treasury_run(struct yt_treasury_state *state,
 				    strlen(text), YT_TREASURY_SECTOR_FIELD, error))
 					return false;
 				conversion_overflow = false;
-				converted_length = qb_cint_mode(
-				    (double)state->current_port.name_length,
+				converted_length = qb_cint_mbf32(
+				    state->current_port.record.bytes + YT_F85,
 				    state->conversion_mode, &conversion_overflow);
 				if (conversion_overflow || converted_length < 0)
 					return startup_configuration_error(error,
