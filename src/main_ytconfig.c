@@ -323,8 +323,9 @@ edit_maintenance(struct yt_game *game, struct yt_error *error)
 		    || ((unsigned char)line[0] & 0xdfU) == 'N')
 			break;
 	}
-	if (!yt_current_date_serial(game->config.epoch_year, &serial,
-	    &adjusted, error))
+	if (!yt_current_date_serial_observed(
+	    game->config.record.bytes + YT_F45, &serial, &adjusted,
+	    NULL, NULL, error))
 		return false;
 	if (((unsigned char)line[0] & 0xdfU) == 'Y') {
 		memcpy(raw_marker, raw_allow, sizeof(raw_marker));
@@ -1132,8 +1133,9 @@ main(void)
 		char key;
 
 		if (!yt_config_load(&game.database, &game.config, &error)
-		    || !yt_current_date_serial(game.config.epoch_year, &today, &year,
-		    &error)
+		    || !yt_current_date_serial_observed(
+		        game.config.record.bytes + YT_F45, &today, &year,
+		        NULL, NULL, &error)
 		    || !redraw_repairs(&game, working.maximum_holds, &error))
 			goto failure;
 		if (!yt_config_compose_menu_prompt(&game.config, &working, today,
