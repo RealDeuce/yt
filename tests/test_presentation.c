@@ -46224,7 +46224,8 @@ danger_scan_failure_setup(struct danger_scan_presentation_context *fixture,
 	fixture->target.fighters = 5.0f;
 	fixture->target.fighter_owner = 8.25f;
 	memcpy(fixture->players[0].record.bytes, "RAIDER", 6U);
-	fixture->players[0].name_length = 6.0f;
+	fixture->players[0].name_length = 19.0f;
+	CHECK(yt_record_set_number(&fixture->players[0].record, YT_F85, 6.0f));
 	fixture->players[0].team = 3.75f;
 	fixture->players[1].team = 9.0f;
 	fixture->players[2].team = 3.75f;

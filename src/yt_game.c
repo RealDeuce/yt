@@ -10845,7 +10845,8 @@ yt_danger_scan_run(struct yt_danger_scan_state *state,
 			    YT_DANGER_CHECK_OWNER_NAME_LEFT,
 			    YT_DANGER_SCAN_OWNER_NAME_LEFT, error))
 				return false;
-			name_length = qb_cint((double)state->owner_player.name_length,
+			name_length = qb_cint_mbf32(
+			    state->owner_player.record.bytes + YT_F85, 0U,
 			    &overflow);
 			if (overflow || name_length < 0)
 				return startup_configuration_error(error, YT_RANGE,
@@ -10910,8 +10911,9 @@ yt_danger_scan_run(struct yt_danger_scan_state *state,
 				    &state->team_overlay, error))
 					return false;
 				state->team_read = true;
-				team_name_length = qb_cint((double)yt_record_get_number(
-				    &state->team_overlay.record, YT_F73), &overflow);
+				team_name_length = qb_cint_mbf32(
+				    state->team_overlay.record.bytes + YT_F73, 0U,
+				    &overflow);
 				if (overflow || team_name_length < 0)
 					return startup_configuration_error(error, YT_RANGE,
 					    "danger team name length");
@@ -10946,7 +10948,7 @@ yt_danger_scan_run(struct yt_danger_scan_state *state,
 			    YT_DANGER_CHECK_RELATIONSHIP_CINT,
 			    YT_DANGER_SCAN_RELATIONSHIP_CINT, error))
 				return false;
-			relationship = qb_cint((double)state->relationship,
+			relationship = qb_cint_mbf32(state->relationship_raw, 0U,
 			    &overflow);
 			if (overflow)
 				return startup_configuration_error(error, YT_RANGE,
