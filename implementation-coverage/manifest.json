@@ -24,7 +24,7 @@
     },
     "presentation": {
       "path": "/bbsdev/doors/yt/3.6G/analysis/disassembly/player-output-coverage.json",
-      "sha256": "ed0c596666df27d221492b09a6090226f8e90d6fb8ea50deeb47e903d1d8acba"
+      "sha256": "4190bd86216f20be932fb75d002865249fd3932295388af20ebe8af45f8892aa"
     },
     "roots": {
       "path": "/bbsdev/doors/yt/3.6G/analysis/disassembly/root-coverage.json",

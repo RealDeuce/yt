@@ -209,300 +209,108 @@ the current player before `session_0357()` enters the shared AB36 editor. The
 verified treasury, A41C, prompt, and AB36 blocks therefore close this caller
 seam without treasury-specific copies of their internal behavior.
 
-## Open documentation gaps
-
 ### DOC-GAP-043: BRUN COM1/COM2 CLOSE method contract
 
-Affected coverage:
-
-- the source-reachable COM1/COM2 controls closed by the serial `END` and
-  `CLOSE_NO_ARGS` paths;
-- signed control classes -4 and -5 dispatched to `BRUN:126D`; and
-- the corresponding process-control, external-port, and failure residue.
-
-`docs/runtime/brun-lof-close.md` proves that signed control classes -4 and -5
-dispatch to `BRUN:126D`, and explicitly says that COM1/COM2 closure is reached
-by serial `END` and CLOSE-all rather than the 73 rooted explicit-CLOSE calls.
-It does not describe what `126D` reads or writes, which external operations it
-performs, whether any result can fail nonlocally, or what control/registration/
-port state survives each outcome. The generic CLOSE-all contract says only
-that signed classes reuse their real table targets; that does not define this
-method interface.
-
-The native CLOSE-all reducer already preserves high-to-low registry order and
-passes the signed class to a supplied method. Implementing the actual -4/-5
-method by treating it as ordinary `AH=3Eh`, as unconditional release, or as
-OpenDoors shutdown would invent behavior at a source-reachable boundary.
-
-Upstream runtime documentation, the global-state registry, generated evidence,
-and focused success/failure fixtures must publish the bounded `BRUN:126D`
-contract before the native COM close method can be implemented. The verified
-generic registry traversal, ordinary-file method, and fixed-console suffix are
-unaffected. No binary inspection or new reverse engineering was performed.
+Resolved upstream by commit `d16edb83` and implemented by native commit
+`dc738d0`. The shared -4/-5 method now selects `DS:13A6/13BE`, models the
+conditional text-mode 1Ah write and pre-teardown ERR24, ignores drain status
+3/4/5, then clears the transmit/vector/interrupt/port roots and releases FIELD
+and control ownership. Focused tests pin binary YT success, text failure,
+RETRY from retained live state, both COM classes, and invalid status domains.
 
 ### DOC-GAP-042: non-startup date-helper result process cells
 
-Affected coverage:
+Resolved upstream by commit `d16edb83` and implemented by native commit
+`dc738d0`. One addressed process adapter now covers all ten YT calls at
+`DS:188C`, startup copy `4CCA`, early-profit copies `5E56`, later-profit copies
+`60C4`, all four YTCONFIG calls at `1D4A`, all seven YTMAINT calls at `1858`,
+and both RMT-INIT calls at `19F6`. The live session and utility paths store the
+final raw MBF32 result before their caller continuations; focused fixtures pin
+all 23 site/address mappings and byte-identical copies.
 
-- the raw by-reference result of each non-startup `YT-SUB:215B` date-helper
-  call used by port updates, planet updates/creation, nearest-port reporting,
-  and the command-16/17 profit bodies;
-- the process game-day value that must be committed before a following
-  `TIMER`, GET, or caller failure; and
-- the remaining compiled YTCONFIG, YT-INIT, RMT-INIT, and YTMAINT helper
-  result/caller-copy projections where their destination differs from the
-  documented startup slice.
+### DOC-GAP-041: AB36 active-fault inventory
 
-`docs/runtime/startup-date-serial-world.md` gives the complete startup result
-contract at `DS:188C` and its caller copy at `DS:4CCA`. The profit-cycle and
-nearest-port documents state that every successful helper call immediately
-replaces a process game-day cell, including the observable case where a later
-`TIMER` or GET fails. The global-state registry names only the startup result
-and copy. It does not identify the non-startup by-reference destination cells,
-any following caller-copy cells, or whether any of those sites intentionally
-reuse `DS:188C` or another shared address.
+Resolved upstream by commit `d16edb83` and implemented by native commit
+`dc738d0`. The native shared inventory contains the published 77 AB36 rows,
+75 live and two discharged-unreachable sequential-allocation rows. Every row
+retains its module, operation, saved IP, statement, ERL, error kind, and live
+classification; a deterministic checksum fixture pins the complete table.
+The existing scheduler, editor, raw heap, framebuffer, B05D/B1F3, and error
+router remain the composable behavioral owners.
 
-The native semantic callers already sample the clock in the documented order
-and return the correct MBF32 day value, but most do not publish that value into
-the persistent 64-KiB process image. Choosing a destination from a host-side
-variable or assuming the startup address is reused would invent observable
-state and could change later aliases or failure residue.
+### DOC-GAP-040: B1F3 fault denominator and completion state
 
-Upstream documentation, the global-state registry, and generated caller
-artifacts must publish each reached result address and copy/order rule before
-the remaining process mutations can be implemented. The shared date
-calculation, startup `DS:188C -> DS:4CCA` composition, and caller semantics are
-unaffected. No binary inspection or new reverse engineering was performed.
+Resolved upstream by commit `d16edb83` and implemented by native commit
+`dc738d0`. The native inventory contains exactly eleven live sites: three
+GOSUB stack checks, four uppercase-helper allocations, and four main-module
+COPY_STR allocations. The exact module/address/saved-IP/ERL/error table is
+checksum-pinned and composes with the existing pager and error-router owners.
 
-### DOC-GAP-041: contradictory AB36 active-fault completion claim
+### DOC-GAP-039: B05D LOC fault inventory
 
-Affected coverage:
-
-- the root-owned active-handler, raw editor, string-heap, and event-frame fault
-  carrier for `YT:AB36`;
-- the claimed 79-site live dispatch denominator and its ordinary first-fault and
-  secondary-fault routing; and
-- the contextual B05D and B1F3 child boundaries consumed by that dispatcher.
-
-`docs/runtime/ab36-active-fault-inventory.md` calls its 79 local opcode sites a
-complete inventory, and `docs/runtime/ab36-active-fault-dispatch-map.md` says
-all 79 rows have exact live producer boundaries with zero unresolved interface
-rows. `docs/runtime/error-router.md` and `main-error-handling.md` repeat that
-closure claim.
-
-The completed event documents disagree. `docs/runtime/async-event-transducer.md`
-still lists connection of later B1F3/AB36 first faults and secondary handler
-faults as central remaining work, and `docs/runtime/f8-fault-output.md` likewise
-leaves later AB36 faults outside its closed pre-B05D set. The AB36 dispatch also
-imports B05D as a 26-site child, whose LOC inventory is separately contradictory
-under DOC-GAP-039.
-
-The native implementation cannot tell whether the event documents retain real
-unconnected AB36 states or merely stale completion prose, nor can it bind the
-contextual child denominator while DOC-GAP-039 remains open. Upstream must
-reconcile the closure statement and regenerate the dispatch evidence if any of
-its live rows or child boundaries change. No binary inspection or new reverse
-engineering was performed.
-
-### DOC-GAP-040: contradictory B1F3 fault denominator and completion state
-
-Affected coverage:
-
-- the reachable fault-site denominator for `YT:B1F3`;
-- the ordinary first-fault and active-handler secondary-fault carriers; and
-- whether the four main-module `COPY_STR` cuts belong to the native pager root.
-
-`docs/runtime/pager-active-fault-output.md` publishes eleven reachable sites:
-three GOSUB stack cuts, four uppercase-helper cuts, and four main-module
-`COPY_STR` allocation cuts. It says the B1F3 producer, live pager-machine
-connection, active transfer, and sink are closed. Its linked generated artifact,
-`analysis/disassembly/ytpager-fault-output.static.txt`, likewise enumerates
-eleven sites.
-
-Two other completed documents disagree. `docs/runtime/presentation-helpers.md`
-calls the sequence seven reachable faults and identifies only the three stack
-checks plus four uppercase-helper cuts, omitting prompt, response, NS-notice,
-and E-to-Q `COPY_STR`. `docs/runtime/async-event-transducer.md` still lists
-connection of later B1F3/AB36 first faults and secondary handler faults as
-central remaining work.
-
-The native implementation cannot infer whether the dedicated eleven-site
-contract supersedes stale prose or whether its claimed completion is premature.
-Upstream must reconcile the site count and the first/secondary-fault completion
-statement across these documents and regenerate the canonical artifact if the
-eleven-site inventory changes. No binary inspection or new reverse engineering
-was performed.
-
-### DOC-GAP-039: contradictory B05D `LOC(3)` fault inventory
-
-Affected coverage:
-
-- the reachable-cut denominator for the shared `YT:B05D` active-fault
-  transducer;
-- whether `YT:B080`/saved-IP `B083` has any physical error, retry, accepted-
-  prefix, or handler projection; and
-- the native B05D runtime-fault identity table and active-handler carrier.
-
-`docs/runtime/b05d-active-fault-output.md` says that `YT:B080 LOC` is an
-ordinary deterministic ring-state transition and that the former LOC physical
-cut is excluded by the shared address-owned proof. The linked generated
-artifact, `analysis/disassembly/ytb05d-fault-output.static.txt`, still
-includes `loc-device` as a physical adapter cut and labels the inventory as 26
-reachable sites. The prose also continues to call the ledger 26 cuts, although
-its stated categories total 25 after excluding LOC: three called-helper frame
-allocations, fourteen string allocations, seven physical operations, and one
-final pager GOSUB stack check.
-
-These contracts cannot both define the native fault-site enum. Including
-`loc-device` would preserve a documented source-infeasible edge; omitting it
-would disagree with the canonical generated artifact and its published
-denominator. Upstream must select the reachable inventory, correct the prose
-and generated artifact together, and pin the resulting ordered site list/count
-before the native active-fault carrier can be completed. No binary inspection
-or new reverse engineering was performed.
+Resolved upstream by commit `d16edb83` and implemented by native commit
+`dc738d0`. The native B05D inventory contains exactly 25 live cuts and omits
+the deterministic `YT:B080` LOC transition. Its exact helper, allocation,
+physical-adapter, and pager-GOSUB identities are checksum-pinned and compose
+with the existing B05D editor/output/error carriers.
 
 ### DOC-GAP-038: PORTNAME default BRUN fatal projections
 
-Affected coverage:
-
-- startup CLOSE, OPEN, FIELD, LOF, configuration GET/CVS, and RNG
-  setup failures before any application output;
-- LOF-zero CLOSE-all or KILL failures after the exact bell-wrapped
-  missing-data rows;
-- confirmation INPUT/editor failures and accepted-path close/reopen/FIELD
-  failures; and
-- name-generation, progress PRINT, GET/PUT, final CLOSE, and PLAY failures
-  after their documented committed prefixes.
-
-`docs/runtime/portname-output.md` explicitly ends each of these cases at a
-typed runtime or physical boundary. It states that PORTNAME installs no
-application `ON ERROR` handler and does not append a guessed BRUN
-default-fatal message. The native controller currently falls back to
-`yt_cli_error()`, which is a host diagnostic and cannot be claimed as the
-legacy terminal.
-
-The shared no-handler BRUN fatal renderer and complete 00h..FFh description
-table already exist. What is missing is the PORTNAME caller projection for
-each admitted failure: exact BASIC error byte, saved IP, current statement or
-no-line state, module segment/label inputs, retained file/FIELD/runtime
-carrier, and the selected cleanup continuation. Without those identities the
-implementation cannot replace the host diagnostic with the exact shared fatal
-terminal or prove which failures remain physical boundaries.
-
-Upstream documentation, generated evidence, canonical fault projections, and
-focused representative joins must publish this contract before the PORTNAME
-error paths can be completed. The already exact ordinary missing-file, blank,
-abort, accepted, and successful completion behavior is unaffected. No binary
-inspection or new reverse engineering was performed.
+Resolved upstream by commit `d16edb83` and implemented by native commit
+`dc738d0`. The native PORTNAME catalog contains all 194 reachable runtime
+instructions and their exact next-offset saved IPs. A single parameterized
+projection supplies padded module `PORTNAME`, no source-line clause, the
+callee-provided error byte, and the selected saved IP to the shared BRUN
+0AC4 fatal/cleanup owner. The complete catalog checksum and a representative
+fatal join are pinned; no second caller error domain is invented.
 
 ### DOC-GAP-037: action-finalizer CINT failure identities
 
-Affected coverage:
-
-- the unconditional Anti-Cloak `CINT` in the shared `YT:A6E3` action
-  finalizer after turn offset 49 has been staged; and
-- the selected-cloak current-player `CINT` after cloak offset 125 has been
-  staged but before the unchecked process-cache write.
-
-`docs/runtime/action-finalizer-output.md` specifies the non-short-circuit
-Anti-Cloak conversion, the separate current-player conversion, their exact
-normal ordering, unchecked cache-address calculation, and retained FIELD
-prefixes. The native finalizer now implements those documented normal paths,
-including fractional Anti-Cloak values and wrapped process-cache addresses.
-
-The document's failure table names the two conversion boundaries only as
-`cadence CINT/cache-address error`. It does not publish either call
-instruction/saved IP, current statement, ERL, admitted ERR values, installed
-handler, retry identity, or main/shared error-router projection. Returning a
-protective `YT_RANGE` at overflow is therefore not an exact BASIC failure
-claim and cannot verify those two edges.
-
-Upstream documentation, generated evidence, canonical error-router carriers,
-and focused projections must publish both identities before these failure
-paths can be completed. The already documented non-overflow finalizer behavior
-is unaffected. No binary inspection or new reverse engineering was performed.
+Resolved upstream by commit `d16edb83` and implemented by native commit
+`dc738d0`. The two overflow cuts now attach ERR6 with exact identities
+`A734 -> A737`, statement `A712`, and `A773 -> A776`, statement `A770`, both
+ERL 40001 under main handler `B2DA`. Existing raw FIELD/cache residue is
+preserved and the shared router receives the exact identity.
 
 ### DOC-GAP-023: current-sector scanner cloak-clear raw value
 
-Affected coverage:
-
-- authoritative process-array reads for the current-sector scanner's
-  player-candidate loop at `YT-SUB:5E8D`; and
-- the exact revealed-cloak cache mutation and residue before selector-four
-  sound, later duplicate sensor slots, visible-player GETs, and dependency
-  failures.
-
-The completed `docs/runtime/current-sector-output.md` and
-`docs/gameplay/command-shell.md` establish that the scanner reads the
-startup-era sector and cloak arrays, emits the shimmer row for an admitted
-reveal, then clears only that candidate's cloak cache before sound and later
-visibility tests. The semantic `tools/ytsector_output.py` model records the
-result only as numeric zero. Neither it, the generated scanner evidence, nor
-the global-state registry identifies the four source bytes copied into
-`DS:1A70 + 4*(candidate+52)` by this clear.
-
-The raw value cannot safely be inferred from its numeric meaning. Completed
-cache owners already use canonical `00 00 00 00`, Xannor retaliation uses
-`00 00 40 00`, player death uses `00 00 7A 00`, and action-finalizer expiry
-uses `00 00 A3 00`. The scanner's process reads and clear must migrate as one
-unit because a duplicate mode-one sensor slot observes the completed clear;
-mixing process reads with the existing typed-only clear would replay stale
-cloak state.
-
-Upstream documentation, generated raw evidence and a focused duplicate-slot
-failure-prefix fixture must identify the copied source bytes. Until then the
-native current-sector scanner retains its typed cache carrier. No binary
-inspection or new reverse engineering was performed.
+Resolved upstream by commit `d16edb83` and implemented by native commit
+`dc738d0`. Scanner eligibility and cloak state are reread from the authoritative
+process cache. An admitted reveal copies canonical `00 00 00 00` into that
+cache before selector-four sound and mirrors the typed cache afterward.
 
 ### DOC-GAP-022: Earth Anti-Cloak cache-clear raw value
 
-Affected coverage:
-
-- authoritative process binding of the global Earth Anti-Cloak sweep's
-  positive-cloak clears at `YT-SUB:932E`; and
-- exact cache residue across its target `GET`, name-conversion, output,
-  sound, fade and credit-debit failure prefixes.
-
-The completed `docs/runtime/earth-purchase-actions-output.md` and
-`docs/gameplay/planet-actions.md` establish that every positive player cloak
-cache entry is cleared before that player's `GET`, while zero and negative
-entries remain unchanged. They identify the process cache mapping as
-`DS:1A70 + 4*(record+52)`, but neither document nor the generated Earth
-purchase model identifies the four raw bytes written by the clear. This
-cannot safely be inferred from the numeric result: other completed cache
-owners use canonical `00 00 00 00`, Xannor retaliation uses
-`00 00 40 00`, player death uses `00 00 7A 00`, and action-finalizer expiry
-uses `00 00 A3 00` for numerically zero values.
-
-Upstream documentation, generated raw evidence and a focused failure-prefix
-fixture must identify the copied source bytes and confirm whether every loop
-iteration uses the same value. Until then the native Anti-Cloak model retains
-its typed cache mutation and is not connected to the authoritative process
-array. No binary inspection or new reverse engineering was performed.
+Resolved upstream by commit `d16edb83` and implemented by native commit
+`dc738d0`. Every loop iteration rereads authoritative process-cache bytes; a
+positive cloak copies canonical `00 00 00 00` before the player GET. Focused
+failure tapes pin the raw clear, ordering, and retained state.
 
 ### DOC-GAP-021: scoreboard team-ID scratch write boundary
 
-Affected coverage:
+Resolved upstream by commit `d16edb83` and implemented by native commit
+`dc738d0`. After each fresh player GET and score overlay, the exact four team
+bytes at FIELD offset 89 are copied to `DS:4B8C` before PUT. Focused tapes pin
+all writes and current-player PUT-failure residue.
 
-- authoritative binding of the scoreboard generator's current-player team-ID
-  scratch at `DS:4B8C`; and
-- exact process/FIELD residue when a player score-cache GET or PUT fails.
+### DOC-GAP-015: zero-Headquarters repair literal conflict
 
-The completed global-state registry and `docs/file-formats/YTSCORE.md` identify
-`DS:4B8C` as an MBF32 value copied from player FIELD offset 89 during
-`YT-SUB:3AF5..3B46`, and say that a normal return retains the last player team
-ID. They do not place that copy relative to the loop's fresh player GET,
-score-field overlay, and durable cache PUT. That ordering is observable: a
-failed PUT either retains the preceding player's scratch or the current
-player's raw team bytes. The current native generator also decodes the initial
-player sweep into a host object, so choosing that stale value rather than the
-fresh FIELD bytes would create a second undocumented behavior.
+Resolved upstream by commit `d16edb83` and implemented by native commit
+`dc738d0`. Main startup uses literal `00 40 37 8A` (MBF32 733), writes it to
+configuration FIELD offset 117, performs PUT #1,1, and only then copies the
+same bytes to process `DS:4BD8`. PUT failure retains the dirty FIELD repair
+without publishing the process global.
 
-Upstream documentation, generated evidence, and a focused failure-prefix
-fixture must identify the exact copy point and raw source before `DS:4B8C` can
-be made authoritative. The separately documented sector-owner reuse of
-`DS:1A40` is not blocked by this gap. No binary inspection or new reverse
-engineering was performed.
+### DOC-GAP-014: command-6 dependency failure projections
+
+Resolved upstream by commit `d16edb83` and implemented by native commit
+`dc738d0`. Command 6 now attaches the published OPEN, LOF, three GET, final
+CLOSE, opening/log/automatic heading, pause-output, and private-wait identities.
+Physical adapters supply their own admitted error byte; delegated output/wait
+calls preserve their callee domain. ERR24 projects to the existing shared
+statement retry and all other errors use the shared terminal route.
+
+## Open documentation gaps
 
 ### DOC-GAP-019: planet-updater corrupt numeric record behavior
 
@@ -592,66 +400,6 @@ residue without inventing that destination address. Upstream documentation,
 the canonical world model, generated evidence and registry must name the
 destination root before this boundary can proceed. No binary inspection or
 new reverse engineering was performed.
-
-### DOC-GAP-015: zero-Headquarters repair literal conflict
-
-Affected coverage:
-
-- startup configuration hydration/validation at `YT-SUB:BE82..BEA0`;
-- authoritative binding of process-global Headquarters cell `DS:4BD8`; and
-- every later main-session consumer of the repaired Headquarters value.
-
-The completed prose and generated raw model disagree about the value copied
-when configuration offset 117 is numeric zero. The following sources say the
-repair value is 85:
-
-- `docs/runtime/startup-config-hydration.md`;
-- `docs/runtime/startup-login.md`;
-- `docs/gameplay/daily-maintenance.md`;
-- `docs/runtime/initialization.md`;
-- `docs/runtime/configuration-editor.md`;
-- traversal row 10 and `ytstartup-config-hydration.static.txt`; and
-- the existing typed C model and fixtures.
-
-However, `tools/ytstartup_config_hydration.py::repair_zero_headquarters_raw`
-installs literal bytes `00 40 37 8A` in both record offset 117 and
-`DS:4BD8`, and `tests/test_ytstartup_config_hydration.py` explicitly asserts
-those bytes. They decode as MBF32 733, not 85. The model's docstring also
-says it is applying the `BE82` repair and stops before the physical PUT, so
-this is not merely an unrelated shipped nonzero fixture value.
-
-Implementation cannot make `DS:4BD8` authoritative without choosing which
-of these mutually exclusive values and failure prefixes are correct. The
-uncommitted Headquarters migration was reverted. Upstream documentation,
-the canonical raw model, generated evidence, and regression test must be
-reconciled before this boundary can proceed. No binary inspection or new
-reverse engineering was performed.
-
-### DOC-GAP-014: command-6 dependency failure projections
-
-Affected coverage:
-
-- ship-computer command-6 radio-log scan and private wait;
-- its active-computer entry/body/fresh-prompt cycle; and
-- completion claims for physical and shared-handler failures.
-
-The completed `docs/runtime/computer-radio-log-output.md` and shared radio
-reader, random-file, output, wait, prompt, input, and framebuffer contracts
-fully specify the successful complete-record cycle. They compose command
-typeahead, the private pager, all endpoint predicates, return hydration, the
-fresh prompt, later AB36/F8 activity, and inherited framebuffer state without
-requiring command-specific interleaving vectors or a fixed final image.
-
-The command-specific document explicitly leaves unidentified the fatal
-`OPEN`/`LOF`/radio-`GET`/name-`GET`/direct-output/private-wait/`CLOSE`
-shared-handler suffixes, persistent `ERR 24` retries, partial random-file
-records and physical device writes, and entry/return `A41C` anti-cloak
-conversion or handler failures. The already-emitted prefix, successful FIELD
-order, and ordinary return remain implementable, but native work must not
-invent the missing BASIC `ERR`, `ERL`, retry statement, active-handler, or
-partial-I/O projection at those cuts. Upstream documentation is required for
-those identities. No binary inspection or new reverse engineering was
-performed.
 
 ## Previously resolved documentation gaps
 
