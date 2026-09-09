@@ -211,6 +211,40 @@ seam without treasury-specific copies of their internal behavior.
 
 ## Open documentation gaps
 
+### DOC-GAP-042: non-startup date-helper result process cells
+
+Affected coverage:
+
+- the raw by-reference result of each non-startup `YT-SUB:215B` date-helper
+  call used by port updates, planet updates/creation, nearest-port reporting,
+  and the command-16/17 profit bodies;
+- the process game-day value that must be committed before a following
+  `TIMER`, GET, or caller failure; and
+- the remaining compiled YTCONFIG, YT-INIT, RMT-INIT, and YTMAINT helper
+  result/caller-copy projections where their destination differs from the
+  documented startup slice.
+
+`docs/runtime/startup-date-serial-world.md` gives the complete startup result
+contract at `DS:188C` and its caller copy at `DS:4CCA`. The profit-cycle and
+nearest-port documents state that every successful helper call immediately
+replaces a process game-day cell, including the observable case where a later
+`TIMER` or GET fails. The global-state registry names only the startup result
+and copy. It does not identify the non-startup by-reference destination cells,
+any following caller-copy cells, or whether any of those sites intentionally
+reuse `DS:188C` or another shared address.
+
+The native semantic callers already sample the clock in the documented order
+and return the correct MBF32 day value, but most do not publish that value into
+the persistent 64-KiB process image. Choosing a destination from a host-side
+variable or assuming the startup address is reused would invent observable
+state and could change later aliases or failure residue.
+
+Upstream documentation, the global-state registry, and generated caller
+artifacts must publish each reached result address and copy/order rule before
+the remaining process mutations can be implemented. The shared date
+calculation, startup `DS:188C -> DS:4CCA` composition, and caller semantics are
+unaffected. No binary inspection or new reverse engineering was performed.
+
 ### DOC-GAP-041: contradictory AB36 active-fault completion claim
 
 Affected coverage:
