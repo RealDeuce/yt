@@ -14274,12 +14274,31 @@ yt_sector_fighter_row(const struct yt_sector *sector,
 			char number[64];
 			int number_length;
 			bool overflow;
+			int owner_name_requested;
 			int team_name_length;
 			size_t stored_team_length;
 
-			if (owner == NULL || !yt_player_stored_name(owner,
-			    owner_name, &owner_name_length, error)
-			    || !sector_row_append(&scratch_builder, owner_name,
+			if (owner == NULL)
+				return false;
+			owner_name_requested = (int)qb_cint_mbf32(
+			    owner->record.bytes + YT_F85, 0U, &overflow);
+			if (overflow || owner_name_requested < 0) {
+				if (error != NULL) {
+					error->status = YT_RANGE;
+					snprintf(error->operation,
+					    sizeof(error->operation), "%s",
+					    overflow ? "player name CINT"
+					    : "player name LEFT$ length");
+				}
+				return false;
+			}
+			owner_name_length = (size_t)owner_name_requested;
+			if (owner_name_length > YT_TEXT_FIELD_SIZE)
+				owner_name_length = YT_TEXT_FIELD_SIZE;
+			if (owner_name_length > 0U)
+				memcpy(owner_name, owner->record.bytes,
+				    owner_name_length);
+			if (!sector_row_append(&scratch_builder, owner_name,
 			    owner_name_length))
 				return false;
 			changed = true;
@@ -14293,9 +14312,9 @@ yt_sector_fighter_row(const struct yt_sector *sector,
 				    number + 1, (size_t)number_length - 1U)
 				    || !sector_row_append(&scratch_builder, "]", 1U))
 					return false;
-				team_name_length = (int)qb_cint(
-				    yt_record_get_number(&team_overlay->record,
-				    YT_F73), &overflow);
+				team_name_length = (int)qb_cint_mbf32(
+				    team_overlay->record.bytes + YT_F73, 0U,
+				    &overflow);
 				if (overflow || team_name_length < 0) {
 					if (error != NULL) {
 						error->status = YT_RANGE;

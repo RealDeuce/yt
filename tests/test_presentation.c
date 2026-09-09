@@ -3528,6 +3528,7 @@ test_sector_scanner_rows(void)
 	sector.fighters = 123.0f;
 	sector.fighter_owner = 3.0f;
 	player.team = -4.0f;
+	player.name_length = 19.0f;
 	yt_record_blank(&record);
 	memcpy(record.bytes, raw_team_name, sizeof(raw_team_name));
 	yt_record_set_number(&record, YT_F73, 3.0f);
@@ -45651,11 +45652,13 @@ spy_sweep_presentation_fixture(bool ansi)
 	fixture.planet.ground_forces = 9.0f;
 	memcpy(fixture.players[3].record.bytes, "Ada", 3U);
 	fixture.players[3].name_length = 3.0f;
+	CHECK(yt_record_set_number(&fixture.players[3].record, YT_F85, 3.0f));
 	fixture.players[3].team = 7.0f;
 	fixture.players[3].fighters = 12.0f;
 	fixture.players[3].shields = 34.0f;
 	memcpy(fixture.players[4].record.bytes, "Grace", 5U);
 	fixture.players[4].name_length = 5.0f;
+	CHECK(yt_record_set_number(&fixture.players[4].record, YT_F85, 5.0f));
 	fixture.players[4].team = 2.0f;
 	memcpy(fixture.team.record.bytes, "Union", 5U);
 	CHECK(yt_record_set_number(&fixture.team.record, YT_F73, 5.0f));
