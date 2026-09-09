@@ -211,6 +211,34 @@ seam without treasury-specific copies of their internal behavior.
 
 ## Open documentation gaps
 
+### DOC-GAP-039: contradictory B05D `LOC(3)` fault inventory
+
+Affected coverage:
+
+- the reachable-cut denominator for the shared `YT:B05D` active-fault
+  transducer;
+- whether `YT:B080`/saved-IP `B083` has any physical error, retry, accepted-
+  prefix, or handler projection; and
+- the native B05D runtime-fault identity table and active-handler carrier.
+
+`docs/runtime/b05d-active-fault-output.md` says that `YT:B080 LOC` is an
+ordinary deterministic ring-state transition and that the former LOC physical
+cut is excluded by the shared address-owned proof. The linked generated
+artifact, `analysis/disassembly/ytb05d-fault-output.static.txt`, still
+includes `loc-device` as a physical adapter cut and labels the inventory as 26
+reachable sites. The prose also continues to call the ledger 26 cuts, although
+its stated categories total 25 after excluding LOC: three called-helper frame
+allocations, fourteen string allocations, seven physical operations, and one
+final pager GOSUB stack check.
+
+These contracts cannot both define the native fault-site enum. Including
+`loc-device` would preserve a documented source-infeasible edge; omitting it
+would disagree with the canonical generated artifact and its published
+denominator. Upstream must select the reachable inventory, correct the prose
+and generated artifact together, and pin the resulting ordered site list/count
+before the native active-fault carrier can be completed. No binary inspection
+or new reverse engineering was performed.
+
 ### DOC-GAP-038: PORTNAME default BRUN fatal projections
 
 Affected coverage:
