@@ -47,7 +47,8 @@ test_startup_working_values(void)
 	CHECK(working.maximum_holds == 200.0f);
 
 	memcpy(config.record.bytes, raw_path, sizeof(raw_path));
-	config.scoreboard_length = 3.6f;
+	config.scoreboard_length = 0.0f;
+	CHECK(yt_record_set_number(&config.record, YT_F41, 3.6f));
 	config.local_screen = -1.0f;
 	config.lottery_plays = 2.0f;
 	config.maximum_holds = 1001.0f;
