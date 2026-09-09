@@ -20265,6 +20265,8 @@ check_maintenance_xannor_phase_pass(void)
 	game.config.planet_offset = 43.0f;
 	game.config.total_records = 143.0f;
 	game.config.headquarters = 40.0f;
+	(void)yt_record_set_number(&game.config.record, YT_F117,
+	    game.config.headquarters);
 	yt_random_init(&game.random);
 	yt_random_set_provider(&game.random, score_random_fill, &script);
 	yt_error_clear(&error);
@@ -20781,6 +20783,8 @@ check_maintenance_xannor_headquarters_reclaim_pass(void)
 	game.config.sector_offset = 3.0f;
 	game.config.port_offset = 6.0f;
 	game.config.headquarters = 2.0f;
+	(void)yt_record_set_number(&game.config.record, YT_F117,
+	    game.config.headquarters);
 	yt_random_init(&game.random);
 	yt_random_set_provider(&game.random, score_random_fill, &script);
 	yt_error_clear(&error);
@@ -20914,6 +20918,7 @@ check_maintenance_xannor_headquarters_relocation_pass(void)
 	if (!yt_record_set_number(&config_before, YT_F117, 8.0f)
 	    || !yt_database_write(&game.database, 1U, &config_before, &error))
 		goto done;
+	game.config.record = config_before;
 	for (sector = 1; sector <= 11; ++sector) {
 		memset(sector_before[sector - 1].bytes, 0x50 + sector,
 		    YT_RECORD_SIZE);

@@ -4053,7 +4053,8 @@ yt_maintenance_xannor_headquarters_reclaim(struct yt_game *game,
 		    "YTDATA.DAT");
 		return false;
 	}
-	hq = qb_cint(game->config.headquarters, &overflow);
+	hq = qb_cint_mbf32(game->config.record.bytes + YT_F117, 0U,
+	    &overflow);
 	if (overflow || hq < 1
 	    || !yt_game_read_sector(game, hq, &host, error)) {
 		if (error != NULL && error->status == YT_OK)
@@ -4072,7 +4073,8 @@ yt_maintenance_xannor_headquarters_reclaim(struct yt_game *game,
 		return true;
 	}
 	if (host.fighter_owner > 0.0f) {
-		int32_t record = qb_cint(host.fighter_owner, &overflow);
+		int32_t record = qb_cint_mbf32(host.record.bytes + YT_F85, 0U,
+		    &overflow);
 
 		if (overflow || record < 1
 		    || !yt_game_read_player(game, record, &player, error)
@@ -4151,7 +4153,6 @@ yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
 	struct yt_record config_record;
 	struct yt_sector sector;
 	uint64_t starting_draws;
-	float old_headquarters;
 	float planet_number;
 	bool overflow;
 	int32_t old_logical;
@@ -4196,8 +4197,8 @@ yt_maintenance_xannor_headquarters_relocate(struct yt_game *game,
 			break;
 	}
 	local.draws_consumed = game->random.draws - starting_draws;
-	old_headquarters = game->config.headquarters;
-	old_logical = qb_cint(old_headquarters, &overflow);
+	old_logical = qb_cint_mbf32(game->config.record.bytes + YT_F117,
+	    0U, &overflow);
 	local.old_headquarters = overflow ? 0 : old_logical;
 	local.target_sector = candidate;
 	game->config.headquarters = (float)candidate;
@@ -4285,7 +4286,8 @@ yt_maintenance_xannor_revenge_slot(struct yt_game *game,
 	if (slot_value > 0.0f) {
 		struct yt_player player;
 
-		record = qb_cint(slot_value, &overflow);
+		record = qb_cint_mbf32(metadata.record.bytes + YT_F105, 0U,
+		    &overflow);
 		if (overflow || record < 0 || (size_t)record >= cache_count) {
 			set_error(error, YT_RANGE, "Xannor revenge player",
 			    "YTDATA.DAT");
@@ -4294,7 +4296,8 @@ yt_maintenance_xannor_revenge_slot(struct yt_game *game,
 		if (!yt_game_read_player(game, record, &player, error))
 			return false;
 		if (player.sector > 7.0f) {
-			local.live_sector = qb_cint(player.sector, &overflow);
+			local.live_sector = qb_cint_mbf32(player.record.bytes + YT_F57,
+			    0U, &overflow);
 			if (overflow) {
 				set_error(error, YT_RANGE, "Xannor revenge sector",
 				    "YTDATA.DAT");
@@ -4807,7 +4810,8 @@ yt_maintenance_xannor_sector_arrival(struct yt_game *game,
 		return true;
 	remaining_defenders = sector->fighters;
 	if (initial_owner > 0.0f) {
-		int32_t record = qb_cint(initial_owner, &overflow);
+		int32_t record = qb_cint_mbf32(sector->record.bytes + YT_F85,
+		    0U, &overflow);
 
 		if (overflow || record < 1
 		    || !yt_game_read_player(game, record, &player, error)
@@ -5989,7 +5993,8 @@ yt_maintenance_mercenary_defections(struct yt_game *game, int sector_count,
 				static const uint8_t belonging[] = " belonging to ";
 				static const uint8_t suffix[] = " joined the mercs!";
 
-				owner_record = qb_cint(sector.fighter_owner, &overflow);
+				owner_record = qb_cint_mbf32(sector.record.bytes + YT_F85,
+				    0U, &overflow);
 				if (overflow || owner_record < 1) {
 					set_error(error, YT_RANGE,
 					    "Mercenary defection owner", "YTDATA.DAT");
@@ -6231,7 +6236,8 @@ yt_maintenance_mercenary_planet_absorption(struct yt_game *game,
 		    "YTDATA.DAT");
 		return false;
 	}
-	planet_number = qb_cint(arrival_sector->planet, &overflow);
+	planet_number = qb_cint_mbf32(arrival_sector->record.bytes + YT_F93,
+	    0U, &overflow);
 	if (overflow) {
 		set_error(error, YT_RANGE, "Mercenary planet link", "YTDATA.DAT");
 		return false;
@@ -6427,7 +6433,8 @@ mercenary_destination_impl(struct yt_game *game,
 		owner_length = sizeof(xannor) - 1U;
 	}
 	else {
-		owner_record = qb_cint(original_owner, &overflow);
+		owner_record = qb_cint_mbf32(arrival_sector->record.bytes + YT_F85,
+		    0U, &overflow);
 		if (overflow || owner_record < 1
 		    || !yt_game_read_player(game, owner_record, &owner_player,
 		    error)) {
