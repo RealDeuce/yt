@@ -936,6 +936,7 @@ yt_maintenance_player_name(const struct yt_player *player, bool *occupied,
 {
 	bool overflow;
 	int32_t stored_length;
+	float raw_length;
 
 	if (player == NULL || occupied == NULL || name == NULL) {
 		set_error(error, YT_INVALID, "maintenance player name",
@@ -944,10 +945,12 @@ yt_maintenance_player_name(const struct yt_player *player, bool *occupied,
 	}
 	name->data = player->record.bytes;
 	name->length = 0U;
-	*occupied = player->name_length != 0.0f;
+	raw_length = qb_mbf32_decode(player->record.bytes + YT_F85);
+	*occupied = raw_length != 0.0f;
 	if (!*occupied)
 		return true;
-	stored_length = qb_cint(player->name_length, &overflow);
+	stored_length = qb_cint_mbf32(player->record.bytes + YT_F85, 0U,
+	    &overflow);
 	if (overflow || stored_length < 0) {
 		set_error(error, YT_RANGE, "maintenance player name",
 		    "YTDATA.DAT");

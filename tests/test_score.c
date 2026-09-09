@@ -3740,11 +3740,13 @@ spy_sweep_fixture(struct spy_sweep_tape *tape,
 	tape->planet.ground_forces = 9.0f;
 	memcpy(tape->players[3].record.bytes, "Ada", 3U);
 	tape->players[3].name_length = 3.0f;
+	(void)yt_record_set_number(&tape->players[3].record, YT_F85, 3.0f);
 	tape->players[3].team = 7.0f;
 	tape->players[3].fighters = 12.0f;
 	tape->players[3].shields = 34.0f;
 	memcpy(tape->players[4].record.bytes, "Grace", 5U);
 	tape->players[4].name_length = 5.0f;
+	(void)yt_record_set_number(&tape->players[4].record, YT_F85, 5.0f);
 	tape->players[4].team = 2.0f;
 	tape->players[4].fighters = 20.0f;
 	tape->players[4].shields = 40.0f;
@@ -15564,16 +15566,20 @@ check_maintenance_player_aging(void)
 	if (!yt_maintenance_player_name(&player, &occupied, &stored_name,
 	    &error) || occupied || stored_name.length != 0U)
 		return false;
-	player.name_length = 0.4f;
+	player.name_length = 19.0f;
+	if (!yt_record_set_number(&player.record, YT_F85, 0.4f))
+		return false;
 	if (!yt_maintenance_player_name(&player, &occupied, &stored_name,
 	    &error) || !occupied || stored_name.length != 0U)
 		return false;
-	player.name_length = 5.0f;
+	if (!yt_record_set_number(&player.record, YT_F85, 5.0f))
+		return false;
 	if (!yt_maintenance_player_name(&player, &occupied, &stored_name,
 	    &error) || !occupied || stored_name.length != 5U
 	    || memcmp(stored_name.data, "Alice", 5U) != 0)
 		return false;
-	player.name_length = -1.0f;
+	if (!yt_record_set_number(&player.record, YT_F85, -1.0f))
+		return false;
 	if (yt_maintenance_player_name(&player, &occupied, &stored_name,
 	    &error) || error.status != YT_RANGE)
 		return false;
