@@ -6323,6 +6323,8 @@ config_hq_test_init(struct config_hq_test_tape *tape,
 	(void)yt_record_set_number(&tape->initial[109], YT_F85, -1.0f);
 	(void)yt_record_set_number(&tape->initial[185], YT_F81, 3.0f);
 	config->record = tape->initial[1];
+	(void)yt_record_set_number(&config->record, YT_F117,
+	    config->headquarters);
 	tape->initial[1].bytes[YT_RECORD_TAIL_OFFSET] ^= 0x5aU;
 	memcpy(tape->durable, tape->initial, sizeof(tape->durable));
 }

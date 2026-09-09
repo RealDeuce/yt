@@ -13,7 +13,8 @@ yt_config_decode(struct yt_config *config, const struct yt_record *record,
 	memset(config, 0, sizeof(*config));
 	config->record = *record;
 	config->scoreboard_length = yt_record_get_number(record, YT_F41);
-	stored_length = (int)qb_cint(config->scoreboard_length, &overflow);
+	stored_length = (int)qb_cint_mbf32(record->bytes + YT_F41, 0U,
+	    &overflow);
 	if (overflow || stored_length < 0) {
 		if (error != NULL) {
 			error->status = YT_RANGE;
@@ -166,7 +167,7 @@ yt_config_headquarters_relocate(struct yt_config_hq_state *state,
 	if (qb_mbf32_encode(candidate, candidate_raw) == QB_MBF_OVERFLOW)
 		return config_hq_error(error, YT_RANGE,
 		    "YTCONFIG Headquarters candidate");
-	converted = qb_cint(candidate, &overflow);
+	converted = qb_cint_mbf32(candidate_raw, 0U, &overflow);
 	if (overflow)
 		return config_hq_error(error, YT_RANGE,
 		    "YTCONFIG Headquarters candidate");
@@ -195,8 +196,8 @@ yt_config_headquarters_relocate(struct yt_config_hq_state *state,
 	    (size_t)yt_sector_basic_record(config, state->candidate_logical),
 	    &state->field);
 	state->candidate_initial = state->field;
-	converted = qb_cint(yt_record_get_number(&state->candidate_initial,
-	    YT_F93), &overflow);
+	converted = qb_cint_mbf32(
+	    state->candidate_initial.bytes + YT_F93, 0U, &overflow);
 	if (overflow)
 		return config_hq_error(error, YT_RANGE,
 		    "YTCONFIG Headquarters planet link");
@@ -206,8 +207,8 @@ yt_config_headquarters_relocate(struct yt_config_hq_state *state,
 		state->complete = true;
 		return true;
 	}
-	converted = qb_cint(yt_record_get_number(&state->candidate_initial,
-	    YT_F81), &overflow);
+	converted = qb_cint_mbf32(
+	    state->candidate_initial.bytes + YT_F81, 0U, &overflow);
 	if (overflow)
 		return config_hq_error(error, YT_RANGE,
 		    "YTCONFIG Headquarters fighters");
@@ -220,7 +221,8 @@ yt_config_headquarters_relocate(struct yt_config_hq_state *state,
 	}
 	state->captured_candidate_fighters = yt_record_get_number(
 	    &state->candidate_initial, YT_F81);
-	converted = qb_cint(config->headquarters, &overflow);
+	converted = qb_cint_mbf32(config->record.bytes + YT_F117, 0U,
+	    &overflow);
 	if (overflow)
 		return config_hq_error(error, YT_RANGE,
 		    "YTCONFIG old Headquarters");
@@ -285,7 +287,8 @@ yt_config_toggle_local_screen(struct yt_config_local_screen_state *state,
 		return false;
 	state->field_loaded = true;
 	state->stored = yt_record_get_number(&state->field, YT_F85);
-	converted = qb_cint(state->stored, &overflow);
+	converted = qb_cint_mbf32(state->field.bytes + YT_F85, 0U,
+	    &overflow);
 	if (overflow)
 		return config_hq_error(error, YT_RANGE,
 		    "YTCONFIG local-screen CINT");
