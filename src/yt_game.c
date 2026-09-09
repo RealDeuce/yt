@@ -11988,13 +11988,13 @@ port_report_append(uint8_t *row, size_t capacity, size_t *position,
 }
 
 static bool
-port_report_field_length(float raw, uint8_t conversion_mode,
+port_report_field_length(const uint8_t raw[4], uint8_t conversion_mode,
     size_t *length, struct yt_error *error, const char *operation)
 {
 	bool overflow;
 	int32_t converted;
 
-	converted = qb_cint_mode((double)raw, conversion_mode, &overflow);
+	converted = qb_cint_mbf32(raw, conversion_mode, &overflow);
 	if (overflow || converted < 0)
 		return startup_configuration_error(error, YT_RANGE, operation);
 	*length = (size_t)converted;
@@ -12104,7 +12104,7 @@ yt_port_report_run(struct yt_port_report_state *state,
 				return false;
 			state->owner_player_read = true;
 			if (!port_report_field_length(
-			    state->owner_player.name_length,
+			    state->owner_player.record.bytes + YT_F85,
 			    state->conversion_mode, &owner_name_length, error,
 			    "port owner name length"))
 				return false;
@@ -12129,7 +12129,7 @@ yt_port_report_run(struct yt_port_report_state *state,
 	    &state->report_port, error))
 		return false;
 	state->report_port_read = true;
-	if (!port_report_field_length(state->report_port.name_length,
+	if (!port_report_field_length(state->report_port.record.bytes + YT_F85,
 	    state->conversion_mode, &name_length, error,
 	    "port report name length"))
 		return false;

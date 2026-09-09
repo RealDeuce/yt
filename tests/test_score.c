@@ -30527,6 +30527,7 @@ port_report_fixture(struct port_report_tape *tape,
 	    5.5f, 6.0f, 7.25f);
 	port_report_player_fixture(&tape->owner_player, 0xa2, "Other",
 	    1.0f, 2.0f, 3.0f);
+	tape->owner_player.name_length = 19.0f;
 	port_market_fixture(&state->market, 1000.0f, stock, production);
 	(void)yt_port_market_update(&state->market, NULL);
 	fresh = state->market.port.record;
@@ -30534,6 +30535,7 @@ port_report_fixture(struct port_report_tape *tape,
 	memcpy(fresh.bytes, "Fresh", 5U);
 	(void)yt_record_set_number(&fresh, YT_F85, 5.0f);
 	yt_port_decode(&tape->report_port, &fresh);
+	tape->report_port.name_length = -19.0f;
 	state->current_player_record = 2;
 	state->port_physical_record = tape->port_record;
 	state->conversion_mode = 0U;
@@ -30660,6 +30662,19 @@ check_port_report_transaction(void)
 		    || tape.bool_calls != failure + 1U)
 			return false;
 	}
+
+	/* Other-owner name uses raw FIELD length, not decoded sidecar. */
+	memset(&state, 0, sizeof(state));
+	port_report_fixture(&tape, &state);
+	state.market.port.owner = 8.0f;
+	(void)yt_record_set_number(&state.market.port.record, YT_F97, 8.0f);
+	if (!yt_port_report_run(&state, &port_report_test_ops, &tape, NULL)
+	    || !state.owner_player_read || tape.player_reads != 2U
+	    || tape.player_records[0] != 8U || tape.player_records[1] != 2U
+	    || !port_report_fragment_equal(&tape.fragments[1],
+	    YT_PORT_REPORT_OWNER_ROW, SIZE_MAX,
+	    "This port is owned by: Other", 28U))
+		return false;
 
 	/* Other-owner GET fails before its direct blank. */
 	memset(&state, 0, sizeof(state));
