@@ -1166,6 +1166,13 @@ yt_brun_file_control_find(const uint8_t *process, size_t process_size,
 	return false;
 }
 
+static void
+brun_process_set_word(uint8_t *process, uint16_t address, uint16_t value)
+{
+	process[address] = (uint8_t)value;
+	process[(uint16_t)(address + 1U)] = (uint8_t)(value >> 8U);
+}
+
 bool
 yt_brun_type3_release(uint8_t *process, size_t process_size,
     uint16_t control, struct yt_brun_type3_release_result *result,
@@ -1243,6 +1250,102 @@ yt_brun_type3_release(uint8_t *process, size_t process_size,
 	}
 	process[type_address] = 1U;
 	local.outcome = YT_BRUN_TYPE3_RELEASE_RETURNED;
+	*result = local;
+	return true;
+}
+
+bool
+yt_brun_random_close_process_apply(uint8_t *process,
+    size_t process_size, uint8_t file_number, uint16_t handler_entry_sp,
+    const struct yt_database_close_result *close_result,
+    struct yt_brun_random_close_process_result *result,
+    struct yt_error *error)
+{
+	struct yt_brun_random_close_process_result local;
+	struct yt_brun_type3_release_result release;
+	uint16_t control;
+	bool device;
+
+	memset(&local, 0, sizeof(local));
+	if (process == NULL || process_size != 0x10000U
+	    || close_result == NULL || result == NULL
+	    || close_result->close_all) {
+		set_error(error, YT_INVALID, "BRUN random CLOSE process", NULL);
+		if (result != NULL)
+			*result = local;
+		return false;
+	}
+	brun_process_set_word(process, 0x0a08U, handler_entry_sp);
+	if (!yt_brun_file_control_find(process, process_size, file_number,
+	    &control, error)) {
+		*result = local;
+		return false;
+	}
+	local.control = control;
+	if (control == 0U) {
+		if (close_result->outcome != YT_DATABASE_CLOSE_RETURNED
+		    || !close_result->missing
+		    || close_result->attempt_count != 0U) {
+			set_error(error, YT_INVALID,
+			    "BRUN missing random CLOSE process", NULL);
+			*result = local;
+			return false;
+		}
+		local.outcome = YT_BRUN_RANDOM_CLOSE_PROCESS_MISSING;
+		*result = local;
+		return true;
+	}
+	device = (process[(uint16_t)(control + 0x31U)] & 0x80U) != 0U;
+	if (process[control] != 4U
+	    || (int8_t)process[(uint16_t)(control + 0x2eU)] < 0
+	    || close_result->missing || close_result->device != device) {
+		set_error(error, YT_INVALID, "BRUN live random CLOSE process",
+		    NULL);
+		*result = local;
+		return false;
+	}
+	brun_process_set_word(process, 0x10daU, 0x3b7fU);
+	brun_process_set_word(process, 0x0bd4U, control);
+	if (close_result->outcome == YT_DATABASE_CLOSE_PROVIDER_ERROR) {
+		local.outcome = YT_BRUN_RANDOM_CLOSE_PROCESS_PROVIDER_BOUNDARY;
+		*result = local;
+		return true;
+	}
+	if (close_result->outcome != YT_DATABASE_CLOSE_RETURNED
+	    && close_result->outcome != YT_DATABASE_CLOSE_DISK_ERROR
+	    && close_result->outcome != YT_DATABASE_CLOSE_DEVICE_ERROR) {
+		set_error(error, YT_INVALID, "BRUN random CLOSE result", NULL);
+		*result = local;
+		return false;
+	}
+	if ((close_result->outcome == YT_DATABASE_CLOSE_RETURNED
+	    && close_result->basic_error != 0U)
+	    || (close_result->outcome == YT_DATABASE_CLOSE_DISK_ERROR
+	    && (device || close_result->basic_error != 70U))
+	    || (close_result->outcome == YT_DATABASE_CLOSE_DEVICE_ERROR
+	    && (!device || close_result->basic_error != 57U))) {
+		set_error(error, YT_INVALID, "BRUN random CLOSE classifier", NULL);
+		*result = local;
+		return false;
+	}
+	brun_process_set_word(process, 0x0bd4U, 0U);
+	if (!yt_brun_type3_release(process, process_size, control, &release,
+	    error)) {
+		*result = local;
+		return false;
+	}
+	local.type_address = release.type_address;
+	if (release.outcome == YT_BRUN_TYPE3_RELEASE_INTERNAL_ERROR) {
+		local.outcome = YT_BRUN_RANDOM_CLOSE_PROCESS_INTERNAL_ERROR;
+		local.internal_entry = release.internal_entry;
+		*result = local;
+		return true;
+	}
+	local.released = true;
+	local.basic_error = close_result->basic_error;
+	local.outcome = close_result->outcome == YT_DATABASE_CLOSE_RETURNED
+	    ? YT_BRUN_RANDOM_CLOSE_PROCESS_RETURNED
+	    : YT_BRUN_RANDOM_CLOSE_PROCESS_RUNTIME_ERROR;
 	*result = local;
 	return true;
 }

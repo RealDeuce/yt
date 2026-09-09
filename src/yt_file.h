@@ -137,6 +137,23 @@ struct yt_brun_type3_release_result {
 	size_t cleared_descriptor_count;
 };
 
+enum yt_brun_random_close_process_outcome {
+	YT_BRUN_RANDOM_CLOSE_PROCESS_MISSING,
+	YT_BRUN_RANDOM_CLOSE_PROCESS_RETURNED,
+	YT_BRUN_RANDOM_CLOSE_PROCESS_RUNTIME_ERROR,
+	YT_BRUN_RANDOM_CLOSE_PROCESS_PROVIDER_BOUNDARY,
+	YT_BRUN_RANDOM_CLOSE_PROCESS_INTERNAL_ERROR,
+};
+
+struct yt_brun_random_close_process_result {
+	enum yt_brun_random_close_process_outcome outcome;
+	uint16_t control;
+	uint16_t type_address;
+	uint16_t basic_error;
+	uint16_t internal_entry;
+	bool released;
+};
+
 enum yt_database_lof_operation {
 	YT_DATABASE_LOF_OPERATION_NONE,
 	YT_DATABASE_LOF_CURRENT,
@@ -419,6 +436,11 @@ bool yt_brun_file_control_find(const uint8_t *process, size_t process_size,
 	uint8_t file_number, uint16_t *control, struct yt_error *error);
 bool yt_brun_type3_release(uint8_t *process, size_t process_size,
 	uint16_t control, struct yt_brun_type3_release_result *result,
+	struct yt_error *error);
+bool yt_brun_random_close_process_apply(uint8_t *process,
+	size_t process_size, uint8_t file_number, uint16_t handler_entry_sp,
+	const struct yt_database_close_result *close_result,
+	struct yt_brun_random_close_process_result *result,
 	struct yt_error *error);
 bool yt_database_random_lof(struct yt_database *database, uint32_t *length,
     struct yt_error *error);

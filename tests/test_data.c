@@ -2475,11 +2475,35 @@ test_close_all_registry(void)
 }
 
 static void
+setup_brun_random_close_process(uint8_t *process, size_t process_size,
+    uint16_t control, uint8_t file_number, bool device)
+{
+	uint16_t type_address = (uint16_t)(control + 0xfdU);
+
+	memset(process, 0, process_size);
+	process[0x0eceU] = (uint8_t)type_address;
+	process[0x0ecfU] = (uint8_t)(type_address >> 8U);
+	process[control] = 4U;
+	process[(uint16_t)(control - 2U)] = 0x00U;
+	process[(uint16_t)(control - 1U)] = 0x01U;
+	process[(uint16_t)(type_address - 3U)] = 0x00U;
+	process[(uint16_t)(type_address - 2U)] = 0x01U;
+	process[(uint16_t)(type_address - 1U)] = file_number;
+	process[type_address] = 3U;
+	process[(uint16_t)(control - 3U)] = 4U;
+	process[(uint16_t)(control + 0x2eU)] = 1U;
+	process[(uint16_t)(control + 0x31U)] = device ? 0x80U : 0U;
+}
+
+static void
 test_database_random_close(void)
 {
 	struct database_public_close_script script;
 	struct yt_database database;
+	struct yt_brun_random_close_process_result process_result;
 	struct yt_error error;
+	static uint8_t process[0x10000U];
+	const uint16_t control = 0x2000U;
 	unsigned device;
 	unsigned dos_error;
 
@@ -2699,6 +2723,107 @@ test_database_random_close(void)
 		    && database.file == NULL && database.records == 0U);
 	}
 	yt_database_close(&database);
+
+	/* The public random CLOSE process join applies the typed result to DS. */
+	for (device = 0U; device < 2U; ++device) {
+		memset(&script, 0, sizeof(script));
+		database_close_add(&script, false, 0U, false, true, true);
+		CHECK(database_close_fixture(&database, device != 0U, &script));
+		yt_error_clear(&error);
+		CHECK(yt_database_random_close(&database, &error));
+		setup_brun_random_close_process(process, sizeof(process), control,
+		    1U, device != 0U);
+		CHECK(yt_brun_random_close_process_apply(process, sizeof(process),
+		    1U, 0x1234U, &database.last_close, &process_result, &error)
+		    && process_result.outcome
+		    == YT_BRUN_RANDOM_CLOSE_PROCESS_RETURNED
+		    && process_result.control == control
+		    && process_result.type_address == 0x20fdU
+		    && process_result.basic_error == 0U
+		    && process_result.released
+		    && process[0x0a08U] == 0x34U
+		    && process[0x0a09U] == 0x12U
+		    && process[0x10daU] == 0x7fU
+		    && process[0x10dbU] == 0x3bU
+		    && process[0x0bd4U] == 0U
+		    && process[0x0bd5U] == 0U
+		    && process[0x20fdU] == 1U);
+		yt_database_close(&database);
+	}
+
+	/* A first CLOSE carry still frees DS after the ignored retry. */
+	memset(&script, 0, sizeof(script));
+	database_close_add(&script, true, 5U, true, true, false);
+	database_close_add(&script, false, 0U, false, true, true);
+	CHECK(database_close_fixture(&database, false, &script));
+	yt_error_clear(&error);
+	CHECK(!yt_database_random_close(&database, &error)
+	    && database.last_close.outcome == YT_DATABASE_CLOSE_DISK_ERROR);
+	setup_brun_random_close_process(process, sizeof(process), control, 1U,
+	    false);
+	CHECK(yt_brun_random_close_process_apply(process, sizeof(process), 1U,
+	    0x5678U, &database.last_close, &process_result, &error)
+	    && process_result.outcome
+	    == YT_BRUN_RANDOM_CLOSE_PROCESS_RUNTIME_ERROR
+	    && process_result.basic_error == 70U && process_result.released
+	    && process[0x0a08U] == 0x78U && process[0x0a09U] == 0x56U
+	    && process[0x0bd4U] == 0U && process[0x0bd5U] == 0U
+	    && process[0x20fdU] == 1U);
+	yt_database_close(&database);
+
+	/* An unresolved provider result stops with the active DS root live. */
+	memset(&script, 0, sizeof(script));
+	database_close_add(&script, true, 5U, true, true, false);
+	script.steps[0].provider_ok = false;
+	CHECK(database_close_fixture(&database, false, &script));
+	yt_error_clear(&error);
+	CHECK(!yt_database_random_close(&database, &error)
+	    && database.last_close.outcome == YT_DATABASE_CLOSE_PROVIDER_ERROR);
+	setup_brun_random_close_process(process, sizeof(process), control, 1U,
+	    false);
+	CHECK(yt_brun_random_close_process_apply(process, sizeof(process), 1U,
+	    0x9abcU, &database.last_close, &process_result, &error)
+	    && process_result.outcome
+	    == YT_BRUN_RANDOM_CLOSE_PROCESS_PROVIDER_BOUNDARY
+	    && !process_result.released
+	    && process[0x0bd4U] == (uint8_t)control
+	    && process[0x0bd5U] == (uint8_t)(control >> 8U)
+	    && process[0x20fdU] == 3U);
+	yt_database_close(&database);
+
+	/* Missing CLOSE writes only handler SP and performs no release. */
+	memset(&database, 0, sizeof(database));
+	CHECK(yt_database_random_close(&database, &error));
+	memset(process, 0x5a, sizeof(process));
+	process[0x0eceU] = 0x00U;
+	process[0x0ecfU] = 0x30U;
+	process[0x3000U] = 4U;
+	CHECK(yt_brun_random_close_process_apply(process, sizeof(process), 1U,
+	    0x2468U, &database.last_close, &process_result, &error)
+	    && process_result.outcome == YT_BRUN_RANDOM_CLOSE_PROCESS_MISSING
+	    && process_result.control == 0U && !process_result.released
+	    && process[0x0a08U] == 0x68U && process[0x0a09U] == 0x24U
+	    && process[0x10daU] == 0x5aU && process[0x10dbU] == 0x5aU
+	    && process[0x0bd4U] == 0x5aU && process[0x0bd5U] == 0x5aU);
+
+	/* Corrupt allocator metadata supersedes the mapped BASIC error. */
+	memset(&database.last_close, 0, sizeof(database.last_close));
+	database.last_close.outcome = YT_DATABASE_CLOSE_DISK_ERROR;
+	database.last_close.basic_error = 70U;
+	database.last_close.dos_error = 5U;
+	database.last_close.attempt_count = 2U;
+	setup_brun_random_close_process(process, sizeof(process), control, 1U,
+	    false);
+	process[control - 2U] = 0x80U;
+	process[control - 1U] = 0U;
+	CHECK(yt_brun_random_close_process_apply(process, sizeof(process), 1U,
+	    0xabcdU, &database.last_close, &process_result, &error));
+	CHECK(process_result.outcome
+	    == YT_BRUN_RANDOM_CLOSE_PROCESS_INTERNAL_ERROR);
+	CHECK(process_result.internal_entry == 0x0accU);
+	CHECK(!process_result.released);
+	CHECK(process[0x0bd4U] == 0U && process[0x0bd5U] == 0U);
+	CHECK(process[0x20fdU] == 3U);
 }
 
 static void
