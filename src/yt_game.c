@@ -430,7 +430,8 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 	    || !ops->open_data(context, error)
 	    || !ops->load_config(context, config, error))
 		return false;
-	path_count = qb_cint(config->scoreboard_length, &overflow);
+	path_count = qb_cint_mbf32(config->record.bytes + YT_F41, 0U,
+	    &overflow);
 	if (overflow || path_count < 0)
 		return startup_configuration_error(error, YT_RANGE,
 		    "startup scoreboard LEFT$");

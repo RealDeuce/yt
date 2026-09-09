@@ -102,7 +102,8 @@ yt_config_prepare_menu_working(const struct yt_config *config,
 
 	if (config == NULL || scoreboard_path == NULL || working == NULL)
 		return false;
-	path_length = (int)qb_cint(config->scoreboard_length, &overflow);
+	path_length = (int)qb_cint_mbf32(config->record.bytes + YT_F41, 0U,
+	    &overflow);
 	if (overflow || path_length < 0 || path_length > 41)
 		return false;
 	working->local_screen = config->local_screen;
