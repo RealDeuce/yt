@@ -211,6 +211,35 @@ seam without treasury-specific copies of their internal behavior.
 
 ## Open documentation gaps
 
+### DOC-GAP-040: contradictory B1F3 fault denominator and completion state
+
+Affected coverage:
+
+- the reachable fault-site denominator for `YT:B1F3`;
+- the ordinary first-fault and active-handler secondary-fault carriers; and
+- whether the four main-module `COPY_STR` cuts belong to the native pager root.
+
+`docs/runtime/pager-active-fault-output.md` publishes eleven reachable sites:
+three GOSUB stack cuts, four uppercase-helper cuts, and four main-module
+`COPY_STR` allocation cuts. It says the B1F3 producer, live pager-machine
+connection, active transfer, and sink are closed. Its linked generated artifact,
+`analysis/disassembly/ytpager-fault-output.static.txt`, likewise enumerates
+eleven sites.
+
+Two other completed documents disagree. `docs/runtime/presentation-helpers.md`
+calls the sequence seven reachable faults and identifies only the three stack
+checks plus four uppercase-helper cuts, omitting prompt, response, NS-notice,
+and E-to-Q `COPY_STR`. `docs/runtime/async-event-transducer.md` still lists
+connection of later B1F3/AB36 first faults and secondary handler faults as
+central remaining work.
+
+The native implementation cannot infer whether the dedicated eleven-site
+contract supersedes stale prose or whether its claimed completion is premature.
+Upstream must reconcile the site count and the first/secondary-fault completion
+statement across these documents and regenerate the canonical artifact if the
+eleven-site inventory changes. No binary inspection or new reverse engineering
+was performed.
+
 ### DOC-GAP-039: contradictory B05D `LOC(3)` fault inventory
 
 Affected coverage:

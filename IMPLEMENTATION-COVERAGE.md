@@ -61,16 +61,15 @@ The generated companion ledgers pin these independent final inventories:
 
 The 17 remaining candidate roots are limited to concrete unfinished scope:
 
-- nine are blocked by recorded upstream documentation gaps: `PORTNAME:0030`,
+- ten are blocked by recorded upstream documentation gaps: `PORTNAME:0030`,
   `PORTNAME:02B5`, and `PORTNAME:03A0` by DOC-GAP-038; `YT:A6E3` by
   DOC-GAP-037; `YT-SUB:36EA` by DOC-GAP-021; `YT-SUB:59BC` by
-  DOC-GAP-023; `YT-SUB:932E` by DOC-GAP-022; `YT-SUB:BCBF` by DOC-GAP-015; and
-  `YT:B05D` by DOC-GAP-039;
+  DOC-GAP-023; `YT-SUB:932E` by DOC-GAP-022; `YT-SUB:BCBF` by DOC-GAP-015;
+  `YT:B05D` by DOC-GAP-039; and `YT:B1F3` by DOC-GAP-040;
 - five are executable entry controllers with still-unimplemented root-owned raw
   runtime or failure state: `RMT-INIT:0030`, `YT-INIT:0030`, `YT:0030`,
   `YTCONFIG:0030`, and `YTMAINT:0073`; and
-- three have specific incomplete native paths: `YT:03A2`, `YT:AB36`, and
-  `YT:B1F3`.
+- two have specific incomplete native paths: `YT:03A2` and `YT:AB36`.
 
 No root remains `candidate` solely because a verified composable dependency or
 an independently classified physical adapter exists.
