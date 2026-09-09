@@ -4905,7 +4905,8 @@ yt_maintenance_xannor_planet_arrival(struct yt_game *game,
 	planet_number = (int)sector->planet;
 	if (!yt_game_read_planet(game, planet_number, &planet, error))
 		return false;
-	if (planet.name_length <= 0.0f || planet.owner == -1.0f)
+	if (qb_mbf32_decode(planet.record.bytes + YT_F85) <= 0.0f
+	    || planet.owner == -1.0f)
 		return true;
 	if (!yt_game_read_planet(game, planet_number, &planet, error))
 		return false;
@@ -5103,7 +5104,8 @@ yt_maintenance_xannor_player_arrival(struct yt_game *game,
 	}
 	if (!yt_game_read_player(game, player_record, &player, error))
 		return false;
-	if (player.name_length == 0.0f || player.killed_by != 0.0f)
+	if (qb_mbf32_decode(player.record.bytes + YT_F85) == 0.0f
+	    || player.killed_by != 0.0f)
 		return true;
 	player_sector[player_record] = player.sector;
 	player_cloak[player_record] = player.cloak;
@@ -6006,7 +6008,8 @@ yt_maintenance_mercenary_defections(struct yt_game *game, int sector_count,
 				    || !yt_game_read_player(game, owner_record, &owner,
 				    error))
 					return false;
-				stored_length = qb_cint(owner.name_length, &overflow);
+				stored_length = qb_cint_mbf32(owner.record.bytes + YT_F85, 0U,
+				    &overflow);
 				if (overflow || stored_length < 0) {
 					set_error(error, YT_RANGE,
 					    "Mercenary defection owner name", "YTDATA.DAT");
@@ -6241,7 +6244,8 @@ yt_maintenance_mercenary_planet_absorption(struct yt_game *game,
 	}
 	if (!yt_game_read_planet(game, planet_number, &planet, error))
 		return false;
-	name_length = qb_cint(planet.name_length, &overflow);
+	name_length = qb_cint_mbf32(planet.record.bytes + YT_F85, 0U,
+	    &overflow);
 	if (overflow || name_length < 0 || name_length > 41) {
 		set_error(error, YT_RANGE, "Mercenary planet name", "YTDATA.DAT");
 		return false;
@@ -6432,7 +6436,8 @@ mercenary_destination_impl(struct yt_game *game,
 				    "Mercenary destination owner", "YTDATA.DAT");
 			return false;
 		}
-		stored_length = qb_cint(owner_player.name_length, &overflow);
+		stored_length = qb_cint_mbf32(owner_player.record.bytes + YT_F85, 0U,
+		    &overflow);
 		if (overflow || stored_length < 0) {
 			set_error(error, YT_RANGE,
 			    "Mercenary destination owner name", "YTDATA.DAT");
@@ -6909,13 +6914,14 @@ yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 	local.player_record = player_slot + 1;
 	if (!yt_game_read_player(game, local.player_record, &player, error))
 		return false;
-	if (player.name_length == 0.0f) {
+	if (qb_mbf32_decode(player.record.bytes + YT_F85) == 0.0f) {
 		local.failure = YT_MAINTENANCE_LOTTERY_BLANK_PLAYER;
 		*result = local;
 		return lottery_fail(line_output, line_context, local.failure,
 		    starting_draws, game, result, error);
 	}
-	player_name_length = qb_cint(player.name_length, &overflow);
+	player_name_length = qb_cint_mbf32(player.record.bytes + YT_F85, 0U,
+	    &overflow);
 	if (overflow || player_name_length < 0 || player_name_length > 41) {
 		set_error(error, YT_RANGE, "Super Lottery player name",
 		    "YTDATA.DAT");
@@ -6929,7 +6935,7 @@ yt_maintenance_super_lottery(struct yt_game *game, int player_count,
 	    &local.planet_number, error)
 	    || !yt_game_read_planet(game, local.planet_number, &planet, error))
 		return false;
-	if (planet.name_length != 0.0f) {
+	if (qb_mbf32_decode(planet.record.bytes + YT_F85) != 0.0f) {
 		local.failure = YT_MAINTENANCE_LOTTERY_OCCUPIED_PLANET;
 		*result = local;
 		return lottery_fail(line_output, line_context, local.failure,
