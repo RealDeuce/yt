@@ -211,6 +211,36 @@ seam without treasury-specific copies of their internal behavior.
 
 ## Open documentation gaps
 
+### DOC-GAP-041: contradictory AB36 active-fault completion claim
+
+Affected coverage:
+
+- the root-owned active-handler, raw editor, string-heap, and event-frame fault
+  carrier for `YT:AB36`;
+- the claimed 79-site live dispatch denominator and its ordinary first-fault and
+  secondary-fault routing; and
+- the contextual B05D and B1F3 child boundaries consumed by that dispatcher.
+
+`docs/runtime/ab36-active-fault-inventory.md` calls its 79 local opcode sites a
+complete inventory, and `docs/runtime/ab36-active-fault-dispatch-map.md` says
+all 79 rows have exact live producer boundaries with zero unresolved interface
+rows. `docs/runtime/error-router.md` and `main-error-handling.md` repeat that
+closure claim.
+
+The completed event documents disagree. `docs/runtime/async-event-transducer.md`
+still lists connection of later B1F3/AB36 first faults and secondary handler
+faults as central remaining work, and `docs/runtime/f8-fault-output.md` likewise
+leaves later AB36 faults outside its closed pre-B05D set. The AB36 dispatch also
+imports B05D as a 26-site child, whose LOC inventory is separately contradictory
+under DOC-GAP-039.
+
+The native implementation cannot tell whether the event documents retain real
+unconnected AB36 states or merely stale completion prose, nor can it bind the
+contextual child denominator while DOC-GAP-039 remains open. Upstream must
+reconcile the closure statement and regenerate the dispatch evidence if any of
+its live rows or child boundaries change. No binary inspection or new reverse
+engineering was performed.
+
 ### DOC-GAP-040: contradictory B1F3 fault denominator and completion state
 
 Affected coverage:
