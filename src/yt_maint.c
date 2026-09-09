@@ -3043,15 +3043,18 @@ yt_maintenance_maintain_planets(struct yt_game *game,
 		struct yt_planet planet;
 		bool overflow;
 		int32_t stored_length;
+		float raw_name_length;
 		float day;
 		float minute;
 		size_t row;
 
 		if (!yt_game_read_planet(game, logical, &planet, error))
 			return false;
-		if (planet.name_length <= 0.0f)
+		raw_name_length = qb_mbf32_decode(planet.record.bytes + YT_F85);
+		if (raw_name_length <= 0.0f)
 			continue;
-		stored_length = qb_cint(planet.name_length, &overflow);
+		stored_length = qb_cint_mbf32(planet.record.bytes + YT_F85, 0U,
+		    &overflow);
 		if (overflow || stored_length < 0) {
 			set_error(error, YT_RANGE, "maintenance planet name",
 			    "YTDATA.DAT");
@@ -4548,7 +4551,7 @@ yt_maintenance_xannor_hunt(struct yt_game *game,
 	for (candidate = 2; candidate <= player_count + 1; ++candidate) {
 		if (!yt_game_read_player(game, candidate, &player, error))
 			return false;
-		if (player.name_length != 0.0f
+		if (qb_mbf32_decode(player.record.bytes + YT_F85) != 0.0f
 		    && player.score > local.top_score) {
 			local.top_record = candidate;
 			local.top_score = player.score;
@@ -4573,7 +4576,8 @@ yt_maintenance_xannor_hunt(struct yt_game *game,
 			*result = local;
 		return true;
 	}
-	stored_length = qb_cint(player.name_length, &overflow);
+	stored_length = qb_cint_mbf32(player.record.bytes + YT_F85, 0U,
+	    &overflow);
 	if (overflow || stored_length < 0) {
 		set_error(error, YT_RANGE, "Xannor hunt name", "YTDATA.DAT");
 		return false;
