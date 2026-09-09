@@ -139,7 +139,7 @@ utility_random_fill(void *context, void *buffer, size_t length,
 static bool
 test_port_name_generator(void)
 {
-	static const uint8_t zero_draws[12] = {0};
+	static const uint8_t zero_draws[24] = {0};
 	static const uint8_t long_draws[] = {
 		0x76, 0xbe, 0xff, 0x76, 0xbe, 0xff,
 		0xf9, 0xc1, 0xfc, 0x80, 0x9a, 0xfd,
@@ -160,6 +160,10 @@ test_port_name_generator(void)
 	yt_random_set_provider(&random, utility_random_fill, &zero);
 	if (!yt_generate_port_name(&random, name, &error)
 	    || strcmp(name, "Inging") != 0 || random.draws != 4U
+	    || zero.position != sizeof(zero_draws) / 2U)
+		return false;
+	if (!yt_generate_port_name(&random, name, &error)
+	    || strcmp(name, "Inging") != 0 || random.draws != 8U
 	    || zero.position != sizeof(zero_draws))
 		return false;
 	yt_random_set_provider(&random, utility_random_fill, &longest);

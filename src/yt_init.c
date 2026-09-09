@@ -1329,33 +1329,55 @@ yt_initializer_bounded(struct yt_random *random, int bound, int *value,
 	return true;
 }
 
+struct port_name_token {
+	const char *text;
+	size_t length;
+	bool leading;
+};
+
+struct port_name_pool {
+	bool ready;
+	struct port_name_token tokens[YT_NAME_TOKENS];
+};
+
+static struct port_name_pool prepared_port_names;
+
 static bool
-pool_pointers(const char *pointers[YT_NAME_TOKENS])
+prepare_port_name_pool(void)
 {
 	const char *cursor = port_name_blob;
 	size_t index;
 
+	if (prepared_port_names.ready)
+		return true;
 	for (index = 0; index < YT_NAME_TOKENS; ++index) {
+		size_t length;
+
 		if (*cursor == '\0')
 			return false;
-		pointers[index] = cursor;
-		cursor += strlen(cursor) + 1U;
+		length = strlen(cursor);
+		prepared_port_names.tokens[index].text = cursor;
+		prepared_port_names.tokens[index].length = length;
+		prepared_port_names.tokens[index].leading = length > 4U;
+		cursor += length + 1U;
 	}
-	return *cursor == '\0';
+	if (*cursor != '\0')
+		return false;
+	prepared_port_names.ready = true;
+	return true;
 }
 
 bool
 yt_generate_port_name(struct yt_random *random, char name[42],
     struct yt_error *error)
 {
-	const char *pool[YT_NAME_TOKENS];
 	float first;
 	float second;
 	int parts;
 	int part;
 	size_t used = 0;
 
-	if (!pool_pointers(pool)) {
+	if (!prepare_port_name_pool()) {
 		set_error(error, YT_INVALID, "compiled port-name pool", "");
 		return false;
 	}
@@ -1364,32 +1386,36 @@ yt_generate_port_name(struct yt_random *random, char name[42],
 	parts = (int)floorf(single_mul(single_mul(first, second), 3.0f)) + 2;
 	name[0] = '\0';
 	for (part = 0; part < parts; ++part) {
+		const struct port_name_token *token;
+		const char *cursor;
 		float sample;
 		int selected;
-		const char *token;
 		size_t length;
-		bool leading;
 
 		if (!draw(random, &sample, error))
 			return false;
 		selected = (int)floorf(single_mul(sample,
 		    (float)YT_NAME_TOKENS));
-		token = pool[selected];
-		length = strlen(token);
-		leading = length > 4;
-		if (leading && used > 0 && used < 41)
+		token = &prepared_port_names.tokens[selected];
+		cursor = token->text;
+		length = token->length;
+		if (token->leading && used < 41U)
 			name[used++] = ' ';
-		if (length > 0 && used < 41) {
-			name[used++] = leading
-			    ? (char)((uint8_t)token[0] & 0xdfU) : token[0];
-			++token;
+		if (length > 0U && used < 41U) {
+			name[used++] = token->leading
+			    ? (char)((uint8_t)cursor[0] & 0xdfU) : cursor[0];
+			++cursor;
 			--length;
 		}
-		while (length-- > 0 && used < 41)
-			name[used++] = *token++;
+		while (length-- > 0U && used < 41U)
+			name[used++] = *cursor++;
+	}
+	if (used > 0U && name[0] == ' ') {
+		--used;
+		memmove(name, name + 1, used);
 	}
 	name[used] = '\0';
-	if (used > 0)
+	if (used > 0U)
 		name[0] = (char)((uint8_t)name[0] & 0xdfU);
 	return true;
 }
