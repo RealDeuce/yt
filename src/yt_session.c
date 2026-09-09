@@ -52,6 +52,7 @@
 #define YT_REGISTRATION_EVALUATION_LENGTH_TWO_ADDRESS 0x5CA2U
 #define YT_GENESIS_REQUIRED_PORTS_ADDRESS 0x1C48U
 #define YT_PLANET_RECORD_SCRATCH_ADDRESS 0x19C4U
+#define YT_COMPUTER_PLANET_LINK_ADDRESS 0x5184U
 #define YT_CURRENT_SECTOR_ADDRESS 0x1C44U
 #define YT_CURRENT_SECTOR_RECORD_ADDRESS 0x4B50U
 #define YT_CURRENT_PLAYER_TURNS_ADDRESS 0x4BA4U
@@ -101,6 +102,7 @@
 #define YT_SPY_SECTORS_ADDRESS 0x4B76U
 #define YT_SPY_MARKERS_ADDRESS 0x4B7EU
 #define YT_SHARED_LOOP_SCRATCH_ADDRESS 0x4CD2U
+#define YT_FRIENDSHIP_RELATION_ADDRESS 0x4BC4U
 #define YT_SELF_MINE_SUPPRESSION_ADDRESS 0x4D0AU
 #define YT_COMPUTER_ROUTE_STATUS_ADDRESS 0x4CF2U
 #define YT_ATTACK_COMMITMENT_ADDRESS 0x4D1AU
@@ -18093,6 +18095,26 @@ computer_route(struct yt_session *session, bool autopilot,
 }
 
 static bool
+computer_planet_relation_cint(struct yt_session *session, float relationship,
+    int *converted, const char *operation, struct yt_error *error)
+{
+	bool overflow;
+	int32_t value = qb_cint_mode((double)relationship,
+	    session->presentation.sound.conversion_mode, &overflow);
+
+	if (overflow) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation, sizeof(error->operation),
+			    "%s", operation);
+		}
+		return false;
+	}
+	*converted = (int)value;
+	return true;
+}
+
+static bool
 computer_planet_report(struct yt_session *session, struct yt_error *error)
 {
 	static const uint8_t prompt[] =
@@ -18106,7 +18128,13 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 		struct yt_sector sector;
 		struct yt_planet planet;
 		char response[160];
+		double sector_fighters;
+		float fighter_owner;
+		float last_relationship;
+		float link;
+		float scratch;
 		float selected;
+		int relation_cint;
 		bool denied;
 		bool fighter_friendly;
 		bool last_friendly;
@@ -18145,35 +18173,70 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 				return false;
 			continue;
 		}
-		if (!session_read_sector(session, (int)selected,
-		    &sector, error)
-		    || !computer_port_friendship(session, sector.fighter_owner,
-		    &fighter_friendly, error))
+		if (!session_read_sector(session, (int)selected, &sector, error))
 			return false;
-		last_friendly = fighter_friendly;
-		valid_link = sector.planet > 0.0f
-		    && sector.planet <= single_sub(
-		    yt_route_process_single(&session->route_process,
-		    YT_TOTAL_RECORDS_ADDRESS),
-		    session_planet_offset(session));
+		yt_route_process_set_raw_single(&session->route_process,
+		    YT_COMPUTER_PLANET_LINK_ADDRESS,
+		    sector.record.bytes + YT_F93);
+		link = yt_route_process_single(&session->route_process,
+		    YT_COMPUTER_PLANET_LINK_ADDRESS);
+		{
+			float maximum_planet = single_sub(
+			    yt_route_process_single(&session->route_process,
+			    YT_TOTAL_RECORDS_ADDRESS),
+			    session_planet_offset(session));
+
+			valid_link = link > 0.0f && link <= maximum_planet;
+		}
 		if (valid_link) {
+			bool limited_candidate;
+			bool owner_differs;
+			bool owner_nonzero;
+			bool ground_nonzero;
+			bool fighters_zero;
+			bool fighters_positive;
 			size_t name_length;
 
+			session_set_process_double(session,
+			    YT_HOSTILE_DEPLOYED_FIGHTERS_ADDRESS,
+			    (double)sector.fighters);
+			yt_route_process_set_raw_single(&session->route_process,
+			    YT_SHARED_TARGET_RECORD_ADDRESS,
+			    sector.record.bytes + YT_F85);
+			fighter_owner = yt_route_process_single(&session->route_process,
+			    YT_SHARED_TARGET_RECORD_ADDRESS);
+			if (!computer_port_friendship(session, fighter_owner,
+			    &fighter_friendly, error))
+				return false;
+			sector_fighters = yt_route_process_double(
+			    &session->route_process,
+			    YT_HOSTILE_DEPLOYED_FIGHTERS_ADDRESS);
+			last_relationship = yt_route_process_single(
+			    &session->route_process,
+			    YT_FRIENDSHIP_RELATION_ADDRESS);
+			scratch = single_add(session_planet_offset(session), link);
 			session_set_process_single(session,
-			    YT_PLANET_RECORD_SCRATCH_ADDRESS,
-			    single_add(session_planet_offset(session),
-			    sector.planet));
-			if (!session_read_planet(session,
-			    (int)sector.planet, &planet, error)
+			    YT_COMPUTER_PLANET_LINK_ADDRESS, scratch);
+			session_set_process_single(session,
+			    YT_PLANET_RECORD_SCRATCH_ADDRESS, scratch);
+			if (!session_read_planet(session, (int)link, &planet, error)
 			    || !port_report_length(session, planet.name_length,
 			    YT_TEXT_FIELD_SIZE, &name_length,
 			    "computer planet name length", error))
 				return false;
-			if ((float)session_record(session) != planet.owner
-			    && planet.owner != 0.0f
-			    && planet.ground_forces != 0.0f
-			    && (sector.fighters == 0.0f
-			    || (sector.fighters > 0.0f && fighter_friendly))) {
+			if (!computer_planet_relation_cint(session, last_relationship,
+			    &relation_cint,
+			    "computer planet fighter relationship CINT", error))
+				return false;
+			owner_differs = (float)session_record(session) != planet.owner;
+			owner_nonzero = planet.owner != 0.0f;
+			ground_nonzero = planet.ground_forces != 0.0f;
+			fighters_zero = sector_fighters == 0.0;
+			fighters_positive = sector_fighters > 0.0;
+			limited_candidate = owner_differs && owner_nonzero
+			    && ground_nonzero && (fighters_zero
+			    || (fighters_positive && relation_cint != 0));
+			if (limited_candidate) {
 				char forces[64];
 				uint8_t row[192];
 				size_t length = 0;
@@ -18181,7 +18244,14 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 				if (!computer_port_friendship(session, planet.owner,
 				    &last_friendly, error))
 					return false;
-				if (!last_friendly) {
+				last_relationship = yt_route_process_single(
+				    &session->route_process,
+				    YT_FRIENDSHIP_RELATION_ADDRESS);
+				if (!computer_planet_relation_cint(session,
+				    last_relationship, &relation_cint,
+				    "computer planet owner relationship CINT", error))
+					return false;
+				if (~relation_cint != 0) {
 					static const uint8_t prefix[] = "Planet: ";
 					static const uint8_t infix[] =
 					    " -*- Ground Forces:";
@@ -18207,16 +18277,41 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 				}
 			}
 		}
-		if ((!valid_link && sector.planet == 0.0f)
-		    || (sector.fighters > 0.0f && session->player.team > 0.0f
-		    && !last_friendly)
-		    || (sector.fighters > 0.0f && session->player.team == 0.0f
-		    && (float)session_record(session) != sector.fighter_owner)) {
-			if (!finalize_action(session, 1.0f, error))
-				return false;
-			return session_0317(session, unavailable,
-			    sizeof(unavailable) - 1U,
-			    "computer planet unavailable", error);
+		else {
+			sector_fighters = yt_route_process_double(
+			    &session->route_process,
+			    YT_HOSTILE_DEPLOYED_FIGHTERS_ADDRESS);
+			fighter_owner = yt_route_process_single(&session->route_process,
+			    YT_SHARED_TARGET_RECORD_ADDRESS);
+			last_relationship = yt_route_process_single(
+			    &session->route_process,
+			    YT_FRIENDSHIP_RELATION_ADDRESS);
+			scratch = link;
+		}
+		if (!computer_planet_relation_cint(session, last_relationship,
+		    &relation_cint, "computer planet unavailable relationship CINT",
+		    error))
+			return false;
+		{
+			bool scratch_zero = scratch == 0.0f;
+			bool fighters_positive = sector_fighters > 0.0;
+			bool team_positive = session->player.team > 0.0f;
+			bool team_zero = session->player.team == 0.0f;
+			bool relation_not = ~relation_cint != 0;
+			bool fighter_owner_differs =
+			    (float)session_record(session) != fighter_owner;
+			bool no_information = scratch_zero
+			    || (fighters_positive && team_positive && relation_not)
+			    || (fighters_positive && team_zero
+			    && fighter_owner_differs);
+
+			if (no_information) {
+				if (!finalize_action(session, 1.0f, error))
+					return false;
+				return session_0317(session, unavailable,
+				    sizeof(unavailable) - 1U,
+				    "computer planet unavailable", error);
+			}
 		}
 		if (!valid_link && yt_route_process_single(
 		    &session->route_process,
@@ -18224,7 +18319,7 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 			return port_report_failure(error,
 			    "computer planet stale current-planet record");
 		return planet_inventory(session, (int)(valid_link
-		    ? sector.planet : single_sub(yt_route_process_single(
+		    ? link : single_sub(yt_route_process_single(
 		    &session->route_process, YT_PLANET_RECORD_SCRATCH_ADDRESS),
 		    session_planet_offset(session))), error);
 	}
@@ -18381,10 +18476,16 @@ static bool
 computer_port_friendship(struct yt_session *session, float owner,
     bool *friendly, struct yt_error *error)
 {
+	static const uint8_t false_raw[4] = {0x00U, 0x00U, 0x80U, 0x00U};
+	static const uint8_t true_raw[4] = {0x00U, 0x00U, 0x80U, 0x81U};
 	struct yt_player current;
 	struct yt_player other;
 
+	if (friendly == NULL)
+		return false;
 	*friendly = false;
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_FRIENDSHIP_RELATION_ADDRESS, false_raw);
 	if (owner < 2.0f
 	    || owner > session_sector_offset(session)
 	    || (float)session_record(session) < 2.0f
@@ -18393,6 +18494,8 @@ computer_port_friendship(struct yt_session *session, float owner,
 		return true;
 	if (owner == (float)session_record(session)) {
 		*friendly = true;
+		yt_route_process_set_raw_single(&session->route_process,
+		    YT_FRIENDSHIP_RELATION_ADDRESS, true_raw);
 		return true;
 	}
 	if (!read_player_at_fault(session, session_record(session), &current,
@@ -18404,6 +18507,9 @@ computer_port_friendship(struct yt_session *session, float owner,
 	    YT_BASIC_FAULT_PORT_FRIENDSHIP_CANDIDATE_GET, error))
 		return false;
 	*friendly = other.team == current.team;
+	if (*friendly)
+		yt_route_process_set_raw_single(&session->route_process,
+		    YT_FRIENDSHIP_RELATION_ADDRESS, true_raw);
 	return true;
 }
 
