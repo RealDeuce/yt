@@ -16547,7 +16547,9 @@ check_maintenance_port_pass(void)
 	memset(&game, 0, sizeof(game));
 	game.config.port_offset = 1.0f;
 	game.config.planet_offset = 3.0f;
-	game.config.epoch_year = 26.0f;
+	game.config.epoch_year = 99.0f;
+	if (!yt_record_set_number(&game.config.record, YT_F45, 26.0f))
+		goto done;
 	yt_random_init(&game.random);
 	yt_random_set_provider(&game.random, score_random_fill, &random_script);
 	yt_error_clear(&error);
@@ -16730,6 +16732,8 @@ check_maintenance_mercenary_rebuild_phase_pass(void)
 	game.config.planet_offset = 5.0f;
 	game.config.total_records = 7.0f;
 	game.config.epoch_year = 26.0f;
+	if (!yt_record_set_number(&game.config.record, YT_F45, 26.0f))
+		goto done;
 	yt_random_init(&game.random);
 	yt_random_set_provider(&game.random, score_random_fill, &random_script);
 	yt_error_clear(&error);
@@ -17271,6 +17275,8 @@ check_maintenance_mercenary_base_pass(void)
 	game.config.sector_offset = 1.0f;
 	game.config.planet_offset = 4.0f;
 	game.config.epoch_year = 26.0f;
+	if (!yt_record_set_number(&game.config.record, YT_F45, 26.0f))
+		goto done;
 	yt_random_init(&game.random);
 	yt_random_set_provider(&game.random, score_random_fill, &script);
 	yt_error_clear(&error);
@@ -18846,6 +18852,8 @@ check_maintenance_final_suffix_pass(void)
 	yt_record_blank(&game.config.record);
 	strcpy(game.config.scoreboard, "NUL");
 	game.config.epoch_year = 26.0f;
+	if (!yt_record_set_number(&game.config.record, YT_F45, 26.0f))
+		goto done;
 	game.config.sector_offset = 2.0f;
 	game.config.port_offset = 3.0f;
 	game.config.planet_offset = 4.0f;
@@ -19279,6 +19287,8 @@ check_maintenance_planet_pass(void)
 	game.config.planet_offset = 1.0f;
 	game.config.total_records = 4.0f;
 	game.config.epoch_year = 26.0f;
+	if (!yt_record_set_number(&game.config.record, YT_F45, 26.0f))
+		goto done;
 	yt_random_init(&game.random);
 	yt_random_set_provider(&game.random, score_random_fill, &random_script);
 	yt_error_clear(&error);
@@ -19417,6 +19427,8 @@ check_maintenance_wanderer_pass(void)
 	game.config.planet_offset = 4.0f;
 	game.config.total_records = 5.0f;
 	game.config.epoch_year = 26.0f;
+	if (!yt_record_set_number(&game.config.record, YT_F45, 26.0f))
+		goto done;
 	random_script = (struct score_random_script){
 		existing_draws, sizeof(existing_draws), 0U
 	};
@@ -19477,6 +19489,8 @@ check_maintenance_wanderer_pass(void)
 	game.config.planet_offset = 4.0f;
 	game.config.total_records = 5.0f;
 	game.config.epoch_year = 26.0f;
+	if (!yt_record_set_number(&game.config.record, YT_F45, 26.0f))
+		goto done;
 	random_script = (struct score_random_script){
 		missing_draws, sizeof(missing_draws), 0U
 	};
@@ -19611,6 +19625,8 @@ check_maintenance_xannor_home_pass(void)
 	game.config.total_records = 7.0f;
 	game.config.headquarters = 2.0f;
 	game.config.epoch_year = 26.0f;
+	if (!yt_record_set_number(&game.config.record, YT_F45, 26.0f))
+		goto done;
 	yt_random_init(&game.random);
 	yt_random_set_provider(&game.random, score_random_fill, &random_script);
 	yt_error_clear(&error);

@@ -2611,13 +2611,22 @@ yt_maintenance_maintain_players(struct yt_game *game, float *player_sector,
 }
 
 static bool
+maintenance_current_date_serial(const struct yt_game *game, int *serial,
+    int *adjusted_year, struct yt_error *error)
+{
+	return yt_current_date_serial_observed(
+	    game->config.record.bytes + YT_F45, serial, adjusted_year,
+	    NULL, NULL, error);
+}
+
+static bool
 current_day_minute(struct maint_state *state, float *day, float *minute,
     struct yt_error *error)
 {
 	int serial;
 
-	if (!yt_current_date_serial(state->game.config.epoch_year, &serial,
-	    NULL, error))
+	if (!maintenance_current_date_serial(&state->game, &serial, NULL,
+	    error))
 		return false;
 	*day = (float)serial;
 	*minute = (float)(yt_platform_timer() / 60.0);
@@ -3202,8 +3211,7 @@ yt_maintenance_maintain_wanderer(struct yt_game *game,
 	}
 	local.rebuilt = local.removed_sector == 0;
 	if (local.rebuilt) {
-		if (!yt_current_date_serial(game->config.epoch_year, &today,
-		    NULL, error)
+		if (!maintenance_current_date_serial(game, &today, NULL, error)
 		    || !yt_maintenance_compose_wanderer_phase(blank,
 		    blank_length, true, &output))
 			return false;
@@ -3648,8 +3656,7 @@ store_final_marker(struct yt_game *game, struct yt_error *error)
 {
 	int serial;
 
-	if (!yt_current_date_serial(game->config.epoch_year, &serial,
-	    NULL, error))
+	if (!maintenance_current_date_serial(game, &serial, NULL, error))
 		return false;
 	return yt_maintenance_store_final_marker(game, (float)serial,
 	    error);
@@ -4455,8 +4462,7 @@ yt_maintenance_maintain_xannor_home(struct yt_game *game,
 	local.rebuilt = sector.planet == 0.0f;
 	starting_draws = game->random.draws;
 	if (local.rebuilt) {
-		if (!yt_current_date_serial(game->config.epoch_year, &today,
-		    NULL, error)
+		if (!maintenance_current_date_serial(game, &today, NULL, error)
 		    || !yt_maintenance_compose_xannor_home(blank,
 		    blank_length, true, &output))
 			return false;
@@ -5816,8 +5822,7 @@ yt_maintenance_maintain_mercenary_base(struct yt_game *game,
 		struct yt_sector sector;
 		int today;
 
-		if (!yt_current_date_serial(game->config.epoch_year, &today, NULL,
-		    error)
+		if (!maintenance_current_date_serial(game, &today, NULL, error)
 		    || !yt_game_read_planet(game, planet_number, &planet, error))
 			return false;
 		yt_record_set_text(&planet.record,
