@@ -349,6 +349,32 @@ session_team_cache_export(struct yt_session *session)
 	    YT_TEAM_LOADER_COUNTER_ADDRESS, cache->counter_raw);
 }
 
+static void
+session_team_loader_store(void *context,
+    enum yt_team_loader_store_kind kind, size_t index,
+    const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+	uint16_t address;
+
+	switch (kind) {
+	case YT_TEAM_LOADER_STORE_AVAILABLE:
+		address = YT_TEAM_AVAILABLE_ADDRESS;
+		break;
+	case YT_TEAM_LOADER_STORE_COUNTER:
+		address = YT_TEAM_LOADER_COUNTER_ADDRESS;
+		break;
+	case YT_TEAM_LOADER_STORE_ROSTER:
+		if (index >= YT_ARRAY_LEN(session->team_cache.roster))
+			return;
+		address = (uint16_t)(YT_TEAM_ROSTER_ADDRESS + 4U * index);
+		break;
+	default:
+		return;
+	}
+	yt_route_process_set_raw_single(&session->route_process, address, raw);
+}
+
 static float
 session_team_roster_value(const struct yt_session *session, size_t index)
 {
@@ -6477,6 +6503,7 @@ team_remove_player(struct yt_session *session, int victim,
 		death_team_write_player,
 		session_read_physical_record,
 		death_team_write_record,
+		session_team_loader_store,
 	};
 	struct yt_death_team_remove_state state = {
 		.victim_record = victim,
@@ -12923,6 +12950,8 @@ team_load_raw(struct yt_session *session, float id, struct yt_team *team,
 		.sector_record_offset = session_sector_offset(session),
 		.conversion_mode = session->presentation.sound.conversion_mode,
 		.cache = &session->team_cache,
+		.store = session_team_loader_store,
+		.store_context = session,
 	};
 	size_t index;
 
@@ -13229,6 +13258,8 @@ info_team_load_team(void *context, float team_id, float current_record,
 		.sector_record_offset = session_sector_offset(session),
 		.conversion_mode = session->presentation.sound.conversion_mode,
 		.cache = &session->team_cache,
+		.store = session_team_loader_store,
+		.store_context = session,
 	};
 	size_t index;
 

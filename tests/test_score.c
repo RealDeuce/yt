@@ -1908,6 +1908,10 @@ struct team_loader_read_tape {
 	uint32_t physical_record;
 	size_t calls;
 	bool fail;
+	enum yt_team_loader_store_kind store_kind[10];
+	size_t store_index[10];
+	uint8_t store_raw[10][4];
+	size_t store_count;
 };
 
 static bool
@@ -1931,13 +1935,48 @@ team_loader_read_test(void *context, uint32_t physical_record,
 	return true;
 }
 
+static void
+team_loader_store_test(void *context, enum yt_team_loader_store_kind kind,
+    size_t index, const uint8_t raw[4])
+{
+	struct team_loader_read_tape *tape = context;
+	size_t store = tape->store_count;
+
+	if (store >= YT_ARRAY_LEN(tape->store_kind))
+		return;
+	tape->store_kind[store] = kind;
+	tape->store_index[store] = index;
+	memcpy(tape->store_raw[store], raw, 4U);
+	++tape->store_count;
+}
+
 static bool
 check_team_loader_transaction(void)
 {
+	static const enum yt_team_loader_store_kind expected_kind[10] = {
+		YT_TEAM_LOADER_STORE_AVAILABLE,
+		YT_TEAM_LOADER_STORE_COUNTER, YT_TEAM_LOADER_STORE_ROSTER,
+		YT_TEAM_LOADER_STORE_COUNTER, YT_TEAM_LOADER_STORE_ROSTER,
+		YT_TEAM_LOADER_STORE_COUNTER, YT_TEAM_LOADER_STORE_ROSTER,
+		YT_TEAM_LOADER_STORE_COUNTER, YT_TEAM_LOADER_STORE_ROSTER,
+		YT_TEAM_LOADER_STORE_COUNTER,
+	};
+	static const size_t expected_index[10] = {
+		0U, 0U, 0U, 0U, 1U, 0U, 2U, 0U, 3U, 0U,
+	};
+	static const uint8_t expected_raw[10][4] = {
+		{0x00U, 0x00U, 0x80U, 0x81U},
+		{0x00U, 0x00U, 0x00U, 0x81U}, {0},
+		{0x00U, 0x00U, 0x00U, 0x82U}, {0},
+		{0x00U, 0x00U, 0x40U, 0x82U}, {0},
+		{0x00U, 0x00U, 0x00U, 0x83U}, {0},
+		{0x00U, 0x00U, 0x20U, 0x83U},
+	};
 	struct team_loader_read_tape tape;
 	struct yt_team_loader_state state;
 	struct yt_team_loader_cache cache;
 	struct yt_error error;
+	size_t index;
 
 	memset(&tape, 0, sizeof(tape));
 	yt_record_blank(&tape.record);
@@ -1951,6 +1990,8 @@ check_team_loader_transaction(void)
 		.current_player_record = 2.0f,
 		.sector_record_offset = 55.0f,
 		.cache = &cache,
+		.store = team_loader_store_test,
+		.store_context = &tape,
 	};
 	if (!yt_team_loader_run(&state, team_loader_read_test, &tape, NULL)
 	    || tape.calls != 1U || tape.physical_record != 56U
@@ -1961,6 +2002,14 @@ check_team_loader_transaction(void)
 	    || cache.captain != 2.0f || cache.captain_flag != -1.0f
 	    || cache.roster[0] != 3.0f)
 		return false;
+	if (tape.store_count != YT_ARRAY_LEN(expected_kind))
+		return false;
+	for (index = 0U; index < tape.store_count; ++index) {
+		if (tape.store_kind[index] != expected_kind[index]
+		    || tape.store_index[index] != expected_index[index]
+		    || memcmp(tape.store_raw[index], expected_raw[index], 4U) != 0)
+			return false;
+	}
 
 	memset(&cache, 0, sizeof(cache));
 	cache.roster[0] = 9.0f;
@@ -2452,6 +2501,7 @@ static const struct yt_death_team_remove_ops death_team_ops = {
 	death_team_write_player_test,
 	death_team_read_record_test,
 	death_team_write_record_test,
+	NULL,
 };
 
 static void
