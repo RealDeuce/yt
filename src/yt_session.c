@@ -16666,6 +16666,7 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 	size_t attacker_length;
 	int local_counterattack = 0;
 	int local_xannor_provoker = 0;
+	uint8_t destination_raw[4];
 	int *counterattack = pending_counterattack != NULL
 	    ? pending_counterattack : &local_counterattack;
 	int *xannor_provoker = pending_xannor != NULL
@@ -16680,10 +16681,13 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 	else
 		projectile_route_cells_store(session, cells, *origin_alias, *target,
 		    *missiles);
+	yt_route_process_raw_single(&session->route_process, cells->destination,
+	    destination_raw);
 	if (plasma)
 		yt_route_process_set_raw_single(&session->route_process, 0x72a0U,
 		    ordinary_plasma_attribution);
-	(void)qb_cint(*target, &overflow);
+	(void)qb_cint_mbf32(destination_raw,
+	    session->presentation.sound.conversion_mode, &overflow);
 	if (overflow)
 		return true;
 	if (!projectile_opening(session, *amount, plasma,
