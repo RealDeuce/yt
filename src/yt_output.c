@@ -124,17 +124,18 @@ yt_out_local_emulated_bytes(const void *data, size_t length,
 	return true;
 }
 
-static void
+static bool
 present_remote(void *context, const uint8_t *data, size_t length, bool line)
 {
 	static const uint8_t carriage_return = '\r';
 
 	(void)context;
 	if (!remote_device_apply(data, length, line))
-		return;
+		return false;
 	yt_out_remote_bytes(data, length);
 	if (line)
 		yt_out_remote_bytes(&carriage_return, 1U);
+	return true;
 }
 
 static void
@@ -220,7 +221,7 @@ yt_out_present_result(const struct yt_present_result *result)
 		.local_clear = present_local_clear,
 	};
 
-	yt_present_replay(result, &sink);
+	(void)yt_present_replay(result, &sink);
 }
 
 void

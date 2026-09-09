@@ -375,6 +375,33 @@ color_digit(float value, uint8_t *digit)
 }
 
 static enum yt_present_status
+stage_color_cache(struct yt_present_state *state,
+    struct yt_present_result *result, float foreground, float background)
+{
+	struct yt_present_event *event;
+	uint8_t foreground_raw[4];
+	uint8_t background_raw[4];
+
+	if (result->event_count == 0U)
+		return YT_PRESENT_CAPACITY;
+	event = &result->events[result->event_count - 1U];
+	if (event->operation != YT_PRESENT_REMOTE_SEMI
+	    || qb_mbf32_encode(foreground, foreground_raw) != QB_MBF_OK
+	    || qb_mbf32_encode(background, background_raw) != QB_MBF_OK)
+		return YT_PRESENT_OVERFLOW;
+	state->cached_foreground = foreground;
+	state->cached_background = background;
+	event->commit_color_cache = true;
+	event->cached_foreground_process = state->cached_foreground_process;
+	memcpy(event->cached_foreground_raw, foreground_raw,
+	    sizeof(event->cached_foreground_raw));
+	event->cached_background_process = state->cached_background_process;
+	memcpy(event->cached_background_raw, background_raw,
+	    sizeof(event->cached_background_raw));
+	return YT_PRESENT_OK;
+}
+
+static enum yt_present_status
 build_color(struct yt_present_state *state,
     struct yt_present_result *result)
 {
@@ -465,8 +492,9 @@ build_color(struct yt_present_state *state,
 			    sequence, length);
 			if (status != YT_PRESENT_OK)
 				return status;
-			yt_present_set_cached_foreground(state, 0.0f);
-			yt_present_set_cached_background(state, 0.0f);
+			status = stage_color_cache(state, result, 0.0f, 0.0f);
+			if (status != YT_PRESENT_OK)
+				return status;
 		}
 		else if (state->foreground != cached_foreground
 		    || background != cached_background) {
@@ -474,9 +502,10 @@ build_color(struct yt_present_state *state,
 			    sequence, length);
 			if (status != YT_PRESENT_OK)
 				return status;
-			yt_present_set_cached_foreground(state,
-			    state->foreground);
-			yt_present_set_cached_background(state, background);
+			status = stage_color_cache(state, result,
+			    state->foreground, background);
+			if (status != YT_PRESENT_OK)
+				return status;
 		}
 		else
 			status = YT_PRESENT_OK;
@@ -1816,7 +1845,7 @@ yt_present_status_row(const uint8_t *real_name, size_t real_name_length,
 	    alias_length, state, result);
 }
 
-void
+bool
 yt_present_replay(const struct yt_present_result *result,
     const struct yt_present_sink *sink)
 {
@@ -1828,10 +1857,19 @@ yt_present_replay(const struct yt_present_result *result,
 		switch (event->operation) {
 		case YT_PRESENT_REMOTE_LINE:
 		case YT_PRESENT_REMOTE_SEMI:
-			if (sink->remote != NULL)
-				sink->remote(sink->context, event->data,
+			if (sink->remote != NULL
+			    && !sink->remote(sink->context, event->data,
 				    event->length,
-				    event->operation == YT_PRESENT_REMOTE_LINE);
+				    event->operation == YT_PRESENT_REMOTE_LINE))
+				return false;
+			if (sink->remote != NULL && event->commit_color_cache) {
+				if (event->cached_foreground_process != NULL)
+					memcpy(event->cached_foreground_process,
+					    event->cached_foreground_raw, 4U);
+				if (event->cached_background_process != NULL)
+					memcpy(event->cached_background_process,
+					    event->cached_background_raw, 4U);
+			}
 			break;
 		case YT_PRESENT_LOCAL_COLOR:
 			if (sink->local_color != NULL)
@@ -1864,6 +1902,7 @@ yt_present_replay(const struct yt_present_result *result,
 			break;
 		}
 	}
+	return true;
 }
 
 uint8_t

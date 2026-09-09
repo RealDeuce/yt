@@ -39,11 +39,17 @@ struct yt_present_event {
 	int cursor_stop;
 	uint8_t data[YT_PRESENT_EVENT_DATA];
 	size_t length;
+	/* Applied only after the owning remote PRINT event is accepted. */
+	bool commit_color_cache;
+	uint8_t *cached_foreground_process;
+	uint8_t cached_foreground_raw[4];
+	uint8_t *cached_background_process;
+	uint8_t cached_background_raw[4];
 };
 
 struct yt_present_sink {
 	void *context;
-	void (*remote)(void *context, const uint8_t *data, size_t length,
+	bool (*remote)(void *context, const uint8_t *data, size_t length,
 	    bool line);
 	void (*local_color)(void *context, int foreground, int background);
 	void (*local_text)(void *context, const uint8_t *data, size_t length,
@@ -258,7 +264,9 @@ enum yt_present_status yt_present_opening_row(const uint8_t *text,
     struct yt_present_result *result);
 enum yt_present_status yt_present_opening_cleanup(float mode, float snoop,
     struct yt_present_result *result);
-void yt_present_replay(const struct yt_present_result *result,
+/* Returns false at the first rejected remote event; later events are not
+ * replayed. */
+bool yt_present_replay(const struct yt_present_result *result,
     const struct yt_present_sink *sink);
 uint8_t yt_present_pc_attribute(int foreground, int background);
 

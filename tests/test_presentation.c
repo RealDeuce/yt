@@ -24,7 +24,7 @@ struct replay_capture {
 	size_t count;
 };
 
-static void
+static bool
 capture_remote(void *context, const uint8_t *data, size_t length, bool line)
 {
 	struct replay_capture *capture = context;
@@ -33,6 +33,27 @@ capture_remote(void *context, const uint8_t *data, size_t length, bool line)
 	(void)length;
 	capture->operations[capture->count++] = line
 	    ? YT_PRESENT_REMOTE_LINE : YT_PRESENT_REMOTE_SEMI;
+	return true;
+}
+
+static bool
+accept_remote(void *context, const uint8_t *data, size_t length, bool line)
+{
+	(void)context;
+	(void)data;
+	(void)length;
+	(void)line;
+	return true;
+}
+
+static bool
+reject_remote(void *context, const uint8_t *data, size_t length, bool line)
+{
+	(void)context;
+	(void)data;
+	(void)length;
+	(void)line;
+	return false;
 }
 
 static void
@@ -282,6 +303,8 @@ test_color_process_cache(void)
 	uint8_t background_raw[4];
 	struct yt_present_state current;
 	struct yt_present_result result;
+	const struct yt_present_sink accept_sink = { .remote = accept_remote };
+	const struct yt_present_sink reject_sink = { .remote = reject_remote };
 
 	memcpy(foreground_raw, raw_two, sizeof(foreground_raw));
 	memcpy(background_raw, dirty_zero, sizeof(background_raw));
@@ -298,6 +321,11 @@ test_color_process_cache(void)
 
 	current.bold = 1.0f;
 	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(memcmp(foreground_raw, raw_two, sizeof(foreground_raw)) == 0
+	    && memcmp(background_raw, dirty_zero,
+	    sizeof(background_raw)) == 0
+	    && result.events[1].commit_color_cache);
+	CHECK(yt_present_replay(&result, &accept_sink));
 	CHECK(memcmp(foreground_raw, raw_zero, sizeof(foreground_raw)) == 0
 	    && memcmp(background_raw, raw_zero, sizeof(background_raw)) == 0);
 
@@ -307,8 +335,24 @@ test_color_process_cache(void)
 	yt_present_bind_cached_foreground_process(&current, foreground_raw);
 	yt_present_bind_cached_background_process(&current, background_raw);
 	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(memcmp(foreground_raw, dirty_zero, sizeof(foreground_raw)) == 0
+	    && memcmp(background_raw, other_dirty_zero,
+	    sizeof(background_raw)) == 0
+	    && result.events[1].commit_color_cache);
+	CHECK(yt_present_replay(&result, &accept_sink));
 	CHECK(memcmp(foreground_raw, raw_two, sizeof(foreground_raw)) == 0
 	    && memcmp(background_raw, raw_zero, sizeof(background_raw)) == 0);
+
+	memcpy(foreground_raw, dirty_zero, sizeof(foreground_raw));
+	memcpy(background_raw, other_dirty_zero, sizeof(background_raw));
+	current = state(false);
+	yt_present_bind_cached_foreground_process(&current, foreground_raw);
+	yt_present_bind_cached_background_process(&current, background_raw);
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(!yt_present_replay(&result, &reject_sink)
+	    && memcmp(foreground_raw, dirty_zero, sizeof(foreground_raw)) == 0
+	    && memcmp(background_raw, other_dirty_zero,
+	    sizeof(background_raw)) == 0);
 
 	memcpy(foreground_raw, dirty_zero, sizeof(foreground_raw));
 	memcpy(background_raw, raw_one, sizeof(background_raw));
