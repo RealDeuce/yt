@@ -26094,7 +26094,8 @@ anti_cloak_fixture(struct anti_cloak_tape *tape,
 	tape->fail_at = SIZE_MAX;
 	memcpy(tape->players[0].record.bytes, target_name,
 	    sizeof(target_name));
-	tape->players[0].name_length = 3.5f;
+	tape->players[0].name_length = 19.0f;
+	(void)yt_record_set_number(&tape->players[0].record, YT_F85, 3.5f);
 	tape->players[0].killed_by = 0.0f;
 	tape->players[1].killed_by = -1.0f;
 	memset(tape->players[2].record.bytes, 0xa5,
@@ -26227,7 +26228,7 @@ check_earth_anti_cloak_transaction(void)
 
 	anti_cloak_fixture(&tape, &state, cache);
 	state.player_terminal = 2.0f;
-	tape.players[0].name_length = -1.0f;
+	(void)yt_record_set_number(&tape.players[0].record, YT_F85, -1.0f);
 	if (yt_earth_anti_cloak_run(&state, &ops, &tape, NULL)
 	    || tape.event_count != 6U || tape.events[5] != ANTI_CLOAK_READ
 	    || cache[2] != 0.0f || state.field_record != 2.0f
@@ -32874,7 +32875,8 @@ port_rename_fixture(struct port_rename_tape *tape,
 	memset(tape->port.record.bytes, ' ', YT_TEXT_FIELD_SIZE);
 	memcpy(tape->port.record.bytes, name, sizeof(name));
 	tape->port.owner = 2.25f;
-	tape->port.name_length = 3.6f;
+	tape->port.name_length = 19.0f;
+	(void)yt_record_set_number(&tape->port.record, YT_F85, 3.6f);
 	tape->expected_logical = 3;
 	*state = (struct yt_port_rename_state){
 		.current_player_record = 2.25f,
@@ -32959,13 +32961,13 @@ check_port_rename_transaction(void)
 	    || memcmp(tape.cached, "O\0ld", 4U) != 0)
 		return false;
 	port_rename_fixture(&tape, &state);
-	tape.port.name_length = 32767.0f;
+	(void)yt_record_set_number(&tape.port.record, YT_F85, 32767.0f);
 	if (!yt_port_rename_run(&state, &port_rename_test_ops, &tape, NULL)
 	    || state.cached_name_length != YT_TEXT_FIELD_SIZE
 	    || tape.cached_length != YT_TEXT_FIELD_SIZE)
 		return false;
 	port_rename_fixture(&tape, &state);
-	tape.port.name_length = -1.0f;
+	(void)yt_record_set_number(&tape.port.record, YT_F85, -1.0f);
 	yt_error_clear(&error);
 	if (yt_port_rename_run(&state, &port_rename_test_ops, &tape, &error)
 	    || error.status != YT_RANGE || tape.calls != 3U
@@ -35131,8 +35133,10 @@ port_purchase_report_test(void *context, int logical, bool earth,
 	memset(terminal, 0xa5, sizeof(*terminal));
 	early->owner = tape->early_owner;
 	terminal->owner = tape->terminal_owner;
-	terminal->name_length = tape->terminal_name_length;
+	terminal->name_length = -19.0f;
 	memcpy(terminal->record.bytes, terminal_name, sizeof(terminal_name));
+	(void)yt_record_set_number(&terminal->record, YT_F85,
+	    tape->terminal_name_length);
 	memcpy(production, tape->production, sizeof(tape->production));
 	return true;
 }

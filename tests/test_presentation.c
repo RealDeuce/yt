@@ -21375,6 +21375,7 @@ main_buy_report(void *context, int logical_port, bool earth,
 	early_port->owner = 7.0f;
 	terminal_port->owner = 99.0f;
 	terminal_port->name_length = 8.0f;
+	(void)yt_record_set_number(&terminal_port->record, YT_F85, 8.0f);
 	memcpy(terminal_port->record.bytes, "Old Port", 8U);
 	production[0] = 20.0f;
 	production[1] = 30.0f;

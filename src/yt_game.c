@@ -7730,7 +7730,7 @@ yt_port_rename_run(struct yt_port_rename_state *state,
 		return true;
 	}
 	conversion_overflow = false;
-	converted_length = qb_cint_mode((double)state->port.name_length,
+	converted_length = qb_cint_mbf32(state->port.record.bytes + YT_F85,
 	    state->conversion_mode, &conversion_overflow);
 	if (conversion_overflow || converted_length < 0)
 		return startup_configuration_error(error, YT_RANGE,
@@ -8134,8 +8134,8 @@ yt_port_purchase_run(struct yt_port_purchase_state *state,
 	}
 	else {
 		conversion_overflow = false;
-		converted_length = qb_cint_mode(
-		    (double)state->terminal_port.name_length,
+		converted_length = qb_cint_mbf32(
+		    state->terminal_port.record.bytes + YT_F85,
 		    state->conversion_mode, &conversion_overflow);
 		if (conversion_overflow || converted_length < 0)
 			return port_purchase_error(error, YT_RANGE,
@@ -13853,8 +13853,8 @@ yt_earth_anti_cloak_run(struct yt_earth_anti_cloak_state *state,
 				return false;
 			state->field_record = state->counter;
 			if (state->field_player.killed_by == 0.0f) {
-				converted_length = qb_cint_mode(
-				    (double)state->field_player.name_length,
+				converted_length = qb_cint_mbf32(
+				    state->field_player.record.bytes + YT_F85,
 				    state->conversion_mode, &overflow);
 				if (overflow || converted_length < 0) {
 					if (error != NULL) {
