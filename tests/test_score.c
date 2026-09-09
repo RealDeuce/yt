@@ -9321,6 +9321,7 @@ xannor_victory_fixture(struct xannor_victory_tape *tape)
 	tape->player_source.record.bytes[1] = 0U;
 	tape->player_source.record.bytes[2] = 'B';
 	tape->player_source.name_length = 3.0f;
+	(void)yt_record_set_number(&tape->player_source.record, YT_F85, 3.0f);
 	tape->player_source.credits = 16000001.0f;
 	(void)yt_record_set_number(&tape->player_source.record, YT_F81,
 	    tape->player_source.credits);
@@ -9481,6 +9482,7 @@ check_xannor_victory_transaction(void)
 	/* Name conversion faults occur after the durable award and sounds. */
 	xannor_victory_fixture(&tape);
 	tape.player_source.name_length = -1.0f;
+	(void)yt_record_set_number(&tape.player_source.record, YT_F85, -1.0f);
 	memset(&state, 0, sizeof(state));
 	state.current_player = 2.5f;
 	yt_error_clear(&error);
@@ -21771,6 +21773,7 @@ check_player_name_match(void)
 	yt_record_set_text(&record, (const uint8_t *)"Star Lord", 9);
 	yt_record_set_number(&record, YT_F85, 2.6f);
 	yt_player_decode(&player, &record);
+	player.name_length = 19.0f;
 	if (!yt_player_stored_name(&player, stored_name, &stored_length, &error)
 	    || stored_length != 3U || memcmp(stored_name, "Sta", 3) != 0)
 		return false;
@@ -35267,6 +35270,8 @@ port_purchase_fixture(struct port_purchase_tape *tape,
 	tape->buyer.sector = 42.0f;
 	tape->buyer.name_length = (float)sizeof(trader);
 	memcpy(tape->buyer.record.bytes, trader, sizeof(trader));
+	(void)yt_record_set_number(&tape->buyer.record, YT_F85,
+	    (float)sizeof(trader));
 	tape->sector.port = 3.0f;
 	(void)yt_record_set_number(&tape->sector.record, YT_F65, 3.0f);
 	tape->early_owner = 7.0f;

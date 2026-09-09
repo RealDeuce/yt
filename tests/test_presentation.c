@@ -21570,6 +21570,7 @@ main_buy_cycle_fixture_initialize(struct main_buy_cycle_fixture *fixture,
 	fixture->name_write_is_accept_event = true;
 	memcpy(fixture->buyer_entry.record.bytes, "Pat", 3U);
 	fixture->buyer_entry.name_length = 3.0f;
+	(void)yt_record_set_number(&fixture->buyer_entry.record, YT_F85, 3.0f);
 	fixture->buyer_entry.credits = 1000.0f;
 	fixture->buyer_entry.sector = 9.0f;
 	fixture->fresh_buyer = fixture->buyer_entry;
