@@ -12985,7 +12985,7 @@ team_read_overlay(struct yt_session *session, int id, struct yt_team *team,
 {
 	memset(team, 0, sizeof(*team));
 	team->id = id;
-	if (id < 1 || id > YT_DEFAULT_PLAYER_COUNT)
+	if (id < 0 || id > YT_DEFAULT_PLAYER_COUNT)
 		return true;
 	return session_read_sector(session, id, &team->overlay,
 	    error);
@@ -13522,12 +13522,15 @@ team_create(struct yt_session *session, struct yt_error *error)
 	if (!session_02db(session, entering, sizeof(entering) - 1U,
 	    "team create heading", error))
 		return false;
-	selected = session->player.team;
+	selected = yt_route_process_single(&session->route_process,
+	    YT_CURRENT_PLAYER_TEAM_ADDRESS);
 	for (id = 1; id <= YT_DEFAULT_PLAYER_COUNT; ++id) {
 		if (!team_load(session, id, &team, error))
 			return false;
 		if (!team.live) {
 			selected = (float)id;
+			session_set_process_single(session,
+			    YT_CURRENT_PLAYER_TEAM_ADDRESS, selected);
 			break;
 		}
 	}
@@ -13536,9 +13539,10 @@ team_create(struct yt_session *session, struct yt_error *error)
 	if (!name_accepted)
 		return true;
 	id = (int)selected;
-	if (!reload_player(session, error))
+	if (!yt_game_read_player(&session->door->game, session_record(session),
+	    &session->player, error))
 		return false;
-	session->player.team = selected;
+	yt_team_membership_apply_player(&session->player, selected);
 	if (!write_player(session, error)
 	    || !team_read_overlay(session, id, &team, error))
 		return false;
@@ -13640,7 +13644,7 @@ team_join(struct yt_session *session, struct yt_error *error)
 	{
 		struct yt_team ignored;
 
-		if (!team_load(session, selected, &ignored, error))
+		if (!team_read_overlay(session, selected, &ignored, error))
 			return false;
 	}
 	if (qb_str_single(number, sizeof(number), (float)selected) < 0
@@ -13658,9 +13662,10 @@ team_join(struct yt_session *session, struct yt_error *error)
 		return session_02db(session, invalid, sizeof(invalid) - 1U,
 		    "invalid team password row", error);
 	}
-	if (!reload_player(session, error))
+	if (!yt_game_read_player(&session->door->game, session_record(session),
+	    &session->player, error))
 		return false;
-	session->player.team = (float)selected;
+	yt_team_membership_apply_player(&session->player, (float)selected);
 	if (!write_player(session, error))
 		return false;
 	for (index = 0; index < 4; ++index) {
@@ -13672,12 +13677,14 @@ team_join(struct yt_session *session, struct yt_error *error)
 	{
 		struct yt_team fresh;
 
-		if (!team_load(session, selected, &fresh, error))
+		if (!team_read_overlay(session, selected, &fresh, error))
 			return false;
 		memcpy(fresh.roster, team.roster, sizeof(fresh.roster));
 		if (!team_store_roster(session, &fresh, error))
 			return false;
 	}
+	session_set_process_single(session, YT_CURRENT_PLAYER_TEAM_ADDRESS,
+	    (float)selected);
 	if (qb_str_single(number, sizeof(number), (float)selected) < 0
 	    || snprintf(news, sizeof(news), "%s Joined Team%s",
 	    actor_name, number) < 0)
@@ -13711,11 +13718,12 @@ team_quit(struct yt_session *session, struct yt_team *team,
 		return false;
 	if (answer != YT_YES_NO_YES)
 		return true;
-	if (!reload_player(session, error))
+	if (!yt_game_read_player(&session->door->game, session_record(session),
+	    &session->player, error))
 		return false;
 	old_team = session->player.team;
+	yt_team_membership_apply_player(&session->player, 0.0f);
 	persisted = session->player;
-	persisted.team = 0.0f;
 	if (!yt_game_write_player(&session->door->game, session_record(session),
 	    &persisted, error))
 		return false;
@@ -13757,7 +13765,7 @@ team_quit(struct yt_session *session, struct yt_team *team,
 	    "team quit success row", error)
 	    || !team_audit(session, old_team, 2.0f, "", error))
 		return false;
-	session->player.team = 0.0f;
+	session_set_process_single(session, YT_CURRENT_PLAYER_TEAM_ADDRESS, 0.0f);
 	return true;
 }
 

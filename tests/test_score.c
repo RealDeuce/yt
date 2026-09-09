@@ -27233,6 +27233,7 @@ check_hostile_menu_front(void)
 		struct yt_sector sector = {0};
 		struct yt_player player = {0};
 		struct yt_player banished = {0};
+		struct yt_player joined = {0};
 		struct yt_record roster_record;
 		struct yt_record roster_expected;
 		struct yt_record name_record;
@@ -27250,11 +27251,14 @@ check_hostile_menu_front(void)
 		uint8_t sector_record[YT_RECORD_SIZE];
 		uint8_t player_record[YT_RECORD_SIZE];
 		uint8_t banished_record[YT_RECORD_SIZE];
+		uint8_t joined_record[YT_RECORD_SIZE];
 
 		memset(sector.record.bytes, 0xa5, sizeof(sector.record.bytes));
 		memset(player.record.bytes, 0x5a, sizeof(player.record.bytes));
 		memset(banished.record.bytes, 0x3c,
 		    sizeof(banished.record.bytes));
+		memset(joined.record.bytes, 0x87,
+		    sizeof(joined.record.bytes));
 		memset(roster_record.bytes, 0xc3, sizeof(roster_record.bytes));
 		memset(name_record.bytes, 0x96, sizeof(name_record.bytes));
 		memset(password_record.bytes, 0x69,
@@ -27307,6 +27311,8 @@ check_hostile_menu_front(void)
 		memcpy(player_record, player.record.bytes, sizeof(player_record));
 		memcpy(banished_record, banished.record.bytes,
 		    sizeof(banished_record));
+		memcpy(joined_record, joined.record.bytes,
+		    sizeof(joined_record));
 		sector.fighters = 99.0f;
 		sector.fighter_owner = 44.0f;
 		sector.planet = 8.0f;
@@ -27314,9 +27320,11 @@ check_hostile_menu_front(void)
 		player.fighters = 12.0f;
 		player.team = 7.0f;
 		banished.team = 7.0f;
+		joined.team = 0.0f;
 		yt_team_transfer_apply_sector(&sector, 10.0, 5.0f);
 		yt_team_transfer_apply_player(&player, 5.0f);
 		yt_team_banish_apply_player(&banished);
+		yt_team_membership_apply_player(&joined, 7.0f);
 		yt_team_roster_overlay(&roster_record, roster);
 		yt_team_name_overlay(&name_record, team_name,
 		    sizeof(team_name) - 1U);
@@ -27338,6 +27346,12 @@ check_hostile_menu_front(void)
 		    || memcmp(banished.record.bytes, banished_record, YT_F89) != 0
 		    || memcmp(banished.record.bytes + YT_F93,
 		    banished_record + YT_F93,
+		    YT_RECORD_SIZE - YT_F93) != 0
+		    || joined.team != 7.0f
+		    || yt_record_get_number(&joined.record, YT_F89) != 7.0f
+		    || memcmp(joined.record.bytes, joined_record, YT_F89) != 0
+		    || memcmp(joined.record.bytes + YT_F93,
+		    joined_record + YT_F93,
 		    YT_RECORD_SIZE - YT_F93) != 0
 		    || memcmp(roster_record.bytes, roster_expected.bytes,
 		    YT_RECORD_SIZE) != 0

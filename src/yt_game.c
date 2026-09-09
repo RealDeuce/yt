@@ -6943,12 +6943,18 @@ yt_team_transfer_apply_player(struct yt_player *player, float amount)
 }
 
 void
-yt_team_banish_apply_player(struct yt_player *player)
+yt_team_membership_apply_player(struct yt_player *player, float team)
 {
 	if (player == NULL)
 		return;
-	player->team = 0.0f;
-	(void)yt_record_set_number(&player->record, YT_F89, 0.0f);
+	player->team = team;
+	(void)yt_record_set_number(&player->record, YT_F89, team);
+}
+
+void
+yt_team_banish_apply_player(struct yt_player *player)
+{
+	yt_team_membership_apply_player(player, 0.0f);
 }
 
 void
