@@ -27239,6 +27239,8 @@ check_hostile_menu_front(void)
 		struct yt_record name_expected;
 		struct yt_record password_record;
 		struct yt_record password_expected;
+		struct yt_record inactive_record;
+		struct yt_record inactive_expected;
 		const float roster[4] = {2.0f, 0.0f, 4.0f, 5.0f};
 		static const uint8_t team_name[] = "New Raiders";
 		static const uint8_t password[4] = {'P', 'A', 'S', 'S'};
@@ -27257,6 +27259,8 @@ check_hostile_menu_front(void)
 		memset(name_record.bytes, 0x96, sizeof(name_record.bytes));
 		memset(password_record.bytes, 0x69,
 		    sizeof(password_record.bytes));
+		for (index = 0; index < sizeof(inactive_record.bytes); ++index)
+			inactive_record.bytes[index] = (uint8_t)(index ^ 0xa6U);
 		strcpy(prepared_name, "ab");
 		if (yt_team_prepare_name(prepared_name, &prepared_length))
 			return false;
@@ -27282,6 +27286,7 @@ check_hostile_menu_front(void)
 		roster_expected = roster_record;
 		name_expected = name_record;
 		password_expected = password_record;
+		inactive_expected = inactive_record;
 		(void)yt_record_set_number(&roster_expected, YT_F109, roster[0]);
 		(void)yt_record_set_number(&roster_expected, YT_F117, roster[1]);
 		(void)yt_record_set_number(&roster_expected, YT_F121, roster[2]);
@@ -27292,6 +27297,12 @@ check_hostile_menu_front(void)
 		    (float)(sizeof(team_name) - 1U));
 		memcpy(password_expected.bytes + YT_F113, password,
 		    sizeof(password));
+		memset(inactive_expected.bytes + YT_F77, 0, 4U);
+		memset(inactive_expected.bytes + YT_F109, 0, 4U);
+		memset(inactive_expected.bytes + YT_F113, ' ', 4U);
+		memset(inactive_expected.bytes + YT_F117, 0, 4U);
+		memset(inactive_expected.bytes + YT_F121, 0, 4U);
+		memset(inactive_expected.bytes + YT_F125, 0, 4U);
 		memcpy(sector_record, sector.record.bytes, sizeof(sector_record));
 		memcpy(player_record, player.record.bytes, sizeof(player_record));
 		memcpy(banished_record, banished.record.bytes,
@@ -27310,6 +27321,7 @@ check_hostile_menu_front(void)
 		yt_team_name_overlay(&name_record, team_name,
 		    sizeof(team_name) - 1U);
 		yt_team_password_overlay(&password_record, password);
+		yt_team_inactive_overlay(&inactive_record);
 		if (sector.fighters != 15.0f || sector.fighter_owner != 44.0f
 		    || sector.planet != 8.0f || player.fighters != 7.0f
 		    || player.sector != 99.0f || player.team != 7.0f
@@ -27332,6 +27344,8 @@ check_hostile_menu_front(void)
 		    || memcmp(name_record.bytes, name_expected.bytes,
 		    YT_RECORD_SIZE) != 0
 		    || memcmp(password_record.bytes, password_expected.bytes,
+		    YT_RECORD_SIZE) != 0
+		    || memcmp(inactive_record.bytes, inactive_expected.bytes,
 		    YT_RECORD_SIZE) != 0)
 			return false;
 	}

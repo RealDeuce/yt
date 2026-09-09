@@ -7000,6 +7000,22 @@ yt_team_password_overlay(struct yt_record *record, const uint8_t password[4])
 	memcpy(record->bytes + YT_F113, password, 4);
 }
 
+void
+yt_team_inactive_overlay(struct yt_record *record)
+{
+	static const size_t offsets[5] = {
+		YT_F77, YT_F109, YT_F117, YT_F121, YT_F125
+	};
+	static const uint8_t zero[4] = {0, 0, 0, 0};
+	size_t index;
+
+	if (record == NULL)
+		return;
+	for (index = 0; index < YT_ARRAY_LEN(offsets); ++index)
+		(void)yt_record_set_raw_number(record, offsets[index], zero);
+	memset(record->bytes + YT_F113, ' ', 4);
+}
+
 bool
 yt_port_link_missing(float link)
 {

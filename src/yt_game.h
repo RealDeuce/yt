@@ -2362,6 +2362,7 @@ void yt_team_name_overlay(struct yt_record *record, const uint8_t *name,
 bool yt_team_prepare_name(char *name, size_t *length);
 void yt_team_password_overlay(struct yt_record *record,
     const uint8_t password[4]);
+void yt_team_inactive_overlay(struct yt_record *record);
 bool yt_port_link_missing(float link);
 float yt_port_selected_expression(float port_offset, float logical_link);
 enum yt_computer_port_selection_route {

@@ -12968,24 +12968,12 @@ team_load(struct yt_session *session, int id, struct yt_team *team,
 }
 
 static bool
-team_store(struct yt_session *session, struct yt_team *team,
+team_store_inactive(struct yt_session *session, struct yt_team *team,
     struct yt_error *error)
 {
-	static const size_t offsets[4] = {
-		YT_F109, YT_F117, YT_F121, YT_F125
-	};
-	size_t index;
-
-	yt_record_set_text_if_changed(&team->overlay.record,
-	    (const uint8_t *)team->name, strlen(team->name));
-	yt_record_set_number_if_changed(&team->overlay.record, YT_F73,
-	    (float)strlen(team->name));
-	yt_record_set_number_if_changed(&team->overlay.record, YT_F77,
-	    team->captain);
-	memcpy(team->overlay.record.bytes + YT_F113, team->password, 4);
-	for (index = 0; index < 4; ++index)
-		yt_record_set_number_if_changed(&team->overlay.record,
-		    offsets[index], team->roster[index]);
+	if (!session_read_sector(session, team->id, &team->overlay, error))
+		return false;
+	yt_team_inactive_overlay(&team->overlay.record);
 	return yt_database_write(&session->door->game.database,
 	    (size_t)session_sector_basic_record(session, (float)team->id),
 	    &team->overlay.record, error);
@@ -13761,7 +13749,7 @@ team_quit(struct yt_session *session, struct yt_team *team,
 		memcpy(team->password, "    ", 4);
 		team->password[4] = '\0';
 		memset(team->roster, 0, sizeof(team->roster));
-		if (!team_store(session, team, error))
+		if (!team_store_inactive(session, team, error))
 			return false;
 	}
 	session_set_foreground(session, 6.0f);
