@@ -205,6 +205,9 @@ struct startup_configuration_tape {
 	enum qb_compat_upper_store_kind uppercase_kind[16];
 	float uppercase_value[16];
 	size_t uppercase_store_count;
+	uint8_t headquarters_raw[4];
+	size_t headquarters_store_count;
+	size_t headquarters_store_position;
 };
 
 static void
@@ -573,6 +576,17 @@ startup_configuration_cache_value_store_test(void *context,
 	++tape->cache_value_store_count;
 }
 
+static void
+startup_configuration_headquarters_store_test(void *context,
+    const uint8_t raw[4])
+{
+	struct startup_configuration_tape *tape = context;
+
+	memcpy(tape->headquarters_raw, raw, sizeof(tape->headquarters_raw));
+	tape->headquarters_store_position = tape->event_count;
+	++tape->headquarters_store_count;
+}
+
 static bool
 startup_configuration_fixture(struct startup_configuration_tape *tape,
     struct yt_startup_configuration_state *state, struct yt_config *config,
@@ -654,6 +668,7 @@ check_startup_configuration_transaction(void)
 		startup_configuration_cache_counter_store_test,
 		startup_configuration_cache_value_store_test,
 		startup_configuration_uppercase_store_test,
+		startup_configuration_headquarters_store_test,
 	};
 	static const int events[] = {
 		STARTUP_CONFIGURATION_CLOSE,
@@ -722,7 +737,11 @@ check_startup_configuration_transaction(void)
 	    || tape.uppercase_value[7] != 4.0f
 	    || tape.uppercase_kind[8] != QB_COMPAT_UPPER_STORE_INDEX
 	    || tape.uppercase_value[8] != 4.0f
-	    || config.headquarters != 85.0f || config.genesis_ports != 200.0f
+	    || config.headquarters != 733.0f || config.genesis_ports != 200.0f
+	    || tape.headquarters_store_count != 1U
+	    || tape.headquarters_store_position != 4U
+	    || memcmp(tape.headquarters_raw,
+	    (const uint8_t[]){0x00, 0x40, 0x37, 0x8a}, 4U) != 0
 	    || tape.genesis_store_count != 2U
 	    || tape.genesis_store_position[0] != 3U
 	    || tape.genesis_store_position[1] != 4U
@@ -842,7 +861,7 @@ check_startup_configuration_transaction(void)
 	    || !tape.wrote_player[4])
 		return false;
 	expected = tape.config_source;
-	if (!yt_record_set_number(&expected, YT_F117, 85.0f)
+	if (!yt_record_set_number(&expected, YT_F117, 733.0f)
 	    || memcmp(&tape.config_write.record, &expected, sizeof(expected)) != 0)
 		return false;
 	expected = tape.player_source[2];
@@ -864,7 +883,8 @@ check_startup_configuration_transaction(void)
 	if (yt_startup_configuration_run(&state, &ops, &tape, NULL)
 	    || tape.event_count != 4U || config.headquarters != 0.0f
 	    || !state.handler_installed || state.installed_handler != 0x45F7U
-	    || yt_record_get_number(&config.record, YT_F117) != 85.0f)
+	    || yt_record_get_number(&config.record, YT_F117) != 733.0f
+	    || tape.headquarters_store_count != 0U)
 		return false;
 
 	/* A nonzero one-shot guard skips all player I/O but not either draw. */
@@ -1061,7 +1081,7 @@ check_startup_configuration_transaction(void)
 	    || error.status != YT_RANGE
 	    || strcmp(error.operation, "startup local-mode CINT") != 0
 	    || tape.event_count != 4U || !tape.wrote_config
-	    || config.headquarters != 85.0f || config.genesis_ports != 200.0f
+	    || config.headquarters != 733.0f || config.genesis_ports != 200.0f
 	    || config.lottery_plays != -0.25f || tape.draw_position != 0U
 	    || tape.genesis_store_count != 2U
 	    || memcmp(tape.genesis_raw[1],
@@ -21652,11 +21672,13 @@ check_date_serial(void)
 	yt_platform_set_clock_provider(score_clock_read, &script);
 	if (!yt_current_date_serial_observed(epoch_raw, &serial, &adjusted,
 	    date_serial_store, &stores, &error)
-	    || serial != 366 || adjusted != 30 || stores.count != 4U
+	    || serial != 366 || adjusted != 30 || stores.count != 5U
 	    || stores.stores[0] != YT_DATE_SERIAL_STORE_YEAR
 	    || stores.stores[1] != YT_DATE_SERIAL_STORE_MONTH
 	    || stores.stores[2] != YT_DATE_SERIAL_STORE_YEAR_TERMINAL
 	    || stores.stores[3] != YT_DATE_SERIAL_STORE_YEAR_COUNTER
+	    || stores.stores[4] != YT_DATE_SERIAL_STORE_RESULT
+	    || qb_mbf32_decode(stores.raw[4]) != 366.0f
 	    || qb_mbf32_decode(stores.raw[0]) != 30.0f
 	    || qb_mbf32_decode(stores.raw[1]) != 1.0f
 	    || qb_mbf32_decode(stores.raw[2]) != 29.0f
@@ -21677,12 +21699,14 @@ check_date_serial(void)
 	yt_platform_set_clock_provider(score_clock_read, &script);
 	if (!yt_current_date_serial_observed(epoch_raw, &serial, &adjusted,
 	    date_serial_store, &stores, &error)
-	    || serial != 426 || adjusted != 100 || stores.count != 5U
+	    || serial != 426 || adjusted != 100 || stores.count != 6U
 	    || stores.stores[0] != YT_DATE_SERIAL_STORE_YEAR
 	    || stores.stores[1] != YT_DATE_SERIAL_STORE_MONTH
 	    || stores.stores[2] != YT_DATE_SERIAL_STORE_YEAR
 	    || stores.stores[3] != YT_DATE_SERIAL_STORE_YEAR_TERMINAL
 	    || stores.stores[4] != YT_DATE_SERIAL_STORE_YEAR_COUNTER
+	    || stores.stores[5] != YT_DATE_SERIAL_STORE_RESULT
+	    || qb_mbf32_decode(stores.raw[5]) != 426.0f
 	    || qb_mbf32_decode(stores.raw[0]) != 0.0f
 	    || qb_mbf32_decode(stores.raw[1]) != 3.0f
 	    || qb_mbf32_decode(stores.raw[2]) != 100.0f
@@ -21704,13 +21728,70 @@ check_date_serial(void)
 	yt_platform_set_clock_provider(score_clock_read, &script);
 	if (!yt_current_date_serial_observed(epoch_raw, &serial, &adjusted,
 	    date_serial_store, &stores, &error)
-	    || serial != 203 || adjusted != 26 || stores.count != 2U
+	    || serial != 203 || adjusted != 26 || stores.count != 3U
 	    || stores.stores[0] != YT_DATE_SERIAL_STORE_YEAR
-	    || stores.stores[1] != YT_DATE_SERIAL_STORE_MONTH) {
+	    || stores.stores[1] != YT_DATE_SERIAL_STORE_MONTH
+	    || stores.stores[2] != YT_DATE_SERIAL_STORE_RESULT
+	    || qb_mbf32_decode(stores.raw[2]) != 203.0f) {
 		yt_platform_set_clock_provider(NULL, NULL);
 		return false;
 	}
 	yt_platform_set_clock_provider(NULL, NULL);
+
+	{
+		static const struct {
+			enum yt_date_serial_executable executable;
+			uint16_t site;
+			uint16_t result;
+			uint16_t copy;
+		} cells[] = {
+			{YT_DATE_SERIAL_EXEC_YT, 0x0462U, 0x188CU, 0x4CCAU},
+			{YT_DATE_SERIAL_EXEC_YT, 0x38BBU, 0x188CU, 0U},
+			{YT_DATE_SERIAL_EXEC_YT, 0x67F8U, 0x188CU, 0U},
+			{YT_DATE_SERIAL_EXEC_YT, 0x6CBFU, 0x188CU, 0U},
+			{YT_DATE_SERIAL_EXEC_YT, 0x034AU, 0x188CU, 0U},
+			{YT_DATE_SERIAL_EXEC_YT, 0x0322U, 0x188CU, 0x5E56U},
+			{YT_DATE_SERIAL_EXEC_YT, 0x0653U, 0x188CU, 0x5E56U},
+			{YT_DATE_SERIAL_EXEC_YT, 0x0AA5U, 0x188CU, 0U},
+			{YT_DATE_SERIAL_EXEC_YT, 0x28BBU, 0x188CU, 0x60C4U},
+			{YT_DATE_SERIAL_EXEC_YT, 0x2C1CU, 0x188CU, 0x60C4U},
+			{YT_DATE_SERIAL_EXEC_YTCONFIG, 0x024FU, 0x1D4AU, 0U},
+			{YT_DATE_SERIAL_EXEC_YTCONFIG, 0x0258U, 0x1D4AU, 0U},
+			{YT_DATE_SERIAL_EXEC_YTCONFIG, 0x036EU, 0x1D4AU, 0U},
+			{YT_DATE_SERIAL_EXEC_YTCONFIG, 0x1D98U, 0x1D4AU, 0U},
+			{YT_DATE_SERIAL_EXEC_YTMAINT, 0x0335U, 0x1858U, 0U},
+			{YT_DATE_SERIAL_EXEC_YTMAINT, 0x0839U, 0x1858U, 0U},
+			{YT_DATE_SERIAL_EXEC_YTMAINT, 0x1046U, 0x1858U, 0U},
+			{YT_DATE_SERIAL_EXEC_YTMAINT, 0x1DAAU, 0x1858U, 0U},
+			{YT_DATE_SERIAL_EXEC_YTMAINT, 0x20F7U, 0x1858U, 0U},
+			{YT_DATE_SERIAL_EXEC_YTMAINT, 0x41CEU, 0x1858U, 0U},
+			{YT_DATE_SERIAL_EXEC_YTMAINT, 0x5780U, 0x1858U, 0U},
+			{YT_DATE_SERIAL_EXEC_RMT_INIT, 0x09CDU, 0x19F6U, 0U},
+			{YT_DATE_SERIAL_EXEC_RMT_INIT, 0x17E6U, 0x19F6U, 0U},
+		};
+		struct yt_date_serial_process_state process;
+		size_t index;
+
+		for (index = 0U; index < YT_ARRAY_LEN(cells); ++index) {
+			if (!yt_date_serial_process_init(&process,
+			    cells[index].executable, cells[index].site)
+			    || process.result_address != cells[index].result
+			    || process.copy_address != cells[index].copy)
+				return false;
+			yt_date_serial_process_store(&process,
+			    YT_DATE_SERIAL_STORE_RESULT, stores.raw[2]);
+			yt_date_serial_process_copy(&process);
+			if (!process.result_written
+			    || memcmp(process.result_raw, stores.raw[2], 4U) != 0
+			    || process.copy_written != (cells[index].copy != 0U)
+			    || (process.copy_written
+			    && memcmp(process.copy_raw, stores.raw[2], 4U) != 0))
+				return false;
+		}
+		if (yt_date_serial_process_init(&process,
+		    YT_DATE_SERIAL_EXEC_YTCONFIG, 0xFFFFU))
+			return false;
+	}
 	return true;
 }
 
@@ -26045,6 +26126,13 @@ struct anti_cloak_tape {
 	size_t row_count;
 	float sounds[4];
 	size_t sound_count;
+	float *cache;
+	int cache_reads[8];
+	size_t cache_read_count;
+	int cache_stores[8];
+	uint8_t cache_store_raw[8][4];
+	size_t cache_store_positions[8];
+	size_t cache_store_count;
 };
 
 static bool
@@ -26138,6 +26226,40 @@ anti_cloak_sound(void *context, float selector, struct yt_error *error)
 }
 
 static void
+anti_cloak_cache_read(void *context, int player_record,
+    enum yt_player_cache_kind kind, uint8_t raw[4])
+{
+	struct anti_cloak_tape *tape = context;
+
+	if (kind != YT_PLAYER_CACHE_CLOAK || player_record < 0
+	    || (size_t)player_record >= 8U) {
+		memset(raw, 0, 4U);
+		return;
+	}
+	if (tape->cache_read_count < YT_ARRAY_LEN(tape->cache_reads))
+		tape->cache_reads[tape->cache_read_count++] = player_record;
+	if (qb_mbf32_encode(tape->cache[player_record], raw) != QB_MBF_OK)
+		memset(raw, 0, 4U);
+}
+
+static void
+anti_cloak_cache_store(void *context, int player_record,
+    enum yt_player_cache_kind kind, const uint8_t raw[4])
+{
+	struct anti_cloak_tape *tape = context;
+	size_t store = tape->cache_store_count;
+
+	if (kind != YT_PLAYER_CACHE_CLOAK || player_record < 0
+	    || (size_t)player_record >= 8U || store >= 8U)
+		return;
+	tape->cache_stores[store] = player_record;
+	memcpy(tape->cache_store_raw[store], raw, 4U);
+	tape->cache_store_positions[store] = tape->event_count;
+	++tape->cache_store_count;
+	tape->cache[player_record] = qb_mbf32_decode(raw);
+}
+
+static void
 anti_cloak_fixture(struct anti_cloak_tape *tape,
     struct yt_earth_anti_cloak_state *state, float cache[8])
 {
@@ -26160,6 +26282,7 @@ anti_cloak_fixture(struct anti_cloak_tape *tape,
 	cache[2] = 1.0f;
 	cache[3] = -1.0f;
 	cache[4] = 0.5f;
+	tape->cache = cache;
 	state->price = 10.25f;
 	state->current_record = 7.0f;
 	state->player_terminal = 4.0f;
@@ -26177,6 +26300,8 @@ check_earth_anti_cloak_transaction(void)
 		anti_cloak_mutate_credits,
 		anti_cloak_present,
 		anti_cloak_sound,
+		anti_cloak_cache_read,
+		anti_cloak_cache_store,
 	};
 	static const int reported_events[] = {
 		ANTI_CLOAK_PRESENT, ANTI_CLOAK_PRESENT,
@@ -26222,6 +26347,14 @@ check_earth_anti_cloak_transaction(void)
 	    || tape.read_records[1] != 4.0f
 	    || tape.read_records[2] != 7.0f || tape.write_record != 7.0f
 	    || cache[2] != 0.0f || cache[3] != -1.0f || cache[4] != 0.0f
+	    || tape.cache_read_count != 3U
+	    || tape.cache_reads[0] != 2 || tape.cache_reads[1] != 3
+	    || tape.cache_reads[2] != 4 || tape.cache_store_count != 2U
+	    || tape.cache_stores[0] != 2 || tape.cache_stores[1] != 4
+	    || tape.cache_store_positions[0] != 5U
+	    || tape.cache_store_positions[1] != 8U
+	    || memcmp(tape.cache_store_raw[0], "\0\0\0\0", 4U) != 0
+	    || memcmp(tape.cache_store_raw[1], "\0\0\0\0", 4U) != 0
 	    || !state.reported || state.counter != 5.0f
 	    || state.foreground != 3.0f || state.field_record != 7.0f
 	    || state.credit_argument != -10.25f || !state.credit_loaded
@@ -26267,10 +26400,11 @@ check_earth_anti_cloak_transaction(void)
 
 	anti_cloak_fixture(&tape, &state, cache);
 	state.player_terminal = 2.0f;
-	cache[2] = NAN;
+	cache[2] = 0.0f;
 	if (!yt_earth_anti_cloak_run(&state, &ops, &tape, NULL)
 	    || tape.read_position != 1U || tape.read_records[0] != 7.0f
-	    || !isnan(cache[2]) || state.reported)
+	    || cache[2] != 0.0f || tape.cache_store_count != 0U
+	    || state.reported)
 		return false;
 
 	anti_cloak_fixture(&tape, &state, cache);
@@ -36598,6 +36732,7 @@ main(void)
 	}, 0};
 	struct score_progress_tape progress = {0};
 	struct score_owner_tape owner_tape = {0};
+	struct score_owner_tape team_tape = {0};
 	struct yt_score_field_observation score_field;
 	struct yt_error error;
 	struct yt_record blank;
@@ -37266,13 +37401,17 @@ main(void)
 	game.config.port_offset = 100.0f;
 	if (!yt_score_generate_progress_process_observed(&game,
 	    3.0f, 5.0f, NULL, NULL,
-	    &score_field, score_owner_collect, &owner_tape, &error)
+	    &score_field, score_owner_collect, &owner_tape,
+	    score_owner_collect, &team_tape, &error)
 	    || !score_field.valid || score_field.kind != YT_SCORE_FIELD_TEAM
 	    || score_field.physical_record != 5U
 	    || memcmp(score_field.image.bytes, "Team Two", 8U) != 0
 	    || owner_tape.count != 2U
 	    || memcmp(owner_tape.raw[0], "\0\0\x40\x82", 4U) != 0
-	    || memcmp(owner_tape.raw[1], "\0\0\x80\x81", 4U) != 0)
+	    || memcmp(owner_tape.raw[1], "\0\0\x80\x81", 4U) != 0
+	    || team_tape.count != 2U
+	    || memcmp(team_tape.raw[0], "\0\0\0\x81", 4U) != 0
+	    || memcmp(team_tape.raw[1], "\0\0\0\x82", 4U) != 0)
 		goto close;
 	if (clock_script.position != YT_ARRAY_LEN(clock_script.values))
 		goto close;

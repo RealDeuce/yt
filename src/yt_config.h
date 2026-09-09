@@ -167,9 +167,36 @@ enum yt_date_serial_store_kind {
 	YT_DATE_SERIAL_STORE_MONTH,
 	YT_DATE_SERIAL_STORE_YEAR_TERMINAL,
 	YT_DATE_SERIAL_STORE_YEAR_COUNTER,
+	YT_DATE_SERIAL_STORE_RESULT,
 };
 typedef void (*yt_date_serial_store_fn)(void *context,
     enum yt_date_serial_store_kind kind, const uint8_t raw[4]);
+
+enum yt_date_serial_executable {
+	YT_DATE_SERIAL_EXEC_YT,
+	YT_DATE_SERIAL_EXEC_YTCONFIG,
+	YT_DATE_SERIAL_EXEC_YTMAINT,
+	YT_DATE_SERIAL_EXEC_RMT_INIT,
+};
+
+struct yt_date_serial_process_state {
+	uint16_t call_site;
+	uint16_t result_address;
+	uint16_t copy_address;
+	uint8_t result_raw[4];
+	uint8_t copy_raw[4];
+	bool result_written;
+	bool copy_written;
+};
+
+bool yt_date_serial_process_init(struct yt_date_serial_process_state *state,
+    enum yt_date_serial_executable executable, uint16_t call_site);
+void yt_date_serial_process_store(void *context,
+    enum yt_date_serial_store_kind kind, const uint8_t raw[4]);
+void yt_date_serial_process_copy(struct yt_date_serial_process_state *state);
+int yt_date_serial_observed(const struct yt_clock_value *date,
+    const uint8_t epoch_raw[4], int *adjusted_year,
+    yt_date_serial_store_fn store, void *context);
 bool yt_current_date_serial(float epoch, int *serial, int *adjusted_year,
     struct yt_error *error);
 bool yt_current_date_serial_observed(const uint8_t epoch_raw[4], int *serial,

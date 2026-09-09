@@ -2336,6 +2336,61 @@ test_file_rename(void)
 }
 
 static void
+test_com_close_method(void)
+{
+	static const uint8_t drain[] = {0U, 3U, 4U, 5U};
+	struct yt_com_close_state state = {
+		-4, 1U, 4U, 0x2222U, 0x2222U, 7U, 0x56781234U,
+		true, true, true,
+	};
+	struct yt_com_close_state retained;
+	struct yt_com_close_observation observation = {
+		false, 0U, drain, YT_ARRAY_LEN(drain),
+	};
+	struct yt_com_close_result result;
+
+	CHECK(yt_com_close_run(&state, &observation, &result)
+	    && result.outcome == YT_COM_CLOSE_RETURNED
+	    && result.port_state_address == 0x13A6U
+	    && !result.optional_eof_write
+	    && result.drain_status_count == YT_ARRAY_LEN(drain)
+	    && result.teardown_completed && result.control_released
+	    && state.transmit_count == 0U && state.saved_vector == 0U
+	    && state.port_descriptor == 0U && !state.interrupt_installed
+	    && !state.field_bound && !state.control_live);
+
+	state = (struct yt_com_close_state){
+		-5, 0U, 4U, 0x3333U, 0x3333U, 2U, 0x12345678U,
+		true, true, true,
+	};
+	retained = state;
+	observation = (struct yt_com_close_observation){true, 3U, NULL, 0U};
+	CHECK(yt_com_close_run(&state, &observation, &result)
+	    && result.outcome == YT_COM_CLOSE_RUNTIME_ERROR
+	    && result.port_state_address == 0x13BEU
+	    && result.optional_eof_write && result.basic_error == 24U
+	    && !result.teardown_completed && !result.control_released
+	    && memcmp(&state, &retained, sizeof(state)) == 0);
+
+	observation.optional_status = 0U;
+	CHECK(yt_com_close_run(&state, &observation, &result)
+	    && result.outcome == YT_COM_CLOSE_RETURNED
+	    && result.optional_eof_write && result.teardown_completed
+	    && !state.control_live && !state.field_bound);
+
+	state = retained;
+	state.kind = 1U;
+	observation = (struct yt_com_close_observation){false, 0U, NULL, 0U};
+	CHECK(yt_com_close_run(&state, &observation, &result)
+	    && !result.optional_eof_write && result.control_released);
+
+	state = retained;
+	observation = (struct yt_com_close_observation){true, 2U, NULL, 0U};
+	CHECK(!yt_com_close_run(&state, &observation, &result)
+	    && memcmp(&state, &retained, sizeof(state)) == 0);
+}
+
+static void
 test_close_all_registry(void)
 {
 	struct close_all_tape tape;
@@ -8737,6 +8792,7 @@ main(void)
 	test_database_random_open();
 	test_file_kill();
 	test_file_rename();
+	test_com_close_method();
 	test_close_all_registry();
 	test_database_random_close();
 	test_text_output_write();

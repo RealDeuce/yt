@@ -19,6 +19,10 @@
 #define GENESIS_PRINT_ERRORS {52U, 57U, 61U, 70U, 71U}
 #define GENESIS_COMPLETION_ERRORS {57U}
 #define GENESIS_CLOSE_ERRORS {57U, 61U, 70U}
+#define RADIO_OPEN_ERRORS {5U, 52U, 53U, 55U, 57U, 67U, 68U, 70U, 71U, 72U, 75U}
+#define RADIO_LOF_ERRORS {52U, 57U}
+#define RADIO_CLOSE_ERRORS {52U, 57U, 70U}
+#define DELEGATED_ERRORS {0U}
 #define MAIN_FAULT(label, op, saved, statement, erl, domain, count) \
 	{label, YT_BASIC_FAULT_MAIN, op, saved, statement, erl, 0xB2DAU, \
 	    domain, count}
@@ -179,6 +183,32 @@ static const struct yt_basic_fault_identity basic_faults[] = {
 	    0x1DD2U, 610, SPACE_ERRORS, 1U),
 	MAIN_FAULT("A8D2 LEFT$ first byte", 0xA8EFU, 0xA8F2U,
 	    0xA8E7U, 40001, A8D2_LEFT_ERRORS, 2U),
+	MAIN_FAULT("action-finalizer anti-cloak CINT", 0xA734U,
+	    0xA737U, 0xA712U, 40001, CINT_ERRORS, 1U),
+	MAIN_FAULT("action-finalizer player-index CINT", 0xA773U,
+	    0xA776U, 0xA770U, 40001, CINT_ERRORS, 1U),
+	SHARED_FAULT("radio OPEN", 0x2071U, 0x2074U, 0x2062U, 633,
+	    RADIO_OPEN_ERRORS, 11U),
+	SHARED_FAULT("radio LOF", 0x268FU, 0x2692U, 0x268CU, 6200,
+	    RADIO_LOF_ERRORS, 2U),
+	SHARED_FAULT("radio record GET", 0x26BBU, 0x26BEU, 0x26B0U, 6200,
+	    GET_ERRORS, 6U),
+	SHARED_FAULT("radio recipient player GET", 0x274DU, 0x2750U,
+	    0x273CU, 6200, GET_ERRORS, 6U),
+	SHARED_FAULT("radio sender player GET", 0x27C1U, 0x27C4U,
+	    0x27B0U, 6200, GET_ERRORS, 6U),
+	SHARED_FAULT("radio final CLOSE", 0x2987U, 0x298AU, 0x2984U, 6200,
+	    RADIO_CLOSE_ERRORS, 3U),
+	SHARED_FAULT("radio opening direct output", 0x2645U, 0x264AU,
+	    0x2638U, 6200, DELEGATED_ERRORS, 0U),
+	SHARED_FAULT("radio log-heading direct output", 0x2664U, 0x2669U,
+	    0x2657U, 6200, DELEGATED_ERRORS, 0U),
+	SHARED_FAULT("radio automatic-heading direct output", 0x2679U,
+	    0x267EU, 0x266CU, 6200, DELEGATED_ERRORS, 0U),
+	SHARED_FAULT("radio pause direct output", 0x28BEU, 0x28C3U,
+	    0x28B1U, 6200, DELEGATED_ERRORS, 0U),
+	SHARED_FAULT("radio private wait", 0x28D3U, 0x28D8U, 0x28C3U,
+	    6200, DELEGATED_ERRORS, 0U),
 };
 
 _Static_assert(YT_ARRAY_LEN(basic_faults) == YT_BASIC_FAULT_SITE_COUNT,
@@ -190,6 +220,10 @@ _Static_assert(YT_ARRAY_LEN(basic_faults) == YT_BASIC_FAULT_SITE_COUNT,
 #undef CINT_ERRORS
 #undef SPACE_ERRORS
 #undef STACK_ERRORS
+#undef DELEGATED_ERRORS
+#undef RADIO_CLOSE_ERRORS
+#undef RADIO_LOF_ERRORS
+#undef RADIO_OPEN_ERRORS
 #undef GENESIS_CLOSE_ERRORS
 #undef GENESIS_COMPLETION_ERRORS
 #undef GENESIS_PRINT_ERRORS
@@ -218,6 +252,8 @@ yt_basic_fault_admits(enum yt_basic_fault_site site, uint8_t error_number)
 
 	if (identity == NULL)
 		return false;
+	if (identity->error_count == 0U)
+		return true;
 	for (index = 0U; index < identity->error_count; ++index)
 		if (identity->errors[index] == error_number)
 			return true;

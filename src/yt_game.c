@@ -471,10 +471,17 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 	config->scoreboard[state->scoreboard_path_length] = '\0';
 
 	if (config->headquarters == 0.0f) {
-		if (!yt_record_set_number(&config->record, YT_F117, 85.0f)
+		static const uint8_t headquarters_default[4] = {
+			0x00, 0x40, 0x37, 0x8a
+		};
+
+		if (!yt_record_set_raw_number(&config->record, YT_F117,
+		    headquarters_default)
 		    || !ops->store_config(context, config, error))
 			return false;
-		config->headquarters = 85.0f;
+		config->headquarters = 733.0f;
+		if (ops->store_headquarters != NULL)
+			ops->store_headquarters(context, headquarters_default);
 	}
 	if (config->genesis_ports < 20.0f) {
 		static const uint8_t genesis_default[4] = {
@@ -13811,7 +13818,8 @@ yt_earth_anti_cloak_run(struct yt_earth_anti_cloak_state *state,
 
 	if (state == NULL || ops == NULL || ops->read_player == NULL
 	    || ops->mutate_credits == NULL || ops->present == NULL
-	    || ops->sound == NULL || state->cloak_cache == NULL)
+	    || ops->sound == NULL || ops->read_cache == NULL
+	    || ops->store_cache == NULL || state->cloak_cache == NULL)
 		return false;
 	state->counter = 2.0f;
 	state->reported = false;
@@ -13848,11 +13856,22 @@ yt_earth_anti_cloak_run(struct yt_earth_anti_cloak_state *state,
 			return false;
 		}
 		index = (size_t)converted;
+		{
+			uint8_t cache_raw[4];
+
+			ops->read_cache(context, converted,
+			    YT_PLAYER_CACHE_CLOAK, cache_raw);
+			state->cloak_cache[index] = qb_mbf32_decode(cache_raw);
+		}
 		if (state->cloak_cache[index] > 0.0f) {
 			int32_t converted_length;
 			size_t name_length;
 
+			static const uint8_t zero[4] = {0};
+
 			state->cloak_cache[index] = 0.0f;
+			ops->store_cache(context, converted,
+			    YT_PLAYER_CACHE_CLOAK, zero);
 			if (!ops->read_player(context, state->counter,
 			    &state->field_player, error))
 				return false;

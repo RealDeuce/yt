@@ -87,6 +87,7 @@
 #define YT_UPPERCASE_INDEX_ADDRESS 0x536EU
 #define YT_ADD_FLOAT_CALLBACK_ADDRESS 0x0A60U
 #define YT_TURNS_PER_DAY_ADDRESS 0x4BD0U
+#define YT_HEADQUARTERS_ADDRESS 0x4BD8U
 #define YT_LOTTERY_PLAYS_ADDRESS 0x4BB8U
 #define YT_MAXIMUM_PLANETS_ADDRESS 0x4BA8U
 #define YT_MAXIMUM_HOLDS_ADDRESS 0x19E8U
@@ -172,6 +173,8 @@
 #define YT_SPY_FOUND_SCRATCH_ADDRESS 0x5FE8U
 #define YT_SPY_DEAD_COUNTER_SCRATCH_ADDRESS 0x6018U
 #define YT_DATE_SERIAL_RESULT_ADDRESS 0x188CU
+#define YT_PROFIT_EARLY_DATE_SERIAL_ADDRESS 0x5E56U
+#define YT_PROFIT_LATE_DATE_SERIAL_ADDRESS 0x60C4U
 #define YT_STARTUP_DATE_SERIAL_ADDRESS 0x4CCAU
 #define YT_DATE_SERIAL_YEAR_ADDRESS 0x538AU
 #define YT_DATE_SERIAL_MONTH_ADDRESS 0x538EU
@@ -189,6 +192,7 @@
 #define YT_TEAM_AUDIT_LOOP_ADDRESS 0x5F94U
 #define YT_TEAM_AUDIT_SENDER_ADDRESS 0x5F98U
 #define YT_SHARED_TARGET_RECORD_ADDRESS 0x1A40U
+#define YT_SCOREBOARD_TEAM_SCRATCH_ADDRESS 0x4B8CU
 #define YT_COUNTERATTACK_PLAYER_ADDRESS 0x1C10U
 #define YT_XANNOR_PROVOKER_ADDRESS 0x4BDCU
 #define YT_FOREGROUND_ADDRESS 0x1934U
@@ -534,6 +538,7 @@ session_date_serial_store(void *context, enum yt_date_serial_store_kind kind,
 		    YT_DATE_SERIAL_YEAR_TERMINAL_ADDRESS,
 		[YT_DATE_SERIAL_STORE_YEAR_COUNTER] =
 		    YT_DATE_SERIAL_YEAR_COUNTER_ADDRESS,
+		[YT_DATE_SERIAL_STORE_RESULT] = YT_DATE_SERIAL_RESULT_ADDRESS,
 	};
 	struct yt_session *session = context;
 
@@ -2910,6 +2915,15 @@ startup_configuration_store_genesis(void *context, const uint8_t raw[4])
 }
 
 static void
+startup_configuration_store_headquarters(void *context, const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_HEADQUARTERS_ADDRESS, raw);
+}
+
+static void
 startup_configuration_store_turns(void *context, const uint8_t raw[4])
 {
 	struct yt_session *session = context;
@@ -3102,6 +3116,7 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 		startup_configuration_store_cache_counter,
 		startup_configuration_store_cache_value,
 		startup_configuration_store_uppercase,
+		startup_configuration_store_headquarters,
 	};
 	struct yt_game *game = &session->door->game;
 	struct yt_startup_configuration_state state;
@@ -4485,7 +4500,21 @@ struct radio_read_context {
 	enum yt_radio_read_name_role player_field_role;
 	bool radio_field_valid;
 	bool player_field_valid;
+	float reader_mode;
 };
+
+static void
+radio_read_attach_fault(struct yt_error *error, enum yt_basic_fault_site site,
+    uint16_t basic_error)
+{
+	if (error == NULL)
+		return;
+	if (basic_error == 0U && error->basic_error_valid)
+		basic_error = error->basic_error;
+	if (basic_error == 0U
+	    || !yt_error_attach_basic_fault_number(error, site, basic_error))
+		(void)yt_error_attach_basic_fault(error, site);
+}
 
 static bool
 radio_read_open(void *context, struct yt_error *error)
@@ -4493,7 +4522,13 @@ radio_read_open(void *context, struct yt_error *error)
 	struct radio_read_context *reader = context;
 
 	yt_radio_file_init(&reader->file);
-	return yt_radio_file_open(&reader->file, "YTRMSG.DAT", error);
+	if (yt_radio_file_open(&reader->file, "YTRMSG.DAT", error))
+		return true;
+	radio_read_attach_fault(error, YT_BASIC_FAULT_RADIO_OPEN,
+	    reader->file.random.last_open.basic_error != 0U
+	    ? reader->file.random.last_open.basic_error
+	    : reader->file.random.last_close.basic_error);
+	return false;
 }
 
 static bool
@@ -4501,7 +4536,11 @@ radio_read_size(void *context, uint64_t *length, struct yt_error *error)
 {
 	struct radio_read_context *reader = context;
 
-	return yt_radio_file_size(&reader->file, length, error);
+	if (yt_radio_file_size(&reader->file, length, error))
+		return true;
+	radio_read_attach_fault(error, YT_BASIC_FAULT_RADIO_LOF,
+	    reader->file.random.last_lof.basic_error);
+	return false;
 }
 
 static bool
@@ -4512,6 +4551,9 @@ radio_read_get(void *context, uint32_t record,
 	bool result;
 
 	result = yt_radio_file_get(&reader->file, record, value, NULL, error);
+	if (!result)
+		radio_read_attach_fault(error, YT_BASIC_FAULT_RADIO_RECORD_GET,
+		    reader->file.random.last_get.basic_error);
 	if (result) {
 		reader->radio_field = *value;
 		reader->radio_field_record = record;
@@ -4531,6 +4573,11 @@ radio_read_name(void *context, float record, bool sender, uint8_t *dest,
 
 	result = radio_name_bytes(reader->session, record, dest, capacity,
 	    length, sender, &player, &player_valid, error);
+	if (!result && record > 0.0f)
+		radio_read_attach_fault(error, sender
+		    ? YT_BASIC_FAULT_RADIO_SENDER_GET
+		    : YT_BASIC_FAULT_RADIO_RECIPIENT_GET,
+		    reader->session->door->game.database.last_get.basic_error);
 	if (player_valid) {
 		reader->player_field = player;
 		reader->player_field_record = qb_brun_random_record_number(record);
@@ -4559,9 +4606,21 @@ radio_read_present(void *context, const uint8_t *text, size_t length,
 
 	if ((size_t)kind >= YT_ARRAY_LEN(operations))
 		return false;
-	return session_present_text(reader->session, text, length,
+	if (session_present_text(reader->session, text, length,
 	    kind == YT_RADIO_READ_PAUSE ? SESSION_PRESENT_RAW
-	    : SESSION_PRESENT_LINE, operations[kind], error);
+	    : SESSION_PRESENT_LINE, operations[kind], error))
+		return true;
+	if (kind == YT_RADIO_READ_OPENING_BLANK)
+		radio_read_attach_fault(error,
+		    YT_BASIC_FAULT_RADIO_OPENING_OUTPUT, 0U);
+	else if (kind == YT_RADIO_READ_HEADING)
+		radio_read_attach_fault(error, reader->reader_mode != 0.0f
+		    ? YT_BASIC_FAULT_RADIO_LOG_HEADING_OUTPUT
+		    : YT_BASIC_FAULT_RADIO_AUTO_HEADING_OUTPUT, 0U);
+	else if (kind == YT_RADIO_READ_PAUSE)
+		radio_read_attach_fault(error, YT_BASIC_FAULT_RADIO_PAUSE_OUTPUT,
+		    0U);
+	return false;
 }
 
 static bool
@@ -4569,8 +4628,11 @@ radio_read_wait(void *context, double seconds, struct yt_error *error)
 {
 	struct radio_read_context *reader = context;
 
-	return session_wait(reader->session, seconds,
-	    "radio private-pager wait", error);
+	if (session_wait(reader->session, seconds,
+	    "radio private-pager wait", error))
+		return true;
+	radio_read_attach_fault(error, YT_BASIC_FAULT_RADIO_PRIVATE_WAIT, 0U);
+	return false;
 }
 
 static bool
@@ -4587,7 +4649,11 @@ radio_read_close(void *context, struct yt_error *error)
 {
 	struct radio_read_context *reader = context;
 
-	return yt_radio_file_close(&reader->file, error);
+	if (yt_radio_file_close(&reader->file, error))
+		return true;
+	radio_read_attach_fault(error, YT_BASIC_FAULT_RADIO_FINAL_CLOSE,
+	    reader->file.random.last_close.basic_error);
+	return false;
 }
 
 static bool
@@ -4604,7 +4670,10 @@ radio_read(struct yt_session *session, float reader_mode,
 		radio_read_put,
 		radio_read_close,
 	};
-	struct radio_read_context context = {.session = session};
+	struct radio_read_context context = {
+		.session = session,
+		.reader_mode = reader_mode,
+	};
 	struct yt_radio_read_state state = {
 		.reader_mode = reader_mode,
 		.current_player = (float)session_record(session),
@@ -5275,6 +5344,13 @@ display_sector_one(struct yt_session *session, float logical_sector,
 		    session_player_cache_value(session, basic,
 		    YT_PLAYER_CACHE_SECTOR), logical_sector))
 			continue;
+		{
+			uint8_t cloak_raw[4];
+
+			session_player_cache_raw(session, basic,
+			    YT_PLAYER_CACHE_CLOAK, cloak_raw);
+			session->cloak_cache[basic] = qb_mbf32_decode(cloak_raw);
+		}
 		if (!yt_random_next(&session->door->game.random, &random_value,
 		    error))
 			return false;
@@ -5288,7 +5364,13 @@ display_sector_one(struct yt_session *session, float logical_sector,
 			    "sector cloak shimmer row", error))
 				return false;
 			yt_sector_pager_add(private_pager, 1.0f);
-			session->cloak_cache[basic] = 0.0f;
+			{
+				static const uint8_t zero[4] = {0};
+
+				session_set_player_cache_raw(session, basic,
+				    YT_PLAYER_CACHE_CLOAK, zero);
+				session->cloak_cache[basic] = 0.0f;
+			}
 			if (!session_sound(session, 4.0f,
 			    "sector cloak-reveal sound", error))
 				return false;
@@ -5989,6 +6071,8 @@ finalize_action(struct yt_session *session, float amount,
 			(void)snprintf(error->operation, sizeof(error->operation), "%s",
 			    "action-finalizer anti-cloak CINT");
 		}
+		(void)yt_error_attach_basic_fault_number(error,
+		    YT_BASIC_FAULT_ACTION_FINALIZER_ANTI_CLOAK_CINT, 6U);
 		return false;
 	}
 	if (quotient == floorf(quotient) && anti_cloak_allows) {
@@ -6027,6 +6111,8 @@ finalize_action(struct yt_session *session, float amount,
 				    sizeof(error->operation), "%s",
 				    "action-finalizer player-index CINT");
 			}
+			(void)yt_error_attach_basic_fault_number(error,
+			    YT_BASIC_FAULT_ACTION_FINALIZER_PLAYER_INDEX_CINT, 6U);
 			return false;
 		}
 		session_set_player_cache_raw(session, cache_record,
@@ -10092,6 +10178,8 @@ earth_anti_cloak(struct yt_session *session, float price,
 		apply_player_credit_mutation,
 		earth_anti_cloak_present,
 		earth_anti_cloak_sound,
+		session_player_cache_read,
+		session_player_cache_store,
 	};
 	struct yt_earth_anti_cloak_state state = {
 		.price = price,
@@ -19204,12 +19292,25 @@ computer_nearest_ports(struct yt_session *session, struct yt_error *error)
 	    error);
 }
 
+struct profit_session_context {
+	struct yt_session *session;
+	uint16_t date_result_copy_address;
+};
+
+static struct yt_session *
+profit_context_session(void *context)
+{
+	struct profit_session_context *profit = context;
+
+	return profit->session;
+}
+
 static bool
 profit_session_read(void *context, enum yt_profit_field_kind kind,
     float expression, uint32_t physical_record, struct yt_record *record,
     struct yt_error *error)
 {
-	struct yt_session *session = context;
+	struct yt_session *session = profit_context_session(context);
 
 	(void)kind;
 	(void)expression;
@@ -19220,12 +19321,15 @@ profit_session_read(void *context, enum yt_profit_field_kind kind,
 static bool
 profit_session_day(void *context, float *day, struct yt_error *error)
 {
-	struct yt_session *session = context;
+	struct profit_session_context *profit = context;
+	struct yt_session *session = profit->session;
 	int today;
 	int adjusted_year;
 
 	if (!session_current_date_serial(session, &today, &adjusted_year, error))
 		return false;
+	yt_route_process_copy_raw_single(&session->route_process,
+	    YT_DATE_SERIAL_RESULT_ADDRESS, profit->date_result_copy_address);
 	session->door->game.today = today;
 	session->door->game.adjusted_year = adjusted_year;
 	*day = (float)today;
@@ -19269,7 +19373,7 @@ profit_session_present(void *context, enum yt_profit_output_kind kind,
     enum yt_profit_present_mode mode, const uint8_t *text, size_t length,
     struct yt_nearest_style *style, struct yt_error *error)
 {
-	struct yt_session *session = context;
+	struct yt_session *session = profit_context_session(context);
 	enum session_present_text_kind present_kind;
 	bool ok;
 
@@ -19306,7 +19410,7 @@ static bool
 profit_session_input(void *context, uint8_t *text, size_t capacity,
     size_t *length, bool *available, struct yt_error *error)
 {
-	struct yt_session *session = context;
+	struct yt_session *session = profit_context_session(context);
 	struct yt_input_value selected;
 
 	(void)error;
@@ -19329,7 +19433,7 @@ profit_session_input(void *context, uint8_t *text, size_t capacity,
 static void
 profit_session_uppercase(void *context, uint8_t *text, size_t length)
 {
-	session_compat_upper_n(context, text, length);
+	session_compat_upper_n(profit_context_session(context), text, length);
 }
 
 static bool
@@ -19372,6 +19476,11 @@ computer_profit_exact(struct yt_session *session, bool all,
 		profit_session_checkpoint,
 	};
 	struct yt_profit_state state;
+	struct profit_session_context context = {
+		session,
+		all ? YT_PROFIT_LATE_DATE_SERIAL_ADDRESS
+		    : YT_PROFIT_EARLY_DATE_SERIAL_ADDRESS,
+	};
 	bool ok;
 
 	memset(&state, 0, sizeof(state));
@@ -19392,7 +19501,7 @@ computer_profit_exact(struct yt_session *session, bool all,
 	state.field_kind = YT_PROFIT_FIELD_PLAYER;
 	state.field_valid = true;
 
-	ok = yt_profit_run(&state, &ops, session, error);
+	ok = yt_profit_run(&state, &ops, &context, error);
 	session_set_foreground(session, state.style.foreground);
 	if (state.field_valid) {
 		session->navigation_field_active = true;
@@ -19573,6 +19682,15 @@ computer_scoreboard_store_defense_owner(void *context,
 	    YT_SHARED_TARGET_RECORD_ADDRESS, raw);
 }
 
+static void
+computer_scoreboard_store_team_id(void *context, const uint8_t raw[4])
+{
+	struct yt_session *session = context;
+
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_SCOREBOARD_TEAM_SCRATCH_ADDRESS, raw);
+}
+
 static bool
 computer_scoreboard_generate(void *context, struct yt_error *error)
 {
@@ -19583,7 +19701,8 @@ computer_scoreboard_generate(void *context, struct yt_error *error)
 	generated = yt_score_generate_progress_process_observed(
 	    &session->door->game, session_sector_offset(session),
 	    session_port_offset(session), computer_scoreboard_progress, session,
-	    &field, computer_scoreboard_store_defense_owner, session, error);
+	    &field, computer_scoreboard_store_defense_owner, session,
+	    computer_scoreboard_store_team_id, session, error);
 	if (field.valid) {
 		session->navigation_field_active = true;
 		session->navigation_field_record = (int)field.physical_record;
@@ -20054,7 +20173,7 @@ quit_session(struct yt_session *session, struct yt_error *error)
 	    || !yt_score_generate_progress_process_observed(
 	    &session->door->game, session_sector_offset(session),
 	    session_port_offset(session), computer_scoreboard_progress, session,
-	    NULL, NULL, NULL, error)
+	    NULL, NULL, NULL, NULL, NULL, error)
 	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "normal-exit post-generator blank", error))
 		return false;

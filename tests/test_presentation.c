@@ -4822,6 +4822,32 @@ test_basic_fault_registry(void)
 		    0x45F7U, 6U},
 		{YT_BASIC_FAULT_MAIN, 0xA8EFU, 0xA8F2U, 0xA8E7U, 40001,
 		    0xB2DAU, 13U},
+		{YT_BASIC_FAULT_MAIN, 0xA734U, 0xA737U, 0xA712U, 40001,
+		    0xB2DAU, 2U},
+		{YT_BASIC_FAULT_MAIN, 0xA773U, 0xA776U, 0xA770U, 40001,
+		    0xB2DAU, 2U},
+		{YT_BASIC_FAULT_SHARED, 0x2071U, 0x2074U, 0x2062U, 633,
+		    0x45F7U, 14U},
+		{YT_BASIC_FAULT_SHARED, 0x268FU, 0x2692U, 0x268CU, 6200,
+		    0x45F7U, 15U},
+		{YT_BASIC_FAULT_SHARED, 0x26BBU, 0x26BEU, 0x26B0U, 6200,
+		    0x45F7U, 0U},
+		{YT_BASIC_FAULT_SHARED, 0x274DU, 0x2750U, 0x273CU, 6200,
+		    0x45F7U, 0U},
+		{YT_BASIC_FAULT_SHARED, 0x27C1U, 0x27C4U, 0x27B0U, 6200,
+		    0x45F7U, 0U},
+		{YT_BASIC_FAULT_SHARED, 0x2987U, 0x298AU, 0x2984U, 6200,
+		    0x45F7U, 16U},
+		{YT_BASIC_FAULT_SHARED, 0x2645U, 0x264AU, 0x2638U, 6200,
+		    0x45F7U, 17U},
+		{YT_BASIC_FAULT_SHARED, 0x2664U, 0x2669U, 0x2657U, 6200,
+		    0x45F7U, 17U},
+		{YT_BASIC_FAULT_SHARED, 0x2679U, 0x267EU, 0x266CU, 6200,
+		    0x45F7U, 17U},
+		{YT_BASIC_FAULT_SHARED, 0x28BEU, 0x28C3U, 0x28B1U, 6200,
+		    0x45F7U, 17U},
+		{YT_BASIC_FAULT_SHARED, 0x28D3U, 0x28D8U, 0x28C3U, 6200,
+		    0x45F7U, 17U},
 	};
 	struct yt_error error;
 	size_t index;
@@ -4906,6 +4932,22 @@ test_basic_fault_registry(void)
 			    && !yt_basic_fault_admits(
 			    (enum yt_basic_fault_site)index, 5U));
 		}
+		else if (expected[index].domain == 14U) {
+			CHECK(identity->error_count == 11U);
+		}
+		else if (expected[index].domain == 15U) {
+			CHECK(identity->error_count == 2U);
+		}
+		else if (expected[index].domain == 16U) {
+			CHECK(identity->error_count == 3U);
+		}
+		else if (expected[index].domain == 17U) {
+			CHECK(identity->error_count == 0U
+			    && yt_basic_fault_admits(
+			    (enum yt_basic_fault_site)index, 0U)
+			    && yt_basic_fault_admits(
+			    (enum yt_basic_fault_site)index, 255U));
+		}
 		else {
 			size_t expected_count = expected[index].domain == 8U ? 7U
 			    : expected[index].domain == 9U ? 2U
@@ -4939,6 +4981,11 @@ test_basic_fault_registry(void)
 			static const uint8_t genesis_completion_errors[] = {57U};
 			static const uint8_t genesis_close_errors[] = {57U, 61U, 70U};
 			static const uint8_t a8d2_left_errors[] = {14U, 16U};
+			static const uint8_t radio_open_errors[] = {
+				5U, 52U, 53U, 55U, 57U, 67U, 68U, 70U, 71U, 72U, 75U,
+			};
+			static const uint8_t radio_lof_errors[] = {52U, 57U};
+			static const uint8_t radio_close_errors[] = {52U, 57U, 70U};
 			struct yt_basic_fault_projection projection;
 			const uint8_t *domain = expected[index].domain == 1U
 			    ? put_errors : expected[index].domain == 2U
@@ -4953,7 +5000,10 @@ test_basic_fault_registry(void)
 			    ? genesis_print_errors : expected[index].domain == 11U
 			    ? genesis_completion_errors : expected[index].domain == 12U
 			    ? genesis_close_errors : expected[index].domain == 13U
-			    ? a8d2_left_errors : get_errors;
+			    ? a8d2_left_errors : expected[index].domain == 14U
+			    ? radio_open_errors : expected[index].domain == 15U
+			    ? radio_lof_errors : expected[index].domain == 16U
+			    ? radio_close_errors : get_errors;
 			size_t domain_length = expected[index].domain == 1U
 			    ? YT_ARRAY_LEN(put_errors) : expected[index].domain == 2U
 			    ? 1U : expected[index].domain == 3U
@@ -4976,6 +5026,13 @@ test_basic_fault_registry(void)
 			    ? YT_ARRAY_LEN(genesis_close_errors)
 			    : expected[index].domain == 13U
 			    ? YT_ARRAY_LEN(a8d2_left_errors)
+			    : expected[index].domain == 14U
+			    ? YT_ARRAY_LEN(radio_open_errors)
+			    : expected[index].domain == 15U
+			    ? YT_ARRAY_LEN(radio_lof_errors)
+			    : expected[index].domain == 16U
+			    ? YT_ARRAY_LEN(radio_close_errors)
+			    : expected[index].domain == 17U ? 0U
 			    : YT_ARRAY_LEN(get_errors);
 			bool admitted = false;
 			size_t error_index;
@@ -4984,6 +5041,8 @@ test_basic_fault_registry(void)
 			    ++error_index)
 				if (domain[error_index] == error_number)
 					admitted = true;
+			if (expected[index].domain == 17U)
+				admitted = true;
 			CHECK(yt_basic_fault_admits(
 			    (enum yt_basic_fault_site)index,
 			    (uint8_t)error_number) == admitted);
@@ -4998,8 +5057,12 @@ test_basic_fault_registry(void)
 			CHECK(projection.identity == identity
 			    && projection.error_number == error_number);
 			if (identity->module == YT_BASIC_FAULT_SHARED) {
-				CHECK(projection.disposition == YT_BASIC_FAULT_END
-				    && projection.shared.ends);
+				if (error_number == 24U)
+					CHECK(projection.disposition
+					    == YT_BASIC_FAULT_RETRY_STATEMENT);
+				else
+					CHECK(projection.disposition == YT_BASIC_FAULT_END
+					    && projection.shared.ends);
 			}
 			else if (error_number == 57U) {
 				CHECK(projection.disposition

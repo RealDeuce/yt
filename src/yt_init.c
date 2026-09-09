@@ -1832,6 +1832,8 @@ rmt_present_before_headquarters(const struct yt_initializer_options *options,
     struct yt_config *config, struct yt_error *error)
 {
 	struct yt_clock_value maintenance_date;
+	struct yt_date_serial_process_state date_process;
+	uint8_t epoch_raw[4];
 	int maintenance_serial;
 
 	if (!rmt_present(options, 0x0907U, YT_RMT_OUTPUT_BLANK, NULL, 0U,
@@ -1848,10 +1850,13 @@ rmt_present_before_headquarters(const struct yt_initializer_options *options,
 	    "  # of days inactivity until an dead player is deleted:",
 	    config->retention_days, error))
 		return false;
-	if (!yt_platform_clock(&maintenance_date, error))
+	if (!yt_platform_clock(&maintenance_date, error)
+	    || qb_mbf32_encode(config->epoch_year, epoch_raw) == QB_MBF_OVERFLOW
+	    || !yt_date_serial_process_init(&date_process,
+	    YT_DATE_SERIAL_EXEC_RMT_INIT, 0x09CDU))
 		return false;
-	maintenance_serial = yt_date_serial(&maintenance_date,
-	    (int)config->epoch_year, NULL);
+	maintenance_serial = yt_date_serial_observed(&maintenance_date, epoch_raw,
+	    NULL, yt_date_serial_process_store, &date_process);
 	config->last_maintenance = (float)(maintenance_serial - 1);
 	return rmt_present_text(options, 0x09fdU, YT_RMT_OUTPUT_LINE,
 	    "  Last day maintenance run: Yesterday", error)
@@ -2005,6 +2010,8 @@ write_world_database(struct yt_database *database,
 {
 	struct yt_record record;
 	struct yt_clock_value port_date;
+	struct yt_date_serial_process_state date_process;
+	uint8_t epoch_raw[4];
 	int today;
 	int logical;
 
@@ -2048,7 +2055,16 @@ write_world_database(struct yt_database *database,
 		return false;
 	if (!yt_platform_clock(&port_date, error))
 		return false;
-	today = yt_date_serial(&port_date, (int)config->epoch_year, NULL);
+	if (options->family == YT_INITIALIZER_RMT) {
+		if (qb_mbf32_encode(config->epoch_year, epoch_raw) == QB_MBF_OVERFLOW
+		    || !yt_date_serial_process_init(&date_process,
+		    YT_DATE_SERIAL_EXEC_RMT_INIT, 0x17E6U))
+			return false;
+		today = yt_date_serial_observed(&port_date, epoch_raw, NULL,
+		    yt_date_serial_process_store, &date_process);
+	}
+	else
+		today = yt_date_serial(&port_date, (int)config->epoch_year, NULL);
 	if (!yt_present_text(options, 0x1a55U, YT_INIT_OUTPUT_LINE, "", error)
 	    || !yt_present_text(options, 0x1a69U, YT_INIT_OUTPUT_LINE,
 	    "   They started producing 10 days ago...", error)

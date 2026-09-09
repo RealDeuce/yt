@@ -14,6 +14,27 @@
 #define YT_SYSOP_KEY_PROCESS_SIZE 0x10000U
 #define YT_SYSOP_EVENT_STACK_SIZE 0x10000U
 
+enum yt_input_fault_family {
+	YT_INPUT_FAULT_B05D,
+	YT_INPUT_FAULT_B1F3,
+	YT_INPUT_FAULT_AB36,
+};
+
+enum yt_input_fault_module {
+	YT_INPUT_FAULT_MODULE_YT,
+	YT_INPUT_FAULT_MODULE_YT_SUB,
+};
+
+struct yt_input_fault_site {
+	enum yt_input_fault_module module;
+	uint16_t address;
+	uint16_t saved_ip;
+	uint16_t statement;
+	int32_t source_line;
+	uint8_t error_number;
+	bool live;
+};
+
 enum yt_input_phase {
 	YT_INPUT_PHASE_B05D,
 	YT_INPUT_PHASE_AB36,
@@ -418,6 +439,10 @@ struct yt_sysop_event_registers {
 };
 
 void yt_input_splitter_init(struct yt_input_splitter *splitter);
+size_t yt_input_fault_site_count(enum yt_input_fault_family family);
+bool yt_input_fault_site(enum yt_input_fault_family family, size_t index,
+    struct yt_input_fault_site *site);
+
 bool yt_input_splitter_can_push(const struct yt_input_splitter *splitter,
     bool remote);
 bool yt_input_splitter_push(struct yt_input_splitter *splitter, bool remote,

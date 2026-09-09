@@ -268,6 +268,7 @@ yt_score_generate_progress_process_observed(struct yt_game *game,
     yt_score_progress_fn progress, void *context,
     struct yt_score_field_observation *field,
     yt_score_process_store_fn store_defense_owner, void *process_context,
+    yt_score_process_store_fn store_team_id, void *team_context,
     struct yt_error *error)
 {
 	struct score_player players[YT_DEFAULT_PLAYER_COUNT];
@@ -344,6 +345,7 @@ yt_score_generate_progress_process_observed(struct yt_game *game,
 	}
 	for (index = 0; index < player_count; ++index) {
 		struct yt_player cached;
+		uint8_t team_raw[4];
 
 		if (!yt_game_read_player(game, players[index].record, &cached,
 		    error))
@@ -352,7 +354,10 @@ yt_score_generate_progress_process_observed(struct yt_game *game,
 		    (uint32_t)players[index].record, &cached.record);
 		cached.score = players[index].occupied
 		    ? (float)players[index].score : -1.0f;
+		memcpy(team_raw, cached.record.bytes + YT_F89, 4U);
 		yt_player_encode(&cached);
+		if (store_team_id != NULL)
+			store_team_id(team_context, team_raw);
 		score_field_observe(field, YT_SCORE_FIELD_PLAYER,
 		    (uint32_t)players[index].record, &cached.record);
 		if (!yt_game_write_player(game, players[index].record, &cached,
@@ -508,7 +513,7 @@ yt_score_generate_progress_observed(struct yt_game *game,
 {
 	return yt_score_generate_progress_process_observed(game,
 	    game->config.sector_offset, game->config.port_offset, progress,
-	    context, field, NULL, NULL, error);
+	    context, field, NULL, NULL, NULL, NULL, error);
 }
 
 bool

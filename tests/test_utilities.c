@@ -4549,6 +4549,10 @@ test_brun_internal_fatal(void)
 	struct yt_brun_internal_fatal_state state;
 	struct yt_brun_runtime_fatal_state runtime_state;
 	struct fatal_test_tape tape = {0};
+	struct yt_portname_runtime_site portname_site;
+	uint64_t portname_hash = UINT64_C(0xcbf29ce484222325);
+	size_t portname_index;
+	uint16_t previous_portname_address = 0U;
 	const uint8_t *description;
 	size_t description_length;
 	size_t name_index;
@@ -4763,6 +4767,42 @@ test_brun_internal_fatal(void)
 	    || tape.events[3] != FATAL_TEST_LOCAL
 	    || tape.events[4] != FATAL_TEST_RESTORE
 	    || tape.events[5] != FATAL_TEST_END)
+		return false;
+	if (yt_portname_runtime_site_count() != 194U)
+		return false;
+	for (portname_index = 0U; portname_index < 194U; ++portname_index) {
+		uint16_t values[2];
+		size_t value_index;
+
+		if (!yt_portname_runtime_site(portname_index, &portname_site)
+		    || portname_site.saved_ip <= portname_site.address
+		    || (portname_index != 0U
+		    && portname_site.address <= previous_portname_address))
+			return false;
+		previous_portname_address = portname_site.address;
+		values[0] = portname_site.address;
+		values[1] = portname_site.saved_ip;
+		for (value_index = 0U; value_index < 2U; ++value_index) {
+			portname_hash ^= values[value_index] & 0xffU;
+			portname_hash *= UINT64_C(0x100000001b3);
+			portname_hash ^= values[value_index] >> 8;
+			portname_hash *= UINT64_C(0x100000001b3);
+		}
+	}
+	if (portname_hash != UINT64_C(0xf477d5b553888350)
+	    || yt_portname_runtime_site(194U, &portname_site))
+		return false;
+	memset(&tape, 0, sizeof(tape));
+	if (!yt_portname_runtime_fatal_run(0x031AU, 52U, 0x3456U, false,
+	    false, false, 0U, &ops, &tape, &runtime_state)
+	    || runtime_state.terminal.has_source_line
+	    || strcmp(runtime_state.terminal.module, "PORTNAME") != 0
+	    || runtime_state.terminal.module_segment != 0x3456U
+	    || runtime_state.terminal.saved_ip != 0x031FU
+	    || !runtime_state.terminal.close_all_completed
+	    || !runtime_state.terminal.ended
+	    || yt_portname_runtime_fatal_run(0xFFFFU, 52U, 0x3456U, false,
+	    false, false, 0U, &ops, &tape, &runtime_state))
 		return false;
 	return !yt_brun_internal_fatal_run(YT_BRUN_INTERNAL_FATAL_OWNER,
 	    "        ", false, 0, 0U, 0U, false, false, false, 0U,

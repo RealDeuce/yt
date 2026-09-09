@@ -76,6 +76,8 @@ typedef void (*yt_startup_configuration_disruption_store_fn)(void *context,
 	size_t index, const uint8_t raw[4]);
 typedef void (*yt_startup_configuration_genesis_store_fn)(void *context,
 	const uint8_t raw[4]);
+typedef void (*yt_startup_configuration_headquarters_store_fn)(void *context,
+	const uint8_t raw[4]);
 typedef void (*yt_startup_configuration_turns_store_fn)(void *context,
 	const uint8_t raw[4]);
 typedef void (*yt_startup_configuration_lottery_store_fn)(void *context,
@@ -141,6 +143,7 @@ struct yt_startup_configuration_ops {
 	yt_startup_configuration_cache_counter_store_fn store_cache_counter;
 	yt_startup_configuration_cache_value_store_fn store_cache_value;
 	qb_compat_upper_store_fn store_uppercase;
+	yt_startup_configuration_headquarters_store_fn store_headquarters;
 };
 
 bool yt_startup_configuration_run(
@@ -3879,11 +3882,17 @@ typedef bool (*yt_earth_anti_cloak_present_fn)(void *context,
     struct yt_error *error);
 typedef bool (*yt_earth_anti_cloak_sound_fn)(void *context, float selector,
     struct yt_error *error);
+typedef void (*yt_earth_anti_cloak_cache_read_fn)(void *context,
+    int player_record, enum yt_player_cache_kind kind, uint8_t raw[4]);
+typedef void (*yt_earth_anti_cloak_cache_store_fn)(void *context,
+    int player_record, enum yt_player_cache_kind kind, const uint8_t raw[4]);
 struct yt_earth_anti_cloak_ops {
 	yt_earth_anti_cloak_read_player_fn read_player;
 	yt_credit_mutation_apply_fn mutate_credits;
 	yt_earth_anti_cloak_present_fn present;
 	yt_earth_anti_cloak_sound_fn sound;
+	yt_earth_anti_cloak_cache_read_fn read_cache;
+	yt_earth_anti_cloak_cache_store_fn store_cache;
 };
 bool yt_earth_anti_cloak_run(struct yt_earth_anti_cloak_state *state,
     const struct yt_earth_anti_cloak_ops *ops, void *context,

@@ -1351,6 +1351,64 @@ yt_brun_random_close_process_apply(uint8_t *process,
 }
 
 bool
+yt_com_close_run(struct yt_com_close_state *state,
+    const struct yt_com_close_observation *observation,
+    struct yt_com_close_result *result)
+{
+	struct yt_com_close_result local;
+	size_t index;
+	bool optional;
+
+	if (state == NULL || observation == NULL)
+		return false;
+	if (state->file_class != -4 && state->file_class != -5)
+		return false;
+	if (observation->drain_status_count != 0U
+	    && observation->drain_statuses == NULL)
+		return false;
+	memset(&local, 0, sizeof(local));
+	local.outcome = YT_COM_CLOSE_RETURNED;
+	local.port_state_address = state->file_class == -4 ? 0x13A6U : 0x13BEU;
+	optional = state->binary_mode != 1U && state->kind != 1U;
+	local.optional_eof_write = optional;
+	if (optional != observation->optional_status_supplied)
+		return false;
+	if (optional) {
+		uint8_t status = observation->optional_status;
+
+		if (status != 0U && status != 3U && status != 4U
+		    && status != 5U)
+			return false;
+		if (status != 0U) {
+			local.outcome = YT_COM_CLOSE_RUNTIME_ERROR;
+			local.basic_error = 24U;
+			if (result != NULL)
+				*result = local;
+			return true;
+		}
+	}
+	for (index = 0U; index < observation->drain_status_count; ++index) {
+		uint8_t status = observation->drain_statuses[index];
+
+		if (status != 0U && status != 3U && status != 4U
+		    && status != 5U)
+			return false;
+	}
+	local.drain_status_count = observation->drain_status_count;
+	state->transmit_count = 0U;
+	state->saved_vector = 0U;
+	state->interrupt_installed = false;
+	state->port_descriptor = 0U;
+	state->field_bound = false;
+	state->control_live = false;
+	local.teardown_completed = true;
+	local.control_released = true;
+	if (result != NULL)
+		*result = local;
+	return true;
+}
+
+bool
 yt_close_all_run(const struct yt_close_all_control *controls,
     size_t control_count, const struct yt_close_all_fixed_control *fixed,
     struct yt_close_all_result *result, struct yt_error *error)
