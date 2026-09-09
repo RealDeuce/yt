@@ -1908,9 +1908,9 @@ struct team_loader_read_tape {
 	uint32_t physical_record;
 	size_t calls;
 	bool fail;
-	enum yt_team_loader_store_kind store_kind[10];
-	size_t store_index[10];
-	uint8_t store_raw[10][4];
+	enum yt_team_loader_store_kind store_kind[17];
+	size_t store_index[17];
+	uint8_t store_raw[17][4];
 	size_t store_count;
 };
 
@@ -1972,6 +1972,9 @@ check_team_loader_transaction(void)
 		{0x00U, 0x00U, 0x00U, 0x83U}, {0},
 		{0x00U, 0x00U, 0x20U, 0x83U},
 	};
+	static const size_t roster_offset[4] = {
+		YT_F109, YT_F117, YT_F121, YT_F125,
+	};
 	struct team_loader_read_tape tape;
 	struct yt_team_loader_state state;
 	struct yt_team_loader_cache cache;
@@ -2002,12 +2005,28 @@ check_team_loader_transaction(void)
 	    || cache.captain != 2.0f || cache.captain_flag != -1.0f
 	    || cache.roster[0] != 3.0f)
 		return false;
-	if (tape.store_count != YT_ARRAY_LEN(expected_kind))
+	if (tape.store_count != 17U)
 		return false;
-	for (index = 0U; index < tape.store_count; ++index) {
+	for (index = 0U; index < YT_ARRAY_LEN(expected_kind); ++index) {
 		if (tape.store_kind[index] != expected_kind[index]
 		    || tape.store_index[index] != expected_index[index]
 		    || memcmp(tape.store_raw[index], expected_raw[index], 4U) != 0)
+			return false;
+	}
+	if (tape.store_kind[10] != YT_TEAM_LOADER_STORE_AVAILABLE
+	    || memcmp(tape.store_raw[10],
+	    (const uint8_t[4]){0x00U, 0x00U, 0x48U, 0x00U}, 4U) != 0
+	    || tape.store_kind[11] != YT_TEAM_LOADER_STORE_CAPTAIN
+	    || memcmp(tape.store_raw[11], tape.record.bytes + YT_F77, 4U) != 0
+	    || tape.store_kind[12] != YT_TEAM_LOADER_STORE_CAPTAIN_FLAG
+	    || memcmp(tape.store_raw[12],
+	    (const uint8_t[4]){0x00U, 0x00U, 0x80U, 0x81U}, 4U) != 0)
+		return false;
+	for (index = 0U; index < 4U; ++index) {
+		if (tape.store_kind[13U + index] != YT_TEAM_LOADER_STORE_ROSTER
+		    || tape.store_index[13U + index] != index
+		    || memcmp(tape.store_raw[13U + index],
+		    tape.record.bytes + roster_offset[index], 4U) != 0)
 			return false;
 	}
 

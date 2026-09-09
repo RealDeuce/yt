@@ -369,6 +369,12 @@ session_team_loader_store(void *context,
 			return;
 		address = (uint16_t)(YT_TEAM_ROSTER_ADDRESS + 4U * index);
 		break;
+	case YT_TEAM_LOADER_STORE_CAPTAIN:
+		address = YT_TEAM_CAPTAIN_ADDRESS;
+		break;
+	case YT_TEAM_LOADER_STORE_CAPTAIN_FLAG:
+		address = YT_TEAM_CAPTAIN_FLAG_ADDRESS;
+		break;
 	default:
 		return;
 	}

@@ -468,6 +468,8 @@ enum yt_team_loader_store_kind {
 	YT_TEAM_LOADER_STORE_AVAILABLE,
 	YT_TEAM_LOADER_STORE_COUNTER,
 	YT_TEAM_LOADER_STORE_ROSTER,
+	YT_TEAM_LOADER_STORE_CAPTAIN,
+	YT_TEAM_LOADER_STORE_CAPTAIN_FLAG,
 };
 typedef void (*yt_team_loader_store_fn)(void *context,
 	enum yt_team_loader_store_kind kind, size_t index,

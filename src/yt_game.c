@@ -780,11 +780,11 @@ yt_team_loader_begin(float team_id, struct yt_team_loader_cache *cache,
 	team_loader_begin_observed(team_id, cache, needs_overlay, NULL, NULL);
 }
 
-bool
-yt_team_loader_finish(const struct yt_record *overlay,
+static bool
+team_loader_finish_observed(const struct yt_record *overlay,
     float current_player, uint8_t conversion_mode,
     struct yt_team_loader_cache *cache, enum yt_team_loader_route *route,
-    struct yt_error *error)
+    struct yt_error *error, yt_team_loader_store_fn store, void *context)
 {
 	static const size_t roster_offsets[4] = {
 		YT_F109, YT_F117, YT_F121, YT_F125
@@ -814,6 +814,8 @@ yt_team_loader_finish(const struct yt_record *overlay,
 
 	team_loader_cache_store_raw(&cache->available, cache->available_raw,
 	    live_zero);
+	team_loader_observe(store, context, YT_TEAM_LOADER_STORE_AVAILABLE,
+	    0U, cache->available_raw);
 	converted_length = qb_cint_mode(
 	    yt_record_get_number(overlay, YT_F73), conversion_mode,
 	    &overflow);
@@ -836,15 +838,34 @@ yt_team_loader_finish(const struct yt_record *overlay,
 	cache->password[4] = '\0';
 	team_loader_cache_store_raw(&cache->captain, cache->captain_raw,
 	    overlay->bytes + YT_F77);
-	if (cache->captain == current_player)
+	team_loader_observe(store, context, YT_TEAM_LOADER_STORE_CAPTAIN, 0U,
+	    cache->captain_raw);
+	if (cache->captain == current_player) {
 		team_loader_cache_store_raw(&cache->captain_flag,
 		    cache->captain_flag_raw, true_raw);
-	for (index = 0U; index < YT_ARRAY_LEN(cache->roster); ++index)
+		team_loader_observe(store, context,
+		    YT_TEAM_LOADER_STORE_CAPTAIN_FLAG, 0U,
+		    cache->captain_flag_raw);
+	}
+	for (index = 0U; index < YT_ARRAY_LEN(cache->roster); ++index) {
 		team_loader_cache_store_raw(&cache->roster[index],
 		    cache->roster_raw[index],
 		    overlay->bytes + roster_offsets[index]);
+		team_loader_observe(store, context, YT_TEAM_LOADER_STORE_ROSTER,
+		    index, cache->roster_raw[index]);
+	}
 	*route = YT_TEAM_LOADER_LIVE;
 	return true;
+}
+
+bool
+yt_team_loader_finish(const struct yt_record *overlay,
+    float current_player, uint8_t conversion_mode,
+    struct yt_team_loader_cache *cache, enum yt_team_loader_route *route,
+    struct yt_error *error)
+{
+	return team_loader_finish_observed(overlay, current_player,
+	    conversion_mode, cache, route, error, NULL, NULL);
 }
 
 bool
@@ -873,9 +894,10 @@ yt_team_loader_run(struct yt_team_loader_state *state,
 	    error))
 		return false;
 	state->overlay_loaded = true;
-	if (!yt_team_loader_finish(&state->overlay,
+	if (!team_loader_finish_observed(&state->overlay,
 	    state->current_player_record, state->conversion_mode,
-	    state->cache, &state->route, error))
+	    state->cache, &state->route, error, state->store,
+	    state->store_context))
 		return false;
 	state->complete = true;
 	return true;
