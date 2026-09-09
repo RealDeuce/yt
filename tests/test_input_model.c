@@ -31,6 +31,13 @@ input_process_word(const uint8_t *process, uint16_t address)
 	    | (uint16_t)process[(uint16_t)(address + 1U)] << 8);
 }
 
+static void
+input_store_word(uint8_t *process, uint16_t address, uint16_t value)
+{
+	process[address] = (uint8_t)value;
+	process[(uint16_t)(address + 1U)] = (uint8_t)(value >> 8);
+}
+
 enum registration_event {
 	REG_CLOSE,
 	REG_RANDOM_OPEN,
@@ -3001,6 +3008,100 @@ test_main_startup_prefix(void)
 }
 
 static void
+test_startup_opening_frame(void)
+{
+	static uint8_t process[YT_STARTUP_RAW_ADDRESS_SPACE];
+	static uint8_t stack[YT_STARTUP_RAW_ADDRESS_SPACE];
+	struct yt_startup_opening_frame frame;
+	struct yt_startup_opening_frame_result result;
+	uint16_t entry_flags;
+
+	memset(process, 0, sizeof(process));
+	memset(stack, 0, sizeof(stack));
+	memset(&frame, 0, sizeof(frame));
+	frame.process = process;
+	frame.process_size = sizeof(process);
+	frame.stack = stack;
+	frame.stack_size = sizeof(stack);
+	frame.brun_segment = 0x1000U;
+	frame.cpu.bp = 0xD7DAU;
+	frame.cpu.sp = 0xD7CAU;
+	frame.cpu.cs = 0x4444U;
+	frame.cpu.ip = 0x043BU;
+	frame.cpu.ds = 0x2222U;
+	frame.cpu.es = 0x2222U;
+	frame.cpu.ss = 0x5555U;
+	frame.cpu.flags = 0x0296U;
+	frame.cpu.known_flags = UINT16_MAX;
+	input_store_word(process, 0x0A02U, 0xD700U);
+	input_store_word(process, 0x0A04U, 0x9000U);
+	input_store_word(stack, 0xD7D6U, 1U);
+	CHECK(yt_startup_opening_frame_enter(&frame, &result)
+	    && result.outcome == YT_STARTUP_OPENING_FRAME_ENTERED
+	    && result.error_number == 0U && result.saved_ip == 0U
+	    && result.continuation == 0x0440U
+	    && result.marker_before == 1U && result.marker_after == 2U
+	    && frame.cpu.ax == 0x03A2U && frame.cpu.si == 0x0440U
+	    && frame.cpu.cs == 0x4444U && frame.cpu.ip == 0x03A2U
+	    && frame.cpu.sp == 0xD7C8U
+	    && input_process_word(process, 0x0A04U) == 0xD7C8U
+	    && input_process_word(stack, 0xD7C8U) == 0x0440U
+	    && input_process_word(stack, 0xD7C6U) == 0x4444U
+	    && input_process_word(stack, 0xD7C4U) == 0x03A2U
+	    && input_process_word(stack, 0xD7D6U) == 2U);
+
+	entry_flags = frame.cpu.flags;
+	frame.cpu.ip = 0x0406U;
+	CHECK(yt_startup_opening_frame_return(&frame, &result)
+	    && result.outcome == YT_STARTUP_OPENING_FRAME_RETURNED
+	    && result.continuation == 0x0440U
+	    && result.marker_before == 2U && result.marker_after == 1U
+	    && frame.cpu.ax == 0x0409U && frame.cpu.si == 0x4444U
+	    && frame.cpu.di == 0x0440U && frame.cpu.ip == 0x0440U
+	    && frame.cpu.cs == 0x4444U && frame.cpu.sp == 0xD7CAU
+	    && input_process_word(process, 0x0A04U) == 0xD7CAU
+	    && input_process_word(stack, 0xD7D6U) == 1U
+	    && (frame.cpu.flags & 0x08C5U) == 0U
+	    && (frame.cpu.flags & (uint16_t)~0x08C5U)
+	    == (entry_flags & (uint16_t)~0x08C5U)
+	    && (frame.cpu.known_flags & 0x08C5U) == 0x08C5U
+	    && (frame.cpu.known_flags & 0x0010U) == 0U);
+
+	memset(process, 0, sizeof(process));
+	memset(stack, 0, sizeof(stack));
+	frame.cpu.sp = 0xD7CAU;
+	frame.cpu.cs = 0x4444U;
+	frame.cpu.ip = 0x043BU;
+	frame.cpu.ds = frame.cpu.es = 0x2222U;
+	frame.cpu.flags = 0U;
+	input_store_word(process, 0x0A02U, 0xD7C7U);
+	input_store_word(process, 0x0A04U, 0x9000U);
+	input_store_word(stack, 0xD7D6U, 3U);
+	CHECK(yt_startup_opening_frame_enter(&frame, &result)
+	    && result.outcome == YT_STARTUP_OPENING_FRAME_ERROR_7
+	    && result.error_number == 7U && result.saved_ip == 0x043EU
+	    && result.marker_before == 3U && result.marker_after == 3U
+	    && frame.cpu.cs == 0x1000U && frame.cpu.ip == 0x0A1EU
+	    && frame.cpu.sp == 0xD7C6U
+	    && input_process_word(process, 0x0A04U) == 0x9000U
+	    && input_process_word(stack, 0xD7D6U) == 3U);
+
+	frame.cpu.ip = 0x0406U;
+	frame.cpu.cs = 0x4444U;
+	frame.cpu.sp = 0xD7C8U;
+	input_store_word(stack, 0xD7D6U, 0U);
+	CHECK(!yt_startup_opening_frame_return(&frame, &result));
+	input_store_word(stack, 0xD7D6U, 1U);
+	input_store_word(stack, 0xD7C8U, 0U);
+	CHECK(!yt_startup_opening_frame_return(&frame, &result)
+	    && input_process_word(stack, 0xD7D6U) == 1U);
+	CHECK(!yt_startup_opening_frame_enter(NULL, &result)
+	    && !yt_startup_opening_frame_enter(&frame, NULL)
+	    && !yt_startup_opening_frame_return(NULL, &result)
+	    && !yt_startup_opening_frame_return(&frame, NULL));
+}
+
+static void
 test_serial_startup_model(void)
 {
 	static const struct {
@@ -4799,6 +4900,7 @@ main(void)
 	test_sysop_chat();
 	test_sysop_chat_process_cells();
 	test_main_startup_prefix();
+	test_startup_opening_frame();
 	test_serial_startup_model();
 	test_platform_rmt_serial();
 	test_sysop_f5();

@@ -117,6 +117,150 @@ yt_startup_main_prefix_compose(uint8_t *user_first,
 	    user_last, user_last_length, result);
 }
 
+#define YT_STARTUP_OPENING_CALL 0x043BU
+#define YT_STARTUP_OPENING_TARGET 0x03A2U
+#define YT_STARTUP_OPENING_CONTINUATION 0x0440U
+#define YT_STARTUP_OPENING_RETURN 0x0406U
+#define YT_BRUN_ERROR_7_ENTRY 0x0A1EU
+#define YT_X86_DF 0x0400U
+#define YT_X86_AF 0x0010U
+#define YT_X86_CONDITION_FLAGS 0x08C5U
+
+static uint16_t
+startup_raw_word(const uint8_t *memory, uint16_t address)
+{
+	return (uint16_t)(memory[address]
+	    | (uint16_t)memory[(uint16_t)(address + 1U)] << 8);
+}
+
+static void
+startup_store_word(uint8_t *memory, uint16_t address, uint16_t value)
+{
+	memory[address] = (uint8_t)value;
+	memory[(uint16_t)(address + 1U)] = (uint8_t)(value >> 8);
+}
+
+static bool
+startup_opening_frame_valid(const struct yt_startup_opening_frame *frame)
+{
+	return frame != NULL && frame->process != NULL && frame->stack != NULL
+	    && frame->process_size >= YT_STARTUP_RAW_ADDRESS_SPACE
+	    && frame->stack_size >= YT_STARTUP_RAW_ADDRESS_SPACE
+	    && frame->cpu.ds == frame->cpu.es
+	    && (frame->cpu.flags & YT_X86_DF) == 0U;
+}
+
+bool
+yt_startup_opening_frame_enter(struct yt_startup_opening_frame *frame,
+    struct yt_startup_opening_frame_result *result)
+{
+	uint16_t entry_sp;
+	uint16_t handler_sp;
+	uint16_t marker_address;
+	uint16_t marker;
+
+	if (!startup_opening_frame_valid(frame) || result == NULL
+	    || frame->cpu.ip != YT_STARTUP_OPENING_CALL)
+		return false;
+	memset(result, 0, sizeof(*result));
+	entry_sp = frame->cpu.sp;
+	handler_sp = (uint16_t)(entry_sp - 4U);
+	marker_address = (uint16_t)(frame->cpu.bp - 4U);
+	marker = startup_raw_word(frame->stack, marker_address);
+	result->marker_before = marker;
+	if (handler_sp < startup_raw_word(frame->process, 0x0A02U)) {
+		frame->cpu.sp = handler_sp;
+		frame->cpu.cs = frame->brun_segment;
+		frame->cpu.ip = YT_BRUN_ERROR_7_ENTRY;
+		result->outcome = YT_STARTUP_OPENING_FRAME_ERROR_7;
+		result->error_number = 7U;
+		result->saved_ip = (uint16_t)(YT_STARTUP_OPENING_CALL + 3U);
+		result->marker_after = marker;
+		return true;
+	}
+	startup_store_word(frame->stack, (uint16_t)(entry_sp - 2U),
+	    YT_STARTUP_OPENING_CONTINUATION);
+	startup_store_word(frame->stack, (uint16_t)(entry_sp - 4U),
+	    frame->cpu.cs);
+	startup_store_word(frame->stack, (uint16_t)(entry_sp - 6U),
+	    YT_STARTUP_OPENING_TARGET);
+	startup_store_word(frame->process, 0x0A04U,
+	    (uint16_t)(entry_sp - 2U));
+	startup_store_word(frame->stack, marker_address,
+	    (uint16_t)(marker + 1U));
+	frame->cpu.ax = YT_STARTUP_OPENING_TARGET;
+	frame->cpu.si = YT_STARTUP_OPENING_CONTINUATION;
+	frame->cpu.sp = (uint16_t)(entry_sp - 2U);
+	frame->cpu.ip = YT_STARTUP_OPENING_TARGET;
+	result->outcome = YT_STARTUP_OPENING_FRAME_ENTERED;
+	result->continuation = YT_STARTUP_OPENING_CONTINUATION;
+	result->marker_after = (uint16_t)(marker + 1U);
+	return true;
+}
+
+static bool
+startup_even_parity(uint8_t value)
+{
+	value ^= (uint8_t)(value >> 4);
+	value ^= (uint8_t)(value >> 2);
+	value ^= (uint8_t)(value >> 1);
+	return (value & 1U) == 0U;
+}
+
+bool
+yt_startup_opening_frame_return(struct yt_startup_opening_frame *frame,
+    struct yt_startup_opening_frame_result *result)
+{
+	uint16_t body_sp;
+	uint16_t caller_segment;
+	uint16_t continuation;
+	uint16_t marker_address;
+	uint16_t marker;
+
+	if (!startup_opening_frame_valid(frame) || result == NULL
+	    || frame->cpu.ip != YT_STARTUP_OPENING_RETURN)
+		return false;
+	marker_address = (uint16_t)(frame->cpu.bp - 4U);
+	marker = startup_raw_word(frame->stack, marker_address);
+	if (marker == 0U)
+		return false;
+	body_sp = frame->cpu.sp;
+	continuation = startup_raw_word(frame->stack, body_sp);
+	if (continuation == 0U)
+		return false;
+	memset(result, 0, sizeof(*result));
+	result->marker_before = marker;
+	result->marker_after = (uint16_t)(marker - 1U);
+	result->continuation = continuation;
+	startup_store_word(frame->stack, marker_address, result->marker_after);
+	startup_store_word(frame->process, 0x0A04U,
+	    (uint16_t)(body_sp + 2U));
+	caller_segment = frame->cpu.cs;
+	frame->cpu.ax = (uint16_t)(YT_STARTUP_OPENING_RETURN + 3U);
+	frame->cpu.si = caller_segment;
+	frame->cpu.di = continuation;
+	frame->cpu.sp = (uint16_t)(body_sp + 2U);
+	frame->cpu.ip = continuation;
+	frame->cpu.flags &= (uint16_t)~YT_X86_CONDITION_FLAGS;
+	if (startup_even_parity((uint8_t)continuation))
+		frame->cpu.flags |= 0x0004U;
+	if ((continuation & 0x8000U) != 0U)
+		frame->cpu.flags |= 0x0080U;
+	frame->cpu.known_flags &= (uint16_t)~YT_X86_AF;
+	frame->cpu.known_flags |= YT_X86_CONDITION_FLAGS;
+	result->outcome = YT_STARTUP_OPENING_FRAME_RETURNED;
+	return true;
+}
+
+#undef YT_STARTUP_OPENING_CALL
+#undef YT_STARTUP_OPENING_TARGET
+#undef YT_STARTUP_OPENING_CONTINUATION
+#undef YT_STARTUP_OPENING_RETURN
+#undef YT_BRUN_ERROR_7_ENTRY
+#undef YT_X86_DF
+#undef YT_X86_AF
+#undef YT_X86_CONDITION_FLAGS
+
 static bool
 registration_error(struct yt_error *error, enum yt_status status,
     const char *operation)
