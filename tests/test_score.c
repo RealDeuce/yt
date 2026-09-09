@@ -3737,6 +3737,7 @@ spy_sweep_fixture(struct spy_sweep_tape *tape,
 	tape->sector.warps[1] = 200.0f;
 	memcpy(tape->planet.record.bytes, "Gaia", 4U);
 	tape->planet.name_length = 4.0f;
+	(void)yt_record_set_number(&tape->planet.record, YT_F85, 4.0f);
 	tape->planet.ground_forces = 9.0f;
 	memcpy(tape->players[3].record.bytes, "Ada", 3U);
 	tape->players[3].name_length = 3.0f;
@@ -8949,7 +8950,8 @@ check_projectile_parent_model(void)
 		return false;
 	memset(&planet, 0, sizeof(planet));
 	memcpy(planet.record.bytes, planet_binary, sizeof(planet_binary));
-	planet.name_length = 3.0f;
+	planet.name_length = 19.0f;
+	(void)yt_record_set_number(&planet.record, YT_F85, 3.0f);
 	if (!yt_planet_stored_name(&planet, defense, &defense_length, NULL)
 	    || defense_length != sizeof(planet_binary)
 	    || memcmp(defense, planet_binary, defense_length) != 0)
@@ -11971,9 +11973,11 @@ planet_permission_vacancy_fixture(struct planet_permission_tape *tape,
 	tape->planet_source[0].record.bytes[1] = 0U;
 	tape->planet_source[0].record.bytes[2] = 'X';
 	tape->planet_source[0].name_length = 3.0f;
+	(void)yt_record_set_number(&tape->planet_source[0].record, YT_F85, 3.0f);
 	tape->planet_source[0].owner = 0.0f;
 	tape->planet_source[0].ground_forces = 10.0f;
 	tape->planet_source[1].name_length = 5.0f;
+	(void)yt_record_set_number(&tape->planet_source[1].record, YT_F85, 5.0f);
 	tape->planet_source[1].owner = 44.0f;
 	tape->planet_source[1].ground_forces = 80.0f;
 	tape->draws[0] = 0.5f;
@@ -12195,6 +12199,7 @@ check_planet_permission_transaction(void)
 	/* A malformed cached name fails after the first planet snapshot. */
 	planet_permission_denial_fixture(&tape, &state);
 	tape.planet_source[0].name_length = -1.0f;
+	(void)yt_record_set_number(&tape.planet_source[0].record, YT_F85, -1.0f);
 	yt_error_clear(&error);
 	if (yt_planet_permission_run(&state, &ops, &tape, &error)
 	    || error.status != YT_RANGE

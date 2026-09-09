@@ -3493,6 +3493,7 @@ test_sector_scanner_rows(void)
 	yt_record_set_number(&record, YT_F41, 1.0f);
 	yt_record_set_number(&record, YT_F85, 3.0f);
 	yt_port_decode(&port, &record);
+	port.name_length = 19.0f;
 	CHECK(yt_sector_port_row(&port, row, sizeof(row), &length, &error)
 	    && length == sizeof(port_equ_expected)
 	    && memcmp(row, port_equ_expected, length) == 0);
@@ -3509,6 +3510,7 @@ test_sector_scanner_rows(void)
 	yt_record_set_number(&record, YT_F77, -1.25f);
 	yt_record_set_number(&record, YT_F85, 3.0f);
 	yt_planet_decode(&planet, &record);
+	planet.name_length = 19.0f;
 	CHECK(yt_sector_planet_row(&planet, row, sizeof(row), &length, &error)
 	    && length == sizeof(planet_expected)
 	    && memcmp(row, planet_expected, length) == 0);
@@ -45650,6 +45652,7 @@ spy_sweep_presentation_fixture(bool ansi)
 	fixture.sector.warps[1] = 200.0f;
 	memcpy(fixture.planet.record.bytes, "Gaia", 4U);
 	fixture.planet.name_length = 4.0f;
+	CHECK(yt_record_set_number(&fixture.planet.record, YT_F85, 4.0f));
 	fixture.planet.ground_forces = 9.0f;
 	memcpy(fixture.players[3].record.bytes, "Ada", 3U);
 	fixture.players[3].name_length = 3.0f;
