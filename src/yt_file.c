@@ -1167,6 +1167,87 @@ yt_brun_file_control_find(const uint8_t *process, size_t process_size,
 }
 
 bool
+yt_brun_type3_release(uint8_t *process, size_t process_size,
+    uint16_t control, struct yt_brun_type3_release_result *result,
+    struct yt_error *error)
+{
+	struct yt_brun_type3_release_result local;
+	uint16_t low_type;
+	uint16_t low_span;
+	uint16_t type_address;
+	uint16_t high_span;
+	uint16_t mirrored_low;
+	uint16_t table_length;
+	uint16_t table_pointer;
+	uint16_t index;
+
+	memset(&local, 0, sizeof(local));
+	local.control = control;
+	if (process == NULL || process_size != 0x10000U || result == NULL) {
+		set_error(error, YT_INVALID, "BRUN type-3 release", NULL);
+		if (result != NULL)
+			*result = local;
+		return false;
+	}
+	low_type = (uint16_t)(control - 3U);
+	low_span = (uint16_t)process[(uint16_t)(control - 2U)]
+	    | (uint16_t)((uint16_t)process[(uint16_t)(control - 1U)] << 8U);
+	type_address = (uint16_t)(low_type + low_span);
+	local.type_address = type_address;
+	high_span = (uint16_t)process[(uint16_t)(type_address - 3U)]
+	    | (uint16_t)((uint16_t)process[(uint16_t)(type_address - 2U)]
+	    << 8U);
+	mirrored_low = (uint16_t)(type_address - high_span + 1U);
+	if (high_span == 0U || (high_span & 7U) != 0U
+	    || process[mirrored_low] != (uint8_t)high_span
+	    || process[(uint16_t)(mirrored_low + 1U)]
+	    != (uint8_t)(high_span >> 8U)) {
+		local.outcome = YT_BRUN_TYPE3_RELEASE_INTERNAL_ERROR;
+		local.internal_entry = 0x0accU;
+		*result = local;
+		return true;
+	}
+	if (process[type_address] != 3U) {
+		set_error(error, YT_INVALID, "BRUN type-3 release block", NULL);
+		*result = local;
+		return false;
+	}
+	process[type_address] = 1U;
+	table_length = (uint16_t)process[(uint16_t)(type_address - 7U)]
+	    | (uint16_t)((uint16_t)process[(uint16_t)(type_address - 6U)]
+	    << 8U);
+	table_pointer = (uint16_t)process[(uint16_t)(type_address - 5U)]
+	    | (uint16_t)((uint16_t)process[(uint16_t)(type_address - 4U)]
+	    << 8U);
+	if (table_length != 0U) {
+		process[(uint16_t)(type_address - 7U)] = 0U;
+		process[(uint16_t)(type_address - 6U)] = 0U;
+		process[(uint16_t)(type_address - 5U)] = 0U;
+		process[(uint16_t)(type_address - 4U)] = 0U;
+		uint16_t header = (uint16_t)(table_pointer - 2U);
+		uint16_t free_length = (uint16_t)(table_length + 1U);
+
+		process[header] = (uint8_t)free_length;
+		process[(uint16_t)(header + 1U)] = (uint8_t)(free_length >> 8U);
+	}
+	for (index = 0U; index < (uint16_t)(table_length >> 1U); ++index) {
+		uint16_t slot = (uint16_t)(table_pointer + 2U * index);
+		uint16_t descriptor = (uint16_t)process[slot]
+		    | (uint16_t)((uint16_t)process[(uint16_t)(slot + 1U)]
+		    << 8U);
+		size_t byte_index;
+
+		for (byte_index = 0U; byte_index < 4U; ++byte_index)
+			process[(uint16_t)(descriptor + byte_index)] = 0U;
+		++local.cleared_descriptor_count;
+	}
+	process[type_address] = 1U;
+	local.outcome = YT_BRUN_TYPE3_RELEASE_RETURNED;
+	*result = local;
+	return true;
+}
+
+bool
 yt_close_all_run(const struct yt_close_all_control *controls,
     size_t control_count, const struct yt_close_all_fixed_control *fixed,
     struct yt_close_all_result *result, struct yt_error *error)

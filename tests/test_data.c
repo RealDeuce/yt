@@ -3091,6 +3091,7 @@ test_text_device_print(void)
 	struct yt_text_device_print_result result;
 	struct yt_error error;
 	struct yt_text_device_process_state process_state;
+	struct yt_brun_type3_release_result release;
 	static uint8_t process[YT_TEXT_DEVICE_PROCESS_SIZE];
 	uint16_t control;
 	uint16_t found_control;
@@ -3465,6 +3466,70 @@ test_text_device_print(void)
 	CHECK(!yt_brun_file_control_find(process, sizeof(process), 3U,
 	    &found_control, &error) && found_control == 0U
 	    && error.status == YT_INVALID);
+
+	/* A43D/A560 frees the type-3 block and its FIELD aliases in order. */
+	memset(process, 0x5a, sizeof(process));
+	process[control - 2U] = 0x00U;
+	process[control - 1U] = 0x01U;
+	process[0x1ffeU] = 0x00U;
+	process[0x1fffU] = 0x01U;
+	process[0x20faU] = 0x00U;
+	process[0x20fbU] = 0x01U;
+	process[0x20fcU] = 3U;
+	process[0x20fdU] = 3U;
+	process[0x20f6U] = 4U;
+	process[0x20f7U] = 0U;
+	process[0x20f8U] = 0x00U;
+	process[0x20f9U] = 0x30U;
+	process[0x3000U] = 0x00U;
+	process[0x3001U] = 0x40U;
+	process[0x3002U] = 0x00U;
+	process[0x3003U] = 0x50U;
+	memset(process + 0x4000U, 0x11, 4U);
+	memset(process + 0x5000U, 0x22, 4U);
+	CHECK(yt_brun_type3_release(process, sizeof(process), control,
+	    &release, &error)
+	    && release.outcome == YT_BRUN_TYPE3_RELEASE_RETURNED
+	    && release.control == control && release.type_address == 0x20fdU
+	    && release.internal_entry == 0U
+	    && release.cleared_descriptor_count == 2U
+	    && process[0x20fdU] == 1U && process[0x20fcU] == 3U
+	    && process[0x20f6U] == 0U && process[0x20f7U] == 0U
+	    && process[0x20f8U] == 0U && process[0x20f9U] == 0U
+	    && process[0x2ffeU] == 5U && process[0x2fffU] == 0U
+	    && process[0x3000U] == 0U && process[0x3001U] == 0x40U
+	    && process[0x3002U] == 0U && process[0x3003U] == 0x50U
+	    && process[0x4000U] == 0U && process[0x4001U] == 0U
+	    && process[0x4002U] == 0U && process[0x4003U] == 0U
+	    && process[0x5000U] == 0U && process[0x5001U] == 0U
+	    && process[0x5002U] == 0U && process[0x5003U] == 0U);
+
+	/* A zero registration length skips A560 and retains pointer residue. */
+	memset(process, 0, sizeof(process));
+	process[control - 1U] = 0x01U;
+	process[0x1fffU] = 0x01U;
+	process[0x20fbU] = 0x01U;
+	process[0x20fdU] = 3U;
+	process[0x20f8U] = 0x56U;
+	process[0x20f9U] = 0x34U;
+	CHECK(yt_brun_type3_release(process, sizeof(process), control,
+	    &release, &error)
+	    && release.outcome == YT_BRUN_TYPE3_RELEASE_RETURNED
+	    && release.cleared_descriptor_count == 0U
+	    && process[0x20fdU] == 1U
+	    && process[0x20f8U] == 0x56U && process[0x20f9U] == 0x34U);
+
+	/* A mismatched mirrored span reaches internal 0ACC without DS writes. */
+	process[0x20fdU] = 3U;
+	process[0x20faU] = 0x80U;
+	process[0x20fbU] = 0U;
+	CHECK(yt_brun_type3_release(process, sizeof(process), control,
+	    &release, &error)
+	    && release.outcome == YT_BRUN_TYPE3_RELEASE_INTERNAL_ERROR
+	    && release.internal_entry == 0x0accU
+	    && release.cleared_descriptor_count == 0U
+	    && process[0x20fdU] == 3U
+	    && process[0x20f8U] == 0x56U && process[0x20f9U] == 0x34U);
 }
 
 static void

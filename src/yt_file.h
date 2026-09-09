@@ -124,6 +124,19 @@ struct yt_close_all_result {
 	bool returned;
 };
 
+enum yt_brun_type3_release_outcome {
+	YT_BRUN_TYPE3_RELEASE_RETURNED,
+	YT_BRUN_TYPE3_RELEASE_INTERNAL_ERROR,
+};
+
+struct yt_brun_type3_release_result {
+	enum yt_brun_type3_release_outcome outcome;
+	uint16_t control;
+	uint16_t type_address;
+	uint16_t internal_entry;
+	size_t cleared_descriptor_count;
+};
+
 enum yt_database_lof_operation {
 	YT_DATABASE_LOF_OPERATION_NONE,
 	YT_DATABASE_LOF_CURRENT,
@@ -404,6 +417,9 @@ bool yt_close_all_run(const struct yt_close_all_control *controls,
     struct yt_close_all_result *result, struct yt_error *error);
 bool yt_brun_file_control_find(const uint8_t *process, size_t process_size,
 	uint8_t file_number, uint16_t *control, struct yt_error *error);
+bool yt_brun_type3_release(uint8_t *process, size_t process_size,
+	uint16_t control, struct yt_brun_type3_release_result *result,
+	struct yt_error *error);
 bool yt_database_random_lof(struct yt_database *database, uint32_t *length,
     struct yt_error *error);
 bool yt_random_file_lof(FILE *file, const char *path, uint32_t *length,
