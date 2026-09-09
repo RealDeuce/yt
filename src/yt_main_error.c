@@ -265,8 +265,8 @@ yt_normal_exit_registration_evaluate(const uint8_t registered_raw[4],
 	    sizeof(result->registered_raw));
 	result->registered = qb_mbf32_decode(registered_raw);
 	result->conversion_mode = conversion_mode;
-	result->converted = qb_cint_mode((double)result->registered,
-	    conversion_mode, &overflow);
+	result->converted = qb_cint_mbf32(registered_raw, conversion_mode,
+	    &overflow);
 	if (!overflow) {
 		result->route = result->converted == -1
 		    ? YT_NORMAL_EXIT_REGISTRATION_SKIP_REMINDER

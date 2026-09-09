@@ -132,6 +132,26 @@ route_endpoint_at(float value, uint8_t conversion_mode, int16_t *index,
 }
 
 static bool
+route_raw_integer_at(const struct yt_route_process *process, uint16_t address,
+    uint8_t conversion_mode, int16_t *index, struct yt_error *error,
+    const char *operation, enum yt_basic_fault_site site)
+{
+	uint8_t raw[4];
+	bool overflow;
+	int32_t converted;
+
+	yt_route_process_raw_single(process, address, raw);
+	converted = qb_cint_mbf32(raw, conversion_mode, &overflow);
+	if (overflow) {
+		(void)route_error(error, operation);
+		(void)yt_error_attach_basic_fault_number(error, site, 6U);
+		return false;
+	}
+	*index = (int16_t)converted;
+	return true;
+}
+
+static bool
 route_integer(float value, uint8_t conversion_mode, int16_t *index,
     struct yt_error *error, const char *operation)
 {
@@ -370,6 +390,32 @@ route_argument_status(const struct route_arguments *arguments,
 }
 
 static bool
+route_argument_endpoint_at(const struct route_arguments *arguments,
+    bool start, uint8_t conversion_mode,
+    const struct yt_route_process *process, int16_t *index,
+    struct yt_error *error, const char *operation,
+    enum yt_basic_fault_site site)
+{
+	bool addressed = start ? arguments->start_addressed
+	    : arguments->destination_addressed;
+	uint16_t address = start ? arguments->start_address
+	    : arguments->destination_address;
+	float value = start ? route_argument_start(arguments, process)
+	    : route_argument_destination(arguments, process);
+
+	if (addressed) {
+		if (!route_raw_integer_at(process, address, conversion_mode, index,
+		    error, operation, site))
+			return false;
+		if (*index < 0 || *index >= (int16_t)YT_ROUTE_CAPACITY)
+			return route_error(error, operation);
+		return true;
+	}
+	return route_endpoint_at(value, conversion_mode, index, error, operation,
+	    site);
+}
+
+static bool
 route_argument_write_status(struct route_arguments *arguments,
     struct yt_route_process *process, float value, struct yt_error *error)
 {
@@ -404,7 +450,8 @@ route_process_build(struct route_arguments *arguments,
 	route_process_write_word(process, YT_ROUTE_TAIL_ADDRESS, 1);
 	memset(process->bytes + YT_ROUTE_WORKSPACE_ADDRESS, 0,
 	    YT_ROUTE_WORKSPACE_BYTES);
-	if (!route_endpoint_at(start_value, conversion_mode, &start, error,
+	if (!route_argument_endpoint_at(arguments, true, conversion_mode,
+	    process, &start, error,
 	    "route start FIFO CINT", YT_BASIC_FAULT_ROUTE_START_FIFO_CINT))
 		return false;
 	if (start_value == destination_value) {
@@ -412,7 +459,8 @@ route_process_build(struct route_arguments *arguments,
 		    YT_ROUTE_WORKSPACE_ADDRESS, 0), start);
 		route_process_write_word(process, route_index_address(
 		    YT_ROUTE_SECOND_ADDRESS, 0), 0);
-		if (!route_endpoint_at(start_value, conversion_mode, &start, error,
+		if (!route_argument_endpoint_at(arguments, true, conversion_mode,
+		    process, &start, error,
 		    "route start predecessor CINT",
 		    YT_BASIC_FAULT_ROUTE_START_PREDECESSOR_CINT))
 			return false;
@@ -424,7 +472,8 @@ route_process_build(struct route_arguments *arguments,
 
 	route_process_write_word(process, route_index_address(
 	    YT_ROUTE_SECOND_ADDRESS, 1), start);
-	if (!route_endpoint_at(start_value, conversion_mode, &start, error,
+	if (!route_argument_endpoint_at(arguments, true, conversion_mode,
+	    process, &start, error,
 	    "route start predecessor CINT",
 	    YT_BASIC_FAULT_ROUTE_START_PREDECESSOR_CINT))
 		return false;
@@ -435,8 +484,9 @@ route_process_build(struct route_arguments *arguments,
 
 		for (position = 0U; position < YT_ROUTE_AVOID_COUNT;
 		    ++position) {
-			float value = route_process_read_single(process,
-			    (uint16_t)(YT_ROUTE_AVOID_ADDRESS + 4U * position));
+			uint16_t address = (uint16_t)(YT_ROUTE_AVOID_ADDRESS
+			    + 4U * position);
+			float value = route_process_read_single(process, address);
 			int16_t blocked;
 			int16_t marker;
 
@@ -445,11 +495,13 @@ route_process_build(struct route_arguments *arguments,
 			    error))
 				return false;
 
-			if (!route_integer_at(value, conversion_mode, &blocked, error,
+			if (!route_raw_integer_at(process, address, conversion_mode,
+			    &blocked, error,
 			    "route avoid predecessor CINT",
 			    YT_BASIC_FAULT_ROUTE_AVOID_PREDECESSOR_CINT))
 				return false;
-			if (!route_integer_at(value, conversion_mode, &marker, error,
+			if (!route_raw_integer_at(process, address, conversion_mode,
+			    &marker, error,
 			    "route avoid endpoint CINT",
 			    YT_BASIC_FAULT_ROUTE_AVOID_ENDPOINT_CINT))
 				return false;
@@ -468,8 +520,8 @@ route_process_build(struct route_arguments *arguments,
 			return false;
 	}
 	destination_value = route_argument_destination(arguments, process);
-	if (!route_endpoint_at(destination_value, conversion_mode, &destination,
-	    error, "route destination predecessor CINT",
+	if (!route_argument_endpoint_at(arguments, false, conversion_mode,
+	    process, &destination, error, "route destination predecessor CINT",
 	    YT_BASIC_FAULT_ROUTE_DESTINATION_PREDECESSOR_CINT))
 		return false;
 
@@ -570,8 +622,9 @@ route_process_build(struct route_arguments *arguments,
 		route_process_write_word(process, YT_ROUTE_HEAD_ADDRESS, prior);
 	}
 	destination_value = route_argument_destination(arguments, process);
-	if (!route_endpoint_at(destination_value, conversion_mode, &destination,
-	    error, "route next-hop CINT", YT_BASIC_FAULT_ROUTE_NEXT_HOP_CINT))
+	if (!route_argument_endpoint_at(arguments, false, conversion_mode,
+	    process, &destination, error, "route next-hop CINT",
+	    YT_BASIC_FAULT_ROUTE_NEXT_HOP_CINT))
 		return false;
 	route_process_write_word(process, route_index_address(
 	    YT_ROUTE_SECOND_ADDRESS, destination), 0);

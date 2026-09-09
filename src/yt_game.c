@@ -816,9 +816,8 @@ team_loader_finish_observed(const struct yt_record *overlay,
 	    live_zero);
 	team_loader_observe(store, context, YT_TEAM_LOADER_STORE_AVAILABLE,
 	    0U, cache->available_raw);
-	converted_length = qb_cint_mode(
-	    yt_record_get_number(overlay, YT_F73), conversion_mode,
-	    &overflow);
+	converted_length = qb_cint_mbf32(overlay->bytes + YT_F73,
+	    conversion_mode, &overflow);
 	if (overflow || converted_length < 0) {
 		if (error != NULL) {
 			error->status = YT_RANGE;
@@ -4808,7 +4807,7 @@ yt_current_player_hydrate_run(
 	HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_GROUND_FORCES, YT_F121);
 	state->player->cloak = fresh.cloak;
 	HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_CLOAK, YT_F125);
-	anti_cloak = qb_cint_mode(qb_mbf32_decode(state->anti_cloak_raw),
+	anti_cloak = qb_cint_mbf32(state->anti_cloak_raw,
 	    state->conversion_mode, &overflow);
 	if (overflow)
 		return current_player_hydration_fault(error,
@@ -17567,8 +17566,8 @@ yt_hostile_bribe_run(struct yt_hostile_bribe_state *state,
 	{
 		bool overflow;
 
-		state->mercenaries_hurt_cint = qb_cint((double)qb_mbf32_decode(
-		    state->mercenaries_hurt_raw), &overflow);
+		state->mercenaries_hurt_cint = qb_cint_mbf32(
+		    state->mercenaries_hurt_raw, 0U, &overflow);
 		if (overflow) {
 			if (error != NULL) {
 				error->status = YT_RANGE;

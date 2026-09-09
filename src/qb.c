@@ -222,6 +222,16 @@ qb_cint(double value, bool *overflow)
 	return qb_cint_mode(value, 0, overflow);
 }
 
+int32_t
+qb_cint_mbf32(const uint8_t raw[4], uint8_t mode, bool *overflow)
+{
+	if (overflow != NULL)
+		*overflow = false;
+	if (raw[3] == 0U)
+		return 0;
+	return qb_cint_mode((double)qb_mbf32_decode(raw), mode, overflow);
+}
+
 size_t
 qb_ltrim_n(uint8_t *text, size_t length)
 {

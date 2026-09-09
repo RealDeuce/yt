@@ -253,6 +253,27 @@ test_numeric(void)
 	CHECK(qb_cint_mode(-2.25, 4, &overflow) == -3 && !overflow);
 	CHECK(qb_cint_mode(0.75, 4, &overflow) == 0 && !overflow);
 	CHECK(qb_cint_mode(2.5, 0xa5, &overflow) == 3 && !overflow);
+	CHECK(qb_cint_mbf32(raw_dirty_zero, 4, &overflow) == 0
+	    && !overflow);
+	{
+		uint8_t raw[4];
+
+		CHECK(qb_mbf32_encode(2.5f, raw) == QB_MBF_OK);
+		CHECK(qb_cint_mbf32(raw, 0, &overflow) == 3 && !overflow);
+		CHECK(qb_cint_mbf32(raw, 4, &overflow) == 2 && !overflow);
+		CHECK(qb_mbf32_encode(-2.25f, raw) == QB_MBF_OK);
+		CHECK(qb_cint_mbf32(raw, 0xa5, &overflow) == -2
+		    && !overflow);
+		CHECK(qb_cint_mbf32(raw, 4, &overflow) == -3 && !overflow);
+		CHECK(qb_mbf32_encode(-32768.0f, raw) == QB_MBF_OK);
+		CHECK(qb_cint_mbf32(raw, 0, &overflow) == -32768
+		    && !overflow);
+		CHECK(qb_mbf32_encode(32767.5f, raw) == QB_MBF_OK);
+		(void)qb_cint_mbf32(raw, 0, &overflow);
+		CHECK(overflow);
+		CHECK(qb_cint_mbf32(raw, 4, &overflow) == 32767
+		    && !overflow);
+	}
 	CHECK(qb_brun_random_record_number(2057.5f) == 2057U);
 	CHECK(qb_brun_random_record_number(-1.25f) == 0x00fffffeU);
 	CHECK(qb_brun_random_record_number(16777216.0f) == 0U);

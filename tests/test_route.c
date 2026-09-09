@@ -447,6 +447,58 @@ test_addressed_route_arguments(void)
 }
 
 static void
+test_raw_addressed_cint(void)
+{
+	static const uint16_t status_address = 0x4cf2U;
+	static const uint16_t destination_address = 0x4e12U;
+	static const uint16_t start_address = 0x4e1aU;
+	struct graph graph = {.maximum = 3, .fail_sector = -1};
+	struct yt_route_process process;
+	enum yt_route_outcome outcome;
+	struct yt_error error;
+	uint8_t raw[4];
+	uint8_t returned[4];
+
+	memset(&process, 0, sizeof(process));
+	CHECK(qb_mbf32_encode(-0.25f, raw) == QB_MBF_OK);
+	yt_route_process_set_raw_single(&process, start_address, raw);
+	yt_route_process_set_raw_single(&process, destination_address, raw);
+	yt_error_clear(&error);
+	CHECK(yt_route_process_build_at(start_address, destination_address,
+	    status_address, 0U, &process, read_sector, &graph, &outcome,
+	    &error));
+	CHECK(outcome == YT_ROUTE_SAME
+	    && yt_route_process_second(&process, 0) == 0);
+	yt_route_process_raw_single(&process, start_address, returned);
+	CHECK(memcmp(raw, returned, sizeof(raw)) == 0);
+
+	memset(&process, 0, sizeof(process));
+	yt_route_process_set_raw_single(&process, start_address, raw);
+	yt_route_process_set_raw_single(&process, destination_address, raw);
+	yt_error_clear(&error);
+	CHECK(!yt_route_process_build_at(start_address, destination_address,
+	    status_address, 4U, &process, read_sector, &graph, &outcome,
+	    &error));
+	CHECK(error.status == YT_RANGE && !error.basic_fault_valid
+	    && strcmp(error.operation, "route start FIFO CINT") == 0);
+
+	memset(&process, 0, sizeof(process));
+	raw[0] = 0x12U;
+	raw[1] = 0x34U;
+	raw[2] = 0xd6U;
+	raw[3] = 0x00U;
+	yt_route_process_set_raw_single(&process, start_address, raw);
+	yt_route_process_set_raw_single(&process, destination_address, raw);
+	yt_error_clear(&error);
+	CHECK(yt_route_process_build_at(start_address, destination_address,
+	    status_address, 4U, &process, read_sector, &graph, &outcome,
+	    &error));
+	yt_route_process_raw_single(&process, start_address, returned);
+	CHECK(outcome == YT_ROUTE_SAME
+	    && memcmp(raw, returned, sizeof(raw)) == 0);
+}
+
+static void
 test_process_record_number(void)
 {
 	static const uint16_t base_address = 0x19dcU;
@@ -581,6 +633,7 @@ main(int argc, char **argv)
 	test_same_zero_and_conversion_order();
 	test_route_cint_fault_sites();
 	test_addressed_route_arguments();
+	test_raw_addressed_cint();
 	test_process_record_number();
 	CHECK(reconstruction_back_edge_does_not_return());
 	if (failures != 0U)
