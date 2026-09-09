@@ -19752,7 +19752,11 @@ computer_menu(struct yt_session *session, bool *enter_sector,
 			}
 		}
 		if (strcmp(command, "6") == 0) {
-			if (!radio_read(session, 1.0f, error))
+			session_set_process_single(session,
+			    YT_COMPUTER_ROUTE_STATUS_ADDRESS, 1.0f);
+			if (!radio_read(session, yt_route_process_single(
+			    &session->route_process,
+			    YT_COMPUTER_ROUTE_STATUS_ADDRESS), error))
 				return false;
 			continue;
 		}
