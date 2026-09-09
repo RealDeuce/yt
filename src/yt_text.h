@@ -278,6 +278,23 @@ struct yt_text_output_write_result {
 	bool handle_open;
 };
 
+enum yt_text_output_process_outcome {
+	YT_TEXT_OUTPUT_PROCESS_NONE,
+	YT_TEXT_OUTPUT_PROCESS_RETURNED,
+	YT_TEXT_OUTPUT_PROCESS_RUNTIME_ERROR,
+	YT_TEXT_OUTPUT_PROCESS_PROVIDER_BOUNDARY,
+	YT_TEXT_OUTPUT_PROCESS_INTERNAL_ERROR,
+};
+
+struct yt_text_output_process_result {
+	enum yt_text_output_process_outcome outcome;
+	uint16_t control;
+	uint16_t type_address;
+	uint16_t basic_error;
+	uint16_t internal_entry;
+	bool released;
+};
+
 enum yt_text_device_write_phase {
 	YT_TEXT_DEVICE_WRITE_VALUE,
 	YT_TEXT_DEVICE_WRITE_COMPLETION,
@@ -419,6 +436,14 @@ bool yt_text_device_print_process(
 	struct yt_text_device_print_result *result, struct yt_error *error);
 bool yt_text_output_close(struct yt_text_output *output,
 	struct yt_error *error);
+bool yt_text_output_write_process_apply(uint8_t *process,
+	size_t process_size, uint16_t control,
+	const struct yt_text_output_write_result *write_result,
+	struct yt_text_output_process_result *result, struct yt_error *error);
+bool yt_text_output_close_process_apply(uint8_t *process,
+	size_t process_size, uint16_t control,
+	const struct yt_text_close_result *close_result,
+	struct yt_text_output_process_result *result, struct yt_error *error);
 bool yt_text_output_close_all_method(void *context, int8_t file_class,
 	struct yt_error *error);
 void yt_text_output_set_close_provider(struct yt_text_output *output,

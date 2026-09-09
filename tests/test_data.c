@@ -2475,15 +2475,15 @@ test_close_all_registry(void)
 }
 
 static void
-setup_brun_random_close_process(uint8_t *process, size_t process_size,
-    uint16_t control, uint8_t file_number, bool device)
+setup_brun_file_process(uint8_t *process, size_t process_size,
+    uint16_t control, uint8_t file_number, uint8_t kind, bool device)
 {
 	uint16_t type_address = (uint16_t)(control + 0xfdU);
 
 	memset(process, 0, process_size);
 	process[0x0eceU] = (uint8_t)type_address;
 	process[0x0ecfU] = (uint8_t)(type_address >> 8U);
-	process[control] = 4U;
+	process[control] = kind;
 	process[(uint16_t)(control - 2U)] = 0x00U;
 	process[(uint16_t)(control - 1U)] = 0x01U;
 	process[(uint16_t)(type_address - 3U)] = 0x00U;
@@ -2731,8 +2731,8 @@ test_database_random_close(void)
 		CHECK(database_close_fixture(&database, device != 0U, &script));
 		yt_error_clear(&error);
 		CHECK(yt_database_random_close(&database, &error));
-		setup_brun_random_close_process(process, sizeof(process), control,
-		    1U, device != 0U);
+		setup_brun_file_process(process, sizeof(process), control, 1U, 4U,
+		    device != 0U);
 		CHECK(yt_brun_random_close_process_apply(process, sizeof(process),
 		    1U, 0x1234U, &database.last_close, &process_result, &error)
 		    && process_result.outcome
@@ -2759,7 +2759,7 @@ test_database_random_close(void)
 	yt_error_clear(&error);
 	CHECK(!yt_database_random_close(&database, &error)
 	    && database.last_close.outcome == YT_DATABASE_CLOSE_DISK_ERROR);
-	setup_brun_random_close_process(process, sizeof(process), control, 1U,
+	setup_brun_file_process(process, sizeof(process), control, 1U, 4U,
 	    false);
 	CHECK(yt_brun_random_close_process_apply(process, sizeof(process), 1U,
 	    0x5678U, &database.last_close, &process_result, &error)
@@ -2779,7 +2779,7 @@ test_database_random_close(void)
 	yt_error_clear(&error);
 	CHECK(!yt_database_random_close(&database, &error)
 	    && database.last_close.outcome == YT_DATABASE_CLOSE_PROVIDER_ERROR);
-	setup_brun_random_close_process(process, sizeof(process), control, 1U,
+	setup_brun_file_process(process, sizeof(process), control, 1U, 4U,
 	    false);
 	CHECK(yt_brun_random_close_process_apply(process, sizeof(process), 1U,
 	    0x9abcU, &database.last_close, &process_result, &error)
@@ -2812,7 +2812,7 @@ test_database_random_close(void)
 	database.last_close.basic_error = 70U;
 	database.last_close.dos_error = 5U;
 	database.last_close.attempt_count = 2U;
-	setup_brun_random_close_process(process, sizeof(process), control, 1U,
+	setup_brun_file_process(process, sizeof(process), control, 1U, 4U,
 	    false);
 	process[control - 2U] = 0x80U;
 	process[control - 1U] = 0U;
@@ -4100,6 +4100,197 @@ test_text_output_close(void)
 #else
 	rmdir(directory);
 #endif
+}
+
+static void
+test_text_output_process_cleanup(void)
+{
+	static uint8_t process[YT_TEXT_DEVICE_PROCESS_SIZE];
+	uint8_t full[YT_TEXT_OUTPUT_BUFFER_SIZE];
+	static const uint8_t one[] = {0x51U};
+	struct text_output_write_script write_script;
+	struct text_close_script close_script;
+	struct yt_text_output output;
+	struct yt_text_output_process_result result;
+	struct yt_text_close_result saved_close;
+	struct yt_error error;
+	const uint16_t control = 0x2000U;
+	unsigned operation;
+
+	memset(full, 0x41, sizeof(full));
+
+	/* Successful PRINT retains the live block and selected control. */
+	memset(&close_script, 0, sizeof(close_script));
+	CHECK(text_output_close_fixture(&output, &close_script, NULL, 0U));
+	CHECK(yt_text_output_write(&output, one, sizeof(one), &error));
+	setup_brun_file_process(process, sizeof(process), control, 5U, 8U,
+	    false);
+	process[0x0a3aU] = (uint8_t)control;
+	process[0x0a3bU] = (uint8_t)(control >> 8U);
+	CHECK(yt_text_output_write_process_apply(process, sizeof(process),
+	    control, &output.last_write, &result, &error)
+	    && result.outcome == YT_TEXT_OUTPUT_PROCESS_RETURNED
+	    && result.control == control && !result.released
+	    && process[0x20fdU] == 3U
+	    && process[0x0a3aU] == (uint8_t)control
+	    && process[0x0a3bU] == (uint8_t)(control >> 8U));
+	yt_text_output_destroy(&output);
+
+	/* A rejected 128-byte flush releases the raw type-3 block. */
+	memset(&write_script, 0, sizeof(write_script));
+	memset(&close_script, 0, sizeof(close_script));
+	text_output_write_add(&write_script, full, 7U, false, 0U, true);
+	CHECK(text_output_close_fixture(&output, &close_script, full,
+	    sizeof(full)));
+	yt_text_output_set_write_provider(&output, scripted_text_output_write,
+	    &write_script);
+	CHECK(!yt_text_output_write(&output, one, sizeof(one), &error)
+	    && output.last_write.outcome == YT_TEXT_OUTPUT_WRITE_SHORT_ERROR);
+	setup_brun_file_process(process, sizeof(process), control, 5U, 8U,
+	    false);
+	process[0x0a3aU] = (uint8_t)control;
+	process[0x0a3bU] = (uint8_t)(control >> 8U);
+	CHECK(yt_text_output_write_process_apply(process, sizeof(process),
+	    control, &output.last_write, &result, &error)
+	    && result.outcome == YT_TEXT_OUTPUT_PROCESS_RUNTIME_ERROR
+	    && result.basic_error == 61U && result.released
+	    && result.type_address == 0x20fdU
+	    && process[0x20fdU] == 1U
+	    && process[0x0a3aU] == (uint8_t)control);
+	yt_text_output_destroy(&output);
+
+	/* A carry releases after the ignored cleanup CLOSE result. */
+	memset(&write_script, 0, sizeof(write_script));
+	memset(&close_script, 0, sizeof(close_script));
+	text_output_write_add(&write_script, full, 0U, true, 5U, true);
+	text_close_add(&close_script, YT_TEXT_CLOSE_CLEANUP_HANDLE, NULL, 0U,
+	    0U, false, 0U, false, true, true);
+	CHECK(text_output_close_fixture(&output, &close_script, full,
+	    sizeof(full)));
+	yt_text_output_set_write_provider(&output, scripted_text_output_write,
+	    &write_script);
+	CHECK(!yt_text_output_write(&output, one, sizeof(one), &error)
+	    && output.last_write.outcome == YT_TEXT_OUTPUT_WRITE_DISK_ERROR);
+	setup_brun_file_process(process, sizeof(process), control, 5U, 2U,
+	    false);
+	process[0x0a3aU] = (uint8_t)control;
+	process[0x0a3bU] = (uint8_t)(control >> 8U);
+	CHECK(yt_text_output_write_process_apply(process, sizeof(process),
+	    control, &output.last_write, &result, &error)
+	    && result.outcome == YT_TEXT_OUTPUT_PROCESS_RUNTIME_ERROR
+	    && result.basic_error == 71U && result.released
+	    && process[0x20fdU] == 1U);
+	yt_text_output_destroy(&output);
+
+	/* An unresolved write observation retains the raw selected block. */
+	memset(&write_script, 0, sizeof(write_script));
+	memset(&close_script, 0, sizeof(close_script));
+	text_output_write_add(&write_script, full, sizeof(full), false, 0U,
+	    true);
+	write_script.steps[0].provider_ok = false;
+	CHECK(text_output_close_fixture(&output, &close_script, full,
+	    sizeof(full)));
+	yt_text_output_set_write_provider(&output, scripted_text_output_write,
+	    &write_script);
+	CHECK(!yt_text_output_write(&output, one, sizeof(one), &error)
+	    && output.last_write.outcome
+	    == YT_TEXT_OUTPUT_WRITE_PROVIDER_ERROR);
+	setup_brun_file_process(process, sizeof(process), control, 5U, 8U,
+	    false);
+	process[0x0a3aU] = (uint8_t)control;
+	process[0x0a3bU] = (uint8_t)(control >> 8U);
+	CHECK(yt_text_output_write_process_apply(process, sizeof(process),
+	    control, &output.last_write, &result, &error)
+	    && result.outcome == YT_TEXT_OUTPUT_PROCESS_PROVIDER_BOUNDARY
+	    && !result.released && process[0x20fdU] == 3U);
+	yt_text_output_destroy(&output);
+
+	/* Successful ordinary CLOSE clears the active root and releases. */
+	memset(&close_script, 0, sizeof(close_script));
+	for (operation = YT_TEXT_CLOSE_PENDING_WRITE;
+	    operation <= YT_TEXT_CLOSE_HANDLE; ++operation)
+		text_output_add_success(&close_script,
+		    (enum yt_text_close_operation)operation, one, sizeof(one));
+	CHECK(text_output_close_fixture(&output, &close_script, one,
+	    sizeof(one)));
+	CHECK(yt_text_output_close(&output, &error));
+	saved_close = output.last_close;
+	setup_brun_file_process(process, sizeof(process), control, 5U, 8U,
+	    false);
+	CHECK(yt_text_output_close_process_apply(process, sizeof(process),
+	    control, &output.last_close, &result, &error)
+	    && result.outcome == YT_TEXT_OUTPUT_PROCESS_RETURNED
+	    && result.released && process[0x0bd4U] == 0U
+	    && process[0x0bd5U] == 0U && process[0x20fdU] == 1U);
+	yt_text_output_destroy(&output);
+
+	/* A close-time short releases without an ignored CLOSE retry. */
+	memset(&close_script, 0, sizeof(close_script));
+	text_close_add(&close_script, YT_TEXT_CLOSE_PENDING_WRITE, one,
+	    sizeof(one), 0U, false, 0U, true, true, false);
+	CHECK(text_output_close_fixture(&output, &close_script, one,
+	    sizeof(one)));
+	CHECK(!yt_text_output_close(&output, &error)
+	    && output.last_close.outcome == YT_TEXT_CLOSE_SHORT_ERROR);
+	setup_brun_file_process(process, sizeof(process), control, 5U, 2U,
+	    false);
+	CHECK(yt_text_output_close_process_apply(process, sizeof(process),
+	    control, &output.last_close, &result, &error)
+	    && result.outcome == YT_TEXT_OUTPUT_PROCESS_RUNTIME_ERROR
+	    && result.basic_error == 61U && result.released
+	    && process[0x0bd4U] == 0U && process[0x20fdU] == 1U);
+	yt_text_output_destroy(&output);
+
+	/* Device CLOSE carry maps ERR57 and still releases after retry. */
+	memset(&close_script, 0, sizeof(close_script));
+	text_close_add(&close_script, YT_TEXT_CLOSE_HANDLE, NULL, 0U, 0U,
+	    true, 5U, true, true, false);
+	text_close_add(&close_script, YT_TEXT_CLOSE_CLEANUP_HANDLE, NULL, 0U,
+	    0U, false, 0U, false, true, true);
+	CHECK(text_output_close_fixture(&output, &close_script, NULL, 0U));
+	output.last_output_open.device = true;
+	CHECK(!yt_text_output_close(&output, &error)
+	    && output.last_close.outcome == YT_TEXT_CLOSE_DISK_ERROR
+	    && output.last_close.basic_error == 57U);
+	setup_brun_file_process(process, sizeof(process), control, 5U, 2U,
+	    true);
+	CHECK(yt_text_output_close_process_apply(process, sizeof(process),
+	    control, &output.last_close, &result, &error)
+	    && result.outcome == YT_TEXT_OUTPUT_PROCESS_RUNTIME_ERROR
+	    && result.basic_error == 57U && result.released
+	    && process[0x0bd4U] == 0U && process[0x20fdU] == 1U);
+	yt_text_output_destroy(&output);
+
+	/* An unresolved CLOSE retains the active DS root and allocation. */
+	memset(&close_script, 0, sizeof(close_script));
+	text_close_add(&close_script, YT_TEXT_CLOSE_PENDING_WRITE, one,
+	    sizeof(one), sizeof(one), false, 0U, true, true, false);
+	close_script.steps[0].provider_ok = false;
+	CHECK(text_output_close_fixture(&output, &close_script, one,
+	    sizeof(one)));
+	CHECK(!yt_text_output_close(&output, &error)
+	    && output.last_close.outcome == YT_TEXT_CLOSE_PROVIDER_ERROR);
+	setup_brun_file_process(process, sizeof(process), control, 5U, 8U,
+	    false);
+	CHECK(yt_text_output_close_process_apply(process, sizeof(process),
+	    control, &output.last_close, &result, &error)
+	    && result.outcome == YT_TEXT_OUTPUT_PROCESS_PROVIDER_BOUNDARY
+	    && !result.released
+	    && process[0x0bd4U] == (uint8_t)control
+	    && process[0x0bd5U] == (uint8_t)(control >> 8U)
+	    && process[0x20fdU] == 3U);
+	yt_text_output_destroy(&output);
+
+	/* Corrupt release state supersedes a successful CLOSE return. */
+	setup_brun_file_process(process, sizeof(process), control, 5U, 8U,
+	    false);
+	process[control - 2U] = 0x80U;
+	process[control - 1U] = 0U;
+	CHECK(yt_text_output_close_process_apply(process, sizeof(process),
+	    control, &saved_close, &result, &error)
+	    && result.outcome == YT_TEXT_OUTPUT_PROCESS_INTERNAL_ERROR
+	    && result.internal_entry == 0x0accU && !result.released
+	    && process[0x0bd4U] == 0U && process[0x20fdU] == 3U);
 }
 
 static void
@@ -8552,6 +8743,7 @@ main(void)
 	test_genesis_sequential_handoff_boundaries();
 	test_text_device_print();
 	test_text_output_close();
+	test_text_output_process_cleanup();
 	test_database_random_lof();
 	test_files();
 	test_radio_file();

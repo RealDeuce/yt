@@ -3110,6 +3110,172 @@ yt_text_output_close(struct yt_text_output *output, struct yt_error *error)
 	return text_output_close_execute(output, false, error);
 }
 
+static bool
+text_output_process_control_valid(const uint8_t *process,
+    size_t process_size, uint16_t control)
+{
+	uint8_t kind;
+
+	if (process == NULL || process_size != YT_TEXT_DEVICE_PROCESS_SIZE
+	    || control == 0U)
+		return false;
+	kind = process[control];
+	return (kind == 2U || kind == 8U)
+	    && (int8_t)process[(uint16_t)(control + 0x2eU)] >= 0;
+}
+
+static bool
+text_output_process_release(uint8_t *process, size_t process_size,
+    uint16_t control, enum yt_text_output_process_outcome outcome,
+    uint16_t basic_error, struct yt_text_output_process_result *result,
+    struct yt_error *error)
+{
+	struct yt_brun_type3_release_result release;
+
+	if (!yt_brun_type3_release(process, process_size, control, &release,
+	    error))
+		return false;
+	result->type_address = release.type_address;
+	if (release.outcome == YT_BRUN_TYPE3_RELEASE_INTERNAL_ERROR) {
+		result->outcome = YT_TEXT_OUTPUT_PROCESS_INTERNAL_ERROR;
+		result->internal_entry = release.internal_entry;
+		return true;
+	}
+	result->outcome = outcome;
+	result->basic_error = basic_error;
+	result->released = true;
+	return true;
+}
+
+bool
+yt_text_output_write_process_apply(uint8_t *process,
+    size_t process_size, uint16_t control,
+    const struct yt_text_output_write_result *write_result,
+    struct yt_text_output_process_result *result, struct yt_error *error)
+{
+	struct yt_text_output_process_result local;
+	uint16_t selected;
+
+	memset(&local, 0, sizeof(local));
+	local.control = control;
+	if (!text_output_process_control_valid(process, process_size, control)
+	    || write_result == NULL || result == NULL
+	    || (process[(uint16_t)(control + 0x31U)] & 0x80U) != 0U) {
+		set_error(error, YT_INVALID,
+		    "sequential PRINT process cleanup", NULL);
+		if (result != NULL)
+			*result = local;
+		return false;
+	}
+	selected = text_device_process_word(process,
+	    YT_TEXT_DEVICE_SELECTED_ADDRESS);
+	if (selected != control) {
+		set_error(error, YT_INVALID,
+		    "sequential PRINT selected control", NULL);
+		*result = local;
+		return false;
+	}
+	if (write_result->outcome == YT_TEXT_OUTPUT_WRITE_RETURNED) {
+		if (write_result->basic_error != 0U || !write_result->registered) {
+			set_error(error, YT_INVALID,
+			    "sequential PRINT returned result", NULL);
+			*result = local;
+			return false;
+		}
+		local.outcome = YT_TEXT_OUTPUT_PROCESS_RETURNED;
+		*result = local;
+		return true;
+	}
+	if (write_result->outcome == YT_TEXT_OUTPUT_WRITE_PROVIDER_ERROR) {
+		local.outcome = YT_TEXT_OUTPUT_PROCESS_PROVIDER_BOUNDARY;
+		*result = local;
+		return true;
+	}
+	if ((write_result->outcome == YT_TEXT_OUTPUT_WRITE_SHORT_ERROR
+	    && (write_result->basic_error != 61U
+	    || write_result->cleanup_close_attempted))
+	    || (write_result->outcome == YT_TEXT_OUTPUT_WRITE_DISK_ERROR
+	    && (write_result->basic_error != 71U
+	    || !write_result->cleanup_close_attempted))
+	    || (write_result->outcome != YT_TEXT_OUTPUT_WRITE_SHORT_ERROR
+	    && write_result->outcome != YT_TEXT_OUTPUT_WRITE_DISK_ERROR)) {
+		set_error(error, YT_INVALID,
+		    "sequential PRINT failure result", NULL);
+		*result = local;
+		return false;
+	}
+	if (!text_output_process_release(process, process_size, control,
+	    YT_TEXT_OUTPUT_PROCESS_RUNTIME_ERROR, write_result->basic_error,
+	    &local, error)) {
+		*result = local;
+		return false;
+	}
+	*result = local;
+	return true;
+}
+
+bool
+yt_text_output_close_process_apply(uint8_t *process,
+    size_t process_size, uint16_t control,
+    const struct yt_text_close_result *close_result,
+    struct yt_text_output_process_result *result, struct yt_error *error)
+{
+	struct yt_text_output_process_result local;
+	bool device;
+
+	memset(&local, 0, sizeof(local));
+	local.control = control;
+	if (!text_output_process_control_valid(process, process_size, control)
+	    || close_result == NULL || result == NULL || close_result->missing) {
+		set_error(error, YT_INVALID,
+		    "sequential CLOSE process cleanup", NULL);
+		if (result != NULL)
+			*result = local;
+		return false;
+	}
+	device = (process[(uint16_t)(control + 0x31U)] & 0x80U) != 0U;
+	if (close_result->device != device) {
+		set_error(error, YT_INVALID,
+		    "sequential CLOSE device class", NULL);
+		*result = local;
+		return false;
+	}
+	if (close_result->outcome == YT_TEXT_CLOSE_PROVIDER_ERROR) {
+		text_device_process_set_word(process, 0x0bd4U, control);
+		local.outcome = YT_TEXT_OUTPUT_PROCESS_PROVIDER_BOUNDARY;
+		*result = local;
+		return true;
+	}
+	if ((close_result->outcome == YT_TEXT_CLOSE_RETURNED
+	    && close_result->basic_error != 0U)
+	    || (close_result->outcome == YT_TEXT_CLOSE_SHORT_ERROR
+	    && (device || close_result->basic_error != 61U
+	    || close_result->cleanup_close_attempted))
+	    || (close_result->outcome == YT_TEXT_CLOSE_DISK_ERROR
+	    && (close_result->basic_error != (device ? 57U : 70U)
+	    || !close_result->cleanup_close_attempted))
+	    || (close_result->outcome != YT_TEXT_CLOSE_RETURNED
+	    && close_result->outcome != YT_TEXT_CLOSE_SHORT_ERROR
+	    && close_result->outcome != YT_TEXT_CLOSE_DISK_ERROR)) {
+		set_error(error, YT_INVALID,
+		    "sequential CLOSE result", NULL);
+		*result = local;
+		return false;
+	}
+	text_device_process_set_word(process, 0x0bd4U, control);
+	text_device_process_set_word(process, 0x0bd4U, 0U);
+	if (!text_output_process_release(process, process_size, control,
+	    close_result->outcome == YT_TEXT_CLOSE_RETURNED
+	    ? YT_TEXT_OUTPUT_PROCESS_RETURNED
+	    : YT_TEXT_OUTPUT_PROCESS_RUNTIME_ERROR,
+	    close_result->basic_error, &local, error)) {
+		*result = local;
+		return false;
+	}
+	*result = local;
+	return true;
+}
+
 bool
 yt_text_output_close_all_method(void *context, int8_t file_class,
     struct yt_error *error)
