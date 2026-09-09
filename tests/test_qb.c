@@ -357,8 +357,17 @@ test_numeric(void)
 	CHECK(strcmp(rendered, "-32768") == 0);
 	qb_str_integer(rendered, sizeof(rendered), INT16_MAX);
 	CHECK(strcmp(rendered, " 32767") == 0);
-	qb_print_single(rendered, sizeof(rendered), -5.0f);
-	CHECK(strcmp(rendered, "-5 ") == 0);
+	CHECK(qb_print_integer(rendered, sizeof(rendered), 5) == 3
+	    && strcmp(rendered, " 5 ") == 0);
+	CHECK(qb_print_single(rendered, sizeof(rendered), -5.0f) == 3
+	    && strcmp(rendered, "-5 ") == 0);
+	CHECK(qb_print_double(rendered, sizeof(rendered), 0.5) == 4
+	    && strcmp(rendered, " .5 ") == 0);
+	CHECK(qb_print_number(rendered, sizeof(rendered), -1.0e-17) == 7
+	    && strcmp(rendered, "-1D-17 ") == 0);
+	memset(rendered, 0xa5, sizeof(rendered));
+	CHECK(qb_print_integer(rendered, 3U, 5) == 3
+	    && memcmp(rendered, " 5\0", 3U) == 0);
 }
 
 static uint64_t
