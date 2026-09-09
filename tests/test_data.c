@@ -3078,6 +3078,10 @@ test_text_device_print(void)
 	static const uint8_t pair[] = {'A', 'B'};
 	static const uint8_t wrap_pair[] = {'Z', 'A'};
 	static const uint8_t one[] = {'X'};
+	static const uint8_t file_hooks[] = {
+		0xffU, 0xc8U, 0x10U, 0xc9U, 0x9bU, 0xc9U, 0xeeU,
+		0xc8U, 0x0dU, 0xcaU, 0x0fU, 0xcaU, 0x22U, 0xcaU,
+	};
 	struct text_device_write_script script;
 	struct yt_text_device_state state;
 	struct yt_text_device_control_state selected_control;
@@ -3339,6 +3343,18 @@ test_text_device_print(void)
 		.process_size = sizeof(process),
 		.physical_unknown = true,
 	};
+	CHECK(yt_text_device_print_process_prepare(&process_state, control,
+	    0x1234U, 0x5678U, false, &error)
+	    && process[0x0a08U] == 0x78U
+	    && process[0x0a09U] == 0x56U
+	    && process[0x0a3aU] == (uint8_t)control
+	    && process[0x0a3bU] == (uint8_t)(control >> 8U)
+	    && process[0x0a60U] == 0xd3U
+	    && process[0x0a61U] == 0x99U
+	    && process[0x0eb6U] == 0U && process[0x0eb7U] == 0U
+	    && memcmp(process + 0x0ebaU, file_hooks, sizeof(file_hooks)) == 0
+	    && process[0x10d8U] == 0x03U
+	    && process[0x10d9U] == 0x01U);
 	memset(&script, 0, sizeof(script));
 	text_device_write_add(&script, YT_TEXT_DEVICE_WRITE_VALUE, 'A',
 	    1U, 1U, false, false, 0U, 0U);
@@ -3356,6 +3372,11 @@ test_text_device_print(void)
 	    && process[control + 0x2aU] == 0U
 	    && process[control + 0x32U] == 7U
 	    && process[control + 0x33U] == 'B');
+	CHECK(yt_text_device_print_process_prepare(&process_state, control,
+	    0xabcdU, 0x2468U, true, &error)
+	    && process[0x0a08U] == 0x68U && process[0x0a09U] == 0x24U
+	    && process[0x10d8U] == 0x03U
+	    && process[0x10d9U] == 0x02U);
 
 	/* Value failure retains selection, pending byte, and raw index/column. */
 	memset(process, 0, sizeof(process));

@@ -2595,7 +2595,13 @@ yt_text_device_print_runtime(struct yt_text_device_state *state,
 	return true;
 }
 
+#define YT_TEXT_DEVICE_HANDLER_SP_ADDRESS 0x0A08U
 #define YT_TEXT_DEVICE_SELECTED_ADDRESS 0x0A3AU
+#define YT_TEXT_DEVICE_PUBLIC_TARGET_ADDRESS 0x0A60U
+#define YT_TEXT_DEVICE_WRITE_MODE_ADDRESS 0x0EB6U
+#define YT_TEXT_DEVICE_USING_MODE_ADDRESS 0x0EB7U
+#define YT_TEXT_DEVICE_HOOKS_ADDRESS 0x0EBAU
+#define YT_TEXT_DEVICE_VALUE_TYPE_ADDRESS 0x10D8U
 #define YT_TEXT_DEVICE_DOS_MAJOR_ADDRESS 0x0020U
 #define YT_TEXT_DEVICE_INDEX_LOW_OFFSET 0x27U
 #define YT_TEXT_DEVICE_PENDING_OFFSET 0x2AU
@@ -2626,6 +2632,52 @@ text_device_control_address(uint16_t control, uint16_t offset)
 	return (uint16_t)(control + offset);
 }
 
+static bool
+text_device_process_valid(
+    const struct yt_text_device_process_state *process_state)
+{
+	return process_state != NULL && process_state->process != NULL
+	    && process_state->process_size == YT_TEXT_DEVICE_PROCESS_SIZE;
+}
+
+bool
+yt_text_device_print_process_prepare(
+    struct yt_text_device_process_state *process_state, uint16_t control,
+    uint16_t selector_handler_sp, uint16_t value_handler_sp, bool newline,
+    struct yt_error *error)
+{
+	static const uint16_t file_hooks[] = {
+		0xc8ffU, 0xc910U, 0xc99bU, 0xc8eeU,
+		0xca0dU, 0xca0fU, 0xca22U,
+	};
+	uint8_t *process;
+	size_t index;
+
+	if (!text_device_process_valid(process_state) || control == 0U) {
+		set_error(error, YT_INVALID,
+		    "character-device PRINT process prefix", NULL);
+		return false;
+	}
+	process = process_state->process;
+	text_device_process_set_word(process, YT_TEXT_DEVICE_HANDLER_SP_ADDRESS,
+	    selector_handler_sp);
+	text_device_process_set_word(process, YT_TEXT_DEVICE_SELECTED_ADDRESS,
+	    control);
+	process[YT_TEXT_DEVICE_WRITE_MODE_ADDRESS] = 0U;
+	process[YT_TEXT_DEVICE_USING_MODE_ADDRESS] = 0U;
+	for (index = 0U; index < YT_ARRAY_LEN(file_hooks); ++index)
+		text_device_process_set_word(process,
+		    (uint16_t)(YT_TEXT_DEVICE_HOOKS_ADDRESS + 2U * index),
+		    file_hooks[index]);
+	text_device_process_set_word(process,
+	    YT_TEXT_DEVICE_PUBLIC_TARGET_ADDRESS, 0x99d3U);
+	text_device_process_set_word(process, YT_TEXT_DEVICE_HANDLER_SP_ADDRESS,
+	    value_handler_sp);
+	text_device_process_set_word(process, YT_TEXT_DEVICE_VALUE_TYPE_ADDRESS,
+	    newline ? 0x0203U : 0x0103U);
+	return true;
+}
+
 bool
 yt_text_device_print_process(
     struct yt_text_device_process_state *process_state,
@@ -2647,8 +2699,7 @@ yt_text_device_print_process(
 	uint8_t pending;
 	bool returned;
 
-	if (process_state == NULL || process_state->process == NULL
-	    || process_state->process_size != YT_TEXT_DEVICE_PROCESS_SIZE) {
+	if (!text_device_process_valid(process_state)) {
 		if (result != NULL)
 			memset(result, 0, sizeof(*result));
 		set_error(error, YT_INVALID, "character-device PRINT process",

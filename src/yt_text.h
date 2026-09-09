@@ -396,6 +396,11 @@ bool yt_text_device_print_runtime(struct yt_text_device_state *state,
 	yt_text_device_write_provider provider, void *context,
 	struct yt_text_device_runtime_state *runtime,
 	struct yt_text_device_print_result *result, struct yt_error *error);
+/* Commit the infallible DS prefix after a file number has resolved to control. */
+bool yt_text_device_print_process_prepare(
+	struct yt_text_device_process_state *process_state, uint16_t control,
+	uint16_t selector_handler_sp, uint16_t value_handler_sp, bool newline,
+	struct yt_error *error);
 /*
  * DS-only projection of the shared character-device reducer.  It owns the
  * selected control device fields and external unknown-prefix lane; selector
