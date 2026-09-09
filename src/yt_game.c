@@ -1597,7 +1597,8 @@ yt_spy_sweep_run(struct yt_spy_sweep_state *state,
 
 	if (state == NULL || ops == NULL || state->spy_sectors == NULL
 	    || state->last_reported_sectors == NULL
-	    || state->sector_cache == NULL || state->cloak_cache == NULL
+	    || state->cloak_cache == NULL
+	    || (state->sector_cache == NULL && ops->read_cache == NULL)
 	    || ops->read_sector == NULL || ops->update_planet == NULL
 	    || ops->read_planet == NULL || ops->read_player == NULL
 	    || ops->read_team == NULL || ops->random == NULL
@@ -15036,7 +15037,8 @@ yt_projectile_plasma_killed_run(
 
 	if (state == NULL || ops == NULL || state->energy == NULL
 	    || state->blink == NULL || state->destroyed == NULL
-	    || state->sector_cache == NULL || ops->read_player == NULL
+	    || (state->sector_cache == NULL && ops->store_cache == NULL)
+	    || ops->read_player == NULL
 	    || ops->write_player == NULL || ops->present == NULL
 	    || ops->read_sector == NULL || ops->write_sector == NULL
 	    || ops->death == NULL || ops->sound == NULL || ops->salvage == NULL)
@@ -15118,7 +15120,8 @@ yt_projectile_plasma_killed_run(
 		*state->destroyed = true;
 		if (ops->store_destroyed != NULL)
 			ops->store_destroyed(context, basic_true);
-		state->sector_cache[state->shooter] = 0.0f;
+		if (state->sector_cache != NULL)
+			state->sector_cache[state->shooter] = 0.0f;
 		if (ops->store_cache != NULL)
 			ops->store_cache(context, state->shooter,
 			    YT_PLAYER_CACHE_SECTOR, cache_zero);
@@ -17887,7 +17890,8 @@ yt_direct_attack_run(struct yt_direct_attack_state *state,
 	if (state == NULL || ops == NULL || ops->read_player == NULL
 	    || ops->present == NULL || ops->confirm == NULL
 	    || ops->amount == NULL || ops->combat == NULL
-	    || state->sector_cache == NULL || state->cloak_cache == NULL)
+	    || (ops->read_cache == NULL
+	    && (state->sector_cache == NULL || state->cloak_cache == NULL)))
 		return false;
 	state->candidate = 2.0f;
 	state->target_record_cell = 0.0f;

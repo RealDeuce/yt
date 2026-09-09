@@ -3762,6 +3762,7 @@ check_spy_sweep_transaction(void)
 	    sector_cache, cloak_cache);
 	sector_cache[3] = -100.0f;
 	cloak_cache[3] = -1.0f;
+	state.sector_cache = NULL;
 	if (!yt_spy_sweep_run(&state, &ops, &expected, NULL))
 		return false;
 	if (expected.event_count != YT_ARRAY_LEN(expected_events)
@@ -6933,12 +6934,13 @@ check_projectile_plasma_killed_transaction(void)
 
 	plasma_killed_fixture(&tape, &state, &energy, &blink, &destroyed, cache);
 	state.victim = 2;
+	state.sector_cache = NULL;
 	tape.player_source.mines = 0.0f;
 	tape.player_source.name_length = 40000.0f;
 	(void)yt_record_set_number(&tape.player_source.record, YT_F129, 0.0f);
 	energy = 1.0;
 	if (!yt_projectile_plasma_killed_run(&state, &ops, &tape, NULL)
-	    || !state.self_hit || !destroyed || cache[2] != 0.0f
+	    || !state.self_hit || !destroyed
 	    || state.route != YT_PROJECTILE_PLASMA_KILLED_CONTINUE_DISPATCH
 	    || tape.event_count != 3U || tape.output_count != 1U
 	    || tape.destroyed_store_count != 1U
@@ -25050,6 +25052,8 @@ check_direct_attack_transaction(void)
 	tape.sector_cache[3] = 8.0f;
 	tape.sector_cache[4] = 8.0f;
 	tape.sector_cache[5] = 8.0f;
+	state.sector_cache = NULL;
+	state.cloak_cache = NULL;
 	if (!yt_direct_attack_run(&state, &direct_attack_process_ops, &tape, NULL)
 	    || state.route != YT_DIRECT_ATTACK_COMBAT_RETURN || !state.complete
 	    || tape.combat_target != 5 || tape.cache_read_count != 8U)

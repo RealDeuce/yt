@@ -227,7 +227,6 @@ struct yt_session {
 	struct yt_player player;
 	uint8_t cached_player_name[YT_TEXT_FIELD_SIZE];
 	size_t cached_player_name_length;
-	float sector_cache[YT_PLAYER_LAST + 1];
 	float cloak_cache[YT_PLAYER_LAST + 1];
 	struct yt_startup_main_prefix startup_prefix;
 	char queue[YT_COMMAND_SIZE];
@@ -1360,7 +1359,7 @@ reload_player(struct yt_session *session, struct yt_error *error)
 		.conversion_mode = session->presentation.sound.conversion_mode,
 		.current_sector_record = &current_sector_record,
 		.cloak_cache = session->cloak_cache,
-		.cache_count = YT_ARRAY_LEN(session->sector_cache),
+		.cache_count = (YT_PLAYER_LAST + 1U),
 		.store = session_hydration_store,
 	};
 
@@ -1407,7 +1406,7 @@ mutate_player_credits_observed(struct yt_session *session, float argument,
 	    session->presentation.sound.conversion_mode;
 	state.hydration.current_sector_record = &current_sector_record;
 	state.hydration.cloak_cache = session->cloak_cache;
-	state.hydration.cache_count = YT_ARRAY_LEN(session->sector_cache);
+	state.hydration.cache_count = (YT_PLAYER_LAST + 1U);
 	state.hydration.store = session_hydration_store;
 	yt_route_process_raw_single(&session->route_process,
 	    YT_SECTOR_OFFSET_ADDRESS,
@@ -3059,6 +3058,7 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 	};
 	struct yt_game *game = &session->door->game;
 	struct yt_startup_configuration_state state;
+	float sector_cache[YT_PLAYER_LAST + 1] = {0};
 	bool ok;
 
 	memset(game, 0, sizeof(*game));
@@ -3068,9 +3068,9 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 	state.local_mode = session->door->identity.local ? -1.0f : 0.0f;
 	state.cache_guard = yt_route_process_single(&session->route_process,
 	    YT_PLAYER_CACHE_GUARD_ADDRESS);
-	state.sector_cache = session->sector_cache;
+	state.sector_cache = sector_cache;
 	state.cloak_cache = session->cloak_cache;
-	state.cache_count = YT_ARRAY_LEN(session->sector_cache);
+	state.cache_count = (YT_PLAYER_LAST + 1U);
 	session_disruption_sectors(session, state.black_hole);
 	ok = yt_startup_configuration_run(&state, &ops, session, error);
 	return ok;
@@ -5213,7 +5213,8 @@ display_sector_one(struct yt_session *session, float logical_sector,
 		float random_value;
 
 		if (!yt_sector_candidate_eligible(basic, session_record(session),
-		    session->sector_cache[basic], logical_sector))
+		    session_player_cache_value(session, basic,
+		    YT_PLAYER_CACHE_SECTOR), logical_sector))
 			continue;
 		if (!yt_random_next(&session->door->game.random, &random_value,
 		    error))
@@ -5790,11 +5791,9 @@ session_player_cache_store(void *context, int player_record,
 
 	session_set_player_cache_raw(session, player_record, kind, raw);
 	if (player_record < 0
-	    || (size_t)player_record >= YT_ARRAY_LEN(session->sector_cache))
+	    || (size_t)player_record >= (YT_PLAYER_LAST + 1U))
 		return;
-	if (kind == YT_PLAYER_CACHE_SECTOR)
-		session->sector_cache[player_record] = qb_mbf32_decode(raw);
-	else if (kind == YT_PLAYER_CACHE_CLOAK)
+	if (kind == YT_PLAYER_CACHE_CLOAK)
 		session->cloak_cache[player_record] = qb_mbf32_decode(raw);
 }
 
@@ -5839,9 +5838,9 @@ spy_sweep(struct yt_session *session, struct yt_error *error)
 			session_disruption_sector(session, 0U),
 			session_disruption_sector(session, 1U)
 		},
-		.sector_cache = session->sector_cache,
+		.sector_cache = NULL,
 		.cloak_cache = session->cloak_cache,
-		.cache_count = YT_ARRAY_LEN(session->sector_cache),
+		.cache_count = (YT_PLAYER_LAST + 1U),
 		.found_scratch = yt_route_process_single(&session->route_process,
 		    YT_SPY_FOUND_SCRATCH_ADDRESS),
 		.dead_counter_scratch = yt_route_process_single(
@@ -6213,8 +6212,6 @@ emergency_warp(struct yt_session *session, struct yt_error *error)
 	session_set_player_cache_raw(session, session_record(session),
 	    YT_PLAYER_CACHE_SECTOR,
 	    session->player.record.bytes + YT_F57);
-	session->sector_cache[session_record(session)] =
-	    qb_mbf32_decode(session->player.record.bytes + YT_F57);
 	return true;
 }
 
@@ -6389,11 +6386,10 @@ movement_update_cache(void *context, int player_record, const uint8_t raw[4],
 
 	(void)error;
 	if (player_record < 0
-	    || (size_t)player_record >= YT_ARRAY_LEN(session->sector_cache))
+	    || (size_t)player_record >= (YT_PLAYER_LAST + 1U))
 		return false;
 	session_set_player_cache_raw(session, player_record,
 	    YT_PLAYER_CACHE_SECTOR, raw);
-	session->sector_cache[player_record] = qb_mbf32_decode(raw);
 	return true;
 }
 
@@ -6587,9 +6583,6 @@ player_death_clear_active_cache(void *context, int victim_record,
 
 	session_set_player_cache_raw(session, victim_record,
 	    YT_PLAYER_CACHE_SECTOR, raw);
-	if (victim_record >= 0
-	    && (size_t)victim_record < YT_ARRAY_LEN(session->sector_cache))
-		session->sector_cache[victim_record] = qb_mbf32_decode(raw);
 }
 
 static void
@@ -7328,9 +7321,9 @@ command_attack_player(struct yt_session *session, bool *enter_sector,
 		.current_player_record = session_record(session),
 		.last_player_record = session_sector_offset(session),
 		.conversion_mode = session->presentation.sound.conversion_mode,
-		.sector_cache = session->sector_cache,
+		.sector_cache = NULL,
 		.cloak_cache = session->cloak_cache,
-		.cache_count = YT_ARRAY_LEN(session->sector_cache),
+		.cache_count = (YT_PLAYER_LAST + 1U),
 	};
 
 	if (enter_sector == NULL)
@@ -15818,9 +15811,9 @@ missile_sector(struct yt_session *session, int sector_number,
 	probe.sector = &sector;
 	probe.hop = (float)sector_number;
 	probe.player_terminal = session_sector_offset(session);
-	probe.sector_cache = session->sector_cache;
+	probe.sector_cache = NULL;
 	probe.cloak_cache = session->cloak_cache;
-	probe.cache_count = YT_ARRAY_LEN(session->sector_cache);
+	probe.cache_count = (YT_PLAYER_LAST + 1U);
 	probe.read_cache = session_player_cache_read;
 	probe.cache_context = session;
 	probe.xannor_provoker = (float)*xannor_provoker;
@@ -16189,8 +16182,8 @@ plasma_reload_sector:
 	dispatch.sector = (float)sector_number;
 	dispatch.planet_link = planet_link;
 	dispatch.player_terminal = session_sector_offset(session);
-	dispatch.sector_cache = session->sector_cache;
-	dispatch.cache_count = YT_ARRAY_LEN(session->sector_cache);
+	dispatch.sector_cache = NULL;
+	dispatch.cache_count = (YT_PLAYER_LAST + 1U);
 	dispatch.read_cache = session_player_cache_read;
 	dispatch.cache_context = session;
 	for (;;) {
@@ -16220,8 +16213,8 @@ plasma_reload_sector:
 			killed.energy = energy;
 			killed.blink = &session->presentation.blink;
 			killed.destroyed = &destroyed;
-			killed.sector_cache = session->sector_cache;
-			killed.cache_count = YT_ARRAY_LEN(session->sector_cache);
+			killed.sector_cache = NULL;
+			killed.cache_count = (YT_PLAYER_LAST + 1U);
 			if (!yt_projectile_plasma_killed_run(&killed, &killed_ops,
 			    session, error))
 				return false;
@@ -16576,9 +16569,9 @@ plasma_route_impact(void *context, int hop, double *energy,
 		return false;
 	memset(&probe, 0, sizeof(probe));
 	probe.sector = &sector;
-	probe.sector_cache = session->sector_cache;
+	probe.sector_cache = NULL;
 	probe.cloak_cache = session->cloak_cache;
-	probe.cache_count = YT_ARRAY_LEN(session->sector_cache);
+	probe.cache_count = (YT_PLAYER_LAST + 1U);
 	probe.read_cache = session_player_cache_read;
 	probe.cache_context = session;
 	probe.hop = (float)hop;
@@ -16952,9 +16945,9 @@ launch_xannor_retaliation(struct yt_session *session, int *provoking_player,
 	struct yt_xannor_retaliation_state state = {
 		&session->player,
 		&session->player_record_carrier,
-		session->sector_cache,
+		NULL,
 		session->cloak_cache,
-		YT_ARRAY_LEN(session->sector_cache),
+		(YT_PLAYER_LAST + 1U),
 		&destroyed,
 		provoking_player,
 		&session->door->game.config.headquarters,
@@ -17067,9 +17060,9 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 	struct yt_counterlaunch_state state = {
 		&session->player,
 		&session->player_record_carrier,
-		session->sector_cache,
+		NULL,
 		session->cloak_cache,
-		YT_ARRAY_LEN(session->sector_cache),
+		(YT_PLAYER_LAST + 1U),
 		&destroyed,
 		&retained_count,
 		counterattacker,
