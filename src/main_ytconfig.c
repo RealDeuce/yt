@@ -669,7 +669,8 @@ edit_ports(struct yt_game *game, struct yt_error *error)
 
 		if (!yt_game_read_port(game, logical, &port, error))
 			return false;
-		name_length = (int)qb_cint(port.name_length, &overflow);
+		name_length = (int)qb_cint_mbf32(
+		    port.record.bytes + YT_F85, 0U, &overflow);
 		if (overflow || name_length < 0)
 			return false;
 		if (name_length > (int)sizeof(candidate))
