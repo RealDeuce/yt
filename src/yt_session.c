@@ -3532,7 +3532,7 @@ static bool
 opening_and_date(struct yt_session *session, struct yt_error *error)
 {
 	struct yt_shared_error_result shared_error;
-	uint16_t open_basic_error;
+	uint16_t opening_basic_error;
 	bool found;
 	char real_name[258];
 	struct yt_present_result presentation;
@@ -3563,9 +3563,11 @@ opening_and_date(struct yt_session *session, struct yt_error *error)
 		    yt_sound_snoop(&session->presentation.sound),
 		    opening_poll_local,
 		    opening_poll_remote, opening_wait, session,
-		    &open_basic_error, error)) {
-			if (open_basic_error == 53U) {
-				if (!yt_shared_error_compose(53, 2710, &shared_error)
+		    &opening_basic_error, error)) {
+			if (opening_basic_error != 0U) {
+				if (!yt_shared_error_compose(
+				    (int16_t)opening_basic_error, 2710,
+				    &shared_error)
 				    || !session_commit_shared_terminal(session,
 				    &shared_error, error))
 					return false;

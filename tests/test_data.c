@@ -7373,6 +7373,8 @@ struct opening_stream_tape {
 	enum opening_stream_event events[32];
 	size_t event_count;
 	size_t fail_at;
+	size_t timeout_at;
+	bool timeout_fired;
 	bool input_open;
 	bool local_open;
 	char path[32];
@@ -7407,6 +7409,16 @@ opening_stream_record(struct opening_stream_tape *tape,
 	if (tape->event_count < YT_ARRAY_LEN(tape->events))
 		tape->events[tape->event_count] = event;
 	++tape->event_count;
+	if (!tape->timeout_fired
+	    && tape->event_count == tape->timeout_at) {
+		tape->timeout_fired = true;
+		if (error != NULL) {
+			error->status = YT_IO_ERROR;
+			error->basic_error = 24U;
+			error->basic_error_valid = true;
+		}
+		return false;
+	}
 	if (tape->event_count != tape->fail_at)
 		return true;
 	if (error != NULL) {
@@ -7725,6 +7737,40 @@ test_opening_stream(void)
 		    failure * sizeof(natural[0])) == 0);
 		opening_stream_check_state(&state, &tape);
 	}
+
+	for (failure = 1U; failure <= YT_ARRAY_LEN(natural); ++failure) {
+		if (natural[failure - 1U] == OPENING_STREAM_WAIT)
+			continue;
+		opening_stream_initialize(&state, &tape);
+		tape.timeout_at = failure;
+		yt_error_clear(&error);
+		CHECK(yt_opening_stream_run(&state, &opening_stream_ops,
+		    &tape, &error));
+		CHECK(tape.timeout_fired
+		    && tape.event_count == YT_ARRAY_LEN(natural) + 1U
+		    && tape.events[failure - 1U] == natural[failure - 1U]
+		    && tape.events[failure] == natural[failure - 1U]
+		    && memcmp(tape.events, natural,
+		    (failure - 1U) * sizeof(natural[0])) == 0
+		    && memcmp(tape.events + failure + 1U, natural + failure,
+		    (YT_ARRAY_LEN(natural) - failure)
+		    * sizeof(natural[0])) == 0);
+		opening_stream_check_state(&state, &tape);
+	}
+
+	opening_stream_initialize(&state, &tape);
+	tape.timeout_at = 1U;
+	CHECK(yt_opening_stream_run(&state, &opening_stream_ops,
+	    &tape, NULL) && tape.timeout_fired);
+	opening_stream_check_state(&state, &tape);
+
+	opening_stream_initialize(&state, &tape);
+	tape.timeout_at = 16U;
+	yt_error_clear(&error);
+	CHECK(!yt_opening_stream_run(&state, &opening_stream_ops, &tape,
+	    &error) && tape.timeout_fired
+	    && tape.event_count == 16U && !state.waited
+	    && error.basic_error_valid && error.basic_error == 24U);
 
 	opening_stream_initialize(&state, &tape);
 	tape.local_key_at = 2U;

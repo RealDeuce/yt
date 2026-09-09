@@ -71,16 +71,29 @@ remote_device_write(void *context, enum yt_text_device_write_phase phase,
 }
 
 static bool
-remote_device_apply(const uint8_t *data, size_t length, bool line)
+remote_device_apply_observed(const uint8_t *data, size_t length, bool line,
+    uint16_t *basic_error)
 {
 	struct yt_text_device_print_result result;
 	struct yt_error error;
+	bool ok;
 
+	if (basic_error != NULL)
+		*basic_error = 0U;
 	remote_device.selected = true;
 	yt_error_clear(&error);
-	return yt_text_device_print(&remote_device, data, length, line,
+	ok = yt_text_device_print(&remote_device, data, length, line,
 	    YT_TEXT_DEVICE_COM1, 0x82U, 5U, remote_device_write, NULL,
 	    &result, &error);
+	if (!ok && basic_error != NULL)
+		*basic_error = result.basic_error;
+	return ok;
+}
+
+static bool
+remote_device_apply(const uint8_t *data, size_t length, bool line)
+{
+	return remote_device_apply_observed(data, length, line, NULL);
 }
 
 bool
@@ -251,6 +264,7 @@ yt_out_clear(void)
 
 struct yt_out_opening_context {
 	struct yt_text_input input;
+	uint16_t basic_error;
 	yt_out_opening_poll_fn poll_local;
 	yt_out_opening_poll_fn poll_remote;
 	yt_out_opening_wait_fn wait;
@@ -258,12 +272,57 @@ struct yt_out_opening_context {
 };
 
 static bool
+out_opening_text_result(struct yt_out_opening_context *opening,
+    bool ok, uint16_t basic_error, struct yt_error *error)
+{
+	opening->basic_error = ok ? 0U : basic_error;
+	if (!ok && basic_error != 0U) {
+		if (error == NULL)
+			return ok;
+		error->basic_error = basic_error;
+		error->basic_error_valid = true;
+	}
+	return ok;
+}
+
+static bool
+out_opening_remote_statement(struct yt_out_opening_context *opening,
+    const uint8_t *data, size_t length, bool newline,
+    struct yt_error *error)
+{
+	uint16_t basic_error;
+
+	for (;;) {
+		if (remote_device_apply_observed(data, length, newline,
+		    &basic_error)) {
+			opening->basic_error = 0U;
+			return true;
+		}
+		if (basic_error != 24U) {
+			if (error != NULL) {
+				error->status = YT_IO_ERROR;
+				error->system_error = 0;
+				(void)snprintf(error->operation,
+				    sizeof(error->operation), "%s",
+				    "remote opening PRINT");
+				error->path[0] = '\0';
+			}
+			return out_opening_text_result(opening, false,
+			    basic_error, error);
+		}
+	}
+}
+
+static bool
 out_opening_open_input(void *context, const char *path,
     struct yt_error *error)
 {
 	struct yt_out_opening_context *opening = context;
 
-	return yt_text_input_open(&opening->input, path, error);
+	bool ok = yt_text_input_open(&opening->input, path, error);
+
+	return out_opening_text_result(opening, ok,
+	    opening->input.last_open.basic_error, error);
 }
 
 static bool
@@ -279,7 +338,10 @@ out_opening_eof(void *context, bool *eof, struct yt_error *error)
 {
 	struct yt_out_opening_context *opening = context;
 
-	return yt_text_input_eof(&opening->input, eof, error);
+	bool ok = yt_text_input_eof(&opening->input, eof, error);
+
+	return out_opening_text_result(opening, ok,
+	    opening->input.last_read.basic_error, error);
 }
 
 static bool
@@ -288,8 +350,11 @@ out_opening_read(void *context, const uint8_t **line, size_t *length,
 {
 	struct yt_out_opening_context *opening = context;
 
-	return yt_text_input_read_line(&opening->input, line, length, available,
-	    error);
+	bool ok = yt_text_input_read_line(&opening->input, line, length,
+	    available, error);
+
+	return out_opening_text_result(opening, ok,
+	    opening->input.last_read.basic_error, error);
 }
 
 static bool
@@ -316,20 +381,13 @@ out_opening_present_remote(void *context, const uint8_t *line, size_t length,
     struct yt_error *error)
 {
 	static const uint8_t newline[] = {'\n', '\r'};
+	struct yt_out_opening_context *opening = context;
 
-	(void)context;
-	if (!remote_device_apply(line, length, false)
-	    || !remote_device_apply(newline, 1U, true)) {
-		if (error != NULL) {
-			error->status = YT_INVALID;
-			error->system_error = 0;
-			(void)snprintf(error->operation, sizeof(error->operation),
-			    "%s", "remote opening device state");
-			error->path[0] = '\0';
-		}
+	if (!out_opening_remote_statement(opening, line, length, false, error))
 		return false;
-	}
 	yt_out_remote_bytes(line, length);
+	if (!out_opening_remote_statement(opening, newline, 1U, true, error))
+		return false;
 	yt_out_remote_bytes(newline, sizeof(newline));
 	return true;
 }
@@ -353,20 +411,18 @@ out_opening_wait(void *context, float seconds, struct yt_error *error)
 static bool
 out_opening_reset_remote(void *context, struct yt_error *error)
 {
-	static const uint8_t reset[] = "\x1b[0m";
+	static const uint8_t escape[] = "\x1b";
+	static const uint8_t suffix[] = "[0m";
+	struct yt_out_opening_context *opening = context;
 
-	(void)context;
-	if (!remote_device_apply(reset, sizeof(reset) - 1U, false)) {
-		if (error != NULL) {
-			error->status = YT_INVALID;
-			error->system_error = 0;
-			(void)snprintf(error->operation, sizeof(error->operation),
-			    "%s", "remote reset device state");
-			error->path[0] = '\0';
-		}
+	if (!out_opening_remote_statement(opening, escape,
+	    sizeof(escape) - 1U, false, error))
 		return false;
-	}
-	yt_out_remote_bytes(reset, sizeof(reset) - 1U);
+	yt_out_remote_bytes(escape, sizeof(escape) - 1U);
+	if (!out_opening_remote_statement(opening, suffix,
+	    sizeof(suffix) - 1U, false, error))
+		return false;
+	yt_out_remote_bytes(suffix, sizeof(suffix) - 1U);
 	return true;
 }
 
@@ -384,7 +440,10 @@ out_opening_close_input(void *context, struct yt_error *error)
 {
 	struct yt_out_opening_context *opening = context;
 
-	return yt_text_input_close(&opening->input, error);
+	bool ok = yt_text_input_close(&opening->input, error);
+
+	return out_opening_text_result(opening, ok,
+	    opening->input.last_close.basic_error, error);
 }
 
 static bool
@@ -399,7 +458,7 @@ bool
 yt_out_opening_file_observed(const char *path, float mode, float snoop,
     yt_out_opening_poll_fn poll_local,
     yt_out_opening_poll_fn poll_remote, yt_out_opening_wait_fn wait,
-    void *poll_context, uint16_t *open_basic_error, struct yt_error *error)
+    void *poll_context, uint16_t *basic_error, struct yt_error *error)
 {
 	static const struct yt_opening_stream_ops ops = {
 		out_opening_open_input,
@@ -429,8 +488,8 @@ yt_out_opening_file_observed(const char *path, float mode, float snoop,
 	};
 	bool ok;
 
-	if (open_basic_error != NULL)
-		*open_basic_error = 0U;
+	if (basic_error != NULL)
+		*basic_error = 0U;
 	if (poll_local == NULL || poll_remote == NULL || wait == NULL) {
 		if (error != NULL) {
 			error->status = YT_INVALID;
@@ -441,8 +500,8 @@ yt_out_opening_file_observed(const char *path, float mode, float snoop,
 	}
 	yt_text_input_init(&context.input);
 	ok = yt_opening_stream_run(&state, &ops, &context, error);
-	if (open_basic_error != NULL)
-		*open_basic_error = context.input.last_open.basic_error;
+	if (basic_error != NULL)
+		*basic_error = context.basic_error;
 	yt_text_input_destroy(&context.input);
 	return ok;
 }

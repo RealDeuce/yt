@@ -279,16 +279,19 @@ test_ansi_opening_routes(void)
 	yt_error_clear(&error);
 	CHECK(yt_out_opening_file(path, 0.0f, 1.0f, poll_never,
 	    poll_never, wait_once, &waits, &error)
-	    && waits == 1U && output_call_count == 3U
+	    && waits == 1U && output_call_count == 4U
 	    && output_calls[0].length == 5U
 	    && memcmp(output_calls[0].data, "\x1b[2JX", 5U) == 0
 	    && !output_calls[0].local_echo
 	    && output_calls[1].length == 2U
 	    && memcmp(output_calls[1].data, "\n\r", 2U) == 0
 	    && !output_calls[1].local_echo
-	    && output_calls[2].length == 4U
-	    && memcmp(output_calls[2].data, "\x1b[0m", 4U) == 0
+	    && output_calls[2].length == 1U
+	    && output_calls[2].data[0] == '\x1b'
 	    && !output_calls[2].local_echo
+	    && output_calls[3].length == 3U
+	    && memcmp(output_calls[3].data, "[0m", 3U) == 0
+	    && !output_calls[3].local_echo
 	    && local_call_count == 0U && emulated_call_count == 3U
 	    && strcmp(emulated_calls[0].text, "\x1b[2JX") == 0
 	    && strcmp(emulated_calls[1].text, "\r\n") == 0

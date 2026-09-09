@@ -908,11 +908,32 @@ yt_file_viewer_missing(const uint8_t *path, size_t path_length,
 	return true;
 }
 
+static bool
+opening_retry_current(const struct yt_error *error)
+{
+	return error != NULL && error->basic_error_valid
+	    && error->basic_error == 24U;
+}
+
+#define OPENING_STATEMENT(call) do { \
+	for (;;) { \
+		yt_error_clear(error); \
+		if (call) \
+			break; \
+		if (!opening_retry_current(error)) \
+			return false; \
+	} \
+} while (0)
+
 bool
 yt_opening_stream_run(struct yt_opening_stream_state *state,
     const struct yt_opening_stream_ops *ops, void *context,
     struct yt_error *error)
 {
+	struct yt_error local_error;
+
+	if (error == NULL)
+		error = &local_error;
 	if (state == NULL || state->path == NULL || ops == NULL
 	    || ops->open_input == NULL || ops->open_local == NULL
 	    || ops->eof == NULL || ops->read == NULL
@@ -937,11 +958,9 @@ yt_opening_stream_run(struct yt_opening_stream_state *state,
 	state->local_polls = 0U;
 	state->remote_lines = 0U;
 	state->remote_polls = 0U;
-	if (!ops->open_input(context, state->path, error))
-		return false;
+	OPENING_STATEMENT(ops->open_input(context, state->path, error));
 	state->input_open = true;
-	if (!ops->open_local(context, error))
-		return false;
+	OPENING_STATEMENT(ops->open_local(context, error));
 	state->local_open = true;
 	for (;;) {
 		const uint8_t *line;
@@ -950,8 +969,7 @@ yt_opening_stream_run(struct yt_opening_stream_state *state,
 		bool eof;
 		bool ready;
 
-		if (!ops->eof(context, &eof, error))
-			return false;
+		OPENING_STATEMENT(ops->eof(context, &eof, error));
 		++state->eof_checks;
 		if (eof) {
 			if (!ops->wait(context, 3.0f, error))
@@ -959,8 +977,8 @@ yt_opening_stream_run(struct yt_opening_stream_state *state,
 			state->waited = true;
 			break;
 		}
-		if (!ops->read(context, &line, &length, &available, error))
-			return false;
+		OPENING_STATEMENT(ops->read(context, &line, &length,
+		    &available, error));
 		++state->read_count;
 		if (!available) {
 			errno = 0;
@@ -969,23 +987,21 @@ yt_opening_stream_run(struct yt_opening_stream_state *state,
 			return false;
 		}
 		if (state->snoop != 0.0f) {
-			if (!ops->present_local(context, line, length, error))
-				return false;
+			OPENING_STATEMENT(ops->present_local(context, line, length,
+			    error));
 			++state->local_lines;
 		}
-		if (!ops->poll_local(context, &ready, error))
-			return false;
+		OPENING_STATEMENT(ops->poll_local(context, &ready, error));
 		++state->local_polls;
 		if (ready) {
 			state->exit_reason = YT_OPENING_EXIT_LOCAL_KEY;
 			break;
 		}
 		if (state->mode != 1.0f) {
-			if (!ops->present_remote(context, line, length, error))
-				return false;
+			OPENING_STATEMENT(ops->present_remote(context, line, length,
+			    error));
 			++state->remote_lines;
-			if (!ops->poll_remote(context, &ready, error))
-				return false;
+			OPENING_STATEMENT(ops->poll_remote(context, &ready, error));
 			++state->remote_polls;
 			if (ready) {
 				state->exit_reason =
@@ -995,23 +1011,21 @@ yt_opening_stream_run(struct yt_opening_stream_state *state,
 		}
 	}
 	if (state->mode == 0.0f) {
-		if (!ops->reset_remote(context, error))
-			return false;
+		OPENING_STATEMENT(ops->reset_remote(context, error));
 		state->remote_reset = true;
 	}
 	if (state->snoop != 0.0f) {
-		if (!ops->reset_local(context, error))
-			return false;
+		OPENING_STATEMENT(ops->reset_local(context, error));
 		state->local_reset = true;
 	}
-	if (!ops->close_input(context, error))
-		return false;
+	OPENING_STATEMENT(ops->close_input(context, error));
 	state->input_open = false;
-	if (!ops->close_local(context, error))
-		return false;
+	OPENING_STATEMENT(ops->close_local(context, error));
 	state->local_open = false;
 	return true;
 }
+
+#undef OPENING_STATEMENT
 
 #ifdef _WIN32
 #include <io.h>

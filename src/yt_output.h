@@ -27,7 +27,7 @@ bool yt_out_opening_file(const char *path, float mode, float snoop,
 bool yt_out_opening_file_observed(const char *path, float mode, float snoop,
 	yt_out_opening_poll_fn poll_local,
 	yt_out_opening_poll_fn poll_remote, yt_out_opening_wait_fn wait,
-	void *poll_context, uint16_t *open_basic_error,
+	void *poll_context, uint16_t *basic_error,
 	struct yt_error *error);
 
 #endif
