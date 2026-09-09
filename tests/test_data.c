@@ -3086,6 +3086,9 @@ test_text_device_print(void)
 	struct text_device_close_script close_script;
 	struct yt_text_device_print_result result;
 	struct yt_error error;
+	struct yt_text_device_process_state process_state;
+	static uint8_t process[YT_TEXT_DEVICE_PROCESS_SIZE];
+	uint16_t control;
 
 	/* One logical byte is offered per write, with the final byte at completion. */
 	memset(&script, 0, sizeof(script));
@@ -3316,6 +3319,103 @@ test_text_device_print(void)
 	    && runtime.selected_control == &selected_control
 	    && !selected_control.allocated && !selected_control.registered
 	    && selected_control.field_binding_count == 0U);
+
+	/* The raw process projection reads and commits the documented cells. */
+	memset(process, 0x5a, sizeof(process));
+	control = 0x2000U;
+	process[0x0a3aU] = (uint8_t)control;
+	process[0x0a3bU] = (uint8_t)(control >> 8U);
+	process[0x0020U] = 5U;
+	process[control + 0x27U] = 0xfeU;
+	process[control + 0x28U] = 0xffU;
+	process[control + 0x2aU] = 0U;
+	process[control + 0x2dU] = 0xffU;
+	process[control + 0x2eU] = YT_TEXT_DEVICE_COM1;
+	process[control + 0x31U] = 0x82U;
+	process[control + 0x32U] = 5U;
+	process[control + 0x33U] = 0x71U;
+	process_state = (struct yt_text_device_process_state){
+		.process = process,
+		.process_size = sizeof(process),
+		.physical_unknown = true,
+	};
+	memset(&script, 0, sizeof(script));
+	text_device_write_add(&script, YT_TEXT_DEVICE_WRITE_VALUE, 'A',
+	    1U, 1U, false, false, 0U, 0U);
+	text_device_write_add(&script, YT_TEXT_DEVICE_WRITE_COMPLETION, 'B',
+	    1U, 1U, false, false, 0U, 0U);
+	CHECK(yt_text_device_print_process(&process_state, pair, sizeof(pair),
+	    false, scripted_text_device_write, &script, NULL, &result, &error)
+	    && script.position == script.length
+	    && result.outcome == YT_TEXT_DEVICE_PRINT_RETURNED
+	    && result.physical_unknown && process_state.physical_unknown
+	    && process[0x0a3aU] == 0U && process[0x0a3bU] == 0U
+	    && process[control + 0x27U] == 0U
+	    && process[control + 0x28U] == 0U
+	    && process[control + 0x2dU] == 0U
+	    && process[control + 0x2aU] == 0U
+	    && process[control + 0x32U] == 7U
+	    && process[control + 0x33U] == 'B');
+
+	/* Value failure retains selection, pending byte, and raw index/column. */
+	memset(process, 0, sizeof(process));
+	process[0x0a3aU] = (uint8_t)control;
+	process[0x0a3bU] = (uint8_t)(control >> 8U);
+	process[0x0020U] = 5U;
+	process[control + 0x27U] = 0xffU;
+	process[control + 0x28U] = 0xffU;
+	process[control + 0x2dU] = 0xffU;
+	process[control + 0x2eU] = YT_TEXT_DEVICE_COM1;
+	process[control + 0x31U] = 0x82U;
+	process[control + 0x32U] = 9U;
+	process_state.physical_unknown = false;
+	memset(&script, 0, sizeof(script));
+	text_device_write_add(&script, YT_TEXT_DEVICE_WRITE_VALUE, 'A',
+	    1U, 0U, true, true, 5U, 0x0021U);
+	CHECK(!yt_text_device_print_process(&process_state, pair, sizeof(pair),
+	    false, scripted_text_device_write, &script, NULL, &result, &error)
+	    && result.outcome == YT_TEXT_DEVICE_PRINT_VALUE_DISK_ERROR
+	    && result.basic_error == 70U && process_state.physical_unknown
+	    && process[0x0a3aU] == (uint8_t)control
+	    && process[0x0a3bU] == (uint8_t)(control >> 8U)
+	    && process[control + 0x27U] == 0U
+	    && process[control + 0x28U] == 0U
+	    && process[control + 0x2dU] == 0U
+	    && process[control + 0x2aU] == 1U
+	    && process[control + 0x32U] == 10U
+	    && process[control + 0x33U] == 'A');
+
+	/* Completion failure has distinct zero-pending stale-byte residue. */
+	memset(process, 0, sizeof(process));
+	process[0x0a3aU] = (uint8_t)control;
+	process[0x0a3bU] = (uint8_t)(control >> 8U);
+	process[0x0020U] = 5U;
+	process[control + 0x2eU] = YT_TEXT_DEVICE_COM1;
+	process[control + 0x31U] = 0x82U;
+	process_state.physical_unknown = false;
+	memset(&script, 0, sizeof(script));
+	text_device_write_add(&script, YT_TEXT_DEVICE_WRITE_COMPLETION, 'X',
+	    1U, 0U, true, false, 5U, 0U);
+	CHECK(!yt_text_device_print_process(&process_state, one, sizeof(one),
+	    false, scripted_text_device_write, &script, NULL, &result, &error)
+	    && result.outcome == YT_TEXT_DEVICE_PRINT_COMPLETION_ERROR
+	    && process[0x0a3aU] == (uint8_t)control
+	    && process[control + 0x27U] == 1U
+	    && process[control + 0x28U] == 0U
+	    && process[control + 0x2dU] == 0U
+	    && process[control + 0x2aU] == 0U
+	    && process[control + 0x32U] == 1U
+	    && process[control + 0x33U] == 'X');
+
+	/* An impossible pending count is rejected before provider or DS writes. */
+	process[control + 0x2aU] = 2U;
+	memset(&script, 0, sizeof(script));
+	yt_error_clear(&error);
+	CHECK(!yt_text_device_print_process(&process_state, one, sizeof(one),
+	    false, scripted_text_device_write, &script, NULL, &result, &error)
+	    && error.status == YT_INVALID && script.position == 0U
+	    && process[control + 0x2aU] == 2U
+	    && process[0x0a3aU] == (uint8_t)control);
 }
 
 static void

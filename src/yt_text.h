@@ -39,6 +39,13 @@ enum yt_text_stream_line_status yt_text_stream_line_input_next(FILE *file,
 #define YT_TEXT_DEVICE_LPT1 0xFAU
 #define YT_TEXT_DEVICE_LPT2 0xF9U
 #define YT_TEXT_DEVICE_LPT3 0xF8U
+#define YT_TEXT_DEVICE_PROCESS_SIZE 0x10000U
+
+struct yt_text_device_process_state {
+	uint8_t *process;
+	size_t process_size;
+	bool physical_unknown;
+};
 
 enum yt_text_open_operation {
 	YT_TEXT_OPEN_EXISTING,
@@ -386,6 +393,17 @@ bool yt_text_device_print(struct yt_text_device_state *state,
 bool yt_text_device_print_runtime(struct yt_text_device_state *state,
 	const uint8_t *data, size_t length, bool newline, uint8_t device_code,
 	uint8_t status, uint8_t dos_major,
+	yt_text_device_write_provider provider, void *context,
+	struct yt_text_device_runtime_state *runtime,
+	struct yt_text_device_print_result *result, struct yt_error *error);
+/*
+ * DS-only projection of the shared character-device reducer.  It owns the
+ * selected control device fields and external unknown-prefix lane; selector
+ * setup, allocator/FIELD cleanup, and CPU/SS frames remain separate.
+ */
+bool yt_text_device_print_process(
+	struct yt_text_device_process_state *process_state,
+	const uint8_t *data, size_t length, bool newline,
 	yt_text_device_write_provider provider, void *context,
 	struct yt_text_device_runtime_state *runtime,
 	struct yt_text_device_print_result *result, struct yt_error *error);

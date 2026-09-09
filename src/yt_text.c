@@ -2595,6 +2595,125 @@ yt_text_device_print_runtime(struct yt_text_device_state *state,
 	return true;
 }
 
+#define YT_TEXT_DEVICE_SELECTED_ADDRESS 0x0A3AU
+#define YT_TEXT_DEVICE_DOS_MAJOR_ADDRESS 0x0020U
+#define YT_TEXT_DEVICE_INDEX_LOW_OFFSET 0x27U
+#define YT_TEXT_DEVICE_PENDING_OFFSET 0x2AU
+#define YT_TEXT_DEVICE_INDEX_HIGH_OFFSET 0x2DU
+#define YT_TEXT_DEVICE_CODE_OFFSET 0x2EU
+#define YT_TEXT_DEVICE_STATUS_OFFSET 0x31U
+#define YT_TEXT_DEVICE_COLUMN_OFFSET 0x32U
+#define YT_TEXT_DEVICE_BUFFER_OFFSET 0x33U
+
+static uint16_t
+text_device_process_word(const uint8_t *process, uint16_t address)
+{
+	return (uint16_t)process[address]
+	    | (uint16_t)((uint16_t)process[(uint16_t)(address + 1U)] << 8U);
+}
+
+static void
+text_device_process_set_word(uint8_t *process, uint16_t address,
+    uint16_t value)
+{
+	process[address] = (uint8_t)value;
+	process[(uint16_t)(address + 1U)] = (uint8_t)(value >> 8U);
+}
+
+static uint16_t
+text_device_control_address(uint16_t control, uint16_t offset)
+{
+	return (uint16_t)(control + offset);
+}
+
+bool
+yt_text_device_print_process(
+    struct yt_text_device_process_state *process_state,
+    const uint8_t *data, size_t length, bool newline,
+    yt_text_device_write_provider provider, void *context,
+    struct yt_text_device_runtime_state *runtime,
+    struct yt_text_device_print_result *result, struct yt_error *error)
+{
+	struct yt_text_device_state state;
+	uint8_t *process;
+	uint16_t control;
+	uint16_t index_low_address;
+	uint16_t pending_address;
+	uint16_t index_high_address;
+	uint16_t code_address;
+	uint16_t status_address;
+	uint16_t column_address;
+	uint16_t buffer_address;
+	uint8_t pending;
+	bool returned;
+
+	if (process_state == NULL || process_state->process == NULL
+	    || process_state->process_size != YT_TEXT_DEVICE_PROCESS_SIZE) {
+		if (result != NULL)
+			memset(result, 0, sizeof(*result));
+		set_error(error, YT_INVALID, "character-device PRINT process",
+		    NULL);
+		return false;
+	}
+	process = process_state->process;
+	control = text_device_process_word(process,
+	    YT_TEXT_DEVICE_SELECTED_ADDRESS);
+	if (control == 0U) {
+		if (result != NULL)
+			memset(result, 0, sizeof(*result));
+		set_error(error, YT_INVALID, "character-device PRINT process",
+		    NULL);
+		return false;
+	}
+	index_low_address = text_device_control_address(control,
+	    YT_TEXT_DEVICE_INDEX_LOW_OFFSET);
+	pending_address = text_device_control_address(control,
+	    YT_TEXT_DEVICE_PENDING_OFFSET);
+	index_high_address = text_device_control_address(control,
+	    YT_TEXT_DEVICE_INDEX_HIGH_OFFSET);
+	code_address = text_device_control_address(control,
+	    YT_TEXT_DEVICE_CODE_OFFSET);
+	status_address = text_device_control_address(control,
+	    YT_TEXT_DEVICE_STATUS_OFFSET);
+	column_address = text_device_control_address(control,
+	    YT_TEXT_DEVICE_COLUMN_OFFSET);
+	buffer_address = text_device_control_address(control,
+	    YT_TEXT_DEVICE_BUFFER_OFFSET);
+	pending = process[pending_address];
+	if (pending > 1U) {
+		if (result != NULL)
+			memset(result, 0, sizeof(*result));
+		set_error(error, YT_INVALID, "character-device PRINT process",
+		    NULL);
+		return false;
+	}
+	state = (struct yt_text_device_state){
+		.index = (uint32_t)text_device_process_word(process,
+		    index_low_address)
+		    | (uint32_t)((uint32_t)process[index_high_address] << 16U),
+		.column = process[column_address],
+		.buffer = process[buffer_address],
+		.pending = pending != 0U,
+		.selected = true,
+		.physical_unknown = process_state->physical_unknown,
+	};
+	returned = yt_text_device_print_runtime(&state, data, length, newline,
+	    process[code_address], process[status_address],
+	    process[YT_TEXT_DEVICE_DOS_MAJOR_ADDRESS], provider, context, runtime,
+	    result, error);
+	text_device_process_set_word(process, index_low_address,
+	    (uint16_t)state.index);
+	process[index_high_address] = (uint8_t)(state.index >> 16U);
+	process[pending_address] = state.pending ? 1U : 0U;
+	process[column_address] = state.column;
+	process[buffer_address] = state.buffer;
+	process_state->physical_unknown = state.physical_unknown;
+	if (returned)
+		text_device_process_set_word(process,
+		    YT_TEXT_DEVICE_SELECTED_ADDRESS, 0U);
+	return returned;
+}
+
 static bool
 text_output_write_observation_valid(size_t requested,
     const struct yt_text_output_write_observation *observation)
