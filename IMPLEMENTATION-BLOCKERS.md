@@ -200,6 +200,40 @@ seam without treasury-specific copies of their internal behavior.
 
 ## Open documentation gaps
 
+### DOC-GAP-038: PORTNAME default BRUN fatal projections
+
+Affected coverage:
+
+- startup CLOSE, OPEN, FIELD, LOF, configuration GET/CVS, and RNG
+  setup failures before any application output;
+- LOF-zero CLOSE-all or KILL failures after the exact bell-wrapped
+  missing-data rows;
+- confirmation INPUT/editor failures and accepted-path close/reopen/FIELD
+  failures; and
+- name-generation, progress PRINT, GET/PUT, final CLOSE, and PLAY failures
+  after their documented committed prefixes.
+
+`docs/runtime/portname-output.md` explicitly ends each of these cases at a
+typed runtime or physical boundary. It states that PORTNAME installs no
+application `ON ERROR` handler and does not append a guessed BRUN
+default-fatal message. The native controller currently falls back to
+`yt_cli_error()`, which is a host diagnostic and cannot be claimed as the
+legacy terminal.
+
+The shared no-handler BRUN fatal renderer and complete 00h..FFh description
+table already exist. What is missing is the PORTNAME caller projection for
+each admitted failure: exact BASIC error byte, saved IP, current statement or
+no-line state, module segment/label inputs, retained file/FIELD/runtime
+carrier, and the selected cleanup continuation. Without those identities the
+implementation cannot replace the host diagnostic with the exact shared fatal
+terminal or prove which failures remain physical boundaries.
+
+Upstream documentation, generated evidence, canonical fault projections, and
+focused representative joins must publish this contract before the PORTNAME
+error paths can be completed. The already exact ordinary missing-file, blank,
+abort, accepted, and successful completion behavior is unaffected. No binary
+inspection or new reverse engineering was performed.
+
 ### DOC-GAP-037: action-finalizer CINT failure identities
 
 Affected coverage:
