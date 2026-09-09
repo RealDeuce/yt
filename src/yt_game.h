@@ -3721,6 +3721,8 @@ int yt_planet_menu_selector_position(const char *command);
 bool yt_planet_transfer_cargo_empty(const double held[3]);
 bool yt_planet_transfer_fighter_rejected(float amount,
     float cached_fighters);
+bool yt_planet_transfer_fighter_amount(const char *response, float *amount,
+    struct yt_error *error);
 double yt_planet_bank_available(float cached_credits, float cached_bank);
 double yt_planet_bank_remaining(float cached_credits, float cached_bank,
     double target);

@@ -13259,6 +13259,31 @@ yt_planet_transfer_fighter_rejected(float amount, float cached_fighters)
 	return amount < 0.0f || (double)amount > (double)cached_fighters;
 }
 
+bool
+yt_planet_transfer_fighter_amount(const char *response, float *amount,
+    struct yt_error *error)
+{
+	struct qb_val_result parsed;
+	uint8_t raw[4];
+	volatile float candidate;
+	enum qb_mbf_status status;
+
+	if (response == NULL || amount == NULL)
+		return startup_configuration_error(error, YT_INVALID,
+		    "planet Transfer fighter amount arguments");
+	parsed = qb_val(response);
+	if (parsed.overflow)
+		return startup_configuration_error(error, YT_RANGE,
+		    "planet Transfer fighter VAL");
+	candidate = (float)(parsed.valid ? parsed.value : 0.0);
+	status = qb_mbf32_encode(candidate, raw);
+	if (status == QB_MBF_OVERFLOW)
+		return startup_configuration_error(error, YT_RANGE,
+		    "planet Transfer fighter CSNG");
+	*amount = status == QB_MBF_UNDERFLOW ? 0.0f : qb_mbf32_decode(raw);
+	return true;
+}
+
 double
 yt_planet_bank_available(float cached_credits, float cached_bank)
 {

@@ -11363,7 +11363,8 @@ planet_transfer(struct yt_session *session, int logical_planet,
 
 			session->planet_quantity[item] = cache.quantity[item];
 		}
-		if (!reload_player(session, error))
+		if (!yt_game_read_player(&session->door->game,
+		    session_record(session), &session->player, error))
 			return false;
 		yt_planet_transfer_cargo_player_overlay(&session->player);
 		if (!write_player(session, error)
@@ -11386,7 +11387,6 @@ planet_transfer(struct yt_session *session, int logical_planet,
 		char number[64];
 		char prompt[160];
 		char response[160];
-		struct qb_val_result parsed;
 		float cached_fighters = session->player.fighters;
 		float amount;
 
@@ -11404,11 +11404,12 @@ planet_transfer(struct yt_session *session, int logical_planet,
 			return false;
 		if (response[0] == '\0')
 			return true;
-		parsed = qb_val(response);
-		amount = (float)(parsed.valid ? parsed.value : 0.0);
+		if (!yt_planet_transfer_fighter_amount(response, &amount, error))
+			return false;
 		if (yt_planet_transfer_fighter_rejected(amount, cached_fighters))
 			return true;
-		if (!reload_player(session, error))
+		if (!yt_game_read_player(&session->door->game,
+		    session_record(session), &session->player, error))
 			return false;
 		yt_planet_transfer_fighter_player_overlay(&session->player,
 		    cached_fighters, amount);
@@ -11444,7 +11445,8 @@ planet_transfer(struct yt_session *session, int logical_planet,
 
 		held = player_item(&session->player, item);
 		amount = *held;
-		if (!reload_player(session, error))
+		if (!yt_game_read_player(&session->door->game,
+		    session_record(session), &session->player, error))
 			return false;
 		yt_planet_transfer_direct_player_overlay(&session->player, item);
 		if (!write_player(session, error)

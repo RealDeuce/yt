@@ -25461,6 +25461,22 @@ check_planet_take_all_overlays(void)
 	{
 		const double empty[3] = {0.0, -0.0, 0.0};
 		const double nonempty[3] = {-1.0, 0.0, 0.0};
+		struct yt_error transfer_error;
+		float parsed_amount;
+
+		yt_error_clear(&transfer_error);
+		if (!yt_planet_transfer_fighter_amount("16777217",
+		    &parsed_amount, &transfer_error)
+		    || parsed_amount != 16777216.0f
+		    || !yt_planet_transfer_fighter_amount("Q",
+		    &parsed_amount, &transfer_error)
+		    || parsed_amount != 0.0f)
+			return false;
+		yt_error_clear(&transfer_error);
+		if (yt_planet_transfer_fighter_amount("1D39",
+		    &parsed_amount, &transfer_error)
+		    || transfer_error.status != YT_RANGE)
+			return false;
 
 		return yt_planet_transfer_selector_position("") == 1
 		    && yt_planet_transfer_selector_position("C") == 1
