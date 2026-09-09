@@ -16224,6 +16224,9 @@ plasma_reload_sector:
 	memset(&dispatch, 0, sizeof(dispatch));
 	dispatch.sector = (float)sector_number;
 	dispatch.planet_link = planet_link;
+	memcpy(dispatch.planet_link_raw, sector.record.bytes + YT_F93,
+	    sizeof(dispatch.planet_link_raw));
+	dispatch.conversion_mode = session->presentation.sound.conversion_mode;
 	dispatch.player_terminal = session_sector_offset(session);
 	dispatch.sector_cache = NULL;
 	dispatch.cache_count = (YT_PLAYER_LAST + 1U);

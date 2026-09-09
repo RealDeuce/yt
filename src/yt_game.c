@@ -14908,7 +14908,8 @@ yt_projectile_plasma_dispatch_run(
 		state->route = YT_PROJECTILE_PLASMA_DISPATCH_FOOTER;
 		return true;
 	}
-	if (qb_cint(state->planet_link, &overflow) != 0) {
+	if (qb_cint_mbf32(state->planet_link_raw, state->conversion_mode,
+	    &overflow) != 0) {
 		if (overflow) {
 			if (error != NULL) {
 				error->status = YT_RANGE;

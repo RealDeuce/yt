@@ -6230,15 +6230,23 @@ check_projectile_plasma_dispatch_transaction(void)
 		return false;
 
 	state.planet_link = 0.6f;
+	(void)qb_mbf32_encode(state.planet_link, state.planet_link_raw);
 	if (!yt_projectile_plasma_dispatch_run(&state, NULL)
 	    || state.route != YT_PROJECTILE_PLASMA_DISPATCH_PLANET)
 		return false;
+	state.conversion_mode = 4U;
+	if (!yt_projectile_plasma_dispatch_run(&state, NULL)
+	    || state.route != YT_PROJECTILE_PLASMA_DISPATCH_NEXT_HOP)
+		return false;
+	state.conversion_mode = 0U;
 	state.planet_link = 0.4f;
+	(void)qb_mbf32_encode(state.planet_link, state.planet_link_raw);
 	if (!yt_projectile_plasma_dispatch_run(&state, NULL)
 	    || state.route != YT_PROJECTILE_PLASMA_DISPATCH_NEXT_HOP)
 		return false;
 	state.energy = 0.0;
 	state.planet_link = 12.0f;
+	(void)qb_mbf32_encode(state.planet_link, state.planet_link_raw);
 	if (!yt_projectile_plasma_dispatch_run(&state, NULL)
 	    || state.route != YT_PROJECTILE_PLASMA_DISPATCH_FOOTER)
 		return false;

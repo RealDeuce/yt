@@ -1572,6 +1572,8 @@ struct yt_projectile_plasma_dispatch_state {
 	double energy;
 	float sector;
 	float planet_link;
+	uint8_t planet_link_raw[4];
+	uint8_t conversion_mode;
 	float player_terminal;
 	const float *sector_cache;
 	size_t cache_count;
