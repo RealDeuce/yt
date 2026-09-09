@@ -142,12 +142,38 @@ yt_present_bind_color_table_process(struct yt_present_state *state,
 		return;
 	state->color_initialized_process = initialized;
 	state->color_memory_process = table;
+	state->color_process = NULL;
+	state->color_memory_address = 0U;
 	if (initialized != NULL)
 		state->color_initialized = qb_mbf32_decode(initialized);
 	if (table != NULL) {
 		for (index = 0U; index < 8U; ++index)
 			state->color_memory[index] =
 			    qb_mbf32_decode(table + index * 4U);
+	}
+}
+
+void
+yt_present_bind_color_process(struct yt_present_state *state,
+    uint8_t process[0x10000], uint16_t initialized_address,
+    uint16_t table_address)
+{
+	size_t index;
+
+	if (state == NULL)
+		return;
+	state->color_process = process;
+	state->color_memory_address = table_address;
+	state->color_initialized_process = process != NULL
+	    ? process + initialized_address : NULL;
+	state->color_memory_process = process != NULL
+	    ? process + table_address : NULL;
+	if (process != NULL) {
+		state->color_initialized = qb_mbf32_decode(
+		    state->color_initialized_process);
+		for (index = 0U; index < 8U; ++index)
+			state->color_memory[index] = qb_mbf32_decode(
+			    state->color_memory_process + index * 4U);
 	}
 }
 
@@ -182,6 +208,31 @@ yt_present_color_memory(const struct yt_present_state *state, size_t index)
 	if (state->color_memory_process != NULL)
 		return qb_mbf32_decode(state->color_memory_process + index * 4U);
 	return state->color_memory[index];
+}
+
+static bool
+color_memory_index(const struct yt_present_state *state, int index,
+    float *value)
+{
+	uint8_t raw[4];
+	uint16_t address;
+	size_t byte;
+
+	if (state == NULL || value == NULL)
+		return false;
+	if (state->color_process != NULL) {
+		address = (uint16_t)((int32_t)state->color_memory_address
+		    + (int32_t)index * 4);
+		for (byte = 0U; byte < sizeof(raw); ++byte)
+			raw[byte] = state->color_process[
+			    (uint16_t)(address + (uint16_t)byte)];
+		*value = qb_mbf32_decode(raw);
+		return true;
+	}
+	if (index < 0 || index >= 8)
+		return false;
+	*value = yt_present_color_memory(state, (size_t)index);
+	return true;
 }
 
 void
@@ -418,6 +469,8 @@ build_color(struct yt_present_state *state,
 	int background_index;
 	int local_foreground;
 	int local_background;
+	float mapped_foreground;
+	float mapped_background;
 	int forced_bold;
 	int forced_blink;
 	enum yt_present_status status;
@@ -443,18 +496,15 @@ build_color(struct yt_present_state *state,
 	status = convert(state, background, &background_index);
 	if (status != YT_PRESENT_OK)
 		return status;
-	if (foreground_index < 0 || foreground_index >= 8
-	    || background_index < 0 || background_index >= 8)
+	if (!color_memory_index(state, foreground_index, &mapped_foreground)
+	    || !color_memory_index(state, background_index,
+	    &mapped_background))
 		return YT_PRESENT_RANGE;
-	status = convert(state,
-	    (double)(float)(yt_present_color_memory(state,
-	    (size_t)foreground_index) + bright),
+	status = convert(state, (double)(float)(mapped_foreground + bright),
 	    &local_foreground);
 	if (status != YT_PRESENT_OK)
 		return status;
-	status = convert(state, yt_present_color_memory(state,
-	    (size_t)background_index),
-	    &local_background);
+	status = convert(state, mapped_background, &local_background);
 	if (status != YT_PRESENT_OK)
 		return status;
 	status = append_local(result, YT_PRESENT_LOCAL_COLOR, NULL, 0,

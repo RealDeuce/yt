@@ -368,6 +368,8 @@ test_color_process_cache(void)
 static void
 test_color_process_table(void)
 {
+	enum { INITIALIZED = 0x556A, TABLE = 0x556E };
+	static uint8_t process[0x10000];
 	static const float standard[] = {0, 4, 2, 6, 1, 5, 3, 7};
 	static const uint8_t dirty_zero[] = {0x91, 0x82, 0x80, 0x00};
 	static const uint8_t raw_one[] = {0x00, 0x00, 0x00, 0x81};
@@ -414,6 +416,45 @@ test_color_process_table(void)
 	    && memcmp(initialized_raw, raw_true,
 	    sizeof(initialized_raw)) == 0
 	    && memcmp(table_raw, preserved, sizeof(table_raw)) == 0);
+
+	memset(process, 0, sizeof(process));
+	memcpy(process + INITIALIZED, raw_one, sizeof(raw_one));
+	CHECK(qb_mbf32_encode(5.0f, process + TABLE + 8U * 4U) == QB_MBF_OK);
+	current = state(false);
+	current.sound.mode = 2.0f;
+	current.foreground = 8.0f;
+	yt_present_bind_color_process(&current, process, INITIALIZED, TABLE);
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(result.remote_length == 0U && result.event_count == 1U
+	    && result.events[0].foreground == 5
+	    && result.events[0].background == 0);
+
+	memset(process, 0, sizeof(process));
+	memcpy(process + INITIALIZED, raw_one, sizeof(raw_one));
+	CHECK(qb_mbf32_encode(3.0f, process + TABLE) == QB_MBF_OK);
+	current = state(false);
+	current.sound.mode = 2.0f;
+	current.foreground = 0.0f;
+	current.background = -1.0f;
+	yt_present_bind_color_process(&current, process, INITIALIZED, TABLE);
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(result.remote_length == 0U && result.event_count == 1U
+	    && result.events[0].foreground == 3
+	    && result.events[0].background == 1);
+
+	memset(process, 0, sizeof(process));
+	memcpy(process + INITIALIZED, raw_one, sizeof(raw_one));
+	CHECK(qb_mbf32_encode(7.0f, expected) == QB_MBF_OK);
+	for (index = 0U; index < sizeof(expected); ++index)
+		process[(uint16_t)(0xfffeU + index)] = expected[index];
+	current = state(false);
+	current.sound.mode = 2.0f;
+	current.foreground = 10916.0f;
+	yt_present_bind_color_process(&current, process, INITIALIZED, TABLE);
+	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
+	CHECK(result.remote_length == 0U && result.event_count == 1U
+	    && result.events[0].foreground == 7
+	    && result.events[0].background == 0);
 }
 
 static void

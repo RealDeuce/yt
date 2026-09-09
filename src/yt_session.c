@@ -20399,9 +20399,9 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	    &session.route_process.bytes[YT_LOCAL_SOUND_ADDRESS]);
 	yt_sound_bind_toggle_selector_process(&session.presentation.sound,
 	    &session.route_process.bytes[YT_SOUND_TOGGLE_SELECTOR_ADDRESS]);
-	yt_present_bind_color_table_process(&session.presentation,
-	    &session.route_process.bytes[YT_COLOR_INITIALIZED_ADDRESS],
-	    &session.route_process.bytes[YT_COLOR_TABLE_ADDRESS]);
+	yt_present_bind_color_process(&session.presentation,
+	    session.route_process.bytes, YT_COLOR_INITIALIZED_ADDRESS,
+	    YT_COLOR_TABLE_ADDRESS);
 	yt_present_bind_cached_foreground_process(&session.presentation,
 	    &session.route_process.bytes[YT_CACHED_FOREGROUND_ADDRESS]);
 	yt_present_bind_cached_background_process(&session.presentation,
