@@ -211,6 +211,35 @@ seam without treasury-specific copies of their internal behavior.
 
 ## Open documentation gaps
 
+### DOC-GAP-043: BRUN COM1/COM2 CLOSE method contract
+
+Affected coverage:
+
+- the source-reachable COM1/COM2 controls closed by the serial `END` and
+  `CLOSE_NO_ARGS` paths;
+- signed control classes -4 and -5 dispatched to `BRUN:126D`; and
+- the corresponding process-control, external-port, and failure residue.
+
+`docs/runtime/brun-lof-close.md` proves that signed control classes -4 and -5
+dispatch to `BRUN:126D`, and explicitly says that COM1/COM2 closure is reached
+by serial `END` and CLOSE-all rather than the 73 rooted explicit-CLOSE calls.
+It does not describe what `126D` reads or writes, which external operations it
+performs, whether any result can fail nonlocally, or what control/registration/
+port state survives each outcome. The generic CLOSE-all contract says only
+that signed classes reuse their real table targets; that does not define this
+method interface.
+
+The native CLOSE-all reducer already preserves high-to-low registry order and
+passes the signed class to a supplied method. Implementing the actual -4/-5
+method by treating it as ordinary `AH=3Eh`, as unconditional release, or as
+OpenDoors shutdown would invent behavior at a source-reachable boundary.
+
+Upstream runtime documentation, the global-state registry, generated evidence,
+and focused success/failure fixtures must publish the bounded `BRUN:126D`
+contract before the native COM close method can be implemented. The verified
+generic registry traversal, ordinary-file method, and fixed-console suffix are
+unaffected. No binary inspection or new reverse engineering was performed.
+
 ### DOC-GAP-042: non-startup date-helper result process cells
 
 Affected coverage:
