@@ -402,6 +402,8 @@ bool yt_database_close_all_method(void *context, int8_t file_class,
 bool yt_close_all_run(const struct yt_close_all_control *controls,
     size_t control_count, const struct yt_close_all_fixed_control *fixed,
     struct yt_close_all_result *result, struct yt_error *error);
+bool yt_brun_file_control_find(const uint8_t *process, size_t process_size,
+	uint8_t file_number, uint16_t *control, struct yt_error *error);
 bool yt_database_random_lof(struct yt_database *database, uint32_t *length,
     struct yt_error *error);
 bool yt_random_file_lof(FILE *file, const char *path, uint32_t *length,

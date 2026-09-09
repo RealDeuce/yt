@@ -3093,6 +3093,7 @@ test_text_device_print(void)
 	struct yt_text_device_process_state process_state;
 	static uint8_t process[YT_TEXT_DEVICE_PROCESS_SIZE];
 	uint16_t control;
+	uint16_t found_control;
 
 	/* One logical byte is offered per write, with the final byte at completion. */
 	memset(&script, 0, sizeof(script));
@@ -3327,6 +3328,18 @@ test_text_device_print(void)
 	/* The raw process projection reads and commits the documented cells. */
 	memset(process, 0x5a, sizeof(process));
 	control = 0x2000U;
+	process[0x0eceU] = 0xfdU;
+	process[0x0ecfU] = 0x21U;
+	process[0x21fdU] = 2U;
+	process[0x21faU] = 0x00U;
+	process[0x21fbU] = 0x01U;
+	process[0x20fdU] = 3U;
+	process[0x20faU] = 0x00U;
+	process[0x20fbU] = 0x01U;
+	process[0x20fcU] = 3U;
+	process[0x1ffdU] = 4U;
+	CHECK(yt_brun_file_control_find(process, sizeof(process), 3U,
+	    &found_control, &error) && found_control == control);
 	process[0x0a3aU] = (uint8_t)control;
 	process[0x0a3bU] = (uint8_t)(control >> 8U);
 	process[0x0020U] = 5U;
@@ -3437,6 +3450,21 @@ test_text_device_print(void)
 	    && error.status == YT_INVALID && script.position == 0U
 	    && process[control + 0x2aU] == 2U
 	    && process[0x0a3aU] == (uint8_t)control);
+
+	/* Missing and cyclic raw registries remain distinct outcomes. */
+	memset(process, 0, sizeof(process));
+	process[0x0eceU] = 0x00U;
+	process[0x0ecfU] = 0x30U;
+	process[0x3000U] = 4U;
+	found_control = 0xffffU;
+	CHECK(yt_brun_file_control_find(process, sizeof(process), 3U,
+	    &found_control, &error) && found_control == 0U);
+	process[0x3000U] = 1U;
+	found_control = 0xffffU;
+	yt_error_clear(&error);
+	CHECK(!yt_brun_file_control_find(process, sizeof(process), 3U,
+	    &found_control, &error) && found_control == 0U
+	    && error.status == YT_INVALID);
 }
 
 static void

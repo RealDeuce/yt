@@ -1132,6 +1132,41 @@ yt_database_close_all_method(void *context, int8_t file_class,
 }
 
 bool
+yt_brun_file_control_find(const uint8_t *process, size_t process_size,
+    uint8_t file_number, uint16_t *control, struct yt_error *error)
+{
+	uint16_t cursor;
+	uint16_t span;
+	size_t step;
+
+	if (control != NULL)
+		*control = 0U;
+	if (process == NULL || process_size != 0x10000U || control == NULL) {
+		set_error(error, YT_INVALID, "BRUN file-control search", NULL);
+		return false;
+	}
+	cursor = (uint16_t)process[0x0eceU]
+	    | (uint16_t)((uint16_t)process[0x0ecfU] << 8U);
+	for (step = 0U; step < 0x10000U; ++step) {
+		uint8_t block_type = process[cursor];
+
+		if (block_type == 4U)
+			return true;
+		span = (uint16_t)process[(uint16_t)(cursor - 3U)]
+		    | (uint16_t)((uint16_t)process[(uint16_t)(cursor - 2U)]
+		    << 8U);
+		if (block_type == 3U
+		    && process[(uint16_t)(cursor - 1U)] == file_number) {
+			*control = (uint16_t)(cursor - span + 3U);
+			return true;
+		}
+		cursor = (uint16_t)(cursor - span);
+	}
+	set_error(error, YT_INVALID, "BRUN file-control chain", NULL);
+	return false;
+}
+
+bool
 yt_close_all_run(const struct yt_close_all_control *controls,
     size_t control_count, const struct yt_close_all_fixed_control *fixed,
     struct yt_close_all_result *result, struct yt_error *error)
