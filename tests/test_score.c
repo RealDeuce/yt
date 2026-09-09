@@ -3735,6 +3735,7 @@ spy_sweep_fixture(struct spy_sweep_tape *tape,
 	tape->sector.fighters = 8.0f;
 	tape->sector.fighter_owner = 4.0f;
 	tape->sector.warps[1] = 200.0f;
+	(void)yt_record_set_number(&tape->sector.record, YT_F109, 200.0f);
 	memcpy(tape->planet.record.bytes, "Gaia", 4U);
 	tape->planet.name_length = 4.0f;
 	(void)yt_record_set_number(&tape->planet.record, YT_F85, 4.0f);
@@ -3912,6 +3913,7 @@ check_spy_sweep_transaction(void)
 	    sector_cache, cloak_cache);
 	memset(&tape.sector, 0, sizeof(tape.sector));
 	tape.sector.warps[0] = 200.0f;
+	(void)yt_record_set_number(&tape.sector.record, YT_F105, 200.0f);
 	tape.draws[0] = 0.0f;
 	state.last_player_record = 2.0f;
 	if (!yt_spy_sweep_run(&state, &ops, &tape, NULL)
@@ -3927,6 +3929,7 @@ check_spy_sweep_transaction(void)
 	    sector_cache, cloak_cache);
 	memset(&tape.sector, 0, sizeof(tape.sector));
 	tape.sector.warps[0] = 200.0f;
+	(void)yt_record_set_number(&tape.sector.record, YT_F105, 200.0f);
 	tape.draws[0] = 0.25f;
 	tape.draws[1] = 0.0f;
 	state.last_player_record = 3.0f;
@@ -3938,6 +3941,7 @@ check_spy_sweep_transaction(void)
 	    sector_cache, cloak_cache);
 	memset(&tape.sector, 0, sizeof(tape.sector));
 	tape.sector.warps[0] = 200.0f;
+	(void)yt_record_set_number(&tape.sector.record, YT_F105, 200.0f);
 	tape.draws[0] = 0.0f;
 	state.last_player_record = 2.0f;
 	state.disruption_sectors[0] = 100.0f;
@@ -3953,11 +3957,15 @@ check_spy_sweep_transaction(void)
 	memset(tape.sector_reads, 0, sizeof(tape.sector_reads));
 	tape.sector_read_count = 4U;
 	tape.sector_reads[0].warps[0] = 200.0f;
+	(void)yt_record_set_number(&tape.sector_reads[0].record, YT_F105,
+	    200.0f);
 	tape.sector_reads[1].fighters = 1.0f;
 	tape.sector_reads[1].fighter_owner = -1.0f;
 	tape.sector_reads[2].fighters = 9.0f;
 	tape.sector_reads[2].fighter_owner = 4.0f;
 	tape.sector_reads[3].warps[0] = 200.0f;
+	(void)yt_record_set_number(&tape.sector_reads[3].record, YT_F105,
+	    200.0f);
 	tape.draws[0] = 0.0f;
 	state.last_player_record = 2.0f;
 	if (!yt_spy_sweep_run(&state, &ops, &tape, NULL)
@@ -4103,6 +4111,7 @@ check_projectile_damage_model(void)
 	target.fighters = 1000.0f;
 	target.shields = 100.0f;
 	target.danger_scanner = 2.0f;
+	(void)yt_record_set_number(&target.record, YT_F113, 2.0f);
 	remaining = 2.5f;
 	tape.values = lethal_draws;
 	tape.count = YT_ARRAY_LEN(lethal_draws);
@@ -4135,6 +4144,7 @@ check_projectile_damage_model(void)
 	target.fighters = 1.0f;
 	target.shields = 1.0f;
 	target.danger_scanner = 7.0f;
+	(void)yt_record_set_number(&target.record, YT_F113, 7.0f);
 	remaining = 101.5f;
 	tape.values = scanner_draws;
 	tape.count = YT_ARRAY_LEN(scanner_draws);
@@ -4150,6 +4160,7 @@ check_projectile_damage_model(void)
 	target.fighters = 10.0f;
 	target.shields = 10.0f;
 	target.danger_scanner = 1.0f;
+	(void)yt_record_set_number(&target.record, YT_F113, 1.0f);
 	remaining = 1.0f;
 	tape.values = no_shield_draws;
 	tape.count = YT_ARRAY_LEN(no_shield_draws);
@@ -4168,6 +4179,7 @@ check_projectile_damage_model(void)
 	target.fighters = 10.0f;
 	target.shields = 10.0f;
 	target.danger_scanner = INFINITY;
+	(void)yt_record_set_number(&target.record, YT_F113, 32767.5f);
 	remaining = 1.0f;
 	tape.position = 0U;
 	tape.fail_at = SIZE_MAX;

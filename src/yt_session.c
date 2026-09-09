@@ -14222,7 +14222,8 @@ command_team(struct yt_session *session, struct yt_error *error)
 			}
 			return false;
 		}
-		team_cint = qb_cint((double)session->player.team, &overflow);
+		team_cint = qb_cint_mbf32(session->player.record.bytes + YT_F89, 0U,
+		    &overflow);
 		if (overflow) {
 			if (error != NULL) {
 				error->status = YT_RANGE;
@@ -15267,7 +15268,8 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 		*early_return = true;
 		return true;
 	}
-	logical_planet = (int)qb_cint((double)sector->planet, &overflow);
+	logical_planet = (int)qb_cint_mbf32(sector->record.bytes + YT_F93,
+	    0U, &overflow);
 	if (overflow) {
 		if (error != NULL) {
 			error->status = YT_RANGE;
@@ -16106,7 +16108,8 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 
 	if (*energy <= 0.0)
 		return true;
-	logical_planet = (int)qb_cint((double)sector->planet, &overflow);
+	logical_planet = (int)qb_cint_mbf32(sector->record.bytes + YT_F93,
+	    0U, &overflow);
 	if (overflow) {
 		if (error != NULL) {
 			error->status = YT_RANGE;

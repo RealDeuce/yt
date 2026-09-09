@@ -45650,6 +45650,7 @@ spy_sweep_presentation_fixture(bool ansi)
 	fixture.sector.fighters = 8.0f;
 	fixture.sector.fighter_owner = 4.0f;
 	fixture.sector.warps[1] = 200.0f;
+	CHECK(yt_record_set_number(&fixture.sector.record, YT_F109, 200.0f));
 	memcpy(fixture.planet.record.bytes, "Gaia", 4U);
 	fixture.planet.name_length = 4.0f;
 	CHECK(yt_record_set_number(&fixture.planet.record, YT_F85, 4.0f));

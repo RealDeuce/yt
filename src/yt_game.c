@@ -1869,7 +1869,8 @@ yt_spy_sweep_run(struct yt_spy_sweep_state *state,
 			size_t slot;
 
 			for (slot = 0U; slot < YT_ARRAY_LEN(warps); ++slot) {
-				warps[slot] = qb_cint(sector.warps[slot], &overflow);
+				warps[slot] = qb_cint_mbf32(sector.record.bytes + YT_F105
+				    + 4U * slot, 0U, &overflow);
 				if (overflow)
 					return startup_configuration_error(error,
 					    YT_RANGE, "active spy warp CINT");
@@ -16100,6 +16101,7 @@ yt_projectile_player_damage(struct yt_player *target, float *remaining,
 	float original_shields;
 	float shield_damage = 0.0f;
 	float saved_missiles;
+	uint8_t scanner_raw[4];
 	float counter = 1.0f;
 	bool scanner_disabled = false;
 	size_t iterations = 0U;
@@ -16110,6 +16112,8 @@ yt_projectile_player_damage(struct yt_player *target, float *remaining,
 	original_fighters = (double)target->fighters;
 	original_shields = target->shields;
 	saved_missiles = *remaining;
+	memcpy(scanner_raw, target->record.bytes + YT_F113,
+	    sizeof(scanner_raw));
 	while (yt_projectile_damage_iteration(counter, saved_missiles)) {
 		bool overflow;
 		float value;
@@ -16121,7 +16125,7 @@ yt_projectile_player_damage(struct yt_player *target, float *remaining,
 		if (!draw(context, &value, error))
 			return false;
 		scanner_product = projectile_single_mul(value, *remaining);
-		scanner = qb_cint(target->danger_scanner, &overflow);
+		scanner = qb_cint_mbf32(scanner_raw, 0U, &overflow);
 		if (overflow) {
 			if (error != NULL) {
 				error->status = YT_RANGE;
@@ -16133,6 +16137,7 @@ yt_projectile_player_damage(struct yt_player *target, float *remaining,
 		}
 		if (scanner_product > 100.0f && scanner != 0) {
 			target->danger_scanner = 0.0f;
+			memset(scanner_raw, 0, sizeof(scanner_raw));
 			scanner_disabled = true;
 		}
 		if (!draw(context, &value, error))
