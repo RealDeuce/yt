@@ -244,6 +244,8 @@ enum yt_present_status yt_present_radio_backspace(int line_number,
 enum yt_present_status yt_present_radio_wrap_cleanup(int line_number,
     size_t wrap_marker, struct yt_present_state *state,
     struct yt_present_result *result);
+enum yt_present_status yt_present_format_remaining_seconds(
+    struct yt_present_time_state *time, float remaining_seconds);
 enum yt_present_status yt_present_refresh_time(
     struct yt_present_time_state *time, const float *timer_reads,
     size_t timer_count, size_t *timer_used, int cursor_row, int cursor_column,

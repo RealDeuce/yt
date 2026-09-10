@@ -106,15 +106,12 @@ A continuously active detector would require the application to:
 - store the result only in per-session state, without changing any
   legacy-compatible data-file format.
 
-The current Yankee Trader code does not yet meet that precondition. Most
-blocking input is routed through `yt_input_key()`, but it and the timed-wait
-path call `od_get_key()` directly, and `yt_session.c` contains two additional
-direct `od_get_key()` sites. OpenDoors-owned chat, editors, menus, file
-display, and other interactive facilities can also consume input internally.
-
-The four current Yankee Trader call sites could be consolidated behind
-`od_get_input(..., GETIN_RAW)`, but that alone would not prove that a reply
-cannot arrive while an OpenDoors-owned interaction has control. Before
+The current Yankee Trader code centralizes all game-owned polling, blocking input,
+and timed waits behind `yt_input.c`, using `od_get_input(..., GETIN_RAW)` or
+`od_get_input_until(..., GETIN_RAW)`. It does not intercept input while an
+OpenDoors-owned personality or chat interaction has control, so centralization
+alone does not prove that a reply cannot arrive while OpenDoors owns the input
+flow. Before
 selecting asynchronous detection, the implementation must establish either:
 
 - every possible input consumer can be routed through the demultiplexer;

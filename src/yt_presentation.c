@@ -1562,6 +1562,17 @@ format_remaining(float deadline, float timer,
 }
 
 enum yt_present_status
+yt_present_format_remaining_seconds(struct yt_present_time_state *time,
+    float remaining_seconds)
+{
+	if (time == NULL || !isfinite(remaining_seconds))
+		return YT_PRESENT_OVERFLOW;
+	if (remaining_seconds < 0.0f)
+		remaining_seconds = 0.0f;
+	return format_remaining(remaining_seconds, 0.0f, time);
+}
+
+enum yt_present_status
 yt_present_refresh_time(struct yt_present_time_state *time,
     const float *timer_reads, size_t timer_count, size_t *timer_used,
     int cursor_row, int cursor_column, struct yt_present_state *state,

@@ -213,10 +213,7 @@ required mode is absent.
 
 Screen clearing is a separate user setting. In the 6.00 manual,
 `od_clr_scr()` honors it. The installed implementation also has the later
-`od_always_clear` control: when true, it forces the clear. Yankee Trader's
-current pre-initialization assignment of false is overwritten by
-`od_init()` and therefore does not presently make the function honor the
-user's setting; see the call-site audit below.
+`od_always_clear` control: when true, it forces the clear. Yankee Trader sets `od_always_clear` to false after `od_init()`, so supported drop-file formats retain the caller's documented clearing preference.
 
 ### Output may be transcoded
 
@@ -987,10 +984,7 @@ void od_chat(void);
 - Merges local and remote typing, displays it to both endpoints, changes
   colors according to origin, performs word wrapping, and freezes
   OpenDoors' own user-time accounting.
-- It does not know about an application-owned absolute deadline. A door such
-  as Yankee Trader that maintains a separate deadline must synchronize it
-  through the chat hooks or otherwise establish OpenDoors as the authoritative
-  time source.
+- Yankee Trader establishes OpenDoors as the authoritative time source, so chat freezes the same `user_timelimit` value that governs enforcement and the game's remaining-time display.
 - Local Escape exits chat; a remote Escape does not.
 - Clears `user_wantchat`, logs chat events when enabled, and runs
   `od_cbefore_chat`/`od_cafter_chat`.
@@ -1260,39 +1254,31 @@ The current implementation uses only a deliberately small subset:
 | Current use | Assessment from the documented semantics |
 |---|---|
 | `od_parse_cmd_line()` before `od_init()` | Correct ordering and correct platform-specific signature |
-| cleanup registered with both `atexit()` and `od_before_exit` before initialization | Required because parsing/initialization and later kernel activity can call `exit()` |
+| `od_maxtime = 180` before `od_init()` | OpenDoors owns the three-hour session cap, minute deductions, local SysOp adjustments, write-back, warnings, and expiry. |
+| post-init carrier/session-time enforcement plus `od_inactivity = 240` remotely and zero locally | OpenDoors owns Yankee Trader inactivity shutdown; forced-local sessions preserve the original no-inactivity-disconnect rule. The warning interval is disabled and the terminal strings retain Yankee Trader wording. |
+| post-init `od_status_on = FALSE` | Suppresses the local-only OpenDoors status row until the separately deferred one-line personality is implemented. |
+| cleanup registered with both `atexit()` and `od_before_exit` before initialization | OpenDoors carrier, inactivity, and session-time shutdown all run the same idempotent Yankee Trader database cleanup before OpenDoors completes exit |
 | `od_disp(buffer, length, TRUE)` in `yt_out_plain*` | Counted plain and embedded-NUL output uses OpenDoors' combined caller/local path. Ordinary application output does not suppress local delivery. |
 | `yt_out_present_result()` | The documented logical event tape remains the compatibility model. Ordinary game results are replayed through public OpenDoors combined-output, color, cursor, bell, and clear calls; there is no private framebuffer or direct `ODScrn` path. The active session does not submit the deferred row-25 status bar or its periodic timer events to this adapter. |
 | `yt_out_opening_file("YTOPEN.ANS")` | The active documented opening branch sends every NUL-free ANSI row, newline, and reset through `od_disp_emu(..., TRUE)`. This is OpenDoors' usual application-output path and supplies both remote and local presentation. Embedded NUL falls back to counted `od_disp(..., TRUE)`. |
 | manually read text/display files followed by `od_disp()` | Requires a per-file provenance decision. Manual reading avoids `od_send_file()` selection, substitution, paging, stop-key, and hotkey behavior, but does not provide local terminal emulation |
 | `od_putch()` for accepted key echo | Correct when the recovered program echoes that individual key |
-| custom `od_get_key()` line editors | Necessary where the original owns echo, queued-command suppression, accepted byte range, Ctrl-R/Ctrl-X, or newline behavior that `od_input_str()` cannot configure |
-| `od_get_input()` shared polling | The configured OpenDoors session is authoritative. Forced-local standard-I/O events are classified as local even when their transport-origin bit is set; genuine remote events retain remote precedence. |
-| `od_get_key(FALSE)` plus `od_sleep(10)` polling | Services input on every iteration and avoids a tight loop; `od_sleep()` alone would not be enough |
-| `od_clr_scr()` | Correct OpenDoors clear primitive, but its current force/preference setting is unresolved as described below |
+| custom game line editor over `od_get_input()` | Retained only for Yankee Trader command stacking, echo, accepted-byte, Ctrl-R/Ctrl-X, and newline semantics; indefinite blocking and all door-level lifecycle checks remain inside OpenDoors |
+| `od_get_input()` input arbitration | OpenDoors supplies the merged local/remote events and owns carrier, inactivity, time, chat, and local SysOp processing during each call. The Yankee Trader splitter retains only documented game-level source precedence. |
+| `od_get_input_until()` timed waits | Every game delay uses an OpenDoors absolute session-time deadline. OpenDoors blocks and continues servicing carrier, inactivity, time, chat, and local SysOp controls; Yankee Trader retains only which admitted game key cancels a particular delay. |
+| `od_clr_scr()` | Correct OpenDoors clear primitive. `od_always_clear` is set after initialization so the documented caller preference is honored where the selected drop-file format supplies it. |
 | `od_set_color()` | Correct only for recovered color state; it intentionally becomes a no-op in plain ASCII mode |
-| `od_carrier()` guarded by known local-mode state | Necessary because `od_carrier()` itself returns false in local mode |
-| `od_exit(errorlevel, FALSE)` | Correct return-to-BBS shutdown rather than a player hangup |
+| automatic OpenDoors carrier handling | The application performs no carrier query or carrier-loss presentation. OpenDoors detects loss in its kernel, invokes `od_before_exit`, and owns shutdown. |
+| `od_exit(errorlevel, FALSE)` | Correct return-to-BBS shutdown rather than a player hangup. Genesis replacement sets `od_noexit`, completes OpenDoors shutdown, and only then performs the replacing `exec`. |
 | RMT-INIT `od_open_handle` on Win32 | Correct published existing-handle path. Yankee Trader opens and configures the client-owned COM handle at the recovered 1200/framing boundary, OpenDoors attaches without reconfiguring or closing it, and Yankee Trader restores/closes it after OpenDoors shutdown |
 | RMT-INIT output | Counted player-facing bytes use `od_disp(..., TRUE)`; the separately composed local tape is retained only as compatibility state and is not sent a second time. Documented SysOp-only status rows use the public `od_disp_emu(..., FALSE)` local-only path. OpenDoors source, API, and ABI remain untouched. |
 | RMT-INIT `pdef_od_onerow` default personality | Uses the published one-row local interface without changing OpenDoors. It provides the applicable console SysOp surface while remaining nonessential to compatibility |
 | RMT-INIT POSIX standard-I/O transport | OpenDoors' published Unix transport is used with `od_open_handle == 0`. The Yankee Trader platform adapter observes and prepares the terminal before initialization, disables tty output post-processing so COM bytes remain byte-transparent, then reapplies recovered speed/framing and raw-output state after initialization and again after shutdown because OpenDoors temporarily owns terminal state. FreeBSD PTY process fixtures pin both missing-old and ordinary-completion streams |
 
-Additional limitations matter for pending work:
+Operational boundaries after this integration:
 
-1. The current pre-initialization assignment
-   `od_control.od_always_clear = FALSE` is overwritten by the installed
-   `od_init()`, which unconditionally defaults that field to `TRUE` in its
-   second initialization stage. Consequently, current `od_clr_scr()` calls
-   force a clear. If the recovered Yankee Trader behavior is to honor the
-   caller's screen-clearing preference, the assignment must occur after
-   `od_init()`; if it is to force clears, the ineffective assignment should
-   be removed. This guide does not choose between those behaviors.
-2. `od_get_key()` is intentionally correct for normal prompts where either
-   the player or local SysOp may type on the player's behalf. It is not
-   sufficient for identifying local-only SysOp commands because it exposes
-   origin only through shared `od_last_input` state and returns extended keys
-   as multiple bytes.
+1. `od_always_clear` and `od_status_on` are post-initialization settings because OpenDoors installs both defaults during `od_init()`. Yankee Trader now reapplies the selected clear policy and disables the local status subsystem after initialization.
+2. Local-only SysOp controls are not decoded by the game input splitter. OpenDoors consumes its own personality/hotkey commands before returning ordinary game events.
 3. The personality/custom-hotkey approach is available on DOS and the Win32
    console subsystem in the pinned revision. A one-row/custom personality can
    provide the local `ON KEY`-style F4-through-F10 surface. The Win32 GUI uses
@@ -1304,7 +1290,7 @@ Additional limitations matter for pending work:
    |---|---|---|
    | F4 local sound | No corresponding command required | In normal remote mode it changes only local presentation |
    | F5 `END` | Exit to BBS; Hangup remains a separate explicit command | Existing `od_before_exit`/`atexit()` cleanup must remain safe |
-   | F8 replace remaining time | Toolbar time editor and add/subtract-time menu commands | Currently incomplete: they change `od_control.user_timelimit`, while Yankee Trader enforces its separate `session_deadline` |
+   | F8 replace remaining time | Toolbar time editor and add/subtract-time menu commands | Complete at the door layer: OpenDoors is the sole session-time owner, so its `user_timelimit` adjustments immediately govern both enforcement and Yankee Trader time display |
    | F9 local snoop | Visible Win32 local display | In normal remote mode it changes only local presentation |
    | F10 SysOp chat | Chat Mode menu, toolbar button, or Alt-C | OpenDoors supplies the chat transport and player interaction; before/after hooks are available for Yankee Trader state synchronization |
 
@@ -1318,12 +1304,7 @@ Additional limitations matter for pending work:
    RA/QuickBBS commands.
    That fact does not sanitize existing compatible records, externally
    edited files, registration data, or BBS/drop-file identity strings.
-5. The otherwise-unused generic `yt_input_line()` accepts `0x20` through
-   `0xff` and echoes with `od_putch()`. In a CP437 stream, `0x80` through
-   `0xff` are glyphs, so this range also excludes the ANSI/AVATAR/RA
-   command-introducing C0 bytes. Its acceptance of the extended CP437 glyph
-   range must still match the recovered input rules before the function is
-   used.
+5. The unused generic input wrappers were removed. Active game input is either a documented Yankee Trader editor/pager grammar over OpenDoors events or a direct OpenDoors facility.
 6. The unused generic `yt_outf()` and `yt_out_file()` interfaces were removed.
    A future formatted or file-display caller must first trace each source to
    its input or file decoder, then select a plain, emulated, semantic, or

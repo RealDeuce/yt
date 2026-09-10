@@ -138,15 +138,12 @@
 #define YT_STATIC_DOUBLE_ZERO_ADDRESS 0x66D6U
 #define YT_STATIC_SINGLE_ZERO_ADDRESS 0x62F4U
 #define YT_STATIC_SINGLE_ONE_ADDRESS 0x628AU
-#define YT_SESSION_DEADLINE_ADDRESS 0x4BB4U
 #define YT_SESSION_MODE_ADDRESS 0x19C8U
 #define YT_ANSI_ADDRESS 0x19A8U
 #define YT_BOLD_ADDRESS 0x19BCU
 #define YT_LOCAL_SOUND_ADDRESS 0x4B70U
 #define YT_GAME_SOUND_ADDRESS 0x4BD4U
 #define YT_SOUND_TOGGLE_SELECTOR_ADDRESS 0x5B32U
-#define YT_INACTIVITY_DEADLINE_ADDRESS 0x51B4U
-#define YT_NEXT_TIME_REFRESH_ADDRESS 0x19C0U
 #define YT_COMPUTER_ACTIVATION_SELECTOR_ADDRESS 0x50D2U
 #define YT_FATAL_SOUND_SELECTOR_ADDRESS 0x4CE2U
 #define YT_FATAL_WAIT_ADDRESS 0x4CE6U
@@ -270,7 +267,6 @@ struct yt_session {
 	double planet_quantity[10];
 	struct yt_present_time_state time;
 	struct yt_pager_state pager;
-	struct yt_timed_wait_state wait;
 	struct yt_input_value input_residue;
 	uint8_t team_audit_message[YT_TEAM_AUDIT_MESSAGE_MAX];
 	size_t team_audit_message_length;
@@ -657,7 +653,6 @@ static bool build_route(struct yt_session *session, float start,
     float destination, int16_t *next_hop, bool use_avoid, bool *found,
     enum yt_route_outcome *route_outcome, float *returned_status,
     struct yt_error *error);
-static bool session_carrier(struct yt_session *session);
 static bool session_b05d(struct yt_session *session, const uint8_t *text,
     size_t length);
 static bool session_store_output_source(struct yt_session *session,
@@ -799,8 +794,7 @@ session_radio_body_key(struct yt_session *session)
 	for (;;) {
 		struct yt_input_value selected = {{0, 0}, 0, 0, false};
 
-		if (!session_carrier(session)
-		    || !yt_input_poll_legacy(&session->input,
+		if (!yt_input_wait_legacy(&session->input,
 		    session_mode(session),
 		    YT_INPUT_PHASE_RADIO_BODY, &selected))
 			return EOF;
@@ -810,59 +804,43 @@ session_radio_body_key(struct yt_session *session)
 }
 
 static bool
-session_timed_wait(struct yt_session *session, double seconds)
-{
-	enum yt_timed_wait_reason reason;
-
-	if (!yt_timed_wait_begin(&session->wait, (float)seconds,
-	    (float)yt_platform_timer()))
-		return false;
-	for (;;) {
-		struct yt_input_value selected = {{0, 0}, 0, 0, false};
-
-		reason = yt_timed_wait_timer(&session->wait,
-		    (float)yt_platform_timer());
-		if (reason != YT_TIMED_WAIT_CONTINUE)
-			return reason != YT_TIMED_WAIT_ERROR;
-		if (!yt_input_poll_legacy(&session->input,
-		    session_mode(session), YT_INPUT_PHASE_WAIT,
-		    &selected))
-			return false;
-		reason = yt_timed_wait_input(&session->wait,
-		    session_mode(session), &selected);
-		if (reason != YT_TIMED_WAIT_CONTINUE)
-			return reason != YT_TIMED_WAIT_ERROR;
-	}
-}
-
-static bool
 session_timed_wait_at(struct yt_session *session, double seconds,
     uint16_t address)
 {
-	enum yt_timed_wait_reason reason;
+	struct yt_input_value selected = {{0, 0}, 0, 0, false};
+	uint64_t deadline_milliseconds;
+	uint64_t duration_milliseconds;
+	DWORD current_seconds;
+	WORD current_milliseconds;
+	bool timed_out;
 
-	if (!yt_timed_wait_begin(&session->wait, (float)seconds,
-	    (float)yt_platform_timer()))
+	if (!isfinite(seconds))
 		return false;
-	session_set_process_single(session, address, session->wait.duration_cell);
-	for (;;) {
-		struct yt_input_value selected = {{0, 0}, 0, 0, false};
+	if (seconds <= 0.0)
+		return true;
+	if (seconds > (double)UINT32_MAX)
+		return false;
+	od_get_time(&current_seconds, &current_milliseconds);
+	duration_milliseconds = (uint64_t)llround(seconds * 1000.0);
+	if (duration_milliseconds == 0U)
+		duration_milliseconds = 1U;
+	deadline_milliseconds = (uint64_t)current_seconds * 1000U
+	    + current_milliseconds + duration_milliseconds;
+	if (deadline_milliseconds > (uint64_t)UINT32_MAX * 1000U + 999U)
+		return false;
+	if (address != 0U)
+		session_set_process_single(session, address,
+		    (float)((double)deadline_milliseconds / 1000.0));
+	return yt_input_wait_legacy_until(&session->input, session_mode(session),
+	    YT_INPUT_PHASE_WAIT,
+	    (uint32_t)(deadline_milliseconds / 1000U),
+	    (uint16_t)(deadline_milliseconds % 1000U), &selected, &timed_out);
+}
 
-		session->wait.duration_cell = yt_route_process_single(
-		    &session->route_process, address);
-		reason = yt_timed_wait_timer(&session->wait,
-		    (float)yt_platform_timer());
-		if (reason != YT_TIMED_WAIT_CONTINUE)
-			return reason != YT_TIMED_WAIT_ERROR;
-		if (!yt_input_poll_legacy(&session->input,
-		    session_mode(session), YT_INPUT_PHASE_WAIT,
-		    &selected))
-			return false;
-		reason = yt_timed_wait_input(&session->wait,
-		    session_mode(session), &selected);
-		if (reason != YT_TIMED_WAIT_CONTINUE)
-			return reason != YT_TIMED_WAIT_ERROR;
-	}
+static bool
+session_timed_wait(struct yt_session *session, double seconds)
+{
+	return session_timed_wait_at(session, seconds, 0U);
 }
 
 static bool
@@ -909,13 +887,6 @@ session_returning_rebuild_wait(struct yt_session *session,
 }
 
 static bool
-session_editor_notice(void *context, const uint8_t *notice, size_t length)
-{
-	return session_0317(context, notice, length,
-	    "editor terminal notice", NULL);
-}
-
-static bool
 session_editor_close_all(void *context)
 {
 	struct yt_session *session = context;
@@ -925,16 +896,6 @@ session_editor_close_all(void *context)
 		yt_game_close(&session->door->game);
 	}
 	return true;
-}
-
-static bool
-session_editor_end(struct yt_session *session,
-    enum yt_ab36_terminal_kind kind)
-{
-	(void)yt_input_ab36_terminal_run(kind, &session->running,
-	    &session->terminated, session_editor_notice,
-	    session_editor_close_all, session);
-	return false;
 }
 
 static bool
@@ -979,12 +940,13 @@ session_ab36_editor_echo(void *context, const uint8_t *local,
 }
 
 static bool
-session_ab36_printable_carrier(void *context)
+session_ab36_printable_continue(void *context)
 {
 	struct yt_session *session = context;
 
 	session_set_pager_newline(session, 1.0f);
-	return session_carrier(session);
+	od_kernel();
+	return true;
 }
 
 static float
@@ -1624,38 +1586,17 @@ radio_append_bytes(const uint8_t *text, size_t length, float sender,
 static bool
 read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 {
-	uint8_t inactivity_deadline[4];
 
 	if (size == 0)
 		return false;
 	yt_pager_editor_enter(&session->pager, session->command_accumulator,
 	    sizeof(session->command_accumulator));
-	if (!yt_input_ab36_inactivity_begin_process(
-	    (float)yt_platform_timer(), inactivity_deadline))
-		return false;
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_INACTIVITY_DEADLINE_ADDRESS, inactivity_deadline);
 	dest[0] = '\0';
 	for (;;) {
 		struct yt_input_value selected = {{0, 0}, 0, 0, false};
 		bool queued = session->queue_position < session->queue_length;
 		uint8_t key;
 
-		if (yt_input_ab36_inactivity_expired(
-		    (float)yt_platform_timer(), yt_route_process_single(
-		    &session->route_process, YT_INACTIVITY_DEADLINE_ADDRESS),
-		    session_mode(session)))
-			return session_editor_end(session,
-			    YT_AB36_TERMINAL_INACTIVITY);
-		if (!session_carrier(session))
-			return false;
-		if (!info_refresh_time(session, NULL))
-			return false;
-		if (yt_input_ab36_session_expired((float)yt_platform_timer(),
-		    yt_route_process_single(&session->route_process,
-		    YT_SESSION_DEADLINE_ADDRESS)))
-			return session_editor_end(session,
-			    YT_AB36_TERMINAL_SESSION_LIMIT);
 		if (queued) {
 			if (!yt_input_ab36_queue_pop(session->queue,
 			    sizeof(session->queue), &session->queue_position,
@@ -1663,14 +1604,10 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 				return false;
 		}
 		else {
-			if (!yt_input_poll_legacy(&session->input,
+			if (!yt_input_wait_legacy(&session->input,
 			    session_mode(session),
 			    YT_INPUT_PHASE_AB36, &selected))
 				return false;
-			if (selected.length == 0) {
-				od_sleep(10);
-				continue;
-			}
 		}
 		if (selected.length != 1)
 			continue;
@@ -1715,7 +1652,7 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 			    session->paged_text, sizeof(session->paged_text),
 			    &session->pager.newline_flag, &handled,
 			    session_ab36_editor_echo,
-			    session_ab36_printable_carrier, session))
+			    session_ab36_printable_continue, session))
 				return false;
 			if (handled)
 				continue;
@@ -1851,29 +1788,11 @@ session_036f(struct yt_session *session, char *text, size_t size)
 }
 
 static bool
-session_carrier(struct yt_session *session)
+session_paged_kernel(void *context)
 {
-	struct yt_present_result presentation;
-	enum yt_present_status status;
-	bool carrier_detected;
-
-	carrier_detected = od_carrier();
-	if (yt_input_carrier_returns(session_mode(session),
-	    carrier_detected))
-		return true;
-	status = yt_present_carrier_drop(&session->presentation, &presentation);
-	if (status == YT_PRESENT_OK)
-		yt_out_present_result(&presentation);
-	(void)session_editor_close_all(session);
-	session->running = false;
-	session->terminated = true;
-	return false;
-}
-
-static bool
-session_paged_carrier(void *context)
-{
-	return session_carrier(context);
+	(void)context;
+	od_kernel();
+	return true;
 }
 
 static bool
@@ -1934,7 +1853,7 @@ static bool
 session_b05d(struct yt_session *session, const uint8_t *text, size_t length)
 {
 	static const struct yt_paged_row_ops ops = {
-		session_paged_carrier,
+		session_paged_kernel,
 		session_paged_sample,
 		session_paged_present,
 		session_paged_finish,
@@ -13297,47 +13216,19 @@ info_failure(struct yt_error *error, const char *operation)
 static bool
 info_refresh_time(struct yt_session *session, struct yt_error *error)
 {
-	float reads[5];
-	uint8_t deadline_raw[4];
-	uint8_t next_refresh_raw[4];
-	float deadline;
-	float next_refresh;
-	size_t count = 0;
-	size_t used;
-	int row = 1;
-	int column = 1;
-	bool updated;
-	struct yt_present_result presentation;
+	DWORD elapsed_seconds;
+	WORD elapsed_milliseconds;
+	float remaining_seconds;
 	enum yt_present_status status;
 
-	yt_route_process_raw_single(&session->route_process,
-	    YT_SESSION_DEADLINE_ADDRESS, deadline_raw);
-	yt_route_process_raw_single(&session->route_process,
-	    YT_NEXT_TIME_REFRESH_ADDRESS, next_refresh_raw);
-	deadline = qb_mbf32_decode(deadline_raw);
-	next_refresh = qb_mbf32_decode(next_refresh_raw);
-	reads[count++] = (float)yt_platform_timer();
-	if (single_sub(deadline, reads[0]) > 70000.0f) {
-		deadline = single_sub(deadline, 86400.0f);
-		reads[count] = (float)yt_platform_timer();
-		next_refresh = single_add(reads[count++], 1.0f);
-	}
-	reads[count] = (float)yt_platform_timer();
-	if (reads[count++] >= next_refresh) {
-		reads[count++] = (float)yt_platform_timer();
-		reads[count++] = (float)yt_platform_timer();
-		yt_out_cursor_position(&row, &column);
-	}
-	status = yt_present_refresh_time_process(&session->time, deadline_raw,
-	    next_refresh_raw, reads, count, &used, row, column,
-	    &session->presentation, &presentation, &updated);
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_SESSION_DEADLINE_ADDRESS, deadline_raw);
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_NEXT_TIME_REFRESH_ADDRESS, next_refresh_raw);
+	od_get_time(&elapsed_seconds, &elapsed_milliseconds);
+	remaining_seconds = (float)od_control.user_timelimit * 60.0f
+	    - (float)(elapsed_seconds % 60U)
+	    - (float)elapsed_milliseconds / 1000.0f;
+	status = yt_present_format_remaining_seconds(&session->time,
+	    remaining_seconds);
 	if (status != YT_PRESENT_OK)
 		return info_failure(error, "Info time refresh");
-	/* Its row-25 event tape is deferred with the local personality. */
 	return true;
 }
 
@@ -15254,7 +15145,7 @@ genesis_handoff_run_program(void *context, struct yt_error *error)
 		}
 		return false;
 	}
-	yt_door_cleanup();
+	yt_door_shutdown_for_replace();
 	if (!yt_platform_spawn(sibling, arguments, YT_SPAWN_REPLACE, NULL,
 	    error))
 		return false;
@@ -19185,14 +19076,11 @@ nearest_session_input(void *context, uint8_t *key, bool *available,
 	(void)error;
 	*available = false;
 	*key = 0U;
-	if (!session_carrier(session)
-	    || !yt_input_poll_legacy(&session->input, session_mode(session),
+	if (!yt_input_wait_legacy(&session->input, session_mode(session),
 	    YT_INPUT_PHASE_B05D, &selected))
 		return false;
-	if (selected.length != 1U) {
-		od_sleep(10);
+	if (selected.length != 1U)
 		return true;
-	}
 	*key = selected.bytes[0];
 	*available = true;
 	return true;
@@ -19477,8 +19365,7 @@ profit_session_input(void *context, uint8_t *text, size_t capacity,
 	(void)error;
 	*length = 0U;
 	*available = false;
-	if (!session_carrier(session)
-	    || !yt_input_poll_legacy(&session->input, session_mode(session),
+	if (!yt_input_wait_legacy(&session->input, session_mode(session),
 	    YT_INPUT_PHASE_B05D, &selected))
 		return false;
 	if (selected.length == 0U)
@@ -20642,18 +20529,6 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 		session_set_process_single(&session,
 		    (uint16_t)(YT_MARKET_BASE_ADDRESS + 4U * index),
 		    market_base[index]);
-	{
-		float requested = single_add(single_add(
-		    floorf((float)yt_platform_timer()),
-		    single_mul(60.0f, (float)door->identity.minutes)), -3.0f);
-		float maximum = single_add(
-		    floorf((float)yt_platform_timer()), 10800.0f);
-
-		session.time.deadline = requested < maximum
-		    ? requested : maximum;
-		session_set_process_single(&session, YT_SESSION_DEADLINE_ADDRESS,
-		    session.time.deadline);
-	}
 	if (!load_configuration(&session, error))
 		return session.terminated;
 	session_set_foreground(&session, 6.0f);

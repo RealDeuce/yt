@@ -14,7 +14,6 @@ struct yt_identity {
 	bool ansi;
 	uint8_t ansi_raw[4];
 	bool local;
-	int minutes;
 };
 
 struct yt_door {
@@ -33,6 +32,7 @@ bool yt_door_start(struct yt_door *door, char *command_line,
     struct yt_error *error);
 #endif
 void yt_door_cleanup(void);
+void yt_door_shutdown_for_replace(void);
 void yt_door_finish(int errorlevel);
 struct yt_door *yt_door_current(void);
 

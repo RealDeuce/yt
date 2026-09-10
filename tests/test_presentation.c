@@ -5172,6 +5172,14 @@ test_time_helpers(void)
 	float remembered = 6.0f;
 
 	memset(&time, 0, sizeof(time));
+	CHECK(yt_present_format_remaining_seconds(&time, 359.5f)
+	    == YT_PRESENT_OK);
+	CHECK(time.text_length == 7U
+	    && memcmp(time.text, " 5:59  ", 7U) == 0);
+	CHECK(time.remaining_minutes > 5.99f
+	    && time.remaining_minutes < 6.0f);
+
+	memset(&time, 0, sizeof(time));
 	time.deadline = 460.0f;
 	memcpy(time.text, " 6:00  ", 7);
 	time.text_length = 7;
