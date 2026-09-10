@@ -92,6 +92,15 @@ yt_input_yes_no(const char *prompt)
 }
 
 static bool
+input_session_local(void)
+{
+	struct yt_door *door = yt_door_current();
+
+	return door != NULL ? door->identity.local
+	    : od_control.od_force_local != FALSE;
+}
+
+static bool
 poll_splitter(struct yt_input_splitter *splitter)
 {
 	tODInputEvent event;
@@ -110,10 +119,13 @@ poll_splitter(struct yt_input_splitter *splitter)
 		else {
 			value.bytes[0] = (uint8_t)event.chKeyPress;
 			value.bytes[1] = 0;
-		value.length = 1;
+			value.length = 1;
 			value.sequence = 0;
 		}
-		value.remote = event.bFromRemote != FALSE;
+		/* A Unix forced-local session uses the stdio transport, whose
+		 * events retain their transport origin.  They are nevertheless
+		 * local input to the game's arbitration. */
+		value.remote = event.bFromRemote != FALSE && !input_session_local();
 		if (!yt_input_splitter_push(splitter,
 		    value.remote, &value))
 			return false;

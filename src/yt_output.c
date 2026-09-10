@@ -1,7 +1,7 @@
 #include "yt_output.h"
 
 #include "OpenDoor.h"
-#include "ODScrn.h"
+#include "yt_door.h"
 #include "yt_text.h"
 
 #include <stdlib.h>
@@ -42,20 +42,6 @@ yt_out_plain_bytes(const void *data, size_t length)
 	}
 }
 
-void
-yt_out_remote_bytes(const void *data, size_t length)
-{
-	const uint8_t *cursor = data;
-
-	while (length > 0) {
-		INT amount = length > 32767U ? 32767 : (INT)length;
-
-		od_disp((const char *)cursor, amount, FALSE);
-		cursor += (size_t)amount;
-		length -= (size_t)amount;
-	}
-}
-
 static bool
 remote_device_write(void *context, enum yt_text_device_write_phase phase,
     const uint8_t *data, size_t requested,
@@ -90,77 +76,56 @@ remote_device_apply_observed(const uint8_t *data, size_t length, bool line,
 	return ok;
 }
 
-static bool
-remote_device_apply(const uint8_t *data, size_t length, bool line)
-{
-	return remote_device_apply_observed(data, length, line, NULL);
-}
-
-bool
-yt_out_local_emulated_bytes(const void *data, size_t length,
-    struct yt_error *error)
+static void
+out_emulated_bytes(const void *data, size_t length)
 {
 	char stack[1024];
 	char *text = stack;
 
-	if ((data == NULL && length != 0U) || length == SIZE_MAX
-	    || (length != 0U && memchr(data, 0, length) != NULL)) {
-		if (error != NULL) {
-			error->status = YT_INVALID;
-			error->system_error = 0;
-			(void)snprintf(error->operation, sizeof(error->operation),
-			    "%s", "local emulated output");
-			error->path[0] = '\0';
-		}
-		return false;
+	if (length == 0U)
+		return;
+	if (data == NULL)
+		return;
+	if (memchr(data, 0, length) != NULL) {
+		yt_out_plain_bytes(data, length);
+		return;
 	}
 	if (length >= sizeof(stack)) {
 		text = malloc(length + 1U);
 		if (text == NULL) {
-			if (error != NULL) {
-				error->status = YT_NO_MEMORY;
-				error->system_error = 0;
-				(void)snprintf(error->operation,
-				    sizeof(error->operation), "%s",
-				    "allocate local emulated output");
-				error->path[0] = '\0';
-			}
-			return false;
+			yt_out_plain_bytes(data, length);
+			return;
 		}
 	}
-	if (length != 0U)
-		memcpy(text, data, length);
+	memcpy(text, data, length);
 	text[length] = '\0';
-	od_disp_emu(text, FALSE);
+	/* OpenDoors' normal combined remote/local emulator path. */
+	od_disp_emu(text, TRUE);
 	if (text != stack)
 		free(text);
-	return true;
 }
 
 static bool
-present_remote(void *context, const uint8_t *data, size_t length, bool line)
+present_combined(void *context, const uint8_t *data, size_t length, bool line)
 {
 	static const uint8_t carriage_return = '\r';
 
 	(void)context;
-	if (!remote_device_apply(data, length, line))
+	if (!remote_device_apply_observed(data, length, line, NULL))
 		return false;
-	yt_out_remote_bytes(data, length);
+	out_emulated_bytes(data, length);
 	if (line)
-		yt_out_remote_bytes(&carriage_return, 1U);
+		out_emulated_bytes(&carriage_return, 1U);
 	return true;
 }
 
-static void
-present_local_bytes(const uint8_t *data, size_t length)
+static bool
+local_session(void)
 {
-	while (length > 0) {
-		INT amount = length > 32767U ? 32767 : (INT)length;
+	struct yt_door *door = yt_door_current();
 
-		ODScrnDisplayBuffer((const char *)data, amount);
-		data += (size_t)amount;
-		length -= (size_t)amount;
-	}
+	return door != NULL ? door->identity.local
+	    : od_control.od_force_local != FALSE;
 }
 
 static void
@@ -170,7 +135,7 @@ present_local_color(void *context, int foreground, int background)
 
 	(void)context;
 	attribute = yt_present_pc_attribute(foreground, background);
-	ODScrnSetAttribute(attribute);
+	od_set_attrib(attribute);
 }
 
 static void
@@ -180,29 +145,29 @@ present_local_text(void *context, const uint8_t *data, size_t length,
 	static const uint8_t newline[] = {'\r', '\n'};
 
 	(void)context;
-	present_local_bytes(data, length);
+	yt_out_plain_bytes(data, length);
 	if (line)
-		present_local_bytes(newline, sizeof(newline));
+		yt_out_plain_bytes(newline, sizeof(newline));
 }
 
 static void
 present_local_locate(void *context, int row, int column, int cursor_visible,
     int cursor_start, int cursor_stop)
 {
-	tODScrnTextInfo info;
+	INT current_row;
+	INT current_column;
 
 	(void)context;
 	(void)cursor_start;
 	(void)cursor_stop;
 	if (row < 1) {
-		ODScrnGetTextInfo(&info);
-		row = info.cury;
+		od_get_cursor(&current_row, &current_column);
+		row = current_row;
 		if (column < 1)
-			column = info.curx;
+			column = current_column;
 	}
-	ODScrnSetCursorPos((BYTE)column, (BYTE)row);
-	if (cursor_visible >= 0)
-		ODScrnEnableCaret(cursor_visible != 0);
+	od_set_cursor(row, column);
+	(void)cursor_visible;
 }
 
 static void
@@ -211,27 +176,28 @@ present_local_beep(void *context)
 	static const uint8_t bell = '\a';
 
 	(void)context;
-	present_local_bytes(&bell, 1);
+	od_putch((char)bell);
 }
 
 static void
 present_local_clear(void *context)
 {
 	(void)context;
-	ODScrnClear();
+	od_clr_scr();
 }
 
 void
 yt_out_present_result(const struct yt_present_result *result)
 {
+	const bool local = local_session();
 	const struct yt_present_sink sink = {
 		.context = NULL,
-		.remote = present_remote,
-		.local_color = present_local_color,
-		.local_text = present_local_text,
-		.local_locate = present_local_locate,
-		.local_beep = present_local_beep,
-		.local_clear = present_local_clear,
+		.remote = local ? NULL : present_combined,
+		.local_color = local ? present_local_color : NULL,
+		.local_text = local ? present_local_text : NULL,
+		.local_locate = local ? present_local_locate : NULL,
+		.local_beep = local ? present_local_beep : NULL,
+		.local_clear = local ? present_local_clear : NULL,
 	};
 
 	(void)yt_present_replay(result, &sink);
@@ -240,13 +206,14 @@ yt_out_present_result(const struct yt_present_result *result)
 void
 yt_out_cursor_position(int *row, int *column)
 {
-	tODScrnTextInfo info;
+	INT current_row;
+	INT current_column;
 
-	ODScrnGetTextInfo(&info);
+	od_get_cursor(&current_row, &current_column);
 	if (row != NULL)
-		*row = info.cury;
+		*row = current_row;
 	if (column != NULL)
-		*column = info.curx;
+		*column = current_column;
 }
 
 void
@@ -364,8 +331,12 @@ out_opening_present_local(void *context, const uint8_t *line, size_t length,
 	static const uint8_t newline[] = {'\r', '\n'};
 
 	(void)context;
-	return yt_out_local_emulated_bytes(line, length, error)
-	    && yt_out_local_emulated_bytes(newline, sizeof(newline), error);
+	(void)error;
+	if (local_session()) {
+		out_emulated_bytes(line, length);
+		out_emulated_bytes(newline, sizeof(newline));
+	}
+	return true;
 }
 
 static bool
@@ -385,10 +356,10 @@ out_opening_present_remote(void *context, const uint8_t *line, size_t length,
 
 	if (!out_opening_remote_statement(opening, line, length, false, error))
 		return false;
-	yt_out_remote_bytes(line, length);
+	out_emulated_bytes(line, length);
 	if (!out_opening_remote_statement(opening, newline, 1U, true, error))
 		return false;
-	yt_out_remote_bytes(newline, sizeof(newline));
+	out_emulated_bytes(newline, sizeof(newline));
 	return true;
 }
 
@@ -418,11 +389,11 @@ out_opening_reset_remote(void *context, struct yt_error *error)
 	if (!out_opening_remote_statement(opening, escape,
 	    sizeof(escape) - 1U, false, error))
 		return false;
-	yt_out_remote_bytes(escape, sizeof(escape) - 1U);
+	out_emulated_bytes(escape, sizeof(escape) - 1U);
 	if (!out_opening_remote_statement(opening, suffix,
 	    sizeof(suffix) - 1U, false, error))
 		return false;
-	yt_out_remote_bytes(suffix, sizeof(suffix) - 1U);
+	out_emulated_bytes(suffix, sizeof(suffix) - 1U);
 	return true;
 }
 
@@ -432,7 +403,10 @@ out_opening_reset_local(void *context, struct yt_error *error)
 	static const uint8_t reset[] = "\x1b[0m";
 
 	(void)context;
-	return yt_out_local_emulated_bytes(reset, sizeof(reset) - 1U, error);
+	(void)error;
+	if (local_session())
+		out_emulated_bytes(reset, sizeof(reset) - 1U);
+	return true;
 }
 
 static bool

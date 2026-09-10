@@ -1,7 +1,6 @@
 #include "yt_rmt_door.h"
 
 #include "OpenDoor.h"
-#include "ODScrn.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -26,14 +25,9 @@ rmt_door_local_sink(void *context, const uint8_t *data, size_t length,
 	if (door == NULL || !door->initialized
 	    || (data == NULL && length != 0U))
 		return false;
-	while (length != 0U) {
-		INT amount = length > 32767U ? 32767 : (INT)length;
-
-		ODScrnDisplayBuffer((const char *)data, amount);
-		data += (size_t)amount;
-		length -= (size_t)amount;
-		*accepted += (size_t)amount;
-	}
+	/* The serial sink uses OpenDoors' combined remote/local path.  The
+	 * separately composed local tape is retained as logical state only. */
+	*accepted = length;
 	return true;
 }
 
@@ -50,7 +44,7 @@ rmt_door_serial_sink(void *context, const uint8_t *data, size_t length,
 	while (length != 0U) {
 		INT amount = length > 32767U ? 32767 : (INT)length;
 
-		od_disp((const char *)data, amount, FALSE);
+		od_disp((const char *)data, amount, TRUE);
 		data += (size_t)amount;
 		length -= (size_t)amount;
 		*accepted += (size_t)amount;
@@ -155,10 +149,28 @@ bool
 yt_rmt_door_local_write(struct yt_rmt_door *door, const uint8_t *data,
     size_t length)
 {
-	size_t accepted;
+	char stack[256];
+	char *text = stack;
 
-	return rmt_door_local_sink(door, data, length, &accepted)
-	    && accepted == length;
+	if (door == NULL || !door->initialized
+	    || (data == NULL && length != 0U)
+	    || (length != 0U && memchr(data, 0, length) != NULL)
+	    || length == SIZE_MAX)
+		return false;
+	if (length >= sizeof(stack)) {
+		text = malloc(length + 1U);
+		if (text == NULL)
+			return false;
+	}
+	if (length != 0U)
+		memcpy(text, data, length);
+	text[length] = '\0';
+	/* These are the documented SysOp-only RMT-INIT status rows, not
+	 * ordinary application output. */
+	od_disp_emu(text, FALSE);
+	if (text != stack)
+		free(text);
+	return true;
 }
 
 void

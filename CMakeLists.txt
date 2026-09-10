@@ -65,7 +65,6 @@ set(YT_CORE_SOURCES
     src/yt_cli.c
     src/yt_data.c
     src/yt_file.c
-    src/yt_framebuffer.c
     src/yt_input_model.c
 	    src/yt_main_error.c
     src/yt_pager.c
@@ -174,16 +173,20 @@ if(BUILD_TESTING)
     target_compile_definitions(test_presentation PRIVATE
         YT_DATA_DIR="${YT_GENERATED_DATA_DIR}/")
     add_dependencies(test_presentation yt-data)
-    yt_add_test(test_framebuffer tests/test_framebuffer.c yt_core)
-    target_compile_definitions(test_framebuffer PRIVATE
-        YT_DATA_DIR="${YT_GENERATED_DATA_DIR}/")
-    add_dependencies(test_framebuffer yt-data)
-
     add_executable(test_output tests/test_output.c src/yt_output.c)
     yt_configure_target(test_output)
     target_compile_definitions(test_output PRIVATE YT_TESTING)
-    target_link_libraries(test_output PRIVATE yt_game OpenDoors::Static)
+    target_include_directories(test_output PRIVATE
+        "${YT_OPENDOORS_SOURCE_DIR}/include")
+    target_link_libraries(test_output PRIVATE yt_game)
     add_test(NAME test_output COMMAND test_output)
+    add_executable(test_input_adapter tests/test_input_adapter.c src/yt_input.c)
+    yt_configure_target(test_input_adapter)
+    target_compile_definitions(test_input_adapter PRIVATE YT_TESTING)
+    target_include_directories(test_input_adapter PRIVATE
+        "${YT_OPENDOORS_SOURCE_DIR}/include")
+    target_link_libraries(test_input_adapter PRIVATE yt_core)
+    add_test(NAME test_input_adapter COMMAND test_input_adapter)
     yt_add_test(test_ytconfig_output tests/test_ytconfig_output.c yt_game)
     yt_add_test(test_nearest tests/test_nearest.c yt_game)
     yt_add_test(test_profit tests/test_profit.c yt_game)

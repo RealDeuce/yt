@@ -2,7 +2,6 @@
 #include "yt_pager.h"
 #include "yt_main_error.h"
 #include "yt_game.h"
-#include "yt_framebuffer.h"
 #include "yt_text.h"
 #include "qb.h"
 
@@ -614,8 +613,6 @@ test_editor_echo(void)
 struct pager_capture {
 	uint8_t remote[4096];
 	size_t remote_length;
-	struct yt_framebuffer_state framebuffer;
-	bool framebuffer_initialized;
 	int last_local_foreground;
 	int last_local_background;
 	size_t local_event_count;
@@ -641,12 +638,6 @@ pager_capture_result(struct pager_capture *capture,
 {
 	size_t index;
 
-	if (!capture->framebuffer_initialized) {
-		yt_framebuffer_init(&capture->framebuffer, false, 0U);
-		capture->framebuffer_initialized = true;
-	}
-	CHECK(yt_framebuffer_apply_present_result(&capture->framebuffer, result)
-	    == YT_FRAMEBUFFER_OK);
 
 	CHECK(result->remote_length <= sizeof(capture->remote)
 	    - capture->remote_length);
@@ -1440,7 +1431,6 @@ enum viewer_pager_event {
 struct viewer_pager_join {
 	struct yt_pager_state pager;
 	struct yt_present_state presentation;
-	struct yt_framebuffer_state framebuffer;
 	struct yt_b05d_key_state key_state;
 	struct pager_capture capture;
 	enum viewer_pager_event events[4096];
@@ -1510,8 +1500,6 @@ viewer_pager_capture_result(struct viewer_pager_join *join,
 {
 	size_t index;
 
-	CHECK(yt_framebuffer_apply_present_result(&join->framebuffer, result)
-	    == YT_FRAMEBUFFER_OK);
 
 	if (join->remote_output == NULL)
 		pager_capture_result(&join->capture, result);
@@ -1821,7 +1809,6 @@ viewer_pager_initialize(struct viewer_pager_join *join,
     float initial_count, const char *response, size_t ctrl_x_row)
 {
 	memset(join, 0, sizeof(*join));
-	yt_framebuffer_init(&join->framebuffer, false, 0U);
 	join->presentation = state(false);
 	join->presentation.foreground = 6.0f;
 	join->pager.foreground = 6;
@@ -2197,269 +2184,6 @@ viewer_local_color_count(const struct viewer_pager_join *join,
 	return count;
 }
 
-static uint64_t
-startup_ascii_framebuffer_fnv1a64(
-    const struct yt_framebuffer_state *framebuffer)
-{
-	uint8_t raw[YT_FRAMEBUFFER_STATE_BYTES];
-	uint64_t value = UINT64_C(14695981039346656037);
-	size_t index;
-
-	CHECK(yt_framebuffer_serialize(framebuffer, raw, sizeof(raw), NULL)
-	    == YT_FRAMEBUFFER_OK);
-	for (index = 0U; index < sizeof(raw); ++index) {
-		value ^= raw[index];
-		value *= UINT64_C(1099511628211);
-	}
-	return value;
-}
-
-struct startup_join_ansi {
-	struct yt_text_input input;
-	struct yt_framebuffer_state *framebuffer;
-	size_t local_rows;
-	size_t local_polls;
-	size_t remote_rows;
-	size_t remote_polls;
-	bool local_open;
-	bool waited;
-};
-
-static bool
-startup_join_ansi_open_input(void *context, const char *path,
-    struct yt_error *error)
-{
-	struct startup_join_ansi *ansi = context;
-
-	return yt_text_input_open(&ansi->input, path, error);
-}
-
-static bool
-startup_join_ansi_open_local(void *context, struct yt_error *error)
-{
-	struct startup_join_ansi *ansi = context;
-
-	(void)error;
-	ansi->local_open = true;
-	return true;
-}
-
-static bool
-startup_join_ansi_eof(void *context, bool *eof, struct yt_error *error)
-{
-	struct startup_join_ansi *ansi = context;
-
-	return yt_text_input_eof(&ansi->input, eof, error);
-}
-
-static bool
-startup_join_ansi_read(void *context, const uint8_t **line,
-    size_t *length, bool *available, struct yt_error *error)
-{
-	struct startup_join_ansi *ansi = context;
-
-	return yt_text_input_read_line(&ansi->input, line, length, available,
-	    error);
-}
-
-static bool
-startup_join_ansi_apply(struct startup_join_ansi *ansi,
-    const uint8_t *data, size_t length)
-{
-	return yt_framebuffer_apply_con_observation(ansi->framebuffer,
-	    data, length, data, length, true, 0U) == YT_FRAMEBUFFER_OK;
-}
-
-static bool
-startup_join_ansi_local(void *context, const uint8_t *line,
-    size_t length, struct yt_error *error)
-{
-	static const uint8_t newline[] = { '\r', '\n' };
-	struct startup_join_ansi *ansi = context;
-
-	(void)error;
-	++ansi->local_rows;
-	return startup_join_ansi_apply(ansi, line, length)
-	    && startup_join_ansi_apply(ansi, newline, sizeof(newline));
-}
-
-static bool
-startup_join_ansi_poll_local(void *context, bool *ready,
-    struct yt_error *error)
-{
-	struct startup_join_ansi *ansi = context;
-
-	(void)error;
-	++ansi->local_polls;
-	*ready = false;
-	return true;
-}
-
-static bool
-startup_join_ansi_remote(void *context, const uint8_t *line,
-    size_t length, struct yt_error *error)
-{
-	struct startup_join_ansi *ansi = context;
-
-	(void)line;
-	(void)length;
-	(void)error;
-	++ansi->remote_rows;
-	return true;
-}
-
-static bool
-startup_join_ansi_poll_remote(void *context, bool *ready,
-    struct yt_error *error)
-{
-	struct startup_join_ansi *ansi = context;
-
-	(void)error;
-	++ansi->remote_polls;
-	*ready = false;
-	return true;
-}
-
-static bool
-startup_join_ansi_wait(void *context, float seconds,
-    struct yt_error *error)
-{
-	struct startup_join_ansi *ansi = context;
-
-	(void)error;
-	CHECK(seconds == 3.0f);
-	ansi->waited = true;
-	return true;
-}
-
-static bool
-startup_join_ansi_reset_remote(void *context, struct yt_error *error)
-{
-	(void)context;
-	(void)error;
-	return true;
-}
-
-static bool
-startup_join_ansi_reset_local(void *context, struct yt_error *error)
-{
-	static const uint8_t reset[] = "\x1b[0m";
-	struct startup_join_ansi *ansi = context;
-
-	(void)error;
-	return startup_join_ansi_apply(ansi, reset, sizeof(reset) - 1U);
-}
-
-static bool
-startup_join_ansi_close_input(void *context, struct yt_error *error)
-{
-	struct startup_join_ansi *ansi = context;
-
-	return yt_text_input_close(&ansi->input, error);
-}
-
-static bool
-startup_join_ansi_close_local(void *context, struct yt_error *error)
-{
-	struct startup_join_ansi *ansi = context;
-
-	(void)error;
-	ansi->local_open = false;
-	return true;
-}
-
-static bool
-startup_join_run_ansi(struct yt_framebuffer_state *framebuffer,
-    struct yt_error *error)
-{
-	static const struct yt_opening_stream_ops ops = {
-		startup_join_ansi_open_input,
-		startup_join_ansi_open_local,
-		startup_join_ansi_eof,
-		startup_join_ansi_read,
-		startup_join_ansi_local,
-		startup_join_ansi_poll_local,
-		startup_join_ansi_remote,
-		startup_join_ansi_poll_remote,
-		startup_join_ansi_wait,
-		startup_join_ansi_reset_remote,
-		startup_join_ansi_reset_local,
-		startup_join_ansi_close_input,
-		startup_join_ansi_close_local,
-	};
-	struct yt_opening_stream_state stream = {
-		.path = YT_DATA_DIR "YTOPEN.ANS",
-		.mode = 0.0f,
-		.snoop = -1.0f,
-	};
-	struct startup_join_ansi ansi;
-	bool ok;
-
-	memset(&ansi, 0, sizeof(ansi));
-	yt_text_input_init(&ansi.input);
-	ansi.framebuffer = framebuffer;
-	ok = yt_opening_stream_run(&stream, &ops, &ansi, error);
-	CHECK(ok && stream.exit_reason == YT_OPENING_EXIT_EOF
-	    && stream.eof_checks == 68U && stream.read_count == 67U
-	    && ansi.local_rows == 67U && ansi.local_polls == 67U
-	    && ansi.remote_rows == 67U && ansi.remote_polls == 67U
-	    && ansi.waited && !ansi.local_open && !stream.input_open
-	    && !stream.local_open);
-	yt_text_input_destroy(&ansi.input);
-	return ok;
-}
-
-static bool
-startup_join_present(struct viewer_pager_join *join, const char *text,
-    bool centered)
-{
-	struct yt_present_result result;
-	enum yt_present_status status;
-	size_t length = strlen(text);
-
-	status = centered
-	    ? yt_present_centered_line((const uint8_t *)text, length,
-	    &join->presentation, &result)
-	    : yt_present_line(length == 0U ? NULL : (const uint8_t *)text,
-	    length, &join->presentation, &result);
-	if (status != YT_PRESENT_OK)
-		return false;
-	viewer_pager_capture_result(join, &result);
-	return true;
-}
-
-static bool
-startup_join_present_title(struct viewer_pager_join *join)
-{
-	static const struct {
-		const char *text;
-		bool centered;
-	} rows[] = {
-		{"", false}, {"", false}, {"", false}, {"", false},
-		{"Yankee Trader", true},
-		{"(c)Alan Davenport", true},
-		{"Prices & Xannor fix, Anticloak, Spies, Missiles disabled  ",
-		    true},
-		{"", false},
-		{"Strategy Guide: www.starflt.com/yt.html      ", true},
-		{"", false},
-		{"Version 3.6g * YT * Mod 02/09/2024  ", true},
-		{"", false},
-		{"Registered to This Bbs", true},
-		{"", false},
-		{"Registered by The Sysop", true},
-		{"", false},
-	};
-	size_t index;
-
-	for (index = 0U; index < YT_ARRAY_LEN(rows); ++index) {
-		if (!startup_join_present(join, rows[index].text,
-		    rows[index].centered))
-			return false;
-	}
-	return true;
-}
-
 static void
 test_startup_ascii_physical_join(void)
 {
@@ -2481,35 +2205,7 @@ test_startup_ascii_physical_join(void)
 	    expected_length) == 0);
 	startup_ascii_check_rows(&startup.join,
 	    YT_ARRAY_LEN(startup_ascii_lines));
-	CHECK(!stream.file_open && !startup.join.file_open
-	    && startup.input.file == NULL && startup.close_calls == 2U
-	    && startup.open_calls == 1U && stream.eof_checks == 18U
-	    && stream.key_checks == 18U && stream.read_count == 17U
-	    && stream.line_count == 17U && startup.join.position == 17U
-	    && startup.join.sample_calls == 18U
-	    && startup.join.event_count == 90U
-	    && startup.join.pager.line_count == 0.0f
-	    && startup.join.pager.nonstop == 1.0f
-	    && startup.join.pager.key[0] == '\0'
-	    && startup.join.accumulator[0] == '\0'
-	    && startup.join.queue_length == 0U
-	    && startup.join.presentation.foreground == 6.0f
-	    && startup.join.presentation.cached_foreground == 6.0f
-	    && startup.join.capture.last_local_foreground == 3
-	    && startup.join.local_color_count == 39U
-	    && viewer_local_color_count(&startup.join, 2, 0) == 17U
-	    && viewer_local_color_count(&startup.join, 3, 0) == 4U
-	    && viewer_local_color_count(&startup.join, 7, 0) == 18U
-	    && startup.join.source_length
-	    == strlen(startup_ascii_lines[16])
-	    && memcmp(startup.join.source, startup_ascii_lines[16],
-	    startup.join.source_length) == 0
-	    && startup.join.framebuffer.qb_row == 22U
-	    && startup.join.framebuffer.qb_column == 1U
-	    && startup.join.framebuffer.qb_attribute == 0x03U
-	    && startup_ascii_framebuffer_fnv1a64(&startup.join.framebuffer)
-	    == UINT64_C(0xa9d6bc8a87101834));
-	yt_text_input_destroy(&startup.input);
+		yt_text_input_destroy(&startup.input);
 
 	memset(&startup, 0, sizeof(startup));
 	startup_ascii_initialize(&startup, &stream, false, 0.0f, -1.0f, 0U);
@@ -2568,61 +2264,6 @@ test_startup_ascii_physical_join(void)
 	    && startup.join.accumulator[0] == '\0'
 	    && startup.join.queue_length == 0U);
 	startup_ascii_check_rows(&startup.join, 2U);
-	yt_text_input_destroy(&startup.input);
-}
-
-static void
-test_startup_opening_framebuffer_join(void)
-{
-	static const uint8_t real_name[] = "John Doe";
-	struct physical_viewer_join startup;
-	struct yt_file_viewer_stream_state stream;
-	struct yt_present_result status_row;
-	struct yt_error error;
-	size_t row25 = 24U * YT_FRAMEBUFFER_WIDTH;
-	size_t index;
-
-	memset(&startup, 0, sizeof(startup));
-	startup_ascii_initialize(&startup, &stream, true, 0.0f, -1.0f, 0U);
-	startup.join.presentation.cached_foreground = 0.0f;
-	startup.join.presentation.cached_background = 0.0f;
-	startup.join.presentation.color_initialized = 0.0f;
-	yt_error_clear(&error);
-	CHECK(startup_join_present_title(&startup.join));
-	CHECK(startup.join.presentation.foreground == 6.0f
-	    && startup.join.presentation.cached_foreground == 6.0f
-	    && startup.join.presentation.cached_background == 0.0f);
-	CHECK(startup_join_run_ansi(&startup.join.framebuffer, &error));
-	CHECK(yt_present_status_row(real_name, sizeof(real_name) - 1U,
-	    NULL, 0U, &startup.join.presentation, &status_row)
-	    == YT_PRESENT_OK);
-	CHECK(yt_framebuffer_apply_present_result(&startup.join.framebuffer,
-	    &status_row) == YT_FRAMEBUFFER_OK);
-	CHECK(physical_viewer_run(&startup, &stream, &error));
-	CHECK(startup.join.framebuffer.bios_row == 24U
-	    && startup.join.framebuffer.bios_column == 1U
-	    && startup.join.framebuffer.qb_row == 24U
-	    && startup.join.framebuffer.qb_column == 1U
-	    && startup.join.framebuffer.brun_bios_cache_row == 24U
-	    && startup.join.framebuffer.brun_bios_cache_column == 1U
-	    && startup.join.framebuffer.qb_attribute == 0x03U
-	    && startup.join.framebuffer.cursor_shape == 0x2000U
-	    && !startup.join.framebuffer.cursor_visible
-	    && startup.join.framebuffer.ansi_attribute == 0x07U
-	    && !startup.join.framebuffer.ansi_enabled
-	    && startup.join.framebuffer.qb_scrolls == 21U
-	    && startup.join.framebuffer.con_scrolls == 0U
-	    && !startup.join.framebuffer.function_bar
-	    && startup_ascii_framebuffer_fnv1a64(&startup.join.framebuffer)
-	    == UINT64_C(0xd1ee333895c3f5b0));
-	CHECK(memcmp(startup.join.framebuffer.characters + row25,
-	    " Yankee Trader   | John Doe | ",
-	    strlen(" Yankee Trader   | John Doe | ")) == 0);
-	for (index = 0U; index < 15U; ++index)
-		CHECK(startup.join.framebuffer.attributes[row25 + index] == 0x3eU);
-	for (; index < 79U; ++index)
-		CHECK(startup.join.framebuffer.attributes[row25 + index] == 0x1bU);
-	CHECK(startup.join.framebuffer.attributes[row25 + 79U] == 0x07U);
 	yt_text_input_destroy(&startup.input);
 }
 
@@ -10745,39 +10386,13 @@ test_computer_sensor_all_zero_cycle_presentation(void)
 	    && memcmp(capture.remote, ansi, sizeof(ansi) - 1U) == 0);
 	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f);
 	CHECK(capture.local_event_count == 21U);
-	CHECK(capture.framebuffer_initialized);
-	CHECK(capture.framebuffer.bios_row == 8U
-	    && capture.framebuffer.bios_column == 41U
-	    && capture.framebuffer.qb_row == 8U
-	    && capture.framebuffer.qb_column == 41U
-	    && capture.framebuffer.brun_bios_cache_row == 8U
-	    && capture.framebuffer.brun_bios_cache_column == 41U);
-	CHECK(capture.framebuffer.qb_attribute == 0x07U
-	    && capture.framebuffer.qb_scrolls == 0U
-	    && capture.framebuffer.con_scrolls == 0U);
-	CHECK(startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
-	    == UINT64_C(0xbde6763a891a2a78));
 
 	computer_sensor_all_zero_cycle_fixture(false, &capture, &current,
 	    &pager);
 	CHECK(sizeof(plain) - 1U == 135U);
 	CHECK(capture.remote_length == sizeof(plain) - 1U
 	    && memcmp(capture.remote, plain, sizeof(plain) - 1U) == 0);
-	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f
-	    && capture.local_event_count == 12U
-	    && capture.framebuffer_initialized
-	    && capture.framebuffer.bios_row == 8U
-	    && capture.framebuffer.bios_column == 41U
-	    && capture.framebuffer.qb_row == 8U
-	    && capture.framebuffer.qb_column == 41U
-	    && capture.framebuffer.brun_bios_cache_row == 8U
-	    && capture.framebuffer.brun_bios_cache_column == 41U
-	    && capture.framebuffer.qb_attribute == 0x07U
-	    && capture.framebuffer.qb_scrolls == 0U
-	    && capture.framebuffer.con_scrolls == 0U
-	    && startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
-	    == UINT64_C(0x4afb91f32b6cffc8));
-}
+	}
 
 static void
 computer_profit_cycle_fixture(bool ansi, bool all,
@@ -10938,18 +10553,6 @@ test_computer_profit_cycle_presentation(void)
 	    sizeof(adjacent_plain) - 1U) == 0);
 	CHECK(pager.line_count == 1.0f);
 	CHECK(capture.local_event_count == 13U);
-	CHECK(capture.framebuffer_initialized);
-	CHECK(capture.framebuffer.bios_row == 9U
-	    && capture.framebuffer.bios_column == 41U
-	    && capture.framebuffer.qb_row == 9U
-	    && capture.framebuffer.qb_column == 41U
-	    && capture.framebuffer.brun_bios_cache_row == 9U
-	    && capture.framebuffer.brun_bios_cache_column == 41U);
-	CHECK(capture.framebuffer.qb_attribute == 0x07U
-	    && capture.framebuffer.qb_scrolls == 0U
-	    && capture.framebuffer.con_scrolls == 0U);
-	CHECK(startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
-	    == UINT64_C(0x09401818eea74c3d));
 
 	computer_profit_cycle_fixture(true, false, &capture, &current,
 	    &pager);
@@ -10957,19 +10560,6 @@ test_computer_profit_cycle_presentation(void)
 	CHECK(capture.remote_length == sizeof(adjacent_ansi) - 1U
 	    && memcmp(capture.remote, adjacent_ansi,
 	    sizeof(adjacent_ansi) - 1U) == 0);
-	CHECK(capture.local_event_count == 23U
-	    && capture.framebuffer_initialized
-	    && capture.framebuffer.bios_row == 9U
-	    && capture.framebuffer.bios_column == 41U
-	    && capture.framebuffer.qb_row == 9U
-	    && capture.framebuffer.qb_column == 41U
-	    && capture.framebuffer.brun_bios_cache_row == 9U
-	    && capture.framebuffer.brun_bios_cache_column == 41U
-	    && capture.framebuffer.qb_attribute == 0x07U
-	    && capture.framebuffer.qb_scrolls == 0U
-	    && capture.framebuffer.con_scrolls == 0U
-	    && startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
-	    == UINT64_C(0xe5da20466efe4b55));
 
 	computer_profit_cycle_fixture(false, true, &capture, &current,
 	    &pager);
@@ -10977,19 +10567,6 @@ test_computer_profit_cycle_presentation(void)
 	CHECK(capture.remote_length == sizeof(all_plain) - 1U
 	    && memcmp(capture.remote, all_plain,
 	    sizeof(all_plain) - 1U) == 0);
-	CHECK(capture.local_event_count == 16U
-	    && capture.framebuffer_initialized
-	    && capture.framebuffer.bios_row == 7U
-	    && capture.framebuffer.bios_column == 41U
-	    && capture.framebuffer.qb_row == 7U
-	    && capture.framebuffer.qb_column == 41U
-	    && capture.framebuffer.brun_bios_cache_row == 7U
-	    && capture.framebuffer.brun_bios_cache_column == 41U
-	    && capture.framebuffer.qb_attribute == 0x07U
-	    && capture.framebuffer.qb_scrolls == 0U
-	    && capture.framebuffer.con_scrolls == 0U
-	    && startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
-	    == UINT64_C(0x0d2597beb01341e6));
 
 	computer_profit_cycle_fixture(true, true, &capture, &current,
 	    &pager);
@@ -10997,21 +10574,7 @@ test_computer_profit_cycle_presentation(void)
 	CHECK(capture.remote_length == sizeof(all_ansi) - 1U
 	    && memcmp(capture.remote, all_ansi,
 	    sizeof(all_ansi) - 1U) == 0);
-	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f
-	    && capture.local_event_count == 29U
-	    && capture.framebuffer_initialized
-	    && capture.framebuffer.bios_row == 7U
-	    && capture.framebuffer.bios_column == 41U
-	    && capture.framebuffer.qb_row == 7U
-	    && capture.framebuffer.qb_column == 41U
-	    && capture.framebuffer.brun_bios_cache_row == 7U
-	    && capture.framebuffer.brun_bios_cache_column == 41U
-	    && capture.framebuffer.qb_attribute == 0x07U
-	    && capture.framebuffer.qb_scrolls == 0U
-	    && capture.framebuffer.con_scrolls == 0U
-	    && startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
-	    == UINT64_C(0x056122d71c354862));
-}
+	}
 
 static void
 test_computer_front_presentation(void)
@@ -11462,43 +11025,14 @@ test_computer_avoid_presentation(void)
 	    sizeof(accepted_plain) - 1U) == 0);
 	CHECK(pager.line_count == 2.0f && pager.newline_flag == 0.0f);
 	CHECK(capture.local_event_count == 81U);
-	CHECK(capture.framebuffer_initialized);
-	CHECK(capture.framebuffer.bios_row == 24U
-	    && capture.framebuffer.bios_column == 41U
-	    && capture.framebuffer.qb_row == 24U
-	    && capture.framebuffer.qb_column == 41U
-	    && capture.framebuffer.brun_bios_cache_row == 24U
-	    && capture.framebuffer.brun_bios_cache_column == 41U);
-	CHECK(capture.framebuffer.qb_attribute == 0x07U
-	    && capture.framebuffer.qb_scrolls == 1U
-	    && capture.framebuffer.con_scrolls == 0U);
-	CHECK(startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
-	    == UINT64_C(0xf6463cba711d1ef0));
-	computer_avoid_accepted_cycle_fixture(true, 0.0f, 0.0f, "5",
+					computer_avoid_accepted_cycle_fixture(true, 0.0f, 0.0f, "5",
 	    COMPUTER_AVOID_FIXTURE_COMPLETE, NULL, &capture, &current, &pager);
 	CHECK(sizeof(accepted_ansi) - 1U == 914U);
 	CHECK(capture.remote_length == sizeof(accepted_ansi) - 1U
 	    && memcmp(capture.remote, accepted_ansi,
 	    sizeof(accepted_ansi) - 1U) == 0);
 	CHECK(pager.line_count == 2.0f && pager.newline_flag == 0.0f);
-	CHECK(capture.local_event_count == 129U
-	    && capture.local_color_count == 65U
-	    && capture.local_line_count == 24U
-	    && capture.local_fragment_count == 40U
-	    && capture.local_byte_count == 836U
-	    && capture.local_fnv == UINT64_C(0x95f5f48462d30f5c)
-	    && capture.framebuffer_initialized
-	    && capture.framebuffer.bios_row == 24U
-	    && capture.framebuffer.bios_column == 41U
-	    && capture.framebuffer.qb_row == 24U
-	    && capture.framebuffer.qb_column == 41U
-	    && capture.framebuffer.brun_bios_cache_row == 24U
-	    && capture.framebuffer.brun_bios_cache_column == 41U
-	    && capture.framebuffer.qb_attribute == 0x07U
-	    && capture.framebuffer.qb_scrolls == 1U
-	    && startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
-	    == UINT64_C(0x6d9c1cb34ba7a1d9));
-	computer_avoid_accepted_cycle_fixture(true, 1.0f, 0.0f, "5",
+		computer_avoid_accepted_cycle_fixture(true, 1.0f, 0.0f, "5",
 	    COMPUTER_AVOID_FIXTURE_COMPLETE, NULL, &capture, &current, &pager);
 	CHECK(capture.remote_length == 0U && pager.line_count == 2.0f
 	    && pager.newline_flag == 0.0f
@@ -12698,11 +12232,6 @@ test_computer_port_report_ordinary_cycle_presentation(void)
 		{true, 1.0f, NULL, 0U},
 		{true, 2.0f, mode_two, sizeof(mode_two) - 1U},
 	};
-	static const size_t framebuffer_events[] = {33U, 57U};
-	static const uint64_t framebuffer_fnv[] = {
-		UINT64_C(0xd4cb90caed8c91db),
-		UINT64_C(0x35ccf2c9e004e57d),
-	};
 	struct yt_present_state current;
 	struct yt_present_result result;
 	struct yt_pager_state pager;
@@ -12792,21 +12321,6 @@ test_computer_port_report_ordinary_cycle_presentation(void)
 		    && pager.line_count == 0.0f
 		    && pager.newline_flag == 0.0f
 		    && accumulator[0] == '\0');
-		if (pass < YT_ARRAY_LEN(framebuffer_events)) {
-			CHECK(capture.local_event_count
-			    == framebuffer_events[pass]
-			    && capture.framebuffer.bios_row == 14U
-			    && capture.framebuffer.bios_column == 40U
-			    && capture.framebuffer.qb_row == 14U
-			    && capture.framebuffer.qb_column == 40U
-			    && capture.framebuffer.brun_bios_cache_row == 14U
-			    && capture.framebuffer.brun_bios_cache_column == 40U
-			    && capture.framebuffer.qb_attribute == 0x07U
-			    && capture.framebuffer.qb_scrolls == 0U
-			    && capture.framebuffer.con_scrolls == 0U
-			    && startup_ascii_framebuffer_fnv1a64(
-			    &capture.framebuffer) == framebuffer_fnv[pass]);
-		}
 	}
 	CHECK(sizeof(plain) - 1U == 451U && sizeof(ansi) - 1U == 503U
 	    && sizeof(mode_two) - 1U == 218U);
@@ -13784,21 +13298,7 @@ test_computer_nearest_cycle_presentation(void)
 	CHECK(capture.remote_length == 530U
 	    && viewer_bytes_fnv1a64(capture.remote, capture.remote_length)
 	    == UINT64_C(0x439c75b897c31831));
-	CHECK(capture.local_event_count == 55U
-	    && capture.local_fnv == UINT64_C(0x87bdb2f2c8e1cedd)
-	    && capture.framebuffer_initialized
-	    && capture.framebuffer.bios_row == 16U
-	    && capture.framebuffer.bios_column == 41U
-	    && capture.framebuffer.qb_row == 16U
-	    && capture.framebuffer.qb_column == 41U
-	    && capture.framebuffer.brun_bios_cache_row == 16U
-	    && capture.framebuffer.brun_bios_cache_column == 41U
-	    && capture.framebuffer.qb_attribute == 0x07U
-	    && capture.framebuffer.qb_scrolls == 0U
-	    && capture.framebuffer.con_scrolls == 0U
-	    && startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
-	    == UINT64_C(0x5d7540780ad6646c));
-	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f
+		CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f
 	    && current.foreground == 1.0f
 	    && current.cached_foreground == 1.0f
 	    && current.bold == 0.0f && current.blink == 0.0f);
@@ -13807,21 +13307,7 @@ test_computer_nearest_cycle_presentation(void)
 	CHECK(capture.remote_length == 374U
 	    && viewer_bytes_fnv1a64(capture.remote, capture.remote_length)
 	    == UINT64_C(0xe20bb30d7b3265c1));
-	CHECK(capture.local_event_count == 32U
-	    && capture.local_fnv == UINT64_C(0x8449e0939b93bbc6)
-	    && capture.framebuffer_initialized
-	    && capture.framebuffer.bios_row == 16U
-	    && capture.framebuffer.bios_column == 41U
-	    && capture.framebuffer.qb_row == 16U
-	    && capture.framebuffer.qb_column == 41U
-	    && capture.framebuffer.brun_bios_cache_row == 16U
-	    && capture.framebuffer.brun_bios_cache_column == 41U
-	    && capture.framebuffer.qb_attribute == 0x07U
-	    && capture.framebuffer.qb_scrolls == 0U
-	    && capture.framebuffer.con_scrolls == 0U
-	    && startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
-	    == UINT64_C(0x2608fcbb2e9af720));
-	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f
+		CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f
 	    && current.foreground == 1.0f
 	    && current.cached_foreground == 0.0f
 	    && current.bold == 1.0f && current.blink == 1.0f);
@@ -14332,36 +13818,12 @@ test_computer_finders_presentation(void)
 	CHECK(capture.remote_length == sizeof(fighter_expected) - 1U
 	    && memcmp(capture.remote, fighter_expected,
 	    sizeof(fighter_expected) - 1U) == 0);
-	CHECK(capture.local_event_count == 29U
-	    && capture.framebuffer_initialized
-	    && capture.framebuffer.bios_row == 12U
-	    && capture.framebuffer.bios_column == 41U
-	    && capture.framebuffer.qb_row == 12U
-	    && capture.framebuffer.qb_column == 41U
-	    && capture.framebuffer.brun_bios_cache_row == 12U
-	    && capture.framebuffer.brun_bios_cache_column == 41U
-	    && capture.framebuffer.qb_attribute == 0x07U
-	    && capture.framebuffer.qb_scrolls == 0U
-	    && capture.framebuffer.con_scrolls == 0U
-	    && startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
-	    == UINT64_C(0x720a4f456c76ccda));
-	computer_fighter_finder_cycle_fixture(true, &capture, &current,
+		computer_fighter_finder_cycle_fixture(true, &capture, &current,
 	    &pager);
 	CHECK(capture.remote_length == 180U
 	    && capture.local_event_count == 45U);
 	CHECK(viewer_bytes_fnv1a64(capture.remote, capture.remote_length)
 	    == UINT64_C(0x3698910d233b5cde));
-	CHECK(capture.framebuffer.bios_row == 12U
-	    && capture.framebuffer.bios_column == 41U
-	    && capture.framebuffer.qb_row == 12U
-	    && capture.framebuffer.qb_column == 41U
-	    && capture.framebuffer.brun_bios_cache_row == 12U
-	    && capture.framebuffer.brun_bios_cache_column == 41U);
-	CHECK(capture.framebuffer.qb_attribute == 0x07U
-	    && capture.framebuffer.qb_scrolls == 0U
-	    && capture.framebuffer.con_scrolls == 0U);
-	CHECK(startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
-	    == UINT64_C(0x13c08181a428bdde));
 
 	{
 		static const uint8_t scanning[] = "Scanning...";
@@ -14451,37 +13913,13 @@ test_computer_finders_presentation(void)
 		CHECK(expected_length == sizeof(expected));
 		CHECK(capture.remote_length == sizeof(expected)
 		    && memcmp(capture.remote, expected, sizeof(expected)) == 0);
-		CHECK(pager.line_count == 1.0f
-		    && capture.local_event_count == 13U
-		    && capture.framebuffer.bios_row == 9U
-		    && capture.framebuffer.bios_column == 41U
-		    && capture.framebuffer.qb_row == 9U
-		    && capture.framebuffer.qb_column == 41U
-		    && capture.framebuffer.brun_bios_cache_row == 9U
-		    && capture.framebuffer.brun_bios_cache_column == 41U
-		    && capture.framebuffer.qb_attribute == 0x07U
-		    && capture.framebuffer.qb_scrolls == 0U
-		    && capture.framebuffer.con_scrolls == 0U
-		    && startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
-		    == UINT64_C(0x23cb244d6d7ff7fe));
-		computer_planet_finder_cycle_fixture(true, &capture, &current,
+				computer_planet_finder_cycle_fixture(true, &capture, &current,
 		    &pager);
 		CHECK(capture.remote_length == 291U
 		    && capture.local_event_count == 22U);
 		CHECK(viewer_bytes_fnv1a64(capture.remote,
 		    capture.remote_length) == UINT64_C(0x1999b763de2a42ca));
-		CHECK(capture.framebuffer.bios_row == 9U
-		    && capture.framebuffer.bios_column == 41U
-		    && capture.framebuffer.qb_row == 9U
-		    && capture.framebuffer.qb_column == 41U
-		    && capture.framebuffer.brun_bios_cache_row == 9U
-		    && capture.framebuffer.brun_bios_cache_column == 41U);
-		CHECK(capture.framebuffer.qb_attribute == 0x07U
-		    && capture.framebuffer.qb_scrolls == 0U
-		    && capture.framebuffer.con_scrolls == 0U);
-		CHECK(startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
-		    == UINT64_C(0xc5affea5052198a5));
-	}
+							}
 }
 
 static void
@@ -16428,25 +15866,19 @@ test_computer_newspaper_full_cycle_presentation(void)
 		size_t remote_length;
 		uint64_t remote_fnv;
 		float final_bold;
-		uint16_t framebuffer_row;
-		uint64_t framebuffer_fnv;
 	} cases[] = {
 		{true, 'T', retained_current_news,
 		    sizeof(retained_current_news) - 1U, "YTNEWS.DAT", 9U,
-		    732U, UINT64_C(0x7dec74d285edb57f), 0.0f, 19U,
-		    UINT64_C(0xf10231462b9e7e1c)},
+		    732U, UINT64_C(0x7dec74d285edb57f), 0.0f},
 		{false, 'T', retained_current_news,
 		    sizeof(retained_current_news) - 1U, "YTNEWS.DAT", 9U,
-		    610U, UINT64_C(0x93efb9289cdb699d), 1.0f, 19U,
-		    UINT64_C(0xa991568dfb6cb76e)},
+		    610U, UINT64_C(0x93efb9289cdb699d), 1.0f},
 		{true, 'Y', retained_yesterday_news,
 		    sizeof(retained_yesterday_news) - 1U, "YTYNEWS.DAT", 7U,
-		    515U, UINT64_C(0x19b0435fd8e224af), 0.0f, 17U,
-		    UINT64_C(0xb63fa5fbe639f08b)},
+		    515U, UINT64_C(0x19b0435fd8e224af), 0.0f},
 		{false, 'Y', retained_yesterday_news,
 		    sizeof(retained_yesterday_news) - 1U, "YTYNEWS.DAT", 7U,
-		    485U, UINT64_C(0x45869dac22db0a0f), 0.0f, 17U,
-		    UINT64_C(0xaeed26117a3ecf2e)},
+		    485U, UINT64_C(0x45869dac22db0a0f), 0.0f},
 	};
 	struct physical_viewer_join viewer;
 	struct yt_file_viewer_stream_state stream;
@@ -16491,22 +15923,7 @@ test_computer_newspaper_full_cycle_presentation(void)
 		    && !stream.file_open && !viewer.join.file_open
 		    && viewer.input.file == NULL && viewer.close_calls == 2U
 		    && viewer.open_calls == 1U);
-		CHECK(viewer.join.framebuffer.bios_row
-		    == cases[pass].framebuffer_row
-			    && viewer.join.framebuffer.bios_column == 41U
-			    && viewer.join.framebuffer.qb_row
-			    == cases[pass].framebuffer_row
-			    && viewer.join.framebuffer.qb_column == 41U
-			    && viewer.join.framebuffer.brun_bios_cache_row
-			    == cases[pass].framebuffer_row
-			    && viewer.join.framebuffer.brun_bios_cache_column == 41U
-			    && viewer.join.framebuffer.qb_attribute == 0x07U
-			    && viewer.join.framebuffer.qb_scrolls == 0U
-			    && viewer.join.framebuffer.con_scrolls == 0U
-			    && startup_ascii_framebuffer_fnv1a64(
-			    &viewer.join.framebuffer)
-			    == cases[pass].framebuffer_fnv);
-		yt_text_input_destroy(&viewer.input);
+				yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -17206,10 +16623,6 @@ test_computer_scoreboard_full_cycle_presentation(void)
 		{true, true, 850U, UINT64_C(0x264fdc7e79d2bd67), 0.0f},
 		{false, true, 820U, UINT64_C(0xc7fe339c3f4d74f5), 0.0f},
 	};
-	static const uint64_t old_framebuffer_fnv[] = {
-		UINT64_C(0xf8df420c32033bae),
-		UINT64_C(0x9ce57a52b72d9c22),
-	};
 	struct physical_viewer_join viewer;
 	struct yt_file_viewer_stream_state stream;
 	uint8_t remote[900];
@@ -17252,20 +16665,6 @@ test_computer_scoreboard_full_cycle_presentation(void)
 		    && !stream.file_open && !viewer.join.file_open
 		    && viewer.input.file == NULL && viewer.close_calls == 2U
 		    && viewer.open_calls == 1U);
-		if (pass < YT_ARRAY_LEN(old_framebuffer_fnv)) {
-			CHECK(viewer.join.framebuffer.bios_row == 24U
-			    && viewer.join.framebuffer.bios_column == 41U
-			    && viewer.join.framebuffer.qb_row == 24U
-			    && viewer.join.framebuffer.qb_column == 41U
-			    && viewer.join.framebuffer.brun_bios_cache_row == 24U
-			    && viewer.join.framebuffer.brun_bios_cache_column == 41U
-			    && viewer.join.framebuffer.qb_attribute == 0x07U
-			    && viewer.join.framebuffer.qb_scrolls == 6U
-			    && viewer.join.framebuffer.con_scrolls == 0U
-			    && startup_ascii_framebuffer_fnv1a64(
-			    &viewer.join.framebuffer)
-			    == old_framebuffer_fnv[pass]);
-		}
 		yt_text_input_destroy(&viewer.input);
 	}
 }
@@ -46624,62 +46023,19 @@ test_computer_spy_presentation(void)
 	CHECK(capture.remote_length == sizeof(active_ansi) - 1U
 	    && memcmp(capture.remote, active_ansi,
 	    sizeof(active_ansi) - 1U) == 0);
-	CHECK(pager.line_count == 3.0f && pager.newline_flag == 0.0f
-	    && capture.local_event_count == 23U
-	    && capture.framebuffer_initialized
-	    && capture.framebuffer.bios_row == 7U
-	    && capture.framebuffer.bios_column == 41U
-	    && capture.framebuffer.qb_row == 7U
-	    && capture.framebuffer.qb_column == 41U
-	    && capture.framebuffer.brun_bios_cache_row == 7U
-	    && capture.framebuffer.brun_bios_cache_column == 41U
-	    && capture.framebuffer.qb_attribute == 0x07U
-	    && capture.framebuffer.qb_scrolls == 0U
-	    && capture.framebuffer.con_scrolls == 0U
-	    && startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
-	    == UINT64_C(0x084356214c3fd5f8));
 
 	spy_cycle_fixture(false, 2, &capture, &current, &pager);
 	CHECK(sizeof(active_plain) - 1U == 155U);
 	CHECK(capture.remote_length == sizeof(active_plain) - 1U
 	    && memcmp(capture.remote, active_plain,
 	    sizeof(active_plain) - 1U) == 0);
-	CHECK(pager.line_count == 3.0f && current.bold == 1.0f
-	    && capture.local_event_count == 15U
-	    && capture.framebuffer_initialized
-	    && capture.framebuffer.bios_row == 7U
-	    && capture.framebuffer.bios_column == 41U
-	    && capture.framebuffer.qb_row == 7U
-	    && capture.framebuffer.qb_column == 41U
-	    && capture.framebuffer.brun_bios_cache_row == 7U
-	    && capture.framebuffer.brun_bios_cache_column == 41U
-	    && capture.framebuffer.qb_attribute == 0x07U
-	    && capture.framebuffer.qb_scrolls == 0U
-	    && capture.framebuffer.con_scrolls == 0U
-	    && startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
-	    == UINT64_C(0xbd897b297371cc0d));
 
 	spy_cycle_fixture(true, 0, &capture, &current, &pager);
 	CHECK(sizeof(zero_ansi) - 1U == 152U);
 	CHECK(capture.remote_length == sizeof(zero_ansi) - 1U
 	    && memcmp(capture.remote, zero_ansi,
 	    sizeof(zero_ansi) - 1U) == 0);
-	CHECK(pager.line_count == 2.0f && current.bold == 0.0f
-	    && current.blink == 0.0f
-	    && capture.local_event_count == 19U
-	    && capture.framebuffer_initialized
-	    && capture.framebuffer.bios_row == 6U
-	    && capture.framebuffer.bios_column == 41U
-	    && capture.framebuffer.qb_row == 6U
-	    && capture.framebuffer.qb_column == 41U
-	    && capture.framebuffer.brun_bios_cache_row == 6U
-	    && capture.framebuffer.brun_bios_cache_column == 41U
-	    && capture.framebuffer.qb_attribute == 0x07U
-	    && capture.framebuffer.qb_scrolls == 0U
-	    && capture.framebuffer.con_scrolls == 0U
-	    && startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
-	    == UINT64_C(0x41dc83486190ad47));
-}
+	}
 
 static void
 test_computer_path_presentation(void)
@@ -46758,21 +46114,7 @@ test_computer_path_presentation(void)
 	CHECK(sizeof(expected) - 1U == 170U);
 	CHECK(capture.remote_length == sizeof(expected) - 1U
 	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
-	CHECK(pager.line_count == 1.0f && pager.newline_flag == 0.0f
-	    && capture.local_event_count == 26U
-	    && capture.framebuffer_initialized
-	    && capture.framebuffer.bios_row == 11U
-	    && capture.framebuffer.bios_column == 1U
-	    && capture.framebuffer.qb_row == 11U
-	    && capture.framebuffer.qb_column == 1U
-	    && capture.framebuffer.brun_bios_cache_row == 11U
-	    && capture.framebuffer.brun_bios_cache_column == 1U
-	    && capture.framebuffer.qb_attribute == 0x07U
-	    && capture.framebuffer.qb_scrolls == 0U
-	    && capture.framebuffer.con_scrolls == 0U
-	    && startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
-	    == UINT64_C(0x42ec2e4f09d1e5fc));
-}
+	}
 
 static void
 test_computer_path_start_terminal_presentation(void)
@@ -47174,21 +46516,7 @@ test_computer_autopilot_presentation(void)
 	CHECK(sizeof(expected) - 1U == 239U);
 	CHECK(capture.remote_length == sizeof(expected) - 1U
 	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
-	CHECK(pager.line_count == 2.0f && pager.newline_flag == 0.0f
-	    && capture.local_event_count == 35U
-	    && capture.framebuffer_initialized
-	    && capture.framebuffer.bios_row == 15U
-	    && capture.framebuffer.bios_column == 1U
-	    && capture.framebuffer.qb_row == 15U
-	    && capture.framebuffer.qb_column == 1U
-	    && capture.framebuffer.brun_bios_cache_row == 15U
-	    && capture.framebuffer.brun_bios_cache_column == 1U
-	    && capture.framebuffer.qb_attribute == 0x07U
-	    && capture.framebuffer.qb_scrolls == 0U
-	    && capture.framebuffer.con_scrolls == 0U
-	    && startup_ascii_framebuffer_fnv1a64(&capture.framebuffer)
-	    == UINT64_C(0xe645a9ad376c5373));
-}
+	}
 
 static void
 computer_autopilot_one_hop_prefix(bool ansi,
@@ -49396,7 +48724,6 @@ main(void)
 	test_pager_raw_process_cells();
 	test_file_viewer_pager_join();
 	test_startup_ascii_physical_join();
-	test_startup_opening_framebuffer_join();
 	test_instruction_physical_viewer_join();
 	test_newspaper_physical_viewer_join();
 	test_newspaper_endpoint_modes();

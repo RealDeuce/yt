@@ -1,7 +1,7 @@
 #include "yt_output.h"
+#include "yt_door.h"
 
 #include "OpenDoor.h"
-#include "ODScrn.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,45 +27,48 @@ struct emulated_call {
 };
 
 struct cursor_call {
-	BYTE column;
-	BYTE row;
+	INT row;
+	INT column;
 };
 
-static struct output_call output_calls[8];
-static struct emulated_call emulated_calls[16];
-static struct output_call local_calls[8];
-static BYTE attribute_calls[8];
+tODControl od_control;
+static struct output_call output_calls[16];
+static struct emulated_call emulated_calls[32];
+static INT attribute_calls[8];
 static struct cursor_call cursor_calls[8];
-static BOOL caret_calls[8];
+static char putch_calls[8];
 static size_t output_call_count;
 static size_t emulated_call_count;
-static size_t local_call_count;
 static size_t attribute_call_count;
 static size_t cursor_call_count;
-static size_t caret_call_count;
+static size_t putch_call_count;
 static size_t clear_call_count;
-static tODScrnTextInfo screen_info;
+static INT current_row = 1;
+static INT current_column = 1;
 static int failures;
+
+struct yt_door *
+yt_door_current(void)
+{
+	return NULL;
+}
 
 static void
 reset_calls(void)
 {
 	memset(output_calls, 0, sizeof(output_calls));
 	memset(emulated_calls, 0, sizeof(emulated_calls));
-	memset(local_calls, 0, sizeof(local_calls));
 	memset(attribute_calls, 0, sizeof(attribute_calls));
 	memset(cursor_calls, 0, sizeof(cursor_calls));
-	memset(caret_calls, 0, sizeof(caret_calls));
-	memset(&screen_info, 0, sizeof(screen_info));
-	screen_info.curx = 1U;
-	screen_info.cury = 1U;
+	memset(putch_calls, 0, sizeof(putch_calls));
 	output_call_count = 0U;
 	emulated_call_count = 0U;
-	local_call_count = 0U;
 	attribute_call_count = 0U;
 	cursor_call_count = 0U;
-	caret_call_count = 0U;
+	putch_call_count = 0U;
 	clear_call_count = 0U;
+	current_row = 1;
+	current_column = 1;
 	yt_out_remote_device_reset();
 }
 
@@ -106,61 +109,43 @@ od_disp_emu(const char *text, BOOL remote_echo)
 }
 
 void ODCALL
-od_clr_scr(void)
-{
-}
-
-void ODCALL
-ODScrnDisplayBuffer(const char *data, INT length)
-{
-	struct output_call *call;
-
-	CHECK(local_call_count < YT_ARRAY_LEN(local_calls));
-	CHECK(length >= 0 && length <= 32767);
-	if (local_call_count >= YT_ARRAY_LEN(local_calls)
-	    || length < 0 || length > 32767)
-		return;
-	call = &local_calls[local_call_count++];
-	call->length = (size_t)length;
-	if (length != 0)
-		memcpy(call->data, data, (size_t)length);
-}
-
-void ODCALL
-ODScrnSetAttribute(BYTE attribute)
+od_set_attrib(INT attribute)
 {
 	CHECK(attribute_call_count < YT_ARRAY_LEN(attribute_calls));
 	if (attribute_call_count < YT_ARRAY_LEN(attribute_calls))
 		attribute_calls[attribute_call_count++] = attribute;
 }
 
-void
-ODScrnGetTextInfo(tODScrnTextInfo *info)
+void ODCALL
+od_get_cursor(INT *row, INT *column)
 {
-	*info = screen_info;
+	*row = current_row;
+	*column = current_column;
 }
 
 void ODCALL
-ODScrnSetCursorPos(BYTE column, BYTE row)
+od_set_cursor(INT row, INT column)
 {
 	CHECK(cursor_call_count < YT_ARRAY_LEN(cursor_calls));
 	if (cursor_call_count < YT_ARRAY_LEN(cursor_calls)) {
-		cursor_calls[cursor_call_count].column = column;
 		cursor_calls[cursor_call_count].row = row;
+		cursor_calls[cursor_call_count].column = column;
 		++cursor_call_count;
 	}
+	current_row = row;
+	current_column = column;
 }
 
-void
-ODScrnEnableCaret(BOOL enabled)
+void ODCALL
+od_putch(char value)
 {
-	CHECK(caret_call_count < YT_ARRAY_LEN(caret_calls));
-	if (caret_call_count < YT_ARRAY_LEN(caret_calls))
-		caret_calls[caret_call_count++] = enabled;
+	CHECK(putch_call_count < YT_ARRAY_LEN(putch_calls));
+	if (putch_call_count < YT_ARRAY_LEN(putch_calls))
+		putch_calls[putch_call_count++] = value;
 }
 
-void
-ODScrnClear(void)
+void ODCALL
+od_clr_scr(void)
 {
 	++clear_call_count;
 }
@@ -186,7 +171,7 @@ wait_once(void *context, float seconds, struct yt_error *error)
 }
 
 static void
-test_counted_routes(void)
+test_counted_combined_route(void)
 {
 	uint8_t *large;
 	size_t index;
@@ -212,34 +197,7 @@ test_counted_routes(void)
 	    && output_calls[0].local_echo && output_calls[1].local_echo
 	    && memcmp(output_calls[0].data, large, 32767U) == 0
 	    && output_calls[1].data[0] == large[32767]);
-	reset_calls();
-	yt_out_remote_bytes(large, 32768U);
-	CHECK(output_call_count == 2U
-	    && !output_calls[0].local_echo && !output_calls[1].local_echo);
 	free(large);
-}
-
-static void
-test_emulated_route(void)
-{
-	static const uint8_t ansi[] = "\x1b[2J\x1b[4;7HX";
-	static const uint8_t embedded_nul[] = {'A', 0U, 'B'};
-	struct yt_error error;
-
-	reset_calls();
-	yt_error_clear(&error);
-	CHECK(yt_out_local_emulated_bytes(ansi, sizeof(ansi) - 1U, &error)
-	    && emulated_call_count == 1U
-	    && !emulated_calls[0].remote_echo
-	    && strcmp(emulated_calls[0].text, (const char *)ansi) == 0
-	    && output_call_count == 0U && local_call_count == 0U);
-	CHECK(yt_out_local_emulated_bytes(NULL, 0U, &error)
-	    && emulated_call_count == 2U
-	    && emulated_calls[1].text[0] == '\0');
-	yt_error_clear(&error);
-	CHECK(!yt_out_local_emulated_bytes(embedded_nul,
-	    sizeof(embedded_nul), &error)
-	    && error.status == YT_INVALID && emulated_call_count == 2U);
 }
 
 static void
@@ -261,44 +219,39 @@ test_ansi_opening_routes(void)
 	CHECK(fwrite(file_data, 1U, sizeof(file_data) - 1U, file)
 	    == sizeof(file_data) - 1U);
 	CHECK(fclose(file) == 0);
+
 	reset_calls();
+	od_control.od_force_local = TRUE;
+	od_control.baud = 19200U;
 	yt_error_clear(&error);
 	CHECK(yt_out_opening_file(path, 1.0f, 1.0f, poll_never,
 	    poll_never, wait_once, &waits, &error)
 	    && waits == 1U && output_call_count == 0U
-	    && local_call_count == 0U && emulated_call_count == 3U
+	    && emulated_call_count == 3U
 	    && strcmp(emulated_calls[0].text, "\x1b[2JX") == 0
 	    && strcmp(emulated_calls[1].text, "\r\n") == 0
 	    && strcmp(emulated_calls[2].text, "\x1b[0m") == 0
-	    && !emulated_calls[0].remote_echo
-	    && !emulated_calls[1].remote_echo
-	    && !emulated_calls[2].remote_echo);
+	    && emulated_calls[0].remote_echo
+	    && emulated_calls[1].remote_echo
+	    && emulated_calls[2].remote_echo);
 
 	waits = 0U;
 	reset_calls();
+	od_control.od_force_local = FALSE;
+	od_control.baud = 38400U;
 	yt_error_clear(&error);
 	CHECK(yt_out_opening_file(path, 0.0f, 1.0f, poll_never,
 	    poll_never, wait_once, &waits, &error)
-	    && waits == 1U && output_call_count == 4U
-	    && output_calls[0].length == 5U
-	    && memcmp(output_calls[0].data, "\x1b[2JX", 5U) == 0
-	    && !output_calls[0].local_echo
-	    && output_calls[1].length == 2U
-	    && memcmp(output_calls[1].data, "\n\r", 2U) == 0
-	    && !output_calls[1].local_echo
-	    && output_calls[2].length == 1U
-	    && output_calls[2].data[0] == '\x1b'
-	    && !output_calls[2].local_echo
-	    && output_calls[3].length == 3U
-	    && memcmp(output_calls[3].data, "[0m", 3U) == 0
-	    && !output_calls[3].local_echo
-	    && local_call_count == 0U && emulated_call_count == 3U
+	    && waits == 1U && output_call_count == 0U
+	    && emulated_call_count == 4U
 	    && strcmp(emulated_calls[0].text, "\x1b[2JX") == 0
-	    && strcmp(emulated_calls[1].text, "\r\n") == 0
-	    && strcmp(emulated_calls[2].text, "\x1b[0m") == 0
-	    && !emulated_calls[0].remote_echo
-	    && !emulated_calls[1].remote_echo
-	    && !emulated_calls[2].remote_echo);
+	    && strcmp(emulated_calls[1].text, "\n\r") == 0
+	    && strcmp(emulated_calls[2].text, "\x1b") == 0
+	    && strcmp(emulated_calls[3].text, "[0m") == 0
+	    && emulated_calls[0].remote_echo
+	    && emulated_calls[1].remote_echo
+	    && emulated_calls[2].remote_echo
+	    && emulated_calls[3].remote_echo);
 	yt_out_remote_device_state(&device);
 	CHECK(device.index == 11U && device.column == 3U
 	    && device.buffer == 'm' && !device.pending && !device.selected);
@@ -323,75 +276,86 @@ set_event(struct yt_present_event *event,
 }
 
 static void
-test_presentation_adapter(void)
+build_adapter_result(struct yt_present_result *result)
 {
 	static const uint8_t remote_semi[] = {'A', 0U, 'B'};
 	static const uint8_t local_semi[] = {'L', 0U};
+
+	memset(result, 0, sizeof(*result));
+	set_event(&result->events[result->event_count++],
+	    YT_PRESENT_REMOTE_SEMI, remote_semi, sizeof(remote_semi));
+	set_event(&result->events[result->event_count++],
+	    YT_PRESENT_REMOTE_LINE, "X", 1U);
+	set_event(&result->events[result->event_count++],
+	    YT_PRESENT_LOCAL_COLOR, NULL, 0U);
+	result->events[result->event_count - 1U].foreground = 30;
+	result->events[result->event_count - 1U].background = 4;
+	set_event(&result->events[result->event_count++],
+	    YT_PRESENT_LOCAL_SEMI, local_semi, sizeof(local_semi));
+	set_event(&result->events[result->event_count++],
+	    YT_PRESENT_LOCAL_LINE, "row", 3U);
+	set_event(&result->events[result->event_count++],
+	    YT_PRESENT_LOCAL_PLAY, "ignored", 7U);
+	set_event(&result->events[result->event_count++],
+	    YT_PRESENT_LOCAL_LOCATE, NULL, 0U);
+	result->events[result->event_count - 1U].row = 4;
+	result->events[result->event_count - 1U].column = 7;
+	result->events[result->event_count - 1U].cursor_visible = 1;
+	set_event(&result->events[result->event_count++],
+	    YT_PRESENT_LOCAL_BEEP, NULL, 0U);
+	set_event(&result->events[result->event_count++],
+	    YT_PRESENT_LOCAL_CLEAR, NULL, 0U);
+}
+
+static void
+test_presentation_adapter(void)
+{
 	struct yt_present_result result;
 	struct yt_text_device_state device;
 	int row;
 	int column;
 
-	memset(&result, 0, sizeof(result));
-	set_event(&result.events[result.event_count++],
-	    YT_PRESENT_REMOTE_SEMI, remote_semi, sizeof(remote_semi));
-	set_event(&result.events[result.event_count++],
-	    YT_PRESENT_REMOTE_LINE, "X", 1U);
-	set_event(&result.events[result.event_count++],
-	    YT_PRESENT_LOCAL_COLOR, NULL, 0U);
-	result.events[result.event_count - 1U].foreground = 30;
-	result.events[result.event_count - 1U].background = 4;
-	set_event(&result.events[result.event_count++],
-	    YT_PRESENT_LOCAL_SEMI, local_semi, sizeof(local_semi));
-	set_event(&result.events[result.event_count++],
-	    YT_PRESENT_LOCAL_LINE, "row", 3U);
-	set_event(&result.events[result.event_count++],
-	    YT_PRESENT_LOCAL_PLAY, "ignored", 7U);
-	set_event(&result.events[result.event_count++],
-	    YT_PRESENT_LOCAL_LOCATE, NULL, 0U);
-	result.events[result.event_count - 1U].row = 4;
-	result.events[result.event_count - 1U].column = 7;
-	result.events[result.event_count - 1U].cursor_visible = 1;
-	set_event(&result.events[result.event_count++],
-	    YT_PRESENT_LOCAL_BEEP, NULL, 0U);
-	set_event(&result.events[result.event_count++],
-	    YT_PRESENT_LOCAL_CLEAR, NULL, 0U);
-
+	build_adapter_result(&result);
 	reset_calls();
+	od_control.od_force_local = FALSE;
+	od_control.baud = 38400U;
 	yt_out_present_result(&result);
-	CHECK(output_call_count == 3U
-	    && output_calls[0].length == sizeof(remote_semi)
-	    && !output_calls[0].local_echo
-	    && memcmp(output_calls[0].data, remote_semi,
-	    sizeof(remote_semi)) == 0
-	    && output_calls[1].length == 1U
-	    && output_calls[1].data[0] == 'X'
-	    && !output_calls[1].local_echo
-	    && output_calls[2].length == 1U
-	    && output_calls[2].data[0] == '\r'
-	    && !output_calls[2].local_echo);
+	CHECK(output_call_count == 1U
+	    && output_calls[0].length == 3U
+	    && output_calls[0].local_echo
+	    && memcmp(output_calls[0].data, "A\0B", 3U) == 0
+	    && emulated_call_count == 2U
+	    && strcmp(emulated_calls[0].text, "X") == 0
+	    && strcmp(emulated_calls[1].text, "\r") == 0
+	    && emulated_calls[0].remote_echo && emulated_calls[1].remote_echo
+	    && attribute_call_count == 0U && cursor_call_count == 0U
+	    && putch_call_count == 0U && clear_call_count == 0U);
 	yt_out_remote_device_state(&device);
 	CHECK(device.index == 5U && device.column == 0U
 	    && device.buffer == '\r' && !device.pending && !device.selected
 	    && !device.physical_unknown);
-	CHECK(local_call_count == 4U
-	    && local_calls[0].length == sizeof(local_semi)
-	    && memcmp(local_calls[0].data, local_semi,
-	    sizeof(local_semi)) == 0
-	    && local_calls[1].length == 3U
-	    && memcmp(local_calls[1].data, "row", 3U) == 0
-	    && local_calls[2].length == 2U
-	    && memcmp(local_calls[2].data, "\r\n", 2U) == 0
-	    && local_calls[3].length == 1U
-	    && local_calls[3].data[0] == '\a');
-	CHECK(attribute_call_count == 1U && attribute_calls[0] == 0xceU
-	    && cursor_call_count == 1U
-	    && cursor_calls[0].column == 7U && cursor_calls[0].row == 4U
-	    && caret_call_count == 1U && caret_calls[0] != FALSE
-	    && clear_call_count == 1U && emulated_call_count == 0U);
 
-	screen_info.curx = 23U;
-	screen_info.cury = 17U;
+	reset_calls();
+	od_control.od_force_local = TRUE;
+	od_control.baud = 19200U;
+	yt_out_present_result(&result);
+	CHECK(output_call_count == 3U
+	    && output_calls[0].length == 2U
+	    && output_calls[0].local_echo
+	    && memcmp(output_calls[0].data, "L\0", 2U) == 0
+	    && output_calls[1].length == 3U
+	    && memcmp(output_calls[1].data, "row", 3U) == 0
+	    && output_calls[2].length == 2U
+	    && memcmp(output_calls[2].data, "\r\n", 2U) == 0
+	    && emulated_call_count == 0U
+	    && attribute_call_count == 1U && attribute_calls[0] == 0xce
+	    && cursor_call_count == 1U
+	    && cursor_calls[0].row == 4 && cursor_calls[0].column == 7
+	    && putch_call_count == 1U && putch_calls[0] == '\a'
+	    && clear_call_count == 1U);
+
+	current_row = 17;
+	current_column = 23;
 	yt_out_cursor_position(&row, &column);
 	CHECK(row == 17 && column == 23);
 }
@@ -406,10 +370,13 @@ test_remote_device_empty_completion(void)
 	set_event(&result.events[result.event_count++],
 	    YT_PRESENT_REMOTE_SEMI, NULL, 0U);
 	reset_calls();
+	od_control.od_force_local = FALSE;
+	od_control.baud = 38400U;
 	yt_out_present_result(&result);
 	yt_out_remote_device_state(&device);
-	CHECK(output_call_count == 0U && device.index == 0U
-	    && device.column == 0U && !device.pending && !device.selected);
+	CHECK(output_call_count == 0U && emulated_call_count == 0U
+	    && device.index == 0U && device.column == 0U
+	    && !device.pending && !device.selected);
 }
 
 static void
@@ -425,33 +392,29 @@ test_sound_adapter(void)
 	current.sound.user_sound = -1.0f;
 	current.sound.snoop = -1.0f;
 	current.sound.local_sound = -1.0f;
-	CHECK(yt_present_sound(1.0f, &current, &result) == YT_PRESENT_OK
-	    && result.remote_length == sizeof(selector_one) - 1U
-	    && memcmp(result.remote, selector_one,
-	    sizeof(selector_one) - 1U) == 0);
+	CHECK(yt_present_sound(1.0f, &current, &result) == YT_PRESENT_OK);
 	reset_calls();
+	od_control.od_force_local = FALSE;
+	od_control.baud = 38400U;
 	yt_out_present_result(&result);
-	CHECK(output_call_count == 1U
-	    && output_calls[0].length == sizeof(selector_one) - 1U
-	    && !output_calls[0].local_echo
-	    && memcmp(output_calls[0].data, selector_one,
-	    sizeof(selector_one) - 1U) == 0
-	    && local_call_count == 0U && emulated_call_count == 0U
-	    && attribute_call_count == 0U && cursor_call_count == 0U
-	    && caret_call_count == 0U && clear_call_count == 0U);
+	CHECK(output_call_count == 0U && emulated_call_count == 1U
+	    && emulated_calls[0].remote_echo
+	    && strcmp(emulated_calls[0].text,
+	    (const char *)selector_one) == 0);
 
 	memset(&current, 0, sizeof(current));
 	current.sound.user_sound = -1.0f;
 	current.sound.snoop = -1.0f;
 	current.sound.local_sound = -1.0f;
-	CHECK(yt_present_sound(8.0f, &current, &result) == YT_PRESENT_OK
-	    && result.remote_length == 1U && result.remote[0] == '\a');
+	CHECK(yt_present_sound(8.0f, &current, &result) == YT_PRESENT_OK);
 	reset_calls();
+	od_control.od_force_local = FALSE;
+	od_control.baud = 38400U;
 	yt_out_present_result(&result);
-	CHECK(output_call_count == 1U && output_calls[0].length == 1U
-	    && output_calls[0].data[0] == '\a'
-	    && !output_calls[0].local_echo
-	    && local_call_count == 0U && emulated_call_count == 0U);
+	CHECK(output_call_count == 0U && emulated_call_count == 1U
+	    && emulated_calls[0].text[0] == '\a'
+	    && emulated_calls[0].text[1] == '\0'
+	    && emulated_calls[0].remote_echo);
 
 	memset(&current, 0, sizeof(current));
 	current.sound.ansi = 1.0f;
@@ -463,18 +426,18 @@ test_sound_adapter(void)
 	    && result.remote_length == 0U && result.event_count == 1U
 	    && result.events[0].operation == YT_PRESENT_LOCAL_PLAY);
 	reset_calls();
+	od_control.od_force_local = TRUE;
+	od_control.baud = 19200U;
 	yt_out_present_result(&result);
-	CHECK(output_call_count == 0U && local_call_count == 0U
-	    && emulated_call_count == 0U && attribute_call_count == 0U
-	    && cursor_call_count == 0U && caret_call_count == 0U
-	    && clear_call_count == 0U);
+	CHECK(output_call_count == 0U && emulated_call_count == 0U
+	    && attribute_call_count == 0U && cursor_call_count == 0U
+	    && putch_call_count == 0U && clear_call_count == 0U);
 }
 
 int
 main(void)
 {
-	test_counted_routes();
-	test_emulated_route();
+	test_counted_combined_route();
 	test_ansi_opening_routes();
 	test_presentation_adapter();
 	test_remote_device_empty_completion();

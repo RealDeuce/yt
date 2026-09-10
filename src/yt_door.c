@@ -300,12 +300,18 @@ finish_start(struct yt_door *door, const char *requested_path,
     struct yt_error *error)
 {
 	struct yt_identity supplement = {0};
+	bool local;
 
 	(void)error;
 	door->open_doors_initialized = true;
 	identity_from_open_doors(&door->identity);
-	if (read_effective_dorinfo(requested_path, &supplement))
+	local = door->identity.local;
+	if (read_effective_dorinfo(requested_path, &supplement)) {
 		door->identity = supplement;
+		/* Transport selection belongs to OpenDoors, not stale drop-file
+		 * metadata. */
+		door->identity.local = local;
+	}
 	return true;
 }
 
