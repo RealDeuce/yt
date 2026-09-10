@@ -3560,9 +3560,6 @@ opening_and_date(struct yt_session *session, struct yt_error *error)
 	struct yt_shared_error_result shared_error;
 	uint16_t opening_basic_error;
 	bool found;
-	char real_name[258];
-	struct yt_present_result presentation;
-	enum yt_present_status status;
 
 	if (!build_route(session, 1, 2, NULL, false, &found, NULL, NULL,
 	    error))
@@ -3601,21 +3598,7 @@ opening_and_date(struct yt_session *session, struct yt_error *error)
 			return false;
 		}
 	}
-	snprintf(real_name, sizeof(real_name), "%s %s",
-	    session->door->identity.real_first,
-	    session->door->identity.real_last);
-	status = yt_present_status_row((const uint8_t *)real_name,
-	    strlen(real_name), (const uint8_t *)"", 0,
-	    &session->presentation, &presentation);
-	if (status != YT_PRESENT_OK) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			snprintf(error->operation, sizeof(error->operation), "%s",
-			    "startup status row");
-		}
-		return false;
-	}
-	yt_out_present_result(&presentation);
+	/* Row 25 belongs to the deferred OpenDoors local personality. */
 	session_set_pager_nonstop(session, 1.0f);
 	return display_game_file(session, "YTOPEN.ASC", error);
 }
@@ -4725,9 +4708,6 @@ post_login(struct yt_session *session, struct yt_error *error)
 		0x00, 0x00, 0x46, 0x87,
 	};
 	static const uint8_t radio_mode_zero[4] = {0x1f, 0x4e, 0x46, 0x00};
-	char real_name[258];
-	struct yt_present_result presentation;
-	enum yt_present_status status;
 
 	{
 		struct yt_record repaired;
@@ -4772,23 +4752,7 @@ post_login(struct yt_session *session, struct yt_error *error)
 				return false;
 		}
 	}
-	(void)snprintf(real_name, sizeof(real_name), "%s %s",
-	    session->door->identity.real_first,
-	    session->door->identity.real_last);
-	status = yt_present_status_row((const uint8_t *)real_name,
-	    strlen(real_name), (const uint8_t *)session->player.name,
-	    strlen(session->player.name), &session->presentation,
-	    &presentation);
-	if (status != YT_PRESENT_OK) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			(void)snprintf(error->operation,
-			    sizeof(error->operation), "%s",
-			    "post-login status row");
-		}
-		return false;
-	}
-	yt_out_present_result(&presentation);
+	/* Do not emit the deferred local-personality status row here. */
 	if (!show_ship(session, error))
 		return false;
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
@@ -13373,7 +13337,7 @@ info_refresh_time(struct yt_session *session, struct yt_error *error)
 	    YT_NEXT_TIME_REFRESH_ADDRESS, next_refresh_raw);
 	if (status != YT_PRESENT_OK)
 		return info_failure(error, "Info time refresh");
-	yt_out_present_result(&presentation);
+	/* Its row-25 event tape is deferred with the local personality. */
 	return true;
 }
 
