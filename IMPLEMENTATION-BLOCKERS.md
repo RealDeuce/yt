@@ -310,96 +310,41 @@ Physical adapters supply their own admitted error byte; delegated output/wait
 calls preserve their callee domain. ERR24 projects to the existing shared
 statement retry and all other errors use the shared terminal route.
 
-## Open documentation gaps
+## Resolved documentation gaps from upstream `b2c85613`
 
-### DOC-GAP-019: planet-updater corrupt numeric record behavior
+### DOC-GAP-019: planet-updater arbitrary numeric records
 
-Affected coverage:
-
-- `YT-SUB2:0A97..0FD5` planet-production updates over edited or corrupt
-  planet records;
-- exact raw MBF arithmetic, persistence, and failure residue for dirty-zero
-  and negative numeric fields; and
-- every scanner, planet-menu, computer-report, projectile, and maintenance
-  caller that can pass such a record to the shared updater.
-
-The completed `docs/gameplay/planet-economy.md` explicitly leaves overflow
-and error behavior for deliberately corrupt numeric records outside its
-result. The native `updater_validate_record()` currently stops with
-protective `YT_RANGE` results for dirty exponent-zero values in selected
-fields and for every negative nonzero field. Those guards prevent unsafe or
-unsupported host arithmetic, but they are not an evidence-backed claim about
-the shipped BASIC transition, ERR/ERL identity, partial process/FIELD state,
-or whether a write is reached.
-
-Upstream documentation, the canonical raw model, generated evidence, and
-focused fixtures must specify these corrupt domains before the guards can be
-replaced or classified as exact behavior. No binary inspection or new
-reverse engineering was performed.
+Resolved upstream by commit `b2c85613` and implemented by native commit
+`8275622`. Production now selects `yt_planet_updater_raw_run()` for
+the live updater; after GET it applies no record-value guard, while
+`yt_planet_updater_run()` remains the ordinary typed projection. The raw
+state carries the documented Q, P, A, day, minute, and elapsed cells through
+the process image. Focused native fixtures sweep MBF32 minus one and dirty
+zero through all fourteen numeric FIELD offsets, pin the `YT-SUB2:0D63` ERR6
+overflow before any LSET, and retain the typed rejection as an adapter result
+rather than game behavior.
 
 ### DOC-GAP-018: plasma wait destination roots
 
-Affected coverage:
-
-- the two one-second plasma prelaunch waits;
-- every half-second per-hop plasma route wait; and
-- their process-image and dependency-failure residue across the plasma
-  resolver.
-
-The completed `docs/runtime/plasma-bolt-output.md` specifies the exact
-SINGLE one and half-second values, call order, and that every `94FD` call
-overwrites its by-reference duration cell with an absolute deadline. Neither
-that document, the generated plasma evidence nor the global-state registry
-names the mutable DS destination used by any of those calls. The native
-implementation therefore retains typed durations at these boundaries but
-cannot bind the correct process roots or claim their failure residue without
-inventing addresses. Upstream documentation and generated evidence must name
-the caller cells and their reuse/aliasing rules. No binary inspection or new
-reverse engineering was performed.
+Resolved upstream by commit `b2c85613` and implemented by native commit
+`8275622`. The first and second one-second prelaunch waits use distinct
+process cells `DS:5D02` and `DS:5D0E`; every half-second admitted-hop wait
+reuses `DS:5D3E`. Each path copies the exact MBF32 literal before entering the
+shared by-reference wait, which overwrites that cell with its deadline.
 
 ### DOC-GAP-017: radio private-pager wait destination root
 
-Affected coverage:
-
-- the shared radio reader's strictly-greater-than-22 private-pager pause;
-- command-6 and automatic post-login radio scans that reach that pause; and
-- exact process-image residue on wait and later output/file failures.
-
-The completed `docs/runtime/radio-message-output.md` specifies the 99-second
-value, exact `94FD` polling semantics, count reset, and post-wait blank, but
-does not identify the caller-owned mutable duration/deadline cell. The
-global-state registry has no matching radio private-pager wait root. Existing
-`ytradio.static.txt` values describe the separate radio-door 33-second wait,
-not this gameplay reader's 99-second caller cell. The native reader can retain
-its typed wait callback but cannot make the correct process cell authoritative
-without an upstream destination address and alias/lifetime contract. No
-binary inspection or new reverse engineering was performed.
+Resolved upstream by commit `b2c85613` and implemented by native commit
+`8275622`. Every private-pager pause copies exact MBF32 99 into `DS:53DE` and
+passes that process cell to the shared by-reference wait. Repeated pauses reuse
+the same cell, so later reader failures retain its last duration or deadline.
 
 ### DOC-GAP-016: Xannor-victory wait destination root
 
-Affected coverage:
-
-- Headquarters-victory `[PAUSE]` suffix at `YT-SUB:A83E..A850`;
-- authoritative process-image binding of its 99-second duration/deadline
-  cell; and
-- exact wait-failure residue in the joined direct, missile and plasma
-  Headquarters-victory callers.
-
-The completed `docs/runtime/xannor-victory-output.md` specifies that `A83E`
-copies MBF32 99 and that `A84B` passes a caller-owned cell by reference to
-the shared `94FD` wait, which replaces that same cell with the absolute
-deadline. Generated `ythq-victory.static.txt` and
-`ythq-victory-output.static.txt` identify `DS:A9D8` as the raw
-`00 00 46 87` source value, but neither source identifies the mutable
-destination root written by the copy and passed to `94FD`. The global-state
-registry also has no Headquarters-victory wait root.
-
-The native implementation can preserve the typed 99-second behavior but
-cannot make the correct process cell authoritative or pin its failure
-residue without inventing that destination address. Upstream documentation,
-the canonical world model, generated evidence and registry must name the
-destination root before this boundary can proceed. No binary inspection or
-new reverse engineering was performed.
+Resolved upstream by commit `b2c85613` and implemented by native commit
+`8275622`. The victory suffix copies exact MBF32 99 into `DS:5CAE` and passes
+that process cell to the shared by-reference wait; direct, missile, and plasma
+callers therefore retain the same returned duration/deadline carrier.
 
 ## Previously resolved documentation gaps
 
