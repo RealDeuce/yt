@@ -156,6 +156,7 @@
 #define YT_REGISTRATION_EVALUATION_WAIT_ADDRESS 0x530EU
 #define YT_REGISTRATION_REGISTERED_WAIT_ADDRESS 0x5312U
 #define YT_RETURNING_REBUILD_WAIT_ADDRESS 0x534EU
+#define YT_RADIO_PRIVATE_WAIT_ADDRESS 0x53DEU
 #define YT_RETURNING_OLD_DAY_ADDRESS 0x5316U
 #define YT_RETURNING_KILLER_ADDRESS 0x531EU
 #define YT_RETURNING_TURNS_ADDRESS 0x5322U
@@ -169,12 +170,22 @@
 #define YT_XANNOR_RETALIATION_WAIT_ADDRESS 0x5B8AU
 #define YT_COUNTERLAUNCH_COUNT_ADDRESS 0x5BC6U
 #define YT_COUNTERLAUNCH_WAIT_ADDRESS 0x5BDAU
+#define YT_XANNOR_VICTORY_WAIT_ADDRESS 0x5CAEU
+#define YT_PLASMA_OPENING_FIRST_WAIT_ADDRESS 0x5D02U
+#define YT_PLASMA_OPENING_SECOND_WAIT_ADDRESS 0x5D0EU
+#define YT_PLASMA_ROUTE_WAIT_ADDRESS 0x5D3EU
 #define YT_SPY_DESTINATION_SCRATCH_ADDRESS 0x5FE4U
 #define YT_SPY_FOUND_SCRATCH_ADDRESS 0x5FE8U
 #define YT_SPY_DEAD_COUNTER_SCRATCH_ADDRESS 0x6018U
 #define YT_DATE_SERIAL_RESULT_ADDRESS 0x188CU
 #define YT_PROFIT_EARLY_DATE_SERIAL_ADDRESS 0x5E56U
 #define YT_PROFIT_LATE_DATE_SERIAL_ADDRESS 0x60C4U
+#define YT_PLANET_UPDATER_QUANTITY_ADDRESS 0x19F0U
+#define YT_PLANET_UPDATER_PRODUCTION_ADDRESS 0x1A44U
+#define YT_PLANET_UPDATER_CONTRIBUTION_ADDRESS 0x1C14U
+#define YT_PLANET_UPDATER_DAY_ADDRESS 0x5E90U
+#define YT_PLANET_UPDATER_MINUTE_ADDRESS 0x5E94U
+#define YT_PLANET_UPDATER_ELAPSED_ADDRESS 0x5E98U
 #define YT_STARTUP_DATE_SERIAL_ADDRESS 0x4CCAU
 #define YT_DATE_SERIAL_YEAR_ADDRESS 0x538AU
 #define YT_DATE_SERIAL_MONTH_ADDRESS 0x538EU
@@ -4626,9 +4637,12 @@ radio_read_present(void *context, const uint8_t *text, size_t length,
 static bool
 radio_read_wait(void *context, double seconds, struct yt_error *error)
 {
+	static const uint8_t duration_ninety_nine[4] =
+	    {0x00, 0x00, 0x46, 0x87};
 	struct radio_read_context *reader = context;
 
-	if (session_wait(reader->session, seconds,
+	if (seconds == 99.0 && session_wait_raw_at(reader->session,
+	    duration_ninety_nine, YT_RADIO_PRIVATE_WAIT_ADDRESS,
 	    "radio private-pager wait", error))
 		return true;
 	radio_read_attach_fault(error, YT_BASIC_FAULT_RADIO_PRIVATE_WAIT, 0U);
@@ -5029,6 +5043,56 @@ planet_updater_put(void *context, uint32_t physical_record,
 	    && yt_database_flush(&session->door->game.database, error);
 }
 
+static void
+planet_updater_load_process(struct yt_session *session,
+    struct yt_planet_updater_state *state)
+{
+	size_t index;
+
+	for (index = 0U; index < 10U; ++index) {
+		yt_route_process_raw_double(&session->route_process,
+		    YT_PLANET_UPDATER_QUANTITY_ADDRESS + (uint16_t)(8U * index),
+		    state->raw_cache.quantity[index]);
+		yt_route_process_raw_single(&session->route_process,
+		    YT_PLANET_UPDATER_PRODUCTION_ADDRESS + (uint16_t)(4U * index),
+		    state->raw_cache.production[index]);
+		yt_route_process_raw_single(&session->route_process,
+		    YT_PLANET_UPDATER_CONTRIBUTION_ADDRESS + (uint16_t)(4U * index),
+		    state->raw_cache.contribution[index]);
+	}
+	yt_route_process_raw_single(&session->route_process,
+	    YT_PLANET_UPDATER_DAY_ADDRESS, state->current_day_raw);
+	yt_route_process_raw_single(&session->route_process,
+	    YT_PLANET_UPDATER_MINUTE_ADDRESS, state->raw_cache.current_minute);
+	yt_route_process_raw_single(&session->route_process,
+	    YT_PLANET_UPDATER_ELAPSED_ADDRESS, state->raw_cache.elapsed);
+}
+
+static void
+planet_updater_store_process(struct yt_session *session,
+    const struct yt_planet_updater_state *state)
+{
+	size_t index;
+
+	for (index = 0U; index < 10U; ++index) {
+		yt_route_process_set_raw_double(&session->route_process,
+		    YT_PLANET_UPDATER_QUANTITY_ADDRESS + (uint16_t)(8U * index),
+		    state->raw_cache.quantity[index]);
+		yt_route_process_set_raw_single(&session->route_process,
+		    YT_PLANET_UPDATER_PRODUCTION_ADDRESS + (uint16_t)(4U * index),
+		    state->raw_cache.production[index]);
+		yt_route_process_set_raw_single(&session->route_process,
+		    YT_PLANET_UPDATER_CONTRIBUTION_ADDRESS + (uint16_t)(4U * index),
+		    state->raw_cache.contribution[index]);
+	}
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_PLANET_UPDATER_DAY_ADDRESS, state->current_day_raw);
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_PLANET_UPDATER_MINUTE_ADDRESS, state->raw_cache.current_minute);
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_PLANET_UPDATER_ELAPSED_ADDRESS, state->raw_cache.elapsed);
+}
+
 static bool
 planet_update_cached_physical(struct yt_session *session,
     uint32_t physical_record,
@@ -5063,8 +5127,12 @@ planet_update_cached_physical(struct yt_session *session,
 		}
 		return false;
 	}
-	if (!yt_planet_updater_run(&state, &ops, session, error))
+	planet_updater_load_process(session, &state);
+	if (!yt_planet_updater_raw_run(&state, &ops, session, error)) {
+		planet_updater_store_process(session, &state);
 		return false;
+	}
+	planet_updater_store_process(session, &state);
 	yt_planet_decode(planet, &state.field);
 	memcpy(session->planet_quantity, state.cache.quantity,
 	    sizeof(session->planet_quantity));
@@ -7047,7 +7115,12 @@ static bool
 xannor_victory_wait(void *context, double seconds, const char *operation,
     struct yt_error *error)
 {
-	return session_wait(context, seconds, operation, error);
+	static const uint8_t duration_ninety_nine[4] =
+	    {0x00, 0x00, 0x46, 0x87};
+
+	return seconds == 99.0 && session_wait_raw_at(context,
+	    duration_ninety_nine, YT_XANNOR_VICTORY_WAIT_ADDRESS, operation,
+	    error);
 }
 
 static void
@@ -16426,10 +16499,17 @@ cruise_opening_present(void *context, const uint8_t *text, size_t length,
 	    operation, error);
 }
 
+struct plasma_opening_context {
+	struct yt_session *session;
+	size_t wait_count;
+};
+
 static bool
 plasma_opening_sound(void *context, float selector, struct yt_error *error)
 {
-	return session_sound(context, selector, selector == 4.0f
+	struct plasma_opening_context *opening = context;
+
+	return session_sound(opening->session, selector, selector == 4.0f
 	    ? "plasma launch sound" : "plasma bolt firing sound", error);
 }
 
@@ -16437,7 +16517,9 @@ static bool
 plasma_opening_present(void *context, const uint8_t *text, size_t length,
     enum yt_projectile_opening_output_kind kind, struct yt_error *error)
 {
-	return session_present_text(context, text, length,
+	struct plasma_opening_context *opening = context;
+
+	return session_present_text(opening->session, text, length,
 	    kind == YT_PROJECTILE_OPENING_RAW ? SESSION_PRESENT_RAW
 	    : SESSION_PRESENT_LINE, kind == YT_PROJECTILE_OPENING_RAW
 	    ? "plasma loading text" : "plasma opening line", error);
@@ -16446,7 +16528,17 @@ plasma_opening_present(void *context, const uint8_t *text, size_t length,
 static bool
 plasma_opening_wait(void *context, float duration, struct yt_error *error)
 {
-	return session_wait(context, duration, duration == 1.0f
+	static const uint8_t duration_one[4] = {0x00, 0x00, 0x00, 0x81};
+	struct plasma_opening_context *opening = context;
+	uint16_t address;
+
+	if (duration != 1.0f || opening->wait_count >= 2U)
+		return false;
+	address = opening->wait_count++ == 0U
+	    ? YT_PLASMA_OPENING_FIRST_WAIT_ADDRESS
+	    : YT_PLASMA_OPENING_SECOND_WAIT_ADDRESS;
+	return session_wait_raw_at(opening->session, duration_one, address,
+	    address == YT_PLASMA_OPENING_FIRST_WAIT_ADDRESS
 	    ? "plasma launch wait" : "plasma opening wait", error);
 }
 
@@ -16466,6 +16558,9 @@ projectile_opening(struct yt_session *session, float amount, bool plasma,
 		plasma_opening_wait,
 	};
 	struct yt_projectile_plasma_opening_state state;
+	struct plasma_opening_context opening = {
+		.session = session,
+	};
 	uint8_t player_name[YT_TEXT_FIELD_SIZE];
 	size_t player_name_length;
 
@@ -16483,7 +16578,7 @@ projectile_opening(struct yt_session *session, float amount, bool plasma,
 	state.bolts = amount;
 	state.player_name = player_name;
 	state.player_name_length = player_name_length;
-	if (!yt_projectile_plasma_opening_run(&state, &plasma_ops, session,
+	if (!yt_projectile_plasma_opening_run(&state, &plasma_ops, &opening,
 	    error))
 		return false;
 	if (state.attacker_length > attacker_capacity)
@@ -16703,9 +16798,11 @@ plasma_route_attention(void *context, const uint8_t *text, size_t length,
 static bool
 plasma_route_wait(void *context, float duration, struct yt_error *error)
 {
+	static const uint8_t duration_half[4] = {0x00, 0x00, 0x00, 0x80};
 	struct plasma_route_context *route_context = context;
 
-	return session_wait(route_context->session, duration, "plasma hop wait",
+	return duration == 0.5f && session_wait_raw_at(route_context->session,
+	    duration_half, YT_PLASMA_ROUTE_WAIT_ADDRESS, "plasma hop wait",
 	    error);
 }
 

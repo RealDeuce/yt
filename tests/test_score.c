@@ -28586,6 +28586,64 @@ check_planet_updater_transaction(void)
 	    || memcmp(tape.stored.bytes, original.bytes,
 	    sizeof(original.bytes)) != 0)
 		return false;
+
+	{
+		static const uint8_t negative_one[4] =
+		    {0x00, 0x00, 0x80, 0x81};
+		static const uint8_t dirty_zero[4] =
+		    {0x12, 0x34, 0x56, 0x00};
+		static const uint8_t overflow_value[4] =
+		    {0xff, 0xff, 0x7f, 0xff};
+		const uint8_t *variants[] = {negative_one, dirty_zero};
+		size_t variant;
+		size_t offset_index;
+
+		for (variant = 0U; variant < YT_ARRAY_LEN(variants); ++variant) {
+			for (offset_index = 0U;
+			    offset_index < YT_ARRAY_LEN(changed_offsets);
+			    ++offset_index) {
+				memset(original.bytes, 0, sizeof(original.bytes));
+				memcpy(original.bytes + changed_offsets[offset_index],
+				    variants[variant], 4U);
+				planet_updater_fixture(&tape, &state, &original,
+				    101.0f, 7200.0f);
+				state.raw_cache.quantity[0][0] = 0xa1U;
+				state.raw_cache.production[0][0] = 0xb2U;
+				state.raw_cache.contribution[0][0] = 0xc3U;
+				state.raw_cache.contribution[7][0] = 0xd4U;
+				yt_error_clear(&error);
+				if (!yt_planet_updater_raw_run(&state,
+				    &planet_updater_test_ops, &tape, &error)
+				    || tape.event_count != YT_ARRAY_LEN(expected_events)
+				    || !state.written
+				    || state.raw_cache.quantity[0][0] != 0xa1U
+				    || state.raw_cache.production[0][0] != 0xb2U
+				    || state.raw_cache.contribution[0][0] != 0xc3U
+				    || state.raw_cache.contribution[7][0] != 0xd4U)
+					return false;
+			}
+		}
+
+		memset(original.bytes, 0, sizeof(original.bytes));
+		memcpy(original.bytes + YT_F45, overflow_value, 4U);
+		planet_updater_fixture(&tape, &state, &original, 101.0f, 7200.0f);
+		yt_error_clear(&error);
+		if (yt_planet_updater_raw_run(&state, &planet_updater_test_ops,
+		    &tape, &error) || error.status != YT_RANGE
+		    || strcmp(error.operation,
+		    "YT-SUB2:0D63 planet updater ERR6") != 0
+		    || !error.basic_error_valid || error.basic_error != 6U
+		    || !state.raw_error_valid || state.raw_error_site != 0x0D63U
+		    || state.raw_next_address != 0x09A0U
+		    || state.raw_basic_error != 6U
+		    || tape.event_count != 4U || state.completed_effects != 4U
+		    || !state.field_loaded || state.field_dirty || state.written
+		    || memcmp(state.field.bytes, original.bytes,
+		    sizeof(original.bytes)) != 0
+		    || memcmp(tape.stored.bytes, original.bytes,
+		    sizeof(original.bytes)) != 0)
+			return false;
+	}
 	return true;
 }
 

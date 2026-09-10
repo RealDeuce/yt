@@ -2161,6 +2161,14 @@ struct yt_planet_updater_cache {
 	uint8_t quantity_raw[10][8];
 };
 
+struct yt_planet_updater_raw_cache {
+	uint8_t quantity[10][8];
+	uint8_t production[10][4];
+	uint8_t contribution[10][4];
+	uint8_t current_minute[4];
+	uint8_t elapsed[4];
+};
+
 struct yt_planet_updater_state {
 	uint8_t logical_planet_raw[4];
 	uint8_t planet_offset_raw[4];
@@ -2169,12 +2177,17 @@ struct yt_planet_updater_state {
 	uint32_t physical_record;
 	struct yt_record field;
 	struct yt_planet_updater_cache cache;
+	struct yt_planet_updater_raw_cache raw_cache;
+	uint16_t raw_error_site;
+	uint16_t raw_next_address;
+	uint8_t raw_basic_error;
 	enum yt_planet_updater_stage stage;
 	size_t effect_count;
 	size_t completed_effects;
 	bool field_loaded;
 	bool field_dirty;
 	bool written;
+	bool raw_error_valid;
 };
 
 typedef bool (*yt_planet_updater_date_fn)(void *context,
@@ -2205,6 +2218,9 @@ struct yt_planet_updater_ops {
 const char *yt_planet_updater_stage_name(enum yt_planet_updater_stage stage);
 const char *yt_planet_updater_stage_site(enum yt_planet_updater_stage stage);
 bool yt_planet_updater_run(struct yt_planet_updater_state *state,
+	const struct yt_planet_updater_ops *ops, void *context,
+	struct yt_error *error);
+bool yt_planet_updater_raw_run(struct yt_planet_updater_state *state,
 	const struct yt_planet_updater_ops *ops, void *context,
 	struct yt_error *error);
 

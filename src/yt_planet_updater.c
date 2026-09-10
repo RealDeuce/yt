@@ -197,7 +197,10 @@ static bool
 updater_int(const uint8_t source[8], uint8_t raw[8],
     struct yt_error *error, const char *operation)
 {
-	enum qb_mbf_status status = qb_mbf64_int_positive_raw(source, raw);
+	enum qb_mbf_status status = source[7] != 0U
+	    && (source[6] & 0x80U) != 0U
+	    ? qb_mbf64_floor_raw(source, raw)
+	    : qb_mbf64_int_positive_raw(source, raw);
 
 	if (status == QB_MBF_OK || status == QB_MBF_UNDERFLOW)
 		return true;
@@ -205,28 +208,40 @@ updater_int(const uint8_t source[8], uint8_t raw[8],
 }
 
 static int
-updater_compare_nonnegative(const uint8_t left[8], const uint8_t right[8])
+updater_compare(const uint8_t left[8], const uint8_t right[8])
 {
+	bool left_negative;
+	bool right_negative;
+	int magnitude = 0;
 	int index;
 
 	if (left[7] == 0U)
-		return right[7] == 0U ? 0 : -1;
+		return right[7] == 0U ? 0
+		    : ((right[6] & 0x80U) != 0U ? 1 : -1);
 	if (right[7] == 0U)
-		return 1;
+		return (left[6] & 0x80U) != 0U ? -1 : 1;
+	left_negative = (left[6] & 0x80U) != 0U;
+	right_negative = (right[6] & 0x80U) != 0U;
+	if (left_negative != right_negative)
+		return left_negative ? -1 : 1;
 	if (left[7] != right[7])
-		return left[7] < right[7] ? -1 : 1;
-	for (index = 6; index >= 0; --index) {
-		uint8_t lhs = left[index];
-		uint8_t rhs = right[index];
+		magnitude = left[7] < right[7] ? -1 : 1;
+	else {
+		for (index = 6; index >= 0; --index) {
+			uint8_t lhs = left[index];
+			uint8_t rhs = right[index];
 
-		if (index == 6) {
-			lhs &= 0x7fU;
-			rhs &= 0x7fU;
+			if (index == 6) {
+				lhs &= 0x7fU;
+				rhs &= 0x7fU;
+			}
+			if (lhs != rhs) {
+				magnitude = lhs < rhs ? -1 : 1;
+				break;
+			}
 		}
-		if (lhs != rhs)
-			return lhs < rhs ? -1 : 1;
 	}
-	return 0;
+	return left_negative ? -magnitude : magnitude;
 }
 
 static bool
@@ -333,18 +348,18 @@ updater_record_number(const uint8_t base_raw[4], const uint8_t logical_raw[4])
 	return qb_brun_random_record_number(expression);
 }
 
-bool
-yt_planet_updater_run(struct yt_planet_updater_state *state,
+static bool
+updater_run(struct yt_planet_updater_state *state,
     const struct yt_planet_updater_ops *ops, void *context,
-    struct yt_error *error)
+    struct yt_error *error, bool raw_record)
 {
 	static const size_t quantity_offsets[9] = {
 		YT_F57, YT_F61, YT_F65, YT_F129, YT_F69, YT_F125, YT_F117,
 		YT_F77, YT_F113,
 	};
-	uint8_t a_raw[10][4] = {{0}};
-	uint8_t p_raw[10][4] = {{0}};
-	uint8_t q_raw[10][8] = {{0}};
+	uint8_t (*a_raw)[4] = state->raw_cache.contribution;
+	uint8_t (*p_raw)[4] = state->raw_cache.production;
+	uint8_t (*q_raw)[8] = state->raw_cache.quantity;
 	uint8_t persisted[14][4] = {{0}};
 	uint8_t elapsed_raw[4];
 	uint8_t elapsed_double[8];
@@ -383,7 +398,6 @@ yt_planet_updater_run(struct yt_planet_updater_state *state,
 	    || base != floorf(base))
 		return updater_error(error, YT_RANGE,
 		    "planet updater logical record domain");
-	memset(state->current_day_raw, 0, sizeof(state->current_day_raw));
 	memset(state->timer_seconds_raw, 0, sizeof(state->timer_seconds_raw));
 	memset(&state->cache, 0, sizeof(state->cache));
 	state->physical_record = 0U;
@@ -393,6 +407,10 @@ yt_planet_updater_run(struct yt_planet_updater_state *state,
 	state->field_loaded = false;
 	state->field_dirty = false;
 	state->written = false;
+	state->raw_error_site = 0U;
+	state->raw_next_address = 0U;
+	state->raw_basic_error = 0U;
+	state->raw_error_valid = false;
 
 	updater_begin(state, YT_PLANET_UPDATER_DATE_HELPER);
 	if (!ops->date(context, state->current_day_raw, error))
@@ -415,26 +433,40 @@ yt_planet_updater_run(struct yt_planet_updater_state *state,
 		return false;
 	state->field_loaded = true;
 	updater_complete(state);
-	if (!updater_validate_record(&state->field, error))
+	if (!raw_record && !updater_validate_record(&state->field, error))
 		return false;
 
-	for (index = 1U; index <= 3U; ++index)
-		p[index] = yt_record_get_number(&state->field,
-		    YT_F45 + (index - 1U) * 4U);
+	for (index = 1U; index <= 3U; ++index) {
+		memcpy(p_raw[index], state->field.bytes
+		    + YT_F45 + (index - 1U) * 4U, 4U);
+		p[index] = qb_mbf32_decode(p_raw[index]);
+	}
 	for (index = 1U; index <= 9U; ++index)
 		updater_promote_single(state->field.bytes
 		    + quantity_offsets[index - 1U], q_raw[index]);
 	sum = updater_single_add(updater_single_add(p[1], p[2]), p[3]);
 	p[4] = floorf(sum);
+	if (!updater_encode_single(p[4], p_raw[4], error,
+	    "planet updater P4"))
+		return false;
 	sum = updater_single_add(updater_single_add(p[1], p[2]), p[3]);
 	p[5] = floorf(updater_single_div(sum,
 	    qb_mbf32_decode(updater_missile_divisor_s)));
+	if (!updater_encode_single(p[5], p_raw[5], error,
+	    "planet updater P5"))
+		return false;
 	sum = updater_single_add(updater_single_add(p[1], p[2]), p[3]);
 	p[6] = floorf(updater_single_div(sum,
 	    qb_mbf32_decode(updater_mine_divisor_s)));
+	if (!updater_encode_single(p[6], p_raw[6], error,
+	    "planet updater P6"))
+		return false;
 	sum = updater_single_add(updater_single_add(p[1], p[2]), p[3]);
 	p[9] = floorf(updater_single_mul(sum,
 	    qb_mbf32_decode(updater_plasma_rate_s)));
+	if (!updater_encode_single(p[9], p_raw[9], error,
+	    "planet updater P9"))
+		return false;
 
 	updater_begin(state, YT_PLANET_UPDATER_TIMER);
 	if (!ops->timer(context, state->timer_seconds_raw, error))
@@ -454,6 +486,14 @@ yt_planet_updater_run(struct yt_planet_updater_state *state,
 	    qb_mbf32_decode(updater_minutes_per_day_s)));
 	if (elapsed > qb_mbf32_decode(updater_ten_s) || elapsed < 0.0f)
 		elapsed = qb_mbf32_decode(updater_ten_s);
+	if (!updater_encode_single(current_minute,
+	    state->raw_cache.current_minute, error,
+	    "planet updater minute MBF32")
+	    || !updater_encode_single(elapsed, elapsed_raw, error,
+	    "planet updater elapsed MBF32"))
+		return false;
+	memcpy(state->raw_cache.elapsed, elapsed_raw, 4U);
+	updater_promote_single(elapsed_raw, elapsed_double);
 
 	if (!updater_contribution(q_raw[7], updater_ten_thousand_d, false,
 	    a_raw[1], error, "planet updater ore contribution")
@@ -475,10 +515,6 @@ yt_planet_updater_run(struct yt_planet_updater_state *state,
 	for (index = 1U; index <= 9U; ++index)
 		a[index] = qb_mbf32_decode(a_raw[index]);
 
-	if (!updater_encode_single(elapsed, elapsed_raw, error,
-	    "planet updater elapsed MBF32"))
-		return false;
-	updater_promote_single(elapsed_raw, elapsed_double);
 	if (!updater_encode_single(updater_single_mul(elapsed, one_percent),
 	    fraction_raw, error, "planet updater bank fraction"))
 		return false;
@@ -521,11 +557,32 @@ yt_planet_updater_run(struct yt_planet_updater_state *state,
 	    "planet updater force INT"))
 		return false;
 
-	for (index = 1U; index <= 3U; ++index)
+	for (index = 1U; index <= 3U; ++index) {
 		p[index] = updater_single_add(p[index], updater_single_mul(
 		    updater_single_mul(p[index], elapsed), one_percent));
+		if (!updater_encode_single(p[index], p_raw[index], error,
+		    index == 1U ? "YT-SUB2:0D63 planet updater ERR6"
+		    : "planet updater base growth")) {
+			if (raw_record && index == 1U) {
+				state->raw_error_site = 0x0D63U;
+				state->raw_next_address = 0x09A0U;
+				state->raw_basic_error = 6U;
+				state->raw_error_valid = true;
+				if (error != NULL) {
+					error->basic_error = 6U;
+					error->basic_error_valid = true;
+				}
+			}
+			return false;
+		}
+		p[index] = qb_mbf32_decode(p_raw[index]);
+	}
 	for (index = 1U; index <= 6U; ++index) {
 		p[index] = updater_single_add(p[index], a[index]);
+		if (!updater_encode_single(p[index], p_raw[index], error,
+		    "planet updater production rate"))
+			return false;
+		p[index] = qb_mbf32_decode(p_raw[index]);
 		if (!updater_encode_single(updater_single_mul(p[index], elapsed),
 		    increment_raw, error, "planet updater production increment"))
 			return false;
@@ -543,7 +600,7 @@ yt_planet_updater_run(struct yt_planet_updater_state *state,
 			    "planet updater commodity threshold"))
 				return false;
 			updater_promote_single(threshold_raw, threshold_double);
-			if (updater_compare_nonnegative(q_raw[index],
+			if (updater_compare(q_raw[index],
 			    threshold_double) > 0) {
 				updater_promote_single(a_raw[index], increment_double);
 				if (!updater_raw_binary(qb_mbf64_div_raw,
@@ -560,6 +617,10 @@ yt_planet_updater_run(struct yt_planet_updater_state *state,
 		}
 	}
 	p[9] = updater_single_add(p[9], a[9]);
+	if (!updater_encode_single(p[9], p_raw[9], error,
+	    "planet updater plasma rate"))
+		return false;
+	p[9] = qb_mbf32_decode(p_raw[9]);
 	if (!updater_encode_single(updater_single_mul(p[9], elapsed),
 	    increment_raw, error, "planet updater plasma increment"))
 		return false;
@@ -582,6 +643,7 @@ yt_planet_updater_run(struct yt_planet_updater_state *state,
 		memcpy(float_residue, persisted[index], 4U);
 	}
 	memcpy(persisted[0], state->current_day_raw, 4U);
+	memcpy(persisted[9], state->raw_cache.current_minute, 4U);
 	if (!updater_csng(q_raw[1], persisted[4], error,
 	    "planet updater stock ore CSNG")
 	    || !updater_csng(q_raw[2], persisted[5], error,
@@ -592,8 +654,6 @@ yt_planet_updater_run(struct yt_planet_updater_state *state,
 	    "planet updater missiles CSNG")
 	    || !updater_csng(q_raw[8], persisted[8], error,
 	    "planet updater forces CSNG")
-	    || !updater_encode_single(current_minute, persisted[9], error,
-	    "planet updater minute MBF32")
 	    || !updater_csng(q_raw[9], persisted[10], error,
 	    "planet updater plasma CSNG")
 	    || !updater_csng(q_raw[7], persisted[11], error,
@@ -603,6 +663,7 @@ yt_planet_updater_run(struct yt_planet_updater_state *state,
 	    || !updater_csng(q_raw[4], persisted[13], error,
 	    "planet updater fighters CSNG"))
 		return false;
+	memcpy(state->raw_cache.current_minute, persisted[9], 4U);
 
 	for (index = 0U; index < YT_ARRAY_LEN(updater_lset_stages); ++index) {
 		updater_begin(state, updater_lset_stages[index]);
@@ -642,4 +703,20 @@ yt_planet_updater_run(struct yt_planet_updater_state *state,
 		memcpy(state->cache.quantity_raw[index], q_raw[index], 8U);
 	}
 	return true;
+}
+
+bool
+yt_planet_updater_run(struct yt_planet_updater_state *state,
+    const struct yt_planet_updater_ops *ops, void *context,
+    struct yt_error *error)
+{
+	return updater_run(state, ops, context, error, false);
+}
+
+bool
+yt_planet_updater_raw_run(struct yt_planet_updater_state *state,
+    const struct yt_planet_updater_ops *ops, void *context,
+    struct yt_error *error)
+{
+	return updater_run(state, ops, context, error, true);
 }
