@@ -1544,26 +1544,6 @@ yt_present_low_time(const uint8_t *text, size_t length, float *remembered,
 	    warned);
 }
 
-enum yt_present_status
-yt_present_low_time_process(const uint8_t *text, size_t length,
-    uint8_t remembered[4], struct yt_present_state *state,
-    struct yt_present_result *result, bool *warned)
-{
-	uint8_t narrowed[4];
-	bool changed;
-	enum yt_present_status status;
-
-	memset(result, 0, sizeof(*result));
-	*warned = false;
-	status = low_time_value(text, length,
-	    (double)qb_mbf32_decode(remembered), narrowed, &changed);
-	if (status != YT_PRESENT_OK || !changed)
-		return status;
-	memcpy(remembered, narrowed, sizeof(narrowed));
-	return low_time_warning(text, length, qb_mbf32_decode(remembered),
-	    state, result, warned);
-}
-
 static enum yt_present_status
 status_row_append(const uint8_t *real_name, size_t real_name_length,
     const uint8_t *alias, size_t alias_length,

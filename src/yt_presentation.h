@@ -199,9 +199,6 @@ enum yt_present_status yt_present_refresh_time_process(
 enum yt_present_status yt_present_low_time(const uint8_t *text, size_t length,
     float *remembered, struct yt_present_state *state,
     struct yt_present_result *result, bool *warned);
-enum yt_present_status yt_present_low_time_process(const uint8_t *text,
-    size_t length, uint8_t remembered[4], struct yt_present_state *state,
-    struct yt_present_result *result, bool *warned);
 enum yt_present_status yt_present_status_row(const uint8_t *real_name,
     size_t real_name_length, const uint8_t *alias, size_t alias_length,
     struct yt_present_state *state, struct yt_present_result *result);

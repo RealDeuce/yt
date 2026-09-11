@@ -42,7 +42,6 @@
 #define YT_COMPUTER_ROUTE_START_ADDRESS 0x4E1AU
 #define YT_COMPUTER_PATH_HOPS_ADDRESS 0x4E82U
 #define YT_SPY_COUNT_ADDRESS 0x50AEU
-#define YT_LOW_TIME_REMEMBERED_ADDRESS 0x59CEU
 #define YT_CLEARANCE_ANNOUNCED_ADDRESS 0x55B6U
 #define YT_CLEARANCE_VALUE_ADDRESS 0x55BEU
 #define YT_CLEARANCE_SOUND_SELECTOR_ADDRESS 0x55C6U
@@ -95,6 +94,7 @@ struct yt_session {
 	bool mercenaries_hurt;
 	bool earth_report_seen;
 	bool anti_cloak_enabled;
+	float low_time_remembered;
 	struct yt_player player;
 	float current_sector_record;
 	double combat_ship_fighters;
@@ -1687,19 +1687,11 @@ session_low_time(struct yt_session *session, const char *operation,
 {
 	struct yt_present_result presentation;
 	enum yt_present_status status;
-	uint8_t remembered[4];
-	uint8_t inherited[4];
 	bool warned;
 
-	yt_route_process_raw_single(&session->route_process,
-	    YT_LOW_TIME_REMEMBERED_ADDRESS, remembered);
-	memcpy(inherited, remembered, sizeof(inherited));
-	status = yt_present_low_time_process(session->time.text,
-	    session->time.text_length, remembered,
+	status = yt_present_low_time(session->time.text,
+	    session->time.text_length, &session->low_time_remembered,
 	    &session->presentation, &presentation, &warned);
-	if (memcmp(remembered, inherited, sizeof(remembered)) != 0)
-		yt_route_process_set_raw_single(&session->route_process,
-		    YT_LOW_TIME_REMEMBERED_ADDRESS, remembered);
 	if (status == YT_PRESENT_OK) {
 		yt_out_present_result(&presentation);
 		return true;
