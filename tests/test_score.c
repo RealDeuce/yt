@@ -21347,22 +21347,16 @@ hostile_combat_read_player(void *context, int player_record,
 	return true;
 }
 
-static void
-hostile_combat_sound_selector(void *context, float selector)
+static bool
+hostile_combat_sound(void *context, float selector,
+    struct yt_error *error)
 {
 	struct hostile_combat_tape *tape = context;
 
 	tape->sound_selector_at = tape->calls;
 	(void)qb_mbf32_encode(selector, tape->sound_selector_raw);
 	++tape->sound_selector_count;
-}
-
-static bool
-hostile_combat_sound(void *context, float selector,
-    struct yt_error *error)
-{
-	return selector == 2.0f && hostile_combat_event(context,
-	    HOSTILE_COMBAT_SOUND, error);
+	return hostile_combat_event(tape, HOSTILE_COMBAT_SOUND, error);
 }
 
 static bool
@@ -21552,7 +21546,6 @@ static const struct yt_hostile_attack_combat_ops hostile_combat_ops = {
 	hostile_combat_store_owner,
 	hostile_combat_initialize,
 	hostile_combat_read_player,
-	hostile_combat_sound_selector,
 	hostile_combat_sound,
 	hostile_combat_random,
 	hostile_combat_store_quantum,

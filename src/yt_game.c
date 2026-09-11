@@ -16589,7 +16589,6 @@ yt_hostile_attack_combat_run(struct yt_hostile_attack_combat_state *state,
 	if (state == NULL || ops == NULL || ops->read_sector == NULL
 	    || ops->store_owner == NULL || ops->initialize == NULL
 	    || ops->read_player == NULL
-	    || ops->sound_selector == NULL
 	    || ops->sound == NULL
 	    || ops->random == NULL || ops->store_quantum == NULL
 	    || ops->store_loss == NULL || ops->store_ship == NULL
@@ -16632,7 +16631,6 @@ yt_hostile_attack_combat_run(struct yt_hostile_attack_combat_state *state,
 	    &state->current, error))
 		return false;
 	state->old_ship = (double)state->current.fighters;
-	ops->sound_selector(context, 2.0f);
 	if (!ops->sound(context, 2.0f, error))
 		return false;
 	do {

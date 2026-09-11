@@ -4131,8 +4131,6 @@ typedef void (*yt_hostile_attack_combat_store_owner_fn)(void *context,
 typedef void (*yt_hostile_attack_combat_initialize_fn)(void *context);
 typedef bool (*yt_hostile_attack_combat_read_player_fn)(void *context,
     int player_record, struct yt_player *player, struct yt_error *error);
-typedef void (*yt_hostile_attack_combat_sound_selector_fn)(void *context,
-    float selector);
 typedef bool (*yt_hostile_attack_combat_sound_fn)(void *context,
     float selector, struct yt_error *error);
 typedef bool (*yt_hostile_attack_combat_random_fn)(void *context,
@@ -4170,7 +4168,6 @@ struct yt_hostile_attack_combat_ops {
 	yt_hostile_attack_combat_store_owner_fn store_owner;
 	yt_hostile_attack_combat_initialize_fn initialize;
 	yt_hostile_attack_combat_read_player_fn read_player;
-	yt_hostile_attack_combat_sound_selector_fn sound_selector;
 	yt_hostile_attack_combat_sound_fn sound;
 	yt_hostile_attack_combat_random_fn random;
 	yt_hostile_attack_combat_store_quantum_fn store_quantum;

@@ -28455,16 +28455,6 @@ direct_warp_attack_combat_read_player(void *context, int player_record,
 	return true;
 }
 
-static void
-direct_warp_attack_combat_sound_selector(void *context, float selector)
-{
-	struct direct_warp_attack_combat_join *join = context;
-
-	(void)qb_mbf32_encode(selector, join->selector_raw);
-	memcpy(join->cycle->fresh_hostile_attack_sound_selector_raw,
-	    join->selector_raw, sizeof(join->selector_raw));
-}
-
 static bool
 direct_warp_attack_combat_sound(void *context, float selector,
     struct yt_error *error)
@@ -28475,6 +28465,9 @@ direct_warp_attack_combat_sound(void *context, float selector,
 	struct yt_present_result result;
 
 	(void)error;
+	(void)qb_mbf32_encode(selector, join->selector_raw);
+	memcpy(join->cycle->fresh_hostile_attack_sound_selector_raw,
+	    join->selector_raw, sizeof(join->selector_raw));
 	if (selector != 2.0f
 	    || yt_present_sound(selector, &viewer->presentation, &result)
 	    != YT_PRESENT_OK)
@@ -29473,7 +29466,6 @@ direct_warp_attack_combat_ops = {
 	direct_warp_attack_combat_store_owner,
 	direct_warp_attack_combat_initialize,
 	direct_warp_attack_combat_read_player,
-	direct_warp_attack_combat_sound_selector,
 	direct_warp_attack_combat_sound,
 	direct_warp_attack_combat_random,
 	direct_warp_attack_combat_store_quantum,

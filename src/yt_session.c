@@ -56,7 +56,6 @@
 #define YT_HOSTILE_SURRENDER_XANNOR_SELECTOR_ADDRESS 0x4D3EU
 #define YT_HOSTILE_SURRENDER_MERCENARY_SELECTOR_ADDRESS 0x4D42U
 #define YT_HOSTILE_SURRENDER_JOINED_SELECTOR_ADDRESS 0x4D46U
-#define YT_HOSTILE_ATTACK_SOUND_SELECTOR_ADDRESS 0x4D2EU
 #define YT_HOSTILE_PLANET_LINK_ADDRESS 0x4CFAU
 #define YT_HOSTILE_DEPLOYED_FIGHTERS_ADDRESS 0x4CFEU
 #define YT_HOSTILE_ATTACK_OWNER_ADDRESS 0x4D06U
@@ -7024,25 +7023,13 @@ hostile_attack_combat_read_player(void *context, int player_record,
 	return true;
 }
 
-static void
-hostile_attack_combat_sound_selector(void *context, float selector)
-{
-	struct hostile_attack_combat_context *combat = context;
-
-	session_set_process_single(combat->session,
-	    YT_HOSTILE_ATTACK_SOUND_SELECTOR_ADDRESS, selector);
-}
-
 static bool
 hostile_attack_combat_sound(void *context, float selector,
     struct yt_error *error)
 {
 	struct hostile_attack_combat_context *combat = context;
 
-	(void)selector;
-	return session_sound(combat->session, yt_route_process_single(
-	    &combat->session->route_process,
-	    YT_HOSTILE_ATTACK_SOUND_SELECTOR_ADDRESS),
+	return session_sound(combat->session, selector,
 	    "deployed attack opening sound", error);
 }
 
@@ -7237,7 +7224,6 @@ attack_deployed_committed(struct yt_session *session,
 		hostile_attack_combat_store_owner,
 		hostile_attack_combat_initialize,
 		hostile_attack_combat_read_player,
-		hostile_attack_combat_sound_selector,
 		hostile_attack_combat_sound,
 		hostile_attack_combat_random,
 		hostile_attack_combat_store_quantum,
