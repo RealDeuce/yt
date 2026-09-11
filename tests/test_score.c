@@ -20276,7 +20276,6 @@ check_player_name_match(void)
 enum hostile_surrender_event {
 	HOSTILE_SURRENDER_READ,
 	HOSTILE_SURRENDER_RADIO,
-	HOSTILE_SURRENDER_STORE_RADIO,
 	HOSTILE_SURRENDER_SOUND_FOUR,
 	HOSTILE_SURRENDER_CAPTAIN,
 	HOSTILE_SURRENDER_WISH,
@@ -20284,15 +20283,12 @@ enum hostile_surrender_event {
 	HOSTILE_SURRENDER_PROMPT,
 	HOSTILE_SURRENDER_STORE_LATCH,
 	HOSTILE_SURRENDER_JOINED,
-	HOSTILE_SURRENDER_STORE_JOINED,
 	HOSTILE_SURRENDER_SOUND_ONE,
 	HOSTILE_SURRENDER_NEWS,
 	HOSTILE_SURRENDER_STORE_FORCES,
 	HOSTILE_SURRENDER_COUNT,
 	HOSTILE_SURRENDER_XANNOR,
-	HOSTILE_SURRENDER_STORE_XANNOR,
 	HOSTILE_SURRENDER_MERCENARY,
-	HOSTILE_SURRENDER_STORE_MERCENARY,
 	HOSTILE_SURRENDER_SOUND_FIVE,
 };
 
@@ -20307,7 +20303,6 @@ struct hostile_surrender_tape {
 	uint8_t news[384];
 	size_t news_length;
 	uint8_t selector_raw[4][4];
-	size_t selector_store_count[4];
 	uint8_t latch_raw[4];
 	size_t latch_store_count;
 	double stored_ship_fighters;
@@ -20372,25 +20367,6 @@ hostile_surrender_present(void *context, const uint8_t *text, size_t length,
 	return true;
 }
 
-static void
-hostile_surrender_sound_selector(void *context,
-    enum yt_hostile_surrender_sound_kind kind, float selector)
-{
-	static const enum hostile_surrender_event events[] = {
-		HOSTILE_SURRENDER_STORE_RADIO,
-		HOSTILE_SURRENDER_STORE_XANNOR,
-		HOSTILE_SURRENDER_STORE_MERCENARY,
-		HOSTILE_SURRENDER_STORE_JOINED,
-	};
-	struct hostile_surrender_tape *tape = context;
-
-	if ((size_t)kind >= YT_ARRAY_LEN(events))
-		return;
-	(void)hostile_surrender_event(tape, events[kind], NULL);
-	(void)qb_mbf32_encode(selector, tape->selector_raw[kind]);
-	++tape->selector_store_count[kind];
-}
-
 static bool
 hostile_surrender_sound(void *context,
     enum yt_hostile_surrender_sound_kind kind, float selector,
@@ -20398,13 +20374,10 @@ hostile_surrender_sound(void *context,
 {
 	struct hostile_surrender_tape *tape = context;
 	enum hostile_surrender_event event;
-	float stored;
 
 	if ((size_t)kind >= YT_ARRAY_LEN(tape->selector_raw))
 		return false;
-	stored = qb_mbf32_decode(tape->selector_raw[kind]);
-	if (stored != selector)
-		return false;
+	(void)qb_mbf32_encode(selector, tape->selector_raw[kind]);
 
 	if (selector == 4.0f)
 		event = HOSTILE_SURRENDER_SOUND_FOUR;
@@ -20475,7 +20448,6 @@ hostile_surrender_cache_forces(void *context, double ship_fighters,
 static const struct yt_hostile_surrender_ops hostile_surrender_ops = {
 	hostile_surrender_read,
 	hostile_surrender_present,
-	hostile_surrender_sound_selector,
 	hostile_surrender_sound,
 	hostile_surrender_prompt,
 	hostile_surrender_news,
@@ -20516,7 +20488,6 @@ check_hostile_surrender_transaction(void)
 	static const enum hostile_surrender_event accepted_events[] = {
 		HOSTILE_SURRENDER_READ,
 		HOSTILE_SURRENDER_RADIO,
-		HOSTILE_SURRENDER_STORE_RADIO,
 		HOSTILE_SURRENDER_SOUND_FOUR,
 		HOSTILE_SURRENDER_CAPTAIN,
 		HOSTILE_SURRENDER_WISH,
@@ -20524,7 +20495,6 @@ check_hostile_surrender_transaction(void)
 		HOSTILE_SURRENDER_PROMPT,
 		HOSTILE_SURRENDER_STORE_LATCH,
 		HOSTILE_SURRENDER_JOINED,
-		HOSTILE_SURRENDER_STORE_JOINED,
 		HOSTILE_SURRENDER_SOUND_ONE,
 		HOSTILE_SURRENDER_NEWS,
 		HOSTILE_SURRENDER_STORE_FORCES,
@@ -20544,7 +20514,7 @@ check_hostile_surrender_transaction(void)
 	static const uint8_t mercenary[] =
 	    "We'll DIE before joining with a slyme like you Sysop!";
 	static const size_t failure_positions[] = {
-		0U, 1U, 3U, 4U, 5U, 6U, 7U, 9U, 11U, 12U, 14U,
+		0U, 1U, 2U, 3U, 4U, 5U, 6U, 8U, 9U, 10U, 12U,
 	};
 	static const uint8_t selector_four[4] = {0, 0, 0, 0x83U};
 	static const uint8_t selector_five[4] = {0, 0, 0x20U, 0x83U};
@@ -20565,8 +20535,6 @@ check_hostile_surrender_transaction(void)
 	    || state.deployed_remaining != 0.0 || state.fighter_owner != 0.0f
 	    || tape.calls != YT_ARRAY_LEN(accepted_events)
 	    || memcmp(tape.events, accepted_events, sizeof(accepted_events)) != 0
-	    || tape.selector_store_count[YT_HOSTILE_SURRENDER_RADIO_SOUND] != 1U
-	    || tape.selector_store_count[YT_HOSTILE_SURRENDER_JOINED_SOUND] != 1U
 	    || tape.latch_store_count != 1U
 	    || tape.force_store_count != 1U
 	    || tape.stored_ship_fighters != 21.0
@@ -20607,12 +20575,12 @@ check_hostile_surrender_transaction(void)
 		    || memcmp(tape.events, accepted_events,
 		    (position + 1U) * sizeof(accepted_events[0])) != 0
 		    || state.complete
-		    || (position < 9U && (state.checked || state.accepted))
-		    || (position >= 9U && (!state.checked || !state.accepted))
-		    || (position == 3U
+		    || (position < 8U && (state.checked || state.accepted))
+		    || (position >= 8U && (!state.checked || !state.accepted))
+		    || (position == 2U
 		    && memcmp(tape.selector_raw[YT_HOSTILE_SURRENDER_RADIO_SOUND],
 		    selector_four, sizeof(selector_four)) != 0)
-		    || (position == 11U
+		    || (position == 9U
 		    && memcmp(tape.selector_raw[YT_HOSTILE_SURRENDER_JOINED_SOUND],
 		    selector_one, sizeof(selector_one)) != 0))
 			return false;
@@ -20622,7 +20590,7 @@ check_hostile_surrender_transaction(void)
 	    YT_HOSTILE_SURRENDER_ANSWER_NO);
 	if (!yt_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
 	    &tape, NULL) || !state.checked || state.accepted || !state.complete
-	    || tape.calls != 9U || tape.news_length != 0U
+	    || tape.calls != 8U || tape.news_length != 0U
 	    || tape.latch_store_count != 1U
 	    || state.ship_fighters != 11.0
 	    || state.deployed_remaining != 10.0 || state.fighter_owner != 2.0f)
@@ -20632,11 +20600,10 @@ check_hostile_surrender_transaction(void)
 	    YT_HOSTILE_SURRENDER_ANSWER_YES);
 	if (!yt_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
 	    &tape, NULL) || state.owner_route != YT_HOSTILE_SURRENDER_XANNOR
-	    || state.accepted || tape.calls != 9U
-	    || tape.events[5] != HOSTILE_SURRENDER_XANNOR
-	    || tape.events[6] != HOSTILE_SURRENDER_STORE_XANNOR
-	    || tape.events[7] != HOSTILE_SURRENDER_SOUND_FIVE
-	    || tape.events[8] != HOSTILE_SURRENDER_STORE_LATCH
+	    || state.accepted || tape.calls != 7U
+	    || tape.events[4] != HOSTILE_SURRENDER_XANNOR
+	    || tape.events[5] != HOSTILE_SURRENDER_SOUND_FIVE
+	    || tape.events[6] != HOSTILE_SURRENDER_STORE_LATCH
 	    || memcmp(tape.selector_raw[YT_HOSTILE_SURRENDER_XANNOR_SOUND],
 	    selector_five, sizeof(selector_five)) != 0
 	    || tape.row_lengths[YT_HOSTILE_SURRENDER_XANNOR_REFUSAL_ROW]
@@ -20649,11 +20616,10 @@ check_hostile_surrender_transaction(void)
 	    YT_HOSTILE_SURRENDER_ANSWER_YES);
 	if (!yt_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
 	    &tape, NULL) || state.owner_route != YT_HOSTILE_SURRENDER_MERCENARY
-	    || state.accepted || tape.calls != 9U
-	    || tape.events[5] != HOSTILE_SURRENDER_MERCENARY
-	    || tape.events[6] != HOSTILE_SURRENDER_STORE_MERCENARY
-	    || tape.events[7] != HOSTILE_SURRENDER_SOUND_FIVE
-	    || tape.events[8] != HOSTILE_SURRENDER_STORE_LATCH
+	    || state.accepted || tape.calls != 7U
+	    || tape.events[4] != HOSTILE_SURRENDER_MERCENARY
+	    || tape.events[5] != HOSTILE_SURRENDER_SOUND_FIVE
+	    || tape.events[6] != HOSTILE_SURRENDER_STORE_LATCH
 	    || memcmp(tape.selector_raw[YT_HOSTILE_SURRENDER_MERCENARY_SOUND],
 	    selector_five, sizeof(selector_five)) != 0
 	    || tape.row_lengths[YT_HOSTILE_SURRENDER_MERCENARY_REFUSAL_ROW]
@@ -20666,8 +20632,8 @@ check_hostile_surrender_transaction(void)
 	    YT_HOSTILE_SURRENDER_ANSWER_YES);
 	if (!yt_hostile_attack_surrender_run(&state, &hostile_surrender_ops,
 	    &tape, NULL) || state.owner_route != YT_HOSTILE_SURRENDER_QUIET
-	    || state.accepted || !state.complete || tape.calls != 6U
-	    || tape.events[5] != HOSTILE_SURRENDER_STORE_LATCH)
+	    || state.accepted || !state.complete || tape.calls != 5U
+	    || tape.events[4] != HOSTILE_SURRENDER_STORE_LATCH)
 		return false;
 
 	hostile_surrender_fixture(&tape, &state, 2.0f,
@@ -21791,7 +21757,7 @@ check_hostile_attack_combat_transaction(void)
 	    || state.iterations != 0U || tape.draw_index != 0U
 	    || state.ship_fighters != 21.0 || state.deployed_remaining != 0.0
 	    || state.sector.fighter_owner != 0.0f
-	    || tape.surrender_tape.calls != 15U
+	    || tape.surrender_tape.calls != 13U
 	    || tape.persistence_tape.calls != 5U
 	    || tape.tail_tape.calls != 2U
 	    || tape.tail_tape.events[0] != HOSTILE_TAIL_RANDOM

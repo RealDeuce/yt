@@ -3931,8 +3931,6 @@ enum yt_hostile_surrender_sound_kind {
 	YT_HOSTILE_SURRENDER_MERCENARY_SOUND,
 	YT_HOSTILE_SURRENDER_JOINED_SOUND,
 };
-typedef void (*yt_hostile_surrender_sound_selector_fn)(void *context,
-    enum yt_hostile_surrender_sound_kind kind, float selector);
 typedef bool (*yt_hostile_surrender_sound_fn)(void *context,
     enum yt_hostile_surrender_sound_kind kind, float selector,
     struct yt_error *error);
@@ -3948,7 +3946,6 @@ typedef void (*yt_hostile_surrender_mark_checked_fn)(void *context);
 struct yt_hostile_surrender_ops {
 	yt_hostile_surrender_read_fn read_player;
 	yt_hostile_surrender_present_fn present;
-	yt_hostile_surrender_sound_selector_fn sound_selector;
 	yt_hostile_surrender_sound_fn sound;
 	yt_hostile_surrender_prompt_fn prompt;
 	yt_hostile_surrender_news_fn append_news;

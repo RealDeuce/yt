@@ -28576,16 +28576,6 @@ direct_warp_attack_surrender_present(void *context, const uint8_t *text,
 	}
 }
 
-static void
-direct_warp_attack_surrender_selector(void *context,
-    enum yt_hostile_surrender_sound_kind kind, float selector)
-{
-	struct direct_warp_attack_combat_join *join = context;
-
-	(void)kind;
-	(void)qb_mbf32_encode(selector, join->selector_raw);
-}
-
 static bool
 direct_warp_attack_surrender_sound(void *context,
     enum yt_hostile_surrender_sound_kind kind, float selector,
@@ -28598,6 +28588,7 @@ direct_warp_attack_surrender_sound(void *context,
 
 	(void)kind;
 	(void)error;
+	(void)qb_mbf32_encode(selector, join->selector_raw);
 	if (yt_present_sound(selector, &viewer->presentation, &result)
 	    != YT_PRESENT_OK)
 		return false;
@@ -28662,7 +28653,6 @@ static const struct yt_hostile_surrender_ops
 direct_warp_attack_surrender_ops = {
 	direct_warp_attack_combat_read_player,
 	direct_warp_attack_surrender_present,
-	direct_warp_attack_surrender_selector,
 	direct_warp_attack_surrender_sound,
 	direct_warp_attack_surrender_prompt,
 	direct_warp_attack_news,
