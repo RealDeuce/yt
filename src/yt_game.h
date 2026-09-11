@@ -332,15 +332,8 @@ struct yt_post_login_repairs {
 	unsigned writes;
 };
 
-enum yt_returning_daily_scratch_kind {
-	YT_RETURNING_DAILY_OLD_DAY,
-	YT_RETURNING_DAILY_KILLER,
-	YT_RETURNING_DAILY_TURNS,
-};
 typedef bool (*yt_returning_daily_same_day_fn)(void *context,
 	struct yt_error *error);
-typedef void (*yt_returning_daily_scratch_fn)(void *context,
-	enum yt_returning_daily_scratch_kind kind, const uint8_t raw[4]);
 struct yt_returning_daily_state {
 	int player_record;
 	const uint8_t *today_raw;
@@ -356,7 +349,6 @@ struct yt_returning_daily_state {
 };
 struct yt_returning_daily_ops {
 	yt_returning_daily_same_day_fn present_same_day;
-	yt_returning_daily_scratch_fn store_scratch;
 };
 bool yt_returning_daily_run(struct yt_game *game,
 	struct yt_returning_daily_state *state,

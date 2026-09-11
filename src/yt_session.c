@@ -70,9 +70,6 @@
 #define YT_COMPUTER_ACTIVATION_SELECTOR_ADDRESS 0x50D2U
 #define YT_FATAL_SOUND_SELECTOR_ADDRESS 0x4CE2U
 #define YT_PLASMA_PLAYER_SOUND_SELECTOR_ADDRESS 0x5DA2U
-#define YT_RETURNING_OLD_DAY_ADDRESS 0x5316U
-#define YT_RETURNING_KILLER_ADDRESS 0x531EU
-#define YT_RETURNING_TURNS_ADDRESS 0x5322U
 #define YT_COUNTERLAUNCH_COUNT_ADDRESS 0x5BC6U
 #define YT_SPY_DESTINATION_SCRATCH_ADDRESS 0x5FE4U
 #define YT_SPY_FOUND_SCRATCH_ADDRESS 0x5FE8U
@@ -3235,22 +3232,6 @@ returning_daily_same_day(void *context, struct yt_error *error)
 	    SESSION_PRESENT_LINE, "returning same-day row", error);
 }
 
-static void
-returning_daily_store_scratch(void *context,
-    enum yt_returning_daily_scratch_kind kind, const uint8_t raw[4])
-{
-	static const uint16_t addresses[] = {
-		[YT_RETURNING_DAILY_OLD_DAY] = YT_RETURNING_OLD_DAY_ADDRESS,
-		[YT_RETURNING_DAILY_KILLER] = YT_RETURNING_KILLER_ADDRESS,
-		[YT_RETURNING_DAILY_TURNS] = YT_RETURNING_TURNS_ADDRESS,
-	};
-	struct yt_session *session = context;
-
-	if ((size_t)kind < YT_ARRAY_LEN(addresses))
-		yt_route_process_set_raw_single(&session->route_process,
-		    addresses[kind], raw);
-}
-
 static bool
 returning_denial_present(void *context, const uint8_t *text, size_t length,
     enum yt_returning_denial_output_kind kind, struct yt_error *error)
@@ -3413,7 +3394,6 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 	{
 		static const struct yt_returning_daily_ops daily_ops = {
 			returning_daily_same_day,
-			returning_daily_store_scratch,
 		};
 		struct yt_returning_daily_state daily;
 		uint8_t today_raw[4];

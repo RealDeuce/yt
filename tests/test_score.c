@@ -24924,8 +24924,6 @@ done:
 }
 
 struct returning_daily_tape {
-	int events[8];
-	uint8_t raw[8][4];
 	size_t count;
 	bool fail_same_day;
 };
@@ -24935,11 +24933,7 @@ returning_daily_same_day(void *context, struct yt_error *error)
 {
 	struct returning_daily_tape *tape = context;
 
-	if (tape->count < YT_ARRAY_LEN(tape->events)) {
-		tape->events[tape->count] = 3;
-		memset(tape->raw[tape->count], 0, 4);
-		tape->count++;
-	}
+	++tape->count;
 	if (tape->fail_same_day) {
 		error->status = YT_IO_ERROR;
 		(void)snprintf(error->operation, sizeof(error->operation), "%s",
@@ -24949,25 +24943,11 @@ returning_daily_same_day(void *context, struct yt_error *error)
 	return true;
 }
 
-static void
-returning_daily_store(void *context,
-    enum yt_returning_daily_scratch_kind kind, const uint8_t raw[4])
-{
-	struct returning_daily_tape *tape = context;
-
-	if (tape->count < YT_ARRAY_LEN(tape->events)) {
-		tape->events[tape->count] = (int)kind;
-		memcpy(tape->raw[tape->count], raw, 4);
-		tape->count++;
-	}
-}
-
 static bool
 check_returning_daily_transaction(void)
 {
 	static const struct yt_returning_daily_ops ops = {
 		returning_daily_same_day,
-		returning_daily_store,
 	};
 	static const uint8_t dirty_zero[4] = {0x11, 0x22, 0x33, 0x00};
 	static const uint8_t canonical_zero[4] = {0x00, 0x00, 0x00, 0x00};
@@ -25029,15 +25009,7 @@ check_returning_daily_transaction(void)
 	    || !state.complete || state.same_day || !state.turn_floor_applied
 	    || !state.player_hydrated || !state.put_attempted
 	    || state.previous_day != 10.0f || state.killer != -2.0f
-	    || tape.count != 4U
-	    || tape.events[0] != YT_RETURNING_DAILY_OLD_DAY
-	    || tape.events[1] != YT_RETURNING_DAILY_KILLER
-	    || tape.events[2] != YT_RETURNING_DAILY_TURNS
-	    || tape.events[3] != YT_RETURNING_DAILY_TURNS
-	    || memcmp(tape.raw[0], old_day_raw, 4) != 0
-	    || memcmp(tape.raw[1], killer_raw, 4) != 0
-	    || memcmp(tape.raw[2], old_turns_raw, 4) != 0
-	    || memcmp(tape.raw[3], turns_raw, 4) != 0
+	    || tape.count != 0U
 	    || !yt_database_read(&game.database, 2, &durable, &error)
 	    || memcmp(durable.bytes + YT_F41, today_raw, 4) != 0
 	    || memcmp(durable.bytes + YT_F49, turns_raw, 4) != 0
@@ -25059,11 +25031,7 @@ check_returning_daily_transaction(void)
 	if (!yt_returning_daily_run(&game, &state, &ops, &tape, &error)
 	    || !state.complete || !state.same_day || state.turn_floor_applied
 	    || !state.player_hydrated || !state.put_attempted
-	    || tape.count != 4U
-	    || tape.events[0] != YT_RETURNING_DAILY_OLD_DAY
-	    || tape.events[1] != 3
-	    || tape.events[2] != YT_RETURNING_DAILY_KILLER
-	    || tape.events[3] != YT_RETURNING_DAILY_TURNS
+	    || tape.count != 1U
 	    || !yt_database_read(&game.database, 2, &durable, &error)
 	    || memcmp(durable.bytes + YT_F41, today_raw, 4) != 0
 	    || memcmp(durable.bytes + YT_F49, turns_raw, 4) != 0
@@ -25080,9 +25048,7 @@ check_returning_daily_transaction(void)
 	if (yt_returning_daily_run(&game, &state, &ops, &tape, &error)
 	    || error.status != YT_IO_ERROR || state.complete
 	    || !state.player_hydrated || state.put_attempted
-	    || tape.count != 2U
-	    || tape.events[0] != YT_RETURNING_DAILY_OLD_DAY
-	    || tape.events[1] != 3
+	    || tape.count != 1U
 	    || !yt_database_read(&game.database, 2, &durable, &error)
 	    || memcmp(&durable, &seed, sizeof(durable)) != 0)
 		goto close;

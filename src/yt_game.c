@@ -4792,7 +4792,7 @@ yt_returning_daily_run(struct yt_game *game,
 
 	if (game == NULL || state == NULL || ops == NULL
 	    || state->today_raw == NULL || state->turns_per_day_raw == NULL
-	    || ops->present_same_day == NULL || ops->store_scratch == NULL)
+	    || ops->present_same_day == NULL)
 		return false;
 	state->same_day = false;
 	state->turn_floor_applied = false;
@@ -4804,18 +4804,13 @@ yt_returning_daily_run(struct yt_game *game,
 		return false;
 	state->player_hydrated = true;
 	state->previous_day = state->player.last_active;
-	ops->store_scratch(context, YT_RETURNING_DAILY_OLD_DAY,
-	    state->player.record.bytes + YT_F41);
 	state->same_day = state->previous_day
 	    == qb_mbf32_decode(state->today_raw);
 	if (state->same_day && !ops->present_same_day(context, error))
 		return false;
 	state->killer = state->player.killed_by;
-	ops->store_scratch(context, YT_RETURNING_DAILY_KILLER,
-	    state->player.record.bytes + YT_F45);
 	memcpy(turns_scratch, state->player.record.bytes + YT_F49,
 	    sizeof(turns_scratch));
-	ops->store_scratch(context, YT_RETURNING_DAILY_TURNS, turns_scratch);
 
 	daily = state->player.record;
 	(void)yt_record_set_raw_number(&daily, YT_F41, state->today_raw);
@@ -4825,8 +4820,6 @@ yt_returning_daily_run(struct yt_game *game,
 			memcpy(turns_scratch, state->turns_per_day_raw,
 			    sizeof(turns_scratch));
 			state->turn_floor_applied = true;
-			ops->store_scratch(context, YT_RETURNING_DAILY_TURNS,
-			    turns_scratch);
 		}
 		if (memcmp(turns_scratch, daily.bytes + YT_F49,
 		    sizeof(turns_scratch)) != 0)
