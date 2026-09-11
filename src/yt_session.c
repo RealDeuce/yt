@@ -6145,16 +6145,6 @@ random_value(struct yt_session *session, float *value,
 }
 
 static bool
-session_random_one_based(void *context, float range,
-    float *value, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_random_one_based_single(&session->door->game.random, range,
-	    value, error);
-}
-
-static bool
 emergency_warp(struct yt_session *session, struct yt_error *error)
 {
 	static const uint8_t wormhole[] =
@@ -6853,107 +6843,213 @@ common_fatal_self(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
-salvage_read_victim(void *context, int player_record,
+salvage_load_player(struct yt_session *session, int player_record,
     struct yt_player *player, struct yt_error *error)
 {
-	struct yt_session *session = context;
-
-	return yt_game_read_player(&session->door->game, player_record, player,
-	    error);
-}
-
-static bool
-salvage_read_killer(void *context, float player_record,
-    struct yt_player *player, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	uint32_t physical = qb_brun_random_record_number(player_record);
-	struct yt_record raw;
-
-	if (physical == (uint32_t)session_record(session)) {
+	if (player_record == session_record(session)) {
 		if (!reload_player(session, error))
 			return false;
 		*player = session->player;
 		return true;
 	}
-	if (!yt_database_read(&session->door->game.database, (size_t)physical,
-	    &raw, error))
-		return false;
-	yt_player_decode(player, &raw);
-	return true;
+	return yt_game_read_player(&session->door->game, player_record, player,
+	    error);
 }
 
 static bool
-salvage_write_killer(void *context, float player_record,
+salvage_save_player(struct yt_session *session, int player_record,
     struct yt_player *player, struct yt_error *error)
 {
-	struct yt_session *session = context;
-	uint32_t physical = qb_brun_random_record_number(player_record);
-
-	yt_player_encode(player);
-	if (!yt_database_write(&session->door->game.database, (size_t)physical,
-	    &player->record, error)
+	if (!yt_game_write_player(&session->door->game, player_record, player,
+	    error)
 	    || !yt_database_flush(&session->door->game.database, error))
 		return false;
-	if (physical == (uint32_t)session_record(session))
+	if (player_record == session_record(session))
 		session->player = *player;
 	return true;
 }
 
 static bool
-salvage_random(void *context, float *value, struct yt_error *error)
+salvage_player(struct yt_session *session, int victim_record,
+    int killer_record, struct yt_error *error)
 {
-	return random_value(context, value, error);
-}
-
-static bool
-salvage_wait(void *context, float duration, struct yt_error *error)
-{
-	return session_wait(context, (double)duration, "ship salvage wait",
-	    error);
-}
-
-static bool
-salvage_present(void *context, const uint8_t *text, size_t length,
-    bool bold, struct yt_error *error)
-{
-	return session_present_text(context, text, length,
-	    bold ? SESSION_PRESENT_BOLD_LINE : SESSION_PRESENT_LINE,
-	    bold ? "salvage title" : "salvage result row", error);
-}
-
-static bool
-salvage_news(void *context, const uint8_t *text, size_t length,
-    struct yt_error *error)
-{
-	return append_news_bytes(context, text, length, error);
-}
-
-static bool
-salvage_player(struct yt_session *session, int victim_record, float killer,
-    struct yt_error *error)
-{
-	static const struct yt_salvage_ops ops = {
-		salvage_read_victim,
-		salvage_read_killer,
-		salvage_write_killer,
-		salvage_random,
-		session_random_one_based,
-		salvage_wait,
-		salvage_present,
-		salvage_news,
+	static const uint8_t title[] =
+	    "You destroyed the ship and salvaged the following:";
+	static const uint8_t nothing[] = "  -  NOTHING!";
+	static const enum yt_salvage_cargo_kind cargo_kind[4] = {
+		YT_SALVAGE_EMPTY_HOLDS, YT_SALVAGE_ORE,
+		YT_SALVAGE_ORGANICS, YT_SALVAGE_EQUIPMENT
 	};
-	struct yt_salvage_state state = {
-		.victim_record = victim_record,
-		.killer_record = killer,
-		.last_player_record = session_sector_offset(session),
-		.maximum_holds = yt_route_process_single(&session->route_process,
-		    YT_MAXIMUM_HOLDS_ADDRESS),
-		.current_name = (const uint8_t *)session->player.name,
-		.current_name_length = strlen(session->player.name),
-	};
+	static const size_t cargo_order[4] = {3U, 0U, 1U, 2U};
+	struct yt_player victim;
+	struct yt_player killer;
+	float awards[6] = {0};
+	float cargo_stock[3];
+	float cargo_awards[4] = {0};
+	float cargo_remaining;
+	float requested_holds;
+	float *simple_fields[5];
+	uint8_t victim_name[YT_TEXT_FIELD_SIZE];
+	uint8_t row[300];
+	size_t victim_name_length;
+	size_t row_length;
+	size_t index;
+	bool emitted = false;
 
-	return yt_salvage_run(&state, &ops, session, error);
+	/*
+	 * The victim GET precedes the killer-range gate.  Player record
+	 * identities are integers because every caller and every persisted
+	 * producer writes an integer player record.
+	 */
+	if (!yt_game_read_player(&session->door->game, victim_record, &victim,
+	    error))
+		return false;
+	if (killer_record < YT_PLAYER_FIRST
+	    || (float)killer_record > session->door->game.config.sector_offset)
+		return true;
+	if (!yt_player_stored_name(&victim, victim_name, &victim_name_length,
+	    error)
+	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "salvage result row", error)
+	    || !session_present_text(session, title, sizeof(title) - 1U,
+	    SESSION_PRESENT_BOLD_LINE, "salvage title", error)
+	    || !yt_salvage_header_row((const uint8_t *)session->player.name,
+	    strlen(session->player.name), victim_name, victim_name_length,
+	    row, sizeof(row), &row_length)
+	    || !append_news_bytes(session, row, row_length, error)
+	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "salvage result row", error))
+		return false;
+
+	for (index = 0U; index < YT_ARRAY_LEN(awards); ++index) {
+		float stock;
+		float draw;
+
+		if (!random_value(session, &draw, error))
+			return false;
+		switch (index) {
+		case 0U: stock = victim.holds; break;
+		case 1U: stock = victim.credits; break;
+		case 2U: stock = victim.missiles; break;
+		case 3U: stock = victim.plasma; break;
+		case 4U: stock = victim.ground_forces; break;
+		default: stock = victim.mines; break;
+		}
+		awards[index] = floorf(single_mul(draw, stock));
+	}
+	if (!session_wait(session, 1.0, "ship salvage wait", error)
+	    || !salvage_load_player(session, killer_record, &killer, error))
+		return false;
+
+	simple_fields[0] = &killer.credits;
+	simple_fields[1] = &killer.missiles;
+	simple_fields[2] = &killer.plasma;
+	simple_fields[3] = &killer.ground_forces;
+	simple_fields[4] = &killer.mines;
+	for (index = 1U; index < YT_ARRAY_LEN(awards); ++index) {
+		if (awards[index] == 0.0f)
+			continue;
+		if (!session_wait(session, 0.5, "ship salvage wait", error))
+			return false;
+		emitted = true;
+		if (!yt_salvage_simple_row(
+		    (enum yt_salvage_simple_kind)(index - 1U), awards[index],
+		    row, sizeof(row), &row_length)
+		    || !append_news_bytes(session, row, row_length, error)
+		    || !session_present_text(session, row, row_length,
+		    SESSION_PRESENT_LINE, "salvage result row", error))
+			return false;
+		*simple_fields[index - 1U] = single_add(
+		    *simple_fields[index - 1U], awards[index]);
+	}
+	if (!salvage_save_player(session, killer_record, &killer, error))
+		return false;
+
+	requested_holds = awards[0];
+	if (single_add(killer.holds, requested_holds)
+	    > session->door->game.config.maximum_holds)
+		requested_holds = single_sub(
+		    session->door->game.config.maximum_holds, killer.holds);
+	if (requested_holds > 0.0f) {
+		float counter;
+
+		emitted = true;
+		if (!yt_game_read_player(&session->door->game, victim_record,
+		    &victim, error))
+			return false;
+		cargo_stock[0] = victim.ore;
+		cargo_stock[1] = victim.organics;
+		cargo_stock[2] = victim.equipment;
+		cargo_remaining = victim.holds;
+		for (counter = 1.0f; counter <= requested_holds;
+		    counter = single_add(counter, 1.0f)) {
+			float one_based;
+			float pick;
+			float boundary;
+			int selected;
+
+			if (!yt_random_one_based_single(
+			    &session->door->game.random, cargo_remaining,
+			    &one_based, error))
+				return false;
+			pick = single_sub(one_based, 1.0f);
+			if (pick < cargo_stock[0])
+				selected = 0;
+			else {
+				boundary = single_add(cargo_stock[0],
+				    cargo_stock[1]);
+				if (pick < boundary)
+					selected = 1;
+				else {
+					boundary = single_add(boundary,
+					    cargo_stock[2]);
+					selected = pick < boundary ? 2 : 3;
+				}
+			}
+			cargo_awards[selected] = single_add(
+			    cargo_awards[selected], 1.0f);
+			if (selected < 3)
+				cargo_stock[selected] = single_sub(
+				    cargo_stock[selected], 1.0f);
+			cargo_remaining = single_sub(cargo_remaining, 1.0f);
+		}
+		if (!salvage_load_player(session, killer_record, &killer, error))
+			return false;
+		for (index = 0U; index < YT_ARRAY_LEN(cargo_awards); ++index)
+			killer.holds = single_add(killer.holds,
+			    cargo_awards[index]);
+		killer.ore = single_add(killer.ore, cargo_awards[0]);
+		killer.organics = single_add(killer.organics, cargo_awards[1]);
+		killer.equipment = single_add(killer.equipment,
+		    cargo_awards[2]);
+		if (!salvage_save_player(session, killer_record, &killer, error)
+		    || !session_wait(session, 0.5, "ship salvage wait", error))
+			return false;
+		for (index = 0U; index < YT_ARRAY_LEN(cargo_order); ++index) {
+			size_t award = cargo_order[index];
+
+			if ((award == 3U && cargo_awards[award] <= 0.0f)
+			    || (award != 3U && cargo_awards[award] == 0.0f))
+				continue;
+			if (!session_wait(session, 0.5, "ship salvage wait", error)
+			    || !yt_salvage_cargo_row(cargo_kind[index],
+			    cargo_awards[award], row, sizeof(row), &row_length)
+			    || !append_news_bytes(session, row, row_length, error)
+			    || !session_present_text(session, row, row_length,
+			    SESSION_PRESENT_LINE, "salvage result row", error))
+				return false;
+		}
+	}
+	if (!emitted) {
+		if (!session_wait(session, 0.5, "ship salvage wait", error)
+		    || !append_news_bytes(session, nothing,
+		    sizeof(nothing) - 1U, error)
+		    || !session_present_text(session, nothing,
+		    sizeof(nothing) - 1U, SESSION_PRESENT_LINE,
+		    "salvage result row", error))
+			return false;
+	}
+	return session_wait(session, 4.0, "ship salvage wait", error);
 }
 
 static bool
@@ -7129,7 +7225,7 @@ direct_fighter_kill_death(void *context, int victim_record, float killer,
 }
 
 static bool
-direct_fighter_kill_salvage(void *context, int victim_record, float killer,
+direct_fighter_kill_salvage(void *context, int victim_record, int killer,
     struct yt_error *error)
 {
 	return salvage_player(context, victim_record, killer, error);
@@ -15641,7 +15737,7 @@ static bool
 plasma_killed_salvage(void *context, int victim, int shooter,
     struct yt_error *error)
 {
-	return salvage_player(context, victim, (float)shooter, error);
+	return salvage_player(context, victim, shooter, error);
 }
 
 static bool
@@ -16076,7 +16172,7 @@ missile_mines:
 				if (!session_sound(session, 3.0f,
 				    "cruise missile salvage sound", error)
 				    || !salvage_player(session, basic,
-				    (float)session_record(session), error))
+				    session_record(session), error))
 					return false;
 			}
 			switch (yt_projectile_death_continuation(*remaining,

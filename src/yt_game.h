@@ -1961,50 +1961,6 @@ struct yt_counterlaunch_ops {
 	yt_player_cache_store_fn store_cache;
 };
 
-struct yt_salvage_cargo_state {
-	float requested;
-	float stock[3];
-	float remaining;
-	float awards[4];
-};
-
-struct yt_salvage_state {
-	int victim_record;
-	float killer_record;
-	float last_player_record;
-	float maximum_holds;
-	const uint8_t *current_name;
-	size_t current_name_length;
-	struct yt_player victim;
-	struct yt_player killer;
-	float opening_draws[6];
-	float awards[6];
-	float requested_holds;
-	struct yt_salvage_cargo_state cargo;
-	bool admitted;
-	bool emitted;
-	bool complete;
-};
-struct yt_salvage_ops {
-	bool (*read_victim)(void *context, int player_record,
-	    struct yt_player *player, struct yt_error *error);
-	bool (*read_killer)(void *context, float player_record,
-	    struct yt_player *player, struct yt_error *error);
-	bool (*write_killer)(void *context, float player_record,
-	    struct yt_player *player, struct yt_error *error);
-	bool (*random)(void *context, float *value, struct yt_error *error);
-	bool (*cargo_draw)(void *context, float range, float *one_based,
-	    struct yt_error *error);
-	bool (*wait)(void *context, float duration, struct yt_error *error);
-	bool (*present)(void *context, const uint8_t *text, size_t length,
-	    bool bold, struct yt_error *error);
-	bool (*news)(void *context, const uint8_t *text, size_t length,
-	    struct yt_error *error);
-};
-bool yt_salvage_run(struct yt_salvage_state *state,
-    const struct yt_salvage_ops *ops, void *context,
-    struct yt_error *error);
-
 enum yt_salvage_simple_kind {
 	YT_SALVAGE_CREDITS,
 	YT_SALVAGE_MISSILES,
@@ -2019,9 +1975,6 @@ enum yt_salvage_cargo_kind {
 	YT_SALVAGE_ORGANICS,
 	YT_SALVAGE_EQUIPMENT,
 };
-
-typedef bool (*yt_salvage_cargo_draw_fn)(void *context, float range,
-    float *one_based, struct yt_error *error);
 
 enum yt_current_player_store_kind {
 	YT_CURRENT_PLAYER_STORE_SECTOR,
@@ -3114,7 +3067,7 @@ struct yt_direct_fighter_kill_ops {
 	    struct yt_error *error);
 	bool (*death)(void *context, int victim_record, float killer,
 	    struct yt_error *error);
-	bool (*salvage)(void *context, int victim_record, float killer,
+	bool (*salvage)(void *context, int victim_record, int killer,
 	    struct yt_error *error);
 	bool (*read_sector)(void *context, float logical_sector,
 	    struct yt_sector *sector, struct yt_error *error);
@@ -4876,8 +4829,6 @@ bool yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
 bool yt_counterlaunch_run(struct yt_counterlaunch_state *state,
     const struct yt_counterlaunch_ops *ops, void *context,
     struct yt_error *error);
-bool yt_salvage_cargo_sample(struct yt_salvage_cargo_state *state,
-    yt_salvage_cargo_draw_fn draw, void *context, struct yt_error *error);
 bool yt_salvage_header_row(const uint8_t *salvor, size_t salvor_length,
     const uint8_t *victim, size_t victim_length, uint8_t *row,
     size_t capacity, size_t *length);
