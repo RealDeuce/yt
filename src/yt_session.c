@@ -88,7 +88,6 @@
 #define YT_SOUND_TOGGLE_SELECTOR_ADDRESS 0x5B32U
 #define YT_COMPUTER_ACTIVATION_SELECTOR_ADDRESS 0x50D2U
 #define YT_FATAL_SOUND_SELECTOR_ADDRESS 0x4CE2U
-#define YT_PLASMA_PLAYER_SAVED_FOREGROUND_ADDRESS 0x5D9EU
 #define YT_PLASMA_PLAYER_SOUND_SELECTOR_ADDRESS 0x5DA2U
 #define YT_RETURNING_OLD_DAY_ADDRESS 0x5316U
 #define YT_RETURNING_KILLER_ADDRESS 0x531EU
@@ -105,7 +104,6 @@
 #define YT_PLANET_UPDATER_DAY_ADDRESS 0x5E90U
 #define YT_PLANET_UPDATER_MINUTE_ADDRESS 0x5E94U
 #define YT_PLANET_UPDATER_ELAPSED_ADDRESS 0x5E98U
-#define YT_ACTION_FOREGROUND_SAVE_ADDRESS 0x51A8U
 #define YT_ACTION_CLOAK_DISPLAY_SCALE_ADDRESS 0x8C36U
 #define YT_ACTION_TURN_DIVISOR_ADDRESS 0x9E68U
 #define YT_ACTION_XANNOR_THRESHOLD_ADDRESS 0x9EBCU
@@ -115,8 +113,6 @@
 #define YT_SCOREBOARD_TEAM_SCRATCH_ADDRESS 0x4B8CU
 #define YT_COUNTERATTACK_PLAYER_ADDRESS 0x1C10U
 #define YT_XANNOR_PROVOKER_ADDRESS 0x4BDCU
-#define YT_FOREGROUND_ADDRESS 0x1934U
-#define YT_FILE_VIEWER_SAVED_FOREGROUND_ADDRESS 0x51A8U
 
 enum navigation_field_kind {
 	NAVIGATION_FIELD_NONE,
@@ -148,6 +144,7 @@ struct yt_session {
 	float current_sector_record;
 	double combat_ship_fighters;
 	float combat_ship_shields;
+	float foreground;
 	uint8_t cached_player_name[YT_TEXT_FIELD_SIZE];
 	size_t cached_player_name_length;
 	struct yt_player_cache player_cache;
@@ -247,8 +244,7 @@ session_planet_offset(const struct yt_session *session)
 static float
 session_foreground(const struct yt_session *session)
 {
-	return yt_route_process_single(&session->route_process,
-	    YT_FOREGROUND_ADDRESS);
+	return session->foreground;
 }
 
 static float
@@ -297,23 +293,11 @@ session_set_pager_newline(struct yt_session *session, float value)
 }
 
 static void
-session_set_foreground_raw(struct yt_session *session, const uint8_t raw[4])
-{
-	float value = qb_mbf32_decode(raw);
-
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_FOREGROUND_ADDRESS, raw);
-	session->presentation.foreground = value;
-	session->pager.foreground = (int)value;
-}
-
-static void
 session_set_foreground(struct yt_session *session, float value)
 {
-	uint8_t raw[4];
-
-	if (qb_mbf32_encode(value, raw) == QB_MBF_OK)
-		session_set_foreground_raw(session, raw);
+	session->foreground = value;
+	session->presentation.foreground = value;
+	session->pager.foreground = (int)value;
 }
 
 static void
@@ -1485,18 +1469,11 @@ session_b05d(struct yt_session *session, const uint8_t *text, size_t length)
 		.pager_key_capacity = sizeof(session->pager.key),
 	};
 	bool result;
-	uint8_t foreground_raw[4];
 
 	if (!session_store_output_source(session, text, length))
 		return false;
-	yt_route_process_raw_single(&session->route_process,
-	    YT_FOREGROUND_ADDRESS, foreground_raw);
-	session_set_foreground_raw(session, foreground_raw);
 	result = yt_paged_row_run(&session->pager, &session->presentation,
 	    &key_state, text, length, &ops, session);
-	yt_route_process_raw_single(&session->route_process,
-	    YT_FOREGROUND_ADDRESS, foreground_raw);
-	session_set_foreground_raw(session, foreground_raw);
 	return result;
 }
 
@@ -2095,26 +2072,14 @@ session_file_viewer_present(void *context, const uint8_t *text,
 static float
 session_file_viewer_save_foreground(struct yt_session *session)
 {
-	yt_route_process_copy_raw_single(&session->route_process,
-	    YT_FOREGROUND_ADDRESS, YT_FILE_VIEWER_SAVED_FOREGROUND_ADDRESS);
-	return yt_route_process_single(&session->route_process,
-	    YT_FILE_VIEWER_SAVED_FOREGROUND_ADDRESS);
-}
-
-static void
-session_file_viewer_restore_foreground(struct yt_session *session)
-{
-	uint8_t raw[4];
-
-	yt_route_process_raw_single(&session->route_process,
-	    YT_FILE_VIEWER_SAVED_FOREGROUND_ADDRESS, raw);
-	session_set_foreground_raw(session, raw);
+	return session_foreground(session);
 }
 
 struct session_file_viewer_context {
 	struct yt_session *session;
 	struct yt_text_input input;
 	float *foreground;
+	float saved_foreground;
 };
 
 static bool
@@ -2164,7 +2129,7 @@ session_file_viewer_stream_present(void *context, const uint8_t *text,
 	if (paged)
 		session_set_foreground(viewer->session, *viewer->foreground);
 	else
-		session_file_viewer_restore_foreground(viewer->session);
+		session_set_foreground(viewer->session, viewer->saved_foreground);
 	return session_file_viewer_present(viewer->session, text, length, paged,
 	    error);
 }
@@ -2231,6 +2196,7 @@ display_game_file(struct yt_session *session, const char *path,
 	memset(&context, 0, sizeof(context));
 	context.session = session;
 	context.foreground = &foreground_carrier;
+	context.saved_foreground = saved_foreground;
 	if (error == NULL)
 		yt_error_clear(&local_error);
 	if (!yt_file_viewer_entry(session->pager.key,
@@ -5336,9 +5302,9 @@ finalize_action(struct yt_session *session, float amount,
 	}
 	if (quotient == floorf(quotient) && anti_cloak_allows) {
 		float display;
+		float saved_foreground;
 		uint8_t cloak_arithmetic[4];
 		uint8_t cloak_result[4];
-		uint8_t foreground_raw[4];
 		bool cloak_clamped;
 		int cache_record;
 
@@ -5360,17 +5326,12 @@ finalize_action(struct yt_session *session, float amount,
 		    YT_ACTION_CLOAK_DISPLAY_SCALE_ADDRESS)));
 		qb_str_single(number, sizeof(number), display);
 		snprintf(row, sizeof(row), "Cloak at%s%%", number);
-		yt_route_process_raw_single(&session->route_process,
-		    YT_FOREGROUND_ADDRESS, foreground_raw);
-		yt_route_process_set_raw_single(&session->route_process,
-		    YT_ACTION_FOREGROUND_SAVE_ADDRESS, foreground_raw);
+		saved_foreground = session_foreground(session);
 		session_set_foreground(session, 7.0f);
 		if (!session_031f(session, (const uint8_t *)row, strlen(row),
 		    "action-finalizer cloak row", error))
 			return false;
-		yt_route_process_raw_single(&session->route_process,
-		    YT_ACTION_FOREGROUND_SAVE_ADDRESS, foreground_raw);
-		session_set_foreground_raw(session, foreground_raw);
+		session_set_foreground(session, saved_foreground);
 		if (session->player.cloak == 0.0f) {
 			if (!session_attention(session,
 			    " WARNING! CLOAK EXPIRED!",
@@ -14841,11 +14802,8 @@ plasma_player_save_foreground(void *context, float *saved_foreground)
 {
 	struct yt_session *session = context;
 
-	yt_route_process_copy_raw_single(&session->route_process,
-	    YT_FOREGROUND_ADDRESS, YT_PLASMA_PLAYER_SAVED_FOREGROUND_ADDRESS);
 	if (saved_foreground != NULL)
-		*saved_foreground = yt_route_process_single(&session->route_process,
-		    YT_PLASMA_PLAYER_SAVED_FOREGROUND_ADDRESS);
+		*saved_foreground = session_foreground(session);
 }
 
 static void
@@ -14875,13 +14833,7 @@ plasma_player_sound(void *context, float selector, struct yt_error *error)
 static void
 plasma_player_restore_foreground(void *context, float saved_foreground)
 {
-	struct yt_session *session = context;
-	uint8_t raw[4];
-
-	(void)saved_foreground;
-	yt_route_process_raw_single(&session->route_process,
-	    YT_PLASMA_PLAYER_SAVED_FOREGROUND_ADDRESS, raw);
-	session_set_foreground_raw(session, raw);
+	session_set_foreground(context, saved_foreground);
 }
 
 static bool
