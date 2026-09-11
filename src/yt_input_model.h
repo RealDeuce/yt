@@ -227,11 +227,6 @@ enum yt_ab36_terminal_kind {
 	YT_AB36_TERMINAL_SESSION_LIMIT,
 };
 
-enum yt_command_notice_kind {
-	YT_COMMAND_NOTICE_SAVE,
-	YT_COMMAND_NOTICE_REPEAT,
-};
-
 typedef bool (*yt_ab36_terminal_notice_fn)(void *context,
     const uint8_t *notice, size_t length);
 typedef bool (*yt_ab36_terminal_close_fn)(void *context);
@@ -564,8 +559,6 @@ bool yt_input_a8d2_internal_fatal_run(
 	const struct yt_brun_internal_fatal_ops *ops, void *context,
 	struct yt_brun_internal_fatal_state *state);
 void yt_input_numeric_response(char *text);
-bool yt_input_command_notice_wait(enum yt_command_notice_kind kind,
-    uint16_t *address, uint8_t duration_raw[4]);
 bool yt_timed_wait_begin(struct yt_timed_wait_state *state, float duration,
     float initial_timer);
 enum yt_timed_wait_reason yt_timed_wait_timer(

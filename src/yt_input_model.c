@@ -1644,28 +1644,6 @@ yt_input_numeric_response(char *text)
 		text[0] = '\0';
 }
 
-bool
-yt_input_command_notice_wait(enum yt_command_notice_kind kind,
-    uint16_t *address, uint8_t duration_raw[4])
-{
-	static const uint8_t one[4] = {0x00U, 0x00U, 0x00U, 0x81U};
-
-	if (address == NULL || duration_raw == NULL)
-		return false;
-	switch (kind) {
-	case YT_COMMAND_NOTICE_SAVE:
-		*address = 0x51BCU;
-		break;
-	case YT_COMMAND_NOTICE_REPEAT:
-		*address = 0x51CCU;
-		break;
-	default:
-		return false;
-	}
-	memcpy(duration_raw, one, sizeof(one));
-	return true;
-}
-
 static float
 wait_single(float value)
 {

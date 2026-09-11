@@ -146,31 +146,16 @@
 #define YT_SOUND_TOGGLE_SELECTOR_ADDRESS 0x5B32U
 #define YT_COMPUTER_ACTIVATION_SELECTOR_ADDRESS 0x50D2U
 #define YT_FATAL_SOUND_SELECTOR_ADDRESS 0x4CE2U
-#define YT_FATAL_WAIT_ADDRESS 0x4CE6U
 #define YT_PLASMA_PLAYER_SAVED_FOREGROUND_ADDRESS 0x5D9EU
 #define YT_PLASMA_PLAYER_SOUND_SELECTOR_ADDRESS 0x5DA2U
-#define YT_ANSI_OPENING_WAIT_ADDRESS 0x539EU
-#define YT_REGISTRATION_EVALUATION_WAIT_ADDRESS 0x530EU
-#define YT_REGISTRATION_REGISTERED_WAIT_ADDRESS 0x5312U
-#define YT_RETURNING_REBUILD_WAIT_ADDRESS 0x534EU
-#define YT_RADIO_PRIVATE_WAIT_ADDRESS 0x53DEU
 #define YT_RETURNING_OLD_DAY_ADDRESS 0x5316U
 #define YT_RETURNING_KILLER_ADDRESS 0x531EU
 #define YT_RETURNING_TURNS_ADDRESS 0x5322U
-#define YT_LOCKOUT_WAIT_ADDRESS 0x5B9EU
-#define YT_NORMAL_EXIT_REMINDER_WAIT_ADDRESS 0x4CAAU
 #define YT_RETURNING_SCAN_BOUND_ADDRESS 0x4CCEU
 #define YT_VACANCY_SCAN_BOUND_ADDRESS 0x4CD6U
-#define YT_POST_LOGIN_PRESS_WAIT_ADDRESS 0x64C4U
 #define YT_POST_LOGIN_RADIO_MODE_ADDRESS 0x64C8U
 #define YT_POST_LOGIN_SCANNER_MODE_ADDRESS 0x64CCU
-#define YT_XANNOR_RETALIATION_WAIT_ADDRESS 0x5B8AU
 #define YT_COUNTERLAUNCH_COUNT_ADDRESS 0x5BC6U
-#define YT_COUNTERLAUNCH_WAIT_ADDRESS 0x5BDAU
-#define YT_XANNOR_VICTORY_WAIT_ADDRESS 0x5CAEU
-#define YT_PLASMA_OPENING_FIRST_WAIT_ADDRESS 0x5D02U
-#define YT_PLASMA_OPENING_SECOND_WAIT_ADDRESS 0x5D0EU
-#define YT_PLASMA_ROUTE_WAIT_ADDRESS 0x5D3EU
 #define YT_SPY_DESTINATION_SCRATCH_ADDRESS 0x5FE4U
 #define YT_SPY_FOUND_SCRATCH_ADDRESS 0x5FE8U
 #define YT_SPY_DEAD_COUNTER_SCRATCH_ADDRESS 0x6018U
@@ -804,8 +789,7 @@ session_radio_body_key(struct yt_session *session)
 }
 
 static bool
-session_timed_wait_at(struct yt_session *session, double seconds,
-    uint16_t address)
+session_timed_wait(struct yt_session *session, double seconds)
 {
 	struct yt_input_value selected = {{0, 0}, 0, 0, false};
 	uint64_t deadline_milliseconds;
@@ -828,19 +812,10 @@ session_timed_wait_at(struct yt_session *session, double seconds,
 	    + current_milliseconds + duration_milliseconds;
 	if (deadline_milliseconds > (uint64_t)UINT32_MAX * 1000U + 999U)
 		return false;
-	if (address != 0U)
-		session_set_process_single(session, address,
-		    (float)((double)deadline_milliseconds / 1000.0));
 	return yt_input_wait_legacy_until(&session->input, session_mode(session),
 	    YT_INPUT_PHASE_WAIT,
 	    (uint32_t)(deadline_milliseconds / 1000U),
 	    (uint16_t)(deadline_milliseconds % 1000U), &selected, &timed_out);
-}
-
-static bool
-session_timed_wait(struct yt_session *session, double seconds)
-{
-	return session_timed_wait_at(session, seconds, 0U);
 }
 
 static bool
@@ -858,14 +833,13 @@ session_wait(struct yt_session *session, double seconds,
 }
 
 static bool
-session_wait_raw_at(struct yt_session *session, const uint8_t raw[4],
-    uint16_t address, const char *operation, struct yt_error *error)
+session_wait_raw(struct yt_session *session, const uint8_t raw[4],
+    const char *operation, struct yt_error *error)
 {
 	float duration;
 
-	yt_route_process_set_raw_single(&session->route_process, address, raw);
-	duration = yt_route_process_single(&session->route_process, address);
-	if (session_timed_wait_at(session, (double)duration, address))
+	duration = qb_mbf32_decode(raw);
+	if (session_timed_wait(session, (double)duration))
 		return true;
 	if (error != NULL) {
 		error->status = YT_IO_ERROR;
@@ -879,11 +853,8 @@ static bool
 session_returning_rebuild_wait(struct yt_session *session,
     struct yt_error *error)
 {
-	static const uint8_t duration_five[4] = {0x00, 0x00, 0x20, 0x83};
-
-	return session_wait_raw_at(session, duration_five,
-	    YT_RETURNING_REBUILD_WAIT_ADDRESS,
-	    "returning-player rebuild wait", error);
+	return session_wait(session, 5.0, "returning-player rebuild wait",
+	    error);
 }
 
 static bool
@@ -1668,21 +1639,12 @@ clear_queue(struct yt_session *session)
 }
 
 static bool
-session_command_notice(struct yt_session *session, const char *text,
-    bool bold, enum yt_command_notice_kind kind)
+session_command_notice(struct yt_session *session, const char *text)
 {
-	uint8_t duration_raw[4];
-	uint16_t duration_address;
-
-	if (bold)
-		yt_present_set_bold(&session->presentation, 1.0f);
 	if (!session_0317(session, (const uint8_t *)text, strlen(text),
 	    "command notice", NULL))
 		return false;
-	return yt_input_command_notice_wait(kind, &duration_address,
-	    duration_raw)
-	    && session_wait_raw_at(session, duration_raw, duration_address,
-	    "command notice wait", NULL);
+	return session_wait(session, 1.0, "command notice wait", NULL);
 }
 
 static void
@@ -1728,8 +1690,7 @@ expand_repeat(struct yt_session *session, char *text, size_t size)
 		return true;
 	if (result.bold_committed)
 		yt_present_set_bold(&session->presentation, 1.0f);
-	return session_command_notice(session, session->output_source, false,
-	    YT_COMMAND_NOTICE_REPEAT);
+	return session_command_notice(session, session->output_source);
 }
 
 static bool
@@ -1746,8 +1707,7 @@ session_line(struct yt_session *session, char *text, size_t size)
 	    sizeof(session->output_source), YT_BASIC_FAULT_SITE_COUNT, &save))
 		return false;
 	if (save.notice_ready) {
-		if (!session_command_notice(session, session->output_source, false,
-		    YT_COMMAND_NOTICE_SAVE))
+		if (!session_command_notice(session, session->output_source))
 			return false;
 	}
 	if (!expand_repeat(session, text, size))
@@ -3412,24 +3372,11 @@ registration(struct yt_session *session, struct yt_error *error)
 		}
 	}
 	free(storage);
-	if (state.outcome == YT_REGISTRATION_REGISTERED) {
-		static const uint8_t duration_two[4] = {
-			0x00U, 0x00U, 0x00U, 0x82U,
-		};
-
-		return session_wait_raw_at(session, duration_two,
-		    YT_REGISTRATION_REGISTERED_WAIT_ADDRESS,
+	if (state.outcome == YT_REGISTRATION_REGISTERED)
+		return session_wait(session, 2.0,
 		    "registration registered wait", error);
-	}
-	else {
-		static const uint8_t duration_ten[4] = {
-			0x00U, 0x00U, 0x20U, 0x84U,
-		};
-
-		return session_wait_raw_at(session, duration_ten,
-		    YT_REGISTRATION_EVALUATION_WAIT_ADDRESS,
-		    "registration evaluation wait", error);
-	}
+	return session_wait(session, 10.0, "registration evaluation wait",
+	    error);
 }
 
 static bool
@@ -3464,13 +3411,8 @@ opening_poll_remote(void *context, bool *ready, struct yt_error *error)
 static bool
 opening_wait(void *context, float seconds, struct yt_error *error)
 {
-	static const uint8_t duration_three[4] = {
-		0x00U, 0x00U, 0x40U, 0x82U,
-	};
-
-	(void)seconds;
-	return session_wait_raw_at(context, duration_three,
-	    YT_ANSI_OPENING_WAIT_ADDRESS, "ANSI opening EOF wait", error);
+	return seconds == 3.0f
+	    && session_wait(context, 3.0, "ANSI opening EOF wait", error);
 }
 
 static bool
@@ -3606,14 +3548,11 @@ lockout_present(void *context, enum yt_startup_lockout_row row,
 static bool
 lockout_wait(void *context, float seconds, struct yt_error *error)
 {
-	static const uint8_t duration_ten[4] = {
-		0x00U, 0x00U, 0x20U, 0x84U,
-	};
 	struct lockout_context *lockout = context;
 
-	(void)seconds;
-	return session_wait_raw_at(lockout->session, duration_ten,
-	    YT_LOCKOUT_WAIT_ADDRESS, "lockout denial wait", error);
+	return seconds == 10.0f
+	    && session_wait(lockout->session, 10.0, "lockout denial wait",
+	    error);
 }
 
 static bool
@@ -4539,12 +4478,9 @@ radio_read_present(void *context, const uint8_t *text, size_t length,
 static bool
 radio_read_wait(void *context, double seconds, struct yt_error *error)
 {
-	static const uint8_t duration_ninety_nine[4] =
-	    {0x00, 0x00, 0x46, 0x87};
 	struct radio_read_context *reader = context;
 
-	if (seconds == 99.0 && session_wait_raw_at(reader->session,
-	    duration_ninety_nine, YT_RADIO_PRIVATE_WAIT_ADDRESS,
+	if (seconds == 99.0 && session_wait(reader->session, 99.0,
 	    "radio private-pager wait", error))
 		return true;
 	radio_read_attach_fault(error, YT_BASIC_FAULT_RADIO_PRIVATE_WAIT, 0U);
@@ -4623,9 +4559,6 @@ static bool
 post_login(struct yt_session *session, struct yt_error *error)
 {
 	static const uint8_t prompt[] = "[ Press any Key ]";
-	static const uint8_t duration_ninety_nine[4] = {
-		0x00, 0x00, 0x46, 0x87,
-	};
 	static const uint8_t radio_mode_zero[4] = {0x1f, 0x4e, 0x46, 0x00};
 
 	{
@@ -4686,8 +4619,7 @@ post_login(struct yt_session *session, struct yt_error *error)
 		}
 		return false;
 	}
-	if (!session_wait_raw_at(session, duration_ninety_nine,
-	    YT_POST_LOGIN_PRESS_WAIT_ADDRESS, "post-login press wait", error))
+	if (!session_wait(session, 99.0, "post-login press wait", error))
 		return false;
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "post-login press trailing blank", error))
@@ -6809,7 +6741,7 @@ common_fatal_wait(void *context, const uint8_t duration_raw[4],
 {
 	struct yt_session *session = context;
 
-	if (!session_wait_raw_at(session, duration_raw, YT_FATAL_WAIT_ADDRESS,
+	if (!session_wait_raw(session, duration_raw,
 	    "common fatal wait", error))
 		return false;
 	session->fatal_wait_complete = true;
@@ -7094,12 +7026,8 @@ static bool
 xannor_victory_wait(void *context, double seconds, const char *operation,
     struct yt_error *error)
 {
-	static const uint8_t duration_ninety_nine[4] =
-	    {0x00, 0x00, 0x46, 0x87};
-
-	return seconds == 99.0 && session_wait_raw_at(context,
-	    duration_ninety_nine, YT_XANNOR_VICTORY_WAIT_ADDRESS, operation,
-	    error);
+	return seconds == 99.0
+	    && session_wait(context, 99.0, operation, error);
 }
 
 static void
@@ -16479,18 +16407,14 @@ plasma_opening_present(void *context, const uint8_t *text, size_t length,
 static bool
 plasma_opening_wait(void *context, float duration, struct yt_error *error)
 {
-	static const uint8_t duration_one[4] = {0x00, 0x00, 0x00, 0x81};
 	struct plasma_opening_context *opening = context;
-	uint16_t address;
+	const char *operation;
 
 	if (duration != 1.0f || opening->wait_count >= 2U)
 		return false;
-	address = opening->wait_count++ == 0U
-	    ? YT_PLASMA_OPENING_FIRST_WAIT_ADDRESS
-	    : YT_PLASMA_OPENING_SECOND_WAIT_ADDRESS;
-	return session_wait_raw_at(opening->session, duration_one, address,
-	    address == YT_PLASMA_OPENING_FIRST_WAIT_ADDRESS
-	    ? "plasma launch wait" : "plasma opening wait", error);
+	operation = opening->wait_count++ == 0U
+	    ? "plasma launch wait" : "plasma opening wait";
+	return session_wait(opening->session, 1.0, operation, error);
 }
 
 static bool
@@ -16749,11 +16673,10 @@ plasma_route_attention(void *context, const uint8_t *text, size_t length,
 static bool
 plasma_route_wait(void *context, float duration, struct yt_error *error)
 {
-	static const uint8_t duration_half[4] = {0x00, 0x00, 0x00, 0x80};
 	struct plasma_route_context *route_context = context;
 
-	return duration == 0.5f && session_wait_raw_at(route_context->session,
-	    duration_half, YT_PLASMA_ROUTE_WAIT_ADDRESS, "plasma hop wait",
+	return duration == 0.5f
+	    && session_wait(route_context->session, 0.5, "plasma hop wait",
 	    error);
 }
 
@@ -17126,9 +17049,8 @@ static bool
 session_xannor_wait(void *context, const uint8_t duration_raw[4],
     struct yt_error *error)
 {
-	return session_wait_raw_at(context, duration_raw,
-	    YT_XANNOR_RETALIATION_WAIT_ADDRESS, "Xannor retaliation wait",
-	    error);
+	return session_wait_raw(context, duration_raw,
+	    "Xannor retaliation wait", error);
 }
 
 static bool
@@ -17229,8 +17151,8 @@ static bool
 session_counterlaunch_wait(void *context, const uint8_t duration_raw[4],
     struct yt_error *error)
 {
-	return session_wait_raw_at(context, duration_raw,
-	    YT_COUNTERLAUNCH_WAIT_ADDRESS, "player counterattack wait", error);
+	return session_wait_raw(context, duration_raw,
+	    "player counterattack wait", error);
 }
 
 static void
@@ -20231,14 +20153,9 @@ quit_session(struct yt_session *session, struct yt_error *error)
 	    session->presentation.sound.conversion_mode, &registration, error))
 		return false;
 	if (registration.route == YT_NORMAL_EXIT_REGISTRATION_REMINDER) {
-		static const uint8_t duration_ten[4] = {
-			0x00U, 0x00U, 0x20U, 0x84U,
-		};
-
 		if (!session_attention(session, reminder,
 		    "normal-exit registration reminder", error)
-		    || !session_wait_raw_at(session, duration_ten,
-		    YT_NORMAL_EXIT_REMINDER_WAIT_ADDRESS,
+		    || !session_wait(session, 10.0,
 		    "normal-exit registration wait", error)
 		    || !session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "normal-exit reminder blank", error))
