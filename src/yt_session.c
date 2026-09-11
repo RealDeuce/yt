@@ -83,7 +83,6 @@
 #define YT_TEAM_AUDIT_LOOP_ADDRESS 0x5F94U
 #define YT_TEAM_AUDIT_SENDER_ADDRESS 0x5F98U
 #define YT_SHARED_TARGET_RECORD_ADDRESS 0x1A40U
-#define YT_SCOREBOARD_TEAM_SCRATCH_ADDRESS 0x4B8CU
 #define YT_COUNTERATTACK_PLAYER_ADDRESS 0x1C10U
 #define YT_XANNOR_PROVOKER_ADDRESS 0x4BDCU
 
@@ -18728,25 +18727,6 @@ computer_scoreboard_reset_pager(void *context, const uint8_t raw[4])
 	session_set_pager_line_count_raw(session, raw);
 }
 
-static void
-computer_scoreboard_store_defense_owner(void *context,
-    const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_SHARED_TARGET_RECORD_ADDRESS, raw);
-}
-
-static void
-computer_scoreboard_store_team_id(void *context, const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_SCOREBOARD_TEAM_SCRATCH_ADDRESS, raw);
-}
-
 static bool
 computer_scoreboard_generate(void *context, struct yt_error *error)
 {
@@ -18754,11 +18734,10 @@ computer_scoreboard_generate(void *context, struct yt_error *error)
 	struct yt_score_field_observation field;
 	bool generated;
 
-	generated = yt_score_generate_progress_process_observed(
+	generated = yt_score_generate_progress_with_layout(
 	    &session->door->game, session_sector_offset(session),
 	    session_port_offset(session), computer_scoreboard_progress, session,
-	    &field, computer_scoreboard_store_defense_owner, session,
-	    computer_scoreboard_store_team_id, session, error);
+	    &field, error);
 	if (field.valid) {
 		session->navigation_field_active = true;
 		session->navigation_field_record = (int)field.physical_record;
@@ -19226,10 +19205,10 @@ quit_session(struct yt_session *session, struct yt_error *error)
 	    "normal-exit post-Info blank", error)
 	    || !session_031f(session, generating, sizeof(generating) - 1U,
 	    "normal-exit generating row", error)
-	    || !yt_score_generate_progress_process_observed(
+	    || !yt_score_generate_progress_with_layout(
 	    &session->door->game, session_sector_offset(session),
 	    session_port_offset(session), computer_scoreboard_progress, session,
-	    NULL, NULL, NULL, NULL, NULL, error)
+	    NULL, error)
 	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "normal-exit post-generator blank", error))
 		return false;
