@@ -112,7 +112,6 @@
 #define YT_ACTION_TURN_DIVISOR_ADDRESS 0x9E68U
 #define YT_ACTION_XANNOR_THRESHOLD_ADDRESS 0x9EBCU
 #define YT_TIME_REMAINING_MINUTES_ADDRESS 0x537AU
-#define YT_STARTUP_INITIAL_FIVE_ADDRESS 0x4BFAU
 #define YT_TEAM_AUDIT_LOOP_ADDRESS 0x5F94U
 #define YT_TEAM_AUDIT_SENDER_ADDRESS 0x5F98U
 #define YT_SHARED_TARGET_RECORD_ADDRESS 0x1A40U
@@ -159,7 +158,6 @@ struct yt_session {
 	uint8_t cached_player_name[YT_TEXT_FIELD_SIZE];
 	size_t cached_player_name_length;
 	struct yt_player_cache player_cache;
-	struct yt_startup_main_prefix startup_prefix;
 	char queue[YT_COMMAND_SIZE];
 	size_t queue_length;
 	size_t queue_position;
@@ -19709,7 +19707,6 @@ command_shell(struct yt_session *session, struct yt_error *error)
 
 bool
 yt_session_run(struct yt_door *door, const char *executable_path,
-    const struct yt_startup_main_prefix *startup_prefix,
     struct yt_error *error)
 {
 	struct yt_session session;
@@ -19731,9 +19728,7 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	char first[128];
 	char last[128];
 
-	if (door == NULL || startup_prefix == NULL
-	    || !startup_prefix->serial_setup_entered
-	    || startup_prefix->continuation != 0x0409U) {
+	if (door == NULL) {
 		if (error != NULL) {
 			error->status = YT_INVALID;
 			snprintf(error->operation, sizeof(error->operation),
@@ -19774,11 +19769,7 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	    &session.route_process.bytes[YT_TIME_REMAINING_MINUTES_ADDRESS]);
 	session.door = door;
 	session.executable_path = executable_path;
-	session.startup_prefix = *startup_prefix;
 	session.running = true;
-	yt_route_process_set_raw_single(&session.route_process,
-	    YT_STARTUP_INITIAL_FIVE_ADDRESS,
-	    session.startup_prefix.initial_five);
 	yt_route_process_set_raw_single(&session.route_process,
 	    YT_STATIC_SINGLE_ONE_ADDRESS, static_one);
 	yt_route_process_set_raw_single(&session.route_process,

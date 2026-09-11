@@ -2479,74 +2479,6 @@ test_sysop_chat_process_cells(void)
 }
 
 static void
-test_main_startup_prefix(void)
-{
-	static const uint16_t keys[] = {4U, 5U, 8U, 9U, 10U};
-	static const uint16_t handlers[] =
-	    {0xA9E1U, 0xBA00U, 0xB6D7U, 0xB66AU, 0xB3FBU};
-	static const char *const labels[] = {
-		"Ore..........", "Organics.....", "Equipment....",
-		"Fighters.....", "Missiles.....", "Mines........",
-		"Credits......", "Forces.......", "Plasma bolts.", "YT.REG",
-	};
-	static const uint8_t signature[] =
-	    {0x00, 0x00, 0xa8, 0x43, 0x3b, 0x6a, 0x4f, 0xa5};
-	static const uint8_t initial_five[] =
-	    {0x00, 0x00, 0x20, 0x83};
-	uint8_t first[] = "  aDA   loVELACE ";
-	uint8_t last[] = " o'NEIL-jR ";
-	struct yt_startup_main_prefix prefix;
-	size_t first_length = sizeof(first) - 1U;
-	size_t last_length = sizeof(last) - 1U;
-	size_t index;
-
-	CHECK(yt_startup_main_prefix_begin(&prefix));
-	CHECK(prefix.key_count == YT_ARRAY_LEN(keys)
-	    && prefix.main_error_handler_installed
-	    && prefix.main_error_handler == 0xB2DAU
-	    && !prefix.serial_setup_entered && prefix.continuation == 0U);
-	for (index = 0U; index < YT_ARRAY_LEN(keys); ++index)
-		CHECK(prefix.key[index].key == keys[index]
-		    && prefix.key[index].handler == handlers[index]
-		    && prefix.key[index].enabled);
-	CHECK(yt_startup_main_prefix_finish(first, &first_length, last,
-	    &last_length, &prefix));
-	CHECK(first_length == 12U && memcmp(first, "Ada Lovelace", 12U) == 0);
-	CHECK(last_length == 9U && memcmp(last, "O'neil-Jr", 9U) == 0);
-	CHECK(prefix.key_count == YT_ARRAY_LEN(keys)
-	    && prefix.main_error_handler_installed
-	    && prefix.main_error_handler == 0xB2DAU
-	    && prefix.serial_setup_entered && prefix.continuation == 0x0409U);
-	CHECK(prefix.carriage_return == '\r' && prefix.line_feed == '\n'
-	    && memcmp(prefix.local_erase, "\x1d \x1d", 3U) == 0
-	    && memcmp(prefix.remote_erase, "\x08 \x08", 3U) == 0
-	    && memcmp(prefix.registration_signature, signature,
-	    sizeof(signature)) == 0
-	    && memcmp(prefix.initial_five, initial_five,
-	    sizeof(initial_five)) == 0);
-	for (index = 0U; index < YT_ARRAY_LEN(labels); ++index)
-		CHECK(prefix.display_label_length[index] == strlen(labels[index])
-		    && memcmp(prefix.display_label[index], labels[index],
-		    strlen(labels[index])) == 0);
-	first_length = 0U;
-	last_length = 0U;
-	CHECK(yt_startup_main_prefix_compose(NULL, &first_length, NULL,
-	    &last_length, &prefix));
-	memset(&prefix, 0, sizeof(prefix));
-	CHECK(!yt_startup_main_prefix_finish(NULL, &first_length, NULL,
-	    &last_length, &prefix));
-	CHECK(!yt_startup_main_prefix_begin(NULL));
-	CHECK(!yt_startup_main_prefix_compose(NULL, NULL, NULL,
-	    &last_length, &prefix));
-	first_length = 1U;
-	CHECK(!yt_startup_main_prefix_compose(NULL, &first_length, NULL,
-	    &last_length, &prefix));
-	first_length = 0U;
-	CHECK(!yt_startup_main_prefix_compose(NULL, &first_length, NULL,
-	    &last_length, NULL));
-}
-
-static void
 test_startup_opening_frame(void)
 {
 	static uint8_t process[YT_STARTUP_RAW_ADDRESS_SPACE];
@@ -4423,7 +4355,6 @@ main(void)
 	test_numeric_response();
 	test_sysop_chat();
 	test_sysop_chat_process_cells();
-	test_main_startup_prefix();
 	test_startup_opening_frame();
 	test_serial_startup_model();
 	test_platform_rmt_serial();

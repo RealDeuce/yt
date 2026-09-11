@@ -9,34 +9,6 @@
 #define YT_REGISTRATION_LINES 3U
 #define YT_REGISTRATION_DISPLAY_ROWS 2U
 #define YT_REGISTRATION_STRING_MAX 32767U
-#define YT_STARTUP_SYSOP_BINDINGS 5U
-#define YT_STARTUP_DISPLAY_LABELS 10U
-#define YT_STARTUP_DISPLAY_LABEL_SIZE 13U
-
-struct yt_startup_key_binding {
-	uint16_t key;
-	uint16_t handler;
-	bool enabled;
-};
-
-struct yt_startup_main_prefix {
-	struct yt_startup_key_binding key[YT_STARTUP_SYSOP_BINDINGS];
-	size_t key_count;
-	uint16_t main_error_handler;
-	bool main_error_handler_installed;
-	bool serial_setup_entered;
-	uint8_t carriage_return;
-	uint8_t line_feed;
-	uint8_t local_erase[3];
-	uint8_t remote_erase[3];
-	uint8_t display_label[YT_STARTUP_DISPLAY_LABELS]
-	    [YT_STARTUP_DISPLAY_LABEL_SIZE];
-	size_t display_label_length[YT_STARTUP_DISPLAY_LABELS];
-	uint8_t registration_signature[8];
-	uint8_t initial_five[4];
-	uint16_t continuation;
-};
-
 struct yt_startup_command_split {
 	uint8_t path[YT_STARTUP_COMMAND_SIZE];
 	size_t path_length;
@@ -285,13 +257,6 @@ struct yt_registration_ops {
 
 bool yt_startup_split_command(const uint8_t *command, size_t length,
     struct yt_startup_command_split *result);
-bool yt_startup_main_prefix_begin(struct yt_startup_main_prefix *result);
-bool yt_startup_main_prefix_finish(uint8_t *user_first,
-    size_t *user_first_length, uint8_t *user_last,
-    size_t *user_last_length, struct yt_startup_main_prefix *result);
-bool yt_startup_main_prefix_compose(uint8_t *user_first,
-    size_t *user_first_length, uint8_t *user_last,
-    size_t *user_last_length, struct yt_startup_main_prefix *result);
 bool yt_startup_opening_frame_enter(
 	struct yt_startup_opening_frame *frame,
 	struct yt_startup_opening_frame_result *result);
