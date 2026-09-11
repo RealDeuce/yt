@@ -6904,9 +6904,6 @@ struct projectile_defense_combat_tape {
 	float sector_at_write;
 	int *provoker;
 	int provoker_at_write;
-	uint8_t provoker_raw[4];
-	size_t provoker_store_count;
-	size_t provoker_store_position;
 };
 
 static bool
@@ -7000,17 +6997,6 @@ projectile_defense_combat_victory(void *context, struct yt_error *error)
 }
 
 static void
-projectile_defense_combat_store_provoker(void *context,
-    const uint8_t raw[4])
-{
-	struct projectile_defense_combat_tape *tape = context;
-
-	memcpy(tape->provoker_raw, raw, sizeof(tape->provoker_raw));
-	tape->provoker_store_position = tape->event_count;
-	++tape->provoker_store_count;
-}
-
-static void
 projectile_defense_combat_fixture(
     struct projectile_defense_combat_tape *tape,
     struct yt_projectile_defense_combat_state *state, float *missiles,
@@ -7056,7 +7042,6 @@ check_projectile_defense_combat_transaction(void)
 		projectile_defense_combat_read,
 		projectile_defense_combat_write,
 		projectile_defense_combat_victory,
-		projectile_defense_combat_store_provoker,
 	};
 	static const int ordinary_events[] = {
 		PROJECTILE_DEFENSE_RANDOM,
@@ -7097,10 +7082,6 @@ check_projectile_defense_combat_transaction(void)
 	    || state.counter != 3.0f || state.remaining_fighters != 75.0
 	    || missiles != 0.5f || provoker != 2
 	    || tape.provoker_at_write != 2
-	    || tape.provoker_store_count != 1U
-	    || tape.provoker_store_position != 5U
-	    || memcmp(tape.provoker_raw,
-	    (const uint8_t[]){0x00, 0x00, 0x00, 0x82}, 4U) != 0
 	    || state.route != YT_PROJECTILE_DEFENSE_RETURN
 	    || state.victory_called || tape.sector_at_read != 7.0f
 	    || tape.sector_at_write != 7.0f
@@ -7118,10 +7099,7 @@ check_projectile_defense_combat_transaction(void)
 	tape.fail_at = YT_ARRAY_LEN(ordinary_events);
 	if (yt_projectile_defense_combat_run(&state, &ops, &tape, NULL)
 	    || tape.event_count != YT_ARRAY_LEN(ordinary_events)
-	    || provoker != 2 || tape.provoker_store_count != 1U
-	    || tape.provoker_store_position != 5U
-	    || memcmp(tape.provoker_raw,
-	    (const uint8_t[]){0x00, 0x00, 0x00, 0x82}, 4U) != 0)
+	    || provoker != 2 || tape.provoker_at_write != 2)
 		return false;
 
 	projectile_defense_combat_fixture(&tape, &state, &missiles, &provoker);
@@ -7175,9 +7153,6 @@ check_projectile_defense_combat_transaction(void)
 	tape.draws[0] = 0.0f;
 	if (!yt_projectile_defense_combat_run(&state, &ops, &tape, NULL)
 	    || provoker != -1 || tape.provoker_at_write != -1
-	    || tape.provoker_store_count != 1U
-	    || memcmp(tape.provoker_raw,
-	    (const uint8_t[]){0x00, 0x00, 0x80, 0x81}, 4U) != 0
 	    || state.route != YT_PROJECTILE_DEFENSE_RETURN)
 		return false;
 

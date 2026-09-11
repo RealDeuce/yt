@@ -285,14 +285,6 @@ session_load_counterattack_player(struct yt_session *session,
 }
 
 static void
-session_store_xannor_provoker(void *context, const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-
-	session->xannor_provoker = (int)qb_mbf32_decode(raw);
-}
-
-static void
 session_load_xannor_provoker(struct yt_session *session, int *provoker)
 {
 	if (provoker != NULL)
@@ -14828,7 +14820,6 @@ missile_sector(struct yt_session *session, int sector_number,
 		cruise_defense_read_sector,
 		cruise_defense_write_sector,
 		cruise_defense_victory,
-		session_store_xannor_provoker,
 	};
 	static const struct yt_projectile_sector_mine_ops mine_ops = {
 		cruise_mine_read_sector,

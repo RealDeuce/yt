@@ -14974,13 +14974,7 @@ yt_projectile_defense_combat_run(
 			return false;
 	}
 	else if (state->owner == -1.0f) {
-		uint8_t provoker_raw[4];
-
 		*state->xannor_provoker = state->shooter;
-		if (ops->store_xannor_provoker != NULL
-		    && qb_mbf32_encode((float)state->shooter, provoker_raw)
-		    == QB_MBF_OK)
-			ops->store_xannor_provoker(context, provoker_raw);
 	}
 	if (!ops->write_sector(context, state->sector, &state->persistence,
 	    error))

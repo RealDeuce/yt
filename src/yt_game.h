@@ -1738,7 +1738,6 @@ struct yt_projectile_defense_combat_ops {
 	yt_projectile_defense_sector_read_fn read_sector;
 	yt_projectile_defense_sector_write_fn write_sector;
 	yt_projectile_defense_victory_fn victory;
-	yt_player_record_store_fn store_xannor_provoker;
 };
 bool yt_projectile_defense_combat_run(
     struct yt_projectile_defense_combat_state *state,
