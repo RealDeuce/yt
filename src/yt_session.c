@@ -74,11 +74,6 @@
 #define YT_CURRENT_PLAYER_PORTS_ADDRESS 0x4E5EU
 #define YT_CURRENT_PLAYER_GROUND_ADDRESS 0x4E8AU
 #define YT_CURRENT_PLAYER_MINES_ADDRESS 0x4F32U
-#define YT_TEAM_AVAILABLE_ADDRESS 0x1894U
-#define YT_TEAM_ROSTER_ADDRESS 0x4B94U
-#define YT_TEAM_CAPTAIN_FLAG_ADDRESS 0x4BACU
-#define YT_TEAM_CAPTAIN_ADDRESS 0x4BB0U
-#define YT_TEAM_LOADER_COUNTER_ADDRESS 0x5B3AU
 #define YT_NUMERIC_TEMP_DOUBLE_ADDRESS 0x0016U
 #define YT_NUMERIC_TEMP_SINGLE_ADDRESS 0x001AU
 #define YT_UPPERCASE_LENGTH_ADDRESS 0x536AU
@@ -111,7 +106,6 @@
 #define YT_CLEARANCE_ANNOUNCED_ADDRESS 0x55B6U
 #define YT_CLEARANCE_VALUE_ADDRESS 0x55BEU
 #define YT_CLEARANCE_SOUND_SELECTOR_ADDRESS 0x55C6U
-#define YT_INFO_TEAM_ID_ADDRESS 0x599AU
 #define YT_HOSTILE_SURRENDER_RADIO_SELECTOR_ADDRESS 0x4D36U
 #define YT_HOSTILE_SURRENDER_XANNOR_SELECTOR_ADDRESS 0x4D3EU
 #define YT_HOSTILE_SURRENDER_MERCENARY_SELECTOR_ADDRESS 0x4D42U
@@ -284,91 +278,12 @@ session_set_player_cache_raw(struct yt_session *session, int player_record,
 	    session_player_cache_address(player_record, kind), raw);
 }
 
-static void
-session_team_cache_import(struct yt_session *session)
-{
-	struct yt_team_loader_cache *cache = &session->team_cache;
-	size_t index;
-
-	yt_route_process_raw_single(&session->route_process,
-	    YT_TEAM_AVAILABLE_ADDRESS, cache->available_raw);
-	cache->available = qb_mbf32_decode(cache->available_raw);
-	for (index = 0U; index < YT_ARRAY_LEN(cache->roster); ++index) {
-		yt_route_process_raw_single(&session->route_process,
-		    (uint16_t)(YT_TEAM_ROSTER_ADDRESS + 4U * index),
-		    cache->roster_raw[index]);
-		cache->roster[index] = qb_mbf32_decode(cache->roster_raw[index]);
-	}
-	yt_route_process_raw_single(&session->route_process,
-	    YT_TEAM_CAPTAIN_FLAG_ADDRESS, cache->captain_flag_raw);
-	cache->captain_flag = qb_mbf32_decode(cache->captain_flag_raw);
-	yt_route_process_raw_single(&session->route_process,
-	    YT_TEAM_CAPTAIN_ADDRESS, cache->captain_raw);
-	cache->captain = qb_mbf32_decode(cache->captain_raw);
-	yt_route_process_raw_single(&session->route_process,
-	    YT_TEAM_LOADER_COUNTER_ADDRESS, cache->counter_raw);
-	cache->counter = qb_mbf32_decode(cache->counter_raw);
-	cache->raw_valid = true;
-}
-
-static void
-session_team_cache_export(struct yt_session *session)
-{
-	struct yt_team_loader_cache *cache = &session->team_cache;
-	size_t index;
-
-	yt_team_loader_cache_sync_raw(cache);
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_TEAM_AVAILABLE_ADDRESS, cache->available_raw);
-	for (index = 0U; index < YT_ARRAY_LEN(cache->roster); ++index)
-		yt_route_process_set_raw_single(&session->route_process,
-		    (uint16_t)(YT_TEAM_ROSTER_ADDRESS + 4U * index),
-		    cache->roster_raw[index]);
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_TEAM_CAPTAIN_FLAG_ADDRESS, cache->captain_flag_raw);
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_TEAM_CAPTAIN_ADDRESS, cache->captain_raw);
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_TEAM_LOADER_COUNTER_ADDRESS, cache->counter_raw);
-}
-
-static void
-session_team_loader_store(void *context,
-    enum yt_team_loader_store_kind kind, size_t index,
-    const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-	uint16_t address;
-
-	switch (kind) {
-	case YT_TEAM_LOADER_STORE_AVAILABLE:
-		address = YT_TEAM_AVAILABLE_ADDRESS;
-		break;
-	case YT_TEAM_LOADER_STORE_COUNTER:
-		address = YT_TEAM_LOADER_COUNTER_ADDRESS;
-		break;
-	case YT_TEAM_LOADER_STORE_ROSTER:
-		if (index >= YT_ARRAY_LEN(session->team_cache.roster))
-			return;
-		address = (uint16_t)(YT_TEAM_ROSTER_ADDRESS + 4U * index);
-		break;
-	case YT_TEAM_LOADER_STORE_CAPTAIN:
-		address = YT_TEAM_CAPTAIN_ADDRESS;
-		break;
-	case YT_TEAM_LOADER_STORE_CAPTAIN_FLAG:
-		address = YT_TEAM_CAPTAIN_FLAG_ADDRESS;
-		break;
-	default:
-		return;
-	}
-	yt_route_process_set_raw_single(&session->route_process, address, raw);
-}
-
 static float
 session_team_roster_value(const struct yt_session *session, size_t index)
 {
-	return yt_route_process_single(&session->route_process,
-	    (uint16_t)(YT_TEAM_ROSTER_ADDRESS + 4U * index));
+	if (index >= YT_ARRAY_LEN(session->team_cache.roster))
+		return 0.0f;
+	return session->team_cache.roster[index];
 }
 
 static bool
@@ -6341,11 +6256,10 @@ team_remove_player(struct yt_session *session, int victim,
     struct yt_error *error)
 {
 	static const struct yt_death_team_remove_ops ops = {
-		death_team_read_player,
-		death_team_write_player,
-		session_read_physical_record,
-		death_team_write_record,
-		session_team_loader_store,
+		.read_player = death_team_read_player,
+		.write_player = death_team_write_player,
+		.read_record = session_read_physical_record,
+		.write_record = death_team_write_record,
 	};
 	struct yt_death_team_remove_state state = {
 		.victim_record = victim,
@@ -6355,12 +6269,7 @@ team_remove_player(struct yt_session *session, int victim,
 		.cache = &session->team_cache,
 	};
 
-	bool result;
-
-	session_team_cache_import(session);
-	result = yt_death_team_remove_run(&state, &ops, session, error);
-	session_team_cache_export(session);
-	return result;
+	return yt_death_team_remove_run(&state, &ops, session, error);
 }
 
 static bool
@@ -12890,8 +12799,6 @@ team_load_raw(struct yt_session *session, float id, struct yt_team *team,
 		.sector_record_offset = session_sector_offset(session),
 		.conversion_mode = session->presentation.sound.conversion_mode,
 		.cache = &session->team_cache,
-		.store = session_team_loader_store,
-		.store_context = session,
 	};
 	size_t index;
 
@@ -12899,13 +12806,9 @@ team_load_raw(struct yt_session *session, float id, struct yt_team *team,
 		memset(team, 0, sizeof(*team));
 		team->id = (int)id;
 	}
-	session_team_cache_import(session);
 	if (!yt_team_loader_run(&loader, session_read_physical_record, session,
-	    error)) {
-		session_team_cache_export(session);
+	    error))
 		return false;
-	}
-	session_team_cache_export(session);
 	if (team == NULL)
 		return true;
 	if (loader.overlay_loaded)
@@ -13123,10 +13026,11 @@ info_team_store_id(void *context, const uint8_t raw[4])
 	};
 	struct yt_session *session = context;
 
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_INFO_TEAM_ID_ADDRESS, raw);
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_TEAM_CAPTAIN_FLAG_ADDRESS, captain_flag_zero);
+	(void)raw;
+	memcpy(session->team_cache.captain_flag_raw, captain_flag_zero,
+	    sizeof(session->team_cache.captain_flag_raw));
+	session->team_cache.captain_flag = 0.0f;
+	session->team_cache.raw_valid = true;
 }
 
 static void
@@ -13153,10 +13057,6 @@ info_team_promote_cache(void *context, const uint8_t current_record_raw[4])
 	    sizeof(session->team_cache.captain_flag_raw));
 	session->team_cache.captain_flag = -1.0f;
 	session->team_cache.raw_valid = true;
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_TEAM_CAPTAIN_ADDRESS, current_record_raw);
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_TEAM_CAPTAIN_FLAG_ADDRESS, captain_flag_true);
 }
 
 static bool
@@ -13170,20 +13070,14 @@ info_team_load_team(void *context, float team_id, float current_record,
 		.sector_record_offset = session_sector_offset(session),
 		.conversion_mode = session->presentation.sound.conversion_mode,
 		.cache = &session->team_cache,
-		.store = session_team_loader_store,
-		.store_context = session,
 	};
 	size_t index;
 
 	memset(team, 0, sizeof(*team));
 	team->id = (int)team_id;
-	session_team_cache_import(session);
 	if (!yt_team_loader_run(&loader, session_read_physical_record, session,
-	    error)) {
-		session_team_cache_export(session);
+	    error))
 		return false;
-	}
-	session_team_cache_export(session);
 	if (loader.overlay_loaded)
 		yt_sector_decode(&team->overlay, &loader.overlay);
 	memcpy(team->name, session->team_cache.name, sizeof(team->name));
@@ -13987,7 +13881,7 @@ team_banish(struct yt_session *session, struct yt_team *team,
 			return false;
 		team->roster[index] = 0.0f;
 		session->team_cache.roster[index] = 0.0f;
-		session_team_cache_export(session);
+		yt_team_loader_cache_sync_raw(&session->team_cache);
 		if (!session_read_sector(session, team_id,
 		    &team->overlay, error)
 		    || !team_store_roster(session, team, error))
@@ -17496,13 +17390,9 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 			    session->presentation.sound.conversion_mode,
 			.cache = &session->team_cache,
 		};
-		session_team_cache_import(session);
 		if (!yt_radio_team_target_run(&team_target,
-		    session_read_physical_record, session, error)) {
-			session_team_cache_export(session);
+		    session_read_physical_record, session, error))
 			return false;
-		}
-		session_team_cache_export(session);
 		if (team_target.teamless) {
 			return session_02db(session, teamless,
 			    sizeof(teamless) - 1U, "radio teamless row", error);

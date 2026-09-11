@@ -683,19 +683,9 @@ yt_team_loader_cache_sync_raw(struct yt_team_loader_cache *cache)
 	cache->raw_valid = true;
 }
 
-static void
-team_loader_observe(yt_team_loader_store_fn store, void *context,
-    enum yt_team_loader_store_kind kind, size_t index,
-    const uint8_t raw[4])
-{
-	if (store != NULL)
-		store(context, kind, index, raw);
-}
-
-static void
-team_loader_begin_observed(float team_id,
-    struct yt_team_loader_cache *cache, bool *needs_overlay,
-    yt_team_loader_store_fn store, void *context)
+void
+yt_team_loader_begin(float team_id, struct yt_team_loader_cache *cache,
+    bool *needs_overlay)
 {
 	static const uint8_t zero[4] = {0x00U, 0x00U, 0x00U, 0x00U};
 	static const uint8_t true_raw[4] = {0x00U, 0x00U, 0x80U, 0x81U};
@@ -706,37 +696,22 @@ team_loader_begin_observed(float team_id,
 	yt_team_loader_cache_sync_raw(cache);
 	team_loader_cache_store_raw(&cache->available, cache->available_raw,
 	    true_raw);
-	team_loader_observe(store, context, YT_TEAM_LOADER_STORE_AVAILABLE,
-	    0U, cache->available_raw);
 	for (index = 0U; index < YT_ARRAY_LEN(cache->roster); ++index) {
 		team_loader_cache_store_value(&cache->counter,
 		    cache->counter_raw, (float)(index + 1U));
-		team_loader_observe(store, context, YT_TEAM_LOADER_STORE_COUNTER,
-		    0U, cache->counter_raw);
 		team_loader_cache_store_raw(&cache->roster[index],
 		    cache->roster_raw[index], zero);
-		team_loader_observe(store, context, YT_TEAM_LOADER_STORE_ROSTER,
-		    index, cache->roster_raw[index]);
 	}
 	team_loader_cache_store_value(&cache->counter, cache->counter_raw, 5.0f);
-	team_loader_observe(store, context, YT_TEAM_LOADER_STORE_COUNTER, 0U,
-	    cache->counter_raw);
 	if (needs_overlay != NULL)
 		*needs_overlay = team_id >= 1.0f && team_id <= 50.0f;
 }
 
-void
-yt_team_loader_begin(float team_id, struct yt_team_loader_cache *cache,
-    bool *needs_overlay)
-{
-	team_loader_begin_observed(team_id, cache, needs_overlay, NULL, NULL);
-}
-
-static bool
-team_loader_finish_observed(const struct yt_record *overlay,
+bool
+yt_team_loader_finish(const struct yt_record *overlay,
     float current_player, uint8_t conversion_mode,
     struct yt_team_loader_cache *cache, enum yt_team_loader_route *route,
-    struct yt_error *error, yt_team_loader_store_fn store, void *context)
+    struct yt_error *error)
 {
 	static const size_t roster_offsets[4] = {
 		YT_F109, YT_F117, YT_F121, YT_F125
@@ -766,8 +741,6 @@ team_loader_finish_observed(const struct yt_record *overlay,
 
 	team_loader_cache_store_raw(&cache->available, cache->available_raw,
 	    live_zero);
-	team_loader_observe(store, context, YT_TEAM_LOADER_STORE_AVAILABLE,
-	    0U, cache->available_raw);
 	converted_length = qb_cint_mbf32(overlay->bytes + YT_F73,
 	    conversion_mode, &overflow);
 	if (overflow || converted_length < 0) {
@@ -789,34 +762,17 @@ team_loader_finish_observed(const struct yt_record *overlay,
 	cache->password[4] = '\0';
 	team_loader_cache_store_raw(&cache->captain, cache->captain_raw,
 	    overlay->bytes + YT_F77);
-	team_loader_observe(store, context, YT_TEAM_LOADER_STORE_CAPTAIN, 0U,
-	    cache->captain_raw);
 	if (cache->captain == current_player) {
 		team_loader_cache_store_raw(&cache->captain_flag,
 		    cache->captain_flag_raw, true_raw);
-		team_loader_observe(store, context,
-		    YT_TEAM_LOADER_STORE_CAPTAIN_FLAG, 0U,
-		    cache->captain_flag_raw);
 	}
 	for (index = 0U; index < YT_ARRAY_LEN(cache->roster); ++index) {
 		team_loader_cache_store_raw(&cache->roster[index],
 		    cache->roster_raw[index],
 		    overlay->bytes + roster_offsets[index]);
-		team_loader_observe(store, context, YT_TEAM_LOADER_STORE_ROSTER,
-		    index, cache->roster_raw[index]);
 	}
 	*route = YT_TEAM_LOADER_LIVE;
 	return true;
-}
-
-bool
-yt_team_loader_finish(const struct yt_record *overlay,
-    float current_player, uint8_t conversion_mode,
-    struct yt_team_loader_cache *cache, enum yt_team_loader_route *route,
-    struct yt_error *error)
-{
-	return team_loader_finish_observed(overlay, current_player,
-	    conversion_mode, cache, route, error, NULL, NULL);
 }
 
 bool
@@ -832,8 +788,7 @@ yt_team_loader_run(struct yt_team_loader_state *state,
 	state->route = YT_TEAM_LOADER_OUT_OF_RANGE;
 	state->overlay_loaded = false;
 	state->complete = false;
-	team_loader_begin_observed(state->team_id, state->cache,
-	    &needs_overlay, state->store, state->store_context);
+	yt_team_loader_begin(state->team_id, state->cache, &needs_overlay);
 	if (!needs_overlay) {
 		state->complete = true;
 		return true;
@@ -845,10 +800,9 @@ yt_team_loader_run(struct yt_team_loader_state *state,
 	    error))
 		return false;
 	state->overlay_loaded = true;
-	if (!team_loader_finish_observed(&state->overlay,
+	if (!yt_team_loader_finish(&state->overlay,
 	    state->current_player_record, state->conversion_mode,
-	    state->cache, &state->route, error, state->store,
-	    state->store_context))
+	    state->cache, &state->route, error))
 		return false;
 	state->complete = true;
 	return true;
@@ -1049,8 +1003,6 @@ yt_death_team_remove_run(struct yt_death_team_remove_state *state,
 		.sector_record_offset = state->sector_record_offset,
 		.conversion_mode = state->conversion_mode,
 		.cache = state->cache,
-		.store = ops->store_cache,
-		.store_context = context,
 	};
 	if (!yt_team_loader_run(&loader, ops->read_record, context, error))
 		return false;
@@ -1065,9 +1017,6 @@ yt_death_team_remove_run(struct yt_death_team_remove_state *state,
 
 			team_loader_cache_store_raw(&state->cache->roster[index],
 			    state->cache->roster_raw[index], zero);
-			team_loader_observe(ops->store_cache, context,
-			    YT_TEAM_LOADER_STORE_ROSTER, index,
-			    state->cache->roster_raw[index]);
 		}
 	}
 

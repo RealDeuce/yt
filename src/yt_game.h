@@ -434,17 +434,6 @@ struct yt_team_loader_cache {
 	bool raw_valid;
 };
 
-enum yt_team_loader_store_kind {
-	YT_TEAM_LOADER_STORE_AVAILABLE,
-	YT_TEAM_LOADER_STORE_COUNTER,
-	YT_TEAM_LOADER_STORE_ROSTER,
-	YT_TEAM_LOADER_STORE_CAPTAIN,
-	YT_TEAM_LOADER_STORE_CAPTAIN_FLAG,
-};
-typedef void (*yt_team_loader_store_fn)(void *context,
-	enum yt_team_loader_store_kind kind, size_t index,
-	const uint8_t raw[4]);
-
 struct yt_team_loader_state {
 	float team_id;
 	float current_player_record;
@@ -454,8 +443,6 @@ struct yt_team_loader_state {
 	struct yt_record overlay;
 	uint32_t physical_record;
 	enum yt_team_loader_route route;
-	yt_team_loader_store_fn store;
-	void *store_context;
 	bool overlay_loaded;
 	bool complete;
 };
@@ -538,7 +525,6 @@ struct yt_death_team_remove_ops {
 	    struct yt_record *record, struct yt_error *error);
 	bool (*write_record)(void *context, uint32_t physical_record,
 	    const struct yt_record *record, struct yt_error *error);
-	yt_team_loader_store_fn store_cache;
 };
 bool yt_death_team_remove_run(struct yt_death_team_remove_state *state,
     const struct yt_death_team_remove_ops *ops, void *context,
