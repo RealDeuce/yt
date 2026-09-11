@@ -31,8 +31,6 @@
 #define YT_CLEARANCE_FIGHTERS_ADDRESS 0x4B58U
 #define YT_CLEARANCE_GROUND_ADDRESS 0x4B5CU
 #define YT_CLEARANCE_SHIELDS_ADDRESS 0x4B60U
-#define YT_SPY_SECTORS_ADDRESS 0x4B76U
-#define YT_SPY_MARKERS_ADDRESS 0x4B7EU
 #define YT_SHARED_LOOP_SCRATCH_ADDRESS 0x4CD2U
 #define YT_FRIENDSHIP_RELATION_ADDRESS 0x4BC4U
 #define YT_COMPUTER_ROUTE_STATUS_ADDRESS 0x4CF2U
@@ -41,7 +39,6 @@
 #define YT_COMPUTER_ROUTE_DESTINATION_ADDRESS 0x4E12U
 #define YT_COMPUTER_ROUTE_START_ADDRESS 0x4E1AU
 #define YT_COMPUTER_PATH_HOPS_ADDRESS 0x4E82U
-#define YT_SPY_COUNT_ADDRESS 0x50AEU
 #define YT_CLEARANCE_ANNOUNCED_ADDRESS 0x55B6U
 #define YT_CLEARANCE_VALUE_ADDRESS 0x55BEU
 #define YT_CLEARANCE_SOUND_SELECTOR_ADDRESS 0x55C6U
@@ -95,6 +92,9 @@ struct yt_session {
 	bool earth_report_seen;
 	bool anti_cloak_enabled;
 	float low_time_remembered;
+	int spy_count;
+	int spy_sectors[3];
+	int spy_markers[3];
 	struct yt_player player;
 	float current_sector_record;
 	double combat_ship_fighters;
@@ -4969,24 +4969,14 @@ spy_sweep(struct yt_session *session, struct yt_error *error)
 		spy_pause,
 		spy_store,
 	};
-	int spy_sectors[3];
-	int spy_markers[3];
 	struct yt_spy_sweep_state state;
-	size_t index;
 	bool result;
 
-	for (index = 0U; index < YT_ARRAY_LEN(spy_sectors); ++index) {
-		spy_sectors[index] = yt_route_process_word(&session->route_process,
-		    (uint16_t)(YT_SPY_SECTORS_ADDRESS + 2U * index));
-		spy_markers[index] = yt_route_process_word(&session->route_process,
-		    (uint16_t)(YT_SPY_MARKERS_ADDRESS + 2U * index));
-	}
 	state = (struct yt_spy_sweep_state){
-		.active_spies = yt_route_process_single(&session->route_process,
-		    YT_SPY_COUNT_ADDRESS),
-		.spy_sectors = spy_sectors,
-		.last_reported_sectors = spy_markers,
-		.spy_capacity = YT_ARRAY_LEN(spy_sectors),
+		.active_spies = (float)session->spy_count,
+		.spy_sectors = session->spy_sectors,
+		.last_reported_sectors = session->spy_markers,
+		.spy_capacity = YT_ARRAY_LEN(session->spy_sectors),
 		.current_player_record = session_record(session),
 		.last_player_record = session_sector_offset(session),
 		.disruption_sectors = {
@@ -5009,14 +4999,6 @@ spy_sweep(struct yt_session *session, struct yt_error *error)
 	};
 	result = yt_spy_sweep_run(&state, &ops, session, error);
 
-	for (index = 0U; index < YT_ARRAY_LEN(spy_sectors); ++index) {
-		yt_route_process_set_word(&session->route_process,
-		    (uint16_t)(YT_SPY_SECTORS_ADDRESS + 2U * index),
-		    (int16_t)spy_sectors[index]);
-		yt_route_process_set_word(&session->route_process,
-		    (uint16_t)(YT_SPY_MARKERS_ADDRESS + 2U * index),
-		    (int16_t)spy_markers[index]);
-	}
 	spy_import_presentation(session, &state);
 	return result;
 }
@@ -8919,8 +8901,7 @@ earth_purchase_spies(struct yt_session *session,
 		float cost;
 		int quantity;
 		int spy_index;
-		int active_count = (int)yt_route_process_single(
-		    &session->route_process, YT_SPY_COUNT_ADDRESS);
+		int active_count = session->spy_count;
 		bool blank;
 
 		if (!session_present_text(session, NULL, 0,
@@ -8990,15 +8971,12 @@ earth_purchase_spies(struct yt_session *session,
 				if (overflow)
 					return port_report_failure(error,
 					    "Earth Spy sector CINT");
-				yt_route_process_set_word(&session->route_process,
-				    (uint16_t)(YT_SPY_SECTORS_ADDRESS
-				    + 2U * (size_t)(active_count + spy_index)),
-				    (int16_t)selected);
+				session->spy_sectors[active_count + spy_index] =
+				    (int)selected;
 				break;
 			}
 		}
-		session_set_process_single(session, YT_SPY_COUNT_ADDRESS,
-		    (float)(active_count + quantity));
+		session->spy_count = active_count + quantity;
 		if (!computer_spies(session, error)
 		    || !session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "spy purchase pause blank", error)
@@ -17714,8 +17692,7 @@ computer_spy_read_target(void *context, size_t index, int16_t *target,
 	(void)error;
 	if (index >= 3U)
 		return false;
-	*target = yt_route_process_word(&session->route_process,
-	    (uint16_t)(YT_SPY_SECTORS_ADDRESS + 2U * index));
+	*target = (int16_t)session->spy_sectors[index];
 	return true;
 }
 
@@ -17748,8 +17725,7 @@ computer_spies(struct yt_session *session, struct yt_error *error)
 		computer_spy_present,
 	};
 	struct yt_computer_spy_state state = {
-		.count = yt_route_process_single(&session->route_process,
-		    YT_SPY_COUNT_ADDRESS),
+		.count = (float)session->spy_count,
 	};
 
 	return yt_computer_spy_run(&state, &ops, session, error);
