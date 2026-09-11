@@ -133,7 +133,6 @@
 #define YT_ACTION_XANNOR_THRESHOLD_ADDRESS 0x9EBCU
 #define YT_TIME_REMAINING_MINUTES_ADDRESS 0x537AU
 #define YT_STARTUP_INITIAL_FIVE_ADDRESS 0x4BFAU
-#define YT_CURRENT_PLAYER_RECORD_ADDRESS 0x1C3CU
 #define YT_TEAM_AUDIT_LOOP_ADDRESS 0x5F94U
 #define YT_TEAM_AUDIT_SENDER_ADDRESS 0x5F98U
 #define YT_SHARED_TARGET_RECORD_ADDRESS 0x1A40U
@@ -373,8 +372,7 @@ session_store_current_player_record(void *context, const uint8_t raw[4])
 {
 	struct yt_session *session = context;
 
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_CURRENT_PLAYER_RECORD_ADDRESS, raw);
+	session->player_record_carrier = (int)qb_mbf32_decode(raw);
 }
 
 static void
@@ -414,8 +412,7 @@ session_current_date_serial(struct yt_session *session, int *serial,
 static int
 session_record(const struct yt_session *session)
 {
-	return (int)yt_route_process_single(&session->route_process,
-	    YT_CURRENT_PLAYER_RECORD_ADDRESS);
+	return session->player_record_carrier;
 }
 
 static void
@@ -456,12 +453,7 @@ session_load_xannor_provoker(struct yt_session *session, int *provoker)
 static void
 session_set_current_player_record(struct yt_session *session, int record)
 {
-	uint8_t raw[4];
-
-	if (qb_mbf32_encode((float)record, raw) != QB_MBF_OK)
-		return;
 	session->player_record_carrier = record;
-	session_store_current_player_record(session, raw);
 }
 
 static bool random_value(struct yt_session *session, float *value,
@@ -3561,7 +3553,6 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 {
 	char full[256];
 	struct yt_clock_value now;
-	uint8_t scan_bound_raw[4];
 	float returning_bound;
 	int basic;
 	bool returning = false;
@@ -3581,9 +3572,6 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 		    strlen(full), &matches, error))
 			return false;
 		if (matches) {
-			yt_route_process_raw_single(&session->route_process,
-			    YT_SHARED_LOOP_SCRATCH_ADDRESS, scan_bound_raw);
-			session_store_current_player_record(session, scan_bound_raw);
 			session->player_record_carrier = basic;
 			session->player = candidate;
 			if (!yt_player_stored_name(&candidate,
@@ -5448,7 +5436,6 @@ finalize_action(struct yt_session *session, float amount,
 	char row[128];
 	uint8_t turn_raw[4];
 	uint8_t anti_cloak_raw[4];
-	uint8_t player_record_raw[4];
 	bool anti_cloak_allows;
 
 	(void)amount;
@@ -5483,7 +5470,6 @@ finalize_action(struct yt_session *session, float amount,
 		uint8_t cloak_arithmetic[4];
 		uint8_t cloak_result[4];
 		uint8_t foreground_raw[4];
-		bool cache_index_overflow;
 		bool cloak_clamped;
 		int cache_record;
 
@@ -5496,23 +5482,7 @@ finalize_action(struct yt_session *session, float amount,
 		if (!yt_record_set_raw_number(&session->player.record, YT_F125,
 		    cloak_result))
 			return false;
-		yt_route_process_raw_single(&session->route_process,
-		    YT_CURRENT_PLAYER_RECORD_ADDRESS, player_record_raw);
-		cache_record = (int)qb_cint_mbf32(player_record_raw,
-		    session->presentation.sound.conversion_mode,
-		    &cache_index_overflow);
-		if (cache_index_overflow) {
-			if (error != NULL) {
-				error->status = YT_RANGE;
-				error->system_error = 0;
-				(void)snprintf(error->operation,
-				    sizeof(error->operation), "%s",
-				    "action-finalizer player-index CINT");
-			}
-			(void)yt_error_attach_basic_fault_number(error,
-			    YT_BASIC_FAULT_ACTION_FINALIZER_PLAYER_INDEX_CINT, 6U);
-			return false;
-		}
+		cache_record = session_record(session);
 		session_set_player_cache_raw(session, cache_record,
 		    YT_PLAYER_CACHE_CLOAK,
 		    session->player.record.bytes + YT_F125);
@@ -6235,9 +6205,8 @@ common_fatal_store_target(void *context, const uint8_t raw[4])
 {
 	struct yt_session *session = context;
 
-	(void)raw;
-	yt_route_process_copy_raw_single(&session->route_process,
-	    YT_CURRENT_PLAYER_RECORD_ADDRESS, YT_SHARED_TARGET_RECORD_ADDRESS);
+	yt_route_process_set_raw_single(&session->route_process,
+	    YT_SHARED_TARGET_RECORD_ADDRESS, raw);
 }
 
 static bool
@@ -6267,8 +6236,9 @@ common_fatal_self(struct yt_session *session, struct yt_error *error)
 	};
 	uint8_t current_record_raw[4];
 
-	yt_route_process_raw_single(&session->route_process,
-	    YT_CURRENT_PLAYER_RECORD_ADDRESS, current_record_raw);
+	if (qb_mbf32_encode((float)session_record(session), current_record_raw)
+	    != QB_MBF_OK)
+		return false;
 	struct yt_common_fatal_state state = {
 		.current_player_record = session_record(session),
 		.current_player_record_raw = current_record_raw,
@@ -12522,8 +12492,7 @@ team_load_raw(struct yt_session *session, float id, struct yt_team *team,
 {
 	struct yt_team_loader_state loader = {
 		.team_id = id,
-		.current_player_record = yt_route_process_single(
-		    &session->route_process, YT_CURRENT_PLAYER_RECORD_ADDRESS),
+		.current_player_record = (float)session_record(session),
 		.sector_record_offset = session_sector_offset(session),
 		.conversion_mode = session->presentation.sound.conversion_mode,
 		.cache = &session->team_cache,
@@ -12670,8 +12639,7 @@ team_audit(struct yt_session *session, float team_id, float event,
 	struct yt_team_audit_state state = {
 		.team_id = team_id,
 		.event_type = event,
-		.current_player_record = yt_route_process_single(
-		    &session->route_process, YT_CURRENT_PLAYER_RECORD_ADDRESS),
+		.current_player_record = (float)session_record(session),
 		.conversion_mode = session->presentation.sound.conversion_mode,
 		.current_player_name = (const uint8_t *)session->player.name,
 		.current_player_name_length = strlen(session->player.name),
@@ -12877,8 +12845,9 @@ info_team_lines(struct yt_session *session, struct yt_team *resolved_team,
 		.conversion_mode = session->presentation.sound.conversion_mode,
 	};
 
-	yt_route_process_raw_single(&session->route_process,
-	    YT_CURRENT_PLAYER_RECORD_ADDRESS, state.current_record_raw);
+	if (qb_mbf32_encode((float)session_record(session),
+	    state.current_record_raw) != QB_MBF_OK)
+		return false;
 
 	if (!yt_info_team_resolver_run(&state, &ops, session, error))
 		return false;
@@ -16511,8 +16480,9 @@ launch_xannor_retaliation(struct yt_session *session, int *provoking_player,
 
 	session_load_xannor_provoker(session, provoking_player);
 	session->player_record_carrier = session_record(session);
-	yt_route_process_raw_single(&session->route_process,
-	    YT_CURRENT_PLAYER_RECORD_ADDRESS, current_record_raw);
+	if (qb_mbf32_encode((float)session_record(session), current_record_raw)
+	    != QB_MBF_OK)
+		return false;
 	struct yt_xannor_retaliation_state state = {
 		&session->player,
 		&session->player_record_carrier,
@@ -16622,8 +16592,9 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 
 	session_load_counterattack_player(session, counterattacker);
 	session->player_record_carrier = session_record(session);
-	yt_route_process_raw_single(&session->route_process,
-	    YT_CURRENT_PLAYER_RECORD_ADDRESS, current_record_raw);
+	if (qb_mbf32_encode((float)session_record(session), current_record_raw)
+	    != QB_MBF_OK)
+		return false;
 	struct yt_counterlaunch_state state = {
 		&session->player,
 		&session->player_record_carrier,
@@ -18573,8 +18544,7 @@ nearest_session_body(struct yt_session *session, int selector,
 	state.direction = direction;
 	state.conversion_mode =
 	    session->presentation.sound.conversion_mode;
-	state.actor_number = yt_route_process_single(&session->route_process,
-	    YT_CURRENT_PLAYER_RECORD_ADDRESS);
+	state.actor_number = (float)session_record(session);
 	state.sector_record_offset = session_sector_offset(session);
 	state.port_record_offset = session_port_offset(session);
 	session_market_bases(session, state.base_price);
