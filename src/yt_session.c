@@ -116,10 +116,6 @@
 #define YT_COUNTERATTACK_PLAYER_ADDRESS 0x1C10U
 #define YT_XANNOR_PROVOKER_ADDRESS 0x4BDCU
 #define YT_FOREGROUND_ADDRESS 0x1934U
-#define YT_PAGER_NONSTOP_ADDRESS 0x4C9EU
-#define YT_PAGER_NEWLINE_ADDRESS 0x4CB6U
-#define YT_PAGER_LINE_COUNT_ADDRESS 0x4D7EU
-#define YT_PAGER_SAVED_FOREGROUND_ADDRESS 0x51D0U
 #define YT_FILE_VIEWER_SAVED_FOREGROUND_ADDRESS 0x51A8U
 
 enum navigation_field_kind {
@@ -276,42 +272,28 @@ session_pager_foreground(const struct yt_session *session)
 }
 
 static void
-session_bind_pager_process(struct yt_session *session)
-{
-	yt_pager_bind_process_cells(&session->pager,
-	    &session->route_process.bytes[YT_PAGER_LINE_COUNT_ADDRESS],
-	    &session->route_process.bytes[YT_PAGER_NONSTOP_ADDRESS],
-	    &session->route_process.bytes[YT_PAGER_NEWLINE_ADDRESS],
-	    &session->route_process.bytes[YT_FOREGROUND_ADDRESS],
-	    &session->route_process.bytes[YT_PAGER_SAVED_FOREGROUND_ADDRESS],
-	    &session->route_process.bytes[YT_NUMERIC_TEMP_SINGLE_ADDRESS],
-	    &session->route_process.bytes[YT_UPPERCASE_LENGTH_ADDRESS],
-	    &session->route_process.bytes[YT_UPPERCASE_INDEX_ADDRESS]);
-}
-
-static void
 session_set_pager_line_count_raw(struct yt_session *session,
     const uint8_t raw[4])
 {
-	yt_pager_set_line_count_raw(&session->pager, raw);
+	session->pager.line_count = qb_mbf32_decode(raw);
 }
 
 static void
 session_set_pager_line_count(struct yt_session *session, float value)
 {
-	yt_pager_set_line_count(&session->pager, value);
+	session->pager.line_count = value;
 }
 
 static void
 session_set_pager_nonstop(struct yt_session *session, float value)
 {
-	yt_pager_set_nonstop(&session->pager, value);
+	session->pager.nonstop = value;
 }
 
 static void
 session_set_pager_newline(struct yt_session *session, float value)
 {
-	yt_pager_set_newline(&session->pager, value);
+	session->pager.newline_flag = value;
 }
 
 static void
@@ -1507,7 +1489,6 @@ session_b05d(struct yt_session *session, const uint8_t *text, size_t length)
 
 	if (!session_store_output_source(session, text, length))
 		return false;
-	yt_pager_sync_process(&session->pager);
 	yt_route_process_raw_single(&session->route_process,
 	    YT_FOREGROUND_ADDRESS, foreground_raw);
 	session_set_foreground_raw(session, foreground_raw);
@@ -19759,7 +19740,6 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	    &session.route_process.bytes[YT_CACHED_FOREGROUND_ADDRESS]);
 	yt_present_bind_cached_background_process(&session.presentation,
 	    &session.route_process.bytes[YT_CACHED_BACKGROUND_ADDRESS]);
-	session_bind_pager_process(&session);
 	session.door = door;
 	session.executable_path = executable_path;
 	session.running = true;

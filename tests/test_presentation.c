@@ -1211,142 +1211,6 @@ test_pager_gates(void)
 	    && present.foreground == 5.0f);
 }
 
-struct raw_pager_context {
-	unsigned finish_calls;
-};
-
-static bool
-raw_pager_carrier(void *context)
-{
-	(void)context;
-	return true;
-}
-
-static bool
-raw_pager_sample(void *context, struct yt_input_value *sampled)
-{
-	(void)context;
-	memset(sampled, 0, sizeof(*sampled));
-	return true;
-}
-
-static bool
-raw_pager_present(void *context, const uint8_t *text, size_t length)
-{
-	(void)context;
-	(void)text;
-	(void)length;
-	return true;
-}
-
-static bool
-raw_pager_finish(void *context, bool newline_flag)
-{
-	struct raw_pager_context *raw = context;
-
-	(void)newline_flag;
-	++raw->finish_calls;
-	return true;
-}
-
-static bool
-raw_pager_response(void *context, char *response, size_t capacity)
-{
-	(void)context;
-	if (capacity == 0U)
-		return false;
-	response[0] = '\0';
-	return true;
-}
-
-static void
-test_pager_raw_process_cells(void)
-{
-	static const struct yt_paged_row_ops ops = {
-		raw_pager_carrier,
-		raw_pager_sample,
-		raw_pager_present,
-		raw_pager_finish,
-		raw_pager_response,
-	};
-	static const uint8_t count_22[4] = {0x00, 0x00, 0x30, 0x85};
-	static const uint8_t count_23[4] = {0x00, 0x00, 0x38, 0x85};
-	static const uint8_t dirty_line_zero[4] = {0x00, 0x00, 0x38, 0x00};
-	static const uint8_t dirty_zero[4] = {0x00, 0x00, 0x0c, 0x00};
-	static const uint8_t zero[4] = {0x00, 0x00, 0x00, 0x00};
-	static const uint8_t one[4] = {0x00, 0x00, 0x00, 0x81};
-	static const uint8_t three[4] = {0x00, 0x00, 0x40, 0x82};
-	static const uint8_t seven[4] = {0x00, 0x00, 0x60, 0x83};
-	static const uint8_t two[4] = {0x00, 0x00, 0x00, 0x82};
-	struct yt_pager_state pager;
-	struct yt_present_state present = state(false);
-	struct yt_b05d_key_state key_state;
-	struct raw_pager_context context = {0};
-	uint8_t line_count[4];
-	uint8_t nonstop[4];
-	uint8_t newline[4];
-	uint8_t foreground[4];
-	uint8_t saved_foreground[4] = {0xde, 0xad, 0xbe, 0xef};
-	uint8_t uppercase_numeric_temp[4] = {0xde, 0xad, 0xbe, 0xef};
-	uint8_t uppercase_length[4] = {0xde, 0xad, 0xbe, 0xef};
-	uint8_t uppercase_index[4] = {0xde, 0xad, 0xbe, 0xef};
-	char accumulator[8] = "x";
-	char queue[8] = "";
-	char pager_key[8] = "";
-	char response[8] = "ns";
-	size_t queue_position = 0U;
-	size_t queue_length = 0U;
-	int saved = -1;
-
-	memset(&pager, 0, sizeof(pager));
-	memcpy(line_count, count_22, sizeof(line_count));
-	memcpy(nonstop, one, sizeof(nonstop));
-	memcpy(newline, zero, sizeof(newline));
-	memcpy(foreground, seven, sizeof(foreground));
-	yt_pager_bind_process_cells(&pager, line_count, nonstop, newline,
-	    foreground, saved_foreground, uppercase_numeric_temp,
-	    uppercase_length, uppercase_index);
-	CHECK(!yt_pager_advance(&pager, &present, &saved));
-	CHECK(memcmp(line_count, count_23, sizeof(line_count)) == 0);
-
-	memcpy(line_count, count_22, sizeof(line_count));
-	memcpy(nonstop, zero, sizeof(nonstop));
-	CHECK(yt_pager_advance(&pager, &present, &saved));
-	CHECK(saved == 7
-	    && memcmp(saved_foreground, seven, sizeof(saved_foreground)) == 0
-	    && memcmp(line_count, dirty_line_zero, sizeof(line_count)) == 0
-	    && memcmp(foreground, three, sizeof(foreground)) == 0
-	    && memcmp(newline, one, sizeof(newline)) == 0);
-	yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
-	CHECK(accumulator[0] == '\0'
-	    && memcmp(nonstop, dirty_zero, sizeof(nonstop)) == 0
-	    && memcmp(line_count, dirty_zero, sizeof(line_count)) == 0);
-	CHECK(yt_pager_accept_response(&pager, response, sizeof(response))
-	    && memcmp(nonstop, one, sizeof(nonstop)) == 0
-	    && memcmp(uppercase_numeric_temp, three, sizeof(three)) == 0
-	    && memcmp(uppercase_length, two, sizeof(two)) == 0
-	    && memcmp(uppercase_index, three, sizeof(three)) == 0);
-	yt_pager_complete(&pager, &present, saved);
-	CHECK(memcmp(foreground, seven, sizeof(foreground)) == 0
-	    && present.foreground == 7.0f);
-
-	memcpy(line_count, zero, sizeof(line_count));
-	memcpy(newline, one, sizeof(newline));
-	memset(&key_state, 0, sizeof(key_state));
-	key_state.accumulator = accumulator;
-	key_state.accumulator_capacity = sizeof(accumulator);
-	key_state.queue = queue;
-	key_state.queue_capacity = sizeof(queue);
-	key_state.queue_position = &queue_position;
-	key_state.queue_length = &queue_length;
-	key_state.pager_key = pager_key;
-	key_state.pager_key_capacity = sizeof(pager_key);
-	CHECK(yt_paged_row_run(&pager, &present, &key_state,
-	    (const uint8_t *)"x", 1U, &ops, &context));
-	CHECK(context.finish_calls == 1U
-	    && memcmp(newline, dirty_zero, sizeof(newline)) == 0);
-}
-
 enum viewer_pager_event {
 	VIEWER_PAGER_CARRIER,
 	VIEWER_PAGER_SAMPLE,
@@ -46914,34 +46778,20 @@ test_radio_body_cleanup_presentation(void)
 static void
 test_radio_body_list_pager_reset(void)
 {
-	static const uint8_t list_dirty_zero[4] = {
-		0x00U, 0x00U, 0x80U, 0x00U,
-	};
-	static const uint8_t canonical_one[4] = {
-		0x00U, 0x00U, 0x00U, 0x81U,
-	};
 	static const uint8_t row[] = " 1:Hi";
 	struct yt_present_state current = state(false);
 	struct yt_pager_state pager;
 	struct pager_capture capture;
-	uint8_t line_count_raw[4] = {0};
 
 	memset(&pager, 0, sizeof(pager));
 	memset(&capture, 0, sizeof(capture));
 	pager.foreground = 1;
-	pager.line_count_cell = line_count_raw;
-	yt_pager_set_line_count(&pager, 17.0f);
-	yt_pager_set_line_count_raw(&pager, list_dirty_zero);
-	CHECK(pager.line_count == 0.0f
-	    && memcmp(line_count_raw, list_dirty_zero,
-	    sizeof(line_count_raw)) == 0);
+	pager.line_count = 0.0f;
 	pager_fixture_b05d(&pager, &current, row, sizeof(row) - 1U,
 	    &capture);
 	CHECK(capture.remote_length == sizeof(row) + 1U
 	    && memcmp(capture.remote, " 1:Hi\n\r", sizeof(row) + 1U) == 0
-	    && pager.line_count == 1.0f
-	    && memcmp(line_count_raw, canonical_one,
-	    sizeof(line_count_raw)) == 0);
+	    && pager.line_count == 1.0f);
 }
 
 static void
@@ -48491,7 +48341,6 @@ main(void)
 	test_projectile_early_terminal_presentation();
 	test_pager_transactions();
 	test_pager_gates();
-	test_pager_raw_process_cells();
 	test_file_viewer_pager_join();
 	test_startup_ascii_physical_join();
 	test_instruction_physical_viewer_join();
