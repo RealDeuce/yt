@@ -67,8 +67,6 @@
 #define YT_TEAM_AUDIT_LOOP_ADDRESS 0x5F94U
 #define YT_TEAM_AUDIT_SENDER_ADDRESS 0x5F98U
 #define YT_SHARED_TARGET_RECORD_ADDRESS 0x1A40U
-#define YT_COUNTERATTACK_PLAYER_ADDRESS 0x1C10U
-#define YT_XANNOR_PROVOKER_ADDRESS 0x4BDCU
 
 enum navigation_field_kind {
 	NAVIGATION_FIELD_NONE,
@@ -96,6 +94,8 @@ struct yt_session {
 	struct yt_error *error;
 	const char *executable_path;
 	int player_record_carrier;
+	int counterattack_player;
+	int xannor_provoker;
 	struct yt_player player;
 	float current_sector_record;
 	double combat_ship_fighters;
@@ -281,8 +281,7 @@ session_store_counterattack_player(void *context, const uint8_t raw[4])
 {
 	struct yt_session *session = context;
 
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_COUNTERATTACK_PLAYER_ADDRESS, raw);
+	session->counterattack_player = (int)qb_mbf32_decode(raw);
 }
 
 static void
@@ -290,8 +289,7 @@ session_load_counterattack_player(struct yt_session *session,
     int *counterattack)
 {
 	if (counterattack != NULL)
-		*counterattack = (int)yt_route_process_single(
-		    &session->route_process, YT_COUNTERATTACK_PLAYER_ADDRESS);
+		*counterattack = session->counterattack_player;
 }
 
 static void
@@ -299,16 +297,14 @@ session_store_xannor_provoker(void *context, const uint8_t raw[4])
 {
 	struct yt_session *session = context;
 
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_XANNOR_PROVOKER_ADDRESS, raw);
+	session->xannor_provoker = (int)qb_mbf32_decode(raw);
 }
 
 static void
 session_load_xannor_provoker(struct yt_session *session, int *provoker)
 {
 	if (provoker != NULL)
-		*provoker = (int)yt_route_process_single(&session->route_process,
-		    YT_XANNOR_PROVOKER_ADDRESS);
+		*provoker = session->xannor_provoker;
 }
 
 static void
@@ -16271,22 +16267,16 @@ static bool
 projectile_command_counterattack_truth(void *context)
 {
 	struct yt_session *session = context;
-	uint8_t raw[4];
 
-	yt_route_process_raw_single(&session->route_process,
-	    YT_COUNTERATTACK_PLAYER_ADDRESS, raw);
-	return qb_mbf32_truth(raw);
+	return session->counterattack_player != 0;
 }
 
 static bool
 projectile_command_xannor_truth(void *context)
 {
 	struct yt_session *session = context;
-	uint8_t raw[4];
 
-	yt_route_process_raw_single(&session->route_process,
-	    YT_XANNOR_PROVOKER_ADDRESS, raw);
-	return qb_mbf32_truth(raw);
+	return session->xannor_provoker != 0;
 }
 
 static void
