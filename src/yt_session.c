@@ -105,13 +105,10 @@
 #define YT_PLANET_UPDATER_DAY_ADDRESS 0x5E90U
 #define YT_PLANET_UPDATER_MINUTE_ADDRESS 0x5E94U
 #define YT_PLANET_UPDATER_ELAPSED_ADDRESS 0x5E98U
-#define YT_TIME_SAVED_CURSOR_ROW_ADDRESS 0x5372U
-#define YT_TIME_SAVED_CURSOR_COLUMN_ADDRESS 0x5376U
 #define YT_ACTION_FOREGROUND_SAVE_ADDRESS 0x51A8U
 #define YT_ACTION_CLOAK_DISPLAY_SCALE_ADDRESS 0x8C36U
 #define YT_ACTION_TURN_DIVISOR_ADDRESS 0x9E68U
 #define YT_ACTION_XANNOR_THRESHOLD_ADDRESS 0x9EBCU
-#define YT_TIME_REMAINING_MINUTES_ADDRESS 0x537AU
 #define YT_TEAM_AUDIT_LOOP_ADDRESS 0x5F94U
 #define YT_TEAM_AUDIT_SENDER_ADDRESS 0x5F98U
 #define YT_SHARED_TARGET_RECORD_ADDRESS 0x1A40U
@@ -19763,10 +19760,6 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	yt_present_bind_cached_background_process(&session.presentation,
 	    &session.route_process.bytes[YT_CACHED_BACKGROUND_ADDRESS]);
 	session_bind_pager_process(&session);
-	yt_present_bind_time_process_cells(&session.time,
-	    &session.route_process.bytes[YT_TIME_SAVED_CURSOR_ROW_ADDRESS],
-	    &session.route_process.bytes[YT_TIME_SAVED_CURSOR_COLUMN_ADDRESS],
-	    &session.route_process.bytes[YT_TIME_REMAINING_MINUTES_ADDRESS]);
 	session.door = door;
 	session.executable_path = executable_path;
 	session.running = true;

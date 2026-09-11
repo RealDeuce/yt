@@ -5190,18 +5190,10 @@ test_time_helpers(void)
 		static const uint8_t raw_460[] = {0x00, 0x00, 0x66, 0x89};
 		static const uint8_t dirty_zero[] = {0xff, 0xff, 0x80, 0x00};
 		static const uint8_t raw_101[] = {0x00, 0x00, 0x4a, 0x87};
-		static const uint8_t raw_4[] = {0x00, 0x00, 0x00, 0x83};
-		static const uint8_t raw_6[] = {0x00, 0x00, 0x40, 0x83};
-		static const uint8_t raw_9[] = {0x00, 0x00, 0x10, 0x84};
-		uint8_t saved_row[4] = {0xde, 0xad, 0xbe, 0x00};
-		uint8_t saved_column[4] = {0xca, 0xfe, 0xba, 0x00};
-		uint8_t remaining[4] = {0x12, 0x34, 0x56, 0x00};
 
 		memcpy(deadline_raw, raw_460, sizeof(deadline_raw));
 		memcpy(next_refresh_raw, dirty_zero, sizeof(next_refresh_raw));
 		memset(&time, 0, sizeof(time));
-		yt_present_bind_time_process_cells(&time, saved_row,
-		    saved_column, remaining);
 		memcpy(time.text, " 6:00  ", 7U);
 		time.text_length = 7U;
 		CHECK(yt_present_refresh_time_process(&time, deadline_raw,
@@ -5212,9 +5204,8 @@ test_time_helpers(void)
 		CHECK(memcmp(deadline_raw, raw_460, sizeof(deadline_raw)) == 0
 		    && memcmp(next_refresh_raw, raw_101,
 		    sizeof(next_refresh_raw)) == 0);
-		CHECK(memcmp(saved_row, raw_4, sizeof(saved_row)) == 0
-		    && memcmp(saved_column, raw_9, sizeof(saved_column)) == 0
-		    && memcmp(remaining, raw_6, sizeof(remaining)) == 0);
+		CHECK(time.saved_row == 4 && time.saved_column == 9
+		    && time.remaining_minutes == 6.0f);
 	}
 
 	{
@@ -5255,19 +5246,11 @@ test_time_helpers(void)
 		static const uint8_t raw_460[] = {0x00, 0x00, 0x66, 0x89};
 		static const uint8_t dirty_zero[] = {0x7f, 0x55, 0x80, 0x00};
 		static const uint8_t raw_101[] = {0x00, 0x00, 0x4a, 0x87};
-		static const uint8_t raw_4[] = {0x00, 0x00, 0x00, 0x83};
-		static const uint8_t raw_9[] = {0x00, 0x00, 0x10, 0x84};
-		static const uint8_t old_remaining[] = {0x12, 0x34, 0x56, 0x00};
-		uint8_t saved_row[4] = {0};
-		uint8_t saved_column[4] = {0};
-		uint8_t remaining[4];
 
 		memcpy(deadline_raw, raw_460, sizeof(deadline_raw));
 		memcpy(next_refresh_raw, dirty_zero, sizeof(next_refresh_raw));
-		memcpy(remaining, old_remaining, sizeof(remaining));
 		memset(&time, 0, sizeof(time));
-		yt_present_bind_time_process_cells(&time, saved_row,
-		    saved_column, remaining);
+		time.remaining_minutes = 123.0f;
 		memcpy(time.text, " 6:00  ", 7U);
 		time.text_length = 7U;
 		CHECK(yt_present_refresh_time_process(&time, deadline_raw,
@@ -5276,10 +5259,9 @@ test_time_helpers(void)
 		CHECK(!updated && used == 3 && result.event_count == 2);
 		CHECK(memcmp(deadline_raw, raw_460, sizeof(deadline_raw)) == 0
 		    && memcmp(next_refresh_raw, raw_101,
-		    sizeof(next_refresh_raw)) == 0
-		    && memcmp(saved_row, raw_4, sizeof(saved_row)) == 0
-		    && memcmp(saved_column, raw_9, sizeof(saved_column)) == 0
-		    && memcmp(remaining, old_remaining, sizeof(remaining)) == 0);
+		    sizeof(next_refresh_raw)) == 0);
+		CHECK(time.saved_row == 4 && time.saved_column == 9
+		    && time.remaining_minutes == 123.0f);
 	}
 
 	current = state(true);
