@@ -32,18 +32,6 @@
 #define YT_BLINK_ADDRESS 0x1880U
 #define YT_DESTROYED_ADDRESS 0x18B4U
 #define YT_CURRENT_WARPS_ADDRESS 0x1898U
-#define YT_REGISTERED_FLAG_ADDRESS 0x1C60U
-#define YT_REGISTRATION_BETA_ONLY_ADDRESS 0x1874U
-#define YT_REGISTRATION_PRESENT_ADDRESS 0x5C66U
-#define YT_REGISTRATION_KEY_VALUE_ADDRESS 0x5C76U
-#define YT_REGISTRATION_WEIGHTED_SUM_ADDRESS 0x5C7EU
-#define YT_REGISTRATION_NAME_ONE_LENGTH_ADDRESS 0x5C86U
-#define YT_REGISTRATION_LOOP_COUNTER_ADDRESS 0x5C8AU
-#define YT_REGISTRATION_NAME_TWO_LENGTH_ADDRESS 0x5C8EU
-#define YT_REGISTRATION_EVALUATION_SUM_ONE_ADDRESS 0x5C96U
-#define YT_REGISTRATION_EVALUATION_SUM_TWO_ADDRESS 0x5C9AU
-#define YT_REGISTRATION_EVALUATION_LENGTH_ONE_ADDRESS 0x5C9EU
-#define YT_REGISTRATION_EVALUATION_LENGTH_TWO_ADDRESS 0x5CA2U
 #define YT_PLANET_RECORD_SCRATCH_ADDRESS 0x19C4U
 #define YT_COMPUTER_PLANET_LINK_ADDRESS 0x5184U
 #define YT_NUMERIC_TEMP_DOUBLE_ADDRESS 0x0016U
@@ -190,6 +178,7 @@ struct yt_session {
 	char saved_command[YT_COMMAND_SIZE];
 	bool running;
 	bool terminated;
+	bool registered;
 	bool fatal_wait_complete;
 	struct yt_present_state presentation;
 	struct yt_route_process route_process;
@@ -2757,61 +2746,6 @@ registration_end(void *opaque)
 	context->session->terminated = true;
 }
 
-static void
-registration_store_registered(void *opaque, const uint8_t raw[4])
-{
-	struct registration_context *context = opaque;
-
-	yt_route_process_set_raw_single(&context->session->route_process,
-	    YT_REGISTERED_FLAG_ADDRESS, raw);
-}
-
-static void
-registration_store_nonempty(void *opaque, const uint8_t raw[4])
-{
-	struct registration_context *context = opaque;
-
-	yt_route_process_set_raw_single(&context->session->route_process,
-	    YT_REGISTRATION_PRESENT_ADDRESS, raw);
-}
-
-static void
-registration_store_numeric(void *opaque,
-    enum yt_registration_numeric_kind kind, const uint8_t *raw,
-    size_t length)
-{
-	static const uint16_t address[] = {
-		[YT_REGISTRATION_NUMERIC_KEY_VALUE] =
-		    YT_REGISTRATION_KEY_VALUE_ADDRESS,
-		[YT_REGISTRATION_NUMERIC_WEIGHTED_SUM] =
-		    YT_REGISTRATION_WEIGHTED_SUM_ADDRESS,
-		[YT_REGISTRATION_NUMERIC_NAME_ONE_LENGTH] =
-		    YT_REGISTRATION_NAME_ONE_LENGTH_ADDRESS,
-		[YT_REGISTRATION_NUMERIC_LOOP_COUNTER] =
-		    YT_REGISTRATION_LOOP_COUNTER_ADDRESS,
-		[YT_REGISTRATION_NUMERIC_NAME_TWO_LENGTH] =
-		    YT_REGISTRATION_NAME_TWO_LENGTH_ADDRESS,
-		[YT_REGISTRATION_NUMERIC_EVALUATION_SUM_ONE] =
-		    YT_REGISTRATION_EVALUATION_SUM_ONE_ADDRESS,
-		[YT_REGISTRATION_NUMERIC_EVALUATION_SUM_TWO] =
-		    YT_REGISTRATION_EVALUATION_SUM_TWO_ADDRESS,
-		[YT_REGISTRATION_NUMERIC_EVALUATION_LENGTH_ONE] =
-		    YT_REGISTRATION_EVALUATION_LENGTH_ONE_ADDRESS,
-		[YT_REGISTRATION_NUMERIC_EVALUATION_LENGTH_TWO] =
-		    YT_REGISTRATION_EVALUATION_LENGTH_TWO_ADDRESS,
-	};
-	struct registration_context *context = opaque;
-
-	if ((size_t)kind >= YT_ARRAY_LEN(address))
-		return;
-	if (length == 8U)
-		yt_route_process_set_raw_double(&context->session->route_process,
-		    address[kind], raw);
-	else if (length == 4U)
-		yt_route_process_set_raw_single(&context->session->route_process,
-		    address[kind], raw);
-}
-
 static bool
 registration(struct yt_session *session, struct yt_error *error)
 {
@@ -2834,14 +2768,10 @@ registration(struct yt_session *session, struct yt_error *error)
 		registration_forced_local,
 		registration_close_all,
 		registration_end,
-		registration_store_registered,
-		registration_store_nonempty,
-		registration_store_numeric,
 	};
 	struct registration_context context = {.session = session};
 	struct yt_registration_state state;
 	uint8_t *storage;
-	uint8_t beta_raw[4];
 	bool completed;
 	size_t index;
 
@@ -2888,12 +2818,11 @@ registration(struct yt_session *session, struct yt_error *error)
 		    + (index + 3U) * YT_REGISTRATION_STRING_MAX;
 		state.display[index].capacity = YT_REGISTRATION_STRING_MAX;
 	}
-	yt_route_process_raw_single(&session->route_process,
-	    YT_REGISTRATION_BETA_ONLY_ADDRESS, beta_raw);
-	state.beta_only = qb_mbf32_truth(beta_raw);
+	state.beta_only = false;
 	state.expected_evaluation_sum[0] = 2085U;
 	state.expected_evaluation_sum[1] = 3496U;
 	completed = yt_registration_run(&state, &ops, &context, error);
+	session->registered = state.registered;
 	if (context.sequential.file != NULL
 	    || context.sequential.orphaned_file != NULL
 	    || context.random.file != NULL
@@ -19539,8 +19468,9 @@ quit_session(struct yt_session *session, struct yt_error *error)
 	if (!display_game_file(session,
 	    session->door->game.config.scoreboard, error))
 		return false;
-	yt_route_process_raw_single(&session->route_process,
-	    YT_REGISTERED_FLAG_ADDRESS, registered_raw);
+	if (qb_mbf32_encode(session->registered ? -1.0f : 0.0f,
+	    registered_raw) != QB_MBF_OK)
+		return false;
 	if (!yt_normal_exit_registration_evaluate(registered_raw,
 	    session->presentation.sound.conversion_mode, &registration, error))
 		return false;

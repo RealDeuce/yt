@@ -52,11 +52,6 @@ enum registration_event {
 	REG_END,
 };
 
-enum registration_store_kind {
-	REG_STORE_NONEMPTY,
-	REG_STORE_REGISTERED,
-};
-
 struct registration_tape {
 	const uint8_t *file;
 	size_t file_length;
@@ -66,16 +61,6 @@ struct registration_tape {
 	size_t fail_at;
 	uint8_t presented[128];
 	size_t presented_length;
-	uint8_t registered_raw[2][4];
-	size_t registered_store_count;
-	uint8_t nonempty_raw[2][4];
-	size_t nonempty_store_count;
-	enum registration_store_kind store_kind[4];
-	size_t store_count;
-	enum yt_registration_numeric_kind numeric_kind[192];
-	uint8_t numeric_raw[192][8];
-	size_t numeric_length[192];
-	size_t numeric_store_count;
 };
 
 static bool
@@ -211,58 +196,6 @@ registration_end(void *context)
 	(void)registration_record(tape, REG_END, NULL);
 }
 
-static void
-registration_store_registered(void *context, const uint8_t raw[4])
-{
-	struct registration_tape *tape = context;
-
-	CHECK(tape->store_count < YT_ARRAY_LEN(tape->store_kind));
-	if (tape->store_count < YT_ARRAY_LEN(tape->store_kind))
-		tape->store_kind[tape->store_count] = REG_STORE_REGISTERED;
-	++tape->store_count;
-	if (tape->registered_store_count
-	    >= YT_ARRAY_LEN(tape->registered_raw))
-		return;
-	memcpy(tape->registered_raw[tape->registered_store_count], raw,
-	    sizeof(tape->registered_raw[tape->registered_store_count]));
-	++tape->registered_store_count;
-}
-
-static void
-registration_store_nonempty(void *context, const uint8_t raw[4])
-{
-	struct registration_tape *tape = context;
-
-	CHECK(tape->store_count < YT_ARRAY_LEN(tape->store_kind));
-	if (tape->store_count < YT_ARRAY_LEN(tape->store_kind))
-		tape->store_kind[tape->store_count] = REG_STORE_NONEMPTY;
-	++tape->store_count;
-	if (tape->nonempty_store_count
-	    >= YT_ARRAY_LEN(tape->nonempty_raw))
-		return;
-	memcpy(tape->nonempty_raw[tape->nonempty_store_count], raw,
-	    sizeof(tape->nonempty_raw[tape->nonempty_store_count]));
-	++tape->nonempty_store_count;
-}
-
-static void
-registration_store_numeric(void *context,
-    enum yt_registration_numeric_kind kind, const uint8_t *raw,
-    size_t length)
-{
-	struct registration_tape *tape = context;
-
-	CHECK(tape->numeric_store_count < YT_ARRAY_LEN(tape->numeric_kind));
-	CHECK(length == 4U || length == 8U);
-	if (tape->numeric_store_count >= YT_ARRAY_LEN(tape->numeric_kind)
-	    || (length != 4U && length != 8U))
-		return;
-	tape->numeric_kind[tape->numeric_store_count] = kind;
-	tape->numeric_length[tape->numeric_store_count] = length;
-	memcpy(tape->numeric_raw[tape->numeric_store_count], raw, length);
-	++tape->numeric_store_count;
-}
-
 static const struct yt_registration_ops registration_ops = {
 	registration_close,
 	registration_random_open,
@@ -275,9 +208,6 @@ static const struct yt_registration_ops registration_ops = {
 	registration_forced,
 	registration_close_all,
 	registration_end,
-	registration_store_registered,
-	registration_store_nonempty,
-	registration_store_numeric,
 };
 
 static void
@@ -4199,15 +4129,6 @@ test_registration_transaction(void)
 	CHECK(yt_registration_run(&state, &registration_ops, &tape, &error));
 	CHECK(state.outcome == YT_REGISTRATION_REGISTERED && state.nonempty
 	    && state.registered && !state.ended && !state.closed_all);
-	CHECK(tape.registered_store_count == 2U
-	    && memcmp(tape.registered_raw[0], "\0\0\0\0", 4U) == 0
-	    && memcmp(tape.registered_raw[1], "\0\0\x80\x81", 4U) == 0);
-	CHECK(tape.nonempty_store_count == 1U
-	    && memcmp(tape.nonempty_raw[0], "\0\0\0\x81", 4U) == 0);
-	CHECK(tape.store_count == 3U
-	    && tape.store_kind[0] == REG_STORE_NONEMPTY
-	    && tape.store_kind[1] == REG_STORE_REGISTERED
-	    && tape.store_kind[2] == REG_STORE_REGISTERED);
 	CHECK(state.line[0].length == 8U
 	    && memcmp(state.line[0].data, "This Bbs", 8U) == 0);
 	CHECK(state.line[1].length == 9U
@@ -4223,27 +4144,6 @@ test_registration_transaction(void)
 	    && memcmp(state.first_root, expected_first_root, 8U) == 0
 	    && memcmp(state.second_sum, expected_second_sum, 8U) == 0
 	    && memcmp(state.final_product, expected_final_product, 8U) == 0);
-	CHECK(tape.numeric_store_count == 42U
-	    && tape.numeric_kind[0] == YT_REGISTRATION_NUMERIC_KEY_VALUE
-	    && tape.numeric_length[0] == 8U
-	    && memcmp(tape.numeric_raw[0], expected_key, 8U) == 0
-	    && tape.numeric_kind[1] == YT_REGISTRATION_NUMERIC_WEIGHTED_SUM
-	    && memcmp(tape.numeric_raw[1],
-	    "\0\0\0\0\0\0\x28\x85", 8U) == 0
-	    && tape.numeric_kind[2]
-	    == YT_REGISTRATION_NUMERIC_NAME_ONE_LENGTH
-	    && memcmp(tape.numeric_raw[2], "\0\0\0\x84", 4U) == 0
-	    && tape.numeric_kind[3] == YT_REGISTRATION_NUMERIC_LOOP_COUNTER
-	    && memcmp(tape.numeric_raw[3], "\0\0\0\x81", 4U) == 0
-	    && tape.numeric_kind[20] == YT_REGISTRATION_NUMERIC_WEIGHTED_SUM
-	    && memcmp(tape.numeric_raw[20], expected_first_root, 8U) == 0
-	    && tape.numeric_kind[21]
-	    == YT_REGISTRATION_NUMERIC_NAME_TWO_LENGTH
-	    && memcmp(tape.numeric_raw[21], "\0\0\x10\x84", 4U) == 0
-	    && tape.numeric_kind[40] == YT_REGISTRATION_NUMERIC_LOOP_COUNTER
-	    && memcmp(tape.numeric_raw[40], "\0\0\x20\x84", 4U) == 0
-	    && tape.numeric_kind[41] == YT_REGISTRATION_NUMERIC_WEIGHTED_SUM
-	    && memcmp(tape.numeric_raw[41], expected_key, 8U) == 0);
 	CHECK(tape.event_count == YT_ARRAY_LEN(registered_events)
 	    && memcmp(tape.event, registered_events,
 	    sizeof(registered_events)) == 0);
@@ -4261,10 +4161,6 @@ test_registration_transaction(void)
 		CHECK(tape.event_count == index && error.status == YT_IO_ERROR);
 		CHECK(state.outcome == YT_REGISTRATION_IN_PROGRESS
 		    && !state.registered);
-		CHECK(tape.registered_store_count == 1U
-		    && memcmp(tape.registered_raw[0], "\0\0\0\0", 4U) == 0);
-		CHECK(tape.nonempty_store_count == 1U
-		    && memcmp(tape.nonempty_raw[0], "\0\0\0\x81", 4U) == 0);
 		CHECK(memcmp(tape.event, registered_events,
 		    index * sizeof(registered_events[0])) == 0);
 		if (index <= 6U)
@@ -4291,32 +4187,7 @@ test_registration_transaction(void)
 	    && state.evaluation_counter[1] == 51.0f);
 	CHECK(state.display[0].length == 29U
 	    && state.display[1].length == 50U
-	    && tape.event_count == 5U && tape.event[4] == REG_DELETE
-	    && tape.registered_store_count == 1U
-	    && tape.nonempty_store_count == 2U
-	    && memcmp(tape.nonempty_raw[0], "\0\0\0\x81", 4U) == 0
-	    && memcmp(tape.nonempty_raw[1], "\0\0\0\0", 4U) == 0);
-	CHECK(tape.store_count == 3U
-	    && tape.store_kind[0] == REG_STORE_NONEMPTY
-	    && tape.store_kind[1] == REG_STORE_REGISTERED
-	    && tape.store_kind[2] == REG_STORE_NONEMPTY);
-	CHECK(tape.numeric_store_count == 164U
-	    && tape.numeric_kind[0]
-	    == YT_REGISTRATION_NUMERIC_EVALUATION_SUM_ONE
-	    && memcmp(tape.numeric_raw[0], "\0\0\0\0", 4U) == 0
-	    && tape.numeric_kind[1]
-	    == YT_REGISTRATION_NUMERIC_EVALUATION_LENGTH_ONE
-	    && memcmp(tape.numeric_raw[1], "\0\0\x68\x85", 4U) == 0
-	    && tape.numeric_kind[60] == YT_REGISTRATION_NUMERIC_LOOP_COUNTER
-	    && memcmp(tape.numeric_raw[60], "\0\0\x70\x85", 4U) == 0
-	    && tape.numeric_kind[61]
-	    == YT_REGISTRATION_NUMERIC_EVALUATION_SUM_TWO
-	    && memcmp(tape.numeric_raw[61], "\0\0\0\0", 4U) == 0
-	    && tape.numeric_kind[62]
-	    == YT_REGISTRATION_NUMERIC_EVALUATION_LENGTH_TWO
-	    && memcmp(tape.numeric_raw[62], "\0\0\x48\x86", 4U) == 0
-	    && tape.numeric_kind[163] == YT_REGISTRATION_NUMERIC_LOOP_COUNTER
-	    && memcmp(tape.numeric_raw[163], "\0\0\x4c\x86", 4U) == 0);
+	    && tape.event_count == 5U && tape.event[4] == REG_DELETE);
 	for (index = 1U; index <= 5U; ++index) {
 		registration_state_init(&state, storage);
 		memset(&tape, 0, sizeof(tape));
@@ -4324,12 +4195,7 @@ test_registration_transaction(void)
 		CHECK(!yt_registration_run(&state, &registration_ops, &tape,
 		    NULL));
 		CHECK(tape.event_count == index);
-		CHECK(tape.registered_store_count == 1U);
-		CHECK(tape.nonempty_store_count == (index < 4U ? 1U : 2U));
 		CHECK(state.nonempty == (index < 4U));
-		if (index >= 4U)
-			CHECK(memcmp(tape.nonempty_raw[1], "\0\0\0\0", 4U)
-			    == 0);
 	}
 
 	/* Both evaluation strings are copied before either checksum starts. */
@@ -4338,8 +4204,7 @@ test_registration_transaction(void)
 	memset(&tape, 0, sizeof(tape));
 	CHECK(!yt_registration_run(&state, &registration_ops, &tape, NULL));
 	CHECK(state.display[0].length == 29U
-	    && state.display[1].length == 0U
-	    && tape.numeric_store_count == 0U);
+	    && state.display[1].length == 0U);
 
 	/* Name copies precede the true flag; prefixing follows it. */
 	registration_state_init(&state, storage);
@@ -4349,8 +4214,7 @@ test_registration_transaction(void)
 	tape.file_length = sizeof(shipped) - 1U;
 	CHECK(!yt_registration_run(&state, &registration_ops, &tape, NULL));
 	CHECK(!state.registered && state.display[0].length == 0U
-	    && state.display[1].length == 0U
-	    && tape.registered_store_count == 1U);
+	    && state.display[1].length == 0U);
 
 	registration_state_init(&state, storage);
 	state.display[0].capacity = 8U;
@@ -4362,9 +4226,7 @@ test_registration_transaction(void)
 	CHECK(state.registered && state.display[0].length == 8U
 	    && memcmp(state.display[0].data, "This Bbs", 8U) == 0
 	    && state.display[1].length == 9U
-	    && memcmp(state.display[1].data, "The Sysop", 9U) == 0
-	    && tape.registered_store_count == 2U
-	    && memcmp(tape.registered_raw[1], "\0\0\x80\x81", 4U) == 0);
+	    && memcmp(state.display[1].data, "The Sysop", 9U) == 0);
 
 	registration_state_init(&state, storage);
 	state.display[0].capacity = 22U;
@@ -4376,8 +4238,7 @@ test_registration_transaction(void)
 	CHECK(state.registered && state.display[0].length == 22U
 	    && memcmp(state.display[0].data, "Registered to This Bbs", 22U) == 0
 	    && state.display[1].length == 9U
-	    && memcmp(state.display[1].data, "The Sysop", 9U) == 0
-	    && tape.registered_store_count == 2U);
+	    && memcmp(state.display[1].data, "The Sysop", 9U) == 0);
 
 	/* The beta terminal has no explicit CLOSE ALL. */
 	registration_state_init(&state, storage);
