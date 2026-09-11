@@ -54,72 +54,20 @@ yt_present_set_blink(struct yt_present_state *state, float value)
 	state->blink = value;
 }
 
-void
-yt_present_bind_color_table_process(struct yt_present_state *state,
-    uint8_t initialized[4], uint8_t table[32])
-{
-	size_t index;
-
-	if (state == NULL)
-		return;
-	state->color_initialized_process = initialized;
-	state->color_memory_process = table;
-	state->color_process = NULL;
-	state->color_memory_address = 0U;
-	if (initialized != NULL)
-		state->color_initialized = qb_mbf32_decode(initialized);
-	if (table != NULL) {
-		for (index = 0U; index < 8U; ++index)
-			state->color_memory[index] =
-			    qb_mbf32_decode(table + index * 4U);
-	}
-}
-
-void
-yt_present_bind_color_process(struct yt_present_state *state,
-    uint8_t process[0x10000], uint16_t initialized_address,
-    uint16_t table_address)
-{
-	size_t index;
-
-	if (state == NULL)
-		return;
-	state->color_process = process;
-	state->color_memory_address = table_address;
-	state->color_initialized_process = process != NULL
-	    ? process + initialized_address : NULL;
-	state->color_memory_process = process != NULL
-	    ? process + table_address : NULL;
-	if (process != NULL) {
-		state->color_initialized = qb_mbf32_decode(
-		    state->color_initialized_process);
-		for (index = 0U; index < 8U; ++index)
-			state->color_memory[index] = qb_mbf32_decode(
-			    state->color_memory_process + index * 4U);
-	}
-}
-
 float
 yt_present_color_initialized(const struct yt_present_state *state)
 {
 	if (state == NULL)
 		return 0.0f;
-	if (state->color_initialized_process != NULL)
-		return qb_mbf32_decode(state->color_initialized_process);
 	return state->color_initialized;
 }
 
 void
 yt_present_set_color_initialized(struct yt_present_state *state, float value)
 {
-	uint8_t raw[4];
-
 	if (state == NULL)
 		return;
 	state->color_initialized = value;
-	if (state->color_initialized_process != NULL
-	    && qb_mbf32_encode(value, raw) != QB_MBF_OVERFLOW)
-		memcpy(state->color_initialized_process, raw, sizeof(raw));
 }
 
 float
@@ -127,8 +75,6 @@ yt_present_color_memory(const struct yt_present_state *state, size_t index)
 {
 	if (state == NULL || index >= 8U)
 		return 0.0f;
-	if (state->color_memory_process != NULL)
-		return qb_mbf32_decode(state->color_memory_process + index * 4U);
 	return state->color_memory[index];
 }
 
@@ -136,21 +82,8 @@ static bool
 color_memory_index(const struct yt_present_state *state, int index,
     float *value)
 {
-	uint8_t raw[4];
-	uint16_t address;
-	size_t byte;
-
 	if (state == NULL || value == NULL)
 		return false;
-	if (state->color_process != NULL) {
-		address = (uint16_t)((int32_t)state->color_memory_address
-		    + (int32_t)index * 4);
-		for (byte = 0U; byte < sizeof(raw); ++byte)
-			raw[byte] = state->color_process[
-			    (uint16_t)(address + (uint16_t)byte)];
-		*value = qb_mbf32_decode(raw);
-		return true;
-	}
 	if (index < 0 || index >= 8)
 		return false;
 	*value = yt_present_color_memory(state, (size_t)index);
@@ -161,15 +94,9 @@ void
 yt_present_set_color_memory(struct yt_present_state *state, size_t index,
     float value)
 {
-	uint8_t raw[4];
-
 	if (state == NULL || index >= 8U)
 		return;
 	state->color_memory[index] = value;
-	if (state->color_memory_process != NULL
-	    && qb_mbf32_encode(value, raw) != QB_MBF_OVERFLOW)
-		memcpy(state->color_memory_process + index * 4U, raw,
-		    sizeof(raw));
 }
 
 float

@@ -60,11 +60,7 @@ struct yt_present_state {
 	float bold;
 	float blink;
 	float color_initialized;
-	uint8_t *color_initialized_process;
 	float color_memory[8];
-	uint8_t *color_memory_process;
-	uint8_t *color_process;
-	uint16_t color_memory_address;
 	float cached_foreground;
 	float cached_background;
 };
@@ -82,11 +78,6 @@ float yt_present_bold(const struct yt_present_state *state);
 void yt_present_set_bold(struct yt_present_state *state, float value);
 float yt_present_blink(const struct yt_present_state *state);
 void yt_present_set_blink(struct yt_present_state *state, float value);
-void yt_present_bind_color_table_process(struct yt_present_state *state,
-    uint8_t initialized[4], uint8_t table[32]);
-void yt_present_bind_color_process(struct yt_present_state *state,
-    uint8_t process[0x10000], uint16_t initialized_address,
-    uint16_t table_address);
 float yt_present_color_initialized(const struct yt_present_state *state);
 void yt_present_set_color_initialized(struct yt_present_state *state,
     float value);

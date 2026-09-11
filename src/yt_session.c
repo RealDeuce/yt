@@ -56,8 +56,6 @@
 #define YT_EARTH_REPORT_SEEN_ADDRESS 0x5006U
 #define YT_SPY_COUNT_ADDRESS 0x50AEU
 #define YT_LOW_TIME_REMEMBERED_ADDRESS 0x59CEU
-#define YT_COLOR_INITIALIZED_ADDRESS 0x556AU
-#define YT_COLOR_TABLE_ADDRESS 0x556EU
 #define YT_CLEARANCE_ANNOUNCED_ADDRESS 0x55B6U
 #define YT_CLEARANCE_VALUE_ADDRESS 0x55BEU
 #define YT_CLEARANCE_SOUND_SELECTOR_ADDRESS 0x55C6U
@@ -19674,9 +19672,6 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	    &session.route_process.bytes[YT_LOCAL_SOUND_ADDRESS]);
 	yt_sound_bind_toggle_selector_process(&session.presentation.sound,
 	    &session.route_process.bytes[YT_SOUND_TOGGLE_SELECTOR_ADDRESS]);
-	yt_present_bind_color_process(&session.presentation,
-	    session.route_process.bytes, YT_COLOR_INITIALIZED_ADDRESS,
-	    YT_COLOR_TABLE_ADDRESS);
 	session.door = door;
 	session.executable_path = executable_path;
 	session.running = true;
