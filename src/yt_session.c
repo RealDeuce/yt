@@ -54,8 +54,6 @@
 #define YT_CLEARANCE_SOUND_SELECTOR_ADDRESS 0x55C6U
 #define YT_HOSTILE_PLANET_LINK_ADDRESS 0x4CFAU
 #define YT_HOSTILE_DEPLOYED_FIGHTERS_ADDRESS 0x4CFEU
-#define YT_STATIC_SINGLE_ZERO_ADDRESS 0x62F4U
-#define YT_STATIC_SINGLE_ONE_ADDRESS 0x628AU
 #define YT_FATAL_SOUND_SELECTOR_ADDRESS 0x4CE2U
 #define YT_COUNTERLAUNCH_COUNT_ADDRESS 0x5BC6U
 #define YT_SPY_DESTINATION_SCRATCH_ADDRESS 0x5FE4U
@@ -3122,7 +3120,6 @@ set_new_player_identity(struct yt_session *session, int player_record,
 	struct yt_player player;
 	struct yt_record identity;
 	uint8_t length_raw[4];
-	uint8_t zero_raw[4];
 
 	if (name == NULL && length != 0U)
 		return false;
@@ -3137,9 +3134,7 @@ set_new_player_identity(struct yt_session *session, int player_record,
 	if (qb_mbf32_encode((float)length, length_raw) != QB_MBF_OK)
 		return false;
 	(void)yt_record_set_raw_number(&identity, YT_F85, length_raw);
-	yt_route_process_raw_single(&session->route_process,
-	    YT_STATIC_SINGLE_ZERO_ADDRESS, zero_raw);
-	(void)yt_record_set_raw_number(&identity, YT_F89, zero_raw);
+	(void)yt_record_set_number(&identity, YT_F89, 0.0f);
 	yt_player_decode(&session->player, &identity);
 	if (!write_database_record_at_fault(session, (uint32_t)player_record,
 	    &identity, YT_BASIC_FAULT_IDENTITY_PLAYER_PUT, error)) {
@@ -3814,17 +3809,13 @@ post_login(struct yt_session *session, struct yt_error *error)
 
 	{
 		struct yt_record repaired;
-		uint8_t one_raw[4];
-		uint8_t zero_raw[4];
 		uint8_t maximum_raw[4];
 
 		if (!reload_player(session, error))
 			return false;
-		yt_route_process_raw_single(&session->route_process,
-		    YT_STATIC_SINGLE_ONE_ADDRESS, one_raw);
-		if (session->player.sector < qb_mbf32_decode(one_raw)) {
+		if (session->player.sector < 1.0f) {
 			repaired = session->player.record;
-			(void)yt_record_set_raw_number(&repaired, YT_F57, one_raw);
+			(void)yt_record_set_number(&repaired, YT_F57, 1.0f);
 			yt_player_decode(&session->player, &repaired);
 			if (!write_database_record_at_fault(session,
 			    (uint32_t)session_record(session), &repaired,
@@ -3833,15 +3824,13 @@ post_login(struct yt_session *session, struct yt_error *error)
 		}
 		if (!reload_player(session, error))
 			return false;
-		yt_route_process_raw_single(&session->route_process,
-		    YT_STATIC_SINGLE_ZERO_ADDRESS, zero_raw);
 		memcpy(maximum_raw, session->door->game.config.record.bytes + YT_F121,
 	    sizeof(maximum_raw));
 		if ((double)session->player.holds
 		    > (double)qb_mbf32_decode(maximum_raw)) {
 			repaired = session->player.record;
-			(void)yt_record_set_raw_number(&repaired, YT_F69, zero_raw);
-			(void)yt_record_set_raw_number(&repaired, YT_F73, zero_raw);
+			(void)yt_record_set_number(&repaired, YT_F69, 0.0f);
+			(void)yt_record_set_number(&repaired, YT_F73, 0.0f);
 			(void)yt_record_set_raw_number(&repaired, YT_F77,
 			    maximum_raw);
 			(void)yt_record_set_raw_number(&repaired, YT_F65,
@@ -19364,7 +19353,6 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 {
 	struct yt_session session;
 	struct yt_random launch_random;
-	static const uint8_t static_one[4] = {0x00, 0x00, 0x00, 0x81};
 	bool resume_gameplay = false;
 	char first[128];
 	char last[128];
@@ -19383,8 +19371,6 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	session.door = door;
 	session.executable_path = executable_path;
 	session.running = true;
-	yt_route_process_set_raw_single(&session.route_process,
-	    YT_STATIC_SINGLE_ONE_ADDRESS, static_one);
 	/* YT:040A is the ordinary instruction after the handed-off checkpoint. */
 	session_set_pager_nonstop(&session, 1.0f);
 	if (door->identity.ansi
