@@ -5489,20 +5489,6 @@ spy_store(void *context, enum yt_spy_scratch_kind kind,
 	yt_route_process_set_raw_single(&session->route_process, address, raw);
 }
 
-static void
-session_player_cache_read(void *context, int player_record,
-    enum yt_player_cache_kind kind, uint8_t raw[4])
-{
-	session_player_cache_raw(context, player_record, kind, raw);
-}
-
-static void
-session_player_cache_store(void *context, int player_record,
-    enum yt_player_cache_kind kind, const uint8_t raw[4])
-{
-	session_set_player_cache_raw(context, player_record, kind, raw);
-}
-
 static bool
 spy_sweep(struct yt_session *session, struct yt_error *error)
 {
@@ -9823,16 +9809,13 @@ earth_anti_cloak(struct yt_session *session, float price,
 		apply_player_credit_mutation,
 		earth_anti_cloak_present,
 		earth_anti_cloak_sound,
-		session_player_cache_read,
-		session_player_cache_store,
 	};
 	struct yt_earth_anti_cloak_state state = {
 		.price = price,
 		.current_record = (float)session_record(session),
 		.player_terminal = session_sector_offset(session),
 		.conversion_mode = session->presentation.sound.conversion_mode,
-		.cloak_cache = session->player_cache.cloak,
-		.cloak_cache_count = YT_ARRAY_LEN(session->player_cache.cloak),
+		.player_cache = &session->player_cache,
 		.foreground = session_foreground(session),
 	};
 	bool completed = yt_earth_anti_cloak_run(&state, &ops, session, error);
@@ -16696,8 +16679,6 @@ launch_xannor_retaliation(struct yt_session *session, int *provoking_player,
 		session_store_destroyed,
 		session_store_current_player_record,
 		session_store_xannor_provoker,
-		session_player_cache_read,
-		session_player_cache_store,
 	};
 	bool destroyed = session_is_destroyed(session);
 	uint8_t current_record_raw[4];
@@ -16709,9 +16690,7 @@ launch_xannor_retaliation(struct yt_session *session, int *provoking_player,
 	struct yt_xannor_retaliation_state state = {
 		&session->player,
 		&session->player_record_carrier,
-		NULL,
-		session->player_cache.cloak,
-		(YT_PLAYER_LAST + 1U),
+		&session->player_cache,
 		&destroyed,
 		provoking_player,
 		&session->door->game.config.headquarters,
@@ -16809,8 +16788,6 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 		session_store_destroyed,
 		session_store_current_player_record,
 		session_store_counterattack_player,
-		session_player_cache_read,
-		session_player_cache_store,
 	};
 	bool destroyed = session_is_destroyed(session);
 	float retained_count = yt_route_process_single(&session->route_process,
@@ -16824,9 +16801,7 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 	struct yt_counterlaunch_state state = {
 		&session->player,
 		&session->player_record_carrier,
-		NULL,
-		session->player_cache.cloak,
-		(YT_PLAYER_LAST + 1U),
+		&session->player_cache,
 		&destroyed,
 		&retained_count,
 		counterattacker,

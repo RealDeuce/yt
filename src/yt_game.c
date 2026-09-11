@@ -1757,7 +1757,6 @@ yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
 	uint8_t saved_record_raw[4];
 	uint8_t saved_cloak_raw[4];
 	int saved_record;
-	float saved_cloak = 0.0f;
 	int target_candidate;
 	float target;
 	float projectile_amount;
@@ -1772,6 +1771,7 @@ yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
 	if (state == NULL || ops == NULL || state->player == NULL
 	    || state->player_record == NULL || state->destroyed == NULL
 	    || state->provoker == NULL || state->headquarters == NULL
+	    || state->player_cache == NULL
 	    || ops->read_sector == NULL || ops->random == NULL
 	    || ops->present == NULL || ops->projectile == NULL
 	    || ops->read_player == NULL || ops->wait == NULL)
@@ -1796,28 +1796,17 @@ yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
 		    sizeof(saved_record_raw));
 	else
 		(void)qb_mbf32_encode((float)saved_record, saved_record_raw);
-	valid_cache = saved_record >= 0
-	    && (size_t)saved_record < state->cache_count
-	    && state->cloak_cache != NULL;
+	valid_cache = yt_player_cache_contains(saved_record);
 	if (valid_cache) {
-		if (ops->read_cache != NULL) {
-			ops->read_cache(context, saved_record,
-			    YT_PLAYER_CACHE_CLOAK, saved_cloak_raw);
-			saved_cloak = qb_mbf32_decode(saved_cloak_raw);
-		}
-		else {
-			saved_cloak = state->cloak_cache[saved_record];
-			(void)qb_mbf32_encode(saved_cloak, saved_cloak_raw);
-		}
+		yt_player_cache_raw(state->player_cache, saved_record,
+		    YT_PLAYER_CACHE_CLOAK, saved_cloak_raw);
 		if (*state->provoker != 0) {
 			static const uint8_t cloak_zero[4] = {
 				0x00U, 0x00U, 0x40U, 0x00U
 			};
 
-			state->cloak_cache[saved_record] = 0.0f;
-			if (ops->store_cache != NULL)
-				ops->store_cache(context, saved_record,
-				    YT_PLAYER_CACHE_CLOAK, cloak_zero);
+			(void)yt_player_cache_set_raw(state->player_cache,
+			    saved_record, YT_PLAYER_CACHE_CLOAK, cloak_zero);
 			cache_cleared = true;
 		}
 	}
@@ -1852,10 +1841,9 @@ yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
 		ops->store_player_record(context, saved_record_raw);
 	*state->player = saved_player;
 	if (valid_cache) {
-		state->cloak_cache[saved_record] = saved_cloak;
-		if (cache_cleared && ops->store_cache != NULL)
-			ops->store_cache(context, saved_record,
-			    YT_PLAYER_CACHE_CLOAK, saved_cloak_raw);
+		if (cache_cleared)
+			(void)yt_player_cache_set_raw(state->player_cache,
+			    saved_record, YT_PLAYER_CACHE_CLOAK, saved_cloak_raw);
 	}
 	if (!ops->read_player(context, saved_record, state->player, error))
 		return false;
@@ -2600,7 +2588,6 @@ yt_counterlaunch_run(struct yt_counterlaunch_state *state,
 	struct yt_player debit_player;
 	struct yt_player final_player;
 	int saved_record;
-	float saved_cloak = 0.0f;
 	float available;
 	float target;
 	float origin;
@@ -2622,7 +2609,8 @@ yt_counterlaunch_run(struct yt_counterlaunch_state *state,
 	if (state == NULL || ops == NULL || state->player == NULL
 	    || state->player_record == NULL || state->destroyed == NULL
 	    || state->retained_count == NULL || state->counterattacker == NULL
-	    || state->xannor_provoker == NULL || ops->read_player == NULL
+	    || state->xannor_provoker == NULL || state->player_cache == NULL
+	    || ops->read_player == NULL
 	    || ops->random == NULL || ops->write_player == NULL
 	    || ops->present == NULL || ops->append_news == NULL
 	    || ops->projectile == NULL || ops->wait == NULL)
@@ -2658,25 +2646,14 @@ yt_counterlaunch_run(struct yt_counterlaunch_state *state,
 	if (saved_name_length > sizeof(saved_name))
 		saved_name_length = sizeof(saved_name);
 	memcpy(saved_name, saved_player.name, saved_name_length);
-	valid_cache = saved_record >= 0
-	    && (size_t)saved_record < state->cache_count
-	    && state->cloak_cache != NULL;
+	valid_cache = yt_player_cache_contains(saved_record);
 	if (valid_cache) {
 		static const uint8_t zero[4] = {0};
 
-		if (ops->read_cache != NULL) {
-			ops->read_cache(context, saved_record,
-			    YT_PLAYER_CACHE_CLOAK, saved_cloak_raw);
-			saved_cloak = qb_mbf32_decode(saved_cloak_raw);
-		}
-		else {
-			saved_cloak = state->cloak_cache[saved_record];
-			(void)qb_mbf32_encode(saved_cloak, saved_cloak_raw);
-		}
-		state->cloak_cache[saved_record] = 0.0f;
-		if (ops->store_cache != NULL)
-			ops->store_cache(context, saved_record,
-			    YT_PLAYER_CACHE_CLOAK, zero);
+		yt_player_cache_raw(state->player_cache, saved_record,
+		    YT_PLAYER_CACHE_CLOAK, saved_cloak_raw);
+		(void)yt_player_cache_set_raw(state->player_cache, saved_record,
+		    YT_PLAYER_CACHE_CLOAK, zero);
 	}
 	*state->player_record = *state->counterattacker;
 	(void)qb_mbf32_encode((float)*state->counterattacker,
@@ -2747,12 +2724,9 @@ yt_counterlaunch_run(struct yt_counterlaunch_state *state,
 	if (ops->store_player_record != NULL)
 		ops->store_player_record(context, saved_record_raw);
 	*state->player = saved_player;
-	if (valid_cache) {
-		state->cloak_cache[saved_record] = saved_cloak;
-		if (ops->store_cache != NULL)
-			ops->store_cache(context, saved_record,
-			    YT_PLAYER_CACHE_CLOAK, saved_cloak_raw);
-	}
+	if (valid_cache)
+		(void)yt_player_cache_set_raw(state->player_cache, saved_record,
+		    YT_PLAYER_CACHE_CLOAK, saved_cloak_raw);
 	if (!ops->read_player(context, saved_record, &final_player, error))
 		return false;
 	if (qb_mbf32_truth(final_player.record.bytes + YT_F45)) {
@@ -13430,8 +13404,7 @@ yt_earth_anti_cloak_run(struct yt_earth_anti_cloak_state *state,
 
 	if (state == NULL || ops == NULL || ops->read_player == NULL
 	    || ops->mutate_credits == NULL || ops->present == NULL
-	    || ops->sound == NULL || ops->read_cache == NULL
-	    || ops->store_cache == NULL || state->cloak_cache == NULL)
+	    || ops->sound == NULL || state->player_cache == NULL)
 		return false;
 	state->counter = 2.0f;
 	state->reported = false;
@@ -13455,10 +13428,8 @@ yt_earth_anti_cloak_run(struct yt_earth_anti_cloak_state *state,
 		bool overflow;
 		int32_t converted = qb_cint_mode((double)state->counter,
 		    state->conversion_mode, &overflow);
-		size_t index;
 
-		if (overflow || converted < 0
-		    || (size_t)converted >= state->cloak_cache_count) {
+		if (overflow || !yt_player_cache_contains((int)converted)) {
 			if (error != NULL) {
 				error->status = YT_RANGE;
 				(void)snprintf(error->operation,
@@ -13467,22 +13438,14 @@ yt_earth_anti_cloak_run(struct yt_earth_anti_cloak_state *state,
 			}
 			return false;
 		}
-		index = (size_t)converted;
-		{
-			uint8_t cache_raw[4];
-
-			ops->read_cache(context, converted,
-			    YT_PLAYER_CACHE_CLOAK, cache_raw);
-			state->cloak_cache[index] = qb_mbf32_decode(cache_raw);
-		}
-		if (state->cloak_cache[index] > 0.0f) {
+		if (yt_player_cache_value(state->player_cache, converted,
+		    YT_PLAYER_CACHE_CLOAK) > 0.0f) {
 			int32_t converted_length;
 			size_t name_length;
 
 			static const uint8_t zero[4] = {0};
 
-			state->cloak_cache[index] = 0.0f;
-			ops->store_cache(context, converted,
+			(void)yt_player_cache_set_raw(state->player_cache, converted,
 			    YT_PLAYER_CACHE_CLOAK, zero);
 			if (!ops->read_player(context, state->counter,
 			    &state->field_player, error))

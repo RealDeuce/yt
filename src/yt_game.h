@@ -74,11 +74,6 @@ typedef void (*yt_startup_configuration_disruption_store_fn)(void *context,
 	size_t index, const uint8_t raw[4]);
 typedef void (*yt_startup_configuration_local_screen_store_fn)(void *context,
 	const uint8_t raw[4]);
-typedef void (*yt_player_cache_read_fn)(void *context, int player_record,
-	enum yt_player_cache_kind kind, uint8_t raw[4]);
-typedef void (*yt_player_cache_store_fn)(void *context, int player_record,
-	enum yt_player_cache_kind kind, const uint8_t raw[4]);
-
 struct yt_startup_configuration_ops {
 	yt_startup_configuration_close_fn close_data;
 	yt_startup_configuration_open_fn open_data;
@@ -1794,9 +1789,7 @@ bool yt_projectile_sector_mine_run(
 struct yt_xannor_retaliation_state {
 	struct yt_player *player;
 	int *player_record;
-	float *sector_cache;
-	float *cloak_cache;
-	size_t cache_count;
+	struct yt_player_cache *player_cache;
 	bool *destroyed;
 	int *provoker;
 	float *headquarters;
@@ -1828,16 +1821,12 @@ struct yt_xannor_retaliation_ops {
 	yt_destroyed_store_fn store_destroyed;
 	yt_player_record_store_fn store_player_record;
 	yt_player_record_store_fn store_provoker;
-	yt_player_cache_read_fn read_cache;
-	yt_player_cache_store_fn store_cache;
 };
 
 struct yt_counterlaunch_state {
 	struct yt_player *player;
 	int *player_record;
-	float *sector_cache;
-	float *cloak_cache;
-	size_t cache_count;
+	struct yt_player_cache *player_cache;
 	bool *destroyed;
 	float *retained_count;
 	int *counterattacker;
@@ -1876,8 +1865,6 @@ struct yt_counterlaunch_ops {
 	yt_destroyed_store_fn store_destroyed;
 	yt_player_record_store_fn store_player_record;
 	yt_player_record_store_fn store_counterattacker;
-	yt_player_cache_read_fn read_cache;
-	yt_player_cache_store_fn store_cache;
 };
 
 enum yt_salvage_simple_kind {
@@ -3753,8 +3740,7 @@ struct yt_earth_anti_cloak_state {
 	float current_record;
 	float player_terminal;
 	uint8_t conversion_mode;
-	float *cloak_cache;
-	size_t cloak_cache_count;
+	struct yt_player_cache *player_cache;
 	float foreground;
 	float counter;
 	bool reported;
@@ -3770,17 +3756,11 @@ typedef bool (*yt_earth_anti_cloak_present_fn)(void *context,
     struct yt_error *error);
 typedef bool (*yt_earth_anti_cloak_sound_fn)(void *context, float selector,
     struct yt_error *error);
-typedef void (*yt_earth_anti_cloak_cache_read_fn)(void *context,
-    int player_record, enum yt_player_cache_kind kind, uint8_t raw[4]);
-typedef void (*yt_earth_anti_cloak_cache_store_fn)(void *context,
-    int player_record, enum yt_player_cache_kind kind, const uint8_t raw[4]);
 struct yt_earth_anti_cloak_ops {
 	yt_earth_anti_cloak_read_player_fn read_player;
 	yt_credit_mutation_apply_fn mutate_credits;
 	yt_earth_anti_cloak_present_fn present;
 	yt_earth_anti_cloak_sound_fn sound;
-	yt_earth_anti_cloak_cache_read_fn read_cache;
-	yt_earth_anti_cloak_cache_store_fn store_cache;
 };
 bool yt_earth_anti_cloak_run(struct yt_earth_anti_cloak_state *state,
     const struct yt_earth_anti_cloak_ops *ops, void *context,
