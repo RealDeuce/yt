@@ -54,7 +54,6 @@
 #define YT_CLEARANCE_SOUND_SELECTOR_ADDRESS 0x55C6U
 #define YT_HOSTILE_PLANET_LINK_ADDRESS 0x4CFAU
 #define YT_HOSTILE_DEPLOYED_FIGHTERS_ADDRESS 0x4CFEU
-#define YT_FATAL_SOUND_SELECTOR_ADDRESS 0x4CE2U
 #define YT_COUNTERLAUNCH_COUNT_ADDRESS 0x5BC6U
 #define YT_SPY_DESTINATION_SCRATCH_ADDRESS 0x5FE4U
 #define YT_SPY_FOUND_SCRATCH_ADDRESS 0x5FE8U
@@ -5874,16 +5873,10 @@ common_fatal_read_player(void *context, int player_record,
 }
 
 static bool
-common_fatal_sound(void *context, const uint8_t selector_raw[4],
-    struct yt_error *error)
+common_fatal_sound(void *context, float selector, struct yt_error *error)
 {
-	struct yt_session *session = context;
-
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_FATAL_SOUND_SELECTOR_ADDRESS, selector_raw);
-	return session_sound(session, yt_route_process_single(
-	    &session->route_process, YT_FATAL_SOUND_SELECTOR_ADDRESS),
-	    "fatal destruction sound", error);
+	return session_sound(context, selector, "fatal destruction sound",
+	    error);
 }
 
 static bool
@@ -5893,23 +5886,12 @@ common_fatal_death(void *context, int victim_record, float killer,
 	return kill_player_run(context, victim_record, killer, false, error);
 }
 
-static void
-common_fatal_store_target(void *context, const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_SHARED_TARGET_RECORD_ADDRESS, raw);
-}
-
 static bool
-common_fatal_wait(void *context, const uint8_t duration_raw[4],
-    struct yt_error *error)
+common_fatal_wait(void *context, float duration, struct yt_error *error)
 {
 	struct yt_session *session = context;
 
-	if (!session_wait_raw(session, duration_raw,
-	    "common fatal wait", error))
+	if (!session_wait(session, duration, "common fatal wait", error))
 		return false;
 	session->fatal_wait_complete = true;
 	return true;
@@ -5922,19 +5904,12 @@ common_fatal_self(struct yt_session *session, struct yt_error *error)
 		common_fatal_set_foreground,
 		common_fatal_present,
 		common_fatal_read_player,
-		common_fatal_store_target,
 		common_fatal_sound,
 		common_fatal_death,
 		common_fatal_wait,
 	};
-	uint8_t current_record_raw[4];
-
-	if (qb_mbf32_encode((float)session_record(session), current_record_raw)
-	    != QB_MBF_OK)
-		return false;
 	struct yt_common_fatal_state state = {
 		.current_player_record = session_record(session),
-		.current_player_record_raw = current_record_raw,
 		.foreground = session_foreground(session),
 		.pager_foreground = session_pager_foreground(session),
 	};

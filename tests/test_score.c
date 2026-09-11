@@ -11790,12 +11790,8 @@ struct common_fatal_tape {
 	bool death_durable;
 	bool news_durable;
 	bool wait_complete;
+	float sound_selector;
 	float wait_duration;
-	uint8_t sound_selector_raw[4];
-	uint8_t wait_duration_raw[4];
-	uint8_t target_record_raw[4];
-	size_t target_record_store_count;
-	size_t target_record_store_position;
 	size_t rng_position;
 };
 
@@ -11858,25 +11854,13 @@ common_fatal_test_read_player(void *context, int player_record,
 	return true;
 }
 
-static void
-common_fatal_test_store_target(void *context, const uint8_t raw[4])
-{
-	struct common_fatal_tape *tape = context;
-
-	memcpy(tape->target_record_raw, raw,
-	    sizeof(tape->target_record_raw));
-	tape->target_record_store_position = tape->event_count;
-	++tape->target_record_store_count;
-}
-
 static bool
-common_fatal_test_sound(void *context, const uint8_t selector_raw[4],
+common_fatal_test_sound(void *context, float selector,
     struct yt_error *error)
 {
 	struct common_fatal_tape *tape = context;
 
-	memcpy(tape->sound_selector_raw, selector_raw,
-	    sizeof(tape->sound_selector_raw));
+	tape->sound_selector = selector;
 	if (!common_fatal_test_step(tape, COMMON_FATAL_SOUND, error))
 		return false;
 	tape->sound_complete = true;
@@ -11899,14 +11883,11 @@ common_fatal_test_death(void *context, int victim_record, float killer,
 }
 
 static bool
-common_fatal_test_wait(void *context, const uint8_t duration_raw[4],
+common_fatal_test_wait(void *context, float duration,
     struct yt_error *error)
 {
 	struct common_fatal_tape *tape = context;
-	float duration = qb_mbf32_decode(duration_raw);
 
-	memcpy(tape->wait_duration_raw, duration_raw,
-	    sizeof(tape->wait_duration_raw));
 	tape->wait_duration = duration;
 	if (!common_fatal_test_step(tape, COMMON_FATAL_WAIT, error))
 		return false;
@@ -11918,7 +11899,6 @@ static const struct yt_common_fatal_ops common_fatal_test_ops = {
 	common_fatal_test_set_foreground,
 	common_fatal_test_present,
 	common_fatal_test_read_player,
-	common_fatal_test_store_target,
 	common_fatal_test_sound,
 	common_fatal_test_death,
 	common_fatal_test_wait,
@@ -11940,10 +11920,8 @@ common_fatal_test_reset(struct common_fatal_tape *tape,
 static struct yt_common_fatal_state
 common_fatal_test_state(const struct yt_player *entry)
 {
-	static const uint8_t current_record_raw[4] = {0x11, 0x22, 0x33, 0x00};
 	struct yt_common_fatal_state state = {
 		.current_player_record = 2,
-		.current_player_record_raw = current_record_raw,
 		.foreground = 7.0f,
 		.pager_foreground = 7,
 		.target_record = 99.0f,
@@ -11957,10 +11935,6 @@ common_fatal_test_state(const struct yt_player *entry)
 static bool
 check_common_fatal_transaction(void)
 {
-	static const uint8_t selector_three[4] = {0, 0, 0x40, 0x82};
-	static const uint8_t duration_five[4] = {0, 0, 0x20, 0x83};
-	static const uint8_t current_record_raw[4] = {0x11, 0x22, 0x33, 0x00};
-	static const uint8_t zero[4] = {0};
 	struct common_fatal_tape tape;
 	struct yt_common_fatal_state state;
 	struct yt_player player;
@@ -11984,14 +11958,7 @@ check_common_fatal_transaction(void)
 	    || !tape.notice_visible || !tape.sound_complete
 	    || !tape.death_durable || !tape.news_durable || !tape.wait_complete
 	    || tape.wait_duration != 5.0f || tape.rng_position != 13U
-	    || memcmp(tape.sound_selector_raw, selector_three,
-	    sizeof(selector_three)) != 0
-	    || memcmp(tape.wait_duration_raw, duration_five,
-	    sizeof(duration_five)) != 0
-	    || tape.target_record_store_count != 1U
-	    || tape.target_record_store_position != 3U
-	    || memcmp(tape.target_record_raw, current_record_raw,
-	    sizeof(current_record_raw)) != 0
+	    || tape.sound_selector != 3.0f
 	    || tape.field != COMMON_FATAL_FIELD_DEATH
 	    || state.foreground != 3.0f || state.pager_foreground != 3
 	    || state.target_record != 2.0f || !state.field_valid
@@ -12011,18 +11978,10 @@ check_common_fatal_transaction(void)
 		    || tape.death_durable != (index > COMMON_FATAL_DEATH)
 		    || tape.news_durable != (index > COMMON_FATAL_DEATH)
 		    || tape.wait_complete || tape.rng_position != 13U
-		    || memcmp(tape.sound_selector_raw,
-		    index >= COMMON_FATAL_SOUND ? selector_three : zero,
-		    sizeof(selector_three)) != 0
-		    || memcmp(tape.wait_duration_raw,
-		    index >= COMMON_FATAL_WAIT ? duration_five : zero,
-		    sizeof(duration_five)) != 0
-		    || tape.target_record_store_count
-		    != (index > COMMON_FATAL_READ_PLAYER ? 1U : 0U)
-		    || (tape.target_record_store_count == 1U
-		    && (tape.target_record_store_position != 3U
-		    || memcmp(tape.target_record_raw, current_record_raw,
-		    sizeof(current_record_raw)) != 0))
+		    || tape.sound_selector !=
+		    (index >= COMMON_FATAL_SOUND ? 3.0f : 0.0f)
+		    || tape.wait_duration !=
+		    (index >= COMMON_FATAL_WAIT ? 5.0f : 0.0f)
 		    || !state.field_valid
 		    || memcmp(state.field_player.record.bytes,
 		    index > COMMON_FATAL_READ_PLAYER ? raw.bytes : entry_raw.bytes,
