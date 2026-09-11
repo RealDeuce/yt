@@ -54,7 +54,6 @@
 #define YT_CLEARANCE_SOUND_SELECTOR_ADDRESS 0x55C6U
 #define YT_HOSTILE_PLANET_LINK_ADDRESS 0x4CFAU
 #define YT_HOSTILE_DEPLOYED_FIGHTERS_ADDRESS 0x4CFEU
-#define YT_COUNTERLAUNCH_COUNT_ADDRESS 0x5BC6U
 #define YT_SPY_DESTINATION_SCRATCH_ADDRESS 0x5FE4U
 #define YT_SPY_FOUND_SCRATCH_ADDRESS 0x5FE8U
 #define YT_SPY_DEAD_COUNTER_SCRATCH_ADDRESS 0x6018U
@@ -96,6 +95,7 @@ struct yt_session {
 	int player_record_carrier;
 	int counterattack_player;
 	int xannor_provoker;
+	float counterlaunch_count;
 	struct yt_player player;
 	float current_sector_record;
 	double combat_ship_fighters;
@@ -16089,20 +16089,11 @@ session_counterlaunch_projectile(void *context, float *origin, float *target,
 }
 
 static bool
-session_counterlaunch_wait(void *context, const uint8_t duration_raw[4],
+session_counterlaunch_wait(void *context, float duration,
     struct yt_error *error)
 {
-	return session_wait_raw(context, duration_raw,
-	    "player counterattack wait", error);
-}
-
-static void
-session_counterlaunch_store_count(void *context, const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_COUNTERLAUNCH_COUNT_ADDRESS, raw);
+	return session_wait(context, duration, "player counterattack wait",
+	    error);
 }
 
 static bool
@@ -16117,31 +16108,21 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 		session_counterlaunch_news,
 		session_counterlaunch_projectile,
 		session_counterlaunch_wait,
-		session_counterlaunch_store_count,
 		session_store_destroyed,
-		session_store_current_player_record,
-		session_store_counterattack_player,
 	};
 	bool destroyed = session_is_destroyed(session);
-	float retained_count = yt_route_process_single(&session->route_process,
-	    YT_COUNTERLAUNCH_COUNT_ADDRESS);
-	uint8_t current_record_raw[4];
 
 	session_load_counterattack_player(session, counterattacker);
 	session->player_record_carrier = session_record(session);
-	if (qb_mbf32_encode((float)session_record(session), current_record_raw)
-	    != QB_MBF_OK)
-		return false;
 	struct yt_counterlaunch_state state = {
 		&session->player,
 		&session->player_record_carrier,
 		&session->player_cache,
 		&destroyed,
-		&retained_count,
+		&session->counterlaunch_count,
 		counterattacker,
 		xannor_provoker,
 		(int)session_sector_offset(session),
-		current_record_raw,
 	};
 
 	return yt_counterlaunch_run(&state, &ops, session, error);

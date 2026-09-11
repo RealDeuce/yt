@@ -2582,7 +2582,6 @@ yt_counterlaunch_run(struct yt_counterlaunch_state *state,
     const struct yt_counterlaunch_ops *ops, void *context,
     struct yt_error *error)
 {
-	static const uint8_t duration_four[4] = {0x00, 0x00, 0x00, 0x83};
 	struct yt_player saved_player;
 	struct yt_player attacker;
 	struct yt_player debit_player;
@@ -2601,9 +2600,6 @@ yt_counterlaunch_run(struct yt_counterlaunch_state *state,
 	size_t news_length;
 	char attacker_name[YT_TEXT_FIELD_SIZE + 1U];
 	bool valid_cache;
-	uint8_t count_raw[4];
-	uint8_t installed_record_raw[4];
-	uint8_t saved_record_raw[4];
 	uint8_t saved_cloak_raw[4];
 
 	if (state == NULL || ops == NULL || state->player == NULL
@@ -2617,11 +2613,6 @@ yt_counterlaunch_run(struct yt_counterlaunch_state *state,
 		return false;
 
 	saved_record = *state->player_record;
-	if (state->player_record_raw != NULL)
-		memcpy(saved_record_raw, state->player_record_raw,
-		    sizeof(saved_record_raw));
-	else
-		(void)qb_mbf32_encode((float)saved_record, saved_record_raw);
 	if (*state->counterattacker < 2
 	    || *state->counterattacker > state->last_player_record
 	    || *state->counterattacker == saved_record)
@@ -2632,11 +2623,7 @@ yt_counterlaunch_run(struct yt_counterlaunch_state *state,
 	available = attacker.missiles;
 	if (qb_mbf32_truth(attacker.record.bytes + YT_F45)
 	    || available < 1.0f) {
-		static const uint8_t zero[4] = {0x00, 0x00, 0x00, 0x00};
-
 		*state->counterattacker = 0;
-		if (ops->store_counterattacker != NULL)
-			ops->store_counterattacker(context, zero);
 		return true;
 	}
 
@@ -2656,10 +2643,6 @@ yt_counterlaunch_run(struct yt_counterlaunch_state *state,
 		    YT_PLAYER_CACHE_CLOAK, zero);
 	}
 	*state->player_record = *state->counterattacker;
-	(void)qb_mbf32_encode((float)*state->counterattacker,
-	    installed_record_raw);
-	if (ops->store_player_record != NULL)
-		ops->store_player_record(context, installed_record_raw);
 	if (!yt_player_stored_name(&attacker, stored_name,
 	    &stored_name_length, error))
 		return false;
@@ -2670,9 +2653,6 @@ yt_counterlaunch_run(struct yt_counterlaunch_state *state,
 
 	*state->retained_count = yt_counterlaunch_score_count(
 	    (double)saved_player.score, *state->retained_count);
-	if (saved_player.score > 0.0f && ops->store_count != NULL
-	    && qb_mbf32_encode(*state->retained_count, count_raw) == QB_MBF_OK)
-		ops->store_count(context, count_raw);
 	if (*state->retained_count > available
 	    || *state->retained_count == 0.0f) {
 		float draw;
@@ -2686,10 +2666,6 @@ yt_counterlaunch_run(struct yt_counterlaunch_state *state,
 		integral = floorf(product);
 		selected = integral + 1.0f;
 		*state->retained_count = selected;
-		if (ops->store_count != NULL
-		    && qb_mbf32_encode(*state->retained_count, count_raw)
-		    == QB_MBF_OK)
-			ops->store_count(context, count_raw);
 	}
 	if (!ops->read_player(context, *state->counterattacker,
 	    &debit_player, error))
@@ -2713,16 +2689,8 @@ yt_counterlaunch_run(struct yt_counterlaunch_state *state,
 	    state->xannor_provoker, error))
 		return false;
 
-	{
-		static const uint8_t zero[4] = {0x00, 0x00, 0x00, 0x00};
-
-		*state->counterattacker = 0;
-		if (ops->store_counterattacker != NULL)
-			ops->store_counterattacker(context, zero);
-	}
+	*state->counterattacker = 0;
 	*state->player_record = saved_record;
-	if (ops->store_player_record != NULL)
-		ops->store_player_record(context, saved_record_raw);
 	*state->player = saved_player;
 	if (valid_cache)
 		(void)yt_player_cache_set_raw(state->player_cache, saved_record,
@@ -2736,7 +2704,7 @@ yt_counterlaunch_run(struct yt_counterlaunch_state *state,
 		if (ops->store_destroyed != NULL)
 			ops->store_destroyed(context, one);
 	}
-	return ops->wait(context, duration_four, error);
+	return ops->wait(context, 4.0f, error);
 }
 
 static bool

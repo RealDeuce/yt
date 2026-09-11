@@ -1818,7 +1818,6 @@ struct yt_counterlaunch_state {
 	int *counterattacker;
 	int *xannor_provoker;
 	int last_player_record;
-	const uint8_t *player_record_raw;
 };
 
 typedef bool (*yt_counterlaunch_read_player_fn)(void *context,
@@ -1835,9 +1834,7 @@ typedef bool (*yt_counterlaunch_projectile_fn)(void *context, float *origin,
     float *target, float *amount, bool plasma, int *counterattack,
     int *xannor_provoker, struct yt_error *error);
 typedef bool (*yt_counterlaunch_wait_fn)(void *context,
-    const uint8_t duration_raw[4], struct yt_error *error);
-typedef void (*yt_counterlaunch_count_store_fn)(void *context,
-    const uint8_t raw[4]);
+	float duration, struct yt_error *error);
 
 struct yt_counterlaunch_ops {
 	yt_counterlaunch_read_player_fn read_player;
@@ -1847,10 +1844,7 @@ struct yt_counterlaunch_ops {
 	yt_counterlaunch_news_fn append_news;
 	yt_counterlaunch_projectile_fn projectile;
 	yt_counterlaunch_wait_fn wait;
-	yt_counterlaunch_count_store_fn store_count;
 	yt_destroyed_store_fn store_destroyed;
-	yt_player_record_store_fn store_player_record;
-	yt_player_record_store_fn store_counterattacker;
 };
 
 enum yt_salvage_simple_kind {
