@@ -27356,11 +27356,6 @@ struct direct_warp_main_cycle_state {
 	bool fresh_hostile_attack_sector_get_boundary;
 	float fresh_hostile_attack_commitment;
 	size_t fresh_hostile_attack_sector_reads;
-	bool fresh_hostile_attack_post_sector_initialized;
-	uint8_t fresh_hostile_attack_owner_cvs_raw[4];
-	uint8_t fresh_hostile_attack_owner_raw[4];
-	uint8_t fresh_hostile_attack_attacker_loss_raw[8];
-	uint8_t fresh_hostile_attack_defender_loss_raw[8];
 	uint8_t fresh_hostile_attack_surrender_latch_raw[4];
 	uint8_t fresh_hostile_attack_sound_selector_raw[4];
 	size_t fresh_hostile_attack_opening_sound_calls;
@@ -28036,17 +28031,8 @@ direct_emergency_warp_fresh_hostile_attack_entry_a41c_failure(
 	io->field_player = false;
 	cycle->final_field_record = 1054;
 	cycle->final_field_player = false;
-	memcpy(cycle->fresh_hostile_attack_owner_cvs_raw,
-	    &field.bytes[YT_F85], 4U);
-	memcpy(cycle->fresh_hostile_attack_owner_raw,
-	    cycle->fresh_hostile_attack_owner_cvs_raw, 4U);
-	memset(cycle->fresh_hostile_attack_attacker_loss_raw, 0,
-	    sizeof(cycle->fresh_hostile_attack_attacker_loss_raw));
-	memset(cycle->fresh_hostile_attack_defender_loss_raw, 0,
-	    sizeof(cycle->fresh_hostile_attack_defender_loss_raw));
 	memset(cycle->fresh_hostile_attack_surrender_latch_raw, 0,
 	    sizeof(cycle->fresh_hostile_attack_surrender_latch_raw));
-	cycle->fresh_hostile_attack_post_sector_initialized = true;
 
 	io->read_success = false;
 	io->failure = player_failure;
@@ -28138,17 +28124,8 @@ direct_emergency_warp_fresh_hostile_attack_opening_success(
 	io->field_player = false;
 	cycle->final_field_record = 1054;
 	cycle->final_field_player = false;
-	memcpy(cycle->fresh_hostile_attack_owner_cvs_raw,
-	    &field.bytes[YT_F85], 4U);
-	memcpy(cycle->fresh_hostile_attack_owner_raw,
-	    cycle->fresh_hostile_attack_owner_cvs_raw, 4U);
-	memset(cycle->fresh_hostile_attack_attacker_loss_raw, 0,
-	    sizeof(cycle->fresh_hostile_attack_attacker_loss_raw));
-	memset(cycle->fresh_hostile_attack_defender_loss_raw, 0,
-	    sizeof(cycle->fresh_hostile_attack_defender_loss_raw));
 	memset(cycle->fresh_hostile_attack_surrender_latch_raw, 0,
 	    sizeof(cycle->fresh_hostile_attack_surrender_latch_raw));
-	cycle->fresh_hostile_attack_post_sector_initialized = true;
 
 	memset(&entry->player_source, 0xa5,
 	    sizeof(entry->player_source));
@@ -28262,11 +28239,7 @@ struct direct_warp_attack_combat_join {
 	float current_sector_record;
 	float sector_record_offset;
 	struct yt_player_cache player_cache;
-	uint8_t owner_raw[4];
 	uint8_t selector_raw[4];
-	uint8_t quantum_raw[4];
-	uint8_t attacker_loss_raw[8];
-	uint8_t defender_loss_raw[8];
 	uint8_t ship_raw[8];
 	uint8_t shield_raw[4];
 	uint8_t spill_fighters_raw[8];
@@ -28307,8 +28280,6 @@ struct direct_warp_attack_combat_join {
 	size_t a41c_reads;
 	size_t sound_calls;
 	size_t random_calls;
-	size_t quantum_stores;
-	size_t loss_stores;
 	size_t ship_stores;
 	size_t player_cache_calls;
 	size_t sector_cache_calls;
@@ -28379,27 +28350,6 @@ direct_warp_attack_combat_read_sector(void *context, int sector_number,
 	join->cycle->final_field_record = 1054;
 	join->cycle->final_field_player = false;
 	return true;
-}
-
-static void
-direct_warp_attack_combat_store_owner(void *context, const uint8_t raw[4])
-{
-	struct direct_warp_attack_combat_join *join = context;
-
-	memcpy(join->owner_raw, raw, sizeof(join->owner_raw));
-	memcpy(join->cycle->fresh_hostile_attack_owner_cvs_raw, raw, 4U);
-	memcpy(join->cycle->fresh_hostile_attack_owner_raw, raw, 4U);
-}
-
-static void
-direct_warp_attack_combat_initialize(void *context)
-{
-	struct direct_warp_attack_combat_join *join = context;
-
-	memset(join->cycle->fresh_hostile_attack_attacker_loss_raw, 0, 8U);
-	memset(join->cycle->fresh_hostile_attack_defender_loss_raw, 0, 8U);
-	memset(join->cycle->fresh_hostile_attack_surrender_latch_raw, 0, 4U);
-	join->cycle->fresh_hostile_attack_post_sector_initialized = true;
 }
 
 static bool
@@ -28489,34 +28439,6 @@ direct_warp_attack_combat_random(void *context, float *value,
 	if (join->random_calls == join->fail_random_at)
 		return false;
 	return hostile_mine_hazard_random(join->fixture, value, error);
-}
-
-static void
-direct_warp_attack_combat_store_quantum(void *context, float quantum)
-{
-	struct direct_warp_attack_combat_join *join = context;
-
-	(void)qb_mbf32_encode(quantum, join->quantum_raw);
-	++join->quantum_stores;
-}
-
-static void
-direct_warp_attack_combat_store_loss(void *context,
-    enum yt_hostile_attack_loss_kind kind, double loss)
-{
-	struct direct_warp_attack_combat_join *join = context;
-
-	if (kind == YT_HOSTILE_ATTACK_ATTACKER_LOSS) {
-		(void)qb_mbf64_encode(loss, join->attacker_loss_raw);
-		memcpy(join->cycle->fresh_hostile_attack_attacker_loss_raw,
-		    join->attacker_loss_raw, 8U);
-	}
-	else {
-		(void)qb_mbf64_encode(loss, join->defender_loss_raw);
-		memcpy(join->cycle->fresh_hostile_attack_defender_loss_raw,
-		    join->defender_loss_raw, 8U);
-	}
-	++join->loss_stores;
 }
 
 static void
@@ -29453,13 +29375,9 @@ direct_warp_attack_combat_tail(void *context,
 static const struct yt_hostile_attack_combat_ops
 direct_warp_attack_combat_ops = {
 	direct_warp_attack_combat_read_sector,
-	direct_warp_attack_combat_store_owner,
-	direct_warp_attack_combat_initialize,
 	direct_warp_attack_combat_read_player,
 	direct_warp_attack_combat_sound,
 	direct_warp_attack_combat_random,
-	direct_warp_attack_combat_store_quantum,
-	direct_warp_attack_combat_store_loss,
 	direct_warp_attack_combat_store_ship,
 	direct_warp_attack_combat_surrender,
 	direct_warp_attack_combat_present,
@@ -34157,7 +34075,6 @@ test_direct_emergency_warp_hostile_attack_sector_get_failures(void)
 static void
 test_direct_emergency_warp_hostile_attack_entry_a41c_failures(void)
 {
-	static const uint8_t zero_double[8] = {0};
 	static const uint8_t zero_single[4] = {0};
 	static const struct {
 		bool main;
@@ -34293,16 +34210,7 @@ test_direct_emergency_warp_hostile_attack_entry_a41c_failures(void)
 				for (index = successes[success].accepted;
 				    index < YT_RECORD_SIZE; ++index)
 					CHECK(entry.sector_field.bytes[index] == 0U);
-				CHECK(cycle.fresh_hostile_attack_post_sector_initialized
-				    && memcmp(cycle.fresh_hostile_attack_owner_cvs_raw,
-				    &entry.sector_field.bytes[YT_F85], 4U) == 0
-				    && memcmp(cycle.fresh_hostile_attack_owner_raw,
-				    cycle.fresh_hostile_attack_owner_cvs_raw, 4U) == 0
-				    && memcmp(cycle.fresh_hostile_attack_attacker_loss_raw,
-				    zero_double, sizeof(zero_double)) == 0
-				    && memcmp(cycle.fresh_hostile_attack_defender_loss_raw,
-				    zero_double, sizeof(zero_double)) == 0
-				    && memcmp(cycle.fresh_hostile_attack_surrender_latch_raw,
+				CHECK(memcmp(cycle.fresh_hostile_attack_surrender_latch_raw,
 				    zero_single, sizeof(zero_single)) == 0);
 				CHECK(entry.io.database.last_get.current_record == 2U
 				    && entry.io.database.last_get.record_index == 1U
@@ -34364,7 +34272,6 @@ test_direct_emergency_warp_hostile_attack_entry_a41c_failures(void)
 static void
 test_direct_emergency_warp_hostile_attack_opening_success(void)
 {
-	static const uint8_t zero_double[8] = {0};
 	static const uint8_t zero_single[4] = {0};
 	static const uint8_t selector_two[4] = {0, 0, 0, 0x82U};
 	static const struct {
@@ -34507,16 +34414,7 @@ test_direct_emergency_warp_hostile_attack_opening_success(void)
 				    == (successes[player_success].accepted == YT_RECORD_SIZE
 				    ? 36.0f : 0.0f)
 				    && entry.player_cache.cloak[3] == -4.0f);
-				CHECK(cycle.fresh_hostile_attack_post_sector_initialized
-				    && memcmp(cycle.fresh_hostile_attack_owner_cvs_raw,
-				    &entry.sector_field.bytes[YT_F85], 4U) == 0
-				    && memcmp(cycle.fresh_hostile_attack_owner_raw,
-				    cycle.fresh_hostile_attack_owner_cvs_raw, 4U) == 0
-				    && memcmp(cycle.fresh_hostile_attack_attacker_loss_raw,
-				    zero_double, sizeof(zero_double)) == 0
-				    && memcmp(cycle.fresh_hostile_attack_defender_loss_raw,
-				    zero_double, sizeof(zero_double)) == 0
-				    && memcmp(cycle.fresh_hostile_attack_surrender_latch_raw,
+				CHECK(memcmp(cycle.fresh_hostile_attack_surrender_latch_raw,
 				    zero_single, sizeof(zero_single)) == 0);
 				CHECK(cycle.fresh_hostile_attack_opening_sound_calls == 1U
 				    && memcmp(cycle.fresh_hostile_attack_sound_selector_raw,
@@ -34550,9 +34448,7 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 	static const uint8_t return_menu[] =
 	    "\r\nFighters: 7 / 1250\n\r"
 	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? B\r\n";
-	static const uint8_t raw_one_single[4] = {0, 0, 0, 0x81U};
 	static const uint8_t raw_two_single[4] = {0, 0, 0, 0x82U};
-	static const uint8_t raw_one_double[8] = {0, 0, 0, 0, 0, 0, 0, 0x81U};
 	static const uint8_t raw_zero_double[8] = {0};
 	static const struct {
 		enum direct_warp_gate_get_failure failure;
@@ -34739,8 +34635,7 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 		    && !combat.spill_called);
 		CHECK(join.sector_reads == 1U && join.a41c_reads == 1U
 		    && join.sound_calls == 1U
-		    && join.random_calls == 2U && join.quantum_stores == 1U
-		    && join.loss_stores == 1U && join.ship_stores == 1U
+		    && join.random_calls == 2U && join.ship_stores == 1U
 		    && join.player_cache_calls == 1U
 		    && join.sector_cache_calls == 2U
 		    && join.persistence_player_reads == 1U
@@ -34751,12 +34646,7 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 		CHECK(!join.unexpected_surrender && !join.unexpected_spill
 		    && !join.unexpected_news && !join.unexpected_fatal
 		    && !join.unexpected_tail_effect
-		    && memcmp(join.owner_raw,
-		    join.entry_sector.record.bytes + YT_F85, 4U) == 0
-		    && memcmp(join.selector_raw, raw_two_single, 4U) == 0
-		    && memcmp(join.quantum_raw, raw_one_single, 4U) == 0
-		    && memcmp(join.attacker_loss_raw, raw_one_double, 8U) == 0
-		    && memcmp(join.defender_loss_raw, raw_zero_double, 8U) == 0);
+		    && memcmp(join.selector_raw, raw_two_single, 4U) == 0);
 		expected_player = join.persistence_player;
 		yt_deployed_attack_player_overlay(&expected_player, 5.0f, 999.0f);
 		expected_sector = join.persistence_sector;
@@ -34775,13 +34665,7 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 		    && cycle.final_field_record == 1054
 		    && !cycle.final_field_player
 		    && join.current_sector_record == 1054.0f
-		    && join.player_cache.cloak[2] == 0.0f
-		    && memcmp(cycle.fresh_hostile_attack_owner_raw,
-		    join.entry_sector.record.bytes + YT_F85, 4U) == 0
-		    && memcmp(cycle.fresh_hostile_attack_attacker_loss_raw,
-		    raw_one_double, 8U) == 0
-		    && memcmp(cycle.fresh_hostile_attack_defender_loss_raw,
-		    raw_zero_double, 8U) == 0);
+		    && join.player_cache.cloak[2] == 0.0f);
 		CHECK(viewer.join.remote_length
 		    == callers[caller].total_length + sizeof(body) - 1U
 		    && memcmp(remote + callers[caller].total_length, body,
@@ -34952,10 +34836,6 @@ test_direct_emergency_warp_hostile_attack_defenders_cleared(void)
 	    "\x1b[0;32;40m\r\nTime: 14:59  Main Command (?=Help)? ";
 	static const uint8_t news[] =
 	    "STATIC PILOT destroyed 1 fighters belonging to Ordinary";
-	static const uint8_t raw_one_double[8] = {
-		0, 0, 0, 0, 0, 0, 0, 0x81U
-	};
-	static const uint8_t raw_zero_double[8] = {0};
 	static const struct {
 		const uint8_t *text;
 		size_t length;
@@ -35064,8 +34944,7 @@ test_direct_emergency_warp_hostile_attack_defenders_cleared(void)
 			    && !combat.spill_called);
 			CHECK(join.sector_reads == 1U && join.a41c_reads == 2U
 			    && join.sound_calls == 1U
-			    && join.random_calls == 2U && join.quantum_stores == 1U
-			    && join.loss_stores == 1U && join.ship_stores == 1U
+			    && join.random_calls == 2U && join.ship_stores == 1U
 			    && join.persistence_player_reads == 2U
 			    && join.persistence_player_writes == 1U
 			    && join.persistence_sector_reads == 1U
@@ -35074,9 +34953,7 @@ test_direct_emergency_warp_hostile_attack_defenders_cleared(void)
 			    && !join.unexpected_surrender && !join.unexpected_spill
 			    && !join.unexpected_news && !join.unexpected_fatal
 			    && !join.unexpected_tail_effect);
-			CHECK(memcmp(join.attacker_loss_raw, raw_zero_double, 8U) == 0
-			    && memcmp(join.defender_loss_raw, raw_one_double, 8U) == 0
-			    && join.news_length == sizeof(news) - 1U
+			CHECK(join.news_length == sizeof(news) - 1U
 			    && memcmp(join.news, news, sizeof(news) - 1U) == 0
 			    && join.defeated_length == 46U
 			    && memcmp(join.defeated,
@@ -35230,7 +35107,7 @@ test_direct_emergency_warp_hostile_attack_surrender_accepted(void)
 		    && join.surrender_latch_stores == 1U
 		    && join.surrendered_ship == 21.0
 		    && join.surrendered_deployed == 0.0
-		    && join.random_calls == 1U && join.loss_stores == 0U
+		    && join.random_calls == 1U
 		    && join.persistence_player_reads == 1U
 		    && join.persistence_player_writes == 1U
 		    && join.persistence_sector_reads == 1U
@@ -35346,8 +35223,7 @@ test_direct_emergency_warp_hostile_attack_surrender_refused(void)
 		    && join.sound_calls == 1U && join.surrender_sound_calls == 1U
 		    && join.surrender_force_stores == 0U
 		    && join.surrender_latch_stores == 1U
-		    && join.random_calls == 2U && join.loss_stores == 1U
-		    && join.ship_stores == 1U
+		    && join.random_calls == 2U && join.ship_stores == 1U
 		    && join.persistence_player_reads == 2U
 		    && join.persistence_player_writes == 1U
 		    && join.persistence_sector_reads == 1U
@@ -35529,8 +35405,7 @@ test_direct_emergency_warp_hostile_forced_bribe_attack(void)
 		    && attack.surrender_sound_calls == 2U
 		    && attack.surrender_force_stores == 0U
 		    && attack.surrender_latch_stores == 1U
-		    && attack.random_calls == 2U && attack.loss_stores == 1U
-		    && attack.ship_stores == 1U
+		    && attack.random_calls == 2U && attack.ship_stores == 1U
 		    && attack.persistence_player_reads == 2U
 		    && attack.persistence_player_writes == 1U
 		    && attack.persistence_sector_reads == 1U
@@ -35742,7 +35617,6 @@ test_direct_emergency_warp_hostile_forced_bribe_origins(void)
 			    && attack.surrender_force_stores == 0U
 			    && attack.surrender_latch_stores == 1U
 			    && attack.random_calls == 2U
-			    && attack.loss_stores == 1U
 			    && attack.ship_stores == 1U
 			    && attack.persistence_player_reads == 2U
 			    && attack.persistence_player_writes == 1U
@@ -37671,7 +37545,6 @@ test_xannor_attack_combat_victory_join(void)
 		CHECK(join.sector_reads == 1U && join.a41c_reads == 4U
 		    && join.sound_calls == 1U
 		    && join.random_calls == 224U && fixture.draw_position == 224U
-		    && join.quantum_stores == 215U && join.loss_stores == 215U
 		    && join.ship_stores == 1U && join.player_cache_calls == 1U
 		    && join.sector_cache_calls == 2U
 		    && join.persistence_player_reads == 2U

@@ -4123,23 +4123,12 @@ struct yt_hostile_attack_combat_state {
 
 typedef bool (*yt_hostile_attack_combat_read_sector_fn)(void *context,
     int sector_number, struct yt_sector *sector, struct yt_error *error);
-typedef void (*yt_hostile_attack_combat_store_owner_fn)(void *context,
-    const uint8_t raw[4]);
-typedef void (*yt_hostile_attack_combat_initialize_fn)(void *context);
 typedef bool (*yt_hostile_attack_combat_read_player_fn)(void *context,
     int player_record, struct yt_player *player, struct yt_error *error);
 typedef bool (*yt_hostile_attack_combat_sound_fn)(void *context,
     float selector, struct yt_error *error);
 typedef bool (*yt_hostile_attack_combat_random_fn)(void *context,
     float *value, struct yt_error *error);
-typedef void (*yt_hostile_attack_combat_store_quantum_fn)(void *context,
-	float quantum);
-enum yt_hostile_attack_loss_kind {
-	YT_HOSTILE_ATTACK_ATTACKER_LOSS,
-	YT_HOSTILE_ATTACK_DEFENDER_LOSS,
-};
-typedef void (*yt_hostile_attack_combat_store_loss_fn)(void *context,
-	enum yt_hostile_attack_loss_kind kind, double loss);
 typedef void (*yt_hostile_attack_combat_store_ship_fn)(void *context,
     double ship_fighters);
 typedef bool (*yt_hostile_attack_combat_surrender_fn)(void *context,
@@ -4162,13 +4151,9 @@ typedef bool (*yt_hostile_attack_combat_tail_fn)(void *context,
 
 struct yt_hostile_attack_combat_ops {
 	yt_hostile_attack_combat_read_sector_fn read_sector;
-	yt_hostile_attack_combat_store_owner_fn store_owner;
-	yt_hostile_attack_combat_initialize_fn initialize;
 	yt_hostile_attack_combat_read_player_fn read_player;
 	yt_hostile_attack_combat_sound_fn sound;
 	yt_hostile_attack_combat_random_fn random;
-	yt_hostile_attack_combat_store_quantum_fn store_quantum;
-	yt_hostile_attack_combat_store_loss_fn store_loss;
 	yt_hostile_attack_combat_store_ship_fn store_ship;
 	yt_hostile_attack_combat_surrender_fn surrender;
 	yt_hostile_attack_combat_present_fn present;

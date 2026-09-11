@@ -54,11 +54,6 @@
 #define YT_CLEARANCE_SOUND_SELECTOR_ADDRESS 0x55C6U
 #define YT_HOSTILE_PLANET_LINK_ADDRESS 0x4CFAU
 #define YT_HOSTILE_DEPLOYED_FIGHTERS_ADDRESS 0x4CFEU
-#define YT_HOSTILE_ATTACK_OWNER_ADDRESS 0x4D06U
-#define YT_HOSTILE_ATTACKER_LOSSES_ADDRESS 0x4D1EU
-#define YT_HOSTILE_DEFENDER_LOSSES_ADDRESS 0x4D26U
-#define YT_HOSTILE_ATTACK_QUANTUM_ADDRESS 0x4D32U
-#define YT_STATIC_DOUBLE_ZERO_ADDRESS 0x66D6U
 #define YT_STATIC_SINGLE_ZERO_ADDRESS 0x62F4U
 #define YT_STATIC_SINGLE_ONE_ADDRESS 0x628AU
 #define YT_FATAL_SOUND_SELECTOR_ADDRESS 0x4CE2U
@@ -108,6 +103,7 @@ struct yt_session {
 	float current_sector_record;
 	double combat_ship_fighters;
 	float combat_ship_shields;
+	float hostile_owner;
 	float foreground;
 	float market_bases[3];
 	float disruption_sectors[2];
@@ -4369,8 +4365,7 @@ scanner_cache_hostile_sector(struct yt_session *session,
 	    &sector->record.bytes[YT_F81]), fighters_raw);
 	yt_route_process_set_raw_double(&session->route_process,
 	    YT_HOSTILE_DEPLOYED_FIGHTERS_ADDRESS, fighters_raw);
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_HOSTILE_ATTACK_OWNER_ADDRESS,
+	session->hostile_owner = qb_mbf32_decode(
 	    &sector->record.bytes[YT_F85]);
 }
 
@@ -6945,29 +6940,6 @@ hostile_attack_combat_read_sector(void *context, int sector_number,
 	    sector, error);
 }
 
-static void
-hostile_attack_combat_store_owner(void *context, const uint8_t raw[4])
-{
-	struct hostile_attack_combat_context *combat = context;
-
-	yt_route_process_set_raw_single(&combat->session->route_process,
-	    YT_HOSTILE_ATTACK_OWNER_ADDRESS, raw);
-}
-
-static void
-hostile_attack_combat_initialize(void *context)
-{
-	struct hostile_attack_combat_context *combat = context;
-	struct yt_route_process *process = &combat->session->route_process;
-
-	yt_route_process_copy_raw_double(process, YT_STATIC_DOUBLE_ZERO_ADDRESS,
-	    YT_HOSTILE_ATTACKER_LOSSES_ADDRESS);
-	yt_route_process_copy_raw_double(process, YT_STATIC_DOUBLE_ZERO_ADDRESS,
-	    YT_HOSTILE_DEFENDER_LOSSES_ADDRESS);
-	yt_route_process_copy_raw_single(process, YT_STATIC_SINGLE_ZERO_ADDRESS,
-	    YT_COMPUTER_ROUTE_STATUS_ADDRESS);
-}
-
 static bool
 hostile_attack_combat_read_player(void *context, int player_record,
     struct yt_player *player, struct yt_error *error)
@@ -7005,27 +6977,6 @@ hostile_attack_combat_random(void *context, float *value,
 	struct hostile_attack_combat_context *combat = context;
 
 	return random_value(combat->session, value, error);
-}
-
-static void
-hostile_attack_combat_store_quantum(void *context, float quantum)
-{
-	struct hostile_attack_combat_context *combat = context;
-
-	session_set_process_single(combat->session,
-	    YT_HOSTILE_ATTACK_QUANTUM_ADDRESS, quantum);
-}
-
-static void
-hostile_attack_combat_store_loss(void *context,
-    enum yt_hostile_attack_loss_kind kind, double loss)
-{
-	struct hostile_attack_combat_context *combat = context;
-	uint16_t address = kind == YT_HOSTILE_ATTACK_ATTACKER_LOSS
-	    ? YT_HOSTILE_ATTACKER_LOSSES_ADDRESS
-	    : YT_HOSTILE_DEFENDER_LOSSES_ADDRESS;
-
-	session_set_process_double(combat->session, address, loss);
 }
 
 static void
@@ -7185,13 +7136,9 @@ attack_deployed_committed(struct yt_session *session,
 {
 	static const struct yt_hostile_attack_combat_ops ops = {
 		hostile_attack_combat_read_sector,
-		hostile_attack_combat_store_owner,
-		hostile_attack_combat_initialize,
 		hostile_attack_combat_read_player,
 		hostile_attack_combat_sound,
 		hostile_attack_combat_random,
-		hostile_attack_combat_store_quantum,
-		hostile_attack_combat_store_loss,
 		hostile_attack_combat_store_ship,
 		hostile_attack_combat_surrender,
 		hostile_attack_combat_present,
@@ -7498,8 +7445,7 @@ bribe_deployed(struct yt_session *session, struct yt_sector *sector,
 	state = (struct yt_hostile_bribe_state){
 		.current_player_record = session_record(session),
 		.current_sector = (int)session->player.sector,
-		.owner = yt_route_process_single(&session->route_process,
-		    YT_HOSTILE_ATTACK_OWNER_ADDRESS),
+		.owner = session->hostile_owner,
 		.cached_defenders = session_hostile_deployed_fighters(session),
 		.ship_fighters = session->combat_ship_fighters,
 		.shields = session->combat_ship_shields,

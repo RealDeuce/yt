@@ -16580,11 +16580,8 @@ yt_hostile_attack_combat_run(struct yt_hostile_attack_combat_state *state,
 	bool child_result;
 
 	if (state == NULL || ops == NULL || ops->read_sector == NULL
-	    || ops->store_owner == NULL || ops->initialize == NULL
-	    || ops->read_player == NULL
-	    || ops->sound == NULL
-	    || ops->random == NULL || ops->store_quantum == NULL
-	    || ops->store_loss == NULL || ops->store_ship == NULL
+	    || ops->read_player == NULL || ops->sound == NULL
+	    || ops->random == NULL || ops->store_ship == NULL
 	    || ops->surrender == NULL
 	    || ops->present == NULL || ops->cache_player == NULL
 	    || ops->cache_sector == NULL || ops->spill == NULL
@@ -16616,10 +16613,8 @@ yt_hostile_attack_combat_run(struct yt_hostile_attack_combat_state *state,
 	if (!ops->read_sector(context, state->current_sector,
 	    &state->opened_sector, error))
 		return false;
-	ops->store_owner(context, &state->opened_sector.record.bytes[YT_F85]);
 	state->old_owner = qb_mbf32_decode(
 	    &state->opened_sector.record.bytes[YT_F85]);
-	ops->initialize(context);
 	if (!ops->read_player(context, state->current_player_record,
 	    &state->current, error))
 		return false;
@@ -16635,7 +16630,6 @@ yt_hostile_attack_combat_run(struct yt_hostile_attack_combat_state *state,
 
 		state->quantum = yt_hostile_attack_quantum(remaining_attacker,
 		    remaining_defender);
-		ops->store_quantum(context, state->quantum);
 		if (remaining_defender == 0.0) {
 			if (error != NULL) {
 				error->status = YT_RANGE;
@@ -16691,26 +16685,18 @@ yt_hostile_attack_combat_run(struct yt_hostile_attack_combat_state *state,
 		    state->last_draw)) {
 			state->attacker_loss = direct_attack_double_add(
 			    state->attacker_loss, (double)state->quantum);
-			ops->store_loss(context, YT_HOSTILE_ATTACK_ATTACKER_LOSS,
-			    state->attacker_loss);
 		} else {
 			state->defender_loss = direct_attack_double_add(
 			    state->defender_loss, (double)state->quantum);
-			ops->store_loss(context, YT_HOSTILE_ATTACK_DEFENDER_LOSS,
-			    state->defender_loss);
 		}
 		++state->iterations;
 	} while (state->attacker_loss < state->commitment
 	    && state->defender_loss < state->old_count);
 	if (state->attacker_loss > state->commitment) {
 		state->attacker_loss = state->commitment;
-		ops->store_loss(context, YT_HOSTILE_ATTACK_ATTACKER_LOSS,
-		    state->attacker_loss);
 	}
 	if (state->defender_loss > state->old_count) {
 		state->defender_loss = state->old_count;
-		ops->store_loss(context, YT_HOSTILE_ATTACK_DEFENDER_LOSS,
-		    state->defender_loss);
 	}
 	if (!state->surrendered) {
 		state->ship_fighters = direct_attack_double_sub(state->old_ship,
