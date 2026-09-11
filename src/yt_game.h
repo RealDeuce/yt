@@ -39,8 +39,6 @@ struct yt_player {
 typedef bool (*yt_credit_mutation_apply_fn)(void *context,
 	float player_record, float argument, struct yt_player *player,
 	bool *hydrated, struct yt_error *error);
-typedef void (*yt_destroyed_store_fn)(void *context,
-	const uint8_t raw[4]);
 typedef void (*yt_player_record_store_fn)(void *context,
 	const uint8_t raw[4]);
 typedef bool (*yt_destroyed_truth_fn)(void *context);
@@ -1205,7 +1203,6 @@ struct yt_sector_mine_ops {
 	void (*set_current)(void *context, const struct yt_player *player);
 	void (*style)(void *context, float foreground, float background,
 	    float blink, int pager_foreground);
-	yt_destroyed_store_fn store_destroyed;
 };
 bool yt_sector_mine_run(struct yt_sector_mine_state *state,
     const struct yt_sector_mine_ops *ops, void *context,
@@ -1596,7 +1593,6 @@ struct yt_projectile_plasma_killed_ops {
 	yt_projectile_plasma_killed_child_fn death;
 	yt_projectile_plasma_fighter_sound_fn sound;
 	yt_projectile_plasma_killed_child_fn salvage;
-	yt_destroyed_store_fn store_destroyed;
 };
 bool yt_projectile_plasma_killed_run(
     struct yt_projectile_plasma_killed_state *state,
@@ -1802,7 +1798,6 @@ struct yt_xannor_retaliation_ops {
 	yt_xannor_retaliation_projectile_fn projectile;
 	yt_xannor_retaliation_read_player_fn read_player;
 	yt_xannor_retaliation_wait_fn wait;
-	yt_destroyed_store_fn store_destroyed;
 };
 
 struct yt_counterlaunch_state {
@@ -1840,7 +1835,6 @@ struct yt_counterlaunch_ops {
 	yt_counterlaunch_news_fn append_news;
 	yt_counterlaunch_projectile_fn projectile;
 	yt_counterlaunch_wait_fn wait;
-	yt_destroyed_store_fn store_destroyed;
 };
 
 enum yt_salvage_simple_kind {
@@ -4602,7 +4596,6 @@ struct yt_projectile_command_ops {
 	bool (*xannor)(void *context, int *xannor_provoker,
 	    struct yt_error *error);
 	bool (*fatal)(void *context, struct yt_error *error);
-	yt_destroyed_store_fn store_destroyed;
 	yt_destroyed_truth_fn destroyed_truth;
 	bool (*counterattack_truth)(void *context);
 	bool (*xannor_truth)(void *context);

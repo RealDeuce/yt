@@ -22728,7 +22728,6 @@ struct hostile_mines_hazard_fixture {
 	float emergency_heat;
 	size_t emergency_ticks;
 	bool destroyed;
-	size_t destroyed_stores;
 	unsigned reentry_failure;
 	unsigned reentry_error_number;
 	unsigned reentry_saved_ip;
@@ -23138,16 +23137,6 @@ hostile_mine_hazard_style(void *context, float foreground, float background,
 	join->pager.foreground = pager_foreground;
 }
 
-static void
-hostile_mine_hazard_store_destroyed(void *context, const uint8_t raw[4])
-{
-	static const uint8_t basic_true[4] = {0x00, 0x00, 0x80, 0x81};
-	struct hostile_mines_hazard_fixture *fixture = context;
-
-	CHECK(memcmp(raw, basic_true, sizeof(basic_true)) == 0);
-	++fixture->destroyed_stores;
-}
-
 static const struct yt_sector_mine_ops hostile_mine_hazard_ops = {
 	hostile_mine_hazard_read_current,
 	hostile_mine_hazard_read_player,
@@ -23162,7 +23151,6 @@ static const struct yt_sector_mine_ops hostile_mine_hazard_ops = {
 	hostile_mine_hazard_warp,
 	hostile_mine_hazard_set_current,
 	hostile_mine_hazard_style,
-	hostile_mine_hazard_store_destroyed,
 };
 
 static bool
@@ -23399,7 +23387,7 @@ test_hostile_mines_admitted_hazard_cycle_presentation(void)
 		    && memcmp(fixture.news[1], final_news,
 		    sizeof(final_news) - 1U) == 0
 		    && !fixture.shrink_called && !fixture.warp_called
-		    && !fixture.destroyed && fixture.destroyed_stores == 0U
+		    && !fixture.destroyed
 		    && strcmp(viewer.join.accumulator, "A") == 0
 		    && viewer.join.queue_length == 0U
 		    && viewer.join.local_fragment_length == 0U
@@ -23560,7 +23548,7 @@ test_hostile_mines_emergency_warp_cycle_presentation(void)
 		    && fixture.emergency_sector_cache == 1003.0f
 		    && fixture.emergency_player.sector == 1003.0f
 		    && fixture.emergency_player.turns == 14.0f
-		    && !fixture.destroyed && fixture.destroyed_stores == 0U
+		    && !fixture.destroyed
 		    && strcmp(viewer.join.accumulator, "A") == 0
 		    && viewer.join.queue_length == 0U
 		    && viewer.join.local_fragment_length == 0U
@@ -23790,7 +23778,7 @@ test_hostile_mines_black_hole_cycle_presentation(void)
 		    && fixture.emergency_sector_cache == 1003.0f
 		    && fixture.emergency_player.sector == 1003.0f
 		    && fixture.emergency_player.turns == 14.0f
-		    && !fixture.destroyed && fixture.destroyed_stores == 0U
+		    && !fixture.destroyed
 		    && strcmp(viewer.join.accumulator, "A") == 0
 		    && viewer.join.queue_length == 0U
 		    && viewer.join.local_fragment_length == 0U
@@ -38600,7 +38588,6 @@ test_direct_emergency_warp_main_mine_cycle(void)
 		    && memcmp(fixture.news[1], final_news,
 		    sizeof(final_news) - 1U) == 0
 		    && !fixture.shrink_called && !fixture.destroyed
-		    && fixture.destroyed_stores == 0U
 		    && cycle.entry_player_reads == 1U
 		    && cycle.gate_player_reads == 1U
 		    && cycle.sector_reads == 2U
@@ -38819,7 +38806,6 @@ test_direct_emergency_warp_hostile_mine_cycle(void)
 		    && memcmp(fixture.news[1], final_news,
 		    sizeof(final_news) - 1U) == 0
 		    && !fixture.shrink_called && !fixture.destroyed
-		    && fixture.destroyed_stores == 0U
 		    && cycle.entry_player_reads == 1U
 		    && cycle.gate_player_reads == 1U
 		    && cycle.sector_reads == 2U
@@ -39010,7 +38996,6 @@ test_destroyed_mine_fatal_projections(void)
 		CHECK(hostile_bribe_fatal_run(&fatal, &error));
 
 		CHECK(fixture.hazard.complete && fixture.destroyed
-		    && fixture.destroyed_stores == 1U
 		    && fixture.hazard.terminal == emergency
 		    && fixture.shrink_called && fixture.hazard_player.holds == 0.0f
 		    && fixture.sector_writes == 1U
@@ -39180,7 +39165,6 @@ test_direct_emergency_warp_mine_warp_cycles(void)
 		    && memcmp(fixture.news[0], entry_news,
 		    sizeof(entry_news) - 1U) == 0
 		    && !fixture.shrink_called && !fixture.destroyed
-		    && fixture.destroyed_stores == 0U
 		    && cycle.entry_player_reads == 1U
 		    && cycle.gate_player_reads == 1U
 		    && cycle.sector_reads == 2U

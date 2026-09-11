@@ -26,7 +26,6 @@
 #define YT_PLAYER_LAST YT_PLAYER_LAST_RECORD
 #define YT_COMMAND_SIZE 4096U
 #define YT_ANTI_CLOAK_ADDRESS 0x1854U
-#define YT_DESTROYED_ADDRESS 0x18B4U
 #define YT_CURRENT_WARPS_ADDRESS 0x1898U
 #define YT_PLANET_RECORD_SCRATCH_ADDRESS 0x19C4U
 #define YT_COMPUTER_PLANET_LINK_ADDRESS 0x5184U
@@ -96,6 +95,7 @@ struct yt_session {
 	int counterattack_player;
 	int xannor_provoker;
 	float counterlaunch_count;
+	bool destroyed;
 	struct yt_player player;
 	float current_sector_record;
 	double combat_ship_fighters;
@@ -175,11 +175,7 @@ session_team_roster_value(const struct yt_session *session, size_t index)
 static bool
 session_is_destroyed(const struct yt_session *session)
 {
-	uint8_t raw[4];
-
-	yt_route_process_raw_single(&session->route_process,
-	    YT_DESTROYED_ADDRESS, raw);
-	return qb_mbf32_truth(raw);
+	return session->destroyed;
 }
 
 static float
@@ -243,15 +239,6 @@ session_set_foreground(struct yt_session *session, float value)
 	session->foreground = value;
 	session->presentation.foreground = value;
 	session->pager.foreground = (int)value;
-}
-
-static void
-session_store_destroyed(void *context, const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_DESTROYED_ADDRESS, raw);
 }
 
 static bool
@@ -6335,8 +6322,8 @@ direct_fighter_kill_mine(void *context, bool *terminal,
 
 	if (!mine_encounter(session, terminal, error))
 		return false;
-	yt_route_process_raw_single(&session->route_process,
-	    YT_DESTROYED_ADDRESS, destroyed_raw);
+	(void)qb_mbf32_encode(session->destroyed ? -1.0f : 0.0f,
+	    destroyed_raw);
 	return true;
 }
 
@@ -7549,9 +7536,7 @@ mine_encounter(struct yt_session *session, bool *terminal,
 		mine_warp,
 		mine_set_current,
 		mine_style,
-		session_store_destroyed,
 	};
-	bool destroyed = session_is_destroyed(session);
 	struct yt_sector_mine_state state = {
 		.current_player_record = session_record(session),
 		.current_sector = session->player.sector,
@@ -7560,7 +7545,7 @@ mine_encounter(struct yt_session *session, bool *terminal,
 		.background = yt_present_background(&session->presentation),
 		.blink = yt_present_blink(&session->presentation),
 		.pager_foreground = session_pager_foreground(session),
-		.destroyed = &destroyed,
+		.destroyed = &session->destroyed,
 	};
 
 	if (terminal == NULL)
@@ -15159,7 +15144,6 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
 		plasma_killed_death,
 		plasma_killed_sound,
 		plasma_killed_salvage,
-		session_store_destroyed,
 	};
 	struct yt_sector sector;
 	struct yt_projectile_plasma_fighter_state fighter;
@@ -15232,15 +15216,13 @@ plasma_reload_sector:
 		    error))
 			return false;
 		if (player.route == YT_PROJECTILE_PLASMA_PLAYER_KILLED) {
-			bool destroyed = session_is_destroyed(session);
-
 			memset(&killed, 0, sizeof(killed));
 			killed.victim = basic;
 			killed.shooter = session_record(session);
 			killed.sector = sector_number;
 			killed.energy = energy;
 			killed.blink = &session->presentation.blink;
-			killed.destroyed = &destroyed;
+			killed.destroyed = &session->destroyed;
 			killed.player_cache = &session->player_cache;
 			if (!yt_projectile_plasma_killed_run(&killed, &killed_ops,
 			    session, error))
@@ -15973,9 +15955,7 @@ launch_xannor_retaliation(struct yt_session *session, int *provoking_player,
 		session_projectile_resolver,
 		session_xannor_read_player,
 		session_xannor_wait,
-		session_store_destroyed,
 	};
-	bool destroyed = session_is_destroyed(session);
 	bool result;
 
 	session_load_xannor_provoker(session, provoking_player);
@@ -15984,7 +15964,7 @@ launch_xannor_retaliation(struct yt_session *session, int *provoking_player,
 		&session->player,
 		&session->player_record_carrier,
 		&session->player_cache,
-		&destroyed,
+		&session->destroyed,
 		&session->xannor_provoker,
 		&session->door->game.config.headquarters,
 		sector_count(session),
@@ -16069,9 +16049,7 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 		session_counterlaunch_news,
 		session_counterlaunch_projectile,
 		session_counterlaunch_wait,
-		session_store_destroyed,
 	};
-	bool destroyed = session_is_destroyed(session);
 
 	session_load_counterattack_player(session, counterattacker);
 	session->player_record_carrier = session_record(session);
@@ -16079,7 +16057,7 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 		&session->player,
 		&session->player_record_carrier,
 		&session->player_cache,
-		&destroyed,
+		&session->destroyed,
 		&session->counterlaunch_count,
 		counterattacker,
 		xannor_provoker,
@@ -16246,20 +16224,18 @@ command_projectile(struct yt_session *session, bool plasma,
 		projectile_command_counterlaunch,
 		projectile_command_xannor,
 		projectile_command_fatal,
-		session_store_destroyed,
 		projectile_command_destroyed_truth,
 		projectile_command_counterattack_truth,
 		projectile_command_xannor_truth,
 		projectile_command_store_turn_gate_result,
 	};
-	bool destroyed = session_is_destroyed(session);
 	struct yt_projectile_command_state state = {
 		.current_player_record = session_record(session),
 		.maximum_sector = (float)sector_count(session),
 		.plasma = plasma,
 		.displayed = plasma ? session->player.plasma
 		    : session->player.missiles,
-		.destroyed = &destroyed,
+		.destroyed = &session->destroyed,
 	};
 
 	yt_route_process_raw_single(&session->route_process,

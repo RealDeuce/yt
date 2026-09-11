@@ -5816,9 +5816,6 @@ struct plasma_killed_tape {
 	int salvage_victim;
 	int salvage_shooter;
 	float selector;
-	uint8_t destroyed_raw[4];
-	size_t destroyed_store_count;
-	size_t destroyed_store_position;
 	struct yt_player_cache player_cache;
 };
 
@@ -5942,16 +5939,6 @@ plasma_killed_test_salvage(void *context, int victim, int shooter,
 }
 
 static void
-plasma_killed_store_destroyed(void *context, const uint8_t raw[4])
-{
-	struct plasma_killed_tape *tape = context;
-
-	memcpy(tape->destroyed_raw, raw, sizeof(tape->destroyed_raw));
-	tape->destroyed_store_position = tape->event_count;
-	++tape->destroyed_store_count;
-}
-
-static void
 plasma_killed_fixture(struct plasma_killed_tape *tape,
     struct yt_projectile_plasma_killed_state *state, double *energy,
     float *blink, bool *destroyed)
@@ -5999,7 +5986,6 @@ check_projectile_plasma_killed_transaction(void)
 		plasma_killed_test_death,
 		plasma_killed_test_sound,
 		plasma_killed_test_salvage,
-		plasma_killed_store_destroyed,
 	};
 	static const int ordinary_events[] = {
 		PLASMA_KILLED_READ_PLAYER,
@@ -6088,10 +6074,6 @@ check_projectile_plasma_killed_transaction(void)
 	    || !state.self_hit || !destroyed
 	    || state.route != YT_PROJECTILE_PLASMA_KILLED_CONTINUE_DISPATCH
 	    || tape.event_count != 3U || tape.output_count != 1U
-	    || tape.destroyed_store_count != 1U
-	    || tape.destroyed_store_position != 3U
-	    || memcmp(tape.destroyed_raw,
-	    (const uint8_t[]){0x00, 0x00, 0x80, 0x81}, 4U) != 0
 	    || tape.player_cache.sector[2] != 0.0f
 	    || memcmp(tape.player_cache.sector_raw[2],
 	    (const uint8_t[]){0x00, 0x00, 0x80, 0x00}, 4U) != 0
@@ -6109,10 +6091,6 @@ check_projectile_plasma_killed_transaction(void)
 	    || state.route != YT_PROJECTILE_PLASMA_KILLED_RELOAD_SECTOR
 	    || tape.event_count != 6U || tape.output_count != 2U
 	    || tape.sector_written.mines != 7.0f
-	    || tape.destroyed_store_count != 1U
-	    || tape.destroyed_store_position != 6U
-	    || memcmp(tape.destroyed_raw,
-	    (const uint8_t[]){0x00, 0x00, 0x80, 0x81}, 4U) != 0
 	    || memcmp(tape.player_cache.sector_raw[2],
 	    (const uint8_t[]){0x00, 0x00, 0x80, 0x00}, 4U) != 0)
 		return false;
@@ -8727,9 +8705,6 @@ struct xannor_tape {
 	float projectile_cloak;
 	bool projectile_actor;
 	bool mutate_child;
-	uint8_t destroyed_raw[4];
-	size_t destroyed_store_count;
-	size_t destroyed_store_position;
 };
 
 static bool
@@ -8845,16 +8820,6 @@ xannor_wait(void *context, float duration,
 }
 
 static void
-xannor_store_destroyed(void *context, const uint8_t raw[4])
-{
-	struct xannor_tape *tape = context;
-
-	memcpy(tape->destroyed_raw, raw, sizeof(tape->destroyed_raw));
-	tape->destroyed_store_position = tape->event_count;
-	++tape->destroyed_store_count;
-}
-
-static void
 xannor_fixture(struct xannor_tape *tape,
     struct yt_xannor_retaliation_state *state, struct yt_player *player,
     int *player_record, bool *destroyed, int *provoker,
@@ -8903,7 +8868,6 @@ check_xannor_retaliation_model(void)
 		xannor_projectile,
 		xannor_read_player,
 		xannor_wait,
-		xannor_store_destroyed,
 	};
 	static const int full_events[8] = {
 		XANNOR_READ_SECTOR, XANNOR_NESTED_RANDOM, XANNOR_BLANK,
@@ -8975,10 +8939,7 @@ check_xannor_retaliation_model(void)
 	    || tape.projectile_cloak != 0.0f || !destroyed
 	    || tape.player_cache.sector[2] != 733.0f
 	    || tape.player_cache.cloak[2] != 0.75f
-	    || provoker != 0 || tape.destroyed_store_count != 1U
-	    || tape.destroyed_store_position != 7U
-	    || memcmp(tape.destroyed_raw,
-	    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) != 0
+	    || provoker != 0
 	    || memcmp(tape.player_cache.cloak_raw[2],
 	    "\0\0\x40\x80", 4U) != 0)
 		return false;
@@ -9061,11 +9022,7 @@ check_xannor_retaliation_model(void)
 	    && tape.event_count == 8U && provoker == 7
 	    && player_record == 2 && tape.player_cache.cloak[2] == 0.75f
 	    && destroyed && tape.player_cache.sector[2] == 733.0f
-	    && tape.destroyed_store_count == 1U
-	    && tape.destroyed_store_position == 7U
 	    && tape.wait_seconds == 4.0
-	    && memcmp(tape.destroyed_raw,
-	    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) == 0
 	    && memcmp(tape.player_cache.cloak_raw[2],
 	    "\0\0\x40\x80", 4U) == 0;
 }
@@ -9111,9 +9068,6 @@ struct counterlaunch_tape {
 	bool child_valid;
 	bool mutate_child;
 	double wait_seconds;
-	uint8_t destroyed_raw[4];
-	size_t destroyed_store_count;
-	size_t destroyed_store_position;
 };
 
 static bool
@@ -9259,17 +9213,6 @@ counterlaunch_wait(void *context, float duration,
 }
 
 static void
-counterlaunch_store_destroyed(void *context, const uint8_t raw[4])
-{
-	struct counterlaunch_tape *tape = context;
-
-	memcpy(tape->destroyed_raw, raw, sizeof(tape->destroyed_raw));
-	tape->destroyed_store_position = tape->event_count;
-	++tape->destroyed_store_count;
-}
-
-
-static void
 counterlaunch_fixture(struct counterlaunch_tape *tape,
     struct yt_counterlaunch_state *state, struct yt_player *player,
     int *player_record, bool *destroyed, float *retained,
@@ -9331,7 +9274,6 @@ check_counterlaunch_model(void)
 		counterlaunch_news,
 		counterlaunch_projectile,
 		counterlaunch_wait,
-		counterlaunch_store_destroyed,
 	};
 	static const int full_events[10] = {
 		COUNTERLAUNCH_FIRST_GET, COUNTERLAUNCH_RANDOM,
@@ -9406,10 +9348,6 @@ check_counterlaunch_model(void)
 	    || tape.player_cache.sector[2] != 733.0f
 	    || !destroyed || retained != 4.0f || counterattacker != 0
 	    || xannor != 11 || tape.wait_seconds != 4.0
-	    || tape.destroyed_store_count != 1U
-	    || tape.destroyed_store_position != 9U
-	    || memcmp(tape.destroyed_raw,
-	    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) != 0
 	    || memcmp(tape.player_cache.cloak_raw[2],
 	    "\0\0\x40\x80", 4U) != 0)
 		return false;
@@ -9468,11 +9406,7 @@ check_counterlaunch_model(void)
 		if (failure == COUNTERLAUNCH_WAIT
 		    && (player_record != 2 || counterattacker != 0
 		    || tape.player_cache.cloak[2] != 0.75f || !destroyed
-		    || tape.player_cache.sector[2] != 733.0f
-		    || tape.destroyed_store_count != 1U
-		    || tape.destroyed_store_position != 9U
-		    || memcmp(tape.destroyed_raw,
-		    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) != 0))
+		    || tape.player_cache.sector[2] != 733.0f))
 			return false;
 	}
 	return true;
@@ -11141,9 +11075,6 @@ struct mine_transaction_tape {
 	float background;
 	float blink;
 	int pager_foreground;
-	uint8_t destroyed_raw[4];
-	size_t destroyed_store_count;
-	size_t destroyed_store_position;
 };
 
 static bool
@@ -11327,16 +11258,6 @@ mine_tx_style(void *context, float foreground, float background,
 	tape->pager_foreground = pager_foreground;
 }
 
-static void
-mine_tx_store_destroyed(void *context, const uint8_t raw[4])
-{
-	struct mine_transaction_tape *tape = context;
-
-	memcpy(tape->destroyed_raw, raw, sizeof(tape->destroyed_raw));
-	tape->destroyed_store_position = tape->event_count;
-	++tape->destroyed_store_count;
-}
-
 static const struct yt_sector_mine_ops mine_tx_ops = {
 	mine_tx_read_current,
 	mine_tx_read_player,
@@ -11351,7 +11272,6 @@ static const struct yt_sector_mine_ops mine_tx_ops = {
 	mine_tx_warp,
 	mine_tx_set_current,
 	mine_tx_style,
-	mine_tx_store_destroyed,
 };
 
 static void
@@ -11496,10 +11416,7 @@ check_sector_mine_transaction(void)
 	if (!yt_sector_mine_run(&state, &mine_tx_ops, &tape, NULL)
 	    || tape.event_count != YT_ARRAY_LEN(fatal) || !destroyed
 	    || tape.player.holds != 0.0f || state.terminal || !state.complete
-	    || tape.draw_position != 1U || tape.destroyed_store_count != 1U
-	    || tape.destroyed_store_position != 11U
-	    || memcmp(tape.destroyed_raw,
-	    (const uint8_t[]){0x00, 0x00, 0x80, 0x81}, 4U) != 0)
+	    || tape.draw_position != 1U)
 		return false;
 	mine_tx_fixture(&tape, fatal, YT_ARRAY_LEN(fatal), 0.0f);
 	tape.player.shields = 0.0f;
@@ -11517,10 +11434,7 @@ check_sector_mine_transaction(void)
 	yt_error_clear(&error);
 	if (yt_sector_mine_run(&state, &mine_tx_ops, &tape, &error)
 	    || error.status != YT_IO_ERROR || tape.event_count != 12U
-	    || !destroyed || tape.destroyed_store_count != 1U
-	    || tape.destroyed_store_position != 11U
-	    || memcmp(tape.destroyed_raw,
-	    (const uint8_t[]){0x00, 0x00, 0x80, 0x81}, 4U) != 0)
+	    || !destroyed)
 		return false;
 
 	mine_tx_fixture(&tape, warped, YT_ARRAY_LEN(warped), 0.9f);
@@ -33525,9 +33439,6 @@ struct projectile_command_tape {
 	uint8_t resolved_target_raw[4];
 	uint8_t resolved_amount_raw[4];
 	bool resolved_plasma;
-	uint8_t destroyed_raw[4];
-	size_t destroyed_store_count;
-	size_t destroyed_store_position;
 	uint8_t counterattack_raw[4];
 	uint8_t xannor_raw[4];
 	uint8_t turn_gate_results[8][4];
@@ -33692,12 +33603,8 @@ projectile_command_test_xannor(void *context, int *xannor_provoker,
 	if (*xannor_provoker != 4 || !projectile_command_step(tape,
 	    PROJECTILE_COMMAND_XANNOR, error))
 		return false;
-	if (tape->destroy_after_xannor) {
-		static const uint8_t one[4] = {0x00, 0x00, 0x00, 0x81};
-
-		memcpy(tape->destroyed_raw, one, sizeof(one));
+	if (tape->destroy_after_xannor)
 		*tape->destroyed = true;
-	}
 	return true;
 }
 
@@ -33708,23 +33615,12 @@ projectile_command_test_fatal(void *context, struct yt_error *error)
 	    error);
 }
 
-static void
-projectile_command_store_destroyed(void *context, const uint8_t raw[4])
-{
-	struct projectile_command_tape *tape = context;
-
-	memcpy(tape->destroyed_raw, raw, sizeof(tape->destroyed_raw));
-	tape->destroyed_store_position = tape->calls;
-	++tape->destroyed_store_count;
-	*tape->destroyed = qb_mbf32_truth(raw);
-}
-
 static bool
 projectile_command_destroyed_truth(void *context)
 {
 	struct projectile_command_tape *tape = context;
 
-	return qb_mbf32_truth(tape->destroyed_raw);
+	return *tape->destroyed;
 }
 
 static bool
@@ -33768,7 +33664,6 @@ static const struct yt_projectile_command_ops projectile_command_ops = {
 	projectile_command_test_counter,
 	projectile_command_test_xannor,
 	projectile_command_test_fatal,
-	projectile_command_store_destroyed,
 	projectile_command_destroyed_truth,
 	projectile_command_counterattack_truth,
 	projectile_command_xannor_truth,
@@ -33875,10 +33770,6 @@ check_projectile_command_transaction(void)
 	    || !state.destruction_cleared || !state.resolver_called
 	    || !state.counterlaunch_called || !state.xannor_called
 	    || state.fatal_called || destroyed || state.origin != 13.0f
-	    || tape.destroyed_store_count != 1U
-	    || tape.destroyed_store_position != 11U
-	    || memcmp(tape.destroyed_raw,
-	    (const uint8_t[]){0x00, 0x00, 0x00, 0x00}, 4U) != 0
 	    || tape.calls != YT_ARRAY_LEN(expected)
 	    || memcmp(tape.events, expected, sizeof(expected)) != 0
 	    || tape.row_count != 4U
@@ -33952,11 +33843,7 @@ check_projectile_command_transaction(void)
 		    (const uint8_t[]){0x00, 0x00, 0x7d, 0x00}, 4U) != 0))
 		    || (failure > 10U
 		    && (!state.player_written || !state.player_flushed
-		    || !state.destruction_cleared
-		    || tape.destroyed_store_count != 1U
-		    || tape.destroyed_store_position != 11U
-		    || memcmp(tape.destroyed_raw,
-		    (const uint8_t[]){0x00, 0x00, 0x00, 0x00}, 4U) != 0)))
+		    || !state.destruction_cleared || destroyed)))
 			return false;
 	}
 
