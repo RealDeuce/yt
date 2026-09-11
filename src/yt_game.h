@@ -4,6 +4,7 @@
 #include "qb.h"
 #include "yt_brun_fatal.h"
 #include "yt_config.h"
+#include "yt_player_cache.h"
 #include "yt_random.h"
 
 struct yt_game;
@@ -49,11 +50,7 @@ struct yt_startup_configuration_state {
 	uint16_t installed_handler;
 	bool handler_installed;
 	float local_mode;
-	float *sector_cache;
-	float *cloak_cache;
-	uint8_t (*sector_cache_raw)[4];
-	uint8_t (*cloak_cache_raw)[4];
-	size_t cache_count;
+	struct yt_player_cache *player_cache;
 	float black_hole[2];
 	size_t scoreboard_path_length;
 };
@@ -77,10 +74,6 @@ typedef void (*yt_startup_configuration_disruption_store_fn)(void *context,
 	size_t index, const uint8_t raw[4]);
 typedef void (*yt_startup_configuration_local_screen_store_fn)(void *context,
 	const uint8_t raw[4]);
-enum yt_player_cache_kind {
-	YT_PLAYER_CACHE_SECTOR,
-	YT_PLAYER_CACHE_CLOAK,
-};
 typedef void (*yt_player_cache_read_fn)(void *context, int player_record,
 	enum yt_player_cache_kind kind, uint8_t raw[4]);
 typedef void (*yt_player_cache_store_fn)(void *context, int player_record,
@@ -622,9 +615,7 @@ struct yt_spy_sweep_state {
 	int current_player_record;
 	float last_player_record;
 	float disruption_sectors[2];
-	float *sector_cache;
-	float *cloak_cache;
-	size_t cache_count;
+	struct yt_player_cache *player_cache;
 	float found_scratch;
 	float dead_counter_scratch;
 	float warp_destination_scratch;
@@ -672,8 +663,6 @@ struct yt_spy_sweep_ops {
 	yt_spy_present_fn present;
 	yt_spy_pause_fn pause;
 	yt_spy_store_fn store;
-	yt_player_cache_read_fn read_cache;
-	yt_player_cache_store_fn store_cache;
 };
 
 bool yt_spy_sweep_run(struct yt_spy_sweep_state *state,

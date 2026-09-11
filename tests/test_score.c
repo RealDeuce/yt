@@ -150,8 +150,7 @@ struct startup_configuration_tape {
 	uint8_t local_screen_raw[2][4];
 	size_t local_screen_store_count;
 	size_t local_screen_store_position[2];
-	uint8_t sector_cache_raw[8][4];
-	uint8_t cloak_cache_raw[8][4];
+	struct yt_player_cache player_cache;
 	enum qb_compat_upper_store_kind uppercase_kind[16];
 	float uppercase_value[16];
 	size_t uppercase_store_count;
@@ -312,8 +311,7 @@ startup_configuration_local_screen_store_test(void *context,
 
 static bool
 startup_configuration_fixture(struct startup_configuration_tape *tape,
-    struct yt_startup_configuration_state *state, struct yt_config *config,
-    float sector_cache[8], float cloak_cache[8])
+    struct yt_startup_configuration_state *state, struct yt_config *config)
 {
 	size_t index;
 
@@ -321,8 +319,8 @@ startup_configuration_fixture(struct startup_configuration_tape *tape,
 	memset(state, 0, sizeof(*state));
 	memset(config, 0, sizeof(*config));
 	for (index = 0U; index < 8U; ++index) {
-		sector_cache[index] = -100.0f - (float)index;
-		cloak_cache[index] = -200.0f - (float)index;
+		tape->player_cache.sector[index] = -100.0f - (float)index;
+		tape->player_cache.cloak[index] = -200.0f - (float)index;
 	}
 	tape->fail_at = SIZE_MAX;
 	memset(tape->config_source.bytes, 0x5a,
@@ -357,11 +355,7 @@ startup_configuration_fixture(struct startup_configuration_tape *tape,
 	tape->draws[1] = 0.75f;
 	state->config = config;
 	state->local_mode = 0.5f;
-	state->sector_cache = sector_cache;
-	state->cloak_cache = cloak_cache;
-	state->sector_cache_raw = tape->sector_cache_raw;
-	state->cloak_cache_raw = tape->cloak_cache_raw;
-	state->cache_count = 8U;
+	state->player_cache = &tape->player_cache;
 	return true;
 }
 
@@ -403,12 +397,9 @@ check_startup_configuration_transaction(void)
 	struct yt_config config;
 	struct yt_record expected;
 	struct yt_error error;
-	float sector_cache[8];
-	float cloak_cache[8];
 	size_t failure;
 
-	if (!startup_configuration_fixture(&tape, &state, &config,
-	    sector_cache, cloak_cache)
+	if (!startup_configuration_fixture(&tape, &state, &config)
 	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
 	    || !state.handler_installed || state.installed_handler != 0x45F7U
 	    || tape.event_count != YT_ARRAY_LEN(events)
@@ -447,22 +438,26 @@ check_startup_configuration_transaction(void)
 	    || config.maximum_planets != 100.0f
 	    || config.maximum_holds != 1000.0f
 	    || config.turns_per_day != 500.0f
-	    || memcmp(tape.sector_cache_raw[2],
+	    || memcmp(tape.player_cache.sector_raw[2],
 	    tape.player_source[2].bytes + YT_F57, 4U) != 0
-	    || memcmp(tape.cloak_cache_raw[2],
+	    || memcmp(tape.player_cache.cloak_raw[2],
 	    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) != 0
-	    || memcmp(tape.sector_cache_raw[3],
+	    || memcmp(tape.player_cache.sector_raw[3],
 	    tape.player_source[3].bytes + YT_F57, 4U) != 0
-	    || memcmp(tape.cloak_cache_raw[3],
+	    || memcmp(tape.player_cache.cloak_raw[3],
 	    tape.player_source[3].bytes + YT_F125, 4U) != 0
-	    || memcmp(tape.sector_cache_raw[4],
+	    || memcmp(tape.player_cache.sector_raw[4],
 	    tape.player_source[4].bytes + YT_F57, 4U) != 0
-	    || memcmp(tape.cloak_cache_raw[4],
+	    || memcmp(tape.player_cache.cloak_raw[4],
 	    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) != 0
-	    || sector_cache[2] != 20.0f || sector_cache[3] != 30.0f
-	    || sector_cache[4] != 40.0f || sector_cache[1] != -101.0f
-	    || cloak_cache[2] != 1.0f || cloak_cache[3] != 0.5f
-	    || cloak_cache[4] != 1.0f || cloak_cache[1] != -201.0f
+	    || tape.player_cache.sector[2] != 20.0f
+	    || tape.player_cache.sector[3] != 30.0f
+	    || tape.player_cache.sector[4] != 40.0f
+	    || tape.player_cache.sector[1] != -101.0f
+	    || tape.player_cache.cloak[2] != 1.0f
+	    || tape.player_cache.cloak[3] != 0.5f
+	    || tape.player_cache.cloak[4] != 1.0f
+	    || tape.player_cache.cloak[1] != -201.0f
 	    || state.black_hole[0] != 3.0f || state.black_hole[1] != 5.0f
 	    || tape.disruption_store_count != 2U
 	    || qb_mbf32_decode(tape.disruption_raw[0]) != 3.0f
@@ -488,8 +483,7 @@ check_startup_configuration_transaction(void)
 		return false;
 
 	/* A failed Headquarters PUT retains FIELD bytes but not the later global. */
-	if (!startup_configuration_fixture(&tape, &state, &config,
-	    sector_cache, cloak_cache))
+	if (!startup_configuration_fixture(&tape, &state, &config))
 		return false;
 	tape.fail_at = 4U;
 	if (yt_startup_configuration_run(&state, &ops, &tape, NULL)
@@ -499,8 +493,7 @@ check_startup_configuration_transaction(void)
 		return false;
 
 	/* An admitted requirement retains the exact hydrated FIELD bytes. */
-	if (!startup_configuration_fixture(&tape, &state, &config,
-	    sector_cache, cloak_cache))
+	if (!startup_configuration_fixture(&tape, &state, &config))
 		return false;
 	if (!yt_record_set_number(&tape.config_source, YT_F105, 300.0f)
 	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
@@ -511,8 +504,7 @@ check_startup_configuration_transaction(void)
 		return false;
 
 	/* The inclusive upper turn bound retains its hydrated bytes. */
-	if (!startup_configuration_fixture(&tape, &state, &config,
-	    sector_cache, cloak_cache))
+	if (!startup_configuration_fixture(&tape, &state, &config))
 		return false;
 	if (!yt_record_set_number(&tape.config_source, YT_F49, 2500.0f)
 	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
@@ -523,8 +515,7 @@ check_startup_configuration_transaction(void)
 		return false;
 
 	/* Both lottery validation bounds are inclusive. */
-	if (!startup_configuration_fixture(&tape, &state, &config,
-	    sector_cache, cloak_cache))
+	if (!startup_configuration_fixture(&tape, &state, &config))
 		return false;
 	if (!yt_record_set_number(&tape.config_source, YT_F101, 9.0f)
 	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
@@ -535,8 +526,7 @@ check_startup_configuration_transaction(void)
 		return false;
 
 	/* A nonzero dormant maximum retains its exact hydrated FIELD bytes. */
-	if (!startup_configuration_fixture(&tape, &state, &config,
-	    sector_cache, cloak_cache))
+	if (!startup_configuration_fixture(&tape, &state, &config))
 		return false;
 	if (!yt_record_set_number(&tape.config_source, YT_F129, 456.25f)
 	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
@@ -547,8 +537,7 @@ check_startup_configuration_transaction(void)
 		return false;
 
 	/* Both maximum-hold validation bounds are inclusive. */
-	if (!startup_configuration_fixture(&tape, &state, &config,
-	    sector_cache, cloak_cache))
+	if (!startup_configuration_fixture(&tape, &state, &config))
 		return false;
 	if (!yt_record_set_number(&tape.config_source, YT_F121, 5.0f)
 	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
@@ -557,8 +546,7 @@ check_startup_configuration_transaction(void)
 	    tape.config_source.bytes + YT_F121, 4U) != 0
 	    || config.maximum_holds != 5.0f)
 		return false;
-	if (!startup_configuration_fixture(&tape, &state, &config,
-	    sector_cache, cloak_cache))
+	if (!startup_configuration_fixture(&tape, &state, &config))
 		return false;
 	if (!yt_record_set_number(&tape.config_source, YT_F121, 1000.0f)
 	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
@@ -569,8 +557,7 @@ check_startup_configuration_transaction(void)
 		return false;
 
 	/* Both remote local-screen validation bounds are inclusive. */
-	if (!startup_configuration_fixture(&tape, &state, &config,
-	    sector_cache, cloak_cache))
+	if (!startup_configuration_fixture(&tape, &state, &config))
 		return false;
 	state.local_mode = 0.0f;
 	if (!yt_record_set_number(&tape.config_source, YT_F85, -1.0f)
@@ -581,8 +568,7 @@ check_startup_configuration_transaction(void)
 	    tape.config_source.bytes + YT_F85, 4U) != 0
 	    || config.local_screen != -1.0f)
 		return false;
-	if (!startup_configuration_fixture(&tape, &state, &config,
-	    sector_cache, cloak_cache))
+	if (!startup_configuration_fixture(&tape, &state, &config))
 		return false;
 	state.local_mode = 0.0f;
 	if (!yt_record_set_number(&tape.config_source, YT_F85, 0.0f)
@@ -595,8 +581,7 @@ check_startup_configuration_transaction(void)
 		return false;
 
 	/* Descriptor length, not an embedded NUL byte, controls path emptiness. */
-	if (!startup_configuration_fixture(&tape, &state, &config,
-	    sector_cache, cloak_cache))
+	if (!startup_configuration_fixture(&tape, &state, &config))
 		return false;
 	tape.config_source.bytes[0] = 'a';
 	tape.config_source.bytes[1] = 0U;
@@ -609,8 +594,7 @@ check_startup_configuration_transaction(void)
 		return false;
 
 	/* A genuinely empty descriptor receives the lowercase compiled default. */
-	if (!startup_configuration_fixture(&tape, &state, &config,
-	    sector_cache, cloak_cache))
+	if (!startup_configuration_fixture(&tape, &state, &config))
 		return false;
 	if (!yt_record_set_number(&tape.config_source, YT_F41, 0.0f)
 	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
@@ -620,21 +604,19 @@ check_startup_configuration_transaction(void)
 		return false;
 
 	/* The initial FOR test admits no GET when the raw terminal is below two. */
-	if (!startup_configuration_fixture(&tape, &state, &config,
-	    sector_cache, cloak_cache))
+	if (!startup_configuration_fixture(&tape, &state, &config))
 		return false;
 	if (!yt_record_set_number(&tape.config_source, YT_F53, 1.75f)
 	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
 	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
 	    || tape.event_count != 5U
-	    || sector_cache[2] != -102.0f
-	    || cloak_cache[2] != -202.0f
+	    || tape.player_cache.sector[2] != -102.0f
+	    || tape.player_cache.cloak[2] != -202.0f
 	    || tape.draw_position != 2U)
 		return false;
 
 	/* LEFT$ clamps a positive count to its 41-byte FIELD source. */
-	if (!startup_configuration_fixture(&tape, &state, &config,
-	    sector_cache, cloak_cache))
+	if (!startup_configuration_fixture(&tape, &state, &config))
 		return false;
 	if (!yt_record_set_number(&tape.config_source, YT_F41, 45.0f)
 	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
@@ -643,8 +625,7 @@ check_startup_configuration_transaction(void)
 		return false;
 
 	/* CINT overflow stops after earlier HQ/Genesis/path mutations. */
-	if (!startup_configuration_fixture(&tape, &state, &config,
-	    sector_cache, cloak_cache))
+	if (!startup_configuration_fixture(&tape, &state, &config))
 		return false;
 	state.local_mode = 40000.0f;
 	expected = tape.config_source;
@@ -670,8 +651,7 @@ check_startup_configuration_transaction(void)
 		return false;
 
 	for (failure = 1U; failure <= YT_ARRAY_LEN(events); ++failure) {
-		if (!startup_configuration_fixture(&tape, &state, &config,
-		    sector_cache, cloak_cache))
+		if (!startup_configuration_fixture(&tape, &state, &config))
 			return false;
 		tape.fail_at = failure;
 		if (yt_startup_configuration_run(&state, &ops, &tape, NULL)
@@ -693,20 +673,19 @@ check_startup_configuration_transaction(void)
 		    || memcmp(tape.stores, stores, sizeof(stores)) != 0)))
 			return false;
 	}
-	if (!startup_configuration_fixture(&tape, &state, &config,
-	    sector_cache, cloak_cache))
+	if (!startup_configuration_fixture(&tape, &state, &config))
 		return false;
 	tape.fail_at = 6U;
 	if (yt_startup_configuration_run(&state, &ops, &tape, NULL)
-	    || sector_cache[2] != 20.0f || cloak_cache[2] != 1.0f
+	    || tape.player_cache.sector[2] != 20.0f
+	    || tape.player_cache.cloak[2] != 1.0f
 	    || tape.draw_position != 0U
-	    || memcmp(tape.sector_cache_raw[2],
+	    || memcmp(tape.player_cache.sector_raw[2],
 	    tape.player_source[2].bytes + YT_F57, 4U) != 0
-	    || memcmp(tape.cloak_cache_raw[2],
+	    || memcmp(tape.player_cache.cloak_raw[2],
 	    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) != 0)
 		return false;
-	if (!startup_configuration_fixture(&tape, &state, &config,
-	    sector_cache, cloak_cache))
+	if (!startup_configuration_fixture(&tape, &state, &config))
 		return false;
 	tape.fail_at = 11U;
 	if (yt_startup_configuration_run(&state, &ops, &tape, NULL)
@@ -717,8 +696,7 @@ check_startup_configuration_transaction(void)
 		return false;
 
 	/* An exponent-zero final addition retains the negative mantissa byte. */
-	if (!startup_configuration_fixture(&tape, &state, &config,
-	    sector_cache, cloak_cache))
+	if (!startup_configuration_fixture(&tape, &state, &config))
 		return false;
 	tape.draws[0] = 0.75f;
 	tape.draws[1] = 0.75f;
@@ -2946,13 +2924,7 @@ struct spy_sweep_tape {
 	enum yt_spy_scratch_kind stores[16];
 	uint8_t store_raw[16][4];
 	size_t store_count;
-	uint8_t cache_raw[2][52][4];
-	size_t cache_read_count[2];
-	int cache_store_record[4];
-	enum yt_player_cache_kind cache_store_kind[4];
-	uint8_t cache_store_raw[4][4];
-	size_t cache_store_event_position[4];
-	size_t cache_store_count;
+	struct yt_player_cache player_cache;
 };
 
 static bool
@@ -3134,47 +3106,8 @@ spy_sweep_store_test(void *context, enum yt_spy_scratch_kind kind,
 }
 
 static void
-spy_sweep_cache_read_test(void *context, int player_record,
-    enum yt_player_cache_kind kind, uint8_t raw[4])
-{
-	struct spy_sweep_tape *tape = context;
-
-	if ((kind != YT_PLAYER_CACHE_SECTOR
-	    && kind != YT_PLAYER_CACHE_CLOAK)
-	    || player_record < 0
-	    || (size_t)player_record >= YT_ARRAY_LEN(tape->cache_raw[0])) {
-		memset(raw, 0, 4U);
-		return;
-	}
-	memcpy(raw, tape->cache_raw[kind][player_record], 4U);
-	++tape->cache_read_count[kind];
-}
-
-static void
-spy_sweep_cache_store_test(void *context, int player_record,
-    enum yt_player_cache_kind kind, const uint8_t raw[4])
-{
-	struct spy_sweep_tape *tape = context;
-	size_t store = tape->cache_store_count;
-
-	if (store >= YT_ARRAY_LEN(tape->cache_store_raw)
-	    || (kind != YT_PLAYER_CACHE_SECTOR
-	    && kind != YT_PLAYER_CACHE_CLOAK)
-	    || player_record < 0
-	    || (size_t)player_record >= YT_ARRAY_LEN(tape->cache_raw[0]))
-		return;
-	tape->cache_store_record[store] = player_record;
-	tape->cache_store_kind[store] = kind;
-	memcpy(tape->cache_store_raw[store], raw, 4U);
-	tape->cache_store_event_position[store] = tape->event_count;
-	memcpy(tape->cache_raw[kind][player_record], raw, 4U);
-	++tape->cache_store_count;
-}
-
-static void
 spy_sweep_fixture(struct spy_sweep_tape *tape,
-    struct yt_spy_sweep_state *state, int sectors[3], int markers[3],
-    float sector_cache[52], float cloak_cache[52])
+    struct yt_spy_sweep_state *state, int sectors[3], int markers[3])
 {
 	size_t record;
 
@@ -3182,8 +3115,6 @@ spy_sweep_fixture(struct spy_sweep_tape *tape,
 	memset(state, 0, sizeof(*state));
 	memset(sectors, 0, 3U * sizeof(*sectors));
 	memset(markers, 0, 3U * sizeof(*markers));
-	memset(sector_cache, 0, 52U * sizeof(*sector_cache));
-	memset(cloak_cache, 0, 52U * sizeof(*cloak_cache));
 	tape->fail_at = SIZE_MAX;
 	tape->sector.mines = 5.0f;
 	tape->sector.planet = 1.0f;
@@ -3212,13 +3143,13 @@ spy_sweep_fixture(struct spy_sweep_tape *tape,
 	tape->draws[0] = 0.75f;
 	tape->draws[1] = 0.2f;
 	sectors[0] = 100;
-	sector_cache[3] = 100.0f;
-	cloak_cache[3] = 0.5f;
+	tape->player_cache.sector[3] = 100.0f;
+	tape->player_cache.cloak[3] = 0.5f;
 	for (record = 0U; record < 52U; ++record) {
-		(void)qb_mbf32_encode(sector_cache[record],
-		    tape->cache_raw[YT_PLAYER_CACHE_SECTOR][record]);
-		(void)qb_mbf32_encode(cloak_cache[record],
-		    tape->cache_raw[YT_PLAYER_CACHE_CLOAK][record]);
+		(void)qb_mbf32_encode(tape->player_cache.sector[record],
+		    tape->player_cache.sector_raw[record]);
+		(void)qb_mbf32_encode(tape->player_cache.cloak[record],
+		    tape->player_cache.cloak_raw[record]);
 	}
 	state->active_spies = 1.0f;
 	state->spy_sectors = sectors;
@@ -3226,9 +3157,7 @@ spy_sweep_fixture(struct spy_sweep_tape *tape,
 	state->spy_capacity = 3U;
 	state->current_player_record = 2;
 	state->last_player_record = 51.0f;
-	state->sector_cache = sector_cache;
-	state->cloak_cache = cloak_cache;
-	state->cache_count = 52U;
+	state->player_cache = &tape->player_cache;
 	state->foreground = 5.0f;
 }
 
@@ -3246,8 +3175,6 @@ check_spy_sweep_transaction(void)
 		spy_sweep_present_test,
 		spy_sweep_pause_test,
 		spy_sweep_store_test,
-		spy_sweep_cache_read_test,
-		spy_sweep_cache_store_test,
 	};
 	static const int expected_events[] = {
 		SPY_SWEEP_READ_SECTOR,
@@ -3285,15 +3212,9 @@ check_spy_sweep_transaction(void)
 	struct yt_spy_sweep_state state;
 	int sectors[3];
 	int markers[3];
-	float sector_cache[52];
-	float cloak_cache[52];
 	size_t failure;
 
-	spy_sweep_fixture(&expected, &state, sectors, markers,
-	    sector_cache, cloak_cache);
-	sector_cache[3] = -100.0f;
-	cloak_cache[3] = -1.0f;
-	state.sector_cache = NULL;
+	spy_sweep_fixture(&expected, &state, sectors, markers);
 	if (!yt_spy_sweep_run(&state, &ops, &expected, NULL))
 		return false;
 	if (expected.event_count != YT_ARRAY_LEN(expected_events)
@@ -3306,7 +3227,7 @@ check_spy_sweep_transaction(void)
 	    || info_panel_fnv1a64(expected.serial, expected.serial_length)
 	    != UINT64_C(0x94e7f43d9a999917)
 	    || sectors[0] != 200 || markers[0] != 100
-	    || cloak_cache[3] != 0.0f
+	    || expected.player_cache.cloak[3] != 0.0f
 	    || state.found_scratch != 1.0f
 	    || state.dead_counter_scratch != 2.0f
 	    || state.warp_destination_scratch != 200.0f
@@ -3325,20 +3246,12 @@ check_spy_sweep_transaction(void)
 	    || qb_mbf32_decode(expected.store_raw[5]) != 0.0f
 	    || expected.stores[6] != YT_SPY_SCRATCH_DESTINATION
 	    || qb_mbf32_decode(expected.store_raw[6]) != 200.0f
-	    || expected.cache_read_count[YT_PLAYER_CACHE_SECTOR] != 50U
-	    || expected.cache_read_count[YT_PLAYER_CACHE_CLOAK] != 2U
-	    || expected.cache_store_count != 1U
-	    || expected.cache_store_record[0] != 3
-	    || expected.cache_store_kind[0] != YT_PLAYER_CACHE_CLOAK
-	    || memcmp(expected.cache_store_raw[0], "\0\0\0\0", 4U) != 0
-	    || expected.cache_store_event_position[0] != 14U
-	    || memcmp(expected.cache_raw[YT_PLAYER_CACHE_CLOAK][3],
+	    || memcmp(expected.player_cache.cloak_raw[3],
 	    "\0\0\0\0", 4U) != 0
 	    || state.foreground != 0.0f)
 		return false;
 	for (failure = 1U; failure <= expected.event_count; ++failure) {
-		spy_sweep_fixture(&tape, &state, sectors, markers,
-		    sector_cache, cloak_cache);
+		spy_sweep_fixture(&tape, &state, sectors, markers);
 		tape.fail_at = failure;
 		if (yt_spy_sweep_run(&state, &ops, &tape, NULL)
 		    || tape.event_count != failure
@@ -3361,11 +3274,11 @@ check_spy_sweep_transaction(void)
 		if (failure == 25U && (tape.store_count != 5U
 		    || qb_mbf32_decode(tape.store_raw[4]) != 2.0f))
 			return false;
-		if (tape.cache_store_count != (failure >= 15U ? 1U : 0U))
+		if (tape.player_cache.cloak[3]
+		    != (failure >= 15U ? 0.0f : 0.5f))
 			return false;
 	}
-	spy_sweep_fixture(&tape, &state, sectors, markers,
-	    sector_cache, cloak_cache);
+	spy_sweep_fixture(&tape, &state, sectors, markers);
 	memset(&tape.sector, 0, sizeof(tape.sector));
 	tape.sector.warps[0] = 200.0f;
 	(void)yt_record_set_number(&tape.sector.record, YT_F105, 200.0f);
@@ -3380,8 +3293,7 @@ check_spy_sweep_transaction(void)
 	    || state.found_scratch != 0.0f || markers[0] != 0
 	    || sectors[0] != 200)
 		return false;
-	spy_sweep_fixture(&tape, &state, sectors, markers,
-	    sector_cache, cloak_cache);
+	spy_sweep_fixture(&tape, &state, sectors, markers);
 	memset(&tape.sector, 0, sizeof(tape.sector));
 	tape.sector.warps[0] = 200.0f;
 	(void)yt_record_set_number(&tape.sector.record, YT_F105, 200.0f);
@@ -3390,10 +3302,9 @@ check_spy_sweep_transaction(void)
 	state.last_player_record = 3.0f;
 	if (!yt_spy_sweep_run(&state, &ops, &tape, NULL)
 	    || tape.serial_length != 0U || tape.draw_position != 2U
-	    || cloak_cache[3] != 0.5f || sectors[0] != 200)
+	    || tape.player_cache.cloak[3] != 0.5f || sectors[0] != 200)
 		return false;
-	spy_sweep_fixture(&tape, &state, sectors, markers,
-	    sector_cache, cloak_cache);
+	spy_sweep_fixture(&tape, &state, sectors, markers);
 	memset(&tape.sector, 0, sizeof(tape.sector));
 	tape.sector.warps[0] = 200.0f;
 	(void)yt_record_set_number(&tape.sector.record, YT_F105, 200.0f);
@@ -3407,8 +3318,7 @@ check_spy_sweep_transaction(void)
 	    sizeof("** Space-time disruption detected! **") - 1U)
 	    || state.dead_counter_scratch != 0.0f)
 		return false;
-	spy_sweep_fixture(&tape, &state, sectors, markers,
-	    sector_cache, cloak_cache);
+	spy_sweep_fixture(&tape, &state, sectors, markers);
 	memset(tape.sector_reads, 0, sizeof(tape.sector_reads));
 	tape.sector_read_count = 4U;
 	tape.sector_reads[0].warps[0] = 200.0f;
@@ -3430,14 +3340,12 @@ check_spy_sweep_transaction(void)
 	    sizeof("Fighters in sector: 9 (Belong to The Xannor)\r\n") - 1U)
 	    || state.dead_counter_scratch != 0.0f)
 		return false;
-	spy_sweep_fixture(&tape, &state, sectors, markers,
-	    sector_cache, cloak_cache);
+	spy_sweep_fixture(&tape, &state, sectors, markers);
 	state.active_spies = -1.0f;
 	if (!yt_spy_sweep_run(&state, &ops, &tape, NULL)
 	    || tape.event_count != 0U || state.foreground != 0.0f)
 		return false;
-	spy_sweep_fixture(&tape, &state, sectors, markers,
-	    sector_cache, cloak_cache);
+	spy_sweep_fixture(&tape, &state, sectors, markers);
 	markers[0] = 100;
 	state.found_scratch = 1.0f;
 	if (!yt_spy_sweep_run(&state, &ops, &tape, NULL)
@@ -3457,8 +3365,7 @@ check_spy_sweep_transaction(void)
 	    || tape.stores[3] != YT_SPY_SCRATCH_DESTINATION
 	    || qb_mbf32_decode(tape.store_raw[3]) != 200.0f)
 		return false;
-	spy_sweep_fixture(&tape, &state, sectors, markers,
-	    sector_cache, cloak_cache);
+	spy_sweep_fixture(&tape, &state, sectors, markers);
 	state.active_spies = 0.0f;
 	return yt_spy_sweep_run(&state, &ops, &tape, NULL)
 	    && tape.event_count == 0U && tape.store_count == 0U

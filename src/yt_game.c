@@ -416,9 +416,7 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 	size_t index;
 
 	if (state == NULL || ops == NULL || state->config == NULL
-	    || state->sector_cache == NULL || state->cloak_cache == NULL
-	    || state->sector_cache_raw == NULL || state->cloak_cache_raw == NULL
-	    || state->cache_count == 0U || ops->close_data == NULL
+	    || state->player_cache == NULL || ops->close_data == NULL
 	    || ops->open_data == NULL
 	    || ops->load_config == NULL || ops->store_config == NULL
 	    || ops->read_player == NULL || ops->write_player == NULL
@@ -500,26 +498,23 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 		struct yt_player player;
 		int32_t basic = qb_cint(counter, &overflow);
 
-		if (overflow || basic < 0
-		    || (size_t)basic >= state->cache_count)
+		if (overflow || !yt_player_cache_contains(basic))
 			return startup_configuration_error(error, YT_RANGE,
 			    "startup player-cache index");
 		if (!ops->read_player(context, basic, &player, error))
 			return false;
-		state->sector_cache[basic] = player.sector;
-		memcpy(state->sector_cache_raw[basic],
-		    player.record.bytes + YT_F57, 4U);
-		state->cloak_cache[basic] = player.cloak;
-		memcpy(state->cloak_cache_raw[basic],
-		    player.record.bytes + YT_F125, 4U);
+		(void)yt_player_cache_set_raw(state->player_cache, basic,
+		    YT_PLAYER_CACHE_SECTOR, player.record.bytes + YT_F57);
+		(void)yt_player_cache_set_raw(state->player_cache, basic,
+		    YT_PLAYER_CACHE_CLOAK, player.record.bytes + YT_F125);
 		if (player.cloak < 0.0f || player.cloak > 1.0f) {
 			static const uint8_t one[4] = {
 				0x00U, 0x00U, 0x00U, 0x81U
 			};
 
 			player.cloak = 1.0f;
-			state->cloak_cache[basic] = 1.0f;
-			memcpy(state->cloak_cache_raw[basic], one, 4U);
+			(void)yt_player_cache_set_raw(state->player_cache, basic,
+			    YT_PLAYER_CACHE_CLOAK, one);
 			if (!yt_record_set_number(&player.record, YT_F125, 1.0f)
 			    || !ops->write_player(context, basic, &player, error))
 				return false;
@@ -1480,32 +1475,13 @@ spy_first_finding(struct yt_spy_sweep_state *state,
 	return true;
 }
 
-static float
-spy_cache_value(const struct yt_spy_sweep_state *state,
-    const struct yt_spy_sweep_ops *ops, void *context, int player_record,
-    enum yt_player_cache_kind kind)
-{
-	uint8_t raw[4];
-
-	if (ops->read_cache != NULL) {
-		ops->read_cache(context, player_record, kind, raw);
-		return qb_mbf32_decode(raw);
-	}
-	return kind == YT_PLAYER_CACHE_SECTOR
-	    ? state->sector_cache[player_record]
-	    : state->cloak_cache[player_record];
-}
-
 static void
-spy_cache_cloak_zero(struct yt_spy_sweep_state *state,
-    const struct yt_spy_sweep_ops *ops, void *context, int player_record)
+spy_cache_cloak_zero(struct yt_spy_sweep_state *state, int player_record)
 {
 	static const uint8_t zero[4] = {0};
 
-	state->cloak_cache[player_record] = 0.0f;
-	if (ops->store_cache != NULL)
-		ops->store_cache(context, player_record, YT_PLAYER_CACHE_CLOAK,
-		    zero);
+	(void)yt_player_cache_set_raw(state->player_cache, player_record,
+	    YT_PLAYER_CACHE_CLOAK, zero);
 }
 
 bool
@@ -1523,8 +1499,7 @@ yt_spy_sweep_run(struct yt_spy_sweep_state *state,
 
 	if (state == NULL || ops == NULL || state->spy_sectors == NULL
 	    || state->last_reported_sectors == NULL
-	    || state->cloak_cache == NULL
-	    || (state->sector_cache == NULL && ops->read_cache == NULL)
+	    || state->player_cache == NULL
 	    || ops->read_sector == NULL || ops->update_planet == NULL
 	    || ops->read_planet == NULL || ops->read_player == NULL
 	    || ops->read_team == NULL || ops->random == NULL
@@ -1602,18 +1577,18 @@ yt_spy_sweep_run(struct yt_spy_sweep_state *state,
 				float cloak;
 				bool detected;
 
-				if ((size_t)candidate >= state->cache_count)
+				if (!yt_player_cache_contains(candidate))
 					return startup_configuration_error(error, YT_RANGE,
 					    "last player cache aliases adjacent memory");
 				if (!yt_sector_candidate_eligible(candidate,
 				    state->current_player_record,
-				    spy_cache_value(state, ops, context, candidate,
+				    yt_player_cache_value(state->player_cache, candidate,
 				    YT_PLAYER_CACHE_SECTOR),
 				    (float)sector_number))
 					continue;
 				if (!ops->random(context, &draw, error))
 					return false;
-				cloak = spy_cache_value(state, ops, context, candidate,
+				cloak = yt_player_cache_value(state->player_cache, candidate,
 				    YT_PLAYER_CACHE_CLOAK);
 				detected = yt_sector_cloak_revealed(draw, cloak);
 				if (detected) {
@@ -1623,12 +1598,11 @@ yt_spy_sweep_run(struct yt_spy_sweep_state *state,
 					    cloak_notice, sizeof(cloak_notice) - 1U,
 					    YT_SPY_BOLD_LINE, error))
 						return false;
-					spy_cache_cloak_zero(state, ops, context,
-					    candidate);
+					spy_cache_cloak_zero(state, candidate);
 					if (!ops->sound(context, 4.0f, error))
 						return false;
 				}
-				if (spy_cache_value(state, ops, context, candidate,
+				if (yt_player_cache_value(state->player_cache, candidate,
 				    YT_PLAYER_CACHE_CLOAK) != 0.0f
 				    && !detected)
 					continue;

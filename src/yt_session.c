@@ -22,8 +22,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define YT_PLAYER_FIRST 2
-#define YT_PLAYER_LAST 51
+#define YT_PLAYER_FIRST YT_PLAYER_FIRST_RECORD
+#define YT_PLAYER_LAST YT_PLAYER_LAST_RECORD
 #define YT_COMMAND_SIZE 4096U
 #define YT_ANTI_CLOAK_ADDRESS 0x1854U
 #define YT_BACKGROUND_ADDRESS 0x1870U
@@ -200,10 +200,7 @@ struct yt_session {
 	struct yt_player player;
 	uint8_t cached_player_name[YT_TEXT_FIELD_SIZE];
 	size_t cached_player_name_length;
-	float sector_cache[YT_PLAYER_LAST + 1];
-	float cloak_cache[YT_PLAYER_LAST + 1];
-	uint8_t sector_cache_raw[YT_PLAYER_LAST + 1][4];
-	uint8_t cloak_cache_raw[YT_PLAYER_LAST + 1][4];
+	struct yt_player_cache player_cache;
 	struct yt_startup_main_prefix startup_prefix;
 	char queue[YT_COMMAND_SIZE];
 	size_t queue_length;
@@ -243,43 +240,22 @@ static void
 session_player_cache_raw(const struct yt_session *session, int player_record,
     enum yt_player_cache_kind kind, uint8_t raw[4])
 {
-	if (player_record < 0
-	    || (size_t)player_record >= YT_ARRAY_LEN(session->sector_cache)) {
-		memset(raw, 0, 4U);
-		return;
-	}
-	memcpy(raw, kind == YT_PLAYER_CACHE_SECTOR
-	    ? session->sector_cache_raw[player_record]
-	    : session->cloak_cache_raw[player_record], 4U);
+	yt_player_cache_raw(&session->player_cache, player_record, kind, raw);
 }
 
 static float
 session_player_cache_value(const struct yt_session *session, int player_record,
     enum yt_player_cache_kind kind)
 {
-	if (player_record < 0
-	    || (size_t)player_record >= YT_ARRAY_LEN(session->sector_cache))
-		return 0.0f;
-	return kind == YT_PLAYER_CACHE_SECTOR
-	    ? session->sector_cache[player_record]
-	    : session->cloak_cache[player_record];
+	return yt_player_cache_value(&session->player_cache, player_record, kind);
 }
 
 static void
 session_set_player_cache_raw(struct yt_session *session, int player_record,
     enum yt_player_cache_kind kind, const uint8_t raw[4])
 {
-	if (player_record < 0
-	    || (size_t)player_record >= YT_ARRAY_LEN(session->sector_cache))
-		return;
-	if (kind == YT_PLAYER_CACHE_SECTOR) {
-		memcpy(session->sector_cache_raw[player_record], raw, 4U);
-		session->sector_cache[player_record] = qb_mbf32_decode(raw);
-	}
-	else {
-		memcpy(session->cloak_cache_raw[player_record], raw, 4U);
-		session->cloak_cache[player_record] = qb_mbf32_decode(raw);
-	}
+	(void)yt_player_cache_set_raw(&session->player_cache, player_record,
+	    kind, raw);
 }
 
 static float
@@ -1238,7 +1214,7 @@ reload_player(struct yt_session *session, struct yt_error *error)
 		    &session->route_process, YT_CURRENT_PLAYER_RECORD_ADDRESS),
 		.conversion_mode = session->presentation.sound.conversion_mode,
 		.current_sector_record = &current_sector_record,
-		.cloak_cache = session->cloak_cache,
+		.cloak_cache = session->player_cache.cloak,
 		.cache_count = (YT_PLAYER_LAST + 1U),
 		.store = session_hydration_store,
 	};
@@ -1285,7 +1261,7 @@ mutate_player_credits_observed(struct yt_session *session, float argument,
 	state.hydration.conversion_mode =
 	    session->presentation.sound.conversion_mode;
 	state.hydration.current_sector_record = &current_sector_record;
-	state.hydration.cloak_cache = session->cloak_cache;
+	state.hydration.cloak_cache = session->player_cache.cloak;
 	state.hydration.cache_count = (YT_PLAYER_LAST + 1U);
 	state.hydration.store = session_hydration_store;
 	memcpy(state.hydration.sector_record_offset_raw,
@@ -2747,11 +2723,7 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 	memset(&state, 0, sizeof(state));
 	state.config = &game->config;
 	state.local_mode = session->door->identity.local ? -1.0f : 0.0f;
-	state.sector_cache = session->sector_cache;
-	state.cloak_cache = session->cloak_cache;
-	state.sector_cache_raw = session->sector_cache_raw;
-	state.cloak_cache_raw = session->cloak_cache_raw;
-	state.cache_count = (YT_PLAYER_LAST + 1U);
+	state.player_cache = &session->player_cache;
 	session_disruption_sectors(session, state.black_hole);
 	ok = yt_startup_configuration_run(&state, &ops, session, error);
 	return ok;
@@ -4949,13 +4921,13 @@ display_sector_one(struct yt_session *session, float logical_sector,
 
 			session_player_cache_raw(session, basic,
 			    YT_PLAYER_CACHE_CLOAK, cloak_raw);
-			session->cloak_cache[basic] = qb_mbf32_decode(cloak_raw);
+			session->player_cache.cloak[basic] = qb_mbf32_decode(cloak_raw);
 		}
 		if (!yt_random_next(&session->door->game.random, &random_value,
 		    error))
 			return false;
 		if (yt_sector_cloak_revealed(random_value,
-		    session->cloak_cache[basic])) {
+		    session->player_cache.cloak[basic])) {
 			static const uint8_t shimmer[] =
 			    "You detect the shimmering of a cloaking device!";
 
@@ -4969,13 +4941,13 @@ display_sector_one(struct yt_session *session, float logical_sector,
 
 				session_set_player_cache_raw(session, basic,
 				    YT_PLAYER_CACHE_CLOAK, zero);
-				session->cloak_cache[basic] = 0.0f;
+				session->player_cache.cloak[basic] = 0.0f;
 			}
 			if (!session_sound(session, 4.0f,
 			    "sector cloak-reveal sound", error))
 				return false;
 		}
-		if (session->cloak_cache[basic] == 0.0f) {
+		if (session->player_cache.cloak[basic] == 0.0f) {
 			struct yt_player other;
 
 			yt_sector_pager_add(private_pager, 1.0f);
@@ -5528,14 +5500,7 @@ static void
 session_player_cache_store(void *context, int player_record,
     enum yt_player_cache_kind kind, const uint8_t raw[4])
 {
-	struct yt_session *session = context;
-
-	session_set_player_cache_raw(session, player_record, kind, raw);
-	if (player_record < 0
-	    || (size_t)player_record >= (YT_PLAYER_LAST + 1U))
-		return;
-	if (kind == YT_PLAYER_CACHE_CLOAK)
-		session->cloak_cache[player_record] = qb_mbf32_decode(raw);
+	session_set_player_cache_raw(context, player_record, kind, raw);
 }
 
 static bool
@@ -5552,8 +5517,6 @@ spy_sweep(struct yt_session *session, struct yt_error *error)
 		spy_present,
 		spy_pause,
 		spy_store,
-		session_player_cache_read,
-		session_player_cache_store,
 	};
 	int spy_sectors[3];
 	int spy_markers[3];
@@ -5579,9 +5542,7 @@ spy_sweep(struct yt_session *session, struct yt_error *error)
 			session_disruption_sector(session, 0U),
 			session_disruption_sector(session, 1U)
 		},
-		.sector_cache = NULL,
-		.cloak_cache = session->cloak_cache,
-		.cache_count = (YT_PLAYER_LAST + 1U),
+		.player_cache = &session->player_cache,
 		.found_scratch = yt_route_process_single(&session->route_process,
 		    YT_SPY_FOUND_SCRATCH_ADDRESS),
 		.dead_counter_scratch = yt_route_process_single(
@@ -5719,8 +5680,8 @@ finalize_action(struct yt_session *session, float amount,
 		    YT_PLAYER_CACHE_CLOAK,
 		    session->player.record.bytes + YT_F125);
 		if (cache_record >= 0
-		    && (size_t)cache_record < YT_ARRAY_LEN(session->cloak_cache))
-			session->cloak_cache[cache_record] = qb_mbf32_decode(
+		    && (size_t)cache_record < YT_ARRAY_LEN(session->player_cache.cloak))
+			session->player_cache.cloak[cache_record] = qb_mbf32_decode(
 			    session->player.record.bytes + YT_F125);
 		display = floorf(single_mul(session->player.cloak,
 		    yt_route_process_single(&session->route_process,
@@ -7162,7 +7123,7 @@ command_attack_player(struct yt_session *session, bool *enter_sector,
 		.last_player_record = session_sector_offset(session),
 		.conversion_mode = session->presentation.sound.conversion_mode,
 		.sector_cache = NULL,
-		.cloak_cache = session->cloak_cache,
+		.cloak_cache = session->player_cache.cloak,
 		.cache_count = (YT_PLAYER_LAST + 1U),
 	};
 
@@ -9873,8 +9834,8 @@ earth_anti_cloak(struct yt_session *session, float price,
 		.current_record = (float)session_record(session),
 		.player_terminal = session_sector_offset(session),
 		.conversion_mode = session->presentation.sound.conversion_mode,
-		.cloak_cache = session->cloak_cache,
-		.cloak_cache_count = YT_ARRAY_LEN(session->cloak_cache),
+		.cloak_cache = session->player_cache.cloak,
+		.cloak_cache_count = YT_ARRAY_LEN(session->player_cache.cloak),
 		.foreground = session_foreground(session),
 	};
 	bool completed = yt_earth_anti_cloak_run(&state, &ops, session, error);
@@ -15605,7 +15566,7 @@ missile_sector(struct yt_session *session, int sector_number,
 	probe.hop = (float)sector_number;
 	probe.player_terminal = session_sector_offset(session);
 	probe.sector_cache = NULL;
-	probe.cloak_cache = session->cloak_cache;
+	probe.cloak_cache = session->player_cache.cloak;
 	probe.cache_count = (YT_PLAYER_LAST + 1U);
 	probe.read_cache = session_player_cache_read;
 	probe.cache_context = session;
@@ -16386,7 +16347,7 @@ plasma_route_impact(void *context, int hop, double *energy,
 	memset(&probe, 0, sizeof(probe));
 	probe.sector = &sector;
 	probe.sector_cache = NULL;
-	probe.cloak_cache = session->cloak_cache;
+	probe.cloak_cache = session->player_cache.cloak;
 	probe.cache_count = (YT_PLAYER_LAST + 1U);
 	probe.read_cache = session_player_cache_read;
 	probe.cache_context = session;
@@ -16765,7 +16726,7 @@ launch_xannor_retaliation(struct yt_session *session, int *provoking_player,
 		&session->player,
 		&session->player_record_carrier,
 		NULL,
-		session->cloak_cache,
+		session->player_cache.cloak,
 		(YT_PLAYER_LAST + 1U),
 		&destroyed,
 		provoking_player,
@@ -16880,7 +16841,7 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 		&session->player,
 		&session->player_record_carrier,
 		NULL,
-		session->cloak_cache,
+		session->player_cache.cloak,
 		(YT_PLAYER_LAST + 1U),
 		&destroyed,
 		&retained_count,

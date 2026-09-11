@@ -45021,15 +45021,12 @@ spy_sweep_presentation_fixture(bool ansi)
 		spy_sweep_presentation_present,
 		spy_sweep_presentation_pause,
 		NULL,
-		NULL,
-		NULL,
 	};
 	struct spy_sweep_presentation_context fixture;
 	struct yt_spy_sweep_state sweep;
 	int sectors[3] = {100, 0, 0};
 	int markers[3] = {0, 0, 0};
-	float sector_cache[52] = {0};
-	float cloak_cache[52] = {0};
+	struct yt_player_cache player_cache = {0};
 
 	memset(&fixture, 0, sizeof(fixture));
 	memset(&sweep, 0, sizeof(sweep));
@@ -45061,17 +45058,15 @@ spy_sweep_presentation_fixture(bool ansi)
 	CHECK(yt_record_set_number(&fixture.team.record, YT_F73, 5.0f));
 	fixture.draws[0] = 0.75f;
 	fixture.draws[1] = 0.2f;
-	sector_cache[3] = 100.0f;
-	cloak_cache[3] = 0.5f;
+	player_cache.sector[3] = 100.0f;
+	player_cache.cloak[3] = 0.5f;
 	sweep.active_spies = 1.0f;
 	sweep.spy_sectors = sectors;
 	sweep.last_reported_sectors = markers;
 	sweep.spy_capacity = 3U;
 	sweep.current_player_record = 2;
 	sweep.last_player_record = 51.0f;
-	sweep.sector_cache = sector_cache;
-	sweep.cloak_cache = cloak_cache;
-	sweep.cache_count = 52U;
+	sweep.player_cache = &player_cache;
 	sweep.foreground = 5.0f;
 	CHECK(yt_spy_sweep_run(&sweep, &ops, &fixture, NULL));
 	fixture.current.foreground = sweep.foreground;
