@@ -30,10 +30,6 @@
 #define YT_CURRENT_WARPS_ADDRESS 0x1898U
 #define YT_PLANET_RECORD_SCRATCH_ADDRESS 0x19C4U
 #define YT_COMPUTER_PLANET_LINK_ADDRESS 0x5184U
-#define YT_NUMERIC_TEMP_DOUBLE_ADDRESS 0x0016U
-#define YT_NUMERIC_TEMP_SINGLE_ADDRESS 0x001AU
-#define YT_UPPERCASE_LENGTH_ADDRESS 0x536AU
-#define YT_UPPERCASE_INDEX_ADDRESS 0x536EU
 #define YT_CLEARANCE_HOLDS_ADDRESS 0x4B54U
 #define YT_CLEARANCE_FIGHTERS_ADDRESS 0x4B58U
 #define YT_CLEARANCE_GROUND_ADDRESS 0x4B5CU
@@ -2367,29 +2363,6 @@ startup_configuration_store_local_screen(void *context,
 	session->presentation.sound.snoop = qb_mbf32_decode(raw);
 }
 
-static void
-startup_configuration_store_uppercase(void *context,
-    enum qb_compat_upper_store_kind kind, float value)
-{
-	struct yt_session *session = context;
-	uint16_t address;
-
-	switch (kind) {
-	case QB_COMPAT_UPPER_STORE_NUMERIC_TEMP:
-		address = YT_NUMERIC_TEMP_SINGLE_ADDRESS;
-		break;
-	case QB_COMPAT_UPPER_STORE_LENGTH:
-		address = YT_UPPERCASE_LENGTH_ADDRESS;
-		break;
-	case QB_COMPAT_UPPER_STORE_INDEX:
-		address = YT_UPPERCASE_INDEX_ADDRESS;
-		break;
-	default:
-		return;
-	}
-	session_set_process_single(session, address, value);
-}
-
 static bool
 load_configuration(struct yt_session *session, struct yt_error *error)
 {
@@ -2403,7 +2376,6 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 		.random = startup_configuration_random,
 		.store_disruption = startup_configuration_store_disruption,
 		.store_local_screen = startup_configuration_store_local_screen,
-		.store_uppercase = startup_configuration_store_uppercase,
 	};
 	struct yt_game *game = &session->door->game;
 	struct yt_startup_configuration_state state;
@@ -3180,8 +3152,6 @@ set_new_player_identity(struct yt_session *session, int player_record,
 	yt_record_set_text(&identity, name, length);
 	if (qb_mbf32_encode((float)length, length_raw) != QB_MBF_OK)
 		return false;
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_NUMERIC_TEMP_SINGLE_ADDRESS, length_raw);
 	(void)yt_record_set_raw_number(&identity, YT_F85, length_raw);
 	yt_route_process_raw_single(&session->route_process,
 	    YT_STATIC_SINGLE_ZERO_ADDRESS, zero_raw);

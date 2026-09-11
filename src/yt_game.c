@@ -441,8 +441,8 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 	    state->scoreboard_path_length);
 	if (ops->store_local_screen != NULL)
 		ops->store_local_screen(context, config->record.bytes + YT_F85);
-	qb_compat_upper_n_observed((uint8_t *)config->scoreboard,
-	    state->scoreboard_path_length, ops->store_uppercase, context);
+	qb_compat_upper_n((uint8_t *)config->scoreboard,
+	    state->scoreboard_path_length);
 	config->scoreboard[state->scoreboard_path_length] = '\0';
 
 	if (config->headquarters == 0.0f) {

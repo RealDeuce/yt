@@ -84,7 +84,6 @@ struct yt_startup_configuration_ops {
 	yt_startup_configuration_random_fn random;
 	yt_startup_configuration_disruption_store_fn store_disruption;
 	yt_startup_configuration_local_screen_store_fn store_local_screen;
-	qb_compat_upper_store_fn store_uppercase;
 };
 
 bool yt_startup_configuration_run(

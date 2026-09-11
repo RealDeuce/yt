@@ -151,9 +151,6 @@ struct startup_configuration_tape {
 	size_t local_screen_store_count;
 	size_t local_screen_store_position[2];
 	struct yt_player_cache player_cache;
-	enum qb_compat_upper_store_kind uppercase_kind[16];
-	float uppercase_value[16];
-	size_t uppercase_store_count;
 };
 
 static void
@@ -162,20 +159,6 @@ startup_configuration_store_step(struct startup_configuration_tape *tape,
 {
 	if (tape->store_count < YT_ARRAY_LEN(tape->stores))
 		tape->stores[tape->store_count++] = (int)store;
-}
-
-static void
-startup_configuration_uppercase_store_test(void *context,
-    enum qb_compat_upper_store_kind kind, float value)
-{
-	struct startup_configuration_tape *tape = context;
-	size_t position = tape->uppercase_store_count;
-
-	if (position >= YT_ARRAY_LEN(tape->uppercase_kind))
-		return;
-	tape->uppercase_kind[position] = kind;
-	tape->uppercase_value[position] = value;
-	++tape->uppercase_store_count;
 }
 
 static bool
@@ -372,7 +355,6 @@ check_startup_configuration_transaction(void)
 		.random = startup_configuration_random_test,
 		.store_disruption = startup_configuration_disruption_store_test,
 		.store_local_screen = startup_configuration_local_screen_store_test,
-		.store_uppercase = startup_configuration_uppercase_store_test,
 	};
 	static const int events[] = {
 		STARTUP_CONFIGURATION_CLOSE,
@@ -410,19 +392,6 @@ check_startup_configuration_transaction(void)
 	    || state.scoreboard_path_length != 3U
 	    || memcmp(config.scoreboard, "AB[", 3U) != 0
 	    || config.scoreboard[3] != '\0'
-	    || tape.uppercase_store_count != 9U
-	    || tape.uppercase_kind[0]
-	    != QB_COMPAT_UPPER_STORE_NUMERIC_TEMP
-	    || tape.uppercase_value[0] != 3.0f
-	    || tape.uppercase_kind[1] != QB_COMPAT_UPPER_STORE_LENGTH
-	    || tape.uppercase_value[1] != 3.0f
-	    || tape.uppercase_kind[2] != QB_COMPAT_UPPER_STORE_INDEX
-	    || tape.uppercase_value[2] != 1.0f
-	    || tape.uppercase_kind[7]
-	    != QB_COMPAT_UPPER_STORE_NUMERIC_TEMP
-	    || tape.uppercase_value[7] != 4.0f
-	    || tape.uppercase_kind[8] != QB_COMPAT_UPPER_STORE_INDEX
-	    || tape.uppercase_value[8] != 4.0f
 	    || config.headquarters != 733.0f || config.genesis_ports != 200.0f
 	    || config.epoch_year != 26.0f || config.sector_offset != 4.5f
 	    || config.port_offset != 10.75f || config.planet_offset != 20.0f
