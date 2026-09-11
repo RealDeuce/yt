@@ -1393,11 +1393,7 @@ struct yt_projectile_sector_probe_state {
 	const struct yt_sector *sector;
 	float hop;
 	float player_terminal;
-	const float *sector_cache;
-	const float *cloak_cache;
-	size_t cache_count;
-	yt_player_cache_read_fn read_cache;
-	void *cache_context;
+	const struct yt_player_cache *player_cache;
 	float xannor_provoker;
 	float presence;
 	float matched_player;
@@ -1506,10 +1502,7 @@ struct yt_projectile_plasma_dispatch_state {
 	uint8_t planet_link_raw[4];
 	uint8_t conversion_mode;
 	float player_terminal;
-	const float *sector_cache;
-	size_t cache_count;
-	yt_player_cache_read_fn read_cache;
-	void *cache_context;
+	const struct yt_player_cache *player_cache;
 	bool resume_after_player;
 	float counter;
 	int selected_player;
@@ -4534,9 +4527,7 @@ struct yt_direct_attack_state {
 	int current_player_record;
 	float last_player_record;
 	uint8_t conversion_mode;
-	const float *sector_cache;
-	const float *cloak_cache;
-	size_t cache_count;
+	const struct yt_player_cache *player_cache;
 	struct yt_player current;
 	struct yt_player candidate_player;
 	float candidate;
@@ -4566,7 +4557,6 @@ struct yt_direct_attack_ops {
 	yt_direct_attack_confirm_fn confirm;
 	yt_direct_attack_amount_fn amount;
 	yt_direct_attack_combat_fn combat;
-	yt_player_cache_read_fn read_cache;
 };
 bool yt_direct_attack_run(struct yt_direct_attack_state *state,
     const struct yt_direct_attack_ops *ops, void *context,

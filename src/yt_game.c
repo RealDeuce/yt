@@ -14171,12 +14171,9 @@ yt_projectile_sector_probe_run(struct yt_projectile_sector_probe_state *state,
     struct yt_error *error)
 {
 	bool overflow;
-	uint8_t sector_raw[4];
-	uint8_t cloak_raw[4];
 
 	if (state == NULL || state->sector == NULL
-	    || (state->read_cache == NULL
-	    && (state->sector_cache == NULL || state->cloak_cache == NULL)))
+	    || state->player_cache == NULL)
 		return false;
 	state->presence = 0.0f;
 	state->matched_player = 0.0f;
@@ -14187,8 +14184,7 @@ yt_projectile_sector_probe_run(struct yt_projectile_sector_probe_state *state,
 	while (state->counter <= state->player_terminal) {
 		int candidate = (int)qb_cint(state->counter, &overflow);
 
-		if (overflow || candidate < 0
-		    || (size_t)candidate >= state->cache_count) {
+		if (overflow || !yt_player_cache_contains(candidate)) {
 			if (error != NULL) {
 				error->status = YT_RANGE;
 				snprintf(error->operation, sizeof(error->operation), "%s",
@@ -14196,18 +14192,10 @@ yt_projectile_sector_probe_run(struct yt_projectile_sector_probe_state *state,
 			}
 			return false;
 		}
-		if (state->read_cache != NULL) {
-			state->read_cache(state->cache_context, candidate,
-			    YT_PLAYER_CACHE_SECTOR, sector_raw);
-			state->read_cache(state->cache_context, candidate,
-			    YT_PLAYER_CACHE_CLOAK, cloak_raw);
-		}
-		if ((state->read_cache != NULL
-		    ? qb_mbf32_decode(sector_raw) : state->sector_cache[candidate])
-		    == state->hop
-		    && ((state->read_cache != NULL
-		    ? qb_mbf32_decode(cloak_raw) : state->cloak_cache[candidate])
-		    == 0.0f
+		if (yt_player_cache_value(state->player_cache, candidate,
+		    YT_PLAYER_CACHE_SECTOR) == state->hop
+		    && (yt_player_cache_value(state->player_cache, candidate,
+		    YT_PLAYER_CACHE_CLOAK) == 0.0f
 		    || state->counter == state->xannor_provoker)) {
 			state->presence = 1.0f;
 			state->matched_player = state->counter;
@@ -14497,10 +14485,8 @@ yt_projectile_plasma_dispatch_run(
     struct yt_error *error)
 {
 	bool overflow;
-	uint8_t sector_raw[4];
 
-	if (state == NULL
-	    || (state->read_cache == NULL && state->sector_cache == NULL))
+	if (state == NULL || state->player_cache == NULL)
 		return false;
 	state->selected_player = 0;
 	if (state->resume_after_player && state->energy < 1.0) {
@@ -14514,8 +14500,7 @@ yt_projectile_plasma_dispatch_run(
 	while (state->counter <= state->player_terminal) {
 		int candidate = qb_cint(state->counter, &overflow);
 
-		if (overflow || candidate < 0
-		    || (size_t)candidate >= state->cache_count) {
+		if (overflow || !yt_player_cache_contains(candidate)) {
 			if (error != NULL) {
 				error->status = YT_RANGE;
 				snprintf(error->operation, sizeof(error->operation), "%s",
@@ -14523,12 +14508,8 @@ yt_projectile_plasma_dispatch_run(
 			}
 			return false;
 		}
-		if (state->read_cache != NULL)
-			state->read_cache(state->cache_context, candidate,
-			    YT_PLAYER_CACHE_SECTOR, sector_raw);
-		if ((state->read_cache != NULL
-		    ? qb_mbf32_decode(sector_raw) : state->sector_cache[candidate])
-		    == state->sector
+		if (yt_player_cache_value(state->player_cache, candidate,
+		    YT_PLAYER_CACHE_SECTOR) == state->sector
 		    && state->energy > 0.0) {
 			state->selected_player = candidate;
 			state->route = YT_PROJECTILE_PLASMA_DISPATCH_PLAYER;
@@ -17532,8 +17513,7 @@ direct_attack_candidate_record(struct yt_direct_attack_state *state,
 	int32_t converted = qb_cint_mode((double)state->candidate,
 	    state->conversion_mode, &overflow);
 
-	if (!overflow && converted >= 0
-	    && (size_t)converted < state->cache_count) {
+	if (!overflow && yt_player_cache_contains((int)converted)) {
 		*record = (int)converted;
 		return true;
 	}
@@ -17543,22 +17523,6 @@ direct_attack_candidate_record(struct yt_direct_attack_state *state,
 		    "direct Attack candidate cache CINT");
 	}
 	return false;
-}
-
-static float
-direct_attack_cache_value(const struct yt_direct_attack_state *state,
-    const struct yt_direct_attack_ops *ops, void *context, int player_record,
-    enum yt_player_cache_kind kind)
-{
-	uint8_t raw[4];
-
-	if (ops->read_cache != NULL) {
-		ops->read_cache(context, player_record, kind, raw);
-		return qb_mbf32_decode(raw);
-	}
-	return kind == YT_PLAYER_CACHE_SECTOR
-	    ? state->sector_cache[player_record]
-	    : state->cloak_cache[player_record];
 }
 
 bool
@@ -17581,8 +17545,7 @@ yt_direct_attack_run(struct yt_direct_attack_state *state,
 	if (state == NULL || ops == NULL || ops->read_player == NULL
 	    || ops->present == NULL || ops->confirm == NULL
 	    || ops->amount == NULL || ops->combat == NULL
-	    || (ops->read_cache == NULL
-	    && (state->sector_cache == NULL || state->cloak_cache == NULL)))
+	    || state->player_cache == NULL)
 		return false;
 	state->candidate = 2.0f;
 	state->target_record_cell = 0.0f;
@@ -17620,10 +17583,10 @@ yt_direct_attack_run(struct yt_direct_attack_state *state,
 
 		if (!direct_attack_candidate_record(state, &record, error))
 			return false;
-		cached_sector = direct_attack_cache_value(state, ops, context,
-		    record, YT_PLAYER_CACHE_SECTOR);
-		cached_cloak = direct_attack_cache_value(state, ops, context,
-		    record, YT_PLAYER_CACHE_CLOAK);
+		cached_sector = yt_player_cache_value(state->player_cache, record,
+		    YT_PLAYER_CACHE_SECTOR);
+		cached_cloak = yt_player_cache_value(state->player_cache, record,
+		    YT_PLAYER_CACHE_CLOAK);
 		sector_mismatch = cached_sector != state->current.sector;
 		self = record == state->current_player_record;
 		cloaked = cached_cloak > 0.0f;

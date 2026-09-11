@@ -7116,15 +7116,12 @@ command_attack_player(struct yt_session *session, bool *enter_sector,
 		direct_attack_confirm,
 		direct_attack_amount,
 		direct_attack_combat,
-		session_player_cache_read,
 	};
 	struct yt_direct_attack_state state = {
 		.current_player_record = session_record(session),
 		.last_player_record = session_sector_offset(session),
 		.conversion_mode = session->presentation.sound.conversion_mode,
-		.sector_cache = NULL,
-		.cloak_cache = session->player_cache.cloak,
-		.cache_count = (YT_PLAYER_LAST + 1U),
+		.player_cache = &session->player_cache,
 	};
 
 	if (enter_sector == NULL)
@@ -15565,11 +15562,7 @@ missile_sector(struct yt_session *session, int sector_number,
 	probe.sector = &sector;
 	probe.hop = (float)sector_number;
 	probe.player_terminal = session_sector_offset(session);
-	probe.sector_cache = NULL;
-	probe.cloak_cache = session->player_cache.cloak;
-	probe.cache_count = (YT_PLAYER_LAST + 1U);
-	probe.read_cache = session_player_cache_read;
-	probe.cache_context = session;
+	probe.player_cache = &session->player_cache;
 	probe.xannor_provoker = (float)*xannor_provoker;
 	if (!yt_projectile_sector_probe_run(&probe, error))
 		return false;
@@ -15940,10 +15933,7 @@ plasma_reload_sector:
 	    sizeof(dispatch.planet_link_raw));
 	dispatch.conversion_mode = session->presentation.sound.conversion_mode;
 	dispatch.player_terminal = session_sector_offset(session);
-	dispatch.sector_cache = NULL;
-	dispatch.cache_count = (YT_PLAYER_LAST + 1U);
-	dispatch.read_cache = session_player_cache_read;
-	dispatch.cache_context = session;
+	dispatch.player_cache = &session->player_cache;
 	for (;;) {
 		dispatch.energy = *energy;
 		if (!yt_projectile_plasma_dispatch_run(&dispatch, error))
@@ -16346,11 +16336,7 @@ plasma_route_impact(void *context, int hop, double *energy,
 		return false;
 	memset(&probe, 0, sizeof(probe));
 	probe.sector = &sector;
-	probe.sector_cache = NULL;
-	probe.cloak_cache = session->player_cache.cloak;
-	probe.cache_count = (YT_PLAYER_LAST + 1U);
-	probe.read_cache = session_player_cache_read;
-	probe.cache_context = session;
+	probe.player_cache = &session->player_cache;
 	probe.hop = (float)hop;
 	probe.player_terminal = session_sector_offset(session);
 	probe.xannor_provoker = route_context->xannor_provoker != NULL

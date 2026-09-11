@@ -4812,42 +4812,12 @@ check_projectile_union_police_transaction(void)
 	    && tape.calls == 1U && state.intercepted;
 }
 
-struct projectile_cache_tape {
-	uint8_t sector[8][4];
-	uint8_t cloak[8][4];
-	int records[16];
-	enum yt_player_cache_kind kinds[16];
-	size_t count;
-};
-
-static void
-projectile_cache_read(void *context, int player_record,
-    enum yt_player_cache_kind kind, uint8_t raw[4])
-{
-	struct projectile_cache_tape *tape = context;
-
-	if (player_record < 0
-	    || (size_t)player_record >= YT_ARRAY_LEN(tape->sector)
-	    || tape->count >= YT_ARRAY_LEN(tape->records)) {
-		memset(raw, 0, 4U);
-		return;
-	}
-	tape->records[tape->count] = player_record;
-	tape->kinds[tape->count] = kind;
-	++tape->count;
-	memcpy(raw, kind == YT_PLAYER_CACHE_SECTOR
-	    ? tape->sector[player_record] : tape->cloak[player_record], 4U);
-}
-
 static bool
 check_projectile_sector_probe_transaction(void)
 {
 	struct yt_projectile_sector_probe_state state;
 	struct yt_sector sector;
-	struct projectile_cache_tape tape;
-	struct yt_error error;
-	float sector_cache[8] = {0};
-	float cloak_cache[8] = {0};
+	struct yt_player_cache player_cache = {0};
 	float *objects[] = {
 		&sector.mines,
 		&sector.fighters,
@@ -4861,9 +4831,7 @@ check_projectile_sector_probe_transaction(void)
 	state.sector = &sector;
 	state.hop = 17.0f;
 	state.player_terminal = 3.5f;
-	state.sector_cache = sector_cache;
-	state.cloak_cache = cloak_cache;
-	state.cache_count = YT_ARRAY_LEN(sector_cache);
+	state.player_cache = &player_cache;
 	for (index = 0U; index < YT_ARRAY_LEN(objects); ++index) {
 		memset(&sector, 0, sizeof(sector));
 		*objects[index] = 0.001f;
@@ -4885,16 +4853,16 @@ check_projectile_sector_probe_transaction(void)
 		return false;
 
 	memset(&sector, 0, sizeof(sector));
-	sector_cache[2] = 17.0f;
+	player_cache.sector[2] = 17.0f;
 	state.player_terminal = 5.0f;
 	if (!yt_projectile_sector_probe_run(&state, NULL)
 	    || state.presence != 1.0f || state.matched_player != 2.0f
 	    || state.counter != 2.0f)
 		return false;
 
-	sector_cache[2] = 0.0f;
-	sector_cache[3] = 17.0f;
-	cloak_cache[3] = -1.0f;
+	player_cache.sector[2] = 0.0f;
+	player_cache.sector[3] = 17.0f;
+	player_cache.cloak[3] = -1.0f;
 	state.player_terminal = 3.5f;
 	if (!yt_projectile_sector_probe_run(&state, NULL)
 	    || state.presence != 0.0f || state.matched_player != 0.0f
@@ -4912,44 +4880,6 @@ check_projectile_sector_probe_transaction(void)
 	    || state.presence != 0.0f || state.counter != 2.0f)
 		return false;
 
-	state.player_terminal = 3.0f;
-	state.cache_count = 3U;
-	yt_error_clear(&error);
-	if (yt_projectile_sector_probe_run(&state, &error)
-	    || error.status != YT_RANGE
-	    || strcmp(error.operation,
-	    "projectile sector-probe cache index") != 0
-	    || state.presence != 0.0f || state.counter != 3.0f)
-		return false;
-
-	sector.mines = 1.0f;
-	state.player_terminal = 2.0f;
-	state.cache_count = 2U;
-	if (yt_projectile_sector_probe_run(&state, NULL)
-	    || state.presence != 1.0f || state.counter != 2.0f)
-		return false;
-
-	memset(&sector, 0, sizeof(sector));
-	memset(&tape, 0, sizeof(tape));
-	memset(sector_cache, 0, sizeof(sector_cache));
-	memset(cloak_cache, 0, sizeof(cloak_cache));
-	(void)qb_mbf32_encode(17.0f, tape.sector[2]);
-	(void)qb_mbf32_encode(0.0f, tape.cloak[2]);
-	state.sector = &sector;
-	state.hop = 17.0f;
-	state.player_terminal = 2.0f;
-	state.sector_cache = sector_cache;
-	state.cloak_cache = cloak_cache;
-	state.cache_count = YT_ARRAY_LEN(sector_cache);
-	state.read_cache = projectile_cache_read;
-	state.cache_context = &tape;
-	state.xannor_provoker = 0.0f;
-	if (!yt_projectile_sector_probe_run(&state, NULL)
-	    || state.matched_player != 2.0f || tape.count != 2U
-	    || tape.records[0] != 2 || tape.records[1] != 2
-	    || tape.kinds[0] != YT_PLAYER_CACHE_SECTOR
-	    || tape.kinds[1] != YT_PLAYER_CACHE_CLOAK)
-		return false;
 	return !yt_projectile_sector_probe_run(NULL, NULL);
 }
 
@@ -5551,19 +5481,16 @@ check_projectile_plasma_mine_transaction(void)
 static bool
 check_projectile_plasma_dispatch_transaction(void)
 {
-	float cache[8] = {0.0f};
+	struct yt_player_cache player_cache = {0};
 	struct yt_projectile_plasma_dispatch_state state;
-	struct projectile_cache_tape tape;
-	struct yt_error error;
 
 	memset(&state, 0, sizeof(state));
 	state.energy = 100.0;
 	state.sector = 7.0f;
 	state.player_terminal = 5.0f;
-	state.sector_cache = cache;
-	state.cache_count = YT_ARRAY_LEN(cache);
-	cache[3] = 7.0f;
-	cache[4] = 7.0f;
+	state.player_cache = &player_cache;
+	player_cache.sector[3] = 7.0f;
+	player_cache.sector[4] = 7.0f;
 	if (!yt_projectile_plasma_dispatch_run(&state, NULL)
 	    || state.route != YT_PROJECTILE_PLASMA_DISPATCH_PLAYER
 	    || state.selected_player != 3 || state.counter != 3.0f)
@@ -5579,13 +5506,12 @@ check_projectile_plasma_dispatch_transaction(void)
 	    || state.counter != 4.0f)
 		return false;
 
-	memset(cache, 0, sizeof(cache));
+	memset(&player_cache, 0, sizeof(player_cache));
 	memset(&state, 0, sizeof(state));
 	state.energy = 1.0;
 	state.sector = 7.0f;
 	state.player_terminal = 3.5f;
-	state.sector_cache = cache;
-	state.cache_count = YT_ARRAY_LEN(cache);
+	state.player_cache = &player_cache;
 	if (!yt_projectile_plasma_dispatch_run(&state, NULL)
 	    || state.route != YT_PROJECTILE_PLASMA_DISPATCH_NEXT_HOP
 	    || state.counter != 4.0f || state.selected_player != 0)
@@ -5620,31 +5546,6 @@ check_projectile_plasma_dispatch_transaction(void)
 	    || state.route != YT_PROJECTILE_PLASMA_DISPATCH_PLANET)
 		return false;
 
-	state.player_terminal = 2.0f;
-	state.cache_count = 2U;
-	yt_error_clear(&error);
-	if (yt_projectile_plasma_dispatch_run(&state, &error)
-	    || error.status != YT_RANGE)
-		return false;
-
-	memset(&state, 0, sizeof(state));
-	memset(&tape, 0, sizeof(tape));
-	memset(cache, 0, sizeof(cache));
-	(void)qb_mbf32_encode(7.0f, tape.sector[3]);
-	state.energy = 1.0;
-	state.sector = 7.0f;
-	state.player_terminal = 3.0f;
-	state.sector_cache = cache;
-	state.cache_count = YT_ARRAY_LEN(cache);
-	state.read_cache = projectile_cache_read;
-	state.cache_context = &tape;
-	if (!yt_projectile_plasma_dispatch_run(&state, NULL)
-	    || state.route != YT_PROJECTILE_PLASMA_DISPATCH_PLAYER
-	    || state.selected_player != 3 || tape.count != 2U
-	    || tape.records[0] != 2 || tape.records[1] != 3
-	    || tape.kinds[0] != YT_PLAYER_CACHE_SECTOR
-	    || tape.kinds[1] != YT_PLAYER_CACHE_SECTOR)
-		return false;
 	return !yt_projectile_plasma_dispatch_run(NULL, NULL);
 }
 
@@ -23839,13 +23740,7 @@ enum direct_attack_event {
 
 struct direct_attack_tape {
 	struct yt_player player[6];
-	float sector_cache[6];
-	float cloak_cache[6];
-	uint8_t process_sector_cache[6][4];
-	uint8_t process_cloak_cache[6][4];
-	int cache_read_record[16];
-	enum yt_player_cache_kind cache_read_kind[16];
-	size_t cache_read_count;
+	struct yt_player_cache player_cache;
 	enum direct_attack_event events[20];
 	size_t event_count;
 	size_t fail_at;
@@ -23984,26 +23879,6 @@ direct_attack_combat_child(void *context, int target_record,
 	return true;
 }
 
-static void
-direct_attack_read_cache(void *context, int player_record,
-    enum yt_player_cache_kind kind, uint8_t raw[4])
-{
-	struct direct_attack_tape *tape = context;
-
-	if (player_record < 0
-	    || (size_t)player_record >= YT_ARRAY_LEN(tape->process_sector_cache)
-	    || tape->cache_read_count >= YT_ARRAY_LEN(tape->cache_read_record)) {
-		memset(raw, 0, 4U);
-		return;
-	}
-	tape->cache_read_record[tape->cache_read_count] = player_record;
-	tape->cache_read_kind[tape->cache_read_count] = kind;
-	++tape->cache_read_count;
-	memcpy(raw, kind == YT_PLAYER_CACHE_SECTOR
-	    ? tape->process_sector_cache[player_record]
-	    : tape->process_cloak_cache[player_record], 4U);
-}
-
 static const struct yt_direct_attack_ops direct_attack_ops = {
 	direct_attack_read,
 	direct_attack_store_target,
@@ -24011,17 +23886,6 @@ static const struct yt_direct_attack_ops direct_attack_ops = {
 	direct_attack_confirm,
 	direct_attack_amount,
 	direct_attack_combat_child,
-	NULL,
-};
-
-static const struct yt_direct_attack_ops direct_attack_process_ops = {
-	direct_attack_read,
-	direct_attack_store_target,
-	direct_attack_present,
-	direct_attack_confirm,
-	direct_attack_amount,
-	direct_attack_combat_child,
-	direct_attack_read_cache,
 };
 
 static void
@@ -24050,10 +23914,6 @@ direct_attack_fixture(struct direct_attack_tape *tape,
 
 	memset(tape, 0, sizeof(*tape));
 	tape->fail_at = (size_t)-1;
-	for (index = 0U; index < YT_ARRAY_LEN(tape->sector_cache); ++index) {
-		tape->sector_cache[index] = 0.0f;
-		tape->cloak_cache[index] = 0.0f;
-	}
 	direct_attack_player_fixture(&tape->player[2], "Ada", 5.0f, 7.0f,
 	    1.0f);
 	direct_attack_player_fixture(&tape->player[3], "Team", 2.0f, 7.0f,
@@ -24062,14 +23922,8 @@ direct_attack_fixture(struct direct_attack_tape *tape,
 	    0.0f);
 	direct_attack_player_fixture(&tape->player[5], "Fight", 2.0f, 7.0f,
 	    0.0f);
-	for (index = 2U; index < YT_ARRAY_LEN(tape->sector_cache); ++index)
-		tape->sector_cache[index] = 7.0f;
-	for (index = 0U; index < YT_ARRAY_LEN(tape->sector_cache); ++index) {
-		(void)qb_mbf32_encode(tape->sector_cache[index],
-		    tape->process_sector_cache[index]);
-		(void)qb_mbf32_encode(tape->cloak_cache[index],
-		    tape->process_cloak_cache[index]);
-	}
+	for (index = 2U; index < 6U; ++index)
+		tape->player_cache.sector[index] = 7.0f;
 	tape->answers[0] = YT_DIRECT_ATTACK_CONFIRM_NO;
 	tape->answers[1] = YT_DIRECT_ATTACK_CONFIRM_YES;
 	tape->answer_count = 2U;
@@ -24078,9 +23932,7 @@ direct_attack_fixture(struct direct_attack_tape *tape,
 		.current_player_record = 2,
 		.last_player_record = 5.0f,
 		.conversion_mode = 0,
-		.sector_cache = tape->sector_cache,
-		.cloak_cache = tape->cloak_cache,
-		.cache_count = YT_ARRAY_LEN(tape->sector_cache),
+		.player_cache = &tape->player_cache,
 	};
 }
 
@@ -24195,9 +24047,9 @@ check_direct_attack_transaction(void)
 		return false;
 
 	direct_attack_fixture(&tape, &state);
-	tape.sector_cache[3] = 8.0f;
-	tape.sector_cache[4] = 8.0f;
-	tape.sector_cache[5] = 8.0f;
+	tape.player_cache.sector[3] = 8.0f;
+	tape.player_cache.sector[4] = 8.0f;
+	tape.player_cache.sector[5] = 8.0f;
 	if (!yt_direct_attack_run(&state, &direct_attack_ops, &tape, NULL)
 	    || state.route != YT_DIRECT_ATTACK_EXHAUSTED || !state.complete
 	    || !state.enter_sector || state.encountered
@@ -24222,23 +24074,6 @@ check_direct_attack_transaction(void)
 		return false;
 
 	direct_attack_fixture(&tape, &state);
-	tape.sector_cache[3] = 8.0f;
-	tape.sector_cache[4] = 8.0f;
-	tape.sector_cache[5] = 8.0f;
-	state.sector_cache = NULL;
-	state.cloak_cache = NULL;
-	if (!yt_direct_attack_run(&state, &direct_attack_process_ops, &tape, NULL)
-	    || state.route != YT_DIRECT_ATTACK_COMBAT_RETURN || !state.complete
-	    || tape.combat_target != 5 || tape.cache_read_count != 8U)
-		return false;
-	for (failure = 0U; failure < tape.cache_read_count; ++failure) {
-		if (tape.cache_read_record[failure] != (int)(failure / 2U) + 2
-		    || tape.cache_read_kind[failure] != (failure % 2U == 0U
-		    ? YT_PLAYER_CACHE_SECTOR : YT_PLAYER_CACHE_CLOAK))
-			return false;
-	}
-
-	direct_attack_fixture(&tape, &state);
 	tape.player[3].team = 0.0f;
 	(void)yt_record_set_number(&tape.player[3].record, YT_F89, 0.0f);
 	tape.answers[0] = YT_DIRECT_ATTACK_CONFIRM_EMPTY;
@@ -24251,17 +24086,7 @@ check_direct_attack_transaction(void)
 	    || tape.combat_target != 0)
 		return false;
 
-	direct_attack_fixture(&tape, &state);
-	state.last_player_record = 6.0f;
-	tape.sector_cache[3] = 8.0f;
-	tape.sector_cache[4] = 8.0f;
-	tape.sector_cache[5] = 8.0f;
-	yt_error_clear(&error);
-	return !yt_direct_attack_run(&state, &direct_attack_ops, &tape, &error)
-	    && !state.complete && state.candidate == 6.0f
-	    && direct_attack_stored_targets(&tape, 0U)
-	    && error.status == YT_RANGE
-	    && !yt_direct_attack_run(NULL, &direct_attack_ops, &tape, NULL)
+	return !yt_direct_attack_run(NULL, &direct_attack_ops, &tape, NULL)
 	    && !yt_direct_attack_run(&state, NULL, &tape, NULL);
 }
 
