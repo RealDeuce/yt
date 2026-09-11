@@ -3316,7 +3316,7 @@ struct yt_computer_port_earth_state {
 	uint32_t field_record;
 	struct yt_record field;
 	bool field_valid;
-	uint8_t report_seen_raw[4];
+	bool report_seen;
 	size_t report_calls;
 	bool report_returned;
 	bool complete;

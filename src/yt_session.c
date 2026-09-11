@@ -42,7 +42,6 @@
 #define YT_COMPUTER_ROUTE_DESTINATION_ADDRESS 0x4E12U
 #define YT_COMPUTER_ROUTE_START_ADDRESS 0x4E1AU
 #define YT_COMPUTER_PATH_HOPS_ADDRESS 0x4E82U
-#define YT_EARTH_REPORT_SEEN_ADDRESS 0x5006U
 #define YT_SPY_COUNT_ADDRESS 0x50AEU
 #define YT_LOW_TIME_REMEMBERED_ADDRESS 0x59CEU
 #define YT_CLEARANCE_ANNOUNCED_ADDRESS 0x55B6U
@@ -95,6 +94,7 @@ struct yt_session {
 	float current_warps[6];
 	bool self_mine_suppressed;
 	bool mercenaries_hurt;
+	bool earth_report_seen;
 	struct yt_player player;
 	float current_sector_record;
 	double combat_ship_fighters;
@@ -8054,19 +8054,6 @@ port_report_failure(struct yt_error *error, const char *operation)
 	return false;
 }
 
-static const uint8_t earth_report_seen_one[4] = {0x00, 0x00, 0x00, 0x81};
-static const uint8_t earth_report_fallback_zero[4] = {
-	0x00, 0x00, 0x01, 0x00
-};
-
-static void
-session_set_earth_report_seen(struct yt_session *session,
-    const uint8_t raw[4])
-{
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_EARTH_REPORT_SEEN_ADDRESS, raw);
-}
-
 static void
 computer_port_earth_field(struct yt_computer_port_earth_state *state,
     enum yt_computer_port_earth_field_kind kind, uint32_t record,
@@ -9593,18 +9580,16 @@ earth_report(struct yt_session *session, struct yt_port *earth,
 	discount[3] = yt_route_process_single(&session->route_process,
 	    YT_CLEARANCE_GROUND_ADDRESS);
 	yt_earth_prices(discount, price);
-	if (yt_route_process_single(&session->route_process,
-	    YT_EARTH_REPORT_SEEN_ADDRESS) == 0.0f) {
+	if (!session->earth_report_seen) {
 		if (!clearance(session, false, error))
 			return false;
 	}
 	else if (!session_present_text(session, NULL, 0,
 	    SESSION_PRESENT_LINE, "Earth report ordinary blank", error))
 		return false;
-	session_set_earth_report_seen(session, earth_report_seen_one);
+	session->earth_report_seen = true;
 	if (earth_state != NULL)
-		memcpy(earth_state->report_seen_raw, earth_report_seen_one,
-		    sizeof(earth_state->report_seen_raw));
+		earth_state->report_seen = true;
 	if (!reload_player(session, error))
 		return false;
 	computer_port_earth_field(earth_state,
@@ -9715,8 +9700,7 @@ earth_store(struct yt_session *session, bool *enter_sector,
 		if (choice < 1 || choice > 9) {
 			int position;
 
-			session_set_earth_report_seen(session,
-			    earth_report_fallback_zero);
+			session->earth_report_seen = false;
 			position = yt_earth_selector_position(line);
 			if (position == 0) {
 				if (!session_02db(session, invalid,
@@ -17608,13 +17592,11 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 		earth_state.field_record = visibility.field_record;
 		earth_state.field = visibility.field;
 		earth_state.field_valid = visibility.field_valid;
-		yt_route_process_raw_single(&session->route_process,
-		    YT_EARTH_REPORT_SEEN_ADDRESS, earth_state.report_seen_raw);
+		earth_state.report_seen = session->earth_report_seen;
 		if (!yt_computer_port_earth_run(&earth_state,
 		    computer_port_earth_report, session, error))
 			return false;
-		session_set_earth_report_seen(session,
-		    earth_state.report_seen_raw);
+		session->earth_report_seen = earth_state.report_seen;
 		return true;
 	}
 	{

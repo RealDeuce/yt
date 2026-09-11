@@ -28977,7 +28977,6 @@ static bool
 computer_port_earth_child(void *context,
     struct yt_computer_port_earth_state *state, struct yt_error *error)
 {
-	static const uint8_t report_seen_one[4] = {0x00, 0x00, 0x00, 0x81};
 	struct computer_port_earth_tape *tape = context;
 
 	++tape->calls;
@@ -28994,8 +28993,7 @@ computer_port_earth_child(void *context,
 		state->field_record = 8U;
 		state->field = tape->owner;
 	}
-	memcpy(state->report_seen_raw, report_seen_one,
-	    sizeof(state->report_seen_raw));
+	state->report_seen = true;
 	if (tape->cut == COMPUTER_PORT_EARTH_FAIL_CURRENT_GET
 	    || tape->cut == COMPUTER_PORT_EARTH_FAIL_CURRENT_AFTER_OWNER)
 		goto failed;
@@ -29035,8 +29033,6 @@ computer_port_earth_fixture(struct computer_port_earth_tape *tape,
 static bool
 check_computer_port_earth_transaction(void)
 {
-	static const uint8_t report_seen_one[4] = {0x00, 0x00, 0x00, 0x81};
-	static const uint8_t fallback_zero[4] = {0x00, 0x00, 0x01, 0x00};
 	struct computer_port_earth_tape tape;
 	struct yt_computer_port_earth_state state;
 	struct yt_error error;
@@ -29056,7 +29052,7 @@ check_computer_port_earth_transaction(void)
 			if (state.field_kind != YT_COMPUTER_PORT_EARTH_FIELD_SECTOR
 			    || state.field_record != 52U
 			    || state.field.bytes[0] != 0x53
-			    || memcmp(state.report_seen_raw, "\0\0\0\0", 4U) != 0)
+			    || state.report_seen)
 				return false;
 		}
 		else if (cut == COMPUTER_PORT_EARTH_FAIL_CURRENT_AFTER_OWNER) {
@@ -29064,8 +29060,7 @@ check_computer_port_earth_transaction(void)
 			    != YT_COMPUTER_PORT_EARTH_FIELD_PLAYER
 			    || state.field_record != 8U
 			    || state.field.bytes[0] != 0x4f
-			    || memcmp(state.report_seen_raw,
-			    report_seen_one, 4U) != 0)
+			    || !state.report_seen)
 				return false;
 		}
 		else if (cut == COMPUTER_PORT_EARTH_FAIL_AFTER_CURRENT) {
@@ -29073,8 +29068,7 @@ check_computer_port_earth_transaction(void)
 			    != YT_COMPUTER_PORT_EARTH_FIELD_PLAYER
 			    || state.field_record != 2U
 			    || state.field.bytes[0] != 0x43
-			    || memcmp(state.report_seen_raw,
-			    report_seen_one, 4U) != 0)
+			    || !state.report_seen)
 				return false;
 		}
 		else if (state.field_kind
@@ -29082,8 +29076,7 @@ check_computer_port_earth_transaction(void)
 		    || state.field_record != 2056U
 		    || state.field.bytes[0] != 0x50
 		    || (cut == COMPUTER_PORT_EARTH_FAIL_OWNER_GET
-		    ? memcmp(state.report_seen_raw, "\0\0\0\0", 4U) != 0
-		    : memcmp(state.report_seen_raw, report_seen_one, 4U) != 0))
+		    ? state.report_seen : !state.report_seen))
 			return false;
 	}
 
@@ -29094,7 +29087,7 @@ check_computer_port_earth_transaction(void)
 	    && state.report_returned && state.complete
 	    && state.field_kind == YT_COMPUTER_PORT_EARTH_FIELD_PLAYER
 	    && state.field_record == 2U && state.field.bytes[0] == 0x43
-	    && memcmp(state.report_seen_raw, fallback_zero, 4U) == 0;
+	    && !state.report_seen;
 }
 
 enum treasury_event {
