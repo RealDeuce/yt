@@ -31888,15 +31888,14 @@ check_computer_prompt_transaction(void)
 enum computer_activation_event {
 	COMPUTER_ACTIVATION_FOREGROUND = 1,
 	COMPUTER_ACTIVATION_NOTICE,
-	COMPUTER_ACTIVATION_STORE_SELECTOR,
 	COMPUTER_ACTIVATION_SOUND,
 };
 
 struct computer_activation_tape {
-	enum computer_activation_event events[4];
+	enum computer_activation_event events[3];
 	size_t calls;
 	size_t fail_at;
-	uint8_t selector[4];
+	float selector;
 };
 
 static bool
@@ -31939,27 +31938,19 @@ computer_activation_present_test(void *context, const uint8_t *text,
 	    error);
 }
 
-static void
-computer_activation_store_test(void *context, const uint8_t raw[4])
+static bool
+computer_activation_sound_test(void *context, float selector,
+    struct yt_error *error)
 {
 	struct computer_activation_tape *tape = context;
 
-	memcpy(tape->selector, raw, sizeof(tape->selector));
-	(void)computer_activation_step(tape,
-	    COMPUTER_ACTIVATION_STORE_SELECTOR, NULL);
-}
-
-static bool
-computer_activation_sound_test(void *context, struct yt_error *error)
-{
-	return computer_activation_step(context, COMPUTER_ACTIVATION_SOUND,
-	    error);
+	tape->selector = selector;
+	return computer_activation_step(tape, COMPUTER_ACTIVATION_SOUND, error);
 }
 
 static const struct yt_computer_activation_ops computer_activation_test_ops = {
 	computer_activation_effect_test,
 	computer_activation_present_test,
-	computer_activation_store_test,
 	computer_activation_sound_test,
 };
 
@@ -31969,13 +31960,8 @@ check_computer_activation_transaction(void)
 	static const enum computer_activation_event expected[] = {
 		COMPUTER_ACTIVATION_FOREGROUND,
 		COMPUTER_ACTIVATION_NOTICE,
-		COMPUTER_ACTIVATION_STORE_SELECTOR,
 		COMPUTER_ACTIVATION_SOUND,
 	};
-	static const uint8_t selector_four[4] = {
-		0x00U, 0x00U, 0x00U, 0x83U,
-	};
-	static const uint8_t zero[4] = {0};
 	struct yt_computer_activation_state state;
 	struct computer_activation_tape tape;
 	struct yt_error error;
@@ -31983,11 +31969,10 @@ check_computer_activation_transaction(void)
 	memset(&tape, 0, sizeof(tape));
 	tape.fail_at = SIZE_MAX;
 	if (!yt_computer_activation_run(&state, &computer_activation_test_ops,
-	    &tape, NULL) || !state.notice_presented || !state.selector_stored
+	    &tape, NULL) || !state.notice_presented
 	    || !state.complete || tape.calls != YT_ARRAY_LEN(expected)
 	    || memcmp(tape.events, expected, sizeof(expected)) != 0
-	    || memcmp(tape.selector, selector_four,
-	    sizeof(selector_four)) != 0)
+	    || tape.selector != 4.0f)
 		return false;
 
 	memset(&tape, 0, sizeof(tape));
@@ -31995,20 +31980,18 @@ check_computer_activation_transaction(void)
 	yt_error_clear(&error);
 	if (yt_computer_activation_run(&state, &computer_activation_test_ops,
 	    &tape, &error) || error.status != YT_IO_ERROR
-	    || state.notice_presented || state.selector_stored || state.complete
-	    || tape.calls != 2U
-	    || memcmp(tape.selector, zero, sizeof(zero)) != 0)
+	    || state.notice_presented || state.complete || tape.calls != 2U
+	    || tape.selector != 0.0f)
 		return false;
 
 	memset(&tape, 0, sizeof(tape));
-	tape.fail_at = 3U;
+	tape.fail_at = 2U;
 	yt_error_clear(&error);
 	if (yt_computer_activation_run(&state, &computer_activation_test_ops,
 	    &tape, &error) || error.status != YT_IO_ERROR
-	    || !state.notice_presented || !state.selector_stored || state.complete
-	    || tape.calls != 4U || memcmp(tape.events, expected,
-	    sizeof(expected)) != 0 || memcmp(tape.selector, selector_four,
-	    sizeof(selector_four)) != 0)
+	    || !state.notice_presented || state.complete || tape.calls != 3U
+	    || memcmp(tape.events, expected, sizeof(expected)) != 0
+	    || tape.selector != 4.0f)
 		return false;
 
 	return !yt_computer_activation_run(NULL,

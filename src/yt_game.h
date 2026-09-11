@@ -792,7 +792,6 @@ enum yt_computer_activation_effect {
 
 struct yt_computer_activation_state {
 	bool notice_presented;
-	bool selector_stored;
 	bool complete;
 };
 
@@ -800,8 +799,7 @@ struct yt_computer_activation_ops {
 	void (*effect)(void *context, enum yt_computer_activation_effect effect);
 	bool (*present)(void *context, const uint8_t *text, size_t length,
 	    struct yt_error *error);
-	void (*store_selector)(void *context, const uint8_t raw[4]);
-	bool (*sound)(void *context, struct yt_error *error);
+	bool (*sound)(void *context, float selector, struct yt_error *error);
 };
 
 enum yt_computer_spy_output_kind {

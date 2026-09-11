@@ -5349,24 +5349,17 @@ yt_computer_activation_run(struct yt_computer_activation_state *state,
     struct yt_error *error)
 {
 	static const uint8_t notice[] = "<Computer activated>";
-	static const uint8_t selector_four[4] = {
-		0x00U, 0x00U, 0x00U, 0x83U,
-	};
 
 	if (state == NULL || ops == NULL || ops->effect == NULL
-	    || ops->present == NULL || ops->store_selector == NULL
-	    || ops->sound == NULL)
+	    || ops->present == NULL || ops->sound == NULL)
 		return false;
 	state->notice_presented = false;
-	state->selector_stored = false;
 	state->complete = false;
 	ops->effect(context, YT_COMPUTER_ACTIVATION_SET_FOREGROUND);
 	if (!ops->present(context, notice, sizeof(notice) - 1U, error))
 		return false;
 	state->notice_presented = true;
-	ops->store_selector(context, selector_four);
-	state->selector_stored = true;
-	if (!ops->sound(context, error))
+	if (!ops->sound(context, 4.0f, error))
 		return false;
 	state->complete = true;
 	return true;

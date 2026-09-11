@@ -67,7 +67,6 @@
 #define YT_STATIC_DOUBLE_ZERO_ADDRESS 0x66D6U
 #define YT_STATIC_SINGLE_ZERO_ADDRESS 0x62F4U
 #define YT_STATIC_SINGLE_ONE_ADDRESS 0x628AU
-#define YT_COMPUTER_ACTIVATION_SELECTOR_ADDRESS 0x50D2U
 #define YT_FATAL_SOUND_SELECTOR_ADDRESS 0x4CE2U
 #define YT_PLASMA_PLAYER_SOUND_SELECTOR_ADDRESS 0x5DA2U
 #define YT_COUNTERLAUNCH_COUNT_ADDRESS 0x5BC6U
@@ -18586,23 +18585,14 @@ computer_activation_effect(void *context,
 	session_set_foreground(session, 1.0f);
 }
 
-static void
-computer_activation_store_selector(void *context, const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_COMPUTER_ACTIVATION_SELECTOR_ADDRESS, raw);
-}
-
 static bool
-computer_activation_sound(void *context, struct yt_error *error)
+computer_activation_sound(void *context, float selector,
+    struct yt_error *error)
 {
 	struct yt_session *session = context;
 
-	return session_sound(session, yt_route_process_single(
-	    &session->route_process, YT_COMPUTER_ACTIVATION_SELECTOR_ADDRESS),
-	    "computer activation sound", error);
+	return session_sound(session, selector, "computer activation sound",
+	    error);
 }
 
 static bool
@@ -18611,7 +18601,6 @@ computer_activate(struct yt_session *session, struct yt_error *error)
 	static const struct yt_computer_activation_ops ops = {
 		computer_activation_effect,
 		computer_activation_present,
-		computer_activation_store_selector,
 		computer_activation_sound,
 	};
 	struct yt_computer_activation_state state;
