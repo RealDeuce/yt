@@ -254,14 +254,6 @@ session_store_destroyed(void *context, const uint8_t raw[4])
 	    YT_DESTROYED_ADDRESS, raw);
 }
 
-static void
-session_store_current_player_record(void *context, const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-
-	session->player_record_carrier = (int)qb_mbf32_decode(raw);
-}
-
 static bool
 session_current_date_serial(struct yt_session *session, int *serial,
     int *adjusted_year, struct yt_error *error)
@@ -499,23 +491,6 @@ session_wait(struct yt_session *session, double seconds,
     const char *operation, struct yt_error *error)
 {
 	if (session_timed_wait(session, seconds))
-		return true;
-	if (error != NULL) {
-		error->status = YT_IO_ERROR;
-		snprintf(error->operation, sizeof(error->operation), "%s",
-		    operation);
-	}
-	return false;
-}
-
-static bool
-session_wait_raw(struct yt_session *session, const uint8_t raw[4],
-    const char *operation, struct yt_error *error)
-{
-	float duration;
-
-	duration = qb_mbf32_decode(raw);
-	if (session_timed_wait(session, (double)duration))
 		return true;
 	if (error != NULL) {
 		error->status = YT_IO_ERROR;
@@ -15990,11 +15965,10 @@ session_xannor_read_player(void *context, int player_record,
 }
 
 static bool
-session_xannor_wait(void *context, const uint8_t duration_raw[4],
+session_xannor_wait(void *context, float duration,
     struct yt_error *error)
 {
-	return session_wait_raw(context, duration_raw,
-	    "Xannor retaliation wait", error);
+	return session_wait(context, duration, "Xannor retaliation wait", error);
 }
 
 static bool
@@ -16009,29 +15983,25 @@ launch_xannor_retaliation(struct yt_session *session, int *provoking_player,
 		session_xannor_read_player,
 		session_xannor_wait,
 		session_store_destroyed,
-		session_store_current_player_record,
-		session_store_xannor_provoker,
 	};
 	bool destroyed = session_is_destroyed(session);
-	uint8_t current_record_raw[4];
+	bool result;
 
 	session_load_xannor_provoker(session, provoking_player);
 	session->player_record_carrier = session_record(session);
-	if (qb_mbf32_encode((float)session_record(session), current_record_raw)
-	    != QB_MBF_OK)
-		return false;
 	struct yt_xannor_retaliation_state state = {
 		&session->player,
 		&session->player_record_carrier,
 		&session->player_cache,
 		&destroyed,
-		provoking_player,
+		&session->xannor_provoker,
 		&session->door->game.config.headquarters,
 		sector_count(session),
-		current_record_raw,
 	};
 
-	return yt_xannor_retaliation_run(&state, &ops, session, error);
+	result = yt_xannor_retaliation_run(&state, &ops, session, error);
+	*provoking_player = session->xannor_provoker;
+	return result;
 }
 
 static bool

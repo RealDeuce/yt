@@ -1780,7 +1780,6 @@ struct yt_xannor_retaliation_state {
 	int *provoker;
 	float *headquarters;
 	int sector_count;
-	const uint8_t *player_record_raw;
 };
 
 typedef bool (*yt_xannor_retaliation_read_sector_fn)(void *context,
@@ -1795,7 +1794,7 @@ typedef bool (*yt_xannor_retaliation_projectile_fn)(void *context,
 typedef bool (*yt_xannor_retaliation_read_player_fn)(void *context,
     int player_record, struct yt_player *player, struct yt_error *error);
 typedef bool (*yt_xannor_retaliation_wait_fn)(void *context,
-    const uint8_t duration_raw[4], struct yt_error *error);
+	float duration, struct yt_error *error);
 
 struct yt_xannor_retaliation_ops {
 	yt_xannor_retaliation_read_sector_fn read_sector;
@@ -1805,8 +1804,6 @@ struct yt_xannor_retaliation_ops {
 	yt_xannor_retaliation_read_player_fn read_player;
 	yt_xannor_retaliation_wait_fn wait;
 	yt_destroyed_store_fn store_destroyed;
-	yt_player_record_store_fn store_player_record;
-	yt_player_record_store_fn store_provoker;
 };
 
 struct yt_counterlaunch_state {

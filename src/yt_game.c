@@ -1749,12 +1749,8 @@ yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
     const struct yt_xannor_retaliation_ops *ops, void *context,
     struct yt_error *error)
 {
-	static const uint8_t duration_four[4] = {0x00, 0x00, 0x00, 0x83};
-	static const uint8_t xannor_record_raw[4] =
-	    {0x00, 0x00, 0x80, 0x81};
 	struct yt_player saved_player;
 	struct yt_sector headquarters;
-	uint8_t saved_record_raw[4];
 	uint8_t saved_cloak_raw[4];
 	int saved_record;
 	int target_candidate;
@@ -1791,11 +1787,6 @@ yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
 
 	saved_player = *state->player;
 	saved_record = *state->player_record;
-	if (state->player_record_raw != NULL)
-		memcpy(saved_record_raw, state->player_record_raw,
-		    sizeof(saved_record_raw));
-	else
-		(void)qb_mbf32_encode((float)saved_record, saved_record_raw);
 	valid_cache = yt_player_cache_contains(saved_record);
 	if (valid_cache) {
 		yt_player_cache_raw(state->player_cache, saved_record,
@@ -1813,8 +1804,6 @@ yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
 	(void)snprintf(state->player->name, sizeof(state->player->name), "%s",
 	    "The Xannor");
 	*state->player_record = -1;
-	if (ops->store_player_record != NULL)
-		ops->store_player_record(context, xannor_record_raw);
 
 	if (!ops->random(context, 1, state->sector_count,
 	    &target_candidate, error))
@@ -1837,8 +1826,6 @@ yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
 		return false;
 
 	*state->player_record = saved_record;
-	if (ops->store_player_record != NULL)
-		ops->store_player_record(context, saved_record_raw);
 	*state->player = saved_player;
 	if (valid_cache) {
 		if (cache_cleared)
@@ -1854,15 +1841,9 @@ yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
 		if (ops->store_destroyed != NULL)
 			ops->store_destroyed(context, one);
 	}
-	if (!ops->wait(context, duration_four, error))
+	if (!ops->wait(context, 4.0f, error))
 		return false;
-	{
-		static const uint8_t zero[4] = {0x00, 0x00, 0x00, 0x00};
-
-		*state->provoker = 0;
-		if (ops->store_provoker != NULL)
-			ops->store_provoker(context, zero);
-	}
+	*state->provoker = 0;
 	return true;
 }
 
