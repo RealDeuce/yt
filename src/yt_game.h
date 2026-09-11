@@ -74,28 +74,6 @@ typedef bool (*yt_startup_configuration_random_fn)(void *context,
 	float *value, struct yt_error *error);
 typedef void (*yt_startup_configuration_disruption_store_fn)(void *context,
 	size_t index, const uint8_t raw[4]);
-typedef void (*yt_startup_configuration_genesis_store_fn)(void *context,
-	const uint8_t raw[4]);
-typedef void (*yt_startup_configuration_headquarters_store_fn)(void *context,
-	const uint8_t raw[4]);
-typedef void (*yt_startup_configuration_turns_store_fn)(void *context,
-	const uint8_t raw[4]);
-typedef void (*yt_startup_configuration_lottery_store_fn)(void *context,
-	const uint8_t raw[4]);
-typedef void (*yt_startup_configuration_planets_store_fn)(void *context,
-	const uint8_t raw[4]);
-typedef void (*yt_startup_configuration_holds_store_fn)(void *context,
-	const uint8_t raw[4]);
-typedef void (*yt_startup_configuration_epoch_store_fn)(void *context,
-	const uint8_t raw[4]);
-typedef void (*yt_startup_configuration_total_store_fn)(void *context,
-	const uint8_t raw[4]);
-typedef void (*yt_startup_configuration_sector_offset_store_fn)(void *context,
-	const uint8_t raw[4]);
-typedef void (*yt_startup_configuration_port_offset_store_fn)(void *context,
-	const uint8_t raw[4]);
-typedef void (*yt_startup_configuration_planet_offset_store_fn)(void *context,
-	const uint8_t raw[4]);
 typedef void (*yt_startup_configuration_local_screen_store_fn)(void *context,
 	const uint8_t raw[4]);
 typedef void (*yt_startup_configuration_cache_guard_store_fn)(void *context,
@@ -127,23 +105,12 @@ struct yt_startup_configuration_ops {
 	yt_startup_configuration_write_player_fn write_player;
 	yt_startup_configuration_random_fn random;
 	yt_startup_configuration_disruption_store_fn store_disruption;
-	yt_startup_configuration_genesis_store_fn store_genesis;
-	yt_startup_configuration_turns_store_fn store_turns_per_day;
-	yt_startup_configuration_lottery_store_fn store_lottery_plays;
-	yt_startup_configuration_planets_store_fn store_maximum_planets;
-	yt_startup_configuration_holds_store_fn store_maximum_holds;
-	yt_startup_configuration_epoch_store_fn store_epoch_year;
-	yt_startup_configuration_total_store_fn store_total_records;
-	yt_startup_configuration_sector_offset_store_fn store_sector_offset;
-	yt_startup_configuration_port_offset_store_fn store_port_offset;
-	yt_startup_configuration_planet_offset_store_fn store_planet_offset;
 	yt_startup_configuration_local_screen_store_fn store_local_screen;
 	yt_startup_configuration_cache_guard_store_fn store_cache_guard;
 	yt_startup_configuration_cache_terminal_store_fn store_cache_terminal;
 	yt_startup_configuration_cache_counter_store_fn store_cache_counter;
 	yt_startup_configuration_cache_value_store_fn store_cache_value;
 	qb_compat_upper_store_fn store_uppercase;
-	yt_startup_configuration_headquarters_store_fn store_headquarters;
 };
 
 bool yt_startup_configuration_run(

@@ -127,17 +127,7 @@ enum startup_configuration_event {
 };
 
 enum startup_configuration_store {
-	STARTUP_STORE_EPOCH = 1,
-	STARTUP_STORE_TURNS,
-	STARTUP_STORE_SECTOR_OFFSET,
-	STARTUP_STORE_PORT_OFFSET,
-	STARTUP_STORE_PLANET_OFFSET,
-	STARTUP_STORE_LOCAL_SCREEN,
-	STARTUP_STORE_TOTAL_RECORDS,
-	STARTUP_STORE_LOTTERY,
-	STARTUP_STORE_GENESIS,
-	STARTUP_STORE_MAXIMUM_HOLDS,
-	STARTUP_STORE_MAXIMUM_PLANETS,
+	STARTUP_STORE_LOCAL_SCREEN = 1,
 };
 
 struct startup_configuration_tape {
@@ -157,36 +147,6 @@ struct startup_configuration_tape {
 	size_t draw_position;
 	uint8_t disruption_raw[2][4];
 	size_t disruption_store_count;
-	uint8_t genesis_raw[2][4];
-	size_t genesis_store_count;
-	size_t genesis_store_position[2];
-	uint8_t turns_raw[2][4];
-	size_t turns_store_count;
-	size_t turns_store_position[2];
-	uint8_t lottery_raw[2][4];
-	size_t lottery_store_count;
-	size_t lottery_store_position[2];
-	uint8_t planets_raw[2][4];
-	size_t planets_store_count;
-	size_t planets_store_position[2];
-	uint8_t holds_raw[2][4];
-	size_t holds_store_count;
-	size_t holds_store_position[2];
-	uint8_t epoch_raw[1][4];
-	size_t epoch_store_count;
-	size_t epoch_store_position[1];
-	uint8_t total_raw[1][4];
-	size_t total_store_count;
-	size_t total_store_position[1];
-	uint8_t sector_offset_raw[1][4];
-	size_t sector_offset_store_count;
-	size_t sector_offset_store_position[1];
-	uint8_t port_offset_raw[1][4];
-	size_t port_offset_store_count;
-	size_t port_offset_store_position[1];
-	uint8_t planet_offset_raw[1][4];
-	size_t planet_offset_store_count;
-	size_t planet_offset_store_position[1];
 	uint8_t local_screen_raw[2][4];
 	size_t local_screen_store_count;
 	size_t local_screen_store_position[2];
@@ -205,9 +165,6 @@ struct startup_configuration_tape {
 	enum qb_compat_upper_store_kind uppercase_kind[16];
 	float uppercase_value[16];
 	size_t uppercase_store_count;
-	uint8_t headquarters_raw[4];
-	size_t headquarters_store_count;
-	size_t headquarters_store_position;
 };
 
 static void
@@ -348,165 +305,6 @@ startup_configuration_disruption_store_test(void *context, size_t index,
 }
 
 static void
-startup_configuration_genesis_store_test(void *context,
-    const uint8_t raw[4])
-{
-	struct startup_configuration_tape *tape = context;
-	size_t store = tape->genesis_store_count;
-
-	startup_configuration_store_step(tape, STARTUP_STORE_GENESIS);
-	if (store >= YT_ARRAY_LEN(tape->genesis_raw))
-		return;
-	memcpy(tape->genesis_raw[store], raw,
-	    sizeof(tape->genesis_raw[store]));
-	tape->genesis_store_position[store] = tape->event_count;
-	++tape->genesis_store_count;
-}
-
-static void
-startup_configuration_turns_store_test(void *context,
-    const uint8_t raw[4])
-{
-	struct startup_configuration_tape *tape = context;
-	size_t store = tape->turns_store_count;
-
-	startup_configuration_store_step(tape, STARTUP_STORE_TURNS);
-	if (store >= YT_ARRAY_LEN(tape->turns_raw))
-		return;
-	memcpy(tape->turns_raw[store], raw, sizeof(tape->turns_raw[store]));
-	tape->turns_store_position[store] = tape->event_count;
-	++tape->turns_store_count;
-}
-
-static void
-startup_configuration_lottery_store_test(void *context,
-    const uint8_t raw[4])
-{
-	struct startup_configuration_tape *tape = context;
-	size_t store = tape->lottery_store_count;
-
-	startup_configuration_store_step(tape, STARTUP_STORE_LOTTERY);
-	if (store >= YT_ARRAY_LEN(tape->lottery_raw))
-		return;
-	memcpy(tape->lottery_raw[store], raw,
-	    sizeof(tape->lottery_raw[store]));
-	tape->lottery_store_position[store] = tape->event_count;
-	++tape->lottery_store_count;
-}
-
-static void
-startup_configuration_planets_store_test(void *context,
-    const uint8_t raw[4])
-{
-	struct startup_configuration_tape *tape = context;
-	size_t store = tape->planets_store_count;
-
-	startup_configuration_store_step(tape, STARTUP_STORE_MAXIMUM_PLANETS);
-	if (store >= YT_ARRAY_LEN(tape->planets_raw))
-		return;
-	memcpy(tape->planets_raw[store], raw,
-	    sizeof(tape->planets_raw[store]));
-	tape->planets_store_position[store] = tape->event_count;
-	++tape->planets_store_count;
-}
-
-static void
-startup_configuration_holds_store_test(void *context,
-    const uint8_t raw[4])
-{
-	struct startup_configuration_tape *tape = context;
-	size_t store = tape->holds_store_count;
-
-	startup_configuration_store_step(tape, STARTUP_STORE_MAXIMUM_HOLDS);
-	if (store >= YT_ARRAY_LEN(tape->holds_raw))
-		return;
-	memcpy(tape->holds_raw[store], raw,
-	    sizeof(tape->holds_raw[store]));
-	tape->holds_store_position[store] = tape->event_count;
-	++tape->holds_store_count;
-}
-
-static void
-startup_configuration_epoch_store_test(void *context,
-    const uint8_t raw[4])
-{
-	struct startup_configuration_tape *tape = context;
-	size_t store = tape->epoch_store_count;
-
-	startup_configuration_store_step(tape, STARTUP_STORE_EPOCH);
-	if (store >= YT_ARRAY_LEN(tape->epoch_raw))
-		return;
-	memcpy(tape->epoch_raw[store], raw,
-	    sizeof(tape->epoch_raw[store]));
-	tape->epoch_store_position[store] = tape->event_count;
-	++tape->epoch_store_count;
-}
-
-static void
-startup_configuration_total_store_test(void *context,
-    const uint8_t raw[4])
-{
-	struct startup_configuration_tape *tape = context;
-	size_t store = tape->total_store_count;
-
-	startup_configuration_store_step(tape, STARTUP_STORE_TOTAL_RECORDS);
-	if (store >= YT_ARRAY_LEN(tape->total_raw))
-		return;
-	memcpy(tape->total_raw[store], raw,
-	    sizeof(tape->total_raw[store]));
-	tape->total_store_position[store] = tape->event_count;
-	++tape->total_store_count;
-}
-
-static void
-startup_configuration_sector_offset_store_test(void *context,
-    const uint8_t raw[4])
-{
-	struct startup_configuration_tape *tape = context;
-	size_t store = tape->sector_offset_store_count;
-
-	startup_configuration_store_step(tape, STARTUP_STORE_SECTOR_OFFSET);
-	if (store >= YT_ARRAY_LEN(tape->sector_offset_raw))
-		return;
-	memcpy(tape->sector_offset_raw[store], raw,
-	    sizeof(tape->sector_offset_raw[store]));
-	tape->sector_offset_store_position[store] = tape->event_count;
-	++tape->sector_offset_store_count;
-}
-
-static void
-startup_configuration_port_offset_store_test(void *context,
-    const uint8_t raw[4])
-{
-	struct startup_configuration_tape *tape = context;
-	size_t store = tape->port_offset_store_count;
-
-	startup_configuration_store_step(tape, STARTUP_STORE_PORT_OFFSET);
-	if (store >= YT_ARRAY_LEN(tape->port_offset_raw))
-		return;
-	memcpy(tape->port_offset_raw[store], raw,
-	    sizeof(tape->port_offset_raw[store]));
-	tape->port_offset_store_position[store] = tape->event_count;
-	++tape->port_offset_store_count;
-}
-
-static void
-startup_configuration_planet_offset_store_test(void *context,
-    const uint8_t raw[4])
-{
-	struct startup_configuration_tape *tape = context;
-	size_t store = tape->planet_offset_store_count;
-
-	startup_configuration_store_step(tape, STARTUP_STORE_PLANET_OFFSET);
-	if (store >= YT_ARRAY_LEN(tape->planet_offset_raw))
-		return;
-	memcpy(tape->planet_offset_raw[store], raw,
-	    sizeof(tape->planet_offset_raw[store]));
-	tape->planet_offset_store_position[store] = tape->event_count;
-	++tape->planet_offset_store_count;
-}
-
-static void
 startup_configuration_local_screen_store_test(void *context,
     const uint8_t raw[4])
 {
@@ -576,17 +374,6 @@ startup_configuration_cache_value_store_test(void *context,
 	++tape->cache_value_store_count;
 }
 
-static void
-startup_configuration_headquarters_store_test(void *context,
-    const uint8_t raw[4])
-{
-	struct startup_configuration_tape *tape = context;
-
-	memcpy(tape->headquarters_raw, raw, sizeof(tape->headquarters_raw));
-	tape->headquarters_store_position = tape->event_count;
-	++tape->headquarters_store_count;
-}
-
 static bool
 startup_configuration_fixture(struct startup_configuration_tape *tape,
     struct yt_startup_configuration_state *state, struct yt_config *config,
@@ -644,31 +431,21 @@ static bool
 check_startup_configuration_transaction(void)
 {
 	static const struct yt_startup_configuration_ops ops = {
-		startup_configuration_close_test,
-		startup_configuration_open_test,
-		startup_configuration_load_test,
-		startup_configuration_store_test,
-		startup_configuration_read_test,
-		startup_configuration_write_test,
-		startup_configuration_random_test,
-		startup_configuration_disruption_store_test,
-		startup_configuration_genesis_store_test,
-		startup_configuration_turns_store_test,
-		startup_configuration_lottery_store_test,
-		startup_configuration_planets_store_test,
-		startup_configuration_holds_store_test,
-		startup_configuration_epoch_store_test,
-		startup_configuration_total_store_test,
-		startup_configuration_sector_offset_store_test,
-		startup_configuration_port_offset_store_test,
-		startup_configuration_planet_offset_store_test,
-		startup_configuration_local_screen_store_test,
-		startup_configuration_cache_guard_store_test,
-		startup_configuration_cache_terminal_store_test,
-		startup_configuration_cache_counter_store_test,
-		startup_configuration_cache_value_store_test,
-		startup_configuration_uppercase_store_test,
-		startup_configuration_headquarters_store_test,
+		.close_data = startup_configuration_close_test,
+		.open_data = startup_configuration_open_test,
+		.load_config = startup_configuration_load_test,
+		.store_config = startup_configuration_store_test,
+		.read_player = startup_configuration_read_test,
+		.write_player = startup_configuration_write_test,
+		.random = startup_configuration_random_test,
+		.store_disruption = startup_configuration_disruption_store_test,
+		.store_local_screen = startup_configuration_local_screen_store_test,
+		.store_cache_guard = startup_configuration_cache_guard_store_test,
+		.store_cache_terminal =
+		    startup_configuration_cache_terminal_store_test,
+		.store_cache_counter = startup_configuration_cache_counter_store_test,
+		.store_cache_value = startup_configuration_cache_value_store_test,
+		.store_uppercase = startup_configuration_uppercase_store_test,
 	};
 	static const int events[] = {
 		STARTUP_CONFIGURATION_CLOSE,
@@ -685,23 +462,8 @@ check_startup_configuration_transaction(void)
 	};
 	static const int records[] = {0, 0, 1, 1, 2, 2, 3, 4, 4, 0, 0};
 	static const int stores[] = {
-		STARTUP_STORE_EPOCH,
-		STARTUP_STORE_TURNS,
-		STARTUP_STORE_SECTOR_OFFSET,
-		STARTUP_STORE_PORT_OFFSET,
-		STARTUP_STORE_PLANET_OFFSET,
 		STARTUP_STORE_LOCAL_SCREEN,
-		STARTUP_STORE_TOTAL_RECORDS,
-		STARTUP_STORE_LOTTERY,
-		STARTUP_STORE_GENESIS,
-		STARTUP_STORE_MAXIMUM_HOLDS,
-		STARTUP_STORE_MAXIMUM_PLANETS,
-		STARTUP_STORE_GENESIS,
 		STARTUP_STORE_LOCAL_SCREEN,
-		STARTUP_STORE_LOTTERY,
-		STARTUP_STORE_MAXIMUM_PLANETS,
-		STARTUP_STORE_MAXIMUM_HOLDS,
-		STARTUP_STORE_TURNS,
 	};
 	struct startup_configuration_tape tape;
 	struct yt_startup_configuration_state state;
@@ -738,62 +500,9 @@ check_startup_configuration_transaction(void)
 	    || tape.uppercase_kind[8] != QB_COMPAT_UPPER_STORE_INDEX
 	    || tape.uppercase_value[8] != 4.0f
 	    || config.headquarters != 733.0f || config.genesis_ports != 200.0f
-	    || tape.headquarters_store_count != 1U
-	    || tape.headquarters_store_position != 4U
-	    || memcmp(tape.headquarters_raw,
-	    (const uint8_t[]){0x00, 0x40, 0x37, 0x8a}, 4U) != 0
-	    || tape.genesis_store_count != 2U
-	    || tape.genesis_store_position[0] != 3U
-	    || tape.genesis_store_position[1] != 4U
-	    || qb_mbf32_decode(tape.genesis_raw[0]) != 19.0f
-	    || memcmp(tape.genesis_raw[1],
-	    (const uint8_t[]){0x00, 0x00, 0x48, 0x88}, 4U) != 0
-	    || tape.turns_store_count != 2U
-	    || tape.turns_store_position[0] != 3U
-	    || tape.turns_store_position[1] != 4U
-	    || qb_mbf32_decode(tape.turns_raw[0]) != 99.0f
-	    || memcmp(tape.turns_raw[1],
-	    (const uint8_t[]){0x00, 0x00, 0x7a, 0x89}, 4U) != 0
-	    || tape.lottery_store_count != 2U
-	    || tape.lottery_store_position[0] != 3U
-	    || tape.lottery_store_position[1] != 4U
-	    || qb_mbf32_decode(tape.lottery_raw[0]) != -0.25f
-	    || memcmp(tape.lottery_raw[1],
-	    (const uint8_t[]){0x00, 0x00, 0x40, 0x82}, 4U) != 0
-	    || tape.planets_store_count != 2U
-	    || tape.planets_store_position[0] != 3U
-	    || tape.planets_store_position[1] != 4U
-	    || memcmp(tape.planets_raw[0],
-	    tape.config_source.bytes + YT_F129, 4U) != 0
-	    || memcmp(tape.planets_raw[1],
-	    (const uint8_t[]){0x00, 0x00, 0x48, 0x87}, 4U) != 0
-	    || tape.holds_store_count != 2U
-	    || tape.holds_store_position[0] != 3U
-	    || tape.holds_store_position[1] != 4U
-	    || memcmp(tape.holds_raw[0],
-	    tape.config_source.bytes + YT_F121, 4U) != 0
-	    || memcmp(tape.holds_raw[1],
-	    (const uint8_t[]){0x00, 0x00, 0x7a, 0x8a}, 4U) != 0
-	    || tape.epoch_store_count != 1U
-	    || tape.epoch_store_position[0] != 3U
-	    || memcmp(tape.epoch_raw[0],
-	    tape.config_source.bytes + YT_F45, 4U) != 0
-	    || tape.total_store_count != 1U
-	    || tape.total_store_position[0] != 3U
-	    || memcmp(tape.total_raw[0],
-	    tape.config_source.bytes + YT_F93, 4U) != 0
-	    || tape.sector_offset_store_count != 1U
-	    || tape.sector_offset_store_position[0] != 3U
-	    || memcmp(tape.sector_offset_raw[0],
-	    tape.config_source.bytes + YT_F53, 4U) != 0
-	    || tape.port_offset_store_count != 1U
-	    || tape.port_offset_store_position[0] != 3U
-	    || memcmp(tape.port_offset_raw[0],
-	    tape.config_source.bytes + YT_F57, 4U) != 0
-	    || tape.planet_offset_store_count != 1U
-	    || tape.planet_offset_store_position[0] != 3U
-	    || memcmp(tape.planet_offset_raw[0],
-	    tape.config_source.bytes + YT_F61, 4U) != 0
+	    || config.epoch_year != 26.0f || config.sector_offset != 4.5f
+	    || config.port_offset != 10.75f || config.planet_offset != 20.0f
+	    || config.total_records != 99.0f
 	    || tape.local_screen_store_count != 2U
 	    || tape.local_screen_store_position[0] != 3U
 	    || tape.local_screen_store_position[1] != 4U
@@ -862,6 +571,7 @@ check_startup_configuration_transaction(void)
 		return false;
 	expected = tape.config_source;
 	if (!yt_record_set_number(&expected, YT_F117, 733.0f)
+	    || memcmp(&config.record, &expected, sizeof(expected)) != 0
 	    || memcmp(&tape.config_write.record, &expected, sizeof(expected)) != 0)
 		return false;
 	expected = tape.player_source[2];
@@ -883,8 +593,7 @@ check_startup_configuration_transaction(void)
 	if (yt_startup_configuration_run(&state, &ops, &tape, NULL)
 	    || tape.event_count != 4U || config.headquarters != 0.0f
 	    || !state.handler_installed || state.installed_handler != 0x45F7U
-	    || yt_record_get_number(&config.record, YT_F117) != 733.0f
-	    || tape.headquarters_store_count != 0U)
+	    || yt_record_get_number(&config.record, YT_F117) != 733.0f)
 		return false;
 
 	/* A nonzero one-shot guard skips all player I/O but not either draw. */
@@ -914,8 +623,7 @@ check_startup_configuration_transaction(void)
 	if (!yt_record_set_number(&tape.config_source, YT_F105, 300.0f)
 	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
 	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
-	    || tape.genesis_store_count != 1U
-	    || memcmp(tape.genesis_raw[0],
+	    || memcmp(config.record.bytes + YT_F105,
 	    tape.config_source.bytes + YT_F105, 4U) != 0
 	    || config.genesis_ports != 300.0f)
 		return false;
@@ -928,8 +636,8 @@ check_startup_configuration_transaction(void)
 	if (!yt_record_set_number(&tape.config_source, YT_F49, 2500.0f)
 	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
 	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
-	    || tape.turns_store_count != 1U
-	    || memcmp(tape.turns_raw[0], tape.config_source.bytes + YT_F49,
+	    || memcmp(config.record.bytes + YT_F49,
+	    tape.config_source.bytes + YT_F49,
 	    4U) != 0 || config.turns_per_day != 2500.0f)
 		return false;
 
@@ -941,8 +649,7 @@ check_startup_configuration_transaction(void)
 	if (!yt_record_set_number(&tape.config_source, YT_F101, 9.0f)
 	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
 	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
-	    || tape.lottery_store_count != 1U
-	    || memcmp(tape.lottery_raw[0],
+	    || memcmp(config.record.bytes + YT_F101,
 	    tape.config_source.bytes + YT_F101, 4U) != 0
 	    || config.lottery_plays != 9.0f)
 		return false;
@@ -955,8 +662,7 @@ check_startup_configuration_transaction(void)
 	if (!yt_record_set_number(&tape.config_source, YT_F129, 456.25f)
 	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
 	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
-	    || tape.planets_store_count != 1U
-	    || memcmp(tape.planets_raw[0],
+	    || memcmp(config.record.bytes + YT_F129,
 	    tape.config_source.bytes + YT_F129, 4U) != 0
 	    || config.maximum_planets != 456.25f)
 		return false;
@@ -969,8 +675,7 @@ check_startup_configuration_transaction(void)
 	if (!yt_record_set_number(&tape.config_source, YT_F121, 5.0f)
 	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
 	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
-	    || tape.holds_store_count != 1U
-	    || memcmp(tape.holds_raw[0],
+	    || memcmp(config.record.bytes + YT_F121,
 	    tape.config_source.bytes + YT_F121, 4U) != 0
 	    || config.maximum_holds != 5.0f)
 		return false;
@@ -981,8 +686,7 @@ check_startup_configuration_transaction(void)
 	if (!yt_record_set_number(&tape.config_source, YT_F121, 1000.0f)
 	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
 	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
-	    || tape.holds_store_count != 1U
-	    || memcmp(tape.holds_raw[0],
+	    || memcmp(config.record.bytes + YT_F121,
 	    tape.config_source.bytes + YT_F121, 4U) != 0
 	    || config.maximum_holds != 1000.0f)
 		return false;
@@ -1076,46 +780,26 @@ check_startup_configuration_transaction(void)
 	    sector_cache, cloak_cache))
 		return false;
 	state.local_mode = 40000.0f;
+	expected = tape.config_source;
+	if (!yt_record_set_number(&expected, YT_F117, 733.0f))
+		return false;
 	yt_error_clear(&error);
 	if (yt_startup_configuration_run(&state, &ops, &tape, &error)
 	    || error.status != YT_RANGE
 	    || strcmp(error.operation, "startup local-mode CINT") != 0
 	    || tape.event_count != 4U || !tape.wrote_config
 	    || config.headquarters != 733.0f || config.genesis_ports != 200.0f
-	    || config.lottery_plays != -0.25f || tape.draw_position != 0U
-	    || tape.genesis_store_count != 2U
-	    || memcmp(tape.genesis_raw[1],
-	    (const uint8_t[]){0x00, 0x00, 0x48, 0x88}, 4U) != 0
-	    || tape.turns_store_count != 1U
-	    || qb_mbf32_decode(tape.turns_raw[0]) != 99.0f
-	    || tape.lottery_store_count != 1U
-	    || qb_mbf32_decode(tape.lottery_raw[0]) != -0.25f
-	    || tape.planets_store_count != 1U
-	    || memcmp(tape.planets_raw[0],
-	    tape.config_source.bytes + YT_F129, 4U) != 0
-	    || tape.holds_store_count != 1U
-	    || memcmp(tape.holds_raw[0],
-	    tape.config_source.bytes + YT_F121, 4U) != 0
-	    || tape.epoch_store_count != 1U
-	    || memcmp(tape.epoch_raw[0],
-	    tape.config_source.bytes + YT_F45, 4U) != 0
-	    || tape.total_store_count != 1U
-	    || memcmp(tape.total_raw[0],
-	    tape.config_source.bytes + YT_F93, 4U) != 0
-	    || tape.sector_offset_store_count != 1U
-	    || memcmp(tape.sector_offset_raw[0],
-	    tape.config_source.bytes + YT_F53, 4U) != 0
-	    || tape.port_offset_store_count != 1U
-	    || memcmp(tape.port_offset_raw[0],
-	    tape.config_source.bytes + YT_F57, 4U) != 0
-	    || tape.planet_offset_store_count != 1U
-	    || memcmp(tape.planet_offset_raw[0],
-	    tape.config_source.bytes + YT_F61, 4U) != 0
+	    || config.turns_per_day != 99.0f
+	    || config.lottery_plays != -0.25f
+	    || config.maximum_planets != 0.0f
+	    || config.maximum_holds != 1001.0f
+	    || tape.draw_position != 0U
+	    || memcmp(&config.record, &expected, sizeof(expected)) != 0
 	    || tape.local_screen_store_count != 1U
 	    || memcmp(tape.local_screen_raw[0],
 	    tape.config_source.bytes + YT_F85, 4U) != 0
-	    || tape.store_count != 12U
-	    || memcmp(tape.stores, stores, 12U * sizeof(stores[0])) != 0)
+	    || tape.store_count != 1U
+	    || tape.stores[0] != STARTUP_STORE_LOCAL_SCREEN)
 		return false;
 
 	for (failure = 1U; failure <= YT_ARRAY_LEN(events); ++failure) {
@@ -1130,49 +814,14 @@ check_startup_configuration_transaction(void)
 		    || memcmp(tape.events, events,
 		    failure * sizeof(events[0])) != 0)
 			return false;
-		if ((failure <= 3U && tape.genesis_store_count != 0U)
-		    || (failure == 4U && tape.genesis_store_count != 1U)
-		    || (failure > 4U && tape.genesis_store_count != 2U))
-			return false;
-		if ((failure <= 3U && tape.turns_store_count != 0U)
-		    || (failure == 4U && tape.turns_store_count != 1U)
-		    || (failure > 4U && tape.turns_store_count != 2U))
-			return false;
-		if ((failure <= 3U && tape.lottery_store_count != 0U)
-		    || (failure == 4U && tape.lottery_store_count != 1U)
-		    || (failure > 4U && tape.lottery_store_count != 2U))
-			return false;
-		if ((failure <= 3U && tape.planets_store_count != 0U)
-		    || (failure == 4U && tape.planets_store_count != 1U)
-		    || (failure > 4U && tape.planets_store_count != 2U))
-			return false;
-		if ((failure <= 3U && tape.holds_store_count != 0U)
-		    || (failure == 4U && tape.holds_store_count != 1U)
-		    || (failure > 4U && tape.holds_store_count != 2U))
-			return false;
-		if ((failure <= 3U && tape.epoch_store_count != 0U)
-		    || (failure > 3U && tape.epoch_store_count != 1U))
-			return false;
-		if ((failure <= 3U && tape.total_store_count != 0U)
-		    || (failure > 3U && tape.total_store_count != 1U))
-			return false;
-		if ((failure <= 3U && tape.sector_offset_store_count != 0U)
-		    || (failure > 3U && tape.sector_offset_store_count != 1U))
-			return false;
-		if ((failure <= 3U && tape.port_offset_store_count != 0U)
-		    || (failure > 3U && tape.port_offset_store_count != 1U))
-			return false;
-		if ((failure <= 3U && tape.planet_offset_store_count != 0U)
-		    || (failure > 3U && tape.planet_offset_store_count != 1U))
-			return false;
 		if ((failure <= 3U && tape.local_screen_store_count != 0U)
 		    || (failure == 4U && tape.local_screen_store_count != 1U)
 		    || (failure > 4U && tape.local_screen_store_count != 2U))
 			return false;
 		if ((failure <= 3U && tape.store_count != 0U)
-		    || (failure == 4U && (tape.store_count != 11U
+		    || (failure == 4U && (tape.store_count != 1U
 		    || memcmp(tape.stores, stores,
-		    11U * sizeof(stores[0])) != 0))
+		    sizeof(stores[0])) != 0))
 		    || (failure > 4U && (tape.store_count != YT_ARRAY_LEN(stores)
 		    || memcmp(tape.stores, stores, sizeof(stores)) != 0)))
 			return false;

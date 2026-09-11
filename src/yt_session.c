@@ -26,7 +26,6 @@
 #define YT_PLAYER_LAST 51
 #define YT_COMMAND_SIZE 4096U
 #define YT_ANTI_CLOAK_ADDRESS 0x1854U
-#define YT_EPOCH_YEAR_ADDRESS 0x1850U
 #define YT_BACKGROUND_ADDRESS 0x1870U
 #define YT_MARKET_BASE_ADDRESS 0x1860U
 #define YT_DISRUPTION_SECTOR_ADDRESS 0x1878U
@@ -50,7 +49,6 @@
 #define YT_REGISTRATION_EVALUATION_SUM_TWO_ADDRESS 0x5C9AU
 #define YT_REGISTRATION_EVALUATION_LENGTH_ONE_ADDRESS 0x5C9EU
 #define YT_REGISTRATION_EVALUATION_LENGTH_TWO_ADDRESS 0x5CA2U
-#define YT_GENESIS_REQUIRED_PORTS_ADDRESS 0x1C48U
 #define YT_PLANET_RECORD_SCRATCH_ADDRESS 0x19C4U
 #define YT_COMPUTER_PLANET_LINK_ADDRESS 0x5184U
 #define YT_CURRENT_SECTOR_ADDRESS 0x1C44U
@@ -86,15 +84,6 @@
 #define YT_UPPERCASE_LENGTH_ADDRESS 0x536AU
 #define YT_UPPERCASE_INDEX_ADDRESS 0x536EU
 #define YT_ADD_FLOAT_CALLBACK_ADDRESS 0x0A60U
-#define YT_TURNS_PER_DAY_ADDRESS 0x4BD0U
-#define YT_HEADQUARTERS_ADDRESS 0x4BD8U
-#define YT_LOTTERY_PLAYS_ADDRESS 0x4BB8U
-#define YT_MAXIMUM_PLANETS_ADDRESS 0x4BA8U
-#define YT_MAXIMUM_HOLDS_ADDRESS 0x19E8U
-#define YT_TOTAL_RECORDS_ADDRESS 0x19D4U
-#define YT_SECTOR_OFFSET_ADDRESS 0x19DCU
-#define YT_PORT_OFFSET_ADDRESS 0x19E0U
-#define YT_PLANET_OFFSET_ADDRESS 0x19E4U
 #define YT_LOCAL_SCREEN_ADDRESS 0x4B6CU
 #define YT_CLEARANCE_HOLDS_ADDRESS 0x4B54U
 #define YT_CLEARANCE_FIGHTERS_ADDRESS 0x4B58U
@@ -151,8 +140,6 @@
 #define YT_RETURNING_OLD_DAY_ADDRESS 0x5316U
 #define YT_RETURNING_KILLER_ADDRESS 0x531EU
 #define YT_RETURNING_TURNS_ADDRESS 0x5322U
-#define YT_RETURNING_SCAN_BOUND_ADDRESS 0x4CCEU
-#define YT_VACANCY_SCAN_BOUND_ADDRESS 0x4CD6U
 #define YT_POST_LOGIN_RADIO_MODE_ADDRESS 0x64C8U
 #define YT_POST_LOGIN_SCANNER_MODE_ADDRESS 0x64CCU
 #define YT_COUNTERLAUNCH_COUNT_ADDRESS 0x5BC6U
@@ -397,22 +384,19 @@ session_is_destroyed(const struct yt_session *session)
 static float
 session_sector_offset(const struct yt_session *session)
 {
-	return yt_route_process_single(&session->route_process,
-	    YT_SECTOR_OFFSET_ADDRESS);
+	return session->door->game.config.sector_offset;
 }
 
 static float
 session_port_offset(const struct yt_session *session)
 {
-	return yt_route_process_single(&session->route_process,
-	    YT_PORT_OFFSET_ADDRESS);
+	return session->door->game.config.port_offset;
 }
 
 static float
 session_planet_offset(const struct yt_session *session)
 {
-	return yt_route_process_single(&session->route_process,
-	    YT_PLANET_OFFSET_ADDRESS);
+	return session->door->game.config.planet_offset;
 }
 
 static float
@@ -547,8 +531,8 @@ session_current_date_serial(struct yt_session *session, int *serial,
 {
 	uint8_t epoch_raw[4];
 
-	yt_route_process_raw_single(&session->route_process,
-	    YT_EPOCH_YEAR_ADDRESS, epoch_raw);
+	memcpy(epoch_raw, session->door->game.config.record.bytes + YT_F45,
+	    sizeof(epoch_raw));
 	return yt_current_date_serial_observed(epoch_raw, serial, adjusted_year,
 	    session_date_serial_store, session, error);
 }
@@ -935,24 +919,23 @@ static uint32_t
 session_sector_basic_record(const struct yt_session *session,
     float logical_sector)
 {
-	return yt_route_process_record_number(&session->route_process,
-	    YT_SECTOR_OFFSET_ADDRESS, logical_sector);
+	return (uint32_t)yt_sector_basic_record(&session->door->game.config,
+	    (int)logical_sector);
 }
 
 static uint32_t
-session_port_basic_record(const struct yt_session *session,
-    float logical_port)
+session_port_basic_record(const struct yt_session *session, float logical_port)
 {
-	return yt_route_process_record_number(&session->route_process,
-	    YT_PORT_OFFSET_ADDRESS, logical_port);
+	return (uint32_t)yt_port_basic_record(&session->door->game.config,
+	    (int)logical_port);
 }
 
 static uint32_t
 session_planet_basic_record(const struct yt_session *session,
     float logical_planet)
 {
-	return yt_route_process_record_number(&session->route_process,
-	    YT_PLANET_OFFSET_ADDRESS, logical_planet);
+	return (uint32_t)yt_planet_basic_record(&session->door->game.config,
+	    (int)logical_planet);
 }
 
 static bool
@@ -1341,8 +1324,8 @@ reload_player(struct yt_session *session, struct yt_error *error)
 		.store = session_hydration_store,
 	};
 
-	yt_route_process_raw_single(&session->route_process,
-	    YT_SECTOR_OFFSET_ADDRESS, state.sector_record_offset_raw);
+	memcpy(state.sector_record_offset_raw,
+	    session->door->game.config.record.bytes + YT_F53, 4U);
 	yt_route_process_raw_single(&session->route_process,
 	    YT_ANTI_CLOAK_ADDRESS, state.anti_cloak_raw);
 	if (!yt_current_player_hydrate_run(&state,
@@ -1386,9 +1369,8 @@ mutate_player_credits_observed(struct yt_session *session, float argument,
 	state.hydration.cloak_cache = session->cloak_cache;
 	state.hydration.cache_count = (YT_PLAYER_LAST + 1U);
 	state.hydration.store = session_hydration_store;
-	yt_route_process_raw_single(&session->route_process,
-	    YT_SECTOR_OFFSET_ADDRESS,
-	    state.hydration.sector_record_offset_raw);
+	memcpy(state.hydration.sector_record_offset_raw,
+	    session->door->game.config.record.bytes + YT_F53, 4U);
 	yt_route_process_raw_single(&session->route_process,
 	    YT_ANTI_CLOAK_ADDRESS, state.hydration.anti_cloak_raw);
 	state.argument = argument;
@@ -2790,112 +2772,6 @@ startup_configuration_store_disruption(void *context, size_t index,
 }
 
 static void
-startup_configuration_store_genesis(void *context, const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_GENESIS_REQUIRED_PORTS_ADDRESS, raw);
-}
-
-static void
-startup_configuration_store_headquarters(void *context, const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_HEADQUARTERS_ADDRESS, raw);
-}
-
-static void
-startup_configuration_store_turns(void *context, const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_TURNS_PER_DAY_ADDRESS, raw);
-}
-
-static void
-startup_configuration_store_lottery(void *context, const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_LOTTERY_PLAYS_ADDRESS, raw);
-}
-
-static void
-startup_configuration_store_maximum_planets(void *context,
-    const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_MAXIMUM_PLANETS_ADDRESS, raw);
-}
-
-static void
-startup_configuration_store_maximum_holds(void *context,
-    const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_MAXIMUM_HOLDS_ADDRESS, raw);
-}
-
-static void
-startup_configuration_store_epoch_year(void *context,
-    const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_EPOCH_YEAR_ADDRESS, raw);
-}
-
-static void
-startup_configuration_store_total_records(void *context,
-    const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_TOTAL_RECORDS_ADDRESS, raw);
-}
-
-static void
-startup_configuration_store_sector_offset(void *context,
-    const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_SECTOR_OFFSET_ADDRESS, raw);
-}
-
-static void
-startup_configuration_store_port_offset(void *context,
-    const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_PORT_OFFSET_ADDRESS, raw);
-}
-
-static void
-startup_configuration_store_planet_offset(void *context,
-    const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_PLANET_OFFSET_ADDRESS, raw);
-}
-
-static void
 startup_configuration_store_local_screen(void *context,
     const uint8_t raw[4])
 {
@@ -2976,31 +2852,20 @@ static bool
 load_configuration(struct yt_session *session, struct yt_error *error)
 {
 	static const struct yt_startup_configuration_ops ops = {
-		startup_configuration_close,
-		startup_configuration_open,
-		startup_configuration_load,
-		startup_configuration_store,
-		startup_configuration_read_player,
-		startup_configuration_write_player,
-		startup_configuration_random,
-		startup_configuration_store_disruption,
-		startup_configuration_store_genesis,
-		startup_configuration_store_turns,
-		startup_configuration_store_lottery,
-		startup_configuration_store_maximum_planets,
-		startup_configuration_store_maximum_holds,
-		startup_configuration_store_epoch_year,
-		startup_configuration_store_total_records,
-		startup_configuration_store_sector_offset,
-		startup_configuration_store_port_offset,
-		startup_configuration_store_planet_offset,
-		startup_configuration_store_local_screen,
-		startup_configuration_store_cache_guard,
-		startup_configuration_store_cache_terminal,
-		startup_configuration_store_cache_counter,
-		startup_configuration_store_cache_value,
-		startup_configuration_store_uppercase,
-		startup_configuration_store_headquarters,
+		.close_data = startup_configuration_close,
+		.open_data = startup_configuration_open,
+		.load_config = startup_configuration_load,
+		.store_config = startup_configuration_store,
+		.read_player = startup_configuration_read_player,
+		.write_player = startup_configuration_write_player,
+		.random = startup_configuration_random,
+		.store_disruption = startup_configuration_store_disruption,
+		.store_local_screen = startup_configuration_store_local_screen,
+		.store_cache_guard = startup_configuration_store_cache_guard,
+		.store_cache_terminal = startup_configuration_store_cache_terminal,
+		.store_cache_counter = startup_configuration_store_cache_counter,
+		.store_cache_value = startup_configuration_store_cache_value,
+		.store_uppercase = startup_configuration_store_uppercase,
 	};
 	struct yt_game *game = &session->door->game;
 	struct yt_startup_configuration_state state;
@@ -3803,8 +3668,8 @@ construct_player_visible(struct yt_session *session, struct yt_error *error)
 		return false;
 	yt_route_process_raw_single(&session->route_process,
 	    YT_STARTUP_DATE_SERIAL_ADDRESS, date_raw);
-	yt_route_process_raw_single(&session->route_process,
-	    YT_TURNS_PER_DAY_ADDRESS, turns_raw);
+	memcpy(turns_raw, session->door->game.config.record.bytes + YT_F49,
+	    sizeof(turns_raw));
 	if (yt_game_construct_player(&session->door->game,
 	    session_record(session), date_raw, turns_raw, &session->player,
 	    &state, error))
@@ -4000,12 +3865,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 	bool returning = false;
 
 	snprintf(full, sizeof(full), "%s %s", first, last);
-	yt_route_process_raw_single(&session->route_process,
-	    YT_SECTOR_OFFSET_ADDRESS, scan_bound_raw);
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_RETURNING_SCAN_BOUND_ADDRESS, scan_bound_raw);
-	returning_bound = yt_route_process_single(&session->route_process,
-	    YT_RETURNING_SCAN_BOUND_ADDRESS);
+	returning_bound = session->door->game.config.sector_offset;
 	for (basic = YT_PLAYER_FIRST;
 	    (float)basic <= returning_bound; ++basic) {
 		struct yt_player candidate;
@@ -4044,12 +3904,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 		    strlen("Entering a new player..."),
 		    "new player entering row", error))
 			return false;
-		yt_route_process_raw_single(&session->route_process,
-		    YT_SECTOR_OFFSET_ADDRESS, scan_bound_raw);
-		yt_route_process_set_raw_single(&session->route_process,
-		    YT_VACANCY_SCAN_BOUND_ADDRESS, scan_bound_raw);
-		vacancy_bound = yt_route_process_single(&session->route_process,
-		    YT_VACANCY_SCAN_BOUND_ADDRESS);
+		vacancy_bound = session->door->game.config.sector_offset;
 		session_set_current_player_record(session, YT_PLAYER_FIRST);
 		for (basic = YT_PLAYER_FIRST;
 		    (float)basic <= vacancy_bound;
@@ -4133,8 +3988,8 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 
 		yt_route_process_raw_single(&session->route_process,
 		    YT_STARTUP_DATE_SERIAL_ADDRESS, today_raw);
-		yt_route_process_raw_single(&session->route_process,
-		    YT_TURNS_PER_DAY_ADDRESS, turns_raw);
+		memcpy(turns_raw, session->door->game.config.record.bytes + YT_F49,
+		    sizeof(turns_raw));
 		memset(&daily, 0, sizeof(daily));
 		daily.player_record = session_record(session);
 		daily.today_raw = today_raw;
@@ -4577,8 +4432,8 @@ post_login(struct yt_session *session, struct yt_error *error)
 			return false;
 		yt_route_process_raw_single(&session->route_process,
 		    YT_STATIC_SINGLE_ZERO_ADDRESS, zero_raw);
-		yt_route_process_raw_single(&session->route_process,
-		    YT_MAXIMUM_HOLDS_ADDRESS, maximum_raw);
+		memcpy(maximum_raw, session->door->game.config.record.bytes + YT_F121,
+	    sizeof(maximum_raw));
 		if (yt_route_process_double(&session->route_process,
 		    YT_CURRENT_PLAYER_HOLDS_ADDRESS)
 		    > (double)qb_mbf32_decode(maximum_raw)) {
@@ -8096,8 +7951,7 @@ attack_deployed_committed(struct yt_session *session,
 		    strlen(session->door->identity.real_first),
 		.owner_label = session->hostile_owner_label,
 		.owner_label_length = session->hostile_owner_label_length,
-		.turns_per_day = yt_route_process_single(&session->route_process,
-		    YT_TURNS_PER_DAY_ADDRESS),
+		.turns_per_day = session->door->game.config.turns_per_day,
 		.headquarters = session->door->game.config.headquarters,
 	};
 	result = yt_hostile_attack_combat_run(&state, &ops, &context, error);
@@ -9850,12 +9704,10 @@ earth_purchase_holds(struct yt_session *session,
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "Earth Holds leading blank", error))
 		return false;
-	if (session->player.holds >= yt_route_process_single(
-	    &session->route_process, YT_MAXIMUM_HOLDS_ADDRESS))
+	if (session->player.holds >= session->door->game.config.maximum_holds)
 		return earth_credit_error(session, "You dont need any holds.", error);
 	if (qb_str_single(amount, sizeof(amount), single_sub(
-	    yt_route_process_single(&session->route_process,
-	    YT_MAXIMUM_HOLDS_ADDRESS),
+	    session->door->game.config.maximum_holds,
 	    session->player.holds)) < 0
 	    || snprintf(row, sizeof(row), "You need%s holds.", amount) < 0)
 		return port_report_failure(error, "Earth Holds needed row");
@@ -9872,8 +9724,7 @@ earth_purchase_holds(struct yt_session *session,
 		return earth_credit_error(session,
 		    "You do not have enough credits!", error);
 	if (single_add(session->player.holds, quantity)
-	    > yt_route_process_single(&session->route_process,
-	    YT_MAXIMUM_HOLDS_ADDRESS))
+	    > session->door->game.config.maximum_holds)
 		return earth_credit_error(session,
 		    "You don't need that many!", error);
 	session->player.holds = single_add(session->player.holds, quantity);
@@ -10364,8 +10215,7 @@ lottery(struct yt_session *session, const struct yt_port *cached_earth,
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "lottery limiter leading blank", error))
 		return false;
-	if (yt_route_process_single(&session->route_process,
-	    YT_LOTTERY_PLAYS_ADDRESS) == 0.0f) {
+	if (session->door->game.config.lottery_plays == 0.0f) {
 		if (!session_present_text(session,
 		    (const uint8_t *)
 		    "Sorry, The supreme ruler has banned all gambling!",
@@ -10378,8 +10228,7 @@ lottery(struct yt_session *session, const struct yt_port *cached_earth,
 		char limit[64];
 		char row[128];
 
-		if (qb_str_single(limit, sizeof(limit), yt_route_process_single(
-		    &session->route_process, YT_LOTTERY_PLAYS_ADDRESS)) < 0
+		if (qb_str_single(limit, sizeof(limit), session->door->game.config.lottery_plays) < 0
 		    || snprintf(row, sizeof(row), "You may play%s times daily.",
 		    limit) < 0
 		    || !session_present_text(session, (const uint8_t *)row,
@@ -10391,8 +10240,7 @@ lottery(struct yt_session *session, const struct yt_port *cached_earth,
 		return false;
 	session->player.lottery_plays =
 	    single_add(session->player.lottery_plays, 1.0f);
-	if (session->player.lottery_plays > yt_route_process_single(
-	    &session->route_process, YT_LOTTERY_PLAYS_ADDRESS)) {
+	if (session->player.lottery_plays > session->door->game.config.lottery_plays) {
 		if (!session_present_text(session,
 		    (const uint8_t *)
 		    "You will be allowed to play again tomorrow.",
@@ -11373,8 +11221,7 @@ planet_rename(struct yt_session *session, int logical_planet, bool *renamed,
 		    (float)logical_planet);
 		if (yt_planet_rename_protected(current_record,
 		    session_planet_offset(session),
-		    yt_route_process_single(&session->route_process,
-		    YT_TOTAL_RECORDS_ADDRESS)))
+		    session->door->game.config.total_records))
 			return session_02db(session, protected,
 			    sizeof(protected) - 1U,
 			    "planet Rename protected", error);
@@ -12062,8 +11909,7 @@ planet_move_hop(struct yt_session *session, int source_number,
 	float actual_destination = (float)destination;
 	float draw;
 	float xannor_planet = single_sub(
-	    yt_route_process_single(&session->route_process,
-	    YT_TOTAL_RECORDS_ADDRESS),
+	    session->door->game.config.total_records,
 	    session_planet_offset(session));
 	uint32_t moving_record;
 	int source_record;
@@ -12731,8 +12577,7 @@ create_planet(struct yt_session *session, struct yt_error *error)
 			selected_physical = physical;
 			break;
 		}
-		if (scan >= yt_route_process_single(&session->route_process,
-		    YT_TOTAL_RECORDS_ADDRESS)) {
+		if (scan >= session->door->game.config.total_records) {
 			if (!session_02db(session, all_taken,
 			    sizeof(all_taken) - 1U,
 			    "planet creation allocation full", error)
@@ -12742,8 +12587,7 @@ create_planet(struct yt_session *session, struct yt_error *error)
 			return true;
 		}
 		scan = single_add(scan, 1.0f);
-		if (scan > yt_route_process_single(&session->route_process,
-		    YT_TOTAL_RECORDS_ADDRESS)) {
+		if (scan > session->door->game.config.total_records) {
 			if (error != NULL) {
 				error->status = YT_RANGE;
 				snprintf(error->operation, sizeof(error->operation), "%s",
@@ -15214,8 +15058,7 @@ command_genesis(struct yt_session *session, struct yt_error *error)
 	memcpy(cached_trader, session->player.name, cached_trader_length);
 	state = (struct yt_genesis_state){
 		.current_player_record = session_record(session),
-		.required_ports = yt_route_process_single(&session->route_process,
-		    YT_GENESIS_REQUIRED_PORTS_ADDRESS),
+		.required_ports = session->door->game.config.genesis_ports,
 		.cached_trader = cached_trader,
 		.cached_trader_length = cached_trader_length,
 	};
@@ -18302,8 +18145,7 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 		    YT_COMPUTER_PLANET_LINK_ADDRESS);
 		{
 			float maximum_planet = single_sub(
-			    yt_route_process_single(&session->route_process,
-			    YT_TOTAL_RECORDS_ADDRESS),
+			    session->door->game.config.total_records,
 			    session_planet_offset(session));
 
 			valid_link = link > 0.0f && link <= maximum_planet;

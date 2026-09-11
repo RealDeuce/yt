@@ -440,32 +440,8 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 		state->scoreboard_path_length = YT_TEXT_FIELD_SIZE;
 	memcpy(config->scoreboard, config->record.bytes,
 	    state->scoreboard_path_length);
-	if (ops->store_epoch_year != NULL)
-		ops->store_epoch_year(context, config->record.bytes + YT_F45);
-	if (ops->store_turns_per_day != NULL)
-		ops->store_turns_per_day(context,
-		    config->record.bytes + YT_F49);
-	if (ops->store_sector_offset != NULL)
-		ops->store_sector_offset(context, config->record.bytes + YT_F53);
-	if (ops->store_port_offset != NULL)
-		ops->store_port_offset(context, config->record.bytes + YT_F57);
-	if (ops->store_planet_offset != NULL)
-		ops->store_planet_offset(context, config->record.bytes + YT_F61);
 	if (ops->store_local_screen != NULL)
 		ops->store_local_screen(context, config->record.bytes + YT_F85);
-	if (ops->store_total_records != NULL)
-		ops->store_total_records(context, config->record.bytes + YT_F93);
-	if (ops->store_lottery_plays != NULL)
-		ops->store_lottery_plays(context,
-		    config->record.bytes + YT_F101);
-	if (ops->store_genesis != NULL)
-		ops->store_genesis(context, config->record.bytes + YT_F105);
-	if (ops->store_maximum_holds != NULL)
-		ops->store_maximum_holds(context,
-		    config->record.bytes + YT_F121);
-	if (ops->store_maximum_planets != NULL)
-		ops->store_maximum_planets(context,
-		    config->record.bytes + YT_F129);
 	qb_compat_upper_n_observed((uint8_t *)config->scoreboard,
 	    state->scoreboard_path_length, ops->store_uppercase, context);
 	config->scoreboard[state->scoreboard_path_length] = '\0';
@@ -480,17 +456,9 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 		    || !ops->store_config(context, config, error))
 			return false;
 		config->headquarters = 733.0f;
-		if (ops->store_headquarters != NULL)
-			ops->store_headquarters(context, headquarters_default);
 	}
 	if (config->genesis_ports < 20.0f) {
-		static const uint8_t genesis_default[4] = {
-			0x00, 0x00, 0x48, 0x88
-		};
-
 		config->genesis_ports = 200.0f;
-		if (ops->store_genesis != NULL)
-			ops->store_genesis(context, genesis_default);
 	}
 	if (state->scoreboard_path_length == 0U) {
 		static const char default_path[] = "YTSCORE.ASC";
@@ -513,41 +481,17 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 			ops->store_local_screen(context, local_default);
 	}
 	if (config->lottery_plays < 0.0f || config->lottery_plays > 9.0f) {
-		static const uint8_t lottery_default[4] = {
-			0x00, 0x00, 0x40, 0x82
-		};
-
 		config->lottery_plays = 3.0f;
-		if (ops->store_lottery_plays != NULL)
-			ops->store_lottery_plays(context, lottery_default);
 	}
 	if (config->maximum_planets == 0.0f) {
-		static const uint8_t planets_default[4] = {
-			0x00, 0x00, 0x48, 0x87
-		};
-
 		config->maximum_planets = 100.0f;
-		if (ops->store_maximum_planets != NULL)
-			ops->store_maximum_planets(context, planets_default);
 	}
 	if (config->maximum_holds < 5.0f || config->maximum_holds > 1000.0f) {
-		static const uint8_t holds_default[4] = {
-			0x00, 0x00, 0x7a, 0x8a
-		};
-
 		config->maximum_holds = 1000.0f;
-		if (ops->store_maximum_holds != NULL)
-			ops->store_maximum_holds(context, holds_default);
 	}
 	if (config->turns_per_day < 100.0f
 	    || config->turns_per_day > 2500.0f) {
-		static const uint8_t turns_default[4] = {
-			0x00, 0x00, 0x7a, 0x89
-		};
-
 		config->turns_per_day = 500.0f;
-		if (ops->store_turns_per_day != NULL)
-			ops->store_turns_per_day(context, turns_default);
 	}
 
 	if (state->cache_guard == 0.0f) {
