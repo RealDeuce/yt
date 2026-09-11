@@ -592,17 +592,14 @@ enum yt_spy_output_kind {
 };
 
 struct yt_spy_sweep_state {
-	float active_spies;
+	int active_spies;
 	int *spy_sectors;
 	int *last_reported_sectors;
-	size_t spy_capacity;
 	int current_player_record;
 	float last_player_record;
 	float disruption_sectors[2];
 	struct yt_player_cache *player_cache;
-	float found_scratch;
-	float dead_counter_scratch;
-	float warp_destination_scratch;
+	bool found;
 	float foreground;
 	float background;
 	float bold;
@@ -628,13 +625,6 @@ typedef bool (*yt_spy_present_fn)(void *context, const uint8_t *text,
 	struct yt_spy_sweep_state *state, struct yt_error *error);
 typedef bool (*yt_spy_pause_fn)(void *context,
 	struct yt_spy_sweep_state *state, struct yt_error *error);
-enum yt_spy_scratch_kind {
-	YT_SPY_SCRATCH_DESTINATION,
-	YT_SPY_SCRATCH_FOUND,
-	YT_SPY_SCRATCH_DEAD_COUNTER,
-};
-typedef void (*yt_spy_store_fn)(void *context,
-	enum yt_spy_scratch_kind kind, const uint8_t raw[4]);
 
 struct yt_spy_sweep_ops {
 	yt_spy_read_sector_fn read_sector;
@@ -646,7 +636,6 @@ struct yt_spy_sweep_ops {
 	yt_spy_sound_fn sound;
 	yt_spy_present_fn present;
 	yt_spy_pause_fn pause;
-	yt_spy_store_fn store;
 };
 
 bool yt_spy_sweep_run(struct yt_spy_sweep_state *state,

@@ -44206,7 +44206,6 @@ spy_sweep_presentation_fixture(bool ansi)
 		spy_sweep_presentation_sound,
 		spy_sweep_presentation_present,
 		spy_sweep_presentation_pause,
-		NULL,
 	};
 	struct spy_sweep_presentation_context fixture;
 	struct yt_spy_sweep_state sweep;
@@ -44246,10 +44245,9 @@ spy_sweep_presentation_fixture(bool ansi)
 	fixture.draws[1] = 0.2f;
 	player_cache.sector[3] = 100.0f;
 	player_cache.cloak[3] = 0.5f;
-	sweep.active_spies = 1.0f;
+	sweep.active_spies = 1;
 	sweep.spy_sectors = sectors;
 	sweep.last_reported_sectors = markers;
-	sweep.spy_capacity = 3U;
 	sweep.current_player_record = 2;
 	sweep.last_player_record = 51.0f;
 	sweep.player_cache = &player_cache;
