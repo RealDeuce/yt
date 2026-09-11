@@ -489,43 +489,21 @@ yt_config_normalize_maintenance(struct yt_config *config)
 }
 
 static int
-date_serial_epoch_observed(const struct yt_clock_value *date, float epoch,
-    const uint8_t epoch_raw[4], int *adjusted_year,
-    yt_date_serial_store_fn store, void *context)
+date_serial_epoch(const struct yt_clock_value *date, float epoch,
+    int *adjusted_year)
 {
 	static const int days_before[] =
 	    {0, 0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
 	int year = date->year % 100;
 	int serial;
 	float prior;
-	uint8_t raw[4];
 
-#define DATE_STORE(kind, value) do { \
-	if (store != NULL && qb_mbf32_encode((float)(value), raw) != \
-	    QB_MBF_OVERFLOW) \
-		store(context, (kind), raw); \
-} while (0)
-
-	DATE_STORE(YT_DATE_SERIAL_STORE_YEAR, year);
-	DATE_STORE(YT_DATE_SERIAL_STORE_MONTH, date->month);
 	if ((float)year < epoch)
 		year += 100;
-	if (year != date->year % 100)
-		DATE_STORE(YT_DATE_SERIAL_STORE_YEAR, year);
 	serial = date->day + days_before[date->month];
 	if (year % 4 == 0 && date->month > 2)
 		++serial;
 	prior = (float)year - 1.0f;
-	if ((float)year != epoch) {
-		DATE_STORE(YT_DATE_SERIAL_STORE_YEAR_TERMINAL, prior);
-		if (store != NULL) {
-			if (epoch_raw != NULL)
-				store(context, YT_DATE_SERIAL_STORE_YEAR_COUNTER,
-				    epoch_raw);
-			else
-				DATE_STORE(YT_DATE_SERIAL_STORE_YEAR_COUNTER, epoch);
-		}
-	}
 	if ((float)year != epoch && prior >= epoch) {
 		float quarter = epoch * 0.25f;
 
@@ -535,116 +513,14 @@ date_serial_epoch_observed(const struct yt_clock_value *date, float epoch,
 	}
 	if (adjusted_year != NULL)
 		*adjusted_year = year;
-	DATE_STORE(YT_DATE_SERIAL_STORE_RESULT, serial);
-#undef DATE_STORE
 	return serial;
 }
 
-bool
-yt_date_serial_process_init(struct yt_date_serial_process_state *state,
-    enum yt_date_serial_executable executable, uint16_t call_site)
-{
-	static const uint16_t yt_sites[] = {
-		0x0462U, 0x38BBU, 0x67F8U, 0x6CBFU, 0x034AU,
-		0x0322U, 0x0653U, 0x0AA5U, 0x28BBU, 0x2C1CU,
-	};
-	static const uint16_t config_sites[] =
-	    {0x024FU, 0x0258U, 0x036EU, 0x1D98U};
-	static const uint16_t maint_sites[] =
-	    {0x0335U, 0x0839U, 0x1046U, 0x1DAAU, 0x20F7U, 0x41CEU, 0x5780U};
-	static const uint16_t rmt_sites[] = {0x09CDU, 0x17E6U};
-	const uint16_t *sites = NULL;
-	size_t count = 0U;
-	size_t index;
-
-	if (state == NULL)
-		return false;
-	memset(state, 0, sizeof(*state));
-	state->call_site = call_site;
-	switch (executable) {
-	case YT_DATE_SERIAL_EXEC_YT:
-		state->result_address = 0x188CU;
-		sites = yt_sites;
-		count = sizeof(yt_sites) / sizeof(yt_sites[0]);
-		if (call_site == 0x0462U)
-			state->copy_address = 0x4CCAU;
-		else if (call_site == 0x0322U || call_site == 0x0653U)
-			state->copy_address = 0x5E56U;
-		else if (call_site == 0x28BBU || call_site == 0x2C1CU)
-			state->copy_address = 0x60C4U;
-		break;
-	case YT_DATE_SERIAL_EXEC_YTCONFIG:
-		state->result_address = 0x1D4AU;
-		sites = config_sites;
-		count = sizeof(config_sites) / sizeof(config_sites[0]);
-		break;
-	case YT_DATE_SERIAL_EXEC_YTMAINT:
-		state->result_address = 0x1858U;
-		sites = maint_sites;
-		count = sizeof(maint_sites) / sizeof(maint_sites[0]);
-		break;
-	case YT_DATE_SERIAL_EXEC_RMT_INIT:
-		state->result_address = 0x19F6U;
-		sites = rmt_sites;
-		count = sizeof(rmt_sites) / sizeof(rmt_sites[0]);
-		break;
-	default:
-		return false;
-	}
-	for (index = 0U; index < count; ++index) {
-		if (sites[index] == call_site)
-			return true;
-	}
-	memset(state, 0, sizeof(*state));
-	return false;
-}
-
-void
-yt_date_serial_process_store(void *context,
-    enum yt_date_serial_store_kind kind, const uint8_t raw[4])
-{
-	struct yt_date_serial_process_state *state = context;
-
-	if (state == NULL || raw == NULL || kind != YT_DATE_SERIAL_STORE_RESULT)
-		return;
-	memcpy(state->result_raw, raw, sizeof(state->result_raw));
-	state->result_written = true;
-}
-
-void
-yt_date_serial_process_copy(struct yt_date_serial_process_state *state)
-{
-	if (state == NULL || state->copy_address == 0U
-	    || !state->result_written)
-		return;
-	memcpy(state->copy_raw, state->result_raw, sizeof(state->copy_raw));
-	state->copy_written = true;
-}
-
 int
-yt_date_serial_observed(const struct yt_clock_value *date,
-    const uint8_t epoch_raw[4], int *adjusted_year,
-    yt_date_serial_store_fn store, void *context)
-{
-	if (date == NULL || epoch_raw == NULL)
-		return 0;
-	return date_serial_epoch_observed(date, qb_mbf32_decode(epoch_raw),
-	    epoch_raw, adjusted_year, store, context);
-}
-
-static int
-date_serial_epoch(const struct yt_clock_value *date, float epoch,
+yt_date_serial(const struct yt_clock_value *date, float epoch_year,
     int *adjusted_year)
 {
-	return date_serial_epoch_observed(date, epoch, NULL, adjusted_year,
-	    NULL, NULL);
-}
-
-int
-yt_date_serial(const struct yt_clock_value *date, int epoch_year,
-    int *adjusted_year)
-{
-	return date_serial_epoch(date, (float)epoch_year, adjusted_year);
+	return date_serial_epoch(date, epoch_year, adjusted_year);
 }
 
 bool
@@ -656,24 +532,6 @@ yt_current_date_serial(float epoch, int *serial, int *adjusted_year,
 	if (!yt_platform_clock(&current, error))
 		return false;
 	*serial = date_serial_epoch(&current, epoch, adjusted_year);
-	return true;
-}
-
-bool
-yt_current_date_serial_observed(const uint8_t epoch_raw[4], int *serial,
-    int *adjusted_year, yt_date_serial_store_fn store, void *context,
-    struct yt_error *error)
-{
-	struct yt_clock_value current;
-	float epoch;
-
-	if (epoch_raw == NULL || serial == NULL)
-		return false;
-	if (!yt_platform_clock(&current, error))
-		return false;
-	epoch = qb_mbf32_decode(epoch_raw);
-	*serial = date_serial_epoch_observed(&current, epoch, epoch_raw,
-	    adjusted_year, store, context);
 	return true;
 }
 

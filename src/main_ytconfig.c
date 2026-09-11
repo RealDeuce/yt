@@ -306,7 +306,6 @@ edit_maintenance(struct yt_game *game, struct yt_error *error)
 	static const uint8_t raw_allow[4] = {0x00, 0x00, 0x7d, 0x00};
 	struct yt_config_output_result output;
 	struct yt_config_overlay_state state;
-	struct yt_date_serial_process_state date_process;
 	struct yt_config_overlay overlays[2];
 	char line[80];
 	uint8_t raw_marker[4];
@@ -324,11 +323,8 @@ edit_maintenance(struct yt_game *game, struct yt_error *error)
 		    || ((unsigned char)line[0] & 0xdfU) == 'N')
 			break;
 	}
-	if (!yt_date_serial_process_init(&date_process,
-	    YT_DATE_SERIAL_EXEC_YTCONFIG, 0x1D98U)
-	    || !yt_current_date_serial_observed(
-	    game->config.record.bytes + YT_F45, &serial, &adjusted,
-	    yt_date_serial_process_store, &date_process, error))
+	if (!yt_current_date_serial(game->config.epoch_year, &serial,
+	    &adjusted, error))
 		return false;
 	if (((unsigned char)line[0] & 0xdfU) == 'Y') {
 		memcpy(raw_marker, raw_allow, sizeof(raw_marker));
@@ -1129,7 +1125,6 @@ main(void)
 		goto failure;
 	for (;;) {
 		struct yt_config_output_result output;
-		struct yt_date_serial_process_state date_process;
 		int today;
 		int year;
 		int raw_key;
@@ -1137,11 +1132,8 @@ main(void)
 		char key;
 
 		if (!yt_config_load(&game.database, &game.config, &error)
-		    || !yt_date_serial_process_init(&date_process,
-		        YT_DATE_SERIAL_EXEC_YTCONFIG, 0x036EU)
-		    || !yt_current_date_serial_observed(
-		        game.config.record.bytes + YT_F45, &today, &year,
-		        yt_date_serial_process_store, &date_process, &error)
+		    || !yt_current_date_serial(game.config.epoch_year, &today,
+		        &year, &error)
 		    || !redraw_repairs(&game, working.maximum_holds, &error))
 			goto failure;
 		if (!yt_config_compose_menu_prompt(&game.config, &working, today,

@@ -2611,27 +2611,20 @@ yt_maintenance_maintain_players(struct yt_game *game, float *player_sector,
 }
 
 static bool
-maintenance_current_date_serial(const struct yt_game *game, uint16_t call_site,
-    int *serial, int *adjusted_year, struct yt_error *error)
+maintenance_current_date_serial(const struct yt_game *game, int *serial,
+    int *adjusted_year, struct yt_error *error)
 {
-	struct yt_date_serial_process_state process;
-
-	return yt_date_serial_process_init(&process,
-	    YT_DATE_SERIAL_EXEC_YTMAINT, call_site)
-	    && yt_current_date_serial_observed(
-	    game->config.record.bytes + YT_F45, serial, adjusted_year,
-	    yt_date_serial_process_store, &process, error);
+	return yt_current_date_serial(game->config.epoch_year, serial,
+	    adjusted_year, error);
 }
 
 static bool
-current_day_minute(struct maint_state *state, uint16_t call_site,
-    float *day, float *minute,
+current_day_minute(struct maint_state *state, float *day, float *minute,
     struct yt_error *error)
 {
 	int serial;
 
-	if (!maintenance_current_date_serial(&state->game, call_site, &serial, NULL,
-	    error))
+	if (!maintenance_current_date_serial(&state->game, &serial, NULL, error))
 		return false;
 	*day = (float)serial;
 	*minute = (float)(yt_platform_timer() / 60.0);
@@ -2796,7 +2789,7 @@ yt_maintenance_maintain_ports(struct yt_game *game,
 		float minute;
 
 		if (!yt_game_read_port(game, logical, &port, error)
-		    || !current_day_minute(&clock_state, 0x0839U, &day, &minute, error)
+		    || !current_day_minute(&clock_state, &day, &minute, error)
 		    || !yt_maintenance_update_port(&game->random, &port, day,
 		    minute, &mutation, error)
 		    || !maintenance_write_port(game, logical, &port, error))
@@ -3077,7 +3070,7 @@ yt_maintenance_maintain_planets(struct yt_game *game,
 		name.data = planet.record.bytes;
 		name.length = (size_t)stored_length < YT_TEXT_FIELD_SIZE
 		    ? (size_t)stored_length : YT_TEXT_FIELD_SIZE;
-		if (!current_day_minute(&clock_state, 0x1046U, &day, &minute, error)
+		if (!current_day_minute(&clock_state, &day, &minute, error)
 		    || !yt_maintenance_update_planet(&game->random, &planet, day,
 		    minute, &mutation, error)
 		    || !yt_maintenance_compose_planet_phase(blank,
@@ -3216,7 +3209,7 @@ yt_maintenance_maintain_wanderer(struct yt_game *game,
 	}
 	local.rebuilt = local.removed_sector == 0;
 	if (local.rebuilt) {
-		if (!maintenance_current_date_serial(game, 0x1DAAU, &today, NULL, error)
+		if (!maintenance_current_date_serial(game, &today, NULL, error)
 		    || !yt_maintenance_compose_wanderer_phase(blank,
 		    blank_length, true, &output))
 			return false;
@@ -3661,7 +3654,7 @@ store_final_marker(struct yt_game *game, struct yt_error *error)
 {
 	int serial;
 
-	if (!maintenance_current_date_serial(game, 0x5780U, &serial, NULL, error))
+	if (!maintenance_current_date_serial(game, &serial, NULL, error))
 		return false;
 	return yt_maintenance_store_final_marker(game, (float)serial,
 	    error);
@@ -4467,7 +4460,7 @@ yt_maintenance_maintain_xannor_home(struct yt_game *game,
 	local.rebuilt = sector.planet == 0.0f;
 	starting_draws = game->random.draws;
 	if (local.rebuilt) {
-		if (!maintenance_current_date_serial(game, 0x20F7U, &today, NULL, error)
+		if (!maintenance_current_date_serial(game, &today, NULL, error)
 		    || !yt_maintenance_compose_xannor_home(blank,
 		    blank_length, true, &output))
 			return false;
@@ -5827,7 +5820,7 @@ yt_maintenance_maintain_mercenary_base(struct yt_game *game,
 		struct yt_sector sector;
 		int today;
 
-		if (!maintenance_current_date_serial(game, 0x41CEU, &today, NULL, error)
+		if (!maintenance_current_date_serial(game, &today, NULL, error)
 		    || !yt_game_read_planet(game, planet_number, &planet, error))
 			return false;
 		yt_record_set_text(&planet.record,

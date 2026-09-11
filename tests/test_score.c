@@ -15121,9 +15121,7 @@ check_maintenance_port_pass(void)
 	memset(&game, 0, sizeof(game));
 	game.config.port_offset = 1.0f;
 	game.config.planet_offset = 3.0f;
-	game.config.epoch_year = 99.0f;
-	if (!yt_record_set_number(&game.config.record, YT_F45, 26.0f))
-		goto done;
+	game.config.epoch_year = 26.0f;
 	yt_random_init(&game.random);
 	yt_random_set_provider(&game.random, score_random_fill, &random_script);
 	yt_error_clear(&error);
@@ -20131,25 +20129,6 @@ done:
 	return valid;
 }
 
-struct date_serial_store_tape {
-	enum yt_date_serial_store_kind stores[8];
-	uint8_t raw[8][4];
-	size_t count;
-};
-
-static void
-date_serial_store(void *context, enum yt_date_serial_store_kind kind,
-    const uint8_t raw[4])
-{
-	struct date_serial_store_tape *tape = context;
-
-	if (tape->count >= YT_ARRAY_LEN(tape->stores))
-		return;
-	tape->stores[tape->count] = kind;
-	memcpy(tape->raw[tape->count], raw, 4U);
-	++tape->count;
-}
-
 static bool
 check_date_serial(void)
 {
@@ -20158,8 +20137,6 @@ check_date_serial(void)
 	static const int month_starts[] =
 	    {0, 1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335};
 	struct yt_error error;
-	struct date_serial_store_tape stores;
-	uint8_t epoch_raw[4];
 	int adjusted;
 	int serial;
 	int month;
@@ -20215,137 +20192,6 @@ check_date_serial(void)
 	}
 	yt_platform_set_clock_provider(NULL, NULL);
 
-	memset(&stores, 0, sizeof(stores));
-	date.year = 2030;
-	date.month = 1;
-	date.day = 1;
-	script.position = 0U;
-	script.values[0] = date;
-	if (qb_mbf32_encode(26.0f, epoch_raw) != QB_MBF_OK)
-		return false;
-	yt_platform_set_clock_provider(score_clock_read, &script);
-	if (!yt_current_date_serial_observed(epoch_raw, &serial, &adjusted,
-	    date_serial_store, &stores, &error)
-	    || serial != 366 || adjusted != 30 || stores.count != 5U
-	    || stores.stores[0] != YT_DATE_SERIAL_STORE_YEAR
-	    || stores.stores[1] != YT_DATE_SERIAL_STORE_MONTH
-	    || stores.stores[2] != YT_DATE_SERIAL_STORE_YEAR_TERMINAL
-	    || stores.stores[3] != YT_DATE_SERIAL_STORE_YEAR_COUNTER
-	    || stores.stores[4] != YT_DATE_SERIAL_STORE_RESULT
-	    || qb_mbf32_decode(stores.raw[4]) != 366.0f
-	    || qb_mbf32_decode(stores.raw[0]) != 30.0f
-	    || qb_mbf32_decode(stores.raw[1]) != 1.0f
-	    || qb_mbf32_decode(stores.raw[2]) != 29.0f
-	    || memcmp(stores.raw[3], epoch_raw, 4U) != 0) {
-		yt_platform_set_clock_provider(NULL, NULL);
-		return false;
-	}
-	yt_platform_set_clock_provider(NULL, NULL);
-
-	memset(&stores, 0, sizeof(stores));
-	date.year = 2100;
-	date.month = 3;
-	date.day = 1;
-	script.position = 0U;
-	script.values[0] = date;
-	if (qb_mbf32_encode(99.0f, epoch_raw) != QB_MBF_OK)
-		return false;
-	yt_platform_set_clock_provider(score_clock_read, &script);
-	if (!yt_current_date_serial_observed(epoch_raw, &serial, &adjusted,
-	    date_serial_store, &stores, &error)
-	    || serial != 426 || adjusted != 100 || stores.count != 6U
-	    || stores.stores[0] != YT_DATE_SERIAL_STORE_YEAR
-	    || stores.stores[1] != YT_DATE_SERIAL_STORE_MONTH
-	    || stores.stores[2] != YT_DATE_SERIAL_STORE_YEAR
-	    || stores.stores[3] != YT_DATE_SERIAL_STORE_YEAR_TERMINAL
-	    || stores.stores[4] != YT_DATE_SERIAL_STORE_YEAR_COUNTER
-	    || stores.stores[5] != YT_DATE_SERIAL_STORE_RESULT
-	    || qb_mbf32_decode(stores.raw[5]) != 426.0f
-	    || qb_mbf32_decode(stores.raw[0]) != 0.0f
-	    || qb_mbf32_decode(stores.raw[1]) != 3.0f
-	    || qb_mbf32_decode(stores.raw[2]) != 100.0f
-	    || qb_mbf32_decode(stores.raw[3]) != 99.0f
-	    || memcmp(stores.raw[4], epoch_raw, 4U) != 0) {
-		yt_platform_set_clock_provider(NULL, NULL);
-		return false;
-	}
-	yt_platform_set_clock_provider(NULL, NULL);
-
-	memset(&stores, 0, sizeof(stores));
-	date.year = 2026;
-	date.month = 7;
-	date.day = 22;
-	script.position = 0U;
-	script.values[0] = date;
-	if (qb_mbf32_encode(26.0f, epoch_raw) != QB_MBF_OK)
-		return false;
-	yt_platform_set_clock_provider(score_clock_read, &script);
-	if (!yt_current_date_serial_observed(epoch_raw, &serial, &adjusted,
-	    date_serial_store, &stores, &error)
-	    || serial != 203 || adjusted != 26 || stores.count != 3U
-	    || stores.stores[0] != YT_DATE_SERIAL_STORE_YEAR
-	    || stores.stores[1] != YT_DATE_SERIAL_STORE_MONTH
-	    || stores.stores[2] != YT_DATE_SERIAL_STORE_RESULT
-	    || qb_mbf32_decode(stores.raw[2]) != 203.0f) {
-		yt_platform_set_clock_provider(NULL, NULL);
-		return false;
-	}
-	yt_platform_set_clock_provider(NULL, NULL);
-
-	{
-		static const struct {
-			enum yt_date_serial_executable executable;
-			uint16_t site;
-			uint16_t result;
-			uint16_t copy;
-		} cells[] = {
-			{YT_DATE_SERIAL_EXEC_YT, 0x0462U, 0x188CU, 0x4CCAU},
-			{YT_DATE_SERIAL_EXEC_YT, 0x38BBU, 0x188CU, 0U},
-			{YT_DATE_SERIAL_EXEC_YT, 0x67F8U, 0x188CU, 0U},
-			{YT_DATE_SERIAL_EXEC_YT, 0x6CBFU, 0x188CU, 0U},
-			{YT_DATE_SERIAL_EXEC_YT, 0x034AU, 0x188CU, 0U},
-			{YT_DATE_SERIAL_EXEC_YT, 0x0322U, 0x188CU, 0x5E56U},
-			{YT_DATE_SERIAL_EXEC_YT, 0x0653U, 0x188CU, 0x5E56U},
-			{YT_DATE_SERIAL_EXEC_YT, 0x0AA5U, 0x188CU, 0U},
-			{YT_DATE_SERIAL_EXEC_YT, 0x28BBU, 0x188CU, 0x60C4U},
-			{YT_DATE_SERIAL_EXEC_YT, 0x2C1CU, 0x188CU, 0x60C4U},
-			{YT_DATE_SERIAL_EXEC_YTCONFIG, 0x024FU, 0x1D4AU, 0U},
-			{YT_DATE_SERIAL_EXEC_YTCONFIG, 0x0258U, 0x1D4AU, 0U},
-			{YT_DATE_SERIAL_EXEC_YTCONFIG, 0x036EU, 0x1D4AU, 0U},
-			{YT_DATE_SERIAL_EXEC_YTCONFIG, 0x1D98U, 0x1D4AU, 0U},
-			{YT_DATE_SERIAL_EXEC_YTMAINT, 0x0335U, 0x1858U, 0U},
-			{YT_DATE_SERIAL_EXEC_YTMAINT, 0x0839U, 0x1858U, 0U},
-			{YT_DATE_SERIAL_EXEC_YTMAINT, 0x1046U, 0x1858U, 0U},
-			{YT_DATE_SERIAL_EXEC_YTMAINT, 0x1DAAU, 0x1858U, 0U},
-			{YT_DATE_SERIAL_EXEC_YTMAINT, 0x20F7U, 0x1858U, 0U},
-			{YT_DATE_SERIAL_EXEC_YTMAINT, 0x41CEU, 0x1858U, 0U},
-			{YT_DATE_SERIAL_EXEC_YTMAINT, 0x5780U, 0x1858U, 0U},
-			{YT_DATE_SERIAL_EXEC_RMT_INIT, 0x09CDU, 0x19F6U, 0U},
-			{YT_DATE_SERIAL_EXEC_RMT_INIT, 0x17E6U, 0x19F6U, 0U},
-		};
-		struct yt_date_serial_process_state process;
-		size_t index;
-
-		for (index = 0U; index < YT_ARRAY_LEN(cells); ++index) {
-			if (!yt_date_serial_process_init(&process,
-			    cells[index].executable, cells[index].site)
-			    || process.result_address != cells[index].result
-			    || process.copy_address != cells[index].copy)
-				return false;
-			yt_date_serial_process_store(&process,
-			    YT_DATE_SERIAL_STORE_RESULT, stores.raw[2]);
-			yt_date_serial_process_copy(&process);
-			if (!process.result_written
-			    || memcmp(process.result_raw, stores.raw[2], 4U) != 0
-			    || process.copy_written != (cells[index].copy != 0U)
-			    || (process.copy_written
-			    && memcmp(process.copy_raw, stores.raw[2], 4U) != 0))
-				return false;
-		}
-		if (yt_date_serial_process_init(&process,
-		    YT_DATE_SERIAL_EXEC_YTCONFIG, 0xFFFFU))
-			return false;
-	}
 	return true;
 }
 

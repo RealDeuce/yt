@@ -99,20 +99,12 @@
 #define YT_SPY_DESTINATION_SCRATCH_ADDRESS 0x5FE4U
 #define YT_SPY_FOUND_SCRATCH_ADDRESS 0x5FE8U
 #define YT_SPY_DEAD_COUNTER_SCRATCH_ADDRESS 0x6018U
-#define YT_DATE_SERIAL_RESULT_ADDRESS 0x188CU
-#define YT_PROFIT_EARLY_DATE_SERIAL_ADDRESS 0x5E56U
-#define YT_PROFIT_LATE_DATE_SERIAL_ADDRESS 0x60C4U
 #define YT_PLANET_UPDATER_QUANTITY_ADDRESS 0x19F0U
 #define YT_PLANET_UPDATER_PRODUCTION_ADDRESS 0x1A44U
 #define YT_PLANET_UPDATER_CONTRIBUTION_ADDRESS 0x1C14U
 #define YT_PLANET_UPDATER_DAY_ADDRESS 0x5E90U
 #define YT_PLANET_UPDATER_MINUTE_ADDRESS 0x5E94U
 #define YT_PLANET_UPDATER_ELAPSED_ADDRESS 0x5E98U
-#define YT_STARTUP_DATE_SERIAL_ADDRESS 0x4CCAU
-#define YT_DATE_SERIAL_YEAR_ADDRESS 0x538AU
-#define YT_DATE_SERIAL_MONTH_ADDRESS 0x538EU
-#define YT_DATE_SERIAL_YEAR_TERMINAL_ADDRESS 0x5392U
-#define YT_DATE_SERIAL_YEAR_COUNTER_ADDRESS 0x5396U
 #define YT_TIME_SAVED_CURSOR_ROW_ADDRESS 0x5372U
 #define YT_TIME_SAVED_CURSOR_COLUMN_ADDRESS 0x5376U
 #define YT_ACTION_FOREGROUND_SAVE_ADDRESS 0x51A8U
@@ -364,38 +356,12 @@ session_store_current_player_record(void *context, const uint8_t raw[4])
 	session->player_record_carrier = (int)qb_mbf32_decode(raw);
 }
 
-static void
-session_date_serial_store(void *context, enum yt_date_serial_store_kind kind,
-    const uint8_t raw[4])
-{
-	static const uint16_t addresses[] = {
-		[YT_DATE_SERIAL_STORE_YEAR] = YT_DATE_SERIAL_YEAR_ADDRESS,
-		[YT_DATE_SERIAL_STORE_MONTH] = YT_DATE_SERIAL_MONTH_ADDRESS,
-		[YT_DATE_SERIAL_STORE_YEAR_TERMINAL] =
-		    YT_DATE_SERIAL_YEAR_TERMINAL_ADDRESS,
-		[YT_DATE_SERIAL_STORE_YEAR_COUNTER] =
-		    YT_DATE_SERIAL_YEAR_COUNTER_ADDRESS,
-		[YT_DATE_SERIAL_STORE_RESULT] = YT_DATE_SERIAL_RESULT_ADDRESS,
-	};
-	struct yt_session *session = context;
-
-	if (session == NULL || raw == NULL
-	    || (size_t)kind >= YT_ARRAY_LEN(addresses))
-		return;
-	yt_route_process_set_raw_single(&session->route_process,
-	    addresses[kind], raw);
-}
-
 static bool
 session_current_date_serial(struct yt_session *session, int *serial,
     int *adjusted_year, struct yt_error *error)
 {
-	uint8_t epoch_raw[4];
-
-	memcpy(epoch_raw, session->door->game.config.record.bytes + YT_F45,
-	    sizeof(epoch_raw));
-	return yt_current_date_serial_observed(epoch_raw, serial, adjusted_year,
-	    session_date_serial_store, session, error);
+	return yt_current_date_serial(session->door->game.config.epoch_year,
+	    serial, adjusted_year, error);
 }
 
 static int
@@ -3116,10 +3082,6 @@ startup_pre_admission(struct yt_session *session, struct yt_error *error)
 	if (!session_current_date_serial(session, &today, &adjusted_year,
 	    error))
 		return false;
-	session_set_process_single(session, YT_DATE_SERIAL_RESULT_ADDRESS,
-	    (float)today);
-	yt_route_process_copy_raw_single(&session->route_process,
-	    YT_DATE_SERIAL_RESULT_ADDRESS, YT_STARTUP_DATE_SERIAL_ADDRESS);
 	session->door->game.today = today;
 	session->door->game.adjusted_year = adjusted_year;
 	if (!lockout(session, error))
@@ -3289,8 +3251,9 @@ construct_player_visible(struct yt_session *session, struct yt_error *error)
 	    strlen("Your ship has been built."), SESSION_PRESENT_LINE,
 	    "player constructor row", error))
 		return false;
-	yt_route_process_raw_single(&session->route_process,
-	    YT_STARTUP_DATE_SERIAL_ADDRESS, date_raw);
+	if (qb_mbf32_encode((float)session->door->game.today, date_raw)
+	    != QB_MBF_OK)
+		return false;
 	memcpy(turns_raw, session->door->game.config.record.bytes + YT_F49,
 	    sizeof(turns_raw));
 	if (yt_game_construct_player(&session->door->game,
@@ -3605,8 +3568,9 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 		float startup_day;
 		bool self_kill;
 
-		yt_route_process_raw_single(&session->route_process,
-		    YT_STARTUP_DATE_SERIAL_ADDRESS, today_raw);
+		if (qb_mbf32_encode((float)session->door->game.today, today_raw)
+		    != QB_MBF_OK)
+			return false;
 		memcpy(turns_raw, session->door->game.config.record.bytes + YT_F49,
 		    sizeof(turns_raw));
 		memset(&daily, 0, sizeof(daily));
@@ -18584,7 +18548,6 @@ computer_nearest_ports(struct yt_session *session, struct yt_error *error)
 
 struct profit_session_context {
 	struct yt_session *session;
-	uint16_t date_result_copy_address;
 };
 
 static struct yt_session *
@@ -18611,15 +18574,12 @@ profit_session_read(void *context, enum yt_profit_field_kind kind,
 static bool
 profit_session_day(void *context, float *day, struct yt_error *error)
 {
-	struct profit_session_context *profit = context;
-	struct yt_session *session = profit->session;
+	struct yt_session *session = profit_context_session(context);
 	int today;
 	int adjusted_year;
 
 	if (!session_current_date_serial(session, &today, &adjusted_year, error))
 		return false;
-	yt_route_process_copy_raw_single(&session->route_process,
-	    YT_DATE_SERIAL_RESULT_ADDRESS, profit->date_result_copy_address);
 	session->door->game.today = today;
 	session->door->game.adjusted_year = adjusted_year;
 	*day = (float)today;
@@ -18764,11 +18724,7 @@ computer_profit_exact(struct yt_session *session, bool all,
 		profit_session_checkpoint,
 	};
 	struct yt_profit_state state;
-	struct profit_session_context context = {
-		session,
-		all ? YT_PROFIT_LATE_DATE_SERIAL_ADDRESS
-		    : YT_PROFIT_EARLY_DATE_SERIAL_ADDRESS,
-	};
+	struct profit_session_context context = {session};
 	bool ok;
 
 	memset(&state, 0, sizeof(state));
