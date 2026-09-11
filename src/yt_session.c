@@ -15879,7 +15879,6 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
 		plasma_killed_sound,
 		plasma_killed_salvage,
 		session_store_destroyed,
-		session_player_cache_store,
 	};
 	struct yt_sector sector;
 	struct yt_projectile_plasma_fighter_state fighter;
@@ -15961,8 +15960,7 @@ plasma_reload_sector:
 			killed.energy = energy;
 			killed.blink = &session->presentation.blink;
 			killed.destroyed = &destroyed;
-			killed.sector_cache = NULL;
-			killed.cache_count = (YT_PLAYER_LAST + 1U);
+			killed.player_cache = &session->player_cache;
 			if (!yt_projectile_plasma_killed_run(&killed, &killed_ops,
 			    session, error))
 				return false;

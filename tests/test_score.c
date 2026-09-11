@@ -6006,14 +6006,7 @@ struct plasma_killed_tape {
 	uint8_t destroyed_raw[4];
 	size_t destroyed_store_count;
 	size_t destroyed_store_position;
-	uint8_t cache_raw[4];
-	int cache_record;
-	enum yt_player_cache_kind cache_kind;
-	size_t cache_store_count;
-	size_t cache_store_position;
-	size_t process_store_count;
-	size_t destroyed_store_ordinal;
-	size_t cache_store_ordinal;
+	struct yt_player_cache player_cache;
 };
 
 static bool
@@ -6142,32 +6135,16 @@ plasma_killed_store_destroyed(void *context, const uint8_t raw[4])
 
 	memcpy(tape->destroyed_raw, raw, sizeof(tape->destroyed_raw));
 	tape->destroyed_store_position = tape->event_count;
-	tape->destroyed_store_ordinal = ++tape->process_store_count;
 	++tape->destroyed_store_count;
-}
-
-static void
-plasma_killed_store_cache(void *context, int player_record,
-    enum yt_player_cache_kind kind, const uint8_t raw[4])
-{
-	struct plasma_killed_tape *tape = context;
-
-	memcpy(tape->cache_raw, raw, sizeof(tape->cache_raw));
-	tape->cache_record = player_record;
-	tape->cache_kind = kind;
-	tape->cache_store_position = tape->event_count;
-	tape->cache_store_ordinal = ++tape->process_store_count;
-	++tape->cache_store_count;
 }
 
 static void
 plasma_killed_fixture(struct plasma_killed_tape *tape,
     struct yt_projectile_plasma_killed_state *state, double *energy,
-    float *blink, bool *destroyed, float cache[8])
+    float *blink, bool *destroyed)
 {
 	memset(tape, 0, sizeof(*tape));
 	memset(state, 0, sizeof(*state));
-	memset(cache, 0, 8U * sizeof(cache[0]));
 	tape->fail_at = SIZE_MAX;
 	memset(tape->player_source.record.bytes, 0xa5,
 	    sizeof(tape->player_source.record.bytes));
@@ -6187,15 +6164,14 @@ plasma_killed_fixture(struct plasma_killed_tape *tape,
 	*energy = 0.5;
 	*blink = 0.0f;
 	*destroyed = false;
-	cache[2] = 7.0f;
+	tape->player_cache.sector[2] = 7.0f;
 	state->victim = 3;
 	state->shooter = 2;
 	state->sector = 7;
 	state->energy = energy;
 	state->blink = blink;
 	state->destroyed = destroyed;
-	state->sector_cache = cache;
-	state->cache_count = 8U;
+	state->player_cache = &tape->player_cache;
 }
 
 static bool
@@ -6211,7 +6187,6 @@ check_projectile_plasma_killed_transaction(void)
 		plasma_killed_test_sound,
 		plasma_killed_test_salvage,
 		plasma_killed_store_destroyed,
-		plasma_killed_store_cache,
 	};
 	static const int ordinary_events[] = {
 		PLASMA_KILLED_READ_PLAYER,
@@ -6236,11 +6211,10 @@ check_projectile_plasma_killed_transaction(void)
 	struct yt_record expected_sector;
 	double energy;
 	float blink;
-	float cache[8];
 	bool destroyed;
 	size_t failure;
 
-	plasma_killed_fixture(&tape, &state, &energy, &blink, &destroyed, cache);
+	plasma_killed_fixture(&tape, &state, &energy, &blink, &destroyed);
 	expected_player = tape.player_source.record;
 	(void)yt_record_set_number(&expected_player, YT_F129, 0.0f);
 	(void)yt_record_set_number(&expected_player, YT_F93, 0.0f);
@@ -6251,7 +6225,8 @@ check_projectile_plasma_killed_transaction(void)
 	    || memcmp(tape.events, ordinary_events, sizeof(ordinary_events)) != 0
 	    || state.self_hit || state.saved_mines != 3.0f
 	    || state.route != YT_PROJECTILE_PLASMA_KILLED_RELOAD_SECTOR
-	    || blink != 1.0f || destroyed || cache[2] != 7.0f
+	    || blink != 1.0f || destroyed
+	    || tape.player_cache.sector[2] != 7.0f
 	    || tape.player_read_record != 3 || tape.player_write_record != 3
 	    || tape.player_written.mines != 0.0f
 	    || tape.player_written.danger_scanner != 0.0f
@@ -6273,7 +6248,7 @@ check_projectile_plasma_killed_transaction(void)
 	    || tape.salvage_victim != 3 || tape.salvage_shooter != 2)
 		return false;
 
-	plasma_killed_fixture(&tape, &state, &energy, &blink, &destroyed, cache);
+	plasma_killed_fixture(&tape, &state, &energy, &blink, &destroyed);
 	tape.player_source.mines = 0.0f;
 	(void)yt_record_set_number(&tape.player_source.record, YT_F129, 0.0f);
 	if (!yt_projectile_plasma_killed_run(&state, &ops, &tape, NULL)
@@ -6281,7 +6256,7 @@ check_projectile_plasma_killed_transaction(void)
 	    || tape.event_count != 6U || tape.output_count != 1U)
 		return false;
 
-	plasma_killed_fixture(&tape, &state, &energy, &blink, &destroyed, cache);
+	plasma_killed_fixture(&tape, &state, &energy, &blink, &destroyed);
 	tape.player_source.mines = -2.0f;
 	(void)yt_record_set_number(&tape.player_source.record, YT_F129, -2.0f);
 	energy = 100.0;
@@ -6290,9 +6265,8 @@ check_projectile_plasma_killed_transaction(void)
 	    || tape.sector_written.mines != 2.0f || tape.output_count != 2U)
 		return false;
 
-	plasma_killed_fixture(&tape, &state, &energy, &blink, &destroyed, cache);
+	plasma_killed_fixture(&tape, &state, &energy, &blink, &destroyed);
 	state.victim = 2;
-	state.sector_cache = NULL;
 	tape.player_source.mines = 0.0f;
 	tape.player_source.name_length = 40000.0f;
 	(void)yt_record_set_number(&tape.player_source.record, YT_F129, 0.0f);
@@ -6303,13 +6277,10 @@ check_projectile_plasma_killed_transaction(void)
 	    || tape.event_count != 3U || tape.output_count != 1U
 	    || tape.destroyed_store_count != 1U
 	    || tape.destroyed_store_position != 3U
-	    || tape.destroyed_store_ordinal != 1U
 	    || memcmp(tape.destroyed_raw,
 	    (const uint8_t[]){0x00, 0x00, 0x80, 0x81}, 4U) != 0
-	    || tape.cache_store_count != 1U || tape.cache_store_position != 3U
-	    || tape.cache_store_ordinal != 2U || tape.cache_record != 2
-	    || tape.cache_kind != YT_PLAYER_CACHE_SECTOR
-	    || memcmp(tape.cache_raw,
+	    || tape.player_cache.sector[2] != 0.0f
+	    || memcmp(tape.player_cache.sector_raw[2],
 	    (const uint8_t[]){0x00, 0x00, 0x80, 0x00}, 4U) != 0
 	    || tape.output_lengths[0] != sizeof(self_row) - 1U
 	    || tape.output_kinds[0] !=
@@ -6317,36 +6288,24 @@ check_projectile_plasma_killed_transaction(void)
 	    || memcmp(tape.output[0], self_row, sizeof(self_row) - 1U) != 0)
 		return false;
 
-	plasma_killed_fixture(&tape, &state, &energy, &blink, &destroyed, cache);
+	plasma_killed_fixture(&tape, &state, &energy, &blink, &destroyed);
 	state.victim = 2;
 	if (!yt_projectile_plasma_killed_run(&state, &ops, &tape, NULL)
-	    || !state.self_hit || !destroyed || cache[2] != 0.0f
+	    || !state.self_hit || !destroyed
+	    || tape.player_cache.sector[2] != 0.0f
 	    || state.route != YT_PROJECTILE_PLASMA_KILLED_RELOAD_SECTOR
 	    || tape.event_count != 6U || tape.output_count != 2U
 	    || tape.sector_written.mines != 7.0f
 	    || tape.destroyed_store_count != 1U
 	    || tape.destroyed_store_position != 6U
-	    || tape.destroyed_store_ordinal != 1U
 	    || memcmp(tape.destroyed_raw,
 	    (const uint8_t[]){0x00, 0x00, 0x80, 0x81}, 4U) != 0
-	    || tape.cache_store_count != 1U || tape.cache_store_position != 6U
-	    || tape.cache_store_ordinal != 2U || tape.cache_record != 2
-	    || tape.cache_kind != YT_PLAYER_CACHE_SECTOR
-	    || memcmp(tape.cache_raw,
+	    || memcmp(tape.player_cache.sector_raw[2],
 	    (const uint8_t[]){0x00, 0x00, 0x80, 0x00}, 4U) != 0)
 		return false;
 
-	plasma_killed_fixture(&tape, &state, &energy, &blink, &destroyed, cache);
-	state.victim = 2;
-	state.cache_count = 2U;
-	tape.player_source.mines = 0.0f;
-	(void)yt_record_set_number(&tape.player_source.record, YT_F129, 0.0f);
-	if (yt_projectile_plasma_killed_run(&state, &ops, &tape, NULL))
-		return false;
-
 	for (failure = 1U; failure <= YT_ARRAY_LEN(ordinary_events); ++failure) {
-		plasma_killed_fixture(&tape, &state, &energy, &blink, &destroyed,
-		    cache);
+		plasma_killed_fixture(&tape, &state, &energy, &blink, &destroyed);
 		tape.fail_at = failure;
 		if (yt_projectile_plasma_killed_run(&state, &ops, &tape, NULL)
 		    || tape.event_count != failure

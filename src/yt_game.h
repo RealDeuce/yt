@@ -1589,8 +1589,7 @@ struct yt_projectile_plasma_killed_state {
 	double *energy;
 	float *blink;
 	bool *destroyed;
-	float *sector_cache;
-	size_t cache_count;
+	struct yt_player_cache *player_cache;
 	bool self_hit;
 	float saved_mines;
 	struct yt_player victim_persistence;
@@ -1617,7 +1616,6 @@ struct yt_projectile_plasma_killed_ops {
 	yt_projectile_plasma_fighter_sound_fn sound;
 	yt_projectile_plasma_killed_child_fn salvage;
 	yt_destroyed_store_fn store_destroyed;
-	yt_player_cache_store_fn store_cache;
 };
 bool yt_projectile_plasma_killed_run(
     struct yt_projectile_plasma_killed_state *state,

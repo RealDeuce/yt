@@ -14705,7 +14705,7 @@ yt_projectile_plasma_killed_run(
 
 	if (state == NULL || ops == NULL || state->energy == NULL
 	    || state->blink == NULL || state->destroyed == NULL
-	    || (state->sector_cache == NULL && ops->store_cache == NULL)
+	    || state->player_cache == NULL
 	    || ops->read_player == NULL
 	    || ops->write_player == NULL || ops->present == NULL
 	    || ops->read_sector == NULL || ops->write_sector == NULL
@@ -14776,8 +14776,7 @@ yt_projectile_plasma_killed_run(
 	}
 
 	if (state->self_hit) {
-		if (state->shooter < 0
-		    || (size_t)state->shooter >= state->cache_count) {
+		if (!yt_player_cache_contains(state->shooter)) {
 			if (error != NULL) {
 				error->status = YT_RANGE;
 				snprintf(error->operation, sizeof(error->operation), "%s",
@@ -14788,11 +14787,8 @@ yt_projectile_plasma_killed_run(
 		*state->destroyed = true;
 		if (ops->store_destroyed != NULL)
 			ops->store_destroyed(context, basic_true);
-		if (state->sector_cache != NULL)
-			state->sector_cache[state->shooter] = 0.0f;
-		if (ops->store_cache != NULL)
-			ops->store_cache(context, state->shooter,
-			    YT_PLAYER_CACHE_SECTOR, cache_zero);
+		(void)yt_player_cache_set_raw(state->player_cache, state->shooter,
+		    YT_PLAYER_CACHE_SECTOR, cache_zero);
 	}
 	else {
 		if (!ops->death(context, state->victim, state->shooter, error)
