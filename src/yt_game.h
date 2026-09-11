@@ -1882,51 +1882,14 @@ enum yt_salvage_cargo_kind {
 	YT_SALVAGE_EQUIPMENT,
 };
 
-enum yt_current_player_store_kind {
-	YT_CURRENT_PLAYER_STORE_SECTOR,
-	YT_CURRENT_PLAYER_STORE_FIGHTERS,
-	YT_CURRENT_PLAYER_STORE_ADD_FLOAT_CALLBACK_RETURN,
-	YT_CURRENT_PLAYER_STORE_CURRENT_SECTOR_RECORD,
-	YT_CURRENT_PLAYER_STORE_TURNS,
-	YT_CURRENT_PLAYER_STORE_CREDITS,
-	YT_CURRENT_PLAYER_STORE_DANGER_SCANNER,
-	YT_CURRENT_PLAYER_STORE_MISSILES,
-	YT_CURRENT_PLAYER_STORE_MINES,
-	YT_CURRENT_PLAYER_STORE_TEAM,
-	YT_CURRENT_PLAYER_STORE_HOLDS,
-	YT_CURRENT_PLAYER_STORE_ORE,
-	YT_CURRENT_PLAYER_STORE_ORGANICS,
-	YT_CURRENT_PLAYER_STORE_EQUIPMENT,
-	YT_CURRENT_PLAYER_STORE_FIGHTERS_DOUBLE,
-	YT_CURRENT_PLAYER_STORE_MISSILES_DOUBLE,
-	YT_CURRENT_PLAYER_STORE_MINES_DOUBLE,
-	YT_CURRENT_PLAYER_STORE_CREDITS_DOUBLE,
-	YT_CURRENT_PLAYER_STORE_PLASMA,
-	YT_CURRENT_PLAYER_STORE_SCORE_DOUBLE,
-	YT_CURRENT_PLAYER_STORE_PORTS_OWNED,
-	YT_CURRENT_PLAYER_STORE_GROUND_FORCES,
-	YT_CURRENT_PLAYER_STORE_CLOAK,
-	YT_CURRENT_PLAYER_STORE_CLOAK_INDEX,
-	YT_CURRENT_PLAYER_STORE_SHIELDS,
-};
-
-typedef void (*yt_current_player_store_fn)(void *context,
-	    enum yt_current_player_store_kind kind, int16_t subscript,
-	    const uint8_t raw[8]);
-
 struct yt_current_player_hydration_state {
 	struct yt_player *player;
 	int player_record;
-	int last_player_record;
-	float player_record_expression;
 	uint8_t sector_record_offset_raw[4];
 	uint8_t anti_cloak_raw[4];
 	uint8_t conversion_mode;
-	bool allow_corrupt_player_record;
 	float *current_sector_record;
-	float *cloak_cache;
-	size_t cache_count;
-	yt_current_player_store_fn store;
+	struct yt_player_cache *player_cache;
 };
 
 typedef bool (*yt_current_player_read_fn)(void *context, int player_record,

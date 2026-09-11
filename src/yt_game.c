@@ -4311,52 +4311,21 @@ yt_current_player_hydrate_run(
 {
 	struct yt_player fresh;
 	uint8_t current_sector_raw[8] = {0};
-	uint8_t add_callback_raw[8] = {0x77U, 0xB3U};
-	uint8_t promoted[8];
 	enum qb_mbf_status add_status;
 	bool overflow;
 	int32_t anti_cloak;
-	int32_t cloak_index;
 	int record;
-
-#define HYDRATE_SINGLE(kind, offset) do { \
-	if (state->store != NULL) \
-		state->store(context, (kind), 0, fresh.record.bytes + (offset)); \
-} while (0)
-#define HYDRATE_DOUBLE(kind, offset) do { \
-	if (state->store != NULL) { \
-		memset(promoted, 0, 4U); \
-		memcpy(promoted + 4U, fresh.record.bytes + (offset), 4U); \
-		state->store(context, (kind), 0, promoted); \
-	} \
-} while (0)
 
 	if (state == NULL || state->player == NULL || read_player == NULL
 	    || state->current_sector_record == NULL)
 		return false;
 	record = state->player_record;
-	if (!state->allow_corrupt_player_record
-	    && (record < 2 || record > state->last_player_record)) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			error->system_error = 0;
-			(void)snprintf(error->operation, sizeof(error->operation), "%s",
-			    "current player hydration record");
-		}
-		return false;
-	}
 	if (!read_player(context, record, &fresh, error))
 		return false;
 
 	state->player->record = fresh.record;
 	state->player->sector = fresh.sector;
-	HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_SECTOR, YT_F57);
 	state->player->fighters = fresh.fighters;
-	HYDRATE_DOUBLE(YT_CURRENT_PLAYER_STORE_FIGHTERS, YT_F61);
-	if (state->store != NULL)
-		state->store(context,
-		    YT_CURRENT_PLAYER_STORE_ADD_FLOAT_CALLBACK_RETURN, 0,
-		    add_callback_raw);
 	add_status = current_player_add_single_raw(state->sector_record_offset_raw,
 	    fresh.record.bytes + YT_F57, fresh.record.bytes + YT_F61,
 	    current_sector_raw);
@@ -4365,44 +4334,21 @@ yt_current_player_hydrate_run(
 		    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_SECTOR_ADD,
 		    "current-player A41C sector ADD_FLOAT");
 	*state->current_sector_record = qb_mbf32_decode(current_sector_raw);
-	if (state->store != NULL)
-		state->store(context,
-		    YT_CURRENT_PLAYER_STORE_CURRENT_SECTOR_RECORD, 0,
-		    current_sector_raw);
 	state->player->turns = fresh.turns;
-	HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_TURNS, YT_F49);
 	state->player->credits = fresh.credits;
-	HYDRATE_DOUBLE(YT_CURRENT_PLAYER_STORE_CREDITS, YT_F81);
 	state->player->danger_scanner = fresh.danger_scanner;
-	HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_DANGER_SCANNER, YT_F93);
 	state->player->missiles = fresh.missiles;
-	HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_MISSILES, YT_F97);
 	state->player->mines = fresh.mines;
-	HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_MINES, YT_F129);
 	state->player->team = fresh.team;
-	HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_TEAM, YT_F89);
 	state->player->holds = fresh.holds;
-	HYDRATE_DOUBLE(YT_CURRENT_PLAYER_STORE_HOLDS, YT_F65);
 	state->player->ore = fresh.ore;
-	HYDRATE_DOUBLE(YT_CURRENT_PLAYER_STORE_ORE, YT_F69);
 	state->player->organics = fresh.organics;
-	HYDRATE_DOUBLE(YT_CURRENT_PLAYER_STORE_ORGANICS, YT_F73);
 	state->player->equipment = fresh.equipment;
-	HYDRATE_DOUBLE(YT_CURRENT_PLAYER_STORE_EQUIPMENT, YT_F77);
-	HYDRATE_DOUBLE(YT_CURRENT_PLAYER_STORE_FIGHTERS_DOUBLE, YT_F61);
-	HYDRATE_DOUBLE(YT_CURRENT_PLAYER_STORE_MISSILES_DOUBLE, YT_F97);
-	HYDRATE_DOUBLE(YT_CURRENT_PLAYER_STORE_MINES_DOUBLE, YT_F129);
-	HYDRATE_DOUBLE(YT_CURRENT_PLAYER_STORE_CREDITS_DOUBLE, YT_F81);
 	state->player->plasma = fresh.plasma;
-	HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_PLASMA, YT_F113);
 	state->player->score = fresh.score;
-	HYDRATE_DOUBLE(YT_CURRENT_PLAYER_STORE_SCORE_DOUBLE, YT_F109);
 	state->player->ports_owned = fresh.ports_owned;
-	HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_PORTS_OWNED, YT_F117);
 	state->player->ground_forces = fresh.ground_forces;
-	HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_GROUND_FORCES, YT_F121);
 	state->player->cloak = fresh.cloak;
-	HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_CLOAK, YT_F125);
 	anti_cloak = qb_cint_mbf32(state->anti_cloak_raw,
 	    state->conversion_mode, &overflow);
 	if (overflow)
@@ -4410,25 +4356,12 @@ yt_current_player_hydrate_run(
 		    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_ANTI_CLOAK_CINT,
 		    "current-player A41C anti-cloak CINT");
 	if ((int16_t)~(int16_t)anti_cloak != 0) {
-		cloak_index = qb_cint_mode(state->player_record_expression,
-		    state->conversion_mode, &overflow);
-		if (overflow)
-			return current_player_hydration_fault(error,
-			    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_PLAYER_INDEX_CINT,
-			    "current-player A41C player-index CINT");
-		if (cloak_index >= 0 && (size_t)cloak_index < state->cache_count
-		    && state->cloak_cache != NULL)
-			state->cloak_cache[cloak_index] = fresh.cloak;
-		if (state->store != NULL)
-			state->store(context,
-			    YT_CURRENT_PLAYER_STORE_CLOAK_INDEX,
-			    (int16_t)cloak_index, fresh.record.bytes + YT_F125);
+		if (state->player_cache != NULL)
+			(void)yt_player_cache_set_raw(state->player_cache, record,
+			    YT_PLAYER_CACHE_CLOAK,
+			    fresh.record.bytes + YT_F125);
 	}
 	state->player->shields = fresh.shields;
-	HYDRATE_SINGLE(YT_CURRENT_PLAYER_STORE_SHIELDS, YT_F53);
-
-#undef HYDRATE_DOUBLE
-#undef HYDRATE_SINGLE
 	return true;
 }
 

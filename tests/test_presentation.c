@@ -25200,7 +25200,6 @@ struct direct_warp_gate_get_state {
 	size_t accepted;
 	size_t seek_calls;
 	size_t read_calls;
-	size_t store_count;
 	int64_t terminal_position;
 	int64_t last_seek_offset;
 };
@@ -25280,19 +25279,6 @@ direct_warp_gate_read_player(void *context, int player_record,
 	return false;
 }
 
-static void
-direct_warp_gate_store(void *context,
-    enum yt_current_player_store_kind kind, int16_t subscript,
-    const uint8_t raw[8])
-{
-	struct direct_warp_gate_get_state *state = context;
-
-	(void)kind;
-	(void)subscript;
-	(void)raw;
-	++state->store_count;
-}
-
 static bool
 direct_emergency_warp_gate_get_failure_run(
     struct hostile_mines_hazard_fixture *fixture, bool hostile, bool ansi,
@@ -25346,12 +25332,7 @@ direct_emergency_warp_gate_get_failure_run(
 	memset(&hydration, 0, sizeof(hydration));
 	hydration.player = &fixture->emergency_player;
 	hydration.player_record = 2;
-	hydration.last_player_record = 51;
-	hydration.player_record_expression = 2.0f;
 	hydration.current_sector_record = &current_sector;
-	hydration.cloak_cache = cloak_cache;
-	hydration.cache_count = YT_ARRAY_LEN(cloak_cache);
-	hydration.store = direct_warp_gate_store;
 	if (qb_mbf32_encode(51.0f, hydration.sector_record_offset_raw)
 	    != QB_MBF_OK
 	    || qb_mbf32_encode(0.0f, hydration.anti_cloak_raw) != QB_MBF_OK) {
@@ -25483,7 +25464,6 @@ test_direct_emergency_warp_gate_get_failures(void)
 			    == gate.terminal_position
 			    && gate.database.last_get.registered
 			    && gate.database.last_get.handle_open
-			    && gate.store_count == 0U
 			    && gate.field_record == 2 && gate.field_player);
 			CHECK(projection.site
 			    == YT_BASIC_FAULT_CURRENT_PLAYER_A41C_GET
@@ -25547,17 +25527,12 @@ test_direct_emergency_warp_gate_get_failures(void)
 enum direct_warp_gate_runtime_failure {
 	DIRECT_WARP_GATE_SECTOR_ADD,
 	DIRECT_WARP_GATE_ANTI_CLOAK_CINT,
-	DIRECT_WARP_GATE_PLAYER_INDEX_CINT,
 };
 
 struct direct_warp_gate_runtime_state {
 	struct yt_player fresh;
 	enum direct_warp_gate_runtime_failure failure;
 	size_t read_count;
-	enum yt_current_player_store_kind stores[24];
-	int16_t subscripts[24];
-	uint8_t raw[24][8];
-	size_t store_count;
 };
 
 static bool
@@ -25568,26 +25543,10 @@ direct_warp_gate_runtime_read(void *context, int player_record,
 
 	(void)error;
 	++state->read_count;
-	if (player_record != (state->failure
-	    == DIRECT_WARP_GATE_PLAYER_INDEX_CINT ? 32768 : 2))
+	if (player_record != 2)
 		return false;
 	*player = state->fresh;
 	return true;
-}
-
-static void
-direct_warp_gate_runtime_store(void *context,
-    enum yt_current_player_store_kind kind, int16_t subscript,
-    const uint8_t raw[8])
-{
-	struct direct_warp_gate_runtime_state *state = context;
-
-	if (state->store_count >= YT_ARRAY_LEN(state->stores))
-		return;
-	state->stores[state->store_count] = kind;
-	state->subscripts[state->store_count] = subscript;
-	memcpy(state->raw[state->store_count], raw, 8U);
-	++state->store_count;
 }
 
 static bool
@@ -25647,17 +25606,8 @@ direct_emergency_warp_gate_runtime_failure_run(
 	yt_player_decode(&gate->fresh, &fresh_record);
 	memset(&hydration, 0, sizeof(hydration));
 	hydration.player = &fixture->emergency_player;
-	hydration.player_record = failure == DIRECT_WARP_GATE_PLAYER_INDEX_CINT
-	    ? 32768 : 2;
-	hydration.last_player_record = 51;
-	hydration.player_record_expression = failure
-	    == DIRECT_WARP_GATE_PLAYER_INDEX_CINT ? 32768.0f : 2.0f;
-	hydration.allow_corrupt_player_record = failure
-	    == DIRECT_WARP_GATE_PLAYER_INDEX_CINT;
+	hydration.player_record = 2;
 	hydration.current_sector_record = &current_sector;
-	hydration.cloak_cache = cloak_cache;
-	hydration.cache_count = YT_ARRAY_LEN(cloak_cache);
-	hydration.store = direct_warp_gate_runtime_store;
 	if (qb_mbf32_encode(
 	    failure == DIRECT_WARP_GATE_SECTOR_ADD ? 1.0e38f : 51.0f,
 	    hydration.sector_record_offset_raw) != QB_MBF_OK
@@ -25678,12 +25628,7 @@ direct_emergency_warp_gate_runtime_failure_run(
 	expected.sector = gate->fresh.sector;
 	expected.fighters = gate->fresh.fighters;
 	if (failure == DIRECT_WARP_GATE_SECTOR_ADD) {
-		return gate->store_count == 3U
-		    && gate->stores[0] == YT_CURRENT_PLAYER_STORE_SECTOR
-		    && gate->stores[1] == YT_CURRENT_PLAYER_STORE_FIGHTERS
-		    && gate->stores[2]
-		    == YT_CURRENT_PLAYER_STORE_ADD_FLOAT_CALLBACK_RETURN
-		    && current_sector == 784.0f
+		return current_sector == 784.0f
 		    && memcmp(cloak_cache,
 		    (const float[4]){-1.0f, -2.0f, 0.5f, -4.0f},
 		    sizeof(cloak_cache)) == 0
@@ -25705,9 +25650,7 @@ direct_emergency_warp_gate_runtime_failure_run(
 	expected.ports_owned = gate->fresh.ports_owned;
 	expected.ground_forces = gate->fresh.ground_forces;
 	expected.cloak = gate->fresh.cloak;
-	return gate->store_count == 23U
-	    && gate->stores[22] == YT_CURRENT_PLAYER_STORE_CLOAK
-	    && current_sector == 57.0f
+	return current_sector == 57.0f
 	    && memcmp(cloak_cache,
 	    (const float[4]){-1.0f, -2.0f, 0.5f, -4.0f},
 	    sizeof(cloak_cache)) == 0
@@ -25752,9 +25695,6 @@ test_direct_emergency_warp_gate_runtime_failures(void)
 		{DIRECT_WARP_GATE_ANTI_CLOAK_CINT,
 		    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_ANTI_CLOAK_CINT,
 		    0xA548U, 0xA54BU, 0xA545U},
-		{DIRECT_WARP_GATE_PLAYER_INDEX_CINT,
-		    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_PLAYER_INDEX_CINT,
-		    0xA557U, 0xA55AU, 0xA554U},
 	};
 	struct physical_viewer_join viewer;
 	struct yt_file_viewer_stream_state stream;
@@ -28466,7 +28406,7 @@ struct direct_warp_attack_entry_a41c_failure_state {
 	struct yt_record player_field;
 	struct yt_player expected_player;
 	float current_sector;
-	float cloak_cache[4];
+	struct yt_player_cache player_cache;
 };
 
 static bool
@@ -28547,12 +28487,7 @@ direct_emergency_warp_fresh_hostile_attack_entry_a41c_failure(
 	memset(&hydration, 0, sizeof(hydration));
 	hydration.player = &fixture->emergency_player;
 	hydration.player_record = 2;
-	hydration.last_player_record = 51;
-	hydration.player_record_expression = 2.0f;
 	hydration.current_sector_record = &current_sector;
-	hydration.cloak_cache = cloak_cache;
-	hydration.cache_count = YT_ARRAY_LEN(cloak_cache);
-	hydration.store = direct_warp_gate_store;
 	if (qb_mbf32_encode(51.0f, hydration.sector_record_offset_raw)
 	    != QB_MBF_OK
 	    || qb_mbf32_encode(0.0f, hydration.anti_cloak_raw) != QB_MBF_OK) {
@@ -28669,19 +28604,15 @@ direct_emergency_warp_fresh_hostile_attack_opening_success(
 	    ? 3U : 0U;
 	before = fixture->emergency_player;
 	entry->current_sector = 1054.0f;
-	entry->cloak_cache[0] = -1.0f;
-	entry->cloak_cache[1] = -2.0f;
-	entry->cloak_cache[2] = -3.0f;
-	entry->cloak_cache[3] = -4.0f;
+	entry->player_cache.cloak[0] = -1.0f;
+	entry->player_cache.cloak[1] = -2.0f;
+	entry->player_cache.cloak[2] = -3.0f;
+	entry->player_cache.cloak[3] = -4.0f;
 	memset(&hydration, 0, sizeof(hydration));
 	hydration.player = &fixture->emergency_player;
 	hydration.player_record = 2;
-	hydration.last_player_record = 51;
-	hydration.player_record_expression = 2.0f;
 	hydration.current_sector_record = &entry->current_sector;
-	hydration.cloak_cache = entry->cloak_cache;
-	hydration.cache_count = YT_ARRAY_LEN(entry->cloak_cache);
-	hydration.store = direct_warp_gate_store;
+	hydration.player_cache = &entry->player_cache;
 	if (qb_mbf32_encode(51.0f, hydration.sector_record_offset_raw)
 	    != QB_MBF_OK
 	    || qb_mbf32_encode(0.0f, hydration.anti_cloak_raw) != QB_MBF_OK) {
@@ -28758,7 +28689,7 @@ struct direct_warp_attack_combat_join {
 	struct yt_fighter_shield_spill_state spill;
 	float current_sector_record;
 	float sector_record_offset;
-	float cloak_cache[4];
+	struct yt_player_cache player_cache;
 	uint8_t owner_raw[4];
 	uint8_t selector_raw[4];
 	uint8_t quantum_raw[4];
@@ -28802,7 +28733,6 @@ struct direct_warp_attack_combat_join {
 	size_t surrender_latch_stores;
 	size_t sector_reads;
 	size_t a41c_reads;
-	size_t a41c_stores;
 	size_t sound_calls;
 	size_t random_calls;
 	size_t quantum_stores;
@@ -28921,21 +28851,6 @@ direct_warp_attack_combat_a41c_source(void *context, int player_record,
 	return true;
 }
 
-static void
-direct_warp_attack_combat_a41c_store(void *context,
-    enum yt_current_player_store_kind kind, int16_t subscript,
-    const uint8_t raw[8])
-{
-	struct direct_warp_attack_combat_join *join = context;
-
-	(void)subscript;
-	if (kind == YT_CURRENT_PLAYER_STORE_FIGHTERS)
-		memcpy(join->ship_raw, raw, sizeof(join->ship_raw));
-	else if (kind == YT_CURRENT_PLAYER_STORE_SHIELDS)
-		memcpy(join->shield_raw, raw, sizeof(join->shield_raw));
-	++join->a41c_stores;
-}
-
 static bool
 direct_warp_attack_combat_read_player(void *context, int player_record,
     struct yt_player *player, struct yt_error *error)
@@ -28946,19 +28861,24 @@ direct_warp_attack_combat_read_player(void *context, int player_record,
 	memset(&hydration, 0, sizeof(hydration));
 	hydration.player = &join->fixture->emergency_player;
 	hydration.player_record = player_record;
-	hydration.last_player_record = 51;
-	hydration.player_record_expression = (float)player_record;
 	hydration.current_sector_record = &join->current_sector_record;
-	hydration.cloak_cache = join->cloak_cache;
-	hydration.cache_count = YT_ARRAY_LEN(join->cloak_cache);
-	hydration.store = direct_warp_attack_combat_a41c_store;
+	hydration.player_cache = &join->player_cache;
 	if (qb_mbf32_encode(join->sector_record_offset,
-	    hydration.sector_record_offset_raw)
-	    != QB_MBF_OK
-	    || qb_mbf32_encode(0.0f, hydration.anti_cloak_raw) != QB_MBF_OK
-	    || !yt_current_player_hydrate_run(&hydration,
-	    direct_warp_attack_combat_a41c_source, join, error))
+	    hydration.sector_record_offset_raw) != QB_MBF_OK
+	    || qb_mbf32_encode(0.0f, hydration.anti_cloak_raw) != QB_MBF_OK)
 		return false;
+	if (!yt_current_player_hydrate_run(&hydration,
+	    direct_warp_attack_combat_a41c_source, join, error)) {
+		memset(join->ship_raw, 0, 4U);
+		memcpy(join->ship_raw + 4U,
+		    join->fixture->emergency_player.record.bytes + YT_F61, 4U);
+		return false;
+	}
+	memset(join->ship_raw, 0, 4U);
+	memcpy(join->ship_raw + 4U,
+	    join->fixture->emergency_player.record.bytes + YT_F61, 4U);
+	memcpy(join->shield_raw,
+	    join->fixture->emergency_player.record.bytes + YT_F53, 4U);
 	*player = join->fixture->emergency_player;
 	return true;
 }
@@ -29830,12 +29750,8 @@ direct_warp_attack_victory_mutate_credits(void *context,
 		.hydration = {
 			.player = player,
 			.player_record = 2,
-			.last_player_record = 51,
-			.player_record_expression = player_record,
 			.current_sector_record = &join->current_sector_record,
-			.cloak_cache = join->cloak_cache,
-			.cache_count = YT_ARRAY_LEN(join->cloak_cache),
-			.store = direct_warp_attack_combat_a41c_store,
+			.player_cache = &join->player_cache,
 		},
 		.argument = argument,
 	};
@@ -30061,10 +29977,10 @@ direct_warp_attack_cleared_join_run(
 	join->cycle = cycle;
 	join->current_sector_record = 1054.0f;
 	join->sector_record_offset = 51.0f;
-	join->cloak_cache[0] = -1.0f;
-	join->cloak_cache[1] = -2.0f;
-	join->cloak_cache[2] = -3.0f;
-	join->cloak_cache[3] = -4.0f;
+	join->player_cache.cloak[0] = -1.0f;
+	join->player_cache.cloak[1] = -2.0f;
+	join->player_cache.cloak[2] = -3.0f;
+	join->player_cache.cloak[3] = -4.0f;
 	memset(&record, 0x3c, sizeof(record));
 	(void)yt_record_set_number(&record, YT_F81, 1.0f);
 	(void)yt_record_set_number(&record, YT_F85, 2.0f);
@@ -30758,12 +30674,7 @@ direct_emergency_warp_fresh_hostile_menu_get_failure(
 	memset(&hydration, 0, sizeof(hydration));
 	hydration.player = &fixture->emergency_player;
 	hydration.player_record = 2;
-	hydration.last_player_record = 51;
-	hydration.player_record_expression = 2.0f;
 	hydration.current_sector_record = &current_sector;
-	hydration.cloak_cache = cloak_cache;
-	hydration.cache_count = YT_ARRAY_LEN(cloak_cache);
-	hydration.store = direct_warp_gate_store;
 	if (qb_mbf32_encode(51.0f, hydration.sector_record_offset_raw)
 	    != QB_MBF_OK
 	    || qb_mbf32_encode(0.0f, hydration.anti_cloak_raw) != QB_MBF_OK) {
@@ -33883,8 +33794,7 @@ test_direct_emergency_warp_hostile_menu_get_failures(void)
 			    && gate.database.last_get.terminal_position
 			    == gate.terminal_position
 			    && gate.database.last_get.registered
-			    && gate.database.last_get.handle_open
-			    && gate.store_count == 0U);
+			    && gate.database.last_get.handle_open);
 			CHECK(projection.site
 			    == YT_BASIC_FAULT_CURRENT_PLAYER_A41C_GET
 			    && projection.error_number == cuts[cut].error_number
@@ -34632,8 +34542,7 @@ test_direct_emergency_warp_hostile_attack_sector_get_failures(void)
 			    && gate.database.last_get.terminal_position
 			    == gate.terminal_position
 			    && gate.database.last_get.registered
-			    && gate.database.last_get.handle_open
-			    && gate.store_count == 0U);
+			    && gate.database.last_get.handle_open);
 			CHECK(projection.site
 			    == YT_BASIC_FAULT_HOSTILE_ATTACK_SECTOR_GET
 			    && projection.error_number == cuts[cut].error_number
@@ -34808,8 +34717,7 @@ test_direct_emergency_warp_hostile_attack_entry_a41c_failures(void)
 				    && viewer.join.sample_calls == callers[caller].samples
 				    && entry.io.seek_calls == 2U
 				    && entry.io.read_calls == (cuts[cut].failure
-				    == DIRECT_WARP_GATE_SEEK_52 ? 1U : 2U)
-				    && entry.io.store_count == 0U);
+				    == DIRECT_WARP_GATE_SEEK_52 ? 1U : 2U));
 				CHECK(entry.sector_get.outcome == YT_DATABASE_GET_RETURNED
 				    && entry.sector_get.current_record == 1054U
 				    && entry.sector_get.record_index == 1053U
@@ -34999,7 +34907,6 @@ test_direct_emergency_warp_hostile_attack_opening_success(void)
 				    successes[player_success].success, &entry));
 				CHECK(entry.io.seek_calls == 2U
 				    && entry.io.read_calls == 2U
-				    && entry.io.store_count == 25U
 				    && entry.io.field_record == 2
 				    && entry.io.field_player
 				    && cycle.final_field_record == 2
@@ -35040,12 +34947,12 @@ test_direct_emergency_warp_hostile_attack_opening_success(void)
 				    && entry.current_sector
 				    == (successes[player_success].accepted == YT_RECORD_SIZE
 				    ? 1054.0f : 51.0f)
-				    && entry.cloak_cache[0] == -1.0f
-				    && entry.cloak_cache[1] == -2.0f
-				    && entry.cloak_cache[2]
+				    && entry.player_cache.cloak[0] == -1.0f
+				    && entry.player_cache.cloak[1] == -2.0f
+				    && entry.player_cache.cloak[2]
 				    == (successes[player_success].accepted == YT_RECORD_SIZE
 				    ? 36.0f : 0.0f)
-				    && entry.cloak_cache[3] == -4.0f);
+				    && entry.player_cache.cloak[3] == -4.0f);
 				CHECK(cycle.fresh_hostile_attack_post_sector_initialized
 				    && memcmp(cycle.fresh_hostile_attack_owner_cvs_raw,
 				    &entry.sector_field.bytes[YT_F85], 4U) == 0
@@ -35197,10 +35104,10 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 		join.cycle = &cycle;
 		join.current_sector_record = 1054.0f;
 		join.sector_record_offset = 51.0f;
-		join.cloak_cache[0] = -1.0f;
-		join.cloak_cache[1] = -2.0f;
-		join.cloak_cache[2] = -3.0f;
-		join.cloak_cache[3] = -4.0f;
+		join.player_cache.cloak[0] = -1.0f;
+		join.player_cache.cloak[1] = -2.0f;
+		join.player_cache.cloak[2] = -3.0f;
+		join.player_cache.cloak[3] = -4.0f;
 		memset(&record, 0x3c, sizeof(record));
 		(void)yt_record_set_number(&record, YT_F81, 1250.0f);
 		(void)yt_record_set_number(&record, YT_F85, 2.0f);
@@ -35277,7 +35184,7 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 		    && !combat.surrender_checked && !combat.surrendered
 		    && !combat.spill_called);
 		CHECK(join.sector_reads == 1U && join.a41c_reads == 1U
-		    && join.a41c_stores == 25U && join.sound_calls == 1U
+		    && join.sound_calls == 1U
 		    && join.random_calls == 2U && join.quantum_stores == 1U
 		    && join.loss_stores == 1U && join.ship_stores == 1U
 		    && join.player_cache_calls == 1U
@@ -35314,7 +35221,7 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 		    && cycle.final_field_record == 1054
 		    && !cycle.final_field_player
 		    && join.current_sector_record == 1054.0f
-		    && join.cloak_cache[2] == 0.0f
+		    && join.player_cache.cloak[2] == 0.0f
 		    && memcmp(cycle.fresh_hostile_attack_owner_raw,
 		    join.entry_sector.record.bytes + YT_F85, 4U) == 0
 		    && memcmp(cycle.fresh_hostile_attack_attacker_loss_raw,
@@ -35361,8 +35268,7 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 			    && gate.database.last_get.terminal_position
 			    == gate.terminal_position
 			    && gate.database.last_get.registered
-			    && gate.database.last_get.handle_open
-			    && gate.store_count == 0U);
+			    && gate.database.last_get.handle_open);
 			CHECK(projection.site
 			    == YT_BASIC_FAULT_CURRENT_PLAYER_A41C_GET
 			    && projection.error_number
@@ -35424,7 +35330,7 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 		    && projection.identity->handler == 0xB2DAU
 		    && projection.disposition == YT_BASIC_FAULT_RESUME_GAMEPLAY
 		    && projection.main.route == YT_MAIN_ERROR_GAMEPLAY);
-		CHECK(join.a41c_reads == 2U && join.a41c_stores == 28U
+		CHECK(join.a41c_reads == 2U
 		    && cycle.fresh_hostile_player_reads == 3U
 		    && cycle.final_field_record == 2 && cycle.final_field_player
 		    && memcmp(&fixture.emergency_player.record, &corrupt_return,
@@ -35455,7 +35361,7 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 		    + (callers[caller].ansi ? 12U : 4U)
 		    && viewer.join.sample_calls == callers[caller].samples + 4U
 		    && viewer.join.pager.line_count == 0.0f);
-		CHECK(join.a41c_reads == 2U && join.a41c_stores == 50U
+		CHECK(join.a41c_reads == 2U
 		    && cycle.fresh_hostile_player_reads == 3U
 		    && cycle.final_field_record == 2 && cycle.final_field_player
 		    && fixture.emergency_player.fighters == 7.0f
@@ -35466,7 +35372,7 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 		    && memcmp(join.shield_raw,
 		    join.return_player.record.bytes + YT_F53, 4U) == 0
 		    && join.current_sector_record == 1054.0f
-		    && join.cloak_cache[2] == 13.0f
+		    && join.player_cache.cloak[2] == 13.0f
 		    && cycle.fresh_hostile_selected == 'B'
 		    && viewer.join.accumulator[0] == 'B'
 		    && viewer.join.accumulator[1] == '\0'
@@ -35603,7 +35509,7 @@ test_direct_emergency_warp_hostile_attack_defenders_cleared(void)
 			    && !combat.surrender_checked && !combat.surrendered
 			    && !combat.spill_called);
 			CHECK(join.sector_reads == 1U && join.a41c_reads == 2U
-			    && join.a41c_stores == 50U && join.sound_calls == 1U
+			    && join.sound_calls == 1U
 			    && join.random_calls == 2U && join.quantum_stores == 1U
 			    && join.loss_stores == 1U && join.ship_stores == 1U
 			    && join.persistence_player_reads == 2U
@@ -35764,7 +35670,7 @@ test_direct_emergency_warp_hostile_attack_surrender_accepted(void)
 		    && combat.deployed_remaining == 0.0
 		    && combat.tail.draw_consumed && combat.tail.defeated_presented
 		    && !combat.tail.victory_called);
-		CHECK(join.a41c_reads == 2U && join.a41c_stores == 50U
+		CHECK(join.a41c_reads == 2U
 		    && join.sound_calls == 1U && join.surrender_sound_calls == 2U
 		    && join.surrender_force_stores == 1U
 		    && join.surrender_latch_stores == 1U
@@ -35882,7 +35788,7 @@ test_direct_emergency_warp_hostile_attack_surrender_refused(void)
 		    && combat.deployed_remaining == 0.0
 		    && combat.tail.draw_consumed && combat.tail.defeated_presented
 		    && !combat.tail.victory_called);
-		CHECK(join.a41c_reads == 3U && join.a41c_stores == 75U
+		CHECK(join.a41c_reads == 3U
 		    && join.sound_calls == 1U && join.surrender_sound_calls == 1U
 		    && join.surrender_force_stores == 0U
 		    && join.surrender_latch_stores == 1U
@@ -36064,7 +35970,7 @@ test_direct_emergency_warp_hostile_forced_bribe_attack(void)
 		    && combat.deployed_remaining == 0.0
 		    && combat.tail.draw_consumed && combat.tail.defeated_presented
 		    && !combat.tail.victory_called);
-		CHECK(attack.a41c_reads == 3U && attack.a41c_stores == 75U
+		CHECK(attack.a41c_reads == 3U
 		    && attack.sound_calls == 1U
 		    && attack.surrender_sound_calls == 2U
 		    && attack.surrender_force_stores == 0U
@@ -36276,7 +36182,6 @@ test_direct_emergency_warp_hostile_forced_bribe_origins(void)
 			    && combat.tail.defeated_presented
 			    && !combat.tail.victory_called);
 			CHECK(attack.a41c_reads == (origin == 0U ? 4U : 3U)
-			    && attack.a41c_stores == (origin == 0U ? 100U : 75U)
 			    && attack.tail_player_reads == (origin == 0U ? 1U : 0U)
 			    && attack.sound_calls == 1U
 			    && attack.surrender_sound_calls == 2U
@@ -37402,7 +37307,7 @@ test_xannor_attack_tail_clearance_join(void)
 		    && tail.defeated_presented && !tail.victory_called
 		    && tail.bonus == 2.0f && tail.dominated_draw == 0.75f
 		    && tail.ship_fighters == 21.0 && tail.current.turns == 100.0f
-		    && join.a41c_reads == 1U && join.a41c_stores == 25U
+		    && join.a41c_reads == 1U
 		    && join.tail_player_reads == 1U
 		    && join.tail_player_writes == 1U
 		    && join.clearance_calls == 1U
@@ -37628,7 +37533,7 @@ test_xannor_attack_tail_clearance_failure_prefixes(void)
 			    && join.clearance_sound_attempts
 			    == (cut >= 5U ? 1U : 0U)
 			    && join.clearance_sound_calls == (cut >= 6U ? 1U : 0U)
-			    && join.a41c_reads == 1U && join.a41c_stores == 25U
+			    && join.a41c_reads == 1U
 			    && join.tail_player_reads == 1U
 			    && join.tail_player_writes == 1U
 			    && !join.unexpected_tail_effect);
@@ -37781,7 +37686,7 @@ test_xannor_attack_tail_victory_join(void)
 		    && join.victory_player_written.credits == 32000000.0f
 		    && memcmp(&join.victory_sector_written, &expected_sector,
 		    sizeof(expected_sector)) == 0
-		    && join.a41c_reads == 2U && join.a41c_stores == 50U
+		    && join.a41c_reads == 2U
 		    && join.random_calls == 6U && fixture.draw_position == 6U
 		    && !join.unexpected_tail_effect);
 		for (index = 0U; index < 3U; ++index) {
@@ -38010,7 +37915,6 @@ test_xannor_attack_tail_victory_failure_prefixes(void)
 			    && join.victory_wait_calls == (cut > 3U ? 1U : 0U)
 			    && join.victory_queue_clears == (cut >= 6U ? 1U : 0U)
 			    && join.a41c_reads == (cut > 6U ? 2U : 1U)
-			    && join.a41c_stores == (cut > 6U ? 50U : 25U)
 			    && join.victory_player_writes == (cut > 7U ? 1U : 0U)
 			    && join.victory_credit.hydrated == (cut > 6U)
 			    && join.victory_credit.overlay_applied == (cut >= 7U)
@@ -38211,7 +38115,7 @@ test_xannor_attack_combat_victory_join(void)
 		    && combat.tail.dominated_draw == 0.9f
 		    && combat.tail.current.turns == 99.0f);
 		CHECK(join.sector_reads == 1U && join.a41c_reads == 4U
-		    && join.a41c_stores == 100U && join.sound_calls == 1U
+		    && join.sound_calls == 1U
 		    && join.random_calls == 224U && fixture.draw_position == 224U
 		    && join.quantum_stores == 215U && join.loss_stores == 215U
 		    && join.ship_stores == 1U && join.player_cache_calls == 1U
@@ -38670,7 +38574,7 @@ test_direct_emergency_warp_xannor_attack_victory_join(void)
 		    && combat.tail.clearance_called
 		    && combat.tail.defeated_presented
 		    && combat.tail.victory_called);
-		CHECK(join.a41c_reads == 4U && join.a41c_stores == 100U
+		CHECK(join.a41c_reads == 4U
 		    && join.random_calls == 224U && fixture.draw_position == 231U
 		    && join.news_calls == 2U && join.clearance.complete
 		    && join.clearance.draws_consumed == 8U
