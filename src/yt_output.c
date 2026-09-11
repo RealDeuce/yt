@@ -7,21 +7,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-static struct yt_text_device_state remote_device;
-
-void
-yt_out_remote_device_reset(void)
-{
-	memset(&remote_device, 0, sizeof(remote_device));
-}
-
-void
-yt_out_remote_device_state(struct yt_text_device_state *state)
-{
-	if (state != NULL)
-		*state = remote_device;
-}
-
 void
 yt_out_plain(const char *text)
 {
@@ -40,40 +25,6 @@ yt_out_plain_bytes(const void *data, size_t length)
 		cursor += (size_t)amount;
 		length -= (size_t)amount;
 	}
-}
-
-static bool
-remote_device_write(void *context, enum yt_text_device_write_phase phase,
-    const uint8_t *data, size_t requested,
-    struct yt_text_device_write_observation *observation)
-{
-	(void)context;
-	(void)phase;
-	(void)data;
-	memset(observation, 0, sizeof(*observation));
-	observation->terminal_position = -1;
-	observation->accepted = requested;
-	return true;
-}
-
-static bool
-remote_device_apply_observed(const uint8_t *data, size_t length, bool line,
-    uint16_t *basic_error)
-{
-	struct yt_text_device_print_result result;
-	struct yt_error error;
-	bool ok;
-
-	if (basic_error != NULL)
-		*basic_error = 0U;
-	remote_device.selected = true;
-	yt_error_clear(&error);
-	ok = yt_text_device_print(&remote_device, data, length, line,
-	    YT_TEXT_DEVICE_COM1, 0x82U, 5U, remote_device_write, NULL,
-	    &result, &error);
-	if (!ok && basic_error != NULL)
-		*basic_error = result.basic_error;
-	return ok;
 }
 
 static void
@@ -111,8 +62,6 @@ present_combined(void *context, const uint8_t *data, size_t length, bool line)
 	static const uint8_t carriage_return = '\r';
 
 	(void)context;
-	if (!remote_device_apply_observed(data, length, line, NULL))
-		return false;
 	out_emulated_bytes(data, length);
 	if (line)
 		out_emulated_bytes(&carriage_return, 1U);
@@ -253,34 +202,6 @@ out_opening_text_result(struct yt_out_opening_context *opening,
 }
 
 static bool
-out_opening_remote_statement(struct yt_out_opening_context *opening,
-    const uint8_t *data, size_t length, bool newline,
-    struct yt_error *error)
-{
-	uint16_t basic_error;
-
-	for (;;) {
-		if (remote_device_apply_observed(data, length, newline,
-		    &basic_error)) {
-			opening->basic_error = 0U;
-			return true;
-		}
-		if (basic_error != 24U) {
-			if (error != NULL) {
-				error->status = YT_IO_ERROR;
-				error->system_error = 0;
-				(void)snprintf(error->operation,
-				    sizeof(error->operation), "%s",
-				    "remote opening PRINT");
-				error->path[0] = '\0';
-			}
-			return out_opening_text_result(opening, false,
-			    basic_error, error);
-		}
-	}
-}
-
-static bool
 out_opening_open_input(void *context, const char *path,
     struct yt_error *error)
 {
@@ -352,13 +273,9 @@ out_opening_present_remote(void *context, const uint8_t *line, size_t length,
     struct yt_error *error)
 {
 	static const uint8_t newline[] = {'\n', '\r'};
-	struct yt_out_opening_context *opening = context;
-
-	if (!out_opening_remote_statement(opening, line, length, false, error))
-		return false;
+	(void)context;
+	(void)error;
 	out_emulated_bytes(line, length);
-	if (!out_opening_remote_statement(opening, newline, 1U, true, error))
-		return false;
 	out_emulated_bytes(newline, sizeof(newline));
 	return true;
 }
@@ -384,15 +301,10 @@ out_opening_reset_remote(void *context, struct yt_error *error)
 {
 	static const uint8_t escape[] = "\x1b";
 	static const uint8_t suffix[] = "[0m";
-	struct yt_out_opening_context *opening = context;
 
-	if (!out_opening_remote_statement(opening, escape,
-	    sizeof(escape) - 1U, false, error))
-		return false;
+	(void)context;
+	(void)error;
 	out_emulated_bytes(escape, sizeof(escape) - 1U);
-	if (!out_opening_remote_statement(opening, suffix,
-	    sizeof(suffix) - 1U, false, error))
-		return false;
 	out_emulated_bytes(suffix, sizeof(suffix) - 1U);
 	return true;
 }

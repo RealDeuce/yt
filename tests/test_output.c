@@ -69,7 +69,6 @@ reset_calls(void)
 	clear_call_count = 0U;
 	current_row = 1;
 	current_column = 1;
-	yt_out_remote_device_reset();
 }
 
 void ODCALL
@@ -207,7 +206,6 @@ test_ansi_opening_routes(void)
 	const char *path = "test-output-opening.dat";
 	const char *missing_path = "TEST-OUTPUT-MISSING-53.ANS";
 	struct yt_error error;
-	struct yt_text_device_state device;
 	uint16_t open_basic_error = 0U;
 	FILE *file;
 	size_t waits = 0U;
@@ -252,9 +250,6 @@ test_ansi_opening_routes(void)
 	    && emulated_calls[1].remote_echo
 	    && emulated_calls[2].remote_echo
 	    && emulated_calls[3].remote_echo);
-	yt_out_remote_device_state(&device);
-	CHECK(device.index == 11U && device.column == 3U
-	    && device.buffer == 'm' && !device.pending && !device.selected);
 	CHECK(remove(path) == 0);
 
 	yt_error_clear(&error);
@@ -311,7 +306,6 @@ static void
 test_presentation_adapter(void)
 {
 	struct yt_present_result result;
-	struct yt_text_device_state device;
 	int row;
 	int column;
 
@@ -330,10 +324,6 @@ test_presentation_adapter(void)
 	    && emulated_calls[0].remote_echo && emulated_calls[1].remote_echo
 	    && attribute_call_count == 0U && cursor_call_count == 0U
 	    && putch_call_count == 0U && clear_call_count == 0U);
-	yt_out_remote_device_state(&device);
-	CHECK(device.index == 5U && device.column == 0U
-	    && device.buffer == '\r' && !device.pending && !device.selected
-	    && !device.physical_unknown);
 
 	reset_calls();
 	od_control.od_force_local = TRUE;
@@ -361,10 +351,9 @@ test_presentation_adapter(void)
 }
 
 static void
-test_remote_device_empty_completion(void)
+test_empty_output(void)
 {
 	struct yt_present_result result;
-	struct yt_text_device_state device;
 
 	memset(&result, 0, sizeof(result));
 	set_event(&result.events[result.event_count++],
@@ -373,10 +362,7 @@ test_remote_device_empty_completion(void)
 	od_control.od_force_local = FALSE;
 	od_control.baud = 38400U;
 	yt_out_present_result(&result);
-	yt_out_remote_device_state(&device);
-	CHECK(output_call_count == 0U && emulated_call_count == 0U
-	    && device.index == 0U && device.column == 0U
-	    && !device.pending && !device.selected);
+	CHECK(output_call_count == 0U && emulated_call_count == 0U);
 }
 
 static void
@@ -440,7 +426,7 @@ main(void)
 	test_counted_combined_route();
 	test_ansi_opening_routes();
 	test_presentation_adapter();
-	test_remote_device_empty_completion();
+	test_empty_output();
 	test_sound_adapter();
 	if (failures != 0) {
 		fprintf(stderr, "test_output: %d failure(s)\n", failures);
