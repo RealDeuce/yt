@@ -3481,15 +3481,9 @@ test_attention(void)
 	struct yt_present_state current = state(true);
 	struct yt_present_result result;
 	uint8_t expected[256];
-	uint8_t background_raw[] = {0xa5, 0x5a, 0x80, 0x00};
-	uint8_t bold_raw[] = {0x11, 0x22, 0x80, 0x00};
-	uint8_t blink_raw[] = {0x33, 0x44, 0x80, 0x00};
 	uint8_t mode_raw[4];
 	uint8_t user_sound_raw[] = {0x5a, 0xa5, 0x80, 0x00};
 	uint8_t local_sound_raw[4];
-	static const uint8_t raw_zero[] = {0x00, 0x00, 0x00, 0x00};
-	static const uint8_t raw_one[] = {0x00, 0x00, 0x00, 0x81};
-	static const uint8_t dirty_bold[] = {0x11, 0x22, 0x80, 0x00};
 	uint8_t over_capacity[YT_PRESENT_REMOTE_SIZE + 1U];
 	size_t expected_length = 0;
 
@@ -3592,67 +3586,37 @@ test_attention(void)
 	    && current.bold == 0.0f && current.blink == 1.0f);
 
 	current = state(true);
-	yt_present_bind_background_process(&current, background_raw);
-	yt_present_bind_bold_process(&current, bold_raw);
-	yt_present_bind_blink_process(&current, blink_raw);
 	CHECK(yt_present_background(&current) == 0.0f
 	    && yt_present_bold(&current) == 0.0f
-	    && yt_present_blink(&current) == 0.0f
-	    && memcmp(background_raw, (uint8_t[]){0xa5, 0x5a, 0x80, 0x00},
-	    sizeof(background_raw)) == 0);
+	    && yt_present_blink(&current) == 0.0f);
 	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
-	CHECK(memcmp(background_raw,
-	    (uint8_t[]){0xa5, 0x5a, 0x80, 0x00},
-	    sizeof(background_raw)) == 0
-	    && memcmp(bold_raw, raw_zero, sizeof(bold_raw)) == 0
-	    && memcmp(blink_raw, raw_zero, sizeof(blink_raw)) == 0);
+	CHECK(current.background == 0.0f && current.bold == 0.0f
+	    && current.blink == 0.0f);
 	CHECK(yt_present_attention((const uint8_t *)"ALERT", 5U,
 	    &current, &result) == YT_PRESENT_OK);
 	CHECK(current.background == 0.0f
 	    && yt_present_background(&current) == 0.0f
-	    && memcmp(background_raw, raw_zero, sizeof(background_raw)) == 0
-	    && memcmp(bold_raw, raw_zero, sizeof(bold_raw)) == 0
-	    && memcmp(blink_raw, raw_zero, sizeof(blink_raw)) == 0);
+	    && current.bold == 0.0f && current.blink == 0.0f);
 
 	memset(over_capacity, 'Q', sizeof(over_capacity));
-	memcpy(background_raw, raw_zero, sizeof(background_raw));
-	memcpy(bold_raw, raw_zero, sizeof(bold_raw));
-	memcpy(blink_raw, raw_zero, sizeof(blink_raw));
 	current = state(true);
-	yt_present_bind_background_process(&current, background_raw);
-	yt_present_bind_bold_process(&current, bold_raw);
-	yt_present_bind_blink_process(&current, blink_raw);
 	CHECK(yt_present_attention(over_capacity, sizeof(over_capacity),
 	    &current, &result) == YT_PRESENT_CAPACITY);
 	CHECK(current.background == 1.0f
 	    && yt_present_background(&current) == 1.0f
-	    && memcmp(background_raw, raw_one, sizeof(background_raw)) == 0
-	    && memcmp(bold_raw, raw_zero, sizeof(bold_raw)) == 0
-	    && memcmp(blink_raw, raw_zero, sizeof(blink_raw)) == 0);
+	    && current.bold == 0.0f && current.blink == 0.0f);
 
-	memcpy(background_raw, raw_zero, sizeof(background_raw));
-	memcpy(bold_raw, dirty_bold, sizeof(bold_raw));
-	memcpy(blink_raw, raw_zero, sizeof(blink_raw));
 	current = state(false);
-	yt_present_bind_background_process(&current, background_raw);
-	yt_present_bind_bold_process(&current, bold_raw);
-	yt_present_bind_blink_process(&current, blink_raw);
 	CHECK(yt_present_attention((const uint8_t *)"ALERT", 5U,
 	    &current, &result) == YT_PRESENT_OK);
-	CHECK(memcmp(background_raw, raw_zero, sizeof(background_raw)) == 0
-	    && memcmp(bold_raw, dirty_bold, sizeof(bold_raw)) == 0
-	    && memcmp(blink_raw, raw_one, sizeof(blink_raw)) == 0);
+	CHECK(current.background == 0.0f && current.bold == 0.0f
+	    && current.blink == 1.0f);
 
-	memcpy(bold_raw, raw_zero, sizeof(bold_raw));
-	memcpy(blink_raw, raw_zero, sizeof(blink_raw));
 	current = state(true);
 	current.foreground = 40000.0f;
-	yt_present_bind_bold_process(&current, bold_raw);
-	yt_present_bind_blink_process(&current, blink_raw);
 	CHECK(yt_present_bold_line((const uint8_t *)"X", 1U,
 	    &current, &result) == YT_PRESENT_OVERFLOW);
-	CHECK(memcmp(bold_raw, raw_one, sizeof(bold_raw)) == 0
-	    && memcmp(blink_raw, raw_zero, sizeof(blink_raw)) == 0);
+	CHECK(current.bold == 1.0f && current.blink == 0.0f);
 }
 
 static void

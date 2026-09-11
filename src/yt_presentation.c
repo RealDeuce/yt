@@ -6,48 +6,20 @@
 #include <math.h>
 #include <string.h>
 
-void
-yt_present_bind_background_process(struct yt_present_state *state,
-    uint8_t background[4])
-{
-	if (state == NULL)
-		return;
-	state->background_process = background;
-	if (background != NULL)
-		state->background = qb_mbf32_decode(background);
-}
-
 float
 yt_present_background(const struct yt_present_state *state)
 {
 	if (state == NULL)
 		return 0.0f;
-	if (state->background_process != NULL)
-		return qb_mbf32_decode(state->background_process);
 	return state->background;
 }
 
 void
 yt_present_set_background(struct yt_present_state *state, float value)
 {
-	uint8_t raw[4];
-
 	if (state == NULL)
 		return;
 	state->background = value;
-	if (state->background_process != NULL
-	    && qb_mbf32_encode(value, raw) != QB_MBF_OVERFLOW)
-		memcpy(state->background_process, raw, sizeof(raw));
-}
-
-void
-yt_present_bind_bold_process(struct yt_present_state *state, uint8_t bold[4])
-{
-	if (state == NULL)
-		return;
-	state->bold_process = bold;
-	if (bold != NULL)
-		state->bold = qb_mbf32_decode(bold);
 }
 
 float
@@ -55,33 +27,15 @@ yt_present_bold(const struct yt_present_state *state)
 {
 	if (state == NULL)
 		return 0.0f;
-	if (state->bold_process != NULL)
-		return qb_mbf32_decode(state->bold_process);
 	return state->bold;
 }
 
 void
 yt_present_set_bold(struct yt_present_state *state, float value)
 {
-	uint8_t raw[4];
-
 	if (state == NULL)
 		return;
 	state->bold = value;
-	if (state->bold_process != NULL
-	    && qb_mbf32_encode(value, raw) != QB_MBF_OVERFLOW)
-		memcpy(state->bold_process, raw, sizeof(raw));
-}
-
-void
-yt_present_bind_blink_process(struct yt_present_state *state,
-    uint8_t blink[4])
-{
-	if (state == NULL)
-		return;
-	state->blink_process = blink;
-	if (blink != NULL)
-		state->blink = qb_mbf32_decode(blink);
 }
 
 float
@@ -89,22 +43,15 @@ yt_present_blink(const struct yt_present_state *state)
 {
 	if (state == NULL)
 		return 0.0f;
-	if (state->blink_process != NULL)
-		return qb_mbf32_decode(state->blink_process);
 	return state->blink;
 }
 
 void
 yt_present_set_blink(struct yt_present_state *state, float value)
 {
-	uint8_t raw[4];
-
 	if (state == NULL)
 		return;
 	state->blink = value;
-	if (state->blink_process != NULL
-	    && qb_mbf32_encode(value, raw) != QB_MBF_OVERFLOW)
-		memcpy(state->blink_process, raw, sizeof(raw));
 }
 
 void

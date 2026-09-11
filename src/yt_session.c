@@ -26,10 +26,8 @@
 #define YT_PLAYER_LAST YT_PLAYER_LAST_RECORD
 #define YT_COMMAND_SIZE 4096U
 #define YT_ANTI_CLOAK_ADDRESS 0x1854U
-#define YT_BACKGROUND_ADDRESS 0x1870U
 #define YT_MARKET_BASE_ADDRESS 0x1860U
 #define YT_DISRUPTION_SECTOR_ADDRESS 0x1878U
-#define YT_BLINK_ADDRESS 0x1880U
 #define YT_DESTROYED_ADDRESS 0x18B4U
 #define YT_CURRENT_WARPS_ADDRESS 0x1898U
 #define YT_PLANET_RECORD_SCRATCH_ADDRESS 0x19C4U
@@ -82,7 +80,6 @@
 #define YT_STATIC_SINGLE_ONE_ADDRESS 0x628AU
 #define YT_SESSION_MODE_ADDRESS 0x19C8U
 #define YT_ANSI_ADDRESS 0x19A8U
-#define YT_BOLD_ADDRESS 0x19BCU
 #define YT_LOCAL_SOUND_ADDRESS 0x4B70U
 #define YT_GAME_SOUND_ADDRESS 0x4BD4U
 #define YT_SOUND_TOGGLE_SELECTOR_ADDRESS 0x5B32U
@@ -19669,12 +19666,6 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	memset(&session, 0, sizeof(session));
 	yt_input_init(&session.input);
 	session.error = error;
-	yt_present_bind_background_process(&session.presentation,
-	    &session.route_process.bytes[YT_BACKGROUND_ADDRESS]);
-	yt_present_bind_bold_process(&session.presentation,
-	    &session.route_process.bytes[YT_BOLD_ADDRESS]);
-	yt_present_bind_blink_process(&session.presentation,
-	    &session.route_process.bytes[YT_BLINK_ADDRESS]);
 	yt_sound_bind_ansi_process(&session.presentation.sound,
 	    &session.route_process.bytes[YT_ANSI_ADDRESS]);
 	yt_sound_bind_snoop_process(&session.presentation.sound,
