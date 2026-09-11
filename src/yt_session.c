@@ -91,9 +91,6 @@
 #define YT_PLANET_UPDATER_DAY_ADDRESS 0x5E90U
 #define YT_PLANET_UPDATER_MINUTE_ADDRESS 0x5E94U
 #define YT_PLANET_UPDATER_ELAPSED_ADDRESS 0x5E98U
-#define YT_ACTION_CLOAK_DISPLAY_SCALE_ADDRESS 0x8C36U
-#define YT_ACTION_TURN_DIVISOR_ADDRESS 0x9E68U
-#define YT_ACTION_XANNOR_THRESHOLD_ADDRESS 0x9EBCU
 #define YT_TEAM_AUDIT_LOOP_ADDRESS 0x5F94U
 #define YT_TEAM_AUDIT_SENDER_ADDRESS 0x5F98U
 #define YT_SHARED_TARGET_RECORD_ADDRESS 0x1A40U
@@ -5236,6 +5233,9 @@ static bool
 finalize_action(struct yt_session *session, float amount,
     struct yt_error *error)
 {
+	static const float cloak_display_scale = 50.0f;
+	static const float turn_divisor = 25.0f;
+	static const float xannor_threshold = 0.99f;
 	int xannor_provoker;
 	float quotient;
 	float draw;
@@ -5255,9 +5255,7 @@ finalize_action(struct yt_session *session, float amount,
 	session->player.turns = qb_mbf32_decode(turn_raw);
 	if (!yt_record_set_raw_number(&session->player.record, YT_F49, turn_raw))
 		return false;
-	quotient = single_div(session->player.turns,
-	    yt_route_process_single(&session->route_process,
-	    YT_ACTION_TURN_DIVISOR_ADDRESS));
+	quotient = single_div(session->player.turns, turn_divisor);
 	yt_route_process_raw_single(&session->route_process,
 	    YT_ANTI_CLOAK_ADDRESS, anti_cloak_raw);
 	if (!yt_action_finalizer_anti_cloak_raw_allows(anti_cloak_raw,
@@ -5294,8 +5292,7 @@ finalize_action(struct yt_session *session, float amount,
 		    YT_PLAYER_CACHE_CLOAK,
 		    session->player.record.bytes + YT_F125);
 		display = floorf(single_mul(session->player.cloak,
-		    yt_route_process_single(&session->route_process,
-		    YT_ACTION_CLOAK_DISPLAY_SCALE_ADDRESS)));
+		    cloak_display_scale));
 		qb_str_single(number, sizeof(number), display);
 		snprintf(row, sizeof(row), "Cloak at%s%%", number);
 		saved_foreground = session_foreground(session);
@@ -5338,8 +5335,7 @@ finalize_action(struct yt_session *session, float amount,
 		return false;
 	if (!random_value(session, &draw, error))
 		return false;
-	if (draw > yt_route_process_single(&session->route_process,
-	    YT_ACTION_XANNOR_THRESHOLD_ADDRESS)) {
+	if (draw > xannor_threshold) {
 		session_load_xannor_provoker(session, &xannor_provoker);
 		if (!launch_xannor_retaliation(session, &xannor_provoker,
 		    error))
@@ -19613,15 +19609,6 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	float market_base[3];
 	static const uint8_t static_one[4] = {0x00, 0x00, 0x00, 0x81};
 	static const uint8_t scanner_mode_zero[4] = {0x00, 0x00, 0x46, 0x00};
-	static const uint8_t action_cloak_display_scale[4] = {
-	    0x00, 0x00, 0x48, 0x86
-	};
-	static const uint8_t action_turn_divisor[4] = {
-	    0x00, 0x00, 0x48, 0x85
-	};
-	static const uint8_t action_xannor_threshold[4] = {
-	    0xa4, 0x70, 0x7d, 0x80
-	};
 	bool resume_gameplay = false;
 	char first[128];
 	char last[128];
@@ -19644,14 +19631,6 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	    YT_STATIC_SINGLE_ONE_ADDRESS, static_one);
 	yt_route_process_set_raw_single(&session.route_process,
 	    YT_POST_LOGIN_SCANNER_MODE_ADDRESS, scanner_mode_zero);
-	yt_route_process_set_raw_single(&session.route_process,
-	    YT_ACTION_CLOAK_DISPLAY_SCALE_ADDRESS,
-	    action_cloak_display_scale);
-	yt_route_process_set_raw_single(&session.route_process,
-	    YT_ACTION_TURN_DIVISOR_ADDRESS, action_turn_divisor);
-	yt_route_process_set_raw_single(&session.route_process,
-	    YT_ACTION_XANNOR_THRESHOLD_ADDRESS,
-	    action_xannor_threshold);
 	/* YT:040A is the ordinary instruction after the handed-off checkpoint. */
 	session_set_pager_nonstop(&session, 1.0f);
 	if (door->identity.ansi
