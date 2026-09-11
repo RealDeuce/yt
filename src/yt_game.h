@@ -49,9 +49,10 @@ struct yt_startup_configuration_state {
 	uint16_t installed_handler;
 	bool handler_installed;
 	float local_mode;
-	float cache_guard;
 	float *sector_cache;
 	float *cloak_cache;
+	uint8_t (*sector_cache_raw)[4];
+	uint8_t (*cloak_cache_raw)[4];
 	size_t cache_count;
 	float black_hole[2];
 	size_t scoreboard_path_length;
@@ -76,13 +77,6 @@ typedef void (*yt_startup_configuration_disruption_store_fn)(void *context,
 	size_t index, const uint8_t raw[4]);
 typedef void (*yt_startup_configuration_local_screen_store_fn)(void *context,
 	const uint8_t raw[4]);
-typedef void (*yt_startup_configuration_cache_guard_store_fn)(void *context,
-	const uint8_t raw[4]);
-typedef void (*yt_startup_configuration_cache_terminal_store_fn)(void *context,
-	const uint8_t raw[4]);
-typedef void (*yt_startup_configuration_cache_counter_store_fn)(void *context,
-	const uint8_t raw[4]);
-
 enum yt_player_cache_kind {
 	YT_PLAYER_CACHE_SECTOR,
 	YT_PLAYER_CACHE_CLOAK,
@@ -91,10 +85,6 @@ typedef void (*yt_player_cache_read_fn)(void *context, int player_record,
 	enum yt_player_cache_kind kind, uint8_t raw[4]);
 typedef void (*yt_player_cache_store_fn)(void *context, int player_record,
 	enum yt_player_cache_kind kind, const uint8_t raw[4]);
-
-typedef void (*yt_startup_configuration_cache_value_store_fn)(void *context,
-	int basic_record, enum yt_player_cache_kind kind,
-	const uint8_t raw[4]);
 
 struct yt_startup_configuration_ops {
 	yt_startup_configuration_close_fn close_data;
@@ -106,10 +96,6 @@ struct yt_startup_configuration_ops {
 	yt_startup_configuration_random_fn random;
 	yt_startup_configuration_disruption_store_fn store_disruption;
 	yt_startup_configuration_local_screen_store_fn store_local_screen;
-	yt_startup_configuration_cache_guard_store_fn store_cache_guard;
-	yt_startup_configuration_cache_terminal_store_fn store_cache_terminal;
-	yt_startup_configuration_cache_counter_store_fn store_cache_counter;
-	yt_startup_configuration_cache_value_store_fn store_cache_value;
 	qb_compat_upper_store_fn store_uppercase;
 };
 

@@ -417,6 +417,7 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 
 	if (state == NULL || ops == NULL || state->config == NULL
 	    || state->sector_cache == NULL || state->cloak_cache == NULL
+	    || state->sector_cache_raw == NULL || state->cloak_cache_raw == NULL
 	    || state->cache_count == 0U || ops->close_data == NULL
 	    || ops->open_data == NULL
 	    || ops->load_config == NULL || ops->store_config == NULL
@@ -494,68 +495,36 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 		config->turns_per_day = 500.0f;
 	}
 
-	if (state->cache_guard == 0.0f) {
-		static const uint8_t counter_two[4] = {0x00, 0x00, 0x00, 0x82};
+	counter = 2.0f;
+	while (counter <= config->sector_offset) {
+		struct yt_player player;
+		int32_t basic = qb_cint(counter, &overflow);
 
-		if (ops->store_cache_terminal != NULL)
-			ops->store_cache_terminal(context,
-			    config->record.bytes + YT_F53);
-		if (ops->store_cache_counter != NULL)
-			ops->store_cache_counter(context, counter_two);
-		counter = 2.0f;
-		while (counter <= config->sector_offset) {
-			struct yt_player player;
-			int32_t basic = qb_cint(counter, &overflow);
+		if (overflow || basic < 0
+		    || (size_t)basic >= state->cache_count)
+			return startup_configuration_error(error, YT_RANGE,
+			    "startup player-cache index");
+		if (!ops->read_player(context, basic, &player, error))
+			return false;
+		state->sector_cache[basic] = player.sector;
+		memcpy(state->sector_cache_raw[basic],
+		    player.record.bytes + YT_F57, 4U);
+		state->cloak_cache[basic] = player.cloak;
+		memcpy(state->cloak_cache_raw[basic],
+		    player.record.bytes + YT_F125, 4U);
+		if (player.cloak < 0.0f || player.cloak > 1.0f) {
+			static const uint8_t one[4] = {
+				0x00U, 0x00U, 0x00U, 0x81U
+			};
 
-			if (overflow || basic < 0
-			    || (size_t)basic >= state->cache_count)
-				return startup_configuration_error(error, YT_RANGE,
-				    "startup player-cache index");
-			if (!ops->read_player(context, basic, &player, error))
+			player.cloak = 1.0f;
+			state->cloak_cache[basic] = 1.0f;
+			memcpy(state->cloak_cache_raw[basic], one, 4U);
+			if (!yt_record_set_number(&player.record, YT_F125, 1.0f)
+			    || !ops->write_player(context, basic, &player, error))
 				return false;
-			state->sector_cache[basic] = player.sector;
-			if (ops->store_cache_value != NULL)
-				ops->store_cache_value(context, basic,
-				    YT_PLAYER_CACHE_SECTOR,
-				    player.record.bytes + YT_F57);
-			state->cloak_cache[basic] = player.cloak;
-			if (ops->store_cache_value != NULL)
-				ops->store_cache_value(context, basic,
-				    YT_PLAYER_CACHE_CLOAK,
-				    player.record.bytes + YT_F125);
-			if (player.cloak < 0.0f || player.cloak > 1.0f) {
-				static const uint8_t one[4] = {
-					0x00U, 0x00U, 0x00U, 0x81U
-				};
-
-				player.cloak = 1.0f;
-				state->cloak_cache[basic] = 1.0f;
-				if (ops->store_cache_value != NULL)
-					ops->store_cache_value(context, basic,
-					    YT_PLAYER_CACHE_CLOAK,
-					    one);
-				if (!yt_record_set_number(&player.record, YT_F125,
-				    1.0f)
-				    || !ops->write_player(context, basic, &player,
-				    error))
-					return false;
-			}
-			counter = startup_single_add(counter, 1.0f);
-			if (ops->store_cache_counter != NULL) {
-				uint8_t counter_raw[4];
-
-				if (qb_mbf32_encode(counter, counter_raw) != QB_MBF_OK)
-					return startup_configuration_error(error,
-					    YT_RANGE, "startup player-cache counter");
-				ops->store_cache_counter(context, counter_raw);
-			}
 		}
-		state->cache_guard = 1.0f;
-		if (ops->store_cache_guard != NULL) {
-			static const uint8_t one[4] = {0x00, 0x00, 0x00, 0x81};
-
-			ops->store_cache_guard(context, one);
-		}
+		counter = startup_single_add(counter, 1.0f);
 	}
 	for (index = 0U; index < 2U; ++index) {
 		float draw;

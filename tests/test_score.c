@@ -150,18 +150,8 @@ struct startup_configuration_tape {
 	uint8_t local_screen_raw[2][4];
 	size_t local_screen_store_count;
 	size_t local_screen_store_position[2];
-	uint8_t cache_guard_raw[4];
-	size_t cache_guard_store_count;
-	size_t cache_guard_store_position;
-	uint8_t cache_terminal_raw[4];
-	size_t cache_terminal_store_count;
-	uint8_t cache_counter_raw[8][4];
-	size_t cache_counter_store_count;
-	int cache_value_record[12];
-	enum yt_player_cache_kind cache_value_kind[12];
-	uint8_t cache_value_raw[12][4];
-	size_t cache_value_event_position[12];
-	size_t cache_value_store_count;
+	uint8_t sector_cache_raw[8][4];
+	uint8_t cloak_cache_raw[8][4];
 	enum qb_compat_upper_store_kind uppercase_kind[16];
 	float uppercase_value[16];
 	size_t uppercase_store_count;
@@ -320,60 +310,6 @@ startup_configuration_local_screen_store_test(void *context,
 	++tape->local_screen_store_count;
 }
 
-static void
-startup_configuration_cache_guard_store_test(void *context,
-    const uint8_t raw[4])
-{
-	struct startup_configuration_tape *tape = context;
-
-	memcpy(tape->cache_guard_raw, raw, sizeof(tape->cache_guard_raw));
-	tape->cache_guard_store_position = tape->event_count;
-	++tape->cache_guard_store_count;
-}
-
-static void
-startup_configuration_cache_terminal_store_test(void *context,
-    const uint8_t raw[4])
-{
-	struct startup_configuration_tape *tape = context;
-
-	memcpy(tape->cache_terminal_raw, raw,
-	    sizeof(tape->cache_terminal_raw));
-	++tape->cache_terminal_store_count;
-}
-
-static void
-startup_configuration_cache_counter_store_test(void *context,
-    const uint8_t raw[4])
-{
-	struct startup_configuration_tape *tape = context;
-	size_t store = tape->cache_counter_store_count;
-
-	if (store >= YT_ARRAY_LEN(tape->cache_counter_raw))
-		return;
-	memcpy(tape->cache_counter_raw[store], raw,
-	    sizeof(tape->cache_counter_raw[store]));
-	++tape->cache_counter_store_count;
-}
-
-static void
-startup_configuration_cache_value_store_test(void *context,
-    int basic_record, enum yt_player_cache_kind kind,
-    const uint8_t raw[4])
-{
-	struct startup_configuration_tape *tape = context;
-	size_t store = tape->cache_value_store_count;
-
-	if (store >= YT_ARRAY_LEN(tape->cache_value_raw))
-		return;
-	tape->cache_value_record[store] = basic_record;
-	tape->cache_value_kind[store] = kind;
-	memcpy(tape->cache_value_raw[store], raw,
-	    sizeof(tape->cache_value_raw[store]));
-	tape->cache_value_event_position[store] = tape->event_count;
-	++tape->cache_value_store_count;
-}
-
 static bool
 startup_configuration_fixture(struct startup_configuration_tape *tape,
     struct yt_startup_configuration_state *state, struct yt_config *config,
@@ -423,6 +359,8 @@ startup_configuration_fixture(struct startup_configuration_tape *tape,
 	state->local_mode = 0.5f;
 	state->sector_cache = sector_cache;
 	state->cloak_cache = cloak_cache;
+	state->sector_cache_raw = tape->sector_cache_raw;
+	state->cloak_cache_raw = tape->cloak_cache_raw;
 	state->cache_count = 8U;
 	return true;
 }
@@ -440,11 +378,6 @@ check_startup_configuration_transaction(void)
 		.random = startup_configuration_random_test,
 		.store_disruption = startup_configuration_disruption_store_test,
 		.store_local_screen = startup_configuration_local_screen_store_test,
-		.store_cache_guard = startup_configuration_cache_guard_store_test,
-		.store_cache_terminal =
-		    startup_configuration_cache_terminal_store_test,
-		.store_cache_counter = startup_configuration_cache_counter_store_test,
-		.store_cache_value = startup_configuration_cache_value_store_test,
 		.store_uppercase = startup_configuration_uppercase_store_test,
 	};
 	static const int events[] = {
@@ -513,50 +446,19 @@ check_startup_configuration_transaction(void)
 	    || config.local_screen != -1.0f || config.lottery_plays != 3.0f
 	    || config.maximum_planets != 100.0f
 	    || config.maximum_holds != 1000.0f
-	    || config.turns_per_day != 500.0f || state.cache_guard != 1.0f
-	    || tape.cache_guard_store_count != 1U
-	    || tape.cache_guard_store_position != 9U
-	    || memcmp(tape.cache_guard_raw,
-	    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) != 0
-	    || tape.cache_terminal_store_count != 1U
-	    || memcmp(tape.cache_terminal_raw,
-	    tape.config_source.bytes + YT_F53, 4U) != 0
-	    || tape.cache_counter_store_count != 4U
-	    || qb_mbf32_decode(tape.cache_counter_raw[0]) != 2.0f
-	    || qb_mbf32_decode(tape.cache_counter_raw[1]) != 3.0f
-	    || qb_mbf32_decode(tape.cache_counter_raw[2]) != 4.0f
-	    || qb_mbf32_decode(tape.cache_counter_raw[3]) != 5.0f
-	    || tape.cache_value_store_count != 8U
-	    || tape.cache_value_record[0] != 2
-	    || tape.cache_value_kind[0]
-	    != YT_PLAYER_CACHE_SECTOR
-	    || memcmp(tape.cache_value_raw[0],
+	    || config.turns_per_day != 500.0f
+	    || memcmp(tape.sector_cache_raw[2],
 	    tape.player_source[2].bytes + YT_F57, 4U) != 0
-	    || tape.cache_value_kind[1]
-	    != YT_PLAYER_CACHE_CLOAK
-	    || memcmp(tape.cache_value_raw[1],
-	    tape.player_source[2].bytes + YT_F125, 4U) != 0
-	    || tape.cache_value_kind[2]
-	    != YT_PLAYER_CACHE_CLOAK
-	    || memcmp(tape.cache_value_raw[2],
+	    || memcmp(tape.cloak_cache_raw[2],
 	    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) != 0
-	    || tape.cache_value_record[3] != 3
-	    || tape.cache_value_kind[3]
-	    != YT_PLAYER_CACHE_SECTOR
-	    || tape.cache_value_kind[4]
-	    != YT_PLAYER_CACHE_CLOAK
-	    || tape.cache_value_record[5] != 4
-	    || tape.cache_value_kind[5]
-	    != YT_PLAYER_CACHE_SECTOR
-	    || tape.cache_value_kind[6]
-	    != YT_PLAYER_CACHE_CLOAK
-	    || tape.cache_value_kind[7]
-	    != YT_PLAYER_CACHE_CLOAK
-	    || tape.cache_value_event_position[0] != 5U
-	    || tape.cache_value_event_position[2] != 5U
-	    || tape.cache_value_event_position[3] != 7U
-	    || tape.cache_value_event_position[5] != 8U
-	    || tape.cache_value_event_position[7] != 8U
+	    || memcmp(tape.sector_cache_raw[3],
+	    tape.player_source[3].bytes + YT_F57, 4U) != 0
+	    || memcmp(tape.cloak_cache_raw[3],
+	    tape.player_source[3].bytes + YT_F125, 4U) != 0
+	    || memcmp(tape.sector_cache_raw[4],
+	    tape.player_source[4].bytes + YT_F57, 4U) != 0
+	    || memcmp(tape.cloak_cache_raw[4],
+	    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) != 0
 	    || sector_cache[2] != 20.0f || sector_cache[3] != 30.0f
 	    || sector_cache[4] != 40.0f || sector_cache[1] != -101.0f
 	    || cloak_cache[2] != 1.0f || cloak_cache[3] != 0.5f
@@ -596,30 +498,10 @@ check_startup_configuration_transaction(void)
 	    || yt_record_get_number(&config.record, YT_F117) != 733.0f)
 		return false;
 
-	/* A nonzero one-shot guard skips all player I/O but not either draw. */
-	if (!startup_configuration_fixture(&tape, &state, &config,
-	    sector_cache, cloak_cache))
-		return false;
-	state.cache_guard = -0.25f;
-	if (!yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
-	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
-	    || tape.event_count != 5U
-	    || tape.events[0] != STARTUP_CONFIGURATION_CLOSE
-	    || tape.events[1] != STARTUP_CONFIGURATION_OPEN
-	    || tape.events[2] != STARTUP_CONFIGURATION_LOAD
-	    || tape.events[3] != STARTUP_CONFIGURATION_RANDOM
-	    || tape.events[4] != STARTUP_CONFIGURATION_RANDOM
-	    || state.cache_guard != -0.25f || tape.draw_position != 2U
-	    || tape.cache_guard_store_count != 0U
-	    || tape.cache_terminal_store_count != 0U
-	    || tape.cache_counter_store_count != 0U)
-		return false;
-
 	/* An admitted requirement retains the exact hydrated FIELD bytes. */
 	if (!startup_configuration_fixture(&tape, &state, &config,
 	    sector_cache, cloak_cache))
 		return false;
-	state.cache_guard = 1.0f;
 	if (!yt_record_set_number(&tape.config_source, YT_F105, 300.0f)
 	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
 	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
@@ -632,7 +514,6 @@ check_startup_configuration_transaction(void)
 	if (!startup_configuration_fixture(&tape, &state, &config,
 	    sector_cache, cloak_cache))
 		return false;
-	state.cache_guard = 1.0f;
 	if (!yt_record_set_number(&tape.config_source, YT_F49, 2500.0f)
 	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
 	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
@@ -645,7 +526,6 @@ check_startup_configuration_transaction(void)
 	if (!startup_configuration_fixture(&tape, &state, &config,
 	    sector_cache, cloak_cache))
 		return false;
-	state.cache_guard = 1.0f;
 	if (!yt_record_set_number(&tape.config_source, YT_F101, 9.0f)
 	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
 	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
@@ -658,7 +538,6 @@ check_startup_configuration_transaction(void)
 	if (!startup_configuration_fixture(&tape, &state, &config,
 	    sector_cache, cloak_cache))
 		return false;
-	state.cache_guard = 1.0f;
 	if (!yt_record_set_number(&tape.config_source, YT_F129, 456.25f)
 	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
 	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
@@ -671,7 +550,6 @@ check_startup_configuration_transaction(void)
 	if (!startup_configuration_fixture(&tape, &state, &config,
 	    sector_cache, cloak_cache))
 		return false;
-	state.cache_guard = 1.0f;
 	if (!yt_record_set_number(&tape.config_source, YT_F121, 5.0f)
 	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
 	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
@@ -682,7 +560,6 @@ check_startup_configuration_transaction(void)
 	if (!startup_configuration_fixture(&tape, &state, &config,
 	    sector_cache, cloak_cache))
 		return false;
-	state.cache_guard = 1.0f;
 	if (!yt_record_set_number(&tape.config_source, YT_F121, 1000.0f)
 	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
 	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
@@ -696,7 +573,6 @@ check_startup_configuration_transaction(void)
 	    sector_cache, cloak_cache))
 		return false;
 	state.local_mode = 0.0f;
-	state.cache_guard = 1.0f;
 	if (!yt_record_set_number(&tape.config_source, YT_F85, -1.0f)
 	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
 	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
@@ -709,7 +585,6 @@ check_startup_configuration_transaction(void)
 	    sector_cache, cloak_cache))
 		return false;
 	state.local_mode = 0.0f;
-	state.cache_guard = 1.0f;
 	if (!yt_record_set_number(&tape.config_source, YT_F85, 0.0f)
 	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
 	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
@@ -723,7 +598,6 @@ check_startup_configuration_transaction(void)
 	if (!startup_configuration_fixture(&tape, &state, &config,
 	    sector_cache, cloak_cache))
 		return false;
-	state.cache_guard = 1.0f;
 	tape.config_source.bytes[0] = 'a';
 	tape.config_source.bytes[1] = 0U;
 	tape.config_source.bytes[2] = 'b';
@@ -738,7 +612,6 @@ check_startup_configuration_transaction(void)
 	if (!startup_configuration_fixture(&tape, &state, &config,
 	    sector_cache, cloak_cache))
 		return false;
-	state.cache_guard = 1.0f;
 	if (!yt_record_set_number(&tape.config_source, YT_F41, 0.0f)
 	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
 	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
@@ -753,14 +626,9 @@ check_startup_configuration_transaction(void)
 	if (!yt_record_set_number(&tape.config_source, YT_F53, 1.75f)
 	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
 	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
-	    || tape.event_count != 5U || state.cache_guard != 1.0f
-	    || tape.cache_guard_store_count != 1U
-	    || tape.cache_guard_store_position != 3U
-	    || tape.cache_terminal_store_count != 1U
-	    || memcmp(tape.cache_terminal_raw,
-	    tape.config_source.bytes + YT_F53, 4U) != 0
-	    || tape.cache_counter_store_count != 1U
-	    || qb_mbf32_decode(tape.cache_counter_raw[0]) != 2.0f
+	    || tape.event_count != 5U
+	    || sector_cache[2] != -102.0f
+	    || cloak_cache[2] != -202.0f
 	    || tape.draw_position != 2U)
 		return false;
 
@@ -768,7 +636,6 @@ check_startup_configuration_transaction(void)
 	if (!startup_configuration_fixture(&tape, &state, &config,
 	    sector_cache, cloak_cache))
 		return false;
-	state.cache_guard = 1.0f;
 	if (!yt_record_set_number(&tape.config_source, YT_F41, 45.0f)
 	    || !yt_record_set_number(&tape.config_source, YT_F117, 7.0f)
 	    || !yt_startup_configuration_run(&state, &ops, &tape, NULL)
@@ -825,24 +692,6 @@ check_startup_configuration_transaction(void)
 		    || (failure > 4U && (tape.store_count != YT_ARRAY_LEN(stores)
 		    || memcmp(tape.stores, stores, sizeof(stores)) != 0)))
 			return false;
-		if ((failure <= 9U && tape.cache_guard_store_count != 0U)
-		    || (failure >= 10U && (tape.cache_guard_store_count != 1U
-		    || tape.cache_guard_store_position != 9U
-		    || memcmp(tape.cache_guard_raw,
-		    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) != 0)))
-			return false;
-		if ((failure <= 4U && tape.cache_terminal_store_count != 0U)
-		    || (failure >= 5U && (tape.cache_terminal_store_count != 1U
-		    || memcmp(tape.cache_terminal_raw,
-		    tape.config_source.bytes + YT_F53, 4U) != 0)))
-			return false;
-		if (tape.cache_counter_store_count != (failure <= 4U ? 0U
-		    : failure <= 6U ? 1U : failure == 7U ? 2U
-		    : failure <= 9U ? 3U : 4U))
-			return false;
-		if (tape.cache_value_store_count != (failure <= 5U ? 0U
-		    : failure <= 7U ? 3U : failure == 8U ? 5U : 8U))
-			return false;
 	}
 	if (!startup_configuration_fixture(&tape, &state, &config,
 	    sector_cache, cloak_cache))
@@ -850,14 +699,10 @@ check_startup_configuration_transaction(void)
 	tape.fail_at = 6U;
 	if (yt_startup_configuration_run(&state, &ops, &tape, NULL)
 	    || sector_cache[2] != 20.0f || cloak_cache[2] != 1.0f
-	    || state.cache_guard != 0.0f || tape.draw_position != 0U
-	    || tape.cache_guard_store_count != 0U
-	    || tape.cache_terminal_store_count != 1U
-	    || tape.cache_counter_store_count != 1U
-	    || tape.cache_value_store_count != 3U
-	    || tape.cache_value_kind[2]
-	    != YT_PLAYER_CACHE_CLOAK
-	    || memcmp(tape.cache_value_raw[2],
+	    || tape.draw_position != 0U
+	    || memcmp(tape.sector_cache_raw[2],
+	    tape.player_source[2].bytes + YT_F57, 4U) != 0
+	    || memcmp(tape.cloak_cache_raw[2],
 	    (const uint8_t[]){0x00, 0x00, 0x00, 0x81}, 4U) != 0)
 		return false;
 	if (!startup_configuration_fixture(&tape, &state, &config,
@@ -865,10 +710,7 @@ check_startup_configuration_transaction(void)
 		return false;
 	tape.fail_at = 11U;
 	if (yt_startup_configuration_run(&state, &ops, &tape, NULL)
-	    || state.cache_guard != 1.0f || state.black_hole[0] != 3.0f
-	    || tape.cache_guard_store_count != 1U
-	    || tape.cache_terminal_store_count != 1U
-	    || tape.cache_counter_store_count != 4U
+	    || state.black_hole[0] != 3.0f
 	    || state.black_hole[1] != 0.0f || tape.draw_position != 1U
 	    || tape.disruption_store_count != 1U
 	    || qb_mbf32_decode(tape.disruption_raw[0]) != 3.0f)
@@ -878,7 +720,6 @@ check_startup_configuration_transaction(void)
 	if (!startup_configuration_fixture(&tape, &state, &config,
 	    sector_cache, cloak_cache))
 		return false;
-	state.cache_guard = 1.0f;
 	tape.draws[0] = 0.75f;
 	tape.draws[1] = 0.75f;
 	if (!yt_record_set_number(&tape.config_source, YT_F53, 4.0f)
