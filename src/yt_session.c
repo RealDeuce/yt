@@ -26,8 +26,6 @@
 #define YT_PLAYER_LAST YT_PLAYER_LAST_RECORD
 #define YT_COMMAND_SIZE 4096U
 #define YT_ANTI_CLOAK_ADDRESS 0x1854U
-#define YT_MARKET_BASE_ADDRESS 0x1860U
-#define YT_DISRUPTION_SECTOR_ADDRESS 0x1878U
 #define YT_DESTROYED_ADDRESS 0x18B4U
 #define YT_CURRENT_WARPS_ADDRESS 0x1898U
 #define YT_PLANET_RECORD_SCRATCH_ADDRESS 0x19C4U
@@ -129,6 +127,8 @@ struct yt_session {
 	double combat_ship_fighters;
 	float combat_ship_shields;
 	float foreground;
+	float market_bases[3];
+	float disruption_sectors[2];
 	uint8_t cached_player_name[YT_TEXT_FIELD_SIZE];
 	size_t cached_player_name_length;
 	struct yt_player_cache player_cache;
@@ -403,35 +403,11 @@ session_current_warps(const struct yt_session *session, float warps[6])
 		    (uint16_t)(YT_CURRENT_WARPS_ADDRESS + 4U * slot));
 }
 
-static void
-session_market_bases(const struct yt_session *session, float bases[3])
-{
-	size_t index;
-
-	for (index = 0U; index < 3U; ++index)
-		bases[index] = yt_route_process_single(&session->route_process,
-		    (uint16_t)(YT_MARKET_BASE_ADDRESS + 4U * index));
-}
-
-static float
-session_disruption_sector(const struct yt_session *session, size_t index)
-{
-	return yt_route_process_single(&session->route_process,
-	    (uint16_t)(YT_DISRUPTION_SECTOR_ADDRESS + 4U * index));
-}
-
-static void
-session_disruption_sectors(const struct yt_session *session, float sectors[2])
-{
-	for (size_t index = 0U; index < 2U; ++index)
-		sectors[index] = session_disruption_sector(session, index);
-}
-
 static bool
 session_is_disruption_sector(const struct yt_session *session, float sector)
 {
-	return sector == session_disruption_sector(session, 0U)
-	    || sector == session_disruption_sector(session, 1U);
+	return sector == session->disruption_sectors[0]
+	    || sector == session->disruption_sectors[1];
 }
 
 static void
@@ -2381,8 +2357,7 @@ startup_configuration_store_disruption(void *context, size_t index,
 
 	if (index >= 2U)
 		return;
-	yt_route_process_set_raw_single(&session->route_process,
-	    (uint16_t)(YT_DISRUPTION_SECTOR_ADDRESS + 4U * index), raw);
+	session->disruption_sectors[index] = qb_mbf32_decode(raw);
 }
 
 static void
@@ -2442,7 +2417,8 @@ load_configuration(struct yt_session *session, struct yt_error *error)
 	state.config = &game->config;
 	state.local_mode = session->door->identity.local ? -1.0f : 0.0f;
 	state.player_cache = &session->player_cache;
-	session_disruption_sectors(session, state.black_hole);
+	memcpy(state.black_hole, session->disruption_sectors,
+	    sizeof(state.black_hole));
 	ok = yt_startup_configuration_run(&state, &ops, session, error);
 	return ok;
 }
@@ -4066,7 +4042,7 @@ port_update(struct yt_session *session, int sector_number,
 		state.sector_record_supplied = true;
 	}
 	state.port_offset = session_port_offset(session);
-	session_market_bases(session, state.base_price);
+	memcpy(state.base_price, session->market_bases, sizeof(state.base_price));
 	if (loaded_sector != NULL) {
 		state.sector = *loaded_sector;
 		state.sector_loaded = true;
@@ -4959,8 +4935,8 @@ dangerous_destination(struct yt_session *session, float target,
 		.sector_offset = session_sector_offset(session),
 		.current_player_record = (float)session_record(session),
 		.disruption_sectors = {
-			session_disruption_sector(session, 0U),
-			session_disruption_sector(session, 1U),
+			session->disruption_sectors[0],
+			session->disruption_sectors[1],
 		},
 	};
 	bool result;
@@ -5175,8 +5151,8 @@ spy_sweep(struct yt_session *session, struct yt_error *error)
 		.current_player_record = session_record(session),
 		.last_player_record = session_sector_offset(session),
 		.disruption_sectors = {
-			session_disruption_sector(session, 0U),
-			session_disruption_sector(session, 1U)
+			session->disruption_sectors[0],
+			session->disruption_sectors[1]
 		},
 		.player_cache = &session->player_cache,
 		.found_scratch = yt_route_process_single(&session->route_process,
@@ -8685,7 +8661,8 @@ computer_port_ordinary(struct yt_session *session, int sector_number,
 	state.update.sector_record_expression = sector_record_expression;
 	state.update.sector_record_supplied = true;
 	state.update.port_offset = session_port_offset(session);
-	session_market_bases(session, state.update.base_price);
+	memcpy(state.update.base_price, session->market_bases,
+	    sizeof(state.update.base_price));
 	state.report.current_player_record = session_record(session);
 	state.report.conversion_mode =
 	    session->presentation.sound.conversion_mode;
@@ -16007,8 +15984,8 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 			target,
 			&energy,
 			hop_loss,
-			{session_disruption_sector(session, 0U),
-			 session_disruption_sector(session, 1U)},
+			{session->disruption_sectors[0],
+			 session->disruption_sectors[1]},
 			session_sector_offset(session),
 			session_port_offset(session),
 			NULL,
@@ -18336,7 +18313,7 @@ nearest_session_body(struct yt_session *session, int selector,
 	state.actor_number = (float)session_record(session);
 	state.sector_record_offset = session_sector_offset(session);
 	state.port_record_offset = session_port_offset(session);
-	session_market_bases(session, state.base_price);
+	memcpy(state.base_price, session->market_bases, sizeof(state.base_price));
 	for (index = 0U; index < YT_ARRAY_LEN(state.cached_roster); ++index)
 		state.cached_roster[index] =
 		    session_team_roster_value(session, index);
@@ -18629,7 +18606,7 @@ computer_profit_exact(struct yt_session *session, bool all,
 	state.current_sector_record = session->current_sector_record;
 	state.sector_record_offset = session_sector_offset(session);
 	state.port_record_offset = session_port_offset(session);
-	session_market_bases(session, state.base_price);
+	memcpy(state.base_price, session->market_bases, sizeof(state.base_price));
 	state.current_day = (float)session->door->game.today;
 	state.style.foreground = session_foreground(session);
 	state.style.bold = yt_present_bold(&session->presentation);
@@ -19606,7 +19583,6 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 {
 	struct yt_session session;
 	struct yt_random launch_random;
-	float market_base[3];
 	static const uint8_t static_one[4] = {0x00, 0x00, 0x00, 0x81};
 	static const uint8_t scanner_mode_zero[4] = {0x00, 0x00, 0x46, 0x00};
 	bool resume_gameplay = false;
@@ -19647,12 +19623,8 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	    door->identity.local ? -1.0f : 0.0f;
 	session_set_foreground(&session, 7.0f);
 	yt_random_init(&launch_random);
-	if (!yt_random_market_bases(&launch_random, market_base, error))
+	if (!yt_random_market_bases(&launch_random, session.market_bases, error))
 		return false;
-	for (size_t index = 0U; index < 3U; ++index)
-		session_set_process_single(&session,
-		    (uint16_t)(YT_MARKET_BASE_ADDRESS + 4U * index),
-		    market_base[index]);
 	if (!load_configuration(&session, error))
 		return session.terminated;
 	session_set_foreground(&session, 6.0f);
