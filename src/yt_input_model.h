@@ -35,13 +35,6 @@ struct yt_input_fault_site {
 	bool live;
 };
 
-enum yt_input_phase {
-	YT_INPUT_PHASE_B05D,
-	YT_INPUT_PHASE_AB36,
-	YT_INPUT_PHASE_RADIO_BODY,
-	YT_INPUT_PHASE_WAIT,
-};
-
 enum yt_radio_body_key_action {
 	YT_RADIO_BODY_KEY_IGNORE,
 	YT_RADIO_BODY_KEY_COMMIT,
@@ -52,20 +45,7 @@ enum yt_radio_body_key_action {
 struct yt_input_value {
 	uint8_t bytes[2];
 	size_t length;
-	uint64_t sequence;
 	bool remote;
-};
-
-struct yt_input_value_queue {
-	struct yt_input_value values[YT_INPUT_PENDING];
-	size_t position;
-	size_t length;
-};
-
-struct yt_input_splitter {
-	struct yt_input_value_queue local;
-	struct yt_input_value_queue remote;
-	uint64_t next_sequence;
 };
 
 struct yt_b05d_key_state {
@@ -433,24 +413,11 @@ struct yt_sysop_event_registers {
 	uint16_t flags;
 };
 
-void yt_input_splitter_init(struct yt_input_splitter *splitter);
 size_t yt_input_fault_site_count(enum yt_input_fault_family family);
 bool yt_input_fault_site(enum yt_input_fault_family family, size_t index,
     struct yt_input_fault_site *site);
-
-bool yt_input_splitter_can_push(const struct yt_input_splitter *splitter,
-    bool remote);
-bool yt_input_splitter_push(struct yt_input_splitter *splitter, bool remote,
-    const struct yt_input_value *value);
-struct yt_input_value yt_input_splitter_select(
-    struct yt_input_splitter *splitter, float mode,
-    enum yt_input_phase phase);
 enum yt_radio_body_key_action yt_input_radio_body_key(uint8_t key,
     size_t current_length);
-struct yt_input_value yt_input_splitter_select_merged(
-    struct yt_input_splitter *splitter);
-struct yt_input_value yt_input_splitter_select_source(
-    struct yt_input_splitter *splitter, bool remote);
 bool yt_input_ab36_remote_replace(float mode,
     const struct yt_input_value *remote, struct yt_input_value *selected);
 bool yt_input_ab36_queue_pop(char *queue, size_t capacity,

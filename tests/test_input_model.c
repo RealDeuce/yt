@@ -302,100 +302,9 @@ registration_state_init(struct yt_registration_state *state,
 static struct yt_input_value
 one(uint8_t byte)
 {
-	struct yt_input_value value = {{byte, 0}, 1, 0, false};
+	struct yt_input_value value = {{byte, 0}, 1, false};
 
 	return value;
-}
-
-static void
-test_merged_fifo(void)
-{
-	struct yt_input_splitter splitter;
-	struct yt_input_value remote_a = one('A');
-	struct yt_input_value local_b = one('B');
-	struct yt_input_value remote_c = one('C');
-	struct yt_input_value selected;
-
-	yt_input_splitter_init(&splitter);
-	CHECK(yt_input_splitter_push(&splitter, true, &remote_a));
-	CHECK(yt_input_splitter_push(&splitter, false, &local_b));
-	CHECK(yt_input_splitter_push(&splitter, true, &remote_c));
-	selected = yt_input_splitter_select_merged(&splitter);
-	CHECK(selected.length == 1 && selected.bytes[0] == 'A'
-	    && selected.remote);
-	selected = yt_input_splitter_select_merged(&splitter);
-	CHECK(selected.length == 1 && selected.bytes[0] == 'B'
-	    && !selected.remote);
-	selected = yt_input_splitter_select_merged(&splitter);
-	CHECK(selected.length == 1 && selected.bytes[0] == 'C'
-	    && selected.remote);
-	selected = yt_input_splitter_select_merged(&splitter);
-	CHECK(selected.length == 0);
-}
-
-static void
-test_arbitration(void)
-{
-	struct yt_input_splitter splitter;
-	struct yt_input_value local = one('L');
-	struct yt_input_value remote = one('R');
-	struct yt_input_value selected;
-
-	yt_input_splitter_init(&splitter);
-	CHECK(yt_input_splitter_push(&splitter, false, &local));
-	CHECK(yt_input_splitter_push(&splitter, true, &remote));
-	selected = yt_input_splitter_select(&splitter, 0.0f,
-	    YT_INPUT_PHASE_B05D);
-	CHECK(selected.length == 1 && selected.bytes[0] == 'R'
-	    && selected.remote);
-	CHECK(splitter.local.length == 0 && splitter.remote.length == 0);
-
-	CHECK(yt_input_splitter_push(&splitter, false, &local));
-	CHECK(yt_input_splitter_push(&splitter, true, &remote));
-	selected = yt_input_splitter_select(&splitter, 2.0f,
-	    YT_INPUT_PHASE_B05D);
-	CHECK(selected.length == 1 && selected.bytes[0] == 'L'
-	    && !selected.remote);
-	CHECK(splitter.remote.length == 1);
-	selected = yt_input_splitter_select(&splitter, 2.0f,
-	    YT_INPUT_PHASE_AB36);
-	CHECK(selected.length == 1 && selected.bytes[0] == 'R'
-	    && selected.remote);
-
-	CHECK(yt_input_splitter_push(&splitter, false, &local));
-	CHECK(yt_input_splitter_push(&splitter, true, &remote));
-	selected = yt_input_splitter_select(&splitter, 1.0f,
-	    YT_INPUT_PHASE_AB36);
-	CHECK(selected.length == 1 && selected.bytes[0] == 'L'
-	    && !selected.remote);
-	CHECK(splitter.remote.length == 1);
-	selected = yt_input_splitter_select(&splitter, 2.0f,
-	    YT_INPUT_PHASE_WAIT);
-	CHECK(selected.length == 0 && splitter.remote.length == 1);
-	selected = yt_input_splitter_select(&splitter, 0.0f,
-	    YT_INPUT_PHASE_WAIT);
-	CHECK(selected.length == 1 && selected.bytes[0] == 'R'
-	    && selected.remote);
-
-	selected = one('Q');
-	remote = one('S');
-	remote.remote = true;
-	CHECK(yt_input_ab36_remote_replace(0.0f, &remote, &selected));
-	CHECK(selected.length == 1 && selected.bytes[0] == 'S'
-	    && selected.remote);
-	selected = one('Q');
-	CHECK(yt_input_ab36_remote_replace(2.0f, &remote, &selected));
-	CHECK(selected.length == 1 && selected.bytes[0] == 'S'
-	    && selected.remote);
-	selected = one('Q');
-	CHECK(yt_input_ab36_remote_replace(1.0f, &remote, &selected));
-	CHECK(selected.length == 1 && selected.bytes[0] == 'Q'
-	    && !selected.remote);
-	remote.length = 0;
-	CHECK(yt_input_ab36_remote_replace(0.0f, &remote, &selected));
-	CHECK(selected.length == 1 && selected.bytes[0] == 'Q');
-	remote.length = 3;
-	CHECK(!yt_input_ab36_remote_replace(0.0f, &remote, &selected));
 }
 
 static void
@@ -470,87 +379,6 @@ test_ab36_queued_input(void)
 }
 
 static void
-test_ab36_live_input(void)
-{
-	static const float replacing_modes[] = {0.0f, 2.0f, -1.0f};
-	struct yt_input_splitter splitter;
-	struct yt_input_value local = one('L');
-	struct yt_input_value remote = one('R');
-	struct yt_input_value selected;
-	size_t index;
-
-	for (index = 0U; index < sizeof(replacing_modes)
-	    / sizeof(replacing_modes[0]); ++index) {
-		yt_input_splitter_init(&splitter);
-		CHECK(yt_input_splitter_push(&splitter, false, &local));
-		CHECK(yt_input_splitter_push(&splitter, true, &remote));
-		selected = yt_input_splitter_select(&splitter,
-		    replacing_modes[index], YT_INPUT_PHASE_AB36);
-		CHECK(selected.length == 1U && selected.bytes[0] == 'R'
-		    && selected.remote && splitter.local.length == 0U
-		    && splitter.remote.length == 0U);
-	}
-
-	yt_input_splitter_init(&splitter);
-	CHECK(yt_input_splitter_push(&splitter, false, &local));
-	CHECK(yt_input_splitter_push(&splitter, true, &remote));
-	selected = yt_input_splitter_select(&splitter, 1.0f,
-	    YT_INPUT_PHASE_AB36);
-	CHECK(selected.length == 1U && selected.bytes[0] == 'L'
-	    && !selected.remote && splitter.local.length == 0U
-	    && splitter.remote.length == 1U);
-	selected = yt_input_splitter_select(&splitter, 1.0f,
-	    YT_INPUT_PHASE_AB36);
-	CHECK(selected.length == 0U && splitter.remote.length == 1U);
-
-	yt_input_splitter_init(&splitter);
-	CHECK(yt_input_splitter_push(&splitter, false, &local));
-	selected = yt_input_splitter_select(&splitter, 0.0f,
-	    YT_INPUT_PHASE_AB36);
-	CHECK(selected.length == 1U && selected.bytes[0] == 'L'
-	    && !selected.remote);
-
-	yt_input_splitter_init(&splitter);
-	CHECK(yt_input_splitter_push(&splitter, true, &remote));
-	selected = yt_input_splitter_select(&splitter, 0.0f,
-	    YT_INPUT_PHASE_AB36);
-	CHECK(selected.length == 1U && selected.bytes[0] == 'R'
-	    && selected.remote);
-}
-
-static void
-test_radio_body_live_input(void)
-{
-	static const float replacing_modes[] = {0.0f, 2.0f, -1.0f};
-	struct yt_input_splitter splitter;
-	struct yt_input_value local = one('L');
-	struct yt_input_value remote = one('R');
-	struct yt_input_value selected;
-	size_t index;
-
-	for (index = 0U; index < sizeof(replacing_modes)
-	    / sizeof(replacing_modes[0]); ++index) {
-		yt_input_splitter_init(&splitter);
-		CHECK(yt_input_splitter_push(&splitter, false, &local));
-		CHECK(yt_input_splitter_push(&splitter, true, &remote));
-		selected = yt_input_splitter_select(&splitter,
-		    replacing_modes[index], YT_INPUT_PHASE_RADIO_BODY);
-		CHECK(selected.length == 1U && selected.bytes[0] == 'R'
-		    && selected.remote && splitter.local.length == 0U
-		    && splitter.remote.length == 0U);
-	}
-
-	yt_input_splitter_init(&splitter);
-	CHECK(yt_input_splitter_push(&splitter, false, &local));
-	CHECK(yt_input_splitter_push(&splitter, true, &remote));
-	selected = yt_input_splitter_select(&splitter, 1.0f,
-	    YT_INPUT_PHASE_RADIO_BODY);
-	CHECK(selected.length == 1U && selected.bytes[0] == 'L'
-	    && !selected.remote && splitter.local.length == 0U
-	    && splitter.remote.length == 1U);
-}
-
-static void
 test_radio_body_key_classification(void)
 {
 	unsigned key;
@@ -581,51 +409,6 @@ test_radio_body_key_classification(void)
 		    == nonempty_expected);
 	}
 	CHECK(yt_input_radio_body_key('\n', 4U) == YT_RADIO_BODY_KEY_IGNORE);
-}
-
-static void
-test_b05d_live_input(void)
-{
-	static const float local_only_modes[] = {1.0f, 2.0f, -1.0f};
-	struct yt_input_splitter splitter;
-	struct yt_input_value local = one('L');
-	struct yt_input_value remote = one('R');
-	struct yt_input_value selected;
-	size_t index;
-
-	yt_input_splitter_init(&splitter);
-	CHECK(yt_input_splitter_push(&splitter, false, &local));
-	CHECK(yt_input_splitter_push(&splitter, true, &remote));
-	selected = yt_input_splitter_select(&splitter, 0.0f,
-	    YT_INPUT_PHASE_B05D);
-	CHECK(selected.length == 1U && selected.bytes[0] == 'R'
-	    && selected.remote && splitter.local.length == 0U
-	    && splitter.remote.length == 0U);
-
-	for (index = 0U; index < sizeof(local_only_modes)
-	    / sizeof(local_only_modes[0]); ++index) {
-		yt_input_splitter_init(&splitter);
-		CHECK(yt_input_splitter_push(&splitter, false, &local));
-		CHECK(yt_input_splitter_push(&splitter, true, &remote));
-		selected = yt_input_splitter_select(&splitter,
-		    local_only_modes[index], YT_INPUT_PHASE_B05D);
-		CHECK(selected.length == 1U && selected.bytes[0] == 'L'
-		    && !selected.remote && splitter.local.length == 0U
-		    && splitter.remote.length == 1U);
-	}
-
-	yt_input_splitter_init(&splitter);
-	CHECK(yt_input_splitter_push(&splitter, true, &remote));
-	selected = yt_input_splitter_select(&splitter, 2.0f,
-	    YT_INPUT_PHASE_B05D);
-	CHECK(selected.length == 0U && splitter.remote.length == 1U);
-
-	yt_input_splitter_init(&splitter);
-	CHECK(yt_input_splitter_push(&splitter, false, &local));
-	selected = yt_input_splitter_select(&splitter, 0.0f,
-	    YT_INPUT_PHASE_B05D);
-	CHECK(selected.length == 1U && selected.bytes[0] == 'L'
-	    && !selected.remote);
 }
 
 static void
@@ -1139,34 +922,6 @@ test_ab36_terminal_transaction(void)
 	CHECK(!yt_input_ab36_terminal_run((enum yt_ab36_terminal_kind)99,
 	    &running, &terminated, ab36_terminal_notice,
 	    ab36_terminal_close, &tape));
-}
-
-static void
-test_source_fifo(void)
-{
-	struct yt_input_splitter splitter;
-	struct yt_input_value a = one('A');
-	struct yt_input_value b = one('B');
-	struct yt_input_value local = one('L');
-	struct yt_input_value selected;
-
-	yt_input_splitter_init(&splitter);
-	CHECK(yt_input_splitter_push(&splitter, true, &a));
-	CHECK(yt_input_splitter_push(&splitter, false, &local));
-	CHECK(yt_input_splitter_push(&splitter, true, &b));
-	selected = yt_input_splitter_select_source(&splitter, false);
-	CHECK(selected.length == 1 && selected.bytes[0] == 'L'
-	    && !selected.remote && splitter.remote.length == 2);
-	selected = yt_input_splitter_select_source(&splitter, false);
-	CHECK(selected.length == 0);
-	selected = yt_input_splitter_select_source(&splitter, true);
-	CHECK(selected.length == 1 && selected.bytes[0] == 'A'
-	    && selected.remote);
-	selected = yt_input_splitter_select_source(&splitter, true);
-	CHECK(selected.length == 1 && selected.bytes[0] == 'B'
-	    && selected.remote);
-	selected = yt_input_splitter_select_source(&splitter, true);
-	CHECK(selected.length == 0);
 }
 
 static void
@@ -2051,7 +1806,7 @@ static void
 test_timed_wait(void)
 {
 	struct yt_timed_wait_state wait;
-	struct yt_input_value value = {{0, 0}, 0, 0, false};
+	struct yt_input_value value = {{0, 0}, 0, false};
 	enum yt_timed_wait_reason reason;
 	memset(&wait, 0, sizeof(wait));
 	memcpy(wait.serial_scratch, "old", 3);
@@ -2180,8 +1935,8 @@ static void
 test_input_drain(void)
 {
 	struct yt_input_drain_state drain;
-	struct yt_input_value initial = {{'o', 'k'}, 2, 0, false};
-	struct yt_input_value value = {{0, 0}, 0, 0, false};
+	struct yt_input_value initial = {{'o', 'k'}, 2, false};
+	struct yt_input_value value = {{0, 0}, 0, false};
 	enum yt_input_drain_reason reason;
 
 	CHECK(yt_input_drain_begin(&drain, &initial));
@@ -4910,13 +4665,9 @@ int
 main(void)
 {
 	test_input_fault_inventories();
-	test_arbitration();
 	test_ab36_inactivity_gate();
 	test_ab36_queued_input();
-	test_ab36_live_input();
-	test_radio_body_live_input();
 	test_radio_body_key_classification();
-	test_b05d_live_input();
 	test_ab36_repeat_recognition();
 	test_ab36_repeat_transaction();
 	test_ab36_submission();
@@ -4925,8 +4676,6 @@ main(void)
 	test_command_save_gate();
 	test_command_save_stages();
 	test_ab36_terminal_transaction();
-	test_source_fifo();
-	test_merged_fifo();
 	test_b05d_keys();
 	test_upper_fault_stages();
 	test_repeat_prefix_stages();

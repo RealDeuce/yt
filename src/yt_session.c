@@ -232,7 +232,7 @@ struct yt_session {
 	char command_accumulator[YT_COMMAND_SIZE];
 	char paged_text[YT_COMMAND_SIZE];
 	char output_source[YT_COMMAND_SIZE];
-	struct yt_input_splitter input;
+	struct yt_input input;
 	char saved_command[YT_COMMAND_SIZE];
 	bool running;
 	bool terminated;
@@ -777,11 +777,9 @@ static int
 session_radio_body_key(struct yt_session *session)
 {
 	for (;;) {
-		struct yt_input_value selected = {{0, 0}, 0, 0, false};
+		struct yt_input_value selected = {{0, 0}, 0, false};
 
-		if (!yt_input_wait_legacy(&session->input,
-		    session_mode(session),
-		    YT_INPUT_PHASE_RADIO_BODY, &selected))
+		if (!yt_input_wait(&session->input, &selected))
 			return EOF;
 		if (selected.length == 1)
 			return selected.bytes[0];
@@ -791,7 +789,7 @@ session_radio_body_key(struct yt_session *session)
 static bool
 session_timed_wait(struct yt_session *session, double seconds)
 {
-	struct yt_input_value selected = {{0, 0}, 0, 0, false};
+	struct yt_input_value selected = {{0, 0}, 0, false};
 	uint64_t deadline_milliseconds;
 	uint64_t duration_milliseconds;
 	DWORD current_seconds;
@@ -812,8 +810,7 @@ session_timed_wait(struct yt_session *session, double seconds)
 	    + current_milliseconds + duration_milliseconds;
 	if (deadline_milliseconds > (uint64_t)UINT32_MAX * 1000U + 999U)
 		return false;
-	return yt_input_wait_legacy_until(&session->input, session_mode(session),
-	    YT_INPUT_PHASE_WAIT,
+	return yt_input_wait_until(&session->input,
 	    (uint32_t)(deadline_milliseconds / 1000U),
 	    (uint16_t)(deadline_milliseconds % 1000U), &selected, &timed_out);
 }
@@ -1564,7 +1561,7 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 	    sizeof(session->command_accumulator));
 	dest[0] = '\0';
 	for (;;) {
-		struct yt_input_value selected = {{0, 0}, 0, 0, false};
+		struct yt_input_value selected = {{0, 0}, 0, false};
 		bool queued = session->queue_position < session->queue_length;
 		uint8_t key;
 
@@ -1575,9 +1572,7 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 				return false;
 		}
 		else {
-			if (!yt_input_wait_legacy(&session->input,
-			    session_mode(session),
-			    YT_INPUT_PHASE_AB36, &selected))
+			if (!yt_input_wait(&session->input, &selected))
 				return false;
 		}
 		if (selected.length != 1)
@@ -1760,8 +1755,7 @@ session_paged_sample(void *context, struct yt_input_value *sampled)
 {
 	struct yt_session *session = context;
 
-	return yt_input_poll_legacy(&session->input,
-	    session_mode(session), YT_INPUT_PHASE_B05D, sampled);
+	return yt_input_poll(&session->input, sampled);
 }
 
 static bool
@@ -2247,7 +2241,7 @@ session_drain_pending_input(struct yt_session *session)
 	if (!yt_input_drain_begin(&drain, &session->input_residue))
 		return false;
 	for (;;) {
-		struct yt_input_value selected = {{0, 0}, 0, 0, false};
+		struct yt_input_value selected = {{0, 0}, 0, false};
 
 		if (!yt_input_poll_source(&session->input, false, &selected))
 			return false;
@@ -2258,7 +2252,7 @@ session_drain_pending_input(struct yt_session *session)
 			break;
 	}
 	for (;;) {
-		struct yt_input_value selected = {{0, 0}, 0, 0, false};
+		struct yt_input_value selected = {{0, 0}, 0, false};
 
 		if (session_mode(session) == 0.0f
 		    && !yt_input_poll_source(&session->input, true, &selected))
@@ -3383,7 +3377,7 @@ static bool
 opening_poll_local(void *context, bool *ready, struct yt_error *error)
 {
 	struct yt_session *session = context;
-	struct yt_input_value local = {{0, 0}, 0, 0, false};
+	struct yt_input_value local = {{0, 0}, 0, false};
 
 	if (!yt_input_poll_source(&session->input, false, &local)) {
 		if (error != NULL) {
@@ -3403,9 +3397,7 @@ opening_poll_remote(void *context, bool *ready, struct yt_error *error)
 	struct yt_session *session = context;
 
 	(void)error;
-	*ready = session->input.remote.position
-	    < session->input.remote.length;
-	return true;
+	return yt_input_source_ready(&session->input, true, ready);
 }
 
 static bool
@@ -19094,8 +19086,7 @@ nearest_session_input(void *context, uint8_t *key, bool *available,
 	(void)error;
 	*available = false;
 	*key = 0U;
-	if (!yt_input_wait_legacy(&session->input, session_mode(session),
-	    YT_INPUT_PHASE_B05D, &selected))
+	if (!yt_input_wait(&session->input, &selected))
 		return false;
 	if (selected.length != 1U)
 		return true;
@@ -19383,8 +19374,7 @@ profit_session_input(void *context, uint8_t *text, size_t capacity,
 	(void)error;
 	*length = 0U;
 	*available = false;
-	if (!yt_input_wait_legacy(&session->input, session_mode(session),
-	    YT_INPUT_PHASE_B05D, &selected))
+	if (!yt_input_wait(&session->input, &selected))
 		return false;
 	if (selected.length == 0U)
 		return true;
@@ -20464,6 +20454,7 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 		return false;
 	}
 	memset(&session, 0, sizeof(session));
+	yt_input_init(&session.input);
 	session.error = error;
 	yt_present_bind_background_process(&session.presentation,
 	    &session.route_process.bytes[YT_BACKGROUND_ADDRESS]);

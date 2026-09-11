@@ -4,16 +4,18 @@
 #include "yt_common.h"
 #include "yt_input_model.h"
 
-bool yt_input_poll_legacy(struct yt_input_splitter *splitter, float mode,
-    enum yt_input_phase phase, struct yt_input_value *selected);
-bool yt_input_wait_legacy(struct yt_input_splitter *splitter, float mode,
-    enum yt_input_phase phase, struct yt_input_value *selected);
-bool yt_input_wait_legacy_until(struct yt_input_splitter *splitter,
-    float mode, enum yt_input_phase phase, uint32_t seconds,
+struct yt_input {
+	struct yt_input_value pending;
+	bool pending_valid;
+};
+
+void yt_input_init(struct yt_input *input);
+bool yt_input_poll(struct yt_input *input, struct yt_input_value *selected);
+bool yt_input_wait(struct yt_input *input, struct yt_input_value *selected);
+bool yt_input_wait_until(struct yt_input *input, uint32_t seconds,
     uint16_t milliseconds, struct yt_input_value *selected, bool *timed_out);
-bool yt_input_poll_merged(struct yt_input_splitter *splitter,
+bool yt_input_poll_source(struct yt_input *input, bool remote,
     struct yt_input_value *selected);
-bool yt_input_poll_source(struct yt_input_splitter *splitter, bool remote,
-    struct yt_input_value *selected);
+bool yt_input_source_ready(struct yt_input *input, bool remote, bool *ready);
 
 #endif

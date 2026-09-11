@@ -14,109 +14,129 @@ input_session_local(void)
 	    : od_control.od_force_local != FALSE;
 }
 
-static bool
-push_event(struct yt_input_splitter *splitter,
-    const tODInputEvent *event)
+static void
+input_value(const tODInputEvent *event, struct yt_input_value *value)
 {
-	struct yt_input_value value = {{0, 0}, 0, 0, false};
-
+	memset(value, 0, sizeof(*value));
 	if (event->EventType == EVENT_EXTENDED_KEY) {
-		value.bytes[0] = 0;
-		value.bytes[1] = (uint8_t)event->chKeyPress;
-		value.length = 2;
+		value->bytes[0] = 0;
+		value->bytes[1] = (uint8_t)event->chKeyPress;
+		value->length = 2U;
 	}
 	else {
-		value.bytes[0] = (uint8_t)event->chKeyPress;
-		value.length = 1;
+		value->bytes[0] = (uint8_t)event->chKeyPress;
+		value->length = 1U;
 	}
-	/* A Unix forced-local session uses the stdio transport, whose
-	 * events retain their transport origin.  They are nevertheless
-	 * local input to the game. */
-	value.remote = event->bFromRemote != FALSE && !input_session_local();
-	return yt_input_splitter_push(splitter, value.remote, &value);
+	value->remote = event->bFromRemote != FALSE && !input_session_local();
+}
+
+void
+yt_input_init(struct yt_input *input)
+{
+	memset(input, 0, sizeof(*input));
 }
 
 static bool
-poll_splitter(struct yt_input_splitter *splitter)
+input_pending_take(struct yt_input *input, struct yt_input_value *selected)
 {
-	tODInputEvent event;
-
-	while (yt_input_splitter_can_push(splitter, false)
-	    && yt_input_splitter_can_push(splitter, true)
-	    && od_get_input(&event, 0, GETIN_RAW))
-		if (!push_event(splitter, &event))
-			return false;
-	return true;
-}
-
-bool
-yt_input_poll_legacy(struct yt_input_splitter *splitter, float mode,
-    enum yt_input_phase phase, struct yt_input_value *selected)
-{
-	if (!poll_splitter(splitter))
+	if (!input->pending_valid)
 		return false;
-	*selected = yt_input_splitter_select(splitter, mode, phase);
+	*selected = input->pending;
+	memset(&input->pending, 0, sizeof(input->pending));
+	input->pending_valid = false;
 	return true;
 }
 
 bool
-yt_input_wait_legacy(struct yt_input_splitter *splitter, float mode,
-    enum yt_input_phase phase, struct yt_input_value *selected)
+yt_input_poll(struct yt_input *input, struct yt_input_value *selected)
 {
 	tODInputEvent event;
 
-	for (;;) {
-		if (!yt_input_poll_legacy(splitter, mode, phase, selected))
-			return false;
-		if (selected->length != 0U)
-			return true;
-		if (!od_get_input(&event, OD_NO_TIMEOUT, GETIN_RAW)
-		    || !push_event(splitter, &event))
-			return false;
-	}
+	if (input == NULL || selected == NULL)
+		return false;
+	if (input_pending_take(input, selected))
+		return true;
+	memset(selected, 0, sizeof(*selected));
+	if (od_get_input(&event, 0, GETIN_RAW))
+		input_value(&event, selected);
+	return true;
 }
 
 bool
-yt_input_wait_legacy_until(struct yt_input_splitter *splitter,
-    float mode, enum yt_input_phase phase, uint32_t seconds,
+yt_input_wait(struct yt_input *input, struct yt_input_value *selected)
+{
+	tODInputEvent event;
+
+	if (input == NULL || selected == NULL)
+		return false;
+	if (input_pending_take(input, selected))
+		return true;
+	if (!od_get_input(&event, OD_NO_TIMEOUT, GETIN_RAW))
+		return false;
+	input_value(&event, selected);
+	return true;
+}
+
+bool
+yt_input_wait_until(struct yt_input *input, uint32_t seconds,
     uint16_t milliseconds, struct yt_input_value *selected, bool *timed_out)
 {
 	tODInputEvent event;
 
-	if (timed_out == NULL)
+	if (input == NULL || selected == NULL || timed_out == NULL)
 		return false;
-	for (;;) {
-		if (!yt_input_poll_legacy(splitter, mode, phase, selected))
-			return false;
-		if (selected->length != 0U) {
-			*timed_out = false;
-			return true;
-		}
-		if (!od_get_input_until(&event, seconds, milliseconds, GETIN_RAW)) {
-			*timed_out = true;
-			return true;
-		}
-		if (!push_event(splitter, &event))
-			return false;
+	if (input_pending_take(input, selected)) {
+		*timed_out = false;
+		return true;
 	}
-}
-
-bool
-yt_input_poll_merged(struct yt_input_splitter *splitter,
-    struct yt_input_value *selected)
-{
-	if (!poll_splitter(splitter))
-		return false;
-	*selected = yt_input_splitter_select_merged(splitter);
+	memset(selected, 0, sizeof(*selected));
+	if (!od_get_input_until(&event, seconds, milliseconds, GETIN_RAW)) {
+		*timed_out = true;
+		return true;
+	}
+	input_value(&event, selected);
+	*timed_out = false;
 	return true;
 }
 
 bool
-yt_input_poll_source(struct yt_input_splitter *splitter, bool remote,
+yt_input_poll_source(struct yt_input *input, bool remote,
     struct yt_input_value *selected)
 {
-	if (!poll_splitter(splitter))
+	tODInputEvent event;
+	struct yt_input_value value;
+
+	if (input == NULL || selected == NULL)
 		return false;
-	*selected = yt_input_splitter_select_source(splitter, remote);
+	memset(selected, 0, sizeof(*selected));
+	if (input->pending_valid) {
+		if (input->pending.remote == remote)
+			(void)input_pending_take(input, selected);
+		return true;
+	}
+	if (!od_get_input(&event, 0, GETIN_RAW))
+		return true;
+	input_value(&event, &value);
+	if (value.remote == remote)
+		*selected = value;
+	else {
+		input->pending = value;
+		input->pending_valid = true;
+	}
+	return true;
+}
+
+bool
+yt_input_source_ready(struct yt_input *input, bool remote, bool *ready)
+{
+	tODInputEvent event;
+
+	if (input == NULL || ready == NULL)
+		return false;
+	if (!input->pending_valid && od_get_input(&event, 0, GETIN_RAW)) {
+		input_value(&event, &input->pending);
+		input->pending_valid = true;
+	}
+	*ready = input->pending_valid && input->pending.remote == remote;
 	return true;
 }

@@ -44791,7 +44791,6 @@ computer_quit_heading_sample_blank_prefix(
 	static const uint8_t confirmation[] = "Are you sure (Y/N)? ";
 	static const uint8_t command[] = "Q";
 	struct viewer_pager_join *join = &viewer->join;
-	struct yt_input_splitter splitter;
 	struct yt_input_value incoming;
 	struct yt_input_value selected;
 	struct yt_present_result result;
@@ -44801,14 +44800,8 @@ computer_quit_heading_sample_blank_prefix(
 	memset(&incoming, 0, sizeof(incoming));
 	incoming.bytes[0] = '\r';
 	incoming.length = 1U;
-	yt_input_splitter_init(&splitter);
-	if (!yt_input_splitter_push(&splitter, remote_source, &incoming))
-		return false;
-	selected = yt_input_splitter_select_source(&splitter, remote_source);
-	if (selected.length != 1U || selected.bytes[0] != '\r'
-	    || selected.remote != remote_source)
-		return false;
-	join->injected_sample = selected;
+	incoming.remote = remote_source;
+	join->injected_sample = incoming;
 	join->injected_sample_call = 2U;
 
 	join->presentation = state(ansi);

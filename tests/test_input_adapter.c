@@ -169,17 +169,16 @@ test_open_doors_runtime_policy(void)
 static void
 test_forced_local_stdio_origin(void)
 {
-	struct yt_input_splitter splitter;
+	struct yt_input input;
 	struct yt_input_value selected;
 
 	memset(&test_door, 0, sizeof(test_door));
 	test_door.identity.local = true;
 	od_control.od_force_local = TRUE;
 	od_control.baud = 19200U;
-	yt_input_splitter_init(&splitter);
+	yt_input_init(&input);
 	queue_character('K', TRUE);
-	CHECK(yt_input_poll_legacy(&splitter, 1.0f,
-	    YT_INPUT_PHASE_WAIT, &selected));
+	CHECK(yt_input_poll(&input, &selected));
 	CHECK(selected.length == 1U && selected.bytes[0] == 'K'
 	    && !selected.remote);
 }
@@ -187,16 +186,33 @@ test_forced_local_stdio_origin(void)
 static void
 test_remote_origin_stays_remote(void)
 {
-	struct yt_input_splitter splitter;
+	struct yt_input input;
 	struct yt_input_value selected;
 
 	memset(&test_door, 0, sizeof(test_door));
 	od_control.od_force_local = FALSE;
 	od_control.baud = 0U;
-	yt_input_splitter_init(&splitter);
+	yt_input_init(&input);
 	queue_character('R', TRUE);
-	CHECK(yt_input_poll_legacy(&splitter, 0.0f,
-	    YT_INPUT_PHASE_B05D, &selected));
+	CHECK(yt_input_poll(&input, &selected));
+	CHECK(selected.length == 1U && selected.bytes[0] == 'R'
+	    && selected.remote);
+}
+
+static void
+test_source_peek_preserves_event(void)
+{
+	struct yt_input input;
+	struct yt_input_value selected;
+	bool ready;
+
+	memset(&test_door, 0, sizeof(test_door));
+	od_control.od_force_local = FALSE;
+	yt_input_init(&input);
+	queue_character('R', TRUE);
+	CHECK(yt_input_source_ready(&input, false, &ready) && !ready);
+	CHECK(yt_input_source_ready(&input, true, &ready) && ready);
+	CHECK(yt_input_poll(&input, &selected));
 	CHECK(selected.length == 1U && selected.bytes[0] == 'R'
 	    && selected.remote);
 }
@@ -204,18 +220,17 @@ test_remote_origin_stays_remote(void)
 static void
 test_open_doors_deadline_wait(void)
 {
-	struct yt_input_splitter splitter;
+	struct yt_input input;
 	struct yt_input_value selected;
 	bool timed_out = false;
 
 	memset(&test_door, 0, sizeof(test_door));
 	test_door.identity.local = false;
 	od_control.od_force_local = FALSE;
-	yt_input_splitter_init(&splitter);
+	yt_input_init(&input);
 	event_ready = false;
 	until_called = false;
-	CHECK(yt_input_wait_legacy_until(&splitter, 0.0f,
-	    YT_INPUT_PHASE_WAIT, 12U, 345U, &selected, &timed_out));
+	CHECK(yt_input_wait_until(&input, 12U, 345U, &selected, &timed_out));
 	CHECK(until_called && until_seconds == 12U
 	    && until_milliseconds == 345U);
 	CHECK(timed_out && selected.length == 0U);
@@ -227,6 +242,7 @@ main(void)
 	test_open_doors_runtime_policy();
 	test_forced_local_stdio_origin();
 	test_remote_origin_stays_remote();
+	test_source_peek_preserves_event();
 	test_open_doors_deadline_wait();
 	if (failures != 0) {
 		fprintf(stderr, "test_input_adapter: %d failure(s)\n", failures);
