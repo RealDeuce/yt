@@ -9872,13 +9872,13 @@ yt_direct_fighter_kill_run(struct yt_direct_fighter_kill_state *state,
 	    || !ops->news(context, warning, warning_length, error))
 		return false;
 	terminal = false;
-	if (!ops->mine(context, &terminal, state->destroyed_raw, error))
+	if (!ops->mine(context, &terminal, &state->destroyed, error))
 		return false;
 	if (terminal) {
 		state->route = YT_DIRECT_FIGHTER_MINE_TERMINAL;
 		return true;
 	}
-	if (!qb_mbf32_truth(state->destroyed_raw)) {
+	if (!state->destroyed) {
 		state->route = YT_DIRECT_FIGHTER_FRESH_PROMPT;
 		return true;
 	}

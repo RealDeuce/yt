@@ -11733,7 +11733,7 @@ struct direct_fighter_kill_tape {
 	bool durable;
 	bool news_durable;
 	bool mine_terminal;
-	uint8_t mine_destroyed_raw[4];
+	bool mine_destroyed;
 	enum direct_fighter_field field;
 	size_t rng_position;
 };
@@ -11885,7 +11885,7 @@ direct_fighter_kill_test_news(void *context, const uint8_t *text,
 
 static bool
 direct_fighter_kill_test_mine(void *context, bool *terminal,
-    uint8_t destroyed_raw[4], struct yt_error *error)
+    bool *destroyed, struct yt_error *error)
 {
 	struct direct_fighter_kill_tape *tape = context;
 
@@ -11894,7 +11894,7 @@ direct_fighter_kill_test_mine(void *context, bool *terminal,
 	tape->rng_position += 1U;
 	tape->field = DIRECT_KILL_FIELD_SECTOR;
 	*terminal = tape->mine_terminal;
-	memcpy(destroyed_raw, tape->mine_destroyed_raw, 4U);
+	*destroyed = tape->mine_destroyed;
 	return true;
 }
 
@@ -11928,7 +11928,7 @@ direct_fighter_kill_test_reset(struct direct_fighter_kill_tape *tape,
 	tape->sector = *sector;
 	tape->fail_at = fail_at;
 	tape->field = DIRECT_KILL_FIELD_ENTRY;
-	tape->mine_destroyed_raw[3] = 1U;
+	tape->mine_destroyed = true;
 }
 
 static struct yt_direct_fighter_kill_state
@@ -12029,7 +12029,7 @@ check_direct_fighter_kill_transaction(void)
 	    || state.route != YT_DIRECT_FIGHTER_MINE_TERMINAL)
 		return false;
 	direct_fighter_kill_test_reset(&tape, &target, &sector, 0U);
-	memset(tape.mine_destroyed_raw, 0, 4U);
+	tape.mine_destroyed = false;
 	state = direct_fighter_kill_test_state(0.0f);
 	if (!yt_direct_fighter_kill_run(&state, &lazy_ops,
 	    &tape, NULL) || tape.event_count != 10U

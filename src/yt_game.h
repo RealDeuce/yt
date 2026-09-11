@@ -2893,7 +2893,7 @@ struct yt_direct_fighter_kill_state {
 	float saved_mines;
 	uint8_t saved_name[YT_TEXT_FIELD_SIZE];
 	size_t saved_name_length;
-	uint8_t destroyed_raw[4];
+	bool destroyed;
 	enum yt_direct_fighter_kill_route route;
 };
 struct yt_direct_fighter_kill_ops {
@@ -2914,7 +2914,7 @@ struct yt_direct_fighter_kill_ops {
 	    struct yt_error *error);
 	bool (*news)(void *context, const uint8_t *text, size_t length,
 	    struct yt_error *error);
-	bool (*mine)(void *context, bool *terminal, uint8_t destroyed_raw[4],
+	bool (*mine)(void *context, bool *terminal, bool *destroyed,
 	    struct yt_error *error);
 	bool (*fatal)(void *context, struct yt_error *error);
 };

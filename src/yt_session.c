@@ -6316,14 +6316,13 @@ direct_fighter_kill_news(void *context, const uint8_t *text, size_t length,
 
 static bool
 direct_fighter_kill_mine(void *context, bool *terminal,
-    uint8_t destroyed_raw[4], struct yt_error *error)
+    bool *destroyed, struct yt_error *error)
 {
 	struct yt_session *session = context;
 
 	if (!mine_encounter(session, terminal, error))
 		return false;
-	(void)qb_mbf32_encode(session->destroyed ? -1.0f : 0.0f,
-	    destroyed_raw);
+	*destroyed = session->destroyed;
 	return true;
 }
 
