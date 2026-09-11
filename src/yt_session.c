@@ -68,7 +68,6 @@
 #define YT_STATIC_SINGLE_ZERO_ADDRESS 0x62F4U
 #define YT_STATIC_SINGLE_ONE_ADDRESS 0x628AU
 #define YT_FATAL_SOUND_SELECTOR_ADDRESS 0x4CE2U
-#define YT_PLASMA_PLAYER_SOUND_SELECTOR_ADDRESS 0x5DA2U
 #define YT_COUNTERLAUNCH_COUNT_ADDRESS 0x5BC6U
 #define YT_SPY_DESTINATION_SCRATCH_ADDRESS 0x5FE4U
 #define YT_SPY_FOUND_SCRATCH_ADDRESS 0x5FE8U
@@ -14695,22 +14694,13 @@ plasma_player_color(void *context, float foreground)
 	session_set_foreground(context, foreground);
 }
 
-static void
-plasma_player_sound_selector(void *context, float selector)
-{
-	session_set_process_single(context,
-	    YT_PLASMA_PLAYER_SOUND_SELECTOR_ADDRESS, selector);
-}
-
 static bool
 plasma_player_sound(void *context, float selector, struct yt_error *error)
 {
 	struct yt_session *session = context;
 
-	(void)selector;
-	return session_sound(session, yt_route_process_single(
-	    &session->route_process, YT_PLASMA_PLAYER_SOUND_SELECTOR_ADDRESS),
-	    "plasma player-attack sound", error);
+	return session_sound(session, selector, "plasma player-attack sound",
+	    error);
 }
 
 static void
@@ -15344,7 +15334,6 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
 		plasma_player_write,
 		plasma_player_save_foreground,
 		plasma_player_color,
-		plasma_player_sound_selector,
 		plasma_player_sound,
 		projectile_damage_draw,
 		plasma_fighter_news,

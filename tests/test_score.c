@@ -5387,7 +5387,6 @@ enum plasma_player_event {
 	PLASMA_PLAYER_READ = 1,
 	PLASMA_PLAYER_SAVE_FOREGROUND,
 	PLASMA_PLAYER_COLOR,
-	PLASMA_PLAYER_SOUND_SELECTOR,
 	PLASMA_PLAYER_SOUND,
 	PLASMA_PLAYER_RANDOM,
 	PLASMA_PLAYER_NEWS,
@@ -5413,9 +5412,6 @@ struct plasma_player_tape {
 	float restored_foreground;
 	size_t restore_foreground_count;
 	float selector;
-	float stored_selector;
-	uint8_t stored_selector_raw[4];
-	size_t sound_selector_count;
 	float draws[8];
 	size_t draw_position;
 	uint8_t news[2][256];
@@ -5487,17 +5483,6 @@ plasma_player_test_color(void *context, float foreground)
 	if (tape->color_count < YT_ARRAY_LEN(tape->colors))
 		tape->colors[tape->color_count++] = foreground;
 	(void)qb_mbf32_encode(foreground, tape->foreground_raw);
-}
-
-static void
-plasma_player_test_sound_selector(void *context, float selector)
-{
-	struct plasma_player_tape *tape = context;
-
-	(void)plasma_player_step(tape, PLASMA_PLAYER_SOUND_SELECTOR);
-	tape->stored_selector = selector;
-	(void)qb_mbf32_encode(selector, tape->stored_selector_raw);
-	tape->sound_selector_count++;
 }
 
 static bool
@@ -5630,7 +5615,6 @@ check_projectile_plasma_player_transaction(void)
 		plasma_player_test_write,
 		plasma_player_test_save_foreground,
 		plasma_player_test_color,
-		plasma_player_test_sound_selector,
 		plasma_player_test_sound,
 		plasma_player_test_random,
 		plasma_player_test_news,
@@ -5641,7 +5625,6 @@ check_projectile_plasma_player_transaction(void)
 		PLASMA_PLAYER_READ,
 		PLASMA_PLAYER_SAVE_FOREGROUND,
 		PLASMA_PLAYER_COLOR,
-		PLASMA_PLAYER_SOUND_SELECTOR,
 		PLASMA_PLAYER_SOUND,
 		PLASMA_PLAYER_RANDOM,
 		PLASMA_PLAYER_RANDOM,
@@ -5656,7 +5639,7 @@ check_projectile_plasma_player_transaction(void)
 		PLASMA_PLAYER_WRITE,
 	};
 	static const size_t failure_positions[] = {
-		1U, 5U, 6U, 7U, 8U, 9U, 10U, 11U, 12U, 13U, 15U, 16U,
+		1U, 4U, 5U, 6U, 7U, 8U, 9U, 10U, 11U, 12U, 14U, 15U,
 	};
 	static const uint8_t first_news[] =
 	    "A\0B's plasma bolts hit C\0D in 7 reducing";
@@ -5679,10 +5662,7 @@ check_projectile_plasma_player_transaction(void)
 	    || memcmp(tape.events, ordinary_events, sizeof(ordinary_events)) != 0
 	    || tape.read_count != 3U || tape.read_records[0] != 3
 	    || tape.read_records[1] != 3 || tape.read_records[2] != 3
-	    || tape.selector != 2.0f || tape.stored_selector != 2.0f
-	    || tape.sound_selector_count != 1U || tape.draw_position != 3U
-	    || memcmp(tape.stored_selector_raw,
-	    (uint8_t[]){0x00U, 0x00U, 0x00U, 0x82U}, 4U) != 0
+	    || tape.selector != 2.0f || tape.draw_position != 3U
 	    || tape.color_count != 1U || tape.colors[0] != 5.0f
 	    || tape.save_foreground_count != 1U
 	    || tape.restore_foreground_count != 1U
@@ -5748,7 +5728,7 @@ check_projectile_plasma_player_transaction(void)
 	    || state.destroyed_fighters != 0.0
 	    || state.destroyed_shields != 1.0f || state.remaining_shields != 0.0f
 	    || energy != -12499.0 || tape.read_count != 2U
-	    || tape.event_count != 12U || tape.color_count != 1U
+	    || tape.event_count != 11U || tape.color_count != 1U
 	    || tape.restore_foreground_count != 1U)
 		return false;
 
@@ -5789,14 +5769,13 @@ check_projectile_plasma_player_transaction(void)
 		    || (failure_positions[index] == 1U
 		    && (tape.save_foreground_count != 0U
 		    || tape.color_count != 0U
-		    || state.saved_foreground != 0.0f
-		    || tape.sound_selector_count != 0U))
-		    || (failure_positions[index] >= 5U
+		    || state.saved_foreground != 0.0f))
+		    || (failure_positions[index] >= 4U
 		    && (tape.save_foreground_count != 1U
 		    || tape.color_count != 1U || tape.colors[0] != 5.0f))
-		    || (failure_positions[index] < 15U
+		    || (failure_positions[index] < 14U
 		    && tape.restore_foreground_count != 0U)
-		    || (failure_positions[index] >= 15U
+		    || (failure_positions[index] >= 14U
 		    && (tape.restore_foreground_count != 1U
 		    || tape.restored_foreground != 3.0f)))
 			return false;

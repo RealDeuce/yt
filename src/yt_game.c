@@ -14455,8 +14455,8 @@ yt_projectile_plasma_player_run(
 	    || (state->attacker == NULL && state->attacker_length != 0U)
 	    || ops->read_player == NULL || ops->write_player == NULL
 	    || ops->save_foreground == NULL || ops->color == NULL
-	    || ops->sound_selector == NULL || ops->sound == NULL
-	    || ops->random == NULL || ops->news == NULL || ops->present == NULL
+	    || ops->sound == NULL || ops->random == NULL || ops->news == NULL
+	    || ops->present == NULL
 	    || ops->restore_foreground == NULL)
 		return false;
 	memset(&state->persistence, 0, sizeof(state->persistence));
@@ -14471,7 +14471,6 @@ yt_projectile_plasma_player_run(
 	state->original_shields = player.shields;
 	ops->save_foreground(context, &state->saved_foreground);
 	ops->color(context, 5.0f);
-	ops->sound_selector(context, 2.0f);
 	if (!ops->sound(context, 2.0f, error))
 		return false;
 	while (*state->energy > 0.0
