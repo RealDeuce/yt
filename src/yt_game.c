@@ -16878,8 +16878,6 @@ yt_hostile_bribe_run(struct yt_hostile_bribe_state *state,
 	state->offer_stored = false;
 	state->above_credits = false;
 	state->threshold = 0.0;
-	state->mercenaries_hurt_cint = 0;
-	state->mercenaries_hurt_converted = false;
 	state->commitment = 0.0f;
 	memset(state->commitment_raw, 0, sizeof(state->commitment_raw));
 	state->commitment_stored = false;
@@ -16916,7 +16914,7 @@ yt_hostile_bribe_run(struct yt_hostile_bribe_state *state,
 		return hostile_bribe_force_run(state, ops, context, false, error);
 	}
 
-	if (qb_mbf32_truth(state->planet_link_raw)) {
+	if (state->planet_link != 0.0f) {
 		state->branch = YT_HOSTILE_BRIBE_PLANET_REFUSAL;
 		if (!hostile_bribe_name_row(planet_prefix,
 		    sizeof(planet_prefix) - 1U, state->real_first_name,
@@ -16936,25 +16934,9 @@ yt_hostile_bribe_run(struct yt_hostile_bribe_state *state,
 	if (!ops->random(context, &state->draws[1], error))
 		return false;
 	state->draws_consumed = 2U;
-	{
-		bool overflow;
-
-		state->mercenaries_hurt_cint = qb_cint_mbf32(
-		    state->mercenaries_hurt_raw, 0U, &overflow);
-		if (overflow) {
-			if (error != NULL) {
-				error->status = YT_RANGE;
-				(void)snprintf(error->operation,
-				    sizeof(error->operation), "%s",
-				    "bribe:mercenary-sticky-cint");
-			}
-			return false;
-		}
-		state->mercenaries_hurt_converted = true;
-	}
 	force_attack = yt_bribe_mercenary_forces(state->cached_defenders,
 	    state->ship_fighters, state->draws[0], state->draws[1],
-	    state->mercenaries_hurt_cint != 0);
+	    state->mercenaries_hurt);
 	if (force_attack) {
 		state->branch = YT_HOSTILE_BRIBE_LIFE_DEMAND;
 		if (!hostile_bribe_name_row(life_prefix,

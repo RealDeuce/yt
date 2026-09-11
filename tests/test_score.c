@@ -21875,8 +21875,6 @@ check_hostile_bribe_transaction(void)
 	    || !state.complete || state.branch != YT_HOSTILE_BRIBE_ACCEPTED
 	    || state.route != YT_HOSTILE_BRIBE_SCANNER
 	    || state.draws_consumed != 3U || tape.draw_index != 3U
-	    || !state.mercenaries_hurt_converted
-	    || state.mercenaries_hurt_cint != 0
 	    || !state.offer_stored || state.offer != 30.0f
 	    || !tape.offer_stored || tape.commitment_stored
 	    || !tape.store_order_valid
@@ -21908,7 +21906,7 @@ check_hostile_bribe_transaction(void)
 			return false;
 	}
 
-	/* Ordinary quiet, Xannor force and raw planet truth partitions. */
+	/* Ordinary quiet, Xannor force and occupied-planet partitions. */
 	hostile_bribe_fixture(&tape, &state);
 	state.owner = 3.0f;
 	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
@@ -21926,48 +21924,18 @@ check_hostile_bribe_transaction(void)
 	    || tape.combat_commitment != 20.0 || tape.calls != 3U)
 		return false;
 	hostile_bribe_fixture(&tape, &state);
-	state.planet_link_raw[0] = 0x12U;
-	state.planet_link_raw[1] = 0x34U;
-	state.planet_link_raw[2] = 0x56U;
-	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
-	    || state.branch != YT_HOSTILE_BRIBE_ACCEPTED)
-		return false;
-	hostile_bribe_fixture(&tape, &state);
-	state.planet_link_raw[3] = 0x80U;
+	state.planet_link = 85.0f;
 	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
 	    || state.branch != YT_HOSTILE_BRIBE_PLANET_REFUSAL
 	    || state.draws_consumed != 0U || tape.calls != 1U)
 		return false;
 
-	/* Sticky CINT runs after both draws and preserves rounding/faults. */
+	/* A previous mercenary injury remains sticky across the next Bribe. */
 	hostile_bribe_fixture(&tape, &state);
-	(void)qb_mbf32_encode(-1.0f, state.mercenaries_hurt_raw);
+	state.mercenaries_hurt = true;
 	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
-	    || !state.mercenaries_hurt_converted
-	    || state.mercenaries_hurt_cint != -1
 	    || state.branch != YT_HOSTILE_BRIBE_LIFE_DEMAND
 	    || state.draws_consumed != 2U)
-		return false;
-	hostile_bribe_fixture(&tape, &state);
-	(void)qb_mbf32_encode(0.4f, state.mercenaries_hurt_raw);
-	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
-	    || state.mercenaries_hurt_cint != 0
-	    || state.branch != YT_HOSTILE_BRIBE_ACCEPTED)
-		return false;
-	hostile_bribe_fixture(&tape, &state);
-	(void)qb_mbf32_encode(0.6f, state.mercenaries_hurt_raw);
-	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
-	    || state.mercenaries_hurt_cint != 1
-	    || state.branch != YT_HOSTILE_BRIBE_LIFE_DEMAND)
-		return false;
-	hostile_bribe_fixture(&tape, &state);
-	(void)qb_mbf32_encode(40000.0f, state.mercenaries_hurt_raw);
-	yt_error_clear(&error);
-	if (yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, &error)
-	    || error.status != YT_RANGE
-	    || strcmp(error.operation, "bribe:mercenary-sticky-cint") != 0
-	    || state.mercenaries_hurt_converted
-	    || state.draws_consumed != 2U || tape.calls != 2U)
 		return false;
 
 	/* Life demand: combat, fatal and rounded sub-one menu return. */

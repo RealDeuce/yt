@@ -38,7 +38,6 @@
 #define YT_FRIENDSHIP_RELATION_ADDRESS 0x4BC4U
 #define YT_COMPUTER_ROUTE_STATUS_ADDRESS 0x4CF2U
 #define YT_ATTACK_COMMITMENT_ADDRESS 0x4D1AU
-#define YT_MERCENARIES_HURT_ADDRESS 0x4D5EU
 #define YT_COMPUTER_PATH_MARKER_ADDRESS 0x4D62U
 #define YT_COMPUTER_ROUTE_DESTINATION_ADDRESS 0x4E12U
 #define YT_COMPUTER_ROUTE_START_ADDRESS 0x4E1AU
@@ -49,7 +48,6 @@
 #define YT_CLEARANCE_ANNOUNCED_ADDRESS 0x55B6U
 #define YT_CLEARANCE_VALUE_ADDRESS 0x55BEU
 #define YT_CLEARANCE_SOUND_SELECTOR_ADDRESS 0x55C6U
-#define YT_HOSTILE_PLANET_LINK_ADDRESS 0x4CFAU
 #define YT_HOSTILE_DEPLOYED_FIGHTERS_ADDRESS 0x4CFEU
 #define YT_SPY_DESTINATION_SCRATCH_ADDRESS 0x5FE4U
 #define YT_SPY_FOUND_SCRATCH_ADDRESS 0x5FE8U
@@ -96,6 +94,7 @@ struct yt_session {
 	bool destroyed;
 	float current_warps[6];
 	bool self_mine_suppressed;
+	bool mercenaries_hurt;
 	struct yt_player player;
 	float current_sector_record;
 	double combat_ship_fighters;
@@ -4288,9 +4287,6 @@ scanner_cache_hostile_sector(struct yt_session *session,
 {
 	uint8_t fighters_raw[8];
 
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_HOSTILE_PLANET_LINK_ADDRESS,
-	    &sector->record.bytes[YT_F93]);
 	(void)qb_mbf64_encode((double)qb_mbf32_decode(
 	    &sector->record.bytes[YT_F81]), fighters_raw);
 	yt_route_process_set_raw_double(&session->route_process,
@@ -7002,13 +6998,8 @@ hostile_attack_combat_persistence(void *context,
 	}
 	if (state->sector_written)
 		*combat->sector = state->sector;
-	if (state->mercenaries_hurt) {
-		uint8_t raw[4];
-
-		(void)qb_mbf32_encode(-1.0f, raw);
-		yt_route_process_set_raw_single(&combat->session->route_process,
-		    YT_MERCENARIES_HURT_ADDRESS, raw);
-	}
+	if (state->mercenaries_hurt)
+		combat->session->mercenaries_hurt = true;
 	return result;
 }
 
@@ -7355,15 +7346,13 @@ bribe_deployed(struct yt_session *session, struct yt_sector *sector,
 		.ship_fighters = session->combat_ship_fighters,
 		.shields = session->combat_ship_shields,
 		.credits = session->player.credits,
+		.planet_link = sector->planet,
+		.mercenaries_hurt = session->mercenaries_hurt,
 		.real_first_name =
 		    (const uint8_t *)session->door->identity.real_first,
 		.real_first_name_length =
 		    strlen(session->door->identity.real_first),
 	};
-	yt_route_process_raw_single(&session->route_process,
-	    YT_HOSTILE_PLANET_LINK_ADDRESS, state.planet_link_raw);
-	yt_route_process_raw_single(&session->route_process,
-	    YT_MERCENARIES_HURT_ADDRESS, state.mercenaries_hurt_raw);
 	result = yt_hostile_bribe_run(&state, &ops, &context, error);
 	*direct_hostile_menu = state.direct_hostile_menu;
 	*forced_attack = state.forced_attack;

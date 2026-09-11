@@ -35340,8 +35340,7 @@ test_direct_emergency_warp_hostile_forced_bribe_attack(void)
 		bribe.credits = 100.0;
 		bribe.real_first_name = (const uint8_t *)"Sysop";
 		bribe.real_first_name_length = 5U;
-		CHECK(qb_mbf32_encode(-1.0f, bribe.mercenaries_hurt_raw)
-		    == QB_MBF_OK);
+		bribe.mercenaries_hurt = true;
 		yt_error_clear(&error);
 		CHECK(yt_hostile_bribe_run(&bribe, &direct_warp_bribe_attack_ops,
 		    &joined, &error));
@@ -35354,8 +35353,6 @@ test_direct_emergency_warp_hostile_forced_bribe_attack(void)
 		    && bribe.branch == YT_HOSTILE_BRIBE_LIFE_DEMAND
 		    && bribe.route == YT_HOSTILE_BRIBE_COMBAT
 		    && bribe.draws_consumed == 2U
-		    && bribe.mercenaries_hurt_converted
-		    && bribe.mercenaries_hurt_cint == -1
 		    && bribe.commitment == 20.0f && bribe.commitment_stored
 		    && bribe.forced_attack && bribe.combat_called
 		    && !bribe.direct_hostile_menu && !bribe.accepted_called
