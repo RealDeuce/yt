@@ -26,7 +26,6 @@
 #define YT_PLAYER_LAST YT_PLAYER_LAST_RECORD
 #define YT_COMMAND_SIZE 4096U
 #define YT_ANTI_CLOAK_ADDRESS 0x1854U
-#define YT_CURRENT_WARPS_ADDRESS 0x1898U
 #define YT_PLANET_RECORD_SCRATCH_ADDRESS 0x19C4U
 #define YT_COMPUTER_PLANET_LINK_ADDRESS 0x5184U
 #define YT_CLEARANCE_HOLDS_ADDRESS 0x4B54U
@@ -37,7 +36,6 @@
 #define YT_SPY_MARKERS_ADDRESS 0x4B7EU
 #define YT_SHARED_LOOP_SCRATCH_ADDRESS 0x4CD2U
 #define YT_FRIENDSHIP_RELATION_ADDRESS 0x4BC4U
-#define YT_SELF_MINE_SUPPRESSION_ADDRESS 0x4D0AU
 #define YT_COMPUTER_ROUTE_STATUS_ADDRESS 0x4CF2U
 #define YT_ATTACK_COMMITMENT_ADDRESS 0x4D1AU
 #define YT_MERCENARIES_HURT_ADDRESS 0x4D5EU
@@ -96,6 +94,8 @@ struct yt_session {
 	int xannor_provoker;
 	float counterlaunch_count;
 	bool destroyed;
+	float current_warps[6];
+	bool self_mine_suppressed;
 	struct yt_player player;
 	float current_sector_record;
 	double combat_ship_fighters;
@@ -338,11 +338,7 @@ static bool scanner_read_player(struct yt_session *session,
 static void
 session_current_warps(const struct yt_session *session, float warps[6])
 {
-	size_t slot;
-
-	for (slot = 0U; slot < 6U; ++slot)
-		warps[slot] = yt_route_process_single(&session->route_process,
-		    (uint16_t)(YT_CURRENT_WARPS_ADDRESS + 4U * slot));
+	memcpy(warps, session->current_warps, sizeof(session->current_warps));
 }
 
 static bool
@@ -365,11 +361,7 @@ session_set_relationship(struct yt_session *session, float value)
 static void
 session_set_self_mine_suppression(struct yt_session *session, bool enabled)
 {
-	static const uint8_t zero[4] = {0x00U, 0x00U, 0x00U, 0x00U};
-	static const uint8_t one[4] = {0x00U, 0x00U, 0x00U, 0x81U};
-
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_SELF_MINE_SUPPRESSION_ADDRESS, enabled ? one : zero);
+	session->self_mine_suppressed = enabled;
 }
 
 static void
@@ -7652,8 +7644,7 @@ sector_entry(struct yt_session *session, struct yt_error *error)
 		    (int)session->player.sector, &sector, error))
 			return false;
 		if (yt_sector_mines_admitted(sector.mines,
-		    yt_route_process_single(&session->route_process,
-		    YT_SELF_MINE_SUPPRESSION_ADDRESS))) {
+		    session->self_mine_suppressed ? 1.0f : 0.0f)) {
 			{
 				bool mine_terminal;
 
@@ -17058,11 +17049,9 @@ computer_route(struct yt_session *session, bool autopilot,
 		    (int)session_sector_basic_record(session,
 		    session->player.sector);
 		session->navigation_field = current_sector.record;
-		for (index = 0; index < 6U; ++index) {
-			yt_route_process_set_raw_single(&session->route_process,
-			    (uint16_t)(YT_CURRENT_WARPS_ADDRESS + index * 4U),
+		for (index = 0; index < 6U; ++index)
+			session->current_warps[index] = qb_mbf32_decode(
 			    current_sector.record.bytes + YT_F41 + index * 4U);
-		}
 	}
 	return true;
 }
