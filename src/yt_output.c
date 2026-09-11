@@ -56,16 +56,14 @@ out_emulated_bytes(const void *data, size_t length)
 		free(text);
 }
 
-static bool
-present_combined(void *context, const uint8_t *data, size_t length, bool line)
+static void
+present_combined(const uint8_t *data, size_t length, bool line)
 {
 	static const uint8_t carriage_return = '\r';
 
-	(void)context;
 	out_emulated_bytes(data, length);
 	if (line)
 		out_emulated_bytes(&carriage_return, 1U);
-	return true;
 }
 
 static bool
@@ -78,35 +76,31 @@ local_session(void)
 }
 
 static void
-present_local_color(void *context, int foreground, int background)
+present_local_color(int foreground, int background)
 {
 	uint8_t attribute;
 
-	(void)context;
 	attribute = yt_present_pc_attribute(foreground, background);
 	od_set_attrib(attribute);
 }
 
 static void
-present_local_text(void *context, const uint8_t *data, size_t length,
-    bool line)
+present_local_text(const uint8_t *data, size_t length, bool line)
 {
 	static const uint8_t newline[] = {'\r', '\n'};
 
-	(void)context;
 	yt_out_plain_bytes(data, length);
 	if (line)
 		yt_out_plain_bytes(newline, sizeof(newline));
 }
 
 static void
-present_local_locate(void *context, int row, int column, int cursor_visible,
+present_local_locate(int row, int column, int cursor_visible,
     int cursor_start, int cursor_stop)
 {
 	INT current_row;
 	INT current_column;
 
-	(void)context;
 	(void)cursor_start;
 	(void)cursor_stop;
 	if (row < 1) {
@@ -120,18 +114,16 @@ present_local_locate(void *context, int row, int column, int cursor_visible,
 }
 
 static void
-present_local_beep(void *context)
+present_local_beep(void)
 {
 	static const uint8_t bell = '\a';
 
-	(void)context;
 	od_putch((char)bell);
 }
 
 static void
-present_local_clear(void *context)
+present_local_clear(void)
 {
-	(void)context;
 	od_clr_scr();
 }
 
@@ -139,17 +131,58 @@ void
 yt_out_present_result(const struct yt_present_result *result)
 {
 	const bool local = local_session();
-	const struct yt_present_sink sink = {
-		.context = NULL,
-		.remote = local ? NULL : present_combined,
-		.local_color = local ? present_local_color : NULL,
-		.local_text = local ? present_local_text : NULL,
-		.local_locate = local ? present_local_locate : NULL,
-		.local_beep = local ? present_local_beep : NULL,
-		.local_clear = local ? present_local_clear : NULL,
-	};
+	size_t index;
 
-	(void)yt_present_replay(result, &sink);
+	if (result == NULL)
+		return;
+	for (index = 0U; index < result->event_count; ++index) {
+		const struct yt_present_event *event = &result->events[index];
+
+		switch (event->operation) {
+		case YT_PRESENT_REMOTE_LINE:
+		case YT_PRESENT_REMOTE_SEMI:
+			if (!local) {
+				present_combined(event->data, event->length,
+				    event->operation == YT_PRESENT_REMOTE_LINE);
+				if (event->commit_color_cache) {
+					if (event->cached_foreground_process != NULL)
+						memcpy(event->cached_foreground_process,
+						    event->cached_foreground_raw, 4U);
+					if (event->cached_background_process != NULL)
+						memcpy(event->cached_background_process,
+						    event->cached_background_raw, 4U);
+				}
+			}
+			break;
+		case YT_PRESENT_LOCAL_COLOR:
+			if (local)
+				present_local_color(event->foreground,
+				    event->background);
+			break;
+		case YT_PRESENT_LOCAL_LINE:
+		case YT_PRESENT_LOCAL_SEMI:
+			if (local)
+				present_local_text(event->data, event->length,
+				    event->operation == YT_PRESENT_LOCAL_LINE);
+			break;
+		case YT_PRESENT_LOCAL_PLAY:
+			break;
+		case YT_PRESENT_LOCAL_LOCATE:
+			if (local)
+				present_local_locate(event->row, event->column,
+				    event->cursor_visible, event->cursor_start,
+				    event->cursor_stop);
+			break;
+		case YT_PRESENT_LOCAL_BEEP:
+			if (local)
+				present_local_beep();
+			break;
+		case YT_PRESENT_LOCAL_CLEAR:
+			if (local)
+				present_local_clear();
+			break;
+		}
+	}
 }
 
 void

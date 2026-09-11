@@ -258,17 +258,6 @@ yt_input_radio_body_key(uint8_t key, size_t current_length)
 }
 
 bool
-yt_input_ab36_remote_replace(float mode, const struct yt_input_value *remote,
-    struct yt_input_value *selected)
-{
-	if (remote == NULL || selected == NULL || remote->length > 2U)
-		return false;
-	if (mode != 1.0f && remote->length != 0)
-		*selected = *remote;
-	return true;
-}
-
-bool
 yt_input_ab36_queue_pop(char *queue, size_t capacity, size_t *position,
     size_t *length, struct yt_input_value *selected)
 {
@@ -1532,79 +1521,6 @@ yt_input_numeric_response(char *text)
 	qb_compat_upper(text);
 	if (strchr(text, 'E') != NULL)
 		text[0] = '\0';
-}
-
-static float
-wait_single(float value)
-{
-	volatile float result = value;
-
-	return result;
-}
-
-static float
-wait_single_add(float left, float right)
-{
-	volatile float result = left + right;
-
-	return result;
-}
-
-bool
-yt_timed_wait_begin(struct yt_timed_wait_state *state, float duration,
-    float initial_timer)
-{
-	float rounded_duration;
-	float rounded_timer;
-
-	if (state == NULL
-	    || state->serial_scratch_length > sizeof(state->serial_scratch))
-		return false;
-	rounded_duration = wait_single(duration);
-	rounded_timer = wait_single(initial_timer);
-	state->duration_cell = wait_single_add(rounded_timer,
-	    rounded_duration);
-	state->timer_reads = 1;
-	state->local_reads = 0;
-	state->loc_reads = 0;
-	state->serial_reads = 0;
-	return true;
-}
-
-enum yt_timed_wait_reason
-yt_timed_wait_timer(struct yt_timed_wait_state *state, float current_timer)
-{
-	float current;
-
-	if (state == NULL)
-		return YT_TIMED_WAIT_ERROR;
-	current = wait_single(current_timer);
-	++state->timer_reads;
-	return current >= state->duration_cell
-	    ? YT_TIMED_WAIT_TIMER : YT_TIMED_WAIT_CONTINUE;
-}
-
-enum yt_timed_wait_reason
-yt_timed_wait_input(struct yt_timed_wait_state *state, float mode,
-    const struct yt_input_value *selected)
-{
-	if (state == NULL || selected == NULL || selected->length > 2U)
-		return YT_TIMED_WAIT_ERROR;
-	++state->local_reads;
-	if (!selected->remote && selected->length != 0)
-		return YT_TIMED_WAIT_LOCAL;
-	if (mode != 0.0f)
-		return YT_TIMED_WAIT_CONTINUE;
-	++state->loc_reads;
-	if (!selected->remote)
-		return selected->length == 0
-		    ? YT_TIMED_WAIT_CONTINUE : YT_TIMED_WAIT_ERROR;
-	if (selected->length != 1U)
-		return YT_TIMED_WAIT_ERROR;
-	state->serial_scratch[0] = selected->bytes[0];
-	state->serial_scratch_length = 1;
-	++state->serial_reads;
-	return YT_TIMED_WAIT_SERIAL;
 }
 
 bool

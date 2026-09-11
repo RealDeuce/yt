@@ -1906,66 +1906,6 @@ yt_present_status_row(const uint8_t *real_name, size_t real_name_length,
 	    alias_length, state, result);
 }
 
-bool
-yt_present_replay(const struct yt_present_result *result,
-    const struct yt_present_sink *sink)
-{
-	size_t index;
-
-	for (index = 0; index < result->event_count; ++index) {
-		const struct yt_present_event *event = &result->events[index];
-
-		switch (event->operation) {
-		case YT_PRESENT_REMOTE_LINE:
-		case YT_PRESENT_REMOTE_SEMI:
-			if (sink->remote != NULL
-			    && !sink->remote(sink->context, event->data,
-				    event->length,
-				    event->operation == YT_PRESENT_REMOTE_LINE))
-				return false;
-			if (sink->remote != NULL && event->commit_color_cache) {
-				if (event->cached_foreground_process != NULL)
-					memcpy(event->cached_foreground_process,
-					    event->cached_foreground_raw, 4U);
-				if (event->cached_background_process != NULL)
-					memcpy(event->cached_background_process,
-					    event->cached_background_raw, 4U);
-			}
-			break;
-		case YT_PRESENT_LOCAL_COLOR:
-			if (sink->local_color != NULL)
-				sink->local_color(sink->context, event->foreground,
-				    event->background);
-			break;
-		case YT_PRESENT_LOCAL_LINE:
-		case YT_PRESENT_LOCAL_SEMI:
-			if (sink->local_text != NULL)
-				sink->local_text(sink->context, event->data,
-				    event->length,
-				    event->operation == YT_PRESENT_LOCAL_LINE);
-			break;
-		case YT_PRESENT_LOCAL_PLAY:
-			/* Authorized logical-event/no-host-audio departure. */
-			break;
-		case YT_PRESENT_LOCAL_LOCATE:
-			if (sink->local_locate != NULL)
-				sink->local_locate(sink->context, event->row,
-				    event->column, event->cursor_visible,
-				    event->cursor_start, event->cursor_stop);
-			break;
-		case YT_PRESENT_LOCAL_BEEP:
-			if (sink->local_beep != NULL)
-				sink->local_beep(sink->context);
-			break;
-		case YT_PRESENT_LOCAL_CLEAR:
-			if (sink->local_clear != NULL)
-				sink->local_clear(sink->context);
-			break;
-		}
-	}
-	return true;
-}
-
 uint8_t
 yt_present_pc_attribute(int foreground, int background)
 {

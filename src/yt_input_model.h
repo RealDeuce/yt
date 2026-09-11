@@ -6,7 +6,6 @@
 #include "yt_main_error.h"
 
 #define YT_INPUT_PENDING 4096U
-#define YT_WAIT_SCRATCH_SIZE 80U
 #define YT_SYSOP_CHAT_EVENTS 4U
 #define YT_SYSOP_F5_PHASES 7U
 #define YT_SYSOP_KEY_COUNT 5U
@@ -220,24 +219,6 @@ typedef bool (*yt_ab36_carrier_fn)(void *context);
 typedef void (*yt_input_process_store_fn)(void *context, uint16_t address,
     const uint8_t raw[4]);
 
-enum yt_timed_wait_reason {
-	YT_TIMED_WAIT_CONTINUE,
-	YT_TIMED_WAIT_TIMER,
-	YT_TIMED_WAIT_LOCAL,
-	YT_TIMED_WAIT_SERIAL,
-	YT_TIMED_WAIT_ERROR,
-};
-
-struct yt_timed_wait_state {
-	float duration_cell;
-	uint8_t serial_scratch[YT_WAIT_SCRATCH_SIZE];
-	size_t serial_scratch_length;
-	size_t timer_reads;
-	size_t local_reads;
-	size_t loc_reads;
-	size_t serial_reads;
-};
-
 enum yt_input_drain_reason {
 	YT_INPUT_DRAIN_CONTINUE,
 	YT_INPUT_DRAIN_LOCAL_COMPLETE,
@@ -418,8 +399,6 @@ bool yt_input_fault_site(enum yt_input_fault_family family, size_t index,
     struct yt_input_fault_site *site);
 enum yt_radio_body_key_action yt_input_radio_body_key(uint8_t key,
     size_t current_length);
-bool yt_input_ab36_remote_replace(float mode,
-    const struct yt_input_value *remote, struct yt_input_value *selected);
 bool yt_input_ab36_queue_pop(char *queue, size_t capacity,
     size_t *position, size_t *length, struct yt_input_value *selected);
 bool yt_input_queue_clear(char *queue, size_t capacity,
@@ -526,13 +505,6 @@ bool yt_input_a8d2_internal_fatal_run(
 	const struct yt_brun_internal_fatal_ops *ops, void *context,
 	struct yt_brun_internal_fatal_state *state);
 void yt_input_numeric_response(char *text);
-bool yt_timed_wait_begin(struct yt_timed_wait_state *state, float duration,
-    float initial_timer);
-enum yt_timed_wait_reason yt_timed_wait_timer(
-    struct yt_timed_wait_state *state, float current_timer);
-enum yt_timed_wait_reason yt_timed_wait_input(
-    struct yt_timed_wait_state *state, float mode,
-    const struct yt_input_value *selected);
 bool yt_input_drain_begin(struct yt_input_drain_state *state,
     const struct yt_input_value *initial_residue);
 enum yt_input_drain_reason yt_input_drain_local(

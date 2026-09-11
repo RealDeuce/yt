@@ -47,19 +47,6 @@ struct yt_present_event {
 	uint8_t cached_background_raw[4];
 };
 
-struct yt_present_sink {
-	void *context;
-	bool (*remote)(void *context, const uint8_t *data, size_t length,
-	    bool line);
-	void (*local_color)(void *context, int foreground, int background);
-	void (*local_text)(void *context, const uint8_t *data, size_t length,
-	    bool line);
-	void (*local_locate)(void *context, int row, int column,
-	    int cursor_visible, int cursor_start, int cursor_stop);
-	void (*local_beep)(void *context);
-	void (*local_clear)(void *context);
-};
-
 struct yt_present_time_state {
 	float deadline;
 	float next_refresh;
@@ -271,10 +258,6 @@ enum yt_present_status yt_present_opening_row(const uint8_t *text,
     struct yt_present_result *result);
 enum yt_present_status yt_present_opening_cleanup(float mode, float snoop,
     struct yt_present_result *result);
-/* Returns false at the first rejected remote event; later events are not
- * replayed. */
-bool yt_present_replay(const struct yt_present_result *result,
-    const struct yt_present_sink *sink);
 uint8_t yt_present_pc_attribute(int foreground, int background);
 
 #endif

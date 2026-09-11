@@ -18,64 +18,6 @@ static unsigned failures;
 	} \
 } while (0)
 
-struct replay_capture {
-	enum yt_present_operation operations[YT_PRESENT_EVENTS];
-	size_t count;
-};
-
-static bool
-capture_remote(void *context, const uint8_t *data, size_t length, bool line)
-{
-	struct replay_capture *capture = context;
-
-	(void)data;
-	(void)length;
-	capture->operations[capture->count++] = line
-	    ? YT_PRESENT_REMOTE_LINE : YT_PRESENT_REMOTE_SEMI;
-	return true;
-}
-
-static bool
-accept_remote(void *context, const uint8_t *data, size_t length, bool line)
-{
-	(void)context;
-	(void)data;
-	(void)length;
-	(void)line;
-	return true;
-}
-
-static bool
-reject_remote(void *context, const uint8_t *data, size_t length, bool line)
-{
-	(void)context;
-	(void)data;
-	(void)length;
-	(void)line;
-	return false;
-}
-
-static void
-capture_color(void *context, int foreground, int background)
-{
-	struct replay_capture *capture = context;
-
-	(void)foreground;
-	(void)background;
-	capture->operations[capture->count++] = YT_PRESENT_LOCAL_COLOR;
-}
-
-static void
-capture_text(void *context, const uint8_t *data, size_t length, bool line)
-{
-	struct replay_capture *capture = context;
-
-	(void)data;
-	(void)length;
-	capture->operations[capture->count++] = line
-	    ? YT_PRESENT_LOCAL_LINE : YT_PRESENT_LOCAL_SEMI;
-}
-
 static struct yt_present_state
 state(bool ansi)
 {
@@ -302,8 +244,6 @@ test_color_process_cache(void)
 	uint8_t background_raw[4];
 	struct yt_present_state current;
 	struct yt_present_result result;
-	const struct yt_present_sink accept_sink = { .remote = accept_remote };
-	const struct yt_present_sink reject_sink = { .remote = reject_remote };
 
 	memcpy(foreground_raw, raw_two, sizeof(foreground_raw));
 	memcpy(background_raw, dirty_zero, sizeof(background_raw));
@@ -323,10 +263,9 @@ test_color_process_cache(void)
 	CHECK(memcmp(foreground_raw, raw_two, sizeof(foreground_raw)) == 0
 	    && memcmp(background_raw, dirty_zero,
 	    sizeof(background_raw)) == 0
-	    && result.events[1].commit_color_cache);
-	CHECK(yt_present_replay(&result, &accept_sink));
-	CHECK(memcmp(foreground_raw, raw_zero, sizeof(foreground_raw)) == 0
-	    && memcmp(background_raw, raw_zero, sizeof(background_raw)) == 0);
+	    && result.events[1].commit_color_cache
+	    && memcmp(result.events[1].cached_foreground_raw, raw_zero, 4U) == 0
+	    && memcmp(result.events[1].cached_background_raw, raw_zero, 4U) == 0);
 
 	memcpy(foreground_raw, dirty_zero, sizeof(foreground_raw));
 	memcpy(background_raw, other_dirty_zero, sizeof(background_raw));
@@ -337,21 +276,9 @@ test_color_process_cache(void)
 	CHECK(memcmp(foreground_raw, dirty_zero, sizeof(foreground_raw)) == 0
 	    && memcmp(background_raw, other_dirty_zero,
 	    sizeof(background_raw)) == 0
-	    && result.events[1].commit_color_cache);
-	CHECK(yt_present_replay(&result, &accept_sink));
-	CHECK(memcmp(foreground_raw, raw_two, sizeof(foreground_raw)) == 0
-	    && memcmp(background_raw, raw_zero, sizeof(background_raw)) == 0);
-
-	memcpy(foreground_raw, dirty_zero, sizeof(foreground_raw));
-	memcpy(background_raw, other_dirty_zero, sizeof(background_raw));
-	current = state(false);
-	yt_present_bind_cached_foreground_process(&current, foreground_raw);
-	yt_present_bind_cached_background_process(&current, background_raw);
-	CHECK(yt_present_color(&current, &result) == YT_PRESENT_OK);
-	CHECK(!yt_present_replay(&result, &reject_sink)
-	    && memcmp(foreground_raw, dirty_zero, sizeof(foreground_raw)) == 0
-	    && memcmp(background_raw, other_dirty_zero,
-	    sizeof(background_raw)) == 0);
+	    && result.events[1].commit_color_cache
+	    && memcmp(result.events[1].cached_foreground_raw, raw_two, 4U) == 0
+	    && memcmp(result.events[1].cached_background_raw, raw_zero, 4U) == 0);
 
 	memcpy(foreground_raw, dirty_zero, sizeof(foreground_raw));
 	memcpy(background_raw, raw_one, sizeof(background_raw));
@@ -3689,13 +3616,6 @@ test_attention(void)
 	static const uint8_t second_color[] = "\x1b[0;33;40m\r\n\x1b[";
 	struct yt_present_state current = state(true);
 	struct yt_present_result result;
-	struct replay_capture capture;
-	const struct yt_present_sink sink = {
-		.context = &capture,
-		.remote = capture_remote,
-		.local_color = capture_color,
-		.local_text = capture_text,
-	};
 	uint8_t expected[256];
 	uint8_t background_raw[] = {0xa5, 0x5a, 0x80, 0x00};
 	uint8_t bold_raw[] = {0x11, 0x22, 0x80, 0x00};
@@ -3741,11 +3661,6 @@ test_attention(void)
 	CHECK(result.events[9].operation == YT_PRESENT_REMOTE_SEMI);
 	CHECK(result.events[10].operation == YT_PRESENT_LOCAL_PLAY);
 	CHECK(result.events[10].length == sizeof(cue) - 1U);
-	memset(&capture, 0, sizeof(capture));
-	yt_present_replay(&result, &sink);
-	CHECK(capture.count == 10);
-	for (size_t index = 0; index < capture.count; ++index)
-		CHECK(capture.operations[index] == result.events[index].operation);
 	CHECK(yt_present_pc_attribute(30, 4) == 0xce);
 	CHECK(current.foreground == 3.0f && current.background == 0.0f);
 	CHECK(current.bold == 0.0f && current.blink == 0.0f);
@@ -16699,7 +16614,6 @@ normal_exit_body_run_info(struct physical_viewer_join *viewer,
 	    "PLEASE HELP YOUR SYSOP REGISTER THIS GAME.";
 	static const uint8_t returning[] = "Returning to Example BBS...";
 	struct yt_present_result result;
-	struct yt_timed_wait_state wait;
 	bool warned;
 	size_t index;
 
@@ -16741,17 +16655,11 @@ normal_exit_body_run_info(struct physical_viewer_join *viewer,
 		return false;
 	observation->viewer_end = viewer->join.remote_length;
 	if (evaluation) {
-		memset(&wait, 0, sizeof(wait));
 		if (yt_present_attention(reminder, sizeof(reminder) - 1U,
 		    &viewer->join.presentation, &result) != YT_PRESENT_OK)
 			return false;
 		viewer_pager_capture_result(&viewer->join, &result);
-		if (!yt_timed_wait_begin(&wait, 10.0f, 0.0f)
-		    || yt_timed_wait_timer(&wait, 0.0f)
-		    != YT_TIMED_WAIT_CONTINUE
-		    || yt_timed_wait_timer(&wait, 10.0f) != YT_TIMED_WAIT_TIMER
-		    || wait.duration_cell != 10.0f || wait.timer_reads != 3U
-		    || !normal_exit_line(&viewer->join, NULL, 0U))
+		if (!normal_exit_line(&viewer->join, NULL, 0U))
 			return false;
 		observation->waited = true;
 	}
@@ -17798,12 +17706,10 @@ planet_sensor_nonzero_cycle_run(struct physical_viewer_join *viewer,
 	};
 	struct viewer_pager_join *join = &viewer->join;
 	struct yt_present_result result;
-	struct yt_timed_wait_state wait;
 	size_t index;
 
 	if (prompt_end == NULL || editor_end == NULL || sensor_end == NULL)
 		return false;
-	memset(&wait, 0, sizeof(wait));
 	join->presentation = state(ansi);
 	join->presentation.foreground = 6.0f;
 	join->pager.foreground = 6;
@@ -17857,16 +17763,6 @@ planet_sensor_nonzero_cycle_run(struct physical_viewer_join *viewer,
 		if (index == 5U || index == 18U) {
 			join->presentation.foreground = 1.0f;
 			join->pager.foreground = 1;
-		}
-		if (index == 36U) {
-			if (!yt_timed_wait_begin(&wait, 15.0f, 0.0f)
-			    || yt_timed_wait_timer(&wait, 0.0f)
-			    != YT_TIMED_WAIT_CONTINUE
-			    || yt_timed_wait_timer(&wait, 15.0f)
-			    != YT_TIMED_WAIT_TIMER
-			    || wait.duration_cell != 15.0f
-			    || wait.timer_reads != 3U)
-				return false;
 		}
 		if (index == 40U) {
 			size_t sound;
@@ -30454,7 +30350,6 @@ struct hostile_bribe_fatal_cycle_join {
 	struct yt_sector written_sector;
 	struct yt_player_death_state death;
 	struct yt_common_fatal_state fatal;
-	struct yt_timed_wait_state wait;
 	struct normal_exit_body_observation normal_exit;
 	uint8_t current_record_raw[4];
 	uint8_t active_cache_raw[4];
@@ -30771,12 +30666,7 @@ hostile_bribe_fatal_wait(void *context, const uint8_t duration_raw[4],
 	++join->wait_calls;
 	if (join->fail_wait)
 		return false;
-	return duration == 5.0f
-	    && yt_timed_wait_begin(&join->wait, duration, 100.0f)
-	    && yt_timed_wait_timer(&join->wait, 100.0f)
-	    == YT_TIMED_WAIT_CONTINUE
-	    && yt_timed_wait_timer(&join->wait, 105.0f)
-	    == YT_TIMED_WAIT_TIMER;
+	return duration == 5.0f;
 }
 
 static const struct yt_common_fatal_ops hostile_bribe_fatal_ops = {
@@ -36655,9 +36545,7 @@ test_hostile_bribe_immediate_fatal_cycle(void)
 				    && fatal.news_length == sizeof(expected_news) - 1U
 				    && memcmp(fatal.news, expected_news,
 				    sizeof(expected_news) - 1U) == 0);
-				CHECK(fatal.wait.duration_cell == 105.0f
-				    && fatal.wait.timer_reads == 3U
-				    && fixture.draw_position
+				CHECK(fixture.draw_position
 				    == origins[origin].draw_count
 				    && fatal.fatal_end - fatal.fatal_start
 				    == (endpoint == 2U ? 0U
