@@ -36,7 +36,6 @@
 #define YT_NUMERIC_TEMP_SINGLE_ADDRESS 0x001AU
 #define YT_UPPERCASE_LENGTH_ADDRESS 0x536AU
 #define YT_UPPERCASE_INDEX_ADDRESS 0x536EU
-#define YT_LOCAL_SCREEN_ADDRESS 0x4B6CU
 #define YT_CLEARANCE_HOLDS_ADDRESS 0x4B54U
 #define YT_CLEARANCE_FIGHTERS_ADDRESS 0x4B58U
 #define YT_CLEARANCE_GROUND_ADDRESS 0x4B5CU
@@ -74,11 +73,6 @@
 #define YT_STATIC_DOUBLE_ZERO_ADDRESS 0x66D6U
 #define YT_STATIC_SINGLE_ZERO_ADDRESS 0x62F4U
 #define YT_STATIC_SINGLE_ONE_ADDRESS 0x628AU
-#define YT_SESSION_MODE_ADDRESS 0x19C8U
-#define YT_ANSI_ADDRESS 0x19A8U
-#define YT_LOCAL_SOUND_ADDRESS 0x4B70U
-#define YT_GAME_SOUND_ADDRESS 0x4BD4U
-#define YT_SOUND_TOGGLE_SELECTOR_ADDRESS 0x5B32U
 #define YT_COMPUTER_ACTIVATION_SELECTOR_ADDRESS 0x50D2U
 #define YT_FATAL_SOUND_SELECTOR_ADDRESS 0x4CE2U
 #define YT_PLASMA_PLAYER_SOUND_SELECTOR_ADDRESS 0x5DA2U
@@ -238,20 +232,6 @@ static float
 session_foreground(const struct yt_session *session)
 {
 	return session->foreground;
-}
-
-static float
-session_mode(const struct yt_session *session)
-{
-	return yt_route_process_single(&session->route_process,
-	    YT_SESSION_MODE_ADDRESS);
-}
-
-static float
-session_ansi(const struct yt_session *session)
-{
-	return yt_route_process_single(&session->route_process,
-	    YT_ANSI_ADDRESS);
 }
 
 static int
@@ -1884,11 +1864,11 @@ session_drain_pending_input(struct yt_session *session)
 	for (;;) {
 		struct yt_input_value selected = {{0, 0}, 0, false};
 
-		if (session_mode(session) == 0.0f
+		if (session->presentation.sound.mode == 0.0f
 		    && !yt_input_poll_source(&session->input, true, &selected))
 			return false;
 		reason = yt_input_drain_serial(&drain,
-		    session_mode(session), &selected);
+		    session->presentation.sound.mode, &selected);
 		if (reason == YT_INPUT_DRAIN_ERROR)
 			return false;
 		if (reason == YT_INPUT_DRAIN_COMPLETE)
@@ -2414,8 +2394,7 @@ startup_configuration_store_local_screen(void *context,
 {
 	struct yt_session *session = context;
 
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_LOCAL_SCREEN_ADDRESS, raw);
+	session->presentation.sound.snoop = qb_mbf32_decode(raw);
 }
 
 static void
@@ -2822,10 +2801,10 @@ opening_and_date(struct yt_session *session, struct yt_error *error)
 		    "startup route failure diagnostic", error))
 			return false;
 	}
-	if (session_ansi(session) != 0.0f) {
+	if (session->presentation.sound.ansi != 0.0f) {
 		if (!yt_out_opening_file_observed("YTOPEN.ANS",
-		    session_mode(session),
-		    yt_sound_snoop(&session->presentation.sound),
+		    session->presentation.sound.mode,
+		    session->presentation.sound.snoop,
 		    opening_poll_local,
 		    opening_poll_remote, opening_wait, session,
 		    &opening_basic_error, error)) {
@@ -19480,11 +19459,8 @@ command_shell(struct yt_session *session, struct yt_error *error)
 		{
 			struct yt_present_result presentation;
 			enum yt_present_status status =
-			    yt_present_sound_toggle_process(
-			    &session->route_process.bytes[YT_SESSION_MODE_ADDRESS],
-			    &session->route_process.bytes[YT_GAME_SOUND_ADDRESS],
-			    &session->route_process.bytes[YT_LOCAL_SOUND_ADDRESS],
-			    &session->presentation, &presentation);
+			    yt_present_sound_toggle(&session->presentation,
+			    &presentation);
 
 			yt_out_present_result(&presentation);
 			if (status != YT_PRESENT_OK) {
@@ -19635,7 +19611,6 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	struct yt_session session;
 	struct yt_random launch_random;
 	float market_base[3];
-	uint8_t mode_raw[4];
 	static const uint8_t static_one[4] = {0x00, 0x00, 0x00, 0x81};
 	static const uint8_t scanner_mode_zero[4] = {0x00, 0x00, 0x46, 0x00};
 	static const uint8_t action_cloak_display_scale[4] = {
@@ -19662,16 +19637,6 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	memset(&session, 0, sizeof(session));
 	yt_input_init(&session.input);
 	session.error = error;
-	yt_sound_bind_ansi_process(&session.presentation.sound,
-	    &session.route_process.bytes[YT_ANSI_ADDRESS]);
-	yt_sound_bind_snoop_process(&session.presentation.sound,
-	    &session.route_process.bytes[YT_LOCAL_SCREEN_ADDRESS]);
-	yt_sound_bind_endpoint_process(&session.presentation.sound,
-	    &session.route_process.bytes[YT_SESSION_MODE_ADDRESS],
-	    &session.route_process.bytes[YT_GAME_SOUND_ADDRESS],
-	    &session.route_process.bytes[YT_LOCAL_SOUND_ADDRESS]);
-	yt_sound_bind_toggle_selector_process(&session.presentation.sound,
-	    &session.route_process.bytes[YT_SOUND_TOGGLE_SELECTOR_ADDRESS]);
 	session.door = door;
 	session.executable_path = executable_path;
 	session.running = true;
@@ -19691,24 +19656,16 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	session_set_pager_nonstop(&session, 1.0f);
 	if (door->identity.ansi
 	    && !qb_mbf32_truth(door->identity.ansi_raw)) {
-		uint8_t raw_one[4];
-
-		if (qb_mbf32_encode(1.0f, raw_one) != QB_MBF_OK)
-			return false;
-		yt_route_process_set_raw_single(&session.route_process,
-		    YT_ANSI_ADDRESS, raw_one);
+		session.presentation.sound.ansi = 1.0f;
 	}
 	else {
-		yt_route_process_set_raw_single(&session.route_process,
-		    YT_ANSI_ADDRESS, door->identity.ansi_raw);
+		session.presentation.sound.ansi =
+		    qb_mbf32_decode(door->identity.ansi_raw);
 	}
-	if (!yt_startup_local_mode_raw(door->identity.local, mode_raw))
-		return false;
-	yt_route_process_set_raw_single(&session.route_process,
-	    YT_SESSION_MODE_ADDRESS, mode_raw);
-	session_set_process_single(&session, YT_GAME_SOUND_ADDRESS, -1.0f);
-	session_set_process_single(&session, YT_LOCAL_SOUND_ADDRESS,
-	    door->identity.local ? -1.0f : 0.0f);
+	session.presentation.sound.mode = door->identity.local ? 1.0f : 0.0f;
+	session.presentation.sound.user_sound = -1.0f;
+	session.presentation.sound.local_sound =
+	    door->identity.local ? -1.0f : 0.0f;
 	session_set_foreground(&session, 7.0f);
 	yt_random_init(&launch_random);
 	if (!yt_random_market_bases(&launch_random, market_base, error))

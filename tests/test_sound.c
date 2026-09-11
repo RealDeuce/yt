@@ -1,6 +1,4 @@
 #include "yt_sound.h"
-#include "qb.h"
-
 #include <stdio.h>
 #include <string.h>
 
@@ -151,128 +149,6 @@ test_stale_and_failures(void)
 }
 
 static void
-test_ansi_process_cell(void)
-{
-	static const uint8_t dirty_zero[] = {0x5a, 0xa5, 0x80, 0x00};
-	static const uint8_t raw_one[] = {0x00, 0x00, 0x00, 0x81};
-	struct yt_sound_state current = state(false);
-	struct yt_sound_result result;
-	uint8_t ansi[4];
-
-	memcpy(ansi, dirty_zero, sizeof(ansi));
-	memcpy(current.scratch, "stale", 5U);
-	current.scratch_length = 5U;
-	yt_sound_bind_ansi_process(&current, ansi);
-	CHECK(yt_sound_ansi(&current) == 0.0f);
-	CHECK(yt_sound_dispatch(2.0f, &current, &result) == YT_SOUND_OK);
-	CHECK(result.remote_length == 0U && result.play_length == 0U
-	    && current.scratch_length == 5U
-	    && memcmp(ansi, dirty_zero, sizeof(ansi)) == 0);
-
-	memcpy(ansi, raw_one, sizeof(ansi));
-	CHECK(yt_sound_ansi(&current) == 1.0f);
-	CHECK(yt_sound_dispatch(2.0f, &current, &result) == YT_SOUND_OK);
-	CHECK(result.remote_length == 33U && result.remote[0] == 0x1b
-	    && result.remote[1] == '[' && result.remote[32] == 0x0e
-	    && result.play_length == 30U && current.scratch_length == 0U
-	    && memcmp(ansi, raw_one, sizeof(ansi)) == 0);
-}
-
-static void
-test_snoop_process_cell(void)
-{
-	static const uint8_t dirty_zero[] = {0x3c, 0xc3, 0x80, 0x00};
-	static const uint8_t raw_true[] = {0x00, 0x00, 0x80, 0x81};
-	uint8_t snoop[4];
-	struct yt_sound_state current = state(false);
-	struct yt_sound_result result;
-	bool returned_early = false;
-	bool enabled = false;
-
-	memcpy(snoop, dirty_zero, sizeof(snoop));
-	yt_sound_bind_snoop_process(&current, snoop);
-	current.mode = 1.0f;
-	CHECK(yt_sound_sysop_snoop_toggle(&current, &returned_early, &enabled)
-	    == YT_SOUND_OK);
-	CHECK(returned_early
-	    && memcmp(snoop, dirty_zero, sizeof(snoop)) == 0);
-
-	current.mode = 0.0f;
-	CHECK(yt_sound_sysop_snoop_toggle(&current, &returned_early, &enabled)
-	    == YT_SOUND_OK);
-	CHECK(!returned_early && enabled && yt_sound_snoop(&current) == -1.0f
-	    && memcmp(snoop, raw_true, sizeof(snoop)) == 0);
-
-	CHECK(qb_mbf32_encode(40000.0f, snoop) == QB_MBF_OK);
-	CHECK(yt_sound_sysop_snoop_toggle(&current, &returned_early, &enabled)
-	    == YT_SOUND_SNOOP_OVERFLOW);
-	CHECK(qb_mbf32_decode(snoop) == 40000.0f);
-
-	CHECK(qb_mbf32_encode(1.0f, snoop) == QB_MBF_OK);
-	CHECK(yt_sound_dispatch(1.0f, &current, &result) == YT_SOUND_OK);
-	CHECK(result.remote_length == 1U && result.remote[0] == 0x07
-	    && result.play_length == 11U);
-}
-
-static void
-test_endpoint_process_cells(void)
-{
-	static const uint8_t dirty_zero[] = {0x5aU, 0xa5U, 0x80U, 0x00U};
-	static const uint8_t raw_true[] = {0x00U, 0x00U, 0x80U, 0x81U};
-	struct yt_sound_state current = state(false);
-	struct yt_sound_result result;
-	uint8_t mode[4];
-	uint8_t user[4];
-	uint8_t local[4];
-	uint8_t selector[4];
-
-	CHECK(qb_mbf32_encode(0.0f, mode) == QB_MBF_OK
-	    && qb_mbf32_encode(-1.0f, local) == QB_MBF_OK);
-	memcpy(user, dirty_zero, sizeof(user));
-	memcpy(selector, dirty_zero, sizeof(selector));
-	yt_sound_bind_endpoint_process(&current, mode, user, local);
-	yt_sound_bind_toggle_selector_process(&current, selector);
-	CHECK(yt_sound_mode(&current) == 0.0f
-	    && yt_sound_user_sound(&current) == 0.0f
-	    && yt_sound_local_sound(&current) == -1.0f);
-	CHECK(yt_sound_dispatch(1.0f, &current, &result) == YT_SOUND_OK);
-	CHECK(result.remote_length == 0U && result.play_length == 11U
-	    && memcmp(user, dirty_zero, sizeof(user)) == 0);
-
-	memcpy(user, raw_true, sizeof(user));
-	CHECK(yt_sound_dispatch(1.0f, &current, &result) == YT_SOUND_OK);
-	CHECK(result.remote_length == 1U && result.remote[0] == 0x07
-	    && result.play_length == 11U);
-
-	CHECK(qb_mbf32_encode(1.0f, mode) == QB_MBF_OK);
-	memcpy(local, dirty_zero, sizeof(local));
-	CHECK(yt_sound_dispatch(1.0f, &current, &result) == YT_SOUND_OK);
-	CHECK(result.remote_length == 0U && result.play_length == 0U);
-
-	CHECK(qb_mbf32_encode(2.0f, mode) == QB_MBF_OK
-	    && qb_mbf32_encode(0.0f, user) == QB_MBF_OK
-	    && qb_mbf32_encode(77.0f, local) == QB_MBF_OK);
-	CHECK(yt_sound_toggle(&current, &result) == YT_SOUND_OK);
-	CHECK(memcmp(user, raw_true, sizeof(user)) == 0
-	    && memcmp(local, raw_true, sizeof(local)) == 0
-	    && memcmp(selector, (uint8_t[]){0x00U, 0x00U, 0x00U, 0x81U},
-	    sizeof(selector)) == 0
-	    && yt_sound_user_sound(&current) == -1.0f
-	    && yt_sound_local_sound(&current) == -1.0f);
-	CHECK(yt_sound_toggle(&current, &result) == YT_SOUND_OK);
-	CHECK(memcmp(selector, (uint8_t[]){0x00U, 0x00U, 0x00U, 0x81U},
-	    sizeof(selector)) == 0);
-
-	CHECK(qb_mbf32_encode(0.0f, mode) == QB_MBF_OK
-	    && qb_mbf32_encode(0.0f, user) == QB_MBF_OK
-	    && qb_mbf32_encode(40000.0f, local) == QB_MBF_OK);
-	memcpy(selector, dirty_zero, sizeof(selector));
-	CHECK(yt_sound_toggle(&current, &result) == YT_SOUND_LOCAL_OVERFLOW);
-	CHECK(memcmp(selector, (uint8_t[]){0x00U, 0x00U, 0x00U, 0x81U},
-	    sizeof(selector)) == 0);
-}
-
-static void
 test_conversion_mode(void)
 {
 	struct yt_sound_state current = state(false);
@@ -358,69 +234,12 @@ test_toggle(void)
 		CHECK(current.local_sound == 77.0f);
 		CHECK(result.line_length == 0);
 	}
-	{
-		static const uint8_t dirty_zero[4] = {
-			0xffU, 0xffU, 0x00U, 0x00U,
-		};
-		struct yt_sound_state current = state(true);
-		struct yt_sound_result result;
-		uint8_t mode[4];
-		uint8_t user[4];
-		uint8_t local[4];
-		uint8_t before[4];
-
-		CHECK(qb_mbf32_encode(0.0f, mode) == QB_MBF_OK
-		    && qb_mbf32_encode(-1.0f, user) == QB_MBF_OK
-		    && qb_mbf32_encode(77.0f, local) == QB_MBF_OK);
-		memcpy(before, local, sizeof(before));
-		CHECK(yt_sound_toggle_process(&current, mode, user, local,
-		    &result) == YT_SOUND_OK);
-		CHECK(memcmp(user, dirty_zero, sizeof(dirty_zero)) == 0
-		    && memcmp(local, before, sizeof(before)) == 0
-		    && current.user_sound == 0.0f
-		    && current.local_sound == 77.0f
-		    && result.line_length == sizeof("Sound OFF") - 1U);
-
-		CHECK(qb_mbf32_encode(1.0f, mode) == QB_MBF_OK
-		    && qb_mbf32_encode(0.0f, user) == QB_MBF_OK
-		    && qb_mbf32_encode(77.0f, local) == QB_MBF_OK);
-		CHECK(yt_sound_toggle_process(&current, mode, user, local,
-		    &result) == YT_SOUND_OK);
-		CHECK(memcmp(user, "\x00\x00\x80\x81", 4U) == 0
-		    && memcmp(local, user, 4U) == 0
-		    && current.user_sound == -1.0f
-		    && current.local_sound == -1.0f);
-
-		CHECK(qb_mbf32_encode(0.0f, mode) == QB_MBF_OK
-		    && qb_mbf32_encode(0.0f, user) == QB_MBF_OK
-		    && qb_mbf32_encode(40000.0f, local) == QB_MBF_OK);
-		memcpy(before, local, sizeof(before));
-		CHECK(yt_sound_toggle_process(&current, mode, user, local,
-		    &result) == YT_SOUND_LOCAL_OVERFLOW);
-		CHECK(memcmp(user, "\x00\x00\x80\x81", 4U) == 0
-		    && memcmp(local, before, sizeof(before)) == 0
-		    && result.remote_length != 0U);
-
-		CHECK(qb_mbf32_encode(40000.0f, user) == QB_MBF_OK
-		    && qb_mbf32_encode(77.0f, local) == QB_MBF_OK);
-		memcpy(before, user, sizeof(before));
-		CHECK(yt_sound_toggle_process(&current, mode, user, local,
-		    &result) == YT_SOUND_USER_OVERFLOW);
-		CHECK(memcmp(user, before, sizeof(before)) == 0
-		    && result.line_length == 0U && result.remote_length == 0U);
-		CHECK(yt_sound_toggle_process(NULL, mode, user, local, &result)
-		    == YT_SOUND_INVALID_STATE);
-	}
 }
 
 static void
 test_sysop_toggle(void)
 {
 	struct yt_sound_state current = state(true);
-	uint8_t mode[4];
-	uint8_t local[4];
-	uint8_t user[4];
-	uint8_t before[4];
 	bool enabled = false;
 
 	current.mode = 0.0f;
@@ -445,32 +264,6 @@ test_sysop_toggle(void)
 	CHECK(yt_sound_sysop_toggle(&current, &enabled)
 	    == YT_SOUND_LOCAL_OVERFLOW);
 	CHECK(current.local_sound == 40000.0f && current.user_sound == 77.0f);
-
-	current = state(true);
-	CHECK(qb_mbf32_encode(0.0f, mode) == QB_MBF_OK
-	    && qb_mbf32_encode(-1.0f, local) == QB_MBF_OK
-	    && qb_mbf32_encode(77.0f, user) == QB_MBF_OK);
-	memcpy(before, user, sizeof(before));
-	CHECK(yt_sound_sysop_toggle_process(&current, mode, local, user,
-	    &enabled) == YT_SOUND_OK);
-	CHECK(!enabled && memcmp(local, "\xff\xff\x00\x00", 4U) == 0
-	    && memcmp(user, before, sizeof(before)) == 0);
-
-	CHECK(qb_mbf32_encode(2.0f, mode) == QB_MBF_OK
-	    && qb_mbf32_encode(0.0f, local) == QB_MBF_OK
-	    && qb_mbf32_encode(77.0f, user) == QB_MBF_OK);
-	CHECK(yt_sound_sysop_toggle_process(&current, mode, local, user,
-	    &enabled) == YT_SOUND_OK);
-	CHECK(enabled && memcmp(local, "\x00\x00\x80\x81", 4U) == 0
-	    && memcmp(user, local, 4U) == 0);
-
-	CHECK(qb_mbf32_encode(40000.0f, local) == QB_MBF_OK
-	    && qb_mbf32_encode(77.0f, user) == QB_MBF_OK);
-	memcpy(before, local, sizeof(before));
-	CHECK(yt_sound_sysop_toggle_process(&current, mode, local, user,
-	    &enabled) == YT_SOUND_LOCAL_OVERFLOW);
-	CHECK(memcmp(local, before, sizeof(before)) == 0
-	    && qb_mbf32_decode(user) == 77.0f);
 }
 
 static void
@@ -507,9 +300,6 @@ main(void)
 	test_known_cues();
 	test_branches_and_gates();
 	test_stale_and_failures();
-	test_ansi_process_cell();
-	test_snoop_process_cell();
-	test_endpoint_process_cells();
 	test_conversion_mode();
 	test_toggle();
 	test_sysop_toggle();

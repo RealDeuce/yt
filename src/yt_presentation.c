@@ -311,7 +311,7 @@ build_color(struct yt_present_state *state,
 	    local_foreground, local_background);
 	if (status != YT_PRESENT_OK)
 		return status;
-	if (yt_sound_mode(&state->sound) == 0.0f) {
+	if (state->sound.mode == 0.0f) {
 		memcpy(sequence + length, "\x1b[0;3", 5);
 		length += 5;
 		status = color_digit(state->foreground, &sequence[length++]);
@@ -369,7 +369,7 @@ static enum yt_present_status
 prepare_color(struct yt_present_state *state,
     struct yt_present_result *result)
 {
-	if (yt_sound_ansi(&state->sound) == 0.0f)
+	if (state->sound.ansi == 0.0f)
 		return YT_PRESENT_OK;
 	return build_color(state, result);
 }
@@ -382,13 +382,13 @@ emit_character(const uint8_t *text, size_t length,
 
 	if (status != YT_PRESENT_OK)
 		return status;
-	if (yt_sound_snoop(&state->sound) != 0.0f) {
+	if (state->sound.snoop != 0.0f) {
 		status = append_local(result, YT_PRESENT_LOCAL_SEMI, text,
 		    length, 0, 0);
 		if (status != YT_PRESENT_OK)
 			return status;
 	}
-	if (yt_sound_mode(&state->sound) != 1.0f)
+	if (state->sound.mode != 1.0f)
 		return append_remote(result, YT_PRESENT_REMOTE_SEMI, text,
 		    length);
 	return YT_PRESENT_OK;
@@ -403,13 +403,13 @@ emit_line(const uint8_t *text, size_t length,
 
 	if (status != YT_PRESENT_OK)
 		return status;
-	if (yt_sound_snoop(&state->sound) != 0.0f) {
+	if (state->sound.snoop != 0.0f) {
 		status = append_local(result, YT_PRESENT_LOCAL_LINE, text,
 		    length, 0, 0);
 		if (status != YT_PRESENT_OK)
 			return status;
 	}
-	if (yt_sound_mode(&state->sound) != 1.0f) {
+	if (state->sound.mode != 1.0f) {
 		status = append_remote(result, YT_PRESENT_REMOTE_LINE, text,
 		    length);
 		if (status != YT_PRESENT_OK)
@@ -458,7 +458,7 @@ yt_present_bold_character(const uint8_t *text, size_t length,
     struct yt_present_state *state, struct yt_present_result *result)
 {
 	memset(result, 0, sizeof(*result));
-	if (yt_sound_ansi(&state->sound) != 0.0f)
+	if (state->sound.ansi != 0.0f)
 		yt_present_set_bold(state, 1.0f);
 	return emit_character(text, length, state, result);
 }
@@ -473,13 +473,13 @@ yt_present_paged_text(const uint8_t *text, size_t length,
 	status = prepare_color(state, result);
 	if (status != YT_PRESENT_OK)
 		return status;
-	if (yt_sound_snoop(&state->sound) != 0.0f) {
+	if (state->sound.snoop != 0.0f) {
 		status = append_local(result, YT_PRESENT_LOCAL_SEMI, text,
 		    length, 0, 0);
 		if (status != YT_PRESENT_OK)
 			return status;
 	}
-	if (yt_sound_mode(&state->sound) == 0.0f)
+	if (state->sound.mode == 0.0f)
 		return append_remote(result, YT_PRESENT_REMOTE_SEMI, text,
 		    length);
 	return YT_PRESENT_OK;
@@ -494,13 +494,13 @@ yt_present_paged_finish(bool suppress_newline,
 
 	memset(result, 0, sizeof(*result));
 	if (!suppress_newline) {
-		if (yt_sound_mode(&state->sound) == 0.0f) {
+		if (state->sound.mode == 0.0f) {
 			status = append_remote(result, YT_PRESENT_REMOTE_LINE,
 			    &line_feed, 1);
 			if (status != YT_PRESENT_OK)
 				return status;
 		}
-		if (yt_sound_snoop(&state->sound) != 0.0f) {
+		if (state->sound.snoop != 0.0f) {
 			status = append_local(result, YT_PRESENT_LOCAL_LINE,
 			    NULL, 0, 0, 0);
 			if (status != YT_PRESENT_OK)
@@ -518,13 +518,13 @@ yt_present_editor_echo(const uint8_t *local, size_t local_length,
 	enum yt_present_status status;
 
 	memset(result, 0, sizeof(*result));
-	if (yt_sound_snoop(&state->sound) != 0.0f) {
+	if (state->sound.snoop != 0.0f) {
 		status = append_local(result, YT_PRESENT_LOCAL_SEMI, local,
 		    local_length, 0, 0);
 		if (status != YT_PRESENT_OK)
 			return status;
 	}
-	if (yt_sound_mode(&state->sound) == 0.0f)
+	if (state->sound.mode == 0.0f)
 		return append_remote(result, YT_PRESENT_REMOTE_SEMI, remote,
 		    remote_length);
 	return YT_PRESENT_OK;
@@ -535,7 +535,7 @@ yt_present_local_line(const uint8_t *text, size_t length,
     struct yt_present_state *state, struct yt_present_result *result)
 {
 	memset(result, 0, sizeof(*result));
-	if (yt_sound_snoop(&state->sound) != 0.0f)
+	if (state->sound.snoop != 0.0f)
 		return append_local(result, YT_PRESENT_LOCAL_LINE, text, length,
 		    0, 0);
 	return YT_PRESENT_OK;
@@ -739,7 +739,7 @@ yt_present_attention(const uint8_t *text, size_t length,
 	state->foreground = 3.0f;
 	yt_present_set_background(state, 1.0f);
 	yt_present_set_blink(state, 1.0f);
-	if (yt_sound_ansi(&state->sound) != 0.0f)
+	if (state->sound.ansi != 0.0f)
 		yt_present_set_bold(state, 1.0f);
 	status = emit_character(text, length, state, result);
 	if (status != YT_PRESENT_OK)
@@ -803,19 +803,6 @@ yt_present_sound_toggle(struct yt_present_state *state,
 	return present_sound_toggle_result(state, result, sound_status, &sound);
 }
 
-enum yt_present_status
-yt_present_sound_toggle_process(const uint8_t mode[4],
-    uint8_t user_sound[4], uint8_t local_sound[4],
-    struct yt_present_state *state, struct yt_present_result *result)
-{
-	struct yt_sound_result sound;
-	enum yt_sound_status sound_status;
-
-	sound_status = yt_sound_toggle_process(&state->sound, mode, user_sound,
-	    local_sound, &sound);
-	return present_sound_toggle_result(state, result, sound_status, &sound);
-}
-
 static enum yt_present_status
 present_sysop_sound_toggle_result(bool enabled,
     enum yt_sound_status sound_status, struct yt_present_result *result)
@@ -854,27 +841,13 @@ yt_present_sysop_sound_toggle(struct yt_present_state *state,
 	return present_sysop_sound_toggle_result(enabled, status, result);
 }
 
-enum yt_present_status
-yt_present_sysop_sound_toggle_process(const uint8_t mode[4],
-    uint8_t local_sound[4], uint8_t user_sound[4],
-    struct yt_present_state *state, struct yt_present_result *result)
-{
-	bool enabled = false;
-	enum yt_sound_status status;
-
-	status = yt_sound_sysop_toggle_process(&state->sound, mode,
-	    local_sound, user_sound, &enabled);
-	return present_sysop_sound_toggle_result(enabled, status, result);
-}
-
 static enum yt_present_status status_row_append(const uint8_t *real_name,
     size_t real_name_length, const uint8_t *alias, size_t alias_length,
     struct yt_present_state *state, struct yt_present_result *result);
 
-static enum yt_present_status
-present_sysop_snoop_toggle(const uint8_t *real_name,
+enum yt_present_status
+yt_present_sysop_snoop_toggle(const uint8_t *real_name,
     size_t real_name_length, const uint8_t *alias, size_t alias_length,
-    const uint8_t mode[4], uint8_t snoop[4],
     struct yt_present_state *state, struct yt_present_result *result)
 {
 	static const uint8_t notice[] = "SNOOP ON";
@@ -884,20 +857,12 @@ present_sysop_snoop_toggle(const uint8_t *real_name,
 
 	if (state == NULL || result == NULL)
 		return YT_PRESENT_CAPACITY;
-	if (mode != NULL && snoop != NULL) {
-		state->sound.mode = qb_mbf32_decode(mode);
-		state->sound.snoop = qb_mbf32_decode(snoop);
-	}
 	memset(result, 0, sizeof(*result));
 	if (yt_sound_sysop_snoop_toggle(&state->sound, &returned_early,
 	    &enabled) != YT_SOUND_OK)
 		return YT_PRESENT_SOUND_ERROR;
 	if (returned_early)
 		return YT_PRESENT_OK;
-	if (snoop != NULL
-	    && qb_mbf32_encode(yt_sound_snoop(&state->sound), snoop)
-	    != QB_MBF_OK)
-		return YT_PRESENT_OVERFLOW;
 	if (!enabled) {
 		status = append_locate(result, -1, -1, 0, 0, 0);
 		return status == YT_PRESENT_OK ? append_clear(result) : status;
@@ -910,27 +875,6 @@ present_sysop_snoop_toggle(const uint8_t *real_name,
 	return status == YT_PRESENT_OK
 	    ? append_local(result, YT_PRESENT_LOCAL_LINE, notice,
 	    sizeof(notice) - 1U, 0, 0) : status;
-}
-
-enum yt_present_status
-yt_present_sysop_snoop_toggle(const uint8_t *real_name,
-    size_t real_name_length, const uint8_t *alias, size_t alias_length,
-    struct yt_present_state *state, struct yt_present_result *result)
-{
-	return present_sysop_snoop_toggle(real_name, real_name_length, alias,
-	    alias_length, NULL, NULL, state, result);
-}
-
-enum yt_present_status
-yt_present_sysop_snoop_toggle_process(const uint8_t *real_name,
-    size_t real_name_length, const uint8_t *alias, size_t alias_length,
-    const uint8_t mode[4], uint8_t snoop[4],
-    struct yt_present_state *state, struct yt_present_result *result)
-{
-	if (mode == NULL || snoop == NULL)
-		return YT_PRESENT_CAPACITY;
-	return present_sysop_snoop_toggle(real_name, real_name_length, alias,
-	    alias_length, mode, snoop, state, result);
 }
 
 static enum yt_present_status
@@ -1162,7 +1106,7 @@ yt_present_press_cleanup(float saved_foreground,
 	status = append_locate(result, -1, 1, -1, 0, 0);
 	if (status != YT_PRESENT_OK)
 		return status;
-	if (yt_sound_mode(&state->sound) == 0.0f) {
+	if (state->sound.mode == 0.0f) {
 		status = append_remote(result, YT_PRESENT_REMOTE_SEMI,
 		    &carriage_return, 1);
 		if (status != YT_PRESENT_OK)
@@ -1171,7 +1115,7 @@ yt_present_press_cleanup(float saved_foreground,
 	status = emit_character(spaces, sizeof(spaces) - 1U, state, result);
 	if (status != YT_PRESENT_OK)
 		return status;
-	if (yt_sound_mode(&state->sound) == 0.0f) {
+	if (state->sound.mode == 0.0f) {
 		status = append_remote(result, YT_PRESENT_REMOTE_SEMI,
 		    &carriage_return, 1);
 		if (status != YT_PRESENT_OK)
@@ -1192,7 +1136,7 @@ yt_present_lottery_rewind(int row, int column,
 	enum yt_present_status status;
 
 	memset(result, 0, sizeof(*result));
-	if (yt_sound_mode(&state->sound) == 0.0f) {
+	if (state->sound.mode == 0.0f) {
 		status = append_remote(result, YT_PRESENT_REMOTE_SEMI,
 		    &backspace, 1U);
 		if (status != YT_PRESENT_OK)
@@ -1232,7 +1176,7 @@ yt_present_radio_backspace(int line_number, size_t shortened_length,
 	status = radio_column(line_number, shortened_length + 2U, &column);
 	if (status != YT_PRESENT_OK)
 		return status;
-	if (yt_sound_mode(&state->sound) == 0.0f) {
+	if (state->sound.mode == 0.0f) {
 		status = append_remote(result, YT_PRESENT_REMOTE_SEMI,
 		    remote, sizeof(remote));
 		if (status != YT_PRESENT_OK)
@@ -1273,7 +1217,7 @@ yt_present_radio_wrap_cleanup(int line_number, size_t wrap_marker,
 	    spaces, erased, 0, 0);
 	if (status != YT_PRESENT_OK)
 		return status;
-	if (yt_sound_mode(&state->sound) != 1.0f) {
+	if (state->sound.mode != 1.0f) {
 		memset(remote, '\b', erased);
 		memset(remote + erased, ' ', erased);
 		remote[erased * 2U] = '\r';
@@ -1426,7 +1370,7 @@ yt_present_refresh_time(struct yt_present_time_state *time,
 	status = format_remaining(time->deadline, timer, time);
 	if (status != YT_PRESENT_OK)
 		goto done;
-	if (yt_sound_snoop(&state->sound) != 0.0f) {
+	if (state->sound.snoop != 0.0f) {
 		status = append_local(result, YT_PRESENT_LOCAL_SEMI,
 		    time->text, time->text_length, 0, 0);
 		if (status != YT_PRESENT_OK)
@@ -1558,7 +1502,7 @@ low_time_warning(const uint8_t *text, size_t length, float remembered,
 		return status;
 	state->foreground = 5.0f;
 	yt_present_set_blink(state, 1.0f);
-	if (yt_sound_mode(&state->sound) != 0.0f)
+	if (state->sound.mode != 0.0f)
 		status = append_beep(result);
 	else
 		status = append_remote(result, YT_PRESENT_REMOTE_SEMI, &bell, 1);
@@ -1631,7 +1575,7 @@ status_row_append(const uint8_t *real_name, size_t real_name_length,
 	size_t length = 0;
 	enum yt_present_status status;
 
-	if (yt_sound_snoop(&state->sound) == 0.0f)
+	if (state->sound.snoop == 0.0f)
 		return YT_PRESENT_OK;
 	memset(clear, ' ', sizeof(clear));
 	status = append_locate(result, 25, 1, -1, 0, 0);

@@ -3330,9 +3330,6 @@ test_attention(void)
 	struct yt_present_state current = state(true);
 	struct yt_present_result result;
 	uint8_t expected[256];
-	uint8_t mode_raw[4];
-	uint8_t user_sound_raw[] = {0x5a, 0xa5, 0x80, 0x00};
-	uint8_t local_sound_raw[4];
 	uint8_t over_capacity[YT_PRESENT_REMOTE_SIZE + 1U];
 	size_t expected_length = 0;
 
@@ -3383,20 +3380,6 @@ test_attention(void)
 	CHECK(result.events[6].length == 11);
 	CHECK(current.foreground == 3.0f && current.background == 0.0f
 	    && current.bold == 0.0f && current.blink == 1.0f);
-
-	current = state(false);
-	CHECK(qb_mbf32_encode(0.0f, mode_raw) == QB_MBF_OK
-	    && qb_mbf32_encode(-1.0f, local_sound_raw) == QB_MBF_OK);
-	yt_sound_bind_endpoint_process(&current.sound, mode_raw,
-	    user_sound_raw, local_sound_raw);
-	CHECK(yt_present_attention((const uint8_t *)"ALERT", 5,
-	    &current, &result) == YT_PRESENT_OK);
-	CHECK(result.remote_length == 7U
-	    && memcmp(result.remote, "ALERT\r\n", 7U) == 0
-	    && result.event_count == 6U
-	    && result.events[5].operation == YT_PRESENT_LOCAL_PLAY
-	    && memcmp(user_sound_raw,
-	    (uint8_t[]){0x5a, 0xa5, 0x80, 0x00}, sizeof(user_sound_raw)) == 0);
 
 	current = state(true);
 	current.sound.mode = 1.0f;
@@ -3475,9 +3458,6 @@ test_sound_toggle(void)
 	    "MBO4L32P32CP64CP64CP64L16EP64L32CP64L12E";
 	struct yt_present_state current = state(true);
 	struct yt_present_result result;
-	uint8_t mode_raw[4];
-	uint8_t user_raw[4];
-	uint8_t local_raw[4];
 
 	current.color_initialized = 1.0f;
 	current.cached_foreground = current.foreground;
@@ -3569,18 +3549,6 @@ test_sound_toggle(void)
 	CHECK(result.event_count == 0 && result.remote_length == 0);
 
 	current = state(true);
-	CHECK(qb_mbf32_encode(0.0f, mode_raw) == QB_MBF_OK
-	    && qb_mbf32_encode(-1.0f, user_raw) == QB_MBF_OK
-	    && qb_mbf32_encode(77.0f, local_raw) == QB_MBF_OK);
-	CHECK(yt_present_sound_toggle_process(mode_raw, user_raw, local_raw,
-	    &current, &result) == YT_PRESENT_OK);
-	CHECK(memcmp(user_raw, "\xff\xff\x00\x00", 4U) == 0);
-	CHECK(qb_mbf32_decode(local_raw) == 77.0f);
-	CHECK(result.remote_length >= sizeof(off) - 1U);
-	CHECK(memcmp(result.remote + result.remote_length - (sizeof(off) - 1U),
-	    off, sizeof(off) - 1U) == 0);
-
-	current = state(true);
 	CHECK(yt_present_sound(4.0f, &current, &result) == YT_PRESENT_OK);
 	CHECK(result.event_count == 2);
 	CHECK(result.events[0].operation == YT_PRESENT_REMOTE_SEMI);
@@ -3620,18 +3588,6 @@ test_sound_toggle(void)
 	    && result.remote_length == 0 && result.event_count == 0);
 
 	current = state(false);
-	CHECK(qb_mbf32_encode(1.0f, mode_raw) == QB_MBF_OK
-	    && qb_mbf32_encode(-1.0f, local_raw) == QB_MBF_OK
-	    && qb_mbf32_encode(77.0f, user_raw) == QB_MBF_OK);
-	CHECK(yt_present_sysop_sound_toggle_process(mode_raw, local_raw,
-	    user_raw, &current, &result) == YT_PRESENT_OK);
-	CHECK(memcmp(local_raw, "\xff\xff\x00\x00", 4U) == 0
-	    && memcmp(user_raw, local_raw, 4U) == 0
-	    && result.event_count == 3U
-	    && result.events[2].length == 3U
-	    && memcmp(result.events[2].data, "OFF", 3U) == 0);
-
-	current = state(false);
 	current.sound.mode = 0.0f;
 	current.sound.snoop = 0.0f;
 	CHECK(yt_present_sysop_snoop_toggle((const uint8_t *)"Grace Hopper",
@@ -3663,44 +3619,6 @@ test_sound_toggle(void)
 	    (const uint8_t *)"A", 1, &current, &result) == YT_PRESENT_OK);
 	CHECK(current.sound.snoop == 40000.0f && result.remote_length == 0
 	    && result.event_count == 0);
-	{
-		static const uint8_t negative_one[4] = {
-			0U, 0U, 0x80U, 0x81U,
-		};
-		static const uint8_t zero[4] = {0U, 0U, 0U, 0U};
-		static const uint8_t dirty_zero[4] = {
-			0x11U, 0x22U, 0x33U, 0U,
-		};
-		uint8_t mode[4];
-		uint8_t snoop[4];
-		uint8_t before[4];
-
-		CHECK(qb_mbf32_encode(0.0f, mode) == QB_MBF_OK);
-		memcpy(snoop, dirty_zero, sizeof(snoop));
-		current = state(false);
-		CHECK(yt_present_sysop_snoop_toggle_process(
-		    (const uint8_t *)"R", 1U, (const uint8_t *)"A", 1U,
-		    mode, snoop, &current, &result) == YT_PRESENT_OK
-		    && current.sound.snoop == -1.0f
-		    && memcmp(snoop, negative_one, sizeof(snoop)) == 0);
-		CHECK(yt_present_sysop_snoop_toggle_process(
-		    (const uint8_t *)"R", 1U, (const uint8_t *)"A", 1U,
-		    mode, snoop, &current, &result) == YT_PRESENT_OK
-		    && current.sound.snoop == 0.0f
-		    && memcmp(snoop, zero, sizeof(snoop)) == 0);
-		CHECK(qb_mbf32_encode(1.0f, mode) == QB_MBF_OK
-		    && qb_mbf32_encode(40000.0f, snoop) == QB_MBF_OK);
-		memcpy(before, snoop, sizeof(before));
-		CHECK(yt_present_sysop_snoop_toggle_process(
-		    (const uint8_t *)"R", 1U, (const uint8_t *)"A", 1U,
-		    mode, snoop, &current, &result) == YT_PRESENT_OK
-		    && memcmp(snoop, before, sizeof(snoop)) == 0);
-		CHECK(qb_mbf32_encode(0.0f, mode) == QB_MBF_OK
-		    && yt_present_sysop_snoop_toggle_process(
-		    (const uint8_t *)"R", 1U, (const uint8_t *)"A", 1U,
-		    mode, snoop, &current, &result) == YT_PRESENT_SOUND_ERROR
-		    && memcmp(snoop, before, sizeof(snoop)) == 0);
-	}
 }
 
 struct sysop_replay_tape {
