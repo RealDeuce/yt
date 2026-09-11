@@ -77,8 +77,6 @@
 #define YT_RETURNING_OLD_DAY_ADDRESS 0x5316U
 #define YT_RETURNING_KILLER_ADDRESS 0x531EU
 #define YT_RETURNING_TURNS_ADDRESS 0x5322U
-#define YT_POST_LOGIN_RADIO_MODE_ADDRESS 0x64C8U
-#define YT_POST_LOGIN_SCANNER_MODE_ADDRESS 0x64CCU
 #define YT_COUNTERLAUNCH_COUNT_ADDRESS 0x5BC6U
 #define YT_SPY_DESTINATION_SCRATCH_ADDRESS 0x5FE4U
 #define YT_SPY_FOUND_SCRATCH_ADDRESS 0x5FE8U
@@ -3876,7 +3874,6 @@ static bool
 post_login(struct yt_session *session, struct yt_error *error)
 {
 	static const uint8_t prompt[] = "[ Press any Key ]";
-	static const uint8_t radio_mode_zero[4] = {0x1f, 0x4e, 0x46, 0x00};
 
 	{
 		struct yt_record repaired;
@@ -3939,10 +3936,7 @@ post_login(struct yt_session *session, struct yt_error *error)
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "post-login press trailing blank", error))
 		return false;
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_POST_LOGIN_RADIO_MODE_ADDRESS, radio_mode_zero);
-	if (!radio_read(session, yt_route_process_single(&session->route_process,
-	    YT_POST_LOGIN_RADIO_MODE_ADDRESS), error))
+	if (!radio_read(session, 0.0f, error))
 		return false;
 	return true;
 }
@@ -7893,14 +7887,10 @@ sector_entry(struct yt_session *session, struct yt_error *error)
 	for (;;) {
 		struct yt_sector sector;
 		bool friendly;
-		uint8_t scanner_mode_raw[4];
 
-		yt_route_process_raw_single(&session->route_process,
-		    YT_POST_LOGIN_SCANNER_MODE_ADDRESS, scanner_mode_raw);
-		yt_route_process_set_raw_single(&session->route_process,
-		    YT_COMPUTER_ROUTE_STATUS_ADDRESS, scanner_mode_raw);
-		if (!display_sector(session,
-		    qb_mbf32_truth(scanner_mode_raw), error)
+		session_set_process_single(session,
+		    YT_COMPUTER_ROUTE_STATUS_ADDRESS, 0.0f);
+		if (!display_sector(session, false, error)
 		    || !reload_player(session, error))
 			return false;
 		if (session_is_disruption_sector(session,
@@ -19584,7 +19574,6 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	struct yt_session session;
 	struct yt_random launch_random;
 	static const uint8_t static_one[4] = {0x00, 0x00, 0x00, 0x81};
-	static const uint8_t scanner_mode_zero[4] = {0x00, 0x00, 0x46, 0x00};
 	bool resume_gameplay = false;
 	char first[128];
 	char last[128];
@@ -19605,8 +19594,6 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	session.running = true;
 	yt_route_process_set_raw_single(&session.route_process,
 	    YT_STATIC_SINGLE_ONE_ADDRESS, static_one);
-	yt_route_process_set_raw_single(&session.route_process,
-	    YT_POST_LOGIN_SCANNER_MODE_ADDRESS, scanner_mode_zero);
 	/* YT:040A is the ordinary instruction after the handed-off checkpoint. */
 	session_set_pager_nonstop(&session, 1.0f);
 	if (door->identity.ansi
