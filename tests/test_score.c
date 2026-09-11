@@ -889,8 +889,7 @@ check_current_player_cache_model(void)
 	tape.succeeds = true;
 	state.player = &player;
 	state.player_record = 2;
-	if (qb_mbf32_encode(51.0f, state.sector_record_offset_raw) != QB_MBF_OK
-	    || qb_mbf32_encode(0.0f, state.anti_cloak_raw) != QB_MBF_OK)
+	if (qb_mbf32_encode(51.0f, state.sector_record_offset_raw) != QB_MBF_OK)
 		return false;
 	state.current_sector_record = &current_sector;
 	state.player_cache = &player_cache;
@@ -917,8 +916,7 @@ check_current_player_cache_model(void)
 	tape.fresh.sector = 22.0f;
 	tape.fresh.cloak = 23.0f;
 	yt_player_encode(&tape.fresh);
-	if (qb_mbf32_encode(-1.0f, state.anti_cloak_raw) != QB_MBF_OK)
-		return false;
+	state.anti_cloak_enabled = true;
 	if (!yt_current_player_hydrate_run(&state, hydration_read, &tape, NULL)
 	    || player_cache.cloak[2] != 20.0f
 	    || current_sector != 73.0f)
@@ -933,8 +931,8 @@ check_current_player_cache_model(void)
 		return false;
 
 	state.player_record = 2;
+	state.anti_cloak_enabled = false;
 	if (qb_mbf32_encode(1.0e38f, state.sector_record_offset_raw)
-	    != QB_MBF_OK || qb_mbf32_encode(0.0f, state.anti_cloak_raw)
 	    != QB_MBF_OK)
 		return false;
 	tape.fresh.sector = 1.0e38f;
@@ -951,20 +949,6 @@ check_current_player_cache_model(void)
 	    || current_sector != 77.0f)
 		return false;
 
-	if (qb_mbf32_encode(51.0f, state.sector_record_offset_raw) != QB_MBF_OK
-	    || qb_mbf32_encode(32768.0f, state.anti_cloak_raw) != QB_MBF_OK)
-		return false;
-	tape.fresh.sector = 6.0f;
-	yt_player_encode(&tape.fresh);
-	yt_error_clear(&error);
-	if (yt_current_player_hydrate_run(&state, hydration_read, &tape, &error)
-	    || error.basic_fault_site
-	    != YT_BASIC_FAULT_CURRENT_PLAYER_A41C_ANTI_CLOAK_CINT
-	    || error.basic_error != 6U)
-		return false;
-
-	if (qb_mbf32_encode(0.0f, state.anti_cloak_raw) != QB_MBF_OK)
-		return false;
 	state.player_record = 2;
 	if (qb_mbf32_encode(-5.0f, state.sector_record_offset_raw) != QB_MBF_OK)
 		return false;
@@ -23606,7 +23590,7 @@ credit_mutation_initialize(struct yt_credit_mutation_state *state,
 	state->hydration.player_record = 2;
 	(void)qb_mbf32_encode(100.0f,
 	    state->hydration.sector_record_offset_raw);
-	(void)qb_mbf32_encode(0.0f, state->hydration.anti_cloak_raw);
+	state->hydration.anti_cloak_enabled = false;
 	state->hydration.current_sector_record = current_sector;
 	state->hydration.player_cache = player_cache;
 	state->argument = -1.25f;
@@ -25047,10 +25031,6 @@ check_hostile_menu_front(void)
 		uint8_t arithmetic_raw[4];
 		uint8_t result_raw[4];
 		bool clamped;
-		static const uint8_t anti_dirty_zero[4] = {0x12, 0x34, 0xd6, 0};
-		static const uint8_t anti_true[4] = {0, 0, 0x80, 0x81};
-		bool allows;
-
 		memcpy(turn_raw, turn_41_raw, sizeof(turn_raw));
 		if (!yt_action_finalizer_turn_raw(turn_raw, turn_raw)
 		    || memcmp(turn_raw, turn_40_raw, sizeof(turn_raw)) != 0
@@ -25071,22 +25051,7 @@ check_hostile_menu_front(void)
 		    || memcmp(result_raw, cloak_01_raw,
 		    sizeof(result_raw)) != 0
 		    || yt_action_finalizer_cloak_raw(NULL, arithmetic_raw,
-		    result_raw, &clamped)
-		    || !yt_action_finalizer_anti_cloak_raw_allows(anti_dirty_zero,
-		    4U, &allows)
-		    || !allows
-		    || !yt_action_finalizer_anti_cloak_raw_allows(anti_true,
-		    0xa5U, &allows)
-		    || allows
-		    || !yt_action_finalizer_anti_cloak_allows(0.0f, 0U, &allows)
-		    || !allows
-		    || !yt_action_finalizer_anti_cloak_allows(0.4f, 0U, &allows)
-		    || !allows
-		    || !yt_action_finalizer_anti_cloak_allows(-1.0f, 0U, &allows)
-		    || allows
-		    || yt_action_finalizer_anti_cloak_allows(40000.0f, 0U,
-		    &allows)
-		    || yt_action_finalizer_anti_cloak_allows(0.0f, 0U, NULL))
+		    result_raw, &clamped))
 			return false;
 	}
 	{
@@ -31999,8 +31964,7 @@ check_computer_newspaper_field_carrier(void)
 	hydrate.player = &active;
 	hydrate.player_record = 2;
 	if (qb_mbf32_encode(2004.0f, hydrate.sector_record_offset_raw)
-	    != QB_MBF_OK
-	    || qb_mbf32_encode(0.0f, hydrate.anti_cloak_raw) != QB_MBF_OK)
+	    != QB_MBF_OK)
 		return false;
 	hydrate.current_sector_record = &current_sector;
 	hydrate.player_cache = &player_cache;

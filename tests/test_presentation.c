@@ -3834,8 +3834,6 @@ test_basic_fault_registry(void)
 		    0xB2DAU, 0U},
 		{YT_BASIC_FAULT_MAIN, 0xA44CU, 0xA44FU, 0xA446U, 33990,
 		    0xB2DAU, 2U},
-		{YT_BASIC_FAULT_MAIN, 0xA548U, 0xA54BU, 0xA545U, 33990,
-		    0xB2DAU, 2U},
 		{YT_BASIC_FAULT_MAIN, 0xA557U, 0xA55AU, 0xA554U, 33990,
 		    0xB2DAU, 2U},
 		{YT_BASIC_FAULT_MAIN, 0x0BC0U, 0x0BC3U, 0x0BB5U, 20430,
@@ -3968,8 +3966,6 @@ test_basic_fault_registry(void)
 		    0x45F7U, 6U},
 		{YT_BASIC_FAULT_MAIN, 0xA8EFU, 0xA8F2U, 0xA8E7U, 40001,
 		    0xB2DAU, 13U},
-		{YT_BASIC_FAULT_MAIN, 0xA734U, 0xA737U, 0xA712U, 40001,
-		    0xB2DAU, 2U},
 		{YT_BASIC_FAULT_MAIN, 0xA773U, 0xA776U, 0xA770U, 40001,
 		    0xB2DAU, 2U},
 		{YT_BASIC_FAULT_SHARED, 0x2071U, 0x2074U, 0x2062U, 633,
@@ -24894,8 +24890,7 @@ direct_emergency_warp_gate_get_failure_run(
 	hydration.player_record = 2;
 	hydration.current_sector_record = &current_sector;
 	if (qb_mbf32_encode(51.0f, hydration.sector_record_offset_raw)
-	    != QB_MBF_OK
-	    || qb_mbf32_encode(0.0f, hydration.anti_cloak_raw) != QB_MBF_OK) {
+	    != QB_MBF_OK) {
 		yt_database_close(&gate->database);
 		return false;
 	}
@@ -25086,7 +25081,6 @@ test_direct_emergency_warp_gate_get_failures(void)
 
 enum direct_warp_gate_runtime_failure {
 	DIRECT_WARP_GATE_SECTOR_ADD,
-	DIRECT_WARP_GATE_ANTI_CLOAK_CINT,
 };
 
 struct direct_warp_gate_runtime_state {
@@ -25146,8 +25140,7 @@ direct_emergency_warp_gate_runtime_failure_run(
 	fresh_record = before.record;
 	(void)yt_record_set_number(&fresh_record, YT_F49, 104.0f);
 	(void)yt_record_set_number(&fresh_record, YT_F53, 105.0f);
-	(void)yt_record_set_number(&fresh_record, YT_F57,
-	    failure == DIRECT_WARP_GATE_SECTOR_ADD ? 1.0e38f : 6.0f);
+	(void)yt_record_set_number(&fresh_record, YT_F57, 1.0e38f);
 	(void)yt_record_set_number(&fresh_record, YT_F61, 107.0f);
 	(void)yt_record_set_number(&fresh_record, YT_F65, 108.0f);
 	(void)yt_record_set_number(&fresh_record, YT_F69, 109.0f);
@@ -25168,12 +25161,8 @@ direct_emergency_warp_gate_runtime_failure_run(
 	hydration.player = &fixture->emergency_player;
 	hydration.player_record = 2;
 	hydration.current_sector_record = &current_sector;
-	if (qb_mbf32_encode(
-	    failure == DIRECT_WARP_GATE_SECTOR_ADD ? 1.0e38f : 51.0f,
-	    hydration.sector_record_offset_raw) != QB_MBF_OK
-	    || qb_mbf32_encode(
-	    failure == DIRECT_WARP_GATE_ANTI_CLOAK_CINT ? 32768.0f : 0.0f,
-	    hydration.anti_cloak_raw) != QB_MBF_OK)
+	if (qb_mbf32_encode(1.0e38f,
+	    hydration.sector_record_offset_raw) != QB_MBF_OK)
 		return false;
 	yt_error_clear(&error);
 	if (yt_current_player_hydrate_run(&hydration,
@@ -25187,30 +25176,7 @@ direct_emergency_warp_gate_runtime_failure_run(
 	expected.record = gate->fresh.record;
 	expected.sector = gate->fresh.sector;
 	expected.fighters = gate->fresh.fighters;
-	if (failure == DIRECT_WARP_GATE_SECTOR_ADD) {
-		return current_sector == 784.0f
-		    && memcmp(cloak_cache,
-		    (const float[4]){-1.0f, -2.0f, 0.5f, -4.0f},
-		    sizeof(cloak_cache)) == 0
-		    && memcmp(&fixture->emergency_player, &expected,
-		    sizeof(expected)) == 0;
-	}
-	expected.turns = gate->fresh.turns;
-	expected.credits = gate->fresh.credits;
-	expected.danger_scanner = gate->fresh.danger_scanner;
-	expected.missiles = gate->fresh.missiles;
-	expected.mines = gate->fresh.mines;
-	expected.team = gate->fresh.team;
-	expected.holds = gate->fresh.holds;
-	expected.ore = gate->fresh.ore;
-	expected.organics = gate->fresh.organics;
-	expected.equipment = gate->fresh.equipment;
-	expected.plasma = gate->fresh.plasma;
-	expected.score = gate->fresh.score;
-	expected.ports_owned = gate->fresh.ports_owned;
-	expected.ground_forces = gate->fresh.ground_forces;
-	expected.cloak = gate->fresh.cloak;
-	return current_sector == 57.0f
+	return current_sector == 784.0f
 	    && memcmp(cloak_cache,
 	    (const float[4]){-1.0f, -2.0f, 0.5f, -4.0f},
 	    sizeof(cloak_cache)) == 0
@@ -25252,9 +25218,6 @@ test_direct_emergency_warp_gate_runtime_failures(void)
 		{DIRECT_WARP_GATE_SECTOR_ADD,
 		    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_SECTOR_ADD,
 		    0xA44CU, 0xA44FU, 0xA446U},
-		{DIRECT_WARP_GATE_ANTI_CLOAK_CINT,
-		    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_ANTI_CLOAK_CINT,
-		    0xA548U, 0xA54BU, 0xA545U},
 	};
 	struct physical_viewer_join viewer;
 	struct yt_file_viewer_stream_state stream;
@@ -28035,8 +27998,7 @@ direct_emergency_warp_fresh_hostile_attack_entry_a41c_failure(
 	hydration.player_record = 2;
 	hydration.current_sector_record = &current_sector;
 	if (qb_mbf32_encode(51.0f, hydration.sector_record_offset_raw)
-	    != QB_MBF_OK
-	    || qb_mbf32_encode(0.0f, hydration.anti_cloak_raw) != QB_MBF_OK) {
+	    != QB_MBF_OK) {
 		yt_database_close(&io->database);
 		return false;
 	}
@@ -28151,8 +28113,7 @@ direct_emergency_warp_fresh_hostile_attack_opening_success(
 	hydration.current_sector_record = &entry->current_sector;
 	hydration.player_cache = &entry->player_cache;
 	if (qb_mbf32_encode(51.0f, hydration.sector_record_offset_raw)
-	    != QB_MBF_OK
-	    || qb_mbf32_encode(0.0f, hydration.anti_cloak_raw) != QB_MBF_OK) {
+	    != QB_MBF_OK) {
 		yt_database_close(&io->database);
 		return false;
 	}
@@ -28374,8 +28335,7 @@ direct_warp_attack_combat_read_player(void *context, int player_record,
 	hydration.current_sector_record = &join->current_sector_record;
 	hydration.player_cache = &join->player_cache;
 	if (qb_mbf32_encode(join->sector_record_offset,
-	    hydration.sector_record_offset_raw) != QB_MBF_OK
-	    || qb_mbf32_encode(0.0f, hydration.anti_cloak_raw) != QB_MBF_OK)
+	    hydration.sector_record_offset_raw) != QB_MBF_OK)
 		return false;
 	if (!yt_current_player_hydrate_run(&hydration,
 	    direct_warp_attack_combat_a41c_source, join, error)) {
@@ -29221,9 +29181,7 @@ direct_warp_attack_victory_mutate_credits(void *context,
 		.argument = argument,
 	};
 	if (qb_mbf32_encode(join->sector_record_offset,
-	    credit->hydration.sector_record_offset_raw) != QB_MBF_OK
-	    || qb_mbf32_encode(0.0f, credit->hydration.anti_cloak_raw)
-	    != QB_MBF_OK)
+	    credit->hydration.sector_record_offset_raw) != QB_MBF_OK)
 		return false;
 	result = yt_credit_mutation_run(credit, &ops, join, error);
 	*hydrated = credit->hydrated;
@@ -30122,8 +30080,7 @@ direct_emergency_warp_fresh_hostile_menu_get_failure(
 	hydration.player_record = 2;
 	hydration.current_sector_record = &current_sector;
 	if (qb_mbf32_encode(51.0f, hydration.sector_record_offset_raw)
-	    != QB_MBF_OK
-	    || qb_mbf32_encode(0.0f, hydration.anti_cloak_raw) != QB_MBF_OK) {
+	    != QB_MBF_OK) {
 		yt_database_close(&gate->database);
 		return false;
 	}

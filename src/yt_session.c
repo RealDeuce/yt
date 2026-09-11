@@ -25,7 +25,6 @@
 #define YT_PLAYER_FIRST YT_PLAYER_FIRST_RECORD
 #define YT_PLAYER_LAST YT_PLAYER_LAST_RECORD
 #define YT_COMMAND_SIZE 4096U
-#define YT_ANTI_CLOAK_ADDRESS 0x1854U
 #define YT_PLANET_RECORD_SCRATCH_ADDRESS 0x19C4U
 #define YT_COMPUTER_PLANET_LINK_ADDRESS 0x5184U
 #define YT_CLEARANCE_HOLDS_ADDRESS 0x4B54U
@@ -95,6 +94,7 @@ struct yt_session {
 	bool self_mine_suppressed;
 	bool mercenaries_hurt;
 	bool earth_report_seen;
+	bool anti_cloak_enabled;
 	struct yt_player player;
 	float current_sector_record;
 	double combat_ship_fighters;
@@ -372,17 +372,13 @@ session_set_current_sector_record(struct yt_session *session, float value)
 static bool
 session_anti_cloak_enabled(const struct yt_session *session)
 {
-	return yt_route_process_single(&session->route_process,
-	    YT_ANTI_CLOAK_ADDRESS) != 0.0f;
+	return session->anti_cloak_enabled;
 }
 
 static void
 session_enable_anti_cloak(struct yt_session *session)
 {
-	static const uint8_t negative_one[4] = {0x00U, 0x00U, 0x80U, 0x81U};
-
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_ANTI_CLOAK_ADDRESS, negative_one);
+	session->anti_cloak_enabled = true;
 }
 
 static void
@@ -845,15 +841,13 @@ reload_player(struct yt_session *session, struct yt_error *error)
 	struct yt_current_player_hydration_state state = {
 		.player = &session->player,
 		.player_record = session_record(session),
-		.conversion_mode = session->presentation.sound.conversion_mode,
 		.current_sector_record = &session->current_sector_record,
 		.player_cache = &session->player_cache,
 	};
 
 	memcpy(state.sector_record_offset_raw,
 	    session->door->game.config.record.bytes + YT_F53, 4U);
-	yt_route_process_raw_single(&session->route_process,
-	    YT_ANTI_CLOAK_ADDRESS, state.anti_cloak_raw);
+	state.anti_cloak_enabled = session->anti_cloak_enabled;
 	if (!yt_current_player_hydrate_run(&state,
 	    session_hydration_read_player, session, error))
 		return false;
@@ -886,14 +880,11 @@ mutate_player_credits_observed(struct yt_session *session, float argument,
 	memset(&state, 0, sizeof(state));
 	state.hydration.player = &session->player;
 	state.hydration.player_record = session_record(session);
-	state.hydration.conversion_mode =
-	    session->presentation.sound.conversion_mode;
 	state.hydration.current_sector_record = &session->current_sector_record;
 	state.hydration.player_cache = &session->player_cache;
 	memcpy(state.hydration.sector_record_offset_raw,
 	    session->door->game.config.record.bytes + YT_F53, 4U);
-	yt_route_process_raw_single(&session->route_process,
-	    YT_ANTI_CLOAK_ADDRESS, state.hydration.anti_cloak_raw);
+	state.hydration.anti_cloak_enabled = session->anti_cloak_enabled;
 	state.argument = argument;
 	result = yt_credit_mutation_run(&state, &ops, session, error);
 	if (state.hydrated) {
@@ -5074,7 +5065,6 @@ finalize_action(struct yt_session *session, float amount,
 	char number[64];
 	char row[128];
 	uint8_t turn_raw[4];
-	uint8_t anti_cloak_raw[4];
 	bool anti_cloak_allows;
 
 	(void)amount;
@@ -5088,20 +5078,7 @@ finalize_action(struct yt_session *session, float amount,
 	if (!yt_record_set_raw_number(&session->player.record, YT_F49, turn_raw))
 		return false;
 	quotient = single_div(session->player.turns, turn_divisor);
-	yt_route_process_raw_single(&session->route_process,
-	    YT_ANTI_CLOAK_ADDRESS, anti_cloak_raw);
-	if (!yt_action_finalizer_anti_cloak_raw_allows(anti_cloak_raw,
-	    session->presentation.sound.conversion_mode, &anti_cloak_allows)) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			error->system_error = 0;
-			(void)snprintf(error->operation, sizeof(error->operation), "%s",
-			    "action-finalizer anti-cloak CINT");
-		}
-		(void)yt_error_attach_basic_fault_number(error,
-		    YT_BASIC_FAULT_ACTION_FINALIZER_ANTI_CLOAK_CINT, 6U);
-		return false;
-	}
+	anti_cloak_allows = !session->anti_cloak_enabled;
 	if (quotient == floorf(quotient) && anti_cloak_allows) {
 		float display;
 		float saved_foreground;

@@ -4248,8 +4248,6 @@ yt_current_player_hydrate_run(
 	struct yt_player fresh;
 	uint8_t current_sector_raw[8] = {0};
 	enum qb_mbf_status add_status;
-	bool overflow;
-	int32_t anti_cloak;
 	int record;
 
 	if (state == NULL || state->player == NULL || read_player == NULL
@@ -4285,13 +4283,7 @@ yt_current_player_hydrate_run(
 	state->player->ports_owned = fresh.ports_owned;
 	state->player->ground_forces = fresh.ground_forces;
 	state->player->cloak = fresh.cloak;
-	anti_cloak = qb_cint_mbf32(state->anti_cloak_raw,
-	    state->conversion_mode, &overflow);
-	if (overflow)
-		return current_player_hydration_fault(error,
-		    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_ANTI_CLOAK_CINT,
-		    "current-player A41C anti-cloak CINT");
-	if ((int16_t)~(int16_t)anti_cloak != 0) {
+	if (!state->anti_cloak_enabled) {
 		if (state->player_cache != NULL)
 			(void)yt_player_cache_set_raw(state->player_cache, record,
 			    YT_PLAYER_CACHE_CLOAK,
@@ -6396,34 +6388,6 @@ yt_action_finalizer_cloak_raw(const uint8_t before[4],
 		*clamped = false;
 	}
 	return true;
-}
-
-bool
-yt_action_finalizer_anti_cloak_raw_allows(const uint8_t anti_cloak[4],
-    uint8_t conversion_mode, bool *allows)
-{
-	bool overflow;
-	int32_t converted;
-
-	if (anti_cloak == NULL || allows == NULL)
-		return false;
-	converted = qb_cint_mbf32(anti_cloak, conversion_mode, &overflow);
-	if (overflow)
-		return false;
-	*allows = (int16_t)~(int16_t)converted != 0;
-	return true;
-}
-
-bool
-yt_action_finalizer_anti_cloak_allows(float anti_cloak,
-    uint8_t conversion_mode, bool *allows)
-{
-	uint8_t raw[4];
-
-	if (qb_mbf32_encode(anti_cloak, raw) == QB_MBF_OVERFLOW)
-		return false;
-	return yt_action_finalizer_anti_cloak_raw_allows(raw, conversion_mode,
-	    allows);
 }
 
 bool
