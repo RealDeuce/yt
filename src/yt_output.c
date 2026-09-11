@@ -144,14 +144,6 @@ yt_out_present_result(const struct yt_present_result *result)
 			if (!local) {
 				present_combined(event->data, event->length,
 				    event->operation == YT_PRESENT_REMOTE_LINE);
-				if (event->commit_color_cache) {
-					if (event->cached_foreground_process != NULL)
-						memcpy(event->cached_foreground_process,
-						    event->cached_foreground_raw, 4U);
-					if (event->cached_background_process != NULL)
-						memcpy(event->cached_background_process,
-						    event->cached_background_raw, 4U);
-				}
 			}
 			break;
 		case YT_PRESENT_LOCAL_COLOR:

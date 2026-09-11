@@ -58,8 +58,6 @@
 #define YT_LOW_TIME_REMEMBERED_ADDRESS 0x59CEU
 #define YT_COLOR_INITIALIZED_ADDRESS 0x556AU
 #define YT_COLOR_TABLE_ADDRESS 0x556EU
-#define YT_CACHED_FOREGROUND_ADDRESS 0x559EU
-#define YT_CACHED_BACKGROUND_ADDRESS 0x55A2U
 #define YT_CLEARANCE_ANNOUNCED_ADDRESS 0x55B6U
 #define YT_CLEARANCE_VALUE_ADDRESS 0x55BEU
 #define YT_CLEARANCE_SOUND_SELECTOR_ADDRESS 0x55C6U
@@ -19679,10 +19677,6 @@ yt_session_run(struct yt_door *door, const char *executable_path,
 	yt_present_bind_color_process(&session.presentation,
 	    session.route_process.bytes, YT_COLOR_INITIALIZED_ADDRESS,
 	    YT_COLOR_TABLE_ADDRESS);
-	yt_present_bind_cached_foreground_process(&session.presentation,
-	    &session.route_process.bytes[YT_CACHED_FOREGROUND_ADDRESS]);
-	yt_present_bind_cached_background_process(&session.presentation,
-	    &session.route_process.bytes[YT_CACHED_BACKGROUND_ADDRESS]);
 	session.door = door;
 	session.executable_path = executable_path;
 	session.running = true;

@@ -172,49 +172,20 @@ yt_present_set_color_memory(struct yt_present_state *state, size_t index,
 		    sizeof(raw));
 }
 
-void
-yt_present_bind_cached_foreground_process(struct yt_present_state *state,
-    uint8_t foreground[4])
-{
-	if (state == NULL)
-		return;
-	state->cached_foreground_process = foreground;
-	if (foreground != NULL)
-		state->cached_foreground = qb_mbf32_decode(foreground);
-}
-
 float
 yt_present_cached_foreground(const struct yt_present_state *state)
 {
 	if (state == NULL)
 		return 0.0f;
-	if (state->cached_foreground_process != NULL)
-		return qb_mbf32_decode(state->cached_foreground_process);
 	return state->cached_foreground;
 }
 
 void
 yt_present_set_cached_foreground(struct yt_present_state *state, float value)
 {
-	uint8_t raw[4];
-
 	if (state == NULL)
 		return;
 	state->cached_foreground = value;
-	if (state->cached_foreground_process != NULL
-	    && qb_mbf32_encode(value, raw) != QB_MBF_OVERFLOW)
-		memcpy(state->cached_foreground_process, raw, sizeof(raw));
-}
-
-void
-yt_present_bind_cached_background_process(struct yt_present_state *state,
-    uint8_t background[4])
-{
-	if (state == NULL)
-		return;
-	state->cached_background_process = background;
-	if (background != NULL)
-		state->cached_background = qb_mbf32_decode(background);
 }
 
 float
@@ -222,22 +193,15 @@ yt_present_cached_background(const struct yt_present_state *state)
 {
 	if (state == NULL)
 		return 0.0f;
-	if (state->cached_background_process != NULL)
-		return qb_mbf32_decode(state->cached_background_process);
 	return state->cached_background;
 }
 
 void
 yt_present_set_cached_background(struct yt_present_state *state, float value)
 {
-	uint8_t raw[4];
-
 	if (state == NULL)
 		return;
 	state->cached_background = value;
-	if (state->cached_background_process != NULL
-	    && qb_mbf32_encode(value, raw) != QB_MBF_OVERFLOW)
-		memcpy(state->cached_background_process, raw, sizeof(raw));
 }
 
 static enum yt_present_status
@@ -351,26 +315,13 @@ static enum yt_present_status
 stage_color_cache(struct yt_present_state *state,
     struct yt_present_result *result, float foreground, float background)
 {
-	struct yt_present_event *event;
-	uint8_t foreground_raw[4];
-	uint8_t background_raw[4];
-
 	if (result->event_count == 0U)
 		return YT_PRESENT_CAPACITY;
-	event = &result->events[result->event_count - 1U];
-	if (event->operation != YT_PRESENT_REMOTE_SEMI
-	    || qb_mbf32_encode(foreground, foreground_raw) != QB_MBF_OK
-	    || qb_mbf32_encode(background, background_raw) != QB_MBF_OK)
+	if (result->events[result->event_count - 1U].operation
+	    != YT_PRESENT_REMOTE_SEMI)
 		return YT_PRESENT_OVERFLOW;
 	state->cached_foreground = foreground;
 	state->cached_background = background;
-	event->commit_color_cache = true;
-	event->cached_foreground_process = state->cached_foreground_process;
-	memcpy(event->cached_foreground_raw, foreground_raw,
-	    sizeof(event->cached_foreground_raw));
-	event->cached_background_process = state->cached_background_process;
-	memcpy(event->cached_background_raw, background_raw,
-	    sizeof(event->cached_background_raw));
 	return YT_PRESENT_OK;
 }
 

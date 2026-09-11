@@ -39,12 +39,6 @@ struct yt_present_event {
 	int cursor_stop;
 	uint8_t data[YT_PRESENT_EVENT_DATA];
 	size_t length;
-	/* Applied only after the owning remote PRINT event is accepted. */
-	bool commit_color_cache;
-	uint8_t *cached_foreground_process;
-	uint8_t cached_foreground_raw[4];
-	uint8_t *cached_background_process;
-	uint8_t cached_background_raw[4];
 };
 
 struct yt_present_time_state {
@@ -72,9 +66,7 @@ struct yt_present_state {
 	uint8_t *color_process;
 	uint16_t color_memory_address;
 	float cached_foreground;
-	uint8_t *cached_foreground_process;
 	float cached_background;
-	uint8_t *cached_background_process;
 };
 
 struct yt_present_result {
@@ -102,13 +94,9 @@ float yt_present_color_memory(const struct yt_present_state *state,
     size_t index);
 void yt_present_set_color_memory(struct yt_present_state *state,
     size_t index, float value);
-void yt_present_bind_cached_foreground_process(
-    struct yt_present_state *state, uint8_t foreground[4]);
 float yt_present_cached_foreground(const struct yt_present_state *state);
 void yt_present_set_cached_foreground(struct yt_present_state *state,
     float value);
-void yt_present_bind_cached_background_process(
-    struct yt_present_state *state, uint8_t background[4]);
 float yt_present_cached_background(const struct yt_present_state *state);
 void yt_present_set_cached_background(struct yt_present_state *state,
     float value);
