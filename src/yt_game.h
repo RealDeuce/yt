@@ -4210,8 +4210,6 @@ struct yt_hostile_bribe_accept_state {
 
 typedef bool (*yt_hostile_bribe_accept_present_fn)(void *context,
     const uint8_t *text, size_t length, struct yt_error *error);
-typedef void (*yt_hostile_bribe_accept_sound_selector_fn)(void *context,
-    float selector);
 typedef bool (*yt_hostile_bribe_accept_sound_fn)(void *context,
     float selector, struct yt_error *error);
 typedef bool (*yt_hostile_bribe_accept_read_sector_fn)(void *context,
@@ -4227,7 +4225,6 @@ typedef bool (*yt_hostile_bribe_accept_write_player_fn)(void *context,
 
 struct yt_hostile_bribe_accept_ops {
 	yt_hostile_bribe_accept_present_fn present;
-	yt_hostile_bribe_accept_sound_selector_fn sound_selector;
 	yt_hostile_bribe_accept_sound_fn sound;
 	yt_hostile_bribe_accept_read_sector_fn read_sector;
 	yt_hostile_bribe_accept_write_sector_fn write_sector;

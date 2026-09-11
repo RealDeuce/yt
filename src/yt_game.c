@@ -16835,8 +16835,7 @@ yt_hostile_bribe_accept_run(struct yt_hostile_bribe_accept_state *state,
 	volatile double credits;
 
 	if (state == NULL || ops == NULL || ops->present == NULL
-	    || ops->sound_selector == NULL || ops->sound == NULL
-	    || ops->read_sector == NULL
+	    || ops->sound == NULL || ops->read_sector == NULL
 	    || ops->write_sector == NULL || ops->read_player == NULL
 	    || ops->write_player == NULL)
 		return false;
@@ -16854,7 +16853,6 @@ yt_hostile_bribe_accept_run(struct yt_hostile_bribe_accept_state *state,
 	if (!ops->present(context, deal, sizeof(deal) - 1U, error))
 		return false;
 	state->deal_presented = true;
-	ops->sound_selector(context, 1.0f);
 	if (!ops->sound(context, 1.0f, error))
 		return false;
 	state->sound_played = true;

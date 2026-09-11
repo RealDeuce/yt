@@ -57,7 +57,6 @@
 #define YT_HOSTILE_SURRENDER_MERCENARY_SELECTOR_ADDRESS 0x4D42U
 #define YT_HOSTILE_SURRENDER_JOINED_SELECTOR_ADDRESS 0x4D46U
 #define YT_HOSTILE_ATTACK_SOUND_SELECTOR_ADDRESS 0x4D2EU
-#define YT_HOSTILE_BRIBE_SOUND_SELECTOR_ADDRESS 0x4D7AU
 #define YT_HOSTILE_PLANET_LINK_ADDRESS 0x4CFAU
 #define YT_HOSTILE_DEPLOYED_FIGHTERS_ADDRESS 0x4CFEU
 #define YT_HOSTILE_ATTACK_OWNER_ADDRESS 0x4D06U
@@ -7372,23 +7371,13 @@ hostile_bribe_accept_present(void *context, const uint8_t *text,
 	    "accepted Mercenary Bribe", error);
 }
 
-static void
-hostile_bribe_accept_sound_selector(void *context, float selector)
-{
-	session_set_process_single(context, YT_HOSTILE_BRIBE_SOUND_SELECTOR_ADDRESS,
-	    selector);
-}
-
 static bool
 hostile_bribe_accept_sound(void *context, float selector,
     struct yt_error *error)
 {
 	struct yt_session *session = context;
 
-	(void)selector;
-	return session_sound(session, yt_route_process_single(
-	    &session->route_process, YT_HOSTILE_BRIBE_SOUND_SELECTOR_ADDRESS),
-	    "accepted bribe sound", error);
+	return session_sound(session, selector, "accepted bribe sound", error);
 }
 
 static bool
@@ -7494,7 +7483,6 @@ hostile_bribe_accept(void *context,
 {
 	static const struct yt_hostile_bribe_accept_ops ops = {
 		hostile_bribe_accept_present,
-		hostile_bribe_accept_sound_selector,
 		hostile_bribe_accept_sound,
 		hostile_bribe_accept_read_sector,
 		hostile_bribe_accept_write_sector,
