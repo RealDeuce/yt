@@ -893,35 +893,24 @@ test_upper_fault_stages(void)
 		YT_BASIC_FAULT_UPPER_CHR_STRING_SPACE,
 	};
 	struct yt_upper_transform result;
-	struct input_process_tape tape;
 	char text[8];
 	size_t index;
 
-	memset(&tape, 0, sizeof(tape));
 	memcpy(text, "a!b", 4U);
 	CHECK(!yt_input_compat_upper_n_staged((uint8_t *)text, 3U,
-	    YT_BASIC_FAULT_UPPER_FRAME_STACK, 1U, &result,
-	    input_process_store, &tape));
+	    YT_BASIC_FAULT_UPPER_FRAME_STACK, 1U, &result));
 	CHECK(result.fault_valid
 	    && result.fault_site == YT_BASIC_FAULT_UPPER_FRAME_STACK
 	    && !result.scratch_initialized && !result.extracted_valid
-	    && !result.mapped_valid && tape.count == 0U
-	    && strcmp(text, "a!b") == 0);
+	    && !result.mapped_valid && strcmp(text, "a!b") == 0);
 
 	for (index = 0U; index < YT_ARRAY_LEN(body_sites); ++index) {
-		uint8_t expected_index[4];
-
-		memset(&tape, 0, sizeof(tape));
 		memcpy(text, "a!b", 4U);
 		CHECK(!yt_input_compat_upper_n_staged((uint8_t *)text, 3U,
-		    body_sites[index], 3U, &result, input_process_store, &tape));
+		    body_sites[index], 3U, &result));
 		CHECK(result.fault_valid && result.fault_site == body_sites[index]
 		    && result.scratch_initialized && result.length == 3U
-		    && result.index == 3U && strcmp(text, "A!b") == 0
-		    && tape.count == 7U && tape.address[6] == 0x536EU);
-		CHECK(qb_mbf32_encode(3.0f, expected_index) == QB_MBF_OK
-		    && memcmp(tape.raw[6], expected_index,
-		    sizeof(expected_index)) == 0);
+		    && result.index == 3U && strcmp(text, "A!b") == 0);
 		if (body_sites[index] == YT_BASIC_FAULT_UPPER_CHR_STRING_SPACE) {
 			CHECK(result.extracted_valid && result.extracted == (uint8_t)'b'
 			    && result.mapped_valid && result.mapped == (uint8_t)'B');
@@ -931,25 +920,22 @@ test_upper_fault_stages(void)
 		}
 	}
 
-	memset(&tape, 0, sizeof(tape));
 	memcpy(text, "a!b", 4U);
 	CHECK(yt_input_compat_upper_n_staged((uint8_t *)text, 3U,
-	    YT_BASIC_FAULT_SITE_COUNT, 1U, &result, input_process_store, &tape));
+	    YT_BASIC_FAULT_SITE_COUNT, 1U, &result));
 	CHECK(!result.fault_valid && result.scratch_initialized
 	    && result.fault_site == YT_BASIC_FAULT_SITE_COUNT
 	    && result.length == 3U && result.index == 4U
 	    && !result.extracted_valid && !result.mapped_valid
-	    && strcmp(text, "A!B") == 0 && tape.count == 9U);
+	    && strcmp(text, "A!B") == 0);
 
 	memcpy(text, "a!b", 4U);
 	CHECK(!yt_input_compat_upper_n_staged((uint8_t *)text, 3U,
-	    YT_BASIC_FAULT_UPPER_MID_COMPARE_STRING_SPACE, 4U, &result,
-	    input_process_store, &tape));
+	    YT_BASIC_FAULT_UPPER_MID_COMPARE_STRING_SPACE, 4U, &result));
 	CHECK(!result.fault_valid && strcmp(text, "a!b") == 0);
 	memcpy(text, "a!b", 4U);
 	CHECK(!yt_input_compat_upper_n_staged((uint8_t *)text, 3U,
-	    YT_BASIC_FAULT_UPPER_CHR_STRING_SPACE, 2U, &result,
-	    input_process_store, &tape));
+	    YT_BASIC_FAULT_UPPER_CHR_STRING_SPACE, 2U, &result));
 	CHECK(!result.fault_valid && strcmp(text, "a!b") == 0);
 }
 
@@ -984,7 +970,7 @@ test_repeat_prefix_stages(void)
 	    && result.upper.extracted == (uint8_t)'a'
 	    && result.upper.mapped_valid && result.upper.mapped == (uint8_t)'A'
 	    && strcmp((const char *)scratch, "a/R2") == 0
-	    && tape.count == 3U);
+	    && tape.count == 0U);
 
 	memset(&tape, 0, sizeof(tape));
 	memcpy(scratch, "OLD", 4U);
@@ -997,7 +983,7 @@ test_repeat_prefix_stages(void)
 	    == YT_BASIC_FAULT_UPPER_MID_COMPARE_STRING_SPACE
 	    && result.upper.index == 3U
 	    && strcmp((const char *)scratch, "A/R2") == 0
-	    && tape.count == 7U);
+	    && tape.count == 0U);
 
 	memset(&tape, 0, sizeof(tape));
 	memcpy(scratch, "OLD", 4U);
@@ -1007,10 +993,10 @@ test_repeat_prefix_stages(void)
 	CHECK(!result.fault_valid && !result.upper.fault_valid
 	    && result.repeat_position == 2U
 	    && strcmp((const char *)scratch, "A/R2") == 0
-	    && tape.count == 12U && tape.address[11] == 0x51C4U
+	    && tape.count == 1U && tape.address[0] == 0x51C4U
 	    && qb_mbf32_encode(2.0f, expected_raw) == QB_MBF_OK
 	    && memcmp(result.work_raw, expected_raw, sizeof(expected_raw)) == 0
-	    && memcmp(tape.raw[11], expected_raw, sizeof(expected_raw)) == 0);
+	    && memcmp(tape.raw[0], expected_raw, sizeof(expected_raw)) == 0);
 
 	memset(&tape, 0, sizeof(tape));
 	CHECK(yt_input_repeat_prefix_staged((const uint8_t *)"abc", 3U,
@@ -1308,24 +1294,17 @@ test_repeat_transform(void)
 	struct yt_repeat_transform result;
 	struct input_process_tape tape;
 	static const uint16_t expected_address[] = {
-		0x001AU, 0x536AU, 0x536EU,
-		0x001AU, 0x536EU, 0x001AU, 0x536EU,
-		0x001AU, 0x536EU, 0x001AU, 0x536EU,
 		0x51C4U, 0x0016U, 0x001AU, 0x001AU, 0x51C4U,
 		0x51C8U, 0x4F76U,
 		0x4F76U, 0x4F76U, 0x4F76U,
 	};
 	static const float expected_value[] = {
-		4.0f, 4.0f, 1.0f,
-		2.0f, 2.0f, 3.0f, 3.0f,
-		4.0f, 4.0f, 5.0f, 5.0f,
 		2.0f, 0.0f, 3.0f, 3.0f, 3.0f, 3.0f, 1.0f,
 		2.0f, 3.0f, 4.0f,
 	};
 	char text[1024];
 	char saved[1024] = "old";
 	char output[128] = "old-output";
-	size_t input_length;
 	size_t index;
 	size_t semicolons;
 
@@ -1379,7 +1358,6 @@ test_repeat_transform(void)
 	memset(&tape, 0, sizeof(tape));
 	snprintf(saved, sizeof(saved), "old");
 	snprintf(text, sizeof(text), "A/R1E999");
-	input_length = strlen(text);
 	CHECK(!yt_input_expand_repeat_observed(text, sizeof(text), saved,
 	    sizeof(saved), output, sizeof(output), &result,
 	    input_process_store, &tape));
@@ -1388,7 +1366,7 @@ test_repeat_transform(void)
 	    && result.fault_valid
 	    && result.fault_site == YT_BASIC_FAULT_REPEAT_VAL_OVERFLOW);
 	CHECK(strcmp(text, "A;") == 0 && strcmp(saved, "old") == 0);
-	CHECK(tape.count == 3U + 2U * input_length + 1U
+	CHECK(tape.count == 1U
 	    && tape.address[tape.count - 1U] == 0x51C4U);
 	{
 		uint8_t expected_raw[4];
@@ -1401,7 +1379,6 @@ test_repeat_transform(void)
 	memset(&tape, 0, sizeof(tape));
 	snprintf(saved, sizeof(saved), "old");
 	snprintf(text, sizeof(text), "A/R1.7014118E38");
-	input_length = strlen(text);
 	CHECK(!yt_input_expand_repeat_observed(text, sizeof(text), saved,
 	    sizeof(saved), output, sizeof(output), &result,
 	    input_process_store, &tape));
@@ -1411,7 +1388,7 @@ test_repeat_transform(void)
 	    && result.fault_site == YT_BASIC_FAULT_REPEAT_SINGLE_OVERFLOW);
 	CHECK(strcmp(text, "A;") == 0
 	    && strcmp(saved, "old") == 0);
-	CHECK(tape.count == 3U + 2U * input_length + 3U
+	CHECK(tape.count == 3U
 	    && tape.address[tape.count - 3U] == 0x51C4U
 	    && tape.address[tape.count - 2U] == 0x0016U
 	    && tape.address[tape.count - 1U] == 0x001AU);

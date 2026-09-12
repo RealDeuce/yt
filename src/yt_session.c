@@ -1111,7 +1111,7 @@ session_compat_upper_n(struct yt_session *session, uint8_t *text,
     size_t length)
 {
 	(void)session;
-	yt_input_compat_upper_n_observed(text, length, NULL, NULL);
+	yt_input_compat_upper_n(text, length);
 }
 
 static bool

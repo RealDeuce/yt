@@ -570,8 +570,7 @@ upper_fail(struct yt_upper_transform *result,
 bool
 yt_input_compat_upper_n_staged(uint8_t *text, size_t length,
     enum yt_basic_fault_site target, size_t occurrence,
-    struct yt_upper_transform *result, yt_input_process_store_fn store,
-    void *context)
+    struct yt_upper_transform *result)
 {
 	size_t index;
 
@@ -598,12 +597,6 @@ yt_input_compat_upper_n_staged(uint8_t *text, size_t length,
 	result->length = length;
 	result->index = 1U;
 	result->scratch_initialized = true;
-	if (!input_process_store_single(store, context, 0x001AU,
-	    (float)length)
-	    || !input_process_store_single(store, context, 0x536AU,
-	    (float)length)
-	    || !input_process_store_single(store, context, 0x536EU, 1.0f))
-		return false;
 	for (index = 0U; index < length; ++index) {
 		uint8_t current;
 		uint8_t mapped;
@@ -627,23 +620,17 @@ yt_input_compat_upper_n_staged(uint8_t *text, size_t length,
 			text[index] = mapped;
 		}
 		result->index = index + 2U;
-		if (!input_process_store_single(store, context, 0x001AU,
-		    (float)(index + 2U))
-		    || !input_process_store_single(store, context, 0x536EU,
-		    (float)(index + 2U)))
-			return false;
 	}
 	return true;
 }
 
 void
-yt_input_compat_upper_n_observed(uint8_t *text, size_t length,
-    yt_input_process_store_fn store, void *context)
+yt_input_compat_upper_n(uint8_t *text, size_t length)
 {
 	struct yt_upper_transform result;
 
 	(void)yt_input_compat_upper_n_staged(text, length,
-	    YT_BASIC_FAULT_SITE_COUNT, 1U, &result, store, context);
+	    YT_BASIC_FAULT_SITE_COUNT, 1U, &result);
 }
 
 bool
@@ -677,7 +664,7 @@ yt_input_repeat_prefix_staged(const uint8_t *text, size_t length,
 	upper_scratch[length] = '\0';
 	if (!yt_input_compat_upper_n_staged(upper_scratch, length,
 	    upper_fault_target(target) ? target : YT_BASIC_FAULT_SITE_COUNT,
-	    occurrence, &upper, store, context)) {
+	    occurrence, &upper)) {
 		result->upper = upper;
 		if (upper.fault_valid) {
 			result->fault_site = upper.fault_site;

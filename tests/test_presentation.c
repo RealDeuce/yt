@@ -23943,8 +23943,7 @@ direct_emergency_warp_hostile_menu_prefix(
 	*end = join->remote_length;
 	memcpy(transformed, command, command_length);
 	transformed[command_length] = '\0';
-	yt_input_compat_upper_n_observed((uint8_t *)transformed,
-	    command_length, NULL, NULL);
+	yt_input_compat_upper_n((uint8_t *)transformed, command_length);
 	return yt_hostile_menu_dispatch(transformed) == YT_HOSTILE_MENU_WARP;
 }
 
@@ -30239,8 +30238,7 @@ direct_emergency_warp_hostile_cycle_run(
 	ends[0] = join->remote_length;
 	memcpy(transformed, command, command_length);
 	transformed[command_length] = '\0';
-	yt_input_compat_upper_n_observed((uint8_t *)transformed,
-	    command_length, NULL, NULL);
+	yt_input_compat_upper_n((uint8_t *)transformed, command_length);
 	if (yt_hostile_menu_dispatch(transformed) != YT_HOSTILE_MENU_WARP)
 		return false;
 	++cycle->entry_player_reads;
@@ -30643,8 +30641,7 @@ direct_emergency_warp_hostile_ordinary_return_run(
 	ends[0] = join->remote_length;
 	memcpy(transformed, command, command_length);
 	transformed[command_length] = '\0';
-	yt_input_compat_upper_n_observed((uint8_t *)transformed,
-	    command_length, NULL, NULL);
+	yt_input_compat_upper_n((uint8_t *)transformed, command_length);
 	if (yt_hostile_menu_dispatch(transformed) != YT_HOSTILE_MENU_WARP)
 		return false;
 	++cycle->entry_player_reads;

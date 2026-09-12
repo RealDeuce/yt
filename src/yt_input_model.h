@@ -262,12 +262,10 @@ bool yt_input_ab36_terminal_run(enum yt_ab36_terminal_kind kind,
 bool yt_input_expand_repeat(char *text, size_t text_capacity,
     char *saved_command, size_t saved_capacity,
     struct yt_repeat_transform *result);
-void yt_input_compat_upper_n_observed(uint8_t *text, size_t length,
-	yt_input_process_store_fn store, void *context);
+void yt_input_compat_upper_n(uint8_t *text, size_t length);
 bool yt_input_compat_upper_n_staged(uint8_t *text, size_t length,
 	enum yt_basic_fault_site target, size_t occurrence,
-	struct yt_upper_transform *result, yt_input_process_store_fn store,
-	void *context);
+	struct yt_upper_transform *result);
 bool yt_input_repeat_prefix_staged(const uint8_t *text, size_t length,
 	uint8_t *upper_scratch, size_t scratch_capacity,
 	enum yt_basic_fault_site target, size_t occurrence,
