@@ -1858,125 +1858,18 @@ session_confirm(struct yt_session *session, const uint8_t *prompt,
 }
 
 static bool
-startup_configuration_close(void *context, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	bool closed = yt_database_random_close(&session->door->game.database,
-	    error);
-
-	if (closed)
-		session->door->game_open = false;
-	return closed;
-}
-
-static bool
-startup_configuration_open(void *context, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	bool opened = yt_database_open(&session->door->game.database,
-	    "YTDATA.DAT", YT_OPEN_UPDATE, error);
-
-	if (opened)
-		session->door->game_open = true;
-	return opened;
-}
-
-static bool
-startup_configuration_load(void *context, struct yt_config *config,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_config_load(&session->door->game.database, config, error);
-}
-
-static bool
-startup_configuration_store(void *context, const struct yt_config *config,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_database_write(&session->door->game.database, 1U,
-	    &config->record, error)
-	    && yt_database_flush(&session->door->game.database, error);
-}
-
-static bool
-startup_configuration_read_player(void *context, int basic,
-    struct yt_player *player, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_game_read_player(&session->door->game, basic, player, error);
-}
-
-static bool
-startup_configuration_write_player(void *context, int basic,
-    const struct yt_player *player, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_database_write(&session->door->game.database, (size_t)basic,
-	    &player->record, error)
-	    && yt_database_flush(&session->door->game.database, error);
-}
-
-static bool
-startup_configuration_random(void *context, float *value,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_random_next(&session->door->game.random, value, error);
-}
-
-static void
-startup_configuration_store_disruption(void *context, size_t index,
-    const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-
-	if (index >= 2U)
-		return;
-	session->disruption_sectors[index] = qb_mbf32_decode(raw);
-}
-
-static void
-startup_configuration_store_local_screen(void *context,
-    const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-
-	session->presentation.sound.snoop = qb_mbf32_decode(raw);
-}
-
-static bool
 load_configuration(struct yt_session *session, struct yt_error *error)
 {
-	static const struct yt_startup_configuration_ops ops = {
-		.close_data = startup_configuration_close,
-		.open_data = startup_configuration_open,
-		.load_config = startup_configuration_load,
-		.store_config = startup_configuration_store,
-		.read_player = startup_configuration_read_player,
-		.write_player = startup_configuration_write_player,
-		.random = startup_configuration_random,
-		.store_disruption = startup_configuration_store_disruption,
-		.store_local_screen = startup_configuration_store_local_screen,
-	};
 	struct yt_game *game = &session->door->game;
-	struct yt_startup_configuration_state state;
 	bool ok;
 
 	memset(game, 0, sizeof(*game));
 	yt_random_init(&game->random);
-	memset(&state, 0, sizeof(state));
-	state.config = &game->config;
-	state.local_mode = session->door->identity.local ? -1.0f : 0.0f;
-	state.player_cache = &session->player_cache;
-	memcpy(state.black_hole, session->disruption_sectors,
-	    sizeof(state.black_hole));
-	ok = yt_startup_configuration_run(&state, &ops, session, error);
+	ok = yt_game_load_startup_configuration(game, "YTDATA.DAT",
+	    session->door->identity.local, &session->player_cache,
+	    session->disruption_sectors, &session->presentation.sound.snoop,
+	    error);
+	session->door->game_open = game->database.file != NULL;
 	return ok;
 }
 

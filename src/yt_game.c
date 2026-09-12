@@ -180,46 +180,39 @@ yt_main_startup_internal_fatal_run(uint16_t module_segment,
 }
 
 bool
-yt_startup_configuration_run(struct yt_startup_configuration_state *state,
-    const struct yt_startup_configuration_ops *ops, void *context,
-    struct yt_error *error)
+yt_game_load_startup_configuration(struct yt_game *game, const char *path,
+    bool local_mode, struct yt_player_cache *player_cache,
+    float disruption_sectors[2], float *local_screen, struct yt_error *error)
 {
 	struct yt_config *config;
 	bool overflow;
 	int32_t path_count;
-	int32_t local_mode;
 	float counter;
 	size_t index;
 
-	if (state == NULL || ops == NULL || state->config == NULL
-	    || state->player_cache == NULL || ops->close_data == NULL
-	    || ops->open_data == NULL
-	    || ops->load_config == NULL || ops->store_config == NULL
-	    || ops->read_player == NULL || ops->write_player == NULL
-	    || ops->random == NULL)
+	if (game == NULL || path == NULL || player_cache == NULL
+	    || disruption_sectors == NULL || local_screen == NULL)
 		return false;
-	state->installed_handler = 0x45F7U;
-	state->handler_installed = true;
-	config = state->config;
-	if (!ops->close_data(context, error)
-	    || !ops->open_data(context, error)
-	    || !ops->load_config(context, config, error))
+	config = &game->config;
+	if (!yt_database_random_close(&game->database, error)
+	    || !yt_database_open(&game->database, path,
+	    YT_OPEN_UPDATE_CREATE, error)
+	    || !yt_config_load(&game->database, config, error))
 		return false;
 	path_count = qb_cint_mbf32(config->record.bytes + YT_F41, 0U,
 	    &overflow);
 	if (overflow || path_count < 0)
 		return startup_configuration_error(error, YT_RANGE,
 		    "startup scoreboard LEFT$");
-	state->scoreboard_path_length = (size_t)path_count;
-	if (state->scoreboard_path_length > YT_TEXT_FIELD_SIZE)
-		state->scoreboard_path_length = YT_TEXT_FIELD_SIZE;
+	config->scoreboard_length = (float)path_count;
+	if (config->scoreboard_length > YT_TEXT_FIELD_SIZE)
+		config->scoreboard_length = YT_TEXT_FIELD_SIZE;
 	memcpy(config->scoreboard, config->record.bytes,
-	    state->scoreboard_path_length);
-	if (ops->store_local_screen != NULL)
-		ops->store_local_screen(context, config->record.bytes + YT_F85);
+	    (size_t)config->scoreboard_length);
+	*local_screen = config->local_screen;
 	qb_compat_upper_n((uint8_t *)config->scoreboard,
-	    state->scoreboard_path_length);
-	config->scoreboard[state->scoreboard_path_length] = '\0';
+	    (size_t)config->scoreboard_length);
+	config->scoreboard[(size_t)config->scoreboard_length] = '\0';
 
 	if (config->headquarters == 0.0f) {
 		static const uint8_t headquarters_default[4] = {
@@ -228,32 +221,24 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 
 		if (!yt_record_set_raw_number(&config->record, YT_F117,
 		    headquarters_default)
-		    || !ops->store_config(context, config, error))
+		    || !yt_database_write_durable(&game->database, 1U,
+		    &config->record, error))
 			return false;
 		config->headquarters = 733.0f;
 	}
 	if (config->genesis_ports < 20.0f) {
 		config->genesis_ports = 200.0f;
 	}
-	if (state->scoreboard_path_length == 0U) {
+	if (config->scoreboard_length == 0.0f) {
 		static const char default_path[] = "YTSCORE.ASC";
 
 		memcpy(config->scoreboard, default_path, sizeof(default_path));
-		state->scoreboard_path_length = sizeof(default_path) - 1U;
+		config->scoreboard_length = sizeof(default_path) - 1U;
 	}
-	local_mode = qb_cint(state->local_mode, &overflow);
-	if (overflow)
-		return startup_configuration_error(error, YT_RANGE,
-		    "startup local-mode CINT");
 	if (config->local_screen < -1.0f || config->local_screen > 0.0f
-	    || local_mode != 0) {
-		static const uint8_t local_default[4] = {
-			0x00, 0x00, 0x80, 0x81
-		};
-
+	    || local_mode) {
 		config->local_screen = -1.0f;
-		if (ops->store_local_screen != NULL)
-			ops->store_local_screen(context, local_default);
+		*local_screen = -1.0f;
 	}
 	if (config->lottery_plays < 0.0f || config->lottery_plays > 9.0f) {
 		config->lottery_plays = 3.0f;
@@ -277,11 +262,11 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 		if (overflow || !yt_player_cache_contains(basic))
 			return startup_configuration_error(error, YT_RANGE,
 			    "startup player-cache index");
-		if (!ops->read_player(context, basic, &player, error))
+		if (!yt_game_read_player(game, basic, &player, error))
 			return false;
-		(void)yt_player_cache_set_raw(state->player_cache, basic,
+		(void)yt_player_cache_set_raw(player_cache, basic,
 		    YT_PLAYER_CACHE_SECTOR, player.record.bytes + YT_F57);
-		(void)yt_player_cache_set_raw(state->player_cache, basic,
+		(void)yt_player_cache_set_raw(player_cache, basic,
 		    YT_PLAYER_CACHE_CLOAK, player.record.bytes + YT_F125);
 		if (player.cloak < 0.0f || player.cloak > 1.0f) {
 			static const uint8_t one[4] = {
@@ -289,10 +274,11 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 			};
 
 			player.cloak = 1.0f;
-			(void)yt_player_cache_set_raw(state->player_cache, basic,
+			(void)yt_player_cache_set_raw(player_cache, basic,
 			    YT_PLAYER_CACHE_CLOAK, one);
 			if (!yt_record_set_number(&player.record, YT_F125, 1.0f)
-			    || !ops->write_player(context, basic, &player, error))
+			    || !yt_database_write_durable(&game->database,
+			    (size_t)basic, &player.record, error))
 				return false;
 		}
 		counter = startup_single_add(counter, 1.0f);
@@ -305,27 +291,26 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 		float integral;
 		uint8_t raw[4];
 
-		if (!ops->random(context, &draw, error))
+		if (!yt_random_next(&game->random, &draw, error))
 			return false;
 		difference = startup_single_subtract(config->port_offset,
 		    config->sector_offset);
 		span = startup_single_subtract(difference, 2.0f);
 		product = startup_single_multiply(draw, span);
 		integral = floorf(product);
-		state->black_hole[index] = startup_single_add(integral, 2.0f);
+		disruption_sectors[index] = startup_single_add(integral, 2.0f);
 		if (integral == -2.0f) {
 			static const uint8_t dirty_zero[4] = {
 				0x00U, 0x00U, 0x80U, 0x00U
 			};
 
 			memcpy(raw, dirty_zero, sizeof(raw));
-		} else if (qb_mbf32_encode(state->black_hole[index], raw)
+		} else if (qb_mbf32_encode(disruption_sectors[index], raw)
 		    != QB_MBF_OK) {
 			return startup_configuration_error(error, YT_RANGE,
 			    "startup disruption result");
 		}
-		if (ops->store_disruption != NULL)
-			ops->store_disruption(context, index, raw);
+		disruption_sectors[index] = qb_mbf32_decode(raw);
 	}
 	return true;
 }
