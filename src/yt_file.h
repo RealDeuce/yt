@@ -38,32 +38,21 @@ struct yt_database_open_result {
 	bool handle_open;
 };
 
-struct yt_database_close_observation {
-	bool carry;
-	bool handle_open;
-	uint16_t dos_error;
-};
-
 enum yt_database_close_outcome {
 	YT_DATABASE_CLOSE_NONE,
 	YT_DATABASE_CLOSE_RETURNED,
 	YT_DATABASE_CLOSE_DISK_ERROR,
 	YT_DATABASE_CLOSE_DEVICE_ERROR,
-	YT_DATABASE_CLOSE_PROVIDER_ERROR,
 };
 
 struct yt_database_close_result {
 	enum yt_database_close_outcome outcome;
 	uint16_t dos_error;
 	uint16_t basic_error;
-	uint16_t retry_dos_error;
 	size_t attempt_count;
 	bool missing;
-	bool retry_attempted;
 	bool device;
 	bool close_all;
-	bool registered;
-	bool handle_open;
 };
 
 /*
@@ -172,9 +161,6 @@ struct yt_database_lof_result {
 	bool handle_open;
 };
 
-/* A false provider return rejects the observation and performs no I/O. */
-typedef bool (*yt_database_close_provider)(void *context, FILE *active_file,
-    size_t attempt, struct yt_database_close_observation *observation);
 struct yt_database_seek_observation {
 	bool carry;
 	uint16_t dos_error;
@@ -259,7 +245,6 @@ typedef bool (*yt_database_write_provider)(void *context, FILE *file,
     struct yt_database_write_observation *observation);
 struct yt_database {
 	FILE *file;
-	FILE *orphaned_file;
 	char path[512];
 	size_t records;
 	yt_database_seek_provider seek_provider;
@@ -268,8 +253,6 @@ struct yt_database {
 	void *read_context;
 	yt_database_write_provider write_provider;
 	void *write_context;
-	yt_database_close_provider close_provider;
-	void *close_context;
 	uint32_t device_position;
 	bool short_close_attempted;
 	bool short_close_succeeded;
@@ -330,8 +313,6 @@ void yt_database_set_read_provider(struct yt_database *database,
     yt_database_read_provider provider, void *context);
 void yt_database_set_seek_provider(struct yt_database *database,
     yt_database_seek_provider provider, void *context);
-void yt_database_set_close_provider(struct yt_database *database,
-    yt_database_close_provider provider, void *context);
 bool yt_database_flush(struct yt_database *database, struct yt_error *error);
 void yt_radio_file_init(struct yt_radio_file *radio);
 bool yt_radio_file_open(struct yt_radio_file *radio, const char *path,

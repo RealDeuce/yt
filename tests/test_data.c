@@ -494,26 +494,6 @@ struct database_seek_script {
 	int64_t absolute_offset;
 };
 
-struct database_close_script {
-	bool success;
-	bool handle_open;
-	size_t calls;
-	size_t attempt;
-};
-
-struct database_public_close_step {
-	struct yt_database_close_observation observation;
-	bool provider_ok;
-	bool expect_active;
-	bool close_active;
-};
-
-struct database_public_close_script {
-	struct database_public_close_step steps[2];
-	size_t length;
-	size_t position;
-};
-
 struct text_close_step {
 	enum yt_text_close_operation operation;
 	size_t requested;
@@ -783,67 +763,17 @@ text_open_check_consumed(const struct text_open_script *script)
 	CHECK(script->position == script->length);
 }
 
-static void
-database_close_add(struct database_public_close_script *script, bool carry,
-    uint16_t dos_error, bool handle_open, bool expect_active,
-    bool close_active)
-{
-	struct database_public_close_step *step;
-
-	CHECK(script->length < YT_ARRAY_LEN(script->steps));
-	if (script->length >= YT_ARRAY_LEN(script->steps))
-		return;
-	step = &script->steps[script->length++];
-	memset(step, 0, sizeof(*step));
-	step->observation.carry = carry;
-	step->observation.dos_error = dos_error;
-	step->observation.handle_open = handle_open;
-	step->provider_ok = true;
-	step->expect_active = expect_active;
-	step->close_active = close_active;
-}
-
 static bool
-scripted_database_public_close(void *context, FILE *active_file,
-    size_t attempt, struct yt_database_close_observation *observation)
-{
-	struct database_public_close_script *script = context;
-	struct database_public_close_step *step;
-
-	CHECK(script->position < script->length);
-	if (script->position >= script->length)
-		return false;
-	step = &script->steps[script->position++];
-	CHECK(attempt == script->position
-	    && (active_file != NULL) == step->expect_active);
-	if (attempt != script->position
-	    || (active_file != NULL) != step->expect_active)
-		return false;
-	if (!step->provider_ok)
-		return false;
-	*observation = step->observation;
-	if (step->close_active) {
-		CHECK(active_file != NULL);
-		if (active_file == NULL || fclose(active_file) != 0)
-			return false;
-	}
-	return true;
-}
-
-static bool
-database_close_fixture(struct yt_database *database, bool device,
-    struct database_public_close_script *script)
+database_close_fixture(struct yt_database *database, bool device)
 {
 	memset(database, 0, sizeof(*database));
 	database->file = tmpfile();
 	if (database->file == NULL)
 		return false;
-	(void)snprintf(database->path, sizeof(database->path), "%s",
-	    "CLOSE-ORACLE.DAT");
-	database->records = 2U;
+	database->records = 1U;
 	database->last_open.device = device;
-	yt_database_set_close_provider(database, scripted_database_public_close,
-	    script);
+	(void)snprintf(database->path, sizeof(database->path), "%s",
+	    "CLOSE-FIXTURE.DAT");
 	return true;
 }
 
@@ -1394,7 +1324,6 @@ test_close_all_registry(void)
 	struct yt_close_all_result result;
 	struct yt_error error;
 	struct yt_database databases[2];
-	struct database_public_close_script close_scripts[2];
 	struct yt_close_all_control database_controls[2];
 	size_t lazy_open_count;
 	static const int expected_identifiers[] = {50, 30, 10};
@@ -1465,11 +1394,8 @@ test_close_all_registry(void)
 	    && !result.fixed_close_attempted && tape.fixed_calls == 0U);
 
 	/* Ordinary controls compose the exact per-file method in registry order. */
-	memset(close_scripts, 0, sizeof(close_scripts));
-	database_close_add(&close_scripts[0], false, 0U, false, true, true);
-	database_close_add(&close_scripts[1], false, 0U, false, true, true);
-	CHECK(database_close_fixture(&databases[0], false, &close_scripts[0])
-	    && database_close_fixture(&databases[1], false, &close_scripts[1]));
+	CHECK(database_close_fixture(&databases[0], false)
+	    && database_close_fixture(&databases[1], false));
 	database_controls[0] = (struct yt_close_all_control){
 		YT_CLOSE_ALL_HEAP_FILE, 0, yt_database_close_all_method,
 		&databases[0]};
@@ -1478,33 +1404,9 @@ test_close_all_registry(void)
 		&databases[1]};
 	CHECK(yt_close_all_run(database_controls,
 	    YT_ARRAY_LEN(database_controls), NULL, &result, &error)
-	    && close_scripts[0].position == close_scripts[0].length
-	    && close_scripts[1].position == close_scripts[1].length
 	    && databases[0].last_close.close_all
 	    && databases[1].last_close.close_all
 	    && databases[0].file == NULL && databases[1].file == NULL);
-	yt_database_close(&databases[0]);
-	yt_database_close(&databases[1]);
-
-	/* Failure of the high control leaves the lower ordinary file untouched. */
-	memset(close_scripts, 0, sizeof(close_scripts));
-	database_close_add(&close_scripts[0], false, 0U, false, true, true);
-	database_close_add(&close_scripts[1], true, 5U, true, true, false);
-	database_close_add(&close_scripts[1], false, 0U, false, true, true);
-	CHECK(database_close_fixture(&databases[0], false, &close_scripts[0])
-	    && database_close_fixture(&databases[1], false, &close_scripts[1]));
-	yt_error_clear(&error);
-	CHECK(!yt_close_all_run(database_controls,
-	    YT_ARRAY_LEN(database_controls), NULL, &result, &error)
-	    && result.failed_index == 1U && result.scanned_count == 1U
-	    && result.attempt_count == 1U && result.completed_count == 0U
-	    && close_scripts[0].position == 0U
-	    && close_scripts[1].position == close_scripts[1].length
-	    && databases[0].file != NULL
-	    && databases[0].last_close.outcome == YT_DATABASE_CLOSE_NONE
-	    && databases[1].file == NULL
-	    && databases[1].last_close.outcome == YT_DATABASE_CLOSE_DISK_ERROR
-	    && strcmp(error.operation, "CLOSE all") == 0);
 	yt_database_close(&databases[0]);
 	yt_database_close(&databases[1]);
 
@@ -1525,229 +1427,39 @@ test_close_all_registry(void)
 static void
 test_database_random_close(void)
 {
-	struct database_public_close_script script;
 	struct yt_database database;
 	struct yt_error error;
 	unsigned device;
-	unsigned dos_error;
 
-	/* Missing file numbers return without any external operation. */
 	memset(&database, 0, sizeof(database));
-	memset(&script, 0, sizeof(script));
-	database.last_open.device = true; /* A missing entry has no live class. */
-	yt_database_set_close_provider(&database, scripted_database_public_close,
-	    &script);
 	CHECK(yt_database_random_close(&database, &error)
 	    && database.last_close.outcome == YT_DATABASE_CLOSE_RETURNED
 	    && database.last_close.missing
-	    && database.last_close.attempt_count == 0U
-	    && !database.last_close.device
-	    && !database.last_close.registered
-	    && !database.last_close.handle_open
-	    && script.position == 0U);
-	database.orphaned_file = tmpfile();
-	CHECK(database.orphaned_file != NULL);
-	if (database.orphaned_file != NULL) {
-		CHECK(yt_database_random_close(&database, &error)
-		    && database.last_close.missing
-		    && database.last_close.attempt_count == 0U
-		    && !database.last_close.registered
-		    && database.last_close.handle_open
-		    && database.orphaned_file != NULL
-		    && script.position == 0U);
-	}
-	yt_database_close(&database);
-
-	/* CLOSE-all has a distinct public identity over the same file method. */
-	memset(&database, 0, sizeof(database));
-	memset(&script, 0, sizeof(script));
-	yt_database_set_close_provider(&database, scripted_database_public_close,
-	    &script);
-	yt_error_clear(&error);
+	    && database.last_close.attempt_count == 0U);
 	CHECK(yt_database_close_all_single(&database, &error)
 	    && database.last_close.outcome == YT_DATABASE_CLOSE_RETURNED
 	    && database.last_close.close_all && !database.last_close.missing
-	    && database.last_close.attempt_count == 0U
-	    && script.position == 0U);
-	memset(&script, 0, sizeof(script));
-	database_close_add(&script, false, 0U, false, true, true);
-	CHECK(database_close_fixture(&database, false, &script));
-	yt_error_clear(&error);
-	CHECK(yt_database_close_all_single(&database, &error)
-	    && database.last_close.close_all && !database.last_close.missing
-	    && database.last_close.outcome == YT_DATABASE_CLOSE_RETURNED
-	    && database.last_close.attempt_count == 1U
-	    && database.file == NULL && script.position == script.length);
-	yt_database_close(&database);
-	memset(&script, 0, sizeof(script));
-	database_close_add(&script, true, 5U, true, true, false);
-	database_close_add(&script, false, 0U, false, true, true);
-	CHECK(database_close_fixture(&database, false, &script));
-	yt_error_clear(&error);
-	CHECK(!yt_database_close_all_single(&database, &error)
-	    && database.last_close.close_all
-	    && database.last_close.outcome == YT_DATABASE_CLOSE_DISK_ERROR
-	    && database.last_close.basic_error == 70U
-	    && database.last_close.dos_error == 5U
-	    && strcmp(error.operation, "CLOSE all") == 0);
-	yt_database_close(&database);
+	    && database.last_close.attempt_count == 0U);
 
-	/* One clear-carry CLOSE unregisters ordinary and device random files. */
 	for (device = 0U; device < 2U; ++device) {
-		memset(&script, 0, sizeof(script));
-		database_close_add(&script, false, 0U, false, true, true);
-		CHECK(database_close_fixture(&database, device != 0U, &script));
+		CHECK(database_close_fixture(&database, device != 0U));
 		yt_error_clear(&error);
-		CHECK(yt_database_random_close(&database, &error));
-		CHECK(script.position == script.length
-		    && database.file == NULL && database.orphaned_file == NULL
-		    && database.records == 0U
+		CHECK(yt_database_random_close(&database, &error)
+		    && database.file == NULL && database.records == 0U
 		    && database.last_close.outcome
 		    == YT_DATABASE_CLOSE_RETURNED
 		    && database.last_close.attempt_count == 1U
 		    && database.last_close.device == (device != 0U)
-		    && !database.last_close.missing
-		    && !database.last_close.retry_attempted
-		    && !database.last_close.registered
-		    && !database.last_close.handle_open);
-		yt_database_close(&database);
+		    && !database.last_close.missing);
 	}
 
-	/* Every first DOS error is retained; the ignored retry may succeed. */
-	for (device = 0U; device < 2U; ++device) {
-		for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
-			memset(&script, 0, sizeof(script));
-			database_close_add(&script, true, (uint16_t)dos_error,
-			    true, true, false);
-			database_close_add(&script, false, 0U, false, true, true);
-			CHECK(database_close_fixture(&database, device != 0U,
-			    &script));
-			yt_error_clear(&error);
-			CHECK(!yt_database_random_close(&database, &error)
-			    && error.status == YT_IO_ERROR
-			    && script.position == script.length
-			    && database.file == NULL
-			    && database.orphaned_file == NULL
-			    && database.records == 0U
-			    && database.last_close.outcome == (device != 0U
-			    ? YT_DATABASE_CLOSE_DEVICE_ERROR
-			    : YT_DATABASE_CLOSE_DISK_ERROR)
-			    && database.last_close.basic_error
-			    == (device != 0U ? 57U : 70U)
-			    && database.last_close.dos_error == dos_error
-			    && database.last_close.retry_dos_error == 0U
-			    && database.last_close.attempt_count == 2U
-			    && database.last_close.retry_attempted
-			    && !database.last_close.registered
-			    && !database.last_close.handle_open);
-			yt_database_close(&database);
-		}
-	}
-
-	/* Every retry carry result is ignored and may retain the host handle. */
-	for (device = 0U; device < 2U; ++device) {
-		for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
-			memset(&script, 0, sizeof(script));
-			database_close_add(&script, true, 1U, true, true, false);
-			database_close_add(&script, true, (uint16_t)dos_error,
-			    true, true, false);
-			CHECK(database_close_fixture(&database, device != 0U,
-			    &script));
-			yt_error_clear(&error);
-			CHECK(!yt_database_random_close(&database, &error)
-			    && database.last_close.outcome == (device != 0U
-			    ? YT_DATABASE_CLOSE_DEVICE_ERROR
-			    : YT_DATABASE_CLOSE_DISK_ERROR)
-			    && database.last_close.dos_error == 1U
-			    && database.last_close.retry_dos_error == dos_error
-			    && database.last_close.basic_error
-			    == (device != 0U ? 57U : 70U)
-			    && !database.last_close.registered
-			    && database.last_close.handle_open
-			    && database.file == NULL
-			    && database.orphaned_file != NULL);
-			yt_database_close(&database);
-		}
-	}
-
-	/* A failed close may consume the host stream before the required retry. */
-	memset(&script, 0, sizeof(script));
-	database_close_add(&script, true, 5U, false, true, true);
-	database_close_add(&script, true, 6U, false, false, false);
-	CHECK(database_close_fixture(&database, false, &script));
+	CHECK(database_close_fixture(&database, false));
 	yt_error_clear(&error);
-	CHECK(!yt_database_random_close(&database, &error)
-	    && script.position == script.length
-	    && database.last_close.outcome == YT_DATABASE_CLOSE_DISK_ERROR
-	    && database.last_close.dos_error == 5U
-	    && !database.last_close.handle_open
-	    && database.orphaned_file == NULL);
-	yt_database_close(&database);
-
-	/* Provider transport and malformed observations stay distinct from DOS. */
-	memset(&script, 0, sizeof(script));
-	database_close_add(&script, true, 5U, true, true, false);
-	script.steps[0].provider_ok = false;
-	CHECK(database_close_fixture(&database, false, &script));
-	yt_error_clear(&error);
-	CHECK(!yt_database_random_close(&database, &error)
-	    && database.last_close.outcome == YT_DATABASE_CLOSE_PROVIDER_ERROR
-	    && database.last_close.attempt_count == 1U
-	    && database.last_close.registered
-	    && database.last_close.handle_open
-	    && database.file != NULL);
-	yt_database_close(&database);
-	memset(&script, 0, sizeof(script));
-	database_close_add(&script, true, 0U, true, true, false);
-	CHECK(database_close_fixture(&database, false, &script));
-	yt_error_clear(&error);
-	CHECK(!yt_database_random_close(&database, &error)
-	    && database.last_close.outcome == YT_DATABASE_CLOSE_PROVIDER_ERROR
-	    && database.last_close.registered
-	    && database.last_close.handle_open);
-	yt_database_close(&database);
-	memset(&script, 0, sizeof(script));
-	database_close_add(&script, true, 5U, true, true, false);
-	database_close_add(&script, false, 0U, false, true, true);
-	script.steps[1].provider_ok = false;
-	CHECK(database_close_fixture(&database, false, &script));
-	yt_error_clear(&error);
-	CHECK(!yt_database_random_close(&database, &error)
-	    && database.last_close.outcome == YT_DATABASE_CLOSE_PROVIDER_ERROR
-	    && database.last_close.attempt_count == 2U
-	    && !database.last_close.registered
-	    && database.last_close.handle_open
-	    && database.orphaned_file != NULL);
-	yt_database_close(&database);
-	memset(&script, 0, sizeof(script));
-	database_close_add(&script, true, 5U, true, true, false);
-	database_close_add(&script, false, 5U, false, true, true);
-	CHECK(database_close_fixture(&database, false, &script));
-	yt_error_clear(&error);
-	CHECK(!yt_database_random_close(&database, &error)
-	    && database.last_close.outcome == YT_DATABASE_CLOSE_PROVIDER_ERROR
-	    && database.last_close.dos_error == 5U
-	    && database.last_close.attempt_count == 2U
-	    && !database.last_close.registered
-	    && !database.last_close.handle_open
-	    && database.orphaned_file == NULL);
-	yt_database_close(&database);
-
-	/* The default host adapter closes a live file without changing the tape. */
-	memset(&database, 0, sizeof(database));
-	database.file = tmpfile();
-	CHECK(database.file != NULL);
-	if (database.file != NULL) {
-		database.records = 1U;
-		yt_error_clear(&error);
-		CHECK(yt_database_random_close(&database, &error)
-		    && database.last_close.outcome
-		    == YT_DATABASE_CLOSE_RETURNED
-		    && database.last_close.attempt_count == 1U
-		    && database.file == NULL && database.records == 0U);
-	}
-	yt_database_close(&database);
-
+	CHECK(yt_database_close_all_single(&database, &error)
+	    && database.file == NULL
+	    && database.last_close.close_all
+	    && database.last_close.outcome == YT_DATABASE_CLOSE_RETURNED
+	    && database.last_close.attempt_count == 1U);
 }
 
 static void
@@ -2376,7 +2088,6 @@ test_text_output_close(void)
 	char directory[256];
 	char path[320];
 	struct text_close_script script;
-	struct database_public_close_script database_script;
 	struct yt_database database;
 	struct yt_text_output output;
 	struct yt_close_all_control control;
@@ -2503,11 +2214,9 @@ test_text_output_close(void)
 		text_output_add_success(&script,
 		    (enum yt_text_close_operation)failed_operation,
 		    pending, sizeof(pending));
-	memset(&database_script, 0, sizeof(database_script));
-	database_close_add(&database_script, false, 0U, false, true, true);
 	CHECK(text_output_close_fixture(&output, &script, pending,
 	    sizeof(pending))
-	    && database_close_fixture(&database, false, &database_script));
+	    && database_close_fixture(&database, false));
 	genesis_controls[0] = (struct yt_close_all_control){
 		YT_CLOSE_ALL_HEAP_FILE, 0, yt_database_close_all_method,
 		&database};
@@ -2519,7 +2228,6 @@ test_text_output_close(void)
 	    && close_all.scanned_count == 2U && close_all.attempt_count == 2U
 	    && close_all.completed_count == 2U && close_all.returned
 	    && script.position == script.length
-	    && database_script.position == database_script.length
 	    && output.last_close.close_all && database.last_close.close_all
 	    && output.file == NULL && database.file == NULL);
 	yt_text_output_destroy(&output);
@@ -2529,19 +2237,16 @@ test_text_output_close(void)
 	memset(&script, 0, sizeof(script));
 	text_close_add(&script, YT_TEXT_CLOSE_PENDING_WRITE,
 	    pending, sizeof(pending), 2U, false, 0U, true, true, false);
-	memset(&database_script, 0, sizeof(database_script));
-	database_close_add(&database_script, false, 0U, false, true, true);
 	CHECK(text_output_close_fixture(&output, &script, pending,
 	    sizeof(pending))
-	    && database_close_fixture(&database, false, &database_script));
+	    && database_close_fixture(&database, false));
 	yt_error_clear(&error);
 	CHECK(!yt_close_all_run(genesis_controls,
 	    YT_ARRAY_LEN(genesis_controls), NULL, &close_all, &error)
 	    && close_all.failed && close_all.failed_index == 1U
 	    && close_all.scanned_count == 1U && close_all.attempt_count == 1U
 	    && close_all.completed_count == 0U && !close_all.returned
-	    && script.position == script.length
-	    && database_script.position == 0U && database.file != NULL
+	    && script.position == script.length && database.file != NULL
 	    && database.last_close.outcome == YT_DATABASE_CLOSE_NONE
 	    && output.last_close.outcome == YT_TEXT_CLOSE_SHORT_ERROR);
 	yt_text_output_destroy(&output);
@@ -2803,26 +2508,6 @@ scripted_database_seek(void *context, FILE *file, int64_t absolute_offset,
 	return true;
 }
 
-static bool
-scripted_database_close(void *context, FILE *file, size_t attempt,
-    struct yt_database_close_observation *observation)
-{
-	struct database_close_script *script = context;
-
-	++script->calls;
-	script->attempt = attempt;
-	memset(observation, 0, sizeof(*observation));
-	if (!script->success) {
-		observation->carry = true;
-		observation->dos_error = 6U;
-		observation->handle_open = script->handle_open;
-		return true;
-	}
-	if (fclose(file) != 0)
-		return false;
-	return true;
-}
-
 static void
 test_files(void)
 {
@@ -2840,8 +2525,6 @@ test_files(void)
 	struct database_read_script read_script;
 	struct database_write_script write_script;
 	struct database_seek_script seek_script;
-	struct database_close_script close_script;
-	struct database_public_close_script short_close_script;
 	struct yt_database observer;
 	struct yt_text_file text;
 	struct yt_error error;
@@ -3131,7 +2814,7 @@ test_files(void)
 	CHECK(!yt_database_write(&database, 1U, &replacement, &error)
 	    && error.status == YT_IO_ERROR
 	    && strcmp(error.operation, "write record") == 0);
-	CHECK(database.file == NULL && database.orphaned_file == NULL
+	CHECK(database.file == NULL
 	    && database.records == 0U && database.short_close_attempted
 	    && database.short_close_succeeded);
 	CHECK(database.last_put.outcome == YT_DATABASE_PUT_REJECTED_SHORT
@@ -3175,28 +2858,22 @@ test_files(void)
 	yt_database_set_write_provider(&database, NULL, NULL);
 	CHECK(yt_database_write(&database, 1U, &before, &error));
 	write_script = (struct database_write_script){.accepted = 3U};
-	close_script = (struct database_close_script){
-		.success = false,
-		.handle_open = true,
-	};
 	yt_database_set_write_provider(&database, scripted_database_write,
 	    &write_script);
-	yt_database_set_close_provider(&database, scripted_database_close,
-	    &close_script);
 	yt_error_clear(&error);
 	CHECK(!yt_database_random_put(&database, 1U, &replacement, true,
 	    &accepted, &error) && error.status == YT_IO_ERROR
-	    && accepted == 3U && close_script.calls == 1U);
-	CHECK(database.file == NULL && database.orphaned_file != NULL
+	    && accepted == 3U);
+	CHECK(database.file == NULL
 	    && database.records == 0U && database.short_close_attempted
-	    && !database.short_close_succeeded);
+	    && database.short_close_succeeded);
 	CHECK(database.last_put.outcome == YT_DATABASE_PUT_REJECTED_SHORT
 	    && database.last_put.basic_error == 61U
-	    && database.last_put.close_dos_error == 6U
+	    && database.last_put.close_dos_error == 0U
 	    && !database.last_put.registered
 	    && database.last_put.close_attempted
-	    && !database.last_put.close_succeeded
-	    && database.last_put.handle_open);
+	    && database.last_put.close_succeeded
+	    && !database.last_put.handle_open);
 	CHECK(yt_database_open(&observer, database_path, YT_OPEN_READ, &error));
 	CHECK(fputc(0, observer.file) == EOF && ferror(observer.file));
 	CHECK(yt_database_read(&observer, 1U, &after, &error));
@@ -3207,28 +2884,6 @@ test_files(void)
 	yt_database_close(&observer);
 	yt_database_close(&database);
 	CHECK(yt_database_open(&database, database_path, YT_OPEN_UPDATE, &error));
-	for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
-		write_script = (struct database_write_script){.accepted = 3U};
-		memset(&short_close_script, 0, sizeof(short_close_script));
-		database_close_add(&short_close_script, true,
-		    (uint16_t)dos_error, false, true, true);
-		yt_database_set_write_provider(&database,
-		    scripted_database_write, &write_script);
-		yt_database_set_close_provider(&database,
-		    scripted_database_public_close, &short_close_script);
-		CHECK(!yt_database_random_put(&database, 1U, &replacement,
-		    false, &accepted, &error)
-		    && short_close_script.position == short_close_script.length
-		    && database.last_put.outcome
-		    == YT_DATABASE_PUT_REJECTED_SHORT
-		    && database.last_put.close_dos_error == dos_error
-		    && !database.last_put.registered
-		    && database.last_put.close_attempted
-		    && !database.last_put.close_succeeded
-		    && !database.last_put.handle_open);
-		CHECK(yt_database_open(&database, database_path,
-		    YT_OPEN_UPDATE, &error));
-	}
 	seek_script = (struct database_seek_script){0};
 	write_script = (struct database_write_script){.accepted = 137U};
 	yt_database_set_seek_provider(&database, scripted_database_seek,
@@ -3256,7 +2911,7 @@ test_files(void)
 		    && database.last_put.handle_open
 		    && !database.last_put.close_attempted);
 	}
-	CHECK(database.file != NULL && database.orphaned_file == NULL);
+	CHECK(database.file != NULL);
 	seek_script = (struct database_seek_script){
 		.success = true,
 		.provider_reject = true,
@@ -3413,7 +3068,6 @@ test_radio_file(void)
 	struct yt_radio_file radio;
 	struct yt_radio_record record;
 	struct yt_radio_record written;
-	struct database_public_close_script close_script;
 	struct database_read_script read_script;
 	struct database_write_script write_script;
 	struct database_seek_script seek_script;
@@ -3539,13 +3193,8 @@ test_radio_file(void)
 	CHECK(yt_radio_file_size(&radio, &size, &error) && size == 3U);
 
 	/* Reopening the same BASIC file slot closes the prior handle first. */
-	memset(&close_script, 0, sizeof(close_script));
-	database_close_add(&close_script, false, 0U, false, true, true);
-	yt_database_set_close_provider(&radio.random,
-	    scripted_database_public_close, &close_script);
 	CHECK(yt_radio_file_open(&radio, second_path, &error));
-	CHECK(close_script.position == close_script.length
-	    && strcmp(radio.random.path, second_path) == 0
+	CHECK(strcmp(radio.random.path, second_path) == 0
 	    && yt_radio_file_size(&radio, &size, &error) && size == 0U);
 	CHECK(yt_radio_file_next_record(&radio, &next, &error) && next == 1U);
 	CHECK(yt_radio_message_record(&written, (const uint8_t *)"A\0B", 3U,
@@ -3652,39 +3301,14 @@ test_radio_file(void)
 		CHECK(fclose(file) == 0);
 		CHECK(memcmp(complete, written.bytes, sizeof(complete)) == 0);
 	}
-	CHECK(yt_radio_file_open(&radio, second_path, &error));
-	memset(&close_script, 0, sizeof(close_script));
-	database_close_add(&close_script, true, 5U, true, true, false);
-	database_close_add(&close_script, false, 0U, false, true, true);
-	yt_database_set_close_provider(&radio.random,
-	    scripted_database_public_close, &close_script);
-	yt_error_clear(&error);
-	CHECK(!yt_radio_file_close(&radio, &error)
-	    && error.status == YT_IO_ERROR
-	    && strcmp(error.operation, "random CLOSE") == 0
-	    && close_script.position == close_script.length
-	    && radio.random.file == NULL
-	    && radio.random.orphaned_file == NULL
-	    && radio.random.last_close.outcome == YT_DATABASE_CLOSE_DISK_ERROR
-	    && radio.random.last_close.basic_error == 70U
-	    && radio.random.last_close.dos_error == 5U
-	    && radio.random.last_close.attempt_count == 2U
-	    && radio.random.last_close.retry_attempted
-	    && radio.record_length == 0U && radio.field_count == 0U);
-	yt_database_close(&radio.random);
 	for (index = 0U; index < YT_RADIO_RECORD_SIZE; ++index) {
 		CHECK(yt_radio_file_open(&radio, second_path, &error));
 		write_script = (struct database_write_script){
 			.accepted = index,
 		};
-		memset(&close_script, 0, sizeof(close_script));
-		database_close_add(&close_script, false, 0U, false, true, true);
 		yt_database_set_write_provider(&radio.random,
 		    scripted_database_write, &write_script);
-		yt_database_set_close_provider(&radio.random,
-		    scripted_database_public_close, &close_script);
 		CHECK(!yt_radio_file_put(&radio, 1U, &written, &error)
-		    && close_script.position == close_script.length
 		    && radio.random.last_put.outcome
 		    == YT_DATABASE_PUT_REJECTED_SHORT
 		    && radio.random.last_put.accepted == index

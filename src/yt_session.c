@@ -2500,8 +2500,7 @@ registration(struct yt_session *session, struct yt_error *error)
 	session->registered = state.registered;
 	if (context.sequential.file != NULL
 	    || context.sequential.orphaned_file != NULL
-	    || context.random.file != NULL
-	    || context.random.orphaned_file != NULL)
+	    || context.random.file != NULL)
 		(void)registration_close_file4(&context, NULL);
 	yt_text_input_destroy(&context.sequential);
 	if (!completed) {

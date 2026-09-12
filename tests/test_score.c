@@ -16792,10 +16792,6 @@ struct maintenance_final_suffix_tape {
 	size_t first_closed_line;
 };
 
-struct maintenance_final_close_fault {
-	size_t calls;
-};
-
 struct maintenance_final_output_fault {
 	struct maintenance_final_suffix_tape tape;
 	size_t calls;
@@ -16804,27 +16800,6 @@ struct maintenance_final_output_fault {
 
 static bool maintenance_final_suffix_collect(void *context,
     const uint8_t *line, size_t length, struct yt_error *error);
-
-static bool
-maintenance_final_close_fail(void *context, FILE *active_file,
-    size_t attempt, struct yt_database_close_observation *observation)
-{
-	struct maintenance_final_close_fault *fault = context;
-
-	if (fault == NULL || active_file == NULL
-	    || attempt != fault->calls + 1U || attempt > 2U)
-		return false;
-	++fault->calls;
-	memset(observation, 0, sizeof(*observation));
-	if (attempt == 1U) {
-		observation->carry = true;
-		observation->handle_open = true;
-		observation->dos_error = 5U;
-	}
-	else if (fclose(active_file) != 0)
-		return false;
-	return true;
-}
 
 static bool
 maintenance_final_output_fail(void *context, const uint8_t *line,
@@ -16883,7 +16858,6 @@ check_maintenance_final_suffix_pass(void)
 		.game = &game,
 		.first_closed_line = (size_t)-1
 	};
-	struct maintenance_final_close_fault close_fault = {0};
 	struct maintenance_final_output_fault output_fault;
 	struct score_database_partial_fault marker_read_fault = {
 		0U, 1U, 17U, 0x11223344
@@ -17015,7 +16989,6 @@ check_maintenance_final_suffix_pass(void)
 		if (!yt_database_open(&game.database, "YTDATA.DAT",
 		    YT_OPEN_UPDATE, &error))
 			goto done;
-		yt_database_set_close_provider(&game.database, NULL, NULL);
 		yt_error_clear(&error);
 		if (cut_rows != fail_at
 		    || yt_maintenance_finish(&game, maintenance_final_output_fail,
@@ -17037,44 +17010,6 @@ check_maintenance_final_suffix_pass(void)
 		yt_database_close(&game.database);
 	}
 
-	yt_random_set_provider(&game.random, score_random_fill, &random_script);
-	random_script.position = 0U;
-	clock_script.position = 0U;
-	tape = (struct maintenance_final_suffix_tape){
-		.screen = {0},
-		.game = &game,
-		.first_closed_line = (size_t)-1
-	};
-	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_UPDATE,
-	    &error))
-		goto done;
-	yt_database_set_close_provider(&game.database,
-	    maintenance_final_close_fail, &close_fault);
-	yt_error_clear(&error);
-	if (yt_maintenance_finish(&game, maintenance_final_suffix_collect,
-	    &tape, &error)
-	    || error.status != YT_IO_ERROR
-	    || strcmp(error.operation, "CLOSE all") != 0
-	    || close_fault.calls != 2U
-	    || game.database.last_close.outcome
-	    != YT_DATABASE_CLOSE_DISK_ERROR
-	    || !game.database.last_close.close_all
-	    || game.database.last_close.dos_error != 5U
-	    || game.database.last_close.basic_error != 70U
-	    || !game.database.last_close.retry_attempted
-	    || game.database.last_close.retry_dos_error != 0U
-	    || game.database.last_close.registered
-	    || game.database.last_close.handle_open
-	    || game.database.file != NULL || game.database.orphaned_file != NULL
-	    || game.random.draws != 1U
-	    || random_script.position != sizeof(coin_draw)
-	    || clock_script.position != 3U
-	    || tape.first_closed_line != (size_t)-1
-	    || tape.screen.lines != 23U
-	    || tape.screen.length < sizeof(prefix) - 1U
-	    || memcmp(tape.screen.data, prefix, sizeof(prefix) - 1U) != 0)
-		goto done;
-
 	/* The wrapper blank-row failure occurs immediately after CLOSE-all. */
 	random_script.position = 0U;
 	yt_random_set_provider(&game.random, score_random_fill, &random_script);
@@ -17091,7 +17026,6 @@ check_maintenance_final_suffix_pass(void)
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_UPDATE,
 	    &error))
 		goto done;
-	yt_database_set_close_provider(&game.database, NULL, NULL);
 	yt_error_clear(&error);
 	if (yt_maintenance_finish(&game, maintenance_final_output_fail,
 	    &output_fault, &error)
@@ -17122,7 +17056,6 @@ check_maintenance_final_suffix_pass(void)
 	if (!yt_database_open(&game.database, "YTDATA.DAT", YT_OPEN_UPDATE,
 	    &error))
 		goto done;
-	yt_database_set_close_provider(&game.database, NULL, NULL);
 	yt_error_clear(&error);
 	if (yt_maintenance_finish(&game, maintenance_final_output_fail,
 	    &output_fault, &error)
