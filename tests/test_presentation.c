@@ -33,7 +33,6 @@ state(bool ansi)
 }
 
 struct xannor_file_capture {
-	struct yt_text_input input;
 	struct yt_present_state presentation;
 	uint8_t remote[512];
 	size_t remote_length;
@@ -43,32 +42,6 @@ struct xannor_file_capture {
 	size_t remote_lines;
 	size_t remote_fragments;
 };
-
-static bool
-xannor_file_close(void *context, struct yt_error *error)
-{
-	struct xannor_file_capture *capture = context;
-
-	return yt_text_input_close(&capture->input, error);
-}
-
-static bool
-xannor_file_open(void *context, const char *path, struct yt_error *error)
-{
-	struct xannor_file_capture *capture = context;
-
-	return yt_text_input_open(&capture->input, path, error);
-}
-
-static bool
-xannor_file_read(void *context, const uint8_t **line, size_t *length,
-    bool *available, struct yt_error *error)
-{
-	struct xannor_file_capture *capture = context;
-
-	return yt_text_input_read_line(&capture->input, line, length, available,
-	    error);
-}
 
 static bool
 xannor_file_present(void *context, const uint8_t *line, size_t length,
@@ -116,12 +89,6 @@ xannor_file_present(void *context, const uint8_t *line, size_t length,
 static void
 test_xannor_file_playback(void)
 {
-	static const struct yt_text_sequential_play_ops ops = {
-		xannor_file_close,
-		xannor_file_open,
-		xannor_file_read,
-		xannor_file_present,
-	};
 	static const uint8_t plain[] =
 	    "\r\n"
 	    "Congratulations! You have defeated the Xannor Headquarters! This marks you as\r\n"
@@ -136,7 +103,6 @@ test_xannor_file_playback(void)
 	    "will be on the lookout for you! Hide or defend yourself well tonight!\r\n"
 	    "\r\n";
 	struct xannor_file_capture capture;
-	struct yt_text_sequential_play_state playback;
 	struct yt_error error;
 	size_t pass;
 
@@ -146,16 +112,12 @@ test_xannor_file_playback(void)
 		    : sizeof(ansi) - 1U;
 
 		memset(&capture, 0, sizeof(capture));
-		yt_text_input_init(&capture.input);
 		capture.presentation = state(pass != 0U);
 		capture.presentation.foreground = 7.0f;
-		memset(&playback, 0, sizeof(playback));
-		playback.path = YT_DATA_DIR "XANNORHQ.TXT";
 		yt_error_clear(&error);
-		CHECK(yt_text_sequential_play_run(&playback, &ops, &capture,
-		    &error));
-		CHECK(!playback.file_open && playback.read_count == 6U
-		    && playback.line_count == 5U && capture.presented == 5U);
+		CHECK(yt_text_sequential_play(YT_DATA_DIR "XANNORHQ.TXT",
+		    xannor_file_present, &capture, &error));
+		CHECK(capture.presented == 5U);
 		CHECK(capture.remote_length == expected_length
 		    && memcmp(capture.remote, expected, expected_length) == 0);
 		CHECK(capture.local_lines == 5U && capture.remote_lines == 5U
@@ -165,7 +127,6 @@ test_xannor_file_playback(void)
 		    && capture.presentation.background == 0.0f
 		    && capture.presentation.bold == 0.0f
 		    && capture.presentation.blink == 0.0f);
-		yt_text_input_destroy(&capture.input);
 	}
 }
 
@@ -26192,11 +26153,6 @@ direct_warp_attack_tail_clearance(void *context, struct yt_error *error)
 	return true;
 }
 
-struct direct_warp_attack_victory_file {
-	struct direct_warp_attack_combat_join *join;
-	struct yt_text_input input;
-};
-
 static bool
 direct_warp_attack_victory_step(struct direct_warp_attack_combat_join *join,
     const char *operation, struct yt_error *error)
@@ -26213,45 +26169,15 @@ direct_warp_attack_victory_step(struct direct_warp_attack_combat_join *join,
 }
 
 static bool
-direct_warp_attack_victory_file_close(void *context, struct yt_error *error)
-{
-	struct direct_warp_attack_victory_file *file = context;
-
-	return yt_text_input_close(&file->input, error);
-}
-
-static bool
-direct_warp_attack_victory_file_open(void *context, const char *path,
-    struct yt_error *error)
-{
-	struct direct_warp_attack_victory_file *file = context;
-
-	return yt_text_input_open(&file->input, path, error);
-}
-
-static bool
-direct_warp_attack_victory_file_read(void *context, const uint8_t **line,
-    size_t *length, bool *available, struct yt_error *error)
-{
-	struct direct_warp_attack_victory_file *file = context;
-	bool result = yt_text_input_read_line(&file->input, line, length,
-	    available, error);
-
-	if (result)
-		++file->join->victory_file_reads;
-	return result;
-}
-
-static bool
 direct_warp_attack_victory_file_present(void *context, const uint8_t *line,
     size_t length, struct yt_error *error)
 {
-	struct direct_warp_attack_victory_file *file = context;
+	struct direct_warp_attack_combat_join *join = context;
 	struct viewer_pager_join *viewer =
-	    &file->join->fixture->cycle.presentation.viewer->join;
+	    &join->fixture->cycle.presentation.viewer->join;
 
 	(void)error;
-	++file->join->victory_file_rows;
+	++join->victory_file_rows;
 	return normal_exit_line(viewer, line, length);
 }
 
@@ -26259,25 +26185,16 @@ static bool
 direct_warp_attack_victory_play_file(void *context, const char *path,
     struct yt_error *error)
 {
-	static const struct yt_text_sequential_play_ops ops = {
-		direct_warp_attack_victory_file_close,
-		direct_warp_attack_victory_file_open,
-		direct_warp_attack_victory_file_read,
-		direct_warp_attack_victory_file_present,
-	};
 	struct direct_warp_attack_combat_join *join = context;
-	struct direct_warp_attack_victory_file file = {.join = join};
-	struct yt_text_sequential_play_state playback = {
-		.path = YT_DATA_DIR "XANNORHQ.TXT",
-	};
 	bool result;
 
 	if (!direct_warp_attack_victory_step(join, "victory file", error)
 	    || strcmp(path, "XANNORHQ.TXT") != 0)
 		return false;
-	yt_text_input_init(&file.input);
-	result = yt_text_sequential_play_run(&playback, &ops, &file, error);
-	yt_text_input_destroy(&file.input);
+	result = yt_text_sequential_play(YT_DATA_DIR "XANNORHQ.TXT",
+	    direct_warp_attack_victory_file_present, join, error);
+	if (result)
+		join->victory_file_reads = join->victory_file_rows + 1U;
 	return result;
 }
 

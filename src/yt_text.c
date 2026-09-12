@@ -591,42 +591,39 @@ yt_text_input_destroy(struct yt_text_input *input)
 }
 
 bool
-yt_text_sequential_play_run(struct yt_text_sequential_play_state *state,
-    const struct yt_text_sequential_play_ops *ops, void *context,
+yt_text_sequential_play(const char *path,
+    yt_text_sequential_present_fn present, void *context,
     struct yt_error *error)
 {
-	if (state == NULL || state->path == NULL || ops == NULL
-	    || ops->close == NULL || ops->open == NULL || ops->read == NULL
-	    || ops->present == NULL) {
+	struct yt_text_input input;
+	bool result = false;
+
+	if (path == NULL || present == NULL) {
 		errno = 0;
 		set_error(error, YT_INVALID, "sequential text playback", NULL);
 		return false;
 	}
-	state->file_open = false;
-	state->read_count = 0U;
-	state->line_count = 0U;
-	if (!ops->close(context, error)
-	    || !ops->open(context, state->path, error))
-		return false;
-	state->file_open = true;
+	yt_text_input_init(&input);
+	if (!yt_text_input_open(&input, path, error))
+		goto done;
 	for (;;) {
 		const uint8_t *line;
 		size_t length;
 		bool available;
 
-		if (!ops->read(context, &line, &length, &available, error))
-			return false;
-		++state->read_count;
+		if (!yt_text_input_read_line(&input, &line, &length, &available,
+		    error))
+			goto done;
 		if (!available)
 			break;
-		if (!ops->present(context, line, length, error))
-			return false;
-		++state->line_count;
+		if (!present(context, line, length, error))
+			goto done;
 	}
-	if (!ops->close(context, error))
-		return false;
-	state->file_open = false;
-	return true;
+	result = yt_text_input_close(&input, error);
+
+done:
+	yt_text_input_destroy(&input);
+	return result;
 }
 
 static void file_viewer_classify(const uint8_t *line, size_t length,

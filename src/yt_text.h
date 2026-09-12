@@ -235,33 +235,11 @@ bool yt_text_output_close_all_method(void *context, int8_t file_class,
 	struct yt_error *error);
 void yt_text_output_destroy(struct yt_text_output *output);
 
-struct yt_text_sequential_play_state {
-	const char *path;
-	bool file_open;
-	size_t read_count;
-	size_t line_count;
-};
-
-typedef bool (*yt_text_sequential_close_fn)(void *context,
-	struct yt_error *error);
-typedef bool (*yt_text_sequential_open_fn)(void *context, const char *path,
-	struct yt_error *error);
-typedef bool (*yt_text_sequential_read_fn)(void *context,
-	const uint8_t **line, size_t *length, bool *available,
-	struct yt_error *error);
 typedef bool (*yt_text_sequential_present_fn)(void *context,
 	const uint8_t *line, size_t length, struct yt_error *error);
 
-struct yt_text_sequential_play_ops {
-	yt_text_sequential_close_fn close;
-	yt_text_sequential_open_fn open;
-	yt_text_sequential_read_fn read;
-	yt_text_sequential_present_fn present;
-};
-
-bool yt_text_sequential_play_run(
-	struct yt_text_sequential_play_state *state,
-	const struct yt_text_sequential_play_ops *ops, void *context,
+bool yt_text_sequential_play(const char *path,
+	yt_text_sequential_present_fn present, void *context,
 	struct yt_error *error);
 
 struct yt_file_viewer_record {

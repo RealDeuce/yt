@@ -1905,45 +1905,11 @@ display_game_file(struct yt_session *session, const char *path,
 	return ok;
 }
 
-struct xannor_victory_file_context {
-	struct yt_session *session;
-	struct yt_text_input input;
-};
-
-static bool
-xannor_victory_file_close(void *context, struct yt_error *error)
-{
-	struct xannor_victory_file_context *file_context = context;
-
-	return yt_text_input_close(&file_context->input, error);
-}
-
-static bool
-xannor_victory_file_open(void *context, const char *path,
-    struct yt_error *error)
-{
-	struct xannor_victory_file_context *file_context = context;
-
-	return yt_text_input_open(&file_context->input, path, error);
-}
-
-static bool
-xannor_victory_file_read(void *context, const uint8_t **line,
-    size_t *length, bool *available, struct yt_error *error)
-{
-	struct xannor_victory_file_context *file_context = context;
-
-	return yt_text_input_read_line(&file_context->input, line, length,
-	    available, error);
-}
-
 static bool
 xannor_victory_file_present(void *context, const uint8_t *line,
     size_t length, struct yt_error *error)
 {
-	struct xannor_victory_file_context *file_context = context;
-
-	return session_present_text(file_context->session, line, length,
+	return session_present_text(context, line, length,
 	    SESSION_PRESENT_LINE, "Xannor victory file row", error);
 }
 
@@ -1951,24 +1917,8 @@ static bool
 xannor_victory_file(struct yt_session *session, const char *path,
     struct yt_error *error)
 {
-	static const struct yt_text_sequential_play_ops ops = {
-		xannor_victory_file_close,
-		xannor_victory_file_open,
-		xannor_victory_file_read,
-		xannor_victory_file_present,
-	};
-	struct xannor_victory_file_context context = {
-		.session = session,
-	};
-	struct yt_text_sequential_play_state state = {
-		.path = path,
-	};
-	bool ok;
-
-	yt_text_input_init(&context.input);
-	ok = yt_text_sequential_play_run(&state, &ops, &context, error);
-	yt_text_input_destroy(&context.input);
-	return ok;
+	return yt_text_sequential_play(path, xannor_victory_file_present,
+	    session, error);
 }
 
 static bool
