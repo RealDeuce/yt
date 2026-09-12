@@ -1182,13 +1182,6 @@ yt_random_file_lof(FILE *file, const char *path, uint32_t *length,
 	return returned;
 }
 
-static bool
-database_flush_default(void *context, FILE *file)
-{
-	(void)context;
-	return fflush(file) == 0;
-}
-
 static void
 database_reject_short(struct yt_database *database, struct yt_error *error)
 {
@@ -1376,29 +1369,15 @@ yt_database_set_lof_provider(struct yt_database *database,
 	database->lof_context = context;
 }
 
-void
-yt_database_set_flush_provider(struct yt_database *database,
-    yt_database_flush_provider provider, void *context)
-{
-	if (database == NULL)
-		return;
-	database->flush_provider = provider;
-	database->flush_context = context;
-}
-
 bool
 yt_database_flush(struct yt_database *database, struct yt_error *error)
 {
-	yt_database_flush_provider provider;
-
 	if (database == NULL || database->file == NULL) {
 		set_error(error, YT_INVALID, "flush database",
 		    database != NULL ? database->path : NULL);
 		return false;
 	}
-	provider = database->flush_provider != NULL ? database->flush_provider
-	    : database_flush_default;
-	if (!provider(database->flush_context, database->file)) {
+	if (fflush(database->file) != 0) {
 		set_error(error, YT_IO_ERROR, "flush database", database->path);
 		return false;
 	}

@@ -501,11 +501,6 @@ struct database_close_script {
 	size_t attempt;
 };
 
-struct database_flush_script {
-	bool success;
-	size_t calls;
-};
-
 struct database_public_close_step {
 	struct yt_database_close_observation observation;
 	bool provider_ok;
@@ -2978,16 +2973,6 @@ scripted_database_close(void *context, FILE *file, size_t attempt,
 	return true;
 }
 
-static bool
-scripted_database_flush(void *context, FILE *file)
-{
-	struct database_flush_script *script = context;
-
-	(void)file;
-	++script->calls;
-	return script->success;
-}
-
 static void
 test_files(void)
 {
@@ -3007,7 +2992,6 @@ test_files(void)
 	struct database_seek_script seek_script;
 	struct database_close_script close_script;
 	struct database_public_close_script short_close_script;
-	struct database_flush_script flush_script;
 	struct yt_database observer;
 	struct yt_text_file text;
 	struct yt_error error;
@@ -3510,10 +3494,7 @@ test_files(void)
 	    && database.last_put.dos_error == 5U
 	    && database.last_put.terminal_position == 0x2750);
 
-	/* A durable native write is one PUT boundary with ordered host steps. */
-	flush_script = (struct database_flush_script){true, 0U};
-	yt_database_set_flush_provider(&database, scripted_database_flush,
-	    &flush_script);
+	/* A durable native write does not flush after a failed PUT. */
 	write_script = (struct database_write_script){
 		.accepted = 3U,
 		.carry = true,
@@ -3522,38 +3503,19 @@ test_files(void)
 	};
 	yt_error_clear(&error);
 	CHECK(!yt_database_write_durable(&database, 1U, &replacement, &error)
-	    && write_script.calls == 1U && flush_script.calls == 0U
+	    && write_script.calls == 1U
 	    && database.last_put.outcome == YT_DATABASE_PUT_WRITE_ERROR
 	    && database.last_put.accepted == 3U
 	    && strcmp(error.operation, "write record") == 0);
 	write_script = (struct database_write_script){
 		.accepted = YT_RECORD_SIZE,
 	};
-	flush_script = (struct database_flush_script){false, 0U};
-	yt_error_clear(&error);
-	CHECK(!yt_database_write_durable(&database, 1U, &replacement, &error)
-	    && write_script.calls == 1U && flush_script.calls == 1U
-	    && database.last_put.outcome == YT_DATABASE_PUT_RETURNED
-	    && database.last_put.accepted == YT_RECORD_SIZE
-	    && strcmp(error.operation, "flush database") == 0);
-	write_script = (struct database_write_script){
-		.accepted = YT_RECORD_SIZE,
-	};
-	flush_script = (struct database_flush_script){true, 0U};
 	yt_error_clear(&error);
 	CHECK(yt_database_write_durable(&database, 1U, &replacement, &error)
-	    && write_script.calls == 1U && flush_script.calls == 1U
+	    && write_script.calls == 1U
 	    && database.last_put.outcome == YT_DATABASE_PUT_RETURNED);
 
 	yt_database_set_write_provider(&database, NULL, NULL);
-	flush_script = (struct database_flush_script){false, 0U};
-	yt_database_set_flush_provider(&database, scripted_database_flush,
-	    &flush_script);
-	yt_error_clear(&error);
-	CHECK(!yt_database_flush(&database, &error)
-	    && error.status == YT_IO_ERROR && flush_script.calls == 1U
-	    && database.file != NULL);
-	yt_database_set_flush_provider(&database, NULL, NULL);
 	yt_database_close(&database);
 
 	CHECK(yt_text_append_line(text_path, (const uint8_t *)"One", 3, &error));

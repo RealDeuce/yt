@@ -269,8 +269,6 @@ typedef bool (*yt_database_read_provider)(void *context, FILE *file,
 typedef bool (*yt_database_write_provider)(void *context, FILE *file,
     const uint8_t *data, size_t requested,
     struct yt_database_write_observation *observation);
-typedef bool (*yt_database_flush_provider)(void *context, FILE *file);
-
 struct yt_database {
 	FILE *file;
 	FILE *orphaned_file;
@@ -286,8 +284,6 @@ struct yt_database {
 	void *close_context;
 	yt_database_lof_provider lof_provider;
 	void *lof_context;
-	yt_database_flush_provider flush_provider;
-	void *flush_context;
 	uint32_t device_position;
 	bool short_close_attempted;
 	bool short_close_succeeded;
@@ -354,8 +350,6 @@ void yt_database_set_close_provider(struct yt_database *database,
     yt_database_close_provider provider, void *context);
 void yt_database_set_lof_provider(struct yt_database *database,
     yt_database_lof_provider provider, void *context);
-void yt_database_set_flush_provider(struct yt_database *database,
-    yt_database_flush_provider provider, void *context);
 bool yt_database_flush(struct yt_database *database, struct yt_error *error);
 void yt_radio_file_init(struct yt_radio_file *radio);
 bool yt_radio_file_open(struct yt_radio_file *radio, const char *path,
