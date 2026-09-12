@@ -47,6 +47,12 @@ enum navigation_field_kind {
 	NAVIGATION_FIELD_PROFIT_PORT,
 };
 
+struct projectile_route_state {
+	float origin;
+	float destination;
+	float amount;
+};
+
 struct yt_session {
 	struct yt_door *door;
 	struct yt_error *error;
@@ -69,6 +75,9 @@ struct yt_session {
 	float shared_status;
 	float path_marker;
 	float route_start;
+	struct projectile_route_state projectile_main_route;
+	struct projectile_route_state projectile_xannor_route;
+	struct projectile_route_state projectile_counterlaunch_route;
 	int spy_count;
 	int spy_sectors[3];
 	int spy_markers[3];
@@ -10543,82 +10552,36 @@ build_route(struct yt_session *session, float start, float destination,
 	return true;
 }
 
-struct projectile_route_cells {
-	uint16_t missiles;
-	uint16_t destination;
-	uint16_t origin;
-};
-
-static const struct projectile_route_cells projectile_main_cells = {
-	0x4e32U,
-	0x4e12U,
-	0x1c44U,
-};
-
-static const struct projectile_route_cells projectile_xannor_cells = {
-	0x5b62U,
-	0x5b82U,
-	0x4bd8U,
-};
-
-static const struct projectile_route_cells projectile_counterlaunch_cells = {
-	0x5bc6U,
-	0x5bc2U,
-	0x5bbeU,
-};
-
 static void
-route_process_store_single(struct yt_route_process *process, uint16_t address,
-    float value)
-{
-	uint8_t raw[4];
-
-	if (qb_mbf32_encode(value, raw) != QB_MBF_OVERFLOW)
-		yt_route_process_set_raw_single(process, address, raw);
-}
-
-static void
-projectile_route_cells_store(struct yt_session *session,
-    const struct projectile_route_cells *cells, float origin,
+projectile_route_store(struct projectile_route_state *route, float origin,
     float destination, float missiles)
 {
-	route_process_store_single(&session->route_process, cells->origin,
-	    origin);
-	route_process_store_single(&session->route_process, cells->destination,
-	    destination);
-	route_process_store_single(&session->route_process, cells->missiles,
-	    missiles);
+	route->origin = origin;
+	route->destination = destination;
+	route->amount = missiles;
 }
 
 static void
-projectile_route_cells_store_raw(struct yt_session *session,
-    const struct projectile_route_cells *cells, const uint8_t origin[4],
+projectile_route_store_raw(struct projectile_route_state *route,
+    const uint8_t origin[4],
     const uint8_t destination[4], const uint8_t missiles[4])
 {
-	yt_route_process_set_raw_single(&session->route_process, cells->origin,
-	    origin);
-	yt_route_process_set_raw_single(&session->route_process,
-	    cells->destination, destination);
-	yt_route_process_set_raw_single(&session->route_process, cells->missiles,
-	    missiles);
+	projectile_route_store(route, qb_mbf32_decode(origin),
+	    qb_mbf32_decode(destination), qb_mbf32_decode(missiles));
 }
 
 static void
-projectile_route_cells_load(const struct yt_session *session,
-    const struct projectile_route_cells *cells, float *origin,
+projectile_route_load(const struct projectile_route_state *route, float *origin,
     float *destination, float *missiles)
 {
-	*origin = yt_route_process_single(&session->route_process,
-	    cells->origin);
-	*destination = yt_route_process_single(&session->route_process,
-	    cells->destination);
-	*missiles = yt_route_process_single(&session->route_process,
-	    cells->missiles);
+	*origin = route->origin;
+	*destination = route->destination;
+	*missiles = route->amount;
 }
 
 static bool
-build_route_cells(struct yt_session *session,
-    const struct projectile_route_cells *cells, bool use_avoid, bool *found,
+build_projectile_route(struct yt_session *session,
+    const struct projectile_route_state *route, bool use_avoid, bool *found,
     enum yt_route_outcome *route_outcome, float *returned_status,
     struct yt_error *error)
 {
@@ -10626,8 +10589,7 @@ build_route_cells(struct yt_session *session,
 	enum yt_route_outcome outcome;
 	bool success;
 
-	success = yt_route_process_build_cells(cells->origin,
-	    cells->destination, &status,
+	success = yt_route_process_build(route->origin, route->destination, &status,
 	    session->presentation.sound.conversion_mode,
 	    &session->route_process, route_sector_reader, session, &outcome,
 	    error);
@@ -15138,7 +15100,7 @@ cruise_union_police_present(void *context, const uint8_t *text, size_t length,
 
 struct plasma_route_context {
 	struct yt_session *session;
-	const struct projectile_route_cells *cells;
+	struct projectile_route_state *route;
 	int *xannor_provoker;
 	const uint8_t *attacker;
 	size_t attacker_length;
@@ -15157,12 +15119,10 @@ plasma_route_build(void *context, float *origin, float *destination,
 
 	(void)route;
 	(void)route_capacity;
-	success = build_route_cells(session, route_context->cells, false, &found,
+	success = build_projectile_route(session, route_context->route, false, &found,
 	    &outcome, status, error);
-	*origin = yt_route_process_single(&session->route_process,
-	    route_context->cells->origin);
-	*destination = yt_route_process_single(&session->route_process,
-	    route_context->cells->destination);
+	*origin = route_context->route->origin;
+	*destination = route_context->route->destination;
 	return success;
 }
 
@@ -15188,20 +15148,14 @@ static void
 plasma_route_arguments_changed(void *context, float origin,
     float destination, enum yt_projectile_plasma_argument_change change)
 {
-	static const uint8_t same_origin_zero[4] = {0, 0, 0x60, 0};
 	struct plasma_route_context *route_context = context;
-	struct yt_route_process *process =
-	    &route_context->session->route_process;
 
 	if (change == YT_PROJECTILE_PLASMA_SAME_ORIGIN_ZERO)
-		yt_route_process_set_raw_single(process,
-		    route_context->cells->origin, same_origin_zero);
+		route_context->route->origin = 0.0f;
 	else if (change == YT_PROJECTILE_PLASMA_BLACK_HOLE_ORIGIN)
-		route_process_store_single(process, route_context->cells->origin,
-		    origin);
+		route_context->route->origin = origin;
 	else if (change == YT_PROJECTILE_PLASMA_BLACK_HOLE_DESTINATION)
-		route_process_store_single(process,
-		    route_context->cells->destination, destination);
+		route_context->route->destination = destination;
 }
 
 static bool
@@ -15289,12 +15243,11 @@ plasma_route_footer(void *context, const uint8_t *text, size_t length,
 
 static bool
 launch_projectile(struct yt_session *session, float *target, float *amount,
-    bool plasma, const struct projectile_route_cells *cells,
+    bool plasma, struct projectile_route_state *route,
     float *origin_alias, const uint8_t origin_raw[4],
     const uint8_t target_raw[4], const uint8_t amount_raw[4],
     int *pending_counterattack, int *pending_xannor, struct yt_error *error)
 {
-	static const uint8_t ordinary_plasma_attribution[4] = {2, 0, 0, 0};
 	float destination = *target;
 	bool overflow;
 	bool found;
@@ -15306,7 +15259,6 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 	size_t attacker_length;
 	int local_counterattack = 0;
 	int local_xannor_provoker = 0;
-	uint8_t destination_raw[4];
 	int *counterattack = pending_counterattack != NULL
 	    ? pending_counterattack : &local_counterattack;
 	int *xannor_provoker = pending_xannor != NULL
@@ -15316,17 +15268,12 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 	    ? *origin_alias : session->player.sector);
 
 	if (origin_raw != NULL && target_raw != NULL && amount_raw != NULL)
-		projectile_route_cells_store_raw(session, cells, origin_raw,
+		projectile_route_store_raw(route, origin_raw,
 		    target_raw, amount_raw);
 	else
-		projectile_route_cells_store(session, cells, *origin_alias, *target,
+		projectile_route_store(route, *origin_alias, *target,
 		    *missiles);
-	yt_route_process_raw_single(&session->route_process, cells->destination,
-	    destination_raw);
-	if (plasma)
-		yt_route_process_set_raw_single(&session->route_process, 0x72a0U,
-		    ordinary_plasma_attribution);
-	(void)qb_cint_mbf32(destination_raw,
+	(void)qb_cint_mode((double)route->destination,
 	    session->presentation.sound.conversion_mode, &overflow);
 	if (overflow)
 		return true;
@@ -15351,7 +15298,7 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 		float *origin = origin_alias != NULL ? origin_alias : &local_origin;
 		struct plasma_route_context route_context = {
 			session,
-			cells,
+			route,
 			xannor_provoker,
 			attacker,
 			attacker_length,
@@ -15385,12 +15332,12 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 		float route_status;
 		struct yt_projectile_route_entry_state route_entry;
 
-		bool route_success = build_route_cells(session, cells,
+		bool route_success = build_projectile_route(session, route,
 		    yt_projectile_route_avoid_enabled(plasma, *counterattack,
 		    session_record(session)), &found, &route_outcome, &route_status,
 		    error);
 
-		projectile_route_cells_load(session, cells, origin_alias, target,
+		projectile_route_load(route, origin_alias, target,
 		    missiles);
 		start = (int)*origin_alias;
 		destination = *target;
@@ -15442,7 +15389,7 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 
 				*origin_alias = *state.origin;
 				*target = *state.destination;
-				projectile_route_cells_store(session, cells,
+				projectile_route_store(route,
 				    *origin_alias, *target, *missiles);
 				if (!reroute_success)
 					return false;
@@ -15470,8 +15417,7 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 			    counterattack, xannor_provoker, &last_mine_news_sector,
 			    &sector_route, error);
 
-			route_process_store_single(&session->route_process,
-			    cells->missiles, *missiles);
+			route->amount = *missiles;
 			if (!sector_success)
 				return false;
 			if (sector_route == MISSILE_SECTOR_RETURN)
@@ -15495,13 +15441,14 @@ session_projectile_resolver(void *context, float *origin, float *target,
     struct yt_error *error)
 {
 	struct yt_session *session = context;
-	const struct projectile_route_cells *cells = session_record(session) == -1
-	    ? &projectile_xannor_cells : &projectile_main_cells;
+	struct projectile_route_state *route = session_record(session) == -1
+	    ? &session->projectile_xannor_route
+	    : &session->projectile_main_route;
 	bool result;
 
 	session_load_counterattack_player(session, counterattack);
 	session_load_xannor_provoker(session, xannor_provoker);
-	result = launch_projectile(session, target, amount, plasma, cells, origin,
+	result = launch_projectile(session, target, amount, plasma, route, origin,
 	    NULL, NULL, NULL, counterattack, xannor_provoker, error);
 	session_load_counterattack_player(session, counterattack);
 	session_load_xannor_provoker(session, xannor_provoker);
@@ -15520,18 +15467,16 @@ session_projectile_command_resolver(void *context, float *origin,
 	session_load_counterattack_player(session, counterattack);
 	session_load_xannor_provoker(session, xannor_provoker);
 	result = launch_projectile(session, target, amount, plasma,
-	    &projectile_main_cells, origin, origin_raw, target_raw, amount_raw,
+	    &session->projectile_main_route, origin, origin_raw, target_raw,
+	    amount_raw,
 	    counterattack, xannor_provoker, error);
 
-	yt_route_process_raw_single(&session->route_process,
-	    projectile_main_cells.origin, origin_raw);
-	yt_route_process_raw_single(&session->route_process,
-	    projectile_main_cells.destination, target_raw);
-	yt_route_process_raw_single(&session->route_process,
-	    projectile_main_cells.missiles, amount_raw);
-	*origin = qb_mbf32_decode(origin_raw);
-	*target = qb_mbf32_decode(target_raw);
-	*amount = qb_mbf32_decode(amount_raw);
+	*origin = session->projectile_main_route.origin;
+	*target = session->projectile_main_route.destination;
+	*amount = session->projectile_main_route.amount;
+	(void)qb_mbf32_encode(*origin, origin_raw);
+	(void)qb_mbf32_encode(*target, target_raw);
+	(void)qb_mbf32_encode(*amount, amount_raw);
 	session_load_counterattack_player(session, counterattack);
 	session_load_xannor_provoker(session, xannor_provoker);
 	return result;
@@ -15681,7 +15626,7 @@ session_counterlaunch_projectile(void *context, float *origin, float *target,
 	session_load_counterattack_player(session, counterattack);
 	session_load_xannor_provoker(session, xannor_provoker);
 	result = launch_projectile(session, target, amount, plasma,
-	    &projectile_counterlaunch_cells, origin, NULL, NULL, NULL,
+	    &session->projectile_counterlaunch_route, origin, NULL, NULL, NULL,
 	    counterattack, xannor_provoker, error);
 	session_load_counterattack_player(session, counterattack);
 	session_load_xannor_provoker(session, xannor_provoker);
