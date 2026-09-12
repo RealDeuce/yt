@@ -10713,24 +10713,6 @@ yt_port_ordinary_run(struct yt_port_ordinary_state *state,
 	return true;
 }
 
-bool
-yt_computer_port_earth_run(struct yt_computer_port_earth_state *state,
-    yt_computer_port_earth_report_fn report, void *context,
-    struct yt_error *error)
-{
-	if (state == NULL || report == NULL)
-		return false;
-	state->report_calls = 1U;
-	state->report_returned = false;
-	state->complete = false;
-	if (!report(context, state, error))
-		return false;
-	state->report_returned = true;
-	state->report_seen = false;
-	state->complete = true;
-	return true;
-}
-
 static bool
 port_report_append(uint8_t *row, size_t capacity, size_t *position,
     const void *text, size_t length)

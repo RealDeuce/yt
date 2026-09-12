@@ -7473,19 +7473,6 @@ port_report_failure(struct yt_error *error, const char *operation)
 	return false;
 }
 
-static void
-computer_port_earth_field(struct yt_computer_port_earth_state *state,
-    enum yt_computer_port_earth_field_kind kind, uint32_t record,
-    const struct yt_record *field)
-{
-	if (state == NULL || field == NULL)
-		return;
-	state->field_kind = kind;
-	state->field_record = record;
-	state->field = *field;
-	state->field_valid = true;
-}
-
 static bool
 port_report_length(struct yt_session *session, float raw, size_t maximum,
     size_t *length, const char *operation, struct yt_error *error)
@@ -7505,8 +7492,7 @@ port_report_length(struct yt_session *session, float raw, size_t maximum,
 static bool
 port_owner_row_capture(struct yt_session *session, const struct yt_port *port,
     uint8_t *captured_name, size_t captured_capacity,
-    size_t *captured_length, struct yt_computer_port_earth_state *earth_state,
-    struct yt_error *error)
+    size_t *captured_length, struct yt_error *error)
 {
 	enum yt_port_owner_kind kind;
 	const uint8_t *owner_name = NULL;
@@ -7530,9 +7516,6 @@ port_owner_row_capture(struct yt_session *session, const struct yt_port *port,
 		if (!yt_game_read_player(&session->door->game, owner_record,
 		    &owner, error))
 			return false;
-		computer_port_earth_field(earth_state,
-		    YT_COMPUTER_PORT_EARTH_FIELD_PLAYER, (uint32_t)owner_record,
-		    &owner.record);
 		if (!port_report_length(session, owner.name_length,
 		    YT_TEXT_FIELD_SIZE, &owner_name_length,
 		    "port owner name length", error))
@@ -7559,11 +7542,9 @@ port_owner_row_capture(struct yt_session *session, const struct yt_port *port,
 
 static bool
 port_owner_row(struct yt_session *session, const struct yt_port *port,
-    struct yt_computer_port_earth_state *earth_state,
     struct yt_error *error)
 {
-	return port_owner_row_capture(session, port, NULL, 0U, NULL,
-	    earth_state, error);
+	return port_owner_row_capture(session, port, NULL, 0U, NULL, error);
 }
 
 static bool
@@ -8869,8 +8850,7 @@ lottery(struct yt_session *session, const struct yt_port *cached_earth,
 
 static bool
 earth_report(struct yt_session *session, struct yt_port *earth,
-    float price[4], struct yt_computer_port_earth_state *earth_state,
-    struct yt_error *error)
+    float price[4], struct yt_error *error)
 {
 	static const uint8_t separator[] =
 	    "----------------------*--------*------------";
@@ -8896,10 +8876,6 @@ earth_report(struct yt_session *session, struct yt_port *earth,
 	if (!read_port_at_fault(session, 1, earth,
 	    YT_BASIC_FAULT_PORT_EARTH_GET, error))
 		return false;
-	computer_port_earth_field(earth_state,
-	    YT_COMPUTER_PORT_EARTH_FIELD_PORT,
-	    session_port_basic_record(session, 1.0f),
-	    &earth->record);
 	session_set_foreground(session, 3.0f);
 	if (!yt_platform_clock(&date_now, error)
 	    || !yt_platform_clock(&time_now, error))
@@ -8910,7 +8886,7 @@ earth_report(struct yt_session *session, struct yt_port *earth,
 	    "Commerce report for Earth: %s %s", date, time_text) < 0
 	    || !session_present_paged_line(session, (const uint8_t *)title,
 	    strlen(title), "Earth report title", error)
-	    || !port_owner_row(session, earth, earth_state, error))
+	    || !port_owner_row(session, earth, error))
 		return false;
 	memcpy(discount, session->clearance_discounts, sizeof(discount));
 	yt_earth_prices(discount, price);
@@ -8922,13 +8898,8 @@ earth_report(struct yt_session *session, struct yt_port *earth,
 	    SESSION_PRESENT_LINE, "Earth report ordinary blank", error))
 		return false;
 	session->earth_report_seen = true;
-	if (earth_state != NULL)
-		earth_state->report_seen = true;
 	if (!reload_player(session, error))
 		return false;
-	computer_port_earth_field(earth_state,
-	    YT_COMPUTER_PORT_EARTH_FIELD_PLAYER,
-	    (uint32_t)session_record(session), &session->player.record);
 	if (!session_present_paged_row(session, separator, sizeof(separator) - 1U)
 	    || !session_present_paged_row(session, header, sizeof(header) - 1U)
 	    || !session_present_paged_row(session, separator, sizeof(separator) - 1U))
@@ -8985,7 +8956,7 @@ earth_store(struct yt_session *session, bool *enter_sector,
 		float shields_price;
 		float ground_price;
 
-		if (!earth_report(session, &earth, price, NULL, error))
+		if (!earth_report(session, &earth, price, error))
 			return false;
 		holds_price = price[0];
 		fighters_price = price[1];
@@ -12831,7 +12802,7 @@ port_purchase_report(void *context, int logical_port, bool earth,
 	if (earth) {
 		float earth_prices[4];
 
-		if (!earth_report(session, early_port, earth_prices, NULL, error))
+		if (!earth_report(session, early_port, earth_prices, error))
 			return false;
 		*terminal_port = *early_port;
 		memset(production, 0, 3U * sizeof(production[0]));
@@ -12856,10 +12827,10 @@ port_purchase_report(void *context, int logical_port, bool earth,
 static bool
 port_purchase_owner(void *context, const struct yt_port *port,
     uint8_t *name, size_t capacity, size_t *length,
-    struct yt_error *error)
+	struct yt_error *error)
 {
 	return port_owner_row_capture(context, port, name, capacity, length,
-	    NULL, error);
+	    error);
 }
 
 static bool
@@ -16447,17 +16418,6 @@ computer_port_visibility_read_player(void *context, uint32_t physical_record,
 }
 
 static bool
-computer_port_earth_report(void *context,
-    struct yt_computer_port_earth_state *state, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	struct yt_port earth;
-	float price[4];
-
-	return earth_report(session, &earth, price, state, error);
-}
-
-static bool
 computer_port_report(struct yt_session *session, bool *enter_sector,
     struct yt_error *error)
 {
@@ -16551,21 +16511,12 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 		    sizeof(unavailable) - 1U,
 		    "computer port unavailable", error);
 	if (sector.port == 1.0f) {
-		struct yt_computer_port_earth_state earth_state;
+		struct yt_port earth;
+		float price[4];
 
-		memset(&earth_state, 0, sizeof(earth_state));
-		earth_state.field_kind = visibility.field_kind
-		    == YT_COMPUTER_PORT_FIELD_PLAYER
-		    ? YT_COMPUTER_PORT_EARTH_FIELD_PLAYER
-		    : YT_COMPUTER_PORT_EARTH_FIELD_SECTOR;
-		earth_state.field_record = visibility.field_record;
-		earth_state.field = visibility.field;
-		earth_state.field_valid = visibility.field_valid;
-		earth_state.report_seen = session->earth_report_seen;
-		if (!yt_computer_port_earth_run(&earth_state,
-		    computer_port_earth_report, session, error))
+		if (!earth_report(session, &earth, price, error))
 			return false;
-		session->earth_report_seen = earth_state.report_seen;
+		session->earth_report_seen = false;
 		return true;
 	}
 	{
