@@ -32,14 +32,6 @@ enum yt_text_stream_line_status yt_text_stream_line_input_next(FILE *file,
 #define YT_TEXT_OUTPUT_BUFFER_SIZE 128U
 #define YT_TEXT_INPUT_BUFFER_SIZE 128U
 
-#define YT_TEXT_DEVICE_SCRN 0xFEU
-#define YT_TEXT_DEVICE_CONS 0xFDU
-#define YT_TEXT_DEVICE_COM1 0xFCU
-#define YT_TEXT_DEVICE_COM2 0xFBU
-#define YT_TEXT_DEVICE_LPT1 0xFAU
-#define YT_TEXT_DEVICE_LPT2 0xF9U
-#define YT_TEXT_DEVICE_LPT3 0xF8U
-
 enum yt_text_open_operation {
 	YT_TEXT_OPEN_EXISTING,
 	YT_TEXT_OPEN_CREATE,
@@ -216,91 +208,6 @@ struct yt_text_output_write_result {
 	bool handle_open;
 };
 
-enum yt_text_device_write_phase {
-	YT_TEXT_DEVICE_WRITE_VALUE,
-	YT_TEXT_DEVICE_WRITE_COMPLETION,
-};
-
-struct yt_text_device_write_observation {
-	size_t accepted;
-	bool carry;
-	bool physical_unknown;
-	uint16_t dos_error;
-	uint16_t extended_ax;
-	int64_t terminal_position;
-};
-
-typedef bool (*yt_text_device_write_provider)(void *context,
-	enum yt_text_device_write_phase phase, const uint8_t *data,
-	size_t requested, struct yt_text_device_write_observation *observation);
-
-struct yt_text_device_close_observation {
-	bool carry;
-	uint16_t dos_error;
-};
-
-typedef bool (*yt_text_device_close_provider)(void *context,
-	struct yt_text_device_close_observation *observation);
-
-/*
- * The raw PRINT error suffix keeps its selected-file pointer even when A43D
- * releases the pointed-to control.  Pointers in this carrier therefore name
- * controls independently of their current allocator/registration state.
- */
-struct yt_text_device_control_state {
-	bool allocated;
-	bool registered;
-	size_t field_binding_count;
-};
-
-struct yt_text_device_runtime_state {
-	uint8_t error_status;
-	bool defer_release;
-	struct yt_text_device_control_state *selected_control;
-	struct yt_text_device_control_state *active_close_control;
-	yt_text_device_close_provider close_provider;
-	void *close_context;
-	size_t cleanup_close_count;
-	bool cleanup_close_observed;
-	bool cleanup_close_carry;
-	uint16_t cleanup_close_dos_error;
-};
-
-enum yt_text_device_print_outcome {
-	YT_TEXT_DEVICE_PRINT_NONE,
-	YT_TEXT_DEVICE_PRINT_RETURNED,
-	YT_TEXT_DEVICE_PRINT_VALUE_SHORT_ERROR,
-	YT_TEXT_DEVICE_PRINT_VALUE_DISK_ERROR,
-	YT_TEXT_DEVICE_PRINT_COMPLETION_ERROR,
-	YT_TEXT_DEVICE_PRINT_RAW_INTERNAL_ERROR,
-	YT_TEXT_DEVICE_PRINT_PROVIDER_ERROR,
-};
-
-struct yt_text_device_state {
-	uint32_t index;
-	uint8_t column;
-	uint8_t buffer;
-	bool pending;
-	bool selected;
-	bool physical_unknown;
-};
-
-struct yt_text_device_print_result {
-	enum yt_text_device_print_outcome outcome;
-	size_t logical_length;
-	size_t staged;
-	size_t write_count;
-	size_t accepted_count;
-	uint16_t dos_error;
-	uint16_t basic_error;
-	int64_t terminal_position;
-	bool physical_unknown;
-	bool selected;
-	bool raw_release_attempted;
-	uint16_t released_control;
-	uint16_t internal_entry;
-};
-
 struct yt_text_output {
 	FILE *file;
 	FILE *orphaned_file;
@@ -322,17 +229,6 @@ bool yt_text_output_stage(struct yt_text_output *output,
 	const uint8_t *data, size_t length, struct yt_error *error);
 bool yt_text_output_write(struct yt_text_output *output,
 	const uint8_t *data, size_t length, struct yt_error *error);
-bool yt_text_device_print(struct yt_text_device_state *state,
-	const uint8_t *data, size_t length, bool newline, uint8_t device_code,
-	uint8_t status, uint8_t dos_major,
-	yt_text_device_write_provider provider, void *context,
-	struct yt_text_device_print_result *result, struct yt_error *error);
-bool yt_text_device_print_runtime(struct yt_text_device_state *state,
-	const uint8_t *data, size_t length, bool newline, uint8_t device_code,
-	uint8_t status, uint8_t dos_major,
-	yt_text_device_write_provider provider, void *context,
-	struct yt_text_device_runtime_state *runtime,
-	struct yt_text_device_print_result *result, struct yt_error *error);
 bool yt_text_output_close(struct yt_text_output *output,
 	struct yt_error *error);
 bool yt_text_output_close_all_method(void *context, int8_t file_class,
