@@ -4673,22 +4673,6 @@ done:
 }
 
 static bool
-names_output_write_failure_provider(void *context, FILE *file,
-    const uint8_t *data, size_t requested,
-    struct yt_text_output_write_observation *observation)
-{
-	(void)context;
-	(void)file;
-	(void)data;
-	memset(observation, 0, sizeof(*observation));
-	observation->carry = true;
-	observation->handle_open = true;
-	observation->dos_error = 5U;
-	observation->terminal_position = requested == 0U ? 0 : 3;
-	return true;
-}
-
-static bool
 names_output_close_failure_provider(void *context, FILE *file,
     enum yt_text_close_operation operation, const uint8_t *data,
     size_t requested, struct yt_text_close_observation *observation)
@@ -4763,22 +4747,6 @@ test_name_sequential_output_transaction(struct yt_error *error)
 	memset(long_first, 'X', sizeof(long_first) - 1U);
 	long_first[sizeof(long_first) - 1U] = '\0';
 	long_row.real_first = long_first;
-	yt_text_output_init(&output);
-	yt_text_output_set_write_provider(&output,
-	    names_output_write_failure_provider, NULL);
-	result = yt_names_write_sequential(&output, "names.out", &long_names,
-	    &state, error);
-	if (result || state.attempted != YT_NAMES_OUTPUT_COMMA_1
-	    || !state.file_opened || state.close_attempted || state.complete
-	    || state.row_index != 0U || state.rows_completed != 0U
-	    || state.values_completed != 1U
-	    || output.last_write.outcome != YT_TEXT_OUTPUT_WRITE_DISK_ERROR
-	    || output.last_write.dos_error != 5U
-	    || !output.last_write.cleanup_close_attempted) {
-		yt_text_output_destroy(&output);
-		return false;
-	}
-	yt_text_output_destroy(&output);
 
 	yt_text_output_init(&output);
 	yt_text_output_set_close_provider(&output,

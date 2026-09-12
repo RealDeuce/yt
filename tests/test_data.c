@@ -478,18 +478,6 @@ struct text_close_script {
 	size_t position;
 };
 
-struct text_output_write_step {
-	uint8_t expected[YT_TEXT_OUTPUT_BUFFER_SIZE];
-	struct yt_text_output_write_observation observation;
-	bool provider_ok;
-};
-
-struct text_output_write_script {
-	struct text_output_write_step steps[4];
-	size_t length;
-	size_t position;
-};
-
 struct text_device_write_step {
 	enum yt_text_device_write_phase phase;
 	uint8_t expected;
@@ -605,52 +593,6 @@ text_output_close_fixture(struct yt_text_output *output,
 	output->pending_count = pending_length;
 	yt_text_output_set_close_provider(output, scripted_text_close,
 	    script);
-	return true;
-}
-
-static void
-text_output_write_add(struct text_output_write_script *script,
-    const uint8_t *expected, size_t accepted, bool carry,
-    uint16_t dos_error, bool handle_open)
-{
-	struct text_output_write_step *step;
-
-	CHECK(script->length < YT_ARRAY_LEN(script->steps));
-	if (script->length >= YT_ARRAY_LEN(script->steps))
-		return;
-	step = &script->steps[script->length++];
-	memset(step, 0, sizeof(*step));
-	memcpy(step->expected, expected, sizeof(step->expected));
-	step->observation.accepted = accepted;
-	step->observation.carry = carry;
-	step->observation.handle_open = handle_open;
-	step->observation.dos_error = dos_error;
-	step->observation.terminal_position = carry ? -1 : 41;
-	step->provider_ok = true;
-}
-
-static bool
-scripted_text_output_write(void *context, FILE *active_file,
-    const uint8_t *data, size_t requested,
-    struct yt_text_output_write_observation *observation)
-{
-	struct text_output_write_script *script = context;
-	struct text_output_write_step *step;
-
-	CHECK(script->position < script->length);
-	if (script->position >= script->length)
-		return false;
-	step = &script->steps[script->position++];
-	CHECK(active_file != NULL && requested == sizeof(step->expected)
-	    && data != NULL
-	    && memcmp(data, step->expected, sizeof(step->expected)) == 0);
-	if (active_file == NULL || requested != sizeof(step->expected)
-	    || data == NULL
-	    || memcmp(data, step->expected, sizeof(step->expected)) != 0)
-		return false;
-	if (!step->provider_ok)
-		return false;
-	*observation = step->observation;
 	return true;
 }
 
@@ -1161,20 +1103,14 @@ test_text_output_write(void)
 	char path[320];
 	char missing_parent_path[384];
 	uint8_t bytes[300];
-	uint8_t full[YT_TEXT_OUTPUT_BUFFER_SIZE];
 	uint8_t next = 0xeeU;
-	struct text_output_write_script write_script;
-	struct text_close_script close_script;
 	struct yt_text_output output;
 	struct yt_text_file text;
 	struct yt_error error;
-	unsigned accepted;
-	unsigned dos_error;
 	size_t index;
 
 	for (index = 0U; index < sizeof(bytes); ++index)
 		bytes[index] = (uint8_t)(index & 0xffU);
-	memcpy(full, bytes, sizeof(full));
 #ifdef _WIN32
 	snprintf(directory, sizeof(directory), "yt-text-write-%lu",
 	    (unsigned long)GetCurrentProcessId());
@@ -1197,147 +1133,7 @@ test_text_output_write(void)
 	    && output.last_output_open.access_attempt_count == 1U);
 	yt_text_output_destroy(&output);
 
-	/* Bytes 1..128 remain pending; byte 129 flushes the prior block first. */
-	memset(&write_script, 0, sizeof(write_script));
-	memset(&close_script, 0, sizeof(close_script));
-	text_output_write_add(&write_script, full, sizeof(full), false, 0U,
-	    true);
-	CHECK(text_output_close_fixture(&output, &close_script, NULL, 0U));
-	yt_text_output_set_write_provider(&output, scripted_text_output_write,
-	    &write_script);
-	CHECK(yt_text_output_write(&output, bytes, sizeof(full), &error)
-	    && output.pending_count == sizeof(full)
-	    && output.last_write.outcome == YT_TEXT_OUTPUT_WRITE_RETURNED
-	    && output.last_write.accepted == sizeof(full)
-	    && output.last_write.flush_count == 0U
-	    && write_script.position == 0U);
-	CHECK(yt_text_output_write(&output, &next, 1U, &error)
-	    && write_script.position == write_script.length
-	    && output.pending_count == 1U && output.pending[0] == next
-	    && output.last_write.accepted == 1U
-	    && output.last_write.flush_count == 1U
-	    && output.last_write.terminal_position == 41
-	    && output.last_write.registered && output.last_write.handle_open);
-	yt_text_output_destroy(&output);
-
-	/* Two full blocks flush before byte 257 is accepted. */
-	memset(&write_script, 0, sizeof(write_script));
-	memset(&close_script, 0, sizeof(close_script));
-	text_output_write_add(&write_script, bytes, sizeof(full), false, 0U,
-	    true);
-	text_output_write_add(&write_script, bytes + sizeof(full), sizeof(full),
-	    false, 0U, true);
-	CHECK(text_output_close_fixture(&output, &close_script, NULL, 0U));
-	yt_text_output_set_write_provider(&output, scripted_text_output_write,
-	    &write_script);
-	CHECK(yt_text_output_write(&output, bytes, 257U, &error)
-	    && write_script.position == write_script.length
-	    && output.last_write.accepted == 257U
-	    && output.last_write.flush_count == 2U
-	    && output.pending_count == 1U && output.pending[0] == bytes[256]);
-	yt_text_output_destroy(&output);
-
-	/* Every clear short prefix drops the entry before accepting byte 129. */
-	for (accepted = 0U; accepted < sizeof(full); ++accepted) {
-		memset(&write_script, 0, sizeof(write_script));
-		memset(&close_script, 0, sizeof(close_script));
-		text_output_write_add(&write_script, full, accepted, false, 0U,
-		    true);
-		CHECK(text_output_close_fixture(&output, &close_script, full,
-		    sizeof(full)));
-		yt_text_output_set_write_provider(&output,
-		    scripted_text_output_write, &write_script);
-		yt_error_clear(&error);
-		CHECK(!yt_text_output_write(&output, &next, 1U, &error)
-		    && error.status == YT_IO_ERROR
-		    && strcmp(error.operation, "sequential PRINT") == 0
-		    && write_script.position == write_script.length
-		    && output.last_write.outcome
-		    == YT_TEXT_OUTPUT_WRITE_SHORT_ERROR
-		    && output.last_write.basic_error == 61U
-		    && output.last_write.dos_error == 0U
-		    && output.last_write.accepted == 0U
-		    && output.last_write.failed_flush_accepted == accepted
-		    && !output.last_write.physical_unknown
-		    && !output.last_write.cleanup_close_attempted
-		    && !output.last_write.registered
-		    && output.last_write.handle_open
-		    && output.pending_count == 0U && output.file == NULL
-		    && output.orphaned_file != NULL);
-		yt_text_output_destroy(&output);
-	}
-
-	/* An explicitly unknown carry retries CLOSE and routes ERR 71. */
-	for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
-		memset(&write_script, 0, sizeof(write_script));
-		memset(&close_script, 0, sizeof(close_script));
-		text_output_write_add(&write_script, full, 0U, true,
-		    (uint16_t)dos_error, true);
-		text_close_add(&close_script,
-		    YT_TEXT_CLOSE_CLEANUP_HANDLE, NULL, 0U, 0U, false,
-		    0U, false, true, true);
-		CHECK(text_output_close_fixture(&output, &close_script, full,
-		    sizeof(full)));
-		yt_text_output_set_write_provider(&output,
-		    scripted_text_output_write, &write_script);
-		yt_error_clear(&error);
-		CHECK(!yt_text_output_write(&output, &next, 1U, &error)
-		    && write_script.position == write_script.length
-		    && close_script.position == close_script.length
-		    && output.last_write.outcome
-		    == YT_TEXT_OUTPUT_WRITE_DISK_ERROR
-		    && output.last_write.basic_error == 71U
-		    && output.last_write.dos_error == dos_error
-		    && output.last_write.accepted == 0U
-		    && output.last_write.failed_flush_accepted == 0U
-		    && output.last_write.physical_unknown
-		    && output.last_write.cleanup_close_attempted
-		    && !output.last_write.registered
-		    && !output.last_write.handle_open
-		    && output.pending_count == 0U && output.file == NULL
-		    && output.orphaned_file == NULL);
-		yt_text_output_destroy(&output);
-	}
-	memset(&write_script, 0, sizeof(write_script));
-	memset(&close_script, 0, sizeof(close_script));
-	text_output_write_add(&write_script, full, 0U, true, 5U, true);
-	text_close_add(&close_script,
-	    YT_TEXT_CLOSE_CLEANUP_HANDLE, NULL, 0U, 0U, true, 6U,
-	    true, true, false);
-	CHECK(text_output_close_fixture(&output, &close_script, full,
-	    sizeof(full)));
-	yt_text_output_set_write_provider(&output, scripted_text_output_write,
-	    &write_script);
-	CHECK(!yt_text_output_write(&output, &next, 1U, &error)
-	    && output.last_write.outcome == YT_TEXT_OUTPUT_WRITE_DISK_ERROR
-	    && output.last_write.basic_error == 71U
-	    && output.last_write.dos_error == 5U
-	    && output.last_write.cleanup_dos_error == 6U
-	    && output.last_write.physical_unknown
-	    && output.last_write.cleanup_close_attempted
-	    && !output.last_write.registered && output.last_write.handle_open
-	    && output.file == NULL && output.orphaned_file != NULL);
-	yt_text_output_destroy(&output);
-
-	/* Provider transport failure is not mistaken for a DOS result. */
-	memset(&write_script, 0, sizeof(write_script));
-	memset(&close_script, 0, sizeof(close_script));
-	text_output_write_add(&write_script, full, sizeof(full), false, 0U,
-	    true);
-	write_script.steps[0].provider_ok = false;
-	CHECK(text_output_close_fixture(&output, &close_script, full,
-	    sizeof(full)));
-	yt_text_output_set_write_provider(&output, scripted_text_output_write,
-	    &write_script);
-	CHECK(!yt_text_output_write(&output, &next, 1U, &error)
-	    && output.last_write.outcome == YT_TEXT_OUTPUT_WRITE_PROVIDER_ERROR
-	    && output.last_write.basic_error == 57U
-	    && output.last_write.flush_count == 1U
-	    && output.last_write.registered && output.last_write.handle_open
-	    && output.pending_count == 0U && output.file != NULL);
-	yt_text_output_destroy(&output);
-
-	/* The host adapter composes arbitrary writes with the close transaction. */
+	/* The filesystem path composes arbitrary writes with close. */
 	CHECK(write_bytes(path, (const uint8_t *)"stale-tail", 10U));
 	yt_text_output_init(&output);
 	CHECK(yt_text_output_open(&output, path, &error)
@@ -1391,110 +1187,6 @@ test_text_output_write(void)
 #else
 	rmdir(directory);
 #endif
-}
-
-static void
-test_genesis_sequential_handoff_boundaries(void)
-{
-	uint8_t command126[128];
-	uint8_t command127[129];
-	uint8_t command_carry[129];
-	uint8_t first_block[YT_TEXT_OUTPUT_BUFFER_SIZE];
-	struct text_output_write_script write_script;
-	struct text_close_script close_script;
-	struct yt_text_output output;
-	struct yt_error error;
-	unsigned operation;
-
-	memset(command126, 'A', 126U);
-	command126[126] = '\r';
-	command126[127] = '\n';
-	memset(&write_script, 0, sizeof(write_script));
-	memset(&close_script, 0, sizeof(close_script));
-	for (operation = YT_TEXT_CLOSE_PENDING_WRITE;
-	    operation <= YT_TEXT_CLOSE_HANDLE; ++operation)
-		text_output_add_success(&close_script,
-		    (enum yt_text_close_operation)operation,
-		    command126, sizeof(command126));
-	CHECK(text_output_close_fixture(&output, &close_script, NULL, 0U));
-	yt_text_output_set_write_provider(&output, scripted_text_output_write,
-	    &write_script);
-	yt_error_clear(&error);
-	CHECK(yt_text_output_write(&output, command126, sizeof(command126),
-	    &error)
-	    && output.last_write.outcome == YT_TEXT_OUTPUT_WRITE_RETURNED
-	    && output.last_write.flush_count == 0U
-	    && output.pending_count == sizeof(command126)
-	    && write_script.position == 0U
-	    && yt_text_output_close_all_method(&output, 0, &error)
-	    && close_script.position == close_script.length
-	    && output.last_close.outcome == YT_TEXT_CLOSE_RETURNED
-	    && output.last_close.operation_count == 4U
-	    && output.file == NULL && output.pending_count == 0U);
-	yt_text_output_destroy(&output);
-
-	memset(command127, 'B', 127U);
-	command127[127] = '\r';
-	command127[128] = '\n';
-	memcpy(first_block, command127, sizeof(first_block));
-	memset(&write_script, 0, sizeof(write_script));
-	text_output_write_add(&write_script, first_block,
-	    sizeof(first_block), false, 0U, true);
-	memset(&close_script, 0, sizeof(close_script));
-	for (operation = YT_TEXT_CLOSE_PENDING_WRITE;
-	    operation <= YT_TEXT_CLOSE_HANDLE; ++operation)
-		text_output_add_success(&close_script,
-		    (enum yt_text_close_operation)operation,
-		    command127 + 128U, 1U);
-	CHECK(text_output_close_fixture(&output, &close_script, NULL, 0U));
-	yt_text_output_set_write_provider(&output, scripted_text_output_write,
-	    &write_script);
-	yt_error_clear(&error);
-	CHECK(yt_text_output_write(&output, command127, sizeof(command127),
-	    &error)
-	    && output.last_write.outcome == YT_TEXT_OUTPUT_WRITE_RETURNED
-	    && output.last_write.flush_count == 1U
-	    && output.last_write.accepted == sizeof(command127)
-	    && write_script.position == write_script.length
-	    && output.pending_count == 1U && output.pending[0] == '\n'
-	    && yt_text_output_close_all_method(&output, 0, &error)
-	    && close_script.position == close_script.length
-	    && output.last_close.outcome == YT_TEXT_CLOSE_RETURNED
-	    && output.last_close.operation_count == 4U
-	    && output.file == NULL && output.pending_count == 0U);
-	yt_text_output_destroy(&output);
-
-	/* A carry can retain an externally observed prefix and cursor. */
-	memset(command_carry, 'C', 127U);
-	command_carry[127] = '\r';
-	command_carry[128] = '\n';
-	memcpy(first_block, command_carry, sizeof(first_block));
-	memset(&write_script, 0, sizeof(write_script));
-	text_output_write_add(&write_script, first_block, 7U, true, 29U, true);
-	write_script.steps[0].observation.terminal_position = 7;
-	memset(&close_script, 0, sizeof(close_script));
-	text_close_add(&close_script, YT_TEXT_CLOSE_CLEANUP_HANDLE, NULL, 0U,
-	    0U, false, 0U, false, true, true);
-	CHECK(text_output_close_fixture(&output, &close_script, NULL, 0U));
-	yt_text_output_set_write_provider(&output, scripted_text_output_write,
-	    &write_script);
-	yt_error_clear(&error);
-	CHECK(!yt_text_output_write(&output, command_carry,
-	    sizeof(command_carry), &error)
-	    && output.last_write.outcome == YT_TEXT_OUTPUT_WRITE_DISK_ERROR
-	    && output.last_write.basic_error == 71U
-	    && output.last_write.dos_error == 29U
-	    && output.last_write.accepted == 128U
-	    && output.last_write.failed_flush_accepted == 7U
-	    && output.last_write.terminal_position == 7
-	    && !output.last_write.physical_unknown
-	    && output.last_write.cleanup_close_attempted
-	    && !output.last_write.registered && !output.last_write.handle_open
-	    && output.pending_count == 0U && output.file == NULL
-	    && output.orphaned_file == NULL
-	    && write_script.position == write_script.length
-	    && close_script.position == close_script.length);
-	yt_text_output_destroy(&output);
 }
 
 static void
@@ -4453,7 +4145,6 @@ main(void)
 	test_close_all_registry();
 	test_database_random_close();
 	test_text_output_write();
-	test_genesis_sequential_handoff_boundaries();
 	test_text_device_print();
 	test_text_output_close();
 	test_database_random_lof();

@@ -1090,9 +1090,17 @@ text_output_position(FILE *file)
 	return position >= 0 ? position : -1;
 }
 
+struct text_output_write_observation {
+	size_t accepted;
+	bool carry;
+	bool handle_open;
+	uint16_t dos_error;
+	int64_t terminal_position;
+};
+
 static bool
 text_output_write_default_common(FILE *file, const uint8_t *data,
-    size_t requested, struct yt_text_output_write_observation *observation)
+    size_t requested, struct text_output_write_observation *observation)
 {
 	int saved_errno;
 
@@ -1112,12 +1120,11 @@ text_output_write_default_common(FILE *file, const uint8_t *data,
 }
 
 static bool
-text_output_write_default(void *context, FILE *file, const uint8_t *data,
-    size_t requested, struct yt_text_output_write_observation *observation)
+text_output_write_perform(FILE *file, const uint8_t *data,
+    size_t requested, struct text_output_write_observation *observation)
 {
 	bool delivered;
 
-	(void)context;
 	delivered = text_output_write_default_common(file, data, requested,
 	    observation);
 	if (delivered && observation->carry) {
@@ -1132,7 +1139,7 @@ text_close_default(void *context, FILE *file,
     enum yt_text_close_operation operation, const uint8_t *data,
     size_t requested, struct yt_text_close_observation *observation)
 {
-	struct yt_text_output_write_observation write;
+	struct text_output_write_observation write;
 	int result;
 	int saved_errno;
 
@@ -2515,7 +2522,7 @@ yt_text_device_print_runtime(struct yt_text_device_state *state,
 
 static bool
 text_output_write_observation_valid(size_t requested,
-    const struct yt_text_output_write_observation *observation)
+    const struct text_output_write_observation *observation)
 {
 	if (requested != YT_TEXT_OUTPUT_BUFFER_SIZE
 	    || observation->accepted > requested
@@ -2552,7 +2559,7 @@ text_output_write_failure(struct yt_text_output *output,
 static bool
 text_output_write_cleanup_after_carry(struct yt_text_output *output,
     FILE *file, size_t logical_accepted,
-    const struct yt_text_output_write_observation *failure,
+    const struct text_output_write_observation *failure,
     struct yt_error *error)
 {
 	yt_text_close_provider provider;
@@ -2586,8 +2593,7 @@ bool
 yt_text_output_write(struct yt_text_output *output, const uint8_t *data,
     size_t length, struct yt_error *error)
 {
-	yt_text_output_write_provider provider;
-	struct yt_text_output_write_observation observation;
+	struct text_output_write_observation observation;
 	FILE *file;
 	size_t index;
 	bool delivered;
@@ -2602,16 +2608,14 @@ yt_text_output_write(struct yt_text_output *output, const uint8_t *data,
 	memset(&output->last_write, 0, sizeof(output->last_write));
 	output->last_write.terminal_position = -1;
 	file = output->file;
-	provider = output->write_provider != NULL ? output->write_provider
-	    : text_output_write_default;
 	for (index = 0U; index < length; ++index) {
 		if (output->pending_count == sizeof(output->pending)) {
 			output->pending_count = 0U;
 			++output->last_write.flush_count;
 			memset(&observation, 0, sizeof(observation));
 			observation.terminal_position = -1;
-			delivered = provider(output->write_context, file,
-			    output->pending, sizeof(output->pending), &observation);
+			delivered = text_output_write_perform(file, output->pending,
+			    sizeof(output->pending), &observation);
 			if (!delivered || !text_output_write_observation_valid(
 			    sizeof(output->pending), &observation)) {
 				if (delivered && !observation.handle_open)
@@ -2827,16 +2831,6 @@ yt_text_output_set_close_provider(struct yt_text_output *output,
 		return;
 	output->close_provider = provider;
 	output->close_context = context;
-}
-
-void
-yt_text_output_set_write_provider(struct yt_text_output *output,
-    yt_text_output_write_provider provider, void *context)
-{
-	if (output == NULL)
-		return;
-	output->write_provider = provider;
-	output->write_context = context;
 }
 
 void
