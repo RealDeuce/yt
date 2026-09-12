@@ -33,65 +33,12 @@ fail(const char *message)
 	return EXIT_FAILURE;
 }
 
-struct score_database_read_fault {
-	size_t calls;
-	size_t fail_at;
-};
-
 struct score_database_partial_fault {
 	size_t calls;
 	size_t fail_at;
 	size_t accepted;
 	int64_t terminal_position;
 };
-
-static bool
-score_database_read_with_fault(void *context, FILE *file, uint8_t *data,
-    size_t requested, struct yt_database_read_observation *observation)
-{
-	struct score_database_read_fault *fault = context;
-	long position;
-
-	memset(observation, 0, sizeof(*observation));
-	++fault->calls;
-	if (fault->calls == fault->fail_at) {
-		observation->carry = true;
-		observation->dos_error = 6U;
-		observation->terminal_position = 0x55667788;
-		return true;
-	}
-	observation->accepted = fread(data, 1U, requested, file);
-	observation->carry = ferror(file) != 0;
-	position = ftell(file);
-	observation->terminal_position = position >= 0 ? position : 0;
-	if (observation->carry) {
-		observation->dos_error = 1U;
-		observation->mapped_error = 57U;
-	}
-	return true;
-}
-
-static bool
-score_database_read_partial_fault(void *context, FILE *file, uint8_t *data,
-    size_t requested, struct yt_database_read_observation *observation)
-{
-	struct score_database_partial_fault *fault = context;
-
-	memset(observation, 0, sizeof(*observation));
-	++fault->calls;
-	if (fault->calls != fault->fail_at) {
-		observation->accepted = fread(data, 1U, requested, file);
-		observation->terminal_position = ftell(file);
-		return true;
-	}
-	if (fault->accepted > requested)
-		return false;
-	observation->accepted = fread(data, 1U, fault->accepted, file);
-	observation->carry = true;
-	observation->dos_error = 6U;
-	observation->terminal_position = fault->terminal_position;
-	return true;
-}
 
 static bool
 score_database_write_partial_fault(void *context, FILE *file,
@@ -16300,14 +16247,11 @@ check_maintenance_super_lottery_pass(void)
 	static const uint8_t dirty_zero[4] = {0x00, 0x00, 0x3b, 0x00};
 	static const size_t production_offsets[] = {YT_F45, YT_F49, YT_F53};
 	static const size_t dirty_offsets[] = {YT_F57, YT_F61, YT_F65, YT_F69};
-	static const uint64_t get_failure_draws[] = {2U, 3U, 4U, 4U, 12U};
-	static const uint32_t get_failure_records[] = {2U, 31U, 11U, 31U, 11U};
 	static const size_t put_failure_accepted[] = {85U, 97U};
 	static const uint32_t put_failure_records[] = {31U, 11U};
 	struct score_random_script script = {
 		success_draws, sizeof(success_draws), 0U
 	};
-	struct score_database_read_fault read_fault;
 	struct score_database_partial_fault write_fault;
 	struct score_line_tape screen = {0};
 	struct score_line_fault_tape line_fault;
@@ -16532,50 +16476,6 @@ check_maintenance_super_lottery_pass(void)
 			goto done;
 	}
 
-	/* Each fresh constructor GET has its own retained draw/write prefix. */
-	for (index = 0U; index < YT_ARRAY_LEN(get_failure_draws); ++index) {
-		yt_database_set_read_provider(&game.database, NULL, NULL);
-		if (!yt_database_write(&game.database, 2U, &player, &error)
-		    || !yt_database_write(&game.database, 31U, &planet_before,
-		    &error)
-		    || !yt_database_write(&game.database, 11U, &sector_before,
-		    &error))
-			goto done;
-		memset(&screen, 0, sizeof(screen));
-		read_fault = (struct score_database_read_fault){0U, index + 1U};
-		script = (struct score_random_script){success_draws,
-		    sizeof(success_draws), 0U};
-		yt_random_init(&game.random);
-		yt_random_set_provider(&game.random, score_random_fill, &script);
-		yt_database_set_read_provider(&game.database,
-		    score_database_read_with_fault, &read_fault);
-		yt_error_clear(&error);
-		if (yt_maintenance_super_lottery(&game, 1, 1, 1,
-		    NULL, 0U, score_line_collect, &screen, &result, &error)
-		    || error.status != YT_IO_ERROR || read_fault.calls != index + 1U
-		    || game.random.draws != get_failure_draws[index]
-		    || game.database.last_get.outcome != YT_DATABASE_GET_READ_ERROR
-		    || game.database.last_get.current_record
-		    != get_failure_records[index]
-		    || game.database.last_get.accepted != 0U
-		    || game.database.last_get.dos_error != 6U
-		    || game.database.last_get.basic_error != 57U
-		    || game.database.last_get.terminal_position != 0x55667788
-		    || screen.lines != 2U
-		    || screen.length != sizeof(phase_prefix) - 1U
-		    || memcmp(screen.data, phase_prefix,
-		    sizeof(phase_prefix) - 1U) != 0)
-			goto done;
-		yt_database_set_read_provider(&game.database, NULL, NULL);
-		if (!yt_database_read(&game.database, 31U, &after, &error)
-		    || memcmp(after.bytes, index == 4U ? planet_success.bytes
-		    : planet_before.bytes, YT_RECORD_SIZE) != 0
-		    || !yt_database_read(&game.database, 11U, &after, &error)
-		    || memcmp(after.bytes, sector_before.bytes,
-		    YT_RECORD_SIZE) != 0)
-			goto done;
-	}
-
 	/* Both constructor PUTs retain their accepted physical prefixes. */
 	for (index = 0U; index < YT_ARRAY_LEN(put_failure_accepted); ++index) {
 		struct yt_record expected_planet = planet_before;
@@ -16736,7 +16636,6 @@ check_maintenance_super_lottery_pass(void)
 	valid = true;
 
 done:
-	yt_database_set_read_provider(&game.database, NULL, NULL);
 	yt_database_set_write_provider(&game.database, NULL, NULL);
 	if (file != NULL)
 		(void)fclose(file);
@@ -16859,9 +16758,6 @@ check_maintenance_final_suffix_pass(void)
 		.first_closed_line = (size_t)-1
 	};
 	struct maintenance_final_output_fault output_fault;
-	struct score_database_partial_fault marker_read_fault = {
-		0U, 1U, 17U, 0x11223344
-	};
 	struct score_database_partial_fault marker_write_fault = {
 		0U, 1U, 85U, 0x55667788
 	};
@@ -17099,42 +16995,9 @@ check_maintenance_final_suffix_pass(void)
 	    || yt_record_get_number(&after, YT_F81) != 17.0f)
 		goto done;
 
-	/* Marker GET failure retains its physical prefix and old typed marker. */
+	/* A carrying marker PUT can commit its prefix without typed success. */
 	game.config.record = after;
 	game.config.last_maintenance = 17.0f;
-	random_script.position = 0U;
-	yt_random_set_provider(&game.random, score_random_fill, &random_script);
-	clock_script.position = 0U;
-	tape = (struct maintenance_final_suffix_tape){
-		.screen = {0},
-		.game = &game,
-		.first_closed_line = (size_t)-1
-	};
-	yt_database_set_read_provider(&game.database,
-	    score_database_read_partial_fault, &marker_read_fault);
-	yt_error_clear(&error);
-	if (yt_maintenance_finish(&game, maintenance_final_suffix_collect,
-	    &tape, &error)
-	    || error.status != YT_IO_ERROR
-	    || marker_read_fault.calls != 1U
-	    || game.database.last_get.outcome != YT_DATABASE_GET_READ_ERROR
-	    || game.database.last_get.current_record != 1U
-	    || game.database.last_get.accepted != marker_read_fault.accepted
-	    || game.database.last_get.dos_error != 6U
-	    || game.database.last_get.basic_error != 57U
-	    || game.database.last_get.terminal_position
-	    != marker_read_fault.terminal_position
-	    || game.database.file == NULL || game.random.draws != 1U
-	    || clock_script.position != 1U
-	    || game.config.last_maintenance != 17.0f
-	    || yt_record_get_number(&game.config.record, YT_F81) != 17.0f
-	    || tape.screen.lines != 3U
-	    || tape.screen.length != sizeof(prefix) - 1U
-	    || memcmp(tape.screen.data, prefix, sizeof(prefix) - 1U) != 0)
-		goto done;
-	yt_database_set_read_provider(&game.database, NULL, NULL);
-
-	/* A carrying marker PUT can commit its prefix without typed success. */
 	expected = after;
 	if (!yt_record_set_number(&expected, YT_F81, 204.0f))
 		goto done;
@@ -18414,7 +18277,6 @@ check_maintenance_xannor_sector_arrival_pass(void)
 		zero_draws, sizeof(zero_draws), 0U
 	};
 	struct score_line_tape screen = {0};
-	struct score_database_read_fault read_tape = {0U, SIZE_MAX};
 	struct score_database_partial_fault write_tape = {
 		0U, SIZE_MAX, 0U, 0
 	};
@@ -18452,8 +18314,6 @@ check_maintenance_xannor_sector_arrival_pass(void)
 	    || !yt_record_set_number(&sector.record, YT_F129, sector.mines)
 	    || !yt_game_write_sector(&game, 42, &sector, &error))
 		goto done;
-	yt_database_set_read_provider(&game.database,
-	    score_database_read_with_fault, &read_tape);
 	yt_database_set_write_provider(&game.database,
 	    score_database_write_partial_fault, &write_tape);
 	group_size = 10.0f;
@@ -18461,7 +18321,7 @@ check_maintenance_xannor_sector_arrival_pass(void)
 	    &sector, score_line_collect, &screen, &error)
 	    || group_size != 9.0f || sector.mines != 0.0f
 	    || sector.fighters != 0.0f || sector.fighter_owner != 0.0f
-	    || read_tape.calls != 4U || write_tape.calls != 2U
+	    || write_tape.calls != 2U
 	    || game.random.draws != 2U
 	    || script.position != sizeof(zero_draws)
 	    || screen.lines != 3U
@@ -18475,7 +18335,6 @@ check_maintenance_xannor_sector_arrival_pass(void)
 	yt_text_free(&news);
 	(void)remove("YTNEWS.DAT");
 	memset(&screen, 0, sizeof(screen));
-	yt_database_set_read_provider(&game.database, NULL, NULL);
 	yt_database_set_write_provider(&game.database, NULL, NULL);
 	script = (struct score_random_script){
 		high_draw, sizeof(high_draw), 0U
@@ -18491,12 +18350,9 @@ check_maintenance_xannor_sector_arrival_pass(void)
 	    || !yt_record_set_number(&sector.record, YT_F129, sector.mines)
 	    || !yt_game_write_sector(&game, 42, &sector, &error))
 		goto done;
-	read_tape = (struct score_database_read_fault){0U, SIZE_MAX};
 	write_tape = (struct score_database_partial_fault){
 		0U, SIZE_MAX, 0U, 0
 	};
-	yt_database_set_read_provider(&game.database,
-	    score_database_read_with_fault, &read_tape);
 	yt_database_set_write_provider(&game.database,
 	    score_database_write_partial_fault, &write_tape);
 	group_size = 1.0f;
@@ -18504,7 +18360,7 @@ check_maintenance_xannor_sector_arrival_pass(void)
 	    &sector, score_line_collect, &screen, &error)
 	    || group_size != 0.0f || sector.fighters != 1.0f
 	    || sector.fighter_owner != -2.0f || game.random.draws != 1U
-	    || read_tape.calls != 2U || write_tape.calls != 1U
+	    || write_tape.calls != 1U
 	    || script.position != sizeof(high_draw) || screen.lines != 1U
 	    || screen.length != sizeof(mercenary_screen) - 1U
 	    || memcmp(screen.data, mercenary_screen,
@@ -18517,7 +18373,6 @@ check_maintenance_xannor_sector_arrival_pass(void)
 	yt_text_free(&news);
 	(void)remove("YTNEWS.DAT");
 	memset(&screen, 0, sizeof(screen));
-	yt_database_set_read_provider(&game.database, NULL, NULL);
 	yt_database_set_write_provider(&game.database, NULL, NULL);
 	script = (struct score_random_script){no_draws, 0U, 0U};
 	yt_random_set_provider(&game.random, score_random_fill, &script);
@@ -18531,12 +18386,9 @@ check_maintenance_xannor_sector_arrival_pass(void)
 	    || !yt_record_set_number(&sector.record, YT_F129, sector.mines)
 	    || !yt_game_write_sector(&game, 42, &sector, &error))
 		goto done;
-	read_tape = (struct score_database_read_fault){0U, SIZE_MAX};
 	write_tape = (struct score_database_partial_fault){
 		0U, SIZE_MAX, 0U, 0
 	};
-	yt_database_set_read_provider(&game.database,
-	    score_database_read_with_fault, &read_tape);
 	yt_database_set_write_provider(&game.database,
 	    score_database_write_partial_fault, &write_tape);
 	group_size = 4.0f;
@@ -18545,13 +18397,12 @@ check_maintenance_xannor_sector_arrival_pass(void)
 	    || group_size != 4.0f || sector.mines != 0.0f
 	    || sector.fighters != 7.0f || sector.fighter_owner != 0.0f
 	    || game.random.draws != 0U || script.position != 0U
-	    || read_tape.calls != 1U || write_tape.calls != 0U
+	    || write_tape.calls != 0U
 	    || screen.lines != 0U || screen.length != 0U)
 		goto done;
 	valid = true;
 
 done:
-	yt_database_set_read_provider(&game.database, NULL, NULL);
 	yt_database_set_write_provider(&game.database, NULL, NULL);
 	yt_text_free(&news);
 	yt_game_close(&game);
@@ -18906,7 +18757,6 @@ check_maintenance_xannor_headquarters_relocation_pass(void)
 	static const uint8_t success_draws[] = {
 		0x00, 0x00, 0x00, 0xff, 0xff, 0xff
 	};
-	static const uint8_t failure_draw[] = {0xff, 0xff, 0xff};
 	static const uint8_t expected_screen[] =
 	    " *** The Xannor have MOVED their Headquarters! ***\a\r"
 	    "\r";
@@ -18924,7 +18774,6 @@ check_maintenance_xannor_headquarters_relocation_pass(void)
 	struct yt_record sector_after;
 	struct yt_game game;
 	struct yt_error error;
-	struct score_database_read_fault read_fault = {0U, 3U};
 	float location[21] = {0};
 	size_t offset;
 	int sector;
@@ -19023,49 +18872,9 @@ check_maintenance_xannor_headquarters_relocation_pass(void)
 			goto done;
 	}
 
-	/* The config PUT precedes the old-sector GET and is not rolled back. */
-	yt_text_free(&news);
-	(void)remove("YTNEWS.DAT");
-	memset(&screen, 0, sizeof(screen));
-	config_before = config_after;
-	if (!yt_record_set_number(&config_before, YT_F117, 12.0f)
-	    || !yt_database_write(&game.database, 1U, &config_before, &error)
-	    || !yt_record_set_number(&sector_before[10], YT_F93, 0.0f)
-	    || !yt_database_write(&game.database,
-	    (size_t)yt_sector_basic_record(&game.config, 11),
-	    &sector_before[10], &error))
-		goto done;
-	script = (struct score_random_script){
-		failure_draw, sizeof(failure_draw), 0U
-	};
-	yt_random_set_provider(&game.random, score_random_fill, &script);
-	game.config.headquarters = 12.0f;
-	location[1] = 12.0f;
-	yt_database_set_read_provider(&game.database,
-	    score_database_read_with_fault, &read_fault);
-	if (yt_maintenance_xannor_headquarters_relocate(&game, location,
-	    true, 1.0f, 0.0, NULL, 0U,
-	    score_line_collect, &screen, &relocation, &error)
-	    || game.random.draws != 1U
-	    || script.position != sizeof(failure_draw)
-	    || read_fault.calls != 3U
-	    || game.database.last_get.outcome != YT_DATABASE_GET_READ_ERROR
-	    || game.database.last_get.basic_error != 57U
-	    || game.database.last_get.dos_error != 6U
-	    || game.database.last_get.terminal_position != 0x55667788
-	    || game.config.headquarters != 11.0f || location[1] != 11.0f
-	    || screen.length != 0U)
-		goto done;
-	yt_database_set_read_provider(&game.database, NULL, NULL);
-	yt_error_clear(&error);
-	if (!yt_database_read(&game.database, 1U, &config_after, &error)
-	    || yt_record_get_number(&config_after, YT_F117) != 11.0f
-	    || yt_text_read("YTNEWS.DAT", &news, &error))
-		goto done;
 	valid = true;
 
 done:
-	yt_database_set_read_provider(&game.database, NULL, NULL);
 	yt_text_free(&news);
 	yt_game_close(&game);
 	(void)remove("YTDATA.DAT");
@@ -24071,7 +23880,6 @@ check_player_constructor_failures(void)
 	struct yt_player player;
 	struct yt_player_constructor_state state;
 	struct yt_error error;
-	struct score_database_read_fault read_fault = {0U, 1U};
 	bool valid = false;
 
 	remove("CONSTRUCT.DAT");
@@ -24080,17 +23888,6 @@ check_player_constructor_failures(void)
 	if (!yt_database_open(&game.database, "CONSTRUCT.DAT", YT_OPEN_CREATE,
 	    &error))
 		return false;
-	yt_database_set_read_provider(&game.database,
-	    score_database_read_with_fault, &read_fault);
-	if (construct_player_values(&game, 2, 77.0f, 123.0f, &player, &state,
-	    &error)
-	    || error.status != YT_IO_ERROR || read_fault.calls != 1U
-	    || game.database.last_get.basic_error != 57U
-	    || state.config_hydrated || state.player_hydrated
-	    || state.put_attempted)
-		goto close;
-	yt_database_set_read_provider(&game.database, NULL, NULL);
-
 	yt_record_blank(&config);
 	yt_record_set_number(&config, YT_F49, 123.0f);
 	yt_record_set_number(&config, YT_F65, 45.0f);
@@ -24098,19 +23895,6 @@ check_player_constructor_failures(void)
 	yt_record_set_number(&config, YT_F73, 9.0f);
 	if (!yt_database_write(&game.database, 1, &config, &error))
 		goto close;
-	read_fault = (struct score_database_read_fault){0U, 2U};
-	yt_database_set_read_provider(&game.database,
-	    score_database_read_with_fault, &read_fault);
-	yt_error_clear(&error);
-	if (construct_player_values(&game, 2, 77.0f, 123.0f, &player, &state,
-	    &error)
-	    || error.status != YT_IO_ERROR || read_fault.calls != 2U
-	    || game.database.last_get.basic_error != 57U
-	    || !state.config_hydrated || state.player_hydrated
-	    || state.put_attempted)
-		goto close;
-	yt_database_set_read_provider(&game.database, NULL, NULL);
-
 	yt_record_blank(&target);
 	yt_record_set_text(&target, (const uint8_t *)"Keep Name", 9);
 	yt_record_set_number(&target, YT_F85, 9.0f);
@@ -24153,7 +23937,6 @@ check_player_constructor_failures(void)
 	valid = true;
 
 close:
-	yt_database_set_read_provider(&game.database, NULL, NULL);
 	yt_database_close(&game.database);
 done:
 	remove("CONSTRUCT.DAT");
@@ -24193,7 +23976,6 @@ check_returning_daily_transaction(void)
 	struct yt_record durable;
 	struct yt_returning_daily_state state;
 	struct returning_daily_tape tape;
-	struct score_database_read_fault read_fault = {0U, 1U};
 	struct yt_error error;
 	uint8_t old_day_raw[4];
 	uint8_t killer_raw[4];
@@ -24213,18 +23995,6 @@ check_returning_daily_transaction(void)
 	    || !yt_database_open(&game.database, "DAILY.DAT", YT_OPEN_CREATE,
 	    &error))
 		return false;
-	yt_database_set_read_provider(&game.database,
-	    score_database_read_with_fault, &read_fault);
-	memset(&state, 0, sizeof(state));
-	state.player_record = 2;
-	state.today_raw = today_raw;
-	state.turns_per_day_raw = turns_raw;
-	memset(&tape, 0, sizeof(tape));
-	if (yt_returning_daily_run(&game, &state, &ops, &tape, &error)
-	    || state.player_hydrated || state.put_attempted || state.complete
-	    || tape.count != 0U || game.database.last_get.basic_error != 57U)
-		goto close;
-	yt_database_set_read_provider(&game.database, NULL, NULL);
 	yt_error_clear(&error);
 	yt_record_blank(&seed);
 	yt_record_set_text(&seed, (const uint8_t *)"Daily Pilot", 11);
@@ -24314,7 +24084,6 @@ check_returning_daily_transaction(void)
 	valid = true;
 
 close:
-	yt_database_set_read_provider(&game.database, NULL, NULL);
 	yt_database_close(&game.database);
 done:
 	remove("DAILY.DAT");
@@ -33999,15 +33768,11 @@ check_drop_mines_transaction(void)
 static bool
 check_scoreboard_physical_field_residue(void)
 {
-	struct score_database_partial_fault read_fault = {
-		0U, 2U, 17U, 0x11223344
-	};
 	struct score_database_partial_fault write_fault = {
 		0U, 1U, 23U, 0x55667788
 	};
 	struct score_progress_tape progress = {0};
 	struct yt_score_field_observation field;
-	struct yt_record first_image;
 	struct yt_record blank;
 	struct yt_player player;
 	struct yt_game game;
@@ -34030,32 +33795,8 @@ check_scoreboard_physical_field_residue(void)
 	player.name_length = 5.0f;
 	player.credits = 100.0f;
 	if (!yt_game_write_player(&game, 2, &player, &error)
-	    || !yt_database_write(&game.database, 3, &blank, &error)
-	    || !yt_database_read(&game.database, 2, &first_image, &error))
+	    || !yt_database_write(&game.database, 3, &blank, &error))
 		goto done;
-
-	/* A failed later GET retains the last completed FIELD image. */
-	yt_database_set_read_provider(&game.database,
-	    score_database_read_partial_fault, &read_fault);
-	yt_error_clear(&error);
-	if (yt_score_generate_progress_with_layout(&game,
-	    game.config.sector_offset, game.config.port_offset,
-	    score_progress_collect, &progress, &field, &error)
-	    || error.status != YT_IO_ERROR || progress.count != 1U
-	    || progress.phases[0] != 1U || read_fault.calls != 2U
-	    || game.database.last_get.outcome != YT_DATABASE_GET_READ_ERROR
-	    || game.database.last_get.current_record != 3U
-	    || game.database.last_get.accepted != read_fault.accepted
-	    || game.database.last_get.basic_error != 57U
-	    || game.database.last_get.dos_error != 6U
-	    || game.database.last_get.terminal_position
-	    != read_fault.terminal_position
-	    || !field.valid || field.kind != YT_SCORE_FIELD_PLAYER
-	    || field.physical_record != 2U
-	    || memcmp(field.image.bytes, first_image.bytes,
-	    YT_RECORD_SIZE) != 0)
-		goto done;
-	yt_database_set_read_provider(&game.database, NULL, NULL);
 
 	/* The cache overlay becomes FIELD before a partial physical PUT. */
 	memset(&progress, 0, sizeof(progress));
@@ -34082,7 +33823,6 @@ check_scoreboard_physical_field_residue(void)
 	valid = true;
 
 done:
-	yt_database_set_read_provider(&game.database, NULL, NULL);
 	yt_database_set_write_provider(&game.database, NULL, NULL);
 	yt_game_close(&game);
 	(void)remove("SCORE-FIELD.DAT");

@@ -480,56 +480,14 @@ database_prepare_io(FILE *file)
 }
 
 static bool
-database_read_default(void *context, FILE *file, uint8_t *data,
-    size_t requested, struct yt_database_read_observation *observation)
-{
-	int64_t position;
-	int saved_errno;
-
-	(void)context;
-	memset(observation, 0, sizeof(*observation));
-	database_prepare_io(file);
-	observation->accepted = fread(data, 1U, requested, file);
-	saved_errno = errno;
-	observation->carry = ferror(file) != 0;
-	position = yt_ftello(file);
-	observation->terminal_position = position >= 0 ? (int64_t)position : 0;
-	if (observation->carry) {
-		observation->dos_error = (saved_errno == EACCES
-		    || saved_errno == EPERM) ? 5U : 1U;
-		observation->mapped_error = observation->dos_error == 5U
-		    ? 70U : 57U;
-	}
-	errno = saved_errno;
-	return true;
-}
-
-static bool
-database_read_observation_valid(
-    const struct yt_database_read_observation *observation, size_t requested)
-{
-	if (observation->accepted > requested)
-		return false;
-	if (!observation->carry)
-		return observation->dos_error == 0U
-		    && observation->mapped_error == 0U;
-	if (observation->dos_error < 1U || observation->dos_error > 0xffU)
-		return false;
-	if (observation->dos_error == 5U)
-		return observation->mapped_error == 70U
-		    || observation->mapped_error == 75U;
-	return observation->mapped_error == 0U
-	    || observation->mapped_error == 57U;
-}
-
-static bool
 database_random_get_bytes(struct yt_database *database, size_t basic_record,
     uint8_t *data, size_t record_size, size_t *accepted,
     struct yt_error *error)
 {
-	yt_database_read_provider read_provider;
-	struct yt_database_read_observation read = {0};
 	int64_t offset;
+	size_t read_count;
+	int64_t read_position;
+	int saved_errno;
 	uint16_t seek_error;
 	int64_t seek_position;
 
@@ -564,35 +522,34 @@ database_random_get_bytes(struct yt_database *database, size_t basic_record,
 		return false;
 	}
 	memset(data, 0, record_size);
-	read_provider = database->read_provider != NULL ? database->read_provider
-	    : database_read_default;
-	if (!read_provider(database->read_context, database->file, data,
-	    record_size, &read)
-	    || !database_read_observation_valid(&read, record_size)) {
-		database->last_get.outcome = YT_DATABASE_GET_PROVIDER_ERROR;
-		database->last_get.accepted = read.accepted;
-		database->last_get.basic_error = 57U;
-		database->last_get.dos_error = read.dos_error;
-		database->last_get.terminal_position = read.terminal_position;
-		set_error(error, YT_IO_ERROR, "random GET provider", database->path);
-		return false;
-	}
-	if (accepted != NULL)
-		*accepted = read.accepted;
-	database->last_get.accepted = read.accepted;
-	if (read.carry) {
+	database_prepare_io(database->file);
+	read_count = fread(data, 1U, record_size, database->file);
+	saved_errno = errno;
+	read_position = yt_ftello(database->file);
+	if (read_position < 0)
+		read_position = 0;
+	if (ferror(database->file) != 0) {
 		database->last_get.outcome = YT_DATABASE_GET_READ_ERROR;
-		database->last_get.dos_error = read.dos_error;
-		database->last_get.basic_error = read.dos_error == 5U
-		    ? read.mapped_error : 57U;
-		database->last_get.terminal_position = read.terminal_position;
+		database->last_get.accepted = read_count;
+		database->last_get.dos_error = (saved_errno == EACCES
+		    || saved_errno == EPERM) ? 5U : 1U;
+		database->last_get.basic_error =
+		    database->last_get.dos_error == 5U ? 70U : 57U;
+		database->last_get.terminal_position = read_position;
+		if (accepted != NULL)
+			*accepted = read_count;
+		errno = saved_errno;
 		set_error(error, YT_IO_ERROR, "random GET", database->path);
 		return false;
 	}
+	errno = saved_errno;
+	if (accepted != NULL)
+		*accepted = read_count;
+	database->last_get.accepted = read_count;
 	database->last_get.outcome = YT_DATABASE_GET_RETURNED;
-	database->last_get.full_record = read.accepted == record_size;
+	database->last_get.full_record = read_count == record_size;
 	database->last_get.terminal_position = (int64_t)offset
-	    + (int64_t)read.accepted;
+	    + (int64_t)read_count;
 	return true;
 }
 
@@ -1085,16 +1042,6 @@ yt_database_set_write_provider(struct yt_database *database,
 		return;
 	database->write_provider = provider;
 	database->write_context = context;
-}
-
-void
-yt_database_set_read_provider(struct yt_database *database,
-    yt_database_read_provider provider, void *context)
-{
-	if (database == NULL)
-		return;
-	database->read_provider = provider;
-	database->read_context = context;
 }
 
 bool

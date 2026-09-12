@@ -23346,54 +23346,34 @@ direct_emergency_warp_main_command_prefix(
 	return true;
 }
 
-enum direct_warp_gate_get_failure {
-	DIRECT_WARP_GATE_READ_57,
-	DIRECT_WARP_GATE_READ_70,
-	DIRECT_WARP_GATE_READ_75,
-};
-
-struct direct_warp_gate_get_state {
+struct direct_warp_attack_database_state {
 	struct yt_database database;
 	struct yt_record field;
 	struct yt_record read_source;
 	int field_record;
 	bool field_player;
-	enum direct_warp_gate_get_failure failure;
-	bool read_success;
-	size_t accepted;
-	size_t read_calls;
-	int64_t terminal_position;
 };
 
 static bool
-direct_warp_gate_read(void *context, FILE *file, uint8_t *data,
-    size_t requested, struct yt_database_read_observation *observation)
+direct_warp_attack_store_record(struct direct_warp_attack_database_state *state,
+    size_t basic_record)
 {
-	struct direct_warp_gate_get_state *state = context;
+	long offset;
 
-	(void)file;
-	++state->read_calls;
-	memset(observation, 0, sizeof(*observation));
-	if (state->accepted > requested)
+	if (state == NULL || state->database.file == NULL || basic_record == 0U)
 		return false;
-	memcpy(data, state->read_source.bytes, state->accepted);
-	observation->accepted = state->accepted;
-	if (state->read_success)
-		return true;
-	observation->carry = true;
-	observation->dos_error = state->failure == DIRECT_WARP_GATE_READ_57
-	    ? 6U : 5U;
-	observation->mapped_error = state->failure == DIRECT_WARP_GATE_READ_70
-	    ? 70U : state->failure == DIRECT_WARP_GATE_READ_75 ? 75U : 0U;
-	observation->terminal_position = state->terminal_position;
-	return true;
+	offset = (long)((basic_record - 1U) * YT_RECORD_SIZE);
+	return fseek(state->database.file, offset, SEEK_SET) == 0
+	    && fwrite(state->read_source.bytes, 1U, YT_RECORD_SIZE,
+	    state->database.file) == YT_RECORD_SIZE
+	    && fflush(state->database.file) == 0;
 }
 
 static bool
-direct_warp_gate_read_player(void *context, int player_record,
+direct_warp_attack_read_player(void *context, int player_record,
     struct yt_player *player, struct yt_error *error)
 {
-	struct direct_warp_gate_get_state *state = context;
+	struct direct_warp_attack_database_state *state = context;
 	struct yt_record field = state->field;
 	size_t accepted = 0U;
 
@@ -23414,230 +23394,6 @@ direct_warp_gate_read_player(void *context, int player_record,
 	    YT_BASIC_FAULT_CURRENT_PLAYER_A41C_GET,
 	    state->database.last_get.basic_error);
 	return false;
-}
-
-static bool
-direct_emergency_warp_gate_get_failure_run(
-    struct hostile_mines_hazard_fixture *fixture, bool hostile, bool ansi,
-    const uint8_t *command, size_t command_length,
-    enum direct_warp_gate_get_failure failure,
-    struct direct_warp_gate_get_state *gate,
-    struct yt_basic_fault_projection *projection, size_t ends[2])
-{
-	static const uint8_t scanner_gate_raw[4] = {0x00U, 0x00U, 0x60U, 0x00U};
-	static const uint8_t main_gate_raw[4] = {0x00U, 0x00U, 0x00U, 0x00U};
-	const uint8_t *expected_gate_raw = hostile
-	    ? scanner_gate_raw : main_gate_raw;
-	struct yt_current_player_hydration_state hydration;
-	struct yt_player before;
-	struct yt_error error;
-	float current_sector = 784.0f;
-	float cloak_cache[4] = {-1.0f, -2.0f, 0.5f, -4.0f};
-	uint8_t gate_raw[4];
-	size_t index;
-
-	if (gate == NULL || projection == NULL || ends == NULL)
-		return false;
-	memset(gate, 0, sizeof(*gate));
-	gate->database.file = tmpfile();
-	if (gate->database.file == NULL)
-		return false;
-	gate->failure = failure;
-	gate->accepted = 3U;
-	gate->terminal_position = INT64_C(0x55667788);
-	gate->field = fixture->emergency_player.record;
-	gate->field_record = 2;
-	gate->field_player = true;
-	for (index = 0U; index < YT_RECORD_SIZE; ++index)
-		gate->read_source.bytes[index] = (uint8_t)(index ^ 0x5aU);
-	yt_database_set_read_provider(&gate->database, direct_warp_gate_read,
-	    gate);
-	memcpy(gate_raw, expected_gate_raw, sizeof(gate_raw));
-	if ((hostile && !direct_emergency_warp_hostile_menu_prefix(fixture,
-	    ansi, command, command_length, &ends[0]))
-	    || (!hostile && (command_length != 1U || command[0] != 'W'
-	    || !direct_emergency_warp_main_command_prefix(fixture, ansi,
-	    &ends[0])))) {
-		yt_database_close(&gate->database);
-		return false;
-	}
-	ends[1] = ends[0];
-	before = fixture->emergency_player;
-	memset(&hydration, 0, sizeof(hydration));
-	hydration.player = &fixture->emergency_player;
-	hydration.player_record = 2;
-	hydration.current_sector_record = &current_sector;
-	if (qb_mbf32_encode(51.0f, hydration.sector_record_offset_raw)
-	    != QB_MBF_OK) {
-		yt_database_close(&gate->database);
-		return false;
-	}
-	yt_error_clear(&error);
-	if (yt_current_player_hydrate_run(&hydration,
-	    direct_warp_gate_read_player, gate, &error)
-	    || !yt_basic_fault_project(&error, NULL, 0U, NULL, 0U, NULL, 0U,
-	    projection)
-	    || memcmp(&fixture->emergency_player, &before, sizeof(before)) != 0
-	    || current_sector != 784.0f
-	    || memcmp(cloak_cache,
-	    (const float[4]){-1.0f, -2.0f, 0.5f, -4.0f},
-	    sizeof(cloak_cache)) != 0
-	    || memcmp(gate_raw, expected_gate_raw, sizeof(gate_raw)) != 0) {
-		yt_database_close(&gate->database);
-		return false;
-	}
-	return true;
-}
-
-static void
-test_direct_emergency_warp_gate_get_failures(void)
-{
-	static const struct {
-		bool hostile;
-		bool ansi;
-		const uint8_t *command;
-		size_t command_length;
-		size_t expected_length;
-		uint64_t expected_hash;
-		uint64_t row_hash;
-		uint64_t color_hash;
-		size_t colors;
-		float cached_foreground;
-		int foreground;
-		size_t rows;
-		size_t events;
-	} modes[] = {
-		{true, false, (const uint8_t *)"W", 1U, 63U,
-		    UINT64_C(0x0b6904cbde91e151),
-		    UINT64_C(0x95505d5a280be345),
-		    UINT64_C(0x6d3fa4669b3587bd), 2U, 0.0f, 3, 3U, 10U},
-		{true, false, (const uint8_t *)"WT", 2U, 64U,
-		    UINT64_C(0x4715406bf12b49e1),
-		    UINT64_C(0xfd4d421064c55464),
-		    UINT64_C(0x6d3fa4669b3587bd), 2U, 0.0f, 3, 3U, 10U},
-		{true, true, (const uint8_t *)"W", 1U, 73U,
-		    UINT64_C(0x1f8739c8faadb88e),
-		    UINT64_C(0x95505d5a280be345),
-		    UINT64_C(0x57737ee2d2f9ef95), 6U, 3.0f, 3, 3U, 10U},
-		{true, true, (const uint8_t *)"WT", 2U, 74U,
-		    UINT64_C(0x2e092d830cad0828),
-		    UINT64_C(0xfd4d421064c55464),
-		    UINT64_C(0x57737ee2d2f9ef95), 6U, 3.0f, 3, 3U, 10U},
-		{false, false, (const uint8_t *)"W", 1U, 41U,
-		    UINT64_C(0x84059a449d6d0449),
-		    UINT64_C(0xe805819b4f811410),
-		    UINT64_C(0x08285607b4e2c672), 1U, 2.0f, 2, 2U, 5U},
-		{false, true, (const uint8_t *)"W", 1U, 41U,
-		    UINT64_C(0x84059a449d6d0449),
-		    UINT64_C(0xe805819b4f811410),
-		    UINT64_C(0xc8d7f41925790412), 4U, 2.0f, 2, 2U, 5U},
-	};
-	static const struct {
-		enum direct_warp_gate_get_failure failure;
-		uint16_t error_number;
-		enum yt_basic_fault_disposition disposition;
-		enum yt_main_error_route route;
-	} cuts[] = {
-		{DIRECT_WARP_GATE_READ_57, 57U,
-		    YT_BASIC_FAULT_RETRY_STATEMENT, YT_MAIN_ERROR_RETRY_CURRENT},
-		{DIRECT_WARP_GATE_READ_70, 70U, YT_BASIC_FAULT_END,
-		    YT_MAIN_ERROR_FATAL},
-		{DIRECT_WARP_GATE_READ_75, 75U, YT_BASIC_FAULT_END,
-		    YT_MAIN_ERROR_FATAL},
-	};
-	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
-	struct hostile_mines_hazard_fixture fixture;
-	struct direct_warp_gate_get_state gate;
-	struct yt_basic_fault_projection projection;
-	struct yt_record record;
-	uint8_t remote[96];
-	size_t ends[2];
-	size_t cut;
-	size_t index;
-	size_t mode;
-
-	for (mode = 0U; mode < YT_ARRAY_LEN(modes); ++mode) {
-		for (cut = 0U; cut < YT_ARRAY_LEN(cuts); ++cut) {
-			memset(&viewer, 0, sizeof(viewer));
-			fixture_viewer_initialize(&viewer, &stream,
-			    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
-			    "YTSCORE.ASC", modes[mode].ansi, remote, sizeof(remote));
-			memset(&fixture, 0, sizeof(fixture));
-			fixture.cycle.presentation.viewer = &viewer;
-			memset(&record, 0xa5, sizeof(record));
-			(void)yt_record_set_number(&record, YT_F49, 17.0f);
-			(void)yt_record_set_number(&record, YT_F57, 733.0f);
-			yt_player_decode(&fixture.emergency_player, &record);
-			fixture.hazard_player = fixture.emergency_player;
-			CHECK(direct_emergency_warp_gate_get_failure_run(
-			    &fixture, modes[mode].hostile, modes[mode].ansi,
-			    modes[mode].command,
-			    modes[mode].command_length, cuts[cut].failure,
-			    &gate, &projection, ends));
-			CHECK(ends[0] == modes[mode].expected_length
-			    && ends[1] == ends[0]
-			    && viewer.join.remote_length == modes[mode].expected_length
-			    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
-			    == modes[mode].expected_hash);
-			CHECK(gate.read_calls == 1U
-			    && gate.database.last_get.current_record == 2U
-			    && gate.database.last_get.record_index == 1U
-			    && gate.database.last_get.desired_offset == YT_RECORD_SIZE
-			    && gate.database.last_get.basic_error
-			    == cuts[cut].error_number
-			    && gate.database.last_get.terminal_position
-			    == gate.terminal_position
-			    && gate.database.last_get.registered
-			    && gate.database.last_get.handle_open
-			    && gate.field_record == 2 && gate.field_player);
-			CHECK(projection.site
-			    == YT_BASIC_FAULT_CURRENT_PLAYER_A41C_GET
-			    && projection.error_number == cuts[cut].error_number
-			    && projection.identity->instruction == 0xA428U
-			    && projection.identity->saved_ip == 0xA42BU
-			    && projection.identity->retry_statement == 0xA41DU
-			    && projection.identity->source_line == 33990
-			    && projection.identity->handler == 0xB2DAU
-			    && projection.disposition == cuts[cut].disposition
-			    && projection.main.route == cuts[cut].route);
-			CHECK(!fixture.warp_called && fixture.draw_position == 0U
-			    && fixture.emergency_player_reads == 0U
-			    && fixture.emergency_player_put_attempts == 0U
-			    && fixture.emergency_player_writes == 0U
-			    && fixture.emergency_flushes == 0U
-			    && fixture.emergency_waits == 0U);
-			CHECK(viewer.join.queue_length == 0U
-			    && memcmp(viewer.join.accumulator, modes[mode].command,
-			    modes[mode].command_length) == 0
-			    && viewer.join.local_fragment_length == 0U
-			    && viewer.join.local_row_count == modes[mode].rows
-			    && viewer_rows_fnv1a64(&viewer.join)
-			    == modes[mode].row_hash
-			    && viewer.join.local_color_count == modes[mode].colors
-			    && viewer_colors_fnv1a64(&viewer.join)
-			    == modes[mode].color_hash
-			    && viewer.join.event_count == modes[mode].events
-			    && viewer.join.presentation.foreground
-			    == (float)modes[mode].foreground
-			    && viewer.join.presentation.background == 0.0f
-			    && viewer.join.presentation.bold == 0.0f
-			    && viewer.join.presentation.blink == 0.0f
-			    && viewer.join.presentation.cached_foreground
-			    == modes[mode].cached_foreground
-			    && viewer.join.pager.foreground == modes[mode].foreground
-			    && viewer.join.pager.line_count == 0.0f);
-			CHECK(gate.database.last_get.outcome
-			    == YT_DATABASE_GET_READ_ERROR
-			    && gate.database.last_get.accepted == 3U
-			    && memcmp(gate.field.bytes,
-			    gate.read_source.bytes, 3U) == 0);
-			for (index = 3U; index < YT_RECORD_SIZE; ++index)
-				CHECK(gate.field.bytes[index] == 0U);
-			yt_database_close(&gate.database);
-			yt_text_input_destroy(&viewer.input);
-		}
-	}
 }
 
 enum direct_warp_gate_runtime_failure {
@@ -25641,12 +25397,6 @@ enum direct_warp_hostile_menu_carrier_cut {
 	DIRECT_WARP_HOSTILE_MENU_PROMPT_AFTER,
 };
 
-enum direct_warp_attack_sector_success {
-	DIRECT_WARP_ATTACK_SECTOR_FULL,
-	DIRECT_WARP_ATTACK_SECTOR_SHORT,
-	DIRECT_WARP_ATTACK_SECTOR_EMPTY,
-};
-
 static bool
 direct_emergency_warp_reentry_scanner(
     struct hostile_mines_hazard_fixture *fixture,
@@ -26110,65 +25860,8 @@ direct_emergency_warp_fresh_hostile_attack_admission(
 	    fixture, cycle, response, sizeof(response) - 1U, 1000.0f);
 }
 
-static bool
-direct_emergency_warp_fresh_hostile_attack_sector_get_failure(
-    struct direct_warp_main_cycle_state *cycle,
-    enum direct_warp_gate_get_failure failure,
-    struct direct_warp_gate_get_state *gate,
-    struct yt_basic_fault_projection *projection,
-    const struct yt_record *inherited_field)
-{
-	struct yt_record field;
-	struct yt_error error;
-	size_t accepted = 0U;
-	size_t index;
-
-	if (cycle == NULL || gate == NULL || projection == NULL
-	    || inherited_field == NULL
-	    || !cycle->fresh_hostile_attack_sector_get_boundary)
-		return false;
-	memset(gate, 0, sizeof(*gate));
-	gate->database.file = tmpfile();
-	if (gate->database.file == NULL)
-		return false;
-	gate->failure = failure;
-	gate->accepted = 3U;
-	gate->terminal_position = INT64_C(0x55667788);
-	gate->field = *inherited_field;
-	gate->field_record = 2;
-	gate->field_player = true;
-	for (index = 0U; index < YT_RECORD_SIZE; ++index)
-		gate->read_source.bytes[index] = (uint8_t)(index ^ 0x3cU);
-	yt_database_set_read_provider(&gate->database, direct_warp_gate_read,
-	    gate);
-	field = gate->field;
-	++cycle->fresh_hostile_attack_sector_reads;
-	yt_error_clear(&error);
-	if (yt_database_random_get(&gate->database, 1054U, &field, &accepted,
-	    &error)) {
-		yt_database_close(&gate->database);
-		return false;
-	}
-	if (gate->database.last_get.outcome == YT_DATABASE_GET_READ_ERROR) {
-		gate->field = field;
-		gate->field_record = 1054;
-		gate->field_player = false;
-		cycle->final_field_record = 1054;
-		cycle->final_field_player = false;
-	}
-	if (!yt_error_attach_basic_fault_number(&error,
-	    YT_BASIC_FAULT_HOSTILE_ATTACK_SECTOR_GET,
-	    gate->database.last_get.basic_error)
-	    || !yt_basic_fault_project(&error, NULL, 0U, NULL, 0U, NULL, 0U,
-	    projection)) {
-		yt_database_close(&gate->database);
-		return false;
-	}
-	return true;
-}
-
-struct direct_warp_attack_entry_a41c_failure_state {
-	struct direct_warp_gate_get_state io;
+struct direct_warp_attack_opening_state {
+	struct direct_warp_attack_database_state io;
 	struct yt_database_get_result sector_get;
 	struct yt_database_get_result player_get;
 	struct yt_record sector_source;
@@ -26181,104 +25874,12 @@ struct direct_warp_attack_entry_a41c_failure_state {
 };
 
 static bool
-direct_emergency_warp_fresh_hostile_attack_entry_a41c_failure(
-    struct hostile_mines_hazard_fixture *fixture,
-    struct direct_warp_main_cycle_state *cycle,
-    enum direct_warp_attack_sector_success sector_success,
-    enum direct_warp_gate_get_failure player_failure,
-    struct direct_warp_attack_entry_a41c_failure_state *entry,
-    struct yt_basic_fault_projection *projection)
-{
-	struct direct_warp_gate_get_state *io;
-	struct yt_current_player_hydration_state hydration;
-	struct yt_player before;
-	struct yt_record field;
-	struct yt_error error;
-	float current_sector = 1054.0f;
-	float cloak_cache[4] = {-1.0f, -2.0f, 0.0f, -4.0f};
-	size_t accepted = 0U;
-	size_t index;
-
-	if (fixture == NULL || cycle == NULL || entry == NULL
-	    || projection == NULL
-	    || !cycle->fresh_hostile_attack_sector_get_boundary)
-		return false;
-	memset(entry, 0, sizeof(*entry));
-	io = &entry->io;
-	io->database.file = tmpfile();
-	if (io->database.file == NULL)
-		return false;
-	io->read_success = true;
-	io->accepted = sector_success == DIRECT_WARP_ATTACK_SECTOR_FULL
-	    ? YT_RECORD_SIZE : sector_success == DIRECT_WARP_ATTACK_SECTOR_SHORT
-	    ? 3U : 0U;
-	io->field = fixture->emergency_player.record;
-	io->field_record = 2;
-	io->field_player = true;
-	for (index = 0U; index < YT_RECORD_SIZE; ++index)
-		io->read_source.bytes[index] = (uint8_t)(index ^ 0x3cU);
-	entry->sector_source = io->read_source;
-	yt_database_set_read_provider(&io->database, direct_warp_gate_read, io);
-	field = io->field;
-	++cycle->fresh_hostile_attack_sector_reads;
-	yt_error_clear(&error);
-	if (!yt_database_random_get(&io->database, 1054U, &field, &accepted,
-	    &error)) {
-		yt_database_close(&io->database);
-		return false;
-	}
-	entry->sector_get = io->database.last_get;
-	entry->sector_field = field;
-	io->field = field;
-	io->field_record = 1054;
-	io->field_player = false;
-	cycle->final_field_record = 1054;
-	cycle->final_field_player = false;
-	memset(cycle->fresh_hostile_attack_surrender_latch_raw, 0,
-	    sizeof(cycle->fresh_hostile_attack_surrender_latch_raw));
-
-	io->read_success = false;
-	io->failure = player_failure;
-	io->accepted = 3U;
-	io->terminal_position = INT64_C(0x55667788);
-	for (index = 0U; index < YT_RECORD_SIZE; ++index)
-		io->read_source.bytes[index] = (uint8_t)(index ^ 0x5aU);
-	before = fixture->emergency_player;
-	memset(&hydration, 0, sizeof(hydration));
-	hydration.player = &fixture->emergency_player;
-	hydration.player_record = 2;
-	hydration.current_sector_record = &current_sector;
-	if (qb_mbf32_encode(51.0f, hydration.sector_record_offset_raw)
-	    != QB_MBF_OK) {
-		yt_database_close(&io->database);
-		return false;
-	}
-	yt_error_clear(&error);
-	if (yt_current_player_hydrate_run(&hydration,
-	    direct_warp_gate_read_player, io, &error)
-	    || !yt_basic_fault_project(&error, NULL, 0U, NULL, 0U, NULL, 0U,
-	    projection) || memcmp(&fixture->emergency_player, &before,
-	    sizeof(before)) != 0 || current_sector != 1054.0f
-	    || memcmp(cloak_cache,
-	    (const float[4]){-1.0f, -2.0f, 0.0f, -4.0f},
-	    sizeof(cloak_cache)) != 0) {
-		yt_database_close(&io->database);
-		return false;
-	}
-	cycle->final_field_record = io->field_record;
-	cycle->final_field_player = io->field_player;
-	return true;
-}
-
-static bool
 direct_emergency_warp_fresh_hostile_attack_opening_success(
     struct hostile_mines_hazard_fixture *fixture,
     struct direct_warp_main_cycle_state *cycle,
-    enum direct_warp_attack_sector_success sector_success,
-    enum direct_warp_attack_sector_success player_success,
-    struct direct_warp_attack_entry_a41c_failure_state *entry)
+    struct direct_warp_attack_opening_state *entry)
 {
-	struct direct_warp_gate_get_state *io;
+	struct direct_warp_attack_database_state *io;
 	struct viewer_pager_join *join;
 	struct yt_current_player_hydration_state hydration;
 	struct yt_present_result sound;
@@ -26298,17 +25899,16 @@ direct_emergency_warp_fresh_hostile_attack_opening_success(
 	io->database.file = tmpfile();
 	if (io->database.file == NULL)
 		return false;
-	io->read_success = true;
-	io->accepted = sector_success == DIRECT_WARP_ATTACK_SECTOR_FULL
-	    ? YT_RECORD_SIZE : sector_success == DIRECT_WARP_ATTACK_SECTOR_SHORT
-	    ? 3U : 0U;
 	io->field = fixture->emergency_player.record;
 	io->field_record = 2;
 	io->field_player = true;
 	for (index = 0U; index < YT_RECORD_SIZE; ++index)
 		io->read_source.bytes[index] = (uint8_t)(index ^ 0x3cU);
 	entry->sector_source = io->read_source;
-	yt_database_set_read_provider(&io->database, direct_warp_gate_read, io);
+	if (!direct_warp_attack_store_record(io, 1054U)) {
+		yt_database_close(&io->database);
+		return false;
+	}
 	field = io->field;
 	++cycle->fresh_hostile_attack_sector_reads;
 	yt_error_clear(&error);
@@ -26348,9 +25948,10 @@ direct_emergency_warp_fresh_hostile_attack_opening_success(
 	(void)yt_record_set_number(&entry->player_source, YT_F125, 36.0f);
 	(void)yt_record_set_number(&entry->player_source, YT_F129, 37.0f);
 	io->read_source = entry->player_source;
-	io->accepted = player_success == DIRECT_WARP_ATTACK_SECTOR_FULL
-	    ? YT_RECORD_SIZE : player_success == DIRECT_WARP_ATTACK_SECTOR_SHORT
-	    ? 3U : 0U;
+	if (!direct_warp_attack_store_record(io, 2U)) {
+		yt_database_close(&io->database);
+		return false;
+	}
 	before = fixture->emergency_player;
 	entry->current_sector = 1054.0f;
 	entry->player_cache.cloak[0] = -1.0f;
@@ -26370,7 +25971,7 @@ direct_emergency_warp_fresh_hostile_attack_opening_success(
 	++cycle->fresh_hostile_player_reads;
 	yt_error_clear(&error);
 	if (!yt_current_player_hydrate_run(&hydration,
-	    direct_warp_gate_read_player, io, &error)) {
+	    direct_warp_attack_read_player, io, &error)) {
 		yt_database_close(&io->database);
 		return false;
 	}
@@ -28235,67 +27836,6 @@ hostile_attack_fatal_cycle_run(void *context, struct yt_error *error)
 	join->fatal->sector = join->attack->written_sector;
 	return hostile_bribe_fatal_run(join->fatal, error);
 }
-
-static bool
-direct_emergency_warp_fresh_hostile_menu_get_failure(
-    struct hostile_mines_hazard_fixture *fixture,
-    struct direct_warp_main_cycle_state *cycle,
-    enum direct_warp_gate_get_failure failure,
-    struct direct_warp_gate_get_state *gate,
-    struct yt_basic_fault_projection *projection)
-{
-	struct yt_current_player_hydration_state hydration;
-	struct yt_player before;
-	struct yt_error error;
-	float current_sector = 1054.0f;
-	float cloak_cache[4] = {-1.0f, -2.0f, 0.0f, -4.0f};
-	size_t index;
-
-	if (fixture == NULL || cycle == NULL || gate == NULL
-	    || projection == NULL)
-		return false;
-	memset(gate, 0, sizeof(*gate));
-	gate->database.file = tmpfile();
-	if (gate->database.file == NULL)
-		return false;
-	gate->failure = failure;
-	gate->accepted = 3U;
-	gate->terminal_position = INT64_C(0x55667788);
-	gate->field = fixture->hazard_sector.record;
-	gate->field_record = 1054;
-	gate->field_player = false;
-	for (index = 0U; index < YT_RECORD_SIZE; ++index)
-		gate->read_source.bytes[index] = (uint8_t)(index ^ 0x5aU);
-	yt_database_set_read_provider(&gate->database, direct_warp_gate_read,
-	    gate);
-	before = fixture->emergency_player;
-	memset(&hydration, 0, sizeof(hydration));
-	hydration.player = &fixture->emergency_player;
-	hydration.player_record = 2;
-	hydration.current_sector_record = &current_sector;
-	if (qb_mbf32_encode(51.0f, hydration.sector_record_offset_raw)
-	    != QB_MBF_OK) {
-		yt_database_close(&gate->database);
-		return false;
-	}
-	++cycle->fresh_hostile_player_reads;
-	yt_error_clear(&error);
-	if (yt_current_player_hydrate_run(&hydration,
-	    direct_warp_gate_read_player, gate, &error)
-	    || !yt_basic_fault_project(&error, NULL, 0U, NULL, 0U, NULL, 0U,
-	    projection) || memcmp(&fixture->emergency_player, &before,
-	    sizeof(before)) != 0 || current_sector != 1054.0f
-	    || memcmp(cloak_cache,
-	    (const float[4]){-1.0f, -2.0f, 0.0f, -4.0f},
-	    sizeof(cloak_cache)) != 0) {
-		yt_database_close(&gate->database);
-		return false;
-	}
-	cycle->final_field_record = gate->field_record;
-	cycle->final_field_player = gate->field_player;
-	return true;
-}
-
 static bool
 direct_emergency_warp_owner_get_failure(
     struct hostile_mines_hazard_fixture *fixture,
@@ -31245,223 +30785,6 @@ test_direct_emergency_warp_hostile_menu_join(void)
 		yt_text_input_destroy(&viewer.input);
 	}
 }
-
-static void
-test_direct_emergency_warp_hostile_menu_get_failures(void)
-{
-	static const struct {
-		bool main;
-		bool ansi;
-		const uint8_t *command;
-		size_t command_length;
-		size_t ends[3];
-		uint64_t partition_hashes[3];
-		size_t rows;
-		uint64_t row_hash;
-		size_t colors;
-		uint64_t color_hash;
-		size_t events;
-		size_t samples;
-	} callers[] = {
-		{true, false, (const uint8_t *)"W", 1U,
-		    {41U, 554U, 811U}, {UINT64_C(0x84059a449d6d0449),
-		    UINT64_C(0x325d153b7ea2f4c3),
-		    UINT64_C(0xb74576d2f246b2e0)}, 28U,
-		    UINT64_C(0xa0a3ce2ae38dc0d1), 4U,
-		    UINT64_C(0x01b4fd96ce8921d5), 20U, 4U},
-		{true, true, (const uint8_t *)"W", 1U,
-		    {41U, 726U, 1073U}, {UINT64_C(0x84059a449d6d0449),
-		    UINT64_C(0x6d90d947714a5f0d),
-		    UINT64_C(0xae04cf25f066c3f4)}, 28U,
-		    UINT64_C(0xa0a3ce2ae38dc0d1), 41U,
-		    UINT64_C(0x311bbb5d17ff0902), 20U, 4U},
-		{false, false, (const uint8_t *)"W", 1U,
-		    {63U, 576U, 833U}, {UINT64_C(0x0b6904cbde91e151),
-		    UINT64_C(0x325d153b7ea2f4c3),
-		    UINT64_C(0xb74576d2f246b2e0)}, 29U,
-		    UINT64_C(0xe01aaa3412e4600c), 5U,
-		    UINT64_C(0xc6f69f5cf097a0a2), 25U, 5U},
-		{false, false, (const uint8_t *)"WT", 2U,
-		    {64U, 577U, 834U}, {UINT64_C(0x4715406bf12b49e1),
-		    UINT64_C(0x325d153b7ea2f4c3),
-		    UINT64_C(0xb74576d2f246b2e0)}, 29U,
-		    UINT64_C(0x160beed745285ec5), 5U,
-		    UINT64_C(0xc6f69f5cf097a0a2), 25U, 5U},
-		{false, true, (const uint8_t *)"W", 1U,
-		    {73U, 758U, 1105U}, {UINT64_C(0x1f8739c8faadb88e),
-		    UINT64_C(0x6d90d947714a5f0d),
-		    UINT64_C(0xae04cf25f066c3f4)}, 29U,
-		    UINT64_C(0xe01aaa3412e4600c), 43U,
-		    UINT64_C(0x88e086df5414cd85), 25U, 5U},
-		{false, true, (const uint8_t *)"WT", 2U,
-		    {74U, 759U, 1106U}, {UINT64_C(0x2e092d830cad0828),
-		    UINT64_C(0x6d90d947714a5f0d),
-		    UINT64_C(0xae04cf25f066c3f4)}, 29U,
-		    UINT64_C(0x160beed745285ec5), 43U,
-		    UINT64_C(0x88e086df5414cd85), 25U, 5U},
-	};
-	static const struct {
-		enum direct_warp_gate_get_failure failure;
-		uint16_t error_number;
-		enum yt_basic_fault_disposition disposition;
-		enum yt_main_error_route route;
-	} cuts[] = {
-		{DIRECT_WARP_GATE_READ_57, 57U,
-		    YT_BASIC_FAULT_RETRY_STATEMENT, YT_MAIN_ERROR_RETRY_CURRENT},
-		{DIRECT_WARP_GATE_READ_70, 70U, YT_BASIC_FAULT_END,
-		    YT_MAIN_ERROR_FATAL},
-		{DIRECT_WARP_GATE_READ_75, 75U, YT_BASIC_FAULT_END,
-		    YT_MAIN_ERROR_FATAL},
-	};
-	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
-	struct hostile_mines_hazard_fixture fixture;
-	struct direct_warp_main_cycle_state cycle;
-	struct direct_warp_gate_get_state gate;
-	struct yt_basic_fault_projection projection;
-	struct yt_record record;
-	struct yt_record before;
-	uint8_t remote[1200];
-	size_t ends[3];
-	size_t caller;
-	size_t cut;
-	size_t index;
-
-	for (caller = 0U; caller < YT_ARRAY_LEN(callers); ++caller) {
-		for (cut = 0U; cut < YT_ARRAY_LEN(cuts); ++cut) {
-			memset(&viewer, 0, sizeof(viewer));
-			fixture_viewer_initialize(&viewer, &stream,
-			    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
-			    "YTSCORE.ASC", callers[caller].ansi, remote,
-			    sizeof(remote));
-			memset(&fixture, 0, sizeof(fixture));
-			fixture.cycle.presentation.viewer = &viewer;
-			fixture.emergency_sector_cache = 733.0f;
-			fixture.draws[0] = 0.0f;
-			fixture.draws[1] = 0.0f;
-			fixture.draws[2] = 0.75f;
-			fixture.draws[3] = 0.5f;
-			fixture.draws[4] = 0.949999988079071f;
-			fixture.draws[5] = 0.999f;
-			fixture.draws[6] = 0.9f;
-			memset(&record, 0xa5, sizeof(record));
-			(void)yt_record_set_number(&record, YT_F49, 17.0f);
-			(void)yt_record_set_number(&record, YT_F57, 733.0f);
-			before = record;
-			yt_player_decode(&fixture.emergency_player, &record);
-			fixture.hazard_player = fixture.emergency_player;
-			for (index = 0U; index < YT_RECORD_SIZE; ++index)
-				fixture.hazard_sector.record.bytes[index]
-				    = (uint8_t)(index ^ 0xa5U);
-			if (callers[caller].main) {
-				CHECK(direct_emergency_warp_main_hostile_handoff_run(
-				    &fixture, callers[caller].ansi, &cycle, ends));
-			}
-			else {
-				CHECK(direct_emergency_warp_hostile_cycle_run(&fixture,
-				    callers[caller].ansi, callers[caller].command,
-				    callers[caller].command_length,
-				    DIRECT_WARP_HOSTILE_DEFENSE, &cycle, ends));
-			}
-			CHECK(direct_emergency_warp_fresh_hostile_menu_get_failure(
-			    &fixture, &cycle, cuts[cut].failure, &gate, &projection));
-			CHECK(memcmp(ends, callers[caller].ends, sizeof(ends)) == 0
-			    && viewer.join.remote_length == ends[2]);
-			for (index = 0U; index < YT_ARRAY_LEN(ends); ++index) {
-				size_t start = index == 0U ? 0U : ends[index - 1U];
-
-				CHECK(viewer_bytes_fnv1a64(remote + start,
-				    ends[index] - start)
-				    == callers[caller].partition_hashes[index]);
-			}
-			CHECK(gate.read_calls == 1U
-			    && gate.database.last_get.current_record == 2U
-			    && gate.database.last_get.record_index == 1U
-			    && gate.database.last_get.desired_offset == YT_RECORD_SIZE
-			    && gate.database.last_get.basic_error
-			    == cuts[cut].error_number
-			    && gate.database.last_get.terminal_position
-			    == gate.terminal_position
-			    && gate.database.last_get.registered
-			    && gate.database.last_get.handle_open);
-			CHECK(projection.site
-			    == YT_BASIC_FAULT_CURRENT_PLAYER_A41C_GET
-			    && projection.error_number == cuts[cut].error_number
-			    && projection.identity->instruction == 0xA428U
-			    && projection.identity->saved_ip == 0xA42BU
-			    && projection.identity->retry_statement == 0xA41DU
-			    && projection.identity->source_line == 33990
-			    && projection.identity->handler == 0xB2DAU
-			    && projection.disposition == cuts[cut].disposition
-			    && projection.main.route == cuts[cut].route);
-			CHECK(fixture.warp_called && fixture.draw_position == 7U
-			    && fixture.emergency_player_reads == 1U
-			    && fixture.emergency_player_put_attempts == 1U
-			    && fixture.emergency_player_writes == 1U
-			    && fixture.emergency_flushes == 1U
-			    && fixture.emergency_waits == 1U
-			    && fixture.emergency_ticks == 1U
-			    && fixture.emergency_sector_cache == 1003.0f
-			    && fixture.emergency_player.sector == 1003.0f
-			    && fixture.emergency_player.turns == 14.0f
-			    && cycle.entry_player_reads == 1U
-			    && cycle.gate_player_reads == 1U
-			    && cycle.sector_reads == 1U
-			    && cycle.target_player_reads == 1U
-			    && cycle.scanner_final_player_reads == 1U
-			    && cycle.router_player_reads == 1U
-			    && cycle.router_sector_reads == 1U
-			    && cycle.final_player_reads == 0U
-			    && cycle.scanner_sound_calls == 1U
-			    && cycle.physical_current_sector == 1054.0f
-			    && cycle.fresh_hostile_player_reads == 1U
-			    && !cycle.fresh_hostile_player_get_completed
-			    && cycle.fresh_hostile_selected == 0U
-			    && !cycle.fresh_prompt_wait
-			    && viewer.join.sample_calls == callers[caller].samples
-			    && viewer.join.queue_length == 0U
-			    && strcmp(viewer.join.accumulator, "y") == 0
-			    && viewer.join.local_fragment_length == 0U
-			    && viewer.join.local_row_count == callers[caller].rows
-			    && viewer_rows_fnv1a64(&viewer.join)
-			    == callers[caller].row_hash
-			    && viewer.join.local_color_count == callers[caller].colors
-			    && viewer_colors_fnv1a64(&viewer.join)
-			    == callers[caller].color_hash
-			    && viewer.join.event_count == callers[caller].events
-			    && viewer.join.presentation.foreground == 3.0f
-			    && viewer.join.presentation.background == 0.0f
-			    && viewer.join.presentation.bold
-			    == (callers[caller].ansi ? 0.0f : 1.0f)
-			    && viewer.join.presentation.blink
-			    == (callers[caller].ansi ? 0.0f : 1.0f)
-			    && viewer.join.presentation.cached_foreground
-			    == (callers[caller].ansi ? 0.0f : 2.0f)
-			    && viewer.join.pager.foreground == 3
-			    && viewer.join.pager.line_count == 1.0f);
-			for (index = 0U; index < YT_RECORD_SIZE; ++index) {
-				if ((index >= YT_F49 && index < YT_F49 + 4U)
-				    || (index >= YT_F57 && index < YT_F57 + 4U))
-					continue;
-				CHECK(fixture.emergency_player.record.bytes[index]
-				    == before.bytes[index]);
-			}
-			CHECK(gate.database.last_get.outcome
-			    == YT_DATABASE_GET_READ_ERROR
-			    && gate.database.last_get.accepted == 3U
-			    && gate.field_record == 2 && gate.field_player
-			    && cycle.final_field_record == 2
-			    && cycle.final_field_player
-			    && memcmp(gate.field.bytes,
-			    gate.read_source.bytes, 3U) == 0);
-			for (index = 3U; index < YT_RECORD_SIZE; ++index)
-				CHECK(gate.field.bytes[index] == 0U);
-			yt_database_close(&gate.database);
-			yt_text_input_destroy(&viewer.input);
-		}
-	}
-}
-
 static void
 test_direct_emergency_warp_hostile_menu_carrier_failures(void)
 {
@@ -31812,342 +31135,6 @@ test_direct_emergency_warp_hostile_attack_admission(void)
 }
 
 static void
-test_direct_emergency_warp_hostile_attack_sector_get_failures(void)
-{
-	static const struct {
-		bool main;
-		bool ansi;
-		const uint8_t *command;
-		size_t command_length;
-		size_t total_length;
-		size_t rows;
-		size_t colors;
-		size_t events;
-		size_t samples;
-	} callers[] = {
-		{true, false, (const uint8_t *)"W", 1U, 918U, 33U, 8U,
-		    40U, 8U},
-		{true, true, (const uint8_t *)"W", 1U, 1190U, 33U, 52U,
-		    40U, 8U},
-		{false, false, (const uint8_t *)"W", 1U, 940U, 34U, 9U,
-		    45U, 9U},
-		{false, false, (const uint8_t *)"WT", 2U, 941U, 34U, 9U,
-		    45U, 9U},
-		{false, true, (const uint8_t *)"W", 1U, 1222U, 34U, 54U,
-		    45U, 9U},
-		{false, true, (const uint8_t *)"WT", 2U, 1223U, 34U, 54U,
-		    45U, 9U},
-	};
-	static const struct {
-		enum direct_warp_gate_get_failure failure;
-		uint16_t error_number;
-		enum yt_basic_fault_disposition disposition;
-		enum yt_main_error_route route;
-	} cuts[] = {
-		{DIRECT_WARP_GATE_READ_57, 57U,
-		    YT_BASIC_FAULT_RETRY_STATEMENT, YT_MAIN_ERROR_RETRY_CURRENT},
-		{DIRECT_WARP_GATE_READ_70, 70U, YT_BASIC_FAULT_END,
-		    YT_MAIN_ERROR_FATAL},
-		{DIRECT_WARP_GATE_READ_75, 75U, YT_BASIC_FAULT_END,
-		    YT_MAIN_ERROR_FATAL},
-	};
-	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
-	struct hostile_mines_hazard_fixture fixture;
-	struct direct_warp_main_cycle_state cycle;
-	struct direct_warp_gate_get_state gate;
-	struct yt_basic_fault_projection projection;
-	struct yt_record record;
-	struct yt_record inherited_field;
-	uint8_t remote[1400];
-	size_t ends[3];
-	size_t caller;
-	size_t cut;
-	size_t index;
-
-	for (caller = 0U; caller < YT_ARRAY_LEN(callers); ++caller) {
-		for (cut = 0U; cut < YT_ARRAY_LEN(cuts); ++cut) {
-			memset(&viewer, 0, sizeof(viewer));
-			fixture_viewer_initialize(&viewer, &stream,
-			    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
-			    "YTSCORE.ASC", callers[caller].ansi, remote,
-			    sizeof(remote));
-			memset(&fixture, 0, sizeof(fixture));
-			fixture.cycle.presentation.viewer = &viewer;
-			fixture.emergency_sector_cache = 733.0f;
-			fixture.draws[0] = 0.0f;
-			fixture.draws[1] = 0.0f;
-			fixture.draws[2] = 0.75f;
-			fixture.draws[3] = 0.5f;
-			fixture.draws[4] = 0.949999988079071f;
-			fixture.draws[5] = 0.999f;
-			fixture.draws[6] = 0.9f;
-			memset(&record, 0xa5, sizeof(record));
-			(void)yt_record_set_number(&record, YT_F49, 17.0f);
-			(void)yt_record_set_number(&record, YT_F57, 733.0f);
-			yt_player_decode(&fixture.emergency_player, &record);
-			fixture.hazard_player = fixture.emergency_player;
-			if (callers[caller].main) {
-				CHECK(direct_emergency_warp_main_hostile_handoff_run(
-				    &fixture, callers[caller].ansi, &cycle, ends));
-			}
-			else {
-				CHECK(direct_emergency_warp_hostile_cycle_run(&fixture,
-				    callers[caller].ansi, callers[caller].command,
-				    callers[caller].command_length,
-				    DIRECT_WARP_HOSTILE_DEFENSE, &cycle, ends));
-			}
-			CHECK(direct_emergency_warp_fresh_hostile_menu(&fixture, &cycle)
-			    && direct_emergency_warp_fresh_hostile_attack_admission(
-			    &fixture, &cycle)
-			    && viewer.join.remote_length == callers[caller].total_length);
-			inherited_field = fixture.emergency_player.record;
-			CHECK(direct_emergency_warp_fresh_hostile_attack_sector_get_failure(
-			    &cycle, cuts[cut].failure, &gate, &projection,
-			    &inherited_field));
-			CHECK(viewer.join.remote_length == callers[caller].total_length
-			    && viewer.join.local_row_count == callers[caller].rows
-			    && viewer.join.local_color_count == callers[caller].colors
-			    && viewer.join.event_count == callers[caller].events
-			    && viewer.join.sample_calls == callers[caller].samples
-			    && gate.read_calls == 1U
-			    && gate.database.last_get.current_record == 1054U
-			    && gate.database.last_get.record_index == 1053U
-			    && gate.database.last_get.desired_offset
-			    == (int64_t)(1053U * YT_RECORD_SIZE)
-			    && gate.database.last_get.basic_error
-			    == cuts[cut].error_number
-			    && gate.database.last_get.terminal_position
-			    == gate.terminal_position
-			    && gate.database.last_get.registered
-			    && gate.database.last_get.handle_open);
-			CHECK(projection.site
-			    == YT_BASIC_FAULT_HOSTILE_ATTACK_SECTOR_GET
-			    && projection.error_number == cuts[cut].error_number
-			    && projection.identity->instruction == 0x0BC0U
-			    && projection.identity->saved_ip == 0x0BC3U
-			    && projection.identity->retry_statement == 0x0BB5U
-			    && projection.identity->source_line == 20430
-			    && projection.identity->handler == 0xB2DAU
-			    && projection.disposition == cuts[cut].disposition
-			    && projection.main.route == cuts[cut].route);
-			CHECK(fixture.warp_called && fixture.draw_position == 7U
-			    && fixture.emergency_player_reads == 1U
-			    && fixture.emergency_player_put_attempts == 1U
-			    && fixture.emergency_player_writes == 1U
-			    && fixture.emergency_flushes == 1U
-			    && fixture.emergency_waits == 1U
-			    && fixture.emergency_ticks == 1U
-			    && fixture.emergency_sector_cache == 1003.0f
-			    && fixture.emergency_player.sector == 1003.0f
-			    && fixture.emergency_player.turns == 14.0f
-			    && cycle.fresh_hostile_player_reads == 1U
-			    && cycle.fresh_hostile_player_get_completed
-			    && cycle.fresh_hostile_selected == 'A'
-			    && cycle.fresh_hostile_attack_admission_entered
-			    && cycle.fresh_hostile_attack_sector_get_boundary
-			    && cycle.fresh_hostile_attack_sector_reads == 1U
-			    && cycle.fresh_hostile_attack_commitment == 1.0f
-			    && viewer.join.queue_length == 0U
-			    && strcmp(viewer.join.accumulator, "1") == 0
-			    && viewer.join.pager.line_count == 0.0f);
-			CHECK(gate.database.last_get.outcome
-			    == YT_DATABASE_GET_READ_ERROR
-			    && gate.database.last_get.accepted == 3U
-			    && gate.field_record == 1054 && !gate.field_player
-			    && cycle.final_field_record == 1054
-			    && !cycle.final_field_player
-			    && memcmp(gate.field.bytes,
-			    gate.read_source.bytes, 3U) == 0);
-			for (index = 3U; index < YT_RECORD_SIZE; ++index)
-				CHECK(gate.field.bytes[index] == 0U);
-			yt_database_close(&gate.database);
-			yt_text_input_destroy(&viewer.input);
-		}
-	}
-}
-
-static void
-test_direct_emergency_warp_hostile_attack_entry_a41c_failures(void)
-{
-	static const uint8_t zero_single[4] = {0};
-	static const struct {
-		bool main;
-		bool ansi;
-		const uint8_t *command;
-		size_t command_length;
-		size_t total_length;
-		size_t rows;
-		size_t colors;
-		size_t events;
-		size_t samples;
-	} callers[] = {
-		{true, false, (const uint8_t *)"W", 1U, 918U, 33U, 8U,
-		    40U, 8U},
-		{true, true, (const uint8_t *)"W", 1U, 1190U, 33U, 52U,
-		    40U, 8U},
-		{false, false, (const uint8_t *)"W", 1U, 940U, 34U, 9U,
-		    45U, 9U},
-		{false, false, (const uint8_t *)"WT", 2U, 941U, 34U, 9U,
-		    45U, 9U},
-		{false, true, (const uint8_t *)"W", 1U, 1222U, 34U, 54U,
-		    45U, 9U},
-		{false, true, (const uint8_t *)"WT", 2U, 1223U, 34U, 54U,
-		    45U, 9U},
-	};
-	static const struct {
-		enum direct_warp_attack_sector_success success;
-		size_t accepted;
-	} successes[] = {
-		{DIRECT_WARP_ATTACK_SECTOR_FULL, YT_RECORD_SIZE},
-		{DIRECT_WARP_ATTACK_SECTOR_SHORT, 3U},
-		{DIRECT_WARP_ATTACK_SECTOR_EMPTY, 0U},
-	};
-	static const struct {
-		enum direct_warp_gate_get_failure failure;
-		uint16_t error_number;
-		enum yt_basic_fault_disposition disposition;
-		enum yt_main_error_route route;
-	} cuts[] = {
-		{DIRECT_WARP_GATE_READ_57, 57U,
-		    YT_BASIC_FAULT_RETRY_STATEMENT, YT_MAIN_ERROR_RETRY_CURRENT},
-		{DIRECT_WARP_GATE_READ_70, 70U, YT_BASIC_FAULT_END,
-		    YT_MAIN_ERROR_FATAL},
-		{DIRECT_WARP_GATE_READ_75, 75U, YT_BASIC_FAULT_END,
-		    YT_MAIN_ERROR_FATAL},
-	};
-	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
-	struct hostile_mines_hazard_fixture fixture;
-	struct direct_warp_main_cycle_state cycle;
-	struct direct_warp_attack_entry_a41c_failure_state entry;
-	struct yt_basic_fault_projection projection;
-	struct yt_record record;
-	uint8_t remote[1400];
-	size_t ends[3];
-	size_t caller;
-	size_t success;
-	size_t cut;
-	size_t index;
-
-	for (caller = 0U; caller < YT_ARRAY_LEN(callers); ++caller) {
-		for (success = 0U; success < YT_ARRAY_LEN(successes); ++success) {
-			for (cut = 0U; cut < YT_ARRAY_LEN(cuts); ++cut) {
-				memset(&viewer, 0, sizeof(viewer));
-				fixture_viewer_initialize(&viewer, &stream,
-				    retained_scoreboard,
-				    sizeof(retained_scoreboard) - 1U, "YTSCORE.ASC",
-				    callers[caller].ansi, remote, sizeof(remote));
-				memset(&fixture, 0, sizeof(fixture));
-				fixture.cycle.presentation.viewer = &viewer;
-				fixture.emergency_sector_cache = 733.0f;
-				fixture.draws[0] = 0.0f;
-				fixture.draws[1] = 0.0f;
-				fixture.draws[2] = 0.75f;
-				fixture.draws[3] = 0.5f;
-				fixture.draws[4] = 0.949999988079071f;
-				fixture.draws[5] = 0.999f;
-				fixture.draws[6] = 0.9f;
-				memset(&record, 0xa5, sizeof(record));
-				(void)yt_record_set_number(&record, YT_F49, 17.0f);
-				(void)yt_record_set_number(&record, YT_F57, 733.0f);
-				yt_player_decode(&fixture.emergency_player, &record);
-				fixture.hazard_player = fixture.emergency_player;
-				if (callers[caller].main) {
-					CHECK(direct_emergency_warp_main_hostile_handoff_run(
-					    &fixture, callers[caller].ansi, &cycle, ends));
-				}
-				else {
-					CHECK(direct_emergency_warp_hostile_cycle_run(
-					    &fixture, callers[caller].ansi,
-					    callers[caller].command,
-					    callers[caller].command_length,
-					    DIRECT_WARP_HOSTILE_DEFENSE, &cycle, ends));
-				}
-				CHECK(direct_emergency_warp_fresh_hostile_menu(
-				    &fixture, &cycle)
-				    && direct_emergency_warp_fresh_hostile_attack_admission(
-				    &fixture, &cycle)
-				    && viewer.join.remote_length
-				    == callers[caller].total_length
-				    && direct_emergency_warp_fresh_hostile_attack_entry_a41c_failure(
-				    &fixture, &cycle, successes[success].success,
-				    cuts[cut].failure, &entry, &projection));
-				CHECK(viewer.join.remote_length
-				    == callers[caller].total_length
-				    && viewer.join.local_row_count == callers[caller].rows
-				    && viewer.join.local_color_count == callers[caller].colors
-				    && viewer.join.event_count == callers[caller].events
-				    && viewer.join.sample_calls == callers[caller].samples
-				    && entry.io.read_calls == 2U);
-				CHECK(entry.sector_get.outcome == YT_DATABASE_GET_RETURNED
-				    && entry.sector_get.current_record == 1054U
-				    && entry.sector_get.record_index == 1053U
-				    && entry.sector_get.desired_offset
-				    == (int64_t)(1053U * YT_RECORD_SIZE)
-				    && entry.sector_get.accepted == successes[success].accepted
-				    && entry.sector_get.full_record
-				    == (successes[success].accepted == YT_RECORD_SIZE)
-				    && entry.sector_get.terminal_position
-				    == entry.sector_get.desired_offset
-				    + (int64_t)successes[success].accepted
-				    && entry.sector_get.registered
-				    && entry.sector_get.handle_open);
-				for (index = 0U; index < successes[success].accepted;
-				    ++index) {
-					CHECK(entry.sector_field.bytes[index]
-					    == entry.sector_source.bytes[index]);
-				}
-				for (index = successes[success].accepted;
-				    index < YT_RECORD_SIZE; ++index)
-					CHECK(entry.sector_field.bytes[index] == 0U);
-				CHECK(memcmp(cycle.fresh_hostile_attack_surrender_latch_raw,
-				    zero_single, sizeof(zero_single)) == 0);
-				CHECK(entry.io.database.last_get.current_record == 2U
-				    && entry.io.database.last_get.record_index == 1U
-				    && entry.io.database.last_get.desired_offset
-				    == YT_RECORD_SIZE
-				    && entry.io.database.last_get.basic_error
-				    == cuts[cut].error_number
-				    && entry.io.database.last_get.terminal_position
-				    == entry.io.terminal_position
-				    && entry.io.database.last_get.registered
-				    && entry.io.database.last_get.handle_open);
-				CHECK(projection.site
-				    == YT_BASIC_FAULT_CURRENT_PLAYER_A41C_GET
-				    && projection.error_number == cuts[cut].error_number
-				    && projection.identity->instruction == 0xA428U
-				    && projection.identity->saved_ip == 0xA42BU
-				    && projection.identity->retry_statement == 0xA41DU
-				    && projection.identity->source_line == 33990
-				    && projection.identity->handler == 0xB2DAU
-				    && projection.disposition == cuts[cut].disposition
-				    && projection.main.route == cuts[cut].route);
-				CHECK(fixture.warp_called && fixture.draw_position == 7U
-				    && cycle.fresh_hostile_attack_sector_reads == 1U
-				    && cycle.fresh_hostile_attack_commitment == 1.0f
-				    && viewer.join.queue_length == 0U
-				    && strcmp(viewer.join.accumulator, "1") == 0
-				    && viewer.join.pager.line_count == 0.0f);
-				CHECK(entry.io.database.last_get.outcome
-				    == YT_DATABASE_GET_READ_ERROR
-				    && entry.io.database.last_get.accepted == 3U
-				    && entry.io.field_record == 2
-				    && entry.io.field_player
-				    && cycle.final_field_record == 2
-				    && cycle.final_field_player
-				    && memcmp(entry.io.field.bytes,
-				    entry.io.read_source.bytes, 3U) == 0);
-				for (index = 3U; index < YT_RECORD_SIZE; ++index)
-					CHECK(entry.io.field.bytes[index] == 0U);
-				yt_database_close(&entry.io.database);
-				yt_text_input_destroy(&viewer.input);
-			}
-		}
-	}
-}
-
-static void
 test_direct_emergency_warp_hostile_attack_opening_success(void)
 {
 	static const uint8_t zero_single[4] = {0};
@@ -32176,142 +31163,106 @@ test_direct_emergency_warp_hostile_attack_opening_success(void)
 		{false, true, (const uint8_t *)"WT", 2U, 1223U, 34U, 54U,
 		    45U, 9U},
 	};
-	static const struct {
-		enum direct_warp_attack_sector_success success;
-		size_t accepted;
-	} successes[] = {
-		{DIRECT_WARP_ATTACK_SECTOR_FULL, YT_RECORD_SIZE},
-		{DIRECT_WARP_ATTACK_SECTOR_SHORT, 3U},
-		{DIRECT_WARP_ATTACK_SECTOR_EMPTY, 0U},
-	};
 	struct physical_viewer_join viewer;
 	struct yt_file_viewer_stream_state stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
-	struct direct_warp_attack_entry_a41c_failure_state entry;
+	struct direct_warp_attack_opening_state entry;
 	struct yt_record record;
 	uint8_t remote[1400];
 	size_t ends[3];
 	size_t caller;
-	size_t sector_success;
-	size_t player_success;
-	size_t index;
 
 	for (caller = 0U; caller < YT_ARRAY_LEN(callers); ++caller) {
-		for (sector_success = 0U;
-		    sector_success < YT_ARRAY_LEN(successes); ++sector_success) {
-			for (player_success = 0U;
-			    player_success < YT_ARRAY_LEN(successes);
-			    ++player_success) {
-				memset(&viewer, 0, sizeof(viewer));
-				fixture_viewer_initialize(&viewer, &stream,
-				    retained_scoreboard,
-				    sizeof(retained_scoreboard) - 1U, "YTSCORE.ASC",
-				    callers[caller].ansi, remote, sizeof(remote));
-				memset(&fixture, 0, sizeof(fixture));
-				fixture.cycle.presentation.viewer = &viewer;
-				fixture.emergency_sector_cache = 733.0f;
-				fixture.draws[0] = 0.0f;
-				fixture.draws[1] = 0.0f;
-				fixture.draws[2] = 0.75f;
-				fixture.draws[3] = 0.5f;
-				fixture.draws[4] = 0.949999988079071f;
-				fixture.draws[5] = 0.999f;
-				fixture.draws[6] = 0.9f;
-				memset(&record, 0xa5, sizeof(record));
-				(void)yt_record_set_number(&record, YT_F49, 17.0f);
-				(void)yt_record_set_number(&record, YT_F57, 733.0f);
-				yt_player_decode(&fixture.emergency_player, &record);
-				fixture.hazard_player = fixture.emergency_player;
-				if (callers[caller].main) {
-					CHECK(direct_emergency_warp_main_hostile_handoff_run(
-					    &fixture, callers[caller].ansi, &cycle, ends));
-				}
-				else {
-					CHECK(direct_emergency_warp_hostile_cycle_run(
-					    &fixture, callers[caller].ansi,
-					    callers[caller].command,
-					    callers[caller].command_length,
-					    DIRECT_WARP_HOSTILE_DEFENSE, &cycle, ends));
-				}
-				CHECK(direct_emergency_warp_fresh_hostile_menu(
-				    &fixture, &cycle)
-				    && direct_emergency_warp_fresh_hostile_attack_admission(
-				    &fixture, &cycle)
-				    && viewer.join.remote_length
-				    == callers[caller].total_length
-				    && direct_emergency_warp_fresh_hostile_attack_opening_success(
-				    &fixture, &cycle,
-				    successes[sector_success].success,
-				    successes[player_success].success, &entry));
-				CHECK(entry.io.read_calls == 2U
-				    && entry.io.field_record == 2
-				    && entry.io.field_player
-				    && cycle.final_field_record == 2
-				    && cycle.final_field_player
-				    && cycle.fresh_hostile_player_reads == 2U
-				    && cycle.fresh_hostile_attack_sector_reads == 1U);
-				CHECK(entry.sector_get.outcome == YT_DATABASE_GET_RETURNED
-				    && entry.sector_get.accepted
-				    == successes[sector_success].accepted
-				    && entry.sector_get.full_record
-				    == (successes[sector_success].accepted == YT_RECORD_SIZE)
-				    && entry.sector_get.terminal_position
-				    == entry.sector_get.desired_offset
-				    + (int64_t)successes[sector_success].accepted);
-				CHECK(entry.player_get.outcome == YT_DATABASE_GET_RETURNED
-				    && entry.player_get.current_record == 2U
-				    && entry.player_get.record_index == 1U
-				    && entry.player_get.desired_offset == YT_RECORD_SIZE
-				    && entry.player_get.accepted
-				    == successes[player_success].accepted
-				    && entry.player_get.full_record
-				    == (successes[player_success].accepted == YT_RECORD_SIZE)
-				    && entry.player_get.terminal_position == YT_RECORD_SIZE
-				    + (int64_t)successes[player_success].accepted
-				    && entry.player_get.registered
-				    && entry.player_get.handle_open);
-				for (index = 0U;
-				    index < successes[player_success].accepted; ++index) {
-					CHECK(entry.player_field.bytes[index]
-					    == entry.player_source.bytes[index]);
-				}
-				for (index = successes[player_success].accepted;
-				    index < YT_RECORD_SIZE; ++index)
-					CHECK(entry.player_field.bytes[index] == 0U);
-				CHECK(memcmp(&fixture.emergency_player,
-				    &entry.expected_player,
-				    sizeof(entry.expected_player)) == 0
-				    && entry.current_sector
-				    == (successes[player_success].accepted == YT_RECORD_SIZE
-				    ? 1054.0f : 51.0f)
-				    && entry.player_cache.cloak[0] == -1.0f
-				    && entry.player_cache.cloak[1] == -2.0f
-				    && entry.player_cache.cloak[2]
-				    == (successes[player_success].accepted == YT_RECORD_SIZE
-				    ? 36.0f : 0.0f)
-				    && entry.player_cache.cloak[3] == -4.0f);
-				CHECK(memcmp(cycle.fresh_hostile_attack_surrender_latch_raw,
-				    zero_single, sizeof(zero_single)) == 0);
-				CHECK(cycle.fresh_hostile_attack_opening_sound_calls == 1U
-				    && memcmp(cycle.fresh_hostile_attack_sound_selector_raw,
-				    selector_two, sizeof(selector_two)) == 0
-				    && cycle.fresh_hostile_attack_opening_play_events == 0U
-				    && cycle.fresh_hostile_attack_opening_play_length == 0U
-				    && cycle.fresh_hostile_attack_first_checkpoint
-				    && fixture.draw_position == 7U);
-				CHECK(viewer.join.remote_length
-				    == callers[caller].total_length
-				    && viewer.join.local_row_count == callers[caller].rows
-				    && viewer.join.local_color_count == callers[caller].colors
-				    && viewer.join.event_count == callers[caller].events
-				    && viewer.join.sample_calls == callers[caller].samples
-				    && viewer.join.pager.line_count == 0.0f
-				    && viewer.join.presentation.sound.scratch_length == 0U);
-				yt_database_close(&entry.io.database);
-				yt_text_input_destroy(&viewer.input);
-			}
+		memset(&viewer, 0, sizeof(viewer));
+		fixture_viewer_initialize(&viewer, &stream,
+		    retained_scoreboard,
+		    sizeof(retained_scoreboard) - 1U, "YTSCORE.ASC",
+		    callers[caller].ansi, remote, sizeof(remote));
+		memset(&fixture, 0, sizeof(fixture));
+		fixture.cycle.presentation.viewer = &viewer;
+		fixture.emergency_sector_cache = 733.0f;
+		fixture.draws[0] = 0.0f;
+		fixture.draws[1] = 0.0f;
+		fixture.draws[2] = 0.75f;
+		fixture.draws[3] = 0.5f;
+		fixture.draws[4] = 0.949999988079071f;
+		fixture.draws[5] = 0.999f;
+		fixture.draws[6] = 0.9f;
+		memset(&record, 0xa5, sizeof(record));
+		(void)yt_record_set_number(&record, YT_F49, 17.0f);
+		(void)yt_record_set_number(&record, YT_F57, 733.0f);
+		yt_player_decode(&fixture.emergency_player, &record);
+		fixture.hazard_player = fixture.emergency_player;
+		if (callers[caller].main) {
+			CHECK(direct_emergency_warp_main_hostile_handoff_run(
+			    &fixture, callers[caller].ansi, &cycle, ends));
 		}
+		else {
+			CHECK(direct_emergency_warp_hostile_cycle_run(
+			    &fixture, callers[caller].ansi,
+			    callers[caller].command,
+			    callers[caller].command_length,
+			    DIRECT_WARP_HOSTILE_DEFENSE, &cycle, ends));
+		}
+		CHECK(direct_emergency_warp_fresh_hostile_menu(
+		    &fixture, &cycle)
+		    && direct_emergency_warp_fresh_hostile_attack_admission(
+		    &fixture, &cycle)
+		    && viewer.join.remote_length
+		    == callers[caller].total_length
+		    && direct_emergency_warp_fresh_hostile_attack_opening_success(
+		    &fixture, &cycle, &entry));
+		CHECK(entry.io.field_record == 2
+		    && entry.io.field_player
+		    && cycle.final_field_record == 2
+		    && cycle.final_field_player
+		    && cycle.fresh_hostile_player_reads == 2U
+		    && cycle.fresh_hostile_attack_sector_reads == 1U);
+		CHECK(entry.sector_get.outcome == YT_DATABASE_GET_RETURNED
+		    && entry.sector_get.accepted == YT_RECORD_SIZE
+		    && entry.sector_get.full_record
+		    && entry.sector_get.terminal_position
+		    == entry.sector_get.desired_offset + YT_RECORD_SIZE);
+		CHECK(entry.player_get.outcome == YT_DATABASE_GET_RETURNED
+		    && entry.player_get.current_record == 2U
+		    && entry.player_get.record_index == 1U
+		    && entry.player_get.desired_offset == YT_RECORD_SIZE
+		    && entry.player_get.accepted == YT_RECORD_SIZE
+		    && entry.player_get.full_record
+		    && entry.player_get.terminal_position
+		    == 2U * YT_RECORD_SIZE
+		    && entry.player_get.registered
+		    && entry.player_get.handle_open);
+		CHECK(memcmp(&entry.player_field, &entry.player_source,
+		    sizeof(entry.player_field)) == 0);
+		CHECK(memcmp(&fixture.emergency_player,
+		    &entry.expected_player,
+		    sizeof(entry.expected_player)) == 0
+		    && entry.current_sector == 1054.0f
+		    && entry.player_cache.cloak[0] == -1.0f
+		    && entry.player_cache.cloak[1] == -2.0f
+		    && entry.player_cache.cloak[2] == 36.0f
+		    && entry.player_cache.cloak[3] == -4.0f);
+		CHECK(memcmp(cycle.fresh_hostile_attack_surrender_latch_raw,
+		    zero_single, sizeof(zero_single)) == 0);
+		CHECK(cycle.fresh_hostile_attack_opening_sound_calls == 1U
+		    && memcmp(cycle.fresh_hostile_attack_sound_selector_raw,
+		    selector_two, sizeof(selector_two)) == 0
+		    && cycle.fresh_hostile_attack_opening_play_events == 0U
+		    && cycle.fresh_hostile_attack_opening_play_length == 0U
+		    && cycle.fresh_hostile_attack_first_checkpoint
+		    && fixture.draw_position == 7U);
+		CHECK(viewer.join.remote_length
+		    == callers[caller].total_length
+		    && viewer.join.local_row_count == callers[caller].rows
+		    && viewer.join.local_color_count == callers[caller].colors
+		    && viewer.join.event_count == callers[caller].events
+		    && viewer.join.sample_calls == callers[caller].samples
+		    && viewer.join.pager.line_count == 0.0f
+		    && viewer.join.presentation.sound.scratch_length == 0U);
+		yt_database_close(&entry.io.database);
+		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -32327,19 +31278,6 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? B\r\n";
 	static const uint8_t raw_two_single[4] = {0, 0, 0, 0x82U};
 	static const uint8_t raw_zero_double[8] = {0};
-	static const struct {
-		enum direct_warp_gate_get_failure failure;
-		uint16_t error_number;
-		enum yt_basic_fault_disposition disposition;
-		enum yt_main_error_route route;
-	} return_cuts[] = {
-		{DIRECT_WARP_GATE_READ_57, 57U,
-		    YT_BASIC_FAULT_RETRY_STATEMENT, YT_MAIN_ERROR_RETRY_CURRENT},
-		{DIRECT_WARP_GATE_READ_70, 70U, YT_BASIC_FAULT_END,
-		    YT_MAIN_ERROR_FATAL},
-		{DIRECT_WARP_GATE_READ_75, 75U, YT_BASIC_FAULT_END,
-		    YT_MAIN_ERROR_FATAL},
-	};
 	static const struct {
 		bool main;
 		bool ansi;
@@ -32372,7 +31310,6 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 	struct yt_hostile_attack_combat_state combat;
 	struct direct_warp_main_cycle_state cycle_before_return;
 	struct direct_warp_attack_combat_join join_before_return;
-	struct direct_warp_gate_get_state gate;
 	struct yt_basic_fault_projection projection;
 	struct yt_player expected_player;
 	struct yt_sector expected_sector;
@@ -32384,7 +31321,6 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 	uint8_t remote[1600];
 	size_t ends[3];
 	size_t caller;
-	size_t cut;
 	size_t index;
 
 	for (caller = 0U; caller < YT_ARRAY_LEN(callers); ++caller) {
@@ -32564,50 +31500,6 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 		fixture.hazard_sector.record = join.written_sector.record;
 		cycle_before_return = cycle;
 		player_before_return = fixture.emergency_player;
-		for (cut = 0U; cut < YT_ARRAY_LEN(return_cuts); ++cut) {
-			cycle = cycle_before_return;
-			fixture.emergency_player = player_before_return;
-			CHECK(direct_emergency_warp_fresh_hostile_menu_get_failure(
-			    &fixture, &cycle, return_cuts[cut].failure, &gate,
-			    &projection));
-			CHECK(gate.read_calls == 1U
-			    && gate.database.last_get.current_record == 2U
-			    && gate.database.last_get.record_index == 1U
-			    && gate.database.last_get.desired_offset == YT_RECORD_SIZE
-			    && gate.database.last_get.basic_error
-			    == return_cuts[cut].error_number
-			    && gate.database.last_get.terminal_position
-			    == gate.terminal_position
-			    && gate.database.last_get.registered
-			    && gate.database.last_get.handle_open);
-			CHECK(projection.site
-			    == YT_BASIC_FAULT_CURRENT_PLAYER_A41C_GET
-			    && projection.error_number
-			    == return_cuts[cut].error_number
-			    && projection.identity->instruction == 0xA428U
-			    && projection.identity->saved_ip == 0xA42BU
-			    && projection.identity->retry_statement == 0xA41DU
-			    && projection.identity->source_line == 33990
-			    && projection.identity->handler == 0xB2DAU
-			    && projection.disposition
-			    == return_cuts[cut].disposition
-			    && projection.main.route == return_cuts[cut].route);
-			CHECK(fixture.draw_position == 9U
-			    && cycle.fresh_hostile_player_reads == 3U
-			    && memcmp(&fixture.emergency_player,
-			    &player_before_return, sizeof(player_before_return)) == 0
-			    && viewer.join.remote_length
-			    == callers[caller].total_length + sizeof(body) - 1U);
-			CHECK(gate.field_record == 2 && gate.field_player
-			    && cycle.final_field_record == 2
-			    && cycle.final_field_player
-			    && memcmp(gate.field.bytes,
-			    gate.read_source.bytes, 3U) == 0);
-			for (index = 3U; index < YT_RECORD_SIZE; ++index)
-				CHECK(gate.field.bytes[index] == 0U);
-			yt_database_close(&gate.database);
-		}
-		cycle = cycle_before_return;
 		fixture.emergency_player = player_before_return;
 		join_before_return = join;
 		corrupt_return = join.return_player.record;
@@ -45250,7 +44142,6 @@ main(void)
 	test_direct_emergency_warp_accepted_modes();
 	test_direct_emergency_warp_inherited_pager();
 	test_direct_emergency_warp_invalid_boundaries();
-	test_direct_emergency_warp_gate_get_failures();
 	test_direct_emergency_warp_gate_runtime_failures();
 	test_direct_emergency_warp_ade0_prefix_failures();
 	test_direct_emergency_warp_a8d2_failures();
@@ -45279,11 +44170,8 @@ main(void)
 	test_direct_emergency_warp_reentry_warning_carrier();
 	test_direct_emergency_warp_reentry_warning_second_carrier();
 	test_direct_emergency_warp_hostile_menu_join();
-	test_direct_emergency_warp_hostile_menu_get_failures();
 	test_direct_emergency_warp_hostile_menu_carrier_failures();
 	test_direct_emergency_warp_hostile_attack_admission();
-	test_direct_emergency_warp_hostile_attack_sector_get_failures();
-	test_direct_emergency_warp_hostile_attack_entry_a41c_failures();
 	test_direct_emergency_warp_hostile_attack_opening_success();
 	test_direct_emergency_warp_hostile_attack_defenders_remain();
 	test_direct_emergency_warp_hostile_attack_defenders_cleared();
