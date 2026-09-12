@@ -1161,9 +1161,9 @@ session_line(struct yt_session *session, char *text, size_t size)
 	}
 	if (!expand_repeat(session, text, size))
 		return false;
-	return yt_input_split_semicolon_observed(text, session->queue,
+	return yt_input_split_semicolon(text, session->queue,
 	    sizeof(session->queue), &session->queue_position,
-	    &session->queue_length, NULL, NULL);
+	    &session->queue_length);
 }
 
 static bool

@@ -199,8 +199,6 @@ typedef bool (*yt_ab36_echo_fn)(void *context,
     const uint8_t *local, size_t local_length, const uint8_t *remote,
     size_t remote_length);
 typedef bool (*yt_ab36_carrier_fn)(void *context);
-typedef void (*yt_input_process_store_fn)(void *context, uint16_t address,
-    const uint8_t raw[4]);
 
 enum yt_input_drain_reason {
 	YT_INPUT_DRAIN_CONTINUE,
@@ -286,14 +284,10 @@ bool yt_input_expand_repeat_with_notice(char *text, size_t text_capacity,
 	struct yt_repeat_transform *result);
 bool yt_input_split_semicolon(char *text, char *queue, size_t queue_capacity,
     size_t *queue_position, size_t *queue_length);
-bool yt_input_split_semicolon_observed(char *text, char *queue,
-    size_t queue_capacity, size_t *queue_position, size_t *queue_length,
-    yt_input_process_store_fn store, void *context);
 bool yt_input_split_semicolon_staged(char *text, size_t text_capacity,
 	char *queue, size_t queue_capacity, size_t *queue_position,
 	size_t *queue_length, enum yt_basic_fault_site target,
-	size_t occurrence, struct yt_semicolon_transform *result,
-	yt_input_process_store_fn store, void *context);
+	size_t occurrence, struct yt_semicolon_transform *result);
 bool yt_input_yes_no_candidate(const char *command_accumulator,
     char *output_source, size_t output_source_capacity,
     enum yt_yes_no_answer *answer);

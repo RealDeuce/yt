@@ -25082,7 +25082,7 @@ direct_emergency_warp_ade0_late_failure_continue(
 	if (!yt_input_split_semicolon_staged(join->accumulator,
 	    sizeof(join->accumulator), join->queue, sizeof(join->queue),
 	    &join->queue_position, &join->queue_length, selected, occurrence,
-	    &semicolon, NULL, NULL)) {
+	    &semicolon)) {
 		if (!semicolon.fault_valid || semicolon.fault_site != target)
 			return false;
 		goto routed;

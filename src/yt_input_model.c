@@ -512,20 +512,6 @@ yt_input_expand_repeat(char *text, size_t text_capacity,
 }
 
 static bool
-input_process_store_single(yt_input_process_store_fn store, void *context,
-    uint16_t address, float value)
-{
-	uint8_t raw[4];
-
-	if (store == NULL)
-		return true;
-	if (qb_mbf32_encode(value, raw) != QB_MBF_OK)
-		return false;
-	store(context, address, raw);
-	return true;
-}
-
-static bool
 upper_fault_target(enum yt_basic_fault_site target)
 {
 	return target == YT_BASIC_FAULT_UPPER_FRAME_STACK
@@ -1008,15 +994,6 @@ bool
 yt_input_split_semicolon(char *text, char *queue, size_t queue_capacity,
     size_t *queue_position, size_t *queue_length)
 {
-	return yt_input_split_semicolon_observed(text, queue, queue_capacity,
-	    queue_position, queue_length, NULL, NULL);
-}
-
-bool
-yt_input_split_semicolon_observed(char *text, char *queue,
-    size_t queue_capacity, size_t *queue_position, size_t *queue_length,
-    yt_input_process_store_fn store, void *context)
-{
 	struct yt_semicolon_transform result;
 	size_t text_length;
 
@@ -1025,7 +1002,7 @@ yt_input_split_semicolon_observed(char *text, char *queue,
 	text_length = strlen(text);
 	return yt_input_split_semicolon_staged(text, text_length + 1U,
 	    queue, queue_capacity, queue_position, queue_length,
-	    YT_BASIC_FAULT_SITE_COUNT, 1U, &result, store, context);
+	    YT_BASIC_FAULT_SITE_COUNT, 1U, &result);
 }
 
 static bool
@@ -1052,8 +1029,7 @@ bool
 yt_input_split_semicolon_staged(char *text, size_t text_capacity,
     char *queue, size_t queue_capacity, size_t *queue_position,
     size_t *queue_length, enum yt_basic_fault_site target,
-    size_t occurrence, struct yt_semicolon_transform *result,
-    yt_input_process_store_fn store, void *context)
+    size_t occurrence, struct yt_semicolon_transform *result)
 {
 	char old_queue[YT_INPUT_PENDING];
 	char *semicolon;
@@ -1080,9 +1056,6 @@ yt_input_split_semicolon_staged(char *text, size_t text_capacity,
 	semicolon = memchr(text, ';', text_length);
 	result->semicolon_position = semicolon == NULL ? 0U
 	    : (size_t)(semicolon - text) + 1U;
-	if (!input_process_store_single(store, context, 0x51C4U,
-	    (float)result->semicolon_position))
-		return false;
 	if (semicolon == NULL)
 		return target == YT_BASIC_FAULT_SITE_COUNT;
 	tail_length = text_length - result->semicolon_position;
