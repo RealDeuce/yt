@@ -25,12 +25,6 @@
 #define YT_PLAYER_FIRST YT_PLAYER_FIRST_RECORD
 #define YT_PLAYER_LAST YT_PLAYER_LAST_RECORD
 #define YT_COMMAND_SIZE 4096U
-#define YT_PLANET_UPDATER_QUANTITY_ADDRESS 0x19F0U
-#define YT_PLANET_UPDATER_PRODUCTION_ADDRESS 0x1A44U
-#define YT_PLANET_UPDATER_CONTRIBUTION_ADDRESS 0x1C14U
-#define YT_PLANET_UPDATER_DAY_ADDRESS 0x5E90U
-#define YT_PLANET_UPDATER_MINUTE_ADDRESS 0x5E94U
-#define YT_PLANET_UPDATER_ELAPSED_ADDRESS 0x5E98U
 
 enum navigation_field_kind {
 	NAVIGATION_FIELD_NONE,
@@ -88,6 +82,8 @@ struct yt_session {
 	float foreground;
 	float market_bases[3];
 	float clearance_discounts[4];
+	struct yt_planet_updater_raw_cache planet_updater_cache;
+	uint8_t planet_updater_day_raw[4];
 	float disruption_sectors[2];
 	uint8_t cached_player_name[YT_TEXT_FIELD_SIZE];
 	size_t cached_player_name_length;
@@ -3974,53 +3970,21 @@ planet_updater_put(void *context, uint32_t physical_record,
 }
 
 static void
-planet_updater_load_process(struct yt_session *session,
+planet_updater_load_cache(struct yt_session *session,
     struct yt_planet_updater_state *state)
 {
-	size_t index;
-
-	for (index = 0U; index < 10U; ++index) {
-		yt_route_process_raw_double(&session->route_process,
-		    YT_PLANET_UPDATER_QUANTITY_ADDRESS + (uint16_t)(8U * index),
-		    state->raw_cache.quantity[index]);
-		yt_route_process_raw_single(&session->route_process,
-		    YT_PLANET_UPDATER_PRODUCTION_ADDRESS + (uint16_t)(4U * index),
-		    state->raw_cache.production[index]);
-		yt_route_process_raw_single(&session->route_process,
-		    YT_PLANET_UPDATER_CONTRIBUTION_ADDRESS + (uint16_t)(4U * index),
-		    state->raw_cache.contribution[index]);
-	}
-	yt_route_process_raw_single(&session->route_process,
-	    YT_PLANET_UPDATER_DAY_ADDRESS, state->current_day_raw);
-	yt_route_process_raw_single(&session->route_process,
-	    YT_PLANET_UPDATER_MINUTE_ADDRESS, state->raw_cache.current_minute);
-	yt_route_process_raw_single(&session->route_process,
-	    YT_PLANET_UPDATER_ELAPSED_ADDRESS, state->raw_cache.elapsed);
+	state->raw_cache = session->planet_updater_cache;
+	memcpy(state->current_day_raw, session->planet_updater_day_raw,
+	    sizeof(state->current_day_raw));
 }
 
 static void
-planet_updater_store_process(struct yt_session *session,
+planet_updater_store_cache(struct yt_session *session,
     const struct yt_planet_updater_state *state)
 {
-	size_t index;
-
-	for (index = 0U; index < 10U; ++index) {
-		yt_route_process_set_raw_double(&session->route_process,
-		    YT_PLANET_UPDATER_QUANTITY_ADDRESS + (uint16_t)(8U * index),
-		    state->raw_cache.quantity[index]);
-		yt_route_process_set_raw_single(&session->route_process,
-		    YT_PLANET_UPDATER_PRODUCTION_ADDRESS + (uint16_t)(4U * index),
-		    state->raw_cache.production[index]);
-		yt_route_process_set_raw_single(&session->route_process,
-		    YT_PLANET_UPDATER_CONTRIBUTION_ADDRESS + (uint16_t)(4U * index),
-		    state->raw_cache.contribution[index]);
-	}
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_PLANET_UPDATER_DAY_ADDRESS, state->current_day_raw);
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_PLANET_UPDATER_MINUTE_ADDRESS, state->raw_cache.current_minute);
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_PLANET_UPDATER_ELAPSED_ADDRESS, state->raw_cache.elapsed);
+	session->planet_updater_cache = state->raw_cache;
+	memcpy(session->planet_updater_day_raw, state->current_day_raw,
+	    sizeof(session->planet_updater_day_raw));
 }
 
 static bool
@@ -4057,12 +4021,12 @@ planet_update_cached_physical(struct yt_session *session,
 		}
 		return false;
 	}
-	planet_updater_load_process(session, &state);
+	planet_updater_load_cache(session, &state);
 	if (!yt_planet_updater_raw_run(&state, &ops, session, error)) {
-		planet_updater_store_process(session, &state);
+		planet_updater_store_cache(session, &state);
 		return false;
 	}
-	planet_updater_store_process(session, &state);
+	planet_updater_store_cache(session, &state);
 	yt_planet_decode(planet, &state.field);
 	memcpy(session->planet_quantity, state.cache.quantity,
 	    sizeof(session->planet_quantity));
