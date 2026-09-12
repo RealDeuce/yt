@@ -4341,68 +4341,6 @@ test_shared_error_model(void)
 }
 
 static void
-test_serial_startup_output(void)
-{
-	static const char carrier[] =
-	    "(**CARRIER DROPPED**) Returning to bbs!";
-	static const char *missing_rows[] = {
-		"",
-		"Command line missing! Aborting!",
-		"",
-		"BBS usage: YT.EXE C:\\BBS\\DORINFO1.DEF",
-	};
-	static const struct {
-		int port;
-		float baud;
-		const char *expected;
-	} status[] = {
-		{1, 38400.0f, "Opening COM port 1 at 38400 baud"},
-		{3, 57600.0f, "Opening COM port 3 at 57600 baud"},
-		{4, 115200.0f, "Opening COM port 4 at 115200 baud"},
-		{0, 0.0f, "Local Console Mode"},
-		{5, 0.0f, "Local Console Mode"},
-		{-1, 0.0f, "Local Console Mode"},
-	};
-	struct yt_present_result result;
-	struct yt_present_state current = state(false);
-	size_t index;
-
-	CHECK(yt_present_serial_startup_missing_command(&result)
-	    == YT_PRESENT_OK);
-	CHECK(result.remote_length == 0U && result.event_count == 4U);
-	for (index = 0; index < YT_ARRAY_LEN(missing_rows); ++index) {
-		CHECK(result.events[index].operation == YT_PRESENT_LOCAL_LINE
-		    && result.events[index].length == strlen(missing_rows[index])
-		    && memcmp(result.events[index].data, missing_rows[index],
-		    result.events[index].length) == 0);
-	}
-	for (index = 0; index < YT_ARRAY_LEN(status); ++index) {
-		CHECK(yt_present_serial_startup_status(status[index].port,
-		    status[index].baud, &result) == YT_PRESENT_OK);
-		CHECK(result.remote_length == 0U && result.event_count == 1U
-		    && result.events[0].operation == YT_PRESENT_LOCAL_LINE
-		    && result.events[0].length == strlen(status[index].expected)
-		    && memcmp(result.events[0].data, status[index].expected,
-		    result.events[0].length) == 0);
-	}
-	CHECK(yt_present_carrier_drop(&current, &result) == YT_PRESENT_OK);
-	CHECK(result.remote_length == 0U && result.event_count == 1U
-	    && result.events[0].operation == YT_PRESENT_LOCAL_LINE
-	    && result.events[0].length == sizeof(carrier) - 1U
-	    && memcmp(result.events[0].data, carrier,
-	    sizeof(carrier) - 1U) == 0);
-	current.sound.snoop = 0.0f;
-	CHECK(yt_present_carrier_drop(&current, &result) == YT_PRESENT_OK
-	    && result.remote_length == 0U && result.event_count == 0U);
-	CHECK(yt_present_serial_startup_missing_command(NULL)
-	    == YT_PRESENT_CAPACITY);
-	CHECK(yt_present_serial_startup_status(1, 38400.0f, NULL)
-	    == YT_PRESENT_CAPACITY);
-	CHECK(yt_present_carrier_drop(NULL, &result) == YT_PRESENT_CAPACITY);
-	CHECK(yt_present_carrier_drop(&current, NULL) == YT_PRESENT_CAPACITY);
-}
-
-static void
 test_time_helpers(void)
 {
 	struct yt_present_state current = state(true);
@@ -4487,63 +4425,6 @@ test_time_helpers(void)
 	    && current.blink == 0.0f && result.event_count == 0U
 	    && result.remote_length == 0U);
 
-}
-
-static void
-test_opening_streamer(void)
-{
-	static const uint8_t row[] = {'A', 0, 'B'};
-	static const uint8_t remote[] = {'A', 0, 'B', '\n', '\r'};
-	static const uint8_t reset[] = "\x1b[0m";
-	struct yt_present_result result;
-
-	CHECK(yt_present_opening_row(row, sizeof(row), 0.0f, -1.0f,
-	    &result) == YT_PRESENT_OK);
-	CHECK(result.remote_length == sizeof(remote)
-	    && memcmp(result.remote, remote, sizeof(remote)) == 0
-	    && result.event_count == 3);
-	CHECK(result.events[0].operation == YT_PRESENT_LOCAL_LINE
-	    && result.events[0].length == sizeof(row)
-	    && memcmp(result.events[0].data, row, sizeof(row)) == 0);
-	CHECK(result.events[1].operation == YT_PRESENT_REMOTE_SEMI
-	    && result.events[1].length == sizeof(row));
-	CHECK(result.events[2].operation == YT_PRESENT_REMOTE_LINE
-	    && result.events[2].length == 1U
-	    && result.events[2].data[0] == '\n');
-
-	CHECK(yt_present_opening_row(row, sizeof(row), 1.0f, 1.0f,
-	    &result) == YT_PRESENT_OK);
-	CHECK(result.remote_length == 0U && result.event_count == 1U
-	    && result.events[0].operation == YT_PRESENT_LOCAL_LINE);
-	CHECK(yt_present_opening_row(row, sizeof(row), 2.0f, 0.0f,
-	    &result) == YT_PRESENT_OK);
-	CHECK(result.remote_length == sizeof(remote)
-	    && memcmp(result.remote, remote, sizeof(remote)) == 0
-	    && result.event_count == 2U);
-
-	CHECK(yt_present_opening_cleanup(0.0f, -1.0f, &result)
-	    == YT_PRESENT_OK);
-	CHECK(result.remote_length == sizeof(reset) - 1U
-	    && memcmp(result.remote, reset, sizeof(reset) - 1U) == 0
-	    && result.event_count == 2U
-	    && result.events[0].operation == YT_PRESENT_REMOTE_SEMI
-	    && result.events[1].operation == YT_PRESENT_LOCAL_SEMI
-	    && result.events[1].length == sizeof(reset) - 1U);
-	CHECK(yt_present_opening_cleanup(2.0f, 1.0f, &result)
-	    == YT_PRESENT_OK);
-	CHECK(result.remote_length == 0U && result.event_count == 1U
-	    && result.events[0].operation == YT_PRESENT_LOCAL_SEMI);
-	CHECK(yt_present_opening_cleanup(0.0f, 0.0f, &result)
-	    == YT_PRESENT_OK);
-	CHECK(result.remote_length == sizeof(reset) - 1U
-	    && result.event_count == 1U
-	    && result.events[0].operation == YT_PRESENT_REMOTE_SEMI);
-	CHECK(yt_present_opening_row(NULL, 1U, 0.0f, 0.0f, &result)
-	    == YT_PRESENT_CAPACITY);
-	CHECK(yt_present_opening_row(NULL, 0U, 0.0f, 0.0f, NULL)
-	    == YT_PRESENT_CAPACITY);
-	CHECK(yt_present_opening_cleanup(0.0f, 0.0f, NULL)
-	    == YT_PRESENT_CAPACITY);
 }
 
 static void
@@ -47008,9 +46889,7 @@ main(void)
 	test_normal_exit_registration_predicate();
 	test_main_error_model();
 	test_shared_error_model();
-	test_serial_startup_output();
 	test_time_helpers();
-	test_opening_streamer();
 	test_press_any_key_presentation();
 	test_post_login_press_presentation();
 	test_gameplay_reentry_hostile_warning();

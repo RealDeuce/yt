@@ -129,12 +129,6 @@ enum yt_present_status yt_present_attention(const uint8_t *text,
     struct yt_present_result *result);
 enum yt_present_status yt_present_sound_toggle(struct yt_present_state *state,
     struct yt_present_result *result);
-enum yt_present_status yt_present_serial_startup_missing_command(
-    struct yt_present_result *result);
-enum yt_present_status yt_present_serial_startup_status(int port,
-    float detected_baud, struct yt_present_result *result);
-enum yt_present_status yt_present_carrier_drop(
-    struct yt_present_state *state, struct yt_present_result *result);
 enum yt_present_status yt_present_sound(float selector,
     struct yt_present_state *state, struct yt_present_result *result);
 enum yt_present_status yt_present_press_prompt(
@@ -155,11 +149,6 @@ enum yt_present_status yt_present_format_remaining_seconds(
 enum yt_present_status yt_present_low_time(const uint8_t *text, size_t length,
     float *remembered, struct yt_present_state *state,
     struct yt_present_result *result, bool *warned);
-enum yt_present_status yt_present_opening_row(const uint8_t *text,
-    size_t length, float mode, float snoop,
-    struct yt_present_result *result);
-enum yt_present_status yt_present_opening_cleanup(float mode, float snoop,
-    struct yt_present_result *result);
 uint8_t yt_present_pc_attribute(int foreground, int background);
 
 #endif

@@ -544,86 +544,6 @@ yt_present_forced_local_line(const uint8_t *text, size_t length,
 }
 
 enum yt_present_status
-yt_present_serial_startup_missing_command(struct yt_present_result *result)
-{
-	static const char diagnostic[] = "Command line missing! Aborting!";
-	static const char usage[] =
-	    "BBS usage: YT.EXE C:\\BBS\\DORINFO1.DEF";
-	enum yt_present_status status;
-
-	if (result == NULL)
-		return YT_PRESENT_CAPACITY;
-	memset(result, 0, sizeof(*result));
-	status = append_local(result, YT_PRESENT_LOCAL_LINE, NULL, 0U, 0, 0);
-	if (status != YT_PRESENT_OK)
-		return status;
-	status = append_local(result, YT_PRESENT_LOCAL_LINE, diagnostic,
-	    sizeof(diagnostic) - 1U, 0, 0);
-	if (status != YT_PRESENT_OK)
-		return status;
-	status = append_local(result, YT_PRESENT_LOCAL_LINE, NULL, 0U, 0, 0);
-	if (status != YT_PRESENT_OK)
-		return status;
-	return append_local(result, YT_PRESENT_LOCAL_LINE, usage,
-	    sizeof(usage) - 1U, 0, 0);
-}
-
-enum yt_present_status
-yt_present_serial_startup_status(int port, float detected_baud,
-    struct yt_present_result *result)
-{
-	static const char local[] = "Local Console Mode";
-	uint8_t rendered[YT_PRESENT_EVENT_DATA];
-	size_t length = 0U;
-	char number[64];
-	int number_length;
-
-	if (result == NULL)
-		return YT_PRESENT_CAPACITY;
-	memset(result, 0, sizeof(*result));
-	if (port < 1 || port > 4)
-		return append_local(result, YT_PRESENT_LOCAL_LINE, local,
-		    sizeof(local) - 1U, 0, 0);
-	memcpy(rendered, "Opening COM port", strlen("Opening COM port"));
-	length = strlen("Opening COM port");
-	number_length = qb_print_single(number, sizeof(number), (float)port);
-	if (number_length < 0
-	    || (size_t)number_length > sizeof(rendered) - length)
-		return YT_PRESENT_OVERFLOW;
-	memcpy(rendered + length, number, (size_t)number_length);
-	length += (size_t)number_length;
-	if (sizeof("at") - 1U > sizeof(rendered) - length)
-		return YT_PRESENT_CAPACITY;
-	memcpy(rendered + length, "at", sizeof("at") - 1U);
-	length += sizeof("at") - 1U;
-	number_length = qb_print_single(number, sizeof(number), detected_baud);
-	if (number_length < 0
-	    || (size_t)number_length > sizeof(rendered) - length)
-		return YT_PRESENT_OVERFLOW;
-	memcpy(rendered + length, number, (size_t)number_length);
-	length += (size_t)number_length;
-	if (sizeof("baud") - 1U > sizeof(rendered) - length)
-		return YT_PRESENT_CAPACITY;
-	memcpy(rendered + length, "baud", sizeof("baud") - 1U);
-	length += sizeof("baud") - 1U;
-	return append_local(result, YT_PRESENT_LOCAL_LINE, rendered, length,
-	    0, 0);
-}
-
-enum yt_present_status
-yt_present_carrier_drop(struct yt_present_state *state,
-    struct yt_present_result *result)
-{
-	static const uint8_t notice[] =
-	    "(**CARRIER DROPPED**) Returning to bbs!";
-
-	if (state == NULL || result == NULL)
-		return YT_PRESENT_CAPACITY;
-	return yt_present_local_line(notice, sizeof(notice) - 1U, state,
-	    result);
-}
-
-enum yt_present_status
 yt_present_local_beep(struct yt_present_result *result)
 {
 	memset(result, 0, sizeof(*result));
@@ -1025,52 +945,6 @@ yt_present_format_remaining_seconds(struct yt_present_time_state *time,
 	if (remaining_seconds < 0.0f)
 		remaining_seconds = 0.0f;
 	return format_remaining(remaining_seconds, 0.0f, time);
-}
-
-enum yt_present_status
-yt_present_opening_row(const uint8_t *text, size_t length, float mode,
-    float snoop, struct yt_present_result *result)
-{
-	static const uint8_t line_feed = '\n';
-	enum yt_present_status status;
-
-	if (result == NULL || (text == NULL && length != 0U))
-		return YT_PRESENT_CAPACITY;
-	memset(result, 0, sizeof(*result));
-	if (snoop != 0.0f) {
-		status = append_local(result, YT_PRESENT_LOCAL_LINE, text, length,
-		    0, 0);
-		if (status != YT_PRESENT_OK)
-			return status;
-	}
-	if (mode == 1.0f)
-		return YT_PRESENT_OK;
-	status = append_remote(result, YT_PRESENT_REMOTE_SEMI, text, length);
-	if (status != YT_PRESENT_OK)
-		return status;
-	return append_remote(result, YT_PRESENT_REMOTE_LINE, &line_feed, 1U);
-}
-
-enum yt_present_status
-yt_present_opening_cleanup(float mode, float snoop,
-    struct yt_present_result *result)
-{
-	static const uint8_t reset[] = "\x1b[0m";
-	enum yt_present_status status;
-
-	if (result == NULL)
-		return YT_PRESENT_CAPACITY;
-	memset(result, 0, sizeof(*result));
-	if (mode == 0.0f) {
-		status = append_remote(result, YT_PRESENT_REMOTE_SEMI, reset,
-		    sizeof(reset) - 1U);
-		if (status != YT_PRESENT_OK)
-			return status;
-	}
-	if (snoop != 0.0f)
-		return append_local(result, YT_PRESENT_LOCAL_SEMI, reset,
-		    sizeof(reset) - 1U, 0, 0);
-	return YT_PRESENT_OK;
 }
 
 static enum yt_present_status
