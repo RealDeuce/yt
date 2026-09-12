@@ -4029,34 +4029,6 @@ test_name_input_grammar(struct yt_error *error)
 	return ok;
 }
 
-struct names_read_failure_script {
-	size_t calls;
-	bool fail_after_one_byte;
-};
-
-static bool
-names_read_failure_provider(void *context, FILE *file, uint8_t *data,
-    size_t requested, struct yt_text_input_read_observation *observation)
-{
-	struct names_read_failure_script *script = context;
-	size_t call = script->calls++;
-
-	(void)file;
-	memset(observation, 0, sizeof(*observation));
-	observation->terminal_position = 1;
-	if (script->fail_after_one_byte && call == 0U) {
-		if (requested == 0U)
-			return false;
-		data[0] = 'A';
-		observation->accepted = 1U;
-		return true;
-	}
-	observation->carry = true;
-	observation->dos_error = 5U;
-	observation->basic_error = 70U;
-	return true;
-}
-
 static bool
 names_close_failure_provider(void *context, FILE *file,
     enum yt_text_close_operation operation, const uint8_t *data,
@@ -4087,7 +4059,6 @@ test_name_sequential_transaction(struct yt_error *error)
 	    "A,B,C,D\r\nE,F\x1a";
 	struct yt_names_sequential_state state;
 	struct yt_name_input_observation observation;
-	struct names_read_failure_script read_script;
 	struct yt_text_input input;
 	struct yt_name_file names;
 	bool result;
@@ -4151,45 +4122,6 @@ test_name_sequential_transaction(struct yt_error *error)
 	    || strcmp(observation.staged.real_last, "F") != 0
 	    || observation.staged.alias_first != NULL
 	    || observation.cursor != 12U) {
-		yt_names_input_observation_free(&observation);
-		yt_names_free(&names);
-		yt_text_input_destroy(&input);
-		return false;
-	}
-	yt_names_input_observation_free(&observation);
-	yt_names_free(&names);
-	yt_text_input_destroy(&input);
-
-	read_script = (struct names_read_failure_script){0};
-	yt_text_input_init(&input);
-	yt_text_input_set_read_provider(&input, names_read_failure_provider,
-	    &read_script);
-	result = yt_names_load_sequential(&input, "names.in", &names,
-	    &observation, &state, error);
-	if (result || state.failed_operation != YT_NAMES_SEQUENTIAL_EOF
-	    || state.eof_checks != 1U || state.token_reads != 0U
-	    || state.rows_committed != 0U || input.last_read.dos_error != 5U) {
-		yt_names_input_observation_free(&observation);
-		yt_names_free(&names);
-		yt_text_input_destroy(&input);
-		return false;
-	}
-	yt_names_input_observation_free(&observation);
-	yt_names_free(&names);
-	yt_text_input_destroy(&input);
-
-	read_script = (struct names_read_failure_script){
-		.fail_after_one_byte = true,
-	};
-	yt_text_input_init(&input);
-	yt_text_input_set_read_provider(&input, names_read_failure_provider,
-	    &read_script);
-	result = yt_names_load_sequential(&input, "names.in", &names,
-	    &observation, &state, error);
-	if (result || state.failed_operation != YT_NAMES_SEQUENTIAL_TOKEN
-	    || state.eof_checks != 1U || state.token_reads != 1U
-	    || state.rows_committed != 0U || observation.staged_count != 0U
-	    || input.logical_position != 1U || input.last_read.dos_error != 5U) {
 		yt_names_input_observation_free(&observation);
 		yt_names_free(&names);
 		yt_text_input_destroy(&input);

@@ -152,23 +152,10 @@ struct yt_text_close_result {
 	bool handle_open;
 };
 
-struct yt_text_input_read_observation {
-	size_t accepted;
-	bool carry;
-	uint16_t dos_error;
-	uint16_t basic_error;
-	int64_t terminal_position;
-};
-
-typedef bool (*yt_text_input_read_provider)(void *context, FILE *file,
-	uint8_t *data, size_t requested,
-	struct yt_text_input_read_observation *observation);
-
 enum yt_text_input_read_outcome {
 	YT_TEXT_INPUT_READ_NONE,
 	YT_TEXT_INPUT_READ_RETURNED,
 	YT_TEXT_INPUT_READ_DISK_ERROR,
-	YT_TEXT_INPUT_READ_PROVIDER_ERROR,
 	YT_TEXT_INPUT_READ_MEMORY_ERROR,
 };
 
@@ -204,8 +191,6 @@ struct yt_text_input {
 	uint32_t refill_index;
 	uint64_t logical_position;
 	int64_t physical_position;
-	yt_text_input_read_provider read_provider;
-	void *read_context;
 	yt_text_close_provider close_provider;
 	void *close_context;
 	struct yt_text_open_result last_open;
@@ -226,8 +211,6 @@ bool yt_text_input_eof(struct yt_text_input *input, bool *eof,
 	struct yt_error *error);
 bool yt_text_input_close(struct yt_text_input *input,
 	struct yt_error *error);
-void yt_text_input_set_read_provider(struct yt_text_input *input,
-	yt_text_input_read_provider provider, void *context);
 void yt_text_input_set_close_provider(struct yt_text_input *input,
 	yt_text_close_provider provider, void *context);
 void yt_text_input_destroy(struct yt_text_input *input);

@@ -14,12 +14,11 @@ static bool text_input_close_execute(struct yt_text_input *input,
     struct yt_error *error);
 static bool text_output_open_execute(struct yt_text_output *output,
     const char *path, struct yt_error *error);
-static bool text_input_read_default(void *context, FILE *file,
-    uint8_t *data, size_t requested,
-    struct yt_text_input_read_observation *observation);
 static bool text_input_get_byte(struct yt_text_input *input, uint8_t *value,
     bool *eof, struct yt_error *error);
 static void text_input_read_snapshot(struct yt_text_input *input);
+static uint16_t text_output_dos_error(const char *path, int system_error);
+static int64_t text_output_position(FILE *file);
 
 bool
 yt_text_line_input_next(const uint8_t *data, size_t data_length,
@@ -132,16 +131,6 @@ yt_text_input_init(struct yt_text_input *input)
 }
 
 void
-yt_text_input_set_read_provider(struct yt_text_input *input,
-    yt_text_input_read_provider provider, void *context)
-{
-	if (input == NULL)
-		return;
-	input->read_provider = provider;
-	input->read_context = context;
-}
-
-void
 yt_text_input_set_close_provider(struct yt_text_input *input,
     yt_text_close_provider provider, void *context)
 {
@@ -214,56 +203,37 @@ text_input_read_snapshot(struct yt_text_input *input)
 static bool
 text_input_refill(struct yt_text_input *input, struct yt_error *error)
 {
-	yt_text_input_read_provider provider = input->read_provider != NULL
-	    ? input->read_provider : text_input_read_default;
-	struct yt_text_input_read_observation observation;
-	bool delivered;
-	bool valid;
+	size_t accepted;
+	int64_t terminal_position;
+	int saved_errno;
 
 	memset(input->read_ahead, 0, sizeof(input->read_ahead));
 	input->last_read.buffer_cleared = true;
-	memset(&observation, 0, sizeof(observation));
-	observation.terminal_position = -1;
 	++input->last_read.operation_count;
-	delivered = provider(input->read_context, input->file,
-	    input->read_ahead, sizeof(input->read_ahead), &observation);
-	valid = delivered
-	    && observation.accepted <= sizeof(input->read_ahead)
-	    && observation.terminal_position >= -1
-	    && ((observation.carry
-	    && observation.dos_error >= 1U
-	    && observation.dos_error <= 0xffU
-	    && observation.basic_error >= 1U
-	    && observation.basic_error <= 0xffU)
-	    || (!observation.carry && observation.dos_error == 0U
-	    && observation.basic_error == 0U));
-	input->last_read.accepted = observation.accepted;
-	input->last_read.dos_error = observation.dos_error;
-	input->last_read.basic_error = observation.basic_error;
-	input->last_read.terminal_position = observation.terminal_position;
-	if (!valid) {
-		input->last_read.outcome = YT_TEXT_INPUT_READ_PROVIDER_ERROR;
+	errno = 0;
+	accepted = fread(input->read_ahead, 1U, sizeof(input->read_ahead),
+	    input->file);
+	saved_errno = errno;
+	terminal_position = text_output_position(input->file);
+	input->last_read.accepted = accepted;
+	input->last_read.terminal_position = terminal_position;
+	if (terminal_position >= 0)
+		input->physical_position = terminal_position;
+	if (ferror(input->file) != 0) {
+		input->last_read.outcome = YT_TEXT_INPUT_READ_DISK_ERROR;
+		input->last_read.dos_error = text_output_dos_error(NULL, saved_errno);
 		input->last_read.basic_error = 57U;
 		text_input_read_snapshot(input);
-		errno = 0;
-		set_error(error, YT_IO_ERROR,
-		    "sequential INPUT read provider", input->path);
-		return false;
-	}
-	if (observation.terminal_position >= 0)
-		input->physical_position = observation.terminal_position;
-	if (observation.carry) {
-		input->last_read.outcome = YT_TEXT_INPUT_READ_DISK_ERROR;
-		text_input_read_snapshot(input);
-		errno = 0;
+		errno = saved_errno;
 		set_error(error, YT_IO_ERROR, "sequential INPUT read",
 		    input->path);
 		return false;
 	}
+	errno = saved_errno;
 	input->refill_index = (input->refill_index + 1U) & 0x00ffffffU;
-	if (observation.accepted != 0U) {
-		input->read_total = observation.accepted;
-		input->read_remaining = observation.accepted;
+	if (accepted != 0U) {
+		input->read_total = accepted;
+		input->read_remaining = accepted;
 	}
 	return true;
 }
@@ -1128,29 +1098,6 @@ text_output_position(FILE *file)
 		return -1;
 	position = (int64_t)yt_text_ftello(file);
 	return position >= 0 ? position : -1;
-}
-
-static bool
-text_input_read_default(void *context, FILE *file, uint8_t *data,
-    size_t requested, struct yt_text_input_read_observation *observation)
-{
-	int saved_errno;
-
-	(void)context;
-	if (file == NULL || data == NULL || requested == 0U
-	    || observation == NULL)
-		return false;
-	memset(observation, 0, sizeof(*observation));
-	errno = 0;
-	observation->accepted = fread(data, 1U, requested, file);
-	saved_errno = errno;
-	observation->carry = ferror(file) != 0;
-	observation->dos_error = observation->carry
-	    ? text_output_dos_error(NULL, saved_errno) : 0U;
-	observation->basic_error = observation->carry ? 57U : 0U;
-	observation->terminal_position = text_output_position(file);
-	errno = saved_errno;
-	return true;
 }
 
 static bool
