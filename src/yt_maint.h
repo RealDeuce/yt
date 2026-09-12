@@ -385,19 +385,6 @@ struct yt_maintenance_protected_mines_ops {
 	    struct yt_error *error);
 };
 
-struct yt_maintenance_default_headquarters_state {
-	float before;
-	float after;
-	bool defaulted;
-	bool persisted;
-	bool complete;
-};
-
-struct yt_maintenance_default_headquarters_ops {
-	bool (*store)(void *context, float headquarters,
-	    struct yt_error *error);
-};
-
 enum yt_maintenance_scoreboard_readback_step {
 	YT_MAINTENANCE_SCOREBOARD_READBACK_NONE,
 	YT_MAINTENANCE_SCOREBOARD_READBACK_CLOSE_GENERATED,
@@ -475,11 +462,6 @@ typedef bool (*yt_maintenance_score_line_fn)(void *context,
     const uint8_t *line, size_t length, struct yt_error *error);
 
 bool yt_maintenance_run(struct yt_error *error);
-bool yt_maintenance_default_headquarters_run(
-	struct yt_maintenance_default_headquarters_state *state,
-	float *headquarters,
-	const struct yt_maintenance_default_headquarters_ops *ops,
-	void *context, struct yt_error *error);
 bool yt_maintenance_default_headquarters(float *headquarters);
 bool yt_maintenance_clear_protected_mines_run(
 	struct yt_maintenance_protected_mines_state *state,

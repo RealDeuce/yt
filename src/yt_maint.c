@@ -45,34 +45,6 @@ yt_maintenance_default_headquarters(float *headquarters)
 	return true;
 }
 
-bool
-yt_maintenance_default_headquarters_run(
-    struct yt_maintenance_default_headquarters_state *state,
-    float *headquarters,
-    const struct yt_maintenance_default_headquarters_ops *ops,
-    void *context, struct yt_error *error)
-{
-	if (state == NULL || headquarters == NULL || ops == NULL
-	    || ops->store == NULL) {
-		set_error(error, YT_INVALID, "default headquarters transaction", "");
-		return false;
-	}
-	memset(state, 0, sizeof(*state));
-	state->before = *headquarters;
-	state->after = *headquarters;
-	if (!yt_maintenance_default_headquarters(headquarters)) {
-		state->complete = true;
-		return true;
-	}
-	state->defaulted = true;
-	state->after = *headquarters;
-	if (!ops->store(context, *headquarters, error))
-		return false;
-	state->persisted = true;
-	state->complete = true;
-	return true;
-}
-
 static bool
 maintenance_output_row(struct yt_maintenance_output_result *result,
     uint16_t address, const uint8_t *data, size_t length, bool newline)
@@ -3733,10 +3705,7 @@ maintenance_close_all(struct yt_game *game, struct yt_error *error)
 bool
 yt_maintenance_run(struct yt_error *error)
 {
-	static const struct yt_maintenance_default_headquarters_ops
-	    headquarters_ops = {store_default_headquarters};
 	struct maint_state state;
-	struct yt_maintenance_default_headquarters_state headquarters_state;
 	struct yt_maintenance_output_result entry_output;
 	struct yt_maintenance_output_result compaction_output;
 	bool same_day;
@@ -3746,8 +3715,10 @@ yt_maintenance_run(struct yt_error *error)
 	if (!yt_game_open(&state.game, YT_OPEN_UPDATE, error))
 		return false;
 	/* The shipped 0244..0270 branch persists this before later defaults. */
-	if (!yt_maintenance_default_headquarters_run(&headquarters_state,
-	    &state.game.config.headquarters, &headquarters_ops, &state, error))
+	if (yt_maintenance_default_headquarters(
+	    &state.game.config.headquarters)
+	    && !store_default_headquarters(&state,
+	    state.game.config.headquarters, error))
 		goto done;
 	yt_config_normalize_maintenance(&state.game.config);
 	state.player_count = (int)state.game.config.sector_offset - 1;
