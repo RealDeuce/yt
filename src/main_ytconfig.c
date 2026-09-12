@@ -10,31 +10,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-static bool
-config_read_record(void *context, size_t basic_record,
-    struct yt_record *record, struct yt_error *error)
-{
-	struct yt_game *game = context;
-
-	return yt_database_read(&game->database, basic_record, record, error);
-}
-
-static bool
-config_write_record(void *context, size_t basic_record,
-    const struct yt_record *record, struct yt_error *error)
-{
-	struct yt_game *game = context;
-
-	return yt_database_write(&game->database, basic_record, record, error)
-	    && (basic_record != 1U
-	    || yt_database_flush(&game->database, error));
-}
-
-static const struct yt_config_record_ops config_record_ops = {
-	config_read_record,
-	config_write_record,
-};
-
 struct ytconfig_fatal_context {
 	struct yt_game *game;
 	struct yt_text_input *names_input;
@@ -132,11 +107,11 @@ static bool
 redraw_repairs(struct yt_game *game, float maximum,
     struct yt_error *error)
 {
-	struct yt_config_redraw_repair_state state;
+	struct yt_record result;
 
-	return yt_config_redraw_repairs(&state, &game->config.record, maximum,
-	    &config_record_ops, game, error)
-	    && yt_config_decode(&game->config, &state.field, error);
+	return yt_config_redraw_repairs(&game->database, &game->config.record,
+	    maximum, &result, error)
+	    && yt_config_decode(&game->config, &result, error);
 }
 
 static bool
@@ -175,10 +150,9 @@ numeric_edit(struct yt_game *game, char key, float *maximum, float *lottery,
     struct yt_error *error)
 {
 	struct yt_config_output_result output;
-	struct yt_config_overlay_state state;
 	struct qb_val_result parsed;
 	struct yt_config_overlay overlay;
-	struct yt_record fresh;
+	struct yt_record updated;
 	char line[160];
 	uint8_t raw[4];
 	float value;
@@ -223,10 +197,10 @@ numeric_edit(struct yt_game *game, char key, float *maximum, float *lottery,
 		return true;
 	}
 	if (fresh_before_prompt) {
-		if (!config_read_record(game, 1U, &fresh, error))
+		if (!yt_database_read(&game->database, 1U, &updated, error))
 			return false;
-		game->config.record = fresh;
-		*field = yt_record_get_number(&fresh, offset);
+		game->config.record = updated;
+		*field = yt_record_get_number(&updated, offset);
 	}
 	if (!yt_config_compose_scalar_prompt(scalar, *maximum, 0U, &output)
 	    || !write_output(&output, error))
@@ -250,10 +224,10 @@ numeric_edit(struct yt_game *game, char key, float *maximum, float *lottery,
 		return false;
 	}
 	overlay = (struct yt_config_overlay){offset, raw, sizeof(raw)};
-	if (!yt_config_apply_loaded_overlays(&state, &game->config.record,
-	    &overlay, 1U, &config_record_ops, game, error))
+	if (!yt_config_apply_loaded_overlays(&game->database,
+	    &game->config.record, &overlay, 1U, &updated, error))
 		return false;
-	game->config.record = state.field;
+	game->config.record = updated;
 	*field = value;
 	if (key == 'A')
 		*maximum = value;
@@ -266,9 +240,9 @@ static bool
 edit_genesis(struct yt_game *game, struct yt_error *error)
 {
 	struct yt_config_output_result output;
-	struct yt_config_overlay_state state;
 	struct qb_val_result parsed;
 	struct yt_config_overlay overlay;
+	struct yt_record updated;
 	char line[160];
 	uint8_t raw[4];
 	float threshold;
@@ -292,10 +266,10 @@ edit_genesis(struct yt_game *game, struct yt_error *error)
 		return false;
 	}
 	overlay = (struct yt_config_overlay){YT_F105, raw, sizeof(raw)};
-	if (!yt_config_apply_overlays(&state, &overlay, 1U,
-	    &config_record_ops, game, error))
+	if (!yt_config_apply_overlays(&game->database, &overlay, 1U,
+	    &updated, error))
 		return false;
-	game->config.record = state.field;
+	game->config.record = updated;
 	game->config.genesis_ports = threshold;
 	return true;
 }
@@ -305,8 +279,8 @@ edit_maintenance(struct yt_game *game, struct yt_error *error)
 {
 	static const uint8_t raw_allow[4] = {0x00, 0x00, 0x7d, 0x00};
 	struct yt_config_output_result output;
-	struct yt_config_overlay_state state;
 	struct yt_config_overlay overlays[2];
+	struct yt_record updated;
 	char line[80];
 	uint8_t raw_marker[4];
 	uint8_t raw_epoch[4];
@@ -344,10 +318,11 @@ edit_maintenance(struct yt_game *game, struct yt_error *error)
 	    sizeof(raw_marker)};
 	overlays[1] = (struct yt_config_overlay){YT_F45, raw_epoch,
 	    sizeof(raw_epoch)};
-	if (!yt_config_apply_loaded_overlays(&state, &game->config.record,
-	    overlays, YT_ARRAY_LEN(overlays), &config_record_ops, game, error))
+	if (!yt_config_apply_loaded_overlays(&game->database,
+	    &game->config.record, overlays, YT_ARRAY_LEN(overlays), &updated,
+	    error))
 		return false;
-	game->config.record = state.field;
+	game->config.record = updated;
 	game->config.epoch_year = (float)adjusted;
 	game->config.last_maintenance =
 	    ((unsigned char)line[0] & 0xdfU) == 'Y' ? 0.0f : (float)serial;
@@ -359,8 +334,8 @@ edit_scoreboard(struct yt_game *game, uint8_t working_path[41],
     size_t *working_path_length, struct yt_error *error)
 {
 	struct yt_config_output_result output;
-	struct yt_config_overlay_state state;
 	struct yt_config_overlay overlays[2];
+	struct yt_record updated;
 	char line[160];
 	uint8_t fixed[41];
 	uint8_t raw_length[4];
@@ -390,10 +365,10 @@ edit_scoreboard(struct yt_game *game, uint8_t working_path[41],
 	overlays[0] = (struct yt_config_overlay){0U, fixed, sizeof(fixed)};
 	overlays[1] = (struct yt_config_overlay){YT_F41, raw_length,
 	    sizeof(raw_length)};
-	if (!yt_config_apply_overlays(&state, overlays, YT_ARRAY_LEN(overlays),
-	    &config_record_ops, game, error))
+	if (!yt_config_apply_overlays(&game->database, overlays,
+	    YT_ARRAY_LEN(overlays), &updated, error))
 		return false;
-	game->config.record = state.field;
+	game->config.record = updated;
 	snprintf(game->config.scoreboard, sizeof(game->config.scoreboard), "%s",
 	    stored);
 	game->config.scoreboard_length = (float)length;
@@ -406,8 +381,9 @@ static bool
 edit_headquarters(struct yt_game *game, struct yt_error *error)
 {
 	struct yt_config_output_result output;
-	struct yt_config_hq_state state;
 	struct qb_val_result parsed;
+	struct yt_record updated;
+	enum yt_config_hq_route route;
 	char line[160];
 	float raw;
 	float upper = game->config.port_offset
@@ -426,16 +402,16 @@ edit_headquarters(struct yt_game *game, struct yt_error *error)
 			return false;
 		return true;
 	}
-	if (!yt_config_headquarters_relocate(&state, &game->config, raw,
-	    &config_record_ops, game, error))
+	if (!yt_config_headquarters_relocate(&game->database, &game->config,
+	    raw, &route, &updated, error))
 		return false;
-	if (state.route == YT_CONFIG_HQ_ROUTE_OCCUPIED) {
+	if (route == YT_CONFIG_HQ_ROUTE_OCCUPIED) {
 		if (!yt_config_compose_hq_diagnostic(YT_CONFIG_HQ_OCCUPIED,
 		    output.final_column, &output) || !write_output(&output, error))
 			return false;
 		return true;
 	}
-	game->config.record = state.field;
+	game->config.record = updated;
 	game->config.headquarters = raw;
 	return true;
 }
@@ -1141,14 +1117,15 @@ main(void)
 				goto failure;
 		}
 		else if (key == 'J') {
-			struct yt_config_local_screen_state state;
+			struct yt_record updated;
+			float toggled;
 
-			if (!yt_config_toggle_local_screen(&state,
-			    &config_record_ops, &game, &error))
+			if (!yt_config_toggle_local_screen(&game.database, &updated,
+			    &toggled, &error))
 				goto failure;
-			game.config.record = state.field;
-			game.config.local_screen = state.toggled;
-			working.local_screen = state.toggled;
+			game.config.record = updated;
+			game.config.local_screen = toggled;
+			working.local_screen = toggled;
 		}
 		else if (key == 'L') {
 			if (!edit_genesis(&game, &error))

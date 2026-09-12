@@ -147,23 +147,27 @@ config_single_sub(float left, float right)
 }
 
 bool
-yt_config_headquarters_relocate(struct yt_config_hq_state *state,
+yt_config_headquarters_relocate(struct yt_database *database,
     const struct yt_config *config, float candidate,
-    const struct yt_config_record_ops *ops, void *context,
+    enum yt_config_hq_route *route, struct yt_record *result,
     struct yt_error *error)
 {
 	static const uint8_t raw_clear[4] = {0x00, 0x00, 0x80, 0x00};
+	struct yt_record candidate_initial;
+	struct yt_record field;
 	uint8_t candidate_raw[4];
 	bool overflow;
+	int candidate_logical;
+	int old_logical;
 	int32_t converted;
+	float captured_candidate_fighters;
+	float merged_fighters;
 	float planet_link;
 
-	if (state != NULL)
-		memset(state, 0, sizeof(*state));
-	if (state == NULL || config == NULL || ops == NULL
-	    || ops->read_record == NULL || ops->write_record == NULL)
+	if (database == NULL || config == NULL || route == NULL || result == NULL)
 		return config_hq_error(error, YT_INVALID,
 		    "YTCONFIG Headquarters transaction");
+	*route = YT_CONFIG_HQ_ROUTE_INCOMPLETE;
 	if (qb_mbf32_encode(candidate, candidate_raw) == QB_MBF_OVERFLOW)
 		return config_hq_error(error, YT_RANGE,
 		    "YTCONFIG Headquarters candidate");
@@ -171,286 +175,212 @@ yt_config_headquarters_relocate(struct yt_config_hq_state *state,
 	if (overflow)
 		return config_hq_error(error, YT_RANGE,
 		    "YTCONFIG Headquarters candidate");
-	state->candidate_logical = (int)converted;
-
-#define HQ_READ(stage, record_number, destination) do { \
-	state->attempted = (stage); \
-	state->current_basic_record = (record_number); \
-	state->field_loaded = false; \
-	if (!ops->read_record(context, state->current_basic_record, \
-	    (destination), error)) \
-		return false; \
-	state->field_loaded = true; \
-	++state->reads_completed; \
-} while (0)
-#define HQ_WRITE(stage, record_number) do { \
-	state->attempted = (stage); \
-	state->current_basic_record = (record_number); \
-	if (!ops->write_record(context, state->current_basic_record, \
-	    &state->field, error)) \
-		return false; \
-	++state->writes_completed; \
-} while (0)
-
-	HQ_READ(YT_CONFIG_HQ_READ_CANDIDATE_INITIAL,
-	    (size_t)yt_sector_basic_record(config, state->candidate_logical),
-	    &state->field);
-	state->candidate_initial = state->field;
-	converted = qb_cint_mbf32(
-	    state->candidate_initial.bytes + YT_F93, 0U, &overflow);
+	candidate_logical = (int)converted;
+	if (!yt_database_read(database,
+	    (size_t)yt_sector_basic_record(config, candidate_logical),
+	    &candidate_initial, error))
+		return false;
+	converted = qb_cint_mbf32(candidate_initial.bytes + YT_F93, 0U,
+	    &overflow);
 	if (overflow)
 		return config_hq_error(error, YT_RANGE,
 		    "YTCONFIG Headquarters planet link");
 	if (converted != 0) {
-		state->route = YT_CONFIG_HQ_ROUTE_OCCUPIED;
-		state->attempted = YT_CONFIG_HQ_NONE;
-		state->complete = true;
+		*route = YT_CONFIG_HQ_ROUTE_OCCUPIED;
 		return true;
 	}
-	converted = qb_cint_mbf32(
-	    state->candidate_initial.bytes + YT_F81, 0U, &overflow);
+	converted = qb_cint_mbf32(candidate_initial.bytes + YT_F81, 0U,
+	    &overflow);
 	if (overflow)
 		return config_hq_error(error, YT_RANGE,
 		    "YTCONFIG Headquarters fighters");
-	if (converted != 0 && yt_record_get_number(&state->candidate_initial,
+	if (converted != 0 && yt_record_get_number(&candidate_initial,
 	    YT_F85) != -1.0f) {
-		state->route = YT_CONFIG_HQ_ROUTE_OCCUPIED;
-		state->attempted = YT_CONFIG_HQ_NONE;
-		state->complete = true;
+		*route = YT_CONFIG_HQ_ROUTE_OCCUPIED;
 		return true;
 	}
-	state->captured_candidate_fighters = yt_record_get_number(
-	    &state->candidate_initial, YT_F81);
+	captured_candidate_fighters = yt_record_get_number(&candidate_initial,
+	    YT_F81);
 	converted = qb_cint_mbf32(config->record.bytes + YT_F117, 0U,
 	    &overflow);
 	if (overflow)
 		return config_hq_error(error, YT_RANGE,
 		    "YTCONFIG old Headquarters");
-	state->old_logical = (int)converted;
-	HQ_READ(YT_CONFIG_HQ_READ_OLD,
-	    (size_t)yt_sector_basic_record(config, state->old_logical),
-	    &state->field);
-	state->merged_fighters = config_single_add(
-	    state->captured_candidate_fighters,
-	    yt_record_get_number(&state->field, YT_F81));
-	(void)yt_record_set_raw_number(&state->field, YT_F93, raw_clear);
-	(void)yt_record_set_raw_number(&state->field, YT_F85, raw_clear);
-	(void)yt_record_set_raw_number(&state->field, YT_F81, raw_clear);
-	HQ_WRITE(YT_CONFIG_HQ_WRITE_OLD,
-	    (size_t)yt_sector_basic_record(config, state->old_logical));
-	HQ_READ(YT_CONFIG_HQ_READ_CANDIDATE_FRESH,
-	    (size_t)yt_sector_basic_record(config, state->candidate_logical),
-	    &state->field);
+	old_logical = (int)converted;
+	if (!yt_database_read(database,
+	    (size_t)yt_sector_basic_record(config, old_logical), &field,
+	    error))
+		return false;
+	merged_fighters = config_single_add(captured_candidate_fighters,
+	    yt_record_get_number(&field, YT_F81));
+	(void)yt_record_set_raw_number(&field, YT_F93, raw_clear);
+	(void)yt_record_set_raw_number(&field, YT_F85, raw_clear);
+	(void)yt_record_set_raw_number(&field, YT_F81, raw_clear);
+	if (!yt_database_write(database,
+	    (size_t)yt_sector_basic_record(config, old_logical), &field, error)
+	    || !yt_database_read(database,
+	    (size_t)yt_sector_basic_record(config, candidate_logical), &field,
+	    error))
+		return false;
 	planet_link = config_single_sub(config->total_records,
 	    config->planet_offset);
-	if (!yt_record_set_number(&state->field, YT_F85, -1.0f)
-	    || !yt_record_set_number(&state->field, YT_F81,
-	    state->merged_fighters)
-	    || !yt_record_set_number(&state->field, YT_F93, planet_link))
+	if (!yt_record_set_number(&field, YT_F85, -1.0f)
+	    || !yt_record_set_number(&field, YT_F81, merged_fighters)
+	    || !yt_record_set_number(&field, YT_F93, planet_link))
 		return config_hq_error(error, YT_RANGE,
 		    "YTCONFIG Headquarters candidate overlay");
-	HQ_WRITE(YT_CONFIG_HQ_WRITE_CANDIDATE,
-	    (size_t)yt_sector_basic_record(config, state->candidate_logical));
-	HQ_READ(YT_CONFIG_HQ_READ_SECTOR_ONE,
-	    (size_t)yt_sector_basic_record(config, 1), &state->field);
-	(void)yt_record_set_raw_number(&state->field, YT_F105, candidate_raw);
-	HQ_WRITE(YT_CONFIG_HQ_WRITE_SECTOR_ONE,
-	    (size_t)yt_sector_basic_record(config, 1));
-	HQ_READ(YT_CONFIG_HQ_READ_CONFIG, 1U, &state->field);
-	(void)yt_record_set_raw_number(&state->field, YT_F117, candidate_raw);
-	HQ_WRITE(YT_CONFIG_HQ_WRITE_CONFIG, 1U);
-
-#undef HQ_WRITE
-#undef HQ_READ
-	state->route = YT_CONFIG_HQ_ROUTE_RELOCATED;
-	state->attempted = YT_CONFIG_HQ_NONE;
-	state->complete = true;
+	if (!yt_database_write(database,
+	    (size_t)yt_sector_basic_record(config, candidate_logical), &field,
+	    error)
+	    || !yt_database_read(database,
+	    (size_t)yt_sector_basic_record(config, 1), &field, error))
+		return false;
+	(void)yt_record_set_raw_number(&field, YT_F105, candidate_raw);
+	if (!yt_database_write(database,
+	    (size_t)yt_sector_basic_record(config, 1), &field, error)
+	    || !yt_database_read(database, 1U, &field, error))
+		return false;
+	(void)yt_record_set_raw_number(&field, YT_F117, candidate_raw);
+	if (!yt_database_write(database, 1U, &field, error)
+	    || !yt_database_flush(database, error))
+		return false;
+	*result = field;
+	*route = YT_CONFIG_HQ_ROUTE_RELOCATED;
 	return true;
 }
 
 bool
-yt_config_toggle_local_screen(struct yt_config_local_screen_state *state,
-    const struct yt_config_record_ops *ops, void *context,
-    struct yt_error *error)
+yt_config_toggle_local_screen(struct yt_database *database,
+    struct yt_record *result, float *toggled, struct yt_error *error)
 {
+	struct yt_record field;
 	bool overflow;
 	int32_t converted;
 
-	if (state != NULL)
-		memset(state, 0, sizeof(*state));
-	if (state == NULL || ops == NULL || ops->read_record == NULL
-	    || ops->write_record == NULL)
+	if (database == NULL || result == NULL || toggled == NULL)
 		return config_hq_error(error, YT_INVALID,
 		    "YTCONFIG local-screen transaction");
-	state->attempted = YT_CONFIG_LOCAL_SCREEN_READ;
-	if (!ops->read_record(context, 1U, &state->field, error))
+	if (!yt_database_read(database, 1U, &field, error))
 		return false;
-	state->field_loaded = true;
-	state->stored = yt_record_get_number(&state->field, YT_F85);
-	converted = qb_cint_mbf32(state->field.bytes + YT_F85, 0U,
-	    &overflow);
+	converted = qb_cint_mbf32(field.bytes + YT_F85, 0U, &overflow);
 	if (overflow)
 		return config_hq_error(error, YT_RANGE,
 		    "YTCONFIG local-screen CINT");
-	state->toggled = (float)(~converted);
-	if (!yt_record_set_number(&state->field, YT_F85, state->toggled))
+	*toggled = (float)(~converted);
+	if (!yt_record_set_number(&field, YT_F85, *toggled))
 		return config_hq_error(error, YT_RANGE,
 		    "YTCONFIG local-screen overlay");
-	state->overlay_complete = true;
-	state->attempted = YT_CONFIG_LOCAL_SCREEN_WRITE;
-	if (!ops->write_record(context, 1U, &state->field, error))
+	if (!yt_database_write(database, 1U, &field, error)
+	    || !yt_database_flush(database, error))
 		return false;
-	state->write_complete = true;
-	state->attempted = YT_CONFIG_LOCAL_SCREEN_NONE;
-	state->complete = true;
+	*result = field;
+	return true;
+}
+
+static bool
+config_apply_overlay_values(struct yt_record *field,
+    const struct yt_config_overlay *overlays, size_t overlay_count,
+    const char *operation, struct yt_error *error)
+{
+	size_t index;
+
+	if (field == NULL || (overlays == NULL && overlay_count != 0U))
+		return config_hq_error(error, YT_INVALID, operation);
+	for (index = 0U; index < overlay_count; ++index) {
+		if ((overlays[index].data == NULL && overlays[index].length != 0U)
+		    || overlays[index].offset > YT_RECORD_SIZE
+		    || overlays[index].length >
+		    YT_RECORD_SIZE - overlays[index].offset)
+			return config_hq_error(error, YT_INVALID, operation);
+	}
+	for (index = 0U; index < overlay_count; ++index) {
+		if (overlays[index].length != 0U)
+			memcpy(field->bytes + overlays[index].offset,
+			    overlays[index].data, overlays[index].length);
+	}
 	return true;
 }
 
 bool
-yt_config_apply_overlays(struct yt_config_overlay_state *state,
+yt_config_apply_overlays(struct yt_database *database,
     const struct yt_config_overlay *overlays, size_t overlay_count,
-    const struct yt_config_record_ops *ops, void *context,
-    struct yt_error *error)
+    struct yt_record *result, struct yt_error *error)
 {
-	size_t index;
+	struct yt_record field;
 
-	if (state != NULL)
-		memset(state, 0, sizeof(*state));
-	if (state == NULL || (overlays == NULL && overlay_count != 0U)
-	    || ops == NULL || ops->read_record == NULL
-	    || ops->write_record == NULL)
+	if (database == NULL || result == NULL
+	    || (overlays == NULL && overlay_count != 0U))
 		return config_hq_error(error, YT_INVALID,
 		    "YTCONFIG overlay transaction");
-	for (index = 0U; index < overlay_count; ++index) {
-		if ((overlays[index].data == NULL && overlays[index].length != 0U)
-		    || overlays[index].offset > YT_RECORD_SIZE
-		    || overlays[index].length >
-		    YT_RECORD_SIZE - overlays[index].offset)
-			return config_hq_error(error, YT_INVALID,
-			    "YTCONFIG overlay range");
-	}
-	state->attempted = YT_CONFIG_OVERLAY_READ;
-	if (!ops->read_record(context, 1U, &state->field, error))
+	if (!yt_database_read(database, 1U, &field, error))
 		return false;
-	state->field_loaded = true;
-	for (index = 0U; index < overlay_count; ++index) {
-		state->attempted = YT_CONFIG_OVERLAY_COPY;
-		state->overlay_index = index;
-		if (overlays[index].length != 0U)
-			memcpy(state->field.bytes + overlays[index].offset,
-			    overlays[index].data, overlays[index].length);
-		++state->overlays_completed;
-	}
-	state->overlay_index = overlay_count;
-	state->attempted = YT_CONFIG_OVERLAY_WRITE;
-	if (!ops->write_record(context, 1U, &state->field, error))
+	if (!config_apply_overlay_values(&field, overlays, overlay_count,
+	    "YTCONFIG overlay range", error)
+	    || !yt_database_write(database, 1U, &field, error)
+	    || !yt_database_flush(database, error))
 		return false;
-	state->write_complete = true;
-	state->attempted = YT_CONFIG_OVERLAY_NONE;
-	state->complete = true;
+	*result = field;
 	return true;
 }
 
 bool
-yt_config_apply_loaded_overlays(struct yt_config_overlay_state *state,
+yt_config_apply_loaded_overlays(struct yt_database *database,
     const struct yt_record *field,
     const struct yt_config_overlay *overlays, size_t overlay_count,
-    const struct yt_config_record_ops *ops, void *context,
-    struct yt_error *error)
+    struct yt_record *result, struct yt_error *error)
 {
-	size_t index;
+	struct yt_record updated;
 
-	if (state != NULL)
-		memset(state, 0, sizeof(*state));
-	if (state == NULL || field == NULL
-	    || (overlays == NULL && overlay_count != 0U) || ops == NULL
-	    || ops->write_record == NULL)
+	if (database == NULL || field == NULL || result == NULL
+	    || (overlays == NULL && overlay_count != 0U))
 		return config_hq_error(error, YT_INVALID,
 		    "YTCONFIG loaded overlay transaction");
-	for (index = 0U; index < overlay_count; ++index) {
-		if ((overlays[index].data == NULL && overlays[index].length != 0U)
-		    || overlays[index].offset > YT_RECORD_SIZE
-		    || overlays[index].length >
-		    YT_RECORD_SIZE - overlays[index].offset)
-			return config_hq_error(error, YT_INVALID,
-			    "YTCONFIG loaded overlay range");
-	}
-	state->field = *field;
-	state->field_loaded = true;
-	for (index = 0U; index < overlay_count; ++index) {
-		state->attempted = YT_CONFIG_OVERLAY_COPY;
-		state->overlay_index = index;
-		if (overlays[index].length != 0U)
-			memcpy(state->field.bytes + overlays[index].offset,
-			    overlays[index].data, overlays[index].length);
-		++state->overlays_completed;
-	}
-	state->overlay_index = overlay_count;
-	state->attempted = YT_CONFIG_OVERLAY_WRITE;
-	if (!ops->write_record(context, 1U, &state->field, error))
+	updated = *field;
+	if (!config_apply_overlay_values(&updated, overlays, overlay_count,
+	    "YTCONFIG loaded overlay range", error)
+	    || !yt_database_write(database, 1U, &updated, error)
+	    || !yt_database_flush(database, error))
 		return false;
-	state->write_complete = true;
-	state->attempted = YT_CONFIG_OVERLAY_NONE;
-	state->complete = true;
+	*result = updated;
 	return true;
 }
 
 bool
-yt_config_redraw_repairs(struct yt_config_redraw_repair_state *state,
+yt_config_redraw_repairs(struct yt_database *database,
     const struct yt_record *field, float working_maximum_holds,
-    const struct yt_config_record_ops *ops, void *context,
-    struct yt_error *error)
+    struct yt_record *result, struct yt_error *error)
 {
+	struct yt_record updated;
 	uint8_t raw[4];
 
-	if (state != NULL)
-		memset(state, 0, sizeof(*state));
-	if (state == NULL || field == NULL || ops == NULL
-	    || ops->read_record == NULL || ops->write_record == NULL)
+	if (database == NULL || field == NULL || result == NULL)
 		return config_hq_error(error, YT_INVALID,
 		    "YTCONFIG redraw-repair transaction");
-	state->field = *field;
-	state->field_loaded = true;
-	if (yt_record_get_number(&state->field, YT_F73)
-	    > working_maximum_holds) {
+	updated = *field;
+	if (yt_record_get_number(&updated, YT_F73) > working_maximum_holds) {
 		if (qb_mbf32_encode(working_maximum_holds, raw)
 		    == QB_MBF_OVERFLOW)
 			return config_hq_error(error, YT_RANGE,
 			    "YTCONFIG redraw holds repair");
-		(void)yt_record_set_raw_number(&state->field, YT_F73, raw);
-		state->attempted = YT_CONFIG_REDRAW_REPAIR_WRITE_HOLDS;
-		if (!ops->write_record(context, 1U, &state->field, error))
+		(void)yt_record_set_raw_number(&updated, YT_F73, raw);
+		if (!yt_database_write(database, 1U, &updated, error)
+		    || !yt_database_flush(database, error))
 			return false;
-		++state->writes_completed;
-		state->holds_repaired = true;
 	}
-	state->attempted = YT_CONFIG_REDRAW_REPAIR_READ_MENU;
-	state->field_loaded = false;
-	if (!ops->read_record(context, 1U, &state->field, error))
+	if (!yt_database_read(database, 1U, &updated, error))
 		return false;
-	++state->reads_completed;
-	state->field_loaded = true;
-	if (yt_record_get_number(&state->field, YT_F117) == 0.0f) {
+	if (yt_record_get_number(&updated, YT_F117) == 0.0f) {
 		if (qb_mbf32_encode(85.0f, raw) == QB_MBF_OVERFLOW)
 			return config_hq_error(error, YT_RANGE,
 			    "YTCONFIG redraw Headquarters repair");
-		(void)yt_record_set_raw_number(&state->field, YT_F117, raw);
-		state->attempted =
-		    YT_CONFIG_REDRAW_REPAIR_WRITE_HEADQUARTERS;
-		if (!ops->write_record(context, 1U, &state->field, error))
+		(void)yt_record_set_raw_number(&updated, YT_F117, raw);
+		if (!yt_database_write(database, 1U, &updated, error)
+		    || !yt_database_flush(database, error))
 			return false;
-		++state->writes_completed;
-		state->headquarters_repaired = true;
-		state->attempted =
-		    YT_CONFIG_REDRAW_REPAIR_READ_HEADQUARTERS;
-		state->field_loaded = false;
-		if (!ops->read_record(context, 1U, &state->field, error))
+		if (!yt_database_read(database, 1U, &updated, error))
 			return false;
-		++state->reads_completed;
-		state->field_loaded = true;
 	}
-	state->attempted = YT_CONFIG_REDRAW_REPAIR_NONE;
-	state->complete = true;
+	*result = updated;
 	return true;
 }
 
