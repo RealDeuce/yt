@@ -2221,14 +2221,7 @@ test_startup_dorinfo_state(void)
 	    &field_length);
 	CHECK(field != NULL
 	    && field_length == sizeof("57600 BAUD,O,7,[\xc1") - 1U
-	    && memcmp(field, "57600 BAUD,O,7,[\xc1", field_length) == 0
-	    && state_result.uppercase_called
-	    && qb_mbf32_decode(state_result.uppercase_length_raw)
-	    == (float)field_length
-	    && qb_mbf32_decode(state_result.uppercase_numeric_temp_raw)
-	    == (float)(field_length + 1U)
-	    && qb_mbf32_decode(state_result.uppercase_index_raw)
-	    == (float)(field_length + 1U));
+	    && memcmp(field, "57600 BAUD,O,7,[\xc1", field_length) == 0);
 	for (index = 0U; index < YT_STARTUP_DORINFO_FIELDS; ++index)
 		CHECK(state_result.cleared_fields[index]
 		    == (index == 3U || index == 4U || index == 8U
@@ -2333,8 +2326,7 @@ test_startup_dorinfo_state(void)
 	    && state_result.canonical_name_length == strlen("Jane O'neil")
 	    && !state_result.deadline_set && state_result.open_spec_length == 0U
 	    && state_result.carrier_local_screen == 0.0f
-	    && state_result.game_sound == 0.0f
-	    && !state_result.uppercase_called);
+	    && state_result.game_sound == 0.0f);
 	field = yt_startup_dorinfo_field(&dorinfo, storage, 4U,
 	    &field_length);
 	CHECK(field != NULL
@@ -2359,8 +2351,7 @@ test_startup_dorinfo_state(void)
 	    && state_result.deadline == 10800.0f
 	    && state_result.local_mode == 1.0f
 	    && state_result.local_sound == -1.0f
-	    && state_result.game_sound == -1.0f
-	    && !state_result.uppercase_called);
+	    && state_result.game_sound == -1.0f);
 	CHECK(yt_startup_compose_events(&state_result, 0x03U, 0x00U, 0,
 	    YT_STARTUP_WAIT_TIMER, 0x80U, 0x03U, 0x00U, &event_result));
 	CHECK(event_result.outcome == YT_STARTUP_EVENTS_LOCAL_READY

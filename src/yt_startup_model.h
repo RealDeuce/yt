@@ -94,10 +94,6 @@ struct yt_startup_state_result {
 	uint8_t sampled_dlm;
 	uint8_t restored_dll;
 	uint8_t restored_dlm;
-	uint8_t uppercase_numeric_temp_raw[4];
-	uint8_t uppercase_length_raw[4];
-	uint8_t uppercase_index_raw[4];
-	bool uppercase_called;
 	bool cleared_fields[YT_STARTUP_DORINFO_FIELDS];
 };
 

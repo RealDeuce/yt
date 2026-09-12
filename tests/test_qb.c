@@ -491,28 +491,9 @@ test_numeric_raw_sweep(void)
 	CHECK(encode64 == UINT64_C(0x7d549b35bee7251a));
 }
 
-struct upper_store_tape {
-	enum qb_compat_upper_store_kind kind[16];
-	float value[16];
-	size_t count;
-};
-
-static void
-upper_store(void *context, enum qb_compat_upper_store_kind kind, float value)
-{
-	struct upper_store_tape *tape = context;
-
-	if (tape->count >= YT_ARRAY_LEN(tape->kind))
-		return;
-	tape->kind[tape->count] = kind;
-	tape->value[tape->count] = value;
-	++tape->count;
-}
-
 static void
 test_strings(void)
 {
-	struct upper_store_tape upper_tape;
 	char title[64] = "  aLAN  o'BRIEN, jr  ";
 	char upper[32] = "List \x82";
 	char compatibility[] = "az{_@\xe1";
@@ -529,36 +510,9 @@ test_strings(void)
 	CHECK(strcmp(upper, "LIST \x82") == 0);
 	qb_compat_upper(compatibility);
 	CHECK(memcmp(compatibility, expected, sizeof(expected)) == 0);
-	memset(&upper_tape, 0, sizeof(upper_tape));
 	memcpy(compatibility, "a@B{", 5U);
-	qb_compat_upper_n_observed((uint8_t *)compatibility, 4U,
-	    upper_store, &upper_tape);
+	qb_compat_upper_n((uint8_t *)compatibility, 4U);
 	CHECK(strcmp(compatibility, "A@B[") == 0);
-	CHECK(upper_tape.count == 11U);
-	CHECK(upper_tape.kind[0] == QB_COMPAT_UPPER_STORE_NUMERIC_TEMP
-	    && upper_tape.value[0] == 4.0f);
-	CHECK(upper_tape.kind[1] == QB_COMPAT_UPPER_STORE_LENGTH
-	    && upper_tape.value[1] == 4.0f);
-	CHECK(upper_tape.kind[2] == QB_COMPAT_UPPER_STORE_INDEX
-	    && upper_tape.value[2] == 1.0f);
-	for (byte = 0U; byte < 4U; ++byte) {
-		CHECK(upper_tape.kind[3U + byte * 2U]
-		    == QB_COMPAT_UPPER_STORE_NUMERIC_TEMP);
-		CHECK(upper_tape.kind[4U + byte * 2U]
-		    == QB_COMPAT_UPPER_STORE_INDEX);
-		CHECK(upper_tape.value[3U + byte * 2U] == (float)(byte + 2U)
-		    && upper_tape.value[4U + byte * 2U]
-		    == (float)(byte + 2U));
-	}
-	memset(&upper_tape, 0, sizeof(upper_tape));
-	qb_compat_upper_n_observed(one, 0U, upper_store, &upper_tape);
-	CHECK(upper_tape.count == 3U
-	    && upper_tape.kind[0] == QB_COMPAT_UPPER_STORE_NUMERIC_TEMP
-	    && upper_tape.value[0] == 0.0f
-	    && upper_tape.kind[1] == QB_COMPAT_UPPER_STORE_LENGTH
-	    && upper_tape.value[1] == 0.0f
-	    && upper_tape.kind[2] == QB_COMPAT_UPPER_STORE_INDEX
-	    && upper_tape.value[2] == 1.0f);
 	for (byte = 0; byte < 256; ++byte) {
 		ascii_domain[byte] = (uint8_t)byte;
 		compat_domain[byte] = (uint8_t)byte;

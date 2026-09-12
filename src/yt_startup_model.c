@@ -776,30 +776,6 @@ yt_startup_dorinfo_field(const struct yt_startup_dorinfo_result *result,
 	return storage + result->fields[field].offset;
 }
 
-static void
-startup_upper_store(void *context, enum qb_compat_upper_store_kind kind,
-    float value)
-{
-	struct yt_startup_state_result *result = context;
-	uint8_t *raw;
-
-	switch (kind) {
-	case QB_COMPAT_UPPER_STORE_NUMERIC_TEMP:
-		raw = result->uppercase_numeric_temp_raw;
-		break;
-	case QB_COMPAT_UPPER_STORE_LENGTH:
-		raw = result->uppercase_length_raw;
-		break;
-	case QB_COMPAT_UPPER_STORE_INDEX:
-		raw = result->uppercase_index_raw;
-		break;
-	default:
-		return;
-	}
-	if (qb_mbf32_encode(value, raw) == QB_MBF_OK)
-		result->uppercase_called = true;
-}
-
 bool
 yt_startup_compose_state(const struct yt_startup_dorinfo_result *dorinfo,
     uint8_t *storage, uint8_t dll, uint8_t dlm, float timer,
@@ -835,8 +811,7 @@ yt_startup_compose_state(const struct yt_startup_dorinfo_result *dorinfo,
 			result->outcome = YT_STARTUP_STATE_ZERO_DIVISOR;
 			return true;
 		}
-		qb_compat_upper_n_observed(field[4], length[4],
-		    startup_upper_store, result);
+		qb_compat_upper_n(field[4], length[4]);
 		if (!yt_startup_open_spec(result->requested_port, field[4],
 		    length[4], result->open_spec, sizeof(result->open_spec),
 		    &result->open_spec_length)
