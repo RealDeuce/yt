@@ -13729,126 +13729,6 @@ score_clock_read(void *context, struct yt_clock_value *value,
 	return true;
 }
 
-struct maintenance_header_test_tape {
-	struct yt_clock_value values[2];
-	size_t calls;
-	size_t clock_calls;
-	size_t append_calls;
-	size_t fail_at;
-	char line[160];
-};
-
-static bool
-maintenance_header_test_step(struct maintenance_header_test_tape *tape,
-    struct yt_error *error)
-{
-	size_t call = tape->calls++;
-
-	if (call != tape->fail_at)
-		return true;
-	if (error != NULL) {
-		error->status = YT_IO_ERROR;
-		(void)snprintf(error->operation, sizeof(error->operation),
-		    "injected maintenance header step");
-	}
-	return false;
-}
-
-static bool
-maintenance_header_test_clock(void *context, struct yt_clock_value *value,
-    struct yt_error *error)
-{
-	struct maintenance_header_test_tape *tape = context;
-	size_t index = tape->clock_calls++;
-
-	if (index >= YT_ARRAY_LEN(tape->values))
-		return false;
-	*value = tape->values[index];
-	return maintenance_header_test_step(tape, error);
-}
-
-static bool
-maintenance_header_test_append(void *context, const char *line,
-    struct yt_error *error)
-{
-	struct maintenance_header_test_tape *tape = context;
-
-	++tape->append_calls;
-	(void)snprintf(tape->line, sizeof(tape->line), "%s", line);
-	return maintenance_header_test_step(tape, error);
-}
-
-static void
-maintenance_header_test_prepare(struct maintenance_header_test_tape *tape)
-{
-	memset(tape, 0, sizeof(*tape));
-	tape->values[0] = (struct yt_clock_value){2026, 7, 22, 22, 47, 29, 0};
-	tape->values[1] = (struct yt_clock_value){2031, 8, 23, 1, 2, 3, 0};
-	tape->fail_at = SIZE_MAX;
-}
-
-static bool
-check_maintenance_header_transaction(void)
-{
-	static const char expected[] =
-	    "22:47:29 08-23-2031: Maintenance Program Ran "
-	    "(Revision 03/14/94)";
-	static const struct yt_maintenance_header_ops ops = {
-		maintenance_header_test_clock,
-		maintenance_header_test_append,
-	};
-	static const enum yt_maintenance_header_step expected_steps[] = {
-		YT_MAINTENANCE_HEADER_TIME,
-		YT_MAINTENANCE_HEADER_DATE,
-		YT_MAINTENANCE_HEADER_APPEND,
-	};
-	struct maintenance_header_test_tape tape;
-	struct yt_maintenance_header_state state;
-	struct yt_maintenance_header_ops incomplete = ops;
-	struct yt_error error;
-	size_t index;
-
-	maintenance_header_test_prepare(&tape);
-	if (!yt_maintenance_write_header_run(&state, &ops, &tape, NULL)
-	    || !state.complete || state.completed_steps != 3U
-	    || state.attempted != YT_MAINTENANCE_HEADER_APPEND
-	    || tape.calls != 3U || tape.clock_calls != 2U
-	    || tape.append_calls != 1U
-	    || strcmp(state.time_text, "22:47:29") != 0
-	    || strcmp(state.date_text, "08-23-2031") != 0
-	    || strcmp(state.line, expected) != 0
-	    || strcmp(tape.line, expected) != 0)
-		return false;
-	for (index = 0U; index < 3U; ++index) {
-		maintenance_header_test_prepare(&tape);
-		tape.fail_at = index;
-		memset(&state, 0xa5, sizeof(state));
-		yt_error_clear(&error);
-		if (yt_maintenance_write_header_run(&state, &ops, &tape, &error)
-		    || state.complete || state.completed_steps != index
-		    || state.attempted != expected_steps[index]
-		    || tape.calls != index + 1U || error.status != YT_IO_ERROR)
-			return false;
-		if (index == 0U && state.time_text[0] != '\0')
-			return false;
-		if (index == 1U && (strcmp(state.time_text, "22:47:29") != 0
-		    || state.date_text[0] != '\0' || tape.append_calls != 0U))
-			return false;
-		if (index == 2U && (strcmp(state.line, expected) != 0
-		    || strcmp(tape.line, expected) != 0
-		    || tape.append_calls != 1U))
-			return false;
-	}
-	incomplete.append = NULL;
-	yt_error_clear(&error);
-	return !yt_maintenance_write_header_run(&state, &incomplete, &tape,
-	    &error)
-	    && error.status == YT_INVALID
-	    && strcmp(error.operation, "maintenance header transaction") == 0
-	    && !yt_maintenance_write_header_run(NULL, &ops, &tape, NULL)
-	    && !yt_maintenance_write_header_run(&state, NULL, &tape, NULL);
-}
-
 static bool
 check_maintenance_header_writer(void)
 {
@@ -13863,8 +13743,6 @@ check_maintenance_header_writer(void)
 	struct yt_error error;
 	bool valid = false;
 
-	if (!check_maintenance_header_transaction())
-		return false;
 	(void)remove("YTNEWS.DAT");
 	yt_platform_set_clock_provider(score_clock_read, &script);
 	yt_error_clear(&error);

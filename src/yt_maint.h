@@ -338,31 +338,6 @@ struct yt_radio_compact_ops {
 	    const char *new_path, struct yt_error *error);
 };
 
-enum yt_maintenance_header_step {
-	YT_MAINTENANCE_HEADER_NONE,
-	YT_MAINTENANCE_HEADER_TIME,
-	YT_MAINTENANCE_HEADER_DATE,
-	YT_MAINTENANCE_HEADER_APPEND,
-};
-
-struct yt_maintenance_header_state {
-	enum yt_maintenance_header_step attempted;
-	size_t completed_steps;
-	struct yt_clock_value time_value;
-	struct yt_clock_value date_value;
-	char time_text[9];
-	char date_text[11];
-	char line[160];
-	bool complete;
-};
-
-struct yt_maintenance_header_ops {
-	bool (*clock)(void *context, struct yt_clock_value *value,
-	    struct yt_error *error);
-	bool (*append)(void *context, const char *line,
-	    struct yt_error *error);
-};
-
 enum yt_maintenance_protected_mines_step {
 	YT_MAINTENANCE_PROTECTED_MINES_NONE,
 	YT_MAINTENANCE_PROTECTED_MINES_READ,
@@ -469,9 +444,6 @@ bool yt_maintenance_clear_protected_mines_run(
 	struct yt_error *error);
 bool yt_maintenance_clear_protected_mines(struct yt_game *game,
     struct yt_error *error);
-bool yt_maintenance_write_header_run(struct yt_maintenance_header_state *state,
-	const struct yt_maintenance_header_ops *ops, void *context,
-	struct yt_error *error);
 bool yt_maintenance_write_header(struct yt_error *error);
 bool yt_maintenance_maintain_players(struct yt_game *game,
     float *player_sector, float *player_cloak, size_t cache_count, int today,
