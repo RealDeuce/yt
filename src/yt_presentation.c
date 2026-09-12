@@ -972,33 +972,6 @@ yt_present_radio_wrap_cleanup(int line_number, size_t wrap_marker,
 }
 
 static enum yt_present_status
-next_timer(const float *reads, size_t count, size_t *used, float *value)
-{
-	if (*used >= count)
-		return YT_PRESENT_TIMER_EXHAUSTED;
-	*value = reads[(*used)++];
-	return YT_PRESENT_OK;
-}
-
-static enum yt_present_status
-parse_value(const uint8_t *text, size_t length, double *value)
-{
-	char buffer[YT_PRESENT_EVENT_DATA + 1U];
-	struct qb_val_result parsed;
-
-	if (length > YT_PRESENT_EVENT_DATA)
-		return YT_PRESENT_CAPACITY;
-	if (length != 0)
-		memcpy(buffer, text, length);
-	buffer[length] = '\0';
-	parsed = qb_val(buffer);
-	if (parsed.overflow)
-		return YT_PRESENT_OVERFLOW;
-	*value = parsed.value;
-	return YT_PRESENT_OK;
-}
-
-static enum yt_present_status
 format_remaining(float deadline, float timer,
     struct yt_present_time_state *time)
 {
@@ -1052,81 +1025,6 @@ yt_present_format_remaining_seconds(struct yt_present_time_state *time,
 	if (remaining_seconds < 0.0f)
 		remaining_seconds = 0.0f;
 	return format_remaining(remaining_seconds, 0.0f, time);
-}
-
-enum yt_present_status
-yt_present_refresh_time(struct yt_present_time_state *time,
-    const float *timer_reads, size_t timer_count, size_t *timer_used,
-    int cursor_row, int cursor_column, struct yt_present_state *state,
-    struct yt_present_result *result, bool *updated)
-{
-	float timer;
-	double prior_value;
-	size_t used = 0;
-	enum yt_present_status status;
-
-	memset(result, 0, sizeof(*result));
-	*updated = false;
-	status = next_timer(timer_reads, timer_count, &used, &timer);
-	if (status != YT_PRESENT_OK)
-		goto done;
-	if ((float)(time->deadline - timer) > 70000.0f) {
-		time->deadline = (float)(time->deadline - 86400.0f);
-		status = next_timer(timer_reads, timer_count, &used, &timer);
-		if (status != YT_PRESENT_OK)
-			goto done;
-		time->next_refresh = (float)(timer + 1.0f);
-	}
-	status = next_timer(timer_reads, timer_count, &used, &timer);
-	if (status != YT_PRESENT_OK)
-		goto done;
-	if (timer < time->next_refresh) {
-		status = YT_PRESENT_OK;
-		goto done;
-	}
-	status = next_timer(timer_reads, timer_count, &used, &timer);
-	if (status != YT_PRESENT_OK)
-		goto done;
-	time->next_refresh = (float)(timer + 1.0f);
-	time->saved_row = cursor_row;
-	time->saved_column = cursor_column;
-	status = append_locate(result, 25, 71, -1, 0, 0);
-	if (status != YT_PRESENT_OK)
-		goto done;
-	status = append_local(result, YT_PRESENT_LOCAL_COLOR, NULL, 0,
-	    11, 1);
-	if (status != YT_PRESENT_OK)
-		goto done;
-	status = parse_value(time->text, time->text_length, &prior_value);
-	if (status != YT_PRESENT_OK)
-		goto done;
-	if (prior_value < 5.0) {
-		status = append_local(result, YT_PRESENT_LOCAL_COLOR, NULL, 0,
-		    12, 1);
-		if (status != YT_PRESENT_OK)
-			goto done;
-	}
-	status = next_timer(timer_reads, timer_count, &used, &timer);
-	if (status != YT_PRESENT_OK)
-		goto done;
-	status = format_remaining(time->deadline, timer, time);
-	if (status != YT_PRESENT_OK)
-		goto done;
-	if (state->sound.snoop != 0.0f) {
-		status = append_local(result, YT_PRESENT_LOCAL_SEMI,
-		    time->text, time->text_length, 0, 0);
-		if (status != YT_PRESENT_OK)
-			goto done;
-	}
-	status = append_locate(result, cursor_row, cursor_column, 1, 1, 16);
-	if (status != YT_PRESENT_OK)
-		goto done;
-	status = append_local(result, YT_PRESENT_LOCAL_COLOR, NULL, 0, 7, 0);
-	if (status == YT_PRESENT_OK)
-		*updated = true;
-done:
-	*timer_used = used;
-	return status;
 }
 
 enum yt_present_status
@@ -1255,81 +1153,6 @@ yt_present_low_time(const uint8_t *text, size_t length, float *remembered,
 	*remembered = qb_mbf32_decode(narrowed);
 	return low_time_warning(text, length, *remembered, state, result,
 	    warned);
-}
-
-static enum yt_present_status
-status_row_append(const uint8_t *real_name, size_t real_name_length,
-    const uint8_t *alias, size_t alias_length,
-    struct yt_present_state *state, struct yt_present_result *result)
-{
-	static const uint8_t title[] = " Yankee Trader ";
-	uint8_t clear[79];
-	uint8_t expression[63];
-	size_t length = 0;
-	enum yt_present_status status;
-
-	if (state->sound.snoop == 0.0f)
-		return YT_PRESENT_OK;
-	memset(clear, ' ', sizeof(clear));
-	status = append_locate(result, 25, 1, -1, 0, 0);
-	if (status != YT_PRESENT_OK)
-		return status;
-	status = append_local(result, YT_PRESENT_LOCAL_COLOR, NULL, 0, 11, 1);
-	if (status != YT_PRESENT_OK)
-		return status;
-	status = append_local(result, YT_PRESENT_LOCAL_SEMI, clear,
-	    sizeof(clear), 0, 0);
-	if (status != YT_PRESENT_OK)
-		return status;
-	status = append_locate(result, 25, 1, -1, 0, 0);
-	if (status != YT_PRESENT_OK)
-		return status;
-	status = append_local(result, YT_PRESENT_LOCAL_COLOR, NULL, 0, 14, 3);
-	if (status != YT_PRESENT_OK)
-		return status;
-	status = append_local(result, YT_PRESENT_LOCAL_SEMI, title,
-	    sizeof(title) - 1U, 0, 0);
-	if (status != YT_PRESENT_OK)
-		return status;
-	status = append_local(result, YT_PRESENT_LOCAL_COLOR, NULL, 0, 11, 1);
-	if (status != YT_PRESENT_OK)
-		return status;
-	status = append_local(result, YT_PRESENT_LOCAL_SEMI,
-	    (const uint8_t *)" ", 1, 0, 0);
-	if (status != YT_PRESENT_OK)
-		return status;
-	expression[length++] = ' ';
-	expression[length++] = '|';
-	expression[length++] = ' ';
-	if (real_name_length > sizeof(expression) - length)
-		real_name_length = sizeof(expression) - length;
-	memcpy(expression + length, real_name, real_name_length);
-	length += real_name_length;
-	if (length < sizeof(expression))
-		expression[length++] = ' ';
-	if (length < sizeof(expression))
-		expression[length++] = '|';
-	if (length < sizeof(expression))
-		expression[length++] = ' ';
-	if (alias_length > sizeof(expression) - length)
-		alias_length = sizeof(expression) - length;
-	memcpy(expression + length, alias, alias_length);
-	length += alias_length;
-	status = append_local(result, YT_PRESENT_LOCAL_SEMI, expression,
-	    length, 0, 0);
-	if (status != YT_PRESENT_OK)
-		return status;
-	return append_local(result, YT_PRESENT_LOCAL_COLOR, NULL, 0, 7, 0);
-}
-
-enum yt_present_status
-yt_present_status_row(const uint8_t *real_name, size_t real_name_length,
-    const uint8_t *alias, size_t alias_length,
-    struct yt_present_state *state, struct yt_present_result *result)
-{
-	memset(result, 0, sizeof(*result));
-	return status_row_append(real_name, real_name_length, alias,
-	    alias_length, state, result);
 }
 
 uint8_t

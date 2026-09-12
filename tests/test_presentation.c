@@ -4409,12 +4409,6 @@ test_time_helpers(void)
 	struct yt_present_time_state time;
 	struct yt_present_result result;
 	uint8_t long_time[YT_PRESENT_EVENT_DATA - 9U];
-	static const float update_reads[] = {100, 100, 100, 100};
-	static const float gated_reads[] = {100, 100};
-	static const float rollover_reads[] = {1, 10, 10};
-	static const float warning_reads[] = {100, 100, 100, 100};
-	size_t used;
-	bool updated;
 	bool warned;
 	float remembered = 6.0f;
 
@@ -4425,81 +4419,6 @@ test_time_helpers(void)
 	    && memcmp(time.text, " 5:59  ", 7U) == 0);
 	CHECK(time.remaining_minutes > 5.99f
 	    && time.remaining_minutes < 6.0f);
-
-	memset(&time, 0, sizeof(time));
-	time.deadline = 460.0f;
-	memcpy(time.text, " 6:00  ", 7);
-	time.text_length = 7;
-	CHECK(yt_present_refresh_time(&time, update_reads,
-	    sizeof(update_reads) / sizeof(update_reads[0]), &used, 4, 9,
-	    &current, &result, &updated) == YT_PRESENT_OK);
-	CHECK(updated && used == 4);
-	CHECK(time.next_refresh == 101.0f);
-	CHECK(time.text_length == 7
-	    && memcmp(time.text, " 6:00  ", 7) == 0);
-	CHECK(time.saved_row == 4 && time.saved_column == 9);
-	CHECK(result.event_count == 5);
-	CHECK(result.events[0].operation == YT_PRESENT_LOCAL_LOCATE
-	    && result.events[0].row == 25 && result.events[0].column == 71);
-	CHECK(result.events[1].operation == YT_PRESENT_LOCAL_COLOR
-	    && result.events[1].foreground == 11
-	    && result.events[1].background == 1);
-	CHECK(result.events[2].operation == YT_PRESENT_LOCAL_SEMI);
-	CHECK(result.events[3].operation == YT_PRESENT_LOCAL_LOCATE
-	    && result.events[3].row == 4 && result.events[3].column == 9
-	    && result.events[3].cursor_visible == 1
-	    && result.events[3].cursor_start == 1
-	    && result.events[3].cursor_stop == 16);
-	CHECK(result.events[4].operation == YT_PRESENT_LOCAL_COLOR
-	    && result.events[4].foreground == 7);
-
-	memset(&time, 0, sizeof(time));
-	time.deadline = 460.0f;
-	time.next_refresh = 101.0f;
-	CHECK(yt_present_refresh_time(&time, gated_reads,
-	    sizeof(gated_reads) / sizeof(gated_reads[0]), &used, 2, 3,
-	    &current, &result, &updated) == YT_PRESENT_OK);
-	CHECK(!updated && used == 2 && result.event_count == 0);
-	CHECK(time.deadline == 460.0f && time.next_refresh == 101.0f);
-
-	memset(&time, 0, sizeof(time));
-	time.deadline = 80000.0f;
-	CHECK(yt_present_refresh_time(&time, rollover_reads,
-	    sizeof(rollover_reads) / sizeof(rollover_reads[0]), &used, 1, 1,
-	    &current, &result, &updated) == YT_PRESENT_OK);
-	CHECK(!updated && used == 3);
-	CHECK(time.deadline == -6400.0f && time.next_refresh == 11.0f);
-	CHECK(result.event_count == 0);
-
-	current.sound.snoop = 0.0f;
-	memset(&time, 0, sizeof(time));
-	time.deadline = 430.0f;
-	memcpy(time.text, " 4:59  ", 7);
-	time.text_length = 7;
-	CHECK(yt_present_refresh_time(&time, warning_reads,
-	    sizeof(warning_reads) / sizeof(warning_reads[0]), &used, 8, 12,
-	    &current, &result, &updated) == YT_PRESENT_OK);
-	CHECK(updated && used == 4 && time.next_refresh == 101.0f);
-	CHECK(time.text_length == 7
-	    && memcmp(time.text, " 5:30  ", 7) == 0);
-	CHECK(time.saved_row == 8 && time.saved_column == 12);
-	CHECK(result.remote_length == 0 && result.event_count == 5);
-	CHECK(result.events[0].operation == YT_PRESENT_LOCAL_LOCATE
-	    && result.events[0].row == 25 && result.events[0].column == 71);
-	CHECK(result.events[1].operation == YT_PRESENT_LOCAL_COLOR
-	    && result.events[1].foreground == 11
-	    && result.events[1].background == 1);
-	CHECK(result.events[2].operation == YT_PRESENT_LOCAL_COLOR
-	    && result.events[2].foreground == 12
-	    && result.events[2].background == 1);
-	CHECK(result.events[3].operation == YT_PRESENT_LOCAL_LOCATE
-	    && result.events[3].row == 8 && result.events[3].column == 12
-	    && result.events[3].cursor_visible == 1
-	    && result.events[3].cursor_start == 1
-	    && result.events[3].cursor_stop == 16);
-	CHECK(result.events[4].operation == YT_PRESENT_LOCAL_COLOR
-	    && result.events[4].foreground == 7
-	    && result.events[4].background == 0);
 
 	current = state(true);
 	CHECK(yt_present_low_time((const uint8_t *)" 5:59  ", 7,
@@ -14372,16 +14291,12 @@ enum normal_exit_info_team_fixture_route {
 };
 
 struct normal_exit_info_observation {
-	struct yt_present_result refresh;
-	struct yt_present_time_state time;
 	struct yt_info_team_state team;
 	struct yt_sector written_overlay;
 	enum normal_exit_info_effect effects[16];
 	float player_records[3];
 	size_t effect_count;
 	size_t player_read_count;
-	size_t timer_used;
-	bool time_updated;
 	bool overlay_written;
 };
 
@@ -14390,13 +14305,11 @@ struct normal_exit_info_context {
 	struct yt_player player;
 	const uint8_t *time_text;
 	size_t time_length;
-	struct yt_present_time_state time;
 	struct yt_player team_current;
 	struct yt_player team_captain;
 	struct yt_team team;
 	struct yt_sector overlay;
 	struct normal_exit_info_observation *observation;
-	bool refresh_due;
 	enum normal_exit_info_team_fixture_route team_route;
 };
 
@@ -14418,30 +14331,7 @@ normal_exit_info_refresh(void *context, uint8_t *text, size_t capacity,
     size_t *length, struct yt_error *error)
 {
 	struct normal_exit_info_context *fixture = context;
-	static const float reads[] = {100.0f, 100.0f, 100.0f, 100.0f};
-	struct yt_present_result result;
-	size_t used;
-	bool updated;
-
 	(void)error;
-	if (fixture->refresh_due) {
-		if (length == NULL || fixture->observation == NULL
-		    || yt_present_refresh_time(&fixture->time, reads,
-		    YT_ARRAY_LEN(reads), &used, 1, 1,
-		    &fixture->viewer->join.presentation, &result, &updated)
-		    != YT_PRESENT_OK || fixture->time.text_length > capacity)
-			return false;
-		fixture->observation->refresh = result;
-		fixture->observation->time = fixture->time;
-		fixture->observation->timer_used = used;
-		fixture->observation->time_updated = updated;
-		viewer_pager_capture_result(&fixture->viewer->join, &result);
-		if (fixture->time.text_length != 0U)
-			memcpy(text, fixture->time.text,
-			    fixture->time.text_length);
-		*length = fixture->time.text_length;
-		return true;
-	}
 	if (length == NULL || fixture->time_text == NULL
 	    || capacity < fixture->time_length)
 		return false;
@@ -14668,7 +14558,6 @@ struct normal_exit_info_values {
 	const uint8_t *cached_name;
 	size_t cached_name_length;
 	struct normal_exit_info_observation *observation;
-	bool refresh_due;
 	enum normal_exit_info_team_fixture_route team_route;
 };
 
@@ -14744,19 +14633,9 @@ normal_exit_info_run(struct physical_viewer_join *viewer,
 	else {
 		fixture.player = values->player;
 		fixture.observation = values->observation;
-		fixture.refresh_due = values->refresh_due;
 		fixture.team_route = values->team_route;
 		panel.cached_name = values->cached_name;
 		panel.cached_name_length = values->cached_name_length;
-	}
-	if (fixture.refresh_due) {
-		fixture.time.deadline = 1000.0f;
-		fixture.time.next_refresh = 50.0f;
-		if (time_text == NULL || time_length > sizeof(fixture.time.text))
-			return false;
-		if (time_length != 0U)
-			memcpy(fixture.time.text, time_text, time_length);
-		fixture.time.text_length = time_length;
 	}
 	if (fixture.team_route != NORMAL_EXIT_INFO_TEAM_NONE) {
 		static const uint8_t team_name[] = "Raiders";
@@ -16376,7 +16255,7 @@ test_planet_info_cycle_presentation(void)
 }
 
 static void
-test_planet_info_promotion_refresh_cycle_presentation(void)
+test_planet_info_promotion_cycle_presentation(void)
 {
 	static const enum normal_exit_info_effect expected_effects[] = {
 		NORMAL_EXIT_INFO_READ_CURRENT,
@@ -16397,13 +16276,12 @@ test_planet_info_promotion_refresh_cycle_presentation(void)
 		size_t remote_length;
 		uint64_t remote_fnv;
 		size_t colors;
-		uint64_t color_fnv;
 		float final_bold;
 	} cases[] = {
 		{true, 887U, 973U, UINT64_C(0x0883189690943781),
-		    55U, UINT64_C(0x8a10014347635983), 0.0f},
+		    53U, 0.0f},
 		{false, 811U, 887U, UINT64_C(0x19b54d3b1a6cc58c),
-		    6U, UINT64_C(0xda1f2a2392998d66), 1.0f},
+		    4U, 1.0f},
 	};
 	static const uint8_t prompt[] =
 	    "Time: 14:59  Planet command (?=help) [A]? ";
@@ -16420,7 +16298,6 @@ test_planet_info_promotion_refresh_cycle_presentation(void)
 	size_t pass;
 
 	info = normal_exit_info_values_fixture();
-	info.refresh_due = true;
 	info.team_route = NORMAL_EXIT_INFO_TEAM_PROMOTION;
 	memset(expected_overlay.bytes, 0xa5, sizeof(expected_overlay.bytes));
 	CHECK(yt_record_set_number(&expected_overlay, YT_F77, 2.0f));
@@ -16438,39 +16315,6 @@ test_planet_info_promotion_refresh_cycle_presentation(void)
 		    && viewer.join.remote_length == cases[pass].remote_length
 		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
 		    == cases[pass].remote_fnv);
-		CHECK(observation.timer_used == 4U && observation.time_updated
-		    && observation.time.deadline == 1000.0f
-		    && observation.time.next_refresh == 101.0f
-		    && observation.time.saved_row == 1
-		    && observation.time.saved_column == 1
-		    && observation.time.text_length == 8U
-		    && memcmp(observation.time.text, " 14:59  ", 8U) == 0
-		    && observation.refresh.remote_length == 0U
-		    && observation.refresh.event_count == 5U);
-		CHECK(observation.refresh.events[0].operation
-		    == YT_PRESENT_LOCAL_LOCATE
-		    && observation.refresh.events[0].row == 25
-		    && observation.refresh.events[0].column == 71
-		    && observation.refresh.events[1].operation
-		    == YT_PRESENT_LOCAL_COLOR
-		    && observation.refresh.events[1].foreground == 11
-		    && observation.refresh.events[1].background == 1
-		    && observation.refresh.events[2].operation
-		    == YT_PRESENT_LOCAL_SEMI
-		    && observation.refresh.events[2].length == 8U
-		    && memcmp(observation.refresh.events[2].data,
-		    " 14:59  ", 8U) == 0
-		    && observation.refresh.events[3].operation
-		    == YT_PRESENT_LOCAL_LOCATE
-		    && observation.refresh.events[3].row == 1
-		    && observation.refresh.events[3].column == 1
-		    && observation.refresh.events[3].cursor_visible == 1
-		    && observation.refresh.events[3].cursor_start == 1
-		    && observation.refresh.events[3].cursor_stop == 16
-		    && observation.refresh.events[4].operation
-		    == YT_PRESENT_LOCAL_COLOR
-		    && observation.refresh.events[4].foreground == 7
-		    && observation.refresh.events[4].background == 0);
 		CHECK(observation.effect_count == YT_ARRAY_LEN(expected_effects)
 		    && memcmp(observation.effects, expected_effects,
 		    sizeof(expected_effects)) == 0
@@ -16490,14 +16334,10 @@ test_planet_info_promotion_refresh_cycle_presentation(void)
 		    && memcmp(observation.written_overlay.record.bytes,
 		    expected_overlay.bytes, sizeof(expected_overlay.bytes)) == 0
 		    && viewer.join.local_row_count == 27U
-		    && viewer_rows_fnv1a64(&viewer.join)
-		    == UINT64_C(0x4f8e177d59bb4b6c)
 		    && viewer.join.local_fragment_length == sizeof(prompt) - 1U
 		    && memcmp(viewer.join.local_fragment, prompt,
 		    sizeof(prompt) - 1U) == 0
 		    && viewer.join.local_color_count == cases[pass].colors
-		    && viewer_colors_fnv1a64(&viewer.join)
-		    == cases[pass].color_fnv
 		    && viewer.join.presentation.foreground == 6.0f
 		    && viewer.join.presentation.background == 0.0f
 		    && viewer.join.presentation.bold == cases[pass].final_bold
@@ -16604,9 +16444,6 @@ test_planet_info_captain_route_cycles_presentation(void)
 		    && viewer.join.remote_length == cases[pass].remote_length
 		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
 		    == cases[pass].remote_fnv
-		    && observation.timer_used == 0U
-		    && !observation.time_updated
-		    && observation.refresh.event_count == 0U
 		    && observation.effect_count == cases[pass].effect_count
 		    && memcmp(observation.effects, cases[pass].effects,
 		    cases[pass].effect_count * sizeof(cases[pass].effects[0])) == 0
@@ -46777,74 +46614,6 @@ test_startup_pre_admission_presentation(void)
 }
 
 static void
-test_startup_status_row(void)
-{
-	static const uint8_t real_name[] = "John Doe";
-	static const uint8_t expression[] = " | John Doe | ";
-	static const uint8_t login_expression[] = " | John Doe | Pilot";
-	uint8_t long_name[80];
-	struct yt_present_state current = state(false);
-	struct yt_present_result result;
-	size_t index;
-
-	current.sound.snoop = 0.0f;
-	CHECK(yt_present_status_row(real_name, sizeof(real_name) - 1U,
-	    (const uint8_t *)"", 0, &current, &result) == YT_PRESENT_OK);
-	CHECK(result.remote_length == 0 && result.event_count == 0);
-
-	current.sound.snoop = -1.0f;
-	CHECK(yt_present_status_row(real_name, sizeof(real_name) - 1U,
-	    (const uint8_t *)"", 0, &current, &result) == YT_PRESENT_OK);
-	CHECK(result.remote_length == 0 && result.event_count == 10);
-	CHECK(result.events[0].operation == YT_PRESENT_LOCAL_LOCATE
-	    && result.events[0].row == 25 && result.events[0].column == 1);
-	CHECK(result.events[1].operation == YT_PRESENT_LOCAL_COLOR
-	    && result.events[1].foreground == 11
-	    && result.events[1].background == 1);
-	CHECK(result.events[2].operation == YT_PRESENT_LOCAL_SEMI
-	    && result.events[2].length == 79);
-	for (index = 0; index < result.events[2].length; ++index)
-		CHECK(result.events[2].data[index] == ' ');
-	CHECK(result.events[3].operation == YT_PRESENT_LOCAL_LOCATE
-	    && result.events[3].row == 25 && result.events[3].column == 1);
-	CHECK(result.events[4].operation == YT_PRESENT_LOCAL_COLOR
-	    && result.events[4].foreground == 14
-	    && result.events[4].background == 3);
-	CHECK(result.events[5].operation == YT_PRESENT_LOCAL_SEMI
-	    && result.events[5].length == 15
-	    && memcmp(result.events[5].data, " Yankee Trader ", 15) == 0);
-	CHECK(result.events[6].operation == YT_PRESENT_LOCAL_COLOR
-	    && result.events[6].foreground == 11
-	    && result.events[6].background == 1);
-	CHECK(result.events[7].operation == YT_PRESENT_LOCAL_SEMI
-	    && result.events[7].length == 1
-	    && result.events[7].data[0] == ' ');
-	CHECK(result.events[8].operation == YT_PRESENT_LOCAL_SEMI
-	    && result.events[8].length == sizeof(expression) - 1U
-	    && memcmp(result.events[8].data, expression,
-	    sizeof(expression) - 1U) == 0);
-	CHECK(result.events[9].operation == YT_PRESENT_LOCAL_COLOR
-	    && result.events[9].foreground == 7
-	    && result.events[9].background == 0);
-	CHECK(yt_present_status_row(real_name, sizeof(real_name) - 1U,
-	    (const uint8_t *)"Pilot", 5, &current, &result)
-	    == YT_PRESENT_OK);
-	CHECK(result.remote_length == 0 && result.event_count == 10
-	    && result.events[8].length == sizeof(login_expression) - 1U
-	    && memcmp(result.events[8].data, login_expression,
-	    sizeof(login_expression) - 1U) == 0);
-
-	memset(long_name, 'R', sizeof(long_name));
-	CHECK(yt_present_status_row(long_name, sizeof(long_name),
-	    (const uint8_t *)"ignored", 7, &current, &result)
-	    == YT_PRESENT_OK);
-	CHECK(result.events[8].length == 63
-	    && memcmp(result.events[8].data, " | ", 3) == 0);
-	for (index = 3; index < result.events[8].length; ++index)
-		CHECK(result.events[8].data[index] == 'R');
-}
-
-static void
 test_new_alias_success_presentation(void)
 {
 	static const uint8_t expected[] =
@@ -47325,7 +47094,7 @@ main(void)
 	test_direct_fighter_fatal_cycle_presentation();
 	test_computer_info_cycle_presentation();
 	test_planet_info_cycle_presentation();
-	test_planet_info_promotion_refresh_cycle_presentation();
+	test_planet_info_promotion_cycle_presentation();
 	test_planet_info_captain_route_cycles_presentation();
 	test_planet_sensor_nonzero_cycle_presentation();
 	test_planet_garrison_positive_cycle_presentation();
@@ -47480,7 +47249,6 @@ main(void)
 	test_hostile_bribe_presentation();
 	test_hostile_sector_mine_presentation();
 	test_startup_pre_admission_presentation();
-	test_startup_status_row();
 	test_new_alias_success_presentation();
 	test_new_player_admission_presentation();
 	test_returning_player_presentation();

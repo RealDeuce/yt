@@ -42,12 +42,8 @@ struct yt_present_event {
 };
 
 struct yt_present_time_state {
-	float deadline;
-	float next_refresh;
 	uint8_t text[64];
 	size_t text_length;
-	int saved_row;
-	int saved_column;
 	float remaining_minutes;
 	uint8_t seconds_text[16];
 	size_t seconds_length;
@@ -156,17 +152,9 @@ enum yt_present_status yt_present_radio_wrap_cleanup(int line_number,
     struct yt_present_result *result);
 enum yt_present_status yt_present_format_remaining_seconds(
     struct yt_present_time_state *time, float remaining_seconds);
-enum yt_present_status yt_present_refresh_time(
-    struct yt_present_time_state *time, const float *timer_reads,
-    size_t timer_count, size_t *timer_used, int cursor_row, int cursor_column,
-    struct yt_present_state *state, struct yt_present_result *result,
-    bool *updated);
 enum yt_present_status yt_present_low_time(const uint8_t *text, size_t length,
     float *remembered, struct yt_present_state *state,
     struct yt_present_result *result, bool *warned);
-enum yt_present_status yt_present_status_row(const uint8_t *real_name,
-    size_t real_name_length, const uint8_t *alias, size_t alias_length,
-    struct yt_present_state *state, struct yt_present_result *result);
 enum yt_present_status yt_present_opening_row(const uint8_t *text,
     size_t length, float mode, float snoop,
     struct yt_present_result *result);
