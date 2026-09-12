@@ -110,7 +110,9 @@ struct yt_session {
 	bool registered;
 	bool fatal_wait_complete;
 	struct yt_present_state presentation;
-	struct yt_route_process route_process;
+	float route_avoid[YT_ROUTE_AVOID_COUNT];
+	int16_t route_predecessor[YT_ROUTE_CAPACITY];
+	int16_t route_second[YT_ROUTE_CAPACITY];
 	char computer_route_scratch[YT_COMMAND_SIZE];
 	size_t computer_route_scratch_length;
 	bool navigation_field_active;
@@ -10533,14 +10535,13 @@ build_route(struct yt_session *session, float start, float destination,
 	bool success;
 	size_t index;
 
-	success = yt_route_process_build(start, destination, &status,
-	    session->presentation.sound.conversion_mode,
-	    &session->route_process, route_sector_reader, session, &outcome,
-	    error);
+	success = yt_route_build(start, destination, &status,
+	    session->route_avoid, session->presentation.sound.conversion_mode,
+	    session->route_predecessor, session->route_second,
+	    route_sector_reader, session, &outcome, error);
 	if (next_hop != NULL)
 		for (index = 0U; index < YT_ROUTE_CAPACITY; ++index)
-			next_hop[index] = yt_route_process_second(
-			    &session->route_process, (int16_t)index);
+			next_hop[index] = session->route_second[index];
 	if (!success)
 		return false;
 	route_require_returned(outcome);
@@ -10589,10 +10590,10 @@ build_projectile_route(struct yt_session *session,
 	enum yt_route_outcome outcome;
 	bool success;
 
-	success = yt_route_process_build(route->origin, route->destination, &status,
-	    session->presentation.sound.conversion_mode,
-	    &session->route_process, route_sector_reader, session, &outcome,
-	    error);
+	success = yt_route_build(route->origin, route->destination, &status,
+	    session->route_avoid, session->presentation.sound.conversion_mode,
+	    session->route_predecessor, session->route_second,
+	    route_sector_reader, session, &outcome, error);
 	if (!success)
 		return false;
 	route_require_returned(outcome);
@@ -10971,8 +10972,7 @@ planet_move(struct yt_session *session, bool *enter_sector,
 		return false;
 	cursor = start_node;
 	for (;;) {
-		int next = yt_route_process_second(&session->route_process,
-		    (int16_t)cursor);
+		int next = session->route_second[cursor];
 		int column;
 		int ignored_row;
 		int number_length;
@@ -11028,8 +11028,7 @@ planet_move(struct yt_session *session, bool *enter_sector,
 		return false;
 	cursor = start_node;
 	for (;;) {
-		int next = yt_route_process_second(&session->route_process,
-		    (int16_t)cursor);
+		int next = session->route_second[cursor];
 		int number_length;
 
 		if (next == 0)
@@ -15131,8 +15130,7 @@ plasma_route_read(void *context, int16_t index)
 {
 	struct plasma_route_context *route_context = context;
 
-	return yt_route_process_second(&route_context->session->route_process,
-	    index);
+	return route_context->session->route_second[index];
 }
 
 static void
@@ -15140,8 +15138,7 @@ plasma_route_write(void *context, int16_t index, int16_t value)
 {
 	struct plasma_route_context *route_context = context;
 
-	yt_route_process_set_second(&route_context->session->route_process,
-	    index, value);
+	route_context->session->route_second[index] = value;
 }
 
 static void
@@ -15361,8 +15358,7 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 			return false;
 		cursor = (int)route_entry.current_hop;
 		for (;;) {
-			int next = yt_route_process_second(&session->route_process,
-			    (int16_t)cursor);
+			int next = session->route_second[cursor];
 
 			if (!yt_projectile_route_has_next((int16_t)next))
 				break;
@@ -16486,10 +16482,11 @@ computer_route(struct yt_session *session, bool autopilot,
 	    "path working prompt", error))
 		return false;
 	session->shared_status = 1.0f;
-	if (!yt_route_process_build(start_value, destination_value,
-	    &session->shared_status, session->presentation.sound.conversion_mode,
-	    &session->route_process, route_sector_reader, session,
-	    &route_outcome, error))
+	if (!yt_route_build(start_value, destination_value,
+	    &session->shared_status, session->route_avoid,
+	    session->presentation.sound.conversion_mode,
+	    session->route_predecessor, session->route_second,
+	    route_sector_reader, session, &route_outcome, error))
 		return false;
 	route_require_returned(route_outcome);
 	found = route_outcome == YT_ROUTE_FOUND
@@ -16548,8 +16545,7 @@ computer_route(struct yt_session *session, bool autopilot,
 		    YT_BASIC_FAULT_ROUTE_DISPLAY_VERTEX_CINT,
 		    "route display vertex CINT", error))
 			return false;
-		next = yt_route_process_second(&session->route_process,
-		    (int16_t)display_index);
+		next = session->route_second[display_index];
 		if (next == 0)
 			break;
 		cursor = next;
@@ -17240,15 +17236,13 @@ computer_avoid(struct yt_session *session, struct yt_error *error)
 		char last[96];
 
 		if (!computer_avoid_cell(first, sizeof(first), row + 1,
-		    yt_route_process_avoid(&session->route_process, (size_t)row))
+		    session->route_avoid[row])
 		    || !computer_avoid_cell(last, sizeof(last), row + 21,
-		    yt_route_process_avoid(&session->route_process,
-		    (size_t)row + 20U))
+		    session->route_avoid[row + 20])
 		    || !session_fixed_width(session, first, 20.0f,
 		    "avoid first cell", error)
 		    || !computer_avoid_cell(middle, sizeof(middle), row + 11,
-		    yt_route_process_avoid(&session->route_process,
-		    (size_t)row + 10U))
+		    session->route_avoid[row + 10])
 		    || !session_fixed_width(session, middle, 20.0f,
 		    "avoid middle cell", error)
 		    || !session_02fc(session, (const uint8_t *)last, strlen(last)))
@@ -17290,11 +17284,8 @@ computer_avoid(struct yt_session *session, struct yt_error *error)
 		return false;
 	if (route != YT_COMPUTER_AVOID_SELECTION_ACCEPTED)
 		return true;
-	old_value = yt_route_process_avoid(&session->route_process,
-	    (size_t)(slot - 1));
-	if (!yt_route_process_set_avoid_slot(&session->route_process,
-	    (size_t)(slot - 1), new_value, error))
-		return false;
+	old_value = session->route_avoid[slot - 1];
+	session->route_avoid[slot - 1] = new_value;
 	yt_computer_avoid_transition(old_value, new_value, &locked, &available);
 	session_set_foreground(session, 2.0f);
 	if (locked) {

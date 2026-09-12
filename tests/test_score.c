@@ -3889,7 +3889,7 @@ plasma_route_build(void *context, float *origin, float *destination,
 }
 
 static int16_t
-plasma_route_process_read(void *context, int16_t index)
+plasma_route_read(void *context, int16_t index)
 {
 	struct plasma_route_tape *tape = context;
 
@@ -3899,7 +3899,7 @@ plasma_route_process_read(void *context, int16_t index)
 }
 
 static void
-plasma_route_process_write(void *context, int16_t index, int16_t value)
+plasma_route_write(void *context, int16_t index, int16_t value)
 {
 	struct plasma_route_tape *tape = context;
 
@@ -4052,8 +4052,8 @@ check_projectile_plasma_route_transaction(void)
 		.random = plasma_route_random,
 		.impact = plasma_route_impact,
 		.footer = plasma_route_footer,
-		.read_route = plasma_route_process_read,
-		.write_route = plasma_route_process_write,
+		.read_route = plasma_route_read,
+		.write_route = plasma_route_write,
 		.arguments_changed = plasma_route_arguments_changed,
 	};
 	static const int ordinary_events[] = {
