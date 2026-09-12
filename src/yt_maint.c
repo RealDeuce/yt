@@ -1936,65 +1936,24 @@ yt_maintenance_write_header(struct yt_error *error)
 }
 
 bool
-yt_maintenance_clear_protected_mines_run(
-    struct yt_maintenance_protected_mines_state *state,
-    const struct yt_maintenance_protected_mines_ops *ops, void *context,
-    struct yt_error *error)
-{
-	int sector;
-
-	if (state == NULL || ops == NULL || ops->read == NULL
-	    || ops->write == NULL) {
-		set_error(error, YT_INVALID, "protected mines transaction", "");
-		return false;
-	}
-	memset(state, 0, sizeof(*state));
-	for (sector = 1; sector <= 7; ++sector) {
-		state->sector = sector;
-		state->attempted = YT_MAINTENANCE_PROTECTED_MINES_READ;
-		if (!ops->read(context, sector, &state->current, error))
-			return false;
-		++state->completed_reads;
-		state->current.mines = 0.0f;
-		state->attempted = YT_MAINTENANCE_PROTECTED_MINES_WRITE;
-		if (!ops->write(context, sector, &state->current, error))
-			return false;
-		++state->completed_writes;
-	}
-	state->complete = true;
-	return true;
-}
-
-static bool
-protected_mines_read(void *context, int sector, struct yt_sector *value,
-    struct yt_error *error)
-{
-	return yt_game_read_sector(context, sector, value, error);
-}
-
-static bool
-protected_mines_write(void *context, int sector, struct yt_sector *value,
-    struct yt_error *error)
-{
-	return yt_game_write_sector(context, sector, value, error);
-}
-
-bool
 yt_maintenance_clear_protected_mines(struct yt_game *game,
     struct yt_error *error)
 {
-	static const struct yt_maintenance_protected_mines_ops ops = {
-		protected_mines_read,
-		protected_mines_write,
-	};
-	struct yt_maintenance_protected_mines_state state;
+	struct yt_sector value;
+	int sector;
 
 	if (game == NULL) {
 		set_error(error, YT_INVALID, "clear protected mines", "");
 		return false;
 	}
-	return yt_maintenance_clear_protected_mines_run(&state, &ops, game,
-	    error);
+	for (sector = 1; sector <= 7; ++sector) {
+		if (!yt_game_read_sector(game, sector, &value, error))
+			return false;
+		value.mines = 0.0f;
+		if (!yt_game_write_sector(game, sector, &value, error))
+			return false;
+	}
+	return true;
 }
 
 static bool

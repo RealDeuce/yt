@@ -338,28 +338,6 @@ struct yt_radio_compact_ops {
 	    const char *new_path, struct yt_error *error);
 };
 
-enum yt_maintenance_protected_mines_step {
-	YT_MAINTENANCE_PROTECTED_MINES_NONE,
-	YT_MAINTENANCE_PROTECTED_MINES_READ,
-	YT_MAINTENANCE_PROTECTED_MINES_WRITE,
-};
-
-struct yt_maintenance_protected_mines_state {
-	enum yt_maintenance_protected_mines_step attempted;
-	int sector;
-	int completed_reads;
-	int completed_writes;
-	struct yt_sector current;
-	bool complete;
-};
-
-struct yt_maintenance_protected_mines_ops {
-	bool (*read)(void *context, int sector, struct yt_sector *value,
-	    struct yt_error *error);
-	bool (*write)(void *context, int sector, struct yt_sector *value,
-	    struct yt_error *error);
-};
-
 enum yt_maintenance_scoreboard_readback_step {
 	YT_MAINTENANCE_SCOREBOARD_READBACK_NONE,
 	YT_MAINTENANCE_SCOREBOARD_READBACK_CLOSE_GENERATED,
@@ -438,10 +416,6 @@ typedef bool (*yt_maintenance_score_line_fn)(void *context,
 
 bool yt_maintenance_run(struct yt_error *error);
 bool yt_maintenance_default_headquarters(float *headquarters);
-bool yt_maintenance_clear_protected_mines_run(
-	struct yt_maintenance_protected_mines_state *state,
-	const struct yt_maintenance_protected_mines_ops *ops, void *context,
-	struct yt_error *error);
 bool yt_maintenance_clear_protected_mines(struct yt_game *game,
     struct yt_error *error);
 bool yt_maintenance_write_header(struct yt_error *error);
