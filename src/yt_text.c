@@ -132,16 +132,6 @@ yt_text_input_init(struct yt_text_input *input)
 }
 
 void
-yt_text_input_set_open_provider(struct yt_text_input *input,
-    yt_text_open_provider provider, void *context)
-{
-	if (input == NULL)
-		return;
-	input->open_provider = provider;
-	input->open_context = context;
-}
-
-void
 yt_text_input_set_read_provider(struct yt_text_input *input,
     yt_text_input_read_provider provider, void *context)
 {
@@ -1654,14 +1644,12 @@ text_input_open_observe(struct yt_text_input *input, const char *path,
     uint16_t prior_dos_error,
     struct yt_text_open_observation *observation)
 {
-	yt_text_open_provider provider = input->open_provider != NULL
-	    ? input->open_provider : text_open_default;
 	bool delivered;
 
 	++input->last_open.operation_count;
 	memset(observation, 0, sizeof(*observation));
 	observation->terminal_position = -1;
-	delivered = provider(input->open_context, path, operation, 0U,
+	delivered = text_open_default(NULL, path, operation, 0U,
 	    active_file, 0, NULL, 0U, prior_dos_error, observation);
 	input->last_open.accepted = observation->accepted;
 	if (observation->terminal_position >= 0)

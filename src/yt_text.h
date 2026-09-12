@@ -204,8 +204,6 @@ struct yt_text_input {
 	uint32_t refill_index;
 	uint64_t logical_position;
 	int64_t physical_position;
-	yt_text_open_provider open_provider;
-	void *open_context;
 	yt_text_input_read_provider read_provider;
 	void *read_context;
 	yt_text_close_provider close_provider;
@@ -228,8 +226,6 @@ bool yt_text_input_eof(struct yt_text_input *input, bool *eof,
 	struct yt_error *error);
 bool yt_text_input_close(struct yt_text_input *input,
 	struct yt_error *error);
-void yt_text_input_set_open_provider(struct yt_text_input *input,
-	yt_text_open_provider provider, void *context);
 void yt_text_input_set_read_provider(struct yt_text_input *input,
 	yt_text_input_read_provider provider, void *context);
 void yt_text_input_set_close_provider(struct yt_text_input *input,
