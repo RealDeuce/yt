@@ -198,32 +198,6 @@ struct yt_maintenance_lottery_result {
 	uint64_t draws_consumed;
 };
 
-enum yt_news_rotate_step {
-	YT_NEWS_ROTATE_NONE,
-	YT_NEWS_ROTATE_OPEN_CURRENT,
-	YT_NEWS_ROTATE_CLOSE_CURRENT,
-	YT_NEWS_ROTATE_OPEN_YESTERDAY,
-	YT_NEWS_ROTATE_CLOSE_YESTERDAY,
-	YT_NEWS_ROTATE_KILL_YESTERDAY,
-	YT_NEWS_ROTATE_RENAME_CURRENT,
-};
-
-struct yt_news_rotate_state {
-	enum yt_news_rotate_step attempted;
-	size_t completed_steps;
-	bool complete;
-};
-
-struct yt_news_rotate_ops {
-	bool (*open_append)(void *context, const char *path,
-	    struct yt_error *error);
-	bool (*close)(void *context, struct yt_error *error);
-	bool (*kill)(void *context, const char *path,
-	    struct yt_error *error);
-	bool (*rename)(void *context, const char *old_path,
-	    const char *new_path, struct yt_error *error);
-};
-
 enum yt_radio_compact_file {
 	YT_RADIO_COMPACT_DESTINATION,
 	YT_RADIO_COMPACT_SOURCE,
@@ -598,9 +572,6 @@ bool yt_radio_compact_run(struct yt_radio_compact_state *state,
 	const struct yt_radio_compact_ops *ops, void *context,
 	struct yt_error *error);
 bool yt_radio_compact(struct yt_error *error);
-bool yt_news_rotate_run(struct yt_news_rotate_state *state,
-	const struct yt_news_rotate_ops *ops, void *context,
-	struct yt_error *error);
 bool yt_news_rotate(struct yt_error *error);
 bool yt_news_append(const char *text, struct yt_error *error);
 bool yt_news_append_bytes(const uint8_t *text, size_t length,

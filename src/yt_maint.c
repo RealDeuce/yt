@@ -1815,102 +1815,27 @@ yt_radio_compact(struct yt_error *error)
 }
 
 bool
-yt_news_rotate_run(struct yt_news_rotate_state *state,
-    const struct yt_news_rotate_ops *ops, void *context,
-    struct yt_error *error)
-{
-	static const char current[] = "YTNEWS.DAT";
-	static const char yesterday[] = "YTYNEWS.DAT";
-
-	if (state == NULL || ops == NULL || ops->open_append == NULL
-	    || ops->close == NULL || ops->kill == NULL || ops->rename == NULL) {
-		set_error(error, YT_INVALID, "news rotation transaction", "");
-		return false;
-	}
-	memset(state, 0, sizeof(*state));
-	state->attempted = YT_NEWS_ROTATE_OPEN_CURRENT;
-	if (!ops->open_append(context, current, error))
-		return false;
-	++state->completed_steps;
-	state->attempted = YT_NEWS_ROTATE_CLOSE_CURRENT;
-	if (!ops->close(context, error))
-		return false;
-	++state->completed_steps;
-	state->attempted = YT_NEWS_ROTATE_OPEN_YESTERDAY;
-	if (!ops->open_append(context, yesterday, error))
-		return false;
-	++state->completed_steps;
-	state->attempted = YT_NEWS_ROTATE_CLOSE_YESTERDAY;
-	if (!ops->close(context, error))
-		return false;
-	++state->completed_steps;
-	state->attempted = YT_NEWS_ROTATE_KILL_YESTERDAY;
-	if (!ops->kill(context, yesterday, error))
-		return false;
-	++state->completed_steps;
-	state->attempted = YT_NEWS_ROTATE_RENAME_CURRENT;
-	if (!ops->rename(context, current, yesterday, error))
-		return false;
-	++state->completed_steps;
-	state->complete = true;
-	return true;
-}
-
-struct news_rotate_context {
-	struct yt_text_output output;
-};
-
-static bool
-news_rotate_open_append(void *context, const char *path,
-    struct yt_error *error)
-{
-	struct news_rotate_context *rotation = context;
-
-	/* Each compiled OPEN reuses file number four after the prior CLOSE. */
-	yt_text_output_destroy(&rotation->output);
-	yt_text_output_init(&rotation->output);
-	return yt_text_output_open_append(&rotation->output, path, error);
-}
-
-static bool
-news_rotate_close(void *context, struct yt_error *error)
-{
-	struct news_rotate_context *rotation = context;
-
-	return yt_text_output_close(&rotation->output, error);
-}
-
-static bool
-news_rotate_kill(void *context, const char *path, struct yt_error *error)
-{
-	(void)context;
-	return yt_file_kill(path, error);
-}
-
-static bool
-news_rotate_rename(void *context, const char *old_path,
-    const char *new_path, struct yt_error *error)
-{
-	(void)context;
-	return yt_file_rename(old_path, new_path, error);
-}
-
-bool
 yt_news_rotate(struct yt_error *error)
 {
-	static const struct yt_news_rotate_ops ops = {
-		news_rotate_open_append,
-		news_rotate_close,
-		news_rotate_kill,
-		news_rotate_rename,
-	};
-	struct news_rotate_context context;
-	struct yt_news_rotate_state state;
-	bool result;
+	struct yt_text_output output;
+	bool result = false;
 
-	yt_text_output_init(&context.output);
-	result = yt_news_rotate_run(&state, &ops, &context, error);
-	yt_text_output_destroy(&context.output);
+	yt_text_output_init(&output);
+	if (!yt_text_output_open_append(&output, "YTNEWS.DAT", error)
+	    || !yt_text_output_close(&output, error))
+		goto done;
+	/* The second compiled OPEN reuses file number four after its CLOSE. */
+	yt_text_output_destroy(&output);
+	yt_text_output_init(&output);
+	if (!yt_text_output_open_append(&output, "YTYNEWS.DAT", error)
+	    || !yt_text_output_close(&output, error)
+	    || !yt_file_kill("YTYNEWS.DAT", error)
+	    || !yt_file_rename("YTNEWS.DAT", "YTYNEWS.DAT", error))
+		goto done;
+	result = true;
+
+done:
+	yt_text_output_destroy(&output);
 	return result;
 }
 
