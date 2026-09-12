@@ -170,56 +170,6 @@ struct yt_rmt_handoff_read_ops {
 	yt_rmt_handoff_step_fn close_sequential;
 };
 
-#define YT_RMT_DORINFO_FIELDS 8U
-
-enum yt_rmt_dorinfo_outcome {
-	YT_RMT_DORINFO_SUCCESS,
-	YT_RMT_DORINFO_INPUT_PAST_END
-};
-
-struct yt_rmt_dorinfo_field {
-	size_t offset;
-	size_t length;
-};
-
-struct yt_rmt_dorinfo_result {
-	enum yt_rmt_dorinfo_outcome outcome;
-	struct yt_rmt_dorinfo_field fields[YT_RMT_DORINFO_FIELDS];
-	size_t fields_assigned;
-	size_t failed_field;
-	size_t cursor;
-	int error_number;
-};
-
-enum yt_rmt_dorinfo_read_operation {
-	YT_RMT_DORINFO_READ_NONE,
-	YT_RMT_DORINFO_READ_OPEN,
-	YT_RMT_DORINFO_READ_FIELD,
-	YT_RMT_DORINFO_READ_COPY_FIELD,
-	YT_RMT_DORINFO_READ_CLOSE,
-};
-
-struct yt_rmt_dorinfo_read_state {
-	enum yt_rmt_dorinfo_read_operation failed_operation;
-	struct yt_rmt_dorinfo_result result;
-	size_t read_attempts;
-	size_t storage_used;
-	bool file_opened;
-	bool close_attempted;
-	bool file_closed;
-	bool complete;
-};
-
-typedef bool (*yt_rmt_dorinfo_line_fn)(void *context,
-	const uint8_t **line, size_t *length, bool *available,
-	size_t *cursor, struct yt_error *error);
-
-struct yt_rmt_dorinfo_read_ops {
-	yt_rmt_handoff_step_fn open;
-	yt_rmt_dorinfo_line_fn read_line;
-	yt_rmt_handoff_step_fn close;
-};
-
 enum yt_rmt_serial_outcome {
 	YT_RMT_SERIAL_LOCAL,
 	YT_RMT_SERIAL_REMOTE,
@@ -339,15 +289,6 @@ bool yt_rmt_handoff_parse(const uint8_t *data, size_t length,
 bool yt_rmt_handoff_read_run(struct yt_rmt_handoff_read_state *state,
 	const struct yt_rmt_handoff_read_ops *ops, void *context,
 	struct yt_error *error);
-bool yt_rmt_dorinfo_parse(const uint8_t *raw, size_t raw_length,
-    uint8_t *storage, size_t storage_capacity,
-    struct yt_rmt_dorinfo_result *result);
-bool yt_rmt_dorinfo_read_run(struct yt_rmt_dorinfo_read_state *state,
-	const struct yt_rmt_dorinfo_read_ops *ops, void *context,
-	uint8_t *storage, size_t storage_capacity, struct yt_error *error);
-const uint8_t *yt_rmt_dorinfo_field(
-    const struct yt_rmt_dorinfo_result *result, const uint8_t *storage,
-    size_t field, size_t *length);
 bool yt_rmt_serial_state_compose(const uint8_t *identifier,
     size_t identifier_length, const uint8_t *description,
     size_t description_length, uint8_t dll, uint8_t dlm,
