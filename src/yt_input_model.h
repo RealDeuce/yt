@@ -41,17 +41,6 @@ struct yt_input_value {
 	bool remote;
 };
 
-struct yt_b05d_key_state {
-	char *accumulator;
-	size_t accumulator_capacity;
-	char *queue;
-	size_t queue_capacity;
-	size_t *queue_position;
-	size_t *queue_length;
-	char *pager_key;
-	size_t pager_key_capacity;
-};
-
 enum yt_repeat_failure {
 	YT_REPEAT_FAILURE_NONE,
 	YT_REPEAT_FAILURE_VAL_OVERFLOW,
@@ -282,8 +271,6 @@ enum yt_opening_row_route yt_input_opening_row_route(bool local_key,
 bool yt_input_ab36_terminal_run(enum yt_ab36_terminal_kind kind,
     bool *running, bool *terminated, yt_ab36_terminal_notice_fn notice,
     yt_ab36_terminal_close_fn close_all, void *context);
-bool yt_b05d_process_key(const struct yt_input_value *value,
-    struct yt_b05d_key_state *state);
 bool yt_input_expand_repeat(char *text, size_t text_capacity,
     char *saved_command, size_t saved_capacity,
     struct yt_repeat_transform *result);

@@ -1267,7 +1267,7 @@ session_b05d(struct yt_session *session, const uint8_t *text, size_t length)
 		session_paged_finish,
 		session_paged_response,
 	};
-	struct yt_b05d_key_state key_state = {
+	struct yt_pager_key_state key_state = {
 		.accumulator = session->command_accumulator,
 		.accumulator_capacity = sizeof(session->command_accumulator),
 		.queue = session->queue,

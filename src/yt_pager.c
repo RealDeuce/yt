@@ -69,7 +69,7 @@ yt_pager_complete(struct yt_pager_state *pager,
 static bool
 paged_row_run(struct yt_pager_state *pager,
     struct yt_present_state *presentation,
-    struct yt_b05d_key_state *key_state, const uint8_t *text,
+    struct yt_pager_key_state *key_state, const uint8_t *text,
     size_t length, const struct yt_paged_row_ops *ops, void *context)
 {
 	static const uint8_t prompt[] =
@@ -82,7 +82,7 @@ paged_row_run(struct yt_pager_state *pager,
 
 	if (!ops->carrier(context)
 	    || !ops->sample(context, &sampled)
-	    || !yt_b05d_process_key(&sampled, key_state)
+	    || !yt_pager_apply_key(&sampled, key_state)
 	    || !ops->present(context, text, length)
 	    || !ops->carrier(context)
 	    || !ops->finish(context, pager->newline_flag != 0.0f))
@@ -106,7 +106,7 @@ paged_row_run(struct yt_pager_state *pager,
 bool
 yt_paged_row_run(struct yt_pager_state *pager,
     struct yt_present_state *presentation,
-    struct yt_b05d_key_state *key_state, const uint8_t *text,
+    struct yt_pager_key_state *key_state, const uint8_t *text,
     size_t length, const struct yt_paged_row_ops *ops, void *context)
 {
 	if (pager == NULL || presentation == NULL || key_state == NULL
@@ -117,6 +117,44 @@ yt_paged_row_run(struct yt_pager_state *pager,
 		return false;
 	return paged_row_run(pager, presentation, key_state, text, length,
 	    ops, context);
+}
+
+bool
+yt_pager_apply_key(const struct yt_input_value *value,
+    struct yt_pager_key_state *state)
+{
+	size_t position = *state->queue_position;
+	size_t length = *state->queue_length;
+	size_t queued = length - position;
+	uint8_t key;
+
+	if (value->length != 1)
+		return true;
+	key = value->bytes[0];
+	if (key == 0x18) {
+		state->accumulator[0] = '\0';
+		state->queue[0] = '\0';
+		*state->queue_position = 0;
+		*state->queue_length = 0;
+		if (state->pager_key_capacity < 2U)
+			return false;
+		state->pager_key[0] = 'Q';
+		state->pager_key[1] = '\0';
+		return true;
+	}
+	if (key == 0x12 && queued != 0)
+		return true;
+	if (key >= 0x7f || (key < 0x20 && key != '\r'))
+		return true;
+	if (queued + 1U >= state->queue_capacity)
+		return false;
+	if (queued != 0 && position != 0)
+		memmove(state->queue, state->queue + position, queued);
+	state->queue[queued] = (char)key;
+	state->queue[queued + 1U] = '\0';
+	*state->queue_position = 0;
+	*state->queue_length = queued + 1U;
+	return true;
 }
 
 void

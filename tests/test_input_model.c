@@ -1,5 +1,6 @@
 #include "yt_input_model.h"
 #include "qb.h"
+#include "yt_pager.h"
 #include "yt_platform.h"
 #include "yt_startup_model.h"
 #include "yt_text.h"
@@ -842,7 +843,7 @@ test_b05d_keys(void)
 	char pager[8] = "";
 	size_t position = 1;
 	size_t length = 3;
-	struct yt_b05d_key_state state = {
+	struct yt_pager_key_state state = {
 		.accumulator = accumulator,
 		.accumulator_capacity = sizeof(accumulator),
 		.queue = queue,
@@ -854,39 +855,39 @@ test_b05d_keys(void)
 	};
 	struct yt_input_value value = one(0x12);
 
-	CHECK(yt_b05d_process_key(&value, &state));
+	CHECK(yt_pager_apply_key(&value, &state));
 	CHECK(position == 1 && length == 3 && memcmp(queue, "old", 3) == 0);
 	value = one('!');
-	CHECK(yt_b05d_process_key(&value, &state));
+	CHECK(yt_pager_apply_key(&value, &state));
 	CHECK(position == 0 && length == 3 && memcmp(queue, "ld!", 3) == 0);
 	value = one('\r');
-	CHECK(yt_b05d_process_key(&value, &state));
+	CHECK(yt_pager_apply_key(&value, &state));
 	CHECK(length == 4 && memcmp(queue, "ld!\r", 4) == 0);
 	value = one(0x7f);
-	CHECK(yt_b05d_process_key(&value, &state));
+	CHECK(yt_pager_apply_key(&value, &state));
 	CHECK(length == 4);
 	value = one(0x1f);
-	CHECK(yt_b05d_process_key(&value, &state));
+	CHECK(yt_pager_apply_key(&value, &state));
 	CHECK(length == 4);
 	value = one(' ');
-	CHECK(yt_b05d_process_key(&value, &state));
+	CHECK(yt_pager_apply_key(&value, &state));
 	CHECK(length == 5 && queue[4] == ' ');
 	value = one('~');
-	CHECK(yt_b05d_process_key(&value, &state));
+	CHECK(yt_pager_apply_key(&value, &state));
 	CHECK(length == 6 && queue[5] == '~');
 	value.bytes[0] = 0;
 	value.bytes[1] = 0x48;
 	value.length = 2;
-	CHECK(yt_b05d_process_key(&value, &state));
+	CHECK(yt_pager_apply_key(&value, &state));
 	CHECK(length == 6);
 	position = 0U;
 	length = 0U;
 	queue[0] = '\0';
 	value = one(0x12);
-	CHECK(yt_b05d_process_key(&value, &state));
+	CHECK(yt_pager_apply_key(&value, &state));
 	CHECK(position == 0U && length == 0U && queue[0] == '\0');
 	value = one(0x18);
-	CHECK(yt_b05d_process_key(&value, &state));
+	CHECK(yt_pager_apply_key(&value, &state));
 	CHECK(accumulator[0] == '\0' && queue[0] == '\0');
 	CHECK(position == 0 && length == 0 && strcmp(pager, "Q") == 0);
 }

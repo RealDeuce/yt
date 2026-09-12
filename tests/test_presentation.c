@@ -1071,7 +1071,7 @@ enum viewer_pager_event {
 struct viewer_pager_join {
 	struct yt_pager_state pager;
 	struct yt_present_state presentation;
-	struct yt_b05d_key_state key_state;
+	struct yt_pager_key_state key_state;
 	struct pager_capture capture;
 	enum viewer_pager_event events[4096];
 	size_t event_count;
@@ -5602,7 +5602,7 @@ commodity_trade_join_check(const struct commodity_trade_join *join,
 
 struct commodity_b05d_cut {
 	struct commodity_trade_join *join;
-	struct yt_b05d_key_state key_state;
+	struct yt_pager_key_state key_state;
 	char queue[8];
 	size_t queue_position;
 	size_t queue_length;
@@ -10562,7 +10562,7 @@ test_computer_port_report_ab36_state_joins(void)
 {
 	struct yt_present_state current = state(true);
 	struct yt_pager_state pager;
-	struct yt_b05d_key_state key_state;
+	struct yt_pager_key_state key_state;
 	struct yt_input_value selected;
 	struct yt_input_value sampled;
 	char accumulator[32];
@@ -10641,9 +10641,9 @@ test_computer_port_report_ab36_state_joins(void)
 	memset(&sampled, 0, sizeof(sampled));
 	sampled.length = 1U;
 	sampled.bytes[0] = '7';
-	CHECK(yt_b05d_process_key(&sampled, &key_state));
+	CHECK(yt_pager_apply_key(&sampled, &key_state));
 	sampled.bytes[0] = '\r';
-	CHECK(yt_b05d_process_key(&sampled, &key_state)
+	CHECK(yt_pager_apply_key(&sampled, &key_state)
 	    && queue_position == 0U && queue_length == 2U
 	    && memcmp(queue, "7\r", 2U) == 0);
 	current.foreground = 1.0f;

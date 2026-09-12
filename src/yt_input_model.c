@@ -527,44 +527,6 @@ yt_input_ab36_terminal_run(enum yt_ab36_terminal_kind kind,
 }
 
 bool
-yt_b05d_process_key(const struct yt_input_value *value,
-    struct yt_b05d_key_state *state)
-{
-	size_t position = *state->queue_position;
-	size_t length = *state->queue_length;
-	size_t queued = length - position;
-	uint8_t key;
-
-	if (value->length != 1)
-		return true;
-	key = value->bytes[0];
-	if (key == 0x18) {
-		state->accumulator[0] = '\0';
-		state->queue[0] = '\0';
-		*state->queue_position = 0;
-		*state->queue_length = 0;
-		if (state->pager_key_capacity < 2U)
-			return false;
-		state->pager_key[0] = 'Q';
-		state->pager_key[1] = '\0';
-		return true;
-	}
-	if (key == 0x12 && queued != 0)
-		return true;
-	if (key >= 0x7f || (key < 0x20 && key != '\r'))
-		return true;
-	if (queued + 1U >= state->queue_capacity)
-		return false;
-	if (queued != 0 && position != 0)
-		memmove(state->queue, state->queue + position, queued);
-	state->queue[queued] = (char)key;
-	state->queue[queued + 1U] = '\0';
-	*state->queue_position = 0;
-	*state->queue_length = queued + 1U;
-	return true;
-}
-
-bool
 yt_input_expand_repeat(char *text, size_t text_capacity,
     char *saved_command, size_t saved_capacity,
     struct yt_repeat_transform *result)

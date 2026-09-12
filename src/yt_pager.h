@@ -14,6 +14,17 @@ struct yt_pager_state {
 	int foreground;
 };
 
+struct yt_pager_key_state {
+	char *accumulator;
+	size_t accumulator_capacity;
+	char *queue;
+	size_t queue_capacity;
+	size_t *queue_position;
+	size_t *queue_length;
+	char *pager_key;
+	size_t pager_key_capacity;
+};
+
 struct yt_sector_pager_state {
 	float line_count;
 };
@@ -50,8 +61,10 @@ struct yt_paged_row_ops {
 
 bool yt_paged_row_run(struct yt_pager_state *pager,
 	struct yt_present_state *presentation,
-	struct yt_b05d_key_state *key_state, const uint8_t *text,
+	struct yt_pager_key_state *key_state, const uint8_t *text,
 	size_t length, const struct yt_paged_row_ops *ops, void *context);
+bool yt_pager_apply_key(const struct yt_input_value *value,
+    struct yt_pager_key_state *state);
 
 void yt_sector_pager_begin(struct yt_sector_pager_state *pager);
 void yt_sector_pager_add(struct yt_sector_pager_state *pager, float lines);
