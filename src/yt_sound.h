@@ -38,9 +38,4 @@ enum yt_sound_status yt_sound_dispatch(float selector,
     struct yt_sound_state *state, struct yt_sound_result *result);
 enum yt_sound_status yt_sound_toggle(struct yt_sound_state *state,
     struct yt_sound_result *result);
-enum yt_sound_status yt_sound_sysop_toggle(struct yt_sound_state *state,
-    bool *enabled);
-enum yt_sound_status yt_sound_sysop_snoop_toggle(
-    struct yt_sound_state *state, bool *returned_early, bool *enabled);
-
 #endif

@@ -91,8 +91,6 @@ void yt_present_set_cached_foreground(struct yt_present_state *state,
 float yt_present_cached_background(const struct yt_present_state *state);
 void yt_present_set_cached_background(struct yt_present_state *state,
     float value);
-typedef enum yt_present_status (*yt_present_sysop_replay_fn)(void *context);
-
 enum yt_present_status yt_present_color(struct yt_present_state *state,
     struct yt_present_result *result);
 enum yt_present_status yt_present_line(const uint8_t *text, size_t length,
@@ -135,22 +133,6 @@ enum yt_present_status yt_present_attention(const uint8_t *text,
     struct yt_present_result *result);
 enum yt_present_status yt_present_sound_toggle(struct yt_present_state *state,
     struct yt_present_result *result);
-enum yt_present_status yt_present_sysop_sound_toggle(
-    struct yt_present_state *state, struct yt_present_result *result);
-enum yt_present_status yt_present_sysop_snoop_toggle(
-    const uint8_t *real_name, size_t real_name_length,
-    const uint8_t *alias, size_t alias_length,
-    struct yt_present_state *state, struct yt_present_result *result);
-enum yt_present_status yt_present_sysop_time_prompt(float deadline,
-    float timer, struct yt_present_result *result);
-enum yt_present_status yt_present_sysop_time_replace(
-    const uint8_t *entered, size_t entered_length, float commit_timer,
-    float *deadline, float *minutes, bool *changed);
-enum yt_present_status yt_present_sysop_time_handler(float prompt_timer,
-    const uint8_t *entered, size_t entered_length, float commit_timer,
-    float *deadline, float *minutes, bool *changed,
-    struct yt_present_result *prompt,
-    yt_present_sysop_replay_fn replay, void *replay_context);
 enum yt_present_status yt_present_serial_startup_missing_command(
     struct yt_present_result *result);
 enum yt_present_status yt_present_serial_startup_status(int port,

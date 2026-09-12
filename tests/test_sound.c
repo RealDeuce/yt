@@ -236,64 +236,6 @@ test_toggle(void)
 	}
 }
 
-static void
-test_sysop_toggle(void)
-{
-	struct yt_sound_state current = state(true);
-	bool enabled = false;
-
-	current.mode = 0.0f;
-	current.local_sound = 0.0f;
-	current.user_sound = -1.0f;
-	CHECK(yt_sound_sysop_toggle(&current, &enabled) == YT_SOUND_OK);
-	CHECK(enabled && current.local_sound == -1.0f
-	    && current.user_sound == -1.0f);
-	current.mode = 1.0f;
-	current.user_sound = 77.0f;
-	CHECK(yt_sound_sysop_toggle(&current, &enabled) == YT_SOUND_OK);
-	CHECK(!enabled && current.local_sound == 0.0f
-	    && current.user_sound == 0.0f);
-	current.mode = 2.0f;
-	current.local_sound = 1.0f;
-	current.user_sound = 77.0f;
-	CHECK(yt_sound_sysop_toggle(&current, &enabled) == YT_SOUND_OK);
-	CHECK(enabled && current.local_sound == -2.0f
-	    && current.user_sound == -2.0f);
-	current.local_sound = 40000.0f;
-	current.user_sound = 77.0f;
-	CHECK(yt_sound_sysop_toggle(&current, &enabled)
-	    == YT_SOUND_LOCAL_OVERFLOW);
-	CHECK(current.local_sound == 40000.0f && current.user_sound == 77.0f);
-}
-
-static void
-test_sysop_snoop_toggle(void)
-{
-	struct yt_sound_state current = state(true);
-	bool returned_early = false;
-	bool enabled = false;
-
-	current.mode = 1.0f;
-	current.snoop = 40000.0f;
-	CHECK(yt_sound_sysop_snoop_toggle(&current, &returned_early, &enabled)
-	    == YT_SOUND_OK);
-	CHECK(returned_early && current.snoop == 40000.0f);
-	current.mode = 0.0f;
-	current.snoop = 0.0f;
-	CHECK(yt_sound_sysop_snoop_toggle(&current, &returned_early, &enabled)
-	    == YT_SOUND_OK);
-	CHECK(!returned_early && enabled && current.snoop == -1.0f);
-	current.mode = 2.0f;
-	current.snoop = 1.0f;
-	CHECK(yt_sound_sysop_snoop_toggle(&current, &returned_early, &enabled)
-	    == YT_SOUND_OK);
-	CHECK(!returned_early && enabled && current.snoop == -2.0f);
-	current.snoop = 40000.0f;
-	CHECK(yt_sound_sysop_snoop_toggle(&current, &returned_early, &enabled)
-	    == YT_SOUND_SNOOP_OVERFLOW);
-	CHECK(current.snoop == 40000.0f);
-}
-
 int
 main(void)
 {
@@ -302,8 +244,6 @@ main(void)
 	test_stale_and_failures();
 	test_conversion_mode();
 	test_toggle();
-	test_sysop_toggle();
-	test_sysop_snoop_toggle();
 	if (failures != 0) {
 		fprintf(stderr, "%u test(s) failed\n", failures);
 		return 1;
