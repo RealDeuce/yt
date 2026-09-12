@@ -3085,46 +3085,23 @@ returning_daily_same_day(void *context, struct yt_error *error)
 }
 
 static bool
-returning_denial_present(void *context, const uint8_t *text, size_t length,
-    enum yt_returning_denial_output_kind kind, struct yt_error *error)
+returning_self_denial(struct yt_session *session, struct yt_error *error)
 {
-	struct yt_session *session = context;
+	static const uint8_t row[] =
+	    "You will be allowed to play again tomorrow!";
 
-	return session_present_text(session, text, length,
-	    kind == YT_RETURNING_DENIAL_ROW ? SESSION_PRESENT_BOLD_LINE
-	    : SESSION_PRESENT_LINE,
-	    kind == YT_RETURNING_DENIAL_ROW ? "returning self-denial row"
-	    : "returning self-denial blank", error);
-}
-
-static void
-returning_denial_set_foreground(void *context, float foreground)
-{
-	session_set_foreground(context, foreground);
-}
-
-static void
-returning_denial_set_blink(void *context, float blink)
-{
-	struct yt_session *session = context;
-
-	yt_present_set_blink(&session->presentation, blink);
-}
-
-static bool
-returning_denial_close_all(void *context, struct yt_error *error)
-{
-	(void)error;
-	return session_editor_close_all(context);
-}
-
-static void
-returning_denial_end(void *context)
-{
-	struct yt_session *session = context;
-
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "returning self-denial blank", error))
+		return false;
+	yt_present_set_blink(&session->presentation, 1.0f);
+	session_set_foreground(session, 7.0f);
+	if (!session_present_text(session, row, sizeof(row) - 1U,
+	    SESSION_PRESENT_BOLD_LINE, "returning self-denial row", error)
+	    || !session_editor_close_all(session))
+		return false;
 	session->running = false;
 	session->terminated = true;
+	return true;
 }
 
 static bool
@@ -3365,18 +3342,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 			}
 			if (self_kill
 			    && previous_day == startup_day) {
-				static const struct yt_returning_denial_ops denial_ops = {
-					returning_denial_present,
-					returning_denial_set_foreground,
-					returning_denial_set_blink,
-					returning_denial_close_all,
-					returning_denial_end,
-				};
-				struct yt_returning_denial_state denial;
-
-				memset(&denial, 0, sizeof(denial));
-				(void)yt_returning_self_denial_run(&denial,
-				    &denial_ops, session, error);
+				(void)returning_self_denial(session, error);
 				return false;
 			}
 			if (!construct_player_visible(session, error))

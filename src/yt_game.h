@@ -253,27 +253,6 @@ bool yt_returning_daily_run(struct yt_game *game,
 	const struct yt_returning_daily_ops *ops, void *context,
 	struct yt_error *error);
 
-enum yt_returning_denial_output_kind {
-	YT_RETURNING_DENIAL_BLANK,
-	YT_RETURNING_DENIAL_ROW,
-};
-struct yt_returning_denial_state {
-	bool close_completed;
-	bool terminated;
-};
-struct yt_returning_denial_ops {
-	bool (*present)(void *context, const uint8_t *text, size_t length,
-	    enum yt_returning_denial_output_kind kind,
-	    struct yt_error *error);
-	void (*set_foreground)(void *context, float foreground);
-	void (*set_blink)(void *context, float blink);
-	bool (*close_all)(void *context, struct yt_error *error);
-	void (*end)(void *context);
-};
-bool yt_returning_self_denial_run(struct yt_returning_denial_state *state,
-	const struct yt_returning_denial_ops *ops, void *context,
-	struct yt_error *error);
-
 enum yt_team_loader_route {
 	YT_TEAM_LOADER_OUT_OF_RANGE,
 	YT_TEAM_LOADER_ROSTER_DEAD,

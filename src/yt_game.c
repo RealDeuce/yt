@@ -4426,35 +4426,6 @@ yt_returning_daily_run(struct yt_game *game,
 }
 
 bool
-yt_returning_self_denial_run(struct yt_returning_denial_state *state,
-    const struct yt_returning_denial_ops *ops, void *context,
-    struct yt_error *error)
-{
-	static const uint8_t row[] =
-	    "You will be allowed to play again tomorrow!";
-
-	if (state == NULL || ops == NULL || ops->present == NULL
-	    || ops->set_foreground == NULL || ops->set_blink == NULL
-	    || ops->close_all == NULL || ops->end == NULL)
-		return false;
-	state->close_completed = false;
-	state->terminated = false;
-	if (!ops->present(context, NULL, 0U, YT_RETURNING_DENIAL_BLANK,
-	    error))
-		return false;
-	ops->set_blink(context, 1.0f);
-	ops->set_foreground(context, 7.0f);
-	if (!ops->present(context, row, sizeof(row) - 1U,
-	    YT_RETURNING_DENIAL_ROW, error)
-	    || !ops->close_all(context, error))
-		return false;
-	state->close_completed = true;
-	ops->end(context);
-	state->terminated = true;
-	return true;
-}
-
-bool
 yt_game_post_login_repairs(struct yt_game *game, int basic_record,
     const uint8_t one_raw[4], const uint8_t zero_raw[4],
     const uint8_t maximum_holds_raw[4], struct yt_player *player,
