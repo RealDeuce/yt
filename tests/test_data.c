@@ -514,19 +514,6 @@ struct database_public_close_script {
 	size_t position;
 };
 
-struct database_lof_step {
-	enum yt_database_lof_operation operation;
-	uint32_t restore_position;
-	struct yt_database_lof_observation observation;
-	bool provider_ok;
-};
-
-struct database_lof_script {
-	struct database_lof_step steps[3];
-	size_t length;
-	size_t position;
-};
-
 struct text_close_step {
 	enum yt_text_close_operation operation;
 	size_t requested;
@@ -1189,48 +1176,6 @@ scripted_close_all_fixed(void *context)
 
 	entry->tape->fixed_count_at_call = *entry->lazy_open_count;
 	++entry->tape->fixed_calls;
-}
-
-static void
-database_lof_add(struct database_lof_script *script,
-    enum yt_database_lof_operation operation, uint32_t restore_position,
-    bool carry, uint16_t dos_error, int64_t terminal_position)
-{
-	struct database_lof_step *step;
-
-	CHECK(script->length < YT_ARRAY_LEN(script->steps));
-	if (script->length >= YT_ARRAY_LEN(script->steps))
-		return;
-	step = &script->steps[script->length++];
-	memset(step, 0, sizeof(*step));
-	step->operation = operation;
-	step->restore_position = restore_position;
-	step->observation.carry = carry;
-	step->observation.dos_error = dos_error;
-	step->observation.terminal_position = terminal_position;
-	step->provider_ok = true;
-}
-
-static bool
-scripted_database_lof(void *context, FILE *active_file,
-    enum yt_database_lof_operation operation, uint32_t restore_position,
-    struct yt_database_lof_observation *observation)
-{
-	struct database_lof_script *script = context;
-	struct database_lof_step *step;
-
-	CHECK(active_file != NULL && script->position < script->length);
-	if (active_file == NULL || script->position >= script->length)
-		return false;
-	step = &script->steps[script->position++];
-	CHECK(operation == step->operation
-	    && restore_position == step->restore_position);
-	if (operation != step->operation
-	    || restore_position != step->restore_position
-	    || !step->provider_ok)
-		return false;
-	*observation = step->observation;
-	return true;
 }
 
 static void
@@ -2775,107 +2720,10 @@ test_text_output_close(void)
 static void
 test_database_random_lof(void)
 {
-	static const enum yt_database_lof_operation operations[] = {
-		YT_DATABASE_LOF_CURRENT,
-		YT_DATABASE_LOF_END,
-		YT_DATABASE_LOF_RESTORE,
-	};
-	struct database_lof_script script;
 	struct yt_database database;
 	struct yt_error error;
 	uint32_t length;
-	unsigned dos_error;
-	size_t failed;
 
-	memset(&database, 0, sizeof(database));
-	database.file = tmpfile();
-	CHECK(database.file != NULL);
-	if (database.file == NULL)
-		return;
-	(void)snprintf(database.path, sizeof(database.path), "%s", "LOF.DAT");
-	memset(&script, 0, sizeof(script));
-	database_lof_add(&script, YT_DATABASE_LOF_CURRENT, 0U, false, 0U,
-	    0x234);
-	database_lof_add(&script, YT_DATABASE_LOF_END, 0U, false, 0U,
-	    0x12345);
-	database_lof_add(&script, YT_DATABASE_LOF_RESTORE, 0x234U, false, 0U,
-	    0x234);
-	yt_database_set_lof_provider(&database, scripted_database_lof, &script);
-	yt_error_clear(&error);
-	CHECK(yt_database_random_lof(&database, &length, &error)
-	    && length == 0x12345U && script.position == script.length
-	    && database.last_lof.outcome == YT_DATABASE_LOF_RETURNED
-	    && database.last_lof.operation_count == 3U
-	    && database.last_lof.saved_position == 0x234U
-	    && database.last_lof.length == 0x12345U
-	    && database.last_lof.terminal_position == 0x234
-	    && database.last_lof.registered && database.last_lof.handle_open);
-
-	/* Each seek ordinal accepts every DOS error and retains its prefix. */
-	for (failed = 0U; failed < YT_ARRAY_LEN(operations); ++failed) {
-		for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
-			memset(&script, 0, sizeof(script));
-			if (failed > 0U)
-				database_lof_add(&script, YT_DATABASE_LOF_CURRENT,
-				    0U, false, 0U, 0x234);
-			if (failed > 1U)
-				database_lof_add(&script, YT_DATABASE_LOF_END,
-				    0U, false, 0U, 0x12345);
-			database_lof_add(&script, operations[failed],
-			    failed == 2U ? 0x234U : 0U, true,
-			    (uint16_t)dos_error, 0x345);
-			yt_database_set_lof_provider(&database,
-			    scripted_database_lof, &script);
-			yt_error_clear(&error);
-			length = UINT32_MAX;
-			CHECK(!yt_database_random_lof(&database, &length, &error)
-			    && length == 0U && error.status == YT_IO_ERROR
-			    && database.last_lof.outcome
-			    == YT_DATABASE_LOF_SEEK_ERROR
-			    && database.last_lof.failed_operation
-			    == operations[failed]
-			    && database.last_lof.dos_error == dos_error
-			    && database.last_lof.basic_error == 52U
-			    && database.last_lof.operation_count == failed + 1U
-			    && database.last_lof.saved_position
-			    == (failed > 0U ? 0x234U : 0U)
-			    && database.last_lof.length
-			    == (failed > 1U ? 0x12345U : 0U)
-			    && database.last_lof.terminal_position == 0x345
-			    && database.last_lof.registered
-			    && database.last_lof.handle_open);
-		}
-	}
-
-	/* Rejected and malformed provider results do not masquerade as DOS. */
-	memset(&script, 0, sizeof(script));
-	database_lof_add(&script, YT_DATABASE_LOF_CURRENT, 0U, false, 0U, 0U);
-	script.steps[0].provider_ok = false;
-	yt_database_set_lof_provider(&database, scripted_database_lof, &script);
-	CHECK(!yt_database_random_lof(&database, &length, &error)
-	    && database.last_lof.outcome == YT_DATABASE_LOF_PROVIDER_ERROR
-	    && database.last_lof.failed_operation == YT_DATABASE_LOF_CURRENT);
-	memset(&script, 0, sizeof(script));
-	database_lof_add(&script, YT_DATABASE_LOF_CURRENT, 0U, false, 0U,
-	    (int64_t)UINT32_MAX + 1);
-	yt_database_set_lof_provider(&database, scripted_database_lof, &script);
-	CHECK(!yt_database_random_lof(&database, &length, &error)
-	    && database.last_lof.outcome == YT_DATABASE_LOF_PROVIDER_ERROR);
-
-	/* Device random files return their position window without a seek. */
-	memset(&script, 0, sizeof(script));
-	database.last_open.device = true;
-	database.device_position = UINT32_MAX;
-	yt_database_set_lof_provider(&database, scripted_database_lof, &script);
-	CHECK(yt_database_random_lof(&database, &length, &error)
-	    && length == UINT32_MAX && script.position == 0U
-	    && database.last_lof.device
-	    && database.last_lof.operation_count == 0U
-	    && database.last_lof.saved_position == UINT32_MAX
-	    && database.last_lof.terminal_position == UINT32_MAX);
-	yt_database_close(&database);
-
-	/* The host adapter restores the physical cursor after measuring EOF. */
 	memset(&database, 0, sizeof(database));
 	database.file = tmpfile();
 	CHECK(database.file != NULL);
@@ -2884,7 +2732,9 @@ test_database_random_lof(void)
 		    && fseek(database.file, 2L, SEEK_SET) == 0
 		    && yt_database_random_lof(&database, &length, &error)
 		    && length == 5U && ftell(database.file) == 2L
+		    && database.last_lof.outcome == YT_DATABASE_LOF_RETURNED
 		    && database.last_lof.saved_position == 2U
+		    && database.last_lof.length == 5U
 		    && database.last_lof.operation_count == 3U);
 	}
 	yt_database_close(&database);

@@ -152,17 +152,10 @@ enum yt_database_lof_operation {
 	YT_DATABASE_LOF_RESTORE,
 };
 
-struct yt_database_lof_observation {
-	bool carry;
-	uint16_t dos_error;
-	int64_t terminal_position;
-};
-
 enum yt_database_lof_outcome {
 	YT_DATABASE_LOF_NONE,
 	YT_DATABASE_LOF_RETURNED,
 	YT_DATABASE_LOF_SEEK_ERROR,
-	YT_DATABASE_LOF_PROVIDER_ERROR,
 };
 
 struct yt_database_lof_result {
@@ -182,11 +175,6 @@ struct yt_database_lof_result {
 /* A false provider return rejects the observation and performs no I/O. */
 typedef bool (*yt_database_close_provider)(void *context, FILE *active_file,
     size_t attempt, struct yt_database_close_observation *observation);
-/* A false provider return rejects the observation and performs no I/O. */
-typedef bool (*yt_database_lof_provider)(void *context, FILE *active_file,
-    enum yt_database_lof_operation operation, uint32_t restore_position,
-    struct yt_database_lof_observation *observation);
-
 struct yt_database_seek_observation {
 	bool carry;
 	uint16_t dos_error;
@@ -282,8 +270,6 @@ struct yt_database {
 	void *write_context;
 	yt_database_close_provider close_provider;
 	void *close_context;
-	yt_database_lof_provider lof_provider;
-	void *lof_context;
 	uint32_t device_position;
 	bool short_close_attempted;
 	bool short_close_succeeded;
@@ -324,8 +310,6 @@ bool yt_close_all_run(const struct yt_close_all_control *controls,
     struct yt_close_all_result *result, struct yt_error *error);
 bool yt_database_random_lof(struct yt_database *database, uint32_t *length,
     struct yt_error *error);
-bool yt_random_file_lof(FILE *file, const char *path, uint32_t *length,
-    struct yt_database_lof_result *result, struct yt_error *error);
 void yt_database_close(struct yt_database *database);
 bool yt_database_read(struct yt_database *database, size_t basic_record,
     struct yt_record *record, struct yt_error *error);
@@ -348,8 +332,6 @@ void yt_database_set_seek_provider(struct yt_database *database,
     yt_database_seek_provider provider, void *context);
 void yt_database_set_close_provider(struct yt_database *database,
     yt_database_close_provider provider, void *context);
-void yt_database_set_lof_provider(struct yt_database *database,
-    yt_database_lof_provider provider, void *context);
 bool yt_database_flush(struct yt_database *database, struct yt_error *error);
 void yt_radio_file_init(struct yt_radio_file *radio);
 bool yt_radio_file_open(struct yt_radio_file *radio, const char *path,
