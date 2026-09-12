@@ -1,4 +1,4 @@
-#include "yt_session.h"
+#include "yt_session_internal.h"
 
 #include "qb.h"
 #include "yt_file.h"
@@ -24,115 +24,6 @@
 
 #define YT_PLAYER_FIRST YT_PLAYER_FIRST_RECORD
 #define YT_PLAYER_LAST YT_PLAYER_LAST_RECORD
-#define YT_COMMAND_SIZE 4096U
-
-enum navigation_field_kind {
-	NAVIGATION_FIELD_NONE,
-	NAVIGATION_FIELD_ENTRY_PLAYER,
-	NAVIGATION_FIELD_ROUTE_SECTOR,
-	NAVIGATION_FIELD_INNER_PLAYER,
-	NAVIGATION_FIELD_FINAL_SECTOR,
-	NAVIGATION_FIELD_RETURN_PLAYER,
-	NAVIGATION_FIELD_SCOREBOARD_PLAYER,
-	NAVIGATION_FIELD_SCOREBOARD_SECTOR,
-	NAVIGATION_FIELD_SCOREBOARD_TEAM,
-	NAVIGATION_FIELD_RADIO_RECIPIENT,
-	NAVIGATION_FIELD_RADIO_SENDER,
-	NAVIGATION_FIELD_NEAREST_PLAYER,
-	NAVIGATION_FIELD_NEAREST_SECTOR,
-	NAVIGATION_FIELD_NEAREST_PORT,
-	NAVIGATION_FIELD_NEAREST_OWNER,
-	NAVIGATION_FIELD_PROFIT_PLAYER,
-	NAVIGATION_FIELD_PROFIT_SECTOR,
-	NAVIGATION_FIELD_PROFIT_PORT,
-};
-
-struct projectile_route_state {
-	float origin;
-	float destination;
-	float amount;
-};
-
-struct yt_session {
-	struct yt_door *door;
-	struct yt_error *error;
-	const char *executable_path;
-	int player_record_carrier;
-	int counterattack_player;
-	int xannor_provoker;
-	float counterlaunch_count;
-	bool destroyed;
-	float current_warps[6];
-	bool self_mine_suppressed;
-	bool mercenaries_hurt;
-	bool earth_report_seen;
-	bool anti_cloak_enabled;
-	float low_time_remembered;
-	float inherited_loop_index;
-	float planet_record_expression;
-	float shared_target_record;
-	bool friendship_relation;
-	float shared_status;
-	float path_marker;
-	float route_start;
-	struct projectile_route_state projectile_main_route;
-	struct projectile_route_state projectile_xannor_route;
-	struct projectile_route_state projectile_counterlaunch_route;
-	int spy_count;
-	int spy_sectors[3];
-	int spy_markers[3];
-	bool spy_found;
-	struct yt_player player;
-	float current_sector_record;
-	double combat_ship_fighters;
-	double hostile_deployed_fighters;
-	float combat_ship_shields;
-	float hostile_owner;
-	float foreground;
-	float market_bases[3];
-	float clearance_discounts[4];
-	struct yt_planet_updater_raw_cache planet_updater_cache;
-	uint8_t planet_updater_day_raw[4];
-	float disruption_sectors[2];
-	uint8_t cached_player_name[YT_TEXT_FIELD_SIZE];
-	size_t cached_player_name_length;
-	struct yt_player_cache player_cache;
-	char queue[YT_COMMAND_SIZE];
-	size_t queue_length;
-	size_t queue_position;
-	char command_accumulator[YT_COMMAND_SIZE];
-	char paged_text[YT_COMMAND_SIZE];
-	char output_source[YT_COMMAND_SIZE];
-	struct yt_input input;
-	char saved_command[YT_COMMAND_SIZE];
-	bool running;
-	bool terminated;
-	bool registered;
-	bool fatal_wait_complete;
-	struct yt_present_state presentation;
-	float route_avoid[YT_ROUTE_AVOID_COUNT];
-	int16_t route_predecessor[YT_ROUTE_CAPACITY];
-	int16_t route_second[YT_ROUTE_CAPACITY];
-	char computer_route_scratch[YT_COMMAND_SIZE];
-	size_t computer_route_scratch_length;
-	bool navigation_field_active;
-	enum navigation_field_kind navigation_field_kind;
-	int navigation_field_record;
-	struct yt_record navigation_field;
-	bool radio_field_valid;
-	uint32_t radio_field_record;
-	struct yt_radio_record radio_field;
-	char planet_name[42];
-	double planet_quantity[10];
-	struct yt_present_time_state time;
-	struct yt_pager_state pager;
-	struct yt_input_value input_residue;
-	uint8_t team_audit_message[YT_TEAM_AUDIT_MESSAGE_MAX];
-	size_t team_audit_message_length;
-	uint8_t hostile_owner_label[160];
-	size_t hostile_owner_label_length;
-	struct yt_team_loader_cache team_cache;
-};
 
 static void
 session_player_cache_raw(const struct yt_session *session, int player_record,
@@ -182,7 +73,7 @@ session_port_offset(const struct yt_session *session)
 	return session->door->game.config.port_offset;
 }
 
-static float
+float
 session_planet_offset(const struct yt_session *session)
 {
 	return session->door->game.config.planet_offset;
@@ -241,7 +132,7 @@ session_current_date_serial(struct yt_session *session, int *serial,
 	    serial, adjusted_year, error);
 }
 
-static int
+int
 session_record(const struct yt_session *session)
 {
 	return session->player_record_carrier;
@@ -540,7 +431,7 @@ session_planet_basic_record(const struct yt_session *session,
 	    (int)logical_planet);
 }
 
-static bool
+bool
 session_read_sector(struct yt_session *session, int logical_sector,
     struct yt_sector *sector, struct yt_error *error)
 {
@@ -647,8 +538,8 @@ double_mul(double left, double right)
 	return result;
 }
 
-static int
-sector_count(const struct yt_session *session)
+int
+session_sector_count(const struct yt_session *session)
 {
 	return (int)(session_port_offset(session)
 	    - session_sector_offset(session));
@@ -1277,7 +1168,7 @@ session_present_paged_row(struct yt_session *session, const uint8_t *text, size_
 	return result;
 }
 
-static void
+void
 session_set_color(struct yt_session *session, int logical)
 {
 	static const int pc_color[8] = {0, 4, 2, 6, 1, 5, 3, 7};
@@ -1337,14 +1228,7 @@ session_attention(struct yt_session *session, const char *text,
 	    strlen(text), operation, error);
 }
 
-enum session_present_text_kind {
-	SESSION_PRESENT_LINE,
-	SESSION_PRESENT_RAW,
-	SESSION_PRESENT_BOLD_LINE,
-	SESSION_PRESENT_BOLD_RAW
-};
-
-static bool
+bool
 session_present_text(struct yt_session *session, const uint8_t *text,
     size_t length, enum session_present_text_kind kind,
     const char *operation, struct yt_error *error)
@@ -1598,8 +1482,9 @@ session_handle_gameplay_fault(struct yt_session *session,
 	return true;
 }
 
-static bool
-session_present_paged_fragment(struct yt_session *session, const uint8_t *text, size_t length)
+bool
+session_present_paged_fragment(struct yt_session *session,
+    const uint8_t *text, size_t length)
 {
 	session_set_pager_newline(session, 0.0f);
 	return session_present_paged_row(session, text, length);
@@ -1651,8 +1536,9 @@ session_low_time(struct yt_session *session, const char *operation,
 	return false;
 }
 
-static bool
-session_present_timed_paged_row(struct yt_session *session, const uint8_t *text, size_t length,
+bool
+session_present_timed_paged_row(struct yt_session *session,
+    const uint8_t *text, size_t length,
     const char *operation, struct yt_error *error)
 {
 	if (!session_low_time(session, operation, error))
@@ -1744,7 +1630,7 @@ failed:
 	return false;
 }
 
-static bool
+bool
 session_fixed_width_bytes(struct yt_session *session, const uint8_t *text,
     size_t text_length, float width, const char *operation,
     struct yt_error *error)
@@ -4664,7 +4550,7 @@ dangerous_destination(struct yt_session *session, float target,
 	};
 	struct yt_danger_scan_state state = {
 		.target = target,
-		.sector_count = (float)sector_count(session),
+		.sector_count = (float)session_sector_count(session),
 		.sector_offset = session_sector_offset(session),
 		.current_player_record = (float)session_record(session),
 		.disruption_sectors = {
@@ -5102,7 +4988,7 @@ emergency_warp(struct yt_session *session, struct yt_error *error)
 	    || !random_value(session, &turn_draw, error))
 		return false;
 	destination = yt_emergency_warp_destination(first,
-	    (float)sector_count(session));
+	    (float)session_sector_count(session));
 	if (override > 0.949999988079071f)
 		destination = session->door->game.config.headquarters;
 	cost = yt_emergency_warp_cost(heat, turn_draw, session->player.turns,
@@ -5564,7 +5450,7 @@ kill_player_run(struct yt_session *session, int victim_record,
 		.victim_record = victim_record,
 		.current_player_record = session_record(session),
 		.killer = killer,
-		.sector_count = sector_count(session),
+		.sector_count = session_sector_count(session),
 		.port_count = port_count(session),
 		.last_player_record = session_sector_offset(session),
 		.current_name = (const uint8_t *)session->player.name,
@@ -8799,7 +8685,7 @@ earth_purchase_spies(struct yt_session *session,
 					return false;
 				sector = yt_earth_purchase_quantity(sector_value);
 				if (sector == 0.0f
-				    || sector > (float)sector_count(session))
+				    || sector > (float)session_sector_count(session))
 					continue;
 				selected = qb_cint(sector, &overflow);
 				if (overflow)
@@ -12450,7 +12336,8 @@ team_search(struct yt_session *session, struct yt_error *error)
 		found = true;
 
 		first = true;
-		for (logical_sector = 1; logical_sector <= sector_count(session);
+		for (logical_sector = 1;
+		    logical_sector <= session_sector_count(session);
 		    ++logical_sector) {
 			struct yt_sector sector;
 
@@ -12479,7 +12366,8 @@ team_search(struct yt_session *session, struct yt_error *error)
 			return false;
 
 		first = true;
-		for (logical_sector = 1; logical_sector <= sector_count(session);
+		for (logical_sector = 1;
+		    logical_sector <= session_sector_count(session);
 		    ++logical_sector) {
 			struct yt_sector sector;
 			struct yt_planet planet;
@@ -15544,7 +15432,7 @@ launch_xannor_retaliation(struct yt_session *session, int *provoking_player,
 		&session->destroyed,
 		&session->xannor_provoker,
 		&session->door->game.config.headquarters,
-		sector_count(session),
+		session_sector_count(session),
 	};
 
 	result = yt_xannor_retaliation_run(&state, &ops, session, error);
@@ -15807,7 +15695,7 @@ command_projectile(struct yt_session *session, bool plasma,
 	};
 	struct yt_projectile_command_state state = {
 		.current_player_record = session_record(session),
-		.maximum_sector = (float)sector_count(session),
+		.maximum_sector = (float)session_sector_count(session),
 		.plasma = plasma,
 		.displayed = plasma ? session->player.plasma
 		    : session->player.missiles,
@@ -16384,7 +16272,7 @@ computer_route(struct yt_session *session, bool autopilot,
 	bool stale_marker = autopilot && session->path_marker == 9999.0f;
 	int start;
 	int destination;
-	int count = sector_count(session);
+	int count = session_sector_count(session);
 	bool conversion_overflow;
 	bool found;
 	int cursor;
@@ -16828,195 +16716,6 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 	}
 }
 
-static bool
-owned_fighters_format_error(struct yt_error *error, const char *operation)
-{
-	if (error != NULL) {
-		error->status = YT_RANGE;
-		error->system_error = 0;
-		(void)snprintf(error->operation, sizeof(error->operation), "%s",
-		    operation);
-		error->path[0] = '\0';
-	}
-	return false;
-}
-
-static bool
-computer_owned_fighters(struct yt_session *session, struct yt_error *error)
-{
-	static const uint8_t searching[] = "Searching;";
-	static const uint8_t sector_heading[] = " Sector";
-	static const uint8_t amount_heading[] = "Amount";
-	static const uint8_t rule[] = "--------*--------";
-	static const uint8_t none[] = " NONE found!";
-	int maximum_sector = sector_count(session);
-	float current_player = (float)session_record(session);
-	bool found = false;
-	int sector_number;
-
-	if (maximum_sector < 0)
-		return owned_fighters_format_error(error,
-		    "owned-fighter state");
-	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "owned-fighter opening blank", error)
-	    || !session_present_timed_paged_row(session, searching, sizeof(searching) - 1U,
-	    "owned-fighter searching row", error))
-		return false;
-	session->shared_status = 1.0f;
-
-	for (sector_number = 1; sector_number <= maximum_sector;
-	    ++sector_number) {
-		struct yt_sector sector;
-		char number[64];
-		int number_length;
-
-		if (!session_read_sector(session, sector_number, &sector, error))
-			return false;
-		if (sector.fighters <= 0.0f
-		    || sector.fighter_owner != current_player)
-			continue;
-
-		if (!found) {
-			found = true;
-			if (!session_present_text(session, NULL, 0U,
-			    SESSION_PRESENT_LINE,
-			    "owned-fighter searching ending", error)
-			    || !session_present_text(session, NULL, 0U,
-			    SESSION_PRESENT_LINE,
-			    "owned-fighter heading blank", error)
-			    || !session_fixed_width_bytes(session, sector_heading,
-			    sizeof(sector_heading) - 1U, 10.0f,
-			    "owned-fighter heading sector", error)
-			    || !session_present_paged_fragment(session, amount_heading,
-			    sizeof(amount_heading) - 1U)
-			    || !session_present_paged_fragment(session, rule, sizeof(rule) - 1U))
-				return false;
-			session->shared_status = 0.0f;
-		}
-
-		number_length = qb_str_single(number, sizeof(number),
-		    (float)sector_number);
-		if (number_length < 0)
-			return owned_fighters_format_error(error,
-			    "owned-fighter sector format");
-		if (!session_fixed_width_bytes(session,
-		    (const uint8_t *)number, (size_t)number_length, 9.0f,
-		    "owned-fighter sector field", error))
-			return false;
-		number_length = qb_str_single(number, sizeof(number),
-		    sector.fighters);
-		if (number_length < 0)
-			return owned_fighters_format_error(error,
-			    "owned-fighter amount format");
-		if (!session_present_paged_fragment(session, (const uint8_t *)number,
-		    (size_t)number_length))
-			return false;
-		if (strcmp(session->pager.key, "Q") == 0)
-			break;
-	}
-
-	if (!found)
-		return session_present_text(session, none, sizeof(none) - 1U,
-		    SESSION_PRESENT_LINE, "owned-fighter none row", error);
-	return session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "owned-fighter trailing blank", error);
-}
-
-static bool
-owned_planets_error(struct yt_error *error, enum yt_status status,
-    const char *operation)
-{
-	if (error != NULL) {
-		error->status = status;
-		error->system_error = 0;
-		(void)snprintf(error->operation, sizeof(error->operation), "%s",
-		    operation);
-		error->path[0] = '\0';
-	}
-	return false;
-}
-
-static bool
-computer_owned_planets(struct yt_session *session, struct yt_error *error)
-{
-	static const uint8_t scanning[] = "Scanning...";
-	static const uint8_t none[] = "None found!";
-	static const uint8_t prefix[] = "Planet: ";
-	static const uint8_t infix[] = " Sector:";
-	int maximum_sector = sector_count(session);
-	float planet_record_base = session_planet_offset(session);
-	float current_player = (float)session_record(session);
-	bool found = false;
-	int sector_number;
-
-	if (maximum_sector < 0)
-		return owned_planets_error(error, YT_INVALID,
-		    "owned-planet state");
-	session_set_color(session, 2);
-	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "owned-planet opening blank", error)
-	    || !session_present_text(session, scanning, sizeof(scanning) - 1U,
-	    SESSION_PRESENT_LINE, "owned-planet scanning row", error)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "owned-planet scanning blank", error))
-		return false;
-	session_set_color(session, 3);
-
-	for (sector_number = 1; sector_number <= maximum_sector;
-	    ++sector_number) {
-		struct yt_sector sector;
-		struct yt_record record;
-		struct yt_planet planet;
-		volatile float record_expression;
-		uint32_t physical_record;
-
-		if (!session_read_sector(session, sector_number, &sector, error))
-			return false;
-		if (sector.planet == 0.0f)
-			continue;
-		record_expression = planet_record_base + sector.planet;
-		physical_record = qb_brun_random_record_number(record_expression);
-		if (physical_record == 0U)
-			return owned_planets_error(error, YT_RANGE,
-			    "owned-planet record number");
-		if (!yt_database_read(&session->door->game.database,
-		    (size_t)physical_record, &record, error))
-			return false;
-		yt_planet_decode(&planet, &record);
-		if (planet.owner == current_player) {
-			uint8_t row[128];
-			char number[64];
-			size_t length = 0U;
-			int number_length = qb_str_single(number, sizeof(number),
-			    (float)sector_number);
-
-			if (number_length < 0)
-				return owned_planets_error(error, YT_RANGE,
-				    "owned-planet sector format");
-			memcpy(row + length, prefix, sizeof(prefix) - 1U);
-			length += sizeof(prefix) - 1U;
-			memcpy(row + length, planet.record.bytes,
-			    YT_TEXT_FIELD_SIZE);
-			length += YT_TEXT_FIELD_SIZE;
-			memcpy(row + length, infix, sizeof(infix) - 1U);
-			length += sizeof(infix) - 1U;
-			memcpy(row + length, number, (size_t)number_length);
-			length += (size_t)number_length;
-			if (!session_present_text(session, row, length,
-			    SESSION_PRESENT_BOLD_LINE, "owned-planet match row",
-			    error))
-				return false;
-			found = true;
-		}
-	}
-
-	if (!found) {
-		yt_present_set_blink(&session->presentation, 1.0f);
-		return session_present_text(session, none, sizeof(none) - 1U,
-		    SESSION_PRESENT_BOLD_LINE, "owned-planet none row", error);
-	}
-	return true;
-}
 
 static bool
 computer_port_friendship(struct yt_session *session, float owner,
@@ -18253,7 +17952,7 @@ computer_menu(struct yt_session *session, bool *enter_sector,
 			continue;
 		}
 		if (strcmp(command, "11") == 0) {
-			if (!computer_owned_fighters(session, error))
+			if (!yt_session_computer_owned_fighters(session, error))
 				return false;
 			continue;
 		}
@@ -18264,7 +17963,7 @@ computer_menu(struct yt_session *session, bool *enter_sector,
 			continue;
 		}
 		if (strcmp(command, "13") == 0) {
-			if (!computer_owned_planets(session, error))
+			if (!yt_session_computer_owned_planets(session, error))
 				return false;
 			continue;
 		}

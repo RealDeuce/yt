@@ -106,7 +106,8 @@ add_executable(yt
     src/yt_door.c
     src/yt_input.c
     src/yt_output.c
-    src/yt_session.c)
+    src/yt_session.c
+    src/yt_session_computer.c)
 yt_configure_target(yt)
 target_link_libraries(yt PRIVATE yt_game OpenDoors::Static)
 

@@ -1,0 +1,149 @@
+#ifndef YT_SESSION_INTERNAL_H
+#define YT_SESSION_INTERNAL_H
+
+#include "yt_input.h"
+#include "yt_pager.h"
+#include "yt_route.h"
+#include "yt_session.h"
+
+#define YT_COMMAND_SIZE 4096U
+
+enum navigation_field_kind {
+	NAVIGATION_FIELD_NONE,
+	NAVIGATION_FIELD_ENTRY_PLAYER,
+	NAVIGATION_FIELD_ROUTE_SECTOR,
+	NAVIGATION_FIELD_INNER_PLAYER,
+	NAVIGATION_FIELD_FINAL_SECTOR,
+	NAVIGATION_FIELD_RETURN_PLAYER,
+	NAVIGATION_FIELD_SCOREBOARD_PLAYER,
+	NAVIGATION_FIELD_SCOREBOARD_SECTOR,
+	NAVIGATION_FIELD_SCOREBOARD_TEAM,
+	NAVIGATION_FIELD_RADIO_RECIPIENT,
+	NAVIGATION_FIELD_RADIO_SENDER,
+	NAVIGATION_FIELD_NEAREST_PLAYER,
+	NAVIGATION_FIELD_NEAREST_SECTOR,
+	NAVIGATION_FIELD_NEAREST_PORT,
+	NAVIGATION_FIELD_NEAREST_OWNER,
+	NAVIGATION_FIELD_PROFIT_PLAYER,
+	NAVIGATION_FIELD_PROFIT_SECTOR,
+	NAVIGATION_FIELD_PROFIT_PORT,
+};
+
+enum session_present_text_kind {
+	SESSION_PRESENT_LINE,
+	SESSION_PRESENT_RAW,
+	SESSION_PRESENT_BOLD_LINE,
+	SESSION_PRESENT_BOLD_RAW
+};
+
+struct projectile_route_state {
+	float origin;
+	float destination;
+	float amount;
+};
+
+struct yt_session {
+	struct yt_door *door;
+	struct yt_error *error;
+	const char *executable_path;
+	int player_record_carrier;
+	int counterattack_player;
+	int xannor_provoker;
+	float counterlaunch_count;
+	bool destroyed;
+	float current_warps[6];
+	bool self_mine_suppressed;
+	bool mercenaries_hurt;
+	bool earth_report_seen;
+	bool anti_cloak_enabled;
+	float low_time_remembered;
+	float inherited_loop_index;
+	float planet_record_expression;
+	float shared_target_record;
+	bool friendship_relation;
+	float shared_status;
+	float path_marker;
+	float route_start;
+	struct projectile_route_state projectile_main_route;
+	struct projectile_route_state projectile_xannor_route;
+	struct projectile_route_state projectile_counterlaunch_route;
+	int spy_count;
+	int spy_sectors[3];
+	int spy_markers[3];
+	bool spy_found;
+	struct yt_player player;
+	float current_sector_record;
+	double combat_ship_fighters;
+	double hostile_deployed_fighters;
+	float combat_ship_shields;
+	float hostile_owner;
+	float foreground;
+	float market_bases[3];
+	float clearance_discounts[4];
+	struct yt_planet_updater_raw_cache planet_updater_cache;
+	uint8_t planet_updater_day_raw[4];
+	float disruption_sectors[2];
+	uint8_t cached_player_name[YT_TEXT_FIELD_SIZE];
+	size_t cached_player_name_length;
+	struct yt_player_cache player_cache;
+	char queue[YT_COMMAND_SIZE];
+	size_t queue_length;
+	size_t queue_position;
+	char command_accumulator[YT_COMMAND_SIZE];
+	char paged_text[YT_COMMAND_SIZE];
+	char output_source[YT_COMMAND_SIZE];
+	struct yt_input input;
+	char saved_command[YT_COMMAND_SIZE];
+	bool running;
+	bool terminated;
+	bool registered;
+	bool fatal_wait_complete;
+	struct yt_present_state presentation;
+	float route_avoid[YT_ROUTE_AVOID_COUNT];
+	int16_t route_predecessor[YT_ROUTE_CAPACITY];
+	int16_t route_second[YT_ROUTE_CAPACITY];
+	char computer_route_scratch[YT_COMMAND_SIZE];
+	size_t computer_route_scratch_length;
+	bool navigation_field_active;
+	enum navigation_field_kind navigation_field_kind;
+	int navigation_field_record;
+	struct yt_record navigation_field;
+	bool radio_field_valid;
+	uint32_t radio_field_record;
+	struct yt_radio_record radio_field;
+	char planet_name[42];
+	double planet_quantity[10];
+	struct yt_present_time_state time;
+	struct yt_pager_state pager;
+	struct yt_input_value input_residue;
+	uint8_t team_audit_message[YT_TEAM_AUDIT_MESSAGE_MAX];
+	size_t team_audit_message_length;
+	uint8_t hostile_owner_label[160];
+	size_t hostile_owner_label_length;
+	struct yt_team_loader_cache team_cache;
+};
+
+int session_record(const struct yt_session *session);
+float session_planet_offset(const struct yt_session *session);
+int session_sector_count(const struct yt_session *session);
+bool session_read_sector(struct yt_session *session, int logical_sector,
+    struct yt_sector *sector, struct yt_error *error);
+void session_set_color(struct yt_session *session, int logical);
+bool session_present_text(struct yt_session *session, const uint8_t *text,
+    size_t length, enum session_present_text_kind kind,
+    const char *operation, struct yt_error *error);
+bool session_present_paged_fragment(struct yt_session *session,
+    const uint8_t *text, size_t length);
+bool session_present_timed_paged_row(struct yt_session *session,
+    const uint8_t *text, size_t length, const char *operation,
+    struct yt_error *error);
+bool session_fixed_width_bytes(struct yt_session *session,
+    const uint8_t *text, size_t text_length, float width,
+    const char *operation, struct yt_error *error);
+
+bool yt_session_computer_owned_fighters(struct yt_session *session,
+    struct yt_error *error);
+bool yt_session_computer_owned_planets(struct yt_session *session,
+    struct yt_error *error);
+
+#endif
