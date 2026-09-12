@@ -971,25 +971,6 @@ yt_present_sysop_time_replace(const uint8_t *entered, size_t entered_length,
 }
 
 enum yt_present_status
-yt_present_sysop_time_replace_process(const uint8_t *entered,
-    size_t entered_length, float commit_timer, uint8_t deadline[4],
-    float *minutes, bool *changed)
-{
-	float value;
-	enum yt_present_status status;
-
-	if (deadline == NULL)
-		return YT_PRESENT_CAPACITY;
-	value = qb_mbf32_decode(deadline);
-	status = yt_present_sysop_time_replace(entered, entered_length,
-	    commit_timer, &value, minutes, changed);
-	if (status != YT_PRESENT_OK || !*changed)
-		return status;
-	return qb_mbf32_encode(value, deadline) == QB_MBF_OK
-	    ? YT_PRESENT_OK : YT_PRESENT_OVERFLOW;
-}
-
-enum yt_present_status
 yt_present_sysop_time_handler(float prompt_timer, const uint8_t *entered,
     size_t entered_length, float commit_timer, float *deadline,
     float *minutes, bool *changed, struct yt_present_result *prompt,
@@ -1003,26 +984,6 @@ yt_present_sysop_time_handler(float prompt_timer, const uint8_t *entered,
 	if (status != YT_PRESENT_OK)
 		return status;
 	status = yt_present_sysop_time_replace(entered, entered_length,
-	    commit_timer, deadline, minutes, changed);
-	return status == YT_PRESENT_OK ? replay(replay_context) : status;
-}
-
-enum yt_present_status
-yt_present_sysop_time_handler_process(float prompt_timer,
-    const uint8_t *entered, size_t entered_length, float commit_timer,
-    uint8_t deadline[4], float *minutes, bool *changed,
-    struct yt_present_result *prompt, yt_present_sysop_replay_fn replay,
-    void *replay_context)
-{
-	enum yt_present_status status;
-
-	if (deadline == NULL || prompt == NULL || replay == NULL)
-		return YT_PRESENT_CAPACITY;
-	status = yt_present_sysop_time_prompt(qb_mbf32_decode(deadline),
-	    prompt_timer, prompt);
-	if (status != YT_PRESENT_OK)
-		return status;
-	status = yt_present_sysop_time_replace_process(entered, entered_length,
 	    commit_timer, deadline, minutes, changed);
 	return status == YT_PRESENT_OK ? replay(replay_context) : status;
 }
@@ -1356,35 +1317,6 @@ yt_present_refresh_time(struct yt_present_time_state *time,
 		*updated = true;
 done:
 	*timer_used = used;
-	return status;
-}
-
-enum yt_present_status
-yt_present_refresh_time_process(struct yt_present_time_state *time,
-    uint8_t deadline[4], uint8_t next_refresh[4], const float *timer_reads,
-    size_t timer_count, size_t *timer_used, int cursor_row, int cursor_column,
-    struct yt_present_state *state, struct yt_present_result *result,
-    bool *updated)
-{
-	uint8_t raw[4];
-	float initial_deadline = qb_mbf32_decode(deadline);
-	float initial_next_refresh = qb_mbf32_decode(next_refresh);
-	enum yt_present_status status;
-
-	time->deadline = initial_deadline;
-	time->next_refresh = initial_next_refresh;
-	status = yt_present_refresh_time(time, timer_reads, timer_count,
-	    timer_used, cursor_row, cursor_column, state, result, updated);
-	if (time->deadline != initial_deadline) {
-		if (qb_mbf32_encode(time->deadline, raw) == QB_MBF_OVERFLOW)
-			return YT_PRESENT_OVERFLOW;
-		memcpy(deadline, raw, sizeof(raw));
-	}
-	if (time->next_refresh != initial_next_refresh) {
-		if (qb_mbf32_encode(time->next_refresh, raw) == QB_MBF_OVERFLOW)
-			return YT_PRESENT_OVERFLOW;
-		memcpy(next_refresh, raw, sizeof(raw));
-	}
 	return status;
 }
 

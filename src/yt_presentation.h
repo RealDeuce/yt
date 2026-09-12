@@ -146,19 +146,11 @@ enum yt_present_status yt_present_sysop_time_prompt(float deadline,
 enum yt_present_status yt_present_sysop_time_replace(
     const uint8_t *entered, size_t entered_length, float commit_timer,
     float *deadline, float *minutes, bool *changed);
-enum yt_present_status yt_present_sysop_time_replace_process(
-    const uint8_t *entered, size_t entered_length, float commit_timer,
-    uint8_t deadline[4], float *minutes, bool *changed);
 enum yt_present_status yt_present_sysop_time_handler(float prompt_timer,
     const uint8_t *entered, size_t entered_length, float commit_timer,
     float *deadline, float *minutes, bool *changed,
     struct yt_present_result *prompt,
     yt_present_sysop_replay_fn replay, void *replay_context);
-enum yt_present_status yt_present_sysop_time_handler_process(
-    float prompt_timer, const uint8_t *entered, size_t entered_length,
-    float commit_timer, uint8_t deadline[4], float *minutes, bool *changed,
-    struct yt_present_result *prompt, yt_present_sysop_replay_fn replay,
-    void *replay_context);
 enum yt_present_status yt_present_serial_startup_missing_command(
     struct yt_present_result *result);
 enum yt_present_status yt_present_serial_startup_status(int port,
@@ -185,12 +177,6 @@ enum yt_present_status yt_present_format_remaining_seconds(
 enum yt_present_status yt_present_refresh_time(
     struct yt_present_time_state *time, const float *timer_reads,
     size_t timer_count, size_t *timer_used, int cursor_row, int cursor_column,
-    struct yt_present_state *state, struct yt_present_result *result,
-    bool *updated);
-enum yt_present_status yt_present_refresh_time_process(
-    struct yt_present_time_state *time, uint8_t deadline[4],
-    uint8_t next_refresh[4], const float *timer_reads, size_t timer_count,
-    size_t *timer_used, int cursor_row, int cursor_column,
     struct yt_present_state *state, struct yt_present_result *result,
     bool *updated);
 enum yt_present_status yt_present_low_time(const uint8_t *text, size_t length,

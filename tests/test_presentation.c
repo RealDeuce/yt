@@ -3628,13 +3628,6 @@ struct sysop_replay_tape {
 	bool fail;
 };
 
-struct sysop_process_replay_tape {
-	uint8_t *deadline;
-	float expected_deadline;
-	size_t calls;
-	bool fail;
-};
-
 static enum yt_present_status
 capture_sysop_replay(void *context)
 {
@@ -3642,16 +3635,6 @@ capture_sysop_replay(void *context)
 
 	++tape->calls;
 	CHECK(*tape->deadline == tape->expected_deadline);
-	return tape->fail ? YT_PRESENT_RANGE : YT_PRESENT_OK;
-}
-
-static enum yt_present_status
-capture_sysop_process_replay(void *context)
-{
-	struct sysop_process_replay_tape *tape = context;
-
-	++tape->calls;
-	CHECK(qb_mbf32_decode(tape->deadline) == tape->expected_deadline);
 	return tape->fail ? YT_PRESENT_RANGE : YT_PRESENT_OK;
 }
 
@@ -3738,37 +3721,6 @@ test_sysop_time(void)
 	    &deadline, &minutes, &changed, &result, capture_sysop_replay,
 	    &tape) == YT_PRESENT_RANGE);
 	CHECK(tape.calls == 1U && !changed && deadline == 9999.0f);
-	{
-		static const uint8_t dirty_zero[4] = {
-			0x11U, 0x22U, 0x33U, 0U,
-		};
-		struct sysop_process_replay_tape process_tape;
-		uint8_t raw_deadline[4];
-		uint8_t before[4];
-
-		memcpy(raw_deadline, dirty_zero, sizeof(raw_deadline));
-		memcpy(before, raw_deadline, sizeof(before));
-		CHECK(yt_present_sysop_time_replace_process(NULL, 0U, 1.0f,
-		    raw_deadline, &minutes, &changed) == YT_PRESENT_OK
-		    && !changed
-		    && memcmp(raw_deadline, before, sizeof(raw_deadline)) == 0);
-		CHECK(qb_mbf32_encode(9999.0f, raw_deadline) == QB_MBF_OK
-		    && yt_present_sysop_time_replace_process(
-		    (const uint8_t *)"30", 2U, 2000.25f, raw_deadline,
-		    &minutes, &changed) == YT_PRESENT_OK
-		    && changed && minutes == 30.0f
-		    && qb_mbf32_decode(raw_deadline) == 3800.0f);
-		CHECK(qb_mbf32_encode(9999.0f, raw_deadline) == QB_MBF_OK);
-		process_tape = (struct sysop_process_replay_tape){
-			raw_deadline, 3800.0f, 0U, true,
-		};
-		CHECK(yt_present_sysop_time_handler_process(1000.75f,
-		    (const uint8_t *)"30", 2U, 2000.25f, raw_deadline,
-		    &minutes, &changed, &result, capture_sysop_process_replay,
-		    &process_tape) == YT_PRESENT_RANGE
-		    && process_tape.calls == 1U && changed
-		    && qb_mbf32_decode(raw_deadline) == 3800.0f);
-	}
 }
 
 static void
@@ -4625,8 +4577,6 @@ test_time_helpers(void)
 	struct yt_present_time_state time;
 	struct yt_present_result result;
 	uint8_t long_time[YT_PRESENT_EVENT_DATA - 9U];
-	uint8_t deadline_raw[4];
-	uint8_t next_refresh_raw[4];
 	static const float update_reads[] = {100, 100, 100, 100};
 	static const float gated_reads[] = {100, 100};
 	static const float rollover_reads[] = {1, 10, 10};
@@ -4718,101 +4668,6 @@ test_time_helpers(void)
 	CHECK(result.events[4].operation == YT_PRESENT_LOCAL_COLOR
 	    && result.events[4].foreground == 7
 	    && result.events[4].background == 0);
-
-	{
-		static const uint8_t dirty_zero[] = {0xa5, 0x5a, 0x80, 0x00};
-		static const uint8_t raw_101[] = {0x00, 0x00, 0x4a, 0x87};
-
-		memcpy(deadline_raw, dirty_zero, sizeof(deadline_raw));
-		memcpy(next_refresh_raw, raw_101, sizeof(next_refresh_raw));
-		memset(&time, 0, sizeof(time));
-		CHECK(yt_present_refresh_time_process(&time, deadline_raw,
-		    next_refresh_raw, gated_reads,
-		    sizeof(gated_reads) / sizeof(gated_reads[0]), &used, 2, 3,
-		    &current, &result, &updated) == YT_PRESENT_OK);
-		CHECK(!updated && used == 2 && result.event_count == 0);
-		CHECK(memcmp(deadline_raw, dirty_zero, sizeof(deadline_raw)) == 0
-		    && memcmp(next_refresh_raw, raw_101,
-		    sizeof(next_refresh_raw)) == 0);
-	}
-
-	{
-		static const uint8_t raw_460[] = {0x00, 0x00, 0x66, 0x89};
-		static const uint8_t dirty_zero[] = {0xff, 0xff, 0x80, 0x00};
-		static const uint8_t raw_101[] = {0x00, 0x00, 0x4a, 0x87};
-
-		memcpy(deadline_raw, raw_460, sizeof(deadline_raw));
-		memcpy(next_refresh_raw, dirty_zero, sizeof(next_refresh_raw));
-		memset(&time, 0, sizeof(time));
-		memcpy(time.text, " 6:00  ", 7U);
-		time.text_length = 7U;
-		CHECK(yt_present_refresh_time_process(&time, deadline_raw,
-		    next_refresh_raw, update_reads,
-		    sizeof(update_reads) / sizeof(update_reads[0]), &used, 4, 9,
-		    &current, &result, &updated) == YT_PRESENT_OK);
-		CHECK(updated && used == 4);
-		CHECK(memcmp(deadline_raw, raw_460, sizeof(deadline_raw)) == 0
-		    && memcmp(next_refresh_raw, raw_101,
-		    sizeof(next_refresh_raw)) == 0);
-		CHECK(time.saved_row == 4 && time.saved_column == 9
-		    && time.remaining_minutes == 6.0f);
-	}
-
-	{
-		static const uint8_t raw_80000[] = {0x00, 0x40, 0x1c, 0x91};
-		static const uint8_t dirty_zero[] = {0x12, 0x34, 0x80, 0x00};
-		static const uint8_t raw_negative_6400[] = {
-			0x00, 0x00, 0xc8, 0x8d
-		};
-		static const uint8_t raw_11[] = {0x00, 0x00, 0x30, 0x84};
-
-		memcpy(deadline_raw, raw_80000, sizeof(deadline_raw));
-		memcpy(next_refresh_raw, dirty_zero, sizeof(next_refresh_raw));
-		memset(&time, 0, sizeof(time));
-		CHECK(yt_present_refresh_time_process(&time, deadline_raw,
-		    next_refresh_raw, rollover_reads,
-		    sizeof(rollover_reads) / sizeof(rollover_reads[0]), &used, 1,
-		    1, &current, &result, &updated) == YT_PRESENT_OK);
-		CHECK(!updated && used == 3 && result.event_count == 0);
-		CHECK(memcmp(deadline_raw, raw_negative_6400,
-		    sizeof(deadline_raw)) == 0
-		    && memcmp(next_refresh_raw, raw_11,
-		    sizeof(next_refresh_raw)) == 0);
-
-		memcpy(deadline_raw, raw_80000, sizeof(deadline_raw));
-		memcpy(next_refresh_raw, dirty_zero, sizeof(next_refresh_raw));
-		memset(&time, 0, sizeof(time));
-		CHECK(yt_present_refresh_time_process(&time, deadline_raw,
-		    next_refresh_raw, rollover_reads, 1U, &used, 1, 1, &current,
-		    &result, &updated) == YT_PRESENT_TIMER_EXHAUSTED);
-		CHECK(!updated && used == 1);
-		CHECK(memcmp(deadline_raw, raw_negative_6400,
-		    sizeof(deadline_raw)) == 0
-		    && memcmp(next_refresh_raw, dirty_zero,
-		    sizeof(next_refresh_raw)) == 0);
-	}
-
-	{
-		static const uint8_t raw_460[] = {0x00, 0x00, 0x66, 0x89};
-		static const uint8_t dirty_zero[] = {0x7f, 0x55, 0x80, 0x00};
-		static const uint8_t raw_101[] = {0x00, 0x00, 0x4a, 0x87};
-
-		memcpy(deadline_raw, raw_460, sizeof(deadline_raw));
-		memcpy(next_refresh_raw, dirty_zero, sizeof(next_refresh_raw));
-		memset(&time, 0, sizeof(time));
-		time.remaining_minutes = 123.0f;
-		memcpy(time.text, " 6:00  ", 7U);
-		time.text_length = 7U;
-		CHECK(yt_present_refresh_time_process(&time, deadline_raw,
-		    next_refresh_raw, update_reads, 3U, &used, 4, 9, &current,
-		    &result, &updated) == YT_PRESENT_TIMER_EXHAUSTED);
-		CHECK(!updated && used == 3 && result.event_count == 2);
-		CHECK(memcmp(deadline_raw, raw_460, sizeof(deadline_raw)) == 0
-		    && memcmp(next_refresh_raw, raw_101,
-		    sizeof(next_refresh_raw)) == 0);
-		CHECK(time.saved_row == 4 && time.saved_column == 9
-		    && time.remaining_minutes == 123.0f);
-	}
 
 	current = state(true);
 	CHECK(yt_present_low_time((const uint8_t *)" 5:59  ", 7,
