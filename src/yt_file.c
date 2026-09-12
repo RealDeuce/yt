@@ -606,49 +606,6 @@ database_seek(FILE *file, int64_t absolute_offset, uint16_t *dos_error,
 }
 
 static bool
-database_write_default(void *context, FILE *file, const uint8_t *data,
-    size_t requested, struct yt_database_write_observation *observation)
-{
-	int64_t position;
-	int saved_errno;
-
-	(void)context;
-	memset(observation, 0, sizeof(*observation));
-	database_prepare_io(file);
-	observation->accepted = fwrite(data, 1U, requested, file);
-	saved_errno = errno;
-	observation->carry = ferror(file) != 0;
-	position = yt_ftello(file);
-	observation->terminal_position = position >= 0 ? (int64_t)position : 0;
-	if (observation->carry) {
-		observation->dos_error = (saved_errno == EACCES
-		    || saved_errno == EPERM) ? 5U : 1U;
-		observation->mapped_error = observation->dos_error == 5U
-		    ? 70U : 57U;
-	}
-	errno = saved_errno;
-	return true;
-}
-
-static bool
-database_write_observation_valid(
-    const struct yt_database_write_observation *observation, size_t requested)
-{
-	if (observation->accepted > requested)
-		return false;
-	if (!observation->carry)
-		return observation->dos_error == 0U
-		    && observation->mapped_error == 0U;
-	if (observation->dos_error < 1U || observation->dos_error > 0xffU)
-		return false;
-	if (observation->dos_error == 5U)
-		return observation->mapped_error == 70U
-		    || observation->mapped_error == 75U;
-	return observation->mapped_error == 0U
-	    || observation->mapped_error == 57U;
-}
-
-static bool
 database_close_execute(struct yt_database *database, bool close_all,
     struct yt_error *error)
 {
@@ -945,9 +902,10 @@ database_random_put_bytes(struct yt_database *database, size_t basic_record,
     const uint8_t *data, size_t record_size, bool one_byte_short_ok,
     size_t *accepted, struct yt_error *error)
 {
-	yt_database_write_provider write_provider;
-	struct yt_database_write_observation write = {0};
 	int64_t offset;
+	size_t write_count;
+	int64_t write_position;
+	int saved_errno;
 	uint16_t seek_error;
 	int64_t seek_position;
 	bool tolerated_short;
@@ -985,36 +943,32 @@ database_random_put_bytes(struct yt_database *database, size_t basic_record,
 		set_error(error, YT_IO_ERROR, "random PUT seek", database->path);
 		return false;
 	}
-	write_provider = database->write_provider != NULL ? database->write_provider
-	    : database_write_default;
-	if (!write_provider(database->write_context, database->file, data,
-	    record_size, &write)
-	    || !database_write_observation_valid(&write, record_size)) {
-		database->last_put.outcome = YT_DATABASE_PUT_PROVIDER_ERROR;
-		database->last_put.accepted = write.accepted;
-		database->last_put.basic_error = 57U;
-		database->last_put.dos_error = write.dos_error;
-		database->last_put.terminal_position = write.terminal_position;
-		set_error(error, YT_IO_ERROR, "random PUT provider", database->path);
-		return false;
-	}
+	database_prepare_io(database->file);
+	write_count = fwrite(data, 1U, record_size, database->file);
+	saved_errno = errno;
+	write_position = yt_ftello(database->file);
+	if (write_position < 0)
+		write_position = 0;
 	if (accepted != NULL)
-		*accepted = write.accepted;
-	database->last_put.accepted = write.accepted;
-	if (write.carry) {
+		*accepted = write_count;
+	database->last_put.accepted = write_count;
+	if (ferror(database->file) != 0) {
 		database->last_put.outcome = YT_DATABASE_PUT_WRITE_ERROR;
-		database->last_put.dos_error = write.dos_error;
-		database->last_put.basic_error = write.dos_error == 5U
-		    ? write.mapped_error : 57U;
-		database->last_put.terminal_position = write.terminal_position;
+		database->last_put.dos_error = (saved_errno == EACCES
+		    || saved_errno == EPERM) ? 5U : 1U;
+		database->last_put.basic_error =
+		    database->last_put.dos_error == 5U ? 70U : 57U;
+		database->last_put.terminal_position = write_position;
+		errno = saved_errno;
 		set_error(error, YT_IO_ERROR, "random PUT", database->path);
 		return false;
 	}
+	errno = saved_errno;
 	database->last_put.terminal_position = (int64_t)offset
-	    + (int64_t)write.accepted;
+	    + (int64_t)write_count;
 	tolerated_short = one_byte_short_ok
-	    && write.accepted == record_size - 1U;
-	if (write.accepted != record_size && !tolerated_short) {
+	    && write_count == record_size - 1U;
+	if (write_count != record_size && !tolerated_short) {
 		database_reject_short(database, error);
 		return false;
 	}
@@ -1032,16 +986,6 @@ yt_database_random_put(struct yt_database *database, size_t basic_record,
 	return database_random_put_bytes(database, basic_record,
 	    record != NULL ? record->bytes : NULL, YT_RECORD_SIZE,
 	    one_byte_short_ok, accepted, error);
-}
-
-void
-yt_database_set_write_provider(struct yt_database *database,
-    yt_database_write_provider provider, void *context)
-{
-	if (database == NULL)
-		return;
-	database->write_provider = provider;
-	database->write_context = context;
 }
 
 bool

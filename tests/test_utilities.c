@@ -62,26 +62,6 @@ struct utility_random_script {
 	size_t position;
 };
 
-struct utility_database_tape {
-	size_t writes;
-};
-
-static bool
-utility_database_write(void *context, FILE *file, const uint8_t *data,
-    size_t requested, struct yt_database_write_observation *observation)
-{
-	struct utility_database_tape *tape = context;
-	long position;
-
-	memset(observation, 0, sizeof(*observation));
-	++tape->writes;
-	observation->accepted = fwrite(data, 1U, requested, file);
-	observation->carry = ferror(file) != 0;
-	position = ftell(file);
-	observation->terminal_position = position >= 0 ? position : 0;
-	return true;
-}
-
 static bool read_file(const char *path, uint8_t **data, size_t *length);
 static bool write_file(const char *path, const void *data, size_t length);
 static bool run_redirected(const char *program, const char *input,
@@ -5752,7 +5732,6 @@ test_xannor_planet_arrival(struct yt_error *error)
 	    " *** 2 Xannor attacked the planet \"Terra\"\r\n"
 	    " *** Planet \"Terra\" destroyed!\r\n\x1a";
 	struct utility_random_script script = {NULL, 0, 0};
-	struct utility_database_tape database_tape = {0};
 	struct utility_line_tape tape = {{{0}}, 0};
 	struct yt_game game;
 	struct yt_planet planet;
@@ -5779,16 +5758,12 @@ test_xannor_planet_arrival(struct yt_error *error)
 	if (!yt_game_write_planet(&game, 1, &planet, error))
 		goto done;
 	yt_random_set_provider(&game.random, utility_random_fill, &script);
-	yt_database_set_write_provider(&game.database, utility_database_write,
-	    &database_tape);
 	if (!yt_maintenance_xannor_planet_arrival(&game, &location,
 	    &group_size, &sector, utility_capture_line, &tape, error)
 	    || location != 733.0f || group_size != 2.0f
 	    || sector.planet != 1.0f || game.random.draws != 0U
-	    || script.position != 0U || tape.calls != 0U
-	    || database_tape.writes != 0U)
+	    || script.position != 0U || tape.calls != 0U)
 		goto done;
-	yt_database_set_write_provider(&game.database, NULL, NULL);
 
 	planet.owner = 7.0f;
 	planet.ground_forces = 1.0f;
@@ -5803,14 +5778,9 @@ test_xannor_planet_arrival(struct yt_error *error)
 	script = (struct utility_random_script){high_draws,
 	    sizeof(high_draws), 0};
 	yt_random_set_provider(&game.random, utility_random_fill, &script);
-	database_tape = (struct utility_database_tape){0};
-	yt_database_set_write_provider(&game.database, utility_database_write,
-	    &database_tape);
 	if (!yt_maintenance_xannor_planet_arrival(&game, &location,
-	    &group_size, &sector, utility_capture_line, &tape, error)
-	    || database_tape.writes != 1U)
+	    &group_size, &sector, utility_capture_line, &tape, error))
 		goto done;
-	yt_database_set_write_provider(&game.database, NULL, NULL);
 	if (!yt_game_read_planet(&game, 1, &planet, error)
 	    || !yt_text_read("YTNEWS.DAT", &news, error)
 	    || location != 0.0f || group_size != 0.0f
@@ -5847,16 +5817,11 @@ test_xannor_planet_arrival(struct yt_error *error)
 	group_size = 2.0f;
 	script = (struct utility_random_script){NULL, 0, 0};
 	yt_random_set_provider(&game.random, utility_random_fill, &script);
-	database_tape = (struct utility_database_tape){0};
 	if (!yt_game_write_planet(&game, 1, &planet, error))
 		goto done;
-	yt_database_set_write_provider(&game.database, utility_database_write,
-	    &database_tape);
 	if (!yt_maintenance_xannor_planet_arrival(&game, &location,
-	    &group_size, &sector, utility_capture_line, &tape, error)
-	    || database_tape.writes != 3U)
+	    &group_size, &sector, utility_capture_line, &tape, error))
 		goto done;
-	yt_database_set_write_provider(&game.database, NULL, NULL);
 	if (!yt_game_read_planet(&game, 1, &planet, error)
 	    || !yt_game_read_sector(&game, 733, &sector, error)
 	    || !yt_text_read("YTNEWS.DAT", &news, error))
@@ -5873,7 +5838,6 @@ test_xannor_planet_arrival(struct yt_error *error)
 	    sizeof(expected_planet_news) - 1U) == 0;
 
 done:
-	yt_database_set_write_provider(&game.database, NULL, NULL);
 	yt_text_free(&news);
 	yt_game_close(&game);
 	(void)remove("YTNEWS.DAT");

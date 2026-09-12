@@ -161,14 +161,6 @@ struct yt_database_lof_result {
 	bool handle_open;
 };
 
-struct yt_database_write_observation {
-	size_t accepted;
-	bool carry;
-	uint16_t dos_error;
-	uint16_t mapped_error;
-	int64_t terminal_position;
-};
-
 enum yt_database_get_outcome {
 	YT_DATABASE_GET_NONE,
 	YT_DATABASE_GET_RETURNED,
@@ -198,7 +190,6 @@ enum yt_database_put_outcome {
 	YT_DATABASE_PUT_SEEK_ERROR,
 	YT_DATABASE_PUT_WRITE_ERROR,
 	YT_DATABASE_PUT_REJECTED_SHORT,
-	YT_DATABASE_PUT_PROVIDER_ERROR,
 };
 
 struct yt_database_put_result {
@@ -217,16 +208,10 @@ struct yt_database_put_result {
 	bool handle_open;
 };
 
-/* A false provider return rejects the observation and performs no I/O. */
-typedef bool (*yt_database_write_provider)(void *context, FILE *file,
-    const uint8_t *data, size_t requested,
-    struct yt_database_write_observation *observation);
 struct yt_database {
 	FILE *file;
 	char path[512];
 	size_t records;
-	yt_database_write_provider write_provider;
-	void *write_context;
 	uint32_t device_position;
 	bool short_close_attempted;
 	bool short_close_succeeded;
@@ -281,8 +266,6 @@ bool yt_database_write_durable(struct yt_database *database,
 bool yt_database_random_put(struct yt_database *database,
     size_t basic_record, const struct yt_record *record,
     bool one_byte_short_ok, size_t *accepted, struct yt_error *error);
-void yt_database_set_write_provider(struct yt_database *database,
-    yt_database_write_provider provider, void *context);
 bool yt_database_flush(struct yt_database *database, struct yt_error *error);
 void yt_radio_file_init(struct yt_radio_file *radio);
 bool yt_radio_file_open(struct yt_radio_file *radio, const char *path,
