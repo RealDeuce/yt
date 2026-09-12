@@ -31,7 +31,6 @@
 #define YT_CLEARANCE_FIGHTERS_ADDRESS 0x4B58U
 #define YT_CLEARANCE_GROUND_ADDRESS 0x4B5CU
 #define YT_CLEARANCE_SHIELDS_ADDRESS 0x4B60U
-#define YT_SHARED_LOOP_SCRATCH_ADDRESS 0x4CD2U
 #define YT_FRIENDSHIP_RELATION_ADDRESS 0x4BC4U
 #define YT_COMPUTER_ROUTE_STATUS_ADDRESS 0x4CF2U
 #define YT_COMPUTER_PATH_MARKER_ADDRESS 0x4D62U
@@ -85,6 +84,7 @@ struct yt_session {
 	bool earth_report_seen;
 	bool anti_cloak_enabled;
 	float low_time_remembered;
+	float inherited_loop_index;
 	int spy_count;
 	int spy_sectors[3];
 	int spy_markers[3];
@@ -3180,8 +3180,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 		struct yt_player candidate;
 		bool matches;
 
-		session_set_process_single(session,
-		    YT_SHARED_LOOP_SCRATCH_ADDRESS, (float)basic);
+		session->inherited_loop_index = (float)basic;
 		if (!yt_game_read_player(&session->door->game, basic, &candidate,
 		    error)
 		    || !yt_player_name_matches(&candidate, (const uint8_t *)full,
@@ -3197,8 +3196,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 			returning = true;
 			break;
 		}
-		session_set_process_single(session,
-		    YT_SHARED_LOOP_SCRATCH_ADDRESS, (float)(basic + 1));
+		session->inherited_loop_index = (float)(basic + 1);
 	}
 	if (!returning) {
 		int vacant = 0;
@@ -8463,15 +8461,6 @@ ordinary_commerce_foreground(void *context, float foreground)
 	session_set_foreground(session, foreground);
 }
 
-static void
-ordinary_commerce_loop_index(void *context, float index)
-{
-	struct yt_session *session = context;
-
-	session_set_process_single(session, YT_SHARED_LOOP_SCRATCH_ADDRESS,
-	    index);
-}
-
 static bool
 docking_front_present(void *context, const uint8_t *text, size_t length,
     enum yt_port_docking_output_kind kind, struct yt_error *error)
@@ -8561,10 +8550,10 @@ docking_front_ordinary(void *context, int sector_number,
 		commodity_trade_read_player,
 		ordinary_commerce_present,
 		ordinary_commerce_foreground,
-		ordinary_commerce_loop_index,
 	};
 	struct yt_session *session = context;
 	struct yt_ordinary_commerce_state commerce;
+	bool result;
 
 	memset(&commerce, 0, sizeof(commerce));
 	commerce.sector_number = sector_number;
@@ -8573,7 +8562,10 @@ docking_front_ordinary(void *context, int sector_number,
 	commerce.first_name =
 	    (const uint8_t *)session->door->identity.real_first;
 	commerce.first_name_length = strlen(session->door->identity.real_first);
-	return yt_ordinary_commerce_run(&commerce, &ops, session, error);
+	result = yt_ordinary_commerce_run(&commerce, &ops, session, error);
+	if (result)
+		session->inherited_loop_index = 4.0f;
+	return result;
 }
 
 static bool
@@ -11745,8 +11737,7 @@ command_land(struct yt_session *session, bool *enter_sector,
 	if (!session_read_sector(session,
 	    (int)session->player.sector, &sector, error))
 		return false;
-	session_set_process_single(session, YT_SHARED_LOOP_SCRATCH_ADDRESS,
-	    sector.planet);
+	session->inherited_loop_index = sector.planet;
 	if (sector.planet == 0.0f) {
 		bool created = create_planet(session, error);
 
@@ -17409,8 +17400,7 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 		    session_sector_offset(session);
 		visibility.planet_record_offset =
 		    session_planet_offset(session);
-		visibility.inherited_index = yt_route_process_single(
-		    &session->route_process, YT_SHARED_LOOP_SCRATCH_ADDRESS);
+		visibility.inherited_index = session->inherited_loop_index;
 		visibility.field_kind = YT_COMPUTER_PORT_FIELD_SECTOR;
 		visibility.field_record =
 		    qb_brun_random_record_number(sector_expression);

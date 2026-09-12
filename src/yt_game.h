@@ -3415,7 +3415,6 @@ struct yt_ordinary_commerce_ops {
 	    enum yt_ordinary_commerce_output_kind kind,
 	    struct yt_error *error);
 	void (*set_foreground)(void *context, float foreground);
-	void (*set_loop_index)(void *context, float index);
 };
 bool yt_ordinary_commerce_run(struct yt_ordinary_commerce_state *state,
 	const struct yt_ordinary_commerce_ops *ops, void *context,

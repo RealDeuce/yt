@@ -26817,8 +26817,6 @@ struct ordinary_commerce_tape {
 	uint8_t rows[2][256];
 	size_t row_lengths[2];
 	float foreground;
-	float loop_index[8];
-	size_t loop_index_count;
 };
 
 static bool
@@ -26923,15 +26921,6 @@ ordinary_commerce_test_foreground(void *context, float foreground)
 	tape->foreground = foreground;
 }
 
-static void
-ordinary_commerce_test_loop_index(void *context, float index)
-{
-	struct ordinary_commerce_tape *tape = context;
-
-	if (tape->loop_index_count < YT_ARRAY_LEN(tape->loop_index))
-		tape->loop_index[tape->loop_index_count++] = index;
-}
-
 static const struct yt_ordinary_commerce_ops ordinary_commerce_test_ops = {
 	ordinary_commerce_test_update,
 	ordinary_commerce_test_report,
@@ -26939,7 +26928,6 @@ static const struct yt_ordinary_commerce_ops ordinary_commerce_test_ops = {
 	ordinary_commerce_test_read_player,
 	ordinary_commerce_test_present,
 	ordinary_commerce_test_foreground,
-	ordinary_commerce_test_loop_index,
 };
 
 static void
@@ -27016,10 +27004,6 @@ check_ordinary_commerce_transaction(void)
 	    || !state.status_presented
 	    || memcmp(state.schedule, (size_t[]){0U, 2U, 1U},
 	    sizeof(state.schedule)) != 0
-	    || tape.loop_index_count != 8U
-	    || memcmp(tape.loop_index,
-	    (float[]){1.0f, 2.0f, 3.0f, 4.0f,
-	    1.0f, 2.0f, 3.0f, 4.0f}, sizeof(tape.loop_index)) != 0
 	    || tape.event_count != YT_ARRAY_LEN(expected)
 	    || memcmp(tape.events, expected, sizeof(expected)) != 0
 	    || !ordinary_commerce_row_equal(&tape,

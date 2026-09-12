@@ -11999,8 +11999,6 @@ yt_ordinary_commerce_run(struct yt_ordinary_commerce_state *state,
 	for (index = 0U; index < 3U; ++index) {
 		bool reached = false;
 
-		if (ops->set_loop_index != NULL)
-			ops->set_loop_index(context, (float)(index + 1U));
 		if (!(state->market.port.factor[index] < 0.0f))
 			continue;
 		state->schedule[state->scheduled_count++] = index;
@@ -12010,13 +12008,9 @@ yt_ordinary_commerce_run(struct yt_ordinary_commerce_state *state,
 			state->prompt_reached = true;
 		++state->completed_trades;
 	}
-	if (ops->set_loop_index != NULL)
-		ops->set_loop_index(context, 4.0f);
 	for (index = 0U; index < 3U; ++index) {
 		bool reached = false;
 
-		if (ops->set_loop_index != NULL)
-			ops->set_loop_index(context, (float)(index + 1U));
 		if (!(state->market.port.factor[index] > 0.0f))
 			continue;
 		state->schedule[state->scheduled_count++] = index;
@@ -12026,8 +12020,6 @@ yt_ordinary_commerce_run(struct yt_ordinary_commerce_state *state,
 			state->prompt_reached = true;
 		++state->completed_trades;
 	}
-	if (ops->set_loop_index != NULL)
-		ops->set_loop_index(context, 4.0f);
 	if (!state->prompt_reached) {
 		size_t position = 0U;
 
