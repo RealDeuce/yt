@@ -6145,65 +6145,6 @@ check_projectile_plasma_planet_transaction(void)
 	    && !yt_projectile_plasma_planet_run(&state, &ops, &tape, NULL);
 }
 
-struct plasma_footer_tape {
-	enum yt_projectile_plasma_footer_output_kind kinds[3];
-	uint8_t text[3][32];
-	size_t lengths[3];
-	size_t calls;
-	size_t fail_at;
-};
-
-static bool
-plasma_footer_present(void *context, const uint8_t *text, size_t length,
-    enum yt_projectile_plasma_footer_output_kind kind,
-    struct yt_error *error)
-{
-	struct plasma_footer_tape *tape = context;
-	size_t position = tape->calls++;
-
-	(void)error;
-	if (position >= YT_ARRAY_LEN(tape->kinds)
-	    || length > sizeof(tape->text[position])
-	    || (length == 0U && text != NULL)
-	    || (length != 0U && text == NULL))
-		return false;
-	tape->kinds[position] = kind;
-	tape->lengths[position] = length;
-	if (length != 0U)
-		memcpy(tape->text[position], text, length);
-	return tape->calls != tape->fail_at;
-}
-
-static bool
-check_projectile_plasma_footer_transaction(void)
-{
-	static const struct yt_projectile_plasma_footer_ops ops = {
-		plasma_footer_present,
-	};
-	static const uint8_t row[] = "Plasma bolts dissipated.";
-	struct plasma_footer_tape tape;
-	size_t failure;
-
-	memset(&tape, 0, sizeof(tape));
-	tape.fail_at = SIZE_MAX;
-	if (!yt_projectile_plasma_footer_run(&ops, &tape, NULL)
-	    || tape.calls != 3U
-	    || tape.kinds[0] != YT_PROJECTILE_PLASMA_FOOTER_LEADING_BLANK
-	    || tape.kinds[1] != YT_PROJECTILE_PLASMA_FOOTER_TEXT
-	    || tape.kinds[2] != YT_PROJECTILE_PLASMA_FOOTER_TRAILING_BLANK
-	    || tape.lengths[0] != 0U || tape.lengths[2] != 0U
-	    || tape.lengths[1] != sizeof(row) - 1U
-	    || memcmp(tape.text[1], row, sizeof(row) - 1U) != 0)
-		return false;
-	for (failure = 1U; failure <= 3U; ++failure) {
-		memset(&tape, 0, sizeof(tape));
-		tape.fail_at = failure;
-		if (yt_projectile_plasma_footer_run(&ops, &tape, NULL)
-		    || tape.calls != failure)
-			return false;
-	}
-	return !yt_projectile_plasma_footer_run(NULL, &tape, NULL);
-}
 
 enum projectile_defense_front_event {
 	PROJECTILE_DEFENSE_OWNER = 1,
@@ -33199,8 +33140,6 @@ main(void)
 		return fail("projectile plasma-killed transaction differs");
 	if (!check_projectile_plasma_planet_transaction())
 		return fail("projectile plasma-planet transaction differs");
-	if (!check_projectile_plasma_footer_transaction())
-		return fail("projectile plasma-footer transaction differs");
 	if (!check_projectile_defense_front_transaction())
 		return fail("projectile defense-front transaction differs");
 	if (!check_projectile_defense_combat_transaction())

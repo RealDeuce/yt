@@ -14206,23 +14206,6 @@ yt_projectile_plasma_planet_run(
 }
 
 bool
-yt_projectile_plasma_footer_run(
-    const struct yt_projectile_plasma_footer_ops *ops, void *context,
-    struct yt_error *error)
-{
-	static const uint8_t dissipated[] = "Plasma bolts dissipated.";
-
-	if (ops == NULL || ops->present == NULL)
-		return false;
-	return ops->present(context, NULL, 0U,
-	    YT_PROJECTILE_PLASMA_FOOTER_LEADING_BLANK, error)
-	    && ops->present(context, dissipated, sizeof(dissipated) - 1U,
-	    YT_PROJECTILE_PLASMA_FOOTER_TEXT, error)
-	    && ops->present(context, NULL, 0U,
-	    YT_PROJECTILE_PLASMA_FOOTER_TRAILING_BLANK, error);
-}
-
-bool
 yt_projectile_defense_front_run(
     struct yt_projectile_defense_front_state *state,
     const struct yt_projectile_defense_front_ops *ops, void *context,
