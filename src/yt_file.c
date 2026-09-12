@@ -282,66 +282,6 @@ database_open_fd(const char *path, uint8_t access, bool create)
 	return NULL;
 }
 
-static bool
-database_open_default(void *context, const char *path,
-    enum yt_database_open_operation operation, uint8_t access,
-    FILE *active_file, uint16_t prior_dos_error,
-    struct yt_database_open_observation *observation)
-{
-	int result;
-	int saved_errno;
-
-	(void)context;
-	memset(observation, 0, sizeof(*observation));
-	switch (operation) {
-	case YT_DATABASE_OPEN_EXISTING:
-	case YT_DATABASE_OPEN_CREATE:
-		errno = 0;
-		observation->file = database_open_fd(path, access,
-		    operation == YT_DATABASE_OPEN_CREATE);
-		if (observation->file == NULL) {
-			observation->carry = true;
-			observation->dos_error = database_dos_error(path, errno);
-		}
-		else
-			observation->handle_open = true;
-		return true;
-	case YT_DATABASE_OPEN_TEMP_CLOSE:
-		if (active_file == NULL) {
-			observation->carry = true;
-			observation->dos_error = 6U;
-			return true;
-		}
-		errno = 0;
-		result = fclose(active_file);
-		saved_errno = errno;
-		observation->carry = result != 0;
-		observation->dos_error = result != 0
-		    ? database_dos_error(NULL, saved_errno) : 0U;
-		observation->handle_open = false;
-		errno = saved_errno;
-		return true;
-	case YT_DATABASE_OPEN_QUERY_DEVICE:
-		if (active_file == NULL)
-			return false;
-		observation->device = yt_isatty(yt_fileno(active_file)) != 0;
-		observation->handle_open = true;
-		return true;
-	case YT_DATABASE_OPEN_CONFIGURE_DEVICE:
-		if (active_file == NULL)
-			return false;
-		observation->handle_open = true;
-		return true;
-	case YT_DATABASE_OPEN_EXTENDED_ERROR:
-		if (prior_dos_error != 5U)
-			return false;
-		observation->mapped_error = 75U;
-		return true;
-	default:
-		return false;
-	}
-}
-
 static void
 database_open_failure(struct yt_database *database,
     enum yt_database_open_outcome outcome, uint16_t basic_error,
@@ -351,267 +291,85 @@ database_open_failure(struct yt_database *database,
 	database->last_open.basic_error = basic_error;
 	database->last_open.dos_error = dos_error;
 	database->last_open.registered = database->file != NULL;
-	database->last_open.handle_open = database->file != NULL
-	    || database->orphaned_file != NULL;
+	database->last_open.handle_open = database->file != NULL;
 	set_error(error, basic_error == 53U ? YT_NOT_FOUND : YT_IO_ERROR,
 	    "random OPEN", database->path);
 }
 
 static bool
-database_open_observe(struct yt_database *database, const char *path,
-    enum yt_database_open_operation operation, uint8_t access,
-    FILE *active_file, uint16_t prior_dos_error,
-    yt_database_open_provider provider, void *context,
-    struct yt_database_open_observation *observation)
-{
-	++database->last_open.operation_count;
-	memset(observation, 0, sizeof(*observation));
-	return provider(context, path, operation, access, active_file,
-	    prior_dos_error, observation);
-}
-
-static bool
-database_open_observation_valid(enum yt_database_open_operation operation,
-    const struct yt_database_open_observation *observation)
-{
-	if (operation == YT_DATABASE_OPEN_EXTENDED_ERROR)
-		return !observation->carry && observation->file == NULL
-		    && observation->dos_error == 0U && !observation->device
-		    && !observation->handle_open
-		    && (observation->mapped_error == 70U
-		    || observation->mapped_error == 75U);
-	if (operation == YT_DATABASE_OPEN_EXISTING
-	    || operation == YT_DATABASE_OPEN_CREATE) {
-		if (observation->carry)
-			return observation->file == NULL
-			    && !observation->handle_open
-			    && observation->dos_error >= 1U
-			    && observation->dos_error <= 0xffU
-			    && observation->mapped_error == 0U;
-		return observation->file != NULL && observation->dos_error == 0U
-		    && observation->mapped_error == 0U
-		    && observation->handle_open;
-	}
-	if (operation == YT_DATABASE_OPEN_TEMP_CLOSE) {
-		if (observation->carry)
-			return observation->file == NULL
-			    && observation->dos_error >= 1U
-			    && observation->dos_error <= 0xffU
-			    && observation->mapped_error == 0U;
-		return observation->file == NULL
-		    && observation->dos_error == 0U
-		    && observation->mapped_error == 0U
-		    && !observation->handle_open;
-	}
-	if (operation == YT_DATABASE_OPEN_QUERY_DEVICE)
-		return observation->file == NULL && observation->mapped_error == 0U
-		    && observation->handle_open;
-	if (operation == YT_DATABASE_OPEN_CONFIGURE_DEVICE) {
-		if (observation->carry)
-			return observation->file == NULL
-			    && observation->dos_error >= 1U
-			    && observation->dos_error <= 0xffU
-			    && observation->mapped_error == 0U
-			    && observation->handle_open;
-		return observation->file == NULL
-		    && observation->dos_error == 0U
-		    && observation->mapped_error == 0U
-		    && observation->handle_open;
-	}
-	return false;
-}
-
-static bool
-database_open_extended_error(struct yt_database *database, const char *path,
-    uint16_t dos_error, enum yt_database_open_outcome outcome,
-    yt_database_open_provider provider, void *context, struct yt_error *error)
-{
-	struct yt_database_open_observation observation;
-
-	if (!database_open_observe(database, path,
-	    YT_DATABASE_OPEN_EXTENDED_ERROR, 0U, NULL, dos_error,
-	    provider, context, &observation)
-	    || !database_open_observation_valid(
-	    YT_DATABASE_OPEN_EXTENDED_ERROR, &observation)) {
-		database_open_failure(database, YT_DATABASE_OPEN_PROVIDER_ERROR,
-		    75U, dos_error, error);
-		return false;
-	}
-	database_open_failure(database, outcome, observation.mapped_error,
-	    dos_error, error);
-	return false;
-}
-
-static bool
 database_open_random(struct yt_database *database, const char *path,
-    size_t record_size, yt_database_open_provider provider, void *context,
-    struct yt_error *error)
+    size_t record_size, struct yt_error *error)
 {
-	struct yt_database_open_observation observation;
-	FILE *temporary = NULL;
 	uint64_t length;
-	uint16_t first_close_error;
 	uint8_t access = 2U;
-	bool reopening = false;
-	bool temporary_open = false;
+	bool created = false;
 
-open_attempt:
-	if (database->last_open.access_attempt_count
-	    >= YT_ARRAY_LEN(database->last_open.access_attempts)) {
-		database_open_failure(database, YT_DATABASE_OPEN_PROVIDER_ERROR,
-		    75U, 0U, error);
-		return false;
-	}
-	database->last_open.access_attempts[
-	    database->last_open.access_attempt_count++] = access;
-	if (!database_open_observe(database, path,
-	    YT_DATABASE_OPEN_EXISTING, access, NULL, 0U,
-	    provider, context, &observation)
-	    || !database_open_observation_valid(YT_DATABASE_OPEN_EXISTING,
-	    &observation)) {
-		if (observation.file != NULL && observation.handle_open)
-			database->orphaned_file = observation.file;
-		database_open_failure(database, YT_DATABASE_OPEN_PROVIDER_ERROR,
-		    75U, observation.dos_error, error);
-		return false;
-	}
-	if (!observation.carry) {
-		database->file = observation.file;
-		goto opened;
-	}
-	if (observation.dos_error == 5U && access > 0U) {
-		--access;
-		goto open_attempt;
-	}
-	if (observation.dos_error == 5U)
-		return database_open_extended_error(database, path,
-		    observation.dos_error, reopening
-		    ? YT_DATABASE_OPEN_REOPEN_ERROR
-		    : YT_DATABASE_OPEN_INITIAL_ERROR,
-		    provider, context, error);
-	if (!reopening && observation.dos_error == 2U)
-		goto create_missing;
-	if (!reopening && observation.dos_error == 3U) {
-		database_open_failure(database, YT_DATABASE_OPEN_INITIAL_ERROR,
-		    76U, observation.dos_error, error);
-		return false;
-	}
-	if (reopening && observation.dos_error == 2U) {
-		database_open_failure(database, YT_DATABASE_OPEN_REOPEN_ERROR,
-		    53U, observation.dos_error, error);
-		return false;
-	}
-	database_open_failure(database, reopening
-	    ? YT_DATABASE_OPEN_REOPEN_ERROR : YT_DATABASE_OPEN_INITIAL_ERROR,
-	    75U, observation.dos_error, error);
-	return false;
+	for (;;) {
+		uint16_t dos_error;
+		int saved_errno;
 
-create_missing:
-	if (!database_open_observe(database, path, YT_DATABASE_OPEN_CREATE,
-	    2U, NULL, 0U, provider, context, &observation)
-	    || !database_open_observation_valid(YT_DATABASE_OPEN_CREATE,
-	    &observation)) {
-		if (observation.file != NULL && observation.handle_open)
-			database->orphaned_file = observation.file;
-		database_open_failure(database, YT_DATABASE_OPEN_PROVIDER_ERROR,
-		    75U, observation.dos_error, error);
-		return false;
-	}
-	if (observation.carry) {
-		if (observation.dos_error == 5U)
-			return database_open_extended_error(database, path,
-			    observation.dos_error, YT_DATABASE_OPEN_CREATE_ERROR,
-			    provider, context, error);
-		database_open_failure(database, YT_DATABASE_OPEN_CREATE_ERROR,
-		    observation.dos_error == 2U ? 53U : 75U,
-		    observation.dos_error, error);
-		return false;
-	}
-	database->last_open.created = true;
-	temporary = observation.file;
-	temporary_open = true;
-	database->last_open.temporary_close_attempted = true;
-	{
-		bool observed = database_open_observe(database, path,
-		    YT_DATABASE_OPEN_TEMP_CLOSE, 0U, temporary, 0U,
-		    provider, context, &observation);
-
-		if (observed)
-			temporary_open = observation.handle_open;
-		if (!observed || !database_open_observation_valid(
-		    YT_DATABASE_OPEN_TEMP_CLOSE, &observation)) {
-			if (temporary_open)
-				database->orphaned_file = temporary;
+		if (database->last_open.access_attempt_count
+		    >= YT_ARRAY_LEN(database->last_open.access_attempts)) {
 			database_open_failure(database,
-			    YT_DATABASE_OPEN_PROVIDER_ERROR, 75U,
-			    observation.dos_error, error);
+			    YT_DATABASE_OPEN_INITIAL_ERROR, 75U, 0U, error);
 			return false;
 		}
-	}
-	if (observation.carry) {
-		first_close_error = observation.dos_error;
-		database->last_open.temporary_close_retried = true;
-		{
-			bool observed = database_open_observe(database, path,
-			    YT_DATABASE_OPEN_TEMP_CLOSE, 0U,
-			    temporary_open ? temporary : NULL,
-			    first_close_error, provider, context, &observation);
+		database->last_open.access_attempts[
+		    database->last_open.access_attempt_count++] = access;
+		++database->last_open.operation_count;
+		errno = 0;
+		database->file = database_open_fd(path, access, false);
+		if (database->file != NULL)
+			break;
+		saved_errno = errno;
+		dos_error = database_dos_error(path, saved_errno);
+		if (dos_error == 5U && access > 0U) {
+			--access;
+			continue;
+		}
+		if (!created && dos_error == 2U) {
+			FILE *temporary;
 
-			if (observed)
-				temporary_open = observation.handle_open;
-			database->last_open.temporary_close_retry_dos_error
-			    = observation.dos_error;
-			if (!observed || !database_open_observation_valid(
-			    YT_DATABASE_OPEN_TEMP_CLOSE, &observation)) {
-				if (temporary_open)
-					database->orphaned_file = temporary;
+			++database->last_open.operation_count;
+			errno = 0;
+			temporary = database_open_fd(path, 2U, true);
+			if (temporary == NULL) {
+				saved_errno = errno;
+				dos_error = database_dos_error(path, saved_errno);
 				database_open_failure(database,
-				    YT_DATABASE_OPEN_PROVIDER_ERROR, 75U,
-				    first_close_error, error);
+				    YT_DATABASE_OPEN_CREATE_ERROR,
+				    dos_error == 2U ? 53U : 75U,
+				    dos_error, error);
 				return false;
 			}
+			database->last_open.created = true;
+			database->last_open.temporary_close_attempted = true;
+			++database->last_open.operation_count;
+			errno = 0;
+			if (fclose(temporary) != 0) {
+				saved_errno = errno;
+				database_open_failure(database,
+				    YT_DATABASE_OPEN_TEMP_CLOSE_ERROR, 70U,
+				    database_dos_error(path, saved_errno), error);
+				return false;
+			}
+			created = true;
+			access = 2U;
+			continue;
 		}
-		if (temporary_open)
-			database->orphaned_file = temporary;
-		database_open_failure(database,
-		    YT_DATABASE_OPEN_TEMP_CLOSE_ERROR, 70U,
-		    first_close_error, error);
+		database_open_failure(database, created
+		    ? YT_DATABASE_OPEN_REOPEN_ERROR
+		    : YT_DATABASE_OPEN_INITIAL_ERROR,
+		    dos_error == 2U ? 53U : dos_error == 3U ? 76U : 75U,
+		    dos_error, error);
 		return false;
 	}
-	temporary = NULL;
-	reopening = true;
-	access = 2U;
-	goto open_attempt;
 
-opened:
-	if (!database_open_observe(database, path,
-	    YT_DATABASE_OPEN_QUERY_DEVICE, access, database->file, 0U,
-	    provider, context, &observation)
-	    || !database_open_observation_valid(YT_DATABASE_OPEN_QUERY_DEVICE,
-	    &observation)) {
-		database_open_failure(database, YT_DATABASE_OPEN_PROVIDER_ERROR,
-		    75U, observation.dos_error, error);
-		return false;
-	}
-	database->last_open.device = observation.device;
-	if (observation.device) {
-		if (!database_open_observe(database, path,
-		    YT_DATABASE_OPEN_CONFIGURE_DEVICE, access, database->file, 0U,
-		    provider, context, &observation)
-		    || !database_open_observation_valid(
-		    YT_DATABASE_OPEN_CONFIGURE_DEVICE, &observation)) {
-			database_open_failure(database,
-			    YT_DATABASE_OPEN_PROVIDER_ERROR, 75U,
-			    observation.dos_error, error);
-			return false;
-		}
-		if (observation.carry) {
-			database_open_failure(database,
-			    YT_DATABASE_OPEN_DEVICE_ERROR, 57U,
-			    observation.dos_error, error);
-			return false;
-		}
-	}
+	++database->last_open.operation_count;
+	database->last_open.device =
+	    yt_isatty(yt_fileno(database->file)) != 0;
+	if (database->last_open.device)
+		++database->last_open.operation_count;
 	if (!database_file_length(database->file, &length)) {
 		database_open_failure(database, YT_DATABASE_OPEN_SIZE_ERROR,
 		    57U, database_dos_error(path, errno), error);
@@ -625,9 +383,8 @@ opened:
 }
 
 static bool
-database_open_observed_sized(struct yt_database *database, const char *path,
-    enum yt_open_mode mode, size_t record_size,
-    yt_database_open_provider provider, void *context, struct yt_error *error)
+database_open_sized(struct yt_database *database, const char *path,
+    enum yt_open_mode mode, size_t record_size, struct yt_error *error)
 {
 	char resolved[sizeof(database->path)];
 	const char *file_mode;
@@ -644,9 +401,7 @@ database_open_observed_sized(struct yt_database *database, const char *path,
 		return false;
 	(void)snprintf(database->path, sizeof(database->path), "%s", resolved);
 	if (mode == YT_OPEN_UPDATE_CREATE)
-		return database_open_random(database, resolved, record_size,
-		    provider != NULL ? provider : database_open_default,
-		    context, error);
+		return database_open_random(database, resolved, record_size, error);
 	switch (mode) {
 	case YT_OPEN_READ:
 		file_mode = "rb";
@@ -680,19 +435,10 @@ database_open_observed_sized(struct yt_database *database, const char *path,
 }
 
 bool
-yt_database_open_observed(struct yt_database *database, const char *path,
-    enum yt_open_mode mode, yt_database_open_provider provider, void *context,
-    struct yt_error *error)
-{
-	return database_open_observed_sized(database, path, mode, YT_RECORD_SIZE,
-	    provider, context, error);
-}
-
-bool
 yt_database_open(struct yt_database *database, const char *path,
     enum yt_open_mode mode, struct yt_error *error)
 {
-	return yt_database_open_observed(database, path, mode, NULL, NULL, error);
+	return database_open_sized(database, path, mode, YT_RECORD_SIZE, error);
 }
 
 void
@@ -1709,8 +1455,8 @@ yt_radio_file_open_text_width(struct yt_radio_file *radio, const char *path,
 	}
 	if (!yt_radio_file_close(radio, error))
 		return false;
-	if (!database_open_observed_sized(&radio->random, path,
-	    YT_OPEN_UPDATE_CREATE, YT_RADIO_RECORD_SIZE, NULL, NULL, error))
+	if (!database_open_sized(&radio->random, path,
+	    YT_OPEN_UPDATE_CREATE, YT_RADIO_RECORD_SIZE, error))
 		return false;
 	radio->record_length = YT_RADIO_RECORD_SIZE;
 	memcpy(radio->fields, fields, sizeof(fields));

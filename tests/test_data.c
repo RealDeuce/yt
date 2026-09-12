@@ -506,23 +506,6 @@ struct database_flush_script {
 	size_t calls;
 };
 
-struct database_open_step {
-	enum yt_database_open_operation operation;
-	uint8_t access;
-	uint16_t prior_dos_error;
-	struct yt_database_open_observation observation;
-	bool provider_ok;
-	bool supply_file;
-	bool close_active;
-	size_t file_length;
-};
-
-struct database_open_script {
-	struct database_open_step steps[12];
-	size_t length;
-	size_t position;
-};
-
 struct database_public_close_step {
 	struct yt_database_close_observation observation;
 	bool provider_ok;
@@ -816,123 +799,6 @@ static void
 text_open_check_consumed(const struct text_open_script *script)
 {
 	CHECK(script->position == script->length);
-}
-
-static void
-database_open_add(struct database_open_script *script,
-    enum yt_database_open_operation operation, uint8_t access,
-    uint16_t prior_dos_error, bool carry, uint16_t dos_error,
-    uint16_t mapped_error, bool device, bool handle_open,
-    bool supply_file, bool close_active, size_t file_length)
-{
-	struct database_open_step *step;
-
-	CHECK(script->length < YT_ARRAY_LEN(script->steps));
-	if (script->length >= YT_ARRAY_LEN(script->steps))
-		return;
-	step = &script->steps[script->length++];
-	memset(step, 0, sizeof(*step));
-	step->operation = operation;
-	step->access = access;
-	step->prior_dos_error = prior_dos_error;
-	step->observation.carry = carry;
-	step->observation.dos_error = dos_error;
-	step->observation.mapped_error = mapped_error;
-	step->observation.device = device;
-	step->observation.handle_open = handle_open;
-	step->provider_ok = true;
-	step->supply_file = supply_file;
-	step->close_active = close_active;
-	step->file_length = file_length;
-}
-
-static void
-database_open_add_failure(struct database_open_script *script,
-    enum yt_database_open_operation operation, uint8_t access,
-    uint16_t prior_dos_error, uint16_t dos_error, bool handle_open)
-{
-	database_open_add(script, operation, access, prior_dos_error, true,
-	    dos_error, 0U, false, handle_open, false, false, 0U);
-}
-
-static void
-database_open_add_file(struct database_open_script *script, uint8_t access,
-    size_t file_length)
-{
-	database_open_add(script, YT_DATABASE_OPEN_EXISTING, access, 0U, false,
-	    0U, 0U, false, true, true, false, file_length);
-}
-
-static void
-database_open_add_query(struct database_open_script *script, uint8_t access,
-    bool carry, uint16_t dos_error, bool device)
-{
-	database_open_add(script, YT_DATABASE_OPEN_QUERY_DEVICE, access, 0U, carry,
-	    dos_error, 0U, device, true, false, false, 0U);
-}
-
-static bool
-scripted_database_open(void *context, const char *path,
-    enum yt_database_open_operation operation, uint8_t access,
-    FILE *active_file, uint16_t prior_dos_error,
-    struct yt_database_open_observation *observation)
-{
-	struct database_open_script *script = context;
-	struct database_open_step *step;
-	size_t index;
-
-	(void)path;
-	CHECK(script->position < script->length);
-	if (script->position >= script->length)
-		return false;
-	step = &script->steps[script->position++];
-	CHECK(operation == step->operation && access == step->access
-	    && prior_dos_error == step->prior_dos_error);
-	if (operation != step->operation || access != step->access
-	    || prior_dos_error != step->prior_dos_error)
-		return false;
-	if (!step->provider_ok)
-		return false;
-	*observation = step->observation;
-	if (step->supply_file) {
-		observation->file = tmpfile();
-		CHECK(observation->file != NULL);
-		if (observation->file == NULL)
-			return false;
-		for (index = 0U; index < step->file_length; ++index)
-			CHECK(fputc((int)(index & 0xffU), observation->file) != EOF);
-		CHECK(fflush(observation->file) == 0
-		    && fseek(observation->file, 0L, SEEK_SET) == 0);
-	}
-	if (step->close_active) {
-		CHECK(active_file != NULL);
-		if (active_file == NULL || fclose(active_file) != 0)
-			return false;
-	}
-	return true;
-}
-
-static void
-database_open_check_consumed(const struct database_open_script *script)
-{
-	CHECK(script->position == script->length);
-}
-
-static void
-database_open_add_missing_prefix(struct database_open_script *script)
-{
-	database_open_add_failure(script, YT_DATABASE_OPEN_EXISTING, 2U, 0U,
-	    2U, false);
-	database_open_add(script, YT_DATABASE_OPEN_CREATE, 2U, 0U, false, 0U,
-	    0U, false, true, true, false, 0U);
-}
-
-static void
-database_open_add_closed_missing_prefix(struct database_open_script *script)
-{
-	database_open_add_missing_prefix(script);
-	database_open_add(script, YT_DATABASE_OPEN_TEMP_CLOSE, 0U, 0U, false,
-	    0U, 0U, false, false, false, true, 0U);
 }
 
 static void
@@ -1375,393 +1241,52 @@ scripted_database_lof(void *context, FILE *active_file,
 static void
 test_database_random_open(void)
 {
-	static const uint8_t retry_accesses[] = {2U, 1U, 0U};
-	struct database_open_script script;
 	struct yt_database database;
 	struct yt_error error;
-	char path[160];
-	char native_path[160];
-	char missing_parent_path[192];
+	char path[192];
+	char missing_parent_path[224];
 	FILE *file;
-	unsigned dos_error;
-	unsigned mapped_error;
 	size_t index;
 
 #ifdef _WIN32
-	(void)snprintf(path, sizeof(path), "yt-open-oracle-%lu.dat",
+	snprintf(path, sizeof(path), "YT-DATABASE-OPEN-%lu.DAT",
 	    (unsigned long)GetCurrentProcessId());
-	(void)snprintf(native_path, sizeof(native_path), "yt-open-native-%lu.dat",
-	    (unsigned long)GetCurrentProcessId());
-	(void)snprintf(missing_parent_path, sizeof(missing_parent_path),
-	    "yt-open-missing-%lu/child.dat",
+	snprintf(missing_parent_path, sizeof(missing_parent_path),
+	    "YT-DATABASE-MISSING-%lu/YTDATA.DAT",
 	    (unsigned long)GetCurrentProcessId());
 #else
-	(void)snprintf(path, sizeof(path), "/tmp/yt-open-oracle-%ld.dat",
+	snprintf(path, sizeof(path), "/tmp/YT-DATABASE-OPEN-%ld.DAT",
 	    (long)getpid());
-	(void)snprintf(native_path, sizeof(native_path),
-	    "/tmp/yt-open-native-%ld.dat", (long)getpid());
-	(void)snprintf(missing_parent_path, sizeof(missing_parent_path),
-	    "/tmp/yt-open-missing-%ld/child.dat", (long)getpid());
+	snprintf(missing_parent_path, sizeof(missing_parent_path),
+	    "/tmp/YT-DATABASE-MISSING-%ld/YTDATA.DAT", (long)getpid());
 #endif
-
-	/* Existing disk file; IOCTL query carry is ignored and DL selects disk. */
-	memset(&script, 0, sizeof(script));
-	database_open_add_file(&script, 2U, 2U * YT_RECORD_SIZE);
-	database_open_add_query(&script, 2U, true, 6U, false);
 	yt_error_clear(&error);
-	CHECK(yt_database_open_observed(&database, path, YT_OPEN_UPDATE_CREATE,
-	    scripted_database_open, &script, &error));
-	database_open_check_consumed(&script);
-	CHECK(database.records == 2U && database.file != NULL
-	    && database.orphaned_file == NULL
-	    && database.last_open.outcome == YT_DATABASE_OPEN_RETURNED
-	    && database.last_open.access_attempt_count == 1U
-	    && database.last_open.access_attempts[0] == 2U
-	    && database.last_open.operation_count == 2U
-	    && !database.last_open.created && !database.last_open.device
-	    && database.last_open.registered && database.last_open.handle_open
-	    && ftell(database.file) == 0L);
-	yt_database_close(&database);
-
-	/* Access denied retries RANDOM access 2 -> 1 -> 0. */
-	memset(&script, 0, sizeof(script));
-	database_open_add_failure(&script, YT_DATABASE_OPEN_EXISTING, 2U, 0U,
-	    5U, false);
-	database_open_add_failure(&script, YT_DATABASE_OPEN_EXISTING, 1U, 0U,
-	    5U, false);
-	database_open_add_file(&script, 0U, YT_RECORD_SIZE);
-	database_open_add_query(&script, 0U, false, 0U, false);
-	CHECK(yt_database_open_observed(&database, path, YT_OPEN_UPDATE_CREATE,
-	    scripted_database_open, &script, &error));
-	database_open_check_consumed(&script);
-	CHECK(database.last_open.access_attempt_count == 3U
-	    && memcmp(database.last_open.access_attempts, retry_accesses,
-	    sizeof(retry_accesses)) == 0
-	    && database.last_open.operation_count == 4U);
-	yt_database_close(&database);
-
-	/* Exhausted access retries use the one exact extended-error result. */
-	for (mapped_error = 70U; mapped_error <= 75U; mapped_error += 5U) {
-		memset(&script, 0, sizeof(script));
-		for (index = 0U; index < YT_ARRAY_LEN(retry_accesses); ++index)
-			database_open_add_failure(&script,
-			    YT_DATABASE_OPEN_EXISTING, retry_accesses[index], 0U,
-			    5U, false);
-		database_open_add(&script, YT_DATABASE_OPEN_EXTENDED_ERROR, 0U,
-		    5U, false, 0U, (uint16_t)mapped_error, false, false,
-		    false, false, 0U);
-		yt_error_clear(&error);
-		CHECK(!yt_database_open_observed(&database, path,
-		    YT_OPEN_UPDATE_CREATE, scripted_database_open, &script,
-		    &error) && error.status == YT_IO_ERROR);
-		database_open_check_consumed(&script);
-		CHECK(database.last_open.outcome == YT_DATABASE_OPEN_INITIAL_ERROR
-		    && database.last_open.basic_error == mapped_error
-		    && database.last_open.dos_error == 5U
-		    && database.last_open.access_attempt_count == 3U
-		    && database.last_open.operation_count == 4U
-		    && !database.last_open.registered
-		    && !database.last_open.handle_open);
-		yt_database_close(&database);
-	}
-
-	/* Only initial DOS 2, 3, and 5 are special for RANDOM OPEN. */
-	for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
-		if (dos_error == 2U || dos_error == 5U)
-			continue;
-		memset(&script, 0, sizeof(script));
-		database_open_add_failure(&script, YT_DATABASE_OPEN_EXISTING, 2U,
-		    0U, (uint16_t)dos_error, false);
-		yt_error_clear(&error);
-		CHECK(!yt_database_open_observed(&database, path,
-		    YT_OPEN_UPDATE_CREATE, scripted_database_open, &script,
-		    &error));
-		database_open_check_consumed(&script);
-		CHECK(database.last_open.outcome == YT_DATABASE_OPEN_INITIAL_ERROR
-		    && database.last_open.basic_error
-		    == (dos_error == 3U ? 76U : 75U)
-		    && database.last_open.dos_error == dos_error);
-		yt_database_close(&database);
-	}
-
-	/* Missing file: create, temporary close, reopen, query, return. */
-	memset(&script, 0, sizeof(script));
-	database_open_add_closed_missing_prefix(&script);
-	database_open_add_file(&script, 2U, 3U * YT_RECORD_SIZE);
-	database_open_add_query(&script, 2U, false, 0U, false);
-	CHECK(yt_database_open_observed(&database, path, YT_OPEN_UPDATE_CREATE,
-	    scripted_database_open, &script, &error));
-	database_open_check_consumed(&script);
-	CHECK(database.records == 3U && database.last_open.created
-	    && database.last_open.temporary_close_attempted
-	    && !database.last_open.temporary_close_retried
-	    && database.last_open.access_attempt_count == 2U
-	    && database.last_open.access_attempts[0] == 2U
-	    && database.last_open.access_attempts[1] == 2U
-	    && database.last_open.operation_count == 5U
-	    && database.last_open.outcome == YT_DATABASE_OPEN_RETURNED);
-	yt_database_close(&database);
-
-	/* Every CREATE error byte: DOS 2 -> ERR53, DOS 5 -> extended, else 75. */
-	for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
-		if (dos_error == 5U)
-			continue;
-		memset(&script, 0, sizeof(script));
-		database_open_add_failure(&script, YT_DATABASE_OPEN_EXISTING, 2U,
-		    0U, 2U, false);
-		database_open_add_failure(&script, YT_DATABASE_OPEN_CREATE, 2U,
-		    0U, (uint16_t)dos_error, false);
-		yt_error_clear(&error);
-		CHECK(!yt_database_open_observed(&database, path,
-		    YT_OPEN_UPDATE_CREATE, scripted_database_open, &script,
-		    &error));
-		database_open_check_consumed(&script);
-		CHECK(database.last_open.outcome == YT_DATABASE_OPEN_CREATE_ERROR
-		    && database.last_open.basic_error
-		    == (dos_error == 2U ? 53U : 75U)
-		    && database.last_open.dos_error == dos_error);
-		yt_database_close(&database);
-	}
-	for (mapped_error = 70U; mapped_error <= 75U; mapped_error += 5U) {
-		memset(&script, 0, sizeof(script));
-		database_open_add_failure(&script, YT_DATABASE_OPEN_EXISTING, 2U,
-		    0U, 2U, false);
-		database_open_add_failure(&script, YT_DATABASE_OPEN_CREATE, 2U,
-		    0U, 5U, false);
-		database_open_add(&script, YT_DATABASE_OPEN_EXTENDED_ERROR, 0U,
-		    5U, false, 0U, (uint16_t)mapped_error, false, false,
-		    false, false, 0U);
-		CHECK(!yt_database_open_observed(&database, path,
-		    YT_OPEN_UPDATE_CREATE, scripted_database_open, &script,
-		    &error));
-		database_open_check_consumed(&script);
-		CHECK(database.last_open.outcome == YT_DATABASE_OPEN_CREATE_ERROR
-		    && database.last_open.basic_error == mapped_error);
-		yt_database_close(&database);
-	}
-
-	/* A failed temporary close is retried once; its result is ignored. */
-	for (index = 0U; index < 3U; ++index) {
-		memset(&script, 0, sizeof(script));
-		database_open_add_missing_prefix(&script);
-		if (index == 2U)
-			database_open_add(&script, YT_DATABASE_OPEN_TEMP_CLOSE,
-			    0U, 0U, true, 5U, 0U, false, false, false, true,
-			    0U);
-		else
-			database_open_add_failure(&script,
-			    YT_DATABASE_OPEN_TEMP_CLOSE, 0U, 0U, 5U, true);
-		database_open_add(&script, YT_DATABASE_OPEN_TEMP_CLOSE, 0U,
-		    5U, index != 1U, index != 1U ? 6U : 0U, 0U, false,
-		    index == 0U, false, index == 1U, 0U);
-		yt_error_clear(&error);
-		CHECK(!yt_database_open_observed(&database, path,
-		    YT_OPEN_UPDATE_CREATE, scripted_database_open, &script,
-		    &error) && error.status == YT_IO_ERROR);
-		database_open_check_consumed(&script);
-		CHECK(database.last_open.outcome
-		    == YT_DATABASE_OPEN_TEMP_CLOSE_ERROR
-		    && database.last_open.basic_error == 70U
-		    && database.last_open.dos_error == 5U
-		    && database.last_open.temporary_close_retry_dos_error
-		    == (index == 1U ? 0U : 6U)
-		    && database.last_open.created
-		    && database.last_open.temporary_close_attempted
-		    && database.last_open.temporary_close_retried
-		    && database.last_open.operation_count == 4U
-		    && !database.last_open.registered
-		    && database.last_open.handle_open == (index == 0U));
-		yt_database_close(&database);
-	}
-	/* The ignored retry's complete DOS-error domain remains observable. */
-	for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
-		memset(&script, 0, sizeof(script));
-		database_open_add_missing_prefix(&script);
-		database_open_add_failure(&script,
-		    YT_DATABASE_OPEN_TEMP_CLOSE, 0U, 0U, 5U, true);
-		database_open_add(&script, YT_DATABASE_OPEN_TEMP_CLOSE, 0U,
-		    5U, true, (uint16_t)dos_error, 0U, false, false, false,
-		    true, 0U);
-		CHECK(!yt_database_open_observed(&database, path,
-		    YT_OPEN_UPDATE_CREATE, scripted_database_open, &script,
-		    &error));
-		database_open_check_consumed(&script);
-		CHECK(database.last_open.outcome
-		    == YT_DATABASE_OPEN_TEMP_CLOSE_ERROR
-		    && database.last_open.dos_error == 5U
-		    && database.last_open.temporary_close_retry_dos_error
-		    == dos_error
-		    && !database.last_open.handle_open);
-		yt_database_close(&database);
-	}
-
-	/* Reopen DOS 2 is ERR53; all other non-5 bytes, including 3, are 75. */
-	for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
-		if (dos_error == 5U)
-			continue;
-		memset(&script, 0, sizeof(script));
-		database_open_add_closed_missing_prefix(&script);
-		database_open_add_failure(&script, YT_DATABASE_OPEN_EXISTING, 2U,
-		    0U, (uint16_t)dos_error, false);
-		yt_error_clear(&error);
-		CHECK(!yt_database_open_observed(&database, path,
-		    YT_OPEN_UPDATE_CREATE, scripted_database_open, &script,
-		    &error));
-		database_open_check_consumed(&script);
-		CHECK(database.last_open.outcome == YT_DATABASE_OPEN_REOPEN_ERROR
-		    && database.last_open.basic_error
-		    == (dos_error == 2U ? 53U : 75U)
-		    && database.last_open.dos_error == dos_error
-		    && database.last_open.operation_count == 4U);
-		yt_database_close(&database);
-	}
-	for (mapped_error = 70U; mapped_error <= 75U; mapped_error += 5U) {
-		memset(&script, 0, sizeof(script));
-		database_open_add_closed_missing_prefix(&script);
-		for (index = 0U; index < YT_ARRAY_LEN(retry_accesses); ++index)
-			database_open_add_failure(&script,
-			    YT_DATABASE_OPEN_EXISTING, retry_accesses[index], 0U,
-			    5U, false);
-		database_open_add(&script, YT_DATABASE_OPEN_EXTENDED_ERROR, 0U,
-		    5U, false, 0U, (uint16_t)mapped_error, false, false,
-		    false, false, 0U);
-		CHECK(!yt_database_open_observed(&database, path,
-		    YT_OPEN_UPDATE_CREATE, scripted_database_open, &script,
-		    &error));
-		database_open_check_consumed(&script);
-		CHECK(database.last_open.outcome == YT_DATABASE_OPEN_REOPEN_ERROR
-		    && database.last_open.basic_error == mapped_error
-		    && database.last_open.operation_count == 7U
-		    && database.last_open.access_attempt_count == 4U
-		    && database.last_open.access_attempts[0] == 2U
-		    && memcmp(&database.last_open.access_attempts[1],
-		    retry_accesses, sizeof(retry_accesses)) == 0);
-		yt_database_close(&database);
-	}
-	/* Both access-denied ladders can coexist at the six-attempt bound. */
-	memset(&script, 0, sizeof(script));
-	database_open_add_failure(&script, YT_DATABASE_OPEN_EXISTING, 2U, 0U,
-	    5U, false);
-	database_open_add_failure(&script, YT_DATABASE_OPEN_EXISTING, 1U, 0U,
-	    5U, false);
-	database_open_add_failure(&script, YT_DATABASE_OPEN_EXISTING, 0U, 0U,
-	    2U, false);
-	database_open_add(&script, YT_DATABASE_OPEN_CREATE, 2U, 0U, false, 0U,
-	    0U, false, true, true, false, 0U);
-	database_open_add(&script, YT_DATABASE_OPEN_TEMP_CLOSE, 0U, 0U, false,
-	    0U, 0U, false, false, false, true, 0U);
-	for (index = 0U; index < YT_ARRAY_LEN(retry_accesses); ++index)
-		database_open_add_failure(&script, YT_DATABASE_OPEN_EXISTING,
-		    retry_accesses[index], 0U, 5U, false);
-	database_open_add(&script, YT_DATABASE_OPEN_EXTENDED_ERROR, 0U, 5U,
-	    false, 0U, 70U, false, false, false, false, 0U);
-	CHECK(!yt_database_open_observed(&database, path,
-	    YT_OPEN_UPDATE_CREATE, scripted_database_open, &script, &error));
-	database_open_check_consumed(&script);
-	CHECK(database.last_open.outcome == YT_DATABASE_OPEN_REOPEN_ERROR
-	    && database.last_open.basic_error == 70U
-	    && database.last_open.access_attempt_count == 6U
-	    && memcmp(database.last_open.access_attempts, retry_accesses,
-	    sizeof(retry_accesses)) == 0
-	    && memcmp(&database.last_open.access_attempts[3], retry_accesses,
-	    sizeof(retry_accesses)) == 0
-	    && database.last_open.operation_count == 9U);
-	yt_database_close(&database);
-
-	/* Character device configuration retains the registered handle. */
-	memset(&script, 0, sizeof(script));
-	database_open_add_file(&script, 2U, 0U);
-	database_open_add_query(&script, 2U, true, 6U, true);
-	database_open_add(&script, YT_DATABASE_OPEN_CONFIGURE_DEVICE, 2U, 0U,
-	    false, 0U, 0U, false, true, false, false, 0U);
-	CHECK(yt_database_open_observed(&database, path, YT_OPEN_UPDATE_CREATE,
-	    scripted_database_open, &script, &error));
-	database_open_check_consumed(&script);
-	CHECK(database.last_open.device && database.last_open.registered
-	    && database.last_open.handle_open
-	    && database.last_open.operation_count == 3U);
-	yt_database_close(&database);
-	for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
-		memset(&script, 0, sizeof(script));
-		database_open_add_file(&script, 2U, 0U);
-		database_open_add_query(&script, 2U, false, 0U, true);
-		database_open_add_failure(&script,
-		    YT_DATABASE_OPEN_CONFIGURE_DEVICE, 2U, 0U,
-		    (uint16_t)dos_error, true);
-		yt_error_clear(&error);
-		CHECK(!yt_database_open_observed(&database, path,
-		    YT_OPEN_UPDATE_CREATE, scripted_database_open, &script,
-		    &error) && error.status == YT_IO_ERROR);
-		database_open_check_consumed(&script);
-		CHECK(database.last_open.outcome == YT_DATABASE_OPEN_DEVICE_ERROR
-		    && database.last_open.basic_error == 57U
-		    && database.last_open.dos_error == dos_error
-		    && database.last_open.device && database.last_open.registered
-		    && database.last_open.handle_open);
-		yt_database_close(&database);
-	}
-
-	/* Malformed provider observations are typed adapter failures, not DOS. */
-	memset(&script, 0, sizeof(script));
-	database_open_add_file(&script, 2U, 0U);
-	script.steps[0].observation.dos_error = 1U;
-	yt_error_clear(&error);
-	CHECK(!yt_database_open_observed(&database, path, YT_OPEN_UPDATE_CREATE,
-	    scripted_database_open, &script, &error));
-	database_open_check_consumed(&script);
-	CHECK(database.last_open.outcome == YT_DATABASE_OPEN_PROVIDER_ERROR
-	    && !database.last_open.registered && database.last_open.handle_open
-	    && database.orphaned_file != NULL);
-	yt_database_close(&database);
-	memset(&script, 0, sizeof(script));
-	database_open_add_failure(&script, YT_DATABASE_OPEN_EXISTING, 2U, 0U,
-	    2U, false);
-	script.steps[0].provider_ok = false;
-	yt_error_clear(&error);
-	CHECK(!yt_database_open_observed(&database, path, YT_OPEN_UPDATE_CREATE,
-	    scripted_database_open, &script, &error));
-	database_open_check_consumed(&script);
-	CHECK(database.last_open.outcome == YT_DATABASE_OPEN_PROVIDER_ERROR
-	    && database.last_open.operation_count == 1U
-	    && !database.last_open.registered
-	    && !database.last_open.handle_open);
-	yt_database_close(&database);
-
-	/* The host adapter performs the same existing and create/reopen paths. */
-	yt_error_clear(&error);
-	CHECK(yt_file_delete(native_path, true, &error));
-	file = fopen(native_path, "wb");
+	CHECK(yt_file_delete(path, true, &error));
+	file = fopen(path, "wb");
 	CHECK(file != NULL);
 	if (file != NULL) {
 		for (index = 0U; index < 2U * YT_RECORD_SIZE; ++index)
 			CHECK(fputc((int)(index & 0xffU), file) != EOF);
 		CHECK(fclose(file) == 0);
 	}
-	CHECK(yt_database_open(&database, native_path, YT_OPEN_UPDATE_CREATE,
+	CHECK(yt_database_open(&database, path, YT_OPEN_UPDATE_CREATE,
 	    &error));
-	CHECK(database.records == 2U && !database.last_open.created
-	    && database.last_open.operation_count == 2U
-	    && database.last_open.access_attempt_count == 1U
+	CHECK(database.records == 2U && database.file != NULL
 	    && ftell(database.file) == 0L);
 	yt_database_close(&database);
-	CHECK(yt_file_delete(native_path, false, &error));
-	CHECK(yt_database_open(&database, native_path, YT_OPEN_UPDATE_CREATE,
+	CHECK(yt_file_delete(path, false, &error));
+
+	CHECK(yt_database_open(&database, path, YT_OPEN_UPDATE_CREATE,
 	    &error));
-	CHECK(database.records == 0U && database.last_open.created
-	    && database.last_open.operation_count == 5U
-	    && database.last_open.access_attempt_count == 2U
+	CHECK(database.records == 0U && database.file != NULL
 	    && ftell(database.file) == 0L);
 	yt_database_close(&database);
-	CHECK(yt_file_delete(native_path, false, &error));
+	CHECK(yt_file_delete(path, false, &error));
+
 	yt_error_clear(&error);
 	CHECK(!yt_database_open(&database, missing_parent_path,
 	    YT_OPEN_UPDATE_CREATE, &error) && error.status == YT_IO_ERROR
-	    && database.last_open.outcome == YT_DATABASE_OPEN_INITIAL_ERROR
-	    && database.last_open.dos_error == 3U
-	    && database.last_open.basic_error == 76U
-	    && database.last_open.operation_count == 1U
-	    && database.last_open.access_attempt_count == 1U
-	    && database.file == NULL && database.orphaned_file == NULL);
+	    && database.file == NULL);
 }
 
 static void

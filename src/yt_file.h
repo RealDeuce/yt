@@ -10,24 +10,6 @@ enum yt_open_mode {
 	YT_OPEN_UPDATE_CREATE
 };
 
-enum yt_database_open_operation {
-	YT_DATABASE_OPEN_EXISTING,
-	YT_DATABASE_OPEN_CREATE,
-	YT_DATABASE_OPEN_TEMP_CLOSE,
-	YT_DATABASE_OPEN_QUERY_DEVICE,
-	YT_DATABASE_OPEN_CONFIGURE_DEVICE,
-	YT_DATABASE_OPEN_EXTENDED_ERROR,
-};
-
-struct yt_database_open_observation {
-	FILE *file;
-	bool carry;
-	bool device;
-	bool handle_open;
-	uint16_t dos_error;
-	uint16_t mapped_error;
-};
-
 enum yt_database_open_outcome {
 	YT_DATABASE_OPEN_NONE,
 	YT_DATABASE_OPEN_RETURNED,
@@ -198,11 +180,6 @@ struct yt_database_lof_result {
 };
 
 /* A false provider return rejects the observation and performs no I/O. */
-typedef bool (*yt_database_open_provider)(void *context, const char *path,
-    enum yt_database_open_operation operation, uint8_t access,
-    FILE *active_file, uint16_t prior_dos_error,
-    struct yt_database_open_observation *observation);
-/* A false provider return rejects the observation and performs no I/O. */
 typedef bool (*yt_database_close_provider)(void *context, FILE *active_file,
     size_t attempt, struct yt_database_close_observation *observation);
 /* A false provider return rejects the observation and performs no I/O. */
@@ -339,9 +316,6 @@ bool yt_resolve_case_path(const char *requested, bool allow_missing,
     char *resolved, size_t size, struct yt_error *error);
 bool yt_database_open(struct yt_database *database, const char *path,
     enum yt_open_mode mode, struct yt_error *error);
-bool yt_database_open_observed(struct yt_database *database, const char *path,
-    enum yt_open_mode mode, yt_database_open_provider provider, void *context,
-    struct yt_error *error);
 bool yt_database_random_close(struct yt_database *database,
     struct yt_error *error);
 /* CLOSE-all projection for a registry known to contain at most this control. */
