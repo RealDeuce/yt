@@ -49,8 +49,6 @@
 #define YT_PLANET_UPDATER_DAY_ADDRESS 0x5E90U
 #define YT_PLANET_UPDATER_MINUTE_ADDRESS 0x5E94U
 #define YT_PLANET_UPDATER_ELAPSED_ADDRESS 0x5E98U
-#define YT_TEAM_AUDIT_LOOP_ADDRESS 0x5F94U
-#define YT_TEAM_AUDIT_SENDER_ADDRESS 0x5F98U
 #define YT_SHARED_TARGET_RECORD_ADDRESS 0x1A40U
 
 enum navigation_field_kind {
@@ -12000,17 +11998,6 @@ team_audit_write_adapter(void *context, const uint8_t *text, size_t length,
 	    error);
 }
 
-static void
-team_audit_store_adapter(void *context, enum yt_team_audit_store_kind kind,
-    const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-	uint16_t address = kind == YT_TEAM_AUDIT_STORE_LOOP_COUNTER
-	    ? YT_TEAM_AUDIT_LOOP_ADDRESS : YT_TEAM_AUDIT_SENDER_ADDRESS;
-
-	yt_route_process_set_raw_single(&session->route_process, address, raw);
-}
-
 static bool
 team_audit(struct yt_session *session, float team_id, float event,
     const char *attempt, struct yt_error *error)
@@ -12019,7 +12006,6 @@ team_audit(struct yt_session *session, float team_id, float event,
 		.clock = team_audit_clock_adapter,
 		.load_team = team_audit_load_adapter,
 		.write_radio = team_audit_write_adapter,
-		.store = team_audit_store_adapter,
 	};
 	struct yt_team_audit_state state = {
 		.team_id = team_id,
@@ -12037,10 +12023,6 @@ team_audit(struct yt_session *session, float team_id, float event,
 	};
 	bool result;
 
-	yt_route_process_raw_single(&session->route_process,
-	    YT_TEAM_AUDIT_LOOP_ADDRESS, state.loop_counter_raw);
-	yt_route_process_raw_single(&session->route_process,
-	    YT_TEAM_AUDIT_SENDER_ADDRESS, state.sender_raw);
 	result = yt_team_audit_run(&state, &ops, session, error);
 	session->team_audit_message_length = state.message_length;
 	return result;

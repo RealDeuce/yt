@@ -809,9 +809,9 @@ yt_team_audit_run(struct yt_team_audit_state *state,
 	    " entered invalid password for your team: ";
 	static const uint8_t at_text[] = " at ";
 	static const uint8_t suffix[] = "!";
+	static const uint8_t sender_raw[4] = {0x00U, 0x00U, 0x80U, 0x82U};
 	uint8_t replacement[YT_TEAM_AUDIT_MESSAGE_MAX];
 	uint8_t clock_text[32];
-	uint8_t raw[4];
 	size_t replacement_length = 0U;
 	size_t clock_length;
 	size_t index;
@@ -891,11 +891,6 @@ yt_team_audit_run(struct yt_team_audit_state *state,
 	}
 	if (!ops->load_team(context, state->team_id, error))
 		return false;
-	if (qb_mbf32_encode(1.0f, state->loop_counter_raw) != QB_MBF_OK)
-		return team_audit_error(error, "team audit loop counter");
-	if (ops->store != NULL)
-		ops->store(context, YT_TEAM_AUDIT_STORE_LOOP_COUNTER,
-		    state->loop_counter_raw);
 	for (index = 0U; index < YT_ARRAY_LEN(state->cache->roster_raw);
 	    ++index) {
 		float recipient = qb_mbf32_decode(state->cache->roster_raw[index]);
@@ -909,25 +904,11 @@ yt_team_audit_run(struct yt_team_audit_state *state,
 			return team_audit_error(error,
 			    "team audit recipient CINT");
 		if ((converted & unequal) != 0) {
-			if (qb_mbf32_encode(-2.0f, state->sender_raw)
-			    != QB_MBF_OK)
-				return team_audit_error(error,
-				    "team audit sender");
-			if (ops->store != NULL)
-				ops->store(context, YT_TEAM_AUDIT_STORE_SENDER,
-				    state->sender_raw);
 			if (!ops->write_radio(context, state->message,
-			    state->message_length, state->sender_raw,
+			    state->message_length, sender_raw,
 			    state->cache->roster_raw[index], error))
 				return false;
 		}
-		if (qb_mbf32_encode((float)(index + 2U), raw) != QB_MBF_OK)
-			return team_audit_error(error,
-			    "team audit loop counter");
-		memcpy(state->loop_counter_raw, raw, sizeof(raw));
-		if (ops->store != NULL)
-			ops->store(context, YT_TEAM_AUDIT_STORE_LOOP_COUNTER,
-			    state->loop_counter_raw);
 	}
 	state->complete = true;
 	return true;

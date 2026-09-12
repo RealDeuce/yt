@@ -1334,8 +1334,6 @@ struct team_audit_tape {
 	size_t message_length[4];
 	uint8_t sender_raw[4][4];
 	uint8_t recipient_raw[4][4];
-	uint8_t loop_counter_raw[4];
-	uint8_t sender_scratch_raw[4];
 };
 
 static void
@@ -1421,17 +1419,6 @@ team_audit_write_test(void *context, const uint8_t *text, size_t length,
 }
 
 static void
-team_audit_store_test(void *context, enum yt_team_audit_store_kind kind,
-	const uint8_t raw[4])
-{
-	struct team_audit_tape *tape = context;
-	uint8_t *destination = kind == YT_TEAM_AUDIT_STORE_LOOP_COUNTER
-	    ? tape->loop_counter_raw : tape->sender_scratch_raw;
-
-	memcpy(destination, raw, 4U);
-}
-
-static void
 team_audit_tape_init(struct team_audit_tape *tape,
 	struct yt_team_loader_cache *cache)
 {
@@ -1452,7 +1439,6 @@ check_team_audit_transaction(void)
 		.clock = team_audit_clock_test,
 		.load_team = team_audit_load_test,
 		.write_radio = team_audit_write_test,
-		.store = team_audit_store_test,
 	};
 	static const uint8_t expected[] =
 	    "Captain ***  joined your team on 07-29-2026 at 23:59:58!";
@@ -1467,8 +1453,6 @@ check_team_audit_transaction(void)
 	struct yt_team_audit_state state;
 	struct yt_error error;
 	uint8_t message[128];
-	uint8_t inherited_loop[4];
-	uint8_t inherited_sender[4];
 	size_t index;
 
 	memset(&cache, 0, sizeof(cache));
@@ -1492,11 +1476,7 @@ check_team_audit_transaction(void)
 	    || tape.write_calls != 3U || tape.trace_length != 6U
 	    || memcmp(tape.trace, "DTLWWW", 6U) != 0
 	    || state.message_length != sizeof(expected) - 1U
-	    || memcmp(state.message, expected, sizeof(expected) - 1U) != 0
-	    || qb_mbf32_decode(state.loop_counter_raw) != 5.0f
-	    || qb_mbf32_decode(tape.loop_counter_raw) != 5.0f
-	    || memcmp(state.sender_raw, mercenary, 4U) != 0
-	    || memcmp(tape.sender_scratch_raw, mercenary, 4U) != 0)
+	    || memcmp(state.message, expected, sizeof(expected) - 1U) != 0)
 		return false;
 	for (index = 0U; index < 3U; ++index) {
 		if (tape.message_length[index] != sizeof(expected) - 1U
@@ -1553,8 +1533,6 @@ check_team_audit_transaction(void)
 	yt_error_clear(&error);
 	if (yt_team_audit_run(&state, &ops, &tape, &error)
 	    || state.complete || tape.write_calls != 2U
-	    || qb_mbf32_decode(state.loop_counter_raw) != 3.0f
-	    || qb_mbf32_decode(tape.loop_counter_raw) != 3.0f
 	    || state.message_length != sizeof(expected_invalid) - 1U
 	    || memcmp(state.message, expected_invalid,
 	    sizeof(expected_invalid) - 1U) != 0
@@ -1567,16 +1545,10 @@ check_team_audit_transaction(void)
 	state.cache = &cache;
 	state.event_type = 1.0f;
 	state.message_length = 0U;
-	(void)qb_mbf32_encode(44.0f, state.loop_counter_raw);
-	(void)qb_mbf32_encode(33.0f, state.sender_raw);
-	memcpy(inherited_loop, state.loop_counter_raw, 4U);
-	memcpy(inherited_sender, state.sender_raw, 4U);
 	yt_error_clear(&error);
 	if (yt_team_audit_run(&state, &ops, &tape, &error)
 	    || state.complete || tape.write_calls != 0U
 	    || tape.clock_calls != 2U
-	    || memcmp(state.loop_counter_raw, inherited_loop, 4U) != 0
-	    || memcmp(state.sender_raw, inherited_sender, 4U) != 0
 	    || state.message_length != sizeof(expected) - 1U
 	    || memcmp(state.message, expected, sizeof(expected) - 1U) != 0
 	    || error.status != YT_IO_ERROR)
@@ -1592,7 +1564,6 @@ check_team_audit_transaction(void)
 	yt_error_clear(&error);
 	if (yt_team_audit_run(&state, &ops, &tape, &error)
 	    || state.complete || tape.write_calls != 0U
-	    || qb_mbf32_decode(state.loop_counter_raw) != 1.0f
 	    || error.status != YT_RANGE
 	    || strcmp(error.operation, "team audit recipient CINT") != 0)
 		return false;

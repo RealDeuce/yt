@@ -423,11 +423,6 @@ enum yt_team_audit_clock_kind {
 	YT_TEAM_AUDIT_TIME,
 };
 
-enum yt_team_audit_store_kind {
-	YT_TEAM_AUDIT_STORE_LOOP_COUNTER,
-	YT_TEAM_AUDIT_STORE_SENDER,
-};
-
 struct yt_team_audit_state {
 	float team_id;
 	float event_type;
@@ -441,8 +436,6 @@ struct yt_team_audit_state {
 	size_t message_capacity;
 	size_t message_length;
 	struct yt_team_loader_cache *cache;
-	uint8_t loop_counter_raw[4];
-	uint8_t sender_raw[4];
 	bool complete;
 };
 
@@ -454,14 +447,11 @@ typedef bool (*yt_team_audit_load_fn)(void *context, float team_id,
 typedef bool (*yt_team_audit_write_fn)(void *context, const uint8_t *text,
 	size_t length, const uint8_t sender_raw[4],
 	const uint8_t recipient_raw[4], struct yt_error *error);
-typedef void (*yt_team_audit_store_fn)(void *context,
-	enum yt_team_audit_store_kind kind, const uint8_t raw[4]);
 
 struct yt_team_audit_ops {
 	yt_team_audit_clock_fn clock;
 	yt_team_audit_load_fn load_team;
 	yt_team_audit_write_fn write_radio;
-	yt_team_audit_store_fn store;
 };
 
 bool yt_team_audit_run(struct yt_team_audit_state *state,
