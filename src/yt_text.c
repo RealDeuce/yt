@@ -1341,7 +1341,7 @@ yt_text_output_open(struct yt_text_output *output, const char *path,
 }
 
 static bool
-text_open_default(void *context, const char *path,
+text_open_perform(const char *path,
     enum yt_text_open_operation operation, uint8_t access,
     FILE *active_file, int64_t offset, uint8_t *data, size_t requested,
     uint16_t prior_dos_error,
@@ -1351,7 +1351,6 @@ text_open_default(void *context, const char *path,
 	int result;
 	int saved_errno;
 
-	(void)context;
 	(void)prior_dos_error;
 	memset(observation, 0, sizeof(*observation));
 	observation->terminal_position = -1;
@@ -1467,15 +1466,13 @@ text_append_observe(struct yt_text_output *output, const char *path,
     uint16_t prior_dos_error,
     struct yt_text_open_observation *observation)
 {
-	yt_text_open_provider provider = output->open_provider != NULL
-	    ? output->open_provider : text_open_default;
 	bool delivered;
 
 	++output->last_append_open.operation_count;
 	memset(observation, 0, sizeof(*observation));
 	observation->terminal_position = -1;
-	delivered = provider(output->open_context, path, operation, access,
-	    active_file, offset, data, requested, prior_dos_error, observation);
+	delivered = text_open_perform(path, operation, access, active_file,
+	    offset, data, requested, prior_dos_error, observation);
 	output->last_append_open.accepted = observation->accepted;
 	if (observation->terminal_position >= 0)
 		output->last_append_open.terminal_position =
@@ -1582,7 +1579,7 @@ text_input_open_observe(struct yt_text_input *input, const char *path,
 	++input->last_open.operation_count;
 	memset(observation, 0, sizeof(*observation));
 	observation->terminal_position = -1;
-	delivered = text_open_default(NULL, path, operation, 0U,
+	delivered = text_open_perform(path, operation, 0U,
 	    active_file, 0, NULL, 0U, prior_dos_error, observation);
 	input->last_open.accepted = observation->accepted;
 	if (observation->terminal_position >= 0)
@@ -1696,15 +1693,13 @@ text_output_open_observe(struct yt_text_output *output, const char *path,
     FILE *active_file, uint16_t prior_dos_error,
     struct yt_text_open_observation *observation)
 {
-	yt_text_open_provider provider = output->open_provider != NULL
-	    ? output->open_provider : text_open_default;
 	bool delivered;
 
 	++output->last_output_open.operation_count;
 	memset(observation, 0, sizeof(*observation));
 	observation->terminal_position = -1;
-	delivered = provider(output->open_context, path, operation, access,
-	    active_file, 0, NULL, 0U, prior_dos_error, observation);
+	delivered = text_open_perform(path, operation, access, active_file,
+	    0, NULL, 0U, prior_dos_error, observation);
 	output->last_output_open.accepted = observation->accepted;
 	if (observation->terminal_position >= 0)
 		output->last_output_open.terminal_position =
@@ -2842,16 +2837,6 @@ yt_text_output_set_write_provider(struct yt_text_output *output,
 		return;
 	output->write_provider = provider;
 	output->write_context = context;
-}
-
-void
-yt_text_output_set_open_provider(struct yt_text_output *output,
-    yt_text_open_provider provider, void *context)
-{
-	if (output == NULL)
-		return;
-	output->open_provider = provider;
-	output->open_context = context;
 }
 
 void

@@ -65,12 +65,6 @@ struct yt_text_open_observation {
 	int64_t terminal_position;
 };
 
-typedef bool (*yt_text_open_provider)(void *context,
-	const char *path, enum yt_text_open_operation operation,
-	uint8_t access, FILE *active_file, int64_t offset, uint8_t *data,
-	size_t requested, uint16_t prior_dos_error,
-	struct yt_text_open_observation *observation);
-
 enum yt_text_open_outcome {
 	YT_TEXT_OPEN_NONE,
 	YT_TEXT_OPEN_RETURNED,
@@ -337,8 +331,6 @@ struct yt_text_output {
 	char path[512];
 	uint8_t pending[YT_TEXT_OUTPUT_BUFFER_SIZE];
 	size_t pending_count;
-	yt_text_open_provider open_provider;
-	void *open_context;
 	yt_text_output_write_provider write_provider;
 	void *write_context;
 	yt_text_close_provider close_provider;
@@ -377,8 +369,6 @@ void yt_text_output_set_close_provider(struct yt_text_output *output,
 	yt_text_close_provider provider, void *context);
 void yt_text_output_set_write_provider(struct yt_text_output *output,
 	yt_text_output_write_provider provider, void *context);
-void yt_text_output_set_open_provider(struct yt_text_output *output,
-	yt_text_open_provider provider, void *context);
 void yt_text_output_destroy(struct yt_text_output *output);
 
 struct yt_text_sequential_play_state {
