@@ -366,7 +366,7 @@ out_opening_close_local(void *context, struct yt_error *error)
 }
 
 bool
-yt_out_opening_file_observed(const char *path, float mode, float snoop,
+yt_out_opening_file(const char *path, float mode, float snoop,
     yt_out_opening_poll_fn poll_local,
     yt_out_opening_poll_fn poll_remote, yt_out_opening_wait_fn wait,
     void *poll_context, uint16_t *basic_error, struct yt_error *error)
@@ -415,14 +415,4 @@ yt_out_opening_file_observed(const char *path, float mode, float snoop,
 		*basic_error = context.basic_error;
 	yt_text_input_destroy(&context.input);
 	return ok;
-}
-
-bool
-yt_out_opening_file(const char *path, float mode, float snoop,
-    yt_out_opening_poll_fn poll_local,
-    yt_out_opening_poll_fn poll_remote, yt_out_opening_wait_fn wait,
-    void *poll_context, struct yt_error *error)
-{
-	return yt_out_opening_file_observed(path, mode, snoop, poll_local,
-	    poll_remote, wait, poll_context, NULL, error);
 }

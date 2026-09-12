@@ -833,7 +833,7 @@ credit_mutation_write_player(void *context, int player_record,
 }
 
 static bool
-mutate_player_credits_observed(struct yt_session *session, float argument,
+mutate_player_credits(struct yt_session *session, float argument,
     bool *hydrated, struct yt_error *error)
 {
 	static const struct yt_credit_mutation_ops ops = {
@@ -863,13 +863,6 @@ mutate_player_credits_observed(struct yt_session *session, float argument,
 }
 
 static bool
-mutate_player_credits(struct yt_session *session, float argument,
-    struct yt_error *error)
-{
-	return mutate_player_credits_observed(session, argument, NULL, error);
-}
-
-static bool
 apply_player_credit_mutation(void *context, float player_record,
     float argument, struct yt_player *player, bool *hydrated,
     struct yt_error *error)
@@ -887,8 +880,7 @@ apply_player_credit_mutation(void *context, float player_record,
 	}
 	if (hydrated != NULL)
 		*hydrated = false;
-	if (!mutate_player_credits_observed(session, argument, hydrated,
-	    error)) {
+	if (!mutate_player_credits(session, argument, hydrated, error)) {
 		if (player != NULL && hydrated != NULL && *hydrated)
 			*player = session->player;
 		return false;
@@ -2605,7 +2597,7 @@ opening_and_date(struct yt_session *session, struct yt_error *error)
 			return false;
 	}
 	if (session->presentation.sound.ansi != 0.0f) {
-		if (!yt_out_opening_file_observed("YTOPEN.ANS",
+		if (!yt_out_opening_file("YTOPEN.ANS",
 		    session->presentation.sound.mode,
 		    session->presentation.sound.snoop,
 		    opening_poll_local,
@@ -8537,7 +8529,7 @@ earth_receipt(struct yt_session *session, const struct yt_port *cached_earth,
 {
 	struct yt_port earth;
 
-	if (!mutate_player_credits(session, -cost, error))
+	if (!mutate_player_credits(session, -cost, NULL, error))
 		return false;
 	if (cached_earth->owner != 0.0f) {
 		float receipt = yt_earth_receipt_amount(cached_earth->owner,
@@ -9255,7 +9247,7 @@ lottery(struct yt_session *session, const struct yt_port *cached_earth,
 		if (!append_news(session, news, error))
 			return false;
 	}
-	if (!mutate_player_credits(session, award, error)
+	if (!mutate_player_credits(session, award, NULL, error)
 	    || !session_wait(session, 3.0, "lottery award wait", error))
 		return false;
 	return lottery_settle(session, cached_earth, 5.0f, error);
@@ -9993,7 +9985,7 @@ planet_bank(struct yt_session *session, int logical_planet,
 	    || !session_sound(session, 4.0f, "planet bank sound", error))
 		return false;
 	credit_argument = yt_planet_bank_credit_argument(old_bank, target);
-	return mutate_player_credits(session, credit_argument, error);
+	return mutate_player_credits(session, credit_argument, NULL, error);
 }
 
 static bool
@@ -10347,7 +10339,7 @@ planet_productivity(struct yt_session *session, int logical_planet,
 	    "planet Productivity derived ending", error))
 		return false;
 	credit_argument = yt_planet_productivity_credit_argument(units);
-	if (!mutate_player_credits(session, credit_argument, error)
+	if (!mutate_player_credits(session, credit_argument, NULL, error)
 	    || !session_read_planet(session, logical_planet,
 	    &planet, error))
 		return false;
@@ -11392,7 +11384,7 @@ create_planet(struct yt_session *session, struct yt_error *error)
 	if (!write_planet_physical(session, selected_physical, &planet, false,
 	    error))
 		return false;
-	if (!mutate_player_credits(session, -25000.0f, error)
+	if (!mutate_player_credits(session, -25000.0f, NULL, error)
 	    || !yt_planet_creation_news(cached_trader, cached_trader_length,
 	    (const uint8_t *)session->planet_name, strlen(session->planet_name),
 	    row, sizeof(row), &row_length)

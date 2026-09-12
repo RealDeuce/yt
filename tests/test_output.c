@@ -223,7 +223,7 @@ test_ansi_opening_routes(void)
 	od_control.baud = 19200U;
 	yt_error_clear(&error);
 	CHECK(yt_out_opening_file(path, 1.0f, 1.0f, poll_never,
-	    poll_never, wait_once, &waits, &error)
+	    poll_never, wait_once, &waits, NULL, &error)
 	    && waits == 1U && output_call_count == 0U
 	    && emulated_call_count == 3U
 	    && strcmp(emulated_calls[0].text, "\x1b[2JX") == 0
@@ -239,7 +239,7 @@ test_ansi_opening_routes(void)
 	od_control.baud = 38400U;
 	yt_error_clear(&error);
 	CHECK(yt_out_opening_file(path, 0.0f, 1.0f, poll_never,
-	    poll_never, wait_once, &waits, &error)
+	    poll_never, wait_once, &waits, NULL, &error)
 	    && waits == 1U && output_call_count == 0U
 	    && emulated_call_count == 4U
 	    && strcmp(emulated_calls[0].text, "\x1b[2JX") == 0
@@ -253,7 +253,7 @@ test_ansi_opening_routes(void)
 	CHECK(remove(path) == 0);
 
 	yt_error_clear(&error);
-	CHECK(!yt_out_opening_file_observed(missing_path, 0.0f, 1.0f,
+	CHECK(!yt_out_opening_file(missing_path, 0.0f, 1.0f,
 	    poll_never, poll_never, wait_once, &waits, &open_basic_error,
 	    &error)
 	    && open_basic_error == 53U && error.status == YT_NOT_FOUND);
