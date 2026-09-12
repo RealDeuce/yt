@@ -2324,7 +2324,7 @@ registration_delete_empty(void *opaque, struct yt_error *error)
 {
 	struct registration_context *context = opaque;
 
-	return yt_file_kill(context->path, NULL, error);
+	return yt_file_kill(context->path, error);
 }
 
 static bool

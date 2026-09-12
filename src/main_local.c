@@ -42,7 +42,7 @@ load_choices(struct yt_name_file *names, struct yt_error *error)
 		size = 0;
 	}
 	if (size == 0) {
-		(void)yt_file_kill("YTNAME.DAT", NULL, error);
+		(void)yt_file_kill("YTNAME.DAT", error);
 		return false;
 	}
 	return yt_names_load("YTNAME.DAT", names, error);

@@ -611,36 +611,6 @@ struct text_input_read_script {
 	size_t position;
 };
 
-struct file_kill_step {
-	enum yt_file_kill_operation operation;
-	struct yt_file_kill_observation observation;
-	char selected[512];
-	bool provider_ok;
-	bool replace_selected;
-};
-
-struct file_kill_script {
-	struct file_kill_step steps[4];
-	size_t length;
-	size_t position;
-};
-
-struct file_rename_step {
-	enum yt_file_rename_operation operation;
-	struct yt_file_rename_observation observation;
-	char selected_old[512];
-	char selected_new[512];
-	bool provider_ok;
-	bool replace_old;
-	bool replace_new;
-};
-
-struct file_rename_script {
-	struct file_rename_step steps[5];
-	size_t length;
-	size_t position;
-};
-
 struct text_open_step {
 	enum yt_text_open_operation operation;
 	uint8_t access;
@@ -1311,146 +1281,6 @@ text_input_read_fixture(struct yt_text_input *input,
 	return true;
 }
 
-static struct file_kill_step *
-file_kill_add(struct file_kill_script *script,
-    enum yt_file_kill_operation operation, bool carry, uint16_t dos_error,
-    bool open_collision, const char *selected)
-{
-	struct file_kill_step *step;
-
-	CHECK(script->length < YT_ARRAY_LEN(script->steps));
-	if (script->length >= YT_ARRAY_LEN(script->steps))
-		return NULL;
-	step = &script->steps[script->length++];
-	memset(step, 0, sizeof(*step));
-	step->operation = operation;
-	step->observation.carry = carry;
-	step->observation.dos_error = dos_error;
-	step->observation.open_collision = open_collision;
-	step->provider_ok = true;
-	if (selected != NULL) {
-		(void)snprintf(step->selected, sizeof(step->selected), "%s",
-		    selected);
-		step->replace_selected = true;
-	}
-	return step;
-}
-
-static void
-file_kill_success_script(struct file_kill_script *script,
-    uint16_t find_next_error)
-{
-	file_kill_add(script, YT_FILE_KILL_FIND_FIRST, false, 0U, false,
-	    "yt.reg");
-	file_kill_add(script, YT_FILE_KILL_CHECK_OPEN, false, 0U, false, NULL);
-	file_kill_add(script, YT_FILE_KILL_DELETE, false, 0U, false, NULL);
-	file_kill_add(script, YT_FILE_KILL_FIND_NEXT, true, find_next_error,
-	    false, NULL);
-}
-
-static bool
-scripted_file_kill(void *context, enum yt_file_kill_operation operation,
-    const char *source, char *selected, size_t selected_size,
-    struct yt_file_kill_observation *observation)
-{
-	struct file_kill_script *script = context;
-	struct file_kill_step *step;
-
-	CHECK(script->position < script->length);
-	if (script->position >= script->length)
-		return false;
-	step = &script->steps[script->position++];
-	CHECK(operation == step->operation && strcmp(source, "YT.REG") == 0
-	    && selected_size == 512U);
-	if (operation != step->operation || strcmp(source, "YT.REG") != 0
-	    || selected_size != 512U)
-		return false;
-	if (!step->provider_ok)
-		return false;
-	if (step->replace_selected)
-		(void)snprintf(selected, selected_size, "%s", step->selected);
-	*observation = step->observation;
-	return true;
-}
-
-static struct file_rename_step *
-file_rename_add(struct file_rename_script *script,
-    enum yt_file_rename_operation operation, bool carry, uint16_t dos_error,
-    bool open_collision, const char *selected_old, const char *selected_new)
-{
-	struct file_rename_step *step;
-
-	CHECK(script->length < YT_ARRAY_LEN(script->steps));
-	if (script->length >= YT_ARRAY_LEN(script->steps))
-		return NULL;
-	step = &script->steps[script->length++];
-	memset(step, 0, sizeof(*step));
-	step->operation = operation;
-	step->observation.carry = carry;
-	step->observation.dos_error = dos_error;
-	step->observation.open_collision = open_collision;
-	step->provider_ok = true;
-	if (selected_old != NULL) {
-		(void)snprintf(step->selected_old, sizeof(step->selected_old),
-		    "%s", selected_old);
-		step->replace_old = true;
-	}
-	if (selected_new != NULL) {
-		(void)snprintf(step->selected_new, sizeof(step->selected_new),
-		    "%s", selected_new);
-		step->replace_new = true;
-	}
-	return step;
-}
-
-static void
-file_rename_success_script(struct file_rename_script *script)
-{
-	file_rename_add(script, YT_FILE_RENAME_PARSE_OLD, false, 0U, false,
-	    "Temp", NULL);
-	file_rename_add(script, YT_FILE_RENAME_PARSE_NEW, false, 0U, false,
-	    NULL, "ytrmsg.dat");
-	file_rename_add(script, YT_FILE_RENAME_CHECK_OLD_OPEN, false, 0U,
-	    false, NULL, NULL);
-	file_rename_add(script, YT_FILE_RENAME_CHECK_NEW_OPEN, false, 0U,
-	    false, NULL, NULL);
-	file_rename_add(script, YT_FILE_RENAME_RENAME, false, 0U, false,
-	    NULL, NULL);
-}
-
-static bool
-scripted_file_rename(void *context, enum yt_file_rename_operation operation,
-    const char *old_source, const char *new_source, char *selected_old,
-    size_t selected_old_size, char *selected_new, size_t selected_new_size,
-    struct yt_file_rename_observation *observation)
-{
-	struct file_rename_script *script = context;
-	struct file_rename_step *step;
-
-	CHECK(script->position < script->length);
-	if (script->position >= script->length)
-		return false;
-	step = &script->steps[script->position++];
-	CHECK(operation == step->operation
-	    && strcmp(old_source, "TEMP") == 0
-	    && strcmp(new_source, "YTRMSG.DAT") == 0
-	    && selected_old_size == 512U && selected_new_size == 512U);
-	if (operation != step->operation || strcmp(old_source, "TEMP") != 0
-	    || strcmp(new_source, "YTRMSG.DAT") != 0
-	    || selected_old_size != 512U || selected_new_size != 512U)
-		return false;
-	if (!step->provider_ok)
-		return false;
-	if (step->replace_old)
-		(void)snprintf(selected_old, selected_old_size, "%s",
-		    step->selected_old);
-	if (step->replace_new)
-		(void)snprintf(selected_new, selected_new_size, "%s",
-		    step->selected_new);
-	*observation = step->observation;
-	return true;
-}
-
 struct close_all_tape {
 	int identifiers[8];
 	int classes[8];
@@ -1937,185 +1767,34 @@ test_database_random_open(void)
 static void
 test_file_kill(void)
 {
-	struct file_kill_script script;
-	struct yt_file_kill_result result;
 	struct yt_error error;
 	char directory[256];
-	char actual[320];
-	char requested[320];
+	char path[320];
 	FILE *file;
-	unsigned dos_error;
-	unsigned ordinal;
 
-	/* One rooted literal owns find/check/delete/ignored FindNext carry. */
-	memset(&script, 0, sizeof(script));
-	file_kill_success_script(&script, 18U);
-	yt_error_clear(&error);
-	CHECK(yt_file_kill_observed("YT.REG", scripted_file_kill, &script,
-	    &result, &error)
-	    && result.outcome == YT_FILE_KILL_RETURNED
-	    && result.operation_count == 4U && result.deleted_count == 1U
-	    && result.found && result.checked_open && result.deleted
-	    && result.find_next_attempted
-	    && strcmp(result.selected_path, "yt.reg") == 0
-	    && result.find_next_dos_error == 18U
-	    && result.dos_error == 0U && result.basic_error == 0U
-	    && script.position == script.length);
-
-	/* FindFirst maps every DOS error byte, including 5, to ERR53. */
-	for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
-		memset(&script, 0, sizeof(script));
-		file_kill_add(&script, YT_FILE_KILL_FIND_FIRST, true,
-		    (uint16_t)dos_error, false, NULL);
-		yt_error_clear(&error);
-		CHECK(!yt_file_kill_observed("YT.REG", scripted_file_kill,
-		    &script, &result, &error)
-		    && result.outcome == YT_FILE_KILL_FIND_ERROR
-		    && result.failed_operation == YT_FILE_KILL_FIND_FIRST
-		    && result.operation_count == 1U
-		    && result.dos_error == dos_error
-		    && result.basic_error == 53U
-		    && !result.found && !result.deleted
-		    && error.status == YT_NOT_FOUND
-		    && script.position == script.length);
-	}
-
-	/* Delete maps only DOS error 5 to ERR75; every other byte is ERR53. */
-	for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
-		memset(&script, 0, sizeof(script));
-		file_kill_add(&script, YT_FILE_KILL_FIND_FIRST, false, 0U,
-		    false, "yt.reg");
-		file_kill_add(&script, YT_FILE_KILL_CHECK_OPEN, false, 0U,
-		    false, NULL);
-		file_kill_add(&script, YT_FILE_KILL_DELETE, true,
-		    (uint16_t)dos_error, false, NULL);
-		CHECK(!yt_file_kill_observed("YT.REG", scripted_file_kill,
-		    &script, &result, &error)
-		    && result.outcome == YT_FILE_KILL_DELETE_ERROR
-		    && result.failed_operation == YT_FILE_KILL_DELETE
-		    && result.operation_count == 3U
-		    && result.dos_error == dos_error
-		    && result.basic_error == (dos_error == 5U ? 75U : 53U)
-		    && result.found && result.checked_open && !result.deleted
-		    && error.status == YT_IO_ERROR
-		    && script.position == script.length);
-	}
-
-	/* FindNext carry ignores its complete DOS-byte domain after deletion. */
-	for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
-		memset(&script, 0, sizeof(script));
-		file_kill_success_script(&script, (uint16_t)dos_error);
-		CHECK(yt_file_kill_observed("YT.REG", scripted_file_kill,
-		    &script, &result, &error)
-		    && result.outcome == YT_FILE_KILL_RETURNED
-		    && result.operation_count == 4U && result.deleted_count == 1U
-		    && result.deleted && result.find_next_attempted
-		    && result.find_next_dos_error == dos_error
-		    && result.dos_error == 0U && result.basic_error == 0U
-		    && script.position == script.length);
-	}
-
-	/* A matching live control enters ERR55 before delete. */
-	memset(&script, 0, sizeof(script));
-	file_kill_add(&script, YT_FILE_KILL_FIND_FIRST, false, 0U, false,
-	    "yt.reg");
-	file_kill_add(&script, YT_FILE_KILL_CHECK_OPEN, false, 0U, true, NULL);
-	CHECK(!yt_file_kill_observed("YT.REG", scripted_file_kill, &script,
-	    &result, &error)
-	    && result.outcome == YT_FILE_KILL_OPEN_ERROR
-	    && result.failed_operation == YT_FILE_KILL_CHECK_OPEN
-	    && result.operation_count == 2U && result.basic_error == 55U
-	    && result.found && result.checked_open && !result.deleted
-	    && script.position == script.length);
-
-	/* Provider rejection at every ordinal preserves its completed prefix. */
-	for (ordinal = 0U; ordinal < 4U; ++ordinal) {
-		memset(&script, 0, sizeof(script));
-		file_kill_success_script(&script, 18U);
-		script.length = ordinal + 1U;
-		script.steps[ordinal].provider_ok = false;
-		CHECK(!yt_file_kill_observed("YT.REG", scripted_file_kill,
-		    &script, &result, &error)
-		    && result.outcome == YT_FILE_KILL_PROVIDER_ERROR
-		    && result.failed_operation
-		    == (enum yt_file_kill_operation)ordinal
-		    && result.operation_count == ordinal + 1U
-		    && result.found == (ordinal > 0U)
-		    && result.checked_open == (ordinal > 1U)
-		    && result.deleted == (ordinal > 2U)
-		    && result.deleted_count == (ordinal > 2U ? 1U : 0U)
-		    && script.position == script.length);
-	}
-
-	/* Malformed result shapes cannot be mistaken for DOS branches. */
-	for (ordinal = 0U; ordinal < 8U; ++ordinal) {
-		memset(&script, 0, sizeof(script));
-		file_kill_success_script(&script, 18U);
-		switch (ordinal) {
-		case 0U:
-			script.steps[0].replace_selected = false;
-			break;
-		case 1U:
-			script.steps[0].observation.carry = true;
-			script.steps[0].observation.dos_error = 2U;
-			break;
-		case 2U:
-			script.steps[0].observation.dos_error = 2U;
-			break;
-		case 3U:
-			script.steps[1].observation.carry = true;
-			script.steps[1].observation.dos_error = 1U;
-			break;
-		case 4U:
-			(void)snprintf(script.steps[1].selected,
-			    sizeof(script.steps[1].selected), "%s", "other.reg");
-			script.steps[1].replace_selected = true;
-			break;
-		case 5U:
-			script.steps[2].observation.open_collision = true;
-			break;
-		case 6U:
-			script.steps[2].observation.dos_error = 1U;
-			break;
-		default:
-			script.steps[3].observation.carry = false;
-			script.steps[3].observation.dos_error = 0U;
-			break;
-		}
-		CHECK(!yt_file_kill_observed("YT.REG", scripted_file_kill,
-		    &script, &result, &error)
-		    && result.outcome == YT_FILE_KILL_PROVIDER_ERROR);
-	}
-
-	/* The host adapter resolves case, removes the literal, and rejects missing. */
 #ifdef _WIN32
-	snprintf(directory, sizeof(directory), "yt-file-kill-%lu",
+	snprintf(directory, sizeof(directory), "YT-FILE-KILL-%lu",
 	    (unsigned long)GetCurrentProcessId());
 #else
-	snprintf(directory, sizeof(directory), "/tmp/yt-file-kill-%ld",
+	snprintf(directory, sizeof(directory), "/tmp/YT-FILE-KILL-%ld",
 	    (long)getpid());
 #endif
 	(void)mkdir_one(directory);
-	snprintf(actual, sizeof(actual), "%s/yt.reg", directory);
-	snprintf(requested, sizeof(requested), "%s/YT.REG", directory);
-	file = fopen(actual, "wb");
+	snprintf(path, sizeof(path), "%s/YT.REG", directory);
+	file = fopen(path, "wb");
 	CHECK(file != NULL);
 	if (file != NULL) {
 		CHECK(fwrite("registration", 1U, 12U, file) == 12U);
 		CHECK(fclose(file) == 0);
 	}
-	CHECK(yt_file_kill(requested, &result, &error)
-	    && result.outcome == YT_FILE_KILL_RETURNED
-	    && result.operation_count == 4U && result.deleted_count == 1U
-	    && strcmp(result.selected_path, actual) == 0);
-	file = fopen(actual, "rb");
+	yt_error_clear(&error);
+	CHECK(yt_file_kill(path, &error));
+	file = fopen(path, "rb");
 	CHECK(file == NULL);
 	if (file != NULL)
 		(void)fclose(file);
 	yt_error_clear(&error);
-	CHECK(!yt_file_kill(requested, &result, &error)
-	    && result.outcome == YT_FILE_KILL_FIND_ERROR
-	    && result.basic_error == 53U && error.status == YT_NOT_FOUND);
+	CHECK(!yt_file_kill(path, &error) && error.status == YT_NOT_FOUND);
 #ifdef _WIN32
 	_rmdir(directory);
 #else
@@ -2126,181 +1805,35 @@ test_file_kill(void)
 static void
 test_file_rename(void)
 {
-	struct file_rename_script script;
-	struct yt_file_rename_result result;
 	struct yt_error error;
 	char directory[256];
-	char old_actual[320];
-	char old_requested[320];
+	char old_path[320];
 	char new_path[320];
 	char missing_old[320];
 	char missing_new[320];
 	char bytes[6];
 	FILE *file;
-	unsigned dos_error;
-	unsigned ordinal;
 
-	/* The rooted NAME tape parses and checks both names before one rename. */
-	memset(&script, 0, sizeof(script));
-	file_rename_success_script(&script);
-	yt_error_clear(&error);
-	CHECK(yt_file_rename_observed("TEMP", "YTRMSG.DAT",
-	    scripted_file_rename, &script, &result, &error)
-	    && result.outcome == YT_FILE_RENAME_RETURNED
-	    && result.operation_count == 5U
-	    && result.old_parsed && result.new_parsed
-	    && result.old_checked_open && result.new_checked_open
-	    && result.renamed && result.dos_error == 0U
-	    && result.basic_error == 0U
-	    && strcmp(result.selected_old, "Temp") == 0
-	    && strcmp(result.selected_new, "ytrmsg.dat") == 0
-	    && script.position == script.length);
-
-	/* The physical classifier consumes the complete DOS error-byte domain. */
-	for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
-		uint16_t expected = dos_error == 2U ? 53U
-		    : dos_error == 3U ? 76U
-		    : dos_error == 5U ? 58U : 5U;
-
-		memset(&script, 0, sizeof(script));
-		file_rename_success_script(&script);
-		script.steps[4].observation.carry = true;
-		script.steps[4].observation.dos_error = (uint16_t)dos_error;
-		CHECK(!yt_file_rename_observed("TEMP", "YTRMSG.DAT",
-		    scripted_file_rename, &script, &result, &error)
-		    && result.outcome == YT_FILE_RENAME_DOS_ERROR
-		    && result.failed_operation == YT_FILE_RENAME_RENAME
-		    && result.operation_count == 5U
-		    && result.dos_error == dos_error
-		    && result.basic_error == expected
-		    && result.old_parsed && result.new_parsed
-		    && result.old_checked_open && result.new_checked_open
-		    && !result.renamed
-		    && script.position == script.length);
-	}
-
-	/* Either live-name collision enters the same ERR55 terminal pre-rename. */
-	for (ordinal = 2U; ordinal <= 3U; ++ordinal) {
-		memset(&script, 0, sizeof(script));
-		file_rename_success_script(&script);
-		script.length = ordinal + 1U;
-		script.steps[ordinal].observation.open_collision = true;
-		CHECK(!yt_file_rename_observed("TEMP", "YTRMSG.DAT",
-		    scripted_file_rename, &script, &result, &error)
-		    && result.outcome == (ordinal == 2U
-		    ? YT_FILE_RENAME_OLD_OPEN_ERROR
-		    : YT_FILE_RENAME_NEW_OPEN_ERROR)
-		    && result.failed_operation
-		    == (enum yt_file_rename_operation)ordinal
-		    && result.basic_error == 55U && !result.renamed
-		    && script.position == script.length);
-	}
-
-	/* A rooted parser failure is ERR64 and suppresses every later operation. */
-	for (ordinal = 0U; ordinal <= 1U; ++ordinal) {
-		memset(&script, 0, sizeof(script));
-		file_rename_success_script(&script);
-		script.length = ordinal + 1U;
-		script.steps[ordinal].observation.path_error = true;
-		if (ordinal == 0U)
-			script.steps[ordinal].replace_old = false;
-		else
-			script.steps[ordinal].replace_new = false;
-		CHECK(!yt_file_rename_observed("TEMP", "YTRMSG.DAT",
-		    scripted_file_rename, &script, &result, &error)
-		    && result.outcome == (ordinal == 0U
-		    ? YT_FILE_RENAME_OLD_PATH_ERROR
-		    : YT_FILE_RENAME_NEW_PATH_ERROR)
-		    && result.basic_error == 64U
-		    && result.operation_count == ordinal + 1U
-		    && script.position == script.length);
-	}
-
-	/* Provider rejection at each ordinal retains the completed prefix. */
-	for (ordinal = 0U; ordinal < 5U; ++ordinal) {
-		memset(&script, 0, sizeof(script));
-		file_rename_success_script(&script);
-		script.length = ordinal + 1U;
-		script.steps[ordinal].provider_ok = false;
-		CHECK(!yt_file_rename_observed("TEMP", "YTRMSG.DAT",
-		    scripted_file_rename, &script, &result, &error)
-		    && result.outcome == YT_FILE_RENAME_PROVIDER_ERROR
-		    && result.failed_operation
-		    == (enum yt_file_rename_operation)ordinal
-		    && result.operation_count == ordinal + 1U
-		    && result.old_parsed == (ordinal > 0U)
-		    && result.new_parsed == (ordinal > 1U)
-		    && result.old_checked_open == (ordinal > 2U)
-		    && result.new_checked_open == (ordinal > 3U)
-		    && !result.renamed
-		    && script.position == script.length);
-	}
-
-	/* Malformed observation shapes cannot alias a canonical terminal. */
-	for (ordinal = 0U; ordinal < 8U; ++ordinal) {
-		memset(&script, 0, sizeof(script));
-		file_rename_success_script(&script);
-		switch (ordinal) {
-		case 0U:
-			script.steps[0].replace_old = false;
-			break;
-		case 1U:
-			script.steps[0].observation.dos_error = 1U;
-			break;
-		case 2U:
-			(void)snprintf(script.steps[1].selected_old,
-			    sizeof(script.steps[1].selected_old), "%s", "Other");
-			script.steps[1].replace_old = true;
-			break;
-		case 3U:
-			script.steps[1].replace_new = false;
-			break;
-		case 4U:
-			script.steps[2].observation.carry = true;
-			script.steps[2].observation.dos_error = 1U;
-			break;
-		case 5U:
-			(void)snprintf(script.steps[3].selected_new,
-			    sizeof(script.steps[3].selected_new), "%s", "Other");
-			script.steps[3].replace_new = true;
-			break;
-		case 6U:
-			script.steps[4].observation.open_collision = true;
-			break;
-		default:
-			script.steps[4].observation.dos_error = 1U;
-			break;
-		}
-		CHECK(!yt_file_rename_observed("TEMP", "YTRMSG.DAT",
-		    scripted_file_rename, &script, &result, &error)
-		    && result.outcome == YT_FILE_RENAME_PROVIDER_ERROR);
-	}
-
-	/* Native DOS-like behavior resolves source case and never replaces a target. */
 #ifdef _WIN32
-	snprintf(directory, sizeof(directory), "yt-file-rename-%lu",
+	snprintf(directory, sizeof(directory), "YT-FILE-RENAME-%lu",
 	    (unsigned long)GetCurrentProcessId());
 #else
-	snprintf(directory, sizeof(directory), "/tmp/yt-file-rename-%ld",
+	snprintf(directory, sizeof(directory), "/tmp/YT-FILE-RENAME-%ld",
 	    (long)getpid());
 #endif
 	(void)mkdir_one(directory);
-	snprintf(old_actual, sizeof(old_actual), "%s/Temp", directory);
-	snprintf(old_requested, sizeof(old_requested), "%s/TEMP", directory);
-	snprintf(new_path, sizeof(new_path), "%s/ytrmsg.dat", directory);
+	snprintf(old_path, sizeof(old_path), "%s/TEMP", directory);
+	snprintf(new_path, sizeof(new_path), "%s/YTRMSG.DAT", directory);
 	snprintf(missing_old, sizeof(missing_old), "%s/MISSING", directory);
-	snprintf(missing_new, sizeof(missing_new), "%s/absent/name", directory);
-	file = fopen(old_actual, "wb");
+	snprintf(missing_new, sizeof(missing_new), "%s/ABSENT/NAME", directory);
+	file = fopen(old_path, "wb");
 	CHECK(file != NULL);
 	if (file != NULL) {
 		CHECK(fwrite("source", 1U, 6U, file) == 6U);
 		CHECK(fclose(file) == 0);
 	}
-	CHECK(yt_file_rename_observed(old_requested, new_path, NULL, NULL,
-	    &result, &error)
-	    && result.outcome == YT_FILE_RENAME_RETURNED && result.renamed
-	    && strcmp(result.selected_old, old_actual) == 0
-	    && strcmp(result.selected_new, new_path) == 0);
+	yt_error_clear(&error);
+	CHECK(yt_file_rename(old_path, new_path, &error));
 	file = fopen(new_path, "rb");
 	CHECK(file != NULL);
 	if (file != NULL) {
@@ -2308,26 +1841,21 @@ test_file_rename(void)
 		    && memcmp(bytes, "source", sizeof(bytes)) == 0);
 		CHECK(fclose(file) == 0);
 	}
-
-	file = fopen(old_actual, "wb");
+	file = fopen(old_path, "wb");
 	CHECK(file != NULL);
 	if (file != NULL)
 		CHECK(fclose(file) == 0);
-	CHECK(!yt_file_rename_observed(old_requested, new_path, NULL, NULL,
-	    &result, &error)
-	    && result.outcome == YT_FILE_RENAME_DOS_ERROR
-	    && result.dos_error == 5U && result.basic_error == 58U);
-	CHECK(!yt_file_rename_observed(missing_old, new_path, NULL, NULL,
-	    &result, &error)
-	    && result.dos_error == 5U && result.basic_error == 58U);
-	(void)remove(new_path);
-	CHECK(!yt_file_rename_observed(missing_old, new_path, NULL, NULL,
-	    &result, &error)
-	    && result.dos_error == 2U && result.basic_error == 53U);
-	CHECK(!yt_file_rename_observed(old_requested, missing_new, NULL, NULL,
-	    &result, &error)
-	    && result.dos_error == 3U && result.basic_error == 76U);
-	(void)remove(old_actual);
+	yt_error_clear(&error);
+	CHECK(!yt_file_rename(old_path, new_path, &error)
+	    && error.status == YT_IO_ERROR);
+	CHECK(remove(new_path) == 0);
+	yt_error_clear(&error);
+	CHECK(!yt_file_rename(missing_old, new_path, &error)
+	    && error.status == YT_NOT_FOUND);
+	yt_error_clear(&error);
+	CHECK(!yt_file_rename(old_path, missing_new, &error)
+	    && error.status == YT_IO_ERROR);
+	CHECK(remove(old_path) == 0);
 #ifdef _WIN32
 	_rmdir(directory);
 #else

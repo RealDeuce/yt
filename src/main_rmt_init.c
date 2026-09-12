@@ -127,7 +127,7 @@ static bool
 rmt_handoff_cleanup_kill(void *context, struct yt_error *error)
 {
 	(void)context;
-	return yt_file_kill("RMTINIT.TMP", NULL, error);
+	return yt_file_kill("RMTINIT.TMP", error);
 }
 
 static bool
@@ -629,7 +629,7 @@ main(void)
 			yt_cli_error("RMT-INIT", &error);
 			return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
 		}
-		if (!yt_file_kill("YTDATA.DAT", NULL, &error)) {
+		if (!yt_file_kill("YTDATA.DAT", &error)) {
 			yt_cli_error("RMT-INIT", &error);
 			return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
 		}

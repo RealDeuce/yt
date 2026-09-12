@@ -1762,7 +1762,7 @@ static bool
 radio_compact_kill(void *context, const char *path, struct yt_error *error)
 {
 	(void)context;
-	return yt_file_kill(path, NULL, error);
+	return yt_file_kill(path, error);
 }
 
 static bool
@@ -1912,7 +1912,7 @@ static bool
 news_rotate_kill(void *context, const char *path, struct yt_error *error)
 {
 	(void)context;
-	return yt_file_kill(path, NULL, error);
+	return yt_file_kill(path, error);
 }
 
 static bool
@@ -2352,7 +2352,7 @@ static bool
 alias_compact_kill(void *context, const char *path, struct yt_error *error)
 {
 	(void)context;
-	return yt_file_kill(path, NULL, error);
+	return yt_file_kill(path, error);
 }
 
 static bool

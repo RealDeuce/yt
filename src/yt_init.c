@@ -2317,7 +2317,7 @@ clear_yt_radio_messages(struct yt_error *error)
 		.context = &output,
 	};
 	if (!yt_close_all_run(&control, 1U, NULL, NULL, error)
-	    || !yt_file_kill("YTRMSG.DAT", NULL, error)
+	    || !yt_file_kill("YTRMSG.DAT", error)
 	    || !yt_close_all_run(NULL, 0U, NULL, NULL, error))
 		goto done;
 	result = true;

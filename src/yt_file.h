@@ -335,95 +335,6 @@ struct yt_radio_file {
 	size_t field_count;
 };
 
-enum yt_file_kill_operation {
-	YT_FILE_KILL_FIND_FIRST,
-	YT_FILE_KILL_CHECK_OPEN,
-	YT_FILE_KILL_DELETE,
-	YT_FILE_KILL_FIND_NEXT,
-};
-
-struct yt_file_kill_observation {
-	bool carry;
-	bool open_collision;
-	uint16_t dos_error;
-};
-
-typedef bool (*yt_file_kill_provider)(void *context,
-	enum yt_file_kill_operation operation, const char *source,
-	char *selected, size_t selected_size,
-	struct yt_file_kill_observation *observation);
-
-enum yt_file_kill_outcome {
-	YT_FILE_KILL_NONE,
-	YT_FILE_KILL_RETURNED,
-	YT_FILE_KILL_FIND_ERROR,
-	YT_FILE_KILL_OPEN_ERROR,
-	YT_FILE_KILL_DELETE_ERROR,
-	YT_FILE_KILL_PROVIDER_ERROR,
-};
-
-struct yt_file_kill_result {
-	enum yt_file_kill_outcome outcome;
-	enum yt_file_kill_operation failed_operation;
-	size_t operation_count;
-	size_t deleted_count;
-	uint16_t dos_error;
-	uint16_t find_next_dos_error;
-	uint16_t basic_error;
-	char selected_path[512];
-	bool found;
-	bool checked_open;
-	bool deleted;
-	bool find_next_attempted;
-};
-
-enum yt_file_rename_operation {
-	YT_FILE_RENAME_PARSE_OLD,
-	YT_FILE_RENAME_PARSE_NEW,
-	YT_FILE_RENAME_CHECK_OLD_OPEN,
-	YT_FILE_RENAME_CHECK_NEW_OPEN,
-	YT_FILE_RENAME_RENAME,
-};
-
-struct yt_file_rename_observation {
-	bool carry;
-	bool open_collision;
-	bool path_error;
-	uint16_t dos_error;
-};
-
-typedef bool (*yt_file_rename_provider)(void *context,
-	enum yt_file_rename_operation operation, const char *old_source,
-	const char *new_source, char *selected_old, size_t selected_old_size,
-	char *selected_new, size_t selected_new_size,
-	struct yt_file_rename_observation *observation);
-
-enum yt_file_rename_outcome {
-	YT_FILE_RENAME_NONE,
-	YT_FILE_RENAME_RETURNED,
-	YT_FILE_RENAME_OLD_PATH_ERROR,
-	YT_FILE_RENAME_NEW_PATH_ERROR,
-	YT_FILE_RENAME_OLD_OPEN_ERROR,
-	YT_FILE_RENAME_NEW_OPEN_ERROR,
-	YT_FILE_RENAME_DOS_ERROR,
-	YT_FILE_RENAME_PROVIDER_ERROR,
-};
-
-struct yt_file_rename_result {
-	enum yt_file_rename_outcome outcome;
-	enum yt_file_rename_operation failed_operation;
-	size_t operation_count;
-	uint16_t dos_error;
-	uint16_t basic_error;
-	char selected_old[512];
-	char selected_new[512];
-	bool old_parsed;
-	bool new_parsed;
-	bool old_checked_open;
-	bool new_checked_open;
-	bool renamed;
-};
-
 bool yt_resolve_case_path(const char *requested, bool allow_missing,
     char *resolved, size_t size, struct yt_error *error);
 bool yt_database_open(struct yt_database *database, const char *path,
@@ -488,17 +399,10 @@ bool yt_radio_file_put(struct yt_radio_file *radio, uint32_t basic_record,
     const struct yt_radio_record *record, struct yt_error *error);
 bool yt_radio_file_next_record(struct yt_radio_file *radio,
     uint32_t *basic_record, struct yt_error *error);
-bool yt_file_kill(const char *path, struct yt_file_kill_result *result,
-	struct yt_error *error);
-bool yt_file_kill_observed(const char *path, yt_file_kill_provider provider,
-	void *context, struct yt_file_kill_result *result,
-	struct yt_error *error);
+bool yt_file_kill(const char *path, struct yt_error *error);
 bool yt_file_delete(const char *path, bool missing_ok, struct yt_error *error);
 bool yt_file_rename(const char *old_path, const char *new_path,
     struct yt_error *error);
-bool yt_file_rename_observed(const char *old_path, const char *new_path,
-	yt_file_rename_provider provider, void *context,
-	struct yt_file_rename_result *result, struct yt_error *error);
 bool yt_file_size(const char *path, size_t *size, struct yt_error *error);
 
 #endif

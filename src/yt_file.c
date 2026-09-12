@@ -1788,172 +1788,25 @@ yt_radio_file_next_record(struct yt_radio_file *radio,
 	return true;
 }
 
-static bool
-file_kill_default(void *context, enum yt_file_kill_operation operation,
-    const char *source, char *selected, size_t selected_size,
-    struct yt_file_kill_observation *observation)
-{
-	struct yt_error local_error;
-	int saved_errno;
-
-	(void)context;
-	memset(observation, 0, sizeof(*observation));
-	switch (operation) {
-	case YT_FILE_KILL_FIND_FIRST:
-		yt_error_clear(&local_error);
-		errno = 0;
-		if (!yt_resolve_case_path(source, false, selected,
-		    selected_size, &local_error)) {
-			observation->carry = true;
-			observation->dos_error = local_error.status == YT_NOT_FOUND
-			    ? database_dos_error(source, ENOENT) : 3U;
-		}
-		return true;
-	case YT_FILE_KILL_CHECK_OPEN:
-		return true;
-	case YT_FILE_KILL_DELETE:
-		errno = 0;
-		if (remove(selected) != 0) {
-			saved_errno = errno;
-			observation->carry = true;
-			observation->dos_error = database_dos_error(selected,
-			    saved_errno);
-			errno = saved_errno;
-		}
-		return true;
-	case YT_FILE_KILL_FIND_NEXT:
-		observation->carry = true;
-		observation->dos_error = 18U;
-		return true;
-	default:
-		return false;
-	}
-}
-
-static bool
-file_kill_fail(struct yt_file_kill_result *result,
-    enum yt_file_kill_outcome outcome,
-    enum yt_file_kill_operation operation, uint16_t dos_error,
-    uint16_t basic_error, const char *path, struct yt_error *error)
-{
-	result->outcome = outcome;
-	result->failed_operation = operation;
-	result->dos_error = dos_error;
-	result->basic_error = basic_error;
-	errno = 0;
-	set_error(error, outcome == YT_FILE_KILL_FIND_ERROR
-	    ? YT_NOT_FOUND : YT_IO_ERROR,
-	    outcome == YT_FILE_KILL_PROVIDER_ERROR ? "KILL provider" : "KILL",
-	    result->selected_path[0] != '\0' ? result->selected_path : path);
-	return false;
-}
-
 bool
-yt_file_kill_observed(const char *path, yt_file_kill_provider provider,
-    void *context, struct yt_file_kill_result *result,
-    struct yt_error *error)
+yt_file_kill(const char *path, struct yt_error *error)
 {
-	static const enum yt_file_kill_operation operations[] = {
-		YT_FILE_KILL_FIND_FIRST,
-		YT_FILE_KILL_CHECK_OPEN,
-		YT_FILE_KILL_DELETE,
-		YT_FILE_KILL_FIND_NEXT,
-	};
-	struct yt_file_kill_result local_result;
-	struct yt_file_kill_result *active = result != NULL
-	    ? result : &local_result;
-	yt_file_kill_provider active_provider = provider != NULL
-	    ? provider : file_kill_default;
-	struct yt_file_kill_observation observation;
-	char retained[sizeof(active->selected_path)];
-	size_t index;
+	char resolved[512];
 
-	memset(active, 0, sizeof(*active));
-	active->failed_operation = YT_FILE_KILL_FIND_FIRST;
 	if (path == NULL) {
 		errno = 0;
 		set_error(error, YT_INVALID, "KILL", NULL);
-		active->outcome = YT_FILE_KILL_PROVIDER_ERROR;
-		active->basic_error = 64U;
 		return false;
 	}
-	for (index = 0U; index < YT_ARRAY_LEN(operations); ++index) {
-		enum yt_file_kill_operation operation = operations[index];
-		bool delivered;
-		bool valid;
-
-		if (operation != YT_FILE_KILL_FIND_FIRST)
-			(void)snprintf(retained, sizeof(retained), "%s",
-			    active->selected_path);
-		memset(&observation, 0, sizeof(observation));
-		++active->operation_count;
-		delivered = active_provider(context, operation, path,
-		    active->selected_path, sizeof(active->selected_path),
-		    &observation);
-		valid = delivered
-		    && ((!observation.carry && observation.dos_error == 0U)
-		    || (observation.carry && observation.dos_error >= 1U
-		    && observation.dos_error <= 0xffU))
-		    && (operation == YT_FILE_KILL_CHECK_OPEN
-		    || !observation.open_collision)
-		    && memchr(active->selected_path, '\0',
-		    sizeof(active->selected_path)) != NULL;
-		if (operation == YT_FILE_KILL_FIND_FIRST) {
-			valid = valid && ((observation.carry
-			    && active->selected_path[0] == '\0')
-			    || (!observation.carry
-			    && active->selected_path[0] != '\0'));
-		}
-		else
-			valid = valid && strcmp(retained,
-			    active->selected_path) == 0;
-		if (operation == YT_FILE_KILL_CHECK_OPEN)
-			valid = valid && !observation.carry;
-		if (operation == YT_FILE_KILL_FIND_NEXT)
-			valid = valid && observation.carry;
-		if (!valid)
-			return file_kill_fail(active,
-			    YT_FILE_KILL_PROVIDER_ERROR, operation,
-			    observation.dos_error, 53U, path, error);
-		if (operation == YT_FILE_KILL_FIND_FIRST) {
-			if (observation.carry)
-				return file_kill_fail(active,
-				    YT_FILE_KILL_FIND_ERROR, operation,
-				    observation.dos_error, 53U, path, error);
-			active->found = true;
-		}
-		else if (operation == YT_FILE_KILL_CHECK_OPEN) {
-			active->checked_open = true;
-			if (observation.open_collision)
-				return file_kill_fail(active,
-				    YT_FILE_KILL_OPEN_ERROR, operation, 0U,
-				    55U, path, error);
-		}
-		else if (operation == YT_FILE_KILL_DELETE) {
-			if (observation.carry)
-				return file_kill_fail(active,
-				    YT_FILE_KILL_DELETE_ERROR, operation,
-				    observation.dos_error,
-				    observation.dos_error == 5U ? 75U : 53U,
-				    path, error);
-			active->deleted = true;
-			active->deleted_count = 1U;
-		}
-		else {
-			active->find_next_attempted = true;
-			active->find_next_dos_error = observation.dos_error;
-		}
+	if (!yt_resolve_case_path(path, false, resolved, sizeof(resolved),
+	    error))
+		return false;
+	if (remove(resolved) != 0) {
+		set_error(error, errno == ENOENT ? YT_NOT_FOUND : YT_IO_ERROR,
+		    "KILL", resolved);
+		return false;
 	}
-	active->outcome = YT_FILE_KILL_RETURNED;
 	return true;
-}
-
-bool
-yt_file_kill(const char *path, struct yt_file_kill_result *result,
-    struct yt_error *error)
-{
-	return yt_file_kill_observed(path, file_kill_default, NULL, result,
-	    error);
 }
 
 bool
@@ -1976,228 +1829,34 @@ yt_file_delete(const char *path, bool missing_ok, struct yt_error *error)
 	return true;
 }
 
-static bool
-file_rename_default(void *context, enum yt_file_rename_operation operation,
-    const char *old_source, const char *new_source, char *selected_old,
-    size_t selected_old_size, char *selected_new, size_t selected_new_size,
-    struct yt_file_rename_observation *observation)
-{
-	struct yt_error local_error;
-	int saved_errno;
-
-	(void)context;
-	memset(observation, 0, sizeof(*observation));
-	switch (operation) {
-	case YT_FILE_RENAME_PARSE_OLD:
-		yt_error_clear(&local_error);
-		if (!yt_resolve_case_path(old_source, true, selected_old,
-		    selected_old_size, &local_error)) {
-			observation->path_error = true;
-		}
-		return true;
-	case YT_FILE_RENAME_PARSE_NEW:
-		yt_error_clear(&local_error);
-		if (!yt_resolve_case_path(new_source, true, selected_new,
-		    selected_new_size, &local_error)) {
-			observation->path_error = true;
-		}
-		return true;
-	case YT_FILE_RENAME_CHECK_OLD_OPEN:
-	case YT_FILE_RENAME_CHECK_NEW_OPEN:
-		return true;
-	case YT_FILE_RENAME_RENAME:
-		if (path_exists(selected_new)) {
-			observation->carry = true;
-			observation->dos_error = 5U;
-			return true;
-		}
-		errno = 0;
-		if (rename(selected_old, selected_new) != 0) {
-			saved_errno = errno;
-			observation->carry = true;
-			observation->dos_error = database_dos_error(
-			    saved_errno == ENOENT && path_exists(selected_old)
-			    ? selected_new : selected_old, saved_errno);
-			errno = saved_errno;
-		}
-		return true;
-	default:
-		return false;
-	}
-}
-
-static uint16_t
-file_rename_basic_error(uint16_t dos_error)
-{
-	if (dos_error == 2U)
-		return 53U;
-	if (dos_error == 3U)
-		return 76U;
-	if (dos_error == 5U)
-		return 58U;
-	return 5U;
-}
-
-static bool
-file_rename_fail(struct yt_file_rename_result *result,
-    enum yt_file_rename_outcome outcome,
-    enum yt_file_rename_operation operation, uint16_t dos_error,
-    uint16_t basic_error, const char *old_path, struct yt_error *error)
-{
-	result->outcome = outcome;
-	result->failed_operation = operation;
-	result->dos_error = dos_error;
-	result->basic_error = basic_error;
-	errno = 0;
-	set_error(error, basic_error == 53U ? YT_NOT_FOUND
-	    : basic_error == 64U ? YT_INVALID : YT_IO_ERROR,
-	    outcome == YT_FILE_RENAME_PROVIDER_ERROR
-	    ? "NAME provider" : "NAME",
-	    result->selected_old[0] != '\0' ? result->selected_old : old_path);
-	return false;
-}
-
-bool
-yt_file_rename_observed(const char *old_path, const char *new_path,
-    yt_file_rename_provider provider, void *context,
-    struct yt_file_rename_result *result, struct yt_error *error)
-{
-	static const enum yt_file_rename_operation operations[] = {
-		YT_FILE_RENAME_PARSE_OLD,
-		YT_FILE_RENAME_PARSE_NEW,
-		YT_FILE_RENAME_CHECK_OLD_OPEN,
-		YT_FILE_RENAME_CHECK_NEW_OPEN,
-		YT_FILE_RENAME_RENAME,
-	};
-	struct yt_file_rename_result local_result;
-	struct yt_file_rename_result *active = result != NULL
-	    ? result : &local_result;
-	yt_file_rename_provider active_provider = provider != NULL
-	    ? provider : file_rename_default;
-	struct yt_file_rename_observation observation;
-	char retained_old[sizeof(active->selected_old)];
-	char retained_new[sizeof(active->selected_new)];
-	size_t index;
-
-	memset(active, 0, sizeof(*active));
-	active->failed_operation = YT_FILE_RENAME_PARSE_OLD;
-	if (old_path == NULL || new_path == NULL) {
-		active->outcome = YT_FILE_RENAME_PROVIDER_ERROR;
-		active->basic_error = 64U;
-		errno = 0;
-		set_error(error, YT_INVALID, "NAME", NULL);
-		return false;
-	}
-	for (index = 0U; index < YT_ARRAY_LEN(operations); ++index) {
-		enum yt_file_rename_operation operation = operations[index];
-		bool delivered;
-		bool valid;
-
-		(void)snprintf(retained_old, sizeof(retained_old), "%s",
-		    active->selected_old);
-		(void)snprintf(retained_new, sizeof(retained_new), "%s",
-		    active->selected_new);
-		memset(&observation, 0, sizeof(observation));
-		++active->operation_count;
-		delivered = active_provider(context, operation, old_path,
-		    new_path, active->selected_old,
-		    sizeof(active->selected_old), active->selected_new,
-		    sizeof(active->selected_new), &observation);
-		valid = delivered
-		    && memchr(active->selected_old, '\0',
-		    sizeof(active->selected_old)) != NULL
-		    && memchr(active->selected_new, '\0',
-		    sizeof(active->selected_new)) != NULL;
-		if (operation == YT_FILE_RENAME_PARSE_OLD) {
-			valid = valid
-			    && !observation.carry && observation.dos_error == 0U
-			    && !observation.open_collision
-			    && ((observation.path_error
-			    && active->selected_old[0] == '\0')
-			    || (!observation.path_error
-			    && active->selected_old[0] != '\0'))
-			    && active->selected_new[0] == '\0';
-		}
-		else if (operation == YT_FILE_RENAME_PARSE_NEW) {
-			valid = valid && strcmp(retained_old,
-			    active->selected_old) == 0
-			    && !observation.carry && observation.dos_error == 0U
-			    && !observation.open_collision
-			    && ((observation.path_error
-			    && active->selected_new[0] == '\0')
-			    || (!observation.path_error
-			    && active->selected_new[0] != '\0'));
-		}
-		else {
-			valid = valid && strcmp(retained_old,
-			    active->selected_old) == 0
-			    && strcmp(retained_new, active->selected_new) == 0
-			    && !observation.path_error;
-		}
-		if (operation == YT_FILE_RENAME_CHECK_OLD_OPEN
-		    || operation == YT_FILE_RENAME_CHECK_NEW_OPEN)
-			valid = valid && !observation.carry
-			    && observation.dos_error == 0U;
-		else if (operation == YT_FILE_RENAME_RENAME)
-			valid = valid && !observation.open_collision
-			    && ((!observation.carry
-			    && observation.dos_error == 0U)
-			    || (observation.carry
-			    && observation.dos_error >= 1U
-			    && observation.dos_error <= 0xffU));
-		if (!valid)
-			return file_rename_fail(active,
-			    YT_FILE_RENAME_PROVIDER_ERROR, operation,
-			    observation.dos_error, 5U, old_path, error);
-		if (operation == YT_FILE_RENAME_PARSE_OLD) {
-			if (observation.path_error)
-				return file_rename_fail(active,
-				    YT_FILE_RENAME_OLD_PATH_ERROR, operation,
-				    observation.dos_error, 64U, old_path,
-				    error);
-			active->old_parsed = true;
-		}
-		else if (operation == YT_FILE_RENAME_PARSE_NEW) {
-			if (observation.path_error)
-				return file_rename_fail(active,
-				    YT_FILE_RENAME_NEW_PATH_ERROR, operation,
-				    observation.dos_error, 64U, old_path,
-				    error);
-			active->new_parsed = true;
-		}
-		else if (operation == YT_FILE_RENAME_CHECK_OLD_OPEN) {
-			active->old_checked_open = true;
-			if (observation.open_collision)
-				return file_rename_fail(active,
-				    YT_FILE_RENAME_OLD_OPEN_ERROR, operation,
-				    0U, 55U, old_path, error);
-		}
-		else if (operation == YT_FILE_RENAME_CHECK_NEW_OPEN) {
-			active->new_checked_open = true;
-			if (observation.open_collision)
-				return file_rename_fail(active,
-				    YT_FILE_RENAME_NEW_OPEN_ERROR, operation,
-				    0U, 55U, old_path, error);
-		}
-		else if (observation.carry)
-			return file_rename_fail(active,
-			    YT_FILE_RENAME_DOS_ERROR, operation,
-			    observation.dos_error,
-			    file_rename_basic_error(observation.dos_error),
-			    old_path, error);
-		else
-			active->renamed = true;
-	}
-	active->outcome = YT_FILE_RENAME_RETURNED;
-	return true;
-}
-
 bool
 yt_file_rename(const char *old_path, const char *new_path,
     struct yt_error *error)
 {
-	return yt_file_rename_observed(old_path, new_path, file_rename_default,
-	    NULL, NULL, error);
+	char resolved_old[512];
+	char resolved_new[512];
+
+	if (old_path == NULL || new_path == NULL) {
+		errno = 0;
+		set_error(error, YT_INVALID, "NAME", NULL);
+		return false;
+	}
+	if (!yt_resolve_case_path(old_path, false, resolved_old,
+	    sizeof(resolved_old), error)
+	    || !yt_resolve_case_path(new_path, true, resolved_new,
+	    sizeof(resolved_new), error))
+		return false;
+	if (path_exists(resolved_new)) {
+		errno = EEXIST;
+		set_error(error, YT_IO_ERROR, "NAME", resolved_new);
+		return false;
+	}
+	if (rename(resolved_old, resolved_new) != 0) {
+		set_error(error, errno == ENOENT && !path_exists(resolved_old)
+		    ? YT_NOT_FOUND : YT_IO_ERROR, "NAME", resolved_old);
+		return false;
+	}
+	return true;
 }
 
 bool
