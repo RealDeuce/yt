@@ -2095,18 +2095,6 @@ struct yt_port_rename_ops {
 bool yt_port_rename_run(struct yt_port_rename_state *state,
 	const struct yt_port_rename_ops *ops, void *context,
 	struct yt_error *error);
-struct yt_port_rename_cycle_state {
-	bool rename_complete;
-	bool scanner_complete;
-	bool complete;
-};
-struct yt_port_rename_cycle_ops {
-	bool (*rename)(void *context, struct yt_error *error);
-	bool (*scanner)(void *context, struct yt_error *error);
-};
-bool yt_port_rename_cycle_run(struct yt_port_rename_cycle_state *state,
-	const struct yt_port_rename_cycle_ops *ops, void *context,
-	struct yt_error *error);
 double yt_port_purchase_price(const float production[3]);
 float yt_port_purchase_seller_credit(float treasury, float credits,
     double price);

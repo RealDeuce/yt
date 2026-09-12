@@ -29607,69 +29607,6 @@ check_port_rename_transaction(void)
 	    && !yt_port_rename_run(&state, NULL, &tape, NULL);
 }
 
-struct port_rename_cycle_tape {
-	int events[2];
-	size_t calls;
-	size_t fail_at;
-};
-static bool
-port_rename_cycle_step(void *context, int event, struct yt_error *error)
-{
-	struct port_rename_cycle_tape *tape = context;
-	size_t call = tape->calls++;
-
-	if (call < YT_ARRAY_LEN(tape->events))
-		tape->events[call] = event;
-	if (call != tape->fail_at)
-		return true;
-	if (error != NULL)
-		error->status = YT_IO_ERROR;
-	return false;
-}
-static bool
-port_rename_cycle_rename_test(void *context, struct yt_error *error)
-{
-	return port_rename_cycle_step(context, 1, error);
-}
-static bool
-port_rename_cycle_scanner_test(void *context, struct yt_error *error)
-{
-	return port_rename_cycle_step(context, 2, error);
-}
-static bool
-check_port_rename_cycle_transaction(void)
-{
-	static const struct yt_port_rename_cycle_ops ops = {
-		port_rename_cycle_rename_test,
-		port_rename_cycle_scanner_test,
-	};
-	struct port_rename_cycle_tape tape;
-	struct yt_port_rename_cycle_state state;
-	struct yt_error error;
-	size_t failure;
-
-	memset(&tape, 0, sizeof(tape));
-	tape.fail_at = SIZE_MAX;
-	if (!yt_port_rename_cycle_run(&state, &ops, &tape, NULL)
-	    || !state.complete || !state.rename_complete
-	    || !state.scanner_complete || tape.calls != 2U
-	    || tape.events[0] != 1 || tape.events[1] != 2)
-		return false;
-	for (failure = 0U; failure < 2U; ++failure) {
-		memset(&tape, 0, sizeof(tape));
-		tape.fail_at = failure;
-		yt_error_clear(&error);
-		if (yt_port_rename_cycle_run(&state, &ops, &tape, &error)
-		    || error.status != YT_IO_ERROR || state.complete
-		    || tape.calls != failure + 1U
-		    || state.rename_complete != (failure != 0U)
-		    || state.scanner_complete)
-			return false;
-	}
-	return !yt_port_rename_cycle_run(NULL, &ops, &tape, NULL)
-	    && !yt_port_rename_cycle_run(&state, NULL, &tape, NULL);
-}
-
 enum main_prompt_event {
 	MAIN_PROMPT_RESET = 1,
 	MAIN_PROMPT_HYDRATE,
@@ -33150,8 +33087,6 @@ main(void)
 		return fail("Genesis transaction differs");
 	if (!check_port_rename_transaction())
 		return fail("port rename transaction differs");
-	if (!check_port_rename_cycle_transaction())
-		return fail("port rename scanner cycle differs");
 	if (!check_main_prompt_transaction())
 		return fail("main prompt transaction differs");
 	if (!check_computer_prompt_transaction())

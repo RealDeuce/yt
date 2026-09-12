@@ -6640,27 +6640,6 @@ yt_port_rename_run(struct yt_port_rename_state *state,
 	return true;
 }
 
-bool
-yt_port_rename_cycle_run(struct yt_port_rename_cycle_state *state,
-    const struct yt_port_rename_cycle_ops *ops, void *context,
-    struct yt_error *error)
-{
-	if (state == NULL || ops == NULL || ops->rename == NULL
-	    || ops->scanner == NULL)
-		return false;
-	state->rename_complete = false;
-	state->scanner_complete = false;
-	state->complete = false;
-	if (!ops->rename(context, error))
-		return false;
-	state->rename_complete = true;
-	if (!ops->scanner(context, error))
-		return false;
-	state->scanner_complete = true;
-	state->complete = true;
-	return true;
-}
-
 double
 yt_port_purchase_price(const float production[3])
 {

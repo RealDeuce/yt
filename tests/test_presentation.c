@@ -18849,7 +18849,6 @@ struct main_rename_cycle_fixture {
 	struct yt_sector sector;
 	struct yt_port port;
 	struct yt_port_rename_state rename;
-	struct yt_port_rename_cycle_state cycle;
 };
 
 static bool
@@ -18973,19 +18972,6 @@ main_rename_cycle_rename(void *context, struct yt_error *error)
 	    error);
 }
 
-static bool
-main_rename_cycle_scanner(void *context, struct yt_error *error)
-{
-	struct main_rename_cycle_fixture *fixture = context;
-
-	return main_buy_cycle_scanner(&fixture->presentation, error);
-}
-
-static const struct yt_port_rename_cycle_ops main_rename_cycle_ops = {
-	main_rename_cycle_rename,
-	main_rename_cycle_scanner,
-};
-
 static void
 main_rename_cycle_fixture_initialize(struct main_rename_cycle_fixture *fixture,
     struct physical_viewer_join *viewer)
@@ -19024,8 +19010,8 @@ main_rename_cycle_run(struct main_rename_cycle_fixture *fixture, bool ansi,
 	join->presentation.cached_foreground = 6.0f;
 	join->pager.foreground = 6;
 	join->pager.line_count = 8.0f;
-	if (!yt_port_rename_cycle_run(&fixture->cycle, &main_rename_cycle_ops,
-	    fixture, NULL))
+	if (!main_rename_cycle_rename(fixture, NULL)
+	    || !main_buy_cycle_scanner(&fixture->presentation, NULL))
 		return false;
 	ends[0] = ansi ? 59U : 49U;
 	ends[1] = ends[0];
@@ -19098,8 +19084,7 @@ test_main_rename_cycle_presentation(void)
 		    && viewer.join.remote_length == cases[pass].expected_length
 		    && memcmp(remote, cases[pass].expected,
 		    cases[pass].expected_length) == 0);
-		CHECK(fixture.cycle.complete && fixture.cycle.rename_complete
-		    && fixture.cycle.scanner_complete && fixture.rename.complete
+		CHECK(fixture.rename.complete
 		    && fixture.rename.route == YT_PORT_RENAME_EDITED_ROUTE
 		    && fixture.rename.logical_port == 3
 		    && fixture.rename.relative_port == 3.0f
@@ -19212,9 +19197,6 @@ test_main_rename_refusal_cycles_presentation(void)
 			CHECK(main_rename_cycle_run(&fixture, ansi, ends));
 			CHECK(viewer.join.remote_length == expected_length
 			    && memcmp(remote, expected, expected_length) == 0
-			    && fixture.cycle.complete
-			    && fixture.cycle.rename_complete
-			    && fixture.cycle.scanner_complete
 			    && fixture.rename.complete
 			    && fixture.rename.route == outcomes[outcome].route
 			    && !fixture.rename.editor_called

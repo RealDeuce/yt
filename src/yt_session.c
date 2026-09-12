@@ -12946,28 +12946,11 @@ command_rename_port(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
-port_rename_cycle_rename(void *context, struct yt_error *error)
-{
-	return command_rename_port(context, error);
-}
-
-static bool
-port_rename_cycle_scanner(void *context, struct yt_error *error)
-{
-	return display_current_sector_cached(context, error);
-}
-
-static bool
 command_rename_port_cycle(struct yt_session *session,
     struct yt_error *error)
 {
-	static const struct yt_port_rename_cycle_ops ops = {
-		port_rename_cycle_rename,
-		port_rename_cycle_scanner,
-	};
-	struct yt_port_rename_cycle_state state;
-
-	return yt_port_rename_cycle_run(&state, &ops, session, error);
+	return command_rename_port(session, error)
+	    && display_current_sector_cached(session, error);
 }
 
 static bool
