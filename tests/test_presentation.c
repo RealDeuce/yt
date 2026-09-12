@@ -13788,6 +13788,8 @@ computer_newspaper_missing_cycle_run(struct physical_viewer_join *viewer,
 	struct viewer_pager_join *join = &viewer->join;
 	struct yt_main_error_result handler;
 	struct yt_present_result result;
+	uint8_t row[96];
+	size_t row_length;
 	bool recovered;
 
 	if (missing == NULL || body_end == NULL)
@@ -13804,9 +13806,12 @@ computer_newspaper_missing_cycle_run(struct physical_viewer_join *viewer,
 	    handler.debug_length, &result) != YT_PRESENT_OK)
 		return false;
 	viewer_pager_capture_result(join, &result);
-	recovered = yt_file_viewer_missing((const uint8_t *)path,
-	    strlen(path), computer_newspaper_missing_present,
-	    computer_newspaper_missing_append, missing, NULL);
+	recovered = yt_file_viewer_missing_row(path, row, sizeof(row),
+	    &row_length)
+	    && computer_newspaper_missing_present(missing, row, row_length,
+	    true, NULL)
+	    && computer_newspaper_missing_append(missing, row, row_length,
+	    NULL);
 	if (recovered == fail_append || missing->append_calls != 1U)
 		return false;
 	*body_end = join->remote_length;

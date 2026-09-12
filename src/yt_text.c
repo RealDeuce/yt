@@ -710,39 +710,30 @@ done:
 }
 
 bool
-yt_file_viewer_missing(const uint8_t *path, size_t path_length,
-    yt_file_viewer_present_fn present, yt_file_viewer_news_fn append_news,
-    void *context, struct yt_error *error)
+yt_file_viewer_missing_row(const char *path, uint8_t *row,
+    size_t capacity, size_t *length)
 {
 	static const uint8_t prefix[] = "*** GAME FILE [";
 	static const uint8_t suffix[] = "] NOT FOUND! ***";
-	uint8_t *row;
-	size_t length;
+	size_t path_length;
+	size_t needed;
 
-	if ((path == NULL && path_length != 0U) || present == NULL
-	    || append_news == NULL
-	    || path_length > SIZE_MAX - (sizeof(prefix) - 1U)
+	if (path == NULL || row == NULL || length == NULL)
+		return false;
+	path_length = strlen(path);
+	if (path_length > SIZE_MAX - (sizeof(prefix) - 1U)
 	    || path_length + sizeof(prefix) - 1U
 	    > SIZE_MAX - (sizeof(suffix) - 1U))
 		return false;
-	length = sizeof(prefix) - 1U + path_length + sizeof(suffix) - 1U;
-	row = malloc(length == 0U ? 1U : length);
-	if (row == NULL) {
-		if (error != NULL)
-			error->status = YT_NO_MEMORY;
+	needed = sizeof(prefix) - 1U + path_length + sizeof(suffix) - 1U;
+	if (needed > capacity)
 		return false;
-	}
 	memcpy(row, prefix, sizeof(prefix) - 1U);
 	if (path_length != 0U)
 		memcpy(row + sizeof(prefix) - 1U, path, path_length);
 	memcpy(row + sizeof(prefix) - 1U + path_length, suffix,
 	    sizeof(suffix) - 1U);
-	if (!present(context, row, length, true, error)
-	    || !append_news(context, row, length, error)) {
-		free(row);
-		return false;
-	}
-	free(row);
+	*length = needed;
 	return true;
 }
 

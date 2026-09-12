@@ -261,11 +261,7 @@ bool yt_file_viewer_display(const char *path,
 	yt_file_viewer_present_fn present, void *context,
 	struct yt_error *error);
 
-typedef bool (*yt_file_viewer_news_fn)(void *context,
-    const uint8_t *text, size_t length, struct yt_error *error);
-
-bool yt_file_viewer_missing(const uint8_t *path, size_t path_length,
-    yt_file_viewer_present_fn present, yt_file_viewer_news_fn append_news,
-    void *context, struct yt_error *error);
+bool yt_file_viewer_missing_row(const char *path, uint8_t *row,
+	size_t capacity, size_t *length);
 
 #endif

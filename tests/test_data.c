@@ -1929,63 +1929,20 @@ test_file_viewer_physical_stream(void)
 #endif
 }
 
-struct viewer_missing_tape {
-	int events[2];
-	size_t calls;
-	size_t fail_call;
-	uint8_t row[96];
-	size_t length;
-};
-
-static bool
-viewer_missing_present(void *context, const uint8_t *text, size_t length,
-    bool paged, struct yt_error *error)
-{
-	struct viewer_missing_tape *tape = context;
-
-	(void)error;
-	CHECK(paged && length <= sizeof(tape->row));
-	tape->events[tape->calls++] = 1;
-	memcpy(tape->row, text, length);
-	tape->length = length;
-	return tape->fail_call != tape->calls;
-}
-
-static bool
-viewer_missing_news(void *context, const uint8_t *text, size_t length,
-    struct yt_error *error)
-{
-	struct viewer_missing_tape *tape = context;
-
-	(void)error;
-	CHECK(length == tape->length
-	    && memcmp(text, tape->row, length) == 0);
-	tape->events[tape->calls++] = 2;
-	return tape->fail_call != tape->calls;
-}
-
 static void
 test_file_viewer_missing(void)
 {
-	static const uint8_t path[] = {'A', 0, 'B'};
 	static const uint8_t expected[] =
-	    "*** GAME FILE [A\0B] NOT FOUND! ***";
-	struct viewer_missing_tape tape;
+	    "*** GAME FILE [YTNEWS.DAT] NOT FOUND! ***";
+	uint8_t row[64];
+	size_t length = 0U;
 
-	memset(&tape, 0, sizeof(tape));
-	CHECK(yt_file_viewer_missing(path, sizeof(path), viewer_missing_present,
-	    viewer_missing_news, &tape, NULL));
-	CHECK(tape.calls == 2U && tape.events[0] == 1 && tape.events[1] == 2
-	    && tape.length == sizeof(expected) - 1U
-	    && memcmp(tape.row, expected, sizeof(expected) - 1U) == 0);
-	memset(&tape, 0, sizeof(tape));
-	tape.fail_call = 1U;
-	CHECK(!yt_file_viewer_missing(path, sizeof(path), viewer_missing_present,
-	    viewer_missing_news, &tape, NULL) && tape.calls == 1U);
-	memset(&tape, 0, sizeof(tape));
-	tape.fail_call = 2U;
-	CHECK(!yt_file_viewer_missing(path, sizeof(path), viewer_missing_present,
-	    viewer_missing_news, &tape, NULL) && tape.calls == 2U);
+	CHECK(yt_file_viewer_missing_row("YTNEWS.DAT", row, sizeof(row),
+	    &length));
+	CHECK(length == sizeof(expected) - 1U
+	    && memcmp(row, expected, sizeof(expected) - 1U) == 0);
+	CHECK(!yt_file_viewer_missing_row("YTNEWS.DAT", row,
+	    sizeof(expected) - 2U, &length));
 }
 
 int

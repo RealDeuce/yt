@@ -1754,24 +1754,6 @@ session_file_viewer_output(void *context, const uint8_t *text,
 }
 
 static bool
-session_file_viewer_missing_present(void *context, const uint8_t *text,
-    size_t length, bool paged, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	(void)paged;
-	return session_present_paged_line(session, text, length,
-	    "file viewer missing row", error);
-}
-
-static bool
-session_file_viewer_missing_news(void *context, const uint8_t *text,
-    size_t length, struct yt_error *error)
-{
-	return append_news_bytes(context, text, length, error);
-}
-
-static bool
 display_game_file(struct yt_session *session, const char *path,
     struct yt_error *error)
 {
@@ -1801,6 +1783,8 @@ display_game_file(struct yt_session *session, const char *path,
 		session_set_pager_line_count(session, session->pager.line_count);
 	if (!ok && active_error->status == YT_NOT_FOUND) {
 		struct yt_main_error_result handler;
+		uint8_t row[sizeof(active_error->path) + 32U];
+		size_t row_length;
 
 		if (!yt_main_error_compose(53, 40000,
 		    (const uint8_t *)path, strlen(path), NULL, 0U, NULL, 0U,
@@ -1811,9 +1795,11 @@ display_game_file(struct yt_session *session, const char *path,
 		    active_error))
 			return false;
 		yt_error_clear(active_error);
-		return yt_file_viewer_missing((const uint8_t *)path, strlen(path),
-		    session_file_viewer_missing_present,
-		    session_file_viewer_missing_news, session, active_error);
+		return yt_file_viewer_missing_row(path, row, sizeof(row),
+		    &row_length)
+		    && session_present_paged_line(session, row, row_length,
+		    "file viewer missing row", active_error)
+		    && append_news_bytes(session, row, row_length, active_error);
 	}
 	return ok;
 }
