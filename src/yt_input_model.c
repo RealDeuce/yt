@@ -48,7 +48,7 @@ static const struct yt_input_fault_site b1f3_fault_sites[] = {
 	{YT_INPUT_FAULT_MODULE_YT, 0xB2CAU, 0xB2CDU, 0U, 36010, 14U, true},
 };
 
-static const struct yt_input_fault_site ab36_fault_sites[] = {
+static const struct yt_input_fault_site line_editor_fault_sites[] = {
 	{YT_INPUT_FAULT_MODULE_YT, 0xAB9BU, 0xAB9EU, 0xAB98U, 36000, 14U, true},
 	{YT_INPUT_FAULT_MODULE_YT, 0xABA1U, 0xABA4U, 0xAB98U, 36000, 14U, true},
 	{YT_INPUT_FAULT_MODULE_YT, 0xABAAU, 0xABADU, 0xABAAU, 36000, 7U, true},
@@ -132,12 +132,12 @@ size_t
 yt_input_fault_site_count(enum yt_input_fault_family family)
 {
 	switch (family) {
-	case YT_INPUT_FAULT_B05D:
+	case YT_INPUT_FAULT_PAGED_OUTPUT:
 		return YT_ARRAY_LEN(b05d_fault_sites);
-	case YT_INPUT_FAULT_B1F3:
+	case YT_INPUT_FAULT_PAGER:
 		return YT_ARRAY_LEN(b1f3_fault_sites);
-	case YT_INPUT_FAULT_AB36:
-		return YT_ARRAY_LEN(ab36_fault_sites);
+	case YT_INPUT_FAULT_LINE_EDITOR:
+		return YT_ARRAY_LEN(line_editor_fault_sites);
 	default:
 		return 0U;
 	}
@@ -153,17 +153,17 @@ yt_input_fault_site(enum yt_input_fault_family family, size_t index,
 	if (site == NULL)
 		return false;
 	switch (family) {
-	case YT_INPUT_FAULT_B05D:
+	case YT_INPUT_FAULT_PAGED_OUTPUT:
 		sites = b05d_fault_sites;
 		count = YT_ARRAY_LEN(b05d_fault_sites);
 		break;
-	case YT_INPUT_FAULT_B1F3:
+	case YT_INPUT_FAULT_PAGER:
 		sites = b1f3_fault_sites;
 		count = YT_ARRAY_LEN(b1f3_fault_sites);
 		break;
-	case YT_INPUT_FAULT_AB36:
-		sites = ab36_fault_sites;
-		count = YT_ARRAY_LEN(ab36_fault_sites);
+	case YT_INPUT_FAULT_LINE_EDITOR:
+		sites = line_editor_fault_sites;
+		count = YT_ARRAY_LEN(line_editor_fault_sites);
 		break;
 	default:
 		return false;
@@ -204,7 +204,7 @@ yt_input_radio_body_key(uint8_t key, size_t current_length)
 }
 
 bool
-yt_input_ab36_queue_pop(char *queue, size_t capacity, size_t *position,
+yt_input_queue_pop(char *queue, size_t capacity, size_t *position,
     size_t *length, struct yt_input_value *selected)
 {
 	if (queue == NULL || capacity == 0U || position == NULL
@@ -263,7 +263,7 @@ yt_input_queue_prepend_program(char *queue, size_t capacity,
 }
 
 bool
-yt_input_ab36_repeat_requested(bool queued,
+yt_input_repeat_requested(bool queued,
     const struct yt_input_value *selected)
 {
 	return !queued && selected != NULL && selected->length == 1U
@@ -271,10 +271,10 @@ yt_input_ab36_repeat_requested(bool queued,
 }
 
 bool
-yt_input_ab36_repeat_run(char *accumulator, size_t accumulator_capacity,
+yt_input_repeat_current_command(char *accumulator, size_t accumulator_capacity,
     const char *saved_command, size_t saved_capacity, char *paged_text,
     size_t paged_text_capacity, float *newline_flag, uint8_t *selected_key,
-    yt_ab36_repeat_emit_fn emit, void *context)
+    yt_input_repeat_emit_fn emit, void *context)
 {
 	uint8_t prefix[YT_INPUT_PENDING];
 	size_t prefix_length;
@@ -301,13 +301,13 @@ yt_input_ab36_repeat_run(char *accumulator, size_t accumulator_capacity,
 }
 
 bool
-yt_input_ab36_submit_requested(uint8_t selected_key)
+yt_input_submit_requested(uint8_t selected_key)
 {
 	return selected_key == '\r';
 }
 
 bool
-yt_input_ab36_submit_run(float *newline_flag, yt_ab36_submit_line_fn line,
+yt_input_submit(float *newline_flag, yt_input_submit_fn line,
     void *context)
 {
 	if (newline_flag == NULL || line == NULL)
@@ -317,9 +317,9 @@ yt_input_ab36_submit_run(float *newline_flag, yt_ab36_submit_line_fn line,
 }
 
 bool
-yt_input_ab36_backspace_run(uint8_t selected_key, char *accumulator,
+yt_input_apply_backspace(uint8_t selected_key, char *accumulator,
     size_t accumulator_capacity, bool *handled,
-    yt_ab36_echo_fn echo, void *context)
+    yt_input_echo_fn echo, void *context)
 {
 	static const uint8_t local_erase[] = {0x1d, ' ', 0x1d};
 	static const uint8_t remote_erase[] = {'\b', ' ', '\b'};
@@ -339,10 +339,10 @@ yt_input_ab36_backspace_run(uint8_t selected_key, char *accumulator,
 }
 
 bool
-yt_input_ab36_printable_run(uint8_t selected_key, char *accumulator,
+yt_input_append_printable(uint8_t selected_key, char *accumulator,
     size_t accumulator_capacity, size_t response_capacity,
     char *paged_text, size_t paged_text_capacity, float *newline_flag,
-    bool *handled, yt_ab36_echo_fn echo, yt_ab36_carrier_fn carrier,
+    bool *handled, yt_input_echo_fn echo, yt_input_continue_fn carrier,
     void *context)
 {
 	size_t length;
@@ -1096,7 +1096,7 @@ yt_input_split_semicolon_staged(char *text, size_t text_capacity,
 	return target == YT_BASIC_FAULT_SITE_COUNT;
 }
 
-static const struct yt_a8d2_fault_identity a8d2_faults[] = {
+static const struct yt_confirmation_fault_identity confirmation_faults[] = {
 	{"none", 0U, 0U, 0U, 0, 0U, {0U}, 0U},
 	{"LEFT$ first byte", 0xA8EFU, 0xA8F2U, 0xA8E7U, 40001,
 	    0x4C9AU, {14U, 16U, 0x0AC9U}, 3U},
@@ -1108,23 +1108,23 @@ static const struct yt_a8d2_fault_identity a8d2_faults[] = {
 	    0x4D3AU, {0x0ACCU}, 1U},
 };
 
-_Static_assert(YT_ARRAY_LEN(a8d2_faults) == YT_A8D2_FAULT_SITE_COUNT,
+_Static_assert(YT_ARRAY_LEN(confirmation_faults) == YT_CONFIRMATION_FAULT_SITE_COUNT,
     "A8D2 fault identity table is incomplete");
 
-const struct yt_a8d2_fault_identity *
-yt_input_a8d2_fault_identity(enum yt_a8d2_fault_site site)
+const struct yt_confirmation_fault_identity *
+yt_input_confirmation_fault_identity(enum yt_confirmation_fault_site site)
 {
-	if (site <= YT_A8D2_FAULT_NONE
-	    || (unsigned)site >= YT_ARRAY_LEN(a8d2_faults))
+	if (site <= YT_CONFIRMATION_FAULT_NONE
+	    || (unsigned)site >= YT_ARRAY_LEN(confirmation_faults))
 		return NULL;
-	return &a8d2_faults[(size_t)site];
+	return &confirmation_faults[(size_t)site];
 }
 
 static bool
-a8d2_fault_admits(enum yt_a8d2_fault_site site, uint16_t error_number)
+confirmation_fault_admits(enum yt_confirmation_fault_site site, uint16_t error_number)
 {
-	const struct yt_a8d2_fault_identity *identity =
-	    yt_input_a8d2_fault_identity(site);
+	const struct yt_confirmation_fault_identity *identity =
+	    yt_input_confirmation_fault_identity(site);
 	size_t index;
 
 	if (identity == NULL)
@@ -1136,24 +1136,24 @@ a8d2_fault_admits(enum yt_a8d2_fault_site site, uint16_t error_number)
 }
 
 static bool
-a8d2_fail(struct yt_a8d2_transform *result,
-	    enum yt_a8d2_fault_site site, uint16_t error_number)
+confirmation_fail(struct yt_confirmation_transform *result,
+	    enum yt_confirmation_fault_site site, uint16_t error_number)
 {
 	result->fault_site = site;
 	result->error_number = error_number;
 	result->outcome = error_number == 14U || error_number == 16U
-	    ? YT_A8D2_BASIC_ERROR : YT_A8D2_INTERNAL_FATAL;
+	    ? YT_CONFIRMATION_BASIC_ERROR : YT_CONFIRMATION_INTERNAL_FATAL;
 	return true;
 }
 
 bool
-yt_input_a8d2_staged(const char *command_accumulator,
+yt_input_confirmation_staged(const char *command_accumulator,
     char *output_source, size_t output_source_capacity,
     uint8_t *prompt, size_t prompt_capacity, size_t *prompt_length,
     char *queue, size_t queue_capacity, size_t *queue_position,
     size_t *queue_length, float *bold,
-    enum yt_a8d2_fault_site target, uint16_t error_number,
-    struct yt_a8d2_transform *result)
+    enum yt_confirmation_fault_site target, uint16_t error_number,
+    struct yt_confirmation_transform *result)
 {
 	size_t length;
 	char first;
@@ -1166,27 +1166,27 @@ yt_input_a8d2_staged(const char *command_accumulator,
 	    || queue_position == NULL || queue_length == NULL || bold == NULL
 	    || result == NULL || *queue_position > *queue_length
 	    || *queue_length >= queue_capacity
-	    || (target != YT_A8D2_FAULT_NONE
-	    && !a8d2_fault_admits(target, error_number))
-	    || (target == YT_A8D2_FAULT_NONE && error_number != 0U))
+	    || (target != YT_CONFIRMATION_FAULT_NONE
+	    && !confirmation_fault_admits(target, error_number))
+	    || (target == YT_CONFIRMATION_FAULT_NONE && error_number != 0U))
 		return false;
 	length = strlen(command_accumulator);
 	if (length >= output_source_capacity)
 		return false;
 	memset(result, 0, sizeof(*result));
-	result->fault_site = YT_A8D2_FAULT_NONE;
+	result->fault_site = YT_CONFIRMATION_FAULT_NONE;
 	memcpy(output_source, command_accumulator, length + 1U);
 	qb_compat_upper(output_source);
 	result->uppercase_complete = true;
-	if (target == YT_A8D2_FAULT_LEFT_ONE) {
+	if (target == YT_CONFIRMATION_FAULT_LEFT_ONE) {
 		if (length == 0U)
 			return false;
-		return a8d2_fail(result, target, error_number);
+		return confirmation_fail(result, target, error_number);
 	}
 	first = output_source[0];
 	result->left_complete = true;
-	if (target == YT_A8D2_FAULT_FIRST_COPY)
-		return a8d2_fail(result, target, error_number);
+	if (target == YT_CONFIRMATION_FAULT_FIRST_COPY)
+		return confirmation_fail(result, target, error_number);
 	if (first != '\0')
 		output_source[1] = '\0';
 	result->first_copy_complete = true;
@@ -1202,43 +1202,43 @@ yt_input_a8d2_staged(const char *command_accumulator,
 	if (result->answer == YT_YES_NO_INVALID) {
 		*bold = 1.0f;
 		result->bold_committed = true;
-		if (target == YT_A8D2_FAULT_INVALID_QUEUE_CLEAR)
-			return a8d2_fail(result, target, error_number);
-		if (target == YT_A8D2_FAULT_PROMPT_CLEAR)
+		if (target == YT_CONFIRMATION_FAULT_INVALID_QUEUE_CLEAR)
+			return confirmation_fail(result, target, error_number);
+		if (target == YT_CONFIRMATION_FAULT_PROMPT_CLEAR)
 			return false;
 		if (!yt_input_queue_clear(queue, queue_capacity,
 		    queue_position, queue_length))
 			return false;
 		result->queue_cleared = true;
-		result->outcome = YT_A8D2_RETRY;
+		result->outcome = YT_CONFIRMATION_RETRY;
 		return true;
 	}
-	if (target == YT_A8D2_FAULT_INVALID_QUEUE_CLEAR)
+	if (target == YT_CONFIRMATION_FAULT_INVALID_QUEUE_CLEAR)
 		return false;
-	if (target == YT_A8D2_FAULT_PROMPT_CLEAR)
-		return a8d2_fail(result, target, error_number);
+	if (target == YT_CONFIRMATION_FAULT_PROMPT_CLEAR)
+		return confirmation_fail(result, target, error_number);
 	*prompt_length = 0U;
 	prompt[0] = 0U;
 	result->prompt_cleared = true;
-	result->outcome = YT_A8D2_RETURNED;
+	result->outcome = YT_CONFIRMATION_RETURNED;
 	return true;
 }
 
 bool
-yt_input_a8d2_internal_fatal_run(
-    const struct yt_a8d2_transform *transform, uint16_t module_segment,
+yt_input_confirmation_internal_fatal(
+    const struct yt_confirmation_transform *transform, uint16_t module_segment,
     bool redirected_stdin, bool function_bar, bool cursor_shape_known,
     uint16_t process_entry_cursor_shape,
     const struct yt_brun_internal_fatal_ops *ops, void *context,
     struct yt_brun_internal_fatal_state *state)
 {
-	const struct yt_a8d2_fault_identity *identity;
+	const struct yt_confirmation_fault_identity *identity;
 	enum yt_brun_internal_fatal_entry entry;
 
 	if (transform == NULL
-	    || transform->outcome != YT_A8D2_INTERNAL_FATAL)
+	    || transform->outcome != YT_CONFIRMATION_INTERNAL_FATAL)
 		return false;
-	identity = yt_input_a8d2_fault_identity(transform->fault_site);
+	identity = yt_input_confirmation_fault_identity(transform->fault_site);
 	if (identity == NULL
 	    || (transform->error_number != YT_BRUN_INTERNAL_FATAL_GC
 	    && transform->error_number != YT_BRUN_INTERNAL_FATAL_OWNER))
@@ -1255,7 +1255,7 @@ yt_input_yes_no_candidate(const char *command_accumulator,
     char *output_source, size_t output_source_capacity,
     enum yt_yes_no_answer *answer)
 {
-	struct yt_a8d2_transform result;
+	struct yt_confirmation_transform result;
 	uint8_t prompt[1] = {0U};
 	size_t prompt_length = 0U;
 	char queue[1] = "";
@@ -1263,11 +1263,11 @@ yt_input_yes_no_candidate(const char *command_accumulator,
 	size_t queue_length = 0U;
 	float bold = 0.0f;
 
-	if (answer == NULL || !yt_input_a8d2_staged(command_accumulator,
+	if (answer == NULL || !yt_input_confirmation_staged(command_accumulator,
 	    output_source, output_source_capacity, prompt, sizeof(prompt),
 	    &prompt_length, queue, sizeof(queue), &queue_position, &queue_length,
 	    &bold,
-	    YT_A8D2_FAULT_NONE, 0U, &result) || !result.answer_valid)
+	    YT_CONFIRMATION_FAULT_NONE, 0U, &result) || !result.answer_valid)
 		return false;
 	*answer = result.answer;
 	return true;

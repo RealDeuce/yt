@@ -1022,7 +1022,7 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 		uint8_t key;
 
 		if (queued) {
-			if (!yt_input_ab36_queue_pop(session->queue,
+			if (!yt_input_queue_pop(session->queue,
 			    sizeof(session->queue), &session->queue_position,
 			    &session->queue_length, &selected))
 				return false;
@@ -1034,8 +1034,8 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 		if (selected.length != 1)
 			continue;
 		key = selected.bytes[0];
-		if (yt_input_ab36_repeat_requested(queued, &selected)) {
-			if (!yt_input_ab36_repeat_run(
+		if (yt_input_repeat_requested(queued, &selected)) {
+			if (!yt_input_repeat_current_command(
 			    session->command_accumulator,
 			    sizeof(session->command_accumulator),
 			    session->saved_command,
@@ -1046,8 +1046,8 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 			    session_editor_repeat_emit, session))
 				return false;
 		}
-		if (yt_input_ab36_submit_requested(key)) {
-			if (!yt_input_ab36_submit_run(
+		if (yt_input_submit_requested(key)) {
+			if (!yt_input_submit(
 			    &session->pager.newline_flag,
 			    session_editor_submit_line, session))
 				return false;
@@ -1057,7 +1057,7 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 		{
 			bool handled;
 
-			if (!yt_input_ab36_backspace_run(key,
+			if (!yt_input_apply_backspace(key,
 			    session->command_accumulator,
 			    sizeof(session->command_accumulator), &handled,
 			    session_editor_echo, session))
@@ -1068,7 +1068,7 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 		{
 			bool handled;
 
-			if (!yt_input_ab36_printable_run(key,
+			if (!yt_input_append_printable(key,
 			    session->command_accumulator,
 			    sizeof(session->command_accumulator), size,
 			    session->paged_text, sizeof(session->paged_text),
@@ -2100,24 +2100,24 @@ session_confirm(struct yt_session *session, const uint8_t *prompt,
 		memcpy(prompt_scratch, prompt, prompt_length);
 	for (;;) {
 		char response[YT_COMMAND_SIZE];
-		struct yt_a8d2_transform transform;
+		struct yt_confirmation_transform transform;
 
 		if (!session_present_text(session, prompt_scratch,
 		    prompt_scratch_length,
 		    SESSION_PRESENT_RAW, "yes/no prompt", error)
 		    || !session_read_upper_command(session, response, sizeof(response))
-		    || !yt_input_a8d2_staged(response, session->output_source,
+		    || !yt_input_confirmation_staged(response, session->output_source,
 		    sizeof(session->output_source), prompt_scratch,
 		    sizeof(prompt_scratch), &prompt_scratch_length, session->queue,
 		    sizeof(session->queue), &session->queue_position,
 		    &session->queue_length, &session->presentation.bold,
-		    YT_A8D2_FAULT_NONE, 0U, &transform)
+		    YT_CONFIRMATION_FAULT_NONE, 0U, &transform)
 		    || !transform.answer_valid)
 			return false;
 		*answer = transform.answer;
-		if (transform.outcome == YT_A8D2_RETURNED)
+		if (transform.outcome == YT_CONFIRMATION_RETURNED)
 			return true;
-		if (transform.outcome != YT_A8D2_RETRY)
+		if (transform.outcome != YT_CONFIRMATION_RETRY)
 			return false;
 	}
 }

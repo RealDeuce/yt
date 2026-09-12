@@ -28454,7 +28454,7 @@ autopilot_queue_line(char *queue, size_t queue_capacity,
 	for (;;) {
 		struct yt_input_value selected;
 
-		if (!yt_input_ab36_queue_pop(queue, queue_capacity,
+		if (!yt_input_queue_pop(queue, queue_capacity,
 		    queue_position, queue_length, &selected)
 		    || selected.length != 1U)
 			return false;

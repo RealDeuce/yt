@@ -8,9 +8,9 @@
 #define YT_INPUT_PENDING 4096U
 
 enum yt_input_fault_family {
-	YT_INPUT_FAULT_B05D,
-	YT_INPUT_FAULT_B1F3,
-	YT_INPUT_FAULT_AB36,
+	YT_INPUT_FAULT_PAGED_OUTPUT,
+	YT_INPUT_FAULT_PAGER,
+	YT_INPUT_FAULT_LINE_EDITOR,
 };
 
 enum yt_input_fault_module {
@@ -141,38 +141,38 @@ enum yt_yes_no_answer {
 	YT_YES_NO_INVALID,
 };
 
-enum yt_a8d2_fault_site {
-	YT_A8D2_FAULT_NONE,
-	YT_A8D2_FAULT_LEFT_ONE,
-	YT_A8D2_FAULT_FIRST_COPY,
-	YT_A8D2_FAULT_INVALID_QUEUE_CLEAR,
-	YT_A8D2_FAULT_PROMPT_CLEAR,
-	YT_A8D2_FAULT_SITE_COUNT,
+enum yt_confirmation_fault_site {
+	YT_CONFIRMATION_FAULT_NONE,
+	YT_CONFIRMATION_FAULT_LEFT_ONE,
+	YT_CONFIRMATION_FAULT_FIRST_COPY,
+	YT_CONFIRMATION_FAULT_INVALID_QUEUE_CLEAR,
+	YT_CONFIRMATION_FAULT_PROMPT_CLEAR,
+	YT_CONFIRMATION_FAULT_SITE_COUNT,
 };
 
-enum yt_a8d2_outcome {
-	YT_A8D2_RETURNED,
-	YT_A8D2_RETRY,
-	YT_A8D2_BASIC_ERROR,
-	YT_A8D2_INTERNAL_FATAL,
+enum yt_confirmation_outcome {
+	YT_CONFIRMATION_RETURNED,
+	YT_CONFIRMATION_RETRY,
+	YT_CONFIRMATION_BASIC_ERROR,
+	YT_CONFIRMATION_INTERNAL_FATAL,
 };
 
-#define YT_A8D2_FAULT_ERRORS 3U
+#define YT_CONFIRMATION_FAULT_ERRORS 3U
 
-struct yt_a8d2_fault_identity {
+struct yt_confirmation_fault_identity {
 	const char *name;
 	uint16_t instruction;
 	uint16_t saved_ip;
 	uint16_t statement;
 	int32_t source_line;
 	uint16_t destination;
-	uint16_t errors[YT_A8D2_FAULT_ERRORS];
+	uint16_t errors[YT_CONFIRMATION_FAULT_ERRORS];
 	size_t error_count;
 };
 
-struct yt_a8d2_transform {
-	enum yt_a8d2_outcome outcome;
-	enum yt_a8d2_fault_site fault_site;
+struct yt_confirmation_transform {
+	enum yt_confirmation_outcome outcome;
+	enum yt_confirmation_fault_site fault_site;
 	enum yt_yes_no_answer answer;
 	uint16_t error_number;
 	bool answer_valid;
@@ -184,13 +184,13 @@ struct yt_a8d2_transform {
 	bool prompt_cleared;
 };
 
-typedef bool (*yt_ab36_repeat_emit_fn)(void *context,
+typedef bool (*yt_input_repeat_emit_fn)(void *context,
     const uint8_t *prefix, size_t length);
-typedef bool (*yt_ab36_submit_line_fn)(void *context);
-typedef bool (*yt_ab36_echo_fn)(void *context,
+typedef bool (*yt_input_submit_fn)(void *context);
+typedef bool (*yt_input_echo_fn)(void *context,
     const uint8_t *local, size_t local_length, const uint8_t *remote,
     size_t remote_length);
-typedef bool (*yt_ab36_carrier_fn)(void *context);
+typedef bool (*yt_input_continue_fn)(void *context);
 
 enum yt_input_drain_reason {
 	YT_INPUT_DRAIN_CONTINUE,
@@ -213,30 +213,30 @@ bool yt_input_fault_site(enum yt_input_fault_family family, size_t index,
     struct yt_input_fault_site *site);
 enum yt_radio_body_key_action yt_input_radio_body_key(uint8_t key,
     size_t current_length);
-bool yt_input_ab36_queue_pop(char *queue, size_t capacity,
+bool yt_input_queue_pop(char *queue, size_t capacity,
     size_t *position, size_t *length, struct yt_input_value *selected);
 bool yt_input_queue_clear(char *queue, size_t capacity,
     size_t *position, size_t *length);
 bool yt_input_queue_prepend_program(char *queue, size_t capacity,
 	size_t *position, size_t *length, const char *program,
 	size_t program_length);
-bool yt_input_ab36_repeat_requested(bool queued,
+bool yt_input_repeat_requested(bool queued,
     const struct yt_input_value *selected);
-bool yt_input_ab36_repeat_run(char *accumulator,
+bool yt_input_repeat_current_command(char *accumulator,
     size_t accumulator_capacity, const char *saved_command,
     size_t saved_capacity, char *paged_text, size_t paged_text_capacity,
     float *newline_flag, uint8_t *selected_key,
-    yt_ab36_repeat_emit_fn emit, void *context);
-bool yt_input_ab36_submit_requested(uint8_t selected_key);
-bool yt_input_ab36_submit_run(float *newline_flag,
-    yt_ab36_submit_line_fn line, void *context);
-bool yt_input_ab36_backspace_run(uint8_t selected_key, char *accumulator,
+    yt_input_repeat_emit_fn emit, void *context);
+bool yt_input_submit_requested(uint8_t selected_key);
+bool yt_input_submit(float *newline_flag,
+    yt_input_submit_fn line, void *context);
+bool yt_input_apply_backspace(uint8_t selected_key, char *accumulator,
     size_t accumulator_capacity, bool *handled,
-    yt_ab36_echo_fn echo, void *context);
-bool yt_input_ab36_printable_run(uint8_t selected_key, char *accumulator,
+    yt_input_echo_fn echo, void *context);
+bool yt_input_append_printable(uint8_t selected_key, char *accumulator,
     size_t accumulator_capacity, size_t response_capacity,
     char *paged_text, size_t paged_text_capacity, float *newline_flag,
-    bool *handled, yt_ab36_echo_fn echo, yt_ab36_carrier_fn carrier,
+    bool *handled, yt_input_echo_fn echo, yt_input_continue_fn carrier,
     void *context);
 bool yt_input_command_save_requested(const char *text, size_t capacity,
 	bool *requested);
@@ -280,17 +280,17 @@ bool yt_input_split_semicolon_staged(char *text, size_t text_capacity,
 bool yt_input_yes_no_candidate(const char *command_accumulator,
     char *output_source, size_t output_source_capacity,
     enum yt_yes_no_answer *answer);
-const struct yt_a8d2_fault_identity *yt_input_a8d2_fault_identity(
-	enum yt_a8d2_fault_site site);
-bool yt_input_a8d2_staged(const char *command_accumulator,
+const struct yt_confirmation_fault_identity *yt_input_confirmation_fault_identity(
+	enum yt_confirmation_fault_site site);
+bool yt_input_confirmation_staged(const char *command_accumulator,
 	char *output_source, size_t output_source_capacity,
 	uint8_t *prompt, size_t prompt_capacity, size_t *prompt_length,
 	char *queue, size_t queue_capacity, size_t *queue_position,
 	size_t *queue_length, float *bold,
-	enum yt_a8d2_fault_site target, uint16_t error_number,
-	struct yt_a8d2_transform *result);
-bool yt_input_a8d2_internal_fatal_run(
-	const struct yt_a8d2_transform *transform, uint16_t module_segment,
+	enum yt_confirmation_fault_site target, uint16_t error_number,
+	struct yt_confirmation_transform *result);
+bool yt_input_confirmation_internal_fatal(
+	const struct yt_confirmation_transform *transform, uint16_t module_segment,
 	bool redirected_stdin, bool function_bar, bool cursor_shape_known,
 	uint16_t process_entry_cursor_shape,
 	const struct yt_brun_internal_fatal_ops *ops, void *context,

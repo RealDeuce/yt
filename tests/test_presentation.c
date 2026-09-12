@@ -1286,7 +1286,7 @@ viewer_pager_response(void *context, char *response, size_t capacity)
 		yt_pager_editor_enter(&join->pager, join->accumulator,
 		    sizeof(join->accumulator));
 		for (;;) {
-			if (!yt_input_ab36_queue_pop(join->queue,
+			if (!yt_input_queue_pop(join->queue,
 			    sizeof(join->queue), &join->queue_position,
 			    &join->queue_length, &selected)
 			    || selected.length != 1U)
@@ -6029,12 +6029,12 @@ test_commodity_trade_adapter_cuts(void)
 	editor.join = &join;
 	editor.carrier_calls = 0U;
 	editor.fail_carrier_at = 1U;
-	CHECK(yt_input_ab36_printable_run('1', join.accumulator,
+	CHECK(yt_input_append_printable('1', join.accumulator,
 	    sizeof(join.accumulator), sizeof(join.accumulator), paged_text,
 	    sizeof(paged_text), &newline_flag, &handled,
 	    commodity_editor_cut_echo, commodity_editor_cut_carrier, &editor));
 	CHECK(handled);
-	CHECK(!yt_input_ab36_printable_run('2', join.accumulator,
+	CHECK(!yt_input_append_printable('2', join.accumulator,
 	    sizeof(join.accumulator), sizeof(join.accumulator), paged_text,
 	    sizeof(paged_text), &newline_flag, &handled,
 	    commodity_editor_cut_echo, commodity_editor_cut_carrier, &editor));
@@ -6060,7 +6060,7 @@ test_commodity_trade_adapter_cuts(void)
 	editor.join = &join;
 	editor.carrier_calls = 0U;
 	editor.fail_carrier_at = 0U;
-	CHECK(!yt_input_ab36_printable_run('Y', join.accumulator,
+	CHECK(!yt_input_append_printable('Y', join.accumulator,
 	    sizeof(join.accumulator), sizeof(join.accumulator), paged_text,
 	    sizeof(paged_text), &newline_flag, &handled,
 	    commodity_editor_cut_echo, commodity_editor_cut_carrier, &editor));
@@ -10155,11 +10155,11 @@ test_computer_port_report_ab36_state_joins(void)
 	    && queue_length == 2U && memcmp(queue, "2\r", 2U) == 0
 	    && current.foreground == 1.0f && current.bold == 0.0f
 	    && current.blink == 0.0f);
-	CHECK(yt_input_ab36_queue_pop(queue, sizeof(queue), &queue_position,
+	CHECK(yt_input_queue_pop(queue, sizeof(queue), &queue_position,
 	    &queue_length, &selected)
 	    && selected.length == 1U && selected.bytes[0] == '2'
 	    && queue_position == 1U && queue_length == 2U);
-	CHECK(yt_input_ab36_queue_pop(queue, sizeof(queue), &queue_position,
+	CHECK(yt_input_queue_pop(queue, sizeof(queue), &queue_position,
 	    &queue_length, &selected)
 	    && selected.length == 1U && selected.bytes[0] == '\r'
 	    && queue_position == 0U && queue_length == 0U);
@@ -10189,7 +10189,7 @@ test_computer_port_report_ab36_state_joins(void)
 	    && accumulator[0] == '\0' && queue[0] == '\0'
 	    && queue_position == 0U && queue_length == 0U
 	    && current.bold == 0.0f && current.blink == 0.0f);
-	CHECK(yt_input_ab36_queue_pop(queue, sizeof(queue), &queue_position,
+	CHECK(yt_input_queue_pop(queue, sizeof(queue), &queue_position,
 	    &queue_length, &selected) && selected.length == 0U);
 
 	/* Fresh 8639 prompt: retain typeahead collected by report B05D calls. */
@@ -10225,11 +10225,11 @@ test_computer_port_report_ab36_state_joins(void)
 	    && memcmp(queue, "7\r", 2U) == 0
 	    && current.foreground == 1.0f
 	    && current.bold == 0.0f && current.blink == 0.0f);
-	CHECK(yt_input_ab36_queue_pop(queue, sizeof(queue), &queue_position,
+	CHECK(yt_input_queue_pop(queue, sizeof(queue), &queue_position,
 	    &queue_length, &selected)
 	    && selected.length == 1U && selected.bytes[0] == '7'
 	    && queue_position == 1U && queue_length == 2U);
-	CHECK(yt_input_ab36_queue_pop(queue, sizeof(queue), &queue_position,
+	CHECK(yt_input_queue_pop(queue, sizeof(queue), &queue_position,
 	    &queue_length, &selected)
 	    && selected.length == 1U && selected.bytes[0] == '\r'
 	    && queue_position == 0U && queue_length == 0U);
@@ -13874,7 +13874,7 @@ computer_newspaper_command_queue_cycle_run(
 	if (!normal_exit_line(join, NULL, 0U))
 		return false;
 	for (;;) {
-		if (!yt_input_ab36_queue_pop(join->queue, sizeof(join->queue),
+		if (!yt_input_queue_pop(join->queue, sizeof(join->queue),
 		    &join->queue_position, &join->queue_length, &selected)
 		    || selected.length != 1U)
 			return false;
@@ -23243,7 +23243,7 @@ test_direct_emergency_warp_ade0_prefix_failures(void)
 }
 
 struct direct_warp_a8d2_failure_state {
-	struct yt_a8d2_transform transform;
+	struct yt_confirmation_transform transform;
 	struct yt_basic_fault_projection projection;
 	char prompt[32];
 	char output[80];
@@ -23253,7 +23253,7 @@ struct direct_warp_a8d2_failure_state {
 static bool
 direct_emergency_warp_a8d2_failure_continue(
     struct hostile_mines_hazard_fixture *fixture, const uint8_t *submitted,
-    size_t submitted_length, enum yt_a8d2_fault_site target,
+    size_t submitted_length, enum yt_confirmation_fault_site target,
     uint16_t error_number, struct direct_warp_a8d2_failure_state *fault)
 {
 	static const uint8_t warning_one[] =
@@ -23299,7 +23299,7 @@ direct_emergency_warp_a8d2_failure_continue(
 		return false;
 	viewer_pager_capture_result(join, &result);
 	if (!normal_exit_line(join, NULL, 0U)
-	    || !yt_input_a8d2_staged(join->accumulator, fault->output,
+	    || !yt_input_confirmation_staged(join->accumulator, fault->output,
 	    sizeof(fault->output), (uint8_t *)fault->prompt,
 	    sizeof(fault->prompt), &prompt_length, join->queue,
 	    sizeof(join->queue), &join->queue_position,
@@ -23308,8 +23308,8 @@ direct_emergency_warp_a8d2_failure_continue(
 		return false;
 	memcpy(join->source, fault->output, strlen(fault->output) + 1U);
 	join->source_length = strlen(fault->output);
-	if (fault->transform.outcome != YT_A8D2_BASIC_ERROR)
-		return fault->transform.outcome == YT_A8D2_INTERNAL_FATAL;
+	if (fault->transform.outcome != YT_CONFIRMATION_BASIC_ERROR)
+		return fault->transform.outcome == YT_CONFIRMATION_INTERNAL_FATAL;
 	yt_error_clear(&error);
 	error.status = YT_RANGE;
 	fault->projected = yt_error_attach_basic_fault_number(&error,
@@ -23360,7 +23360,7 @@ test_direct_emergency_warp_a8d2_failures(void)
 	    "\x1b[0;37;40m\r\n\x1b[0;37;40;1m[y/N] -=> N;Q"
 	    "\x1b[0;37;40m\r\n";
 	static const struct {
-		enum yt_a8d2_fault_site site;
+		enum yt_confirmation_fault_site site;
 		uint16_t error_number;
 		const uint8_t *submitted;
 		size_t submitted_length;
@@ -23370,18 +23370,18 @@ test_direct_emergency_warp_a8d2_failures(void)
 		size_t ansi_length;
 		char retained;
 	} cuts[] = {
-		{YT_A8D2_FAULT_LEFT_ONE, 14U, (const uint8_t *)"A;Q", 3U,
+		{YT_CONFIRMATION_FAULT_LEFT_ONE, 14U, (const uint8_t *)"A;Q", 3U,
 		    plain_a, sizeof(plain_a) - 1U, ansi_a, sizeof(ansi_a) - 1U, 'A'},
-		{YT_A8D2_FAULT_LEFT_ONE, 16U, (const uint8_t *)"A;Q", 3U,
+		{YT_CONFIRMATION_FAULT_LEFT_ONE, 16U, (const uint8_t *)"A;Q", 3U,
 		    plain_a, sizeof(plain_a) - 1U, ansi_a, sizeof(ansi_a) - 1U, 'A'},
-		{YT_A8D2_FAULT_LEFT_ONE, 0x0AC9U, (const uint8_t *)"A;Q", 3U,
+		{YT_CONFIRMATION_FAULT_LEFT_ONE, 0x0AC9U, (const uint8_t *)"A;Q", 3U,
 		    plain_a, sizeof(plain_a) - 1U, ansi_a, sizeof(ansi_a) - 1U, 'A'},
-		{YT_A8D2_FAULT_FIRST_COPY, 0x0ACCU, (const uint8_t *)"A;Q", 3U,
+		{YT_CONFIRMATION_FAULT_FIRST_COPY, 0x0ACCU, (const uint8_t *)"A;Q", 3U,
 		    plain_a, sizeof(plain_a) - 1U, ansi_a, sizeof(ansi_a) - 1U, 'A'},
-		{YT_A8D2_FAULT_INVALID_QUEUE_CLEAR, 0x0ACCU,
+		{YT_CONFIRMATION_FAULT_INVALID_QUEUE_CLEAR, 0x0ACCU,
 		    (const uint8_t *)"X;Q", 3U, plain_x, sizeof(plain_x) - 1U,
 		    ansi_x, sizeof(ansi_x) - 1U, 'X'},
-		{YT_A8D2_FAULT_PROMPT_CLEAR, 0x0ACCU,
+		{YT_CONFIRMATION_FAULT_PROMPT_CLEAR, 0x0ACCU,
 		    (const uint8_t *)"N;Q", 3U, plain_n, sizeof(plain_n) - 1U,
 		    ansi_n, sizeof(ansi_n) - 1U, 'N'},
 	};
@@ -23422,7 +23422,7 @@ test_direct_emergency_warp_a8d2_failures(void)
 			    ? cuts[cut].ansi : cuts[cut].plain;
 			size_t direct_length = modes[mode].ansi
 			    ? cuts[cut].ansi_length : cuts[cut].plain_length;
-			const struct yt_a8d2_fault_identity *identity;
+			const struct yt_confirmation_fault_identity *identity;
 
 			memset(&viewer, 0, sizeof(viewer));
 			fixture_viewer_initialize(&viewer, &stream,
@@ -23445,7 +23445,7 @@ test_direct_emergency_warp_a8d2_failures(void)
 			CHECK(direct_emergency_warp_a8d2_failure_continue(&fixture,
 			    cuts[cut].submitted, cuts[cut].submitted_length,
 			    cuts[cut].site, cuts[cut].error_number, &fault));
-			identity = yt_input_a8d2_fault_identity(cuts[cut].site);
+			identity = yt_input_confirmation_fault_identity(cuts[cut].site);
 			CHECK(caller_end == modes[mode].caller_end
 			    && viewer_bytes_fnv1a64(remote, caller_end)
 			    == modes[mode].caller_hash
@@ -23457,9 +23457,9 @@ test_direct_emergency_warp_a8d2_failures(void)
 			    && fault.transform.outcome
 			    == (cuts[cut].error_number == 14U
 			    || cuts[cut].error_number == 16U
-			    ? YT_A8D2_BASIC_ERROR : YT_A8D2_INTERNAL_FATAL)
+			    ? YT_CONFIRMATION_BASIC_ERROR : YT_CONFIRMATION_INTERNAL_FATAL)
 			    && fault.projected
-			    == (fault.transform.outcome == YT_A8D2_BASIC_ERROR)
+			    == (fault.transform.outcome == YT_CONFIRMATION_BASIC_ERROR)
 			    && strcmp(fault.prompt, "[y/N] -=> ") == 0
 			    && fault.output[0] == cuts[cut].retained
 			    && fault.output[1] == '\0'
@@ -24454,7 +24454,7 @@ direct_emergency_warp_accepted_answer_run(
 	yt_pager_editor_enter(&join->pager, join->accumulator,
 	    sizeof(join->accumulator));
 	if (queued_answer) {
-		if (!yt_input_ab36_queue_pop(join->queue, sizeof(join->queue),
+		if (!yt_input_queue_pop(join->queue, sizeof(join->queue),
 		    &join->queue_position, &join->queue_length, &selected)
 		    || selected.length != 1U || selected.bytes[0] != 'Y')
 			return false;
@@ -24467,7 +24467,7 @@ direct_emergency_warp_accepted_answer_run(
 		return false;
 	viewer_pager_capture_result(join, &result);
 	if (queued_answer
-	    && (!yt_input_ab36_queue_pop(join->queue, sizeof(join->queue),
+	    && (!yt_input_queue_pop(join->queue, sizeof(join->queue),
 	    &join->queue_position, &join->queue_length, &selected)
 	    || selected.length != 1U || selected.bytes[0] != '\r'))
 		return false;
@@ -34330,7 +34330,7 @@ direct_emergency_warp_queue_tail(
 	    || !direct_emergency_warp_friendly_reentry(fixture, cycle))
 		return false;
 	ends[2] = join->remote_length;
-	if (!yt_input_ab36_queue_pop(join->queue, sizeof(join->queue),
+	if (!yt_input_queue_pop(join->queue, sizeof(join->queue),
 	    &join->queue_position, &join->queue_length, &selected)
 	    || selected.length != 1U || selected.bytes[0] != 'N')
 		return false;
@@ -39628,12 +39628,12 @@ quit_invalid_retry_typeahead_prefix(struct physical_viewer_join *viewer,
 	viewer_pager_capture_result(join, &result);
 	yt_pager_editor_enter(&join->pager, join->accumulator,
 	    sizeof(join->accumulator));
-	if (!yt_input_ab36_queue_pop(join->queue, sizeof(join->queue),
+	if (!yt_input_queue_pop(join->queue, sizeof(join->queue),
 	    &join->queue_position, &join->queue_length, &selected)
 	    || selected.length != 1U || selected.bytes[0] != 'X')
 		return false;
 	memcpy(join->accumulator, x, sizeof(x));
-	if (!yt_input_ab36_queue_pop(join->queue, sizeof(join->queue),
+	if (!yt_input_queue_pop(join->queue, sizeof(join->queue),
 	    &join->queue_position, &join->queue_length, &selected)
 	    || selected.length != 1U || selected.bytes[0] != '\r')
 		return false;
@@ -39819,7 +39819,7 @@ computer_quit_valid_typeahead_prefix(struct physical_viewer_join *viewer,
 	viewer_pager_capture_result(join, &result);
 	yt_pager_editor_enter(&join->pager, join->accumulator,
 	    sizeof(join->accumulator));
-	if (!yt_input_ab36_queue_pop(join->queue, sizeof(join->queue),
+	if (!yt_input_queue_pop(join->queue, sizeof(join->queue),
 	    &join->queue_position, &join->queue_length, &selected)
 	    || selected.length != 1U
 	    || selected.bytes[0] != (typed_answer == 0U ? '\r' : typed_answer)
@@ -39828,7 +39828,7 @@ computer_quit_valid_typeahead_prefix(struct physical_viewer_join *viewer,
 	if (typed_answer != 0U) {
 		join->accumulator[0] = (char)selected.bytes[0];
 		join->accumulator[1] = '\0';
-		if (!yt_input_ab36_queue_pop(join->queue, sizeof(join->queue),
+		if (!yt_input_queue_pop(join->queue, sizeof(join->queue),
 		    &join->queue_position, &join->queue_length, &selected)
 		    || selected.length != 1U || selected.bytes[0] != '\r'
 		    || selected.remote)
@@ -40055,7 +40055,7 @@ computer_quit_heading_sample_blank_prefix(
 	viewer_pager_capture_result(join, &result);
 	yt_pager_editor_enter(&join->pager, join->accumulator,
 	    sizeof(join->accumulator));
-	if (!yt_input_ab36_queue_pop(join->queue, sizeof(join->queue),
+	if (!yt_input_queue_pop(join->queue, sizeof(join->queue),
 	    &join->queue_position, &join->queue_length, &selected)
 	    || selected.length != 1U || selected.bytes[0] != '\r'
 	    || selected.remote || join->queue_position != 0U

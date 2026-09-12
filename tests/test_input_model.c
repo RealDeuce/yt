@@ -232,24 +232,24 @@ test_ab36_queued_input(void)
 	size_t length = 2U;
 	struct yt_input_value selected;
 
-	CHECK(yt_input_ab36_queue_pop(queue, sizeof(queue), &position,
+	CHECK(yt_input_queue_pop(queue, sizeof(queue), &position,
 	    &length, &selected));
 	CHECK(selected.length == 1U && selected.bytes[0] == 'A'
 	    && !selected.remote && position == 1U && length == 2U
 	    && memcmp(queue, "AB", 2U) == 0);
-	CHECK(yt_input_ab36_queue_pop(queue, sizeof(queue), &position,
+	CHECK(yt_input_queue_pop(queue, sizeof(queue), &position,
 	    &length, &selected));
 	CHECK(selected.length == 1U && selected.bytes[0] == 'B'
 	    && position == 0U && length == 0U && queue[0] == '\0');
-	CHECK(yt_input_ab36_queue_pop(queue, sizeof(queue), &position,
+	CHECK(yt_input_queue_pop(queue, sizeof(queue), &position,
 	    &length, &selected) && selected.length == 0U);
 	position = 2U;
 	length = 1U;
-	CHECK(!yt_input_ab36_queue_pop(queue, sizeof(queue), &position,
+	CHECK(!yt_input_queue_pop(queue, sizeof(queue), &position,
 	    &length, &selected));
 	position = 0U;
 	length = sizeof(queue);
-	CHECK(!yt_input_ab36_queue_pop(queue, sizeof(queue), &position,
+	CHECK(!yt_input_queue_pop(queue, sizeof(queue), &position,
 	    &length, &selected));
 
 	memcpy(queue, "AB", 3U);
@@ -300,17 +300,17 @@ test_ab36_repeat_recognition(void)
 {
 	struct yt_input_value selected = one(0x12U);
 
-	CHECK(yt_input_ab36_repeat_requested(false, &selected));
-	CHECK(!yt_input_ab36_repeat_requested(true, &selected));
+	CHECK(yt_input_repeat_requested(false, &selected));
+	CHECK(!yt_input_repeat_requested(true, &selected));
 	selected.bytes[0] = 0U;
 	selected.bytes[1] = 0x12U;
 	selected.length = 2U;
-	CHECK(!yt_input_ab36_repeat_requested(false, &selected));
+	CHECK(!yt_input_repeat_requested(false, &selected));
 	selected = one('R');
-	CHECK(!yt_input_ab36_repeat_requested(false, &selected));
+	CHECK(!yt_input_repeat_requested(false, &selected));
 	selected.length = 0U;
-	CHECK(!yt_input_ab36_repeat_requested(false, &selected));
-	CHECK(!yt_input_ab36_repeat_requested(false, NULL));
+	CHECK(!yt_input_repeat_requested(false, &selected));
+	CHECK(!yt_input_repeat_requested(false, NULL));
 }
 
 struct ab36_repeat_tape {
@@ -354,7 +354,7 @@ test_ab36_repeat_transaction(void)
 		.newline_flag = &newline_flag,
 	};
 
-	CHECK(yt_input_ab36_repeat_run(accumulator, sizeof(accumulator),
+	CHECK(yt_input_repeat_current_command(accumulator, sizeof(accumulator),
 	    saved, sizeof(saved), paged_text, sizeof(paged_text),
 	    &newline_flag, &selected_key,
 	    ab36_repeat_emit, &tape));
@@ -372,7 +372,7 @@ test_ab36_repeat_transaction(void)
 	tape.accumulator = accumulator;
 	tape.newline_flag = &newline_flag;
 	tape.fail = true;
-	CHECK(!yt_input_ab36_repeat_run(accumulator, sizeof(accumulator),
+	CHECK(!yt_input_repeat_current_command(accumulator, sizeof(accumulator),
 	    saved, sizeof(saved), paged_text, sizeof(paged_text),
 	    &newline_flag, &selected_key,
 	    ab36_repeat_emit, &tape));
@@ -407,17 +407,17 @@ test_ab36_submission(void)
 		.newline_flag = &newline_flag,
 	};
 
-	CHECK(yt_input_ab36_submit_requested('\r'));
-	CHECK(!yt_input_ab36_submit_requested(0x12U));
-	CHECK(!yt_input_ab36_submit_requested('\b'));
-	CHECK(!yt_input_ab36_submit_requested('A'));
-	CHECK(yt_input_ab36_submit_run(&newline_flag, ab36_submit_line, &tape));
+	CHECK(yt_input_submit_requested('\r'));
+	CHECK(!yt_input_submit_requested(0x12U));
+	CHECK(!yt_input_submit_requested('\b'));
+	CHECK(!yt_input_submit_requested('A'));
+	CHECK(yt_input_submit(&newline_flag, ab36_submit_line, &tape));
 	CHECK(tape.calls == 1U && newline_flag == 0.0f);
 
 	newline_flag = 1.0f;
 	tape.calls = 0U;
 	tape.fail = true;
-	CHECK(!yt_input_ab36_submit_run(&newline_flag, ab36_submit_line,
+	CHECK(!yt_input_submit(&newline_flag, ab36_submit_line,
 	    &tape));
 	CHECK(tape.calls == 1U && newline_flag == 0.0f);
 }
@@ -454,24 +454,24 @@ test_ab36_backspace_transaction(void)
 		.accumulator = accumulator,
 	};
 
-	CHECK(yt_input_ab36_backspace_run('\b', accumulator,
+	CHECK(yt_input_apply_backspace('\b', accumulator,
 	    sizeof(accumulator), &handled, ab36_backspace_echo, &tape));
 	CHECK(handled && tape.calls == 1U && strcmp(accumulator, "A") == 0);
 
 	memcpy(accumulator, "AB", 3U);
 	tape.calls = 0U;
-	CHECK(yt_input_ab36_backspace_run(0x7fU, accumulator,
+	CHECK(yt_input_apply_backspace(0x7fU, accumulator,
 	    sizeof(accumulator), &handled, ab36_backspace_echo, &tape));
 	CHECK(!handled && tape.calls == 0U && strcmp(accumulator, "AB") == 0);
 
 	accumulator[0] = '\0';
-	CHECK(yt_input_ab36_backspace_run('\b', accumulator,
+	CHECK(yt_input_apply_backspace('\b', accumulator,
 	    sizeof(accumulator), &handled, ab36_backspace_echo, &tape));
 	CHECK(!handled && tape.calls == 0U && accumulator[0] == '\0');
 
 	memcpy(accumulator, "AB", 3U);
 	tape.fail = true;
-	CHECK(!yt_input_ab36_backspace_run('\b', accumulator,
+	CHECK(!yt_input_apply_backspace('\b', accumulator,
 	    sizeof(accumulator), &handled, ab36_backspace_echo, &tape));
 	CHECK(handled && tape.calls == 1U && strcmp(accumulator, "A") == 0);
 }
@@ -529,7 +529,7 @@ test_ab36_printable_transaction(void)
 		.newline_flag = &newline_flag,
 	};
 
-	CHECK(yt_input_ab36_printable_run(0x7fU, accumulator,
+	CHECK(yt_input_append_printable(0x7fU, accumulator,
 	    sizeof(accumulator), sizeof(accumulator), paged_text,
 	    sizeof(paged_text), &newline_flag, &handled,
 	    ab36_printable_echo, ab36_printable_carrier, &tape));
@@ -544,14 +544,14 @@ test_ab36_printable_transaction(void)
 	tape.accumulator = accumulator;
 	tape.paged_text = paged_text;
 	tape.newline_flag = &newline_flag;
-	CHECK(yt_input_ab36_printable_run(0x1fU, accumulator,
+	CHECK(yt_input_append_printable(0x1fU, accumulator,
 	    sizeof(accumulator), sizeof(accumulator), paged_text,
 	    sizeof(paged_text), &newline_flag, &handled,
 	    ab36_printable_echo, ab36_printable_carrier, &tape));
 	CHECK(!handled && tape.echo_calls == 0U && tape.carrier_calls == 0U
 	    && strcmp(accumulator, "A") == 0
 	    && strcmp(paged_text, "old") == 0 && newline_flag == -1.0f);
-	CHECK(yt_input_ab36_printable_run(0x80U, accumulator,
+	CHECK(yt_input_append_printable(0x80U, accumulator,
 	    sizeof(accumulator), sizeof(accumulator), paged_text,
 	    sizeof(paged_text), &newline_flag, &handled,
 	    ab36_printable_echo, ab36_printable_carrier, &tape));
@@ -560,7 +560,7 @@ test_ab36_printable_transaction(void)
 	    && strcmp(paged_text, "old") == 0 && newline_flag == -1.0f);
 
 	tape.fail_echo = true;
-	CHECK(!yt_input_ab36_printable_run(0x20U, accumulator,
+	CHECK(!yt_input_append_printable(0x20U, accumulator,
 	    sizeof(accumulator), sizeof(accumulator), paged_text,
 	    sizeof(paged_text), &newline_flag, &handled,
 	    ab36_printable_echo, ab36_printable_carrier, &tape));
@@ -571,7 +571,7 @@ test_ab36_printable_transaction(void)
 	tape.fail_echo = false;
 	tape.fail_carrier = true;
 	tape.echo_calls = 0U;
-	CHECK(!yt_input_ab36_printable_run('B', accumulator,
+	CHECK(!yt_input_append_printable('B', accumulator,
 	    sizeof(accumulator), sizeof(accumulator), paged_text,
 	    sizeof(paged_text), &newline_flag, &handled,
 	    ab36_printable_echo, ab36_printable_carrier, &tape));
@@ -1557,8 +1557,8 @@ test_yes_no_candidate(void)
 }
 
 static bool
-a8d2_case(const char *response, enum yt_a8d2_fault_site target,
-    uint16_t error_number, struct yt_a8d2_transform *result,
+a8d2_case(const char *response, enum yt_confirmation_fault_site target,
+    uint16_t error_number, struct yt_confirmation_transform *result,
 	char output[32], char prompt[32], char queue[32],
 	size_t *queue_position, size_t *queue_length, float *bold)
 {
@@ -1571,7 +1571,7 @@ a8d2_case(const char *response, enum yt_a8d2_fault_site target,
 	*queue_length = 2U;
 	*bold = 0.0f;
 	prompt_length = strlen(prompt);
-	return yt_input_a8d2_staged(response, output, 32U,
+	return yt_input_confirmation_staged(response, output, 32U,
 	    (uint8_t *)prompt, 32U, &prompt_length, queue, 32U,
 	    queue_position, queue_length, bold, target,
 	    error_number, result);
@@ -1651,23 +1651,23 @@ static void
 test_a8d2_fault_stages(void)
 {
 	static const struct {
-		enum yt_a8d2_fault_site site;
+		enum yt_confirmation_fault_site site;
 		uint16_t instruction;
 		uint16_t saved_ip;
 		uint16_t statement;
 		uint16_t destination;
 		size_t errors;
 	} identities[] = {
-		{YT_A8D2_FAULT_LEFT_ONE, 0xA8EFU, 0xA8F2U, 0xA8E7U,
+		{YT_CONFIRMATION_FAULT_LEFT_ONE, 0xA8EFU, 0xA8F2U, 0xA8E7U,
 		    0x4C9AU, 3U},
-		{YT_A8D2_FAULT_FIRST_COPY, 0xA8F4U, 0xA8F7U, 0xA8E7U,
+		{YT_CONFIRMATION_FAULT_FIRST_COPY, 0xA8F4U, 0xA8F7U, 0xA8E7U,
 		    0x4C9AU, 1U},
-		{YT_A8D2_FAULT_INVALID_QUEUE_CLEAR, 0xA938U, 0xA93BU,
+		{YT_CONFIRMATION_FAULT_INVALID_QUEUE_CLEAR, 0xA938U, 0xA93BU,
 		    0xA932U, 0x4BE0U, 1U},
-		{YT_A8D2_FAULT_PROMPT_CLEAR, 0xA943U, 0xA946U, 0xA93DU,
+		{YT_CONFIRMATION_FAULT_PROMPT_CLEAR, 0xA943U, 0xA946U, 0xA93DU,
 		    0x4D3AU, 1U},
 	};
-	struct yt_a8d2_transform result;
+	struct yt_confirmation_transform result;
 	char output[32];
 	char prompt[32];
 	char queue[32];
@@ -1691,8 +1691,8 @@ test_a8d2_fault_stages(void)
 	struct a8d2_fatal_tape fatal_tape;
 
 	for (index = 0U; index < YT_ARRAY_LEN(identities); ++index) {
-		const struct yt_a8d2_fault_identity *identity =
-		    yt_input_a8d2_fault_identity(identities[index].site);
+		const struct yt_confirmation_fault_identity *identity =
+		    yt_input_confirmation_fault_identity(identities[index].site);
 
 		CHECK(identity != NULL
 		    && identity->instruction == identities[index].instruction
@@ -1702,31 +1702,31 @@ test_a8d2_fault_stages(void)
 		    && identity->destination == identities[index].destination
 		    && identity->error_count == identities[index].errors);
 	}
-	CHECK(yt_input_a8d2_fault_identity(YT_A8D2_FAULT_NONE) == NULL
-	    && yt_input_a8d2_fault_identity(YT_A8D2_FAULT_SITE_COUNT) == NULL);
+	CHECK(yt_input_confirmation_fault_identity(YT_CONFIRMATION_FAULT_NONE) == NULL
+	    && yt_input_confirmation_fault_identity(YT_CONFIRMATION_FAULT_SITE_COUNT) == NULL);
 
-	CHECK(a8d2_case("ab", YT_A8D2_FAULT_LEFT_ONE, 14U, &result,
+	CHECK(a8d2_case("ab", YT_CONFIRMATION_FAULT_LEFT_ONE, 14U, &result,
 	    output, prompt, queue, &queue_position, &queue_length, &bold));
-	CHECK(result.outcome == YT_A8D2_BASIC_ERROR
-	    && result.fault_site == YT_A8D2_FAULT_LEFT_ONE
+	CHECK(result.outcome == YT_CONFIRMATION_BASIC_ERROR
+	    && result.fault_site == YT_CONFIRMATION_FAULT_LEFT_ONE
 	    && result.error_number == 14U && result.uppercase_complete
 	    && !result.left_complete && !result.answer_valid
 	    && strcmp(output, "AB") == 0
 	    && strcmp(prompt, "[y/N] -=> ") == 0
 	    && strcmp(queue, "Q\r") == 0 && queue_length == 2U
 	    && bold == 0.0f);
-	CHECK(a8d2_case("ab", YT_A8D2_FAULT_LEFT_ONE, 16U, &result,
+	CHECK(a8d2_case("ab", YT_CONFIRMATION_FAULT_LEFT_ONE, 16U, &result,
 	    output, prompt, queue, &queue_position, &queue_length, &bold)
-	    && result.outcome == YT_A8D2_BASIC_ERROR
+	    && result.outcome == YT_CONFIRMATION_BASIC_ERROR
 	    && result.error_number == 16U && strcmp(output, "AB") == 0);
-	CHECK(!yt_input_a8d2_internal_fatal_run(&result, 0x2222U, true,
+	CHECK(!yt_input_confirmation_internal_fatal(&result, 0x2222U, true,
 	    false, false, 0U, &fatal_ops, &fatal_tape, &fatal));
-	CHECK(a8d2_case("ab", YT_A8D2_FAULT_LEFT_ONE, 0x0AC9U, &result,
+	CHECK(a8d2_case("ab", YT_CONFIRMATION_FAULT_LEFT_ONE, 0x0AC9U, &result,
 	    output, prompt, queue, &queue_position, &queue_length, &bold)
-	    && result.outcome == YT_A8D2_INTERNAL_FATAL
+	    && result.outcome == YT_CONFIRMATION_INTERNAL_FATAL
 	    && result.error_number == 0x0AC9U && strcmp(output, "AB") == 0);
 	memset(&fatal_tape, 0, sizeof(fatal_tape));
-	CHECK(yt_input_a8d2_internal_fatal_run(&result, 0x2222U, false,
+	CHECK(yt_input_confirmation_internal_fatal(&result, 0x2222U, false,
 	    true, true, 0x0607U, &fatal_ops, &fatal_tape, &fatal));
 	CHECK(fatal.entry == YT_BRUN_INTERNAL_FATAL_GC
 	    && fatal.saved_ip == 0xA8F2U && fatal.source_line == 40001
@@ -1744,16 +1744,16 @@ test_a8d2_fault_stages(void)
 	    && fatal.terminal_restored && fatal.ended
 	    && fatal_tape.restored && fatal_tape.ended);
 
-	CHECK(a8d2_case("ab", YT_A8D2_FAULT_FIRST_COPY, 0x0ACCU,
+	CHECK(a8d2_case("ab", YT_CONFIRMATION_FAULT_FIRST_COPY, 0x0ACCU,
 	    &result, output, prompt, queue, &queue_position, &queue_length,
 	    &bold));
-	CHECK(result.outcome == YT_A8D2_INTERNAL_FATAL
+	CHECK(result.outcome == YT_CONFIRMATION_INTERNAL_FATAL
 	    && result.left_complete && !result.first_copy_complete
 	    && !result.answer_valid && strcmp(output, "AB") == 0
 	    && strcmp(prompt, "[y/N] -=> ") == 0
 	    && queue_length == 2U && bold == 0.0f);
 	memset(&fatal_tape, 0, sizeof(fatal_tape));
-	CHECK(yt_input_a8d2_internal_fatal_run(&result, 0x3333U, true,
+	CHECK(yt_input_confirmation_internal_fatal(&result, 0x3333U, true,
 	    false, false, 0U, &fatal_ops, &fatal_tape, &fatal)
 	    && fatal.entry == YT_BRUN_INTERNAL_FATAL_OWNER
 	    && fatal.saved_ip == 0xA8F7U && fatal.redirected_stdin
@@ -1761,51 +1761,51 @@ test_a8d2_fault_stages(void)
 	    == '\r' && fatal_tape.event_count == 6U
 	    && memcmp(fatal_tape.events, "LCLLRE", 6U) == 0);
 
-	CHECK(a8d2_case("x", YT_A8D2_FAULT_INVALID_QUEUE_CLEAR, 0x0ACCU,
+	CHECK(a8d2_case("x", YT_CONFIRMATION_FAULT_INVALID_QUEUE_CLEAR, 0x0ACCU,
 	    &result, output, prompt, queue, &queue_position, &queue_length,
 	    &bold));
-	CHECK(result.outcome == YT_A8D2_INTERNAL_FATAL
+	CHECK(result.outcome == YT_CONFIRMATION_INTERNAL_FATAL
 	    && result.answer_valid && result.answer == YT_YES_NO_INVALID
 	    && result.first_copy_complete && result.bold_committed
 	    && !result.queue_cleared && strcmp(output, "X") == 0
 	    && strcmp(queue, "Q\r") == 0 && queue_length == 2U
 	    && strcmp(prompt, "[y/N] -=> ") == 0 && bold == 1.0f);
 	memset(&fatal_tape, 0, sizeof(fatal_tape));
-	CHECK(yt_input_a8d2_internal_fatal_run(&result, 0x4444U, true,
+	CHECK(yt_input_confirmation_internal_fatal(&result, 0x4444U, true,
 	    false, false, 0U, &fatal_ops, &fatal_tape, &fatal)
 	    && fatal.saved_ip == 0xA93BU);
 
-	CHECK(a8d2_case("n", YT_A8D2_FAULT_PROMPT_CLEAR, 0x0ACCU,
+	CHECK(a8d2_case("n", YT_CONFIRMATION_FAULT_PROMPT_CLEAR, 0x0ACCU,
 	    &result, output, prompt, queue, &queue_position, &queue_length,
 	    &bold));
-	CHECK(result.outcome == YT_A8D2_INTERNAL_FATAL
+	CHECK(result.outcome == YT_CONFIRMATION_INTERNAL_FATAL
 	    && result.answer_valid && result.answer == YT_YES_NO_NO
 	    && !result.prompt_cleared && strcmp(output, "N") == 0
 	    && strcmp(prompt, "[y/N] -=> ") == 0
 	    && strcmp(queue, "Q\r") == 0 && queue_length == 2U
 	    && bold == 0.0f);
 	memset(&fatal_tape, 0, sizeof(fatal_tape));
-	CHECK(yt_input_a8d2_internal_fatal_run(&result, 0x5555U, true,
+	CHECK(yt_input_confirmation_internal_fatal(&result, 0x5555U, true,
 	    false, false, 0U, &fatal_ops, &fatal_tape, &fatal)
 	    && fatal.saved_ip == 0xA946U);
 
-	CHECK(a8d2_case("x", YT_A8D2_FAULT_NONE, 0U, &result,
+	CHECK(a8d2_case("x", YT_CONFIRMATION_FAULT_NONE, 0U, &result,
 	    output, prompt, queue, &queue_position, &queue_length, &bold)
-	    && result.outcome == YT_A8D2_RETRY && result.queue_cleared
+	    && result.outcome == YT_CONFIRMATION_RETRY && result.queue_cleared
 	    && queue_length == 0U && queue[0] == '\0' && bold == 1.0f
 	    && strcmp(prompt, "[y/N] -=> ") == 0);
-	CHECK(a8d2_case("n", YT_A8D2_FAULT_NONE, 0U, &result,
+	CHECK(a8d2_case("n", YT_CONFIRMATION_FAULT_NONE, 0U, &result,
 	    output, prompt, queue, &queue_position, &queue_length, &bold)
-	    && result.outcome == YT_A8D2_RETURNED && result.prompt_cleared
+	    && result.outcome == YT_CONFIRMATION_RETURNED && result.prompt_cleared
 	    && prompt[0] == '\0' && strcmp(queue, "Q\r") == 0
 	    && queue_length == 2U && strcmp(output, "N") == 0);
 
-	CHECK(!a8d2_case("", YT_A8D2_FAULT_LEFT_ONE, 14U, &result,
+	CHECK(!a8d2_case("", YT_CONFIRMATION_FAULT_LEFT_ONE, 14U, &result,
 	    output, prompt, queue, &queue_position, &queue_length, &bold)
-	    && !a8d2_case("n", YT_A8D2_FAULT_INVALID_QUEUE_CLEAR, 0x0ACCU,
+	    && !a8d2_case("n", YT_CONFIRMATION_FAULT_INVALID_QUEUE_CLEAR, 0x0ACCU,
 	    &result, output, prompt, queue, &queue_position, &queue_length,
 	    &bold)
-	    && !a8d2_case("x", YT_A8D2_FAULT_PROMPT_CLEAR, 0x0ACCU,
+	    && !a8d2_case("x", YT_CONFIRMATION_FAULT_PROMPT_CLEAR, 0x0ACCU,
 	    &result, output, prompt, queue, &queue_position, &queue_length,
 	    &bold));
 }
@@ -3028,16 +3028,16 @@ test_input_fault_inventories(void)
 {
 	size_t live;
 
-	CHECK(yt_input_fault_site_count(YT_INPUT_FAULT_B05D) == 25U);
-	CHECK(input_fault_inventory_hash(YT_INPUT_FAULT_B05D, &live)
+	CHECK(yt_input_fault_site_count(YT_INPUT_FAULT_PAGED_OUTPUT) == 25U);
+	CHECK(input_fault_inventory_hash(YT_INPUT_FAULT_PAGED_OUTPUT, &live)
 	    == UINT64_C(0x940d9f30a70df56e));
 	CHECK(live == 25U);
-	CHECK(yt_input_fault_site_count(YT_INPUT_FAULT_B1F3) == 11U);
-	CHECK(input_fault_inventory_hash(YT_INPUT_FAULT_B1F3, &live)
+	CHECK(yt_input_fault_site_count(YT_INPUT_FAULT_PAGER) == 11U);
+	CHECK(input_fault_inventory_hash(YT_INPUT_FAULT_PAGER, &live)
 	    == UINT64_C(0x0f5f94d6b6b0c8b1));
 	CHECK(live == 11U);
-	CHECK(yt_input_fault_site_count(YT_INPUT_FAULT_AB36) == 77U);
-	CHECK(input_fault_inventory_hash(YT_INPUT_FAULT_AB36, &live)
+	CHECK(yt_input_fault_site_count(YT_INPUT_FAULT_LINE_EDITOR) == 77U);
+	CHECK(input_fault_inventory_hash(YT_INPUT_FAULT_LINE_EDITOR, &live)
 	    == UINT64_C(0x202c87484e372728));
 	CHECK(live == 75U);
 	CHECK(yt_input_fault_site_count((enum yt_input_fault_family)99) == 0U);
