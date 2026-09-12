@@ -1028,34 +1028,6 @@ yt_present_sysop_time_handler_process(float prompt_timer,
 }
 
 enum yt_present_status
-yt_present_sysop_chat_header(const uint8_t *sysop, size_t sysop_length,
-    int local_background, struct yt_present_result *result)
-{
-	static const uint8_t suffix[] = " - Hit ESC to exit chat mode";
-	uint8_t line[YT_PRESENT_EVENT_DATA];
-	enum yt_present_status status;
-
-	if (result == NULL || sysop_length > sizeof(line) - (sizeof(suffix) - 1U)
-	    || (sysop == NULL && sysop_length != 0U))
-		return YT_PRESENT_CAPACITY;
-	memset(result, 0, sizeof(*result));
-	if (sysop_length != 0U)
-		memcpy(line, sysop, sysop_length);
-	memcpy(line + sysop_length, suffix, sizeof(suffix) - 1U);
-	status = append_local(result, YT_PRESENT_LOCAL_COLOR, NULL, 0U,
-	    30, local_background);
-	if (status != YT_PRESENT_OK)
-		return status;
-	status = append_local(result, YT_PRESENT_LOCAL_LINE, NULL, 0U, 0, 0);
-	if (status != YT_PRESENT_OK)
-		return status;
-	status = append_local(result, YT_PRESENT_LOCAL_LINE, NULL, 0U, 0, 0);
-	return status == YT_PRESENT_OK
-	    ? append_local(result, YT_PRESENT_LOCAL_LINE, line,
-	    sysop_length + sizeof(suffix) - 1U, 0, 0) : status;
-}
-
-enum yt_present_status
 yt_present_sound(float selector, struct yt_present_state *state,
     struct yt_present_result *result)
 {

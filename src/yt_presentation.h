@@ -159,9 +159,6 @@ enum yt_present_status yt_present_sysop_time_handler_process(
     float commit_timer, uint8_t deadline[4], float *minutes, bool *changed,
     struct yt_present_result *prompt, yt_present_sysop_replay_fn replay,
     void *replay_context);
-enum yt_present_status yt_present_sysop_chat_header(
-    const uint8_t *sysop, size_t sysop_length, int local_background,
-    struct yt_present_result *result);
 enum yt_present_status yt_present_serial_startup_missing_command(
     struct yt_present_result *result);
 enum yt_present_status yt_present_serial_startup_status(int port,

@@ -3772,39 +3772,6 @@ test_sysop_time(void)
 }
 
 static void
-test_sysop_chat_header(void)
-{
-	static const uint8_t expected[] =
-	    "Ada - Hit ESC to exit chat mode";
-	uint8_t too_long[YT_PRESENT_EVENT_DATA];
-	struct yt_present_result result;
-
-	CHECK(yt_present_sysop_chat_header((const uint8_t *)"Ada", 3U, 5,
-	    &result) == YT_PRESENT_OK);
-	CHECK(result.remote_length == 0U && result.event_count == 4U);
-	CHECK(result.events[0].operation == YT_PRESENT_LOCAL_COLOR
-	    && result.events[0].foreground == 30
-	    && result.events[0].background == 5);
-	CHECK(result.events[1].operation == YT_PRESENT_LOCAL_LINE
-	    && result.events[1].length == 0U);
-	CHECK(result.events[2].operation == YT_PRESENT_LOCAL_LINE
-	    && result.events[2].length == 0U);
-	CHECK(result.events[3].operation == YT_PRESENT_LOCAL_LINE
-	    && result.events[3].length == sizeof(expected) - 1U
-	    && memcmp(result.events[3].data, expected,
-	    sizeof(expected) - 1U) == 0);
-	CHECK(yt_present_sysop_chat_header(NULL, 0U, 0, &result)
-	    == YT_PRESENT_OK);
-	CHECK(result.events[3].length
-	    == strlen(" - Hit ESC to exit chat mode"));
-	memset(too_long, 'X', sizeof(too_long));
-	CHECK(yt_present_sysop_chat_header(too_long, sizeof(too_long), 0,
-	    &result) == YT_PRESENT_CAPACITY);
-	CHECK(yt_present_sysop_chat_header(NULL, 1U, 0, &result)
-	    == YT_PRESENT_CAPACITY);
-}
-
-static void
 test_basic_fault_registry(void)
 {
 	static const struct {
@@ -47581,7 +47548,6 @@ main(void)
 	test_attention();
 	test_sound_toggle();
 	test_sysop_time();
-	test_sysop_chat_header();
 	test_basic_fault_registry();
 	test_basic_fault_projection();
 	test_normal_exit_registration_predicate();
