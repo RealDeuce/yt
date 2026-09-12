@@ -184,14 +184,6 @@ struct yt_a8d2_transform {
 	bool prompt_cleared;
 };
 
-enum yt_ab36_terminal_kind {
-	YT_AB36_TERMINAL_INACTIVITY,
-	YT_AB36_TERMINAL_SESSION_LIMIT,
-};
-
-typedef bool (*yt_ab36_terminal_notice_fn)(void *context,
-    const uint8_t *notice, size_t length);
-typedef bool (*yt_ab36_terminal_close_fn)(void *context);
 typedef bool (*yt_ab36_repeat_emit_fn)(void *context,
     const uint8_t *prefix, size_t length);
 typedef bool (*yt_ab36_submit_line_fn)(void *context);
@@ -254,9 +246,6 @@ bool yt_input_command_save_staged(char *text, size_t text_capacity,
 	char *output_source, size_t output_capacity,
 	enum yt_basic_fault_site target,
 	struct yt_command_save_transform *result);
-bool yt_input_ab36_terminal_run(enum yt_ab36_terminal_kind kind,
-    bool *running, bool *terminated, yt_ab36_terminal_notice_fn notice,
-    yt_ab36_terminal_close_fn close_all, void *context);
 bool yt_input_expand_repeat(char *text, size_t text_capacity,
     char *saved_command, size_t saved_capacity,
     struct yt_repeat_transform *result);

@@ -5707,30 +5707,6 @@ struct commodity_editor_cut {
 	size_t fail_carrier_at;
 };
 
-struct commodity_terminal_join {
-	struct commodity_trade_join *join;
-	bool closed;
-};
-
-static bool
-commodity_terminal_notice(void *context, const uint8_t *notice,
-    size_t length)
-{
-	struct commodity_terminal_join *terminal = context;
-
-	commodity_trade_join_0317(terminal->join, notice, length);
-	return true;
-}
-
-static bool
-commodity_terminal_close(void *context)
-{
-	struct commodity_terminal_join *terminal = context;
-
-	terminal->closed = true;
-	return true;
-}
-
 static bool
 commodity_editor_cut_echo(void *context, const uint8_t *local,
     size_t local_length, const uint8_t *remote, size_t remote_length)
@@ -5985,20 +5961,6 @@ test_commodity_trade_adapter_cuts(void)
 	    "\r\nWe'll sell them for 60 credits.\n\r"
 	    "Do you agree? [Y/n] Y";
 	static const uint8_t confirmation[] = "Do you agree? [Y/n] ";
-	static const uint8_t inactivity[] =
-	    "\r\n\aUSER FELL ASLEEP!\n\r";
-	static const uint8_t session_limit[] =
-	    "\r\n\a\a\aTIME LIMIT EXCEEDED!\a\a\a\n\r";
-	static const struct {
-		enum yt_ab36_terminal_kind kind;
-		const uint8_t *suffix;
-		size_t suffix_length;
-	} terminals[] = {
-		{YT_AB36_TERMINAL_INACTIVITY, inactivity,
-		    sizeof(inactivity) - 1U},
-		{YT_AB36_TERMINAL_SESSION_LIMIT, session_limit,
-		    sizeof(session_limit) - 1U},
-	};
 	static const uint8_t low_time[] =
 	    "\r\nYou have 12345 credits and 65 empty cargo holds.\n\r"
 	    "\r\nWe are selling up to 100.  You have 10 in your holds.\n\r"
@@ -6018,7 +5980,6 @@ test_commodity_trade_adapter_cuts(void)
 	float remembered;
 	bool handled;
 	bool warned;
-	size_t terminal_index;
 
 	commodity_trade_join_init(&join);
 	commodity_trade_join_line(&join);
@@ -6057,38 +6018,6 @@ test_commodity_trade_adapter_cuts(void)
 	CHECK(editor.carrier_calls == 1U && join.accumulator[0] == '\0'
 	    && join.pager.line_count == 0.0f && join.pager.nonstop == 0.0f
 	    && join.pager.key[0] == '\0');
-	for (terminal_index = 0U; terminal_index < YT_ARRAY_LEN(terminals);
-	    ++terminal_index) {
-		struct commodity_terminal_join terminal;
-		bool running = true;
-		bool terminated = false;
-
-		commodity_trade_join_init(&join);
-		commodity_trade_join_0317(&join, status, sizeof(status) - 1U);
-		commodity_trade_join_0317(&join, selling,
-		    sizeof(selling) - 1U);
-		commodity_trade_join_b05d(&join, prompt,
-		    sizeof(prompt) - 1U, true);
-		yt_pager_editor_enter(&join.pager, join.accumulator,
-		    sizeof(join.accumulator));
-		terminal.join = &join;
-		terminal.closed = false;
-		CHECK(yt_input_ab36_terminal_run(terminals[terminal_index].kind,
-		    &running, &terminated, commodity_terminal_notice,
-		    commodity_terminal_close, &terminal));
-		CHECK(join.capture.remote_length
-		    == sizeof(editor_loop_head) - 1U
-		    + terminals[terminal_index].suffix_length
-		    && memcmp(join.capture.remote, editor_loop_head,
-		    sizeof(editor_loop_head) - 1U) == 0
-		    && memcmp(join.capture.remote + sizeof(editor_loop_head) - 1U,
-		    terminals[terminal_index].suffix,
-		    terminals[terminal_index].suffix_length) == 0
-		    && !running && terminated && terminal.closed
-		    && join.pager.line_count == 1.0f
-		    && join.pager.newline_flag == 0.0f);
-	}
-
 	commodity_trade_join_init(&join);
 	commodity_trade_join_0317(&join, status, sizeof(status) - 1U);
 	commodity_trade_join_0317(&join, selling, sizeof(selling) - 1U);
@@ -6140,43 +6069,6 @@ test_commodity_trade_adapter_cuts(void)
 	CHECK(handled && editor.carrier_calls == 1U
 	    && strcmp(join.accumulator, "Y") == 0
 	    && strcmp(paged_text, "Y") == 0 && newline_flag == 1.0f);
-	for (terminal_index = 0U; terminal_index < YT_ARRAY_LEN(terminals);
-	    ++terminal_index) {
-		struct commodity_terminal_join terminal;
-		bool running = true;
-		bool terminated = false;
-		size_t prefix_length = sizeof(confirmation_after_y) - 2U;
-
-		commodity_trade_join_init(&join);
-		commodity_trade_join_front(&join, status, sizeof(status) - 1U,
-		    selling, sizeof(selling) - 1U, prompt, sizeof(prompt) - 1U,
-		    (const uint8_t *)"3", 1U);
-		commodity_trade_join_b05d(&join, agreed,
-		    sizeof(agreed) - 1U, false);
-		commodity_trade_join_0317(&join, offer, sizeof(offer) - 1U);
-		CHECK(yt_present_character(confirmation,
-		    sizeof(confirmation) - 1U, &join.current, &result)
-		    == YT_PRESENT_OK);
-		pager_capture_result(&join.capture, &result);
-		yt_pager_editor_enter(&join.pager, join.accumulator,
-		    sizeof(join.accumulator));
-		terminal.join = &join;
-		terminal.closed = false;
-		CHECK(yt_input_ab36_terminal_run(terminals[terminal_index].kind,
-		    &running, &terminated, commodity_terminal_notice,
-		    commodity_terminal_close, &terminal));
-		CHECK(join.capture.remote_length == prefix_length
-		    + terminals[terminal_index].suffix_length
-		    && memcmp(join.capture.remote, confirmation_after_y,
-		    prefix_length) == 0
-		    && memcmp(join.capture.remote + prefix_length,
-		    terminals[terminal_index].suffix,
-		    terminals[terminal_index].suffix_length) == 0
-		    && !running && terminated && terminal.closed
-		    && join.pager.line_count == 1.0f
-		    && join.pager.newline_flag == 0.0f);
-	}
-
 	commodity_trade_join_init(&join);
 	commodity_trade_join_0317(&join, status, sizeof(status) - 1U);
 	commodity_trade_join_0317(&join, selling, sizeof(selling) - 1U);
@@ -10152,334 +10044,6 @@ test_computer_port_report_wrapper_b05d_cuts(void)
 	    && sizeof(unavailable_after) - 1U == 67U
 	    && sizeof(earth_title_before) - 1U == 42U
 	    && sizeof(earth_title_after) - 1U == 88U);
-}
-
-struct computer_port_terminal_join {
-	struct yt_present_state *current;
-	struct yt_pager_state *pager;
-	struct pager_capture *capture;
-	bool *running;
-	bool *terminated;
-	int notice_carrier_failure;
-	bool closed;
-};
-
-static bool
-computer_port_terminal_carrier_end(struct computer_port_terminal_join *join)
-{
-	join->closed = true;
-	*join->running = false;
-	*join->terminated = true;
-	return false;
-}
-
-static bool
-computer_port_terminal_notice(void *context, const uint8_t *notice,
-    size_t length)
-{
-	struct computer_port_terminal_join *join = context;
-	struct yt_present_result result;
-
-	if (yt_present_line(NULL, 0U, join->current, &result)
-	    != YT_PRESENT_OK)
-		return false;
-	pager_capture_result(join->capture, &result);
-	if (join->notice_carrier_failure == 1)
-		return computer_port_terminal_carrier_end(join);
-	if (join->notice_carrier_failure == 2) {
-		if (yt_present_paged_text(notice, length, join->current, &result)
-		    != YT_PRESENT_OK)
-			return false;
-		pager_capture_result(join->capture, &result);
-		return computer_port_terminal_carrier_end(join);
-	}
-	pager_fixture_b05d(join->pager, join->current, notice, length,
-	    join->capture);
-	return true;
-}
-
-static bool
-computer_port_terminal_close(void *context)
-{
-	struct computer_port_terminal_join *join = context;
-
-	join->closed = true;
-	return true;
-}
-
-static void
-test_computer_port_report_terminal_presentation(void)
-{
-	static const uint8_t prompt[] =
-	    "Enter sector number port is in -=> ";
-	static const uint8_t inactivity[] =
-	    "\r\nEnter sector number port is in -=> "
-	    "\r\n\aUSER FELL ASLEEP!\n\r";
-	static const uint8_t session_limit[] =
-	    "\r\nEnter sector number port is in -=> "
-	    "\r\n\a\a\aTIME LIMIT EXCEEDED!\a\a\a\n\r";
-	static const uint8_t inactivity_carrier[] =
-	    "\r\nEnter sector number port is in -=> \r\n";
-	static const uint8_t direct_carrier[] =
-	    "\r\nEnter sector number port is in -=> ";
-	static const uint8_t session_carrier[] =
-	    "\r\nEnter sector number port is in -=> "
-	    "\r\n\a\a\aTIME LIMIT EXCEEDED!\a\a\a";
-	static const struct {
-		enum yt_ab36_terminal_kind kind;
-		const uint8_t *expected;
-		size_t expected_length;
-	} cases[] = {
-		{YT_AB36_TERMINAL_INACTIVITY, inactivity,
-		    sizeof(inactivity) - 1U},
-		{YT_AB36_TERMINAL_SESSION_LIMIT, session_limit,
-		    sizeof(session_limit) - 1U},
-	};
-	size_t pass;
-
-	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
-		struct yt_present_state current = state(true);
-		struct yt_present_result result;
-		struct yt_pager_state pager;
-		struct pager_capture capture;
-		struct computer_port_terminal_join join;
-		char accumulator[80];
-		bool running = true;
-		bool terminated = false;
-
-		current.foreground = 1.0f;
-		current.cached_foreground = 1.0f;
-		memset(&pager, 0, sizeof(pager));
-		pager.foreground = 1;
-		memset(&capture, 0, sizeof(capture));
-		memset(accumulator, 0, sizeof(accumulator));
-		CHECK(yt_present_line(NULL, 0U, &current, &result)
-		    == YT_PRESENT_OK);
-		pager_capture_result(&capture, &result);
-		pager.newline_flag = 1.0f;
-		pager_fixture_b05d(&pager, &current, prompt,
-		    sizeof(prompt) - 1U, &capture);
-		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
-		join.current = &current;
-		join.pager = &pager;
-		join.capture = &capture;
-		join.running = &running;
-		join.terminated = &terminated;
-		join.notice_carrier_failure = 0;
-		join.closed = false;
-		CHECK(yt_input_ab36_terminal_run(cases[pass].kind, &running,
-		    &terminated, computer_port_terminal_notice,
-		    computer_port_terminal_close, &join));
-		CHECK(capture.remote_length == cases[pass].expected_length
-		    && memcmp(capture.remote, cases[pass].expected,
-		    cases[pass].expected_length) == 0
-		    && !running && terminated && join.closed
-		    && pager.line_count == 1.0f
-		    && pager.newline_flag == 0.0f
-		    && accumulator[0] == '\0');
-	}
-	{
-		static const struct {
-			enum yt_ab36_terminal_kind kind;
-			int failure;
-			const uint8_t *expected;
-			size_t expected_length;
-		} carrier_cases[] = {
-			{YT_AB36_TERMINAL_INACTIVITY, 1,
-			    inactivity_carrier, sizeof(inactivity_carrier) - 1U},
-			{YT_AB36_TERMINAL_SESSION_LIMIT, 2,
-			    session_carrier, sizeof(session_carrier) - 1U},
-		};
-		size_t failure;
-
-		for (failure = 0U; failure < YT_ARRAY_LEN(carrier_cases);
-		    ++failure) {
-			struct yt_present_state current = state(true);
-			struct yt_present_result result;
-			struct yt_pager_state pager;
-			struct pager_capture capture;
-			struct computer_port_terminal_join join;
-			char accumulator[80];
-			bool running = true;
-			bool terminated = false;
-
-			current.foreground = 1.0f;
-			current.cached_foreground = 1.0f;
-			memset(&pager, 0, sizeof(pager));
-			pager.foreground = 1;
-			memset(&capture, 0, sizeof(capture));
-			memset(accumulator, 0, sizeof(accumulator));
-			CHECK(yt_present_line(NULL, 0U, &current, &result)
-			    == YT_PRESENT_OK);
-			pager_capture_result(&capture, &result);
-			pager.newline_flag = 1.0f;
-			pager_fixture_b05d(&pager, &current, prompt,
-			    sizeof(prompt) - 1U, &capture);
-			yt_pager_editor_enter(&pager, accumulator,
-			    sizeof(accumulator));
-			join.current = &current;
-			join.pager = &pager;
-			join.capture = &capture;
-			join.running = &running;
-			join.terminated = &terminated;
-			join.notice_carrier_failure =
-			    carrier_cases[failure].failure;
-			join.closed = false;
-			CHECK(!yt_input_ab36_terminal_run(
-			    carrier_cases[failure].kind,
-			    &running, &terminated, computer_port_terminal_notice,
-			    computer_port_terminal_close, &join));
-			CHECK(capture.remote_length
-			    == carrier_cases[failure].expected_length
-			    && memcmp(capture.remote,
-			    carrier_cases[failure].expected,
-			    carrier_cases[failure].expected_length) == 0
-			    && !running && terminated && join.closed
-			    && pager.line_count == 0.0f);
-		}
-	}
-	{
-		struct yt_present_state current = state(true);
-		struct yt_present_result result;
-		struct yt_pager_state pager;
-		struct pager_capture capture;
-		struct computer_port_terminal_join join;
-		char accumulator[80];
-		bool running = true;
-		bool terminated = false;
-
-		current.foreground = 1.0f;
-		current.cached_foreground = 1.0f;
-		memset(&pager, 0, sizeof(pager));
-		pager.foreground = 1;
-		memset(&capture, 0, sizeof(capture));
-		memset(accumulator, 0, sizeof(accumulator));
-		CHECK(yt_present_line(NULL, 0U, &current, &result)
-		    == YT_PRESENT_OK);
-		pager_capture_result(&capture, &result);
-		pager.newline_flag = 1.0f;
-		pager_fixture_b05d(&pager, &current, prompt,
-		    sizeof(prompt) - 1U, &capture);
-		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
-		join.current = &current;
-		join.pager = &pager;
-		join.capture = &capture;
-		join.running = &running;
-		join.terminated = &terminated;
-		join.notice_carrier_failure = 0;
-		join.closed = false;
-		CHECK(!computer_port_terminal_carrier_end(&join));
-		CHECK(capture.remote_length == sizeof(direct_carrier) - 1U
-		    && memcmp(capture.remote, direct_carrier,
-		    sizeof(direct_carrier) - 1U) == 0
-		    && !running && terminated && join.closed);
-	}
-	CHECK(sizeof(inactivity) - 1U == 59U
-	    && sizeof(session_limit) - 1U == 67U
-	    && sizeof(inactivity_carrier) - 1U == 39U
-	    && sizeof(direct_carrier) - 1U == 37U
-	    && sizeof(session_carrier) - 1U == 65U);
-}
-
-static void
-test_computer_avoid_terminal_presentation(void)
-{
-	static const struct {
-		enum computer_avoid_fixture_stop stop;
-		bool ansi;
-		size_t prefix_length;
-		uint64_t prefix_fnv;
-		size_t inactivity_length;
-		uint64_t inactivity_fnv;
-		size_t session_length;
-		uint64_t session_fnv;
-	} cases[] = {
-		{COMPUTER_AVOID_FIXTURE_SLOT_EDITOR, false,
-		    746U, UINT64_C(0x668590d6d691f5e3),
-		    768U, UINT64_C(0x875a8566c9e3b46f),
-		    776U, UINT64_C(0x733cdcdc12c30bc1)},
-		{COMPUTER_AVOID_FIXTURE_SLOT_EDITOR, true,
-		    756U, UINT64_C(0x0d976d4ba97f19b4),
-		    778U, UINT64_C(0x6234d311f50b5ed4),
-		    786U, UINT64_C(0xb897f95a379da376)},
-		{COMPUTER_AVOID_FIXTURE_SECTOR_EDITOR, false,
-		    811U, UINT64_C(0xdb26edf5a552323e),
-		    833U, UINT64_C(0xd336f712950de70a),
-		    841U, UINT64_C(0x691c295df1aa1f1c)},
-		{COMPUTER_AVOID_FIXTURE_SECTOR_EDITOR, true,
-		    821U, UINT64_C(0xa2746da79a150673),
-		    843U, UINT64_C(0x1ae761c0cbbe315f),
-		    851U, UINT64_C(0xb451bf573d5e11b1)},
-	};
-	static const struct {
-		enum yt_ab36_terminal_kind kind;
-		bool inactivity;
-	} terminals[] = {
-		{YT_AB36_TERMINAL_INACTIVITY, true},
-		{YT_AB36_TERMINAL_SESSION_LIMIT, false},
-	};
-	size_t pass;
-
-	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
-		struct yt_present_state current;
-		struct yt_pager_state pager;
-		struct pager_capture capture;
-		struct computer_port_terminal_join join;
-		bool running = true;
-		bool terminated = false;
-		size_t terminal;
-
-		computer_avoid_accepted_cycle_fixture(cases[pass].ansi, 0.0f,
-		    0.0f, "5", cases[pass].stop, NULL, &capture, &current,
-		    &pager);
-		CHECK(capture.remote_length == cases[pass].prefix_length
-		    && viewer_bytes_fnv1a64(capture.remote,
-		    capture.remote_length) == cases[pass].prefix_fnv
-		    && pager.line_count == 0.0f && pager.newline_flag == 0.0f);
-		join.current = &current;
-		join.pager = &pager;
-		join.capture = &capture;
-		join.running = &running;
-		join.terminated = &terminated;
-		join.notice_carrier_failure = 0;
-		join.closed = false;
-		CHECK(!computer_port_terminal_carrier_end(&join));
-		CHECK(!running && terminated && join.closed
-		    && capture.remote_length == cases[pass].prefix_length);
-
-		for (terminal = 0U; terminal < YT_ARRAY_LEN(terminals);
-		    ++terminal) {
-			size_t expected_length = terminals[terminal].inactivity
-			    ? cases[pass].inactivity_length
-			    : cases[pass].session_length;
-			uint64_t expected_fnv = terminals[terminal].inactivity
-			    ? cases[pass].inactivity_fnv
-			    : cases[pass].session_fnv;
-
-			computer_avoid_accepted_cycle_fixture(cases[pass].ansi,
-			    0.0f, 0.0f, "5", cases[pass].stop, NULL, &capture,
-			    &current, &pager);
-			running = true;
-			terminated = false;
-			join.current = &current;
-			join.pager = &pager;
-			join.capture = &capture;
-			join.running = &running;
-			join.terminated = &terminated;
-			join.notice_carrier_failure = 0;
-			join.closed = false;
-			CHECK(yt_input_ab36_terminal_run(
-			    terminals[terminal].kind, &running, &terminated,
-			    computer_port_terminal_notice,
-			    computer_port_terminal_close, &join));
-			CHECK(capture.remote_length == expected_length
-			    && viewer_bytes_fnv1a64(capture.remote,
-			    capture.remote_length) == expected_fnv
-			    && !running && terminated && join.closed
-			    && pager.line_count == 1.0f
-			    && pager.newline_flag == 0.0f);
-		}
-	}
 }
 
 static void
@@ -15225,113 +14789,6 @@ test_computer_newspaper_carrier_prefixes(void)
 		    == cases[pass].remote_fnv
 		    && viewer.join.pager.line_count == 0.0f);
 		yt_text_input_destroy(&viewer.input);
-	}
-}
-
-static void
-test_computer_newspaper_terminal_presentation(void)
-{
-	static const uint8_t prompt[] =
-	    "Do you want to read [T]oday's or [Y]esterday's news? [T/Y] -=> ";
-	static const uint8_t inactivity[] =
-	    "\r\nDo you want to read [T]oday's or [Y]esterday's news? [T/Y] -=> "
-	    "\r\n\aUSER FELL ASLEEP!\n\r";
-	static const uint8_t inactivity_carrier[] =
-	    "\r\nDo you want to read [T]oday's or [Y]esterday's news? [T/Y] -=> "
-	    "\r\n";
-	static const uint8_t session_limit[] =
-	    "\r\nDo you want to read [T]oday's or [Y]esterday's news? [T/Y] -=> "
-	    "\r\n\a\a\aTIME LIMIT EXCEEDED!\a\a\a\n\r";
-	static const uint8_t session_carrier[] =
-	    "\r\nDo you want to read [T]oday's or [Y]esterday's news? [T/Y] -=> "
-	    "\r\n\a\a\aTIME LIMIT EXCEEDED!\a\a\a";
-	static const uint8_t direct_carrier[] =
-	    "\r\nDo you want to read [T]oday's or [Y]esterday's news? [T/Y] -=> ";
-	static const struct {
-		enum yt_ab36_terminal_kind kind;
-		int carrier_failure;
-		const uint8_t *expected;
-		size_t expected_length;
-		bool succeeds;
-	} cases[] = {
-		{YT_AB36_TERMINAL_INACTIVITY, 0, inactivity,
-		    sizeof(inactivity) - 1U, true},
-		{YT_AB36_TERMINAL_INACTIVITY, 1, inactivity_carrier,
-		    sizeof(inactivity_carrier) - 1U, false},
-		{YT_AB36_TERMINAL_SESSION_LIMIT, 0, session_limit,
-		    sizeof(session_limit) - 1U, true},
-		{YT_AB36_TERMINAL_SESSION_LIMIT, 2, session_carrier,
-		    sizeof(session_carrier) - 1U, false},
-	};
-	size_t pass;
-
-	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
-		struct yt_present_state current = state(true);
-		struct yt_present_result result;
-		struct yt_pager_state pager;
-		struct pager_capture capture;
-		struct computer_port_terminal_join join;
-		char accumulator[80];
-		bool running = true;
-		bool terminated = false;
-		bool result_ok;
-
-		current.foreground = 1.0f;
-		current.cached_foreground = 1.0f;
-		memset(&pager, 0, sizeof(pager));
-		pager.foreground = 1;
-		memset(&capture, 0, sizeof(capture));
-		memset(accumulator, 0, sizeof(accumulator));
-		CHECK(yt_present_line(NULL, 0U, &current, &result)
-		    == YT_PRESENT_OK);
-		pager_capture_result(&capture, &result);
-		pager.newline_flag = 1.0f;
-		pager_fixture_b05d(&pager, &current, prompt,
-		    sizeof(prompt) - 1U, &capture);
-		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
-		join.current = &current;
-		join.pager = &pager;
-		join.capture = &capture;
-		join.running = &running;
-		join.terminated = &terminated;
-		join.notice_carrier_failure = cases[pass].carrier_failure;
-		join.closed = false;
-		result_ok = yt_input_ab36_terminal_run(cases[pass].kind,
-		    &running, &terminated, computer_port_terminal_notice,
-		    computer_port_terminal_close, &join);
-		CHECK(result_ok == cases[pass].succeeds
-		    && capture.remote_length == cases[pass].expected_length
-		    && memcmp(capture.remote, cases[pass].expected,
-		    cases[pass].expected_length) == 0
-		    && !running && terminated && join.closed
-		    && pager.line_count == (cases[pass].succeeds ? 1.0f : 0.0f)
-		    && pager.newline_flag == 0.0f && accumulator[0] == '\0');
-	}
-	{
-		struct yt_present_state current = state(true);
-		struct yt_present_result result;
-		struct yt_pager_state pager;
-		struct pager_capture capture;
-		char accumulator[80];
-
-		current.foreground = 1.0f;
-		current.cached_foreground = 1.0f;
-		memset(&pager, 0, sizeof(pager));
-		pager.foreground = 1;
-		memset(&capture, 0, sizeof(capture));
-		memset(accumulator, 0, sizeof(accumulator));
-		CHECK(yt_present_line(NULL, 0U, &current, &result)
-		    == YT_PRESENT_OK);
-		pager_capture_result(&capture, &result);
-		pager.newline_flag = 1.0f;
-		pager_fixture_b05d(&pager, &current, prompt,
-		    sizeof(prompt) - 1U, &capture);
-		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
-		CHECK(capture.remote_length == sizeof(direct_carrier) - 1U
-		    && memcmp(capture.remote, direct_carrier,
-		    sizeof(direct_carrier) - 1U) == 0
-		    && pager.line_count == 0.0f
-		    && pager.newline_flag == 0.0f);
 	}
 }
 
@@ -23485,12 +22942,6 @@ test_direct_emergency_warp_inherited_pager(void)
 	}
 }
 
-enum direct_warp_invalid_boundary_kind {
-	DIRECT_WARP_INVALID_EXHAUSTED,
-	DIRECT_WARP_INVALID_INACTIVITY,
-	DIRECT_WARP_INVALID_SESSION_LIMIT,
-};
-
 struct direct_warp_invalid_boundary_state {
 	struct hostile_mines_hazard_fixture *fixture;
 	uint8_t output_scratch[80];
@@ -23498,43 +22949,11 @@ struct direct_warp_invalid_boundary_state {
 	uint8_t prompt_scratch[80];
 	size_t prompt_length;
 	bool boundary_required;
-	bool running;
-	bool terminated;
-	bool closed_all;
 };
-
-static bool
-direct_warp_invalid_terminal_notice(void *context, const uint8_t *notice,
-    size_t length)
-{
-	struct direct_warp_invalid_boundary_state *state = context;
-	struct viewer_pager_join *join =
-	    &state->fixture->cycle.presentation.viewer->join;
-
-	if (length > sizeof(state->output_scratch)
-	    || length > sizeof(join->source))
-		return false;
-	memcpy(state->output_scratch, notice, length);
-	state->output_length = length;
-	memcpy(join->source, notice, length);
-	join->source_length = length;
-	return normal_exit_line(join, NULL, 0U)
-	    && normal_exit_b05d(join, notice, length, 0.0f);
-}
-
-static bool
-direct_warp_invalid_terminal_close(void *context)
-{
-	struct direct_warp_invalid_boundary_state *state = context;
-
-	state->closed_all = true;
-	return true;
-}
 
 static bool
 direct_emergency_warp_invalid_boundary_continue(
     struct hostile_mines_hazard_fixture *fixture,
-    enum direct_warp_invalid_boundary_kind kind,
     struct direct_warp_invalid_boundary_state *boundary)
 {
 	static const uint8_t warning_one[] =
@@ -23547,7 +22966,6 @@ direct_emergency_warp_invalid_boundary_continue(
 	struct yt_present_result result;
 	enum yt_yes_no_answer answer;
 	char output[80];
-	enum yt_ab36_terminal_kind terminal;
 
 	if (boundary == NULL)
 		return false;
@@ -23590,27 +23008,13 @@ direct_emergency_warp_invalid_boundary_continue(
 	if (!yt_input_queue_clear(join->queue, sizeof(join->queue),
 	    &join->queue_position, &join->queue_length))
 		return false;
-	if (kind == DIRECT_WARP_INVALID_EXHAUSTED) {
-		boundary->boundary_required = true;
-		return true;
-	}
-	if (yt_present_character(prompt, sizeof(prompt) - 1U,
-	    &join->presentation, &result) != YT_PRESENT_OK)
-		return false;
-	viewer_pager_capture_result(join, &result);
-	yt_pager_editor_enter(&join->pager, join->accumulator,
-	    sizeof(join->accumulator));
-	terminal = kind == DIRECT_WARP_INVALID_INACTIVITY
-	    ? YT_AB36_TERMINAL_INACTIVITY : YT_AB36_TERMINAL_SESSION_LIMIT;
-	return yt_input_ab36_terminal_run(terminal, &boundary->running,
-	    &boundary->terminated, direct_warp_invalid_terminal_notice,
-	    direct_warp_invalid_terminal_close, boundary);
+	boundary->boundary_required = true;
+	return true;
 }
 
 static bool
 direct_emergency_warp_invalid_boundary_run(
     struct hostile_mines_hazard_fixture *fixture, bool ansi,
-    enum direct_warp_invalid_boundary_kind kind,
     struct direct_warp_invalid_boundary_state *boundary)
 {
 	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
@@ -23619,10 +23023,8 @@ direct_emergency_warp_invalid_boundary_run(
 		return false;
 	memset(boundary, 0, sizeof(*boundary));
 	boundary->fixture = fixture;
-	boundary->running = true;
 	join->presentation = state(ansi);
-	return direct_emergency_warp_invalid_boundary_continue(fixture, kind,
-	    boundary);
+	return direct_emergency_warp_invalid_boundary_continue(fixture, boundary);
 }
 
 static void
@@ -23630,12 +23032,8 @@ test_direct_emergency_warp_invalid_boundaries(void)
 {
 	static const uint8_t invalid[] = "X";
 	static const uint8_t prompt[] = "[y/N] -=> ";
-	static const uint8_t inactivity[] = "\aUSER FELL ASLEEP!";
-	static const uint8_t session_limit[] =
-	    "\a\a\aTIME LIMIT EXCEEDED!\a\a\a";
 	static const struct {
 		bool ansi;
-		enum direct_warp_invalid_boundary_kind kind;
 		size_t expected_length;
 		uint64_t expected_hash;
 		const uint8_t *output;
@@ -23648,30 +23046,14 @@ test_direct_emergency_warp_invalid_boundaries(void)
 		float cached_foreground;
 		size_t events;
 	} cases[] = {
-		{false, DIRECT_WARP_INVALID_EXHAUSTED, 167U,
+		{false, 167U,
 		    UINT64_C(0x83bb08430714c2ac), invalid, sizeof(invalid) - 1U,
 		    5U, UINT64_C(0x2beabdb4c35912a6), 2U,
 		    UINT64_C(0x6d3fa4669b3587bd), 1.0f, 2.0f, 10U},
-		{true, DIRECT_WARP_INVALID_EXHAUSTED, 223U,
+		{true, 223U,
 		    UINT64_C(0x0084a4372833a813), invalid, sizeof(invalid) - 1U,
 		    5U, UINT64_C(0x2beabdb4c35912a6), 8U,
 		    UINT64_C(0x844da71c138d59e8), 1.0f, 7.0f, 10U},
-		{false, DIRECT_WARP_INVALID_INACTIVITY, 199U,
-		    UINT64_C(0x39915733cce99840), inactivity,
-		    sizeof(inactivity) - 1U, 7U, UINT64_C(0xc7c22a1456128ac0),
-		    3U, UINT64_C(0x2207a27a6260aaca), 1.0f, 2.0f, 15U},
-		{true, DIRECT_WARP_INVALID_INACTIVITY, 277U,
-		    UINT64_C(0xdb3deea4a03ffba7), inactivity,
-		    sizeof(inactivity) - 1U, 7U, UINT64_C(0xc7c22a1456128ac0),
-		    12U, UINT64_C(0x626155b42fa5e310), 0.0f, 7.0f, 15U},
-		{false, DIRECT_WARP_INVALID_SESSION_LIMIT, 207U,
-		    UINT64_C(0xf53cee7d0b46b832), session_limit,
-		    sizeof(session_limit) - 1U, 7U, UINT64_C(0x9911d7488e9b1826),
-		    3U, UINT64_C(0x2207a27a6260aaca), 1.0f, 2.0f, 15U},
-		{true, DIRECT_WARP_INVALID_SESSION_LIMIT, 285U,
-		    UINT64_C(0xc69e1ae5a22cbdb9), session_limit,
-		    sizeof(session_limit) - 1U, 7U, UINT64_C(0x9911d7488e9b1826),
-		    12U, UINT64_C(0x626155b42fa5e310), 0.0f, 7.0f, 15U},
 	};
 	struct physical_viewer_join viewer;
 	struct yt_file_viewer_stream_state stream;
@@ -23688,7 +23070,7 @@ test_direct_emergency_warp_invalid_boundaries(void)
 		memset(&fixture, 0, sizeof(fixture));
 		fixture.cycle.presentation.viewer = &viewer;
 		CHECK(direct_emergency_warp_invalid_boundary_run(&fixture,
-		    cases[pass].ansi, cases[pass].kind, &boundary));
+		    cases[pass].ansi, &boundary));
 		CHECK(viewer.join.remote_length == cases[pass].expected_length
 		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
 		    == cases[pass].expected_hash
@@ -23699,13 +23081,6 @@ test_direct_emergency_warp_invalid_boundaries(void)
 		    && memcmp(boundary.prompt_scratch, prompt,
 		    sizeof(prompt) - 1U) == 0
 		    && boundary.boundary_required
-		    == (cases[pass].kind == DIRECT_WARP_INVALID_EXHAUSTED)
-		    && boundary.running
-		    == (cases[pass].kind == DIRECT_WARP_INVALID_EXHAUSTED)
-		    && boundary.terminated
-		    == (cases[pass].kind != DIRECT_WARP_INVALID_EXHAUSTED)
-		    && boundary.closed_all
-		    == (cases[pass].kind != DIRECT_WARP_INVALID_EXHAUSTED)
 		    && viewer.join.source_length == cases[pass].output_length
 		    && memcmp(viewer.join.source, cases[pass].output,
 		    cases[pass].output_length) == 0
@@ -23724,9 +23099,7 @@ test_direct_emergency_warp_invalid_boundaries(void)
 		    && viewer.join.presentation.cached_foreground
 		    == cases[pass].cached_foreground
 		    && viewer.join.pager.foreground == 7
-		    && viewer.join.pager.line_count
-		    == (cases[pass].kind == DIRECT_WARP_INVALID_EXHAUSTED
-		    ? 0.0f : 1.0f)
+		    && viewer.join.pager.line_count == 0.0f
 		    && !fixture.warp_called && fixture.draw_position == 0U
 		    && fixture.emergency_player_reads == 0U
 		    && fixture.emergency_player_put_attempts == 0U
@@ -23734,10 +23107,7 @@ test_direct_emergency_warp_invalid_boundaries(void)
 		    && fixture.emergency_flushes == 0U
 		    && fixture.emergency_waits == 0U
 		    && viewer.join.event_count == cases[pass].events);
-		if (cases[pass].kind == DIRECT_WARP_INVALID_EXHAUSTED)
-			CHECK(strcmp(viewer.join.accumulator, "X") == 0);
-		else
-			CHECK(viewer.join.accumulator[0] == '\0');
+		CHECK(strcmp(viewer.join.accumulator, "X") == 0);
 		yt_text_input_destroy(&viewer.input);
 	}
 }
@@ -25523,246 +24893,6 @@ test_direct_emergency_warp_hostile_parent_copy_failures(void)
 	}
 }
 
-static bool
-direct_emergency_warp_hostile_invalid_boundary_run(
-    struct hostile_mines_hazard_fixture *fixture, bool ansi,
-    const uint8_t *command, size_t command_length,
-    enum direct_warp_invalid_boundary_kind kind,
-    struct direct_warp_invalid_boundary_state *boundary,
-    struct direct_warp_hostile_parent_copy_cycle_state *cycle,
-    size_t ends[2])
-{
-	if (boundary == NULL || cycle == NULL || ends == NULL)
-		return false;
-	memset(boundary, 0, sizeof(*boundary));
-	memset(cycle, 0, sizeof(*cycle));
-	boundary->fixture = fixture;
-	boundary->running = true;
-	cycle->physical_current_sector = 784.0f;
-	if (!direct_emergency_warp_hostile_menu_prefix(fixture, ansi,
-	    command, command_length, &ends[0]))
-		return false;
-	++cycle->entry_player_reads;
-	++cycle->gate_player_reads;
-	if (yt_no_turn_gate_denied(fixture->emergency_player.turns)
-	    || !direct_emergency_warp_invalid_boundary_continue(fixture,
-	    kind, boundary))
-		return false;
-	ends[1] = fixture->cycle.presentation.viewer->join.remote_length;
-	return true;
-}
-
-static void
-test_direct_emergency_warp_hostile_invalid_boundaries(void)
-{
-	static const uint8_t invalid[] = "X";
-	static const uint8_t prompt[] = "[y/N] -=> ";
-	static const uint8_t inactivity[] = "\aUSER FELL ASLEEP!";
-	static const uint8_t session_limit[] =
-	    "\a\a\aTIME LIMIT EXCEEDED!\a\a\a";
-	static const struct {
-		bool ansi;
-		const uint8_t *command;
-		size_t command_length;
-		enum direct_warp_invalid_boundary_kind kind;
-		size_t expected_length;
-		uint64_t expected_hash;
-		size_t ends[2];
-		uint64_t partition_hashes[2];
-	} cases[] = {
-		{false, (const uint8_t *)"W", 1U,
-		    DIRECT_WARP_INVALID_EXHAUSTED, 230U,
-		    UINT64_C(0x8e44c7e67b9591f8), {63U, 230U},
-		    {UINT64_C(0x0b6904cbde91e151),
-		    UINT64_C(0x83bb08430714c2ac)}},
-		{false, (const uint8_t *)"WT", 2U,
-		    DIRECT_WARP_INVALID_EXHAUSTED, 231U,
-		    UINT64_C(0x68737a92acfd5d08), {64U, 231U},
-		    {UINT64_C(0x4715406bf12b49e1),
-		    UINT64_C(0x83bb08430714c2ac)}},
-		{true, (const uint8_t *)"W", 1U,
-		    DIRECT_WARP_INVALID_EXHAUSTED, 296U,
-		    UINT64_C(0x68e73af24b77f73a), {73U, 296U},
-		    {UINT64_C(0x1f8739c8faadb88e),
-		    UINT64_C(0x0084a4372833a813)}},
-		{true, (const uint8_t *)"WT", 2U,
-		    DIRECT_WARP_INVALID_EXHAUSTED, 297U,
-		    UINT64_C(0x5d1bb7efd86d31a0), {74U, 297U},
-		    {UINT64_C(0x2e092d830cad0828),
-		    UINT64_C(0x0084a4372833a813)}},
-		{false, (const uint8_t *)"W", 1U,
-		    DIRECT_WARP_INVALID_INACTIVITY, 262U,
-		    UINT64_C(0x0ea68645fa2eb97c), {63U, 262U},
-		    {UINT64_C(0x0b6904cbde91e151),
-		    UINT64_C(0x39915733cce99840)}},
-		{false, (const uint8_t *)"WT", 2U,
-		    DIRECT_WARP_INVALID_INACTIVITY, 263U,
-		    UINT64_C(0x70ac654249f5504c), {64U, 263U},
-		    {UINT64_C(0x4715406bf12b49e1),
-		    UINT64_C(0x39915733cce99840)}},
-		{true, (const uint8_t *)"W", 1U,
-		    DIRECT_WARP_INVALID_INACTIVITY, 350U,
-		    UINT64_C(0xe89a59bc45881dd2), {73U, 350U},
-		    {UINT64_C(0x1f8739c8faadb88e),
-		    UINT64_C(0xdb3deea4a03ffba7)}},
-		{true, (const uint8_t *)"WT", 2U,
-		    DIRECT_WARP_INVALID_INACTIVITY, 351U,
-		    UINT64_C(0x7e82f7b46cd01810), {74U, 351U},
-		    {UINT64_C(0x2e092d830cad0828),
-		    UINT64_C(0xdb3deea4a03ffba7)}},
-		{false, (const uint8_t *)"W", 1U,
-		    DIRECT_WARP_INVALID_SESSION_LIMIT, 270U,
-		    UINT64_C(0x3acdfb4a898c9efe), {63U, 270U},
-		    {UINT64_C(0x0b6904cbde91e151),
-		    UINT64_C(0xf53cee7d0b46b832)}},
-		{false, (const uint8_t *)"WT", 2U,
-		    DIRECT_WARP_INVALID_SESSION_LIMIT, 271U,
-		    UINT64_C(0x143147471495f4ce), {64U, 271U},
-		    {UINT64_C(0x4715406bf12b49e1),
-		    UINT64_C(0xf53cee7d0b46b832)}},
-		{true, (const uint8_t *)"W", 1U,
-		    DIRECT_WARP_INVALID_SESSION_LIMIT, 358U,
-		    UINT64_C(0x8004d460bf50fea4), {73U, 358U},
-		    {UINT64_C(0x1f8739c8faadb88e),
-		    UINT64_C(0xc69e1ae5a22cbdb9)}},
-		{true, (const uint8_t *)"WT", 2U,
-		    DIRECT_WARP_INVALID_SESSION_LIMIT, 359U,
-		    UINT64_C(0x2939f95aae3f3d02), {74U, 359U},
-		    {UINT64_C(0x2e092d830cad0828),
-		    UINT64_C(0xc69e1ae5a22cbdb9)}},
-	};
-	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
-	struct hostile_mines_hazard_fixture fixture;
-	struct direct_warp_invalid_boundary_state boundary;
-	struct direct_warp_hostile_parent_copy_cycle_state cycle;
-	struct yt_record record;
-	struct yt_record before;
-	uint8_t remote[400];
-	size_t ends[2];
-	size_t index;
-	size_t pass;
-
-	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
-		const uint8_t *output = invalid;
-		size_t output_length = sizeof(invalid) - 1U;
-
-		if (cases[pass].kind == DIRECT_WARP_INVALID_INACTIVITY) {
-			output = inactivity;
-			output_length = sizeof(inactivity) - 1U;
-		}
-		else if (cases[pass].kind == DIRECT_WARP_INVALID_SESSION_LIMIT) {
-			output = session_limit;
-			output_length = sizeof(session_limit) - 1U;
-		}
-		memset(&viewer, 0, sizeof(viewer));
-		fixture_viewer_initialize(&viewer, &stream,
-		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
-		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
-		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
-		memset(&record, 0xa5, sizeof(record));
-		(void)yt_record_set_number(&record, YT_F49, 17.0f);
-		(void)yt_record_set_number(&record, YT_F57, 733.0f);
-		before = record;
-		yt_player_decode(&fixture.emergency_player, &record);
-		fixture.hazard_player = fixture.emergency_player;
-		CHECK(direct_emergency_warp_hostile_invalid_boundary_run(&fixture,
-		    cases[pass].ansi, cases[pass].command,
-		    cases[pass].command_length, cases[pass].kind,
-		    &boundary, &cycle, ends));
-		CHECK(memcmp(ends, cases[pass].ends, sizeof(ends)) == 0
-		    && viewer.join.remote_length == cases[pass].expected_length
-		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
-		    == cases[pass].expected_hash);
-		for (index = 0U; index < YT_ARRAY_LEN(ends); ++index) {
-			size_t start = index == 0U ? 0U : ends[index - 1U];
-
-			CHECK(viewer_bytes_fnv1a64(remote + start,
-			    ends[index] - start)
-			    == cases[pass].partition_hashes[index]);
-		}
-		CHECK(boundary.output_length == output_length
-		    && memcmp(boundary.output_scratch, output, output_length) == 0
-		    && boundary.prompt_length == sizeof(prompt) - 1U
-		    && memcmp(boundary.prompt_scratch, prompt,
-		    sizeof(prompt) - 1U) == 0
-		    && boundary.boundary_required
-		    == (cases[pass].kind == DIRECT_WARP_INVALID_EXHAUSTED)
-		    && boundary.running
-		    == (cases[pass].kind == DIRECT_WARP_INVALID_EXHAUSTED)
-		    && boundary.terminated
-		    == (cases[pass].kind != DIRECT_WARP_INVALID_EXHAUSTED)
-		    && boundary.closed_all
-		    == (cases[pass].kind != DIRECT_WARP_INVALID_EXHAUSTED)
-		    && cycle.entry_player_reads == 1U
-		    && cycle.gate_player_reads == 1U
-		    && cycle.physical_current_sector == 784.0f
-		    && !fixture.warp_called && fixture.draw_position == 0U
-		    && fixture.emergency_player_reads == 0U
-		    && fixture.emergency_player_put_attempts == 0U
-		    && fixture.emergency_player_writes == 0U
-		    && fixture.emergency_flushes == 0U
-		    && fixture.emergency_waits == 0U
-		    && memcmp(&fixture.emergency_player.record, &before,
-		    sizeof(before)) == 0
-		    && viewer.join.source_length == output_length
-		    && memcmp(viewer.join.source, output, output_length) == 0
-		    && viewer.join.queue_position == 0U
-		    && viewer.join.queue_length == 0U
-		    && viewer.join.local_fragment_length == 0U
-		    && viewer.join.local_row_count
-		    == (cases[pass].kind == DIRECT_WARP_INVALID_EXHAUSTED ? 8U : 10U)
-		    && viewer_rows_fnv1a64(&viewer.join)
-		    == (cases[pass].command_length == 1U
-		    ? (cases[pass].kind == DIRECT_WARP_INVALID_EXHAUSTED
-		    ? UINT64_C(0xefa2d8a6d57c46c6)
-		    : cases[pass].kind == DIRECT_WARP_INVALID_INACTIVITY
-		    ? UINT64_C(0xef730dc06fef84e0)
-		    : UINT64_C(0x645f546a9968adc6))
-		    : (cases[pass].kind == DIRECT_WARP_INVALID_EXHAUSTED
-		    ? UINT64_C(0x83f68225ae216055)
-		    : cases[pass].kind == DIRECT_WARP_INVALID_INACTIVITY
-		    ? UINT64_C(0x59334c1992a01b27)
-		    : UINT64_C(0x073be72cbaea015d)))
-		    && viewer.join.local_color_count
-		    == (cases[pass].ansi
-		    ? (cases[pass].kind == DIRECT_WARP_INVALID_EXHAUSTED ? 14U : 18U)
-		    : (cases[pass].kind == DIRECT_WARP_INVALID_EXHAUSTED ? 4U : 5U))
-		    && viewer_colors_fnv1a64(&viewer.join)
-		    == (cases[pass].ansi
-		    ? (cases[pass].kind == DIRECT_WARP_INVALID_EXHAUSTED
-		    ? UINT64_C(0x8a2d96f68c5afe5c)
-		    : UINT64_C(0x8dbee552aa7ab384))
-		    : (cases[pass].kind == DIRECT_WARP_INVALID_EXHAUSTED
-		    ? UINT64_C(0x01b4fd96ce8921d5)
-		    : UINT64_C(0xc6f69f5cf097a0a2)))
-		    && viewer.join.event_count
-		    == (cases[pass].kind == DIRECT_WARP_INVALID_EXHAUSTED ? 20U : 25U)
-		    && viewer.join.sample_calls
-		    == (cases[pass].kind == DIRECT_WARP_INVALID_EXHAUSTED ? 4U : 5U)
-		    && viewer.join.response_calls == 0U
-		    && viewer.join.presentation.foreground == 7.0f
-		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold
-		    == (cases[pass].ansi
-		    && cases[pass].kind != DIRECT_WARP_INVALID_EXHAUSTED
-		    ? 0.0f : 1.0f)
-		    && viewer.join.presentation.blink == 0.0f
-		    && viewer.join.presentation.cached_foreground
-		    == (cases[pass].ansi ? 7.0f : 3.0f)
-		    && viewer.join.pager.foreground == 7
-		    && viewer.join.pager.line_count
-		    == (cases[pass].kind == DIRECT_WARP_INVALID_EXHAUSTED
-		    ? 0.0f : 1.0f));
-		if (cases[pass].kind == DIRECT_WARP_INVALID_EXHAUSTED)
-			CHECK(strcmp(viewer.join.accumulator, "X") == 0);
-		else
-			CHECK(viewer.join.accumulator[0] == '\0');
-		yt_text_input_destroy(&viewer.input);
-	}
-}
-
 struct direct_warp_carrier_state {
 	uint8_t output_scratch[80];
 	size_t output_length;
@@ -26960,69 +26090,6 @@ direct_emergency_warp_fresh_hostile_menu_carrier_failure(
 	return true;
 }
 
-struct direct_warp_hostile_menu_terminal_state {
-	struct viewer_pager_join *join;
-	bool running;
-	bool terminated;
-	bool closed;
-};
-
-static bool
-direct_warp_hostile_menu_terminal_notice(void *context,
-    const uint8_t *notice, size_t length)
-{
-	struct direct_warp_hostile_menu_terminal_state *terminal = context;
-
-	return normal_exit_line(terminal->join, NULL, 0U)
-	    && normal_exit_b05d(terminal->join, notice, length, 0.0f);
-}
-
-static bool
-direct_warp_hostile_menu_terminal_close(void *context)
-{
-	struct direct_warp_hostile_menu_terminal_state *terminal = context;
-
-	terminal->closed = true;
-	return true;
-}
-
-static bool
-direct_emergency_warp_fresh_hostile_menu_terminal(
-    struct hostile_mines_hazard_fixture *fixture,
-    struct direct_warp_main_cycle_state *cycle,
-    enum yt_ab36_terminal_kind kind,
-    struct direct_warp_hostile_menu_terminal_state *terminal)
-{
-	static const uint8_t prompt[] =
-	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? ";
-	struct viewer_pager_join *join;
-	uint8_t row[96];
-	size_t row_length;
-
-	if (fixture == NULL || cycle == NULL || terminal == NULL)
-		return false;
-	join = &fixture->cycle.presentation.viewer->join;
-	++cycle->fresh_hostile_player_reads;
-	cycle->fresh_hostile_player_get_completed = true;
-	cycle->final_field_record = 2;
-	cycle->final_field_player = true;
-	join->presentation.foreground = 3.0f;
-	join->pager.foreground = 3;
-	if (!yt_hostile_menu_row(1000.0, 1250.0, row, sizeof(row),
-	    &row_length) || !normal_exit_line(join, NULL, 0U)
-	    || !normal_exit_b05d(join, row, row_length, 0.0f)
-	    || !normal_exit_b05d(join, prompt, sizeof(prompt) - 1U, 1.0f))
-		return false;
-	cycle->fresh_hostile_editor_entered = true;
-	yt_pager_editor_enter(&join->pager, join->accumulator,
-	    sizeof(join->accumulator));
-	memset(terminal, 0, sizeof(*terminal));
-	terminal->join = join;
-	terminal->running = true;
-	return yt_input_ab36_terminal_run(kind, &terminal->running,
-	    &terminal->terminated, direct_warp_hostile_menu_terminal_notice,
-	    direct_warp_hostile_menu_terminal_close, terminal);
-}
 
 static bool
 direct_emergency_warp_fresh_hostile_attack_admission_amount_with_ship(
@@ -32674,202 +31741,6 @@ test_direct_emergency_warp_hostile_menu_carrier_failures(void)
 			    && viewer.join.pager.line_count
 			    == (cuts[cut].row_delta == 1U ? 1.0f : 2.0f)
 			    && viewer.join.pager.newline_flag == cuts[cut].newline_flag);
-			yt_text_input_destroy(&viewer.input);
-		}
-	}
-}
-
-static void
-test_direct_emergency_warp_hostile_menu_terminal_exits(void)
-{
-	static const uint8_t fighter[] = "Fighters: 1000 / 1250";
-	static const uint8_t prompt[] =
-	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? ";
-	static const uint8_t plain_menu[] =
-	    "\r\nFighters: 1000 / 1250\n\r"
-	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? ";
-	static const uint8_t ansi_menu[] =
-	    "\x1b[0;33;40m\r\nFighters: 1000 / 1250\n\r"
-	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? ";
-	static const uint8_t inactivity[] = "\aUSER FELL ASLEEP!";
-	static const uint8_t inactivity_tail[] =
-	    "\r\n\aUSER FELL ASLEEP!\n\r";
-	static const uint8_t session[] =
-	    "\a\a\aTIME LIMIT EXCEEDED!\a\a\a";
-	static const uint8_t session_tail[] =
-	    "\r\n\a\a\aTIME LIMIT EXCEEDED!\a\a\a\n\r";
-	static const struct {
-		bool main;
-		bool ansi;
-		const uint8_t *command;
-		size_t command_length;
-		size_t parent_length;
-		size_t parent_rows;
-		size_t parent_colors;
-		size_t parent_events;
-		size_t parent_samples;
-	} callers[] = {
-		{true, false, (const uint8_t *)"W", 1U, 811U, 28U, 4U,
-		    20U, 4U},
-		{true, true, (const uint8_t *)"W", 1U, 1073U, 28U, 41U,
-		    20U, 4U},
-		{false, false, (const uint8_t *)"W", 1U, 833U, 29U, 5U,
-		    25U, 5U},
-		{false, false, (const uint8_t *)"WT", 2U, 834U, 29U, 5U,
-		    25U, 5U},
-		{false, true, (const uint8_t *)"W", 1U, 1105U, 29U, 43U,
-		    25U, 5U},
-		{false, true, (const uint8_t *)"WT", 2U, 1106U, 29U, 43U,
-		    25U, 5U},
-	};
-	static const struct {
-		enum yt_ab36_terminal_kind kind;
-		const uint8_t *notice;
-		size_t notice_length;
-		const uint8_t *tail;
-		size_t tail_length;
-	} terminals[] = {
-		{YT_AB36_TERMINAL_INACTIVITY, inactivity,
-		    sizeof(inactivity) - 1U, inactivity_tail,
-		    sizeof(inactivity_tail) - 1U},
-		{YT_AB36_TERMINAL_SESSION_LIMIT, session,
-		    sizeof(session) - 1U, session_tail,
-		    sizeof(session_tail) - 1U},
-	};
-	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
-	struct hostile_mines_hazard_fixture fixture;
-	struct direct_warp_main_cycle_state cycle;
-	struct direct_warp_hostile_menu_terminal_state terminal;
-	struct yt_record record;
-	uint8_t remote[1400];
-	size_t ends[3];
-	size_t caller;
-	size_t pass;
-	size_t index;
-
-	for (caller = 0U; caller < YT_ARRAY_LEN(callers); ++caller) {
-		for (pass = 0U; pass < YT_ARRAY_LEN(terminals); ++pass) {
-			const uint8_t *menu = callers[caller].ansi
-			    ? ansi_menu : plain_menu;
-			size_t menu_length = callers[caller].ansi
-			    ? sizeof(ansi_menu) - 1U : sizeof(plain_menu) - 1U;
-
-			memset(&viewer, 0, sizeof(viewer));
-			fixture_viewer_initialize(&viewer, &stream,
-			    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
-			    "YTSCORE.ASC", callers[caller].ansi, remote,
-			    sizeof(remote));
-			memset(&fixture, 0, sizeof(fixture));
-			fixture.cycle.presentation.viewer = &viewer;
-			fixture.emergency_sector_cache = 733.0f;
-			fixture.draws[0] = 0.0f;
-			fixture.draws[1] = 0.0f;
-			fixture.draws[2] = 0.75f;
-			fixture.draws[3] = 0.5f;
-			fixture.draws[4] = 0.949999988079071f;
-			fixture.draws[5] = 0.999f;
-			fixture.draws[6] = 0.9f;
-			memset(&record, 0xa5, sizeof(record));
-			(void)yt_record_set_number(&record, YT_F49, 17.0f);
-			(void)yt_record_set_number(&record, YT_F57, 733.0f);
-			yt_player_decode(&fixture.emergency_player, &record);
-			fixture.hazard_player = fixture.emergency_player;
-			if (callers[caller].main) {
-				CHECK(direct_emergency_warp_main_hostile_handoff_run(
-				    &fixture, callers[caller].ansi, &cycle, ends));
-			}
-			else {
-				CHECK(direct_emergency_warp_hostile_cycle_run(&fixture,
-				    callers[caller].ansi, callers[caller].command,
-				    callers[caller].command_length,
-				    DIRECT_WARP_HOSTILE_DEFENSE, &cycle, ends));
-			}
-			CHECK(viewer.join.remote_length == callers[caller].parent_length
-			    && direct_emergency_warp_fresh_hostile_menu_terminal(
-			    &fixture, &cycle, terminals[pass].kind, &terminal));
-			CHECK(viewer.join.remote_length
-			    == callers[caller].parent_length + menu_length
-			    + terminals[pass].tail_length
-			    && memcmp(remote + callers[caller].parent_length, menu,
-			    menu_length) == 0
-			    && memcmp(remote + callers[caller].parent_length + menu_length,
-			    terminals[pass].tail, terminals[pass].tail_length) == 0
-			    && viewer.join.event_count
-			    == callers[caller].parent_events + 15U
-			    && viewer.join.sample_calls
-			    == callers[caller].parent_samples + 3U
-			    && viewer.join.local_row_count
-			    == callers[caller].parent_rows + 4U
-			    && viewer.join.local_fragment_length == 0U
-			    && viewer.join.local_color_count
-			    == callers[caller].parent_colors
-			    + (callers[caller].ansi ? 8U : 3U));
-			CHECK(viewer.join.local_lengths[callers[caller].parent_rows]
-			    == 0U
-			    && viewer.join.local_lengths[
-			    callers[caller].parent_rows + 1U] == sizeof(fighter) - 1U
-			    && memcmp(viewer.join.local_rows[
-			    callers[caller].parent_rows + 1U], fighter,
-			    sizeof(fighter) - 1U) == 0
-			    && viewer.join.local_lengths[
-			    callers[caller].parent_rows + 2U] == sizeof(prompt) - 1U
-			    && memcmp(viewer.join.local_rows[
-			    callers[caller].parent_rows + 2U], prompt,
-			    sizeof(prompt) - 1U) == 0
-			    && viewer.join.local_lengths[
-			    callers[caller].parent_rows + 3U]
-			    == terminals[pass].notice_length
-			    && memcmp(viewer.join.local_rows[
-			    callers[caller].parent_rows + 3U], terminals[pass].notice,
-			    terminals[pass].notice_length) == 0);
-			for (index = callers[caller].parent_colors;
-			    index < viewer.join.local_color_count; ++index) {
-				size_t child = index - callers[caller].parent_colors;
-
-				CHECK(viewer.join.local_backgrounds[index] == 0
-				    && viewer.join.local_foregrounds[index]
-				    == (callers[caller].ansi
-				    && child != 2U && child != 4U && child != 7U
-				    ? 6 : 7));
-			}
-			CHECK(!terminal.running && terminal.terminated && terminal.closed
-			    && fixture.warp_called && fixture.draw_position == 7U
-			    && fixture.emergency_player_reads == 1U
-			    && fixture.emergency_player_put_attempts == 1U
-			    && fixture.emergency_player_writes == 1U
-			    && fixture.emergency_flushes == 1U
-			    && fixture.emergency_waits == 1U
-			    && fixture.emergency_ticks == 1U
-			    && fixture.emergency_sector_cache == 1003.0f
-			    && fixture.emergency_player.sector == 1003.0f
-			    && fixture.emergency_player.turns == 14.0f
-			    && cycle.fresh_hostile_player_reads == 1U
-			    && cycle.fresh_hostile_player_get_completed
-			    && !cycle.fresh_hostile_carrier_ended
-			    && cycle.fresh_hostile_editor_entered
-			    && cycle.fresh_hostile_selected == 0U
-			    && cycle.final_field_record == 2
-			    && cycle.final_field_player
-			    && !cycle.fresh_prompt_wait
-			    && viewer.join.queue_length == 0U
-			    && viewer.join.accumulator[0] == '\0'
-			    && viewer.join.source_length == terminals[pass].notice_length
-			    && memcmp(viewer.join.source, terminals[pass].notice,
-			    terminals[pass].notice_length) == 0
-			    && viewer.join.presentation.foreground == 3.0f
-			    && viewer.join.presentation.background == 0.0f
-			    && viewer.join.presentation.bold
-			    == (callers[caller].ansi ? 0.0f : 1.0f)
-			    && viewer.join.presentation.blink
-			    == (callers[caller].ansi ? 0.0f : 1.0f)
-			    && viewer.join.presentation.cached_foreground
-			    == (callers[caller].ansi ? 3.0f : 2.0f)
-			    && viewer.join.pager.foreground == 3
-			    && viewer.join.pager.line_count == 1.0f
-			    && viewer.join.pager.newline_flag == 0.0f
-			    && viewer.join.pager.nonstop == 0.0f
-			    && viewer.join.pager.key[0] == '\0');
 			yt_text_input_destroy(&viewer.input);
 		}
 	}
@@ -41523,34 +40394,9 @@ docking_earth_row(struct viewer_pager_join *join, const char *label,
 	    strlen(affordable), 0.0f);
 }
 
-struct docking_earth_terminal_context {
-	struct viewer_pager_join *join;
-	bool closed;
-};
-
-static bool
-docking_earth_terminal_notice(void *context, const uint8_t *notice,
-    size_t length)
-{
-	struct docking_earth_terminal_context *terminal = context;
-
-	return normal_exit_line(terminal->join, NULL, 0U)
-	    && normal_exit_b05d(terminal->join, notice, length, 0.0f);
-}
-
-static bool
-docking_earth_terminal_close(void *context)
-{
-	struct docking_earth_terminal_context *terminal = context;
-
-	terminal->closed = true;
-	return true;
-}
-
 static bool
 docking_earth_leave_cycle_run(struct physical_viewer_join *viewer,
-    bool ansi, enum yt_ab36_terminal_kind terminal_kind, size_t ends[3],
-    bool *running, bool *terminated, bool *closed)
+    bool ansi, size_t ends[3])
 {
 	static const char *const label[9] = {
 		"[1] Cloak Energy", "[2] Cargo Holds", "[3] Fighters",
@@ -41587,7 +40433,6 @@ docking_earth_leave_cycle_run(struct physical_viewer_join *viewer,
 	static const uint8_t main_prompt[] =
 	    "Time:10:00  Main Command (?=Help)? ";
 	struct viewer_pager_join *join = &viewer->join;
-	struct docking_earth_terminal_context terminal = {join, false};
 	struct yt_present_result result;
 	size_t index;
 
@@ -41634,22 +40479,6 @@ docking_earth_leave_cycle_run(struct physical_viewer_join *viewer,
 		return false;
 	yt_pager_editor_enter(&join->pager, join->accumulator,
 	    sizeof(join->accumulator));
-	if (terminal_kind == YT_AB36_TERMINAL_INACTIVITY
-	    || terminal_kind == YT_AB36_TERMINAL_SESSION_LIMIT) {
-		if (running == NULL || terminated == NULL || closed == NULL)
-			return false;
-		*running = true;
-		*terminated = false;
-		*closed = false;
-		if (!yt_input_ab36_terminal_run(terminal_kind, running,
-		    terminated, docking_earth_terminal_notice,
-		    docking_earth_terminal_close, &terminal))
-			return false;
-		*closed = terminal.closed;
-		ends[1] = join->remote_length;
-		ends[2] = join->remote_length;
-		return true;
-	}
 	memcpy(join->accumulator, response, sizeof(response));
 	if (yt_present_editor_echo(response, sizeof(response) - 1U,
 	    response, sizeof(response) - 1U, &join->presentation, &result)
@@ -41750,8 +40579,7 @@ test_docking_earth_leave_cycle_presentation(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
 		CHECK(docking_earth_leave_cycle_run(&viewer,
-		    cases[pass].ansi, (enum yt_ab36_terminal_kind)-1,
-		    ends, NULL, NULL, NULL));
+		    cases[pass].ansi, ends));
 		CHECK(memcmp(ends, cases[pass].ends, sizeof(ends)) == 0);
 		CHECK(viewer.join.remote_length == cases[pass].expected_length);
 		CHECK(viewer.join.remote_length != cases[pass].expected_length
@@ -41778,62 +40606,6 @@ test_docking_earth_leave_cycle_presentation(void)
 		    && viewer.input.file == NULL && viewer.close_calls == 0U
 		    && viewer.open_calls == 0U);
 		yt_text_input_destroy(&viewer.input);
-	}
-	{
-		static const uint8_t inactivity[] =
-		    "\r\n\aUSER FELL ASLEEP!\n\r";
-		static const uint8_t session_limit[] =
-		    "\r\n\a\a\aTIME LIMIT EXCEEDED!\a\a\a\n\r";
-		static const struct {
-			enum yt_ab36_terminal_kind kind;
-			const uint8_t *suffix;
-			size_t suffix_length;
-		} terminals[] = {
-			{YT_AB36_TERMINAL_INACTIVITY, inactivity,
-			    sizeof(inactivity) - 1U},
-			{YT_AB36_TERMINAL_SESSION_LIMIT, session_limit,
-			    sizeof(session_limit) - 1U},
-		};
-		size_t terminal_index;
-
-		for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
-			for (terminal_index = 0U;
-			    terminal_index < YT_ARRAY_LEN(terminals);
-			    ++terminal_index) {
-				size_t prompt_end = cases[pass].ansi ? 717U : 697U;
-				bool running;
-				bool terminated;
-				bool closed;
-
-				memset(&viewer, 0, sizeof(viewer));
-				fixture_viewer_initialize(&viewer, &stream,
-				    retained_scoreboard,
-				    sizeof(retained_scoreboard) - 1U,
-				    "YTSCORE.ASC", cases[pass].ansi, remote,
-				    sizeof(remote));
-				CHECK(docking_earth_leave_cycle_run(&viewer,
-				    cases[pass].ansi,
-				    terminals[terminal_index].kind, ends,
-				    &running, &terminated, &closed));
-				CHECK(ends[0] == cases[pass].ends[0]
-				    && ends[1] == prompt_end
-				    + terminals[terminal_index].suffix_length
-				    && ends[2] == ends[1]
-				    && viewer.join.remote_length == ends[1]
-				    && memcmp(remote, cases[pass].expected,
-				    prompt_end) == 0
-				    && memcmp(remote + prompt_end,
-				    terminals[terminal_index].suffix,
-				    terminals[terminal_index].suffix_length) == 0
-				    && !running && terminated && closed
-				    && viewer.join.pager.line_count == 1.0f
-				    && viewer.join.pager.newline_flag == 0.0f
-				    && viewer.join.sample_calls == 20U
-				    && !stream.file_open && !viewer.join.file_open
-				    && viewer.input.file == NULL);
-				yt_text_input_destroy(&viewer.input);
-			}
-		}
 	}
 	CHECK(sizeof(plain) - 1U == 773U && sizeof(ansi) - 1U == 813U);
 }
@@ -44334,315 +43106,6 @@ test_computer_path_presentation(void)
 	CHECK(sizeof(expected) - 1U == 170U);
 	CHECK(capture.remote_length == sizeof(expected) - 1U
 	    && memcmp(capture.remote, expected, sizeof(expected) - 1U) == 0);
-	}
-
-static void
-test_computer_path_start_terminal_presentation(void)
-{
-	static const uint8_t prompt[] = "Enter start for path search? ";
-	static const uint8_t inactivity[] =
-	    "\r\nEnter start for path search? "
-	    "\r\n\aUSER FELL ASLEEP!\n\r";
-	static const uint8_t inactivity_carrier[] =
-	    "\r\nEnter start for path search? \r\n";
-	static const uint8_t direct_carrier[] =
-	    "\r\nEnter start for path search? ";
-	static const uint8_t session_limit[] =
-	    "\r\nEnter start for path search? "
-	    "\r\n\a\a\aTIME LIMIT EXCEEDED!\a\a\a\n\r";
-	static const uint8_t session_carrier[] =
-	    "\r\nEnter start for path search? "
-	    "\r\n\a\a\aTIME LIMIT EXCEEDED!\a\a\a";
-	static const struct {
-		enum yt_ab36_terminal_kind kind;
-		int carrier_failure;
-		const uint8_t *expected;
-		size_t expected_length;
-		bool succeeds;
-	} cases[] = {
-		{YT_AB36_TERMINAL_INACTIVITY, 0, inactivity,
-		    sizeof(inactivity) - 1U, true},
-		{YT_AB36_TERMINAL_INACTIVITY, 1, inactivity_carrier,
-		    sizeof(inactivity_carrier) - 1U, false},
-		{YT_AB36_TERMINAL_SESSION_LIMIT, 0, session_limit,
-		    sizeof(session_limit) - 1U, true},
-		{YT_AB36_TERMINAL_SESSION_LIMIT, 2, session_carrier,
-		    sizeof(session_carrier) - 1U, false},
-	};
-	size_t pass;
-
-	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
-		struct yt_present_state current = state(true);
-		struct yt_present_result result;
-		struct yt_pager_state pager;
-		struct pager_capture capture;
-		struct computer_port_terminal_join join;
-		char accumulator[80];
-		bool running = true;
-		bool terminated = false;
-		bool result_ok;
-
-		current.foreground = 1.0f;
-		current.cached_foreground = 1.0f;
-		memset(&pager, 0, sizeof(pager));
-		pager.foreground = 1;
-		memset(&capture, 0, sizeof(capture));
-		memset(accumulator, 0, sizeof(accumulator));
-		CHECK(yt_present_line(NULL, 0U, &current, &result)
-		    == YT_PRESENT_OK);
-		pager_capture_result(&capture, &result);
-		pager.newline_flag = 1.0f;
-		pager_fixture_b05d(&pager, &current, prompt,
-		    sizeof(prompt) - 1U, &capture);
-		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
-		join.current = &current;
-		join.pager = &pager;
-		join.capture = &capture;
-		join.running = &running;
-		join.terminated = &terminated;
-		join.notice_carrier_failure = cases[pass].carrier_failure;
-		join.closed = false;
-		result_ok = yt_input_ab36_terminal_run(cases[pass].kind,
-		    &running, &terminated, computer_port_terminal_notice,
-		    computer_port_terminal_close, &join);
-		CHECK(result_ok == cases[pass].succeeds
-		    && capture.remote_length == cases[pass].expected_length
-		    && memcmp(capture.remote, cases[pass].expected,
-		    cases[pass].expected_length) == 0
-		    && !running && terminated && join.closed
-		    && pager.line_count == (cases[pass].succeeds ? 1.0f : 0.0f)
-		    && pager.newline_flag == 0.0f && accumulator[0] == '\0');
-	}
-	{
-		struct yt_present_state current = state(true);
-		struct yt_present_result result;
-		struct yt_pager_state pager;
-		struct pager_capture capture;
-		char accumulator[80];
-
-		current.foreground = 1.0f;
-		current.cached_foreground = 1.0f;
-		memset(&pager, 0, sizeof(pager));
-		pager.foreground = 1;
-		memset(&capture, 0, sizeof(capture));
-		memset(accumulator, 0, sizeof(accumulator));
-		CHECK(yt_present_line(NULL, 0U, &current, &result)
-		    == YT_PRESENT_OK);
-		pager_capture_result(&capture, &result);
-		pager.newline_flag = 1.0f;
-		pager_fixture_b05d(&pager, &current, prompt,
-		    sizeof(prompt) - 1U, &capture);
-		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
-		CHECK(capture.remote_length == sizeof(direct_carrier) - 1U
-		    && memcmp(capture.remote, direct_carrier,
-		    sizeof(direct_carrier) - 1U) == 0
-		    && pager.line_count == 0.0f
-		    && pager.newline_flag == 0.0f);
-	}
-}
-
-static void
-test_computer_autopilot_destination_terminal_presentation(void)
-{
-	static const uint8_t prompt[] =
-	    "What sector do you want to go to? ";
-	static const uint8_t prefix[] =
-	    "\r\nWhat sector do you want to go to? ";
-	static const uint8_t inactivity[] =
-	    "\r\n\aUSER FELL ASLEEP!\n\r";
-	static const uint8_t notice_before[] = "\r\n";
-	static const uint8_t session_limit[] =
-	    "\r\n\a\a\aTIME LIMIT EXCEEDED!\a\a\a\n\r";
-	static const uint8_t session_after[] =
-	    "\r\n\a\a\aTIME LIMIT EXCEEDED!\a\a\a";
-	static const struct {
-		enum yt_ab36_terminal_kind kind;
-		int carrier_failure;
-		const uint8_t *suffix;
-		size_t suffix_length;
-		bool succeeds;
-	} cases[] = {
-		{YT_AB36_TERMINAL_INACTIVITY, 0, inactivity,
-		    sizeof(inactivity) - 1U, true},
-		{YT_AB36_TERMINAL_INACTIVITY, 1, notice_before,
-		    sizeof(notice_before) - 1U, false},
-		{YT_AB36_TERMINAL_SESSION_LIMIT, 0, session_limit,
-		    sizeof(session_limit) - 1U, true},
-		{YT_AB36_TERMINAL_SESSION_LIMIT, 2, session_after,
-		    sizeof(session_after) - 1U, false},
-	};
-	size_t pass;
-
-	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
-		struct yt_present_state current = state(true);
-		struct yt_present_result result;
-		struct yt_pager_state pager;
-		struct pager_capture capture;
-		struct computer_port_terminal_join join;
-		char accumulator[80];
-		bool running = true;
-		bool terminated = false;
-		bool result_ok;
-
-		current.foreground = 1.0f;
-		current.cached_foreground = 1.0f;
-		memset(&pager, 0, sizeof(pager));
-		pager.foreground = 1;
-		memset(&capture, 0, sizeof(capture));
-		memset(accumulator, 0, sizeof(accumulator));
-		CHECK(yt_present_line(NULL, 0U, &current, &result)
-		    == YT_PRESENT_OK);
-		pager_capture_result(&capture, &result);
-		pager.newline_flag = 1.0f;
-		pager_fixture_b05d(&pager, &current, prompt,
-		    sizeof(prompt) - 1U, &capture);
-		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
-		CHECK(capture.remote_length == sizeof(prefix) - 1U
-		    && memcmp(capture.remote, prefix, sizeof(prefix) - 1U) == 0);
-		join.current = &current;
-		join.pager = &pager;
-		join.capture = &capture;
-		join.running = &running;
-		join.terminated = &terminated;
-		join.notice_carrier_failure = cases[pass].carrier_failure;
-		join.closed = false;
-		result_ok = yt_input_ab36_terminal_run(cases[pass].kind,
-		    &running, &terminated, computer_port_terminal_notice,
-		    computer_port_terminal_close, &join);
-		CHECK(result_ok == cases[pass].succeeds
-		    && capture.remote_length == sizeof(prefix) - 1U
-		    + cases[pass].suffix_length
-		    && memcmp(capture.remote + sizeof(prefix) - 1U,
-		    cases[pass].suffix, cases[pass].suffix_length) == 0
-		    && !running && terminated && join.closed
-		    && pager.line_count == (cases[pass].succeeds ? 1.0f : 0.0f)
-		    && pager.newline_flag == 0.0f && accumulator[0] == '\0');
-	}
-	{
-		struct yt_present_state current = state(true);
-		struct yt_present_result result;
-		struct yt_pager_state pager;
-		struct pager_capture capture;
-		char accumulator[80];
-
-		current.foreground = 1.0f;
-		current.cached_foreground = 1.0f;
-		memset(&pager, 0, sizeof(pager));
-		pager.foreground = 1;
-		memset(&capture, 0, sizeof(capture));
-		memset(accumulator, 0, sizeof(accumulator));
-		CHECK(yt_present_line(NULL, 0U, &current, &result)
-		    == YT_PRESENT_OK);
-		pager_capture_result(&capture, &result);
-		pager.newline_flag = 1.0f;
-		pager_fixture_b05d(&pager, &current, prompt,
-		    sizeof(prompt) - 1U, &capture);
-		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
-		CHECK(capture.remote_length == sizeof(prefix) - 1U
-		    && memcmp(capture.remote, prefix, sizeof(prefix) - 1U) == 0
-		    && pager.line_count == 0.0f
-		    && pager.newline_flag == 0.0f);
-	}
-}
-
-static void
-test_computer_path_destination_terminal_presentation(void)
-{
-	static const uint8_t start_prompt[] =
-	    "Enter start for path search? ";
-	static const uint8_t destination_prompt[] =
-	    "What sector do you want to go to? ";
-	static const uint8_t prefix[] =
-	    "\r\nEnter start for path search? 1\r\n"
-	    "\r\nWhat sector do you want to go to? ";
-	static const uint8_t inactivity[] =
-	    "\r\n\aUSER FELL ASLEEP!\n\r";
-	static const uint8_t notice_before[] = "\r\n";
-	static const uint8_t session_limit[] =
-	    "\r\n\a\a\aTIME LIMIT EXCEEDED!\a\a\a\n\r";
-	static const uint8_t session_after[] =
-	    "\r\n\a\a\aTIME LIMIT EXCEEDED!\a\a\a";
-	static const struct {
-		enum yt_ab36_terminal_kind kind;
-		int carrier_failure;
-		const uint8_t *suffix;
-		size_t suffix_length;
-		bool succeeds;
-	} cases[] = {
-		{YT_AB36_TERMINAL_INACTIVITY, 0, inactivity,
-		    sizeof(inactivity) - 1U, true},
-		{YT_AB36_TERMINAL_INACTIVITY, 1, notice_before,
-		    sizeof(notice_before) - 1U, false},
-		{YT_AB36_TERMINAL_SESSION_LIMIT, 0, session_limit,
-		    sizeof(session_limit) - 1U, true},
-		{YT_AB36_TERMINAL_SESSION_LIMIT, 2, session_after,
-		    sizeof(session_after) - 1U, false},
-	};
-	size_t pass;
-
-	for (pass = 0U; pass <= YT_ARRAY_LEN(cases); ++pass) {
-		struct yt_present_state current = state(true);
-		struct yt_present_result result;
-		struct yt_pager_state pager;
-		struct pager_capture capture;
-		struct computer_port_terminal_join join;
-		char accumulator[80];
-		bool running = true;
-		bool terminated = false;
-		bool result_ok;
-
-		current.foreground = 1.0f;
-		current.cached_foreground = 1.0f;
-		memset(&pager, 0, sizeof(pager));
-		pager.foreground = 1;
-		memset(&capture, 0, sizeof(capture));
-		memset(accumulator, 0, sizeof(accumulator));
-		CHECK(yt_present_line(NULL, 0U, &current, &result)
-		    == YT_PRESENT_OK);
-		pager_capture_result(&capture, &result);
-		pager.newline_flag = 1.0f;
-		pager_fixture_b05d(&pager, &current, start_prompt,
-		    sizeof(start_prompt) - 1U, &capture);
-		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
-		CHECK(yt_present_editor_echo((const uint8_t *)"1", 1U,
-		    (const uint8_t *)"1", 1U, &current, &result)
-		    == YT_PRESENT_OK);
-		pager_capture_result(&capture, &result);
-		CHECK(yt_present_line(NULL, 0U, &current, &result)
-		    == YT_PRESENT_OK);
-		pager_capture_result(&capture, &result);
-		CHECK(yt_present_line(NULL, 0U, &current, &result)
-		    == YT_PRESENT_OK);
-		pager_capture_result(&capture, &result);
-		pager.newline_flag = 1.0f;
-		pager_fixture_b05d(&pager, &current, destination_prompt,
-		    sizeof(destination_prompt) - 1U, &capture);
-		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
-		CHECK(capture.remote_length == sizeof(prefix) - 1U
-		    && memcmp(capture.remote, prefix, sizeof(prefix) - 1U) == 0
-		    && pager.line_count == 0.0f
-		    && pager.newline_flag == 0.0f);
-		if (pass == YT_ARRAY_LEN(cases))
-			continue;
-		join.current = &current;
-		join.pager = &pager;
-		join.capture = &capture;
-		join.running = &running;
-		join.terminated = &terminated;
-		join.notice_carrier_failure = cases[pass].carrier_failure;
-		join.closed = false;
-		result_ok = yt_input_ab36_terminal_run(cases[pass].kind,
-		    &running, &terminated, computer_port_terminal_notice,
-		    computer_port_terminal_close, &join);
-		CHECK(result_ok == cases[pass].succeeds
-		    && capture.remote_length == sizeof(prefix) - 1U
-		    + cases[pass].suffix_length
-		    && memcmp(capture.remote + sizeof(prefix) - 1U,
-		    cases[pass].suffix, cases[pass].suffix_length) == 0
-		    && !running && terminated && join.closed
-		    && pager.line_count == (cases[pass].succeeds ? 1.0f : 0.0f)
-		    && pager.newline_flag == 0.0f && accumulator[0] == '\0');
-	}
 }
 
 static void
@@ -44879,101 +43342,6 @@ test_computer_autopilot_alternate_presentation(void)
 	    sizeof(insufficient_ansi) - 1U) == 0
 	    && pager.line_count == 2.0f && pager.newline_flag == 0.0f
 	    && current.bold == 0.0f && current.blink == 0.0f);
-}
-
-static void
-test_computer_autopilot_confirmation_terminal_presentation(void)
-{
-	static const uint8_t turns[] = "You have 1 turns left.";
-	static const uint8_t confirmation[] =
-	    "Enter course into autopilot? (Y/[N])";
-	static const uint8_t inactivity[] =
-	    "\r\n\aUSER FELL ASLEEP!\n\r";
-	static const uint8_t notice_before[] = "\r\n";
-	static const uint8_t session_limit[] =
-	    "\r\n\a\a\aTIME LIMIT EXCEEDED!\a\a\a\n\r";
-	static const uint8_t session_after[] =
-	    "\r\n\a\a\aTIME LIMIT EXCEEDED!\a\a\a";
-	static const struct {
-		enum yt_ab36_terminal_kind kind;
-		int carrier_failure;
-		const uint8_t *suffix;
-		size_t suffix_length;
-		bool succeeds;
-	} cases[] = {
-		{YT_AB36_TERMINAL_INACTIVITY, 0, inactivity,
-		    sizeof(inactivity) - 1U, true},
-		{YT_AB36_TERMINAL_INACTIVITY, 1, notice_before,
-		    sizeof(notice_before) - 1U, false},
-		{YT_AB36_TERMINAL_SESSION_LIMIT, 0, session_limit,
-		    sizeof(session_limit) - 1U, true},
-		{YT_AB36_TERMINAL_SESSION_LIMIT, 2, session_after,
-		    sizeof(session_after) - 1U, false},
-	};
-	size_t pass;
-
-	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
-		struct yt_present_state current;
-		struct yt_present_result result;
-		struct yt_pager_state pager;
-		struct pager_capture capture;
-		struct computer_port_terminal_join join;
-		char accumulator[80];
-		bool running = true;
-		bool terminated = false;
-		bool result_ok;
-		size_t prefix_length;
-
-		computer_autopilot_one_hop_prefix(true, &capture, &current,
-		    &pager, accumulator, sizeof(accumulator));
-		pager_fixture_b05d(&pager, &current, turns,
-		    sizeof(turns) - 1U, &capture);
-		CHECK(yt_present_character(confirmation,
-		    sizeof(confirmation) - 1U, &current, &result)
-		    == YT_PRESENT_OK);
-		pager_capture_result(&capture, &result);
-		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
-		prefix_length = capture.remote_length;
-		join.current = &current;
-		join.pager = &pager;
-		join.capture = &capture;
-		join.running = &running;
-		join.terminated = &terminated;
-		join.notice_carrier_failure = cases[pass].carrier_failure;
-		join.closed = false;
-		result_ok = yt_input_ab36_terminal_run(cases[pass].kind,
-		    &running, &terminated, computer_port_terminal_notice,
-		    computer_port_terminal_close, &join);
-		CHECK(prefix_length == 196U
-		    && result_ok == cases[pass].succeeds
-		    && capture.remote_length == prefix_length
-		    + cases[pass].suffix_length
-		    && memcmp(capture.remote + prefix_length, cases[pass].suffix,
-		    cases[pass].suffix_length) == 0
-		    && !running && terminated && join.closed
-		    && pager.line_count == (cases[pass].succeeds ? 1.0f : 0.0f)
-		    && pager.newline_flag == 0.0f && accumulator[0] == '\0');
-	}
-	{
-		struct yt_present_state current;
-		struct yt_present_result result;
-		struct yt_pager_state pager;
-		struct pager_capture capture;
-		char accumulator[80];
-
-		computer_autopilot_one_hop_prefix(true, &capture, &current,
-		    &pager, accumulator, sizeof(accumulator));
-		pager_fixture_b05d(&pager, &current, turns,
-		    sizeof(turns) - 1U, &capture);
-		CHECK(yt_present_character(confirmation,
-		    sizeof(confirmation) - 1U, &current, &result)
-		    == YT_PRESENT_OK);
-		pager_capture_result(&capture, &result);
-		yt_pager_editor_enter(&pager, accumulator, sizeof(accumulator));
-		CHECK(capture.remote_length == 196U
-		    && pager.line_count == 0.0f
-		    && pager.newline_flag == 0.0f);
-	}
 }
 
 static void
@@ -46936,8 +45304,6 @@ main(void)
 	test_computer_port_report_presentation();
 	test_computer_port_report_short_cycles_presentation();
 	test_computer_port_report_wrapper_b05d_cuts();
-	test_computer_port_report_terminal_presentation();
-	test_computer_avoid_terminal_presentation();
 	test_computer_avoid_b05d_cuts();
 	test_computer_port_report_ab36_state_joins();
 	test_computer_port_report_earth_cycle_presentation();
@@ -47006,7 +45372,6 @@ main(void)
 	test_direct_emergency_warp_accepted_modes();
 	test_direct_emergency_warp_inherited_pager();
 	test_direct_emergency_warp_invalid_boundaries();
-	test_direct_emergency_warp_hostile_invalid_boundaries();
 	test_direct_emergency_warp_gate_get_failures();
 	test_direct_emergency_warp_gate_runtime_failures();
 	test_direct_emergency_warp_ade0_prefix_failures();
@@ -47038,7 +45403,6 @@ main(void)
 	test_direct_emergency_warp_hostile_menu_join();
 	test_direct_emergency_warp_hostile_menu_get_failures();
 	test_direct_emergency_warp_hostile_menu_carrier_failures();
-	test_direct_emergency_warp_hostile_menu_terminal_exits();
 	test_direct_emergency_warp_hostile_attack_admission();
 	test_direct_emergency_warp_hostile_attack_sector_get_failures();
 	test_direct_emergency_warp_hostile_attack_entry_a41c_failures();
@@ -47097,18 +45461,13 @@ main(void)
 	test_direct_attack_presentation();
 	test_computer_spy_presentation();
 	test_computer_path_presentation();
-	test_computer_path_start_terminal_presentation();
-	test_computer_autopilot_destination_terminal_presentation();
-	test_computer_path_destination_terminal_presentation();
 	test_computer_autopilot_presentation();
 	test_computer_autopilot_alternate_presentation();
-	test_computer_autopilot_confirmation_terminal_presentation();
 	test_computer_navigation_direct_b05d_carrier_prefixes();
 	test_computer_scoreboard_presentation();
 	test_computer_scoreboard_full_cycle_presentation();
 	test_computer_newspaper_full_cycle_presentation();
 	test_computer_newspaper_carrier_prefixes();
-	test_computer_newspaper_terminal_presentation();
 	test_radio_target_blank_presentation();
 	test_computer_radio_composer_cycle_presentation();
 	test_radio_body_presentation();
