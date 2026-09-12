@@ -14731,34 +14731,6 @@ plasma_reload_sector:
 	    launch_attacker_length, energy, error);
 }
 
-static bool
-cruise_opening_sound(void *context, float selector, struct yt_error *error)
-{
-	return session_sound(context, selector, "cruise missile launch sound",
-	    error);
-}
-
-static bool
-cruise_opening_present(void *context, const uint8_t *text, size_t length,
-    enum yt_projectile_opening_output_kind kind, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	enum session_present_text_kind session_kind;
-	const char *operation;
-
-	if (kind == YT_PROJECTILE_OPENING_RAW) {
-		session_kind = SESSION_PRESENT_RAW;
-		operation = "cruise missile loading text";
-	}
-	else {
-		session_kind = SESSION_PRESENT_LINE;
-		operation = length == 0U ? "cruise missile opening line"
-		    : "cruise missile tracking row";
-	}
-	return session_present_text(session, text, length, session_kind,
-	    operation, error);
-}
-
 struct plasma_opening_context {
 	struct yt_session *session;
 	size_t wait_count;
@@ -14804,10 +14776,6 @@ projectile_opening(struct yt_session *session, float amount, bool plasma,
     uint8_t *attacker, size_t attacker_capacity, size_t *attacker_length,
     struct yt_error *error)
 {
-	static const struct yt_projectile_cruise_opening_ops cruise_ops = {
-		cruise_opening_sound,
-		cruise_opening_present,
-	};
 	static const struct yt_projectile_plasma_opening_ops plasma_ops = {
 		plasma_opening_sound,
 		plasma_opening_present,
@@ -14821,11 +14789,27 @@ projectile_opening(struct yt_session *session, float amount, bool plasma,
 	size_t player_name_length;
 
 	if (!plasma) {
+		static const uint8_t loading[] =
+		    "Loading course into misile targeting computer.";
+		static const uint8_t tracking[] = "*** Tracking Report ***";
+
 		*energy = 0.0;
 		*hop_loss = 0.0f;
 		*attacker_length = 0U;
-		return yt_projectile_cruise_opening_run(last_mine_news_sector,
-		    &cruise_ops, session, error);
+		if (!session_sound(session, 4.0f,
+		    "cruise missile launch sound", error)
+		    || !session_present_text(session, NULL, 0U,
+		    SESSION_PRESENT_LINE, "cruise missile opening line", error)
+		    || !session_present_text(session, loading,
+		    sizeof(loading) - 1U, SESSION_PRESENT_RAW,
+		    "cruise missile loading text", error)
+		    || !session_present_text(session, NULL, 0U,
+		    SESSION_PRESENT_LINE, "cruise missile opening line", error))
+			return false;
+		*last_mine_news_sector = 0.0f;
+		return session_present_text(session, tracking,
+		    sizeof(tracking) - 1U, SESSION_PRESENT_LINE,
+		    "cruise missile tracking row", error);
 	}
 	if (!yt_player_stored_name(&session->player, player_name,
 	    &player_name_length, error))

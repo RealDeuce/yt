@@ -1761,31 +1761,6 @@ yt_projectile_command_run(struct yt_projectile_command_state *state,
 }
 
 bool
-yt_projectile_cruise_opening_run(float *last_mine_news_sector,
-    const struct yt_projectile_cruise_opening_ops *ops, void *context,
-    struct yt_error *error)
-{
-	static const uint8_t loading[] =
-	    "Loading course into misile targeting computer.";
-	static const uint8_t tracking[] = "*** Tracking Report ***";
-
-	if (last_mine_news_sector == NULL || ops == NULL || ops->sound == NULL
-	    || ops->present == NULL)
-		return false;
-	if (!ops->sound(context, 4.0f, error)
-	    || !ops->present(context, NULL, 0U,
-	    YT_PROJECTILE_OPENING_DIRECT_LINE, error)
-	    || !ops->present(context, loading, sizeof(loading) - 1U,
-	    YT_PROJECTILE_OPENING_RAW, error)
-	    || !ops->present(context, NULL, 0U,
-	    YT_PROJECTILE_OPENING_DIRECT_LINE, error))
-		return false;
-	*last_mine_news_sector = 0.0f;
-	return ops->present(context, tracking, sizeof(tracking) - 1U,
-	    YT_PROJECTILE_OPENING_DIRECT_LINE, error);
-}
-
-bool
 yt_projectile_plasma_opening_run(
     struct yt_projectile_plasma_opening_state *state,
     const struct yt_projectile_plasma_opening_ops *ops, void *context,
