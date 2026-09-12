@@ -16993,51 +16993,42 @@ computer_avoid(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
-computer_spy_read_target(void *context, size_t index, int16_t *target,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	(void)error;
-	if (index >= 3U)
-		return false;
-	*target = (int16_t)session->spy_sectors[index];
-	return true;
-}
-
-static bool
-computer_spy_present(void *context, const uint8_t *text, size_t length,
-    enum yt_computer_spy_output_kind kind, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	if (kind == YT_COMPUTER_SPY_NONE)
-		return session_present_alert(session, text, length,
-		    "active-spy none notice", error);
-	if (kind == YT_COMPUTER_SPY_LEADING_BLANK)
-		return session_present_text(session, NULL, 0U,
-		    SESSION_PRESENT_LINE, "active-spy leading blank", error);
-	if (kind == YT_COMPUTER_SPY_ROW) {
-		yt_present_set_bold(&session->presentation, 1.0f);
-		return session_present_paged_fragment(session, text, length);
-	}
-	if (error != NULL)
-		error->status = YT_INVALID;
-	return false;
-}
-
-static bool
 computer_spies(struct yt_session *session, struct yt_error *error)
 {
-	static const struct yt_computer_spy_ops ops = {
-		computer_spy_read_target,
-		computer_spy_present,
-	};
-	struct yt_computer_spy_state state = {
-		.count = (float)session->spy_count,
-	};
+	static const uint8_t none[] = "You do not have any spies!";
+	size_t index;
 
-	return yt_computer_spy_run(&state, &ops, session, error);
+	if (session->spy_count == 0)
+		return session_present_alert(session, none, sizeof(none) - 1U,
+		    "active-spy none notice", error);
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "active-spy leading blank", error))
+		return false;
+	for (index = 0U; index < (size_t)session->spy_count; ++index) {
+		char counter[64];
+		char target[64];
+		uint8_t row[160];
+		int counter_length;
+		int target_length;
+		int row_length;
+
+		counter_length = qb_str_single(counter, sizeof(counter),
+		    (float)(index + 1U));
+		target_length = qb_str_integer(target, sizeof(target),
+		    (int16_t)session->spy_sectors[index]);
+		if (counter_length < 0 || target_length < 0)
+			return false;
+		row_length = snprintf((char *)row, sizeof(row),
+		    "Spy #%.*s will hunt in sector%.*s.", counter_length,
+		    counter, target_length, target);
+		if (row_length < 0 || (size_t)row_length >= sizeof(row))
+			return false;
+		yt_present_set_bold(&session->presentation, 1.0f);
+		if (!session_present_paged_fragment(session, row,
+		    (size_t)row_length))
+			return false;
+	}
+	return true;
 }
 
 static bool

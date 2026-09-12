@@ -193,7 +193,6 @@ if(BUILD_TESTING)
     yt_add_test(test_ytconfig_output tests/test_ytconfig_output.c yt_game)
     yt_add_test(test_nearest tests/test_nearest.c yt_game)
     yt_add_test(test_profit tests/test_profit.c yt_game)
-    yt_add_test(test_spy tests/test_spy.c yt_game)
     yt_add_test(test_score tests/test_score.c yt_game)
     yt_add_test(test_route tests/test_route.c yt_core)
 

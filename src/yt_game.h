@@ -635,30 +635,6 @@ struct yt_computer_activation_ops {
 	bool (*sound)(void *context, float selector, struct yt_error *error);
 };
 
-enum yt_computer_spy_output_kind {
-	YT_COMPUTER_SPY_NONE,
-	YT_COMPUTER_SPY_LEADING_BLANK,
-	YT_COMPUTER_SPY_ROW,
-};
-
-struct yt_computer_spy_state {
-	float count;
-	float counter;
-	int16_t current_target;
-	size_t target_reads;
-	size_t outputs;
-	size_t rows;
-	bool target_valid;
-	bool complete;
-};
-
-struct yt_computer_spy_ops {
-	bool (*read_target)(void *context, size_t index, int16_t *target,
-	    struct yt_error *error);
-	bool (*present)(void *context, const uint8_t *text, size_t length,
-	    enum yt_computer_spy_output_kind kind, struct yt_error *error);
-};
-
 #define YT_COMPUTER_SCOREBOARD_RESPONSE_SIZE 80U
 
 enum yt_computer_scoreboard_output_kind {
@@ -1887,9 +1863,6 @@ bool yt_computer_prompt_run(struct yt_computer_prompt_state *state,
 	struct yt_error *error);
 bool yt_computer_activation_run(struct yt_computer_activation_state *state,
 	const struct yt_computer_activation_ops *ops, void *context,
-	struct yt_error *error);
-bool yt_computer_spy_run(struct yt_computer_spy_state *state,
-	const struct yt_computer_spy_ops *ops, void *context,
 	struct yt_error *error);
 bool yt_computer_scoreboard_run(struct yt_computer_scoreboard_state *state,
 	const struct yt_computer_scoreboard_ops *ops, void *context,
