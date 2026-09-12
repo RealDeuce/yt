@@ -330,42 +330,6 @@ yt_startup_configuration_run(struct yt_startup_configuration_state *state,
 	return true;
 }
 
-bool
-yt_startup_retention_run(struct yt_startup_retention_state *state,
-    const struct yt_startup_retention_ops *ops, void *context,
-    struct yt_error *error)
-{
-	static const uint8_t prefix[] =
-	    "Notice: If your ship is dead and you have not played for";
-	static const uint8_t second[] =
-	    "days, it will be deleted to make room for someone else.";
-	char number[64];
-	int number_length;
-
-	if (state == NULL || ops == NULL || ops->read_config == NULL
-	    || ops->present == NULL)
-		return false;
-	state->first_row_length = 0U;
-	if (!ops->read_config(context, &state->config_record, error))
-		return false;
-	number_length = qb_str_single(number, sizeof(number),
-	    qb_mbf32_decode(state->config_record.bytes + YT_F77));
-	if (number_length < 0
-	    || sizeof(prefix) - 1U + (size_t)number_length
-	    > sizeof(state->first_row))
-		return false;
-	memcpy(state->first_row, prefix, sizeof(prefix) - 1U);
-	memcpy(state->first_row + sizeof(prefix) - 1U, number,
-	    (size_t)number_length);
-	state->first_row_length = sizeof(prefix) - 1U + (size_t)number_length;
-	return ops->present(context, state->first_row,
-	    state->first_row_length, YT_STARTUP_RETENTION_FIRST_ROW, error)
-	    && ops->present(context, second, sizeof(second) - 1U,
-	    YT_STARTUP_RETENTION_SECOND_ROW, error)
-	    && ops->present(context, NULL, 0U,
-	    YT_STARTUP_RETENTION_FINAL_BLANK, error);
-}
-
 static float projectile_single_add(float left, float right);
 static float projectile_single_sub(float left, float right);
 static float projectile_single_mul(float left, float right);

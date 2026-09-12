@@ -89,33 +89,6 @@ bool yt_startup_configuration_run(
 	const struct yt_startup_configuration_ops *ops, void *context,
 	struct yt_error *error);
 
-enum yt_startup_retention_output_kind {
-	YT_STARTUP_RETENTION_FIRST_ROW,
-	YT_STARTUP_RETENTION_SECOND_ROW,
-	YT_STARTUP_RETENTION_FINAL_BLANK,
-};
-
-struct yt_startup_retention_state {
-	struct yt_record config_record;
-	uint8_t first_row[128];
-	size_t first_row_length;
-};
-
-typedef bool (*yt_startup_retention_read_fn)(void *context,
-	struct yt_record *record, struct yt_error *error);
-typedef bool (*yt_startup_retention_present_fn)(void *context,
-	const uint8_t *text, size_t length,
-	enum yt_startup_retention_output_kind kind, struct yt_error *error);
-
-struct yt_startup_retention_ops {
-	yt_startup_retention_read_fn read_config;
-	yt_startup_retention_present_fn present;
-};
-
-bool yt_startup_retention_run(struct yt_startup_retention_state *state,
-	const struct yt_startup_retention_ops *ops, void *context,
-	struct yt_error *error);
-
 struct yt_sector {
 	struct yt_record record;
 	float warps[6];

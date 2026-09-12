@@ -3044,33 +3044,34 @@ instruction_offer(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
-startup_retention_read_config(void *context, struct yt_record *record,
-    struct yt_error *error)
+startup_retention(struct yt_session *session, struct yt_error *error)
 {
-	struct yt_session *session = context;
+	static const uint8_t prefix[] =
+	    "Notice: If your ship is dead and you have not played for";
+	static const uint8_t second[] =
+	    "days, it will be deleted to make room for someone else.";
+	struct yt_record record;
+	uint8_t first[128];
+	char number[64];
+	int number_length;
+	size_t first_length;
 
-	return yt_database_read(&session->door->game.database, 1U, record,
-	    error);
-}
-
-static bool
-startup_retention_present(void *context, const uint8_t *text, size_t length,
-    enum yt_startup_retention_output_kind kind, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	switch (kind) {
-	case YT_STARTUP_RETENTION_FIRST_ROW:
-		return session_0317(session, text, length,
-		    "new player retention first row", error);
-	case YT_STARTUP_RETENTION_SECOND_ROW:
-		return session_02fc(session, text, length);
-	case YT_STARTUP_RETENTION_FINAL_BLANK:
-		return session_present_text(session, NULL, 0U,
-		    SESSION_PRESENT_LINE, "new player retention final blank",
-		    error);
-	}
-	return false;
+	if (!yt_database_read(&session->door->game.database, 1U, &record,
+	    error))
+		return false;
+	number_length = qb_str_single(number, sizeof(number),
+	    qb_mbf32_decode(record.bytes + YT_F77));
+	if (number_length < 0
+	    || sizeof(prefix) - 1U + (size_t)number_length > sizeof(first))
+		return false;
+	memcpy(first, prefix, sizeof(prefix) - 1U);
+	memcpy(first + sizeof(prefix) - 1U, number, (size_t)number_length);
+	first_length = sizeof(prefix) - 1U + (size_t)number_length;
+	return session_0317(session, first, first_length,
+	    "new player retention first row", error)
+	    && session_02fc(session, second, sizeof(second) - 1U)
+	    && session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "new player retention final blank", error);
 }
 
 static bool
@@ -3207,16 +3208,8 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 			session->terminated = true;
 			return false;
 		}
-		{
-			static const struct yt_startup_retention_ops ops = {
-				startup_retention_read_config,
-				startup_retention_present,
-			};
-			struct yt_startup_retention_state state;
-
-			if (!yt_startup_retention_run(&state, &ops, session, error))
-				return false;
-		}
+		if (!startup_retention(session, error))
+			return false;
 		if (!construct_player_visible(session, error)
 		    || !set_new_player_identity(session, vacant,
 		    (const uint8_t *)full, strlen(full), error)
