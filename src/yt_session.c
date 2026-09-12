@@ -34,7 +34,6 @@
 #define YT_SHARED_LOOP_SCRATCH_ADDRESS 0x4CD2U
 #define YT_FRIENDSHIP_RELATION_ADDRESS 0x4BC4U
 #define YT_COMPUTER_ROUTE_STATUS_ADDRESS 0x4CF2U
-#define YT_ATTACK_COMMITMENT_ADDRESS 0x4D1AU
 #define YT_COMPUTER_PATH_MARKER_ADDRESS 0x4D62U
 #define YT_COMPUTER_ROUTE_DESTINATION_ADDRESS 0x4E12U
 #define YT_COMPUTER_ROUTE_START_ADDRESS 0x4E1AU
@@ -7033,10 +7032,7 @@ attack_deployed(struct yt_session *session, struct yt_sector *sector,
 		}
 		return false;
 	}
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_ATTACK_COMMITMENT_ADDRESS, commitment_raw);
-	commitment = yt_route_process_single(&session->route_process,
-	    YT_ATTACK_COMMITMENT_ADDRESS);
+	commitment = qb_mbf32_decode(commitment_raw);
 	admission = yt_hostile_attack_admit((float)cached_ship_fighters,
 	    commitment);
 	if (admission == YT_HOSTILE_ATTACK_TOO_MANY) {
@@ -7202,18 +7198,6 @@ hostile_bribe_fatal(void *context, struct yt_error *error)
 	return common_fatal_self(bribe->session, error);
 }
 
-static void
-hostile_bribe_store(void *context, enum yt_hostile_bribe_store_kind kind,
-    const uint8_t raw[4])
-{
-	struct hostile_bribe_context *bribe = context;
-	uint16_t address = kind == YT_HOSTILE_BRIBE_STORE_OFFER
-	    ? YT_COMPUTER_PATH_MARKER_ADDRESS : YT_ATTACK_COMMITMENT_ADDRESS;
-
-	yt_route_process_set_raw_single(&bribe->session->route_process, address,
-	    raw);
-}
-
 static bool
 bribe_deployed(struct yt_session *session, struct yt_sector *sector,
     bool *direct_hostile_menu, bool *forced_attack,
@@ -7226,7 +7210,6 @@ bribe_deployed(struct yt_session *session, struct yt_sector *sector,
 		hostile_bribe_accept,
 		hostile_bribe_combat,
 		hostile_bribe_fatal,
-		hostile_bribe_store,
 	};
 	struct hostile_bribe_context context;
 	struct yt_hostile_bribe_state state;

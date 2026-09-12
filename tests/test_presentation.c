@@ -29482,15 +29482,12 @@ struct direct_warp_bribe_attack_join {
 	size_t amount_response_length;
 	bool (*fatal_handler)(void *context, struct yt_error *error);
 	void *fatal_handler_context;
-	uint8_t commitment_raw[4];
 	size_t presentations[6];
 	size_t random_calls;
 	size_t amount_calls;
 	size_t accept_calls;
 	size_t combat_calls;
 	size_t fatal_calls;
-	size_t offer_stores;
-	size_t commitment_stores;
 };
 
 static bool
@@ -29607,20 +29604,6 @@ direct_warp_bribe_attack_fatal(void *context, struct yt_error *error)
 	    && join->fatal_handler(join->fatal_handler_context, error);
 }
 
-static void
-direct_warp_bribe_attack_store(void *context,
-    enum yt_hostile_bribe_store_kind kind, const uint8_t raw[4])
-{
-	struct direct_warp_bribe_attack_join *join = context;
-
-	if (kind == YT_HOSTILE_BRIBE_STORE_OFFER)
-		++join->offer_stores;
-	else {
-		memcpy(join->commitment_raw, raw, sizeof(join->commitment_raw));
-		++join->commitment_stores;
-	}
-}
-
 static const struct yt_hostile_bribe_ops direct_warp_bribe_attack_ops = {
 	direct_warp_bribe_attack_present,
 	direct_warp_bribe_attack_random,
@@ -29628,7 +29611,6 @@ static const struct yt_hostile_bribe_ops direct_warp_bribe_attack_ops = {
 	direct_warp_bribe_attack_accept,
 	direct_warp_bribe_attack_combat,
 	direct_warp_bribe_attack_fatal,
-	direct_warp_bribe_attack_store,
 };
 
 struct hostile_bribe_fatal_cycle_join {
@@ -35184,7 +35166,6 @@ test_direct_emergency_warp_hostile_forced_bribe_attack(void)
 	struct yt_sector expected_sector;
 	struct yt_record record;
 	struct yt_error error;
-	uint8_t expected_commitment[4];
 	uint8_t remote[2200];
 	size_t ends[3];
 	size_t alias;
@@ -35192,7 +35173,6 @@ test_direct_emergency_warp_hostile_forced_bribe_attack(void)
 	size_t joined_start;
 	size_t suffix_length;
 
-	CHECK(qb_mbf32_encode(20.0f, expected_commitment) == QB_MBF_OK);
 	for (caller = 0U; caller < YT_ARRAY_LEN(callers); ++caller) {
 		for (alias = 0U; alias < YT_ARRAY_LEN(aliases); ++alias) {
 		memset(&viewer, 0, sizeof(viewer));
@@ -35266,17 +35246,14 @@ test_direct_emergency_warp_hostile_forced_bribe_attack(void)
 		    && bribe.branch == YT_HOSTILE_BRIBE_LIFE_DEMAND
 		    && bribe.route == YT_HOSTILE_BRIBE_COMBAT
 		    && bribe.draws_consumed == 2U
-		    && bribe.commitment == 20.0f && bribe.commitment_stored
+		    && bribe.commitment == 20.0f
 		    && bribe.forced_attack && bribe.combat_called
 		    && !bribe.direct_hostile_menu && !bribe.accepted_called
 		    && !bribe.fatal_called);
 		CHECK(joined.presentations[YT_HOSTILE_BRIBE_LIFE_DEMAND_ROW] == 1U
 		    && joined.random_calls == 2U
 		    && joined.amount_calls == 0U && joined.accept_calls == 0U
-		    && joined.combat_calls == 1U && joined.fatal_calls == 0U
-		    && joined.offer_stores == 0U && joined.commitment_stores == 1U
-		    && memcmp(joined.commitment_raw, expected_commitment,
-		    sizeof(expected_commitment)) == 0);
+		    && joined.combat_calls == 1U && joined.fatal_calls == 0U);
 		CHECK(combat.complete && combat.surrender_checked
 		    && !combat.surrendered && combat.iterations == 1U
 		    && combat.attacker_loss == 0.0 && combat.defender_loss == 1.0
@@ -35374,7 +35351,6 @@ test_direct_emergency_warp_hostile_forced_bribe_origins(void)
 	struct yt_sector expected_sector;
 	struct yt_record record;
 	struct yt_error error;
-	uint8_t expected_commitment[4];
 	uint8_t remote[2400];
 	size_t ends[3];
 	size_t caller;
@@ -35382,7 +35358,6 @@ test_direct_emergency_warp_hostile_forced_bribe_origins(void)
 	size_t joined_start;
 	size_t suffix_length;
 
-	CHECK(qb_mbf32_encode(20.0f, expected_commitment) == QB_MBF_OK);
 	for (origin = 0U; origin < YT_ARRAY_LEN(origins); ++origin) {
 		for (caller = 0U; caller < YT_ARRAY_LEN(callers); ++caller) {
 			memset(&viewer, 0, sizeof(viewer));
@@ -35463,18 +35438,14 @@ test_direct_emergency_warp_hostile_forced_bribe_origins(void)
 			    && bribe.route == YT_HOSTILE_BRIBE_COMBAT
 			    && bribe.draws_consumed == origins[origin].bribe_draws
 			    && bribe.commitment == 20.0f
-			    && bribe.commitment_stored && bribe.forced_attack
+			    && bribe.forced_attack
 			    && bribe.combat_called && !bribe.direct_hostile_menu
 			    && !bribe.accepted_called && !bribe.fatal_called);
 			CHECK(joined.random_calls == origins[origin].bribe_draws
 			    && joined.amount_calls == (origin == 1U ? 1U : 0U)
 			    && joined.accept_calls == 0U
 			    && joined.combat_calls == 1U
-			    && joined.fatal_calls == 0U
-			    && joined.offer_stores == (origin == 1U ? 1U : 0U)
-			    && joined.commitment_stores == 1U
-			    && memcmp(joined.commitment_raw, expected_commitment,
-			    sizeof(expected_commitment)) == 0);
+			    && joined.fatal_calls == 0U);
 			CHECK(joined.presentations[
 			    YT_HOSTILE_BRIBE_ORDINARY_REFUSAL_ROW]
 			    == (origin == 0U ? 1U : 0U)
@@ -35615,7 +35586,6 @@ test_hostile_bribe_immediate_fatal_cycle(void)
 	struct yt_sector expected_sector;
 	struct yt_record record;
 	struct yt_error error;
-	uint8_t expected_zero[4] = {0};
 	uint8_t expected_record[4];
 	uint8_t remote[1800];
 	size_t alias;
@@ -35712,16 +35682,12 @@ test_hostile_bribe_immediate_fatal_cycle(void)
 				    && bribe.draws_consumed
 				    == origins[origin].draw_count
 				    && bribe.commitment == 0.0f
-				    && bribe.commitment_stored && bribe.forced_attack
+				    && bribe.forced_attack
 				    && bribe.fatal_called && !bribe.combat_called);
 				CHECK(joined.random_calls == origins[origin].draw_count
 				    && joined.amount_calls == (origin == 1U ? 1U : 0U)
-				    && joined.offer_stores == (origin == 1U ? 1U : 0U)
-				    && joined.commitment_stores == 1U
 				    && joined.combat_calls == 0U
-				    && joined.fatal_calls == 1U
-				    && memcmp(joined.commitment_raw, expected_zero,
-				    sizeof(expected_zero)) == 0);
+				    && joined.fatal_calls == 1U);
 				CHECK(fatal.fatal.wait_complete && fatal.fatal.normal_exit
 				    && fatal.fatal.field_valid
 				    && fatal.fatal.target_record == 2.0f
@@ -35929,10 +35895,9 @@ test_hostile_bribe_fatal_prefix_cuts(void)
 			CHECK(bribe.route == YT_HOSTILE_BRIBE_FATAL
 			    && bribe.branch == YT_HOSTILE_BRIBE_LIFE_DEMAND
 			    && bribe.draws_consumed == 2U
-			    && bribe.commitment_stored && bribe.fatal_called
+			    && bribe.fatal_called
 			    && !bribe.complete && !bribe.combat_called
 			    && joined.random_calls == 2U
-			    && joined.commitment_stores == 1U
 			    && joined.fatal_calls == 1U
 			    && fatal.fatal_start
 			    == (endpoint == 0U ? 99U : endpoint == 1U ? 123U : 0U)

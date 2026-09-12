@@ -21568,11 +21568,6 @@ struct hostile_bribe_tape {
 	uint8_t rows[6][512];
 	size_t row_lengths[6];
 	double combat_commitment;
-	bool offer_stored;
-	bool commitment_stored;
-	bool store_order_valid;
-	uint8_t offer_raw[4];
-	uint8_t commitment_raw[4];
 };
 
 static bool
@@ -21648,10 +21643,6 @@ hostile_bribe_accept_child(void *context,
 {
 	struct hostile_bribe_tape *tape = context;
 
-	if (!tape->offer_stored) {
-		tape->store_order_valid = false;
-		return false;
-	}
 	if (!hostile_bribe_event(tape, HOSTILE_BRIBE_EVENT_ACCEPT, error))
 		return false;
 	state->complete = true;
@@ -21664,10 +21655,6 @@ hostile_bribe_combat_child(void *context, double commitment,
 {
 	struct hostile_bribe_tape *tape = context;
 
-	if (!tape->commitment_stored) {
-		tape->store_order_valid = false;
-		return false;
-	}
 	if (!hostile_bribe_event(tape, HOSTILE_BRIBE_EVENT_COMBAT, error))
 		return false;
 	tape->combat_commitment = commitment;
@@ -21679,27 +21666,7 @@ hostile_bribe_fatal_child(void *context, struct yt_error *error)
 {
 	struct hostile_bribe_tape *tape = context;
 
-	if (!tape->commitment_stored) {
-		tape->store_order_valid = false;
-		return false;
-	}
 	return hostile_bribe_event(tape, HOSTILE_BRIBE_EVENT_FATAL, error);
-}
-
-static void
-hostile_bribe_store_child(void *context,
-    enum yt_hostile_bribe_store_kind kind, const uint8_t raw[4])
-{
-	struct hostile_bribe_tape *tape = context;
-
-	if (kind == YT_HOSTILE_BRIBE_STORE_OFFER) {
-		tape->offer_stored = true;
-		memcpy(tape->offer_raw, raw, sizeof(tape->offer_raw));
-	} else {
-		tape->commitment_stored = true;
-		memcpy(tape->commitment_raw, raw,
-		    sizeof(tape->commitment_raw));
-	}
 }
 
 static const struct yt_hostile_bribe_ops hostile_bribe_ops = {
@@ -21709,7 +21676,6 @@ static const struct yt_hostile_bribe_ops hostile_bribe_ops = {
 	hostile_bribe_accept_child,
 	hostile_bribe_combat_child,
 	hostile_bribe_fatal_child,
-	hostile_bribe_store_child,
 };
 
 static void
@@ -21720,7 +21686,6 @@ hostile_bribe_fixture(struct hostile_bribe_tape *tape,
 
 	memset(tape, 0, sizeof(*tape));
 	tape->fail_at = (size_t)-1;
-	tape->store_order_valid = true;
 	tape->draws[0] = 0.9f;
 	tape->draws[1] = 0.0f;
 	tape->draws[2] = 0.0f;
@@ -21767,13 +21732,9 @@ check_hostile_bribe_transaction(void)
 	    || !state.complete || state.branch != YT_HOSTILE_BRIBE_ACCEPTED
 	    || state.route != YT_HOSTILE_BRIBE_SCANNER
 	    || state.draws_consumed != 3U || tape.draw_index != 3U
-	    || !state.offer_stored || state.offer != 30.0f
-	    || !tape.offer_stored || tape.commitment_stored
-	    || !tape.store_order_valid
-	    || memcmp(tape.offer_raw, state.offer_raw,
-	    sizeof(tape.offer_raw)) != 0
+	    || state.offer != 30.0f
 	    || state.threshold != 10.0 || !state.accepted_called
-	    || state.forced_attack || state.commitment_stored
+	    || state.forced_attack
 	    || tape.calls != YT_ARRAY_LEN(accepted_events)
 	    || memcmp(tape.events, accepted_events, sizeof(accepted_events)) != 0
 	    || tape.row_lengths[YT_HOSTILE_BRIBE_INTRODUCTION_ROW]
@@ -21809,10 +21770,7 @@ check_hostile_bribe_transaction(void)
 	state.owner = -1.0f;
 	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
 	    || state.route != YT_HOSTILE_BRIBE_COMBAT
-	    || !state.forced_attack || !state.commitment_stored
-	    || !tape.commitment_stored || !tape.store_order_valid
-	    || memcmp(tape.commitment_raw, state.commitment_raw,
-	    sizeof(tape.commitment_raw)) != 0
+	    || !state.forced_attack
 	    || tape.combat_commitment != 20.0 || tape.calls != 3U)
 		return false;
 	hostile_bribe_fixture(&tape, &state);
@@ -21836,16 +21794,14 @@ check_hostile_bribe_transaction(void)
 	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
 	    || state.branch != YT_HOSTILE_BRIBE_LIFE_DEMAND
 	    || state.route != YT_HOSTILE_BRIBE_COMBAT
-	    || state.draws_consumed != 2U || tape.calls != 4U
-	    || !tape.commitment_stored || !tape.store_order_valid)
+	    || state.draws_consumed != 2U || tape.calls != 4U)
 		return false;
 	hostile_bribe_fixture(&tape, &state);
 	tape.draws[0] = 0.01f;
 	state.ship_fighters = 0.0;
 	state.shields = 0.0f;
 	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
-	    || state.route != YT_HOSTILE_BRIBE_FATAL || !state.fatal_called
-	    || !tape.commitment_stored || !tape.store_order_valid)
+	    || state.route != YT_HOSTILE_BRIBE_FATAL || !state.fatal_called)
 		return false;
 	hostile_bribe_fixture(&tape, &state);
 	tape.draws[0] = 0.01f;
@@ -21860,17 +21816,14 @@ check_hostile_bribe_transaction(void)
 	tape.response = "";
 	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
 	    || state.branch != YT_HOSTILE_BRIBE_EMPTY_OFFER
-	    || state.draws_consumed != 2U || state.offer_stored
-	    || tape.offer_stored || tape.commitment_stored)
+	    || state.draws_consumed != 2U)
 		return false;
 	hostile_bribe_fixture(&tape, &state);
 	tape.response = "5";
 	if (!yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, NULL)
 	    || state.branch != YT_HOSTILE_BRIBE_REJECTED
 	    || state.route != YT_HOSTILE_BRIBE_COMBAT
-	    || state.draws_consumed != 3U || !state.commitment_stored
-	    || !tape.offer_stored || !tape.commitment_stored
-	    || !tape.store_order_valid)
+	    || state.draws_consumed != 3U)
 		return false;
 	hostile_bribe_fixture(&tape, &state);
 	tape.response = "101";
@@ -21885,8 +21838,7 @@ check_hostile_bribe_transaction(void)
 	state.ship_fighters = HUGE_VAL;
 	yt_error_clear(&error);
 	if (yt_hostile_bribe_run(&state, &hostile_bribe_ops, &tape, &error)
-	    || error.status != YT_RANGE || state.commitment_stored
-	    || tape.commitment_stored
+	    || error.status != YT_RANGE
 	    || !state.forced_attack
 	    || strcmp(error.operation, "bribe:commitment-csng") != 0)
 		return false;

@@ -16675,9 +16675,10 @@ hostile_bribe_force_run(struct yt_hostile_bribe_state *state,
 {
 	enum qb_mbf_status conversion;
 	float commitment = (float)state->ship_fighters;
+	uint8_t raw[4];
 
 	state->forced_attack = true;
-	conversion = qb_mbf32_encode(commitment, state->commitment_raw);
+	conversion = qb_mbf32_encode(commitment, raw);
 	if (conversion == QB_MBF_OVERFLOW) {
 		if (error != NULL) {
 			error->status = YT_RANGE;
@@ -16686,11 +16687,7 @@ hostile_bribe_force_run(struct yt_hostile_bribe_state *state,
 		}
 		return false;
 	}
-	state->commitment = qb_mbf32_decode(state->commitment_raw);
-	state->commitment_stored = true;
-	if (ops->store != NULL)
-		ops->store(context, YT_HOSTILE_BRIBE_STORE_COMMITMENT,
-		    state->commitment_raw);
+	state->commitment = qb_mbf32_decode(raw);
 	switch (yt_bribe_forced_admit(state->ship_fighters, state->shields,
 	    mercenary_fatal_gate, state->commitment)) {
 	case YT_BRIBE_FORCED_FATAL:
@@ -16741,6 +16738,7 @@ yt_hostile_bribe_run(struct yt_hostile_bribe_state *state,
 	char response[4096] = {0};
 	struct qb_val_result parsed;
 	enum qb_mbf_status conversion;
+	uint8_t raw[4];
 	size_t row_length;
 	size_t prompt_length = 0U;
 	int credits_length;
@@ -16756,13 +16754,9 @@ yt_hostile_bribe_run(struct yt_hostile_bribe_state *state,
 	memset(state->draws, 0, sizeof(state->draws));
 	state->draws_consumed = 0U;
 	state->offer = 0.0f;
-	memset(state->offer_raw, 0, sizeof(state->offer_raw));
-	state->offer_stored = false;
 	state->above_credits = false;
 	state->threshold = 0.0;
 	state->commitment = 0.0f;
-	memset(state->commitment_raw, 0, sizeof(state->commitment_raw));
-	state->commitment_stored = false;
 	state->forced_attack = false;
 	state->direct_hostile_menu = false;
 	state->accepted_called = false;
@@ -16866,7 +16860,7 @@ yt_hostile_bribe_run(struct yt_hostile_bribe_state *state,
 		return false;
 	}
 	state->offer = (float)parsed.value;
-	conversion = qb_mbf32_encode(state->offer, state->offer_raw);
+	conversion = qb_mbf32_encode(state->offer, raw);
 	if (conversion == QB_MBF_OVERFLOW) {
 		if (error != NULL) {
 			error->status = YT_RANGE;
@@ -16874,14 +16868,9 @@ yt_hostile_bribe_run(struct yt_hostile_bribe_state *state,
 			    "%s", "bribe:offer-csng");
 		}
 		state->offer = 0.0f;
-		memset(state->offer_raw, 0, sizeof(state->offer_raw));
 		return false;
 	}
-	state->offer = qb_mbf32_decode(state->offer_raw);
-	state->offer_stored = true;
-	if (ops->store != NULL)
-		ops->store(context, YT_HOSTILE_BRIBE_STORE_OFFER,
-		    state->offer_raw);
+	state->offer = qb_mbf32_decode(raw);
 	state->above_credits = (double)state->offer > state->credits;
 	if (!ops->random(context, &state->draws[2], error))
 		return false;

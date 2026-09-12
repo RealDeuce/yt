@@ -4214,13 +4214,9 @@ struct yt_hostile_bribe_state {
 	float draws[3];
 	size_t draws_consumed;
 	float offer;
-	uint8_t offer_raw[4];
-	bool offer_stored;
 	bool above_credits;
 	double threshold;
 	float commitment;
-	uint8_t commitment_raw[4];
-	bool commitment_stored;
 	bool forced_attack;
 	bool direct_hostile_menu;
 	bool accepted_called;
@@ -4245,12 +4241,6 @@ typedef bool (*yt_hostile_bribe_combat_fn)(void *context,
     double commitment, struct yt_error *error);
 typedef bool (*yt_hostile_bribe_fatal_fn)(void *context,
     struct yt_error *error);
-enum yt_hostile_bribe_store_kind {
-	YT_HOSTILE_BRIBE_STORE_OFFER,
-	YT_HOSTILE_BRIBE_STORE_COMMITMENT,
-};
-typedef void (*yt_hostile_bribe_store_fn)(void *context,
-	enum yt_hostile_bribe_store_kind kind, const uint8_t raw[4]);
 
 struct yt_hostile_bribe_ops {
 	yt_hostile_bribe_present_fn present;
@@ -4259,7 +4249,6 @@ struct yt_hostile_bribe_ops {
 	yt_hostile_bribe_accept_fn accept;
 	yt_hostile_bribe_combat_fn combat;
 	yt_hostile_bribe_fatal_fn fatal;
-	yt_hostile_bribe_store_fn store;
 };
 
 bool yt_hostile_bribe_run(struct yt_hostile_bribe_state *state,
