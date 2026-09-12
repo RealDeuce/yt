@@ -778,26 +778,6 @@ replace_port_name:
 }
 
 static bool
-alias_propagate_read(void *context, int basic_record,
-    struct yt_record *record, struct yt_error *error)
-{
-	struct yt_game *game = context;
-
-	return yt_database_read(&game->database, (size_t)basic_record, record,
-	    error);
-}
-
-static bool
-alias_propagate_write(void *context, int basic_record,
-    const struct yt_record *record, struct yt_error *error)
-{
-	struct yt_game *game = context;
-
-	return yt_database_write(&game->database, (size_t)basic_record, record,
-	    error);
-}
-
-static bool
 edit_aliases(struct yt_game *game, bool *fatal_ended,
     struct yt_error *error)
 {
@@ -936,12 +916,6 @@ edit_aliases(struct yt_game *game, bool *fatal_ended,
 			char old_alias[90];
 			char first[90];
 			char last[90];
-			struct yt_alias_propagate_state propagation;
-			static const struct yt_alias_propagate_ops propagation_ops = {
-				alias_propagate_read,
-				alias_propagate_write,
-			};
-
 			if (!yt_config_compose_alias_number_prompt(0U, &output)
 			    || !write_output(&output, error)) {
 				yt_names_free(&names);
@@ -1065,10 +1039,10 @@ save_alias:
 				yt_names_free(&names);
 				return false;
 			}
-			if (!yt_names_propagate_alias(&propagation,
+			if (!yt_names_propagate_alias(&game->database,
 			    (const uint8_t *)old_alias, strlen(old_alias),
 			    (const uint8_t *)entered, strlen(entered),
-			    &propagation_ops, game, error)) {
+			    error)) {
 				yt_names_free(&names);
 				return false;
 			}

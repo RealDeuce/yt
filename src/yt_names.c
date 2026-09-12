@@ -1,5 +1,6 @@
 #include "yt_names.h"
 #include "qb.h"
+#include "yt_file.h"
 #include "yt_text.h"
 
 #include <stdint.h>
@@ -748,56 +749,38 @@ fixed_field_contains(const uint8_t field[YT_TEXT_FIELD_SIZE],
 }
 
 bool
-yt_names_propagate_alias(struct yt_alias_propagate_state *state,
+yt_names_propagate_alias(struct yt_database *database,
     const uint8_t *old_alias, size_t old_alias_length,
     const uint8_t *new_alias, size_t new_alias_length,
-    const struct yt_alias_propagate_ops *ops, void *context,
     struct yt_error *error)
 {
 	int basic;
 
-	if (state != NULL)
-		memset(state, 0, sizeof(*state));
-	if (state == NULL || (old_alias == NULL && old_alias_length != 0U)
+	if (database == NULL || (old_alias == NULL && old_alias_length != 0U)
 	    || (new_alias == NULL && new_alias_length != 0U)
-	    || new_alias_length > YT_TEXT_FIELD_SIZE || ops == NULL
-	    || ops->read_player == NULL || ops->write_player == NULL) {
+	    || new_alias_length > YT_TEXT_FIELD_SIZE) {
 		if (error != NULL)
 			error->status = YT_INVALID;
 		return false;
 	}
 	for (basic = 2; basic <= 51; ++basic) {
-		state->basic_record = basic;
-		state->field_loaded = false;
-		state->name_overlaid = false;
-		state->length_overlaid = false;
-		state->attempted = YT_ALIAS_PROPAGATE_READ_PLAYER;
-		if (!ops->read_player(context, basic, &state->field, error))
+		struct yt_record record;
+
+		if (!yt_database_read(database, (size_t)basic, &record, error))
 			return false;
-		state->field_loaded = true;
-		++state->records_read;
-		if (!fixed_field_contains(state->field.bytes, old_alias,
+		if (!fixed_field_contains(record.bytes, old_alias,
 		    old_alias_length))
 			continue;
-		++state->matches;
-		state->attempted = YT_ALIAS_PROPAGATE_OVERLAY_NAME;
-		yt_record_set_text(&state->field, new_alias, new_alias_length);
-		state->name_overlaid = true;
-		state->attempted = YT_ALIAS_PROPAGATE_OVERLAY_LENGTH;
-		if (!yt_record_set_number(&state->field, YT_F85,
+		yt_record_set_text(&record, new_alias, new_alias_length);
+		if (!yt_record_set_number(&record, YT_F85,
 		    (float)new_alias_length)) {
 			if (error != NULL)
 				error->status = YT_RANGE;
 			return false;
 		}
-		state->length_overlaid = true;
-		state->attempted = YT_ALIAS_PROPAGATE_WRITE_PLAYER;
-		if (!ops->write_player(context, basic, &state->field, error))
+		if (!yt_database_write(database, (size_t)basic, &record, error))
 			return false;
-		++state->records_written;
 	}
-	state->attempted = YT_ALIAS_PROPAGATE_NONE;
-	state->complete = true;
 	return true;
 }
 
