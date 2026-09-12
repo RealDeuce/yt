@@ -34105,8 +34105,9 @@ check_scoreboard_physical_field_residue(void)
 	yt_database_set_read_provider(&game.database,
 	    score_database_read_partial_fault, &read_fault);
 	yt_error_clear(&error);
-	if (yt_score_generate_progress_observed(&game, score_progress_collect,
-	    &progress, &field, &error)
+	if (yt_score_generate_progress_with_layout(&game,
+	    game.config.sector_offset, game.config.port_offset,
+	    score_progress_collect, &progress, &field, &error)
 	    || error.status != YT_IO_ERROR || progress.count != 1U
 	    || progress.phases[0] != 1U || read_fault.calls != 2U
 	    || game.database.last_get.outcome != YT_DATABASE_GET_READ_ERROR
@@ -34128,8 +34129,9 @@ check_scoreboard_physical_field_residue(void)
 	yt_database_set_write_provider(&game.database,
 	    score_database_write_partial_fault, &write_fault);
 	yt_error_clear(&error);
-	if (yt_score_generate_progress_observed(&game, score_progress_collect,
-	    &progress, &field, &error)
+	if (yt_score_generate_progress_with_layout(&game,
+	    game.config.sector_offset, game.config.port_offset,
+	    score_progress_collect, &progress, &field, &error)
 	    || error.status != YT_IO_ERROR || progress.count != 2U
 	    || progress.phases[0] != 1U || progress.phases[1] != 2U
 	    || write_fault.calls != 1U
@@ -34743,8 +34745,9 @@ main(void)
 		goto close;
 	strcpy(game.config.scoreboard, "NUL");
 	yt_error_clear(&error);
-	if (!yt_score_generate_progress_observed(&game, score_progress_collect,
-	    &progress, &score_field, &error)
+	if (!yt_score_generate_progress_with_layout(&game,
+	    game.config.sector_offset, game.config.port_offset,
+	    score_progress_collect, &progress, &score_field, &error)
 	    || progress.count != YT_ARRAY_LEN(progress.phases)
 	    || progress.phases[0] != 1U || progress.phases[1] != 2U
 	    || progress.phases[2] != 3U || progress.phases[3] != 4U

@@ -23,9 +23,6 @@ struct yt_score_field_observation {
 bool yt_score_generate(struct yt_game *game, struct yt_error *error);
 bool yt_score_generate_progress(struct yt_game *game,
     yt_score_progress_fn progress, void *context, struct yt_error *error);
-bool yt_score_generate_progress_observed(struct yt_game *game,
-	yt_score_progress_fn progress, void *context,
-	struct yt_score_field_observation *field, struct yt_error *error);
 bool yt_score_generate_progress_with_layout(struct yt_game *game,
 	float sector_record_offset, float port_record_offset,
 	yt_score_progress_fn progress, void *context,

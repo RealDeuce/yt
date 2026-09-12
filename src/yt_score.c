@@ -498,21 +498,12 @@ failure:
 }
 
 bool
-yt_score_generate_progress_observed(struct yt_game *game,
-    yt_score_progress_fn progress, void *context,
-    struct yt_score_field_observation *field, struct yt_error *error)
-{
-	return yt_score_generate_progress_with_layout(game,
-	    game->config.sector_offset, game->config.port_offset, progress,
-	    context, field, error);
-}
-
-bool
 yt_score_generate_progress(struct yt_game *game,
     yt_score_progress_fn progress, void *context, struct yt_error *error)
 {
-	return yt_score_generate_progress_observed(game, progress, context,
-	    NULL, error);
+	return yt_score_generate_progress_with_layout(game,
+	    game->config.sector_offset, game->config.port_offset, progress,
+	    context, NULL, error);
 }
 
 bool
