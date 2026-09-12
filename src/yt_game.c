@@ -12902,31 +12902,15 @@ yt_clearance_run(struct yt_clearance_state *state,
     const struct yt_clearance_ops *ops, void *context,
     struct yt_error *error)
 {
-	static const uint8_t announced_zero[4] = {
-		0x00U, 0x00U, 0x7aU, 0x00U,
-	};
-	static const uint8_t reset_raw[4][4] = {
-		{0x00U, 0x00U, 0x73U, 0x00U},
-		{0x00U, 0x00U, 0x7aU, 0x00U},
-		{0x00U, 0x00U, 0x4cU, 0x00U},
-		{0x00U, 0x00U, 0x66U, 0x00U},
-	};
 	static const char *const name[4] = {
 		"Holds", "Fighters", "Shields", "Ground Forces"
 	};
-	static const uint8_t one[4] = {0x00U, 0x00U, 0x00U, 0x81U};
 	size_t index;
 
-	if (state == NULL || ops == NULL || ops->read == NULL
-	    || ops->store == NULL || ops->random == NULL
+	if (state == NULL || ops == NULL || ops->random == NULL
 	    || ops->present == NULL || ops->sound == NULL)
 		return false;
-	memset(state->discount_raw, 0, sizeof(state->discount_raw));
-	memcpy(state->announced_raw, announced_zero,
-	    sizeof(state->announced_raw));
-	memset(state->value_raw, 0, sizeof(state->value_raw));
-	memset(state->sound_selector_raw, 0,
-	    sizeof(state->sound_selector_raw));
+	state->announced = false;
 	state->current_item = 0U;
 	state->items_completed = 0U;
 	state->draws_consumed = 0U;
@@ -12935,8 +12919,6 @@ yt_clearance_run(struct yt_clearance_state *state,
 	state->sound_called = false;
 	state->trailing_blank_presented = false;
 	state->complete = false;
-	ops->store(context, YT_CLEARANCE_STORE_ANNOUNCED, 0U,
-	    announced_zero);
 	if (!ops->present(context, NULL, 0U, YT_CLEARANCE_LEADING_BLANK,
 	    error))
 		return false;
@@ -12949,32 +12931,22 @@ yt_clearance_run(struct yt_clearance_state *state,
 		int row_length;
 
 		state->current_item = index;
-		ops->read(context, YT_CLEARANCE_STORE_DISCOUNT, index,
-		    state->discount_raw[index]);
 		if (!ops->random(context, &draw, error))
 			return false;
 		++state->draws_consumed;
-		discount = qb_mbf32_decode(state->discount_raw[index]);
+		discount = state->discount[index];
 		if (yt_clearance_candidate_needed(index, draw, discount,
 		    state->create)) {
 			if (!ops->random(context, &draw, error))
 				return false;
 			++state->draws_consumed;
 			discount = draw;
-			if (qb_mbf32_encode(discount,
-			    state->discount_raw[index]) != QB_MBF_OK)
-				return false;
-			ops->store(context, YT_CLEARANCE_STORE_DISCOUNT, index,
-			    state->discount_raw[index]);
+			state->discount[index] = discount;
 		}
 		if (!yt_clearance_normalize(index, &discount)) {
-			memcpy(state->discount_raw[index], reset_raw[index], 4U);
-			ops->store(context, YT_CLEARANCE_STORE_DISCOUNT, index,
-			    reset_raw[index]);
+			state->discount[index] = 0.0f;
 		} else {
-			memcpy(state->value_raw, state->discount_raw[index], 4U);
-			ops->store(context, YT_CLEARANCE_STORE_VALUE, index,
-			    state->value_raw);
+			state->discount[index] = discount;
 			if (qb_str_single(percent, sizeof(percent),
 			    yt_clearance_percentage(discount)) < 0)
 				return false;
@@ -12985,18 +12957,12 @@ yt_clearance_run(struct yt_clearance_state *state,
 			    || !ops->present(context, (const uint8_t *)row,
 			    (size_t)row_length, YT_CLEARANCE_ANNOUNCEMENT, error))
 				return false;
-			memcpy(state->announced_raw, one, 4U);
-			ops->store(context, YT_CLEARANCE_STORE_ANNOUNCED, index,
-			    one);
+			state->announced = true;
 			++state->announcements;
 		}
 		state->items_completed = index + 1U;
 	}
-	ops->read(context, YT_CLEARANCE_STORE_ANNOUNCED, 0U,
-	    state->announced_raw);
-	if (qb_mbf32_decode(state->announced_raw) != 0.0f) {
-		memcpy(state->sound_selector_raw, one, 4U);
-		ops->store(context, YT_CLEARANCE_STORE_SOUND_SELECTOR, 0U, one);
+	if (state->announced) {
 		if (!ops->sound(context, 1.0f, error))
 			return false;
 		state->sound_called = true;

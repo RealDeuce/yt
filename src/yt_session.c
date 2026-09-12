@@ -25,18 +25,11 @@
 #define YT_PLAYER_FIRST YT_PLAYER_FIRST_RECORD
 #define YT_PLAYER_LAST YT_PLAYER_LAST_RECORD
 #define YT_COMMAND_SIZE 4096U
-#define YT_CLEARANCE_HOLDS_ADDRESS 0x4B54U
-#define YT_CLEARANCE_FIGHTERS_ADDRESS 0x4B58U
-#define YT_CLEARANCE_GROUND_ADDRESS 0x4B5CU
-#define YT_CLEARANCE_SHIELDS_ADDRESS 0x4B60U
 #define YT_COMPUTER_ROUTE_STATUS_ADDRESS 0x4CF2U
 #define YT_COMPUTER_PATH_MARKER_ADDRESS 0x4D62U
 #define YT_COMPUTER_ROUTE_DESTINATION_ADDRESS 0x4E12U
 #define YT_COMPUTER_ROUTE_START_ADDRESS 0x4E1AU
 #define YT_COMPUTER_PATH_HOPS_ADDRESS 0x4E82U
-#define YT_CLEARANCE_ANNOUNCED_ADDRESS 0x55B6U
-#define YT_CLEARANCE_VALUE_ADDRESS 0x55BEU
-#define YT_CLEARANCE_SOUND_SELECTOR_ADDRESS 0x55C6U
 #define YT_PLANET_UPDATER_QUANTITY_ADDRESS 0x19F0U
 #define YT_PLANET_UPDATER_PRODUCTION_ADDRESS 0x1A44U
 #define YT_PLANET_UPDATER_CONTRIBUTION_ADDRESS 0x1C14U
@@ -96,6 +89,7 @@ struct yt_session {
 	float hostile_owner;
 	float foreground;
 	float market_bases[3];
+	float clearance_discounts[4];
 	float disruption_sectors[2];
 	uint8_t cached_player_name[YT_TEXT_FIELD_SIZE];
 	size_t cached_player_name_length;
@@ -8971,78 +8965,6 @@ earth_anti_cloak(struct yt_session *session, float price,
 	return completed;
 }
 
-static void
-clearance_read(void *context, enum yt_clearance_store_kind kind, size_t item,
-    uint8_t raw[4])
-{
-	static const uint16_t discount_address[4] = {
-		YT_CLEARANCE_HOLDS_ADDRESS,
-		YT_CLEARANCE_FIGHTERS_ADDRESS,
-		YT_CLEARANCE_SHIELDS_ADDRESS,
-		YT_CLEARANCE_GROUND_ADDRESS,
-	};
-	struct yt_session *session = context;
-	uint16_t address;
-
-	if (raw == NULL)
-		return;
-	switch (kind) {
-	case YT_CLEARANCE_STORE_DISCOUNT:
-		if (item >= YT_ARRAY_LEN(discount_address))
-			return;
-		address = discount_address[item];
-		break;
-	case YT_CLEARANCE_STORE_ANNOUNCED:
-		address = YT_CLEARANCE_ANNOUNCED_ADDRESS;
-		break;
-	case YT_CLEARANCE_STORE_VALUE:
-		address = YT_CLEARANCE_VALUE_ADDRESS;
-		break;
-	case YT_CLEARANCE_STORE_SOUND_SELECTOR:
-		address = YT_CLEARANCE_SOUND_SELECTOR_ADDRESS;
-		break;
-	default:
-		return;
-	}
-	yt_route_process_raw_single(&session->route_process, address, raw);
-}
-
-static void
-clearance_store(void *context, enum yt_clearance_store_kind kind, size_t item,
-    const uint8_t raw[4])
-{
-	static const uint16_t discount_address[4] = {
-		YT_CLEARANCE_HOLDS_ADDRESS,
-		YT_CLEARANCE_FIGHTERS_ADDRESS,
-		YT_CLEARANCE_SHIELDS_ADDRESS,
-		YT_CLEARANCE_GROUND_ADDRESS,
-	};
-	struct yt_session *session = context;
-	uint16_t address;
-
-	if (raw == NULL)
-		return;
-	switch (kind) {
-	case YT_CLEARANCE_STORE_DISCOUNT:
-		if (item >= YT_ARRAY_LEN(discount_address))
-			return;
-		address = discount_address[item];
-		break;
-	case YT_CLEARANCE_STORE_ANNOUNCED:
-		address = YT_CLEARANCE_ANNOUNCED_ADDRESS;
-		break;
-	case YT_CLEARANCE_STORE_VALUE:
-		address = YT_CLEARANCE_VALUE_ADDRESS;
-		break;
-	case YT_CLEARANCE_STORE_SOUND_SELECTOR:
-		address = YT_CLEARANCE_SOUND_SELECTOR_ADDRESS;
-		break;
-	default:
-		return;
-	}
-	yt_route_process_set_raw_single(&session->route_process, address, raw);
-}
-
 static bool
 clearance_random(void *context, float *value, struct yt_error *error)
 {
@@ -9083,15 +9005,19 @@ clearance(struct yt_session *session, bool create,
     struct yt_error *error)
 {
 	static const struct yt_clearance_ops ops = {
-		clearance_read,
-		clearance_store,
 		clearance_random,
 		clearance_present,
 		clearance_sound,
 	};
 	struct yt_clearance_state state = {.create = create};
+	bool result;
 
-	return yt_clearance_run(&state, &ops, session, error);
+	memcpy(state.discount, session->clearance_discounts,
+	    sizeof(state.discount));
+	result = yt_clearance_run(&state, &ops, session, error);
+	memcpy(session->clearance_discounts, state.discount,
+	    sizeof(session->clearance_discounts));
+	return result;
 }
 
 static bool
@@ -9437,14 +9363,7 @@ earth_report(struct yt_session *session, struct yt_port *earth,
 	    strlen(title), "Earth report title", error)
 	    || !port_owner_row(session, earth, earth_state, error))
 		return false;
-	discount[0] = yt_route_process_single(&session->route_process,
-	    YT_CLEARANCE_HOLDS_ADDRESS);
-	discount[1] = yt_route_process_single(&session->route_process,
-	    YT_CLEARANCE_FIGHTERS_ADDRESS);
-	discount[2] = yt_route_process_single(&session->route_process,
-	    YT_CLEARANCE_SHIELDS_ADDRESS);
-	discount[3] = yt_route_process_single(&session->route_process,
-	    YT_CLEARANCE_GROUND_ADDRESS);
+	memcpy(discount, session->clearance_discounts, sizeof(discount));
 	yt_earth_prices(discount, price);
 	if (!session->earth_report_seen) {
 		if (!clearance(session, false, error))

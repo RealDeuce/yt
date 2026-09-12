@@ -8287,17 +8287,11 @@ test_clearance_presentation(void)
 }
 
 struct clearance_failure_fixture {
-	uint8_t discount_raw[4][4];
-	uint8_t announced_raw[4];
-	uint8_t value_raw[4];
-	uint8_t sound_selector_raw[4];
 	float draws[8];
 	size_t draw_position;
-	size_t read_calls;
 	size_t random_calls;
 	size_t present_calls;
 	size_t sound_calls;
-	size_t store_calls;
 	size_t fail_random_at;
 	size_t fail_present_at;
 	size_t fail_sound_at;
@@ -8305,53 +8299,6 @@ struct clearance_failure_fixture {
 	uint8_t remote[512];
 	size_t remote_length;
 };
-
-static void
-clearance_failure_read(void *context, enum yt_clearance_store_kind kind,
-    size_t item, uint8_t raw[4])
-{
-	struct clearance_failure_fixture *fixture = context;
-
-	++fixture->read_calls;
-	if (raw == NULL)
-		return;
-	switch (kind) {
-	case YT_CLEARANCE_STORE_DISCOUNT:
-		if (item >= YT_ARRAY_LEN(fixture->discount_raw))
-			return;
-		memcpy(raw, fixture->discount_raw[item], 4U);
-		return;
-	case YT_CLEARANCE_STORE_ANNOUNCED:
-		memcpy(raw, fixture->announced_raw, 4U);
-		return;
-	default:
-		return;
-	}
-}
-
-static void
-clearance_failure_store(void *context, enum yt_clearance_store_kind kind,
-    size_t item, const uint8_t raw[4])
-{
-	struct clearance_failure_fixture *fixture = context;
-
-	++fixture->store_calls;
-	switch (kind) {
-	case YT_CLEARANCE_STORE_DISCOUNT:
-		if (item < YT_ARRAY_LEN(fixture->discount_raw))
-			memcpy(fixture->discount_raw[item], raw, 4U);
-		break;
-	case YT_CLEARANCE_STORE_ANNOUNCED:
-		memcpy(fixture->announced_raw, raw, 4U);
-		break;
-	case YT_CLEARANCE_STORE_VALUE:
-		memcpy(fixture->value_raw, raw, 4U);
-		break;
-	case YT_CLEARANCE_STORE_SOUND_SELECTOR:
-		memcpy(fixture->sound_selector_raw, raw, 4U);
-		break;
-	}
-}
 
 static bool
 clearance_failure_random(void *context, float *value,
@@ -8417,8 +8364,6 @@ static void
 test_clearance_failure_prefixes(void)
 {
 	static const struct yt_clearance_ops ops = {
-		clearance_failure_read,
-		clearance_failure_store,
 		clearance_failure_random,
 		clearance_failure_present,
 		clearance_failure_sound,
@@ -8426,15 +8371,6 @@ test_clearance_failure_prefixes(void)
 	static const uint8_t row[] =
 	    "Special clearance sale! The Trader's Guild is selling Holds "
 	    "for 10% off!";
-	static const uint8_t announced_zero[4] = {0x00U, 0x00U, 0x7aU, 0x00U};
-	static const uint8_t one[4] = {0x00U, 0x00U, 0x00U, 0x81U};
-	static const uint8_t tenth[4] = {0xcdU, 0xccU, 0x4cU, 0x7dU};
-	static const uint8_t holds_zero[4] = {0x00U, 0x00U, 0x73U, 0x00U};
-	static const uint8_t reset[3][4] = {
-		{0x00U, 0x00U, 0x7aU, 0x00U},
-		{0x00U, 0x00U, 0x4cU, 0x00U},
-		{0x00U, 0x00U, 0x66U, 0x00U},
-	};
 	static const struct {
 		size_t fail_random_at;
 		size_t fail_present_at;
@@ -8455,15 +8391,11 @@ test_clearance_failure_prefixes(void)
 		{0U, 3U, 0U, 3U, 5U, 4U, 1U, true, false},
 		{0U, 0U, 0U, 4U, 5U, 4U, 1U, true, true},
 	};
-	static const size_t expected_reads[] = {0U, 1U, 1U, 1U, 2U, 5U, 5U, 5U};
 	static const size_t expected_random_calls[] = {
 		0U, 1U, 2U, 2U, 3U, 5U, 5U, 5U,
 	};
 	static const size_t expected_present_calls[] = {
 		1U, 1U, 1U, 2U, 2U, 2U, 3U, 3U,
-	};
-	static const size_t expected_store_calls[] = {
-		1U, 1U, 1U, 3U, 4U, 8U, 8U, 8U,
 	};
 	struct clearance_failure_fixture fixture;
 	struct yt_clearance_state clearance;
@@ -8474,13 +8406,6 @@ test_clearance_failure_prefixes(void)
 
 	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
 		memset(&fixture, 0, sizeof(fixture));
-		memset(fixture.announced_raw, 0x96,
-		    sizeof(fixture.announced_raw));
-		memset(fixture.value_raw, 0x69, sizeof(fixture.value_raw));
-		memset(fixture.sound_selector_raw, 0x3c,
-		    sizeof(fixture.sound_selector_raw));
-		memset(fixture.discount_raw, 0, sizeof(fixture.discount_raw));
-		memcpy(fixture.discount_raw[0], holds_zero, 4U);
 		fixture.draws[0] = 0.9f;
 		fixture.draws[1] = 0.1f;
 		fixture.draws[2] = 0.0f;
@@ -8522,42 +8447,28 @@ test_clearance_failure_prefixes(void)
 		    && clearance.leading_blank_presented == (pass != 0U)
 		    && clearance.trailing_blank_presented
 		    == cases[pass].complete
-		    && fixture.read_calls == expected_reads[pass]
 		    && fixture.random_calls == expected_random_calls[pass]
 		    && fixture.present_calls == expected_present_calls[pass]
-		    && fixture.sound_calls == (pass >= 5U ? 1U : 0U)
-		    && fixture.store_calls == expected_store_calls[pass]);
-		CHECK(memcmp(fixture.announced_raw,
-		    cases[pass].announcements == 0U ? announced_zero : one, 4U)
-		    == 0 && memcmp(clearance.announced_raw,
-		    fixture.announced_raw, 4U) == 0);
-		if (pass >= 3U) {
-			CHECK(memcmp(fixture.discount_raw[0], tenth, 4U) == 0
-			    && memcmp(fixture.value_raw, tenth, 4U) == 0);
-		} else
-			CHECK(memcmp(fixture.discount_raw[0], holds_zero, 4U) == 0);
+		    && fixture.sound_calls == (pass >= 5U ? 1U : 0U));
+		CHECK(clearance.announced == (cases[pass].announcements != 0U));
+		CHECK(clearance.discount[0] == (pass >= 3U ? 0.1f : 0.0f));
 		if (pass >= 5U) {
-			CHECK(memcmp(fixture.discount_raw[1], reset[0], 4U) == 0
-			    && memcmp(fixture.discount_raw[2], reset[1], 4U) == 0
-			    && memcmp(fixture.discount_raw[3], reset[2], 4U) == 0);
+			CHECK(clearance.discount[1] == 0.0f
+			    && clearance.discount[2] == 0.0f
+			    && clearance.discount[3] == 0.0f);
 		}
-		CHECK(memcmp(fixture.sound_selector_raw,
-		    pass >= 5U ? one : (const uint8_t[]){0x3cU, 0x3cU, 0x3cU,
-		    0x3cU}, 4U) == 0
-		    && (pass < 5U || memcmp(clearance.sound_selector_raw,
-		    fixture.sound_selector_raw, 4U) == 0));
 	}
 
 	memset(&fixture, 0, sizeof(fixture));
-	memcpy(fixture.discount_raw[0], tenth, 4U);
 	fixture.presentation = state(false);
 	clearance = (struct yt_clearance_state){.create = false};
+	clearance.discount[0] = 0.1f;
 	yt_error_clear(&error);
 	CHECK(yt_clearance_run(&clearance, &ops, &fixture, &error)
 	    && clearance.complete && clearance.draws_consumed == 4U
 	    && fixture.random_calls == 4U && fixture.draw_position == 4U
 	    && clearance.announcements == 1U
-	    && memcmp(fixture.discount_raw[0], tenth, 4U) == 0
+	    && clearance.discount[0] == 0.1f
 	    && fixture.remote_length == expected_length
 	    && memcmp(fixture.remote, expected, expected_length) == 0);
 }
@@ -28158,10 +28069,7 @@ struct direct_warp_attack_combat_join {
 	size_t defeated_length;
 	uint8_t reward[240];
 	size_t reward_length;
-	uint8_t clearance_discount_raw[4][4];
-	uint8_t clearance_announced_raw[4];
-	uint8_t clearance_value_raw[4];
-	uint8_t clearance_sound_selector_raw[4];
+	float clearance_discount[4];
 	struct yt_clearance_state clearance;
 	struct yt_xannor_victory_state victory;
 	struct yt_credit_mutation_state victory_credit;
@@ -28199,8 +28107,6 @@ struct direct_warp_attack_combat_join {
 	size_t clearance_sound_calls;
 	size_t clearance_sound_attempts;
 	size_t clearance_present_calls;
-	size_t clearance_read_calls;
-	size_t clearance_store_calls;
 	size_t victory_calls;
 	size_t victory_file_reads;
 	size_t victory_file_rows;
@@ -28818,43 +28724,6 @@ direct_warp_attack_tail_present(void *context,
 	return normal_exit_b05d(viewer, text, length, 0.0f);
 }
 
-static void
-direct_warp_attack_clearance_read(void *context,
-    enum yt_clearance_store_kind kind, size_t item, uint8_t raw[4])
-{
-	struct direct_warp_attack_combat_join *join = context;
-
-	++join->clearance_read_calls;
-	if (kind == YT_CLEARANCE_STORE_DISCOUNT && item < 4U)
-		memcpy(raw, join->clearance_discount_raw[item], 4U);
-	else if (kind == YT_CLEARANCE_STORE_ANNOUNCED)
-		memcpy(raw, join->clearance_announced_raw, 4U);
-}
-
-static void
-direct_warp_attack_clearance_store(void *context,
-    enum yt_clearance_store_kind kind, size_t item, const uint8_t raw[4])
-{
-	struct direct_warp_attack_combat_join *join = context;
-
-	++join->clearance_store_calls;
-	switch (kind) {
-	case YT_CLEARANCE_STORE_DISCOUNT:
-		if (item < 4U)
-			memcpy(join->clearance_discount_raw[item], raw, 4U);
-		break;
-	case YT_CLEARANCE_STORE_ANNOUNCED:
-		memcpy(join->clearance_announced_raw, raw, 4U);
-		break;
-	case YT_CLEARANCE_STORE_VALUE:
-		memcpy(join->clearance_value_raw, raw, 4U);
-		break;
-	case YT_CLEARANCE_STORE_SOUND_SELECTOR:
-		memcpy(join->clearance_sound_selector_raw, raw, 4U);
-		break;
-	}
-}
-
 static bool
 direct_warp_attack_clearance_present(void *context, const uint8_t *text,
     size_t length, enum yt_clearance_output_kind kind,
@@ -28896,8 +28765,6 @@ static bool
 direct_warp_attack_tail_clearance(void *context, struct yt_error *error)
 {
 	static const struct yt_clearance_ops ops = {
-		direct_warp_attack_clearance_read,
-		direct_warp_attack_clearance_store,
 		direct_warp_attack_combat_random,
 		direct_warp_attack_clearance_present,
 		direct_warp_attack_clearance_sound,
@@ -28910,7 +28777,16 @@ direct_warp_attack_tail_clearance(void *context, struct yt_error *error)
 	}
 	++join->clearance_calls;
 	join->clearance = (struct yt_clearance_state){.create = true};
-	return yt_clearance_run(&join->clearance, &ops, join, error);
+	memcpy(join->clearance.discount, join->clearance_discount,
+	    sizeof(join->clearance.discount));
+	if (!yt_clearance_run(&join->clearance, &ops, join, error)) {
+		memcpy(join->clearance_discount, join->clearance.discount,
+		    sizeof(join->clearance_discount));
+		return false;
+	}
+	memcpy(join->clearance_discount, join->clearance.discount,
+	    sizeof(join->clearance_discount));
+	return true;
 }
 
 struct direct_warp_attack_victory_file {
@@ -36478,9 +36354,6 @@ test_xannor_attack_tail_clearance_join(void)
 	};
 	static const uint8_t expected_defeated[] =
 	    "You defeated all the fighters and have 21 left.";
-	static const uint8_t holds_zero[4] = {0x00U, 0x00U, 0x73U, 0x00U};
-	static const uint8_t tenth[4] = {0xcdU, 0xccU, 0x4cU, 0x7dU};
-	static const uint8_t one[4] = {0x00U, 0x00U, 0x00U, 0x81U};
 	static const struct {
 		size_t length;
 		uint64_t hash;
@@ -36524,7 +36397,6 @@ test_xannor_attack_tail_clearance_join(void)
 		join.sector_record_offset = 51.0f;
 		join.allow_tail_player = true;
 		join.allow_clearance = true;
-		memcpy(join.clearance_discount_raw[0], holds_zero, 4U);
 		memset(&record, 0xa5, sizeof(record));
 		yt_record_set_text(&record, (const uint8_t *)"FRESH XANNOR", 12U);
 		(void)yt_record_set_number(&record, YT_F49, 98.0f);
@@ -36572,8 +36444,6 @@ test_xannor_attack_tail_clearance_join(void)
 		    && join.clearance_sound_calls == 1U
 		    && join.clearance_sound_attempts == 1U
 		    && join.clearance_present_calls == 3U
-		    && join.clearance_read_calls == 5U
-		    && join.clearance_store_calls == 8U
 		    && join.random_calls == 6U && fixture.draw_position == 6U
 		    && join.clearance.complete
 		    && join.clearance.draws_consumed == 5U
@@ -36588,10 +36458,7 @@ test_xannor_attack_tail_clearance_join(void)
 		    && memcmp(join.defeated, expected_defeated,
 		    sizeof(expected_defeated) - 1U) == 0
 		    && join.written_player.turns == 100.0f
-		    && memcmp(join.clearance_discount_raw[0], tenth, 4U) == 0
-		    && memcmp(join.clearance_value_raw, tenth, 4U) == 0
-		    && memcmp(join.clearance_announced_raw, one, 4U) == 0
-		    && memcmp(join.clearance_sound_selector_raw, one, 4U) == 0);
+		    && join.clearance_discount[0] == 0.1f);
 		yt_text_input_destroy(&viewer.input);
 	}
 }
@@ -36600,17 +36467,6 @@ static void
 test_xannor_attack_tail_clearance_failure_prefixes(void)
 {
 	static const uint8_t cached_name[] = {'A', 0, 'B'};
-	static const uint8_t holds_zero[4] = {0x00U, 0x00U, 0x73U, 0x00U};
-	static const uint8_t announced_zero[4] = {
-		0x00U, 0x00U, 0x7aU, 0x00U,
-	};
-	static const uint8_t tenth[4] = {0xcdU, 0xccU, 0x4cU, 0x7dU};
-	static const uint8_t one[4] = {0x00U, 0x00U, 0x00U, 0x81U};
-	static const uint8_t reset[3][4] = {
-		{0x00U, 0x00U, 0x7aU, 0x00U},
-		{0x00U, 0x00U, 0x4cU, 0x00U},
-		{0x00U, 0x00U, 0x66U, 0x00U},
-	};
 	static const size_t expected_lengths[2][7] = {
 		{54U, 56U, 56U, 56U, 130U, 130U, 131U},
 		{66U, 78U, 78U, 78U, 152U, 152U, 195U},
@@ -36671,12 +36527,6 @@ test_xannor_attack_tail_clearance_failure_prefixes(void)
 			UINT64_C(0xf3c5f133a0c4dbc6),
 		},
 	};
-	static const size_t expected_reads[7] = {
-		0U, 1U, 1U, 1U, 2U, 5U, 5U,
-	};
-	static const size_t expected_stores[7] = {
-		1U, 1U, 1U, 3U, 4U, 8U, 8U,
-	};
 	static const struct {
 		size_t fail_random_at;
 		size_t fail_present_at;
@@ -36733,7 +36583,6 @@ test_xannor_attack_tail_clearance_failure_prefixes(void)
 			join.fail_clearance_present_at =
 			    cases[cut].fail_present_at;
 			join.fail_clearance_sound_at = cases[cut].fail_sound_at;
-			memcpy(join.clearance_discount_raw[0], holds_zero, 4U);
 			memset(&record, 0xa5, sizeof(record));
 			yt_record_set_text(&record,
 			    (const uint8_t *)"FRESH XANNOR", 12U);
@@ -36786,8 +36635,6 @@ test_xannor_attack_tail_clearance_failure_prefixes(void)
 			    && !join.clearance.complete
 			    && join.clearance_present_calls
 			    == cases[cut].present_calls
-			    && join.clearance_read_calls == expected_reads[cut]
-			    && join.clearance_store_calls == expected_stores[cut]
 			    && join.clearance_sound_attempts
 			    == (cut >= 5U ? 1U : 0U)
 			    && join.clearance_sound_calls == (cut >= 6U ? 1U : 0U)
@@ -36795,20 +36642,13 @@ test_xannor_attack_tail_clearance_failure_prefixes(void)
 			    && join.tail_player_reads == 1U
 			    && join.tail_player_writes == 1U
 			    && !join.unexpected_tail_effect);
-			CHECK(memcmp(join.clearance_announced_raw,
-			    cut >= 4U ? one : announced_zero, 4U) == 0
-			    && memcmp(join.clearance_discount_raw[0],
-			    cut >= 3U ? tenth : holds_zero, 4U) == 0);
-			if (cut >= 3U)
-				CHECK(memcmp(join.clearance_value_raw, tenth, 4U) == 0);
+			CHECK(join.clearance.announced == (cut >= 4U)
+			    && join.clearance_discount[0]
+			    == (cut >= 3U ? 0.1f : 0.0f));
 			if (cut >= 5U) {
-				CHECK(memcmp(join.clearance_discount_raw[1], reset[0], 4U)
-				    == 0 && memcmp(join.clearance_discount_raw[2],
-				    reset[1], 4U) == 0
-				    && memcmp(join.clearance_discount_raw[3], reset[2],
-				    4U) == 0
-				    && memcmp(join.clearance_sound_selector_raw, one, 4U)
-				    == 0);
+				CHECK(join.clearance_discount[1] == 0.0f
+				    && join.clearance_discount[2] == 0.0f
+				    && join.clearance_discount[3] == 0.0f);
 			}
 			yt_text_input_destroy(&viewer.input);
 		}
@@ -36823,7 +36663,6 @@ test_xannor_attack_tail_victory_join(void)
 	    "Congratulations go to A\0B who defeated the Xannor HQ!!!";
 	static const uint8_t stars[] =
 	    "*******************************************************************************";
-	static const uint8_t holds_zero[4] = {0x00U, 0x00U, 0x73U, 0x00U};
 	static const struct {
 		size_t length;
 		uint64_t hash;
@@ -36870,7 +36709,6 @@ test_xannor_attack_tail_victory_join(void)
 		join.allow_tail_player = true;
 		join.allow_clearance = true;
 		join.allow_victory = true;
-		memcpy(join.clearance_discount_raw[0], holds_zero, 4U);
 		memset(&record, 0xa5, sizeof(record));
 		yt_record_set_text(&record, cached_name, sizeof(cached_name));
 		(void)yt_record_set_number(&record, YT_F49, 98.0f);
@@ -36968,7 +36806,6 @@ static void
 test_xannor_attack_tail_victory_failure_prefixes(void)
 {
 	static const uint8_t cached_name[] = {'A', 0, 'B'};
-	static const uint8_t holds_zero[4] = {0x00U, 0x00U, 0x73U, 0x00U};
 	static const size_t expected_lengths[2][18] = {
 		{182U, 412U, 419U, 419U, 421U, 455U, 455U, 455U, 455U,
 		    455U, 455U, 455U, 455U, 455U, 455U, 455U, 455U, 455U},
@@ -37110,7 +36947,6 @@ test_xannor_attack_tail_victory_failure_prefixes(void)
 			join.allow_clearance = true;
 			join.allow_victory = true;
 			join.victory_fail_at = cut;
-			memcpy(join.clearance_discount_raw[0], holds_zero, 4U);
 			memset(&record, 0xa5, sizeof(record));
 			yt_record_set_text(&record, cached_name,
 			    sizeof(cached_name));
@@ -37215,11 +37051,6 @@ test_xannor_attack_combat_victory_join(void)
 	    "Congratulations go to A\0B who defeated the Xannor HQ!!!";
 	static const uint8_t stars[] =
 	    "*******************************************************************************";
-	static const uint8_t holds_zero[4] = {0x00U, 0x00U, 0x73U, 0x00U};
-	static const uint8_t reset_shields[4] = {
-		0x00U, 0x00U, 0x4cU, 0x00U,
-	};
-	static const uint8_t one[4] = {0x00U, 0x00U, 0x00U, 0x81U};
 	static const struct {
 		size_t length;
 		uint64_t hash;
@@ -37242,12 +37073,9 @@ test_xannor_attack_combat_victory_join(void)
 	struct yt_sector expected_sector;
 	struct yt_sector expected_victory_sector;
 	struct yt_error error;
-	uint8_t ninety_percent[4];
 	uint8_t remote[2048];
 	size_t index;
 	size_t pass;
-
-	CHECK(qb_mbf32_encode(0.9f, ninety_percent) == QB_MBF_OK);
 
 	for (pass = 0U; pass < 2U; ++pass) {
 		memset(&viewer, 0, sizeof(viewer));
@@ -37268,7 +37096,6 @@ test_xannor_attack_combat_victory_join(void)
 		join.allow_clearance = true;
 		join.allow_victory = true;
 		join.allow_secondary_news = true;
-		memcpy(join.clearance_discount_raw[0], holds_zero, 4U);
 		memset(&record, 0x3c, sizeof(record));
 		(void)yt_record_set_number(&record, YT_F81, 256000.0f);
 		(void)yt_record_set_number(&record, YT_F85, -1.0f);
@@ -37391,20 +37218,13 @@ test_xannor_attack_combat_victory_join(void)
 		    && join.clearance.leading_blank_presented
 		    && join.clearance.sound_called
 		    && join.clearance.trailing_blank_presented
-		    && join.clearance_read_calls == 5U
-		    && join.clearance_store_calls == 13U
 		    && join.clearance_present_calls == 5U
 		    && join.clearance_sound_attempts == 1U
 		    && join.clearance_sound_calls == 1U
-		    && memcmp(join.clearance_discount_raw[0], ninety_percent, 4U)
-		    == 0 && memcmp(join.clearance_discount_raw[1],
-		    ninety_percent, 4U) == 0
-		    && memcmp(join.clearance_discount_raw[2], reset_shields, 4U)
-		    == 0 && memcmp(join.clearance_discount_raw[3],
-		    ninety_percent, 4U) == 0
-		    && memcmp(join.clearance_value_raw, ninety_percent, 4U) == 0
-		    && memcmp(join.clearance_announced_raw, one, 4U) == 0
-		    && memcmp(join.clearance_sound_selector_raw, one, 4U) == 0);
+		    && join.clearance_discount[0] == 0.9f
+		    && join.clearance_discount[1] == 0.9f
+		    && join.clearance_discount[2] == 0.0f
+		    && join.clearance_discount[3] == 0.9f);
 		CHECK(join.reward_length == sizeof(expected_reward) - 1U
 		    && memcmp(join.reward, expected_reward,
 		    sizeof(expected_reward) - 1U) == 0
