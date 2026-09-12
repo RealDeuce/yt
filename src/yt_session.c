@@ -14922,14 +14922,6 @@ cruise_reroute_random(void *context, float *value, struct yt_error *error)
 	return random_value(context, value, error);
 }
 
-static bool
-cruise_union_police_present(void *context, const uint8_t *text, size_t length,
-    struct yt_error *error)
-{
-	return session_present_text(context, text, length, SESSION_PRESENT_LINE,
-	    "Union Police missile row", error);
-}
-
 struct plasma_route_context {
 	struct yt_session *session;
 	struct projectile_route_state *route;
@@ -15227,19 +15219,17 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 				rerouted = true;
 				break;
 			}
-			struct yt_projectile_union_police_state police = {
-				(float)next,
-				destination,
-				*counterattack,
-				*xannor_provoker,
-				false,
-			};
+			static const uint8_t union_police_row[] =
+			    "The Union Police have destroyed the Missiles!";
 
-			if (!yt_projectile_union_police_run(&police,
-			    cruise_union_police_present, session, error))
-				return false;
-			if (police.intercepted)
+			if (yt_projectile_union_police_admitted((float)next,
+			    destination, *counterattack, *xannor_provoker)) {
+				if (!session_present_text(session, union_police_row,
+				    sizeof(union_police_row) - 1U, SESSION_PRESENT_LINE,
+				    "Union Police missile row", error))
+					return false;
 				return true;
+			}
 			enum missile_sector_route sector_route;
 
 			bool sector_success = missile_sector(session, next, missiles,
