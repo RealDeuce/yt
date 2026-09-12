@@ -455,9 +455,8 @@ yt_database_close(struct yt_database *database)
 		(void)fclose(file);
 }
 
-static bool database_seek_default(void *context, FILE *file,
-    int64_t absolute_offset,
-    struct yt_database_seek_observation *observation);
+static bool database_seek(FILE *file, int64_t absolute_offset,
+    uint16_t *dos_error, int64_t *terminal_position);
 
 bool
 yt_database_read(struct yt_database *database, size_t basic_record,
@@ -506,16 +505,6 @@ database_read_default(void *context, FILE *file, uint8_t *data,
 }
 
 static bool
-database_seek_observation_valid(
-    const struct yt_database_seek_observation *observation)
-{
-	if (observation->carry)
-		return observation->dos_error >= 1U
-		    && observation->dos_error <= 0xffU;
-	return observation->dos_error == 0U;
-}
-
-static bool
 database_read_observation_valid(
     const struct yt_database_read_observation *observation, size_t requested)
 {
@@ -538,11 +527,11 @@ database_random_get_bytes(struct yt_database *database, size_t basic_record,
     uint8_t *data, size_t record_size, size_t *accepted,
     struct yt_error *error)
 {
-	yt_database_seek_provider seek_provider;
 	yt_database_read_provider read_provider;
-	struct yt_database_seek_observation seek = {0};
 	struct yt_database_read_observation read = {0};
 	int64_t offset;
+	uint16_t seek_error;
+	int64_t seek_position;
 
 	if (accepted != NULL)
 		*accepted = 0U;
@@ -565,24 +554,12 @@ database_random_get_bytes(struct yt_database *database, size_t basic_record,
 	database->last_get.current_record = (uint32_t)basic_record;
 	database->last_get.record_index = (uint32_t)basic_record - 1U;
 	database->last_get.desired_offset = (int64_t)offset;
-	seek_provider = database->seek_provider != NULL ? database->seek_provider
-	    : database_seek_default;
-	if (!seek_provider(database->seek_context, database->file,
-	    (int64_t)offset, &seek)
-	    || !database_seek_observation_valid(&seek)) {
-		database->last_get.outcome = YT_DATABASE_GET_PROVIDER_ERROR;
-		database->last_get.basic_error = 52U;
-		database->last_get.dos_error = seek.dos_error;
-		database->last_get.terminal_position = seek.terminal_position;
-		set_error(error, YT_IO_ERROR, "random GET provider",
-		    database->path);
-		return false;
-	}
-	if (seek.carry) {
+	if (!database_seek(database->file, offset, &seek_error,
+	    &seek_position)) {
 		database->last_get.outcome = YT_DATABASE_GET_SEEK_ERROR;
 		database->last_get.basic_error = 52U;
-		database->last_get.dos_error = seek.dos_error;
-		database->last_get.terminal_position = seek.terminal_position;
+		database->last_get.dos_error = seek_error;
+		database->last_get.terminal_position = seek_position;
 		set_error(error, YT_IO_ERROR, "random GET seek", database->path);
 		return false;
 	}
@@ -650,27 +627,25 @@ yt_database_write_durable(struct yt_database *database, size_t basic_record,
 }
 
 static bool
-database_seek_default(void *context, FILE *file, int64_t absolute_offset,
-    struct yt_database_seek_observation *observation)
+database_seek(FILE *file, int64_t absolute_offset, uint16_t *dos_error,
+    int64_t *terminal_position)
 {
 	int64_t position;
 	int saved_errno;
 
-	(void)context;
-	memset(observation, 0, sizeof(*observation));
+	*dos_error = 0U;
 	database_prepare_io(file);
 	if (yt_fseeko(file, absolute_offset, SEEK_SET) == 0) {
-		observation->terminal_position = absolute_offset;
+		*terminal_position = absolute_offset;
 		return true;
 	}
 	saved_errno = errno;
 	position = yt_ftello(file);
-	observation->carry = true;
-	observation->dos_error = (saved_errno == EACCES || saved_errno == EPERM)
+	*dos_error = (saved_errno == EACCES || saved_errno == EPERM)
 	    ? 5U : 1U;
-	observation->terminal_position = position >= 0 ? (int64_t)position : 0;
+	*terminal_position = position >= 0 ? (int64_t)position : 0;
 	errno = saved_errno;
-	return true;
+	return false;
 }
 
 static bool
@@ -1013,11 +988,11 @@ database_random_put_bytes(struct yt_database *database, size_t basic_record,
     const uint8_t *data, size_t record_size, bool one_byte_short_ok,
     size_t *accepted, struct yt_error *error)
 {
-	yt_database_seek_provider seek_provider;
 	yt_database_write_provider write_provider;
-	struct yt_database_seek_observation seek = {0};
 	struct yt_database_write_observation write = {0};
 	int64_t offset;
+	uint16_t seek_error;
+	int64_t seek_position;
 	bool tolerated_short;
 
 	if (accepted != NULL)
@@ -1044,24 +1019,12 @@ database_random_put_bytes(struct yt_database *database, size_t basic_record,
 	database->last_put.desired_offset = (int64_t)offset;
 	database->short_close_attempted = false;
 	database->short_close_succeeded = false;
-	seek_provider = database->seek_provider != NULL ? database->seek_provider
-	    : database_seek_default;
-	if (!seek_provider(database->seek_context, database->file,
-	    (int64_t)offset, &seek)
-	    || !database_seek_observation_valid(&seek)) {
-		database->last_put.outcome = YT_DATABASE_PUT_PROVIDER_ERROR;
-		database->last_put.basic_error = 52U;
-		database->last_put.dos_error = seek.dos_error;
-		database->last_put.terminal_position = seek.terminal_position;
-		set_error(error, YT_IO_ERROR, "random PUT provider",
-		    database->path);
-		return false;
-	}
-	if (seek.carry) {
+	if (!database_seek(database->file, offset, &seek_error,
+	    &seek_position)) {
 		database->last_put.outcome = YT_DATABASE_PUT_SEEK_ERROR;
 		database->last_put.basic_error = 52U;
-		database->last_put.dos_error = seek.dos_error;
-		database->last_put.terminal_position = seek.terminal_position;
+		database->last_put.dos_error = seek_error;
+		database->last_put.terminal_position = seek_position;
 		set_error(error, YT_IO_ERROR, "random PUT seek", database->path);
 		return false;
 	}
@@ -1132,16 +1095,6 @@ yt_database_set_read_provider(struct yt_database *database,
 		return;
 	database->read_provider = provider;
 	database->read_context = context;
-}
-
-void
-yt_database_set_seek_provider(struct yt_database *database,
-    yt_database_seek_provider provider, void *context)
-{
-	if (database == NULL)
-		return;
-	database->seek_provider = provider;
-	database->seek_context = context;
 }
 
 bool

@@ -23347,7 +23347,6 @@ direct_emergency_warp_main_command_prefix(
 }
 
 enum direct_warp_gate_get_failure {
-	DIRECT_WARP_GATE_SEEK_52,
 	DIRECT_WARP_GATE_READ_57,
 	DIRECT_WARP_GATE_READ_70,
 	DIRECT_WARP_GATE_READ_75,
@@ -23362,32 +23361,9 @@ struct direct_warp_gate_get_state {
 	enum direct_warp_gate_get_failure failure;
 	bool read_success;
 	size_t accepted;
-	size_t seek_calls;
 	size_t read_calls;
 	int64_t terminal_position;
-	int64_t last_seek_offset;
 };
-
-static bool
-direct_warp_gate_seek(void *context, FILE *file, int64_t absolute_offset,
-    struct yt_database_seek_observation *observation)
-{
-	struct direct_warp_gate_get_state *state = context;
-
-	(void)file;
-	++state->seek_calls;
-	state->last_seek_offset = absolute_offset;
-	memset(observation, 0, sizeof(*observation));
-	observation->terminal_position = state->terminal_position;
-	if (!state->read_success
-	    && state->failure == DIRECT_WARP_GATE_SEEK_52) {
-		observation->carry = true;
-		observation->dos_error = 6U;
-	}
-	else
-		observation->terminal_position = absolute_offset;
-	return true;
-}
 
 static bool
 direct_warp_gate_read(void *context, FILE *file, uint8_t *data,
@@ -23402,11 +23378,8 @@ direct_warp_gate_read(void *context, FILE *file, uint8_t *data,
 		return false;
 	memcpy(data, state->read_source.bytes, state->accepted);
 	observation->accepted = state->accepted;
-	if (state->read_success) {
-		observation->terminal_position = state->last_seek_offset
-		    + (int64_t)state->accepted;
+	if (state->read_success)
 		return true;
-	}
 	observation->carry = true;
 	observation->dos_error = state->failure == DIRECT_WARP_GATE_READ_57
 	    ? 6U : 5U;
@@ -23470,16 +23443,13 @@ direct_emergency_warp_gate_get_failure_run(
 	if (gate->database.file == NULL)
 		return false;
 	gate->failure = failure;
-	gate->accepted = failure == DIRECT_WARP_GATE_SEEK_52 ? 0U : 3U;
-	gate->terminal_position = failure == DIRECT_WARP_GATE_SEEK_52
-	    ? INT64_C(0x11223344) : INT64_C(0x55667788);
+	gate->accepted = 3U;
+	gate->terminal_position = INT64_C(0x55667788);
 	gate->field = fixture->emergency_player.record;
 	gate->field_record = 2;
 	gate->field_player = true;
 	for (index = 0U; index < YT_RECORD_SIZE; ++index)
 		gate->read_source.bytes[index] = (uint8_t)(index ^ 0x5aU);
-	yt_database_set_seek_provider(&gate->database, direct_warp_gate_seek,
-	    gate);
 	yt_database_set_read_provider(&gate->database, direct_warp_gate_read,
 	    gate);
 	memcpy(gate_raw, expected_gate_raw, sizeof(gate_raw));
@@ -23568,8 +23538,6 @@ test_direct_emergency_warp_gate_get_failures(void)
 		enum yt_basic_fault_disposition disposition;
 		enum yt_main_error_route route;
 	} cuts[] = {
-		{DIRECT_WARP_GATE_SEEK_52, 52U, YT_BASIC_FAULT_END,
-		    YT_MAIN_ERROR_FATAL},
 		{DIRECT_WARP_GATE_READ_57, 57U,
 		    YT_BASIC_FAULT_RETRY_STATEMENT, YT_MAIN_ERROR_RETRY_CURRENT},
 		{DIRECT_WARP_GATE_READ_70, 70U, YT_BASIC_FAULT_END,
@@ -23583,7 +23551,6 @@ test_direct_emergency_warp_gate_get_failures(void)
 	struct direct_warp_gate_get_state gate;
 	struct yt_basic_fault_projection projection;
 	struct yt_record record;
-	struct yt_record inherited;
 	uint8_t remote[96];
 	size_t ends[2];
 	size_t cut;
@@ -23601,7 +23568,6 @@ test_direct_emergency_warp_gate_get_failures(void)
 			memset(&record, 0xa5, sizeof(record));
 			(void)yt_record_set_number(&record, YT_F49, 17.0f);
 			(void)yt_record_set_number(&record, YT_F57, 733.0f);
-			inherited = record;
 			yt_player_decode(&fixture.emergency_player, &record);
 			fixture.hazard_player = fixture.emergency_player;
 			CHECK(direct_emergency_warp_gate_get_failure_run(
@@ -23614,10 +23580,7 @@ test_direct_emergency_warp_gate_get_failures(void)
 			    && viewer.join.remote_length == modes[mode].expected_length
 			    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
 			    == modes[mode].expected_hash);
-			CHECK(gate.seek_calls == 1U
-			    && gate.read_calls
-			    == (cuts[cut].failure
-			    == DIRECT_WARP_GATE_SEEK_52 ? 0U : 1U)
+			CHECK(gate.read_calls == 1U
 			    && gate.database.last_get.current_record == 2U
 			    && gate.database.last_get.record_index == 1U
 			    && gate.database.last_get.desired_offset == YT_RECORD_SIZE
@@ -23664,23 +23627,13 @@ test_direct_emergency_warp_gate_get_failures(void)
 			    == modes[mode].cached_foreground
 			    && viewer.join.pager.foreground == modes[mode].foreground
 			    && viewer.join.pager.line_count == 0.0f);
-			if (cuts[cut].failure
-			    == DIRECT_WARP_GATE_SEEK_52) {
-				CHECK(gate.database.last_get.outcome
-				    == YT_DATABASE_GET_SEEK_ERROR
-				    && gate.database.last_get.accepted == 0U
-				    && memcmp(&gate.field, &inherited,
-				    sizeof(inherited)) == 0);
-			}
-			else {
-				CHECK(gate.database.last_get.outcome
-				    == YT_DATABASE_GET_READ_ERROR
-				    && gate.database.last_get.accepted == 3U
-				    && memcmp(gate.field.bytes,
-				    gate.read_source.bytes, 3U) == 0);
-				for (index = 3U; index < YT_RECORD_SIZE; ++index)
-					CHECK(gate.field.bytes[index] == 0U);
-			}
+			CHECK(gate.database.last_get.outcome
+			    == YT_DATABASE_GET_READ_ERROR
+			    && gate.database.last_get.accepted == 3U
+			    && memcmp(gate.field.bytes,
+			    gate.read_source.bytes, 3U) == 0);
+			for (index = 3U; index < YT_RECORD_SIZE; ++index)
+				CHECK(gate.field.bytes[index] == 0U);
 			yt_database_close(&gate.database);
 			yt_text_input_destroy(&viewer.input);
 		}
@@ -26179,16 +26132,13 @@ direct_emergency_warp_fresh_hostile_attack_sector_get_failure(
 	if (gate->database.file == NULL)
 		return false;
 	gate->failure = failure;
-	gate->accepted = failure == DIRECT_WARP_GATE_SEEK_52 ? 0U : 3U;
-	gate->terminal_position = failure == DIRECT_WARP_GATE_SEEK_52
-	    ? INT64_C(0x11223344) : INT64_C(0x55667788);
+	gate->accepted = 3U;
+	gate->terminal_position = INT64_C(0x55667788);
 	gate->field = *inherited_field;
 	gate->field_record = 2;
 	gate->field_player = true;
 	for (index = 0U; index < YT_RECORD_SIZE; ++index)
 		gate->read_source.bytes[index] = (uint8_t)(index ^ 0x3cU);
-	yt_database_set_seek_provider(&gate->database, direct_warp_gate_seek,
-	    gate);
 	yt_database_set_read_provider(&gate->database, direct_warp_gate_read,
 	    gate);
 	field = gate->field;
@@ -26268,7 +26218,6 @@ direct_emergency_warp_fresh_hostile_attack_entry_a41c_failure(
 	for (index = 0U; index < YT_RECORD_SIZE; ++index)
 		io->read_source.bytes[index] = (uint8_t)(index ^ 0x3cU);
 	entry->sector_source = io->read_source;
-	yt_database_set_seek_provider(&io->database, direct_warp_gate_seek, io);
 	yt_database_set_read_provider(&io->database, direct_warp_gate_read, io);
 	field = io->field;
 	++cycle->fresh_hostile_attack_sector_reads;
@@ -26290,9 +26239,8 @@ direct_emergency_warp_fresh_hostile_attack_entry_a41c_failure(
 
 	io->read_success = false;
 	io->failure = player_failure;
-	io->accepted = player_failure == DIRECT_WARP_GATE_SEEK_52 ? 0U : 3U;
-	io->terminal_position = player_failure == DIRECT_WARP_GATE_SEEK_52
-	    ? INT64_C(0x11223344) : INT64_C(0x55667788);
+	io->accepted = 3U;
+	io->terminal_position = INT64_C(0x55667788);
 	for (index = 0U; index < YT_RECORD_SIZE; ++index)
 		io->read_source.bytes[index] = (uint8_t)(index ^ 0x5aU);
 	before = fixture->emergency_player;
@@ -26360,7 +26308,6 @@ direct_emergency_warp_fresh_hostile_attack_opening_success(
 	for (index = 0U; index < YT_RECORD_SIZE; ++index)
 		io->read_source.bytes[index] = (uint8_t)(index ^ 0x3cU);
 	entry->sector_source = io->read_source;
-	yt_database_set_seek_provider(&io->database, direct_warp_gate_seek, io);
 	yt_database_set_read_provider(&io->database, direct_warp_gate_read, io);
 	field = io->field;
 	++cycle->fresh_hostile_attack_sector_reads;
@@ -28312,16 +28259,13 @@ direct_emergency_warp_fresh_hostile_menu_get_failure(
 	if (gate->database.file == NULL)
 		return false;
 	gate->failure = failure;
-	gate->accepted = failure == DIRECT_WARP_GATE_SEEK_52 ? 0U : 3U;
-	gate->terminal_position = failure == DIRECT_WARP_GATE_SEEK_52
-	    ? INT64_C(0x11223344) : INT64_C(0x55667788);
+	gate->accepted = 3U;
+	gate->terminal_position = INT64_C(0x55667788);
 	gate->field = fixture->hazard_sector.record;
 	gate->field_record = 1054;
 	gate->field_player = false;
 	for (index = 0U; index < YT_RECORD_SIZE; ++index)
 		gate->read_source.bytes[index] = (uint8_t)(index ^ 0x5aU);
-	yt_database_set_seek_provider(&gate->database, direct_warp_gate_seek,
-	    gate);
 	yt_database_set_read_provider(&gate->database, direct_warp_gate_read,
 	    gate);
 	before = fixture->emergency_player;
@@ -31362,8 +31306,6 @@ test_direct_emergency_warp_hostile_menu_get_failures(void)
 		enum yt_basic_fault_disposition disposition;
 		enum yt_main_error_route route;
 	} cuts[] = {
-		{DIRECT_WARP_GATE_SEEK_52, 52U, YT_BASIC_FAULT_END,
-		    YT_MAIN_ERROR_FATAL},
 		{DIRECT_WARP_GATE_READ_57, 57U,
 		    YT_BASIC_FAULT_RETRY_STATEMENT, YT_MAIN_ERROR_RETRY_CURRENT},
 		{DIRECT_WARP_GATE_READ_70, 70U, YT_BASIC_FAULT_END,
@@ -31379,7 +31321,6 @@ test_direct_emergency_warp_hostile_menu_get_failures(void)
 	struct yt_basic_fault_projection projection;
 	struct yt_record record;
 	struct yt_record before;
-	struct yt_record inherited_field;
 	uint8_t remote[1200];
 	size_t ends[3];
 	size_t caller;
@@ -31412,7 +31353,6 @@ test_direct_emergency_warp_hostile_menu_get_failures(void)
 			for (index = 0U; index < YT_RECORD_SIZE; ++index)
 				fixture.hazard_sector.record.bytes[index]
 				    = (uint8_t)(index ^ 0xa5U);
-			inherited_field = fixture.hazard_sector.record;
 			if (callers[caller].main) {
 				CHECK(direct_emergency_warp_main_hostile_handoff_run(
 				    &fixture, callers[caller].ansi, &cycle, ends));
@@ -31434,9 +31374,7 @@ test_direct_emergency_warp_hostile_menu_get_failures(void)
 				    ends[index] - start)
 				    == callers[caller].partition_hashes[index]);
 			}
-			CHECK(gate.seek_calls == 1U
-			    && gate.read_calls == (cuts[cut].failure
-			    == DIRECT_WARP_GATE_SEEK_52 ? 0U : 1U)
+			CHECK(gate.read_calls == 1U
 			    && gate.database.last_get.current_record == 2U
 			    && gate.database.last_get.record_index == 1U
 			    && gate.database.last_get.desired_offset == YT_RECORD_SIZE
@@ -31508,27 +31446,16 @@ test_direct_emergency_warp_hostile_menu_get_failures(void)
 				CHECK(fixture.emergency_player.record.bytes[index]
 				    == before.bytes[index]);
 			}
-			if (cuts[cut].failure == DIRECT_WARP_GATE_SEEK_52) {
-				CHECK(gate.database.last_get.outcome
-				    == YT_DATABASE_GET_SEEK_ERROR
-				    && gate.field_record == 1054 && !gate.field_player
-				    && cycle.final_field_record == 1054
-				    && !cycle.final_field_player
-				    && memcmp(&gate.field, &inherited_field,
-				    sizeof(inherited_field)) == 0);
-			}
-			else {
-				CHECK(gate.database.last_get.outcome
-				    == YT_DATABASE_GET_READ_ERROR
-				    && gate.database.last_get.accepted == 3U
-				    && gate.field_record == 2 && gate.field_player
-				    && cycle.final_field_record == 2
-				    && cycle.final_field_player
-				    && memcmp(gate.field.bytes,
-				    gate.read_source.bytes, 3U) == 0);
-				for (index = 3U; index < YT_RECORD_SIZE; ++index)
-					CHECK(gate.field.bytes[index] == 0U);
-			}
+			CHECK(gate.database.last_get.outcome
+			    == YT_DATABASE_GET_READ_ERROR
+			    && gate.database.last_get.accepted == 3U
+			    && gate.field_record == 2 && gate.field_player
+			    && cycle.final_field_record == 2
+			    && cycle.final_field_player
+			    && memcmp(gate.field.bytes,
+			    gate.read_source.bytes, 3U) == 0);
+			for (index = 3U; index < YT_RECORD_SIZE; ++index)
+				CHECK(gate.field.bytes[index] == 0U);
 			yt_database_close(&gate.database);
 			yt_text_input_destroy(&viewer.input);
 		}
@@ -31917,8 +31844,6 @@ test_direct_emergency_warp_hostile_attack_sector_get_failures(void)
 		enum yt_basic_fault_disposition disposition;
 		enum yt_main_error_route route;
 	} cuts[] = {
-		{DIRECT_WARP_GATE_SEEK_52, 52U, YT_BASIC_FAULT_END,
-		    YT_MAIN_ERROR_FATAL},
 		{DIRECT_WARP_GATE_READ_57, 57U,
 		    YT_BASIC_FAULT_RETRY_STATEMENT, YT_MAIN_ERROR_RETRY_CURRENT},
 		{DIRECT_WARP_GATE_READ_70, 70U, YT_BASIC_FAULT_END,
@@ -31985,9 +31910,7 @@ test_direct_emergency_warp_hostile_attack_sector_get_failures(void)
 			    && viewer.join.local_color_count == callers[caller].colors
 			    && viewer.join.event_count == callers[caller].events
 			    && viewer.join.sample_calls == callers[caller].samples
-			    && gate.seek_calls == 1U
-			    && gate.read_calls == (cuts[cut].failure
-			    == DIRECT_WARP_GATE_SEEK_52 ? 0U : 1U)
+			    && gate.read_calls == 1U
 			    && gate.database.last_get.current_record == 1054U
 			    && gate.database.last_get.record_index == 1053U
 			    && gate.database.last_get.desired_offset
@@ -32028,27 +31951,16 @@ test_direct_emergency_warp_hostile_attack_sector_get_failures(void)
 			    && viewer.join.queue_length == 0U
 			    && strcmp(viewer.join.accumulator, "1") == 0
 			    && viewer.join.pager.line_count == 0.0f);
-			if (cuts[cut].failure == DIRECT_WARP_GATE_SEEK_52) {
-				CHECK(gate.database.last_get.outcome
-				    == YT_DATABASE_GET_SEEK_ERROR
-				    && gate.field_record == 2 && gate.field_player
-				    && cycle.final_field_record == 2
-				    && cycle.final_field_player
-				    && memcmp(&gate.field, &inherited_field,
-				    sizeof(inherited_field)) == 0);
-			}
-			else {
-				CHECK(gate.database.last_get.outcome
-				    == YT_DATABASE_GET_READ_ERROR
-				    && gate.database.last_get.accepted == 3U
-				    && gate.field_record == 1054 && !gate.field_player
-				    && cycle.final_field_record == 1054
-				    && !cycle.final_field_player
-				    && memcmp(gate.field.bytes,
-				    gate.read_source.bytes, 3U) == 0);
-				for (index = 3U; index < YT_RECORD_SIZE; ++index)
-					CHECK(gate.field.bytes[index] == 0U);
-			}
+			CHECK(gate.database.last_get.outcome
+			    == YT_DATABASE_GET_READ_ERROR
+			    && gate.database.last_get.accepted == 3U
+			    && gate.field_record == 1054 && !gate.field_player
+			    && cycle.final_field_record == 1054
+			    && !cycle.final_field_player
+			    && memcmp(gate.field.bytes,
+			    gate.read_source.bytes, 3U) == 0);
+			for (index = 3U; index < YT_RECORD_SIZE; ++index)
+				CHECK(gate.field.bytes[index] == 0U);
 			yt_database_close(&gate.database);
 			yt_text_input_destroy(&viewer.input);
 		}
@@ -32097,8 +32009,6 @@ test_direct_emergency_warp_hostile_attack_entry_a41c_failures(void)
 		enum yt_basic_fault_disposition disposition;
 		enum yt_main_error_route route;
 	} cuts[] = {
-		{DIRECT_WARP_GATE_SEEK_52, 52U, YT_BASIC_FAULT_END,
-		    YT_MAIN_ERROR_FATAL},
 		{DIRECT_WARP_GATE_READ_57, 57U,
 		    YT_BASIC_FAULT_RETRY_STATEMENT, YT_MAIN_ERROR_RETRY_CURRENT},
 		{DIRECT_WARP_GATE_READ_70, 70U, YT_BASIC_FAULT_END,
@@ -32169,9 +32079,7 @@ test_direct_emergency_warp_hostile_attack_entry_a41c_failures(void)
 				    && viewer.join.local_color_count == callers[caller].colors
 				    && viewer.join.event_count == callers[caller].events
 				    && viewer.join.sample_calls == callers[caller].samples
-				    && entry.io.seek_calls == 2U
-				    && entry.io.read_calls == (cuts[cut].failure
-				    == DIRECT_WARP_GATE_SEEK_52 ? 1U : 2U));
+				    && entry.io.read_calls == 2U);
 				CHECK(entry.sector_get.outcome == YT_DATABASE_GET_RETURNED
 				    && entry.sector_get.current_record == 1054U
 				    && entry.sector_get.record_index == 1053U
@@ -32221,30 +32129,17 @@ test_direct_emergency_warp_hostile_attack_entry_a41c_failures(void)
 				    && viewer.join.queue_length == 0U
 				    && strcmp(viewer.join.accumulator, "1") == 0
 				    && viewer.join.pager.line_count == 0.0f);
-				if (cuts[cut].failure == DIRECT_WARP_GATE_SEEK_52) {
-					CHECK(entry.io.database.last_get.outcome
-					    == YT_DATABASE_GET_SEEK_ERROR
-					    && entry.io.field_record == 1054
-					    && !entry.io.field_player
-					    && cycle.final_field_record == 1054
-					    && !cycle.final_field_player
-					    && memcmp(&entry.io.field,
-					    &entry.sector_field,
-					    sizeof(entry.sector_field)) == 0);
-				}
-				else {
-					CHECK(entry.io.database.last_get.outcome
-					    == YT_DATABASE_GET_READ_ERROR
-					    && entry.io.database.last_get.accepted == 3U
-					    && entry.io.field_record == 2
-					    && entry.io.field_player
-					    && cycle.final_field_record == 2
-					    && cycle.final_field_player
-					    && memcmp(entry.io.field.bytes,
-					    entry.io.read_source.bytes, 3U) == 0);
-					for (index = 3U; index < YT_RECORD_SIZE; ++index)
-						CHECK(entry.io.field.bytes[index] == 0U);
-				}
+				CHECK(entry.io.database.last_get.outcome
+				    == YT_DATABASE_GET_READ_ERROR
+				    && entry.io.database.last_get.accepted == 3U
+				    && entry.io.field_record == 2
+				    && entry.io.field_player
+				    && cycle.final_field_record == 2
+				    && cycle.final_field_player
+				    && memcmp(entry.io.field.bytes,
+				    entry.io.read_source.bytes, 3U) == 0);
+				for (index = 3U; index < YT_RECORD_SIZE; ++index)
+					CHECK(entry.io.field.bytes[index] == 0U);
 				yt_database_close(&entry.io.database);
 				yt_text_input_destroy(&viewer.input);
 			}
@@ -32349,8 +32244,7 @@ test_direct_emergency_warp_hostile_attack_opening_success(void)
 				    &fixture, &cycle,
 				    successes[sector_success].success,
 				    successes[player_success].success, &entry));
-				CHECK(entry.io.seek_calls == 2U
-				    && entry.io.read_calls == 2U
+				CHECK(entry.io.read_calls == 2U
 				    && entry.io.field_record == 2
 				    && entry.io.field_player
 				    && cycle.final_field_record == 2
@@ -32439,8 +32333,6 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 		enum yt_basic_fault_disposition disposition;
 		enum yt_main_error_route route;
 	} return_cuts[] = {
-		{DIRECT_WARP_GATE_SEEK_52, 52U, YT_BASIC_FAULT_END,
-		    YT_MAIN_ERROR_FATAL},
 		{DIRECT_WARP_GATE_READ_57, 57U,
 		    YT_BASIC_FAULT_RETRY_STATEMENT, YT_MAIN_ERROR_RETRY_CURRENT},
 		{DIRECT_WARP_GATE_READ_70, 70U, YT_BASIC_FAULT_END,
@@ -32678,9 +32570,7 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 			CHECK(direct_emergency_warp_fresh_hostile_menu_get_failure(
 			    &fixture, &cycle, return_cuts[cut].failure, &gate,
 			    &projection));
-			CHECK(gate.seek_calls == 1U
-			    && gate.read_calls == (return_cuts[cut].failure
-			    == DIRECT_WARP_GATE_SEEK_52 ? 0U : 1U)
+			CHECK(gate.read_calls == 1U
 			    && gate.database.last_get.current_record == 2U
 			    && gate.database.last_get.record_index == 1U
 			    && gate.database.last_get.desired_offset == YT_RECORD_SIZE
@@ -32708,25 +32598,13 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 			    &player_before_return, sizeof(player_before_return)) == 0
 			    && viewer.join.remote_length
 			    == callers[caller].total_length + sizeof(body) - 1U);
-			if (return_cuts[cut].failure
-			    == DIRECT_WARP_GATE_SEEK_52) {
-				CHECK(gate.field_record == 1054
-				    && !gate.field_player
-				    && cycle.final_field_record == 1054
-				    && !cycle.final_field_player
-				    && memcmp(&gate.field,
-				    &join.written_sector.record,
-				    sizeof(gate.field)) == 0);
-			}
-			else {
-				CHECK(gate.field_record == 2 && gate.field_player
-				    && cycle.final_field_record == 2
-				    && cycle.final_field_player
-				    && memcmp(gate.field.bytes,
-				    gate.read_source.bytes, 3U) == 0);
-				for (index = 3U; index < YT_RECORD_SIZE; ++index)
-					CHECK(gate.field.bytes[index] == 0U);
-			}
+			CHECK(gate.field_record == 2 && gate.field_player
+			    && cycle.final_field_record == 2
+			    && cycle.final_field_player
+			    && memcmp(gate.field.bytes,
+			    gate.read_source.bytes, 3U) == 0);
+			for (index = 3U; index < YT_RECORD_SIZE; ++index)
+				CHECK(gate.field.bytes[index] == 0U);
 			yt_database_close(&gate.database);
 		}
 		cycle = cycle_before_return;

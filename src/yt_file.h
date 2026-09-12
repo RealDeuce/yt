@@ -161,12 +161,6 @@ struct yt_database_lof_result {
 	bool handle_open;
 };
 
-struct yt_database_seek_observation {
-	bool carry;
-	uint16_t dos_error;
-	int64_t terminal_position;
-};
-
 struct yt_database_write_observation {
 	size_t accepted;
 	bool carry;
@@ -233,9 +227,6 @@ struct yt_database_put_result {
 };
 
 /* A false provider return rejects the observation and performs no I/O. */
-typedef bool (*yt_database_seek_provider)(void *context, FILE *file,
-    int64_t absolute_offset, struct yt_database_seek_observation *observation);
-/* A false provider return rejects the observation and performs no I/O. */
 typedef bool (*yt_database_read_provider)(void *context, FILE *file,
     uint8_t *data, size_t requested,
     struct yt_database_read_observation *observation);
@@ -247,8 +238,6 @@ struct yt_database {
 	FILE *file;
 	char path[512];
 	size_t records;
-	yt_database_seek_provider seek_provider;
-	void *seek_context;
 	yt_database_read_provider read_provider;
 	void *read_context;
 	yt_database_write_provider write_provider;
@@ -311,8 +300,6 @@ void yt_database_set_write_provider(struct yt_database *database,
     yt_database_write_provider provider, void *context);
 void yt_database_set_read_provider(struct yt_database *database,
     yt_database_read_provider provider, void *context);
-void yt_database_set_seek_provider(struct yt_database *database,
-    yt_database_seek_provider provider, void *context);
 bool yt_database_flush(struct yt_database *database, struct yt_error *error);
 void yt_radio_file_init(struct yt_radio_file *radio);
 bool yt_radio_file_open(struct yt_radio_file *radio, const char *path,
