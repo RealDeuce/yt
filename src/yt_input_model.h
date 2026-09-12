@@ -279,13 +279,11 @@ bool yt_input_repeat_build_staged(char *text, size_t text_capacity,
 	char *saved_command, size_t saved_capacity,
 	char *output_source, size_t output_capacity, float count,
 	enum yt_basic_fault_site target, size_t occurrence,
-	struct yt_repeat_build_transform *result,
-	yt_input_process_store_fn store, void *context);
-bool yt_input_expand_repeat_observed(char *text, size_t text_capacity,
+	struct yt_repeat_build_transform *result);
+bool yt_input_expand_repeat_with_notice(char *text, size_t text_capacity,
 	char *saved_command, size_t saved_capacity,
 	char *output_source, size_t output_capacity,
-    struct yt_repeat_transform *result, yt_input_process_store_fn store,
-    void *context);
+	struct yt_repeat_transform *result);
 bool yt_input_split_semicolon(char *text, char *queue, size_t queue_capacity,
     size_t *queue_position, size_t *queue_length);
 bool yt_input_split_semicolon_observed(char *text, char *queue,

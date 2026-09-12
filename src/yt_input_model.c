@@ -506,9 +506,9 @@ yt_input_expand_repeat(char *text, size_t text_capacity,
 	char output_source[128];
 
 	output_source[0] = '\0';
-	return yt_input_expand_repeat_observed(text, text_capacity,
+	return yt_input_expand_repeat_with_notice(text, text_capacity,
 	    saved_command, saved_capacity, output_source, sizeof(output_source),
-	    result, NULL, NULL);
+	    result);
 }
 
 static bool
@@ -828,8 +828,7 @@ yt_input_repeat_build_staged(char *text, size_t text_capacity,
     char *saved_command, size_t saved_capacity,
     char *output_source, size_t output_capacity, float count,
     enum yt_basic_fault_site target, size_t occurrence,
-    struct yt_repeat_build_transform *result,
-    yt_input_process_store_fn store, void *context)
+    struct yt_repeat_build_transform *result)
 {
 	static const char notice_prefix[] = "Command Repeated";
 	static const char notice_suffix[] =
@@ -865,9 +864,6 @@ yt_input_repeat_build_staged(char *text, size_t text_capacity,
 	memset(result, 0, sizeof(*result));
 	result->fault_site = YT_BASIC_FAULT_SITE_COUNT;
 	copies = (int)count;
-	if (!input_process_store_single(store, context, 0x51C8U, count)
-	    || !input_process_store_single(store, context, 0x4F76U, 1.0f))
-		return false;
 	for (index = 0; index < copies; ++index) {
 		if (used > 500U)
 			break;
@@ -880,9 +876,6 @@ yt_input_repeat_build_staged(char *text, size_t text_capacity,
 		used += text_length;
 		build_scratch[used] = '\0';
 		result->completed_iterations = (size_t)index + 1U;
-		if (!input_process_store_single(store, context, 0x4F76U,
-		    (float)(index + 2)))
-			return false;
 	}
 	if (target == YT_BASIC_FAULT_ADE0_REPEAT_BUILD_CONCAT_SPACE)
 		return false;
@@ -955,11 +948,10 @@ yt_input_repeat_build_staged(char *text, size_t text_capacity,
 }
 
 bool
-yt_input_expand_repeat_observed(char *text, size_t text_capacity,
+yt_input_expand_repeat_with_notice(char *text, size_t text_capacity,
     char *saved_command, size_t saved_capacity,
     char *output_source, size_t output_capacity,
-    struct yt_repeat_transform *result, yt_input_process_store_fn store,
-    void *context)
+    struct yt_repeat_transform *result)
 {
 	uint8_t upper[YT_INPUT_PENDING];
 	struct yt_repeat_prefix_transform repeat_prefix;
@@ -1002,7 +994,7 @@ yt_input_expand_repeat_observed(char *text, size_t text_capacity,
 	if (!yt_input_repeat_build_staged(text, text_capacity, upper,
 	    sizeof(upper), saved_command, saved_capacity, output_source,
 	    output_capacity, count, YT_BASIC_FAULT_SITE_COUNT, 1U,
-	    &repeat_build, store, context)) {
+	    &repeat_build)) {
 		result->fault_site = repeat_build.fault_site;
 		result->fault_valid = repeat_build.fault_valid;
 		return false;

@@ -1119,10 +1119,9 @@ expand_repeat(struct yt_session *session, char *text, size_t size)
 {
 	struct yt_repeat_transform result;
 
-	if (!yt_input_expand_repeat_observed(text, size,
+	if (!yt_input_expand_repeat_with_notice(text, size,
 	    session->saved_command, sizeof(session->saved_command),
-	    session->output_source, sizeof(session->output_source), &result,
-	    NULL, NULL)) {
+	    session->output_source, sizeof(session->output_source), &result)) {
 		if (result.fault_valid && session->error != NULL) {
 			yt_error_clear(session->error);
 			session->error->status = YT_RANGE;

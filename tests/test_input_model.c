@@ -1111,21 +1111,18 @@ test_repeat_build_stages(void)
 	    "Command Repeated 3 times -+- Ctrl-R to Re-use -+- "
 	    "Ctrl-X to cancel.";
 	struct yt_repeat_build_transform result;
-	struct input_process_tape tape;
 	char text[64];
 	uint8_t scratch[64];
 	char saved[64];
 	char output[128];
 
-	memset(&tape, 0, sizeof(tape));
 	memcpy(text, "A;", 3U);
 	scratch[0] = '\0';
 	memcpy(saved, "old", 4U);
 	memcpy(output, "old-output", 11U);
 	CHECK(!yt_input_repeat_build_staged(text, sizeof(text), scratch,
 	    sizeof(scratch), saved, sizeof(saved), output, sizeof(output), 3.0f,
-	    YT_BASIC_FAULT_ADE0_REPEAT_BUILD_CONCAT_SPACE, 2U, &result,
-	    input_process_store, &tape));
+	    YT_BASIC_FAULT_ADE0_REPEAT_BUILD_CONCAT_SPACE, 2U, &result));
 	CHECK(result.fault_valid
 	    && result.fault_site == YT_BASIC_FAULT_ADE0_REPEAT_BUILD_CONCAT_SPACE
 	    && result.completed_iterations == 1U
@@ -1133,19 +1130,15 @@ test_repeat_build_stages(void)
 	    && strcmp(text, "A;") == 0
 	    && strcmp((const char *)scratch, "A;") == 0
 	    && strcmp(saved, "old") == 0 && strcmp(output, "old-output") == 0
-	    && !result.bold_committed && !result.notice_ready
-	    && tape.count == 3U && tape.address[0] == 0x51C8U
-	    && tape.address[1] == 0x4F76U && tape.address[2] == 0x4F76U);
+	    && !result.bold_committed && !result.notice_ready);
 
-	memset(&tape, 0, sizeof(tape));
 	memcpy(text, "A;", 3U);
 	scratch[0] = '\0';
 	memcpy(saved, "old", 4U);
 	memcpy(output, "old-output", 11U);
 	CHECK(!yt_input_repeat_build_staged(text, sizeof(text), scratch,
 	    sizeof(scratch), saved, sizeof(saved), output, sizeof(output), 3.0f,
-	    YT_BASIC_FAULT_ADE0_REPEAT_FINAL_LEFT_SPACE, 1U, &result,
-	    input_process_store, &tape));
+	    YT_BASIC_FAULT_ADE0_REPEAT_FINAL_LEFT_SPACE, 1U, &result));
 	CHECK(result.fault_valid
 	    && result.fault_site == YT_BASIC_FAULT_ADE0_REPEAT_FINAL_LEFT_SPACE
 	    && result.completed_iterations == 3U
@@ -1155,18 +1148,15 @@ test_repeat_build_stages(void)
 	    && strcmp(text, "A;") == 0
 	    && strcmp((const char *)scratch, "A;A;A;") == 0
 	    && strcmp(saved, "old") == 0 && strcmp(output, "old-output") == 0
-	    && !result.bold_committed && !result.notice_ready
-	    && tape.count == 5U);
+	    && !result.bold_committed && !result.notice_ready);
 
-	memset(&tape, 0, sizeof(tape));
 	memcpy(text, "A;", 3U);
 	scratch[0] = '\0';
 	memcpy(saved, "old", 4U);
 	memcpy(output, "old-output", 11U);
 	CHECK(!yt_input_repeat_build_staged(text, sizeof(text), scratch,
 	    sizeof(scratch), saved, sizeof(saved), output, sizeof(output), 3.0f,
-	    YT_BASIC_FAULT_ADE0_REPEAT_SAVE_CLONE_SPACE, 1U, &result,
-	    input_process_store, &tape));
+	    YT_BASIC_FAULT_ADE0_REPEAT_SAVE_CLONE_SPACE, 1U, &result));
 	CHECK(result.fault_valid
 	    && result.fault_site == YT_BASIC_FAULT_ADE0_REPEAT_SAVE_CLONE_SPACE
 	    && strcmp(text, "A;A;A") == 0 && scratch[0] == '\0'
@@ -1174,15 +1164,13 @@ test_repeat_build_stages(void)
 	    && result.pending_role == YT_REPEAT_PENDING_NONE
 	    && !result.bold_committed && !result.notice_ready);
 
-	memset(&tape, 0, sizeof(tape));
 	memcpy(text, "A;", 3U);
 	scratch[0] = '\0';
 	memcpy(saved, "old", 4U);
 	memcpy(output, "old-output", 11U);
 	CHECK(!yt_input_repeat_build_staged(text, sizeof(text), scratch,
 	    sizeof(scratch), saved, sizeof(saved), output, sizeof(output), 3.0f,
-	    YT_BASIC_FAULT_ADE0_REPEAT_COUNT_STR_SPACE, 1U, &result,
-	    input_process_store, &tape));
+	    YT_BASIC_FAULT_ADE0_REPEAT_COUNT_STR_SPACE, 1U, &result));
 	CHECK(result.fault_valid
 	    && result.fault_site == YT_BASIC_FAULT_ADE0_REPEAT_COUNT_STR_SPACE
 	    && strcmp(text, "A;A;A") == 0 && scratch[0] == '\0'
@@ -1191,15 +1179,13 @@ test_repeat_build_stages(void)
 	    && result.pending_role == YT_REPEAT_PENDING_NONE
 	    && result.bold_committed && !result.notice_ready);
 
-	memset(&tape, 0, sizeof(tape));
 	memcpy(text, "A;", 3U);
 	scratch[0] = '\0';
 	memcpy(saved, "old", 4U);
 	memcpy(output, "old-output", 11U);
 	CHECK(!yt_input_repeat_build_staged(text, sizeof(text), scratch,
 	    sizeof(scratch), saved, sizeof(saved), output, sizeof(output), 3.0f,
-	    YT_BASIC_FAULT_ADE0_REPEAT_PREFIX_CONCAT_SPACE, 1U, &result,
-	    input_process_store, &tape));
+	    YT_BASIC_FAULT_ADE0_REPEAT_PREFIX_CONCAT_SPACE, 1U, &result));
 	CHECK(result.fault_valid
 	    && result.fault_site == YT_BASIC_FAULT_ADE0_REPEAT_PREFIX_CONCAT_SPACE
 	    && result.pending_role == YT_REPEAT_PENDING_COUNT_TEXT
@@ -1208,15 +1194,13 @@ test_repeat_build_stages(void)
 	    && strcmp(output, "old-output") == 0
 	    && result.bold_committed && !result.notice_ready);
 
-	memset(&tape, 0, sizeof(tape));
 	memcpy(text, "A;", 3U);
 	scratch[0] = '\0';
 	memcpy(saved, "old", 4U);
 	memcpy(output, "old-output", 11U);
 	CHECK(!yt_input_repeat_build_staged(text, sizeof(text), scratch,
 	    sizeof(scratch), saved, sizeof(saved), output, sizeof(output), 3.0f,
-	    YT_BASIC_FAULT_ADE0_REPEAT_NOTICE_CONCAT_SPACE, 1U, &result,
-	    input_process_store, &tape));
+	    YT_BASIC_FAULT_ADE0_REPEAT_NOTICE_CONCAT_SPACE, 1U, &result));
 	CHECK(result.fault_valid
 	    && result.fault_site == YT_BASIC_FAULT_ADE0_REPEAT_NOTICE_CONCAT_SPACE
 	    && result.pending_role == YT_REPEAT_PENDING_NOTICE_PREFIX
@@ -1224,29 +1208,26 @@ test_repeat_build_stages(void)
 	    && strcmp(output, "old-output") == 0
 	    && result.bold_committed && !result.notice_ready);
 
-	memset(&tape, 0, sizeof(tape));
 	memcpy(text, "A;", 3U);
 	scratch[0] = '\0';
 	memcpy(saved, "old", 4U);
 	memcpy(output, "old-output", 11U);
 	CHECK(!yt_input_repeat_build_staged(text, sizeof(text), scratch,
 	    sizeof(scratch), saved, sizeof(saved), output, sizeof(output), 3.0f,
-	    YT_BASIC_FAULT_ADE0_REPEAT_NOTICE_GOSUB_STACK, 1U, &result,
-	    input_process_store, &tape));
+	    YT_BASIC_FAULT_ADE0_REPEAT_NOTICE_GOSUB_STACK, 1U, &result));
 	CHECK(result.fault_valid
 	    && result.fault_site == YT_BASIC_FAULT_ADE0_REPEAT_NOTICE_GOSUB_STACK
 	    && result.pending_role == YT_REPEAT_PENDING_NONE
 	    && strcmp(output, notice) == 0
 	    && result.bold_committed && result.notice_ready);
 
-	memset(&tape, 0, sizeof(tape));
 	memcpy(text, "A;", 3U);
 	scratch[0] = '\0';
 	memcpy(saved, "old", 4U);
 	memcpy(output, "old-output", 11U);
 	CHECK(yt_input_repeat_build_staged(text, sizeof(text), scratch,
 	    sizeof(scratch), saved, sizeof(saved), output, sizeof(output), 3.0f,
-	    YT_BASIC_FAULT_SITE_COUNT, 1U, &result, input_process_store, &tape));
+	    YT_BASIC_FAULT_SITE_COUNT, 1U, &result));
 	CHECK(!result.fault_valid && result.fault_site == YT_BASIC_FAULT_SITE_COUNT
 	    && strcmp(text, "A;A;A") == 0 && scratch[0] == '\0'
 	    && strcmp(saved, "A;A;A") == 0 && strcmp(output, notice) == 0
@@ -1257,25 +1238,15 @@ static void
 test_repeat_transform(void)
 {
 	struct yt_repeat_transform result;
-	struct input_process_tape tape;
-	static const uint16_t expected_address[] = {
-		0x51C8U, 0x4F76U,
-		0x4F76U, 0x4F76U, 0x4F76U,
-	};
-	static const float expected_value[] = {
-		3.0f, 1.0f, 2.0f, 3.0f, 4.0f,
-	};
 	char text[1024];
 	char saved[1024] = "old";
 	char output[128] = "old-output";
 	size_t index;
 	size_t semicolons;
 
-	memset(&tape, 0, sizeof(tape));
 	snprintf(text, sizeof(text), "A/R3");
-	CHECK(yt_input_expand_repeat_observed(text, sizeof(text), saved,
-	    sizeof(saved), output, sizeof(output), &result,
-	    input_process_store, &tape));
+	CHECK(yt_input_expand_repeat_with_notice(text, sizeof(text), saved,
+	    sizeof(saved), output, sizeof(output), &result));
 	CHECK(result.emit_notice && result.count == 3.0f
 	    && result.bold_committed
 	    && result.failure == YT_REPEAT_FAILURE_NONE
@@ -1284,16 +1255,6 @@ test_repeat_transform(void)
 	CHECK(strcmp(text, "A;A;A") == 0 && strcmp(saved, "A;A;A") == 0
 	    && strcmp(output, "Command Repeated 3 times -+- Ctrl-R to Re-use "
 	    "-+- Ctrl-X to cancel.") == 0);
-	CHECK(tape.count == YT_ARRAY_LEN(expected_address));
-	for (index = 0U; index < tape.count; ++index) {
-		uint8_t expected_raw[4];
-
-		CHECK(qb_mbf32_encode(expected_value[index], expected_raw)
-		    == QB_MBF_OK);
-		CHECK(tape.address[index] == expected_address[index]
-		    && memcmp(tape.raw[index], expected_raw,
-		    sizeof(expected_raw)) == 0);
-	}
 
 	snprintf(saved, sizeof(saved), "old");
 	snprintf(text, sizeof(text), "A/r2/B/R3");
@@ -1318,32 +1279,26 @@ test_repeat_transform(void)
 	CHECK(result.failure == YT_REPEAT_FAILURE_NONE);
 	CHECK(strcmp(text, "A;") == 0 && strcmp(saved, "old") == 0);
 
-	memset(&tape, 0, sizeof(tape));
 	snprintf(saved, sizeof(saved), "old");
 	snprintf(text, sizeof(text), "A/R1E999");
-	CHECK(!yt_input_expand_repeat_observed(text, sizeof(text), saved,
-	    sizeof(saved), output, sizeof(output), &result,
-	    input_process_store, &tape));
+	CHECK(!yt_input_expand_repeat_with_notice(text, sizeof(text), saved,
+	    sizeof(saved), output, sizeof(output), &result));
 	CHECK(!result.emit_notice && result.count == 0.0f
 	    && result.failure == YT_REPEAT_FAILURE_VAL_OVERFLOW
 	    && result.fault_valid
 	    && result.fault_site == YT_BASIC_FAULT_REPEAT_VAL_OVERFLOW);
 	CHECK(strcmp(text, "A;") == 0 && strcmp(saved, "old") == 0);
-	CHECK(tape.count == 0U);
 
-	memset(&tape, 0, sizeof(tape));
 	snprintf(saved, sizeof(saved), "old");
 	snprintf(text, sizeof(text), "A/R1.7014118E38");
-	CHECK(!yt_input_expand_repeat_observed(text, sizeof(text), saved,
-	    sizeof(saved), output, sizeof(output), &result,
-	    input_process_store, &tape));
+	CHECK(!yt_input_expand_repeat_with_notice(text, sizeof(text), saved,
+	    sizeof(saved), output, sizeof(output), &result));
 	CHECK(!result.emit_notice && result.count == 0.0f
 	    && result.failure == YT_REPEAT_FAILURE_SINGLE_OVERFLOW
 	    && result.fault_valid
 	    && result.fault_site == YT_BASIC_FAULT_REPEAT_SINGLE_OVERFLOW);
 	CHECK(strcmp(text, "A;") == 0
 	    && strcmp(saved, "old") == 0);
-	CHECK(tape.count == 0U);
 
 	snprintf(text, sizeof(text), "A/R-.1");
 	CHECK(yt_input_expand_repeat(text, sizeof(text), saved, sizeof(saved),

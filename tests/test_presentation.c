@@ -25071,8 +25071,7 @@ direct_emergency_warp_ade0_late_failure_continue(
 	if (count > 0.0f && !yt_input_repeat_build_staged(join->accumulator,
 	    sizeof(join->accumulator), build_scratch, sizeof(build_scratch),
 	    fault->saved, sizeof(fault->saved), fault->output,
-	    sizeof(fault->output), count, selected, occurrence, &build,
-	    NULL, NULL)) {
+	    sizeof(fault->output), count, selected, occurrence, &build)) {
 		if (!build.fault_valid || build.fault_site != target)
 			return false;
 		goto routed;
