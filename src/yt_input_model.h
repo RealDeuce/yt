@@ -6,12 +6,6 @@
 #include "yt_main_error.h"
 
 #define YT_INPUT_PENDING 4096U
-#define YT_SYSOP_CHAT_EVENTS 4U
-#define YT_SYSOP_F5_PHASES 7U
-#define YT_SYSOP_KEY_COUNT 5U
-#define YT_SYSOP_KEY_FIFO_BYTES (YT_SYSOP_KEY_COUNT * 2U)
-#define YT_SYSOP_KEY_PROCESS_SIZE 0x10000U
-#define YT_SYSOP_EVENT_STACK_SIZE 0x10000U
 
 enum yt_input_fault_family {
 	YT_INPUT_FAULT_B05D,
@@ -241,159 +235,6 @@ struct yt_input_drain_state {
 	bool expect_paired_local;
 };
 
-enum yt_sysop_chat_step_result {
-	YT_SYSOP_CHAT_CONTINUE,
-	YT_SYSOP_CHAT_EXIT,
-	YT_SYSOP_CHAT_CARRIER_END,
-	YT_SYSOP_CHAT_INVALID,
-};
-
-enum yt_sysop_chat_destination {
-	YT_SYSOP_CHAT_LOCAL_RAW,
-	YT_SYSOP_CHAT_LOCAL_GATED,
-	YT_SYSOP_CHAT_SERIAL,
-};
-
-struct yt_sysop_chat_event {
-	enum yt_sysop_chat_destination destination;
-	bool line;
-	uint8_t data[3];
-	size_t length;
-};
-
-struct yt_sysop_chat_output {
-	struct yt_sysop_chat_event events[YT_SYSOP_CHAT_EVENTS];
-	size_t count;
-};
-
-struct yt_sysop_chat_process_cells {
-	uint8_t *mode;
-	uint8_t *snoop;
-	uint8_t *foreground;
-	uint8_t *deadline;
-	uint8_t *inactivity_deadline;
-	uint8_t *saved_remaining;
-	uint8_t *newline_flag;
-};
-
-struct yt_sysop_chat_state {
-	float mode;
-	float snoop;
-	float foreground;
-	float bold;
-	float deadline;
-	float inactivity_deadline;
-	float saved_remaining;
-	float newline_flag;
-	uint8_t key[2];
-	size_t key_length;
-	uint8_t command_accumulator[YT_INPUT_PENDING];
-	size_t command_accumulator_length;
-	uint8_t queue[YT_INPUT_PENDING];
-	size_t queue_length;
-	size_t polls;
-	size_t carrier_checks;
-	size_t timer_reads;
-	bool exited;
-	bool terminated;
-	struct yt_sysop_chat_process_cells process;
-};
-
-struct yt_sysop_chat_poll {
-	struct yt_input_value local;
-	struct yt_input_value remote;
-	uint8_t modem_status;
-	int position_after_output;
-};
-
-enum yt_sysop_f5_phase {
-	YT_SYSOP_F5_CHECKPOINT,
-	YT_SYSOP_F5_BASIC_END,
-	YT_SYSOP_F5_REGISTERED_CLEANUP,
-	YT_SYSOP_F5_CALLBACK_CLEANUP,
-	YT_SYSOP_F5_RUNTIME_CLEANUP,
-	YT_SYSOP_F5_COMMON_CLEANUP,
-	YT_SYSOP_F5_DOS_EXIT,
-};
-
-struct yt_sysop_f5_event {
-	enum yt_sysop_f5_phase phase;
-	uint16_t address;
-};
-
-struct yt_sysop_f5_result {
-	struct yt_sysop_f5_event events[YT_SYSOP_F5_PHASES];
-	size_t event_count;
-	bool same_f5_pending;
-	bool local_end_cleanup;
-	bool event_returned;
-	bool terminated;
-	int exit_status;
-};
-
-enum yt_sysop_key {
-	YT_SYSOP_KEY_F4 = 4,
-	YT_SYSOP_KEY_F5 = 5,
-	YT_SYSOP_KEY_F8 = 8,
-	YT_SYSOP_KEY_F9 = 9,
-	YT_SYSOP_KEY_F10 = 10,
-};
-
-struct yt_sysop_key_record {
-	enum yt_sysop_key key;
-	uint16_t address;
-	uint16_t target;
-	uint16_t target_segment;
-	uint8_t keyboard_state;
-	uint8_t event_state;
-};
-
-struct yt_sysop_key_scheduler {
-	struct yt_sysop_key_record records[YT_SYSOP_KEY_COUNT];
-	size_t fifo[YT_SYSOP_KEY_COUNT];
-	size_t fifo_position;
-	size_t fifo_length;
-	size_t frames[YT_SYSOP_KEY_COUNT];
-	size_t frame_depth;
-	size_t abandoned_depth;
-	uint8_t *process;
-};
-
-struct yt_sysop_key_delivery {
-	bool delivered;
-	enum yt_sysop_key key;
-	uint16_t record_address;
-	uint16_t target;
-};
-
-enum yt_sysop_event_stack_outcome {
-	YT_SYSOP_EVENT_STACK_OK,
-	YT_SYSOP_EVENT_STACK_ERROR_7,
-	YT_SYSOP_EVENT_STACK_INVALID,
-};
-
-struct yt_sysop_event_stack {
-	uint16_t sp;
-	uint16_t bp;
-	uint16_t cs;
-	uint16_t ip;
-	uint16_t ds;
-	uint16_t ss;
-	uint8_t *bytes;
-	size_t size;
-};
-
-struct yt_sysop_event_registers {
-	uint16_t ax;
-	uint16_t bx;
-	uint16_t cx;
-	uint16_t dx;
-	uint16_t si;
-	uint16_t di;
-	uint16_t es;
-	uint16_t flags;
-};
-
 size_t yt_input_fault_site_count(enum yt_input_fault_family family);
 bool yt_input_fault_site(enum yt_input_fault_family family, size_t index,
     struct yt_input_fault_site *site);
@@ -432,8 +273,6 @@ bool yt_input_command_save_staged(char *text, size_t text_capacity,
 	char *output_source, size_t output_capacity,
 	enum yt_basic_fault_site target,
 	struct yt_command_save_transform *result);
-bool yt_input_ab36_inactivity_begin_process(float timer,
-    uint8_t deadline[4]);
 bool yt_input_ab36_inactivity_expired(float timer, float deadline,
     float mode);
 bool yt_input_ab36_session_expired(float timer, float deadline);
@@ -513,52 +352,4 @@ enum yt_input_drain_reason yt_input_drain_local(
 enum yt_input_drain_reason yt_input_drain_serial(
     struct yt_input_drain_state *state, float mode,
     const struct yt_input_value *selected);
-bool yt_sysop_chat_begin(struct yt_sysop_chat_state *state, float mode,
-    float snoop, float deadline, float entry_timer,
-    float inactivity_deadline, const uint8_t *command_accumulator,
-    size_t command_accumulator_length, const uint8_t *queue,
-    size_t queue_length);
-bool yt_sysop_chat_begin_process(struct yt_sysop_chat_state *state,
-	const struct yt_sysop_chat_process_cells *process, float entry_timer,
-	const uint8_t *command_accumulator, size_t command_accumulator_length,
-	const uint8_t *queue, size_t queue_length);
-void yt_sysop_chat_sync_process(struct yt_sysop_chat_state *state);
-enum yt_sysop_chat_step_result yt_sysop_chat_step(
-    struct yt_sysop_chat_state *state,
-    const struct yt_sysop_chat_poll *poll,
-    struct yt_sysop_chat_output *output);
-bool yt_sysop_chat_finish(struct yt_sysop_chat_state *state,
-    float deadline_timer, float inactivity_timer);
-bool yt_sysop_f5_compose(bool same_f5_make,
-    struct yt_sysop_f5_result *result);
-void yt_sysop_key_scheduler_init(struct yt_sysop_key_scheduler *scheduler);
-bool yt_sysop_key_scheduler_bind_process(
-	struct yt_sysop_key_scheduler *scheduler, uint8_t *process,
-	size_t process_size, uint16_t target_segment);
-bool yt_sysop_key_latch(struct yt_sysop_key_scheduler *scheduler,
-	enum yt_sysop_key key);
-bool yt_sysop_key_checkpoint(struct yt_sysop_key_scheduler *scheduler,
-	bool error_active, struct yt_sysop_key_delivery *delivery);
-bool yt_sysop_key_return(struct yt_sysop_key_scheduler *scheduler,
-	enum yt_sysop_key *returned);
-bool yt_sysop_key_resume_abandon(struct yt_sysop_key_scheduler *scheduler);
-bool yt_sysop_event_stack_init(struct yt_sysop_key_scheduler *scheduler,
-	struct yt_sysop_event_stack *stack, uint16_t floor);
-enum yt_sysop_event_stack_outcome yt_sysop_event_deliver_raw(
-	struct yt_sysop_key_scheduler *scheduler,
-	const struct yt_sysop_key_delivery *delivery,
-	struct yt_sysop_event_stack *stack, uint16_t brun_segment,
-	struct yt_sysop_event_registers *registers);
-bool yt_sysop_event_checkpoint_quiet_raw(
-	struct yt_sysop_key_scheduler *scheduler,
-	struct yt_sysop_event_stack *stack,
-	struct yt_sysop_event_registers *registers);
-bool yt_sysop_event_return_raw(struct yt_sysop_key_scheduler *scheduler,
-	struct yt_sysop_event_stack *stack, uint16_t opcode_flags,
-	enum yt_sysop_key *returned);
-const struct yt_sysop_key_record *yt_sysop_key_record(
-	const struct yt_sysop_key_scheduler *scheduler, enum yt_sysop_key key);
-size_t yt_sysop_key_fifo_bytes(const struct yt_sysop_key_scheduler *scheduler,
-	uint8_t *bytes, size_t capacity);
-
 #endif
