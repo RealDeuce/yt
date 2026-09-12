@@ -24580,8 +24580,8 @@ direct_emergency_warp_ade0_prefix_failure_continue(
 		    sizeof(saved), output, sizeof(output),
 		    YT_BASIC_FAULT_SITE_COUNT, &save)
 		    || yt_input_repeat_prefix_staged((const uint8_t *)text,
-		    strlen(text), upper, sizeof(upper), target, 1U, &prefix,
-		    NULL, NULL) || !prefix.fault_valid
+		    strlen(text), upper, sizeof(upper), target, 1U, &prefix)
+		    || !prefix.fault_valid
 		    || prefix.fault_site != target)
 			return false;
 	}
@@ -25050,8 +25050,7 @@ direct_emergency_warp_ade0_late_failure_continue(
 	    ? target : YT_BASIC_FAULT_SITE_COUNT;
 	if (!yt_input_repeat_prefix_staged(
 	    (const uint8_t *)join->accumulator, strlen(join->accumulator),
-	    upper, sizeof(upper), YT_BASIC_FAULT_SITE_COUNT, 1U, &prefix,
-	    NULL, NULL))
+	    upper, sizeof(upper), YT_BASIC_FAULT_SITE_COUNT, 1U, &prefix))
 		return false;
 	if (prefix.repeat_position != 0U) {
 		if (target == YT_BASIC_FAULT_REPEAT_VAL_OVERFLOW

@@ -637,8 +637,7 @@ bool
 yt_input_repeat_prefix_staged(const uint8_t *text, size_t length,
     uint8_t *upper_scratch, size_t scratch_capacity,
     enum yt_basic_fault_site target, size_t occurrence,
-    struct yt_repeat_prefix_transform *result,
-    yt_input_process_store_fn store, void *context)
+    struct yt_repeat_prefix_transform *result)
 {
 	struct yt_upper_transform upper;
 	size_t index;
@@ -680,9 +679,7 @@ yt_input_repeat_prefix_staged(const uint8_t *text, size_t length,
 			break;
 		}
 	}
-	if (!input_process_store_single(store, context, 0x51C4U,
-	    (float)repeat_position)
-	    || qb_mbf32_encode((float)repeat_position, result->work_raw)
+	if (qb_mbf32_encode((float)repeat_position, result->work_raw)
 	    != QB_MBF_OK)
 		return false;
 	result->repeat_position = repeat_position;
@@ -1007,7 +1004,7 @@ yt_input_expand_repeat_observed(char *text, size_t text_capacity,
 		return false;
 	if (!yt_input_repeat_prefix_staged((const uint8_t *)text, text_length,
 	    upper, sizeof(upper), YT_BASIC_FAULT_SITE_COUNT, 1U,
-	    &repeat_prefix, store, context))
+	    &repeat_prefix))
 		return false;
 	if (repeat_prefix.repeat_position == 0U)
 		return true;

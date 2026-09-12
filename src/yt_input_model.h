@@ -269,8 +269,7 @@ bool yt_input_compat_upper_n_staged(uint8_t *text, size_t length,
 bool yt_input_repeat_prefix_staged(const uint8_t *text, size_t length,
 	uint8_t *upper_scratch, size_t scratch_capacity,
 	enum yt_basic_fault_site target, size_t occurrence,
-	struct yt_repeat_prefix_transform *result,
-	yt_input_process_store_fn store, void *context);
+	struct yt_repeat_prefix_transform *result);
 bool yt_input_repeat_parse_staged(char *text, size_t text_capacity,
 	uint8_t *upper_scratch, size_t scratch_capacity,
 	size_t repeat_position, enum yt_basic_fault_site target,
