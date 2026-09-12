@@ -29054,8 +29054,6 @@ static void
 treasury_fixture(struct treasury_tape *tape,
     struct yt_treasury_state *state, bool collecting)
 {
-	static const uint8_t true_raw[4] = {0, 0, 0, 0x81};
-	static const uint8_t false_raw[4] = {0, 0xae, 3, 0};
 	static const uint8_t dirty_zero[4] = {0, 0, 0x20, 0};
 
 	memset(tape, 0, sizeof(*tape));
@@ -29087,9 +29085,8 @@ treasury_fixture(struct treasury_tape *tape,
 		.port_offset = 2055.0f,
 		.planet_offset = 2058.0f,
 		.conversion_mode = 0,
+		.collecting = collecting,
 	};
-	memcpy(state->collecting_raw, collecting ? true_raw : false_raw,
-	    sizeof(state->collecting_raw));
 }
 static bool
 check_treasury_transaction(void)
@@ -29126,8 +29123,6 @@ check_treasury_transaction(void)
 		TREASURY_PRESENT,
 	};
 	static const uint8_t dirty_zero[4] = {0, 0, 0x20, 0};
-	static const uint8_t true_raw[4] = {0, 0, 0, 0x81};
-	static const uint8_t false_raw[4] = {0, 0xae, 3, 0};
 	static const uint8_t sector[] = "Sector: 5";
 	static const uint8_t credits[] = " Credits: 10";
 	static const uint8_t total[] = " Total: 10";
@@ -29140,28 +29135,7 @@ check_treasury_transaction(void)
 	struct yt_player expected_player;
 	struct yt_error error;
 	uint8_t expected_total_raw[8];
-	uint8_t binding_raw[4];
-	uint16_t binding_address;
 	size_t failure;
-
-	if (!yt_treasury_caller_binding(YT_TREASURY_CALLER_MAIN_COLLECT,
-	    &binding_address, binding_raw) || binding_address != 0x4E5AU
-	    || memcmp(binding_raw, true_raw, sizeof(true_raw)) != 0
-	    || !yt_treasury_caller_binding(
-	    YT_TREASURY_CALLER_COMPUTER_COLLECT, &binding_address, binding_raw)
-	    || binding_address != 0x5116U
-	    || memcmp(binding_raw, true_raw, sizeof(true_raw)) != 0
-	    || !yt_treasury_caller_binding(
-	    YT_TREASURY_CALLER_COMPUTER_REPORT, &binding_address, binding_raw)
-	    || binding_address != 0x511AU
-	    || memcmp(binding_raw, false_raw, sizeof(false_raw)) != 0
-	    || yt_treasury_caller_binding((enum yt_treasury_caller_kind)99,
-	    &binding_address, binding_raw)
-	    || yt_treasury_caller_binding(YT_TREASURY_CALLER_MAIN_COLLECT,
-	    NULL, binding_raw)
-	    || yt_treasury_caller_binding(YT_TREASURY_CALLER_MAIN_COLLECT,
-	    &binding_address, NULL))
-		return false;
 
 	treasury_fixture(&tape, &state, true);
 	expected_player = tape.players[1];

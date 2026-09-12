@@ -3102,7 +3102,6 @@ struct yt_treasury_state {
 	uint32_t current_player_physical_record;
 	float port_offset;
 	float planet_offset;
-	uint8_t collecting_raw[4];
 	uint8_t conversion_mode;
 	bool collecting;
 	struct yt_player initial_player;
@@ -3142,8 +3141,6 @@ struct yt_treasury_ops {
 	bool (*update_cache)(void *context, const struct yt_player *player,
 	    struct yt_error *error);
 };
-bool yt_treasury_caller_binding(enum yt_treasury_caller_kind caller,
-	uint16_t *address, uint8_t raw[4]);
 bool yt_treasury_run(struct yt_treasury_state *state,
 	const struct yt_treasury_ops *ops, void *context,
 	struct yt_error *error);

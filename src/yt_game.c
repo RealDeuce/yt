@@ -10593,37 +10593,6 @@ treasury_player_overlay(struct yt_player *player, float owned,
 }
 
 bool
-yt_treasury_caller_binding(enum yt_treasury_caller_kind caller,
-    uint16_t *address, uint8_t raw[4])
-{
-	static const uint8_t true_raw[4] = {
-		0x00U, 0x00U, 0x00U, 0x81U,
-	};
-	static const uint8_t false_raw[4] = {
-		0x00U, 0xaeU, 0x03U, 0x00U,
-	};
-
-	if (address == NULL || raw == NULL)
-		return false;
-	switch (caller) {
-	case YT_TREASURY_CALLER_MAIN_COLLECT:
-		*address = 0x4E5AU;
-		memcpy(raw, true_raw, sizeof(true_raw));
-		return true;
-	case YT_TREASURY_CALLER_COMPUTER_COLLECT:
-		*address = 0x5116U;
-		memcpy(raw, true_raw, sizeof(true_raw));
-		return true;
-	case YT_TREASURY_CALLER_COMPUTER_REPORT:
-		*address = 0x511AU;
-		memcpy(raw, false_raw, sizeof(false_raw));
-		return true;
-	default:
-		return false;
-	}
-}
-
-bool
 yt_treasury_run(struct yt_treasury_state *state,
     const struct yt_treasury_ops *ops, void *context,
     struct yt_error *error)
@@ -10646,7 +10615,6 @@ yt_treasury_run(struct yt_treasury_state *state,
 	memset(&state->initial_player, 0, sizeof(state->initial_player));
 	memset(&state->final_player, 0, sizeof(state->final_player));
 	memset(&state->current_port, 0, sizeof(state->current_port));
-	state->collecting = qb_mbf32_truth(state->collecting_raw);
 	state->loop_bound = 0.0f;
 	state->counter = 0.0f;
 	state->owned = 0.0f;
@@ -10756,7 +10724,7 @@ yt_treasury_run(struct yt_treasury_state *state,
 				    || !ops->present(context, (const uint8_t *)text,
 				    strlen(text), YT_TREASURY_ROW_TOTAL, error))
 					return false;
-				if (qb_mbf32_truth(state->collecting_raw)) {
+				if (state->collecting) {
 					state->current_port.treasury = 0.0f;
 					if (!yt_record_set_raw_number(
 					    &state->current_port.record, YT_F89,
@@ -10797,7 +10765,7 @@ yt_treasury_run(struct yt_treasury_state *state,
 	    || !ops->present(context, NULL, 0U, YT_TREASURY_SUMMARY_BLANK,
 	    error))
 		return false;
-	if (!qb_mbf32_truth(state->collecting_raw)) {
+	if (!state->collecting) {
 		if (!treasury_format_double("You have", state->total_raw,
 		    " credits in your port accounts.", text, sizeof(text), error,
 		    "treasury report result")

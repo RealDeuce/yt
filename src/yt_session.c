@@ -1096,20 +1096,11 @@ session_command_notice(struct yt_session *session, const char *text)
 }
 
 static void
-session_input_process_store(void *context, uint16_t address,
-    const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-
-	yt_route_process_set_raw_single(&session->route_process, address, raw);
-}
-
-static void
 session_compat_upper_n(struct yt_session *session, uint8_t *text,
     size_t length)
 {
-	yt_input_compat_upper_n_observed(text, length,
-	    session_input_process_store, session);
+	(void)session;
+	yt_input_compat_upper_n_observed(text, length, NULL, NULL);
 }
 
 static bool
@@ -1120,7 +1111,7 @@ expand_repeat(struct yt_session *session, char *text, size_t size)
 	if (!yt_input_expand_repeat_observed(text, size,
 	    session->saved_command, sizeof(session->saved_command),
 	    session->output_source, sizeof(session->output_source), &result,
-	    session_input_process_store, session)) {
+	    NULL, NULL)) {
 		if (result.fault_valid && session->error != NULL) {
 			yt_error_clear(session->error);
 			session->error->status = YT_RANGE;
@@ -1162,8 +1153,7 @@ session_line(struct yt_session *session, char *text, size_t size)
 		return false;
 	return yt_input_split_semicolon_observed(text, session->queue,
 	    sizeof(session->queue), &session->queue_position,
-	    &session->queue_length,
-	    session_input_process_store, session);
+	    &session->queue_length, NULL, NULL);
 }
 
 static bool
@@ -13588,14 +13578,12 @@ command_collect(struct yt_session *session,
 		.planet_offset = session_planet_offset(session),
 		.conversion_mode = session->presentation.sound.conversion_mode,
 	};
-	uint8_t raw[4];
-	uint16_t address;
 
-	if (!yt_treasury_caller_binding(caller, &address, raw))
+	if (caller == YT_TREASURY_CALLER_MAIN_COLLECT
+	    || caller == YT_TREASURY_CALLER_COMPUTER_COLLECT)
+		state.collecting = true;
+	else if (caller != YT_TREASURY_CALLER_COMPUTER_REPORT)
 		return false;
-	yt_route_process_set_raw_single(&session->route_process, address, raw);
-	yt_route_process_raw_single(&session->route_process, address,
-	    state.collecting_raw);
 	return yt_treasury_run(&state, &ops, session, error);
 }
 
