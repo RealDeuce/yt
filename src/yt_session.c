@@ -25,11 +25,6 @@
 #define YT_PLAYER_FIRST YT_PLAYER_FIRST_RECORD
 #define YT_PLAYER_LAST YT_PLAYER_LAST_RECORD
 #define YT_COMMAND_SIZE 4096U
-#define YT_COMPUTER_ROUTE_STATUS_ADDRESS 0x4CF2U
-#define YT_COMPUTER_PATH_MARKER_ADDRESS 0x4D62U
-#define YT_COMPUTER_ROUTE_DESTINATION_ADDRESS 0x4E12U
-#define YT_COMPUTER_ROUTE_START_ADDRESS 0x4E1AU
-#define YT_COMPUTER_PATH_HOPS_ADDRESS 0x4E82U
 #define YT_PLANET_UPDATER_QUANTITY_ADDRESS 0x19F0U
 #define YT_PLANET_UPDATER_PRODUCTION_ADDRESS 0x1A44U
 #define YT_PLANET_UPDATER_CONTRIBUTION_ADDRESS 0x1C14U
@@ -77,6 +72,9 @@ struct yt_session {
 	float planet_record_expression;
 	float shared_target_record;
 	bool friendship_relation;
+	float shared_status;
+	float path_marker;
+	float route_start;
 	int spy_count;
 	int spy_sectors[3];
 	int spy_markers[3];
@@ -338,11 +336,7 @@ session_is_disruption_sector(const struct yt_session *session, float sector)
 static void
 session_set_relationship(struct yt_session *session, float value)
 {
-	uint8_t raw[4];
-
-	if (qb_mbf32_encode(value, raw) == QB_MBF_OK)
-		yt_route_process_set_raw_single(&session->route_process,
-		    YT_COMPUTER_ROUTE_STATUS_ADDRESS, raw);
+	session->shared_status = value;
 }
 
 static void
@@ -367,17 +361,6 @@ static void
 session_enable_anti_cloak(struct yt_session *session)
 {
 	session->anti_cloak_enabled = true;
-}
-
-static void
-session_set_process_single(struct yt_session *session, uint16_t address,
-    float value)
-{
-	uint8_t raw[4];
-
-	if (qb_mbf32_encode(value, raw) == QB_MBF_OK)
-		yt_route_process_set_raw_single(&session->route_process, address,
-		    raw);
 }
 
 static double
@@ -4717,8 +4700,7 @@ danger_scan_store_relationship(void *context, const uint8_t raw[4])
 {
 	struct yt_session *session = context;
 
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_COMPUTER_ROUTE_STATUS_ADDRESS, raw);
+	session->shared_status = qb_mbf32_decode(raw);
 }
 
 static bool
@@ -4752,8 +4734,7 @@ dangerous_destination(struct yt_session *session, float target,
 
 	if (danger == NULL)
 		return false;
-	yt_route_process_raw_single(&session->route_process,
-	    YT_COMPUTER_ROUTE_STATUS_ADDRESS, state.relationship_raw);
+	(void)qb_mbf32_encode(session->shared_status, state.relationship_raw);
 	result = yt_danger_scan_run(&state, &ops, session, error);
 	*danger = state.finding_flag != 0.0f;
 	return result;
@@ -4952,13 +4933,11 @@ fresh_no_turn_gate(struct yt_session *session, bool *denied,
 	if (!reload_player(session, error))
 		return false;
 	yt_no_turn_gate_result_raw(false, result_raw);
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_COMPUTER_ROUTE_STATUS_ADDRESS, result_raw);
+	session->shared_status = qb_mbf32_decode(result_raw);
 	*denied = yt_no_turn_gate_denied(session->player.turns);
 	if (*denied) {
 		yt_no_turn_gate_result_raw(true, result_raw);
-		yt_route_process_set_raw_single(&session->route_process,
-		    YT_COMPUTER_ROUTE_STATUS_ADDRESS, result_raw);
+		session->shared_status = qb_mbf32_decode(result_raw);
 		return session_02db(session, notice, sizeof(notice) - 1U,
 		    "no-turn gate notice", error);
 	}
@@ -6573,8 +6552,9 @@ hostile_surrender_cache_forces(void *context, double ship_fighters,
 static void
 hostile_surrender_mark_checked(void *context)
 {
-	session_set_process_single(context, YT_COMPUTER_ROUTE_STATUS_ADDRESS,
-	    1.0f);
+	struct yt_session *session = context;
+
+	session->shared_status = 1.0f;
 }
 
 static bool
@@ -7481,8 +7461,7 @@ sector_entry(struct yt_session *session, struct yt_error *error)
 		struct yt_sector sector;
 		bool friendly;
 
-		session_set_process_single(session,
-		    YT_COMPUTER_ROUTE_STATUS_ADDRESS, 0.0f);
+		session->shared_status = 0.0f;
 		if (!display_sector(session, false, error)
 		    || !reload_player(session, error))
 			return false;
@@ -15933,8 +15912,7 @@ projectile_command_store_turn_gate_result(void *context,
 {
 	struct yt_session *session = context;
 
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_COMPUTER_ROUTE_STATUS_ADDRESS, raw);
+	session->shared_status = qb_mbf32_decode(raw);
 }
 
 static bool
@@ -15966,8 +15944,8 @@ command_projectile(struct yt_session *session, bool plasma,
 		.destroyed = &session->destroyed,
 	};
 
-	yt_route_process_raw_single(&session->route_process,
-	    YT_COMPUTER_ROUTE_STATUS_ADDRESS, state.turn_gate_result_raw);
+	(void)qb_mbf32_encode(session->shared_status,
+	    state.turn_gate_result_raw);
 
 	return yt_projectile_command_run(&state, &ops, session, error);
 }
@@ -16512,9 +16490,6 @@ static bool
 computer_route(struct yt_session *session, bool autopilot,
     struct yt_error *error)
 {
-	static const uint8_t marker_entry_raw[4] = {0x00, 0x3c, 0x1c, 0x8e};
-	static const uint8_t marker_success_raw[4] = {0x00, 0x00, 0x1c, 0x00};
-	static const uint8_t status_one_raw[4] = {0x00, 0x00, 0x00, 0x81};
 	static const uint8_t start_prompt[] = "Enter start for path search? ";
 	static const uint8_t destination_prompt[] =
 	    "What sector do you want to go to? ";
@@ -16536,9 +16511,7 @@ computer_route(struct yt_session *session, bool autopilot,
 	float hop_count;
 	uint8_t parsed_raw[4];
 	uint8_t hop_count_raw[4];
-	bool stale_marker = autopilot
-	    && yt_route_process_single(&session->route_process,
-	    YT_COMPUTER_PATH_MARKER_ADDRESS) == 9999.0f;
+	bool stale_marker = autopilot && session->path_marker == 9999.0f;
 	int start;
 	int destination;
 	int count = sector_count(session);
@@ -16553,8 +16526,7 @@ computer_route(struct yt_session *session, bool autopilot,
 	session->navigation_field = session->player.record;
 
 	if (!autopilot) {
-		yt_route_process_set_raw_single(&session->route_process,
-		    YT_COMPUTER_PATH_MARKER_ADDRESS, marker_entry_raw);
+		session->path_marker = 9999.0f;
 		if (!session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "path start blank", error)
 		    || !session_031f(session, start_prompt,
@@ -16566,16 +16538,12 @@ computer_route(struct yt_session *session, bool autopilot,
 		if (!yt_computer_path_parse(response, &start_value, parsed_raw,
 		    error))
 			return false;
-		yt_route_process_set_raw_single(&session->route_process,
-		    YT_COMPUTER_ROUTE_START_ADDRESS, parsed_raw);
+		session->route_start = start_value;
 	}
-	else if (!stale_marker) {
-		yt_route_process_set_raw_single(&session->route_process,
-		    YT_COMPUTER_ROUTE_START_ADDRESS,
+	else if (!stale_marker)
+		session->route_start = qb_mbf32_decode(
 		    session->player.record.bytes + YT_F57);
-	}
-	start_value = yt_route_process_single(&session->route_process,
-	    YT_COMPUTER_ROUTE_START_ADDRESS);
+	start_value = session->route_start;
 	if (!session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "path destination blank", error)
 	    || !session_031f(session, destination_prompt,
@@ -16587,8 +16555,6 @@ computer_route(struct yt_session *session, bool autopilot,
 	if (!yt_computer_path_parse(response, &destination_value, parsed_raw,
 	    error))
 		return false;
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_COMPUTER_ROUTE_DESTINATION_ADDRESS, parsed_raw);
 	if (!yt_computer_path_maximum(session_port_offset(session),
 	    session_sector_offset(session), &maximum, error))
 		return false;
@@ -16622,12 +16588,9 @@ computer_route(struct yt_session *session, bool autopilot,
 	    || !session_031f(session, working, sizeof(working) - 1U,
 	    "path working prompt", error))
 		return false;
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_COMPUTER_ROUTE_STATUS_ADDRESS, status_one_raw);
-	if (!yt_route_process_build_at(YT_COMPUTER_ROUTE_START_ADDRESS,
-	    YT_COMPUTER_ROUTE_DESTINATION_ADDRESS,
-	    YT_COMPUTER_ROUTE_STATUS_ADDRESS,
-	    session->presentation.sound.conversion_mode,
+	session->shared_status = 1.0f;
+	if (!yt_route_process_build(start_value, destination_value,
+	    &session->shared_status, session->presentation.sound.conversion_mode,
 	    &session->route_process, route_sector_reader, session,
 	    &route_outcome, error))
 		return false;
@@ -16667,8 +16630,6 @@ computer_route(struct yt_session *session, bool autopilot,
 	session->computer_route_scratch_length = 1U;
 	hop_count = 0.0f;
 	(void)qb_mbf32_encode(hop_count, hop_count_raw);
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_COMPUTER_PATH_HOPS_ADDRESS, hop_count_raw);
 	{
 		char number[64];
 
@@ -16712,8 +16673,6 @@ computer_route(struct yt_session *session, bool autopilot,
 		    (float)program_vertex,
 		    &hop_count, hop_count_raw, error))
 			return false;
-		yt_route_process_set_raw_single(&session->route_process,
-		    YT_COMPUTER_PATH_HOPS_ADDRESS, hop_count_raw);
 		yt_out_cursor_position(&ignored_row, &column);
 		if (yt_computer_path_wrap_required(column)
 		    && !session_present_text(session, NULL, 0,
@@ -16734,8 +16693,7 @@ computer_route(struct yt_session *session, bool autopilot,
 		    strlen(course), "path course row", error))
 			return false;
 	}
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_COMPUTER_PATH_MARKER_ADDRESS, marker_success_raw);
+	session->path_marker = 0.0f;
 	if (!autopilot || stale_marker)
 		return true;
 	if (!reload_player(session, error))
@@ -17044,8 +17002,7 @@ owned_fighters_store_scanner(void *context, const uint8_t raw[4])
 {
 	struct yt_session *session = context;
 
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_COMPUTER_ROUTE_STATUS_ADDRESS, raw);
+	session->shared_status = qb_mbf32_decode(raw);
 }
 
 static bool
@@ -17073,8 +17030,8 @@ computer_owned_fighters(struct yt_session *session, struct yt_error *error)
 		.current_player = (float)session_record(session),
 	};
 
-	yt_route_process_raw_single(&session->route_process,
-	    YT_COMPUTER_ROUTE_STATUS_ADDRESS, state.scanner_scratch_raw);
+	(void)qb_mbf32_encode(session->shared_status,
+	    state.scanner_scratch_raw);
 	return yt_owned_fighters_run(&state, &ops, session, error);
 }
 
@@ -17300,10 +17257,9 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 		visibility_ok = yt_computer_port_visibility_run(&visibility,
 		    computer_port_visibility_read_player, &visibility_context,
 		    error);
-		yt_route_process_set_raw_single(&session->route_process,
-		    YT_COMPUTER_PATH_MARKER_ADDRESS, visibility.marker_4d62_raw);
-		yt_route_process_set_raw_single(&session->route_process,
-		    YT_COMPUTER_ROUTE_STATUS_ADDRESS, visibility.relation_raw);
+		session->path_marker = qb_mbf32_decode(
+		    visibility.marker_4d62_raw);
+		session->shared_status = qb_mbf32_decode(visibility.relation_raw);
 		if (visibility.scratch_written)
 			session->planet_record_expression = qb_mbf32_decode(
 			    visibility.scratch_19c4_raw);
@@ -18266,13 +18222,10 @@ static void
 computer_menu_prompt_effect(void *context,
     enum yt_computer_prompt_effect effect)
 {
-	static const uint8_t scanner_zero[4] = {0x00, 0x00, 0x03, 0x00};
 	struct yt_session *session = context;
 
-	if (effect == YT_COMPUTER_PROMPT_RESET_SCANNER) {
-		yt_route_process_set_raw_single(&session->route_process,
-		    YT_COMPUTER_ROUTE_STATUS_ADDRESS, scanner_zero);
-	}
+	if (effect == YT_COMPUTER_PROMPT_RESET_SCANNER)
+		session->shared_status = 0.0f;
 	else if (effect == YT_COMPUTER_PROMPT_SET_FOREGROUND) {
 		session_set_foreground(session, 1.0f);
 	}
@@ -18507,11 +18460,8 @@ computer_menu(struct yt_session *session, bool *enter_sector,
 			}
 		}
 		if (strcmp(command, "6") == 0) {
-			session_set_process_single(session,
-			    YT_COMPUTER_ROUTE_STATUS_ADDRESS, 1.0f);
-			if (!radio_read(session, yt_route_process_single(
-			    &session->route_process,
-			    YT_COMPUTER_ROUTE_STATUS_ADDRESS), error))
+			session->shared_status = 1.0f;
+			if (!radio_read(session, session->shared_status, error))
 				return false;
 			continue;
 		}
