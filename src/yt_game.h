@@ -619,22 +619,6 @@ struct yt_computer_prompt_ops {
 	    size_t *length, bool *available, struct yt_error *error);
 };
 
-enum yt_computer_activation_effect {
-	YT_COMPUTER_ACTIVATION_SET_FOREGROUND,
-};
-
-struct yt_computer_activation_state {
-	bool notice_presented;
-	bool complete;
-};
-
-struct yt_computer_activation_ops {
-	void (*effect)(void *context, enum yt_computer_activation_effect effect);
-	bool (*present)(void *context, const uint8_t *text, size_t length,
-	    struct yt_error *error);
-	bool (*sound)(void *context, float selector, struct yt_error *error);
-};
-
 #define YT_COMPUTER_SCOREBOARD_RESPONSE_SIZE 80U
 
 enum yt_computer_scoreboard_output_kind {
@@ -1860,9 +1844,6 @@ bool yt_main_prompt_run(struct yt_main_prompt_state *state,
 	struct yt_error *error);
 bool yt_computer_prompt_run(struct yt_computer_prompt_state *state,
 	const struct yt_computer_prompt_ops *ops, void *context,
-	struct yt_error *error);
-bool yt_computer_activation_run(struct yt_computer_activation_state *state,
-	const struct yt_computer_activation_ops *ops, void *context,
 	struct yt_error *error);
 bool yt_computer_scoreboard_run(struct yt_computer_scoreboard_state *state,
 	const struct yt_computer_scoreboard_ops *ops, void *context,

@@ -17483,44 +17483,14 @@ computer_profit_exact(struct yt_session *session, bool all,
 }
 
 static bool
-computer_activation_present(void *context, const uint8_t *text, size_t length,
-    struct yt_error *error)
-{
-	return session_present_paged_line(context, text, length,
-	    "computer activation notice", error);
-}
-
-static void
-computer_activation_effect(void *context,
-    enum yt_computer_activation_effect effect)
-{
-	struct yt_session *session = context;
-
-	(void)effect;
-	session_set_foreground(session, 1.0f);
-}
-
-static bool
-computer_activation_sound(void *context, float selector,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return session_sound(session, selector, "computer activation sound",
-	    error);
-}
-
-static bool
 computer_activate(struct yt_session *session, struct yt_error *error)
 {
-	static const struct yt_computer_activation_ops ops = {
-		computer_activation_effect,
-		computer_activation_present,
-		computer_activation_sound,
-	};
-	struct yt_computer_activation_state state;
+	static const uint8_t notice[] = "<Computer activated>";
 
-	return yt_computer_activation_run(&state, &ops, session, error);
+	session_set_foreground(session, 1.0f);
+	return session_present_paged_line(session, notice, sizeof(notice) - 1U,
+	    "computer activation notice", error)
+	    && session_sound(session, 4.0f, "computer activation sound", error);
 }
 
 static bool

@@ -4823,28 +4823,6 @@ yt_computer_prompt_run(struct yt_computer_prompt_state *state,
 }
 
 bool
-yt_computer_activation_run(struct yt_computer_activation_state *state,
-    const struct yt_computer_activation_ops *ops, void *context,
-    struct yt_error *error)
-{
-	static const uint8_t notice[] = "<Computer activated>";
-
-	if (state == NULL || ops == NULL || ops->effect == NULL
-	    || ops->present == NULL || ops->sound == NULL)
-		return false;
-	state->notice_presented = false;
-	state->complete = false;
-	ops->effect(context, YT_COMPUTER_ACTIVATION_SET_FOREGROUND);
-	if (!ops->present(context, notice, sizeof(notice) - 1U, error))
-		return false;
-	state->notice_presented = true;
-	if (!ops->sound(context, 4.0f, error))
-		return false;
-	state->complete = true;
-	return true;
-}
-
-bool
 yt_computer_scoreboard_run(struct yt_computer_scoreboard_state *state,
     const struct yt_computer_scoreboard_ops *ops, void *context,
     struct yt_error *error)
