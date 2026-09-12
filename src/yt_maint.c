@@ -3181,136 +3181,13 @@ yt_maintenance_route_cache_free(struct yt_maintenance_route_cache *cache)
 }
 
 bool
-yt_maintenance_scoreboard_readback_run(
-    struct yt_maintenance_scoreboard_readback_state *state,
-    const char *path,
-    const struct yt_maintenance_scoreboard_readback_ops *ops,
-    void *context, struct yt_error *error)
-{
-	if (state == NULL || path == NULL || ops == NULL
-	    || ops->close == NULL || ops->open == NULL || ops->eof == NULL
-	    || ops->read == NULL || ops->present == NULL) {
-		set_error(error, YT_INVALID, "maintenance scoreboard readback", "");
-		return false;
-	}
-	memset(state, 0, sizeof(*state));
-	state->attempted =
-	    YT_MAINTENANCE_SCOREBOARD_READBACK_CLOSE_GENERATED;
-	if (!ops->close(context, error))
-		return false;
-	++state->completed_steps;
-	state->attempted = YT_MAINTENANCE_SCOREBOARD_READBACK_OPEN_INPUT;
-	if (!ops->open(context, path, error))
-		return false;
-	++state->completed_steps;
-	state->file_open = true;
-	for (;;) {
-		const uint8_t *line;
-		size_t length;
-		bool available;
-
-		state->attempted =
-		    YT_MAINTENANCE_SCOREBOARD_READBACK_CHECK_EOF;
-		if (!ops->eof(context, &state->eof, error))
-			return false;
-		++state->completed_steps;
-		++state->eof_checks;
-		if (state->eof)
-			break;
-		state->attempted =
-		    YT_MAINTENANCE_SCOREBOARD_READBACK_LINE_INPUT;
-		if (!ops->read(context, &line, &length, &available, error))
-			return false;
-		++state->completed_steps;
-		++state->read_count;
-		if (!available)
-			break;
-		state->attempted =
-		    YT_MAINTENANCE_SCOREBOARD_READBACK_PRESENT;
-		if (!ops->present(context, line, length, error))
-			return false;
-		++state->completed_steps;
-		++state->line_count;
-	}
-	state->attempted = YT_MAINTENANCE_SCOREBOARD_READBACK_CLOSE_INPUT;
-	if (!ops->close(context, error))
-		return false;
-	++state->completed_steps;
-	state->file_open = false;
-	state->complete = true;
-	return true;
-}
-
-struct scoreboard_readback_context {
-	struct yt_text_input input;
-	yt_maintenance_score_line_fn line_output;
-	void *line_context;
-};
-
-static bool
-scoreboard_readback_close(void *context, struct yt_error *error)
-{
-	struct scoreboard_readback_context *readback = context;
-
-	return yt_text_input_close(&readback->input, error);
-}
-
-static bool
-scoreboard_readback_open(void *context, const char *path,
-    struct yt_error *error)
-{
-	struct scoreboard_readback_context *readback = context;
-
-	return yt_text_input_open(&readback->input, path, error);
-}
-
-static bool
-scoreboard_readback_eof(void *context, bool *eof, struct yt_error *error)
-{
-	struct scoreboard_readback_context *readback = context;
-
-	return yt_text_input_eof(&readback->input, eof, error);
-}
-
-static bool
-scoreboard_readback_read(void *context, const uint8_t **line,
-    size_t *length, bool *available, struct yt_error *error)
-{
-	struct scoreboard_readback_context *readback = context;
-
-	return yt_text_input_read_line(&readback->input, line, length,
-	    available, error);
-}
-
-static bool
-scoreboard_readback_present(void *context, const uint8_t *line,
-    size_t length, struct yt_error *error)
-{
-	struct scoreboard_readback_context *readback = context;
-
-	return readback->line_output(readback->line_context, line, length,
-	    error);
-}
-
-bool
 yt_maintenance_scoreboard(struct yt_game *game,
     yt_maintenance_score_line_fn line_output, void *context,
     struct yt_error *error)
 {
-	static const struct yt_maintenance_scoreboard_readback_ops ops = {
-		scoreboard_readback_close,
-		scoreboard_readback_open,
-		scoreboard_readback_eof,
-		scoreboard_readback_read,
-		scoreboard_readback_present,
-	};
-	struct scoreboard_readback_context readback = {
-		.line_output = line_output,
-		.line_context = context,
-	};
-	struct yt_maintenance_scoreboard_readback_state state;
+	struct yt_text_input input;
 	const char *path;
-	bool result;
+	bool result = false;
 
 	if (game == NULL || line_output == NULL) {
 		set_error(error, YT_INVALID, "maintenance scoreboard", "");
@@ -3320,10 +3197,31 @@ yt_maintenance_scoreboard(struct yt_game *game,
 		return false;
 	path = strcmp(game->config.scoreboard, "NUL") == 0
 	    ? "YTTEMP" : game->config.scoreboard;
-	yt_text_input_init(&readback.input);
-	result = yt_maintenance_scoreboard_readback_run(&state, path, &ops,
-	    &readback, error);
-	yt_text_input_destroy(&readback.input);
+	yt_text_input_init(&input);
+	if (!yt_text_input_open(&input, path, error))
+		goto done;
+	for (;;) {
+		const uint8_t *line;
+		size_t length;
+		bool available;
+		bool eof;
+
+		if (!yt_text_input_eof(&input, &eof, error))
+			goto done;
+		if (eof)
+			break;
+		if (!yt_text_input_read_line(&input, &line, &length, &available,
+		    error))
+			goto done;
+		if (!available)
+			break;
+		if (!line_output(context, line, length, error))
+			goto done;
+	}
+	result = yt_text_input_close(&input, error);
+
+done:
+	yt_text_input_destroy(&input);
 	return result;
 }
 
