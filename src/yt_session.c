@@ -3075,13 +3075,61 @@ startup_retention(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
-returning_daily_same_day(void *context, struct yt_error *error)
+returning_daily_update(struct yt_session *session,
+    const uint8_t today_raw[4], const uint8_t turns_per_day_raw[4],
+    float *previous_day, float *killer, struct yt_error *error)
 {
+	static const uint8_t zero[4] = {0x00U, 0x00U, 0x00U, 0x00U};
 	static const uint8_t row[] = "You have been on today.";
-	struct yt_session *session = context;
+	struct yt_player player;
+	struct yt_record daily;
+	uint8_t turns_scratch[4];
+	bool same_day;
 
-	return session_present_text(session, row, sizeof(row) - 1U,
-	    SESSION_PRESENT_LINE, "returning same-day row", error);
+	if (!yt_game_read_player(&session->door->game, session_record(session),
+	    &player, error)) {
+		attach_database_get_fault(session, error,
+		    YT_BASIC_FAULT_RETURNING_DAILY_GET);
+		if (error != NULL && error->basic_fault_valid)
+			(void)session_route_basic_fault(session, error);
+		return false;
+	}
+	*previous_day = player.last_active;
+	same_day = *previous_day == qb_mbf32_decode(today_raw);
+	if (same_day && !session_present_text(session, row, sizeof(row) - 1U,
+	    SESSION_PRESENT_LINE, "returning same-day row", error)) {
+		if (error != NULL && error->basic_fault_valid)
+			(void)session_route_basic_fault(session, error);
+		return false;
+	}
+	*killer = player.killed_by;
+	memcpy(turns_scratch, player.record.bytes + YT_F49,
+	    sizeof(turns_scratch));
+
+	daily = player.record;
+	(void)yt_record_set_raw_number(&daily, YT_F41, today_raw);
+	if (!same_day) {
+		if (qb_mbf32_decode(turns_scratch)
+		    < qb_mbf32_decode(turns_per_day_raw))
+			memcpy(turns_scratch, turns_per_day_raw,
+			    sizeof(turns_scratch));
+		if (memcmp(turns_scratch, daily.bytes + YT_F49,
+		    sizeof(turns_scratch)) != 0)
+			(void)yt_record_set_raw_number(&daily, YT_F49,
+			    turns_scratch);
+		(void)yt_record_set_raw_number(&daily, YT_F105, zero);
+	}
+	yt_player_decode(&player, &daily);
+	if (!yt_database_write(&session->door->game.database,
+	    (size_t)session_record(session), &daily, error)) {
+		attach_database_put_fault(session, error,
+		    YT_BASIC_FAULT_RETURNING_DAILY_PUT);
+		if (error != NULL && error->basic_fault_valid)
+			(void)session_route_basic_fault(session, error);
+		return false;
+	}
+	session->player = player;
+	return true;
 }
 
 static bool
@@ -3211,10 +3259,6 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 	    "returning player blank", error))
 		return false;
 	{
-		static const struct yt_returning_daily_ops daily_ops = {
-			returning_daily_same_day,
-		};
-		struct yt_returning_daily_state daily;
 		uint8_t today_raw[4];
 		uint8_t turns_raw[4];
 		float previous_day;
@@ -3227,27 +3271,11 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 			return false;
 		memcpy(turns_raw, session->door->game.config.record.bytes + YT_F49,
 		    sizeof(turns_raw));
-		memset(&daily, 0, sizeof(daily));
-		daily.player_record = session_record(session);
-		daily.today_raw = today_raw;
-		daily.turns_per_day_raw = turns_raw;
-		if (!yt_returning_daily_run(&session->door->game, &daily,
-		    &daily_ops, session, error)) {
-			if (!daily.player_hydrated)
-				attach_database_get_fault(session, error,
-				    YT_BASIC_FAULT_RETURNING_DAILY_GET);
-			else if (daily.put_attempted)
-				attach_database_put_fault(session, error,
-				    YT_BASIC_FAULT_RETURNING_DAILY_PUT);
-			if (error != NULL && error->basic_fault_valid)
-				(void)session_route_basic_fault(session, error);
+		if (!returning_daily_update(session, today_raw, turns_raw,
+		    &previous_day, &killer, error))
 			return false;
-		}
-		session->player = daily.player;
 		if (!yt_database_flush(&session->door->game.database, error))
 			return false;
-		previous_day = daily.previous_day;
-		killer = daily.killer;
 		startup_day = qb_mbf32_decode(today_raw);
 		self_kill = killer == (float)session_record(session);
 		if (!yt_platform_clock(&now, error))

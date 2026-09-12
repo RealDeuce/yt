@@ -230,29 +230,6 @@ struct yt_post_login_repairs {
 	unsigned writes;
 };
 
-typedef bool (*yt_returning_daily_same_day_fn)(void *context,
-	struct yt_error *error);
-struct yt_returning_daily_state {
-	int player_record;
-	const uint8_t *today_raw;
-	const uint8_t *turns_per_day_raw;
-	struct yt_player player;
-	float previous_day;
-	float killer;
-	bool same_day;
-	bool turn_floor_applied;
-	bool player_hydrated;
-	bool put_attempted;
-	bool complete;
-};
-struct yt_returning_daily_ops {
-	yt_returning_daily_same_day_fn present_same_day;
-};
-bool yt_returning_daily_run(struct yt_game *game,
-	struct yt_returning_daily_state *state,
-	const struct yt_returning_daily_ops *ops, void *context,
-	struct yt_error *error);
-
 enum yt_team_loader_route {
 	YT_TEAM_LOADER_OUT_OF_RANGE,
 	YT_TEAM_LOADER_ROSTER_DEAD,
