@@ -66,74 +66,50 @@ rmt_handoff_close(struct rmt_handoff_file *handoff, struct yt_error *error)
 }
 
 static bool
-rmt_handoff_open_random(void *context, struct yt_error *error)
-{
-	struct rmt_handoff_file *handoff = context;
-
-	return yt_database_open(&handoff->random, "RMTINIT.TMP",
-	    YT_OPEN_UPDATE_CREATE, error);
-}
-
-static bool
-rmt_handoff_lof(void *context, uint32_t *size, struct yt_error *error)
-{
-	struct rmt_handoff_file *handoff = context;
-
-	return yt_database_random_lof(&handoff->random, size, error);
-}
-
-static bool
-rmt_handoff_close_random(void *context, struct yt_error *error)
-{
-	struct rmt_handoff_file *handoff = context;
-
-	return yt_database_random_close(&handoff->random, error);
-}
-
-static bool
-rmt_handoff_open_sequential(void *context, struct yt_error *error)
-{
-	struct rmt_handoff_file *handoff = context;
-
-	return yt_text_input_open(&handoff->sequential, "RMTINIT.TMP", error);
-}
-
-static bool
-rmt_handoff_read_line(void *context, const uint8_t **line, size_t *length,
-    bool *available, struct yt_error *error)
-{
-	struct rmt_handoff_file *handoff = context;
-
-	return yt_text_input_read_line(&handoff->sequential, line, length,
-	    available, error);
-}
-
-static bool
-rmt_handoff_close_sequential(void *context, struct yt_error *error)
-{
-	struct rmt_handoff_file *handoff = context;
-
-	return yt_text_input_close(&handoff->sequential, error);
-}
-
-static bool
 read_handoff(struct rmt_handoff_file *handoff, char path[512],
     bool *standalone, struct yt_error *error)
 {
-	static const struct yt_rmt_handoff_read_ops ops = {
-		rmt_handoff_open_random,
-		rmt_handoff_lof,
-		rmt_handoff_close_random,
-		rmt_handoff_open_sequential,
-		rmt_handoff_read_line,
-		rmt_handoff_close_sequential,
-	};
-	struct yt_rmt_handoff_read_state state;
+	const uint8_t *line = NULL;
+	size_t length = 0U;
+	size_t path_length = 0U;
+	uint32_t size;
+	bool available = false;
 
-	if (!yt_rmt_handoff_read_run(&state, &ops, handoff, error))
+	if (!yt_database_open(&handoff->random, "RMTINIT.TMP",
+	    YT_OPEN_UPDATE_CREATE, error)
+	    || !yt_database_random_lof(&handoff->random, &size, error))
 		return false;
-	memcpy(path, state.result.path, state.result.path_length + 1U);
-	*standalone = state.result.standalone;
+	if (size == 0U) {
+		path[0] = '\0';
+		*standalone = true;
+		return true;
+	}
+	if (!yt_database_random_close(&handoff->random, error)
+	    || !yt_text_input_open(&handoff->sequential, "RMTINIT.TMP", error)
+	    || !yt_text_input_read_line(&handoff->sequential, &line, &length,
+	    &available, error))
+		return false;
+	(void)available;
+	while (path_length < length && line[path_length] != '\r'
+	    && line[path_length] != '\n' && line[path_length] != 0x1aU)
+		++path_length;
+	if (path_length >= 512U) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			error->system_error = 0;
+			snprintf(error->operation, sizeof(error->operation),
+			    "parse RMT handoff");
+			snprintf(error->path, sizeof(error->path),
+			    "RMTINIT.TMP");
+		}
+		return false;
+	}
+	if (path_length != 0U)
+		memcpy(path, line, path_length);
+	path[path_length] = '\0';
+	*standalone = false;
+	if (!yt_text_input_close(&handoff->sequential, error))
+		return false;
 	return true;
 }
 

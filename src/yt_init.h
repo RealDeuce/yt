@@ -120,56 +120,6 @@ struct yt_rmt_standalone_output {
 	bool proceed;
 };
 
-struct yt_rmt_handoff_result {
-	bool standalone;
-	uint8_t path[512];
-	size_t path_length;
-};
-
-enum yt_rmt_handoff_read_operation {
-	YT_RMT_HANDOFF_READ_NONE,
-	YT_RMT_HANDOFF_READ_OPEN_RANDOM,
-	YT_RMT_HANDOFF_READ_LOF,
-	YT_RMT_HANDOFF_READ_CLOSE_RANDOM,
-	YT_RMT_HANDOFF_READ_OPEN_SEQUENTIAL,
-	YT_RMT_HANDOFF_READ_LINE,
-	YT_RMT_HANDOFF_READ_PARSE_LINE,
-	YT_RMT_HANDOFF_READ_CLOSE_SEQUENTIAL,
-};
-
-struct yt_rmt_handoff_read_state {
-	enum yt_rmt_handoff_read_operation failed_operation;
-	uint32_t size;
-	struct yt_rmt_handoff_result result;
-	bool random_opened;
-	bool lof_read;
-	bool random_closed;
-	bool sequential_opened;
-	bool line_read;
-	bool line_available;
-	bool empty_line_substituted;
-	bool line_parsed;
-	bool sequential_closed;
-	bool complete;
-};
-
-typedef bool (*yt_rmt_handoff_step_fn)(void *context,
-	struct yt_error *error);
-typedef bool (*yt_rmt_handoff_lof_fn)(void *context, uint32_t *size,
-	struct yt_error *error);
-typedef bool (*yt_rmt_handoff_line_fn)(void *context,
-	const uint8_t **line, size_t *length, bool *available,
-	struct yt_error *error);
-
-struct yt_rmt_handoff_read_ops {
-	yt_rmt_handoff_step_fn open_random;
-	yt_rmt_handoff_lof_fn lof;
-	yt_rmt_handoff_step_fn close_random;
-	yt_rmt_handoff_step_fn open_sequential;
-	yt_rmt_handoff_line_fn read_line;
-	yt_rmt_handoff_step_fn close_sequential;
-};
-
 enum yt_rmt_serial_outcome {
 	YT_RMT_SERIAL_LOCAL,
 	YT_RMT_SERIAL_REMOTE,
@@ -284,11 +234,6 @@ bool yt_rmt_standalone_prompt_compose(
     struct yt_rmt_standalone_output *output);
 bool yt_rmt_standalone_response_compose(const uint8_t *response,
     size_t response_length, struct yt_rmt_standalone_output *output);
-bool yt_rmt_handoff_parse(const uint8_t *data, size_t length,
-    struct yt_rmt_handoff_result *result);
-bool yt_rmt_handoff_read_run(struct yt_rmt_handoff_read_state *state,
-	const struct yt_rmt_handoff_read_ops *ops, void *context,
-	struct yt_error *error);
 bool yt_rmt_serial_state_compose(const uint8_t *identifier,
     size_t identifier_length, const uint8_t *description,
     size_t description_length, uint8_t dll, uint8_t dlm,
