@@ -526,21 +526,6 @@ input_process_store_single(yt_input_process_store_fn store, void *context,
 }
 
 static bool
-input_process_store_double(yt_input_process_store_fn store, void *context,
-    uint16_t address, double value)
-{
-	uint8_t raw[8];
-
-	if (qb_mbf64_encode(value, raw) != QB_MBF_OK)
-		return false;
-	if (store != NULL) {
-		store(context, address, raw);
-		store(context, (uint16_t)(address + 4U), raw + 4U);
-	}
-	return true;
-}
-
-static bool
 upper_fault_target(enum yt_basic_fault_site target)
 {
 	return target == YT_BASIC_FAULT_UPPER_FRAME_STACK
@@ -710,8 +695,7 @@ bool
 yt_input_repeat_parse_staged(char *text, size_t text_capacity,
     uint8_t *upper_scratch, size_t scratch_capacity,
     size_t repeat_position, enum yt_basic_fault_site target,
-    struct yt_repeat_parse_transform *result,
-    yt_input_process_store_fn store, void *context)
+    struct yt_repeat_parse_transform *result)
 {
 	struct qb_val_result parsed;
 	double integer;
@@ -790,8 +774,7 @@ yt_input_repeat_parse_staged(char *text, size_t text_capacity,
 		    YT_REPEAT_FAILURE_VAL_OVERFLOW);
 	}
 	integer = qb_int(parsed.valid ? parsed.value : 0.0);
-	if (!input_process_store_double(store, context, 0x0016U, integer)
-	    || qb_mbf64_encode(integer, result->pending_double_raw) != QB_MBF_OK)
+	if (qb_mbf64_encode(integer, result->pending_double_raw) != QB_MBF_OK)
 		return false;
 	result->pending_string[0] = '\0';
 	result->pending_length = 0U;
@@ -806,16 +789,12 @@ yt_input_repeat_parse_staged(char *text, size_t text_capacity,
 		    YT_BASIC_FAULT_REPEAT_SINGLE_OVERFLOW,
 		    YT_REPEAT_FAILURE_SINGLE_OVERFLOW);
 	}
-	if (!input_process_store_single(store, context, 0x001AU, count)
-	    || !input_process_store_single(store, context, 0x51C4U, count))
-		return false;
 	upper_scratch[0] = '\0';
 	result->pending_role = YT_REPEAT_PENDING_NONE;
 	result->pending_double_valid = false;
 	if (count > 10.0f) {
 		count = 20.0f;
-		if (!input_process_store_single(store, context, 0x51C4U, count)
-		    || qb_mbf32_encode(count, result->count_raw) != QB_MBF_OK)
+		if (qb_mbf32_encode(count, result->count_raw) != QB_MBF_OK)
 			return false;
 	}
 	result->count = count;
@@ -1010,7 +989,7 @@ yt_input_expand_repeat_observed(char *text, size_t text_capacity,
 		return true;
 	if (!yt_input_repeat_parse_staged(text, text_capacity, upper,
 	    sizeof(upper), repeat_prefix.repeat_position,
-	    YT_BASIC_FAULT_SITE_COUNT, &repeat_parse, store, context)) {
+	    YT_BASIC_FAULT_SITE_COUNT, &repeat_parse)) {
 		result->failure = repeat_parse.failure;
 		result->fault_site = repeat_parse.fault_site;
 		result->fault_valid = repeat_parse.fault_valid;

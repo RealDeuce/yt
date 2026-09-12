@@ -1004,32 +1004,28 @@ static void
 test_repeat_parse_stages(void)
 {
 	struct yt_repeat_parse_transform result;
-	struct input_process_tape tape;
 	char text[64];
 	uint8_t upper[64];
 	uint8_t expected_raw[8];
 	struct qb_val_result parsed;
 
-	memset(&tape, 0, sizeof(tape));
 	memcpy(text, "Ab/R3", 6U);
 	memcpy(upper, "AB/R3", 6U);
 	CHECK(!yt_input_repeat_parse_staged(text, sizeof(text), upper,
 	    sizeof(upper), 3U, YT_BASIC_FAULT_ADE0_REPEAT_PREFIX_LEFT_SPACE,
-	    &result, input_process_store, &tape));
+	    &result));
 	CHECK(result.fault_valid
 	    && result.fault_site == YT_BASIC_FAULT_ADE0_REPEAT_PREFIX_LEFT_SPACE
 	    && result.repeat_reached
 	    && result.pending_role == YT_REPEAT_PENDING_NONE
 	    && strcmp(text, "Ab/R3") == 0
-	    && strcmp((const char *)upper, "AB/R3") == 0 && tape.count == 0U);
+	    && strcmp((const char *)upper, "AB/R3") == 0);
 
-	memset(&tape, 0, sizeof(tape));
 	memcpy(text, "Ab/R3", 6U);
 	memcpy(upper, "AB/R3", 6U);
 	CHECK(!yt_input_repeat_parse_staged(text, sizeof(text), upper,
 	    sizeof(upper), 3U,
-	    YT_BASIC_FAULT_ADE0_REPEAT_SEMICOLON_CONCAT_SPACE, &result,
-	    input_process_store, &tape));
+	    YT_BASIC_FAULT_ADE0_REPEAT_SEMICOLON_CONCAT_SPACE, &result));
 	CHECK(result.fault_valid
 	    && result.fault_site
 	    == YT_BASIC_FAULT_ADE0_REPEAT_SEMICOLON_CONCAT_SPACE
@@ -1037,27 +1033,23 @@ test_repeat_parse_stages(void)
 	    && result.pending_length == 2U
 	    && strcmp(result.pending_string, "Ab") == 0
 	    && strcmp(text, "Ab/R3") == 0
-	    && strcmp((const char *)upper, "AB/R3") == 0 && tape.count == 0U);
+	    && strcmp((const char *)upper, "AB/R3") == 0);
 
-	memset(&tape, 0, sizeof(tape));
 	memcpy(text, "Ab/R3", 6U);
 	memcpy(upper, "AB/R3", 6U);
 	CHECK(!yt_input_repeat_parse_staged(text, sizeof(text), upper,
 	    sizeof(upper), 3U,
-	    YT_BASIC_FAULT_ADE0_REPEAT_SUFFIX_RIGHT_SPACE, &result,
-	    input_process_store, &tape));
+	    YT_BASIC_FAULT_ADE0_REPEAT_SUFFIX_RIGHT_SPACE, &result));
 	CHECK(result.fault_valid
 	    && result.fault_site == YT_BASIC_FAULT_ADE0_REPEAT_SUFFIX_RIGHT_SPACE
 	    && result.pending_role == YT_REPEAT_PENDING_NONE
 	    && strcmp(text, "Ab;") == 0
-	    && strcmp((const char *)upper, "AB/R3") == 0 && tape.count == 0U);
+	    && strcmp((const char *)upper, "AB/R3") == 0);
 
-	memset(&tape, 0, sizeof(tape));
 	memcpy(text, "A/R1E999", 10U);
 	memcpy(upper, "A/R1E999", 10U);
 	CHECK(!yt_input_repeat_parse_staged(text, sizeof(text), upper,
-	    sizeof(upper), 2U, YT_BASIC_FAULT_SITE_COUNT, &result,
-	    input_process_store, &tape));
+	    sizeof(upper), 2U, YT_BASIC_FAULT_SITE_COUNT, &result));
 	CHECK(result.fault_valid
 	    && result.fault_site == YT_BASIC_FAULT_REPEAT_VAL_OVERFLOW
 	    && result.failure == YT_REPEAT_FAILURE_VAL_OVERFLOW
@@ -1065,61 +1057,49 @@ test_repeat_parse_stages(void)
 	    && result.pending_length == 5U
 	    && strcmp(result.pending_string, "1E999") == 0
 	    && strcmp(text, "A;") == 0
-	    && strcmp((const char *)upper, "A/R1E999") == 0
-	    && tape.count == 0U);
+	    && strcmp((const char *)upper, "A/R1E999") == 0);
 
-	memset(&tape, 0, sizeof(tape));
 	memcpy(text, "A/R1.7014118E38", 16U);
 	memcpy(upper, "A/R1.7014118E38", 16U);
 	CHECK(!yt_input_repeat_parse_staged(text, sizeof(text), upper,
-	    sizeof(upper), 2U, YT_BASIC_FAULT_SITE_COUNT, &result,
-	    input_process_store, &tape));
+	    sizeof(upper), 2U, YT_BASIC_FAULT_SITE_COUNT, &result));
 	CHECK(result.fault_valid
 	    && result.fault_site == YT_BASIC_FAULT_REPEAT_SINGLE_OVERFLOW
 	    && result.failure == YT_REPEAT_FAILURE_SINGLE_OVERFLOW
 	    && result.pending_role == YT_REPEAT_PENDING_INTEGER
 	    && result.pending_double_valid && result.pending_length == 0U
 	    && strcmp(text, "A;") == 0
-	    && strcmp((const char *)upper, "A/R1.7014118E38") == 0
-	    && tape.count == 2U && tape.address[0] == 0x0016U
-	    && tape.address[1] == 0x001AU);
+	    && strcmp((const char *)upper, "A/R1.7014118E38") == 0);
 	parsed = qb_val("1.7014118E38");
 	CHECK(parsed.valid && !parsed.overflow
 	    && qb_mbf64_encode(qb_int(parsed.value), expected_raw) == QB_MBF_OK
 	    && memcmp(result.pending_double_raw, expected_raw,
 	    sizeof(expected_raw)) == 0);
 
-	memset(&tape, 0, sizeof(tape));
 	memcpy(text, "Ab/R3", 6U);
 	memcpy(upper, "AB/R3", 6U);
 	CHECK(yt_input_repeat_parse_staged(text, sizeof(text), upper,
-	    sizeof(upper), 3U, YT_BASIC_FAULT_SITE_COUNT, &result,
-	    input_process_store, &tape));
+	    sizeof(upper), 3U, YT_BASIC_FAULT_SITE_COUNT, &result));
 	CHECK(!result.fault_valid && result.repeat_reached
 	    && result.failure == YT_REPEAT_FAILURE_NONE && result.count == 3.0f
 	    && result.pending_role == YT_REPEAT_PENDING_NONE
 	    && !result.pending_double_valid && strcmp(text, "Ab;") == 0
-	    && upper[0] == '\0' && tape.count == 4U
-	    && tape.address[0] == 0x0016U && tape.address[1] == 0x001AU
-	    && tape.address[2] == 0x001AU && tape.address[3] == 0x51C4U
+	    && upper[0] == '\0'
 	    && qb_mbf32_encode(3.0f, expected_raw) == QB_MBF_OK
 	    && memcmp(result.count_raw, expected_raw, 4U) == 0);
 
-	memset(&tape, 0, sizeof(tape));
 	memcpy(text, "A/R11", 6U);
 	memcpy(upper, "A/R11", 6U);
 	CHECK(yt_input_repeat_parse_staged(text, sizeof(text), upper,
-	    sizeof(upper), 2U, YT_BASIC_FAULT_SITE_COUNT, &result,
-	    input_process_store, &tape));
-	CHECK(result.count == 20.0f && tape.count == 5U
-	    && tape.address[4] == 0x51C4U
+	    sizeof(upper), 2U, YT_BASIC_FAULT_SITE_COUNT, &result));
+	CHECK(result.count == 20.0f
 	    && qb_mbf32_encode(20.0f, expected_raw) == QB_MBF_OK
 	    && memcmp(result.count_raw, expected_raw, 4U) == 0);
 
 	memcpy(text, "/R", 3U);
 	memcpy(upper, "/R", 3U);
 	CHECK(yt_input_repeat_parse_staged(text, sizeof(text), upper,
-	    sizeof(upper), 1U, YT_BASIC_FAULT_SITE_COUNT, &result, NULL, NULL));
+	    sizeof(upper), 1U, YT_BASIC_FAULT_SITE_COUNT, &result));
 	CHECK(result.repeat_reached && result.count == 0.0f
 	    && strcmp(text, ";") == 0 && upper[0] == '\0');
 }
@@ -1279,13 +1259,11 @@ test_repeat_transform(void)
 	struct yt_repeat_transform result;
 	struct input_process_tape tape;
 	static const uint16_t expected_address[] = {
-		0x0016U, 0x001AU, 0x001AU, 0x51C4U,
 		0x51C8U, 0x4F76U,
 		0x4F76U, 0x4F76U, 0x4F76U,
 	};
 	static const float expected_value[] = {
-		0.0f, 3.0f, 3.0f, 3.0f, 3.0f, 1.0f,
-		2.0f, 3.0f, 4.0f,
+		3.0f, 1.0f, 2.0f, 3.0f, 4.0f,
 	};
 	char text[1024];
 	char saved[1024] = "old";
@@ -1365,19 +1343,7 @@ test_repeat_transform(void)
 	    && result.fault_site == YT_BASIC_FAULT_REPEAT_SINGLE_OVERFLOW);
 	CHECK(strcmp(text, "A;") == 0
 	    && strcmp(saved, "old") == 0);
-	CHECK(tape.count == 2U && tape.address[0] == 0x0016U
-	    && tape.address[1] == 0x001AU);
-	{
-		struct qb_val_result parsed = qb_val("1.7014118E38");
-		uint8_t expected_raw[8];
-
-		CHECK(parsed.valid && !parsed.overflow
-		    && qb_mbf64_encode(qb_int(parsed.value), expected_raw)
-		    == QB_MBF_OK);
-		CHECK(memcmp(tape.raw[0], expected_raw, 4U) == 0
-		    && memcmp(tape.raw[1], expected_raw + 4U,
-		    4U) == 0);
-	}
+	CHECK(tape.count == 0U);
 
 	snprintf(text, sizeof(text), "A/R-.1");
 	CHECK(yt_input_expand_repeat(text, sizeof(text), saved, sizeof(saved),

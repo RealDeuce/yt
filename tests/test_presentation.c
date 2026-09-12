@@ -25058,7 +25058,7 @@ direct_emergency_warp_ade0_late_failure_continue(
 			selected = target;
 		if (!yt_input_repeat_parse_staged(join->accumulator,
 		    sizeof(join->accumulator), upper, sizeof(upper),
-		    prefix.repeat_position, selected, &parse, NULL, NULL)) {
+		    prefix.repeat_position, selected, &parse)) {
 			if (!parse.fault_valid || parse.fault_site != target)
 				return false;
 			goto routed;

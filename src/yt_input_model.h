@@ -273,8 +273,7 @@ bool yt_input_repeat_prefix_staged(const uint8_t *text, size_t length,
 bool yt_input_repeat_parse_staged(char *text, size_t text_capacity,
 	uint8_t *upper_scratch, size_t scratch_capacity,
 	size_t repeat_position, enum yt_basic_fault_site target,
-	struct yt_repeat_parse_transform *result,
-	yt_input_process_store_fn store, void *context);
+	struct yt_repeat_parse_transform *result);
 bool yt_input_repeat_build_staged(char *text, size_t text_capacity,
 	uint8_t *build_scratch, size_t scratch_capacity,
 	char *saved_command, size_t saved_capacity,
