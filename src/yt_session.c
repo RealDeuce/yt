@@ -16842,80 +16842,97 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
-owned_fighters_read_sector(void *context, int logical_sector,
-    struct yt_sector *sector, struct yt_error *error)
+owned_fighters_format_error(struct yt_error *error, const char *operation)
 {
-	return session_read_sector(context, logical_sector, sector, error);
-}
-
-static bool
-owned_fighters_direct_line(void *context, const uint8_t *text, size_t length,
-    const char *operation, struct yt_error *error)
-{
-	return session_present_text(context, text, length, SESSION_PRESENT_LINE,
-	    operation, error);
-}
-
-static bool
-owned_fighters_searching(void *context, const uint8_t *text, size_t length,
-    const char *operation, struct yt_error *error)
-{
-	return session_031f(context, text, length, operation, error);
-}
-
-static bool
-owned_fighters_b05d(void *context, const uint8_t *text, size_t length,
-    const char *operation, struct yt_error *error)
-{
-	(void)operation;
-	(void)error;
-	return session_02fc(context, text, length);
-}
-
-static bool
-owned_fighters_fixed(void *context, const uint8_t *text, size_t length,
-    float width, const char *operation, struct yt_error *error)
-{
-	return session_fixed_width_bytes(context, text, length, width, operation,
-	    error);
-}
-
-static void
-owned_fighters_store_scanner(void *context, const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-
-	session->shared_status = qb_mbf32_decode(raw);
-}
-
-static bool
-owned_fighters_pager_quit(void *context)
-{
-	struct yt_session *session = context;
-
-	return strcmp(session->pager.key, "Q") == 0;
+	if (error != NULL) {
+		error->status = YT_RANGE;
+		error->system_error = 0;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    operation);
+		error->path[0] = '\0';
+	}
+	return false;
 }
 
 static bool
 computer_owned_fighters(struct yt_session *session, struct yt_error *error)
 {
-	static const struct yt_owned_fighters_ops ops = {
-		owned_fighters_read_sector,
-		owned_fighters_direct_line,
-		owned_fighters_searching,
-		owned_fighters_b05d,
-		owned_fighters_fixed,
-		owned_fighters_store_scanner,
-		owned_fighters_pager_quit,
-	};
-	struct yt_owned_fighters_state state = {
-		.maximum_sector = sector_count(session),
-		.current_player = (float)session_record(session),
-	};
+	static const uint8_t searching[] = "Searching;";
+	static const uint8_t sector_heading[] = " Sector";
+	static const uint8_t amount_heading[] = "Amount";
+	static const uint8_t rule[] = "--------*--------";
+	static const uint8_t none[] = " NONE found!";
+	int maximum_sector = sector_count(session);
+	float current_player = (float)session_record(session);
+	bool found = false;
+	int sector_number;
 
-	(void)qb_mbf32_encode(session->shared_status,
-	    state.scanner_scratch_raw);
-	return yt_owned_fighters_run(&state, &ops, session, error);
+	if (maximum_sector < 0)
+		return owned_fighters_format_error(error,
+		    "owned-fighter state");
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "owned-fighter opening blank", error)
+	    || !session_031f(session, searching, sizeof(searching) - 1U,
+	    "owned-fighter searching row", error))
+		return false;
+	session->shared_status = 1.0f;
+
+	for (sector_number = 1; sector_number <= maximum_sector;
+	    ++sector_number) {
+		struct yt_sector sector;
+		char number[64];
+		int number_length;
+
+		if (!session_read_sector(session, sector_number, &sector, error))
+			return false;
+		if (sector.fighters <= 0.0f
+		    || sector.fighter_owner != current_player)
+			continue;
+
+		if (!found) {
+			found = true;
+			if (!session_present_text(session, NULL, 0U,
+			    SESSION_PRESENT_LINE,
+			    "owned-fighter searching ending", error)
+			    || !session_present_text(session, NULL, 0U,
+			    SESSION_PRESENT_LINE,
+			    "owned-fighter heading blank", error)
+			    || !session_fixed_width_bytes(session, sector_heading,
+			    sizeof(sector_heading) - 1U, 10.0f,
+			    "owned-fighter heading sector", error)
+			    || !session_02fc(session, amount_heading,
+			    sizeof(amount_heading) - 1U)
+			    || !session_02fc(session, rule, sizeof(rule) - 1U))
+				return false;
+			session->shared_status = 0.0f;
+		}
+
+		number_length = qb_str_single(number, sizeof(number),
+		    (float)sector_number);
+		if (number_length < 0)
+			return owned_fighters_format_error(error,
+			    "owned-fighter sector format");
+		if (!session_fixed_width_bytes(session,
+		    (const uint8_t *)number, (size_t)number_length, 9.0f,
+		    "owned-fighter sector field", error))
+			return false;
+		number_length = qb_str_single(number, sizeof(number),
+		    sector.fighters);
+		if (number_length < 0)
+			return owned_fighters_format_error(error,
+			    "owned-fighter amount format");
+		if (!session_02fc(session, (const uint8_t *)number,
+		    (size_t)number_length))
+			return false;
+		if (strcmp(session->pager.key, "Q") == 0)
+			break;
+	}
+
+	if (!found)
+		return session_present_text(session, none, sizeof(none) - 1U,
+		    SESSION_PRESENT_LINE, "owned-fighter none row", error);
+	return session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "owned-fighter trailing blank", error);
 }
 
 static bool
