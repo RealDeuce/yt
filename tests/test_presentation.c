@@ -18136,7 +18136,6 @@ struct main_buy_cycle_fixture {
 	struct yt_player written_seller;
 	struct yt_port written_port;
 	struct yt_port_purchase_state purchase;
-	struct yt_port_purchase_cycle_state cycle;
 	size_t accept_events[16];
 	size_t accept_event_count;
 };
@@ -18635,11 +18634,6 @@ main_buy_cycle_scanner(void *context, struct yt_error *error)
 	    && normal_exit_line(join, warps, sizeof(warps) - 1U);
 }
 
-static const struct yt_port_purchase_cycle_ops main_buy_cycle_ops = {
-	main_buy_cycle_purchase,
-	main_buy_cycle_scanner,
-};
-
 static bool
 main_buy_cycle_run(struct main_buy_cycle_fixture *fixture, bool ansi,
     size_t ends[4])
@@ -18654,8 +18648,8 @@ main_buy_cycle_run(struct main_buy_cycle_fixture *fixture, bool ansi,
 	join->presentation.cached_foreground = 6.0f;
 	join->pager.foreground = 6;
 	join->pager.line_count = 8.0f;
-	if (!yt_port_purchase_cycle_run(&fixture->cycle, &main_buy_cycle_ops,
-	    fixture, NULL))
+	if (!main_buy_cycle_purchase(fixture, NULL)
+	    || !main_buy_cycle_scanner(fixture, NULL))
 		return false;
 	ends[0] = ansi ? 59U : 49U;
 	ends[1] = join->remote_length - 41U;
@@ -18798,9 +18792,7 @@ test_main_buy_cycle_presentation(void)
 		    && viewer.join.remote_length == cases[pass].expected_length
 		    && memcmp(remote, cases[pass].expected,
 		    cases[pass].expected_length) == 0);
-		CHECK(fixture.cycle.complete && fixture.cycle.purchase_complete
-		    && fixture.cycle.scanner_complete
-		    && fixture.purchase.complete
+		CHECK(fixture.purchase.complete
 		    && fixture.purchase.route == YT_PORT_PURCHASE_ACCEPTED_ROUTE
 		    && fixture.purchase.price == 10.0
 		    && fixture.purchase.accepted.complete);

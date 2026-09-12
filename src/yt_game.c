@@ -7115,27 +7115,6 @@ yt_port_purchase_run(struct yt_port_purchase_state *state,
 }
 
 bool
-yt_port_purchase_cycle_run(struct yt_port_purchase_cycle_state *state,
-    const struct yt_port_purchase_cycle_ops *ops, void *context,
-    struct yt_error *error)
-{
-	if (state == NULL || ops == NULL || ops->purchase == NULL
-	    || ops->scanner == NULL)
-		return false;
-	state->purchase_complete = false;
-	state->scanner_complete = false;
-	state->complete = false;
-	if (!ops->purchase(context, error))
-		return false;
-	state->purchase_complete = true;
-	if (!ops->scanner(context, error))
-		return false;
-	state->scanner_complete = true;
-	state->complete = true;
-	return true;
-}
-
-bool
 yt_genesis_confirmation_prompt(const uint8_t *trader, size_t trader_length,
     uint8_t *prompt, size_t capacity, size_t *length)
 {

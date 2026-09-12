@@ -13213,27 +13213,10 @@ command_buy_port(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
-port_purchase_cycle_purchase(void *context, struct yt_error *error)
-{
-	return command_buy_port(context, error);
-}
-
-static bool
-port_purchase_cycle_scanner(void *context, struct yt_error *error)
-{
-	return display_current_sector_cached(context, error);
-}
-
-static bool
 command_buy_port_cycle(struct yt_session *session, struct yt_error *error)
 {
-	static const struct yt_port_purchase_cycle_ops ops = {
-		port_purchase_cycle_purchase,
-		port_purchase_cycle_scanner,
-	};
-	struct yt_port_purchase_cycle_state state;
-
-	return yt_port_purchase_cycle_run(&state, &ops, session, error);
+	return command_buy_port(session, error)
+	    && display_current_sector_cached(session, error);
 }
 
 static bool

@@ -2245,18 +2245,6 @@ struct yt_port_purchase_ops {
 bool yt_port_purchase_run(struct yt_port_purchase_state *state,
 	const struct yt_port_purchase_ops *ops, void *context,
 	struct yt_error *error);
-struct yt_port_purchase_cycle_state {
-	bool purchase_complete;
-	bool scanner_complete;
-	bool complete;
-};
-struct yt_port_purchase_cycle_ops {
-	bool (*purchase)(void *context, struct yt_error *error);
-	bool (*scanner)(void *context, struct yt_error *error);
-};
-bool yt_port_purchase_cycle_run(struct yt_port_purchase_cycle_state *state,
-	const struct yt_port_purchase_cycle_ops *ops, void *context,
-	struct yt_error *error);
 bool yt_genesis_confirmation_prompt(const uint8_t *trader,
     size_t trader_length, uint8_t *prompt, size_t capacity, size_t *length);
 bool yt_genesis_insufficient_rows(float required, float owned,
