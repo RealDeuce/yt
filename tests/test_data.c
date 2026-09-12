@@ -1839,507 +1839,12 @@ test_text_input(void)
 #endif
 }
 
-static void
-test_file_viewer_records(void)
-{
-	static const uint8_t source[] =
-	    "ordinary\r\n  - item\r\n ***blue\r\n +++red\r\n-=*white\r\nA\nB\r\n\x1aZ";
-	static const int foreground[] = {2, 3, 4, 1, 7, 2};
-	struct yt_file_viewer_record record;
-	uint8_t line[32];
-	size_t cursor = 0U;
-	size_t index;
-
-	for (index = 0U; index < YT_ARRAY_LEN(foreground); ++index) {
-		CHECK(yt_file_viewer_next(source, sizeof(source) - 1U, &cursor,
-		    "", line, sizeof(line), &record));
-		CHECK(record.eof_checked && record.key_checked && record.available
-		    && record.foreground == foreground[index]
-		    && record.set_bold == (foreground[index] != 2));
-	}
-	CHECK(record.length == 3U && line[0] == 'A' && line[1] == '\n'
-	    && line[2] == 'B');
-	CHECK(yt_file_viewer_next(source, sizeof(source) - 1U, &cursor, "Q",
-	    line, sizeof(line), &record));
-	CHECK(record.eof_checked && record.key_checked && !record.available);
-
-	cursor = 0U;
-	CHECK(yt_file_viewer_next(source, sizeof(source) - 1U, &cursor, "Q",
-	    line, sizeof(line), &record));
-	CHECK(record.eof_checked && record.key_checked && !record.available
-	    && cursor == 0U);
-}
-
-struct viewer_play_tape {
-	int events[4];
-	size_t lengths[4];
-	size_t calls;
-	size_t fail_call;
-	size_t bold_calls;
-	float bold;
-};
-
-struct viewer_entry_tape {
-	int events[2];
-	size_t calls;
-	size_t fail_call;
-	char *key;
-};
-
-static bool
-viewer_entry_present(void *context, const uint8_t *text, size_t length,
-    bool paged, struct yt_error *error)
-{
-	static const uint8_t notice[] = "Cntl-X to Stop";
-	struct viewer_entry_tape *tape = context;
-
-	(void)error;
-	CHECK(tape->key[0] == '\0');
-	if (paged)
-		CHECK(length == sizeof(notice) - 1U
-		    && memcmp(text, notice, length) == 0);
-	else
-		CHECK(text == NULL && length == 0U);
-	tape->events[tape->calls++] = paged ? 1 : 2;
-	return tape->fail_call == 0U || tape->calls != tape->fail_call;
-}
-
-static void
-test_file_viewer_entry(void)
-{
-	struct viewer_entry_tape tape;
-	char key[2] = "Q";
-	float line_count = 17.0f;
-
-	memset(&tape, 0, sizeof(tape));
-	tape.key = key;
-	CHECK(yt_file_viewer_entry(key, &line_count, viewer_entry_present,
-	    &tape, NULL));
-	CHECK(tape.calls == 2U && tape.events[0] == 1 && tape.events[1] == 2
-	    && key[0] == '\0' && line_count == 17.0f);
-	memset(&tape, 0, sizeof(tape));
-	tape.key = key;
-	tape.fail_call = 1U;
-	key[0] = 'Q';
-	line_count = 17.0f;
-	CHECK(!yt_file_viewer_entry(key, &line_count, viewer_entry_present,
-	    &tape, NULL) && tape.calls == 1U && key[0] == '\0'
-	    && line_count == 17.0f);
-	memset(&tape, 0, sizeof(tape));
-	tape.key = key;
-	tape.fail_call = 2U;
-	key[0] = 'Q';
-	CHECK(!yt_file_viewer_entry(key, &line_count, viewer_entry_present,
-	    &tape, NULL) && tape.calls == 2U && line_count == 17.0f);
-}
-
-static bool
-viewer_play_present(void *context, const uint8_t *text, size_t length,
-    bool paged, struct yt_error *error)
-{
-	struct viewer_play_tape *tape = context;
-	size_t call = tape->calls++;
-
-	(void)error;
-	if (call >= YT_ARRAY_LEN(tape->events))
-		return false;
-	tape->events[call] = paged ? 1 : 2;
-	tape->lengths[call] = length;
-	if (!paged)
-		CHECK(text == NULL && length == 0U);
-	return tape->fail_call == 0U || call + 1U != tape->fail_call;
-}
-
-static void
-viewer_play_set_bold(void *context, float value)
-{
-	struct viewer_play_tape *tape = context;
-
-	++tape->bold_calls;
-	tape->bold = value;
-}
-
-static void
-test_file_viewer_play(void)
-{
-	static const uint8_t source[] = "ordinary\r\n  - item\r\n";
-	struct yt_file_viewer_play_state state;
-	struct viewer_play_tape tape;
-	float foreground = 5.0f;
-	float bold = 0.0f;
-	float line_count = 17.0f;
-	int pager_foreground = 5;
-	char key[2] = "";
-
-	memset(&tape, 0, sizeof(tape));
-	state.foreground = &foreground;
-	state.pager_foreground = &pager_foreground;
-	state.bold = &bold;
-	state.set_bold = viewer_play_set_bold;
-	state.line_count = &line_count;
-	state.pager_key = key;
-	state.saved_foreground = 5.0f;
-	state.saved_pager_foreground = 5;
-	CHECK(yt_file_viewer_play(source, sizeof(source) - 1U, &state,
-	    viewer_play_present, &tape, NULL));
-	CHECK(tape.calls == 3U && tape.events[0] == 1 && tape.events[1] == 1
-	    && tape.events[2] == 2 && tape.lengths[0] == 8U
-	    && tape.lengths[1] == 8U && foreground == 5.0f
-	    && pager_foreground == 5 && bold == 1.0f && line_count == 0.0f
-	    && tape.bold_calls == 1U && tape.bold == 1.0f);
-
-	memset(&tape, 0, sizeof(tape));
-	tape.fail_call = 2U;
-	foreground = 5.0f;
-	pager_foreground = 5;
-	bold = 0.0f;
-	line_count = 17.0f;
-	CHECK(!yt_file_viewer_play(source, sizeof(source) - 1U, &state,
-	    viewer_play_present, &tape, NULL));
-	CHECK(tape.calls == 2U && foreground == 3.0f
-	    && pager_foreground == 3 && bold == 1.0f
-	    && line_count == 17.0f && tape.bold_calls == 1U
-	    && tape.bold == 1.0f);
-}
-
-enum viewer_stream_event {
-	VIEWER_STREAM_INITIAL_CLOSE,
-	VIEWER_STREAM_OPEN,
-	VIEWER_STREAM_EOF,
-	VIEWER_STREAM_READ,
-	VIEWER_STREAM_ROW,
-	VIEWER_STREAM_FINAL_CLOSE,
-	VIEWER_STREAM_FINAL_BLANK,
-};
-
-struct viewer_stream_tape {
-	enum viewer_stream_event events[20];
-	size_t event_count;
-	size_t fail_at;
-	bool open;
-	char path[32];
-	const uint8_t *lines[2];
-	size_t lengths[2];
-	size_t line_count;
-	size_t position;
-	size_t presented;
-	uint8_t presented_bytes[2][32];
-	size_t presented_lengths[2];
-	char *key;
-	float *pager_line_count;
-	float observed_line_counts[20];
-	bool stop_after_first;
-	bool unavailable_read;
-};
-
-static bool
-viewer_stream_record(struct viewer_stream_tape *tape,
-    enum viewer_stream_event event, struct yt_error *error)
-{
-	CHECK(tape->event_count < YT_ARRAY_LEN(tape->events));
-	if (tape->event_count < YT_ARRAY_LEN(tape->events))
-		tape->events[tape->event_count] = event;
-	if (tape->event_count < YT_ARRAY_LEN(tape->observed_line_counts))
-		tape->observed_line_counts[tape->event_count] =
-		    *tape->pager_line_count;
-	++tape->event_count;
-	if (tape->event_count != tape->fail_at)
-		return true;
-	if (error != NULL) {
-		error->status = YT_IO_ERROR;
-		(void)snprintf(error->operation, sizeof(error->operation), "%s",
-		    "injected viewer failure");
-	}
-	return false;
-}
-
-static bool
-viewer_stream_close(void *context, struct yt_error *error)
-{
-	struct viewer_stream_tape *tape = context;
-	enum viewer_stream_event event = tape->open
-	    ? VIEWER_STREAM_FINAL_CLOSE : VIEWER_STREAM_INITIAL_CLOSE;
-
-	if (!viewer_stream_record(tape, event, error))
-		return false;
-	tape->open = false;
-	return true;
-}
-
-static bool
-viewer_stream_open(void *context, const char *path, struct yt_error *error)
-{
-	struct viewer_stream_tape *tape = context;
-
-	if (!viewer_stream_record(tape, VIEWER_STREAM_OPEN, error))
-		return false;
-	(void)snprintf(tape->path, sizeof(tape->path), "%s", path);
-	tape->open = true;
-	return true;
-}
-
-static bool
-viewer_stream_eof(void *context, bool *eof, struct yt_error *error)
-{
-	struct viewer_stream_tape *tape = context;
-
-	if (!viewer_stream_record(tape, VIEWER_STREAM_EOF, error))
-		return false;
-	*eof = tape->position == tape->line_count;
-	return true;
-}
-
-static bool
-viewer_stream_read(void *context, const uint8_t **line, size_t *length,
-    bool *available, struct yt_error *error)
-{
-	struct viewer_stream_tape *tape = context;
-	size_t index = tape->position;
-
-	if (!viewer_stream_record(tape, VIEWER_STREAM_READ, error))
-		return false;
-	if (tape->unavailable_read) {
-		*line = NULL;
-		*length = 0U;
-		*available = false;
-		return true;
-	}
-	CHECK(index < tape->line_count);
-	if (index >= tape->line_count)
-		return false;
-	*line = tape->lines[index];
-	*length = tape->lengths[index];
-	*available = true;
-	++tape->position;
-	return true;
-}
-
-static bool
-viewer_stream_present(void *context, const uint8_t *text, size_t length,
-    bool paged, struct yt_error *error)
-{
-	struct viewer_stream_tape *tape = context;
-	size_t index = tape->presented;
-
-	if (!viewer_stream_record(tape, paged ? VIEWER_STREAM_ROW
-	    : VIEWER_STREAM_FINAL_BLANK, error))
-		return false;
-	if (!paged) {
-		CHECK(text == NULL && length == 0U);
-		return true;
-	}
-	CHECK(index < YT_ARRAY_LEN(tape->presented_bytes)
-	    && length <= sizeof(tape->presented_bytes[0]));
-	if (index >= YT_ARRAY_LEN(tape->presented_bytes)
-	    || length > sizeof(tape->presented_bytes[0]))
-		return false;
-	if (length != 0U)
-		memcpy(tape->presented_bytes[index], text, length);
-	tape->presented_lengths[index] = length;
-	++tape->presented;
-	if (tape->stop_after_first && tape->presented == 1U)
-		(void)snprintf(tape->key, 2U, "%s", "Q");
-	return true;
-}
-
-static const struct yt_file_viewer_stream_ops viewer_stream_ops = {
-	viewer_stream_close,
-	viewer_stream_open,
-	viewer_stream_eof,
-	viewer_stream_read,
-	viewer_stream_present,
-};
-
-static void
-viewer_stream_initialize(struct yt_file_viewer_stream_state *state,
-    struct viewer_stream_tape *tape, float *foreground,
-    int *pager_foreground, float *bold, float *line_count, char key[2])
-{
-	static const uint8_t ordinary[] = "ordinary";
-	static const uint8_t marker[] = "  - item";
-
-	memset(tape, 0, sizeof(*tape));
-	tape->lines[0] = ordinary;
-	tape->lines[1] = marker;
-	tape->lengths[0] = sizeof(ordinary) - 1U;
-	tape->lengths[1] = sizeof(marker) - 1U;
-	tape->line_count = 2U;
-	tape->key = key;
-	tape->pager_line_count = line_count;
-	*foreground = 5.0f;
-	*pager_foreground = 5;
-	*bold = 0.0f;
-	*line_count = 17.0f;
-	key[0] = '\0';
-	memset(state, 0, sizeof(*state));
-	state->path = "Viewer.TXT";
-	state->play.foreground = foreground;
-	state->play.pager_foreground = pager_foreground;
-	state->play.bold = bold;
-	state->play.line_count = line_count;
-	state->play.pager_key = key;
-	state->play.saved_foreground = 5.0f;
-	state->play.saved_pager_foreground = 5;
-}
-
-static void
-test_file_viewer_stream(void)
-{
-	static const enum viewer_stream_event expected[] = {
-		VIEWER_STREAM_INITIAL_CLOSE,
-		VIEWER_STREAM_OPEN,
-		VIEWER_STREAM_EOF,
-		VIEWER_STREAM_READ,
-		VIEWER_STREAM_ROW,
-		VIEWER_STREAM_EOF,
-		VIEWER_STREAM_READ,
-		VIEWER_STREAM_ROW,
-		VIEWER_STREAM_EOF,
-		VIEWER_STREAM_FINAL_CLOSE,
-		VIEWER_STREAM_FINAL_BLANK,
-	};
-	static const enum viewer_stream_event stopped[] = {
-		VIEWER_STREAM_INITIAL_CLOSE,
-		VIEWER_STREAM_OPEN,
-		VIEWER_STREAM_EOF,
-		VIEWER_STREAM_READ,
-		VIEWER_STREAM_ROW,
-		VIEWER_STREAM_EOF,
-		VIEWER_STREAM_FINAL_CLOSE,
-		VIEWER_STREAM_FINAL_BLANK,
-	};
-	static const enum viewer_stream_event empty[] = {
-		VIEWER_STREAM_INITIAL_CLOSE,
-		VIEWER_STREAM_OPEN,
-		VIEWER_STREAM_EOF,
-		VIEWER_STREAM_FINAL_CLOSE,
-		VIEWER_STREAM_FINAL_BLANK,
-	};
-	struct yt_file_viewer_stream_state state;
-	struct viewer_stream_tape tape;
-	struct yt_error error;
-	float foreground;
-	float bold;
-	float line_count;
-	int pager_foreground;
-	char key[2];
-	size_t failure;
-
-	viewer_stream_initialize(&state, &tape, &foreground,
-	    &pager_foreground, &bold, &line_count, key);
-	yt_error_clear(&error);
-	CHECK(yt_file_viewer_stream_run(&state, &viewer_stream_ops, &tape,
-	    &error));
-	CHECK(tape.event_count == YT_ARRAY_LEN(expected)
-	    && memcmp(tape.events, expected, sizeof(expected)) == 0
-	    && tape.observed_line_counts[0] == 17.0f
-	    && tape.observed_line_counts[1] == 0.0f
-	    && strcmp(tape.path, "Viewer.TXT") == 0 && !tape.open
-	    && tape.presented == 2U
-	    && tape.presented_lengths[0] == 8U
-	    && memcmp(tape.presented_bytes[0], "ordinary", 8U) == 0
-	    && tape.presented_lengths[1] == 8U
-	    && memcmp(tape.presented_bytes[1], "  - item", 8U) == 0);
-	CHECK(!state.file_open && state.eof_checks == 3U
-	    && state.key_checks == 3U && state.read_count == 2U
-	    && state.line_count == 2U && foreground == 5.0f
-	    && pager_foreground == 5 && bold == 1.0f && line_count == 0.0f);
-
-	for (failure = 1U; failure <= YT_ARRAY_LEN(expected); ++failure) {
-		viewer_stream_initialize(&state, &tape, &foreground,
-		    &pager_foreground, &bold, &line_count, key);
-		tape.fail_at = failure;
-		yt_error_clear(&error);
-		CHECK(!yt_file_viewer_stream_run(&state, &viewer_stream_ops,
-		    &tape, &error));
-		CHECK(error.status == YT_IO_ERROR && tape.event_count == failure
-		    && memcmp(tape.events, expected,
-		    failure * sizeof(expected[0])) == 0);
-		CHECK(state.file_open == (failure >= 3U && failure <= 10U));
-		CHECK(state.eof_checks == (failure <= 3U ? 0U
-		    : failure <= 6U ? 1U : failure <= 9U ? 2U : 3U));
-		CHECK(state.key_checks == state.eof_checks);
-		CHECK(state.read_count == (failure <= 4U ? 0U
-		    : failure <= 7U ? 1U : 2U));
-		CHECK(state.line_count == (failure <= 5U ? 0U
-		    : failure <= 8U ? 1U : 2U));
-		CHECK(line_count == (failure == 1U ? 17.0f : 0.0f));
-		CHECK(foreground == (failure <= 4U ? 5.0f
-		    : failure <= 7U ? 2.0f : failure <= 10U ? 3.0f : 5.0f));
-	}
-
-	viewer_stream_initialize(&state, &tape, &foreground,
-	    &pager_foreground, &bold, &line_count, key);
-	tape.stop_after_first = true;
-	CHECK(yt_file_viewer_stream_run(&state, &viewer_stream_ops, &tape,
-	    NULL));
-	CHECK(tape.event_count == YT_ARRAY_LEN(stopped)
-	    && memcmp(tape.events, stopped, sizeof(stopped)) == 0
-	    && state.eof_checks == 2U && state.key_checks == 2U
-	    && state.read_count == 1U && state.line_count == 1U
-	    && strcmp(key, "Q") == 0 && !state.file_open);
-
-	viewer_stream_initialize(&state, &tape, &foreground,
-	    &pager_foreground, &bold, &line_count, key);
-	tape.line_count = 0U;
-	CHECK(yt_file_viewer_stream_run(&state, &viewer_stream_ops, &tape,
-	    NULL));
-	CHECK(tape.event_count == YT_ARRAY_LEN(empty)
-	    && memcmp(tape.events, empty, sizeof(empty)) == 0
-	    && state.eof_checks == 1U && state.key_checks == 1U
-	    && state.read_count == 0U && state.line_count == 0U);
-
-	viewer_stream_initialize(&state, &tape, &foreground,
-	    &pager_foreground, &bold, &line_count, key);
-	tape.unavailable_read = true;
-	yt_error_clear(&error);
-	CHECK(!yt_file_viewer_stream_run(&state, &viewer_stream_ops, &tape,
-	    &error) && error.status == YT_EOF && state.file_open
-	    && state.eof_checks == 1U && state.key_checks == 1U
-	    && state.read_count == 1U && state.line_count == 0U);
-}
-
 struct viewer_file_context {
-	struct yt_text_input input;
-	uint8_t rows[2][32];
-	size_t lengths[2];
+	uint8_t rows[3][32];
+	size_t lengths[3];
 	size_t row_count;
-	bool final_blank;
+	size_t blank_count;
 };
-
-static bool
-viewer_file_close(void *context, struct yt_error *error)
-{
-	struct viewer_file_context *viewer = context;
-
-	return yt_text_input_close(&viewer->input, error);
-}
-
-static bool
-viewer_file_open(void *context, const char *path, struct yt_error *error)
-{
-	struct viewer_file_context *viewer = context;
-
-	return yt_text_input_open(&viewer->input, path, error);
-}
-
-static bool
-viewer_file_eof(void *context, bool *eof, struct yt_error *error)
-{
-	struct viewer_file_context *viewer = context;
-
-	return yt_text_input_eof(&viewer->input, eof, error);
-}
-
-static bool
-viewer_file_read(void *context, const uint8_t **line, size_t *length,
-    bool *available, struct yt_error *error)
-{
-	struct viewer_file_context *viewer = context;
-
-	return yt_text_input_read_line(&viewer->input, line, length, available,
-	    error);
-}
 
 static bool
 viewer_file_present(void *context, const uint8_t *text, size_t length,
@@ -2351,7 +1856,7 @@ viewer_file_present(void *context, const uint8_t *text, size_t length,
 	(void)error;
 	if (!paged) {
 		CHECK(text == NULL && length == 0U);
-		viewer->final_blank = true;
+		++viewer->blank_count;
 		return true;
 	}
 	CHECK(index < YT_ARRAY_LEN(viewer->rows)
@@ -2369,20 +1874,13 @@ viewer_file_present(void *context, const uint8_t *text, size_t length,
 static void
 test_file_viewer_physical_stream(void)
 {
-	static const struct yt_file_viewer_stream_ops ops = {
-		viewer_file_close,
-		viewer_file_open,
-		viewer_file_eof,
-		viewer_file_read,
-		viewer_file_present,
-	};
 	static const uint8_t source[] =
 	    "ordinary\r\n  - item\r\n\x1aignored\r\n";
 	char directory[256];
 	char actual[320];
 	char requested[320];
 	struct viewer_file_context viewer;
-	struct yt_file_viewer_stream_state state;
+	struct yt_file_viewer_state state;
 	struct yt_error error;
 	float foreground = 5.0f;
 	float bold = 0.0f;
@@ -2403,29 +1901,26 @@ test_file_viewer_physical_stream(void)
 	    directory);
 	CHECK(write_bytes(actual, source, sizeof(source) - 1U));
 	memset(&viewer, 0, sizeof(viewer));
-	yt_text_input_init(&viewer.input);
-	memset(&state, 0, sizeof(state));
-	state.path = requested;
-	state.play.foreground = &foreground;
-	state.play.pager_foreground = &pager_foreground;
-	state.play.bold = &bold;
-	state.play.line_count = &line_count;
-	state.play.pager_key = key;
-	state.play.saved_foreground = foreground;
-	state.play.saved_pager_foreground = pager_foreground;
+	state.foreground = &foreground;
+	state.pager_foreground = &pager_foreground;
+	state.bold = &bold;
+	state.line_count = &line_count;
+	state.pager_key = key;
+	state.saved_foreground = foreground;
+	state.saved_pager_foreground = pager_foreground;
 	yt_error_clear(&error);
-	CHECK(yt_file_viewer_stream_run(&state, &ops, &viewer, &error));
-	CHECK(!state.file_open && state.eof_checks == 3U
-	    && state.key_checks == 3U && state.read_count == 2U
-	    && state.line_count == 2U && viewer.row_count == 2U
-	    && viewer.final_blank && viewer.input.file == NULL);
-	CHECK(viewer.lengths[0] == 8U
-	    && memcmp(viewer.rows[0], "ordinary", 8U) == 0
+	CHECK(yt_file_viewer_display(requested, &state,
+	    viewer_file_present, &viewer, &error));
+	CHECK(viewer.row_count == 3U && viewer.blank_count == 2U);
+	CHECK(viewer.lengths[0] == strlen("Cntl-X to Stop")
+	    && memcmp(viewer.rows[0], "Cntl-X to Stop",
+	    strlen("Cntl-X to Stop")) == 0
 	    && viewer.lengths[1] == 8U
-	    && memcmp(viewer.rows[1], "  - item", 8U) == 0
+	    && memcmp(viewer.rows[1], "ordinary", 8U) == 0
+	    && viewer.lengths[2] == 8U
+	    && memcmp(viewer.rows[2], "  - item", 8U) == 0
 	    && foreground == 5.0f && pager_foreground == 5
 	    && bold == 1.0f && line_count == 0.0f);
-	yt_text_input_destroy(&viewer.input);
 	CHECK(yt_file_delete(actual, false, &error));
 #ifdef _WIN32
 	_rmdir(directory);
@@ -2514,10 +2009,6 @@ main(void)
 	test_main_error_fatal_transaction();
 	test_line_input_grammar();
 	test_text_input();
-	test_file_viewer_records();
-	test_file_viewer_entry();
-	test_file_viewer_play();
-	test_file_viewer_stream();
 	test_file_viewer_physical_stream();
 	test_file_viewer_missing();
 	if (failures != 0) {

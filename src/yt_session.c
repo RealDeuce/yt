@@ -1722,102 +1722,35 @@ session_centered_line(struct yt_session *session, const char *text,
 	    strlen(text), operation, error);
 }
 
-static bool
-session_file_viewer_entry_present(void *context, const uint8_t *text,
-    size_t length, bool paged, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	if (paged)
-		return session_present_paged_line(session, text, length,
-		    "file viewer notice", error);
-	return session_present_text(session, text, length,
-	    SESSION_PRESENT_LINE, "file viewer pre-open blank", error);
-}
-
-static bool
-session_file_viewer_present(void *context, const uint8_t *text,
-    size_t length, bool paged, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	if (paged)
-		return session_present_paged_row(session, text, length);
-	return session_present_text(session, text, length,
-	    SESSION_PRESENT_LINE, "file viewer final blank", error);
-}
-
-static float
-session_file_viewer_save_foreground(struct yt_session *session)
-{
-	return session_foreground(session);
-}
-
 struct session_file_viewer_context {
 	struct yt_session *session;
-	struct yt_text_input input;
-	float *foreground;
-	float saved_foreground;
+	bool notice_presented;
+	bool preopen_blank_presented;
 };
 
 static bool
-session_file_viewer_close(void *context, struct yt_error *error)
-{
-	struct session_file_viewer_context *viewer = context;
-
-	return yt_text_input_close(&viewer->input, error);
-}
-
-static bool
-session_file_viewer_open(void *context, const char *path,
-    struct yt_error *error)
-{
-	struct session_file_viewer_context *viewer = context;
-
-	/* A5A9 commits the counter reset before the fallible OPEN. */
-	session_set_pager_line_count(viewer->session,
-	    viewer->session->pager.line_count);
-	return yt_text_input_open(&viewer->input, path, error);
-}
-
-static bool
-session_file_viewer_eof(void *context, bool *eof, struct yt_error *error)
-{
-	struct session_file_viewer_context *viewer = context;
-
-	return yt_text_input_eof(&viewer->input, eof, error);
-}
-
-static bool
-session_file_viewer_read(void *context, const uint8_t **line,
-    size_t *length, bool *available, struct yt_error *error)
-{
-	struct session_file_viewer_context *viewer = context;
-
-	return yt_text_input_read_line(&viewer->input, line, length, available,
-	    error);
-}
-
-static bool
-session_file_viewer_stream_present(void *context, const uint8_t *text,
+session_file_viewer_output(void *context, const uint8_t *text,
     size_t length, bool paged, struct yt_error *error)
 {
 	struct session_file_viewer_context *viewer = context;
 
+	if (!viewer->notice_presented) {
+		viewer->notice_presented = true;
+		return paged && session_present_paged_line(viewer->session,
+		    text, length, "file viewer notice", error);
+	}
+	if (!viewer->preopen_blank_presented) {
+		viewer->preopen_blank_presented = true;
+		return !paged && session_present_text(viewer->session, text,
+		    length, SESSION_PRESENT_LINE,
+		    "file viewer pre-open blank", error);
+	}
+	session_set_foreground(viewer->session,
+	    viewer->session->presentation.foreground);
 	if (paged)
-		session_set_foreground(viewer->session, *viewer->foreground);
-	else
-		session_set_foreground(viewer->session, viewer->saved_foreground);
-	return session_file_viewer_present(viewer->session, text, length, paged,
-	    error);
-}
-
-static void
-session_file_viewer_set_bold(void *context, float value)
-{
-	struct session_file_viewer_context *viewer = context;
-
-	yt_present_set_bold(&viewer->session->presentation, value);
+		return session_present_paged_row(viewer->session, text, length);
+	return session_present_text(viewer->session, text, length,
+	    SESSION_PRESENT_LINE, "file viewer final blank", error);
 }
 
 static bool
@@ -1842,48 +1775,28 @@ static bool
 display_game_file(struct yt_session *session, const char *path,
     struct yt_error *error)
 {
-	static const struct yt_file_viewer_stream_ops ops = {
-		session_file_viewer_close,
-		session_file_viewer_open,
-		session_file_viewer_eof,
-		session_file_viewer_read,
-		session_file_viewer_stream_present,
-	};
 	struct session_file_viewer_context context;
 	struct yt_error local_error;
 	struct yt_error *active_error = error == NULL ? &local_error : error;
-	float saved_foreground = session_file_viewer_save_foreground(session);
+	float saved_foreground = session_foreground(session);
 	int saved_pager_foreground = session_pager_foreground(session);
-	float foreground_carrier = saved_foreground;
-	int pager_foreground_carrier = saved_pager_foreground;
-	struct yt_file_viewer_stream_state state = {
-		.play = {
-			.foreground = &foreground_carrier,
-			.pager_foreground = &pager_foreground_carrier,
-			.bold = &session->presentation.bold,
-			.set_bold = session_file_viewer_set_bold,
-			.line_count = &session->pager.line_count,
-			.pager_key = session->pager.key,
-			.saved_foreground = saved_foreground,
-			.saved_pager_foreground = saved_pager_foreground,
-		},
-		.path = path,
+	struct yt_file_viewer_state state = {
+		.foreground = &session->presentation.foreground,
+		.pager_foreground = &session->pager.foreground,
+		.bold = &session->presentation.bold,
+		.line_count = &session->pager.line_count,
+		.pager_key = session->pager.key,
+		.saved_foreground = saved_foreground,
+		.saved_pager_foreground = saved_pager_foreground,
 	};
 	bool ok;
 
 	memset(&context, 0, sizeof(context));
 	context.session = session;
-	context.foreground = &foreground_carrier;
-	context.saved_foreground = saved_foreground;
 	if (error == NULL)
 		yt_error_clear(&local_error);
-	if (!yt_file_viewer_entry(session->pager.key,
-	    &session->pager.line_count, session_file_viewer_entry_present,
-	    session, active_error))
-		return false;
-	yt_text_input_init(&context.input);
-	ok = yt_file_viewer_stream_run(&state, &ops, &context, active_error);
-	yt_text_input_destroy(&context.input);
+	ok = yt_file_viewer_display(path, &state,
+	    session_file_viewer_output, &context, active_error);
 	if (ok)
 		session_set_pager_line_count(session, session->pager.line_count);
 	if (!ok && active_error->status == YT_NOT_FOUND) {

@@ -626,196 +626,87 @@ done:
 	return result;
 }
 
-static void file_viewer_classify(const uint8_t *line, size_t length,
-    struct yt_file_viewer_record *record);
-
-bool
-yt_file_viewer_next(const uint8_t *data, size_t data_length,
-    size_t *cursor, const char *pager_key, uint8_t *line, size_t capacity,
-    struct yt_file_viewer_record *record)
+static int
+file_viewer_foreground(const uint8_t *line, size_t length)
 {
-	bool eof;
-	bool stopped;
-
-	if (cursor == NULL || pager_key == NULL || record == NULL
-	    || (data == NULL && data_length != 0U) || *cursor > data_length)
-		return false;
-	memset(record, 0, sizeof(*record));
-	record->eof_checked = true;
-	eof = *cursor >= data_length
-	    || (data != NULL && data[*cursor] == 0x1aU);
-	record->key_checked = true;
-	stopped = strcmp(pager_key, "Q") == 0;
-	if (eof || stopped)
-		return true;
-	if (!yt_text_line_input_next(data, data_length, cursor, line, capacity,
-	    &record->length, &record->available))
-		return false;
-	if (!record->available)
-		return true;
-	file_viewer_classify(line, record->length, record);
-	return true;
+	if (length >= 4U && memcmp(line, "  - ", 4U) == 0)
+		return 3;
+	if (length >= 4U && memcmp(line, " ***", 4U) == 0)
+		return 4;
+	if (length >= 4U && memcmp(line, " +++", 4U) == 0)
+		return 1;
+	if (length >= 3U && memcmp(line, "-=*", 3U) == 0)
+		return 7;
+	return 2;
 }
 
 bool
-yt_file_viewer_entry(char *pager_key, float *line_count,
+yt_file_viewer_display(const char *path, struct yt_file_viewer_state *state,
     yt_file_viewer_present_fn present, void *context,
     struct yt_error *error)
 {
 	static const uint8_t notice[] = "Cntl-X to Stop";
+	struct yt_text_input input;
+	bool result = false;
 
-	if (pager_key == NULL || line_count == NULL || present == NULL)
+	if (path == NULL || state == NULL || present == NULL
+	    || state->foreground == NULL
+	    || state->pager_foreground == NULL || state->bold == NULL
+	    || state->line_count == NULL || state->pager_key == NULL) {
+		errno = 0;
+		set_error(error, YT_INVALID, "file viewer", path);
 		return false;
-	pager_key[0] = '\0';
+	}
+	state->pager_key[0] = '\0';
 	if (!present(context, notice, sizeof(notice) - 1U, true, error)
 	    || !present(context, NULL, 0U, false, error))
 		return false;
-	return true;
-}
-
-bool
-yt_file_viewer_play(const uint8_t *data, size_t data_length,
-    struct yt_file_viewer_play_state *state,
-    yt_file_viewer_present_fn present, void *context,
-    struct yt_error *error)
-{
-	uint8_t *line;
-	size_t cursor = 0U;
-	bool ok = true;
-
-	if (state == NULL || state->foreground == NULL
-	    || state->pager_foreground == NULL || state->bold == NULL
-	    || state->line_count == NULL || state->pager_key == NULL
-	    || present == NULL || (data == NULL && data_length != 0U))
-		return false;
-	line = malloc(data_length == 0U ? 1U : data_length);
-	if (line == NULL) {
-		if (error != NULL)
-			error->status = YT_NO_MEMORY;
-		return false;
-	}
-	for (;;) {
-		struct yt_file_viewer_record record;
-
-		if (!yt_file_viewer_next(data, data_length, &cursor,
-		    state->pager_key, line, data_length, &record)) {
-			ok = false;
-			break;
-		}
-		if (!record.available)
-			break;
-		*state->foreground = (float)record.foreground;
-		*state->pager_foreground = record.foreground;
-		if (record.set_bold) {
-			*state->bold = 1.0f;
-			if (state->set_bold != NULL)
-				state->set_bold(context, *state->bold);
-		}
-		if (!present(context, line, record.length, true, error)) {
-			ok = false;
-			break;
-		}
-	}
-	free(line);
-	if (!ok)
-		return false;
+	yt_text_input_init(&input);
+	if (!yt_text_input_close(&input, error))
+		goto done;
 	*state->line_count = 0.0f;
-	*state->foreground = state->saved_foreground;
-	*state->pager_foreground = state->saved_pager_foreground;
-	return present(context, NULL, 0U, false, error);
-}
-
-static void
-file_viewer_classify(const uint8_t *line, size_t length,
-    struct yt_file_viewer_record *record)
-{
-	record->available = true;
-	record->length = length;
-	record->foreground = 2;
-	if (length >= 4U && memcmp(line, "  - ", 4U) == 0)
-		record->foreground = 3;
-	else if (length >= 4U && memcmp(line, " ***", 4U) == 0)
-		record->foreground = 4;
-	else if (length >= 4U && memcmp(line, " +++", 4U) == 0)
-		record->foreground = 1;
-	else if (length >= 3U && memcmp(line, "-=*", 3U) == 0)
-		record->foreground = 7;
-	record->set_bold = record->foreground != 2;
-}
-
-bool
-yt_file_viewer_stream_run(struct yt_file_viewer_stream_state *state,
-    const struct yt_file_viewer_stream_ops *ops, void *context,
-    struct yt_error *error)
-{
-	struct yt_file_viewer_play_state *play;
-
-	if (state == NULL || state->path == NULL || ops == NULL
-	    || ops->close == NULL || ops->open == NULL || ops->eof == NULL
-	    || ops->read == NULL || ops->present == NULL) {
-		errno = 0;
-		set_error(error, YT_INVALID, "stream file viewer", NULL);
-		return false;
-	}
-	play = &state->play;
-	if (play->foreground == NULL || play->pager_foreground == NULL
-	    || play->bold == NULL || play->line_count == NULL
-	    || play->pager_key == NULL) {
-		errno = 0;
-		set_error(error, YT_INVALID, "stream file viewer", state->path);
-		return false;
-	}
-	state->file_open = false;
-	state->eof_checks = 0U;
-	state->key_checks = 0U;
-	state->read_count = 0U;
-	state->line_count = 0U;
-	if (!ops->close(context, error))
-		return false;
-	*play->line_count = 0.0f;
-	if (!ops->open(context, state->path, error))
-		return false;
-	state->file_open = true;
+	if (!yt_text_input_open(&input, path, error))
+		goto done;
 	for (;;) {
 		const uint8_t *line;
 		size_t length;
 		bool available;
 		bool eof;
 		bool stopped;
-		struct yt_file_viewer_record record;
+		int foreground;
 
-		if (!ops->eof(context, &eof, error))
-			return false;
-		++state->eof_checks;
-		stopped = strcmp(play->pager_key, "Q") == 0;
-		++state->key_checks;
+		if (!yt_text_input_eof(&input, &eof, error))
+			goto done;
+		stopped = strcmp(state->pager_key, "Q") == 0;
 		if (eof || stopped)
 			break;
-		if (!ops->read(context, &line, &length, &available, error))
-			return false;
-		++state->read_count;
+		if (!yt_text_input_read_line(&input, &line, &length, &available,
+		    error))
+			goto done;
 		if (!available) {
 			errno = 0;
 			set_error(error, YT_EOF, "LINE INPUT after EOF check",
-			    state->path);
-			return false;
+			    path);
+			goto done;
 		}
-		file_viewer_classify(line, length, &record);
-		*play->foreground = (float)record.foreground;
-		*play->pager_foreground = record.foreground;
-		if (record.set_bold)
-			*play->bold = 1.0f;
-		if (!ops->present(context, line, length, true, error))
-			return false;
-		++state->line_count;
+		foreground = file_viewer_foreground(line, length);
+		*state->foreground = (float)foreground;
+		*state->pager_foreground = foreground;
+		if (foreground != 2)
+			*state->bold = 1.0f;
+		if (!present(context, line, length, true, error))
+			goto done;
 	}
-	if (!ops->close(context, error))
-		return false;
-	state->file_open = false;
-	*play->line_count = 0.0f;
-	*play->foreground = play->saved_foreground;
-	*play->pager_foreground = play->saved_pager_foreground;
-	return ops->present(context, NULL, 0U, false, error);
+	if (!yt_text_input_close(&input, error))
+		goto done;
+	*state->line_count = 0.0f;
+	*state->foreground = state->saved_foreground;
+	*state->pager_foreground = state->saved_pager_foreground;
+	result = present(context, NULL, 0U, false, error);
+
+done:
+	yt_text_input_destroy(&input);
+	return result;
 }
 
 bool

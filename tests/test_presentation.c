@@ -1056,14 +1056,10 @@ struct viewer_pager_join {
 	size_t response_calls;
 	bool response_from_queue;
 	size_t direct_calls;
-	size_t total_rows;
 	size_t position;
-	size_t eof_calls;
-	size_t read_calls;
 	size_t active_row;
 	size_t active_sample;
 	size_t ctrl_x_row;
-	uint8_t line[32];
 	uint8_t local_rows[600][80];
 	size_t local_lengths[600];
 	size_t local_row_count;
@@ -1072,8 +1068,6 @@ struct viewer_pager_join {
 	int local_foregrounds[1200];
 	int local_backgrounds[1200];
 	size_t local_color_count;
-	bool file_open;
-	bool final_blank;
 };
 
 static bool
@@ -1314,62 +1308,6 @@ static const struct yt_paged_row_ops viewer_pager_ops = {
 };
 
 static bool
-viewer_pager_close(void *context, struct yt_error *error)
-{
-	struct viewer_pager_join *join = context;
-
-	(void)error;
-	join->file_open = false;
-	return true;
-}
-
-static bool
-viewer_pager_open(void *context, const char *path, struct yt_error *error)
-{
-	struct viewer_pager_join *join = context;
-
-	(void)path;
-	(void)error;
-	join->file_open = true;
-	return true;
-}
-
-static bool
-viewer_pager_eof(void *context, bool *eof, struct yt_error *error)
-{
-	struct viewer_pager_join *join = context;
-
-	(void)error;
-	++join->eof_calls;
-	*eof = join->position == join->total_rows;
-	return true;
-}
-
-static bool
-viewer_pager_read(void *context, const uint8_t **line, size_t *length,
-    bool *available, struct yt_error *error)
-{
-	struct viewer_pager_join *join = context;
-	int count;
-
-	(void)error;
-	CHECK(join->position < join->total_rows);
-	if (join->position >= join->total_rows)
-		return false;
-	++join->position;
-	++join->read_calls;
-	count = snprintf((char *)join->line, sizeof(join->line), "row %02zu",
-	    join->position);
-	CHECK(count > 0 && (size_t)count < sizeof(join->line));
-	if (count <= 0 || (size_t)count >= sizeof(join->line))
-		return false;
-	*line = join->line;
-	*length = (size_t)count;
-	*available = true;
-	return true;
-}
-
-static bool
 viewer_pager_stream_present(void *context, const uint8_t *text,
     size_t length, bool paged, struct yt_error *error)
 {
@@ -1384,7 +1322,6 @@ viewer_pager_stream_present(void *context, const uint8_t *text,
 		    != YT_PRESENT_OK)
 			return false;
 		viewer_pager_capture_result(join, &result);
-		join->final_blank = true;
 		return true;
 	}
 	join->active_row = join->position;
@@ -1396,25 +1333,25 @@ viewer_pager_stream_present(void *context, const uint8_t *text,
 	return ok;
 }
 
-static const struct yt_file_viewer_stream_ops viewer_pager_stream_ops = {
-	viewer_pager_close,
-	viewer_pager_open,
-	viewer_pager_eof,
-	viewer_pager_read,
-	viewer_pager_stream_present,
+struct viewer_file_fixture {
+	struct yt_file_viewer_state state;
+	const char *path;
+	size_t eof_checks;
+	size_t key_checks;
+	size_t read_count;
+	size_t line_count;
 };
 
 static void
 viewer_pager_initialize(struct viewer_pager_join *join,
-    struct yt_file_viewer_stream_state *stream, size_t rows,
-    float initial_count, const char *response, size_t ctrl_x_row)
+    struct viewer_file_fixture *stream, float initial_count,
+    const char *response, size_t ctrl_x_row)
 {
 	memset(join, 0, sizeof(*join));
 	join->presentation = state(false);
 	join->presentation.foreground = 6.0f;
 	join->pager.foreground = 6;
 	join->pager.line_count = initial_count;
-	join->total_rows = rows;
 	join->ctrl_x_row = ctrl_x_row;
 	(void)snprintf(join->response, sizeof(join->response), "%s", response);
 	(void)snprintf(join->accumulator, sizeof(join->accumulator), "%s",
@@ -1430,108 +1367,13 @@ viewer_pager_initialize(struct viewer_pager_join *join,
 	join->key_state.pager_key = join->pager.key;
 	join->key_state.pager_key_capacity = sizeof(join->pager.key);
 	memset(stream, 0, sizeof(*stream));
-	stream->path = "joined.txt";
-	stream->play.foreground = &join->presentation.foreground;
-	stream->play.pager_foreground = &join->pager.foreground;
-	stream->play.bold = &join->presentation.bold;
-	stream->play.line_count = &join->pager.line_count;
-	stream->play.pager_key = join->pager.key;
-	stream->play.saved_foreground = 6.0f;
-	stream->play.saved_pager_foreground = 6;
-}
-
-static void
-test_file_viewer_pager_join(void)
-{
-	static const uint8_t ansi_one_row[] =
-	    "\x1b[0;32;40mrow 01\n\r\x1b[0;36;40m\r\n";
-	static const enum viewer_pager_event threshold_events[] = {
-		VIEWER_PAGER_CARRIER, VIEWER_PAGER_SAMPLE,
-		VIEWER_PAGER_PRESENT, VIEWER_PAGER_CARRIER,
-		VIEWER_PAGER_FINISH,
-		VIEWER_PAGER_CARRIER, VIEWER_PAGER_SAMPLE,
-		VIEWER_PAGER_PRESENT, VIEWER_PAGER_CARRIER,
-		VIEWER_PAGER_FINISH, VIEWER_PAGER_RESPONSE,
-	};
-	struct viewer_pager_join join;
-	struct yt_file_viewer_stream_state stream;
-	struct yt_error error;
-	size_t failure;
-	size_t index;
-
-	viewer_pager_initialize(&join, &stream, 24U, 0.0f, "E", 0U);
-	CHECK(yt_file_viewer_stream_run(&stream, &viewer_pager_stream_ops,
-	    &join, NULL));
-	CHECK(join.read_calls == 23U && join.eof_calls == 24U
-	    && strcmp(join.pager.key, "Q") == 0
-	    && join.source_length == 1U && join.source[0] == '\r'
-	    && !join.file_open && join.final_blank);
-
-	viewer_pager_initialize(&join, &stream, 24U, 0.0f, "", 5U);
-	CHECK(yt_file_viewer_stream_run(&stream, &viewer_pager_stream_ops,
-	    &join, NULL));
-	CHECK(join.read_calls == 5U && join.eof_calls == 6U
-	    && strcmp(join.pager.key, "Q") == 0
-	    && join.source_length == 6U
-	    && memcmp(join.source, "row 05", 6U) == 0
-	    && join.accumulator[0] == '\0' && join.queue_length == 0U);
-
-	viewer_pager_initialize(&join, &stream, 24U, 0.0f, "", 23U);
-	CHECK(yt_file_viewer_stream_run(&stream, &viewer_pager_stream_ops,
-	    &join, NULL));
-	CHECK(join.read_calls == 24U && join.eof_calls == 25U
-	    && join.pager.key[0] == '\0' && join.queue_length == 0U
-	    && join.source_length == 6U
-	    && memcmp(join.source, "row 24", 6U) == 0);
-
-	viewer_pager_initialize(&join, &stream, 24U, 0.0f, "NS", 0U);
-	CHECK(yt_file_viewer_stream_run(&stream, &viewer_pager_stream_ops,
-	    &join, NULL));
-	CHECK(join.read_calls == 24U && join.eof_calls == 25U
-	    && strcmp(join.pager.key, "NS") == 0
-	    && join.pager.nonstop == 1.0f
-	    && join.source_length == 6U
-	    && memcmp(join.source, "row 24", 6U) == 0);
-
-	viewer_pager_initialize(&join, &stream, 1U, 0.0f, "", 0U);
-	join.presentation = state(true);
-	join.presentation.foreground = 6.0f;
-	CHECK(yt_file_viewer_stream_run(&stream, &viewer_pager_stream_ops,
-	    &join, NULL));
-	CHECK(join.capture.remote_length == sizeof(ansi_one_row) - 1U
-	    && memcmp(join.capture.remote, ansi_one_row,
-	    sizeof(ansi_one_row) - 1U) == 0);
-	CHECK(join.presentation.foreground == 6.0f);
-	CHECK(join.presentation.cached_foreground == 6.0f);
-	CHECK(join.capture.last_local_foreground == 3);
-
-	viewer_pager_initialize(&join, &stream, 1U, 0.0f, "", 0U);
-	join.presentation.sound.mode = 2.0f;
-	CHECK(yt_file_viewer_stream_run(&stream, &viewer_pager_stream_ops,
-	    &join, NULL));
-	CHECK(join.capture.remote_length == 2U
-	    && memcmp(join.capture.remote, "\r\n", 2U) == 0);
-	CHECK(join.presentation.foreground == 6.0f);
-	CHECK(join.capture.last_local_foreground == 7);
-
-	for (failure = 1U; failure <= YT_ARRAY_LEN(threshold_events);
-	    ++failure) {
-		viewer_pager_initialize(&join, &stream, 23U, 0.0f, "E", 0U);
-		join.fail_at = 110U + failure;
-		yt_error_clear(&error);
-		CHECK(!yt_file_viewer_stream_run(&stream,
-		    &viewer_pager_stream_ops, &join, &error));
-		CHECK(error.status == YT_IO_ERROR
-		    && join.event_count == 110U + failure
-		    && memcmp(join.events + 110U, threshold_events,
-		    failure * sizeof(threshold_events[0])) == 0
-		    && stream.file_open && join.file_open
-		    && stream.eof_checks == 23U && stream.read_count == 23U
-		    && stream.line_count == 22U);
-		for (index = 0U; index < 110U; ++index)
-			CHECK(join.events[index]
-			    == threshold_events[index % 5U]);
-	}
+	stream->state.foreground = &join->presentation.foreground;
+	stream->state.pager_foreground = &join->pager.foreground;
+	stream->state.bold = &join->presentation.bold;
+	stream->state.line_count = &join->pager.line_count;
+	stream->state.pager_key = join->pager.key;
+	stream->state.saved_foreground = 6.0f;
+	stream->state.saved_pager_foreground = 6;
 }
 
 static const char *const startup_ascii_lines[] = {
@@ -1556,92 +1398,11 @@ static const char *const startup_ascii_lines[] = {
 
 struct physical_viewer_join {
 	struct viewer_pager_join join;
-	struct yt_text_input input;
 	const uint8_t *fixture;
 	size_t fixture_length;
-	const char *expected_path;
-	size_t close_calls;
-	size_t open_calls;
 	bool force_missing;
+	bool notice_presented;
 };
-
-static bool
-physical_viewer_close(void *context, struct yt_error *error)
-{
-	struct physical_viewer_join *startup = context;
-	bool ok;
-
-	++startup->close_calls;
-	ok = yt_text_input_close(&startup->input, error);
-	if (ok)
-		startup->join.file_open = false;
-	return ok;
-}
-
-static bool
-physical_viewer_open(void *context, const char *path, struct yt_error *error)
-{
-	struct physical_viewer_join *startup = context;
-	bool ok;
-
-	++startup->open_calls;
-	if (startup->force_missing) {
-		if (error != NULL) {
-			error->status = YT_NOT_FOUND;
-			(void)snprintf(error->operation,
-			    sizeof(error->operation), "%s", "open input");
-			(void)snprintf(error->path, sizeof(error->path), "%s", path);
-		}
-		return false;
-	}
-	if (startup->fixture == NULL)
-		ok = yt_text_input_open(&startup->input, path, error);
-	else {
-		CHECK(startup->expected_path != NULL
-		    && strcmp(path, startup->expected_path) == 0
-		    && startup->input.file == NULL);
-		if (startup->expected_path == NULL
-		    || strcmp(path, startup->expected_path) != 0
-		    || startup->input.file != NULL)
-			return false;
-		startup->input.file = tmpfile();
-		ok = startup->input.file != NULL
-		    && fwrite(startup->fixture, 1U, startup->fixture_length,
-		    startup->input.file) == startup->fixture_length
-		    && fseek(startup->input.file, 0L, SEEK_SET) == 0;
-		if (ok)
-			(void)snprintf(startup->input.path,
-			    sizeof(startup->input.path), "%s", path);
-		else if (startup->input.file != NULL) {
-			(void)fclose(startup->input.file);
-			startup->input.file = NULL;
-		}
-	}
-	if (ok)
-		startup->join.file_open = true;
-	return ok;
-}
-
-static bool
-physical_viewer_eof(void *context, bool *eof, struct yt_error *error)
-{
-	struct physical_viewer_join *startup = context;
-
-	return yt_text_input_eof(&startup->input, eof, error);
-}
-
-static bool
-physical_viewer_read(void *context, const uint8_t **line, size_t *length,
-    bool *available, struct yt_error *error)
-{
-	struct physical_viewer_join *startup = context;
-	bool ok = yt_text_input_read_line(&startup->input, line, length,
-	    available, error);
-
-	if (ok && *available)
-		++startup->join.position;
-	return ok;
-}
 
 static bool
 physical_viewer_present(void *context, const uint8_t *text, size_t length,
@@ -1649,17 +1410,13 @@ physical_viewer_present(void *context, const uint8_t *text, size_t length,
 {
 	struct physical_viewer_join *startup = context;
 
+	if (paged && !startup->notice_presented)
+		startup->notice_presented = true;
+	else if (paged)
+		++startup->join.position;
 	return viewer_pager_stream_present(&startup->join, text, length, paged,
 	    error);
 }
-
-static const struct yt_file_viewer_stream_ops physical_viewer_ops = {
-	physical_viewer_close,
-	physical_viewer_open,
-	physical_viewer_eof,
-	physical_viewer_read,
-	physical_viewer_present,
-};
 
 static bool
 startup_ascii_append(uint8_t *output, size_t capacity, size_t *length,
@@ -1710,10 +1467,10 @@ startup_ascii_expected(uint8_t *output, size_t capacity, bool ansi,
 
 static void
 startup_ascii_initialize(struct physical_viewer_join *startup,
-    struct yt_file_viewer_stream_state *stream, bool ansi, float mode,
+    struct viewer_file_fixture *stream, bool ansi, float mode,
     float snoop, size_t ctrl_x_row)
 {
-	viewer_pager_initialize(&startup->join, stream, 0U, 0.0f, "",
+	viewer_pager_initialize(&startup->join, stream, 0.0f, "",
 	    ctrl_x_row);
 	startup->join.presentation = state(ansi);
 	startup->join.presentation.sound.mode = mode;
@@ -1727,25 +1484,56 @@ startup_ascii_initialize(struct physical_viewer_join *startup,
 	startup->join.queue_position = 0U;
 	startup->join.queue_length = 0U;
 	stream->path = YT_DATA_DIR "YTOPEN.ASC";
-	yt_text_input_init(&startup->input);
 }
 
 static bool
 physical_viewer_run(struct physical_viewer_join *startup,
-    struct yt_file_viewer_stream_state *stream, struct yt_error *error)
+    struct viewer_file_fixture *stream, struct yt_error *error)
 {
+	FILE *file;
 	struct yt_present_result result;
+	bool displayed;
+	bool fixture_created = false;
 
 	if (yt_present_line(NULL, 0U, &startup->join.presentation, &result)
 	    != YT_PRESENT_OK)
 		return false;
 	viewer_pager_capture_result(&startup->join, &result);
-	if (!yt_file_viewer_entry(startup->join.pager.key,
-	    &startup->join.pager.line_count, viewer_pager_stream_present,
-	    &startup->join, error))
+	if (startup->force_missing) {
+		file = fopen(stream->path, "rb");
+		if (file != NULL) {
+			(void)fclose(file);
+			return false;
+		}
+	}
+	else if (startup->fixture != NULL) {
+		bool closed;
+		bool written;
+
+		file = fopen(stream->path, "wb");
+		if (file == NULL)
+			return false;
+		written = fwrite(startup->fixture, 1U,
+		    startup->fixture_length, file) == startup->fixture_length;
+		closed = fclose(file) == 0;
+		fixture_created = written && closed;
+		if (!fixture_created) {
+			(void)remove(stream->path);
+			return false;
+		}
+	}
+	startup->notice_presented = false;
+	displayed = yt_file_viewer_display(stream->path, &stream->state,
+	    physical_viewer_present, startup, error);
+	stream->read_count = startup->join.position;
+	stream->line_count = startup->join.position;
+	if (displayed) {
+		stream->eof_checks = startup->join.position + 1U;
+		stream->key_checks = stream->eof_checks;
+	}
+	if (fixture_created && remove(stream->path) != 0)
 		return false;
-	return yt_file_viewer_stream_run(stream, &physical_viewer_ops, startup,
-	    error);
+	return displayed;
 }
 
 static void
@@ -1789,7 +1577,7 @@ static void
 test_startup_ascii_physical_join(void)
 {
 	struct physical_viewer_join startup;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct yt_error error;
 	uint8_t expected[600];
 	size_t expected_length;
@@ -1806,7 +1594,6 @@ test_startup_ascii_physical_join(void)
 	    expected_length) == 0);
 	startup_ascii_check_rows(&startup.join,
 	    YT_ARRAY_LEN(startup_ascii_lines));
-		yt_text_input_destroy(&startup.input);
 
 	memset(&startup, 0, sizeof(startup));
 	startup_ascii_initialize(&startup, &stream, false, 0.0f, -1.0f, 0U);
@@ -1822,7 +1609,6 @@ test_startup_ascii_physical_join(void)
 	    && startup.join.capture.last_local_foreground == 7);
 	startup_ascii_check_rows(&startup.join,
 	    YT_ARRAY_LEN(startup_ascii_lines));
-	yt_text_input_destroy(&startup.input);
 
 	memset(&startup, 0, sizeof(startup));
 	startup_ascii_initialize(&startup, &stream, true, 1.0f, -1.0f, 0U);
@@ -1832,7 +1618,6 @@ test_startup_ascii_physical_join(void)
 	    && stream.read_count == 17U);
 	startup_ascii_check_rows(&startup.join,
 	    YT_ARRAY_LEN(startup_ascii_lines));
-	yt_text_input_destroy(&startup.input);
 
 	memset(&startup, 0, sizeof(startup));
 	startup_ascii_initialize(&startup, &stream, true, 2.0f, 0.0f, 0U);
@@ -1843,7 +1628,6 @@ test_startup_ascii_physical_join(void)
 	    && startup.join.local_row_count == 0U
 	    && startup.join.sample_calls == 18U
 	    && stream.read_count == 17U);
-	yt_text_input_destroy(&startup.input);
 
 	memset(&startup, 0, sizeof(startup));
 	startup_ascii_initialize(&startup, &stream, true, 0.0f, -1.0f, 2U);
@@ -1865,7 +1649,6 @@ test_startup_ascii_physical_join(void)
 	    && startup.join.accumulator[0] == '\0'
 	    && startup.join.queue_length == 0U);
 	startup_ascii_check_rows(&startup.join, 2U);
-	yt_text_input_destroy(&startup.input);
 }
 
 static uint64_t
@@ -1921,10 +1704,10 @@ viewer_colors_fnv1a64(const struct viewer_pager_join *join)
 
 static void
 instruction_viewer_initialize(struct physical_viewer_join *viewer,
-    struct yt_file_viewer_stream_state *stream, int foreground, bool ansi,
+    struct viewer_file_fixture *stream, int foreground, bool ansi,
     uint8_t *remote, size_t remote_capacity)
 {
-	viewer_pager_initialize(&viewer->join, stream, 0U, 0.0f, "", 0U);
+	viewer_pager_initialize(&viewer->join, stream, 0.0f, "", 0U);
 	viewer->join.presentation = state(ansi);
 	viewer->join.presentation.foreground = (float)foreground;
 	viewer->join.presentation.cached_foreground =
@@ -1938,9 +1721,8 @@ instruction_viewer_initialize(struct physical_viewer_join *viewer,
 	viewer->join.remote_output = remote;
 	viewer->join.remote_capacity = remote_capacity;
 	stream->path = YT_DATA_DIR "YTINSTR.DOC";
-	stream->play.saved_foreground = (float)foreground;
-	stream->play.saved_pager_foreground = foreground;
-	yt_text_input_init(&viewer->input);
+	stream->state.saved_foreground = (float)foreground;
+	stream->state.saved_pager_foreground = foreground;
 }
 
 static void
@@ -1972,7 +1754,7 @@ test_instruction_physical_viewer_join(void)
 	static const uint8_t final_row[] =
 	    "Door Distribution System Headquarters";
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[27000];
 	size_t pass;
 
@@ -2046,15 +1828,11 @@ test_instruction_physical_viewer_join(void)
 		    && stream.key_checks == 543U
 		    && stream.read_count == 542U
 		    && stream.line_count == 542U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 2U
-		    && viewer.open_calls == 1U
 		    && viewer.join.source_length == sizeof(final_row) - 1U
 		    && memcmp(viewer.join.source, final_row,
 		    sizeof(final_row) - 1U) == 0
 		    && viewer.join.accumulator[0] == '\0'
 		    && viewer.join.queue_length == 0U);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -2083,11 +1861,11 @@ static const uint8_t retained_yesterday_news[] =
 
 static void
 fixture_viewer_initialize(struct physical_viewer_join *viewer,
-    struct yt_file_viewer_stream_state *stream, const uint8_t *fixture,
+    struct viewer_file_fixture *stream, const uint8_t *fixture,
     size_t fixture_length, const char *path, bool ansi, uint8_t *remote,
     size_t remote_capacity)
 {
-	viewer_pager_initialize(&viewer->join, stream, 0U, 0.0f, "", 0U);
+	viewer_pager_initialize(&viewer->join, stream, 0.0f, "", 0U);
 	viewer->join.presentation = state(ansi);
 	viewer->join.presentation.foreground = 1.0f;
 	viewer->join.presentation.cached_foreground = ansi ? 1.0f : 0.0f;
@@ -2101,16 +1879,14 @@ fixture_viewer_initialize(struct physical_viewer_join *viewer,
 	viewer->join.remote_capacity = remote_capacity;
 	viewer->fixture = fixture;
 	viewer->fixture_length = fixture_length;
-	viewer->expected_path = path;
 	stream->path = path;
-	stream->play.saved_foreground = 1.0f;
-	stream->play.saved_pager_foreground = 1;
-	yt_text_input_init(&viewer->input);
+	stream->state.saved_foreground = 1.0f;
+	stream->state.saved_pager_foreground = 1;
 }
 
 static bool
 newspaper_viewer_typed_run(struct physical_viewer_join *viewer,
-    struct yt_file_viewer_stream_state *stream, const uint8_t *typed,
+    struct viewer_file_fixture *stream, const uint8_t *typed,
     size_t typed_length)
 {
 	static const uint8_t prompt[] =
@@ -2159,7 +1935,7 @@ newspaper_viewer_typed_run(struct physical_viewer_join *viewer,
 
 static bool
 newspaper_viewer_run(struct physical_viewer_join *viewer,
-    struct yt_file_viewer_stream_state *stream, uint8_t response)
+    struct viewer_file_fixture *stream, uint8_t response)
 {
 	return newspaper_viewer_typed_run(viewer, stream, &response, 1U);
 }
@@ -2225,7 +2001,7 @@ test_newspaper_physical_viewer_join(void)
 		    sizeof(yesterday_final) - 1U},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[800];
 	size_t pass;
 
@@ -2277,16 +2053,12 @@ test_newspaper_physical_viewer_join(void)
 		    && viewer.join.response_calls == 0U
 		    && viewer.join.direct_calls == 2U
 		    && viewer.join.event_count == 5U * (cases[pass].lines + 2U)
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 2U
-		    && viewer.open_calls == 1U
 		    && viewer.join.source_length == cases[pass].final_length
 		    && memcmp(viewer.join.source, cases[pass].final_row,
 		    cases[pass].final_length) == 0
 		    && viewer.join.accumulator[0]
 		    == (char)cases[pass].response
 		    && viewer.join.queue_length == 0U);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -2296,7 +2068,7 @@ test_newspaper_endpoint_modes(void)
 	static const uint8_t corrupt[] =
 	    "\r\n\r\n\r\n\r\n\r\n";
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[32];
 
 	memset(&viewer, 0, sizeof(viewer));
@@ -2306,7 +2078,6 @@ test_newspaper_endpoint_modes(void)
 	viewer.join.presentation.sound.mode = 1.0f;
 	CHECK(newspaper_viewer_run(&viewer, &stream, 'T')
 	    && viewer.join.remote_length == 0U);
-	yt_text_input_destroy(&viewer.input);
 
 	memset(&viewer, 0, sizeof(viewer));
 	fixture_viewer_initialize(&viewer, &stream,
@@ -2316,14 +2087,13 @@ test_newspaper_endpoint_modes(void)
 	CHECK(newspaper_viewer_run(&viewer, &stream, 'T')
 	    && viewer.join.remote_length == sizeof(corrupt) - 1U
 	    && memcmp(remote, corrupt, sizeof(corrupt) - 1U) == 0);
-	yt_text_input_destroy(&viewer.input);
 }
 
 static void
 test_newspaper_pagination_and_ctrl_x(void)
 {
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t long_news[256];
 	uint8_t remote[512];
 	size_t position = 0U;
@@ -2352,7 +2122,6 @@ test_newspaper_pagination_and_ctrl_x(void)
 	    && strcmp(viewer.join.pager.key, "Q") == 0
 	    && viewer.join.source_length == 1U
 	    && viewer.join.source[0] == '\r');
-	yt_text_input_destroy(&viewer.input);
 
 	memset(&viewer, 0, sizeof(viewer));
 	fixture_viewer_initialize(&viewer, &stream,
@@ -2368,7 +2137,6 @@ test_newspaper_pagination_and_ctrl_x(void)
 	    && viewer.join.source_length == sizeof("Cntl-X to Stop") - 1U
 	    && memcmp(viewer.join.source, "Cntl-X to Stop",
 	    sizeof("Cntl-X to Stop") - 1U) == 0);
-	yt_text_input_destroy(&viewer.input);
 }
 
 static const uint8_t retained_scoreboard[] =
@@ -2397,7 +2165,7 @@ static const uint8_t retained_scoreboard[] =
 
 static bool
 scoreboard_viewer_run(struct physical_viewer_join *viewer,
-    struct yt_file_viewer_stream_state *stream, const uint8_t *response,
+    struct viewer_file_fixture *stream, const uint8_t *response,
     size_t response_length, bool updated)
 {
 	static const uint8_t prompt[] =
@@ -2499,7 +2267,7 @@ test_scoreboard_physical_viewer_join(void)
 		    UINT64_C(0xd5ee0fa188f736cd), 22U, 0U, 0U, 22U, 7},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[800];
 	size_t pass;
 
@@ -2549,9 +2317,6 @@ test_scoreboard_physical_viewer_join(void)
 		    && viewer.join.response_calls == 0U
 		    && viewer.join.direct_calls == 2U
 		    && viewer.join.event_count == 5U * b05d_calls
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 2U
-		    && viewer.open_calls == 1U
 		    && viewer.join.source_length == 0U
 		    && strlen(viewer.join.accumulator)
 		    == cases[pass].response_length
@@ -2559,7 +2324,6 @@ test_scoreboard_physical_viewer_join(void)
 		    || memcmp(viewer.join.accumulator, cases[pass].response,
 		    cases[pass].response_length) == 0)
 		    && viewer.join.queue_length == 0U);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -2572,7 +2336,7 @@ test_scoreboard_endpoint_modes(void)
 	static const uint8_t corrupt_updated[] =
 	    "\r\n\r\n\r\n....\r\n\r\n\r\n\r\n";
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[64];
 
 	memset(&viewer, 0, sizeof(viewer));
@@ -2582,7 +2346,6 @@ test_scoreboard_endpoint_modes(void)
 	viewer.join.presentation.sound.mode = 1.0f;
 	CHECK(scoreboard_viewer_run(&viewer, &stream, NULL, 0U, true)
 	    && viewer.join.remote_length == 0U);
-	yt_text_input_destroy(&viewer.input);
 
 	memset(&viewer, 0, sizeof(viewer));
 	fixture_viewer_initialize(&viewer, &stream,
@@ -2593,7 +2356,6 @@ test_scoreboard_endpoint_modes(void)
 	    sizeof(old) - 1U, false)
 	    && viewer.join.remote_length == sizeof(corrupt_old) - 1U
 	    && memcmp(remote, corrupt_old, sizeof(corrupt_old) - 1U) == 0);
-	yt_text_input_destroy(&viewer.input);
 
 	memset(&viewer, 0, sizeof(viewer));
 	fixture_viewer_initialize(&viewer, &stream,
@@ -2604,7 +2366,6 @@ test_scoreboard_endpoint_modes(void)
 	    && viewer.join.remote_length == sizeof(corrupt_updated) - 1U
 	    && memcmp(remote, corrupt_updated,
 	    sizeof(corrupt_updated) - 1U) == 0);
-	yt_text_input_destroy(&viewer.input);
 }
 
 static void
@@ -2627,7 +2388,7 @@ test_normal_exit_scoreboard_viewer_join(void)
 		    20U, 0U, 0U, 20U, 7, 1.0f},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[700];
 	size_t pass;
 
@@ -2673,13 +2434,9 @@ test_normal_exit_scoreboard_viewer_join(void)
 		    && viewer.join.response_calls == 0U
 		    && viewer.join.direct_calls == 2U
 		    && viewer.join.event_count == 100U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 2U
-		    && viewer.open_calls == 1U
 		    && viewer.join.source_length == 0U
 		    && viewer.join.accumulator[0] == '\0'
 		    && viewer.join.queue_length == 0U);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -13557,7 +13314,7 @@ normal_exit_b05d(struct viewer_pager_join *join, const uint8_t *text,
 
 static bool
 computer_newspaper_full_cycle_run(struct physical_viewer_join *viewer,
-    struct yt_file_viewer_stream_state *stream, bool ansi, uint8_t choice)
+    struct viewer_file_fixture *stream, bool ansi, uint8_t choice)
 {
 	static const uint8_t prompt[] =
 	    "Time: 14:59  Computer command (?=help)? ";
@@ -13623,7 +13380,7 @@ test_computer_newspaper_full_cycle_presentation(void)
 		    485U, UINT64_C(0x45869dac22db0a0f), 0.0f},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[800];
 	size_t pass;
 
@@ -13661,17 +13418,13 @@ test_computer_newspaper_full_cycle_presentation(void)
 		    && stream.eof_checks == cases[pass].lines + 1U
 		    && stream.key_checks == cases[pass].lines + 1U
 		    && stream.read_count == cases[pass].lines
-		    && stream.line_count == cases[pass].lines
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 2U
-		    && viewer.open_calls == 1U);
-				yt_text_input_destroy(&viewer.input);
+		    && stream.line_count == cases[pass].lines);
 	}
 }
 
 static bool
 computer_newspaper_low_time_cycle_run(struct physical_viewer_join *viewer,
-    struct yt_file_viewer_stream_state *stream, bool ansi,
+    struct viewer_file_fixture *stream, bool ansi,
     bool invalid_first, size_t *warning_count)
 {
 	static const uint8_t selector_prompt[] =
@@ -13724,8 +13477,8 @@ computer_newspaper_low_time_cycle_run(struct physical_viewer_join *viewer,
 		if (!normal_exit_line(join, NULL, 0U))
 			return false;
 	}
-	stream->play.saved_foreground = join->presentation.foreground;
-	stream->play.saved_pager_foreground = join->pager.foreground;
+	stream->state.saved_foreground = join->presentation.foreground;
+	stream->state.saved_pager_foreground = join->pager.foreground;
 	if (!physical_viewer_run(viewer, stream, NULL)
 	    || !normal_exit_line(join, NULL, 0U))
 		return false;
@@ -13765,7 +13518,7 @@ test_computer_newspaper_low_time_cycles(void)
 		{false, true, 698U, UINT64_C(0xdeb55704ed9ce68d), 3U},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[1000];
 	size_t pass;
 
@@ -13789,14 +13542,13 @@ test_computer_newspaper_low_time_cycles(void)
 		    && memcmp(viewer.join.source, final_prompt,
 		    sizeof(final_prompt) - 1U) == 0
 		    && strcmp(viewer.join.accumulator, "T") == 0);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
 static bool
 computer_newspaper_command_queue_cycle_run(
     struct physical_viewer_join *viewer,
-    struct yt_file_viewer_stream_state *stream, bool ansi)
+    struct viewer_file_fixture *stream, bool ansi)
 {
 	static const uint8_t prompt[] =
 	    "Time: 14:59  Computer command (?=help)? ";
@@ -13857,7 +13609,7 @@ computer_newspaper_command_queue_cycle_run(
 static bool
 computer_newspaper_selector_queue_cycle_run(
     struct physical_viewer_join *viewer,
-    struct yt_file_viewer_stream_state *stream, const uint8_t *typed,
+    struct viewer_file_fixture *stream, const uint8_t *typed,
     size_t typed_length)
 {
 	static const uint8_t prompt[] =
@@ -13921,7 +13673,7 @@ test_computer_newspaper_queue_cycles(void)
 		    UINT64_C(0x8ccd2df3b2861dc2), "NS", "NS", 1.0f},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[1000];
 	uint8_t long_news[512];
 	size_t long_length;
@@ -13942,7 +13694,6 @@ test_computer_newspaper_queue_cycles(void)
 	    && viewer.join.source_length == sizeof(command_prompt) - 1U
 	    && memcmp(viewer.join.source, command_prompt,
 	    sizeof(command_prompt) - 1U) == 0);
-	yt_text_input_destroy(&viewer.input);
 
 	memset(&viewer, 0, sizeof(viewer));
 	fixture_viewer_initialize(&viewer, &stream, retained_current_news,
@@ -13960,7 +13711,6 @@ test_computer_newspaper_queue_cycles(void)
 	    && viewer.join.source_length == sizeof(return_prompt) - 1U
 	    && memcmp(viewer.join.source, return_prompt,
 	    sizeof(return_prompt) - 1U) == 0);
-	yt_text_input_destroy(&viewer.input);
 
 	for (pass = 0U; pass < YT_ARRAY_LEN(page_cases); ++pass) {
 		long_length = computer_newspaper_long_fixture(long_news,
@@ -13983,7 +13733,6 @@ test_computer_newspaper_queue_cycles(void)
 		    && viewer.join.queue_position == 0U
 		    && viewer.join.queue_length == 0U
 		    && viewer.join.pager.line_count == 1.0f);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -14029,7 +13778,7 @@ computer_newspaper_missing_append(void *context, const uint8_t *text,
 
 static bool
 computer_newspaper_missing_cycle_run(struct physical_viewer_join *viewer,
-    struct yt_file_viewer_stream_state *stream, uint8_t choice,
+    struct viewer_file_fixture *stream, uint8_t choice,
     bool fail_append, struct computer_newspaper_missing_join *missing,
     size_t *body_end)
 {
@@ -14046,9 +13795,7 @@ computer_newspaper_missing_cycle_run(struct physical_viewer_join *viewer,
 	memset(missing, 0, sizeof(*missing));
 	missing->viewer = viewer;
 	missing->fail_append = fail_append;
-	if (newspaper_viewer_typed_run(viewer, stream, &choice, 1U)
-	    || viewer->open_calls != 1U || viewer->close_calls != 1U
-	    || viewer->input.file != NULL)
+	if (newspaper_viewer_typed_run(viewer, stream, &choice, 1U))
 		return false;
 	if (!yt_main_error_compose(53, 40000, (const uint8_t *)path,
 	    strlen(path), NULL, 0U, NULL, 0U, &handler)
@@ -14103,7 +13850,7 @@ test_computer_newspaper_missing_recovery_cycles(void)
 		    175U, UINT64_C(0xfcca9072487a3514)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct computer_newspaper_missing_join missing;
 	uint8_t remote[256];
 	size_t body_end;
@@ -14141,7 +13888,6 @@ test_computer_newspaper_missing_recovery_cycles(void)
 		    && viewer.join.source_length == sizeof(return_prompt) - 1U
 		    && memcmp(viewer.join.source, return_prompt,
 		    sizeof(return_prompt) - 1U) == 0);
-		yt_text_input_destroy(&viewer.input);
 	}
 
 	memset(&viewer, 0, sizeof(viewer));
@@ -14161,7 +13907,6 @@ test_computer_newspaper_missing_recovery_cycles(void)
 	    && viewer.join.source_length == sizeof(yesterday_row) - 1U
 	    && memcmp(viewer.join.source, yesterday_row,
 	    sizeof(yesterday_row) - 1U) == 0);
-	yt_text_input_destroy(&viewer.input);
 }
 
 static void
@@ -14179,7 +13924,7 @@ test_computer_newspaper_carrier_prefixes(void)
 		{false, 14U, 152U, UINT64_C(0x029ee90b87a0e090)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[200];
 	size_t pass;
 
@@ -14194,13 +13939,12 @@ test_computer_newspaper_carrier_prefixes(void)
 		    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
 		    == cases[pass].remote_fnv
 		    && viewer.join.pager.line_count == 0.0f);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
 static bool
 computer_scoreboard_full_cycle_run(struct physical_viewer_join *viewer,
-    struct yt_file_viewer_stream_state *stream, bool ansi, bool updated)
+    struct viewer_file_fixture *stream, bool ansi, bool updated)
 {
 	static const uint8_t prompt[] =
 	    "Time: 14:59  Computer command (?=help)? ";
@@ -14259,7 +14003,7 @@ test_computer_scoreboard_full_cycle_presentation(void)
 		{false, true, 820U, UINT64_C(0xc7fe339c3f4d74f5), 0.0f},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[900];
 	size_t pass;
 
@@ -14296,11 +14040,7 @@ test_computer_scoreboard_full_cycle_presentation(void)
 		    sizeof(prompt) - 1U) == 0);
 		CHECK(viewer.join.position == 19U
 		    && stream.eof_checks == 20U && stream.key_checks == 20U
-		    && stream.read_count == 19U && stream.line_count == 19U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 2U
-		    && viewer.open_calls == 1U);
-		yt_text_input_destroy(&viewer.input);
+		    && stream.read_count == 19U && stream.line_count == 19U);
 	}
 }
 
@@ -14316,7 +14056,7 @@ struct normal_exit_body_observation {
 
 static bool
 normal_exit_body_run_info(struct physical_viewer_join *viewer,
-    struct yt_file_viewer_stream_state *stream, bool evaluation,
+    struct viewer_file_fixture *stream, bool evaluation,
     const uint8_t *time_text, size_t time_length, float remembered,
     const struct normal_exit_info_values *info,
     struct normal_exit_body_observation *observation)
@@ -14381,7 +14121,7 @@ normal_exit_body_run_info(struct physical_viewer_join *viewer,
 
 static bool
 normal_exit_body_run(struct physical_viewer_join *viewer,
-    struct yt_file_viewer_stream_state *stream, bool evaluation,
+    struct viewer_file_fixture *stream, bool evaluation,
     const uint8_t *time_text, size_t time_length, float remembered,
     struct normal_exit_body_observation *observation)
 {
@@ -14441,7 +14181,7 @@ test_full_normal_exit_presentation(void)
 		    0U, 0U, 3.0f, 1.0f, 1.0f},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct normal_exit_body_observation observation;
 	uint8_t remote[1600];
 	size_t pass;
@@ -14501,21 +14241,17 @@ test_full_normal_exit_presentation(void)
 		    && viewer.join.response_calls == 0U
 		    && viewer.join.direct_calls == 2U
 		    && viewer.join.event_count == 110U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 2U
-		    && viewer.open_calls == 1U
 		    && viewer.join.source_length == sizeof(returning) - 1U
 		    && memcmp(viewer.join.source, returning,
 		    sizeof(returning) - 1U) == 0
 		    && viewer.join.accumulator[0] == '\0'
 		    && viewer.join.queue_length == 0U);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
 static bool
 direct_fighter_fatal_cycle_run(struct physical_viewer_join *viewer,
-    struct yt_file_viewer_stream_state *stream, bool ansi, size_t ends[3])
+    struct viewer_file_fixture *stream, bool ansi, size_t ends[3])
 {
 	static const uint8_t victim[] = "VICTIM";
 	static const uint8_t current_name[] = "CURRENT";
@@ -14645,7 +14381,7 @@ test_direct_fighter_fatal_cycle_presentation(void)
 		    UINT64_C(0x05c22c7e9ba14f68)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[2000];
 	size_t ends[3];
 	size_t pass;
@@ -14675,11 +14411,7 @@ test_direct_fighter_fatal_cycle_presentation(void)
 		    && viewer.join.position == 19U
 		    && stream.eof_checks == 20U && stream.key_checks == 20U
 		    && stream.read_count == 19U && stream.line_count == 19U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 2U
-		    && viewer.open_calls == 1U
 		    && viewer.join.queue_length == 0U);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -14778,7 +14510,7 @@ test_computer_info_cycle_presentation(void)
 		    UINT64_C(0x6d3fa4669b3587bd), 1.0f},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[900];
 	size_t front_end;
 	size_t info_end;
@@ -14830,11 +14562,7 @@ test_computer_info_cycle_presentation(void)
 		    && viewer.join.event_count == 10U
 		    && viewer.join.position == 0U
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
-		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
-		yt_text_input_destroy(&viewer.input);
+		    && stream.read_count == 0U && stream.line_count == 0U);
 	}
 }
 
@@ -14936,7 +14664,7 @@ test_planet_info_cycle_presentation(void)
 		    UINT64_C(0x01b4fd96ce8921d5), 1.0f},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[900];
 	size_t prompt_end;
 	size_t editor_end;
@@ -14990,11 +14718,7 @@ test_planet_info_cycle_presentation(void)
 		    && viewer.join.event_count == 20U
 		    && viewer.join.position == 0U
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
-		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
-		yt_text_input_destroy(&viewer.input);
+		    && stream.read_count == 0U && stream.line_count == 0U);
 	}
 }
 
@@ -15032,7 +14756,7 @@ test_planet_info_promotion_cycle_presentation(void)
 	struct normal_exit_info_values info;
 	struct normal_exit_info_observation observation;
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct yt_record expected_overlay;
 	uint8_t remote[1100];
 	float written_captain;
@@ -15095,11 +14819,7 @@ test_planet_info_promotion_cycle_presentation(void)
 		    && viewer.join.event_count == 20U
 		    && viewer.join.position == 0U
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
-		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
-		yt_text_input_destroy(&viewer.input);
+		    && stream.read_count == 0U && stream.line_count == 0U);
 	}
 }
 
@@ -15165,7 +14885,7 @@ test_planet_info_captain_route_cycles_presentation(void)
 	struct normal_exit_info_values info;
 	struct normal_exit_info_observation observation;
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[1000];
 	size_t prompt_end;
 	size_t editor_end;
@@ -15233,14 +14953,10 @@ test_planet_info_captain_route_cycles_presentation(void)
 		    && viewer.join.event_count == 20U
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
 		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U
 		    && strcmp(viewer.join.accumulator, "I") == 0
 		    && viewer.join.source_length == sizeof(prompt) - 1U
 		    && memcmp(viewer.join.source, prompt,
 		    sizeof(prompt) - 1U) == 0);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -15477,7 +15193,7 @@ test_planet_sensor_nonzero_cycle_presentation(void)
 		    1.0f, 1.0f, 4U, UINT64_C(0x01b4fd96ce8921d5)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[1400];
 	size_t prompt_end;
 	size_t editor_end;
@@ -15519,11 +15235,7 @@ test_planet_sensor_nonzero_cycle_presentation(void)
 		    && viewer.join.sample_calls == 4U
 		    && viewer.join.event_count == 20U
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
-		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
-		yt_text_input_destroy(&viewer.input);
+		    && stream.read_count == 0U && stream.line_count == 0U);
 	}
 }
 
@@ -15633,7 +15345,7 @@ test_planet_garrison_positive_cycle_presentation(void)
 		    6U, UINT64_C(0x17798e683d05096d), 1.0f, 1.0f},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[400];
 	size_t prompt_end;
 	size_t editor_end;
@@ -15675,11 +15387,7 @@ test_planet_garrison_positive_cycle_presentation(void)
 		    && viewer.join.sample_calls == 6U
 		    && viewer.join.event_count == 30U
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
-		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
-		yt_text_input_destroy(&viewer.input);
+		    && stream.read_count == 0U && stream.line_count == 0U);
 	}
 }
 
@@ -15757,7 +15465,7 @@ static void
 test_planet_bank_cancel_cycle_presentation(void)
 {
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[350];
 	size_t prompt_end;
 	size_t editor_end;
@@ -15801,11 +15509,7 @@ test_planet_bank_cancel_cycle_presentation(void)
 		    && viewer.join.sample_calls == 6U
 		    && viewer.join.event_count == 30U
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
-		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
-		yt_text_input_destroy(&viewer.input);
+		    && stream.read_count == 0U && stream.line_count == 0U);
 	}
 }
 
@@ -15887,7 +15591,7 @@ static void
 test_planet_productivity_blank_cycle_presentation(void)
 {
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[350];
 	size_t prompt_end;
 	size_t editor_end;
@@ -15931,11 +15635,7 @@ test_planet_productivity_blank_cycle_presentation(void)
 		    && viewer.join.sample_calls == 7U
 		    && viewer.join.event_count == 35U
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
-		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
-		yt_text_input_destroy(&viewer.input);
+		    && stream.read_count == 0U && stream.line_count == 0U);
 	}
 }
 
@@ -16196,7 +15896,7 @@ static void
 test_planet_transfer_cancel_cycle_presentation(void)
 {
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[350];
 	size_t prompt_end;
 	size_t editor_end;
@@ -16241,11 +15941,7 @@ test_planet_transfer_cancel_cycle_presentation(void)
 		    && viewer.join.sample_calls == 12U
 		    && viewer.join.event_count == 60U
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
-		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
-		yt_text_input_destroy(&viewer.input);
+		    && stream.read_count == 0U && stream.line_count == 0U);
 	}
 }
 
@@ -16273,7 +15969,7 @@ test_planet_transfer_no_cargo_cycle_presentation(void)
 	    "\r\nYou have 100 free cargo holds.\n\r"
 	    "\r\nTime: 14:59  Planet command (?=help) [A]? ";
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[380];
 	size_t prompt_end;
 	size_t editor_end;
@@ -16326,11 +16022,7 @@ test_planet_transfer_no_cargo_cycle_presentation(void)
 		    && viewer.join.sample_calls == 13U
 		    && viewer.join.event_count == 65U
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
-		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
-		yt_text_input_destroy(&viewer.input);
+		    && stream.read_count == 0U && stream.line_count == 0U);
 	}
 }
 
@@ -16348,7 +16040,7 @@ test_planet_transfer_cargo_cycle_presentation(void)
 	    "\r\nYou have 65 free cargo holds.\n\r"
 	    "\r\nTime: 14:59  Planet command (?=help) [A]? ";
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[350];
 	size_t prompt_end;
 	size_t editor_end;
@@ -16395,11 +16087,7 @@ test_planet_transfer_cargo_cycle_presentation(void)
 		    && viewer.join.sample_calls == 13U
 		    && viewer.join.event_count == 65U
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
-		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
-		yt_text_input_destroy(&viewer.input);
+		    && stream.read_count == 0U && stream.line_count == 0U);
 	}
 }
 
@@ -16429,7 +16117,7 @@ test_planet_transfer_fighter_cycle_presentation(void)
 	    "\r\nYou have 65 free cargo holds.\n\r"
 	    "\r\nTime: 14:59  Planet command (?=help) [A]? ";
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[420];
 	size_t prompt_end;
 	size_t editor_end;
@@ -16483,11 +16171,7 @@ test_planet_transfer_fighter_cycle_presentation(void)
 		    && viewer.join.sample_calls == 14U
 		    && viewer.join.event_count == 70U
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
-		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
-		yt_text_input_destroy(&viewer.input);
+		    && stream.read_count == 0U && stream.line_count == 0U);
 	}
 }
 
@@ -16586,7 +16270,7 @@ test_planet_transfer_direct_cycles_presentation(void)
 		    UINT64_C(0x7d9a8a5b05756741), "M"},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[380];
 	size_t prompt_end;
 	size_t editor_end;
@@ -16649,11 +16333,7 @@ test_planet_transfer_direct_cycles_presentation(void)
 			    && viewer.join.sample_calls == 13U
 			    && viewer.join.event_count == 65U
 			    && stream.eof_checks == 0U && stream.key_checks == 0U
-			    && stream.read_count == 0U && stream.line_count == 0U
-			    && !stream.file_open && !viewer.join.file_open
-			    && viewer.input.file == NULL && viewer.close_calls == 0U
-			    && viewer.open_calls == 0U);
-			yt_text_input_destroy(&viewer.input);
+			    && stream.read_count == 0U && stream.line_count == 0U);
 		}
 	}
 }
@@ -16725,7 +16405,7 @@ test_planet_transfer_remaining_cycles_presentation(void)
 		    UINT64_C(0x253c9a8a65b8802e), "8"},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[380];
 	size_t prompt_end;
 	size_t editor_end;
@@ -16793,11 +16473,7 @@ test_planet_transfer_remaining_cycles_presentation(void)
 			    && viewer.join.event_count
 			    == (index < 2U ? 60U : 65U)
 			    && stream.eof_checks == 0U && stream.key_checks == 0U
-			    && stream.read_count == 0U && stream.line_count == 0U
-			    && !stream.file_open && !viewer.join.file_open
-			    && viewer.input.file == NULL && viewer.close_calls == 0U
-			    && viewer.open_calls == 0U);
-			yt_text_input_destroy(&viewer.input);
+			    && stream.read_count == 0U && stream.line_count == 0U);
 		}
 	}
 #undef TRANSFER_REMAINING_PREFIX
@@ -16876,7 +16552,7 @@ test_planet_rename_protected_cycle_presentation(void)
 		{false, 114U, 191U, UINT64_C(0x8d6f837de0241530)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[250];
 	size_t prompt_end;
 	size_t editor_end;
@@ -16922,11 +16598,7 @@ test_planet_rename_protected_cycle_presentation(void)
 		    && viewer.join.sample_calls == 5U
 		    && viewer.join.event_count == 25U
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
-		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
-		yt_text_input_destroy(&viewer.input);
+		    && stream.read_count == 0U && stream.line_count == 0U);
 	}
 }
 
@@ -17065,7 +16737,7 @@ test_planet_take_one_accepted_cycle_presentation(void)
 		    UINT64_C(0x15d28c1540df4537)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[250];
 	size_t prompt_end;
 	size_t editor_end;
@@ -17118,12 +16790,7 @@ test_planet_take_one_accepted_cycle_presentation(void)
 			    && viewer.join.sample_calls == 6U
 			    && viewer.join.event_count == 30U
 			    && stream.eof_checks == 0U && stream.key_checks == 0U
-			    && stream.read_count == 0U && stream.line_count == 0U
-			    && !stream.file_open && !viewer.join.file_open
-			    && viewer.input.file == NULL
-			    && viewer.close_calls == 0U
-			    && viewer.open_calls == 0U);
-			yt_text_input_destroy(&viewer.input);
+			    && stream.read_count == 0U && stream.line_count == 0U);
 		}
 	}
 }
@@ -17139,7 +16806,7 @@ test_planet_take_one_blank_default_cycle_presentation(void)
 	    "\r\nYou have 65 free cargo holds.\n\r"
 	    "\r\nTime: 14:59  Planet command (?=help) [A]? ";
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[250];
 	size_t prompt_end;
 	size_t editor_end;
@@ -17185,11 +16852,7 @@ test_planet_take_one_blank_default_cycle_presentation(void)
 		    && viewer.join.sample_calls == 6U
 		    && viewer.join.event_count == 30U
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
-		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
-		yt_text_input_destroy(&viewer.input);
+		    && stream.read_count == 0U && stream.line_count == 0U);
 	}
 }
 
@@ -17204,7 +16867,7 @@ test_planet_take_one_e_default_cycle_presentation(void)
 	    "\r\nYou have 65 free cargo holds.\n\r"
 	    "\r\nTime: 14:59  Planet command (?=help) [A]? ";
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[250];
 	size_t prompt_end;
 	size_t editor_end;
@@ -17251,11 +16914,7 @@ test_planet_take_one_e_default_cycle_presentation(void)
 		    && viewer.join.sample_calls == 6U
 		    && viewer.join.event_count == 30U
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
-		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
-		yt_text_input_destroy(&viewer.input);
+		    && stream.read_count == 0U && stream.line_count == 0U);
 	}
 }
 
@@ -17270,7 +16929,7 @@ test_planet_take_one_zero_cycle_presentation(void)
 	    "\r\nYou have 65 free cargo holds.\n\r"
 	    "\r\nTime: 14:59  Planet command (?=help) [A]? ";
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[250];
 	size_t prompt_end;
 	size_t editor_end;
@@ -17317,11 +16976,7 @@ test_planet_take_one_zero_cycle_presentation(void)
 		    && viewer.join.sample_calls == 6U
 		    && viewer.join.event_count == 30U
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
-		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
-		yt_text_input_destroy(&viewer.input);
+		    && stream.read_count == 0U && stream.line_count == 0U);
 	}
 }
 
@@ -17430,7 +17085,7 @@ test_planet_take_one_stock_error_cycle_presentation(void)
 	    "\r\nYou have 65 free cargo holds.\n\r"
 	    "\r\nTime: 14:59  Planet command (?=help) [A]? ";
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[280];
 	size_t prompt_end;
 	size_t editor_end;
@@ -17483,11 +17138,7 @@ test_planet_take_one_stock_error_cycle_presentation(void)
 		    && viewer.join.sample_calls == 7U
 		    && viewer.join.event_count == 35U
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
-		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
-		yt_text_input_destroy(&viewer.input);
+		    && stream.read_count == 0U && stream.line_count == 0U);
 	}
 }
 
@@ -17511,7 +17162,7 @@ test_planet_take_one_capacity_error_cycle_presentation(void)
 	    "\r\nYou have 65 free cargo holds.\n\r"
 	    "\r\nTime: 14:59  Planet command (?=help) [A]? ";
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[280];
 	size_t prompt_end;
 	size_t editor_end;
@@ -17564,11 +17215,7 @@ test_planet_take_one_capacity_error_cycle_presentation(void)
 		    && viewer.join.sample_calls == 7U
 		    && viewer.join.event_count == 35U
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
-		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
-		yt_text_input_destroy(&viewer.input);
+		    && stream.read_count == 0U && stream.line_count == 0U);
 	}
 }
 
@@ -17592,7 +17239,7 @@ test_planet_take_one_negative_error_cycle_presentation(void)
 	    "\r\nYou have 65 free cargo holds.\n\r"
 	    "\r\nTime: 14:59  Planet command (?=help) [A]? ";
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[280];
 	size_t prompt_end;
 	size_t editor_end;
@@ -17645,11 +17292,7 @@ test_planet_take_one_negative_error_cycle_presentation(void)
 		    && viewer.join.sample_calls == 7U
 		    && viewer.join.event_count == 35U
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
-		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
-		yt_text_input_destroy(&viewer.input);
+		    && stream.read_count == 0U && stream.line_count == 0U);
 	}
 }
 
@@ -17730,7 +17373,7 @@ test_planet_leave_cycle_presentation(void)
 	    "\r\nSector: 733\r\nWarps lead to: 2, 9\r\n"
 	    "\r\nTime: 14:59  Main Command (?=Help)? ";
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[220];
 	size_t prompt_end;
 	size_t editor_end;
@@ -17778,11 +17421,7 @@ test_planet_leave_cycle_presentation(void)
 		    && viewer.join.sample_calls == 3U
 		    && viewer.join.event_count == 15U
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
-		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
-		yt_text_input_destroy(&viewer.input);
+		    && stream.read_count == 0U && stream.line_count == 0U);
 	}
 	CHECK(sizeof(ansi) - 1U == 174U && sizeof(plain) - 1U == 154U);
 }
@@ -18026,7 +17665,7 @@ test_planet_thrusters_accepted_cycle_presentation(void)
 		    {77U, 80U, 125U, 214U, 487U, 575U, 710U}},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[760];
 	size_t ends[7];
 	size_t pass;
@@ -18070,11 +17709,7 @@ test_planet_thrusters_accepted_cycle_presentation(void)
 		    && viewer.join.sample_calls == 14U
 		    && viewer.join.event_count == 70U
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
-		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
-		yt_text_input_destroy(&viewer.input);
+		    && stream.read_count == 0U && stream.line_count == 0U);
 	}
 	CHECK(sizeof(plain) - 1U == 580U && sizeof(ansi) - 1U == 710U);
 }
@@ -18736,7 +18371,7 @@ test_main_buy_cycle_presentation(void)
 		    UINT64_C(0xee8aca2f6b1fb48a)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct main_buy_cycle_fixture fixture;
 	uint8_t remote[1200];
 	size_t ends[4];
@@ -18791,7 +18426,6 @@ test_main_buy_cycle_presentation(void)
 		    && viewer.join.local_color_count == cases[pass].local_colors
 		    && viewer_colors_fnv1a64(&viewer.join)
 		    == cases[pass].color_hash);
-		yt_text_input_destroy(&viewer.input);
 	}
 	CHECK(sizeof(plain) - 1U == 983U && sizeof(ansi) - 1U == 1091U);
 }
@@ -19020,7 +18654,7 @@ test_main_rename_cycle_presentation(void)
 		    UINT64_C(0x6c9fcce24acbbd3d)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct main_rename_cycle_fixture fixture;
 	uint8_t remote[350];
 	size_t ends[5];
@@ -19068,7 +18702,6 @@ test_main_rename_cycle_presentation(void)
 		    && viewer.join.local_color_count == cases[pass].local_colors
 		    && viewer_colors_fnv1a64(&viewer.join)
 		    == cases[pass].color_hash);
-		yt_text_input_destroy(&viewer.input);
 	}
 	CHECK(sizeof(plain) - 1U == 269U && sizeof(ansi) - 1U == 299U);
 }
@@ -19101,7 +18734,7 @@ test_main_rename_refusal_cycles_presentation(void)
 		    YT_PORT_RENAME_EARTH_ROUTE},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct main_rename_cycle_fixture fixture;
 	uint8_t expected[220];
 	uint8_t remote[220];
@@ -19159,7 +18792,6 @@ test_main_rename_refusal_cycles_presentation(void)
 			    && viewer.join.local_fragment_length == 36U
 			    && memcmp(viewer.join.local_fragment,
 			    "Time: 14:59  Main Command (?=Help)? ", 36U) == 0);
-			yt_text_input_destroy(&viewer.input);
 		}
 	}
 	CHECK(sizeof(ansi_prefix) - 1U + outcomes[0].row_length
@@ -19580,7 +19212,7 @@ test_main_fighters_joined_cycles_presentation(void)
 		    12U, UINT64_C(0x9d4c03e254cb8b8d)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct main_fighters_cycle_fixture fixture;
 	uint8_t remote[280];
 	size_t ends[3];
@@ -19659,7 +19291,6 @@ test_main_fighters_joined_cycles_presentation(void)
 			    && fixture.fighters.desired_stored
 			    == (cases[pass].response_length != 0U));
 		}
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -19958,7 +19589,7 @@ test_main_mines_accepted_cycle_presentation(void)
 		    21U, UINT64_C(0xe3c7aac57eebe7cd)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct main_mines_cycle_fixture fixture;
 	struct yt_record record;
 	uint8_t remote[480];
@@ -20020,7 +19651,6 @@ test_main_mines_accepted_cycle_presentation(void)
 		    && memcmp(viewer.join.local_fragment,
 		    "Time: 14:59  Main Command (?=Help)? ", 36U) == 0
 		    && viewer.join.accumulator[0] == '\0');
-		yt_text_input_destroy(&viewer.input);
 	}
 	CHECK(sizeof(plain) - 1U == 228U && sizeof(ansi) - 1U == 437U);
 }
@@ -20132,7 +19762,7 @@ test_main_mines_ordinary_return_cycles_presentation(void)
 		sizeof(reentry_plain) - 1U, sizeof(reentry_ansi) - 1U,
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct main_mines_cycle_fixture fixture;
 	struct yt_record record;
 	uint8_t remote[420];
@@ -20208,7 +19838,6 @@ test_main_mines_ordinary_return_cycles_presentation(void)
 			    && memcmp(viewer.join.local_fragment,
 			    "Time: 14:59  Main Command (?=Help)? ", 36U) == 0
 			    && viewer.join.accumulator[0] == '\0');
-			yt_text_input_destroy(&viewer.input);
 		}
 	}
 	CHECK(sizeof(scanner_plain) - 1U == 69U
@@ -20415,7 +20044,7 @@ test_hostile_mines_accepted_cycle_presentation(void)
 		    32U, UINT64_C(0x97e2666a6051cce8)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct main_mines_cycle_fixture fixture;
 	struct yt_record record;
 	uint8_t remote[680];
@@ -20481,7 +20110,6 @@ test_hostile_mines_accepted_cycle_presentation(void)
 		    && viewer.join.pager.foreground == 3
 		    && viewer.join.pager.line_count == 0.0f
 		    && viewer.join.event_count == 35U);
-		yt_text_input_destroy(&viewer.input);
 	}
 	CHECK(sizeof(plain) - 1U == 381U && sizeof(ansi) - 1U == 636U);
 }
@@ -20626,7 +20254,7 @@ test_hostile_mines_ordinary_return_cycles_presentation(void)
 		sizeof(second_plain) - 1U, sizeof(second_ansi) - 1U,
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct main_mines_cycle_fixture fixture;
 	struct yt_record record;
 	uint8_t remote[440];
@@ -20712,7 +20340,6 @@ test_hostile_mines_ordinary_return_cycles_presentation(void)
 			    && viewer.join.pager.foreground == 3
 			    && viewer.join.pager.line_count == 0.0f
 			    && viewer.join.event_count == 30U);
-			yt_text_input_destroy(&viewer.input);
 		}
 	}
 	CHECK(sizeof(first_plain) - 1U == 59U
@@ -21407,7 +21034,7 @@ test_hostile_mines_admitted_hazard_cycle_presentation(void)
 		    42U, UINT64_C(0x07fb2bd6f4a9ec41)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	uint8_t remote[840];
 	size_t ends[4];
@@ -21480,7 +21107,6 @@ test_hostile_mines_admitted_hazard_cycle_presentation(void)
 		    && viewer.join.pager.foreground == 3
 		    && viewer.join.pager.line_count == 0.0f
 		    && viewer.join.event_count == 30U);
-		yt_text_input_destroy(&viewer.input);
 	}
 	CHECK(sizeof(plain) - 1U == 524U && sizeof(ansi) - 1U == 811U);
 }
@@ -21569,7 +21195,7 @@ test_hostile_mines_emergency_warp_cycle_presentation(void)
 		    57U, UINT64_C(0xc66268b4e8225242)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	uint8_t remote[1320];
 	size_t ends[4];
@@ -21641,7 +21267,6 @@ test_hostile_mines_emergency_warp_cycle_presentation(void)
 		    && viewer.join.pager.foreground == 3
 		    && viewer.join.pager.line_count == 0.0f
 		    && viewer.join.event_count == 30U);
-		yt_text_input_destroy(&viewer.input);
 	}
 	CHECK(sizeof(plain) - 1U == 872U && sizeof(ansi) - 1U == 1295U);
 }
@@ -21787,7 +21412,7 @@ test_hostile_mines_black_hole_cycle_presentation(void)
 		    58U, UINT64_C(0xae9e4defbd379270)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct yt_record record;
 	uint8_t remote[1320];
@@ -21871,7 +21496,6 @@ test_hostile_mines_black_hole_cycle_presentation(void)
 		    && viewer.join.pager.foreground == 3
 		    && viewer.join.pager.line_count == 0.0f
 		    && viewer.join.event_count == 35U);
-		yt_text_input_destroy(&viewer.input);
 	}
 	CHECK(sizeof(plain) - 1U == 842U && sizeof(ansi) - 1U == 1289U);
 }
@@ -21994,7 +21618,7 @@ test_direct_emergency_warp_invalid_retry_presentation(void)
 		    UINT64_C(0xd76606f217d459b8), 0.0f, 7.0f},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	uint8_t remote[300];
 	size_t pass;
@@ -22039,7 +21663,6 @@ test_direct_emergency_warp_invalid_retry_presentation(void)
 		    && viewer.join.pager.foreground == 7
 		    && viewer.join.pager.line_count == 0.0f
 		    && viewer.join.event_count == 10U);
-		yt_text_input_destroy(&viewer.input);
 	}
 	CHECK(sizeof(plain) - 1U == 182U && sizeof(ansi) - 1U == 260U);
 }
@@ -22108,7 +21731,7 @@ test_direct_emergency_warp_modes(void)
 		{2.0f, mode_two, sizeof(mode_two) - 1U},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	uint8_t remote[64];
 	size_t pass;
@@ -22146,7 +21769,6 @@ test_direct_emergency_warp_modes(void)
 		    && viewer.join.pager.line_count == 0.0f
 		    && viewer.join.event_count == 10U
 		    && !fixture.warp_called && fixture.draw_position == 0U);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -22180,7 +21802,7 @@ test_direct_emergency_warp_accepted_modes(void)
 		    UINT64_C(0xd5ce3279a180b4e6)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct yt_record record;
 	struct yt_record before;
@@ -22252,7 +21874,6 @@ test_direct_emergency_warp_accepted_modes(void)
 			CHECK(fixture.emergency_player.record.bytes[index]
 			    == before.bytes[index]);
 		}
-		yt_text_input_destroy(&viewer.input);
 	}
 	CHECK(sizeof(mode_two) - 1U == 362U);
 }
@@ -22275,7 +21896,7 @@ test_direct_emergency_warp_inherited_pager(void)
 		    UINT64_C(0x90ec8725947d5de7), 0.0f, 7.0f},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	uint8_t remote[320];
 	size_t pass;
@@ -22318,7 +21939,6 @@ test_direct_emergency_warp_inherited_pager(void)
 		    && viewer.join.sample_calls == 3U
 		    && viewer.join.event_count == 16U
 		    && !fixture.warp_called && fixture.draw_position == 0U);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -22436,7 +22056,7 @@ test_direct_emergency_warp_invalid_boundaries(void)
 		    UINT64_C(0x844da71c138d59e8), 1.0f, 7.0f, 10U},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_invalid_boundary_state boundary;
 	uint8_t remote[320];
@@ -22488,7 +22108,6 @@ test_direct_emergency_warp_invalid_boundaries(void)
 		    && fixture.emergency_waits == 0U
 		    && viewer.join.event_count == cases[pass].events);
 		CHECK(strcmp(viewer.join.accumulator, "X") == 0);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -22625,7 +22244,7 @@ test_direct_emergency_warp_parent_copy_failures(void)
 		    warning_two, sizeof(warning_two) - 1U},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_parent_copy_state copy;
 	uint8_t remote[256];
@@ -22656,7 +22275,6 @@ test_direct_emergency_warp_parent_copy_failures(void)
 		    && fixture.emergency_player_writes == 0U
 		    && fixture.emergency_flushes == 0U
 		    && fixture.emergency_waits == 0U);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -22917,7 +22535,7 @@ test_direct_emergency_warp_gate_runtime_failures(void)
 		    0xA44CU, 0xA44FU, 0xA446U},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_gate_runtime_state gate;
 	struct yt_basic_fault_projection projection;
@@ -22968,7 +22586,6 @@ test_direct_emergency_warp_gate_runtime_failures(void)
 			    && fixture.emergency_player_writes == 0U
 			    && fixture.emergency_flushes == 0U
 			    && fixture.emergency_waits == 0U);
-			yt_text_input_destroy(&viewer.input);
 		}
 	}
 }
@@ -23114,7 +22731,7 @@ test_direct_emergency_warp_ade0_prefix_failures(void)
 		    YT_BASIC_FAULT_SHARED},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct yt_basic_fault_projection projection;
 	struct yt_record record;
@@ -23172,7 +22789,6 @@ test_direct_emergency_warp_ade0_prefix_failures(void)
 		    && fixture.emergency_player_writes == 0U
 		    && fixture.emergency_flushes == 0U
 		    && fixture.emergency_waits == 0U);
-		yt_text_input_destroy(&viewer.input);
 		}
 	}
 }
@@ -23342,7 +22958,7 @@ test_direct_emergency_warp_a8d2_failures(void)
 		    UINT64_C(0x84059a449d6d0449)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_a8d2_failure_state fault;
 	struct yt_record record;
@@ -23422,7 +23038,6 @@ test_direct_emergency_warp_a8d2_failures(void)
 				    && fault.projection.disposition == YT_BASIC_FAULT_END
 				    && fault.projection.main.route == YT_MAIN_ERROR_FATAL);
 			}
-			yt_text_input_destroy(&viewer.input);
 		}
 	}
 }
@@ -23663,7 +23278,7 @@ test_direct_emergency_warp_ade0_late_failures(void)
 		    UINT64_C(0x84059a449d6d0449)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_ade0_late_state fault;
 	struct yt_basic_fault_projection projection;
@@ -23740,7 +23355,6 @@ test_direct_emergency_warp_ade0_late_failures(void)
 			    && fixture.emergency_player_writes == 0U
 			    && fixture.emergency_flushes == 0U
 			    && fixture.emergency_waits == 0U);
-			yt_text_input_destroy(&viewer.input);
 		}
 	}
 }
@@ -23851,7 +23465,7 @@ test_direct_emergency_warp_hostile_parent_copy_failures(void)
 		    UINT64_C(0xcf84d57aae2d41f2)}},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_parent_copy_state copy;
 	struct direct_warp_hostile_parent_copy_cycle_state cycle;
@@ -23978,7 +23592,6 @@ test_direct_emergency_warp_hostile_parent_copy_failures(void)
 		    == (cases[pass].failure == DIRECT_WARP_FAIL_WARNING_ONE ? 0.0f
 		    : cases[pass].failure == DIRECT_WARP_FAIL_WARNING_TWO
 		    ? 1.0f : 2.0f));
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -24040,7 +23653,7 @@ test_direct_emergency_warp_warning_carrier(void)
 	static const uint8_t warning_one[] =
 	    "This is a desperate move! Your engines will be drained and will take time";
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_carrier_state carrier;
 	uint8_t remote[16];
@@ -24088,7 +23701,6 @@ test_direct_emergency_warp_warning_carrier(void)
 		    && fixture.emergency_player_writes == 0U
 		    && fixture.emergency_flushes == 0U
 		    && fixture.emergency_waits == 0U);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -24157,7 +23769,7 @@ test_direct_emergency_warp_hostile_warning_carrier(void)
 		    UINT64_C(0x083cb407b4f40f36)}},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_carrier_state carrier;
 	struct direct_warp_hostile_parent_copy_cycle_state cycle;
@@ -24235,7 +23847,6 @@ test_direct_emergency_warp_hostile_warning_carrier(void)
 		    && viewer.join.presentation.cached_foreground == 3.0f
 		    && viewer.join.pager.foreground == 7
 		    && viewer.join.pager.line_count == 0.0f);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -24303,7 +23914,7 @@ test_direct_emergency_warp_warning_two_carrier(void)
 		    UINT64_C(0x65355d50e22c7498)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_carrier_state carrier;
 	uint8_t remote[192];
@@ -24343,7 +23954,6 @@ test_direct_emergency_warp_warning_two_carrier(void)
 		    && fixture.emergency_player_writes == 0U
 		    && fixture.emergency_flushes == 0U
 		    && fixture.emergency_waits == 0U);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -24494,7 +24104,7 @@ test_direct_emergency_warp_accepted_presentation(void)
 		    23U, UINT64_C(0x6e338d8e4536fe7e)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct yt_record record;
 	struct yt_record before;
@@ -24566,7 +24176,6 @@ test_direct_emergency_warp_accepted_presentation(void)
 			CHECK(fixture.emergency_player.record.bytes[index]
 			    == before.bytes[index]);
 		}
-		yt_text_input_destroy(&viewer.input);
 	}
 	CHECK(sizeof(plain) - 1U == 513U && sizeof(ansi) - 1U == 685U);
 }
@@ -24601,7 +24210,7 @@ test_direct_emergency_warp_child_failures(void)
 		    UINT64_C(0x6e338d8e4536fe7e)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct yt_record record;
 	struct yt_record before;
@@ -24711,7 +24320,6 @@ test_direct_emergency_warp_child_failures(void)
 				    == before.bytes[index]);
 			}
 		}
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -26811,7 +26419,7 @@ static const struct yt_hostile_bribe_ops direct_warp_bribe_attack_ops = {
 
 struct hostile_bribe_fatal_cycle_join {
 	struct physical_viewer_join *viewer;
-	struct yt_file_viewer_stream_state *stream;
+	struct viewer_file_fixture *stream;
 	struct yt_player player;
 	struct yt_player written_player;
 	struct yt_sector sector;
@@ -27435,7 +27043,7 @@ test_direct_emergency_warp_main_ordinary_returns(void)
 		    UINT64_C(0x7e8908272914a3a2)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct yt_record record;
@@ -27514,7 +27122,6 @@ test_direct_emergency_warp_main_ordinary_returns(void)
 		    && viewer.join.pager.line_count == 0.0f
 		    && viewer.join.event_count
 		    == (cases[pass].no_turns ? 15U : 20U));
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -27642,7 +27249,7 @@ test_direct_emergency_warp_main_cycle(void)
 		    UINT64_C(0x7c7cece430ac5932)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct yt_record record;
@@ -27738,7 +27345,6 @@ test_direct_emergency_warp_main_cycle(void)
 			CHECK(fixture.emergency_player.record.bytes[index]
 			    == before.bytes[index]);
 		}
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -27808,7 +27414,7 @@ test_direct_emergency_warp_main_scanner_get_failure(void)
 		    UINT64_C(0x8981c6868e6750c9)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct yt_record record;
@@ -27901,7 +27507,6 @@ test_direct_emergency_warp_main_scanner_get_failure(void)
 			CHECK(fixture.emergency_player.record.bytes[index]
 			    == before.bytes[index]);
 		}
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -27969,7 +27574,7 @@ test_direct_emergency_warp_main_hostile_handoff(void)
 		    41U, UINT64_C(0x311bbb5d17ff0902), 0.0f},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct yt_record record;
@@ -28064,7 +27669,6 @@ test_direct_emergency_warp_main_hostile_handoff(void)
 			CHECK(fixture.emergency_player.record.bytes[index]
 			    == before.bytes[index]);
 		}
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -28226,7 +27830,7 @@ test_direct_emergency_warp_hostile_cycles(void)
 		    UINT64_C(0x2c2e5976aa5df475)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct yt_record record;
@@ -28325,7 +27929,6 @@ test_direct_emergency_warp_hostile_cycles(void)
 			CHECK(fixture.emergency_player.record.bytes[index]
 			    == before.bytes[index]);
 		}
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -28394,7 +27997,7 @@ test_direct_emergency_warp_hostile_invalid_retry_cycle(void)
 		    UINT64_C(0xcfbd820388632abb)}},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct yt_record record;
@@ -28482,7 +28085,6 @@ test_direct_emergency_warp_hostile_invalid_retry_cycle(void)
 		    == (cases[pass].ansi ? 2.0f : 3.0f)
 		    && viewer.join.pager.foreground == 2
 		    && viewer.join.pager.line_count == 0.0f);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -28612,7 +28214,7 @@ test_direct_emergency_warp_hostile_child_failures(void)
 		    UINT64_C(0x6d90d947714a5f0d)}, 6U},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct yt_record record;
@@ -28743,7 +28345,6 @@ test_direct_emergency_warp_hostile_child_failures(void)
 				    == before.bytes[index]);
 			}
 		}
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -28802,7 +28403,7 @@ test_direct_emergency_warp_hostile_terminal_handoffs(void)
 		    UINT64_C(0xae04cf25f066c3f4)}},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct yt_record record;
@@ -28925,7 +28526,6 @@ test_direct_emergency_warp_hostile_terminal_handoffs(void)
 			CHECK(fixture.emergency_player.record.bytes[index]
 			    == before.bytes[index]);
 		}
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -28963,7 +28563,7 @@ test_direct_emergency_warp_hostile_black_hole_handoff(void)
 		    UINT64_C(0xffc3953ca76da3f3)}},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct yt_record record;
@@ -29068,7 +28668,6 @@ test_direct_emergency_warp_hostile_black_hole_handoff(void)
 			CHECK(fixture.emergency_player.record.bytes[index]
 			    == before.bytes[index]);
 		}
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -29106,7 +28705,7 @@ test_direct_emergency_warp_hostile_scanner_get_failure(void)
 		    UINT64_C(0xcbf29ce484222325)}},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct yt_record record;
@@ -29208,7 +28807,6 @@ test_direct_emergency_warp_hostile_scanner_get_failure(void)
 			CHECK(fixture.emergency_player.record.bytes[index]
 			    == before.bytes[index]);
 		}
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -29298,7 +28896,7 @@ test_direct_emergency_warp_reentry_failures(void)
 	static const bool field_players[] = {true, false, false, true, true,
 	    false};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct yt_record record;
@@ -29432,7 +29030,6 @@ test_direct_emergency_warp_reentry_failures(void)
 				CHECK(fixture.emergency_player.record.bytes[index]
 				    == before.bytes[index]);
 			}
-			yt_text_input_destroy(&viewer.input);
 		}
 	}
 }
@@ -29490,7 +29087,7 @@ test_direct_emergency_warp_owner_get_failures(void)
 		    UINT64_C(0x58b552ed76cc2f52)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct yt_record record;
@@ -29604,7 +29201,6 @@ test_direct_emergency_warp_owner_get_failures(void)
 			CHECK(fixture.emergency_player.record.bytes[index]
 			    == before.bytes[index]);
 		}
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -29661,7 +29257,7 @@ test_direct_emergency_warp_reentry_warning_carrier(void)
 		    UINT64_C(0x8c453df773531074)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct yt_record record;
@@ -29767,7 +29363,6 @@ test_direct_emergency_warp_reentry_warning_carrier(void)
 			CHECK(fixture.emergency_player.record.bytes[index]
 			    == before.bytes[index]);
 		}
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -29826,7 +29421,7 @@ test_direct_emergency_warp_reentry_warning_second_carrier(void)
 		    UINT64_C(0xa2c07a8a40af9efa)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct yt_record record;
@@ -29936,7 +29531,6 @@ test_direct_emergency_warp_reentry_warning_second_carrier(void)
 			CHECK(fixture.emergency_player.record.bytes[index]
 			    == before.bytes[index]);
 		}
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -30005,7 +29599,7 @@ test_direct_emergency_warp_hostile_menu_join(void)
 		    UINT64_C(0x140963f48846bbf5)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct yt_record record;
@@ -30118,7 +29712,6 @@ test_direct_emergency_warp_hostile_menu_join(void)
 			CHECK(fixture.emergency_player.record.bytes[index]
 			    == before.bytes[index]);
 		}
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 static void
@@ -30201,7 +29794,7 @@ test_direct_emergency_warp_hostile_menu_carrier_failures(void)
 		    9U, 2U, 2U, prompt, sizeof(prompt) - 1U, 1U, 4U, 1.0f},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct yt_record record;
@@ -30327,7 +29920,6 @@ test_direct_emergency_warp_hostile_menu_carrier_failures(void)
 			    && viewer.join.pager.line_count
 			    == (cuts[cut].row_delta == 1U ? 1.0f : 2.0f)
 			    && viewer.join.pager.newline_flag == cuts[cut].newline_flag);
-			yt_text_input_destroy(&viewer.input);
 		}
 	}
 }
@@ -30365,7 +29957,7 @@ test_direct_emergency_warp_hostile_attack_admission(void)
 		    25U, 5U},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct yt_record record;
@@ -30466,7 +30058,6 @@ test_direct_emergency_warp_hostile_attack_admission(void)
 		    && viewer.join.pager.foreground == 3
 		    && viewer.join.pager.line_count == 0.0f
 		    && viewer.join.pager.newline_flag == 0.0f);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -30500,7 +30091,7 @@ test_direct_emergency_warp_hostile_attack_opening_success(void)
 		    45U, 9U},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct direct_warp_attack_opening_state entry;
@@ -30598,7 +30189,6 @@ test_direct_emergency_warp_hostile_attack_opening_success(void)
 		    && viewer.join.pager.line_count == 0.0f
 		    && viewer.join.presentation.sound.scratch_length == 0U);
 		yt_database_close(&entry.io.database);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -30639,7 +30229,7 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 		    45U, 9U},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct direct_warp_attack_combat_join join;
@@ -30905,7 +30495,6 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 		    && viewer.join.accumulator[1] == '\0'
 		    && viewer.join.source_length == 1U
 		    && viewer.join.source[0] == '\r');
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -30951,7 +30540,7 @@ test_direct_emergency_warp_hostile_attack_defenders_cleared(void)
 		{false, true, (const uint8_t *)"WT", 2U, 1223U},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct direct_warp_attack_combat_join join;
@@ -31066,7 +30655,6 @@ test_direct_emergency_warp_hostile_attack_defenders_cleared(void)
 			    && cycle.fresh_prompt_wait
 			    && viewer.join.accumulator[0] == '\0'
 			    && viewer.join.pager.line_count == 0.0f);
-			yt_text_input_destroy(&viewer.input);
 		}
 	}
 }
@@ -31124,7 +30712,7 @@ test_direct_emergency_warp_hostile_attack_surrender_accepted(void)
 		    UINT64_C(0xf729ca9cc7f18cbf)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct direct_warp_attack_combat_join join;
@@ -31215,7 +30803,6 @@ test_direct_emergency_warp_hostile_attack_surrender_accepted(void)
 		    && cycle.fresh_hostile_player_reads == 3U
 		    && cycle.final_field_record == 2 && cycle.final_field_player
 		    && cycle.fresh_prompt_wait);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -31239,7 +30826,7 @@ test_direct_emergency_warp_hostile_attack_surrender_refused(void)
 		{false, true, (const uint8_t *)"WT", 2U, 1223U},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct direct_warp_attack_combat_join join;
@@ -31334,7 +30921,6 @@ test_direct_emergency_warp_hostile_attack_surrender_refused(void)
 		    && cycle.fresh_hostile_player_reads == 4U
 		    && cycle.final_field_record == 2 && cycle.final_field_player
 		    && cycle.fresh_prompt_wait);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -31375,7 +30961,7 @@ test_direct_emergency_warp_hostile_forced_bribe_attack(void)
 		    UINT64_C(0x20e53130d3a10e38)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct direct_warp_attack_combat_join attack;
@@ -31508,7 +31094,6 @@ test_direct_emergency_warp_hostile_forced_bribe_attack(void)
 		    && cycle.fresh_hostile_player_reads == 4U
 		    && cycle.final_field_record == 2 && cycle.final_field_player
 		    && cycle.fresh_prompt_wait);
-		yt_text_input_destroy(&viewer.input);
 		}
 	}
 }
@@ -31560,7 +31145,7 @@ test_direct_emergency_warp_hostile_forced_bribe_origins(void)
 		    UINT64_C(0xc07b18bb40b7396b)}},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct direct_warp_attack_combat_join attack;
@@ -31715,7 +31300,6 @@ test_direct_emergency_warp_hostile_forced_bribe_origins(void)
 			    == (origin == 0U ? 5U : 4U)
 			    && cycle.final_field_record == 2
 			    && cycle.final_field_player && cycle.fresh_prompt_wait);
-			yt_text_input_destroy(&viewer.input);
 		}
 	}
 }
@@ -31795,7 +31379,7 @@ test_hostile_bribe_immediate_fatal_cycle(void)
 		    UINT64_C(0xafecff5a612047f5)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct direct_warp_bribe_attack_join joined;
@@ -31961,7 +31545,6 @@ test_hostile_bribe_immediate_fatal_cycle(void)
 					    && viewer_colors_fnv1a64(&viewer.join)
 					    == origins[origin].local_color_hash
 					    && viewer.join.local_fragment_length == 0U);
-				yt_text_input_destroy(&viewer.input);
 			}
 		}
 	}
@@ -32017,7 +31600,7 @@ test_hostile_bribe_fatal_prefix_cuts(void)
 		 UINT64_C(0x01b4fd96ce8921d5), 0U, 20U, 4U}},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct direct_warp_bribe_attack_join joined;
@@ -32194,7 +31777,6 @@ test_hostile_bribe_fatal_prefix_cuts(void)
 			    == expected[endpoint][terminal].events
 			    && viewer.join.sample_calls
 			    == expected[endpoint][terminal].samples);
-			yt_text_input_destroy(&viewer.input);
 		}
 	}
 }
@@ -32245,7 +31827,7 @@ test_direct_emergency_warp_hostile_attack_fatal_cycle(void)
 		 UINT64_C(0x12fab641cbed07ad)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct direct_warp_attack_combat_join attack;
@@ -32415,7 +31997,6 @@ test_direct_emergency_warp_hostile_attack_fatal_cycle(void)
 		    && viewer_colors_fnv1a64(&viewer.join)
 		    == callers[caller].local_color_hash
 		    && viewer.join.local_fragment_length == 0U);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -32431,7 +32012,7 @@ enum direct_warp_attack_fatal_prefix_cut {
 
 static bool
 direct_warp_attack_fatal_prefix_setup(struct physical_viewer_join *viewer,
-    struct yt_file_viewer_stream_state *stream,
+    struct viewer_file_fixture *stream,
     struct hostile_mines_hazard_fixture *fixture,
     struct direct_warp_main_cycle_state *cycle,
     struct direct_warp_attack_combat_join *attack,
@@ -32565,7 +32146,7 @@ test_direct_emergency_warp_hostile_attack_fatal_prefixes(void)
 		    UINT64_C(0x2a571177a3c3e6d9)}},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct direct_warp_attack_combat_join attack;
@@ -32678,7 +32259,6 @@ test_direct_emergency_warp_hostile_attack_fatal_prefixes(void)
 				CHECK(attack.written_player.fighters == 0.0f
 				    && attack.written_player.shields == 0.0f);
 			}
-			yt_text_input_destroy(&viewer.input);
 		}
 	}
 }
@@ -32710,7 +32290,7 @@ test_xannor_attack_tail_clearance_join(void)
 		    UINT64_C(0x84e1a1a1e2377ca9)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct direct_warp_attack_combat_join join;
@@ -32803,7 +32383,6 @@ test_xannor_attack_tail_clearance_join(void)
 		    sizeof(expected_defeated) - 1U) == 0
 		    && join.written_player.turns == 100.0f
 		    && join.clearance_discount[0] == 0.1f);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -32891,7 +32470,7 @@ test_xannor_attack_tail_clearance_failure_prefixes(void)
 		{0U, 3U, 0U, 5U, 5U, 3U, 4U, 1U, true},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct direct_warp_attack_combat_join join;
@@ -32994,7 +32573,6 @@ test_xannor_attack_tail_clearance_failure_prefixes(void)
 				    && join.clearance_discount[2] == 0.0f
 				    && join.clearance_discount[3] == 0.0f);
 			}
-			yt_text_input_destroy(&viewer.input);
 		}
 	}
 }
@@ -33019,7 +32597,7 @@ test_xannor_attack_tail_victory_join(void)
 		    UINT64_C(0xdfb6d767025461e1)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct direct_warp_attack_combat_join join;
@@ -33142,7 +32720,6 @@ test_xannor_attack_tail_victory_join(void)
 			    && join.victory_radio_sender[index] == -2.0f
 			    && join.victory_radio_recipient[index] == -2.0f);
 		}
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -33256,7 +32833,7 @@ test_xannor_attack_tail_victory_failure_prefixes(void)
 		"victory radio", "victory sector GET", "victory sector PUT",
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct direct_warp_attack_combat_join join;
@@ -33373,7 +32950,6 @@ test_xannor_attack_tail_victory_failure_prefixes(void)
 			    && join.victory_sector_writes == 0U
 			    && join.random_calls == 6U && fixture.draw_position == 6U
 			    && !join.unexpected_tail_effect);
-			yt_text_input_destroy(&viewer.input);
 		}
 	}
 }
@@ -33407,7 +32983,7 @@ test_xannor_attack_combat_victory_join(void)
 		    UINT64_C(0xfbf7c458d3fdcac1)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct direct_warp_attack_combat_join join;
@@ -33642,7 +33218,6 @@ test_xannor_attack_combat_victory_join(void)
 		    && !join.unexpected_surrender && !join.unexpected_spill
 		    && !join.unexpected_news && !join.unexpected_fatal
 		    && !join.unexpected_tail_effect);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -33774,7 +33349,7 @@ test_direct_emergency_warp_xannor_attack_victory_join(void)
 		true, true, false, true, true, false,
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct direct_warp_attack_combat_join join;
@@ -34035,7 +33610,6 @@ test_direct_emergency_warp_xannor_attack_victory_join(void)
 		    && !join.unexpected_surrender && !join.unexpected_spill
 		    && !join.unexpected_news && !join.unexpected_fatal
 		    && !join.unexpected_tail_effect);
-		yt_text_input_destroy(&viewer.input);
 	}
 	}
 }
@@ -34097,7 +33671,7 @@ test_direct_emergency_warp_hostile_ordinary_returns(void)
 		    UINT64_C(0xcfbd820388632abb)}},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct yt_record record;
@@ -34197,7 +33771,6 @@ test_direct_emergency_warp_hostile_ordinary_returns(void)
 		    ? 3.0f : 2.0f)
 		    && viewer.join.pager.foreground == 2
 		    && viewer.join.pager.line_count == 0.0f);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -34340,7 +33913,7 @@ test_direct_emergency_warp_queue_cycles(void)
 		    UINT64_C(0x2c2e5976aa5df475), 25U},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct yt_record record;
@@ -34439,7 +34012,6 @@ test_direct_emergency_warp_queue_cycles(void)
 			CHECK(fixture.emergency_player.record.bytes[index]
 			    == before.bytes[index]);
 		}
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -34539,7 +34111,7 @@ test_direct_emergency_warp_main_mine_cycle(void)
 		    UINT64_C(0xcd73157a8268d62a)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct yt_record record;
@@ -34658,7 +34230,6 @@ test_direct_emergency_warp_main_mine_cycle(void)
 		    && viewer.join.pager.foreground == 2
 		    && viewer.join.pager.line_count == 0.0f
 		    && viewer.join.event_count == 20U);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -34755,7 +34326,7 @@ test_direct_emergency_warp_hostile_mine_cycle(void)
 		    UINT64_C(0xee5ae0af5154bc1d)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct yt_record record;
@@ -34876,7 +34447,6 @@ test_direct_emergency_warp_hostile_mine_cycle(void)
 		    && viewer.join.presentation.cached_foreground == 2.0f
 		    && viewer.join.pager.foreground == 2
 		    && viewer.join.pager.line_count == 0.0f);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -34911,7 +34481,7 @@ direct_emergency_warp_mine_warp_cycle_run(
 static void
 direct_emergency_warp_mine_warp_fixture_init(
     struct physical_viewer_join *viewer,
-    struct yt_file_viewer_stream_state *stream,
+    struct viewer_file_fixture *stream,
     struct hostile_mines_hazard_fixture *fixture, bool ansi,
     uint8_t *remote, size_t remote_capacity)
 {
@@ -34969,7 +34539,7 @@ test_destroyed_mine_fatal_projections(void)
 	    "Shields reduced to 0 units!";
 	static const uint8_t death_news[] = "  -  Ada was killed!\r\n";
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct hostile_bribe_fatal_cycle_join fatal;
 	struct yt_player fatal_entry_player;
@@ -35063,7 +34633,6 @@ test_destroyed_mine_fatal_projections(void)
 		    && fatal.news_calls == 1U && fatal.flushes == 1U
 		    && fatal.news_length == sizeof(death_news) - 1U
 		    && memcmp(fatal.news, death_news, sizeof(death_news) - 1U) == 0);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -35156,7 +34725,7 @@ test_direct_emergency_warp_mine_warp_cycles(void)
 		    UINT64_C(0xf6585191e632ed5e), 25U},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	uint8_t remote[1800];
@@ -35241,7 +34810,6 @@ test_direct_emergency_warp_mine_warp_cycles(void)
 			    ends[index] - start)
 			    == cases[pass].partition_hashes[index]);
 		}
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -35361,7 +34929,7 @@ test_direct_emergency_warp_mine_warp_failures(void)
 		EMERGENCY_WARP_PHYSICAL_PUT,
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	uint8_t remote[1800];
@@ -35468,7 +35036,6 @@ test_direct_emergency_warp_mine_warp_failures(void)
 				CHECK(fixture.emergency_player.turns == 11.0f
 				    && fixture.emergency_player.sector == 1003.0f);
 			}
-			yt_text_input_destroy(&viewer.input);
 		}
 	}
 }
@@ -35593,7 +35160,7 @@ test_direct_emergency_warp_mine_dependency_failures(void)
 		UINT64_C(0xbbda494d4f03f3e5)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	uint8_t remote[1300];
@@ -35708,7 +35275,6 @@ test_direct_emergency_warp_mine_dependency_failures(void)
 			    && cycle.final_player_reads == 0U
 			    && cycle.scanner_sound_calls == 2U
 			    && !cycle.fresh_prompt_wait);
-			yt_text_input_destroy(&viewer.input);
 		}
 	}
 }
@@ -35836,7 +35402,7 @@ test_direct_emergency_warp_main_black_hole_cycle(void)
 		    UINT64_C(0x95add52586fcf72c), 1.0f},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct yt_record record;
@@ -35935,7 +35501,6 @@ test_direct_emergency_warp_main_black_hole_cycle(void)
 			CHECK(fixture.emergency_player.record.bytes[index]
 			    == before.bytes[index]);
 		}
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -36032,7 +35597,7 @@ test_direct_emergency_warp_hostile_black_hole_cycles(void)
 		    UINT64_C(0xde93a38eedc4452b), 1.0f},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	struct yt_record record;
@@ -36133,14 +35698,13 @@ test_direct_emergency_warp_hostile_black_hole_cycles(void)
 			CHECK(fixture.emergency_player.record.bytes[index]
 			    == before.bytes[index]);
 		}
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
 static void
 direct_emergency_warp_black_hole_fixture_init(
     struct physical_viewer_join *viewer,
-    struct yt_file_viewer_stream_state *stream,
+    struct viewer_file_fixture *stream,
     struct hostile_mines_hazard_fixture *fixture, bool ansi,
     uint8_t *remote, size_t remote_capacity)
 {
@@ -36287,7 +35851,7 @@ test_direct_emergency_warp_black_hole_failures(void)
 		EMERGENCY_WARP_PHYSICAL_PUT,
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct hostile_mines_hazard_fixture fixture;
 	struct direct_warp_main_cycle_state cycle;
 	uint8_t remote[1500];
@@ -36371,7 +35935,6 @@ test_direct_emergency_warp_black_hole_failures(void)
 			    && viewer.join.presentation.cached_foreground == 2.0f
 			    && viewer.join.pager.foreground == 2
 			    && viewer.join.pager.line_count == 0.0f);
-			yt_text_input_destroy(&viewer.input);
 		}
 	}
 }
@@ -36625,7 +36188,7 @@ test_main_genesis_decline_cycle_presentation(void)
 	    "\r\nTime: 14:59  Main Command (?=Help)? ";
 	static const size_t expected_ends[] = {49U, 282U, 320U};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct main_genesis_cycle_fixture fixture;
 	uint8_t remote[350];
 	size_t ends[3];
@@ -36674,7 +36237,6 @@ test_main_genesis_decline_cycle_presentation(void)
 		    && viewer_colors_fnv1a64(&viewer.join)
 		    == (pass == 0U ? UINT64_C(0xc6f69f5cf097a0a2)
 		    : UINT64_C(0xae89c4fc38bd168a)));
-		yt_text_input_destroy(&viewer.input);
 	}
 	CHECK(sizeof(expected) - 1U == 320U);
 }
@@ -36734,7 +36296,7 @@ test_main_genesis_alternate_cycles_presentation(void)
 		    UINT64_C(0x4ea7870caf4939ed)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct main_genesis_cycle_fixture fixture;
 	uint8_t expected[450];
 	uint8_t remote[450];
@@ -36792,7 +36354,6 @@ test_main_genesis_alternate_cycles_presentation(void)
 		    && viewer.join.local_color_count == cases[pass].local_colors
 		    && viewer_colors_fnv1a64(&viewer.join)
 		    == cases[pass].color_hash);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -36827,7 +36388,7 @@ test_main_genesis_handoff_cycle_presentation(void)
 		    sizeof(main_genesis_handoff_ansi) - 1U},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct main_genesis_cycle_fixture fixture;
 	uint8_t remote[400];
 	size_t ends[3];
@@ -36887,7 +36448,6 @@ test_main_genesis_handoff_cycle_presentation(void)
 		    && viewer.join.presentation.blink == 0.0f
 		    && viewer.join.presentation.cached_foreground
 		    == (pass == 0U ? 2.0f : 0.0f));
-		yt_text_input_destroy(&viewer.input);
 	}
 	CHECK(sizeof(main_genesis_handoff_plain) - 1U == 346U
 	    && sizeof(main_genesis_handoff_ansi) - 1U == 370U);
@@ -36921,7 +36481,7 @@ test_main_genesis_handoff_failure_prefixes(void)
 		    true, true, true, true, true},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct main_genesis_cycle_fixture fixture;
 	uint8_t remote[400];
 	size_t ends[3];
@@ -36984,7 +36544,6 @@ test_main_genesis_handoff_failure_prefixes(void)
 			    && fixture.handoff_run_invoked
 			    == failure_cases[failure_index].run_invoked
 			    && viewer.join.local_fragment_length == 0U);
-			yt_text_input_destroy(&viewer.input);
 		}
 	}
 }
@@ -37112,7 +36671,7 @@ test_main_movement_accepted_cycle_presentation(void)
 		{true, ansi, sizeof(ansi) - 1U, {51U, 140U, 235U}},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[260];
 	size_t ends[3];
 	size_t pass;
@@ -37143,11 +36702,7 @@ test_main_movement_accepted_cycle_presentation(void)
 		    && viewer.join.accumulator[0] == '\0'
 		    && viewer.join.queue_length == 0U
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
-		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
-		yt_text_input_destroy(&viewer.input);
+		    && stream.read_count == 0U && stream.line_count == 0U);
 	}
 	CHECK(sizeof(plain) - 1U == 205U && sizeof(ansi) - 1U == 235U);
 }
@@ -37307,7 +36862,7 @@ test_main_attack_survivor_cycle_presentation(void)
 		    {51U, 332U, 332U, 370U}},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[400];
 	size_t ends[4];
 	size_t pass;
@@ -37339,11 +36894,7 @@ test_main_attack_survivor_cycle_presentation(void)
 		    && viewer.join.accumulator[0] == '\0'
 		    && viewer.join.queue_length == 0U);
 		CHECK(stream.eof_checks == 0U && stream.key_checks == 0U
-		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
-		yt_text_input_destroy(&viewer.input);
+		    && stream.read_count == 0U && stream.line_count == 0U);
 	}
 	CHECK(sizeof(plain) - 1U == 327U && sizeof(ansi) - 1U == 370U);
 }
@@ -38024,7 +37575,7 @@ test_planet_movement_accepted_cycle_presentation(void)
 		{true, ansi, sizeof(ansi) - 1U, {77U, 80U, 169U, 264U}},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[300];
 	size_t ends[4];
 	size_t pass;
@@ -38066,11 +37617,7 @@ test_planet_movement_accepted_cycle_presentation(void)
 		    && viewer.join.sample_calls == 6U
 		    && viewer.join.event_count == 30U
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
-		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
-		yt_text_input_destroy(&viewer.input);
+		    && stream.read_count == 0U && stream.line_count == 0U);
 	}
 	CHECK(sizeof(plain) - 1U == 244U && sizeof(ansi) - 1U == 264U);
 }
@@ -38189,7 +37736,7 @@ test_planet_port_no_port_cycle_presentation(void)
 		{true, ansi, sizeof(ansi) - 1U, {77U, 80U, 129U, 223U}},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[260];
 	size_t ends[4];
 	size_t pass;
@@ -38233,11 +37780,7 @@ test_planet_port_no_port_cycle_presentation(void)
 		    && viewer.join.sample_calls == 5U
 		    && viewer.join.event_count == 25U
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
-		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
-		yt_text_input_destroy(&viewer.input);
+		    && stream.read_count == 0U && stream.line_count == 0U);
 	}
 	CHECK(sizeof(plain) - 1U == 179U && sizeof(ansi) - 1U == 223U);
 }
@@ -38438,7 +37981,7 @@ test_planet_port_refusal_cycle_presentation(void)
 		{true, ansi, sizeof(ansi) - 1U},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[800];
 	size_t pass;
 
@@ -38463,11 +38006,7 @@ test_planet_port_refusal_cycle_presentation(void)
 		    && viewer.join.pager.line_count == 0.0f
 		    && viewer.join.pager.nonstop == 0.0f
 		    && viewer.join.accumulator[0] == '\0'
-		    && viewer.join.queue_length == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
-		yt_text_input_destroy(&viewer.input);
+		    && viewer.join.queue_length == 0U);
 	}
 	CHECK(sizeof(plain) - 1U == 680U && sizeof(ansi) - 1U == 766U);
 }
@@ -38674,7 +38213,7 @@ test_docking_earth_leave_cycle_presentation(void)
 		{true, ansi, sizeof(ansi) - 1U, {68U, 720U, 813U}},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[850];
 	size_t ends[3];
 	size_t pass;
@@ -38707,11 +38246,7 @@ test_docking_earth_leave_cycle_presentation(void)
 		    && viewer.join.queue_length == 0U);
 		CHECK(viewer.join.sample_calls == 20U
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
-		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
-		yt_text_input_destroy(&viewer.input);
+		    && stream.read_count == 0U && stream.line_count == 0U);
 	}
 	CHECK(sizeof(plain) - 1U == 773U && sizeof(ansi) - 1U == 813U);
 }
@@ -38823,7 +38358,7 @@ test_computer_quit_accept_presentation(void)
 		    24U, 0U, 0U, 3.0f, 1.0f, 1.0f},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct normal_exit_body_observation observation;
 	uint8_t remote[1700];
 	size_t pass;
@@ -38905,15 +38440,11 @@ test_computer_quit_accept_presentation(void)
 		    && viewer.join.response_calls == 0U
 		    && viewer.join.direct_calls == 2U
 		    && viewer.join.event_count == 120U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 2U
-		    && viewer.open_calls == 1U
 		    && viewer.join.source_length == sizeof(returning) - 1U
 		    && memcmp(viewer.join.source, returning,
 		    sizeof(returning) - 1U) == 0
 		    && strcmp(viewer.join.accumulator, "Y") == 0
 		    && viewer.join.queue_length == 0U);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -39025,7 +38556,7 @@ test_planet_quit_accept_presentation(void)
 		    25U, 0U, 0U, 3.0f, 1.0f, 1.0f},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct normal_exit_body_observation observation;
 	uint8_t remote[1700];
 	size_t pass;
@@ -39107,15 +38638,11 @@ test_planet_quit_accept_presentation(void)
 		    && viewer.join.response_calls == 0U
 		    && viewer.join.direct_calls == 2U
 		    && viewer.join.event_count == 125U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 2U
-		    && viewer.open_calls == 1U
 		    && viewer.join.source_length == sizeof(returning) - 1U
 		    && memcmp(viewer.join.source, returning,
 		    sizeof(returning) - 1U) == 0
 		    && strcmp(viewer.join.accumulator, "Y") == 0
 		    && viewer.join.queue_length == 0U);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -39226,7 +38753,7 @@ test_hostile_quit_accept_presentation(void)
 	};
 	struct normal_exit_info_values info;
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	struct normal_exit_body_observation observation;
 	uint8_t remote[1700];
 	size_t pass;
@@ -39323,15 +38850,11 @@ test_hostile_quit_accept_presentation(void)
 		    && viewer.join.response_calls == 0U
 		    && viewer.join.direct_calls == 2U
 		    && viewer.join.event_count == 125U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 2U
-		    && viewer.open_calls == 1U
 		    && viewer.join.source_length == sizeof(returning) - 1U
 		    && memcmp(viewer.join.source, returning,
 		    sizeof(returning) - 1U) == 0
 		    && strcmp(viewer.join.accumulator, "Y") == 0
 		    && viewer.join.queue_length == 0U);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -39408,7 +38931,7 @@ test_main_quit_accept_handoff_presentation(void)
 		    UINT64_C(0x6d3fa4669b3587bd), 0U, 2U},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[128];
 	size_t pass;
 
@@ -39453,11 +38976,7 @@ test_main_quit_accept_handoff_presentation(void)
 		    && viewer.join.event_count == 10U
 		    && viewer.join.position == 0U
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
-		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
-		yt_text_input_destroy(&viewer.input);
+		    && stream.read_count == 0U && stream.line_count == 0U);
 	}
 }
 
@@ -39582,7 +39101,7 @@ test_quit_invalid_retry_typeahead_presentation(void)
 		    UINT64_C(0x6d3fa4669b3587bd), 0U, 0U, 2U, 0U, 1.0f},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[192];
 	size_t pass;
 
@@ -39633,11 +39152,7 @@ test_quit_invalid_retry_typeahead_presentation(void)
 		    && viewer.join.event_count == 10U
 		    && viewer.join.position == 0U
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
-		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
-		yt_text_input_destroy(&viewer.input);
+		    && stream.read_count == 0U && stream.line_count == 0U);
 	}
 }
 
@@ -39819,7 +39334,7 @@ test_quit_valid_typeahead_presentation(void)
 		    UINT64_C(0x2207a27a6260aaca)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[192];
 	size_t pass;
 
@@ -39872,16 +39387,12 @@ test_quit_valid_typeahead_presentation(void)
 		    == (cases[pass].confirmed ? 10U : 15U)
 		    && viewer.join.position == 0U
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
-		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
+		    && stream.read_count == 0U && stream.line_count == 0U);
 		CHECK(viewer.join.source_length
 		    == (cases[pass].confirmed ? 1U : sizeof(prompt) - 1U)
 		    && memcmp(viewer.join.source,
 		    cases[pass].confirmed ? (const uint8_t *)"Y" : prompt,
 		    viewer.join.source_length) == 0);
-		yt_text_input_destroy(&viewer.input);
 	}
 }
 
@@ -39989,7 +39500,7 @@ test_quit_heading_sample_typeahead_presentation(void)
 		    3U, UINT64_C(0x2207a27a6260aaca)},
 	};
 	struct physical_viewer_join viewer;
-	struct yt_file_viewer_stream_state stream;
+	struct viewer_file_fixture stream;
 	uint8_t remote[192];
 	size_t pass;
 
@@ -40037,11 +39548,7 @@ test_quit_heading_sample_typeahead_presentation(void)
 		    && viewer.join.event_count == 15U
 		    && viewer.join.position == 0U
 		    && stream.eof_checks == 0U && stream.key_checks == 0U
-		    && stream.read_count == 0U && stream.line_count == 0U
-		    && !stream.file_open && !viewer.join.file_open
-		    && viewer.input.file == NULL && viewer.close_calls == 0U
-		    && viewer.open_calls == 0U);
-		yt_text_input_destroy(&viewer.input);
+		    && stream.read_count == 0U && stream.line_count == 0U);
 	}
 }
 
@@ -43331,7 +42838,6 @@ main(void)
 	test_projectile_early_terminal_presentation();
 	test_pager_transactions();
 	test_pager_gates();
-	test_file_viewer_pager_join();
 	test_startup_ascii_physical_join();
 	test_instruction_physical_viewer_join();
 	test_newspaper_physical_viewer_join();
