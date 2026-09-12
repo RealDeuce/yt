@@ -197,50 +197,6 @@ typedef bool (*yt_registration_present_fn)(void *context,
     const uint8_t *text, size_t length, struct yt_error *error);
 typedef void (*yt_registration_terminal_fn)(void *context);
 
-#define YT_STARTUP_RAW_ADDRESS_SPACE 65536U
-
-struct yt_startup_opening_cpu {
-	uint16_t ax;
-	uint16_t bx;
-	uint16_t cx;
-	uint16_t dx;
-	uint16_t si;
-	uint16_t di;
-	uint16_t bp;
-	uint16_t sp;
-	uint16_t cs;
-	uint16_t ip;
-	uint16_t ds;
-	uint16_t es;
-	uint16_t ss;
-	uint16_t flags;
-	uint16_t known_flags;
-};
-
-struct yt_startup_opening_frame {
-	struct yt_startup_opening_cpu cpu;
-	uint16_t brun_segment;
-	uint8_t *process;
-	size_t process_size;
-	uint8_t *stack;
-	size_t stack_size;
-};
-
-enum yt_startup_opening_frame_outcome {
-	YT_STARTUP_OPENING_FRAME_ENTERED,
-	YT_STARTUP_OPENING_FRAME_RETURNED,
-	YT_STARTUP_OPENING_FRAME_ERROR_7,
-};
-
-struct yt_startup_opening_frame_result {
-	enum yt_startup_opening_frame_outcome outcome;
-	uint16_t error_number;
-	uint16_t saved_ip;
-	uint16_t continuation;
-	uint16_t marker_before;
-	uint16_t marker_after;
-};
-
 struct yt_registration_ops {
 	yt_registration_file_fn close_file4;
 	yt_registration_file_fn random_open;
@@ -257,12 +213,6 @@ struct yt_registration_ops {
 
 bool yt_startup_split_command(const uint8_t *command, size_t length,
     struct yt_startup_command_split *result);
-bool yt_startup_opening_frame_enter(
-	struct yt_startup_opening_frame *frame,
-	struct yt_startup_opening_frame_result *result);
-bool yt_startup_opening_frame_return(
-	struct yt_startup_opening_frame *frame,
-	struct yt_startup_opening_frame_result *result);
 bool yt_startup_compose_entry(const uint8_t *command, size_t length,
     struct yt_startup_entry_result *result);
 int yt_startup_parse_port(const uint8_t *identifier, size_t length);
