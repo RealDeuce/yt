@@ -169,6 +169,49 @@ wait_once(void *context, float seconds, struct yt_error *error)
 	return true;
 }
 
+struct opening_poll_state {
+	size_t local_polls;
+	size_t remote_polls;
+	size_t waits;
+	size_t local_ready_at;
+	size_t remote_ready_at;
+};
+
+static bool
+opening_poll_local(void *context, bool *ready, struct yt_error *error)
+{
+	struct opening_poll_state *state = context;
+
+	(void)error;
+	++state->local_polls;
+	*ready = state->local_ready_at != 0U
+	    && state->local_polls == state->local_ready_at;
+	return true;
+}
+
+static bool
+opening_poll_remote(void *context, bool *ready, struct yt_error *error)
+{
+	struct opening_poll_state *state = context;
+
+	(void)error;
+	++state->remote_polls;
+	*ready = state->remote_ready_at != 0U
+	    && state->remote_polls == state->remote_ready_at;
+	return true;
+}
+
+static bool
+opening_wait(void *context, float seconds, struct yt_error *error)
+{
+	struct opening_poll_state *state = context;
+
+	(void)error;
+	CHECK(seconds == 3.0f);
+	++state->waits;
+	return true;
+}
+
 static void
 test_counted_combined_route(void)
 {
@@ -206,6 +249,7 @@ test_ansi_opening_routes(void)
 	const char *path = "test-output-opening.dat";
 	const char *missing_path = "TEST-OUTPUT-MISSING-53.ANS";
 	struct yt_error error;
+	struct opening_poll_state opening;
 	uint16_t open_basic_error = 0U;
 	FILE *file;
 	size_t waits = 0U;
@@ -250,6 +294,43 @@ test_ansi_opening_routes(void)
 	    && emulated_calls[1].remote_echo
 	    && emulated_calls[2].remote_echo
 	    && emulated_calls[3].remote_echo);
+
+	memset(&opening, 0, sizeof(opening));
+	opening.local_ready_at = 1U;
+	reset_calls();
+	od_control.od_force_local = TRUE;
+	yt_error_clear(&error);
+	CHECK(yt_out_opening_file(path, 1.0f, 1.0f, opening_poll_local,
+	    opening_poll_remote, opening_wait, &opening, NULL, &error)
+	    && opening.local_polls == 1U && opening.remote_polls == 0U
+	    && opening.waits == 0U && emulated_call_count == 3U
+	    && strcmp(emulated_calls[0].text, "\x1b[2JX") == 0
+	    && strcmp(emulated_calls[1].text, "\r\n") == 0
+	    && strcmp(emulated_calls[2].text, "\x1b[0m") == 0);
+
+	memset(&opening, 0, sizeof(opening));
+	opening.remote_ready_at = 1U;
+	reset_calls();
+	od_control.od_force_local = FALSE;
+	yt_error_clear(&error);
+	CHECK(yt_out_opening_file(path, 0.0f, 1.0f, opening_poll_local,
+	    opening_poll_remote, opening_wait, &opening, NULL, &error)
+	    && opening.local_polls == 1U && opening.remote_polls == 1U
+	    && opening.waits == 0U && emulated_call_count == 4U
+	    && strcmp(emulated_calls[0].text, "\x1b[2JX") == 0
+	    && strcmp(emulated_calls[1].text, "\n\r") == 0
+	    && strcmp(emulated_calls[2].text, "\x1b") == 0
+	    && strcmp(emulated_calls[3].text, "[0m") == 0);
+
+	memset(&opening, 0, sizeof(opening));
+	reset_calls();
+	yt_error_clear(&error);
+	CHECK(yt_out_opening_file(path, 2.0f, 0.0f, opening_poll_local,
+	    opening_poll_remote, opening_wait, &opening, NULL, &error)
+	    && opening.local_polls == 1U && opening.remote_polls == 1U
+	    && opening.waits == 1U && emulated_call_count == 2U
+	    && strcmp(emulated_calls[0].text, "\x1b[2JX") == 0
+	    && strcmp(emulated_calls[1].text, "\n\r") == 0);
 	CHECK(remove(path) == 0);
 
 	yt_error_clear(&error);

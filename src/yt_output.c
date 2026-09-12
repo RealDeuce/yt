@@ -4,6 +4,7 @@
 #include "yt_door.h"
 #include "yt_text.h"
 
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -203,20 +204,11 @@ yt_out_clear(void)
 	od_clr_scr();
 }
 
-struct yt_out_opening_context {
-	struct yt_text_input input;
-	uint16_t basic_error;
-	yt_out_opening_poll_fn poll_local;
-	yt_out_opening_poll_fn poll_remote;
-	yt_out_opening_wait_fn wait;
-	void *client;
-};
-
 static bool
-out_opening_text_result(struct yt_out_opening_context *opening,
+out_opening_text_result(uint16_t *observed,
     bool ok, uint16_t basic_error, struct yt_error *error)
 {
-	opening->basic_error = ok ? 0U : basic_error;
+	*observed = ok ? 0U : basic_error;
 	if (!ok && basic_error != 0U) {
 		if (error == NULL)
 			return ok;
@@ -227,142 +219,24 @@ out_opening_text_result(struct yt_out_opening_context *opening,
 }
 
 static bool
-out_opening_open_input(void *context, const char *path,
-    struct yt_error *error)
+out_opening_retry_current(const struct yt_error *error)
 {
-	struct yt_out_opening_context *opening = context;
-
-	bool ok = yt_text_input_open(&opening->input, path, error);
-
-	return out_opening_text_result(opening, ok,
-	    opening->input.last_open.basic_error, error);
+	return error != NULL && error->basic_error_valid
+	    && error->basic_error == 24U;
 }
 
-static bool
-out_opening_open_local(void *context, struct yt_error *error)
+static void
+out_opening_set_error(struct yt_error *error, enum yt_status status,
+    const char *operation, const char *path)
 {
-	(void)context;
-	(void)error;
-	return true;
-}
-
-static bool
-out_opening_eof(void *context, bool *eof, struct yt_error *error)
-{
-	struct yt_out_opening_context *opening = context;
-
-	bool ok = yt_text_input_eof(&opening->input, eof, error);
-
-	return out_opening_text_result(opening, ok,
-	    opening->input.last_read.basic_error, error);
-}
-
-static bool
-out_opening_read(void *context, const uint8_t **line, size_t *length,
-    bool *available, struct yt_error *error)
-{
-	struct yt_out_opening_context *opening = context;
-
-	bool ok = yt_text_input_read_line(&opening->input, line, length,
-	    available, error);
-
-	return out_opening_text_result(opening, ok,
-	    opening->input.last_read.basic_error, error);
-}
-
-static bool
-out_opening_present_local(void *context, const uint8_t *line, size_t length,
-    struct yt_error *error)
-{
-	static const uint8_t newline[] = {'\r', '\n'};
-
-	(void)context;
-	(void)error;
-	if (local_session()) {
-		out_emulated_bytes(line, length);
-		out_emulated_bytes(newline, sizeof(newline));
-	}
-	return true;
-}
-
-static bool
-out_opening_poll_local(void *context, bool *ready, struct yt_error *error)
-{
-	struct yt_out_opening_context *opening = context;
-
-	return opening->poll_local(opening->client, ready, error);
-}
-
-static bool
-out_opening_present_remote(void *context, const uint8_t *line, size_t length,
-    struct yt_error *error)
-{
-	static const uint8_t newline[] = {'\n', '\r'};
-	(void)context;
-	(void)error;
-	out_emulated_bytes(line, length);
-	out_emulated_bytes(newline, sizeof(newline));
-	return true;
-}
-
-static bool
-out_opening_poll_remote(void *context, bool *ready, struct yt_error *error)
-{
-	struct yt_out_opening_context *opening = context;
-
-	return opening->poll_remote(opening->client, ready, error);
-}
-
-static bool
-out_opening_wait(void *context, float seconds, struct yt_error *error)
-{
-	struct yt_out_opening_context *opening = context;
-
-	return opening->wait(opening->client, seconds, error);
-}
-
-static bool
-out_opening_reset_remote(void *context, struct yt_error *error)
-{
-	static const uint8_t escape[] = "\x1b";
-	static const uint8_t suffix[] = "[0m";
-
-	(void)context;
-	(void)error;
-	out_emulated_bytes(escape, sizeof(escape) - 1U);
-	out_emulated_bytes(suffix, sizeof(suffix) - 1U);
-	return true;
-}
-
-static bool
-out_opening_reset_local(void *context, struct yt_error *error)
-{
-	static const uint8_t reset[] = "\x1b[0m";
-
-	(void)context;
-	(void)error;
-	if (local_session())
-		out_emulated_bytes(reset, sizeof(reset) - 1U);
-	return true;
-}
-
-static bool
-out_opening_close_input(void *context, struct yt_error *error)
-{
-	struct yt_out_opening_context *opening = context;
-
-	bool ok = yt_text_input_close(&opening->input, error);
-
-	return out_opening_text_result(opening, ok,
-	    opening->input.last_close.basic_error, error);
-}
-
-static bool
-out_opening_close_local(void *context, struct yt_error *error)
-{
-	(void)context;
-	(void)error;
-	return true;
+	if (error == NULL)
+		return;
+	error->status = status;
+	error->system_error = errno;
+	(void)snprintf(error->operation, sizeof(error->operation), "%s",
+	    operation);
+	(void)snprintf(error->path, sizeof(error->path), "%s",
+	    path != NULL ? path : "");
 }
 
 bool
@@ -371,48 +245,118 @@ yt_out_opening_file(const char *path, float mode, float snoop,
     yt_out_opening_poll_fn poll_remote, yt_out_opening_wait_fn wait,
     void *poll_context, uint16_t *basic_error, struct yt_error *error)
 {
-	static const struct yt_opening_stream_ops ops = {
-		out_opening_open_input,
-		out_opening_open_local,
-		out_opening_eof,
-		out_opening_read,
-		out_opening_present_local,
-		out_opening_poll_local,
-		out_opening_present_remote,
-		out_opening_poll_remote,
-		out_opening_wait,
-		out_opening_reset_remote,
-		out_opening_reset_local,
-		out_opening_close_input,
-		out_opening_close_local,
-	};
-	struct yt_out_opening_context context = {
-		.poll_local = poll_local,
-		.poll_remote = poll_remote,
-		.wait = wait,
-		.client = poll_context,
-	};
-	struct yt_opening_stream_state state = {
-		.path = path,
-		.mode = mode,
-		.snoop = snoop,
-	};
-	bool ok;
+	static const uint8_t local_newline[] = {'\r', '\n'};
+	static const uint8_t remote_newline[] = {'\n', '\r'};
+	static const uint8_t escape[] = "\x1b";
+	static const uint8_t reset_suffix[] = "[0m";
+	static const uint8_t reset[] = "\x1b[0m";
+	struct yt_text_input input;
+	struct yt_error local_error;
+	struct yt_error *active_error = error != NULL ? error : &local_error;
+	uint16_t observed_basic_error = 0U;
+	bool result = false;
 
 	if (basic_error != NULL)
 		*basic_error = 0U;
 	if (poll_local == NULL || poll_remote == NULL || wait == NULL) {
-		if (error != NULL) {
-			error->status = YT_INVALID;
-			(void)snprintf(error->operation, sizeof(error->operation),
-			    "%s", "opening stream arguments");
-		}
+		errno = 0;
+		out_opening_set_error(error, YT_INVALID,
+		    "opening stream arguments", NULL);
 		return false;
 	}
-	yt_text_input_init(&context.input);
-	ok = yt_opening_stream_run(&state, &ops, &context, error);
+	if (path == NULL) {
+		errno = 0;
+		out_opening_set_error(error, YT_INVALID, "ANSI opening stream",
+		    NULL);
+		return false;
+	}
+	yt_text_input_init(&input);
+#define OPENING_RETRY(call) do { \
+	for (;;) { \
+		yt_error_clear(active_error); \
+		if (call) \
+			break; \
+		if (!out_opening_retry_current(active_error)) \
+			goto done; \
+	} \
+} while (0)
+#define OPENING_TEXT_RETRY(call, basic) do { \
+	for (;;) { \
+		bool opening_ok; \
+		yt_error_clear(active_error); \
+		opening_ok = (call); \
+		if (out_opening_text_result(&observed_basic_error, opening_ok, \
+		    (basic), active_error)) \
+			break; \
+		if (!out_opening_retry_current(active_error)) \
+			goto done; \
+	} \
+} while (0)
+	OPENING_TEXT_RETRY(yt_text_input_open(&input, path, active_error),
+	    input.last_open.basic_error);
+	for (;;) {
+		const uint8_t *line;
+		size_t length;
+		bool available;
+		bool eof;
+		bool ready;
+
+		OPENING_TEXT_RETRY(yt_text_input_eof(&input, &eof, active_error),
+		    input.last_read.basic_error);
+		if (eof) {
+			if (!wait(poll_context, 3.0f, active_error))
+				goto done;
+			break;
+		}
+		OPENING_TEXT_RETRY(yt_text_input_read_line(&input, &line, &length,
+		    &available, active_error), input.last_read.basic_error);
+		if (!available) {
+			errno = 0;
+			out_opening_set_error(active_error, YT_EOF,
+			    "ANSI LINE INPUT after EOF check", path);
+			goto done;
+		}
+		if (snoop != 0.0f) {
+			yt_error_clear(active_error);
+			if (local_session()) {
+				out_emulated_bytes(line, length);
+				out_emulated_bytes(local_newline,
+				    sizeof(local_newline));
+			}
+		}
+		OPENING_RETRY(poll_local(poll_context, &ready, active_error));
+		if (ready)
+			break;
+		if (mode != 1.0f) {
+			yt_error_clear(active_error);
+			out_emulated_bytes(line, length);
+			out_emulated_bytes(remote_newline,
+			    sizeof(remote_newline));
+			OPENING_RETRY(poll_remote(poll_context, &ready,
+			    active_error));
+			if (ready)
+				break;
+		}
+	}
+	if (mode == 0.0f) {
+		yt_error_clear(active_error);
+		out_emulated_bytes(escape, sizeof(escape) - 1U);
+		out_emulated_bytes(reset_suffix, sizeof(reset_suffix) - 1U);
+	}
+	if (snoop != 0.0f) {
+		yt_error_clear(active_error);
+		if (local_session())
+			out_emulated_bytes(reset, sizeof(reset) - 1U);
+	}
+	OPENING_TEXT_RETRY(yt_text_input_close(&input, active_error),
+	    input.last_close.basic_error);
+	result = true;
+
+done:
+#undef OPENING_TEXT_RETRY
+#undef OPENING_RETRY
 	if (basic_error != NULL)
-		*basic_error = context.basic_error;
-	yt_text_input_destroy(&context.input);
-	return ok;
+		*basic_error = observed_basic_error;
+	yt_text_input_destroy(&input);
+	return result;
 }
