@@ -170,26 +170,6 @@ struct yt_rmt_handoff_read_ops {
 	yt_rmt_handoff_step_fn close_sequential;
 };
 
-enum yt_rmt_handoff_cleanup_operation {
-	YT_RMT_HANDOFF_CLEANUP_NONE,
-	YT_RMT_HANDOFF_CLEANUP_CLOSE,
-	YT_RMT_HANDOFF_CLEANUP_KILL,
-};
-
-struct yt_rmt_handoff_cleanup_state {
-	enum yt_rmt_handoff_cleanup_operation failed_operation;
-	bool close_attempted;
-	bool close_completed;
-	bool kill_attempted;
-	bool kill_completed;
-	bool complete;
-};
-
-struct yt_rmt_handoff_cleanup_ops {
-	yt_rmt_handoff_step_fn close;
-	yt_rmt_handoff_step_fn kill;
-};
-
 #define YT_RMT_DORINFO_FIELDS 8U
 
 enum yt_rmt_dorinfo_outcome {
@@ -358,9 +338,6 @@ bool yt_rmt_handoff_parse(const uint8_t *data, size_t length,
     struct yt_rmt_handoff_result *result);
 bool yt_rmt_handoff_read_run(struct yt_rmt_handoff_read_state *state,
 	const struct yt_rmt_handoff_read_ops *ops, void *context,
-	struct yt_error *error);
-bool yt_rmt_handoff_cleanup_run(struct yt_rmt_handoff_cleanup_state *state,
-	const struct yt_rmt_handoff_cleanup_ops *ops, void *context,
 	struct yt_error *error);
 bool yt_rmt_dorinfo_parse(const uint8_t *raw, size_t raw_length,
     uint8_t *storage, size_t storage_capacity,

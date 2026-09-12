@@ -118,19 +118,6 @@ rmt_handoff_close_sequential(void *context, struct yt_error *error)
 }
 
 static bool
-rmt_handoff_cleanup_close(void *context, struct yt_error *error)
-{
-	return rmt_handoff_close(context, error);
-}
-
-static bool
-rmt_handoff_cleanup_kill(void *context, struct yt_error *error)
-{
-	(void)context;
-	return yt_file_kill("RMTINIT.TMP", error);
-}
-
-static bool
 read_handoff(struct rmt_handoff_file *handoff, char path[512],
     bool *standalone, struct yt_error *error)
 {
@@ -562,18 +549,10 @@ main(void)
 		local_mode = false;
 		credited[0] = '\0';
 	}
-	{
-		static const struct yt_rmt_handoff_cleanup_ops cleanup_ops = {
-			rmt_handoff_cleanup_close,
-			rmt_handoff_cleanup_kill,
-		};
-		struct yt_rmt_handoff_cleanup_state cleanup_state;
-
-		if (!yt_rmt_handoff_cleanup_run(&cleanup_state, &cleanup_ops,
-		    &handoff_file, &error)) {
-			yt_cli_error("RMT-INIT", &error);
-			return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
-		}
+	if (!rmt_handoff_close(&handoff_file, &error)
+	    || !yt_file_kill("RMTINIT.TMP", &error)) {
+		yt_cli_error("RMT-INIT", &error);
+		return finish_rmt(&handoff_file, &door, EXIT_FAILURE);
 	}
 	if (!standalone) {
 		struct yt_rmt_standalone_output output;
