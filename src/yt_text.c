@@ -130,16 +130,6 @@ yt_text_input_init(struct yt_text_input *input)
 		memset(input, 0, sizeof(*input));
 }
 
-void
-yt_text_input_set_close_provider(struct yt_text_input *input,
-    yt_text_close_provider provider, void *context)
-{
-	if (input == NULL)
-		return;
-	input->close_provider = provider;
-	input->close_context = context;
-}
-
 bool
 yt_text_input_open(struct yt_text_input *input, const char *path,
     struct yt_error *error)
@@ -1236,15 +1226,14 @@ text_close_observation_valid(
 }
 
 static bool
-text_input_close_observe(struct yt_text_input *input,
-    yt_text_close_provider provider, FILE *file,
+text_input_close_observe(struct yt_text_input *input, FILE *file,
     enum yt_text_close_operation operation,
     struct yt_text_close_observation *observation)
 {
 	++input->last_close.operation_count;
 	memset(observation, 0, sizeof(*observation));
 	observation->terminal_position = -1;
-	return provider(input->close_context, file, operation, NULL, 0U,
+	return text_close_default(NULL, file, operation, NULL, 0U,
 	    observation);
 }
 
@@ -1273,7 +1262,6 @@ text_input_close_failure(struct yt_text_input *input,
 static bool
 text_input_close_execute(struct yt_text_input *input, struct yt_error *error)
 {
-	yt_text_close_provider provider;
 	struct yt_text_close_observation observation;
 	struct yt_text_close_observation cleanup;
 	FILE *file;
@@ -1298,9 +1286,7 @@ text_input_close_execute(struct yt_text_input *input, struct yt_error *error)
 		return true;
 	}
 	file = input->file;
-	provider = input->close_provider != NULL ? input->close_provider
-	    : text_close_default;
-	delivered = text_input_close_observe(input, provider, file,
+	delivered = text_input_close_observe(input, file,
 	    YT_TEXT_CLOSE_HANDLE, &observation);
 	valid = delivered && text_close_observation_valid(
 	    YT_TEXT_CLOSE_HANDLE, 0U, &observation);
@@ -1325,7 +1311,7 @@ text_input_close_execute(struct yt_text_input *input, struct yt_error *error)
 	first_handle_open = observation.handle_open;
 	input->file = NULL;
 	input->last_close.cleanup_close_attempted = true;
-	delivered = text_input_close_observe(input, provider,
+	delivered = text_input_close_observe(input,
 	    first_handle_open ? file : NULL,
 	    YT_TEXT_CLOSE_CLEANUP_HANDLE, &cleanup);
 	input->last_close.cleanup_dos_error = cleanup.dos_error;

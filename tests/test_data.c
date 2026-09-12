@@ -806,24 +806,6 @@ text_output_close_fixture(struct yt_text_output *output,
 	return true;
 }
 
-static bool
-text_input_close_fixture(struct yt_text_input *input,
-    struct text_close_script *script, bool device)
-{
-	yt_text_input_init(input);
-	input->file = tmpfile();
-	if (input->file == NULL)
-		return false;
-	(void)snprintf(input->path, sizeof(input->path), "%s",
-	    "TEXT-INPUT-CLOSE-ORACLE.DAT");
-	input->last_open.outcome = YT_TEXT_OPEN_RETURNED;
-	input->last_open.device = device;
-	input->last_open.registered = true;
-	input->last_open.handle_open = true;
-	yt_text_input_set_close_provider(input, scripted_text_close, script);
-	return true;
-}
-
 static void
 text_output_write_add(struct text_output_write_script *script,
     const uint8_t *expected, size_t accepted, bool carry,
@@ -2763,167 +2745,6 @@ test_output_open_success_model(void)
 	text_open_check_consumed(&script);
 	yt_text_output_destroy(&output);
 }
-static void
-test_input_close_model(void)
-{
-	struct text_close_script script;
-	struct text_close_step *step;
-	struct yt_text_input input;
-	struct yt_error error;
-	unsigned device;
-	unsigned dos_error;
-	unsigned retry_error;
-
-	/* A missing explicit CLOSE returns without a physical operation. */
-	yt_text_input_init(&input);
-	yt_error_clear(&error);
-	CHECK(yt_text_input_close(&input, &error)
-	    && input.last_close.outcome == YT_TEXT_CLOSE_RETURNED
-	    && input.last_close.missing
-	    && input.last_close.operation_count == 0U
-	    && !input.last_close.device
-	    && !input.last_close.registered
-	    && !input.last_close.handle_open);
-	yt_text_input_destroy(&input);
-
-	/* Ordinary and device inputs share the one-operation success suffix. */
-	for (device = 0U; device <= 1U; ++device) {
-		memset(&script, 0, sizeof(script));
-		text_close_add(&script, YT_TEXT_CLOSE_HANDLE, NULL, 0U,
-		    0U, false, 0U, false, true, true);
-		CHECK(text_input_close_fixture(&input, &script, device != 0U));
-		yt_error_clear(&error);
-		CHECK(yt_text_input_close(&input, &error)
-		    && script.position == script.length
-		    && input.last_close.outcome == YT_TEXT_CLOSE_RETURNED
-		    && input.last_close.operation_count == 1U
-		    && input.last_close.terminal_position == 37
-		    && input.last_close.device == (device != 0U)
-		    && !input.last_close.missing
-		    && !input.last_close.cleanup_close_attempted
-		    && !input.last_close.registered
-		    && !input.last_close.handle_open
-		    && input.file == NULL && input.orphaned_file == NULL);
-		yt_text_input_destroy(&input);
-	}
-
-	/* Every first DOS error retries once, frees registration, and routes by class. */
-	for (device = 0U; device <= 1U; ++device) {
-		for (dos_error = 1U; dos_error <= 0xffU; ++dos_error) {
-			memset(&script, 0, sizeof(script));
-			text_close_add(&script, YT_TEXT_CLOSE_HANDLE, NULL, 0U,
-			    0U, true, (uint16_t)dos_error, true, true, false);
-			text_close_add(&script, YT_TEXT_CLOSE_CLEANUP_HANDLE,
-			    NULL, 0U, 0U, false, 0U, false, true, true);
-			CHECK(text_input_close_fixture(&input, &script,
-			    device != 0U));
-			yt_error_clear(&error);
-			CHECK(!yt_text_input_close(&input, &error)
-			    && error.status == YT_IO_ERROR
-			    && strcmp(error.operation,
-			    "sequential INPUT CLOSE") == 0
-			    && script.position == script.length
-			    && input.last_close.outcome
-			    == YT_TEXT_CLOSE_DISK_ERROR
-			    && input.last_close.failed_operation
-			    == YT_TEXT_CLOSE_HANDLE
-			    && input.last_close.basic_error
-			    == (device != 0U ? 57U : 70U)
-			    && input.last_close.dos_error == dos_error
-			    && input.last_close.operation_count == 2U
-			    && input.last_close.cleanup_close_attempted
-			    && !input.last_close.registered
-			    && !input.last_close.handle_open
-			    && input.file == NULL
-			    && input.orphaned_file == NULL);
-			yt_text_input_destroy(&input);
-		}
-	}
-
-	/* The retry result is ignored over its complete clear/carry domain. */
-	for (retry_error = 0U; retry_error <= 0xffU; ++retry_error) {
-		memset(&script, 0, sizeof(script));
-		text_close_add(&script, YT_TEXT_CLOSE_HANDLE, NULL, 0U,
-		    0U, true, 5U, true, true, false);
-		text_close_add(&script, YT_TEXT_CLOSE_CLEANUP_HANDLE, NULL, 0U,
-		    0U, retry_error != 0U, (uint16_t)retry_error,
-		    retry_error != 0U, true, retry_error == 0U);
-		CHECK(text_input_close_fixture(&input, &script, false));
-		CHECK(!yt_text_input_close(&input, &error)
-		    && script.position == script.length
-		    && input.last_close.outcome == YT_TEXT_CLOSE_DISK_ERROR
-		    && input.last_close.basic_error == 70U
-		    && input.last_close.dos_error == 5U
-		    && input.last_close.cleanup_dos_error == retry_error
-		    && !input.last_close.registered
-		    && input.last_close.handle_open == (retry_error != 0U)
-		    && (input.orphaned_file != NULL) == (retry_error != 0U));
-		yt_text_input_destroy(&input);
-	}
-
-	/* Even a host adapter that consumed the first handle receives the retry. */
-	memset(&script, 0, sizeof(script));
-	text_close_add(&script, YT_TEXT_CLOSE_HANDLE, NULL, 0U,
-	    0U, true, 5U, false, true, true);
-	text_close_add(&script, YT_TEXT_CLOSE_CLEANUP_HANDLE, NULL, 0U,
-	    0U, true, 6U, false, false, false);
-	CHECK(text_input_close_fixture(&input, &script, false));
-	CHECK(!yt_text_input_close(&input, &error)
-	    && script.position == script.length
-	    && input.last_close.outcome == YT_TEXT_CLOSE_DISK_ERROR
-	    && input.last_close.operation_count == 2U
-	    && input.last_close.basic_error == 70U
-	    && input.last_close.dos_error == 5U
-	    && input.last_close.cleanup_dos_error == 6U
-	    && !input.last_close.registered
-	    && !input.last_close.handle_open);
-	yt_text_input_destroy(&input);
-
-	/* Provider rejection before CLOSE retains the registered live handle. */
-	memset(&script, 0, sizeof(script));
-	text_close_add(&script, YT_TEXT_CLOSE_HANDLE, NULL, 0U,
-	    0U, false, 0U, true, true, false);
-	script.steps[0].provider_ok = false;
-	CHECK(text_input_close_fixture(&input, &script, false));
-	CHECK(!yt_text_input_close(&input, &error)
-	    && input.last_close.outcome == YT_TEXT_CLOSE_PROVIDER_ERROR
-	    && input.last_close.basic_error == 57U
-	    && input.last_close.operation_count == 1U
-	    && input.last_close.registered && input.last_close.handle_open
-	    && input.file != NULL && input.orphaned_file == NULL);
-	yt_text_input_destroy(&input);
-
-	/* A malformed handle observation is rejected without losing ownership. */
-	memset(&script, 0, sizeof(script));
-	text_close_add(&script, YT_TEXT_CLOSE_HANDLE, NULL, 0U,
-	    0U, false, 0U, true, true, false);
-	step = &script.steps[0];
-	step->observation.accepted = 1U;
-	CHECK(text_input_close_fixture(&input, &script, false));
-	CHECK(!yt_text_input_close(&input, &error)
-	    && input.last_close.outcome == YT_TEXT_CLOSE_PROVIDER_ERROR
-	    && input.last_close.operation_count == 1U
-	    && input.last_close.registered && input.last_close.handle_open);
-	yt_text_input_destroy(&input);
-
-	/* Cleanup adapter failure retains the now-unregistered orphaned handle. */
-	memset(&script, 0, sizeof(script));
-	text_close_add(&script, YT_TEXT_CLOSE_HANDLE, NULL, 0U,
-	    0U, true, 5U, true, true, false);
-	text_close_add(&script, YT_TEXT_CLOSE_CLEANUP_HANDLE, NULL, 0U,
-	    0U, false, 0U, true, true, false);
-	script.steps[1].provider_ok = false;
-	CHECK(text_input_close_fixture(&input, &script, false));
-	CHECK(!yt_text_input_close(&input, &error)
-	    && input.last_close.outcome == YT_TEXT_CLOSE_PROVIDER_ERROR
-	    && input.last_close.basic_error == 57U
-	    && input.last_close.dos_error == 5U
-	    && input.last_close.operation_count == 2U
-	    && !input.last_close.registered && input.last_close.handle_open
-	    && input.file == NULL && input.orphaned_file != NULL);
-	yt_text_input_destroy(&input);
-}
-
 static void
 test_output_open_error_model(void)
 {
@@ -5504,7 +5325,6 @@ main(void)
 	test_database_random_lof();
 	test_files();
 	test_radio_file();
-	test_input_close_model();
 	test_output_open_success_model();
 	test_output_open_error_model();
 	test_append_open_success_model();

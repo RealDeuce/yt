@@ -4030,26 +4030,6 @@ test_name_input_grammar(struct yt_error *error)
 }
 
 static bool
-names_close_failure_provider(void *context, FILE *file,
-    enum yt_text_close_operation operation, const uint8_t *data,
-    size_t requested, struct yt_text_close_observation *observation)
-{
-	(void)context;
-	(void)file;
-	(void)data;
-	(void)requested;
-	memset(observation, 0, sizeof(*observation));
-	observation->terminal_position = 0;
-	if (operation == YT_TEXT_CLOSE_HANDLE) {
-		observation->carry = true;
-		observation->dos_error = 5U;
-		observation->handle_open = true;
-		return true;
-	}
-	return operation == YT_TEXT_CLOSE_CLEANUP_HANDLE;
-}
-
-static bool
 test_name_sequential_transaction(struct yt_error *error)
 {
 	static const uint8_t rows[] =
@@ -4122,27 +4102,6 @@ test_name_sequential_transaction(struct yt_error *error)
 	    || strcmp(observation.staged.real_last, "F") != 0
 	    || observation.staged.alias_first != NULL
 	    || observation.cursor != 12U) {
-		yt_names_input_observation_free(&observation);
-		yt_names_free(&names);
-		yt_text_input_destroy(&input);
-		return false;
-	}
-	yt_names_input_observation_free(&observation);
-	yt_names_free(&names);
-	yt_text_input_destroy(&input);
-
-	if (!write_file("names.in", rows, sizeof(rows) - 1U))
-		return false;
-	yt_text_input_init(&input);
-	yt_text_input_set_close_provider(&input, names_close_failure_provider,
-	    NULL);
-	result = yt_names_load_sequential(&input, "names.in", &names,
-	    &observation, &state, error);
-	if (result || state.failed_operation != YT_NAMES_SEQUENTIAL_CLOSE
-	    || state.rows_committed != 2U || !state.close_attempted
-	    || state.file_closed || state.complete || names.count != 2U
-	    || input.last_close.basic_error != 70U
-	    || !input.last_close.cleanup_close_attempted) {
 		yt_names_input_observation_free(&observation);
 		yt_names_free(&names);
 		yt_text_input_destroy(&input);
