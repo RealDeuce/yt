@@ -25,13 +25,10 @@
 #define YT_PLAYER_FIRST YT_PLAYER_FIRST_RECORD
 #define YT_PLAYER_LAST YT_PLAYER_LAST_RECORD
 #define YT_COMMAND_SIZE 4096U
-#define YT_PLANET_RECORD_SCRATCH_ADDRESS 0x19C4U
-#define YT_COMPUTER_PLANET_LINK_ADDRESS 0x5184U
 #define YT_CLEARANCE_HOLDS_ADDRESS 0x4B54U
 #define YT_CLEARANCE_FIGHTERS_ADDRESS 0x4B58U
 #define YT_CLEARANCE_GROUND_ADDRESS 0x4B5CU
 #define YT_CLEARANCE_SHIELDS_ADDRESS 0x4B60U
-#define YT_FRIENDSHIP_RELATION_ADDRESS 0x4BC4U
 #define YT_COMPUTER_ROUTE_STATUS_ADDRESS 0x4CF2U
 #define YT_COMPUTER_PATH_MARKER_ADDRESS 0x4D62U
 #define YT_COMPUTER_ROUTE_DESTINATION_ADDRESS 0x4E12U
@@ -46,7 +43,6 @@
 #define YT_PLANET_UPDATER_DAY_ADDRESS 0x5E90U
 #define YT_PLANET_UPDATER_MINUTE_ADDRESS 0x5E94U
 #define YT_PLANET_UPDATER_ELAPSED_ADDRESS 0x5E98U
-#define YT_SHARED_TARGET_RECORD_ADDRESS 0x1A40U
 
 enum navigation_field_kind {
 	NAVIGATION_FIELD_NONE,
@@ -85,6 +81,9 @@ struct yt_session {
 	bool anti_cloak_enabled;
 	float low_time_remembered;
 	float inherited_loop_index;
+	float planet_record_expression;
+	float shared_target_record;
+	bool friendship_relation;
 	int spy_count;
 	int spy_sectors[3];
 	int spy_markers[3];
@@ -6399,8 +6398,7 @@ direct_attack_store_target(void *context, const uint8_t raw[4])
 {
 	struct yt_session *session = context;
 
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_SHARED_TARGET_RECORD_ADDRESS, raw);
+	session->shared_target_record = qb_mbf32_decode(raw);
 }
 
 static bool
@@ -11251,9 +11249,8 @@ planet_menu(struct yt_session *session, int logical_planet,
 	static const uint8_t prompt_body[] =
 	    "Planet command (?=help) [A]? ";
 
-	session_set_process_single(session, YT_PLANET_RECORD_SCRATCH_ADDRESS,
-	    single_add(session_planet_offset(session),
-	    (float)logical_planet));
+	session->planet_record_expression = single_add(
+	    session_planet_offset(session), (float)logical_planet);
 	for (;;) {
 		char upper[80];
 		char free_text[64];
@@ -11751,8 +11748,7 @@ command_land(struct yt_session *session, bool *enter_sector,
 		return false;
 	planet_record_value = session_planet_offset(session)
 	    + sector.planet;
-	session_set_process_single(session, YT_PLANET_RECORD_SCRATCH_ADDRESS,
-	    planet_record_value);
+	session->planet_record_expression = planet_record_value;
 	memset(&permission_state, 0, sizeof(permission_state));
 	permission_state.planet_record_value = planet_record_value;
 	permission_state.planet_offset =
@@ -12056,8 +12052,7 @@ info_team_store_captain(void *context, const uint8_t raw[4])
 {
 	struct yt_session *session = context;
 
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_SHARED_TARGET_RECORD_ADDRESS, raw);
+	session->shared_target_record = qb_mbf32_decode(raw);
 }
 
 static void
@@ -16961,11 +16956,7 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 		}
 		if (!session_read_sector(session, (int)selected, &sector, error))
 			return false;
-		yt_route_process_set_raw_single(&session->route_process,
-		    YT_COMPUTER_PLANET_LINK_ADDRESS,
-		    sector.record.bytes + YT_F93);
-		link = yt_route_process_single(&session->route_process,
-		    YT_COMPUTER_PLANET_LINK_ADDRESS);
+		link = qb_mbf32_decode(sector.record.bytes + YT_F93);
 		{
 			float maximum_planet = single_sub(
 			    session->door->game.config.total_records,
@@ -16983,23 +16974,16 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 			size_t name_length;
 
 			session->hostile_deployed_fighters = (double)sector.fighters;
-			yt_route_process_set_raw_single(&session->route_process,
-			    YT_SHARED_TARGET_RECORD_ADDRESS,
+			session->shared_target_record = qb_mbf32_decode(
 			    sector.record.bytes + YT_F85);
-			fighter_owner = yt_route_process_single(&session->route_process,
-			    YT_SHARED_TARGET_RECORD_ADDRESS);
+			fighter_owner = session->shared_target_record;
 			if (!computer_port_friendship(session, fighter_owner,
 			    &fighter_friendly, error))
 				return false;
 			sector_fighters = session->hostile_deployed_fighters;
-			last_relationship = yt_route_process_single(
-			    &session->route_process,
-			    YT_FRIENDSHIP_RELATION_ADDRESS);
+			last_relationship = session->friendship_relation ? -1.0f : 0.0f;
 			scratch = single_add(session_planet_offset(session), link);
-			session_set_process_single(session,
-			    YT_COMPUTER_PLANET_LINK_ADDRESS, scratch);
-			session_set_process_single(session,
-			    YT_PLANET_RECORD_SCRATCH_ADDRESS, scratch);
+			session->planet_record_expression = scratch;
 			if (!session_read_planet(session, (int)link, &planet, error)
 			    || !port_report_length(session, planet.name_length,
 			    YT_TEXT_FIELD_SIZE, &name_length,
@@ -17025,9 +17009,8 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 				if (!computer_port_friendship(session, planet.owner,
 				    &last_friendly, error))
 					return false;
-				last_relationship = yt_route_process_single(
-				    &session->route_process,
-				    YT_FRIENDSHIP_RELATION_ADDRESS);
+				last_relationship = session->friendship_relation
+				    ? -1.0f : 0.0f;
 				if (!computer_planet_relation_cint(session,
 				    last_relationship, &relation_cint,
 				    "computer planet owner relationship CINT", error))
@@ -17060,11 +17043,8 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 		}
 		else {
 			sector_fighters = session->hostile_deployed_fighters;
-			fighter_owner = yt_route_process_single(&session->route_process,
-			    YT_SHARED_TARGET_RECORD_ADDRESS);
-			last_relationship = yt_route_process_single(
-			    &session->route_process,
-			    YT_FRIENDSHIP_RELATION_ADDRESS);
+			fighter_owner = session->shared_target_record;
+			last_relationship = session->friendship_relation ? -1.0f : 0.0f;
 			scratch = link;
 		}
 		if (!computer_planet_relation_cint(session, last_relationship,
@@ -17092,14 +17072,11 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 				    "computer planet unavailable", error);
 			}
 		}
-		if (!valid_link && yt_route_process_single(
-		    &session->route_process,
-		    YT_PLANET_RECORD_SCRATCH_ADDRESS) < 1.0f)
+		if (!valid_link && session->planet_record_expression < 1.0f)
 			return port_report_failure(error,
 			    "computer planet stale current-planet record");
 		return planet_inventory(session, (int)(valid_link
-		    ? link : single_sub(yt_route_process_single(
-		    &session->route_process, YT_PLANET_RECORD_SCRATCH_ADDRESS),
+		    ? link : single_sub(session->planet_record_expression,
 		    session_planet_offset(session))), error);
 	}
 }
@@ -17255,16 +17232,13 @@ static bool
 computer_port_friendship(struct yt_session *session, float owner,
     bool *friendly, struct yt_error *error)
 {
-	static const uint8_t false_raw[4] = {0x00U, 0x00U, 0x80U, 0x00U};
-	static const uint8_t true_raw[4] = {0x00U, 0x00U, 0x80U, 0x81U};
 	struct yt_player current;
 	struct yt_player other;
 
 	if (friendly == NULL)
 		return false;
 	*friendly = false;
-	yt_route_process_set_raw_single(&session->route_process,
-	    YT_FRIENDSHIP_RELATION_ADDRESS, false_raw);
+	session->friendship_relation = false;
 	if (owner < 2.0f
 	    || owner > session_sector_offset(session)
 	    || (float)session_record(session) < 2.0f
@@ -17273,8 +17247,7 @@ computer_port_friendship(struct yt_session *session, float owner,
 		return true;
 	if (owner == (float)session_record(session)) {
 		*friendly = true;
-		yt_route_process_set_raw_single(&session->route_process,
-		    YT_FRIENDSHIP_RELATION_ADDRESS, true_raw);
+		session->friendship_relation = true;
 		return true;
 	}
 	if (!read_player_at_fault(session, session_record(session), &current,
@@ -17287,8 +17260,7 @@ computer_port_friendship(struct yt_session *session, float owner,
 		return false;
 	*friendly = other.team == current.team;
 	if (*friendly)
-		yt_route_process_set_raw_single(&session->route_process,
-		    YT_FRIENDSHIP_RELATION_ADDRESS, true_raw);
+		session->friendship_relation = true;
 	return true;
 }
 
@@ -17414,8 +17386,7 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 		yt_route_process_set_raw_single(&session->route_process,
 		    YT_COMPUTER_ROUTE_STATUS_ADDRESS, visibility.relation_raw);
 		if (visibility.scratch_written)
-			yt_route_process_set_raw_single(&session->route_process,
-			    YT_PLANET_RECORD_SCRATCH_ADDRESS,
+			session->planet_record_expression = qb_mbf32_decode(
 			    visibility.scratch_19c4_raw);
 		if (!visibility_ok)
 			return false;
