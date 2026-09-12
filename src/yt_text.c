@@ -1134,16 +1134,23 @@ text_output_write_perform(FILE *file, const uint8_t *data,
 	return delivered;
 }
 
+struct text_close_observation {
+	size_t accepted;
+	bool carry;
+	bool handle_open;
+	uint16_t dos_error;
+	int64_t terminal_position;
+};
+
 static bool
-text_close_default(void *context, FILE *file,
+text_close_perform(FILE *file,
     enum yt_text_close_operation operation, const uint8_t *data,
-    size_t requested, struct yt_text_close_observation *observation)
+    size_t requested, struct text_close_observation *observation)
 {
 	struct text_output_write_observation write;
 	int result;
 	int saved_errno;
 
-	(void)context;
 	memset(observation, 0, sizeof(*observation));
 	observation->terminal_position = text_output_position(file);
 	switch (operation) {
@@ -1207,7 +1214,7 @@ text_close_default(void *context, FILE *file,
 static bool
 text_close_observation_valid(
     enum yt_text_close_operation operation, size_t requested,
-    const struct yt_text_close_observation *observation)
+    const struct text_close_observation *observation)
 {
 	bool write = operation == YT_TEXT_CLOSE_PENDING_WRITE
 	    || operation == YT_TEXT_CLOSE_EOF_WRITE;
@@ -1235,12 +1242,12 @@ text_close_observation_valid(
 static bool
 text_input_close_observe(struct yt_text_input *input, FILE *file,
     enum yt_text_close_operation operation,
-    struct yt_text_close_observation *observation)
+    struct text_close_observation *observation)
 {
 	++input->last_close.operation_count;
 	memset(observation, 0, sizeof(*observation));
 	observation->terminal_position = -1;
-	return text_close_default(NULL, file, operation, NULL, 0U,
+	return text_close_perform(file, operation, NULL, 0U,
 	    observation);
 }
 
@@ -1248,7 +1255,7 @@ static void
 text_input_close_failure(struct yt_text_input *input,
     enum yt_text_close_outcome outcome,
     enum yt_text_close_operation operation, uint16_t basic_error,
-    uint16_t dos_error, const struct yt_text_close_observation *observed,
+    uint16_t dos_error, const struct text_close_observation *observed,
     struct yt_error *error)
 {
 	input->last_close.outcome = outcome;
@@ -1269,8 +1276,8 @@ text_input_close_failure(struct yt_text_input *input,
 static bool
 text_input_close_execute(struct yt_text_input *input, struct yt_error *error)
 {
-	struct yt_text_close_observation observation;
-	struct yt_text_close_observation cleanup;
+	struct text_close_observation observation;
+	struct text_close_observation cleanup;
 	FILE *file;
 	uint16_t first_dos_error;
 	bool delivered;
@@ -2562,19 +2569,16 @@ text_output_write_cleanup_after_carry(struct yt_text_output *output,
     const struct text_output_write_observation *failure,
     struct yt_error *error)
 {
-	yt_text_close_provider provider;
-	struct yt_text_close_observation cleanup;
+	struct text_close_observation cleanup;
 	bool delivered;
 	bool valid;
 
 	output->file = NULL;
 	output->pending_count = 0U;
 	output->last_write.cleanup_close_attempted = true;
-	provider = output->close_provider != NULL ? output->close_provider
-	    : text_close_default;
 	memset(&cleanup, 0, sizeof(cleanup));
 	cleanup.terminal_position = -1;
-	delivered = provider(output->close_context, file,
+	delivered = text_close_perform(file,
 	    YT_TEXT_CLOSE_CLEANUP_HANDLE, NULL, 0U, &cleanup);
 	output->last_write.cleanup_dos_error = cleanup.dos_error;
 	valid = delivered && text_close_observation_valid(
@@ -2653,15 +2657,14 @@ yt_text_output_write(struct yt_text_output *output, const uint8_t *data,
 }
 
 static bool
-text_output_close_observe(struct yt_text_output *output,
-    yt_text_close_provider provider, FILE *file,
+text_output_close_observe(struct yt_text_output *output, FILE *file,
     enum yt_text_close_operation operation, const uint8_t *data,
-    size_t requested, struct yt_text_close_observation *observation)
+    size_t requested, struct text_close_observation *observation)
 {
 	++output->last_close.operation_count;
 	memset(observation, 0, sizeof(*observation));
 	observation->terminal_position = -1;
-	return provider(output->close_context, file, operation, data, requested,
+	return text_close_perform(file, operation, data, requested,
 	    observation);
 }
 
@@ -2669,7 +2672,7 @@ static void
 text_output_close_failure(struct yt_text_output *output,
     enum yt_text_close_outcome outcome,
     enum yt_text_close_operation operation, uint16_t basic_error,
-    uint16_t dos_error, const struct yt_text_close_observation *observed,
+    uint16_t dos_error, const struct text_close_observation *observed,
     struct yt_error *error)
 {
 	output->last_close.outcome = outcome;
@@ -2690,19 +2693,19 @@ text_output_close_failure(struct yt_text_output *output,
 
 static bool
 text_output_cleanup_after_carry(struct yt_text_output *output,
-    yt_text_close_provider provider, FILE *file, bool handle_open,
+    FILE *file, bool handle_open,
     struct yt_error *error,
     enum yt_text_close_operation failed_operation,
-    const struct yt_text_close_observation *failure)
+    const struct text_close_observation *failure)
 {
-	struct yt_text_close_observation cleanup;
+	struct text_close_observation cleanup;
 	bool delivered;
 	bool valid;
 
 	output->file = NULL;
 	output->pending_count = 0U;
 	output->last_close.cleanup_close_attempted = true;
-	delivered = text_output_close_observe(output, provider,
+	delivered = text_output_close_observe(output,
 	    handle_open ? file : NULL, YT_TEXT_CLOSE_CLEANUP_HANDLE,
 	    NULL, 0U, &cleanup);
 	output->last_close.cleanup_dos_error = cleanup.dos_error;
@@ -2722,8 +2725,7 @@ static bool
 text_output_close_execute(struct yt_text_output *output, bool close_all,
     struct yt_error *error)
 {
-	yt_text_close_provider provider;
-	struct yt_text_close_observation observation;
+	struct text_close_observation observation;
 	FILE *file;
 	const uint8_t *data;
 	size_t requested;
@@ -2749,8 +2751,6 @@ text_output_close_execute(struct yt_text_output *output, bool close_all,
 		return true;
 	}
 	file = output->file;
-	provider = output->close_provider != NULL ? output->close_provider
-	    : text_close_default;
 	for (operation = output->last_close.device ? YT_TEXT_CLOSE_HANDLE
 	    : YT_TEXT_CLOSE_PENDING_WRITE;
 	    operation <= YT_TEXT_CLOSE_HANDLE; ++operation) {
@@ -2770,7 +2770,7 @@ text_output_close_execute(struct yt_text_output *output, bool close_all,
 			data = NULL;
 			requested = 0U;
 		}
-		delivered = text_output_close_observe(output, provider, file,
+		delivered = text_output_close_observe(output, file,
 		    operation, data, requested, &observation);
 		if (!delivered || !text_close_observation_valid(operation,
 		    requested, &observation)) {
@@ -2783,8 +2783,8 @@ text_output_close_execute(struct yt_text_output *output, bool close_all,
 			return false;
 		}
 		if (observation.carry)
-			return text_output_cleanup_after_carry(output, provider,
-			    file, observation.handle_open, error, operation,
+			return text_output_cleanup_after_carry(output, file,
+			    observation.handle_open, error, operation,
 			    &observation);
 		if (observation.accepted != requested) {
 			output->file = NULL;
@@ -2821,16 +2821,6 @@ yt_text_output_close_all_method(void *context, int8_t file_class,
 		return false;
 	}
 	return text_output_close_execute(context, true, error);
-}
-
-void
-yt_text_output_set_close_provider(struct yt_text_output *output,
-    yt_text_close_provider provider, void *context)
-{
-	if (output == NULL)
-		return;
-	output->close_provider = provider;
-	output->close_context = context;
 }
 
 void

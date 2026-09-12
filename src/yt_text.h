@@ -109,18 +109,6 @@ enum yt_text_close_operation {
 	YT_TEXT_CLOSE_CLEANUP_HANDLE,
 };
 
-struct yt_text_close_observation {
-	size_t accepted;
-	bool carry;
-	bool handle_open;
-	uint16_t dos_error;
-	int64_t terminal_position;
-};
-
-typedef bool (*yt_text_close_provider)(void *context, FILE *file,
-	enum yt_text_close_operation operation, const uint8_t *data,
-	size_t requested, struct yt_text_close_observation *observation);
-
 enum yt_text_close_outcome {
 	YT_TEXT_CLOSE_NONE,
 	YT_TEXT_CLOSE_RETURNED,
@@ -319,8 +307,6 @@ struct yt_text_output {
 	char path[512];
 	uint8_t pending[YT_TEXT_OUTPUT_BUFFER_SIZE];
 	size_t pending_count;
-	yt_text_close_provider close_provider;
-	void *close_context;
 	struct yt_text_output_write_result last_write;
 	struct yt_text_close_result last_close;
 	struct yt_text_open_result last_output_open;
@@ -351,8 +337,6 @@ bool yt_text_output_close(struct yt_text_output *output,
 	struct yt_error *error);
 bool yt_text_output_close_all_method(void *context, int8_t file_class,
 	struct yt_error *error);
-void yt_text_output_set_close_provider(struct yt_text_output *output,
-	yt_text_close_provider provider, void *context);
 void yt_text_output_destroy(struct yt_text_output *output);
 
 struct yt_text_sequential_play_state {
