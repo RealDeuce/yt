@@ -42,7 +42,6 @@
 #define YT_CLEARANCE_ANNOUNCED_ADDRESS 0x55B6U
 #define YT_CLEARANCE_VALUE_ADDRESS 0x55BEU
 #define YT_CLEARANCE_SOUND_SELECTOR_ADDRESS 0x55C6U
-#define YT_HOSTILE_DEPLOYED_FIGHTERS_ADDRESS 0x4CFEU
 #define YT_PLANET_UPDATER_QUANTITY_ADDRESS 0x19F0U
 #define YT_PLANET_UPDATER_PRODUCTION_ADDRESS 0x1A44U
 #define YT_PLANET_UPDATER_CONTRIBUTION_ADDRESS 0x1C14U
@@ -94,6 +93,7 @@ struct yt_session {
 	struct yt_player player;
 	float current_sector_record;
 	double combat_ship_fighters;
+	double hostile_deployed_fighters;
 	float combat_ship_shields;
 	float hostile_owner;
 	float foreground;
@@ -388,22 +388,10 @@ session_set_process_single(struct yt_session *session, uint16_t address,
 		    raw);
 }
 
-static void
-session_set_process_double(struct yt_session *session, uint16_t address,
-    double value)
-{
-	uint8_t raw[8];
-
-	if (qb_mbf64_encode(value, raw) == QB_MBF_OK)
-		yt_route_process_set_raw_double(&session->route_process, address,
-		    raw);
-}
-
 static double
 session_hostile_deployed_fighters(const struct yt_session *session)
 {
-	return yt_route_process_double(&session->route_process,
-	    YT_HOSTILE_DEPLOYED_FIGHTERS_ADDRESS);
+	return session->hostile_deployed_fighters;
 }
 
 static int
@@ -4264,12 +4252,8 @@ static void
 scanner_cache_hostile_sector(struct yt_session *session,
     const struct yt_sector *sector)
 {
-	uint8_t fighters_raw[8];
-
-	(void)qb_mbf64_encode((double)qb_mbf32_decode(
-	    &sector->record.bytes[YT_F81]), fighters_raw);
-	yt_route_process_set_raw_double(&session->route_process,
-	    YT_HOSTILE_DEPLOYED_FIGHTERS_ADDRESS, fighters_raw);
+	session->hostile_deployed_fighters = (double)qb_mbf32_decode(
+	    &sector->record.bytes[YT_F81]);
 	session->hostile_owner = qb_mbf32_decode(
 	    &sector->record.bytes[YT_F85]);
 }
@@ -6482,8 +6466,7 @@ fighter_shield_spill_store(void *context,
 	struct yt_session *session = context;
 
 	if (kind == YT_FIGHTER_SHIELD_SPILL_STORE_FIGHTERS)
-		session_set_process_double(session,
-		    YT_HOSTILE_DEPLOYED_FIGHTERS_ADDRESS, fighters);
+		session->hostile_deployed_fighters = fighters;
 	else
 		session->combat_ship_shields = shields;
 }
@@ -6595,8 +6578,7 @@ hostile_surrender_cache_forces(void *context, double ship_fighters,
 	struct yt_session *session = context;
 
 	session->combat_ship_fighters = ship_fighters;
-	session_set_process_double(session, YT_HOSTILE_DEPLOYED_FIGHTERS_ADDRESS,
-	    deployed_fighters);
+	session->hostile_deployed_fighters = deployed_fighters;
 }
 
 static void
@@ -6874,8 +6856,7 @@ hostile_attack_combat_cache_sector(void *context,
 	struct hostile_attack_combat_context *combat = context;
 
 	*combat->sector = *sector;
-	session_set_process_double(combat->session,
-	    YT_HOSTILE_DEPLOYED_FIGHTERS_ADDRESS, deployed_fighters);
+	combat->session->hostile_deployed_fighters = deployed_fighters;
 }
 
 static bool
@@ -17027,9 +17008,7 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 			bool fighters_positive;
 			size_t name_length;
 
-			session_set_process_double(session,
-			    YT_HOSTILE_DEPLOYED_FIGHTERS_ADDRESS,
-			    (double)sector.fighters);
+			session->hostile_deployed_fighters = (double)sector.fighters;
 			yt_route_process_set_raw_single(&session->route_process,
 			    YT_SHARED_TARGET_RECORD_ADDRESS,
 			    sector.record.bytes + YT_F85);
@@ -17038,9 +17017,7 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 			if (!computer_port_friendship(session, fighter_owner,
 			    &fighter_friendly, error))
 				return false;
-			sector_fighters = yt_route_process_double(
-			    &session->route_process,
-			    YT_HOSTILE_DEPLOYED_FIGHTERS_ADDRESS);
+			sector_fighters = session->hostile_deployed_fighters;
 			last_relationship = yt_route_process_single(
 			    &session->route_process,
 			    YT_FRIENDSHIP_RELATION_ADDRESS);
@@ -17108,9 +17085,7 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 			}
 		}
 		else {
-			sector_fighters = yt_route_process_double(
-			    &session->route_process,
-			    YT_HOSTILE_DEPLOYED_FIGHTERS_ADDRESS);
+			sector_fighters = session->hostile_deployed_fighters;
 			fighter_owner = yt_route_process_single(&session->route_process,
 			    YT_SHARED_TARGET_RECORD_ADDRESS);
 			last_relationship = yt_route_process_single(
