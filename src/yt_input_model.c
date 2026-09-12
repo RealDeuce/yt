@@ -466,34 +466,6 @@ yt_input_command_save_staged(char *text, size_t text_capacity,
 }
 
 bool
-yt_input_ab36_inactivity_expired(float timer, float deadline, float mode)
-{
-	return timer > deadline && mode != 1.0f;
-}
-
-bool
-yt_input_ab36_session_expired(float timer, float deadline)
-{
-	return timer > deadline;
-}
-
-bool
-yt_input_carrier_returns(float mode, bool carrier_detected)
-{
-	return mode != 0.0f || carrier_detected;
-}
-
-enum yt_opening_row_route
-yt_input_opening_row_route(bool local_key, bool remote_pending)
-{
-	if (local_key)
-		return YT_OPENING_ROW_STOP_LOCAL;
-	if (remote_pending)
-		return YT_OPENING_ROW_STOP_REMOTE;
-	return YT_OPENING_ROW_CONTINUE;
-}
-
-bool
 yt_input_ab36_terminal_run(enum yt_ab36_terminal_kind kind,
     bool *running, bool *terminated, yt_ab36_terminal_notice_fn notice,
     yt_ab36_terminal_close_fn close_all, void *context)

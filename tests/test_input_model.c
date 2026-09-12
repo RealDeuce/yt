@@ -225,33 +225,6 @@ one(uint8_t byte)
 }
 
 static void
-test_ab36_inactivity_gate(void)
-{
-	CHECK(!yt_input_ab36_inactivity_expired(280.0f, 280.0f, 0.0f));
-	CHECK(!yt_input_ab36_inactivity_expired(279.0f, 280.0f, 0.0f));
-	CHECK(yt_input_ab36_inactivity_expired(281.0f, 280.0f, 0.0f));
-	CHECK(!yt_input_ab36_inactivity_expired(281.0f, 280.0f, 1.0f));
-	CHECK(yt_input_ab36_inactivity_expired(281.0f, 280.0f, 2.0f));
-	CHECK(yt_input_ab36_inactivity_expired(281.0f, 280.0f, -1.0f));
-	CHECK(!yt_input_ab36_session_expired(279.0f, 280.0f));
-	CHECK(!yt_input_ab36_session_expired(280.0f, 280.0f));
-	CHECK(yt_input_ab36_session_expired(281.0f, 280.0f));
-	CHECK(yt_input_carrier_returns(0.0f, true));
-	CHECK(!yt_input_carrier_returns(0.0f, false));
-	CHECK(yt_input_carrier_returns(1.0f, false));
-	CHECK(yt_input_carrier_returns(2.0f, false));
-	CHECK(yt_input_carrier_returns(-1.0f, false));
-	CHECK(yt_input_opening_row_route(false, false)
-	    == YT_OPENING_ROW_CONTINUE);
-	CHECK(yt_input_opening_row_route(true, false)
-	    == YT_OPENING_ROW_STOP_LOCAL);
-	CHECK(yt_input_opening_row_route(false, true)
-	    == YT_OPENING_ROW_STOP_REMOTE);
-	CHECK(yt_input_opening_row_route(true, true)
-	    == YT_OPENING_ROW_STOP_LOCAL);
-}
-
-static void
 test_ab36_queued_input(void)
 {
 	char queue[8] = "AB";
@@ -3331,7 +3304,6 @@ int
 main(void)
 {
 	test_input_fault_inventories();
-	test_ab36_inactivity_gate();
 	test_ab36_queued_input();
 	test_radio_body_key_classification();
 	test_ab36_repeat_recognition();
