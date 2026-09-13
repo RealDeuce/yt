@@ -13258,46 +13258,42 @@ plasma_player_write(void *context, int player_record,
 	    (size_t)player_record, &value->record, error);
 }
 
-static void
-plasma_player_save_foreground(void *context, float *saved_foreground)
-{
-	struct yt_session *session = context;
-
-	if (saved_foreground != NULL)
-		*saved_foreground = session_foreground(session);
-}
-
-static void
-plasma_player_color(void *context, float foreground)
-{
-	session_set_foreground(context, foreground);
-}
-
 static bool
-plasma_player_sound(void *context, float selector, struct yt_error *error)
+plasma_player_second_row(float remaining_shields, double destroyed_fighters,
+    uint8_t *row, size_t capacity, size_t *length)
 {
-	struct yt_session *session = context;
+	static const uint8_t prefix[] = "shields to";
+	static const uint8_t infix[] = " units and destroying";
+	static const uint8_t suffix[] = " fighters!";
+	char shield_text[64];
+	char fighter_text[64];
+	int shield_length;
+	int fighter_length;
+	size_t row_length;
 
-	return session_sound(session, selector, "plasma player-attack sound",
-	    error);
-}
-
-static void
-plasma_player_restore_foreground(void *context, float saved_foreground)
-{
-	session_set_foreground(context, saved_foreground);
-}
-
-static bool
-plasma_player_present(void *context, const uint8_t *text, size_t length,
-    enum yt_projectile_plasma_player_output_kind kind,
-    struct yt_error *error)
-{
-	return session_present_text(context, text, length,
-	    SESSION_PRESENT_BOLD_LINE,
-	    kind == YT_PROJECTILE_PLASMA_PLAYER_FIRST_ROW
-	    ? "plasma player attack first row"
-	    : "plasma player attack second row", error);
+	if (row == NULL || length == NULL)
+		return false;
+	shield_length = qb_str_single(shield_text, sizeof(shield_text),
+	    remaining_shields);
+	fighter_length = qb_str_double(fighter_text, sizeof(fighter_text),
+	    destroyed_fighters);
+	if (shield_length < 0 || fighter_length < 0
+	    || sizeof(prefix) - 1U + (size_t)shield_length
+	    + sizeof(infix) - 1U + (size_t)fighter_length
+	    + sizeof(suffix) - 1U > capacity)
+		return false;
+	memcpy(row, prefix, sizeof(prefix) - 1U);
+	row_length = sizeof(prefix) - 1U;
+	memcpy(row + row_length, shield_text, (size_t)shield_length);
+	row_length += (size_t)shield_length;
+	memcpy(row + row_length, infix, sizeof(infix) - 1U);
+	row_length += sizeof(infix) - 1U;
+	memcpy(row + row_length, fighter_text, (size_t)fighter_length);
+	row_length += (size_t)fighter_length;
+	memcpy(row + row_length, suffix, sizeof(suffix) - 1U);
+	row_length += sizeof(suffix) - 1U;
+	*length = row_length;
+	return true;
 }
 
 static bool
@@ -13862,17 +13858,6 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
     const struct yt_sector *initial, const uint8_t *attacker,
     size_t launch_attacker_length, double *energy, struct yt_error *error)
 {
-	static const struct yt_projectile_plasma_player_ops player_ops = {
-		plasma_player_read,
-		plasma_player_write,
-		plasma_player_save_foreground,
-		plasma_player_color,
-		plasma_player_sound,
-		random_value,
-		session_append_news_bytes,
-		plasma_player_present,
-		plasma_player_restore_foreground,
-	};
 	static const struct yt_projectile_plasma_killed_ops killed_ops = {
 		plasma_player_read,
 		plasma_player_write,
@@ -13884,7 +13869,6 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
 		plasma_killed_salvage,
 	};
 	struct yt_sector sector;
-	struct yt_projectile_plasma_player_state player;
 	struct yt_projectile_plasma_killed_state killed;
 	float planet_link;
 	int basic;
@@ -14051,17 +14035,107 @@ plasma_reload_sector:
 		    YT_PLAYER_CACHE_SECTOR) != (float)sector_number
 		    || !(*energy > 0.0))
 			continue;
-		memset(&player, 0, sizeof(player));
-		player.target = basic;
-		player.sector = (float)sector_number;
-		player.attacker = attacker;
-		player.attacker_length = launch_attacker_length;
-		player.energy = energy;
-		player.foreground = session_foreground(session);
-		if (!yt_projectile_plasma_player_run(&player, &player_ops, session,
-		    error))
-			return false;
-		if (player.route == YT_PROJECTILE_PLASMA_PLAYER_KILLED) {
+		{
+			struct yt_player target;
+			struct yt_player persistence;
+			double original_fighters;
+			double destroyed_fighters = 0.0;
+			double remaining_fighters;
+			float original_shields;
+			float destroyed_shields = 0.0f;
+			float remaining_shields;
+			float saved_foreground;
+			uint8_t victim[YT_TEXT_FIELD_SIZE];
+			uint8_t news_row[256];
+			uint8_t direct_row[256];
+			uint8_t second_row[256];
+			size_t victim_length;
+			size_t news_length;
+			size_t direct_length;
+			size_t second_length;
+
+			if (!yt_game_read_player(&session->door->game, basic, &target,
+			    error))
+				return false;
+			original_fighters = (double)target.fighters;
+			original_shields = target.shields;
+			saved_foreground = session_foreground(session);
+			session_set_foreground(session, 5.0f);
+			if (!session_sound(session, 2.0f,
+			    "plasma player-attack sound", error))
+				return false;
+			while (*energy > 0.0
+			    && destroyed_fighters < original_fighters) {
+				float draw;
+				volatile double quantum = floor(*energy / 5000.0);
+				volatile double accumulated = destroyed_fighters + quantum;
+
+				destroyed_fighters = accumulated + 1.0;
+				if (!random_value(session, &draw, error))
+					return false;
+				*energy -= (double)single_mul(draw, 25000.0f);
+			}
+			while (*energy > 0.0
+			    && destroyed_shields < original_shields) {
+				float draw;
+				volatile double quantum = floor(*energy / 10000.0);
+				volatile double accumulated =
+				    (double)destroyed_shields + quantum;
+
+				destroyed_shields = (float)(accumulated + 1.0);
+				if (!random_value(session, &draw, error))
+					return false;
+				*energy -= (double)single_mul(draw, 25000.0f);
+			}
+			if (destroyed_fighters > original_fighters)
+				destroyed_fighters = original_fighters;
+			if (destroyed_shields > original_shields)
+				destroyed_shields = original_shields;
+			remaining_fighters = original_fighters - destroyed_fighters;
+			remaining_shields = single_sub(original_shields,
+			    destroyed_shields);
+			if (!yt_game_read_player(&session->door->game, basic, &target,
+			    error)
+			    || !yt_player_stored_name(&target, victim, &victim_length,
+			    error)
+			    || !yt_projectile_attack_first_rows(true, attacker,
+			    launch_attacker_length, victim, victim_length,
+			    (float)sector_number, news_row, sizeof(news_row),
+			    &news_length, direct_row, sizeof(direct_row), &direct_length)
+			    || !session_append_news_bytes(session, news_row, news_length,
+			    error)
+			    || !session_present_text(session, direct_row, direct_length,
+			    SESSION_PRESENT_BOLD_LINE,
+			    "plasma player attack first row", error)
+			    || !plasma_player_second_row(remaining_shields,
+			    destroyed_fighters, second_row, sizeof(second_row),
+			    &second_length)
+			    || !session_append_news_bytes(session, second_row,
+			    second_length, error)
+			    || !session_present_text(session, second_row, second_length,
+			    SESSION_PRESENT_BOLD_LINE,
+			    "plasma player attack second row", error))
+				return false;
+			session_set_foreground(session, saved_foreground);
+			if (remaining_shields >= 1.0f) {
+				if (!yt_game_read_player(&session->door->game, basic,
+				    &persistence, error))
+					return false;
+				persistence.shields = remaining_shields;
+				persistence.fighters = (float)remaining_fighters;
+				if (!yt_record_set_number(&persistence.record, YT_F53,
+				    persistence.shields)
+				    || !yt_record_set_number(&persistence.record, YT_F61,
+				    persistence.fighters)
+				    || !yt_database_write(&session->door->game.database,
+				    (size_t)basic, &persistence.record, error))
+					return false;
+				if (*energy < 1.0)
+					return true;
+				continue;
+			}
+		}
+		{
 			memset(&killed, 0, sizeof(killed));
 			killed.victim = basic;
 			killed.shooter = session_record(session);
@@ -14079,10 +14153,6 @@ plasma_reload_sector:
 			if (killed.route == YT_PROJECTILE_PLASMA_KILLED_FOOTER)
 				return true;
 		}
-		if (player.route == YT_PROJECTILE_PLASMA_PLAYER_FOOTER)
-			return true;
-		if (*energy < 1.0)
-			return true;
 	}
 	if (!(*energy > 0.0) || planet_link == 0.0f)
 		return true;
