@@ -11014,81 +11014,54 @@ team_store_roster(struct yt_session *session, struct yt_team *team,
 }
 
 static bool
-team_audit_clock_adapter(void *context, enum yt_team_audit_clock_kind kind,
-    uint8_t *text, size_t capacity, size_t *length, struct yt_error *error)
+team_audit(struct yt_session *session, int team_id,
+    enum yt_team_audit_event event, const char *attempt,
+    struct yt_error *error)
 {
+	static const uint8_t sender_raw[4] = {
+		0x00U, 0x00U, 0x80U, 0x82U,
+	};
+	uint8_t message[YT_COMMAND_SIZE + 128U];
 	struct yt_clock_value now;
-	char date[11];
-	char time_text[9];
-	const char *source;
-	size_t source_length;
+	char date[11] = "";
+	char time_text[9] = "";
+	size_t message_length;
+	size_t index;
 
-	(void)context;
-	if (text == NULL || length == NULL || !yt_platform_clock(&now, error))
-		return false;
-	if (kind == YT_TEAM_AUDIT_DATE) {
+	if (event == YT_TEAM_AUDIT_JOIN || event == YT_TEAM_AUDIT_QUIT) {
+		if (!yt_platform_clock(&now, error))
+			return false;
 		yt_format_date(&now, date);
-		source = date;
-		source_length = sizeof(date) - 1U;
-	} else {
+		if (!yt_platform_clock(&now, error))
+			return false;
 		yt_format_time(&now, time_text);
-		source = time_text;
-		source_length = sizeof(time_text) - 1U;
 	}
-	if (source_length > capacity)
+	if (!yt_team_audit_message(event, session->player.name, attempt, date,
+	    time_text, message, sizeof(message), &message_length)) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			error->system_error = 0;
+			(void)snprintf(error->operation,
+			    sizeof(error->operation), "%s",
+			    "team audit message length");
+			error->path[0] = '\0';
+		}
 		return false;
-	memcpy(text, source, source_length);
-	*length = source_length;
+	}
+	if (!session_load_team_cache(session, (float)team_id,
+	    (float)session_record(session), NULL, NULL, NULL, error))
+		return false;
+	for (index = 0U; index < YT_ARRAY_LEN(session->team_cache.roster);
+	    ++index) {
+		float recipient = session->team_cache.roster[index];
+
+		if (recipient != 0.0f
+		    && recipient != (float)session_record(session)
+		    && !radio_append_raw_bytes(message, message_length, sender_raw,
+		    session->team_cache.roster_raw[index], error))
+			return false;
+	}
 	return true;
-}
-
-static bool
-team_audit_load_adapter(void *context, float team_id,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return team_load_raw(session, team_id, NULL, error);
-}
-
-static bool
-team_audit_write_adapter(void *context, const uint8_t *text, size_t length,
-    const uint8_t sender_raw[4], const uint8_t recipient_raw[4],
-    struct yt_error *error)
-{
-	(void)context;
-	return radio_append_raw_bytes(text, length, sender_raw, recipient_raw,
-	    error);
-}
-
-static bool
-team_audit(struct yt_session *session, float team_id, float event,
-    const char *attempt, struct yt_error *error)
-{
-	static const struct yt_team_audit_ops ops = {
-		.clock = team_audit_clock_adapter,
-		.load_team = team_audit_load_adapter,
-		.write_radio = team_audit_write_adapter,
-	};
-	struct yt_team_audit_state state = {
-		.team_id = team_id,
-		.event_type = event,
-		.current_player_record = (float)session_record(session),
-		.conversion_mode = session->presentation.sound.conversion_mode,
-		.current_player_name = (const uint8_t *)session->player.name,
-		.current_player_name_length = strlen(session->player.name),
-		.attempted_password = (const uint8_t *)attempt,
-		.attempted_password_length = strlen(attempt),
-		.message = session->team_audit_message,
-		.message_capacity = sizeof(session->team_audit_message),
-		.message_length = session->team_audit_message_length,
-		.cache = &session->team_cache,
-	};
-	bool result;
-
-	result = yt_team_audit_run(&state, &ops, session, error);
-	session->team_audit_message_length = state.message_length;
-	return result;
 }
 
 static bool
@@ -11609,8 +11582,8 @@ team_join(struct yt_session *session, struct yt_error *error)
 	    || !session_read_upper_command(session, line, sizeof(line)))
 		return false;
 	if (strlen(line) != 4U || memcmp(line, team.password, 4) != 0) {
-		if (!team_audit(session, (float)selected, 0.0f, line,
-		    error))
+		if (!team_audit(session, selected,
+		    YT_TEAM_AUDIT_INVALID_PASSWORD, line, error))
 			return false;
 		return session_present_alert(session, invalid, sizeof(invalid) - 1U,
 		    "invalid team password row", error);
@@ -11646,7 +11619,7 @@ team_join(struct yt_session *session, struct yt_error *error)
 	if (!session_present_alert(session, success, sizeof(success) - 1U,
 	    "team join success row", error))
 		return false;
-	return team_audit(session, (float)selected, 1.0f, "", error);
+	return team_audit(session, selected, YT_TEAM_AUDIT_JOIN, "", error);
 }
 
 static bool
@@ -11714,7 +11687,8 @@ team_quit(struct yt_session *session, struct yt_team *team,
 	session_set_foreground(session, 6.0f);
 	if (!session_present_paged_line(session, success, sizeof(success) - 1U,
 	    "team quit success row", error)
-	    || !team_audit(session, old_team, 2.0f, "", error))
+	    || !team_audit(session, (int)old_team, YT_TEAM_AUDIT_QUIT, "",
+	    error))
 		return false;
 	return true;
 }

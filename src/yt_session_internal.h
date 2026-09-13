@@ -88,8 +88,6 @@ struct yt_session {
 	struct yt_present_time_state time;
 	struct yt_pager_state pager;
 	struct yt_input_value input_residue;
-	uint8_t team_audit_message[YT_TEAM_AUDIT_MESSAGE_MAX];
-	size_t team_audit_message_length;
 	uint8_t hostile_owner_label[160];
 	size_t hostile_owner_label_length;
 	struct yt_team_loader_cache team_cache;

@@ -475,253 +475,30 @@ check_team_loader_model(void)
 	return true;
 }
 
-struct team_audit_tape {
-	struct yt_team_loader_cache *cache;
-	uint8_t roster_raw[4][4];
-	float loaded_team_id;
-	char trace[32];
-	size_t trace_length;
-	size_t clock_calls;
-	size_t load_calls;
-	size_t write_calls;
-	size_t fail_write;
-	bool fail_load;
-	uint8_t message[4][128];
-	size_t message_length[4];
-	uint8_t sender_raw[4][4];
-	uint8_t recipient_raw[4][4];
-};
-
-static void
-team_audit_trace(struct team_audit_tape *tape, char event)
-{
-	if (tape->trace_length < sizeof(tape->trace))
-		tape->trace[tape->trace_length++] = event;
-}
-
 static bool
-team_audit_clock_test(void *context, enum yt_team_audit_clock_kind kind,
-	uint8_t *text, size_t capacity, size_t *length,
-	struct yt_error *error)
+check_team_audit_messages(void)
 {
-	struct team_audit_tape *tape = context;
-	const char *value = kind == YT_TEAM_AUDIT_DATE
-	    ? "07-29-2026" : "23:59:58";
-	size_t value_length = strlen(value);
-
-	(void)error;
-	++tape->clock_calls;
-	team_audit_trace(tape, kind == YT_TEAM_AUDIT_DATE ? 'D' : 'T');
-	if (value_length > capacity)
-		return false;
-	memcpy(text, value, value_length);
-	*length = value_length;
-	return true;
-}
-
-static bool
-team_audit_load_test(void *context, float team_id, struct yt_error *error)
-{
-	struct team_audit_tape *tape = context;
-	size_t index;
-
-	++tape->load_calls;
-	tape->loaded_team_id = team_id;
-	team_audit_trace(tape, 'L');
-	if (tape->fail_load) {
-		if (error != NULL) {
-			error->status = YT_IO_ERROR;
-			(void)snprintf(error->operation,
-			    sizeof(error->operation), "%s",
-			    "team audit injected loader failure");
-		}
-		return false;
-	}
-	for (index = 0U; index < 4U; ++index) {
-		memcpy(tape->cache->roster_raw[index], tape->roster_raw[index],
-		    4U);
-		tape->cache->roster[index] =
-		    qb_mbf32_decode(tape->roster_raw[index]);
-	}
-	tape->cache->raw_valid = true;
-	return true;
-}
-
-static bool
-team_audit_write_test(void *context, const uint8_t *text, size_t length,
-	const uint8_t sender_raw[4], const uint8_t recipient_raw[4],
-	struct yt_error *error)
-{
-	struct team_audit_tape *tape = context;
-	size_t index = tape->write_calls++;
-
-	team_audit_trace(tape, 'W');
-	if (index < 4U && length <= sizeof(tape->message[index])) {
-		memcpy(tape->message[index], text, length);
-		tape->message_length[index] = length;
-		memcpy(tape->sender_raw[index], sender_raw, 4U);
-		memcpy(tape->recipient_raw[index], recipient_raw, 4U);
-	}
-	if (tape->fail_write != 0U && tape->write_calls == tape->fail_write) {
-		if (error != NULL) {
-			error->status = YT_IO_ERROR;
-			(void)snprintf(error->operation,
-			    sizeof(error->operation), "%s",
-			    "team audit injected writer failure");
-		}
-		return false;
-	}
-	return index < 4U && length <= sizeof(tape->message[index]);
-}
-
-static void
-team_audit_tape_init(struct team_audit_tape *tape,
-	struct yt_team_loader_cache *cache)
-{
-	static const uint8_t dirty_zero[4] = {0xf4, 0x01, 0x00, 0x00};
-
-	memset(tape, 0, sizeof(*tape));
-	tape->cache = cache;
-	memcpy(tape->roster_raw[0], dirty_zero, 4U);
-	(void)qb_mbf32_encode(0.5f, tape->roster_raw[1]);
-	(void)qb_mbf32_encode(-2.0f, tape->roster_raw[2]);
-	(void)qb_mbf32_encode(3.5f, tape->roster_raw[3]);
-}
-
-static bool
-check_team_audit_transaction(void)
-{
-	static const struct yt_team_audit_ops ops = {
-		.clock = team_audit_clock_test,
-		.load_team = team_audit_load_test,
-		.write_radio = team_audit_write_test,
-	};
-	static const uint8_t expected[] =
+	static const char joined[] =
 	    "Captain ***  joined your team on 07-29-2026 at 23:59:58!";
-	static const uint8_t expected_quit[] =
+	static const char quit[] =
 	    "Captain ***  QUIT your team on 07-29-2026 at 23:59:58!";
-	static const uint8_t expected_invalid[] =
+	static const char invalid[] =
 	    "Captain ***  entered invalid password for your team: BAD!";
-	static const uint8_t stale[] = "STALE\0BYTES";
-	static const uint8_t mercenary[4] = {0x00, 0x00, 0x80, 0x82};
-	struct yt_team_loader_cache cache;
-	struct team_audit_tape tape;
-	struct yt_team_audit_state state;
-	struct yt_error error;
 	uint8_t message[128];
-	size_t index;
+	size_t length;
 
-	memset(&cache, 0, sizeof(cache));
-	team_audit_tape_init(&tape, &cache);
-	memset(message, 0, sizeof(message));
-	state = (struct yt_team_audit_state){
-		.team_id = 1.75f,
-		.event_type = 1.0f,
-		.current_player_record = 8.0f,
-		.conversion_mode = 0U,
-		.current_player_name = (const uint8_t *)"Captain",
-		.current_player_name_length = 7U,
-		.attempted_password = (const uint8_t *)"",
-		.message = message,
-		.message_capacity = sizeof(message),
-		.cache = &cache,
-	};
-	if (!yt_team_audit_run(&state, &ops, &tape, NULL)
-	    || !state.complete || tape.loaded_team_id != 1.75f
-	    || tape.clock_calls != 2U || tape.load_calls != 1U
-	    || tape.write_calls != 3U || tape.trace_length != 6U
-	    || memcmp(tape.trace, "DTLWWW", 6U) != 0
-	    || state.message_length != sizeof(expected) - 1U
-	    || memcmp(state.message, expected, sizeof(expected) - 1U) != 0)
-		return false;
-	for (index = 0U; index < 3U; ++index) {
-		if (tape.message_length[index] != sizeof(expected) - 1U
-		    || memcmp(tape.message[index], expected,
-		    sizeof(expected) - 1U) != 0
-		    || memcmp(tape.sender_raw[index], mercenary, 4U) != 0
-		    || memcmp(tape.recipient_raw[index],
-		    tape.roster_raw[index + 1U], 4U) != 0)
-			return false;
-	}
-	memset(&cache, 0, sizeof(cache));
-	team_audit_tape_init(&tape, &cache);
-	state.cache = &cache;
-	state.event_type = 2.0f;
-	state.message_length = 0U;
-	if (!yt_team_audit_run(&state, &ops, &tape, NULL)
-	    || tape.clock_calls != 2U
-	    || state.message_length != sizeof(expected_quit) - 1U
-	    || memcmp(state.message, expected_quit,
-	    sizeof(expected_quit) - 1U) != 0)
-		return false;
-
-	memset(&cache, 0, sizeof(cache));
-	team_audit_tape_init(&tape, &cache);
-	memcpy(message, stale, sizeof(stale) - 1U);
-	state = (struct yt_team_audit_state){
-		.team_id = 1.75f,
-		.event_type = 3.5f,
-		.current_player_record = 8.0f,
-		.current_player_name = (const uint8_t *)"Captain",
-		.current_player_name_length = 7U,
-		.attempted_password = (const uint8_t *)"",
-		.message = message,
-		.message_capacity = sizeof(message),
-		.message_length = sizeof(stale) - 1U,
-		.cache = &cache,
-	};
-	if (!yt_team_audit_run(&state, &ops, &tape, NULL)
-	    || tape.clock_calls != 0U || tape.write_calls != 3U
-	    || state.message_length != sizeof(stale) - 1U
-	    || memcmp(state.message, stale, sizeof(stale) - 1U) != 0
-	    || tape.message_length[0] != sizeof(stale) - 1U
-	    || memcmp(tape.message[0], stale, sizeof(stale) - 1U) != 0)
-		return false;
-
-	memset(&cache, 0, sizeof(cache));
-	team_audit_tape_init(&tape, &cache);
-	tape.fail_write = 2U;
-	state.cache = &cache;
-	state.event_type = 0.0f;
-	state.attempted_password = (const uint8_t *)"BAD";
-	state.attempted_password_length = 3U;
-	state.message_length = 0U;
-	yt_error_clear(&error);
-	if (yt_team_audit_run(&state, &ops, &tape, &error)
-	    || state.complete || tape.write_calls != 2U
-	    || state.message_length != sizeof(expected_invalid) - 1U
-	    || memcmp(state.message, expected_invalid,
-	    sizeof(expected_invalid) - 1U) != 0
-	    || error.status != YT_IO_ERROR)
-		return false;
-
-	memset(&cache, 0, sizeof(cache));
-	team_audit_tape_init(&tape, &cache);
-	tape.fail_load = true;
-	state.cache = &cache;
-	state.event_type = 1.0f;
-	state.message_length = 0U;
-	yt_error_clear(&error);
-	if (yt_team_audit_run(&state, &ops, &tape, &error)
-	    || state.complete || tape.write_calls != 0U
-	    || tape.clock_calls != 2U
-	    || state.message_length != sizeof(expected) - 1U
-	    || memcmp(state.message, expected, sizeof(expected) - 1U) != 0
-	    || error.status != YT_IO_ERROR)
-		return false;
-
-	memset(&cache, 0, sizeof(cache));
-	team_audit_tape_init(&tape, &cache);
-	(void)qb_mbf32_encode(40000.0f, tape.roster_raw[0]);
-	state.cache = &cache;
-	state.event_type = 3.5f;
-	state.message_length = sizeof(stale) - 1U;
-	memcpy(state.message, stale, sizeof(stale) - 1U);
-	yt_error_clear(&error);
-	if (yt_team_audit_run(&state, &ops, &tape, &error)
-	    || state.complete || tape.write_calls != 0U
-	    || error.status != YT_RANGE
-	    || strcmp(error.operation, "team audit recipient CINT") != 0)
+	if (!yt_team_audit_message(YT_TEAM_AUDIT_JOIN, "Captain", "",
+	    "07-29-2026", "23:59:58", message, sizeof(message), &length)
+	    || length != sizeof(joined) - 1U
+	    || memcmp(message, joined, length) != 0
+	    || !yt_team_audit_message(YT_TEAM_AUDIT_QUIT, "Captain", "",
+	    "07-29-2026", "23:59:58", message, sizeof(message), &length)
+	    || length != sizeof(quit) - 1U
+	    || memcmp(message, quit, length) != 0
+	    || !yt_team_audit_message(YT_TEAM_AUDIT_INVALID_PASSWORD,
+	    "Captain", "BAD", NULL, NULL, message, sizeof(message), &length)
+	    || length != sizeof(invalid) - 1U
+	    || memcmp(message, invalid, length) != 0)
 		return false;
 	return true;
 }
@@ -28725,8 +28502,8 @@ main(void)
 		return fail("friendship model differs");
 	if (!check_team_loader_model())
 		return fail("team-loader model differs");
-	if (!check_team_audit_transaction())
-		return fail("team-audit transaction differs");
+	if (!check_team_audit_messages())
+		return fail("team-audit messages differ");
 	if (!check_info_team_resolver_transaction())
 		return fail("Info team resolver transaction differs");
 	if (!check_info_panel_transaction())

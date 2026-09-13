@@ -212,47 +212,16 @@ struct yt_team_loader_cache {
 	bool raw_valid;
 };
 
-#define YT_TEAM_AUDIT_MESSAGE_MAX 32767U
-
-enum yt_team_audit_clock_kind {
-	YT_TEAM_AUDIT_DATE,
-	YT_TEAM_AUDIT_TIME,
+enum yt_team_audit_event {
+	YT_TEAM_AUDIT_INVALID_PASSWORD,
+	YT_TEAM_AUDIT_JOIN,
+	YT_TEAM_AUDIT_QUIT,
 };
 
-struct yt_team_audit_state {
-	float team_id;
-	float event_type;
-	float current_player_record;
-	uint8_t conversion_mode;
-	const uint8_t *current_player_name;
-	size_t current_player_name_length;
-	const uint8_t *attempted_password;
-	size_t attempted_password_length;
-	uint8_t *message;
-	size_t message_capacity;
-	size_t message_length;
-	struct yt_team_loader_cache *cache;
-	bool complete;
-};
-
-typedef bool (*yt_team_audit_clock_fn)(void *context,
-	enum yt_team_audit_clock_kind kind, uint8_t *text, size_t capacity,
-	size_t *length, struct yt_error *error);
-typedef bool (*yt_team_audit_load_fn)(void *context, float team_id,
-	struct yt_error *error);
-typedef bool (*yt_team_audit_write_fn)(void *context, const uint8_t *text,
-	size_t length, const uint8_t sender_raw[4],
-	const uint8_t recipient_raw[4], struct yt_error *error);
-
-struct yt_team_audit_ops {
-	yt_team_audit_clock_fn clock;
-	yt_team_audit_load_fn load_team;
-	yt_team_audit_write_fn write_radio;
-};
-
-bool yt_team_audit_run(struct yt_team_audit_state *state,
-	const struct yt_team_audit_ops *ops, void *context,
-	struct yt_error *error);
+bool yt_team_audit_message(enum yt_team_audit_event event,
+    const char *player_name, const char *attempt, const char *date,
+    const char *time_text, uint8_t *message, size_t capacity,
+    size_t *length);
 
 enum yt_info_team_route {
 	YT_INFO_TEAM_NONE,

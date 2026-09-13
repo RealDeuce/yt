@@ -465,144 +465,61 @@ yt_team_loader_finish(const struct yt_record *overlay,
 }
 
 static bool
-team_audit_error(struct yt_error *error, const char *operation)
+team_audit_message_append(uint8_t *message, size_t capacity, size_t *length,
+    const char *text)
 {
-	if (error != NULL) {
-		error->status = YT_RANGE;
-		error->system_error = 0;
-		(void)snprintf(error->operation, sizeof(error->operation), "%s",
-		    operation);
-		error->path[0] = '\0';
-	}
-	return false;
-}
+	size_t text_length = strlen(text);
 
-static bool
-team_audit_append(uint8_t *destination, size_t capacity, size_t *length,
-    const uint8_t *source, size_t source_length, struct yt_error *error)
-{
-	if (source_length > capacity - *length)
-		return team_audit_error(error, "team audit message length");
-	if (source_length != 0U)
-		memcpy(destination + *length, source, source_length);
-	*length += source_length;
+	if (text_length > capacity - *length)
+		return false;
+	memcpy(message + *length, text, text_length);
+	*length += text_length;
 	return true;
 }
 
 bool
-yt_team_audit_run(struct yt_team_audit_state *state,
-    const struct yt_team_audit_ops *ops, void *context,
-    struct yt_error *error)
+yt_team_audit_message(enum yt_team_audit_event event,
+    const char *player_name, const char *attempt, const char *date,
+    const char *time_text, uint8_t *message, size_t capacity,
+    size_t *length)
 {
-	static const uint8_t separator[] = " *** ";
-	static const uint8_t quit_text[] = " QUIT your team on ";
-	static const uint8_t join_text[] = " joined your team on ";
-	static const uint8_t invalid_text[] =
-	    " entered invalid password for your team: ";
-	static const uint8_t at_text[] = " at ";
-	static const uint8_t suffix[] = "!";
-	static const uint8_t sender_raw[4] = {0x00U, 0x00U, 0x80U, 0x82U};
-	uint8_t replacement[YT_TEAM_AUDIT_MESSAGE_MAX];
-	uint8_t clock_text[32];
-	size_t replacement_length = 0U;
-	size_t clock_length;
-	size_t index;
-	bool construct;
-	bool overflow;
+	const char *event_text;
+	size_t used = 0U;
 
-	if (state == NULL || ops == NULL || ops->load_team == NULL
-	    || ops->write_radio == NULL || state->cache == NULL
-	    || state->message == NULL
-	    || state->message_length > state->message_capacity
-	    || state->message_capacity > YT_TEAM_AUDIT_MESSAGE_MAX
-	    || (state->current_player_name == NULL
-	    && state->current_player_name_length != 0U)
-	    || (state->attempted_password == NULL
-	    && state->attempted_password_length != 0U))
-		return team_audit_error(error, "team audit state");
-	state->complete = false;
-	construct = state->event_type == 0.0f || state->event_type == 1.0f
-	    || state->event_type == 2.0f;
-	if (construct) {
-		if (!team_audit_append(replacement, sizeof(replacement),
-		    &replacement_length, state->current_player_name,
-		    state->current_player_name_length, error)
-		    || !team_audit_append(replacement, sizeof(replacement),
-		    &replacement_length, separator, sizeof(separator) - 1U,
-		    error))
-			return false;
-		if (state->event_type == 2.0f) {
-			if (!team_audit_append(replacement, sizeof(replacement),
-			    &replacement_length, quit_text,
-			    sizeof(quit_text) - 1U, error))
-				return false;
-		} else if (state->event_type == 1.0f) {
-			if (!team_audit_append(replacement, sizeof(replacement),
-			    &replacement_length, join_text,
-			    sizeof(join_text) - 1U, error))
-				return false;
-		} else if (!team_audit_append(replacement,
-		    sizeof(replacement), &replacement_length, invalid_text,
-		    sizeof(invalid_text) - 1U, error))
-			return false;
-		if (state->event_type == 1.0f || state->event_type == 2.0f) {
-			if (ops->clock == NULL)
-				return team_audit_error(error,
-				    "team audit clock adapter");
-			clock_length = 0U;
-			if (!ops->clock(context, YT_TEAM_AUDIT_DATE, clock_text,
-			    sizeof(clock_text), &clock_length, error)
-			    || clock_length > sizeof(clock_text)
-			    || !team_audit_append(replacement,
-			    sizeof(replacement), &replacement_length, clock_text,
-			    clock_length, error)
-			    || !team_audit_append(replacement,
-			    sizeof(replacement), &replacement_length, at_text,
-			    sizeof(at_text) - 1U, error))
-				return false;
-			clock_length = 0U;
-			if (!ops->clock(context, YT_TEAM_AUDIT_TIME, clock_text,
-			    sizeof(clock_text), &clock_length, error)
-			    || clock_length > sizeof(clock_text)
-			    || !team_audit_append(replacement,
-			    sizeof(replacement), &replacement_length, clock_text,
-			    clock_length, error))
-				return false;
-		} else if (!team_audit_append(replacement,
-		    sizeof(replacement), &replacement_length,
-		    state->attempted_password,
-		    state->attempted_password_length, error))
-			return false;
-		if (!team_audit_append(replacement, sizeof(replacement),
-		    &replacement_length, suffix, sizeof(suffix) - 1U, error)
-		    || replacement_length > state->message_capacity)
-			return team_audit_error(error,
-			    "team audit message capacity");
-		memcpy(state->message, replacement, replacement_length);
-		state->message_length = replacement_length;
-	}
-	if (!ops->load_team(context, state->team_id, error))
+	if (player_name == NULL || attempt == NULL || message == NULL
+	    || length == NULL)
 		return false;
-	for (index = 0U; index < YT_ARRAY_LEN(state->cache->roster_raw);
-	    ++index) {
-		float recipient = qb_mbf32_decode(state->cache->roster_raw[index]);
-		int32_t converted = qb_cint_mbf32(
-		    state->cache->roster_raw[index], state->conversion_mode,
-		    &overflow);
-		int32_t unequal = recipient != state->current_player_record
-		    ? -1 : 0;
-
-		if (overflow)
-			return team_audit_error(error,
-			    "team audit recipient CINT");
-		if ((converted & unequal) != 0) {
-			if (!ops->write_radio(context, state->message,
-			    state->message_length, sender_raw,
-			    state->cache->roster_raw[index], error))
-				return false;
-		}
+	switch (event) {
+	case YT_TEAM_AUDIT_INVALID_PASSWORD:
+		event_text = " entered invalid password for your team: ";
+		break;
+	case YT_TEAM_AUDIT_JOIN:
+		event_text = " joined your team on ";
+		break;
+	case YT_TEAM_AUDIT_QUIT:
+		event_text = " QUIT your team on ";
+		break;
+	default:
+		return false;
 	}
-	state->complete = true;
+	if (!team_audit_message_append(message, capacity, &used, player_name)
+	    || !team_audit_message_append(message, capacity, &used, " *** ")
+	    || !team_audit_message_append(message, capacity, &used, event_text))
+		return false;
+	if (event == YT_TEAM_AUDIT_INVALID_PASSWORD) {
+		if (!team_audit_message_append(message, capacity, &used, attempt))
+			return false;
+	} else {
+		if (date == NULL || time_text == NULL
+		    || !team_audit_message_append(message, capacity, &used, date)
+		    || !team_audit_message_append(message, capacity, &used, " at ")
+		    || !team_audit_message_append(message, capacity, &used,
+		    time_text))
+			return false;
+	}
+	if (!team_audit_message_append(message, capacity, &used, "!"))
+		return false;
+	*length = used;
 	return true;
 }
 
