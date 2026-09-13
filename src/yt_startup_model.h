@@ -166,64 +166,6 @@ bool yt_startup_ansi_raw(const uint8_t *text, size_t length, uint8_t raw[4]);
 bool yt_startup_canonical_name(const uint8_t *first, size_t first_length,
     const uint8_t *last, size_t last_length, uint8_t *name,
     size_t capacity, size_t *name_length);
-bool yt_startup_lockout_scan(const uint8_t *data, size_t data_length,
-	const uint8_t *identity, size_t identity_length, bool *matched,
-	size_t *lines_read);
-
-enum yt_startup_lockout_row {
-	YT_STARTUP_LOCKOUT_BLANK,
-	YT_STARTUP_LOCKOUT_REVOKED,
-	YT_STARTUP_LOCKOUT_CONTACT,
-};
-
-struct yt_startup_lockout_state {
-	const char *random_path;
-	const char *input_path;
-	const uint8_t *identity;
-	size_t identity_length;
-	const uint8_t *contact;
-	size_t contact_length;
-	bool file_open;
-	bool denied;
-	bool terminated;
-	size_t lines_read;
-};
-
-typedef bool (*yt_startup_lockout_open_random_fn)(void *context,
-	const char *path, struct yt_error *error);
-typedef bool (*yt_startup_lockout_empty_fn)(void *context, bool *empty,
-	struct yt_error *error);
-typedef bool (*yt_startup_lockout_close_fn)(void *context,
-	struct yt_error *error);
-typedef bool (*yt_startup_lockout_open_input_fn)(void *context,
-	const char *path, struct yt_error *error);
-typedef bool (*yt_startup_lockout_read_fn)(void *context,
-	const uint8_t **line, size_t *length, bool *available,
-	struct yt_error *error);
-typedef bool (*yt_startup_lockout_present_fn)(void *context,
-	enum yt_startup_lockout_row row, const uint8_t *text, size_t length,
-	struct yt_error *error);
-typedef bool (*yt_startup_lockout_wait_fn)(void *context, float seconds,
-	struct yt_error *error);
-typedef bool (*yt_startup_lockout_close_all_fn)(void *context,
-	struct yt_error *error);
-typedef void (*yt_startup_lockout_end_fn)(void *context);
-
-struct yt_startup_lockout_ops {
-	yt_startup_lockout_open_random_fn open_random;
-	yt_startup_lockout_empty_fn empty;
-	yt_startup_lockout_close_fn close;
-	yt_startup_lockout_open_input_fn open_input;
-	yt_startup_lockout_read_fn read;
-	yt_startup_lockout_present_fn present;
-	yt_startup_lockout_wait_fn wait;
-	yt_startup_lockout_close_all_fn close_all;
-	yt_startup_lockout_end_fn end;
-};
-
-bool yt_startup_lockout_run(struct yt_startup_lockout_state *state,
-	const struct yt_startup_lockout_ops *ops, void *context,
-	struct yt_error *error);
 bool yt_startup_parse_dorinfo(const uint8_t *raw, size_t raw_length,
     uint8_t *storage, size_t storage_capacity,
     struct yt_startup_dorinfo_result *result);

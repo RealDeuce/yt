@@ -176,6 +176,8 @@ bool yt_session_spy_sweep(struct yt_session *session,
     struct yt_error *error);
 bool yt_session_registration(struct yt_session *session,
     struct yt_error *error);
+bool yt_session_check_lockout(struct yt_session *session,
+    struct yt_error *error);
 bool session_fixed_width_bytes(struct yt_session *session,
     const uint8_t *text, size_t text_length, float width,
     const char *operation, struct yt_error *error);
