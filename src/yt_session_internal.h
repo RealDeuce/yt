@@ -96,6 +96,8 @@ int session_record(const struct yt_session *session);
 float session_sector_offset(const struct yt_session *session);
 float session_port_offset(const struct yt_session *session);
 float session_planet_offset(const struct yt_session *session);
+uint32_t session_port_basic_record(const struct yt_session *session,
+    float logical_port);
 int session_sector_count(const struct yt_session *session);
 uint32_t session_planet_basic_record(const struct yt_session *session,
     float logical_planet);
@@ -184,6 +186,11 @@ bool yt_session_trade_commodity(struct yt_session *session,
     const struct yt_port_market_state *market, size_t commodity,
     bool *prompt_reached, struct yt_error *error);
 bool yt_session_treasury(struct yt_session *session, bool collecting,
+    struct yt_error *error);
+bool yt_session_edit_port_name(struct yt_session *session, int logical_port,
+    const uint8_t *cached, size_t cached_length, struct yt_port *port,
+    struct yt_error *error);
+bool yt_session_command_rename_port(struct yt_session *session,
     struct yt_error *error);
 bool yt_session_ordinary_commerce(struct yt_session *session,
     int sector_number, float sector_record_expression,

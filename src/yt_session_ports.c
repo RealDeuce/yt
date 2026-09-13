@@ -370,7 +370,7 @@ commodity_prepare(const struct yt_port_market_state *market,
 }
 
 static bool
-commodity_read_port(struct yt_session *session, uint32_t physical_record,
+read_port_physical(struct yt_session *session, uint32_t physical_record,
     struct yt_port *port, struct yt_error *error)
 {
 	struct yt_record record;
@@ -569,7 +569,7 @@ yt_session_trade_commodity(struct yt_session *session,
 		if (market->port.owner == (float)session_record(session))
 			receipt = floorf(yt_port_single_mul(
 			    0.009999999776482582f, total));
-		if (!commodity_read_port(session, market->port_physical_record,
+		if (!read_port_physical(session, market->port_physical_record,
 		    &fresh_port, error))
 			return false;
 		yt_trade_treasury_overlay(&fresh_port, receipt);
@@ -586,7 +586,7 @@ yt_session_trade_commodity(struct yt_session *session,
 	yt_trade_holds_overlay(&session->player, commodity, quantity, direction);
 	if (!yt_database_write_durable(&session->door->game.database,
 	    (size_t)session_record(session), &session->player.record, error)
-	    || !commodity_read_port(session, market->port_physical_record,
+	    || !read_port_physical(session, market->port_physical_record,
 	    &fresh_port, error))
 		return false;
 	if (qb_mbf32_encode(quantity, single_raw) == QB_MBF_OVERFLOW)
@@ -859,6 +859,115 @@ yt_session_treasury(struct yt_session *session, bool collecting,
 		return false;
 	session->player = player;
 	return true;
+}
+
+bool
+yt_session_edit_port_name(struct yt_session *session, int logical_port,
+    const uint8_t *cached, size_t cached_length, struct yt_port *port,
+    struct yt_error *error)
+{
+	static const uint8_t keep[] = "Press [ENTER] to keep same name.";
+	static const uint8_t instruction[] =
+	    "Please enter a NAME for your port.";
+	static const uint8_t name_prompt[] = "-=> ";
+	uint8_t entered[YT_COMMAND_SIZE];
+	uint8_t candidate[YT_COMMAND_SIZE];
+	uint8_t row[YT_COMMAND_SIZE];
+	size_t entered_length;
+	size_t candidate_length;
+	size_t row_length;
+
+	if (session == NULL || port == NULL
+	    || (cached == NULL && cached_length != 0U)
+	    || cached_length > sizeof(candidate))
+		return false;
+	for (;;) {
+		enum yt_yes_no_answer answer;
+
+		if (!yt_port_name_display_row(cached, cached_length, row,
+		    sizeof(row), &row_length)
+		    || !session_present_paged_line(session, row, row_length,
+		    "port name current row", error)
+		    || !session_present_paged_line(session, keep,
+		    sizeof(keep) - 1U, "port name keep row", error)
+		    || !session_present_paged_line(session, instruction,
+		    sizeof(instruction) - 1U,
+		    "port name instruction row", error)
+		    || !session_present_timed_paged_row(session, name_prompt,
+		    sizeof(name_prompt) - 1U, "port name prompt", error)
+		    || !session_read_command(session, (char *)entered,
+		    sizeof(entered)))
+			return false;
+		entered_length = strlen((const char *)entered);
+		if (!yt_port_name_prepare_candidate(entered, entered_length,
+		    cached, cached_length, candidate, sizeof(candidate),
+		    &candidate_length))
+			return false;
+		if (candidate_length == 0U)
+			continue;
+		if (!session_present_text(session, NULL, 0U,
+		    SESSION_PRESENT_LINE,
+		    "port name confirmation leading blank", error)
+		    || !yt_port_name_confirmation_prompt(candidate,
+		    candidate_length, row, sizeof(row), &row_length)
+		    || !session_confirm(session, row, row_length, &answer, error))
+			return false;
+		if (answer != YT_YES_NO_YES)
+			continue;
+		if (!yt_port_name_overlay(port, candidate, candidate_length))
+			return false;
+		return yt_database_write(&session->door->game.database,
+		    (size_t)session_port_basic_record(session,
+		    (float)logical_port), &port->record, error);
+	}
+}
+
+bool
+yt_session_command_rename_port(struct yt_session *session,
+    struct yt_error *error)
+{
+	static const uint8_t no_port[] = "No port here!";
+	static const uint8_t not_owner[] = "This isn't your port!";
+	static const uint8_t earth[] = "Can't rename Earth!";
+	struct yt_sector sector;
+	struct yt_port port;
+	uint8_t cached_name[YT_TEXT_FIELD_SIZE];
+	size_t cached_name_length;
+	int logical_port;
+	float relative_port;
+	bool overflow = false;
+	int32_t converted_length;
+
+	if (session == NULL || !session_reload_player(session, error)
+	    || !session_read_sector(session, (int)session->player.sector,
+	    &sector, error))
+		return false;
+	if (!qb_mbf32_truth(sector.record.bytes + YT_F65))
+		return session_present_alert(session, no_port,
+		    sizeof(no_port) - 1U, "rename no-port row", error);
+	if (!yt_port_rename_record(session_port_offset(session), sector.port,
+	    &logical_port, &relative_port))
+		return treasury_error(error, "rename port record conversion");
+	if (!read_port_physical(session,
+	    session_port_basic_record(session, (float)logical_port),
+	    &port, error))
+		return false;
+	if (port.owner != (float)session_record(session))
+		return session_present_alert(session, not_owner,
+		    sizeof(not_owner) - 1U, "rename ownership row", error);
+	if (relative_port == 1.0f)
+		return session_present_alert(session, earth, sizeof(earth) - 1U,
+		    "rename Earth row", error);
+	converted_length = qb_cint_mbf32(port.record.bytes + YT_F85,
+	    session->presentation.sound.conversion_mode, &overflow);
+	if (overflow || converted_length < 0)
+		return treasury_error(error, "port name length");
+	cached_name_length = (size_t)converted_length;
+	if (cached_name_length > sizeof(cached_name))
+		cached_name_length = sizeof(cached_name);
+	memcpy(cached_name, port.record.bytes, cached_name_length);
+	return yt_session_edit_port_name(session, logical_port, cached_name,
+	    cached_name_length, &port, error);
 }
 
 bool

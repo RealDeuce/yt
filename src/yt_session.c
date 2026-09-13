@@ -395,7 +395,7 @@ session_sector_basic_record(const struct yt_session *session,
 	    (int)logical_sector);
 }
 
-static uint32_t
+uint32_t
 session_port_basic_record(const struct yt_session *session, float logical_port)
 {
 	return (uint32_t)yt_port_basic_record(&session->door->game.config,
@@ -9955,189 +9955,10 @@ command_team(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
-port_name_row(void *context, enum yt_port_name_row_kind kind,
-    const uint8_t *text, size_t length, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	const char *operation;
-
-	switch (kind) {
-	case YT_PORT_NAME_CURRENT_ROW:
-		operation = "port name current row";
-		break;
-	case YT_PORT_NAME_KEEP_ROW:
-		operation = "port name keep row";
-		break;
-	case YT_PORT_NAME_INSTRUCTION_ROW:
-		operation = "port name instruction row";
-		break;
-	default:
-		return false;
-	}
-	return session_present_paged_line(session, text, length, operation, error);
-}
-
-static bool
-port_name_prompt(void *context, const uint8_t *text, size_t length,
-    struct yt_error *error)
-{
-	return session_present_timed_paged_row(context, text, length, "port name prompt", error);
-}
-
-static bool
-port_name_edit(void *context, uint8_t *response, size_t capacity,
-    size_t *length, struct yt_error *error)
-{
-	(void)error;
-	if (length == NULL
-	    || !session_read_command(context, (char *)response, capacity))
-		return false;
-	*length = strlen((const char *)response);
-	return true;
-}
-
-static bool
-port_name_blank(void *context, struct yt_error *error)
-{
-	return session_present_text(context, NULL, 0U, SESSION_PRESENT_LINE,
-	    "port name confirmation leading blank", error);
-}
-
-static bool
-port_name_confirm(void *context, const uint8_t *prompt, size_t length,
-    bool *accepted, struct yt_error *error)
-{
-	enum yt_yes_no_answer answer;
-
-	if (accepted == NULL
-	    || !session_confirm(context, prompt, length, &answer, error))
-		return false;
-	*accepted = answer == YT_YES_NO_YES;
-	return true;
-}
-
-static bool
-port_name_write(void *context, int logical_port,
-    const struct yt_record *record, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_database_write(&session->door->game.database,
-	    (size_t)session_port_basic_record(session, (float)logical_port),
-	    record, error);
-}
-
-static bool
-port_rename(struct yt_session *session, int logical_port,
-    const uint8_t *cached, size_t cached_length, struct yt_port *port,
-    struct yt_error *error)
-{
-	static const struct yt_port_name_editor_ops ops = {
-		.row = port_name_row,
-		.prompt = port_name_prompt,
-		.edit = port_name_edit,
-		.blank = port_name_blank,
-		.confirm = port_name_confirm,
-		.write = port_name_write,
-	};
-	struct yt_port_name_editor_state state = {
-		.cached = cached,
-		.cached_length = cached_length,
-		.logical_port = logical_port,
-		.port = port,
-	};
-
-	return yt_port_name_editor_run(&state, &ops, session, error);
-}
-
-static bool
-port_rename_hydrate(void *context, int player_record,
-    struct yt_player *player, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	if (player_record != session_record(session)
-	    || !session_reload_player(session, error))
-		return false;
-	*player = session->player;
-	return true;
-}
-
-static bool
-port_rename_read_sector(void *context, int sector_number,
-    struct yt_sector *sector, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return session_read_sector(session, sector_number, sector,
-	    error);
-}
-
-static bool
-port_rename_read_port(void *context, int logical_port,
-    struct yt_port *port, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return session_read_port(session, logical_port, port,
-	    error);
-}
-
-static bool
-port_rename_present(void *context, const uint8_t *text, size_t length,
-    enum yt_port_rename_output_kind kind, struct yt_error *error)
-{
-	const char *operation;
-
-	switch (kind) {
-	case YT_PORT_RENAME_NO_PORT:
-		operation = "rename no-port row";
-		break;
-	case YT_PORT_RENAME_NOT_OWNER:
-		operation = "rename ownership row";
-		break;
-	case YT_PORT_RENAME_EARTH:
-		operation = "rename Earth row";
-		break;
-	default:
-		return false;
-	}
-	return session_present_alert(context, text, length, operation, error);
-}
-
-static bool
-port_rename_edit(void *context, int logical_port, const uint8_t *cached,
-    size_t cached_length, struct yt_port *port, struct yt_error *error)
-{
-	return port_rename(context, logical_port, cached, cached_length, port,
-	    error);
-}
-
-static bool
-command_rename_port(struct yt_session *session, struct yt_error *error)
-{
-	static const struct yt_port_rename_ops ops = {
-		port_rename_hydrate,
-		port_rename_read_sector,
-		port_rename_read_port,
-		port_rename_present,
-		port_rename_edit,
-	};
-	struct yt_port_rename_state state = {
-		.current_player_record = (float)session_record(session),
-		.port_offset = session_port_offset(session),
-		.conversion_mode =
-		    session->presentation.sound.conversion_mode,
-	};
-
-	return yt_port_rename_run(&state, &ops, session, error);
-}
-
-static bool
 command_rename_port_cycle(struct yt_session *session,
     struct yt_error *error)
 {
-	return command_rename_port(session, error)
+	return yt_session_command_rename_port(session, error)
 	    && display_current_sector_cached(session, error);
 }
 
@@ -10216,8 +10037,8 @@ port_purchase_accept_rename(void *context, int logical_port,
     const uint8_t *cached, size_t cached_length, struct yt_port *port,
     struct yt_error *error)
 {
-	return port_rename(context, logical_port, cached, cached_length, port,
-	    error);
+	return yt_session_edit_port_name(context, logical_port, cached,
+	    cached_length, port, error);
 }
 
 static bool

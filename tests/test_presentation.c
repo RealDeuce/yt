@@ -17553,15 +17553,12 @@ main_buy_present_answer(struct main_buy_cycle_fixture *fixture,
 }
 
 static bool
-main_buy_name_row(void *context, enum yt_port_name_row_kind kind,
-    const uint8_t *text, size_t length, struct yt_error *error)
+main_buy_name_row(void *context, const uint8_t *text, size_t length,
+    struct yt_error *error)
 {
 	struct main_buy_cycle_fixture *fixture = context;
 
 	(void)error;
-	if (kind != YT_PORT_NAME_CURRENT_ROW && kind != YT_PORT_NAME_KEEP_ROW
-	    && kind != YT_PORT_NAME_INSTRUCTION_ROW)
-		return false;
 	return normal_exit_line(&fixture->viewer->join, NULL, 0U)
 	    && normal_exit_b05d(&fixture->viewer->join, text, length, 0.0f);
 }
@@ -17638,14 +17635,47 @@ main_buy_name_write(void *context, int logical_port,
 	return true;
 }
 
-static const struct yt_port_name_editor_ops main_buy_name_ops = {
-	main_buy_name_row,
-	main_buy_name_prompt,
-	main_buy_name_edit,
-	main_buy_name_blank,
-	main_buy_name_confirm,
-	main_buy_name_write,
-};
+static bool
+main_buy_edit_port_name(void *context, int logical_port,
+    const uint8_t *cached, size_t cached_length, struct yt_port *port,
+    struct yt_error *error)
+{
+	static const uint8_t keep[] = "Press [ENTER] to keep same name.";
+	static const uint8_t instruction[] =
+	    "Please enter a NAME for your port.";
+	static const uint8_t name_prompt[] = "-=> ";
+	uint8_t entered[4096];
+	uint8_t candidate[4096];
+	uint8_t row[4096];
+	size_t entered_length;
+	size_t candidate_length;
+	size_t row_length;
+	bool accepted;
+
+	if (!yt_port_name_display_row(cached, cached_length, row,
+	    sizeof(row), &row_length)
+	    || !main_buy_name_row(context, row, row_length, error)
+	    || !main_buy_name_row(context, keep, sizeof(keep) - 1U, error)
+	    || !main_buy_name_row(context, instruction,
+	    sizeof(instruction) - 1U, error)
+	    || !main_buy_name_prompt(context, name_prompt,
+	    sizeof(name_prompt) - 1U, error)
+	    || !main_buy_name_edit(context, entered, sizeof(entered),
+	    &entered_length, error)
+	    || !yt_port_name_prepare_candidate(entered, entered_length,
+	    cached, cached_length, candidate, sizeof(candidate),
+	    &candidate_length)
+	    || candidate_length == 0U
+	    || !main_buy_name_blank(context, error)
+	    || !yt_port_name_confirmation_prompt(candidate, candidate_length,
+	    row, sizeof(row), &row_length)
+	    || !main_buy_name_confirm(context, row, row_length, &accepted,
+	    error)
+	    || !accepted
+	    || !yt_port_name_overlay(port, candidate, candidate_length))
+		return false;
+	return main_buy_name_write(context, logical_port, &port->record, error);
+}
 
 static bool
 main_buy_accept_present(void *context, const uint8_t *text, size_t length,
@@ -17748,17 +17778,11 @@ main_buy_accept_rename(void *context, int logical_port,
 {
 	static const uint8_t old_name[] = "Old Port";
 	struct main_buy_cycle_fixture *fixture = context;
-	struct yt_port_name_editor_state state = {
-		.cached = cached,
-		.cached_length = cached_length,
-		.logical_port = logical_port,
-		.port = port,
-	};
 
 	if (logical_port != 3 || cached_length != sizeof(old_name) - 1U
 	    || memcmp(cached, old_name, sizeof(old_name) - 1U) != 0
-	    || !yt_port_name_editor_run(&state, &main_buy_name_ops, context,
-	    error))
+	    || !main_buy_edit_port_name(context, logical_port, cached,
+	    cached_length, port, error))
 		return false;
 	fixture->port = *port;
 	return true;
@@ -18216,66 +18240,33 @@ test_main_buy_cycle_presentation(void)
 	CHECK(sizeof(plain) - 1U == 983U && sizeof(ansi) - 1U == 1091U);
 }
 
+enum main_rename_route {
+	MAIN_RENAME_EDITED,
+	MAIN_RENAME_NO_PORT,
+	MAIN_RENAME_NOT_OWNER,
+	MAIN_RENAME_EARTH,
+};
+
 struct main_rename_cycle_fixture {
 	struct main_buy_cycle_fixture presentation;
 	struct yt_player player;
 	struct yt_sector sector;
 	struct yt_port port;
-	struct yt_port_rename_state rename;
+	uint8_t cached_name[YT_TEXT_FIELD_SIZE];
+	size_t cached_name_length;
+	int logical_port;
+	float relative_port;
+	bool editor_called;
+	bool complete;
+	enum main_rename_route route;
 };
 
 static bool
-main_rename_hydrate(void *context, int player_record,
-    struct yt_player *player, struct yt_error *error)
+main_rename_present(struct main_rename_cycle_fixture *fixture,
+    const uint8_t *text, size_t length)
 {
-	struct main_rename_cycle_fixture *fixture = context;
-
-	(void)error;
-	if (player_record != 2 || player == NULL)
-		return false;
-	*player = fixture->player;
-	return true;
-}
-
-static bool
-main_rename_read_sector(void *context, int sector_number,
-    struct yt_sector *sector, struct yt_error *error)
-{
-	struct main_rename_cycle_fixture *fixture = context;
-
-	(void)error;
-	if (sector_number != 9 || sector == NULL)
-		return false;
-	*sector = fixture->sector;
-	return true;
-}
-
-static bool
-main_rename_read_port(void *context, int logical_port,
-    struct yt_port *port, struct yt_error *error)
-{
-	struct main_rename_cycle_fixture *fixture = context;
-
-	(void)error;
-	if (logical_port != (fixture->sector.port == 1.0f ? 1 : 3)
-	    || port == NULL)
-		return false;
-	*port = fixture->port;
-	return true;
-}
-
-static bool
-main_rename_present(void *context, const uint8_t *text, size_t length,
-    enum yt_port_rename_output_kind kind, struct yt_error *error)
-{
-	struct main_rename_cycle_fixture *fixture = context;
 	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 
-	(void)error;
-	if (kind != YT_PORT_RENAME_NO_PORT
-	    && kind != YT_PORT_RENAME_NOT_OWNER
-	    && kind != YT_PORT_RENAME_EARTH)
-		return false;
 	if (!normal_exit_line(join, NULL, 0U))
 		return false;
 	join->presentation.bold = 1.0f;
@@ -18287,43 +18278,18 @@ main_rename_present(void *context, const uint8_t *text, size_t length,
 }
 
 static bool
-main_rename_edit(void *context, int logical_port, const uint8_t *cached,
-    size_t cached_length, struct yt_port *port, struct yt_error *error)
-{
-	static const uint8_t old_name[] = "Old Port";
-	struct main_rename_cycle_fixture *fixture = context;
-	struct yt_port_name_editor_state state = {
-		.cached = cached,
-		.cached_length = cached_length,
-		.logical_port = logical_port,
-		.port = port,
-	};
-
-	if (logical_port != 3 || cached_length != sizeof(old_name) - 1U
-	    || memcmp(cached, old_name, sizeof(old_name) - 1U) != 0
-	    || !yt_port_name_editor_run(&state, &main_buy_name_ops,
-	    &fixture->presentation, error))
-		return false;
-	fixture->port = *port;
-	return true;
-}
-
-static const struct yt_port_rename_ops main_rename_ops = {
-	main_rename_hydrate,
-	main_rename_read_sector,
-	main_rename_read_port,
-	main_rename_present,
-	main_rename_edit,
-};
-
-static bool
 main_rename_cycle_rename(void *context, struct yt_error *error)
 {
 	static const uint8_t main_prompt[] =
 	    "Time: 14:59  Main Command (?=Help)? ";
 	static const uint8_t command[] = "nTrailing";
+	static const uint8_t no_port[] = "No port here!";
+	static const uint8_t not_owner[] = "This isn't your port!";
+	static const uint8_t earth[] = "Can't rename Earth!";
 	struct main_rename_cycle_fixture *fixture = context;
 	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
+	bool overflow = false;
+	int32_t converted;
 
 	join->presentation.foreground = 2.0f;
 	join->pager.foreground = 2;
@@ -18336,13 +18302,46 @@ main_rename_cycle_rename(void *context, struct yt_error *error)
 	if (!main_buy_present_echo(&fixture->presentation, command,
 	    sizeof(command) - 1U) || !normal_exit_line(join, NULL, 0U))
 		return false;
-	fixture->rename = (struct yt_port_rename_state){
-		.current_player_record = 2.0f,
-		.port_offset = 2055.0f,
-		.conversion_mode = 4U,
-	};
-	return yt_port_rename_run(&fixture->rename, &main_rename_ops, fixture,
-	    error);
+	fixture->complete = false;
+	fixture->editor_called = false;
+	fixture->cached_name_length = 0U;
+	if (!qb_mbf32_truth(fixture->sector.record.bytes + YT_F65)) {
+		fixture->route = MAIN_RENAME_NO_PORT;
+		fixture->complete = true;
+		return main_rename_present(fixture, no_port,
+		    sizeof(no_port) - 1U);
+	}
+	if (!yt_port_rename_record(2055.0f, fixture->sector.port,
+	    &fixture->logical_port, &fixture->relative_port))
+		return false;
+	if (fixture->port.owner != 2.0f) {
+		fixture->route = MAIN_RENAME_NOT_OWNER;
+		fixture->complete = true;
+		return main_rename_present(fixture, not_owner,
+		    sizeof(not_owner) - 1U);
+	}
+	if (fixture->relative_port == 1.0f) {
+		fixture->route = MAIN_RENAME_EARTH;
+		fixture->complete = true;
+		return main_rename_present(fixture, earth, sizeof(earth) - 1U);
+	}
+	converted = qb_cint_mbf32(fixture->port.record.bytes + YT_F85,
+	    4U, &overflow);
+	if (overflow || converted < 0)
+		return false;
+	fixture->cached_name_length = (size_t)converted;
+	if (fixture->cached_name_length > sizeof(fixture->cached_name))
+		fixture->cached_name_length = sizeof(fixture->cached_name);
+	memcpy(fixture->cached_name, fixture->port.record.bytes,
+	    fixture->cached_name_length);
+	fixture->editor_called = true;
+	if (!main_buy_edit_port_name(&fixture->presentation,
+	    fixture->logical_port, fixture->cached_name,
+	    fixture->cached_name_length, &fixture->port, error))
+		return false;
+	fixture->route = MAIN_RENAME_EDITED;
+	fixture->complete = true;
+	return true;
 }
 
 static void
@@ -18457,12 +18456,11 @@ test_main_rename_cycle_presentation(void)
 		    && viewer.join.remote_length == cases[pass].expected_length
 		    && memcmp(remote, cases[pass].expected,
 		    cases[pass].expected_length) == 0);
-		CHECK(fixture.rename.complete
-		    && fixture.rename.route == YT_PORT_RENAME_EDITED_ROUTE
-		    && fixture.rename.logical_port == 3
-		    && fixture.rename.relative_port == 3.0f
-		    && fixture.rename.cached_name_length == 8U
-		    && memcmp(fixture.rename.cached_name, "Old Port", 8U) == 0);
+		CHECK(fixture.complete && fixture.route == MAIN_RENAME_EDITED
+		    && fixture.logical_port == 3
+		    && fixture.relative_port == 3.0f
+		    && fixture.cached_name_length == 8U
+		    && memcmp(fixture.cached_name, "Old Port", 8U) == 0);
 		CHECK(fixture.presentation.name_write_count == 1U
 		    && fixture.port.name_length == 4.0f
 		    && memcmp(fixture.port.record.bytes, "Nova", 4U) == 0
@@ -18510,14 +18508,14 @@ test_main_rename_refusal_cycles_presentation(void)
 	static const struct {
 		const uint8_t *row;
 		size_t row_length;
-		enum yt_port_rename_route route;
+		enum main_rename_route route;
 	} outcomes[] = {
 		{(const uint8_t *)"No port here!\n\r", 15U,
-		    YT_PORT_RENAME_NO_PORT_ROUTE},
+		    MAIN_RENAME_NO_PORT},
 		{(const uint8_t *)"This isn't your port!\n\r", 23U,
-		    YT_PORT_RENAME_NOT_OWNER_ROUTE},
+		    MAIN_RENAME_NOT_OWNER},
 		{(const uint8_t *)"Can't rename Earth!\n\r", 21U,
-		    YT_PORT_RENAME_EARTH_ROUTE},
+		    MAIN_RENAME_EARTH},
 	};
 	struct physical_viewer_join viewer;
 	struct viewer_file_fixture stream;
@@ -18569,9 +18567,9 @@ test_main_rename_refusal_cycles_presentation(void)
 			CHECK(main_rename_cycle_run(&fixture, ansi, ends));
 			CHECK(viewer.join.remote_length == expected_length
 			    && memcmp(remote, expected, expected_length) == 0
-			    && fixture.rename.complete
-			    && fixture.rename.route == outcomes[outcome].route
-			    && !fixture.rename.editor_called
+			    && fixture.complete
+			    && fixture.route == outcomes[outcome].route
+			    && !fixture.editor_called
 			    && fixture.presentation.name_write_count == 0U
 			    && viewer.join.queue_length == 0U
 			    && viewer.join.accumulator[0] == '\0'
