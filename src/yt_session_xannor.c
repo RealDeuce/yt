@@ -35,6 +35,110 @@ xannor_victory_file(struct yt_session *session, const char *path,
 }
 
 bool
+yt_session_launch_xannor_retaliation(struct yt_session *session,
+    int *provoking_player, struct yt_error *error)
+{
+	struct yt_player saved_player;
+	struct yt_sector headquarters;
+	uint8_t saved_cloak_raw[4];
+	int saved_record;
+	int target_candidate;
+	float target;
+	float projectile_amount;
+	int amount;
+	int ignored_counterattack = 0;
+	char amount_text[64];
+	char target_text[64];
+	char row[192];
+	int sector_count = session_sector_count(session);
+	bool valid_cache;
+	bool cache_cleared = false;
+	bool result = false;
+
+	if (provoking_player == NULL)
+		return false;
+	*provoking_player = session->xannor_provoker;
+	if (session->xannor_provoker == 0
+	    && session->player.score < 25000000.0f) {
+		result = true;
+		goto done;
+	}
+	if (!session_read_sector(session,
+	    (int)session->door->game.config.headquarters, &headquarters, error))
+		goto done;
+	if (headquarters.fighters == 0.0f
+	    || headquarters.fighter_owner != -1.0f) {
+		result = true;
+		goto done;
+	}
+	if (!yt_random_nested_integer(&session->door->game.random, 3, 100,
+	    &amount, error)
+	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "Xannor retaliation blank", error))
+		goto done;
+
+	saved_player = session->player;
+	saved_record = session_record(session);
+	valid_cache = yt_player_cache_contains(saved_record);
+	if (valid_cache) {
+		yt_player_cache_raw(&session->player_cache, saved_record,
+		    YT_PLAYER_CACHE_CLOAK, saved_cloak_raw);
+		if (session->xannor_provoker != 0) {
+			static const uint8_t cloak_zero[4] = {
+				0x00U, 0x00U, 0x40U, 0x00U
+			};
+
+			(void)yt_player_cache_set_raw(&session->player_cache,
+			    saved_record, YT_PLAYER_CACHE_CLOAK, cloak_zero);
+			cache_cleared = true;
+		}
+	}
+	(void)snprintf(session->player.name, sizeof(session->player.name), "%s",
+	    "The Xannor");
+	session->player_record_carrier = -1;
+
+	if (!yt_random_integer(&session->door->game.random, sector_count,
+	    &target_candidate, error))
+		goto done;
+	target = (float)target_candidate;
+	if (session->xannor_provoker != 0)
+		target = saved_player.sector;
+	if (qb_str_single(amount_text, sizeof(amount_text), (float)amount) < 0
+	    || qb_str_single(target_text, sizeof(target_text), target) < 0
+	    || snprintf(row, sizeof(row),
+	    "The Xannor have launched%s missiles at sector%s!",
+	    amount_text, target_text) < 0)
+		goto done;
+	projectile_amount = (float)amount;
+	if (!session_present_text(session, (const uint8_t *)row, strlen(row),
+	    SESSION_PRESENT_BOLD_LINE, "Xannor retaliation row", error)
+	    || !session_launch_projectile(session,
+	    &session->door->game.config.headquarters, &target,
+	    &projectile_amount, false, &ignored_counterattack,
+	    &session->xannor_provoker, error))
+		goto done;
+
+	session->player_record_carrier = saved_record;
+	session->player = saved_player;
+	if (valid_cache && cache_cleared)
+		(void)yt_player_cache_set_raw(&session->player_cache, saved_record,
+		    YT_PLAYER_CACHE_CLOAK, saved_cloak_raw);
+	if (!yt_game_read_player(&session->door->game, saved_record,
+	    &session->player, error))
+		goto done;
+	if (qb_mbf32_truth(session->player.record.bytes + YT_F45))
+		session->destroyed = true;
+	if (!session_wait(session, 4.0, "Xannor retaliation wait", error))
+		goto done;
+	session->xannor_provoker = 0;
+	result = true;
+
+done:
+	*provoking_player = session->xannor_provoker;
+	return result;
+}
+
+bool
 yt_session_xannor_victory(struct yt_session *session, struct yt_error *error)
 {
 	static const uint8_t pause[] = "[PAUSE]";

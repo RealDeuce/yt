@@ -175,8 +175,6 @@ static bool mine_encounter(struct yt_session *session, bool *terminal,
     struct yt_error *error);
 static bool clearance(struct yt_session *session, bool create,
     struct yt_error *error);
-static bool launch_xannor_retaliation(struct yt_session *session,
-    int *provoking_player, struct yt_error *error);
 static bool command_team(struct yt_session *session,
     struct yt_error *error);
 static bool earth_store(struct yt_session *session, bool *enter_sector,
@@ -4345,7 +4343,8 @@ finalize_action(struct yt_session *session, float amount,
 		return false;
 	if (draw > xannor_threshold) {
 		session_load_xannor_provoker(session, &xannor_provoker);
-		if (!launch_xannor_retaliation(session, &xannor_provoker,
+		if (!yt_session_launch_xannor_retaliation(session,
+		    &xannor_provoker,
 		    error))
 			return false;
 		if (session_is_destroyed(session))
@@ -14063,12 +14062,12 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 	return true;
 }
 
-static bool
-session_projectile_resolver(void *context, float *origin, float *target,
+bool
+session_launch_projectile(struct yt_session *session, float *origin,
+    float *target,
     float *amount, bool plasma, int *counterattack, int *xannor_provoker,
     struct yt_error *error)
 {
-	struct yt_session *session = context;
 	struct projectile_route_state *route = session_record(session) == -1
 	    ? &session->projectile_xannor_route
 	    : &session->projectile_main_route;
@@ -14110,102 +14109,6 @@ session_projectile_command_resolver(void *context, float *origin,
 	return result;
 }
 
-static bool
-session_random_integer(struct yt_session *session, int range, int *value,
-    struct yt_error *error)
-{
-	return yt_random_integer(&session->door->game.random,
-	    range, value, error);
-}
-
-static bool
-session_nested_integer(struct yt_session *session, int count, int range,
-    int *value, struct yt_error *error)
-{
-	return yt_random_nested_integer(&session->door->game.random,
-	    count, range, value, error);
-}
-
-static bool
-session_xannor_read_sector(void *context, int logical_sector,
-    struct yt_sector *sector, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return session_read_sector(session, logical_sector, sector,
-	    error);
-}
-
-static bool
-session_xannor_random(void *context, int count, int range, int *value,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	if (count == 1)
-		return session_random_integer(session, range, value, error);
-	return session_nested_integer(session, count, range, value, error);
-}
-
-static bool
-session_xannor_present(void *context, const uint8_t *text, size_t length,
-    bool bold, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return session_present_text(session, text, length,
-	    bold ? SESSION_PRESENT_BOLD_LINE : SESSION_PRESENT_LINE,
-	    bold ? "Xannor retaliation row" : "Xannor retaliation blank",
-	    error);
-}
-
-static bool
-session_xannor_read_player(void *context, int player_record,
-    struct yt_player *player, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_game_read_player(&session->door->game, player_record, player,
-	    error);
-}
-
-static bool
-session_xannor_wait(void *context, float duration,
-    struct yt_error *error)
-{
-	return session_wait(context, duration, "Xannor retaliation wait", error);
-}
-
-static bool
-launch_xannor_retaliation(struct yt_session *session, int *provoking_player,
-    struct yt_error *error)
-{
-	static const struct yt_xannor_retaliation_ops ops = {
-		session_xannor_read_sector,
-		session_xannor_random,
-		session_xannor_present,
-		session_projectile_resolver,
-		session_xannor_read_player,
-		session_xannor_wait,
-	};
-	bool result;
-
-	session_load_xannor_provoker(session, provoking_player);
-	session->player_record_carrier = session_record(session);
-	struct yt_xannor_retaliation_state state = {
-		&session->player,
-		&session->player_record_carrier,
-		&session->player_cache,
-		&session->destroyed,
-		&session->xannor_provoker,
-		&session->door->game.config.headquarters,
-		session_sector_count(session),
-	};
-
-	result = yt_xannor_retaliation_run(&state, &ops, session, error);
-	*provoking_player = session->xannor_provoker;
-	return result;
-}
 
 static bool
 session_counterlaunch_projectile(void *context, float *origin, float *target,
@@ -14443,7 +14346,8 @@ static bool
 projectile_command_xannor(void *context, int *xannor_provoker,
     struct yt_error *error)
 {
-	return launch_xannor_retaliation(context, xannor_provoker, error);
+	return yt_session_launch_xannor_retaliation(context, xannor_provoker,
+	    error);
 }
 
 static bool

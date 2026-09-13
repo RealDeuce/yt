@@ -422,39 +422,6 @@ bool yt_projectile_sector_mine_news_row(const uint8_t *shooter,
 bool yt_projectile_sector_mine_destroyed_row(float destroyed,
     uint8_t *row, size_t capacity, size_t *length);
 
-struct yt_xannor_retaliation_state {
-	struct yt_player *player;
-	int *player_record;
-	struct yt_player_cache *player_cache;
-	bool *destroyed;
-	int *provoker;
-	float *headquarters;
-	int sector_count;
-};
-
-typedef bool (*yt_xannor_retaliation_read_sector_fn)(void *context,
-    int logical_sector, struct yt_sector *sector, struct yt_error *error);
-typedef bool (*yt_xannor_retaliation_random_fn)(void *context, int count,
-    int range, int *value, struct yt_error *error);
-typedef bool (*yt_xannor_retaliation_present_fn)(void *context,
-    const uint8_t *text, size_t length, bool bold, struct yt_error *error);
-typedef bool (*yt_xannor_retaliation_projectile_fn)(void *context,
-    float *origin, float *target, float *amount, bool plasma,
-    int *counterattack, int *xannor_provoker, struct yt_error *error);
-typedef bool (*yt_xannor_retaliation_read_player_fn)(void *context,
-    int player_record, struct yt_player *player, struct yt_error *error);
-typedef bool (*yt_xannor_retaliation_wait_fn)(void *context,
-	float duration, struct yt_error *error);
-
-struct yt_xannor_retaliation_ops {
-	yt_xannor_retaliation_read_sector_fn read_sector;
-	yt_xannor_retaliation_random_fn random;
-	yt_xannor_retaliation_present_fn present;
-	yt_xannor_retaliation_projectile_fn projectile;
-	yt_xannor_retaliation_read_player_fn read_player;
-	yt_xannor_retaliation_wait_fn wait;
-};
-
 enum yt_salvage_simple_kind {
 	YT_SALVAGE_CREDITS,
 	YT_SALVAGE_MISSILES,
@@ -2801,9 +2768,6 @@ bool yt_counterlaunch_rows(const uint8_t *target_name,
     const uint8_t *saved_name, size_t saved_name_length,
     uint8_t *terminal, size_t terminal_capacity, size_t *terminal_length,
     uint8_t *news, size_t news_capacity, size_t *news_length);
-bool yt_xannor_retaliation_run(struct yt_xannor_retaliation_state *state,
-    const struct yt_xannor_retaliation_ops *ops, void *context,
-    struct yt_error *error);
 bool yt_salvage_header_row(const uint8_t *salvor, size_t salvor_length,
     const uint8_t *victim, size_t victim_length, uint8_t *row,
     size_t capacity, size_t *length);
