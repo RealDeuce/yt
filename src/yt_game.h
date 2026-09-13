@@ -1461,47 +1461,6 @@ struct yt_commodity_trade_ops {
 bool yt_commodity_trade_run(struct yt_commodity_trade_state *state,
 	const struct yt_commodity_trade_ops *ops, void *context,
 	struct yt_error *error);
-enum yt_ordinary_commerce_output_kind {
-	YT_ORDINARY_COMMERCE_REFUSAL,
-	YT_ORDINARY_COMMERCE_STATUS,
-};
-struct yt_ordinary_commerce_state {
-	int sector_number;
-	float sector_record_expression;
-	uint32_t current_player_record;
-	const uint8_t *first_name;
-	size_t first_name_length;
-	struct yt_port_market_state market;
-	struct yt_player final_player;
-	size_t schedule[3];
-	size_t scheduled_count;
-	size_t completed_trades;
-	bool prompt_reached;
-	bool update_complete;
-	bool report_complete;
-	bool refusal_presented;
-	bool final_player_read;
-	bool status_presented;
-	bool complete;
-};
-struct yt_ordinary_commerce_ops {
-	bool (*update)(void *context, int sector_number,
-	    float sector_record_expression,
-	    struct yt_port_market_state *market, struct yt_error *error);
-	bool (*report)(void *context, const struct yt_port_market_state *market,
-	    struct yt_error *error);
-	bool (*trade)(void *context, const struct yt_port_market_state *market,
-	    size_t commodity, bool *prompt_reached, struct yt_error *error);
-	bool (*read_player)(void *context, uint32_t physical_record,
-	    struct yt_player *player, struct yt_error *error);
-	bool (*present)(void *context, const uint8_t *text, size_t length,
-	    enum yt_ordinary_commerce_output_kind kind,
-	    struct yt_error *error);
-	void (*set_foreground)(void *context, float foreground);
-};
-bool yt_ordinary_commerce_run(struct yt_ordinary_commerce_state *state,
-	const struct yt_ordinary_commerce_ops *ops, void *context,
-	struct yt_error *error);
 enum yt_port_docking_output_kind {
 	YT_PORT_DOCKING_LABEL,
 	YT_PORT_DOCKING_NO_PORT,

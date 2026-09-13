@@ -112,6 +112,9 @@ bool session_present_paged_fragment(struct yt_session *session,
     const uint8_t *text, size_t length);
 bool session_present_paged_row(struct yt_session *session,
     const uint8_t *text, size_t length);
+bool session_present_paged_line(struct yt_session *session,
+    const uint8_t *text, size_t length, const char *operation,
+    struct yt_error *error);
 bool session_present_timed_paged_row(struct yt_session *session,
     const uint8_t *text, size_t length, const char *operation,
     struct yt_error *error);
@@ -172,6 +175,12 @@ bool yt_session_update_port(struct yt_session *session, int sector_number,
 bool yt_session_port_report(struct yt_session *session, int logical_port,
     const struct yt_port_market_state *market,
     struct yt_port *terminal_port, struct yt_error *error);
+bool yt_session_trade_commodity(struct yt_session *session,
+    const struct yt_port_market_state *market, size_t commodity,
+    bool *prompt_reached, struct yt_error *error);
+bool yt_session_ordinary_commerce(struct yt_session *session,
+    int sector_number, float sector_record_expression,
+    struct yt_error *error);
 void session_clear_queue(struct yt_session *session);
 bool session_append_radio_bytes(const uint8_t *text, size_t length,
     float sender, float recipient, struct yt_error *error);

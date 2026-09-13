@@ -226,3 +226,110 @@ yt_session_port_report(struct yt_session *session, int logical_port,
 		*terminal_port = report_port;
 	return true;
 }
+
+static double
+port_double_sub(double left, double right)
+{
+	volatile double result = left - right;
+
+	return result;
+}
+
+static bool
+port_append(uint8_t *buffer, size_t capacity, size_t *length,
+    const void *text, size_t text_length)
+{
+	if (*length > capacity || text_length > capacity - *length
+	    || (text == NULL && text_length != 0U))
+		return false;
+	if (text_length != 0U)
+		memcpy(buffer + *length, text, text_length);
+	*length += text_length;
+	return true;
+}
+
+bool
+yt_session_ordinary_commerce(struct yt_session *session,
+    int sector_number, float sector_record_expression,
+    struct yt_error *error)
+{
+	static const uint8_t refusal_prefix[] =
+	    "We don't want your goods and you can't buy ours ";
+	static const uint8_t refusal_suffix[] = "!";
+	struct yt_port_market_state market;
+	uint8_t row[256];
+	char credits[64];
+	char free_holds[64];
+	double free;
+	bool prompt_reached = false;
+	size_t index;
+
+	if (!yt_session_update_port(session, sector_number,
+	    &sector_record_expression, NULL, &market, error)
+	    || !yt_session_port_report(session, (int)market.logical_port,
+	    &market, NULL, error))
+		return false;
+	for (index = 0U; index < 3U; ++index) {
+		bool reached = false;
+
+		if (market.port.factor[index] < 0.0f
+		    && !yt_session_trade_commodity(session, &market, index,
+		    &reached, error))
+			return false;
+		if (reached)
+			prompt_reached = true;
+	}
+	for (index = 0U; index < 3U; ++index) {
+		bool reached = false;
+
+		if (market.port.factor[index] > 0.0f
+		    && !yt_session_trade_commodity(session, &market, index,
+		    &reached, error))
+			return false;
+		if (reached)
+			prompt_reached = true;
+	}
+	if (!prompt_reached) {
+		size_t length = 0U;
+		const char *first_name = session->door->identity.real_first;
+		size_t first_name_length = strlen(first_name);
+
+		session_set_foreground(session, 6.0f);
+		if (!port_append(row, sizeof(row), &length, refusal_prefix,
+		    sizeof(refusal_prefix) - 1U)
+		    || !port_append(row, sizeof(row), &length, first_name,
+		    first_name_length)
+		    || !port_append(row, sizeof(row), &length, refusal_suffix,
+		    sizeof(refusal_suffix) - 1U))
+			return port_update_error(error,
+			    "ordinary commerce refusal composition");
+		if (!session_present_alert(session, row, length,
+		    "port docking refusal", error))
+			return false;
+	}
+	if (!session_reload_player(session, error))
+		return false;
+	free = port_double_sub((double)session->player.holds,
+	    (double)session->player.ore);
+	free = port_double_sub(free, (double)session->player.organics);
+	free = port_double_sub(free, (double)session->player.equipment);
+	if (qb_str_double(credits, sizeof(credits),
+	    (double)session->player.credits) < 0
+	    || qb_str_double(free_holds, sizeof(free_holds), free) < 0)
+		return port_update_error(error,
+		    "ordinary commerce status formatting");
+	{
+		int length = snprintf((char *)row, sizeof(row),
+		    "You have%s credits and%s empty cargo holds.",
+		    credits, free_holds);
+
+		if (length < 0 || (size_t)length >= sizeof(row))
+			return port_update_error(error,
+			    "ordinary commerce status composition");
+		if (!session_present_paged_line(session, row, (size_t)length,
+		    "port docking cargo status", error))
+			return false;
+	}
+	session->inherited_loop_index = 4.0f;
+	return true;
+}

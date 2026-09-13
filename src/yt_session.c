@@ -193,7 +193,7 @@ bool session_present_paged_row(struct yt_session *session, const uint8_t *text,
     size_t length);
 static bool session_store_output_source(struct yt_session *session,
     const uint8_t *text, size_t length);
-static bool session_present_paged_line(struct yt_session *session, const uint8_t *text,
+bool session_present_paged_line(struct yt_session *session, const uint8_t *text,
     size_t length, const char *operation, struct yt_error *error);
 static bool computer_port_friendship(struct yt_session *session, float owner,
     bool *friendly, struct yt_error *error);
@@ -1452,7 +1452,7 @@ session_present_paged_fragment(struct yt_session *session,
 	return session_present_paged_row(session, text, length);
 }
 
-static bool
+bool
 session_present_paged_line(struct yt_session *session, const uint8_t *text, size_t length,
     const char *operation, struct yt_error *error)
 {
@@ -6137,8 +6137,8 @@ commodity_trade_confirm(void *context, const uint8_t *prompt, size_t length,
 	return true;
 }
 
-static bool
-trade_commodity(struct yt_session *session,
+bool
+yt_session_trade_commodity(struct yt_session *session,
     const struct yt_port_market_state *market, size_t commodity,
     bool *prompt_reached, struct yt_error *error)
 {
@@ -6166,51 +6166,6 @@ trade_commodity(struct yt_session *session,
 	if (prompt_reached != NULL && transaction.prompt_reached)
 		*prompt_reached = true;
 	return true;
-}
-
-static bool
-ordinary_commerce_update(void *context, int sector_number,
-    float sector_record_expression,
-    struct yt_port_market_state *market, struct yt_error *error)
-{
-	return yt_session_update_port(context, sector_number,
-	    &sector_record_expression,
-	    NULL, market, error);
-}
-
-static bool
-ordinary_commerce_report(void *context,
-    const struct yt_port_market_state *market, struct yt_error *error)
-{
-	return yt_session_port_report(context, (int)market->logical_port,
-	    market, NULL, error);
-}
-
-static bool
-ordinary_commerce_trade(void *context,
-    const struct yt_port_market_state *market, size_t commodity,
-    bool *prompt_reached, struct yt_error *error)
-{
-	return trade_commodity(context, market, commodity, prompt_reached,
-	    error);
-}
-
-static bool
-ordinary_commerce_present(void *context, const uint8_t *text, size_t length,
-    enum yt_ordinary_commerce_output_kind kind, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	switch (kind) {
-	case YT_ORDINARY_COMMERCE_REFUSAL:
-		return session_present_alert(session, text, length,
-		    "port docking refusal", error);
-	case YT_ORDINARY_COMMERCE_STATUS:
-		return session_present_paged_line(session, text, length,
-		    "port docking cargo status", error);
-	default:
-		return false;
-	}
 }
 
 static void
@@ -6303,29 +6258,8 @@ docking_front_ordinary(void *context, int sector_number,
     float sector_record_expression,
     struct yt_error *error)
 {
-	static const struct yt_ordinary_commerce_ops ops = {
-		ordinary_commerce_update,
-		ordinary_commerce_report,
-		ordinary_commerce_trade,
-		commodity_trade_read_player,
-		ordinary_commerce_present,
-		ordinary_commerce_foreground,
-	};
-	struct yt_session *session = context;
-	struct yt_ordinary_commerce_state commerce;
-	bool result;
-
-	memset(&commerce, 0, sizeof(commerce));
-	commerce.sector_number = sector_number;
-	commerce.sector_record_expression = sector_record_expression;
-	commerce.current_player_record = (uint32_t)session_record(session);
-	commerce.first_name =
-	    (const uint8_t *)session->door->identity.real_first;
-	commerce.first_name_length = strlen(session->door->identity.real_first);
-	result = yt_ordinary_commerce_run(&commerce, &ops, session, error);
-	if (result)
-		session->inherited_loop_index = 4.0f;
-	return result;
+	return yt_session_ordinary_commerce(context, sector_number,
+	    sector_record_expression, error);
 }
 
 static bool
