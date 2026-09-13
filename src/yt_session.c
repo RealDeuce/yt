@@ -10408,166 +10408,6 @@ command_buy_port_cycle(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
-treasury_read_player(void *context, uint32_t physical_record,
-    struct yt_player *player, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	struct yt_record record;
-
-	if (!yt_database_read(&session->door->game.database,
-	    (size_t)physical_record, &record, error))
-		return false;
-	yt_player_decode(player, &record);
-	return true;
-}
-
-static bool
-treasury_read_port(void *context, uint32_t physical_record,
-    struct yt_port *port, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	struct yt_record record;
-
-	if (!yt_database_read(&session->door->game.database,
-	    (size_t)physical_record, &record, error))
-		return false;
-	yt_port_decode(port, &record);
-	return true;
-}
-
-static bool
-treasury_write_port(void *context, uint32_t physical_record,
-    struct yt_port *port, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_database_write(&session->door->game.database,
-	    (size_t)physical_record, &port->record, error);
-}
-
-static bool
-treasury_present(void *context, const uint8_t *text, size_t length,
-    enum yt_treasury_output_kind kind, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	switch (kind) {
-	case YT_TREASURY_OPENING_BLANK:
-		return session_present_text(session, NULL, 0U,
-		    SESSION_PRESENT_LINE, "treasury opening blank", error);
-	case YT_TREASURY_NO_PORTS:
-		yt_present_set_blink(&session->presentation, 1.0f);
-		return session_present_text(session, text, length,
-		    SESSION_PRESENT_BOLD_LINE, "treasury no-owned notice", error);
-	case YT_TREASURY_HEADING_PREFIX:
-		return session_present_text(session, text, length,
-		    SESSION_PRESENT_RAW, "treasury heading prefix", error);
-	case YT_TREASURY_HEADING_SUFFIX:
-		return session_present_text(session, text, length,
-		    SESSION_PRESENT_LINE, "treasury heading suffix", error);
-	case YT_TREASURY_SCAN_BLANK:
-		return session_present_text(session, NULL, 0U,
-		    SESSION_PRESENT_LINE, "treasury scan blank", error);
-	case YT_TREASURY_SECTOR_FIELD:
-		return session_fixed_width_bytes(session, text, length, 14.0f,
-		    "treasury sector field", error);
-	case YT_TREASURY_NAME_FIELD:
-		return session_fixed_width_bytes(session, text, length, 25.0f,
-		    "treasury port-name field", error);
-	case YT_TREASURY_CREDIT_FIELD:
-		return session_fixed_width_bytes(session, text, length, 20.0f,
-		    "treasury credit field", error);
-	case YT_TREASURY_ROW_TOTAL:
-		return session_present_text(session, text, length,
-		    SESSION_PRESENT_LINE, "treasury row total", error);
-	case YT_TREASURY_NONZERO_BLANK:
-		return session_present_text(session, NULL, 0U,
-		    SESSION_PRESENT_LINE, "treasury nonzero-total blank", error);
-	case YT_TREASURY_TOTAL_PORTS:
-		return session_present_text(session, text, length,
-		    SESSION_PRESENT_LINE, "treasury total ports", error);
-	case YT_TREASURY_WITH_CREDITS:
-		return session_present_text(session, text, length,
-		    SESSION_PRESENT_LINE, "treasury credited ports", error);
-	case YT_TREASURY_BARREN_PORTS:
-		return session_present_text(session, text, length,
-		    SESSION_PRESENT_LINE, "treasury barren ports", error);
-	case YT_TREASURY_TOTAL_CREDITS:
-		return session_present_text(session, text, length,
-		    SESSION_PRESENT_LINE, "treasury total credits", error);
-	case YT_TREASURY_SUMMARY_BLANK:
-		return session_present_text(session, NULL, 0U,
-		    SESSION_PRESENT_LINE, "treasury summary blank", error);
-	case YT_TREASURY_REPORT_RESULT:
-		return session_present_text(session, text, length,
-		    SESSION_PRESENT_LINE, "treasury report result", error);
-	case YT_TREASURY_COLLECTION_RESULT:
-		return session_present_text(session, text, length,
-		    SESSION_PRESENT_LINE, "treasury collection result", error);
-	default:
-		return false;
-	}
-}
-
-static bool
-treasury_write_player(void *context, uint32_t physical_record,
-    struct yt_player *player, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_database_write(&session->door->game.database,
-	    (size_t)physical_record, &player->record, error);
-}
-
-static bool
-treasury_flush_player(void *context, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_database_flush(&session->door->game.database, error);
-}
-
-static bool
-treasury_update_cache(void *context, const struct yt_player *player,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	(void)error;
-	session->player = *player;
-	return true;
-}
-
-static bool
-command_collect(struct yt_session *session,
-    enum yt_treasury_caller_kind caller,
-    struct yt_error *error)
-{
-	static const struct yt_treasury_ops ops = {
-		treasury_read_player,
-		treasury_read_port,
-		treasury_write_port,
-		treasury_present,
-		treasury_write_player,
-		treasury_flush_player,
-		treasury_update_cache,
-	};
-	struct yt_treasury_state state = {
-		.current_player_record = (float)session_record(session),
-		.port_offset = session_port_offset(session),
-		.planet_offset = session_planet_offset(session),
-		.conversion_mode = session->presentation.sound.conversion_mode,
-	};
-
-	if (caller == YT_TREASURY_CALLER_MAIN_COLLECT
-	    || caller == YT_TREASURY_CALLER_COMPUTER_COLLECT)
-		state.collecting = true;
-	else if (caller != YT_TREASURY_CALLER_COMPUTER_REPORT)
-		return false;
-	return yt_treasury_run(&state, &ops, session, error);
-}
-
-static bool
 genesis_handoff_open_output(struct yt_text_output *output,
     struct yt_error *error)
 {
@@ -14816,8 +14656,7 @@ computer_menu(struct yt_session *session, bool *enter_sector,
 			continue;
 		}
 		if (strcmp(command, "!") == 0) {
-			if (!command_collect(session,
-			    YT_TREASURY_CALLER_COMPUTER_COLLECT, error))
+			if (!yt_session_treasury(session, true, error))
 				return false;
 			continue;
 		}
@@ -14850,8 +14689,7 @@ computer_menu(struct yt_session *session, bool *enter_sector,
 			continue;
 		}
 		if (strcmp(command, "12") == 0) {
-			if (!command_collect(session,
-			    YT_TREASURY_CALLER_COMPUTER_REPORT, error))
+			if (!yt_session_treasury(session, false, error))
 				return false;
 			continue;
 		}
@@ -15290,8 +15128,7 @@ command_shell(struct yt_session *session, struct yt_error *error)
 				return false;
 			break;
 		case YT_MAIN_SHELL_COLLECT:
-			if (!command_collect(session,
-			    YT_TREASURY_CALLER_MAIN_COLLECT, error))
+			if (!yt_session_treasury(session, true, error))
 				return false;
 			enter_sector = true;
 			break;

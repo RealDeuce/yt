@@ -606,6 +606,261 @@ yt_session_trade_commodity(struct yt_session *session,
 	    &fresh_port, error);
 }
 
+static bool
+treasury_error(struct yt_error *error, const char *operation)
+{
+	if (error != NULL) {
+		error->status = YT_RANGE;
+		error->system_error = 0;
+		(void)snprintf(error->operation, sizeof(error->operation), "%s",
+		    operation);
+		error->path[0] = '\0';
+	}
+	return false;
+}
+
+static bool
+treasury_format_single(const char *prefix, float value, char *text,
+    size_t capacity, struct yt_error *error, const char *operation)
+{
+	char number[64];
+	int number_length = qb_str_single(number, sizeof(number), value);
+	int result;
+
+	if (number_length < 0)
+		return treasury_error(error, operation);
+	result = snprintf(text, capacity, "%s%s", prefix, number);
+	if (result < 0 || (size_t)result >= capacity)
+		return treasury_error(error, operation);
+	return true;
+}
+
+static bool
+treasury_format_double(const char *prefix, const uint8_t raw[8],
+    const char *suffix, char *text, size_t capacity,
+    struct yt_error *error, const char *operation)
+{
+	char number[96];
+	int number_length = qb_str_mbf64(number, sizeof(number), raw);
+	int result;
+
+	if (number_length < 0)
+		return treasury_error(error, operation);
+	result = snprintf(text, capacity, "%s%s%s", prefix, number,
+	    suffix == NULL ? "" : suffix);
+	if (result < 0 || (size_t)result >= capacity)
+		return treasury_error(error, operation);
+	return true;
+}
+
+static bool
+treasury_add(uint8_t total[8], const uint8_t value[4],
+    struct yt_error *error)
+{
+	uint8_t promoted[8];
+	uint8_t sum[8];
+
+	yt_port_mbf64_promote_single(value, promoted);
+	if (qb_mbf64_add_raw(total, promoted, sum) != QB_MBF_OK)
+		return treasury_error(error, "treasury MBF56 accumulation");
+	memcpy(total, sum, sizeof(sum));
+	return true;
+}
+
+static bool
+treasury_update_player(struct yt_player *player, float owned,
+    const uint8_t total[8], struct yt_error *error)
+{
+	uint8_t fresh_credits[8];
+	uint8_t summed_credits[8];
+	uint8_t stored_credits[4];
+	uint8_t stored_owned[4];
+
+	yt_port_mbf64_promote_single(player->record.bytes + YT_F81,
+	    fresh_credits);
+	if (qb_mbf64_add_raw(fresh_credits, total, summed_credits) != QB_MBF_OK
+	    || qb_mbf32_from_mbf64_raw(summed_credits, stored_credits)
+	    == QB_MBF_OVERFLOW
+	    || qb_mbf32_encode(owned, stored_owned) == QB_MBF_OVERFLOW
+	    || !yt_record_set_raw_number(&player->record, YT_F117,
+	    stored_owned)
+	    || !yt_record_set_raw_number(&player->record, YT_F81,
+	    stored_credits))
+		return treasury_error(error, "treasury player overlay");
+	player->ports_owned = qb_mbf32_decode(stored_owned);
+	player->credits = qb_mbf32_decode(stored_credits);
+	return true;
+}
+
+bool
+yt_session_treasury(struct yt_session *session, bool collecting,
+    struct yt_error *error)
+{
+	static const uint8_t dirty_zero[4] = {0x00, 0x00, 0x20, 0x00};
+	static const uint8_t no_ports[] = "You don't OWN any ports!!!";
+	static const uint8_t collect_prefix[] =
+	    "Sending out armored cargo ships to";
+	static const uint8_t report_prefix[] =
+	    "Checking galactic bank statement for";
+	static const uint8_t heading_suffix[] = " ports with credits...";
+	struct yt_player player;
+	struct yt_port port;
+	struct yt_record record;
+	uint8_t total[8] = {0};
+	char text[192];
+	float loop_bound;
+	float counter;
+	float owned = 0.0f;
+	float credited = 0.0f;
+	float barren;
+	uint32_t player_record;
+
+	if (session == NULL)
+		return false;
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "treasury opening blank", error))
+		return false;
+	player_record = (uint32_t)session_record(session);
+	if (player_record == 0U)
+		return treasury_error(error, "treasury player record conversion");
+	if (!yt_database_read(&session->door->game.database,
+	    (size_t)player_record, &record, error))
+		return false;
+	yt_player_decode(&player, &record);
+	if (player.ports_owned < 1.0f) {
+		yt_present_set_blink(&session->presentation, 1.0f);
+		return session_present_text(session, no_ports,
+		    sizeof(no_ports) - 1U, SESSION_PRESENT_BOLD_LINE,
+		    "treasury no-owned notice", error);
+	}
+	if (!session_present_text(session,
+	    collecting ? collect_prefix : report_prefix,
+	    collecting ? sizeof(collect_prefix) - 1U
+	    : sizeof(report_prefix) - 1U,
+	    SESSION_PRESENT_RAW, "treasury heading prefix", error)
+	    || !session_present_text(session, heading_suffix,
+	    sizeof(heading_suffix) - 1U, SESSION_PRESENT_LINE,
+	    "treasury heading suffix", error)
+	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "treasury scan blank", error))
+		return false;
+	loop_bound = yt_port_single_sub(session_planet_offset(session),
+	    session_port_offset(session));
+	for (counter = 1.0f; counter <= loop_bound;
+	    counter = yt_port_single_add(counter, 1.0f)) {
+		float expression = yt_port_single_add(session_port_offset(session),
+		    counter);
+		uint32_t physical_record = qb_brun_random_record_number(expression);
+
+		if (physical_record == 0U)
+			return treasury_error(error,
+			    "treasury port record conversion");
+		if (!yt_database_read(&session->door->game.database,
+		    (size_t)physical_record, &record, error))
+			return false;
+		yt_port_decode(&port, &record);
+		if (port.owner != (float)session_record(session))
+			continue;
+		owned = yt_port_single_add(owned, 1.0f);
+		if (!qb_mbf32_truth(port.record.bytes + YT_F89))
+			continue;
+		credited = yt_port_single_add(credited, 1.0f);
+		if (!treasury_add(total, port.record.bytes + YT_F89, error)
+		    || !treasury_format_single("Sector:", port.sector, text,
+		    sizeof(text), error, "treasury sector field")
+		    || !session_fixed_width_bytes(session, (const uint8_t *)text,
+		    strlen(text), 14.0f, "treasury sector field", error))
+			return false;
+		{
+			bool overflow = false;
+			int32_t converted = qb_cint_mbf32(
+			    port.record.bytes + YT_F85,
+			    session->presentation.sound.conversion_mode, &overflow);
+			size_t name_length;
+
+			if (overflow || converted < 0)
+				return treasury_error(error,
+				    "treasury port-name length");
+			name_length = (size_t)converted;
+			if (name_length > YT_TEXT_FIELD_SIZE)
+				name_length = YT_TEXT_FIELD_SIZE;
+			if (!session_fixed_width_bytes(session, port.record.bytes,
+			    name_length, 25.0f, "treasury port-name field", error))
+				return false;
+		}
+		if (!treasury_format_single(" Credits:", port.treasury, text,
+		    sizeof(text), error, "treasury credit field")
+		    || !session_fixed_width_bytes(session, (const uint8_t *)text,
+		    strlen(text), 20.0f, "treasury credit field", error)
+		    || !treasury_format_double(" Total:", total, NULL, text,
+		    sizeof(text), error, "treasury row total")
+		    || !session_present_text(session, (const uint8_t *)text,
+		    strlen(text), SESSION_PRESENT_LINE, "treasury row total",
+		    error))
+			return false;
+		if (collecting) {
+			port.treasury = 0.0f;
+			if (!yt_record_set_raw_number(&port.record, YT_F89,
+			    dirty_zero)
+			    || !yt_database_write(&session->door->game.database,
+			    (size_t)physical_record, &port.record, error))
+				return false;
+		}
+	}
+	if (total[7] != 0U
+	    && !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "treasury nonzero-total blank", error))
+		return false;
+	if (!treasury_format_single("Total ports...:", owned, text,
+	    sizeof(text), error, "treasury total ports")
+	    || !session_present_text(session, (const uint8_t *)text,
+	    strlen(text), SESSION_PRESENT_LINE, "treasury total ports", error)
+	    || !treasury_format_single("With credits..:", credited, text,
+	    sizeof(text), error, "treasury credited ports")
+	    || !session_present_text(session, (const uint8_t *)text,
+	    strlen(text), SESSION_PRESENT_LINE, "treasury credited ports",
+	    error))
+		return false;
+	barren = yt_port_single_sub(owned, credited);
+	if (!treasury_format_single("Barren ports..:", barren, text,
+	    sizeof(text), error, "treasury barren ports")
+	    || !session_present_text(session, (const uint8_t *)text,
+	    strlen(text), SESSION_PRESENT_LINE, "treasury barren ports", error)
+	    || !treasury_format_double("Total credits.:", total, NULL, text,
+	    sizeof(text), error, "treasury total credits")
+	    || !session_present_text(session, (const uint8_t *)text,
+	    strlen(text), SESSION_PRESENT_LINE, "treasury total credits", error)
+	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "treasury summary blank", error))
+		return false;
+	if (!collecting) {
+		if (!treasury_format_double("You have", total,
+		    " credits in your port accounts.", text, sizeof(text), error,
+		    "treasury report result"))
+			return false;
+		return session_present_text(session, (const uint8_t *)text,
+		    strlen(text), SESSION_PRESENT_LINE,
+		    "treasury report result", error);
+	}
+	if (!treasury_format_double("You collected a total of", total,
+	    " credits.", text, sizeof(text), error,
+	    "treasury collection result")
+	    || !session_present_text(session, (const uint8_t *)text,
+	    strlen(text), SESSION_PRESENT_LINE,
+	    "treasury collection result", error)
+	    || !yt_database_read(&session->door->game.database,
+	    (size_t)player_record, &record, error))
+		return false;
+	yt_player_decode(&player, &record);
+	if (!treasury_update_player(&player, owned, total, error)
+	    || !yt_database_write(&session->door->game.database,
+	    (size_t)player_record, &player.record, error)
+	    || !yt_database_flush(&session->door->game.database, error))
+		return false;
+	session->player = player;
+	return true;
+}
+
 bool
 yt_session_ordinary_commerce(struct yt_session *session,
     int sector_number, float sector_record_expression,

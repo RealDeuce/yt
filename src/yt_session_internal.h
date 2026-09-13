@@ -183,6 +183,8 @@ bool yt_session_port_report(struct yt_session *session, int logical_port,
 bool yt_session_trade_commodity(struct yt_session *session,
     const struct yt_port_market_state *market, size_t commodity,
     bool *prompt_reached, struct yt_error *error);
+bool yt_session_treasury(struct yt_session *session, bool collecting,
+    struct yt_error *error);
 bool yt_session_ordinary_commerce(struct yt_session *session,
     int sector_number, float sector_record_expression,
     struct yt_error *error);
