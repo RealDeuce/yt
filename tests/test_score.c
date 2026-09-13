@@ -28477,189 +28477,19 @@ check_port_rename_transaction(void)
 	    && !yt_port_rename_run(&state, NULL, &tape, NULL);
 }
 
-enum main_prompt_event {
-	MAIN_PROMPT_RESET = 1,
-	MAIN_PROMPT_HYDRATE,
-	MAIN_PROMPT_FOREGROUND,
-	MAIN_PROMPT_BLANK,
-	MAIN_PROMPT_SCANNER_RESET,
-	MAIN_PROMPT_TEXT,
-	MAIN_PROMPT_EDIT,
-};
-struct main_prompt_tape {
-	enum main_prompt_event events[8];
-	size_t calls;
-	size_t fail_at;
-	struct yt_player player;
-	const char *response;
-	bool available;
-	uint8_t rows[2][128];
-	size_t row_lengths[2];
-	enum yt_main_prompt_output_kind kinds[2];
-	size_t row_count;
-};
 static bool
-main_prompt_step(struct main_prompt_tape *tape,
-    enum main_prompt_event event, struct yt_error *error)
-{
-	size_t call = tape->calls++;
-
-	if (call < YT_ARRAY_LEN(tape->events))
-		tape->events[call] = event;
-	if (call != tape->fail_at)
-		return true;
-	if (error != NULL)
-		error->status = YT_IO_ERROR;
-	return false;
-}
-static void
-main_prompt_effect_test(void *context, enum yt_main_prompt_effect effect)
-{
-	static const enum main_prompt_event events[] = {
-		MAIN_PROMPT_RESET, MAIN_PROMPT_FOREGROUND,
-		MAIN_PROMPT_SCANNER_RESET,
-	};
-	struct main_prompt_tape *tape = context;
-
-	if ((size_t)effect < YT_ARRAY_LEN(events))
-		(void)main_prompt_step(tape, events[effect], NULL);
-}
-static bool
-main_prompt_hydrate_test(void *context, int record,
-    struct yt_player *player, struct yt_error *error)
-{
-	struct main_prompt_tape *tape = context;
-
-	if (record != 2
-	    || !main_prompt_step(tape, MAIN_PROMPT_HYDRATE, error))
-		return false;
-	*player = tape->player;
-	return true;
-}
-static bool
-main_prompt_present_test(void *context, const uint8_t *text, size_t length,
-    enum yt_main_prompt_output_kind kind, struct yt_error *error)
-{
-	struct main_prompt_tape *tape = context;
-	size_t row = tape->row_count;
-	enum main_prompt_event event = kind == YT_MAIN_PROMPT_LEADING_BLANK
-	    ? MAIN_PROMPT_BLANK : MAIN_PROMPT_TEXT;
-
-	if (row >= YT_ARRAY_LEN(tape->rows) || length > sizeof(tape->rows[0])
-	    || !main_prompt_step(tape, event, error))
-		return false;
-	if (length != 0U)
-		memcpy(tape->rows[row], text, length);
-	tape->row_lengths[row] = length;
-	tape->kinds[row] = kind;
-	tape->row_count++;
-	return true;
-}
-static bool
-main_prompt_edit_test(void *context, char *response, size_t capacity,
-    size_t *length, bool *available, struct yt_error *error)
-{
-	struct main_prompt_tape *tape = context;
-	size_t response_length = strlen(tape->response);
-
-	if (length == NULL || available == NULL
-	    || response_length >= capacity
-	    || !main_prompt_step(tape, MAIN_PROMPT_EDIT, error))
-		return false;
-	memcpy(response, tape->response, response_length + 1U);
-	*length = response_length;
-	*available = tape->available;
-	return true;
-}
-static const struct yt_main_prompt_ops main_prompt_test_ops = {
-	main_prompt_effect_test,
-	main_prompt_hydrate_test,
-	main_prompt_present_test,
-	main_prompt_edit_test,
-};
-static void
-main_prompt_fixture(struct main_prompt_tape *tape,
-    struct yt_main_prompt_state *state, char response[32])
+check_main_prompt_row(void)
 {
 	static const uint8_t time_text[] = " 14:59  ";
-
-	memset(tape, 0, sizeof(*tape));
-	memset(state, 0, sizeof(*state));
-	memset(response, 0xa5, 32U);
-	tape->fail_at = SIZE_MAX;
-	tape->player.credits = 123.0f;
-	tape->response = "BJUNK";
-	tape->available = true;
-	*state = (struct yt_main_prompt_state){
-		.current_player_record = 2,
-		.time_text = time_text,
-		.time_text_length = sizeof(time_text) - 1U,
-		.time_text_capacity = sizeof(time_text) - 1U,
-		.response = response,
-		.response_capacity = 32U,
-	};
-}
-static bool
-check_main_prompt_transaction(void)
-{
-	static const enum main_prompt_event expected[] = {
-		MAIN_PROMPT_RESET, MAIN_PROMPT_HYDRATE,
-		MAIN_PROMPT_FOREGROUND, MAIN_PROMPT_BLANK,
-		MAIN_PROMPT_SCANNER_RESET, MAIN_PROMPT_TEXT,
-		MAIN_PROMPT_EDIT,
-	};
-	static const size_t failable[] = {1U, 3U, 5U, 6U};
-	static const uint8_t prompt[] =
+	static const uint8_t expected[] =
 	    "Time: 14:59  Main Command (?=Help)? ";
-	struct main_prompt_tape tape;
-	struct yt_main_prompt_state state;
-	struct yt_error error;
-	char response[32];
-	size_t index;
+	uint8_t row[sizeof(expected)];
+	size_t length;
 
-	main_prompt_fixture(&tape, &state, response);
-	if (!yt_main_prompt_run(&state, &main_prompt_test_ops, &tape, NULL)
-	    || !state.complete || !state.player_hydrated
-	    || !state.prompt_presented || !state.input_available
-	    || state.player.credits != 123.0f
-	    || state.route != YT_MAIN_SHELL_BUY_PORT
-	    || state.response_length != 5U || strcmp(response, "BJUNK") != 0
-	    || tape.calls != YT_ARRAY_LEN(expected)
-	    || memcmp(tape.events, expected, sizeof(expected)) != 0
-	    || tape.row_count != 2U || tape.row_lengths[0] != 0U
-	    || tape.kinds[0] != YT_MAIN_PROMPT_LEADING_BLANK
-	    || tape.row_lengths[1] != sizeof(prompt) - 1U
-	    || tape.kinds[1] != YT_MAIN_PROMPT_TEXT
-	    || memcmp(tape.rows[1], prompt, sizeof(prompt) - 1U) != 0)
-		return false;
-	for (index = 0U; index < YT_ARRAY_LEN(failable); ++index) {
-		main_prompt_fixture(&tape, &state, response);
-		tape.fail_at = failable[index];
-		yt_error_clear(&error);
-		if (yt_main_prompt_run(&state, &main_prompt_test_ops, &tape,
-		    &error) || error.status != YT_IO_ERROR || state.complete
-		    || tape.calls != failable[index] + 1U
-		    || memcmp(tape.events, expected,
-		    tape.calls * sizeof(expected[0])) != 0)
-			return false;
-	}
-	main_prompt_fixture(&tape, &state, response);
-	tape.available = false;
-	tape.response = "";
-	if (!yt_main_prompt_run(&state, &main_prompt_test_ops, &tape, NULL)
-	    || !state.complete || state.input_available
-	    || state.response_length != 0U || response[0] != '\0')
-		return false;
-	main_prompt_fixture(&tape, &state, response);
-	state.time_text_length++;
-	yt_error_clear(&error);
-	if (yt_main_prompt_run(&state, &main_prompt_test_ops, &tape, &error)
-	    || error.status != YT_RANGE || tape.calls != 5U
-	    || strcmp(error.operation, "main prompt time capacity") != 0)
-		return false;
-	main_prompt_fixture(&tape, &state, response);
-	return !yt_main_prompt_run(NULL, &main_prompt_test_ops, &tape, NULL)
-	    && !yt_main_prompt_run(&state, NULL, &tape, NULL);
+	return yt_main_prompt_row(time_text, sizeof(time_text) - 1U,
+	    row, sizeof(row), &length)
+	    && length == sizeof(expected) - 1U
+	    && memcmp(row, expected, length) == 0;
 }
 
 static bool
@@ -31547,8 +31377,8 @@ main(void)
 		return fail("Genesis transaction differs");
 	if (!check_port_rename_transaction())
 		return fail("port rename transaction differs");
-	if (!check_main_prompt_transaction())
-		return fail("main prompt transaction differs");
+	if (!check_main_prompt_row())
+		return fail("main prompt row differs");
 	if (!check_computer_prompt_row())
 		return fail("computer prompt row differs");
 	if (!check_computer_scoreboard_transaction())

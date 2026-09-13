@@ -17767,99 +17767,41 @@ quit_session(struct yt_session *session, struct yt_error *error)
 	    (size_t)length);
 }
 
-static void
-main_prompt_effect(void *context, enum yt_main_prompt_effect effect)
-{
-	struct yt_session *session = context;
-
-	switch (effect) {
-	case YT_MAIN_PROMPT_RESET_PAGER:
-		session_set_pager_line_count(session, 0.0f);
-		break;
-	case YT_MAIN_PROMPT_SET_FOREGROUND:
-		session_set_foreground(session, 2.0f);
-		break;
-	case YT_MAIN_PROMPT_RESET_SCANNER:
-		session_set_relationship(session, 0.0f);
-		break;
-	}
-}
-
-static bool
-main_prompt_hydrate(void *context, int player_record,
-    struct yt_player *player, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	if (player_record != session_record(session)
-	    || !reload_player(session, error))
-		return false;
-	*player = session->player;
-	return true;
-}
-
-static bool
-main_prompt_present(void *context, const uint8_t *text, size_t length,
-    enum yt_main_prompt_output_kind kind, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	if (kind == YT_MAIN_PROMPT_LEADING_BLANK)
-		return session_present_text(session, NULL, 0U,
-		    SESSION_PRESENT_LINE, "main prompt leading blank", error);
-	if (kind == YT_MAIN_PROMPT_TEXT) {
-		if (length >= sizeof(session->output_source))
-			return false;
-		memcpy(session->output_source, text, length);
-		session->output_source[length] = '\0';
-		return session_present_timed_paged_row(session, text, length,
-		    "main prompt low-time warning", error);
-	}
-	return false;
-}
-
-static bool
-main_prompt_edit(void *context, char *response, size_t capacity,
-    size_t *length, bool *available, struct yt_error *error)
-{
-	(void)error;
-	if (length == NULL || available == NULL)
-		return false;
-	*available = session_read_upper_command(context, response, capacity);
-	*length = *available ? strlen(response) : 0U;
-	return true;
-}
-
 static bool
 command_shell(struct yt_session *session, struct yt_error *error)
 {
-	static const struct yt_main_prompt_ops prompt_ops = {
-		main_prompt_effect,
-		main_prompt_hydrate,
-		main_prompt_present,
-		main_prompt_edit,
-	};
-
 	while (session->running && !session_is_destroyed(session)) {
 		char command[YT_COMMAND_SIZE];
-		struct yt_main_prompt_state prompt = {
-			.current_player_record = session_record(session),
-			.time_text = (const uint8_t *)session->time.text,
-			.time_text_length = session->time.text_length,
-			.time_text_capacity = sizeof(session->time.text),
-			.response = command,
-			.response_capacity = sizeof(command),
-		};
+		uint8_t prompt[512];
+		size_t prompt_length;
+		size_t response_length;
 		enum yt_main_shell_route route;
 		bool enter_sector = false;
 
-		if (!yt_main_prompt_run(&prompt, &prompt_ops, session, error))
+		session_set_pager_line_count(session, 0.0f);
+		if (!reload_player(session, error))
 			return false;
-		if (!prompt.input_available)
+		session_set_foreground(session, 2.0f);
+		if (!session_present_text(session, NULL, 0U,
+		    SESSION_PRESENT_LINE, "main prompt leading blank", error))
+			return false;
+		session_set_relationship(session, 0.0f);
+		if (!yt_main_prompt_row((const uint8_t *)session->time.text,
+		    session->time.text_length, prompt, sizeof(prompt),
+		    &prompt_length))
+			return false;
+		memcpy(session->output_source, prompt, prompt_length);
+		session->output_source[prompt_length] = '\0';
+		if (!session_present_timed_paged_row(session, prompt,
+		    prompt_length, "main prompt low-time warning", error))
+			return false;
+		if (!session_read_upper_command(session, command,
+		    sizeof(command)))
 			return true;
+		response_length = strlen(command);
 		memcpy(session->output_source, command,
-		    prompt.response_length + 1U);
-		route = prompt.route;
+		    response_length + 1U);
+		route = yt_main_shell_dispatch(command);
 		switch (route) {
 		case YT_MAIN_SHELL_DISPLAY:
 			if (!session_present_paged_line(session,
