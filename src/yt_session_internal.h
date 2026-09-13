@@ -192,6 +192,8 @@ bool yt_session_edit_port_name(struct yt_session *session, int logical_port,
     struct yt_error *error);
 bool yt_session_command_rename_port(struct yt_session *session,
     struct yt_error *error);
+bool yt_session_command_buy_port(struct yt_session *session,
+    struct yt_error *error);
 bool yt_session_ordinary_commerce(struct yt_session *session,
     int sector_number, float sector_record_expression,
     struct yt_error *error);
@@ -206,6 +208,12 @@ bool yt_session_earth_store(struct yt_session *session, bool *enter_sector,
 void session_clear_queue(struct yt_session *session);
 bool session_append_radio_bytes(const uint8_t *text, size_t length,
     float sender, float recipient, struct yt_error *error);
+bool session_port_owner_row_capture(struct yt_session *session,
+    const struct yt_port *port, uint8_t *captured_name,
+    size_t captured_capacity, size_t *captured_length,
+    struct yt_error *error);
+bool session_earth_report(struct yt_session *session, struct yt_port *earth,
+    float price[4], struct yt_error *error);
 bool yt_session_salvage_player(struct yt_session *session, int victim_record,
     int killer_record, struct yt_error *error);
 bool yt_session_command_mines(struct yt_session *session,

@@ -5921,8 +5921,9 @@ port_report_length(struct yt_session *session, float raw, size_t maximum,
 	return true;
 }
 
-static bool
-port_owner_row_capture(struct yt_session *session, const struct yt_port *port,
+bool
+session_port_owner_row_capture(struct yt_session *session,
+    const struct yt_port *port,
     uint8_t *captured_name, size_t captured_capacity,
     size_t *captured_length, struct yt_error *error)
 {
@@ -5976,7 +5977,8 @@ static bool
 port_owner_row(struct yt_session *session, const struct yt_port *port,
     struct yt_error *error)
 {
-	return port_owner_row_capture(session, port, NULL, 0U, NULL, error);
+	return session_port_owner_row_capture(session, port, NULL, 0U, NULL,
+	    error);
 }
 
 static bool
@@ -6767,8 +6769,8 @@ lottery(struct yt_session *session, const struct yt_port *cached_earth,
 	return lottery_settle(session, cached_earth, 5.0f, error);
 }
 
-static bool
-earth_report(struct yt_session *session, struct yt_port *earth,
+bool
+session_earth_report(struct yt_session *session, struct yt_port *earth,
     float price[4], struct yt_error *error)
 {
 	static const uint8_t separator[] =
@@ -6875,7 +6877,7 @@ yt_session_earth_store(struct yt_session *session, bool *enter_sector,
 		float shields_price;
 		float ground_price;
 
-		if (!earth_report(session, &earth, price, error))
+		if (!session_earth_report(session, &earth, price, error))
 			return false;
 		holds_price = price[0];
 		fighters_price = price[1];
@@ -9963,268 +9965,9 @@ command_rename_port_cycle(struct yt_session *session,
 }
 
 static bool
-port_purchase_accept_present(void *context, const uint8_t *text,
-    size_t length, enum yt_port_purchase_accept_output_kind kind,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	switch (kind) {
-	case YT_PORT_PURCHASE_ACCEPT_SOLD_BLANK:
-	case YT_PORT_PURCHASE_ACCEPT_TRANSFER_BLANK:
-		return session_present_text(session, NULL, 0U,
-		    SESSION_PRESENT_LINE, kind ==
-		    YT_PORT_PURCHASE_ACCEPT_SOLD_BLANK
-		    ? "buy sold leading blank"
-		    : "buy seller transfer leading blank", error);
-	case YT_PORT_PURCHASE_ACCEPT_SOLD_ROW:
-		yt_present_set_bold(&session->presentation, 1.0f);
-		yt_present_set_blink(&session->presentation, 1.0f);
-		return session_present_paged_fragment(session, text, length);
-	case YT_PORT_PURCHASE_ACCEPT_TRANSFER_ROW:
-	case YT_PORT_PURCHASE_ACCEPT_SUCCESS_TAIL:
-		return session_present_paged_fragment(session, text, length);
-	case YT_PORT_PURCHASE_ACCEPT_SUCCESS_FIRST:
-		return session_present_paged_line(session, text, length,
-		    "buy congratulations row", error);
-	default:
-		return false;
-	}
-}
-
-static bool
-port_purchase_accept_read_port(void *context, int logical_port,
-    struct yt_port *port, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return session_read_port(session, logical_port, port,
-	    error);
-}
-
-static bool
-port_purchase_accept_read_player(void *context, int player_record,
-    struct yt_player *player, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_game_read_player(&session->door->game, player_record, player,
-	    error);
-}
-
-static bool
-port_purchase_accept_write_player(void *context, int player_record,
-    struct yt_player *player, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	if (player_record == session_record(session))
-		session->player = *player;
-	return yt_database_write(&session->door->game.database,
-	    (size_t)player_record, &player->record, error);
-}
-
-static bool
-port_purchase_accept_radio(void *context, const uint8_t *text,
-    size_t length, float sender, float recipient, struct yt_error *error)
-{
-	(void)context;
-	return session_append_radio_bytes(text, length, sender, recipient, error);
-}
-
-static bool
-port_purchase_accept_rename(void *context, int logical_port,
-    const uint8_t *cached, size_t cached_length, struct yt_port *port,
-    struct yt_error *error)
-{
-	return yt_session_edit_port_name(context, logical_port, cached,
-	    cached_length, port, error);
-}
-
-static bool
-port_purchase_accept_write_port(void *context, int logical_port,
-    struct yt_port *port, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_database_write(&session->door->game.database,
-	    (size_t)session_port_basic_record(session, (float)logical_port),
-	    &port->record, error);
-}
-
-static bool
-port_purchase_accept_hydrate(void *context, int player_record,
-    struct yt_player *player, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	if (player_record != session_record(session)
-	    || !session_reload_player(session, error))
-		return false;
-	*player = session->player;
-	return true;
-}
-
-static bool
-port_purchase_hydrate(void *context, int player_record,
-    struct yt_player *player, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	if (player_record != session_record(session)
-	    || !session_reload_player(session, error))
-		return false;
-	*player = session->player;
-	return true;
-}
-
-static bool
-port_purchase_read_sector(void *context, int sector_number,
-    struct yt_sector *sector, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return session_read_sector(session, sector_number, sector,
-	    error);
-}
-
-static bool
-port_purchase_report(void *context, int logical_port, bool earth,
-    struct yt_port *early_port, struct yt_port *terminal_port,
-    float production[3], struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	if (earth) {
-		float earth_prices[4];
-
-		if (!earth_report(session, early_port, earth_prices, error))
-			return false;
-		*terminal_port = *early_port;
-		memset(production, 0, 3U * sizeof(production[0]));
-		return true;
-	}
-	{
-		struct yt_port_market_state market;
-		struct yt_sector updater_sector = {0};
-
-		updater_sector.port = (float)logical_port;
-		if (!yt_session_update_port(session, 0, NULL, &updater_sector,
-		    &market, error))
-			return false;
-		*early_port = market.port;
-		memcpy(production, market.port.production,
-		    3U * sizeof(production[0]));
-		return yt_session_port_report(session, logical_port, &market,
-		    terminal_port, error);
-	}
-}
-
-static bool
-port_purchase_owner(void *context, const struct yt_port *port,
-    uint8_t *name, size_t capacity, size_t *length,
-	struct yt_error *error)
-{
-	return port_owner_row_capture(context, port, name, capacity, length,
-	    error);
-}
-
-static bool
-port_purchase_present(void *context, const uint8_t *text, size_t length,
-    enum yt_port_purchase_output_kind kind, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	switch (kind) {
-	case YT_PORT_PURCHASE_NO_PORT:
-		return session_present_alert(session, text, length, "buy no-port row",
-		    error);
-	case YT_PORT_PURCHASE_ALREADY_OWNER:
-		return session_present_alert(session, text, length,
-		    "buy already-owner row", error);
-	case YT_PORT_PURCHASE_PRICE:
-		return session_present_paged_line(session, text, length, "buy price row", error);
-	case YT_PORT_PURCHASE_UNAFFORDABLE:
-		return session_present_alert(session, text, length,
-		    "buy unaffordable row", error);
-	case YT_PORT_PURCHASE_OFFER_LEADING_BLANK:
-	case YT_PORT_PURCHASE_OFFER_TRAILING_BLANK:
-		return session_present_text(session, NULL, 0U,
-		    SESSION_PRESENT_LINE,
-		    kind == YT_PORT_PURCHASE_OFFER_LEADING_BLANK
-		    ? "buy owner offer leading blank"
-		    : "buy owner offer trailing blank", error);
-	case YT_PORT_PURCHASE_OFFER_ROW:
-		return session_present_paged_fragment(session, text, length);
-	case YT_PORT_PURCHASE_DECLINED:
-		return session_present_alert(session, text, length, "buy declined row",
-		    error);
-	default:
-		return false;
-	}
-}
-
-static bool
-port_purchase_confirm(void *context, const uint8_t *prompt, size_t length,
-    bool *accepted, struct yt_error *error)
-{
-	enum yt_yes_no_answer answer;
-
-	if (accepted == NULL
-	    || !session_confirm(context, prompt, length, &answer, error))
-		return false;
-	*accepted = answer == YT_YES_NO_YES;
-	return true;
-}
-
-static bool
-port_purchase_accept(void *context,
-    struct yt_port_purchase_accept_state *state, struct yt_error *error)
-{
-	static const struct yt_port_purchase_accept_ops ops = {
-		port_purchase_accept_present,
-		port_purchase_accept_read_port,
-		port_purchase_accept_read_player,
-		port_purchase_accept_write_player,
-		port_purchase_accept_radio,
-		port_purchase_accept_rename,
-		port_purchase_accept_write_port,
-		port_purchase_accept_hydrate,
-	};
-
-	return yt_port_purchase_accept_run(state, &ops, context, error);
-}
-
-static bool
-command_buy_port(struct yt_session *session, struct yt_error *error)
-{
-	static const struct yt_port_purchase_ops ops = {
-		port_purchase_hydrate,
-		port_purchase_read_sector,
-		port_purchase_report,
-		port_purchase_owner,
-		port_purchase_present,
-		port_purchase_confirm,
-		port_purchase_accept,
-	};
-	const uint8_t *first =
-	    (const uint8_t *)session->door->identity.real_first;
-	struct yt_port_purchase_state state = {
-		.current_player_record = session_record(session),
-		.port_offset = session_port_offset(session),
-		.conversion_mode =
-		    session->presentation.sound.conversion_mode,
-		.first_name = first,
-		.first_name_length = strlen((const char *)first),
-	};
-
-	return yt_port_purchase_run(&state, &ops, session, error);
-}
-
-static bool
 command_buy_port_cycle(struct yt_session *session, struct yt_error *error)
 {
-	return command_buy_port(session, error)
+	return yt_session_command_buy_port(session, error)
 	    && display_current_sector_cached(session, error);
 }
 
@@ -13769,7 +13512,7 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 		struct yt_port earth;
 		float price[4];
 
-		if (!earth_report(session, &earth, price, error))
+		if (!session_earth_report(session, &earth, price, error))
 			return false;
 		session->earth_report_seen = false;
 		return true;
