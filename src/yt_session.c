@@ -10,7 +10,6 @@
 #include "yt_pager.h"
 #include "yt_platform.h"
 #include "yt_route.h"
-#include "yt_score.h"
 #include "yt_sound.h"
 #include "yt_startup_model.h"
 #include "yt_text.h"
@@ -61,13 +60,13 @@ session_is_destroyed(const struct yt_session *session)
 	return session->destroyed;
 }
 
-static float
+float
 session_sector_offset(const struct yt_session *session)
 {
 	return session->door->game.config.sector_offset;
 }
 
-static float
+float
 session_port_offset(const struct yt_session *session)
 {
 	return session->door->game.config.port_offset;
@@ -91,7 +90,7 @@ session_pager_foreground(const struct yt_session *session)
 	return (int)session_foreground(session);
 }
 
-static void
+void
 session_set_pager_line_count_raw(struct yt_session *session,
     const uint8_t raw[4])
 {
@@ -983,7 +982,7 @@ session_command_notice(struct yt_session *session, const char *text)
 	return session_wait(session, 1.0, "command notice wait", NULL);
 }
 
-static void
+void
 session_compat_upper_n(struct yt_session *session, uint8_t *text,
     size_t length)
 {
@@ -1043,7 +1042,7 @@ session_line(struct yt_session *session, char *text, size_t size)
 	    &session->queue_length);
 }
 
-static bool
+bool
 session_read_command(struct yt_session *session, char *text, size_t size)
 {
 	return session_line(session, text, size)
@@ -1747,8 +1746,8 @@ session_file_viewer_output(void *context, const uint8_t *text,
 	    SESSION_PRESENT_LINE, "file viewer final blank", error);
 }
 
-static bool
-display_game_file(struct yt_session *session, const char *path,
+bool
+session_display_game_file(struct yt_session *session, const char *path,
     struct yt_error *error)
 {
 	struct session_file_viewer_context context;
@@ -2237,7 +2236,7 @@ opening_and_date(struct yt_session *session, struct yt_error *error)
 	}
 	/* Row 25 belongs to the deferred OpenDoors local personality. */
 	session_set_pager_nonstop(session, 1.0f);
-	return display_game_file(session, "YTOPEN.ASC", error);
+	return session_display_game_file(session, "YTOPEN.ASC", error);
 }
 
 struct lockout_context {
@@ -2659,7 +2658,7 @@ instruction_offer(struct yt_session *session, struct yt_error *error)
 		if (answer == YT_YES_NO_EMPTY || answer == YT_YES_NO_NO)
 			return true;
 		if (answer == YT_YES_NO_YES)
-			return display_game_file(session, "YTINSTR.DOC", error);
+			return session_display_game_file(session, "YTINSTR.DOC", error);
 		yt_present_set_bold(&session->presentation, 1.0f);
 		clear_queue(session);
 	}
@@ -17114,93 +17113,6 @@ computer_help(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
-computer_scoreboard_progress(void *context, unsigned phase,
-    struct yt_error *error)
-{
-	static const uint8_t dot[] = ".";
-	struct yt_session *session = context;
-
-	(void)phase;
-	return session_present_text(session, dot, sizeof(dot) - 1U,
-	    SESSION_PRESENT_RAW, "scoreboard progress dot", error);
-}
-
-static bool
-computer_scoreboard_generate(struct yt_session *session,
-    struct yt_error *error)
-{
-	return yt_score_generate_progress_with_layout(
-	    &session->door->game, session_sector_offset(session),
-	    session_port_offset(session), computer_scoreboard_progress, session,
-	    NULL, error);
-}
-
-static bool
-computer_scoreboard(struct yt_session *session, struct yt_error *error)
-{
-	static const uint8_t prompt[] =
-	    "Enter 'O' to see OLD scoreboard or press [ENTER] for UPDATED one. -=>";
-	static const uint8_t heading[] = "P l a y e r  R a n k i n g s";
-	static const uint8_t dirty_zero[4] = {0x00, 0x00, 0x04, 0x00};
-	char response[80];
-	size_t length;
-
-	session->pager.key[0] = '\0';
-	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "scoreboard selector leading blank", error)
-	    || !session_present_timed_paged_row(session, prompt,
-	    sizeof(prompt) - 1U, "scoreboard selector prompt", error)
-	    || !session_read_command(session, response, sizeof(response)))
-		return false;
-	length = strlen(response);
-	session_compat_upper_n(session,
-	    (uint8_t *)session->output_source, length);
-	session_compat_upper_n(session, (uint8_t *)response, length);
-	session_set_pager_line_count_raw(session, dirty_zero);
-	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "scoreboard selector trailing blank", error))
-		return false;
-	if (!(length == 1U && response[0] == 'O')) {
-		if (!session_present_timed_paged_row(session, heading,
-		    sizeof(heading) - 1U, "scoreboard update heading", error)
-		    || !computer_scoreboard_generate(session, error)
-		    || !session_present_text(session, NULL, 0U,
-		    SESSION_PRESENT_LINE, "scoreboard post-generator blank",
-		    error))
-			return false;
-	}
-	return display_game_file(session,
-	    session->door->game.config.scoreboard, error);
-}
-
-static bool
-computer_newspaper(struct yt_session *session, struct yt_error *error)
-{
-	static const uint8_t prompt[] =
-	    "Do you want to read [T]oday's or [Y]esterday's news? [T/Y] -=> ";
-	char response[80];
-	enum yt_computer_newspaper_choice choice;
-
-	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "newspaper selector leading blank", error))
-		return false;
-	do {
-		if (!session_present_timed_paged_row(session, prompt,
-		    sizeof(prompt) - 1U, "newspaper selector prompt", error)
-		    || !session_read_command(session, response, sizeof(response)))
-			return false;
-		session_compat_upper_n(session,
-		    (uint8_t *)session->output_source, strlen(response));
-		session_compat_upper_n(session, (uint8_t *)response,
-		    strlen(response));
-		choice = yt_computer_newspaper_select(response);
-	} while (choice == YT_COMPUTER_NEWSPAPER_NONE);
-	return display_game_file(session,
-	    choice == YT_COMPUTER_NEWSPAPER_TODAY
-	    ? "YTNEWS.DAT" : "YTYNEWS.DAT", error);
-}
-
-static bool
 computer_menu_prompt(struct yt_session *session, char *command,
     size_t capacity, struct yt_error *error)
 {
@@ -17387,7 +17299,7 @@ computer_menu(struct yt_session *session, bool *enter_sector,
 					return false;
 				continue;
 			case 9:
-				if (!computer_scoreboard(session, error))
+				if (!yt_session_computer_scoreboard(session, error))
 					return false;
 				continue;
 			case 10:
@@ -17409,7 +17321,7 @@ computer_menu(struct yt_session *session, bool *enter_sector,
 			continue;
 		}
 		if (strcmp(command, "8") == 0) {
-			if (!computer_newspaper(session, error))
+			if (!yt_session_computer_newspaper(session, error))
 				return false;
 			continue;
 		}
@@ -17523,15 +17435,12 @@ quit_session(struct yt_session *session, struct yt_error *error)
 	    "normal-exit post-Info blank", error)
 	    || !session_present_timed_paged_row(session, generating, sizeof(generating) - 1U,
 	    "normal-exit generating row", error)
-	    || !yt_score_generate_progress_with_layout(
-	    &session->door->game, session_sector_offset(session),
-	    session_port_offset(session), computer_scoreboard_progress, session,
-	    NULL, error)
+	    || !yt_session_generate_scoreboard(session, error)
 	    || !session_present_text(session, NULL, 0, SESSION_PRESENT_LINE,
 	    "normal-exit post-generator blank", error))
 		return false;
 	session_set_pager_nonstop(session, 1.0f);
-	if (!display_game_file(session,
+	if (!session_display_game_file(session,
 	    session->door->game.config.scoreboard, error))
 		return false;
 	if (qb_mbf32_encode(session->registered ? -1.0f : 0.0f,
