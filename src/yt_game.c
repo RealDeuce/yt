@@ -1,4 +1,5 @@
 #include "yt_game.h"
+#include "yt_port_math.h"
 
 #include "qb.h"
 #include "yt_main_error.h"
@@ -7276,14 +7277,6 @@ yt_treasury_run(struct yt_treasury_state *state,
 	return true;
 }
 
-static void
-market_promote_single(const uint8_t single[4], uint8_t raw[8])
-{
-	memset(raw, 0, 8U);
-	if (single[3] != 0U)
-		memcpy(raw + 4U, single, 4U);
-}
-
 static bool
 market_encode_single(float value, uint8_t raw[4], struct yt_error *error,
     const char *operation)
@@ -7308,86 +7301,6 @@ market_binary(market_binary_fn operation, const uint8_t left[8],
 	if (status == QB_MBF_OK || status == QB_MBF_UNDERFLOW)
 		return true;
 	return startup_configuration_error(error, YT_RANGE, label);
-}
-
-static int
-market_compare_magnitude(const uint8_t left[8], const uint8_t right[8])
-{
-	int index;
-
-	if (left[7] != right[7])
-		return left[7] < right[7] ? -1 : 1;
-	for (index = 6; index >= 0; --index) {
-		uint8_t left_byte = left[index];
-		uint8_t right_byte = right[index];
-
-		if (index == 6) {
-			left_byte &= 0x7fU;
-			right_byte &= 0x7fU;
-		}
-		if (left_byte != right_byte)
-			return left_byte < right_byte ? -1 : 1;
-	}
-	return 0;
-}
-
-static int
-market_compare(const uint8_t left[8], const uint8_t right[8])
-{
-	bool left_negative;
-	bool right_negative;
-	int magnitude;
-
-	if (left[7] == 0U)
-		return right[7] == 0U ? 0
-		    : ((right[6] & 0x80U) != 0U ? 1 : -1);
-	if (right[7] == 0U)
-		return (left[6] & 0x80U) != 0U ? -1 : 1;
-	left_negative = (left[6] & 0x80U) != 0U;
-	right_negative = (right[6] & 0x80U) != 0U;
-	if (left_negative != right_negative)
-		return left_negative ? -1 : 1;
-	magnitude = market_compare_magnitude(left, right);
-	return left_negative ? -magnitude : magnitude;
-}
-
-static void
-market_negate(uint8_t raw[8])
-{
-	if (raw[7] != 0U)
-		raw[6] ^= 0x80U;
-}
-
-static float
-market_single_add(float left, float right)
-{
-	volatile float result = left + right;
-
-	return result;
-}
-
-static float
-market_single_sub(float left, float right)
-{
-	volatile float result = left - right;
-
-	return result;
-}
-
-static float
-market_single_mul(float left, float right)
-{
-	volatile float result = left * right;
-
-	return result;
-}
-
-static float
-market_single_div(float left, float right)
-{
-	volatile float result = left / right;
-
-	return result;
 }
 
 bool
@@ -7430,10 +7343,10 @@ yt_port_market_update(struct yt_port_market_state *state,
 	    || qb_mbf64_encode(0.5, half) != QB_MBF_OK)
 		return startup_configuration_error(error, YT_RANGE,
 		    "ordinary port constants");
-	minute = market_single_div(state->timer_seconds, 60.0f);
-	elapsed = market_single_add(
-	    market_single_sub(state->current_day, state->port.last_day),
-	    market_single_div(market_single_sub(minute,
+	minute = yt_port_single_div(state->timer_seconds, 60.0f);
+	elapsed = yt_port_single_add(
+	    yt_port_single_sub(state->current_day, state->port.last_day),
+	    yt_port_single_div(yt_port_single_sub(minute,
 	    state->port.last_minute), 1440.0f));
 	if (elapsed > 10.0f || elapsed < 0.0f)
 		elapsed = 10.0f;
@@ -7460,25 +7373,25 @@ yt_port_market_update(struct yt_port_market_state *state,
 		uint8_t rounded[8];
 		float growth_value;
 
-		market_promote_single(state->port.record.bytes
+		yt_port_mbf64_promote_single(state->port.record.bytes
 		    + YT_F49 + index * 4U, mutable_capacity[index]);
 		memcpy(mutable_production[index], state->port.record.bytes
 		    + YT_F61 + index * 4U, 4U);
-		growth_value = market_single_mul(
+		growth_value = yt_port_single_mul(
 		    qb_mbf32_decode(mutable_production[index]), elapsed);
 		if (!market_encode_single(growth_value, growth_raw, error,
 		    "ordinary port growth"))
 			return false;
-		market_promote_single(growth_raw, growth);
+		yt_port_mbf64_promote_single(growth_raw, growth);
 		if (!market_binary(qb_mbf64_add_raw, mutable_capacity[index],
 		    growth, mutable_capacity[index], error,
 		    "ordinary port capacity")
 		    || !market_binary(qb_mbf64_div_raw, mutable_capacity[index],
 		    ten, quotient, error, "ordinary port production comparison"))
 			return false;
-		market_promote_single(mutable_production[index],
+		yt_port_mbf64_promote_single(mutable_production[index],
 		    promoted_production);
-		if (market_compare(quotient, promoted_production) > 0) {
+		if (yt_port_mbf64_compare(quotient, promoted_production) > 0) {
 			if (!market_binary(qb_mbf64_div_raw,
 			    mutable_capacity[index], ten, quotient, error,
 			    "ordinary port production replacement")
@@ -7487,14 +7400,14 @@ yt_port_market_update(struct yt_port_market_state *state,
 				return startup_configuration_error(error, YT_RANGE,
 				    "ordinary port production CSNG");
 			raised[index] = true;
-			market_promote_single(mutable_production[index],
+			yt_port_mbf64_promote_single(mutable_production[index],
 			    promoted_production);
 		}
 		if (!market_encode_single(state->base_price[index], base_raw,
 		    error, "ordinary port base price"))
 			return false;
-		market_promote_single(base_raw, base);
-		market_promote_single(state->port.record.bytes
+		yt_port_mbf64_promote_single(base_raw, base);
+		yt_port_mbf64_promote_single(state->port.record.bytes
 		    + YT_F73 + index * 4U, factor);
 		if (!market_binary(qb_mbf64_mul_raw, factor,
 		    mutable_capacity[index], numerator, error,
@@ -7506,7 +7419,7 @@ yt_port_market_update(struct yt_port_market_state *state,
 		    ratio, error, "ordinary port price division"))
 			return false;
 		memcpy(scale, ratio, 8U);
-		market_negate(scale);
+		yt_port_mbf64_negate(scale);
 		if (!market_binary(qb_mbf64_add_raw, one, scale, scale, error,
 		    "ordinary port price scale")
 		    || !market_binary(qb_mbf64_mul_raw, base, scale, raw_price,
@@ -7514,7 +7427,7 @@ yt_port_market_update(struct yt_port_market_state *state,
 		    || !market_binary(qb_mbf64_add_raw, raw_price, half,
 		    rounded_source, error, "ordinary port price rounding"))
 			return false;
-		if (market_compare(rounded_source, zero) <= 0)
+		if (yt_port_mbf64_compare(rounded_source, zero) <= 0)
 			memset(rounded, 0, sizeof(rounded));
 		else {
 			enum qb_mbf_status status = qb_mbf64_floor_positive_raw(
@@ -7690,7 +7603,7 @@ yt_port_report_compose(const struct yt_port_market_state *market,
 		    item->capacity))
 			return startup_configuration_error(error, YT_RANGE,
 			    "port report stock formatting");
-		market_promote_single(current_player->record.bytes
+		yt_port_mbf64_promote_single(current_player->record.bytes
 		    + hold_offset[index], promoted_hold);
 		formatted_length = qb_str_mbf64(number, sizeof(number),
 		    promoted_hold);
@@ -7715,427 +7628,6 @@ yt_port_report_compose(const struct yt_port_market_state *market,
 		item->price_length = position;
 	}
 	return true;
-}
-
-static bool
-commodity_trade_present(struct yt_commodity_trade_state *state,
-    const struct yt_commodity_trade_ops *ops, void *context,
-    const void *text, size_t length, enum yt_commodity_trade_output_kind kind,
-    struct yt_error *error)
-{
-	if (!ops->present(context, text, length, kind, error))
-		return false;
-	++state->output_count;
-	return true;
-}
-
-static double
-commodity_trade_double_sub(double left, double right)
-{
-	volatile double result = left - right;
-
-	return result;
-}
-
-static double
-commodity_trade_double_div(double numerator, double denominator)
-{
-	volatile double result = numerator / denominator;
-
-	return result;
-}
-
-static bool
-commodity_trade_row(char *row, size_t capacity, const char *format,
-    const char *first, const char *second, struct yt_error *error,
-    const char *operation)
-{
-	int length = snprintf(row, capacity, format, first, second);
-
-	if (length < 0 || (size_t)length >= capacity)
-		return startup_configuration_error(error, YT_RANGE, operation);
-	return true;
-}
-
-bool
-yt_commodity_trade_run(struct yt_commodity_trade_state *state,
-    const struct yt_commodity_trade_ops *ops, void *context,
-    struct yt_error *error)
-{
-	static const char *const names[3] = {"Ore", "Organics", "Equipment"};
-	static const uint8_t confirmation[] = "Do you agree? [Y/n] ";
-	static const uint8_t never_mind[] = "Never mind!";
-	static const uint8_t yours[] = "It's Yours!";
-	static const uint8_t take[] = "We'll take them!";
-	struct qb_val_result parsed;
-	struct yt_player fresh_player;
-	struct yt_port fresh_port;
-	double credits;
-	double free_double;
-	uint8_t selected_quantity_raw[8];
-	uint8_t floored_quantity_raw[8];
-	uint8_t single_raw[4];
-	uint8_t promoted_raw[8];
-	float factor;
-	float price;
-	char first[64];
-	char second[64];
-	char row[256];
-	char response[80];
-	bool accepted;
-
-	if (state == NULL || ops == NULL || ops->read_player == NULL
-	    || ops->write_player == NULL || ops->mutate_credits == NULL
-	    || ops->read_port == NULL
-	    || ops->write_port == NULL || ops->present == NULL
-	    || ops->input == NULL || ops->confirm == NULL
-	    || state->commodity >= 3U || state->current_player_record == 0U
-	    || state->port_physical_record == 0U)
-		return startup_configuration_error(error, YT_INVALID,
-		    "commodity trade arguments");
-	state->free_holds = 0.0f;
-	state->maximum = 0.0f;
-	state->quantity = 0.0f;
-	state->total = 0.0f;
-	state->direction = 0.0f;
-	state->credit_delta = 0.0f;
-	state->selected_quantity = 0.0;
-	state->displayed_hold = 0.0;
-	state->quantity_attempts = 0U;
-	state->output_count = 0U;
-	state->port_sells = false;
-	state->prompt_reached = false;
-	state->entry_player_read = false;
-	state->treasury_port_read = false;
-	state->treasury_port_written = false;
-	state->credit_player_read = false;
-	state->credit_player_written = false;
-	state->hold_player_read = false;
-	state->hold_player_written = false;
-	state->stock_port_read = false;
-	state->stock_port_written = false;
-	state->complete = false;
-	state->route = YT_COMMODITY_TRADE_INCOMPLETE;
-
-	if (!ops->read_player(context, state->current_player_record,
-	    &state->player, error))
-		return false;
-	state->entry_player_read = true;
-	memcpy(selected_quantity_raw,
-	    state->market.capacity_raw[state->commodity],
-	    sizeof(selected_quantity_raw));
-	state->selected_quantity = qb_mbf64_decode(selected_quantity_raw);
-	if (qb_mbf64_floor_raw(selected_quantity_raw, floored_quantity_raw)
-	    != QB_MBF_OK)
-		return startup_configuration_error(error, YT_RANGE,
-		    "commodity trade cached quantity INT");
-	state->displayed_hold = state->commodity == 0U
-	    ? (double)state->player.ore : state->commodity == 1U
-	    ? (double)state->player.organics : (double)state->player.equipment;
-	factor = state->market.port.factor[state->commodity];
-	price = state->market.price[state->commodity];
-	credits = (double)state->player.credits;
-	free_double = commodity_trade_double_sub((double)state->player.holds,
-	    (double)state->player.ore);
-	free_double = commodity_trade_double_sub(free_double,
-	    (double)state->player.organics);
-	free_double = commodity_trade_double_sub(free_double,
-	    (double)state->player.equipment);
-	state->free_holds = (float)free_double;
-	state->port_sells = floorf(factor) > 0.0f;
-	if (state->port_sells) {
-		float required;
-
-		state->maximum = state->free_holds;
-		if (qb_mbf32_encode(state->maximum, single_raw) == QB_MBF_OVERFLOW)
-			return startup_configuration_error(error, YT_RANGE,
-			    "commodity trade maximum MBF32");
-		market_promote_single(single_raw, promoted_raw);
-		if (market_compare(promoted_raw, floored_quantity_raw) > 0) {
-			if (qb_mbf32_from_mbf64_raw(floored_quantity_raw, single_raw)
-			    == QB_MBF_OVERFLOW)
-				return startup_configuration_error(error, YT_RANGE,
-				    "commodity trade cached quantity CSNG");
-			state->maximum = qb_mbf32_decode(single_raw);
-		}
-		required = floorf(market_single_mul(price, state->maximum));
-		if ((double)required > credits) {
-			double affordable;
-
-			if (price == 0.0f)
-				return startup_configuration_error(error, YT_RANGE,
-				    "commodity trade credit/price division");
-			affordable = commodity_trade_double_div(credits,
-			    (double)price);
-			if (!isfinite(affordable) || floor(affordable) > FLT_MAX
-			    || floor(affordable) < -FLT_MAX)
-				return startup_configuration_error(error, YT_RANGE,
-				    "commodity trade affordable CSNG");
-			state->maximum = (float)floor(affordable);
-		}
-	}
-	else {
-		if (qb_mbf32_from_mbf64_raw(floored_quantity_raw, single_raw)
-		    == QB_MBF_OVERFLOW)
-			return startup_configuration_error(error, YT_RANGE,
-			    "commodity trade cached quantity CSNG");
-		state->maximum = qb_mbf32_decode(single_raw);
-		if ((double)state->maximum > floor(state->displayed_hold))
-			state->maximum = (float)floor(state->displayed_hold);
-	}
-	if (state->maximum == 0.0f) {
-		state->route = YT_COMMODITY_TRADE_MAXIMUM_ZERO;
-		state->complete = true;
-		return true;
-	}
-
-	if (qb_str_double(first, sizeof(first), credits) < 0
-	    || qb_str_single(second, sizeof(second), state->free_holds) < 0
-	    || !commodity_trade_row(row, sizeof(row),
-	    "You have%s credits and%s empty cargo holds.", first, second,
-	    error, "commodity trade status composition")
-	    || !commodity_trade_present(state, ops, context, row, strlen(row),
-	    YT_COMMODITY_TRADE_STATUS, error)
-	    || qb_str_mbf64(first, sizeof(first), floored_quantity_raw) < 0
-	    || qb_str_double(second, sizeof(second), state->displayed_hold) < 0
-	    || !commodity_trade_row(row, sizeof(row),
-	    state->port_sells
-	    ? "We are selling up to%s.  You have%s in your holds."
-	    : "We are buying up to%s.  You have%s in your holds.",
-	    first, second, error, "commodity trade market composition")
-	    || !commodity_trade_present(state, ops, context, row, strlen(row),
-	    YT_COMMODITY_TRADE_MARKET, error))
-		return false;
-
-	for (;;) {
-		if (qb_mbf64_from_u64(1U, state->caller_trade_flag_raw)
-		    != QB_MBF_OK
-		    || qb_str_single(first, sizeof(first), state->maximum) < 0
-		    || snprintf(row, sizeof(row),
-		    "How many holds of %s do you want to %s [%s ]? ",
-		    names[state->commodity], state->port_sells ? "buy" : "sell",
-		    first) < 0)
-			return startup_configuration_error(error, YT_RANGE,
-			    "commodity trade quantity prompt composition");
-		state->prompt_reached = true;
-		++state->quantity_attempts;
-		if (!commodity_trade_present(state, ops, context, row, strlen(row),
-		    YT_COMMODITY_TRADE_QUANTITY_PROMPT, error)
-		    || !ops->input(context, response, sizeof(response), error))
-			return false;
-		if (strlen(response) > 4U)
-			continue;
-		if (response[0] == '\0')
-			state->quantity = state->maximum;
-		else {
-			parsed = qb_val(response);
-			if (parsed.overflow)
-				return startup_configuration_error(error, YT_RANGE,
-				    "commodity trade VAL");
-			state->quantity = parsed.valid
-			    ? (float)floor(parsed.value) : 0.0f;
-		}
-		if (state->quantity < 1.0f) {
-			state->route = YT_COMMODITY_TRADE_QUANTITY_CANCEL;
-			state->complete = true;
-			return true;
-		}
-		if (qb_mbf32_encode(state->quantity, single_raw) == QB_MBF_OVERFLOW)
-			return startup_configuration_error(error, YT_RANGE,
-			    "commodity trade quantity MBF32");
-		market_promote_single(single_raw, promoted_raw);
-		if (market_compare(promoted_raw, selected_quantity_raw) > 0) {
-			const char *message = state->port_sells
-			    ? "We don't have that much!"
-			    : "We don't need that much!";
-
-			if (!commodity_trade_present(state, ops, context, message,
-			    strlen(message), YT_COMMODITY_TRADE_CAPACITY_ERROR,
-			    error))
-				return false;
-			state->route = YT_COMMODITY_TRADE_CAPACITY_REJECTED;
-			state->complete = true;
-			return true;
-		}
-		if (state->port_sells && state->quantity > state->free_holds) {
-			static const uint8_t message[] =
-			    "You don't have enough cargo holds.";
-
-			if (!commodity_trade_present(state, ops, context, message,
-			    sizeof(message) - 1U,
-			    YT_COMMODITY_TRADE_FREE_HOLDS_ERROR, error)
-			    || !commodity_trade_present(state, ops, context, NULL, 0U,
-			    YT_COMMODITY_TRADE_FREE_HOLDS_BLANK, error))
-				return false;
-			continue;
-		}
-		if (state->quantity > state->maximum) {
-			const char *message = state->port_sells
-			    ? "You can't afford that much!"
-			    : "You don't have that much!";
-
-			if (!commodity_trade_present(state, ops, context, message,
-			    strlen(message), YT_COMMODITY_TRADE_MAXIMUM_ERROR,
-			    error))
-				return false;
-			state->route = YT_COMMODITY_TRADE_MAXIMUM_REJECTED;
-			state->complete = true;
-			return true;
-		}
-		if (state->port_sells
-		    && market_compare(promoted_raw, floored_quantity_raw) > 0) {
-			static const uint8_t message[] =
-			    "We're not selling that many.";
-
-			if (!commodity_trade_present(state, ops, context, message,
-			    sizeof(message) - 1U,
-			    YT_COMMODITY_TRADE_NOT_SELLING_ERROR, error))
-				return false;
-			continue;
-		}
-		if (!state->port_sells
-		    && market_compare(promoted_raw, floored_quantity_raw) > 0) {
-			static const uint8_t message[] =
-			    "We don't want that many.";
-
-			if (!commodity_trade_present(state, ops, context, message,
-			    sizeof(message) - 1U,
-			    YT_COMMODITY_TRADE_DONT_WANT_ERROR, error))
-				return false;
-			continue;
-		}
-		if (!state->port_sells
-		    && (double)state->quantity > state->displayed_hold) {
-			static const uint8_t message[] =
-			    "You don't have that much!";
-
-			if (!commodity_trade_present(state, ops, context, message,
-			    sizeof(message) - 1U,
-			    YT_COMMODITY_TRADE_PLAYER_AMOUNT_ERROR, error))
-				return false;
-			continue;
-		}
-		break;
-	}
-
-	state->total = floorf(market_single_add(
-	    market_single_mul(price, state->quantity), 0.5f));
-	if (qb_str_single(first, sizeof(first), state->quantity) < 0
-	    || snprintf(row, sizeof(row), "Agreed,%s units.", first) < 0
-	    || !commodity_trade_present(state, ops, context, row, strlen(row),
-	    YT_COMMODITY_TRADE_AGREED, error)
-	    || qb_str_single(first, sizeof(first), state->total) < 0
-	    || snprintf(row, sizeof(row), "We'll %s them for%s credits.",
-	    state->port_sells ? "sell" : "buy", first) < 0
-	    || !commodity_trade_present(state, ops, context, row, strlen(row),
-	    YT_COMMODITY_TRADE_OFFER, error)
-	    || !ops->confirm(context, confirmation, sizeof(confirmation) - 1U,
-	    &accepted, error))
-		return false;
-	if (!accepted) {
-		if (!commodity_trade_present(state, ops, context, never_mind,
-		    sizeof(never_mind) - 1U, YT_COMMODITY_TRADE_DECLINED, error))
-			return false;
-		state->route = YT_COMMODITY_TRADE_DECLINED_ROUTE;
-		state->complete = true;
-		return true;
-	}
-	if (!commodity_trade_present(state, ops, context,
-	    state->port_sells ? yours : take,
-	    state->port_sells ? sizeof(yours) - 1U : sizeof(take) - 1U,
-	    YT_COMMODITY_TRADE_SUCCESS, error))
-		return false;
-
-	if (state->port_sells && state->market.port.owner != 0.0f) {
-		float receipt = state->total;
-
-		if (state->market.port.owner == (float)state->current_player_record)
-			receipt = floorf(market_single_mul(
-			    0.009999999776482582f, state->total));
-		if (!ops->read_port(context, state->port_physical_record,
-		    &fresh_port, error))
-			return false;
-		state->treasury_port_read = true;
-		yt_trade_treasury_overlay(&fresh_port, receipt);
-		state->port = fresh_port;
-		if (!ops->write_port(context, state->port_physical_record,
-		    &state->port, error))
-			return false;
-		state->treasury_port_written = true;
-	}
-	factor = state->market.port.factor[state->commodity];
-	state->direction = factor > 0.0f ? 1.0f
-	    : factor < 0.0f ? -1.0f : 0.0f;
-	state->credit_delta = -market_single_mul(state->total, state->direction);
-	{
-		bool hydrated = false;
-
-		if (!ops->mutate_credits(context,
-		    (float)state->current_player_record, state->credit_delta,
-		    &fresh_player, &hydrated, error)) {
-			state->credit_player_read = hydrated;
-			if (hydrated)
-				state->player = fresh_player;
-			return false;
-		}
-		state->credit_player_read = true;
-	}
-	state->player = fresh_player;
-	state->credit_player_written = true;
-	if (!ops->read_player(context, state->current_player_record,
-	    &fresh_player, error))
-		return false;
-	state->hold_player_read = true;
-	yt_trade_holds_overlay(&fresh_player, state->commodity,
-	    state->quantity, state->direction);
-	state->player = fresh_player;
-	if (!ops->write_player(context, state->current_player_record,
-	    &state->player, error))
-		return false;
-	state->hold_player_written = true;
-	if (!ops->read_port(context, state->port_physical_record,
-	    &fresh_port, error))
-		return false;
-	state->stock_port_read = true;
-	if (qb_mbf32_encode(state->quantity, single_raw) == QB_MBF_OVERFLOW)
-		return startup_configuration_error(error, YT_RANGE,
-		    "commodity trade stock quantity MBF32");
-	market_promote_single(single_raw, promoted_raw);
-	market_negate(promoted_raw);
-	if (qb_mbf64_add_raw(selected_quantity_raw, promoted_raw,
-	    promoted_raw) != QB_MBF_OK
-	    || qb_mbf32_from_mbf64_raw(promoted_raw, single_raw)
-	    == QB_MBF_OVERFLOW
-	    || !yt_record_set_raw_number(&fresh_port.record,
-	    YT_F49 + state->commodity * 4U, single_raw))
-		return startup_configuration_error(error, YT_RANGE,
-		    "commodity trade stock overlay");
-	fresh_port.stock[state->commodity] = qb_mbf32_decode(single_raw);
-	state->port = fresh_port;
-	if (!ops->write_port(context, state->port_physical_record,
-	    &state->port, error))
-		return false;
-	state->stock_port_written = true;
-	state->route = YT_COMMODITY_TRADE_ACCEPTED;
-	state->complete = true;
-	return true;
-}
-
-size_t
-yt_port_trade_schedule(const float factors[3], size_t order[3])
-{
-	size_t count = 0;
-	size_t index;
-
-	if (factors == NULL || order == NULL)
-		return 0;
-	for (index = 0; index < 3; ++index)
-		if (factors[index] < 0.0f)
-			order[count++] = index;
-	for (index = 0; index < 3; ++index)
-		if (factors[index] > 0.0f)
-			order[count++] = index;
-	return count;
 }
 
 int
@@ -8163,19 +7655,6 @@ yt_trade_treasury_overlay(struct yt_port *port, float receipt)
 }
 
 void
-yt_trade_credit_overlay(struct yt_player *player, float delta)
-{
-	volatile float updated;
-
-	if (player == NULL)
-		return;
-	updated = player->credits + delta;
-	updated = floorf(updated);
-	player->credits = updated;
-	(void)yt_record_set_number(&player->record, YT_F81, updated);
-}
-
-void
 yt_trade_holds_overlay(struct yt_player *player, size_t commodity,
     float quantity, float direction)
 {
@@ -8193,20 +7672,6 @@ yt_trade_holds_overlay(struct yt_player *player, size_t commodity,
 	(void)yt_record_set_number(&player->record, YT_F69, player->ore);
 	(void)yt_record_set_number(&player->record, YT_F73, player->organics);
 	(void)yt_record_set_number(&player->record, YT_F77, player->equipment);
-}
-
-void
-yt_trade_stock_overlay(struct yt_port *port, size_t commodity,
-    double cached_quantity, float quantity)
-{
-	volatile double updated;
-
-	if (port == NULL || commodity >= 3U)
-		return;
-	updated = cached_quantity - (double)quantity;
-	port->stock[commodity] = (float)updated;
-	(void)yt_record_set_number(&port->record,
-	    YT_F49 + commodity * 4U, port->stock[commodity]);
 }
 
 static float *

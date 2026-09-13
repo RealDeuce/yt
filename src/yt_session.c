@@ -728,26 +728,6 @@ session_mutate_player_credits(struct yt_session *session, float argument,
 }
 
 static bool
-apply_player_credit_mutation(void *context, float player_record,
-    float argument, struct yt_player *player, bool *hydrated,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	(void)player_record;
-	if (hydrated != NULL)
-		*hydrated = false;
-	if (!session_mutate_player_credits(session, argument, hydrated, error)) {
-		if (player != NULL && hydrated != NULL && *hydrated)
-			*player = session->player;
-		return false;
-	}
-	if (player != NULL)
-		*player = session->player;
-	return true;
-}
-
-static bool
 computer_prompt_hydrate(struct yt_session *session, struct yt_error *error)
 {
 	return session_reload_player(session, error);
@@ -1017,7 +997,7 @@ session_read_command(struct yt_session *session, char *text, size_t size)
 	    strlen(text));
 }
 
-static bool
+bool
 session_read_upper_command(struct yt_session *session, char *text, size_t size)
 {
 	if (!session_read_command(session, text, size))
@@ -1735,7 +1715,7 @@ session_display_game_file(struct yt_session *session, const char *path,
 	return ok;
 }
 
-static bool
+bool
 session_confirm(struct yt_session *session, const uint8_t *prompt,
     size_t prompt_length, enum yt_yes_no_answer *answer,
     struct yt_error *error)
@@ -6010,160 +5990,6 @@ computer_port_ordinary(struct yt_session *session, int sector_number,
 	    &sector_record_expression, NULL, &market, error)
 	    && yt_session_port_report(session, (int)market.logical_port,
 	    &market, NULL, error);
-}
-
-static bool
-commodity_trade_read_player(void *context, uint32_t physical_record,
-    struct yt_player *player, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	if (physical_record != (uint32_t)session_record(session))
-		return port_report_failure(error,
-		    "commodity trade player record");
-	if (!session_reload_player(session, error))
-		return false;
-	*player = session->player;
-	return true;
-}
-
-static bool
-commodity_trade_write_player(void *context, uint32_t physical_record,
-    const struct yt_player *player, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	if (physical_record != (uint32_t)session_record(session))
-		return port_report_failure(error,
-		    "commodity trade player record");
-	session->player = *player;
-	return yt_database_write_durable(&session->door->game.database,
-	    (size_t)physical_record, &player->record, error);
-}
-
-static bool
-commodity_trade_read_port(void *context, uint32_t physical_record,
-    struct yt_port *port, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	struct yt_record record;
-
-	if (!yt_database_read(&session->door->game.database,
-	    (size_t)physical_record, &record, error))
-		return false;
-	yt_port_decode(port, &record);
-	return true;
-}
-
-static bool
-commodity_trade_write_port(void *context, uint32_t physical_record,
-    const struct yt_port *port, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_database_write_durable(&session->door->game.database,
-	    (size_t)physical_record, &port->record, error);
-}
-
-static bool
-commodity_trade_present(void *context, const uint8_t *text, size_t length,
-    enum yt_commodity_trade_output_kind kind, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	const char *operation;
-
-	switch (kind) {
-	case YT_COMMODITY_TRADE_STATUS:
-		operation = "commodity trade player status";
-		return session_present_paged_line(session, text, length, operation, error);
-	case YT_COMMODITY_TRADE_MARKET:
-		operation = "commodity trade market status";
-		return session_present_paged_line(session, text, length, operation, error);
-	case YT_COMMODITY_TRADE_QUANTITY_PROMPT:
-		operation = "commodity trade quantity prompt";
-		return session_present_timed_paged_row(session, text, length, operation, error);
-	case YT_COMMODITY_TRADE_CAPACITY_ERROR:
-		operation = "commodity trade capacity rejection";
-		return session_present_alert(session, text, length, operation, error);
-	case YT_COMMODITY_TRADE_FREE_HOLDS_ERROR:
-		operation = "commodity trade free-holds rejection";
-		return session_present_alert(session, text, length, operation, error);
-	case YT_COMMODITY_TRADE_FREE_HOLDS_BLANK:
-		return session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE,
-		    "commodity trade free-holds retry blank", error);
-	case YT_COMMODITY_TRADE_MAXIMUM_ERROR:
-		operation = "commodity trade maximum rejection";
-		return session_present_alert(session, text, length, operation, error);
-	case YT_COMMODITY_TRADE_NOT_SELLING_ERROR:
-		return session_present_paged_fragment(session, text, length);
-	case YT_COMMODITY_TRADE_DONT_WANT_ERROR:
-		operation = "commodity trade buying retry";
-		return session_present_alert(session, text, length, operation, error);
-	case YT_COMMODITY_TRADE_PLAYER_AMOUNT_ERROR:
-		operation = "commodity trade hold retry";
-		return session_present_alert(session, text, length, operation, error);
-	case YT_COMMODITY_TRADE_AGREED:
-	case YT_COMMODITY_TRADE_DECLINED:
-	case YT_COMMODITY_TRADE_SUCCESS:
-		return session_present_paged_fragment(session, text, length);
-	case YT_COMMODITY_TRADE_OFFER:
-		return session_present_paged_line(session, text, length,
-		    "commodity trade offer row", error);
-	default:
-		return false;
-	}
-}
-
-static bool
-commodity_trade_input(void *context, char *response, size_t capacity,
-    struct yt_error *error)
-{
-	(void)error;
-	return session_read_upper_command(context, response, capacity);
-}
-
-static bool
-commodity_trade_confirm(void *context, const uint8_t *prompt, size_t length,
-    bool *accepted, struct yt_error *error)
-{
-	enum yt_yes_no_answer answer;
-
-	if (!session_confirm(context, prompt, length, &answer, error))
-		return false;
-	*accepted = answer != YT_YES_NO_NO;
-	return true;
-}
-
-bool
-yt_session_trade_commodity(struct yt_session *session,
-    const struct yt_port_market_state *market, size_t commodity,
-    bool *prompt_reached, struct yt_error *error)
-{
-	static const struct yt_commodity_trade_ops ops = {
-		commodity_trade_read_player,
-		commodity_trade_write_player,
-		apply_player_credit_mutation,
-		commodity_trade_read_port,
-		commodity_trade_write_port,
-		commodity_trade_present,
-		commodity_trade_input,
-		commodity_trade_confirm,
-	};
-	struct yt_commodity_trade_state transaction;
-
-	if (market == NULL)
-		return false;
-	memset(&transaction, 0, sizeof(transaction));
-	transaction.current_player_record = (uint32_t)session_record(session);
-	transaction.port_physical_record = market->port_physical_record;
-	transaction.commodity = commodity;
-	transaction.market = *market;
-	if (!yt_commodity_trade_run(&transaction, &ops, session, error))
-		return false;
-	if (prompt_reached != NULL && transaction.prompt_reached)
-		*prompt_reached = true;
-	return true;
 }
 
 static bool

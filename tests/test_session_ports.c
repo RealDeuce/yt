@@ -81,9 +81,53 @@ test_port_update(void)
 	CHECK(remove(path) == 0);
 }
 
+static void
+test_zero_capacity_trade(void)
+{
+	static const char path[] = "SESSION-TRADE.DAT";
+	struct yt_door door;
+	struct yt_session session;
+	struct yt_player player;
+	struct yt_port_market_state market;
+	struct yt_error error;
+	bool prompt_reached = true;
+
+	(void)remove(path);
+	memset(&door, 0, sizeof(door));
+	memset(&session, 0, sizeof(session));
+	memset(&player, 0, sizeof(player));
+	memset(&market, 0, sizeof(market));
+	session.door = &door;
+	session.player_record_carrier = 2;
+	market.port_physical_record = 2057U;
+	market.port.factor[0] = 60.0f;
+	market.price[0] = 20.0f;
+	CHECK(qb_mbf64_encode(0.0, market.capacity_raw[0]) == QB_MBF_OK);
+	yt_record_blank(&player.record);
+	player.holds = 35.0f;
+	player.ore = 10.0f;
+	player.organics = 20.0f;
+	player.equipment = 5.0f;
+	player.credits = 12345.0f;
+	yt_player_encode(&player);
+	yt_error_clear(&error);
+	CHECK(yt_database_open(&door.game.database, path, YT_OPEN_CREATE,
+	    &error));
+	CHECK(yt_database_write_durable(&door.game.database, 2U,
+	    &player.record, &error));
+	CHECK(yt_session_trade_commodity(&session, &market, 0U,
+	    &prompt_reached, &error));
+	CHECK(!prompt_reached);
+	CHECK(session.player.credits == 12345.0f);
+	CHECK(session.player.ore == 10.0f);
+	yt_database_close(&door.game.database);
+	CHECK(remove(path) == 0);
+}
+
 int
 main(void)
 {
 	test_port_update();
+	test_zero_capacity_trade();
 	return failures == 0 ? 0 : 1;
 }

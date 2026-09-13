@@ -1383,92 +1383,10 @@ bool yt_port_report_compose(const struct yt_port_market_state *market,
     const struct yt_port *report_port, uint8_t conversion_mode,
     const uint8_t date[10], const uint8_t time[8],
     struct yt_port_report_text *report, struct yt_error *error);
-enum yt_commodity_trade_output_kind {
-	YT_COMMODITY_TRADE_STATUS,
-	YT_COMMODITY_TRADE_MARKET,
-	YT_COMMODITY_TRADE_QUANTITY_PROMPT,
-	YT_COMMODITY_TRADE_CAPACITY_ERROR,
-	YT_COMMODITY_TRADE_FREE_HOLDS_ERROR,
-	YT_COMMODITY_TRADE_FREE_HOLDS_BLANK,
-	YT_COMMODITY_TRADE_MAXIMUM_ERROR,
-	YT_COMMODITY_TRADE_NOT_SELLING_ERROR,
-	YT_COMMODITY_TRADE_DONT_WANT_ERROR,
-	YT_COMMODITY_TRADE_PLAYER_AMOUNT_ERROR,
-	YT_COMMODITY_TRADE_AGREED,
-	YT_COMMODITY_TRADE_OFFER,
-	YT_COMMODITY_TRADE_DECLINED,
-	YT_COMMODITY_TRADE_SUCCESS,
-};
-enum yt_commodity_trade_route {
-	YT_COMMODITY_TRADE_INCOMPLETE,
-	YT_COMMODITY_TRADE_MAXIMUM_ZERO,
-	YT_COMMODITY_TRADE_QUANTITY_CANCEL,
-	YT_COMMODITY_TRADE_CAPACITY_REJECTED,
-	YT_COMMODITY_TRADE_MAXIMUM_REJECTED,
-	YT_COMMODITY_TRADE_DECLINED_ROUTE,
-	YT_COMMODITY_TRADE_ACCEPTED,
-};
-struct yt_commodity_trade_state {
-	uint32_t current_player_record;
-	uint32_t port_physical_record;
-	size_t commodity;
-	struct yt_port_market_state market;
-	struct yt_player player;
-	struct yt_port port;
-	uint8_t caller_trade_flag_raw[8];
-	float free_holds;
-	float maximum;
-	float quantity;
-	float total;
-	float direction;
-	float credit_delta;
-	double selected_quantity;
-	double displayed_hold;
-	size_t quantity_attempts;
-	size_t output_count;
-	bool port_sells;
-	bool prompt_reached;
-	bool entry_player_read;
-	bool treasury_port_read;
-	bool treasury_port_written;
-	bool credit_player_read;
-	bool credit_player_written;
-	bool hold_player_read;
-	bool hold_player_written;
-	bool stock_port_read;
-	bool stock_port_written;
-	bool complete;
-	enum yt_commodity_trade_route route;
-};
-struct yt_commodity_trade_ops {
-	bool (*read_player)(void *context, uint32_t physical_record,
-	    struct yt_player *player, struct yt_error *error);
-	bool (*write_player)(void *context, uint32_t physical_record,
-	    const struct yt_player *player, struct yt_error *error);
-	yt_credit_mutation_apply_fn mutate_credits;
-	bool (*read_port)(void *context, uint32_t physical_record,
-	    struct yt_port *port, struct yt_error *error);
-	bool (*write_port)(void *context, uint32_t physical_record,
-	    const struct yt_port *port, struct yt_error *error);
-	bool (*present)(void *context, const uint8_t *text, size_t length,
-	    enum yt_commodity_trade_output_kind kind,
-	    struct yt_error *error);
-	bool (*input)(void *context, char *response, size_t capacity,
-	    struct yt_error *error);
-	bool (*confirm)(void *context, const uint8_t *prompt, size_t length,
-	    bool *accepted, struct yt_error *error);
-};
-bool yt_commodity_trade_run(struct yt_commodity_trade_state *state,
-	const struct yt_commodity_trade_ops *ops, void *context,
-	struct yt_error *error);
-size_t yt_port_trade_schedule(const float factors[3], size_t order[3]);
 int yt_computer_selector_position(const char *command);
 void yt_trade_treasury_overlay(struct yt_port *port, float receipt);
-void yt_trade_credit_overlay(struct yt_player *player, float delta);
 void yt_trade_holds_overlay(struct yt_player *player, size_t commodity,
     float quantity, float direction);
-void yt_trade_stock_overlay(struct yt_port *port, size_t commodity,
-    double cached_quantity, float quantity);
 const char *yt_planet_take_one_title(int item);
 void yt_planet_take_one_player_overlay(struct yt_player *player, int item,
     float amount);

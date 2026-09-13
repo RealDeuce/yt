@@ -131,8 +131,13 @@ void session_compat_upper_n(struct yt_session *session, uint8_t *text,
     size_t length);
 bool session_read_command(struct yt_session *session, char *text,
     size_t size);
+bool session_read_upper_command(struct yt_session *session, char *text,
+    size_t size);
 bool session_read_number_command(struct yt_session *session, char *text,
     size_t size);
+bool session_confirm(struct yt_session *session, const uint8_t *prompt,
+    size_t prompt_length, enum yt_yes_no_answer *answer,
+    struct yt_error *error);
 bool session_present_alert(struct yt_session *session, const uint8_t *text,
     size_t length, const char *operation, struct yt_error *error);
 bool session_attention_bytes(struct yt_session *session,
