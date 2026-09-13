@@ -393,6 +393,38 @@ check_info_team_rows(void)
 	return true;
 }
 
+static bool
+check_team_cache(void)
+{
+	static const int roster[4] = {2, 0, 4, 5};
+	static const uint8_t name[] = "Raiders";
+	static const uint8_t password[4] = {'P', 'A', 'S', 'S'};
+	struct yt_team_cache cache;
+	struct yt_record record;
+	bool live;
+	size_t index;
+
+	yt_record_blank(&record);
+	yt_team_name_overlay(&record, name, sizeof(name) - 1U);
+	yt_team_password_overlay(&record, password);
+	yt_team_roster_overlay(&record, roster);
+	(void)yt_record_set_number(&record, YT_F77, 2.0f);
+	yt_team_cache_load(&cache, &record, 2, &live);
+	if (!live || cache.captain != 2 || !cache.current_player_is_captain
+	    || cache.name_length != sizeof(name) - 1U
+	    || memcmp(cache.name, name, sizeof(name) - 1U) != 0
+	    || memcmp(cache.password, password, sizeof(password)) != 0)
+		return false;
+	for (index = 0U; index < YT_ARRAY_LEN(roster); ++index) {
+		if (cache.roster[index] != roster[index])
+			return false;
+	}
+	yt_record_blank(&record);
+	yt_team_cache_load(&cache, &record, 2, &live);
+	return !live && cache.captain == 0 && cache.name_length == 0U
+	    && !cache.current_player_is_captain;
+}
+
 enum info_panel_event {
 	INFO_PANEL_REFRESH = 1,
 	INFO_PANEL_TEAM,
@@ -27980,6 +28012,8 @@ main(void)
 		return fail("team-audit messages differ");
 	if (!check_info_team_rows())
 		return fail("Info team rows differ");
+	if (!check_team_cache())
+		return fail("typed team cache differs");
 	if (!check_info_panel_transaction())
 		return fail("Info panel transaction differs");
 	if (!check_spy_sweep_transaction())

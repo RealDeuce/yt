@@ -4947,16 +4947,9 @@ session_load_team_cache(struct yt_session *session, int team_id,
     bool *overlay_loaded, bool *live,
     struct yt_error *error)
 {
-	static const size_t roster_offsets[4] = {
-		YT_F109, YT_F117, YT_F121, YT_F125,
-	};
 	struct yt_record loaded;
 	float expression;
 	uint32_t physical_record;
-	float stored_roster[4];
-	size_t name_length;
-	size_t index;
-	bool any_member = false;
 
 	if (overlay_loaded != NULL)
 		*overlay_loaded = false;
@@ -4974,30 +4967,8 @@ session_load_team_cache(struct yt_session *session, int team_id,
 		*overlay = loaded;
 	if (overlay_loaded != NULL)
 		*overlay_loaded = true;
-	for (index = 0U; index < YT_ARRAY_LEN(stored_roster); ++index) {
-		stored_roster[index] = yt_record_get_number(&loaded,
-		    roster_offsets[index]);
-		if (stored_roster[index] != 0.0f)
-			any_member = true;
-	}
-	if (!any_member)
-		return true;
-	name_length = (size_t)yt_record_get_number(&loaded, YT_F73);
-	if (name_length > YT_TEXT_FIELD_SIZE)
-		name_length = YT_TEXT_FIELD_SIZE;
-	memcpy(session->team_cache.name, loaded.bytes, name_length);
-	session->team_cache.name[name_length] = '\0';
-	session->team_cache.name_length = name_length;
-	memcpy(session->team_cache.password, loaded.bytes + YT_F113, 4U);
-	session->team_cache.password[4] = '\0';
-	session->team_cache.captain =
-	    (int)yt_record_get_number(&loaded, YT_F77);
-	session->team_cache.current_player_is_captain =
-	    session->team_cache.captain == current_player_record;
-	for (index = 0U; index < YT_ARRAY_LEN(stored_roster); ++index)
-		session->team_cache.roster[index] = (int)stored_roster[index];
-	if (live != NULL)
-		*live = true;
+	yt_team_cache_load(&session->team_cache, &loaded,
+	    current_player_record, live);
 	return true;
 }
 

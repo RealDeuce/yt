@@ -116,6 +116,48 @@ yt_info_team_row(enum yt_info_team_row_kind kind, int team_id,
 	return true;
 }
 
+void
+yt_team_cache_load(struct yt_team_cache *cache,
+    const struct yt_record *record, int current_player_record, bool *live)
+{
+	static const size_t roster_offsets[4] = {
+		YT_F109, YT_F117, YT_F121, YT_F125,
+	};
+	float roster[4];
+	size_t name_length;
+	size_t index;
+	bool any_member = false;
+
+	if (live != NULL)
+		*live = false;
+	if (cache == NULL || record == NULL)
+		return;
+	memset(cache, 0, sizeof(*cache));
+	for (index = 0U; index < YT_ARRAY_LEN(roster); ++index) {
+		roster[index] = yt_record_get_number(record,
+		    roster_offsets[index]);
+		if (roster[index] != 0.0f)
+			any_member = true;
+	}
+	if (!any_member)
+		return;
+	name_length = (size_t)yt_record_get_number(record, YT_F73);
+	if (name_length > YT_TEXT_FIELD_SIZE)
+		name_length = YT_TEXT_FIELD_SIZE;
+	memcpy(cache->name, record->bytes, name_length);
+	cache->name[name_length] = '\0';
+	cache->name_length = name_length;
+	memcpy(cache->password, record->bytes + YT_F113, 4U);
+	cache->password[4] = '\0';
+	cache->captain = (int)yt_record_get_number(record, YT_F77);
+	cache->current_player_is_captain =
+	    cache->captain == current_player_record;
+	for (index = 0U; index < YT_ARRAY_LEN(roster); ++index)
+		cache->roster[index] = (int)roster[index];
+	if (live != NULL)
+		*live = true;
+}
+
 bool
 yt_team_choice_rejected(float choice, float raw_team,
     int32_t captain_cint, int32_t team_cint)

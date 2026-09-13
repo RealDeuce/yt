@@ -15,6 +15,15 @@ enum yt_info_team_row_kind {
 	YT_INFO_TEAM_OTHER_CAPTAIN,
 };
 
+struct yt_team_cache {
+	int roster[4];
+	int captain;
+	bool current_player_is_captain;
+	char name[YT_TEXT_FIELD_SIZE + 1U];
+	size_t name_length;
+	char password[5];
+};
+
 bool yt_team_audit_message(enum yt_team_audit_event event,
     const char *player_name, const char *attempt, const char *date,
     const char *time_text, uint8_t *message, size_t capacity,
@@ -22,6 +31,8 @@ bool yt_team_audit_message(enum yt_team_audit_event event,
 bool yt_info_team_row(enum yt_info_team_row_kind kind, int team_id,
     const uint8_t *name, size_t name_length, uint8_t *row,
     size_t capacity, size_t *length);
+void yt_team_cache_load(struct yt_team_cache *cache,
+    const struct yt_record *record, int current_player_record, bool *live);
 bool yt_team_choice_rejected(float choice, float raw_team,
     int32_t captain_cint, int32_t team_cint);
 void yt_team_transfer_apply_sector(struct yt_sector *sector,

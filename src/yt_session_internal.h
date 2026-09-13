@@ -5,6 +5,7 @@
 #include "yt_pager.h"
 #include "yt_route.h"
 #include "yt_session.h"
+#include "yt_team.h"
 
 #define YT_COMMAND_SIZE 4096U
 
@@ -19,15 +20,6 @@ struct projectile_route_state {
 	float origin;
 	float destination;
 	float amount;
-};
-
-struct yt_team_cache {
-	int roster[4];
-	int captain;
-	bool current_player_is_captain;
-	char name[YT_TEXT_FIELD_SIZE + 1U];
-	size_t name_length;
-	char password[5];
 };
 
 struct yt_session {
