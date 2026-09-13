@@ -177,7 +177,6 @@ static bool clearance(struct yt_session *session, bool create,
     struct yt_error *error);
 static bool launch_xannor_retaliation(struct yt_session *session,
     int *provoking_player, struct yt_error *error);
-static void clear_queue(struct yt_session *session);
 static bool show_ship(struct yt_session *session, struct yt_error *error);
 static bool command_team(struct yt_session *session,
     struct yt_error *error);
@@ -854,8 +853,8 @@ failed:
 	return false;
 }
 
-static bool
-radio_append_bytes(const uint8_t *text, size_t length, float sender,
+bool
+session_append_radio_bytes(const uint8_t *text, size_t length, float sender,
     float recipient, struct yt_error *error)
 {
 	uint8_t sender_raw[4];
@@ -950,8 +949,8 @@ read_keyboard_line(struct yt_session *session, char *dest, size_t size)
 	}
 }
 
-static void
-clear_queue(struct yt_session *session)
+void
+session_clear_queue(struct yt_session *session)
 {
 	(void)yt_input_queue_clear(session->queue, sizeof(session->queue),
 	    &session->queue_position, &session->queue_length);
@@ -1486,7 +1485,7 @@ session_present_alert(struct yt_session *session, const uint8_t *text, size_t le
 		return false;
 	yt_present_set_bold(&session->presentation, 1.0f);
 	yt_present_set_blink(&session->presentation, 1.0f);
-	clear_queue(session);
+	session_clear_queue(session);
 	return session_present_paged_fragment(session, text, length);
 }
 
@@ -1780,22 +1779,6 @@ session_display_game_file(struct yt_session *session, const char *path,
 		    active_error);
 	}
 	return ok;
-}
-
-static bool
-xannor_victory_file_present(void *context, const uint8_t *line,
-    size_t length, struct yt_error *error)
-{
-	return session_present_text(context, line, length,
-	    SESSION_PRESENT_LINE, "Xannor victory file row", error);
-}
-
-static bool
-xannor_victory_file(struct yt_session *session, const char *path,
-    struct yt_error *error)
-{
-	return yt_text_sequential_play(path, xannor_victory_file_present,
-	    session, error);
 }
 
 static bool
@@ -2645,7 +2628,7 @@ instruction_offer(struct yt_session *session, struct yt_error *error)
 		if (answer == YT_YES_NO_YES)
 			return session_display_game_file(session, "YTINSTR.DOC", error);
 		yt_present_set_bold(&session->presentation, 1.0f);
-		clear_queue(session);
+		session_clear_queue(session);
 	}
 }
 
@@ -4825,7 +4808,7 @@ movement_danger(void *context, float target, bool *dangerous,
 static void
 movement_clear_queue(void *context)
 {
-	clear_queue(context);
+	session_clear_queue(context);
 }
 
 static bool
@@ -5246,76 +5229,6 @@ common_fatal_self(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
-xannor_victory_failure(struct yt_error *error, const char *operation)
-{
-	if (error != NULL) {
-		error->status = YT_INVALID;
-		error->system_error = 0;
-		(void)snprintf(error->operation, sizeof(error->operation), "%s",
-		    operation);
-		error->path[0] = '\0';
-	}
-	return false;
-}
-
-static bool
-xannor_victory(struct yt_session *session, struct yt_error *error)
-{
-	static const uint8_t pause[] = "[PAUSE]";
-	static const uint8_t bonus[] =
-	    "Collect 16,000,000 credit bonus!";
-	uint8_t player_name[YT_TEXT_FIELD_SIZE];
-	uint8_t winner[128];
-	uint8_t banner[79];
-	struct yt_sector sector;
-	size_t player_name_length;
-	size_t winner_length;
-	bool credit_hydrated = false;
-	unsigned ordinal;
-
-	session_set_foreground(session, 7.0f);
-	if (!xannor_victory_file(session, "XANNORHQ.TXT", error)
-	    || !session_present_text(session, pause, sizeof(pause) - 1U,
-	    SESSION_PRESENT_RAW, "Xannor victory pause", error)
-	    || !session_wait(session, 99.0, "Xannor victory wait", error)
-	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
-	    "Xannor victory post-wait blank", error))
-		return false;
-	yt_present_set_blink(&session->presentation, 1.0f);
-	if (!session_present_text(session, bonus, sizeof(bonus) - 1U,
-	    SESSION_PRESENT_BOLD_LINE, "Xannor victory bonus", error))
-		return false;
-	clear_queue(session);
-
-	if (!session_mutate_player_credits(session, 16000000.0f,
-	    &credit_hydrated, error))
-		return false;
-	if (!credit_hydrated)
-		return xannor_victory_failure(error,
-		    "Xannor victory credit hydrate");
-	for (ordinal = 0U; ordinal < 3U; ++ordinal) {
-		if (!session_sound(session, 2.0f, "Xannor victory sound", error))
-			return false;
-	}
-
-	memset(banner, '*', sizeof(banner));
-	if (!yt_player_stored_name(&session->player, player_name,
-	    &player_name_length, error)
-	    || !yt_xannor_victory_winner(player_name, player_name_length,
-	    winner, sizeof(winner), &winner_length)
-	    || !session_append_news_bytes(session, banner, sizeof(banner), error)
-	    || !session_append_news_bytes(session, winner, winner_length, error)
-	    || !session_append_news_bytes(session, banner, sizeof(banner), error)
-	    || !radio_append_bytes(banner, sizeof(banner), -2.0f, -2.0f, error)
-	    || !radio_append_bytes(winner, winner_length, -2.0f, -2.0f, error)
-	    || !radio_append_bytes(banner, sizeof(banner), -2.0f, -2.0f, error)
-	    || !session_read_sector(session, 21, &sector, error))
-		return false;
-	sector.metadata = (float)session_record(session);
-	return session_write_sector(session, 21, &sector, error);
-}
-
-static bool
 direct_fighter_kill_sound(void *context, struct yt_error *error)
 {
 	return session_sound(context, 3.0f, "player kill sound", error);
@@ -5488,7 +5401,7 @@ direct_attack_combat_radio(void *context, const uint8_t *text,
     size_t length, float recipient, struct yt_error *error)
 {
 	(void)context;
-	return radio_append_bytes(text, length, -2.0f, recipient, error);
+	return session_append_radio_bytes(text, length, -2.0f, recipient, error);
 }
 
 static bool
@@ -5892,7 +5805,7 @@ hostile_attack_tail_victory(void *context, struct yt_error *error)
 {
 	struct hostile_attack_tail_context *tail = context;
 
-	return xannor_victory(tail->session, error);
+	return yt_session_xannor_victory(tail->session, error);
 }
 
 struct hostile_attack_combat_context {
@@ -6635,7 +6548,7 @@ session_quit_confirm(struct yt_session *session, bool *confirmed,
 		if (answer == YT_YES_NO_NO || answer == YT_YES_NO_EMPTY)
 			return true;
 		yt_present_set_bold(&session->presentation, 1.0f);
-		clear_queue(session);
+		session_clear_queue(session);
 	}
 }
 
@@ -6663,7 +6576,7 @@ sector_entry(struct yt_session *session, struct yt_error *error)
 			    "A *-BLACK HOLE-* grabs you!",
 			    "black hole attention", error))
 				return false;
-			clear_queue(session);
+			session_clear_queue(session);
 			if (!emergency_warp(session, error))
 				return false;
 			continue;
@@ -10842,7 +10755,7 @@ team_audit(struct yt_session *session, int team_id,
 		int recipient = session->team_cache.roster[index];
 
 		if (recipient != 0 && recipient != session_record(session)
-		    && !radio_append_bytes(message, message_length, -2.0f,
+		    && !session_append_radio_bytes(message, message_length, -2.0f,
 		    (float)recipient, error))
 			return false;
 	}
@@ -12173,7 +12086,7 @@ port_purchase_accept_radio(void *context, const uint8_t *text,
     size_t length, float sender, float recipient, struct yt_error *error)
 {
 	(void)context;
-	return radio_append_bytes(text, length, sender, recipient, error);
+	return session_append_radio_bytes(text, length, sender, recipient, error);
 }
 
 static bool
@@ -13337,7 +13250,7 @@ missile_sector(struct yt_session *session, int sector_number,
 		    && (float)sector_number
 		    == session->door->game.config.headquarters
 		    && owner == -1.0f
-		    && !xannor_victory(session, error))
+		    && !yt_session_xannor_victory(session, error))
 			return false;
 		if (*remaining < 1.0f)
 			return true;
@@ -13839,7 +13752,7 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
 			if (remaining_fighters == 0.0
 			    && (float)sector_number
 			    == session->door->game.config.headquarters
-			    && !xannor_victory(session, error))
+			    && !yt_session_xannor_victory(session, error))
 				return false;
 			if (*energy < 1.0)
 				return true;
@@ -15513,7 +15426,8 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 				    sizeof(prefix) - 1U + length, error))
 					return false;
 			}
-			if (!radio_append_bytes((const uint8_t *)lines[body], length,
+			if (!session_append_radio_bytes(
+			    (const uint8_t *)lines[body], length,
 			    (float)session_record(session), recipients[index], error))
 				return false;
 		}

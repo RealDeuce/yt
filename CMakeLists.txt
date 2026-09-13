@@ -109,7 +109,8 @@ set(YT_RUNTIME_SOURCES
     src/yt_session.c
     src/yt_session_computer.c
     src/yt_session_mines.c
-    src/yt_session_salvage.c)
+    src/yt_session_salvage.c
+    src/yt_session_xannor.c)
 
 add_library(yt_runtime STATIC ${YT_RUNTIME_SOURCES})
 yt_configure_target(yt_runtime)
