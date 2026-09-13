@@ -5,6 +5,7 @@
 #include "yt_maint.h"
 #include "yt_platform.h"
 #include "yt_score.h"
+#include "yt_team.h"
 #include "yt_score_format.h"
 #include "yt_text.h"
 

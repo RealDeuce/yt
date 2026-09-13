@@ -189,27 +189,6 @@ struct yt_post_login_repairs {
 	unsigned writes;
 };
 
-enum yt_team_audit_event {
-	YT_TEAM_AUDIT_INVALID_PASSWORD,
-	YT_TEAM_AUDIT_JOIN,
-	YT_TEAM_AUDIT_QUIT,
-};
-
-bool yt_team_audit_message(enum yt_team_audit_event event,
-    const char *player_name, const char *attempt, const char *date,
-    const char *time_text, uint8_t *message, size_t capacity,
-    size_t *length);
-
-enum yt_info_team_row_kind {
-	YT_INFO_TEAM_SUMMARY,
-	YT_INFO_TEAM_SELF_CAPTAIN,
-	YT_INFO_TEAM_OTHER_CAPTAIN,
-};
-
-bool yt_info_team_row(enum yt_info_team_row_kind kind, int team_id,
-    const uint8_t *name, size_t name_length, uint8_t *row,
-    size_t capacity, size_t *length);
-
 enum yt_info_panel_output_kind {
 	YT_INFO_PANEL_LINE,
 	YT_INFO_PANEL_FIXED,
@@ -1427,20 +1406,6 @@ void yt_no_turn_gate_result_raw(bool denied, uint8_t raw[4]);
 bool yt_action_finalizer_turn_raw(const uint8_t before[4], uint8_t after[4]);
 bool yt_action_finalizer_cloak_raw(const uint8_t before[4],
     uint8_t arithmetic[4], uint8_t result[4], bool *clamped);
-bool yt_team_choice_rejected(float choice, float raw_team,
-    int32_t captain_cint, int32_t team_cint);
-void yt_team_transfer_apply_sector(struct yt_sector *sector,
-    double initial_fighters, float amount);
-void yt_team_transfer_apply_player(struct yt_player *player, float amount);
-void yt_team_membership_apply_player(struct yt_player *player, int team);
-void yt_team_banish_apply_player(struct yt_player *player);
-void yt_team_roster_overlay(struct yt_record *record, const int roster[4]);
-void yt_team_name_overlay(struct yt_record *record, const uint8_t *name,
-    size_t length);
-bool yt_team_prepare_name(char *name, size_t *length);
-void yt_team_password_overlay(struct yt_record *record,
-    const uint8_t password[4]);
-void yt_team_inactive_overlay(struct yt_record *record);
 bool yt_port_link_missing(float link);
 float yt_port_selected_expression(float port_offset, float logical_link);
 enum yt_computer_port_selection_route {

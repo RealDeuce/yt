@@ -87,7 +87,8 @@ set(YT_GAME_SOURCES
     src/yt_player_cache.c
     src/yt_portname.c
     src/yt_score.c
-    src/yt_score_format.c)
+    src/yt_score_format.c
+    src/yt_team.c)
 
 add_library(yt_core STATIC ${YT_CORE_SOURCES})
 yt_configure_target(yt_core)

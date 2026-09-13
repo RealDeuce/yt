@@ -3,6 +3,7 @@
 #include "yt_main_error.h"
 #include "yt_game.h"
 #include "yt_text.h"
+#include "yt_team.h"
 #include "qb.h"
 
 #include <math.h>
