@@ -5938,45 +5938,6 @@ yt_main_fighters_run(struct yt_main_fighters_state *state,
 }
 
 bool
-yt_genesis_handoff_run(struct yt_genesis_handoff_state *state,
-    const struct yt_genesis_handoff_ops *ops, void *context,
-    struct yt_error *error)
-{
-	if (state == NULL || ops == NULL || ops->close_file5 == NULL
-	    || ops->open_output == NULL || ops->print_command == NULL
-	    || ops->close_all == NULL || ops->run == NULL)
-		return false;
-	memset(state, 0, sizeof(*state));
-	if (!ops->close_file5(context, error)) {
-		state->failed_operation = YT_GENESIS_HANDOFF_CLOSE_FILE5;
-		return false;
-	}
-	state->file5_closed = true;
-	if (!ops->open_output(context, error)) {
-		state->failed_operation = YT_GENESIS_HANDOFF_OPEN_OUTPUT;
-		return false;
-	}
-	state->output_opened = true;
-	if (!ops->print_command(context, error)) {
-		state->failed_operation = YT_GENESIS_HANDOFF_PRINT_COMMAND;
-		return false;
-	}
-	state->command_printed = true;
-	if (!ops->close_all(context, error)) {
-		state->failed_operation = YT_GENESIS_HANDOFF_CLOSE_ALL;
-		return false;
-	}
-	state->close_all_completed = true;
-	state->run_invoked = true;
-	if (!ops->run(context, error)) {
-		state->failed_operation = YT_GENESIS_HANDOFF_RUN;
-		return false;
-	}
-	state->complete = true;
-	return true;
-}
-
-bool
 yt_genesis_run(struct yt_genesis_state *state,
     const struct yt_genesis_ops *ops, void *context,
     struct yt_error *error)

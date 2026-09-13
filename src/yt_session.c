@@ -12795,54 +12795,38 @@ genesis_confirm(void *context, const uint8_t *prompt, size_t length,
 	return true;
 }
 
-struct genesis_handoff_context {
-	struct yt_session *session;
-	struct yt_text_output output;
-	uint8_t line[sizeof(((struct yt_door *)0)->command_line) + 2U];
-	size_t line_length;
-};
-
 static bool
-genesis_handoff_close_file5(void *context, struct yt_error *error)
+genesis_handoff_open_output(struct yt_text_output *output,
+    struct yt_error *error)
 {
-	(void)context;
-	return session_close_file5(error);
-}
-
-static bool
-genesis_handoff_open_output(void *context, struct yt_error *error)
-{
-	struct genesis_handoff_context *handoff = context;
 	bool opened;
 
-	opened = yt_text_output_open(&handoff->output, "RMTINIT.TMP", error);
-	if (!opened && handoff->output.last_output_open.basic_error != 0U)
+	opened = yt_text_output_open(output, "RMTINIT.TMP", error);
+	if (!opened && output->last_output_open.basic_error != 0U)
 		(void)yt_error_attach_basic_fault_number(error,
 		    YT_BASIC_FAULT_GENESIS_OPEN_OUTPUT,
-		    handoff->output.last_output_open.basic_error);
+		    output->last_output_open.basic_error);
 	return opened;
 }
 
 static bool
-genesis_handoff_print_command(void *context, struct yt_error *error)
+genesis_handoff_print_command(struct yt_text_output *output,
+    const uint8_t *line, size_t line_length, struct yt_error *error)
 {
-	struct genesis_handoff_context *handoff = context;
 	bool printed;
 
-	printed = yt_text_output_write(&handoff->output, handoff->line,
-	    handoff->line_length, error);
-	if (!printed && handoff->output.last_write.basic_error != 0U)
+	printed = yt_text_output_write(output, line, line_length, error);
+	if (!printed && output->last_write.basic_error != 0U)
 		(void)yt_error_attach_basic_fault_number(error,
 		    YT_BASIC_FAULT_GENESIS_PRINT_VALUE,
-		    handoff->output.last_write.basic_error);
+		    output->last_write.basic_error);
 	return printed;
 }
 
 static bool
-genesis_handoff_close_all(void *context, struct yt_error *error)
+genesis_handoff_close_all(struct yt_session *session,
+    struct yt_text_output *output, struct yt_error *error)
 {
-	struct genesis_handoff_context *handoff = context;
-	struct yt_session *session = handoff->session;
 	struct yt_close_all_control controls[2];
 	struct yt_close_all_result close_all;
 	size_t control_count = 0U;
@@ -12865,13 +12849,13 @@ genesis_handoff_close_all(void *context, struct yt_error *error)
 	output_index = control_count;
 	controls[control_count++] = (struct yt_close_all_control){
 		YT_CLOSE_ALL_HEAP_FILE, 0,
-		yt_text_output_close_all_method, &handoff->output};
+		yt_text_output_close_all_method, output};
 	closed = yt_close_all_run(controls, control_count, NULL, &close_all,
 	    error);
 	if (closed)
 		return true;
 	if (close_all.failed_index == output_index)
-		basic_error = handoff->output.last_close.basic_error;
+		basic_error = output->last_close.basic_error;
 	else if (close_all.failed_index == game_index)
 		basic_error = session->door->game.database.last_close.basic_error;
 	if (basic_error != 0U)
@@ -12881,10 +12865,9 @@ genesis_handoff_close_all(void *context, struct yt_error *error)
 }
 
 static bool
-genesis_handoff_run_program(void *context, struct yt_error *error)
+genesis_handoff_run_program(struct yt_session *session,
+    struct yt_error *error)
 {
-	struct genesis_handoff_context *handoff = context;
-	struct yt_session *session = handoff->session;
 	char sibling[1024];
 	char *arguments[2];
 
@@ -12911,28 +12894,23 @@ genesis_handoff_run_program(void *context, struct yt_error *error)
 static bool
 genesis_handoff(void *context, struct yt_error *error)
 {
-	static const struct yt_genesis_handoff_ops ops = {
-		genesis_handoff_close_file5,
-		genesis_handoff_open_output,
-		genesis_handoff_print_command,
-		genesis_handoff_close_all,
-		genesis_handoff_run_program,
-	};
 	struct yt_session *session = context;
-	struct genesis_handoff_context handoff;
-	struct yt_genesis_handoff_state state;
+	struct yt_text_output output;
+	uint8_t line[sizeof(session->door->command_line) + 2U];
+	size_t line_length;
 	bool result;
 
-	memset(&handoff, 0, sizeof(handoff));
-	handoff.session = session;
-	handoff.line_length = strlen(session->door->command_line) + 2U;
-	memcpy(handoff.line, session->door->command_line,
-	    handoff.line_length - 2U);
-	handoff.line[handoff.line_length - 2U] = '\r';
-	handoff.line[handoff.line_length - 1U] = '\n';
-	yt_text_output_init(&handoff.output);
-	result = yt_genesis_handoff_run(&state, &ops, &handoff, error);
-	yt_text_output_destroy(&handoff.output);
+	line_length = strlen(session->door->command_line) + 2U;
+	memcpy(line, session->door->command_line, line_length - 2U);
+	line[line_length - 2U] = '\r';
+	line[line_length - 1U] = '\n';
+	yt_text_output_init(&output);
+	result = session_close_file5(error)
+	    && genesis_handoff_open_output(&output, error)
+	    && genesis_handoff_print_command(&output, line, line_length, error)
+	    && genesis_handoff_close_all(session, &output, error)
+	    && genesis_handoff_run_program(session, error);
+	yt_text_output_destroy(&output);
 	return result;
 }
 

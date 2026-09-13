@@ -1805,35 +1805,6 @@ bool yt_genesis_run(struct yt_genesis_state *state,
 	const struct yt_genesis_ops *ops, void *context,
 	struct yt_error *error);
 
-enum yt_genesis_handoff_operation {
-	YT_GENESIS_HANDOFF_NONE,
-	YT_GENESIS_HANDOFF_CLOSE_FILE5,
-	YT_GENESIS_HANDOFF_OPEN_OUTPUT,
-	YT_GENESIS_HANDOFF_PRINT_COMMAND,
-	YT_GENESIS_HANDOFF_CLOSE_ALL,
-	YT_GENESIS_HANDOFF_RUN,
-};
-struct yt_genesis_handoff_state {
-	enum yt_genesis_handoff_operation failed_operation;
-	bool file5_closed;
-	bool output_opened;
-	bool command_printed;
-	bool close_all_completed;
-	bool run_invoked;
-	bool complete;
-};
-typedef bool (*yt_genesis_handoff_step_fn)(void *context,
-	struct yt_error *error);
-struct yt_genesis_handoff_ops {
-	yt_genesis_handoff_step_fn close_file5;
-	yt_genesis_handoff_step_fn open_output;
-	yt_genesis_handoff_step_fn print_command;
-	yt_genesis_handoff_step_fn close_all;
-	yt_genesis_handoff_step_fn run;
-};
-bool yt_genesis_handoff_run(struct yt_genesis_handoff_state *state,
-	const struct yt_genesis_handoff_ops *ops, void *context,
-	struct yt_error *error);
 bool yt_planet_garrison_prompt(float player_forces, float planet_forces,
     uint8_t *prompt, size_t capacity, size_t *length);
 float yt_planet_garrison_after(float player_forces, float desired,

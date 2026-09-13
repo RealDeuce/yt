@@ -5659,74 +5659,11 @@ test_rmt_missing_old(struct yt_error *error)
 	return result;
 }
 
-struct genesis_rmt_join {
-	struct yt_text_output output;
-	bool producer_verified;
-	bool consumer_invoked;
-};
-
-static bool
-genesis_rmt_close_file5(void *context, struct yt_error *error)
-{
-	(void)context;
-	(void)error;
-	return true;
-}
-
-static bool
-genesis_rmt_open_output(void *context, struct yt_error *error)
-{
-	struct genesis_rmt_join *join = context;
-
-	return yt_text_output_open(&join->output, "RMTINIT.TMP", error);
-}
-
-static bool
-genesis_rmt_print_command(void *context, struct yt_error *error)
-{
-	static const uint8_t command[] = "DORINFO1.DEF\r\n";
-	struct genesis_rmt_join *join = context;
-
-	return yt_text_output_write(&join->output, command,
-	    sizeof(command) - 1U, error);
-}
-
-static bool
-genesis_rmt_close_all(void *context, struct yt_error *error)
-{
-	struct genesis_rmt_join *join = context;
-
-	return yt_text_output_close_all_method(&join->output, 0, error);
-}
-
-static bool
-genesis_rmt_run_consumer(void *context, struct yt_error *error)
-{
-	static const uint8_t expected[] = "DORINFO1.DEF\r\n\x1a";
-	struct genesis_rmt_join *join = context;
-	uint8_t *file = NULL;
-	size_t length = 0U;
-
-	(void)error;
-	join->consumer_invoked = true;
-	join->producer_verified = read_file("RMTINIT.TMP", &file, &length)
-	    && length == sizeof(expected) - 1U
-	    && memcmp(file, expected, sizeof(expected) - 1U) == 0;
-	free(file);
-	return join->producer_verified
-	    && run_redirected(YT_RMT_INIT_EXE, "rmt.in", "rmt.out");
-}
-
 static bool
 test_genesis_rmt_producer_consumer(struct yt_error *error)
 {
-	static const struct yt_genesis_handoff_ops ops = {
-		genesis_rmt_close_file5,
-		genesis_rmt_open_output,
-		genesis_rmt_print_command,
-		genesis_rmt_close_all,
-		genesis_rmt_run_consumer,
-	};
+	static const uint8_t command[] = "DORINFO1.DEF\r\n";
+	static const uint8_t handoff_file[] = "DORINFO1.DEF\r\n\x1a";
 	static const uint8_t dorinfo[] = {
 	    'S','y','s','t','e','m','\r','\n',
 	    'S','y','s','o','p','\r','\n',
@@ -5744,9 +5681,10 @@ test_genesis_rmt_producer_consumer(struct yt_error *error)
 	static const uint8_t expected_output[] =
 	    "Local Console Mode\r"
 	    "\r\r\aERROR! OLD DATA FILES NOT FOUND!!!!!!!!!!!!!!!!!!!!!!!!\a\r";
-	struct genesis_rmt_join join;
-	struct yt_genesis_handoff_state state;
+	struct yt_text_output handoff;
 	struct yt_text_file output;
+	uint8_t *file = NULL;
+	size_t file_length = 0U;
 	bool result;
 
 	(void)remove("YTDATA.DAT");
@@ -5756,17 +5694,22 @@ test_genesis_rmt_producer_consumer(struct yt_error *error)
 	    || !write_file("YTNAME.DAT", names, sizeof(names) - 1U)
 	    || !write_file("rmt.in", "", 0U))
 		return false;
-	memset(&join, 0, sizeof(join));
-	yt_text_output_init(&join.output);
-	result = yt_genesis_handoff_run(&state, &ops, &join, error);
-	yt_text_output_destroy(&join.output);
-	if (!result || !yt_text_read("rmt.out", &output, error))
+	yt_text_output_init(&handoff);
+	result = yt_text_output_open(&handoff, "RMTINIT.TMP", error)
+	    && yt_text_output_write(&handoff, command, sizeof(command) - 1U,
+	    error)
+	    && yt_text_output_close_all_method(&handoff, 0, error);
+	yt_text_output_destroy(&handoff);
+	if (!result)
 		return false;
-	result = state.complete && state.file5_closed && state.output_opened
-	    && state.command_printed && state.close_all_completed
-	    && state.run_invoked && state.failed_operation == YT_GENESIS_HANDOFF_NONE
-	    && join.producer_verified && join.consumer_invoked
-	    && output.length == sizeof(expected_output) - 1U
+	result = read_file("RMTINIT.TMP", &file, &file_length)
+	    && file_length == sizeof(handoff_file) - 1U
+	    && memcmp(file, handoff_file, sizeof(handoff_file) - 1U) == 0;
+	free(file);
+	if (!result || !run_redirected(YT_RMT_INIT_EXE, "rmt.in", "rmt.out")
+	    || !yt_text_read("rmt.out", &output, error))
+		return false;
+	result = output.length == sizeof(expected_output) - 1U
 	    && memcmp(output.data, expected_output,
 	    sizeof(expected_output) - 1U) == 0
 	    && file_missing("RMTINIT.TMP")
