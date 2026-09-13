@@ -125,64 +125,6 @@ struct yt_post_login_repairs {
 	unsigned writes;
 };
 
-enum yt_spy_output_kind {
-	YT_SPY_LINE,
-	YT_SPY_BOLD_LINE,
-	YT_SPY_BOLD_RAW,
-	YT_SPY_ATTENTION,
-};
-
-struct yt_spy_sweep_state {
-	int active_spies;
-	int *spy_sectors;
-	int *last_reported_sectors;
-	int current_player_record;
-	float last_player_record;
-	float disruption_sectors[2];
-	struct yt_player_cache *player_cache;
-	bool found;
-	float foreground;
-	float background;
-	float bold;
-	float blink;
-};
-
-typedef bool (*yt_spy_read_sector_fn)(void *context, int logical_sector,
-	struct yt_sector *sector, struct yt_error *error);
-typedef bool (*yt_spy_update_planet_fn)(void *context, float planet_link,
-	struct yt_error *error);
-typedef bool (*yt_spy_read_planet_fn)(void *context, float planet_link,
-	struct yt_planet *planet, struct yt_error *error);
-typedef bool (*yt_spy_read_player_fn)(void *context, float player_record,
-	struct yt_player *player, struct yt_error *error);
-typedef bool (*yt_spy_read_team_fn)(void *context, float team_id,
-	struct yt_sector *overlay, struct yt_error *error);
-typedef bool (*yt_spy_random_fn)(void *context, float *value,
-	struct yt_error *error);
-typedef bool (*yt_spy_sound_fn)(void *context, float selector,
-	struct yt_error *error);
-typedef bool (*yt_spy_present_fn)(void *context, const uint8_t *text,
-	size_t length, enum yt_spy_output_kind kind,
-	struct yt_spy_sweep_state *state, struct yt_error *error);
-typedef bool (*yt_spy_pause_fn)(void *context,
-	struct yt_spy_sweep_state *state, struct yt_error *error);
-
-struct yt_spy_sweep_ops {
-	yt_spy_read_sector_fn read_sector;
-	yt_spy_update_planet_fn update_planet;
-	yt_spy_read_planet_fn read_planet;
-	yt_spy_read_player_fn read_player;
-	yt_spy_read_team_fn read_team;
-	yt_spy_random_fn random;
-	yt_spy_sound_fn sound;
-	yt_spy_present_fn present;
-	yt_spy_pause_fn pause;
-};
-
-bool yt_spy_sweep_run(struct yt_spy_sweep_state *state,
-	const struct yt_spy_sweep_ops *ops, void *context,
-	struct yt_error *error);
-
 enum yt_sector_force_route {
 	YT_SECTOR_FORCE_FRIENDLY,
 	YT_SECTOR_FORCE_HOSTILE,

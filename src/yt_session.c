@@ -1166,7 +1166,7 @@ session_sound(struct yt_session *session, float selector,
 	return false;
 }
 
-static bool
+bool
 session_attention_bytes(struct yt_session *session, const uint8_t *text,
     size_t length,
     const char *operation, struct yt_error *error)
@@ -1554,7 +1554,7 @@ session_drain_pending_input(struct yt_session *session)
 	return true;
 }
 
-static bool
+bool
 session_press_any_key(struct yt_session *session, bool drain,
     struct yt_error *error)
 {
@@ -3379,7 +3379,7 @@ struct planet_update_cache {
 	float contribution[10];
 };
 
-static bool
+bool
 read_planet_physical(struct yt_session *session, uint32_t physical_record,
     struct yt_planet *planet, struct yt_error *error)
 {
@@ -3511,7 +3511,7 @@ planet_updater_store_cache(struct yt_session *session,
 	    sizeof(session->planet_updater_day_raw));
 }
 
-static bool
+bool
 planet_update_cached_physical(struct yt_session *session,
     uint32_t physical_record,
     struct yt_planet *planet, struct planet_update_cache *cache,
@@ -4228,182 +4228,6 @@ dangerous_destination(struct yt_session *session, float target,
 	return result;
 }
 
-static bool
-spy_read_sector(void *context, int logical_sector, struct yt_sector *sector,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return session_read_sector(session, logical_sector,
-	    sector, error);
-}
-
-static bool
-spy_update_planet(void *context, float link, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	struct yt_planet planet;
-	uint32_t physical = session_planet_basic_record(session, link);
-
-	return planet_update_cached_physical(session, physical, &planet, NULL,
-	    error);
-}
-
-static bool
-spy_read_planet(void *context, float link, struct yt_planet *planet,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-	uint32_t physical = session_planet_basic_record(session, link);
-
-	return read_planet_physical(session, physical, planet, error);
-}
-
-static bool
-spy_read_player(void *context, float record, struct yt_player *player,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-	struct yt_record raw;
-	uint32_t physical = qb_brun_random_record_number(record);
-
-	if (!yt_database_read(&session->door->game.database, physical, &raw,
-	    error))
-		return false;
-	yt_player_decode(player, &raw);
-	return true;
-}
-
-static bool
-spy_read_team(void *context, float team, struct yt_sector *overlay,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-	struct yt_record raw;
-	uint32_t physical = session_sector_basic_record(session, team);
-
-	if (!yt_database_read(&session->door->game.database, physical, &raw,
-	    error))
-		return false;
-	yt_sector_decode(overlay, &raw);
-	return true;
-}
-
-static bool
-spy_sound(void *context, float selector, struct yt_error *error)
-{
-	return session_sound(context, selector, selector == 9.0f
-	    ? "spy finding sound" : "spy cloak sound", error);
-}
-
-static void
-spy_import_presentation(struct yt_session *session,
-    const struct yt_spy_sweep_state *state)
-{
-	session_set_foreground(session, state->foreground);
-	yt_present_set_background(&session->presentation, state->background);
-	yt_present_set_bold(&session->presentation, state->bold);
-	yt_present_set_blink(&session->presentation, state->blink);
-}
-
-static void
-spy_export_presentation(struct yt_spy_sweep_state *state,
-    const struct yt_session *session)
-{
-	state->foreground = session_foreground(session);
-	state->background = yt_present_background(&session->presentation);
-	state->bold = yt_present_bold(&session->presentation);
-	state->blink = yt_present_blink(&session->presentation);
-}
-
-static bool
-spy_present(void *context, const uint8_t *text, size_t length,
-    enum yt_spy_output_kind kind, struct yt_spy_sweep_state *state,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-	bool result;
-
-	spy_import_presentation(session, state);
-	if (kind == YT_SPY_ATTENTION)
-		result = session_attention_bytes(session, text, length,
-		    "spy attention row", error);
-	else {
-		enum session_present_text_kind session_kind;
-
-		switch (kind) {
-		case YT_SPY_LINE:
-			session_kind = SESSION_PRESENT_LINE;
-			break;
-		case YT_SPY_BOLD_LINE:
-			session_kind = SESSION_PRESENT_BOLD_LINE;
-			break;
-		case YT_SPY_BOLD_RAW:
-			session_kind = SESSION_PRESENT_BOLD_RAW;
-			break;
-		default:
-			return false;
-		}
-		result = session_present_text(session, text, length, session_kind,
-		    "spy direct output", error);
-	}
-	spy_export_presentation(state, session);
-	return result;
-}
-
-static bool
-spy_pause(void *context, struct yt_spy_sweep_state *state,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-	bool result;
-
-	spy_import_presentation(session, state);
-	result = session_press_any_key(session, true, error);
-	spy_export_presentation(state, session);
-	return result;
-}
-
-static bool
-spy_sweep(struct yt_session *session, struct yt_error *error)
-{
-	static const struct yt_spy_sweep_ops ops = {
-		spy_read_sector,
-		spy_update_planet,
-		spy_read_planet,
-		spy_read_player,
-		spy_read_team,
-		random_value,
-		spy_sound,
-		spy_present,
-		spy_pause,
-	};
-	struct yt_spy_sweep_state state;
-	bool result;
-
-	state = (struct yt_spy_sweep_state){
-		.active_spies = session->spy_count,
-		.spy_sectors = session->spy_sectors,
-		.last_reported_sectors = session->spy_markers,
-		.current_player_record = session_record(session),
-		.last_player_record = session_sector_offset(session),
-		.disruption_sectors = {
-			session->disruption_sectors[0],
-			session->disruption_sectors[1]
-		},
-		.player_cache = &session->player_cache,
-		.found = session->spy_found,
-		.foreground = session_foreground(session),
-		.background = yt_present_background(&session->presentation),
-		.bold = yt_present_bold(&session->presentation),
-		.blink = yt_present_blink(&session->presentation),
-	};
-	result = yt_spy_sweep_run(&state, &ops, session, error);
-
-	session->spy_found = state.found;
-	spy_import_presentation(session, &state);
-	return result;
-}
 
 static bool
 fresh_no_turn_gate(struct yt_session *session, bool *denied,
@@ -4442,7 +4266,8 @@ finalize_action(struct yt_session *session, float amount,
 	bool anti_cloak_allows;
 
 	(void)amount;
-	if (!spy_sweep(session, error) || !session_reload_player(session, error))
+	if (!yt_session_spy_sweep(session, error)
+	    || !session_reload_player(session, error))
 		return false;
 	memcpy(turn_raw, session->player.record.bytes + YT_F49,
 	    sizeof(turn_raw));
