@@ -13199,18 +13199,80 @@ plasma_fighter_victory(void *context, struct yt_error *error)
 }
 
 static bool
-plasma_mine_sound(void *context, float selector, struct yt_error *error)
+plasma_mine_entry_news_row(const uint8_t *attacker, size_t attacker_length,
+    int sector, uint8_t *row, size_t capacity, size_t *length)
 {
-	return session_sound(context, selector, "plasma sector-mine sound",
-	    error);
+	static const uint8_t infix[] =
+	    "'s Plasma Bolts hit sector mines in sector";
+	char sector_text[64];
+	int sector_length;
+	size_t row_length = 0U;
+
+	if (row == NULL || length == NULL
+	    || (attacker == NULL && attacker_length != 0U))
+		return false;
+	sector_length = qb_str_single(sector_text, sizeof(sector_text),
+	    (float)sector);
+	if (sector_length < 0 || attacker_length + sizeof(infix) - 1U
+	    + (size_t)sector_length + 1U > capacity)
+		return false;
+	if (attacker_length != 0U) {
+		memcpy(row, attacker, attacker_length);
+		row_length = attacker_length;
+	}
+	memcpy(row + row_length, infix, sizeof(infix) - 1U);
+	row_length += sizeof(infix) - 1U;
+	memcpy(row + row_length, sector_text, (size_t)sector_length);
+	row_length += (size_t)sector_length;
+	row[row_length++] = '!';
+	*length = row_length;
+	return true;
 }
 
 static bool
-plasma_mine_present(void *context, const uint8_t *text, size_t length,
-    struct yt_error *error)
+plasma_mine_result_row(const uint8_t *attacker, size_t attacker_length,
+    bool news, float destroyed, int sector, uint8_t *row, size_t capacity,
+    size_t *length)
 {
-	return session_present_text(context, text, length,
-	    SESSION_PRESENT_BOLD_LINE, "plasma destroyed-mines row", error);
+	static const uint8_t news_infix[] = "'s plasma bolts destroyed";
+	static const uint8_t direct_prefix[] = "The plasma bolts destroyed";
+	static const uint8_t result_infix[] = " mines in sector";
+	const uint8_t *prefix = news ? news_infix : direct_prefix;
+	size_t prefix_length = news ? sizeof(news_infix) - 1U
+	    : sizeof(direct_prefix) - 1U;
+	char destroyed_text[64];
+	char sector_text[64];
+	int destroyed_length;
+	int sector_length;
+	size_t row_length = 0U;
+
+	if (row == NULL || length == NULL
+	    || (attacker == NULL && attacker_length != 0U))
+		return false;
+	destroyed_length = qb_str_single(destroyed_text,
+	    sizeof(destroyed_text), destroyed);
+	sector_length = qb_str_single(sector_text, sizeof(sector_text),
+	    (float)sector);
+	if (destroyed_length < 0 || sector_length < 0
+	    || (news ? attacker_length : 0U) + prefix_length
+	    + (size_t)destroyed_length + sizeof(result_infix) - 1U
+	    + (size_t)sector_length + 1U > capacity)
+		return false;
+	if (news && attacker_length != 0U) {
+		memcpy(row, attacker, attacker_length);
+		row_length = attacker_length;
+	}
+	memcpy(row + row_length, prefix, prefix_length);
+	row_length += prefix_length;
+	memcpy(row + row_length, destroyed_text, (size_t)destroyed_length);
+	row_length += (size_t)destroyed_length;
+	memcpy(row + row_length, result_infix, sizeof(result_infix) - 1U);
+	row_length += sizeof(result_infix) - 1U;
+	memcpy(row + row_length, sector_text, (size_t)sector_length);
+	row_length += (size_t)sector_length;
+	row[row_length++] = '!';
+	*length = row_length;
+	return true;
 }
 
 static bool
@@ -13847,14 +13909,6 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
 		plasma_fighter_write_sector,
 		plasma_fighter_victory,
 	};
-	static const struct yt_projectile_plasma_mine_ops mine_ops = {
-		plasma_mine_sound,
-		session_append_news_bytes,
-		random_value,
-		plasma_mine_present,
-		plasma_fighter_read_sector,
-		plasma_fighter_write_sector,
-	};
 	static const struct yt_projectile_plasma_player_ops player_ops = {
 		plasma_player_read,
 		plasma_player_write,
@@ -13878,7 +13932,6 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
 	};
 	struct yt_sector sector;
 	struct yt_projectile_plasma_fighter_state fighter;
-	struct yt_projectile_plasma_mine_state mine;
 	struct yt_projectile_plasma_player_state player;
 	struct yt_projectile_plasma_killed_state killed;
 	float planet_link;
@@ -13910,16 +13963,51 @@ plasma_reload_sector:
 	    error))
 		return false;
 	planet_link = sector.planet;
-	memset(&mine, 0, sizeof(mine));
-	mine.sector = (float)sector_number;
-	mine.mines = (double)sector.mines;
-	mine.attacker = attacker;
-	mine.attacker_length = launch_attacker_length;
-	mine.energy = energy;
-	if (!yt_projectile_plasma_mine_run(&mine, &mine_ops, session, error))
-		return false;
-	if (mine.route == YT_PROJECTILE_PLASMA_MINE_FOOTER)
-		return true;
+	if ((double)sector.mines > 0.0) {
+		double original_mines = (double)sector.mines;
+		float destroyed = 0.0f;
+		uint8_t row[256];
+		size_t row_length;
+
+		if (!session_sound(session, 5.0f, "plasma sector-mine sound",
+		    error)
+		    || !plasma_mine_entry_news_row(attacker,
+		    launch_attacker_length, sector_number, row, sizeof(row),
+		    &row_length)
+		    || !session_append_news_bytes(session, row, row_length, error))
+			return false;
+		while (*energy > 0.0 && (double)destroyed < original_mines) {
+			float draw;
+			volatile double quantum = floor(*energy * 0.000001);
+			volatile double accumulated = (double)destroyed + quantum;
+
+			destroyed = (float)(accumulated + 1.0);
+			if (!random_value(session, &draw, error))
+				return false;
+			*energy -= (double)single_mul(draw, 25000.0f);
+		}
+		if (*energy < 0.0)
+			*energy = 0.0;
+		if ((double)destroyed > original_mines)
+			destroyed = (float)original_mines;
+		if (!plasma_mine_result_row(attacker, launch_attacker_length,
+		    true, destroyed, sector_number, row, sizeof(row), &row_length)
+		    || !session_append_news_bytes(session, row, row_length, error)
+		    || !plasma_mine_result_row(NULL, 0U, false, destroyed,
+		    sector_number, row, sizeof(row), &row_length)
+		    || !session_present_text(session, row, row_length,
+		    SESSION_PRESENT_BOLD_LINE, "plasma destroyed-mines row", error)
+		    || !session_read_sector(session, sector_number, &sector, error))
+			return false;
+		sector.mines = single_sub((float)original_mines, destroyed);
+		if (!yt_record_set_number(&sector.record, YT_F129, sector.mines)
+		    || !yt_database_write(&session->door->game.database,
+		    (size_t)session_sector_basic_record(session,
+		    (float)sector_number), &sector.record, error))
+			return false;
+		if (*energy < 1.0)
+			return true;
+	}
 	for (basic = YT_PLAYER_FIRST;
 	    basic <= (int)session_sector_offset(session); ++basic) {
 		if (session_player_cache_value(session, basic,

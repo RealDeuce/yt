@@ -709,34 +709,6 @@ bool yt_projectile_plasma_fighter_run(
     const struct yt_projectile_plasma_fighter_ops *ops, void *context,
     struct yt_error *error);
 
-enum yt_projectile_plasma_mine_route {
-	YT_PROJECTILE_PLASMA_MINE_CONTINUE_PLAYERS,
-	YT_PROJECTILE_PLASMA_MINE_FOOTER,
-};
-struct yt_projectile_plasma_mine_state {
-	float sector;
-	double mines;
-	const uint8_t *attacker;
-	size_t attacker_length;
-	double *energy;
-	float destroyed;
-	float remaining_mines;
-	struct yt_sector persistence;
-	enum yt_projectile_plasma_mine_route route;
-};
-struct yt_projectile_plasma_mine_ops {
-	yt_projectile_sound_fn sound;
-	yt_projectile_plasma_fighter_news_fn news;
-	yt_projectile_plasma_fighter_random_fn random;
-	yt_projectile_output_fn present;
-	yt_projectile_plasma_fighter_read_fn read_sector;
-	yt_projectile_plasma_fighter_write_fn write_sector;
-};
-bool yt_projectile_plasma_mine_run(
-    struct yt_projectile_plasma_mine_state *state,
-    const struct yt_projectile_plasma_mine_ops *ops, void *context,
-    struct yt_error *error);
-
 enum yt_projectile_plasma_player_route {
 	YT_PROJECTILE_PLASMA_PLAYER_KILLED,
 	YT_PROJECTILE_PLASMA_PLAYER_CONTINUE_DISPATCH,
