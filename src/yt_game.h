@@ -692,7 +692,7 @@ typedef bool (*yt_projectile_plasma_fighter_present_fn)(void *context,
     const uint8_t *text, size_t length,
     enum yt_projectile_plasma_fighter_output_kind kind,
     struct yt_error *error);
-typedef bool (*yt_projectile_plasma_fighter_sound_fn)(void *context,
+typedef bool (*yt_projectile_sound_fn)(void *context,
     float selector, struct yt_error *error);
 typedef bool (*yt_projectile_plasma_fighter_random_fn)(void *context,
     float *value, struct yt_error *error);
@@ -707,7 +707,7 @@ typedef bool (*yt_projectile_plasma_fighter_victory_fn)(void *context,
 struct yt_projectile_plasma_fighter_ops {
 	yt_projectile_plasma_fighter_owner_fn owner;
 	yt_projectile_plasma_fighter_present_fn present;
-	yt_projectile_plasma_fighter_sound_fn sound;
+	yt_projectile_sound_fn sound;
 	yt_projectile_plasma_fighter_random_fn random;
 	yt_projectile_plasma_fighter_news_fn news;
 	yt_projectile_plasma_fighter_read_fn read_sector;
@@ -735,7 +735,7 @@ struct yt_projectile_plasma_mine_state {
 	enum yt_projectile_plasma_mine_route route;
 };
 struct yt_projectile_plasma_mine_ops {
-	yt_projectile_plasma_fighter_sound_fn sound;
+	yt_projectile_sound_fn sound;
 	yt_projectile_plasma_fighter_news_fn news;
 	yt_projectile_plasma_fighter_random_fn random;
 	yt_projectile_output_fn present;
@@ -816,7 +816,7 @@ struct yt_projectile_plasma_player_ops {
 	yt_projectile_plasma_player_write_fn write_player;
 	yt_projectile_plasma_player_save_foreground_fn save_foreground;
 	yt_projectile_plasma_player_color_fn color;
-	yt_projectile_plasma_fighter_sound_fn sound;
+	yt_projectile_sound_fn sound;
 	yt_projectile_plasma_fighter_random_fn random;
 	yt_projectile_plasma_fighter_news_fn news;
 	yt_projectile_plasma_player_present_fn present;
@@ -868,7 +868,7 @@ struct yt_projectile_plasma_killed_ops {
 	yt_projectile_plasma_killed_read_sector_fn read_sector;
 	yt_projectile_plasma_killed_write_sector_fn write_sector;
 	yt_projectile_plasma_killed_child_fn death;
-	yt_projectile_plasma_fighter_sound_fn sound;
+	yt_projectile_sound_fn sound;
 	yt_projectile_plasma_killed_child_fn salvage;
 };
 bool yt_projectile_plasma_killed_run(
@@ -923,41 +923,12 @@ struct yt_projectile_plasma_planet_ops {
 	yt_projectile_plasma_killed_write_sector_fn write_sector;
 	yt_projectile_plasma_planet_present_fn present;
 	yt_projectile_plasma_fighter_news_fn news;
-	yt_projectile_plasma_fighter_sound_fn sound;
+	yt_projectile_sound_fn sound;
 	yt_projectile_plasma_fighter_random_fn random;
 };
 bool yt_projectile_plasma_planet_run(
     struct yt_projectile_plasma_planet_state *state,
     const struct yt_projectile_plasma_planet_ops *ops, void *context,
-    struct yt_error *error);
-
-enum yt_projectile_defense_front_route {
-	YT_PROJECTILE_DEFENSE_NO_DEFENSE,
-	YT_PROJECTILE_DEFENSE_FRIENDLY,
-	YT_PROJECTILE_DEFENSE_HOSTILE,
-};
-struct yt_projectile_defense_front_state {
-	float sector;
-	double fighters;
-	float owner;
-	int shooter;
-	enum yt_projectile_defense_front_route route;
-};
-typedef bool (*yt_projectile_defense_owner_fn)(void *context, float owner,
-    uint8_t *name, size_t *name_length, struct yt_error *error);
-typedef bool (*yt_projectile_defense_friendship_fn)(void *context,
-    float owner, bool *friendly, struct yt_error *error);
-typedef bool (*yt_projectile_defense_sound_fn)(void *context, float selector,
-    struct yt_error *error);
-struct yt_projectile_defense_front_ops {
-	yt_projectile_defense_owner_fn owner;
-	yt_projectile_defense_friendship_fn friendship;
-	yt_projectile_output_fn present;
-	yt_projectile_defense_sound_fn sound;
-};
-bool yt_projectile_defense_front_run(
-    struct yt_projectile_defense_front_state *state,
-    const struct yt_projectile_defense_front_ops *ops, void *context,
     struct yt_error *error);
 
 enum yt_projectile_defense_combat_route {
@@ -1019,7 +990,7 @@ struct yt_projectile_sector_mine_state {
 struct yt_projectile_sector_mine_ops {
 	yt_projectile_defense_sector_read_fn read_sector;
 	yt_projectile_output_fn present;
-	yt_projectile_defense_sound_fn sound;
+	yt_projectile_sound_fn sound;
 	yt_projectile_output_fn news;
 	yt_projectile_defense_sector_write_fn write_sector;
 };

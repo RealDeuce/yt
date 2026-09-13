@@ -13412,49 +13412,6 @@ plasma_planet_sound(void *context, float selector, struct yt_error *error)
 }
 
 static bool
-cruise_defense_owner(void *context, float owner, uint8_t *name,
-    size_t *name_length, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	struct yt_player defender;
-	uint32_t record = qb_brun_random_record_number(owner);
-
-	if (!yt_game_read_player(&session->door->game, (int)record, &defender,
-	    error))
-		return false;
-	return yt_player_stored_name(&defender, name, name_length, error);
-}
-
-static bool
-cruise_defense_friendship(void *context, float owner, bool *friendly,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_friendship_resolve(owner, (float)session_record(session),
-	    session_sector_offset(session),
-	    friendship_read_player, &session->door->game, friendly, error);
-}
-
-static bool
-cruise_defense_present(void *context, const uint8_t *text, size_t length,
-    struct yt_error *error)
-{
-	return session_present_text(context, text, length,
-	    SESSION_PRESENT_BOLD_LINE, "cruise missile defense report", error);
-}
-
-static bool
-cruise_defense_sound(void *context, float selector, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	yt_present_set_bold(&session->presentation, 1.0f);
-	return session_sound(session, selector,
-	    "cruise missile fighter-defense sound", error);
-}
-
-static bool
 cruise_defense_damage_present(void *context, const uint8_t *text,
     size_t length, struct yt_error *error)
 {
@@ -13536,12 +13493,6 @@ missile_sector(struct yt_session *session, int sector_number,
 	float *last_mine_news_sector, enum missile_sector_route *route,
 	struct yt_error *error)
 {
-	static const struct yt_projectile_defense_front_ops defense_ops = {
-		cruise_defense_owner,
-		cruise_defense_friendship,
-		cruise_defense_present,
-		cruise_defense_sound,
-	};
 	static const struct yt_projectile_defense_combat_ops combat_ops = {
 		random_value,
 		cruise_defense_damage_present,
@@ -13559,7 +13510,6 @@ missile_sector(struct yt_session *session, int sector_number,
 	};
 	struct yt_sector sector;
 	struct yt_projectile_defense_combat_state combat;
-	struct yt_projectile_defense_front_state defense;
 	struct yt_projectile_sector_mine_state mine;
 	struct yt_projectile_sector_probe_state probe;
 	int basic;
@@ -13581,17 +13531,59 @@ missile_sector(struct yt_session *session, int sector_number,
 		*route = MISSILE_SECTOR_POST_IMPACT;
 		return true;
 	}
-	defense.sector = (float)sector_number;
-	defense.fighters = (double)sector.fighters;
-	defense.owner = sector.fighter_owner;
-	defense.shooter = session_record(session);
-	if (!yt_projectile_defense_front_run(&defense, &defense_ops, session,
-	    error))
-		return false;
-	if (defense.route == YT_PROJECTILE_DEFENSE_NO_DEFENSE)
+	if (!((double)sector.fighters > 0.0))
 		goto missile_mines;
-	if (defense.route == YT_PROJECTILE_DEFENSE_FRIENDLY)
-		goto missile_mines;
+	{
+		static const uint8_t xannor[] = "The Xannor";
+		static const uint8_t mercenaries[] = "Mercenaries";
+		static const uint8_t you[] = "YOU";
+		uint8_t owner_name[YT_TEXT_FIELD_SIZE];
+		uint8_t row[256];
+		const uint8_t *initial = xannor;
+		size_t owner_length = sizeof(xannor) - 1U;
+		size_t row_length;
+		bool friendly = false;
+
+		if (sector.fighter_owner == -2.0f) {
+			initial = mercenaries;
+			owner_length = sizeof(mercenaries) - 1U;
+		}
+		memcpy(owner_name, initial, owner_length);
+		if (sector.fighter_owner > 1.0f) {
+			struct yt_player defender;
+			uint32_t owner_record = qb_brun_random_record_number(
+			    sector.fighter_owner);
+
+			if (!yt_game_read_player(&session->door->game,
+			    (int)owner_record, &defender, error)
+			    || !yt_player_stored_name(&defender, owner_name,
+			    &owner_length, error)
+			    || owner_length > sizeof(owner_name)
+			    || !yt_friendship_resolve(sector.fighter_owner,
+			    (float)session_record(session),
+			    session_sector_offset(session), friendship_read_player,
+			    &session->door->game, &friendly, error))
+				return false;
+		}
+		if (sector.fighter_owner == (float)session_record(session)) {
+			memcpy(owner_name, you, sizeof(you) - 1U);
+			owner_length = sizeof(you) - 1U;
+			friendly = true;
+		}
+		if (!yt_projectile_defense_row((float)sector_number, owner_name,
+		    owner_length, (double)sector.fighters, row, sizeof(row),
+		    &row_length)
+		    || !session_present_text(session, row, row_length,
+		    SESSION_PRESENT_BOLD_LINE, "cruise missile defense report",
+		    error))
+			return false;
+		if (friendly)
+			goto missile_mines;
+		yt_present_set_bold(&session->presentation, 1.0f);
+		if (!session_sound(session, 2.0f,
+		    "cruise missile fighter-defense sound", error))
+			return false;
+	}
 	combat.sector = (float)sector_number;
 	combat.fighters = (double)sector.fighters;
 	combat.owner = sector.fighter_owner;
