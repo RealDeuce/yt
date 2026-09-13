@@ -18588,1064 +18588,6 @@ test_main_rename_refusal_cycles_presentation(void)
 }
 
 
-struct main_mines_cycle_fixture {
-	struct main_buy_cycle_fixture presentation;
-	struct yt_drop_mines_state mines;
-	struct yt_player player;
-	struct yt_sector sector;
-	int sector_number;
-	struct yt_player written_player;
-	struct yt_sector written_sector;
-	const uint8_t *response;
-	size_t response_length;
-	size_t flush_count;
-	bool player_written;
-	bool sector_written;
-	bool suppressed;
-	size_t suppression_calls;
-	bool sound_called;
-	size_t sound_calls;
-};
-
-static bool
-main_mines_read_player(void *context, int player_record,
-    struct yt_player *player, struct yt_error *error)
-{
-	struct main_mines_cycle_fixture *fixture = context;
-
-	(void)error;
-	if (player_record != 2 || player == NULL)
-		return false;
-	*player = fixture->player;
-	return true;
-}
-
-static bool
-main_mines_write_player(void *context, int player_record,
-    struct yt_player *player, struct yt_error *error)
-{
-	struct main_mines_cycle_fixture *fixture = context;
-
-	(void)error;
-	if (player_record != 2 || player == NULL)
-		return false;
-	fixture->written_player = *player;
-	fixture->player_written = true;
-	return true;
-}
-
-static bool
-main_mines_flush(void *context, struct yt_error *error)
-{
-	struct main_mines_cycle_fixture *fixture = context;
-
-	(void)error;
-	++fixture->flush_count;
-	return true;
-}
-
-static bool
-main_mines_read_sector(void *context, int sector_number,
-    struct yt_sector *sector, struct yt_error *error)
-{
-	struct main_mines_cycle_fixture *fixture = context;
-
-	(void)error;
-	if (sector_number != fixture->sector_number || sector == NULL)
-		return false;
-	*sector = fixture->sector;
-	return true;
-}
-
-static bool
-main_mines_write_sector(void *context, int sector_number,
-    struct yt_sector *sector, struct yt_error *error)
-{
-	struct main_mines_cycle_fixture *fixture = context;
-
-	(void)error;
-	if (sector_number != fixture->sector_number || sector == NULL)
-		return false;
-	fixture->written_sector = *sector;
-	fixture->sector_written = true;
-	return true;
-}
-
-static bool
-main_mines_present(void *context, const uint8_t *text, size_t length,
-    enum yt_drop_mines_output_kind kind, struct yt_error *error)
-{
-	struct main_mines_cycle_fixture *fixture = context;
-	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
-
-	(void)error;
-	switch (kind) {
-	case YT_DROP_MINES_NO_MINES_ROW:
-	case YT_DROP_MINES_UNION_ROW:
-		if (!normal_exit_line(join, NULL, 0U))
-			return false;
-		join->presentation.bold = 1.0f;
-		join->presentation.blink = 1.0f;
-		join->queue[0] = '\0';
-		join->queue_position = 0U;
-		join->queue_length = 0U;
-		return normal_exit_b05d(join, text, length, 0.0f);
-	case YT_DROP_MINES_PROMPT_BLANK:
-		return normal_exit_line(join, NULL, 0U);
-	case YT_DROP_MINES_PROMPT:
-		return normal_exit_b05d(join, text, length, 1.0f);
-	case YT_DROP_MINES_SUCCESS_BLANK:
-		join->presentation.foreground = 6.0f;
-		join->pager.foreground = 6;
-		return normal_exit_line(join, NULL, 0U);
-	case YT_DROP_MINES_SUCCESS_ROW:
-		join->presentation.bold = 1.0f;
-		join->presentation.blink = 1.0f;
-		return normal_exit_b05d(join, text, length, 0.0f);
-	default:
-		return false;
-	}
-}
-
-static bool
-main_mines_amount(void *context, char *response, size_t capacity,
-    struct yt_error *error)
-{
-	struct main_mines_cycle_fixture *fixture = context;
-
-	(void)error;
-	if (response == NULL || fixture->response_length >= capacity
-	    || !main_buy_present_answer(&fixture->presentation,
-	    fixture->response, fixture->response_length))
-		return false;
-	memcpy(response, fixture->response, fixture->response_length);
-	response[fixture->response_length] = '\0';
-	return true;
-}
-
-static void
-main_mines_suppress(void *context)
-{
-	struct main_mines_cycle_fixture *fixture = context;
-
-	fixture->suppressed = true;
-	++fixture->suppression_calls;
-}
-
-static bool
-main_mines_sound(void *context, float selector, struct yt_error *error)
-{
-	struct main_mines_cycle_fixture *fixture = context;
-	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
-	struct yt_present_result result;
-
-	(void)error;
-	if (selector != 4.0f || yt_present_sound(selector,
-	    &join->presentation, &result) != YT_PRESENT_OK)
-		return false;
-	viewer_pager_capture_result(join, &result);
-	fixture->sound_called = true;
-	++fixture->sound_calls;
-	return true;
-}
-
-static const struct yt_drop_mines_ops main_mines_ops = {
-	main_mines_read_player,
-	main_mines_write_player,
-	main_mines_flush,
-	main_mines_read_sector,
-	main_mines_write_sector,
-	main_mines_present,
-	main_mines_amount,
-	main_mines_suppress,
-	main_mines_sound,
-};
-
-static bool
-main_mines_scanner(struct main_mines_cycle_fixture *fixture)
-{
-	static const struct sensor_join_output output[] = {
-		{SENSOR_JOIN_LINE, NULL},
-		{SENSOR_JOIN_LINE, "Sector: 42"},
-		{SENSOR_JOIN_ATTENTION, "** WARNING! SECTOR HAS 5 MINES! **"},
-		{SENSOR_JOIN_RAW, "Warps lead to:"},
-		{SENSOR_JOIN_RAW, " 1"},
-		{SENSOR_JOIN_LINE, NULL},
-	};
-	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
-	struct yt_present_result result;
-	size_t index;
-
-	join->presentation.foreground = 1.0f;
-	join->pager.foreground = 1;
-	for (index = 0U; index < YT_ARRAY_LEN(output); ++index) {
-		if (!sensor_join_present(join, &output[index]))
-			return false;
-		if (index == 2U) {
-			size_t sound;
-
-			for (sound = 0U; sound < 3U; ++sound) {
-				if (yt_present_sound(4.0f, &join->presentation,
-				    &result) != YT_PRESENT_OK)
-					return false;
-				viewer_pager_capture_result(join, &result);
-			}
-		}
-	}
-	return true;
-}
-
-static bool
-main_mines_full_cycle_run(struct main_mines_cycle_fixture *fixture,
-    bool ansi, size_t ends[4])
-{
-	static const uint8_t main_prompt[] =
-	    "Time: 14:59  Main Command (?=Help)? ";
-	static const uint8_t command[] = "dTrailing";
-	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
-
-	join->presentation = state(ansi);
-	join->presentation.color_initialized = 1.0f;
-	join->presentation.cached_foreground = 2.0f;
-	join->pager.foreground = 2;
-	join->pager.line_count = 8.0f;
-	if (!normal_exit_line(join, NULL, 0U)
-	    || !normal_exit_b05d(join, main_prompt,
-	    sizeof(main_prompt) - 1U, 1.0f))
-		return false;
-	yt_pager_editor_enter(&join->pager, join->accumulator,
-	    sizeof(join->accumulator));
-	if (!main_buy_present_echo(&fixture->presentation, command,
-	    sizeof(command) - 1U) || !normal_exit_line(join, NULL, 0U))
-		return false;
-	ends[0] = join->remote_length;
-	fixture->mines.current_player_record = 2;
-	if (!yt_drop_mines_run(&fixture->mines, &main_mines_ops, fixture,
-	    NULL))
-		return false;
-	ends[1] = join->remote_length;
-	if (!main_mines_scanner(fixture))
-		return false;
-	ends[2] = join->remote_length;
-	join->presentation.foreground = 2.0f;
-	join->pager.foreground = 2;
-	join->pager.line_count = 0.0f;
-	if (!normal_exit_line(join, NULL, 0U)
-	    || !normal_exit_b05d(join, main_prompt,
-	    sizeof(main_prompt) - 1U, 1.0f))
-		return false;
-	yt_pager_editor_enter(&join->pager, join->accumulator,
-	    sizeof(join->accumulator));
-	ends[3] = join->remote_length;
-	return true;
-}
-
-static void
-test_main_mines_accepted_cycle_presentation(void)
-{
-	static const uint8_t plain[] =
-	    "\r\nTime: 14:59  Main Command (?=Help)? dTrailing\r\n"
-	    "\r\nYou have 5 mines. Drop how many? [0] -=>2\r\n"
-	    "\r\nSector 42 is now mined!\n\r"
-	    "\r\nSector: 42\r\n"
-	    "** WARNING! SECTOR HAS 5 MINES! **\r\n"
-	    "\x07Warps lead to: 1\r\n"
-	    "\r\nTime: 14:59  Main Command (?=Help)? ";
-	static const uint8_t ansi[] =
-	    "\r\nTime: 14:59  Main Command (?=Help)? dTrailing\r\n"
-	    "\r\nYou have 5 mines. Drop how many? [0] -=>2\r\n"
-	    "\x1b[0;36;40m\r\n"
-	    "\x1b[0;36;40;5;1mSector 42 is now mined!\n\r"
-	    "\x1b[MBT128O5L48P64CP64C\x0e"
-	    "\x1b[0;31;40m\r\nSector: 42\r\n"
-	    "\x1b[0;33;41;5;1m** WARNING! SECTOR HAS 5 MINES! **"
-	    "\x1b[0;33;40m\r\n"
-	    "\x1b[MBO2T200L64FBEAP8FBEAP8FBEAP4FBEAP8FBEAP8FBEAP4T128\x0e"
-	    "\x1b[MBT128O5L48P64CP64C\x0e"
-	    "\x1b[MBT128O5L48P64CP64C\x0e"
-	    "\x1b[MBT128O5L48P64CP64C\x0e"
-	    "Warps lead to: 1\r\n"
-	    "\x1b[0;32;40m\r\n"
-	    "Time: 14:59  Main Command (?=Help)? ";
-	static const struct {
-		bool ansi;
-		const uint8_t *expected;
-		size_t expected_length;
-		size_t ends[4];
-		size_t local_colors;
-		uint64_t color_hash;
-	} cases[] = {
-		{false, plain, sizeof(plain) - 1U,
-		    {49U, 121U, 190U, 228U},
-		    4U, UINT64_C(0x01b4fd96ce8921d5)},
-		{true, ansi, sizeof(ansi) - 1U,
-		    {49U, 167U, 389U, 437U},
-		    21U, UINT64_C(0xe3c7aac57eebe7cd)},
-	};
-	struct physical_viewer_join viewer;
-	struct viewer_file_fixture stream;
-	struct main_mines_cycle_fixture fixture;
-	struct yt_record record;
-	uint8_t remote[480];
-	size_t ends[4];
-	size_t pass;
-
-	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
-		memset(&viewer, 0, sizeof(viewer));
-		fixture_viewer_initialize(&viewer, &stream,
-		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
-		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
-		memset(&fixture, 0, sizeof(fixture));
-		fixture.presentation.viewer = &viewer;
-		fixture.sector_number = 42;
-		fixture.response = (const uint8_t *)"2";
-		fixture.response_length = 1U;
-		memset(&record, 0xa5, sizeof(record));
-		(void)yt_record_set_number(&record, YT_F57, 42.0f);
-		(void)yt_record_set_number(&record, YT_F129, 5.0f);
-		yt_player_decode(&fixture.player, &record);
-		memset(&record, 0xb6, sizeof(record));
-		(void)yt_record_set_number(&record, YT_F129, 3.0f);
-		yt_sector_decode(&fixture.sector, &record);
-		CHECK(main_mines_full_cycle_run(&fixture, cases[pass].ansi,
-		    ends));
-		CHECK(memcmp(ends, cases[pass].ends, sizeof(ends)) == 0
-		    && viewer.join.remote_length == cases[pass].expected_length
-		    && memcmp(remote, cases[pass].expected,
-		    cases[pass].expected_length) == 0
-		    && fixture.mines.complete
-		    && fixture.mines.route == YT_DROP_MINES_ACCEPTED
-		    && fixture.mines.amount == 2.0f
-		    && fixture.mines.player_mines_after == 3.0f
-		    && fixture.mines.sector_mines_after == 5.0f
-		    && fixture.mines.suppression_set && fixture.suppressed
-		    && fixture.mines.player_written && fixture.player_written
-		    && fixture.mines.player_flushed
-		    && fixture.mines.sector_written && fixture.sector_written
-		    && fixture.mines.sector_flushed && fixture.flush_count == 2U
-		    && fixture.written_player.mines == 3.0f
-		    && fixture.written_sector.mines == 5.0f
-		    && fixture.sound_called
-		    && viewer.join.local_row_count == 11U
-		    && viewer_rows_fnv1a64(&viewer.join)
-		    == UINT64_C(0x175425ebd4694562)
-		    && viewer.join.local_color_count == cases[pass].local_colors
-		    && viewer_colors_fnv1a64(&viewer.join)
-		    == cases[pass].color_hash
-		    && viewer.join.presentation.foreground == 2.0f
-		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold
-		    == (cases[pass].ansi ? 0.0f : 1.0f)
-		    && viewer.join.presentation.blink
-		    == (cases[pass].ansi ? 0.0f : 1.0f)
-		    && viewer.join.presentation.cached_foreground == 2.0f
-		    && viewer.join.pager.foreground == 2
-		    && viewer.join.pager.line_count == 0.0f
-		    && viewer.join.local_fragment_length == 36U
-		    && memcmp(viewer.join.local_fragment,
-		    "Time: 14:59  Main Command (?=Help)? ", 36U) == 0
-		    && viewer.join.accumulator[0] == '\0');
-	}
-	CHECK(sizeof(plain) - 1U == 228U && sizeof(ansi) - 1U == 437U);
-}
-
-static void
-test_main_mines_ordinary_return_cycles_presentation(void)
-{
-	static const uint8_t shell[] =
-	    "\r\nTime: 14:59  Main Command (?=Help)? dTrailing\r\n";
-	static const uint8_t cancelled_blank[] =
-	    "\r\nYou have 5 mines. Drop how many? [0] -=>\r\n";
-	static const uint8_t cancelled_zero[] =
-	    "\r\nYou have 5 mines. Drop how many? [0] -=>0\r\n";
-	static const uint8_t cancelled_below[] =
-	    "\r\nYou have 5 mines. Drop how many? [0] -=>.5\r\n";
-	static const uint8_t cancelled_above[] =
-	    "\r\nYou have 5 mines. Drop how many? [0] -=>6\r\n";
-	static const uint8_t union_plain[] =
-	    "\r\nThe Union doesnt like the home 7 sectors mined!\n\r";
-	static const uint8_t union_ansi[] =
-	    "\r\n\x1b[0;32;40;5;1m"
-	    "The Union doesnt like the home 7 sectors mined!\n\r";
-	static const uint8_t none_plain[] =
-	    "\r\nYou don't HAVE any!\n\r";
-	static const uint8_t none_ansi[] =
-	    "\r\n\x1b[0;32;40;5;1mYou don't HAVE any!\n\r";
-	static const uint8_t scanner_plain[] =
-	    "\r\nSector: 42\r\n"
-	    "** WARNING! SECTOR HAS 5 MINES! **\r\n"
-	    "\x07Warps lead to: 1\r\n";
-	static const uint8_t scanner_ansi[] =
-	    "\x1b[0;31;40m\r\nSector: 42\r\n"
-	    "\x1b[0;33;41;5;1m** WARNING! SECTOR HAS 5 MINES! **"
-	    "\x1b[0;33;40m\r\n"
-	    "\x1b[MBO2T200L64FBEAP8FBEAP8FBEAP4FBEAP8FBEAP8FBEAP4T128\x0e"
-	    "\x1b[MBT128O5L48P64CP64C\x0e"
-	    "\x1b[MBT128O5L48P64CP64C\x0e"
-	    "\x1b[MBT128O5L48P64CP64C\x0e"
-	    "Warps lead to: 1\r\n";
-	static const uint8_t reentry_plain[] =
-	    "\r\nTime: 14:59  Main Command (?=Help)? ";
-	static const uint8_t reentry_ansi[] =
-	    "\x1b[0;32;40m\r\nTime: 14:59  Main Command (?=Help)? ";
-	static const struct {
-		const uint8_t *response;
-		size_t response_length;
-		float player_mines;
-		float player_sector;
-		enum yt_drop_mines_route route;
-		bool amount_stored;
-		float amount;
-		const uint8_t *body[2];
-		size_t body_length[2];
-		size_t total[2];
-		uint64_t row_hash;
-		size_t local_colors[2];
-		uint64_t color_hash[2];
-		float plain_bold;
-	} cases[] = {
-		{(const uint8_t *)"", 0U, 5.0f, 42.0f,
-		    YT_DROP_MINES_CANCELLED, true, 0.0f,
-		    {cancelled_blank, cancelled_blank},
-		    {sizeof(cancelled_blank) - 1U, sizeof(cancelled_blank) - 1U},
-		    {200U, 363U}, UINT64_C(0x3e1e866dbf31b0d0),
-		    {3U, 18U}, {UINT64_C(0x2207a27a6260aaca),
-		    UINT64_C(0x802ef546f7ece092)}, 0.0f},
-		{(const uint8_t *)"0", 1U, 5.0f, 42.0f,
-		    YT_DROP_MINES_CANCELLED, true, 0.0f,
-		    {cancelled_zero, cancelled_zero},
-		    {sizeof(cancelled_zero) - 1U, sizeof(cancelled_zero) - 1U},
-		    {201U, 364U}, UINT64_C(0x27a5036c497b4c9f),
-		    {3U, 18U}, {UINT64_C(0x2207a27a6260aaca),
-		    UINT64_C(0x802ef546f7ece092)}, 0.0f},
-		{(const uint8_t *)".5", 2U, 5.0f, 42.0f,
-		    YT_DROP_MINES_CANCELLED, true, 0.5f,
-		    {cancelled_below, cancelled_below},
-		    {sizeof(cancelled_below) - 1U, sizeof(cancelled_below) - 1U},
-		    {202U, 365U}, UINT64_C(0x7a6200467aeb9ac7),
-		    {3U, 18U}, {UINT64_C(0x2207a27a6260aaca),
-		    UINT64_C(0x802ef546f7ece092)}, 0.0f},
-		{(const uint8_t *)"6", 1U, 5.0f, 42.0f,
-		    YT_DROP_MINES_CANCELLED, true, 6.0f,
-		    {cancelled_above, cancelled_above},
-		    {sizeof(cancelled_above) - 1U, sizeof(cancelled_above) - 1U},
-		    {201U, 364U}, UINT64_C(0x699ecaacd4a0be39),
-		    {3U, 18U}, {UINT64_C(0x2207a27a6260aaca),
-		    UINT64_C(0x802ef546f7ece092)}, 0.0f},
-		{(const uint8_t *)"", 0U, 5.0f, 7.0f,
-		    YT_DROP_MINES_UNION_REFUSAL, false, 0.0f,
-		    {union_plain, union_ansi},
-		    {sizeof(union_plain) - 1U, sizeof(union_ansi) - 1U},
-		    {207U, 384U}, UINT64_C(0xa89e35dc63aac91e),
-		    {3U, 17U}, {UINT64_C(0x2207a27a6260aaca),
-		    UINT64_C(0x785a401833a5a0c2)}, 1.0f},
-		{(const uint8_t *)"", 0U, 0.0f, 42.0f,
-		    YT_DROP_MINES_NO_MINES, false, 0.0f,
-		    {none_plain, none_ansi},
-		    {sizeof(none_plain) - 1U, sizeof(none_ansi) - 1U},
-		    {179U, 356U}, UINT64_C(0x4e4661a6b8e4d886),
-		    {3U, 17U}, {UINT64_C(0x2207a27a6260aaca),
-		    UINT64_C(0x785a401833a5a0c2)}, 1.0f},
-	};
-	const uint8_t *scanner[2] = {scanner_plain, scanner_ansi};
-	const size_t scanner_length[2] = {
-		sizeof(scanner_plain) - 1U, sizeof(scanner_ansi) - 1U,
-	};
-	const uint8_t *reentry[2] = {reentry_plain, reentry_ansi};
-	const size_t reentry_length[2] = {
-		sizeof(reentry_plain) - 1U, sizeof(reentry_ansi) - 1U,
-	};
-	struct physical_viewer_join viewer;
-	struct viewer_file_fixture stream;
-	struct main_mines_cycle_fixture fixture;
-	struct yt_record record;
-	uint8_t remote[420];
-	size_t ends[4];
-	size_t variant;
-	size_t pass;
-
-	for (variant = 0U; variant < YT_ARRAY_LEN(cases); ++variant) {
-		for (pass = 0U; pass < 2U; ++pass) {
-			memset(&viewer, 0, sizeof(viewer));
-			fixture_viewer_initialize(&viewer, &stream,
-			    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
-			    "YTSCORE.ASC", pass != 0U, remote, sizeof(remote));
-			memset(&fixture, 0, sizeof(fixture));
-			fixture.presentation.viewer = &viewer;
-			fixture.sector_number = 42;
-			fixture.response = cases[variant].response;
-			fixture.response_length = cases[variant].response_length;
-			memset(&record, 0xa5, sizeof(record));
-			(void)yt_record_set_number(&record, YT_F57,
-			    cases[variant].player_sector);
-			(void)yt_record_set_number(&record, YT_F129,
-			    cases[variant].player_mines);
-			yt_player_decode(&fixture.player, &record);
-			memset(&record, 0xb6, sizeof(record));
-			(void)yt_record_set_number(&record, YT_F129, 5.0f);
-			yt_sector_decode(&fixture.sector, &record);
-			CHECK(main_mines_full_cycle_run(&fixture, pass != 0U,
-			    ends));
-			CHECK(ends[0] == sizeof(shell) - 1U
-			    && ends[1] - ends[0] == cases[variant].body_length[pass]
-			    && ends[2] - ends[1] == scanner_length[pass]
-			    && ends[3] - ends[2] == reentry_length[pass]
-			    && ends[3] == cases[variant].total[pass]
-			    && viewer.join.remote_length == ends[3]
-			    && memcmp(remote, shell, sizeof(shell) - 1U) == 0
-			    && memcmp(remote + ends[0], cases[variant].body[pass],
-			    cases[variant].body_length[pass]) == 0
-			    && memcmp(remote + ends[1], scanner[pass],
-			    scanner_length[pass]) == 0
-			    && memcmp(remote + ends[2], reentry[pass],
-			    reentry_length[pass]) == 0
-			    && fixture.mines.complete
-			    && fixture.mines.route == cases[variant].route
-			    && fixture.mines.amount_stored
-			    == cases[variant].amount_stored
-			    && fixture.mines.amount == cases[variant].amount
-			    && fixture.mines.player_read
-			    && !fixture.mines.suppression_set && !fixture.suppressed
-			    && !fixture.mines.player_written && !fixture.player_written
-			    && !fixture.mines.player_flushed
-			    && !fixture.mines.sector_read
-			    && !fixture.mines.sector_written && !fixture.sector_written
-			    && !fixture.mines.sector_flushed && fixture.flush_count == 0U
-			    && !fixture.sound_called
-			    && viewer.join.local_row_count == 9U
-			    && viewer_rows_fnv1a64(&viewer.join)
-			    == cases[variant].row_hash
-			    && viewer.join.local_color_count
-			    == cases[variant].local_colors[pass]
-			    && viewer_colors_fnv1a64(&viewer.join)
-			    == cases[variant].color_hash[pass]
-			    && viewer.join.presentation.foreground == 2.0f
-			    && viewer.join.presentation.background == 0.0f
-			    && viewer.join.presentation.bold
-			    == (pass != 0U ? 0.0f : cases[variant].plain_bold)
-			    && viewer.join.presentation.blink
-			    == (pass != 0U ? 0.0f : 1.0f)
-			    && viewer.join.presentation.cached_foreground == 2.0f
-			    && viewer.join.pager.foreground == 2
-			    && viewer.join.pager.line_count == 0.0f
-			    && viewer.join.local_fragment_length == 36U
-			    && memcmp(viewer.join.local_fragment,
-			    "Time: 14:59  Main Command (?=Help)? ", 36U) == 0
-			    && viewer.join.accumulator[0] == '\0');
-		}
-	}
-	CHECK(sizeof(scanner_plain) - 1U == 69U
-	    && sizeof(scanner_ansi) - 1U == 222U
-	    && sizeof(reentry_plain) - 1U == 38U
-	    && sizeof(reentry_ansi) - 1U == 48U);
-}
-
-static bool
-hostile_mines_menu_present(struct main_mines_cycle_fixture *fixture,
-    double deployed_fighters, const uint8_t *command, size_t command_length)
-{
-	static const uint8_t prompt[] =
-	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? ";
-	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
-	uint8_t row[96];
-	size_t row_length;
-
-	join->presentation.foreground = 3.0f;
-	join->pager.foreground = 3;
-	if (!yt_hostile_menu_row(20.0, deployed_fighters, row, sizeof(row),
-	    &row_length)
-	    || !normal_exit_line(join, NULL, 0U)
-	    || !normal_exit_b05d(join, row, row_length, 0.0f)
-	    || !normal_exit_b05d(join, prompt, sizeof(prompt) - 1U, 1.0f))
-		return false;
-	yt_pager_editor_enter(&join->pager, join->accumulator,
-	    sizeof(join->accumulator));
-	if (command_length >= sizeof(join->accumulator))
-		return false;
-	memcpy(join->accumulator, command, command_length);
-	join->accumulator[command_length] = '\0';
-	return main_buy_present_echo(&fixture->presentation, command,
-	    command_length) && normal_exit_line(join, NULL, 0U);
-}
-
-static bool
-hostile_mines_scanner_present(struct main_mines_cycle_fixture *fixture,
-    float logical_sector, float scanner_mines, double deployed_fighters,
-    float scanner_foreground, const char *first_warp, const char *second_warp)
-{
-	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
-	struct sensor_join_output output;
-	uint8_t row[128];
-	char number[64];
-	int number_length;
-	size_t row_length;
-	size_t sound;
-
-	join->presentation.foreground = scanner_foreground;
-	join->pager.foreground = (int)scanner_foreground;
-	if (!sensor_join_present(join, &(const struct sensor_join_output){
-	    SENSOR_JOIN_LINE, NULL}))
-		return false;
-	number_length = qb_str_single(number, sizeof(number), logical_sector);
-	if (number_length < 0 || sizeof("Sector:") - 1U
-	    + (size_t)number_length >= sizeof(row))
-		return false;
-	memcpy(row, "Sector:", sizeof("Sector:") - 1U);
-	memcpy(row + sizeof("Sector:") - 1U, number, (size_t)number_length);
-	row_length = sizeof("Sector:") - 1U + (size_t)number_length;
-	row[row_length] = '\0';
-	output = (struct sensor_join_output){SENSOR_JOIN_LINE,
-	    (const char *)row};
-	if (!sensor_join_present(join, &output))
-		return false;
-	if (scanner_mines != 0.0f) {
-		if (!yt_sector_mine_warning_row(scanner_mines, row,
-		    sizeof(row) - 1U, &row_length))
-			return false;
-		row[row_length] = '\0';
-		output = (struct sensor_join_output){SENSOR_JOIN_ATTENTION,
-		    (const char *)row};
-		if (!sensor_join_present(join, &output))
-			return false;
-		for (sound = 0U; sound < 3U; ++sound) {
-			if (!sensor_join_sound(join))
-				return false;
-		}
-	}
-	if (!sensor_join_present(join, &(const struct sensor_join_output){
-	    SENSOR_JOIN_BOLD_RAW, "Fighters in sector:"}))
-		return false;
-	number_length = qb_str_double(number, sizeof(number), deployed_fighters);
-	if (number_length < 0 || (size_t)number_length
-	    + sizeof(" (Belong to Mercenaries)") > sizeof(row))
-		return false;
-	memcpy(row, number, (size_t)number_length);
-	memcpy(row + (size_t)number_length, " (Belong to Mercenaries)",
-	    sizeof(" (Belong to Mercenaries)"));
-	if (!sensor_join_present(join, &(const struct sensor_join_output){
-	    SENSOR_JOIN_LINE, (const char *)row})
-	    || !sensor_join_present(join, &(const struct sensor_join_output){
-	    SENSOR_JOIN_RAW, "Warps lead to:"})
-	    || !sensor_join_present(join, &(const struct sensor_join_output){
-	    SENSOR_JOIN_RAW, first_warp})
-	    || !sensor_join_present(join, &(const struct sensor_join_output){
-	    SENSOR_JOIN_RAW, second_warp})
-	    || !sensor_join_present(join, &(const struct sensor_join_output){
-	    SENSOR_JOIN_LINE, NULL}))
-		return false;
-	join->presentation.foreground = 3.0f;
-	join->pager.foreground = 3;
-	return true;
-}
-
-static bool
-hostile_mines_cycle_run(struct main_mines_cycle_fixture *fixture,
-    bool ansi, size_t ends[4])
-{
-	static const uint8_t first_command[] = "D";
-	static const uint8_t second_command[] = "A";
-	static const uint8_t warning[] =
-	    "You have to defeat the fighters before you can enter this sector.";
-	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
-
-	join->presentation = state(ansi);
-	if (!hostile_mines_menu_present(fixture, 10.0, first_command,
-	    sizeof(first_command) - 1U))
-		return false;
-	ends[0] = join->remote_length;
-	fixture->mines.current_player_record = 2;
-	if (yt_hostile_menu_dispatch("D") != YT_HOSTILE_MENU_MINE
-	    || !yt_drop_mines_run(&fixture->mines, &main_mines_ops, fixture,
-	    NULL))
-		return false;
-	ends[1] = join->remote_length;
-	if (!hostile_mines_scanner_present(fixture,
-	    fixture->mines.current.sector,
-	    fixture->mines.sector_written
-	    ? fixture->written_sector.mines : fixture->sector.mines,
-	    10.0, 1.0f, " 2", ", 9"))
-		return false;
-	if (yt_sector_mines_admitted(fixture->mines.sector_written
-	    ? fixture->written_sector.mines : fixture->sector.mines,
-	    fixture->suppressed ? 1.0f : 0.0f))
-		return false;
-	join->queue[0] = '\0';
-	join->queue_position = 0U;
-	join->queue_length = 0U;
-	if (!normal_exit_line(join, NULL, 0U))
-		return false;
-	join->presentation.bold = 1.0f;
-	join->presentation.blink = 1.0f;
-	if (!normal_exit_b05d(join, warning, sizeof(warning) - 1U, 0.0f))
-		return false;
-	ends[2] = join->remote_length;
-	if (!hostile_mines_menu_present(fixture, 10.0, second_command,
-	    sizeof(second_command) - 1U)
-	    || yt_hostile_menu_dispatch("A") != YT_HOSTILE_MENU_ATTACK)
-		return false;
-	ends[3] = join->remote_length;
-	return true;
-}
-
-static void
-test_hostile_mines_accepted_cycle_presentation(void)
-{
-	static const uint8_t plain[] =
-	    "\r\nFighters: 20 / 10\n\r"
-	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? D\r\n"
-	    "\r\nYou have 5 mines. Drop how many? [0] -=>2\r\n"
-	    "\r\nSector 733 is now mined!\n\r"
-	    "\r\nSector: 733\r\n"
-	    "** WARNING! SECTOR HAS 5 MINES! **\r\n"
-	    "\x07"
-	    "Fighters in sector: 10 (Belong to Mercenaries)\r\n"
-	    "Warps lead to: 2, 9\r\n"
-	    "\r\nYou have to defeat the fighters before you can enter this sector.\n\r"
-	    "\r\nFighters: 20 / 10\n\r"
-	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? A\r\n";
-	static const uint8_t ansi[] =
-	    "\x1b[0;33;40m\r\nFighters: 20 / 10\n\r"
-	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? D\r\n"
-	    "\r\nYou have 5 mines. Drop how many? [0] -=>2\r\n"
-	    "\x1b[0;36;40m\r\n"
-	    "\x1b[0;36;40;5;1mSector 733 is now mined!\n\r"
-	    "\x1b[MBT128O5L48P64CP64C\x0e"
-	    "\x1b[0;31;40m\r\nSector: 733\r\n"
-	    "\x1b[0;33;41;5;1m** WARNING! SECTOR HAS 5 MINES! **"
-	    "\x1b[0;33;40m\r\n"
-	    "\x1b[MBO2T200L64FBEAP8FBEAP8FBEAP4FBEAP8FBEAP8FBEAP4T128\x0e"
-	    "\x1b[MBT128O5L48P64CP64C\x0e"
-	    "\x1b[MBT128O5L48P64CP64C\x0e"
-	    "\x1b[MBT128O5L48P64CP64C\x0e"
-	    "\x1b[0;33;40;1mFighters in sector:"
-	    "\x1b[0;33;40m 10 (Belong to Mercenaries)\r\n"
-	    "Warps lead to: 2, 9\r\n"
-	    "\r\n\x1b[0;33;40;5;1m"
-	    "You have to defeat the fighters before you can enter this sector.\n\r"
-	    "\x1b[0;33;40m\r\nFighters: 20 / 10\n\r"
-	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? A\r\n";
-	static const struct {
-		bool ansi;
-		const uint8_t *expected;
-		size_t expected_length;
-		size_t ends[4];
-		size_t local_colors;
-		uint64_t color_hash;
-	} cases[] = {
-		{false, plain, sizeof(plain) - 1U, {59U, 132U, 322U, 381U},
-		    7U, UINT64_C(0xc68cf2d74ffb7ffa)},
-		{true, ansi, sizeof(ansi) - 1U, {69U, 188U, 567U, 636U},
-		    32U, UINT64_C(0x97e2666a6051cce8)},
-	};
-	struct physical_viewer_join viewer;
-	struct viewer_file_fixture stream;
-	struct main_mines_cycle_fixture fixture;
-	struct yt_record record;
-	uint8_t remote[680];
-	size_t ends[4];
-	size_t pass;
-
-	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
-		memset(&viewer, 0, sizeof(viewer));
-		fixture_viewer_initialize(&viewer, &stream,
-		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
-		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
-		memset(&fixture, 0, sizeof(fixture));
-		fixture.presentation.viewer = &viewer;
-		fixture.sector_number = 733;
-		fixture.response = (const uint8_t *)"2";
-		fixture.response_length = 1U;
-		memset(&record, 0xa5, sizeof(record));
-		(void)yt_record_set_number(&record, YT_F57, 733.0f);
-		(void)yt_record_set_number(&record, YT_F129, 5.0f);
-		yt_player_decode(&fixture.player, &record);
-		memset(&record, 0xb6, sizeof(record));
-		(void)yt_record_set_number(&record, YT_F81, 10.0f);
-		(void)yt_record_set_number(&record, YT_F85, -2.0f);
-		(void)yt_record_set_number(&record, YT_F129, 3.0f);
-		yt_sector_decode(&fixture.sector, &record);
-		CHECK(hostile_mines_cycle_run(&fixture,
-		    cases[pass].ansi, ends));
-		CHECK(memcmp(ends, cases[pass].ends, sizeof(ends)) == 0
-		    && viewer.join.remote_length == cases[pass].expected_length
-		    && memcmp(remote, cases[pass].expected,
-		    cases[pass].expected_length) == 0
-		    && fixture.mines.complete
-		    && fixture.mines.route == YT_DROP_MINES_ACCEPTED
-		    && fixture.mines.suppression_set && fixture.suppressed
-		    && fixture.suppression_calls == 1U
-		    && fixture.mines.player_written && fixture.player_written
-		    && fixture.mines.player_flushed
-		    && fixture.mines.sector_read
-		    && fixture.mines.sector_written && fixture.sector_written
-		    && fixture.mines.sector_flushed && fixture.flush_count == 2U
-		    && fixture.written_player.mines == 3.0f
-		    && fixture.written_sector.mines == 5.0f
-		    && !yt_sector_mines_admitted(fixture.written_sector.mines,
-		    1.0f)
-		    && fixture.sound_called && fixture.sound_calls == 1U
-		    && strcmp(viewer.join.accumulator, "A") == 0
-		    && viewer.join.queue_length == 0U
-		    && viewer.join.local_fragment_length == 0U
-		    && viewer.join.local_row_count == 17U
-		    && viewer_rows_fnv1a64(&viewer.join)
-		    == UINT64_C(0x8cf209925eb35a1a)
-		    && viewer.join.local_color_count == cases[pass].local_colors
-		    && viewer_colors_fnv1a64(&viewer.join)
-		    == cases[pass].color_hash
-		    && viewer.join.presentation.foreground == 3.0f
-		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold
-		    == (cases[pass].ansi ? 0.0f : 1.0f)
-		    && viewer.join.presentation.blink
-		    == (cases[pass].ansi ? 0.0f : 1.0f)
-		    && viewer.join.presentation.cached_foreground
-		    == (cases[pass].ansi ? 3.0f : 0.0f)
-		    && viewer.join.pager.foreground == 3
-		    && viewer.join.pager.line_count == 0.0f
-		    && viewer.join.event_count == 35U);
-	}
-	CHECK(sizeof(plain) - 1U == 381U && sizeof(ansi) - 1U == 636U);
-}
-
-static void
-test_hostile_mines_ordinary_return_cycles_presentation(void)
-{
-	static const uint8_t first_plain[] =
-	    "\r\nFighters: 20 / 10\n\r"
-	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? D\r\n";
-	static const uint8_t first_ansi[] =
-	    "\x1b[0;33;40m\r\nFighters: 20 / 10\n\r"
-	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? D\r\n";
-	static const uint8_t second_plain[] =
-	    "\r\nFighters: 20 / 10\n\r"
-	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? A\r\n";
-	static const uint8_t second_ansi[] =
-	    "\x1b[0;33;40m\r\nFighters: 20 / 10\n\r"
-	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? A\r\n";
-	static const uint8_t cancel_blank[] =
-	    "\r\nYou have 5 mines. Drop how many? [0] -=>\r\n";
-	static const uint8_t cancel_above[] =
-	    "\r\nYou have 5 mines. Drop how many? [0] -=>6\r\n";
-	static const uint8_t none_plain[] =
-	    "\r\nYou don't HAVE any!\n\r";
-	static const uint8_t none_ansi[] =
-	    "\r\n\x1b[0;33;40;5;1mYou don't HAVE any!\n\r";
-	static const uint8_t union_plain[] =
-	    "\r\nThe Union doesnt like the home 7 sectors mined!\n\r";
-	static const uint8_t union_ansi[] =
-	    "\r\n\x1b[0;33;40;5;1m"
-	    "The Union doesnt like the home 7 sectors mined!\n\r";
-	static const uint8_t router_733_plain[] =
-	    "\r\nSector: 733\r\n"
-	    "Fighters in sector: 10 (Belong to Mercenaries)\r\n"
-	    "Warps lead to: 2, 9\r\n"
-	    "\r\nYou have to defeat the fighters before you can enter this sector.\n\r";
-	static const uint8_t router_733_ansi[] =
-	    "\x1b[0;31;40m\r\nSector: 733\r\n"
-	    "\x1b[0;31;40;1mFighters in sector:"
-	    "\x1b[0;31;40m 10 (Belong to Mercenaries)\r\n"
-	    "Warps lead to: 2, 9\r\n"
-	    "\x1b[0;33;40m\r\n"
-	    "\x1b[0;33;40;5;1m"
-	    "You have to defeat the fighters before you can enter this sector.\n\r";
-	static const uint8_t router_7_plain[] =
-	    "\r\nSector: 7\r\n"
-	    "Fighters in sector: 10 (Belong to Mercenaries)\r\n"
-	    "Warps lead to: 2, 9\r\n"
-	    "\r\nYou have to defeat the fighters before you can enter this sector.\n\r";
-	static const uint8_t router_7_ansi[] =
-	    "\x1b[0;31;40m\r\nSector: 7\r\n"
-	    "\x1b[0;31;40;1mFighters in sector:"
-	    "\x1b[0;31;40m 10 (Belong to Mercenaries)\r\n"
-	    "Warps lead to: 2, 9\r\n"
-	    "\x1b[0;33;40m\r\n"
-	    "\x1b[0;33;40;5;1m"
-	    "You have to defeat the fighters before you can enter this sector.\n\r";
-	static const struct {
-		const uint8_t *response;
-		size_t response_length;
-		float player_mines;
-		float player_sector;
-		enum yt_drop_mines_route route;
-		float amount;
-		bool negative_repair;
-		const uint8_t *body[2];
-		size_t body_length[2];
-		const uint8_t *router[2];
-		size_t router_length[2];
-		size_t ends[2][4];
-		uint64_t row_hash;
-		size_t local_colors[2];
-		uint64_t color_hash[2];
-	} cases[] = {
-		{(const uint8_t *)"", 0U, 5.0f, 733.0f,
-		    YT_DROP_MINES_CANCELLED, 0.0f, false,
-		    {cancel_blank, cancel_blank},
-		    {sizeof(cancel_blank) - 1U, sizeof(cancel_blank) - 1U},
-		    {router_733_plain, router_733_ansi},
-		    {sizeof(router_733_plain) - 1U,
-		    sizeof(router_733_ansi) - 1U},
-		    {{59U, 103U, 256U, 315U},
-		    {69U, 113U, 322U, 391U}},
-		    UINT64_C(0x4b4c679cc76e540d), {6U, 27U},
-		    {UINT64_C(0x17798e683d05096d),
-		    UINT64_C(0x51e20b2e4e212c0b)}},
-		{(const uint8_t *)"6", 1U, 5.0f, 733.0f,
-		    YT_DROP_MINES_CANCELLED, 6.0f, false,
-		    {cancel_above, cancel_above},
-		    {sizeof(cancel_above) - 1U, sizeof(cancel_above) - 1U},
-		    {router_733_plain, router_733_ansi},
-		    {sizeof(router_733_plain) - 1U,
-		    sizeof(router_733_ansi) - 1U},
-		    {{59U, 104U, 257U, 316U},
-		    {69U, 114U, 323U, 392U}},
-		    UINT64_C(0x3d7a92ce5d5b672e), {6U, 27U},
-		    {UINT64_C(0x17798e683d05096d),
-		    UINT64_C(0x51e20b2e4e212c0b)}},
-		{(const uint8_t *)"", 0U, 0.0f, 733.0f,
-		    YT_DROP_MINES_NO_MINES, 0.0f, false,
-		    {none_plain, none_ansi},
-		    {sizeof(none_plain) - 1U, sizeof(none_ansi) - 1U},
-		    {router_733_plain, router_733_ansi},
-		    {sizeof(router_733_plain) - 1U,
-		    sizeof(router_733_ansi) - 1U},
-		    {{59U, 82U, 235U, 294U},
-		    {69U, 106U, 315U, 384U}},
-		    UINT64_C(0x310514dd1ef23de9), {6U, 26U},
-		    {UINT64_C(0x17798e683d05096d),
-		    UINT64_C(0xbe2a9341bae1d0a5)}},
-		{(const uint8_t *)"", 0U, -0.5f, 733.0f,
-		    YT_DROP_MINES_NO_MINES, 0.0f, true,
-		    {none_plain, none_ansi},
-		    {sizeof(none_plain) - 1U, sizeof(none_ansi) - 1U},
-		    {router_733_plain, router_733_ansi},
-		    {sizeof(router_733_plain) - 1U,
-		    sizeof(router_733_ansi) - 1U},
-		    {{59U, 82U, 235U, 294U},
-		    {69U, 106U, 315U, 384U}},
-		    UINT64_C(0x310514dd1ef23de9), {6U, 26U},
-		    {UINT64_C(0x17798e683d05096d),
-		    UINT64_C(0xbe2a9341bae1d0a5)}},
-		{(const uint8_t *)"", 0U, 5.0f, 7.0f,
-		    YT_DROP_MINES_UNION_REFUSAL, 0.0f, false,
-		    {union_plain, union_ansi},
-		    {sizeof(union_plain) - 1U, sizeof(union_ansi) - 1U},
-		    {router_7_plain, router_7_ansi},
-		    {sizeof(router_7_plain) - 1U, sizeof(router_7_ansi) - 1U},
-		    {{59U, 110U, 261U, 320U},
-		    {69U, 134U, 341U, 410U}},
-		    UINT64_C(0x2bdab23bf61a59b1), {6U, 26U},
-		    {UINT64_C(0x17798e683d05096d),
-		    UINT64_C(0xbe2a9341bae1d0a5)}},
-	};
-	const uint8_t *first[2] = {first_plain, first_ansi};
-	const size_t first_length[2] = {
-		sizeof(first_plain) - 1U, sizeof(first_ansi) - 1U,
-	};
-	const uint8_t *second[2] = {second_plain, second_ansi};
-	const size_t second_length[2] = {
-		sizeof(second_plain) - 1U, sizeof(second_ansi) - 1U,
-	};
-	struct physical_viewer_join viewer;
-	struct viewer_file_fixture stream;
-	struct main_mines_cycle_fixture fixture;
-	struct yt_record record;
-	uint8_t remote[440];
-	size_t ends[4];
-	size_t variant;
-	size_t pass;
-
-	for (variant = 0U; variant < YT_ARRAY_LEN(cases); ++variant) {
-		for (pass = 0U; pass < 2U; ++pass) {
-			memset(&viewer, 0, sizeof(viewer));
-			fixture_viewer_initialize(&viewer, &stream,
-			    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
-			    "YTSCORE.ASC", pass != 0U, remote, sizeof(remote));
-			memset(&fixture, 0, sizeof(fixture));
-			fixture.presentation.viewer = &viewer;
-			fixture.sector_number = (int)cases[variant].player_sector;
-			fixture.response = cases[variant].response;
-			fixture.response_length = cases[variant].response_length;
-			fixture.suppressed = true;
-			memset(&record, 0xa5, sizeof(record));
-			(void)yt_record_set_number(&record, YT_F57,
-			    cases[variant].player_sector);
-			(void)yt_record_set_number(&record, YT_F129,
-			    cases[variant].player_mines);
-			yt_player_decode(&fixture.player, &record);
-			memset(&record, 0xb6, sizeof(record));
-			(void)yt_record_set_number(&record, YT_F81, 10.0f);
-			(void)yt_record_set_number(&record, YT_F85, -2.0f);
-			(void)yt_record_set_number(&record, YT_F129, 0.0f);
-			yt_sector_decode(&fixture.sector, &record);
-			CHECK(hostile_mines_cycle_run(&fixture, pass != 0U, ends));
-			CHECK(memcmp(ends, cases[variant].ends[pass], sizeof(ends)) == 0
-			    && viewer.join.remote_length == ends[3]
-			    && memcmp(remote, first[pass], first_length[pass]) == 0
-			    && memcmp(remote + ends[0], cases[variant].body[pass],
-			    cases[variant].body_length[pass]) == 0
-			    && memcmp(remote + ends[1], cases[variant].router[pass],
-			    cases[variant].router_length[pass]) == 0
-			    && memcmp(remote + ends[2], second[pass],
-			    second_length[pass]) == 0
-			    && ends[0] == first_length[pass]
-			    && ends[1] - ends[0] == cases[variant].body_length[pass]
-			    && ends[2] - ends[1] == cases[variant].router_length[pass]
-			    && ends[3] - ends[2] == second_length[pass]
-			    && fixture.mines.complete
-			    && fixture.mines.route == cases[variant].route
-			    && fixture.mines.amount == cases[variant].amount
-			    && fixture.mines.negative_repair
-			    == cases[variant].negative_repair
-			    && fixture.suppressed && fixture.suppression_calls == 0U
-			    && !fixture.mines.suppression_set
-			    && fixture.mines.repair_written
-			    == cases[variant].negative_repair
-			    && fixture.mines.repair_flushed
-			    == cases[variant].negative_repair
-			    && fixture.player_written
-			    == cases[variant].negative_repair
-			    && fixture.flush_count
-			    == (cases[variant].negative_repair ? 1U : 0U)
-			    && (!cases[variant].negative_repair
-			    || fixture.written_player.mines == 0.0f)
-			    && !fixture.mines.sector_read
-			    && !fixture.mines.sector_written && !fixture.sector_written
-			    && !fixture.sound_called && fixture.sound_calls == 0U
-			    && strcmp(viewer.join.accumulator, "A") == 0
-			    && viewer.join.queue_length == 0U
-			    && viewer.join.local_fragment_length == 0U
-			    && viewer.join.local_row_count == 14U
-			    && viewer_rows_fnv1a64(&viewer.join)
-			    == cases[variant].row_hash
-			    && viewer.join.local_color_count
-			    == cases[variant].local_colors[pass]
-			    && viewer_colors_fnv1a64(&viewer.join)
-			    == cases[variant].color_hash[pass]
-			    && viewer.join.presentation.foreground == 3.0f
-			    && viewer.join.presentation.background == 0.0f
-			    && viewer.join.presentation.bold
-			    == (pass != 0U ? 0.0f : 1.0f)
-			    && viewer.join.presentation.blink
-			    == (pass != 0U ? 0.0f : 1.0f)
-			    && viewer.join.presentation.cached_foreground
-			    == (pass != 0U ? 3.0f : 0.0f)
-			    && viewer.join.pager.foreground == 3
-			    && viewer.join.pager.line_count == 0.0f
-			    && viewer.join.event_count == 30U);
-		}
-	}
-	CHECK(sizeof(first_plain) - 1U == 59U
-	    && sizeof(first_ansi) - 1U == 69U
-	    && sizeof(second_plain) - 1U == 59U
-	    && sizeof(second_ansi) - 1U == 69U
-	    && sizeof(router_733_plain) - 1U == 153U
-	    && sizeof(router_733_ansi) - 1U == 209U
-	    && sizeof(router_7_plain) - 1U == 151U
-	    && sizeof(router_7_ansi) - 1U == 207U);
-}
-
 enum emergency_warp_physical_failure {
 	EMERGENCY_WARP_PHYSICAL_OK,
 	EMERGENCY_WARP_PHYSICAL_GET,
@@ -19666,7 +18608,7 @@ enum sector_mine_physical_failure {
 };
 
 struct hostile_mines_hazard_fixture {
-	struct main_mines_cycle_fixture cycle;
+	struct main_buy_cycle_fixture presentation;
 	struct yt_sector_mine_state hazard;
 	struct yt_player hazard_player;
 	struct yt_sector hazard_sector;
@@ -19844,8 +18786,8 @@ hostile_mine_hazard_present(void *context, const uint8_t *text,
     struct yt_error *error)
 {
 	struct hostile_mines_hazard_fixture *fixture = context;
-	struct viewer_pager_join *join = fixture->cycle.presentation.viewer != NULL
-	    ? &fixture->cycle.presentation.viewer->join : NULL;
+	struct viewer_pager_join *join = fixture->presentation.viewer != NULL
+	    ? &fixture->presentation.viewer->join : NULL;
 	struct yt_present_result result;
 	enum yt_present_status status;
 
@@ -19878,7 +18820,7 @@ hostile_mine_hazard_sound(void *context, float selector,
     struct yt_error *error)
 {
 	struct hostile_mines_hazard_fixture *fixture = context;
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	struct yt_present_result result;
 
 	(void)error;
@@ -19947,7 +18889,7 @@ static bool
 hostile_mine_emergency_attention(struct hostile_mines_hazard_fixture *fixture,
     const uint8_t *text, size_t length)
 {
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	struct yt_present_result result;
 
 	if (yt_present_attention(text, length, &join->presentation, &result)
@@ -19961,7 +18903,7 @@ static bool
 hostile_mine_emergency_set_foreground(
     struct hostile_mines_hazard_fixture *fixture, float foreground)
 {
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 
 	join->presentation.foreground = foreground;
 	join->pager.foreground = (int)foreground;
@@ -19981,7 +18923,7 @@ hostile_emergency_warp_present(struct hostile_mines_hazard_fixture *fixture)
 	static const uint8_t gauge_tick[] = "*";
 	static const uint8_t relief[] =
 	    "You sigh in relief as you look at your scanner and find yourself in";
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	struct yt_present_result result;
 	float first;
 	float second;
@@ -20092,7 +19034,7 @@ static bool
 hostile_mine_hazard_warp(void *context, struct yt_error *error)
 {
 	struct hostile_mines_hazard_fixture *fixture = context;
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	bool completed;
 
 	(void)error;
@@ -20122,7 +19064,7 @@ hostile_mine_hazard_style(void *context, float foreground, float background,
     float blink, int pager_foreground)
 {
 	struct hostile_mines_hazard_fixture *fixture = context;
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 
 	join->presentation.foreground = foreground;
 	join->presentation.background = background;
@@ -20146,653 +19088,8 @@ static const struct yt_sector_mine_ops hostile_mine_hazard_ops = {
 	hostile_mine_hazard_style,
 };
 
-static bool
-hostile_mines_hazard_cycle_run(struct hostile_mines_hazard_fixture *fixture,
-    bool ansi, bool emergency_warp, size_t ends[4])
-{
-	static const uint8_t first_command[] = "D";
-	static const uint8_t second_command[] = "A";
-	static const uint8_t warning[] =
-	    "You have to defeat the fighters before you can enter this sector.";
-	struct main_mines_cycle_fixture *cycle = &fixture->cycle;
-	struct viewer_pager_join *join = &cycle->presentation.viewer->join;
 
-	join->presentation = state(ansi);
-	if (!hostile_mines_menu_present(cycle, 10.0, first_command,
-	    sizeof(first_command) - 1U))
-		return false;
-	ends[0] = join->remote_length;
-	cycle->mines.current_player_record = 2;
-	if (yt_hostile_menu_dispatch("D") != YT_HOSTILE_MENU_MINE
-	    || !yt_drop_mines_run(&cycle->mines, &main_mines_ops, cycle, NULL))
-		return false;
-	ends[1] = join->remote_length;
-	if (!hostile_mines_scanner_present(cycle, 733.0f, 1.0f, 10.0, 1.0f,
-	    " 2", ", 9")
-	    || !yt_sector_mines_admitted(1.0f,
-	    cycle->suppressed ? 1.0f : 0.0f))
-		return false;
-	join->presentation.sound.user_sound = 0.0f;
-	join->presentation.sound.local_sound = 0.0f;
-	fixture->hazard.current_player_record = 2;
-	fixture->hazard.current_sector = 733.0f;
-	fixture->hazard.foreground = join->presentation.foreground;
-	fixture->hazard.background = join->presentation.background;
-	fixture->hazard.blink = join->presentation.blink;
-	fixture->hazard.pager_foreground = join->pager.foreground;
-	fixture->hazard.destroyed = &fixture->destroyed;
-	fixture->mine_start = join->remote_length;
-	if (!yt_sector_mine_run(&fixture->hazard, &hostile_mine_hazard_ops,
-	    fixture, NULL))
-		return false;
-	join->presentation.background = 0.0f;
-	if (!hostile_mines_scanner_present(cycle,
-	    emergency_warp ? 1003.0f : 733.0f, 0.0f, 7.0,
-	    emergency_warp ? 1.0f : 3.0f,
-	    emergency_warp ? " 1" : " 2",
-	    emergency_warp ? ", 42" : ", 9"))
-		return false;
-	join->queue[0] = '\0';
-	join->queue_position = 0U;
-	join->queue_length = 0U;
-	if (!normal_exit_line(join, NULL, 0U))
-		return false;
-	join->presentation.bold = 1.0f;
-	join->presentation.blink = 1.0f;
-	if (!normal_exit_b05d(join, warning, sizeof(warning) - 1U, 0.0f))
-		return false;
-	ends[2] = join->remote_length;
-	if (!hostile_mines_menu_present(cycle, 7.0, second_command,
-	    sizeof(second_command) - 1U)
-	    || yt_hostile_menu_dispatch("A") != YT_HOSTILE_MENU_ATTACK)
-		return false;
-	ends[3] = join->remote_length;
-	return true;
-}
 
-static void
-hostile_mines_hazard_fixture_initialize(
-    struct hostile_mines_hazard_fixture *fixture,
-    struct physical_viewer_join *viewer, bool emergency_warp)
-{
-	struct yt_record record;
-
-	memset(fixture, 0, sizeof(*fixture));
-	fixture->cycle.presentation.viewer = viewer;
-	fixture->cycle.sector_number = 733;
-	fixture->hazard_logical_sector = 733;
-	fixture->cycle.response = (const uint8_t *)"";
-	fixture->cycle.response_length = 0U;
-	yt_record_blank(&record);
-	(void)yt_record_set_number(&record, YT_F57, 733.0f);
-	(void)yt_record_set_number(&record, YT_F129, 5.0f);
-	yt_player_decode(&fixture->cycle.player, &record);
-	yt_record_blank(&record);
-	(void)yt_record_set_number(&record, YT_F81, 10.0f);
-	(void)yt_record_set_number(&record, YT_F85, -2.0f);
-	(void)yt_record_set_number(&record, YT_F129, 0.0f);
-	yt_sector_decode(&fixture->cycle.sector, &record);
-	yt_record_blank(&record);
-	yt_record_set_text(&record, (const uint8_t *)"STATIC PILOT", 12U);
-	(void)yt_record_set_number(&record, YT_F53, 10.0f);
-	(void)yt_record_set_number(&record, YT_F57, 733.0f);
-	(void)yt_record_set_number(&record, YT_F65,
-	    emergency_warp ? 9.0f : 10.0f);
-	(void)yt_record_set_number(&record, YT_F69,
-	    emergency_warp ? 9.0f : 10.0f);
-	(void)yt_record_set_number(&record, YT_F85, 12.0f);
-	yt_player_decode(&fixture->hazard_player, &record);
-	yt_record_blank(&record);
-	(void)yt_record_set_number(&record, YT_F81, 10.0f);
-	(void)yt_record_set_number(&record, YT_F85, -2.0f);
-	(void)yt_record_set_number(&record, YT_F129, 1.0f);
-	yt_sector_decode(&fixture->hazard_sector, &record);
-	fixture->draws[0] = 0.0f;
-	fixture->draws[1] = 0.949999988079071f;
-	fixture->draws[2] = emergency_warp ? 0.9f : 0.0f;
-	fixture->enable_emergency_warp = emergency_warp;
-	if (!emergency_warp)
-		return;
-	fixture->draws[3] = 0.0f;
-	fixture->draws[4] = 0.0f;
-	fixture->draws[5] = 0.75f;
-	fixture->draws[6] = 0.5f;
-	fixture->draws[7] = 0.949999988079071f;
-	fixture->draws[8] = 0.999f;
-	yt_record_blank(&record);
-	(void)yt_record_set_number(&record, YT_F49, 17.0f);
-	(void)yt_record_set_number(&record, YT_F57, 42.0f);
-	yt_player_decode(&fixture->emergency_player, &record);
-}
-
-static void
-test_hostile_mines_admitted_hazard_cycle_presentation(void)
-{
-	static const uint8_t entry_news[] =
-	    "STATIC PILOT hit sector mines in sector 733!";
-	static const uint8_t final_news[] = "Shields reduced to 10 units!";
-	static const uint8_t plain[] =
-	    "\r\nFighters: 20 / 10\n\r"
-	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? D\r\n"
-	    "\r\nYou have 5 mines. Drop how many? [0] -=>\r\n"
-	    "\r\nSector: 733\r\n"
-	    "** WARNING! SECTOR HAS 1 MINES! **\r\n"
-	    "\x07" "Fighters in sector: 10 (Belong to Mercenaries)\r\n"
-	    "Warps lead to: 2, 9\r\n"
-	    "\r\n** Sector is Mined!! **\r\n"
-	    "There are 1 mines here! 1 EXPLODE!\r\n"
-	    "Shields down to 10 units!\r\n"
-	    "\r\nSector: 733\r\n"
-	    "Fighters in sector: 7 (Belong to Mercenaries)\r\n"
-	    "Warps lead to: 2, 9\r\n"
-	    "\r\nYou have to defeat the fighters before you can enter this sector.\n\r"
-	    "\r\nFighters: 20 / 7\n\r"
-	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? A\r\n";
-	static const uint8_t ansi[] =
-	    "\x1b[0;33;40m\r\nFighters: 20 / 10\n\r"
-	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? D\r\n"
-	    "\r\nYou have 5 mines. Drop how many? [0] -=>\r\n"
-	    "\x1b[0;31;40m\r\nSector: 733\r\n"
-	    "\x1b[0;33;41;5;1m** WARNING! SECTOR HAS 1 MINES! **"
-	    "\x1b[0;33;40m\r\n"
-	    "\x1b[MBO2T200L64FBEAP8FBEAP8FBEAP4FBEAP8FBEAP8FBEAP4T128\x0e"
-	    "\x1b[MBT128O5L48P64CP64C\x0e"
-	    "\x1b[MBT128O5L48P64CP64C\x0e"
-	    "\x1b[MBT128O5L48P64CP64C\x0e"
-	    "\x1b[0;33;40;1mFighters in sector:"
-	    "\x1b[0;33;40m 10 (Belong to Mercenaries)\r\n"
-	    "Warps lead to: 2, 9\r\n"
-	    "\r\n\x1b[0;33;40;5m** Sector is Mined!! **\r\n"
-	    "\x1b[0;33;40;1mThere are 1 mines here! 1 EXPLODE!"
-	    "\x1b[0;33;41m\r\n"
-	    "\x1b[0;33;41;1mShields down to 10 units!\r\n"
-	    "\x1b[0;33;40m\r\nSector: 733\r\n"
-	    "\x1b[0;33;40;1mFighters in sector:"
-	    "\x1b[0;33;40m 7 (Belong to Mercenaries)\r\n"
-	    "Warps lead to: 2, 9\r\n"
-	    "\r\n\x1b[0;33;40;5;1m"
-	    "You have to defeat the fighters before you can enter this sector.\n\r"
-	    "\x1b[0;33;40m\r\nFighters: 20 / 7\n\r"
-	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? A\r\n";
-	static const struct {
-		bool ansi;
-		const uint8_t *expected;
-		size_t expected_length;
-		size_t ends[4];
-		size_t local_colors;
-		uint64_t color_hash;
-	} cases[] = {
-		{false, plain, sizeof(plain) - 1U, {59U, 103U, 466U, 524U},
-		    6U, UINT64_C(0x17798e683d05096d)},
-		{true, ansi, sizeof(ansi) - 1U, {69U, 113U, 743U, 811U},
-		    42U, UINT64_C(0x07fb2bd6f4a9ec41)},
-	};
-	struct physical_viewer_join viewer;
-	struct viewer_file_fixture stream;
-	struct hostile_mines_hazard_fixture fixture;
-	uint8_t remote[840];
-	size_t ends[4];
-	size_t pass;
-
-	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
-		memset(&viewer, 0, sizeof(viewer));
-		fixture_viewer_initialize(&viewer, &stream,
-		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
-		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
-		hostile_mines_hazard_fixture_initialize(&fixture, &viewer, false);
-		CHECK(hostile_mines_hazard_cycle_run(&fixture,
-		    cases[pass].ansi, false, ends));
-		CHECK(memcmp(ends, cases[pass].ends, sizeof(ends)) == 0
-		    && viewer.join.remote_length == cases[pass].expected_length
-		    && memcmp(remote, cases[pass].expected,
-		    cases[pass].expected_length) == 0
-		    && fixture.cycle.mines.complete
-		    && fixture.cycle.mines.route == YT_DROP_MINES_CANCELLED
-		    && fixture.cycle.mines.amount_stored
-		    && fixture.cycle.mines.amount == 0.0f
-		    && fixture.cycle.mines.player_read
-		    && !fixture.cycle.suppressed
-		    && fixture.cycle.suppression_calls == 0U
-		    && !fixture.cycle.player_written
-		    && !fixture.cycle.sector_written
-		    && fixture.cycle.flush_count == 0U
-		    && fixture.cycle.sound_calls == 0U
-		    && fixture.hazard.complete && !fixture.hazard.terminal
-		    && fixture.hazard.batches == 1U
-		    && fixture.hazard.mines_before == 1.0f
-		    && fixture.hazard.batch == 1.0f
-		    && fixture.hazard.touched == YT_SECTOR_MINE_DAMAGE_SHIELDS
-		    && fixture.draw_position == 3U
-		    && fixture.current_reads == 2U
-		    && fixture.player_reads == 1U
-		    && fixture.player_writes == 1U
-		    && fixture.sector_reads == 2U
-		    && fixture.sector_writes == 1U
-		    && fixture.hazard_sector.mines == 0.0f
-		    && fixture.hazard_player.shields == 10.0f
-		    && fixture.sound_count == 2U
-		    && fixture.sounds[0] == 5.0f && fixture.sounds[1] == 2.0f
-		    && fixture.news_count == 2U
-		    && fixture.news_lengths[0] == sizeof(entry_news) - 1U
-		    && memcmp(fixture.news[0], entry_news,
-		    sizeof(entry_news) - 1U) == 0
-		    && fixture.news_lengths[1] == sizeof(final_news) - 1U
-		    && memcmp(fixture.news[1], final_news,
-		    sizeof(final_news) - 1U) == 0
-		    && !fixture.shrink_called && !fixture.warp_called
-		    && !fixture.destroyed
-		    && strcmp(viewer.join.accumulator, "A") == 0
-		    && viewer.join.queue_length == 0U
-		    && viewer.join.local_fragment_length == 0U
-		    && viewer.join.local_row_count == 23U
-		    && viewer_rows_fnv1a64(&viewer.join)
-		    == UINT64_C(0xf8ff7961dcd3904f)
-		    && viewer.join.local_color_count == cases[pass].local_colors
-		    && viewer_colors_fnv1a64(&viewer.join)
-		    == cases[pass].color_hash
-		    && viewer.join.presentation.foreground == 3.0f
-		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold
-		    == (cases[pass].ansi ? 0.0f : 1.0f)
-		    && viewer.join.presentation.blink
-		    == (cases[pass].ansi ? 0.0f : 1.0f)
-		    && viewer.join.presentation.cached_foreground
-		    == (cases[pass].ansi ? 3.0f : 0.0f)
-		    && viewer.join.pager.foreground == 3
-		    && viewer.join.pager.line_count == 0.0f
-		    && viewer.join.event_count == 30U);
-	}
-	CHECK(sizeof(plain) - 1U == 524U && sizeof(ansi) - 1U == 811U);
-}
-
-static void
-test_hostile_mines_emergency_warp_cycle_presentation(void)
-{
-	static const uint8_t entry_news[] =
-	    "STATIC PILOT hit sector mines in sector 733!";
-	static const uint8_t plain[] =
-	    "\r\nFighters: 20 / 10\n\r"
-	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? D\r\n"
-	    "\r\nYou have 5 mines. Drop how many? [0] -=>\r\n"
-	    "\r\nSector: 733\r\n"
-	    "** WARNING! SECTOR HAS 1 MINES! **\r\n"
-	    "\x07" "Fighters in sector: 10 (Belong to Mercenaries)\r\n"
-	    "Warps lead to: 2, 9\r\n"
-	    "\r\n** Sector is Mined!! **\r\n"
-	    "There are 1 mines here! 1 EXPLODE!\r\n"
-	    "Shields down to 10 units!\r\n"
-	    "\r\n * EMERGENCY WARP ENGAGED! * \r\n"
-	    "\r\nYou enter a wormhole as your engines build up to emergency power!\r\n"
-	    "\r\n     * Engine Temperature *\r\n"
-	    "[ Normal ][ Danger ][ Overheat ]\r\n"
-	    "================================\r\n"
-	    "[*\r\n\r\n"
-	    "You sigh in relief as you look at your scanner and find yourself in\r\n"
-	    "sector 1003. However, it takes you 3 turns to recharge your engines!\r\n"
-	    "\r\nSector: 1003\r\n"
-	    "Fighters in sector: 7 (Belong to Mercenaries)\r\n"
-	    "Warps lead to: 1, 42\r\n"
-	    "\r\nYou have to defeat the fighters before you can enter this sector.\n\r"
-	    "\r\nFighters: 20 / 7\n\r"
-	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? A\r\n";
-	static const uint8_t ansi[] =
-	    "\x1b[0;33;40m\r\nFighters: 20 / 10\n\r"
-	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? D\r\n"
-	    "\r\nYou have 5 mines. Drop how many? [0] -=>\r\n"
-	    "\x1b[0;31;40m\r\nSector: 733\r\n"
-	    "\x1b[0;33;41;5;1m** WARNING! SECTOR HAS 1 MINES! **"
-	    "\x1b[0;33;40m\r\n"
-	    "\x1b[MBO2T200L64FBEAP8FBEAP8FBEAP4FBEAP8FBEAP8FBEAP4T128\x0e"
-	    "\x1b[MBT128O5L48P64CP64C\x0e"
-	    "\x1b[MBT128O5L48P64CP64C\x0e"
-	    "\x1b[MBT128O5L48P64CP64C\x0e"
-	    "\x1b[0;33;40;1mFighters in sector:"
-	    "\x1b[0;33;40m 10 (Belong to Mercenaries)\r\n"
-	    "Warps lead to: 2, 9\r\n"
-	    "\r\n\x1b[0;33;40;5m** Sector is Mined!! **\r\n"
-	    "\x1b[0;33;40;1mThere are 1 mines here! 1 EXPLODE!"
-	    "\x1b[0;33;41m\r\n"
-	    "\x1b[0;33;41;1mShields down to 10 units!\r\n"
-	    "\x1b[0;33;41m\r\n"
-	    "\x1b[0;33;41;5;1m * EMERGENCY WARP ENGAGED! * "
-	    "\x1b[0;33;40m\r\n\r\n"
-	    "\x1b[0;33;40;1m"
-	    "You enter a wormhole as your engines build up to emergency power!\r\n"
-	    "\x1b[0;33;40m\r\n"
-	    "\x1b[0;36;40;1m     * Engine Temperature *\r\n"
-	    "\x1b[0;36;40;1m[ Normal ][ Danger ][ Overheat ]\r\n"
-	    "\x1b[0;32;40;1m================================\r\n"
-	    "\x1b[0;36;40;1m[\x1b[0;32;40;1m*"
-	    "\x1b[0;32;40m\r\n\r\n"
-	    "You sigh in relief as you look at your scanner and find yourself in\r\n"
-	    "sector 1003. However, it takes you 3 turns to recharge your engines!\r\n"
-	    "\x1b[0;31;40m\r\nSector: 1003\r\n"
-	    "\x1b[0;31;40;1mFighters in sector:"
-	    "\x1b[0;31;40m 7 (Belong to Mercenaries)\r\n"
-	    "Warps lead to: 1, 42\r\n"
-	    "\x1b[0;33;40m\r\n"
-	    "\x1b[0;33;40;5;1m"
-	    "You have to defeat the fighters before you can enter this sector.\n\r"
-	    "\x1b[0;33;40m\r\nFighters: 20 / 7\n\r"
-	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? A\r\n";
-	static const struct {
-		bool ansi;
-		const uint8_t *expected;
-		size_t expected_length;
-		size_t ends[4];
-		size_t local_colors;
-		uint64_t color_hash;
-	} cases[] = {
-		{false, plain, sizeof(plain) - 1U, {59U, 103U, 814U, 872U},
-		    6U, UINT64_C(0x17798e683d05096d)},
-		{true, ansi, sizeof(ansi) - 1U, {69U, 113U, 1227U, 1295U},
-		    57U, UINT64_C(0xc66268b4e8225242)},
-	};
-	struct physical_viewer_join viewer;
-	struct viewer_file_fixture stream;
-	struct hostile_mines_hazard_fixture fixture;
-	uint8_t remote[1320];
-	size_t ends[4];
-	size_t pass;
-
-	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
-		memset(&viewer, 0, sizeof(viewer));
-		fixture_viewer_initialize(&viewer, &stream,
-		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
-		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
-		hostile_mines_hazard_fixture_initialize(&fixture, &viewer, true);
-		CHECK(hostile_mines_hazard_cycle_run(&fixture,
-		    cases[pass].ansi, true, ends));
-		CHECK(memcmp(ends, cases[pass].ends, sizeof(ends)) == 0
-		    && viewer.join.remote_length == cases[pass].expected_length
-		    && memcmp(remote, cases[pass].expected,
-		    cases[pass].expected_length) == 0
-		    && fixture.cycle.mines.complete
-		    && fixture.cycle.mines.route == YT_DROP_MINES_CANCELLED
-		    && !fixture.cycle.suppressed
-		    && fixture.hazard.complete && fixture.hazard.terminal
-		    && fixture.hazard.batches == 1U
-		    && fixture.hazard.mines_before == 1.0f
-		    && fixture.hazard.batch == 1.0f
-		    && fixture.hazard.touched == YT_SECTOR_MINE_DAMAGE_SHIELDS
-		    && fixture.hazard_sector.mines == 0.0f
-		    && fixture.draw_position == 9U
-		    && fixture.current_reads == 2U
-		    && fixture.player_reads == 1U
-		    && fixture.player_writes == 1U
-		    && fixture.sector_reads == 1U
-		    && fixture.sector_writes == 1U
-		    && fixture.sound_count == 2U
-		    && fixture.sounds[0] == 5.0f && fixture.sounds[1] == 2.0f
-		    && fixture.news_count == 1U
-		    && fixture.news_lengths[0] == sizeof(entry_news) - 1U
-		    && memcmp(fixture.news[0], entry_news,
-		    sizeof(entry_news) - 1U) == 0
-		    && !fixture.shrink_called && fixture.warp_called
-		    && fixture.emergency_player_reads == 1U
-		    && fixture.emergency_player_writes == 1U
-		    && fixture.emergency_flushes == 1U
-		    && fixture.emergency_waits == 1U
-		    && fixture.emergency_ticks == 1U
-		    && fixture.emergency_heat == 0.0f
-		    && fixture.emergency_destination == 1003.0f
-		    && fixture.emergency_cost == 3.0f
-		    && fixture.emergency_sector_cache == 1003.0f
-		    && fixture.emergency_player.sector == 1003.0f
-		    && fixture.emergency_player.turns == 14.0f
-		    && !fixture.destroyed
-		    && strcmp(viewer.join.accumulator, "A") == 0
-		    && viewer.join.queue_length == 0U
-		    && viewer.join.local_fragment_length == 0U
-		    && viewer.join.local_row_count == 35U
-		    && viewer_rows_fnv1a64(&viewer.join)
-		    == UINT64_C(0x60b5656c028a5a66)
-		    && viewer.join.local_color_count == cases[pass].local_colors
-		    && viewer_colors_fnv1a64(&viewer.join)
-		    == cases[pass].color_hash
-		    && viewer.join.presentation.foreground == 3.0f
-		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold
-		    == (cases[pass].ansi ? 0.0f : 1.0f)
-		    && viewer.join.presentation.blink
-		    == (cases[pass].ansi ? 0.0f : 1.0f)
-		    && viewer.join.presentation.cached_foreground
-		    == (cases[pass].ansi ? 3.0f : 0.0f)
-		    && viewer.join.pager.foreground == 3
-		    && viewer.join.pager.line_count == 0.0f
-		    && viewer.join.event_count == 30U);
-	}
-	CHECK(sizeof(plain) - 1U == 872U && sizeof(ansi) - 1U == 1295U);
-}
-
-static bool
-hostile_mines_black_hole_cycle_run(
-    struct hostile_mines_hazard_fixture *fixture, bool ansi, size_t ends[4])
-{
-	static const uint8_t first_command[] = "D";
-	static const uint8_t second_command[] = "A";
-	static const uint8_t black_hole[] = "A *-BLACK HOLE-* grabs you!";
-	static const uint8_t warning[] =
-	    "You have to defeat the fighters before you can enter this sector.";
-	struct main_mines_cycle_fixture *cycle = &fixture->cycle;
-	struct viewer_pager_join *join = &cycle->presentation.viewer->join;
-
-	join->presentation = state(ansi);
-	if (!hostile_mines_menu_present(cycle, 10.0, first_command,
-	    sizeof(first_command) - 1U))
-		return false;
-	ends[0] = join->remote_length;
-	cycle->mines.current_player_record = 2;
-	if (yt_hostile_menu_dispatch("D") != YT_HOSTILE_MENU_MINE
-	    || !yt_drop_mines_run(&cycle->mines, &main_mines_ops, cycle, NULL))
-		return false;
-	ends[1] = join->remote_length;
-	if (!hostile_mines_scanner_present(cycle, 733.0f, 5.0f, 10.0, 1.0f,
-	    " 2", ", 9")
-	    || !yt_sector_is_black_hole(733.0f, 733.0f, 1444.0f))
-		return false;
-	join->presentation.sound.user_sound = 0.0f;
-	join->presentation.sound.local_sound = 0.0f;
-	if (!hostile_mine_emergency_set_foreground(fixture, 6.0f)
-	    || !hostile_mine_hazard_present(fixture, NULL, 0U,
-	    YT_SECTOR_MINE_OUTPUT_LINE, NULL)
-	    || !hostile_mine_emergency_attention(fixture, black_hole,
-	    sizeof(black_hole) - 1U))
-		return false;
-	join->queue[0] = '\0';
-	join->queue_position = 0U;
-	join->queue_length = 0U;
-	if (!hostile_emergency_warp_present(fixture)
-	    || !hostile_mines_scanner_present(cycle, 1003.0f, 0.0f, 7.0,
-	    1.0f, " 1", ", 42"))
-		return false;
-	join->queue[0] = '\0';
-	join->queue_position = 0U;
-	join->queue_length = 0U;
-	if (!normal_exit_line(join, NULL, 0U))
-		return false;
-	join->presentation.bold = 1.0f;
-	join->presentation.blink = 1.0f;
-	if (!normal_exit_b05d(join, warning, sizeof(warning) - 1U, 0.0f))
-		return false;
-	ends[2] = join->remote_length;
-	if (!hostile_mines_menu_present(cycle, 7.0, second_command,
-	    sizeof(second_command) - 1U)
-	    || yt_hostile_menu_dispatch("A") != YT_HOSTILE_MENU_ATTACK)
-		return false;
-	ends[3] = join->remote_length;
-	return true;
-}
-
-static void
-test_hostile_mines_black_hole_cycle_presentation(void)
-{
-	static const uint8_t plain[] =
-	    "\r\nFighters: 20 / 10\n\r"
-	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? D\r\n"
-	    "\r\nYou have 5 mines. Drop how many? [0] -=>2\r\n"
-	    "\r\nSector 733 is now mined!\n\r"
-	    "\r\nSector: 733\r\n"
-	    "** WARNING! SECTOR HAS 5 MINES! **\r\n"
-	    "\x07" "Fighters in sector: 10 (Belong to Mercenaries)\r\n"
-	    "Warps lead to: 2, 9\r\n"
-	    "\r\nA *-BLACK HOLE-* grabs you!\r\n"
-	    "\r\n * EMERGENCY WARP ENGAGED! * \r\n"
-	    "\r\nYou enter a wormhole as your engines build up to emergency power!\r\n"
-	    "\r\n     * Engine Temperature *\r\n"
-	    "[ Normal ][ Danger ][ Overheat ]\r\n"
-	    "================================\r\n"
-	    "[*\r\n\r\n"
-	    "You sigh in relief as you look at your scanner and find yourself in\r\n"
-	    "sector 1003. However, it takes you 3 turns to recharge your engines!\r\n"
-	    "\r\nSector: 1003\r\n"
-	    "Fighters in sector: 7 (Belong to Mercenaries)\r\n"
-	    "Warps lead to: 1, 42\r\n"
-	    "\r\nYou have to defeat the fighters before you can enter this sector.\n\r"
-	    "\r\nFighters: 20 / 7\n\r"
-	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? A\r\n";
-	static const uint8_t ansi[] =
-	    "\x1b[0;33;40m\r\nFighters: 20 / 10\n\r"
-	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? D\r\n"
-	    "\r\nYou have 5 mines. Drop how many? [0] -=>2\r\n"
-	    "\x1b[0;36;40m\r\n"
-	    "\x1b[0;36;40;5;1mSector 733 is now mined!\n\r"
-	    "\x1b[MBT128O5L48P64CP64C\x0e"
-	    "\x1b[0;31;40m\r\nSector: 733\r\n"
-	    "\x1b[0;33;41;5;1m** WARNING! SECTOR HAS 5 MINES! **"
-	    "\x1b[0;33;40m\r\n"
-	    "\x1b[MBO2T200L64FBEAP8FBEAP8FBEAP4FBEAP8FBEAP8FBEAP4T128\x0e"
-	    "\x1b[MBT128O5L48P64CP64C\x0e"
-	    "\x1b[MBT128O5L48P64CP64C\x0e"
-	    "\x1b[MBT128O5L48P64CP64C\x0e"
-	    "\x1b[0;33;40;1mFighters in sector:"
-	    "\x1b[0;33;40m 10 (Belong to Mercenaries)\r\n"
-	    "Warps lead to: 2, 9\r\n"
-	    "\x1b[0;36;40m\r\n"
-	    "\x1b[0;33;41;5;1mA *-BLACK HOLE-* grabs you!"
-	    "\x1b[0;33;40m\r\n\r\n"
-	    "\x1b[0;33;41;5;1m * EMERGENCY WARP ENGAGED! * "
-	    "\x1b[0;33;40m\r\n\r\n"
-	    "\x1b[0;33;40;1m"
-	    "You enter a wormhole as your engines build up to emergency power!\r\n"
-	    "\x1b[0;33;40m\r\n"
-	    "\x1b[0;36;40;1m     * Engine Temperature *\r\n"
-	    "\x1b[0;36;40;1m[ Normal ][ Danger ][ Overheat ]\r\n"
-	    "\x1b[0;32;40;1m================================\r\n"
-	    "\x1b[0;36;40;1m[\x1b[0;32;40;1m*"
-	    "\x1b[0;32;40m\r\n\r\n"
-	    "You sigh in relief as you look at your scanner and find yourself in\r\n"
-	    "sector 1003. However, it takes you 3 turns to recharge your engines!\r\n"
-	    "\x1b[0;31;40m\r\nSector: 1003\r\n"
-	    "\x1b[0;31;40;1mFighters in sector:"
-	    "\x1b[0;31;40m 7 (Belong to Mercenaries)\r\n"
-	    "Warps lead to: 1, 42\r\n"
-	    "\x1b[0;33;40m\r\n"
-	    "\x1b[0;33;40;5;1m"
-	    "You have to defeat the fighters before you can enter this sector.\n\r"
-	    "\x1b[0;33;40m\r\nFighters: 20 / 7\n\r"
-	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? A\r\n";
-	static const struct {
-		bool ansi;
-		const uint8_t *expected;
-		size_t expected_length;
-		size_t ends[4];
-		size_t local_colors;
-		uint64_t color_hash;
-	} cases[] = {
-		{false, plain, sizeof(plain) - 1U, {59U, 132U, 784U, 842U},
-		    7U, UINT64_C(0xc68cf2d74ffb7ffa)},
-		{true, ansi, sizeof(ansi) - 1U, {69U, 188U, 1221U, 1289U},
-		    58U, UINT64_C(0xae9e4defbd379270)},
-	};
-	struct physical_viewer_join viewer;
-	struct viewer_file_fixture stream;
-	struct hostile_mines_hazard_fixture fixture;
-	struct yt_record record;
-	uint8_t remote[1320];
-	size_t ends[4];
-	size_t pass;
-
-	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
-		memset(&viewer, 0, sizeof(viewer));
-		fixture_viewer_initialize(&viewer, &stream,
-		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
-		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
-		hostile_mines_hazard_fixture_initialize(&fixture, &viewer, false);
-		fixture.cycle.response = (const uint8_t *)"2";
-		fixture.cycle.response_length = 1U;
-		yt_sector_mine_sector_overlay(&fixture.cycle.sector, 3.0f);
-		fixture.draws[0] = 0.0f;
-		fixture.draws[1] = 0.0f;
-		fixture.draws[2] = 0.75f;
-		fixture.draws[3] = 0.5f;
-		fixture.draws[4] = 0.949999988079071f;
-		fixture.draws[5] = 0.999f;
-		yt_record_blank(&record);
-		(void)yt_record_set_number(&record, YT_F49, 17.0f);
-		(void)yt_record_set_number(&record, YT_F57, 733.0f);
-		yt_player_decode(&fixture.emergency_player, &record);
-		CHECK(hostile_mines_black_hole_cycle_run(&fixture,
-		    cases[pass].ansi, ends));
-		CHECK(memcmp(ends, cases[pass].ends, sizeof(ends)) == 0
-		    && viewer.join.remote_length == cases[pass].expected_length
-		    && memcmp(remote, cases[pass].expected,
-		    cases[pass].expected_length) == 0
-		    && fixture.cycle.mines.complete
-		    && fixture.cycle.mines.route == YT_DROP_MINES_ACCEPTED
-		    && fixture.cycle.mines.suppression_set
-		    && fixture.cycle.suppressed
-		    && fixture.cycle.suppression_calls == 1U
-		    && fixture.cycle.player_written
-		    && fixture.cycle.sector_written
-		    && fixture.cycle.flush_count == 2U
-		    && fixture.cycle.written_player.mines == 3.0f
-		    && fixture.cycle.written_sector.mines == 5.0f
-		    && fixture.cycle.sound_calls == 1U
-		    && fixture.draw_position == 6U
-		    && fixture.current_reads == 0U
-		    && fixture.player_reads == 0U
-		    && fixture.player_writes == 0U
-		    && fixture.sector_reads == 0U
-		    && fixture.sector_writes == 0U
-		    && fixture.sound_count == 0U
-		    && fixture.news_count == 0U
-		    && !fixture.shrink_called && !fixture.warp_called
-		    && fixture.emergency_player_reads == 1U
-		    && fixture.emergency_player_writes == 1U
-		    && fixture.emergency_flushes == 1U
-		    && fixture.emergency_waits == 1U
-		    && fixture.emergency_ticks == 1U
-		    && fixture.emergency_heat == 0.0f
-		    && fixture.emergency_destination == 1003.0f
-		    && fixture.emergency_cost == 3.0f
-		    && fixture.emergency_sector_cache == 1003.0f
-		    && fixture.emergency_player.sector == 1003.0f
-		    && fixture.emergency_player.turns == 14.0f
-		    && !fixture.destroyed
-		    && strcmp(viewer.join.accumulator, "A") == 0
-		    && viewer.join.queue_length == 0U
-		    && viewer.join.local_fragment_length == 0U
-		    && viewer.join.local_row_count == 35U
-		    && viewer_rows_fnv1a64(&viewer.join)
-		    == UINT64_C(0x27a7ee15e38ad468)
-		    && viewer.join.local_color_count == cases[pass].local_colors
-		    && viewer_colors_fnv1a64(&viewer.join)
-		    == cases[pass].color_hash
-		    && viewer.join.presentation.foreground == 3.0f
-		    && viewer.join.presentation.background == 0.0f
-		    && viewer.join.presentation.bold
-		    == (cases[pass].ansi ? 0.0f : 1.0f)
-		    && viewer.join.presentation.blink
-		    == (cases[pass].ansi ? 0.0f : 1.0f)
-		    && viewer.join.presentation.cached_foreground
-		    == (cases[pass].ansi ? 3.0f : 0.0f)
-		    && viewer.join.pager.foreground == 3
-		    && viewer.join.pager.line_count == 0.0f
-		    && viewer.join.event_count == 35U);
-	}
-	CHECK(sizeof(plain) - 1U == 842U && sizeof(ansi) - 1U == 1289U);
-}
 
 static bool
 direct_emergency_warp_invalid_retry_continue(
@@ -20805,7 +19102,7 @@ direct_emergency_warp_invalid_retry_continue(
 	static const uint8_t prompt[] = "[y/N] -=> ";
 	static const uint8_t first[] = "X;Y";
 	static const uint8_t second[] = "n";
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	struct yt_present_result result;
 	enum yt_yes_no_answer answer;
 	char output[80];
@@ -20872,7 +19169,7 @@ static bool
 direct_emergency_warp_invalid_retry_run(
     struct hostile_mines_hazard_fixture *fixture, bool ansi)
 {
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 
 	join->presentation = state(ansi);
 	return direct_emergency_warp_invalid_retry_continue(fixture);
@@ -20923,7 +19220,7 @@ test_direct_emergency_warp_invalid_retry_presentation(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		CHECK(direct_emergency_warp_invalid_retry_run(&fixture,
 		    cases[pass].ansi));
 		CHECK(viewer.join.remote_length == cases[pass].expected_length
@@ -20971,7 +19268,7 @@ direct_emergency_warp_mode_decline_run(
 	    "to recharge! You also risk a melt down! Are you sure you wish to do this?";
 	static const uint8_t prompt[] = "[y/N] -=> ";
 	static const uint8_t answer_text[] = "N";
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	struct yt_present_result result;
 	enum yt_yes_no_answer answer;
 	char output[80];
@@ -21036,7 +19333,7 @@ test_direct_emergency_warp_modes(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", true, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		CHECK(direct_emergency_warp_mode_decline_run(&fixture, true,
 		    cases[pass].mode));
 		CHECK(viewer.join.remote_length == cases[pass].expected_length
@@ -21111,7 +19408,7 @@ test_direct_emergency_warp_accepted_modes(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", true, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.draws[0] = 0.0f;
 		fixture.draws[1] = 0.0f;
 		fixture.draws[2] = 0.75f;
@@ -21203,7 +19500,7 @@ test_direct_emergency_warp_inherited_pager(void)
 		viewer.join.pager.line_count = 21.0f;
 		viewer.join.response[0] = '\0';
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		CHECK(direct_emergency_warp_mode_decline_run(&fixture,
 		    cases[pass].ansi, 0.0f));
 		CHECK(viewer.join.remote_length == cases[pass].expected_length
@@ -21256,7 +19553,7 @@ direct_emergency_warp_invalid_boundary_continue(
 	    "to recharge! You also risk a melt down! Are you sure you wish to do this?";
 	static const uint8_t prompt[] = "[y/N] -=> ";
 	static const uint8_t invalid[] = "X";
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	struct yt_present_result result;
 	enum yt_yes_no_answer answer;
 	char output[80];
@@ -21311,7 +19608,7 @@ direct_emergency_warp_invalid_boundary_run(
     struct hostile_mines_hazard_fixture *fixture, bool ansi,
     struct direct_warp_invalid_boundary_state *boundary)
 {
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 
 	if (boundary == NULL)
 		return false;
@@ -21362,7 +19659,7 @@ test_direct_emergency_warp_invalid_boundaries(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		CHECK(direct_emergency_warp_invalid_boundary_run(&fixture,
 		    cases[pass].ansi, &boundary));
 		CHECK(viewer.join.remote_length == cases[pass].expected_length
@@ -21430,7 +19727,7 @@ direct_emergency_warp_parent_copy_failure_continue(
 	    "This is a desperate move! Your engines will be drained and will take time";
 	static const uint8_t warning_two[] =
 	    "to recharge! You also risk a melt down! Are you sure you wish to do this?";
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	struct yt_present_result result;
 
 	if (copy == NULL)
@@ -21471,7 +19768,7 @@ direct_emergency_warp_parent_copy_failure_run(
     enum direct_warp_parent_copy_failure failure,
     struct direct_warp_parent_copy_state *copy)
 {
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 
 	if (copy == NULL)
 		return false;
@@ -21550,7 +19847,7 @@ test_direct_emergency_warp_parent_copy_failures(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		memset(&copy, 0, sizeof(copy));
 		CHECK(direct_emergency_warp_parent_copy_failure_run(&fixture,
 		    cases[pass].ansi, cases[pass].failure, &copy));
@@ -21579,7 +19876,7 @@ direct_emergency_warp_hostile_menu_prefix(
 {
 	static const uint8_t prompt[] =
 	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? ";
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	uint8_t row[96];
 	size_t row_length;
 	char transformed[4];
@@ -21599,7 +19896,7 @@ direct_emergency_warp_hostile_menu_prefix(
 	    sizeof(join->accumulator));
 	memcpy(join->accumulator, command, command_length);
 	join->accumulator[command_length] = '\0';
-	if (!main_buy_present_echo(&fixture->cycle.presentation, command,
+	if (!main_buy_present_echo(&fixture->presentation, command,
 	    command_length) || !normal_exit_line(join, NULL, 0U))
 		return false;
 	*end = join->remote_length;
@@ -21616,7 +19913,7 @@ direct_emergency_warp_main_command_prefix(
 	static const uint8_t main_prompt[] =
 	    "Time: 14:59  Main Command (?=Help)? ";
 	static const uint8_t command[] = "W";
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 
 	if (end == NULL)
 		return false;
@@ -21631,7 +19928,7 @@ direct_emergency_warp_main_command_prefix(
 	yt_pager_editor_enter(&join->pager, join->accumulator,
 	    sizeof(join->accumulator));
 	memcpy(join->accumulator, command, sizeof(command));
-	if (!main_buy_present_echo(&fixture->cycle.presentation, command,
+	if (!main_buy_present_echo(&fixture->presentation, command,
 	    sizeof(command) - 1U) || !normal_exit_line(join, NULL, 0U))
 		return false;
 	*end = join->remote_length;
@@ -21825,7 +20122,7 @@ test_direct_emergency_warp_gate_runtime_failures(void)
 			    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 			    "YTSCORE.ASC", modes[mode].ansi, remote, sizeof(remote));
 			memset(&fixture, 0, sizeof(fixture));
-			fixture.cycle.presentation.viewer = &viewer;
+			fixture.presentation.viewer = &viewer;
 			memset(&record, 0xa5, sizeof(record));
 			(void)yt_record_set_number(&record, YT_F49, 17.0f);
 			(void)yt_record_set_number(&record, YT_F57, 733.0f);
@@ -21875,7 +20172,7 @@ direct_emergency_warp_ade0_prefix_failure_continue(
 	    "to recharge! You also risk a melt down! Are you sure you wish to do this?";
 	static const uint8_t prompt[] = "[y/N] -=> ";
 	static const uint8_t submitted[] = "A";
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	struct yt_present_result result;
 	struct yt_command_save_transform save;
 	struct yt_repeat_prefix_transform prefix;
@@ -22020,7 +20317,7 @@ test_direct_emergency_warp_ade0_prefix_failures(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", cases[index].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		memset(&record, 0xa5, sizeof(record));
 		(void)yt_record_set_number(&record, YT_F49, 17.0f);
 		(void)yt_record_set_number(&record, YT_F57, 733.0f);
@@ -22085,7 +20382,7 @@ direct_emergency_warp_a8d2_failure_continue(
 	static const uint8_t warning_two[] =
 	    "to recharge! You also risk a melt down! Are you sure you wish to do this?";
 	static const char prompt[] = "[y/N] -=> ";
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	struct yt_present_result result;
 	struct yt_error error;
 	size_t prompt_length = sizeof(prompt) - 1U;
@@ -22253,7 +20550,7 @@ test_direct_emergency_warp_a8d2_failures(void)
 			    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 			    "YTSCORE.ASC", modes[mode].ansi, remote, sizeof(remote));
 			memset(&fixture, 0, sizeof(fixture));
-			fixture.cycle.presentation.viewer = &viewer;
+			fixture.presentation.viewer = &viewer;
 			memset(&record, 0xa5, sizeof(record));
 			(void)yt_record_set_number(&record, YT_F49, 17.0f);
 			(void)yt_record_set_number(&record, YT_F57, 733.0f);
@@ -22334,7 +20631,7 @@ direct_emergency_warp_ade0_late_failure_continue(
 	static const uint8_t warning_two[] =
 	    "to recharge! You also risk a melt down! Are you sure you wish to do this?";
 	static const uint8_t prompt[] = "[y/N] -=> ";
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	struct yt_present_result result;
 	struct yt_command_save_transform save;
 	struct yt_repeat_prefix_transform prefix;
@@ -22569,7 +20866,7 @@ test_direct_emergency_warp_ade0_late_failures(void)
 			    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 			    "YTSCORE.ASC", modes[mode].ansi, remote, sizeof(remote));
 			memset(&fixture, 0, sizeof(fixture));
-			fixture.cycle.presentation.viewer = &viewer;
+			fixture.presentation.viewer = &viewer;
 			memset(&record, 0xa5, sizeof(record));
 			(void)yt_record_set_number(&record, YT_F49, 17.0f);
 			(void)yt_record_set_number(&record, YT_F57, 733.0f);
@@ -22647,7 +20944,7 @@ direct_emergency_warp_hostile_parent_copy_failure_run(
     struct direct_warp_hostile_parent_copy_cycle_state *cycle,
     size_t ends[2])
 {
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 
 	if (copy == NULL
 	    || cycle == NULL || ends == NULL)
@@ -22766,7 +21063,7 @@ test_direct_emergency_warp_hostile_parent_copy_failures(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		memset(&record, 0xa5, sizeof(record));
 		(void)yt_record_set_number(&record, YT_F49, 17.0f);
 		(void)yt_record_set_number(&record, YT_F57, 733.0f);
@@ -22883,7 +21180,7 @@ direct_emergency_warp_warning_carrier_continue(
 {
 	static const uint8_t warning_one[] =
 	    "This is a desperate move! Your engines will be drained and will take time";
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	struct yt_present_result result;
 
 	if (carrier == NULL)
@@ -22907,7 +21204,7 @@ direct_emergency_warp_warning_carrier_run(
 {
 	static const uint8_t warning_one[] =
 	    "This is a desperate move! Your engines will be drained and will take time";
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 
 	if (carrier == NULL)
 		return false;
@@ -22939,7 +21236,7 @@ test_direct_emergency_warp_warning_carrier(void)
 		    "YTSCORE.ASC", pass != 0U, remote, sizeof(remote));
 		viewer.join.fail_at = 1U;
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		CHECK(direct_emergency_warp_warning_carrier_run(&fixture,
 		    pass != 0U, &carrier));
 		CHECK(viewer.join.remote_length == 2U
@@ -22987,7 +21284,7 @@ direct_emergency_warp_hostile_warning_carrier_run(
 {
 	static const uint8_t warning_one[] =
 	    "This is a desperate move! Your engines will be drained and will take time";
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 
 	if (carrier == NULL || cycle == NULL || ends == NULL)
 		return false;
@@ -23059,7 +21356,7 @@ test_direct_emergency_warp_hostile_warning_carrier(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		memset(&record, 0xa5, sizeof(record));
 		(void)yt_record_set_number(&record, YT_F49, 17.0f);
 		(void)yt_record_set_number(&record, YT_F57, 733.0f);
@@ -23132,7 +21429,7 @@ direct_emergency_warp_warning_two_carrier_continue(
 	    "This is a desperate move! Your engines will be drained and will take time";
 	static const uint8_t warning_two[] =
 	    "to recharge! You also risk a melt down! Are you sure you wish to do this?";
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	struct yt_present_result result;
 
 	if (carrier == NULL
@@ -23200,7 +21497,7 @@ test_direct_emergency_warp_warning_two_carrier(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", cases[index].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		memset(&carrier, 0, sizeof(carrier));
 		caller_end = 0U;
 		if (cases[index].caller == DIRECT_CALLER)
@@ -23243,7 +21540,7 @@ direct_emergency_warp_accepted_answer_run(
 	static const uint8_t prompt[] = "[y/N] -=> ";
 	static const uint8_t typed_answer[] = "y";
 	static const uint8_t queued_answer_text[] = "Y";
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	struct yt_present_result result;
 	struct yt_input_value selected;
 	const uint8_t *answer = queued_answer
@@ -23392,7 +21689,7 @@ test_direct_emergency_warp_accepted_presentation(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.draws[0] = 0.0f;
 		fixture.draws[1] = 0.0f;
 		fixture.draws[2] = 0.75f;
@@ -23514,7 +21811,7 @@ test_direct_emergency_warp_child_failures(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.emergency_failure = cases[pass].failure;
 		fixture.emergency_error_number = cases[pass].error_number;
 		fixture.emergency_saved_ip = cases[pass].saved_ip;
@@ -23676,7 +21973,7 @@ direct_emergency_warp_reentry_scanner(
 		{SENSOR_JOIN_RAW, ", 9"},
 		{SENSOR_JOIN_LINE, NULL},
 	};
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	struct yt_present_result result;
 	float reveal_draw;
 	size_t index;
@@ -23736,7 +22033,7 @@ direct_emergency_warp_reentry_failure_run(
 		{SENSOR_JOIN_RAW, ", 9"},
 		{SENSOR_JOIN_LINE, NULL},
 	};
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	struct yt_present_result result;
 	float reveal_draw;
 	size_t index;
@@ -23810,7 +22107,7 @@ direct_emergency_warp_friendly_reentry(
 {
 	static const uint8_t main_prompt[] =
 	    "Time: 14:59  Main Command (?=Help)? ";
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 
 	if (!direct_emergency_warp_reentry_scanner(fixture, cycle))
 		return false;
@@ -23849,7 +22146,7 @@ direct_emergency_warp_mined_reentry_scanner(
 		{SENSOR_JOIN_RAW, ", 9"},
 		{SENSOR_JOIN_LINE, NULL},
 	};
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	struct yt_present_result result;
 	float reveal_draw;
 	size_t index;
@@ -23901,7 +22198,7 @@ direct_emergency_warp_hostile_reentry(
 		{SENSOR_JOIN_RAW, ", 9"},
 		{SENSOR_JOIN_LINE, NULL},
 	};
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	struct yt_present_result result;
 	float reveal_draw;
 	size_t index;
@@ -23965,7 +22262,7 @@ direct_emergency_warp_fresh_hostile_menu_command(
 {
 	static const uint8_t prompt[] =
 	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? ";
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	uint8_t row[96];
 	size_t row_length;
 
@@ -23990,7 +22287,7 @@ direct_emergency_warp_fresh_hostile_menu_command(
 	    sizeof(join->accumulator));
 	memcpy(join->accumulator, command, command_length);
 	join->accumulator[command_length] = '\0';
-	if (!main_buy_present_echo(&fixture->cycle.presentation, command,
+	if (!main_buy_present_echo(&fixture->presentation, command,
 	    command_length) || !normal_exit_line(join, NULL, 0U))
 		return false;
 	join->source[0] = '\r';
@@ -24029,7 +22326,7 @@ direct_emergency_warp_fresh_hostile_menu_carrier_failure(
 
 	if (fixture == NULL || cycle == NULL)
 		return false;
-	join = &fixture->cycle.presentation.viewer->join;
+	join = &fixture->presentation.viewer->join;
 	fighter_cut = cut == DIRECT_WARP_HOSTILE_MENU_FIGHTER_BEFORE
 	    || cut == DIRECT_WARP_HOSTILE_MENU_FIGHTER_AFTER;
 	before = cut == DIRECT_WARP_HOSTILE_MENU_FIGHTER_BEFORE
@@ -24069,10 +22366,10 @@ direct_emergency_warp_fresh_hostile_attack_admission_amount_with_ship(
 
 	if (fixture == NULL || cycle == NULL || response == NULL
 	    || response_length == 0U
-	    || response_length >= sizeof(fixture->cycle.presentation.viewer->join.accumulator)
+	    || response_length >= sizeof(fixture->presentation.viewer->join.accumulator)
 	    || cycle->fresh_hostile_selected != 'A')
 		return false;
-	join = &fixture->cycle.presentation.viewer->join;
+	join = &fixture->presentation.viewer->join;
 	cycle->fresh_hostile_attack_admission_entered = true;
 	if (!normal_exit_b05d(join, heading, sizeof(heading) - 1U, 0.0f)
 	    || !normal_exit_b05d(join, prompt, sizeof(prompt) - 1U, 1.0f))
@@ -24081,7 +22378,7 @@ direct_emergency_warp_fresh_hostile_attack_admission_amount_with_ship(
 	    sizeof(join->accumulator));
 	memcpy(join->accumulator, response, response_length);
 	join->accumulator[response_length] = '\0';
-	if (!main_buy_present_echo(&fixture->cycle.presentation, response,
+	if (!main_buy_present_echo(&fixture->presentation, response,
 	    response_length) || !normal_exit_line(join, NULL, 0U))
 		return false;
 	join->source[0] = '\r';
@@ -24155,7 +22452,7 @@ direct_emergency_warp_fresh_hostile_attack_opening_success(
 		return false;
 	memset(entry, 0, sizeof(*entry));
 	io = &entry->io;
-	join = &fixture->cycle.presentation.viewer->join;
+	join = &fixture->presentation.viewer->join;
 	io->database.file = tmpfile();
 	if (io->database.file == NULL)
 		return false;
@@ -24472,7 +22769,7 @@ direct_warp_attack_combat_sound(void *context, float selector,
 {
 	struct direct_warp_attack_combat_join *join = context;
 	struct viewer_pager_join *viewer =
-	    &join->fixture->cycle.presentation.viewer->join;
+	    &join->fixture->presentation.viewer->join;
 	struct yt_present_result result;
 
 	(void)error;
@@ -24531,7 +22828,7 @@ direct_warp_attack_surrender_present(void *context, const uint8_t *text,
 {
 	struct direct_warp_attack_combat_join *join = context;
 	struct viewer_pager_join *viewer =
-	    &join->fixture->cycle.presentation.viewer->join;
+	    &join->fixture->presentation.viewer->join;
 
 	(void)error;
 	switch (kind) {
@@ -24566,7 +22863,7 @@ direct_warp_attack_surrender_sound(void *context,
 {
 	struct direct_warp_attack_combat_join *join = context;
 	struct viewer_pager_join *viewer =
-	    &join->fixture->cycle.presentation.viewer->join;
+	    &join->fixture->presentation.viewer->join;
 	struct yt_present_result result;
 
 	(void)kind;
@@ -24587,7 +22884,7 @@ direct_warp_attack_surrender_prompt(void *context, const uint8_t *prompt,
 {
 	struct direct_warp_attack_combat_join *join = context;
 	struct viewer_pager_join *viewer =
-	    &join->fixture->cycle.presentation.viewer->join;
+	    &join->fixture->presentation.viewer->join;
 	struct yt_present_result result;
 	const uint8_t *response = join->surrender_answer
 	    == YT_HOSTILE_SURRENDER_ANSWER_NO ? (const uint8_t *)"N"
@@ -24604,7 +22901,7 @@ direct_warp_attack_surrender_prompt(void *context, const uint8_t *prompt,
 	    sizeof(viewer->accumulator));
 	memcpy(viewer->accumulator, response, response_length + 1U);
 	if (response_length != 0U
-	    && !main_buy_present_echo(&join->fixture->cycle.presentation,
+	    && !main_buy_present_echo(&join->fixture->presentation,
 	    response, response_length))
 		return false;
 	if (!normal_exit_line(viewer, NULL, 0U))
@@ -24650,7 +22947,7 @@ direct_warp_attack_combat_present(void *context, const uint8_t *text,
 {
 	struct direct_warp_attack_combat_join *join = context;
 	struct viewer_pager_join *viewer =
-	    &join->fixture->cycle.presentation.viewer->join;
+	    &join->fixture->presentation.viewer->join;
 
 	(void)error;
 	switch (kind) {
@@ -24709,7 +23006,7 @@ direct_warp_attack_spill_present(void *context, const uint8_t *text,
 {
 	struct direct_warp_attack_combat_join *join = context;
 	struct viewer_pager_join *viewer =
-	    &join->fixture->cycle.presentation.viewer->join;
+	    &join->fixture->presentation.viewer->join;
 
 	(void)error;
 	++join->spill_present_calls;
@@ -24851,7 +23148,7 @@ direct_warp_attack_persistence_blank(void *context, struct yt_error *error)
 {
 	struct direct_warp_attack_combat_join *join = context;
 	struct viewer_pager_join *viewer =
-	    &join->fixture->cycle.presentation.viewer->join;
+	    &join->fixture->presentation.viewer->join;
 
 	(void)error;
 	++join->persistence_blanks;
@@ -24951,7 +23248,7 @@ direct_warp_attack_tail_present(void *context,
 {
 	struct direct_warp_attack_combat_join *join = context;
 	struct viewer_pager_join *viewer =
-	    &join->fixture->cycle.presentation.viewer->join;
+	    &join->fixture->presentation.viewer->join;
 
 	(void)error;
 	if (text == NULL) {
@@ -24988,7 +23285,7 @@ direct_warp_attack_clearance_present(void *context, const uint8_t *text,
 {
 	struct direct_warp_attack_combat_join *join = context;
 	struct viewer_pager_join *viewer =
-	    &join->fixture->cycle.presentation.viewer->join;
+	    &join->fixture->presentation.viewer->join;
 
 	(void)error;
 	++join->clearance_present_calls;
@@ -25001,7 +23298,7 @@ direct_warp_attack_clearance_sound(void *context, float selector,
 {
 	struct direct_warp_attack_combat_join *join = context;
 	struct viewer_pager_join *viewer =
-	    &join->fixture->cycle.presentation.viewer->join;
+	    &join->fixture->presentation.viewer->join;
 	struct yt_present_result result;
 
 	(void)error;
@@ -25102,7 +23399,7 @@ direct_warp_attack_victory_file_present(void *context, const uint8_t *line,
 {
 	struct direct_warp_attack_combat_join *join = context;
 	struct viewer_pager_join *viewer =
-	    &join->fixture->cycle.presentation.viewer->join;
+	    &join->fixture->presentation.viewer->join;
 
 	(void)error;
 	++join->victory_file_rows;
@@ -25133,7 +23430,7 @@ direct_warp_attack_victory_present(void *context, const uint8_t *text,
 {
 	struct direct_warp_attack_combat_join *join = context;
 	struct viewer_pager_join *viewer =
-	    &join->fixture->cycle.presentation.viewer->join;
+	    &join->fixture->presentation.viewer->join;
 	struct yt_present_result result;
 	enum yt_present_status status;
 
@@ -25175,7 +23472,7 @@ direct_warp_attack_victory_foreground(void *context, float foreground)
 {
 	struct direct_warp_attack_combat_join *join = context;
 	struct viewer_pager_join *viewer =
-	    &join->fixture->cycle.presentation.viewer->join;
+	    &join->fixture->presentation.viewer->join;
 
 	viewer->presentation.foreground = foreground;
 	viewer->pager.foreground = (int)foreground;
@@ -25186,7 +23483,7 @@ direct_warp_attack_victory_blink(void *context, float blink)
 {
 	struct direct_warp_attack_combat_join *join = context;
 	struct viewer_pager_join *viewer =
-	    &join->fixture->cycle.presentation.viewer->join;
+	    &join->fixture->presentation.viewer->join;
 
 	yt_present_set_blink(&viewer->presentation, blink);
 }
@@ -25196,7 +23493,7 @@ direct_warp_attack_victory_clear_queue(void *context)
 {
 	struct direct_warp_attack_combat_join *join = context;
 	struct viewer_pager_join *viewer =
-	    &join->fixture->cycle.presentation.viewer->join;
+	    &join->fixture->presentation.viewer->join;
 
 	viewer->queue_position = 0U;
 	viewer->queue_length = 0U;
@@ -25283,7 +23580,7 @@ direct_warp_attack_victory_sound(void *context, float selector,
 {
 	struct direct_warp_attack_combat_join *join = context;
 	struct viewer_pager_join *viewer =
-	    &join->fixture->cycle.presentation.viewer->join;
+	    &join->fixture->presentation.viewer->join;
 	struct yt_present_result result;
 
 	if (!direct_warp_attack_victory_step(join, operation, error)
@@ -25438,7 +23735,7 @@ direct_warp_attack_return_hostile_menu(
 
 	if (join == NULL || join->fixture == NULL || join->cycle == NULL)
 		return false;
-	viewer = &join->fixture->cycle.presentation.viewer->join;
+	viewer = &join->fixture->presentation.viewer->join;
 	yt_error_clear(&error);
 	if (!direct_warp_attack_combat_read_player(join, 2, &player, &error)
 	    || !yt_hostile_menu_row(player.fighters, defenders, row,
@@ -25454,7 +23751,7 @@ direct_warp_attack_return_hostile_menu(
 	yt_pager_editor_enter(&viewer->pager, viewer->accumulator,
 	    sizeof(viewer->accumulator));
 	memcpy(viewer->accumulator, command, sizeof(command));
-	if (!main_buy_present_echo(&join->fixture->cycle.presentation,
+	if (!main_buy_present_echo(&join->fixture->presentation,
 	    command, sizeof(command) - 1U)
 	    || !normal_exit_line(viewer, NULL, 0U))
 		return false;
@@ -25630,7 +23927,7 @@ direct_warp_bribe_attack_present(void *context, const uint8_t *text,
 {
 	struct direct_warp_bribe_attack_join *join = context;
 	struct viewer_pager_join *viewer =
-	    &join->fixture->cycle.presentation.viewer->join;
+	    &join->fixture->presentation.viewer->join;
 
 	(void)error;
 	if ((size_t)kind >= YT_ARRAY_LEN(join->presentations))
@@ -25674,7 +23971,7 @@ direct_warp_bribe_attack_amount(void *context, char *response,
 {
 	struct direct_warp_bribe_attack_join *join = context;
 	struct viewer_pager_join *viewer =
-	    &join->fixture->cycle.presentation.viewer->join;
+	    &join->fixture->presentation.viewer->join;
 
 	(void)error;
 	++join->amount_calls;
@@ -25690,7 +23987,7 @@ direct_warp_bribe_attack_amount(void *context, char *response,
 	viewer->accumulator[join->amount_response_length] = '\0';
 	memcpy(response, join->amount_response, join->amount_response_length);
 	response[join->amount_response_length] = '\0';
-	if (!main_buy_present_echo(&join->fixture->cycle.presentation,
+	if (!main_buy_present_echo(&join->fixture->presentation,
 	    join->amount_response, join->amount_response_length)
 	    || !normal_exit_line(viewer, NULL, 0U))
 		return false;
@@ -26129,7 +24426,7 @@ direct_emergency_warp_owner_get_failure(
 		{SENSOR_JOIN_RAW, ", 9"},
 		{SENSOR_JOIN_LINE, NULL},
 	};
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	struct yt_present_result result;
 	float reveal_draw;
 	size_t index;
@@ -26207,7 +24504,7 @@ direct_emergency_warp_quiet_reentry_run(
 	};
 	const struct sensor_join_output *scanner = sector_1003
 	    ? scanner_1003 : scanner_733;
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	size_t index;
 
 	join->presentation.foreground = 1.0f;
@@ -26281,7 +24578,7 @@ direct_emergency_warp_main_ordinary_return_run(
 	static const uint8_t command[] = "W";
 	static const uint8_t no_turns_row[] =
 	    "Sorry but you have no turns left.";
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	struct yt_present_result result;
 	bool denied;
 
@@ -26299,7 +24596,7 @@ direct_emergency_warp_main_ordinary_return_run(
 	yt_pager_editor_enter(&join->pager, join->accumulator,
 	    sizeof(join->accumulator));
 	memcpy(join->accumulator, command, sizeof(command));
-	if (!main_buy_present_echo(&fixture->cycle.presentation, command,
+	if (!main_buy_present_echo(&fixture->presentation, command,
 	    sizeof(command) - 1U) || !normal_exit_line(join, NULL, 0U))
 		return false;
 	ends[0] = join->remote_length;
@@ -26387,7 +24684,7 @@ test_direct_emergency_warp_main_ordinary_returns(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.emergency_sector_cache = 733.0f;
 		memset(&record, 0xa5, sizeof(record));
 		(void)yt_record_set_number(&record, YT_F49,
@@ -26462,7 +24759,7 @@ direct_emergency_warp_main_cycle_run(
 	static const uint8_t main_prompt[] =
 	    "Time: 14:59  Main Command (?=Help)? ";
 	static const uint8_t command[] = "W";
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	size_t parent_end;
 
 	if (cycle == NULL || ends == NULL)
@@ -26480,7 +24777,7 @@ direct_emergency_warp_main_cycle_run(
 	yt_pager_editor_enter(&join->pager, join->accumulator,
 	    sizeof(join->accumulator));
 	memcpy(join->accumulator, command, sizeof(command));
-	if (!main_buy_present_echo(&fixture->cycle.presentation, command,
+	if (!main_buy_present_echo(&fixture->presentation, command,
 	    sizeof(command) - 1U) || !normal_exit_line(join, NULL, 0U))
 		return false;
 	ends[0] = join->remote_length;
@@ -26508,7 +24805,7 @@ direct_emergency_warp_main_reentry_failure_run(
 	static const uint8_t main_prompt[] =
 	    "Time: 14:59  Main Command (?=Help)? ";
 	static const uint8_t command[] = "W";
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	size_t parent_end;
 
 	if (cycle == NULL || ends == NULL)
@@ -26530,7 +24827,7 @@ direct_emergency_warp_main_reentry_failure_run(
 	yt_pager_editor_enter(&join->pager, join->accumulator,
 	    sizeof(join->accumulator));
 	memcpy(join->accumulator, command, sizeof(command));
-	if (!main_buy_present_echo(&fixture->cycle.presentation, command,
+	if (!main_buy_present_echo(&fixture->presentation, command,
 	    sizeof(command) - 1U) || !normal_exit_line(join, NULL, 0U))
 		return false;
 	ends[0] = join->remote_length;
@@ -26594,7 +24891,7 @@ test_direct_emergency_warp_main_cycle(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.emergency_sector_cache = 733.0f;
 		fixture.draws[0] = 0.0f;
 		fixture.draws[1] = 0.0f;
@@ -26685,7 +24982,7 @@ direct_emergency_warp_main_scanner_get_failure_run(
 	static const uint8_t main_prompt[] =
 	    "Time: 14:59  Main Command (?=Help)? ";
 	static const uint8_t command[] = "W";
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	size_t parent_end;
 
 	if (cycle == NULL || ends == NULL)
@@ -26704,7 +25001,7 @@ direct_emergency_warp_main_scanner_get_failure_run(
 	yt_pager_editor_enter(&join->pager, join->accumulator,
 	    sizeof(join->accumulator));
 	memcpy(join->accumulator, command, sizeof(command));
-	if (!main_buy_present_echo(&fixture->cycle.presentation, command,
+	if (!main_buy_present_echo(&fixture->presentation, command,
 	    sizeof(command) - 1U) || !normal_exit_line(join, NULL, 0U))
 		return false;
 	ends[0] = join->remote_length;
@@ -26759,7 +25056,7 @@ test_direct_emergency_warp_main_scanner_get_failure(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.emergency_sector_cache = 733.0f;
 		fixture.draws[0] = 0.0f;
 		fixture.draws[1] = 0.0f;
@@ -26847,7 +25144,7 @@ direct_emergency_warp_main_hostile_handoff_run(
 	static const uint8_t main_prompt[] =
 	    "Time: 14:59  Main Command (?=Help)? ";
 	static const uint8_t command[] = "W";
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	size_t parent_end;
 
 	if (cycle == NULL || ends == NULL)
@@ -26865,7 +25162,7 @@ direct_emergency_warp_main_hostile_handoff_run(
 	yt_pager_editor_enter(&join->pager, join->accumulator,
 	    sizeof(join->accumulator));
 	memcpy(join->accumulator, command, sizeof(command));
-	if (!main_buy_present_echo(&fixture->cycle.presentation, command,
+	if (!main_buy_present_echo(&fixture->presentation, command,
 	    sizeof(command) - 1U) || !normal_exit_line(join, NULL, 0U))
 		return false;
 	ends[0] = join->remote_length;
@@ -26919,7 +25216,7 @@ test_direct_emergency_warp_main_hostile_handoff(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.emergency_sector_cache = 733.0f;
 		fixture.draws[0] = 0.0f;
 		fixture.draws[1] = 0.0f;
@@ -27020,7 +25317,7 @@ direct_emergency_warp_hostile_cycle_run(
 {
 	static const uint8_t prompt[] =
 	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? ";
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	uint8_t row[96];
 	size_t row_length;
 	size_t parent_end;
@@ -27050,7 +25347,7 @@ direct_emergency_warp_hostile_cycle_run(
 	    sizeof(join->accumulator));
 	memcpy(join->accumulator, command, command_length);
 	join->accumulator[command_length] = '\0';
-	if (!main_buy_present_echo(&fixture->cycle.presentation, command,
+	if (!main_buy_present_echo(&fixture->presentation, command,
 	    command_length) || !normal_exit_line(join, NULL, 0U))
 		return false;
 	ends[0] = join->remote_length;
@@ -27175,7 +25472,7 @@ test_direct_emergency_warp_hostile_cycles(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.emergency_sector_cache = 733.0f;
 		fixture.draws[0] = 0.0f;
 		fixture.draws[1] = 0.0f;
@@ -27279,14 +25576,14 @@ direct_emergency_warp_hostile_invalid_retry_cycle_run(
 	if (yt_no_turn_gate_denied(fixture->emergency_player.turns)
 	    || !direct_emergency_warp_invalid_retry_continue(fixture))
 		return false;
-	if (fixture->cycle.presentation.viewer->join.source_length != 1U)
+	if (fixture->presentation.viewer->join.source_length != 1U)
 		return false;
 	cycle->confirmation_result =
-	    (uint8_t)fixture->cycle.presentation.viewer->join.source[0];
-	ends[1] = fixture->cycle.presentation.viewer->join.remote_length;
+	    (uint8_t)fixture->presentation.viewer->join.source[0];
+	ends[1] = fixture->presentation.viewer->join.remote_length;
 	if (!direct_emergency_warp_quiet_reentry(fixture, cycle, false))
 		return false;
-	ends[2] = fixture->cycle.presentation.viewer->join.remote_length;
+	ends[2] = fixture->presentation.viewer->join.remote_length;
 	return true;
 }
 
@@ -27342,7 +25639,7 @@ test_direct_emergency_warp_hostile_invalid_retry_cycle(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.emergency_sector_cache = 733.0f;
 		memset(&record, 0xa5, sizeof(record));
 		(void)yt_record_set_number(&record, YT_F49, 17.0f);
@@ -27427,7 +25724,7 @@ direct_emergency_warp_hostile_ordinary_return_run(
 	    "Option? (A,B,D,I,Q,S,T,W,?=Help):? ";
 	static const uint8_t no_turns_row[] =
 	    "Sorry but you have no turns left.";
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	struct yt_present_result result;
 	uint8_t row[96];
 	size_t row_length;
@@ -27451,7 +25748,7 @@ direct_emergency_warp_hostile_ordinary_return_run(
 	    sizeof(join->accumulator));
 	memcpy(join->accumulator, command, command_length);
 	join->accumulator[command_length] = '\0';
-	if (!main_buy_present_echo(&fixture->cycle.presentation, command,
+	if (!main_buy_present_echo(&fixture->presentation, command,
 	    command_length) || !normal_exit_line(join, NULL, 0U))
 		return false;
 	ends[0] = join->remote_length;
@@ -27559,7 +25856,7 @@ test_direct_emergency_warp_hostile_child_failures(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.emergency_failure = cases[pass].failure;
 		fixture.emergency_error_number = 57U + (unsigned)pass;
 		fixture.emergency_saved_ip = 0x1200U + (unsigned)pass;
@@ -27748,7 +26045,7 @@ test_direct_emergency_warp_hostile_terminal_handoffs(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.emergency_sector_cache = 733.0f;
 		fixture.draws[0] = 0.0f;
 		fixture.draws[1] = 0.0f;
@@ -27908,7 +26205,7 @@ test_direct_emergency_warp_hostile_black_hole_handoff(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.emergency_sector_cache = 733.0f;
 		fixture.draws[0] = 0.0f;
 		fixture.draws[1] = 0.0f;
@@ -28050,7 +26347,7 @@ test_direct_emergency_warp_hostile_scanner_get_failure(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.emergency_sector_cache = 733.0f;
 		fixture.draws[0] = 0.0f;
 		fixture.draws[1] = 0.0f;
@@ -28249,7 +26546,7 @@ test_direct_emergency_warp_reentry_failures(void)
 			    "YTSCORE.ASC", callers[caller].ansi, remote,
 			    sizeof(remote));
 			memset(&fixture, 0, sizeof(fixture));
-			fixture.cycle.presentation.viewer = &viewer;
+			fixture.presentation.viewer = &viewer;
 			fixture.emergency_sector_cache = 733.0f;
 			fixture.reentry_failure = (unsigned)failure;
 			fixture.reentry_error_number = error_number;
@@ -28432,7 +26729,7 @@ test_direct_emergency_warp_owner_get_failures(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", callers[caller].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.emergency_sector_cache = 733.0f;
 		fixture.reentry_failure = DIRECT_WARP_REENTRY_OWNER_PLAYER_GET;
 		fixture.reentry_error_number = 57U;
@@ -28602,7 +26899,7 @@ test_direct_emergency_warp_reentry_warning_carrier(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", callers[caller].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.emergency_sector_cache = 733.0f;
 		fixture.reentry_warning_carrier_failure = true;
 		fixture.draws[0] = 0.0f;
@@ -28766,7 +27063,7 @@ test_direct_emergency_warp_reentry_warning_second_carrier(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", callers[caller].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.emergency_sector_cache = 733.0f;
 		fixture.reentry_warning_second_carrier_failure = true;
 		fixture.draws[0] = 0.0f;
@@ -28945,7 +27242,7 @@ test_direct_emergency_warp_hostile_menu_join(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", callers[caller].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.emergency_sector_cache = 733.0f;
 		fixture.draws[0] = 0.0f;
 		fixture.draws[1] = 0.0f;
@@ -29149,7 +27446,7 @@ test_direct_emergency_warp_hostile_menu_carrier_failures(void)
 			    "YTSCORE.ASC", callers[caller].ansi, remote,
 			    sizeof(remote));
 			memset(&fixture, 0, sizeof(fixture));
-			fixture.cycle.presentation.viewer = &viewer;
+			fixture.presentation.viewer = &viewer;
 			fixture.emergency_sector_cache = 733.0f;
 			fixture.draws[0] = 0.0f;
 			fixture.draws[1] = 0.0f;
@@ -29301,7 +27598,7 @@ test_direct_emergency_warp_hostile_attack_admission(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", callers[caller].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.emergency_sector_cache = 733.0f;
 		fixture.draws[0] = 0.0f;
 		fixture.draws[1] = 0.0f;
@@ -29436,7 +27733,7 @@ test_direct_emergency_warp_hostile_attack_opening_success(void)
 		    sizeof(retained_scoreboard) - 1U, "YTSCORE.ASC",
 		    callers[caller].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.emergency_sector_cache = 733.0f;
 		fixture.draws[0] = 0.0f;
 		fixture.draws[1] = 0.0f;
@@ -29584,7 +27881,7 @@ test_direct_emergency_warp_hostile_attack_defenders_remain(void)
 		    sizeof(retained_scoreboard) - 1U, "YTSCORE.ASC",
 		    callers[caller].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.emergency_sector_cache = 733.0f;
 		fixture.draws[0] = 0.0f;
 		fixture.draws[1] = 0.0f;
@@ -29893,7 +28190,7 @@ test_direct_emergency_warp_hostile_attack_defenders_cleared(void)
 			    sizeof(retained_scoreboard) - 1U, "YTSCORE.ASC",
 			    callers[caller].ansi, remote, sizeof(remote));
 			memset(&fixture, 0, sizeof(fixture));
-			fixture.cycle.presentation.viewer = &viewer;
+			fixture.presentation.viewer = &viewer;
 			fixture.emergency_sector_cache = 733.0f;
 			fixture.draws[0] = 0.0f;
 			fixture.draws[1] = 0.0f;
@@ -30062,7 +28359,7 @@ test_direct_emergency_warp_hostile_attack_surrender_accepted(void)
 		    sizeof(retained_scoreboard) - 1U, "YTSCORE.ASC",
 		    callers[caller].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.emergency_sector_cache = 733.0f;
 		fixture.draws[0] = 0.0f;
 		fixture.draws[1] = 0.0f;
@@ -30176,7 +28473,7 @@ test_direct_emergency_warp_hostile_attack_surrender_refused(void)
 		    sizeof(retained_scoreboard) - 1U, "YTSCORE.ASC",
 		    callers[caller].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.emergency_sector_cache = 733.0f;
 		fixture.draws[0] = 0.0f;
 		fixture.draws[1] = 0.0f;
@@ -30315,7 +28612,7 @@ test_direct_emergency_warp_hostile_forced_bribe_attack(void)
 		    sizeof(retained_scoreboard) - 1U, "YTSCORE.ASC",
 		    callers[caller].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.emergency_sector_cache = 733.0f;
 		fixture.draws[0] = 0.0f;
 		fixture.draws[1] = 0.0f;
@@ -30500,7 +28797,7 @@ test_direct_emergency_warp_hostile_forced_bribe_origins(void)
 			    "YTSCORE.ASC", callers[caller].ansi, remote,
 			    sizeof(remote));
 			memset(&fixture, 0, sizeof(fixture));
-			fixture.cycle.presentation.viewer = &viewer;
+			fixture.presentation.viewer = &viewer;
 			fixture.emergency_sector_cache = 733.0f;
 			fixture.draws[0] = 0.0f;
 			fixture.draws[1] = 0.0f;
@@ -30740,7 +29037,7 @@ test_hostile_bribe_immediate_fatal_cycle(void)
 					viewer.join.presentation.sound.mode = 1.0f;
 				viewer.join.presentation.sound.user_sound = 0.0f;
 				memset(&fixture, 0, sizeof(fixture));
-				fixture.cycle.presentation.viewer = &viewer;
+				fixture.presentation.viewer = &viewer;
 				fixture.draws[0] = origins[origin].draws[0];
 				fixture.draws[1] = origins[origin].draws[1];
 				fixture.draws[2] = origins[origin].draws[2];
@@ -30955,7 +29252,7 @@ test_hostile_bribe_fatal_prefix_cuts(void)
 				viewer.join.presentation.sound.mode = 1.0f;
 			viewer.join.presentation.sound.user_sound = 0.0f;
 			memset(&fixture, 0, sizeof(fixture));
-			fixture.cycle.presentation.viewer = &viewer;
+			fixture.presentation.viewer = &viewer;
 			fixture.draws[0] = 81143.0f / 8388608.0f;
 			fixture.draws[1] = 4221177.0f / 16777216.0f;
 			memset(&cycle, 0, sizeof(cycle));
@@ -31180,7 +29477,7 @@ test_direct_emergency_warp_hostile_attack_fatal_cycle(void)
 		    callers[caller].ansi, remote, sizeof(remote));
 		viewer.join.presentation.sound.user_sound = 0.0f;
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.emergency_sector_cache = 733.0f;
 		fixture.draws[0] = 0.0f;
 		fixture.draws[1] = 0.0f;
@@ -31358,7 +29655,7 @@ direct_warp_attack_fatal_prefix_setup(struct physical_viewer_join *viewer,
 	    remote_capacity);
 	viewer->join.presentation.sound.user_sound = 0.0f;
 	memset(fixture, 0, sizeof(*fixture));
-	fixture->cycle.presentation.viewer = viewer;
+	fixture->presentation.viewer = viewer;
 	fixture->emergency_sector_cache = 733.0f;
 	fixture->draws[0] = 0.0f;
 	fixture->draws[1] = 0.0f;
@@ -31635,7 +29932,7 @@ test_xannor_attack_tail_clearance_join(void)
 		    sizeof(retained_scoreboard) - 1U, "YTSCORE.ASC", pass != 0U,
 		    remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		memset(&cycle, 0, sizeof(cycle));
 		fixture.draws[0] = 0.9f;
 		fixture.draws[1] = 0.1f;
@@ -31753,7 +30050,7 @@ test_xannor_attack_tail_victory_join(void)
 		    sizeof(retained_scoreboard) - 1U, "YTSCORE.ASC", pass != 0U,
 		    remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		memset(&cycle, 0, sizeof(cycle));
 		fixture.draws[0] = 0.9f;
 		fixture.draws[1] = 0.1f;
@@ -31989,7 +30286,7 @@ test_xannor_attack_tail_victory_failure_prefixes(void)
 			    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 			    "YTSCORE.ASC", pass != 0U, remote, sizeof(remote));
 			memset(&fixture, 0, sizeof(fixture));
-			fixture.cycle.presentation.viewer = &viewer;
+			fixture.presentation.viewer = &viewer;
 			memset(&cycle, 0, sizeof(cycle));
 			fixture.draws[0] = 0.9f;
 			fixture.draws[1] = 0.1f;
@@ -32141,7 +30438,7 @@ test_xannor_attack_combat_victory_join(void)
 		    sizeof(retained_scoreboard) - 1U, "YTSCORE.ASC", pass != 0U,
 		    remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		for (index = 0U; index < YT_ARRAY_LEN(fixture.draws); ++index)
 			fixture.draws[index] = 0.9f;
 		memset(&cycle, 0, sizeof(cycle));
@@ -32517,7 +30814,7 @@ test_direct_emergency_warp_xannor_attack_victory_join(void)
 		    sizeof(retained_scoreboard) - 1U, "YTSCORE.ASC",
 		    callers[caller].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.emergency_sector_cache = 733.0f;
 		fixture.draws[0] = 0.0f;
 		fixture.draws[1] = 0.0f;
@@ -32825,7 +31122,7 @@ test_direct_emergency_warp_hostile_ordinary_returns(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.emergency_sector_cache = 733.0f;
 		memset(&record, 0xa5, sizeof(record));
 		(void)yt_record_set_number(&record, YT_F49,
@@ -32917,7 +31214,7 @@ direct_emergency_warp_queue_tail(
     struct hostile_mines_hazard_fixture *fixture, bool ansi,
     struct direct_warp_main_cycle_state *cycle, size_t ends[3])
 {
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	struct yt_input_value selected;
 	size_t parent_end;
 
@@ -32956,7 +31253,7 @@ direct_emergency_warp_queue_cycle_run(
 	const uint8_t *command = hostile ? hostile_command : main_command;
 	size_t command_length = hostile
 	    ? sizeof(hostile_command) - 1U : sizeof(main_command) - 1U;
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	uint8_t row[96];
 	size_t row_length;
 
@@ -32989,7 +31286,7 @@ direct_emergency_warp_queue_cycle_run(
 	    sizeof(join->accumulator));
 	memcpy(join->accumulator, command, command_length);
 	join->accumulator[command_length] = '\0';
-	if (!main_buy_present_echo(&fixture->cycle.presentation, command,
+	if (!main_buy_present_echo(&fixture->presentation, command,
 	    command_length) || !normal_exit_line(join, NULL, 0U)
 	    || !yt_input_split_semicolon(join->accumulator, join->queue,
 	    sizeof(join->queue), &join->queue_position, &join->queue_length))
@@ -33067,7 +31364,7 @@ test_direct_emergency_warp_queue_cycles(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.emergency_sector_cache = 733.0f;
 		fixture.draws[0] = 0.0f;
 		fixture.draws[1] = 0.0f;
@@ -33161,7 +31458,7 @@ direct_emergency_warp_main_mine_cycle_run(
 	static const uint8_t main_prompt[] =
 	    "Time: 14:59  Main Command (?=Help)? ";
 	static const uint8_t command[] = "W";
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	size_t parent_end;
 
 	if (cycle == NULL || ends == NULL)
@@ -33179,7 +31476,7 @@ direct_emergency_warp_main_mine_cycle_run(
 	yt_pager_editor_enter(&join->pager, join->accumulator,
 	    sizeof(join->accumulator));
 	memcpy(join->accumulator, command, sizeof(command));
-	if (!main_buy_present_echo(&fixture->cycle.presentation, command,
+	if (!main_buy_present_echo(&fixture->presentation, command,
 	    sizeof(command) - 1U) || !normal_exit_line(join, NULL, 0U))
 		return false;
 	ends[0] = join->remote_length;
@@ -33264,7 +31561,7 @@ test_direct_emergency_warp_main_mine_cycle(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.hazard_logical_sector = 1003;
 		fixture.emergency_sector_cache = 733.0f;
 		fixture.draws[0] = 0.0f;
@@ -33377,7 +31674,7 @@ direct_emergency_warp_hostile_mine_cycle_run(
     const uint8_t *command, size_t command_length,
     struct direct_warp_main_cycle_state *cycle, size_t ends[5])
 {
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 
 	if (!direct_emergency_warp_hostile_cycle_run(fixture, ansi, command,
 	    command_length, DIRECT_WARP_HOSTILE_MINE, cycle, ends))
@@ -33479,7 +31776,7 @@ test_direct_emergency_warp_hostile_mine_cycle(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.hazard_logical_sector = 1003;
 		fixture.emergency_sector_cache = 733.0f;
 		fixture.draws[0] = 0.0f;
@@ -33630,7 +31927,7 @@ direct_emergency_warp_mine_warp_fixture_init(
 	    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 	    "YTSCORE.ASC", ansi, remote, remote_capacity);
 	memset(fixture, 0, sizeof(*fixture));
-	fixture->cycle.presentation.viewer = viewer;
+	fixture->presentation.viewer = viewer;
 	fixture->hazard_logical_sector = 1003;
 	fixture->emergency_sector_cache = 733.0f;
 	fixture->enable_emergency_warp = true;
@@ -33696,7 +31993,7 @@ test_destroyed_mine_fatal_projections(void)
 		    "YTSCORE.ASC", false, remote, sizeof(remote));
 		viewer.join.presentation.sound.user_sound = 0.0f;
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.hazard_logical_sector = 733;
 		fixture.shrink_enabled = true;
 		fixture.shrink_result = 1.0f;
@@ -34430,7 +32727,7 @@ direct_emergency_warp_minimal_reentry_scanner(
 		{SENSOR_JOIN_RAW, ", 42"},
 		{SENSOR_JOIN_LINE, NULL},
 	};
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	size_t index;
 
 	join->presentation.foreground = 1.0f;
@@ -34452,7 +32749,7 @@ direct_emergency_warp_main_black_hole_cycle_run(
 	    "Time: 14:59  Main Command (?=Help)? ";
 	static const uint8_t command[] = "W";
 	static const uint8_t black_hole[] = "A *-BLACK HOLE-* grabs you!";
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 	size_t parent_end;
 
 	if (cycle == NULL || ends == NULL)
@@ -34470,7 +32767,7 @@ direct_emergency_warp_main_black_hole_cycle_run(
 	yt_pager_editor_enter(&join->pager, join->accumulator,
 	    sizeof(join->accumulator));
 	memcpy(join->accumulator, command, sizeof(command));
-	if (!main_buy_present_echo(&fixture->cycle.presentation, command,
+	if (!main_buy_present_echo(&fixture->presentation, command,
 	    sizeof(command) - 1U) || !normal_exit_line(join, NULL, 0U))
 		return false;
 	ends[0] = join->remote_length;
@@ -34556,7 +32853,7 @@ test_direct_emergency_warp_main_black_hole_cycle(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.emergency_sector_cache = 733.0f;
 		fixture.draws[0] = 0.0f;
 		fixture.draws[1] = 0.0f;
@@ -34649,7 +32946,7 @@ direct_emergency_warp_hostile_black_hole_cycle_run(
     struct direct_warp_main_cycle_state *cycle, size_t ends[5])
 {
 	static const uint8_t black_hole[] = "A *-BLACK HOLE-* grabs you!";
-	struct viewer_pager_join *join = &fixture->cycle.presentation.viewer->join;
+	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 
 	if (!direct_emergency_warp_hostile_cycle_run(fixture, ansi, command,
 	    command_length, DIRECT_WARP_HOSTILE_BLACK_HOLE, cycle, ends))
@@ -34751,7 +33048,7 @@ test_direct_emergency_warp_hostile_black_hole_cycles(void)
 		    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 		    "YTSCORE.ASC", cases[pass].ansi, remote, sizeof(remote));
 		memset(&fixture, 0, sizeof(fixture));
-		fixture.cycle.presentation.viewer = &viewer;
+		fixture.presentation.viewer = &viewer;
 		fixture.emergency_sector_cache = 733.0f;
 		fixture.draws[0] = 0.0f;
 		fixture.draws[1] = 0.0f;
@@ -34853,7 +33150,7 @@ direct_emergency_warp_black_hole_fixture_init(
 	    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
 	    "YTSCORE.ASC", ansi, remote, remote_capacity);
 	memset(fixture, 0, sizeof(*fixture));
-	fixture->cycle.presentation.viewer = viewer;
+	fixture->presentation.viewer = viewer;
 	fixture->emergency_sector_cache = 733.0f;
 	fixture->draws[0] = 0.0f;
 	fixture->draws[1] = 0.0f;
@@ -42014,13 +40311,6 @@ main(void)
 	test_main_buy_cycle_presentation();
 	test_main_rename_cycle_presentation();
 	test_main_rename_refusal_cycles_presentation();
-	test_main_mines_accepted_cycle_presentation();
-	test_main_mines_ordinary_return_cycles_presentation();
-	test_hostile_mines_accepted_cycle_presentation();
-	test_hostile_mines_ordinary_return_cycles_presentation();
-	test_hostile_mines_admitted_hazard_cycle_presentation();
-	test_hostile_mines_emergency_warp_cycle_presentation();
-	test_hostile_mines_black_hole_cycle_presentation();
 	test_direct_emergency_warp_invalid_retry_presentation();
 	test_direct_emergency_warp_modes();
 	test_direct_emergency_warp_accepted_modes();
