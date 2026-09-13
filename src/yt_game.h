@@ -1365,40 +1365,6 @@ struct yt_port_market_state {
 };
 bool yt_port_market_update(struct yt_port_market_state *state,
 	struct yt_error *error);
-struct yt_port_update_state {
-	int sector_number;
-	float sector_record_offset;
-	float sector_record_expression;
-	uint32_t sector_physical_record;
-	float port_offset;
-	float base_price[3];
-	struct yt_sector sector;
-	struct yt_port_market_state market;
-	bool sector_loaded;
-	bool sector_record_supplied;
-	bool sector_read;
-	bool day_observed;
-	bool port_read;
-	bool timer_observed;
-	bool port_write_attempted;
-	bool port_written;
-	bool complete;
-};
-struct yt_port_update_ops {
-	bool (*read_sector)(void *context, uint32_t physical_record,
-	    struct yt_sector *sector, struct yt_error *error);
-	bool (*observe_day)(void *context, float *current_day,
-	    struct yt_error *error);
-	bool (*read_port)(void *context, uint32_t physical_record,
-	    struct yt_port *port, struct yt_error *error);
-	bool (*observe_timer)(void *context, float *timer_seconds,
-	    struct yt_error *error);
-	bool (*write_port)(void *context, uint32_t physical_record,
-	    const struct yt_port *port, struct yt_error *error);
-};
-bool yt_port_update_run(struct yt_port_update_state *state,
-	const struct yt_port_update_ops *ops, void *context,
-	struct yt_error *error);
 enum yt_port_report_output_kind {
 	YT_PORT_REPORT_OWNER_BLANK,
 	YT_PORT_REPORT_OWNER_ROW,
@@ -1453,28 +1419,6 @@ struct yt_port_report_ops {
 };
 bool yt_port_report_run(struct yt_port_report_state *state,
 	const struct yt_port_report_ops *ops, void *context,
-	struct yt_error *error);
-enum yt_port_ordinary_field_kind {
-	YT_PORT_ORDINARY_FIELD_INHERITED,
-	YT_PORT_ORDINARY_FIELD_SECTOR,
-	YT_PORT_ORDINARY_FIELD_PORT,
-	YT_PORT_ORDINARY_FIELD_PLAYER,
-};
-struct yt_port_ordinary_state {
-	struct yt_port_update_state update;
-	struct yt_port_report_state report;
-	enum yt_port_ordinary_field_kind field_kind;
-	uint32_t field_record;
-	struct yt_record field;
-	bool field_valid;
-	bool persistence_attempted;
-	bool persistence_committed;
-	bool report_started;
-	bool complete;
-};
-bool yt_port_ordinary_run(struct yt_port_ordinary_state *state,
-	const struct yt_port_update_ops *update_ops,
-	const struct yt_port_report_ops *report_ops, void *context,
 	struct yt_error *error);
 enum yt_commodity_trade_output_kind {
 	YT_COMMODITY_TRADE_STATUS,

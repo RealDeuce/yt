@@ -582,7 +582,7 @@ basic_fault_retries(const struct yt_error *error)
 	    && projection.disposition == YT_BASIC_FAULT_RETRY_STATEMENT;
 }
 
-static bool
+bool
 read_database_record_at_fault(struct yt_session *session,
     uint32_t physical_record, struct yt_record *record,
     enum yt_basic_fault_site site, struct yt_error *error)
@@ -646,7 +646,7 @@ read_port_at_fault(struct yt_session *session, int logical_port,
 	}
 }
 
-static bool
+bool
 write_database_record_at_fault(struct yt_session *session,
     uint32_t physical_record, const struct yt_record *record,
     enum yt_basic_fault_site site, struct yt_error *error)
@@ -2788,106 +2788,6 @@ static float
 current_minute(void)
 {
 	return single_div((float)yt_platform_timer(), 60.0f);
-}
-
-static bool
-port_update_read_sector(void *context, uint32_t physical_record,
-    struct yt_sector *sector, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	struct yt_record record;
-
-	if (!read_database_record_at_fault(session, physical_record, &record,
-	    YT_BASIC_FAULT_PORT_UPDATER_SECTOR_GET, error))
-		return false;
-	yt_sector_decode(sector, &record);
-	return true;
-}
-
-static bool
-port_update_observe_day(void *context, float *current_day,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-	int today;
-	int adjusted_year;
-
-	if (!session_current_date_serial(session, &today, &adjusted_year,
-	    error))
-		return false;
-	session->door->game.today = today;
-	session->door->game.adjusted_year = adjusted_year;
-	*current_day = (float)today;
-	return true;
-}
-
-static bool
-port_update_read_port(void *context, uint32_t physical_record,
-    struct yt_port *port, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	struct yt_record record;
-
-	if (!read_database_record_at_fault(session, physical_record, &record,
-	    YT_BASIC_FAULT_PORT_UPDATER_PORT_GET, error))
-		return false;
-	yt_port_decode(port, &record);
-	return true;
-}
-
-static bool
-port_update_observe_timer(void *context, float *timer_seconds,
-    struct yt_error *error)
-{
-	(void)context;
-	(void)error;
-	*timer_seconds = (float)yt_platform_timer();
-	return true;
-}
-
-static bool
-port_update_write_port(void *context, uint32_t physical_record,
-    const struct yt_port *port, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return write_database_record_at_fault(session, physical_record,
-	    &port->record, YT_BASIC_FAULT_PORT_UPDATER_PORT_PUT, error);
-}
-
-static bool
-port_update(struct yt_session *session, int sector_number,
-    const float *sector_record_expression, const struct yt_sector *loaded_sector,
-    struct yt_port_market_state *market, struct yt_error *error)
-{
-	static const struct yt_port_update_ops ops = {
-		port_update_read_sector,
-		port_update_observe_day,
-		port_update_read_port,
-		port_update_observe_timer,
-		port_update_write_port,
-	};
-	struct yt_port_update_state state;
-
-	if (market == NULL)
-		return false;
-	memset(&state, 0, sizeof(state));
-	state.sector_number = sector_number;
-	state.sector_record_offset = session_sector_offset(session);
-	if (sector_record_expression != NULL) {
-		state.sector_record_expression = *sector_record_expression;
-		state.sector_record_supplied = true;
-	}
-	state.port_offset = session_port_offset(session);
-	memcpy(state.base_price, session->market_bases, sizeof(state.base_price));
-	if (loaded_sector != NULL) {
-		state.sector = *loaded_sector;
-		state.sector_loaded = true;
-	}
-	if (!yt_port_update_run(&state, &ops, session, error))
-		return false;
-	*market = state.market;
-	return true;
 }
 
 bool
@@ -6285,51 +6185,13 @@ port_report(struct yt_session *session, int logical_port,
 static bool
 computer_port_ordinary(struct yt_session *session, int sector_number,
     float sector_record_expression,
-    const struct yt_computer_port_visibility_state *visibility,
     struct yt_error *error)
 {
-	static const struct yt_port_update_ops update_ops = {
-		port_update_read_sector,
-		port_update_observe_day,
-		port_update_read_port,
-		port_update_observe_timer,
-		port_update_write_port,
-	};
-	static const struct yt_port_report_ops report_ops = {
-		port_report_read_player,
-		port_report_read_port,
-		port_report_observe_date,
-		port_report_observe_time,
-		port_report_present,
-		port_report_reset_pager,
-		port_report_set_bold,
-		port_report_set_foreground,
-	};
-	struct yt_port_ordinary_state state;
+	struct yt_port_market_state market;
 
-	memset(&state, 0, sizeof(state));
-	state.update.sector_number = sector_number;
-	state.update.sector_record_offset =
-	    session_sector_offset(session);
-	state.update.sector_record_expression = sector_record_expression;
-	state.update.sector_record_supplied = true;
-	state.update.port_offset = session_port_offset(session);
-	memcpy(state.update.base_price, session->market_bases,
-	    sizeof(state.update.base_price));
-	state.report.current_player_record = session_record(session);
-	state.report.conversion_mode =
-	    session->presentation.sound.conversion_mode;
-	if (visibility != NULL) {
-		state.field_record = visibility->field_record;
-		state.field = visibility->field;
-		state.field_valid = visibility->field_valid;
-		state.field_kind = visibility->field_kind
-		    == YT_COMPUTER_PORT_FIELD_PLAYER
-		    ? YT_PORT_ORDINARY_FIELD_PLAYER
-		    : YT_PORT_ORDINARY_FIELD_SECTOR;
-	}
-	return yt_port_ordinary_run(&state, &update_ops, &report_ops,
-	    session, error);
+	return yt_session_update_port(session, sector_number,
+	    &sector_record_expression, NULL, &market, error)
+	    && port_report(session, (int)market.logical_port, &market, error);
 }
 
 static bool
@@ -6491,7 +6353,8 @@ ordinary_commerce_update(void *context, int sector_number,
     float sector_record_expression,
     struct yt_port_market_state *market, struct yt_error *error)
 {
-	return port_update(context, sector_number, &sector_record_expression,
+	return yt_session_update_port(context, sector_number,
+	    &sector_record_expression,
 	    NULL, market, error);
 }
 
@@ -10967,8 +10830,8 @@ port_purchase_report(void *context, int logical_port, bool earth,
 		struct yt_sector updater_sector = {0};
 
 		updater_sector.port = (float)logical_port;
-		if (!port_update(session, 0, NULL, &updater_sector, &market,
-		    error))
+		if (!yt_session_update_port(session, 0, NULL, &updater_sector,
+		    &market, error))
 			return false;
 		*early_port = market.port;
 		memcpy(production, market.port.production,
@@ -14798,7 +14661,7 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 		    (float)sector_number);
 
 		return computer_port_ordinary(session, sector_number,
-		    sector_record_expression, &visibility, error);
+		    sector_record_expression, error);
 	}
 }
 

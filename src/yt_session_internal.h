@@ -143,6 +143,12 @@ bool session_reload_player(struct yt_session *session,
     struct yt_error *error);
 bool session_mutate_player_credits(struct yt_session *session, float argument,
     bool *hydrated, struct yt_error *error);
+bool read_database_record_at_fault(struct yt_session *session,
+    uint32_t physical_record, struct yt_record *record,
+    enum yt_basic_fault_site site, struct yt_error *error);
+bool write_database_record_at_fault(struct yt_session *session,
+    uint32_t physical_record, const struct yt_record *record,
+    enum yt_basic_fault_site site, struct yt_error *error);
 bool session_load_team(struct yt_session *session, int id,
     struct yt_team *team, struct yt_error *error);
 bool read_planet_physical(struct yt_session *session,
@@ -157,6 +163,10 @@ bool yt_session_update_planet_physical(struct yt_session *session,
 bool yt_session_update_planet(struct yt_session *session,
     int logical_planet, struct yt_planet *planet,
     struct yt_planet_economy *economy, struct yt_error *error);
+bool yt_session_update_port(struct yt_session *session, int sector_number,
+    const float *sector_record_expression,
+    const struct yt_sector *loaded_sector,
+    struct yt_port_market_state *market, struct yt_error *error);
 void session_clear_queue(struct yt_session *session);
 bool session_append_radio_bytes(const uint8_t *text, size_t length,
     float sender, float recipient, struct yt_error *error);
