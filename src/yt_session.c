@@ -17356,52 +17356,30 @@ computer_scoreboard(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
-computer_newspaper_present(void *context, const uint8_t *text,
-    size_t length, enum yt_computer_newspaper_output_kind kind,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	if (kind == YT_COMPUTER_NEWSPAPER_LEADING_BLANK)
-		return session_present_text(session, NULL, 0U,
-		    SESSION_PRESENT_LINE, "newspaper selector leading blank",
-		    error);
-	return session_present_timed_paged_row(session, text, length,
-	    "newspaper selector prompt", error);
-}
-
-static bool
-computer_newspaper_view(void *context, const char *pathname,
-    struct yt_error *error)
-{
-	return display_game_file(context, pathname, error);
-}
-
-static bool
-computer_newspaper_checkpoint(void *context, bool *resume,
-    struct yt_error *error)
-{
-	(void)context;
-	(void)error;
-	if (resume == NULL)
-		return false;
-	/* Physical local ON KEY delivery is an explicitly deferred adapter. */
-	*resume = true;
-	return true;
-}
-
-static bool
 computer_newspaper(struct yt_session *session, struct yt_error *error)
 {
-	static const struct yt_computer_newspaper_ops ops = {
-		computer_newspaper_checkpoint,
-		computer_newspaper_present,
-		computer_raw_upper_edit,
-		computer_newspaper_view,
-	};
-	struct yt_computer_newspaper_state state;
+	static const uint8_t prompt[] =
+	    "Do you want to read [T]oday's or [Y]esterday's news? [T/Y] -=> ";
+	char response[80];
+	enum yt_computer_newspaper_choice choice;
 
-	return yt_computer_newspaper_run(&state, &ops, session, error);
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "newspaper selector leading blank", error))
+		return false;
+	do {
+		if (!session_present_timed_paged_row(session, prompt,
+		    sizeof(prompt) - 1U, "newspaper selector prompt", error)
+		    || !session_read_command(session, response, sizeof(response)))
+			return false;
+		session_compat_upper_n(session,
+		    (uint8_t *)session->output_source, strlen(response));
+		session_compat_upper_n(session, (uint8_t *)response,
+		    strlen(response));
+		choice = yt_computer_newspaper_select(response);
+	} while (choice == YT_COMPUTER_NEWSPAPER_NONE);
+	return display_game_file(session,
+	    choice == YT_COMPUTER_NEWSPAPER_TODAY
+	    ? "YTNEWS.DAT" : "YTYNEWS.DAT", error);
 }
 
 static bool
