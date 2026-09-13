@@ -23849,6 +23849,16 @@ static const struct yt_hostile_bribe_ops direct_warp_bribe_attack_ops = {
 	direct_warp_bribe_attack_fatal,
 };
 
+struct common_fatal_observation {
+	float foreground;
+	int pager_foreground;
+	float target_record;
+	struct yt_player field_player;
+	bool field_valid;
+	bool wait_complete;
+	bool normal_exit;
+};
+
 struct hostile_bribe_fatal_cycle_join {
 	struct physical_viewer_join *viewer;
 	struct viewer_file_fixture *stream;
@@ -23857,7 +23867,7 @@ struct hostile_bribe_fatal_cycle_join {
 	struct yt_sector sector;
 	struct yt_sector written_sector;
 	struct yt_player_death_state death;
-	struct yt_common_fatal_state fatal;
+	struct common_fatal_observation fatal;
 	struct normal_exit_body_observation normal_exit;
 	uint8_t active_cache_raw[4];
 	float selector;
@@ -24165,33 +24175,37 @@ hostile_bribe_fatal_wait(void *context, float duration,
 	return duration == 5.0f;
 }
 
-static const struct yt_common_fatal_ops hostile_bribe_fatal_ops = {
-	hostile_bribe_fatal_set_foreground,
-	hostile_bribe_fatal_present,
-	hostile_bribe_fatal_read_player,
-	hostile_bribe_fatal_sound,
-	hostile_bribe_fatal_death,
-	hostile_bribe_fatal_wait,
-};
-
 static bool
 hostile_bribe_fatal_run(void *context, struct yt_error *error)
 {
+	static const uint8_t notice[] = "Your ship has been destroyed!";
 	struct hostile_bribe_fatal_cycle_join *join = context;
 	struct viewer_pager_join *viewer = &join->viewer->join;
+	struct yt_player player;
 
 	if (join->attention_carrier_cut != 0)
 		viewer->fail_at = viewer->event_count
 		    + (join->attention_carrier_cut == 1 ? 1U : 4U);
 
-	join->fatal = (struct yt_common_fatal_state){
-		.current_player_record = 2,
-		.foreground = join->viewer->join.presentation.foreground,
-		.pager_foreground = join->viewer->join.pager.foreground,
+	join->fatal = (struct common_fatal_observation){
+		.foreground = 3.0f,
+		.pager_foreground = 3,
 	};
-	if (!yt_common_fatal_run(&join->fatal, &hostile_bribe_fatal_ops,
-	    join, error))
+	hostile_bribe_fatal_set_foreground(join, join->fatal.foreground,
+	    join->fatal.pager_foreground);
+	if (!hostile_bribe_fatal_present(join, notice, sizeof(notice) - 1U,
+	    error)
+	    || !hostile_bribe_fatal_read_player(join, 2, &player, error))
 		return false;
+	join->fatal.field_player = player;
+	join->fatal.field_valid = true;
+	join->fatal.target_record = 2.0f;
+	if (!hostile_bribe_fatal_sound(join, 3.0f, error)
+	    || !hostile_bribe_fatal_death(join, 2, 2.0f, error)
+	    || !hostile_bribe_fatal_wait(join, 5.0f, error))
+		return false;
+	join->fatal.wait_complete = true;
+	join->fatal.normal_exit = true;
 	join->fatal_end = join->viewer->join.remote_length;
 	return true;
 }

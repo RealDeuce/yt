@@ -3869,82 +3869,29 @@ kill_player(struct yt_session *session, int victim_record,
 	return kill_player_run(session, victim_record, killer, true, error);
 }
 
-static void
-common_fatal_set_foreground(void *context, float foreground,
-    int pager_foreground)
-{
-	struct yt_session *session = context;
-
-	(void)pager_foreground;
-	session_set_foreground(session, foreground);
-}
-
-static bool
-common_fatal_present(void *context, const uint8_t *text, size_t length,
-    struct yt_error *error)
-{
-	return session_present_alert(context, text, length, "common fatal notice", error);
-}
-
-static bool
-common_fatal_read_player(void *context, int player_record,
-    struct yt_player *player, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	char cached_name[sizeof(session->player.name)];
-
-	memcpy(cached_name, session->player.name, sizeof(cached_name));
-	if (player_record != session_record(session)
-	    || !session_reload_player(session, error))
-		return false;
-	memcpy(session->player.name, cached_name, sizeof(cached_name));
-	*player = session->player;
-	return true;
-}
-
-static bool
-common_fatal_sound(void *context, float selector, struct yt_error *error)
-{
-	return session_sound(context, selector, "fatal destruction sound",
-	    error);
-}
-
-static bool
-common_fatal_death(void *context, int victim_record, float killer,
-    struct yt_error *error)
-{
-	return kill_player_run(context, victim_record, killer, false, error);
-}
-
-static bool
-common_fatal_wait(void *context, float duration, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	if (!session_wait(session, duration, "common fatal wait", error))
-		return false;
-	session->fatal_wait_complete = true;
-	return true;
-}
-
 static bool
 common_fatal_self(struct yt_session *session, struct yt_error *error)
 {
-	static const struct yt_common_fatal_ops ops = {
-		common_fatal_set_foreground,
-		common_fatal_present,
-		common_fatal_read_player,
-		common_fatal_sound,
-		common_fatal_death,
-		common_fatal_wait,
-	};
-	struct yt_common_fatal_state state = {
-		.current_player_record = session_record(session),
-		.foreground = session_foreground(session),
-		.pager_foreground = session_pager_foreground(session),
-	};
+	static const uint8_t notice[] = "Your ship has been destroyed!";
+	char cached_name[sizeof(session->player.name)];
+	int current_player_record;
 
-	return yt_common_fatal_run(&state, &ops, session, error);
+	current_player_record = session_record(session);
+	session_set_foreground(session, 3.0f);
+	if (!session_present_alert(session, notice, sizeof(notice) - 1U,
+	    "common fatal notice", error))
+		return false;
+	memcpy(cached_name, session->player.name, sizeof(cached_name));
+	if (!session_reload_player(session, error))
+		return false;
+	memcpy(session->player.name, cached_name, sizeof(cached_name));
+	if (!session_sound(session, 3.0f, "fatal destruction sound", error)
+	    || !kill_player_run(session, current_player_record,
+	    (float)current_player_record, false, error)
+	    || !session_wait(session, 5.0, "common fatal wait", error))
+		return false;
+	session->fatal_wait_complete = true;
+	return true;
 }
 
 static bool
