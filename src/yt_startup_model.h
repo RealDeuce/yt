@@ -6,9 +6,6 @@
 #define YT_STARTUP_COMMAND_SIZE 1024U
 #define YT_STARTUP_OPEN_SPEC_SIZE 64U
 #define YT_STARTUP_DORINFO_FIELDS 12U
-#define YT_REGISTRATION_LINES 3U
-#define YT_REGISTRATION_DISPLAY_ROWS 2U
-#define YT_REGISTRATION_STRING_MAX 32767U
 struct yt_startup_command_split {
 	uint8_t path[YT_STARTUP_COMMAND_SIZE];
 	size_t path_length;
@@ -146,67 +143,6 @@ struct yt_startup_event_result {
 	bool carrier_detected;
 };
 
-struct yt_registration_buffer {
-	uint8_t *data;
-	size_t capacity;
-	size_t length;
-};
-
-enum yt_registration_outcome {
-	YT_REGISTRATION_IN_PROGRESS,
-	YT_REGISTRATION_REGISTERED,
-	YT_REGISTRATION_EVALUATION,
-	YT_REGISTRATION_INVALID_END,
-	YT_REGISTRATION_BETA_END,
-	YT_REGISTRATION_ANTI_TAMPER_BUSY_LOOP,
-};
-
-struct yt_registration_state {
-	struct yt_registration_buffer line[YT_REGISTRATION_LINES];
-	struct yt_registration_buffer display[YT_REGISTRATION_DISPLAY_ROWS];
-	bool beta_only;
-	uint16_t expected_evaluation_sum[YT_REGISTRATION_DISPLAY_ROWS];
-	enum yt_registration_outcome outcome;
-	bool nonempty;
-	bool registered;
-	bool closed_all;
-	bool ended;
-	bool busy_loop;
-	uint16_t evaluation_sum[YT_REGISTRATION_DISPLAY_ROWS];
-	float evaluation_counter[YT_REGISTRATION_DISPLAY_ROWS];
-	uint8_t parsed_key[8];
-	uint8_t first_sum[8];
-	uint8_t first_product[8];
-	uint8_t first_root[8];
-	uint8_t second_sum[8];
-	uint8_t final_product[8];
-	uint8_t calculated_key[8];
-};
-
-typedef bool (*yt_registration_file_fn)(void *context,
-    struct yt_error *error);
-typedef bool (*yt_registration_size_fn)(void *context, uint64_t *size,
-    struct yt_error *error);
-typedef bool (*yt_registration_read_line_fn)(void *context, uint8_t *data,
-    size_t capacity, size_t *length, struct yt_error *error);
-typedef bool (*yt_registration_present_fn)(void *context,
-    const uint8_t *text, size_t length, struct yt_error *error);
-typedef void (*yt_registration_terminal_fn)(void *context);
-
-struct yt_registration_ops {
-	yt_registration_file_fn close_file4;
-	yt_registration_file_fn random_open;
-	yt_registration_size_fn file_size;
-	yt_registration_file_fn delete_empty;
-	yt_registration_file_fn sequential_open;
-	yt_registration_read_line_fn read_line;
-	yt_registration_present_fn centered_line;
-	yt_registration_file_fn beep;
-	yt_registration_present_fn forced_local_line;
-	yt_registration_terminal_fn close_all;
-	yt_registration_terminal_fn end;
-};
-
 bool yt_startup_split_command(const uint8_t *command, size_t length,
     struct yt_startup_command_split *result);
 bool yt_startup_compose_entry(const uint8_t *command, size_t length,
@@ -304,8 +240,4 @@ bool yt_startup_compose_events(const struct yt_startup_state_result *state,
     enum yt_startup_wait_exit wait_exit, uint8_t modem_status,
     uint8_t post_open_lcr, uint8_t post_open_ier,
     struct yt_startup_event_result *result);
-bool yt_registration_run(struct yt_registration_state *state,
-    const struct yt_registration_ops *ops, void *context,
-    struct yt_error *error);
-
 #endif
