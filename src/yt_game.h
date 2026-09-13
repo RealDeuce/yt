@@ -65,8 +65,8 @@ struct yt_team {
 	char name[42];
 	size_t name_length;
 	char password[5];
-	float captain;
-	float roster[4];
+	int captain;
+	int roster[4];
 	bool live;
 	bool full;
 };
@@ -1474,9 +1474,9 @@ bool yt_team_choice_rejected(float choice, float raw_team,
 void yt_team_transfer_apply_sector(struct yt_sector *sector,
     double initial_fighters, float amount);
 void yt_team_transfer_apply_player(struct yt_player *player, float amount);
-void yt_team_membership_apply_player(struct yt_player *player, float team);
+void yt_team_membership_apply_player(struct yt_player *player, int team);
 void yt_team_banish_apply_player(struct yt_player *player);
-void yt_team_roster_overlay(struct yt_record *record, const float roster[4]);
+void yt_team_roster_overlay(struct yt_record *record, const int roster[4]);
 void yt_team_name_overlay(struct yt_record *record, const uint8_t *name,
     size_t length);
 bool yt_team_prepare_name(char *name, size_t *length);

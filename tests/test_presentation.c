@@ -13071,7 +13071,7 @@ normal_exit_info_run(struct physical_viewer_join *viewer,
 		memcpy(fixture.team.name, team_name, sizeof(team_name) - 1U);
 		fixture.team.name_length = sizeof(team_name) - 1U;
 		fixture.team.captain = fixture.team_route
-		    == NORMAL_EXIT_INFO_TEAM_SELF ? 2.0f : 3.0f;
+		    == NORMAL_EXIT_INFO_TEAM_SELF ? 2 : 3;
 		if (fixture.team_route == NORMAL_EXIT_INFO_TEAM_OTHER) {
 			memcpy(fixture.team_captain.name, valid_captain_name,
 			    sizeof(valid_captain_name) - 1U);
@@ -13091,7 +13091,7 @@ normal_exit_info_run(struct physical_viewer_join *viewer,
 		memset(fixture.overlay.record.bytes, 0xa5,
 		    sizeof(fixture.overlay.record.bytes));
 		(void)yt_record_set_number(&fixture.team.overlay.record, YT_F77,
-		    fixture.team.captain);
+		    (float)fixture.team.captain);
 	}
 	panel.foreground = viewer->join.presentation.foreground;
 	panel.background = viewer->join.presentation.background;
@@ -14611,7 +14611,7 @@ test_planet_info_promotion_cycle_presentation(void)
 		    && observation.team.route == YT_INFO_TEAM_PROMOTED
 		    && observation.team.team_id == 7.0f
 		    && observation.team.captain_record == 2.0f
-		    && observation.team.team.captain == 2.0f
+		    && observation.team.team.captain == 2
 		    && observation.team.captain_flag == 1.0f
 		    && observation.team.current_is_captain
 		    && observation.overlay_written);
@@ -14737,7 +14737,7 @@ test_planet_info_captain_route_cycles_presentation(void)
 		if (cases[pass].route == NORMAL_EXIT_INFO_TEAM_SELF) {
 			CHECK(observation.team.route == YT_INFO_TEAM_SELF_CAPTAIN
 			    && observation.team.current_is_captain
-			    && observation.team.team.captain == 2.0f);
+			    && observation.team.team.captain == 2);
 		}
 		else {
 			CHECK(observation.player_records[1] == 3.0f

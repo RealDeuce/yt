@@ -517,7 +517,7 @@ yt_info_team_resolver_run(struct yt_info_team_state *state,
 		    state->current_record))
 			return false;
 		state->team.overlay = fresh;
-		state->team.captain = state->current_record;
+		state->team.captain = (int)state->current_record;
 		if (!ops->write_overlay(context, state->team_id, &fresh, error)
 		    || !ops->present(context, promoted, sizeof(promoted) - 1U,
 		    error)
@@ -4865,22 +4865,22 @@ yt_team_transfer_apply_player(struct yt_player *player, float amount)
 }
 
 void
-yt_team_membership_apply_player(struct yt_player *player, float team)
+yt_team_membership_apply_player(struct yt_player *player, int team)
 {
 	if (player == NULL)
 		return;
-	player->team = team;
-	(void)yt_record_set_number(&player->record, YT_F89, team);
+	player->team = (float)team;
+	(void)yt_record_set_number(&player->record, YT_F89, (float)team);
 }
 
 void
 yt_team_banish_apply_player(struct yt_player *player)
 {
-	yt_team_membership_apply_player(player, 0.0f);
+	yt_team_membership_apply_player(player, 0);
 }
 
 void
-yt_team_roster_overlay(struct yt_record *record, const float roster[4])
+yt_team_roster_overlay(struct yt_record *record, const int roster[4])
 {
 	static const size_t offsets[4] = {
 		YT_F109, YT_F117, YT_F121, YT_F125
@@ -4890,7 +4890,8 @@ yt_team_roster_overlay(struct yt_record *record, const float roster[4])
 	if (record == NULL || roster == NULL)
 		return;
 	for (index = 0; index < 4; ++index)
-		(void)yt_record_set_number(record, offsets[index], roster[index]);
+		(void)yt_record_set_number(record, offsets[index],
+		    (float)roster[index]);
 }
 
 void

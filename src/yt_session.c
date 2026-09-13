@@ -10984,12 +10984,12 @@ team_load(struct yt_session *session, int id, struct yt_team *team,
 	team->name_length = session->team_cache.name_length;
 	memcpy(team->password, session->team_cache.password,
 	    sizeof(team->password));
-	team->captain = (float)session->team_cache.captain;
+	team->captain = session->team_cache.captain;
 	team->live = live;
 	team->full = team->live;
 	for (index = 0; index < 4; ++index) {
-		team->roster[index] = (float)session->team_cache.roster[index];
-		if (team->roster[index] <= 0.0f)
+		team->roster[index] = session->team_cache.roster[index];
+		if (team->roster[index] <= 0)
 			team->full = false;
 	}
 	return true;
@@ -11176,12 +11176,12 @@ info_team_load_team(void *context, float team_id, float current_record,
 	team->name_length = session->team_cache.name_length;
 	memcpy(team->password, session->team_cache.password,
 	    sizeof(team->password));
-	team->captain = (float)session->team_cache.captain;
+	team->captain = session->team_cache.captain;
 	team->live = live;
 	team->full = team->live;
 	for (index = 0; index < YT_ARRAY_LEN(team->roster); ++index) {
-		team->roster[index] = (float)session->team_cache.roster[index];
-		if (team->roster[index] <= 0.0f)
+		team->roster[index] = session->team_cache.roster[index];
+		if (team->roster[index] <= 0)
 			team->full = false;
 	}
 	*captain_flag = session->team_cache.current_player_is_captain
@@ -11467,18 +11467,18 @@ team_create(struct yt_session *session, struct yt_error *error)
 	if (!yt_game_read_player(&session->door->game, session_record(session),
 	    &session->player, error))
 		return false;
-	yt_team_membership_apply_player(&session->player, selected);
+	yt_team_membership_apply_player(&session->player, id);
 	if (!write_player(session, error)
 	    || !team_read_overlay(session, id, &team, error))
 		return false;
 	team.id = id;
-	team.captain = (float)session_record(session);
-	team.roster[0] = (float)session_record(session);
-	team.roster[1] = 0.0f;
-	team.roster[2] = 0.0f;
-	team.roster[3] = 0.0f;
+	team.captain = session_record(session);
+	team.roster[0] = session_record(session);
+	team.roster[1] = 0;
+	team.roster[2] = 0;
+	team.roster[3] = 0;
 	yt_record_set_number_if_changed(&team.overlay.record, YT_F77,
-	    team.captain);
+	    (float)team.captain);
 	yt_team_roster_overlay(&team.overlay.record, team.roster);
 	if (!yt_database_write(&session->door->game.database,
 	    (size_t)session_sector_basic_record(session, (float)team.id),
@@ -11590,12 +11590,12 @@ team_join(struct yt_session *session, struct yt_error *error)
 	if (!yt_game_read_player(&session->door->game, session_record(session),
 	    &session->player, error))
 		return false;
-	yt_team_membership_apply_player(&session->player, (float)selected);
+	yt_team_membership_apply_player(&session->player, selected);
 	if (!write_player(session, error))
 		return false;
 	for (index = 0; index < 4; ++index) {
-		if (team.roster[index] == 0.0f) {
-			team.roster[index] = (float)session_record(session);
+		if (team.roster[index] == 0) {
+			team.roster[index] = session_record(session);
 			break;
 		}
 	}
@@ -11645,7 +11645,7 @@ team_quit(struct yt_session *session, struct yt_team *team,
 	    &session->player, error))
 		return false;
 	old_team = session->player.team;
-	yt_team_membership_apply_player(&session->player, 0.0f);
+	yt_team_membership_apply_player(&session->player, 0);
 	persisted = session->player;
 	if (!yt_game_write_player(&session->door->game, session_record(session),
 	    &persisted, error))
@@ -11666,17 +11666,17 @@ team_quit(struct yt_session *session, struct yt_team *team,
 	if (!team_load(session, (int)old_team, team, error))
 		return false;
 	for (index = 0; index < 4; ++index) {
-		if (team->roster[index] == (float)session_record(session))
-			team->roster[index] = 0.0f;
+		if (team->roster[index] == session_record(session))
+			team->roster[index] = 0;
 	}
 	if (!team_store_roster(session, team, error)
 	    || !team_load(session, (int)old_team, team, error))
 		return false;
 	for (index = 0; index < 4; ++index)
-		if (team->roster[index] != 0.0f)
+		if (team->roster[index] != 0)
 			live = true;
 	if (!live) {
-		team->captain = 0.0f;
+		team->captain = 0;
 		memcpy(team->password, "    ", 4);
 		team->password[4] = '\0';
 		memset(team->roster, 0, sizeof(team->roster));
@@ -11942,10 +11942,10 @@ team_banish(struct yt_session *session, struct yt_team *team,
 		size_t prompt_length = 0;
 		int member_record;
 
-		if (team->roster[index] <= 0.0f
-		    || team->roster[index] == (float)session_record(session))
+		if (team->roster[index] <= 0
+		    || team->roster[index] == session_record(session))
 			continue;
-		member_record = (int)team->roster[index];
+		member_record = team->roster[index];
 		if (!yt_game_read_player(&session->door->game,
 		    member_record, &member, error))
 			return false;
@@ -11970,7 +11970,7 @@ team_banish(struct yt_session *session, struct yt_team *team,
 		if (!yt_database_write(&session->door->game.database,
 		    (size_t)member_record, &member.record, error))
 			return false;
-		team->roster[index] = 0.0f;
+		team->roster[index] = 0;
 		session->team_cache.roster[index] = 0;
 		if (!session_read_sector(session, team_id,
 		    &team->overlay, error)
