@@ -7596,19 +7596,6 @@ port_report_field_length(const uint8_t raw[4], uint8_t conversion_mode,
 }
 
 static bool
-port_report_present(struct yt_port_report_state *state,
-    const struct yt_port_report_ops *ops, void *context,
-    const uint8_t *text, size_t length,
-    enum yt_port_report_output_kind kind, size_t item,
-    struct yt_error *error)
-{
-	if (!ops->present(context, text, length, kind, item, error))
-		return false;
-	++state->output_count;
-	return true;
-}
-
-static bool
 port_report_right_raw(const uint8_t *source, size_t source_length,
     size_t width, uint8_t *rendered)
 {
@@ -7623,17 +7610,14 @@ port_report_right_raw(const uint8_t *source, size_t source_length,
 }
 
 bool
-yt_port_report_run(struct yt_port_report_state *state,
-    const struct yt_port_report_ops *ops, void *context,
-    struct yt_error *error)
+yt_port_report_compose(const struct yt_port_market_state *market,
+    const struct yt_player *current_player,
+    const struct yt_port *report_port, uint8_t conversion_mode,
+    const uint8_t date[10], const uint8_t time_text[8],
+    struct yt_port_report_text *report, struct yt_error *error)
 {
-	static const uint8_t dirty_zero[4] = {0x00, 0x00, 0x01, 0x00};
 	static const uint8_t title_prefix[] = "Commerce report for ";
 	static const uint8_t title_separator[] = ": ";
-	static const uint8_t header[] =
-	    " Items         Status      # units    in holds   Cost";
-	static const uint8_t rule[] =
-	    "=======       =========   =========   ========   ====";
 	static const uint8_t commodity[3][14] = {
 		"Ore..........", "Organics.....", "Equipment...."
 	};
@@ -7641,191 +7625,95 @@ yt_port_report_run(struct yt_port_report_state *state,
 	static const uint8_t selling[] = "  Selling";
 	static const uint8_t padding[] = "    ";
 	static const size_t hold_offset[3] = {YT_F69, YT_F73, YT_F77};
-	uint8_t date[10];
-	uint8_t time_text[8];
-	uint8_t row[256];
 	uint8_t promoted_hold[8];
 	uint8_t floored_capacity[8];
-	uint8_t aligned[12];
 	char number[96];
 	int formatted_length;
-	size_t position;
 	size_t name_length;
 	size_t number_length;
 	size_t index;
 
-	if (state == NULL || ops == NULL || ops->read_player == NULL
-	    || ops->read_port == NULL || ops->observe_date == NULL
-	    || ops->observe_time == NULL || ops->present == NULL
-	    || ops->reset_pager == NULL || ops->set_bold == NULL
-	    || ops->set_foreground == NULL)
+	if (market == NULL || current_player == NULL || report_port == NULL
+	    || date == NULL || time_text == NULL || report == NULL)
+		return startup_configuration_error(error, YT_INVALID,
+		    "port report arguments");
+	memset(report, 0, sizeof(*report));
+	if (!port_report_field_length(report_port->record.bytes + YT_F85,
+	    conversion_mode, &name_length, error, "port report name length"))
 		return false;
-	memset(&state->owner_player, 0, sizeof(state->owner_player));
-	memset(&state->current_player, 0, sizeof(state->current_player));
-	memset(&state->report_port, 0, sizeof(state->report_port));
-	memcpy(state->pager_line_count_raw, dirty_zero, sizeof(dirty_zero));
-	state->owner_record = 0;
-	state->owner_kind = YT_PORT_OWNER_SILENT;
-	state->foreground = 0.0f;
-	state->bold = 0.0f;
-	state->output_count = 0U;
-	state->completed_items = 0U;
-	state->pager_reset = false;
-	state->owner_player_read = false;
-	state->current_player_read = false;
-	state->report_port_read = false;
-	state->date_observed = false;
-	state->time_observed = false;
-	state->complete = false;
-
-	ops->reset_pager(context, state->pager_line_count_raw);
-	state->pager_reset = true;
-	state->owner_kind = yt_port_owner_classify(state->market.port.owner,
-	    state->current_player_record, &state->owner_record);
-	if (state->owner_kind == YT_PORT_OWNER_INVALID)
-		return startup_configuration_error(error, YT_RANGE,
-		    "port owner record conversion");
-	if (state->owner_kind != YT_PORT_OWNER_SILENT) {
-		const uint8_t *owner_name = NULL;
-		size_t owner_name_length = 0U;
-
-		if (state->owner_kind == YT_PORT_OWNER_OTHER) {
-			if (!ops->read_player(context,
-			    (uint32_t)state->owner_record, &state->owner_player,
-			    error))
-				return false;
-			state->owner_player_read = true;
-			if (!port_report_field_length(
-			    state->owner_player.record.bytes + YT_F85,
-			    state->conversion_mode, &owner_name_length, error,
-			    "port owner name length"))
-				return false;
-			owner_name = state->owner_player.record.bytes;
-		}
-		if (!yt_port_owner_compose(state->owner_kind,
-		    state->market.port.treasury, owner_name, owner_name_length,
-		    row, sizeof(row), &position))
-			return startup_configuration_error(error, YT_RANGE,
-			    "port owner row composition");
-		if (!port_report_present(state, ops, context, NULL, 0U,
-		    YT_PORT_REPORT_OWNER_BLANK, SIZE_MAX, error)
-		    || !port_report_present(state, ops, context, row, position,
-		    YT_PORT_REPORT_OWNER_ROW, SIZE_MAX, error))
-			return false;
-	}
-	if (!ops->read_player(context, (uint32_t)state->current_player_record,
-	    &state->current_player, error))
-		return false;
-	state->current_player_read = true;
-	if (!ops->read_port(context, state->port_physical_record,
-	    &state->report_port, error))
-		return false;
-	state->report_port_read = true;
-	if (!port_report_field_length(state->report_port.record.bytes + YT_F85,
-	    state->conversion_mode, &name_length, error,
-	    "port report name length"))
-		return false;
-	if (!ops->observe_date(context, date, error))
-		return false;
-	state->date_observed = true;
-	if (!ops->observe_time(context, time_text, error))
-		return false;
-	state->time_observed = true;
-	position = 0U;
-	if (!port_report_append(row, sizeof(row), &position, title_prefix,
-	    sizeof(title_prefix) - 1U)
-	    || !port_report_append(row, sizeof(row), &position,
-	    state->report_port.record.bytes, name_length)
-	    || !port_report_append(row, sizeof(row), &position, title_separator,
+	if (!port_report_append(report->title, sizeof(report->title),
+	    &report->title_length, title_prefix, sizeof(title_prefix) - 1U)
+	    || !port_report_append(report->title, sizeof(report->title),
+	    &report->title_length, report_port->record.bytes, name_length)
+	    || !port_report_append(report->title, sizeof(report->title),
+	    &report->title_length, title_separator,
 	    sizeof(title_separator) - 1U)
-	    || !port_report_append(row, sizeof(row), &position, date,
-	    sizeof(date))
-	    || !port_report_append(row, sizeof(row), &position, " ", 1U)
-	    || !port_report_append(row, sizeof(row), &position, time_text,
-	    sizeof(time_text)))
+	    || !port_report_append(report->title, sizeof(report->title),
+	    &report->title_length, date, 10U)
+	    || !port_report_append(report->title, sizeof(report->title),
+	    &report->title_length, " ", 1U)
+	    || !port_report_append(report->title, sizeof(report->title),
+	    &report->title_length, time_text, 8U))
 		return startup_configuration_error(error, YT_RANGE,
 		    "port report title composition");
-	if (!port_report_present(state, ops, context, NULL, 0U,
-	    YT_PORT_REPORT_TITLE_BLANK, SIZE_MAX, error)
-	    || !port_report_present(state, ops, context, row, position,
-	    YT_PORT_REPORT_TITLE, SIZE_MAX, error)
-	    || !port_report_present(state, ops, context, NULL, 0U,
-	    YT_PORT_REPORT_HEADER_BLANK, SIZE_MAX, error)
-	    || !port_report_present(state, ops, context, header,
-	    sizeof(header) - 1U, YT_PORT_REPORT_HEADER, SIZE_MAX, error))
-		return false;
-	state->bold = 1.0f;
-	ops->set_bold(context, state->bold);
-	if (!port_report_present(state, ops, context, rule, sizeof(rule) - 1U,
-	    YT_PORT_REPORT_RULE, SIZE_MAX, error))
-		return false;
-	for (index = 0U; index < 3U; ++index) {
-		const uint8_t *status;
 
-		if (state->market.port.factor[index] < 0.0f) {
+	for (index = 0U; index < 3U; ++index) {
+		struct yt_port_report_item *item = &report->item[index];
+		const uint8_t *status;
+		size_t position = 0U;
+
+		if (market->port.factor[index] < 0.0f) {
 			status = buying;
-			state->foreground = 3.0f;
+			item->foreground = 3.0f;
 		}
 		else {
 			status = selling;
-			state->foreground = 2.0f;
+			item->foreground = 2.0f;
 		}
-		ops->set_foreground(context, state->foreground);
-		position = 0U;
-		if (!port_report_append(row, sizeof(row), &position,
-		    commodity[index], sizeof(commodity[index]) - 1U)
-		    || !port_report_append(row, sizeof(row), &position, status,
-		    sizeof(buying) - 1U)
-		    || !port_report_present(state, ops, context, row, position,
-		    YT_PORT_REPORT_ITEM_NAME_STATUS, index, error))
-			return false;
-		if (qb_mbf64_floor_raw(state->market.capacity_raw[index],
+		if (!port_report_append(item->name_status,
+		    sizeof(item->name_status), &position, commodity[index],
+		    sizeof(commodity[index]) - 1U)
+		    || !port_report_append(item->name_status,
+		    sizeof(item->name_status), &position, status,
+		    sizeof(buying) - 1U))
+			return startup_configuration_error(error, YT_RANGE,
+			    "port report item composition");
+		if (qb_mbf64_floor_raw(market->capacity_raw[index],
 		    floored_capacity) != QB_MBF_OK)
 			return startup_configuration_error(error, YT_RANGE,
 			    "port report stock INT");
 		formatted_length = qb_str_mbf64(number, sizeof(number),
 		    floored_capacity);
-		if (formatted_length < 0)
+		if (formatted_length < 0
+		    || !port_report_right_raw((const uint8_t *)number,
+		    (size_t)formatted_length, sizeof(item->capacity),
+		    item->capacity))
 			return startup_configuration_error(error, YT_RANGE,
 			    "port report stock formatting");
-		number_length = (size_t)formatted_length;
-		if (!port_report_right_raw((const uint8_t *)number,
-		    number_length, 12U, aligned)
-		    || !port_report_present(state, ops, context, aligned, 12U,
-		    YT_PORT_REPORT_ITEM_CAPACITY, index, error))
-			return false;
-		market_promote_single(state->current_player.record.bytes
+		market_promote_single(current_player->record.bytes
 		    + hold_offset[index], promoted_hold);
 		formatted_length = qb_str_mbf64(number, sizeof(number),
 		    promoted_hold);
-		if (formatted_length < 0)
+		if (formatted_length < 0
+		    || !port_report_right_raw((const uint8_t *)number,
+		    (size_t)formatted_length, sizeof(item->hold), item->hold))
 			return startup_configuration_error(error, YT_RANGE,
 			    "port report hold formatting");
-		number_length = (size_t)formatted_length;
-		if (!port_report_right_raw((const uint8_t *)number,
-		    number_length, 11U, aligned)
-		    || !port_report_present(state, ops, context, aligned, 11U,
-		    YT_PORT_REPORT_ITEM_HOLD, index, error))
-			return false;
 		formatted_length = qb_str_mbf32(number, sizeof(number),
-		    state->market.price_raw[index]);
+		    market->price_raw[index]);
 		if (formatted_length < 0)
 			return startup_configuration_error(error, YT_RANGE,
 			    "port report price formatting");
 		number_length = (size_t)formatted_length;
 		position = 0U;
-		if (!port_report_append(row, sizeof(row), &position, number,
-		    number_length)
-		    || !port_report_append(row, sizeof(row), &position, padding,
-		    sizeof(padding) - 1U)
-		    || !port_report_present(state, ops, context, row, position,
-		    YT_PORT_REPORT_ITEM_PRICE, index, error))
-			return false;
-		++state->completed_items;
+		if (!port_report_append(item->price, sizeof(item->price),
+		    &position, number, number_length)
+		    || !port_report_append(item->price, sizeof(item->price),
+		    &position, padding, sizeof(padding) - 1U))
+			return startup_configuration_error(error, YT_RANGE,
+			    "port report price composition");
+		item->price_length = position;
 	}
-	state->foreground = 3.0f;
-	ops->set_foreground(context, state->foreground);
-	state->complete = true;
 	return true;
 }
 

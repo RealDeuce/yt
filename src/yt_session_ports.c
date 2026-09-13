@@ -1,5 +1,6 @@
 #include "yt_session_internal.h"
 
+#include "qb.h"
 #include "yt_platform.h"
 
 #include <stdio.h>
@@ -84,4 +85,144 @@ yt_session_update_port(struct yt_session *session, int sector_number,
 	return write_database_record_at_fault(session,
 	    market->port_physical_record, &market->port.record,
 	    YT_BASIC_FAULT_PORT_UPDATER_PORT_PUT, error);
+}
+
+static bool
+port_name_length(const uint8_t raw[4], uint8_t conversion_mode,
+    size_t *length, struct yt_error *error)
+{
+	bool overflow;
+	int32_t converted = qb_cint_mbf32(raw, conversion_mode, &overflow);
+
+	if (overflow || converted < 0)
+		return port_update_error(error, "port owner name length");
+	*length = (size_t)converted;
+	if (*length > YT_TEXT_FIELD_SIZE)
+		*length = YT_TEXT_FIELD_SIZE;
+	return true;
+}
+
+static bool
+port_report_owner(struct yt_session *session,
+    const struct yt_port_market_state *market, struct yt_error *error)
+{
+	enum yt_port_owner_kind kind;
+	struct yt_player owner;
+	struct yt_record record;
+	const uint8_t *owner_name = NULL;
+	uint8_t row[256];
+	size_t owner_name_length = 0U;
+	size_t row_length;
+	int owner_record;
+
+	kind = yt_port_owner_classify(market->port.owner,
+	    session_record(session), &owner_record);
+	if (kind == YT_PORT_OWNER_INVALID)
+		return port_update_error(error, "port owner record conversion");
+	if (kind == YT_PORT_OWNER_SILENT)
+		return true;
+	if (kind == YT_PORT_OWNER_OTHER) {
+		if (!read_database_record_at_fault(session,
+		    (uint32_t)owner_record, &record,
+		    YT_BASIC_FAULT_PORT_OWNER_PLAYER_GET, error))
+			return false;
+		yt_player_decode(&owner, &record);
+		if (!port_name_length(owner.record.bytes + YT_F85,
+		    session->presentation.sound.conversion_mode,
+		    &owner_name_length, error))
+			return false;
+		owner_name = owner.record.bytes;
+	}
+	if (!yt_port_owner_compose(kind, market->port.treasury,
+	    owner_name, owner_name_length, row, sizeof(row), &row_length))
+		return port_update_error(error, "port owner row composition");
+	return session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "port owner leading blank", error)
+	    && session_present_text(session, row, row_length,
+	    SESSION_PRESENT_LINE, "port owner row", error);
+}
+
+bool
+yt_session_port_report(struct yt_session *session, int logical_port,
+    const struct yt_port_market_state *market,
+    struct yt_port *terminal_port, struct yt_error *error)
+{
+	static const uint8_t pager_dirty_zero[4] = {0x00, 0x00, 0x01, 0x00};
+	static const uint8_t header[] =
+	    " Items         Status      # units    in holds   Cost";
+	static const uint8_t rule[] =
+	    "=======       =========   =========   ========   ====";
+	struct yt_clock_value now;
+	struct yt_player current_player;
+	struct yt_port report_port;
+	struct yt_port_report_text report;
+	struct yt_record record;
+	uint8_t date[10];
+	uint8_t time_text[8];
+	char rendered_date[11];
+	char rendered_time[9];
+	uint32_t physical_record;
+	size_t index;
+
+	if (session == NULL || market == NULL)
+		return false;
+	physical_record = market->port_physical_record != 0U
+	    ? market->port_physical_record
+	    : qb_brun_random_record_number(port_single_add(
+	    session_port_offset(session), (float)logical_port));
+	if (physical_record == 0U)
+		return port_update_error(error, "port report record conversion");
+	session_set_pager_line_count_raw(session, pager_dirty_zero);
+	if (!port_report_owner(session, market, error)
+	    || !session_reload_player(session, error))
+		return false;
+	current_player = session->player;
+	if (!read_database_record_at_fault(session, physical_record, &record,
+	    YT_BASIC_FAULT_PORT_REPORT_PORT_GET, error))
+		return false;
+	yt_port_decode(&report_port, &record);
+	if (!yt_platform_clock(&now, error))
+		return false;
+	yt_format_date(&now, rendered_date);
+	memcpy(date, rendered_date, sizeof(date));
+	if (!yt_platform_clock(&now, error))
+		return false;
+	yt_format_time(&now, rendered_time);
+	memcpy(time_text, rendered_time, sizeof(time_text));
+	if (!yt_port_report_compose(market, &current_player, &report_port,
+	    session->presentation.sound.conversion_mode, date, time_text,
+	    &report, error)
+	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "port report title blank", error)
+	    || !session_present_paged_row(session, report.title,
+	    report.title_length)
+	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "port report header blank", error)
+	    || !session_present_paged_row(session, header, sizeof(header) - 1U))
+		return false;
+	yt_present_set_bold(&session->presentation, 1.0f);
+	if (!session_present_paged_row(session, rule, sizeof(rule) - 1U))
+		return false;
+	for (index = 0U; index < 3U; ++index) {
+		const struct yt_port_report_item *item = &report.item[index];
+
+		session_set_foreground(session, item->foreground);
+		if (!session_present_text(session, item->name_status,
+		    sizeof(item->name_status), SESSION_PRESENT_RAW,
+		    "port report commodity/status", error)
+		    || !session_present_text(session, item->capacity,
+		    sizeof(item->capacity), SESSION_PRESENT_RAW,
+		    "port report stock", error)
+		    || !session_present_text(session, item->hold,
+		    sizeof(item->hold), SESSION_PRESENT_RAW,
+		    "port report player hold", error)
+		    || !session_present_text(session, item->price,
+		    item->price_length, SESSION_PRESENT_LINE,
+		    "port report price", error))
+			return false;
+	}
+	session_set_foreground(session, 3.0f);
+	if (terminal_port != NULL)
+		*terminal_port = report_port;
+	return true;
 }

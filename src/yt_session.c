@@ -189,7 +189,7 @@ static bool build_route(struct yt_session *session, float start,
     float destination, int16_t *next_hop, bool use_avoid, bool *found,
     enum yt_route_outcome *route_outcome, float *returned_status,
     struct yt_error *error);
-static bool session_present_paged_row(struct yt_session *session, const uint8_t *text,
+bool session_present_paged_row(struct yt_session *session, const uint8_t *text,
     size_t length);
 static bool session_store_output_source(struct yt_session *session,
     const uint8_t *text, size_t length);
@@ -1101,7 +1101,7 @@ session_store_output_source(struct yt_session *session,
 	return true;
 }
 
-static bool
+bool
 session_present_paged_row(struct yt_session *session, const uint8_t *text, size_t length)
 {
 	static const struct yt_paged_row_ops ops = {
@@ -6002,187 +6002,6 @@ port_owner_row(struct yt_session *session, const struct yt_port *port,
 }
 
 static bool
-port_report_read_player(void *context, uint32_t physical_record,
-    struct yt_player *player, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	struct yt_record record;
-
-	if (physical_record == (uint32_t)session_record(session)) {
-		if (!session_reload_player(session, error))
-			return false;
-		*player = session->player;
-		return true;
-	}
-	if (!read_database_record_at_fault(session, physical_record, &record,
-	    YT_BASIC_FAULT_PORT_OWNER_PLAYER_GET, error))
-		return false;
-	yt_player_decode(player, &record);
-	return true;
-}
-
-static bool
-port_report_read_port(void *context, uint32_t physical_record,
-    struct yt_port *port, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	struct yt_record record;
-
-	if (!read_database_record_at_fault(session, physical_record, &record,
-	    YT_BASIC_FAULT_PORT_REPORT_PORT_GET, error))
-		return false;
-	yt_port_decode(port, &record);
-	return true;
-}
-
-static bool
-port_report_observe_date(void *context, uint8_t date[10],
-    struct yt_error *error)
-{
-	struct yt_clock_value now;
-	char rendered[11];
-
-	(void)context;
-	if (!yt_platform_clock(&now, error))
-		return false;
-	yt_format_date(&now, rendered);
-	memcpy(date, rendered, 10U);
-	return true;
-}
-
-static bool
-port_report_observe_time(void *context, uint8_t time_text[8],
-    struct yt_error *error)
-{
-	struct yt_clock_value now;
-	char rendered[9];
-
-	(void)context;
-	if (!yt_platform_clock(&now, error))
-		return false;
-	yt_format_time(&now, rendered);
-	memcpy(time_text, rendered, 8U);
-	return true;
-}
-
-static bool
-port_report_present(void *context, const uint8_t *text, size_t length,
-    enum yt_port_report_output_kind kind, size_t item,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-	const char *operation;
-
-	(void)item;
-	switch (kind) {
-	case YT_PORT_REPORT_OWNER_BLANK:
-		operation = "port owner leading blank";
-		break;
-	case YT_PORT_REPORT_OWNER_ROW:
-		operation = "port owner row";
-		break;
-	case YT_PORT_REPORT_TITLE_BLANK:
-		operation = "port report title blank";
-		break;
-	case YT_PORT_REPORT_HEADER_BLANK:
-		operation = "port report header blank";
-		break;
-	case YT_PORT_REPORT_ITEM_NAME_STATUS:
-		operation = "port report commodity/status";
-		break;
-	case YT_PORT_REPORT_ITEM_CAPACITY:
-		operation = "port report stock";
-		break;
-	case YT_PORT_REPORT_ITEM_HOLD:
-		operation = "port report player hold";
-		break;
-	case YT_PORT_REPORT_ITEM_PRICE:
-		operation = "port report price";
-		break;
-	case YT_PORT_REPORT_TITLE:
-	case YT_PORT_REPORT_HEADER:
-	case YT_PORT_REPORT_RULE:
-		return session_present_paged_row(session, text, length);
-	default:
-		return false;
-	}
-	return session_present_text(session, text, length,
-	    kind == YT_PORT_REPORT_ITEM_NAME_STATUS
-	    || kind == YT_PORT_REPORT_ITEM_CAPACITY
-	    || kind == YT_PORT_REPORT_ITEM_HOLD
-	    ? SESSION_PRESENT_RAW : SESSION_PRESENT_LINE, operation, error);
-}
-
-static void
-port_report_reset_pager(void *context, const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-
-	session_set_pager_line_count_raw(session, raw);
-}
-
-static void
-port_report_set_bold(void *context, float bold)
-{
-	struct yt_session *session = context;
-
-	yt_present_set_bold(&session->presentation, bold);
-}
-
-static void
-port_report_set_foreground(void *context, float foreground)
-{
-	struct yt_session *session = context;
-
-	session_set_foreground(session, foreground);
-}
-
-static bool
-port_report_capture(struct yt_session *session, int logical_port,
-    const struct yt_port_market_state *market,
-    struct yt_port *terminal_port, struct yt_error *error)
-{
-	static const struct yt_port_report_ops ops = {
-		port_report_read_player,
-		port_report_read_port,
-		port_report_observe_date,
-		port_report_observe_time,
-		port_report_present,
-		port_report_reset_pager,
-		port_report_set_bold,
-		port_report_set_foreground,
-	};
-	struct yt_port_report_state state;
-	int physical_record;
-
-	if (market == NULL)
-		return false;
-	physical_record = market->port_physical_record != 0U
-	    ? (int)market->port_physical_record
-	    : (int)session_port_basic_record(session, (float)logical_port);
-	if (physical_record < 1)
-		return port_report_failure(error,
-		    "port report record conversion");
-	memset(&state, 0, sizeof(state));
-	state.current_player_record = session_record(session);
-	state.port_physical_record = (uint32_t)physical_record;
-	state.conversion_mode = session->presentation.sound.conversion_mode;
-	state.market = *market;
-	if (!yt_port_report_run(&state, &ops, session, error))
-		return false;
-	if (terminal_port != NULL)
-		*terminal_port = state.report_port;
-	return true;
-}
-
-static bool
-port_report(struct yt_session *session, int logical_port,
-    const struct yt_port_market_state *market, struct yt_error *error)
-{
-	return port_report_capture(session, logical_port, market, NULL, error);
-}
-
-static bool
 computer_port_ordinary(struct yt_session *session, int sector_number,
     float sector_record_expression,
     struct yt_error *error)
@@ -6191,7 +6010,8 @@ computer_port_ordinary(struct yt_session *session, int sector_number,
 
 	return yt_session_update_port(session, sector_number,
 	    &sector_record_expression, NULL, &market, error)
-	    && port_report(session, (int)market.logical_port, &market, error);
+	    && yt_session_port_report(session, (int)market.logical_port,
+	    &market, NULL, error);
 }
 
 static bool
@@ -6362,7 +6182,8 @@ static bool
 ordinary_commerce_report(void *context,
     const struct yt_port_market_state *market, struct yt_error *error)
 {
-	return port_report(context, (int)market->logical_port, market, error);
+	return yt_session_port_report(context, (int)market->logical_port,
+	    market, NULL, error);
 }
 
 static bool
@@ -10836,7 +10657,7 @@ port_purchase_report(void *context, int logical_port, bool earth,
 		*early_port = market.port;
 		memcpy(production, market.port.production,
 		    3U * sizeof(production[0]));
-		return port_report_capture(session, logical_port, &market,
+		return yt_session_port_report(session, logical_port, &market,
 		    terminal_port, error);
 	}
 }
