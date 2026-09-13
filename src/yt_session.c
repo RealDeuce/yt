@@ -11114,146 +11114,122 @@ info_line(struct yt_session *session, const void *text, size_t length,
 	    "Info line presentation", error);
 }
 
-static bool
-info_team_read_player(void *context, float record, struct yt_player *player,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-	struct yt_record raw;
-	uint32_t physical = qb_brun_random_record_number(record);
-
-	if (!yt_database_read(&session->door->game.database, (size_t)physical,
-	    &raw, error))
-		return false;
-	yt_player_decode(player, &raw);
-	return true;
-}
-
 static void
-info_team_store_id(void *context, const uint8_t raw[4])
+info_team_result(struct yt_session *session,
+    const struct yt_player *current_player, const struct yt_team *team,
+    bool is_captain, struct yt_team *resolved_team,
+    bool *current_is_captain)
 {
-	struct yt_session *session = context;
-
-	(void)raw;
-	session->team_cache.current_player_is_captain = false;
-}
-
-static void
-info_team_store_captain(void *context, const uint8_t raw[4])
-{
-	struct yt_session *session = context;
-
-	session->shared_target_record = qb_mbf32_decode(raw);
-}
-
-static void
-info_team_promote_cache(void *context, const uint8_t current_record_raw[4])
-{
-	struct yt_session *session = context;
-
-	session->team_cache.captain = (int)qb_mbf32_decode(current_record_raw);
-	session->team_cache.current_player_is_captain = true;
-}
-
-static bool
-info_team_load_team(void *context, float team_id, float current_record,
-    float *captain_flag, struct yt_team *team, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	struct yt_record overlay;
-	bool overlay_loaded;
-	bool live;
-	size_t index;
-
-	memset(team, 0, sizeof(*team));
-	team->id = (int)team_id;
-	if (!session_load_team_cache(session, (int)team_id,
-	    (int)current_record, &overlay, &overlay_loaded, &live, error))
-		return false;
-	if (overlay_loaded)
-		yt_sector_decode(&team->overlay, &overlay);
-	memcpy(team->name, session->team_cache.name, sizeof(team->name));
-	team->name_length = session->team_cache.name_length;
-	memcpy(team->password, session->team_cache.password,
-	    sizeof(team->password));
-	team->captain = session->team_cache.captain;
-	team->live = live;
-	team->full = team->live;
-	for (index = 0; index < YT_ARRAY_LEN(team->roster); ++index) {
-		team->roster[index] = session->team_cache.roster[index];
-		if (team->roster[index] <= 0)
-			team->full = false;
-	}
-	*captain_flag = session->team_cache.current_player_is_captain
-	    ? -1.0f : 0.0f;
-	return true;
-}
-
-static bool
-info_team_read_overlay(void *context, float team_id,
-    struct yt_sector *overlay, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	struct yt_record raw;
-	uint32_t physical = session_sector_basic_record(session, team_id);
-
-	if (!yt_database_read(&session->door->game.database, (size_t)physical,
-	    &raw, error))
-		return false;
-	yt_sector_decode(overlay, &raw);
-	return true;
-}
-
-static bool
-info_team_write_overlay(void *context, float team_id,
-    const struct yt_sector *overlay, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	uint32_t physical = session_sector_basic_record(session, team_id);
-
-	return yt_database_write(&session->door->game.database,
-	    (size_t)physical, &overlay->record, error);
-}
-
-static bool
-info_team_present(void *context, const uint8_t *text, size_t length,
-    struct yt_error *error)
-{
-	return info_line(context, text, length, error);
+	session->player.record = current_player->record;
+	session->player.team = current_player->team;
+	if (resolved_team != NULL)
+		*resolved_team = *team;
+	if (current_is_captain != NULL)
+		*current_is_captain = is_captain;
 }
 
 static bool
 info_team_lines(struct yt_session *session, struct yt_team *resolved_team,
     bool *current_is_captain, struct yt_error *error)
 {
-	static const struct yt_info_team_ops ops = {
-		info_team_read_player,
-		info_team_store_id,
-		info_team_store_captain,
-		info_team_promote_cache,
-		info_team_load_team,
-		info_team_read_overlay,
-		info_team_write_overlay,
-		info_team_present,
-	};
-	struct yt_info_team_state state = {
-		.current_record = (float)session_record(session),
-		.sector_offset = session_sector_offset(session),
-		.conversion_mode = session->presentation.sound.conversion_mode,
-	};
+	static const uint8_t none[] = "Team  : None";
+	static const uint8_t promoted[] =
+	    "Your team has no captain! You've been promoted to Captain!";
+	static const uint8_t congratulations[] =
+	    "Congratulations Captain! See Team Menu for your new options!";
+	struct yt_player current_player;
+	struct yt_player captain;
+	struct yt_player ignored;
+	struct yt_team team;
+	struct yt_sector fresh;
+	uint8_t captain_name[YT_TEXT_FIELD_SIZE];
+	uint8_t row[256];
+	size_t captain_name_length = 0U;
+	size_t row_length;
+	int current_record = session_record(session);
+	int team_id;
+	int captain_record;
+	bool valid_captain = false;
 
-	if (qb_mbf32_encode((float)session_record(session),
-	    state.current_record_raw) != QB_MBF_OK)
+	memset(&team, 0, sizeof(team));
+	if (!yt_game_read_player(&session->door->game, current_record,
+	    &current_player, error))
 		return false;
-
-	if (!yt_info_team_resolver_run(&state, &ops, session, error))
+	team_id = (int)current_player.team;
+	if (team_id == 0) {
+		if (!info_line(session, none, sizeof(none) - 1U, error)
+		    || !info_line(session, NULL, 0U, error))
+			return false;
+		info_team_result(session, &current_player, &team, false,
+		    resolved_team, current_is_captain);
+		return true;
+	}
+	if (!team_load(session, team_id, &team, error)
+	    || !yt_info_team_row(YT_INFO_TEAM_SUMMARY, team_id,
+	    (const uint8_t *)team.name, team.name_length, row, sizeof(row),
+	    &row_length))
 		return false;
-	session->player.record = state.current_player.record;
-	session->player.team = state.current_player.team;
-	if (resolved_team != NULL)
-		*resolved_team = state.team;
-	if (current_is_captain != NULL)
-		*current_is_captain = state.current_is_captain;
+	if (!info_line(session, row, row_length, error)
+	    || !info_line(session, NULL, 0U, error))
+		return false;
+	if (team.captain == current_record) {
+		if (!yt_info_team_row(YT_INFO_TEAM_SELF_CAPTAIN, team_id, NULL,
+		    0U, row, sizeof(row), &row_length))
+			return info_failure(error, "Info team row");
+		if (!info_line(session, row, row_length, error)
+		    || !info_line(session, NULL, 0U, error))
+			return false;
+		info_team_result(session, &current_player, &team, true,
+		    resolved_team, current_is_captain);
+		return true;
+	}
+	captain_record = team.captain;
+	session->shared_target_record = (float)captain_record;
+	if (captain_record >= 2
+	    && (float)captain_record <= session_sector_offset(session)) {
+		if (!yt_game_read_player(&session->door->game, captain_record,
+		    &captain, error))
+			return false;
+		if (captain.name_length > 0.0f) {
+			if (!yt_player_stored_name(&captain, captain_name,
+			    &captain_name_length, error))
+				return false;
+			valid_captain = captain.team == (float)team_id;
+		}
+	}
+	if (!valid_captain) {
+		session->shared_target_record = (float)current_record;
+		session->team_cache.captain = current_record;
+		session->team_cache.current_player_is_captain = true;
+		if (!session_read_sector(session, team_id, &fresh, error)
+		    || !yt_record_set_number(&fresh.record, YT_F77,
+		    (float)current_record))
+			return false;
+		team.overlay = fresh;
+		team.captain = current_record;
+		if (!yt_database_write(&session->door->game.database,
+		    (size_t)session_sector_basic_record(session, (float)team_id),
+		    &fresh.record, error)
+		    || !info_line(session, promoted, sizeof(promoted) - 1U, error)
+		    || !info_line(session, congratulations,
+		    sizeof(congratulations) - 1U, error)
+		    || !info_line(session, NULL, 0U, error))
+			return false;
+		info_team_result(session, &current_player, &team, true,
+		    resolved_team, current_is_captain);
+		return true;
+	}
+	if (!yt_game_read_player(&session->door->game, captain_record, &ignored,
+	    error))
+		return false;
+	if (!yt_info_team_row(YT_INFO_TEAM_OTHER_CAPTAIN, team_id, captain_name,
+	    captain_name_length, row, sizeof(row), &row_length))
+		return info_failure(error, "Info team row");
+	if (!info_line(session, row, row_length, error)
+	    || !info_line(session, NULL, 0U, error))
+		return false;
+	info_team_result(session, &current_player, &team, false, resolved_team,
+	    current_is_captain);
 	return true;
 }
 

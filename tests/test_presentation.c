@@ -12713,7 +12713,15 @@ enum normal_exit_info_team_fixture_route {
 };
 
 struct normal_exit_info_observation {
-	struct yt_info_team_state team;
+	struct {
+		enum normal_exit_info_team_fixture_route route;
+		int team_id;
+		struct yt_team team;
+		int captain_record;
+		uint8_t captain_name[YT_TEXT_FIELD_SIZE];
+		size_t captain_name_length;
+		bool current_is_captain;
+	} team;
 	struct yt_sector written_overlay;
 	enum normal_exit_info_effect effects[16];
 	float player_records[3];
@@ -12763,108 +12771,6 @@ normal_exit_info_refresh(void *context, uint8_t *text, size_t capacity,
 }
 
 static bool
-normal_exit_info_team_read(void *context, float record,
-    struct yt_player *player, struct yt_error *error)
-{
-	struct normal_exit_info_context *fixture = context;
-	struct normal_exit_info_observation *observation = fixture->observation;
-	size_t position;
-
-	(void)error;
-	if (observation == NULL || player == NULL)
-		return false;
-	position = observation->player_read_count;
-	if (position >= YT_ARRAY_LEN(observation->player_records))
-		return false;
-	observation->player_records[position] = record;
-	++observation->player_read_count;
-	if (position == 0U) {
-		if (!normal_exit_info_effect(fixture,
-		    NORMAL_EXIT_INFO_READ_CURRENT))
-			return false;
-		*player = fixture->team_current;
-	}
-	else {
-		if (!normal_exit_info_effect(fixture,
-		    NORMAL_EXIT_INFO_READ_CAPTAIN))
-			return false;
-		*player = fixture->team_captain;
-	}
-	return true;
-}
-
-static void
-normal_exit_info_team_store_id(void *context, const uint8_t raw[4])
-{
-	(void)context;
-	(void)raw;
-}
-
-static void
-normal_exit_info_team_store_captain(void *context, const uint8_t raw[4])
-{
-	(void)context;
-	(void)raw;
-}
-
-static void
-normal_exit_info_team_promote_cache(void *context, const uint8_t raw[4])
-{
-	(void)context;
-	(void)raw;
-}
-
-static bool
-normal_exit_info_team_load(void *context, float team_id,
-    float current_record, float *captain_flag, struct yt_team *team,
-    struct yt_error *error)
-{
-	struct normal_exit_info_context *fixture = context;
-
-	(void)error;
-	if (team_id != 7.0f || current_record != 2.0f
-	    || captain_flag == NULL || team == NULL
-	    || !normal_exit_info_effect(fixture,
-	    NORMAL_EXIT_INFO_LOAD_TEAM))
-		return false;
-	*captain_flag = fixture->team_route == NORMAL_EXIT_INFO_TEAM_SELF
-	    ? -1.0f : 0.0f;
-	*team = fixture->team;
-	return true;
-}
-
-static bool
-normal_exit_info_team_read_overlay(void *context, float team_id,
-    struct yt_sector *overlay, struct yt_error *error)
-{
-	struct normal_exit_info_context *fixture = context;
-
-	(void)error;
-	if (team_id != 7.0f || overlay == NULL
-	    || !normal_exit_info_effect(fixture,
-	    NORMAL_EXIT_INFO_READ_OVERLAY))
-		return false;
-	*overlay = fixture->overlay;
-	return true;
-}
-
-static bool
-normal_exit_info_team_write_overlay(void *context, float team_id,
-    const struct yt_sector *overlay, struct yt_error *error)
-{
-	struct normal_exit_info_context *fixture = context;
-
-	(void)error;
-	if (fixture->observation == NULL || team_id != 7.0f
-	    || overlay == NULL || !normal_exit_info_effect(fixture,
-	    NORMAL_EXIT_INFO_WRITE_OVERLAY))
-		return false;
-	fixture->observation->written_overlay = *overlay;
-	fixture->observation->overlay_written = true;
-	return true;
-}
-
-static bool
 normal_exit_info_team_present(void *context, const uint8_t *text,
     size_t length, struct yt_error *error)
 {
@@ -12884,32 +12790,92 @@ normal_exit_info_team_present(void *context, const uint8_t *text,
 static bool
 normal_exit_info_team(void *context, struct yt_error *error)
 {
-	static const struct yt_info_team_ops promotion_ops = {
-		normal_exit_info_team_read,
-		normal_exit_info_team_store_id,
-		normal_exit_info_team_store_captain,
-		normal_exit_info_team_promote_cache,
-		normal_exit_info_team_load,
-		normal_exit_info_team_read_overlay,
-		normal_exit_info_team_write_overlay,
-		normal_exit_info_team_present,
-	};
 	static const uint8_t none[] = "Team  : None";
+	static const uint8_t promoted[] =
+	    "Your team has no captain! You've been promoted to Captain!";
+	static const uint8_t congratulations[] =
+	    "Congratulations Captain! See Team Menu for your new options!";
 	struct normal_exit_info_context *fixture = context;
 	struct viewer_pager_join *join = &fixture->viewer->join;
+	struct normal_exit_info_observation *observation = fixture->observation;
 	struct yt_present_result result;
+	uint8_t row[128];
+	size_t row_length;
 
 	if (fixture->team_route != NORMAL_EXIT_INFO_TEAM_NONE) {
-		if (fixture->observation == NULL)
+		if (observation == NULL)
 			return false;
-		memset(&fixture->observation->team, 0,
-		    sizeof(fixture->observation->team));
-		fixture->observation->team.current_record = 2.0f;
-		(void)qb_mbf32_encode(2.0f,
-		    fixture->observation->team.current_record_raw);
-		fixture->observation->team.sector_offset = 52.0f;
-		return yt_info_team_resolver_run(&fixture->observation->team,
-		    &promotion_ops, fixture, error);
+		memset(&observation->team, 0, sizeof(observation->team));
+		observation->team.team_id = 7;
+		observation->team.team = fixture->team;
+		observation->player_records[0] = 2.0f;
+		observation->player_read_count = 1U;
+		if (!normal_exit_info_effect(fixture,
+		    NORMAL_EXIT_INFO_READ_CURRENT)
+		    || !normal_exit_info_effect(fixture,
+		    NORMAL_EXIT_INFO_LOAD_TEAM)
+		    || !yt_info_team_row(YT_INFO_TEAM_SUMMARY, 7,
+		    (const uint8_t *)fixture->team.name, fixture->team.name_length,
+		    row, sizeof(row), &row_length)
+		    || !normal_exit_info_team_present(fixture, row, row_length,
+		    error)
+		    || !normal_exit_info_team_present(fixture, NULL, 0U, error))
+			return false;
+		if (fixture->team_route == NORMAL_EXIT_INFO_TEAM_SELF) {
+			observation->team.route = NORMAL_EXIT_INFO_TEAM_SELF;
+			observation->team.captain_record = 2;
+			observation->team.current_is_captain = true;
+			return yt_info_team_row(YT_INFO_TEAM_SELF_CAPTAIN, 7,
+			    NULL, 0U, row, sizeof(row), &row_length)
+			    && normal_exit_info_team_present(fixture, row,
+			    row_length, error)
+			    && normal_exit_info_team_present(fixture, NULL, 0U,
+			    error);
+		}
+		observation->player_records[1] = 3.0f;
+		observation->player_read_count = 2U;
+		if (!normal_exit_info_effect(fixture,
+		    NORMAL_EXIT_INFO_READ_CAPTAIN))
+			return false;
+		if (fixture->team_route == NORMAL_EXIT_INFO_TEAM_PROMOTION) {
+			observation->team.route = NORMAL_EXIT_INFO_TEAM_PROMOTION;
+			observation->team.captain_record = 2;
+			observation->team.team.captain = 2;
+			observation->team.current_is_captain = true;
+			observation->written_overlay = fixture->overlay;
+			if (!normal_exit_info_effect(fixture,
+			    NORMAL_EXIT_INFO_READ_OVERLAY)
+			    || !yt_record_set_number(
+			    &observation->written_overlay.record, YT_F77, 2.0f)
+			    || !normal_exit_info_effect(fixture,
+			    NORMAL_EXIT_INFO_WRITE_OVERLAY))
+				return false;
+			observation->overlay_written = true;
+			return normal_exit_info_team_present(fixture, promoted,
+			    sizeof(promoted) - 1U, error)
+			    && normal_exit_info_team_present(fixture,
+			    congratulations, sizeof(congratulations) - 1U,
+			    error)
+			    && normal_exit_info_team_present(fixture, NULL, 0U,
+			    error);
+		}
+		observation->team.route = NORMAL_EXIT_INFO_TEAM_OTHER;
+		observation->team.captain_record = 3;
+		observation->team.captain_name_length = 4U;
+		memcpy(observation->team.captain_name,
+		    fixture->team_captain.name, 4U);
+		observation->player_records[2] = 3.0f;
+		observation->player_read_count = 3U;
+		if (!normal_exit_info_effect(fixture,
+		    NORMAL_EXIT_INFO_READ_CAPTAIN)
+		    || !yt_info_team_row(YT_INFO_TEAM_OTHER_CAPTAIN, 7,
+		    observation->team.captain_name,
+		    observation->team.captain_name_length, row, sizeof(row),
+		    &row_length))
+			return false;
+		return normal_exit_info_team_present(fixture, row, row_length,
+		    error)
+		    && normal_exit_info_team_present(fixture, NULL, 0U, error);
 	}
 	(void)error;
 	if (yt_present_line(none, sizeof(none) - 1U, &join->presentation,
@@ -14608,11 +14574,10 @@ test_planet_info_promotion_cycle_presentation(void)
 		    && observation.player_read_count == 2U
 		    && observation.player_records[0] == 2.0f
 		    && observation.player_records[1] == 3.0f
-		    && observation.team.route == YT_INFO_TEAM_PROMOTED
-		    && observation.team.team_id == 7.0f
-		    && observation.team.captain_record == 2.0f
+		    && observation.team.route == NORMAL_EXIT_INFO_TEAM_PROMOTION
+		    && observation.team.team_id == 7
+		    && observation.team.captain_record == 2
 		    && observation.team.team.captain == 2
-		    && observation.team.captain_flag == 1.0f
 		    && observation.team.current_is_captain
 		    && observation.overlay_written);
 		written_captain = yt_record_get_number(
@@ -14732,10 +14697,10 @@ test_planet_info_captain_route_cycles_presentation(void)
 		    cases[pass].effect_count * sizeof(cases[pass].effects[0])) == 0
 		    && observation.player_read_count == cases[pass].player_reads
 		    && observation.player_records[0] == 2.0f
-		    && observation.team.team_id == 7.0f
+		    && observation.team.team_id == 7
 		    && !observation.overlay_written);
 		if (cases[pass].route == NORMAL_EXIT_INFO_TEAM_SELF) {
-			CHECK(observation.team.route == YT_INFO_TEAM_SELF_CAPTAIN
+			CHECK(observation.team.route == NORMAL_EXIT_INFO_TEAM_SELF
 			    && observation.team.current_is_captain
 			    && observation.team.team.captain == 2);
 		}
@@ -14743,9 +14708,9 @@ test_planet_info_captain_route_cycles_presentation(void)
 			CHECK(observation.player_records[1] == 3.0f
 			    && observation.player_records[2] == 3.0f
 			    && observation.team.route
-			    == YT_INFO_TEAM_OTHER_CAPTAIN
+			    == NORMAL_EXIT_INFO_TEAM_OTHER
 			    && !observation.team.current_is_captain
-			    && observation.team.captain_record == 3.0f
+			    && observation.team.captain_record == 3
 			    && observation.team.captain_name_length == 4U
 			    && memcmp(observation.team.captain_name,
 			    "Long", 4U) == 0);

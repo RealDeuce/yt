@@ -200,57 +200,15 @@ bool yt_team_audit_message(enum yt_team_audit_event event,
     const char *time_text, uint8_t *message, size_t capacity,
     size_t *length);
 
-enum yt_info_team_route {
-	YT_INFO_TEAM_NONE,
+enum yt_info_team_row_kind {
+	YT_INFO_TEAM_SUMMARY,
 	YT_INFO_TEAM_SELF_CAPTAIN,
 	YT_INFO_TEAM_OTHER_CAPTAIN,
-	YT_INFO_TEAM_PROMOTED,
 };
-struct yt_info_team_state {
-	float current_record;
-	uint8_t current_record_raw[4];
-	float sector_offset;
-	uint8_t conversion_mode;
-	struct yt_player current_player;
-	float team_id;
-	struct yt_team team;
-	float captain_flag;
-	float captain_record;
-	uint8_t captain_name[YT_TEXT_FIELD_SIZE];
-	size_t captain_name_length;
-	bool current_is_captain;
-	enum yt_info_team_route route;
-};
-typedef bool (*yt_info_team_read_player_fn)(void *context, float record,
-    struct yt_player *player, struct yt_error *error);
-typedef void (*yt_info_team_store_id_fn)(void *context,
-    const uint8_t raw[4]);
-typedef void (*yt_info_team_store_captain_fn)(void *context,
-    const uint8_t raw[4]);
-typedef void (*yt_info_team_promote_cache_fn)(void *context,
-    const uint8_t current_record_raw[4]);
-typedef bool (*yt_info_team_load_team_fn)(void *context, float team_id,
-    float current_record, float *captain_flag, struct yt_team *team,
-    struct yt_error *error);
-typedef bool (*yt_info_team_read_overlay_fn)(void *context, float team_id,
-    struct yt_sector *overlay, struct yt_error *error);
-typedef bool (*yt_info_team_write_overlay_fn)(void *context, float team_id,
-    const struct yt_sector *overlay, struct yt_error *error);
-typedef bool (*yt_info_team_present_fn)(void *context, const uint8_t *text,
-    size_t length, struct yt_error *error);
-struct yt_info_team_ops {
-	yt_info_team_read_player_fn read_player;
-	yt_info_team_store_id_fn store_team_id;
-	yt_info_team_store_captain_fn store_captain;
-	yt_info_team_promote_cache_fn promote_cache;
-	yt_info_team_load_team_fn load_team;
-	yt_info_team_read_overlay_fn read_overlay;
-	yt_info_team_write_overlay_fn write_overlay;
-	yt_info_team_present_fn present;
-};
-bool yt_info_team_resolver_run(struct yt_info_team_state *state,
-    const struct yt_info_team_ops *ops, void *context,
-    struct yt_error *error);
+
+bool yt_info_team_row(enum yt_info_team_row_kind kind, int team_id,
+    const uint8_t *name, size_t name_length, uint8_t *row,
+    size_t capacity, size_t *length);
 
 enum yt_info_panel_output_kind {
 	YT_INFO_PANEL_LINE,
