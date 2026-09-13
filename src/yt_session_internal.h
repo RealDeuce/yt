@@ -8,27 +8,6 @@
 
 #define YT_COMMAND_SIZE 4096U
 
-enum navigation_field_kind {
-	NAVIGATION_FIELD_NONE,
-	NAVIGATION_FIELD_ENTRY_PLAYER,
-	NAVIGATION_FIELD_ROUTE_SECTOR,
-	NAVIGATION_FIELD_INNER_PLAYER,
-	NAVIGATION_FIELD_FINAL_SECTOR,
-	NAVIGATION_FIELD_RETURN_PLAYER,
-	NAVIGATION_FIELD_SCOREBOARD_PLAYER,
-	NAVIGATION_FIELD_SCOREBOARD_SECTOR,
-	NAVIGATION_FIELD_SCOREBOARD_TEAM,
-	NAVIGATION_FIELD_RADIO_RECIPIENT,
-	NAVIGATION_FIELD_RADIO_SENDER,
-	NAVIGATION_FIELD_NEAREST_PLAYER,
-	NAVIGATION_FIELD_NEAREST_SECTOR,
-	NAVIGATION_FIELD_NEAREST_PORT,
-	NAVIGATION_FIELD_NEAREST_OWNER,
-	NAVIGATION_FIELD_PROFIT_PLAYER,
-	NAVIGATION_FIELD_PROFIT_SECTOR,
-	NAVIGATION_FIELD_PROFIT_PORT,
-};
-
 enum session_present_text_kind {
 	SESSION_PRESENT_LINE,
 	SESSION_PRESENT_RAW,
@@ -104,13 +83,6 @@ struct yt_session {
 	int16_t route_second[YT_ROUTE_CAPACITY];
 	char computer_route_scratch[YT_COMMAND_SIZE];
 	size_t computer_route_scratch_length;
-	bool navigation_field_active;
-	enum navigation_field_kind navigation_field_kind;
-	int navigation_field_record;
-	struct yt_record navigation_field;
-	bool radio_field_valid;
-	uint32_t radio_field_record;
-	struct yt_radio_record radio_field;
 	char planet_name[42];
 	double planet_quantity[10];
 	struct yt_present_time_state time;

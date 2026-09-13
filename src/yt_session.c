@@ -784,13 +784,7 @@ apply_player_credit_mutation(void *context, float player_record,
 static bool
 computer_prompt_hydrate(struct yt_session *session, struct yt_error *error)
 {
-	if (!reload_player(session, error))
-		return false;
-	session->navigation_field_kind = NAVIGATION_FIELD_RETURN_PLAYER;
-	session->navigation_field_record = session_record(session);
-	session->navigation_field = session->player.record;
-	session->navigation_field_active = false;
-	return true;
+	return reload_player(session, error);
 }
 
 static bool
@@ -3012,9 +3006,7 @@ admit_player(struct yt_session *session, const char *first, const char *last,
 
 static bool
 radio_name_bytes(struct yt_session *session, float record, uint8_t *dest,
-    size_t capacity, size_t *length, bool sender,
-    struct yt_player *loaded_player, bool *loaded_player_valid,
-    struct yt_error *error)
+    size_t capacity, size_t *length, bool sender, struct yt_error *error)
 {
 	const uint8_t *literal;
 	size_t literal_length;
@@ -3022,8 +3014,6 @@ radio_name_bytes(struct yt_session *session, float record, uint8_t *dest,
 	if (length == NULL)
 		return false;
 	*length = 0;
-	if (loaded_player_valid != NULL)
-		*loaded_player_valid = false;
 	if (record > 0.0f) {
 		struct yt_player player;
 		uint8_t stored[YT_TEXT_FIELD_SIZE];
@@ -3031,10 +3021,6 @@ radio_name_bytes(struct yt_session *session, float record, uint8_t *dest,
 
 		if (!scanner_read_player(session, record, &player, error))
 			return false;
-		if (loaded_player != NULL)
-			*loaded_player = player;
-		if (loaded_player_valid != NULL)
-			*loaded_player_valid = true;
 		if (!yt_player_stored_name(&player, stored, &stored_length, error))
 			return false;
 		if (stored_length > capacity)
@@ -3074,13 +3060,6 @@ capacity_error:
 struct radio_read_context {
 	struct yt_session *session;
 	struct yt_radio_file file;
-	struct yt_radio_record radio_field;
-	uint32_t radio_field_record;
-	struct yt_player player_field;
-	uint32_t player_field_record;
-	enum yt_radio_read_name_role player_field_role;
-	bool radio_field_valid;
-	bool player_field_valid;
 	float reader_mode;
 };
 
@@ -3129,18 +3108,13 @@ radio_read_get(void *context, uint32_t record,
     struct yt_radio_record *value, struct yt_error *error)
 {
 	struct radio_read_context *reader = context;
-	bool result;
 
-	result = yt_radio_file_get(&reader->file, record, value, NULL, error);
-	if (!result)
+	if (!yt_radio_file_get(&reader->file, record, value, NULL, error)) {
 		radio_read_attach_fault(error, YT_BASIC_FAULT_RADIO_RECORD_GET,
 		    reader->file.random.last_get.basic_error);
-	if (result) {
-		reader->radio_field = *value;
-		reader->radio_field_record = record;
-		reader->radio_field_valid = true;
+		return false;
 	}
-	return result;
+	return true;
 }
 
 static bool
@@ -3148,24 +3122,15 @@ radio_read_name(void *context, float record, bool sender, uint8_t *dest,
     size_t capacity, size_t *length, struct yt_error *error)
 {
 	struct radio_read_context *reader = context;
-	struct yt_player player;
-	bool player_valid;
 	bool result;
 
 	result = radio_name_bytes(reader->session, record, dest, capacity,
-	    length, sender, &player, &player_valid, error);
+	    length, sender, error);
 	if (!result && record > 0.0f)
 		radio_read_attach_fault(error, sender
 		    ? YT_BASIC_FAULT_RADIO_SENDER_GET
 		    : YT_BASIC_FAULT_RADIO_RECIPIENT_GET,
 		    reader->session->door->game.database.last_get.basic_error);
-	if (player_valid) {
-		reader->player_field = player;
-		reader->player_field_record = qb_brun_random_record_number(record);
-		reader->player_field_role = sender
-		    ? YT_RADIO_READ_NAME_SENDER : YT_RADIO_READ_NAME_RECIPIENT;
-		reader->player_field_valid = true;
-	}
 	return result;
 }
 
@@ -3262,21 +3227,6 @@ radio_read(struct yt_session *session, float reader_mode,
 	bool ok;
 
 	ok = yt_radio_read_run(&state, &ops, &context, error);
-	if (context.radio_field_valid) {
-		session->radio_field_valid = true;
-		session->radio_field_record = context.radio_field_record;
-		session->radio_field = context.radio_field;
-	}
-	if (context.player_field_valid) {
-		session->navigation_field_active = true;
-		session->navigation_field_record =
-		    (int)context.player_field_record;
-		session->navigation_field = context.player_field.record;
-		session->navigation_field_kind = context.player_field_role
-		    == YT_RADIO_READ_NAME_SENDER
-		    ? NAVIGATION_FIELD_RADIO_SENDER
-		    : NAVIGATION_FIELD_RADIO_RECIPIENT;
-	}
 	if (!ok && error != NULL
 	    && strcmp(error->operation, "radio scan bound") == 0)
 		(void)snprintf(error->path, sizeof(error->path), "%s",
@@ -10085,10 +10035,6 @@ route_sector_reader(void *context, int logical_sector, float warps[6],
 	if (!read_sector_at_fault(session, logical_sector, &sector,
 	    YT_BASIC_FAULT_ROUTE_SECTOR_GET, error))
 		return false;
-	session->navigation_field_kind = NAVIGATION_FIELD_ROUTE_SECTOR;
-	session->navigation_field_record = (int)session_sector_basic_record(
-	    session, (float)logical_sector);
-	session->navigation_field = sector.record;
 	memcpy(warps, sector.warps, sizeof(sector.warps));
 	return true;
 }
@@ -15915,11 +15861,6 @@ computer_route(struct yt_session *session, bool autopilot,
 	int cursor;
 	enum yt_route_outcome route_outcome;
 
-	session->navigation_field_active = true;
-	session->navigation_field_kind = NAVIGATION_FIELD_ENTRY_PLAYER;
-	session->navigation_field_record = session_record(session);
-	session->navigation_field = session->player.record;
-
 	if (!autopilot) {
 		session->path_marker = 9999.0f;
 		if (!session_present_text(session, NULL, 0,
@@ -16093,9 +16034,6 @@ computer_route(struct yt_session *session, bool autopilot,
 		return true;
 	if (!reload_player(session, error))
 		return false;
-	session->navigation_field_kind = NAVIGATION_FIELD_INNER_PLAYER;
-	session->navigation_field_record = session_record(session);
-	session->navigation_field = session->player.record;
 	if (hop_count > session->player.turns) {
 		if (!session_present_alert(session, insufficient,
 		    sizeof(insufficient) - 1U,
@@ -16135,11 +16073,6 @@ computer_route(struct yt_session *session, bool autopilot,
 		if (!read_sector_at_fault(session, (int)session->player.sector,
 		    &current_sector, YT_BASIC_FAULT_ROUTE_FINAL_SECTOR_GET, error))
 			return false;
-		session->navigation_field_kind = NAVIGATION_FIELD_FINAL_SECTOR;
-		session->navigation_field_record =
-		    (int)session_sector_basic_record(session,
-		    session->player.sector);
-		session->navigation_field = current_sector.record;
 		for (index = 0; index < 6U; ++index)
 			session->current_warps[index] = qb_mbf32_decode(
 			    current_sector.record.bytes + YT_F41 + index * 4U);
@@ -16817,24 +16750,6 @@ nearest_session_uppercase(void *context, uint8_t *text, size_t length)
 	session_compat_upper_n(context, text, length);
 }
 
-static enum navigation_field_kind
-nearest_navigation_field(enum yt_nearest_field_kind kind)
-{
-	switch (kind) {
-	case YT_NEAREST_FIELD_PLAYER:
-		return NAVIGATION_FIELD_NEAREST_PLAYER;
-	case YT_NEAREST_FIELD_SECTOR:
-		return NAVIGATION_FIELD_NEAREST_SECTOR;
-	case YT_NEAREST_FIELD_PORT:
-		return NAVIGATION_FIELD_NEAREST_PORT;
-	case YT_NEAREST_FIELD_OWNER:
-		return NAVIGATION_FIELD_NEAREST_OWNER;
-	case YT_NEAREST_FIELD_NONE:
-	default:
-		return NAVIGATION_FIELD_NONE;
-	}
-}
-
 static bool
 nearest_session_body(struct yt_session *session, int selector,
     uint8_t direction, struct yt_error *error)
@@ -16875,13 +16790,6 @@ nearest_session_body(struct yt_session *session, int selector,
 	ok = yt_nearest_run(&state, &ops, session, error);
 	if (state.reads != 0U)
 		session->player = state.player;
-	if (state.field_valid) {
-		session->navigation_field_active = true;
-		session->navigation_field_kind =
-		    nearest_navigation_field(state.field_kind);
-		session->navigation_field_record = (int)state.field_record;
-		session->navigation_field = state.field;
-	}
 	return ok;
 }
 
@@ -17113,22 +17021,6 @@ profit_session_checkpoint(void *context,
 	return true;
 }
 
-static enum navigation_field_kind
-profit_navigation_field(enum yt_profit_field_kind kind)
-{
-	switch (kind) {
-	case YT_PROFIT_FIELD_PLAYER:
-		return NAVIGATION_FIELD_PROFIT_PLAYER;
-	case YT_PROFIT_FIELD_SECTOR:
-		return NAVIGATION_FIELD_PROFIT_SECTOR;
-	case YT_PROFIT_FIELD_PORT:
-		return NAVIGATION_FIELD_PROFIT_PORT;
-	case YT_PROFIT_FIELD_NONE:
-	default:
-		return NAVIGATION_FIELD_NONE;
-	}
-}
-
 static bool
 computer_profit_exact(struct yt_session *session, bool all,
     struct yt_error *error)
@@ -17165,13 +17057,6 @@ computer_profit_exact(struct yt_session *session, bool all,
 
 	ok = yt_profit_run(&state, &ops, &context, error);
 	session_set_foreground(session, state.style.foreground);
-	if (state.field_valid) {
-		session->navigation_field_active = true;
-		session->navigation_field_kind =
-		    profit_navigation_field(state.field_kind);
-		session->navigation_field_record = (int)state.field_record;
-		session->navigation_field = state.field;
-	}
 	return ok;
 }
 
@@ -17243,36 +17128,10 @@ static bool
 computer_scoreboard_generate(struct yt_session *session,
     struct yt_error *error)
 {
-	struct yt_score_field_observation field;
-	bool generated;
-
-	generated = yt_score_generate_progress_with_layout(
+	return yt_score_generate_progress_with_layout(
 	    &session->door->game, session_sector_offset(session),
 	    session_port_offset(session), computer_scoreboard_progress, session,
-	    &field, error);
-	if (field.valid) {
-		session->navigation_field_active = true;
-		session->navigation_field_record = (int)field.physical_record;
-		session->navigation_field = field.image;
-		switch (field.kind) {
-		case YT_SCORE_FIELD_PLAYER:
-			session->navigation_field_kind =
-			    NAVIGATION_FIELD_SCOREBOARD_PLAYER;
-			break;
-		case YT_SCORE_FIELD_SECTOR:
-			session->navigation_field_kind =
-			    NAVIGATION_FIELD_SCOREBOARD_SECTOR;
-			break;
-		case YT_SCORE_FIELD_TEAM:
-			session->navigation_field_kind =
-			    NAVIGATION_FIELD_SCOREBOARD_TEAM;
-			break;
-		case YT_SCORE_FIELD_NONE:
-		default:
-			break;
-		}
-	}
-	return generated;
+	    NULL, error);
 }
 
 static bool
