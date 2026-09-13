@@ -1245,71 +1245,10 @@ bool yt_genesis_confirmation_prompt(const uint8_t *trader,
 bool yt_genesis_insufficient_rows(float required, float owned,
     uint8_t *first, size_t first_capacity, size_t *first_length,
     uint8_t *second, size_t second_capacity, size_t *second_length);
-enum yt_main_fighters_output_kind {
-	YT_MAIN_FIGHTERS_TITLE,
-	YT_MAIN_FIGHTERS_UNION_REFUSAL,
-	YT_MAIN_FIGHTERS_FOREIGN_REFUSAL,
-	YT_MAIN_FIGHTERS_AVAILABLE,
-	YT_MAIN_FIGHTERS_PROMPT,
-	YT_MAIN_FIGHTERS_INSUFFICIENT,
-	YT_MAIN_FIGHTERS_SUCCESS,
-};
-enum yt_main_fighters_route {
-	YT_MAIN_FIGHTERS_INCOMPLETE,
-	YT_MAIN_FIGHTERS_UNION_ROUTE,
-	YT_MAIN_FIGHTERS_FOREIGN_ROUTE,
-	YT_MAIN_FIGHTERS_CANCELLED_ROUTE,
-	YT_MAIN_FIGHTERS_INSUFFICIENT_ROUTE,
-	YT_MAIN_FIGHTERS_ACCEPTED_ROUTE,
-};
-struct yt_main_fighters_state {
-	int current_player_record;
-	int logical_sector;
-	struct yt_player player;
-	struct yt_sector first_sector;
-	struct yt_sector accepted_sector;
-	struct yt_player accepted_player;
-	double available;
-	float desired;
-	uint8_t desired_raw[4];
-	float delta;
-	float remaining;
-	bool player_hydrated;
-	bool first_sector_read;
-	bool input_read;
-	bool desired_stored;
-	bool accepted_sector_read;
-	bool sector_written;
-	bool accepted_player_read;
-	bool player_written;
-	bool sound_called;
-	bool complete;
-	enum yt_main_fighters_route route;
-};
-struct yt_main_fighters_ops {
-	bool (*hydrate)(void *context, int player_record,
-	    struct yt_player *player, struct yt_error *error);
-	bool (*read_sector)(void *context, int sector_number,
-	    struct yt_sector *sector, struct yt_error *error);
-	bool (*write_sector)(void *context, int sector_number,
-	    struct yt_sector *sector, struct yt_error *error);
-	bool (*read_player)(void *context, int player_record,
-	    struct yt_player *player, struct yt_error *error);
-	bool (*write_player)(void *context, int player_record,
-	    struct yt_player *player, struct yt_error *error);
-	bool (*present)(void *context, const uint8_t *text, size_t length,
-	    enum yt_main_fighters_output_kind kind, struct yt_error *error);
-	bool (*input)(void *context, char *response, size_t capacity,
-	    struct yt_error *error);
-	bool (*sound)(void *context, float selector, struct yt_error *error);
-};
 bool yt_main_fighters_sector_overlay(struct yt_sector *sector,
 	const uint8_t desired_raw[4], int player_record);
 bool yt_main_fighters_player_overlay(struct yt_player *player,
 	float remaining);
-bool yt_main_fighters_run(struct yt_main_fighters_state *state,
-	const struct yt_main_fighters_ops *ops, void *context,
-	struct yt_error *error);
 bool yt_planet_garrison_prompt(float player_forces, float planet_forces,
     uint8_t *prompt, size_t capacity, size_t *length);
 float yt_planet_garrison_after(float player_forces, float desired,
