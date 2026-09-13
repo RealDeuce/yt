@@ -40,7 +40,6 @@ struct yt_session {
 	float inherited_loop_index;
 	float planet_record_expression;
 	float shared_target_record;
-	bool friendship_relation;
 	float shared_status;
 	float path_marker;
 	float route_start;
@@ -245,6 +244,9 @@ bool session_fixed_width_bytes(struct yt_session *session,
 bool yt_session_computer_owned_fighters(struct yt_session *session,
     struct yt_error *error);
 bool yt_session_computer_owned_planets(struct yt_session *session,
+    struct yt_error *error);
+bool yt_session_computer_check_port_visibility(struct yt_session *session,
+    const struct yt_sector *sector, float cached_team, bool *unavailable,
     struct yt_error *error);
 bool yt_session_generate_scoreboard(struct yt_session *session,
     struct yt_error *error);

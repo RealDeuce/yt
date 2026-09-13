@@ -13251,7 +13251,7 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 			    &fighter_friendly, error))
 				return false;
 			sector_fighters = session->hostile_deployed_fighters;
-			last_relationship = session->friendship_relation ? -1.0f : 0.0f;
+			last_relationship = session->shared_status;
 			scratch = single_add(session_planet_offset(session), link);
 			session->planet_record_expression = scratch;
 			if (!session_read_planet(session, (int)link, &planet, error)
@@ -13279,8 +13279,7 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 				if (!computer_port_friendship(session, planet.owner,
 				    &last_friendly, error))
 					return false;
-				last_relationship = session->friendship_relation
-				    ? -1.0f : 0.0f;
+				last_relationship = session->shared_status;
 				if (!computer_planet_relation_cint(session,
 				    last_relationship, &relation_cint,
 				    "computer planet owner relationship CINT", error))
@@ -13314,7 +13313,7 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 		else {
 			sector_fighters = session->hostile_deployed_fighters;
 			fighter_owner = session->shared_target_record;
-			last_relationship = session->friendship_relation ? -1.0f : 0.0f;
+			last_relationship = session->shared_status;
 			scratch = link;
 		}
 		if (!computer_planet_relation_cint(session, last_relationship,
@@ -13362,7 +13361,7 @@ computer_port_friendship(struct yt_session *session, float owner,
 	if (friendly == NULL)
 		return false;
 	*friendly = false;
-	session->friendship_relation = false;
+	session->shared_status = 0.0f;
 	if (owner < 2.0f
 	    || owner > session_sector_offset(session)
 	    || (float)session_record(session) < 2.0f
@@ -13371,7 +13370,7 @@ computer_port_friendship(struct yt_session *session, float owner,
 		return true;
 	if (owner == (float)session_record(session)) {
 		*friendly = true;
-		session->friendship_relation = true;
+		session->shared_status = -1.0f;
 		return true;
 	}
 	if (!read_player_at_fault(session, session_record(session), &current,
@@ -13384,35 +13383,30 @@ computer_port_friendship(struct yt_session *session, float owner,
 		return false;
 	*friendly = other.team == current.team;
 	if (*friendly)
-		session->friendship_relation = true;
+		session->shared_status = -1.0f;
 	return true;
 }
 
-struct computer_port_visibility_context {
-	struct yt_session *session;
-	size_t player_reads;
-};
-
-static bool
-computer_port_visibility_read_player(void *context, uint32_t physical_record,
-    struct yt_player *player, struct yt_error *error)
+bool
+yt_session_computer_check_port_visibility(struct yt_session *session,
+    const struct yt_sector *sector, float cached_team, bool *unavailable,
+    struct yt_error *error)
 {
-	struct computer_port_visibility_context *visibility_context = context;
-	struct yt_session *session = visibility_context->session;
-	enum yt_basic_fault_site site = visibility_context->player_reads++ == 0U
-	    ? YT_BASIC_FAULT_PORT_FRIENDSHIP_CURRENT_GET
-	    : YT_BASIC_FAULT_PORT_FRIENDSHIP_CANDIDATE_GET;
+	bool friendly;
 
-	if (physical_record > (uint32_t)INT_MAX) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			(void)snprintf(error->operation, sizeof(error->operation), "%s",
-			    "computer port friendship player record");
-		}
+	if (session == NULL || sector == NULL || unavailable == NULL)
 		return false;
-	}
-	return read_player_at_fault(session, (int)physical_record, player, site,
-	    error);
+	session->path_marker = 0.0f;
+	if (!computer_port_friendship(session, sector->fighter_owner,
+	    &friendly, error))
+		return false;
+	session->planet_record_expression = single_add(
+	    session_planet_offset(session), session->inherited_loop_index);
+	*unavailable = (sector->port == 0.0f)
+	    | (sector->fighters > 0.0f && cached_team > 0.0f && !friendly)
+	    | (sector->fighters > 0.0f && cached_team == 0.0f
+	    && sector->fighter_owner != (float)session_record(session));
+	return true;
 }
 
 static bool
@@ -13427,10 +13421,6 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 	float selected;
 	int sector_number;
 	struct yt_sector sector;
-	struct yt_computer_port_visibility_state visibility;
-	struct computer_port_visibility_context visibility_context = {
-		session, 0U
-	};
 	bool denied;
 
 	if (enter_sector != NULL)
@@ -13470,40 +13460,9 @@ computer_port_report(struct yt_session *session, bool *enter_sector,
 	if (!read_sector_at_fault(session, sector_number, &sector,
 	    YT_BASIC_FAULT_PORT_SELECTED_SECTOR_GET, error))
 		return false;
-	{
-		float sector_expression = yt_port_selected_expression(
-		    session_sector_offset(session), selected);
-		bool visibility_ok;
-
-		memset(&visibility, 0, sizeof(visibility));
-		visibility.port_link = sector.port;
-		visibility.fighter_count = sector.fighters;
-		visibility.fighter_owner = sector.fighter_owner;
-		visibility.cached_current_team = cached_team;
-		visibility.current_player_record = (float)session_record(session);
-		visibility.last_player_record =
-		    session_sector_offset(session);
-		visibility.planet_record_offset =
-		    session_planet_offset(session);
-		visibility.inherited_index = session->inherited_loop_index;
-		visibility.field_kind = YT_COMPUTER_PORT_FIELD_SECTOR;
-		visibility.field_record =
-		    qb_brun_random_record_number(sector_expression);
-		visibility.field = sector.record;
-		visibility.field_valid = true;
-		visibility_ok = yt_computer_port_visibility_run(&visibility,
-		    computer_port_visibility_read_player, &visibility_context,
-		    error);
-		session->path_marker = qb_mbf32_decode(
-		    visibility.marker_4d62_raw);
-		session->shared_status = qb_mbf32_decode(visibility.relation_raw);
-		if (visibility.scratch_written)
-			session->planet_record_expression = qb_mbf32_decode(
-			    visibility.scratch_19c4_raw);
-		if (!visibility_ok)
-			return false;
-		denied = visibility.unavailable;
-	}
+	if (!yt_session_computer_check_port_visibility(session, &sector,
+	    cached_team, &denied, error))
+		return false;
 	if (denied)
 		return session_present_paged_line(session, unavailable,
 		    sizeof(unavailable) - 1U,

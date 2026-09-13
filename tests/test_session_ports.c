@@ -274,6 +274,74 @@ test_owned_port_purchase(void)
 	CHECK(remove("YTRMSG.DAT") == 0);
 }
 
+static void
+test_computer_port_visibility(void)
+{
+	static const char path[] = "SESSION-PORT-VISIBILITY.DAT";
+	struct yt_door door;
+	struct yt_session session;
+	struct yt_player current;
+	struct yt_player owner;
+	struct yt_sector sector;
+	struct yt_error error;
+	bool unavailable;
+
+	(void)remove(path);
+	memset(&door, 0, sizeof(door));
+	memset(&session, 0, sizeof(session));
+	memset(&current, 0, sizeof(current));
+	memset(&owner, 0, sizeof(owner));
+	memset(&sector, 0, sizeof(sector));
+	session.door = &door;
+	session.player_record_carrier = 2;
+	session.inherited_loop_index = 52.0f;
+	door.game.config.sector_offset = 51.0f;
+	door.game.config.planet_offset = 3055.0f;
+	yt_record_blank(&current.record);
+	current.team = 7.0f;
+	yt_player_encode(&current);
+	yt_record_blank(&owner.record);
+	owner.team = 7.0f;
+	yt_player_encode(&owner);
+	sector.port = 2.0f;
+	sector.fighters = 10.0f;
+	sector.fighter_owner = 3.0f;
+	yt_error_clear(&error);
+	CHECK(yt_database_open(&door.game.database, path, YT_OPEN_CREATE,
+	    &error));
+	CHECK(yt_database_write(&door.game.database, 2U, &current.record,
+	    &error));
+	CHECK(yt_database_write_durable(&door.game.database, 3U,
+	    &owner.record, &error));
+	CHECK(yt_session_computer_check_port_visibility(&session, &sector,
+	    current.team, &unavailable, &error));
+	CHECK(!unavailable);
+	CHECK(session.shared_status == -1.0f);
+	CHECK(session.path_marker == 0.0f);
+	CHECK(session.planet_record_expression == 3107.0f);
+
+	owner.team = 8.0f;
+	yt_player_encode(&owner);
+	CHECK(yt_database_write_durable(&door.game.database, 3U,
+	    &owner.record, &error));
+	CHECK(yt_session_computer_check_port_visibility(&session, &sector,
+	    current.team, &unavailable, &error));
+	CHECK(unavailable);
+	CHECK(session.shared_status == 0.0f);
+
+	sector.fighter_owner = 2.0f;
+	CHECK(yt_session_computer_check_port_visibility(&session, &sector,
+	    current.team, &unavailable, &error));
+	CHECK(!unavailable);
+	CHECK(session.shared_status == -1.0f);
+	sector.port = 0.0f;
+	CHECK(yt_session_computer_check_port_visibility(&session, &sector,
+	    current.team, &unavailable, &error));
+	CHECK(unavailable);
+	yt_database_close(&door.game.database);
+	CHECK(remove(path) == 0);
+}
+
 int
 main(void)
 {
@@ -281,5 +349,6 @@ main(void)
 	test_zero_capacity_trade();
 	test_no_port_purchase();
 	test_owned_port_purchase();
+	test_computer_port_visibility();
 	return failures == 0 ? 0 : 1;
 }
