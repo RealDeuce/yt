@@ -647,19 +647,9 @@ float yt_projectile_cruise_reroute_destination(float draw,
 bool yt_projectile_union_police_admitted(float hop, float destination,
     int counterattack, int xannor_provoker);
 
-struct yt_projectile_sector_probe_state {
-	const struct yt_sector *sector;
-	float hop;
-	float player_terminal;
-	const struct yt_player_cache *player_cache;
-	float xannor_provoker;
-	float presence;
-	float matched_player;
-	float counter;
-};
-bool yt_projectile_sector_probe_run(
-    struct yt_projectile_sector_probe_state *state,
-    struct yt_error *error);
+bool yt_projectile_sector_has_presence(const struct yt_sector *sector,
+    int sector_number, int last_player,
+    const struct yt_player_cache *player_cache, int xannor_provoker);
 
 enum yt_projectile_plasma_fighter_route {
 	YT_PROJECTILE_PLASMA_FIGHTER_CONTINUE_SECTOR,

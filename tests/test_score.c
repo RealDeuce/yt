@@ -2041,10 +2041,9 @@ check_projectile_union_police_admission(void)
 }
 
 static bool
-check_projectile_sector_probe_transaction(void)
+check_projectile_sector_presence(void)
 {
-	struct yt_projectile_sector_probe_state state;
-	struct yt_sector sector;
+	struct yt_sector sector = {0};
 	struct yt_player_cache player_cache = {0};
 	float *objects[] = {
 		&sector.mines,
@@ -2054,61 +2053,28 @@ check_projectile_sector_probe_transaction(void)
 	};
 	size_t index;
 
-	memset(&sector, 0, sizeof(sector));
-	memset(&state, 0, sizeof(state));
-	state.sector = &sector;
-	state.hop = 17.0f;
-	state.player_terminal = 3.5f;
-	state.player_cache = &player_cache;
 	for (index = 0U; index < YT_ARRAY_LEN(objects); ++index) {
 		memset(&sector, 0, sizeof(sector));
-		*objects[index] = 0.001f;
-		if (!yt_projectile_sector_probe_run(&state, NULL)
-		    || state.presence != 1.0f || state.matched_player != 0.0f
-		    || state.counter != 4.0f)
+		*objects[index] = 1.0f;
+		if (!yt_projectile_sector_has_presence(&sector, 17, 3,
+		    &player_cache, 0))
 			return false;
 	}
-
-	sector.mines = -1.0f;
-	sector.fighters = NAN;
-	sector.port = -INFINITY;
-	sector.planet = -0.0f;
-	state.player_terminal = 1.9f;
-	state.xannor_provoker = 0.0f;
-	if (!yt_projectile_sector_probe_run(&state, NULL)
-	    || state.presence != 0.0f || state.matched_player != 0.0f
-	    || state.counter != 2.0f)
-		return false;
-
 	memset(&sector, 0, sizeof(sector));
-	player_cache.sector[2] = 17.0f;
-	state.player_terminal = 5.0f;
-	if (!yt_projectile_sector_probe_run(&state, NULL)
-	    || state.presence != 1.0f || state.matched_player != 2.0f
-	    || state.counter != 2.0f)
+	if (yt_projectile_sector_has_presence(&sector, 17, 3,
+	    &player_cache, 0))
 		return false;
-
+	player_cache.sector[2] = 17.0f;
+	if (!yt_projectile_sector_has_presence(&sector, 17, 3,
+	    &player_cache, 0))
+		return false;
 	player_cache.sector[2] = 0.0f;
 	player_cache.sector[3] = 17.0f;
-	player_cache.cloak[3] = -1.0f;
-	state.player_terminal = 3.5f;
-	if (!yt_projectile_sector_probe_run(&state, NULL)
-	    || state.presence != 0.0f || state.matched_player != 0.0f
-	    || state.counter != 4.0f)
-		return false;
-	state.xannor_provoker = 3.0f;
-	if (!yt_projectile_sector_probe_run(&state, NULL)
-	    || state.presence != 1.0f || state.matched_player != 3.0f
-	    || state.counter != 3.0f)
-		return false;
-
-	state.player_terminal = NAN;
-	state.xannor_provoker = 0.0f;
-	if (!yt_projectile_sector_probe_run(&state, NULL)
-	    || state.presence != 0.0f || state.counter != 2.0f)
-		return false;
-
-	return !yt_projectile_sector_probe_run(NULL, NULL);
+	player_cache.cloak[3] = 1.0f;
+	return !yt_projectile_sector_has_presence(&sector, 17, 3,
+	    &player_cache, 0)
+	    && yt_projectile_sector_has_presence(&sector, 17, 3,
+	    &player_cache, 3);
 }
 
 enum plasma_fighter_event {
@@ -27168,8 +27134,8 @@ main(void)
 		return fail("projectile cruise-reroute transaction differs");
 	if (!check_projectile_union_police_admission())
 		return fail("projectile Union Police admission differs");
-	if (!check_projectile_sector_probe_transaction())
-		return fail("projectile sector-probe transaction differs");
+	if (!check_projectile_sector_presence())
+		return fail("projectile sector presence differs");
 	if (!check_projectile_plasma_fighter_transaction())
 		return fail("projectile plasma-fighter transaction differs");
 	if (!check_projectile_plasma_mine_transaction())

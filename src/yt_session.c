@@ -13467,7 +13467,6 @@ missile_sector(struct yt_session *session, int sector_number,
 	};
 	struct yt_sector sector;
 	struct yt_projectile_defense_combat_state combat;
-	struct yt_projectile_sector_probe_state probe;
 	int basic;
 
 	if (route == NULL)
@@ -13476,14 +13475,9 @@ missile_sector(struct yt_session *session, int sector_number,
 	if (!session_read_sector(session, sector_number, &sector,
 	    error))
 		return false;
-	probe.sector = &sector;
-	probe.hop = (float)sector_number;
-	probe.player_terminal = session_sector_offset(session);
-	probe.player_cache = &session->player_cache;
-	probe.xannor_provoker = (float)*xannor_provoker;
-	if (!yt_projectile_sector_probe_run(&probe, error))
-		return false;
-	if (probe.presence == 0.0f) {
+	if (!yt_projectile_sector_has_presence(&sector, sector_number,
+	    (int)session_sector_offset(session), &session->player_cache,
+	    *xannor_provoker)) {
 		*route = MISSILE_SECTOR_POST_IMPACT;
 		return true;
 	}
@@ -14229,20 +14223,13 @@ plasma_route_impact(void *context, int hop, double *energy,
 	struct plasma_route_context *route_context = context;
 	struct yt_session *session = route_context->session;
 	struct yt_sector sector;
-	struct yt_projectile_sector_probe_state probe;
 
 	if (!session_read_sector(session, hop, &sector, error))
 		return false;
-	memset(&probe, 0, sizeof(probe));
-	probe.sector = &sector;
-	probe.player_cache = &session->player_cache;
-	probe.hop = (float)hop;
-	probe.player_terminal = session_sector_offset(session);
-	probe.xannor_provoker = route_context->xannor_provoker != NULL
-	    ? (float)*route_context->xannor_provoker : 0.0f;
-	if (!yt_projectile_sector_probe_run(&probe, error))
-		return false;
-	if (probe.presence == 0.0f) {
+	if (!yt_projectile_sector_has_presence(&sector, hop,
+	    (int)session_sector_offset(session), &session->player_cache,
+	    route_context->xannor_provoker != NULL
+	    ? *route_context->xannor_provoker : 0)) {
 		*route = YT_PROJECTILE_PLASMA_NEXT_HOP;
 		return true;
 	}

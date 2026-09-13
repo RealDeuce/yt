@@ -11410,43 +11410,26 @@ yt_projectile_union_police_admitted(float hop, float destination,
 }
 
 bool
-yt_projectile_sector_probe_run(struct yt_projectile_sector_probe_state *state,
-    struct yt_error *error)
+yt_projectile_sector_has_presence(const struct yt_sector *sector,
+    int sector_number, int last_player,
+    const struct yt_player_cache *player_cache, int xannor_provoker)
 {
-	bool overflow;
+	bool present;
+	int player;
 
-	if (state == NULL || state->sector == NULL
-	    || state->player_cache == NULL)
+	if (sector == NULL || player_cache == NULL)
 		return false;
-	state->presence = 0.0f;
-	state->matched_player = 0.0f;
-	if (state->sector->mines > 0.0f || state->sector->fighters > 0.0f
-	    || state->sector->port > 0.0f || state->sector->planet > 0.0f)
-		state->presence = 1.0f;
-	state->counter = 2.0f;
-	while (state->counter <= state->player_terminal) {
-		int candidate = (int)qb_cint(state->counter, &overflow);
-
-		if (overflow || !yt_player_cache_contains(candidate)) {
-			if (error != NULL) {
-				error->status = YT_RANGE;
-				snprintf(error->operation, sizeof(error->operation), "%s",
-				    "projectile sector-probe cache index");
-			}
-			return false;
-		}
-		if (yt_player_cache_value(state->player_cache, candidate,
-		    YT_PLAYER_CACHE_SECTOR) == state->hop
-		    && (yt_player_cache_value(state->player_cache, candidate,
+	present = sector->mines > 0.0f || sector->fighters > 0.0f
+	    || sector->port > 0.0f || sector->planet > 0.0f;
+	for (player = YT_PLAYER_FIRST_RECORD; player <= last_player; ++player) {
+		if (yt_player_cache_value(player_cache, player,
+		    YT_PLAYER_CACHE_SECTOR) == (float)sector_number
+		    && (yt_player_cache_value(player_cache, player,
 		    YT_PLAYER_CACHE_CLOAK) == 0.0f
-		    || state->counter == state->xannor_provoker)) {
-			state->presence = 1.0f;
-			state->matched_player = state->counter;
-			break;
-		}
-		state->counter = projectile_single_add(state->counter, 1.0f);
+		    || player == xannor_provoker))
+			return true;
 	}
-	return true;
+	return present;
 }
 
 bool
