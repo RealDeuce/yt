@@ -35568,10 +35568,41 @@ test_direct_emergency_warp_black_hole_failures(void)
 	}
 }
 
+enum main_genesis_output_kind {
+	MAIN_GENESIS_PROPHECY_FIRST,
+	MAIN_GENESIS_PROPHECY_SECOND,
+	MAIN_GENESIS_PROMPT_BLANK,
+	MAIN_GENESIS_DISABLED,
+	MAIN_GENESIS_DECLINED,
+	MAIN_GENESIS_INSUFFICIENT_FIRST,
+	MAIN_GENESIS_INSUFFICIENT_SECOND,
+	MAIN_GENESIS_SUCCESS_BLANK,
+	MAIN_GENESIS_SUCCESS_FIRST,
+	MAIN_GENESIS_SUCCESS_SECOND,
+};
+
+enum main_genesis_route {
+	MAIN_GENESIS_INCOMPLETE,
+	MAIN_GENESIS_DECLINED_ROUTE,
+	MAIN_GENESIS_DISABLED_ROUTE,
+	MAIN_GENESIS_INSUFFICIENT_ROUTE,
+	MAIN_GENESIS_HANDOFF_ROUTE,
+};
+
+struct main_genesis_observation {
+	bool answer;
+	bool player_hydrated;
+	bool confirmation_read;
+	bool disabled_presented;
+	bool handoff_called;
+	bool complete;
+	enum main_genesis_route route;
+};
+
 struct main_genesis_cycle_fixture {
 	struct main_buy_cycle_fixture presentation;
 	struct yt_player player;
-	struct yt_genesis_state genesis;
+	struct main_genesis_observation genesis;
 	const uint8_t *answer;
 	size_t answer_length;
 	float required_ports;
@@ -35598,25 +35629,25 @@ main_genesis_hydrate(void *context, int player_record,
 
 static bool
 main_genesis_present(void *context, const uint8_t *text, size_t length,
-    enum yt_genesis_output_kind kind, struct yt_error *error)
+    enum main_genesis_output_kind kind, struct yt_error *error)
 {
 	struct main_genesis_cycle_fixture *fixture = context;
 	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
 
 	(void)error;
 	switch (kind) {
-	case YT_GENESIS_PROPHECY_FIRST:
-	case YT_GENESIS_DECLINED:
-	case YT_GENESIS_INSUFFICIENT_FIRST:
+	case MAIN_GENESIS_PROPHECY_FIRST:
+	case MAIN_GENESIS_DECLINED:
+	case MAIN_GENESIS_INSUFFICIENT_FIRST:
 		return normal_exit_line(join, NULL, 0U)
 		    && normal_exit_b05d(join, text, length, 0.0f);
-	case YT_GENESIS_PROPHECY_SECOND:
-	case YT_GENESIS_INSUFFICIENT_SECOND:
+	case MAIN_GENESIS_PROPHECY_SECOND:
+	case MAIN_GENESIS_INSUFFICIENT_SECOND:
 		return normal_exit_b05d(join, text, length, 0.0f);
-	case YT_GENESIS_PROMPT_BLANK:
-	case YT_GENESIS_SUCCESS_BLANK:
+	case MAIN_GENESIS_PROMPT_BLANK:
+	case MAIN_GENESIS_SUCCESS_BLANK:
 		return normal_exit_line(join, NULL, 0U);
-	case YT_GENESIS_DISABLED:
+	case MAIN_GENESIS_DISABLED:
 		if (!normal_exit_line(join, NULL, 0U))
 			return false;
 		join->presentation.bold = 1.0f;
@@ -35625,8 +35656,8 @@ main_genesis_present(void *context, const uint8_t *text, size_t length,
 		join->queue_position = 0U;
 		join->queue_length = 0U;
 		return normal_exit_b05d(join, text, length, 0.0f);
-	case YT_GENESIS_SUCCESS_FIRST:
-	case YT_GENESIS_SUCCESS_SECOND:
+	case MAIN_GENESIS_SUCCESS_FIRST:
+	case MAIN_GENESIS_SUCCESS_SECOND:
 		join->presentation.bold = 1.0f;
 		return normal_exit_b05d(join, text, length, 0.0f);
 	default:
@@ -35669,13 +35700,6 @@ main_genesis_handoff(void *context, struct yt_error *error)
 	return true;
 }
 
-static const struct yt_genesis_ops main_genesis_ops = {
-	main_genesis_hydrate,
-	main_genesis_present,
-	main_genesis_confirm,
-	main_genesis_handoff,
-};
-
 static bool
 main_genesis_cycle_run(struct main_genesis_cycle_fixture *fixture, bool ansi,
     size_t ends[3])
@@ -35683,7 +35707,26 @@ main_genesis_cycle_run(struct main_genesis_cycle_fixture *fixture, bool ansi,
 	static const uint8_t main_prompt[] =
 	    "Time: 14:59  Main Command (?=Help)? ";
 	static const uint8_t command[] = "gTrailing";
+	static const uint8_t prophecy_first[] =
+	    "It has been written that one day a Trader Baron will rise up";
+	static const uint8_t prophecy_second[] =
+	    "and wipe the universe clean of the evil that infests it.";
+	static const uint8_t disabled[] = "*FUNCTION DISABLED*";
+	static const uint8_t declined[] =
+	    "Alas, today is not the day that the prophesy will be fullfilled.";
+	static const uint8_t success_first[] =
+	    "...and so it was written, that one day a trader baron would emerge who";
+	static const uint8_t success_second[] =
+	    "would wipe away the all of the evil in the universe.....";
 	struct viewer_pager_join *join = &fixture->presentation.viewer->join;
+	struct yt_player player;
+	uint8_t prompt[512];
+	uint8_t first[256];
+	uint8_t second[256];
+	size_t prompt_length;
+	size_t first_length;
+	size_t second_length;
+	bool accepted;
 
 	join->presentation = state(ansi);
 	join->presentation.foreground = 2.0f;
@@ -35701,17 +35744,66 @@ main_genesis_cycle_run(struct main_genesis_cycle_fixture *fixture, bool ansi,
 	    sizeof(command) - 1U) || !normal_exit_line(join, NULL, 0U))
 		return false;
 	ends[0] = join->remote_length;
-	fixture->genesis = (struct yt_genesis_state){
-		.current_player_record = 2,
-		.required_ports = fixture->required_ports,
-		.cached_trader = (const uint8_t *)"Captain Byte",
-		.cached_trader_length = 12U,
+	fixture->genesis = (struct main_genesis_observation){
+		.route = MAIN_GENESIS_INCOMPLETE,
 	};
-	if (!yt_genesis_run(&fixture->genesis, &main_genesis_ops, fixture,
+	if (!main_genesis_hydrate(fixture, 2, &player, NULL))
+		return false;
+	fixture->genesis.player_hydrated = true;
+	if (!main_genesis_present(fixture, prophecy_first,
+	    sizeof(prophecy_first) - 1U, MAIN_GENESIS_PROPHECY_FIRST, NULL)
+	    || !main_genesis_present(fixture, prophecy_second,
+	    sizeof(prophecy_second) - 1U, MAIN_GENESIS_PROPHECY_SECOND, NULL)
+	    || !main_genesis_present(fixture, NULL, 0U,
+	    MAIN_GENESIS_PROMPT_BLANK, NULL)
+	    || !yt_genesis_confirmation_prompt((const uint8_t *)"Captain Byte",
+	    12U, prompt, sizeof(prompt), &prompt_length)
+	    || !main_genesis_confirm(fixture, prompt, prompt_length, &accepted,
 	    NULL))
 		return false;
+	fixture->genesis.answer = accepted;
+	fixture->genesis.confirmation_read = true;
+	if (fixture->required_ports > 300.0f) {
+		if (!main_genesis_present(fixture, disabled,
+		    sizeof(disabled) - 1U, MAIN_GENESIS_DISABLED, NULL))
+			return false;
+		fixture->genesis.disabled_presented = true;
+		fixture->genesis.answer = false;
+	}
+	if (!fixture->genesis.answer) {
+		if (!main_genesis_present(fixture, declined,
+		    sizeof(declined) - 1U, MAIN_GENESIS_DECLINED, NULL))
+			return false;
+		fixture->genesis.route = fixture->genesis.disabled_presented
+		    ? MAIN_GENESIS_DISABLED_ROUTE : MAIN_GENESIS_DECLINED_ROUTE;
+	}
+	else if (player.ports_owned < fixture->required_ports) {
+		if (!yt_genesis_insufficient_rows(fixture->required_ports,
+		    player.ports_owned, first, sizeof(first), &first_length,
+		    second, sizeof(second), &second_length)
+		    || !main_genesis_present(fixture, first, first_length,
+		    MAIN_GENESIS_INSUFFICIENT_FIRST, NULL)
+		    || !main_genesis_present(fixture, second, second_length,
+		    MAIN_GENESIS_INSUFFICIENT_SECOND, NULL))
+			return false;
+		fixture->genesis.route = MAIN_GENESIS_INSUFFICIENT_ROUTE;
+	}
+	else {
+		if (!main_genesis_present(fixture, NULL, 0U,
+		    MAIN_GENESIS_SUCCESS_BLANK, NULL)
+		    || !main_genesis_present(fixture, success_first,
+		    sizeof(success_first) - 1U, MAIN_GENESIS_SUCCESS_FIRST, NULL)
+		    || !main_genesis_present(fixture, success_second,
+		    sizeof(success_second) - 1U, MAIN_GENESIS_SUCCESS_SECOND, NULL))
+			return false;
+		fixture->genesis.handoff_called = true;
+		if (!main_genesis_handoff(fixture, NULL))
+			return false;
+		fixture->genesis.route = MAIN_GENESIS_HANDOFF_ROUTE;
+	}
+	fixture->genesis.complete = true;
 	ends[1] = join->remote_length;
-	if (fixture->genesis.route == YT_GENESIS_HANDOFF_ROUTE) {
+	if (fixture->genesis.route == MAIN_GENESIS_HANDOFF_ROUTE) {
 		ends[2] = ends[1];
 		return true;
 	}
@@ -35759,7 +35851,7 @@ test_main_genesis_decline_cycle_presentation(void)
 		    && viewer.join.remote_length == sizeof(expected) - 1U
 		    && memcmp(remote, expected, sizeof(expected) - 1U) == 0);
 		CHECK(fixture.genesis.complete
-		    && fixture.genesis.route == YT_GENESIS_DECLINED_ROUTE
+		    && fixture.genesis.route == MAIN_GENESIS_DECLINED_ROUTE
 		    && fixture.genesis.player_hydrated
 		    && fixture.genesis.confirmation_read
 		    && !fixture.genesis.answer
@@ -35817,7 +35909,7 @@ test_main_genesis_alternate_cycles_presentation(void)
 		const uint8_t *tail;
 		size_t tail_length;
 		size_t total_length;
-		enum yt_genesis_route route;
+		enum main_genesis_route route;
 		size_t local_rows;
 		uint64_t row_hash;
 		size_t local_colors;
@@ -35825,22 +35917,22 @@ test_main_genesis_alternate_cycles_presentation(void)
 	} cases[] = {
 		{true, false, disabled_plain_tail,
 		    sizeof(disabled_plain_tail) - 1U, 343U,
-		    YT_GENESIS_DISABLED_ROUTE, 12U,
+		    MAIN_GENESIS_DISABLED_ROUTE, 12U,
 		    UINT64_C(0x59c48b28fd5fbfd2), 6U,
 		    UINT64_C(0x17798e683d05096d)},
 		{true, true, disabled_ansi_tail,
 		    sizeof(disabled_ansi_tail) - 1U, 367U,
-		    YT_GENESIS_DISABLED_ROUTE, 12U,
+		    MAIN_GENESIS_DISABLED_ROUTE, 12U,
 		    UINT64_C(0x59c48b28fd5fbfd2), 21U,
 		    UINT64_C(0xa3b23a9e42d2a82d)},
 		{false, false, insufficient_tail,
 		    sizeof(insufficient_tail) - 1U, 408U,
-		    YT_GENESIS_INSUFFICIENT_ROUTE, 11U,
+		    MAIN_GENESIS_INSUFFICIENT_ROUTE, 11U,
 		    UINT64_C(0xbe08d08cd7e850d0), 6U,
 		    UINT64_C(0x17798e683d05096d)},
 		{false, true, insufficient_tail,
 		    sizeof(insufficient_tail) - 1U, 408U,
-		    YT_GENESIS_INSUFFICIENT_ROUTE, 11U,
+		    MAIN_GENESIS_INSUFFICIENT_ROUTE, 11U,
 		    UINT64_C(0xbe08d08cd7e850d0), 20U,
 		    UINT64_C(0x4ea7870caf4939ed)},
 	};
@@ -35962,7 +36054,7 @@ test_main_genesis_handoff_cycle_presentation(void)
 		    && memcmp(remote, cases[pass].expected,
 		    cases[pass].expected_length) == 0);
 		CHECK(fixture.genesis.complete
-		    && fixture.genesis.route == YT_GENESIS_HANDOFF_ROUTE
+		    && fixture.genesis.route == MAIN_GENESIS_HANDOFF_ROUTE
 		    && fixture.genesis.player_hydrated
 		    && fixture.genesis.confirmation_read
 		    && fixture.genesis.answer

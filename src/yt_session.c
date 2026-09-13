@@ -12719,70 +12719,6 @@ command_collect(struct yt_session *session,
 }
 
 static bool
-genesis_hydrate(void *context, int player_record, struct yt_player *player,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	if (player_record != session_record(session)
-	    || !session_reload_player(session, error))
-		return false;
-	*player = session->player;
-	return true;
-}
-
-static bool
-genesis_present(void *context, const uint8_t *text, size_t length,
-    enum yt_genesis_output_kind kind, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	switch (kind) {
-	case YT_GENESIS_PROPHECY_FIRST:
-		return session_present_paged_line(session, text, length,
-		    "Genesis prophecy first row", error);
-	case YT_GENESIS_PROPHECY_SECOND:
-		return session_present_paged_fragment(session, text, length);
-	case YT_GENESIS_PROMPT_BLANK:
-		return session_present_text(session, NULL, 0U,
-		    SESSION_PRESENT_LINE, "Genesis prompt leading blank", error);
-	case YT_GENESIS_DISABLED:
-		return session_present_alert(session, text, length, "Genesis disabled row",
-		    error);
-	case YT_GENESIS_DECLINED:
-		return session_present_paged_line(session, text, length, "Genesis declined row",
-		    error);
-	case YT_GENESIS_INSUFFICIENT_FIRST:
-		return session_present_paged_line(session, text, length,
-		    "Genesis insufficient first row", error);
-	case YT_GENESIS_INSUFFICIENT_SECOND:
-		return session_present_paged_fragment(session, text, length);
-	case YT_GENESIS_SUCCESS_BLANK:
-		return session_present_text(session, NULL, 0U,
-		    SESSION_PRESENT_LINE, "Genesis success leading blank", error);
-	case YT_GENESIS_SUCCESS_FIRST:
-	case YT_GENESIS_SUCCESS_SECOND:
-		yt_present_set_bold(&session->presentation, 1.0f);
-		return session_present_paged_fragment(session, text, length);
-	default:
-		return false;
-	}
-}
-
-static bool
-genesis_confirm(void *context, const uint8_t *prompt, size_t length,
-    bool *accepted, struct yt_error *error)
-{
-	enum yt_yes_no_answer answer;
-
-	if (accepted == NULL
-	    || !session_confirm(context, prompt, length, &answer, error))
-		return false;
-	*accepted = answer == YT_YES_NO_YES;
-	return true;
-}
-
-static bool
 genesis_handoff_open_output(struct yt_text_output *output,
     struct yt_error *error)
 {
@@ -12904,26 +12840,73 @@ genesis_handoff(void *context, struct yt_error *error)
 static bool
 command_genesis(struct yt_session *session, struct yt_error *error)
 {
-	static const struct yt_genesis_ops ops = {
-		genesis_hydrate,
-		genesis_present,
-		genesis_confirm,
-		genesis_handoff,
-	};
+	static const uint8_t prophecy_first[] =
+	    "It has been written that one day a Trader Baron will rise up";
+	static const uint8_t prophecy_second[] =
+	    "and wipe the universe clean of the evil that infests it.";
+	static const uint8_t disabled[] = "*FUNCTION DISABLED*";
+	static const uint8_t declined[] =
+	    "Alas, today is not the day that the prophesy will be fullfilled.";
+	static const uint8_t success_first[] =
+	    "...and so it was written, that one day a trader baron would emerge who";
+	static const uint8_t success_second[] =
+	    "would wipe away the all of the evil in the universe.....";
 	uint8_t cached_trader[sizeof(session->player.name) - 1U];
 	size_t cached_trader_length = strlen(session->player.name);
-	struct yt_genesis_state state;
+	uint8_t prompt[512];
+	uint8_t first[256];
+	uint8_t second[256];
+	size_t prompt_length;
+	size_t first_length;
+	size_t second_length;
+	enum yt_yes_no_answer answer;
+	float required_ports = session->door->game.config.genesis_ports;
 
 	if (cached_trader_length > sizeof(cached_trader))
 		return port_report_failure(error, "Genesis cached trader length");
 	memcpy(cached_trader, session->player.name, cached_trader_length);
-	state = (struct yt_genesis_state){
-		.current_player_record = session_record(session),
-		.required_ports = session->door->game.config.genesis_ports,
-		.cached_trader = cached_trader,
-		.cached_trader_length = cached_trader_length,
-	};
-	return yt_genesis_run(&state, &ops, session, error);
+	if (!session_reload_player(session, error)
+	    || !session_present_paged_line(session, prophecy_first,
+	    sizeof(prophecy_first) - 1U, "Genesis prophecy first row", error)
+	    || !session_present_paged_fragment(session, prophecy_second,
+	    sizeof(prophecy_second) - 1U)
+	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "Genesis prompt leading blank", error)
+	    || !yt_genesis_confirmation_prompt(cached_trader,
+	    cached_trader_length, prompt, sizeof(prompt), &prompt_length)
+	    || !session_confirm(session, prompt, prompt_length, &answer, error))
+		return false;
+	if (required_ports > 300.0f) {
+		if (!session_present_alert(session, disabled, sizeof(disabled) - 1U,
+		    "Genesis disabled row", error))
+			return false;
+		answer = YT_YES_NO_NO;
+	}
+	if (answer != YT_YES_NO_YES)
+		return session_present_paged_line(session, declined,
+		    sizeof(declined) - 1U, "Genesis declined row", error);
+	if (session->player.ports_owned < required_ports) {
+		if (!yt_genesis_insufficient_rows(required_ports,
+		    session->player.ports_owned, first, sizeof(first), &first_length,
+		    second, sizeof(second), &second_length))
+			return port_report_failure(error,
+			    "Genesis insufficient row composition");
+		return session_present_paged_line(session, first, first_length,
+		    "Genesis insufficient first row", error)
+		    && session_present_paged_fragment(session, second,
+		    second_length);
+	}
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "Genesis success leading blank", error))
+		return false;
+	yt_present_set_bold(&session->presentation, 1.0f);
+	if (!session_present_paged_fragment(session, success_first,
+	    sizeof(success_first) - 1U))
+		return false;
+	yt_present_set_bold(&session->presentation, 1.0f);
+	return session_present_paged_fragment(session, success_second,
+	    sizeof(success_second) - 1U)
+	    && genesis_handoff(session, error);
 }
 
 static bool
