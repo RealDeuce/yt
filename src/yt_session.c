@@ -8100,68 +8100,113 @@ earth_purchase_spies(struct yt_session *session,
 }
 
 static bool
-earth_anti_cloak_read_player(void *context, float record,
-    struct yt_player *player, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	struct yt_record raw;
-	uint32_t physical = qb_brun_random_record_number(record);
-
-	if (!yt_database_read(&session->door->game.database, (size_t)physical,
-	    &raw, error))
-		return false;
-	yt_player_decode(player, &raw);
-	return true;
-}
-
-static bool
-earth_anti_cloak_present(void *context, const uint8_t *text, size_t length,
-    float foreground, bool bold, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	if (session_foreground(session) != foreground)
-		session_set_color(session, (int)foreground);
-	return session_present_text(session, text, length,
-	    bold ? SESSION_PRESENT_BOLD_LINE : SESSION_PRESENT_LINE,
-	    "anti-cloak transaction row", error);
-}
-
-static bool
-earth_anti_cloak_sound(void *context, float selector,
-    struct yt_error *error)
-{
-	return session_sound(context, selector, "anti-cloak transaction sound",
-	    error);
-}
-
-static bool
 earth_anti_cloak(struct yt_session *session, float price,
     struct yt_error *error)
 {
-	static const struct yt_earth_anti_cloak_ops ops = {
-		earth_anti_cloak_read_player,
-		apply_player_credit_mutation,
-		earth_anti_cloak_present,
-		earth_anti_cloak_sound,
-	};
-	struct yt_earth_anti_cloak_state state = {
-		.price = price,
-		.current_record = (float)session_record(session),
-		.player_terminal = session_sector_offset(session),
-		.conversion_mode = session->presentation.sound.conversion_mode,
-		.player_cache = &session->player_cache,
-		.foreground = session_foreground(session),
-	};
-	bool completed = yt_earth_anti_cloak_run(&state, &ops, session, error);
+	static const uint8_t activation[] =
+	    "ti-Cloaking device activated!\xd4" "D";
+	static const uint8_t waves[] =
+	    "Waves of electromagnetic disruption flood the galaxy..."
+	    "\xd4\x0e\x00\x86\xc1" " is uncl";
+	static const uint8_t uncloaked[] = " is uncloaked!";
+	static const uint8_t none[] = "Too bad noone was cloaked anyhow!";
+	static const uint8_t fade[] = "...the effect fades.";
+	static const uint8_t zero[4] = {0};
+	struct yt_player field_player;
+	uint8_t row[YT_TEXT_FIELD_SIZE + sizeof(uncloaked) - 1U];
+	int player_terminal = (int)session_sector_offset(session);
+	int player_record;
+	bool field_loaded = false;
+	bool reported = false;
 
-	if (session_foreground(session) != state.foreground)
-		session_set_color(session, (int)state.foreground);
-	if (state.field_record != 0.0f)
-		session->player.record = state.field_player.record;
-	if (state.credit_loaded)
-		session->player.credits = state.field_player.credits;
-	return completed;
+	if (!session_present_text(session, activation,
+	    sizeof(activation) - 1U, SESSION_PRESENT_LINE,
+	    "anti-cloak transaction row", error)
+	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "anti-cloak transaction row", error))
+		return false;
+	if (session_foreground(session) != 2.0f)
+		session_set_color(session, 2);
+	if (!session_present_text(session, waves, sizeof(waves) - 1U,
+	    SESSION_PRESENT_BOLD_LINE, "anti-cloak transaction row", error)
+	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "anti-cloak transaction row", error)
+	    || !session_sound(session, 2.0f,
+	    "anti-cloak transaction sound", error))
+		return false;
+	for (player_record = YT_PLAYER_FIRST; player_record <= player_terminal;
+	    ++player_record) {
+		size_t name_length;
+
+		if (session_player_cache_value(session, player_record,
+		    YT_PLAYER_CACHE_CLOAK) <= 0.0f)
+			continue;
+		session_set_player_cache_raw(session, player_record,
+		    YT_PLAYER_CACHE_CLOAK, zero);
+		if (!yt_game_read_player(&session->door->game, player_record,
+		    &field_player, error)) {
+			if (session_foreground(session) != 6.0f)
+				session_set_color(session, 6);
+			if (field_loaded)
+				session->player.record = field_player.record;
+			return false;
+		}
+		field_loaded = true;
+		if (field_player.killed_by != 0.0f)
+			continue;
+		if (!yt_player_stored_name(&field_player, row, &name_length,
+		    error)) {
+			if (session_foreground(session) != 6.0f)
+				session_set_color(session, 6);
+			session->player.record = field_player.record;
+			return false;
+		}
+		memcpy(row + name_length, uncloaked, sizeof(uncloaked) - 1U);
+		if (session_foreground(session) != 6.0f)
+			session_set_color(session, 6);
+		if (!session_present_text(session, row,
+		    name_length + sizeof(uncloaked) - 1U,
+		    SESSION_PRESENT_BOLD_LINE, "anti-cloak transaction row", error)
+		    || !session_sound(session, 1.0f,
+		    "anti-cloak transaction sound", error)) {
+			session->player.record = field_player.record;
+			return false;
+		}
+		reported = true;
+	}
+	if (session_foreground(session) != 2.0f)
+		session_set_color(session, 2);
+	if (!reported
+	    && (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "anti-cloak transaction row", error)
+	    || !session_present_text(session, none, sizeof(none) - 1U,
+	    SESSION_PRESENT_LINE, "anti-cloak transaction row", error))) {
+		if (field_loaded)
+			session->player.record = field_player.record;
+		return false;
+	}
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "anti-cloak transaction row", error)
+	    || !session_present_text(session, fade, sizeof(fade) - 1U,
+	    SESSION_PRESENT_BOLD_LINE, "anti-cloak transaction row", error)
+	    || !session_sound(session, 5.0f,
+	    "anti-cloak transaction sound", error)) {
+		if (field_loaded)
+			session->player.record = field_player.record;
+		return false;
+	}
+	{
+		bool credit_loaded = false;
+
+		if (!session_mutate_player_credits(session, -price,
+		    &credit_loaded, error)) {
+			if (!credit_loaded && field_loaded)
+				session->player.record = field_player.record;
+			return false;
+		}
+	}
+	session_set_color(session, 3);
+	return true;
 }
 
 static bool
