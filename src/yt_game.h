@@ -212,25 +212,6 @@ struct yt_team_loader_cache {
 	bool raw_valid;
 };
 
-struct yt_team_loader_state {
-	float team_id;
-	float current_player_record;
-	float sector_record_offset;
-	uint8_t conversion_mode;
-	struct yt_team_loader_cache *cache;
-	struct yt_record overlay;
-	uint32_t physical_record;
-	enum yt_team_loader_route route;
-	bool overlay_loaded;
-	bool complete;
-};
-typedef bool (*yt_team_loader_read_record_fn)(void *context,
-    uint32_t physical_record, struct yt_record *record,
-    struct yt_error *error);
-bool yt_team_loader_run(struct yt_team_loader_state *state,
-    yt_team_loader_read_record_fn read_record, void *context,
-    struct yt_error *error);
-
 #define YT_TEAM_AUDIT_MESSAGE_MAX 32767U
 
 enum yt_team_audit_clock_kind {

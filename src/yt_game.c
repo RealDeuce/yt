@@ -464,39 +464,6 @@ yt_team_loader_finish(const struct yt_record *overlay,
 	return true;
 }
 
-bool
-yt_team_loader_run(struct yt_team_loader_state *state,
-    yt_team_loader_read_record_fn read_record, void *context,
-    struct yt_error *error)
-{
-	bool needs_overlay;
-	float expression;
-
-	if (state == NULL || state->cache == NULL || read_record == NULL)
-		return false;
-	state->route = YT_TEAM_LOADER_OUT_OF_RANGE;
-	state->overlay_loaded = false;
-	state->complete = false;
-	yt_team_loader_begin(state->team_id, state->cache, &needs_overlay);
-	if (!needs_overlay) {
-		state->complete = true;
-		return true;
-	}
-	expression = startup_single_add(state->sector_record_offset,
-	    state->team_id);
-	state->physical_record = qb_brun_random_record_number(expression);
-	if (!read_record(context, state->physical_record, &state->overlay,
-	    error))
-		return false;
-	state->overlay_loaded = true;
-	if (!yt_team_loader_finish(&state->overlay,
-	    state->current_player_record, state->conversion_mode,
-	    state->cache, &state->route, error))
-		return false;
-	state->complete = true;
-	return true;
-}
-
 static bool
 team_audit_error(struct yt_error *error, const char *operation)
 {

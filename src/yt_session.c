@@ -4941,13 +4941,35 @@ command_move(struct yt_session *session, bool *moved,
 }
 
 static bool
-session_read_physical_record(void *context, uint32_t physical_record,
-	struct yt_record *record, struct yt_error *error)
+session_load_team_cache(struct yt_session *session, float team_id,
+    float current_player_record, struct yt_record *overlay,
+    bool *overlay_loaded, enum yt_team_loader_route *route,
+    struct yt_error *error)
 {
-	struct yt_session *session = context;
+	struct yt_record loaded;
+	float expression;
+	uint32_t physical_record;
+	bool needs_overlay;
 
-	return yt_database_read(&session->door->game.database,
-	    (size_t)physical_record, record, error);
+	if (overlay_loaded != NULL)
+		*overlay_loaded = false;
+	if (route != NULL)
+		*route = YT_TEAM_LOADER_OUT_OF_RANGE;
+	yt_team_loader_begin(team_id, &session->team_cache, &needs_overlay);
+	if (!needs_overlay)
+		return true;
+	expression = single_add(session_sector_offset(session), team_id);
+	physical_record = qb_brun_random_record_number(expression);
+	if (!yt_database_read(&session->door->game.database,
+	    (size_t)physical_record, &loaded, error))
+		return false;
+	if (overlay != NULL)
+		*overlay = loaded;
+	if (overlay_loaded != NULL)
+		*overlay_loaded = true;
+	return yt_team_loader_finish(&loaded, current_player_record,
+	    session->presentation.sound.conversion_mode, &session->team_cache,
+	    route, error);
 }
 
 static bool
@@ -4960,7 +4982,6 @@ team_remove_player(struct yt_session *session, int victim,
 	static const uint8_t zero[4] = {0};
 	struct yt_player player;
 	struct yt_record overlay;
-	struct yt_team_loader_state loader;
 	float raw_team_id;
 	float expression;
 	uint32_t physical_record;
@@ -4972,15 +4993,8 @@ team_remove_player(struct yt_session *session, int victim,
 	if (raw_team_id == 0.0f)
 		return true;
 
-	loader = (struct yt_team_loader_state){
-		.team_id = raw_team_id,
-		.current_player_record = (float)session_record(session),
-		.sector_record_offset = session_sector_offset(session),
-		.conversion_mode = session->presentation.sound.conversion_mode,
-		.cache = &session->team_cache,
-	};
-	if (!yt_team_loader_run(&loader, session_read_physical_record, session,
-	    error))
+	if (!session_load_team_cache(session, raw_team_id,
+	    (float)session_record(session), NULL, NULL, NULL, error))
 		return false;
 	for (index = 0U; index < YT_ARRAY_LEN(session->team_cache.roster);
 	    ++index) {
@@ -10925,33 +10939,30 @@ static bool
 team_load_raw(struct yt_session *session, float id, struct yt_team *team,
     struct yt_error *error)
 {
-	struct yt_team_loader_state loader = {
-		.team_id = id,
-		.current_player_record = (float)session_record(session),
-		.sector_record_offset = session_sector_offset(session),
-		.conversion_mode = session->presentation.sound.conversion_mode,
-		.cache = &session->team_cache,
-	};
+	struct yt_record overlay;
+	enum yt_team_loader_route route;
+	bool overlay_loaded;
 	size_t index;
 
 	if (team != NULL) {
 		memset(team, 0, sizeof(*team));
 		team->id = (int)id;
 	}
-	if (!yt_team_loader_run(&loader, session_read_physical_record, session,
+	if (!session_load_team_cache(session, id,
+	    (float)session_record(session), &overlay, &overlay_loaded, &route,
 	    error))
 		return false;
 	if (team == NULL)
 		return true;
-	if (loader.overlay_loaded)
-		yt_sector_decode(&team->overlay, &loader.overlay);
+	if (overlay_loaded)
+		yt_sector_decode(&team->overlay, &overlay);
 	memcpy(team->name, session->team_cache.name,
 	    sizeof(team->name));
 	team->name_length = session->team_cache.name_length;
 	memcpy(team->password, session->team_cache.password,
 	    sizeof(team->password));
 	team->captain = session->team_cache.captain;
-	team->live = loader.route == YT_TEAM_LOADER_LIVE;
+	team->live = route == YT_TEAM_LOADER_LIVE;
 	team->full = team->live;
 	for (index = 0; index < 4; ++index) {
 		team->roster[index] = session->team_cache.roster[index];
@@ -11178,28 +11189,24 @@ info_team_load_team(void *context, float team_id, float current_record,
     float *captain_flag, struct yt_team *team, struct yt_error *error)
 {
 	struct yt_session *session = context;
-	struct yt_team_loader_state loader = {
-		.team_id = team_id,
-		.current_player_record = current_record,
-		.sector_record_offset = session_sector_offset(session),
-		.conversion_mode = session->presentation.sound.conversion_mode,
-		.cache = &session->team_cache,
-	};
+	struct yt_record overlay;
+	enum yt_team_loader_route route;
+	bool overlay_loaded;
 	size_t index;
 
 	memset(team, 0, sizeof(*team));
 	team->id = (int)team_id;
-	if (!yt_team_loader_run(&loader, session_read_physical_record, session,
-	    error))
+	if (!session_load_team_cache(session, team_id, current_record, &overlay,
+	    &overlay_loaded, &route, error))
 		return false;
-	if (loader.overlay_loaded)
-		yt_sector_decode(&team->overlay, &loader.overlay);
+	if (overlay_loaded)
+		yt_sector_decode(&team->overlay, &overlay);
 	memcpy(team->name, session->team_cache.name, sizeof(team->name));
 	team->name_length = session->team_cache.name_length;
 	memcpy(team->password, session->team_cache.password,
 	    sizeof(team->password));
 	team->captain = session->team_cache.captain;
-	team->live = loader.route == YT_TEAM_LOADER_LIVE;
+	team->live = route == YT_TEAM_LOADER_LIVE;
 	team->full = team->live;
 	for (index = 0; index < YT_ARRAY_LEN(team->roster); ++index) {
 		team->roster[index] = session->team_cache.roster[index];
@@ -15277,7 +15284,6 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 		all = true;
 	}
 	else if (strcmp(target, "Team") == 0) {
-		struct yt_team_loader_state loader;
 		static const uint8_t teamless[] =
 		    "You Don't belong to a team!";
 
@@ -15287,16 +15293,8 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 			return session_present_alert(session, teamless,
 			    sizeof(teamless) - 1U, "radio teamless row", error);
 		}
-		loader = (struct yt_team_loader_state){
-			.team_id = session->player.team,
-			.current_player_record = (float)session_record(session),
-			.sector_record_offset = session_sector_offset(session),
-			.conversion_mode =
-			    session->presentation.sound.conversion_mode,
-			.cache = &session->team_cache,
-		};
-		if (!yt_team_loader_run(&loader,
-		    session_read_physical_record, session, error))
+		if (!session_load_team_cache(session, session->player.team,
+		    (float)session_record(session), NULL, NULL, NULL, error))
 			return false;
 		for (index = 0; index < 4; ++index)
 			recipients[index] = session->team_cache.roster[index];
