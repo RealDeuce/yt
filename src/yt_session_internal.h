@@ -135,6 +135,8 @@ bool session_reload_player(struct yt_session *session,
     struct yt_error *error);
 bool session_mutate_player_credits(struct yt_session *session, float argument,
     bool *hydrated, struct yt_error *error);
+bool session_load_team(struct yt_session *session, int id,
+    struct yt_team *team, struct yt_error *error);
 void session_clear_queue(struct yt_session *session);
 bool session_append_radio_bytes(const uint8_t *text, size_t length,
     float sender, float recipient, struct yt_error *error);
@@ -143,6 +145,11 @@ bool yt_session_salvage_player(struct yt_session *session, int victim_record,
 bool yt_session_command_mines(struct yt_session *session,
     struct yt_error *error);
 bool yt_session_xannor_victory(struct yt_session *session,
+    struct yt_error *error);
+bool yt_session_show_ship(struct yt_session *session,
+    struct yt_error *error);
+bool yt_session_info_team_lines(struct yt_session *session,
+    struct yt_team *resolved_team, bool *current_is_captain,
     struct yt_error *error);
 bool session_fixed_width_bytes(struct yt_session *session,
     const uint8_t *text, size_t text_length, float width,
