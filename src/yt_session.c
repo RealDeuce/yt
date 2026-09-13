@@ -166,9 +166,7 @@ session_set_current_player_record(struct yt_session *session, int record)
 	session->player_record_carrier = record;
 }
 
-static bool random_value(struct yt_session *session, float *value,
-    struct yt_error *error);
-static bool projectile_damage_draw(void *context, float *value,
+static bool random_value(void *context, float *value,
     struct yt_error *error);
 static bool computer_spies(struct yt_session *session,
     struct yt_error *error);
@@ -4318,12 +4316,6 @@ spy_read_team(void *context, float team, struct yt_sector *overlay,
 }
 
 static bool
-spy_random(void *context, float *value, struct yt_error *error)
-{
-	return random_value(context, value, error);
-}
-
-static bool
 spy_sound(void *context, float selector, struct yt_error *error)
 {
 	return session_sound(context, selector, selector == 9.0f
@@ -4407,7 +4399,7 @@ spy_sweep(struct yt_session *session, struct yt_error *error)
 		spy_read_planet,
 		spy_read_player,
 		spy_read_team,
-		spy_random,
+		random_value,
 		spy_sound,
 		spy_present,
 		spy_pause,
@@ -4566,9 +4558,11 @@ finalize_action(struct yt_session *session, float amount,
 }
 
 static bool
-random_value(struct yt_session *session, float *value,
+random_value(void *context, float *value,
     struct yt_error *error)
 {
+	struct yt_session *session = context;
+
 	return yt_random_next(&session->door->game.random, value, error);
 }
 
@@ -5451,13 +5445,6 @@ salvage_player(struct yt_session *session, int victim_record,
 }
 
 static bool
-direct_attack_attrition_draw(void *context, float *value,
-    struct yt_error *error)
-{
-	return random_value(context, value, error);
-}
-
-static bool
 xannor_victory_play_file(void *context, const char *path,
     struct yt_error *error)
 {
@@ -5815,7 +5802,7 @@ attack_player(struct yt_session *session, int target_record,
 		direct_attack_combat_present,
 		direct_attack_combat_sound,
 		direct_attack_combat_radio,
-		direct_attack_attrition_draw,
+		random_value,
 		direct_attack_combat_spill,
 		direct_attack_combat_kill,
 	};
@@ -5935,13 +5922,6 @@ fighter_shield_spill_present(void *context, const uint8_t *text,
 	    ? "fighter spill result" : "shield spill result", error);
 }
 
-static bool
-fighter_shield_spill_random(void *context, float *value,
-    struct yt_error *error)
-{
-	return direct_attack_attrition_draw(context, value, error);
-}
-
 static void
 fighter_shield_spill_store(void *context,
     enum yt_fighter_shield_spill_store_kind kind, double fighters,
@@ -5960,7 +5940,7 @@ fighter_shield_spill(struct yt_session *session, double *fighters,
     float *shields, bool bind_hostile_cells, struct yt_error *error)
 {
 	const struct yt_fighter_shield_spill_ops ops = {
-		fighter_shield_spill_random,
+		random_value,
 		fighter_shield_spill_present,
 		bind_hostile_cells ? fighter_shield_spill_store : NULL,
 	};
@@ -6826,12 +6806,6 @@ mine_news(void *context, const uint8_t *text, size_t length,
 }
 
 static bool
-mine_random(void *context, float *value, struct yt_error *error)
-{
-	return random_value(context, value, error);
-}
-
-static bool
 mine_shrink(void *context, float range, float *result,
     struct yt_error *error)
 {
@@ -6877,7 +6851,7 @@ mine_encounter(struct yt_session *session, bool *terminal,
 		mine_present,
 		mine_sound,
 		mine_news,
-		mine_random,
+		random_value,
 		mine_shrink,
 		mine_warp,
 		mine_set_current,
@@ -8442,12 +8416,6 @@ earth_anti_cloak(struct yt_session *session, float price,
 }
 
 static bool
-clearance_random(void *context, float *value, struct yt_error *error)
-{
-	return random_value(context, value, error);
-}
-
-static bool
 clearance_present(void *context, const uint8_t *text, size_t length,
     enum yt_clearance_output_kind kind, struct yt_error *error)
 {
@@ -8481,7 +8449,7 @@ clearance(struct yt_session *session, bool create,
     struct yt_error *error)
 {
 	static const struct yt_clearance_ops ops = {
-		clearance_random,
+		random_value,
 		clearance_present,
 		clearance_sound,
 	};
@@ -11003,13 +10971,6 @@ planet_permission_wait(void *context, double seconds, const char *operation,
 	return session_wait(context, seconds, operation, error);
 }
 
-static bool
-planet_permission_random(void *context, float *value,
-    struct yt_error *error)
-{
-	return random_value(context, value, error);
-}
-
 static void
 planet_permission_set_foreground(void *context, float foreground)
 {
@@ -11038,7 +10999,7 @@ command_land(struct yt_session *session, bool *enter_sector,
 		planet_permission_present,
 		planet_permission_sound,
 		planet_permission_wait,
-		planet_permission_random,
+		random_value,
 		planet_permission_set_foreground,
 		planet_permission_set_blink,
 	};
@@ -13265,9 +13226,6 @@ command_genesis(struct yt_session *session, struct yt_error *error)
 	return yt_genesis_run(&state, &ops, session, error);
 }
 
-static bool projectile_damage_draw(void *context, float *value,
-    struct yt_error *error);
-
 static bool
 projectile_planet_read(void *context, uint32_t physical_record,
     struct yt_planet *planet, struct yt_error *error)
@@ -13336,7 +13294,7 @@ missile_planet_impact(struct yt_session *session, int sector_number,
     struct yt_error *error)
 {
 	static const struct yt_projectile_planet_impact_ops impact_ops = {
-		projectile_damage_draw,
+		random_value,
 		projectile_planet_read,
 		projectile_planet_write,
 		projectile_sector_read,
@@ -13458,12 +13416,6 @@ deploy_victim_mines(struct yt_session *session, int sector_number,
 	return yt_database_write(&session->door->game.database,
 	    (size_t)session_sector_basic_record(session, (float)sector_number),
 	    &sector.record, error);
-}
-
-static bool
-projectile_damage_draw(void *context, float *value, struct yt_error *error)
-{
-	return random_value(context, value, error);
 }
 
 static bool
@@ -13906,7 +13858,7 @@ missile_sector(struct yt_session *session, int sector_number,
 		cruise_defense_sound,
 	};
 	static const struct yt_projectile_defense_combat_ops combat_ops = {
-		projectile_damage_draw,
+		random_value,
 		cruise_defense_damage_present,
 		cruise_defense_news,
 		cruise_defense_read_sector,
@@ -14030,7 +13982,7 @@ missile_mines:
 		    "cruise missile player-attack sound", error))
 			return false;
 		if (!yt_projectile_player_damage(&target, remaining,
-		    projectile_damage_draw, session, &damage, error))
+		    random_value, session, &damage, error))
 			return false;
 		scanner_disabled = damage.scanner_disabled;
 		session_set_foreground(session, 5.0f);
@@ -14179,7 +14131,7 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 		plasma_planet_present,
 		plasma_fighter_news,
 		plasma_planet_sound,
-		projectile_damage_draw,
+		random_value,
 	};
 	struct yt_projectile_plasma_planet_state state;
 	bool overflow;
@@ -14217,7 +14169,7 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
 		plasma_fighter_owner,
 		plasma_fighter_present,
 		plasma_fighter_sound,
-		projectile_damage_draw,
+		random_value,
 		plasma_fighter_news,
 		plasma_fighter_read_sector,
 		plasma_fighter_write_sector,
@@ -14226,7 +14178,7 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
 	static const struct yt_projectile_plasma_mine_ops mine_ops = {
 		plasma_mine_sound,
 		plasma_fighter_news,
-		projectile_damage_draw,
+		random_value,
 		plasma_mine_present,
 		plasma_fighter_read_sector,
 		plasma_fighter_write_sector,
@@ -14237,7 +14189,7 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
 		plasma_player_save_foreground,
 		plasma_player_color,
 		plasma_player_sound,
-		projectile_damage_draw,
+		random_value,
 		plasma_fighter_news,
 		plasma_player_present,
 		plasma_player_restore_foreground,
@@ -14538,12 +14490,6 @@ cruise_reroute_attention(void *context, const uint8_t *text, size_t length,
 	    "cruise black-hole attention", error);
 }
 
-static bool
-cruise_reroute_random(void *context, float *value, struct yt_error *error)
-{
-	return random_value(context, value, error);
-}
-
 struct plasma_route_context {
 	struct yt_session *session;
 	struct projectile_route_state *route;
@@ -14816,7 +14762,7 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 				    cruise_ops = {
 					cruise_reroute_line,
 					cruise_reroute_attention,
-					cruise_reroute_random,
+					random_value,
 				};
 				struct yt_projectile_cruise_reroute_state state = {
 					(float)next,
@@ -15021,13 +14967,6 @@ launch_xannor_retaliation(struct yt_session *session, int *provoking_player,
 }
 
 static bool
-session_counterlaunch_random(void *context, float *value,
-    struct yt_error *error)
-{
-	return random_value(context, value, error);
-}
-
-static bool
 session_counterlaunch_write_player(void *context, int player_record,
     struct yt_player *player, struct yt_error *error)
 {
@@ -15088,7 +15027,7 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 {
 	static const struct yt_counterlaunch_ops ops = {
 		session_xannor_read_player,
-		session_counterlaunch_random,
+		random_value,
 		session_counterlaunch_write_player,
 		session_counterlaunch_present,
 		session_counterlaunch_news,
