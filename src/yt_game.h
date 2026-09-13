@@ -656,20 +656,6 @@ bool yt_projectile_plasma_route_run(
     const struct yt_projectile_plasma_route_ops *ops, void *context,
     struct yt_error *error);
 
-typedef bool (*yt_projectile_route_entry_read_player_fn)(void *context,
-    int player_record, struct yt_player *player, struct yt_error *error);
-struct yt_projectile_route_entry_state {
-	int shooter;
-	float maximum_player_record;
-	float start;
-	float current_hop;
-	float shooter_team;
-};
-bool yt_projectile_route_entry_run(
-    struct yt_projectile_route_entry_state *state,
-    yt_projectile_route_entry_read_player_fn read_player, void *context,
-    struct yt_error *error);
-
 typedef bool (*yt_projectile_output_fn)(void *context,
     const uint8_t *text, size_t length, struct yt_error *error);
 typedef bool (*yt_projectile_random_fn)(void *context, float *value,

@@ -14149,16 +14149,6 @@ missile_footer(struct yt_session *session, struct yt_error *error)
 	    "cruise missile end report", error);
 }
 
-static bool
-cruise_route_entry_read_player(void *context, int player_record,
-    struct yt_player *player, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_game_read_player(&session->door->game, player_record, player,
-	    error);
-}
-
 struct plasma_route_context {
 	struct yt_session *session;
 	struct projectile_route_state *route;
@@ -14389,7 +14379,6 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 		bool rerouted = false;
 		enum yt_route_outcome route_outcome;
 		float route_status;
-		struct yt_projectile_route_entry_state route_entry;
 
 		bool route_success = build_projectile_route(session, route,
 		    yt_projectile_route_avoid_enabled(plasma, *counterattack,
@@ -14411,14 +14400,16 @@ launch_projectile(struct yt_session *session, float *target, float *amount,
 				return false;
 			return true;
 		}
-		route_entry.shooter = session_record(session);
-		route_entry.maximum_player_record =
-		    session_sector_offset(session);
-		route_entry.start = (float)start;
-		if (!yt_projectile_route_entry_run(&route_entry,
-		    cruise_route_entry_read_player, session, error))
-			return false;
-		cursor = (int)route_entry.current_hop;
+		if ((float)session_record(session) > 2.0f
+		    && (float)session_record(session)
+		    <= session_sector_offset(session)) {
+			struct yt_player shooter;
+
+			if (!yt_game_read_player(&session->door->game,
+			    session_record(session), &shooter, error))
+				return false;
+		}
+		cursor = start;
 		for (;;) {
 			int next = session->route_second[cursor];
 

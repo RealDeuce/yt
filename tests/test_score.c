@@ -2169,110 +2169,6 @@ check_projectile_plasma_route_transaction(void)
 	    && !yt_projectile_plasma_route_run(&state, &ops, &tape, NULL);
 }
 
-struct projectile_route_entry_tape {
-	struct yt_player player;
-	int requested_record;
-	size_t reads;
-	bool succeeds;
-};
-
-static bool
-projectile_route_entry_read(void *context, int player_record,
-    struct yt_player *player, struct yt_error *error)
-{
-	struct projectile_route_entry_tape *tape = context;
-
-	(void)error;
-	++tape->reads;
-	tape->requested_record = player_record;
-	if (!tape->succeeds)
-		return false;
-	*player = tape->player;
-	return true;
-}
-
-static bool
-check_projectile_route_entry_transaction(void)
-{
-	struct projectile_route_entry_tape tape;
-	struct yt_projectile_route_entry_state state;
-	static const int skipped_shooters[] = {-1, 2, 52};
-	static const float mapped_teams[] = {0.0f, 0.5f, -2.0f};
-	size_t index;
-
-	memset(&tape, 0, sizeof(tape));
-	tape.succeeds = true;
-	tape.player.team = 4.0f;
-	state.shooter = 3;
-	state.maximum_player_record = 51.0f;
-	state.start = 7.0f;
-	state.current_hop = -1.0f;
-	state.shooter_team = 99.0f;
-	if (!yt_projectile_route_entry_run(&state, projectile_route_entry_read,
-	    &tape, NULL)
-	    || tape.reads != 1U || tape.requested_record != 3
-	    || state.current_hop != 7.0f || state.shooter_team != 4.0f)
-		return false;
-
-	for (index = 0U; index < YT_ARRAY_LEN(skipped_shooters); ++index) {
-		memset(&tape, 0, sizeof(tape));
-		tape.succeeds = true;
-		state.shooter = skipped_shooters[index];
-		state.maximum_player_record = 51.0f;
-		state.start = 1.5f;
-		state.current_hop = -1.0f;
-		state.shooter_team = 99.0f;
-		if (!yt_projectile_route_entry_run(&state,
-		    projectile_route_entry_read, &tape, NULL)
-		    || tape.reads != 0U || state.current_hop != 1.5f
-		    || state.shooter_team != -99999.0f)
-			return false;
-	}
-
-	state.shooter = 3;
-	state.maximum_player_record = 3.0f;
-	for (index = 0U; index < YT_ARRAY_LEN(mapped_teams); ++index) {
-		memset(&tape, 0, sizeof(tape));
-		tape.succeeds = true;
-		tape.player.team = mapped_teams[index];
-		state.start = 9.0f;
-		if (!yt_projectile_route_entry_run(&state,
-		    projectile_route_entry_read, &tape, NULL)
-		    || tape.reads != 1U || tape.requested_record != 3
-		    || state.current_hop != 9.0f
-		    || state.shooter_team != -99999.0f)
-			return false;
-	}
-
-	memset(&tape, 0, sizeof(tape));
-	tape.succeeds = true;
-	tape.player.team = 1.0f;
-	state.shooter = 3;
-	state.maximum_player_record = 2.999f;
-	if (!yt_projectile_route_entry_run(&state, projectile_route_entry_read,
-	    &tape, NULL) || tape.reads != 0U
-	    || state.shooter_team != -99999.0f)
-		return false;
-
-	memset(&tape, 0, sizeof(tape));
-	tape.succeeds = true;
-	tape.player.team = NAN;
-	state.maximum_player_record = 3.0f;
-	if (!yt_projectile_route_entry_run(&state, projectile_route_entry_read,
-	    &tape, NULL) || tape.reads != 1U || !isnan(state.shooter_team))
-		return false;
-
-	memset(&tape, 0, sizeof(tape));
-	tape.succeeds = false;
-	state.start = 11.0f;
-	state.current_hop = -1.0f;
-	state.shooter_team = 99.0f;
-	return !yt_projectile_route_entry_run(&state,
-	    projectile_route_entry_read, &tape, NULL)
-	    && tape.reads == 1U && tape.requested_record == 3
-	    && state.current_hop == 11.0f && state.shooter_team == 0.0f;
-}
-
 static bool
 check_projectile_cruise_reroute_transaction(void)
 {
@@ -27887,8 +27783,6 @@ main(void)
 		return fail("projectile plasma-opening transaction differs");
 	if (!check_projectile_plasma_route_transaction())
 		return fail("projectile plasma-route transaction differs");
-	if (!check_projectile_route_entry_transaction())
-		return fail("projectile route-entry transaction differs");
 	if (!check_projectile_cruise_reroute_transaction())
 		return fail("projectile cruise-reroute transaction differs");
 	if (!check_projectile_union_police_admission())
