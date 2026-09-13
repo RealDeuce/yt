@@ -21,6 +21,15 @@ struct projectile_route_state {
 	float amount;
 };
 
+struct yt_team_cache {
+	int roster[4];
+	int captain;
+	bool current_player_is_captain;
+	char name[YT_TEXT_FIELD_SIZE + 1U];
+	size_t name_length;
+	char password[5];
+};
+
 struct yt_session {
 	struct yt_door *door;
 	struct yt_error *error;
@@ -90,7 +99,7 @@ struct yt_session {
 	struct yt_input_value input_residue;
 	uint8_t hostile_owner_label[160];
 	size_t hostile_owner_label_length;
-	struct yt_team_loader_cache team_cache;
+	struct yt_team_cache team_cache;
 };
 
 int session_record(const struct yt_session *session);

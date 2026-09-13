@@ -189,29 +189,6 @@ struct yt_post_login_repairs {
 	unsigned writes;
 };
 
-enum yt_team_loader_route {
-	YT_TEAM_LOADER_OUT_OF_RANGE,
-	YT_TEAM_LOADER_ROSTER_DEAD,
-	YT_TEAM_LOADER_LIVE,
-};
-
-struct yt_team_loader_cache {
-	float available;
-	float roster[4];
-	float captain;
-	float captain_flag;
-	char name[YT_TEXT_FIELD_SIZE + 1U];
-	size_t name_length;
-	char password[5];
-	float counter;
-	uint8_t available_raw[4];
-	uint8_t roster_raw[4][4];
-	uint8_t captain_raw[4];
-	uint8_t captain_flag_raw[4];
-	uint8_t counter_raw[4];
-	bool raw_valid;
-};
-
 enum yt_team_audit_event {
 	YT_TEAM_AUDIT_INVALID_PASSWORD,
 	YT_TEAM_AUDIT_JOIN,
@@ -1391,13 +1368,6 @@ bool yt_game_construct_player(struct yt_game *game, int basic_record,
     struct yt_error *error);
 bool yt_game_set_player_identity(struct yt_game *game, int basic_record,
     const uint8_t *name, size_t length, struct yt_player *player,
-    struct yt_error *error);
-void yt_team_loader_begin(float team_id, struct yt_team_loader_cache *cache,
-    bool *needs_overlay);
-void yt_team_loader_cache_sync_raw(struct yt_team_loader_cache *cache);
-bool yt_team_loader_finish(const struct yt_record *overlay,
-    float current_player, uint8_t conversion_mode,
-    struct yt_team_loader_cache *cache, enum yt_team_loader_route *route,
     struct yt_error *error);
 bool yt_game_post_login_repairs(struct yt_game *game, int basic_record,
 	const uint8_t one_raw[4], const uint8_t zero_raw[4],
