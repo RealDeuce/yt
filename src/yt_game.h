@@ -273,31 +273,6 @@ bool yt_team_audit_run(struct yt_team_audit_state *state,
 	const struct yt_team_audit_ops *ops, void *context,
 	struct yt_error *error);
 
-struct yt_death_team_remove_state {
-	int victim_record;
-	float current_player_record;
-	float sector_record_offset;
-	uint8_t conversion_mode;
-	struct yt_team_loader_cache *cache;
-	float raw_team_id;
-	uint32_t overlay_physical_record;
-	enum yt_team_loader_route loader_route;
-	bool complete;
-};
-struct yt_death_team_remove_ops {
-	bool (*read_player)(void *context, int player_record,
-	    struct yt_player *player, struct yt_error *error);
-	bool (*write_player)(void *context, int player_record,
-	    struct yt_player *player, struct yt_error *error);
-	bool (*read_record)(void *context, uint32_t physical_record,
-	    struct yt_record *record, struct yt_error *error);
-	bool (*write_record)(void *context, uint32_t physical_record,
-	    const struct yt_record *record, struct yt_error *error);
-};
-bool yt_death_team_remove_run(struct yt_death_team_remove_state *state,
-    const struct yt_death_team_remove_ops *ops, void *context,
-    struct yt_error *error);
-
 enum yt_info_team_route {
 	YT_INFO_TEAM_NONE,
 	YT_INFO_TEAM_SELF_CAPTAIN,
