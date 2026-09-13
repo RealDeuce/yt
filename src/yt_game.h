@@ -516,38 +516,6 @@ enum yt_computer_newspaper_choice yt_computer_newspaper_select(
 	const char *response);
 
 #define YT_RADIO_SEND_RECIPIENTS 4U
-#define YT_RADIO_SEND_LINES 20U
-
-struct yt_radio_send_line {
-	const uint8_t *data;
-	size_t length;
-};
-
-struct yt_radio_send_state {
-	float recipients[YT_RADIO_SEND_RECIPIENTS];
-	size_t recipient_count;
-	float sender;
-	const uint8_t *sender_name;
-	size_t sender_name_length;
-	struct yt_radio_send_line lines[YT_RADIO_SEND_LINES];
-	size_t line_count;
-	size_t recipient_index;
-	size_t line_index;
-	size_t news_completed;
-	size_t radio_completed;
-	bool broadcast;
-	bool success_presented;
-	bool draft_erased;
-	bool complete;
-};
-
-struct yt_radio_send_ops {
-	bool (*append_news)(void *context, const uint8_t *text, size_t length,
-	    struct yt_error *error);
-	bool (*append_radio)(void *context, const uint8_t *text, size_t length,
-	    float sender, float recipient, struct yt_error *error);
-	bool (*present_success)(void *context, struct yt_error *error);
-};
 
 struct yt_radio_team_target_state {
 	float raw_team_id;
@@ -1601,9 +1569,6 @@ bool yt_main_prompt_row(const uint8_t *time_text, size_t time_text_length,
 bool yt_computer_prompt_row(const uint8_t *time_text,
 	size_t time_text_length, uint8_t *row, size_t capacity,
 	size_t *length);
-bool yt_radio_send_run(struct yt_radio_send_state *state,
-	const struct yt_radio_send_ops *ops, void *context,
-	struct yt_error *error);
 bool yt_radio_team_target_run(struct yt_radio_team_target_state *state,
 	yt_team_loader_read_record_fn read_record, void *context,
 	struct yt_error *error);

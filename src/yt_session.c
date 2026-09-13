@@ -15480,40 +15480,8 @@ radio_edit_draft(struct yt_session *session, char lines[21][76],
 }
 
 static bool
-radio_send_news(void *context, const uint8_t *text, size_t length,
-    struct yt_error *error)
-{
-	return append_news_bytes(context, text, length, error);
-}
-
-static bool
-radio_send_record(void *context, const uint8_t *text, size_t length,
-    float sender, float recipient, struct yt_error *error)
-{
-	(void)context;
-	return radio_append_bytes(text, length, sender, recipient, error);
-}
-
-static bool
-radio_send_success(void *context, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	static const uint8_t success[] = "Transmission successful!";
-
-	(void)error;
-	yt_present_set_bold(&session->presentation, 1.0f);
-	yt_present_set_blink(&session->presentation, 1.0f);
-	return session_present_paged_fragment(session, success, sizeof(success) - 1U);
-}
-
-static bool
 radio_compose(struct yt_session *session, struct yt_error *error)
 {
-	static const struct yt_radio_send_ops send_ops = {
-		radio_send_news,
-		radio_send_record,
-		radio_send_success,
-	};
 	static const uint8_t warming[] = "Warming up sub-space radio.";
 	static const uint8_t target_prompt[] =
 	    "Send a message to who? (search string) or 'ALL' or 'TEAM'? ";
@@ -15795,24 +15763,48 @@ radio_compose(struct yt_session *session, struct yt_error *error)
 				send = true;
 		}
 	}
-	{
-		struct yt_radio_send_state state = {
-			.recipient_count = (size_t)recipient_count,
-			.sender = (float)session_record(session),
-			.sender_name = session->cached_player_name,
-			.sender_name_length = session->cached_player_name_length,
-			.line_count = (size_t)line_count,
-		};
+	if (all) {
+		static const uint8_t prefix[] = "  -  Message from: ";
+		uint8_t news[sizeof(prefix) - 1U + YT_TEXT_FIELD_SIZE];
+		size_t length = sizeof(prefix) - 1U
+		    + session->cached_player_name_length;
+
+		memcpy(news, prefix, sizeof(prefix) - 1U);
+		memcpy(news + sizeof(prefix) - 1U,
+		    session->cached_player_name,
+		    session->cached_player_name_length);
+		if (!append_news_bytes(session, news, length, error))
+			return false;
+	}
+	for (index = 0; index < recipient_count; ++index) {
 		int body;
 
-		for (index = 0; index < recipient_count; ++index)
-			state.recipients[index] = recipients[index];
+		if (recipients[index] == 0.0f)
+			continue;
 		for (body = 0; body < line_count; ++body) {
-			state.lines[body].data = (const uint8_t *)lines[body];
-			state.lines[body].length = strlen(lines[body]);
+			size_t length = strlen(lines[body]);
+
+			if (all) {
+				static const uint8_t prefix[] = "  -  ";
+				uint8_t news[sizeof(prefix) - 1U + 75U];
+
+				memcpy(news, prefix, sizeof(prefix) - 1U);
+				memcpy(news + sizeof(prefix) - 1U, lines[body],
+				    length);
+				if (!append_news_bytes(session, news,
+				    sizeof(prefix) - 1U + length, error))
+					return false;
+			}
+			if (!radio_append_bytes((const uint8_t *)lines[body], length,
+			    (float)session_record(session), recipients[index], error))
+				return false;
 		}
-		return yt_radio_send_run(&state, &send_ops, session, error);
 	}
+	yt_present_set_bold(&session->presentation, 1.0f);
+	yt_present_set_blink(&session->presentation, 1.0f);
+	return session_present_paged_fragment(session,
+	    (const uint8_t *)"Transmission successful!",
+	    strlen("Transmission successful!"));
 }
 
 static bool
