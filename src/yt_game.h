@@ -564,38 +564,16 @@ enum yt_projectile_target_result {
 	YT_PROJECTILE_TARGET_ACCEPT,
 };
 
-enum yt_projectile_opening_output_kind {
-	YT_PROJECTILE_OPENING_DIRECT_LINE,
-	YT_PROJECTILE_OPENING_RAW,
-};
-typedef bool (*yt_projectile_opening_sound_fn)(void *context,
-    float selector, struct yt_error *error);
-typedef bool (*yt_projectile_opening_present_fn)(void *context,
-    const uint8_t *text, size_t length,
-    enum yt_projectile_opening_output_kind kind, struct yt_error *error);
-typedef bool (*yt_projectile_opening_wait_fn)(void *context, float duration,
+typedef bool (*yt_projectile_wait_fn)(void *context, float duration,
     struct yt_error *error);
 #define YT_PROJECTILE_ATTACKER_CAPACITY 64U
-struct yt_projectile_plasma_opening_state {
-	float special_attacker;
-	float bolts;
-	const uint8_t *player_name;
-	size_t player_name_length;
-	uint8_t attacker[YT_PROJECTILE_ATTACKER_CAPACITY];
-	size_t attacker_length;
-	double energy;
-	float hop_loss;
-	float firing_counter;
-};
-struct yt_projectile_plasma_opening_ops {
-	yt_projectile_opening_sound_fn sound;
-	yt_projectile_opening_present_fn present;
-	yt_projectile_opening_wait_fn wait;
-};
-bool yt_projectile_plasma_opening_run(
-    struct yt_projectile_plasma_opening_state *state,
-    const struct yt_projectile_plasma_opening_ops *ops, void *context,
-    struct yt_error *error);
+void yt_projectile_plasma_opening_values(float bolts, double *energy,
+    float *hop_loss);
+bool yt_projectile_plasma_energy_row(double energy, uint8_t *row,
+    size_t capacity, size_t *length);
+bool yt_projectile_plasma_firing_row(float counter, uint8_t *row,
+    size_t capacity, size_t *length);
+float yt_projectile_plasma_next_firing(float counter);
 
 enum yt_projectile_plasma_impact_route {
 	YT_PROJECTILE_PLASMA_NEXT_HOP,
@@ -627,7 +605,7 @@ struct yt_projectile_plasma_route_ops {
 	yt_projectile_plasma_route_build_fn build_route;
 	yt_projectile_plasma_route_output_fn line;
 	yt_projectile_plasma_route_output_fn attention;
-	yt_projectile_opening_wait_fn wait;
+	yt_projectile_wait_fn wait;
 	yt_projectile_plasma_route_random_fn random;
 	yt_projectile_plasma_route_impact_fn impact;
 	yt_projectile_plasma_route_output_fn footer;

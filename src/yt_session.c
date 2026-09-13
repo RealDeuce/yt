@@ -13990,60 +13990,12 @@ plasma_reload_sector:
 	    launch_attacker_length, energy, error);
 }
 
-struct plasma_opening_context {
-	struct yt_session *session;
-	size_t wait_count;
-};
-
-static bool
-plasma_opening_sound(void *context, float selector, struct yt_error *error)
-{
-	struct plasma_opening_context *opening = context;
-
-	return session_sound(opening->session, selector, selector == 4.0f
-	    ? "plasma launch sound" : "plasma bolt firing sound", error);
-}
-
-static bool
-plasma_opening_present(void *context, const uint8_t *text, size_t length,
-    enum yt_projectile_opening_output_kind kind, struct yt_error *error)
-{
-	struct plasma_opening_context *opening = context;
-
-	return session_present_text(opening->session, text, length,
-	    kind == YT_PROJECTILE_OPENING_RAW ? SESSION_PRESENT_RAW
-	    : SESSION_PRESENT_LINE, kind == YT_PROJECTILE_OPENING_RAW
-	    ? "plasma loading text" : "plasma opening line", error);
-}
-
-static bool
-plasma_opening_wait(void *context, float duration, struct yt_error *error)
-{
-	struct plasma_opening_context *opening = context;
-	const char *operation;
-
-	if (duration != 1.0f || opening->wait_count >= 2U)
-		return false;
-	operation = opening->wait_count++ == 0U
-	    ? "plasma launch wait" : "plasma opening wait";
-	return session_wait(opening->session, 1.0, operation, error);
-}
-
 static bool
 projectile_opening(struct yt_session *session, float amount, bool plasma,
     float *last_mine_news_sector, double *energy, float *hop_loss,
     uint8_t *attacker, size_t attacker_capacity, size_t *attacker_length,
     struct yt_error *error)
 {
-	static const struct yt_projectile_plasma_opening_ops plasma_ops = {
-		plasma_opening_sound,
-		plasma_opening_present,
-		plasma_opening_wait,
-	};
-	struct yt_projectile_plasma_opening_state state;
-	struct plasma_opening_context opening = {
-		.session = session,
-	};
 	uint8_t player_name[YT_TEXT_FIELD_SIZE];
 	size_t player_name_length;
 
@@ -14070,24 +14022,55 @@ projectile_opening(struct yt_session *session, float amount, bool plasma,
 		    sizeof(tracking) - 1U, SESSION_PRESENT_LINE,
 		    "cruise missile tracking row", error);
 	}
+	static const uint8_t loading[] =
+	    "Loading course into targeting computer.";
+	static const uint8_t tracking[] = "* Tracking Report *";
+	uint8_t row[192];
+	size_t row_length;
+	float firing_counter;
+
 	if (!yt_player_stored_name(&session->player, player_name,
 	    &player_name_length, error))
 		return false;
-	memset(&state, 0, sizeof(state));
-	state.bolts = amount;
-	state.player_name = player_name;
-	state.player_name_length = player_name_length;
-	if (!yt_projectile_plasma_opening_run(&state, &plasma_ops, &opening,
-	    error))
+	if (player_name_length > attacker_capacity)
 		return false;
-	if (state.attacker_length > attacker_capacity)
+	if (player_name_length != 0U)
+		memcpy(attacker, player_name, player_name_length);
+	*attacker_length = player_name_length;
+	yt_projectile_plasma_opening_values(amount, energy, hop_loss);
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "plasma opening line", error)
+	    || !session_present_text(session, loading, sizeof(loading) - 1U,
+	    SESSION_PRESENT_RAW, "plasma loading text", error)
+	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "plasma opening line", error)
+	    || !session_sound(session, 4.0f, "plasma launch sound", error)
+	    || !session_wait(session, 1.0, "plasma launch wait", error)
+	    || !yt_projectile_plasma_energy_row(*energy, row, sizeof(row),
+	    &row_length)
+	    || !session_present_text(session, row, row_length,
+	    SESSION_PRESENT_LINE, "plasma opening line", error)
+	    || !session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "plasma opening line", error)
+	    || !session_wait(session, 1.0, "plasma opening wait", error))
 		return false;
-	if (state.attacker_length != 0U)
-		memcpy(attacker, state.attacker, state.attacker_length);
-	*attacker_length = state.attacker_length;
-	*energy = state.energy;
-	*hop_loss = state.hop_loss;
-	return true;
+	firing_counter = 1.0f;
+	while (firing_counter <= amount) {
+		if (!yt_projectile_plasma_firing_row(firing_counter, row,
+		    sizeof(row), &row_length)
+		    || !session_present_text(session, row, row_length,
+		    SESSION_PRESENT_LINE, "plasma opening line", error)
+		    || !session_sound(session, 7.0f,
+		    "plasma bolt firing sound", error))
+			return false;
+		firing_counter = yt_projectile_plasma_next_firing(firing_counter);
+	}
+	return session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "plasma opening line", error)
+	    && session_present_text(session, tracking, sizeof(tracking) - 1U,
+	    SESSION_PRESENT_LINE, "plasma opening line", error)
+	    && session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "plasma opening line", error);
 }
 
 static bool

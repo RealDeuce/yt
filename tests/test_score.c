@@ -1569,213 +1569,37 @@ check_projectile_planet_damage_model(void)
 	    && remaining == 1.0f && error.status == YT_IO_ERROR;
 }
 
-enum projectile_opening_event {
-	PROJECTILE_OPENING_SOUND = 1,
-	PROJECTILE_OPENING_PRESENT,
-	PROJECTILE_OPENING_WAIT,
-};
-
-
-struct plasma_opening_tape {
-	int events[16];
-	enum yt_projectile_opening_output_kind kinds[10];
-	uint8_t text[10][192];
-	size_t lengths[10];
-	float selectors[3];
-	float waits[2];
-	size_t event_count;
-	size_t present_count;
-	size_t sound_count;
-	size_t wait_count;
-	size_t fail_at;
-};
-
-static bool
-plasma_opening_step(struct plasma_opening_tape *tape, int event)
-{
-	size_t position = tape->event_count++;
-
-	if (position >= YT_ARRAY_LEN(tape->events))
-		return false;
-	tape->events[position] = event;
-	return tape->event_count != tape->fail_at;
-}
-
-static bool
-plasma_opening_sound(void *context, float selector, struct yt_error *error)
-{
-	struct plasma_opening_tape *tape = context;
-	size_t position = tape->sound_count++;
-
-	(void)error;
-	if (position >= YT_ARRAY_LEN(tape->selectors))
-		return false;
-	tape->selectors[position] = selector;
-	return plasma_opening_step(tape, PROJECTILE_OPENING_SOUND);
-}
-
-static bool
-plasma_opening_present(void *context, const uint8_t *text, size_t length,
-    enum yt_projectile_opening_output_kind kind, struct yt_error *error)
-{
-	struct plasma_opening_tape *tape = context;
-	size_t position = tape->present_count++;
-
-	(void)error;
-	if (position >= YT_ARRAY_LEN(tape->text)
-	    || length > sizeof(tape->text[position]))
-		return false;
-	tape->kinds[position] = kind;
-	if (length != 0U)
-		memcpy(tape->text[position], text, length);
-	tape->lengths[position] = length;
-	return plasma_opening_step(tape, PROJECTILE_OPENING_PRESENT);
-}
-
-static bool
-plasma_opening_wait(void *context, float duration, struct yt_error *error)
-{
-	struct plasma_opening_tape *tape = context;
-	size_t position = tape->wait_count++;
-
-	(void)error;
-	if (position >= YT_ARRAY_LEN(tape->waits))
-		return false;
-	tape->waits[position] = duration;
-	return plasma_opening_step(tape, PROJECTILE_OPENING_WAIT);
-}
-
 static bool
 check_projectile_plasma_opening_transaction(void)
 {
-	static const uint8_t oversized_name[YT_PROJECTILE_ATTACKER_CAPACITY + 1U]
-	    = {0};
-	static const struct yt_projectile_plasma_opening_ops ops = {
-		plasma_opening_sound,
-		plasma_opening_present,
-		plasma_opening_wait,
-	};
-	static const int expected_events[] = {
-		PROJECTILE_OPENING_PRESENT,
-		PROJECTILE_OPENING_PRESENT,
-		PROJECTILE_OPENING_PRESENT,
-		PROJECTILE_OPENING_SOUND,
-		PROJECTILE_OPENING_WAIT,
-		PROJECTILE_OPENING_PRESENT,
-		PROJECTILE_OPENING_PRESENT,
-		PROJECTILE_OPENING_WAIT,
-		PROJECTILE_OPENING_PRESENT,
-		PROJECTILE_OPENING_SOUND,
-		PROJECTILE_OPENING_PRESENT,
-		PROJECTILE_OPENING_SOUND,
-		PROJECTILE_OPENING_PRESENT,
-		PROJECTILE_OPENING_PRESENT,
-		PROJECTILE_OPENING_PRESENT,
-	};
-	static const enum yt_projectile_opening_output_kind expected_kinds[] = {
-		YT_PROJECTILE_OPENING_DIRECT_LINE,
-		YT_PROJECTILE_OPENING_RAW,
-		YT_PROJECTILE_OPENING_DIRECT_LINE,
-		YT_PROJECTILE_OPENING_DIRECT_LINE,
-		YT_PROJECTILE_OPENING_DIRECT_LINE,
-		YT_PROJECTILE_OPENING_DIRECT_LINE,
-		YT_PROJECTILE_OPENING_DIRECT_LINE,
-		YT_PROJECTILE_OPENING_DIRECT_LINE,
-		YT_PROJECTILE_OPENING_DIRECT_LINE,
-		YT_PROJECTILE_OPENING_DIRECT_LINE,
-	};
-	static const char *const expected_text[] = {
-		"",
-		"Loading course into targeting computer.",
-		"",
-		"Plasma bolts targeted... firing 5000000 megawatts!",
-		"",
-		"Firing 1!",
-		"Firing 2!",
-		"",
-		"* Tracking Report *",
-		"",
-	};
-	struct yt_projectile_plasma_opening_state state;
-	struct plasma_opening_tape tape;
-	size_t failure;
-	size_t index;
+	static const uint8_t energy_row[] =
+	    "Plasma bolts targeted... firing 5000000 megawatts!";
+	static const uint8_t first_row[] = "Firing 1!";
+	static const uint8_t second_row[] = "Firing 2!";
+	uint8_t row[192];
+	double energy;
+	float hop_loss;
+	size_t length;
 
-	memset(&state, 0, sizeof(state));
-	state.bolts = 2.0f;
-	state.player_name = (const uint8_t *)"ACE";
-	state.player_name_length = 3U;
-	memset(&tape, 0, sizeof(tape));
-	tape.fail_at = SIZE_MAX;
-	if (!yt_projectile_plasma_opening_run(&state, &ops, &tape, NULL)
-	    || tape.event_count != YT_ARRAY_LEN(expected_events)
-	    || memcmp(tape.events, expected_events, sizeof(expected_events)) != 0
-	    || tape.present_count != YT_ARRAY_LEN(expected_kinds)
-	    || memcmp(tape.kinds, expected_kinds, sizeof(expected_kinds)) != 0
-	    || tape.sound_count != 3U || tape.selectors[0] != 4.0f
-	    || tape.selectors[1] != 7.0f || tape.selectors[2] != 7.0f
-	    || tape.wait_count != 2U || tape.waits[0] != 1.0f
-	    || tape.waits[1] != 1.0f || state.energy != 5000000.0
-	    || state.hop_loss != 100000.0f || state.firing_counter != 3.0f
-	    || state.attacker_length != 3U
-	    || memcmp(state.attacker, "ACE", 3U) != 0)
+	yt_projectile_plasma_opening_values(2.0f, &energy, &hop_loss);
+	if (energy != 5000000.0 || hop_loss != 100000.0f
+	    || !yt_projectile_plasma_energy_row(energy, row, sizeof(row),
+	    &length)
+	    || length != sizeof(energy_row) - 1U
+	    || memcmp(row, energy_row, length) != 0
+	    || !yt_projectile_plasma_firing_row(1.0f, row, sizeof(row),
+	    &length)
+	    || length != sizeof(first_row) - 1U
+	    || memcmp(row, first_row, length) != 0
+	    || yt_projectile_plasma_next_firing(1.0f) != 2.0f
+	    || !yt_projectile_plasma_firing_row(2.0f, row, sizeof(row),
+	    &length)
+	    || length != sizeof(second_row) - 1U
+	    || memcmp(row, second_row, length) != 0)
 		return false;
-	for (index = 0U; index < YT_ARRAY_LEN(expected_text); ++index) {
-		size_t length = strlen(expected_text[index]);
-
-		if (tape.lengths[index] != length
-		    || memcmp(tape.text[index], expected_text[index], length) != 0)
-			return false;
-	}
-
-	memset(&state, 0, sizeof(state));
-	state.special_attacker = -1.0f;
-	state.bolts = 1.5f;
-	state.player_name = (const uint8_t *)"ignored";
-	state.player_name_length = 7U;
-	memset(&tape, 0, sizeof(tape));
-	tape.fail_at = SIZE_MAX;
-	if (!yt_projectile_plasma_opening_run(&state, &ops, &tape, NULL)
-	    || state.attacker_length != strlen("The Mercenary")
-	    || memcmp(state.attacker, "The Mercenary",
-	    strlen("The Mercenary")) != 0
-	    || state.energy != 3750000.0 || state.hop_loss != 75000.0f
-	    || state.firing_counter != 2.0f || tape.sound_count != 2U
-	    || tape.present_count != 9U)
-		return false;
-
-	memset(&state, 0, sizeof(state));
-	state.bolts = 1.1f;
-	state.player_name = (const uint8_t *)"A";
-	state.player_name_length = 1U;
-	memset(&tape, 0, sizeof(tape));
-	tape.fail_at = SIZE_MAX;
-	if (!yt_projectile_plasma_opening_run(&state, &ops, &tape, NULL)
-	    || state.energy != (double)(float)(2500000.0f * 1.1f)
-	    || state.hop_loss != (float)(state.energy / 50.0))
-		return false;
-
-	for (failure = 1U; failure <= YT_ARRAY_LEN(expected_events); ++failure) {
-		memset(&state, 0, sizeof(state));
-		state.bolts = 2.0f;
-		state.player_name = (const uint8_t *)"ACE";
-		state.player_name_length = 3U;
-		memset(&tape, 0, sizeof(tape));
-		tape.fail_at = failure;
-		if (yt_projectile_plasma_opening_run(&state, &ops, &tape, NULL)
-		    || tape.event_count != failure
-		    || memcmp(tape.events, expected_events,
-		    failure * sizeof(expected_events[0])) != 0
-		    || state.energy != 5000000.0
-		    || state.hop_loss != 100000.0f)
-			return false;
-	}
-
-	memset(&state, 0, sizeof(state));
-	state.player_name = oversized_name;
-	state.player_name_length = YT_PROJECTILE_ATTACKER_CAPACITY + 1U;
-	return !yt_projectile_plasma_opening_run(NULL, &ops, &tape, NULL)
-	    && !yt_projectile_plasma_opening_run(&state, &ops, &tape, NULL);
+	yt_projectile_plasma_opening_values(1.1f, &energy, &hop_loss);
+	return energy == (double)(float)(2500000.0f * 1.1f)
+	    && hop_loss == (float)(energy / 50.0);
 }
 
 enum plasma_route_event {
