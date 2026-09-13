@@ -177,8 +177,6 @@ static bool clearance(struct yt_session *session, bool create,
     struct yt_error *error);
 static bool command_team(struct yt_session *session,
     struct yt_error *error);
-static bool earth_store(struct yt_session *session, bool *enter_sector,
-    struct yt_error *error);
 static bool command_move(struct yt_session *session, bool *moved,
     struct yt_error *error);
 static bool command_land(struct yt_session *session, bool *enter_sector,
@@ -3464,8 +3462,8 @@ dangerous_destination(struct yt_session *session, float target,
 }
 
 
-static bool
-fresh_no_turn_gate(struct yt_session *session, bool *denied,
+bool
+yt_session_fresh_no_turn_gate(struct yt_session *session, bool *denied,
     struct yt_error *error)
 {
 	static const uint8_t notice[] = "Sorry but you have no turns left.";
@@ -3485,8 +3483,8 @@ fresh_no_turn_gate(struct yt_session *session, bool *denied,
 	return true;
 }
 
-static bool
-finalize_action(struct yt_session *session, float amount,
+bool
+yt_session_finalize_action(struct yt_session *session, float amount,
     struct yt_error *error)
 {
 	static const float cloak_display_scale = 50.0f;
@@ -3772,7 +3770,7 @@ direct_emergency_warp(struct yt_session *session, struct yt_error *error)
 	enum yt_yes_no_answer answer;
 	bool denied;
 
-	if (!fresh_no_turn_gate(session, &denied, error))
+	if (!yt_session_fresh_no_turn_gate(session, &denied, error))
 		return false;
 	if (denied)
 		return true;
@@ -3803,7 +3801,7 @@ movement_turn_gate(void *context, int player_record, struct yt_player *player,
 	struct yt_session *session = context;
 
 	if (player_record != session_record(session) || player == NULL
-	    || !fresh_no_turn_gate(session, denied, error))
+	    || !yt_session_fresh_no_turn_gate(session, denied, error))
 		return false;
 	*player = session->player;
 	return true;
@@ -3879,7 +3877,7 @@ movement_confirm(void *context, const uint8_t *prompt, size_t length,
 static bool
 movement_finalize(void *context, struct yt_error *error)
 {
-	return finalize_action(context, 1.0f, error);
+	return yt_session_finalize_action(context, 1.0f, error);
 }
 
 static void
@@ -6168,127 +6166,6 @@ yt_session_trade_commodity(struct yt_session *session,
 	return true;
 }
 
-static void
-ordinary_commerce_foreground(void *context, float foreground)
-{
-	struct yt_session *session = context;
-
-	session_set_foreground(session, foreground);
-}
-
-static bool
-docking_front_present(void *context, const uint8_t *text, size_t length,
-    enum yt_port_docking_output_kind kind, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	switch (kind) {
-	case YT_PORT_DOCKING_LABEL:
-		return session_present_paged_fragment(session, text, length);
-	case YT_PORT_DOCKING_NO_PORT:
-		return session_present_alert(session, text, length,
-		    "port docking no port", error);
-	case YT_PORT_DOCKING_LEADING_BLANK:
-		return session_present_text(session, NULL, 0,
-		    SESSION_PRESENT_LINE, "port docking leading blank", error);
-	case YT_PORT_DOCKING_PREFIX:
-		return session_present_timed_paged_row(session, text, length,
-		    "port docking prelude", error);
-	default:
-		return false;
-	}
-}
-
-static bool
-docking_front_gate(void *context, bool *denied, float *current_sector,
-    float *sector_record_expression, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	if (!fresh_no_turn_gate(session, denied, error))
-		return false;
-	*current_sector = session->player.sector;
-	*sector_record_expression = session->current_sector_record;
-	return true;
-}
-
-static bool
-docking_front_read_sector(void *context, uint32_t physical_record,
-    struct yt_sector *sector, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	struct yt_record record;
-
-	if (!yt_database_read(&session->door->game.database,
-	    (size_t)physical_record, &record, error))
-		return false;
-	yt_sector_decode(sector, &record);
-	return true;
-}
-
-static bool
-docking_front_finalize(void *context, bool *returned, float *current_sector,
-    float *sector_record_expression, struct yt_error *error)
-{
-	struct yt_session *session = context;
-	bool ok = finalize_action(session, 1.0f, error);
-
-	*current_sector = session->player.sector;
-	*sector_record_expression = session->current_sector_record;
-	if (ok) {
-		*returned = true;
-		return true;
-	}
-	if (error == NULL || error->status == YT_OK) {
-		*returned = false;
-		return true;
-	}
-	return false;
-}
-
-static bool
-docking_front_earth(void *context, bool *reenter_sector,
-    struct yt_error *error)
-{
-	return earth_store(context, reenter_sector, error);
-}
-
-static bool
-docking_front_ordinary(void *context, int sector_number,
-    float sector_record_expression,
-    struct yt_error *error)
-{
-	return yt_session_ordinary_commerce(context, sector_number,
-	    sector_record_expression, error);
-}
-
-static bool
-command_trade(struct yt_session *session, bool *enter_sector,
-    struct yt_error *error)
-{
-	static const struct yt_port_docking_ops ops = {
-		docking_front_present,
-		ordinary_commerce_foreground,
-		docking_front_gate,
-		docking_front_read_sector,
-		docking_front_finalize,
-		commodity_trade_read_port,
-		docking_front_earth,
-		docking_front_ordinary,
-	};
-	struct yt_port_docking_state state;
-
-	memset(&state, 0, sizeof(state));
-	state.port_offset = session_port_offset(session);
-	if (enter_sector != NULL)
-		*enter_sector = false;
-	if (!yt_port_docking_run(&state, &ops, session, error))
-		return false;
-	if (enter_sector != NULL)
-		*enter_sector = state.reenter_sector;
-	return true;
-}
-
 static bool
 earth_receipt(struct yt_session *session, const struct yt_port *cached_earth,
     float cost,
@@ -7147,8 +7024,8 @@ earth_report(struct yt_session *session, struct yt_port *earth,
 	return session_present_paged_row(session, separator, sizeof(separator) - 1U);
 }
 
-static bool
-earth_store(struct yt_session *session, bool *enter_sector,
+bool
+yt_session_earth_store(struct yt_session *session, bool *enter_sector,
     struct yt_error *error)
 {
 	static const uint8_t menu[] =
@@ -9013,7 +8890,7 @@ planet_menu(struct yt_session *session, int logical_planet,
 		{
 			bool selected = false;
 
-			if (!command_trade(session, &selected, error))
+			if (!yt_session_command_trade(session, &selected, error))
 				return false;
 			if (selected) {
 				if (enter_sector != NULL)
@@ -13151,7 +13028,7 @@ projectile_command_finalize(void *context, struct yt_player *player,
 {
 	struct yt_session *session = context;
 
-	if (!finalize_action(session, 1.0f, error))
+	if (!yt_session_finalize_action(session, 1.0f, error))
 		return false;
 	*player = session->player;
 	return true;
@@ -14084,7 +13961,7 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 		bool last_friendly;
 		bool valid_link;
 
-		if (!fresh_no_turn_gate(session, &denied, error))
+		if (!yt_session_fresh_no_turn_gate(session, &denied, error))
 			return false;
 		if (denied)
 			return true;
@@ -14228,7 +14105,7 @@ computer_planet_report(struct yt_session *session, struct yt_error *error)
 			    && fighter_owner_differs);
 
 			if (no_information) {
-				if (!finalize_action(session, 1.0f, error))
+				if (!yt_session_finalize_action(session, 1.0f, error))
 					return false;
 				return session_present_paged_line(session, unavailable,
 				    sizeof(unavailable) - 1U,
@@ -15205,7 +15082,7 @@ computer_menu(struct yt_session *session, bool *enter_sector,
 				return true;
 			}
 			case 4:
-				if (!command_trade(session, enter_sector, error))
+				if (!yt_session_command_trade(session, enter_sector, error))
 					return false;
 				return true;
 			case 5:
@@ -15557,7 +15434,7 @@ command_shell(struct yt_session *session, struct yt_error *error)
 				return false;
 			break;
 		case YT_MAIN_SHELL_TRADE:
-			if (!command_trade(session, &enter_sector, error))
+			if (!yt_session_command_trade(session, &enter_sector, error))
 				return false;
 			break;
 		case YT_MAIN_SHELL_QUIT:

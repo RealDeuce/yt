@@ -333,3 +333,89 @@ yt_session_ordinary_commerce(struct yt_session *session,
 	session->inherited_loop_index = 4.0f;
 	return true;
 }
+
+bool
+yt_session_command_trade(struct yt_session *session, bool *enter_sector,
+    struct yt_error *error)
+{
+	static const uint8_t label[] = "<Port>";
+	static const uint8_t no_port[] = "No port here!";
+	static const uint8_t docking[] = "Docking, ";
+	struct yt_sector sector;
+	struct yt_record record;
+	float selected_port_expression;
+	uint32_t sector_physical_record;
+	uint32_t port_physical_record;
+	uint8_t selected_raw[4];
+	bool denied;
+
+	if (session == NULL)
+		return false;
+	if (enter_sector != NULL)
+		*enter_sector = false;
+	if (!session_present_paged_fragment(session, label, sizeof(label) - 1U))
+		return false;
+	session_set_foreground(session, 3.0f);
+	if (!yt_session_fresh_no_turn_gate(session, &denied, error))
+		return false;
+	if (denied) {
+		if (enter_sector != NULL)
+			*enter_sector = true;
+		return true;
+	}
+	sector_physical_record = qb_brun_random_record_number(
+	    session->current_sector_record);
+	if (sector_physical_record == 0U)
+		return port_update_error(error,
+		    "port docking sector record conversion");
+	if (!yt_database_read(&session->door->game.database,
+	    (size_t)sector_physical_record, &record, error))
+		return false;
+	yt_sector_decode(&sector, &record);
+	selected_port_expression = yt_port_selected_expression(
+	    session_port_offset(session), sector.port);
+	{
+		enum qb_mbf_status status = qb_mbf32_encode(
+		    selected_port_expression, selected_raw);
+
+		if (status == QB_MBF_OVERFLOW)
+			return port_update_error(error,
+			    "port docking selected expression add");
+		selected_port_expression = status == QB_MBF_UNDERFLOW
+		    ? 0.0f : qb_mbf32_decode(selected_raw);
+	}
+	if (yt_port_link_missing(sector.port)) {
+		if (!session_present_alert(session, no_port, sizeof(no_port) - 1U,
+		    "port docking no port", error))
+			return false;
+		if (enter_sector != NULL)
+			*enter_sector = true;
+		return true;
+	}
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "port docking leading blank", error)
+	    || !session_present_timed_paged_row(session, docking,
+	    sizeof(docking) - 1U, "port docking prelude", error))
+		return false;
+	if (!yt_session_finalize_action(session, 1.0f, error)) {
+		if (error == NULL || error->status == YT_OK)
+			return true;
+		return false;
+	}
+	port_physical_record = qb_brun_random_record_number(
+	    selected_port_expression);
+	if (port_physical_record == 0U)
+		return port_update_error(error,
+		    "port docking selected record conversion");
+	if (!yt_database_read(&session->door->game.database,
+	    (size_t)port_physical_record, &record, error))
+		return false;
+	if (session->player.sector == 1.0f)
+		return yt_session_earth_store(session, enter_sector, error);
+	if (!yt_session_ordinary_commerce(session, (int)session->player.sector,
+	    session->current_sector_record, error))
+		return false;
+	if (enter_sector != NULL)
+		*enter_sector = true;
+	return true;
+}

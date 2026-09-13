@@ -181,6 +181,14 @@ bool yt_session_trade_commodity(struct yt_session *session,
 bool yt_session_ordinary_commerce(struct yt_session *session,
     int sector_number, float sector_record_expression,
     struct yt_error *error);
+bool yt_session_command_trade(struct yt_session *session,
+    bool *enter_sector, struct yt_error *error);
+bool yt_session_fresh_no_turn_gate(struct yt_session *session, bool *denied,
+    struct yt_error *error);
+bool yt_session_finalize_action(struct yt_session *session, float amount,
+    struct yt_error *error);
+bool yt_session_earth_store(struct yt_session *session, bool *enter_sector,
+    struct yt_error *error);
 void session_clear_queue(struct yt_session *session);
 bool session_append_radio_bytes(const uint8_t *text, size_t length,
     float sender, float recipient, struct yt_error *error);

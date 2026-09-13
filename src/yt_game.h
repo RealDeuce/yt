@@ -1461,69 +1461,6 @@ struct yt_commodity_trade_ops {
 bool yt_commodity_trade_run(struct yt_commodity_trade_state *state,
 	const struct yt_commodity_trade_ops *ops, void *context,
 	struct yt_error *error);
-enum yt_port_docking_output_kind {
-	YT_PORT_DOCKING_LABEL,
-	YT_PORT_DOCKING_NO_PORT,
-	YT_PORT_DOCKING_LEADING_BLANK,
-	YT_PORT_DOCKING_PREFIX,
-};
-enum yt_port_docking_route {
-	YT_PORT_DOCKING_INCOMPLETE,
-	YT_PORT_DOCKING_GATE_DENIED,
-	YT_PORT_DOCKING_NO_PORT_ROUTE,
-	YT_PORT_DOCKING_FINALIZER_TERMINAL,
-	YT_PORT_DOCKING_EARTH,
-	YT_PORT_DOCKING_ORDINARY,
-};
-struct yt_port_docking_state {
-	float port_offset;
-	float gate_sector;
-	float gate_sector_record_expression;
-	uint32_t gate_sector_physical_record;
-	struct yt_sector sector;
-	float logical_port;
-	float selected_port_expression;
-	uint32_t selected_port_physical_record;
-	struct yt_port selected_port;
-	float post_finalizer_sector;
-	float post_finalizer_sector_record_expression;
-	bool label_presented;
-	bool foreground_selected;
-	bool gate_complete;
-	bool gate_denied;
-	bool sector_read;
-	bool no_port_presented;
-	bool docking_blank_presented;
-	bool docking_prefix_presented;
-	bool finalizer_complete;
-	bool selected_port_read;
-	bool child_complete;
-	bool reenter_sector;
-	bool complete;
-	enum yt_port_docking_route route;
-};
-struct yt_port_docking_ops {
-	bool (*present)(void *context, const uint8_t *text, size_t length,
-	    enum yt_port_docking_output_kind kind, struct yt_error *error);
-	void (*set_foreground)(void *context, float foreground);
-	bool (*turn_gate)(void *context, bool *denied, float *current_sector,
-	    float *sector_record_expression, struct yt_error *error);
-	bool (*read_sector)(void *context, uint32_t physical_record,
-	    struct yt_sector *sector, struct yt_error *error);
-	bool (*finalize)(void *context, bool *returned, float *current_sector,
-	    float *sector_record_expression,
-	    struct yt_error *error);
-	bool (*read_port)(void *context, uint32_t physical_record,
-	    struct yt_port *port, struct yt_error *error);
-	bool (*earth)(void *context, bool *reenter_sector,
-	    struct yt_error *error);
-	bool (*ordinary)(void *context, int sector_number,
-	    float sector_record_expression,
-	    struct yt_error *error);
-};
-bool yt_port_docking_run(struct yt_port_docking_state *state,
-	const struct yt_port_docking_ops *ops, void *context,
-	struct yt_error *error);
 size_t yt_port_trade_schedule(const float factors[3], size_t order[3]);
 int yt_computer_selector_position(const char *command);
 void yt_trade_treasury_overlay(struct yt_port *port, float receipt);
