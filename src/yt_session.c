@@ -802,10 +802,10 @@ append_news(struct yt_session *session, const char *text,
 }
 
 static bool
-append_news_bytes(struct yt_session *session, const uint8_t *text,
+append_news_bytes(void *context, const uint8_t *text,
     size_t length, struct yt_error *error)
 {
-	(void)session;
+	(void)context;
 	return session_close_file5(error)
 	    && yt_news_append_bytes(text, length, error);
 }
@@ -5074,13 +5074,6 @@ player_death_present(void *context, const uint8_t *text, size_t length,
 	    "death title row", error);
 }
 
-static bool
-player_death_news(void *context, const uint8_t *text, size_t length,
-    struct yt_error *error)
-{
-	return append_news_bytes(context, text, length, error);
-}
-
 static void
 player_death_clear_active_cache(void *context, int victim_record,
     const uint8_t raw[4])
@@ -5124,7 +5117,7 @@ kill_player_run(struct yt_session *session, int victim_record,
 		player_death_read_port,
 		player_death_write_port,
 		player_death_present,
-		player_death_news,
+		append_news_bytes,
 		player_death_set_current,
 		player_death_flush,
 	};
@@ -5513,13 +5506,6 @@ xannor_victory_sound(void *context, float selector, const char *operation,
 }
 
 static bool
-xannor_victory_news(void *context, const uint8_t *text, size_t length,
-    struct yt_error *error)
-{
-	return append_news_bytes(context, text, length, error);
-}
-
-static bool
 xannor_victory_radio(void *context, const uint8_t *text, size_t length,
     float sender, float recipient, struct yt_error *error)
 {
@@ -5559,7 +5545,7 @@ xannor_victory(struct yt_session *session, struct yt_error *error)
 		xannor_victory_clear_queue,
 		apply_player_credit_mutation,
 		xannor_victory_sound,
-		xannor_victory_news,
+		append_news_bytes,
 		xannor_victory_radio,
 		xannor_victory_read_sector,
 		xannor_victory_write_sector,
@@ -5668,13 +5654,6 @@ direct_fighter_kill_present(void *context, const uint8_t *text,
 }
 
 static bool
-direct_fighter_kill_news(void *context, const uint8_t *text, size_t length,
-    struct yt_error *error)
-{
-	return append_news_bytes(context, text, length, error);
-}
-
-static bool
 direct_fighter_kill_mine(void *context, bool *terminal,
     bool *destroyed, struct yt_error *error)
 {
@@ -5778,7 +5757,7 @@ direct_attack_combat_kill(void *context, int target_record,
 		direct_fighter_kill_read_sector,
 		direct_fighter_kill_write_sector,
 		direct_fighter_kill_present,
-		direct_fighter_kill_news,
+		append_news_bytes,
 		direct_fighter_kill_mine,
 		direct_fighter_kill_fatal,
 	};
@@ -6028,13 +6007,6 @@ hostile_surrender_prompt(void *context, const uint8_t *prompt, size_t length,
 	}
 }
 
-static bool
-hostile_surrender_news(void *context, const uint8_t *text, size_t length,
-    struct yt_error *error)
-{
-	return append_news_bytes(context, text, length, error);
-}
-
 static void
 hostile_surrender_cache_forces(void *context, double ship_fighters,
     double deployed_fighters)
@@ -6093,13 +6065,6 @@ hostile_attack_persistence_blank(void *context, struct yt_error *error)
 {
 	return session_present_text(context, NULL, 0, SESSION_PRESENT_LINE,
 	    "deployed attack post-persist blank", error);
-}
-
-static bool
-hostile_attack_persistence_news(void *context, const uint8_t *text,
-    size_t length, struct yt_error *error)
-{
-	return append_news_bytes(context, text, length, error);
 }
 
 static bool
@@ -6260,7 +6225,7 @@ hostile_attack_combat_surrender(void *context,
 		hostile_surrender_present,
 		hostile_surrender_sound,
 		hostile_surrender_prompt,
-		hostile_surrender_news,
+		append_news_bytes,
 		hostile_surrender_cache_forces,
 		hostile_surrender_mark_checked,
 	};
@@ -6345,7 +6310,7 @@ hostile_attack_combat_persistence(void *context,
 		hostile_attack_persistence_read_sector,
 		hostile_attack_persistence_write_sector,
 		hostile_attack_persistence_blank,
-		hostile_attack_persistence_news,
+		append_news_bytes,
 		hostile_attack_persistence_fatal,
 	};
 	struct hostile_attack_combat_context *combat = context;
@@ -6799,13 +6764,6 @@ mine_sound(void *context, float selector, struct yt_error *error)
 }
 
 static bool
-mine_news(void *context, const uint8_t *text, size_t length,
-    struct yt_error *error)
-{
-	return append_news_bytes(context, text, length, error);
-}
-
-static bool
 mine_shrink(void *context, float range, float *result,
     struct yt_error *error)
 {
@@ -6850,7 +6808,7 @@ mine_encounter(struct yt_session *session, bool *terminal,
 		mine_write_sector,
 		mine_present,
 		mine_sound,
-		mine_news,
+		append_news_bytes,
 		random_value,
 		mine_shrink,
 		mine_warp,
@@ -13274,13 +13232,6 @@ projectile_planet_present(void *context, const uint8_t *text, size_t length,
 }
 
 static bool
-projectile_planet_news(void *context, const uint8_t *text, size_t length,
-    struct yt_error *error)
-{
-	return append_news_bytes(context, text, length, error);
-}
-
-static bool
 projectile_planet_sound(void *context, float selector,
     struct yt_error *error)
 {
@@ -13300,7 +13251,7 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 		projectile_sector_read,
 		projectile_sector_write,
 		projectile_planet_present,
-		projectile_planet_news,
+		append_news_bytes,
 		projectile_planet_sound,
 	};
 	struct yt_planet planet;
@@ -13463,13 +13414,6 @@ plasma_fighter_sound(void *context, float selector, struct yt_error *error)
 	    session->presentation.bold);
 	return session_sound(context, selector,
 	    "plasma fighter-defense sound", error);
-}
-
-static bool
-plasma_fighter_news(void *context, const uint8_t *text, size_t length,
-    struct yt_error *error)
-{
-	return append_news_bytes(context, text, length, error);
 }
 
 static bool
@@ -13764,13 +13708,6 @@ cruise_defense_damage_present(void *context, const uint8_t *text,
 }
 
 static bool
-cruise_defense_news(void *context, const uint8_t *text, size_t length,
-    struct yt_error *error)
-{
-	return append_news_bytes(context, text, length, error);
-}
-
-static bool
 cruise_defense_read_sector(void *context, float sector,
     struct yt_sector *value, struct yt_error *error)
 {
@@ -13810,13 +13747,6 @@ cruise_mine_sound(void *context, float selector, struct yt_error *error)
 {
 	return session_sound(context, selector,
 	    "cruise missile sector-mine sound", error);
-}
-
-static bool
-cruise_mine_news(void *context, const uint8_t *text, size_t length,
-    struct yt_error *error)
-{
-	return append_news_bytes(context, text, length, error);
 }
 
 static bool
@@ -13860,7 +13790,7 @@ missile_sector(struct yt_session *session, int sector_number,
 	static const struct yt_projectile_defense_combat_ops combat_ops = {
 		random_value,
 		cruise_defense_damage_present,
-		cruise_defense_news,
+		append_news_bytes,
 		cruise_defense_read_sector,
 		cruise_defense_write_sector,
 		cruise_defense_victory,
@@ -13869,7 +13799,7 @@ missile_sector(struct yt_session *session, int sector_number,
 		cruise_mine_read_sector,
 		cruise_mine_present,
 		cruise_mine_sound,
-		cruise_mine_news,
+		append_news_bytes,
 		cruise_mine_write_sector,
 	};
 	struct yt_sector sector;
@@ -14129,7 +14059,7 @@ plasma_planet_impact(struct yt_session *session, int sector_number,
 		plasma_killed_read_sector,
 		plasma_killed_write_sector,
 		plasma_planet_present,
-		plasma_fighter_news,
+		append_news_bytes,
 		plasma_planet_sound,
 		random_value,
 	};
@@ -14170,14 +14100,14 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
 		plasma_fighter_present,
 		plasma_fighter_sound,
 		random_value,
-		plasma_fighter_news,
+		append_news_bytes,
 		plasma_fighter_read_sector,
 		plasma_fighter_write_sector,
 		plasma_fighter_victory,
 	};
 	static const struct yt_projectile_plasma_mine_ops mine_ops = {
 		plasma_mine_sound,
-		plasma_fighter_news,
+		append_news_bytes,
 		random_value,
 		plasma_mine_present,
 		plasma_fighter_read_sector,
@@ -14190,7 +14120,7 @@ plasma_sector_loaded(struct yt_session *session, int sector_number,
 		plasma_player_color,
 		plasma_player_sound,
 		random_value,
-		plasma_fighter_news,
+		append_news_bytes,
 		plasma_player_present,
 		plasma_player_restore_foreground,
 	};
@@ -14989,13 +14919,6 @@ session_counterlaunch_present(void *context, const uint8_t *text,
 }
 
 static bool
-session_counterlaunch_news(void *context, const uint8_t *text, size_t length,
-    struct yt_error *error)
-{
-	return append_news_bytes(context, text, length, error);
-}
-
-static bool
 session_counterlaunch_projectile(void *context, float *origin, float *target,
     float *amount, bool plasma, int *counterattack, int *xannor_provoker,
     struct yt_error *error)
@@ -15030,7 +14953,7 @@ launch_player_counterattack(struct yt_session *session, int *counterattacker,
 		random_value,
 		session_counterlaunch_write_player,
 		session_counterlaunch_present,
-		session_counterlaunch_news,
+		append_news_bytes,
 		session_counterlaunch_projectile,
 		session_counterlaunch_wait,
 	};
