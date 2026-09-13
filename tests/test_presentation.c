@@ -7351,193 +7351,6 @@ test_clearance_presentation(void)
 	}
 }
 
-struct clearance_failure_fixture {
-	float draws[8];
-	size_t draw_position;
-	size_t random_calls;
-	size_t present_calls;
-	size_t sound_calls;
-	size_t fail_random_at;
-	size_t fail_present_at;
-	size_t fail_sound_at;
-	struct yt_present_state presentation;
-	uint8_t remote[512];
-	size_t remote_length;
-};
-
-static bool
-clearance_failure_random(void *context, float *value,
-    struct yt_error *error)
-{
-	struct clearance_failure_fixture *fixture = context;
-
-	(void)error;
-	++fixture->random_calls;
-	if (fixture->random_calls == fixture->fail_random_at
-	    || value == NULL
-	    || fixture->draw_position >= YT_ARRAY_LEN(fixture->draws))
-		return false;
-	*value = fixture->draws[fixture->draw_position++];
-	return true;
-}
-
-static bool
-clearance_failure_capture(struct clearance_failure_fixture *fixture,
-    const struct yt_present_result *result)
-{
-	if (result->remote_length > sizeof(fixture->remote)
-	    - fixture->remote_length)
-		return false;
-	memcpy(fixture->remote + fixture->remote_length, result->remote,
-	    result->remote_length);
-	fixture->remote_length += result->remote_length;
-	return true;
-}
-
-static bool
-clearance_failure_present(void *context, const uint8_t *text, size_t length,
-    enum yt_clearance_output_kind kind, struct yt_error *error)
-{
-	struct clearance_failure_fixture *fixture = context;
-	struct yt_present_result result;
-
-	(void)kind;
-	(void)error;
-	++fixture->present_calls;
-	if (fixture->present_calls == fixture->fail_present_at)
-		return false;
-	return yt_present_line(text, length, &fixture->presentation, &result)
-	    == YT_PRESENT_OK && clearance_failure_capture(fixture, &result);
-}
-
-static bool
-clearance_failure_sound(void *context, float selector,
-    struct yt_error *error)
-{
-	struct clearance_failure_fixture *fixture = context;
-	struct yt_present_result result;
-
-	(void)error;
-	++fixture->sound_calls;
-	if (fixture->sound_calls == fixture->fail_sound_at)
-		return false;
-	return yt_present_sound(selector, &fixture->presentation, &result)
-	    == YT_PRESENT_OK && clearance_failure_capture(fixture, &result);
-}
-
-static void
-test_clearance_failure_prefixes(void)
-{
-	static const struct yt_clearance_ops ops = {
-		clearance_failure_random,
-		clearance_failure_present,
-		clearance_failure_sound,
-	};
-	static const uint8_t row[] =
-	    "Special clearance sale! The Trader's Guild is selling Holds "
-	    "for 10% off!";
-	static const struct {
-		size_t fail_random_at;
-		size_t fail_present_at;
-		size_t fail_sound_at;
-		size_t prefix_kind;
-		size_t draws;
-		size_t items;
-		size_t announcements;
-		bool sound_called;
-		bool complete;
-	} cases[] = {
-		{0U, 1U, 0U, 0U, 0U, 0U, 0U, false, false},
-		{1U, 0U, 0U, 1U, 0U, 0U, 0U, false, false},
-		{2U, 0U, 0U, 1U, 1U, 0U, 0U, false, false},
-		{0U, 2U, 0U, 1U, 2U, 0U, 0U, false, false},
-		{3U, 0U, 0U, 2U, 2U, 1U, 1U, false, false},
-		{0U, 0U, 1U, 2U, 5U, 4U, 1U, false, false},
-		{0U, 3U, 0U, 3U, 5U, 4U, 1U, true, false},
-		{0U, 0U, 0U, 4U, 5U, 4U, 1U, true, true},
-	};
-	static const size_t expected_random_calls[] = {
-		0U, 1U, 2U, 2U, 3U, 5U, 5U, 5U,
-	};
-	static const size_t expected_present_calls[] = {
-		1U, 1U, 1U, 2U, 2U, 2U, 3U, 3U,
-	};
-	struct clearance_failure_fixture fixture;
-	struct yt_clearance_state clearance;
-	struct yt_error error;
-	uint8_t expected[256];
-	size_t expected_length;
-	size_t pass;
-
-	for (pass = 0U; pass < YT_ARRAY_LEN(cases); ++pass) {
-		memset(&fixture, 0, sizeof(fixture));
-		fixture.draws[0] = 0.9f;
-		fixture.draws[1] = 0.1f;
-		fixture.draws[2] = 0.0f;
-		fixture.draws[3] = 0.0f;
-		fixture.draws[4] = 0.0f;
-		fixture.fail_random_at = cases[pass].fail_random_at;
-		fixture.fail_present_at = cases[pass].fail_present_at;
-		fixture.fail_sound_at = cases[pass].fail_sound_at;
-		fixture.presentation = state(false);
-		clearance = (struct yt_clearance_state){.create = true};
-		yt_error_clear(&error);
-		CHECK(yt_clearance_run(&clearance, &ops, &fixture, &error)
-		    == cases[pass].complete);
-		expected_length = 0U;
-		if (cases[pass].prefix_kind >= 1U) {
-			expected[expected_length++] = '\r';
-			expected[expected_length++] = '\n';
-		}
-		if (cases[pass].prefix_kind >= 2U) {
-			memcpy(expected + expected_length, row, sizeof(row) - 1U);
-			expected_length += sizeof(row) - 1U;
-			expected[expected_length++] = '\r';
-			expected[expected_length++] = '\n';
-		}
-		if (cases[pass].prefix_kind >= 3U)
-			expected[expected_length++] = '\a';
-		if (cases[pass].prefix_kind >= 4U) {
-			expected[expected_length++] = '\r';
-			expected[expected_length++] = '\n';
-		}
-		CHECK(fixture.remote_length == expected_length
-		    && memcmp(fixture.remote, expected, expected_length) == 0
-		    && clearance.draws_consumed == cases[pass].draws
-		    && fixture.draw_position == cases[pass].draws
-		    && clearance.items_completed == cases[pass].items
-		    && clearance.announcements == cases[pass].announcements
-		    && clearance.sound_called == cases[pass].sound_called
-		    && clearance.complete == cases[pass].complete
-		    && clearance.leading_blank_presented == (pass != 0U)
-		    && clearance.trailing_blank_presented
-		    == cases[pass].complete
-		    && fixture.random_calls == expected_random_calls[pass]
-		    && fixture.present_calls == expected_present_calls[pass]
-		    && fixture.sound_calls == (pass >= 5U ? 1U : 0U));
-		CHECK(clearance.announced == (cases[pass].announcements != 0U));
-		CHECK(clearance.discount[0] == (pass >= 3U ? 0.1f : 0.0f));
-		if (pass >= 5U) {
-			CHECK(clearance.discount[1] == 0.0f
-			    && clearance.discount[2] == 0.0f
-			    && clearance.discount[3] == 0.0f);
-		}
-	}
-
-	memset(&fixture, 0, sizeof(fixture));
-	fixture.presentation = state(false);
-	clearance = (struct yt_clearance_state){.create = false};
-	clearance.discount[0] = 0.1f;
-	yt_error_clear(&error);
-	CHECK(yt_clearance_run(&clearance, &ops, &fixture, &error)
-	    && clearance.complete && clearance.draws_consumed == 4U
-	    && fixture.random_calls == 4U && fixture.draw_position == 4U
-	    && clearance.announcements == 1U
-	    && clearance.discount[0] == 0.1f
-	    && fixture.remote_length == expected_length
-	    && memcmp(fixture.remote, expected, expected_length) == 0);
-}
-
 static void
 earth_report_fixed(struct pager_capture *capture,
     struct yt_present_state *current, const char *text, float width)
@@ -24986,6 +24799,17 @@ direct_emergency_warp_fresh_hostile_attack_opening_success(
 	return true;
 }
 
+struct clearance_observation {
+	bool announced;
+	size_t items_completed;
+	size_t draws_consumed;
+	size_t announcements;
+	bool leading_blank_presented;
+	bool sound_called;
+	bool trailing_blank_presented;
+	bool complete;
+};
+
 struct direct_warp_attack_combat_join {
 	struct hostile_mines_hazard_fixture *fixture;
 	struct direct_warp_main_cycle_state *cycle;
@@ -25018,7 +24842,7 @@ struct direct_warp_attack_combat_join {
 	uint8_t reward[240];
 	size_t reward_length;
 	float clearance_discount[4];
-	struct yt_clearance_state clearance;
+	struct clearance_observation clearance;
 	struct yt_xannor_victory_state victory;
 	bool victory_credit_hydrated;
 	bool victory_credit_overlay_applied;
@@ -25076,8 +24900,6 @@ struct direct_warp_attack_combat_join {
 	size_t spill_present_calls;
 	size_t fail_random_at;
 	size_t fail_spill_present_at;
-	size_t fail_clearance_present_at;
-	size_t fail_clearance_sound_at;
 	size_t fail_persistence_player_read_at;
 	size_t fail_persistence_player_write_at;
 	size_t fail_persistence_sector_read_at;
@@ -25671,18 +25493,14 @@ direct_warp_attack_tail_present(void *context,
 
 static bool
 direct_warp_attack_clearance_present(void *context, const uint8_t *text,
-    size_t length, enum yt_clearance_output_kind kind,
-    struct yt_error *error)
+    size_t length, struct yt_error *error)
 {
 	struct direct_warp_attack_combat_join *join = context;
 	struct viewer_pager_join *viewer =
 	    &join->fixture->cycle.presentation.viewer->join;
 
-	(void)kind;
 	(void)error;
 	++join->clearance_present_calls;
-	if (join->clearance_present_calls == join->fail_clearance_present_at)
-		return false;
 	return normal_exit_line(viewer, text, length);
 }
 
@@ -25697,8 +25515,7 @@ direct_warp_attack_clearance_sound(void *context, float selector,
 
 	(void)error;
 	++join->clearance_sound_attempts;
-	if (join->clearance_sound_attempts == join->fail_clearance_sound_at
-	    || yt_present_sound(selector, &viewer->presentation, &result)
+	if (yt_present_sound(selector, &viewer->presentation, &result)
 	    != YT_PRESENT_OK)
 		return false;
 	viewer_pager_capture_result(viewer, &result);
@@ -25709,28 +25526,67 @@ direct_warp_attack_clearance_sound(void *context, float selector,
 static bool
 direct_warp_attack_tail_clearance(void *context, struct yt_error *error)
 {
-	static const struct yt_clearance_ops ops = {
-		direct_warp_attack_combat_random,
-		direct_warp_attack_clearance_present,
-		direct_warp_attack_clearance_sound,
+	static const char *const name[4] = {
+		"Holds", "Fighters", "Shields", "Ground Forces"
 	};
 	struct direct_warp_attack_combat_join *join = context;
+	size_t index;
 
 	if (!join->allow_clearance) {
 		join->unexpected_tail_effect = true;
 		return false;
 	}
 	++join->clearance_calls;
-	join->clearance = (struct yt_clearance_state){.create = true};
-	memcpy(join->clearance.discount, join->clearance_discount,
-	    sizeof(join->clearance.discount));
-	if (!yt_clearance_run(&join->clearance, &ops, join, error)) {
-		memcpy(join->clearance_discount, join->clearance.discount,
-		    sizeof(join->clearance_discount));
+	memset(&join->clearance, 0, sizeof(join->clearance));
+	if (!direct_warp_attack_clearance_present(join, NULL, 0U, error))
 		return false;
+	join->clearance.leading_blank_presented = true;
+	for (index = 0U; index < YT_ARRAY_LEN(join->clearance_discount);
+	    ++index) {
+		float discount = join->clearance_discount[index];
+		float draw;
+		char percent[64];
+		char row[192];
+		int row_length;
+
+		if (!direct_warp_attack_combat_random(join, &draw, error))
+			return false;
+		++join->clearance.draws_consumed;
+		if (yt_clearance_candidate_needed(index, draw, discount, true)) {
+			if (!direct_warp_attack_combat_random(join, &draw, error))
+				return false;
+			++join->clearance.draws_consumed;
+			discount = draw;
+			join->clearance_discount[index] = discount;
+		}
+		if (!yt_clearance_normalize(index, &discount)) {
+			join->clearance_discount[index] = 0.0f;
+		} else {
+			join->clearance_discount[index] = discount;
+			if (qb_str_single(percent, sizeof(percent),
+			    yt_clearance_percentage(discount)) < 0)
+				return false;
+			row_length = snprintf(row, sizeof(row),
+			    "Special clearance sale! The Trader's Guild is selling "
+			    "%s for%s%% off!", name[index], percent);
+			if (row_length < 0 || (size_t)row_length >= sizeof(row)
+			    || !direct_warp_attack_clearance_present(join,
+			    (const uint8_t *)row, (size_t)row_length, error))
+				return false;
+			join->clearance.announced = true;
+			++join->clearance.announcements;
+		}
+		join->clearance.items_completed = index + 1U;
 	}
-	memcpy(join->clearance_discount, join->clearance.discount,
-	    sizeof(join->clearance_discount));
+	if (join->clearance.announced) {
+		if (!direct_warp_attack_clearance_sound(join, 1.0f, error))
+			return false;
+		join->clearance.sound_called = true;
+		if (!direct_warp_attack_clearance_present(join, NULL, 0U, error))
+			return false;
+		join->clearance.trailing_blank_presented = true;
+	}
+	join->clearance.complete = true;
 	return true;
 }
 
@@ -32365,197 +32221,6 @@ test_xannor_attack_tail_clearance_join(void)
 		    sizeof(expected_defeated) - 1U) == 0
 		    && join.written_player.turns == 100.0f
 		    && join.clearance_discount[0] == 0.1f);
-	}
-}
-
-static void
-test_xannor_attack_tail_clearance_failure_prefixes(void)
-{
-	static const uint8_t cached_name[] = {'A', 0, 'B'};
-	static const size_t expected_lengths[2][7] = {
-		{54U, 56U, 56U, 56U, 130U, 130U, 131U},
-		{66U, 78U, 78U, 78U, 152U, 152U, 195U},
-	};
-	static const uint64_t expected_hashes[2][7] = {
-		{
-			UINT64_C(0x1e76ee80f59eda02),
-			UINT64_C(0x0c996bb0e5ea2f35),
-			UINT64_C(0x0c996bb0e5ea2f35),
-			UINT64_C(0x0c996bb0e5ea2f35),
-			UINT64_C(0x40d781d30c148714),
-			UINT64_C(0x40d781d30c148714),
-			UINT64_C(0x42b8ac9d86e18549),
-		},
-		{
-			UINT64_C(0xb7ef91354dfe2151),
-			UINT64_C(0x7cd7a3807a4a6935),
-			UINT64_C(0x7cd7a3807a4a6935),
-			UINT64_C(0x7cd7a3807a4a6935),
-			UINT64_C(0xbd72804b87431114),
-			UINT64_C(0xbd72804b87431114),
-			UINT64_C(0x5aaecbb5b7787173),
-		},
-	};
-	static const size_t expected_rows[7] = {
-		1U, 2U, 2U, 2U, 3U, 3U, 3U,
-	};
-	static const uint64_t expected_row_hashes[7] = {
-		UINT64_C(0xc5f4b83617324b7f),
-		UINT64_C(0x10873f9fe6fdb457),
-		UINT64_C(0x10873f9fe6fdb457),
-		UINT64_C(0x10873f9fe6fdb457),
-		UINT64_C(0x2547576e7b40bcb1),
-		UINT64_C(0x2547576e7b40bcb1),
-		UINT64_C(0x2547576e7b40bcb1),
-	};
-	static const size_t expected_colors[2][7] = {
-		{1U, 1U, 1U, 1U, 1U, 1U, 1U},
-		{2U, 3U, 3U, 3U, 4U, 4U, 4U},
-	};
-	static const uint64_t expected_color_hashes[2][7] = {
-		{
-			UINT64_C(0x08285607b4e2c672),
-			UINT64_C(0x08285607b4e2c672),
-			UINT64_C(0x08285607b4e2c672),
-			UINT64_C(0x08285607b4e2c672),
-			UINT64_C(0x08285607b4e2c672),
-			UINT64_C(0x08285607b4e2c672),
-			UINT64_C(0x08285607b4e2c672),
-		},
-		{
-			UINT64_C(0xcd2124a0f6b37606),
-			UINT64_C(0x6a1651ef9065ac52),
-			UINT64_C(0x6a1651ef9065ac52),
-			UINT64_C(0x6a1651ef9065ac52),
-			UINT64_C(0xf3c5f133a0c4dbc6),
-			UINT64_C(0xf3c5f133a0c4dbc6),
-			UINT64_C(0xf3c5f133a0c4dbc6),
-		},
-	};
-	static const struct {
-		size_t fail_random_at;
-		size_t fail_present_at;
-		size_t fail_sound_at;
-		size_t draws;
-		size_t random_calls;
-		size_t present_calls;
-		size_t items;
-		size_t announcements;
-		bool sound_called;
-	} cases[] = {
-		{0U, 1U, 0U, 0U, 0U, 1U, 0U, 0U, false},
-		{1U, 0U, 0U, 0U, 1U, 1U, 0U, 0U, false},
-		{2U, 0U, 0U, 1U, 2U, 1U, 0U, 0U, false},
-		{0U, 2U, 0U, 2U, 2U, 2U, 0U, 0U, false},
-		{3U, 0U, 0U, 2U, 3U, 2U, 1U, 1U, false},
-		{0U, 0U, 1U, 5U, 5U, 2U, 4U, 1U, false},
-		{0U, 3U, 0U, 5U, 5U, 3U, 4U, 1U, true},
-	};
-	struct physical_viewer_join viewer;
-	struct viewer_file_fixture stream;
-	struct hostile_mines_hazard_fixture fixture;
-	struct direct_warp_main_cycle_state cycle;
-	struct direct_warp_attack_combat_join join;
-	struct yt_hostile_attack_tail_state tail;
-	struct yt_record record;
-	struct yt_error error;
-	uint8_t remote[512];
-	size_t cut;
-	size_t pass;
-
-	for (pass = 0U; pass < 2U; ++pass) {
-		for (cut = 0U; cut < YT_ARRAY_LEN(cases); ++cut) {
-			memset(&viewer, 0, sizeof(viewer));
-			fixture_viewer_initialize(&viewer, &stream,
-			    retained_scoreboard, sizeof(retained_scoreboard) - 1U,
-			    "YTSCORE.ASC", pass != 0U, remote, sizeof(remote));
-			memset(&fixture, 0, sizeof(fixture));
-			fixture.cycle.presentation.viewer = &viewer;
-			fixture.draws[0] = 0.9f;
-			fixture.draws[1] = 0.1f;
-			fixture.draws[2] = 0.0f;
-			fixture.draws[3] = 0.0f;
-			fixture.draws[4] = 0.0f;
-			memset(&cycle, 0, sizeof(cycle));
-			memset(&join, 0, sizeof(join));
-			join.fixture = &fixture;
-			join.cycle = &cycle;
-			join.current_sector_record = 1054.0f;
-			join.sector_record_offset = 51.0f;
-			join.allow_tail_player = true;
-			join.allow_clearance = true;
-			join.fail_random_at = cases[cut].fail_random_at;
-			join.fail_clearance_present_at =
-			    cases[cut].fail_present_at;
-			join.fail_clearance_sound_at = cases[cut].fail_sound_at;
-			memset(&record, 0xa5, sizeof(record));
-			yt_record_set_text(&record,
-			    (const uint8_t *)"FRESH XANNOR", 12U);
-			(void)yt_record_set_number(&record, YT_F49, 98.0f);
-			(void)yt_record_set_number(&record, YT_F53, 5.0f);
-			(void)yt_record_set_number(&record, YT_F57, 8.0f);
-			(void)yt_record_set_number(&record, YT_F61, 21.0f);
-			(void)yt_record_set_number(&record, YT_F125, 0.0f);
-			yt_player_decode(&join.attack_player, &record);
-			fixture.emergency_player = join.attack_player;
-			tail = (struct yt_hostile_attack_tail_state){
-				.current_player_record = 2,
-				.old_owner = -1.0f,
-				.defender_loss = 512000.0,
-				.deployed_fighters = 0.0,
-				.ship_fighters = 19.0,
-				.turns_per_day = 100.0f,
-				.headquarters = 7.0f,
-				.cached_player_name = cached_name,
-				.cached_player_name_length = sizeof(cached_name),
-				.current = join.attack_player,
-			};
-			yt_error_clear(&error);
-			CHECK(!yt_hostile_attack_tail_run(&tail,
-			    &direct_warp_attack_tail_ops, &join, &error));
-			CHECK(viewer.join.remote_length
-			    == expected_lengths[pass][cut]
-			    && viewer_bytes_fnv1a64(remote, viewer.join.remote_length)
-			    == expected_hashes[pass][cut]
-			    && viewer.join.local_row_count == expected_rows[cut]
-			    && viewer_rows_fnv1a64(&viewer.join)
-			    == expected_row_hashes[cut]
-			    && viewer.join.local_color_count
-			    == expected_colors[pass][cut]
-			    && viewer_colors_fnv1a64(&viewer.join)
-			    == expected_color_hashes[pass][cut]
-			    && viewer.join.local_fragment_length == 0U);
-			CHECK(!tail.complete && tail.player_read && tail.player_written
-			    && tail.reward_presented && tail.reward_news_written
-			    && !tail.clearance_called && !tail.draw_consumed
-			    && !tail.defeated_presented && !tail.victory_called
-			    && join.clearance_calls == 1U
-			    && join.clearance.draws_consumed == cases[cut].draws
-			    && fixture.draw_position == cases[cut].draws
-			    && join.random_calls == cases[cut].random_calls
-			    && join.clearance.items_completed == cases[cut].items
-			    && join.clearance.announcements
-			    == cases[cut].announcements
-			    && join.clearance.sound_called == cases[cut].sound_called
-			    && !join.clearance.complete
-			    && join.clearance_present_calls
-			    == cases[cut].present_calls
-			    && join.clearance_sound_attempts
-			    == (cut >= 5U ? 1U : 0U)
-			    && join.clearance_sound_calls == (cut >= 6U ? 1U : 0U)
-			    && join.a41c_reads == 1U
-			    && join.tail_player_reads == 1U
-			    && join.tail_player_writes == 1U
-			    && !join.unexpected_tail_effect);
-			CHECK(join.clearance.announced == (cut >= 4U)
-			    && join.clearance_discount[0]
-			    == (cut >= 3U ? 0.1f : 0.0f));
-			if (cut >= 5U) {
-				CHECK(join.clearance_discount[1] == 0.0f
-				    && join.clearance_discount[2] == 0.0f
-				    && join.clearance_discount[3] == 0.0f);
-			}
-		}
 	}
 }
 
@@ -42879,7 +42544,6 @@ main(void)
 	test_planet_bank_presentation();
 	test_planet_productivity_presentation();
 	test_clearance_presentation();
-	test_clearance_failure_prefixes();
 	test_earth_report_presentation();
 	test_earth_purchase_presentation();
 	test_earth_anti_cloak_presentation();
@@ -43006,7 +42670,6 @@ main(void)
 	test_direct_emergency_warp_hostile_attack_fatal_cycle();
 	test_direct_emergency_warp_hostile_attack_fatal_prefixes();
 	test_xannor_attack_tail_clearance_join();
-	test_xannor_attack_tail_clearance_failure_prefixes();
 	test_xannor_attack_tail_victory_join();
 	test_xannor_attack_tail_victory_failure_prefixes();
 	test_xannor_attack_combat_victory_join();

@@ -8210,52 +8210,57 @@ earth_anti_cloak(struct yt_session *session, float price,
 }
 
 static bool
-clearance_present(void *context, const uint8_t *text, size_t length,
-    enum yt_clearance_output_kind kind, struct yt_error *error)
-{
-	const char *operation;
-
-	switch (kind) {
-	case YT_CLEARANCE_LEADING_BLANK:
-		operation = "clearance leading blank";
-		break;
-	case YT_CLEARANCE_ANNOUNCEMENT:
-		operation = "clearance announcement";
-		break;
-	case YT_CLEARANCE_TRAILING_BLANK:
-		operation = "clearance trailing blank";
-		break;
-	default:
-		return false;
-	}
-	return session_present_text(context, text, length, SESSION_PRESENT_LINE,
-	    operation, error);
-}
-
-static bool
-clearance_sound(void *context, float selector, struct yt_error *error)
-{
-	return session_sound(context, selector, "clearance sale sound", error);
-}
-
-static bool
 clearance(struct yt_session *session, bool create,
     struct yt_error *error)
 {
-	static const struct yt_clearance_ops ops = {
-		random_value,
-		clearance_present,
-		clearance_sound,
+	static const char *const name[4] = {
+		"Holds", "Fighters", "Shields", "Ground Forces"
 	};
-	struct yt_clearance_state state = {.create = create};
-	bool result;
+	bool announced = false;
+	size_t index;
 
-	memcpy(state.discount, session->clearance_discounts,
-	    sizeof(state.discount));
-	result = yt_clearance_run(&state, &ops, session, error);
-	memcpy(session->clearance_discounts, state.discount,
-	    sizeof(session->clearance_discounts));
-	return result;
+	if (!session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "clearance leading blank", error))
+		return false;
+	for (index = 0U; index < YT_ARRAY_LEN(session->clearance_discounts);
+	    ++index) {
+		float discount = session->clearance_discounts[index];
+		float draw;
+		char percent[64];
+		char row[192];
+		int row_length;
+
+		if (!random_value(session, &draw, error))
+			return false;
+		if (yt_clearance_candidate_needed(index, draw, discount, create)) {
+			if (!random_value(session, &draw, error))
+				return false;
+			discount = draw;
+			session->clearance_discounts[index] = discount;
+		}
+		if (!yt_clearance_normalize(index, &discount)) {
+			session->clearance_discounts[index] = 0.0f;
+			continue;
+		}
+		session->clearance_discounts[index] = discount;
+		if (qb_str_single(percent, sizeof(percent),
+		    yt_clearance_percentage(discount)) < 0)
+			return false;
+		row_length = snprintf(row, sizeof(row),
+		    "Special clearance sale! The Trader's Guild is selling "
+		    "%s for%s%% off!", name[index], percent);
+		if (row_length < 0 || (size_t)row_length >= sizeof(row)
+		    || !session_present_text(session, (const uint8_t *)row,
+		    (size_t)row_length, SESSION_PRESENT_LINE,
+		    "clearance announcement", error))
+			return false;
+		announced = true;
+	}
+	if (!announced)
+		return true;
+	return session_sound(session, 1.0f, "clearance sale sound", error)
+	    && session_present_text(session, NULL, 0U, SESSION_PRESENT_LINE,
+	    "clearance trailing blank", error);
 }
 
 static bool

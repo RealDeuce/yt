@@ -2958,43 +2958,6 @@ bool yt_clearance_candidate_needed(size_t item, float trigger_draw,
 bool yt_clearance_normalize(size_t item, float *discount);
 float yt_clearance_percentage(float discount);
 
-enum yt_clearance_output_kind {
-	YT_CLEARANCE_LEADING_BLANK,
-	YT_CLEARANCE_ANNOUNCEMENT,
-	YT_CLEARANCE_TRAILING_BLANK,
-};
-
-struct yt_clearance_state {
-	bool create;
-	float discount[4];
-	bool announced;
-	size_t current_item;
-	size_t items_completed;
-	size_t draws_consumed;
-	size_t announcements;
-	bool leading_blank_presented;
-	bool sound_called;
-	bool trailing_blank_presented;
-	bool complete;
-};
-
-typedef bool (*yt_clearance_random_fn)(void *context, float *value,
-    struct yt_error *error);
-typedef bool (*yt_clearance_present_fn)(void *context, const uint8_t *text,
-    size_t length, enum yt_clearance_output_kind kind,
-    struct yt_error *error);
-typedef bool (*yt_clearance_sound_fn)(void *context, float selector,
-    struct yt_error *error);
-
-struct yt_clearance_ops {
-	yt_clearance_random_fn random;
-	yt_clearance_present_fn present;
-	yt_clearance_sound_fn sound;
-};
-
-bool yt_clearance_run(struct yt_clearance_state *state,
-    const struct yt_clearance_ops *ops, void *context,
-    struct yt_error *error);
 void yt_earth_prices(const float discount[4], float price[4]);
 double yt_earth_affordable(float credits, float price);
 int yt_earth_selector_position(const char *command);
