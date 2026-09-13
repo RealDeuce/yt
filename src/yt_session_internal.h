@@ -101,6 +101,9 @@ float session_planet_offset(const struct yt_session *session);
 int session_sector_count(const struct yt_session *session);
 bool session_read_sector(struct yt_session *session, int logical_sector,
     struct yt_sector *sector, struct yt_error *error);
+bool session_write_sector(struct yt_session *session, int logical_sector,
+    struct yt_sector *sector, struct yt_error *error);
+void session_set_foreground(struct yt_session *session, float value);
 void session_set_color(struct yt_session *session, int logical);
 bool session_present_text(struct yt_session *session, const uint8_t *text,
     size_t length, enum session_present_text_kind kind,
@@ -120,6 +123,12 @@ void session_compat_upper_n(struct yt_session *session, uint8_t *text,
     size_t length);
 bool session_read_command(struct yt_session *session, char *text,
     size_t size);
+bool session_read_number_command(struct yt_session *session, char *text,
+    size_t size);
+bool session_present_alert(struct yt_session *session, const uint8_t *text,
+    size_t length, const char *operation, struct yt_error *error);
+bool session_sound(struct yt_session *session, float selector,
+    const char *operation, struct yt_error *error);
 bool session_display_game_file(struct yt_session *session, const char *path,
     struct yt_error *error);
 bool session_reload_player(struct yt_session *session,
@@ -128,6 +137,8 @@ bool session_mutate_player_credits(struct yt_session *session, float argument,
     bool *hydrated, struct yt_error *error);
 bool yt_session_salvage_player(struct yt_session *session, int victim_record,
     int killer_record, struct yt_error *error);
+bool yt_session_command_mines(struct yt_session *session,
+    struct yt_error *error);
 bool session_fixed_width_bytes(struct yt_session *session,
     const uint8_t *text, size_t text_length, float width,
     const char *operation, struct yt_error *error);
