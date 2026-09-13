@@ -11583,66 +11583,6 @@ yt_planet_bank_credit_overlay(struct yt_player *player, float argument)
 		    argument));
 }
 
-bool
-yt_credit_mutation_run(struct yt_credit_mutation_state *state,
-    const struct yt_credit_mutation_ops *ops, void *context,
-    struct yt_error *error)
-{
-	struct yt_player *player;
-
-	if (state == NULL || ops == NULL || ops->read_player == NULL
-	    || ops->write_player == NULL || state->hydration.player == NULL)
-		return startup_configuration_error(error, YT_RANGE,
-		    "credit mutation arguments");
-	state->fresh_credits = 0.0f;
-	state->summed_credits = 0.0f;
-	state->result_credits = 0.0f;
-	memset(state->argument_raw, 0, sizeof(state->argument_raw));
-	memset(state->fresh_credits_raw, 0,
-	    sizeof(state->fresh_credits_raw));
-	memset(state->summed_credits_raw, 0,
-	    sizeof(state->summed_credits_raw));
-	memset(state->result_credits_raw, 0,
-	    sizeof(state->result_credits_raw));
-	state->hydrated = false;
-	state->overlay_applied = false;
-	state->write_attempted = false;
-	state->written = false;
-	if (qb_mbf32_encode(state->argument, state->argument_raw)
-	    == QB_MBF_OVERFLOW)
-		return startup_configuration_error(error, YT_RANGE,
-		    "credit mutation argument MBF32");
-	if (!yt_current_player_hydrate_run(&state->hydration,
-	    ops->read_player, context, error))
-		return false;
-	state->hydrated = true;
-	player = state->hydration.player;
-	state->fresh_credits = player->credits;
-	memcpy(state->fresh_credits_raw,
-	    player->record.bytes + YT_F81, sizeof(state->fresh_credits_raw));
-	state->summed_credits = take_all_single_add(player->credits,
-	    state->argument);
-	state->result_credits = floorf(state->summed_credits);
-	if (qb_mbf32_encode(state->summed_credits,
-	    state->summed_credits_raw) == QB_MBF_OVERFLOW
-	    || qb_mbf32_encode(state->result_credits,
-	    state->result_credits_raw) == QB_MBF_OVERFLOW)
-		return startup_configuration_error(error, YT_RANGE,
-		    "credit mutation result MBF32");
-	player->credits = qb_mbf32_decode(state->result_credits_raw);
-	if (!yt_record_set_raw_number(&player->record, YT_F81,
-	    state->result_credits_raw))
-		return startup_configuration_error(error, YT_RANGE,
-		    "credit mutation overlay");
-	state->overlay_applied = true;
-	state->write_attempted = true;
-	if (!ops->write_player(context, state->hydration.player_record,
-	    &player->record, error))
-		return false;
-	state->written = true;
-	return true;
-}
-
 double
 yt_planet_productivity_units(double spend)
 {

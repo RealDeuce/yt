@@ -2952,34 +2952,6 @@ void yt_planet_bank_planet_overlay(struct yt_planet *planet, double target);
 float yt_planet_bank_credit_argument(float cached_bank, double target);
 void yt_planet_bank_credit_overlay(struct yt_player *player, float argument);
 
-typedef bool (*yt_credit_mutation_write_fn)(void *context,
-    int player_record, const struct yt_record *record,
-    struct yt_error *error);
-
-struct yt_credit_mutation_ops {
-	yt_current_player_read_fn read_player;
-	yt_credit_mutation_write_fn write_player;
-};
-
-struct yt_credit_mutation_state {
-	struct yt_current_player_hydration_state hydration;
-	float argument;
-	float fresh_credits;
-	float summed_credits;
-	float result_credits;
-	uint8_t argument_raw[4];
-	uint8_t fresh_credits_raw[4];
-	uint8_t summed_credits_raw[4];
-	uint8_t result_credits_raw[4];
-	bool hydrated;
-	bool overlay_applied;
-	bool write_attempted;
-	bool written;
-};
-
-bool yt_credit_mutation_run(struct yt_credit_mutation_state *state,
-    const struct yt_credit_mutation_ops *ops, void *context,
-    struct yt_error *error);
 double yt_planet_productivity_units(double spend);
 void yt_planet_productivity_cache(float rate[10], double units,
     float delta[4]);

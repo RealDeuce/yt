@@ -119,6 +119,8 @@ bool session_read_command(struct yt_session *session, char *text,
     size_t size);
 bool session_display_game_file(struct yt_session *session, const char *path,
     struct yt_error *error);
+bool session_mutate_player_credits(struct yt_session *session, float argument,
+    bool *hydrated, struct yt_error *error);
 bool session_fixed_width_bytes(struct yt_session *session,
     const uint8_t *text, size_t text_length, float width,
     const char *operation, struct yt_error *error);

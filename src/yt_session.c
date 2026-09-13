@@ -712,44 +712,53 @@ reload_player(struct yt_session *session, struct yt_error *error)
 	return true;
 }
 
-static bool
-credit_mutation_write_player(void *context, int player_record,
-    const struct yt_record *record, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_database_write_durable(&session->door->game.database,
-	    (size_t)player_record, record, error);
-}
-
-static bool
-mutate_player_credits(struct yt_session *session, float argument,
+bool
+session_mutate_player_credits(struct yt_session *session, float argument,
     bool *hydrated, struct yt_error *error)
 {
-	static const struct yt_credit_mutation_ops ops = {
-		session_hydration_read_player,
-		credit_mutation_write_player,
-	};
-	struct yt_credit_mutation_state state;
-	bool result;
+	uint8_t raw[4];
+	float sum;
+	float result;
 
-	memset(&state, 0, sizeof(state));
-	state.hydration.player = &session->player;
-	state.hydration.player_record = session_record(session);
-	state.hydration.current_sector_record = &session->current_sector_record;
-	state.hydration.player_cache = &session->player_cache;
-	memcpy(state.hydration.sector_record_offset_raw,
-	    session->door->game.config.record.bytes + YT_F53, 4U);
-	state.hydration.anti_cloak_enabled = session->anti_cloak_enabled;
-	state.argument = argument;
-	result = yt_credit_mutation_run(&state, &ops, session, error);
-	if (state.hydrated) {
-		session->combat_ship_fighters = session->player.fighters;
-		session->combat_ship_shields = session->player.shields;
-	}
 	if (hydrated != NULL)
-		*hydrated = state.hydrated;
-	return result;
+		*hydrated = false;
+	if (qb_mbf32_encode(argument, raw) == QB_MBF_OVERFLOW) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation,
+			    sizeof(error->operation), "%s",
+			    "credit mutation argument MBF32");
+		}
+		return false;
+	}
+	if (!reload_player(session, error))
+		return false;
+	if (hydrated != NULL)
+		*hydrated = true;
+	sum = single_add(session->player.credits, argument);
+	result = floorf(sum);
+	if (qb_mbf32_encode(sum, raw) == QB_MBF_OVERFLOW
+	    || qb_mbf32_encode(result, raw) == QB_MBF_OVERFLOW) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation,
+			    sizeof(error->operation), "%s",
+			    "credit mutation result MBF32");
+		}
+		return false;
+	}
+	session->player.credits = qb_mbf32_decode(raw);
+	if (!yt_record_set_raw_number(&session->player.record, YT_F81, raw)) {
+		if (error != NULL) {
+			error->status = YT_RANGE;
+			(void)snprintf(error->operation,
+			    sizeof(error->operation), "%s",
+			    "credit mutation overlay");
+		}
+		return false;
+	}
+	return yt_database_write_durable(&session->door->game.database,
+	    (size_t)session_record(session), &session->player.record, error);
 }
 
 static bool
@@ -759,18 +768,10 @@ apply_player_credit_mutation(void *context, float player_record,
 {
 	struct yt_session *session = context;
 
-	if (player_record != (float)session_record(session)) {
-		if (error != NULL) {
-			error->status = YT_RANGE;
-			(void)snprintf(error->operation,
-			    sizeof(error->operation), "%s",
-			    "credit mutation player record");
-		}
-		return false;
-	}
+	(void)player_record;
 	if (hydrated != NULL)
 		*hydrated = false;
-	if (!mutate_player_credits(session, argument, hydrated, error)) {
+	if (!session_mutate_player_credits(session, argument, hydrated, error)) {
 		if (player != NULL && hydrated != NULL && *hydrated)
 			*player = session->player;
 		return false;
@@ -8083,7 +8084,7 @@ earth_receipt(struct yt_session *session, const struct yt_port *cached_earth,
 {
 	struct yt_port earth;
 
-	if (!mutate_player_credits(session, -cost, NULL, error))
+	if (!session_mutate_player_credits(session, -cost, NULL, error))
 		return false;
 	if (cached_earth->owner != 0.0f) {
 		float receipt = yt_earth_receipt_amount(cached_earth->owner,
@@ -8801,7 +8802,7 @@ lottery(struct yt_session *session, const struct yt_port *cached_earth,
 		if (!append_news(session, news, error))
 			return false;
 	}
-	if (!mutate_player_credits(session, award, NULL, error)
+	if (!session_mutate_player_credits(session, award, NULL, error)
 	    || !session_wait(session, 3.0, "lottery award wait", error))
 		return false;
 	return lottery_settle(session, cached_earth, 5.0f, error);
@@ -9529,7 +9530,8 @@ planet_bank(struct yt_session *session, int logical_planet,
 	    || !session_sound(session, 4.0f, "planet bank sound", error))
 		return false;
 	credit_argument = yt_planet_bank_credit_argument(old_bank, target);
-	return mutate_player_credits(session, credit_argument, NULL, error);
+	return session_mutate_player_credits(session, credit_argument, NULL,
+	    error);
 }
 
 static bool
@@ -9883,7 +9885,7 @@ planet_productivity(struct yt_session *session, int logical_planet,
 	    "planet Productivity derived ending", error))
 		return false;
 	credit_argument = yt_planet_productivity_credit_argument(units);
-	if (!mutate_player_credits(session, credit_argument, NULL, error)
+	if (!session_mutate_player_credits(session, credit_argument, NULL, error)
 	    || !session_read_planet(session, logical_planet,
 	    &planet, error))
 		return false;
@@ -10924,7 +10926,7 @@ create_planet(struct yt_session *session, struct yt_error *error)
 	if (!write_planet_physical(session, selected_physical, &planet, false,
 	    error))
 		return false;
-	if (!mutate_player_credits(session, -25000.0f, NULL, error)
+	if (!session_mutate_player_credits(session, -25000.0f, NULL, error)
 	    || !yt_planet_creation_news(cached_trader, cached_trader_length,
 	    (const uint8_t *)session->planet_name, strlen(session->planet_name),
 	    row, sizeof(row), &row_length)

@@ -101,15 +101,20 @@ add_library(yt_game STATIC ${YT_GAME_SOURCES})
 yt_configure_target(yt_game)
 target_link_libraries(yt_game PUBLIC yt_core)
 
-add_executable(yt
-    src/main_yt.c
+set(YT_RUNTIME_SOURCES
     src/yt_door.c
     src/yt_input.c
     src/yt_output.c
     src/yt_session.c
     src/yt_session_computer.c)
+
+add_library(yt_runtime STATIC ${YT_RUNTIME_SOURCES})
+yt_configure_target(yt_runtime)
+target_link_libraries(yt_runtime PUBLIC yt_game OpenDoors::Static)
+
+add_executable(yt src/main_yt.c)
 yt_configure_target(yt)
-target_link_libraries(yt PRIVATE yt_game OpenDoors::Static)
+target_link_libraries(yt PRIVATE yt_runtime)
 
 function(yt_add_utility target source)
     add_executable(${target} "${source}")
@@ -195,6 +200,8 @@ if(BUILD_TESTING)
     yt_add_test(test_profit tests/test_profit.c yt_game)
     yt_add_test(test_score tests/test_score.c yt_game)
     yt_add_test(test_route tests/test_route.c yt_core)
+
+    yt_add_test(test_session_credit tests/test_session_credit.c yt_runtime)
 
     add_executable(test_assets tests/test_assets.c)
     yt_configure_target(test_assets)

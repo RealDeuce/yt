@@ -5,6 +5,7 @@
 #include "yt_text.h"
 #include "qb.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -25049,7 +25050,9 @@ struct direct_warp_attack_combat_join {
 	float clearance_discount[4];
 	struct yt_clearance_state clearance;
 	struct yt_xannor_victory_state victory;
-	struct yt_credit_mutation_state victory_credit;
+	bool victory_credit_hydrated;
+	bool victory_credit_overlay_applied;
+	bool victory_credit_written;
 	struct yt_player victory_player_source;
 	struct yt_player victory_player_written;
 	struct yt_sector victory_sector_source;
@@ -25925,32 +25928,47 @@ direct_warp_attack_victory_mutate_credits(void *context,
     float player_record, float argument, struct yt_player *player,
     bool *hydrated, struct yt_error *error)
 {
-	static const struct yt_credit_mutation_ops ops = {
-		direct_warp_attack_victory_read_credit,
-		direct_warp_attack_victory_write_credit,
-	};
 	struct direct_warp_attack_combat_join *join = context;
-	struct yt_credit_mutation_state *credit = &join->victory_credit;
-	bool result;
+	struct yt_current_player_hydration_state hydration = {
+		.player = player,
+		.player_record = 2,
+		.current_sector_record = &join->current_sector_record,
+		.player_cache = &join->player_cache,
+	};
+	uint8_t raw[4];
+	volatile float sum;
+	float result;
 
 	if (player == NULL || hydrated == NULL || player_record != 2.0f)
 		return false;
-	*player = join->victory_player_source;
-	*credit = (struct yt_credit_mutation_state){
-		.hydration = {
-			.player = player,
-			.player_record = 2,
-			.current_sector_record = &join->current_sector_record,
-			.player_cache = &join->player_cache,
-		},
-		.argument = argument,
-	};
-	if (qb_mbf32_encode(join->sector_record_offset,
-	    credit->hydration.sector_record_offset_raw) != QB_MBF_OK)
+	*hydrated = false;
+	join->victory_credit_hydrated = false;
+	join->victory_credit_overlay_applied = false;
+	join->victory_credit_written = false;
+	if (qb_mbf32_encode(argument, raw) == QB_MBF_OVERFLOW)
 		return false;
-	result = yt_credit_mutation_run(credit, &ops, join, error);
-	*hydrated = credit->hydrated;
-	return result;
+	if (qb_mbf32_encode(join->sector_record_offset,
+	    hydration.sector_record_offset_raw) != QB_MBF_OK)
+		return false;
+	if (!yt_current_player_hydrate_run(&hydration,
+	    direct_warp_attack_victory_read_credit, join, error))
+		return false;
+	*hydrated = true;
+	join->victory_credit_hydrated = true;
+	sum = player->credits + argument;
+	result = floorf(sum);
+	if (qb_mbf32_encode(sum, raw) == QB_MBF_OVERFLOW
+	    || qb_mbf32_encode(result, raw) == QB_MBF_OVERFLOW)
+		return false;
+	player->credits = qb_mbf32_decode(raw);
+	if (!yt_record_set_raw_number(&player->record, YT_F81, raw))
+		return false;
+	join->victory_credit_overlay_applied = true;
+	if (!direct_warp_attack_victory_write_credit(join, 2,
+	    &player->record, error))
+		return false;
+	join->victory_credit_written = true;
+	return true;
 }
 
 static bool
@@ -32703,9 +32721,9 @@ test_xannor_attack_tail_victory_join(void)
 		    && join.victory.winner_length == sizeof(expected_winner) - 1U
 		    && memcmp(join.victory.winner, expected_winner,
 		    sizeof(expected_winner) - 1U) == 0
-		    && join.victory_credit.hydrated
-		    && join.victory_credit.overlay_applied
-		    && join.victory_credit.written
+		    && join.victory_credit_hydrated
+		    && join.victory_credit_overlay_applied
+		    && join.victory_credit_written
 		    && join.victory_player_written.credits == 32000000.0f
 		    && memcmp(&join.victory_sector_written, &expected_sector,
 		    sizeof(expected_sector)) == 0
@@ -32936,9 +32954,9 @@ test_xannor_attack_tail_victory_failure_prefixes(void)
 			    && join.victory_queue_clears == (cut >= 6U ? 1U : 0U)
 			    && join.a41c_reads == (cut > 6U ? 2U : 1U)
 			    && join.victory_player_writes == (cut > 7U ? 1U : 0U)
-			    && join.victory_credit.hydrated == (cut > 6U)
-			    && join.victory_credit.overlay_applied == (cut >= 7U)
-			    && join.victory_credit.written == (cut > 7U)
+			    && join.victory_credit_hydrated == (cut > 6U)
+			    && join.victory_credit_overlay_applied == (cut >= 7U)
+			    && join.victory_credit_written == (cut > 7U)
 			    && join.victory.awarded_credits
 			    == (cut > 7U ? 32000000.0f : 0.0f));
 			CHECK(join.victory_sound_calls == (cut <= 8U ? 0U
@@ -33195,9 +33213,9 @@ test_xannor_attack_combat_victory_join(void)
 		    && join.victory.winner_length == sizeof(expected_winner) - 1U
 		    && memcmp(join.victory.winner, expected_winner,
 		    sizeof(expected_winner) - 1U) == 0
-		    && join.victory_credit.hydrated
-		    && join.victory_credit.overlay_applied
-		    && join.victory_credit.written
+		    && join.victory_credit_hydrated
+		    && join.victory_credit_overlay_applied
+		    && join.victory_credit_written
 		    && join.victory_player_written.credits == 32000000.0f
 		    && join.victory_player_written.turns == 99.0f);
 		expected_victory_sector = join.victory_sector_source;
