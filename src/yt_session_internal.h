@@ -101,6 +101,8 @@ float session_sector_offset(const struct yt_session *session);
 float session_port_offset(const struct yt_session *session);
 float session_planet_offset(const struct yt_session *session);
 int session_sector_count(const struct yt_session *session);
+uint32_t session_planet_basic_record(const struct yt_session *session,
+    float logical_planet);
 bool session_read_sector(struct yt_session *session, int logical_sector,
     struct yt_sector *sector, struct yt_error *error);
 bool session_write_sector(struct yt_session *session, int logical_sector,
@@ -150,6 +152,9 @@ bool session_load_team(struct yt_session *session, int id,
 bool read_planet_physical(struct yt_session *session,
     uint32_t physical_record, struct yt_planet *planet,
     struct yt_error *error);
+bool session_write_planet_physical(struct yt_session *session,
+    uint32_t physical_record, struct yt_planet *planet, bool encode,
+    struct yt_error *error);
 bool planet_update_cached_physical(struct yt_session *session,
     uint32_t physical_record, struct yt_planet *planet,
     struct planet_update_cache *cache, struct yt_error *error);
@@ -178,6 +183,8 @@ bool yt_session_registration(struct yt_session *session,
     struct yt_error *error);
 bool yt_session_check_lockout(struct yt_session *session,
     struct yt_error *error);
+bool yt_session_planet_permission(struct yt_session *session,
+    int logical_planet, bool *denied, struct yt_error *error);
 bool session_fixed_width_bytes(struct yt_session *session,
     const uint8_t *text, size_t text_length, float width,
     const char *operation, struct yt_error *error);

@@ -404,7 +404,7 @@ session_port_basic_record(const struct yt_session *session, float logical_port)
 	    (int)logical_port);
 }
 
-static uint32_t
+uint32_t
 session_planet_basic_record(const struct yt_session *session,
     float logical_planet)
 {
@@ -2909,8 +2909,9 @@ read_planet_physical(struct yt_session *session, uint32_t physical_record,
 	return true;
 }
 
-static bool
-write_planet_physical(struct yt_session *session, uint32_t physical_record,
+bool
+session_write_planet_physical(struct yt_session *session,
+    uint32_t physical_record,
     struct yt_planet *planet, bool encode, struct yt_error *error)
 {
 	if (encode) {
@@ -8834,14 +8835,14 @@ planet_assault(struct yt_session *session, uint32_t physical_planet,
 		    error))
 			return false;
 		yt_planet_assault_victory_overlay(&planet, owner, attackers);
-		return write_planet_physical(session, physical_planet, &planet,
-		    false, error);
+		return session_write_planet_physical(session, physical_planet,
+		    &planet, false, error);
 	}
 	if (!read_planet_physical(session, physical_planet, &planet, error))
 		return false;
 	yt_planet_assault_failure_overlay(&planet, defenders);
-	if (!write_planet_physical(session, physical_planet, &planet, false,
-	    error))
+	if (!session_write_planet_physical(session, physical_planet, &planet,
+	    false, error))
 		return false;
 	yt_present_set_blink(&session->presentation, 1.0f);
 	if (!yt_planet_assault_failure_row(defenders, true, row, sizeof(row),
@@ -9090,8 +9091,8 @@ planet_move_hop(struct yt_session *session, int source_number,
 		float loss = 0.0f;
 
 		yt_planet_move_explosion_overlay(&planet);
-		if (!write_planet_physical(session, moving_record, &planet, false,
-		    error)
+		if (!session_write_planet_physical(session, moving_record, &planet,
+		    false, error)
 		    || !session_present_text(session, NULL, 0,
 		    SESSION_PRESENT_LINE, "planet move explosion first blank", error)
 		    || !session_present_text(session, NULL, 0,
@@ -9721,8 +9722,8 @@ create_planet(struct yt_session *session, struct yt_error *error)
 	if (!read_planet_physical(session, selected_physical, &planet, error))
 		return false;
 	yt_planet_creation_overlay(&planet, session_record(session));
-	if (!write_planet_physical(session, selected_physical, &planet, false,
-	    error))
+	if (!session_write_planet_physical(session, selected_physical, &planet,
+	    false, error))
 		return false;
 	sector_physical = session_sector_basic_record(session,
 	    session->player.sector);
@@ -9743,8 +9744,8 @@ create_planet(struct yt_session *session, struct yt_error *error)
 	if (!read_planet_physical(session, selected_physical, &planet, error))
 		return false;
 	yt_planet_creation_timestamp_overlay(&planet, (float)today, minute);
-	if (!write_planet_physical(session, selected_physical, &planet, false,
-	    error))
+	if (!session_write_planet_physical(session, selected_physical, &planet,
+	    false, error))
 		return false;
 	if (!session_mutate_player_credits(session, -25000.0f, NULL, error)
 	    || !yt_planet_creation_news(cached_trader, cached_trader_length,
@@ -9764,111 +9765,9 @@ create_planet(struct yt_session *session, struct yt_error *error)
 }
 
 static bool
-planet_permission_update(void *context, float logical_planet,
-    struct yt_error *error)
-{
-	struct yt_session *session = context;
-	uint32_t physical = session_planet_basic_record(session, logical_planet);
-
-	return planet_update_cached_physical(session, physical,
-	    &(struct yt_planet){0}, NULL, error);
-}
-
-static bool
-planet_permission_read_planet(void *context, uint32_t physical_record,
-    struct yt_planet *planet, struct yt_error *error)
-{
-	return read_planet_physical(context, physical_record, planet, error);
-}
-
-static bool
-planet_permission_write_planet(void *context, uint32_t physical_record,
-    struct yt_planet *planet, struct yt_error *error)
-{
-	return write_planet_physical(context, physical_record, planet, false,
-	    error);
-}
-
-static bool
-planet_permission_read_player(void *context, int physical_record,
-    struct yt_player *player, struct yt_error *error)
-{
-	struct yt_session *session = context;
-
-	return yt_game_read_player(&session->door->game, physical_record, player,
-	    error);
-}
-
-static bool
-planet_permission_present(void *context, const uint8_t *text, size_t length,
-    enum yt_planet_permission_output_kind kind, const char *operation,
-    struct yt_error *error)
-{
-	enum session_present_text_kind session_kind;
-
-	switch (kind) {
-	case YT_PLANET_PERMISSION_RAW:
-		session_kind = SESSION_PRESENT_RAW;
-		break;
-	case YT_PLANET_PERMISSION_LINE:
-		session_kind = SESSION_PRESENT_LINE;
-		break;
-	case YT_PLANET_PERMISSION_BOLD_LINE:
-		session_kind = SESSION_PRESENT_BOLD_LINE;
-		break;
-	default:
-		return false;
-	}
-	return session_present_text(context, text, length, session_kind,
-	    operation, error);
-}
-
-static bool
-planet_permission_sound(void *context, float selector,
-    const char *operation, struct yt_error *error)
-{
-	return session_sound(context, selector, operation, error);
-}
-
-static bool
-planet_permission_wait(void *context, double seconds, const char *operation,
-    struct yt_error *error)
-{
-	return session_wait(context, seconds, operation, error);
-}
-
-static void
-planet_permission_set_foreground(void *context, float foreground)
-{
-	struct yt_session *session = context;
-
-	session_set_foreground(session, foreground);
-}
-
-static void
-planet_permission_set_blink(void *context, float blink)
-{
-	struct yt_session *session = context;
-
-	yt_present_set_blink(&session->presentation, blink);
-}
-
-static bool
 command_land(struct yt_session *session, bool *enter_sector,
     struct yt_error *error)
 {
-	static const struct yt_planet_permission_ops permission_ops = {
-		planet_permission_update,
-		planet_permission_read_planet,
-		planet_permission_write_planet,
-		planet_permission_read_player,
-		planet_permission_present,
-		planet_permission_sound,
-		planet_permission_wait,
-		random_value,
-		planet_permission_set_foreground,
-		planet_permission_set_blink,
-	};
 	static const uint8_t title[] = "<Land/Create planet>";
 	static const uint8_t landing[] = "Landing...";
 	static const uint8_t confirmation[] =
@@ -9883,7 +9782,7 @@ command_land(struct yt_session *session, bool *enter_sector,
 	volatile float planet_record_value;
 	float cached_carried;
 	int logical;
-	struct yt_planet_permission_state permission_state;
+	bool permission_denied;
 
 	if (!session_present_paged_line(session, title, sizeof(title) - 1U,
 	    "planet landing title", error)
@@ -9908,19 +9807,12 @@ command_land(struct yt_session *session, bool *enter_sector,
 	planet_record_value = session_planet_offset(session)
 	    + sector.planet;
 	session->planet_record_expression = planet_record_value;
-	memset(&permission_state, 0, sizeof(permission_state));
-	permission_state.planet_record_value = planet_record_value;
-	permission_state.planet_offset =
-	    session_planet_offset(session);
-	permission_state.current_player_record = session_record(session);
-	permission_state.last_player_record = YT_PLAYER_LAST;
-	permission_state.foreground = session_foreground(session);
-	permission_state.blink = yt_present_blink(&session->presentation);
-	if (!yt_planet_permission_run(&permission_state, &permission_ops,
-	    session, error))
+	logical = (int)sector.planet;
+	physical = session_planet_basic_record(session, (float)logical);
+	if (!yt_session_planet_permission(session, logical, &permission_denied,
+	    error))
 		return false;
-	physical = permission_state.physical_planet_record;
-	if (permission_state.denied) {
+	if (permission_denied) {
 		enum yt_yes_no_answer answer;
 		char response[YT_COMMAND_SIZE];
 		float commitment;
@@ -9967,13 +9859,6 @@ command_land(struct yt_session *session, bool *enter_sector,
 			return true;
 		}
 	}
-	if ((int64_t)physical - (int)session_planet_offset(session)
-	    < INT_MIN
-	    || (int64_t)physical
-	    - (int)session_planet_offset(session) > INT_MAX)
-		return false;
-	logical = (int)((int64_t)physical
-	    - (int)session_planet_offset(session));
 	if (!planet_inventory(session, logical, error))
 		return false;
 	return planet_menu(session, logical, enter_sector, error);
@@ -11828,8 +11713,8 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 		    error)
 		    || !yt_projectile_planet_ground_overlay(&persistence,
 		    impact.ground, impact.owner)
-		    || !write_planet_physical(session, physical_planet, &persistence,
-		    false, error)
+		    || !session_write_planet_physical(session, physical_planet,
+		    &persistence, false, error)
 		    || !yt_projectile_planet_ground_row(impact.ground, row,
 		    sizeof(row), &row_length)
 		    || !session_present_text(session, row, row_length,
@@ -11860,8 +11745,8 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 		    error)
 		    || !yt_projectile_planet_productivity_overlay(&persistence,
 		    planet.production, planet.stock)
-		    || !write_planet_physical(session, physical_planet, &persistence,
-		    false, error))
+		    || !session_write_planet_physical(session, physical_planet,
+		    &persistence, false, error))
 			return false;
 	}
 
@@ -11875,8 +11760,8 @@ missile_planet_impact(struct yt_session *session, int sector_number,
 		if (!read_planet_physical(session, physical_planet, &destruction,
 		    error)
 		    || !yt_projectile_planet_destroy_overlay(&destruction)
-		    || !write_planet_physical(session, physical_planet, &destruction,
-		    false, error)
+		    || !session_write_planet_physical(session, physical_planet,
+		    &destruction, false, error)
 		    || !yt_database_read(&session->door->game.database,
 		    (size_t)physical_sector, &record, error))
 			return false;

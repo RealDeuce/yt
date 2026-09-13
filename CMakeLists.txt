@@ -111,6 +111,7 @@ set(YT_RUNTIME_SOURCES
     src/yt_session_info.c
     src/yt_session_lockout.c
     src/yt_session_mines.c
+    src/yt_session_planets.c
     src/yt_session_registration.c
     src/yt_session_salvage.c
     src/yt_session_spies.c
@@ -211,6 +212,7 @@ if(BUILD_TESTING)
     yt_add_test(test_route tests/test_route.c yt_core)
 
     yt_add_test(test_session_credit tests/test_session_credit.c yt_runtime)
+    yt_add_test(test_session_planets tests/test_session_planets.c yt_runtime)
 
     add_executable(test_assets tests/test_assets.c)
     yt_configure_target(test_assets)
